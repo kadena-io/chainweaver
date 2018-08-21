@@ -1,0 +1,57 @@
+(env-data { "keyset": { "keys": ["ABCD"] , "pred": "keys-all" } })
+(env-keys ["ABCD"])
+
+(define-keyset 'module-keyset (read-keyset "keyset"))
+
+;USD Ledger
+(module paymentsUSD 'module-keyset
+
+  (deftable payments-tableUSD)
+
+  (defun create-accountUSD (id initial-balance)
+    "Create a new account for ID with INITIAL-BALANCE funds"
+    (insert payments-tableUSD id { "balance": initial-balance }))
+
+  (defun debitUSD (from amount)
+    (with-read payments-tableUSD from { "balance":= from-bal }
+        (enforce (>= from-bal amount) "Insufficient Funds")
+        (update payments-tableUSD from
+                { "balance": (- from-bal amount) })
+        (format "{} debited {}" [from amount])))
+)
+
+;create USD Ledger table
+(create-table payments-tableUSD)
+(create-accountUSD "Sarah" 100.00)
+
+;JPY Ledger
+(module paymentsJPY 'module-keyset
+
+  (deftable payments-tableJPY)
+
+  (defun create-accountJPY (id initial-balance)
+    "Create a new account for ID with INITIAL-BALANCE funds"
+    (insert payments-tableJPY id { "balance": initial-balance }))
+
+  (defun creditJPY (to amount)
+    (with-read payments-tableJPY to { "balance":= to-bal }
+      (update payments-tableJPY to
+              { "balance": (+ to-bal amount) })
+      (format "{} credited {}" [to amount])))
+)
+
+;create JPY Ledger
+(create-table payments-tableJPY)
+(create-accountJPY "James" 0.0)
+
+;Cross Border Transfer Specification
+(module cross-border 'module-keyset
+  (defun transfer-usd-to-jpy-accts (from to amountUSD fx-rate)
+    (let* ((amountJPY (* amountUSD fx-rate)))
+      (debitUSD from amountUSD)
+      (creditJPY to amountJPY)
+      (format "{} transfered ${} USD to {} at the rate of {}" [from amountUSD to fx-rate])))
+)
+
+;do a transfer
+(transfer-usd-to-jpy-accts "Sarah" "James" 50.0 104.57)

@@ -1,0 +1,110 @@
+(env-data { "demo-admin-keyset": { "keys": ["demoadmin"], "pred": ">"}})
+(env-keys ["demo-admin"])
+
+(begin-tx "Keyset Definition")
+(define-keyset 'demo-admin
+  (read-keyset "demo-admin-keyset"))
+(commit-tx)
+
+(begin-tx "Payments Module for Perf Tests")
+(module demo 'demo-admin
+
+ (deftable demo-accounts)
+
+ (defun keys-all (count matched) (= count matched))
+
+ (defun create-account (address)
+   (insert demo-accounts address
+         { "balance": 0.0, "amount": 0.0, "data": "Created account" }))
+
+ (defun transfer (src dest amount)
+   "transfer AMOUNT from SRC to DEST"
+  (with-read demo-accounts src { "balance":= src-balance }
+   (check-balance src-balance amount)
+    (with-read demo-accounts dest { "balance":= dest-balance }
+     (update demo-accounts src
+            { "balance": (- src-balance amount), "amount": (- amount)
+            , "data": { "transfer-to": dest } })
+     (update demo-accounts dest
+            { "balance": (+ dest-balance amount), "amount": amount
+            , "data": { "transfer-from": src } }))))
+
+ (defun read-account (id)
+   "Read data for account ID"
+   (+ { "account": id } (read demo-accounts id ['balance 'amount 'data])))
+
+
+ (defun check-balance (balance amount)
+   (enforce (<= amount balance) "Insufficient funds"))
+
+ (defun fund-account (address amount)
+   (update demo-accounts address
+           { "balance": amount, "amount": amount
+           , "data": "Admin account funding" }))
+
+ (defun read-all ()
+   (map (compose (read-account) (format "{},")) (keys demo-accounts)))
+
+ (defun table-info () (describe-table demo-accounts) (describe-table demo-accounts))
+
+)
+
+(create-table demo-accounts)
+
+(create-account "Acct1")
+(fund-account "Acct1" 1000000.0)
+(create-account "Acct2")
+
+(commit-tx)
+
+;sample transfer
+(begin-tx "Single Dollar Transfer")
+(use 'demo)
+(transfer "Acct1" "Acct2" 1.0)
+(read-account "Acct1")
+(read-account "Acct2")
+(commit-tx)
+
+;what `:batch 10` does
+(begin-tx "Single Dollar Transfer")
+(use 'demo)
+(transfer "Acct1" "Acct2" 1.0)
+(commit-tx)
+(begin-tx "Single Dollar Transfer")
+(use 'demo)
+(transfer "Acct1" "Acct2" 1.0)
+(commit-tx)
+(begin-tx "Single Dollar Transfer")
+(use 'demo)
+(transfer "Acct1" "Acct2" 1.0)
+(commit-tx)
+(begin-tx "Single Dollar Transfer")
+(use 'demo)
+(transfer "Acct1" "Acct2" 1.0)
+(commit-tx)
+(begin-tx "Single Dollar Transfer")
+(use 'demo)
+(transfer "Acct1" "Acct2" 1.0)
+(commit-tx)
+(begin-tx "Single Dollar Transfer")
+(use 'demo)
+(transfer "Acct1" "Acct2" 1.0)
+(commit-tx)
+(begin-tx "Single Dollar Transfer")
+(use 'demo)
+(transfer "Acct1" "Acct2" 1.0)
+(commit-tx)
+(begin-tx "Single Dollar Transfer")
+(use 'demo)
+(transfer "Acct1" "Acct2" 1.0)
+(commit-tx)
+(begin-tx "Single Dollar Transfer")
+(use 'demo)
+(transfer "Acct1" "Acct2" 1.0)
+(commit-tx)
+(begin-tx "Single Dollar Transfer")
+(use 'demo)
+(transfer "Acct1" "Acct2" 1.0)
+(read-account "Acct1")
+(read-account "Acct2")
+(commit-tx)

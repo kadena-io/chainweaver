@@ -1,0 +1,51 @@
+name: frontend
+version: 0.1
+cabal-version: >= 1.8
+build-type: Simple
+synopsis:            Frontend to the Pact smart contract language library
+description:
+            Pact is a transactional, database-focused, Turing-incomplete, interpreted language for smart contracts,
+            logic to be deployed and executed on a blockchain/distributed ledger. For more information see
+            <http://kadena.io/pact>.
+homepage:            https://github.com/kadena-io/pact
+bug-reports:         https://github.com/kadena-io/pact/issues
+license:             BSD3
+license-file:        LICENSE
+
+library
+  hs-source-dirs: src
+  build-depends: base
+               , common
+               , reflex-dom
+               , static
+               , text
+               , ListZipper
+               , bytestring
+               , containers
+               , jsaddle
+               , lens
+               , mtl
+               , pact
+               , reflex
+               , reflex-dom-ace
+               , string-qq
+               , text
+               , semantic-reflex
+  exposed-modules:
+      Frontend
+    , ReplGhcjs
+  ghc-options: -Wall
+
+executable frontend
+  main-is: main.hs
+  hs-source-dirs: src
+  build-depends: base
+               , common
+               , reflex-dom
+               , static
+               , text
+               , frontend
+  --TODO: Make these ghc-options optional
+  ghc-options: -threaded
+  if os(darwin)
+     ghc-options: -dynamic

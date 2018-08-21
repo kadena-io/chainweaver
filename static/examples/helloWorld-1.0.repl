@@ -1,0 +1,28 @@
+;;
+;; "Hello, world!" smart contract/module
+;;
+
+;; Simulate message data specifying an administrator keyset.
+;; In production use 'mockAdminKey' would be an ED25519 hex-encoded public key.
+(env-data { "admin-keyset": ["mockAdminKey"] })
+
+;; Simulate that we've signed this transaction with the keyset.
+;; In pact, signatures are pre-validated and represented in the
+;; environment as a list of public keys.
+(env-keys ["mockAdminKey"])
+
+
+;; Keysets cannot be created in code, thus we read them in
+;; from the load message data.
+(define-keyset 'admin-keyset (read-keyset "admin-keyset"))
+
+;; Define the module.
+(module helloWorld 'admin-keyset
+  "A smart contract to greet the world."
+  (defun hello (name)
+    "Do the hello-world dance"
+    (format "Hello {}!" [name]))
+)
+
+;; and say hello!
+(hello "world")
