@@ -39,6 +39,7 @@ import           Pact.Repl.Types
 import           Pact.Types.Lang
 ------------------------------------------------------------------------------
 import Static
+import Widgets
 
 main :: JSM ()
 main = mainWidget app
@@ -61,9 +62,12 @@ app = elClass "div" "app" $ do
     elClass "div" "ui two column padded grid main" $ mdo
       ex <- performRequestAsync ((\u -> xhrRequest "GET" u def) <$> updated d)
       code <- elClass "div" "column" $ do
-        elClass "div" "ui segment editor-pane" $ do
-          -- void $ dataWidget "{\"hello\":9;}" never
-          codeWidget startingExpression $ codeFromResponse <$> ex
+        elClass "div" "ui segment styled fluid accordion editor-pane" $ do
+          -- elClass "div" "ui styled fluid accordion editor" $ do
+            accordionItem True "data" "Data" $ do
+              void $ dataWidget "{\"hello\":9,\n\"some more\": \"hello!\"}" never
+            accordionItem True "code" "Code" $
+              codeWidget startingExpression $ codeFromResponse <$> ex
       (e,newExpr) <- elClass "div" "column repl-column" $ do
         elClass' "div" "ui segment repl-pane" $ do
           mapM_ snippetWidget staticReplHeader
@@ -93,7 +97,7 @@ scrollToBottom e = liftJSM $ do
 codeWidget :: MonadWidget t m => Text -> Event t Text -> m (Dynamic t Text)
 codeWidget iv sv = do
     let ac = def { _aceConfigMode = Just "ace/mode/pact"
-                 , _aceConfigElemAttrs = "id" =: "ace-widget"
+                 , _aceConfigElemAttrs = "class" =: "ace-code ace-widget"
                  }
     ace <- aceWidgetStatic ac (AceDynConfig $ Just AceTheme_SolarizedLight) iv
     _ <- withAceInstance ace (setValueACE <$> sv)
@@ -102,7 +106,7 @@ codeWidget iv sv = do
 dataWidget :: MonadWidget t m => Text -> Event t Text -> m (Dynamic t Text)
 dataWidget iv sv = do
     let ac = def { _aceConfigMode = Just "ace/mode/json"
-                 , _aceConfigElemAttrs = "id" =: "ace-data-widget"
+                 , _aceConfigElemAttrs = "class" =: "ace-data ace-widget"
                  }
     ace <- aceWidgetStatic ac (AceDynConfig $ Just AceTheme_SolarizedLight) iv
     _ <- withAceInstance ace (setValueACE <$> sv)

@@ -34,6 +34,7 @@ library
   exposed-modules:
       Frontend
     , ReplGhcjs
+    , Widgets
   ghc-options: -Wall
   default-extensions: ScopedTypeVariables
                     , FlexibleContexts
@@ -53,6 +54,7 @@ library
                     , TypeFamilies
                     , TypeApplications
                     , AllowAmbiguousTypes
+                    , OverloadedStrings
 
 executable frontend
   main-is: main.hs

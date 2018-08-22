@@ -23,6 +23,26 @@
   height: 100%;
 }
 
+.editor-pane {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
+}
+
+.editor-pane.accordion > .title {
+  flex-grow: 0;
+}
+
+.editor-pane.accordion > .content {
+  flex-grow: 1;
+  position: relative;
+}
+
+.editor-pane.accordion > .content.code {
+  flex-grow: 4;
+}
+
 .repl-pane {
   overflow: auto;
 }
@@ -32,16 +52,15 @@
 }
 
 
+.ace_editor {
+  position: absolute;
+  top: 0px;
+  bottom: 0px;
+  left: 0px;
+  right: 0px;
+}
 
 /* Old stuff: */
-#ace-widget {
-    margin: 0;
-    position: absolute;
-    top: 0;
-    bottom: 0;
-    left: 0;
-    right: 0;
-}
 
 /* Page layout */
 
