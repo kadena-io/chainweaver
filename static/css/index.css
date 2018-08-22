@@ -1,3 +1,43 @@
+/* New stuff: */
+
+.app {
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
+  position: absolute;
+  top: 0px;
+  bottom: 0px;
+  left: 0px;
+  right: 0px;
+}
+
+.app > .ui.menu {
+  flex-grow: 0;
+}
+
+.app > .main {
+  flex-grow: 5;
+}
+
+.editor-pane, .repl-pane {
+  height: 100%;
+}
+
+.ace_content {
+  font-size: 12pt;
+}
+
+.repl-pane {
+  overflow: auto;
+}
+
+.repl-pane.segment {
+  background: #fdf6e3;
+}
+
+
+
+/* Old stuff: */
 #ace-widget {
     margin: 0;
     position: absolute;
@@ -46,10 +86,6 @@ select, option, button {
     font-size: 15px;
 }
 
-#compile_now {
-    background-color: #d4ebe3;
-}
-
 #column2, #code {
     background: #fdf6e3;
 }
@@ -81,90 +117,6 @@ select, option, button {
 }
 #auto_compile {
   margin-left: 10px;
-}
-
-.view_mode {
-  background-color: #fff;
-  display: inline-block;
-  margin: 0px;
-  padding: 0px;
-}
-.view_mode label {
-  cursor: pointer;
-  display: inline-block;
-  padding-top: 5px;
-  padding-bottom: 5px;
-  padding-left: 10px;
-  padding-right: 10px;
-  text-align: center;
-}
-.view_mode li {
-  background-color: #fff;
-  display: inline-block;
-  padding: 0px;
-  padding-left: 0px;
-  margin: 0px;
-  border: 0px;
-}
-.view_mode input[type="radio"] {
-  display:none;
-  border-top: solid 1px #fff;
-  border-left: solid 1px #fff;
-  border-right: solid 1px #fff;
-}
-
-.view_mode input[type="radio"]:checked + label {
-  background-color: #eee;
-}
-.view_mode input[type=checked]:checked + label {
-  background-color: #eee;
-  border: solid 1px #ddd;
-  border-bottom: 0px;
-}
-
-#editor_view {
-  height: calc(100% - 31px);
-  display: flex;
-  flex-direction: row;
-  flex: 1;
-  margin-top: 0px;
-
-}
-
-#column1, #column2 {
-  position: relative;
-  flex: 1;
-}
-
-#column2 {
-  position: relative;
-  -webkit-overflow-scrolling: touch;
-  overflow: auto;
-}
-
-#code {
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-}
-
-.code-input {
-    width: 100%;
-    height: 100%;
-}
-
-.repl-history {
-  width: 100%;
-  height: 100%;
-}
-
-.separator {
-  flex-basis: 2px;
-  flex-grow: 0;
-  flex-shrink: 0;
-  background-color: #ddd;
 }
 
 /* Typography */

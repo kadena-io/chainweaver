@@ -56,24 +56,23 @@ data ClickState = DownAt (Int, Int) | Clicked | Selected
   deriving (Eq,Ord,Show,Read)
 
 app :: MonadWidget t m => m ()
-app = do
+app = elClass "div" "app" $ do
     ControlOut d le <- controlBar
-    elClass "div" "ui two column grid" $ mdo
+    elClass "div" "ui two column padded grid main" $ mdo
       ex <- performRequestAsync ((\u -> xhrRequest "GET" u def) <$> updated d)
       code <- elClass "div" "column" $ do
         elClass "div" "ui segment editor-pane" $ do
           -- void $ dataWidget "{\"hello\":9;}" never
           codeWidget startingExpression $ codeFromResponse <$> ex
-      (e,newExpr) <- elClass "div" "column" $ do
-        elClass' "div" "ui segement repl-pane" $ do
-          elAttr "div" ("id" =: "code") $ do
-            mapM_ snippetWidget staticReplHeader
-            clickType <- foldDyn ($) Nothing $ leftmost
-              [ setDown <$> domEvent Mousedown e
-              , clickClassifier <$> domEvent Mouseup e
-              ]
-            let replClick = () <$ ffilter (== Just Clicked) (updated clickType)
-            widgetHold (replWidget replClick startingExpression) (replWidget replClick <$> tag (current code) le)
+      (e,newExpr) <- elClass "div" "column repl-column" $ do
+        elClass' "div" "ui segment repl-pane" $ do
+          mapM_ snippetWidget staticReplHeader
+          clickType <- foldDyn ($) Nothing $ leftmost
+            [ setDown <$> domEvent Mousedown e
+            , clickClassifier <$> domEvent Mouseup e
+            ]
+          let replClick = () <$ ffilter (== Just Clicked) (updated clickType)
+          widgetHold (replWidget replClick startingExpression) (replWidget replClick <$> tag (current code) le)
       timeToScroll <- delay 0.1 $ switch $ current newExpr
       _ <- performEvent (scrollToBottom (_element_raw e) <$ timeToScroll)
       return ()
