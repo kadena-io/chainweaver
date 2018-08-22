@@ -35,6 +35,24 @@ library
       Frontend
     , ReplGhcjs
   ghc-options: -Wall
+  default-extensions: ScopedTypeVariables
+                    , FlexibleContexts
+                    , FlexibleInstances
+                    , FunctionalDependencies
+                    , GADTs
+                    , LambdaCase
+                    , DeriveDataTypeable
+                    , DeriveFoldable
+                    , DeriveFunctor
+                    , DeriveGeneric
+                    , DeriveTraversable
+                    , GeneralizedNewtypeDeriving
+                    , MultiParamTypeClasses
+                    , RankNTypes
+                    , StandaloneDeriving
+                    , TypeFamilies
+                    , TypeApplications
+                    , AllowAmbiguousTypes
 
 executable frontend
   main-is: main.hs
