@@ -29,8 +29,10 @@ import           Data.Text (Text)
 import qualified Data.Text as T
 import           Language.Javascript.JSaddle
 import           Reflex
-import           Reflex.Dom hiding (Element, fromJSString)
 import           Reflex.Dom.ACE
+import Reflex.Dom.Core (mainWidget, setValue, keypress)
+import qualified Reflex.Dom.Core as Core
+import Reflex.Dom.SemanticUI hiding (mainWidget, textInput)
 ------------------------------------------------------------------------------
 import           Pact.Repl
 import           Pact.Repl.Types
@@ -38,7 +40,7 @@ import           Pact.Types.Lang
 ------------------------------------------------------------------------------
 import Static
 
-main :: IO ()
+main :: JSM ()
 main = mainWidget app
 
 data ControlOut t = ControlOut
@@ -56,21 +58,22 @@ data ClickState = DownAt (Int, Int) | Clicked | Selected
 app :: MonadWidget t m => m ()
 app = do
     ControlOut d le <- controlBar
-    elAttr "div" ("id" =: "editor_view") $ mdo
+    elClass "div" "ui two column grid" $ mdo
       ex <- performRequestAsync ((\u -> xhrRequest "GET" u def) <$> updated d)
-      code <- elAttr "div" ("id" =: "column1") $ do
-        void $ dataWidget "{\"hello\":9;}" never
-        codeWidget startingExpression $ codeFromResponse <$> ex
-      elAttr "div" ("id" =: "separator" <> "class" =: "separator") blank
-      (e,newExpr) <- elAttr' "div" ("id" =: "column2") $ do
-        elAttr "div" ("id" =: "code") $ do
-          mapM_ snippetWidget staticReplHeader
-          clickType <- foldDyn ($) Nothing $ leftmost
-            [ setDown <$> domEvent Mousedown e
-            , clickClassifier <$> domEvent Mouseup e
-            ]
-          let replClick = () <$ ffilter (== Just Clicked) (updated clickType)
-          widgetHold (replWidget replClick startingExpression) (replWidget replClick <$> tag (current code) le)
+      code <- elClass "div" "column" $ do
+        elClass "div" "ui segment editor-pane" $ do
+          -- void $ dataWidget "{\"hello\":9;}" never
+          codeWidget startingExpression $ codeFromResponse <$> ex
+      (e,newExpr) <- elClass "div" "column" $ do
+        elClass' "div" "ui segement repl-pane" $ do
+          elAttr "div" ("id" =: "code") $ do
+            mapM_ snippetWidget staticReplHeader
+            clickType <- foldDyn ($) Nothing $ leftmost
+              [ setDown <$> domEvent Mousedown e
+              , clickClassifier <$> domEvent Mouseup e
+              ]
+            let replClick = () <$ ffilter (== Just Clicked) (updated clickType)
+            widgetHold (replWidget replClick startingExpression) (replWidget replClick <$> tag (current code) le)
       timeToScroll <- delay 0.1 $ switch $ current newExpr
       _ <- performEvent (scrollToBottom (_element_raw e) <$ timeToScroll)
       return ()
@@ -148,10 +151,10 @@ replInput setFocus = do
             [ mempty <$ enterPressed
             , fromMaybe "" . Z.safeCursor <$> tagPromptlyDyn commandHistory key
             ]
-      ti <- textInput (def & setValue .~ sv)
+      ti <- Core.textInput (def & setValue .~ sv)
       let key = ffilter isMovement $ domEvent Keydown ti
       let enterPressed = keypress Enter ti
-      _ <- performEvent (liftJSM (pToJSVal (_textInput_element ti) ^. js0 ("focus" :: String)) <$ setFocus)
+      _ <- performEvent (liftJSM (pToJSVal (Core._textInput_element ti) ^. js0 ("focus" :: String)) <$ setFocus)
       let newCommand = tag (current $ value ti) enterPressed
       commandHistory <- foldDyn ($) Z.empty $ leftmost
         [ addToHistory <$> newCommand
@@ -198,38 +201,43 @@ showResult :: Show a => Either String a -> Text
 showResult (Right v) = T.pack $ show v
 showResult (Left e) = "Error: " <> T.pack e
 
-controlBar :: MonadWidget t m => m (ControlOut t)
+controlBar :: forall t m. MonadWidget t m => m (ControlOut t)
 controlBar = do
-    elAttr "div" ("id" =: "options") $ do
-      elAttr "div" ("style" =: "display: block;") $ do
-        o <- elAttr "ul" ("class" =: "view_mode") $ do
-          elAttr "li" ("id" =: "pactVersion") $
-            elAttr "a" ("target" =: "_blank" <> "href" =: "https://github.com/kadena-io/pact") $ do
-              is <- liftIO $ initReplState StringEval
-              Right (TLiteral (LString ver) _) <- liftIO $ evalStateT (evalRepl' "(pact-version)") is
-              text $ "Pact Version " <> ver
-          d <- elAttr "li" ("class" =: "code_examples_fieldset") $ do
-            elAttr "fieldset" ("class" =: "code_examples_fieldset") $ do
-                dropdown 0 (constDyn $ fmap fst demos) def
-          load <- elAttr "li" ("id" =: "loadButton" <> "class" =: "tooltip") $ do
-            (e,_) <- elAttr' "label" ("id" =: "compile_now") $ text "Load"
-            return $ domEvent Click e
+    elClass "div" "ui menu" $ do
+      elClass "div" "item" showPactVersion
 
-          let intToCode n = snd $ fromJust $ M.lookup n demos
-          return (ControlOut (intToCode <$> value d) load)
-        elAttr "ul" ("class" =: "view_mode" <> "style" =: "float: right") $ do
-          el "li" $
-            el "label" $
-              elAttr "a" ("target" =: "_blank" <>
-                          "style" =: "color:black;text-decoration:none;" <>
-                          "href" =: "http://pact-language.readthedocs.io"
-                          ) $ do
-                elAttr "i" ("class" =: "fa fa-book" <> "aria-hidden" =: "true") blank
-                elAttr "span" ("id" =: "hideIfTiny" <> "class" =: "menu-link") $ text "Docs"
-          el "li" $
-            elAttr "a" ("target" =: "_blank" <> "href" =: "http://kadena.io") $
-              elAttr "img" ("src" =: static @"img/kadena-logo84x20.png" <> "class" =: "logo-image") blank
-        return o
+      control <- exampleChooser
+      elClass "div" "right menu" rightMenu
+      pure control
+  where
+    showPactVersion = do
+      elAttr "a" ( "target" =: "_blank" <> "href" =: "https://github.com/kadena-io/pact") $ do
+        is <- liftIO $ initReplState StringEval
+        Right (TLiteral (LString ver) _) <- liftIO $ evalStateT (evalRepl' "(pact-version)") is
+        text $ "Pact Version " <> ver
+
+    exampleChooser :: m (ControlOut t)
+    exampleChooser = do
+      d <- elClass "div" "item" $
+        dropdown def (Identity 0) $ TaggedStatic $ text . fst <$> demos
+      load <- elClass "div" "item" $
+        button (def & buttonConfig_emphasis |?~ Primary) $  text "Load"
+      let intToCode n = snd $ fromJust $ M.lookup n demos
+      pure $ ControlOut (intToCode . runIdentity <$> _dropdown_value d) load
+
+    rightMenu = do
+      elClass "div" "ui item" $
+        el "label" $
+          elAttr "a" ("target" =: "_blank" <>
+                      "style" =: "color:black;text-decoration:none;" <>
+                      "href" =: "http://pact-language.readthedocs.io"
+                      ) $ do
+            elAttr "i" ("class" =: "fa fa-book" <> "aria-hidden" =: "true") blank
+            elAttr "span" ("id" =: "hideIfTiny" <> "class" =: "menu-link") $ text "Docs"
+      elClass "div" "ui item" $
+        elAttr "a" ("target" =: "_blank" <> "href" =: "http://kadena.io") $
+          elAttr "img" ("src" =: static @"img/kadena-logo84x20.png" <> "class" =: "logo-image") blank
+
 
 exampleData :: [(Text, Text)]
 exampleData =

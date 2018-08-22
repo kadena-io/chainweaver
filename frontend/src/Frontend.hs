@@ -40,6 +40,7 @@ frontend = (head', body)
       elAttr "meta" ("content" =: "#ffffff" <> "name" =: "theme-color") blank
       elAttr "link" ("href" =: "http://fonts.googleapis.com/css?family=Roboto:300,600" <> "rel" =: "stylesheet" <> "type" =: "text/css") blank
       elAttr "link" ("href" =: "http://code.jquery.com/ui/1.12.1/themes/base/jquery-ui.css" <> "rel" =: "stylesheet") blank
+      elAttr "link" ("href" =: static @"semantic-reflex/semantic.min.css" <> "rel" =: "stylesheet") blank
       elAttr "link" ("href" =: static @"css/font-awesome.min.css" <> "rel" =: "stylesheet") blank
       elAttr "link" ("href" =: static @"css/index.css" <> "rel" =: "stylesheet" <> "type" =: "text/css") blank
       elAttr "script" ("type" =: "text/javascript" <> "src" =: "https://cdnjs.cloudflare.com/ajax/libs/underscore.js/1.8.3/underscore-min.js") blank
