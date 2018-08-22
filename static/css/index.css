@@ -23,10 +23,6 @@
   height: 100%;
 }
 
-.ace_content {
-  font-size: 12pt;
-}
-
 .repl-pane {
   overflow: auto;
 }
