@@ -27,7 +27,8 @@ import qualified Data.Sequence as S
 import           Data.String.QQ
 import           Data.Text (Text)
 import qualified Data.Text as T
-import           Language.Javascript.JSaddle
+import qualified Data.Text.Encoding as T
+import           Language.Javascript.JSaddle hiding (Object)
 import           Reflex
 import           Reflex.Dom.ACE
 import Reflex.Dom.Core (mainWidget, setValue, keypress)
@@ -36,6 +37,7 @@ import Reflex.Dom.SemanticUI hiding (mainWidget, textInput)
 import Generics.Deriving.Monoid (mappenddefault, memptydefault)
 import GHC.Generics (Generic)
 import Data.Semigroup
+import Data.Aeson (decodeStrict, Object)
 ------------------------------------------------------------------------------
 import           Pact.Repl
 import           Pact.Repl.Types
@@ -214,9 +216,16 @@ replWidget
     -> Contract
     -> m (Event t Text)
 replWidget replClick contract = mdo
+    let dataIsObject = isJust . toObject $ _contract_data contract
     let code = "(env-data " <> _contract_data contract <> ")\n\n" <> _contract_code contract
     initState <- liftIO $ initReplState StringEval
-    stateAndOut0 <- runReplStep0 (initState, mempty) code
+    stateAndOut0 <- 
+      if dataIsObject
+         then runReplStep0 (initState, mempty) code
+         else pure $ 
+         ( initState
+         , S.singleton $ OutputSnippet "ERROR: Data must be a valid JSON object!"
+         )
     stateAndOut <- holdDyn stateAndOut0 evalResult
 
     _ <- dyn (mapM_ snippetWidget . snd <$> stateAndOut)
@@ -224,6 +233,10 @@ replWidget replClick contract = mdo
     evalResult <- performEvent $
       attachWith runReplStep (current stateAndOut) newInput
     return newInput
+    where
+      toObject :: Text -> Maybe Object
+      toObject = decodeStrict . T.encodeUtf8
+
 
 replInput :: MonadWidget t m => Event t () -> m (Event t Text)
 replInput setFocus = do
