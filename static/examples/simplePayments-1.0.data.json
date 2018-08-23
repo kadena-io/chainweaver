@@ -1,0 +1,4 @@
+{ "admin-keyset": { "keys": ["ADMIN"] },
+            "sarah-keyset": { "keys": ["SARAH"] },
+            "james-keyset": { "keys": ["JAMES"] }
+}

@@ -4,7 +4,6 @@
 
 ;; Simulate message data specifying an administrator keyset.
 ;; In production use 'mockAdminKey' would be an ED25519 hex-encoded public key.
-(env-data { "admin-keyset": ["mockAdminKey"] })
 
 ;; Simulate that we've signed this transaction with the keyset.
 ;; In pact, signatures are pre-validated and represented in the

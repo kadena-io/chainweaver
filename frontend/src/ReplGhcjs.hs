@@ -6,6 +6,7 @@
 {-# LANGUAGE TemplateHaskell      #-}
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE DataKinds #-}
+{-# LANGUAGE DeriveGeneric #-}
 
 -- |
 -- Copyright   :  (C) 2018 Kadena
@@ -21,7 +22,6 @@ import qualified Data.List.Zipper as Z
 import           Data.Map (Map)
 import qualified Data.Map as M
 import           Data.Maybe
-import           Data.Monoid
 import           Data.Sequence (Seq)
 import qualified Data.Sequence as S
 import           Data.String.QQ
@@ -33,6 +33,9 @@ import           Reflex.Dom.ACE
 import Reflex.Dom.Core (mainWidget, setValue, keypress)
 import qualified Reflex.Dom.Core as Core
 import Reflex.Dom.SemanticUI hiding (mainWidget, textInput)
+import Generics.Deriving.Monoid (mappenddefault, memptydefault)
+import GHC.Generics (Generic)
+import Data.Semigroup
 ------------------------------------------------------------------------------
 import           Pact.Repl
 import           Pact.Repl.Types
@@ -41,13 +44,71 @@ import           Pact.Types.Lang
 import Static
 import Widgets
 
-main :: JSM ()
-main = mainWidget app
-
-data ControlOut t = ControlOut
-    { controlDropdown  :: Dynamic t Text
-    , controlLoadEvent :: Event t ()
+data Contract =
+  Contract
+    { _contract_data :: Text
+    , _contract_code :: Text
     }
+    deriving (Generic, Show)
+
+data IDE t =
+  IDE
+    { _ide_contract :: Dynamic t Contract
+    -- ^ Currently loaded/edited PACT code (JSON `code` field )and data (JSON `data` field).
+    {- , _ide_contracts :: Dynamic t Contracts -}
+    {- -- ^ Contracts that can be loaded into the IDE. -}
+    , _ide_selectedContract :: Dynamic t Text
+    -- ^ The currently selected contract in the dropdown.
+    , _ide_onLoadRequest :: Event t ()
+    -- ^ User pressed the Load button and wants to load the code into the REPL.
+    }
+    deriving Generic
+
+makeLensesWith (lensRules & generateLazyPatterns .~ True) ''IDE
+
+instance Reflex t => Semigroup (IDE t) where
+  (<>) = mappenddefault
+
+instance Reflex t => Monoid (IDE t) where
+  mempty = memptydefault
+  mappend = (<>)
+
+instance Semigroup Contract where
+  (<>) = mappenddefault
+
+instance Monoid Contract where
+  mempty = memptydefault
+  mappend = (<>)
+
+data ContractFile =
+  ContractFile
+    { _contract_baseName :: Text
+    -- ^ Name of the contract needed for locating the files.
+    {- , _contract_location :: Location -}
+    -- ^ Where is the contract stored?
+    }
+
+-- | Map of contract names to contract locations.
+--
+--   This is a list as opposed to a Map in order to preserve order.
+type ContractFiles = [(Text, Contract)]
+
+{- data Location -}
+{-   = Location_Example -- ^ Predefined example code loaded from the server -}
+{-   | Location_Local -- ^ User contract stored in localstorage. -}
+
+
+codeExtension :: Text
+codeExtension = ".repl"
+
+dataExtension :: Text
+dataExtension = ".data.json"
+
+toCodeFile :: Text -> Text
+toCodeFile = (<> codeExtension)
+
+toDataFile :: Text -> Text
+toDataFile = (<> dataExtension)
 
 codeFromResponse :: XhrResponse -> Text
 codeFromResponse =
@@ -56,18 +117,32 @@ codeFromResponse =
 data ClickState = DownAt (Int, Int) | Clicked | Selected
   deriving (Eq,Ord,Show,Read)
 
+main :: JSM ()
+main = mainWidget app
+
 app :: MonadWidget t m => m ()
-app = elClass "div" "app" $ do
-    ControlOut d le <- controlBar
+app = void . mfix $ \ide -> elClass "div" "app" $ do
+    controlIDE <- controlBar
     elClass "div" "ui two column padded grid main" $ mdo
-      ex <- performRequestAsync ((\u -> xhrRequest "GET" u def) <$> updated d)
-      code <- elClass "div" "column" $ do
+      codeResp <- performRequestAsync
+        ( fmap ((\u -> xhrRequest "GET" u def) . toCodeFile)
+        $ updated $ _ide_selectedContract ide
+        )
+      dataResp <- performRequestAsync
+        ( fmap ((\u -> xhrRequest "GET" u def) . toDataFile)
+        $ updated $ _ide_selectedContract ide
+        )
+      contract <- elClass "div" "column" $ do
         elClass "div" "ui segment styled fluid accordion editor-pane" $ do
           -- elClass "div" "ui styled fluid accordion editor" $ do
-            accordionItem True "data" "Data" $ do
-              void $ dataWidget "{\"hello\":9,\n\"some more\": \"hello!\"}" never
-            accordionItem True "code" "Code" $
-              codeWidget startingExpression $ codeFromResponse <$> ex
+            json <- accordionItem True "data" "Data" $ do
+               dataWidget startingData $ codeFromResponse <$> dataResp
+            code <- accordionItem True "code" "Code" $
+              codeWidget startingCode $ codeFromResponse <$> codeResp
+            pure $ do
+              cJson <- json
+              cCode <- code
+              pure $ Contract { _contract_data = cJson, _contract_code = cCode }
       (e,newExpr) <- elClass "div" "column repl-column" $ do
         elClass' "div" "ui segment repl-pane" $ do
           mapM_ snippetWidget staticReplHeader
@@ -76,10 +151,13 @@ app = elClass "div" "app" $ do
             , clickClassifier <$> domEvent Mouseup e
             ]
           let replClick = () <$ ffilter (== Just Clicked) (updated clickType)
-          widgetHold (replWidget replClick startingExpression) (replWidget replClick <$> tag (current code) le)
+          widgetHold (replWidget replClick startingContract) (replWidget replClick <$> tag (current contract) (_ide_onLoadRequest ide))
       timeToScroll <- delay 0.1 $ switch $ current newExpr
       _ <- performEvent (scrollToBottom (_element_raw e) <$ timeToScroll)
-      return ()
+      pure $ mconcat
+        [ controlIDE
+        , mempty & ide_contract .~ contract
+        ]
 
 setDown :: (Int, Int) -> t -> Maybe ClickState
 setDown clickLoc _ = Just $ DownAt clickLoc
@@ -133,11 +211,12 @@ snippetWidget (OutputSnippet t) = elAttr "pre" ("class" =: "replOut") $ text t
 replWidget
     :: MonadWidget t m
     => Event t ()
-    -> Text
+    -> Contract
     -> m (Event t Text)
-replWidget replClick initialCode = mdo
+replWidget replClick contract = mdo
+    let code = "(env-data " <> _contract_data contract <> ")\n\n" <> _contract_code contract
     initState <- liftIO $ initReplState StringEval
-    stateAndOut0 <- runReplStep0 (initState, mempty) initialCode
+    stateAndOut0 <- runReplStep0 (initState, mempty) code
     stateAndOut <- holdDyn stateAndOut0 evalResult
 
     _ <- dyn (mapM_ snippetWidget . snd <$> stateAndOut)
@@ -204,7 +283,7 @@ showResult :: Show a => Either String a -> Text
 showResult (Right v) = T.pack $ show v
 showResult (Left e) = "Error: " <> T.pack e
 
-controlBar :: forall t m. MonadWidget t m => m (ControlOut t)
+controlBar :: forall t m. MonadWidget t m => m (IDE t)
 controlBar = do
     elClass "div" "ui menu" $ do
       elClass "div" "item" showPactVersion
@@ -219,14 +298,16 @@ controlBar = do
         Right (TLiteral (LString ver) _) <- liftIO $ evalStateT (evalRepl' "(pact-version)") is
         text $ "Pact Version " <> ver
 
-    exampleChooser :: m (ControlOut t)
+    exampleChooser :: m (IDE t)
     exampleChooser = do
       d <- elClass "div" "item" $
         dropdown def (Identity 0) $ TaggedStatic $ text . fst <$> demos
       load <- elClass "div" "item" $
         button (def & buttonConfig_emphasis |?~ Primary) $  text "Load"
       let intToCode n = snd $ fromJust $ M.lookup n demos
-      pure $ ControlOut (intToCode . runIdentity <$> _dropdown_value d) load
+      pure $ mempty 
+        & ide_selectedContract .~  (intToCode . runIdentity <$> _dropdown_value d)
+        & ide_onLoadRequest .~ load
 
     rightMenu = do
       elClass "div" "ui item" $
@@ -244,10 +325,10 @@ controlBar = do
 
 exampleData :: [(Text, Text)]
 exampleData =
-  [ ("Hello World", "examples/helloWorld-1.0.repl")
-  , ("Simple Payment", "examples/simplePayments-1.0.repl")
-  , ("International Payment", "examples/internationalPayments-1.0.repl")
-  , ("Commercial Paper", "examples/commercialPaper-1.0.repl")
+  [ ("Hello World", "examples/helloWorld-1.0")
+  , ("Simple Payment", "examples/simplePayments-1.0")
+  , ("International Payment", "examples/internationalPayments-1.0")
+  , ("Commercial Paper", "examples/commercialPaper-1.0")
   ]
 
 demos :: Map Int (Text, Text)
@@ -257,8 +338,8 @@ demos = M.fromList $ zip [0..] exampleData
 -- | We still have this hard coded initial value because Reflex has to put
 -- some value in before the first event fires, so we use this one.  It should
 -- match the first element of the exampleData list.
-startingExpression :: Text
-startingExpression = [s|
+startingCode :: Text
+startingCode = [s|
 ;;
 ;; "Hello, world!" smart contract/module
 ;;
@@ -287,3 +368,16 @@ startingExpression = [s|
 ;; and say hello!
 (hello "world")
 |]
+
+startingData :: Text
+startingData = [s|
+  { "admin-keyset": ["mockAdminKey"] }
+|]
+
+startingContract :: Contract
+startingContract = 
+  Contract 
+    { _contract_code = startingCode
+    , _contract_data = startingData
+    }
+
