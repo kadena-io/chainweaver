@@ -7,6 +7,7 @@
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE LambdaCase #-}
 
 -- |
 -- Copyright   :  (C) 2018 Kadena
@@ -145,21 +146,66 @@ app = void . mfix $ \ide -> elClass "div" "app" $ do
               cJson <- json
               cCode <- code
               pure $ Contract { _contract_data = cJson, _contract_code = cCode }
-      (e,newExpr) <- elClass "div" "column repl-column" $ do
-        elClass' "div" "ui segment repl-pane" $ do
-          mapM_ snippetWidget staticReplHeader
-          clickType <- foldDyn ($) Nothing $ leftmost
-            [ setDown <$> domEvent Mousedown e
-            , clickClassifier <$> domEvent Mouseup e
-            ]
-          let replClick = () <$ ffilter (== Just Clicked) (updated clickType)
-          widgetHold (replWidget replClick startingContract) (replWidget replClick <$> tag (current contract) (_ide_onLoadRequest ide))
-      timeToScroll <- delay 0.1 $ switch $ current newExpr
-      _ <- performEvent (scrollToBottom (_element_raw e) <$ timeToScroll)
+      elClass "div" "column repl-column" $
+        elClass "div" "ui segment env-pane" $ envPanel ide
       pure $ mconcat
         [ controlIDE
         , mempty & ide_contract .~ contract
         ]
+
+-- | The available panels in the `envPanel`
+data EnvSelection
+  = EnvSelection_REPL -- ^ REPL for interacting with loaded contract
+  | EnvSelection_Data -- ^ Widgets for editing (meta-)data.
+  {- | EnvSelection_Compiler -- ^ Any compiler output (errors) -}
+  deriving (Eq, Ord, Show)
+
+-- | Tabbed panel to the right
+--
+--   Offering access to:
+--
+--   - The REPL
+--   - Compiler error messages
+--   - Key & Data Editor
+envPanel :: forall t m. MonadWidget t m => IDE t -> m ()
+envPanel ide = mdo
+  curSelection <- holdDyn EnvSelection_Data onSelect
+  onSelect <- menu 
+    ( def & menuConfig_pointing .~ pure True
+        & menuConfig_secondary .~ pure True
+    ) 
+    $ menuItems curSelection
+  (e, newExpr) <- elClass' "div" "ui segment repl-pane" $ do
+    mapM_ snippetWidget staticReplHeader
+    clickType <- foldDyn ($) Nothing $ leftmost
+      [ setDown <$> domEvent Mousedown e
+      , clickClassifier <$> domEvent Mouseup e
+      ]
+    let replClick = () <$ ffilter (== Just Clicked) (updated clickType)
+    widgetHold 
+      (replWidget replClick startingContract) 
+      (replWidget replClick <$> tag (current $ _ide_contract ide) 
+        (_ide_onLoadRequest ide)
+      )
+  timeToScroll <- delay 0.1 $ switch $ current newExpr
+  void $ performEvent (scrollToBottom (_element_raw e) <$ timeToScroll)
+  where
+    menuItems :: Dynamic t EnvSelection -> m (Event t EnvSelection)
+    menuItems curSelection = do
+      let
+        selections = [ EnvSelection_Data, EnvSelection_REPL ]
+      leftmost <$> traverse (menuItem curSelection) selections
+
+    menuItem :: Dynamic t EnvSelection -> EnvSelection -> m (Event t EnvSelection)
+    menuItem curSelection self = do
+      onClick <- makeClickable $ menuItem' (def & classes .~ dynClasses [boolClass "active" . Dyn $ fmap (== self) curSelection ]) $
+        text $ selectionToText self
+      pure $ self <$ onClick
+
+selectionToText :: EnvSelection -> Text
+selectionToText = \case
+  EnvSelection_REPL -> "REPL"
+  EnvSelection_Data -> "Data"
 
 setDown :: (Int, Int) -> t -> Maybe ClickState
 setDown clickLoc _ = Just $ DownAt clickLoc

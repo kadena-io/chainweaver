@@ -19,11 +19,8 @@
   flex-grow: 5;
 }
 
-.editor-pane, .repl-pane {
+.editor-pane, .env-pane {
   height: 100%;
-}
-
-.editor-pane {
   height: 100%;
   display: flex;
   flex-direction: column;
@@ -45,6 +42,10 @@
 
 .repl-pane {
   overflow: auto;
+}
+
+.env-pane > .repl-pane {
+  flex-grow: 1;
 }
 
 .repl-pane.segment {
