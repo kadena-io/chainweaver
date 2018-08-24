@@ -41,17 +41,18 @@
 }
 
 .repl-pane {
+  background: #fdf6e3;
   overflow: auto;
+  position: absolute;
+  top: 0px;
+  bottom: 0px;
+  left: 0px;
+  right: 0px;
 }
 
-.env-pane > .repl-pane {
+.env-pane > .ui.segment, .editor-pane > .ui.segment {
   flex-grow: 1;
 }
-
-.repl-pane.segment {
-  background: #fdf6e3;
-}
-
 
 .ace_editor {
   position: absolute;

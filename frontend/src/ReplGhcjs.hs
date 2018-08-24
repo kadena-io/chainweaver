@@ -8,6 +8,11 @@
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE TypeFamilies #-}
+{-# LANGUAGE KindSignatures #-}
+{-# LANGUAGE StandaloneDeriving #-}
+{-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE FlexibleContexts #-}
 
 -- |
 -- Copyright   :  (C) 2018 Kadena
@@ -39,6 +44,8 @@ import Generics.Deriving.Monoid (mappenddefault, memptydefault)
 import GHC.Generics (Generic)
 import Data.Semigroup
 import Data.Aeson (decodeStrict, Object)
+import Control.Applicative
+import Control.Arrow ((&&&))
 ------------------------------------------------------------------------------
 import           Pact.Repl
 import           Pact.Repl.Types
@@ -47,32 +54,35 @@ import           Pact.Types.Lang
 import Static
 import Widgets
 
-data Contract =
+-- | Re-use data constructors more flexibly.
+type family ReflexValue (f :: * -> *) x where
+    ReflexValue (Dynamic t) x = Dynamic t x
+
+    ReflexValue Identity x = x
+
+    ReflexValue (Behavior t) x = Behavior t x
+
+    ReflexValue (Event t) x = Event t x
+
+data ContractV f =
   Contract
-    { _contract_data :: Text
-    , _contract_code :: Text
+    { _contract_data :: ReflexValue f Text
+    , _contract_code :: ReflexValue f Text
     }
-    deriving (Generic, Show)
+    deriving (Generic)
 
-data IDE t =
-  IDE
-    { _ide_contract :: Dynamic t Contract
-    -- ^ Currently loaded/edited PACT code (JSON `code` field )and data (JSON `data` field).
-    {- , _ide_contracts :: Dynamic t Contracts -}
-    {- -- ^ Contracts that can be loaded into the IDE. -}
-    , _ide_selectedContract :: Dynamic t Text
-    -- ^ The currently selected contract in the dropdown.
-    , _ide_onLoadRequest :: Event t ()
-    -- ^ User pressed the Load button and wants to load the code into the REPL.
-    }
-    deriving Generic
+makeLensesWith (lensRules & generateLazyPatterns .~ True) ''ContractV
 
-makeLensesWith (lensRules & generateLazyPatterns .~ True) ''IDE
+type Contract = ContractV Identity
 
-instance Reflex t => Semigroup (IDE t) where
+deriving instance Show (ContractV Identity)
+
+type DynContract t = ContractV (Dynamic t)
+
+instance Reflex t => Semigroup (DynContract t) where
   (<>) = mappenddefault
 
-instance Reflex t => Monoid (IDE t) where
+instance Reflex t => Monoid (DynContract t) where
   mempty = memptydefault
   mappend = (<>)
 
@@ -80,6 +90,36 @@ instance Semigroup Contract where
   (<>) = mappenddefault
 
 instance Monoid Contract where
+  mempty = memptydefault
+  mappend = (<>)
+
+
+data IDE t =
+  IDE
+    { _ide_contract :: DynContract t
+    -- ^ Currently loaded/edited PACT code (JSON `code` field )and data (JSON `data` field).
+    {- , _ide_contracts :: Dynamic t Contracts -}
+    {- -- ^ Contracts that can be loaded into the IDE. -}
+    , _ide_selectedContract :: Dynamic t Text
+    -- ^ The currently selected contract in the dropdown.
+    , _ide_onLoadRequest :: Event t ()
+    -- ^ User pressed the Load button and wants to load the code into the REPL.
+    , _ide_onContractReceived :: Event t Contract
+    -- ^ Contract was successfully retrieved from server.
+    }
+    deriving Generic
+
+makeLensesWith (lensRules & generateLazyPatterns .~ True) ''IDE
+
+-- | Get `_ide_contract` as a single `Dynamic` `Contract`.
+ide_getDynamicContract :: Reflex t => IDE t -> Dynamic t Contract
+ide_getDynamicContract = 
+  uncurry (liftA2 Contract) . (_contract_data &&& _contract_code) . _ide_contract
+
+instance Reflex t => Semigroup (IDE t) where
+  (<>) = mappenddefault
+
+instance Reflex t => Monoid (IDE t) where
   mempty = memptydefault
   mappend = (<>)
 
@@ -91,10 +131,12 @@ data ContractFile =
     -- ^ Where is the contract stored?
     }
 
--- | Map of contract names to contract locations.
---
---   This is a list as opposed to a Map in order to preserve order.
-type ContractFiles = [(Text, Contract)]
+{- -- | Map of contract names to contract locations. -}
+{- -- -}
+{- --   This is a list as opposed to a Map in order to preserve order. -}
+{- type ContractFiles = [(Text, Contract)] -}
+
+
 
 {- data Location -}
 {-   = Location_Example -- ^ Predefined example code loaded from the server -}
@@ -126,32 +168,32 @@ main = mainWidget app
 app :: MonadWidget t m => m ()
 app = void . mfix $ \ide -> elClass "div" "app" $ do
     controlIDE <- controlBar
+    contractReceived <- loadContract $ _ide_selectedContract ide
     elClass "div" "ui two column padded grid main" $ mdo
-      codeResp <- performRequestAsync
-        ( fmap ((\u -> xhrRequest "GET" u def) . toCodeFile)
-        $ updated $ _ide_selectedContract ide
-        )
-      dataResp <- performRequestAsync
-        ( fmap ((\u -> xhrRequest "GET" u def) . toDataFile)
-        $ updated $ _ide_selectedContract ide
-        )
-      contract <- elClass "div" "column" $ do
-        elClass "div" "ui segment styled fluid accordion editor-pane" $ do
-          -- elClass "div" "ui styled fluid accordion editor" $ do
-            json <- accordionItem True "data" "Data" $ do
-               dataWidget startingData $ codeFromResponse <$> dataResp
-            code <- accordionItem True "code" "Code" $
-              codeWidget startingCode $ codeFromResponse <$> codeResp
-            pure $ do
-              cJson <- json
-              cCode <- code
-              pure $ Contract { _contract_data = cJson, _contract_code = cCode }
-      elClass "div" "column repl-column" $
+      editorIDE <- elClass "div" "column" $ 
+        elClass "div" "ui segment editor-pane" $ codePanel ide
+      envIDE <- elClass "div" "column repl-column" $
         elClass "div" "ui segment env-pane" $ envPanel ide
       pure $ mconcat
         [ controlIDE
-        , mempty & ide_contract .~ contract
+        , editorIDE
+        , envIDE
+        , mempty & ide_onContractReceived .~ contractReceived
         ]
+    where
+      loadContract contractName = do
+        code <- loadContractData toCodeFile contractName
+        json <- loadContractData toDataFile contractName
+        waitForEvents Contract (updated contractName) json code
+
+      loadContractData getFileName contractName = 
+        fmap (fmap codeFromResponse) 
+        . performRequestAsync
+        . fmap ((\u -> xhrRequest "GET" u def) . getFileName) 
+        . updated 
+        $ contractName
+            
+
 
 -- | The available panels in the `envPanel`
 data EnvSelection
@@ -160,6 +202,15 @@ data EnvSelection
   {- | EnvSelection_Compiler -- ^ Any compiler output (errors) -}
   deriving (Eq, Ord, Show)
 
+-- | Code editing (left hand side currently)
+codePanel :: forall t m. MonadWidget t m => IDE t -> m (IDE t)
+codePanel ide = do
+  menu (def & menuConfig_secondary .~ pure True) $ do
+    menuItem def $ text "Code" 
+  elClass "div" "ui segment" $ do
+    code <- codeWidget startingCode $ _contract_code <$> _ide_onContractReceived ide
+    pure $ mempty & ide_contract . contract_code .~ code
+
 -- | Tabbed panel to the right
 --
 --   Offering access to:
@@ -167,37 +218,30 @@ data EnvSelection
 --   - The REPL
 --   - Compiler error messages
 --   - Key & Data Editor
-envPanel :: forall t m. MonadWidget t m => IDE t -> m ()
+envPanel :: forall t m. MonadWidget t m => IDE t -> m (IDE t)
 envPanel ide = mdo
   curSelection <- holdDyn EnvSelection_Data onSelect
+
   onSelect <- menu 
     ( def & menuConfig_pointing .~ pure True
         & menuConfig_secondary .~ pure True
     ) 
-    $ menuItems curSelection
-  (e, newExpr) <- elClass' "div" "ui segment repl-pane" $ do
-    mapM_ snippetWidget staticReplHeader
-    clickType <- foldDyn ($) Nothing $ leftmost
-      [ setDown <$> domEvent Mousedown e
-      , clickClassifier <$> domEvent Mouseup e
-      ]
-    let replClick = () <$ ffilter (== Just Clicked) (updated clickType)
-    widgetHold 
-      (replWidget replClick startingContract) 
-      (replWidget replClick <$> tag (current $ _ide_contract ide) 
-        (_ide_onLoadRequest ide)
-      )
-  timeToScroll <- delay 0.1 $ switch $ current newExpr
-  void $ performEvent (scrollToBottom (_element_raw e) <$ timeToScroll)
+    $ tabs curSelection
+
+  tabPane ("class" =: "ui segment") curSelection EnvSelection_REPL $ 
+    replWidget ide
+  tabPane ("class" =: "ui segment") curSelection EnvSelection_Data $ do
+    json <- dataWidget startingData $ _contract_data <$> _ide_onContractReceived ide
+    pure $ mempty & ide_contract . contract_data .~ json
   where
-    menuItems :: Dynamic t EnvSelection -> m (Event t EnvSelection)
-    menuItems curSelection = do
+    tabs :: Dynamic t EnvSelection -> m (Event t EnvSelection)
+    tabs curSelection = do
       let
         selections = [ EnvSelection_Data, EnvSelection_REPL ]
-      leftmost <$> traverse (menuItem curSelection) selections
+      leftmost <$> traverse (tab curSelection) selections
 
-    menuItem :: Dynamic t EnvSelection -> EnvSelection -> m (Event t EnvSelection)
-    menuItem curSelection self = do
+    tab :: Dynamic t EnvSelection -> EnvSelection -> m (Event t EnvSelection)
+    tab curSelection self = do
       onClick <- makeClickable $ menuItem' (def & classes .~ dynClasses [boolClass "active" . Dyn $ fmap (== self) curSelection ]) $
         text $ selectionToText self
       pure $ self <$ onClick
@@ -258,10 +302,30 @@ snippetWidget (OutputSnippet t) = elAttr "pre" ("class" =: "replOut") $ text t
 ------------------------------------------------------------------------------
 replWidget
     :: MonadWidget t m
+    => IDE t
+    -> m ()
+replWidget ide = mdo
+  (e, newExpr) <- elClass' "div" "repl-pane" $ mdo
+    mapM_ snippetWidget staticReplHeader
+    clickType <- foldDyn ($) Nothing $ leftmost
+      [ setDown <$> domEvent Mousedown e
+      , clickClassifier <$> domEvent Mouseup e
+      ]
+    let replClick = () <$ ffilter (== Just Clicked) (updated clickType)
+    widgetHold 
+      (replInner replClick startingContract) 
+      (replInner replClick <$> tag (current $ ide_getDynamicContract ide) 
+        (_ide_onLoadRequest ide)
+      )
+  timeToScroll <- delay 0.1 $ switch $ current newExpr
+  void $ performEvent (scrollToBottom (_element_raw e) <$ timeToScroll)
+
+replInner
+    :: MonadWidget t m
     => Event t ()
     -> Contract
     -> m (Event t Text)
-replWidget replClick contract = mdo
+replInner replClick contract = mdo
     let dataIsObject = isJust . toObject $ _contract_data contract
     let code = "(env-data " <> _contract_data contract <> ")\n\n" <> _contract_code contract
     initState <- liftIO $ initReplState StringEval
