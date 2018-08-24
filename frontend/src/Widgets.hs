@@ -33,3 +33,7 @@ accordionItem initActive contentClass title inner = mdo
       False -> ""
       True -> " active"
 
+makeClickable :: DomBuilder t m => m (Element EventResult (DomBuilderSpace m) t, ()) -> m (Event t ())
+makeClickable item = do
+  (e, _) <- item
+  return $ domEvent Click e
