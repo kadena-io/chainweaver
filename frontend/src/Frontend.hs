@@ -20,7 +20,7 @@ import qualified Data.Text as T
 import           Language.Javascript.JSaddle
 import           Reflex
 import           Reflex.Dom hiding (Element, fromJSString)
-import           Reflex.Dom.ACE
+import           Reflex.Dom.ACE.Extended
 
 import           Pact.Repl
 import           Pact.Repl.Types
@@ -49,7 +49,5 @@ frontend = (head', body)
       elAttr "script" ("type" =: "text/javascript" <> "src" =: static @"js/ace-mode-pact.js") blank
       elAttr "script" ("type" =: "text/javascript" <> "src" =: "http://cdnjs.cloudflare.com/ajax/libs/ace/1.2.5/theme-solarized_light.js") blank
       elAttr "link" ("href" =: static @"css/index.css" <> "rel" =: "stylesheet" <> "type" =: "text/css") blank
+      elAttr "script" ("type" =: "text/javascript" <> "src" =: static @"css-element-queries-1.0.2/src/ResizeSensor.js") blank
     body = app
-      {- text "Welcome to Obelisk!" -}
-      {- el "p" $ text $ T.pack commonStuff -}
-      {- elAttr "img" ("src" =: static @"obelisk.jpg") blank -}

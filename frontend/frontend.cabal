@@ -35,6 +35,7 @@ library
       Frontend
     , ReplGhcjs
     , Widgets
+    , Reflex.Dom.ACE.Extended
   ghc-options: -Wall
   default-extensions: ScopedTypeVariables
                     , FlexibleContexts
