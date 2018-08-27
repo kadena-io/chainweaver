@@ -62,6 +62,16 @@
   right: 0px;
 }
 
+.flex-accordion {
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
+}
+
+.flex-accordion > .content {
+  flex-grow: 1;
+}
+
 /* Old stuff: */
 
 /* Page layout */
@@ -74,6 +84,7 @@ html, body {
 .ace_scrollbar {
     display: none !important;
 }
+
 
 body {
   font-family: 'Roboto', sans-serif;

@@ -23,17 +23,23 @@ import Control.Applicative
 
 
 {- accordionItem :: MonadWidget t m => AccordionItemConf t -> m a -> m a -}
-accordionItem :: MonadWidget t m => Bool -> Text -> Text -> m a -> m a
-accordionItem initActive contentClass title inner = mdo
+accordionItem' :: MonadWidget t m 
+              => Bool -> Text -> Text -> m a 
+              -> m (Element EventResult (DomBuilderSpace m) t, a)
+accordionItem' initActive contentClass title inner = mdo
   isActive <- foldDyn (const not) initActive $ domEvent Click e
   (e, _) <- elDynClass' "div" ("title " <> fmap activeClass isActive) $ do
     elClass "i" "dropdown icon" blank
     text title
-  elDynClass "div" ("content " <> pure contentClass <> fmap activeClass isActive) inner
+  elDynClass' "div" ("content " <> pure contentClass <> fmap activeClass isActive) inner
   where
     activeClass = \case
       False -> ""
       True -> " active"
+
+accordionItem :: MonadWidget t m => Bool -> Text -> Text -> m a -> m a
+accordionItem initActive contentClass title inner = 
+  snd <$> accordionItem' initActive contentClass title inner
 
 makeClickable :: DomBuilder t m => m (Element EventResult (DomBuilderSpace m) t, ()) -> m (Event t ())
 makeClickable item = do
