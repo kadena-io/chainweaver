@@ -30,7 +30,7 @@ import           Control.Monad.State.Strict
 import           Data.Aeson                  (Object, decodeStrict)
 import qualified Data.List.Zipper            as Z
 import           Data.Map                    (Map)
-import qualified Data.Map                    as M
+import qualified Data.Map                    as Map
 import           Data.Maybe
 import           Data.Semigroup
 import           Data.Sequence               (Seq)
@@ -111,7 +111,8 @@ data IDE t =
     -- ^ Contract was successfully retrieved from server.
     , _ide_wallet             :: Wallet t
     , _ide_walletConfig       :: WalletConfig t
-    , _ide_signingKey :: Dynamic t (Maybe Text)
+    , _ide_signingKeys :: Dynamic t [Text]
+    -- ^ With what keys should the contract get signed.
     }
     deriving Generic
 
@@ -121,6 +122,14 @@ makeLensesWith (lensRules & generateLazyPatterns .~ True) ''IDE
 ide_getDynamicContract :: Reflex t => IDE t -> Dynamic t Contract
 ide_getDynamicContract =
   uncurry (liftA2 Contract) . (_contract_data &&& _contract_code) . _ide_contract
+
+-- | Retrieve the currently selected signing keys.
+ide_getSigningKeyPairs :: Reflex t => IDE t -> Dynamic t [KeyPair]
+ide_getSigningKeyPairs ide = 
+  let
+    lookupKeys names keyMap = mapMaybe (\n -> Map.lookup n keyMap) names
+  in
+    zipDynWith lookupKeys (ide ^. ide_signingKeys) (ide ^. ide_wallet . wallet_keys)
 
 instance Reflex t => Semigroup (IDE t) where
   (<>) = mappenddefault
@@ -251,7 +260,7 @@ envPanel ide = mdo
 
     keysIde1 <- accordionItem True "keys" "Sign message with Keys" $ do
       selKey <- uiSelectKey (_ide_wallet ide) hasPrivateKey
-      pure $ mempty & ide_signingKey .~ selKey
+      pure $ mempty & ide_signingKeys .~ fmap (maybe [] (:[])) selKey
 
     pure $ mconcat [ jsonIde
                    , keysIde1
@@ -350,23 +359,41 @@ replWidget ide = mdo
       [ setDown <$> domEvent Mousedown e
       , clickClassifier <$> domEvent Mouseup e
       ]
-    let replClick = () <$ ffilter (== Just Clicked) (updated clickType)
+    let replClick = () <$ 
+          ffilter (== Just Clicked) (updated clickType)
+
+        keysContract = 
+          zipDyn (ide_getSigningKeyPairs ide) (ide_getDynamicContract ide)
+
     widgetHold
-      (replInner replClick startingContract)
-      (replInner replClick <$> tag (current $ ide_getDynamicContract ide)
-        (_ide_onLoadRequest ide)
+      (replInner replClick ([], startingContract))
+      (replInner replClick <$> 
+        tag (current keysContract) (_ide_onLoadRequest ide)
       )
+
   timeToScroll <- delay 0.1 $ switch $ current newExpr
   void $ performEvent (scrollToBottom (_element_raw e) <$ timeToScroll)
 
 replInner
     :: MonadWidget t m
     => Event t ()
-    -> Contract
+    -> ([KeyPair], Contract)
     -> m (Event t Text)
-replInner replClick contract = mdo
+replInner replClick (signingKeys, contract) = mdo
     let dataIsObject = isJust . toObject $ _contract_data contract
-    let code = "(env-data " <> _contract_data contract <> ")\n\n" <> _contract_code contract
+        pactKeys = 
+          T.unwords . map (surroundWith "\"") 
+          . mapMaybe _keyPair_privateKey 
+          $ signingKeys
+        code = mconcat 
+          [ "(env-data "
+          , _contract_data contract
+          , ")\n"
+          , "(env-keys ["
+          , pactKeys
+          , "])\n\n"
+          , _contract_code contract
+          ]
     initState <- liftIO $ initReplState StringEval
     stateAndOut0 <-
       if dataIsObject
@@ -385,6 +412,9 @@ replInner replClick contract = mdo
   where
       toObject :: Text -> Maybe Object
       toObject = decodeStrict . T.encodeUtf8
+  
+      surroundWith :: Semigroup s => s -> s -> s
+      surroundWith s i = s <> i <> s
 
 
 replInput :: MonadWidget t m => Event t () -> m (Event t Text)
@@ -466,7 +496,7 @@ controlBar = do
         dropdown def (Identity 0) $ TaggedStatic $ text . fst <$> demos
       load <- elClass "div" "item" $
         button (def & buttonConfig_emphasis |?~ Primary) $  text "Load"
-      let intToCode n = snd $ fromJust $ M.lookup n demos
+      let intToCode n = snd $ fromJust $ Map.lookup n demos
       pure $ mempty
         & ide_selectedContract .~  (intToCode . runIdentity <$> _dropdown_value d)
         & ide_onLoadRequest .~ load
@@ -494,7 +524,7 @@ exampleData =
   ]
 
 demos :: Map Int (Text, Text)
-demos = M.fromList $ zip [0..] exampleData
+demos = Map.fromList $ zip [0..] exampleData
 
 ------------------------------------------------------------------------------
 -- | We still have this hard coded initial value because Reflex has to put
@@ -506,14 +536,7 @@ startingCode = [s|
 ;; "Hello, world!" smart contract/module
 ;;
 
-;; Simulate message data specifying an administrator keyset.
-;; In production use 'mockAdminKey' would be an ED25519 hex-encoded public key.
-(env-data { "admin-keyset": ["mockAdminKey"] })
-
-;; Simulate that we've signed this transaction with the keyset.
-;; In pact, signatures are pre-validated and represented in the
-;; environment as a list of public keys.
-(env-keys ["mockAdminKey"])
+;; Make sure to have a mockAdminKey created and selected for running this contract.
 
 ;; Keysets cannot be created in code, thus we read them in
 ;; from the load message data.
