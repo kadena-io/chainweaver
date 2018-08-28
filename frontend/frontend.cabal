@@ -9,8 +9,8 @@ description:
             <http://kadena.io/pact>.
 homepage:            https://github.com/kadena-io/pact
 bug-reports:         https://github.com/kadena-io/pact/issues
-license:             BSD3
-license-file:        LICENSE
+-- license:             BSD3
+-- license-file:        LICENSE
 
 library
   hs-source-dirs: src
