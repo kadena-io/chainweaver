@@ -38,6 +38,8 @@ library
                  , ReplGhcjs
                  , Widgets
                  , Reflex.Dom.ACE.Extended
+                 , Wallet
+                 , UI.Wallet
 
   ghc-options: -Wall
   default-extensions: ScopedTypeVariables
