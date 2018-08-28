@@ -2,6 +2,8 @@
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE GADTs #-}
+-- So jsaddle stuff works a little nicer:
+{-# LANGUAGE NoOverloadedStrings #-}
 module Reflex.Dom.ACE.Extended ( module ACE
                                , resizableAceWidget
                                ) where

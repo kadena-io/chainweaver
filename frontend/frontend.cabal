@@ -14,28 +14,31 @@ license-file:        LICENSE
 
 library
   hs-source-dirs: src
+
   build-depends: base
-               , common
-               , reflex-dom
-               , static
-               , text
                , ListZipper
+               , aeson
                , bytestring
+               , common
                , containers
+               , generic-deriving
                , jsaddle
                , lens
                , mtl
                , pact
                , reflex
+               , reflex-dom
                , reflex-dom-ace
+               , semantic-reflex
+               , static
                , string-qq
                , text
-               , semantic-reflex
-  exposed-modules:
-      Frontend
-    , ReplGhcjs
-    , Widgets
-    , Reflex.Dom.ACE.Extended
+
+  exposed-modules: Frontend
+                 , ReplGhcjs
+                 , Widgets
+                 , Reflex.Dom.ACE.Extended
+
   ghc-options: -Wall
   default-extensions: ScopedTypeVariables
                     , FlexibleContexts
