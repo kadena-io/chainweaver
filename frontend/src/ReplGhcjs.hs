@@ -43,7 +43,6 @@ import           Generics.Deriving.Monoid    (mappenddefault, memptydefault)
 import           GHC.Generics                (Generic)
 import           Language.Javascript.JSaddle hiding (Object)
 import           Reflex
-import           Reflex.Dom.ACE
 import           Reflex.Dom.ACE.Extended
 import           Reflex.Dom.Core             (keypress, mainWidget, setValue)
 import qualified Reflex.Dom.Core             as Core

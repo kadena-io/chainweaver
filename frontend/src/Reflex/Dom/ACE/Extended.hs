@@ -4,11 +4,9 @@
 {-# LANGUAGE GADTs #-}
 -- So jsaddle stuff works a little nicer:
 {-# LANGUAGE NoOverloadedStrings #-}
-module Reflex.Dom.ACE.Extended 
-  ( 
-    -- module ACE -- This does break deployments, because for ACE no haddocks can be generated.
-   resizableAceWidget
-  ) where
+module Reflex.Dom.ACE.Extended ( module ACE
+                               , resizableAceWidget
+                               ) where
 
 import           Language.Javascript.JSaddle (js0, MonadJSM, liftJSM, jsg)
 import qualified Language.Javascript.JSaddle as JS
