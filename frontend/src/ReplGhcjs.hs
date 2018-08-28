@@ -144,7 +144,7 @@ data ContractFile =
     { _contract_baseName :: Text
     -- ^ Name of the contract needed for locating the files.
     {- , _contract_location :: Location -}
-    -- ^ Where is the contract stored?
+    {- -- ^ Where is the contract stored? -}
     }
 
 {- -- | Map of contract names to contract locations. -}
@@ -218,7 +218,6 @@ data EnvSelection
   = EnvSelection_Repl -- ^ REPL for interacting with loaded contract
   | EnvSelection_Env -- ^ Widgets for editing (meta-)data.
   | EnvSelection_Keys -- ^ Keys management pane
-  {- | EnvSelection_Compiler -- ^ Any compiler output (errors) -}
   deriving (Eq, Ord, Show)
 
 -- | Code editing (left hand side currently)
