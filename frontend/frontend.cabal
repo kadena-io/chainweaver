@@ -69,6 +69,24 @@ executable frontend
                , static
                , text
                , frontend
+               -- Needed for some reason:
+               , ListZipper
+               , aeson
+               , bytestring
+               , common
+               , containers
+               , generic-deriving
+               , jsaddle
+               , lens
+               , mtl
+               , pact
+               , reflex
+               , reflex-dom
+               , reflex-dom-ace
+               , semantic-reflex
+               , static
+               , string-qq
+               , text
   --TODO: Make these ghc-options optional
   ghc-options: -threaded
   if os(darwin)
