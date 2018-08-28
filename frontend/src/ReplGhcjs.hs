@@ -52,7 +52,8 @@ import           Pact.Repl
 import           Pact.Repl.Types
 import           Pact.Types.Lang
 ------------------------------------------------------------------------------
-import           KeysWallet
+import           Wallet
+import           UI.Wallet
 import           Static
 import           Widgets
 
@@ -108,8 +109,9 @@ data IDE t =
     -- ^ User pressed the Load button and wants to load the code into the REPL.
     , _ide_onContractReceived :: Event t Contract
     -- ^ Contract was successfully retrieved from server.
-    , _ide_wallet             :: KeysWallet t
-    , _ide_walletConfig       :: KeysWalletConfig t
+    , _ide_wallet             :: Wallet t
+    , _ide_walletConfig       :: WalletConfig t
+    , _ide_signingKey :: Dynamic t (Maybe Text)
     }
     deriving Generic
 
@@ -171,6 +173,7 @@ main = mainWidget app
 
 app :: MonadWidget t m => m ()
 app = void . mfix $ \ide -> elClass "div" "app" $ do
+    wallet <- makeWallet $ _ide_walletConfig ide
     controlIde <- controlBar
     contractReceived <- loadContract $ _ide_selectedContract ide
     elClass "div" "ui two column padded grid main" $ mdo
@@ -183,6 +186,7 @@ app = void . mfix $ \ide -> elClass "div" "app" $ do
         , editorIde
         , envIde
         , mempty & ide_onContractReceived .~ contractReceived
+        , mempty & ide_wallet .~ wallet
         ]
     where
       loadContract contractName = do
@@ -246,28 +250,18 @@ envPanel ide = mdo
       pure $ mempty & ide_contract . contract_data .~ json
 
     keysIde1 <- accordionItem True "keys" "Sign message with Keys" $ do
-      text "Keys selection goes here."
+      selKey <- uiSelectKey (_ide_wallet ide) hasPrivateKey
+      pure $ mempty & ide_signingKey .~ selKey
 
     pure $ mconcat [ jsonIde
-                   {- , keysIde1 -}
+                   , keysIde1
                    ]
 
-  (pKeys, keysIde) <- tabPane'
-    ("class" =: "ui segment")
-    curSelection EnvSelection_Keys $ mdo
-        {- keys <- dataWidget pKeys "" never -}
-        {- pure $ mempty & ide_keys .~ keys -}
-        elClass "div" "ui action input" $ do
-          name <- textInput def 
-
-          clicked <- button (def & buttonConfig_emphasis |?~ Secondary) $ text "Generate"
-
-          let onReq = tag (current $ _textInput_value name) clicked
-
-          pure $ mempty & ide_walletConfig . keysWalletConfig_onRequestNewKey .~ onReq
-
-
-  
+  keysIde <- tabPane
+      ("class" =: "ui segment")
+      curSelection EnvSelection_Keys $ do
+    conf <- uiWallet $ _ide_wallet ide
+    pure $ mempty & ide_walletConfig .~ conf
 
   pure $ mconcat [ envIde, keysIde ]
 
