@@ -96,6 +96,7 @@ instance Monoid Contract where
   mempty = memptydefault
   mappend = (<>)
 
+type ErrorMsg = Text
 
 data IDE t =
   IDE
@@ -113,6 +114,7 @@ data IDE t =
     , _ide_walletConfig       :: WalletConfig t
     , _ide_signingKeys :: Dynamic t [Text]
     -- ^ With what keys should the contract get signed.
+    , _ide_errors :: Dynamic t (Maybe ErrorMsg)
     }
     deriving Generic
 
@@ -186,10 +188,10 @@ app = void . mfix $ \ide -> elClass "div" "app" $ do
     controlIde <- controlBar
     contractReceived <- loadContract $ _ide_selectedContract ide
     elClass "div" "ui two column padded grid main" $ mdo
-      editorIde <- elClass "div" "column" $
+      (editorEl, editorIde) <- elClass' "div" "column" $
         elClass "div" "ui segment editor-pane" $ codePanel ide
       envIde <- elClass "div" "column repl-column" $
-        elClass "div" "ui segment env-pane" $ envPanel ide
+        elClass "div" "ui segment env-pane" $ envPanel (domEvent Click editorEl) ide
       pure $ mconcat
         [ controlIde
         , editorIde
@@ -217,6 +219,7 @@ data EnvSelection
   = EnvSelection_Repl -- ^ REPL for interacting with loaded contract
   | EnvSelection_Env -- ^ Widgets for editing (meta-)data.
   | EnvSelection_Keys -- ^ Keys management pane
+  | EnvSelection_Errors -- ^ Compiler errors to be shown.
   deriving (Eq, Ord, Show)
 
 -- | Code editing (left hand side currently)
@@ -236,9 +239,18 @@ codePanel ide = mdo
 --   - The REPL
 --   - Compiler error messages
 --   - Key & Data Editor
-envPanel :: forall t m. MonadWidget t m => IDE t -> m (IDE t)
-envPanel ide = mdo
-  curSelection <- holdDyn EnvSelection_Env onSelect
+envPanel :: forall t m. MonadWidget t m => Event t () -> IDE t -> m (IDE t)
+envPanel editorClicked ide = mdo
+  let onLoad = 
+        maybe EnvSelection_Repl (const EnvSelection_Errors) 
+          <$> updated (_ide_errors ide)
+
+      onEditorClicked = EnvSelection_Env <$ editorClicked
+
+  curSelection <- holdDyn EnvSelection_Env $ leftmost [ onSelect
+                                                      , onLoad
+                                                      , onEditorClicked
+                                                      ]
 
   onSelect <- menu
     ( def & menuConfig_pointing .~ pure True
@@ -246,7 +258,7 @@ envPanel ide = mdo
     )
     $ tabs curSelection
 
-  tabPane ("class" =: "ui segment") curSelection EnvSelection_Repl $
+  replIde <- tabPane ("class" =: "ui segment") curSelection EnvSelection_Repl $
     replWidget ide
 
   envIde <- tabPane
@@ -257,12 +269,13 @@ envPanel ide = mdo
         $ _contract_data <$> _ide_onContractReceived ide
       pure $ mempty & ide_contract . contract_data .~ json
 
-    keysIde1 <- accordionItem True "keys" "Sign message with Keys" $ do
+    keysIde1 <- accordionItem True "keys" "Sign message with key" $ do
       selKey <- uiSelectKey (_ide_wallet ide) hasPrivateKey
       pure $ mempty & ide_signingKeys .~ fmap (maybe [] (:[])) selKey
 
     pure $ mconcat [ jsonIde
                    , keysIde1
+                   , replIde
                    ]
 
   keysIde <- tabPane
@@ -271,13 +284,19 @@ envPanel ide = mdo
     conf <- uiWallet $ _ide_wallet ide
     pure $ mempty & ide_walletConfig .~ conf
 
-  pure $ mconcat [ envIde, keysIde ]
+  errorsIde <- tabPane
+      ("class" =: "ui segment")
+      curSelection EnvSelection_Errors $ do
+    void . dyn $ maybe (pure ()) (snippetWidget . OutputSnippet) <$> _ide_errors ide
+    pure mempty
+
+  pure $ mconcat [ envIde, keysIde, errorsIde ]
 
   where
     tabs :: Dynamic t EnvSelection -> m (Event t EnvSelection)
     tabs curSelection = do
       let
-        selections = [ EnvSelection_Env, EnvSelection_Repl, EnvSelection_Keys ]
+        selections = [ EnvSelection_Env, EnvSelection_Keys, EnvSelection_Repl, EnvSelection_Errors ]
       leftmost <$> traverse (tab curSelection) selections
 
     tab :: Dynamic t EnvSelection -> EnvSelection -> m (Event t EnvSelection)
@@ -291,6 +310,7 @@ selectionToText = \case
   EnvSelection_Repl -> "REPL"
   EnvSelection_Env -> "Env"
   EnvSelection_Keys -> "Keys"
+  EnvSelection_Errors -> "Errors"
 
 setDown :: (Int, Int) -> t -> Maybe ClickState
 setDown clickLoc _ = Just $ DownAt clickLoc
@@ -350,9 +370,9 @@ snippetWidget (OutputSnippet t) = elAttr "pre" ("class" =: "replOut") $ text t
 replWidget
     :: MonadWidget t m
     => IDE t
-    -> m ()
+    -> m (IDE t)
 replWidget ide = mdo
-  (e, newExpr) <- elClass' "div" "repl-pane" $ mdo
+  (e, r) <- elClass' "div" "repl-pane" $ mdo
     mapM_ snippetWidget staticReplHeader
     clickType <- foldDyn ($) Nothing $ leftmost
       [ setDown <$> domEvent Mousedown e
@@ -369,15 +389,18 @@ replWidget ide = mdo
       (replInner replClick <$> 
         tag (current keysContract) (_ide_onLoadRequest ide)
       )
+  let err = snd <$> r
+  let newExpr = fst <$> r
 
   timeToScroll <- delay 0.1 $ switch $ current newExpr
   void $ performEvent (scrollToBottom (_element_raw e) <$ timeToScroll)
+  pure $ mempty & ide_errors .~ err
 
 replInner
     :: MonadWidget t m
     => Event t ()
     -> ([KeyPair], Contract)
-    -> m (Event t Text)
+    -> m (Event t Text, Maybe ErrorMsg)
 replInner replClick (signingKeys, contract) = mdo
     let dataIsObject = isJust . toObject $ _contract_data contract
         pactKeys = 
@@ -394,20 +417,22 @@ replInner replClick (signingKeys, contract) = mdo
           , _contract_code contract
           ]
     initState <- liftIO $ initReplState StringEval
-    stateAndOut0 <-
+    stateOutErr0 <-
       if dataIsObject
          then runReplStep0 (initState, mempty) code
-         else pure $
-         ( initState
-         , S.singleton $ OutputSnippet "ERROR: Data must be a valid JSON object!"
-         )
+         else pure
+           ( initState
+           , mempty
+           , Just ("ERROR: Data must be a valid JSON object!" :: Text)
+           )
+    let stateAndOut0 = (\(a,b,c) -> (a, b)) stateOutErr0
     stateAndOut <- holdDyn stateAndOut0 evalResult
 
     _ <- dyn (mapM_ snippetWidget . snd <$> stateAndOut)
     newInput <- replInput replClick
     evalResult <- performEvent $
       attachWith runReplStep (current stateAndOut) newInput
-    return newInput
+    return (newInput, stateOutErr0 ^. _3)
   where
       toObject :: Text -> Maybe Object
       toObject = decodeStrict . T.encodeUtf8
@@ -455,11 +480,14 @@ runReplStep0
     :: MonadIO m
     => (ReplState, Seq DisplayedSnippet)
     -> Text
-    -> m (ReplState, Seq DisplayedSnippet)
+    -> m (ReplState, Seq DisplayedSnippet, Maybe ErrorMsg)
 runReplStep0 (s1,snippets1) e = do
     (r,s2) <- liftIO $ runStateT (evalRepl' $ T.unpack e) s1
-    return (s2, snippets1 <> S.singleton
-      (OutputSnippet $ T.pack $ either id (const $ _rOut s2) r))
+    let snippet = case r of
+                    Left _ -> mempty
+                    Right _ ->  S.singleton . OutputSnippet . T.pack $ _rOut s2
+        err = either (Just . T.pack) (const Nothing) r
+    return (s2, snippets1 <> snippet, err)
 
 runReplStep
     :: MonadIO m
