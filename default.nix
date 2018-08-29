@@ -3,10 +3,10 @@
 }:
 with import ./.obelisk/impl { inherit system iosSdkVersion; };
 project ./. ({ pkgs, ... }: {
-  android.applicationId = "systems.obsidian.obelisk.examples.minimal";
-  android.displayName = "Obelisk Minimal Example";
-  ios.bundleIdentifier = "systems.obsidian.obelisk.examples.minimal";
-  ios.bundleName = "Obelisk Minimal Example";
+  # android.applicationId = "systems.obsidian.obelisk.examples.minimal";
+  # android.displayName = "Obelisk Minimal Example";
+  # ios.bundleIdentifier = "systems.obsidian.obelisk.examples.minimal";
+  # ios.bundleName = "Obelisk Minimal Example";
 
   overrides = self: super:
     let guardGhcjs = p: if self.ghc.isGhcjs or false then null else p;
