@@ -188,10 +188,10 @@ app = void . mfix $ \ide -> elClass "div" "app" $ do
     controlIde <- controlBar
     contractReceived <- loadContract $ _ide_selectedContract ide
     elClass "div" "ui two column padded grid main" $ mdo
-      (editorEl, editorIde) <- elClass' "div" "column" $
+      editorIde <- elClass "div" "column" $
         elClass "div" "ui segment editor-pane" $ codePanel ide
       envIde <- elClass "div" "column repl-column" $
-        elClass "div" "ui segment env-pane" $ envPanel (domEvent Click editorEl) ide
+        elClass "div" "ui segment env-pane" $ envPanel ide
       pure $ mconcat
         [ controlIde
         , editorIde
@@ -239,17 +239,14 @@ codePanel ide = mdo
 --   - The REPL
 --   - Compiler error messages
 --   - Key & Data Editor
-envPanel :: forall t m. MonadWidget t m => Event t () -> IDE t -> m (IDE t)
-envPanel editorClicked ide = mdo
+envPanel :: forall t m. MonadWidget t m => IDE t -> m (IDE t)
+envPanel ide = mdo
   let onLoad = 
         maybe EnvSelection_Repl (const EnvSelection_Errors) 
           <$> updated (_ide_errors ide)
 
-      onEditorClicked = EnvSelection_Env <$ editorClicked
-
   curSelection <- holdDyn EnvSelection_Env $ leftmost [ onSelect
                                                       , onLoad
-                                                      , onEditorClicked
                                                       ]
 
   onSelect <- menu
