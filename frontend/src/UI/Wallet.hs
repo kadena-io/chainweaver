@@ -80,8 +80,10 @@ uiWallet w = elClass "div" "" $ do
 
     {- elClass "div" "" $ do -}
     {-   elClass "h3" "ui header" $ text "Create New Key" -}
-      elClass "div" "ui fluid action input" $ do
-        name <- textInput $ def & textInputConfig_placeholder .~ pure "Enter key name"
+      elClass "div" "ui fluid action input" $ mdo
+        name <- textInput $ def 
+            & textInputConfig_value .~ SetValue "" (Just $ "" <$ clicked)
+            & textInputConfig_placeholder .~ pure "Enter key name"
 
         clicked <- button (def & buttonConfig_emphasis |?~ Tertiary) $ text "Generate"
 
