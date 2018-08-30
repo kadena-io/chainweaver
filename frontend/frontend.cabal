@@ -9,31 +9,38 @@ description:
             <http://kadena.io/pact>.
 homepage:            https://github.com/kadena-io/pact
 bug-reports:         https://github.com/kadena-io/pact/issues
-license:             BSD3
-license-file:        LICENSE
+-- license:             BSD3
+-- license-file:        LICENSE
 
 library
   hs-source-dirs: src
+
   build-depends: base
-               , common
-               , reflex-dom
-               , static
-               , text
                , ListZipper
+               , aeson
                , bytestring
+               , common
                , containers
+               , generic-deriving
                , jsaddle
                , lens
                , mtl
                , pact
                , reflex
+               , reflex-dom
                , reflex-dom-ace
+               , semantic-reflex
+               , static
                , string-qq
                , text
-               , semantic-reflex
-  exposed-modules:
-      Frontend
-    , ReplGhcjs
+
+  exposed-modules: Frontend
+                 , ReplGhcjs
+                 , Widgets
+                 , Reflex.Dom.ACE.Extended
+                 , Wallet
+                 , UI.Wallet
+
   ghc-options: -Wall
   default-extensions: ScopedTypeVariables
                     , FlexibleContexts
@@ -53,6 +60,7 @@ library
                     , TypeFamilies
                     , TypeApplications
                     , AllowAmbiguousTypes
+                    , OverloadedStrings
 
 executable frontend
   main-is: main.hs
@@ -63,6 +71,24 @@ executable frontend
                , static
                , text
                , frontend
+               -- Needed for some reason:
+               , ListZipper
+               , aeson
+               , bytestring
+               , common
+               , containers
+               , generic-deriving
+               , jsaddle
+               , lens
+               , mtl
+               , pact
+               , reflex
+               , reflex-dom
+               , reflex-dom-ace
+               , semantic-reflex
+               , static
+               , string-qq
+               , text
   --TODO: Make these ghc-options optional
   ghc-options: -threaded
   if os(darwin)

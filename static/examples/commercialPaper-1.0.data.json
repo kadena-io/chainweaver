@@ -1,0 +1,2 @@
+{ "module-admin-keyset": { "keys": ["admin"] , "pred": "keys-all"}
+}
