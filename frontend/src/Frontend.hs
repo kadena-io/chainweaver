@@ -49,5 +49,4 @@ frontend = (head', body)
       elAttr "script" ("type" =: "text/javascript" <> "src" =: static @"js/ace-mode-pact.js") blank
       elAttr "script" ("type" =: "text/javascript" <> "src" =: "https://cdnjs.cloudflare.com/ajax/libs/ace/1.2.5/theme-solarized_light.js") blank
       elAttr "link" ("href" =: static @"css/index.css" <> "rel" =: "stylesheet" <> "type" =: "text/css") blank
-      elAttr "script" ("type" =: "text/javascript" <> "src" =: static @"css-element-queries-1.0.2/src/ResizeSensor.js") blank
     body = app

@@ -227,8 +227,8 @@ codePanel :: forall t m. MonadWidget t m => IDE t -> m (IDE t)
 codePanel ide = mdo
   {- menu (def & menuConfig_secondary .~ pure True) $ do -}
   {-   menuItem def $ text "Code"  -}
-  (p, codeIDE) <- elClass' "div" "ui segment" $ do
-    code <- codeWidget p startingCode $ _contract_code <$> _ide_onContractReceived ide
+  codeIDE <- elClass "div" "ui segment" $ do
+    code <- codeWidget startingCode $ _contract_code <$> _ide_onContractReceived ide
     pure $ mempty & ide_contract . contract_code .~ code
   pure codeIDE
 
@@ -241,8 +241,8 @@ codePanel ide = mdo
 --   - Key & Data Editor
 envPanel :: forall t m. MonadWidget t m => IDE t -> m (IDE t)
 envPanel ide = mdo
-  let onLoad = 
-        maybe EnvSelection_Repl (const EnvSelection_Errors) 
+  let onLoad =
+        maybe EnvSelection_Repl (const EnvSelection_Errors)
           <$> updated (_ide_errors ide)
 
   curSelection <- holdDyn EnvSelection_Env $ leftmost [ onSelect
@@ -261,8 +261,8 @@ envPanel ide = mdo
   envIde <- tabPane
       ("class" =: "ui segment styled fluid accordion flex-accordion")
       curSelection EnvSelection_Env $ mdo
-    (pJson, jsonIde) <- accordionItem' True "data" "Data" $ do
-      json <- dataWidget pJson startingData
+    jsonIde <- accordionItem True "data" "Data" $ do
+      json <- dataWidget startingData
         $ _contract_data <$> _ide_onContractReceived ide
       pure $ mempty & ide_contract . contract_data .~ json
 
@@ -324,25 +324,25 @@ scrollToBottom e = liftJSM $ do
 
 codeWidget
   :: MonadWidget t m
-  => Element EventResult (DomBuilderSpace m) t -> Text -> Event t Text
+  => Text -> Event t Text
   -> m (Dynamic t Text)
-codeWidget parent iv sv = do
+codeWidget iv sv = do
     let ac = def { _aceConfigMode = Just "ace/mode/pact"
                  , _aceConfigElemAttrs = "class" =: "ace-code ace-widget"
                  }
-    ace <- resizableAceWidget ac (AceDynConfig $ Just AceTheme_SolarizedLight) parent iv
+    ace <- resizableAceWidget mempty ac (AceDynConfig $ Just AceTheme_SolarizedLight) iv
     _ <- withAceInstance ace (setValueACE <$> sv)
     return $ aceValue ace
 
 dataWidget
   :: MonadWidget t m
-  => Element EventResult (DomBuilderSpace m) t -> Text -> Event t Text
+  => Text -> Event t Text
   -> m (Dynamic t Text)
-dataWidget parent iv sv = do
+dataWidget iv sv = do
     let ac = def { _aceConfigMode = Just "ace/mode/json"
                  , _aceConfigElemAttrs = "class" =: "ace-data ace-widget"
                  }
-    ace <- resizableAceWidget ac (AceDynConfig $ Just AceTheme_SolarizedLight) parent iv
+    ace <- resizableAceWidget mempty ac (AceDynConfig $ Just AceTheme_SolarizedLight) iv
     _ <- withAceInstance ace (setValueACE <$> sv)
     return $ aceValue ace
 

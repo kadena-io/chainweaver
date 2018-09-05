@@ -52,6 +52,7 @@
 
 .env-pane > .ui.segment, .editor-pane > .ui.segment {
   flex-grow: 1;
+  position: relative;
 }
 
 .ace_editor {
@@ -70,6 +71,7 @@
 
 .flex-accordion > .content {
   flex-grow: 1;
+  position: relative;
 }
 
 /* Old stuff: */
