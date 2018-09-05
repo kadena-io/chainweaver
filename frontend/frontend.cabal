@@ -33,11 +33,13 @@ library
                , static
                , string-qq
                , text
+               , jsaddle-dom
 
   exposed-modules: Frontend
                  , ReplGhcjs
                  , Widgets
                  , Reflex.Dom.ACE.Extended
+                 , Reflex.Dom.Widget.Resize.Extended
                  , Wallet
                  , UI.Wallet
 
@@ -62,7 +64,7 @@ library
                     , AllowAmbiguousTypes
                     , OverloadedStrings
 
-executable frontend
+executable frontend-exe
   main-is: main.hs
   hs-source-dirs: src
   build-depends: base
@@ -89,6 +91,8 @@ executable frontend
                , static
                , string-qq
                , text
+               , jsaddle-dom
+
   --TODO: Make these ghc-options optional
   ghc-options: -threaded
   if os(darwin)
