@@ -74,6 +74,10 @@
   position: relative;
 }
 
+.ace_editor {
+  font: 1em/normal 'Monaco', 'Menlo', 'Ubuntu Mono', 'Consolas', 'source-code-pro', monospace;
+}
+
 /* Old stuff: */
 
 /* Page layout */
