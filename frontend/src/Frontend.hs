@@ -3,31 +3,10 @@
 {-# LANGUAGE TypeApplications #-}
 module Frontend where
 
-import qualified Data.Text as T
 import Reflex.Dom.Core
-import           Control.Lens
-import           Control.Monad.State.Strict
-import qualified Data.List.Zipper as Z
-import           Data.Map (Map)
-import qualified Data.Map as M
-import           Data.Maybe
 import           Data.Monoid
-import           Data.Sequence (Seq)
-import qualified Data.Sequence as S
-import           Data.String.QQ
-import           Data.Text (Text)
-import qualified Data.Text as T
-import           Language.Javascript.JSaddle
-import           Reflex
-import           Reflex.Dom hiding (Element, fromJSString)
-import           Reflex.Dom.ACE.Extended
 
-import           Pact.Repl
-import           Pact.Repl.Types
-import           Pact.Types.Lang
 import           ReplGhcjs
-
-import Common.Api
 import Static
 
 frontend :: (StaticWidget x (), Widget x ())

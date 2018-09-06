@@ -52,9 +52,9 @@ import           Pact.Repl
 import           Pact.Repl.Types
 import           Pact.Types.Lang
 ------------------------------------------------------------------------------
-import           Wallet
-import           UI.Wallet
 import           Static
+import           UI.Wallet
+import           Wallet
 import           Widgets
 
 -- | Re-use data constructors more flexibly.
@@ -112,9 +112,9 @@ data IDE t =
     -- ^ Contract was successfully retrieved from server.
     , _ide_wallet             :: Wallet t
     , _ide_walletConfig       :: WalletConfig t
-    , _ide_signingKeys :: Dynamic t [Text]
+    , _ide_signingKeys        :: Dynamic t [Text]
     -- ^ With what keys should the contract get signed.
-    , _ide_errors :: Dynamic t (Maybe ErrorMsg)
+    , _ide_errors             :: Dynamic t (Maybe ErrorMsg)
     }
     deriving Generic
 
@@ -127,7 +127,7 @@ ide_getDynamicContract =
 
 -- | Retrieve the currently selected signing keys.
 ide_getSigningKeyPairs :: Reflex t => IDE t -> Dynamic t [KeyPair]
-ide_getSigningKeyPairs ide = 
+ide_getSigningKeyPairs ide =
   let
     lookupKeys names keyMap = mapMaybe (\n -> Map.lookup n keyMap) names
   in
@@ -375,15 +375,15 @@ replWidget ide = mdo
       [ setDown <$> domEvent Mousedown e
       , clickClassifier <$> domEvent Mouseup e
       ]
-    let replClick = () <$ 
+    let replClick = () <$
           ffilter (== Just Clicked) (updated clickType)
 
-        keysContract = 
+        keysContract =
           zipDyn (ide_getSigningKeyPairs ide) (ide_getDynamicContract ide)
 
     widgetHold
       (replInner replClick ([], startingContract))
-      (replInner replClick <$> 
+      (replInner replClick <$>
         tag (current keysContract) (_ide_onLoadRequest ide)
       )
   let err = snd <$> r
@@ -400,11 +400,11 @@ replInner
     -> m (Event t Text, Maybe ErrorMsg)
 replInner replClick (signingKeys, contract) = mdo
     let dataIsObject = isJust . toObject $ _contract_data contract
-        pactKeys = 
-          T.unwords . map (surroundWith "\"") 
-          . mapMaybe _keyPair_privateKey 
+        pactKeys =
+          T.unwords . map (surroundWith "\"")
+          . mapMaybe _keyPair_privateKey
           $ signingKeys
-        code = mconcat 
+        code = mconcat
           [ "(env-data "
           , _contract_data contract
           , ")\n"
@@ -422,7 +422,7 @@ replInner replClick (signingKeys, contract) = mdo
            , mempty
            , Just ("ERROR: Data must be a valid JSON object!" :: Text)
            )
-    let stateAndOut0 = (\(a,b,c) -> (a, b)) stateOutErr0
+    let stateAndOut0 = (\(a,b,_) -> (a, b)) stateOutErr0
     stateAndOut <- holdDyn stateAndOut0 evalResult
 
     _ <- dyn (mapM_ snippetWidget . snd <$> stateAndOut)
@@ -433,9 +433,9 @@ replInner replClick (signingKeys, contract) = mdo
   where
       toObject :: Text -> Maybe Object
       toObject = decodeStrict . T.encodeUtf8
-  
+
       surroundWith :: Semigroup s => s -> s -> s
-      surroundWith s i = s <> i <> s
+      surroundWith o i = o <> i <> o
 
 
 replInput :: MonadWidget t m => Event t () -> m (Event t Text)

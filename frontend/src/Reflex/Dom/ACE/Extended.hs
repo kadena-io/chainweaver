@@ -1,26 +1,25 @@
-{-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE RankNTypes #-}
-{-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE GADTs #-}
-{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE FlexibleContexts      #-}
+{-# LANGUAGE GADTs                 #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE OverloadedStrings     #-}
+{-# LANGUAGE RankNTypes            #-}
+{-# LANGUAGE ScopedTypeVariables   #-}
+
 module Reflex.Dom.ACE.Extended ( module ACE
                                , resizableAceWidget
                                ) where
 
-import           Language.Javascript.JSaddle (js0, MonadJSM, liftJSM, jsg)
-import qualified Language.Javascript.JSaddle as JS
-import Data.Text (Text)
-import Control.Lens
-import Reflex
-import Data.Foldable
-import Reflex.Dom.Core
-import Control.Monad.IO.Class (liftIO, MonadIO)
-import Control.Monad
-import Data.Map (Map)
-import Data.Monoid
-import Reflex.Dom.Widget.Resize.Extended (resizeDetectorWithAttrsAbsolute)
+import           Control.Lens
+import           Data.Foldable
+import           Data.Map                          (Map)
+import           Data.Monoid
+import           Data.Text                         (Text)
+import           Language.Javascript.JSaddle       (MonadJSM, js0, liftJSM)
+import           Reflex
+import           Reflex.Dom.Core
+import           Reflex.Dom.Widget.Resize.Extended (resizeDetectorWithAttrsAbsolute)
 
-import Reflex.Dom.ACE as ACE
+import           Reflex.Dom.ACE                    as ACE
 
 
 -- | ACE editor widget that handles resizes of the containing DOM element properly.
