@@ -33,7 +33,7 @@ library
                , static
                , string-qq
                , text
-               , jsaddle-dom
+               , ghcjs-dom
 
   exposed-modules: Frontend
                  , ReplGhcjs
@@ -65,33 +65,14 @@ library
                     , OverloadedStrings
 
 executable frontend-exe
-  main-is: main.hs
-  hs-source-dirs: src
+  main-is: src/main.hs
+
   build-depends: base
                , common
                , reflex-dom
                , static
                , text
                , frontend
-               -- Needed for some reason:
-               , ListZipper
-               , aeson
-               , bytestring
-               , common
-               , containers
-               , generic-deriving
-               , jsaddle
-               , lens
-               , mtl
-               , pact
-               , reflex
-               , reflex-dom
-               , reflex-dom-ace
-               , semantic-reflex
-               , static
-               , string-qq
-               , text
-               , jsaddle-dom
 
   --TODO: Make these ghc-options optional
   ghc-options: -threaded
