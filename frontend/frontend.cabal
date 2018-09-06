@@ -64,7 +64,7 @@ library
                     , AllowAmbiguousTypes
                     , OverloadedStrings
 
-executable frontend-exe
+executable frontend
   main-is: src/main.hs
 
   build-depends: base
