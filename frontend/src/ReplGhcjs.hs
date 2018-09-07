@@ -188,10 +188,13 @@ app = void . mfix $ \ide -> elClass "div" "app" $ do
     controlIde <- controlBar
     contractReceived <- loadContract $ _ide_selectedContract ide
     elClass "div" "ui two column padded grid main" $ mdo
-      editorIde <- elClass "div" "column" $
-        elClass "div" "ui segment editor-pane" $ codePanel ide
+      editorIde <- elClass "div" "column" $ do
+        {- elClass "div" "ui secondary menu pointing" $ do -}
+        {-   elClass "a" "active item" $ text "Contract" -}
+        elClass "div" "ui light segment editor-pane" $ codePanel ide
+
       envIde <- elClass "div" "column repl-column" $
-        elClass "div" "ui segment env-pane" $ envPanel ide
+        elClass "div" "ui env-pane" $ envPanel ide
       pure $ mconcat
         [ controlIde
         , editorIde
@@ -227,10 +230,8 @@ codePanel :: forall t m. MonadWidget t m => IDE t -> m (IDE t)
 codePanel ide = mdo
   {- menu (def & menuConfig_secondary .~ pure True) $ do -}
   {-   menuItem def $ text "Code"  -}
-  codeIDE <- elClass "div" "ui segment" $ do
     code <- codeWidget startingCode $ _contract_code <$> _ide_onContractReceived ide
     pure $ mempty & ide_contract . contract_code .~ code
-  pure codeIDE
 
 -- | Tabbed panel to the right
 --
@@ -255,18 +256,21 @@ envPanel ide = mdo
     )
     $ tabs curSelection
 
-  replIde <- tabPane ("class" =: "ui segment") curSelection EnvSelection_Repl $
+  replIde <- tabPane ("class" =: "ui flex-content light segment") curSelection EnvSelection_Repl $
     replWidget ide
 
   envIde <- tabPane
-      ("class" =: "ui segment styled fluid accordion flex-accordion")
+      ("class" =: "ui fluid accordion flex-accordion flex-content")
       curSelection EnvSelection_Env $ mdo
-    jsonIde <- accordionItem True "data" "Data" $ do
+
+    jsonIde <- accordionItem True "data ui segment light" "Data" $ do
       json <- dataWidget startingData
         $ _contract_data <$> _ide_onContractReceived ide
       pure $ mempty & ide_contract . contract_data .~ json
 
-    keysIde1 <- accordionItem True "keys" "Sign message with key" $ do
+    elClass "div" "ui hidden divider" blank
+
+    keysIde1 <- accordionItem True "keys ui" "Sign message with key" $ do
       selKey <- uiSelectKey (_ide_wallet ide) hasPrivateKey
       pure $ mempty & ide_signingKeys .~ fmap (maybe [] (:[])) selKey
 
@@ -276,13 +280,13 @@ envPanel ide = mdo
                    ]
 
   keysIde <- tabPane
-      ("class" =: "ui segment")
+      ("class" =: "ui")
       curSelection EnvSelection_Keys $ do
     conf <- uiWallet $ _ide_wallet ide
     pure $ mempty & ide_walletConfig .~ conf
 
   errorsIde <- tabPane
-      ("class" =: "ui segment")
+      ("class" =: "ui")
       curSelection EnvSelection_Errors $ do
     void . dyn $ maybe (pure ()) (snippetWidget . OutputSnippet) <$> _ide_errors ide
     pure mempty
@@ -441,7 +445,7 @@ replInner replClick (signingKeys, contract) = mdo
 replInput :: MonadWidget t m => Event t () -> m (Event t Text)
 replInput setFocus = do
     divClass "repl-input-controls code-font" $ mdo
-      el "span" $ text "pact>"
+      elClass "div" "prompt" $ text "pact>"
       let sv = leftmost
             [ mempty <$ enterPressed
             , fromMaybe "" . Z.safeCursor <$> tagPromptlyDyn commandHistory key
@@ -503,7 +507,7 @@ showResult (Left e)  = "Error: " <> T.pack e
 
 controlBar :: forall t m. MonadWidget t m => m (IDE t)
 controlBar = do
-    elClass "div" "ui menu" $ do
+    elClass "div" "ui borderless menu" $ do
       elClass "div" "item" showPactVersion
 
       control <- exampleChooser
