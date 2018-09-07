@@ -75,7 +75,7 @@
 }
 
 .ace_editor {
-  font: 1em/normal 'Monaco', 'Menlo', 'Ubuntu Mono', 'Consolas', 'source-code-pro', monospace;
+  font: 12pt/normal 'Monaco', 'Menlo', 'Consolas', 'source-code-pro', monospace;
 }
 
 /* Old stuff: */
