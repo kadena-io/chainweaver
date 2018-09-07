@@ -360,8 +360,8 @@ staticReplHeader = S.fromList
       ]
 
 snippetWidget :: MonadWidget t m => DisplayedSnippet -> m ()
-snippetWidget (InputSnippet t)  = elAttr "pre" ("class" =: "replOut") $ text t
-snippetWidget (OutputSnippet t) = elAttr "pre" ("class" =: "replOut") $ text t
+snippetWidget (InputSnippet t)  = elAttr "pre" ("class" =: "replOut code-font") $ text t
+snippetWidget (OutputSnippet t) = elAttr "pre" ("class" =: "replOut code-font") $ text t
 
 ------------------------------------------------------------------------------
 replWidget
@@ -440,13 +440,15 @@ replInner replClick (signingKeys, contract) = mdo
 
 replInput :: MonadWidget t m => Event t () -> m (Event t Text)
 replInput setFocus = do
-    divClass "repl-input-controls" $ mdo
+    divClass "repl-input-controls code-font" $ mdo
       el "span" $ text "pact>"
       let sv = leftmost
             [ mempty <$ enterPressed
             , fromMaybe "" . Z.safeCursor <$> tagPromptlyDyn commandHistory key
             ]
-      ti <- Core.textInput (def & setValue .~ sv)
+      ti <- Core.textInput (def & Core.textInputConfig_setValue .~ sv
+                                & Core.textInputConfig_attributes .~ pure ("class" =: "code-font")
+                           )
       let key = ffilter isMovement $ domEvent Keydown ti
       let enterPressed = keypress Enter ti
       _ <- performEvent (liftJSM (pToJSVal (Core._textInput_element ti) ^. js0 ("focus" :: String)) <$ setFocus)
