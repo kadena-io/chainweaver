@@ -342,3 +342,19 @@ iframe {
 .menu .ui.button {
   padding: calc(.78571429em + 1px) 1.5em calc(.78571429em + 1px) !important;
 }
+
+.ui.pointing.menu.secondary.dark .item.active {
+/*  color: #859900; /* ace-keyword */
+/*  color: #268BD2; /* ace-keyword */
+  /* background-color: #4e5d6c; */
+  color: white;
+}
+
+.ui.pointing.menu.secondary.dark .item {
+/*  color: #859900; /* ace-keyword */
+/*  color: #268BD2; /* ace-keyword */
+  /* background-color: #4e5d6c; */
+  /*color: #555; /* Same color as border-bottom of menu */
+  /* color: #4e5d6c; */
+  color: grey;
+}

@@ -253,6 +253,7 @@ envPanel ide = mdo
   onSelect <- menu
     ( def & menuConfig_pointing .~ pure True
         & menuConfig_secondary .~ pure True
+        & classes .~ pure "dark"
     )
     $ tabs curSelection
 
