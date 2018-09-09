@@ -221,7 +221,6 @@ app = void . mfix $ \ide -> elClass "div" "app" $ do
 data EnvSelection
   = EnvSelection_Repl -- ^ REPL for interacting with loaded contract
   | EnvSelection_Env -- ^ Widgets for editing (meta-)data.
-  | EnvSelection_Keys -- ^ Keys management pane
   | EnvSelection_Errors -- ^ Compiler errors to be shown.
   deriving (Eq, Ord, Show)
 
@@ -271,20 +270,17 @@ envPanel ide = mdo
 
     elClass "div" "ui hidden divider" blank
 
-    keysIde1 <- accordionItem True "keys ui" "Sign message with key" $ do
+    keysIde1 <- accordionItem True "keys ui" "Sign" $ do
       selKey <- uiSelectKey (_ide_wallet ide) hasPrivateKey
+
+      conf <- elClass "div" "ui segment" $ uiWallet $ _ide_wallet ide
       pure $ mempty & ide_signingKeys .~ fmap (maybe [] (:[])) selKey
+                    & ide_walletConfig .~ conf
 
     pure $ mconcat [ jsonIde
                    , keysIde1
                    , replIde
                    ]
-
-  keysIde <- tabPane
-      ("class" =: "ui")
-      curSelection EnvSelection_Keys $ do
-    conf <- uiWallet $ _ide_wallet ide
-    pure $ mempty & ide_walletConfig .~ conf
 
   errorsIde <- tabPane
       ("class" =: "ui code-font")
@@ -292,13 +288,13 @@ envPanel ide = mdo
     void . dyn $ maybe (pure ()) (snippetWidget . OutputSnippet) <$> _ide_errors ide
     pure mempty
 
-  pure $ mconcat [ envIde, keysIde, errorsIde ]
+  pure $ mconcat [ envIde, errorsIde ]
 
   where
     tabs :: Dynamic t EnvSelection -> m (Event t EnvSelection)
     tabs curSelection = do
       let
-        selections = [ EnvSelection_Env, EnvSelection_Keys, EnvSelection_Repl, EnvSelection_Errors ]
+        selections = [ EnvSelection_Env, EnvSelection_Repl, EnvSelection_Errors ]
       leftmost <$> traverse (tab curSelection) selections
 
     tab :: Dynamic t EnvSelection -> EnvSelection -> m (Event t EnvSelection)
@@ -311,7 +307,6 @@ selectionToText :: EnvSelection -> Text
 selectionToText = \case
   EnvSelection_Repl -> "REPL"
   EnvSelection_Env -> "Env"
-  EnvSelection_Keys -> "Keys"
   EnvSelection_Errors -> "Errors"
 
 setDown :: (Int, Int) -> t -> Maybe ClickState

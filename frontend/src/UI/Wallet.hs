@@ -20,7 +20,7 @@
 -- License     :  BSD-style (see the file LICENSE)
 --
 
-module UI.Wallet 
+module UI.Wallet
   ( -- * Key management widget
     uiWallet
 
@@ -71,8 +71,7 @@ import           Widgets
 
 -- | UI for managing the keys wallet.
 uiWallet :: MonadWidget t m => Wallet t -> m (WalletConfig t)
-uiWallet w = elClass "div" "" $ do
-    elClass "div" "" $ do
+uiWallet w = do
       elClass "h3" "ui header" $ text "Available Keys"
       uiAvailableKeys w
 
@@ -81,7 +80,7 @@ uiWallet w = elClass "div" "" $ do
     {- elClass "div" "" $ do -}
     {-   elClass "h3" "ui header" $ text "Create New Key" -}
       elClass "div" "ui fluid action input" $ mdo
-        name <- textInput $ def 
+        name <- textInput $ def
             & textInputConfig_value .~ SetValue "" (Just $ "" <$ clicked)
             & textInputConfig_placeholder .~ pure "Enter key name"
 
@@ -94,20 +93,20 @@ uiWallet w = elClass "div" "" $ do
 ----------------------------------------------------------------------
 -- Keys related helper widgets:
 ----------------------------------------------------------------------
-  
+
 -- | UI for letting the user select a particular key
 -- from a filtered view of the available keys.
-uiSelectKey 
-  :: MonadWidget t m 
-  => Wallet t 
-  -> ((Text, KeyPair) -> Bool) 
+uiSelectKey
+  :: MonadWidget t m
+  => Wallet t
+  -> ((Text, KeyPair) -> Bool)
   -> m (Dynamic t (Maybe Text))
 uiSelectKey w kFilter = do
   let keyNames = map fst . filter kFilter . Map.toList <$> w ^. wallet_keys
       mkPlaceholder ks = if null ks then "No keys available" else "Select key"
-  d <- dropdown 
-      (def & dropdownConfig_placeholder .~ fmap mkPlaceholder keyNames) 
-      Nothing 
+  d <- dropdown
+      (def & dropdownConfig_placeholder .~ fmap mkPlaceholder keyNames)
+      Nothing
       $ TaggedDynamic (Map.fromList . fmap (id &&& text) <$> keyNames)
   pure $ _dropdown_value d
 
