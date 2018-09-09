@@ -27,6 +27,10 @@
   position: relative;
 }
 
+.env-pane {
+  /* background-color: #4e5d6c; */
+}
+
 /* Variation of segment without a margin */
 .ui.segment.light {
   margin: 0;
@@ -44,14 +48,6 @@
 .repl-pane {
   background: #fdf6e3;
   overflow: auto;
-  position: absolute;
-  top: 0px;
-  bottom: 0px;
-  left: 0px;
-  right: 0px;
-}
-
-.ace_editor {
   position: absolute;
   top: 0px;
   bottom: 0px;
@@ -84,12 +80,19 @@
 }
 
 .ace_editor {
+  position: absolute;
+  top: 0px;
+  bottom: 0px;
+  left: 0px;
+  right: 0px;
   font: 12pt/normal 'Monaco', 'Menlo', 'Consolas', 'source-code-pro', monospace;
 }
 
 /* Elements that should have text rendered like the Code editor. (Monospace, same size, ...) */
 .code-font {
   font: 12pt/normal 'Monaco', 'Menlo', 'Consolas', 'source-code-pro', monospace;
+  background-color: #002B36;
+  color: #586E75;
 }
 
 /* Old stuff: */
@@ -109,7 +112,7 @@ html, body {
 body {
   /* font-family: 'Roboto', sans-serif; */
   margin: 0;
-  color: rgb(29, 34, 45);
+  color: white;
   /* Prettier fonts: */
   /* -webkit-font-smoothing: antialiased; */
   /* -moz-osx-font-smoothing: grayscale; */
@@ -121,74 +124,7 @@ body {
     right: 0;
 }
 
-#code_examples, .code_examples_fieldset, #code_examples-button, #gist_integration,
-#gist_integration_fieldset, #gist_integration-button {
-    margin: 0;
-    padding: 0 0;
-    border: solid 1px #fff;
-    display: inline-block;
-    font-family: 'Roboto', sans-serif;
-    font-size: 15px;
-    background: white;
-}
 
-select, option, button {
-    font-family: 'Roboto', sans-serif;
-    font-size: 15px;
-}
-
-#column2, #code {
-    background: #fdf6e3;
-}
-
-#showAfterLoad {
-    display: none;
-}
-
-#wrapper {
-  display: flex;
-  flex-direction: column;
-  height: 100vh;
-}
-
-#body {
-  display: flex;
-  flex-direction: column;
-  flex: 1;
-}
-#options {
-  border-bottom: solid 2px #ddd;
-}
-#options input {
-  vertical-align: middle;
-  margin-bottom: 5px;
-}
-#showjs, #compile_now {
-  margin-left: 10px;
-}
-#auto_compile {
-  margin-left: 10px;
-}
-
-/* Typography */
-
-h1, h2, h3 {
-  line-height: 110%;
-}
-
-h1 {
-  font-size: 1.5em;
-  font-weight: 300;
-  margin: 8px;
-}
-
-h2, h3 {
-  margin: 40px 0 10px 0;
-}
-
-a, a:visited, a:active, a:hover {
-  color: #c4953a;
-}
 
 .nowrap {
   white-space: nowrap;
@@ -227,10 +163,6 @@ iframe {
   color: darkgray;
   margin: 15px;
   font-size: 15px;
-}
-
-#code {
-  overflow-wrap: break-word;
 }
 
 .replOut {
@@ -303,7 +235,6 @@ iframe {
 
 .repl-input-controls input {
   flex-grow: 1;
-  background-color: #fdf6e3;
   border: none;
 }
 

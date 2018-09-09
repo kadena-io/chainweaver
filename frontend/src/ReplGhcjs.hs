@@ -287,7 +287,7 @@ envPanel ide = mdo
     pure $ mempty & ide_walletConfig .~ conf
 
   errorsIde <- tabPane
-      ("class" =: "ui")
+      ("class" =: "ui code-font")
       curSelection EnvSelection_Errors $ do
     void . dyn $ maybe (pure ()) (snippetWidget . OutputSnippet) <$> _ide_errors ide
     pure mempty
@@ -335,7 +335,7 @@ codeWidget iv sv = do
     let ac = def { _aceConfigMode = Just "ace/mode/pact"
                  , _aceConfigElemAttrs = "class" =: "ace-code ace-widget"
                  }
-    ace <- resizableAceWidget mempty ac (AceDynConfig $ Just AceTheme_SolarizedLight) iv
+    ace <- resizableAceWidget mempty ac (AceDynConfig $ Just AceTheme_SolarizedDark) iv
     _ <- withAceInstance ace (setValueACE <$> sv)
     return $ aceValue ace
 
@@ -347,7 +347,7 @@ dataWidget iv sv = do
     let ac = def { _aceConfigMode = Just "ace/mode/json"
                  , _aceConfigElemAttrs = "class" =: "ace-data ace-widget"
                  }
-    ace <- resizableAceWidget mempty ac (AceDynConfig $ Just AceTheme_SolarizedLight) iv
+    ace <- resizableAceWidget mempty ac (AceDynConfig $ Just AceTheme_SolarizedDark) iv
     _ <- withAceInstance ace (setValueACE <$> sv)
     return $ aceValue ace
 
@@ -374,7 +374,7 @@ replWidget
     => IDE t
     -> m (IDE t)
 replWidget ide = mdo
-  (e, r) <- elClass' "div" "repl-pane" $ mdo
+  (e, r) <- elClass' "div" "repl-pane code-font" $ mdo
     mapM_ snippetWidget staticReplHeader
     clickType <- foldDyn ($) Nothing $ leftmost
       [ setDown <$> domEvent Mousedown e
