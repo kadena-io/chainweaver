@@ -1,5 +1,9 @@
 /* New stuff: */
 
+html {
+  font-size: 12pt;
+}
+
 .app {
   display: flex;
   flex-direction: column;
@@ -14,6 +18,16 @@
 .app > .ui.menu {
   flex-grow: 0;
 }
+/* Restore default of unthemed semantic: */
+.ui.menu {
+  font-size: 1rem !important;
+}
+
+.ui.dropdown, .ui.dropdown .item, .ui.dropdown .menu, .ui.dropdown .menu .item {
+    font-size: 1rem !important;
+}
+
+/* END -- Restore default of unthemed semantic: -- END*/
 
 .app > .main {
   flex-grow: 5;
@@ -269,9 +283,19 @@ iframe {
     padding-left: 5px;
 }
 
+/* Override weird setting in superhero theme, which results in the downarrow looking different in the menu than anywhere else: */
+.ui.menu i.dropdown.icon {
+  color: #555;
+}
+
 /* Make button size equal to dropdown size */
 .menu .ui.button {
-  padding: calc(.78571429em + 1px) 1.5em calc(.78571429em + 1px) !important;
+  /* padding: calc(.73333rem + 1px) 1.5em calc(.73333rem + 1px) !important; */
+}
+
+input.ui, .selection.dropdown.ui, button.ui {
+  padding-top: 0.73333rem;
+  padding-bottom: 0.73333rem;
 }
 
 .ui.pointing.menu.secondary.dark .item.active {
@@ -279,6 +303,7 @@ iframe {
 /*  color: #268BD2; /* ace-keyword */
   /* background-color: #4e5d6c; */
   color: white;
+  font-weight: 800;
 }
 
 .ui.pointing.menu.secondary.dark .item {
