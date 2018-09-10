@@ -44,7 +44,7 @@ import           GHC.Generics                (Generic)
 import           Language.Javascript.JSaddle hiding (Object)
 import           Reflex
 import           Reflex.Dom.ACE.Extended
-import           Reflex.Dom.Core             (keypress, mainWidget, setValue)
+import           Reflex.Dom.Core             (keypress, mainWidget)
 import qualified Reflex.Dom.Core             as Core
 import           Reflex.Dom.SemanticUI       hiding (mainWidget)
 ------------------------------------------------------------------------------
@@ -111,9 +111,7 @@ data IDE t =
     , _ide_onContractReceived :: Event t Contract
     -- ^ Contract was successfully retrieved from server.
     , _ide_wallet             :: Wallet t
-    , _ide_walletConfig       :: WalletConfig t
-    , _ide_signingKeys        :: Dynamic t [Text]
-    -- ^ With what keys should the contract get signed.
+    , _ide_walletCfg       :: WalletCfg t
     , _ide_errors             :: Dynamic t (Maybe ErrorMsg)
     }
     deriving Generic
@@ -126,12 +124,13 @@ ide_getDynamicContract =
   uncurry (liftA2 Contract) . (_contract_data &&& _contract_code) . _ide_contract
 
 -- | Retrieve the currently selected signing keys.
-ide_getSigningKeyPairs :: Reflex t => IDE t -> Dynamic t [KeyPair]
-ide_getSigningKeyPairs ide =
+ide_getSigningKeyPairs :: Reflex t => IDE t -> Dynamic t [KeyPair t]
+ide_getSigningKeyPairs ide = do
   let
-    lookupKeys names keyMap = mapMaybe (\n -> Map.lookup n keyMap) names
-  in
-    zipDynWith lookupKeys (ide ^. ide_signingKeys) (ide ^. ide_wallet . wallet_keys)
+    keys = Map.elems <$> ide ^. ide_wallet . wallet_keys
+  cKeys <- keys
+  let isSigning k = k ^. keyPair_forSigning
+  filterM isSigning cKeys
 
 instance Reflex t => Semigroup (IDE t) where
   (<>) = mappenddefault
@@ -184,7 +183,7 @@ main = mainWidget app
 
 app :: MonadWidget t m => m ()
 app = void . mfix $ \ide -> elClass "div" "app" $ do
-    wallet <- makeWallet $ _ide_walletConfig ide
+    wallet <- makeWallet $ _ide_walletCfg ide
     controlIde <- controlBar
     contractReceived <- loadContract $ _ide_selectedContract ide
     elClass "div" "ui two column padded grid main" $ mdo
@@ -271,11 +270,8 @@ envPanel ide = mdo
     elClass "div" "ui hidden divider" blank
 
     keysIde1 <- accordionItem True "keys ui" "Sign" $ do
-      selKey <- uiSelectKey (_ide_wallet ide) hasPrivateKey
-
       conf <- elClass "div" "ui segment" $ uiWallet $ _ide_wallet ide
-      pure $ mempty & ide_signingKeys .~ fmap (maybe [] (:[])) selKey
-                    & ide_walletConfig .~ conf
+      pure $ mempty & ide_walletCfg .~ conf
 
     pure $ mconcat [ jsonIde
                    , keysIde1
@@ -396,7 +392,7 @@ replWidget ide = mdo
 replInner
     :: MonadWidget t m
     => Event t ()
-    -> ([KeyPair], Contract)
+    -> ([KeyPair t], Contract)
     -> m (Event t Text, Maybe ErrorMsg)
 replInner replClick (signingKeys, contract) = mdo
     let dataIsObject = isJust . toObject $ _contract_data contract

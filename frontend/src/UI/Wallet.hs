@@ -12,6 +12,7 @@
 {-# LANGUAGE ScopedTypeVariables   #-}
 {-# LANGUAGE StandaloneDeriving    #-}
 {-# LANGUAGE TemplateHaskell       #-}
+{-# LANGUAGE TupleSections         #-}
 {-# LANGUAGE TypeApplications      #-}
 {-# LANGUAGE TypeFamilies          #-}
 
@@ -32,63 +33,36 @@ module UI.Wallet
   ) where
 
 ------------------------------------------------------------------------------
-import           Control.Applicative
-import           Control.Arrow               ((&&&))
+import           Control.Arrow              ((&&&))
 import           Control.Lens
-import           Control.Monad.State.Strict
-import           Data.Aeson                  (Object, decodeStrict)
-import           Data.Foldable
-import qualified Data.List.Zipper            as Z
-import           Data.Map                    (Map)
-import qualified Data.Map                    as M
-import qualified Data.Map                    as Map
+import qualified Data.Map                   as Map
 import           Data.Maybe
-import           Data.Semigroup
-import           Data.Sequence               (Seq)
-import qualified Data.Sequence               as S
-import           Data.String.QQ
-import           Data.Text                   (Text)
-import qualified Data.Text                   as T
-import qualified Data.Text.Encoding          as T
-import           Generics.Deriving.Monoid    (mappenddefault, memptydefault)
-import           GHC.Generics                (Generic)
-import           Language.Javascript.JSaddle hiding (Object)
+import           Data.Text                  (Text)
 import           Reflex
-import           Reflex.Dom.ACE.Extended
-import           Reflex.Dom.Core             (keypress, mainWidget, setValue)
-import qualified Reflex.Dom.Core             as Core
-import           Reflex.Dom.SemanticUI       hiding (mainWidget)
-------------------------------------------------------------------------------
-import           Pact.Repl
-import           Pact.Repl.Types
-import           Pact.Types.Lang
-------------------------------------------------------------------------------
-import           Static
+import           Reflex.Dom.SemanticUI      hiding (mainWidget)
+
 import           Wallet
-import           Widgets
 
 
 
 -- | UI for managing the keys wallet.
-uiWallet :: MonadWidget t m => Wallet t -> m (WalletConfig t)
+uiWallet :: MonadWidget t m => Wallet t -> m (WalletCfg t)
 uiWallet w = do
-      elClass "h3" "ui header" $ text "Available Keys"
-      uiAvailableKeys w
+    elClass "h3" "ui header" $ text "Available Keys"
+    onSetSig <- uiAvailableKeys w
 
-    {- elClass "div" "ui hidden divider" blank -}
+    elClass "div" "ui fluid action input" $ mdo
+      name <- textInput $ def
+          & textInputConfig_value .~ SetValue "" (Just $ "" <$ clicked)
+          & textInputConfig_placeholder .~ pure "Enter key name"
 
-    {- elClass "div" "" $ do -}
-    {-   elClass "h3" "ui header" $ text "Create New Key" -}
-      elClass "div" "ui fluid action input" $ mdo
-        name <- textInput $ def
-            & textInputConfig_value .~ SetValue "" (Just $ "" <$ clicked)
-            & textInputConfig_placeholder .~ pure "Enter key name"
+      clicked <- button (def & buttonConfig_emphasis |?~ Tertiary) $ text "Generate"
 
-        clicked <- button (def & buttonConfig_emphasis |?~ Tertiary) $ text "Generate"
+      let onReq = tag (current $ _textInput_value name) clicked
 
-        let onReq = tag (current $ _textInput_value name) clicked
-
-        pure $ WalletConfig { _walletConfig_onRequestNewKey = onReq }
+      pure $ WalletCfg { _walletCfg_onRequestNewKey = onReq
+                       , _walletCfg_onSetSigning = onSetSig
+                       }
 
 ----------------------------------------------------------------------
 -- Keys related helper widgets:
@@ -99,7 +73,7 @@ uiWallet w = do
 uiSelectKey
   :: MonadWidget t m
   => Wallet t
-  -> ((Text, KeyPair) -> Bool)
+  -> ((Text, KeyPair t) -> Bool)
   -> m (Dynamic t (Maybe Text))
 uiSelectKey w kFilter = do
   let keyNames = map fst . filter kFilter . Map.toList <$> w ^. wallet_keys
@@ -111,41 +85,59 @@ uiSelectKey w kFilter = do
   pure $ _dropdown_value d
 
 -- | Check whether a given key does contain a private key.
-hasPrivateKey :: (Text, KeyPair) -> Bool
+hasPrivateKey :: (Text, KeyPair t) -> Bool
 hasPrivateKey = isJust . _keyPair_privateKey . snd
 
 ----------------------------------------------------------------------
 
 -- | Widget listing all available keys.
-uiAvailableKeys :: MonadWidget t m => Wallet t -> m ()
+uiAvailableKeys :: MonadWidget t m => Wallet t -> m (Event t (Text, Bool))
 uiAvailableKeys aWallet = do
-  elClass "div" "ui relaxed divided list" $ do
-    let itemsDyn =  uiKeyItems <$> aWallet ^. wallet_keys
-    dyn itemsDyn
-    pure ()
+  elClass "div" "ui relaxed middle aligned divided list" $ do
+    {- elClass "div" "item" $ do -}
+    {-   elClass "div" "right floated content" $ el "div" $ elClass "h3" "ui heading" $ text "Sign" -}
+    {- elClass "div" "content" $ el "div" $ elClass "h3" "ui heading" $ text "Key" -}
+    let itemsDyn = uiKeyItems <$> aWallet ^. wallet_keys
+    evEv <- dyn itemsDyn
+    switchHold never evEv
 
 
 -- | Render a list of key items.
 --
 -- Does not include the surrounding `div` tag. Use `uiAvailableKeys` for the
 -- complete `div`.
-uiKeyItems :: MonadWidget t m => Keys -> m ()
+uiKeyItems :: MonadWidget t m => Keys t -> m (Event t (Text, Bool))
 uiKeyItems keyMap =
   case Map.toList keyMap of
-    []   -> text "No keys ..."
-    keys -> traverse_ uiKeyItem keys
+    []   -> do
+      text "No keys ..."
+      pure never
+    keys -> do
+      rs <- traverse uiKeyItem keys
+      pure $ leftmost rs
 
 -- | Display a key as list item together with it's name.
-uiKeyItem :: MonadWidget t m => (Text, KeyPair) -> m ()
+uiKeyItem :: MonadWidget t m => (Text, KeyPair t) -> m (Event t (Text, Bool))
 uiKeyItem (n, k) = do
     elClass "div" "item" $ do
+      box <- elClass "div" "right floated content" $ do
+        onPostBuild <- getPostBuild
+        let
+          cSigned = current $ k ^. keyPair_forSigning
+          onPbSigned = tag cSigned onPostBuild
+
+        checkbox (text "Sign")
+          $ def & checkboxConfig_type .~ pure Nothing
+                & checkboxConfig_setValue .~ SetValue False (Just onPbSigned)
+
       elClass "i" "large key middle aligned icon" blank
       elClass "div" "content" $ do
         elClass "h4" "ui header" $ text n
         elClass "div" "description" $ text $ keyDescription k
+      pure $ fmap (n, ) . _checkbox_change $ box
   where
-    keyDescription k =
-      case _keyPair_privateKey k of
+    keyDescription k1 =
+      case _keyPair_privateKey k1 of
         Nothing -> "Public key only"
         Just _  -> "Full key pair"
 
