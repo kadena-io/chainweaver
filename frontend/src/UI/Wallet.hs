@@ -56,7 +56,12 @@ uiWallet w = do
           & textInputConfig_value .~ SetValue "" (Just $ "" <$ clicked)
           & textInputConfig_placeholder .~ pure "Enter key name"
 
-      clicked <- button (def & buttonConfig_emphasis |?~ Secondary) $ text "Generate"
+      let nameEmpty = (== "") <$> value name
+      let duplicate = Map.member <$> value name <*> w ^. wallet_keys
+
+      clicked <- flip button (text "Generate") $ def
+        & buttonConfig_emphasis |?~ Secondary
+        & buttonConfig_disabled .~ Dyn ((||) <$> nameEmpty <*> duplicate)
 
       let onReq = tag (current $ _textInput_value name) clicked
 
