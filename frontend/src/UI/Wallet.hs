@@ -56,7 +56,7 @@ uiWallet w = do
           & textInputConfig_value .~ SetValue "" (Just $ "" <$ clicked)
           & textInputConfig_placeholder .~ pure "Enter key name"
 
-      clicked <- button (def & buttonConfig_emphasis |?~ Tertiary) $ text "Generate"
+      clicked <- button (def & buttonConfig_emphasis |?~ Secondary) $ text "Generate"
 
       let onReq = tag (current $ _textInput_value name) clicked
 
@@ -126,7 +126,7 @@ uiKeyItem (n, k) = do
           cSigned = current $ k ^. keyPair_forSigning
           onPbSigned = tag cSigned onPostBuild
 
-        checkbox (text "Sign")
+        checkbox (text "Signing")
           $ def & checkboxConfig_type .~ pure Nothing
                 & checkboxConfig_setValue .~ SetValue False (Just onPbSigned)
 
