@@ -279,7 +279,7 @@ envPanel ide = mdo
                    ]
 
   errorsIde <- tabPane
-      ("class" =: "ui code-font")
+      ("class" =: "ui code-font full-size")
       curSelection EnvSelection_Errors $ do
     void . dyn $ maybe (pure ()) (snippetWidget . OutputSnippet) <$> _ide_errors ide
     pure mempty

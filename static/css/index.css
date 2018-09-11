@@ -99,11 +99,8 @@ h4.ui.header {
 }
 
 .full-size {
-  position: absolute;
-  top: 0px;
-  bottom: 0px;
-  left: 0px;
-  right: 0px;
+  height: 100%;
+  width: 100%;
 }
 
 .flex-accordion > .content {
