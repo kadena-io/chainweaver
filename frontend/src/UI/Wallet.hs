@@ -56,7 +56,7 @@ uiWallet w = do
           & textInputConfig_value .~ SetValue "" (Just $ "" <$ clicked)
           & textInputConfig_placeholder .~ pure "Enter key name"
 
-      clicked <- button (def & buttonConfig_emphasis |?~ Secondary) $ text "Generate"
+      clicked <- button (def & buttonConfig_emphasis .~ Static (Just Secondary)) $ text "Generate"
 
       let onReq = tag (current $ _textInput_value name) clicked
 

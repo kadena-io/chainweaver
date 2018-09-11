@@ -517,7 +517,7 @@ controlBar = do
       d <- elClass "div" "item" $
         dropdown def (Identity 0) $ TaggedStatic $ text . fst <$> demos
       load <- elClass "div" "item" $
-        button (def & buttonConfig_emphasis |?~ Primary) $  text "Load"
+        button (def & buttonConfig_emphasis .~ Static (Just Primary)) $ text "Load"
       let intToCode n = snd $ fromJust $ Map.lookup n demos
       pure $ mempty
         & ide_selectedContract .~  (intToCode . runIdentity <$> _dropdown_value d)
