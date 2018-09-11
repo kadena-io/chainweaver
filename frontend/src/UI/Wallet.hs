@@ -60,7 +60,7 @@ uiWallet w = do
       let duplicate = Map.member <$> value name <*> w ^. wallet_keys
 
       clicked <- flip button (text "Generate") $ def
-        & buttonConfig_emphasis |?~ Secondary
+        & buttonConfig_emphasis .~ Static (Just Secondary)
         & buttonConfig_disabled .~ Dyn ((||) <$> nameEmpty <*> duplicate)
 
       let onReq = tag (current $ _textInput_value name) clicked
