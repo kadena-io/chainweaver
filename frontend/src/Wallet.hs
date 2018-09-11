@@ -3,7 +3,8 @@
 {-# LANGUAGE RankNTypes            #-}
 {-# LANGUAGE ScopedTypeVariables   #-}
 {-# LANGUAGE TemplateHaskell       #-}
-{-# LANGUAGE FlexibleContexts       #-}
+{-# LANGUAGE FlexibleContexts      #-}
+{-# LANGUAGE OverloadedStrings     #-}
 module Wallet where
 
 
@@ -98,8 +99,11 @@ makeWallet conf = do
                  , Set.insert <$> conf ^. walletCfg_onRequestNewKey
                  ]
 
-    onNewKey <- performEvent $ createKey signingKeys <$> conf ^. walletCfg_onRequestNewKey
-    keys <- foldDyn (uncurry Map.insert) Map.empty onNewKey
+    onNewKey <- performEvent $ createKey signingKeys <$>
+      -- Filter out keys with empty names
+      ffilter (/= "") (conf ^. walletCfg_onRequestNewKey)
+    -- Filter out duplicate keys
+    keys <- foldDyn (uncurry (Map.insertWith (flip const))) Map.empty onNewKey
     pure $ Wallet
       { _wallet_keys = keys
       }
