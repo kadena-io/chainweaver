@@ -19,22 +19,37 @@ import           Reflex
 import           Data.Set                 (Set)
 import qualified Data.Set as Set
 
+-- | Type of a `Key` name.
+--
+--   All keys are accessible by a name of type `KeyName`
+type KeyName = Text
+
+-- | Type of a `PublicKey` in a `KeyPair`.
+newtype PublicKey = PublicKey
+  { unPublicKey :: Text -- ^ Get the internal `PublicKey definition`.
+  }
+--
+-- | Type of a `PrivateKey` in a `KeyPair`.
+newtype PrivateKey = PrivateKey
+  { unPrivateKey :: Text -- ^ Get the internal `PrivateKey definition`.
+  }
+
 -- | A key consists of a public key and an optional private key.
 data KeyPair t = KeyPair
-  { _keyPair_publicKey  :: Text
-  , _keyPair_privateKey :: Maybe Text
+  { _keyPair_publicKey  :: PublicKey
+  , _keyPair_privateKey :: Maybe PrivateKey
   , _keyPair_forSigning :: Dynamic t Bool
   }
 
 makeLensesWith (lensRules & generateLazyPatterns .~ True) ''KeyPair
 
--- | `Key` name to `Key` mapping
-type Keys t = Map Text (KeyPair t)
+-- | `KeyName` to `Key` mapping
+type KeyPairs t = Map KeyName (KeyPair t)
 
 data WalletCfg t = WalletCfg
-  { _walletCfg_onRequestNewKey :: Event t Text
+  { _walletCfg_onRequestNewKey :: Event t KeyName
   -- ^ Request generation of a new key, that will be named as specified.
-  , _walletCfg_onSetSigning    :: Event t (Text, Bool)
+  , _walletCfg_onSetSigning    :: Event t (KeyName, Bool)
   -- ^ Use a given key for signing messages/or not.
   }
   deriving Generic
@@ -42,7 +57,7 @@ data WalletCfg t = WalletCfg
 makeLensesWith (lensRules & generateLazyPatterns .~ True) ''WalletCfg
 
 data Wallet t = Wallet
-  { _wallet_keys        :: Dynamic t (Keys t)
+  { _wallet_keys        :: Dynamic t (KeyPairs t)
   }
   deriving Generic
 
@@ -89,7 +104,7 @@ makeWallet conf = do
       { _wallet_keys = keys
       }
   where
-    -- TODO: Dummy implementationf for now
-    createKey :: Dynamic t (Set Text) -> Text -> Performable m (Text, KeyPair t)
+    -- TODO: Dummy implementation for now
+    createKey :: Dynamic t (Set KeyName) -> KeyName -> Performable m (KeyName, KeyPair t)
     createKey signing n = do
-      pure (n, KeyPair n (Just n) (Set.member n <$> signing))
+      pure (n, KeyPair (PublicKey n) (Just (PrivateKey n)) (Set.member n <$> signing))

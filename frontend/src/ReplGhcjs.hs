@@ -398,6 +398,7 @@ replInner replClick (signingKeys, contract) = mdo
     let dataIsObject = isJust . toObject $ _contract_data contract
         pactKeys =
           T.unwords . map (surroundWith "\"")
+          . map unPrivateKey
           . mapMaybe _keyPair_privateKey
           $ signingKeys
         code = mconcat

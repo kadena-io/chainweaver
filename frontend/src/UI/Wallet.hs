@@ -111,7 +111,7 @@ uiAvailableKeys aWallet = do
 --
 -- Does not include the surrounding `div` tag. Use `uiAvailableKeys` for the
 -- complete `div`.
-uiKeyItems :: MonadWidget t m => Keys t -> m (Event t (Text, Bool))
+uiKeyItems :: MonadWidget t m => KeyPairs t -> m (Event t (KeyName, Bool))
 uiKeyItems keyMap =
   case Map.toList keyMap of
     []   -> do
@@ -122,7 +122,7 @@ uiKeyItems keyMap =
       pure $ leftmost rs
 
 -- | Display a key as list item together with it's name.
-uiKeyItem :: MonadWidget t m => (Text, KeyPair t) -> m (Event t (Text, Bool))
+uiKeyItem :: MonadWidget t m => (Text, KeyPair t) -> m (Event t (KeyName, Bool))
 uiKeyItem (n, k) = do
     elClass "div" "item" $ do
       box <- elClass "div" "right floated content" $ do
