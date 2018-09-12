@@ -14,6 +14,7 @@
 {-# LANGUAGE TemplateHaskell       #-}
 {-# LANGUAGE TypeApplications      #-}
 {-# LANGUAGE TypeFamilies          #-}
+{-# LANGUAGE FunctionalDependencies     #-}
 
 -- |
 -- Copyright   :  (C) 2018 Kadena
@@ -52,20 +53,11 @@ import           Pact.Repl
 import           Pact.Repl.Types
 import           Pact.Types.Lang
 ------------------------------------------------------------------------------
+import           Common
 import           Static
 import           Frontend.UI.Wallet
 import           Frontend.Wallet
 import           Frontend.Widgets
-
--- | Re-use data constructors more flexibly.
-type family ReflexValue (f :: * -> *) x where
-    ReflexValue (Dynamic t) x = Dynamic t x
-
-    ReflexValue Identity x = x
-
-    ReflexValue (Behavior t) x = Behavior t x
-
-    ReflexValue (Event t) x = Event t x
 
 data ContractV f =
   Contract
@@ -74,7 +66,7 @@ data ContractV f =
     }
     deriving (Generic)
 
-makeLensesWith (lensRules & generateLazyPatterns .~ True) ''ContractV
+makePactLenses ''ContractV
 
 type Contract = ContractV Identity
 
@@ -111,12 +103,12 @@ data IDE t =
     , _ide_onContractReceived :: Event t Contract
     -- ^ Contract was successfully retrieved from server.
     , _ide_wallet             :: Wallet t
-    , _ide_walletCfg       :: WalletCfg t
+    , _ide_walletCfg          :: WalletCfg t
     , _ide_errors             :: Dynamic t (Maybe ErrorMsg)
     }
     deriving Generic
 
-makeLensesWith (lensRules & generateLazyPatterns .~ True) ''IDE
+makePactLenses ''IDE
 
 -- | Get `_ide_contract` as a single `Dynamic` `Contract`.
 ide_getDynamicContract :: Reflex t => IDE t -> Dynamic t Contract
@@ -398,7 +390,7 @@ replInner replClick (signingKeys, contract) = mdo
     let dataIsObject = isJust . toObject $ _contract_data contract
         pactKeys =
           T.unwords . map (surroundWith "\"")
-          . map unPrivateKey
+          . map keyToText
           . mapMaybe _keyPair_privateKey
           $ signingKeys
         code = mconcat
