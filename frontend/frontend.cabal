@@ -33,13 +33,21 @@ library
                , static
                , string-qq
                , text
+               , ghcjs-dom
+               , template-haskell
+               , base16-bytestring
+               , newtype-generics
+               , unordered-containers
 
   exposed-modules: Frontend
-                 , ReplGhcjs
-                 , Widgets
+                 , Frontend.Foundation
+                 , Frontend.JsonData
+                 , Frontend.ReplGhcjs
+                 , Frontend.UI.Wallet
+                 , Frontend.Wallet
+                 , Frontend.Widgets
                  , Reflex.Dom.ACE.Extended
-                 , Wallet
-                 , UI.Wallet
+                 , Reflex.Dom.Widget.Resize.Extended
 
   ghc-options: -Wall
   default-extensions: ScopedTypeVariables
@@ -63,32 +71,15 @@ library
                     , OverloadedStrings
 
 executable frontend
-  main-is: main.hs
-  hs-source-dirs: src
+  main-is: src/main.hs
+
   build-depends: base
                , common
                , reflex-dom
                , static
                , text
                , frontend
-               -- Needed for some reason:
-               , ListZipper
-               , aeson
-               , bytestring
-               , common
-               , containers
-               , generic-deriving
-               , jsaddle
-               , lens
-               , mtl
-               , pact
-               , reflex
-               , reflex-dom
-               , reflex-dom-ace
-               , semantic-reflex
-               , static
-               , string-qq
-               , text
+
   --TODO: Make these ghc-options optional
   ghc-options: -threaded
   if os(darwin)

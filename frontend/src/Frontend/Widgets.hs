@@ -1,15 +1,16 @@
-{-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE RecursiveDo #-}
-{-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE LambdaCase            #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE OverloadedStrings     #-}
+{-# LANGUAGE RecursiveDo           #-}
 -- | Semui based widgets collection
-module Widgets where
+module Frontend.Widgets where
 
-import Reflex.Dom.Core
-import Data.Text (Text)
-import Data.Monoid
-import Data.Map.Strict (Map)
-import qualified Data.Map.Strict as Map
-import Control.Applicative
+import           Control.Applicative
+import           Data.Map.Strict     (Map)
+import qualified Data.Map.Strict     as Map
+import           Data.Monoid
+import           Data.Text           (Text)
+import           Reflex.Dom.Core
 
 {- data AccordionItemConf t = -}
 {-   AccordionItemConf -}
@@ -23,8 +24,8 @@ import Control.Applicative
 
 
 {- accordionItem :: MonadWidget t m => AccordionItemConf t -> m a -> m a -}
-accordionItem' :: MonadWidget t m 
-              => Bool -> Text -> Text -> m a 
+accordionItem' :: MonadWidget t m
+              => Bool -> Text -> Text -> m a
               -> m (Element EventResult (DomBuilderSpace m) t, a)
 accordionItem' initActive contentClass title inner = mdo
   isActive <- foldDyn (const not) initActive $ domEvent Click e
@@ -38,7 +39,7 @@ accordionItem' initActive contentClass title inner = mdo
       True -> " active"
 
 accordionItem :: MonadWidget t m => Bool -> Text -> Text -> m a -> m a
-accordionItem initActive contentClass title inner = 
+accordionItem initActive contentClass title inner =
   snd <$> accordionItem' initActive contentClass title inner
 
 makeClickable :: DomBuilder t m => m (Element EventResult (DomBuilderSpace m) t, ()) -> m (Event t ())
@@ -51,7 +52,7 @@ makeClickable item = do
 --
 --   Then return a resulting event by using the given combining function.
 waitForEvents :: (Reflex t, MonadHold t m )
-              => (a -> b -> c) -> Event t ignored -> Event t a -> Event t b 
+              => (a -> b -> c) -> Event t ignored -> Event t a -> Event t b
               -> m (Event t c)
 waitForEvents combine trigger evA evB = do
   a <- holdDyn Nothing $ leftmost [ Just <$> evA
@@ -95,6 +96,6 @@ addDisplayNone
     -> Dynamic t (Map Text Text)
 addDisplayNone attrs isActive = zipDynWith f isActive attrs
   where
-    f True as = as
+    f True as  = as
     f False as = Map.insert "style" "display: none" as
 
