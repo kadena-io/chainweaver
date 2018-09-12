@@ -269,7 +269,7 @@ envPanel ide = mdo
 
     elClass "div" "ui hidden divider" blank
 
-    keysIde1 <- accordionItem True "keys ui" "Sign" $ do
+    keysIde1 <- accordionItem True "keys ui" "Keys" $ do
       conf <- elClass "div" "ui segment" $ uiWallet $ _ide_wallet ide
       pure $ mempty & ide_walletCfg .~ conf
 
