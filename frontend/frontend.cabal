@@ -34,8 +34,14 @@ library
                , string-qq
                , text
                , ghcjs-dom
+               , template-haskell
+               , base16-bytestring
+               , newtype-generics
+               , unordered-containers
 
   exposed-modules: Frontend
+                 , Frontend.Foundation
+                 , Frontend.JsonData
                  , Frontend.ReplGhcjs
                  , Frontend.UI.Wallet
                  , Frontend.Wallet
