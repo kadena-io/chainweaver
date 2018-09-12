@@ -1,20 +1,20 @@
-{-# LANGUAGE DataKinds             #-}
-{-# LANGUAGE DeriveGeneric         #-}
-{-# LANGUAGE ExtendedDefaultRules  #-}
-{-# LANGUAGE FlexibleContexts      #-}
-{-# LANGUAGE FlexibleInstances     #-}
-{-# LANGUAGE KindSignatures        #-}
-{-# LANGUAGE LambdaCase            #-}
-{-# LANGUAGE MultiParamTypeClasses #-}
-{-# LANGUAGE OverloadedStrings     #-}
-{-# LANGUAGE QuasiQuotes           #-}
-{-# LANGUAGE RecursiveDo           #-}
-{-# LANGUAGE ScopedTypeVariables   #-}
-{-# LANGUAGE StandaloneDeriving    #-}
-{-# LANGUAGE TemplateHaskell       #-}
-{-# LANGUAGE TypeApplications      #-}
-{-# LANGUAGE TypeFamilies          #-}
-{-# LANGUAGE FunctionalDependencies     #-}
+{-# LANGUAGE DataKinds              #-}
+{-# LANGUAGE DeriveGeneric          #-}
+{-# LANGUAGE ExtendedDefaultRules   #-}
+{-# LANGUAGE FlexibleContexts       #-}
+{-# LANGUAGE FlexibleInstances      #-}
+{-# LANGUAGE FunctionalDependencies #-}
+{-# LANGUAGE KindSignatures         #-}
+{-# LANGUAGE LambdaCase             #-}
+{-# LANGUAGE MultiParamTypeClasses  #-}
+{-# LANGUAGE OverloadedStrings      #-}
+{-# LANGUAGE QuasiQuotes            #-}
+{-# LANGUAGE RecursiveDo            #-}
+{-# LANGUAGE ScopedTypeVariables    #-}
+{-# LANGUAGE StandaloneDeriving     #-}
+{-# LANGUAGE TemplateHaskell        #-}
+{-# LANGUAGE TypeApplications       #-}
+{-# LANGUAGE TypeFamilies           #-}
 
 -- |
 -- Copyright   :  (C) 2018 Kadena
@@ -53,11 +53,11 @@ import           Pact.Repl
 import           Pact.Repl.Types
 import           Pact.Types.Lang
 ------------------------------------------------------------------------------
-import           Common
-import           Static
+import           Frontend.Foundation
 import           Frontend.UI.Wallet
 import           Frontend.Wallet
 import           Frontend.Widgets
+import           Static
 
 data ContractV f =
   Contract
@@ -175,7 +175,7 @@ main = mainWidget app
 
 app :: MonadWidget t m => m ()
 app = void . mfix $ \ide -> elClass "div" "app" $ do
-    wallet <- makeWallet $ _ide_walletCfg ide
+    walletL <- makeWallet $ _ide_walletCfg ide
     controlIde <- controlBar
     contractReceived <- loadContract $ _ide_selectedContract ide
     elClass "div" "ui two column padded grid main" $ mdo
@@ -191,7 +191,7 @@ app = void . mfix $ \ide -> elClass "div" "app" $ do
         , editorIde
         , envIde
         , mempty & ide_onContractReceived .~ contractReceived
-        , mempty & ide_wallet .~ wallet
+        , mempty & ide_wallet .~ walletL
         ]
     where
       loadContract contractName = do
