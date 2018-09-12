@@ -36,12 +36,12 @@ library
                , ghcjs-dom
 
   exposed-modules: Frontend
-                 , ReplGhcjs
-                 , Widgets
+                 , Frontend.ReplGhcjs
+                 , Frontend.UI.Wallet
+                 , Frontend.Wallet
+                 , Frontend.Widgets
                  , Reflex.Dom.ACE.Extended
                  , Reflex.Dom.Widget.Resize.Extended
-                 , Wallet
-                 , UI.Wallet
 
   ghc-options: -Wall
   default-extensions: ScopedTypeVariables

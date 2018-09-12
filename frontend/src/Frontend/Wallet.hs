@@ -5,7 +5,7 @@
 {-# LANGUAGE TemplateHaskell       #-}
 {-# LANGUAGE FlexibleContexts      #-}
 {-# LANGUAGE OverloadedStrings     #-}
-module Wallet where
+module Frontend.Wallet where
 
 
 import           Control.Lens

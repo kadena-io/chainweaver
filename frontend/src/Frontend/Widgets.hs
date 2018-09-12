@@ -3,7 +3,7 @@
 {-# LANGUAGE OverloadedStrings     #-}
 {-# LANGUAGE RecursiveDo           #-}
 -- | Semui based widgets collection
-module Widgets where
+module Frontend.Widgets where
 
 import           Control.Applicative
 import           Data.Map.Strict     (Map)

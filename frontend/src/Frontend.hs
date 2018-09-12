@@ -1,13 +1,13 @@
-{-# LANGUAGE DataKinds #-}
+{-# LANGUAGE DataKinds         #-}
 {-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE TypeApplications #-}
+{-# LANGUAGE TypeApplications  #-}
 module Frontend where
 
-import Reflex.Dom.Core
 import           Data.Monoid
+import           Reflex.Dom.Core
 
-import           ReplGhcjs
-import Static
+import           Frontend.ReplGhcjs
+import           Static
 
 frontend :: (StaticWidget x (), Widget x ())
 frontend = (head', body)

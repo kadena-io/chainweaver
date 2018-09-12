@@ -21,7 +21,7 @@
 -- License     :  BSD-style (see the file LICENSE)
 --
 
-module UI.Wallet
+module Frontend.UI.Wallet
   ( -- * Key management widget
     uiWallet
 
@@ -33,15 +33,15 @@ module UI.Wallet
   ) where
 
 ------------------------------------------------------------------------------
-import           Control.Arrow              ((&&&))
+import           Control.Arrow         ((&&&))
 import           Control.Lens
-import qualified Data.Map                   as Map
+import qualified Data.Map              as Map
 import           Data.Maybe
-import           Data.Text                  (Text)
+import           Data.Text             (Text)
 import           Reflex
-import           Reflex.Dom.SemanticUI      hiding (mainWidget)
+import           Reflex.Dom.SemanticUI hiding (mainWidget)
 
-import           Wallet
+import           Frontend.Wallet
 
 
 

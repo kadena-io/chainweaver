@@ -20,7 +20,7 @@
 -- License     :  BSD-style (see the file LICENSE)
 --
 
-module ReplGhcjs where
+module Frontend.ReplGhcjs where
 
 ------------------------------------------------------------------------------
 import           Control.Applicative
@@ -53,9 +53,9 @@ import           Pact.Repl.Types
 import           Pact.Types.Lang
 ------------------------------------------------------------------------------
 import           Static
-import           UI.Wallet
-import           Wallet
-import           Widgets
+import           Frontend.UI.Wallet
+import           Frontend.Wallet
+import           Frontend.Widgets
 
 -- | Re-use data constructors more flexibly.
 type family ReflexValue (f :: * -> *) x where
