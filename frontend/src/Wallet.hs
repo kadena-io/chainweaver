@@ -59,10 +59,41 @@ makeLensesWith (lensRules & generateLazyPatterns .~ True) ''WalletCfg
 
 data Wallet t = Wallet
   { _wallet_keys        :: Dynamic t (KeyPairs t)
+  {- , _wallet_newKey      :: Event t KeyName -- ^ A new key just got created. -}
+  {- , _wallet_delKey      :: Event t KeyName -- ^ A key just got removed. (Removal not yet implemented though.) -}
   }
   deriving Generic
 
 makeLensesWith (lensRules & generateLazyPatterns .~ True) ''Wallet
+
+makeWallet
+  :: forall t m. (MonadHold t m, PerformEvent t m, MonadFix m)
+  => WalletCfg t
+  -> m (Wallet t)
+makeWallet conf = do
+    let onNewDeleted p = fmap fst . ffilter (p . snd)
+    signingKeys <- foldDyn id Set.empty
+      $ leftmost [ Set.delete <$> onNewDeleted not (conf ^. walletCfg_onSetSigning)
+                 , Set.insert <$> onNewDeleted id (conf ^. walletCfg_onSetSigning)
+                 , Set.insert <$> conf ^. walletCfg_onRequestNewKey
+                 ]
+
+    onNewKey <- performEvent $ createKey signingKeys <$>
+      -- Filter out keys with empty names
+      ffilter (/= "") (conf ^. walletCfg_onRequestNewKey)
+
+    -- Filter out duplicate keys
+    keys <- foldDyn (uncurry (Map.insertWith (flip const))) Map.empty onNewKey
+    pure $ Wallet
+      { _wallet_keys = keys
+      }
+  where
+    -- TODO: Dummy implementation for now
+    createKey :: Dynamic t (Set KeyName) -> KeyName -> Performable m (KeyName, KeyPair t)
+    createKey signing n = do
+      pure (n, KeyPair (PublicKey n) (Just (PrivateKey n)) (Set.member n <$> signing))
+
+-- Boring instances:
 
 instance Reflex t => Semigroup (WalletCfg t) where
   c1 <> c2 =
@@ -85,30 +116,3 @@ instance Reflex t => Semigroup (Wallet t) where
 instance Reflex t => Monoid (Wallet t) where
   mempty = memptydefault
   mappend = (<>)
-
-
-makeWallet
-  :: forall t m. (MonadHold t m, PerformEvent t m, MonadFix m)
-  => WalletCfg t
-  -> m (Wallet t)
-makeWallet conf = do
-    let onNewDeleted p = fmap fst . ffilter (p . snd)
-    signingKeys <- foldDyn id Set.empty
-      $ leftmost [ Set.delete <$> onNewDeleted not (conf ^. walletCfg_onSetSigning)
-                 , Set.insert <$> onNewDeleted id (conf ^. walletCfg_onSetSigning)
-                 , Set.insert <$> conf ^. walletCfg_onRequestNewKey
-                 ]
-
-    onNewKey <- performEvent $ createKey signingKeys <$>
-      -- Filter out keys with empty names
-      ffilter (/= "") (conf ^. walletCfg_onRequestNewKey)
-    -- Filter out duplicate keys
-    keys <- foldDyn (uncurry (Map.insertWith (flip const))) Map.empty onNewKey
-    pure $ Wallet
-      { _wallet_keys = keys
-      }
-  where
-    -- TODO: Dummy implementation for now
-    createKey :: Dynamic t (Set KeyName) -> KeyName -> Performable m (KeyName, KeyPair t)
-    createKey signing n = do
-      pure (n, KeyPair (PublicKey n) (Just (PrivateKey n)) (Set.member n <$> signing))
