@@ -30,44 +30,54 @@ module Frontend.UI.Wallet
 
     -- ** Filters for keys
   , hasPrivateKey
-  ) where
+  )
+where
 
 ------------------------------------------------------------------------------
-import           Control.Arrow         ((&&&))
-import           Control.Lens
-import qualified Data.Map              as Map
-import           Data.Maybe
-import           Data.Text             (Text)
-import           Reflex
-import           Reflex.Dom.SemanticUI hiding (mainWidget)
+import Control.Arrow ((&&&))
+import Control.Lens
+import qualified Data.Map as Map
+import Data.Maybe
+import Data.Text (Text)
+import Reflex
+import Reflex.Dom.SemanticUI hiding (mainWidget)
 
-import           Frontend.Wallet
+import Frontend.Wallet
 
 
 
 -- | UI for managing the keys wallet.
 uiWallet :: MonadWidget t m => Wallet t -> m (WalletCfg t)
 uiWallet w = do
-    elClass "h3" "ui header" $ text "Available Keys"
-    onSetSig <- uiAvailableKeys w
+  elClass "h3" "ui header" $ text "Available Keys"
+  onSetSig <- uiAvailableKeys w
 
-    elClass "div" "ui fluid action input" $ mdo
-      name <- textInput $ def
-          & textInputConfig_value .~ SetValue "" (Just $ "" <$ clicked)
-          & textInputConfig_placeholder .~ pure "Enter key name"
+  elClass "div" "ui fluid action input" $ mdo
+    name <-
+      textInput
+      $ def
+      & textInputConfig_value
+      .~ SetValue "" (Just $ "" <$ clicked)
+      & textInputConfig_placeholder
+      .~ pure "Enter key name"
 
-      let nameEmpty = (== "") <$> value name
-      let duplicate = Map.member <$> value name <*> w ^. wallet_keys
+    let nameEmpty = (== "") <$> value name
+    let duplicate = Map.member <$> value name <*> w ^. wallet_keys
 
-      clicked <- flip button (text "Generate") $ def
-        & buttonConfig_emphasis .~ Static (Just Secondary)
-        & buttonConfig_disabled .~ Dyn ((||) <$> nameEmpty <*> duplicate)
+    clicked <-
+      flip button (text "Generate")
+      $ def
+      & buttonConfig_emphasis
+      .~ Static (Just Secondary)
+      & buttonConfig_disabled
+      .~ Dyn ((||) <$> nameEmpty <*> duplicate)
 
-      let onReq = tag (current $ _textInput_value name) clicked
+    let onReq = tag (current $ _textInput_value name) clicked
 
-      pure $ WalletCfg { _walletCfg_onRequestNewKey = onReq
-                       , _walletCfg_onSetSigning = onSetSig
-                       }
+    pure $ WalletCfg
+      { _walletCfg_onRequestNewKey = onReq
+      , _walletCfg_onSetSigning = onSetSig
+      }
 
 ----------------------------------------------------------------------
 -- Keys related helper widgets:
@@ -81,11 +91,13 @@ uiSelectKey
   -> ((Text, KeyPair t) -> Bool)
   -> m (Dynamic t (Maybe Text))
 uiSelectKey w kFilter = do
-  let keyNames = map fst . filter kFilter . Map.toList <$> w ^. wallet_keys
-      mkPlaceholder ks = if null ks then "No keys available" else "Select key"
-  d <- dropdown
-      (def & dropdownConfig_placeholder .~ fmap mkPlaceholder keyNames)
-      Nothing
+  let
+    keyNames = map fst . filter kFilter . Map.toList <$> w ^. wallet_keys
+    mkPlaceholder ks = if null ks then "No keys available" else "Select key"
+  d <-
+    dropdown
+        (def & dropdownConfig_placeholder .~ fmap mkPlaceholder keyNames)
+        Nothing
       $ TaggedDynamic (Map.fromList . fmap (id &&& text) <$> keyNames)
   pure $ _dropdown_value d
 
@@ -112,37 +124,38 @@ uiAvailableKeys aWallet = do
 -- Does not include the surrounding `div` tag. Use `uiAvailableKeys` for the
 -- complete `div`.
 uiKeyItems :: MonadWidget t m => KeyPairs t -> m (Event t (KeyName, Bool))
-uiKeyItems keyMap =
-  case Map.toList keyMap of
-    []   -> do
-      text "No keys ..."
-      pure never
-    keys -> do
-      rs <- traverse uiKeyItem keys
-      pure $ leftmost rs
+uiKeyItems keyMap = case Map.toList keyMap of
+  [] -> do
+    text "No keys ..."
+    pure never
+  keys -> do
+    rs <- traverse uiKeyItem keys
+    pure $ leftmost rs
 
 -- | Display a key as list item together with it's name.
 uiKeyItem :: MonadWidget t m => (Text, KeyPair t) -> m (Event t (KeyName, Bool))
 uiKeyItem (n, k) = do
-    elClass "div" "item" $ do
-      box <- elClass "div" "right floated content" $ do
-        onPostBuild <- getPostBuild
-        let
-          cSigned = current $ k ^. keyPair_forSigning
-          onPbSigned = tag cSigned onPostBuild
+  elClass "div" "item" $ do
+    box <- elClass "div" "right floated content" $ do
+      onPostBuild <- getPostBuild
+      let
+        cSigned = current $ k ^. keyPair_forSigning
+        onPbSigned = tag cSigned onPostBuild
 
-        checkbox (text "Signing")
-          $ def & checkboxConfig_type .~ pure Nothing
-                & checkboxConfig_setValue .~ SetValue False (Just onPbSigned)
+      checkbox (text "Signing")
+        $ def
+        & checkboxConfig_type
+        .~ pure Nothing
+        & checkboxConfig_setValue
+        .~ SetValue False (Just onPbSigned)
 
-      elClass "i" "large key middle aligned icon" blank
-      elClass "div" "content" $ do
-        elClass "h4" "ui header" $ text n
-        elClass "div" "description" $ text $ keyDescription k
-      pure $ fmap (n, ) . _checkbox_change $ box
-  where
-    keyDescription k1 =
-      case _keyPair_privateKey k1 of
-        Nothing -> "Public key only"
-        Just _  -> "Full key pair"
+    elClass "i" "large key middle aligned icon" blank
+    elClass "div" "content" $ do
+      elClass "h4" "ui header" $ text n
+      elClass "div" "description" $ text $ keyDescription k
+    pure $ fmap (n, ) . _checkbox_change $ box
+ where
+  keyDescription k1 = case _keyPair_privateKey k1 of
+    Nothing -> "Public key only"
+    Just _ -> "Full key pair"
 

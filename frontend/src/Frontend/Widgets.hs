@@ -5,12 +5,12 @@
 -- | Semui based widgets collection
 module Frontend.Widgets where
 
-import           Control.Applicative
-import           Data.Map.Strict     (Map)
-import qualified Data.Map.Strict     as Map
-import           Data.Monoid
-import           Data.Text           (Text)
-import           Reflex.Dom.Core
+import Control.Applicative
+import Data.Map.Strict (Map)
+import qualified Data.Map.Strict as Map
+import Data.Monoid
+import Data.Text (Text)
+import Reflex.Dom.Core
 
 {- data AccordionItemConf t = -}
 {-   AccordionItemConf -}
@@ -24,25 +24,35 @@ import           Reflex.Dom.Core
 
 
 {- accordionItem :: MonadWidget t m => AccordionItemConf t -> m a -> m a -}
-accordionItem' :: MonadWidget t m
-              => Bool -> Text -> Text -> m a
-              -> m (Element EventResult (DomBuilderSpace m) t, a)
+accordionItem'
+  :: MonadWidget t m
+  => Bool
+  -> Text
+  -> Text
+  -> m a
+  -> m (Element EventResult (DomBuilderSpace m) t, a)
 accordionItem' initActive contentClass title inner = mdo
   isActive <- foldDyn (const not) initActive $ domEvent Click e
   (e, _) <- elDynClass' "div" ("title " <> fmap activeClass isActive) $ do
     elClass "i" "dropdown icon" blank
     text title
-  elDynClass' "div" ("content " <> pure contentClass <> fmap activeClass isActive) inner
-  where
-    activeClass = \case
-      False -> ""
-      True -> " active"
+  elDynClass'
+    "div"
+    ("content " <> pure contentClass <> fmap activeClass isActive)
+    inner
+ where
+  activeClass = \case
+    False -> ""
+    True -> " active"
 
 accordionItem :: MonadWidget t m => Bool -> Text -> Text -> m a -> m a
 accordionItem initActive contentClass title inner =
   snd <$> accordionItem' initActive contentClass title inner
 
-makeClickable :: DomBuilder t m => m (Element EventResult (DomBuilderSpace m) t, ()) -> m (Event t ())
+makeClickable
+  :: DomBuilder t m
+  => m (Element EventResult (DomBuilderSpace m) t, ())
+  -> m (Event t ())
 makeClickable item = do
   (e, _) <- item
   return $ domEvent Click e
@@ -51,16 +61,16 @@ makeClickable item = do
 -- | Once the first event occurred, wait until both of the other events occurred.
 --
 --   Then return a resulting event by using the given combining function.
-waitForEvents :: (Reflex t, MonadHold t m )
-              => (a -> b -> c) -> Event t ignored -> Event t a -> Event t b
-              -> m (Event t c)
+waitForEvents
+  :: (Reflex t, MonadHold t m)
+  => (a -> b -> c)
+  -> Event t ignored
+  -> Event t a
+  -> Event t b
+  -> m (Event t c)
 waitForEvents combine trigger evA evB = do
-  a <- holdDyn Nothing $ leftmost [ Just <$> evA
-                                  , Nothing <$ trigger
-                                  ]
-  b <- holdDyn Nothing $ leftmost [ Just <$> evB
-                                  , Nothing <$ trigger
-                                  ]
+  a <- holdDyn Nothing $ leftmost [Just <$> evA, Nothing <$ trigger]
+  b <- holdDyn Nothing $ leftmost [Just <$> evB, Nothing <$ trigger]
   let combined = zipDynWith (liftA2 combine) a b
   pure $ fmapMaybe id $ updated combined
 
@@ -68,34 +78,34 @@ waitForEvents combine trigger evA evB = do
 -- Shamelessly stolen (and adjusted) from reflex-dom-contrib:
 
 tabPane'
-    :: (MonadWidget t m, Eq tab)
-    => Map Text Text
-    -> Dynamic t tab
-    -> tab
-    -> m a
-    -> m (Element EventResult (DomBuilderSpace m) t, a)
+  :: (MonadWidget t m, Eq tab)
+  => Map Text Text
+  -> Dynamic t tab
+  -> tab
+  -> m a
+  -> m (Element EventResult (DomBuilderSpace m) t, a)
 tabPane' staticAttrs currentTab t child = do
-    let attrs = addDisplayNone (constDyn staticAttrs) ((==t) <$> currentTab)
-    elDynAttr' "div" attrs child
+  let attrs = addDisplayNone (constDyn staticAttrs) ((== t) <$> currentTab)
+  elDynAttr' "div" attrs child
 
 tabPane
-    :: (MonadWidget t m, Eq tab)
-    => Map Text Text
-    -> Dynamic t tab
-    -> tab
-    -> m a
-    -> m a
+  :: (MonadWidget t m, Eq tab)
+  => Map Text Text
+  -> Dynamic t tab
+  -> tab
+  -> m a
+  -> m a
 tabPane staticAttrs currentTab t = fmap snd . tabPane' staticAttrs currentTab t
 
 ------------------------------------------------------------------------------
 -- | Helper function for hiding your tabs with display none.
 addDisplayNone
-    :: Reflex t
-    => Dynamic t (Map Text Text)
-    -> Dynamic t Bool
-    -> Dynamic t (Map Text Text)
+  :: Reflex t
+  => Dynamic t (Map Text Text)
+  -> Dynamic t Bool
+  -> Dynamic t (Map Text Text)
 addDisplayNone attrs isActive = zipDynWith f isActive attrs
-  where
-    f True as  = as
-    f False as = Map.insert "style" "display: none" as
+ where
+  f True as = as
+  f False as = Map.insert "style" "display: none" as
 

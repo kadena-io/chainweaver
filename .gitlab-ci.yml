@@ -1,3 +1,6 @@
+code-formatting:
+  script:
+    - nix-shell -A shells.ghc --run 'brittany --config-file .brittany.conf --check-mode `find . -name "*.hs"`'
 pact-web:
   script:
     - nix-build
