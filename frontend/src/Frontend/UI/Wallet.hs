@@ -109,7 +109,7 @@ uiAvailableKeys aWallet = do
 
 -- | Render a list of key items.
 --
--- Does not include the surrounding `div` tag. Use `uiAvailableKeys` for the
+-- Does not include the surrounding `div` tag. Use uiAvailableKeys for the
 -- complete `div`.
 uiKeyItems :: MonadWidget t m => KeyPairs t -> m (Event t (KeyName, Bool))
 uiKeyItems keyMap =
