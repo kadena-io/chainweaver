@@ -43,11 +43,13 @@ library
                  , Frontend.Foundation
                  , Frontend.JsonData
                  , Frontend.ReplGhcjs
+                 , Frontend.UI.JsonData
                  , Frontend.UI.Wallet
                  , Frontend.Wallet
                  , Frontend.Widgets
                  , Reflex.Dom.ACE.Extended
                  , Reflex.Dom.Widget.Resize.Extended
+                 , Reflex.Extended
 
   ghc-options: -Wall
   default-extensions: ScopedTypeVariables

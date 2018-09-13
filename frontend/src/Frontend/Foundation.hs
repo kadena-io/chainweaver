@@ -24,13 +24,14 @@ module Frontend.Foundation
   ( makePactLenses
   , ReflexValue
   , module Data.Maybe
+  , module Reflex.Extended
   ) where
 
 import Control.Lens.TH
 import Control.Lens
 import Language.Haskell.TH.Syntax (Name)
 import Language.Haskell.TH (DecsQ)
-import Reflex
+import Reflex.Extended
 
 import Data.Maybe
 
@@ -61,3 +62,4 @@ type family ReflexValue (f :: * -> *) x where
     ReflexValue (Behavior t) x = Behavior t x
 
     ReflexValue (Event t) x = Event t x
+

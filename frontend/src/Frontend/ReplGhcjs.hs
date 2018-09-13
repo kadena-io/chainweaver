@@ -24,11 +24,11 @@
 module Frontend.ReplGhcjs where
 
 ------------------------------------------------------------------------------
-import           Control.Applicative
-import           Control.Arrow               ((&&&))
 import           Control.Lens
 import           Control.Monad.State.Strict
-import           Data.Aeson                  (Object, decodeStrict)
+import           Data.Aeson                  (Object, encode)
+import qualified Data.ByteString.Lazy        as BSL
+import qualified Data.HashMap.Strict         as H
 import qualified Data.List.Zipper            as Z
 import           Data.Map                    (Map)
 import qualified Data.Map                    as Map
@@ -36,7 +36,6 @@ import           Data.Maybe
 import           Data.Semigroup
 import           Data.Sequence               (Seq)
 import qualified Data.Sequence               as S
-import           Data.String.QQ
 import           Data.Text                   (Text)
 import qualified Data.Text                   as T
 import qualified Data.Text.Encoding          as T
@@ -54,101 +53,60 @@ import           Pact.Repl.Types
 import           Pact.Types.Lang
 ------------------------------------------------------------------------------
 import           Frontend.Foundation
+import           Frontend.JsonData
+import           Frontend.UI.JsonData
 import           Frontend.UI.Wallet
 import           Frontend.Wallet
 import           Frontend.Widgets
 import           Static
 
-data ContractV f =
-  Contract
-    { _contract_data :: ReflexValue f Text
-    , _contract_code :: ReflexValue f Text
-    }
-    deriving (Generic)
-
-makePactLenses ''ContractV
-
-type Contract = ContractV Identity
-
-deriving instance Show (ContractV Identity)
-
-type DynContract t = ContractV (Dynamic t)
-
-instance Reflex t => Semigroup (DynContract t) where
-  (<>) = mappenddefault
-
-instance Reflex t => Monoid (DynContract t) where
-  mempty = memptydefault
-  mappend = (<>)
-
-instance Semigroup Contract where
-  (<>) = mappenddefault
-
-instance Monoid Contract where
-  mempty = memptydefault
-  mappend = (<>)
-
 type ErrorMsg = Text
 
-data IDE t =
-  IDE
-    { _ide_contract           :: DynContract t
-    -- ^ Currently loaded/edited PACT code (JSON `code` field )and data (JSON `data` field).
-    {- , _ide_contracts :: Dynamic t Contracts -}
-    {- -- ^ Contracts that can be loaded into the IDE. -}
-    , _ide_selectedContract   :: Dynamic t Text
-    -- ^ The currently selected contract in the dropdown.
-    , _ide_onLoadRequest      :: Event t ()
-    -- ^ User pressed the Load button and wants to load the code into the REPL.
-    , _ide_onContractReceived :: Event t Contract
-    -- ^ Contract was successfully retrieved from server.
-    , _ide_wallet             :: Wallet t
-    , _ide_walletCfg          :: WalletCfg t
-    , _ide_errors             :: Dynamic t (Maybe ErrorMsg)
-    }
-    deriving Generic
+-- | Configuration for sub-modules.
+--
+--   State is controlled via this configuration.
+data IdeCfg t = IdeCfg
+  { _ideCfg_wallet      :: WalletCfg t
+  , _ideCfg_jsonData    :: JsonDataCfg t
+  , _ideCfg_selContract :: Event t Text
+    -- ^ Select a contract to load into the editor.
+    -- Note: Currently this event should only be triggered from the dropdown in
+    -- the controlbar, otherwise that dropdown will be out of sync. This is due
+    -- to the limitation of semantic-reflex dropdown to not being updateable.
+    --
+  , _ideCfg_load        :: Event t ()
+    -- ^ Load code into the repl.
+  , _ideCfg_setErrors   :: Event t (Maybe ErrorMsg)
+    -- ^ Set errors that should be shown to the user.
+  , _ideCfg_setCode     :: Event t Text
+    -- ^ Update the current contract/PACT code.
+  }
+  deriving Generic
 
-makePactLenses ''IDE
+makePactLenses ''IdeCfg
 
--- | Get `_ide_contract` as a single `Dynamic` `Contract`.
-ide_getDynamicContract :: Reflex t => IDE t -> Dynamic t Contract
-ide_getDynamicContract =
-  uncurry (liftA2 Contract) . (_contract_data &&& _contract_code) . _ide_contract
+-- | Current IDE state.
+data Ide t = Ide
+  { _ide_code             :: Dynamic t Text
+  -- ^ Currently loaded/edited PACT code.
+  , _ide_selectedContract :: Dynamic t Text
+  -- ^ The currently selected contract name.
+  , _ide_wallet           :: Wallet t
+  , _ide_jsonData         :: JsonData t
+  , _ide_errors           :: Dynamic t (Maybe ErrorMsg)
+  }
+  deriving Generic
+
+makePactLenses ''Ide
 
 -- | Retrieve the currently selected signing keys.
-ide_getSigningKeyPairs :: Reflex t => IDE t -> Dynamic t [KeyPair t]
-ide_getSigningKeyPairs ide = do
+ide_getSigningKeyPairs :: Reflex t => Ide t -> Dynamic t [KeyPair t]
+ide_getSigningKeyPairs ideL = do
   let
-    keys = Map.elems <$> ide ^. ide_wallet . wallet_keys
+    keys = Map.elems <$> ideL ^. ide_wallet . wallet_keys
   cKeys <- keys
   let isSigning k = k ^. keyPair_forSigning
   filterM isSigning cKeys
-
-instance Reflex t => Semigroup (IDE t) where
-  (<>) = mappenddefault
-
-instance Reflex t => Monoid (IDE t) where
-  mempty = memptydefault
-  mappend = (<>)
-
-data ContractFile =
-  ContractFile
-    { _contract_baseName :: Text
-    -- ^ Name of the contract needed for locating the files.
-    {- , _contract_location :: Location -}
-    {- -- ^ Where is the contract stored? -}
-    }
-
-{- -- | Map of contract names to contract locations. -}
-{- -- -}
-{- --   This is a list as opposed to a Map in order to preserve order. -}
-{- type ContractFiles = [(Text, Contract)] -}
-
-
-
-{- data Location -}
-{-   = Location_Example -- ^ Predefined example code loaded from the server -}
-{-   | Location_Local -- ^ User contract stored in localstorage. -}
 
 
 codeExtension :: Text
@@ -174,37 +132,53 @@ main :: JSM ()
 main = mainWidget app
 
 app :: MonadWidget t m => m ()
-app = void . mfix $ \ide -> elClass "div" "app" $ do
-    walletL <- makeWallet $ _ide_walletCfg ide
-    controlIde <- controlBar
-    contractReceived <- loadContract $ _ide_selectedContract ide
+app = void . mfix $ \ ~(cfg, ideL) -> elClass "div" "app" $ do
+    walletL <- makeWallet $ _ideCfg_wallet cfg
+    json <- makeJsonData walletL $ _ideCfg_jsonData cfg
+    controlCfg <- controlBar
+    contractReceivedCfg <- loadContract $ _ide_selectedContract ideL
     elClass "div" "ui two column padded grid main" $ mdo
-      editorIde <- elClass "div" "column" $ do
+      editorCfg <- elClass "div" "column" $ do
         {- elClass "div" "ui secondary menu pointing" $ do -}
         {-   elClass "a" "active item" $ text "Contract" -}
-        elClass "div" "ui light segment editor-pane" $ codePanel ide
+        elClass "div" "ui light segment editor-pane" $ codePanel ideL
 
-      envIde <- elClass "div" "column repl-column" $
-        elClass "div" "ui env-pane" $ envPanel ide
-      pure $ mconcat
-        [ controlIde
-        , editorIde
-        , envIde
-        , mempty & ide_onContractReceived .~ contractReceived
-        , mempty & ide_wallet .~ walletL
-        ]
-    where
-      loadContract contractName = do
-        code <- loadContractData toCodeFile contractName
-        json <- loadContractData toDataFile contractName
-        waitForEvents Contract (updated contractName) json code
+      envCfg <- elClass "div" "column repl-column" $
+        elClass "div" "ui env-pane" $ envPanel ideL (cfg ^. ideCfg_load)
 
-      loadContractData getFileName contractName =
-        fmap (fmap codeFromResponse)
-        . performRequestAsync
-        . fmap ((\u -> xhrRequest "GET" u def) . getFileName)
-        . updated
-        $ contractName
+      code <- holdDyn "" $ cfg ^. ideCfg_setCode
+      selContract <- holdDyn initialDemoFile $ cfg ^. ideCfg_selContract
+      errors <- holdDyn Nothing $ cfg ^. ideCfg_setErrors
+
+      pure
+        ( mconcat
+          [ controlCfg
+          , editorCfg
+          , envCfg
+          , contractReceivedCfg
+          ]
+        , ideL { _ide_code = code
+              , _ide_selectedContract = selContract
+              , _ide_wallet = walletL
+              , _ide_jsonData = json
+              , _ide_errors = errors
+            }
+        )
+  where
+    loadContract contractName = do
+      code <- loadContractData toCodeFile contractName
+      json <- loadContractData toDataFile contractName
+      onCodeJson <- waitForEvents (,) (updated contractName) json code
+      pure $ mempty
+        & ideCfg_setCode .~ fmap fst onCodeJson
+        & ideCfg_jsonData . jsonDataCfg_setRawInput .~ fmap snd onCodeJson
+
+    loadContractData getFileName contractName =
+      fmap (fmap codeFromResponse)
+      . performRequestAsync
+      . fmap ((\u -> xhrRequest "GET" u def) . getFileName)
+      . updated
+      $ contractName
 
 
 
@@ -216,12 +190,13 @@ data EnvSelection
   deriving (Eq, Ord, Show)
 
 -- | Code editing (left hand side currently)
-codePanel :: forall t m. MonadWidget t m => IDE t -> m (IDE t)
-codePanel ide = mdo
+codePanel :: forall t m. MonadWidget t m => Ide t -> m (IdeCfg t)
+codePanel ideL = mdo
   {- menu (def & menuConfig_secondary .~ pure True) $ do -}
   {-   menuItem def $ text "Code"  -}
-    code <- codeWidget startingCode $ _contract_code <$> _ide_onContractReceived ide
-    pure $ mempty & ide_contract . contract_code .~ code
+    onNewCode <- tagOnPostBuild $ _ide_code ideL
+    code <- codeWidget "" onNewCode
+    pure $ mempty & ideCfg_setCode .~ updated code
 
 -- | Tabbed panel to the right
 --
@@ -230,14 +205,14 @@ codePanel ide = mdo
 --   - The REPL
 --   - Compiler error messages
 --   - Key & Data Editor
-envPanel :: forall t m. MonadWidget t m => IDE t -> m (IDE t)
-envPanel ide = mdo
-  let onLoad =
+envPanel :: forall t m. MonadWidget t m => Ide t -> Event t () -> m (IdeCfg t)
+envPanel ideL onLoad = mdo
+  let onLoaded =
         maybe EnvSelection_Repl (const EnvSelection_Errors)
-          <$> updated (_ide_errors ide)
+          <$> updated (_ide_errors ideL)
 
   curSelection <- holdDyn EnvSelection_Env $ leftmost [ onSelect
-                                                      , onLoad
+                                                      , onLoaded
                                                       ]
 
   onSelect <- menu
@@ -247,36 +222,37 @@ envPanel ide = mdo
     )
     $ tabs curSelection
 
-  replIde <- tabPane ("class" =: "ui flex-content light segment") curSelection EnvSelection_Repl $
-    replWidget ide
+  replCfg <- tabPane
+      ("class" =: "ui flex-content light segment")
+      curSelection EnvSelection_Repl
+      $ replWidget ideL onLoad
 
-  envIde <- tabPane
+  envCfg <- tabPane
       ("class" =: "ui fluid accordion flex-accordion flex-content")
       curSelection EnvSelection_Env $ mdo
 
-    jsonIde <- accordionItem True "data ui segment light" "Data" $ do
-      json <- dataWidget startingData
-        $ _contract_data <$> _ide_onContractReceived ide
-      pure $ mempty & ide_contract . contract_data .~ json
+    jsonCfg <- accordionItem True "data ui segment light" "Data" $ do
+      conf <- uiJsonData $ ideL ^. ide_jsonData
+      pure $ mempty &  ideCfg_jsonData .~ conf
 
     elClass "div" "ui hidden divider" blank
 
-    keysIde1 <- accordionItem True "keys ui" "Sign" $ do
-      conf <- elClass "div" "ui segment" $ uiWallet $ _ide_wallet ide
-      pure $ mempty & ide_walletCfg .~ conf
+    keysCfg <- accordionItem True "keys ui" "Sign" $ do
+      conf <- elClass "div" "ui segment" $ uiWallet $ _ide_wallet ideL
+      pure $ mempty & ideCfg_wallet .~ conf
 
-    pure $ mconcat [ jsonIde
-                   , keysIde1
-                   , replIde
+    pure $ mconcat [ jsonCfg
+                   , keysCfg
+                   , replCfg
                    ]
 
-  errorsIde <- tabPane
+  errorsCfg <- tabPane
       ("class" =: "ui code-font full-size")
       curSelection EnvSelection_Errors $ do
-    void . dyn $ maybe (pure ()) (snippetWidget . OutputSnippet) <$> _ide_errors ide
+    void . dyn $ maybe (pure ()) (snippetWidget . OutputSnippet) <$> _ide_errors ideL
     pure mempty
 
-  pure $ mconcat [ envIde, errorsIde ]
+  pure $ mconcat [ envCfg, errorsCfg ]
 
   where
     tabs :: Dynamic t EnvSelection -> m (Event t EnvSelection)
@@ -322,18 +298,6 @@ codeWidget iv sv = do
     _ <- withAceInstance ace (setValueACE <$> sv)
     return $ aceValue ace
 
-dataWidget
-  :: MonadWidget t m
-  => Text -> Event t Text
-  -> m (Dynamic t Text)
-dataWidget iv sv = do
-    let ac = def { _aceConfigMode = Just "ace/mode/json"
-                 , _aceConfigElemAttrs = "class" =: "ace-data ace-widget"
-                 }
-    ace <- resizableAceWidget mempty ac (AceDynConfig $ Just AceTheme_SolarizedDark) iv
-    _ <- withAceInstance ace (setValueACE <$> sv)
-    return $ aceValue ace
-
 
 data DisplayedSnippet
   = InputSnippet Text
@@ -354,9 +318,10 @@ snippetWidget (OutputSnippet t) = elAttr "pre" ("class" =: "replOut code-font") 
 ------------------------------------------------------------------------------
 replWidget
     :: MonadWidget t m
-    => IDE t
-    -> m (IDE t)
-replWidget ide = mdo
+    => Ide t
+    -> Event t ()
+    -> m (IdeCfg t)
+replWidget ideL onLoad = mdo
   (e, r) <- elClass' "div" "repl-pane code-font" $ mdo
     mapM_ snippetWidget staticReplHeader
     clickType <- foldDyn ($) Nothing $ leftmost
@@ -366,51 +331,49 @@ replWidget ide = mdo
     let replClick = () <$
           ffilter (== Just Clicked) (updated clickType)
 
-        keysContract =
-          zipDyn (ide_getSigningKeyPairs ide) (ide_getDynamicContract ide)
+        codeData = do
+          code <- ideL ^. ide_code
+          eJson <- ideL ^. ide_jsonData . jsonData_data
+          case eJson of
+            Left _     -> pure ("", H.empty) -- Just reset REPL
+            Right json -> pure (code, json)
+
+        keysContract = zipDyn (ide_getSigningKeyPairs ideL) codeData
 
     widgetHold
-      (replInner replClick ([], startingContract))
+      (replInner replClick ([], ("", H.empty)))
       (replInner replClick <$>
-        tag (current keysContract) (_ide_onLoadRequest ide)
+        tag (current keysContract) onLoad
       )
   let err = snd <$> r
   let newExpr = fst <$> r
 
   timeToScroll <- delay 0.1 $ switch $ current newExpr
   void $ performEvent (scrollToBottom (_element_raw e) <$ timeToScroll)
-  pure $ mempty & ide_errors .~ err
+  pure $ mempty & ideCfg_setErrors .~ updated err
 
 replInner
     :: MonadWidget t m
     => Event t ()
-    -> ([KeyPair t], Contract)
+    -> ([KeyPair t], (Text, Object))
     -> m (Event t Text, Maybe ErrorMsg)
-replInner replClick (signingKeys, contract) = mdo
-    let dataIsObject = isJust . toObject $ _contract_data contract
-        pactKeys =
+replInner replClick (signingKeys, (code, json)) = mdo
+    let pactKeys =
           T.unwords . map (surroundWith "\"")
           . map keyToText
           . mapMaybe _keyPair_privateKey
           $ signingKeys
-        code = mconcat
+        codeP = mconcat
           [ "(env-data "
-          , _contract_data contract
+          , T.decodeUtf8 . BSL.toStrict $ encode json
           , ")\n"
           , "(env-keys ["
           , pactKeys
           , "])\n\n"
-          , _contract_code contract
+          , code
           ]
     initState <- liftIO $ initReplState StringEval
-    stateOutErr0 <-
-      if dataIsObject
-         then runReplStep0 (initState, mempty) code
-         else pure
-           ( initState
-           , mempty
-           , Just ("ERROR: Data must be a valid JSON object!" :: Text)
-           )
+    stateOutErr0 <- runReplStep0 (initState, mempty) codeP
     let stateAndOut0 = (\(a,b,_) -> (a, b)) stateOutErr0
     stateAndOut <- holdDyn stateAndOut0 evalResult
 
@@ -420,9 +383,6 @@ replInner replClick (signingKeys, contract) = mdo
       attachWith runReplStep (current stateAndOut) newInput
     return (newInput, stateOutErr0 ^. _3)
   where
-      toObject :: Text -> Maybe Object
-      toObject = decodeStrict . T.encodeUtf8
-
       surroundWith :: Semigroup s => s -> s -> s
       surroundWith o i = o <> i <> o
 
@@ -490,14 +450,14 @@ showResult :: Show a => Either String a -> Text
 showResult (Right v) = T.pack $ show v
 showResult (Left e)  = "Error: " <> T.pack e
 
-controlBar :: forall t m. MonadWidget t m => m (IDE t)
+controlBar :: forall t m. MonadWidget t m => m (IdeCfg t)
 controlBar = do
     elClass "div" "ui borderless menu" $ do
       elClass "div" "item" showPactVersion
 
-      control <- exampleChooser
+      cfg <- exampleChooser
       elClass "div" "right menu" rightMenu
-      pure control
+      pure cfg
   where
     showPactVersion = do
       elAttr "a" ( "target" =: "_blank" <> "href" =: "https://github.com/kadena-io/pact") $ do
@@ -505,16 +465,16 @@ controlBar = do
         Right (TLiteral (LString ver) _) <- liftIO $ evalStateT (evalRepl' "(pact-version)") is
         text $ "Pact Version " <> ver
 
-    exampleChooser :: m (IDE t)
+    exampleChooser :: m (IdeCfg t)
     exampleChooser = do
       d <- elClass "div" "item" $
-        dropdown def (Identity 0) $ TaggedStatic $ text . fst <$> demos
+        dropdown def (Identity initialDemo) $ TaggedStatic $ text . fst <$> demos
       load <- elClass "div" "item" $
         button (def & buttonConfig_emphasis .~ Static (Just Primary)) $ text "Load"
       let intToCode n = snd $ fromJust $ Map.lookup n demos
       pure $ mempty
-        & ide_selectedContract .~  (intToCode . runIdentity <$> _dropdown_value d)
-        & ide_onLoadRequest .~ load
+        & ideCfg_selContract .~  (intToCode . runIdentity <$> updated (_dropdown_value d))
+        & ideCfg_load .~ load
 
     rightMenu = do
       elClass "div" "ui item" $
@@ -541,43 +501,24 @@ exampleData =
 demos :: Map Int (Text, Text)
 demos = Map.fromList $ zip [0..] exampleData
 
-------------------------------------------------------------------------------
--- | We still have this hard coded initial value because Reflex has to put
--- some value in before the first event fires, so we use this one.  It should
--- match the first element of the exampleData list.
-startingCode :: Text
-startingCode = [s|
-;;
-;; "Hello, world!" smart contract/module
-;;
+-- | What demo do we load on startup:
+initialDemo :: Int
+initialDemo = 0
 
-;; Make sure to have a mockAdminKey created and selected for running this contract.
+-- | File name prefix of `initialDemo`
+initialDemoFile :: Text
+initialDemoFile = snd . fromJust $ Map.lookup initialDemo demos
 
-;; Keysets cannot be created in code, thus we read them in
-;; from the load message data.
-(define-keyset 'admin-keyset (read-keyset "admin-keyset"))
+-- Instances:
 
-;; Define the module.
-(module helloWorld 'admin-keyset
-  "A smart contract to greet the world."
-  (defun hello (name)
-    "Do the hello-world dance"
-    (format "Hello {}!" [name]))
-)
+instance Reflex t => Semigroup (IdeCfg t) where
+  (<>) = mappenddefault
 
-;; and say hello!
-(hello "world")
-|]
+instance Reflex t => Monoid (IdeCfg t) where
+  mempty = memptydefault
+  mappend = (<>)
 
-startingData :: Text
-startingData = [s|
-  { "admin-keyset": ["mockAdminKey"] }
-|]
+  {-
 
-startingContract :: Contract
-startingContract =
-  Contract
-    { _contract_code = startingCode
-    , _contract_data = startingData
-    }
-
+           , Just ("ERROR: Data must be a valid JSON object!" :: Text)
+    -}
