@@ -47,24 +47,6 @@ makeClickable item = do
   (e, _) <- item
   return $ domEvent Click e
 
--- TODO: Move this somewhere else:
--- | Once the first event occurred, wait until both of the other events occurred.
---
---   Then return a resulting event by using the given combining function.
-waitForEvents :: (Reflex t, MonadHold t m )
-              => (a -> b -> c) -> Event t ignored -> Event t a -> Event t b
-              -> m (Event t c)
-waitForEvents combine trigger evA evB = do
-  a <- holdDyn Nothing $ leftmost [ Just <$> evA
-                                  , Nothing <$ trigger
-                                  ]
-  b <- holdDyn Nothing $ leftmost [ Just <$> evB
-                                  , Nothing <$ trigger
-                                  ]
-  let combined = zipDynWith (liftA2 combine) a b
-  pure $ fmapMaybe id $ updated combined
-
-
 -- Shamelessly stolen (and adjusted) from reflex-dom-contrib:
 
 tabPane'

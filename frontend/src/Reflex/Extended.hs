@@ -10,9 +10,11 @@ module Reflex.Extended
   ( module Reflex
     -- * Useful functions for MVC based code:
   , tagOnPostBuild
+  , waitForEvents
   ) where
 
 import Reflex
+import Control.Applicative
 
 -- | Safely initialize UI state from model state.
 --
@@ -27,3 +29,23 @@ tagOnPostBuild v = do
   pure $ leftmost [ tag (current v) onPostBuild
                   , updated v
                   ]
+
+
+
+-- | Once the first event occurred, wait until both of the other events occurred.
+--
+--   Then return a resulting event by using the given combining function.
+waitForEvents :: (Reflex t, MonadHold t m )
+              => (a -> b -> c) -> Event t ignored -> Event t a -> Event t b
+              -> m (Event t c)
+waitForEvents combine trigger evA evB = do
+  a <- holdDyn Nothing $ leftmost [ Just <$> evA
+                                  , Nothing <$ trigger
+                                  ]
+  b <- holdDyn Nothing $ leftmost [ Just <$> evB
+                                  , Nothing <$ trigger
+                                  ]
+  let combined = zipDynWith (liftA2 combine) a b
+  pure $ fmapMaybe id $ updated combined
+
+
