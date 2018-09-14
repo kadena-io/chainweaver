@@ -136,7 +136,9 @@ app = void . mfix $ \ ~(cfg, ideL) -> elClass "div" "app" $ do
     walletL <- makeWallet $ _ideCfg_wallet cfg
     json <- makeJsonData walletL $ _ideCfg_jsonData cfg
     controlCfg <- controlBar
-    contractReceivedCfg <- loadContract $ _ide_selectedContract ideL
+    testContractName <- holdDyn initialDemoFile never
+    contractReceivedCfg <- loadContract testContractName
+    -- contractReceivedCfg <- loadContract $ _ide_selectedContract ideL
     elClass "div" "ui two column padded grid main" $ mdo
       editorCfg <- elClass "div" "column" $ do
         {- elClass "div" "ui secondary menu pointing" $ do -}
