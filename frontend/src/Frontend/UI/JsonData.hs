@@ -47,13 +47,18 @@ import           Frontend.Foundation
 -- | UI for managing JSON data.
 uiJsonData :: MonadWidget t m => JsonData t -> m (JsonDataCfg t)
 uiJsonData d = do
-  -- onNewData <- tagOnPostBuild $ d ^. jsonData_rawInput
-  let onNewData = updated $ d ^. jsonData_rawInput
+  onNewData <- tagOnPostBuild $ d ^. jsonData_rawInput
+  -- let onNewData = updated $ d ^. jsonData_rawInput
   editorText <- dataEditor "" onNewData
 
   let setRawInput = updated editorText
   pure $ JsonDataCfg
     { _jsonDataCfg_setRawInput = setRawInput
+    , _jsonDataCfg_createKeyset = never
+    , _jsonDataCfg_addKey = never
+    , _jsonDataCfg_delKey = never
+    , _jsonDataCfg_delKeyset = never
+    , _jsonDataCfg_setPred = never
     }
 
 dataEditor
