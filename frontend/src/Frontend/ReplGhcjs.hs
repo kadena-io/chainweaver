@@ -157,12 +157,12 @@ app = void . mfix $ \ ~(cfg, ideL) -> elClass "div" "app" $ do
           , envCfg
           , contractReceivedCfg
           ]
-        , ideL { _ide_code = code
+        , Ide { _ide_code = code
               , _ide_selectedContract = selContract
               , _ide_wallet = walletL
               , _ide_jsonData = json
               , _ide_errors = errors
-            }
+              }
         )
   where
     loadContract contractName = do
