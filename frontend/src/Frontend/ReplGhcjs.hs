@@ -136,9 +136,7 @@ app = void . mfix $ \ ~(cfg, ideL) -> elClass "div" "app" $ do
     walletL <- makeWallet $ _ideCfg_wallet cfg
     json <- makeJsonData walletL $ _ideCfg_jsonData cfg
     controlCfg <- controlBar
-    testContractName <- holdDyn initialDemoFile never
-    contractReceivedCfg <- loadContract testContractName
-    -- contractReceivedCfg <- loadContract $ _ide_selectedContract ideL
+    contractReceivedCfg <- loadContract $ _ide_selectedContract ideL
     elClass "div" "ui two column padded grid main" $ mdo
       editorCfg <- elClass "div" "column" $ do
         {- elClass "div" "ui secondary menu pointing" $ do -}
@@ -168,19 +166,19 @@ app = void . mfix $ \ ~(cfg, ideL) -> elClass "div" "app" $ do
         )
   where
     loadContract contractName = do
-      code <- loadContractData toCodeFile contractName
-      json <- loadContractData toDataFile contractName
-      onCodeJson <- waitForEvents (,) (updated contractName) json code
+      onNewContractName <- tagOnPostBuild contractName
+      code <- loadContractData toCodeFile onNewContractName
+      json <- loadContractData toDataFile onNewContractName
+      onCodeJson <- waitForEvents (,) onNewContractName code json
       pure $ mempty
         & ideCfg_setCode .~ fmap fst onCodeJson
         & ideCfg_jsonData . jsonDataCfg_setRawInput .~ fmap snd onCodeJson
 
-    loadContractData getFileName contractName =
+    loadContractData getFileName onNewContractName =
       fmap (fmap codeFromResponse)
       . performRequestAsync
       . fmap ((\u -> xhrRequest "GET" u def) . getFileName)
-      . updated
-      $ contractName
+      $ onNewContractName
 
 
 
