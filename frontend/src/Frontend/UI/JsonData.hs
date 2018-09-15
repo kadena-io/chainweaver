@@ -49,9 +49,8 @@ uiJsonData :: MonadWidget t m => JsonData t -> m (JsonDataCfg t)
 uiJsonData d = do
   onNewData <- tagOnPostBuild $ d ^. jsonData_rawInput
   -- let onNewData = updated $ d ^. jsonData_rawInput
-  editorText <- dataEditor "" onNewData
+  setRawInput <- dataEditor "" onNewData
 
-  let setRawInput = updated editorText
   pure $ JsonDataCfg
     { _jsonDataCfg_setRawInput = setRawInput
     , _jsonDataCfg_createKeyset = never
@@ -64,12 +63,11 @@ uiJsonData d = do
 dataEditor
   :: MonadWidget t m
   => Text -> Event t Text
-  -> m (Dynamic t Text)
+  -> m (Event t Text)
 dataEditor iv sv = do
     let ac = def { _aceConfigMode = Just "ace/mode/json"
                  , _aceConfigElemAttrs = "class" =: "ace-data ace-widget"
                  }
-    ace <- resizableAceWidget mempty ac (AceDynConfig $ Just AceTheme_SolarizedDark) iv
-    _ <- withAceInstance ace (setValueACE <$> sv)
-    return $ aceValue ace
+    ace <- resizableAceWidget mempty ac (AceDynConfig $ Just AceTheme_SolarizedDark) iv sv
+    return $ _extendedACE_onUserChange ace
 

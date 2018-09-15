@@ -135,6 +135,8 @@ app :: MonadWidget t m => m ()
 app = void . mfix $ \ ~(cfg, ideL) -> elClass "div" "app" $ do
     walletL <- makeWallet $ _ideCfg_wallet cfg
     json <- makeJsonData walletL $ _ideCfg_jsonData cfg
+    let
+      jsonErrorString = either (Just . showJsonError) (const Nothing) <$> _jsonData_data json
     controlCfg <- controlBar
     contractReceivedCfg <- loadContract $ _ide_selectedContract ideL
     elClass "div" "ui two column padded grid main" $ mdo
@@ -156,6 +158,7 @@ app = void . mfix $ \ ~(cfg, ideL) -> elClass "div" "app" $ do
           , editorCfg
           , envCfg
           , contractReceivedCfg
+          , mempty & ideCfg_setErrors .~ updated jsonErrorString
           ]
         , Ide { _ide_code = code
               , _ide_selectedContract = selContract
@@ -195,8 +198,8 @@ codePanel ideL = mdo
   {- menu (def & menuConfig_secondary .~ pure True) $ do -}
   {-   menuItem def $ text "Code"  -}
     onNewCode <- tagOnPostBuild $ _ide_code ideL
-    code <- codeWidget "" onNewCode
-    pure $ mempty & ideCfg_setCode .~ updated code
+    onUserCode <- codeWidget "" onNewCode
+    pure $ mempty & ideCfg_setCode .~ onUserCode
 
 -- | Tabbed panel to the right
 --
@@ -289,14 +292,13 @@ scrollToBottom e = liftJSM $ do
 codeWidget
   :: MonadWidget t m
   => Text -> Event t Text
-  -> m (Dynamic t Text)
+  -> m (Event t Text)
 codeWidget iv sv = do
     let ac = def { _aceConfigMode = Just "ace/mode/pact"
                  , _aceConfigElemAttrs = "class" =: "ace-code ace-widget"
                  }
-    ace <- resizableAceWidget mempty ac (AceDynConfig $ Just AceTheme_SolarizedDark) iv
-    _ <- withAceInstance ace (setValueACE <$> sv)
-    return $ aceValue ace
+    ace <- resizableAceWidget mempty ac (AceDynConfig $ Just AceTheme_SolarizedDark) iv sv
+    return $ _extendedACE_onUserChange ace
 
 
 data DisplayedSnippet
@@ -517,8 +519,3 @@ instance Reflex t => Semigroup (IdeCfg t) where
 instance Reflex t => Monoid (IdeCfg t) where
   mempty = memptydefault
   mappend = (<>)
-
-  {-
-
-           , Just ("ERROR: Data must be a valid JSON object!" :: Text)
-    -}

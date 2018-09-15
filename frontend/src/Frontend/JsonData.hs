@@ -31,10 +31,13 @@ module Frontend.JsonData
   , HasJsonData (..)
   -- * Creation
   , makeJsonData
+  -- * Utility function
+  , showJsonError
   ) where
 
 
 import           Control.Lens        hiding ((.=))
+import           Control.Monad
 import           Control.Monad.Fix
 import           Data.Aeson          (Object)
 import           Data.Aeson
@@ -265,6 +268,11 @@ makeKeysets walletL cfg =
       pure (n, Keyset keys pPred)
 
 -- Utilities:
+
+-- | Show a descriptive error message.
+showJsonError :: JsonError -> Text
+showJsonError = \case
+  JsonError_NoObject -> "ERROR: Data must be a valid JSON object!"
 
 -- | Translate `Keysets` to a JSON `Object`.
 keysetsToObject :: Keysets -> Object
