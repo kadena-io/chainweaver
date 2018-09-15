@@ -51,6 +51,7 @@ import           Data.Text           (Text)
 import qualified Data.Text.Encoding  as T
 import           GHC.Generics        (Generic)
 import           Reflex
+import           Reflex.Class.Extended
 -- Needed for fanOut, module coming from reflex:
 import           Data.Functor.Misc   (Const2 (..))
 
@@ -248,7 +249,7 @@ makeKeysets walletL cfg =
             )
             (updated $ walletL ^. wallet_keys)
 
-      pPred <- holdDyn Nothing onSetPred
+      pPred <- holdUniqDyn =<< holdDyn Nothing onSetPred
 
       keynames <- foldDyn id Set.empty
         $ leftmost [ Set.insert <$> onNewKey
@@ -336,3 +337,13 @@ instance Reflex t => Semigroup (JsonDataCfg t) where
 instance Reflex t => Monoid (JsonDataCfg t) where
   mempty = JsonDataCfg never never never never never never
   mappend = (<>)
+
+instance Flattenable JsonDataCfg where
+  flattenWith doSwitch ev =  
+    JsonDataCfg
+      <$> doSwitch never (_jsonDataCfg_setRawInput <$> ev)
+      <*> doSwitch never (_jsonDataCfg_createKeyset <$> ev)
+      <*> doSwitch never (_jsonDataCfg_addKey <$> ev)
+      <*> doSwitch never (_jsonDataCfg_delKey <$> ev)
+      <*> doSwitch never (_jsonDataCfg_delKeyset <$> ev)
+      <*> doSwitch never (_jsonDataCfg_setPred <$> ev)
