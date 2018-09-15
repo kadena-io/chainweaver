@@ -45,7 +45,6 @@ import           Reflex.Dom.Core             (keypress, _textInput_element)
 import           Reflex.Dom.SemanticUI       hiding (mainWidget)
 
 import           Frontend.Wallet
-import           Frontend.Widgets            (enterEl)
 
 
 

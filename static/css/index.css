@@ -129,6 +129,22 @@ h4.ui.header {
   color: #586E75;
 }
 
+.json-data {
+  display: flex !important;
+  position: relative !important;
+  flex-direction: column !important;
+  justify-content: flex-start !important;
+}
+
+.json-data > .editor {
+  position: relative;
+  flex-grow: 1;
+}
+
+.json-data > .keyset-editor {
+  flex-grow: 0;
+}
+
 /* Old stuff: */
 
 /* Page layout */
