@@ -3,6 +3,7 @@
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE OverloadedStrings     #-}
 {-# LANGUAGE RankNTypes            #-}
+{-# LANGUAGE RecursiveDo           #-}
 {-# LANGUAGE ScopedTypeVariables   #-}
 
 module Reflex.Dom.ACE.Extended ( module ACE
@@ -18,9 +19,9 @@ import           Data.Monoid
 import           Data.Text                         (Text)
 import           Language.Javascript.JSaddle       (MonadJSM, js0, liftJSM)
 import           Reflex
+import           Reflex.Dom.ACE                    as ACE
 import           Reflex.Dom.Core
 import           Reflex.Dom.Widget.Resize.Extended (resizeDetectorWithAttrsAbsolute)
-import           Reflex.Dom.ACE                    as ACE
 
 
 data ExtendedACE t = ExtendedACE
@@ -36,19 +37,15 @@ data ExtendedACE t = ExtendedACE
 --   modify the CSS position attribute.
 resizableAceWidget
     :: forall t m. MonadWidget t m
-    => Map Text Text 
-    -> AceConfig 
-    -> AceDynConfig 
-    -> Text 
-    -> Event t Text 
+    => Map Text Text
+    -> AceConfig
+    -> AceDynConfig
+    -> Text
+    -> Event t Text
     -> m (ExtendedACE t)
 resizableAceWidget attrs ac adc initContents onNewContent = do
-  -- let fullAttrs = attrs <> "style" =: "top:0px;bottom:0px;left:0px;right:0px;"
   let fullAttrs = attrs <> "style" =: "top:0px;bottom:0px;left:0px;right:0px;"
-  {- (onResize, editor) <- resizeDetectorWithAttrsAbsolute fullAttrs $ aceWidgetStatic ac adc initContents -}
-  editor <- 
-    elAttr "div" fullAttrs $ extendedAceWidget ac adc initContents onNewContent
-  let onResize = never
+  (onResize, editor) <- resizeDetectorWithAttrsAbsolute fullAttrs $ extendedAceWidget ac adc initContents onNewContent
   resizeEditor onResize (_extendedACE_baseACE editor)
   pure editor
 
@@ -59,30 +56,33 @@ extendedAceWidget
   -> Text
   -> Event t Text
   -> m (ExtendedACE t)
-extendedAceWidget ac adc initContents onSetContent = do
+extendedAceWidget ac adc initContents onNewContent = do
+    newContent <- holdDyn Nothing $ Just <$> onNewContent
     ace <- aceWidgetStatic ac adc initContents
-    void $ withAceInstance ace (setValueACE <$> onSetContent)
     let
       aceVal = aceValue ace
-      onNewAceVal = traceEvent "Got new Value from editor" $ updated aceVal
+      onAceUpdate = updated aceVal
 
-    setPlainContent <- hold Nothing $ Just <$> onSetContent
+      -- For ignoring changes made by us (editor is already up2date):
+      onExternalSet = fmapMaybe id . updated $ do
+        nC <- newContent
+        aC <- aceVal
+        if Just aC == nC
+           then pure Nothing
+           else pure nC
+
+    void $ withAceInstance ace (setValueACE <$> onExternalSet)
+    cached <- hold initContents $ leftmost [ onExternalSet
+                                           , onAceUpdate
+                                           ]
+    -- Only send out changes that come from the user.
+    -- This relies on the fact that onAceUpdate is delayed, compared to
+    -- onNewContent:
     let
-      onUserEdit
-        = ffilter id
-        $ attachWith (\c u -> c /= Just u) setPlainContent onNewAceVal
+      onUserChange =
+        fmap snd . ffilter (uncurry (/=)) $ attach cached onAceUpdate
 
-    isUserUpdate <- holdDyn True $ leftmost [ False <$ onSetContent
-                                            , True <$ traceEvent "User edited" onUserEdit
-                                            ]
-    let 
-      onUserUpdate = fmapMaybe id . updated $ do
-        c <- aceVal
-        fromUser <- isUserUpdate
-        if fromUser
-           then pure $ Just c
-           else pure $ Nothing
-    pure $ ExtendedACE ace onUserUpdate
+    pure $ ExtendedACE ace onUserChange
 
 
 

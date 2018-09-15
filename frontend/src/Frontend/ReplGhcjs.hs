@@ -13,6 +13,7 @@
 {-# LANGUAGE ScopedTypeVariables    #-}
 {-# LANGUAGE StandaloneDeriving     #-}
 {-# LANGUAGE TemplateHaskell        #-}
+{-# LANGUAGE TupleSections          #-}
 {-# LANGUAGE TypeApplications       #-}
 {-# LANGUAGE TypeFamilies           #-}
 
@@ -28,6 +29,7 @@ import           Control.Lens
 import           Control.Monad.State.Strict
 import           Data.Aeson                  (Object, encode)
 import qualified Data.ByteString.Lazy        as BSL
+import           Data.Foldable
 import qualified Data.HashMap.Strict         as H
 import qualified Data.List.Zipper            as Z
 import           Data.Map                    (Map)
@@ -76,7 +78,7 @@ data IdeCfg t = IdeCfg
     --
   , _ideCfg_load        :: Event t ()
     -- ^ Load code into the repl.
-  , _ideCfg_setErrors   :: Event t (Maybe ErrorMsg)
+  , _ideCfg_setErrors   :: Event t [ErrorMsg]
     -- ^ Set errors that should be shown to the user.
   , _ideCfg_setCode     :: Event t Text
     -- ^ Update the current contract/PACT code.
@@ -93,7 +95,7 @@ data Ide t = Ide
   -- ^ The currently selected contract name.
   , _ide_wallet           :: Wallet t
   , _ide_jsonData         :: JsonData t
-  , _ide_errors           :: Dynamic t (Maybe ErrorMsg)
+  , _ide_errors           :: Dynamic t [ErrorMsg]
   }
   deriving Generic
 
@@ -136,7 +138,11 @@ app = void . mfix $ \ ~(cfg, ideL) -> elClass "div" "app" $ do
     walletL <- makeWallet $ _ideCfg_wallet cfg
     json <- makeJsonData walletL $ _ideCfg_jsonData cfg
     let
-      jsonErrorString = either (Just . showJsonError) (const Nothing) <$> _jsonData_data json
+      jsonErrorString =
+        either (Just . showJsonError) (const Nothing) <$> _jsonData_data json
+      jsonErrorsOnLoad =
+        fmap maybeToList . tag (current jsonErrorString) $ cfg ^. ideCfg_load
+
     controlCfg <- controlBar
     contractReceivedCfg <- loadContract $ _ide_selectedContract ideL
     elClass "div" "ui two column padded grid main" $ mdo
@@ -150,15 +156,15 @@ app = void . mfix $ \ ~(cfg, ideL) -> elClass "div" "app" $ do
 
       code <- holdDyn "" $ cfg ^. ideCfg_setCode
       selContract <- holdDyn initialDemoFile $ cfg ^. ideCfg_selContract
-      errors <- holdDyn Nothing $ cfg ^. ideCfg_setErrors
+      errors <- holdDyn [] $ cfg ^. ideCfg_setErrors
 
       pure
         ( mconcat
           [ controlCfg
           , editorCfg
+          , mempty & ideCfg_setErrors .~ jsonErrorsOnLoad
           , envCfg
           , contractReceivedCfg
-          , mempty & ideCfg_setErrors .~ updated jsonErrorString
           ]
         , Ide { _ide_code = code
               , _ide_selectedContract = selContract
@@ -212,6 +218,7 @@ envPanel :: forall t m. MonadWidget t m => Ide t -> Event t () -> m (IdeCfg t)
 envPanel ideL onLoad = mdo
   let onLoaded =
         maybe EnvSelection_Repl (const EnvSelection_Errors)
+          . listToMaybe
           <$> updated (_ide_errors ideL)
 
   curSelection <- holdDyn EnvSelection_Env $ leftmost [ onSelect
@@ -252,7 +259,7 @@ envPanel ideL onLoad = mdo
   errorsCfg <- tabPane
       ("class" =: "ui code-font full-size")
       curSelection EnvSelection_Errors $ do
-    void . dyn $ maybe (pure ()) (snippetWidget . OutputSnippet) <$> _ide_errors ideL
+    void . dyn $ traverse_ (snippetWidget . OutputSnippet) <$> _ide_errors ideL
     pure mempty
 
   pure $ mconcat [ envCfg, errorsCfg ]
@@ -330,29 +337,33 @@ replWidget ideL onLoad = mdo
       [ setDown <$> domEvent Mousedown e
       , clickClassifier <$> domEvent Mouseup e
       ]
-    let replClick = () <$
-          ffilter (== Just Clicked) (updated clickType)
+    let
+      replClick = () <$
+        ffilter (== Just Clicked) (updated clickType)
 
-        codeData = do
-          code <- ideL ^. ide_code
-          eJson <- ideL ^. ide_jsonData . jsonData_data
-          case eJson of
-            Left _     -> pure ("", H.empty) -- Just reset REPL
-            Right json -> pure (code, json)
+      codeData = do
+        code <- ideL ^. ide_code
+        eJson <- ideL ^. ide_jsonData . jsonData_data
+        pure $ either (const Nothing) (Just . (code,)) eJson
 
-        keysContract = zipDyn (ide_getSigningKeyPairs ideL) codeData
+      keysContract =
+        fmap sequence $ zipDyn (ide_getSigningKeyPairs ideL) codeData
+
+      onKeysContractLoad = fmapMaybe id . tag (current keysContract) $ onLoad
+
 
     widgetHold
       (replInner replClick ([], ("", H.empty)))
-      (replInner replClick <$>
-        tag (current keysContract) onLoad
+      (replInner replClick <$> onKeysContractLoad
       )
-  let err = snd <$> r
-  let newExpr = fst <$> r
+  let
+    err = snd <$> r
+    onErrs = fmap maybeToList . updated $ err
+    newExpr = fst <$> r
 
   timeToScroll <- delay 0.1 $ switch $ current newExpr
   void $ performEvent (scrollToBottom (_element_raw e) <$ timeToScroll)
-  pure $ mempty & ideCfg_setErrors .~ updated err
+  pure $ mempty & ideCfg_setErrors .~ onErrs
 
 replInner
     :: MonadWidget t m
