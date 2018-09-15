@@ -33,15 +33,19 @@ module Frontend.UI.Wallet
   ) where
 
 ------------------------------------------------------------------------------
-import           Control.Arrow         ((&&&))
+import           Control.Arrow               ((&&&))
 import           Control.Lens
-import qualified Data.Map              as Map
+import           Control.Monad
+import qualified Data.Map                    as Map
 import           Data.Maybe
-import           Data.Text             (Text)
+import           Data.Text                   (Text)
+import           Language.Javascript.JSaddle (js0, liftJSM, pToJSVal)
 import           Reflex
-import           Reflex.Dom.SemanticUI hiding (mainWidget)
+import           Reflex.Dom.Core             (keypress, _textInput_element)
+import           Reflex.Dom.SemanticUI       hiding (mainWidget)
 
 import           Frontend.Wallet
+import           Frontend.Widgets            (enterEl)
 
 
 
@@ -53,17 +57,22 @@ uiWallet w = do
 
     elClass "div" "ui fluid action input" $ mdo
       name <- textInput $ def
-          & textInputConfig_value .~ SetValue "" (Just $ "" <$ clicked)
+          & textInputConfig_value .~ SetValue "" (Just $ "" <$ confirmed)
           & textInputConfig_placeholder .~ pure "Enter key name"
 
-      let nameEmpty = (== "") <$> value name
-      let duplicate = Map.member <$> value name <*> w ^. wallet_keys
+      let
+        onEnter = keypress Enter name
+        nameEmpty = (== "") <$> value name
+        duplicate = Map.member <$> value name <*> w ^. wallet_keys
 
       clicked <- flip button (text "Generate") $ def
         & buttonConfig_emphasis .~ Static (Just Secondary)
         & buttonConfig_disabled .~ Dyn ((||) <$> nameEmpty <*> duplicate)
 
-      let onReq = tag (current $ _textInput_value name) clicked
+      let
+        confirmed = leftmost [ onEnter, clicked ]
+      void $ performEvent (liftJSM (pToJSVal (_textInput_element name) ^. js0 ("focus" :: String)) <$ confirmed)
+      let onReq = tag (current $ _textInput_value name) confirmed
 
       pure $ WalletCfg { _walletCfg_onRequestNewKey = onReq
                        , _walletCfg_onSetSigning = onSetSig
