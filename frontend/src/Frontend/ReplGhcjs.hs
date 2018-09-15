@@ -247,7 +247,7 @@ envPanel ideL onLoad = mdo
 
     elClass "div" "ui hidden divider" blank
 
-    keysCfg <- accordionItem True "keys ui" "Sign" $ do
+    keysCfg <- accordionItem True "keys ui" "Keys" $ do
       conf <- elClass "div" "ui segment" $ uiWallet $ _ide_wallet ideL
       pure $ mempty & ideCfg_wallet .~ conf
 
