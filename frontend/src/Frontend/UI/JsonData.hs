@@ -41,6 +41,8 @@ import           Reflex.Dom.ACE.Extended
 import           Reflex.Dom.Core             (keypress, _textInput_element)
 import Language.Javascript.JSaddle (liftJSM, pToJSVal, js0)
 import Control.Monad
+import qualified Data.Text as T
+import Reflex.Class.Extended
 
 import           Frontend.JsonData
 import           Frontend.Foundation
@@ -54,16 +56,59 @@ uiJsonData d = do
   onSetRawInput <- elClass "div" "editor" $ dataEditor "" onNewData
 
   elClass "div" "keyset-editor ui segment" $ do
+    ksCfg <- networkViewFlatten $ uiKeysets <$> d ^. jsonData_keysets
     onCreateKeyset <- uiCreateKeyset $ d ^. jsonData_keysets
 
-    pure $ JsonDataCfg
-      { _jsonDataCfg_setRawInput = onSetRawInput
-      , _jsonDataCfg_createKeyset = onCreateKeyset
-      , _jsonDataCfg_addKey = never
-      , _jsonDataCfg_delKey = never
-      , _jsonDataCfg_delKeyset = never
-      , _jsonDataCfg_setPred = never
-      }
+    let
+      baseCfg = JsonDataCfg
+        { _jsonDataCfg_setRawInput = onSetRawInput
+        , _jsonDataCfg_createKeyset = onCreateKeyset
+        , _jsonDataCfg_addKey = never
+        , _jsonDataCfg_delKey = never
+        , _jsonDataCfg_delKeyset = never
+        , _jsonDataCfg_setPred = never
+        }
+    pure $ baseCfg <> ksCfg
+
+uiKeysets
+  :: MonadWidget t m => DynKeysets t -> m (JsonDataCfg t)
+uiKeysets ksM =
+  case Map.toList ksM of
+    []   -> do
+      text "No keysets yet ..."
+      pure mempty
+    kss ->
+      elClass "div" "ui relaxed middle aligned divided list" $ do
+        rs <- traverse uiKeyset kss
+        pure $ mconcat rs
+
+-- | Display a single keyset on the screen.
+uiKeyset
+  :: MonadWidget t m => (KeysetName, DynKeyset t) -> m (JsonDataCfg t)
+uiKeyset (n, ks) = elClass "div" "item" $ do
+    (predIn, clicked) <- elClass "div" "right floated content" $ do
+      onNewPred <- tagOnPostBuild $ ks ^. keyset_pred
+      predIn <- textInput $ def
+        & textInputConfig_value .~ SetValue "" (Just $ fromMaybe "" <$> onNewPred)
+        & textInputConfig_placeholder .~ pure "keys-all"
+
+      let
+        buttonIcon = elClass "i" "large trash middle aligned icon" blank
+      clicked <- flip button buttonIcon $ def
+        & buttonConfig_emphasis .~ Static (Just Tertiary)
+      pure (predIn, clicked)
+
+    elClass "i" "large folder middle aligned icon" blank
+    elClass "div" "content" $ do
+      elClass "h4" "ui header" $ text n
+      elClass "div" "description" $ text "Keyset"
+    let
+      notEmpty s = if T.null s then Nothing else Just s
+      setPred = (n, ) . notEmpty <$> predIn ^. textInput_input
+    pure $ mempty
+      & jsonDataCfg_setPred .~ setPred
+      & jsonDataCfg_delKeyset .~ fmap (const n) clicked
+
 
 -- | Input widget with confirm button for creating a new keyset.
 --
