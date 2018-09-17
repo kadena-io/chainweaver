@@ -25,6 +25,7 @@ module Frontend.Foundation
   , ReflexValue
   , module Data.Maybe
   , module Reflex.Extended
+  , module Reflex.Network.Extended
   , module Data.Semigroup
   ) where
 
@@ -34,6 +35,7 @@ import Language.Haskell.TH.Syntax (Name)
 import Language.Haskell.TH (DecsQ)
 import Reflex.Extended
 import Data.Semigroup
+import Reflex.Network.Extended
 
 import Data.Maybe
 

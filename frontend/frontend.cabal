@@ -51,6 +51,7 @@ library
                  , Reflex.Dom.Widget.Resize.Extended
                  , Reflex.Extended
                  , Reflex.Class.Extended
+                 , Reflex.Network.Extended
 
   ghc-options: -Wall
   default-extensions: ScopedTypeVariables
