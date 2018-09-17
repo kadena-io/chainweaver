@@ -80,5 +80,8 @@ project ./. ({ pkgs, ... }: {
 
           semantic-reflex = pkgs.haskell.lib.dontCheck (self.callCabal2nix "semantic-reflex"  (semantic-reflex-src + /semantic-reflex) {});
 
+          # ghc-8.0.2 haddock has an annoying bug, which causes build failures:
+          # See: https://github.com/haskell/haddock/issues/565
+          frontend = pkgs.haskell.lib.dontHaddock super.frontend;
         };
 })

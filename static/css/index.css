@@ -103,6 +103,14 @@ h4.ui.header {
   width: 100%;
 }
 
+.full-size-abs {
+  position: absolute;
+  top: 0px;
+  bottom: 0px;
+  left: 0px;
+  right: 0px;
+}
+
 .flex-accordion > .content {
   flex-grow: 1;
   position: relative;
@@ -127,6 +135,21 @@ h4.ui.header {
   font: 12pt/normal 'Monaco', 'Menlo', 'Consolas', 'source-code-pro', monospace;
   background-color: #002B36;
   color: #586E75;
+}
+
+.json-data {
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
+}
+
+.json-data > .editor {
+  position: relative;
+  flex-grow: 1;
+}
+
+.json-data > .keyset-editor {
+  flex-grow: 0;
 }
 
 /* Old stuff: */
