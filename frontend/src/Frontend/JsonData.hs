@@ -36,24 +36,25 @@ module Frontend.JsonData
   ) where
 
 
-import           Control.Lens        hiding ((.=))
+import           Control.Lens          hiding ((.=))
 import           Control.Monad
 import           Control.Monad.Fix
-import           Data.Aeson          (Object)
+import           Data.Aeson            (Object)
 import           Data.Aeson
-import           Data.Aeson.Types    (typeMismatch)
-import qualified Data.HashMap.Strict as H
-import           Data.Map            (Map)
-import qualified Data.Map            as Map
+import           Data.Aeson.Types      (typeMismatch)
+import qualified Data.HashMap.Strict   as H
+import           Data.Map              (Map)
+import qualified Data.Map              as Map
 import           Data.Semigroup
-import qualified Data.Set            as Set
-import           Data.Text           (Text)
-import qualified Data.Text.Encoding  as T
-import           GHC.Generics        (Generic)
+import qualified Data.Set              as Set
+import           Data.Text             (Text)
+import qualified Data.Text             as T
+import qualified Data.Text.Encoding    as T
+import           GHC.Generics          (Generic)
 import           Reflex
 import           Reflex.Class.Extended
 -- Needed for fanOut, module coming from reflex:
-import           Data.Functor.Misc   (Const2 (..))
+import           Data.Functor.Misc     (Const2 (..))
 
 import           Frontend.Foundation
 import           Frontend.Wallet
@@ -179,7 +180,7 @@ makeJsonData walletL cfg = do
       }
   where
     parseObjectOrEmpty :: Text -> Either JsonError Object
-    parseObjectOrEmpty = \case
+    parseObjectOrEmpty t = case T.strip t of
       "" -> Right mempty
       t  -> parseObject t
 
@@ -295,9 +296,12 @@ joinKeysets = joinDynThroughMap . fmap (fmap joinKeyset)
 --   https://pact-language.readthedocs.io/en/latest/pact-reference.html#keysets
 instance ToJSON Keyset where
   toJSON (Keyset keys mPred) =
-    case mPred of
-      Nothing -> toJSON keys
-      Just p  -> object [ ("keys", toJSON keys), ("pred", toJSON p)]
+    let
+      kVals = Map.elems keys
+    in
+      case mPred of
+        Nothing -> toJSON kVals
+        Just p  -> object [ ("keys", toJSON kVals), ("pred", toJSON p)]
 
 instance FromJSON Keyset where
   parseJSON = \case
@@ -339,7 +343,7 @@ instance Reflex t => Monoid (JsonDataCfg t) where
   mappend = (<>)
 
 instance Flattenable JsonDataCfg where
-  flattenWith doSwitch ev =  
+  flattenWith doSwitch ev =
     JsonDataCfg
       <$> doSwitch never (_jsonDataCfg_setRawInput <$> ev)
       <*> doSwitch never (_jsonDataCfg_createKeyset <$> ev)

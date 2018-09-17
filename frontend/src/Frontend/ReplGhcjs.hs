@@ -241,7 +241,7 @@ envPanel ideL onLoad = mdo
       ("class" =: "ui fluid accordion flex-accordion flex-content")
       curSelection EnvSelection_Env $ mdo
 
-    jsonCfg <- accordionItem True "data ui json-data" "Data" $ do
+    jsonCfg <- accordionItem True "json-data ui" "Data" $ do
       conf <- uiJsonData (ideL ^. ide_wallet) (ideL ^. ide_jsonData)
       pure $ mempty &  ideCfg_jsonData .~ conf
 
