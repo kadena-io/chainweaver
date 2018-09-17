@@ -16,15 +16,19 @@ library
   hs-source-dirs: src
 
   build-depends: base
-               , ListZipper
                , aeson
+               , base16-bytestring
                , bytestring
                , common
                , containers
+               , data-default
                , generic-deriving
+               , ghcjs-dom
                , jsaddle
                , lens
+               , ListZipper
                , mtl
+               , newtype-generics
                , pact
                , reflex
                , reflex-dom
@@ -32,11 +36,8 @@ library
                , semantic-reflex
                , static
                , string-qq
-               , text
-               , ghcjs-dom
                , template-haskell
-               , base16-bytestring
-               , newtype-generics
+               , text
                , unordered-containers
 
   exposed-modules: Frontend
