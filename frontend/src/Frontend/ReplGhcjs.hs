@@ -242,7 +242,7 @@ envPanel ideL onLoad = mdo
       curSelection EnvSelection_Env $ mdo
 
     jsonCfg <- accordionItem True "data ui json-data" "Data" $ do
-      conf <- uiJsonData $ ideL ^. ide_jsonData
+      conf <- uiJsonData (ideL ^. ide_wallet) (ideL ^. ide_jsonData)
       pure $ mempty &  ideCfg_jsonData .~ conf
 
     elClass "div" "ui hidden divider" blank
