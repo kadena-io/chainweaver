@@ -241,9 +241,10 @@ envPanel ideL onLoad = mdo
       ("class" =: "ui fluid accordion flex-accordion flex-content")
       curSelection EnvSelection_Env $ mdo
 
-    jsonCfg <- accordionItem True "json-data ui" "Data" $ do
-      conf <- uiJsonData (ideL ^. ide_wallet) (ideL ^. ide_jsonData)
-      pure $ mempty &  ideCfg_jsonData .~ conf
+    jsonCfg <- accordionItem True "ui" "Data" $ do
+      elClass "div" "json-data full-size-abs" $ do
+        conf <- uiJsonData (ideL ^. ide_wallet) (ideL ^. ide_jsonData)
+        pure $ mempty &  ideCfg_jsonData .~ conf
 
     elClass "div" "ui hidden divider" blank
 

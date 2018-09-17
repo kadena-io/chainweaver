@@ -75,14 +75,14 @@ uiJsonData w d = do
 uiKeysets
   :: MonadWidget t m => Wallet t -> DynKeysets t -> m (JsonDataCfg t)
 uiKeysets w ksM =
-  case Map.toList ksM of
-    []   -> do
-      text "No keysets yet ..."
-      pure mempty
-    kss ->
-      elClass "div" "ui relaxed middle aligned divided list" $ do
-        rs <- traverse (uiKeyset w) kss
-        pure $ mconcat rs
+  elClass "div" "ui relaxed middle aligned divided list" $ do
+    case Map.toList ksM of
+      []   -> do
+        text "No keysets yet ..."
+        pure mempty
+      kss -> do
+          rs <- traverse (uiKeyset w) kss
+          pure $ mconcat rs
 
 -- | Display a single keyset on the screen.
 uiKeyset
@@ -130,7 +130,7 @@ uiCreateKeyset ks = do
     elClass "div" "ui fluid action input" $ mdo
       name <- textInput $ def
           & textInputConfig_value .~ SetValue "" (Just $ "" <$ confirmed)
-          & textInputConfig_placeholder .~ pure "Enter key name"
+          & textInputConfig_placeholder .~ pure "Enter keyset name"
 
       let
         onEnter = keypress Enter name
@@ -172,14 +172,14 @@ uiAddKeysetKey w ks =
 uiKeysetKeys
   :: MonadWidget t m => KeysetKeys -> m (Event t KeyName)
 uiKeysetKeys ks =
-  case Map.toList ks of
-    []   -> do
-      text "No keys yet in this keyset ..."
-      pure mempty
-    kss ->
-      elClass "div" "ui relaxed middle aligned divided list" $ do
-        rs <- traverse uiKeysetKey kss
-        pure $ mconcat rs
+  elClass "div" "ui relaxed middle aligned divided list" $ do
+    case Map.toList ks of
+      []   -> do
+        text "No keys yet in this keyset ..."
+        pure mempty
+      kss -> do
+          rs <- traverse uiKeysetKey kss
+          pure $ mconcat rs
 
 -- | Show a single Keyset key item.
 uiKeysetKey
