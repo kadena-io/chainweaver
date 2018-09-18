@@ -193,10 +193,10 @@ uiKeyset w (n, ks) = mdo
       True -> " active"
 
     renderKeys nks =
-      case splitAt 4 (Map.keys nks) of
+      case splitAt 3 (Map.keys nks) of
         ([], [])  -> text "Empty keyset"
-        (ks4, []) -> renderKeyList ks4
-        (ks4, _)  -> renderKeyList (ks4 <> [".."])
+        (ksN, []) -> renderKeyList ksN
+        (ksN, _)  -> renderKeyList (ksN <> [".."])
 
     renderKeyList = traverse_ (elClass "div" "ui label" . text)
 
