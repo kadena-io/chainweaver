@@ -30,7 +30,6 @@ module Frontend.UI.JsonData
   ) where
 
 ------------------------------------------------------------------------------
-import           Control.Arrow               ((&&&))
 import           Control.Lens
 import           Control.Monad
 import qualified Data.Map                    as Map
@@ -45,7 +44,6 @@ import           Reflex.Dom.SemanticUI       hiding (mainWidget)
 
 import           Frontend.Foundation
 import           Frontend.JsonData
-import           Frontend.UI.Wallet
 import           Frontend.Wallet
 import           Frontend.Widgets
 
@@ -115,10 +113,10 @@ uiKeysets w ksM =
         elClass "div" "ui hidden divider" blank
         pure mempty
       kss -> do
-        rs <- traverse (uiKeysetDivider w) kss
+        rs <- traverse uiKeysetDivider kss
         pure $ mconcat rs
   where
-    uiKeysetDivider w x = do
+    uiKeysetDivider x = do
       c <- uiKeyset w x
       elClass "div" "ui hidden divider" blank
       pure c
@@ -140,7 +138,7 @@ uiKeyset w (n, ks) = mdo
 
       elClass "div" "keyset-title-right" $ do
         onNewPred <- tagOnPostBuild $ ks ^. keyset_pred
-        predIn <- elClass "div" "ui labeled input" $ do
+        predInI <- elClass "div" "ui labeled input" $ do
           (le, _) <- elClass' "div" "ui label" $ text "Pred:"
           ti <- textInput $ def
               & textInputConfig_value
@@ -155,10 +153,10 @@ uiKeyset w (n, ks) = mdo
 
         let
           buttonIcon = elClass "i" "large trash right aligned icon" blank
-        clicked <- flip button buttonIcon $ def
+        clickedI <- flip button buttonIcon $ def
           & buttonConfig_emphasis .~ Static (Just Tertiary)
           & classes .~ Static "input-aligned-btn"
-        pure (domEvent Click e, predIn, clicked)
+        pure (domEvent Click e, predInI, clickedI)
 
 
     elDynClass "div" ("content " <> fmap activeClass isActive) $ do
@@ -181,13 +179,11 @@ uiKeyset w (n, ks) = mdo
       False -> ""
       True -> " active"
 
-    showKeys = T.intercalate ", " . Map.keys
-
     renderKeys nks =
       case splitAt 4 (Map.keys nks) of
         ([], []) -> text "Empty keyset"
-        (ks, []) -> renderKeyList ks
-        (ks, _)  -> renderKeyList (ks <> [".."])
+        (ks4, []) -> renderKeyList ks4
+        (ks4, _)  -> renderKeyList (ks4 <> [".."])
 
     renderKeyList = traverse_ (elClass "div" "ui label" . text)
 
@@ -237,7 +233,7 @@ uiKeysetKeys ks allKeys =
       []   -> elClass "div" "sixteen wide column" $ do
         text "No keys available ..."
         pure never
-      kss -> do
+      _ -> do
           rs <- traverse (uiKeysetKey ks) allKeys
           pure $ leftmost rs
 
