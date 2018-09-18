@@ -39,6 +39,7 @@ library
                , template-haskell
                , text
                , unordered-containers
+               , aeson-pretty
 
   exposed-modules: Frontend
                  , Frontend.Foundation

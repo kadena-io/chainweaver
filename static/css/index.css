@@ -402,4 +402,8 @@ input.ui, .selection.dropdown.ui, button.ui {
   position: absolute;
 }
 
+.json-data-result-tab {
+  overflow: auto;
+}
+
 /**************************************************/

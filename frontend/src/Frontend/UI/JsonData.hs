@@ -32,10 +32,13 @@ module Frontend.UI.JsonData
 ------------------------------------------------------------------------------
 import           Control.Lens
 import           Control.Monad
+import           Data.Aeson.Encode.Pretty    (encodePretty)
+import qualified Data.ByteString.Lazy        as BSL
 import qualified Data.Map                    as Map
 import           Data.Maybe
 import           Data.Text                   (Text)
 import qualified Data.Text                   as T
+import qualified Data.Text.Encoding          as T
 import           Language.Javascript.JSaddle (js0, liftJSM, pToJSVal)
 import           Reflex.Class.Extended
 import           Reflex.Dom.ACE.Extended
@@ -85,6 +88,15 @@ uiJsonData w d = mdo
       onNewData <- tagOnPostBuild $ d ^. jsonData_rawInput
       onSetRawInput <- elClass "div" "editor" $ dataEditor "" onNewData
       pure $ mempty & jsonDataCfg_setRawInput .~ onSetRawInput
+
+    tabPane
+        ("class" =: "ui code-font full-size json-data-result-tab")
+        curSelection JsonDataView_Result $ do
+      let
+        showData =
+          either showJsonError (T.decodeUtf8 . BSL.toStrict . encodePretty)
+      el "pre" $ dynText $ showData <$> d ^. jsonData_data
+
 
     pure $ mconcat [ keysetVCfg, rawVCfg ]
 
@@ -181,7 +193,7 @@ uiKeyset w (n, ks) = mdo
 
     renderKeys nks =
       case splitAt 4 (Map.keys nks) of
-        ([], []) -> text "Empty keyset"
+        ([], [])  -> text "Empty keyset"
         (ks4, []) -> renderKeyList ks4
         (ks4, _)  -> renderKeyList (ks4 <> [".."])
 
