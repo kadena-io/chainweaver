@@ -379,7 +379,7 @@ replInner replClick (signingKeys, (code, json)) = mdo
           $ signingKeys
         codeP = mconcat
           [ "(env-data "
-          , T.decodeUtf8 . BSL.toStrict $ encode json
+          , toJsonString . T.decodeUtf8 . BSL.toStrict $ encode json
           , ")\n"
           , "(env-keys ["
           , pactKeys
@@ -399,6 +399,10 @@ replInner replClick (signingKeys, (code, json)) = mdo
   where
       surroundWith :: Semigroup s => s -> s -> s
       surroundWith o i = o <> i <> o
+
+      escapeJSON = T.replace "\"" "\\\""
+
+      toJsonString = surroundWith "\"" . escapeJSON
 
 
 replInput :: MonadWidget t m => Event t () -> m (Event t Text)
