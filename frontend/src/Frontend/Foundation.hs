@@ -27,6 +27,7 @@ module Frontend.Foundation
   , module Reflex.Extended
   , module Reflex.Network.Extended
   , module Data.Semigroup
+  , module Data.Foldable
   ) where
 
 import Control.Lens.TH
@@ -36,6 +37,7 @@ import Language.Haskell.TH (DecsQ)
 import Reflex.Extended
 import Data.Semigroup
 import Reflex.Network.Extended
+import Data.Foldable
 
 import Data.Maybe
 
