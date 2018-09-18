@@ -238,11 +238,11 @@ envPanel ideL onLoad = mdo
       $ replWidget ideL onLoad
 
   envCfg <- tabPane
-      ("class" =: "ui fluid accordion flex-accordion flex-content")
+      ("class" =: "ui fluid accordion env-accordion")
       curSelection EnvSelection_Env $ mdo
 
-    jsonCfg <- accordionItem True "ui" "Data" $ do
-      elClass "div" "json-data full-size-abs" $ do
+    jsonCfg <- accordionItem True "ui json-data-accordion-item" "Data" $ do
+      elClass "div" "json-data full-size" $ do
         conf <- uiJsonData (ideL ^. ide_wallet) (ideL ^. ide_jsonData)
         pure $ mempty &  ideCfg_jsonData .~ conf
 

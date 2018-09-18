@@ -77,7 +77,8 @@ uiJsonData w d = mdo
     keysetVCfg <- tabPane
         ("class" =: "keyset-editor ui segment")
         curSelection JsonDataView_Keysets $ do
-      ksCfg <- networkViewFlatten $ uiKeysets w <$> d ^. jsonData_keysets
+      ksCfg <- elClass "div" "keyset-list" $
+        networkViewFlatten $ uiKeysets w <$> d ^. jsonData_keysets
       onCreateKeyset <- uiCreateKeyset $ d ^. jsonData_keysets
 
       pure $ ksCfg & jsonDataCfg_createKeyset .~ onCreateKeyset
