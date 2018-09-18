@@ -137,20 +137,6 @@ h4.ui.header {
   color: #586E75;
 }
 
-.json-data {
-  display: flex;
-  flex-direction: column;
-  justify-content: flex-start;
-}
-
-.json-data > .editor {
-  position: relative;
-  flex-grow: 1;
-}
-
-.json-data > .keyset-editor {
-  flex-grow: 0;
-}
 
 /* Old stuff: */
 
@@ -396,5 +382,24 @@ input.ui, .selection.dropdown.ui, button.ui {
   overflow: auto;
 }
 
+.json-data {
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
+}
+
+.json-data > .keyset-editor {
+  flex-grow: 0;
+  overflow: auto;
+}
+
+.json-data > .json-data-tabs {
+  flex-grow: 0;
+}
+
+.json-data-editor-tab {
+  flex-grow: 1;
+  position: absolute;
+}
 
 /**************************************************/

@@ -50,27 +50,59 @@ import           Frontend.Wallet
 import           Frontend.Widgets
 
 
+-- | What to show to the user.
+--
+data JsonDataView 
+  = JsonDataView_Keysets -- ^ Keyset editor
+  | JsonDataView_Raw -- ^ Raw JSON input widget
+  | JsonDataView_Result -- ^ Combined result, that will be sent over the wire.
+  deriving (Eq)
+  
+
 
 -- | UI for managing JSON data.
-uiJsonData :: MonadWidget t m => Wallet t -> JsonData t -> m (JsonDataCfg t)
-uiJsonData w d = do
-  onNewData <- tagOnPostBuild $ d ^. jsonData_rawInput
-  onSetRawInput <- elClass "div" "editor" $ dataEditor "" onNewData
+uiJsonData 
+  :: forall t m. MonadWidget t m 
+  => Wallet t 
+  -> JsonData t 
+  -> m (JsonDataCfg t)
+uiJsonData w d = mdo
+    curSelection <- holdDyn JsonDataView_Keysets onSelect
+    onSelect <- menu
+      ( def & classes .~ pure "dark top attached tabular menu"
+      )
+      $ tabs curSelection
+      
+    keysetVCfg <- tabPane 
+        ("class" =: "keyset-editor ui segment") 
+        curSelection JsonDataView_Keysets $ do
+      ksCfg <- networkViewFlatten $ uiKeysets w <$> d ^. jsonData_keysets
+      onCreateKeyset <- uiCreateKeyset $ d ^. jsonData_keysets
 
-  elClass "div" "keyset-editor ui segment" $ do
-    ksCfg <- networkViewFlatten $ uiKeysets w <$> d ^. jsonData_keysets
-    onCreateKeyset <- uiCreateKeyset $ d ^. jsonData_keysets
+      pure $ ksCfg & jsonDataCfg_createKeyset .~ onCreateKeyset
 
-    let
-      baseCfg = JsonDataCfg
-        { _jsonDataCfg_setRawInput = onSetRawInput
-        , _jsonDataCfg_createKeyset = onCreateKeyset
-        , _jsonDataCfg_addKey = never
-        , _jsonDataCfg_delKey = never
-        , _jsonDataCfg_delKeyset = never
-        , _jsonDataCfg_setPred = never
-        }
-    pure $ baseCfg <> ksCfg
+    rawVCfg <- tabPane 
+        ("class" =: "light ui segment json-data-editor-tab") 
+        curSelection JsonDataView_Raw $ do
+      onNewData <- tagOnPostBuild $ d ^. jsonData_rawInput
+      onSetRawInput <- elClass "div" "editor" $ dataEditor "" onNewData
+      pure $ mempty & jsonDataCfg_setRawInput .~ onSetRawInput
+
+    pure $ mconcat [ keysetVCfg, rawVCfg ]
+
+  where
+    tabs :: Dynamic t JsonDataView -> m (Event t JsonDataView)
+    tabs curSelection = do
+      let
+        selections = [ JsonDataView_Keysets, JsonDataView_Raw, JsonDataView_Result ]
+      leftmost <$> traverse (tab curSelection) selections
+
+    tab :: Dynamic t JsonDataView -> JsonDataView -> m (Event t JsonDataView)
+    tab curSelection self = do
+      onClick <- makeClickable $ menuItem' (def & classes .~ dynClasses [boolClass "active" . Dyn $ fmap (== self) curSelection ]) $
+        text $ viewToText self
+      pure $ self <$ onClick
+
 
 uiKeysets
   :: MonadWidget t m => Wallet t -> DynKeysets t -> m (JsonDataCfg t)
@@ -236,4 +268,10 @@ dataEditor iv sv = do
                  }
     ace <- resizableAceWidget mempty ac (AceDynConfig $ Just AceTheme_SolarizedDark) iv sv
     return $ _extendedACE_onUserChange ace
+
+viewToText :: JsonDataView -> Text
+viewToText = \case
+  JsonDataView_Keysets -> "Keysets"
+  JsonDataView_Raw -> "Raw Input"
+  JsonDataView_Result -> "Combined Result"
 
