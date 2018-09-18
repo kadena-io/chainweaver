@@ -357,3 +357,40 @@ input.ui, .selection.dropdown.ui, button.ui {
   /* color: #4e5d6c; */
   color: grey;
 }
+
+/* Ugly CSS hack */
+.input-aligned-btn {
+  position: relative;
+  bottom: 1.5px;
+}
+
+/********************* JsonData ********************/
+
+.keyset-title {
+  display: flex;
+  flex-direction: row;
+  justify-content: space-between;
+  /* height: 100%; */
+  /* width: 100%; */
+}
+
+.keyset-title .heading > * {
+  display: block;
+}
+
+.keyset-title > .ui.header {
+  display: flex;
+  flex-direction: row;
+  justify-content: flex-start;
+}
+
+.keyset-title-right {
+  display: flex;
+  flex-direction: row;
+  justify-content: flex-end;
+  flex-wrap: nowrap;
+  align-items: baseline;
+}
+
+
+/**************************************************/

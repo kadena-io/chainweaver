@@ -24,30 +24,30 @@
 --   Copyright   :  (C) 2018 Kadena
 --   License     :  BSD-style (see the file LICENSE)
 --
-
 module Frontend.UI.JsonData
   ( -- * Key management widget
     uiJsonData
   ) where
 
 ------------------------------------------------------------------------------
-import           Control.Arrow         ((&&&))
+import           Control.Arrow               ((&&&))
 import           Control.Lens
-import qualified Data.Map              as Map
+import           Control.Monad
+import qualified Data.Map                    as Map
 import           Data.Maybe
-import           Data.Text             (Text)
-import           Reflex.Dom.SemanticUI hiding (mainWidget)
+import           Data.Text                   (Text)
+import qualified Data.Text                   as T
+import           Language.Javascript.JSaddle (js0, liftJSM, pToJSVal)
+import           Reflex.Class.Extended
 import           Reflex.Dom.ACE.Extended
 import           Reflex.Dom.Core             (keypress, _textInput_element)
-import Language.Javascript.JSaddle (liftJSM, pToJSVal, js0)
-import Control.Monad
-import qualified Data.Text as T
-import Reflex.Class.Extended
+import           Reflex.Dom.SemanticUI       hiding (mainWidget)
 
-import           Frontend.JsonData
 import           Frontend.Foundation
-import           Frontend.Wallet
+import           Frontend.JsonData
 import           Frontend.UI.Wallet
+import           Frontend.Wallet
+import           Frontend.Widgets
 
 
 
@@ -75,38 +75,63 @@ uiJsonData w d = do
 uiKeysets
   :: MonadWidget t m => Wallet t -> DynKeysets t -> m (JsonDataCfg t)
 uiKeysets w ksM =
-  elClass "div" "ui relaxed middle aligned divided list" $ do
+  {- elClass "div" "ui relaxed middle aligned divided list" $ do -}
+  elClass "div" "ui fluid accordion flex-accordion flex-content" $ do
     case Map.toList ksM of
       []   -> do
         text "No keysets yet ..."
+        elClass "div" "ui hidden divider" blank
         pure mempty
       kss -> do
-          rs <- traverse (uiKeyset w) kss
+          rs <- traverse (uiKeysetDivider w) kss
           pure $ mconcat rs
+  where
+    uiKeysetDivider w x = do
+      c <- uiKeyset w x
+      elClass "div" "ui hidden divider" blank
+      pure c
 
 -- | Display a single keyset on the screen.
 uiKeyset
   :: MonadWidget t m => Wallet t -> (KeysetName, DynKeyset t) -> m (JsonDataCfg t)
-uiKeyset w (n, ks) = elClass "div" "item" $ do
-    (predIn, clicked) <- elClass "div" "right floated content" $ do
-      onNewPred <- tagOnPostBuild $ ks ^. keyset_pred
-      predIn <- textInput $ def
-        & textInputConfig_value .~ SetValue "" (Just $ fromMaybe "" <$> onNewPred)
-        & textInputConfig_placeholder .~ pure "keys-all"
+uiKeyset w (n, ks) = mdo
+    isActive <- foldDyn (const not) False onToggle
+    let
+      titleClass = "title keyset-title" <> fmap activeClass isActive
+    (onToggle, predIn, clicked) <- elDynClass "div" titleClass $ do
+      (e, _) <- elClass' "h2" "ui header heading" $ do
+        el "div" $ elClass "i" "dropdown icon" blank
+        elClass "div" "content" $ do
+          text n
+          elClass "div" "sub header" $
+            void . networkView $ renderKeys <$> _keyset_keys ks
 
-      let
-        buttonIcon = elClass "i" "large trash middle aligned icon" blank
-      clicked <- flip button buttonIcon $ def
-        & buttonConfig_emphasis .~ Static (Just Tertiary)
-      pure (predIn, clicked)
+      elClass "div" "keyset-title-right" $ do
+        onNewPred <- tagOnPostBuild $ ks ^. keyset_pred
+        predIn <- elClass "div" "ui labeled input" $ do
+          (le, _) <- elClass' "div" "ui label" $ text "Pred:"
+          ti <- textInput $ def
+              & textInputConfig_value
+              .~ SetValue "" (Just $ fromMaybe "" <$> onNewPred)
+              & textInputConfig_placeholder
+              .~ pure "keys-all"
+          let
+            setFocus =
+              liftJSM $ pToJSVal (_textInput_element ti) ^. js0 ("focus" :: Text)
+          void $ performEvent (setFocus <$ domEvent Click le)
+          pure ti
 
-    elClass "i" "large folder middle aligned icon" blank
-    elClass "div" "content" $ do
-      elClass "h4" "ui header" $ text n
-      elClass "div" "description" $ text "Keyset"
+        let
+          buttonIcon = elClass "i" "large trash right aligned icon" blank
+        clicked <- flip button buttonIcon $ def
+          & buttonConfig_emphasis .~ Static (Just Tertiary)
+          & classes .~ Static "input-aligned-btn"
+        pure (domEvent Click e, predIn, clicked)
 
+
+    elDynClass "div" ("content " <> fmap activeClass isActive) $ do
       onDelKey <-
-        switchHold never <=< networkView 
+        switchHold never <=< networkView
         $ uiKeysetKeys <$> ks ^. keyset_keys
 
       onAddKey <- uiAddKeysetKey w ks
@@ -119,6 +144,22 @@ uiKeyset w (n, ks) = elClass "div" "item" $ do
         & jsonDataCfg_delKeyset .~ fmap (const n) clicked
         & jsonDataCfg_addKey .~ fmap (n, ) onAddKey
         & jsonDataCfg_delKey .~ fmap (n, ) onDelKey
+  where
+    activeClass = \case
+      False -> ""
+      True -> " active"
+
+    showKeys = T.intercalate ", " . Map.keys
+
+    renderKeys nks =
+      case splitAt 4 (Map.keys nks) of
+        ([], []) -> text "Empty keyset"
+        (ks, []) -> renderKeyList ks
+        (ks, _)  -> renderKeyList (ks <> [".."])
+
+    renderKeyList = traverse_ (elClass "div" "ui label" . text)
+
+
 
 
 -- | Input widget with confirm button for creating a new keyset.
