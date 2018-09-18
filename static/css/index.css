@@ -392,5 +392,9 @@ input.ui, .selection.dropdown.ui, button.ui {
   align-items: baseline;
 }
 
+.keyset-keys {
+  overflow: auto;
+}
+
 
 /**************************************************/

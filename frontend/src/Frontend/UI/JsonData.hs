@@ -83,8 +83,8 @@ uiKeysets w ksM =
         elClass "div" "ui hidden divider" blank
         pure mempty
       kss -> do
-          rs <- traverse (uiKeysetDivider w) kss
-          pure $ mconcat rs
+        rs <- traverse (uiKeysetDivider w) kss
+        pure $ mconcat rs
   where
     uiKeysetDivider w x = do
       c <- uiKeyset w x
@@ -130,13 +130,13 @@ uiKeyset w (n, ks) = mdo
 
 
     elDynClass "div" ("content " <> fmap activeClass isActive) $ do
-      onDelKey <-
+      onKeyClick <-
         switchHold never <=< networkView
-        $ uiKeysetKeys <$> ks ^. keyset_keys
-
-      onAddKey <- uiAddKeysetKey w ks
+        $ uiKeysetKeys (_keyset_keys ks) . Map.keys <$> w ^. wallet_keys
 
       let
+        onAddKey = fmap fst . ffilter snd $ onKeyClick
+        onDelKey = fmap fst . ffilter (not . snd) $ onKeyClick
         notEmpty s = if T.null s then Nothing else Just s
         setPred = (n, ) . notEmpty <$> predIn ^. textInput_input
       pure $ mempty
@@ -189,54 +189,42 @@ uiCreateKeyset ks = do
 
       void $ performEvent (setFocus <$ confirmed)
       pure $ tag (current $ _textInput_value name) confirmed
+
+
+-- | Widget showing all avaialble keys for selecting keys
 --
--- | Input widget with confirm button for creating a new keyset key.
---
-uiAddKeysetKey
-  :: MonadWidget t m
-  => Wallet t
-  -> DynKeyset t
-  -> m (Event t KeyName)
-uiAddKeysetKey w ks =
-    elClass "div" "ui fluid action input" $ do
-      selKey <- uiSelectKey w (const True)
-
-      let
-        nameEmpty = isNothing <$> selKey
-
-      confirmed <- flip button (text "Add") $ def
-        & buttonConfig_emphasis .~ Static (Just Secondary)
-        & buttonConfig_disabled .~ Dyn nameEmpty
-
-      pure $ fmapMaybe id $ tag (current $ selKey) confirmed
-
+--   for the keyset.
 uiKeysetKeys
-  :: MonadWidget t m => KeysetKeys -> m (Event t KeyName)
-uiKeysetKeys ks =
-  elClass "div" "ui relaxed middle aligned divided list" $ do
-    case Map.toList ks of
-      []   -> do
-        text "No keys yet in this keyset ..."
-        pure mempty
+  :: MonadWidget t m 
+  => Dynamic t KeysetKeys 
+  -> [KeyName]
+  -> m (Event t (KeyName, Bool))
+uiKeysetKeys ks allKeys =
+  elClass "div" "ui grid keyset-keys" $ do
+    case allKeys of
+      []   -> elClass "div" "sixteen wide column" $ do
+        text "No keys available ..."
+        pure never
       kss -> do
-          rs <- traverse uiKeysetKey kss
-          pure $ mconcat rs
+          rs <- traverse (uiKeysetKey ks) allKeys
+          pure $ leftmost rs
 
 -- | Show a single Keyset key item.
 uiKeysetKey
-  :: MonadWidget t m => (KeyName, PublicKey) -> m (Event t KeyName)
-uiKeysetKey (n, k) = elClass "div" "item" $ do
-    onDelReq <- elClass "div" "right floated content" $ do
-      let
-        buttonIcon = elClass "i" "large trash middle aligned icon" blank
-      flip button buttonIcon $ def
-        & buttonConfig_emphasis .~ Static (Just Tertiary)
-
-    elClass "i" "large key middle aligned icon" blank
-    elClass "div" "content" $ do
-      elClass "h4" "ui header" $ text n
-      elClass "div" "description" $ text (keyToText k)
-    pure $ const n <$> onDelReq
+  :: MonadWidget t m 
+  => Dynamic t KeysetKeys
+  -> KeyName 
+  -> m (Event t (KeyName, Bool))
+uiKeysetKey ks n = elClass "div" "four wide column" $ do
+    onSelected <- tagOnPostBuild $ Map.member n <$> ks
+    let
+      checkboxCfg = 
+        def & checkboxConfig_setValue .~ (SetValue False (Just onSelected))
+    b <- flip checkbox checkboxCfg $ do
+      el "div" $ do
+        elClass "i" "key middle aligned icon" blank
+        text n
+    pure $ (n,) <$> _checkbox_change b
 
 dataEditor
   :: MonadWidget t m
