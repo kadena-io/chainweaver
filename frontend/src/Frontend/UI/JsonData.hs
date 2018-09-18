@@ -142,7 +142,7 @@ uiKeyset w (n, ks) = mdo
     let
       titleClass = "title keyset-title" <> fmap activeClass isActive
     (onToggle, predIn, clicked) <- elDynClass "div" titleClass $ do
-      (e, _) <- elClass' "h2" "ui header heading" $ do
+      (e, _) <- elClass' "h4" "ui header heading" $ do
         el "div" $ elClass "i" "dropdown icon" blank
         elClass "div" "content" $ do
           text n
