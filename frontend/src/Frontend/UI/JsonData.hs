@@ -52,19 +52,19 @@ import           Frontend.Widgets
 
 -- | What to show to the user.
 --
-data JsonDataView 
+data JsonDataView
   = JsonDataView_Keysets -- ^ Keyset editor
   | JsonDataView_Raw -- ^ Raw JSON input widget
   | JsonDataView_Result -- ^ Combined result, that will be sent over the wire.
   deriving (Eq)
-  
+
 
 
 -- | UI for managing JSON data.
-uiJsonData 
-  :: forall t m. MonadWidget t m 
-  => Wallet t 
-  -> JsonData t 
+uiJsonData
+  :: forall t m. MonadWidget t m
+  => Wallet t
+  -> JsonData t
   -> m (JsonDataCfg t)
 uiJsonData w d = mdo
     curSelection <- holdDyn JsonDataView_Keysets onSelect
@@ -72,17 +72,17 @@ uiJsonData w d = mdo
       ( def & classes .~ pure "dark top attached tabular menu"
       )
       $ tabs curSelection
-      
-    keysetVCfg <- tabPane 
-        ("class" =: "keyset-editor ui segment") 
+
+    keysetVCfg <- tabPane
+        ("class" =: "keyset-editor ui segment")
         curSelection JsonDataView_Keysets $ do
       ksCfg <- networkViewFlatten $ uiKeysets w <$> d ^. jsonData_keysets
       onCreateKeyset <- uiCreateKeyset $ d ^. jsonData_keysets
 
       pure $ ksCfg & jsonDataCfg_createKeyset .~ onCreateKeyset
 
-    rawVCfg <- tabPane 
-        ("class" =: "light ui segment json-data-editor-tab") 
+    rawVCfg <- tabPane
+        ("class" =: "light ui segment json-data-editor-tab")
         curSelection JsonDataView_Raw $ do
       onNewData <- tagOnPostBuild $ d ^. jsonData_rawInput
       onSetRawInput <- elClass "div" "editor" $ dataEditor "" onNewData
@@ -227,8 +227,8 @@ uiCreateKeyset ks = do
 --
 --   for the keyset.
 uiKeysetKeys
-  :: MonadWidget t m 
-  => Dynamic t KeysetKeys 
+  :: MonadWidget t m
+  => Dynamic t KeysetKeys
   -> [KeyName]
   -> m (Event t (KeyName, Bool))
 uiKeysetKeys ks allKeys =
@@ -243,14 +243,14 @@ uiKeysetKeys ks allKeys =
 
 -- | Show a single Keyset key item.
 uiKeysetKey
-  :: MonadWidget t m 
+  :: MonadWidget t m
   => Dynamic t KeysetKeys
-  -> KeyName 
+  -> KeyName
   -> m (Event t (KeyName, Bool))
 uiKeysetKey ks n = elClass "div" "four wide column" $ do
     onSelected <- tagOnPostBuild $ Map.member n <$> ks
     let
-      checkboxCfg = 
+      checkboxCfg =
         def & checkboxConfig_setValue .~ (SetValue False (Just onSelected))
     b <- flip checkbox checkboxCfg $ do
       el "div" $ do
