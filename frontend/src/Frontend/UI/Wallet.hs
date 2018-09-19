@@ -51,14 +51,10 @@ import           Frontend.Wallet
 -- | UI for managing the keys wallet.
 uiWallet :: MonadWidget t m => Wallet t -> m (WalletCfg t)
 uiWallet w = do
-    elClass "h3" "ui header" $ text "Available Keys"
-    onSetSig <- uiAvailableKeys w
-
-    elClass "div" "ui fluid action input" $ mdo
+    onReq <- elClass "div" "ui fluid action input" $ mdo
       name <- textInput $ def
           & textInputConfig_value .~ SetValue "" (Just $ "" <$ confirmed)
           & textInputConfig_placeholder .~ pure "Enter key name"
-
       let
         onEnter = keypress Enter name
         nameEmpty = (== "") <$> value name
@@ -71,11 +67,13 @@ uiWallet w = do
       let
         confirmed = leftmost [ onEnter, clicked ]
       void $ performEvent (liftJSM (pToJSVal (_textInput_element name) ^. js0 ("focus" :: String)) <$ confirmed)
-      let onReq = tag (current $ _textInput_value name) confirmed
+      pure $ tag (current $ _textInput_value name) confirmed
 
-      pure $ WalletCfg { _walletCfg_onRequestNewKey = onReq
-                       , _walletCfg_onSetSigning = onSetSig
-                       }
+    onSetSig <- uiAvailableKeys w
+
+    pure $ WalletCfg { _walletCfg_onRequestNewKey = onReq
+                     , _walletCfg_onSetSigning = onSetSig
+                     }
 
 ----------------------------------------------------------------------
 -- Keys related helper widgets:
