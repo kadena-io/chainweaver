@@ -29,39 +29,25 @@ module Frontend.Wallet
 
 
 import           Control.Lens
-import           Control.Monad
-import           Control.Monad.Fail       (MonadFail)
 import           Control.Monad.Fix
-import           Control.Newtype          (Newtype (..))
-import           Data.Aeson
-import           Data.ByteString          (ByteString)
-import qualified Data.ByteString          as BS
-import qualified Data.ByteString.Base16   as Base16
-import           Data.Map                 (Map)
-import qualified Data.Map                 as Map
+import           Data.Map                    (Map)
+import qualified Data.Map                    as Map
 import           Data.Semigroup
-import           Data.Set                 (Set)
-import qualified Data.Set                 as Set
-import           Data.Text                (Text)
-import qualified Data.Text.Encoding       as T
-import           Generics.Deriving.Monoid (mappenddefault, memptydefault)
-import           GHC.Generics             (Generic)
+import           Data.Set                    (Set)
+import qualified Data.Set                    as Set
+import           Data.Text                   (Text)
+import           Generics.Deriving.Monoid    (mappenddefault, memptydefault)
+import           GHC.Generics                (Generic)
+import           Language.Javascript.JSaddle (MonadJSM)
 import           Reflex
 
+import           Frontend.Crypto.Ed25519
 import           Frontend.Foundation
 
 -- | Type of a `Key` name.
 --
 --   All keys are accessible by a name of type `KeyName`
 type KeyName = Text
-
--- | Type of a `PublicKey` in a `KeyPair`.
-newtype PublicKey = PublicKey ByteString
-  deriving (Generic, Show)
---
--- | Type of a `PrivateKey` in a `KeyPair`.
-newtype PrivateKey = PrivateKey ByteString
-  deriving (Generic, Show)
 
 -- | A key consists of a public key and an optional private key.
 data KeyPair t = KeyPair
@@ -93,7 +79,10 @@ data Wallet t = Wallet
 makePactLenses ''Wallet
 
 makeWallet
-  :: forall t m. (MonadHold t m, PerformEvent t m, MonadFix m)
+  :: forall t m.
+    ( MonadHold t m, PerformEvent t m
+    , MonadFix m, MonadJSM (Performable m)
+    )
   => WalletCfg t
   -> m (Wallet t)
 makeWallet conf = do
@@ -117,49 +106,12 @@ makeWallet conf = do
     -- TODO: Dummy implementation for now
     createKey :: Dynamic t (Set KeyName) -> KeyName -> Performable m (KeyName, KeyPair t)
     createKey signing n = do
-      pure (n, KeyPair (makeKeyDummy n) (Just (makeKeyDummy n)) (Set.member n <$> signing))
+      (privKey, pubKey) <- genKeyPair
+      pure (n, KeyPair pubKey (Just privKey) (Set.member n <$> signing))
 
-    makeKeyDummy :: forall key. (Newtype key, O key ~ ByteString) => Text -> key
-    makeKeyDummy = pack . T.encodeUtf8
 
 
 -- Utility functions:
-
--- | Display key in Base16 format, as expected by Pact.
-keyToText :: (Newtype key, O key ~ ByteString) => key -> Text
-keyToText = T.decodeUtf8 . Base16.encode . unpack
-
--- Boring instances:
-
-instance ToJSON PublicKey where
-  toEncoding = toEncoding . keyToText
-  toJSON = toJSON . keyToText
-
-instance ToJSON PrivateKey where
-  toEncoding = toEncoding . keyToText
-  toJSON = toJSON . keyToText
-
-instance FromJSON PublicKey where
-  parseJSON = fmap pack . decodeBase16M <=< fmap T.encodeUtf8 . parseJSON
-
-instance FromJSON PrivateKey where
-  parseJSON = fmap pack . decodeBase16M <=< fmap T.encodeUtf8 . parseJSON
-
--- | Decode a Base16 value in a MonadFail monad and fail if there is input that
--- cannot be parsed.
-decodeBase16M :: (Monad m, MonadFail m) => ByteString -> m ByteString
-decodeBase16M i =
-  let
-    (r, rest) = Base16.decode i
-  in
-    if BS.null rest
-       then fail "Input was no valid Base16 encoding."
-       else pure r
-
-instance Newtype PublicKey
-
-instance Newtype PrivateKey
-
 
 instance Reflex t => Semigroup (WalletCfg t) where
   c1 <> c2 =

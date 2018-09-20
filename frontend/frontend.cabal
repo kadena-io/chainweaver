@@ -54,6 +54,7 @@ library
                  , Reflex.Extended
                  , Reflex.Class.Extended
                  , Reflex.Network.Extended
+                 , Frontend.Crypto.Ed25519
 
   ghc-options: -Wall
   default-extensions: ScopedTypeVariables

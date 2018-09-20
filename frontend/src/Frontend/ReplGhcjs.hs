@@ -375,7 +375,7 @@ replInner replClick (signingKeys, (code, json)) = mdo
     let pactKeys =
           T.unwords . map (surroundWith "\"")
           . map keyToText
-          . mapMaybe _keyPair_privateKey
+          . map _keyPair_publicKey
           $ signingKeys
         codeP = mconcat
           [ "(env-data "
