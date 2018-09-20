@@ -215,7 +215,7 @@ uiKeyset w (n, ks) = mdo
         elClass "div" "ui label" $ text "Pred:"
         mvcSearchDropdown cfg ["keys-all", "keys-2", "keys-any"] onNewPred
 
-    -- Unlike plain reflex-dom components, semantic-reflex does provide means
+    -- Unlike plain reflex-dom components, semantic-reflex does not provide means
     -- for setting the value of the widget from an external source, so we need
     -- to emulate that feature (for making sure the widget always displays the
     -- right value):
@@ -290,7 +290,7 @@ uiKeysetKeys
 uiKeysetKeys ks allKeys =
   elClass "div" "ui grid keyset-keys" $ do
     case allKeys of
-      []   -> elClass "div" "sixteen wide column" $ do
+      []   -> elClass "div" "fifteen wide column" $ do
         text "No keys available ..."
         pure never
       _ -> do
@@ -303,7 +303,7 @@ uiKeysetKey
   => Dynamic t KeysetKeys
   -> KeyName
   -> m (Event t (KeyName, Bool))
-uiKeysetKey ks n = elClass "div" "four wide column" $ do
+uiKeysetKey ks n = elClass "div" "five wide column" $ do
     onSelected <- tagOnPostBuild $ Map.member n <$> ks
     let
       checkboxCfg =

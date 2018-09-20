@@ -5,7 +5,6 @@
 -- | Semui based widgets collection
 module Frontend.Widgets where
 
-import           Control.Applicative
 import           Control.Lens
 import           Control.Monad
 import           Data.Map.Strict             (Map)
@@ -13,24 +12,16 @@ import qualified Data.Map.Strict             as Map
 import           Data.Monoid
 import           Data.Text                   (Text)
 import           Language.Javascript.JSaddle (js0, liftJSM, pToJSVal)
-import           Reflex.Dom.SemanticUI hiding (mainWidget)
 import           Reflex.Dom.Core             (keypress, _textInput_element)
+import           Reflex.Dom.SemanticUI       hiding (mainWidget)
 
-{- data AccordionItemConf t = -}
-{-   AccordionItemConf -}
-{-     { _accordionItemConf_title :: Text -}
-{-     {- , _accordionItemConf_attrs :: Dynamic t (Map Text Text) -} -}
-{-     , _accordionItemConf_initActive :: Bool -}
-{-     } -}
-
-{- instance Default (AccordionItemConf t) where -}
-{-   def = AccordionItemConf "" True -}
-
-
-{- accordionItem :: MonadWidget t m => AccordionItemConf t -> m a -> m a -}
-accordionItem' :: MonadWidget t m
-              => Bool -> Text -> Text -> m a
-              -> m (Element EventResult (DomBuilderSpace m) t, a)
+accordionItem'
+  :: MonadWidget t m
+  => Bool
+  -> Text
+  -> Text
+  -> m a
+  -> m (Element EventResult (DomBuilderSpace m) t, a)
 accordionItem' initActive contentClass title inner = mdo
   isActive <- foldDyn (const not) initActive $ domEvent Click e
   (e, _) <- elDynClass' "div" ("title " <> fmap activeClass isActive) $ do
@@ -56,8 +47,8 @@ makeClickable item = do
 enterEl
   :: MonadWidget t m
   => Text -> Map Text Text -> m a -> m (Event t (), a)
-enterEl name attrs child = do
-  (e, r) <- elAttr' name attrs child
+enterEl name mAttrs child = do
+  (e, r) <- elAttr' name mAttrs child
   let enterPressed = keypress Enter e
   pure (enterPressed, r)
 
@@ -106,8 +97,8 @@ tabPane'
     -> m a
     -> m (Element EventResult (DomBuilderSpace m) t, a)
 tabPane' staticAttrs currentTab t child = do
-    let attrs = addDisplayNone (constDyn staticAttrs) ((==t) <$> currentTab)
-    elDynAttr' "div" attrs child
+    let mAttrs = addDisplayNone (constDyn staticAttrs) ((==t) <$> currentTab)
+    elDynAttr' "div" mAttrs child
 
 tabPane
     :: (MonadWidget t m, Eq tab)
@@ -125,7 +116,7 @@ addDisplayNone
     => Dynamic t (Map Text Text)
     -> Dynamic t Bool
     -> Dynamic t (Map Text Text)
-addDisplayNone attrs isActive = zipDynWith f isActive attrs
+addDisplayNone mAttrs isActive = zipDynWith f isActive mAttrs
   where
     f True as  = as
     f False as = Map.insert "style" "display: none" as

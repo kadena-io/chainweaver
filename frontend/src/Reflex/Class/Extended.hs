@@ -13,16 +13,7 @@ module Reflex.Class.Extended ( -- * Re-exported modules
                              , mergeAsList
                              ) where
 
-
-import           Control.Monad          ((<=<))
-import           Data.Default
 import           Reflex.Class           as Reflex
-import           Reflex.NotReady.Class
-import           Reflex.PostBuild.Class
-
-
-
-
 
 
 -- | Uses the leftmost event in case of coincidence, but wraps it in a list for

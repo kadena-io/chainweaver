@@ -37,7 +37,6 @@ module Frontend.JsonData
 
 
 import           Control.Lens          hiding ((.=))
-import           Control.Monad
 import           Control.Monad.Fix
 import           Data.Aeson            (Object)
 import           Data.Aeson
@@ -52,7 +51,6 @@ import qualified Data.Text             as T
 import qualified Data.Text.Encoding    as T
 import           GHC.Generics          (Generic)
 import           Reflex
-import           Reflex.Class.Extended
 -- Needed for fanOut, module coming from reflex:
 import           Data.Functor.Misc     (Const2 (..))
 
@@ -182,7 +180,7 @@ makeJsonData walletL cfg = do
     parseObjectOrEmpty :: Text -> Either JsonError Object
     parseObjectOrEmpty t = case T.strip t of
       "" -> Right mempty
-      t  -> parseObject t
+      v  -> parseObject v
 
     parseObject :: Text -> Either JsonError Object
     parseObject =
