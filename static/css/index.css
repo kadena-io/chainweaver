@@ -368,10 +368,14 @@ input.ui, .selection.dropdown.ui, button.ui {
   display: block;
 }
 
-.keyset-title > .ui.header {
+.keyset-title > .title.ui.header {
   display: flex;
   flex-direction: row;
   justify-content: flex-start;
+}
+
+.json-data-hidden-content {
+  display: none;
 }
 
 .keyset-title-right {
@@ -403,6 +407,27 @@ input.ui, .selection.dropdown.ui, button.ui {
 
 .json-data .editor {
   height: 30vh;
+}
+
+.json-data-title-dropdown > .ui.selection.dropdown > i.dropdown.icon:before {
+  content: '\f0d7' !important;
+}
+
+.json-data-title-dropdown > .ui.selection.dropdown > i.dropdown.icon {
+  display: none !important; /* The down arrow does not do anything and is irritating - so just don't show it for no. */
+f font-family: Dropdown !important;
+  /* To make it look like the one in the control bar: */
+  color: #555;
+  margin: -.73333333em !important;
+  padding: .91666667em !important;
+  opacity: .8 !important;
+  position: absolute !important;
+  top: 0.6 !important;
+  right: 0.93333em !important;
+}
+
+.json-data-title-dropdown > .ui.label {
+  cursor: inherit;
 }
 
 /**************************************************/

@@ -136,60 +136,66 @@ uiKeysets w ksM =
 
 -- | Display a single keyset on the screen.
 uiKeyset
-  :: MonadWidget t m => Wallet t -> (KeysetName, DynKeyset t) -> m (JsonDataCfg t)
+  :: forall t m. MonadWidget t m
+  => Wallet t
+  -> (KeysetName, DynKeyset t)
+  -> m (JsonDataCfg t)
 uiKeyset w (n, ks) = mdo
     isActive <- foldDyn (const not) False onToggle
-    let
-      titleClass = "title keyset-title" <> fmap activeClass isActive
-    (onToggle, predIn, clicked) <- elDynClass "div" titleClass $ do
-      (e, _) <- elClass' "h4" "ui header heading" $ do
+
+    (onToggle, titleCfg) <- uiTitle isActive
+    contentCfg <- uiContent isActive
+
+    pure $ mconcat [ titleCfg, contentCfg ]
+  where
+    uiTitle :: Dynamic t Bool -> m (Event t (), JsonDataCfg t)
+    uiTitle isActive = elClass "div" "keyset-title" $ do
+      let
+        titleClass = "ui header heading title" <> fmap activeClass isActive
+      (e, _) <- elDynClass' "h4" titleClass $ do
         el "div" $ elClass "i" "dropdown icon" blank
         elClass "div" "content" $ do
           text n
           elClass "div" "sub header" $
             void . networkView $ renderKeys <$> _keyset_keys ks
 
-      elClass "div" "keyset-title-right" $ do
-        onNewPred <- tagOnPostBuild $ ks ^. keyset_pred
-        predInI <- elClass "div" "ui labeled input" $ do
-          (le, _) <- elClass' "div" "ui label" $ text "Pred:"
-          ti <- textInput $ def
-              & textInputConfig_value
-              .~ SetValue "" (Just $ fromMaybe "" <$> onNewPred)
-              & textInputConfig_placeholder
-              .~ pure "keys-all"
-          let
-            setFocus =
-              liftJSM $ pToJSVal (_textInput_element ti) ^. js0 ("focus" :: Text)
-          void $ performEvent (setFocus <$ domEvent Click le)
-          pure ti
-
+      cfg <- elClass "div" "keyset-title-right" $ do
+        onSetPred <- predDropdown
         let
           buttonIcon = elClass "i" "large trash right aligned icon" blank
-        clickedI <- flip button buttonIcon $ def
+        onDel <- flip button buttonIcon $ def
           & buttonConfig_emphasis .~ Static (Just Tertiary)
           & classes .~ Static "input-aligned-btn"
-        pure (domEvent Click e, predInI, clickedI)
 
+        let
+          notEmpty s = if T.null s then Nothing else Just s
+          setPred = (n, ) . notEmpty <$> onSetPred
+        pure $ mempty
+          & jsonDataCfg_setPred .~ setPred
+          & jsonDataCfg_delKeyset .~ fmap (const n) onDel
 
-    elDynClass "div" ("content " <> fmap activeClass isActive) $ do
-      onKeyClick <-
-        switchHold never <=< networkView
-        $ uiKeysetKeys (_keyset_keys ks) . Map.keys <$> w ^. wallet_keys
+      pure (domEvent Click e, cfg)
 
-      let
-        onAddKey = fmap fst . ffilter snd $ onKeyClick
-        onDelKey = fmap fst . ffilter (not . snd) $ onKeyClick
-        notEmpty s = if T.null s then Nothing else Just s
-        setPred = (n, ) . notEmpty <$> predIn ^. textInput_input
-      pure $ mempty
-        & jsonDataCfg_setPred .~ setPred
-        & jsonDataCfg_delKeyset .~ fmap (const n) clicked
-        & jsonDataCfg_addKey .~ fmap (n, ) onAddKey
-        & jsonDataCfg_delKey .~ fmap (n, ) onDelKey
-  where
+    uiContent :: Dynamic t Bool -> m (JsonDataCfg t)
+    uiContent isActive =
+      elDynClass "div" ("ui segment content " <> fmap hiddenClass isActive) $ do
+        onKeyClick <-
+          switchHold never <=< networkView
+          $ uiKeysetKeys (_keyset_keys ks) . Map.keys <$> w ^. wallet_keys
+
+        let
+          onAddKey = fmap fst . ffilter snd $ onKeyClick
+          onDelKey = fmap fst . ffilter (not . snd) $ onKeyClick
+        pure $ mempty
+          & jsonDataCfg_addKey .~ fmap (n, ) onAddKey
+          & jsonDataCfg_delKey .~ fmap (n, ) onDelKey
+
     activeClass = \case
       False -> ""
+      True -> " active"
+
+    hiddenClass = \case
+      False -> " json-data-hidden-content"
       True -> " active"
 
     renderKeys nks =
@@ -200,6 +206,47 @@ uiKeyset w (n, ks) = mdo
 
     renderKeyList = traverse_ (elClass "div" "ui label" . text)
 
+    predDropdown = do
+      onNewPred <- tagOnPostBuild . fmap (fromMaybe "") $ ks ^. keyset_pred
+      let
+        cfg = def & dropdownConfig_placeholder .~ "keys-all"
+
+      elDynClass "div" "ui labeled input json-data-title-dropdown" $ do
+        elClass "div" "ui label" $ text "Pred:"
+        mvcSearchDropdown cfg ["keys-all", "keys-2", "keys-any"] onNewPred
+
+    -- Unlike plain reflex-dom components, semantic-reflex does provide means
+    -- for setting the value of the widget from an external source, so we need
+    -- to emulate that feature (for making sure the widget always displays the
+    -- right value):
+    mvcSearchDropdown
+      :: DropdownConfig t
+      -> [Text]
+      -> Event t Text
+      -> m (Event t Text)
+    mvcSearchDropdown cfg choices onNewVal = mdo
+      -- For ignoring changes made by us (we are already up2date):
+      shouldVal <- holdDyn Nothing $ Just <$> onNewVal
+      let
+        onExternalSet :: Event t Text
+        onExternalSet = fmapMaybe id . updated $ do
+          sV <- shouldVal
+          uV <- userValue
+          if sV == uV && isJust sV
+             then pure Nothing
+             else pure sV
+
+        dropdownEv :: Event t (m (Dropdown t Text))
+        dropdownEv =
+          flip (searchDropdown cfg) (TaggedStatic choices) <$> onExternalSet
+      dynEv <-
+        widgetHold (pure never)
+        . fmap (fmap (updated . _dropdown_value))
+        $ dropdownEv
+      onUpdate <- switchHold never $ updated dynEv
+
+      userValue <- holdDyn Nothing $ Just <$> onUpdate
+      pure onUpdate
 
 
 
