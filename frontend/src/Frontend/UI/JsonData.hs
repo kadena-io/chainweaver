@@ -178,7 +178,7 @@ uiKeyset w (n, ks) = mdo
 
     uiContent :: Dynamic t Bool -> m (JsonDataCfg t)
     uiContent isActive =
-      elDynClass "div" ("ui segment content " <> fmap hiddenClass isActive) $ do
+      elDynClass "div" ("ui top attached segment content " <> fmap hiddenClass isActive) $ do
         onKeyClick <-
           switchHold never <=< networkView
           $ uiKeysetKeys (_keyset_keys ks) . Map.keys <$> w ^. wallet_keys
