@@ -1,1 +1,3 @@
-{ "keyset": { "keys": ["ABCD"] , "pred": "keys-all" } }
+{ 
+  "help": "Create a keyset named 'keyset' and add some key, for loading this contract."
+}

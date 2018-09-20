@@ -1,1 +1,3 @@
-{ "admin-keyset": ["mockAdminKey"] }
+{ 
+  "help": "Create an 'admin-keyset' and add some key, for loading this contract."
+}

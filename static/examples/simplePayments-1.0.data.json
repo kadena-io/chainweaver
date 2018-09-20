@@ -1,4 +1,3 @@
-{ "admin-keyset": { "keys": ["ADMIN"] },
-  "sarah-keyset": { "keys": ["SARAH"] },
-  "james-keyset": { "keys": ["JAMES"] }
+{ 
+ "help": "Create keysets named 'admin-keyset', 'sarah-keyset' and 'james-keyset' and add some keys to them for loading this contract."
 }
