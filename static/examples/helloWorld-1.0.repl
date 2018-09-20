@@ -2,7 +2,13 @@
 ;; "Hello, world!" smart contract/module
 ;;
 
-;; Make sure to have a mockAdminKey created and selected for running this contract.
+;;---------------------------------
+;;
+;;  Create an 'admin-keyset' and add some key, for loading this contract!
+;;
+;;  Make sure the message is signed with this added key as well.
+;;
+;;---------------------------------
 
 
 ;; Keysets cannot be created in code, thus we read them in

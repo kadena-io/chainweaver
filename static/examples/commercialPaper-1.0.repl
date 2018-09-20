@@ -1,3 +1,11 @@
+;;---------------------------------
+;;  Create a key and create a 'module-admin-keyset' containing this key for
+;;  loading the contract!
+;;
+;;  Make sure the message is signed with this added key as well.
+;;
+;;---------------------------------
+
 ;---------------------------------
 ;      Admin keyset
 ;---------------------------------

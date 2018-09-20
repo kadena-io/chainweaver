@@ -1,9 +1,15 @@
 ;;
 ;; Simple accounts model.
 ;;
+;;---------------------------------
+;;
+;;  Create keysets named 'admin-keyset', 'sarah-keyset' and 'james-keyset' and
+;;  add some keys to them for loading this contract.
+;;
+;;  Make sure the message is signed with those added keys as well.
+;;
+;;---------------------------------
 
-
-;... and is signed by ADMIN key
 
 ;define keyset to guard module
 (define-keyset 'admin-keyset (read-keyset "admin-keyset"))

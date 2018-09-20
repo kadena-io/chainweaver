@@ -1,3 +1,11 @@
+;;---------------------------------
+;;
+;;  Create a keyset named 'keyset' and add some key,
+;;  for loading this contract!
+;;
+;;  Make sure the message is signed with this added key as well.
+;;---------------------------------
+
 (define-keyset 'module-keyset (read-keyset "keyset"))
 
 ;USD Ledger
