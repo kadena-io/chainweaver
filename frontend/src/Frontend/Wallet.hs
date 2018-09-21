@@ -41,6 +41,7 @@ import           Data.Semigroup
 import           Data.Set                    (Set)
 import qualified Data.Set                    as Set
 import           Data.Text                   (Text)
+import qualified Data.Text                   as T
 import           Generics.Deriving.Monoid    (mappenddefault, memptydefault)
 import           GHC.Generics                (Generic)
 import           Language.Javascript.JSaddle (MonadJSM)
@@ -106,23 +107,26 @@ makeWallet
   -> m (Wallet t)
 makeWallet conf = do
     initialKeys <- fromMaybe Map.empty <$> loadKeys
-    let initialSigning =
-          Set.fromList
-          . map fst . filter (_keyPair_forSigning . snd)
-          . Map.toList
-          $ initialKeys
+    let
+      initialSigning =
+        Set.fromList
+        . map fst . filter (_keyPair_forSigning . snd)
+        . Map.toList
+        $ initialKeys
 
-    let onNewDeleted p = fmap fst . ffilter (p . snd)
+      onNewDeleted p = fmap fst . ffilter (p . snd)
+
+      onGenKey = T.strip <$> conf ^. walletCfg_genKey
     signingKeys <- foldDyn id initialSigning
       $ leftmost [ Set.delete <$> onNewDeleted not (conf ^. walletCfg_setSigning)
                  , Set.insert <$> onNewDeleted id (conf ^. walletCfg_setSigning)
-                 , Set.insert <$> conf ^. walletCfg_genKey
+                 , Set.insert <$> onGenKey
                  , Set.delete <$> conf ^. walletCfg_delKey
                  ]
 
     onNewKey <- performEvent $ createKey signingKeys <$>
       -- Filter out keys with empty names
-      ffilter (/= "") (conf ^. walletCfg_genKey)
+      ffilter (/= "") onGenKey
 
     let
       initialDynKeys = toDynKeyPairs signingKeys initialKeys

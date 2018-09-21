@@ -39,6 +39,7 @@ import           Control.Monad
 import qualified Data.Map                    as Map
 import           Data.Maybe
 import           Data.Text                   (Text)
+import qualified Data.Text                   as T
 import           Language.Javascript.JSaddle (js0, liftJSM, pToJSVal)
 import           Reflex
 import           Reflex.Dom.Core             (keypress, _textInput_element)
@@ -57,9 +58,10 @@ uiWallet w = do
           & textInputConfig_value .~ SetValue "" (Just $ "" <$ confirmed)
           & textInputConfig_placeholder .~ pure "Enter key name"
       let
+        nameVal = T.strip <$> value name
         onEnter = keypress Enter name
-        nameEmpty = (== "") <$> value name
-        duplicate = Map.member <$> value name <*> w ^. wallet_keys
+        nameEmpty = (== "") <$> nameVal
+        duplicate = Map.member <$> nameVal <*> w ^. wallet_keys
 
       clicked <- flip button (text "Generate") $ def
         & buttonConfig_emphasis .~ Static (Just Secondary)
@@ -68,7 +70,7 @@ uiWallet w = do
       let
         confirmed = leftmost [ onEnter, clicked ]
       void $ performEvent (liftJSM (pToJSVal (_textInput_element name) ^. js0 ("focus" :: String)) <$ confirmed)
-      pure $ tag (current $ _textInput_value name) confirmed
+      pure $ tag (current nameVal) confirmed
 
     keysCfg <- uiAvailableKeys w
 
