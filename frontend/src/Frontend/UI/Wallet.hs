@@ -84,7 +84,7 @@ uiWallet w = do
 uiSelectKey
   :: MonadWidget t m
   => Wallet t
-  -> ((Text, KeyPair t) -> Bool)
+  -> ((Text, DynKeyPair t) -> Bool)
   -> m (Dynamic t (Maybe Text))
 uiSelectKey w kFilter = do
   let keyNames = map fst . filter kFilter . Map.toList <$> w ^. wallet_keys
@@ -96,7 +96,7 @@ uiSelectKey w kFilter = do
   pure $ _dropdown_value d
 
 -- | Check whether a given key does contain a private key.
-hasPrivateKey :: (Text, KeyPair t) -> Bool
+hasPrivateKey :: (Text, DynKeyPair t) -> Bool
 hasPrivateKey = isJust . _keyPair_privateKey . snd
 
 ----------------------------------------------------------------------
@@ -117,7 +117,7 @@ uiAvailableKeys aWallet = do
 --
 -- Does not include the surrounding `div` tag. Use uiAvailableKeys for the
 -- complete `div`.
-uiKeyItems :: MonadWidget t m => KeyPairs t -> m (Event t (KeyName, Bool))
+uiKeyItems :: MonadWidget t m => DynKeyPairs t -> m (Event t (KeyName, Bool))
 uiKeyItems keyMap =
   case Map.toList keyMap of
     []   -> do
@@ -128,7 +128,7 @@ uiKeyItems keyMap =
       pure $ leftmost rs
 
 -- | Display a key as list item together with it's name.
-uiKeyItem :: MonadWidget t m => (Text, KeyPair t) -> m (Event t (KeyName, Bool))
+uiKeyItem :: MonadWidget t m => (Text, DynKeyPair t) -> m (Event t (KeyName, Bool))
 uiKeyItem (n, k) = do
     elClass "div" "item" $ do
       box <- elClass "div" "right floated content" $ do

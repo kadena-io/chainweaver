@@ -102,7 +102,7 @@ data Ide t = Ide
 makePactLenses ''Ide
 
 -- | Retrieve the currently selected signing keys.
-ide_getSigningKeyPairs :: Reflex t => Ide t -> Dynamic t [KeyPair t]
+ide_getSigningKeyPairs :: Reflex t => Ide t -> Dynamic t [DynKeyPair t]
 ide_getSigningKeyPairs ideL = do
   let
     keys = Map.elems <$> ideL ^. ide_wallet . wallet_keys
@@ -369,7 +369,7 @@ replWidget ideL onLoad = mdo
 replInner
     :: MonadWidget t m
     => Event t ()
-    -> ([KeyPair t], (Text, Object))
+    -> ([DynKeyPair t], (Text, Object))
     -> m (Event t Text, Maybe ErrorMsg)
 replInner replClick (signingKeys, (code, json)) = mdo
     let pactKeys =

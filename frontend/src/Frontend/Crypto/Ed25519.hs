@@ -93,8 +93,8 @@ decodeBase16M i =
     (r, rest) = Base16.decode i
   in
     if BS.null rest
-       then fail "Input was no valid Base16 encoding."
-       else pure r
+       then pure r
+       else fail "Input was no valid Base16 encoding."
 
 instance Newtype PublicKey
 
