@@ -34,6 +34,7 @@ module Frontend.Wallet
 import           Control.Arrow               ((&&&))
 import           Control.Lens
 import           Control.Monad.Fix
+import           Data.Aeson
 import           Data.Map                    (Map)
 import qualified Data.Map                    as Map
 import           Data.Semigroup
@@ -44,7 +45,6 @@ import           Generics.Deriving.Monoid    (mappenddefault, memptydefault)
 import           GHC.Generics                (Generic)
 import           Language.Javascript.JSaddle (MonadJSM)
 import           Reflex
-import           Data.Aeson
 
 import           Frontend.Crypto.Ed25519
 import           Frontend.Foundation
@@ -78,10 +78,12 @@ type KeyPairs = Map KeyName KeyPair
 type DynKeyPairs t = Map KeyName (DynKeyPair t)
 
 data WalletCfg t = WalletCfg
-  { _walletCfg_onRequestNewKey :: Event t KeyName
+  { _walletCfg_genKey     :: Event t KeyName
   -- ^ Request generation of a new key, that will be named as specified.
-  , _walletCfg_onSetSigning    :: Event t (KeyName, Bool)
+  , _walletCfg_setSigning :: Event t (KeyName, Bool)
   -- ^ Use a given key for signing messages/or not.
+  , _walletCfg_delKey     :: Event t KeyName
+  -- ^ Delete a key from your wallet.
   }
   deriving Generic
 
@@ -104,28 +106,32 @@ makeWallet
   -> m (Wallet t)
 makeWallet conf = do
     initialKeys <- fromMaybe Map.empty <$> loadKeys
-    let initialSigning = 
-          Set.fromList 
-          . map fst . filter (_keyPair_forSigning . snd) 
-          . Map.toList 
+    let initialSigning =
+          Set.fromList
+          . map fst . filter (_keyPair_forSigning . snd)
+          . Map.toList
           $ initialKeys
 
     let onNewDeleted p = fmap fst . ffilter (p . snd)
     signingKeys <- foldDyn id initialSigning
-      $ leftmost [ Set.delete <$> onNewDeleted not (conf ^. walletCfg_onSetSigning)
-                 , Set.insert <$> onNewDeleted id (conf ^. walletCfg_onSetSigning)
-                 , Set.insert <$> conf ^. walletCfg_onRequestNewKey
+      $ leftmost [ Set.delete <$> onNewDeleted not (conf ^. walletCfg_setSigning)
+                 , Set.insert <$> onNewDeleted id (conf ^. walletCfg_setSigning)
+                 , Set.insert <$> conf ^. walletCfg_genKey
+                 , Set.delete <$> conf ^. walletCfg_delKey
                  ]
 
     onNewKey <- performEvent $ createKey signingKeys <$>
       -- Filter out keys with empty names
-      ffilter (/= "") (conf ^. walletCfg_onRequestNewKey)
+      ffilter (/= "") (conf ^. walletCfg_genKey)
 
     let
       initialDynKeys = toDynKeyPairs signingKeys initialKeys
 
-    -- Filter out duplicate keys
-    keys <- foldDyn (uncurry (Map.insertWith (flip const))) initialDynKeys onNewKey
+    keys <- foldDyn id initialDynKeys $
+      -- Filter out duplicate keys:
+      leftmost [ uncurry (Map.insertWith (flip const)) <$> onNewKey
+               , Map.delete <$> _walletCfg_delKey conf
+               ]
 
     performEvent $ storeKeys <$> updated (joinKeyPairs keys)
 
@@ -201,17 +207,27 @@ loadKeys = do
 instance Reflex t => Semigroup (WalletCfg t) where
   c1 <> c2 =
     WalletCfg
-      { _walletCfg_onRequestNewKey = leftmost [ _walletCfg_onRequestNewKey c1
-                                              , _walletCfg_onRequestNewKey c2
-                                              ]
-      , _walletCfg_onSetSigning = leftmost [ _walletCfg_onSetSigning c1
-                                           , _walletCfg_onSetSigning c2
-                                           ]
+      { _walletCfg_genKey = leftmost [ _walletCfg_genKey c1
+                                     , _walletCfg_genKey c2
+                                     ]
+      , _walletCfg_setSigning = leftmost [ _walletCfg_setSigning c1
+                                         , _walletCfg_setSigning c2
+                                         ]
+      , _walletCfg_delKey = leftmost [ _walletCfg_delKey c1
+                                     , _walletCfg_delKey c2
+                                     ]
       }
 
 instance Reflex t => Monoid (WalletCfg t) where
-  mempty = WalletCfg never never
+  mempty = WalletCfg never never never
   mappend = (<>)
+
+instance Flattenable WalletCfg where
+  flattenWith doSwitch ev =
+    WalletCfg
+      <$> doSwitch never (_walletCfg_genKey <$> ev)
+      <*> doSwitch never (_walletCfg_setSigning <$> ev)
+      <*> doSwitch never (_walletCfg_delKey <$> ev)
 
 instance Reflex t => Semigroup (Wallet t) where
   (<>) = mappenddefault
@@ -230,3 +246,4 @@ instance ToJSON (StoreWallet a) where
   toEncoding = genericToEncoding defaultOptions
 
 instance FromJSON (StoreWallet a)
+

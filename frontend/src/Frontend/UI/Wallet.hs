@@ -44,6 +44,7 @@ import           Reflex
 import           Reflex.Dom.Core             (keypress, _textInput_element)
 import           Reflex.Dom.SemanticUI       hiding (mainWidget)
 
+import           Frontend.Foundation
 import           Frontend.Wallet
 
 
@@ -69,11 +70,9 @@ uiWallet w = do
       void $ performEvent (liftJSM (pToJSVal (_textInput_element name) ^. js0 ("focus" :: String)) <$ confirmed)
       pure $ tag (current $ _textInput_value name) confirmed
 
-    onSetSig <- uiAvailableKeys w
+    keysCfg <- uiAvailableKeys w
 
-    pure $ WalletCfg { _walletCfg_onRequestNewKey = onReq
-                     , _walletCfg_onSetSigning = onSetSig
-                     }
+    pure $ keysCfg & walletCfg_genKey .~ onReq
 
 ----------------------------------------------------------------------
 -- Keys related helper widgets:
@@ -102,50 +101,54 @@ hasPrivateKey = isJust . _keyPair_privateKey . snd
 ----------------------------------------------------------------------
 
 -- | Widget listing all available keys.
-uiAvailableKeys :: MonadWidget t m => Wallet t -> m (Event t (Text, Bool))
+uiAvailableKeys :: MonadWidget t m => Wallet t -> m (WalletCfg t)
 uiAvailableKeys aWallet = do
   elClass "div" "ui relaxed middle aligned divided list" $ do
-    {- elClass "div" "item" $ do -}
-    {-   elClass "div" "right floated content" $ el "div" $ elClass "h3" "ui heading" $ text "Sign" -}
-    {- elClass "div" "content" $ el "div" $ elClass "h3" "ui heading" $ text "Key" -}
     let itemsDyn = uiKeyItems <$> aWallet ^. wallet_keys
-    evEv <- dyn itemsDyn
-    switchHold never evEv
+    networkViewFlatten $ itemsDyn
 
 
 -- | Render a list of key items.
 --
 -- Does not include the surrounding `div` tag. Use uiAvailableKeys for the
 -- complete `div`.
-uiKeyItems :: MonadWidget t m => DynKeyPairs t -> m (Event t (KeyName, Bool))
+uiKeyItems :: MonadWidget t m => DynKeyPairs t -> m (WalletCfg t)
 uiKeyItems keyMap =
   case Map.toList keyMap of
     []   -> do
       text "No keys ..."
-      pure never
+      pure mempty
     keys -> do
       rs <- traverse uiKeyItem keys
-      pure $ leftmost rs
+      pure $ mconcat rs
 
 -- | Display a key as list item together with it's name.
-uiKeyItem :: MonadWidget t m => (Text, DynKeyPair t) -> m (Event t (KeyName, Bool))
+uiKeyItem :: MonadWidget t m => (Text, DynKeyPair t) -> m (WalletCfg t)
 uiKeyItem (n, k) = do
     elClass "div" "item" $ do
-      box <- elClass "div" "right floated content" $ do
+      (box, onDel) <- elClass "div" "right floated content" $ do
         onPostBuild <- getPostBuild
         let
           cSigned = current $ k ^. keyPair_forSigning
           onPbSigned = tag cSigned onPostBuild
 
-        checkbox (text "Signing")
+        boxI <- checkbox (text "Signing")
           $ def & checkboxConfig_type .~ pure Nothing
                 & checkboxConfig_setValue .~ SetValue False (Just onPbSigned)
+        let
+          buttonIcon = elClass "i" "large trash right aligned icon" blank
+        onDelI <- flip button buttonIcon $ def
+          & buttonConfig_emphasis .~ Static (Just Tertiary)
+          & classes .~ Static "input-aligned-btn"
+        pure (boxI, onDelI)
 
       elClass "i" "large key middle aligned icon" blank
       elClass "div" "content" $ do
         elClass "h4" "ui header" $ text n
         elClass "div" "description" $ text $ keyDescription k
-      pure $ fmap (n, ) . _checkbox_change $ box
+      pure $ mempty
+        & walletCfg_setSigning .~ (fmap (n, ) . _checkbox_change $ box)
+        & walletCfg_delKey .~  fmap (const n) onDel
   where
     keyDescription k1 =
       case _keyPair_privateKey k1 of
