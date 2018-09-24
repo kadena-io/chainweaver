@@ -1,10 +1,18 @@
 module Devel where
 
-import Obelisk.Run
+import           Control.Concurrent.Async (async, wait)
+import           Control.Monad
+import           Obelisk.Run
+import qualified Pact.Server.Server       as Pact
 
-import Backend
-import Frontend
+
+import           Backend
+import           Frontend
+
 
 main :: Int -> IO ()
-main port = run port backend frontend
+main port = do
+  s <- async $ Pact.serve "config/common/pact.yaml"
+  run port backend frontend
+  wait s
 
