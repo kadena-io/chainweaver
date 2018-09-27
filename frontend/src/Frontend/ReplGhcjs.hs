@@ -54,6 +54,7 @@ import           Pact.Repl
 import           Pact.Repl.Types
 import           Pact.Types.Lang
 ------------------------------------------------------------------------------
+import           Frontend.Backend
 import           Frontend.Foundation
 import           Frontend.JsonData
 import           Frontend.UI.JsonData
@@ -96,6 +97,7 @@ data Ide t = Ide
   , _ide_wallet           :: Wallet t
   , _ide_jsonData         :: JsonData t
   , _ide_errors           :: Dynamic t [ErrorMsg]
+  , _ide_backend          :: Backend t
   }
   deriving Generic
 
@@ -137,13 +139,14 @@ app :: MonadWidget t m => m ()
 app = void . mfix $ \ ~(cfg, ideL) -> elClass "div" "app" $ do
     walletL <- makeWallet $ _ideCfg_wallet cfg
     json <- makeJsonData walletL $ _ideCfg_jsonData cfg
+    backendL <- makeBackend $ BackendCfg never
     let
       jsonErrorString =
         either (Just . showJsonError) (const Nothing) <$> _jsonData_data json
       jsonErrorsOnLoad =
         fmap maybeToList . tag (current jsonErrorString) $ cfg ^. ideCfg_load
 
-    controlCfg <- controlBar
+    controlCfg <- controlBar ideL
     contractReceivedCfg <- loadContract $ _ide_selectedContract ideL
     elClass "div" "ui two column padded grid main" $ mdo
       editorCfg <- elClass "div" "column" $ do
@@ -171,6 +174,7 @@ app = void . mfix $ \ ~(cfg, ideL) -> elClass "div" "app" $ do
               , _ide_wallet = walletL
               , _ide_jsonData = json
               , _ide_errors = errors
+              , _ide_backend = backendL
               }
         )
   where
@@ -373,9 +377,8 @@ replInner
     -> m (Event t Text, Maybe ErrorMsg)
 replInner replClick (signingKeys, (code, json)) = mdo
     let pactKeys =
-          T.unwords . map (surroundWith "\"")
-          . map keyToText
-          . map _keyPair_publicKey
+          T.unwords
+          . map (keyToText . _keyPair_publicKey)
           $ signingKeys
         codeP = mconcat
           [ "(env-data "
@@ -403,6 +406,8 @@ replInner replClick (signingKeys, (code, json)) = mdo
       escapeJSON = T.replace "\"" "\\\""
 
       toJsonString = surroundWith "\"" . escapeJSON
+
+      keyToText = T.decodeUtf8 . BSL.toStrict . encode
 
 
 replInput :: MonadWidget t m => Event t () -> m (Event t Text)
@@ -468,12 +473,22 @@ showResult :: Show a => Either String a -> Text
 showResult (Right v) = T.pack $ show v
 showResult (Left e)  = "Error: " <> T.pack e
 
-controlBar :: forall t m. MonadWidget t m => m (IdeCfg t)
-controlBar = do
+controlBar :: forall t m. MonadWidget t m => Ide t -> m (IdeCfg t)
+controlBar ideL = do
     elClass "div" "ui borderless menu" $ do
       elClass "div" "item" showPactVersion
 
       cfg <- exampleChooser
+      onDeploy <- elClass "div" "item" $
+        button (def & buttonConfig_emphasis .~ Static (Just Primary)) $ text "Deploy"
+      let
+        req = do
+          c <- ideL ^. ide_code
+          ed <- ideL ^. ide_jsonData . jsonData_data
+          pure $ either (const Nothing) (Just . BackendRequest c) ed
+        onReq = fmapMaybe id $ tag (current req) onDeploy
+      void $ backendPerformSend (ideL ^. ide_wallet) (ideL ^. ide_backend) onReq
+
       elClass "div" "right menu" rightMenu
       pure cfg
   where
