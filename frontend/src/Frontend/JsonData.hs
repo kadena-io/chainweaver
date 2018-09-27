@@ -13,6 +13,10 @@
 -- | Editing features for the data part of Pact transactions:
 --
 --   See: https://pact-language.readthedocs.io/en/latest/pact-reference.html#cmd-field-and-payloads
+--
+--   This module deals mostly with keysets, but also offers entry of raw json
+--   data. This module should likely be renamed to `Keysets` or something and
+--   maybe even factor out the raw JSON part into a separate Contract module, which also holds the contract code.
 module Frontend.JsonData
   ( -- * Types & Classes
     KeysetName
