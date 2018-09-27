@@ -40,22 +40,24 @@ library
                , text
                , unordered-containers
                , aeson-pretty
+               , time
 
   exposed-modules: Frontend
+                 , Frontend.Backend
+                 , Frontend.Crypto.Ed25519
                  , Frontend.Foundation
                  , Frontend.JsonData
                  , Frontend.ReplGhcjs
+                 , Frontend.Storage
                  , Frontend.UI.JsonData
                  , Frontend.UI.Wallet
                  , Frontend.Wallet
                  , Frontend.Widgets
+                 , Reflex.Class.Extended
                  , Reflex.Dom.ACE.Extended
                  , Reflex.Dom.Widget.Resize.Extended
                  , Reflex.Extended
-                 , Reflex.Class.Extended
                  , Reflex.Network.Extended
-                 , Frontend.Crypto.Ed25519
-                 , Frontend.Storage
 
   ghc-options: -Wall
   default-extensions: ScopedTypeVariables

@@ -28,13 +28,21 @@ module Frontend.Foundation
   , module Reflex.Network.Extended
   , module Data.Semigroup
   , module Data.Foldable
+  , module Control.Monad.IO.Class
+  , module Language.Javascript.JSaddle
+  , module Control.Monad.Fix
+  , module GHC.Generics
   ) where
 
 import           Control.Lens
+import           Control.Monad.Fix
+import           Control.Monad.IO.Class
 import           Data.Foldable
 import           Data.Semigroup
-import           Language.Haskell.TH        (DecsQ)
-import           Language.Haskell.TH.Syntax (Name)
+import           GHC.Generics                (Generic)
+import           Language.Haskell.TH         (DecsQ)
+import           Language.Haskell.TH.Syntax  (Name)
+import           Language.Javascript.JSaddle (MonadJSM (..))
 import           Reflex.Extended
 import           Reflex.Network.Extended
 
