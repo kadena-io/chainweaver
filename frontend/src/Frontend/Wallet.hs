@@ -26,8 +26,8 @@ module Frontend.Wallet
   , HasWallet (..)
   -- * Creation
   , makeWallet
-  -- * Utility functions
-  , keyToText
+  -- * Flattening key pairs
+  , joinKeyPairs
   ) where
 
 
@@ -176,7 +176,7 @@ toDynKeyPairs forSigning = Map.fromList . map toDyn . Map.toList
 --   be fixed by dropping the above signing Set and handling update directly in
 --   the `DynKeyPairs` which would be more efficient too.
 toDynKeyPair :: Reflex t => Dynamic t Bool -> KeyPair -> DynKeyPair t
-toDynKeyPair forSigning (KeyPair pub priv s) = KeyPair pub priv forSigning
+toDynKeyPair forSigning (KeyPair pub priv _) = KeyPair pub priv forSigning
 
 
 
