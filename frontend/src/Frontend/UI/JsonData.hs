@@ -328,6 +328,6 @@ dataEditor iv sv = do
 viewToText :: JsonDataView -> Text
 viewToText = \case
   JsonDataView_Keysets -> "Keysets"
-  JsonDataView_Raw -> "Raw Input"
+  JsonDataView_Raw -> "JSON"
   JsonDataView_Result -> "Combined Result"
 

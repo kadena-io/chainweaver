@@ -481,7 +481,8 @@ controlBar = do
       elAttr "a" ( "target" =: "_blank" <> "href" =: "https://github.com/kadena-io/pact") $ do
         is <- liftIO $ initReplState StringEval
         Right (TLiteral (LString ver) _) <- liftIO $ evalStateT (evalRepl' "(pact-version)") is
-        text $ "Pact Version " <> ver
+        elAttr "img" ("src" =: static @"img/PactLogo.svg" <> "class" =: "logo-image" <> "width" =: "80" <> "hegiht" =: "20") blank
+        text $ "v" <> ver
 
     exampleChooser :: m (IdeCfg t)
     exampleChooser = do
@@ -498,14 +499,14 @@ controlBar = do
       elClass "div" "ui item" $
         el "label" $
           elAttr "a" ("target" =: "_blank" <>
-                      "style" =: "color:black;text-decoration:none;" <>
+                      "style" =: "color:white;text-decoration:none;" <>
                       "href" =: "http://pact-language.readthedocs.io"
                       ) $ do
             elAttr "i" ("class" =: "fa fa-book" <> "aria-hidden" =: "true") blank
             elAttr "span" ("id" =: "hideIfTiny" <> "class" =: "menu-link") $ text "Docs"
       elClass "div" "ui item" $
         elAttr "a" ("target" =: "_blank" <> "href" =: "http://kadena.io") $
-          elAttr "img" ("src" =: static @"img/kadena-logo84x20.png" <> "class" =: "logo-image") blank
+          elAttr "img" ("src" =: static @"img/KadenaWhiteLogo.svg" <> "class" =: "logo-image" <> "width" =: "150" <> "hegiht" =: "20") blank
 
 
 exampleData :: [(Text, Text)]
