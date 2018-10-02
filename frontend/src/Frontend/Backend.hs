@@ -1,13 +1,14 @@
 {-# LANGUAGE DeriveGeneric          #-}
 {-# LANGUAGE FlexibleContexts       #-}
+{-# LANGUAGE FlexibleInstances      #-}
 {-# LANGUAGE FunctionalDependencies #-}
 {-# LANGUAGE GADTs                  #-}
 {-# LANGUAGE LambdaCase             #-}
 {-# LANGUAGE MultiParamTypeClasses  #-}
 {-# LANGUAGE OverloadedStrings      #-}
 {-# LANGUAGE RankNTypes             #-}
+{-# LANGUAGE ScopedTypeVariables    #-}
 {-# LANGUAGE TemplateHaskell        #-}
-{-# LANGUAGE FlexibleInstances      #-}
 
 -- | Interface for accessing Pact backends.
 --
@@ -18,8 +19,6 @@ module Frontend.Backend
     BackendUri
   , BackendName
   , BackendRequest (..)
-  , BackendStatus (..)
-  , BackendResult (..)
   , BackendError (..)
   , BackendErrorResult
   , BackendCfg (..)
@@ -30,10 +29,14 @@ module Frontend.Backend
   , backendPerformSend
   ) where
 
-import           Control.Arrow           (first)
+import           Control.Arrow           (first, left)
 import           Control.Lens            hiding ((.=))
-import           Data.Aeson              (Object, Value, encode, object, toJSON,
+import           Control.Monad.Except
+import           Data.Aeson              (FromJSON (..), Object, Value,
+                                          Value (..), eitherDecode, encode,
+                                          object, toJSON, withObject, (.:),
                                           (.=))
+import           Data.Aeson.Types        (typeMismatch)
 import           Data.ByteString         (ByteString)
 import qualified Data.ByteString.Lazy    as BSL
 import           Data.Default            (def)
@@ -44,13 +47,14 @@ import qualified Data.Set                as Set
 import           Data.Text               (Text)
 import qualified Data.Text               as T
 import qualified Data.Text.Encoding      as T
+import qualified Data.Text.IO            as T
 import           Data.Time.Clock         (getCurrentTime)
-import           Pact.Types.Hash         (hash)
-import           Pact.Types.Util         (Hash (..))
 import           Reflex.Dom.Class
 import           Reflex.Dom.Xhr
+import           Safe
 
 
+import           Frontend.Backend.Pact
 import           Frontend.Crypto.Ed25519
 import           Frontend.Foundation
 import           Frontend.Wallet
@@ -73,20 +77,6 @@ data BackendRequest = BackendRequest
     -- `data` field of the `exec` payload.
   }
 
--- | Status as parsed from pact server response.
---
---   See
---   <https://pact-language.readthedocs.io/en/latest/pact-reference.html#send
---   here> for more information.
-data BackendStatus
-  = BackendStatus_Success
-  | BackenStatus_Failure
-
--- | Result as received from the backend.
-data BackendResult = BackendResult
-  { _backendResult_status :: BackendStatus
-  , _backendResult_data   :: Value
-  }
 
 data BackendError
   = BackendError_Failure Text
@@ -96,9 +86,18 @@ data BackendError
   | BackendError_XhrException XhrException
   -- ^ There was some problem with the connection, as described by the
   -- contained `XhrException`
+  | BackendError_ParseError Text
+  -- ^ Parsing the JSON response failed.
+  | BackendError_NoResponse
+  -- ^ Server response was empty.
+  | BackendError_ResultFailure Value
+  -- ^ The status in the /listen result object was `failure`.
+  | BackendError_Other Text
+  -- ^ Other errors that should really never happen.
+  deriving Show
 
--- | Combined `BackendError` and `BackendResult`.
-type BackendErrorResult = Either BackendError BackendResult
+-- | We either have a `BackendError` or some `Value`.
+type BackendErrorResult = Either BackendError Value
 
 -- | Select a backend, send messages to it.
 data BackendCfg t = BackendCfg
@@ -119,6 +118,50 @@ data Backend t = Backend
   }
 
 makePactLenses ''Backend
+
+-- Helper types for interfacing with Pact endpoints:
+
+-- | Status as parsed from pact server response.
+--
+--   See
+--   <https://pact-language.readthedocs.io/en/latest/pact-reference.html#send
+--   here> for more information.
+data PactStatus
+  = PactStatus_Success
+  | PactStatus_Failure
+  deriving Show
+
+instance FromJSON PactStatus where
+  parseJSON = \case
+    String "success" -> pure PactStatus_Success
+    String "failure" -> pure PactStatus_Failure
+      -- case str of
+      --   "success" -> PactStatus_Success
+      --   "failure" -> PactStatus_Failure
+      --   invalid   ->
+    invalid -> typeMismatch "Status" invalid
+
+
+-- | Result as received from the backend.
+data PactResult = PactResult
+  { _pr_status :: PactStatus
+  , _pr_data   :: Value
+  }
+
+instance FromJSON PactResult where
+  parseJSON = withObject "PactResult" $ \o ->
+    PactResult <$> o .: "status" <*> o .: "data"
+
+-- | Response object contained in a /listen response.
+data ListenResponse = ListenResponse
+ { _lr_result :: PactResult
+ , _lr_txId   :: Integer
+ }
+
+instance FromJSON ListenResponse where
+  parseJSON = withObject "Response" $ \o ->
+    ListenResponse <$> o .: "result" <*> o .: "txId"
+
 
 -- | Available backends:
 backends :: Map BackendName BackendUri
@@ -156,24 +199,84 @@ backendPerformSend
 backendPerformSend w b onReq = do
     onXhr <- performEvent $ buildXhrRequest w b <$> onReq
 
-    onErrResp <- performRequestAsyncWithError onXhr
-    performEvent_ $ printResp <$> onErrResp
-    pure never
+    onErrRespJson <- performRequestAsyncWithError onXhr
+    performEvent_ $ printResp <$> onErrRespJson
+    let
+      onReqKey :: Event t (Either BackendError RequestKey)
+      onReqKey = getRequestKey <$> onErrRespJson
+    onR <- backendPerformListen b onReqKey
+    performEvent_ $ (liftIO . putStrLn . ("Stuff: " <>) . show) <$> onR
+    pure onR
   where
     printResp = \case
       Left _ -> liftIO $ putStrLn "Some Xhr error"
       Right r -> liftIO $ print $ _xhrResponse_responseText r
-    -- toErrorResult = \case
-    --   Left e -> BackendError_XhrException e
-    --   Right r ->
+
+    getRequestKey
+      :: Either XhrException XhrResponse
+      -> Either BackendError RequestKey
+    getRequestKey i = do
+      keys <- getResPayload i
+      case _rkRequestKeys keys of
+        [] -> throwError $
+          BackendError_Other "Response did not contain any RequestKeys"
+        [k] -> pure k
 
 
+backendPerformListen
+  :: forall t m
+  . (MonadHold t m, PerformEvent t m, MonadFix m
+    , MonadJSM (Performable m), HasJSContext (Performable m)
+    , TriggerEvent t m, MonadSample t (Performable m)
+    )
+  => Backend t
+  -> Event t (Either BackendError RequestKey)
+  -> m (Event t BackendErrorResult)
+backendPerformListen b onKey = do
+  let
+    getBackend n = fromJustNote "Invalid backend name!" $ Map.lookup n backends
+  let
+    buildPayload k = encodeAsText . encode $ object [ "listen" .= k ]
+    buildReq k = def & xhrRequestConfig_sendData .~ buildPayload k
+
+    mkXhr
+      :: Either BackendError RequestKey
+      ->  PushM t (Either BackendError (XhrRequest Text))
+    mkXhr r = do
+      cb <- fmap getBackend . sample . current $ _backend_current b
+      pure $ fmap (xhrRequest "GET" (url cb "/listen") . buildReq) r
+
+    (onErr, onReq) = fanEither $ pushAlways mkXhr onKey
+
+  performEvent_ $ liftIO . T.putStrLn . (("Request: ") <>) . _xhrRequestConfig_sendData . _xhrRequest_config <$> onReq
+
+  onErrRespJson <- performRequestAsyncWithError onReq
+  let
+    getValue :: ListenResponse -> BackendErrorResult
+    getValue lr = do
+      let result = _lr_result lr
+      case _pr_status result of
+        PactStatus_Failure ->
+          throwError $ BackendError_ResultFailure (_pr_data result)
+        PactStatus_Success ->
+          pure $ _pr_data result
+
+  pure $ leftmost $
+    [ fmap (getValue <=< getResPayload) onErrRespJson
+    , Left <$> onErr
+    ]
+
+
+-- Request building ....
+
+
+-- | Build Xhr request for the /send endpoint.
 buildXhrRequest
   :: (Reflex t, MonadSample t m, MonadIO m, MonadJSM m)
   => Wallet t -> Backend t -> BackendRequest -> m (XhrRequest Text)
 buildXhrRequest w b req = do
   let
-    getBackend n = fromJust $ Map.lookup n backends
+    getBackend n = fromJustNote "Invalid backend name!" $ Map.lookup n backends
   cb <- fmap getBackend . sample . current $ _backend_current b
   fmap (xhrRequest "POST" (url cb "/send")) $ do
     kps <- sample . current . joinKeyPairs $ _wallet_keys w
@@ -244,6 +347,25 @@ buildExecPayload req = do
     , "payload" .= object [ "exec" .= payload ]
     ]
 
+-- Response handling ...
+
+-- | Extract the response body from a Pact server response:
+getResPayload
+  :: FromJSON resp
+  => Either XhrException XhrResponse
+  -> Either BackendError resp
+getResPayload xhrRes = do
+  r <- left BackendError_XhrException xhrRes
+  let
+    mRespT = BSL.fromStrict . T.encodeUtf8 <$> _xhrResponse_responseText r
+  respT <- maybe (throwError BackendError_NoResponse) pure mRespT
+  pactRes <- left (BackendError_ParseError . T.pack) . eitherDecode $ respT
+  case pactRes of
+    ApiFailure str ->
+      throwError $ BackendError_Failure . T.pack $ str
+    ApiSuccess a -> pure a
+
+-- Other utilities:
 
 
 -- | Get unique nonce, based on current time.

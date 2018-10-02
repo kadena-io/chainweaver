@@ -71,8 +71,10 @@ genKeyPair = liftJSM $ do
 -- | Create a signature based on the given payload and `PrivateKey`.
 mkSignature :: MonadJSM m => ByteString -> PrivateKey -> m Signature
 mkSignature msg (PrivateKey key) = liftJSM $ do
-  jsSig <- jsg2 "nacl.sign.detached" (BS.unpack msg) (BS.unpack key)
+  jsSign <- eval "(function(m, k) {return window.nacl.sign.detached(Uint8Array.from(m), Uint8Array.from(k));})"
+  jsSig <- call jsSign valNull [BS.unpack msg, BS.unpack key]
   Signature . BS.pack <$> fromJSValUnchecked jsSig
+  {- pure $ Signature BS.empty -}
 
 
 

@@ -16,7 +16,9 @@ library
   hs-source-dirs: src
 
   build-depends: base
+               , ListZipper
                , aeson
+               , aeson-pretty
                , base16-bytestring
                , bytestring
                , common
@@ -26,24 +28,24 @@ library
                , ghcjs-dom
                , jsaddle
                , lens
-               , ListZipper
                , mtl
                , newtype-generics
                , pact
                , reflex
                , reflex-dom
                , reflex-dom-ace
+               , safe
                , semantic-reflex
                , static
                , string-qq
                , template-haskell
                , text
-               , unordered-containers
-               , aeson-pretty
                , time
+               , unordered-containers
 
   exposed-modules: Frontend
                  , Frontend.Backend
+                 , Frontend.Backend.Pact
                  , Frontend.Crypto.Ed25519
                  , Frontend.Foundation
                  , Frontend.JsonData
