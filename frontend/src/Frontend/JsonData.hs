@@ -244,19 +244,20 @@ makeKeysets walletL cfg =
       => KeysetName
       -> mh (KeysetName, DynKeyset t)
     makeKeyset n = do
-      let onSetPred = select predSelectors (Const2 n)
-          onNewKey = select addSelectors (Const2 n)
-          onDelKey = select delSelectors (Const2 n)
+      let
+        onSetPred = select predSelectors (Const2 n)
+        onNewKey = select addSelectors (Const2 n)
+        onDelKey = select delSelectors (Const2 n)
 
-          onRemovedKeys = push (\new -> do
-            old <- sample . current $ walletL ^. wallet_keys
-            let removed = Map.difference old new
-            if Map.null removed
-               then pure Nothing
-               else pure $ Just . Set.fromList . Map.keys $ removed
+        onRemovedKeys = push (\new -> do
+          old <- sample . current $ walletL ^. wallet_keys
+          let removed = Map.difference old new
+          if Map.null removed
+             then pure Nothing
+             else pure $ Just . Set.fromList . Map.keys $ removed
 
-            )
-            (updated $ walletL ^. wallet_keys)
+          )
+          (updated $ walletL ^. wallet_keys)
 
       pPred <- holdUniqDyn =<< holdDyn Nothing onSetPred
 
