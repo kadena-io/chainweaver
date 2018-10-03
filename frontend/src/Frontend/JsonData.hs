@@ -40,23 +40,24 @@ module Frontend.JsonData
   ) where
 
 
-import           Control.Lens          hiding ((.=))
+import           Control.Lens        hiding ((.=))
 import           Control.Monad.Fix
-import           Data.Aeson            (Object)
+import           Data.Aeson          (Object)
 import           Data.Aeson
-import           Data.Aeson.Types      (typeMismatch)
-import qualified Data.HashMap.Strict   as H
-import           Data.Map              (Map)
-import qualified Data.Map              as Map
+import           Data.Aeson.Types    (typeMismatch)
+import qualified Data.HashMap.Strict as H
+import           Data.Map            (Map)
+import qualified Data.Map            as Map
 import           Data.Semigroup
-import qualified Data.Set              as Set
-import           Data.Text             (Text)
-import qualified Data.Text             as T
-import qualified Data.Text.Encoding    as T
-import           GHC.Generics          (Generic)
+import           Data.Set            (Set)
+import qualified Data.Set            as Set
+import           Data.Text           (Text)
+import qualified Data.Text           as T
+import qualified Data.Text.Encoding  as T
+import           GHC.Generics        (Generic)
 import           Reflex
 -- Needed for fanOut, module coming from reflex:
-import           Data.Functor.Misc     (Const2 (..))
+import           Data.Functor.Misc   (Const2 (..))
 
 import           Frontend.Foundation
 import           Frontend.Wallet
@@ -142,14 +143,16 @@ data JsonDataCfg t = JsonDataCfg
 makePactLenses ''JsonDataCfg
 
 data JsonData t = JsonData
-  { _jsonData_keysets  :: Dynamic t (DynKeysets t)
+  { _jsonData_keysets          :: Dynamic t (DynKeysets t)
     -- ^ Currently available keysets that will be added to the JSON data object
     -- to be sent in the next transaction.
-  , _jsonData_rawInput :: Dynamic t Text
+  , _jsonData_rawInput         :: Dynamic t Text
     -- ^ Raw input entered by the user, which should be a valid JSON object.
-  , _jsonData_data     :: Dynamic t (Either JsonError Object)
+  , _jsonData_data             :: Dynamic t (Either JsonError Object)
    -- ^ The result of combining keysets with raw input from the user. Will be
    -- a `Left` value if `_jsonData_rawInput` does not hold a valid JSON object.
+  , _jsonData_overlappingProps :: Dynamic t (Set Text)
+   -- ^ json object properties of the `_jsonData_rawInput` that overlap with keyset names.
   }
   deriving Generic
 
@@ -161,7 +164,9 @@ makeJsonData
   => Wallet t
   -> JsonDataCfg t
   -> m (JsonData t)
-makeJsonData walletL cfg = do
+makeJsonData walletL rawCfg = mfix $ \json -> do
+    let
+      cfg = sanitizeCfg json rawCfg
     keysets <- makeKeysets walletL cfg
 
     rawInput <- holdDyn "" $ cfg ^. jsonDataCfg_setRawInput
@@ -175,10 +180,17 @@ makeJsonData walletL cfg = do
         fromRaw <- rawInputObj
         pure $ mappend fromSets <$> fromRaw
 
+    duplicates <- holdUniqDyn $ do
+      let getKeys = Set.fromList . H.keys
+      fromSets <- getKeys <$> keySetsObj
+      fromRaw <- fmap getKeys <$> rawInputObj
+      pure $ either (const Set.empty) (Set.intersection fromSets) fromRaw
+
     pure $ JsonData
       { _jsonData_keysets = keysets
       , _jsonData_rawInput = rawInput
       , _jsonData_data = combinedObj
+      , _jsonData_overlappingProps = duplicates
       }
   where
     parseObjectOrEmpty :: Text -> Either JsonError Object
@@ -190,6 +202,19 @@ makeJsonData walletL cfg = do
     parseObject =
       maybe (Left JsonError_NoObject) Right . decodeStrict . T.encodeUtf8
 
+
+-- | Filter out invalid events.
+sanitizeCfg :: Reflex t => JsonData t -> JsonDataCfg t -> JsonDataCfg t
+sanitizeCfg json cfg =
+    cfg & jsonDataCfg_createKeyset %~ push filterInvalid
+  where
+    filterInvalid nRaw = do
+      ks <- sample . current $ json ^. jsonData_keysets
+      let
+        n = T.strip nRaw
+      if n == "" || Map.member n ks
+         then pure Nothing
+         else pure $ Just n
 
 -- | Make the keysets for `_jsonData_keysets`.
 makeKeysets
@@ -238,19 +263,20 @@ makeKeysets walletL cfg =
       => KeysetName
       -> mh (KeysetName, DynKeyset t)
     makeKeyset n = do
-      let onSetPred = select predSelectors (Const2 n)
-          onNewKey = select addSelectors (Const2 n)
-          onDelKey = select delSelectors (Const2 n)
+      let
+        onSetPred = select predSelectors (Const2 n)
+        onNewKey = select addSelectors (Const2 n)
+        onDelKey = select delSelectors (Const2 n)
 
-          onRemovedKeys = push (\new -> do
-            old <- sample . current $ walletL ^. wallet_keys
-            let removed = Map.difference old new
-            if Map.null removed
-               then pure Nothing
-               else pure $ Just . Set.fromList . Map.keys $ removed
+        onRemovedKeys = push (\new -> do
+          old <- sample . current $ walletL ^. wallet_keys
+          let removed = Map.difference old new
+          if Map.null removed
+             then pure Nothing
+             else pure $ Just . Set.fromList . Map.keys $ removed
 
-            )
-            (updated $ walletL ^. wallet_keys)
+          )
+          (updated $ walletL ^. wallet_keys)
 
       pPred <- holdUniqDyn =<< holdDyn Nothing onSetPred
 
