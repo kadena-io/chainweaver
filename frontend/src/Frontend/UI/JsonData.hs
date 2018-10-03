@@ -286,9 +286,10 @@ uiCreateKeyset ks = do
           & textInputConfig_placeholder .~ pure "Enter keyset name"
 
       let
+        nameVal = T.strip <$> value name
         onEnter = keypress Enter name
-        nameEmpty = (== "") <$> value name
-        duplicate = Map.member <$> value name <*> ks
+        nameEmpty = (== "") <$> nameVal
+        duplicate = Map.member <$> nameVal <*> ks
 
       clicked <- flip button (text "Create") $ def
         & buttonConfig_emphasis .~ Static (Just Secondary)
@@ -300,7 +301,7 @@ uiCreateKeyset ks = do
           liftJSM $ pToJSVal (_textInput_element name) ^. js0 ("focus" :: Text)
 
       void $ performEvent (setFocus <$ confirmed)
-      pure $ tag (current $ _textInput_value name) confirmed
+      pure $ tag (current nameVal) confirmed
 
 
 -- | Widget showing all avaialble keys for selecting keys

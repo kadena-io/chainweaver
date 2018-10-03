@@ -160,7 +160,9 @@ makeJsonData
   => Wallet t
   -> JsonDataCfg t
   -> m (JsonData t)
-makeJsonData walletL cfg = do
+makeJsonData walletL rawCfg = mfix $ \json -> do
+    let
+      cfg = sanitizeCfg json rawCfg
     keysets <- makeKeysets walletL cfg
 
     rawInput <- holdDyn "" $ cfg ^. jsonDataCfg_setRawInput
@@ -196,6 +198,19 @@ makeJsonData walletL cfg = do
     parseObject =
       maybe (Left JsonError_NoObject) Right . decodeStrict . T.encodeUtf8
 
+
+-- | Filter out invalid events.
+sanitizeCfg :: Reflex t => JsonData t -> JsonDataCfg t -> JsonDataCfg t
+sanitizeCfg json cfg =
+    cfg & jsonDataCfg_createKeyset %~ push filterInvalid
+  where
+    filterInvalid nRaw = do
+      ks <- sample . current $ json ^. jsonData_keysets
+      let
+        n = T.strip nRaw
+      if n == "" || Map.member n ks
+         then pure Nothing
+         else pure $ Just n
 
 -- | Make the keysets for `_jsonData_keysets`.
 makeKeysets
