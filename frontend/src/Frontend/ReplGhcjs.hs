@@ -41,8 +41,13 @@ import qualified Data.Sequence               as S
 import           Data.Text                   (Text)
 import qualified Data.Text                   as T
 import qualified Data.Text.Encoding          as T
+import           Data.Traversable            (for)
 import           Generics.Deriving.Monoid    (mappenddefault, memptydefault)
 import           GHC.Generics                (Generic)
+import qualified GHCJS.DOM.EventM            as DOM
+import qualified GHCJS.DOM.GlobalEventHandlers as DOM
+import qualified GHCJS.DOM.HTMLElement       as DOM hiding (click)
+import qualified GHCJS.DOM.Types             as DOM hiding (click)
 import           Language.Javascript.JSaddle hiding (Object)
 import           Reflex
 import           Reflex.Dom.ACE.Extended
@@ -501,13 +506,11 @@ controlBar ideL = do
 
     exampleChooser :: m (IdeCfg t)
     exampleChooser = do
-      d <- elClass "div" "item" $
-        dropdown def (Identity initialDemo) $ TaggedStatic $ text . fst <$> demos
+      d <- listLoadOptions exampleData
       load <- elClass "div" "item" $
         button (def & buttonConfig_emphasis .~ Static (Just Primary)) $ text "Load"
-      let intToCode n = snd $ fromJust $ Map.lookup n demos
       pure $ mempty
-        & ideCfg_selContract .~  (intToCode . runIdentity <$> updated (_dropdown_value d))
+        & ideCfg_selContract .~ updated d
         & ideCfg_load .~ load
 
     rightMenu = do
@@ -523,6 +526,58 @@ controlBar ideL = do
         elAttr "a" ("target" =: "_blank" <> "href" =: "http://kadena.io") $
           elAttr "img" ("src" =: static @"img/KadenaWhiteLogo.svg" <> "class" =: "logo-image" <> "width" =: "150" <> "hegiht" =: "20") blank
 
+listLoadOptions
+  :: MonadWidget t m
+  => [(Text, Text)] -- ^ Example data
+  -> m (Dynamic t Text)
+listLoadOptions examples = mdo
+  (top, selection) <- elAttr' "a" ("class" =: "dropdown item" <> "style" =: "width: 250px") $ mdo
+    dynText $ fst <$> selection
+    icon "dropdown" $ def & style .~ Static "color: white"
+    isOpen <- holdUniqDyn <=< holdDyn False $ leftmost
+      [ False <$ updated selection
+      , attachWith (\o _ -> not o) (current isOpen) (domEvent Click top)
+      ]
+    let transition = ffor (updated isOpen) $ \o ->
+          Transition SlideDown $ transitionConfig $ if o then In else Out
+        transitionConfig dir = TransitionConfig
+          { _transitionConfig_duration = 0.2
+          , _transitionConfig_cancelling = True
+          , _transitionConfig_direction = Just dir
+          }
+        popupConfig = def
+          & classes .~ Static "ui bottom left flowing popup"
+          & style .~ Static "top: 100%; width: 200%; right: auto"
+          & action ?~ Action
+            { _action_event = Just transition
+            , _action_initialDirection = Out
+            , _action_forceVisible = True
+            }
+    (popup, (search, update)) <- ui' "div" popupConfig $ divClass "ui two column relaxed divided grid" $ do
+      e1 <- divClass "column" $ do
+        header def $ text "Examples"
+        es <- divClass "ui inverted link list" $ for examples $ \sel@(name, _) -> do
+          (e, _) <- elClass' "a" "item" $ text name
+          pure $ sel <$ domEvent Click e
+        pure $ leftmost es
+      (search, e2) <- divClass "column" $ do
+        header def $ text "Deployed Contracts"
+        search <- input (def & inputConfig_icon .~ Static (Just RightIcon)) $ do
+          ie <- inputElement $ def & initialAttributes .~ ("type" =: "text")
+          icon "black search" def
+          pure ie
+        let dexamples = ffor (value search) $ \x -> filter (T.isInfixOf (T.toCaseFold x) . T.toCaseFold . fst) examples
+        es <- divClass "ui inverted link list" $ simpleList dexamples $ \d -> do
+          (e, _) <- elClass' "a" "item" $ dynText $ fst <$> d
+          pure $ attachWith const (current d) (domEvent Click e)
+        pure (search, switch . current $ leftmost <$> es)
+      pure (search, leftmost [e1, e2])
+    -- Prevent clicks on the popup from closing the top menu
+    let popupEl = DOM.uncheckedCastTo DOM.HTMLElement $ _element_raw popup
+    liftJSM $ DOM.on popupEl DOM.click $ DOM.stopPropagation
+    selection <- holdDyn (head examples) update
+    pure selection
+  pure $ snd <$> selection
 
 exampleData :: [(Text, Text)]
 exampleData =
