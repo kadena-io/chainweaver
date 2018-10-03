@@ -1,6 +1,7 @@
 module Devel where
 
-import           Control.Concurrent.Async (async, wait)
+import           Control.Exception
+import qualified Control.Concurrent.Async as Async
 import           Control.Monad
 import           Obelisk.Run
 import qualified Pact.Server.Server       as Pact
@@ -12,7 +13,19 @@ import           Frontend
 
 main :: Int -> IO ()
 main port = do
-  s <- async $ Pact.serve "config/common/pact.yaml"
+  s <- Async.async $ pactSafeServe "config/common/pact.yaml"
   run port backend frontend
-  wait s
+  Async.wait s
 
+pactSafeServe :: String -> IO ()
+pactSafeServe configFile = bracket
+  (Pact.setupServer configFile)
+  (\(runServer, cmd, hist) -> do
+    Async.link cmd
+    Async.link hist
+    runServer
+  )
+  (\(_, cmd, hist) -> do
+    Async.uninterruptibleCancel cmd
+    Async.uninterruptibleCancel hist
+  )
