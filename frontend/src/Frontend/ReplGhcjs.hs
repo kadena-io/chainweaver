@@ -68,7 +68,7 @@ import           Frontend.Wallet
 import           Frontend.Widgets
 import           Static
 
-type ErrorMsg = Text
+type LogMsg = Text
 
 -- | Configuration for sub-modules.
 --
@@ -83,7 +83,7 @@ data IdeCfg t = IdeCfg
     -- to the limitation of semantic-reflex dropdown to not being updateable.
   , _ideCfg_load        :: Event t ()
     -- ^ Load code into the repl.
-  , _ideCfg_setErrors   :: Event t [ErrorMsg]
+  , _ideCfg_setMsgs   :: Event t [LogMsg]
     -- ^ Set errors that should be shown to the user.
   , _ideCfg_setCode     :: Event t Text
     -- ^ Update the current contract/PACT code.
@@ -100,7 +100,7 @@ data Ide t = Ide
   -- ^ The currently selected contract name.
   , _ide_wallet           :: Wallet t
   , _ide_jsonData         :: JsonData t
-  , _ide_errors           :: Dynamic t [ErrorMsg]
+  , _ide_msgs           :: Dynamic t [LogMsg]
   , _ide_backend          :: Backend t
   }
   deriving Generic
@@ -163,13 +163,13 @@ app = void . mfix $ \ ~(cfg, ideL) -> elClass "div" "app" $ do
 
       code <- holdDyn "" $ cfg ^. ideCfg_setCode
       selContract <- holdDyn initialDemoFile $ cfg ^. ideCfg_selContract
-      errors <- holdDyn [] $ cfg ^. ideCfg_setErrors
+      errors <- holdDyn [] $ cfg ^. ideCfg_setMsgs
 
       pure
         ( mconcat
           [ controlCfg
           , editorCfg
-          , mempty & ideCfg_setErrors .~ jsonErrorsOnLoad
+          , mempty & ideCfg_setMsgs .~ jsonErrorsOnLoad
           , envCfg
           , contractReceivedCfg
           ]
@@ -177,7 +177,7 @@ app = void . mfix $ \ ~(cfg, ideL) -> elClass "div" "app" $ do
               , _ide_selectedContract = selContract
               , _ide_wallet = walletL
               , _ide_jsonData = json
-              , _ide_errors = errors
+              , _ide_msgs = errors
               , _ide_backend = backendL
               }
         )
@@ -203,7 +203,7 @@ app = void . mfix $ \ ~(cfg, ideL) -> elClass "div" "app" $ do
 data EnvSelection
   = EnvSelection_Repl -- ^ REPL for interacting with loaded contract
   | EnvSelection_Env -- ^ Widgets for editing (meta-)data.
-  | EnvSelection_Errors -- ^ Compiler errors to be shown.
+  | EnvSelection_Msgs -- ^ Compiler errors to be shown.
   deriving (Eq, Ord, Show)
 
 -- | Code editing (left hand side currently)
@@ -225,9 +225,9 @@ codePanel ideL = mdo
 envPanel :: forall t m. MonadWidget t m => Ide t -> Event t () -> m (IdeCfg t)
 envPanel ideL onLoad = mdo
   let onLoaded =
-        maybe EnvSelection_Repl (const EnvSelection_Errors)
+        maybe EnvSelection_Repl (const EnvSelection_Msgs)
           . listToMaybe
-          <$> updated (_ide_errors ideL)
+          <$> updated (_ide_msgs ideL)
 
   curSelection <- holdDyn EnvSelection_Env $ leftmost [ onSelect
                                                       , onLoaded
@@ -267,8 +267,8 @@ envPanel ideL onLoad = mdo
 
   errorsCfg <- tabPane
       ("class" =: "ui code-font full-size")
-      curSelection EnvSelection_Errors $ do
-    void . dyn $ traverse_ (snippetWidget . OutputSnippet) <$> _ide_errors ideL
+      curSelection EnvSelection_Msgs $ do
+    void . dyn $ traverse_ (snippetWidget . OutputSnippet) <$> _ide_msgs ideL
     pure mempty
 
   pure $ mconcat [ envCfg, errorsCfg ]
@@ -277,7 +277,7 @@ envPanel ideL onLoad = mdo
     tabs :: Dynamic t EnvSelection -> m (Event t EnvSelection)
     tabs curSelection = do
       let
-        selections = [ EnvSelection_Env, EnvSelection_Repl, EnvSelection_Errors ]
+        selections = [ EnvSelection_Env, EnvSelection_Repl, EnvSelection_Msgs ]
       leftmost <$> traverse (tab curSelection) selections
 
     tab :: Dynamic t EnvSelection -> EnvSelection -> m (Event t EnvSelection)
@@ -290,7 +290,7 @@ selectionToText :: EnvSelection -> Text
 selectionToText = \case
   EnvSelection_Repl -> "REPL"
   EnvSelection_Env -> "Env"
-  EnvSelection_Errors -> "Errors"
+  EnvSelection_Msgs -> "Messages"
 
 setDown :: (Int, Int) -> t -> Maybe ClickState
 setDown clickLoc _ = Just $ DownAt clickLoc
@@ -372,13 +372,13 @@ replWidget ideL onLoad = mdo
 
   timeToScroll <- delay 0.1 $ switch $ current newExpr
   void $ performEvent (scrollToBottom (_element_raw e) <$ timeToScroll)
-  pure $ mempty & ideCfg_setErrors .~ onErrs
+  pure $ mempty & ideCfg_setMsgs .~ onErrs
 
 replInner
     :: MonadWidget t m
     => Event t ()
     -> ([DynKeyPair t], (Text, Object))
-    -> m (Event t Text, Maybe ErrorMsg)
+    -> m (Event t Text, Maybe LogMsg)
 replInner replClick (signingKeys, (code, json)) = mdo
     let pactKeys =
           T.unwords
@@ -455,7 +455,7 @@ runReplStep0
     :: MonadIO m
     => (ReplState, Seq DisplayedSnippet)
     -> Text
-    -> m (ReplState, Seq DisplayedSnippet, Maybe ErrorMsg)
+    -> m (ReplState, Seq DisplayedSnippet, Maybe LogMsg)
 runReplStep0 (s1,snippets1) e = do
     (r,s2) <- liftIO $ runStateT (evalRepl' $ T.unpack e) s1
     let snippet = case r of
@@ -495,7 +495,7 @@ controlBar ideL = do
 
       elClass "div" "right menu" rightMenu
       pure $ cfg &
-        ideCfg_setErrors .~ ((:[]) . prettyPrintBackendErrorResult <$> onResp)
+        ideCfg_setMsgs .~ ((:[]) . prettyPrintBackendErrorResult <$> onResp)
   where
     showPactVersion = do
       elAttr "a" ( "target" =: "_blank" <> "href" =: "https://github.com/kadena-io/pact") $ do
