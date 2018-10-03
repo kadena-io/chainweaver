@@ -7,6 +7,7 @@
 {-# LANGUAGE ScopedTypeVariables   #-}
 
 module Reflex.Dom.ACE.Extended ( module ACE
+                               , AceAnnotation (..)
                                , ExtendedACE (..)
                                , resizableAceWidget
                                ) where
@@ -17,7 +18,7 @@ import           Data.Foldable
 import           Data.Map                          (Map)
 import           Data.Monoid
 import           Data.Text                         (Text)
-import           Language.Javascript.JSaddle       (MonadJSM, js0, liftJSM)
+import           Language.Javascript.JSaddle       (MonadJSM, js0, js1, liftJSM, ToJSVal(..), obj, (<#))
 import           Reflex
 import           Reflex.Dom.ACE                    as ACE
 import           Reflex.Dom.Core
@@ -30,6 +31,24 @@ data ExtendedACE t = ExtendedACE
     -- ^ Fires only if the change was not coming from reflex input.
   }
 
+-- | Send an annotation to the ace editor, e.g. for displaying an error/warning.
+data AceAnnotation = AceAnnotation
+  { _aceAnnotation_row    :: Int
+  , _aceAnnotation_column :: Int
+  , _aceAnnotation_text   :: Text -- ^ Message that is shown to the user.
+  , _aceAnnotation_type   :: Text -- ^ E.g. "error"
+  }
+
+instance ToJSVal AceAnnotation where
+  toJSVal a = do
+    o <- obj
+    o <# ("row" :: Text) $ _aceAnnotation_row a
+    o <# ("column" :: Text) $ _aceAnnotation_column a
+    o <# ("text" :: Text) $ _aceAnnotation_text a
+    o <# ("type" :: Text) $ _aceAnnotation_type a
+    toJSVal o
+
+
 -- | ACE editor widget that handles resizes of the containing DOM element properly.
 --
 --   For resize support the ace editor will be packed in an additonal div, the
@@ -40,12 +59,13 @@ resizableAceWidget
     => Map Text Text
     -> AceConfig
     -> AceDynConfig
+    -> Event t [AceAnnotation]
     -> Text
     -> Event t Text
     -> m (ExtendedACE t)
-resizableAceWidget attrs ac adc initContents onNewContent = do
+resizableAceWidget attrs ac adc onAnnotations initContents onNewContent = do
   let fullAttrs = attrs <> "style" =: "top:0px;bottom:0px;left:0px;right:0px;"
-  (onResize, editor) <- resizeDetectorWithAttrsAbsolute fullAttrs $ extendedAceWidget ac adc initContents onNewContent
+  (onResize, editor) <- resizeDetectorWithAttrsAbsolute fullAttrs $ extendedAceWidget ac adc onAnnotations initContents onNewContent
   resizeEditor onResize (_extendedACE_baseACE editor)
   pure editor
 
@@ -53,12 +73,19 @@ extendedAceWidget
   :: forall t m. MonadWidget t m
   => AceConfig
   -> AceDynConfig
+  -> Event t [AceAnnotation]
   -> Text
   -> Event t Text
   -> m (ExtendedACE t)
-extendedAceWidget ac adc initContents onNewContent = do
+extendedAceWidget ac adc onAnnotations initContents onNewContent = do
     newContent <- holdDyn Nothing $ Just <$> onNewContent
     ace <- aceWidgetStatic ac adc initContents
+
+    -- The delay is a hack, without it the warning disappears immediately
+    -- after being shown. Proper fix would be to track ace annotation changes
+    -- and make sure the ones set by us are present.
+    delayedAnnotations <- delay 1 onAnnotations
+    handleAnnotations ace delayedAnnotations
     let
       aceVal = aceValue ace
       onAceUpdate = updated aceVal
@@ -83,6 +110,19 @@ extendedAceWidget ac adc initContents onNewContent = do
         fmap snd . ffilter (uncurry (/=)) $ attach cached onAceUpdate
 
     pure $ ExtendedACE ace onUserChange
+  where
+    handleAnnotations ace annotations =
+      let
+        curAce = current $ aceRef ace
+        setAnnotations (mAi, annot) =
+          case mAi of
+            Nothing -> pure ()
+            Just (AceInstance ai) -> liftJSM $ do
+              session <- ai ^. js0 ("getSession" :: Text)
+              void $ session ^. js1 ("setAnnotations" :: Text) annot
+      in
+        performEvent_ $ setAnnotations <$> attach curAce annotations
+
 
 
 

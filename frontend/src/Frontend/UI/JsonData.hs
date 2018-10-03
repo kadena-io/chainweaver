@@ -30,12 +30,14 @@ module Frontend.UI.JsonData
   ) where
 
 ------------------------------------------------------------------------------
-import           Control.Lens
+import           Control.Lens                hiding ((.=))
 import           Control.Monad
+import           Data.Aeson                  (ToJSON, object, toJSON, (.=))
 import           Data.Aeson.Encode.Pretty    (encodePretty)
 import qualified Data.ByteString.Lazy        as BSL
 import qualified Data.Map                    as Map
 import           Data.Maybe
+import qualified Data.Set                    as Set
 import           Data.Text                   (Text)
 import qualified Data.Text                   as T
 import qualified Data.Text.Encoding          as T
@@ -87,7 +89,11 @@ uiJsonData w d = mdo
         ("class" =: "light ui segment json-data-editor-tab")
         curSelection JsonDataView_Raw $ do
       onNewData <- tagOnPostBuild $ d ^. jsonData_rawInput
-      onSetRawInput <- elClass "div" "editor" $ dataEditor "" onNewData
+
+      let
+        onDupWarning = mkDupWarning <$> (updated $ d ^. jsonData_overlappingProps)
+
+      onSetRawInput <- elClass "div" "editor" $ dataEditor onDupWarning "" onNewData
       pure $ mempty & jsonDataCfg_setRawInput .~ onSetRawInput
 
     tabPane
@@ -113,6 +119,24 @@ uiJsonData w d = mdo
       onClick <- makeClickable $ menuItem' (def & classes .~ dynClasses [boolClass "active" . Dyn $ fmap (== self) curSelection ]) $
         text $ viewToText self
       pure $ self <$ onClick
+
+    mkDupWarning dups =
+      if Set.null dups
+         then []
+         else
+           let
+             t = "The following properties are overriden by keysets: "
+             props =
+               T.intercalate ", " . Set.toList $ dups
+             ft = t <> props
+           in
+             [ AceAnnotation
+               { _aceAnnotation_row = 0 -- For simplicity, good enough for now.
+               , _aceAnnotation_column = 0
+               , _aceAnnotation_text = ft
+               , _aceAnnotation_type = "warning"
+               }
+             ]
 
 
 uiKeysets
@@ -316,13 +340,16 @@ uiKeysetKey ks n = elClass "div" "five wide column" $ do
 
 dataEditor
   :: MonadWidget t m
-  => Text -> Event t Text
+  => Event t [AceAnnotation]
+  -> Text
+  -> Event t Text
   -> m (Event t Text)
-dataEditor iv sv = do
+dataEditor anno iv sv = do
     let ac = def { _aceConfigMode = Just "ace/mode/json"
                  , _aceConfigElemAttrs = "class" =: "ace-data ace-widget"
                  }
-    ace <- resizableAceWidget mempty ac (AceDynConfig $ Just AceTheme_SolarizedDark) iv sv
+    ace <- resizableAceWidget
+      mempty ac (AceDynConfig $ Just AceTheme_SolarizedDark) anno iv sv
     return $ _extendedACE_onUserChange ace
 
 viewToText :: JsonDataView -> Text
