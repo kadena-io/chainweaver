@@ -13,19 +13,19 @@ import           Frontend
 
 main :: Int -> IO ()
 main port = do
-  s <- Async.async $ pactSafeServe "config/common/pact.yaml"
-  run port backend frontend
-  Async.wait s
+  Async.withAsync (pactSafeServe "config/common/pact.yaml") $ \s -> do
+    run port backend frontend
+    Async.wait s
 
 pactSafeServe :: String -> IO ()
 pactSafeServe configFile = bracket
   (Pact.setupServer configFile)
+  (\(_, cmd, hist) -> do
+    Async.uninterruptibleCancel cmd
+    Async.uninterruptibleCancel hist
+  )
   (\(runServer, cmd, hist) -> do
     Async.link cmd
     Async.link hist
     runServer
-  )
-  (\(_, cmd, hist) -> do
-    Async.uninterruptibleCancel cmd
-    Async.uninterruptibleCancel hist
   )
