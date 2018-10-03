@@ -27,6 +27,9 @@ module Frontend.Backend
   , makeBackend
     -- * Perform requests
   , backendPerformSend
+    -- * Utilities
+  , prettyPrintBackendErrorResult
+  , prettyPrintBackendError
   ) where
 
 import           Control.Arrow           (first, left)
@@ -223,6 +226,8 @@ backendPerformSend w b onReq = do
         [k] -> pure k
 
 
+-- | Helper function for performing a call to /listen based on the response
+-- from /send.
 backendPerformListen
   :: forall t m
   . (MonadHold t m, PerformEvent t m, MonadFix m
@@ -366,6 +371,21 @@ getResPayload xhrRes = do
     ApiSuccess a -> pure a
 
 -- Other utilities:
+
+prettyPrintBackendError :: BackendError -> Text
+prettyPrintBackendError = ("ERROR: " <>) . \case
+  BackendError_Failure msg -> "Backend failure: " <> msg
+  BackendError_XhrException e -> "Connection failed: " <> (T.pack . show) e
+  BackendError_ParseError m -> "Server response could not be parsed: " <> m
+  BackendError_NoResponse -> "Server response was empty."
+  BackendError_ResultFailure v -> "Command resulted in a failure: " <> (T.pack . show) v
+  BackendError_Other m -> "Some unknown problem: " <> m
+
+prettyPrintBackendErrorResult :: BackendErrorResult -> Text
+prettyPrintBackendErrorResult = \case
+  Left e -> prettyPrintBackendError e
+  Right r -> "Server result: " <> (T.pack . show) r
+
 
 
 -- | Get unique nonce, based on current time.

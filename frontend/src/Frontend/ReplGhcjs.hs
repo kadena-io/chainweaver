@@ -81,7 +81,6 @@ data IdeCfg t = IdeCfg
     -- Note: Currently this event should only be triggered from the dropdown in
     -- the controlbar, otherwise that dropdown will be out of sync. This is due
     -- to the limitation of semantic-reflex dropdown to not being updateable.
-    --
   , _ideCfg_load        :: Event t ()
     -- ^ Load code into the repl.
   , _ideCfg_setErrors   :: Event t [ErrorMsg]
@@ -492,10 +491,11 @@ controlBar ideL = do
           ed <- ideL ^. ide_jsonData . jsonData_data
           pure $ either (const Nothing) (Just . BackendRequest c) ed
         onReq = fmapMaybe id $ tag (current req) onDeploy
-      void $ backendPerformSend (ideL ^. ide_wallet) (ideL ^. ide_backend) onReq
+      onResp <- backendPerformSend (ideL ^. ide_wallet) (ideL ^. ide_backend) onReq
 
       elClass "div" "right menu" rightMenu
-      pure cfg
+      pure $ cfg &
+        ideCfg_setErrors .~ ((:[]) . prettyPrintBackendErrorResult <$> onResp)
   where
     showPactVersion = do
       elAttr "a" ( "target" =: "_blank" <> "href" =: "https://github.com/kadena-io/pact") $ do
