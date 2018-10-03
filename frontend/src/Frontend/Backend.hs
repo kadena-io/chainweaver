@@ -244,7 +244,7 @@ backendPerformListen b onKey = do
       ->  PushM t (Either BackendError (XhrRequest Text))
     mkXhr r = do
       cb <- fmap getBackend . sample . current $ _backend_current b
-      pure $ fmap (xhrRequest "GET" (url cb "/listen") . buildReq) r
+      pure $ fmap (xhrRequest "POST" (url cb "/listen") . buildReq) r
 
     (onErr, onReq) = fanEither $ pushAlways mkXhr onKey
 
