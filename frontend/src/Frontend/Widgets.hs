@@ -14,6 +14,20 @@ import           Data.Text                   (Text)
 import           Language.Javascript.JSaddle (js0, liftJSM, pToJSVal)
 import           Reflex.Dom.Core             (keypress, _textInput_element)
 import           Reflex.Dom.SemanticUI       hiding (mainWidget)
+import           Reflex.Network.Extended
+
+
+showLoading
+  :: (MonadWidget t m, Monoid b)
+  => Dynamic t (Maybe a)
+  -> (a -> m b)
+  -> m (Event t b)
+showLoading i w = do
+    networkView $ maybe loadingWidget w <$> i
+  where
+    loadingWidget = do
+      text "Loading ..."
+      pure mempty
 
 accordionItem'
   :: MonadWidget t m
