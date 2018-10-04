@@ -53,7 +53,7 @@ import           Frontend.Wallet
 -- | UI for managing the keys wallet.
 uiWallet :: MonadWidget t m => Wallet t -> m (WalletCfg t)
 uiWallet w = do
-    onReq <- elClass "div" "ui fluid action input" $ mdo
+    (duplicate, onReq) <- elClass "div" "ui fluid action input" $ mdo
       name <- textInput $ def
           & textInputConfig_value .~ SetValue "" (Just $ "" <$ confirmed)
           & textInputConfig_placeholder .~ pure "Enter key name"
@@ -61,7 +61,7 @@ uiWallet w = do
         nameVal = T.strip <$> value name
         onEnter = keypress Enter name
         nameEmpty = (== "") <$> nameVal
-        duplicate = Map.member <$> nameVal <*> w ^. wallet_keys
+      duplicate <- holdUniqDyn $ Map.member <$> nameVal <*> w ^. wallet_keys
 
       clicked <- flip button (text "Generate") $ def
         & buttonConfig_emphasis .~ Static (Just Secondary)
@@ -70,7 +70,18 @@ uiWallet w = do
       let
         confirmed = leftmost [ onEnter, clicked ]
       void $ performEvent (liftJSM (pToJSVal (_textInput_element name) ^. js0 ("focus" :: String)) <$ confirmed)
-      pure $ tag (current nameVal) confirmed
+      pure (duplicate, tag (current nameVal) confirmed)
+
+    let trans dir = Transition Fade $ def
+          & transitionConfig_duration .~ 0.2
+          & transitionConfig_direction .~ Just dir
+        config = def
+          & messageConfig_type .~ Static (Just $ MessageType Negative)
+          & action ?~ (def
+            & action_event ?~ ffor (updated duplicate) (\d -> trans $ if d then In else Out)
+            & action_initialDirection .~ Out)
+    message config $ do
+      paragraph $ text "This key name is already in use"
 
     keysCfg <- uiAvailableKeys w
 
