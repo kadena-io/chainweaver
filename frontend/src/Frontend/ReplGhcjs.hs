@@ -216,7 +216,13 @@ app = void . mfix $ \ ~(cfg, ideL) -> elClass "div" "app" $ do
       pure $ mempty
         & ideCfg_setCode .~ leftmost
           [ fmap fst onCodeJson
-          , _unCode . _mCode <$> deployedModule
+          , ffor deployedModule $ \m -> T.unlines
+            [ ";; Change <your-keyset-here> to the appropriate keyset name"
+            , let KeySetName keySetName = _mKeySet m
+               in "(define-keyset '" <> keySetName <> " (read-keyset \"<your-keyset-here>\"))"
+            , ""
+            , _unCode (_mCode m)
+            ]
           ]
         & ideCfg_jsonData . jsonDataCfg_setRawInput .~ fmap snd onCodeJson
         -- TODO: Something better than this for reporting errors
