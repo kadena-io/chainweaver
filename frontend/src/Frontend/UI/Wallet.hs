@@ -47,6 +47,7 @@ import           Reflex.Dom.SemanticUI       hiding (mainWidget)
 
 import           Frontend.Foundation
 import           Frontend.Wallet
+import           Frontend.Crypto.Ed25519
 
 
 
@@ -149,16 +150,24 @@ uiKeyItem (n, k) = do
           $ def & checkboxConfig_type .~ pure Nothing
                 & checkboxConfig_setValue .~ SetValue False (Just onPbSigned)
         let
-          buttonIcon = elClass "i" "large trash right aligned icon" blank
+          buttonIcon = snd <$> elClass' "i" "large trash right aligned icon" blank
         onDelI <- flip button buttonIcon $ def
           & buttonConfig_emphasis .~ Static (Just Tertiary)
           & classes .~ Static "input-aligned-btn"
         pure (boxI, onDelI)
 
-      elClass "i" "large key middle aligned icon" blank
+      viewKeys <- toggle False =<< domEvent Click <$> icon' "large link key middle aligned" def
       elClass "div" "content" $ do
         elClass "h4" "ui header" $ text n
         elClass "div" "description" $ text $ keyDescription k
+      dyn_ $ ffor viewKeys $ \case
+        False -> pure ()
+        True -> table (def & classes .~ "very basic") $ do
+          let item lbl key = el "tr" $ do
+                el "td" $ label (def & labelConfig_pointing .~ Static (Just RightPointing)) $ text lbl
+                elAttr "td" ("style" =: "word-break: break-all") $ text key
+          item "Public key" $ keyToText (_keyPair_publicKey k)
+          item "Private key" $ maybe "No key" keyToText (_keyPair_privateKey k)
       pure $ mempty
         & walletCfg_setSigning .~ (fmap (n, ) . _checkbox_change $ box)
         & walletCfg_delKey .~  fmap (const n) onDel
