@@ -35,6 +35,7 @@ import           Control.Monad
 import           Data.Aeson                  (ToJSON, object, toJSON, (.=))
 import           Data.Aeson.Encode.Pretty    (encodePretty)
 import qualified Data.ByteString.Lazy        as BSL
+import qualified Data.HashMap.Strict         as H
 import qualified Data.Map                    as Map
 import           Data.Maybe
 import qualified Data.Set                    as Set
@@ -79,7 +80,7 @@ uiJsonData w d = mdo
     keysetVCfg <- tabPane
         ("class" =: "keyset-editor ui segment")
         curSelection JsonDataView_Keysets $ do
-      onCreateKeyset <- uiCreateKeyset $ d ^. jsonData_keysets
+      onCreateKeyset <- uiCreateKeyset d
       ksCfg <- elClass "div" "keyset-list" $
         networkViewFlatten $ uiKeysets w <$> d ^. jsonData_keysets
 
@@ -278,8 +279,8 @@ uiKeyset w (n, ks) = mdo
 --
 -- TODO: Unify this with key creation widget in "Frontend.UI.Wallet" and uiAddKeysetKey widget below.
 uiCreateKeyset
-  :: MonadWidget t m => Dynamic t (DynKeysets t) -> m (Event t Text)
-uiCreateKeyset ks = do
+  :: MonadWidget t m => JsonData t -> m (Event t Text)
+uiCreateKeyset d = do
     elClass "div" "ui fluid action input" $ mdo
       name <- textInput $ def
           & textInputConfig_value .~ SetValue "" (Just $ "" <$ confirmed)
@@ -289,7 +290,14 @@ uiCreateKeyset ks = do
         nameVal = T.strip <$> value name
         onEnter = keypress Enter name
         nameEmpty = (== "") <$> nameVal
-        duplicate = Map.member <$> nameVal <*> ks
+
+        -- Check combined data and not only keyset names for duplicates:
+        duplicate = do
+          cJson <- d ^. jsonData_data
+          cName <- nameVal
+          case cJson of
+            Left _  -> pure False
+            Right j -> pure $ H.member cName j
 
       clicked <- flip button (text "Create") $ def
         & buttonConfig_emphasis .~ Static (Just Secondary)
