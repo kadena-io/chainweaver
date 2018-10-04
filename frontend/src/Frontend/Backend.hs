@@ -232,9 +232,10 @@ loadModules w b cfg = do
     onModules = decode . encode <$> onResp
   performEvent_ $ (liftIO . putStrLn . ("ERROR: " <>) . show) <$> onErr
 
-  holdDyn Nothing $ leftmost [ onModules
-                             , Nothing <$ cfg ^. backendCfg_selBackend
-                             ]
+  holdUniqDyn <=< holdDyn Nothing $ leftmost
+    [ onModules
+    , Nothing <$ cfg ^. backendCfg_selBackend
+    ]
 
 
 
