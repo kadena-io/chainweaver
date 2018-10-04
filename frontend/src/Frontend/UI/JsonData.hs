@@ -294,9 +294,10 @@ uiCreateKeyset d = do
         -- Check combined data and not only keyset names for duplicates:
         duplicate = do
           cJson <- d ^. jsonData_data
+          cKs <- d ^. jsonData_keysets
           cName <- nameVal
           case cJson of
-            Left _  -> pure False
+            Left _  -> pure $ Map.member cName cKs
             Right j -> pure $ H.member cName j
 
       clicked <- flip button (text "Create") $ def
