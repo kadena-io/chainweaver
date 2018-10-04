@@ -291,19 +291,17 @@ uiCreateKeyset d = do
         onEnter = keypress Enter name
         nameEmpty = (== "") <$> nameVal
 
-        ks = d ^. jsonData_keysets
-        duplicate = Map.member <$> nameVal <*> ks
-        duplicateJSON = do
+        -- Check combined data and not only keyset names for duplicates:
+        duplicate = do
           cJson <- d ^. jsonData_data
           cName <- nameVal
           case cJson of
             Left _  -> pure False
             Right j -> pure $ H.member cName j
-        allDuplicates = (||) <$> duplicate <*> duplicateJSON
 
       clicked <- flip button (text "Create") $ def
         & buttonConfig_emphasis .~ Static (Just Secondary)
-        & buttonConfig_disabled .~ Dyn ((||) <$> nameEmpty <*> allDuplicates)
+        & buttonConfig_disabled .~ Dyn ((||) <$> nameEmpty <*> duplicate)
 
       let
         confirmed = leftmost [ onEnter, clicked ]
