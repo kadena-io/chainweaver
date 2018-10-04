@@ -623,7 +623,7 @@ exampleData =
   [ ExampleContract "Hello World" "examples/helloWorld-1.0"
   , ExampleContract "Simple Payment" "examples/simplePayments-1.0"
   , ExampleContract "International Payment" "examples/internationalPayments-1.0"
-  , ExampleContract "Commercial Paper" "examples/commercialPaper-1.0"
+  {- , ExampleContract "Commercial Paper" "examples/commercialPaper-1.0" -}
   ]
 
 demos :: Map Int ExampleContract
