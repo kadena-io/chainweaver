@@ -318,7 +318,10 @@ envPanel ideL onLoad = mdo
 
     tab :: Dynamic t EnvSelection -> EnvSelection -> m (Event t EnvSelection)
     tab curSelection self = do
-      onClick <- makeClickable $ menuItem' (def & classes .~ dynClasses [boolClass "active" . Dyn $ fmap (== self) curSelection ]) $
+      let
+        itemClasses = [boolClass "active" . Dyn $ fmap (== self) curSelection ]
+        itemCfg = def & classes .~ dynClasses itemClasses
+      onClick <- makeClickable $ menuItem' itemCfg $
         text $ selectionToText self
       pure $ self <$ onClick
 
