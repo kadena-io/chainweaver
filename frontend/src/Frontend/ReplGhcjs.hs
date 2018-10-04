@@ -380,10 +380,10 @@ replInner replClick (signingKeys, (code, json)) = mdo
         codeP = mconcat
           [ "(env-data "
           , toJsonString . T.decodeUtf8 . BSL.toStrict $ encode json
-          , ")\n"
+          , ")"
           , "(env-keys ["
           , pactKeys
-          , "])\n\n"
+          , "])"
           , code
           ]
     initState <- liftIO $ initReplState StringEval
