@@ -70,20 +70,26 @@ import           Static
 
 type LogMsg = Text
 
+data ExampleContract = ExampleContract
+  { _exampleContract_name :: Text
+  , _exampleContract_file :: Text
+  } deriving Show
+
+data DeployedContract = DeployedContract
+  { _deployedContract_name :: Text
+  } deriving Show
+
 -- | Configuration for sub-modules.
 --
 --   State is controlled via this configuration.
 data IdeCfg t = IdeCfg
   { _ideCfg_wallet      :: WalletCfg t
   , _ideCfg_jsonData    :: JsonDataCfg t
-  , _ideCfg_selContract :: Event t Text
+  , _ideCfg_selContract :: Event t (Either ExampleContract DeployedContract)
     -- ^ Select a contract to load into the editor.
-    -- Note: Currently this event should only be triggered from the dropdown in
-    -- the controlbar, otherwise that dropdown will be out of sync. This is due
-    -- to the limitation of semantic-reflex dropdown to not being updateable.
   , _ideCfg_load        :: Event t ()
     -- ^ Load code into the repl.
-  , _ideCfg_setMsgs   :: Event t [LogMsg]
+  , _ideCfg_setMsgs     :: Event t [LogMsg]
     -- ^ Set errors that should be shown to the user.
   , _ideCfg_setCode     :: Event t Text
     -- ^ Update the current contract/PACT code.
@@ -96,11 +102,11 @@ makePactLenses ''IdeCfg
 data Ide t = Ide
   { _ide_code             :: Dynamic t Text
   -- ^ Currently loaded/edited PACT code.
-  , _ide_selectedContract :: Dynamic t Text
+  , _ide_selectedContract :: Dynamic t (Either ExampleContract DeployedContract)
   -- ^ The currently selected contract name.
   , _ide_wallet           :: Wallet t
   , _ide_jsonData         :: JsonData t
-  , _ide_msgs           :: Dynamic t [LogMsg]
+  , _ide_msgs             :: Dynamic t [LogMsg]
   , _ide_backend          :: Backend t
   }
   deriving Generic
@@ -123,11 +129,11 @@ codeExtension = ".repl"
 dataExtension :: Text
 dataExtension = ".data.json"
 
-toCodeFile :: Text -> Text
-toCodeFile = (<> codeExtension)
+toCodeFile :: ExampleContract -> Text
+toCodeFile = (<> codeExtension) . _exampleContract_file
 
-toDataFile :: Text -> Text
-toDataFile = (<> dataExtension)
+toDataFile :: ExampleContract -> Text
+toDataFile = (<> dataExtension) . _exampleContract_file
 
 codeFromResponse :: XhrResponse -> Text
 codeFromResponse =
@@ -162,7 +168,7 @@ app = void . mfix $ \ ~(cfg, ideL) -> elClass "div" "app" $ do
         elClass "div" "ui env-pane" $ envPanel ideL (cfg ^. ideCfg_load)
 
       code <- holdDyn "" $ cfg ^. ideCfg_setCode
-      selContract <- holdDyn initialDemoFile $ cfg ^. ideCfg_selContract
+      selContract <- holdDyn (Left initialDemoContract) $ cfg ^. ideCfg_selContract
       errors <- holdDyn [] $ cfg ^. ideCfg_setMsgs
 
       pure
@@ -193,9 +199,9 @@ app = void . mfix $ \ ~(cfg, ideL) -> elClass "div" "app" $ do
 
     loadContractData getFileName onNewContractName =
       fmap (fmap codeFromResponse)
-      . performRequestAsync
-      . fmap ((\u -> xhrRequest "GET" u def) . getFileName)
-      $ onNewContractName
+      . performRequestAsync $ ffor onNewContractName $ \case
+        Left example -> xhrRequest "GET" (getFileName example) def
+        Right deployed -> xhrRequest "GET" "" def -- TODO
 
 
 
@@ -528,11 +534,11 @@ controlBar ideL = do
 
 listLoadOptions
   :: MonadWidget t m
-  => [(Text, Text)] -- ^ Example data
-  -> m (Dynamic t Text)
+  => [ExampleContract]
+  -> m (Dynamic t (Either ExampleContract DeployedContract))
 listLoadOptions examples = mdo
   (top, selection) <- elAttr' "a" ("class" =: "dropdown item" <> "style" =: "width: 250px") $ mdo
-    dynText $ fst <$> selection
+    dynText $ either _exampleContract_name _deployedContract_name <$> selection
     icon "dropdown" $ def & style .~ Static "color: white"
     isOpen <- holdUniqDyn <=< holdDyn False $ leftmost
       [ False <$ updated selection
@@ -554,49 +560,49 @@ listLoadOptions examples = mdo
             , _action_forceVisible = True
             }
     (popup, (search, update)) <- ui' "div" popupConfig $ divClass "ui two column relaxed divided grid" $ do
-      e1 <- divClass "column" $ do
+      exampleChoice <- divClass "column" $ do
         header def $ text "Examples"
-        es <- divClass "ui inverted link list" $ for examples $ \sel@(name, _) -> do
-          (e, _) <- elClass' "a" "item" $ text name
-          pure $ sel <$ domEvent Click e
+        es <- divClass "ui inverted link list" $ for examples $ \example -> do
+          (e, _) <- elClass' "a" "item" $ text $ _exampleContract_name example
+          pure $ Left example <$ domEvent Click e
         pure $ leftmost es
-      (search, e2) <- divClass "column" $ do
+      (search, deployedChoice) <- divClass "column" $ do
         header def $ text "Deployed Contracts"
         search <- input (def & inputConfig_icon .~ Static (Just RightIcon)) $ do
           ie <- inputElement $ def & initialAttributes .~ ("type" =: "text")
           icon "black search" def
           pure ie
-        let dexamples = ffor (value search) $ \x -> filter (T.isInfixOf (T.toCaseFold x) . T.toCaseFold . fst) examples
+        let deployed = [DeployedContract "helloWorld"] -- TODO
+        let dexamples = ffor (value search) $ \x -> filter (T.isInfixOf (T.toCaseFold x) . T.toCaseFold . _deployedContract_name) deployed
         es <- divClass "ui inverted link list" $ simpleList dexamples $ \d -> do
-          (e, _) <- elClass' "a" "item" $ dynText $ fst <$> d
-          pure $ attachWith const (current d) (domEvent Click e)
+          (e, _) <- elClass' "a" "item" $ dynText $ _deployedContract_name <$> d
+          pure $ attachWith (\c _ -> Right c) (current d) (domEvent Click e)
         pure (search, switch . current $ leftmost <$> es)
-      pure (search, leftmost [e1, e2])
+      pure (search, leftmost [exampleChoice, deployedChoice])
     -- Prevent clicks on the popup from closing the top menu
     let popupEl = DOM.uncheckedCastTo DOM.HTMLElement $ _element_raw popup
     liftJSM $ DOM.on popupEl DOM.click $ DOM.stopPropagation
-    selection <- holdDyn (head examples) update
+    selection <- holdDyn (Left initialDemoContract) update
     pure selection
-  pure $ snd <$> selection
+  pure selection
 
-exampleData :: [(Text, Text)]
+exampleData :: [ExampleContract]
 exampleData =
-  [ ("Hello World", "examples/helloWorld-1.0")
-  , ("Simple Payment", "examples/simplePayments-1.0")
-  , ("International Payment", "examples/internationalPayments-1.0")
-  , ("Commercial Paper", "examples/commercialPaper-1.0")
+  [ ExampleContract "Hello World" "examples/helloWorld-1.0"
+  , ExampleContract "Simple Payment" "examples/simplePayments-1.0"
+  , ExampleContract "International Payment" "examples/internationalPayments-1.0"
+  , ExampleContract "Commercial Paper" "examples/commercialPaper-1.0"
   ]
 
-demos :: Map Int (Text, Text)
+demos :: Map Int ExampleContract
 demos = Map.fromList $ zip [0..] exampleData
 
 -- | What demo do we load on startup:
 initialDemo :: Int
 initialDemo = 0
 
--- | File name prefix of `initialDemo`
-initialDemoFile :: Text
-initialDemoFile = snd . fromJust $ Map.lookup initialDemo demos
+initialDemoContract :: ExampleContract
+initialDemoContract = fromJust $ Map.lookup initialDemo demos
 
 -- Instances:
 
