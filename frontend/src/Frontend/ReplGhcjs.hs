@@ -27,7 +27,7 @@ module Frontend.ReplGhcjs where
 ------------------------------------------------------------------------------
 import           Control.Lens
 import           Control.Monad.State.Strict
-import           Data.Aeson                  (Object, encode)
+import           Data.Aeson                  as Aeson (Object, encode, fromJSON, Result(..))
 import qualified Data.ByteString.Lazy        as BSL
 import           Data.Foldable
 import qualified Data.HashMap.Strict         as H
@@ -157,7 +157,7 @@ app = void . mfix $ \ ~(cfg, ideL) -> elClass "div" "app" $ do
         fmap maybeToList . tag (current jsonErrorString) $ cfg ^. ideCfg_load
 
     controlCfg <- controlBar ideL
-    contractReceivedCfg <- loadContract $ _ide_selectedContract ideL
+    contractReceivedCfg <- loadContract ideL $ _ide_selectedContract ideL
     elClass "div" "ui two column padded grid main" $ mdo
       editorCfg <- elClass "div" "column" $ do
         {- elClass "div" "ui secondary menu pointing" $ do -}
@@ -188,22 +188,45 @@ app = void . mfix $ \ ~(cfg, ideL) -> elClass "div" "app" $ do
               }
         )
   where
-    loadContract contractName = do
+    loadContract ideL contractName = do
       onNewContractName <- tagOnPostBuild contractName
-      code <- loadContractData toCodeFile onNewContractName
-      json <- loadContractData toDataFile onNewContractName
-      onCodeJson <- waitForEvents (,) onNewContractName code json
+      let (onExampleContract, onDeployedContract) = fanEither onNewContractName
+
+      -- Loading of example contracts
+      code <- loadContractData toCodeFile onExampleContract
+      json <- loadContractData toDataFile onExampleContract
+      onCodeJson <- waitForEvents (,) onExampleContract code json
+
+      -- Loading of deployed contracts
+      deployedResult <- backendPerformSend (ideL ^. ide_wallet) (ideL ^. ide_backend) $ do
+        ffor onDeployedContract $ \contract -> BackendRequest
+          { _backendRequest_code = mconcat
+            [ "(describe-module '"
+            , _deployedContract_name contract
+            , ")"
+            ]
+          , _backendRequest_data = mempty
+          }
+      let (deployedResultError, deployedValue) = fanEither deployedResult
+          (deployedDecodeError, deployedModule) = fanEither $ ffor deployedValue $ \v -> case fromJSON v of
+            Aeson.Error e -> Left e
+            Aeson.Success a -> Right a
+
       pure $ mempty
-        & ideCfg_setCode .~ fmap fst onCodeJson
+        & ideCfg_setCode .~ leftmost
+          [ fmap fst onCodeJson
+          , _unCode . _mCode <$> deployedModule
+          ]
         & ideCfg_jsonData . jsonDataCfg_setRawInput .~ fmap snd onCodeJson
+        -- TODO: Something better than this for reporting errors
+        & ideCfg_setMsgs .~ leftmost
+          [ pure . T.pack <$> deployedDecodeError
+          , pure . T.pack . show <$> deployedResultError
+          ]
 
     loadContractData getFileName onNewContractName =
       fmap (fmap codeFromResponse)
-      . performRequestAsync $ ffor onNewContractName $ \case
-        Left example -> xhrRequest "GET" (getFileName example) def
-        Right deployed -> xhrRequest "GET" "" def -- TODO
-
-
+      . performRequestAsync $ ffor onNewContractName $ \example -> xhrRequest "GET" (getFileName example) def
 
 -- | The available panels in the `envPanel`
 data EnvSelection
@@ -572,7 +595,7 @@ listLoadOptions examples = mdo
           ie <- inputElement $ def & initialAttributes .~ ("type" =: "text")
           icon "black search" def
           pure ie
-        let deployed = [DeployedContract "helloWorld"] -- TODO
+        let deployed = [DeployedContract "helloWorld", DeployedContract "payments"] -- TODO
         let dexamples = ffor (value search) $ \x -> filter (T.isInfixOf (T.toCaseFold x) . T.toCaseFold . _deployedContract_name) deployed
         es <- divClass "ui inverted link list" $ simpleList dexamples $ \d -> do
           (e, _) <- elClass' "a" "item" $ dynText $ _deployedContract_name <$> d
