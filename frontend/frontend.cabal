@@ -16,7 +16,9 @@ library
   hs-source-dirs: src
 
   build-depends: base
+               , ListZipper
                , aeson
+               , aeson-pretty
                , base16-bytestring
                , bytestring
                , common
@@ -26,36 +28,38 @@ library
                , ghcjs-dom
                , jsaddle
                , lens
-               , ListZipper
                , mtl
                , newtype-generics
                , pact
                , reflex
                , reflex-dom
                , reflex-dom-ace
+               , safe
                , semantic-reflex
                , static
                , string-qq
                , template-haskell
                , text
+               , time
                , unordered-containers
-               , aeson-pretty
 
   exposed-modules: Frontend
+                 , Frontend.Backend
+                 , Frontend.Backend.Pact
+                 , Frontend.Crypto.Ed25519
                  , Frontend.Foundation
                  , Frontend.JsonData
                  , Frontend.ReplGhcjs
+                 , Frontend.Storage
                  , Frontend.UI.JsonData
                  , Frontend.UI.Wallet
                  , Frontend.Wallet
                  , Frontend.Widgets
+                 , Reflex.Class.Extended
                  , Reflex.Dom.ACE.Extended
                  , Reflex.Dom.Widget.Resize.Extended
                  , Reflex.Extended
-                 , Reflex.Class.Extended
                  , Reflex.Network.Extended
-                 , Frontend.Crypto.Ed25519
-                 , Frontend.Storage
 
   ghc-options: -Wall
   default-extensions: ScopedTypeVariables

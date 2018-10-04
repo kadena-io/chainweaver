@@ -41,8 +41,13 @@ import qualified Data.Sequence               as S
 import           Data.Text                   (Text)
 import qualified Data.Text                   as T
 import qualified Data.Text.Encoding          as T
+import           Data.Traversable            (for)
 import           Generics.Deriving.Monoid    (mappenddefault, memptydefault)
 import           GHC.Generics                (Generic)
+import qualified GHCJS.DOM.EventM            as DOM
+import qualified GHCJS.DOM.GlobalEventHandlers as DOM
+import qualified GHCJS.DOM.HTMLElement       as DOM hiding (click)
+import qualified GHCJS.DOM.Types             as DOM hiding (click)
 import           Language.Javascript.JSaddle hiding (Object)
 import           Reflex
 import           Reflex.Dom.ACE.Extended
@@ -54,6 +59,7 @@ import           Pact.Repl
 import           Pact.Repl.Types
 import           Pact.Types.Lang
 ------------------------------------------------------------------------------
+import           Frontend.Backend
 import           Frontend.Foundation
 import           Frontend.JsonData
 import           Frontend.UI.JsonData
@@ -62,7 +68,7 @@ import           Frontend.Wallet
 import           Frontend.Widgets
 import           Static
 
-type ErrorMsg = Text
+type LogMsg = Text
 
 -- | Configuration for sub-modules.
 --
@@ -75,10 +81,9 @@ data IdeCfg t = IdeCfg
     -- Note: Currently this event should only be triggered from the dropdown in
     -- the controlbar, otherwise that dropdown will be out of sync. This is due
     -- to the limitation of semantic-reflex dropdown to not being updateable.
-    --
   , _ideCfg_load        :: Event t ()
     -- ^ Load code into the repl.
-  , _ideCfg_setErrors   :: Event t [ErrorMsg]
+  , _ideCfg_setMsgs   :: Event t [LogMsg]
     -- ^ Set errors that should be shown to the user.
   , _ideCfg_setCode     :: Event t Text
     -- ^ Update the current contract/PACT code.
@@ -95,7 +100,8 @@ data Ide t = Ide
   -- ^ The currently selected contract name.
   , _ide_wallet           :: Wallet t
   , _ide_jsonData         :: JsonData t
-  , _ide_errors           :: Dynamic t [ErrorMsg]
+  , _ide_msgs           :: Dynamic t [LogMsg]
+  , _ide_backend          :: Backend t
   }
   deriving Generic
 
@@ -137,13 +143,14 @@ app :: MonadWidget t m => m ()
 app = void . mfix $ \ ~(cfg, ideL) -> elClass "div" "app" $ do
     walletL <- makeWallet $ _ideCfg_wallet cfg
     json <- makeJsonData walletL $ _ideCfg_jsonData cfg
+    backendL <- makeBackend $ BackendCfg never
     let
       jsonErrorString =
         either (Just . showJsonError) (const Nothing) <$> _jsonData_data json
       jsonErrorsOnLoad =
         fmap maybeToList . tag (current jsonErrorString) $ cfg ^. ideCfg_load
 
-    controlCfg <- controlBar
+    controlCfg <- controlBar ideL
     contractReceivedCfg <- loadContract $ _ide_selectedContract ideL
     elClass "div" "ui two column padded grid main" $ mdo
       editorCfg <- elClass "div" "column" $ do
@@ -156,13 +163,13 @@ app = void . mfix $ \ ~(cfg, ideL) -> elClass "div" "app" $ do
 
       code <- holdDyn "" $ cfg ^. ideCfg_setCode
       selContract <- holdDyn initialDemoFile $ cfg ^. ideCfg_selContract
-      errors <- holdDyn [] $ cfg ^. ideCfg_setErrors
+      errors <- holdDyn [] $ cfg ^. ideCfg_setMsgs
 
       pure
         ( mconcat
           [ controlCfg
           , editorCfg
-          , mempty & ideCfg_setErrors .~ jsonErrorsOnLoad
+          , mempty & ideCfg_setMsgs .~ jsonErrorsOnLoad
           , envCfg
           , contractReceivedCfg
           ]
@@ -170,7 +177,8 @@ app = void . mfix $ \ ~(cfg, ideL) -> elClass "div" "app" $ do
               , _ide_selectedContract = selContract
               , _ide_wallet = walletL
               , _ide_jsonData = json
-              , _ide_errors = errors
+              , _ide_msgs = errors
+              , _ide_backend = backendL
               }
         )
   where
@@ -195,7 +203,7 @@ app = void . mfix $ \ ~(cfg, ideL) -> elClass "div" "app" $ do
 data EnvSelection
   = EnvSelection_Repl -- ^ REPL for interacting with loaded contract
   | EnvSelection_Env -- ^ Widgets for editing (meta-)data.
-  | EnvSelection_Errors -- ^ Compiler errors to be shown.
+  | EnvSelection_Msgs -- ^ Compiler errors to be shown.
   deriving (Eq, Ord, Show)
 
 -- | Code editing (left hand side currently)
@@ -217,9 +225,9 @@ codePanel ideL = mdo
 envPanel :: forall t m. MonadWidget t m => Ide t -> Event t () -> m (IdeCfg t)
 envPanel ideL onLoad = mdo
   let onLoaded =
-        maybe EnvSelection_Repl (const EnvSelection_Errors)
+        maybe EnvSelection_Repl (const EnvSelection_Msgs)
           . listToMaybe
-          <$> updated (_ide_errors ideL)
+          <$> updated (_ide_msgs ideL)
 
   curSelection <- holdDyn EnvSelection_Env $ leftmost [ onSelect
                                                       , onLoaded
@@ -259,8 +267,8 @@ envPanel ideL onLoad = mdo
 
   errorsCfg <- tabPane
       ("class" =: "ui code-font full-size")
-      curSelection EnvSelection_Errors $ do
-    void . dyn $ traverse_ (snippetWidget . OutputSnippet) <$> _ide_errors ideL
+      curSelection EnvSelection_Msgs $ do
+    void . dyn $ traverse_ (snippetWidget . OutputSnippet) <$> _ide_msgs ideL
     pure mempty
 
   pure $ mconcat [ envCfg, errorsCfg ]
@@ -269,7 +277,7 @@ envPanel ideL onLoad = mdo
     tabs :: Dynamic t EnvSelection -> m (Event t EnvSelection)
     tabs curSelection = do
       let
-        selections = [ EnvSelection_Env, EnvSelection_Repl, EnvSelection_Errors ]
+        selections = [ EnvSelection_Env, EnvSelection_Repl, EnvSelection_Msgs ]
       leftmost <$> traverse (tab curSelection) selections
 
     tab :: Dynamic t EnvSelection -> EnvSelection -> m (Event t EnvSelection)
@@ -282,7 +290,7 @@ selectionToText :: EnvSelection -> Text
 selectionToText = \case
   EnvSelection_Repl -> "REPL"
   EnvSelection_Env -> "Env"
-  EnvSelection_Errors -> "Errors"
+  EnvSelection_Msgs -> "Messages"
 
 setDown :: (Int, Int) -> t -> Maybe ClickState
 setDown clickLoc _ = Just $ DownAt clickLoc
@@ -364,18 +372,17 @@ replWidget ideL onLoad = mdo
 
   timeToScroll <- delay 0.1 $ switch $ current newExpr
   void $ performEvent (scrollToBottom (_element_raw e) <$ timeToScroll)
-  pure $ mempty & ideCfg_setErrors .~ onErrs
+  pure $ mempty & ideCfg_setMsgs .~ onErrs
 
 replInner
     :: MonadWidget t m
     => Event t ()
     -> ([DynKeyPair t], (Text, Object))
-    -> m (Event t Text, Maybe ErrorMsg)
+    -> m (Event t Text, Maybe LogMsg)
 replInner replClick (signingKeys, (code, json)) = mdo
     let pactKeys =
-          T.unwords . map (surroundWith "\"")
-          . map keyToText
-          . map _keyPair_publicKey
+          T.unwords
+          . map (keyToText . _keyPair_publicKey)
           $ signingKeys
         codeP = mconcat
           [ "(env-data "
@@ -403,6 +410,8 @@ replInner replClick (signingKeys, (code, json)) = mdo
       escapeJSON = T.replace "\"" "\\\""
 
       toJsonString = surroundWith "\"" . escapeJSON
+
+      keyToText = T.decodeUtf8 . BSL.toStrict . encode
 
 
 replInput :: MonadWidget t m => Event t () -> m (Event t Text)
@@ -446,7 +455,7 @@ runReplStep0
     :: MonadIO m
     => (ReplState, Seq DisplayedSnippet)
     -> Text
-    -> m (ReplState, Seq DisplayedSnippet, Maybe ErrorMsg)
+    -> m (ReplState, Seq DisplayedSnippet, Maybe LogMsg)
 runReplStep0 (s1,snippets1) e = do
     (r,s2) <- liftIO $ runStateT (evalRepl' $ T.unpack e) s1
     let snippet = case r of
@@ -468,14 +477,25 @@ showResult :: Show a => Either String a -> Text
 showResult (Right v) = T.pack $ show v
 showResult (Left e)  = "Error: " <> T.pack e
 
-controlBar :: forall t m. MonadWidget t m => m (IdeCfg t)
-controlBar = do
+controlBar :: forall t m. MonadWidget t m => Ide t -> m (IdeCfg t)
+controlBar ideL = do
     elClass "div" "ui borderless menu" $ do
       elClass "div" "item" showPactVersion
 
       cfg <- exampleChooser
+      onDeploy <- elClass "div" "item" $
+        button (def & buttonConfig_emphasis .~ Static (Just Primary)) $ text "Deploy"
+      let
+        req = do
+          c <- ideL ^. ide_code
+          ed <- ideL ^. ide_jsonData . jsonData_data
+          pure $ either (const Nothing) (Just . BackendRequest c) ed
+        onReq = fmapMaybe id $ tag (current req) onDeploy
+      onResp <- backendPerformSend (ideL ^. ide_wallet) (ideL ^. ide_backend) onReq
+
       elClass "div" "right menu" rightMenu
-      pure cfg
+      pure $ cfg &
+        ideCfg_setMsgs .~ ((:[]) . prettyPrintBackendErrorResult <$> onResp)
   where
     showPactVersion = do
       elAttr "a" ( "target" =: "_blank" <> "href" =: "https://github.com/kadena-io/pact") $ do
@@ -486,13 +506,11 @@ controlBar = do
 
     exampleChooser :: m (IdeCfg t)
     exampleChooser = do
-      d <- elClass "div" "item" $
-        dropdown def (Identity initialDemo) $ TaggedStatic $ text . fst <$> demos
+      d <- listLoadOptions exampleData
       load <- elClass "div" "item" $
         button (def & buttonConfig_emphasis .~ Static (Just Primary)) $ text "Load"
-      let intToCode n = snd $ fromJust $ Map.lookup n demos
       pure $ mempty
-        & ideCfg_selContract .~  (intToCode . runIdentity <$> updated (_dropdown_value d))
+        & ideCfg_selContract .~ updated d
         & ideCfg_load .~ load
 
     rightMenu = do
@@ -508,6 +526,58 @@ controlBar = do
         elAttr "a" ("target" =: "_blank" <> "href" =: "http://kadena.io") $
           elAttr "img" ("src" =: static @"img/KadenaWhiteLogo.svg" <> "class" =: "logo-image" <> "width" =: "150" <> "hegiht" =: "20") blank
 
+listLoadOptions
+  :: MonadWidget t m
+  => [(Text, Text)] -- ^ Example data
+  -> m (Dynamic t Text)
+listLoadOptions examples = mdo
+  (top, selection) <- elAttr' "a" ("class" =: "dropdown item" <> "style" =: "width: 250px") $ mdo
+    dynText $ fst <$> selection
+    icon "dropdown" $ def & style .~ Static "color: white"
+    isOpen <- holdUniqDyn <=< holdDyn False $ leftmost
+      [ False <$ updated selection
+      , attachWith (\o _ -> not o) (current isOpen) (domEvent Click top)
+      ]
+    let transition = ffor (updated isOpen) $ \o ->
+          Transition SlideDown $ transitionConfig $ if o then In else Out
+        transitionConfig dir = TransitionConfig
+          { _transitionConfig_duration = 0.2
+          , _transitionConfig_cancelling = True
+          , _transitionConfig_direction = Just dir
+          }
+        popupConfig = def
+          & classes .~ Static "ui bottom left flowing popup"
+          & style .~ Static "top: 100%; width: 200%; right: auto"
+          & action ?~ Action
+            { _action_event = Just transition
+            , _action_initialDirection = Out
+            , _action_forceVisible = True
+            }
+    (popup, (search, update)) <- ui' "div" popupConfig $ divClass "ui two column relaxed divided grid" $ do
+      e1 <- divClass "column" $ do
+        header def $ text "Examples"
+        es <- divClass "ui inverted link list" $ for examples $ \sel@(name, _) -> do
+          (e, _) <- elClass' "a" "item" $ text name
+          pure $ sel <$ domEvent Click e
+        pure $ leftmost es
+      (search, e2) <- divClass "column" $ do
+        header def $ text "Deployed Contracts"
+        search <- input (def & inputConfig_icon .~ Static (Just RightIcon)) $ do
+          ie <- inputElement $ def & initialAttributes .~ ("type" =: "text")
+          icon "black search" def
+          pure ie
+        let dexamples = ffor (value search) $ \x -> filter (T.isInfixOf (T.toCaseFold x) . T.toCaseFold . fst) examples
+        es <- divClass "ui inverted link list" $ simpleList dexamples $ \d -> do
+          (e, _) <- elClass' "a" "item" $ dynText $ fst <$> d
+          pure $ attachWith const (current d) (domEvent Click e)
+        pure (search, switch . current $ leftmost <$> es)
+      pure (search, leftmost [e1, e2])
+    -- Prevent clicks on the popup from closing the top menu
+    let popupEl = DOM.uncheckedCastTo DOM.HTMLElement $ _element_raw popup
+    liftJSM $ DOM.on popupEl DOM.click $ DOM.stopPropagation
+    selection <- holdDyn (head examples) update
+    pure selection
+  pure $ snd <$> selection
 
 exampleData :: [(Text, Text)]
 exampleData =
