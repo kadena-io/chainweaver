@@ -85,6 +85,7 @@ data DeployedContract = DeployedContract
 data IdeCfg t = IdeCfg
   { _ideCfg_wallet      :: WalletCfg t
   , _ideCfg_jsonData    :: JsonDataCfg t
+  , _ideCfg_backend     :: BackendCfg t
   , _ideCfg_selContract :: Event t (Either ExampleContract DeployedContract)
     -- ^ Select a contract to load into the editor.
   , _ideCfg_load        :: Event t ()
@@ -149,7 +150,7 @@ app :: MonadWidget t m => m ()
 app = void . mfix $ \ ~(cfg, ideL) -> elClass "div" "app" $ do
     walletL <- makeWallet $ _ideCfg_wallet cfg
     json <- makeJsonData walletL $ _ideCfg_jsonData cfg
-    backendL <- makeBackend $ BackendCfg never
+    backendL <- makeBackend walletL $ cfg ^. ideCfg_backend
     let
       jsonErrorString =
         either (Just . showJsonError) (const Nothing) <$> _jsonData_data json
@@ -535,11 +536,16 @@ controlBar ideL = do
 
     exampleChooser :: m (IdeCfg t)
     exampleChooser = do
-      d <- listLoadOptions exampleData
+      let
+        deployedContracts :: Dynamic t (Maybe [DeployedContract])
+        deployedContracts =
+          fmap (map DeployedContract) <$> (ideL ^. ide_backend . backend_modules)
+      (onListContracts, d) <- listLoadOptions deployedContracts exampleData
       load <- elClass "div" "item" $
         button (def & buttonConfig_emphasis .~ Static (Just Primary)) $ text "Load"
       pure $ mempty
         & ideCfg_selContract .~ updated d
+        & ideCfg_backend . backendCfg_refreshModule .~ onListContracts
         & ideCfg_load .~ load
 
     rightMenu = do
@@ -555,11 +561,13 @@ controlBar ideL = do
         elAttr "a" ("target" =: "_blank" <> "href" =: "http://kadena.io") $
           elAttr "img" ("src" =: static @"img/KadenaWhiteLogo.svg" <> "class" =: "logo-image" <> "width" =: "150" <> "hegiht" =: "20") blank
 
+-- | List available examples and contracts deployed to the backend.
 listLoadOptions
   :: MonadWidget t m
-  => [ExampleContract]
-  -> m (Dynamic t (Either ExampleContract DeployedContract))
-listLoadOptions examples = mdo
+  => Dynamic t (Maybe [DeployedContract])
+  -> [ExampleContract]
+  -> m (Event t (), Dynamic t (Either ExampleContract DeployedContract))
+listLoadOptions mDeployed examples = mdo
   (top, selection) <- elAttr' "a" ("class" =: "dropdown item" <> "style" =: "width: 250px") $ mdo
     dynText $ either _exampleContract_name _deployedContract_name <$> selection
     icon "dropdown" $ def & style .~ Static "color: white"
@@ -582,32 +590,33 @@ listLoadOptions examples = mdo
             , _action_initialDirection = Out
             , _action_forceVisible = True
             }
-    (popup, (search, update)) <- ui' "div" popupConfig $ divClass "ui two column relaxed divided grid" $ do
+    (popup, update) <- ui' "div" popupConfig $ divClass "ui two column relaxed divided grid" $ do
       exampleChoice <- divClass "column" $ do
         header def $ text "Examples"
         es <- divClass "ui inverted link list" $ for examples $ \example -> do
           (e, _) <- elClass' "a" "item" $ text $ _exampleContract_name example
           pure $ Left example <$ domEvent Click e
         pure $ leftmost es
-      (search, deployedChoice) <- divClass "column" $ do
+      onDeplChoice <- divClass "column" $ do
         header def $ text "Deployed Contracts"
-        search <- input (def & inputConfig_icon .~ Static (Just RightIcon)) $ do
-          ie <- inputElement $ def & initialAttributes .~ ("type" =: "text")
-          icon "black search" def
-          pure ie
-        let deployed = [DeployedContract "helloWorld", DeployedContract "payments"] -- TODO
-        let dexamples = ffor (value search) $ \x -> filter (T.isInfixOf (T.toCaseFold x) . T.toCaseFold . _deployedContract_name) deployed
-        es <- divClass "ui inverted link list" $ simpleList dexamples $ \d -> do
-          (e, _) <- elClass' "a" "item" $ dynText $ _deployedContract_name <$> d
-          pure $ attachWith (\c _ -> Right c) (current d) (domEvent Click e)
-        pure (search, switch . current $ leftmost <$> es)
-      pure (search, leftmost [exampleChoice, deployedChoice])
+        showLoading mDeployed $ \deployed -> do
+          search <- input (def & inputConfig_icon .~ Static (Just RightIcon)) $ do
+            ie <- inputElement $ def & initialAttributes .~ ("type" =: "text")
+            icon "black search" def
+            pure ie
+          let dexamples = ffor (value search) $ \x -> filter (T.isInfixOf (T.toCaseFold x) . T.toCaseFold . _deployedContract_name) deployed
+          es <- divClass "ui inverted link list" $ simpleList dexamples $ \d -> do
+            (e, _) <- elClass' "a" "item" $ dynText $ _deployedContract_name <$> d
+            pure $ attachWith (\c _ -> Right c) (current d) (domEvent Click e)
+          pure (switch . current $ leftmost <$> es)
+      deployedChoice <- switchHold never onDeplChoice
+      pure $ leftmost [exampleChoice, deployedChoice]
     -- Prevent clicks on the popup from closing the top menu
     let popupEl = DOM.uncheckedCastTo DOM.HTMLElement $ _element_raw popup
     liftJSM $ DOM.on popupEl DOM.click $ DOM.stopPropagation
     selection <- holdDyn (Left initialDemoContract) update
-    pure selection
-  pure selection
+    pure  selection
+  pure (domEvent Click top, selection)
 
 exampleData :: [ExampleContract]
 exampleData =

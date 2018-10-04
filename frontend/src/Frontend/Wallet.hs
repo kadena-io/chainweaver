@@ -31,7 +31,6 @@ module Frontend.Wallet
   ) where
 
 
-import           Control.Arrow               ((&&&))
 import           Control.Lens
 import           Control.Monad.Fix
 import           Data.Aeson
@@ -137,7 +136,7 @@ makeWallet conf = do
                , Map.delete <$> _walletCfg_delKey conf
                ]
 
-    performEvent $ storeKeys <$> updated (joinKeyPairs keys)
+    performEvent_ $ storeKeys <$> updated (joinKeyPairs keys)
 
     pure $ Wallet
       { _wallet_keys = keys
