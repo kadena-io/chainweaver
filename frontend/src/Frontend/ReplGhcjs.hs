@@ -85,6 +85,7 @@ data DeployedContract = DeployedContract
 data IdeCfg t = IdeCfg
   { _ideCfg_wallet      :: WalletCfg t
   , _ideCfg_jsonData    :: JsonDataCfg t
+  , _ideCfg_backend     :: BackendCfg t
   , _ideCfg_selContract :: Event t (Either ExampleContract DeployedContract)
     -- ^ Select a contract to load into the editor.
   , _ideCfg_load        :: Event t ()
@@ -149,7 +150,7 @@ app :: MonadWidget t m => m ()
 app = void . mfix $ \ ~(cfg, ideL) -> elClass "div" "app" $ do
     walletL <- makeWallet $ _ideCfg_wallet cfg
     json <- makeJsonData walletL $ _ideCfg_jsonData cfg
-    backendL <- makeBackend walletL $ BackendCfg never never
+    backendL <- makeBackend walletL $ cfg ^. ideCfg_backend
     let
       jsonErrorString =
         either (Just . showJsonError) (const Nothing) <$> _jsonData_data json
@@ -516,11 +517,12 @@ controlBar ideL = do
         deployedContracts :: Dynamic t (Maybe [DeployedContract])
         deployedContracts =
           fmap (map DeployedContract) <$> (ideL ^. ide_backend . backend_modules)
-      d <- listLoadOptions deployedContracts exampleData
+      (onListContracts, d) <- listLoadOptions deployedContracts exampleData
       load <- elClass "div" "item" $
         button (def & buttonConfig_emphasis .~ Static (Just Primary)) $ text "Load"
       pure $ mempty
         & ideCfg_selContract .~ updated d
+        & ideCfg_backend . backendCfg_refreshModule .~ onListContracts
         & ideCfg_load .~ load
 
     rightMenu = do
@@ -541,7 +543,7 @@ listLoadOptions
   :: MonadWidget t m
   => Dynamic t (Maybe [DeployedContract])
   -> [ExampleContract]
-  -> m (Dynamic t (Either ExampleContract DeployedContract))
+  -> m (Event t (), Dynamic t (Either ExampleContract DeployedContract))
 listLoadOptions mDeployed examples = mdo
   (top, selection) <- elAttr' "a" ("class" =: "dropdown item" <> "style" =: "width: 250px") $ mdo
     dynText $ either _exampleContract_name _deployedContract_name <$> selection
@@ -584,15 +586,14 @@ listLoadOptions mDeployed examples = mdo
             (e, _) <- elClass' "a" "item" $ dynText $ _deployedContract_name <$> d
             pure $ attachWith (\c _ -> Right c) (current d) (domEvent Click e)
           pure (switch . current $ leftmost <$> es)
-      {- search <- switchHold never $ fst <$> onSearchDeplChoice -}
       deployedChoice <- switchHold never onDeplChoice
       pure $ leftmost [exampleChoice, deployedChoice]
     -- Prevent clicks on the popup from closing the top menu
     let popupEl = DOM.uncheckedCastTo DOM.HTMLElement $ _element_raw popup
     liftJSM $ DOM.on popupEl DOM.click $ DOM.stopPropagation
     selection <- holdDyn (Left initialDemoContract) update
-    pure selection
-  pure selection
+    pure  selection
+  pure (domEvent Click top, selection)
 
 exampleData :: [ExampleContract]
 exampleData =

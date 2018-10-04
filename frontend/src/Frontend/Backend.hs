@@ -1,14 +1,15 @@
-{-# LANGUAGE DeriveGeneric          #-}
-{-# LANGUAGE FlexibleContexts       #-}
-{-# LANGUAGE FlexibleInstances      #-}
-{-# LANGUAGE FunctionalDependencies #-}
-{-# LANGUAGE GADTs                  #-}
-{-# LANGUAGE LambdaCase             #-}
-{-# LANGUAGE MultiParamTypeClasses  #-}
-{-# LANGUAGE OverloadedStrings      #-}
-{-# LANGUAGE RankNTypes             #-}
-{-# LANGUAGE ScopedTypeVariables    #-}
-{-# LANGUAGE TemplateHaskell        #-}
+{-# LANGUAGE DeriveGeneric              #-}
+{-# LANGUAGE FlexibleContexts           #-}
+{-# LANGUAGE FlexibleInstances          #-}
+{-# LANGUAGE FunctionalDependencies     #-}
+{-# LANGUAGE GADTs                      #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE LambdaCase                 #-}
+{-# LANGUAGE MultiParamTypeClasses      #-}
+{-# LANGUAGE OverloadedStrings          #-}
+{-# LANGUAGE RankNTypes                 #-}
+{-# LANGUAGE ScopedTypeVariables        #-}
+{-# LANGUAGE TemplateHaskell            #-}
 
 -- | Interface for accessing Pact backends.
 --
@@ -22,6 +23,7 @@ module Frontend.Backend
   , BackendError (..)
   , BackendErrorResult
   , BackendCfg (..)
+  , HasBackendCfg (..)
   , Backend (..)
   , HasBackend (..)
     -- * Creation
@@ -33,29 +35,30 @@ module Frontend.Backend
   , prettyPrintBackendError
   ) where
 
-import           Control.Arrow           (first, left)
-import           Control.Lens            hiding ((.=))
+import           Control.Arrow            (first, left)
+import           Control.Lens             hiding ((.=))
 import           Control.Monad.Except
-import           Data.Aeson              (FromJSON (..), Object, Value,
-                                          Value (..), eitherDecode, encode,
-                                          object, toJSON, withObject, (.:),
-                                          (.=), decode)
-import           Data.Aeson.Types        (typeMismatch)
-import qualified Data.ByteString.Lazy    as BSL
-import           Data.Default            (def)
-import qualified Data.Map                as Map
-import           Data.Map.Strict         (Map)
-import           Data.Set                (Set)
-import qualified Data.Set                as Set
-import           Data.Text               (Text)
-import qualified Data.Text               as T
-import qualified Data.Text.Encoding      as T
-import qualified Data.Text.IO            as T
-import           Data.Time.Clock         (getCurrentTime)
+import           Data.Aeson               (FromJSON (..), Object, Value,
+                                           Value (..), decode, eitherDecode,
+                                           encode, object, toJSON, withObject,
+                                           (.:), (.=))
+import           Data.Aeson.Types         (typeMismatch)
+import qualified Data.ByteString.Lazy     as BSL
+import           Data.Default             (def)
+import qualified Data.HashMap.Strict      as H
+import qualified Data.Map                 as Map
+import           Data.Map.Strict          (Map)
+import           Data.Set                 (Set)
+import qualified Data.Set                 as Set
+import           Data.Text                (Text)
+import qualified Data.Text                as T
+import qualified Data.Text.Encoding       as T
+import qualified Data.Text.IO             as T
+import           Data.Time.Clock          (getCurrentTime)
+import           Generics.Deriving.Monoid (mappenddefault, memptydefault)
 import           Reflex.Dom.Class
 import           Reflex.Dom.Xhr
 import           Safe
-import qualified Data.HashMap.Strict as H
 
 
 import           Frontend.Backend.Pact
@@ -70,7 +73,7 @@ type BackendUri = Text
 newtype BackendName = BackendName
   { unBackendName :: Text
   }
-  deriving (Generic, Eq, Ord, Show)
+  deriving (Generic, Eq, Ord, Show, Semigroup, Monoid)
 
 -- | Request data to be sent to the backend.
 data BackendRequest = BackendRequest
@@ -105,7 +108,7 @@ type BackendErrorResult = Either BackendError Value
 
 -- | Config for creating a `Backend`.
 data BackendCfg t = BackendCfg
-  { _backendCfg_selBackend :: Event t BackendName
+  { _backendCfg_selBackend    :: Event t BackendName
     -- ^ Select the backend to operate with.
   -- , _backendCfg_send       :: Event t BackendRequest
     -- ^ Send a request to the currently selected backend.
@@ -113,9 +116,8 @@ data BackendCfg t = BackendCfg
     -- ^ We are unfortunately not notified by the pact backend when new
     -- contracts appear on the blockchain, so UI code needs to request a
     -- refresh at appropriate times.
-
-
   }
+  deriving Generic
 
 makePactLenses ''BackendCfg
 
@@ -124,7 +126,7 @@ data Backend t = Backend
     -- ^ All available backends that can be selected.
   , _backend_current  :: Dynamic t BackendName
    --  ^ Currently selected `Backend`
-  , _backend_modules :: Dynamic t (Maybe [Text])
+  , _backend_modules  :: Dynamic t (Maybe [Text])
    -- ^ Available modules on the backend. `Nothing` if not loaded yet.
   }
 
@@ -452,3 +454,10 @@ getNonce = do
 --   This way you get stringified JSON.
 encodeAsText :: BSL.ByteString -> Text
 encodeAsText = T.decodeUtf8 . BSL.toStrict
+
+instance Reflex t => Semigroup (BackendCfg t) where
+  (<>) = mappenddefault
+
+instance Reflex t => Monoid (BackendCfg t) where
+  mempty = memptydefault
+  mappend = (<>)
