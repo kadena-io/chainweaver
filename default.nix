@@ -136,6 +136,7 @@ let
     services.nginx.appendHttpConfig = ''
         server {
           listen 0.0.0.0:7011;
+          listen [::]:7011;
           server_name working-agreement.obsidian.systems;
           # ssl_certificate /var/lib/acme/working-agreement.obsidian.systems/fullchain.pem;
           # ssl_certificate_key /var/lib/acme/working-agreement.obsidian.systems/key.pem;
