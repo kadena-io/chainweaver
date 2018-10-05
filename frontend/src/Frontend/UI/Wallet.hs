@@ -54,6 +54,42 @@ import           Frontend.Crypto.Ed25519
 -- | UI for managing the keys wallet.
 uiWallet :: MonadWidget t m => Wallet t -> m (WalletCfg t)
 uiWallet w = do
+    onCreate <- uiCreateKey w
+    keysCfg <- uiAvailableKeys w
+
+    pure $ keysCfg & walletCfg_genKey .~ onCreate
+
+----------------------------------------------------------------------
+-- Keys related helper widgets:
+----------------------------------------------------------------------
+
+-- | UI for letting the user select a particular key
+-- from a filtered view of the available keys.
+uiSelectKey
+  :: MonadWidget t m
+  => Wallet t
+  -> ((Text, DynKeyPair t) -> Bool)
+  -> m (Dynamic t (Maybe Text))
+uiSelectKey w kFilter = do
+  let keyNames = map fst . filter kFilter . Map.toList <$> w ^. wallet_keys
+      mkPlaceholder ks = if null ks then "No keys available" else "Select key"
+  d <- dropdown
+      (def & dropdownConfig_placeholder .~ fmap mkPlaceholder keyNames)
+      Nothing
+      $ TaggedDynamic (Map.fromList . fmap (id &&& text) <$> keyNames)
+  pure $ _dropdown_value d
+
+-- | Check whether a given key does contain a private key.
+hasPrivateKey :: (Text, DynKeyPair t) -> Bool
+hasPrivateKey = isJust . _keyPair_privateKey . snd
+
+----------------------------------------------------------------------
+
+
+
+-- | Line input with "Create" button for creating a new key.
+uiCreateKey :: MonadWidget t m => Wallet t -> m (Event t KeyName)
+uiCreateKey w = do
     onReq <- elClass "div" "ui fluid action input" $ mdo
       name <- textInput $ def
           & textInputConfig_value .~ SetValue "" (Just $ "" <$ confirmed)
@@ -82,37 +118,8 @@ uiWallet w = do
           & action ?~ (def
             & action_event ?~ ffor (updated duplicate) (\d -> trans $ if d then In else Out)
             & action_initialDirection .~ Out)
-    message config $ paragraph $ text "This key name is already in use"
-
-    keysCfg <- uiAvailableKeys w
-
-    pure $ keysCfg & walletCfg_genKey .~ onReq
-
-----------------------------------------------------------------------
--- Keys related helper widgets:
-----------------------------------------------------------------------
-
--- | UI for letting the user select a particular key
--- from a filtered view of the available keys.
-uiSelectKey
-  :: MonadWidget t m
-  => Wallet t
-  -> ((Text, DynKeyPair t) -> Bool)
-  -> m (Dynamic t (Maybe Text))
-uiSelectKey w kFilter = do
-  let keyNames = map fst . filter kFilter . Map.toList <$> w ^. wallet_keys
-      mkPlaceholder ks = if null ks then "No keys available" else "Select key"
-  d <- dropdown
-      (def & dropdownConfig_placeholder .~ fmap mkPlaceholder keyNames)
-      Nothing
-      $ TaggedDynamic (Map.fromList . fmap (id &&& text) <$> keyNames)
-  pure $ _dropdown_value d
-
--- | Check whether a given key does contain a private key.
-hasPrivateKey :: (Text, DynKeyPair t) -> Bool
-hasPrivateKey = isJust . _keyPair_privateKey . snd
-
-----------------------------------------------------------------------
+    message config $ paragraph $ text "This key name is already in use."
+    pure onReq
 
 -- | Widget listing all available keys.
 uiAvailableKeys :: MonadWidget t m => Wallet t -> m (WalletCfg t)
