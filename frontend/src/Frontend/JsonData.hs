@@ -87,6 +87,7 @@ type KeysetKeys = Map KeyName PublicKey
 -- | User entered `_jsonData_rawInput` was invalid.
 data JsonError =
   JsonError_NoObject -- ^ Input was no valid JSON object.
+  deriving Show
 
 -- | A Keyset as defined [here](https://pact-language.readthedocs.io/en/latest/pact-reference.html#keysets).
 --

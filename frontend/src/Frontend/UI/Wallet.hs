@@ -47,6 +47,7 @@ import           Reflex.Dom.SemanticUI       hiding (mainWidget)
 
 import           Frontend.Foundation
 import           Frontend.Wallet
+import           Frontend.Widgets
 import           Frontend.Crypto.Ed25519
 
 
@@ -85,41 +86,13 @@ hasPrivateKey = isJust . _keyPair_privateKey . snd
 
 ----------------------------------------------------------------------
 
-
-
 -- | Line input with "Create" button for creating a new key.
 uiCreateKey :: MonadWidget t m => Wallet t -> m (Event t KeyName)
-uiCreateKey w = do
-    onReq <- elClass "div" "ui fluid action input" $ mdo
-      name <- textInput $ def
-          & textInputConfig_value .~ SetValue "" (Just $ "" <$ confirmed)
-          & textInputConfig_placeholder .~ pure "Enter key name"
-      let
-        nameVal = T.strip <$> value name
-        onEnter = keypress Enter name
-        nameEmpty = (== "") <$> nameVal
-
-      clicked <- flip button (text "Generate") $ def
-        & buttonConfig_emphasis .~ Static (Just Secondary)
-        & buttonConfig_disabled .~ Dyn nameEmpty
-
-      let
-        confirmed = leftmost [ onEnter, clicked ]
-      void $ performEvent (liftJSM (pToJSVal (_textInput_element name) ^. js0 ("focus" :: String)) <$ confirmed)
-      pure $ tag (current nameVal) confirmed
-
-    duplicate <- holdUniqDyn <=< holdDyn False $ attachWith (flip Map.member) (current $ _wallet_keys w) onReq
-
-    let trans dir = Transition Fade $ def
-          & transitionConfig_duration .~ 0.2
-          & transitionConfig_direction .~ Just dir
-        config = def
-          & messageConfig_type .~ Static (Just $ MessageType Negative)
-          & action ?~ (def
-            & action_event ?~ ffor (updated duplicate) (\d -> trans $ if d then In else Out)
-            & action_initialDirection .~ Out)
-    message config $ paragraph $ text "This key name is already in use."
-    pure onReq
+uiCreateKey w = validatedInputWithButton check "Enter key name" "Generate"
+  where
+    check k = do
+      keys <- sample $ current $ _wallet_keys w
+      pure $ if Map.member k keys then Left "This key name is already in use." else Right k
 
 -- | Widget listing all available keys.
 uiAvailableKeys :: MonadWidget t m => Wallet t -> m (WalletCfg t)
