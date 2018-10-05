@@ -29,6 +29,8 @@ module Frontend.Crypto.Ed25519
   , genKeyPair
   -- * Signing
   , mkSignature
+  -- * Utilities
+  , keyToText
   )
   where
 
