@@ -44,6 +44,7 @@ import           Reflex.Dom.SemanticUI       hiding (mainWidget)
 import           Frontend.Foundation
 import           Frontend.Wallet
 import           Frontend.Widgets
+import           Frontend.Crypto.Ed25519     (keyToText)
 
 
 
