@@ -151,9 +151,12 @@ validatedInputWithButton check placeholder buttonText = mdo
 
     checked <- performEvent $ check <$> update
     let (errors, values) = fanEither checked
-    hasError <- holdUniqDyn <=< holdDyn False $ ffor checked $ \case
-      Left _ -> True
-      Right _ -> False
+    hasError <- holdUniqDyn <=< holdDyn False $ leftmost
+      [ ffor checked $ \case
+          Left _ -> True
+          Right _ -> False
+      , False <$ close
+      ]
 
     let trans dir = Transition Fade $ def
           & transitionConfig_duration .~ 0.2
@@ -163,6 +166,9 @@ validatedInputWithButton check placeholder buttonText = mdo
           & action ?~ (def
             & action_event ?~ ffor (updated hasError) (\e -> trans $ if e then In else Out)
             & action_initialDirection .~ Out)
-    void $ message config $ paragraph $ widgetHold (pure ()) $ text <$> errors
+    close <- message config $ do
+      e <- domEvent Click <$> icon' "close" (def & style .~ "position: absolute; top: 0; right: 0")
+      void $ widgetHold (pure ()) $ text <$> errors
+      pure e
     pure values
 
