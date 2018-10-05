@@ -32,7 +32,6 @@ module Frontend.UI.JsonData
 ------------------------------------------------------------------------------
 import           Control.Lens                hiding ((.=))
 import           Control.Monad
-import           Data.Aeson                  (ToJSON, object, toJSON, (.=))
 import           Data.Aeson.Encode.Pretty    (encodePretty)
 import qualified Data.ByteString.Lazy        as BSL
 import qualified Data.HashMap.Strict         as H
@@ -42,15 +41,12 @@ import qualified Data.Set                    as Set
 import           Data.Text                   (Text)
 import qualified Data.Text                   as T
 import qualified Data.Text.Encoding          as T
-import           Language.Javascript.JSaddle (js0, liftJSM, pToJSVal)
 import           Reflex.Class.Extended
 import           Reflex.Dom.ACE.Extended
-import           Reflex.Dom.Core             (keypress, _textInput_element)
 import           Reflex.Dom.SemanticUI       hiding (mainWidget)
 
 import           Frontend.Foundation
 import           Frontend.JsonData
-import           Frontend.UI.Wallet
 import           Frontend.Wallet
 import           Frontend.Widgets
 
@@ -279,12 +275,12 @@ uiKeyset w (n, ks) = mdo
 -- | Input widget with confirm button for creating a new keyset.
 uiCreateKeyset
   :: MonadWidget t m => JsonData t -> m (Event t Text)
-uiCreateKeyset jsonData = validatedInputWithButton check "Enter keyset name" "Create"
+uiCreateKeyset jsonD = validatedInputWithButton check "Enter keyset name" "Create"
   where
     -- Check combined data and not only keyset names for duplicates:
     check ks = do
-      json <- sample $ current $ _jsonData_data jsonData
-      keysets <- sample $ current $ _jsonData_keysets jsonData
+      json <- sample $ current $ _jsonData_data jsonD
+      keysets <- sample $ current $ _jsonData_keysets jsonD
       let dupe = case json of
             Left _  -> Map.member ks keysets
             Right j -> H.member ks j

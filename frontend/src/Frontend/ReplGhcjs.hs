@@ -120,8 +120,8 @@ data Ide t = Ide
   , _ide_jsonData         :: JsonData t
   , _ide_backend          :: Backend t
   , _ide_msgs             :: Dynamic t [LogMsg]
-  , _ide_envSelection     :: Dynamic t EnvSelection
-    -- ^ Currently selected tab in the right pane.
+  {- , _ide_envSelection     :: Dynamic t EnvSelection -}
+    {- -- ^ Currently selected tab in the right pane. -}
   }
   deriving Generic
 
@@ -683,4 +683,4 @@ instance Reflex t => Monoid (IdeCfg t) where
   mappend = (<>)
 
 instance Semigroup EnvSelection where
-  sel1 <> sel2 = sel1
+  sel1 <> _ = sel1
