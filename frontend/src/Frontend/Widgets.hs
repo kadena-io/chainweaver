@@ -9,7 +9,6 @@ import           Control.Lens
 import           Control.Monad
 import           Data.Map.Strict             (Map)
 import qualified Data.Map.Strict             as Map
-import           Data.Maybe                  (isJust)
 import           Data.Monoid
 import           Data.Text                   (Text)
 import qualified Data.Text                   as T
@@ -164,6 +163,6 @@ validatedInputWithButton check placeholder buttonText = mdo
           & action ?~ (def
             & action_event ?~ ffor (updated hasError) (\e -> trans $ if e then In else Out)
             & action_initialDirection .~ Out)
-    message config $ paragraph $ widgetHold (pure ()) $ text <$> errors
+    void $ message config $ paragraph $ widgetHold (pure ()) $ text <$> errors
     pure values
 

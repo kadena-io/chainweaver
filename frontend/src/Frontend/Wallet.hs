@@ -31,7 +31,6 @@ module Frontend.Wallet
   ) where
 
 
-import           Control.Arrow               ((&&&))
 import           Control.Lens
 import           Control.Monad.Fix
 import           Data.Aeson
@@ -137,7 +136,7 @@ makeWallet conf = do
                , Map.delete <$> _walletCfg_delKey conf
                ]
 
-    performEvent $ storeKeys <$> updated (joinKeyPairs keys)
+    performEvent_ $ storeKeys <$> updated (joinKeyPairs keys)
 
     pure $ Wallet
       { _wallet_keys = keys
@@ -176,7 +175,7 @@ toDynKeyPairs forSigning = Map.fromList . map toDyn . Map.toList
 --   be fixed by dropping the above signing Set and handling update directly in
 --   the `DynKeyPairs` which would be more efficient too.
 toDynKeyPair :: Reflex t => Dynamic t Bool -> KeyPair -> DynKeyPair t
-toDynKeyPair forSigning (KeyPair pub priv s) = KeyPair pub priv forSigning
+toDynKeyPair forSigning (KeyPair pub priv _) = KeyPair pub priv forSigning
 
 
 

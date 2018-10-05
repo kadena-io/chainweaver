@@ -38,8 +38,7 @@ module Frontend.JsonData
 
 import           Control.Lens        hiding ((.=))
 import           Control.Monad.Fix
-import           Data.Aeson          (Object)
-import           Data.Aeson
+import           Data.Aeson          (Object, FromJSON (..), ToJSON (..), Value (Object, Array), (.:), object, decodeStrict)
 import           Data.Aeson.Types    (typeMismatch)
 import qualified Data.HashMap.Strict as H
 import           Data.Map            (Map)
