@@ -55,8 +55,12 @@ import           Reflex.Dom.Core             (keypress, mainWidget)
 import qualified Reflex.Dom.Core             as Core
 import           Reflex.Dom.SemanticUI       hiding (mainWidget)
 ------------------------------------------------------------------------------
+import qualified Pact.Compile                as Pact
+import qualified Pact.Parse                  as Pact
 import           Pact.Repl
 import           Pact.Repl.Types
+import qualified Pact.Types.ExpParser        as Pact
+import qualified Bound
 import           Pact.Types.Lang
 ------------------------------------------------------------------------------
 import           Frontend.Backend
@@ -158,6 +162,19 @@ data ClickState = DownAt (Int, Int) | Clicked | Selected
 
 main :: JSM ()
 main = mainWidget app
+
+-- | Get the top level functions from a 'Term'
+getFunctions :: Term a -> [(ModuleName, Text, DefType, Maybe Text, FunType (Term a))]
+getFunctions (TModule _ body _) = getFunctions $ Bound.instantiate undefined body
+getFunctions (TDef name moduleName defType funType _ docs _) = [(moduleName, name, defType, _mDocs docs, funType)]
+getFunctions (TList list _ _) = getFunctions =<< list
+getFunctions _ = []
+
+-- | Parse and compile the code to list the top level function data
+listFunctions :: Text -> Maybe [(ModuleName, Text, DefType, Maybe Text, FunType (Term Name))]
+listFunctions code = case Pact.compileExps Pact.mkEmptyInfo <$> Pact.parseExprs code of
+  Right (Right terms) -> Just $ concatMap getFunctions terms
+  _ -> Nothing
 
 app :: MonadWidget t m => m ()
 app = void . mfix $ \ ~(cfg, ideL) -> elClass "div" "app" $ do
@@ -268,6 +285,7 @@ codePanel ideL = mdo
   {-   menuItem def $ text "Code"  -}
     onNewCode <- tagOnPostBuild $ _ide_code ideL
     onUserCode <- codeWidget "" onNewCode
+
     pure $ mempty & ideCfg_setCode .~ onUserCode
 
 -- | Tabbed panel to the right
@@ -313,6 +331,49 @@ envPanel ideL cfg = mdo
     keysCfg <- accordionItem True "keys ui" "Keys" $ do
       conf <- elClass "div" "ui segment" $ uiWallet $ _ide_wallet ideL
       pure $ mempty & ideCfg_wallet .~ conf
+
+    elClass "div" "ui hidden divider" blank
+
+    accordionItem True "ui json-data-accordion-item" "Functions" $ do
+      dyn_ $ ffor (_ide_code ideL) $ \code -> case listFunctions code of
+        Nothing -> pure ()
+        Just functions -> divClass "ui list" $ do
+          for_ functions $ \(ModuleName moduleName, name, defType, mdocs, funType) -> divClass "item" $ do
+            (e, _) <- elClass' "a" "header" $ do
+              text name
+              text " "
+              elAttr "span" ("class" =: "description" <> "style" =: "display: inline") $ do
+                text "("
+                text $ T.unwords $ _aName <$> _ftArgs funType
+                text ")"
+            for_ mdocs $ divClass "description" . text
+            open <- toggle False $ domEvent Click e
+            dyn_ $ ffor open $ \case
+              False -> pure ()
+              True -> segment def $ form def $ do
+                inputs <- for (_ftArgs funType) $ \arg -> field def $ do
+                  el "label" $ text $ "Argument: " <> _aName arg
+                  ti <- input def $ textInput (def & textInputConfig_placeholder .~ pure (_aName arg))
+                  pure $ value ti
+                let buttonConfig = def
+                      & buttonConfig_type .~ SubmitButton
+                      & buttonConfig_emphasis .~ Static (Just Primary)
+                submit <- button buttonConfig $ text "Call function"
+                let args = tag (current $ sequence inputs) submit
+                    call = ffor args $ \as -> mconcat ["(", moduleName, ".", name, " ", T.unwords as, ")"]
+                widgetHold blank $ ffor call $ label def . text
+                let ed = ideL ^. ide_jsonData . jsonData_data
+                deployedResult <- backendPerformSend (ideL ^. ide_wallet) (ideL ^. ide_backend) $ do
+                  ffor (attach (current ed) call) $ \(ed, c) -> BackendRequest
+                    { _backendRequest_code = c
+                    , _backendRequest_data = either mempty id ed
+                    }
+                widgetHold_ blank $ ffor deployedResult $ \case
+                  Left e -> message (def & messageConfig_type .~ Static (Just (MessageType Negative))) $ do
+                    text $ tshow e
+                  Right v -> message def $ text $ tshow v
+
+    elClass "div" "ui hidden divider" blank
 
     pure $ mconcat [ jsonCfg
                    , keysCfg
