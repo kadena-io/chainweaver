@@ -9,8 +9,10 @@ import           Control.Lens
 import           Control.Monad
 import           Data.Map.Strict             (Map)
 import qualified Data.Map.Strict             as Map
+import           Data.Maybe                  (isJust)
 import           Data.Monoid
 import           Data.Text                   (Text)
+import qualified Data.Text                   as T
 import           Language.Javascript.JSaddle (js0, liftJSM, pToJSVal)
 import           Reflex.Dom.Core             (keypress, _textInput_element)
 import           Reflex.Dom.SemanticUI       hiding (mainWidget)
@@ -120,4 +122,48 @@ addDisplayNone mAttrs isActive = zipDynWith f isActive mAttrs
   where
     f True as  = as
     f False as = Map.insert "style" "display: none" as
+
+------------------------------------------------------------------------------
+-- | Validated input with button
+validatedInputWithButton
+  :: MonadWidget t m
+  => (Text -> Performable m (Either Text Text))
+  -- ^ Validation function returning 'Left' an error message or 'Right' the value
+  -> Text -- ^ Placeholder
+  -> Text -- ^ Button text
+  -> m (Event t Text)
+validatedInputWithButton check placeholder buttonText = mdo
+    update <- elClass "div" "ui fluid action input" $ mdo
+      name <- textInput $ def
+          & textInputConfig_value .~ SetValue "" (Just $ "" <$ values)
+          & textInputConfig_placeholder .~ pure placeholder
+      let
+        nameVal = T.strip <$> value name
+        onEnter = keypress Enter name
+        nameEmpty = (== "") <$> nameVal
+
+      clicked <- flip button (text buttonText) $ def
+        & buttonConfig_emphasis .~ Static (Just Secondary)
+        & buttonConfig_disabled .~ Dyn nameEmpty
+
+      let confirmed = leftmost [ onEnter, clicked ]
+      void $ performEvent (liftJSM (pToJSVal (_textInput_element name) ^. js0 ("focus" :: String)) <$ confirmed)
+      pure $ tag (current nameVal) confirmed
+
+    checked <- performEvent $ check <$> update
+    let (errors, values) = fanEither checked
+    hasError <- holdUniqDyn <=< holdDyn False $ ffor checked $ \case
+      Left _ -> True
+      Right _ -> False
+
+    let trans dir = Transition Fade $ def
+          & transitionConfig_duration .~ 0.2
+          & transitionConfig_direction .~ Just dir
+        config = def
+          & messageConfig_type .~ Static (Just $ MessageType Negative)
+          & action ?~ (def
+            & action_event ?~ ffor (updated hasError) (\e -> trans $ if e then In else Out)
+            & action_initialDirection .~ Out)
+    message config $ paragraph $ widgetHold (pure ()) $ text <$> errors
+    pure values
 

@@ -50,6 +50,7 @@ import           Reflex.Dom.SemanticUI       hiding (mainWidget)
 
 import           Frontend.Foundation
 import           Frontend.JsonData
+import           Frontend.UI.Wallet
 import           Frontend.Wallet
 import           Frontend.Widgets
 
@@ -276,41 +277,18 @@ uiKeyset w (n, ks) = mdo
 
 
 -- | Input widget with confirm button for creating a new keyset.
---
--- TODO: Unify this with key creation widget in "Frontend.UI.Wallet" and uiAddKeysetKey widget below.
 uiCreateKeyset
   :: MonadWidget t m => JsonData t -> m (Event t Text)
-uiCreateKeyset d = do
-    elClass "div" "ui fluid action input" $ mdo
-      name <- textInput $ def
-          & textInputConfig_value .~ SetValue "" (Just $ "" <$ confirmed)
-          & textInputConfig_placeholder .~ pure "Enter keyset name"
-
-      let
-        nameVal = T.strip <$> value name
-        onEnter = keypress Enter name
-        nameEmpty = (== "") <$> nameVal
-
-        -- Check combined data and not only keyset names for duplicates:
-        duplicate = do
-          cJson <- d ^. jsonData_data
-          cName <- nameVal
-          case cJson of
-            Left _  -> pure False
-            Right j -> pure $ H.member cName j
-
-      clicked <- flip button (text "Create") $ def
-        & buttonConfig_emphasis .~ Static (Just Secondary)
-        & buttonConfig_disabled .~ Dyn ((||) <$> nameEmpty <*> duplicate)
-
-      let
-        confirmed = leftmost [ onEnter, clicked ]
-        setFocus =
-          liftJSM $ pToJSVal (_textInput_element name) ^. js0 ("focus" :: Text)
-
-      void $ performEvent (setFocus <$ confirmed)
-      pure $ tag (current nameVal) confirmed
-
+uiCreateKeyset jsonData = validatedInputWithButton check "Enter keyset name" "Create"
+  where
+    -- Check combined data and not only keyset names for duplicates:
+    check ks = do
+      json <- sample $ current $ _jsonData_data jsonData
+      keysets <- sample $ current $ _jsonData_keysets jsonData
+      let dupe = case json of
+            Left _  -> Map.member ks keysets
+            Right j -> H.member ks j
+      pure $ if dupe then Left "This keyset name is already in use" else Right ks
 
 -- | Widget showing all avaialble keys for selecting keys
 --
