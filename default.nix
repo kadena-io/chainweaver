@@ -119,7 +119,7 @@ let
             frontend = pkgs.haskell.lib.dontHaddock super.frontend;
           };
   });
-  pactServerModule = {...}: {
+  pactServerModule = {lib, ...}: {
     systemd.services.pact-server = {
       description = "Pact Server";
       after = [ "network.target" ];
@@ -130,6 +130,53 @@ let
         KillMode = "process";
       };
     };
+    # TODO: Fix that!!! #####
+    networking.firewall.disable = lib.mkForce true;
+    ######
+    services.nginx.appendHttpConfig = ''
+        server {
+          listen 0.0.0.0:7011;
+          server_name working-agreement.obsidian.systems;
+          # ssl_certificate /var/lib/acme/working-agreement.obsidian.systems/fullchain.pem;
+          # ssl_certificate_key /var/lib/acme/working-agreement.obsidian.systems/key.pem;
+
+          location / {
+            if ($request_method = 'OPTIONS') {
+              add_header 'Access-Control-Allow-Origin' '*';
+              add_header 'Access-Control-Allow-Methods' 'GET, POST, OPTIONS';
+              #
+              # Custom headers and headers various browsers *should* be OK with but aren't
+              #
+              add_header 'Access-Control-Allow-Headers' 'DNT,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control,Content-Type,Range';
+              #
+              # Tell client that this pre-flight info is valid for 20 days
+              #
+              add_header 'Access-Control-Max-Age' 1728000;
+              add_header 'Content-Type' 'text/plain; charset=utf-8';
+              add_header 'Content-Length' 0;
+              return 204;
+            }
+            if ($request_method = 'POST') {
+               add_header 'Access-Control-Allow-Origin' '*';
+               add_header 'Access-Control-Allow-Methods' 'GET, POST, OPTIONS';
+               add_header 'Access-Control-Allow-Headers' 'DNT,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control,Content-Type,Range';
+               add_header 'Access-Control-Expose-Headers' 'Content-Length,Content-Range';
+            }
+            if ($request_method = 'GET') {
+               add_header 'Access-Control-Allow-Origin' '*';
+               add_header 'Access-Control-Allow-Methods' 'GET, POST, OPTIONS';
+               add_header 'Access-Control-Allow-Headers' 'DNT,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control,Content-Type,Range';
+               add_header 'Access-Control-Expose-Headers' 'Content-Length,Content-Range';
+            }
+
+
+            proxy_pass http://127.0.0.1:7010;
+            proxy_http_version 1.1;
+            proxy_set_header Upgrade $http_upgrade;
+            proxy_set_header Connection "upgrade";
+          }
+        }
+    '';
   };
 in obApp // {
   server = args@{ hostName, adminEmail, routeHost, enableHttps }:

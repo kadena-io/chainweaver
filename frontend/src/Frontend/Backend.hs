@@ -179,7 +179,7 @@ instance FromJSON ListenResponse where
 -- | Available backends:
 backends :: Map BackendName BackendUri
 backends = Map.fromList . map (first BackendName) $
-  [ ("dev-backend", "http://localhost:7010") -- TODO: should read from config ...
+  [ ("dev-backend", "http://working-agreement.obsidian.systems:7011") -- TODO: should read from config ...
   ]
 
 
