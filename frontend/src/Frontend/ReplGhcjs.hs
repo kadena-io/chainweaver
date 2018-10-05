@@ -91,6 +91,8 @@ data IdeCfg t = IdeCfg
     -- ^ Update the current contract/PACT code.
   , _ideCfg_selEnv      :: Event t EnvSelection
     -- ^ Switch tab of the right pane.
+  , _ideCfg_clearRepl :: Event t ()
+    -- ^ Make the REPL fresh again, ready for new contracts.
   }
   deriving Generic
 
@@ -169,17 +171,22 @@ app = void . mfix $ \ ~(cfg, ideL) -> elClass "div" "app" $ do
       selContract <- holdDyn initialDemoFile $ cfg ^. ideCfg_selContract
       errors <- holdDyn [] $ cfg ^. ideCfg_setErrors
 
+      let
+        -- Mostly concerned with clearing REPL and Messages on contract load:
+        topCfg = mempty
+          & ideCfg_selEnv .~ (EnvSelection_Env <$ cfg ^. ideCfg_selContract)
+          & ideCfg_setErrors .~ leftmost
+            [ jsonErrorsOnLoad
+              -- Clear messages once a new contract gets loaded.
+            , [] <$ cfg ^. ideCfg_selContract
+            ]
+          & ideCfg_clearRepl .~ (() <$ cfg ^. ideCfg_selContract)
+
       pure
         ( mconcat
-          [ controlCfg
+          [ topCfg
+          , controlCfg
           , editorCfg
-          , mempty
-            & ideCfg_setErrors .~ leftmost
-              [ jsonErrorsOnLoad
-                -- Clear messages once a new contract gets loaded.
-              , [] <$ cfg ^. ideCfg_selContract
-              ]
-            & ideCfg_selEnv .~ (EnvSelection_Env <$ cfg ^. ideCfg_selContract)
           , envCfg
           , contractReceivedCfg
           ]
@@ -224,10 +231,11 @@ codePanel ideL = mdo
 --   - Key & Data Editor
 envPanel :: forall t m. MonadWidget t m => Ide t -> IdeCfg t -> m (IdeCfg t)
 envPanel ideL cfg = mdo
-  let onLoaded =
-        maybe EnvSelection_Repl (const EnvSelection_Errors)
-          . listToMaybe
-          <$> updated (_ide_errors ideL)
+  let
+    onError =
+      fmap (const EnvSelection_Errors) . fmapMaybe listToMaybe
+        $ updated (_ide_errors ideL)
+    onLoad = EnvSelection_Repl <$ (cfg ^. ideCfg_load)
 
   curSelection <- holdDyn EnvSelection_Env $ cfg ^. ideCfg_selEnv
 
@@ -241,7 +249,7 @@ envPanel ideL cfg = mdo
   replCfg <- tabPane
       ("class" =: "ui flex-content light segment")
       curSelection EnvSelection_Repl
-      $ replWidget ideL (cfg ^. ideCfg_load)
+      $ replWidget ideL cfg
 
   envCfg <- tabPane
       ("class" =: "ui fluid accordion env-accordion")
@@ -261,7 +269,11 @@ envPanel ideL cfg = mdo
     pure $ mconcat [ jsonCfg
                    , keysCfg
                    , replCfg
-                   , mempty & ideCfg_selEnv .~ leftmost [ onSelect , onLoaded ]
+                   , mempty & ideCfg_selEnv .~ leftmost
+                       [ onSelect
+                       , onError -- Order important - we want to see errors.
+                       , onLoad
+                       ]
                    ]
 
   errorsCfg <- tabPane
@@ -336,9 +348,9 @@ snippetWidget (OutputSnippet t) = elAttr "pre" ("class" =: "replOut code-font") 
 replWidget
     :: MonadWidget t m
     => Ide t
-    -> Event t ()
+    -> IdeCfg t
     -> m (IdeCfg t)
-replWidget ideL onLoad = mdo
+replWidget ideL cfg = mdo
   (e, r) <- elClass' "div" "repl-pane code-font" $ mdo
     mapM_ snippetWidget staticReplHeader
     clickType <- foldDyn ($) Nothing $ leftmost
@@ -357,12 +369,17 @@ replWidget ideL onLoad = mdo
       keysContract =
         fmap sequence $ zipDyn (ide_getSigningKeyPairs ideL) codeData
 
-      onKeysContractLoad = fmapMaybe id . tag (current keysContract) $ onLoad
+      onKeysContractLoad =
+        fmapMaybe id . tag (current keysContract) $ cfg ^. ideCfg_load
 
+      onNewReplContent = leftmost
+        [ onKeysContractLoad
+        , ([], ("", H.empty)) <$ _ideCfg_clearRepl cfg
+        ]
 
     widgetHold
       (replInner replClick ([], ("", H.empty)))
-      (replInner replClick <$> onKeysContractLoad
+      (replInner replClick <$> onNewReplContent
       )
   let
     err = snd <$> r
