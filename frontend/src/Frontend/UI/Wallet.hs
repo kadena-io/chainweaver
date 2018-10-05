@@ -47,6 +47,7 @@ import           Reflex.Dom.SemanticUI       hiding (mainWidget)
 
 import           Frontend.Foundation
 import           Frontend.Wallet
+import           Frontend.Crypto.Ed25519
 
 
 
@@ -61,16 +62,27 @@ uiWallet w = do
         nameVal = T.strip <$> value name
         onEnter = keypress Enter name
         nameEmpty = (== "") <$> nameVal
-        duplicate = Map.member <$> nameVal <*> w ^. wallet_keys
 
       clicked <- flip button (text "Generate") $ def
         & buttonConfig_emphasis .~ Static (Just Secondary)
-        & buttonConfig_disabled .~ Dyn ((||) <$> nameEmpty <*> duplicate)
+        & buttonConfig_disabled .~ Dyn nameEmpty
 
       let
         confirmed = leftmost [ onEnter, clicked ]
       void $ performEvent (liftJSM (pToJSVal (_textInput_element name) ^. js0 ("focus" :: String)) <$ confirmed)
       pure $ tag (current nameVal) confirmed
+
+    duplicate <- holdUniqDyn <=< holdDyn False $ attachWith (flip Map.member) (current $ _wallet_keys w) onReq
+
+    let trans dir = Transition Fade $ def
+          & transitionConfig_duration .~ 0.2
+          & transitionConfig_direction .~ Just dir
+        config = def
+          & messageConfig_type .~ Static (Just $ MessageType Negative)
+          & action ?~ (def
+            & action_event ?~ ffor (updated duplicate) (\d -> trans $ if d then In else Out)
+            & action_initialDirection .~ Out)
+    message config $ paragraph $ text "This key name is already in use"
 
     keysCfg <- uiAvailableKeys w
 
@@ -138,16 +150,24 @@ uiKeyItem (n, k) = do
           $ def & checkboxConfig_type .~ pure Nothing
                 & checkboxConfig_setValue .~ SetValue False (Just onPbSigned)
         let
-          buttonIcon = elClass "i" "large trash right aligned icon" blank
+          buttonIcon = snd <$> elClass' "i" "large trash right aligned icon" blank
         onDelI <- flip button buttonIcon $ def
           & buttonConfig_emphasis .~ Static (Just Tertiary)
           & classes .~ Static "input-aligned-btn"
         pure (boxI, onDelI)
 
-      elClass "i" "large key middle aligned icon" blank
+      viewKeys <- toggle False =<< domEvent Click <$> icon' "large link key middle aligned" def
       elClass "div" "content" $ do
         elClass "h4" "ui header" $ text n
         elClass "div" "description" $ text $ keyDescription k
+      dyn_ $ ffor viewKeys $ \case
+        False -> pure ()
+        True -> table (def & classes .~ "very basic") $ do
+          let item lbl key = el "tr" $ do
+                el "td" $ label (def & labelConfig_pointing .~ Static (Just RightPointing)) $ text lbl
+                elAttr "td" ("style" =: "word-break: break-all") $ text key
+          item "Public key" $ keyToText (_keyPair_publicKey k)
+          item "Private key" $ maybe "No key" keyToText (_keyPair_privateKey k)
       pure $ mempty
         & walletCfg_setSigning .~ (fmap (n, ) . _checkbox_change $ box)
         & walletCfg_delKey .~  fmap (const n) onDel
