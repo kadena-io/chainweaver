@@ -288,7 +288,7 @@ uiCreateKeyset jsonData = validatedInputWithButton check "Enter keyset name" "Cr
       let dupe = case json of
             Left _  -> Map.member ks keysets
             Right j -> H.member ks j
-      pure $ if dupe then Left "This keyset name is already in use" else Right ks
+      pure $ if dupe then Left "This keyset name is already in use." else Right ks
 
 -- | Widget showing all avaialble keys for selecting keys
 --
