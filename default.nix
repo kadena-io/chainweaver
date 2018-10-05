@@ -135,15 +135,15 @@ let
     ######
     services.nginx.appendHttpConfig = ''
         server {
-          listen 0.0.0.0:7011;
-          listen [::]:7011;
-          server_name working-agreement.obsidian.systems;
-          # ssl_certificate /var/lib/acme/working-agreement.obsidian.systems/fullchain.pem;
-          # ssl_certificate_key /var/lib/acme/working-agreement.obsidian.systems/key.pem;
+          listen 0.0.0.0:7011 ssl;
+          listen [::]:7011 ssl;
+          server_name https://working-agreement.obsidian.systems;
+          ssl_certificate /var/lib/acme/working-agreement.obsidian.systems/fullchain.pem;
+          ssl_certificate_key /var/lib/acme/working-agreement.obsidian.systems/key.pem;
 
           location / {
             if ($request_method = 'OPTIONS') {
-              add_header 'Access-Control-Allow-Origin' '*';
+              add_header 'Access-Control-Allow-Origin' 'https://working-agreement.obsidian.systems';
               add_header 'Access-Control-Allow-Methods' 'GET, POST, OPTIONS';
               #
               # Custom headers and headers various browsers *should* be OK with but aren't
@@ -158,13 +158,13 @@ let
               return 204;
             }
             if ($request_method = 'POST') {
-               add_header 'Access-Control-Allow-Origin' '*';
+               add_header 'Access-Control-Allow-Origin' 'https://working-agreement.obsidian.systems';
                add_header 'Access-Control-Allow-Methods' 'GET, POST, OPTIONS';
                add_header 'Access-Control-Allow-Headers' 'DNT,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control,Content-Type,Range';
                add_header 'Access-Control-Expose-Headers' 'Content-Length,Content-Range';
             }
             if ($request_method = 'GET') {
-               add_header 'Access-Control-Allow-Origin' '*';
+               add_header 'Access-Control-Allow-Origin' 'https://working-agreement.obsidian.systems';
                add_header 'Access-Control-Allow-Methods' 'GET, POST, OPTIONS';
                add_header 'Access-Control-Allow-Headers' 'DNT,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control,Content-Type,Range';
                add_header 'Access-Control-Expose-Headers' 'Content-Length,Content-Range';
