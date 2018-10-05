@@ -130,9 +130,7 @@ let
         KillMode = "process";
       };
     };
-    # TODO: Fix that!!! #####
-    networking.firewall.enable = lib.mkForce false;
-    ######
+    networking.firewall.allowedTCPPorts = [ 22 80 443 7011 ];
     services.nginx.appendHttpConfig = ''
         server {
           listen 0.0.0.0:7011 ssl;
