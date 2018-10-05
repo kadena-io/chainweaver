@@ -79,6 +79,13 @@ data DeployedContract = DeployedContract
   { _deployedContract_name :: Text
   } deriving Show
 
+-- | The available panels in the `envPanel`
+data EnvSelection
+  = EnvSelection_Repl -- ^ REPL for interacting with loaded contract
+  | EnvSelection_Env -- ^ Widgets for editing (meta-)data.
+  | EnvSelection_Msgs -- ^ Compiler errors and other messages to be shown.
+  deriving (Eq, Ord, Show)
+
 -- | Configuration for sub-modules.
 --
 --   State is controlled via this configuration.
@@ -94,6 +101,10 @@ data IdeCfg t = IdeCfg
     -- ^ Set errors that should be shown to the user.
   , _ideCfg_setCode     :: Event t Text
     -- ^ Update the current contract/PACT code.
+  , _ideCfg_selEnv      :: Event t EnvSelection
+    -- ^ Switch tab of the right pane.
+  , _ideCfg_clearRepl :: Event t ()
+    -- ^ Make the REPL fresh again, ready for new contracts.
   }
   deriving Generic
 
@@ -107,8 +118,10 @@ data Ide t = Ide
   -- ^ The currently selected contract name.
   , _ide_wallet           :: Wallet t
   , _ide_jsonData         :: JsonData t
-  , _ide_msgs             :: Dynamic t [LogMsg]
   , _ide_backend          :: Backend t
+  , _ide_msgs             :: Dynamic t [LogMsg]
+  , _ide_envSelection     :: Dynamic t EnvSelection
+    -- ^ Currently selected tab in the right pane.
   }
   deriving Generic
 
@@ -166,17 +179,28 @@ app = void . mfix $ \ ~(cfg, ideL) -> elClass "div" "app" $ do
         elClass "div" "ui light segment editor-pane" $ codePanel ideL
 
       envCfg <- elClass "div" "column repl-column" $
-        elClass "div" "ui env-pane" $ envPanel ideL (cfg ^. ideCfg_load)
+        elClass "div" "ui env-pane" $ envPanel ideL cfg
 
       code <- holdDyn "" $ cfg ^. ideCfg_setCode
       selContract <- holdDyn (Left initialDemoContract) $ cfg ^. ideCfg_selContract
       errors <- holdDyn [] $ cfg ^. ideCfg_setMsgs
 
+      let
+        -- Mostly concerned with clearing REPL and Messages on contract load:
+        topCfg = mempty
+          & ideCfg_selEnv .~ (EnvSelection_Env <$ cfg ^. ideCfg_selContract)
+          & ideCfg_setMsgs .~ leftmost
+            [ jsonErrorsOnLoad
+              -- Clear messages once a new contract gets loaded.
+            , [] <$ cfg ^. ideCfg_selContract
+            ]
+          & ideCfg_clearRepl .~ (() <$ cfg ^. ideCfg_selContract)
+
       pure
         ( mconcat
-          [ controlCfg
+          [ topCfg
+          , controlCfg
           , editorCfg
-          , mempty & ideCfg_setMsgs .~ jsonErrorsOnLoad
           , envCfg
           , contractReceivedCfg
           ]
@@ -233,14 +257,9 @@ app = void . mfix $ \ ~(cfg, ideL) -> elClass "div" "app" $ do
 
     loadContractData getFileName onNewContractName =
       fmap (fmap codeFromResponse)
-      . performRequestAsync $ ffor onNewContractName $ \example -> xhrRequest "GET" (getFileName example) def
-
--- | The available panels in the `envPanel`
-data EnvSelection
-  = EnvSelection_Repl -- ^ REPL for interacting with loaded contract
-  | EnvSelection_Env -- ^ Widgets for editing (meta-)data.
-  | EnvSelection_Msgs -- ^ Compiler errors to be shown.
-  deriving (Eq, Ord, Show)
+      . performRequestAsync $ ffor onNewContractName
+      $ \example ->
+          xhrRequest "GET" (getFileName example) def
 
 -- | Code editing (left hand side currently)
 codePanel :: forall t m. MonadWidget t m => Ide t -> m (IdeCfg t)
@@ -258,16 +277,15 @@ codePanel ideL = mdo
 --   - The REPL
 --   - Compiler error messages
 --   - Key & Data Editor
-envPanel :: forall t m. MonadWidget t m => Ide t -> Event t () -> m (IdeCfg t)
-envPanel ideL onLoad = mdo
-  let onLoaded =
-        maybe EnvSelection_Repl (const EnvSelection_Msgs)
-          . listToMaybe
-          <$> updated (_ide_msgs ideL)
+envPanel :: forall t m. MonadWidget t m => Ide t -> IdeCfg t -> m (IdeCfg t)
+envPanel ideL cfg = mdo
+  let
+    onError =
+      fmap (const EnvSelection_Msgs) . fmapMaybe listToMaybe
+        $ updated (_ide_msgs ideL)
+    onLoad = EnvSelection_Repl <$ (cfg ^. ideCfg_load)
 
-  curSelection <- holdDyn EnvSelection_Env $ leftmost [ onSelect
-                                                      , onLoaded
-                                                      ]
+  curSelection <- holdDyn EnvSelection_Env $ cfg ^. ideCfg_selEnv
 
   onSelect <- menu
     ( def & menuConfig_pointing .~ pure True
@@ -279,7 +297,7 @@ envPanel ideL onLoad = mdo
   replCfg <- tabPane
       ("class" =: "ui flex-content light segment")
       curSelection EnvSelection_Repl
-      $ replWidget ideL onLoad
+      $ replWidget ideL cfg
 
   envCfg <- tabPane
       ("class" =: "ui fluid accordion env-accordion")
@@ -299,6 +317,11 @@ envPanel ideL onLoad = mdo
     pure $ mconcat [ jsonCfg
                    , keysCfg
                    , replCfg
+                   , mempty & ideCfg_selEnv .~ leftmost
+                       [ onSelect
+                       , onError -- Order important - we want to see errors.
+                       , onLoad
+                       ]
                    ]
 
   errorsCfg <- tabPane
@@ -376,9 +399,9 @@ snippetWidget (OutputSnippet t) = elAttr "pre" ("class" =: "replOut code-font") 
 replWidget
     :: MonadWidget t m
     => Ide t
-    -> Event t ()
+    -> IdeCfg t
     -> m (IdeCfg t)
-replWidget ideL onLoad = mdo
+replWidget ideL cfg = mdo
   (e, r) <- elClass' "div" "repl-pane code-font" $ mdo
     mapM_ snippetWidget staticReplHeader
     clickType <- foldDyn ($) Nothing $ leftmost
@@ -397,12 +420,17 @@ replWidget ideL onLoad = mdo
       keysContract =
         fmap sequence $ zipDyn (ide_getSigningKeyPairs ideL) codeData
 
-      onKeysContractLoad = fmapMaybe id . tag (current keysContract) $ onLoad
+      onKeysContractLoad =
+        fmapMaybe id . tag (current keysContract) $ cfg ^. ideCfg_load
 
+      onNewReplContent = leftmost
+        [ onKeysContractLoad
+        , ([], ("", H.empty)) <$ _ideCfg_clearRepl cfg
+        ]
 
     widgetHold
       (replInner replClick ([], ("", H.empty)))
-      (replInner replClick <$> onKeysContractLoad
+      (replInner replClick <$> onNewReplContent
       )
   let
     err = snd <$> r
@@ -653,3 +681,6 @@ instance Reflex t => Semigroup (IdeCfg t) where
 instance Reflex t => Monoid (IdeCfg t) where
   mempty = memptydefault
   mappend = (<>)
+
+instance Semigroup EnvSelection where
+  sel1 <> sel2 = sel1
