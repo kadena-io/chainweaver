@@ -131,7 +131,7 @@ let
       };
     };
     # TODO: Fix that!!! #####
-    networking.firewall.disable = lib.mkForce true;
+    networking.firewall.enable = lib.mkForce false;
     ######
     services.nginx.appendHttpConfig = ''
         server {
