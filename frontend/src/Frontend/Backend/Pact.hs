@@ -65,14 +65,14 @@ makeLenses ''ApiResponse
 
 instance ToJSON a => ToJSON (ApiResponse a) where
   toJSON (ApiSuccess a)= object [ "status" .= String "success", "response" .= a]
-  toJSON (ApiFailure a)= object [ "status" .= String "failure", "error" .= a]
+  toJSON (ApiFailure a)= object [ "status" .= String "failure", "response" .= a]
 
 instance FromJSON a => FromJSON (ApiResponse a) where
   parseJSON (Object o) = do
     st <- o .: "status"
     if st == String "success"
       then ApiSuccess <$> o .: "response"
-      else ApiFailure <$> o .: "error"
+      else ApiFailure <$> o .: "response"
   parseJSON _ = mempty
 
 newtype RequestKey = RequestKey { unRequestKey :: Hash}
