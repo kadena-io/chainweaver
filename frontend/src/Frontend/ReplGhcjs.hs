@@ -360,12 +360,14 @@ envPanel ideL cfg = mdo
                         , ("step", "1")
                         , ("placeholder", _aName arg)
                         ]
-                    TyPrim TyDecimal -> fmap value . input def $ inputElement $ def
-                      & inputElementConfig_elementConfig . initialAttributes .~ Map.fromList
-                        [ ("type", "number")
-                        , ("step", "0.0000000001")
-                        , ("placeholder", _aName arg)
-                        ]
+                    TyPrim TyDecimal -> do
+                      ti <- input def $ inputElement $ def
+                        & inputElementConfig_elementConfig . initialAttributes .~ Map.fromList
+                          [ ("type", "number")
+                          , ("step", "0.0000000001")
+                          , ("placeholder", _aName arg)
+                          ]
+                      pure $ (\x -> if T.isInfixOf "." x then x else x <> ".0") <$> value ti
                     TyPrim TyTime -> do
                       i <- input def $ inputElement $ def
                         & inputElementConfig_elementConfig . initialAttributes .~ Map.fromList
