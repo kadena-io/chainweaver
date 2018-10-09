@@ -352,9 +352,36 @@ envPanel ideL cfg = mdo
               False -> pure ()
               True -> segment def $ form def $ do
                 inputs <- for (_ftArgs funType) $ \arg -> field def $ do
-                  el "label" $ text $ "Argument: " <> _aName arg
-                  ti <- input def $ textInput (def & textInputConfig_placeholder .~ pure (_aName arg))
-                  pure $ value ti
+                  el "label" $ text $ "Argument: " <> _aName arg <> " : " <> tshow (_aType arg)
+                  case _aType arg of
+                    TyPrim TyInteger -> fmap value . input def $ inputElement $ def
+                      & inputElementConfig_elementConfig . initialAttributes .~ Map.fromList
+                        [ ("type", "number")
+                        , ("step", "1")
+                        , ("placeholder", _aName arg)
+                        ]
+                    TyPrim TyDecimal -> fmap value . input def $ inputElement $ def
+                      & inputElementConfig_elementConfig . initialAttributes .~ Map.fromList
+                        [ ("type", "number")
+                        , ("step", "0.0000000001")
+                        , ("placeholder", _aName arg)
+                        ]
+                    TyPrim TyTime -> do
+                      i <- input def $ inputElement $ def
+                        & inputElementConfig_elementConfig . initialAttributes .~ Map.fromList
+                          [ ("type", "datetime-local")
+                          , ("step", "1") -- 1 second step
+                          ]
+                      pure $ (\x -> "(time \"" <> x <> "Z\")") <$> value i
+                    TyPrim TyBool -> do
+                      d <- dropdown def (pure False) $ TaggedStatic $ Map.fromList
+                        [(True, text "true"), (False, text "false")]
+                      pure $ T.toLower . tshow . runIdentity <$> value d
+                    TyPrim TyString -> do
+                      ti <- input def $ textInput (def & textInputConfig_placeholder .~ pure (_aName arg))
+                      pure $ tshow <$> value ti -- TODO better escaping
+                    _ -> fmap value . input def $
+                      textInput (def & textInputConfig_placeholder .~ pure (_aName arg))
                 let buttonConfig = def
                       & buttonConfig_type .~ SubmitButton
                       & buttonConfig_emphasis .~ Static (Just Primary)
