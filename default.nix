@@ -119,25 +119,44 @@ let
             frontend = pkgs.haskell.lib.dontHaddock super.frontend;
           };
   });
-  pactServerModule = {lib, ...}: {
+  pactServerModule = {
+    certificatePath,
+    certificateKeyPath,
+    hostname,
+    nginxPort,
+    pactPort
+  }: let
+    pactConfig = pkgs.writeText "pact.yaml" ''
+      port: ${toString pactPort}
+
+      logDir: /root/pact-log
+      persistDir: /root/pact-log
+
+      # SQLite pragmas for pact back-end
+      pragmas: []
+
+      # verbose: provide log output
+      verbose: True
+    '';
+  in {lib, ...}: {
     systemd.services.pact-server = {
       description = "Pact Server";
       after = [ "network.target" ];
       wantedBy = [ "multi-user.target" ];
       serviceConfig = {
-        ExecStart = "${obApp.ghc.pact}/bin/pact -s ${./config/common/pact.yaml}";
+        ExecStart = "${obApp.ghc.pact}/bin/pact -s ${pactConfig}";
         Restart = "always";
         KillMode = "process";
       };
     };
-    networking.firewall.allowedTCPPorts = [ 22 80 443 7011 ];
+    networking.firewall.allowedTCPPorts = [ 22 80 443 nginxPort ];
     services.nginx.appendHttpConfig = ''
         server {
-          listen 0.0.0.0:7011 ssl;
-          listen [::]:7011 ssl;
-          server_name https://working-agreement.obsidian.systems;
-          ssl_certificate /var/lib/acme/working-agreement.obsidian.systems/fullchain.pem;
-          ssl_certificate_key /var/lib/acme/working-agreement.obsidian.systems/key.pem;
+          listen 0.0.0.0:${toString nginxPort} ssl;
+          listen [::]:${toString nginxPort} ssl;
+          server_name https://${hostname};
+          ssl_certificate ${certificatePath};
+          ssl_certificate_key ${certificateKeyPath};
 
           location / {
             if ($request_method = 'POST') {
@@ -148,7 +167,7 @@ let
             }
 
 
-            proxy_pass http://127.0.0.1:7010;
+            proxy_pass http://127.0.0.1:${toString pactPort};
             proxy_http_version 1.1;
             # proxy_set_header Upgrade $http_upgrade;
             # proxy_set_header Connection "upgrade";
@@ -166,7 +185,13 @@ in obApp // {
         imports = [
           (obelisk.serverModules.mkBaseEc2 args)
           (obelisk.serverModules.mkObeliskApp (args // { exe = obApp.linuxExe; }))
-          pactServerModule
+          (pactServerModule {
+            certificatePath = "/var/lib/acme/working-agreement.obsidian.systems/fullchain.pem";
+            certificateKeyPath = "/var/lib/acme/working-agreement.obsidian.systems/key.pem";
+            hostname = "working-agreement.obsidian.systems";
+            nginxPort = 7011;
+            pactPort = 7010;
+          })
         ];
       };
     };
