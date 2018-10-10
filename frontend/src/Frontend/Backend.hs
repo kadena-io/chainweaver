@@ -56,6 +56,7 @@ import qualified Data.Text.Encoding       as T
 import qualified Data.Text.IO             as T
 import           Data.Time.Clock          (getCurrentTime)
 import           Generics.Deriving.Monoid (mappenddefault, memptydefault)
+import           Obelisk.ExecutableConfig (get)
 import           Reflex.Dom.Class
 import           Reflex.Dom.Xhr
 import           Safe
@@ -122,7 +123,7 @@ data BackendCfg t = BackendCfg
 makePactLenses ''BackendCfg
 
 data Backend t = Backend
-  { _backend_backends :: Set BackendName
+  { _backend_backends :: Map BackendName BackendUri
     -- ^ All available backends that can be selected.
   , _backend_current  :: Dynamic t BackendName
    --  ^ Currently selected `Backend`
@@ -177,10 +178,11 @@ instance FromJSON ListenResponse where
 
 
 -- | Available backends:
-backends :: Map BackendName BackendUri
-backends = Map.fromList . map (first BackendName) $
-  [ ("dev-backend", "https://working-agreement.obsidian.systems:7011") -- TODO: should read from config ...
-  ]
+backends :: IO (Map BackendName BackendUri)
+backends = do
+  serverUrl <- T.strip . fromMaybe "http://localhost:8000" <$> get "common/server-url"
+  pure $ Map.fromList . map (first BackendName) $
+    [ ("dev-backend", serverUrl) ]
 
 
 makeBackend
@@ -189,20 +191,21 @@ makeBackend
     , MonadJSM (Performable m), HasJSContext (Performable m)
     , TriggerEvent t m, MonadSample t (Performable m)
     , PostBuild t m
+    , MonadIO m
     )
   => Wallet t
   -> BackendCfg t
   -> m (Backend t)
 makeBackend w cfg = mfix $ \b -> do
-  let
-    names = Map.keysSet backends
+  backends <- liftIO backends
+  let names = Map.keysSet backends
   cName <-
     holdDyn (Set.findMin $ names) $ cfg ^. backendCfg_selBackend
 
   modules <- loadModules w b cfg
 
   pure $ Backend
-    { _backend_backends = Map.keysSet backends
+    { _backend_backends = backends
     , _backend_current = cName
     , _backend_modules = modules
     }
@@ -290,13 +293,14 @@ backendPerformListen
   . (MonadHold t m, PerformEvent t m, MonadFix m
     , MonadJSM (Performable m), HasJSContext (Performable m)
     , TriggerEvent t m, MonadSample t (Performable m)
+    , MonadIO (Performable m)
     )
   => Backend t
   -> Event t (Either BackendError RequestKey)
   -> m (Event t BackendErrorResult)
 backendPerformListen b onKey = do
   let
-    getBackend n = fromJustNote "Invalid backend name!" $ Map.lookup n backends
+    getBackend n = fromJustNote "Invalid backend name!" . Map.lookup n $ _backend_backends b
   let
     buildPayload k = encodeAsText . encode $ object [ "listen" .= k ]
     buildReq k = def & xhrRequestConfig_sendData .~ buildPayload k
@@ -339,8 +343,8 @@ buildXhrRequest
   => Wallet t -> BackendName -> BackendRequest -> m (XhrRequest Text)
 buildXhrRequest w cbName req = do
   let
-    getBackend n = fromJustNote "Invalid backend name!" $ Map.lookup n backends
-    cb = getBackend cbName
+    getBackend n = fromJustNote "Invalid backend name!" . Map.lookup n <$> backends
+  cb <- liftIO $ getBackend cbName
   fmap (xhrRequest "POST" (url cb "/send")) $ do
     kps <- sample . current . joinKeyPairs $ _wallet_keys w
     sendData <- encodeAsText . encode <$> buildSendPayload kps req

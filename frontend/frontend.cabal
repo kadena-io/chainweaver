@@ -30,6 +30,7 @@ library
                , lens
                , mtl
                , newtype-generics
+               , obelisk-executable-config
                , pact
                , reflex
                , reflex-dom
