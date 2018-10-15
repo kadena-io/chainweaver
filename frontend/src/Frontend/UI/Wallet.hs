@@ -35,20 +35,16 @@ module Frontend.UI.Wallet
 ------------------------------------------------------------------------------
 import           Control.Arrow               ((&&&))
 import           Control.Lens
-import           Control.Monad
 import qualified Data.Map                    as Map
 import           Data.Maybe
 import           Data.Text                   (Text)
-import qualified Data.Text                   as T
-import           Language.Javascript.JSaddle (js0, liftJSM, pToJSVal)
 import           Reflex
-import           Reflex.Dom.Core             (keypress, _textInput_element)
 import           Reflex.Dom.SemanticUI       hiding (mainWidget)
 
 import           Frontend.Foundation
 import           Frontend.Wallet
 import           Frontend.Widgets
-import           Frontend.Crypto.Ed25519
+import           Frontend.Crypto.Ed25519     (keyToText)
 
 
 

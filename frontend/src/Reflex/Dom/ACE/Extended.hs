@@ -114,6 +114,7 @@ extendedAceWidget ac adc onAnnotations initContents onNewContent = do
     handleAnnotations ace annotations =
       let
         curAce = current $ aceRef ace
+        -- TODO: That functions seems to be present in ACE already!
         setAnnotations (mAi, annot) =
           case mAi of
             Nothing -> pure ()
