@@ -20,7 +20,7 @@ library
                , aeson
                , aeson-pretty
                , base16-bytestring
-	       , bound
+               , bound
                , bytestring
                , common
                , containers
