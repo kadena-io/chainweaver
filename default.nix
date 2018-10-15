@@ -14,39 +14,13 @@ let
     overrides = self: super:
       let guardGhcjs = p: if self.ghc.isGhcjs or false then null else p;
 
-          algebraic-graphs = pkgs.fetchFromGitHub {
-            owner = "snowleopard";
-            repo = "alga";
-            rev = "1c04f5664b9476e0b01a573b40462531e52e8756";
-            sha256 = "0j121551zqjrp4xy0qcz1pk46znr6w59jkg75v5svdh9ag3vmbsp";
-          };
-          blake2 = pkgs.fetchFromGitHub {
-            owner = "kadena-io";
-            repo = "blake2";
-            rev = "6c106bcf0f3e85448cec08353e4e7d34e086e296";
-            sha256 = "0pjfhy4sf4qqz0h2b658r4qy92qx82cssvdh1wkrrimzk9q1icvi";
-          };
           semantic-reflex-src = pkgs.fetchFromGitHub {
             owner = "tomsmalley";
             repo = "semantic-reflex";
             rev = "38fce7e4d08d46b8664768f1b7fe38846dbac1e2";
             sha256 = "1s2p12r682wd8j2z63pjvbi4s9v02crh6nz8kjilwdsfs02yp5p2";
           };
-          megaparsec = pkgs.fetchFromGitHub {
-            owner  = "mrkkrp";
-            repo   = "megaparsec";
-            rev    = "7b271a5edc1af59fa435a705349310cfdeaaa7e9";
-            sha256 = "0415z18gl8dgms57rxzp870dpz7rcqvy008wrw5r22xw8qq0s13c";
-          };
-          modern-uri = pkgs.fetchFromGitHub {
-            owner  = "mrkkrp";
-            repo   = "modern-uri";
-            rev    = "7c02e3d708aa75bcaf050d151281190e33170143";
-            sha256 = "0sc8b5787v7bgziqqvcl0qp0ysls12lqqvpv4dnm01gl69b52yyi";
-          };
       in {
-            algebraic-graphs = self.callCabal2nix "algebraic-graphs" algebraic-graphs {};
-            blake2 = guardGhcjs (self.callCabal2nix "blake2" blake2 {});
             cacophony = guardGhcjs (pkgs.haskell.lib.dontCheck (self.callHackage "cacophony" "0.8.0" {}));
             cryptonite = guardGhcjs (self.callHackage "cryptonite" "0.23" {});
             haskeline = guardGhcjs (self.callHackage "haskeline" "0.7.4.2" {});
@@ -69,18 +43,12 @@ let
               sha256 = "1p7rc5m70rkm1ma8gnihfwyxysr0n3wxk8ijhp6qjnqp5zwifhhn";
             }) {}));
 
-            megaparsec = pkgs.haskell.lib.dontCheck (self.callCabal2nix "megaparsec" megaparsec {});
-
-            modern-uri = pkgs.haskell.lib.dontCheck (self.callCabal2nix "modern-uri" modern-uri {});
-
             pact = pkgs.haskell.lib.dontCheck (self.callCabal2nix "pact" (pkgs.fetchFromGitHub {
               owner = "kadena-io";
               repo = "pact";
               rev = "d4418c67e66e29e2627a7cd5a4fbf32db4af5cc1";
               sha256 = "062cy72sd83wymmzxwd8gbrwh6hi9ks7m8hjbhywsrblm83gi2f3";
             }) {});
-
-            parser-combinators = self.callHackage "parser-combinators" "0.4.0" {};
 
             reflex-dom-ace = (self.callCabal2nix "reflex-dom-ace" (pkgs.fetchFromGitHub {
               owner = "reflex-frp";
