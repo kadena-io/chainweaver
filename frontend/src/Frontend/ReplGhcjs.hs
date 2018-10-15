@@ -28,6 +28,7 @@ module Frontend.ReplGhcjs where
 import           Control.Lens
 import           Control.Monad.State.Strict
 import           Data.Aeson                  as Aeson (Object, encode, fromJSON, Result(..))
+import           Data.Bifunctor              (first)
 import qualified Data.ByteString.Lazy        as BSL
 import           Data.Foldable
 import qualified Data.HashMap.Strict         as H
@@ -406,39 +407,57 @@ snippetWidget (OutputSnippet t) = elAttr "pre" ("class" =: "replOut code-font") 
 
 ------------------------------------------------------------------------------
 moduleExplorer
-  :: MonadWidget t m
+  :: forall t m. MonadWidget t m
   => Ide t
   -> m (IdeCfg t)
-moduleExplorer ideL = do
-  let deployedContracts = ideL ^. ide_backend . backend_modules
+moduleExplorer ideL = mdo
+  demuxSel <- fmap demux $ holdDyn (Left "") $ leftmost [deployedSelected, exampleSelected]
+
+  header def $ text "Example Contracts"
+  exampleClick <- divClass "ui inverted selection list" $ for demos $ \c -> do
+    let isSel = demuxed demuxSel $ Left $ _exampleContract_name c
+    selectableItem (_exampleContract_name c) isSel $ do
+      text $ _exampleContract_name c
+      (c <$) <$> loadButton isSel
+  let exampleSelected = fmap Left . leftmost . fmap fst $ Map.elems exampleClick
+      exampleLoaded = fmap Left . leftmost . fmap snd $ Map.elems exampleClick
+
+  header def $ text "Deployed Contracts"
   search <- input (def & inputConfig_icon .~ Static (Just RightIcon) & inputConfig_fluid .~ Static True) $ do
     ie <- inputElement $ def & initialAttributes .~ ("type" =: "text" <> "placeholder" =: "Search")
     icon "black search" def
     pure ie
-  let dexamples = f <$> value search <*> deployedContracts
+  let deployedContracts = ideL ^. ide_backend . backend_modules
+      filtered = f <$> value search <*> deployedContracts
       f needle = \case
         Nothing -> mempty
         Just xs -> Map.fromList $ fforMaybe xs $ \x ->
           if T.isInfixOf (T.toCaseFold needle) (T.toCaseFold x)
           then Just (x, ())
           else Nothing
-  rec
-    sel' <- holdDyn "" $ fst <$> sel
-    sel <- divClass "ui inverted selection list" $ selectViewListWithKey sel' dexamples $ \k _ isSel -> do
-      let mkAttrs s = Map.fromList
+  deployedClick <- divClass "ui inverted selection list" $ listWithKey filtered $ \k v -> do
+    let isSel = demuxed demuxSel $ Right k
+    selectableItem k isSel $ do
+      text k
+      (DeployedContract k <$) <$> loadButton isSel
+  let deployedSelected = switch . current $ fmap Right . leftmost . fmap fst . Map.elems <$> deployedClick
+      deployedLoaded = switch . current $ fmap Right . leftmost . fmap snd . Map.elems <$> deployedClick
+
+  pure $ mempty { _ideCfg_selContract = leftmost [deployedLoaded, exampleLoaded] }
+  where
+    selectableItem :: k -> Dynamic t Bool -> m a -> m (Event t k, a)
+    selectableItem k s m = do
+      let mkAttrs a = Map.fromList
             [ ("style", "position:relative")
-            , ("class", "item" <> (if s then " active" else ""))
+            , ("class", "item" <> (if a then " active" else ""))
             ]
-      (sel, load) <- elDynAttr' "a" (mkAttrs <$> isSel) $ do
-        text k
-        e <- dyn $ ffor isSel $ \case
-          False -> pure never
-          True -> let buttonStyle = "position: absolute; right: 0; top: 0; height: 100%; margin: 0"
-                   in button (def & classes .~ "primary" & style .~ buttonStyle) $ text "Load"
-        switchHold never e
-      pure $ load <$ domEvent Click sel
-  loaded <- switchHold never $ (\(k, e) -> k <$ e) <$> sel
-  pure $ mempty { _ideCfg_selContract = Right . DeployedContract <$> loaded }
+      (e, a) <- elDynAttr' "a" (mkAttrs <$> s) m
+      pure (k <$ domEvent Click e, a)
+    loadButton s = switchHold never <=< dyn $ ffor s $ \case
+      False -> pure never
+      True -> let buttonStyle = "position: absolute; right: 0; top: 0; height: 100%; margin: 0"
+                in button (def & classes .~ "primary" & style .~ buttonStyle) $ text "Load"
+
 
 replWidget
     :: MonadWidget t m
