@@ -28,6 +28,7 @@ module Frontend.ReplGhcjs where
 import           Control.Lens
 import           Control.Monad.State.Strict
 import           Data.Aeson                  as Aeson (Object, encode, fromJSON, Result(..))
+import           Data.Bifunctor              (first)
 import qualified Data.ByteString.Lazy        as BSL
 import           Data.Foldable
 import qualified Data.HashMap.Strict         as H
@@ -70,6 +71,11 @@ import           Static
 
 type LogMsg = Text
 
+data ExampleContract = ExampleContract
+  { _exampleContract_name :: Text
+  , _exampleContract_file :: Text
+  } deriving Show
+
 data DeployedContract = DeployedContract
   { _deployedContract_name :: Text
   } deriving Show
@@ -89,7 +95,7 @@ data IdeCfg t = IdeCfg
   { _ideCfg_wallet      :: WalletCfg t
   , _ideCfg_jsonData    :: JsonDataCfg t
   , _ideCfg_backend     :: BackendCfg t
-  , _ideCfg_selContract :: Event t DeployedContract
+  , _ideCfg_selContract :: Event t (Either ExampleContract DeployedContract) 
     -- ^ Select a contract to load into the editor.
   , _ideCfg_load        :: Event t ()
     -- ^ Load code into the repl.
@@ -110,7 +116,7 @@ makePactLenses ''IdeCfg
 data Ide t = Ide
   { _ide_code             :: Dynamic t Text
   -- ^ Currently loaded/edited PACT code.
-  , _ide_selectedContract :: Dynamic t (Maybe DeployedContract)
+  , _ide_selectedContract :: Dynamic t (Either ExampleContract DeployedContract) 
   -- ^ The currently selected contract name.
   , _ide_wallet           :: Wallet t
   , _ide_jsonData         :: JsonData t
@@ -138,6 +144,12 @@ codeExtension = ".repl"
 
 dataExtension :: Text
 dataExtension = ".data.json"
+
+toCodeFile :: ExampleContract -> Text
+toCodeFile = (<> codeExtension) . _exampleContract_file
+
+toDataFile :: ExampleContract -> Text
+toDataFile = (<> dataExtension) . _exampleContract_file
 
 codeFromResponse :: XhrResponse -> Text
 codeFromResponse =
@@ -172,7 +184,7 @@ app = void . mfix $ \ ~(cfg, ideL) -> elClass "div" "app" $ do
         elClass "div" "ui env-pane" $ envPanel ideL cfg
 
       code <- holdDyn "" $ cfg ^. ideCfg_setCode
-      selContract <- holdDyn Nothing $ Just <$> cfg ^. ideCfg_selContract
+      selContract <- holdDyn (Left initialDemoContract) $ cfg ^. ideCfg_selContract
       errors <- holdDyn [] $ cfg ^. ideCfg_setMsgs
 
       let
@@ -204,11 +216,16 @@ app = void . mfix $ \ ~(cfg, ideL) -> elClass "div" "app" $ do
         )
   where
     loadContract ideL contractName = do
-      onNewContractName <- fmapMaybe id <$> tagOnPostBuild contractName
+      onNewContractName <- tagOnPostBuild contractName
+      let (onExampleContract, onDeployedContract) = fanEither onNewContractName
+      -- Loading of example contracts
+      code <- loadContractData toCodeFile onExampleContract
+      json <- loadContractData toDataFile onExampleContract
+      onCodeJson <- waitForEvents (,) onExampleContract code json
 
       -- Loading of deployed contracts
       deployedResult <- backendPerformSend (ideL ^. ide_wallet) (ideL ^. ide_backend) $ do
-        ffor onNewContractName $ \contract -> BackendRequest
+        ffor onDeployedContract $ \contract -> BackendRequest
           { _backendRequest_code = mconcat
             [ "(describe-module '"
             , _deployedContract_name contract
@@ -222,13 +239,17 @@ app = void . mfix $ \ ~(cfg, ideL) -> elClass "div" "app" $ do
             Aeson.Success a -> Right a
 
       pure $ mempty
-        & ideCfg_setCode .~ (ffor deployedModule $ \m -> T.unlines
-          [ ";; Change <your-keyset-here> to the appropriate keyset name"
-          , let KeySetName keySetName = _mKeySet m
-              in "(define-keyset '" <> keySetName <> " (read-keyset \"<your-keyset-here>\"))"
-          , ""
-          , _unCode (_mCode m)
-          ])
+        & ideCfg_setCode .~ leftmost
+          [ fmap fst onCodeJson
+          , ffor deployedModule $ \m -> T.unlines
+            [ ";; Change <your-keyset-here> to the appropriate keyset name"
+            , let KeySetName keySetName = _mKeySet m
+                in "(define-keyset '" <> keySetName <> " (read-keyset \"<your-keyset-here>\"))"
+            , ""
+            , _unCode (_mCode m)
+            ]
+          ]
+        & ideCfg_jsonData . jsonDataCfg_setRawInput .~ fmap snd onCodeJson
         -- TODO: Something better than this for reporting errors
         & ideCfg_setMsgs .~ leftmost
           [ pure . T.pack <$> deployedDecodeError
@@ -276,7 +297,7 @@ envPanel ideL cfg = mdo
     $ tabs curSelection
 
   explorerCfg <- tabPane
-      mempty
+      ("style" =: "overflow: auto")
       curSelection EnvSelection_ModuleExplorer
       $ moduleExplorer ideL
 
@@ -385,39 +406,56 @@ snippetWidget (OutputSnippet t) = elAttr "pre" ("class" =: "replOut code-font") 
 
 ------------------------------------------------------------------------------
 moduleExplorer
-  :: MonadWidget t m
+  :: forall t m. MonadWidget t m
   => Ide t
   -> m (IdeCfg t)
-moduleExplorer ideL = do
-  let deployedContracts = ideL ^. ide_backend . backend_modules
+moduleExplorer ideL = mdo
+  demuxSel <- fmap demux $ holdDyn (Left "") $ leftmost [deployedSelected, exampleSelected]
+
+  header def $ text "Example Contracts"
+  exampleClick <- divClass "ui inverted selection list" $ for demos $ \c -> do
+    let isSel = demuxed demuxSel $ Left $ _exampleContract_name c
+    selectableItem (_exampleContract_name c) isSel $ do
+      text $ _exampleContract_name c
+      (c <$) <$> loadButton isSel
+  let exampleSelected = fmap Left . leftmost . fmap fst $ Map.elems exampleClick
+      exampleLoaded = fmap Left . leftmost . fmap snd $ Map.elems exampleClick
+
+  header def $ text "Deployed Contracts"
   search <- input (def & inputConfig_icon .~ Static (Just RightIcon) & inputConfig_fluid .~ Static True) $ do
     ie <- inputElement $ def & initialAttributes .~ ("type" =: "text" <> "placeholder" =: "Search")
     icon "black search" def
     pure ie
-  let dexamples = f <$> value search <*> deployedContracts
+  let deployedContracts = ideL ^. ide_backend . backend_modules
+      filtered = f <$> value search <*> deployedContracts
       f needle = \case
         Nothing -> mempty
         Just xs -> Map.fromList $ fforMaybe xs $ \x ->
           if T.isInfixOf (T.toCaseFold needle) (T.toCaseFold x)
           then Just (x, ())
           else Nothing
-  rec
-    sel' <- holdDyn "" $ fst <$> sel
-    sel <- divClass "ui inverted selection list" $ selectViewListWithKey sel' dexamples $ \k _ isSel -> do
-      let mkAttrs s = Map.fromList
+  deployedClick <- divClass "ui inverted selection list" $ listWithKey filtered $ \k v -> do
+    let isSel = demuxed demuxSel $ Right k
+    selectableItem k isSel $ do
+      text k
+      (DeployedContract k <$) <$> loadButton isSel
+  let deployedSelected = switch . current $ fmap Right . leftmost . fmap fst . Map.elems <$> deployedClick
+      deployedLoaded = switch . current $ fmap Right . leftmost . fmap snd . Map.elems <$> deployedClick
+
+  pure $ mempty { _ideCfg_selContract = leftmost [deployedLoaded, exampleLoaded] }
+  where
+    selectableItem :: k -> Dynamic t Bool -> m a -> m (Event t k, a)
+    selectableItem k s m = do
+      let mkAttrs a = Map.fromList
             [ ("style", "position:relative")
-            , ("class", "item" <> (if s then " active" else ""))
+            , ("class", "item" <> (if a then " active" else ""))
             ]
-      (sel, load) <- elDynAttr' "a" (mkAttrs <$> isSel) $ do
-        text k
-        e <- dyn $ ffor isSel $ \case
-          False -> pure never
-          True -> let buttonStyle = "position: absolute; right: 0; top: 0; height: 100%; margin: 0"
-                   in button (def & classes .~ "primary" & style .~ buttonStyle) $ text "Load"
-        switchHold never e
-      pure $ load <$ domEvent Click sel
-  loaded <- switchHold never $ (\(k, e) -> k <$ e) <$> sel
-  pure $ mempty { _ideCfg_selContract = DeployedContract <$> loaded }
+      (e, a) <- elDynAttr' "a" (mkAttrs <$> s) m
+      pure (k <$ domEvent Click e, a)
+    loadButton s = switchHold never <=< dyn $ ffor s $ \case
+      False -> pure never
+      True -> let buttonStyle = "position: absolute; right: 0; top: 0; height: 100%; margin: 0"
+                in button (def & classes .~ "primary" & style .~ buttonStyle) $ text "Load"
 
 replWidget
     :: MonadWidget t m
@@ -572,8 +610,8 @@ controlBar ideL = do
     elClass "div" "ui borderless menu" $ do
       elClass "div" "item" showPactVersion
 
-      load <- elClass "div" "item" $
-        button (def & buttonConfig_emphasis .~ Static (Just Primary)) $ text "Load"
+      onLoad <- elClass "div" "item" $
+        button (def & buttonConfig_emphasis .~ Static (Just Primary)) $ text "Load into REPL"
 
       onDeploy <- elClass "div" "item" $
         button (def & buttonConfig_emphasis .~ Static (Just Primary)) $ text "Deploy"
@@ -588,7 +626,7 @@ controlBar ideL = do
       elClass "div" "right menu" rightMenu
       pure $ mempty
         & ideCfg_setMsgs .~ ((:[]) . prettyPrintBackendErrorResult <$> onResp)
-        & ideCfg_load .~ load
+        & ideCfg_load .~ onLoad
   where
     showPactVersion = do
       elAttr "a" ( "target" =: "_blank" <> "href" =: "https://github.com/kadena-io/pact") $ do
@@ -609,6 +647,24 @@ controlBar ideL = do
       elClass "div" "ui item" $
         elAttr "a" ("target" =: "_blank" <> "href" =: "http://kadena.io") $
           elAttr "img" ("src" =: static @"img/KadenaWhiteLogo.svg" <> "class" =: "logo-image" <> "width" =: "150" <> "hegiht" =: "20") blank
+
+exampleData :: [ExampleContract]
+exampleData =
+  [ ExampleContract "Hello World" "examples/helloWorld-1.0"
+  , ExampleContract "Simple Payment" "examples/simplePayments-1.0"
+  , ExampleContract "International Payment" "examples/internationalPayments-1.0"
+  {- , ExampleContract "Commercial Paper" "examples/commercialPaper-1.0" -}
+  ]
+
+demos :: Map Int ExampleContract
+demos = Map.fromList $ zip [0..] exampleData
+
+-- | What demo do we load on startup:
+initialDemo :: Int
+initialDemo = 0
+
+initialDemoContract :: ExampleContract
+initialDemoContract = fromJust $ Map.lookup initialDemo demos
 
 -- Instances:
 
