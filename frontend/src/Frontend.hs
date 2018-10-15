@@ -4,6 +4,7 @@
 module Frontend where
 
 import           Data.Monoid
+import qualified Data.Text as T
 import           Reflex.Dom.Core
 
 import           Frontend.ReplGhcjs
@@ -13,6 +14,17 @@ frontend :: (StaticWidget x (), Widget x ())
 frontend = (head', body)
   where
     head' = do
+      -- Global site tag (gtag.js) - Google Analytics
+      let gaTrackingId = "UA-127512784-1"
+          gtagSrc = "https://www.googletagmanager.com/gtag/js?id=" <> gaTrackingId
+      elAttr "script" ("async" =: "" <> "src" =: gtagSrc) blank
+      el "script" $ text $ T.unlines
+        [ "window.dataLayer = window.dataLayer || [];"
+        , "function gtag(){dataLayer.push(arguments);}"
+        , "gtag('js', new Date());"
+        , "gtag('config', '" <> gaTrackingId <> "');"
+        ]
+
       el "title" $ text "Pact IDE"
       elAttr "meta" ("content" =: "#ffffff" <> "name" =: "msapplication-TileColor") blank
       elAttr "meta" ("content" =: "ms-icon-144x144.png" <> "name" =: "msapplication-TileImage") blank
