@@ -70,6 +70,9 @@ import           Frontend.Wallet
 -- | URI for accessing a backend.
 type BackendUri = Text
 
+newtype PactError = PactError Text deriving (Show, FromJSON)
+newtype PactDetail = PactDetail Text deriving (Show, FromJSON)
+
 -- | Name that uniquely describes a valid backend.
 newtype BackendName = BackendName
   { unBackendName :: Text
@@ -98,8 +101,10 @@ data BackendError
   -- ^ Parsing the JSON response failed.
   | BackendError_NoResponse
   -- ^ Server response was empty.
-  | BackendError_ResultFailure Value
+  | BackendError_ResultFailure PactError PactDetail
   -- ^ The status in the /listen result object was `failure`.
+  | BackendError_ResultFailureText Text
+-- ^ The the /listen result object was actually just an error message string
   | BackendError_Other Text
   -- ^ Other errors that should really never happen.
   deriving Show
@@ -157,14 +162,19 @@ instance FromJSON PactStatus where
 
 
 -- | Result as received from the backend.
-data PactResult = PactResult
-  { _pr_status :: PactStatus
-  , _pr_data   :: Value
-  }
+data PactResult
+  = PactResult_Success Value
+  | PactResult_Failure PactError PactDetail
+  | PactResult_FailureText Text -- when decimal fields are empty, for example
 
 instance FromJSON PactResult where
-  parseJSON = withObject "PactResult" $ \o ->
-    PactResult <$> o .: "status" <*> o .: "data"
+  parseJSON (String t) = pure $ PactResult_FailureText t
+  parseJSON (Object o) = do
+    status <- o .: "status"
+    case status of
+      PactStatus_Success -> PactResult_Success <$> o .: "data"
+      PactStatus_Failure -> PactResult_Failure <$> o .: "error" <*> o .: "detail"
+  parseJSON v = typeMismatch "PactResult" v
 
 -- | Response object contained in a /listen response.
 data ListenResponse = ListenResponse
@@ -322,11 +332,10 @@ backendPerformListen b onKey = do
     getValue :: ListenResponse -> BackendErrorResult
     getValue lr = do
       let result = _lr_result lr
-      case _pr_status result of
-        PactStatus_Failure ->
-          throwError $ BackendError_ResultFailure (_pr_data result)
-        PactStatus_Success ->
-          pure $ _pr_data result
+      case result of
+        PactResult_Failure err detail -> throwError $ BackendError_ResultFailure err detail
+        PactResult_FailureText err -> throwError $ BackendError_ResultFailureText err
+        PactResult_Success result -> pure result
 
   pure $ leftmost $
     [ fmap (getValue <=< getResPayload) onErrRespJson
@@ -424,7 +433,9 @@ getResPayload xhrRes = do
   let
     mRespT = BSL.fromStrict . T.encodeUtf8 <$> _xhrResponse_responseText r
   respT <- maybe (throwError BackendError_NoResponse) pure mRespT
-  pactRes <- left (BackendError_ParseError . T.pack) . eitherDecode $ respT
+  pactRes <- case eitherDecode respT of
+    Left e -> Left $ BackendError_ParseError $ T.pack e <> fromMaybe "" (_xhrResponse_responseText r)
+    Right v -> Right v
   case pactRes of
     ApiFailure str ->
       throwError $ BackendError_Failure . T.pack $ str
@@ -438,7 +449,8 @@ prettyPrintBackendError = ("ERROR: " <>) . \case
   BackendError_XhrException e -> "Connection failed: " <> (T.pack . show) e
   BackendError_ParseError m -> "Server response could not be parsed: " <> m
   BackendError_NoResponse -> "Server response was empty."
-  BackendError_ResultFailure v -> "Command resulted in a failure: " <> (T.pack . show) v
+  BackendError_ResultFailure (PactError e) (PactDetail d) -> e <> ": " <> d
+  BackendError_ResultFailureText e -> e
   BackendError_Other m -> "Some unknown problem: " <> m
 
 prettyPrintBackendErrorResult :: BackendErrorResult -> Text
