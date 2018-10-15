@@ -95,7 +95,7 @@ data IdeCfg t = IdeCfg
   { _ideCfg_wallet      :: WalletCfg t
   , _ideCfg_jsonData    :: JsonDataCfg t
   , _ideCfg_backend     :: BackendCfg t
-  , _ideCfg_selContract :: Event t (Either ExampleContract DeployedContract)
+  , _ideCfg_selContract :: Event t (Either ExampleContract DeployedContract) 
     -- ^ Select a contract to load into the editor.
   , _ideCfg_load        :: Event t ()
     -- ^ Load code into the repl.
@@ -116,7 +116,7 @@ makePactLenses ''IdeCfg
 data Ide t = Ide
   { _ide_code             :: Dynamic t Text
   -- ^ Currently loaded/edited PACT code.
-  , _ide_selectedContract :: Dynamic t (Either ExampleContract DeployedContract)
+  , _ide_selectedContract :: Dynamic t (Either ExampleContract DeployedContract) 
   -- ^ The currently selected contract name.
   , _ide_wallet           :: Wallet t
   , _ide_jsonData         :: JsonData t
@@ -218,7 +218,6 @@ app = void . mfix $ \ ~(cfg, ideL) -> elClass "div" "app" $ do
     loadContract ideL contractName = do
       onNewContractName <- tagOnPostBuild contractName
       let (onExampleContract, onDeployedContract) = fanEither onNewContractName
-
       -- Loading of example contracts
       code <- loadContractData toCodeFile onExampleContract
       json <- loadContractData toDataFile onExampleContract
@@ -245,7 +244,7 @@ app = void . mfix $ \ ~(cfg, ideL) -> elClass "div" "app" $ do
           , ffor deployedModule $ \m -> T.unlines
             [ ";; Change <your-keyset-here> to the appropriate keyset name"
             , let KeySetName keySetName = _mKeySet m
-               in "(define-keyset '" <> keySetName <> " (read-keyset \"<your-keyset-here>\"))"
+                in "(define-keyset '" <> keySetName <> " (read-keyset \"<your-keyset-here>\"))"
             , ""
             , _unCode (_mCode m)
             ]
@@ -457,7 +456,6 @@ moduleExplorer ideL = mdo
       False -> pure never
       True -> let buttonStyle = "position: absolute; right: 0; top: 0; height: 100%; margin: 0"
                 in button (def & classes .~ "primary" & style .~ buttonStyle) $ text "Load"
-
 
 replWidget
     :: MonadWidget t m
@@ -679,3 +677,7 @@ instance Reflex t => Monoid (IdeCfg t) where
 
 instance Semigroup EnvSelection where
   sel1 <> _ = sel1
+
+instance Semigroup DeployedContract where
+  sel1 <> _ = sel1
+
