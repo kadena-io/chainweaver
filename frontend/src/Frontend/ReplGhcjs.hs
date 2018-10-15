@@ -70,11 +70,6 @@ import           Static
 
 type LogMsg = Text
 
-data ExampleContract = ExampleContract
-  { _exampleContract_name :: Text
-  , _exampleContract_file :: Text
-  } deriving Show
-
 data DeployedContract = DeployedContract
   { _deployedContract_name :: Text
   } deriving Show
@@ -84,6 +79,7 @@ data EnvSelection
   = EnvSelection_Repl -- ^ REPL for interacting with loaded contract
   | EnvSelection_Env -- ^ Widgets for editing (meta-)data.
   | EnvSelection_Msgs -- ^ Compiler errors and other messages to be shown.
+  | EnvSelection_ModuleExplorer -- ^ The module explorer
   deriving (Eq, Ord, Show)
 
 -- | Configuration for sub-modules.
@@ -93,7 +89,7 @@ data IdeCfg t = IdeCfg
   { _ideCfg_wallet      :: WalletCfg t
   , _ideCfg_jsonData    :: JsonDataCfg t
   , _ideCfg_backend     :: BackendCfg t
-  , _ideCfg_selContract :: Event t (Either ExampleContract DeployedContract)
+  , _ideCfg_selContract :: Event t DeployedContract
     -- ^ Select a contract to load into the editor.
   , _ideCfg_load        :: Event t ()
     -- ^ Load code into the repl.
@@ -114,7 +110,7 @@ makePactLenses ''IdeCfg
 data Ide t = Ide
   { _ide_code             :: Dynamic t Text
   -- ^ Currently loaded/edited PACT code.
-  , _ide_selectedContract :: Dynamic t (Either ExampleContract DeployedContract)
+  , _ide_selectedContract :: Dynamic t (Maybe DeployedContract)
   -- ^ The currently selected contract name.
   , _ide_wallet           :: Wallet t
   , _ide_jsonData         :: JsonData t
@@ -142,12 +138,6 @@ codeExtension = ".repl"
 
 dataExtension :: Text
 dataExtension = ".data.json"
-
-toCodeFile :: ExampleContract -> Text
-toCodeFile = (<> codeExtension) . _exampleContract_file
-
-toDataFile :: ExampleContract -> Text
-toDataFile = (<> dataExtension) . _exampleContract_file
 
 codeFromResponse :: XhrResponse -> Text
 codeFromResponse =
@@ -182,7 +172,7 @@ app = void . mfix $ \ ~(cfg, ideL) -> elClass "div" "app" $ do
         elClass "div" "ui env-pane" $ envPanel ideL cfg
 
       code <- holdDyn "" $ cfg ^. ideCfg_setCode
-      selContract <- holdDyn (Left initialDemoContract) $ cfg ^. ideCfg_selContract
+      selContract <- holdDyn Nothing $ Just <$> cfg ^. ideCfg_selContract
       errors <- holdDyn [] $ cfg ^. ideCfg_setMsgs
 
       let
@@ -214,17 +204,11 @@ app = void . mfix $ \ ~(cfg, ideL) -> elClass "div" "app" $ do
         )
   where
     loadContract ideL contractName = do
-      onNewContractName <- tagOnPostBuild contractName
-      let (onExampleContract, onDeployedContract) = fanEither onNewContractName
-
-      -- Loading of example contracts
-      code <- loadContractData toCodeFile onExampleContract
-      json <- loadContractData toDataFile onExampleContract
-      onCodeJson <- waitForEvents (,) onExampleContract code json
+      onNewContractName <- fmapMaybe id <$> tagOnPostBuild contractName
 
       -- Loading of deployed contracts
       deployedResult <- backendPerformSend (ideL ^. ide_wallet) (ideL ^. ide_backend) $ do
-        ffor onDeployedContract $ \contract -> BackendRequest
+        ffor onNewContractName $ \contract -> BackendRequest
           { _backendRequest_code = mconcat
             [ "(describe-module '"
             , _deployedContract_name contract
@@ -238,17 +222,13 @@ app = void . mfix $ \ ~(cfg, ideL) -> elClass "div" "app" $ do
             Aeson.Success a -> Right a
 
       pure $ mempty
-        & ideCfg_setCode .~ leftmost
-          [ fmap fst onCodeJson
-          , ffor deployedModule $ \m -> T.unlines
-            [ ";; Change <your-keyset-here> to the appropriate keyset name"
-            , let KeySetName keySetName = _mKeySet m
-               in "(define-keyset '" <> keySetName <> " (read-keyset \"<your-keyset-here>\"))"
-            , ""
-            , _unCode (_mCode m)
-            ]
-          ]
-        & ideCfg_jsonData . jsonDataCfg_setRawInput .~ fmap snd onCodeJson
+        & ideCfg_setCode .~ (ffor deployedModule $ \m -> T.unlines
+          [ ";; Change <your-keyset-here> to the appropriate keyset name"
+          , let KeySetName keySetName = _mKeySet m
+              in "(define-keyset '" <> keySetName <> " (read-keyset \"<your-keyset-here>\"))"
+          , ""
+          , _unCode (_mCode m)
+          ])
         -- TODO: Something better than this for reporting errors
         & ideCfg_setMsgs .~ leftmost
           [ pure . T.pack <$> deployedDecodeError
@@ -277,6 +257,7 @@ codePanel ideL = mdo
 --   - The REPL
 --   - Compiler error messages
 --   - Key & Data Editor
+--   - Module explorer
 envPanel :: forall t m. MonadWidget t m => Ide t -> IdeCfg t -> m (IdeCfg t)
 envPanel ideL cfg = mdo
   let
@@ -293,6 +274,11 @@ envPanel ideL cfg = mdo
         & classes .~ pure "dark"
     )
     $ tabs curSelection
+
+  explorerCfg <- tabPane
+      mempty
+      curSelection EnvSelection_ModuleExplorer
+      $ moduleExplorer ideL
 
   replCfg <- tabPane
       ("class" =: "ui flex-content light segment")
@@ -317,6 +303,7 @@ envPanel ideL cfg = mdo
     pure $ mconcat [ jsonCfg
                    , keysCfg
                    , replCfg
+                   , explorerCfg
                    , mempty & ideCfg_selEnv .~ leftmost
                        [ onSelect
                        , onError -- Order important - we want to see errors.
@@ -336,7 +323,7 @@ envPanel ideL cfg = mdo
     tabs :: Dynamic t EnvSelection -> m (Event t EnvSelection)
     tabs curSelection = do
       let
-        selections = [ EnvSelection_Env, EnvSelection_Repl, EnvSelection_Msgs ]
+        selections = [ EnvSelection_Env, EnvSelection_Repl, EnvSelection_Msgs, EnvSelection_ModuleExplorer ]
       leftmost <$> traverse (tab curSelection) selections
 
     tab :: Dynamic t EnvSelection -> EnvSelection -> m (Event t EnvSelection)
@@ -353,6 +340,7 @@ selectionToText = \case
   EnvSelection_Repl -> "REPL"
   EnvSelection_Env -> "Env"
   EnvSelection_Msgs -> "Messages"
+  EnvSelection_ModuleExplorer -> "Module Explorer"
 
 setDown :: (Int, Int) -> t -> Maybe ClickState
 setDown clickLoc _ = Just $ DownAt clickLoc
@@ -396,6 +384,41 @@ snippetWidget (InputSnippet t)  = elAttr "pre" ("class" =: "replOut code-font") 
 snippetWidget (OutputSnippet t) = elAttr "pre" ("class" =: "replOut code-font") $ text t
 
 ------------------------------------------------------------------------------
+moduleExplorer
+  :: MonadWidget t m
+  => Ide t
+  -> m (IdeCfg t)
+moduleExplorer ideL = do
+  let deployedContracts = ideL ^. ide_backend . backend_modules
+  search <- input (def & inputConfig_icon .~ Static (Just RightIcon) & inputConfig_fluid .~ Static True) $ do
+    ie <- inputElement $ def & initialAttributes .~ ("type" =: "text" <> "placeholder" =: "Search")
+    icon "black search" def
+    pure ie
+  let dexamples = f <$> value search <*> deployedContracts
+      f needle = \case
+        Nothing -> mempty
+        Just xs -> Map.fromList $ fforMaybe xs $ \x ->
+          if T.isInfixOf (T.toCaseFold needle) (T.toCaseFold x)
+          then Just (x, ())
+          else Nothing
+  rec
+    sel' <- holdDyn "" $ fst <$> sel
+    sel <- divClass "ui inverted selection list" $ selectViewListWithKey sel' dexamples $ \k _ isSel -> do
+      let mkAttrs s = Map.fromList
+            [ ("style", "position:relative")
+            , ("class", "item" <> (if s then " active" else ""))
+            ]
+      (sel, load) <- elDynAttr' "a" (mkAttrs <$> isSel) $ do
+        text k
+        e <- dyn $ ffor isSel $ \case
+          False -> pure never
+          True -> let buttonStyle = "position: absolute; right: 0; top: 0; height: 100%; margin: 0"
+                   in button (def & classes .~ "primary" & style .~ buttonStyle) $ text "Load"
+        switchHold never e
+      pure $ load <$ domEvent Click sel
+  loaded <- switchHold never $ (\(k, e) -> k <$ e) <$> sel
+  pure $ mempty { _ideCfg_selContract = DeployedContract <$> loaded }
+
 replWidget
     :: MonadWidget t m
     => Ide t
@@ -549,7 +572,9 @@ controlBar ideL = do
     elClass "div" "ui borderless menu" $ do
       elClass "div" "item" showPactVersion
 
-      cfg <- exampleChooser
+      load <- elClass "div" "item" $
+        button (def & buttonConfig_emphasis .~ Static (Just Primary)) $ text "Load"
+
       onDeploy <- elClass "div" "item" $
         button (def & buttonConfig_emphasis .~ Static (Just Primary)) $ text "Deploy"
       let
@@ -561,8 +586,9 @@ controlBar ideL = do
       onResp <- backendPerformSend (ideL ^. ide_wallet) (ideL ^. ide_backend) onReq
 
       elClass "div" "right menu" rightMenu
-      pure $ cfg &
-        ideCfg_setMsgs .~ ((:[]) . prettyPrintBackendErrorResult <$> onResp)
+      pure $ mempty
+        & ideCfg_setMsgs .~ ((:[]) . prettyPrintBackendErrorResult <$> onResp)
+        & ideCfg_load .~ load
   where
     showPactVersion = do
       elAttr "a" ( "target" =: "_blank" <> "href" =: "https://github.com/kadena-io/pact") $ do
@@ -570,20 +596,6 @@ controlBar ideL = do
         Right (TLiteral (LString ver) _) <- liftIO $ evalStateT (evalRepl' "(pact-version)") is
         elAttr "img" ("src" =: static @"img/PactLogo.svg" <> "class" =: "logo-image" <> "width" =: "80" <> "hegiht" =: "20") blank
         text $ "v" <> ver
-
-    exampleChooser :: m (IdeCfg t)
-    exampleChooser = do
-      let
-        deployedContracts :: Dynamic t (Maybe [DeployedContract])
-        deployedContracts =
-          fmap (map DeployedContract) <$> (ideL ^. ide_backend . backend_modules)
-      (onListContracts, d) <- listLoadOptions deployedContracts exampleData
-      load <- elClass "div" "item" $
-        button (def & buttonConfig_emphasis .~ Static (Just Primary)) $ text "Load"
-      pure $ mempty
-        & ideCfg_selContract .~ updated d
-        & ideCfg_backend . backendCfg_refreshModule .~ onListContracts
-        & ideCfg_load .~ load
 
     rightMenu = do
       elClass "div" "ui item" $
@@ -598,81 +610,6 @@ controlBar ideL = do
         elAttr "a" ("target" =: "_blank" <> "href" =: "http://kadena.io") $
           elAttr "img" ("src" =: static @"img/KadenaWhiteLogo.svg" <> "class" =: "logo-image" <> "width" =: "150" <> "hegiht" =: "20") blank
 
--- | List available examples and contracts deployed to the backend.
-listLoadOptions
-  :: MonadWidget t m
-  => Dynamic t (Maybe [DeployedContract])
-  -> [ExampleContract]
-  -> m (Event t (), Dynamic t (Either ExampleContract DeployedContract))
-listLoadOptions mDeployed examples = mdo
-  (top, selection) <- elAttr' "a" ("class" =: "dropdown item" <> "style" =: "width: 250px") $ mdo
-    dynText $ either _exampleContract_name _deployedContract_name <$> selection
-    icon "dropdown" $ def & style .~ Static "color: white"
-    isOpen <- holdUniqDyn <=< holdDyn False $ leftmost
-      [ False <$ updated selection
-      , attachWith (\o _ -> not o) (current isOpen) (domEvent Click top)
-      ]
-    let transition = ffor (updated isOpen) $ \o ->
-          Transition SlideDown $ transitionConfig $ if o then In else Out
-        transitionConfig dir = TransitionConfig
-          { _transitionConfig_duration = 0.2
-          , _transitionConfig_cancelling = True
-          , _transitionConfig_direction = Just dir
-          }
-        popupConfig = def
-          & classes .~ Static "ui bottom left flowing popup"
-          & style .~ Static "top: 100%; width: 200%; right: auto"
-          & action ?~ Action
-            { _action_event = Just transition
-            , _action_initialDirection = Out
-            , _action_forceVisible = True
-            }
-    (popup, update) <- ui' "div" popupConfig $ divClass "ui two column relaxed divided grid" $ do
-      exampleChoice <- divClass "column" $ do
-        header def $ text "Examples"
-        es <- divClass "ui inverted link list" $ for examples $ \example -> do
-          (e, _) <- elClass' "a" "item" $ text $ _exampleContract_name example
-          pure $ Left example <$ domEvent Click e
-        pure $ leftmost es
-      onDeplChoice <- divClass "column" $ do
-        header def $ text "Deployed Contracts"
-        showLoading mDeployed $ \deployed -> do
-          search <- input (def & inputConfig_icon .~ Static (Just RightIcon)) $ do
-            ie <- inputElement $ def & initialAttributes .~ ("type" =: "text")
-            icon "black search" def
-            pure ie
-          let dexamples = ffor (value search) $ \x -> filter (T.isInfixOf (T.toCaseFold x) . T.toCaseFold . _deployedContract_name) deployed
-          es <- divClass "ui inverted link list" $ simpleList dexamples $ \d -> do
-            (e, _) <- elClass' "a" "item" $ dynText $ _deployedContract_name <$> d
-            pure $ attachWith (\c _ -> Right c) (current d) (domEvent Click e)
-          pure (switch . current $ leftmost <$> es)
-      deployedChoice <- switchHold never onDeplChoice
-      pure $ leftmost [exampleChoice, deployedChoice]
-    -- Prevent clicks on the popup from closing the top menu
-    let popupEl = DOM.uncheckedCastTo DOM.HTMLElement $ _element_raw popup
-    liftJSM $ DOM.on popupEl DOM.click $ DOM.stopPropagation
-    selection <- holdDyn (Left initialDemoContract) update
-    pure  selection
-  pure (domEvent Click top, selection)
-
-exampleData :: [ExampleContract]
-exampleData =
-  [ ExampleContract "Hello World" "examples/helloWorld-1.0"
-  , ExampleContract "Simple Payment" "examples/simplePayments-1.0"
-  , ExampleContract "International Payment" "examples/internationalPayments-1.0"
-  {- , ExampleContract "Commercial Paper" "examples/commercialPaper-1.0" -}
-  ]
-
-demos :: Map Int ExampleContract
-demos = Map.fromList $ zip [0..] exampleData
-
--- | What demo do we load on startup:
-initialDemo :: Int
-initialDemo = 0
-
-initialDemoContract :: ExampleContract
-initialDemoContract = fromJust $ Map.lookup initialDemo demos
-
 -- Instances:
 
 instance Reflex t => Semigroup (IdeCfg t) where
@@ -684,3 +621,7 @@ instance Reflex t => Monoid (IdeCfg t) where
 
 instance Semigroup EnvSelection where
   sel1 <> _ = sel1
+
+instance Semigroup DeployedContract where
+  sel1 <> _ = sel1
+
