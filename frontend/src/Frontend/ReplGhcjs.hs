@@ -593,6 +593,9 @@ controlBar ideL = do
     elClass "div" "ui borderless menu" $ do
       elClass "div" "item" showPactVersion
 
+      onLoad <- elClass "div" "item" $
+        button (def & buttonConfig_emphasis .~ Static (Just Primary)) $ text "Load into REPL"
+
       onDeploy <- elClass "div" "item" $
         button (def & buttonConfig_emphasis .~ Static (Just Primary)) $ text "Deploy"
       let
@@ -604,8 +607,9 @@ controlBar ideL = do
       onResp <- backendPerformSend (ideL ^. ide_wallet) (ideL ^. ide_backend) onReq
 
       elClass "div" "right menu" rightMenu
-      pure $ mempty &
-        ideCfg_setMsgs .~ ((:[]) . prettyPrintBackendErrorResult <$> onResp)
+      pure $ mempty
+        & ideCfg_setMsgs .~ ((:[]) . prettyPrintBackendErrorResult <$> onResp)
+        & ideCfg_load .~ onLoad
   where
     showPactVersion = do
       elAttr "a" ( "target" =: "_blank" <> "href" =: "https://github.com/kadena-io/pact") $ do
