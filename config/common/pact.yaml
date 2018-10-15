@@ -1,5 +1,4 @@
 port: 7010
-
 logDir: pact-log
 persistDir: pact-log
 

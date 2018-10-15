@@ -56,8 +56,12 @@ import           Reflex.Dom.Core             (keypress, mainWidget)
 import qualified Reflex.Dom.Core             as Core
 import           Reflex.Dom.SemanticUI       hiding (mainWidget)
 ------------------------------------------------------------------------------
+import qualified Pact.Compile                as Pact
+import qualified Pact.Parse                  as Pact
 import           Pact.Repl
 import           Pact.Repl.Types
+import qualified Pact.Types.ExpParser        as Pact
+import qualified Bound
 import           Pact.Types.Lang
 ------------------------------------------------------------------------------
 import           Frontend.Backend
@@ -85,8 +89,18 @@ data EnvSelection
   = EnvSelection_Repl -- ^ REPL for interacting with loaded contract
   | EnvSelection_Env -- ^ Widgets for editing (meta-)data.
   | EnvSelection_Msgs -- ^ Compiler errors and other messages to be shown.
+  | EnvSelection_Functions -- ^ Functions available for deployed contracts
   | EnvSelection_ModuleExplorer -- ^ The module explorer
   deriving (Eq, Ord, Show)
+
+-- | Useful data about a pact function
+data PactFunction = PactFunction
+  { _pactFunction_module :: ModuleName
+  , _pactFunction_name :: Text
+  , _pactFunction_defType :: DefType
+  , _pactFunction_documentation :: Maybe Text
+  , _pactFunction_type :: FunType (Term Name)
+  }
 
 -- | Configuration for sub-modules.
 --
@@ -103,6 +117,8 @@ data IdeCfg t = IdeCfg
     -- ^ Set errors that should be shown to the user.
   , _ideCfg_setCode     :: Event t Text
     -- ^ Update the current contract/PACT code.
+  , _ideCfg_setDeployed :: Event t (Maybe [PactFunction])
+    -- ^ Update the last loaded deployed function list
   , _ideCfg_selEnv      :: Event t EnvSelection
     -- ^ Switch tab of the right pane.
   , _ideCfg_clearRepl :: Event t ()
@@ -116,7 +132,9 @@ makePactLenses ''IdeCfg
 data Ide t = Ide
   { _ide_code             :: Dynamic t Text
   -- ^ Currently loaded/edited PACT code.
-  , _ide_selectedContract :: Dynamic t (Either ExampleContract DeployedContract) 
+  , _ide_deployed         :: Dynamic t (Maybe [PactFunction])
+  -- ^ Last loaded deployed contract
+  , _ide_selectedContract :: Dynamic t (Either ExampleContract DeployedContract)
   -- ^ The currently selected contract name.
   , _ide_wallet           :: Wallet t
   , _ide_jsonData         :: JsonData t
@@ -161,6 +179,19 @@ data ClickState = DownAt (Int, Int) | Clicked | Selected
 main :: JSM ()
 main = mainWidget app
 
+-- | Get the top level functions from a 'Term'
+getFunctions :: Term Name -> [PactFunction]
+getFunctions (TModule _ body _) = getFunctions $ Bound.instantiate undefined body
+getFunctions (TDef name moduleName defType funType _ docs _) = [PactFunction moduleName name defType (_mDocs docs) funType]
+getFunctions (TList list _ _) = getFunctions =<< list
+getFunctions _ = []
+
+-- | Parse and compile the code to list the top level function data
+listPactFunctions :: Text -> Maybe [PactFunction]
+listPactFunctions code = case Pact.compileExps Pact.mkEmptyInfo <$> Pact.parseExprs code of
+  Right (Right terms) -> Just $ concatMap getFunctions terms
+  _ -> Nothing
+
 app :: MonadWidget t m => m ()
 app = void . mfix $ \ ~(cfg, ideL) -> elClass "div" "app" $ do
     walletL <- makeWallet $ _ideCfg_wallet cfg
@@ -184,7 +215,9 @@ app = void . mfix $ \ ~(cfg, ideL) -> elClass "div" "app" $ do
         elClass "div" "ui env-pane" $ envPanel ideL cfg
 
       code <- holdDyn "" $ cfg ^. ideCfg_setCode
+      deployed <- holdDyn Nothing $ cfg ^. ideCfg_setDeployed
       selContract <- holdDyn (Left initialDemoContract) $ cfg ^. ideCfg_selContract
+
       errors <- holdDyn [] $ cfg ^. ideCfg_setMsgs
 
       let
@@ -207,6 +240,7 @@ app = void . mfix $ \ ~(cfg, ideL) -> elClass "div" "app" $ do
           , contractReceivedCfg
           ]
         , Ide { _ide_code = code
+              , _ide_deployed = deployed
               , _ide_selectedContract = selContract
               , _ide_wallet = walletL
               , _ide_jsonData = json
@@ -244,11 +278,12 @@ app = void . mfix $ \ ~(cfg, ideL) -> elClass "div" "app" $ do
           , ffor deployedModule $ \m -> T.unlines
             [ ";; Change <your-keyset-here> to the appropriate keyset name"
             , let KeySetName keySetName = _mKeySet m
-                in "(define-keyset '" <> keySetName <> " (read-keyset \"<your-keyset-here>\"))"
+              in "(define-keyset '" <> keySetName <> " (read-keyset \"<your-keyset-here>\"))"
             , ""
             , _unCode (_mCode m)
             ]
           ]
+        & ideCfg_setDeployed .~ (listPactFunctions . _unCode . _mCode <$> deployedModule)
         & ideCfg_jsonData . jsonDataCfg_setRawInput .~ fmap snd onCodeJson
         -- TODO: Something better than this for reporting errors
         & ideCfg_setMsgs .~ leftmost
@@ -269,6 +304,7 @@ codePanel ideL = mdo
   {-   menuItem def $ text "Code"  -}
     onNewCode <- tagOnPostBuild $ _ide_code ideL
     onUserCode <- codeWidget "" onNewCode
+
     pure $ mempty & ideCfg_setCode .~ onUserCode
 
 -- | Tabbed panel to the right
@@ -286,6 +322,7 @@ envPanel ideL cfg = mdo
       fmap (const EnvSelection_Msgs) . fmapMaybe listToMaybe
         $ updated (_ide_msgs ideL)
     onLoad = EnvSelection_Repl <$ (cfg ^. ideCfg_load)
+    onDeployedLoad = EnvSelection_Functions <$ (cfg ^. ideCfg_setDeployed)
 
   curSelection <- holdDyn EnvSelection_Env $ cfg ^. ideCfg_selEnv
 
@@ -321,12 +358,15 @@ envPanel ideL cfg = mdo
       conf <- elClass "div" "ui segment" $ uiWallet $ _ide_wallet ideL
       pure $ mempty & ideCfg_wallet .~ conf
 
+    elClass "div" "ui hidden divider" blank
+
     pure $ mconcat [ jsonCfg
                    , keysCfg
                    , replCfg
                    , explorerCfg
                    , mempty & ideCfg_selEnv .~ leftmost
-                       [ onSelect
+                       [ onDeployedLoad
+                       , onSelect
                        , onError -- Order important - we want to see errors.
                        , onLoad
                        ]
@@ -338,13 +378,20 @@ envPanel ideL cfg = mdo
     void . dyn $ traverse_ (snippetWidget . OutputSnippet) <$> _ide_msgs ideL
     pure mempty
 
+  functionsCfg <- tabPane ("style" =: "overflow: auto") curSelection EnvSelection_Functions $ do
+    header def $ text "Public functions"
+    dyn_ $ ffor (_ide_deployed ideL) $ \case
+      Nothing -> paragraph $ text "Load a deployed contract with the module explorer to see the list of available functions."
+      Just functions -> functionsList ideL functions
+    divider $ def & dividerConfig_hidden .~ Static True
+
   pure $ mconcat [ envCfg, errorsCfg ]
 
   where
     tabs :: Dynamic t EnvSelection -> m (Event t EnvSelection)
     tabs curSelection = do
       let
-        selections = [ EnvSelection_Env, EnvSelection_Repl, EnvSelection_Msgs, EnvSelection_ModuleExplorer ]
+        selections = [ EnvSelection_Env, EnvSelection_Repl, EnvSelection_Msgs, EnvSelection_ModuleExplorer, EnvSelection_Functions ]
       leftmost <$> traverse (tab curSelection) selections
 
     tab :: Dynamic t EnvSelection -> EnvSelection -> m (Event t EnvSelection)
@@ -356,11 +403,84 @@ envPanel ideL cfg = mdo
         text $ selectionToText self
       pure $ self <$ onClick
 
+functionsList :: MonadWidget t m => Ide t -> [PactFunction] -> m ()
+functionsList ideL functions = divClass "ui very relaxed list" $ do
+  for_ functions $ \(PactFunction (ModuleName moduleName) name defType mdocs funType) -> divClass "item" $ do
+    (e, _) <- elClass' "a" "header" $ do
+      text name
+      text ":"
+      text $ tshow $ _ftReturn funType
+      text " "
+      elAttr "span" ("class" =: "description" <> "style" =: "display: inline") $ do
+        text "("
+        text $ T.unwords $ tshow <$> _ftArgs funType
+        text ")"
+    for_ mdocs $ divClass "description" . text
+    open <- toggle False $ domEvent Click e
+    dyn_ $ ffor open $ \case
+      False -> pure ()
+      True -> segment def $ form def $ do
+        inputs <- for (_ftArgs funType) $ \arg -> field def $ do
+          el "label" $ text $ "Argument: " <> tshow arg
+          case _aType arg of
+            TyPrim TyInteger -> fmap value . input def $ inputElement $ def
+              & inputElementConfig_elementConfig . initialAttributes .~ Map.fromList
+                [ ("type", "number")
+                , ("step", "1")
+                , ("placeholder", _aName arg)
+                ]
+            TyPrim TyDecimal -> do
+              ti <- input def $ inputElement $ def
+                & inputElementConfig_elementConfig . initialAttributes .~ Map.fromList
+                  [ ("type", "number")
+                  , ("step", "0.0000000001") -- totally arbitrary
+                  , ("placeholder", _aName arg)
+                  ]
+              pure $ (\x -> if T.isInfixOf "." x then x else x <> ".0") <$> value ti
+            TyPrim TyTime -> do
+              i <- input def $ inputElement $ def
+                & inputElementConfig_elementConfig . initialAttributes .~ Map.fromList
+                  [ ("type", "datetime-local")
+                  , ("step", "1") -- 1 second step
+                  ]
+              pure $ (\x -> "(time \"" <> x <> "Z\")") <$> value i
+            TyPrim TyBool -> do
+              d <- dropdown def (pure False) $ TaggedStatic $ Map.fromList
+                [(True, text "true"), (False, text "false")]
+              pure $ T.toLower . tshow . runIdentity <$> value d
+            TyPrim TyString -> do
+              ti <- input def $ textInput (def & textInputConfig_placeholder .~ pure (_aName arg))
+              pure $ tshow <$> value ti -- TODO better escaping
+            TyPrim TyKeySet -> do
+              d <- dropdown (def & dropdownConfig_placeholder .~ "Select a keyset") Nothing $ TaggedDynamic $ ffor (_jsonData_keysets $ _ide_jsonData ideL) $
+                Map.mapWithKey (\k _ -> text k)
+              pure $ maybe "" (\x -> "(read-keyset \"" <> x <> "\")") <$> value d
+            _ -> fmap value . input def $
+              textInput (def & textInputConfig_placeholder .~ pure (_aName arg))
+        let buttonConfig = def
+              & buttonConfig_type .~ SubmitButton
+              & buttonConfig_emphasis .~ Static (Just Primary)
+        submit <- button buttonConfig $ text "Call function"
+        let args = tag (current $ sequence inputs) submit
+            call = ffor args $ \as -> mconcat ["(", moduleName, ".", name, " ", T.unwords as, ")"]
+        -- for debugging: widgetHold blank $ ffor call $ label def . text
+        let ed = ideL ^. ide_jsonData . jsonData_data
+        deployedResult <- backendPerformSend (ideL ^. ide_wallet) (ideL ^. ide_backend) $ do
+          ffor (attach (current ed) call) $ \(ed, c) -> BackendRequest
+            { _backendRequest_code = c
+            , _backendRequest_data = either mempty id ed
+            }
+        widgetHold_ blank $ ffor deployedResult $ \case
+          Left e -> message (def & messageConfig_type .~ Static (Just (MessageType Negative))) $ do
+            text $ prettyPrintBackendError e
+          Right v -> message def $ text $ tshow v
+
 selectionToText :: EnvSelection -> Text
 selectionToText = \case
   EnvSelection_Repl -> "REPL"
   EnvSelection_Env -> "Env"
   EnvSelection_Msgs -> "Messages"
+  EnvSelection_Functions -> "Functions"
   EnvSelection_ModuleExplorer -> "Module Explorer"
 
 setDown :: (Int, Int) -> t -> Maybe ClickState
