@@ -297,7 +297,7 @@ envPanel ideL cfg = mdo
     $ tabs curSelection
 
   explorerCfg <- tabPane
-      mempty
+      ("style" =: "overflow: auto")
       curSelection EnvSelection_ModuleExplorer
       $ moduleExplorer ideL
 
