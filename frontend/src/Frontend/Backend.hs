@@ -18,7 +18,7 @@
 module Frontend.Backend
   ( -- * Types & Classes
     BackendUri
-  , BackendName
+  , BackendName (..)
   , BackendRequest (..)
   , BackendError (..)
   , BackendErrorResult
@@ -42,7 +42,7 @@ import           Data.Aeson               (FromJSON (..), Object, Value,
                                            Value (..), decode, eitherDecode,
                                            encode, object, toJSON, withObject,
                                            (.:), (.=))
-import           Data.Aeson.Types         (typeMismatch)
+import           Data.Aeson.Types         (typeMismatch, parseMaybe)
 import qualified Data.ByteString.Lazy     as BSL
 import           Data.Default             (def)
 import qualified Data.HashMap.Strict      as H
@@ -54,9 +54,11 @@ import           Data.Text                (Text)
 import qualified Data.Text                as T
 import qualified Data.Text.Encoding       as T
 import qualified Data.Text.IO             as T
+import           Data.Traversable         (for)
 import           Data.Time.Clock          (getCurrentTime)
 import           Generics.Deriving.Monoid (mappenddefault, memptydefault)
 import           Obelisk.ExecutableConfig (get)
+import           Reflex.NotReady.Class
 import           Reflex.Dom.Class
 import           Reflex.Dom.Xhr
 import           Safe
@@ -86,6 +88,8 @@ data BackendRequest = BackendRequest
   , _backendRequest_data :: Object
     -- ^ The data to be deployed (referenced by deployed code). This is the
     -- `data` field of the `exec` payload.
+  , _backendRequest_backend :: BackendName
+    -- ^ Which backend to use
   }
 
 
@@ -130,12 +134,12 @@ data BackendCfg t = BackendCfg
 makePactLenses ''BackendCfg
 
 data Backend t = Backend
-  { _backend_backends :: Map BackendName BackendUri
+  { _backend_backends :: Dynamic t (Maybe (Map BackendName BackendUri))
     -- ^ All available backends that can be selected.
-  , _backend_current  :: Dynamic t BackendName
+  , _backend_current  :: Dynamic t (Maybe BackendName)
    --  ^ Currently selected `Backend`
-  , _backend_modules  :: Dynamic t (Maybe [Text])
-   -- ^ Available modules on the backend. `Nothing` if not loaded yet.
+  , _backend_modules  :: Dynamic t (Map BackendName (Maybe [Text]))
+   -- ^ Available modules on all backends. `Nothing` if not loaded yet.
   }
 
 makePactLenses ''Backend
@@ -193,13 +197,16 @@ instance FromJSON ListenResponse where
 backends :: IO (Map BackendName BackendUri)
 backends = do
   serverUrl <- T.strip . fromMaybe "http://localhost:7010" <$> get "common/server-url"
+  serverUrl2 <- T.strip . fromMaybe "http://localhost:7020" <$> get "common/server-url"
   pure $ Map.fromList . map (first BackendName) $
-    [ ("dev-backend", serverUrl) ]
+    [ ("dev-backend", serverUrl)
+    , ("2-dev-backend", serverUrl2)
+    ]
 
 
 makeBackend
   :: forall t m
-  . (MonadHold t m, PerformEvent t m, MonadFix m
+  . (MonadHold t m, PerformEvent t m, MonadFix m, NotReady t m, Adjustable t m
     , MonadJSM (Performable m), HasJSContext (Performable m)
     , TriggerEvent t m, MonadSample t (Performable m)
     , PostBuild t m
@@ -209,15 +216,15 @@ makeBackend
   -> BackendCfg t
   -> m (Backend t)
 makeBackend w cfg = mfix $ \b -> do
-  backends <- liftIO backends
-  let names = Map.keysSet backends
-  cName <-
-    holdDyn (Set.findMin $ names) $ cfg ^. backendCfg_selBackend
+  pb <- getPostBuild
+  bs <- holdDyn Nothing . fmap Just <=< performEvent $ liftIO backends <$ pb
 
-  modules <- loadModules w b cfg
+  cName <- holdDyn Nothing $ Just <$> cfg ^. backendCfg_selBackend
+
+  modules <- loadModules w bs cfg
 
   pure $ Backend
-    { _backend_backends = backends
+    { _backend_backends = bs
     , _backend_current = cName
     , _backend_modules = modules
     }
@@ -225,33 +232,35 @@ makeBackend w cfg = mfix $ \b -> do
 
 loadModules
   :: forall t m
-  . (MonadHold t m, PerformEvent t m, MonadFix m
+  . (MonadHold t m, PerformEvent t m, MonadFix m, MonadIO m, NotReady t m, Adjustable t m
     , MonadJSM (Performable m), HasJSContext (Performable m)
     , TriggerEvent t m, MonadSample t (Performable m), PostBuild t m
     )
-  => Wallet t -> Backend t -> BackendCfg t
-  -> m (Dynamic t (Maybe [Text]))
-loadModules w b cfg = do
-  onPostBuild <- getPostBuild
-  let
-    req = BackendRequest "(list-modules)" H.empty
-  onErrResp <- backendPerformSend w b $
-    leftmost [ req <$ cfg ^. backendCfg_refreshModule
-             , req <$ cfg ^. backendCfg_deploy
-             , req <$ updated (_backend_current b)
-             , req <$ onPostBuild
-             ]
-  let
-    (onErr, onResp) = fanEither onErrResp
+ => Wallet t -> Dynamic t (Maybe (Map BackendName BackendUri)) -> BackendCfg t
+  -> m (Dynamic t (Map BackendName (Maybe [Text])))
+loadModules w bs cfg = do
+  let req = BackendRequest "(list-modules)" H.empty
+  backendMap <- networkView $ ffor bs $ \case
+    Nothing -> pure mempty
+    Just bs' -> do
+      onPostBuild <- getPostBuild
+      bm <- flip Map.traverseWithKey bs' $ \backendName uri -> do
+        onErrResp <- backendPerformSend' w uri $
+          leftmost [ req backendName <$ cfg ^. backendCfg_refreshModule
+                   , req backendName <$ cfg ^. backendCfg_deploy
+                   , req backendName <$ onPostBuild
+                   ]
+        let
+          (onErr, onResp) = fanEither onErrResp
 
-    onModules :: Event t (Maybe [Text])
-    onModules = decode . encode <$> onResp
-  performEvent_ $ (liftIO . putStrLn . ("ERROR: " <>) . show) <$> onErr
+          onModules :: Event t (Maybe [Text])
+          onModules = parseMaybe parseJSON <$> onResp
+        performEvent_ $ (liftIO . putStrLn . ("ERROR: " <>) . show) <$> onErr
 
-  holdUniqDyn <=< holdDyn Nothing $ leftmost
-    [ onModules
-    , Nothing <$ cfg ^. backendCfg_selBackend
-    ]
+        holdUniqDyn =<< holdDyn Nothing onModules
+      pure $ sequence bm
+
+  join <$> holdDyn mempty backendMap
 
 
 
@@ -271,7 +280,7 @@ backendPerformSend
   => Wallet t -> Backend t -> Event t BackendRequest -> m (Event t BackendErrorResult)
 backendPerformSend w b onReq = do
     onXhr <- performEvent $
-      attachPromptlyDynWith (buildXhrRequest w) (_backend_current b) onReq
+      attachPromptlyDynWithMaybe (\mb r-> (\b -> buildXhrRequest w b r) <$> mb) (_backend_current b) onReq
 
     onErrRespJson <- performRequestAsyncWithError onXhr
     performEvent_ $ printResp <$> onErrRespJson
@@ -298,6 +307,89 @@ backendPerformSend w b onReq = do
         _   -> throwError $
           BackendError_Other "Response contained more than one RequestKey"
 
+-- | Send a transaction via the /send endpoint.
+--
+--   And wait for its result via /listen.
+backendPerformSend'
+  :: forall t m
+  . (MonadHold t m, PerformEvent t m, MonadFix m
+    , MonadJSM (Performable m), HasJSContext (Performable m)
+    , TriggerEvent t m, MonadSample t (Performable m)
+    )
+ => Wallet t -> BackendUri -> Event t BackendRequest -> m (Event t BackendErrorResult)
+backendPerformSend' w uri onReq = do
+    onXhr <- performEvent $ buildXhrRequest' w uri <$> onReq
+
+    onErrRespJson <- performRequestAsyncWithError onXhr
+    performEvent_ $ printResp <$> onErrRespJson
+    let
+      onReqKey :: Event t (Either BackendError RequestKey)
+      onReqKey = getRequestKey <$> onErrRespJson
+    onR <- backendPerformListen' uri onReqKey
+    performEvent_ $ (liftIO . putStrLn . ("Stuff: " <>) . show) <$> onR
+    pure onR
+  where
+    printResp = \case
+      Left _ -> liftIO $ putStrLn "Some Xhr error"
+      Right r -> liftIO $ print $ _xhrResponse_responseText r
+
+    getRequestKey
+      :: Either XhrException XhrResponse
+      -> Either BackendError RequestKey
+    getRequestKey i = do
+      keys <- getResPayload i
+      case _rkRequestKeys keys of
+        [] -> throwError $
+          BackendError_Other "Response did not contain any RequestKeys"
+        [k] -> pure k
+        _   -> throwError $
+          BackendError_Other "Response contained more than one RequestKey"
+
+-- | Helper function for performing a call to /listen based on the response
+-- from /send.
+backendPerformListen'
+  :: forall t m
+  . (MonadHold t m, PerformEvent t m, MonadFix m
+    , MonadJSM (Performable m), HasJSContext (Performable m)
+    , TriggerEvent t m, MonadSample t (Performable m)
+    , MonadIO (Performable m)
+    )
+  => BackendUri
+  -> Event t (Either BackendError RequestKey)
+  -> m (Event t BackendErrorResult)
+backendPerformListen' uri onKey = do
+  let
+    buildPayload k = encodeAsText . encode $ object [ "listen" .= k ]
+    buildReq k = def & xhrRequestConfig_sendData .~ buildPayload k
+
+    mkXhr
+      :: BackendUri
+      -> Either BackendError RequestKey
+      -> Either BackendError (XhrRequest Text)
+    mkXhr cb r =
+      fmap (xhrRequest "POST" (url cb "/listen") . buildReq) r
+
+    (onErr, onReq) = fanEither $ mkXhr uri <$> onKey
+
+  performEvent_ $ liftIO . T.putStrLn . (("Request: ") <>) . _xhrRequestConfig_sendData . _xhrRequest_config <$> onReq
+
+  onErrRespJson <- performRequestAsyncWithError onReq
+  let
+    getValue :: ListenResponse -> BackendErrorResult
+    getValue lr = do
+      let result = _lr_result lr
+      case result of
+        PactResult_Failure err detail -> throwError $ BackendError_ResultFailure err detail
+        PactResult_FailureText err -> throwError $ BackendError_ResultFailureText err
+        PactResult_Success result -> pure result
+
+  pure $ leftmost $
+    [ fmap (getValue <=< getResPayload) onErrRespJson
+    , Left <$> onErr
+    ]
+
+
+
 
 -- | Helper function for performing a call to /listen based on the response
 -- from /send.
@@ -313,8 +405,8 @@ backendPerformListen
   -> m (Event t BackendErrorResult)
 backendPerformListen b onKey = do
   let
-    getBackend n = fromJustNote "Invalid backend name!" . Map.lookup n $ _backend_backends b
-  let
+    getBackend Nothing = pure Nothing
+    getBackend (Just n) = Just . fromJustNote "Invalid backend name!" . Map.lookup n . fromMaybe mempty <$> _backend_backends b
     buildPayload k = encodeAsText . encode $ object [ "listen" .= k ]
     buildReq k = def & xhrRequestConfig_sendData .~ buildPayload k
 
@@ -326,7 +418,7 @@ backendPerformListen b onKey = do
       fmap (xhrRequest "POST" (url cb "/listen") . buildReq) r
 
     (onErr, onReq) = fanEither $
-      attachPromptlyDynWith mkXhr (getBackend <$> _backend_current b) onKey
+      attachPromptlyDynWithMaybe (\mx y -> (\x -> mkXhr x y) <$> mx) (getBackend =<< _backend_current b) onKey
 
   performEvent_ $ liftIO . T.putStrLn . (("Request: ") <>) . _xhrRequestConfig_sendData . _xhrRequest_config <$> onReq
 
@@ -349,7 +441,7 @@ backendPerformListen b onKey = do
 -- Request building ....
 
 
--- | Build Xhr request for the /send endpoint.
+-- | Build Xhr request for the /send endpoint using the given backend name.
 buildXhrRequest
   :: (Reflex t, MonadIO m, MonadJSM m, MonadSample t m)
   => Wallet t -> BackendName -> BackendRequest -> m (XhrRequest Text)
@@ -357,7 +449,14 @@ buildXhrRequest w cbName req = do
   let
     getBackend n = fromJustNote "Invalid backend name!" . Map.lookup n <$> backends
   cb <- liftIO $ getBackend cbName
-  fmap (xhrRequest "POST" (url cb "/send")) $ do
+  buildXhrRequest' w cb req
+
+-- | Build Xhr request for the /send endpoint using the given URI.
+buildXhrRequest'
+  :: (Reflex t, MonadIO m, MonadJSM m, MonadSample t m)
+  => Wallet t -> BackendUri -> BackendRequest -> m (XhrRequest Text)
+buildXhrRequest' w backendUri req = do
+  fmap (xhrRequest "POST" (url backendUri "/send")) $ do
     kps <- sample . current . joinKeyPairs $ _wallet_keys w
     sendData <- encodeAsText . encode <$> buildSendPayload kps req
     pure $ def & xhrRequestConfig_sendData .~ sendData

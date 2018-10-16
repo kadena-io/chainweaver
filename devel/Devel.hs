@@ -15,8 +15,9 @@ main :: Int -> IO ()
 main port = do
   let
     runPact = pactSafeServe "config/common/pact.yaml"
+    runPact2 = pactSafeServe "config/common/pact-2.yaml"
     runServer = run port backend frontend
-  withAsync runPact (const runServer)
+  withAsync runPact $ \_ -> withAsync runPact2 $ \_ -> runServer
 
 pactSafeServe :: String -> IO ()
 pactSafeServe configFile = bracket
