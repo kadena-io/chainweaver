@@ -154,9 +154,11 @@ let
       preStart = ''
         export PATH=$PATH:${pkgs.coreutils}/bin
         mkdir -p ${pactDataDir}
-        chmod ${pactUser} ${pactDataDir}
+        chown ${pactUser} ${pactDataDir}
         '';
       serviceConfig = {
+        # So preStart runs as root:
+        PermissionsStartOnly = true;
         User = pactUser;
         ExecStart = "${obApp.ghc.pact}/bin/pact -s ${pactConfig}";
         Restart = "always";
