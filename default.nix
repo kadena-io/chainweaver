@@ -149,6 +149,8 @@ let
       description = "Pact Server";
       after = [ "network.target" ];
       wantedBy = [ "multi-user.target" ];
+      # So preStart runs as root:
+      PermissionsStartOnly = true;
       preStart = ''
         export PATH=$PATH:${pkgs.coreutils}/bin
         mkdir -p ${pactDataDir}
