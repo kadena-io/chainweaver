@@ -118,6 +118,8 @@ data BackendCfg t = BackendCfg
     -- ^ Select the backend to operate with.
   -- , _backendCfg_send       :: Event t BackendRequest
     -- ^ Send a request to the currently selected backend.
+  , _backendCfg_deploy        :: Event t ()
+    -- ^ User deployed a new contract
   , _backendCfg_refreshModule :: Event t ()
     -- ^ We are unfortunately not notified by the pact backend when new
     -- contracts appear on the blockchain, so UI code needs to request a
@@ -235,6 +237,7 @@ loadModules w b cfg = do
     req = BackendRequest "(list-modules)" H.empty
   onErrResp <- backendPerformSend w b $
     leftmost [ req <$ cfg ^. backendCfg_refreshModule
+             , req <$ cfg ^. backendCfg_deploy
              , req <$ updated (_backend_current b)
              , req <$ onPostBuild
              ]
