@@ -190,7 +190,7 @@ instance FromJSON ListenResponse where
 -- | Available backends:
 getBackends :: IO (Map BackendName BackendUri)
 getBackends = do
-  serverUrl <- T.strip . fromMaybe "http://localhost:8010" <$> get "common/server-url"
+  serverUrl <- T.strip . fromMaybe "http://localhost:7010" <$> get "common/server-url"
   pure $ Map.fromList . map (first BackendName) $
     [ ("dev-backend", serverUrl) ]
 

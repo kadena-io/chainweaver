@@ -11,6 +11,8 @@ library
                , common
                , frontend
                , obelisk-backend
+               , obelisk-executable-config-inject
+               , text
   exposed-modules:
     Backend
   ghc-options: -Wall
