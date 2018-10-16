@@ -188,9 +188,9 @@ instance FromJSON ListenResponse where
 
 
 -- | Available backends:
-backends :: IO (Map BackendName BackendUri)
-backends = do
-  serverUrl <- T.strip . fromMaybe "http://localhost:7010" <$> get "config/common/server-url"
+getBackends :: IO (Map BackendName BackendUri)
+getBackends = do
+  serverUrl <- T.strip . fromMaybe "http://localhost:8010" <$> get "common/server-url"
   pure $ Map.fromList . map (first BackendName) $
     [ ("dev-backend", serverUrl) ]
 
@@ -207,7 +207,7 @@ makeBackend
   -> BackendCfg t
   -> m (Backend t)
 makeBackend w cfg = mfix $ \b -> do
-  backends <- liftIO backends
+  backends <- liftIO getBackends
   let names = Map.keysSet backends
   cName <-
     holdDyn (Set.findMin $ names) $ cfg ^. backendCfg_selBackend
@@ -335,7 +335,7 @@ backendPerformListen b onKey = do
       case result of
         PactResult_Failure err detail -> throwError $ BackendError_ResultFailure err detail
         PactResult_FailureText err -> throwError $ BackendError_ResultFailureText err
-        PactResult_Success result -> pure result
+        PactResult_Success pr -> pure pr
 
   pure $ leftmost $
     [ fmap (getValue <=< getResPayload) onErrRespJson
@@ -352,7 +352,8 @@ buildXhrRequest
   => Wallet t -> BackendName -> BackendRequest -> m (XhrRequest Text)
 buildXhrRequest w cbName req = do
   let
-    getBackend n = fromJustNote "Invalid backend name!" . Map.lookup n <$> backends
+    -- TODO: This should not call getBackends but use backends in `Backend`.
+    getBackend n = fromJustNote "Invalid backend name!" . Map.lookup n <$> getBackends
   cb <- liftIO $ getBackend cbName
   fmap (xhrRequest "POST" (url cb "/send")) $ do
     kps <- sample . current . joinKeyPairs $ _wallet_keys w
