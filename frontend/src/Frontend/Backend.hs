@@ -271,7 +271,7 @@ backendPerformSend
   => Wallet t -> Backend t -> Event t BackendRequest -> m (Event t BackendErrorResult)
 backendPerformSend w b onReq = do
     onXhr <- performEvent $
-      attachPromptlyDynWith (buildXhrRequest w) (_backend_current b) onReq
+      attachPromptlyDynWith (buildXhrRequest w b) (_backend_current b) onReq
 
     onErrRespJson <- performRequestAsyncWithError onXhr
     performEvent_ $ printResp <$> onErrRespJson
@@ -352,12 +352,11 @@ backendPerformListen b onKey = do
 -- | Build Xhr request for the /send endpoint.
 buildXhrRequest
   :: (Reflex t, MonadIO m, MonadJSM m, MonadSample t m)
-  => Wallet t -> BackendName -> BackendRequest -> m (XhrRequest Text)
-buildXhrRequest w cbName req = do
+  => Wallet t -> Backend t -> BackendName -> BackendRequest -> m (XhrRequest Text)
+buildXhrRequest w b cbName req = do
   let
-    -- TODO: This should not call getBackends but use backends in `Backend`.
-    getBackend n = fromJustNote "Invalid backend name!" . Map.lookup n <$> getBackends
-  cb <- liftIO $ getBackend cbName
+    mcB = Map.lookup cbName $ _backend_backends b
+    cb = fromJustNote "Invalid backend name!" mcB
   fmap (xhrRequest "POST" (url cb "/send")) $ do
     kps <- sample . current . joinKeyPairs $ _wallet_keys w
     sendData <- encodeAsText . encode <$> buildSendPayload kps req
