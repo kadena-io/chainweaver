@@ -10,6 +10,7 @@
 {-# LANGUAGE RankNTypes                 #-}
 {-# LANGUAGE ScopedTypeVariables        #-}
 {-# LANGUAGE TemplateHaskell            #-}
+{-# LANGUAGE TypeFamilies            #-}
 
 -- | Interface for accessing Pact backends.
 --
@@ -29,13 +30,14 @@ module Frontend.Backend
     -- * Creation
   , makeBackend
     -- * Perform requests
-  , backendPerformSend
+  , backendRequest
     -- * Utilities
   , prettyPrintBackendErrorResult
   , prettyPrintBackendError
   ) where
 
 import           Control.Arrow            (first, left)
+import           Control.Concurrent       (forkIO)
 import           Control.Lens             hiding ((.=))
 import           Control.Monad.Except
 import           Data.Aeson               (FromJSON (..), Object, Value,
@@ -63,6 +65,7 @@ import           Reflex.Dom.Class
 import           Reflex.Dom.Xhr
 import           Safe
 
+import Language.Javascript.JSaddle.Monad (JSM, askJSM, JSContextRef)
 
 import           Frontend.Backend.Pact
 import           Frontend.Crypto.Ed25519
@@ -88,7 +91,7 @@ data BackendRequest = BackendRequest
   , _backendRequest_data :: Object
     -- ^ The data to be deployed (referenced by deployed code). This is the
     -- `data` field of the `exec` payload.
-  , _backendRequest_backend :: BackendName
+  , _backendRequest_backend :: BackendUri
     -- ^ Which backend to use
   }
 
@@ -243,12 +246,12 @@ loadModules w bs cfg = do
     Just bs' -> do
       onPostBuild <- getPostBuild
       bm <- flip Map.traverseWithKey bs' $ \backendName uri -> do
-        onErrResp <- backendPerformSend' w uri $
-          leftmost [ req backendName <$ cfg ^. backendCfg_refreshModule
-                   , req backendName <$ onPostBuild
+        onErrResp <- backendRequest w $
+          leftmost [ req uri <$ cfg ^. backendCfg_refreshModule
+                   , req uri <$ onPostBuild
                    ]
         let
-          (onErr, onResp) = fanEither onErrResp
+          (onErr, onResp) = fanEither $ fmap snd onErrResp
 
           onModules :: Event t (Maybe [Text])
           onModules = parseMaybe parseJSON <$> onResp
@@ -268,195 +271,53 @@ url b endpoint = b <> "/api/v1" <> endpoint
 -- | Send a transaction via the /send endpoint.
 --
 --   And wait for its result via /listen.
-backendPerformSend
+backendRequest
   :: forall t m
-  . (MonadHold t m, PerformEvent t m, MonadFix m
+  . ( MonadHold t m, PerformEvent t m, MonadFix m
     , MonadJSM (Performable m), HasJSContext (Performable m)
     , TriggerEvent t m, MonadSample t (Performable m)
     )
-  => Wallet t -> Backend t -> Event t BackendRequest -> m (Event t BackendErrorResult)
-backendPerformSend w b onReq = do
-    onXhr <- performEvent $
-      attachPromptlyDynWithMaybe (\mb r-> (\b -> buildXhrRequest w b r) <$> mb) (_backend_current b) onReq
+  => Wallet t -> Event t BackendRequest -> m (Event t (BackendUri, BackendErrorResult))
+backendRequest w onReq = performEventAsync $ ffor onReq $ \req cb -> do
+  let uri = _backendRequest_backend req
+      callback = liftIO . void . forkIO . cb . (,) uri
+  sendReq <- buildSendXhrRequest w req
+  void $ newXMLHttpRequestWithError sendReq $ \r -> case getResPayload r of
+    Left e -> callback $ Left e
+    Right send -> case _rkRequestKeys send of
+      [] -> callback $ Left $ BackendError_Other "Response did not contain any RequestKeys"
+      [key] -> do
+        let listenReq = buildListenXhrRequest uri key
+        void $ newXMLHttpRequestWithError listenReq $ \r -> case getResPayload r of
+          Left e -> callback $ Left e
+          Right listen -> case _lr_result listen of
+            PactResult_Failure err detail -> callback $ Left $ BackendError_ResultFailure err detail
+            PactResult_FailureText err -> callback $ Left $ BackendError_ResultFailureText err
+            PactResult_Success result -> callback $ Right result
+      _ -> callback $ Left $ BackendError_Other "Response contained more than one RequestKey"
 
-    onErrRespJson <- performRequestAsyncWithError onXhr
-    performEvent_ $ printResp <$> onErrRespJson
-    let
-      onReqKey :: Event t (Either BackendError RequestKey)
-      onReqKey = getRequestKey <$> onErrRespJson
-    onR <- backendPerformListen b onReqKey
-    performEvent_ $ (liftIO . putStrLn . ("Stuff: " <>) . show) <$> onR
-    pure onR
-  where
-    printResp = \case
-      Left _ -> liftIO $ putStrLn "Some Xhr error"
-      Right r -> liftIO $ print $ _xhrResponse_responseText r
-
-    getRequestKey
-      :: Either XhrException XhrResponse
-      -> Either BackendError RequestKey
-    getRequestKey i = do
-      keys <- getResPayload i
-      case _rkRequestKeys keys of
-        [] -> throwError $
-          BackendError_Other "Response did not contain any RequestKeys"
-        [k] -> pure k
-        _   -> throwError $
-          BackendError_Other "Response contained more than one RequestKey"
-
--- | Send a transaction via the /send endpoint.
---
---   And wait for its result via /listen.
-backendPerformSend'
-  :: forall t m
-  . (MonadHold t m, PerformEvent t m, MonadFix m
-    , MonadJSM (Performable m), HasJSContext (Performable m)
-    , TriggerEvent t m, MonadSample t (Performable m)
-    )
- => Wallet t -> BackendUri -> Event t BackendRequest -> m (Event t BackendErrorResult)
-backendPerformSend' w uri onReq = do
-    onXhr <- performEvent $ buildXhrRequest' w uri <$> onReq
-
-    onErrRespJson <- performRequestAsyncWithError onXhr
-    performEvent_ $ printResp <$> onErrRespJson
-    let
-      onReqKey :: Event t (Either BackendError RequestKey)
-      onReqKey = getRequestKey <$> onErrRespJson
-    onR <- backendPerformListen' uri onReqKey
-    performEvent_ $ (liftIO . putStrLn . ("Stuff: " <>) . show) <$> onR
-    pure onR
-  where
-    printResp = \case
-      Left _ -> liftIO $ putStrLn "Some Xhr error"
-      Right r -> liftIO $ print $ _xhrResponse_responseText r
-
-    getRequestKey
-      :: Either XhrException XhrResponse
-      -> Either BackendError RequestKey
-    getRequestKey i = do
-      keys <- getResPayload i
-      case _rkRequestKeys keys of
-        [] -> throwError $
-          BackendError_Other "Response did not contain any RequestKeys"
-        [k] -> pure k
-        _   -> throwError $
-          BackendError_Other "Response contained more than one RequestKey"
-
--- | Helper function for performing a call to /listen based on the response
--- from /send.
-backendPerformListen'
-  :: forall t m
-  . (MonadHold t m, PerformEvent t m, MonadFix m
-    , MonadJSM (Performable m), HasJSContext (Performable m)
-    , TriggerEvent t m, MonadSample t (Performable m)
-    , MonadIO (Performable m)
-    )
-  => BackendUri
-  -> Event t (Either BackendError RequestKey)
-  -> m (Event t BackendErrorResult)
-backendPerformListen' uri onKey = do
-  let
-    buildPayload k = encodeAsText . encode $ object [ "listen" .= k ]
-    buildReq k = def & xhrRequestConfig_sendData .~ buildPayload k
-
-    mkXhr
-      :: BackendUri
-      -> Either BackendError RequestKey
-      -> Either BackendError (XhrRequest Text)
-    mkXhr cb r =
-      fmap (xhrRequest "POST" (url cb "/listen") . buildReq) r
-
-    (onErr, onReq) = fanEither $ mkXhr uri <$> onKey
-
-  performEvent_ $ liftIO . T.putStrLn . (("Request: ") <>) . _xhrRequestConfig_sendData . _xhrRequest_config <$> onReq
-
-  onErrRespJson <- performRequestAsyncWithError onReq
-  let
-    getValue :: ListenResponse -> BackendErrorResult
-    getValue lr = do
-      let result = _lr_result lr
-      case result of
-        PactResult_Failure err detail -> throwError $ BackendError_ResultFailure err detail
-        PactResult_FailureText err -> throwError $ BackendError_ResultFailureText err
-        PactResult_Success result -> pure result
-
-  pure $ leftmost $
-    [ fmap (getValue <=< getResPayload) onErrRespJson
-    , Left <$> onErr
-    ]
-
-
-
-
--- | Helper function for performing a call to /listen based on the response
--- from /send.
-backendPerformListen
-  :: forall t m
-  . (MonadHold t m, PerformEvent t m, MonadFix m
-    , MonadJSM (Performable m), HasJSContext (Performable m)
-    , TriggerEvent t m, MonadSample t (Performable m)
-    , MonadIO (Performable m)
-    )
-  => Backend t
-  -> Event t (Either BackendError RequestKey)
-  -> m (Event t BackendErrorResult)
-backendPerformListen b onKey = do
-  let
-    getBackend Nothing = pure Nothing
-    getBackend (Just n) = Just . fromJustNote "Invalid backend name!" . Map.lookup n . fromMaybe mempty <$> _backend_backends b
-    buildPayload k = encodeAsText . encode $ object [ "listen" .= k ]
-    buildReq k = def & xhrRequestConfig_sendData .~ buildPayload k
-
-    mkXhr
-      :: BackendUri
-      -> Either BackendError RequestKey
-      -> Either BackendError (XhrRequest Text)
-    mkXhr cb r =
-      fmap (xhrRequest "POST" (url cb "/listen") . buildReq) r
-
-    (onErr, onReq) = fanEither $
-      attachPromptlyDynWithMaybe (\mx y -> (\x -> mkXhr x y) <$> mx) (getBackend =<< _backend_current b) onKey
-
-  performEvent_ $ liftIO . T.putStrLn . (("Request: ") <>) . _xhrRequestConfig_sendData . _xhrRequest_config <$> onReq
-
-  onErrRespJson <- performRequestAsyncWithError onReq
-  let
-    getValue :: ListenResponse -> BackendErrorResult
-    getValue lr = do
-      let result = _lr_result lr
-      case result of
-        PactResult_Failure err detail -> throwError $ BackendError_ResultFailure err detail
-        PactResult_FailureText err -> throwError $ BackendError_ResultFailureText err
-        PactResult_Success result -> pure result
-
-  pure $ leftmost $
-    [ fmap (getValue <=< getResPayload) onErrRespJson
-    , Left <$> onErr
-    ]
-
+instance HasJSContext JSM where
+  type JSContextPhantom JSM = JSContextRef
+  askJSContext = JSContextSingleton <$> askJSM
 
 -- Request building ....
 
-
--- | Build Xhr request for the /send endpoint using the given backend name.
-buildXhrRequest
-  :: (Reflex t, MonadIO m, MonadJSM m, MonadSample t m)
-  => Wallet t -> BackendName -> BackendRequest -> m (XhrRequest Text)
-buildXhrRequest w cbName req = do
-  let
-    getBackend n = fromJustNote "Invalid backend name!" . Map.lookup n <$> backends
-  cb <- liftIO $ getBackend cbName
-  buildXhrRequest' w cb req
-
 -- | Build Xhr request for the /send endpoint using the given URI.
-buildXhrRequest'
+buildSendXhrRequest
   :: (Reflex t, MonadIO m, MonadJSM m, MonadSample t m)
-  => Wallet t -> BackendUri -> BackendRequest -> m (XhrRequest Text)
-buildXhrRequest' w backendUri req = do
-  fmap (xhrRequest "POST" (url backendUri "/send")) $ do
+  => Wallet t -> BackendRequest -> m (XhrRequest Text)
+buildSendXhrRequest w req = do
+  fmap (xhrRequest "POST" (url (_backendRequest_backend req) "/send")) $ do
     kps <- sample . current . joinKeyPairs $ _wallet_keys w
     sendData <- encodeAsText . encode <$> buildSendPayload kps req
     pure $ def & xhrRequestConfig_sendData .~ sendData
+
+-- | Build Xhr request for the /listen endpoint using the given URI and request
+-- key.
+buildListenXhrRequest :: BackendUri -> RequestKey -> XhrRequest Text
+buildListenXhrRequest uri key = do
+  xhrRequest "POST" (url uri "/listen") $ def
+    & xhrRequestConfig_sendData .~ encodeAsText (encode $ object [ "listen" .= key ])
 
 -- | Build payload as expected by /send endpoint.
 buildSendPayload :: (MonadIO m, MonadJSM m) => KeyPairs -> BackendRequest -> m Value
