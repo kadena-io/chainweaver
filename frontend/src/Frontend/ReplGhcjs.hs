@@ -549,7 +549,7 @@ moduleExplorer ideL = mdo
 
   header def $ text "Deployed Contracts"
 
-  filtered <- divClass "ui form" $ divClass "ui two fields" $ do
+  (search, backend) <- divClass "ui form" $ divClass "ui two fields" $ do
     search <- field def $ input (def & inputConfig_icon .~ Static (Just RightIcon)) $ do
       ie <- inputElement $ def & initialAttributes .~ ("type" =: "text" <> "placeholder" =: "Search modules")
       icon "black search" def
@@ -561,32 +561,44 @@ moduleExplorer ideL = mdo
           & dropdownConfig_fluid .~ pure True
     d <- field def $ input def $ dropdown dropdownConf (Identity Nothing) $ TaggedDynamic $
       Map.insert Nothing (text "All backends") . maybe mempty mkMap <$> ideL ^. ide_backend . backend_backends
-    let deployedContracts = Map.mergeWithKey (\_ a b -> Just (a, b)) mempty mempty
-          <$> ideL ^. ide_backend . backend_modules
-          <*> (fromMaybe mempty <$> ideL ^. ide_backend . backend_backends)
-        searchFn needle (Identity mModule) = Map.fromList . take 10 . L.sort
-          . concat . fmapMaybe (filtering needle) . Map.toList
-          . maybe id (\(k', _) -> Map.filterWithKey $ \k _ -> k == k') mModule
-        filtering needle (backendName, (m, backendUri)) =
-          let f contractName =
-                if T.isInfixOf (T.toCaseFold needle) (T.toCaseFold contractName)
-                then Just (DeployedContract contractName backendName backendUri, ())
-                else Nothing
-          in case fmapMaybe f $ fromMaybe [] m of
-            [] -> Nothing
-            xs -> Just xs
-    pure $ searchFn <$> value search <*> value d <*> deployedContracts
+    pure (value search, value d)
 
-  searchClick <- divClass "ui inverted selection list" $ listWithKey filtered $ \c _ -> do
+  let deployedContracts = Map.mergeWithKey (\_ a b -> Just (a, b)) mempty mempty
+        <$> ideL ^. ide_backend . backend_modules
+        <*> (fromMaybe mempty <$> ideL ^. ide_backend . backend_backends)
+      searchFn needle (Identity mModule)
+        = concat . fmapMaybe (filtering needle) . Map.toList
+        . maybe id (\(k', _) -> Map.filterWithKey $ \k _ -> k == k') mModule
+      filtering needle (backendName, (m, backendUri)) =
+        let f contractName =
+              if T.isInfixOf (T.toCaseFold needle) (T.toCaseFold contractName)
+              then Just (DeployedContract contractName backendName backendUri, ())
+              else Nothing
+        in case fmapMaybe f $ fromMaybe [] m of
+          [] -> Nothing
+          xs -> Just xs
+      filtered = searchFn <$> search <*> backend <*> deployedContracts
+      paginate p = Map.fromList . take itemsPerPage . drop (itemsPerPage * pred p) . L.sort
+      paginated = paginate <$> currentPage <*> filtered
+
+  (searchSelected, searchLoaded) <- divClass "ui inverted selection list" $ do
+    searchClick <- listWithKey paginated $ \c _ -> do
       let isSel = demuxed demuxSel $ Right c
       selectableItem c isSel $ do
         label (def & labelConfig_horizontal .~ Static True) $ do
           text $ unBackendName $ _deployedContract_backendName c
         text $ _deployedContract_name c
         (c <$) <$> loadButton isSel
+    let searchSelected = switch . current $ fmap Right . leftmost . fmap fst . Map.elems <$> searchClick
+        searchLoaded = switch . current $ fmap Right . leftmost . fmap snd . Map.elems <$> searchClick
+    pure (searchSelected, searchLoaded)
 
-  let searchSelected = switch . current $ fmap Right . leftmost . fmap fst . Map.elems <$> searchClick
-      searchLoaded = switch . current $ fmap Right . leftmost . fmap snd . Map.elems <$> searchClick
+  let itemsPerPage = 5 :: Int
+      numberOfItems = length <$> filtered
+      totalPages = (\a -> ceiling (fromIntegral a / fromIntegral itemsPerPage)) <$> numberOfItems
+  rec
+    currentPage <- holdDyn 1 updatePage
+    updatePage <- paginationWidget currentPage totalPages
 
   pure $ mempty
     { _ideCfg_selContract = leftmost [searchLoaded, exampleLoaded]
