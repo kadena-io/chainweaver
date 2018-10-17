@@ -50,6 +50,7 @@ import           Reflex.Dom.ACE.Extended
 import           Reflex.Dom.Core             (keypress, mainWidget)
 import qualified Reflex.Dom.Core             as Core
 import           Reflex.Dom.SemanticUI       hiding (mainWidget)
+import qualified Data.List as L
 ------------------------------------------------------------------------------
 import qualified Pact.Compile                as Pact
 import qualified Pact.Parse                  as Pact
@@ -526,7 +527,7 @@ moduleExplorer
   => Ide t
   -> m (IdeCfg t)
 moduleExplorer ideL = mdo
-  demuxSel <- fmap demux $ holdDyn (Left "") $ leftmost [deployedSelected, exampleSelected]
+  demuxSel <- fmap demux $ holdDyn (Left "") $ leftmost [searchSelected, exampleSelected]
 
   header def $ text "Example Contracts"
   exampleClick <- divClass "ui inverted selection list" $ for demos $ \c -> do
@@ -538,27 +539,49 @@ moduleExplorer ideL = mdo
       exampleLoaded = fmap Left . leftmost . fmap snd $ Map.elems exampleClick
 
   header def $ text "Deployed Contracts"
-  search <- input (def & inputConfig_icon .~ Static (Just RightIcon) & inputConfig_fluid .~ Static True) $ do
+  searchI <- input (def & inputConfig_icon .~ Static (Just RightIcon) & inputConfig_fluid .~ Static True) $ do
     ie <- inputElement $ def & initialAttributes .~ ("type" =: "text" <> "placeholder" =: "Search")
     icon "black search" def
     pure ie
-  let deployedContracts = ideL ^. ide_backend . backend_modules
-      filtered1 = f <$> value search <*> deployedContracts
+
+  let search :: Dynamic t Text
+      search = value searchI
+
+      deployedContracts = ideL ^. ide_backend . backend_modules
+      filtered1 :: Dynamic t [(Text, ())]
+      filtered1 = f <$> search <*> deployedContracts
       f needle = \case
         Nothing -> mempty
-        Just xs -> Map.fromList $ fforMaybe xs $ \x ->
+        Just xs -> fforMaybe xs $ \x ->
           if T.isInfixOf (T.toCaseFold needle) (T.toCaseFold x)
           then Just (x, ())
           else Nothing
-  deployedClick <- divClass "ui inverted selection list" $ listWithKey filtered1 $ \k _ -> do
-    let isSel = demuxed demuxSel $ Right k
-    selectableItem k isSel $ do
-      text k
-      (DeployedContract k <$) <$> loadButton isSel
-  let deployedSelected = switch . current $ fmap Right . leftmost . fmap fst . Map.elems <$> deployedClick
-      deployedLoaded = switch . current $ fmap Right . leftmost . fmap snd . Map.elems <$> deployedClick
+      paginate p = Map.fromList . take itemsPerPage . drop (itemsPerPage * pred p) . L.sort
+      paginated = paginate <$> currentPage <*> filtered1
 
-  pure $ mempty { _ideCfg_selContract = leftmost [deployedLoaded, exampleLoaded] }
+  (searchSelected, searchLoaded) <- divClass "ui inverted selection list" $ do
+    searchClick <- listWithKey paginated $ \c _ -> do
+      let isSel = demuxed demuxSel $ Right c
+      selectableItem c isSel $ do
+        text c
+        (c <$) <$> loadButton isSel
+    let searchSelected = switch . current $ fmap Right . leftmost . fmap fst . Map.elems <$> searchClick
+        searchLoaded = switch . current $ fmap (Right . DeployedContract) . leftmost . fmap snd . Map.elems <$> searchClick
+    pure (searchSelected, searchLoaded)
+
+  let itemsPerPage = 10 :: Int
+      numberOfItems :: Dynamic t Int
+      numberOfItems = length <$> filtered1
+
+      totalPages :: Dynamic t Int
+      totalPages = (\a -> ceiling (fromIntegral a / fromIntegral itemsPerPage)) <$> numberOfItems
+  rec
+    currentPage <- holdDyn 1 updatePage
+    updatePage <- paginationWidget currentPage totalPages
+
+  pure $ mempty
+    { _ideCfg_selContract = leftmost [searchLoaded, exampleLoaded]
+    }
   where
     selectableItem :: k -> Dynamic t Bool -> m a -> m (Event t k, a)
     selectableItem k s m = do
