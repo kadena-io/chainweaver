@@ -778,17 +778,24 @@ controlBar ideL = do
       onLoad <- elClass "div" "item" $
         button (def & buttonConfig_emphasis .~ Static (Just Primary)) $ text "Load into REPL"
 
-      onDeploy <- elClass "div" "item" $
-        button (def & buttonConfig_emphasis .~ Static (Just Primary)) $ text "Deploy"
+      onDeploy <- elClass "div" "item" $ do
+        input (def & inputConfig_action .~ Static (Just RightAction)) $ do
+          let dropdownConfig = def
+                & dropdownConfig_placeholder .~ "Deployment Target"
+          backend <- fmap value $ dropdown dropdownConfig Nothing $ TaggedDynamic $
+            ffor (ideL ^. ide_backend . backend_backends) $
+              Map.fromList . fmap (\(k, v) -> (v, text $ unBackendName k)) . maybe [] Map.toList
+          let buttonConfig = def
+                & buttonConfig_emphasis .~ Static (Just Primary)
+                & buttonConfig_disabled .~ Dyn (isNothing <$> backend)
+          deploy <- button buttonConfig $ text "Deploy"
+          pure $ attachWithMaybe (\m _ -> m) (current backend) deploy
       let
         req = do
           c <- ideL ^. ide_code
           ed <- ideL ^. ide_jsonData . jsonData_data
-          mb <- ideL ^. ide_backend . backend_current
-          mm <- ideL ^. ide_backend . backend_backends
-          let muri = join $ Map.lookup <$> mb <*> mm
-          pure $ either (const Nothing) (\x -> BackendRequest c x <$> muri) ed
-        onReq = fmapMaybe id $ tag (current req) onDeploy
+          pure $ either (\_ _ -> Nothing) (\x -> Just . BackendRequest c x) ed
+        onReq = fmapMaybe id $ attachWith ($) (current req) onDeploy
       onResp <- backendRequest (ideL ^. ide_wallet) onReq
 
       elClass "div" "right menu" rightMenu
