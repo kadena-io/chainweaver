@@ -784,7 +784,7 @@ controlBar ideL = do
       elClass "div" "right menu" rightMenu
       pure $ mempty
         & ideCfg_setMsgs .~ ((:[]) . prettyPrintBackendErrorResult <$> onResp)
-        & ideCfg_backend . backendCfg_deploy .~ fmapMaybe (either (const Nothing) (const $ Just ())) onResp
+        & ideCfg_backend . backendCfg_refreshModule .~ fmapMaybe (either (const Nothing) (const $ Just ())) onResp
         & ideCfg_load .~ onLoad
   where
     showPactVersion = do

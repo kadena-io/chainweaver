@@ -122,8 +122,6 @@ data BackendCfg t = BackendCfg
     -- ^ Select the backend to operate with.
   -- , _backendCfg_send       :: Event t BackendRequest
     -- ^ Send a request to the currently selected backend.
-  , _backendCfg_deploy        :: Event t ()
-    -- ^ User deployed a new contract
   , _backendCfg_refreshModule :: Event t ()
     -- ^ We are unfortunately not notified by the pact backend when new
     -- contracts appear on the blockchain, so UI code needs to request a
@@ -247,7 +245,6 @@ loadModules w bs cfg = do
       bm <- flip Map.traverseWithKey bs' $ \backendName uri -> do
         onErrResp <- backendPerformSend' w uri $
           leftmost [ req backendName <$ cfg ^. backendCfg_refreshModule
-                   , req backendName <$ cfg ^. backendCfg_deploy
                    , req backendName <$ onPostBuild
                    ]
         let
