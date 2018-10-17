@@ -31,6 +31,7 @@ import           Data.Aeson                  as Aeson (Object, encode, fromJSON,
 import qualified Data.ByteString.Lazy        as BSL
 import           Data.Foldable
 import qualified Data.HashMap.Strict         as H
+import qualified Data.List                   as L
 import qualified Data.List.Zipper            as Z
 import           Data.Map                    (Map)
 import qualified Data.Map                    as Map
@@ -76,7 +77,9 @@ data ExampleContract = ExampleContract
 
 data DeployedContract = DeployedContract
   { _deployedContract_name :: Text
-  } deriving Show
+  , _deployedContract_backendName :: BackendName
+  , _deployedContract_backendUri :: BackendUri
+  } deriving (Eq, Ord, Show)
 
 -- | The available panels in the `envPanel`
 data EnvSelection
@@ -111,7 +114,7 @@ data IdeCfg t = IdeCfg
     -- ^ Set errors that should be shown to the user.
   , _ideCfg_setCode     :: Event t Text
     -- ^ Update the current contract/PACT code.
-  , _ideCfg_setDeployed :: Event t (Maybe [PactFunction])
+  , _ideCfg_setDeployed :: Event t (Maybe (BackendUri, [PactFunction]))
     -- ^ Update the last loaded deployed function list
   , _ideCfg_selEnv      :: Event t EnvSelection
     -- ^ Switch tab of the right pane.
@@ -126,7 +129,7 @@ makePactLenses ''IdeCfg
 data Ide t = Ide
   { _ide_code             :: Dynamic t Text
   -- ^ Currently loaded/edited PACT code.
-  , _ide_deployed         :: Dynamic t (Maybe [PactFunction])
+  , _ide_deployed         :: Dynamic t (Maybe (BackendUri, [PactFunction]))
   -- ^ Last loaded deployed contract
   , _ide_selectedContract :: Dynamic t (Either ExampleContract DeployedContract)
   -- ^ The currently selected contract name.
@@ -252,24 +255,24 @@ app = void . mfix $ \ ~(cfg, ideL) -> elClass "div" "app" $ do
       onCodeJson <- waitForEvents (,) onExampleContract code json
 
       -- Loading of deployed contracts
-      deployedResult <- backendPerformSend (ideL ^. ide_wallet) (ideL ^. ide_backend) $ do
-        ffor onDeployedContract $ \contract -> BackendRequest
+      deployedResult <- backendRequest (ideL ^. ide_wallet) $ ffor onDeployedContract $ \c -> BackendRequest
           { _backendRequest_code = mconcat
             [ "(describe-module '"
-            , _deployedContract_name contract
+            , _deployedContract_name c
             , ")"
             ]
           , _backendRequest_data = mempty
+          , _backendRequest_backend = _deployedContract_backendUri c
           }
-      let (deployedResultError, deployedValue) = fanEither deployedResult
-          (deployedDecodeError, deployedModule) = fanEither $ ffor deployedValue $ \v -> case fromJSON v of
+      let (deployedResultError, deployedValue) = fanEither $ sequence <$> deployedResult
+          (deployedDecodeError, deployedModule) = fanEither $ ffor deployedValue $ \(uri, v) -> case fromJSON v of
             Aeson.Error e -> Left e
-            Aeson.Success a -> Right a
+            Aeson.Success a -> Right (uri, a)
 
       pure $ mempty
         & ideCfg_setCode .~ leftmost
           [ fmap fst onCodeJson
-          , ffor deployedModule $ \m -> T.unlines
+          , ffor deployedModule $ \(_uri, m) -> T.unlines
             [ ";; Change <your-keyset-here> to the appropriate keyset name"
             , let KeySetName keySetName = _mKeySet m
               in "(define-keyset '" <> keySetName <> " (read-keyset \"<your-keyset-here>\"))"
@@ -277,7 +280,7 @@ app = void . mfix $ \ ~(cfg, ideL) -> elClass "div" "app" $ do
             , _unCode (_mCode m)
             ]
           ]
-        & ideCfg_setDeployed .~ (listPactFunctions . _unCode . _mCode <$> deployedModule)
+        & ideCfg_setDeployed .~ ffor deployedModule (\(uri, m) -> (,) uri <$> listPactFunctions (_unCode $ _mCode m))
         & ideCfg_jsonData . jsonDataCfg_setRawInput .~ fmap snd onCodeJson
         -- TODO: Something better than this for reporting errors
         & ideCfg_setMsgs .~ leftmost
@@ -330,7 +333,7 @@ envPanel ideL cfg = mdo
     $ tabs curSelection
 
   explorerCfg <- tabPane
-      ("style" =: "overflow: auto")
+      ("style" =: "overflow-y: auto; overflow-x: hidden; flex-grow: 1")
       curSelection EnvSelection_ModuleExplorer
       $ moduleExplorer ideL
 
@@ -378,7 +381,7 @@ envPanel ideL cfg = mdo
     header def $ text "Public functions"
     dyn_ $ ffor (_ide_deployed ideL) $ \case
       Nothing -> paragraph $ text "Load a deployed contract with the module explorer to see the list of available functions."
-      Just functions -> functionsList ideL functions
+      Just (backendUri, functions) -> functionsList ideL backendUri functions
     divider $ def & dividerConfig_hidden .~ Static True
 
   pure $ mconcat [ envCfg, errorsCfg ]
@@ -399,8 +402,8 @@ envPanel ideL cfg = mdo
         text $ selectionToText self
       pure $ self <$ onClick
 
-functionsList :: MonadWidget t m => Ide t -> [PactFunction] -> m ()
-functionsList ideL functions = divClass "ui very relaxed list" $ do
+functionsList :: MonadWidget t m => Ide t -> BackendUri -> [PactFunction] -> m ()
+functionsList ideL backendUri functions = divClass "ui very relaxed list" $ do
   for_ functions $ \(PactFunction (ModuleName moduleName) name _ mdocs funType) -> divClass "item" $ do
     (e, _) <- elClass' "a" "header" $ do
       text name
@@ -461,12 +464,13 @@ functionsList ideL functions = divClass "ui very relaxed list" $ do
             callFun = ffor args $ \as -> mconcat ["(", moduleName, ".", name, " ", T.unwords as, ")"]
         -- for debugging: widgetHold blank $ ffor callFun $ label def . text
         let ed = ideL ^. ide_jsonData . jsonData_data
-        deployedResult <- backendPerformSend (ideL ^. ide_wallet) (ideL ^. ide_backend) $ do
-          ffor (attach (current ed) callFun) $ \(ed1, c) -> BackendRequest
+        deployedResult <- backendRequest (ideL ^. ide_wallet) $
+          ffor (attach (current ed) callFun) $ \(cEd, c) -> BackendRequest
             { _backendRequest_code = c
-            , _backendRequest_data = either mempty id ed1
+            , _backendRequest_data = either mempty id cEd
+            , _backendRequest_backend = backendUri
             }
-        widgetHold_ blank $ ffor deployedResult $ \case
+        widgetHold_ blank $ ffor deployedResult $ \(_uri, x) -> case x of
           Left err -> message (def & messageConfig_type .~ Static (Just (MessageType Negative))) $ do
             text $ prettyPrintBackendError err
           Right v -> message def $ text $ tshow v
@@ -526,7 +530,7 @@ moduleExplorer
   => Ide t
   -> m (IdeCfg t)
 moduleExplorer ideL = mdo
-  demuxSel <- fmap demux $ holdDyn (Left "") $ leftmost [deployedSelected, exampleSelected]
+  demuxSel <- fmap demux $ holdDyn (Left "") $ leftmost [searchSelected, exampleSelected]
 
   header def $ text "Example Contracts"
   exampleClick <- divClass "ui inverted selection list" $ for demos $ \c -> do
@@ -538,27 +542,61 @@ moduleExplorer ideL = mdo
       exampleLoaded = fmap Left . leftmost . fmap snd $ Map.elems exampleClick
 
   header def $ text "Deployed Contracts"
-  search <- input (def & inputConfig_icon .~ Static (Just RightIcon) & inputConfig_fluid .~ Static True) $ do
-    ie <- inputElement $ def & initialAttributes .~ ("type" =: "text" <> "placeholder" =: "Search")
-    icon "black search" def
-    pure ie
-  let deployedContracts = ideL ^. ide_backend . backend_modules
-      filtered1 = f <$> value search <*> deployedContracts
-      f needle = \case
-        Nothing -> mempty
-        Just xs -> Map.fromList $ fforMaybe xs $ \x ->
-          if T.isInfixOf (T.toCaseFold needle) (T.toCaseFold x)
-          then Just (x, ())
-          else Nothing
-  deployedClick <- divClass "ui inverted selection list" $ listWithKey filtered1 $ \k _ -> do
-    let isSel = demuxed demuxSel $ Right k
-    selectableItem k isSel $ do
-      text k
-      (DeployedContract k <$) <$> loadButton isSel
-  let deployedSelected = switch . current $ fmap Right . leftmost . fmap fst . Map.elems <$> deployedClick
-      deployedLoaded = switch . current $ fmap Right . leftmost . fmap snd . Map.elems <$> deployedClick
 
-  pure $ mempty { _ideCfg_selContract = leftmost [deployedLoaded, exampleLoaded] }
+  (search, backend) <- divClass "ui form" $ divClass "ui two fields" $ do
+    searchI <- field def $ input (def & inputConfig_icon .~ Static (Just RightIcon)) $ do
+      ie <- inputElement $ def & initialAttributes .~ ("type" =: "text" <> "placeholder" =: "Search modules")
+      icon "black search" def
+      pure ie
+
+    let mkMap = Map.fromList . map (\k@(BackendName n, _) -> (Just k, text n)) . Map.toList
+        dropdownConf = def
+          & dropdownConfig_placeholder .~ "Backend"
+          & dropdownConfig_fluid .~ pure True
+    d <- field def $ input def $ dropdown dropdownConf (Identity Nothing) $ TaggedDynamic $
+      Map.insert Nothing (text "All backends") . maybe mempty mkMap <$> ideL ^. ide_backend . backend_backends
+    pure (value searchI, value d)
+
+  let deployedContracts = Map.mergeWithKey (\_ a b -> Just (a, b)) mempty mempty
+        <$> ideL ^. ide_backend . backend_modules
+        <*> (fromMaybe mempty <$> ideL ^. ide_backend . backend_backends)
+      searchFn needle (Identity mModule)
+        = concat . fmapMaybe (filtering needle) . Map.toList
+        . maybe id (\(k', _) -> Map.filterWithKey $ \k _ -> k == k') mModule
+      filtering needle (backendName, (m, backendUri)) =
+        let f contractName =
+              if T.isInfixOf (T.toCaseFold needle) (T.toCaseFold contractName)
+              then Just (DeployedContract contractName backendName backendUri, ())
+              else Nothing
+        in case fmapMaybe f $ fromMaybe [] m of
+          [] -> Nothing
+          xs -> Just xs
+      filteredCs = searchFn <$> search <*> backend <*> deployedContracts
+      paginate p = Map.fromList . take itemsPerPage . drop (itemsPerPage * pred p) . L.sort
+      paginated = paginate <$> currentPage <*> filteredCs
+
+  (searchSelected, searchLoaded) <- divClass "ui inverted selection list" $ do
+    searchClick <- listWithKey paginated $ \c _ -> do
+      let isSel = demuxed demuxSel $ Right c
+      selectableItem c isSel $ do
+        label (def & labelConfig_horizontal .~ Static True) $ do
+          text $ unBackendName $ _deployedContract_backendName c
+        text $ _deployedContract_name c
+        (c <$) <$> loadButton isSel
+    let searchSelected = switch . current $ fmap Right . leftmost . fmap fst . Map.elems <$> searchClick
+        searchLoaded = switch . current $ fmap Right . leftmost . fmap snd . Map.elems <$> searchClick
+    pure (searchSelected, searchLoaded)
+
+  let itemsPerPage = 5 :: Int
+      numberOfItems = length <$> filteredCs
+      totalPages = (\a -> ceiling (fromIntegral a / fromIntegral itemsPerPage)) <$> numberOfItems
+  rec
+    currentPage <- holdDyn 1 updatePage
+    updatePage <- paginationWidget currentPage totalPages
+
+  pure $ mempty
+    { _ideCfg_selContract = leftmost [searchLoaded, exampleLoaded]
+    }
   where
     selectableItem :: k -> Dynamic t Bool -> m a -> m (Event t k, a)
     selectableItem k s m = do
@@ -729,20 +767,30 @@ controlBar ideL = do
       onLoad <- elClass "div" "item" $
         button (def & buttonConfig_emphasis .~ Static (Just Primary)) $ text "Load into REPL"
 
-      onDeploy <- elClass "div" "item" $
-        button (def & buttonConfig_emphasis .~ Static (Just Primary)) $ text "Deploy"
+      onDeploy <- elClass "div" "item" $ do
+        input (def & inputConfig_action .~ Static (Just RightAction)) $ do
+          let dropdownConfig = def
+                & dropdownConfig_placeholder .~ "Deployment Target"
+          backend <- fmap value $ dropdown dropdownConfig Nothing $ TaggedDynamic $
+            ffor (ideL ^. ide_backend . backend_backends) $
+              Map.fromList . fmap (\(k, v) -> (v, text $ unBackendName k)) . maybe [] Map.toList
+          let buttonConfig = def
+                & buttonConfig_emphasis .~ Static (Just Primary)
+                & buttonConfig_disabled .~ Dyn (isNothing <$> backend)
+          deploy <- button buttonConfig $ text "Deploy"
+          pure $ attachWithMaybe (\m _ -> m) (current backend) deploy
       let
         req = do
           c <- ideL ^. ide_code
           ed <- ideL ^. ide_jsonData . jsonData_data
-          pure $ either (const Nothing) (Just . BackendRequest c) ed
-        onReq = fmapMaybe id $ tag (current req) onDeploy
-      onResp <- backendPerformSend (ideL ^. ide_wallet) (ideL ^. ide_backend) onReq
+          pure $ either (\_ _ -> Nothing) (\x -> Just . BackendRequest c x) ed
+        onReq = fmapMaybe id $ attachWith ($) (current req) onDeploy
+      onResp <- backendRequest (ideL ^. ide_wallet) onReq
 
       elClass "div" "right menu" rightMenu
       pure $ mempty
-        & ideCfg_setMsgs .~ ((:[]) . prettyPrintBackendErrorResult <$> onResp)
-        & ideCfg_backend . backendCfg_deploy .~ fmapMaybe (either (const Nothing) (const $ Just ())) onResp
+        & ideCfg_setMsgs .~ ((:[]) . prettyPrintBackendErrorResult . snd <$> onResp)
+        & ideCfg_backend . backendCfg_refreshModule .~ fmapMaybe (either (const Nothing) (const $ Just ()) . snd) onResp
         & ideCfg_load .~ onLoad
   where
     showPactVersion = do

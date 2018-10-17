@@ -1,3 +1,4 @@
+{-# LANGUAGE FlexibleContexts       #-}
 {-# LANGUAGE LambdaCase            #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE OverloadedStrings     #-}
@@ -185,4 +186,34 @@ validatedInputWithButton check placeholder buttonText = mdo
       void $ widgetHold (pure ()) $ text <$> errors
       pure e
     pure values
+
+-- | Page picker widget
+paginationWidget
+  :: MonadWidget t m
+  => Dynamic t Int  -- ^ Current page
+  -> Dynamic t Int  -- ^ Total number of pages
+  -> m (Event t Int)
+paginationWidget currentPage totalPages = buttons (def & classes .~ "fluid") $ do
+  let canGoFirst = (> 1) <$> currentPage
+  first <- filteredButton canGoFirst $ icon "angle double left" def
+  prev <- filteredButton canGoFirst $ icon "angle left" def
+  button (def & buttonConfig_disabled .~ Static True) $ do
+    display currentPage
+    text " of "
+    display totalPages
+  let canGoLast = (<) <$> currentPage <*> totalPages
+  next <- filteredButton canGoLast $ icon "angle right" def
+  last <- filteredButton canGoLast $ icon "angle double right" def
+  pure $ leftmost
+    [ attachWith (\x _ -> pred x) (current currentPage) prev
+    , 1 <$ first
+    , attachWith (\x _ -> succ x) (current currentPage) next
+    , tag (current totalPages) last
+    ]
+  where
+    filteredButton okay content = do
+      e <- flip button content $ def
+        & buttonConfig_icon .~ Static True
+        & buttonConfig_disabled .~ Dyn (not <$> okay)
+      pure $ gate (current okay) e
 
