@@ -404,7 +404,7 @@ envPanel ideL cfg = mdo
 
 functionsList :: MonadWidget t m => Ide t -> BackendUri -> [PactFunction] -> m ()
 functionsList ideL backendUri functions = divClass "ui very relaxed list" $ do
-  for_ functions $ \(PactFunction (ModuleName moduleName) name defType mdocs funType) -> divClass "item" $ do
+  for_ functions $ \(PactFunction (ModuleName moduleName) name _ mdocs funType) -> divClass "item" $ do
     (e, _) <- elClass' "a" "header" $ do
       text name
       text ":"
@@ -465,14 +465,14 @@ functionsList ideL backendUri functions = divClass "ui very relaxed list" $ do
         -- for debugging: widgetHold blank $ ffor callFun $ label def . text
         let ed = ideL ^. ide_jsonData . jsonData_data
         deployedResult <- backendRequest (ideL ^. ide_wallet) $
-          ffor (attach (current ed) call) $ \(ed, c) -> BackendRequest
+          ffor (attach (current ed) callFun) $ \(cEd, c) -> BackendRequest
             { _backendRequest_code = c
-            , _backendRequest_data = either mempty id ed
+            , _backendRequest_data = either mempty id cEd
             , _backendRequest_backend = backendUri
             }
         widgetHold_ blank $ ffor deployedResult $ \(_uri, x) -> case x of
-          Left e -> message (def & messageConfig_type .~ Static (Just (MessageType Negative))) $ do
-            text $ prettyPrintBackendError e
+          Left err -> message (def & messageConfig_type .~ Static (Just (MessageType Negative))) $ do
+            text $ prettyPrintBackendError err
           Right v -> message def $ text $ tshow v
 
 selectionToText :: EnvSelection -> Text
@@ -544,7 +544,7 @@ moduleExplorer ideL = mdo
   header def $ text "Deployed Contracts"
 
   (search, backend) <- divClass "ui form" $ divClass "ui two fields" $ do
-    search <- field def $ input (def & inputConfig_icon .~ Static (Just RightIcon)) $ do
+    searchI <- field def $ input (def & inputConfig_icon .~ Static (Just RightIcon)) $ do
       ie <- inputElement $ def & initialAttributes .~ ("type" =: "text" <> "placeholder" =: "Search modules")
       icon "black search" def
       pure ie
@@ -555,7 +555,7 @@ moduleExplorer ideL = mdo
           & dropdownConfig_fluid .~ pure True
     d <- field def $ input def $ dropdown dropdownConf (Identity Nothing) $ TaggedDynamic $
       Map.insert Nothing (text "All backends") . maybe mempty mkMap <$> ideL ^. ide_backend . backend_backends
-    pure (value search, value d)
+    pure (value searchI, value d)
 
   let deployedContracts = Map.mergeWithKey (\_ a b -> Just (a, b)) mempty mempty
         <$> ideL ^. ide_backend . backend_modules
@@ -571,9 +571,9 @@ moduleExplorer ideL = mdo
         in case fmapMaybe f $ fromMaybe [] m of
           [] -> Nothing
           xs -> Just xs
-      filtered = searchFn <$> search <*> backend <*> deployedContracts
+      filteredCs = searchFn <$> search <*> backend <*> deployedContracts
       paginate p = Map.fromList . take itemsPerPage . drop (itemsPerPage * pred p) . L.sort
-      paginated = paginate <$> currentPage <*> filtered
+      paginated = paginate <$> currentPage <*> filteredCs
 
   (searchSelected, searchLoaded) <- divClass "ui inverted selection list" $ do
     searchClick <- listWithKey paginated $ \c _ -> do
@@ -588,7 +588,7 @@ moduleExplorer ideL = mdo
     pure (searchSelected, searchLoaded)
 
   let itemsPerPage = 5 :: Int
-      numberOfItems = length <$> filtered
+      numberOfItems = length <$> filteredCs
       totalPages = (\a -> ceiling (fromIntegral a / fromIntegral itemsPerPage)) <$> numberOfItems
   rec
     currentPage <- holdDyn 1 updatePage
