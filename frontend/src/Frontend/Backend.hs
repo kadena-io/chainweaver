@@ -48,7 +48,6 @@ import           Data.Default             (def)
 import qualified Data.HashMap.Strict      as H
 import qualified Data.Map                 as Map
 import           Data.Map.Strict          (Map)
-import           Data.Set                 (Set)
 import qualified Data.Set                 as Set
 import           Data.Text                (Text)
 import qualified Data.Text                as T
@@ -90,7 +89,11 @@ data BackendRequest = BackendRequest
 
 
 data BackendError
-  = BackendError_Failure Text
+  = BackendError_BackendError Text
+  -- ^ Server responded with a non 200 status code.
+  | BackendError_ReqTooLarge
+  -- ^ Request size exceeded the allowed limit.
+  | BackendError_Failure Text
   -- ^ The backend responded with status "failure"
   -- The contained `Text` will hold the full message, which might be useful for
   -- debugging.
@@ -272,7 +275,6 @@ backendPerformSend
 backendPerformSend w b onReq = do
     onXhr <- performEvent $
       attachPromptlyDynWith (buildXhrRequest w b) (_backend_current b) onReq
-
     onErrRespJson <- performRequestAsyncWithError onXhr
     performEvent_ $ printResp <$> onErrRespJson
     let
@@ -434,11 +436,25 @@ getResPayload
 getResPayload xhrRes = do
   r <- left BackendError_XhrException xhrRes
   let
+    status = _xhrResponse_status r
+    statusText = _xhrResponse_statusText r
+    respText = _xhrResponse_responseText r
+    tooLarge = 413 -- Status code for too large body requests.
     mRespT = BSL.fromStrict . T.encodeUtf8 <$> _xhrResponse_responseText r
+
+  -- TODO: This does not really work, when testing we got an
+  -- `XhrException` with no further details.
+  when (status == tooLarge)
+    $ throwError BackendError_ReqTooLarge
+  when (status /= 200 && status /= 201)
+    $ throwError $ BackendError_BackendError statusText
+
   respT <- maybe (throwError BackendError_NoResponse) pure mRespT
   pactRes <- case eitherDecode respT of
-    Left e -> Left $ BackendError_ParseError $ T.pack e <> fromMaybe "" (_xhrResponse_responseText r)
-    Right v -> Right v
+    Left e
+      -> Left $ BackendError_ParseError $ T.pack e <> fromMaybe "" respText
+    Right v
+      -> Right v
   case pactRes of
     ApiFailure str ->
       throwError $ BackendError_Failure . T.pack $ str
@@ -448,6 +464,8 @@ getResPayload xhrRes = do
 
 prettyPrintBackendError :: BackendError -> Text
 prettyPrintBackendError = ("ERROR: " <>) . \case
+  BackendError_BackendError msg -> "Error http response: " <> msg
+  BackendError_ReqTooLarge-> "Request exceeded the allowed maximum size!"
   BackendError_Failure msg -> "Backend failure: " <> msg
   BackendError_XhrException e -> "Connection failed: " <> (T.pack . show) e
   BackendError_ParseError m -> "Server response could not be parsed: " <> m

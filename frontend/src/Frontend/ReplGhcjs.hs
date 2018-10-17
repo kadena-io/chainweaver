@@ -28,7 +28,6 @@ module Frontend.ReplGhcjs where
 import           Control.Lens
 import           Control.Monad.State.Strict
 import           Data.Aeson                  as Aeson (Object, encode, fromJSON, Result(..))
-import           Data.Bifunctor              (first)
 import qualified Data.ByteString.Lazy        as BSL
 import           Data.Foldable
 import qualified Data.HashMap.Strict         as H
@@ -45,10 +44,6 @@ import qualified Data.Text.Encoding          as T
 import           Data.Traversable            (for)
 import           Generics.Deriving.Monoid    (mappenddefault, memptydefault)
 import           GHC.Generics                (Generic)
-import qualified GHCJS.DOM.EventM            as DOM
-import qualified GHCJS.DOM.GlobalEventHandlers as DOM
-import qualified GHCJS.DOM.HTMLElement       as DOM hiding (click)
-import qualified GHCJS.DOM.Types             as DOM hiding (click)
 import           Language.Javascript.JSaddle hiding (Object)
 import           Reflex
 import           Reflex.Dom.ACE.Extended
@@ -60,7 +55,6 @@ import qualified Pact.Compile                as Pact
 import qualified Pact.Parse                  as Pact
 import           Pact.Repl
 import           Pact.Repl.Types
-import qualified Pact.Types.ExpParser        as Pact
 import qualified Bound
 import           Pact.Types.Lang
 ------------------------------------------------------------------------------
@@ -109,7 +103,7 @@ data IdeCfg t = IdeCfg
   { _ideCfg_wallet      :: WalletCfg t
   , _ideCfg_jsonData    :: JsonDataCfg t
   , _ideCfg_backend     :: BackendCfg t
-  , _ideCfg_selContract :: Event t (Either ExampleContract DeployedContract) 
+  , _ideCfg_selContract :: Event t (Either ExampleContract DeployedContract)
     -- ^ Select a contract to load into the editor.
   , _ideCfg_load        :: Event t ()
     -- ^ Load code into the repl.
@@ -183,7 +177,7 @@ main = mainWidget app
 getFunctions :: Term Name -> [PactFunction]
 getFunctions (TModule _ body _) = getFunctions $ Bound.instantiate undefined body
 getFunctions (TDef name moduleName defType funType _ docs _) = [PactFunction moduleName name defType (_mDocs docs) funType]
-getFunctions (TList list _ _) = getFunctions =<< list
+getFunctions (TList list1 _ _) = getFunctions =<< list1
 getFunctions _ = []
 
 -- | Parse and compile the code to list the top level function data
@@ -407,7 +401,7 @@ envPanel ideL cfg = mdo
 
 functionsList :: MonadWidget t m => Ide t -> [PactFunction] -> m ()
 functionsList ideL functions = divClass "ui very relaxed list" $ do
-  for_ functions $ \(PactFunction (ModuleName moduleName) name defType mdocs funType) -> divClass "item" $ do
+  for_ functions $ \(PactFunction (ModuleName moduleName) name _ mdocs funType) -> divClass "item" $ do
     (e, _) <- elClass' "a" "header" $ do
       text name
       text ":"
@@ -464,17 +458,17 @@ functionsList ideL functions = divClass "ui very relaxed list" $ do
               & buttonConfig_emphasis .~ Static (Just Primary)
         submit <- button buttonConfig $ text "Call function"
         let args = tag (current $ sequence inputs) submit
-            call = ffor args $ \as -> mconcat ["(", moduleName, ".", name, " ", T.unwords as, ")"]
-        -- for debugging: widgetHold blank $ ffor call $ label def . text
+            callFun = ffor args $ \as -> mconcat ["(", moduleName, ".", name, " ", T.unwords as, ")"]
+        -- for debugging: widgetHold blank $ ffor callFun $ label def . text
         let ed = ideL ^. ide_jsonData . jsonData_data
         deployedResult <- backendPerformSend (ideL ^. ide_wallet) (ideL ^. ide_backend) $ do
-          ffor (attach (current ed) call) $ \(ed, c) -> BackendRequest
+          ffor (attach (current ed) callFun) $ \(ed1, c) -> BackendRequest
             { _backendRequest_code = c
-            , _backendRequest_data = either mempty id ed
+            , _backendRequest_data = either mempty id ed1
             }
         widgetHold_ blank $ ffor deployedResult $ \case
-          Left e -> message (def & messageConfig_type .~ Static (Just (MessageType Negative))) $ do
-            text $ prettyPrintBackendError e
+          Left err -> message (def & messageConfig_type .~ Static (Just (MessageType Negative))) $ do
+            text $ prettyPrintBackendError err
           Right v -> message def $ text $ tshow v
 
 selectionToText :: EnvSelection -> Text
@@ -549,14 +543,14 @@ moduleExplorer ideL = mdo
     icon "black search" def
     pure ie
   let deployedContracts = ideL ^. ide_backend . backend_modules
-      filtered = f <$> value search <*> deployedContracts
+      filtered1 = f <$> value search <*> deployedContracts
       f needle = \case
         Nothing -> mempty
         Just xs -> Map.fromList $ fforMaybe xs $ \x ->
           if T.isInfixOf (T.toCaseFold needle) (T.toCaseFold x)
           then Just (x, ())
           else Nothing
-  deployedClick <- divClass "ui inverted selection list" $ listWithKey filtered $ \k v -> do
+  deployedClick <- divClass "ui inverted selection list" $ listWithKey filtered1 $ \k _ -> do
     let isSel = demuxed demuxSel $ Right k
     selectableItem k isSel $ do
       text k
