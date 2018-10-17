@@ -48,7 +48,6 @@ import           Data.Default             (def)
 import qualified Data.HashMap.Strict      as H
 import qualified Data.Map                 as Map
 import           Data.Map.Strict          (Map)
-import           Data.Set                 (Set)
 import qualified Data.Set                 as Set
 import           Data.Text                (Text)
 import qualified Data.Text                as T
@@ -443,6 +442,8 @@ getResPayload xhrRes = do
     tooLarge = 413 -- Status code for too large body requests.
     mRespT = BSL.fromStrict . T.encodeUtf8 <$> _xhrResponse_responseText r
 
+  -- TODO: This does not really work, when testing we got an
+  -- `XhrException` with no further details.
   when (status == tooLarge)
     $ throwError BackendError_ReqTooLarge
   when (status /= 200 && status /= 201)
