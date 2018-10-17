@@ -339,7 +339,7 @@ envPanel ideL cfg = mdo
     $ tabs curSelection
 
   explorerCfg <- tabPane
-      ("style" =: "overflow: auto")
+      ("style" =: "overflow-y: auto; overflow-x: hidden")
       curSelection EnvSelection_ModuleExplorer
       $ moduleExplorer ideL
 
@@ -536,7 +536,7 @@ moduleExplorer
   => Ide t
   -> m (IdeCfg t)
 moduleExplorer ideL = mdo
-  demuxSel <- fmap demux $ holdDyn (Left "") $ leftmost [searchSelected, deployedSelected, exampleSelected]
+  demuxSel <- fmap demux $ holdDyn (Left "") $ leftmost [searchSelected, exampleSelected]
 
   header def $ text "Example Contracts"
   exampleClick <- divClass "ui inverted selection list" $ for demos $ \c -> do
@@ -547,51 +547,35 @@ moduleExplorer ideL = mdo
   let exampleSelected = fmap Left . leftmost . fmap fst $ Map.elems exampleClick
       exampleLoaded = fmap Left . leftmost . fmap snd $ Map.elems exampleClick
 
-  header def $ text "Backend"
-
-  let mkMap = Map.fromList . map (\k@(BackendName n, _) -> (k, text n)) . Map.toList
-      conf = def
-        & dropdownConfig_placeholder .~ "Backend"
-        & dropdownConfig_fluid .~ pure True
-  d <- dropdown conf Nothing $ TaggedDynamic $ maybe mempty mkMap <$> ideL ^. ide_backend . backend_backends
-  let chooseBackend = fmap fst $ fmapMaybe id $ updated $ value d
-
-      filtered' = f
-        <$> ideL ^. ide_backend . backend_backends
-        <*> ideL ^. ide_backend . backend_current
-        <*> ideL ^. ide_backend . backend_modules
-      f bs (Just name) ms | Just (Just modules) <- Map.lookup name ms, Just uri <- Map.lookup name =<< bs
-        = Map.fromList $ ffor modules $ \mod -> (DeployedContract mod name uri, ())
-      f _ _ _ = mempty
-  deployedClick <- divClass "ui inverted selection list" $ listWithKey filtered' $ \c _ -> do
-      let isSel = demuxed demuxSel $ Right c
-      selectableItem c isSel $ do
-        label (def & labelConfig_horizontal .~ Static True) $ do
-          text $ unBackendName $ _deployedContract_backendName c
-        text $ _deployedContract_name c
-        (c <$) <$> loadButton isSel
-
-  let deployedSelected = switch . current $ fmap Right . leftmost . fmap fst . Map.elems <$> deployedClick
-      deployedLoaded = switch . current $ fmap Right . leftmost . fmap snd . Map.elems <$> deployedClick
-
   header def $ text "Deployed Contracts"
-  search <- input (def & inputConfig_icon .~ Static (Just RightIcon) & inputConfig_fluid .~ Static True) $ do
-    ie <- inputElement $ def & initialAttributes .~ ("type" =: "text" <> "placeholder" =: "Search all backends")
-    icon "black search" def
-    pure ie
-  let deployedContracts = Map.mergeWithKey (\_ a b -> Just (a, b)) mempty mempty
-        <$> ideL ^. ide_backend . backend_modules
-        <*> (fromMaybe mempty <$> ideL ^. ide_backend . backend_backends)
-      filtered = searchFn <$> value search <*> deployedContracts
-      searchFn needle = Map.fromList . take 10 . L.sort . concat . fmapMaybe (filtering needle) . Map.toList
-      filtering needle (backendName, (m, backendUri)) =
-        let f contractName =
-              if T.isInfixOf (T.toCaseFold needle) (T.toCaseFold contractName)
-              then Just (DeployedContract contractName backendName backendUri, ())
-              else Nothing
-        in case fmapMaybe f $ fromMaybe [] m of
-          [] -> Nothing
-          xs -> Just xs
+
+  filtered <- divClass "ui form" $ divClass "ui two fields" $ do
+    search <- field def $ input (def & inputConfig_icon .~ Static (Just RightIcon)) $ do
+      ie <- inputElement $ def & initialAttributes .~ ("type" =: "text" <> "placeholder" =: "Search modules")
+      icon "black search" def
+      pure ie
+
+    let mkMap = Map.fromList . map (\k@(BackendName n, _) -> (Just k, text n)) . Map.toList
+        dropdownConf = def
+          & dropdownConfig_placeholder .~ "Backend"
+          & dropdownConfig_fluid .~ pure True
+    d <- field def $ input def $ dropdown dropdownConf (Identity Nothing) $ TaggedDynamic $
+      Map.insert Nothing (text "All backends") . maybe mempty mkMap <$> ideL ^. ide_backend . backend_backends
+    let deployedContracts = Map.mergeWithKey (\_ a b -> Just (a, b)) mempty mempty
+          <$> ideL ^. ide_backend . backend_modules
+          <*> (fromMaybe mempty <$> ideL ^. ide_backend . backend_backends)
+        searchFn needle (Identity mModule) = Map.fromList . take 10 . L.sort
+          . concat . fmapMaybe (filtering needle) . Map.toList
+          . maybe id (\(k', _) -> Map.filterWithKey $ \k _ -> k == k') mModule
+        filtering needle (backendName, (m, backendUri)) =
+          let f contractName =
+                if T.isInfixOf (T.toCaseFold needle) (T.toCaseFold contractName)
+                then Just (DeployedContract contractName backendName backendUri, ())
+                else Nothing
+          in case fmapMaybe f $ fromMaybe [] m of
+            [] -> Nothing
+            xs -> Just xs
+    pure $ searchFn <$> value search <*> value d <*> deployedContracts
 
   searchClick <- divClass "ui inverted selection list" $ listWithKey filtered $ \c _ -> do
       let isSel = demuxed demuxSel $ Right c
@@ -605,8 +589,7 @@ moduleExplorer ideL = mdo
       searchLoaded = switch . current $ fmap Right . leftmost . fmap snd . Map.elems <$> searchClick
 
   pure $ mempty
-    { _ideCfg_selContract = leftmost [searchLoaded, deployedLoaded, exampleLoaded]
-    , _ideCfg_backend = mempty { _backendCfg_selBackend = chooseBackend }
+    { _ideCfg_selContract = leftmost [searchLoaded, exampleLoaded]
     }
   where
     selectableItem :: k -> Dynamic t Bool -> m a -> m (Event t k, a)

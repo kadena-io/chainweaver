@@ -121,11 +121,9 @@ type BackendErrorResult = Either BackendError Value
 
 -- | Config for creating a `Backend`.
 data BackendCfg t = BackendCfg
-  { _backendCfg_selBackend    :: Event t BackendName
-    -- ^ Select the backend to operate with.
   -- , _backendCfg_send       :: Event t BackendRequest
     -- ^ Send a request to the currently selected backend.
-  , _backendCfg_refreshModule :: Event t ()
+  { _backendCfg_refreshModule :: Event t ()
     -- ^ We are unfortunately not notified by the pact backend when new
     -- contracts appear on the blockchain, so UI code needs to request a
     -- refresh at appropriate times.
@@ -137,8 +135,6 @@ makePactLenses ''BackendCfg
 data Backend t = Backend
   { _backend_backends :: Dynamic t (Maybe (Map BackendName BackendUri))
     -- ^ All available backends that can be selected.
-  , _backend_current  :: Dynamic t (Maybe BackendName)
-   --  ^ Currently selected `Backend`
   , _backend_modules  :: Dynamic t (Map BackendName (Maybe [Text]))
    -- ^ Available modules on all backends. `Nothing` if not loaded yet.
   }
@@ -220,13 +216,10 @@ makeBackend w cfg = mfix $ \b -> do
   pb <- getPostBuild
   bs <- holdDyn Nothing . fmap Just <=< performEvent $ liftIO getBackends <$ pb
 
-  cName <- holdDyn Nothing $ Just <$> cfg ^. backendCfg_selBackend
-
   modules <- loadModules w bs cfg
 
   pure $ Backend
     { _backend_backends = bs
-    , _backend_current = cName
     , _backend_modules = modules
     }
 
