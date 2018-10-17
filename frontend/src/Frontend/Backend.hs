@@ -195,8 +195,8 @@ instance FromJSON ListenResponse where
 
 
 -- | Available backends:
-backends :: IO (Map BackendName BackendUri)
-backends = do
+getBackends :: IO (Map BackendName BackendUri)
+getBackends = do
   serverUrl <- T.strip . fromMaybe "http://localhost:7010" <$> get "common/server-url"
   serverUrl2 <- T.strip . fromMaybe "http://localhost:7020" <$> get "common/server-url"
   pure $ Map.fromList . map (first BackendName) $
@@ -218,7 +218,7 @@ makeBackend
   -> m (Backend t)
 makeBackend w cfg = mfix $ \b -> do
   pb <- getPostBuild
-  bs <- holdDyn Nothing . fmap Just <=< performEvent $ liftIO backends <$ pb
+  bs <- holdDyn Nothing . fmap Just <=< performEvent $ liftIO getBackends <$ pb
 
   cName <- holdDyn Nothing $ Just <$> cfg ^. backendCfg_selBackend
 

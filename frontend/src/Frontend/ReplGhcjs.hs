@@ -325,7 +325,9 @@ envPanel ideL cfg = mdo
       fmap (const EnvSelection_Msgs) . fmapMaybe listToMaybe
         $ updated (_ide_msgs ideL)
     onLoad = EnvSelection_Repl <$ (cfg ^. ideCfg_load)
-    onDeployedLoad = EnvSelection_Functions <$ (cfg ^. ideCfg_setDeployed)
+    -- Disabled Functions tab for now:
+    {- onDeployedLoad = EnvSelection_Functions <$ (cfg ^. ideCfg_setDeployed) -}
+    onDeployedLoad = never
 
   curSelection <- holdDyn EnvSelection_Env $ cfg ^. ideCfg_selEnv
 
@@ -394,7 +396,7 @@ envPanel ideL cfg = mdo
     tabs :: Dynamic t EnvSelection -> m (Event t EnvSelection)
     tabs curSelection = do
       let
-        selections = [ EnvSelection_Env, EnvSelection_Repl, EnvSelection_Msgs, EnvSelection_ModuleExplorer, EnvSelection_Functions ]
+        selections = [ EnvSelection_Env, EnvSelection_Repl, EnvSelection_Msgs, EnvSelection_ModuleExplorer ]
       leftmost <$> traverse (tab curSelection) selections
 
     tab :: Dynamic t EnvSelection -> EnvSelection -> m (Event t EnvSelection)

@@ -124,13 +124,15 @@ let
     certificateKeyPath,
     hostname,
     nginxPort,
-    pactPort
+    pactPort,
+    pactDataDir,
+    pactUser
   }: let
     pactConfig = pkgs.writeText "pact.yaml" ''
       port: ${toString pactPort}
 
-      logDir: /root/pact-log
-      persistDir: /root/pact-log
+      logDir: ${pactDataDir}
+      persistDir: ${pactDataDir}
 
       # SQLite pragmas for pact back-end
       pragmas: []
@@ -138,12 +140,25 @@ let
       # verbose: provide log output
       verbose: True
     '';
-  in {lib, ...}: {
+  in {pkgs, lib, ...}: {
+    users.users.${pactUser} = {
+      description = "User for running the pact server (pact -s).";
+      isSystemUser = true;
+    };
     systemd.services.pact-server = {
       description = "Pact Server";
       after = [ "network.target" ];
       wantedBy = [ "multi-user.target" ];
+      # So preStart runs as root:
+      preStart = ''
+        export PATH=$PATH:${pkgs.coreutils}/bin
+        mkdir -p ${pactDataDir}
+        chown ${pactUser} ${pactDataDir}
+        '';
       serviceConfig = {
+        # So preStart runs as root:
+        PermissionsStartOnly = true;
+        User = pactUser;
         ExecStart = "${obApp.ghc.pact}/bin/pact -s ${pactConfig}";
         Restart = "always";
         KillMode = "process";
@@ -191,6 +206,8 @@ in obApp // {
             hostname = "working-agreement.obsidian.systems";
             nginxPort = 7011;
             pactPort = 7010;
+            pactDataDir = "/var/lib/pact-web/pact-log";
+            pactUser = "pact";
           })
         ];
       };
