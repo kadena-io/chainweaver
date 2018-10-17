@@ -28,7 +28,6 @@ module Frontend.ReplGhcjs where
 import           Control.Lens
 import           Control.Monad.State.Strict
 import           Data.Aeson                  as Aeson (Object, encode, fromJSON, Result(..))
-import           Data.Bifunctor              (first)
 import qualified Data.ByteString.Lazy        as BSL
 import           Data.Foldable
 import qualified Data.HashMap.Strict         as H
@@ -46,10 +45,6 @@ import qualified Data.Text.Encoding          as T
 import           Data.Traversable            (for)
 import           Generics.Deriving.Monoid    (mappenddefault, memptydefault)
 import           GHC.Generics                (Generic)
-import qualified GHCJS.DOM.EventM            as DOM
-import qualified GHCJS.DOM.GlobalEventHandlers as DOM
-import qualified GHCJS.DOM.HTMLElement       as DOM hiding (click)
-import qualified GHCJS.DOM.Types             as DOM hiding (click)
 import           Language.Javascript.JSaddle hiding (Object)
 import           Reflex
 import           Reflex.Dom.ACE.Extended
@@ -61,7 +56,6 @@ import qualified Pact.Compile                as Pact
 import qualified Pact.Parse                  as Pact
 import           Pact.Repl
 import           Pact.Repl.Types
-import qualified Pact.Types.ExpParser        as Pact
 import qualified Bound
 import           Pact.Types.Lang
 ------------------------------------------------------------------------------
@@ -186,7 +180,7 @@ main = mainWidget app
 getFunctions :: Term Name -> [PactFunction]
 getFunctions (TModule _ body _) = getFunctions $ Bound.instantiate undefined body
 getFunctions (TDef name moduleName defType funType _ docs _) = [PactFunction moduleName name defType (_mDocs docs) funType]
-getFunctions (TList list _ _) = getFunctions =<< list
+getFunctions (TList list1 _ _) = getFunctions =<< list1
 getFunctions _ = []
 
 -- | Parse and compile the code to list the top level function data
@@ -467,8 +461,8 @@ functionsList ideL backendUri functions = divClass "ui very relaxed list" $ do
               & buttonConfig_emphasis .~ Static (Just Primary)
         submit <- button buttonConfig $ text "Call function"
         let args = tag (current $ sequence inputs) submit
-            call = ffor args $ \as -> mconcat ["(", moduleName, ".", name, " ", T.unwords as, ")"]
-        -- for debugging: widgetHold blank $ ffor call $ label def . text
+            callFun = ffor args $ \as -> mconcat ["(", moduleName, ".", name, " ", T.unwords as, ")"]
+        -- for debugging: widgetHold blank $ ffor callFun $ label def . text
         let ed = ideL ^. ide_jsonData . jsonData_data
         deployedResult <- backendRequest (ideL ^. ide_wallet) $
           ffor (attach (current ed) call) $ \(ed, c) -> BackendRequest
