@@ -194,7 +194,7 @@ let
     '';
   };
 in obApp // {
-  server = args@{ hostName, adminEmail, routeHost, enableHttps }:
+  server = args@{ hostName, adminEmail, routeHost, enableHttps, deployConfig }:
     let
       nixos = import (pkgs.path + /nixos);
     in nixos {
@@ -202,7 +202,7 @@ in obApp // {
       configuration = {
         imports = [
           (obelisk.serverModules.mkBaseEc2 args)
-          (obelisk.serverModules.mkObeliskApp (args // { exe = obApp.linuxExe; }))
+          (obelisk.serverModules.mkObeliskApp (args // { exe = obApp.linuxExeConfigurable (pkgs.copyPathToStore deployConfig); }))
           (pactServerModule {
             certificatePath = "/var/lib/acme/working-agreement.obsidian.systems/fullchain.pem";
             certificateKeyPath = "/var/lib/acme/working-agreement.obsidian.systems/key.pem";
