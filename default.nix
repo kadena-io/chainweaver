@@ -173,6 +173,9 @@ let
           ssl_certificate ${certificatePath};
           ssl_certificate_key ${certificateKeyPath};
 
+          # Restrict transaction size:
+          client_max_body_size 1m;
+
           location / {
             if ($request_method = 'POST') {
                # add_header 'Access-Control-Allow-Origin' 'https://working-agreement.obsidian.systems';
