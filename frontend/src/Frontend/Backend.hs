@@ -296,6 +296,7 @@ backendRequest w onReq = performEventAsync $ ffor onReq $ \req cb -> do
             PactResult_Success result -> callback $ Right result
       _ -> callback $ Left $ BackendError_Other "Response contained more than one RequestKey"
 
+-- TODO: upstream this?
 instance HasJSContext JSM where
   type JSContextPhantom JSM = JSContextRef
   askJSContext = JSContextSingleton <$> askJSM
