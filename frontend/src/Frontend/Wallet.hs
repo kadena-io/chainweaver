@@ -36,7 +36,6 @@ import           Control.Monad.Fix
 import           Data.Aeson
 import           Data.Map                    (Map)
 import qualified Data.Map                    as Map
-import           Data.Semigroup
 import           Data.Set                    (Set)
 import qualified Data.Set                    as Set
 import           Data.Text                   (Text)
@@ -174,7 +173,7 @@ toDynKeyPairs forSigning = Map.fromList . map toDyn . Map.toList
 --   value of the passed in `Dynamic` is used. This is not really pretty, could
 --   be fixed by dropping the above signing Set and handling update directly in
 --   the `DynKeyPairs` which would be more efficient too.
-toDynKeyPair :: Reflex t => Dynamic t Bool -> KeyPair -> DynKeyPair t
+toDynKeyPair :: Dynamic t Bool -> KeyPair -> DynKeyPair t
 toDynKeyPair forSigning (KeyPair pub priv _) = KeyPair pub priv forSigning
 
 

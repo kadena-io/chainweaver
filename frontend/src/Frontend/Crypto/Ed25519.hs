@@ -37,7 +37,7 @@ module Frontend.Crypto.Ed25519
 import           Control.Lens
 import           Control.Monad
 import           Control.Monad.Fail          (MonadFail)
-import           Control.Newtype             (Newtype (..))
+import           Control.Newtype.Generics    (Newtype (..))
 import           Data.Aeson                  hiding (Object)
 import           Data.ByteString             (ByteString)
 import qualified Data.ByteString             as BS

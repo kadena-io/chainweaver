@@ -36,7 +36,6 @@ import qualified Data.List.Zipper            as Z
 import           Data.Map                    (Map)
 import qualified Data.Map                    as Map
 import           Data.Maybe
-import           Data.Semigroup
 import           Data.Sequence               (Seq)
 import qualified Data.Sequence               as S
 import           Data.Text                   (Text)
@@ -377,7 +376,7 @@ envPanel ideL cfg = mdo
     void . dyn $ traverse_ (snippetWidget . OutputSnippet) <$> _ide_msgs ideL
     pure mempty
 
-  functionsCfg <- tabPane ("style" =: "overflow: auto") curSelection EnvSelection_Functions $ do
+  _functionsCfg <- tabPane ("style" =: "overflow: auto") curSelection EnvSelection_Functions $ do
     header def $ text "Public functions"
     dyn_ $ ffor (_ide_deployed ideL) $ \case
       Nothing -> paragraph $ text "Load a deployed contract with the module explorer to see the list of available functions."
@@ -491,7 +490,7 @@ clickClassifier clickLoc (Just (DownAt loc1)) =
   if clickLoc == loc1 then Just Clicked else Just Selected
 clickClassifier _ _ = Nothing
 
-scrollToBottom :: (PToJSVal t, MonadIO m, MonadJSM m) => t -> m ()
+scrollToBottom :: (PToJSVal t, MonadJSM m) => t -> m ()
 scrollToBottom e = liftJSM $ do
     let pElem = pToJSVal e
     (pElem <# ("scrollTop" :: String)) (pElem ^. js ("scrollHeight" :: String))
@@ -583,9 +582,9 @@ moduleExplorer ideL = mdo
           text $ unBackendName $ _deployedContract_backendName c
         text $ _deployedContract_name c
         (c <$) <$> loadButton isSel
-    let searchSelected = switch . current $ fmap Right . leftmost . fmap fst . Map.elems <$> searchClick
-        searchLoaded = switch . current $ fmap Right . leftmost . fmap snd . Map.elems <$> searchClick
-    pure (searchSelected, searchLoaded)
+    let searchSelected' = switch . current $ fmap Right . leftmost . fmap fst . Map.elems <$> searchClick
+        searchLoaded' = switch . current $ fmap Right . leftmost . fmap snd . Map.elems <$> searchClick
+    pure (searchSelected', searchLoaded')
 
   let itemsPerPage = 5 :: Int
       numberOfItems = length <$> filteredCs
@@ -771,14 +770,14 @@ controlBar ideL = do
         input (def & inputConfig_action .~ Static (Just RightAction)) $ do
           let dropdownConfig = def
                 & dropdownConfig_placeholder .~ "Deployment Target"
-          backend <- fmap value $ dropdown dropdownConfig Nothing $ TaggedDynamic $
+          backend' <- fmap value $ dropdown dropdownConfig Nothing $ TaggedDynamic $
             ffor (ideL ^. ide_backend . backend_backends) $
               Map.fromList . fmap (\(k, v) -> (v, text $ unBackendName k)) . maybe [] Map.toList
           let buttonConfig = def
                 & buttonConfig_emphasis .~ Static (Just Primary)
-                & buttonConfig_disabled .~ Dyn (isNothing <$> backend)
+                & buttonConfig_disabled .~ Dyn (isNothing <$> backend')
           deploy <- button buttonConfig $ text "Deploy"
-          pure $ attachWithMaybe (\m _ -> m) (current backend) deploy
+          pure $ attachWithMaybe (\m _ -> m) (current backend') deploy
       let
         req = do
           c <- ideL ^. ide_code

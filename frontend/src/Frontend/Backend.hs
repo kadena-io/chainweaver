@@ -41,7 +41,7 @@ import           Control.Concurrent       (forkIO)
 import           Control.Lens             hiding ((.=))
 import           Control.Monad.Except
 import           Data.Aeson               (FromJSON (..), Object, Value,
-                                           Value (..), decode, eitherDecode,
+                                           Value (..), eitherDecode,
                                            encode, object, toJSON, withObject,
                                            (.:), (.=))
 import           Data.Aeson.Types         (typeMismatch, parseMaybe)
@@ -50,19 +50,15 @@ import           Data.Default             (def)
 import qualified Data.HashMap.Strict      as H
 import qualified Data.Map                 as Map
 import           Data.Map.Strict          (Map)
-import qualified Data.Set                 as Set
 import           Data.Text                (Text)
 import qualified Data.Text                as T
 import qualified Data.Text.Encoding       as T
-import qualified Data.Text.IO             as T
-import           Data.Traversable         (for)
 import           Data.Time.Clock          (getCurrentTime)
 import           Generics.Deriving.Monoid (mappenddefault, memptydefault)
 import           Obelisk.ExecutableConfig (get)
 import           Reflex.NotReady.Class
 import           Reflex.Dom.Class
 import           Reflex.Dom.Xhr
-import           Safe
 
 import Language.Javascript.JSaddle.Monad (JSM, askJSM, JSContextRef)
 
@@ -210,12 +206,11 @@ makeBackend
     , MonadJSM (Performable m), HasJSContext (Performable m)
     , TriggerEvent t m, MonadSample t (Performable m)
     , PostBuild t m
-    , MonadIO m
     )
   => Wallet t
   -> BackendCfg t
   -> m (Backend t)
-makeBackend w cfg = mfix $ \b -> do
+makeBackend w cfg = mfix $ \_b -> do
   pb <- getPostBuild
   bs <- holdDyn Nothing . fmap Just <=< performEvent $ liftIO getBackends <$ pb
 
@@ -229,7 +224,7 @@ makeBackend w cfg = mfix $ \b -> do
 
 loadModules
   :: forall t m
-  . (MonadHold t m, PerformEvent t m, MonadFix m, MonadIO m, NotReady t m, Adjustable t m
+  . (MonadHold t m, PerformEvent t m, MonadFix m, NotReady t m, Adjustable t m
     , MonadJSM (Performable m), HasJSContext (Performable m)
     , TriggerEvent t m, MonadSample t (Performable m), PostBuild t m
     )
@@ -241,7 +236,7 @@ loadModules w bs cfg = do
     Nothing -> pure mempty
     Just bs' -> do
       onPostBuild <- getPostBuild
-      bm <- flip Map.traverseWithKey bs' $ \backendName uri -> do
+      bm <- flip Map.traverseWithKey bs' $ \_backendName uri -> do
         onErrResp <- backendRequest w $
           leftmost [ req uri <$ cfg ^. backendCfg_refreshModule
                    , req uri <$ onPostBuild
@@ -269,7 +264,7 @@ url b endpoint = b <> "/api/v1" <> endpoint
 --   And wait for its result via /listen.
 backendRequest
   :: forall t m
-  . ( MonadHold t m, PerformEvent t m, MonadFix m
+  . ( PerformEvent t m
     , MonadJSM (Performable m), HasJSContext (Performable m)
     , TriggerEvent t m, MonadSample t (Performable m)
     )
@@ -284,7 +279,7 @@ backendRequest w onReq = performEventAsync $ ffor onReq $ \req cb -> do
       [] -> callback $ Left $ BackendError_Other "Response did not contain any RequestKeys"
       [key] -> do
         let listenReq = buildListenXhrRequest uri key
-        void $ newXMLHttpRequestWithError listenReq $ \r -> case getResPayload r of
+        void $ newXMLHttpRequestWithError listenReq $ \r' -> case getResPayload r' of
           Left e -> callback $ Left e
           Right listen -> case _lr_result listen of
             PactResult_Failure err detail -> callback $ Left $ BackendError_ResultFailure err detail
