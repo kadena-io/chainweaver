@@ -38,7 +38,7 @@ library
                , reflex-dom-ace
                , safe
                , semantic-reflex
-               , static
+               , obelisk-generated-static
                , string-qq
                , template-haskell
                , text
@@ -90,7 +90,7 @@ executable frontend
   build-depends: base
                , common
                , reflex-dom
-               , static
+               , obelisk-generated-static
                , text
                , frontend
 
