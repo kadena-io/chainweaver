@@ -8,7 +8,7 @@ import qualified Data.Text as T
 import           Reflex.Dom.Core
 
 import           Frontend.ReplGhcjs
-import           Static
+import           Obelisk.Generated.Static
 
 frontend :: (StaticWidget x (), Widget x ())
 frontend = (head', body)

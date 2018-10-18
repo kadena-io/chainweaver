@@ -66,7 +66,7 @@ import           Frontend.UI.JsonData
 import           Frontend.UI.Wallet
 import           Frontend.Wallet
 import           Frontend.Widgets
-import           Static
+import           Obelisk.Generated.Static
 
 type LogMsg = Text
 
