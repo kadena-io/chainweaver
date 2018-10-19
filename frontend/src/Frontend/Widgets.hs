@@ -18,7 +18,7 @@ import           Obelisk.Frontend            (ObeliskWidget)
 import           Reflex.Dom.Core             (keypress, _textInput_element)
 import           Reflex.Dom.SemanticUI       hiding (mainWidget)
 import           Reflex.Network.Extended
-import Reflex.Dom.Prerender (Prerender, prerender)
+-- import Reflex.Dom.Prerender (Prerender, prerender)
 
 import Frontend.Foundation
 

@@ -32,6 +32,8 @@ library
                , mtl
                , newtype-generics
                , obelisk-executable-config
+               , obelisk-frontend
+               , obelisk-route
                , pact
                , reflex
                , reflex-dom
@@ -91,6 +93,8 @@ executable frontend
                , common
                , reflex-dom
                , obelisk-generated-static
+               , obelisk-frontend
+               , obelisk-route
                , text
                , frontend
 
