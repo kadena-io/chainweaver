@@ -21,6 +21,7 @@ let
             sha256 = "01rpf0vh5llx1hq4j55gmw36fvzhb95ngcykh34sgcxp5498p9f3";
           };
       in {
+            algebraic-graphs = pkgs.haskell.lib.dontCheck super.algebraic-graphs;
             cacophony = guardGhcjs (pkgs.haskell.lib.dontCheck (self.callHackage "cacophony" "0.8.0" {}));
             haskeline = guardGhcjs (self.callHackage "haskeline" "0.7.4.2" {});
             katip = guardGhcjs (pkgs.haskell.lib.doJailbreak (self.callHackage "katip" "0.3.1.4" {}));
