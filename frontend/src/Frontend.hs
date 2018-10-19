@@ -13,9 +13,8 @@ import           Obelisk.Route
 import           Obelisk.Generated.Static
 
 frontend :: Frontend (R FrontendRoute)
-frontend = Frontend { _frontend_head = head', _frontend_body = app }
-  where
-    head' = do
+frontend = Frontend
+  { _frontend_head= do
       -- Global site tag (gtag.js) - Google Analytics
       let gaTrackingId = "UA-127512784-1"
           gtagSrc = "https://www.googletagmanager.com/gtag/js?id=" <> gaTrackingId
@@ -44,3 +43,6 @@ frontend = Frontend { _frontend_head = head', _frontend_body = app }
       elAttr "script" ("type" =: "text/javascript" <> "src" =: static @"js/nacl-fast.min-v1.0.0.js") blank
       elAttr "script" ("type" =: "text/javascript" <> "src" =: "https://cdnjs.cloudflare.com/ajax/libs/ace/1.4.1/theme-solarized_dark.js") blank
       elAttr "link" ("href" =: static @"css/index.css" <> "rel" =: "stylesheet" <> "type" =: "text/css") blank
+
+ , _frontend_body = app
+ }
