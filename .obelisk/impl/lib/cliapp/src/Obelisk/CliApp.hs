@@ -6,12 +6,14 @@
 module Obelisk.CliApp
   (
   -- .Types
-    Cli
+    CliLog
+  , CliThrow
   , CliT(..)
   , runCli
   , CliConfig
   , HasCliConfig
   , getCliConfig
+  , Output
 
   -- .Spinner
   , withSpinner
@@ -19,22 +21,27 @@ module Obelisk.CliApp
   , withSpinner'
 
   -- .Logging
+  , AsUnstructuredError (..)
   , newCliConfig
   , getLogLevel
   , putLog
   , failWith
+  , errorToWarning
   , withExitFailMessage
 
   -- Control.Monad.Log
   , Severity (..)
 
   -- .Process
-  , ProcessFailed (..)
+  , ProcessFailure (..)
+  , AsProcessFailure (..)
   , readProcessAndLogStderr
+  , readProcessAndLogOutput
   , callProcessAndLogOutput
   , createProcess_
   , callProcess
   , callCommand
+  , reconstructCommand
   ) where
 
 import Control.Monad.Log (Severity (..))

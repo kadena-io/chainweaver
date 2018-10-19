@@ -1,11 +1,12 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE QuasiQuotes #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 module Obelisk.Command.VmBuilder where
 
 import Control.Applicative (liftA2)
 import Control.Monad (unless)
-import Control.Monad.Catch (try)
+import Control.Monad.Catch (try, handle)
 import Control.Monad.IO.Class (liftIO)
 import Data.Either (isRight)
 import Data.Monoid ((<>))
@@ -42,13 +43,16 @@ containerName = "obelisk-docker-nix-builder"
 
 -- | Check to see if the Docker container exists. This will exit with a helpful message if Docker is not installed.
 containerExists :: MonadObelisk m => m Bool
-containerExists = withExitFailMessage needDockerMsg $ do
-  containerNames <- fmap (map T.strip . T.lines . T.pack) $
+containerExists = handle (\(_ :: IOError) -> failWith needDockerMsg) $ do
+  containerNames <- fmap (map T.strip . T.lines) $
     readProcessAndLogStderr Error $
       proc "docker" ["container", "list", "--all", "--format", "{{.Names}}"]
   pure $ containerName `elem` containerNames
   where
-    needDockerMsg = "This feature requires that you have Docker installed and the `docker` command available on your PATH. Please go https://docs.docker.com/ to install Docker and try this command again."
+    needDockerMsg = T.intercalate "\n"
+      [ "This feature requires that you have Docker installed and the `docker` command available on your PATH."
+      , "Please go https://docs.docker.com/ to install Docker and try this command again."
+      ]
 
 -- | SSH port on localhost that connects to the container.
 containerSshPort :: Int
@@ -74,14 +78,14 @@ setupNixDocker stateDir = withSpinner ("Creating Docker container named " <> con
     proc "ssh-keygen" ["-t", "ed25519", "-f", stateDir </> sshKeyFileName, "-P", ""]
 
   -- Build the docker container (which uses the SSH keys in the 'ssh' folder)
-  containerId <- readProcessAndLogStderr Error $
+  containerId <- fmap T.strip $ readProcessAndLogStderr Error $
     proc "docker" ["build", stateDir, "--quiet"]
   callProcessAndLogOutput (Debug, Error) $ proc "docker"
     [ "run"
     , "--restart", "always"
     , "--detach"
     , "--publish", show containerSshPort <> ":22"
-    , "--name", containerName, containerId
+    , "--name", T.unpack containerName, T.unpack containerId
     ]
   exists <- containerExists
   unless exists $
@@ -137,11 +141,11 @@ testLinuxBuild stateDir =
     , "--builders", nixBuildersArgString stateDir
     ]
 
--- Copied from https://raw.githubusercontent.com/LnL7/nix-docker/bf28b99aebd8e403d2fc2171f4fa8878f857171c/ssh/Dockerfile
+-- Copied from https://github.com/LnL7/nix-docker/blob/8dcfb3aff1f87cdafeecb0d27964b27c3fb8b1d2/ssh/Dockerfile
 -- Renamed "insecure_rsa" to 'sshKeyFileName'
 dockerfile :: Text
 dockerfile = [hereLit|
-FROM lnl7/nix:2018-04-17
+FROM lnl7/nix:2018-09-21
 
 RUN nix-env -f '<nixpkgs>' -iA \
     gnused \
@@ -166,7 +170,8 @@ RUN mkdir -p /etc/ssh \
   ] <> [hereLit|
 
 EXPOSE 22
-CMD ["/nix/store/hpnx760s247labqc3nbn2kripk73p0ca-openssh-7.6p1/bin/sshd", "-D", "-e"]
+CMD ["/nix/store/mydwfxzk8bka4iwjml033dir6gkmqwic-openssh-7.7p1/bin/sshd", "-D", "-e"]
+
 |]
 
 sshKeyFileName :: FilePath
