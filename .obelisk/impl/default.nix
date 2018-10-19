@@ -157,7 +157,7 @@ in rec {
     mkdir $out
     cd $out
     ln -s "${haskellLib.justStaticExecutables frontend}/bin/frontend.jsexe/all.js" all.unminified.js
-    closure-compiler --externs "${reflex-platform.ghcjsExternsJs}" -O ADVANCED --jscomp_warning=checkVars --create_source_map="all.js.map" --source_map_format=V3 --js_output_file="all.js" all.unminified.js
+    closure-compiler --externs "${reflex-platform.ghcjsExternsJs}" -O SIMPLE --jscomp_warning=checkVars --create_source_map="all.js.map" --source_map_format=V3 --js_output_file="all.js" all.unminified.js
     echo "//# sourceMappingURL=all.js.map" >> all.js
   '';
 
