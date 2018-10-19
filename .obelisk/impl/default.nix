@@ -292,10 +292,10 @@ in rec {
                 overrides = totalOverrides;
                 packages = combinedPackages;
                 shells = {
-                  ghcSavedSplices = (lib.filter (x: lib.hasAttr x combinedPackages) [
-                    commonName
-                    frontendName
-                  ]);
+                  # ghcSavedSplices = (lib.filter (x: lib.hasAttr x combinedPackages) [
+                  #   commonName
+                  #   frontendName
+                  # ]);
                   ghc = (lib.filter (x: lib.hasAttr x combinedPackages) [
                     backendName
                     commonName
