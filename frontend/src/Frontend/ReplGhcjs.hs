@@ -172,9 +172,6 @@ codeFromResponse =
 data ClickState = DownAt (Int, Int) | Clicked | Selected
   deriving (Eq,Ord,Show,Read)
 
-main :: JSM ()
-main = mainWidget app
-
 -- | Get the top level functions from a 'Term'
 getFunctions :: Term Name -> [PactFunction]
 getFunctions (TModule _ body _) = getFunctions $ Bound.instantiate undefined body

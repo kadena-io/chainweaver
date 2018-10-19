@@ -16,21 +16,8 @@ import           Common.Route
 import           Frontend
 import qualified Obelisk.Backend                 as Ob
 
--- backend :: IO ()
--- backend = Ob.backend Ob.def
---   { Ob._backendConfig_head = do
---       fst frontend
---       -- TODO: When upgrading Obelisk, we should use that:
---       -- injectExecutableConfigs
---       let
---         k = "common/server-url"
---         doesNotExist = \e -> if isDoesNotExistError e then Just () else Nothing
---       mUrl <- liftIO $ catchJust doesNotExist
--- 	(fmap Just . T.readFile $ "config/" <> k) (const $ pure Nothing)
---       traverse_ (injectPure k) mUrl
---   }
--- backend :: Ob.Backend _ _
-backend = flip Ob.runBackend undefined Ob.Backend
+backend :: Ob.Backend BackendRoute FrontendRoute
+backend = Ob.Backend
   { Ob._backend_run = \serve -> serve $ const $ return ()
   , Ob._backend_routeEncoder = backendRouteEncoder
   }
