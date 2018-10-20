@@ -11,21 +11,25 @@ let
     # ios.bundleIdentifier = "systems.obsidian.obelisk.examples.minimal";
     # ios.bundleName = "Obelisk Minimal Example";
 
-    overrides = self: super:
-      let guardGhcjs = p: if self.ghc.isGhcjs or false then null else p;
-
-          semantic-reflex-src = pkgs.fetchFromGitHub {
-            owner = "tomsmalley";
-            repo = "semantic-reflex";
-            rev = "42bfede5e308bab4494e87ed0144f21134a4c5b3";
-            sha256 = "01rpf0vh5llx1hq4j55gmw36fvzhb95ngcykh34sgcxp5498p9f3";
-          };
-      in {
+    overrides = let
+      inherit (pkgs) lib;
+      semantic-reflex-src = pkgs.fetchFromGitHub {
+        owner = "tomsmalley";
+        repo = "semantic-reflex";
+        rev = "42bfede5e308bab4494e87ed0144f21134a4c5b3";
+        sha256 = "01rpf0vh5llx1hq4j55gmw36fvzhb95ngcykh34sgcxp5498p9f3";
+      };
+      ghcjs-overlay = self: super:
+        let guardGhcjs = p: if self.ghc.isGhcjs or false then null else p;
+            gen = name: guardGhcjs super.${name};
+            hsNames = [ "cacophony" "haskeline" "katip" "ridley" ];
+        in lib.genAttrs hsNames gen;
+      common-overlay = self: super: {
             algebraic-graphs = pkgs.haskell.lib.dontCheck super.algebraic-graphs;
-            cacophony = guardGhcjs (pkgs.haskell.lib.dontCheck (self.callHackage "cacophony" "0.8.0" {}));
-            haskeline = guardGhcjs (self.callHackage "haskeline" "0.7.4.2" {});
-            katip = guardGhcjs (pkgs.haskell.lib.doJailbreak (self.callHackage "katip" "0.3.1.4" {}));
-            ridley = guardGhcjs (pkgs.haskell.lib.dontCheck (self.callHackage "ridley" "0.3.1.2" {}));
+            cacophony = pkgs.haskell.lib.dontCheck (self.callHackage "cacophony" "0.8.0" {});
+            haskeline = self.callHackage "haskeline" "0.7.4.2" {};
+            katip = pkgs.haskell.lib.doJailbreak (self.callHackage "katip" "0.3.1.4" {});
+            ridley = pkgs.haskell.lib.dontCheck (self.callHackage "ridley" "0.3.1.2" {});
 
             bound = pkgs.haskell.lib.dontCheck super.bound;
             bytes = pkgs.haskell.lib.dontCheck super.bytes;
@@ -70,6 +74,10 @@ let
             # See: https://github.com/haskell/haddock/issues/565
             frontend = pkgs.haskell.lib.dontHaddock super.frontend;
           };
+    in lib.foldr lib.composeExtensions (_: _: {}) [
+      common-overlay
+      ghcjs-overlay
+    ];
   });
   pactServerModule = {
     certificatePath,
