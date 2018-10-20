@@ -35,22 +35,6 @@ let
             lens-aeson = pkgs.haskell.lib.dontCheck super.lens-aeson;
             trifecta = pkgs.haskell.lib.dontCheck super.trifecta;
 
-            # # Needed to work with the below version of statistics
-            # criterion = guardGhcjs (pkgs.haskell.lib.dontCheck (self.callCabal2nix "criterion" (pkgs.fetchFromGitHub {
-            #   owner = "bos";
-            #   repo = "criterion";
-            #   rev = "5a704392b670c189475649c32d05eeca9370d340";
-            #   sha256 = "1kp0l78l14w0mmva1gs9g30zdfjx4jkl5avl6a3vbww3q50if8pv";
-            # }) {}));
-
-            # # Version 1.6.4, needed by weeder, not in callHackage yet
-            # extra = guardGhcjs (pkgs.haskell.lib.dontCheck (self.callCabal2nix "extra" (pkgs.fetchFromGitHub {
-            #   owner = "ndmitchell";
-            #   repo = "extra";
-            #   rev = "4064bfa7e48a7f1b79f791560d51dbefed879219";
-            #   sha256 = "1p7rc5m70rkm1ma8gnihfwyxysr0n3wxk8ijhp6qjnqp5zwifhhn";
-            # }) {}));
-
             pact = pkgs.haskell.lib.dontCheck (self.callCabal2nix "pact" (pkgs.fetchFromGitHub {
               owner = "kadena-io";
               repo = "pact";
@@ -72,14 +56,6 @@ let
               rev = "3dc60340634c82f39f6c5dca2b3859d10925cfdf";
               sha256 = "18xcxg1h19zx6gdzk3dfs87447k3xjqn40raghjz53bg5k8cdc31";
             }) {});
-
-            # dontCheck is here because a couple tests were failing
-            # statistics = guardGhcjs (pkgs.haskell.lib.dontCheck (self.callCabal2nix "statistics" (pkgs.fetchFromGitHub {
-            #   owner = "bos";
-            #   repo = "statistics";
-            #   rev = "1ed1f2844c5a2209f5ea72e60df7d14d3bb7ac1a";
-            #   sha256 = "1jjmdhfn198pfl3k5c4826xddskqkfsxyw6l5nmwrc8ibhhnxl7p";
-            # }) {}));
 
             thyme = pkgs.haskell.lib.dontCheck (pkgs.haskell.lib.enableCabalFlag (self.callCabal2nix "thyme" (pkgs.fetchFromGitHub {
               owner = "kadena-io";
