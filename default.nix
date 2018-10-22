@@ -15,7 +15,7 @@ let
     # ios.bundleIdentifier = "systems.obsidian.obelisk.examples.minimal";
     # ios.bundleName = "Obelisk Minimal Example";
 
-    closureCompilerOptimizationLevel = "SIMPLE";
+    __closureCompilerOptimizationLevel = "SIMPLE";
 
     overrides = let
       inherit (pkgs) lib;
