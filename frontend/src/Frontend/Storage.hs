@@ -30,7 +30,7 @@ getItemStorage
 getItemStorage storage key = (fromJsonString =<< ) <$> GHCJS.getItem storage (keyToString key)
 
 setItemStorage
-  :: (Show (key data'), ToJSON data', MonadJSM m)
+  :: (MonadIO m, Show (key data'), ToJSON data', MonadJSM m)
   => GHCJS.Storage
   -> key data'
   -> data'

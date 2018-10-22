@@ -233,18 +233,18 @@ paginationWidget currentPage totalPages = buttons (def & classes .~ "fluid") $ d
   let canGoFirst = (> 1) <$> currentPage
   first <- filteredButton canGoFirst $ icon "angle double left" def
   prev <- filteredButton canGoFirst $ icon "angle left" def
-  _ <- button (def & buttonConfig_disabled .~ Static True) $ do
+  button (def & buttonConfig_disabled .~ Static True) $ do
     display currentPage
     text " of "
     display totalPages
   let canGoLast = (<) <$> currentPage <*> totalPages
   next <- filteredButton canGoLast $ icon "angle right" def
-  last' <- filteredButton canGoLast $ icon "angle double right" def
+  last <- filteredButton canGoLast $ icon "angle double right" def
   pure $ leftmost
     [ attachWith (\x _ -> pred x) (current currentPage) prev
     , 1 <$ first
     , attachWith (\x _ -> succ x) (current currentPage) next
-    , tag (current totalPages) last'
+    , tag (current totalPages) last
     ]
   where
     filteredButton okay content = do

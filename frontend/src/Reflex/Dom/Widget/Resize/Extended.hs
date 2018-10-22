@@ -25,6 +25,7 @@ import Control.Monad.Fix
 import Control.Monad.IO.Class
 import Data.Map (Map)
 import qualified Data.Map as Map
+import Data.Monoid
 import Data.Text (Text)
 import qualified Data.Text as T
 import GHCJS.DOM.Element

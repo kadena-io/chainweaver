@@ -3,6 +3,7 @@
 {-# LANGUAGE TypeApplications  #-}
 module Frontend where
 
+import           Data.Monoid
 import qualified Data.Text as T
 import           Reflex.Dom.Core
 
