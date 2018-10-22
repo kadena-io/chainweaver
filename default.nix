@@ -26,6 +26,20 @@ let
       guard-ghcjs-overlay = self: super:
         let hsNames = [ "cacophony" "haskeline" "katip" "ridley" ];
         in lib.genAttrs hsNames (name: null);
+      ghcjs-overlay = self: super: {
+        # tests rely on doctest
+        bytes = haskellLib.dontCheck super.bytes;
+        # tests rely on doctest
+        lens-aeson = haskellLib.dontCheck super.lens-aeson;
+        # tests rely on doctest
+        trifecta = haskellLib.dontCheck super.trifecta;
+        # tests rely on doctest
+        bound = haskellLib.dontCheck super.bound;
+        # extra-tests is failing
+        extra = haskellLib.dontCheck super.extra;
+        # tests hang
+        algebraic-graphs = haskellLib.dontCheck super.algebraic-graphs;
+      };
       common-overlay = self: super: {
             # algebraic-graphs = pkgs.haskell.lib.dontCheck super.algebraic-graphs;
             # cacophony = pkgs.haskell.lib.dontCheck (self.callHackage "cacophony" "0.8.0" {});
@@ -104,6 +118,7 @@ let
       common-overlay
       (optionalExtension (lib.versionOlder (getGhcVersion super.ghc) "8.4") ghc80-overlay)
       (optionalExtension (super.ghc.isGhcjs or false) guard-ghcjs-overlay)
+      (optionalExtension (super.ghc.isGhcjs or false) ghcjs-overlay)
     ] self super;
   });
   pactServerModule = {
