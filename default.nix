@@ -23,11 +23,9 @@ let
         rev = "42bfede5e308bab4494e87ed0144f21134a4c5b3";
         sha256 = "01rpf0vh5llx1hq4j55gmw36fvzhb95ngcykh34sgcxp5498p9f3";
       };
-      ghcjs-overlay = self: super:
-        let guardGhcjs = p: if self.ghc.isGhcjs or false then null else p;
-            gen = name: guardGhcjs super.${name};
-            hsNames = [ "cacophony" "haskeline" "katip" "ridley" ];
-        in lib.genAttrs hsNames gen;
+      guard-ghcjs-overlay = self: super:
+        let hsNames = [ "cacophony" "haskeline" "katip" "ridley" ];
+        in lib.genAttrs hsNames (name: null);
       common-overlay = self: super: {
             # algebraic-graphs = pkgs.haskell.lib.dontCheck super.algebraic-graphs;
             # cacophony = pkgs.haskell.lib.dontCheck (self.callHackage "cacophony" "0.8.0" {});
@@ -105,7 +103,7 @@ let
     in self: super: lib.foldr lib.composeExtensions (_: _: {}) [
       common-overlay
       (optionalExtension (lib.versionOlder (getGhcVersion super.ghc) "8.4") ghc80-overlay)
-      ghcjs-overlay
+      (optionalExtension (super.ghc.isGhcjs or false) guard-ghcjs-overlay)
     ] self super;
   });
   pactServerModule = {
