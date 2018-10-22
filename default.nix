@@ -41,28 +41,19 @@ let
         extra = haskellLib.dontCheck super.extra;
         # tests hang
         algebraic-graphs = haskellLib.dontCheck super.algebraic-graphs;
+        # hw-hspec-hedgehog doesn't work
+        pact = haskellLib.dontCheck super.pact;
       };
       common-overlay = self: super: {
-            # algebraic-graphs = pkgs.haskell.lib.dontCheck super.algebraic-graphs;
-            # cacophony = pkgs.haskell.lib.dontCheck (self.callHackage "cacophony" "0.8.0" {});
-            # haskeline = self.callHackage "haskeline" "0.7.4.2" {};
-            # katip = pkgs.haskell.lib.doJailbreak (self.callHackage "katip" "0.3.1.4" {});
-            # ridley = pkgs.haskell.lib.dontCheck (self.callHackage "ridley" "0.3.1.2" {});
 
-            # bound = pkgs.haskell.lib.dontCheck super.bound;
-            # bytes = pkgs.haskell.lib.dontCheck super.bytes;
-            # doctest = self.callHackage "doctest" "0.16.0" {};
-            # extra = pkgs.haskell.lib.dontCheck super.extra;
-            # io-streams = pkgs.haskell.lib.dontCheck super.io-streams;
-            # lens-aeson = pkgs.haskell.lib.dontCheck super.lens-aeson;
-            # trifecta = pkgs.haskell.lib.dontCheck super.trifecta;
+            intervals = pkgs.haskell.lib.dontCheck super.intervals;
 
-            pact = pkgs.haskell.lib.dontCheck (self.callCabal2nix "pact" (pkgs.fetchFromGitHub {
+            pact = pkgs.haskell.lib.addBuildDepend (self.callCabal2nix "pact" (pkgs.fetchFromGitHub {
               owner = "kadena-io";
               repo = "pact";
               rev = "3fd9d9d470069281b0b96e802cb990a210392284";
               sha256 = "1lihkkhx2gkld9gkyz1dfnbv1hq44bzswjv9g9fkhrjmf8xv4wav";
-            }) {});
+            }) {}) pkgs.z3;
 
             reflex-dom-ace = (self.callCabal2nix "reflex-dom-ace" (pkgs.fetchFromGitHub {
               owner = "reflex-frp";
@@ -95,23 +86,12 @@ let
       ghc80-overlay = self: super: {
         criterion = self.callHackage "criterion" "1.4.0.0" {};
         base-compat-batteries = haskellLib.addBuildDepend (haskellLib.doJailbreak super.base-compat-batteries) self.bifunctors;
-        pact = haskellLib.overrideCabal (self.callCabal2nix "pact" (pkgs.fetchFromGitHub {
+        pact = pkgs.haskell.lib.addBuildDepend (self.callCabal2nix "pact" (pkgs.fetchFromGitHub {
           owner = "kadena-io";
           repo = "pact";
-          rev = "d4418c67e66e29e2627a7cd5a4fbf32db4af5cc1";
-          sha256 = "062cy72sd83wymmzxwd8gbrwh6hi9ks7m8hjbhywsrblm83gi2f3";
-        }) {}) (drv: {
-          # TODO relax bounds upstream
-          jailbreak = true;
-          # TODO Fix test for hspec version
-          doCheck = false;
-          # TODO upstream to pact. Fix pact build for yaml >= 8.3.1
-          postPatch = (drv.postPatch or "") + ''
-            substituteInPlace src/Pact/Types/Logger.hs --replace \
-              "either error id $ Y.decodeEither" \
-              "either (error . show) id $ Y.decodeEither'"
-          '';
-        });
+          rev = "d0d1a771f53c47acb846e083b65948a67fb0c236";
+          sha256 = "0kybq6z6a1md0wvp90fjxhmhypbw7bqf1dbz6wbp0mjmwcsqh819";
+        }) {}) pkgs.z3;
         # statistics = haskellLib.dontCheck super.statistics;
       };
     in self: super: lib.foldr lib.composeExtensions (_: _: {}) [
