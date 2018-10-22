@@ -15,6 +15,8 @@ let
     # ios.bundleIdentifier = "systems.obsidian.obelisk.examples.minimal";
     # ios.bundleName = "Obelisk Minimal Example";
 
+    closureCompilerOptimizationLevel = "SIMPLE";
+
     overrides = let
       inherit (pkgs) lib;
       semantic-reflex-src = pkgs.fetchFromGitHub {
