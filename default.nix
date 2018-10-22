@@ -92,9 +92,7 @@ let
           };
       ghc80-overlay = self: super: {
         criterion = self.callHackage "criterion" "1.4.0.0" {};
-        megaparsec = haskellLib.dontCheck super.megaparsec;
         base-compat-batteries = haskellLib.addBuildDepend (haskellLib.doJailbreak super.base-compat-batteries) self.bifunctors;
-        modern-uri = haskellLib.dontCheck super.modern-uri;
         pact = haskellLib.overrideCabal (self.callCabal2nix "pact" (pkgs.fetchFromGitHub {
           owner = "kadena-io";
           repo = "pact";
