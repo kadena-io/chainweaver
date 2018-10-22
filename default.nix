@@ -1,10 +1,14 @@
 { system ? builtins.currentSystem # TODO: Get rid of this system cruft
 , iosSdkVersion ? "10.2"
-, obelisk ? (import ./.obelisk/impl { inherit system iosSdkVersion; })
+, obelisk ? (import ./.obelisk/impl { inherit system iosSdkVersion; __useLegacyCompilers = ghc80; })
 , pkgs ? obelisk.reflex-platform.nixpkgs
+, ghc80 ? true
 }:
 with obelisk;
 let
+  optionalExtension = cond: overlay: if cond then overlay else _: _: {};
+  getGhcVersion = ghc: if ghc.isGhcjs or false then ghc.ghcVersion else ghc.version;
+  haskellLib = pkgs.haskell.lib;
   obApp = project ./. ({ pkgs, ... }: {
     # android.applicationId = "systems.obsidian.obelisk.examples.minimal";
     # android.displayName = "Obelisk Minimal Example";
@@ -25,19 +29,19 @@ let
             hsNames = [ "cacophony" "haskeline" "katip" "ridley" ];
         in lib.genAttrs hsNames gen;
       common-overlay = self: super: {
-            algebraic-graphs = pkgs.haskell.lib.dontCheck super.algebraic-graphs;
-            cacophony = pkgs.haskell.lib.dontCheck (self.callHackage "cacophony" "0.8.0" {});
-            haskeline = self.callHackage "haskeline" "0.7.4.2" {};
-            katip = pkgs.haskell.lib.doJailbreak (self.callHackage "katip" "0.3.1.4" {});
-            ridley = pkgs.haskell.lib.dontCheck (self.callHackage "ridley" "0.3.1.2" {});
+            # algebraic-graphs = pkgs.haskell.lib.dontCheck super.algebraic-graphs;
+            # cacophony = pkgs.haskell.lib.dontCheck (self.callHackage "cacophony" "0.8.0" {});
+            # haskeline = self.callHackage "haskeline" "0.7.4.2" {};
+            # katip = pkgs.haskell.lib.doJailbreak (self.callHackage "katip" "0.3.1.4" {});
+            # ridley = pkgs.haskell.lib.dontCheck (self.callHackage "ridley" "0.3.1.2" {});
 
-            bound = pkgs.haskell.lib.dontCheck super.bound;
-            bytes = pkgs.haskell.lib.dontCheck super.bytes;
+            # bound = pkgs.haskell.lib.dontCheck super.bound;
+            # bytes = pkgs.haskell.lib.dontCheck super.bytes;
             # doctest = self.callHackage "doctest" "0.16.0" {};
-            extra = pkgs.haskell.lib.dontCheck super.extra;
-            io-streams = pkgs.haskell.lib.dontCheck super.io-streams;
-            lens-aeson = pkgs.haskell.lib.dontCheck super.lens-aeson;
-            trifecta = pkgs.haskell.lib.dontCheck super.trifecta;
+            # extra = pkgs.haskell.lib.dontCheck super.extra;
+            # io-streams = pkgs.haskell.lib.dontCheck super.io-streams;
+            # lens-aeson = pkgs.haskell.lib.dontCheck super.lens-aeson;
+            # trifecta = pkgs.haskell.lib.dontCheck super.trifecta;
 
             pact = pkgs.haskell.lib.dontCheck (self.callCabal2nix "pact" (pkgs.fetchFromGitHub {
               owner = "kadena-io";
@@ -74,10 +78,35 @@ let
             # See: https://github.com/haskell/haddock/issues/565
             frontend = pkgs.haskell.lib.dontHaddock super.frontend;
           };
-    in lib.foldr lib.composeExtensions (_: _: {}) [
+      ghc80-overlay = self: super: {
+        criterion = self.callHackage "criterion" "1.4.0.0" {};
+        megaparsec = haskellLib.dontCheck super.megaparsec;
+        base-compat-batteries = haskellLib.addBuildDepend (haskellLib.doJailbreak super.base-compat-batteries) self.bifunctors;
+        modern-uri = haskellLib.dontCheck super.modern-uri;
+        pact = haskellLib.overrideCabal (self.callCabal2nix "pact" (pkgs.fetchFromGitHub {
+          owner = "kadena-io";
+          repo = "pact";
+          rev = "d4418c67e66e29e2627a7cd5a4fbf32db4af5cc1";
+          sha256 = "062cy72sd83wymmzxwd8gbrwh6hi9ks7m8hjbhywsrblm83gi2f3";
+        }) {}) (drv: {
+          # TODO relax bounds upstream
+          jailbreak = true;
+          # TODO Fix test for hspec version
+          doCheck = false;
+          # TODO upstream to pact. Fix pact build for yaml >= 8.3.1
+          postPatch = (drv.postPatch or "") + ''
+            substituteInPlace src/Pact/Types/Logger.hs --replace \
+              "either error id $ Y.decodeEither" \
+              "either (error . show) id $ Y.decodeEither'"
+          '';
+        });
+        # statistics = haskellLib.dontCheck super.statistics;
+      };
+    in self: super: lib.foldr lib.composeExtensions (_: _: {}) [
       common-overlay
+      (optionalExtension (lib.versionOlder (getGhcVersion super.ghc) "8.4") ghc80-overlay)
       ghcjs-overlay
-    ];
+    ] self super;
   });
   pactServerModule = {
     certificatePath,
