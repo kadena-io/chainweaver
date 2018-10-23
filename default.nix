@@ -102,8 +102,6 @@ let
     ] self super;
   });
   pactServerModule = {
-    certificatePath,
-    certificateKeyPath,
     hostname,
     nginxPort,
     pactPort,
@@ -152,8 +150,8 @@ let
           listen 0.0.0.0:${toString nginxPort} ssl;
           listen [::]:${toString nginxPort} ssl;
           server_name https://${hostname};
-          ssl_certificate ${certificatePath};
-          ssl_certificate_key ${certificateKeyPath};
+          ssl_certificate /var/lib/acme/${hostname}/fullchain.pem;
+          ssl_certificate_key /var/lib/acme/${hostname}/key.pem;
 
           # Restrict transaction size:
           client_max_body_size 1m;
@@ -186,8 +184,6 @@ in obApp // {
           (obelisk.serverModules.mkBaseEc2 args)
           (obelisk.serverModules.mkObeliskApp (args // { exe = obApp.linuxExeConfigurable (pkgs.copyPathToStore config); }))
           (pactServerModule {
-            certificatePath = "/var/lib/acme/working-agreement.obsidian.systems/fullchain.pem";
-            certificateKeyPath = "/var/lib/acme/working-agreement.obsidian.systems/key.pem";
             hostname = "working-agreement.obsidian.systems";
             # The exposed port of the pact backend (proxied by nginx).
             nginxPort = 7011;
