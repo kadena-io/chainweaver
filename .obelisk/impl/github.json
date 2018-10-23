@@ -1,7 +1,7 @@
 {
   "owner": "obsidiansystems",
   "repo": "obelisk",
-  "branch": "vs-make-js-optimization-level-configurable",
-  "rev": "05d3eb48c53fcf6f5de83f6f64c881dd66bf25c9",
-  "sha256": "14a3gkxgjwvsgmab7f2zs69jzv69277p6h2mjvkkgvc12vysffgv"
+  "branch": "vs-static-head",
+  "rev": "0921a1a5dd992661272da94a4abcb0a25d5318b2",
+  "sha256": "1vc37iw9jnngqmzq01yh8fmfr6xw9dyghjcgqmh5zpr6ib7jvykw"
 }
