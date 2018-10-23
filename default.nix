@@ -207,6 +207,7 @@ in obApp // {
             certificatePath = "/var/lib/acme/working-agreement.obsidian.systems/fullchain.pem";
             certificateKeyPath = "/var/lib/acme/working-agreement.obsidian.systems/key.pem";
             hostname = "working-agreement.obsidian.systems";
+            # The exposed port of the pact backend (proxied by nginx).
             nginxPort = 7011;
             pactPort = 7010;
             pactDataDir = "/var/lib/pact-web/pact-log";
