@@ -1,23 +1,19 @@
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE OverloadedStrings #-}
 module Backend where
 
 import           Control.Concurrent.Async        (withAsync, mapConcurrently_)
-import           Control.Exception               (catchJust)
-import           Control.Monad                   (void)
-import           Control.Monad.IO.Class          (liftIO)
 import           Data.Foldable                   (traverse_)
 import           Data.Monoid                     ((<>))
 import qualified Data.Text                       as T
 import qualified Data.Text.IO                    as T
 import qualified Obelisk.ExecutableConfig        as Conf
-import           Obelisk.ExecutableConfig.Inject (injectPure)
 import qualified Pact.Server.Server              as Pact
 import           System.Directory                (createDirectoryIfMissing)
 import           System.FilePath                 ((</>))
 
 import           Common.Api
 import           Common.Route
-import           Frontend
 import qualified Obelisk.Backend                 as Ob
 
 

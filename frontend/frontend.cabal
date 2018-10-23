@@ -87,7 +87,8 @@ library
                     , OverloadedStrings
 
 executable frontend
-  main-is: src/main.hs
+  main-is: main.hs
+  hs-source-dirs: src-bin
 
   build-depends: base
                , common
