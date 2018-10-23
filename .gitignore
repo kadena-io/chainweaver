@@ -8,3 +8,6 @@ ghcid-output.txt
 taskell.md
 working-agreementobsidiansystems.pem
 pact-log
+/deploy*
+/.ghc*
+/*/dist
