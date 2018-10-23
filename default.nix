@@ -141,7 +141,7 @@ let
         # So preStart runs as root:
         PermissionsStartOnly = true;
         User = pactUser;
-        ExecStart = "${obApp.ghc.pact}/bin/pact -s ${pactConfig}";
+        ExecStart = "${pkgs.haskell.lib.justStaticExecutables obApp.ghc.pact}/bin/pact -s ${pactConfig}";
         Restart = "always";
         KillMode = "process";
       };
