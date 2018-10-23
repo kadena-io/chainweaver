@@ -10,7 +10,7 @@
 {-# LANGUAGE RankNTypes                 #-}
 {-# LANGUAGE ScopedTypeVariables        #-}
 {-# LANGUAGE TemplateHaskell            #-}
-{-# LANGUAGE TypeFamilies            #-}
+{-# LANGUAGE TypeFamilies               #-}
 
 -- | Interface for accessing Pact backends.
 --
@@ -36,36 +36,40 @@ module Frontend.Backend
   , prettyPrintBackendError
   ) where
 
-import           Control.Arrow            (first, left)
-import           Control.Concurrent       (forkIO)
-import           Control.Lens             hiding ((.=))
+import           Control.Arrow                     (first, left)
+import           Control.Arrow                     ((&&&))
+import           Control.Concurrent                (forkIO)
+import           Control.Lens                      hiding ((.=))
 import           Control.Monad.Except
-import           Data.Aeson               (FromJSON (..), Object, Value,
-                                           Value (..), decode, eitherDecode,
-                                           encode, object, toJSON, withObject,
-                                           (.:), (.=))
-import           Data.Aeson.Types         (typeMismatch, parseMaybe)
-import qualified Data.ByteString.Lazy     as BSL
-import           Data.Default             (def)
-import qualified Data.HashMap.Strict      as H
-import qualified Data.Map                 as Map
-import           Data.Map.Strict          (Map)
-import qualified Data.Set                 as Set
-import           Data.Text                (Text)
-import qualified Data.Text                as T
-import qualified Data.Text.Encoding       as T
-import qualified Data.Text.IO             as T
-import           Data.Traversable         (for)
-import           Data.Time.Clock          (getCurrentTime)
-import           Generics.Deriving.Monoid (mappenddefault, memptydefault)
-import           Obelisk.ExecutableConfig (get)
-import           Reflex.NotReady.Class
+import           Data.Aeson                        (FromJSON (..), Object,
+                                                    Value (..), decode,
+                                                    eitherDecode, encode,
+                                                    object, toJSON, withObject,
+                                                    (.:), (.=))
+import           Data.Aeson.Types                  (parseMaybe, typeMismatch)
+import qualified Data.ByteString.Lazy              as BSL
+import           Data.Default                      (def)
+import qualified Data.HashMap.Strict               as H
+import qualified Data.Map                          as Map
+import           Data.Map.Strict                   (Map)
+import qualified Data.Set                          as Set
+import           Data.Text                         (Text)
+import qualified Data.Text                         as T
+import qualified Data.Text.Encoding                as T
+import qualified Data.Text.IO                      as T
+import           Data.Time.Clock                   (getCurrentTime)
+import           Data.Traversable                  (for)
+import           Generics.Deriving.Monoid          (mappenddefault,
+                                                    memptydefault)
+import           Obelisk.ExecutableConfig          (get)
 import           Reflex.Dom.Class
 import           Reflex.Dom.Xhr
+import           Reflex.NotReady.Class
 import           Safe
 
-import Language.Javascript.JSaddle.Monad (JSM, askJSM, JSContextRef)
+import           Language.Javascript.JSaddle.Monad (JSContextRef, JSM, askJSM)
 
+import           Common.Api
 import           Frontend.Backend.Pact
 import           Frontend.Crypto.Ed25519
 import           Frontend.Foundation
@@ -85,9 +89,9 @@ newtype BackendName = BackendName
 
 -- | Request data to be sent to the backend.
 data BackendRequest = BackendRequest
-  { _backendRequest_code :: Text
+  { _backendRequest_code    :: Text
     -- ^ Pact code to be deployed, the `code` field of the <https://pact-language.readthedocs.io/en/latest/pact-reference.html#cmd-field-and-payload exec> payload.
-  , _backendRequest_data :: Object
+  , _backendRequest_data    :: Object
     -- ^ The data to be deployed (referenced by deployed code). This is the
     -- `data` field of the `exec` payload.
   , _backendRequest_backend :: BackendUri
@@ -196,12 +200,12 @@ instance FromJSON ListenResponse where
 -- | Available backends:
 getBackends :: IO (Map BackendName BackendUri)
 getBackends = do
-  serverUrl <- T.strip . fromMaybe "http://localhost:7010" <$> get "config/common/server-url"
-  serverUrl2 <- T.strip . fromMaybe "http://localhost:7020" <$> get "config/common/server-url"
-  pure $ Map.fromList . map (first BackendName) $
-    [ ("dev-backend", serverUrl)
-    , ("2-dev-backend", serverUrl2)
-    ]
+  let
+    buildUrl = ("http://localhost:" <>) . getPactInstancePort
+    buildName = BackendName . ("dev-" <>) . T.pack . show
+    buildServer =  buildName &&& buildUrl
+    servers = map buildServer [1 .. numPactInstances]
+  pure $ Map.fromList servers
 
 
 makeBackend

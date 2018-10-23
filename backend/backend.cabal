@@ -11,15 +11,19 @@ library
                , common
                , frontend
                , obelisk-backend
-               , obelisk-executable-config-inject
                , text
+               , filepath
+               , pact
+               , directory
+               , obelisk-executable-config
+               , async
   exposed-modules:
     Backend
   ghc-options: -Wall
 
 executable backend
   main-is: main.hs
-  hs-source-dirs: src
+  hs-source-dirs: src-bin
   if impl(ghcjs)
     buildable: False
   build-depends: base
