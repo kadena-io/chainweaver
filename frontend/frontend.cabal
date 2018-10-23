@@ -32,13 +32,15 @@ library
                , mtl
                , newtype-generics
                , obelisk-executable-config
+               , obelisk-frontend
+               , obelisk-route
                , pact
                , reflex
                , reflex-dom
                , reflex-dom-ace
                , safe
                , semantic-reflex
-               , static
+               , obelisk-generated-static
                , string-qq
                , template-haskell
                , text
@@ -90,7 +92,9 @@ executable frontend
   build-depends: base
                , common
                , reflex-dom
-               , static
+               , obelisk-generated-static
+               , obelisk-frontend
+               , obelisk-route
                , text
                , frontend
 

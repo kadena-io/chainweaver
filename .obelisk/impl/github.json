@@ -1,7 +1,7 @@
 {
   "owner": "obsidiansystems",
   "repo": "obelisk",
-  "branch": "vs-simple-optimisations",
-  "rev": "e497799be318fbb9a534de519804be480e6ee4f5",
-  "sha256": "12zcfn7gq14d2ns5dz0kccvih614vg1srvhl9km336vhgw6in3yf"
+  "branch": "vs-static-head",
+  "rev": "0921a1a5dd992661272da94a4abcb0a25d5318b2",
+  "sha256": "1vc37iw9jnngqmzq01yh8fmfr6xw9dyghjcgqmh5zpr6ib7jvykw"
 }

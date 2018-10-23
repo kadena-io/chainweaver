@@ -7,13 +7,15 @@ import           Data.Monoid
 import qualified Data.Text as T
 import           Reflex.Dom.Core
 
+import           Common.Route
 import           Frontend.ReplGhcjs
-import           Static
+import           Obelisk.Frontend
+import           Obelisk.Route
+import           Obelisk.Generated.Static
 
-frontend :: (StaticWidget x (), Widget x ())
-frontend = (head', body)
-  where
-    head' = do
+frontend :: Frontend (R FrontendRoute)
+frontend = Frontend
+  { _frontend_head= do
       -- Global site tag (gtag.js) - Google Analytics
       let gaTrackingId = "UA-127512784-1"
           gtagSrc = "https://www.googletagmanager.com/gtag/js?id=" <> gaTrackingId
@@ -42,4 +44,7 @@ frontend = (head', body)
       elAttr "script" ("type" =: "text/javascript" <> "src" =: static @"js/nacl-fast.min-v1.0.0.js") blank
       elAttr "script" ("type" =: "text/javascript" <> "src" =: "https://cdnjs.cloudflare.com/ajax/libs/ace/1.4.1/theme-solarized_dark.js") blank
       elAttr "link" ("href" =: static @"css/index.css" <> "rel" =: "stylesheet" <> "type" =: "text/css") blank
-    body = app
+
+ , _frontend_body = prerender (text "Loading, stay tight ...") app
+ , _frontend_headRender = HeadRender_Static
+ }

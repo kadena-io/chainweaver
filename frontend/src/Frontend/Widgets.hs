@@ -1,4 +1,4 @@
-{-# LANGUAGE FlexibleContexts       #-}
+{-# LANGUAGE FlexibleContexts      #-}
 {-# LANGUAGE LambdaCase            #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE OverloadedStrings     #-}
@@ -8,19 +8,46 @@ module Frontend.Widgets where
 
 import           Control.Lens
 import           Control.Monad
+import           Control.Monad.Fix           (MonadFix)
 import           Data.Map.Strict             (Map)
 import qualified Data.Map.Strict             as Map
-import           Data.Monoid
 import           Data.Text                   (Text)
 import qualified Data.Text                   as T
 import           Language.Javascript.JSaddle (js0, liftJSM, pToJSVal)
+import           Obelisk.Frontend            (ObeliskWidget)
 import           Reflex.Dom.Core             (keypress, _textInput_element)
 import           Reflex.Dom.SemanticUI       hiding (mainWidget)
 import           Reflex.Network.Extended
+-- import Reflex.Dom.Prerender (Prerender, prerender)
+
+import Frontend.Foundation
+
+{- -- | Variant of  a semantic-reflex textInput that also works with pre-render. -}
+{- semTextInput -}
+{-   :: forall x t m -}
+{-   . (DomBuilder t m, Prerender x m, DomBuilder x m) -}
+{-   => TextInputConfig t -> m (TextInput t) -}
+{- semTextInput cfg = prerender serverW clientW -}
+{-   where -}
+{-     {- clientW :: forall js. (PrerenderClientConstraint js m, DomBuilderSpace m ~ GhcjsDomSpace)  => m (TextInput t) -} -}
+{-     clientW = textInput cfg -}
+
+{-     {- serverW :: m (TextInput t) -} -}
+{-     serverW = do -}
+{-       v <- inputElement  def -}
+{-       pure $ TextInput -}
+{-         { _textInput_value = pure "" -}
+{-         , _textInput_input = never -}
+{-         , _textInput_keypress = never -}
+{-         , _textInput_keydown = never -}
+{-         , _textInput_keyup = never -}
+{-         , _textInput_hasFocus = pure False -}
+{-         , _textInput_builderElement = v -}
+{-         } -}
 
 
 showLoading
-  :: (MonadWidget t m, Monoid b)
+  :: (NotReady t m, Adjustable t m, PostBuild t m, DomBuilder t m, Monoid b)
   => Dynamic t (Maybe a)
   -> (a -> m b)
   -> m (Event t b)
@@ -32,7 +59,7 @@ showLoading i w = do
       pure mempty
 
 accordionItem'
-  :: MonadWidget t m
+  :: (DomBuilder t m, PostBuild t m, MonadHold t m, MonadFix m)
   => Bool
   -> Text
   -> Text
@@ -50,7 +77,9 @@ accordionItem' initActive contentClass title inner = mdo
       True -> " active"
 
 
-accordionItem :: MonadWidget t m => Bool -> Text -> Text -> m a -> m a
+accordionItem
+  :: (DomBuilder t m, PostBuild t m, MonadHold t m, MonadFix m)
+  => Bool -> Text -> Text -> m a -> m a
 accordionItem initActive contentClass title inner =
   snd <$> accordionItem' initActive contentClass title inner
 
@@ -61,7 +90,9 @@ makeClickable item = do
 
 -- | An HTML element that delivers an element on `Enter` press.
 enterEl
-  :: MonadWidget t m
+  :: ( DomBuilder t m
+     , Reflex t
+     )
   => Text -> Map Text Text -> m a -> m (Event t (), a)
 enterEl name mAttrs child = do
   (e, r) <- elAttr' name mAttrs child
@@ -81,7 +112,7 @@ enterEl name mAttrs child = do
 --   The resulting Event contains the current content of the InputWidget at
 --   Enter press or button click.
 confirmTextInput
-  :: MonadWidget t m
+  :: (DomBuilder t m, MonadJSM (Performable m), PerformEvent t m)
   => m (TextInput t)
   -> m (Event t ())
   -> m (TextInput t, Event t Text)
@@ -106,7 +137,7 @@ confirmTextInput i b =
 -- Shamelessly stolen (and adjusted) from reflex-dom-contrib:
 
 tabPane'
-    :: (MonadWidget t m, Eq tab)
+    :: (Eq tab, DomBuilder t m, PostBuild t m)
     => Map Text Text
     -> Dynamic t tab
     -> tab
@@ -117,7 +148,7 @@ tabPane' staticAttrs currentTab t child = do
     elDynAttr' "div" mAttrs child
 
 tabPane
-    :: (MonadWidget t m, Eq tab)
+    :: (Eq tab, DomBuilder t m, PostBuild t m)
     => Map Text Text
     -> Dynamic t tab
     -> tab
@@ -140,7 +171,10 @@ addDisplayNone mAttrs isActive = zipDynWith f isActive mAttrs
 ------------------------------------------------------------------------------
 -- | Validated input with button
 validatedInputWithButton
-  :: MonadWidget t m
+  :: ( DomBuilder t m, TriggerEvent t m, PerformEvent t m, PostBuild t m
+     , MonadJSM (Performable m), MonadHold t m, MonadFix m
+     , DomBuilderSpace m ~ GhcjsDomSpace
+     )
   => (Text -> Performable m (Either Text Text))
   -- ^ Validation function returning 'Left' an error message or 'Right' the value
   -> Text -- ^ Placeholder
@@ -189,7 +223,9 @@ validatedInputWithButton check placeholder buttonText = mdo
 
 -- | Page picker widget
 paginationWidget
-  :: MonadWidget t m
+  :: ( TriggerEvent t m, DomBuilder t m, MonadIO (Performable m)
+     , PerformEvent t m, PostBuild t m , MonadHold t m, MonadFix m
+     )
   => Dynamic t Int  -- ^ Current page
   -> Dynamic t Int  -- ^ Total number of pages
   -> m (Event t Int)

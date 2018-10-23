@@ -66,13 +66,14 @@ import           Frontend.UI.JsonData
 import           Frontend.UI.Wallet
 import           Frontend.Wallet
 import           Frontend.Widgets
-import           Static
+import           Obelisk.Generated.Static
 
 type LogMsg = Text
 
 data ExampleContract = ExampleContract
   { _exampleContract_name :: Text
-  , _exampleContract_file :: Text
+  , _exampleContract_code :: Text
+  , _exampleContract_data :: Text
   } deriving Show
 
 data DeployedContract = DeployedContract
@@ -160,11 +161,11 @@ codeExtension = ".repl"
 dataExtension :: Text
 dataExtension = ".data.json"
 
-toCodeFile :: ExampleContract -> Text
-toCodeFile = (<> codeExtension) . _exampleContract_file
+-- toCodeFile :: ExampleContract -> Text
+-- toCodeFile = (<> codeExtension) . _exampleContract_file
 
-toDataFile :: ExampleContract -> Text
-toDataFile = (<> dataExtension) . _exampleContract_file
+-- toDataFile :: ExampleContract -> Text
+-- toDataFile = (<> dataExtension) . _exampleContract_file
 
 codeFromResponse :: XhrResponse -> Text
 codeFromResponse =
@@ -172,9 +173,6 @@ codeFromResponse =
 
 data ClickState = DownAt (Int, Int) | Clicked | Selected
   deriving (Eq,Ord,Show,Read)
-
-main :: JSM ()
-main = mainWidget app
 
 -- | Get the top level functions from a 'Term'
 getFunctions :: Term Name -> [PactFunction]
@@ -250,8 +248,8 @@ app = void . mfix $ \ ~(cfg, ideL) -> elClass "div" "app" $ do
       onNewContractName <- tagOnPostBuild contractName
       let (onExampleContract, onDeployedContract) = fanEither onNewContractName
       -- Loading of example contracts
-      code <- loadContractData toCodeFile onExampleContract
-      json <- loadContractData toDataFile onExampleContract
+      code <- loadContractData $ fmap _exampleContract_code onExampleContract
+      json <- loadContractData $ fmap _exampleContract_data onExampleContract
       onCodeJson <- waitForEvents (,) onExampleContract code json
 
       -- Loading of deployed contracts
@@ -288,11 +286,10 @@ app = void . mfix $ \ ~(cfg, ideL) -> elClass "div" "app" $ do
           , pure . T.pack . show <$> deployedResultError
           ]
 
-    loadContractData getFileName onNewContractName =
+    loadContractData onNewContractName =
       fmap (fmap codeFromResponse)
       . performRequestAsync $ ffor onNewContractName
-      $ \example ->
-          xhrRequest "GET" (getFileName example) def
+      $ \example -> xhrRequest "GET" example def
 
 -- | Code editing (left hand side currently)
 codePanel :: forall t m. MonadWidget t m => Ide t -> m (IdeCfg t)
@@ -815,9 +812,16 @@ controlBar ideL = do
 
 exampleData :: [ExampleContract]
 exampleData =
-  [ ExampleContract "Hello World" "examples/helloWorld-1.0"
-  , ExampleContract "Simple Payment" "examples/simplePayments-1.0"
-  , ExampleContract "International Payment" "examples/internationalPayments-1.0"
+  [ ExampleContract "Hello World"
+    (static @ "examples/helloWorld-1.0.repl")
+    (static @ "examples/helloWorld-1.0.data.json")
+  , ExampleContract "Simple Payment"
+    (static @ "examples/simplePayments-1.0.repl")
+    (static @ "examples/simplePayments-1.0.data.json")
+  , ExampleContract "International Payment"
+    (static @ "examples/internationalPayments-1.0.repl")
+    (static @ "examples/internationalPayments-1.0.data.json")
+
   {- , ExampleContract "Commercial Paper" "examples/commercialPaper-1.0" -}
   ]
 
