@@ -46,4 +46,5 @@ frontend = Frontend
       elAttr "link" ("href" =: static @"css/index.css" <> "rel" =: "stylesheet" <> "type" =: "text/css") blank
 
  , _frontend_body = prerender (text "Loading, stay tight ...") app
+ , _frontend_headRender = HeadRender_Static
  }
