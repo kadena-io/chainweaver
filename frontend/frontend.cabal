@@ -44,6 +44,7 @@ library
                , text
                , time
                , unordered-containers
+               , modern-uri
 
   exposed-modules: Frontend
                  , Frontend.Backend

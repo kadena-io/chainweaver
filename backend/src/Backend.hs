@@ -22,9 +22,13 @@ backend = Ob.backend Ob.def
       -- TODO: When upgrading Obelisk, we should use that:
       -- injectExecutableConfigs
       let
-        k = "common/server-url"
+        k1 = "common/pact-port"
+        k2 = "common/route"
         doesNotExist = \e -> if isDoesNotExistError e then Just () else Nothing
       mUrl <- liftIO $ catchJust doesNotExist
-	(fmap Just . T.readFile $ "config/" <> k) (const $ pure Nothing)
-      traverse_ (injectPure k) mUrl
+	(fmap Just . T.readFile $ "config/" <> k2) (const $ pure Nothing)
+      traverse_ (injectPure k2) mUrl
+      mPort <- liftIO $ catchJust doesNotExist
+	(fmap Just . T.readFile $ "config/" <> k1) (const $ pure Nothing)
+      traverse_ (injectPure k1) mPort
   }

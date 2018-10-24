@@ -120,7 +120,7 @@ let
           };
   });
   pactServerModule = {
-    hostname,
+    hostName,
     nginxPort,
     pactPort,
     pactDataDir,
@@ -167,9 +167,9 @@ let
         server {
           listen 0.0.0.0:${toString nginxPort} ssl;
           listen [::]:${toString nginxPort} ssl;
-          server_name https://${hostname};
-          ssl_certificate /var/lib/acme/${hostname}/fullchain.pem;
-          ssl_certificate_key /var/lib/acme/${hostname}/key.pem;
+          server_name https://${hostName};
+          ssl_certificate /var/lib/acme/${hostName}/fullchain.pem;
+          ssl_certificate_key /var/lib/acme/${hostName}/key.pem;
 
           # Restrict transaction size:
           client_max_body_size 1m;
@@ -202,10 +202,11 @@ in obApp // {
           (obelisk.serverModules.mkBaseEc2 args)
           (obelisk.serverModules.mkObeliskApp (args // { exe = obApp.linuxExeConfigurable (pkgs.copyPathToStore deployConfig); }))
           (pactServerModule {
-            hostname = "working-agreement.obsidian.systems";
+            hostName = routeHost;
             # The exposed port of the pact backend (proxied by nginx).
-            nginxPort = 7011;
-            pactPort = 7010;
+            # This is a hack for this release only, if common/pact-port does not exist: This crashes.
+            nginxPort = import (builtins.toPath "${deployConfig}/common/pact-port");
+            pactPort = 7009;
             pactDataDir = "/var/lib/pact-web/pact-log";
             pactUser = "pact";
           })

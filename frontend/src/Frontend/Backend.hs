@@ -59,6 +59,9 @@ import           Obelisk.ExecutableConfig (get)
 import           Reflex.Dom.Class
 import           Reflex.Dom.Xhr
 import           Safe
+import           Safe                     (fromJustNote)
+import qualified Text.URI                 as URI
+import           Text.URI.Lens            (authPort, uriAuthority)
 
 
 import           Frontend.Backend.Pact
@@ -195,9 +198,19 @@ instance FromJSON ListenResponse where
 -- | Available backends:
 getBackends :: IO (Map BackendName BackendUri)
 getBackends = do
-  serverUrl <- T.strip . fromMaybe "http://localhost:7010" <$> get "common/server-url"
+  serverUrlText <- T.strip . fromJustNote "config/common/route missing!"
+    <$> get "common/route"
+  pactPortText <- fromJustNote "config/common/pact-port missing!"
+    <$> get "common/pact-port"
+  let
+    pactPort = fromJustNote "Invalid pact-port!" . readMay . T.unpack
+      $ pactPortText
+    serverUrl = fromJustNote "config/common/route did not contain a vaild URI!"
+      $ URI.mkURI serverUrlText
+    pactUrl = serverUrl & uriAuthority . _Right . authPort .~ Just pactPort
+
   pure $ Map.fromList . map (first BackendName) $
-    [ ("dev-backend", serverUrl) ]
+    [ ("dev-backend", URI.render pactUrl) ]
 
 
 makeBackend
@@ -260,7 +273,7 @@ loadModules w b cfg = do
 
 -- | Transform an endpoint like /send to a valid URL.
 url :: BackendUri -> Text -> Text
-url b endpoint = b <> "/api/v1" <> endpoint
+url b endpoint = b <> "api/v1" <> endpoint
 
 -- | Send a transaction via the /send endpoint.
 --
