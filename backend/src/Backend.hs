@@ -1,20 +1,29 @@
+{-# LANGUAGE LambdaCase          #-}
+{-# LANGUAGE OverloadedStrings   #-}
 {-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE OverloadedStrings #-}
+
 module Backend where
 
-import           Control.Concurrent.Async        (withAsync, mapConcurrently_)
-import           Data.Foldable                   (traverse_)
-import           Data.Monoid                     ((<>))
-import qualified Data.Text                       as T
-import qualified Data.Text.IO                    as T
-import qualified Obelisk.ExecutableConfig        as Conf
-import qualified Pact.Server.Server              as Pact
-import           System.Directory                (createDirectoryIfMissing)
-import           System.FilePath                 ((</>))
+import           Control.Concurrent.Async (mapConcurrently_, withAsync)
+import           Control.Monad.Identity   (Identity (..))
+import           Control.Monad.IO.Class   (liftIO)
+import           Data.Dependent.Sum       (DSum ((:=>)))
+import           Data.Foldable            (traverse_)
+import           Data.List                (foldl')
+import           Data.Monoid              ((<>))
+import qualified Data.Text                as T
+import qualified Data.Text.IO             as T
+import qualified Obelisk.Backend          as Ob
+import qualified Obelisk.ExecutableConfig as Conf
+import           Obelisk.Route            (R)
+import qualified Pact.Server.Server       as Pact
+import           Snap                     (Snap)
+import           Snap.Util.FileServe      (serveFile)
+import           System.Directory         (createDirectoryIfMissing, canonicalizePath)
+import           System.FilePath          ((</>))
 
 import           Common.Api
 import           Common.Route
-import qualified Obelisk.Backend                 as Ob
 
 
 -- | Configuration for pact instances.
@@ -47,22 +56,23 @@ backend :: Ob.Backend BackendRoute FrontendRoute
 backend = Ob.Backend
     { Ob._backend_run = \serve -> do
 
-        wantsBackends <- getHasDevPactBackends
-        if wantsBackends
-           then withPactInstances serve
-           else serve $ const $ pure ()
+        mRuntimeConfig <- getRuntimeConfigPath
+        case mRuntimeConfig of
+          -- Devel mode:
+          Nothing
+            -> withDevelPactInstances serve
+          -- Production mode:
+          Just p -> do
+           serve $ serveBackendRoute p
 
     , Ob._backend_routeEncoder = backendRouteEncoder
     }
   where
-    getHasDevPactBackends :: IO Bool
-    getHasDevPactBackends = do
-      mR <- Conf.get "config/backend/pact-backends-file"
-      pure $ case mR of
-        Nothing -> True
-        Just _  -> False
+    getRuntimeConfigPath :: IO (Maybe FilePath)
+    getRuntimeConfigPath =
+      fmap (T.unpack . T.strip) <$> Conf.get "config/backend/runtime-config-path"
 
-    withPactInstances serve = do
+    withDevelPactInstances serve = do
       traverse_ (createDirectoryIfMissing True . _pic_log) pactConfigs
       createDirectoryIfMissing False $ pactConfigDir
       traverse_ writePactConfig pactConfigs
@@ -71,6 +81,22 @@ backend = Ob.Backend
 
       withAsync (mapConcurrently_ servePact pactConfigs) $ \_ ->
           serve (const $ pure ())
+
+    serveBackendRoute :: FilePath -> R BackendRoute -> Snap ()
+    serveBackendRoute dynConfigs = \case
+      BackendRoute_DynConfigs :=> Identity ps
+        -> do
+          let
+            strSegs = map T.unpack ps
+            p = foldl' (</>) dynConfigs strSegs
+          pNorm <- liftIO $ canonicalizePath p
+          baseNorm <- liftIO $ canonicalizePath dynConfigs
+          -- Sanity check: Make sure we are serving a file in the target directory.
+          if length baseNorm < length pNorm
+             then serveFile p
+             else pure () -- We should probably throw an error instead, I guess.
+
+      _ -> pure ()
 
 writePactConfig :: PactInstanceConfig -> IO ()
 writePactConfig cfg =

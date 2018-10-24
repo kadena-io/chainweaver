@@ -30,6 +30,19 @@ data BackendRoute :: * -> * where
   -- You can define any routes that will be handled specially by the backend here.
   -- i.e. These do not serve the frontend, but do something different, such as serving static files.
 
+  -- | Route for accessing configurations that can change at runtime.
+  --
+  -- E.g. the list of available pact backends.
+  BackendRoute_DynConfigs :: BackendRoute [Text]
+
+-- | Path on the server where all dynamic configurations are stored.
+--
+--   Like `BackendRoute_ConfigPactBackends` for example. It is a directory that
+--   is writable by some user (root) and provides configuration to the
+--   application that can change at runtime of the server.
+dynConfigsRoot :: Text
+dynConfigsRoot = "dyn-configs"
+
 data FrontendRoute :: * -> * where
   FrontendRoute_Main :: FrontendRoute ()
   -- This type is used to define frontend routes, i.e. ones for which the backend will serve the frontend.
@@ -39,7 +52,10 @@ backendRouteEncoder
 backendRouteEncoder = handleEncoder (const (InL BackendRoute_Missing :/ ())) $
   pathComponentEncoder $ \case
     InL backendRoute -> case backendRoute of
-      BackendRoute_Missing -> PathSegment "missing" $ unitEncoder mempty
+      BackendRoute_Missing
+        -> PathSegment "missing" $ unitEncoder mempty
+      BackendRoute_DynConfigs
+        -> PathSegment "dyn-configs" $ pathOnlyEncoder
     InR obeliskRoute -> obeliskRouteSegment obeliskRoute $ \case
       -- The encoder given to PathEnd determines how to parse query parameters,
       -- in this example, we have none, so we insist on it.
