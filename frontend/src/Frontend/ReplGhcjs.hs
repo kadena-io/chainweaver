@@ -375,7 +375,7 @@ envPanel ideL cfg = mdo
     void . dyn $ traverse_ (snippetWidget . OutputSnippet) <$> _ide_msgs ideL
     pure mempty
 
-  functionsCfg <- tabPane ("style" =: "overflow: auto") curSelection EnvSelection_Functions $ do
+  _functionsCfg <- tabPane ("style" =: "overflow: auto") curSelection EnvSelection_Functions $ do
     header def $ text "Public functions"
     dyn_ $ ffor (_ide_deployed ideL) $ \case
       Nothing -> paragraph $ text "Load a deployed contract with the module explorer to see the list of available functions."
@@ -565,9 +565,9 @@ moduleExplorer ideL = mdo
       selectableItem c isSel $ do
         text c
         (c <$) <$> loadButton isSel
-    let searchSelected = switch . current $ fmap Right . leftmost . fmap fst . Map.elems <$> searchClick
-        searchLoaded = switch . current $ fmap (Right . DeployedContract) . leftmost . fmap snd . Map.elems <$> searchClick
-    pure (searchSelected, searchLoaded)
+    let searchSelected1 = switch . current $ fmap Right . leftmost . fmap fst . Map.elems <$> searchClick
+        searchLoaded1 = switch . current $ fmap (Right . DeployedContract) . leftmost . fmap snd . Map.elems <$> searchClick
+    pure (searchSelected1, searchLoaded1)
 
   let itemsPerPage = 10 :: Int
       numberOfItems :: Dynamic t Int
