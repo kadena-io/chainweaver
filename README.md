@@ -3,7 +3,8 @@
 ## Clone the repo
 
 ```bash
-git clone git@github.com:kadena-io/pact-web.git
+$ git clone git@github.com:kadena-io/pact-web.git
+$ cd pact-web
 ```
 
 Make sure you have checked out the master branch.
