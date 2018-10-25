@@ -36,8 +36,7 @@ module Frontend.Backend
   , prettyPrintBackendError
   ) where
 
-import           Control.Arrow                     (first, left)
-import           Control.Arrow                     ((&&&))
+import           Control.Arrow                     (first, left, (&&&), (***))
 import           Control.Concurrent                (forkIO)
 import           Control.Lens                      hiding ((.=))
 import           Control.Monad.Except
@@ -247,7 +246,10 @@ getBackends = do
           xhrRequest "GET" pactServerListPath def
 
       let
-        getListFromResp = fmap parsePactServerList . _xhrResponse_responseText
+        getListFromResp r =
+          if _xhrResponse_status r == 200
+             then fmap parsePactServerList . _xhrResponse_responseText $ r
+             else Just staticList
         onList = either (const (Just staticList)) getListFromResp <$> onResError
       holdDyn Nothing onList
 
@@ -263,13 +265,10 @@ getBackends = do
 parsePactServerList :: Text -> Map BackendName BackendUri
 parsePactServerList raw =
   let
-    rawEntries = map (map T.strip . T.splitOn ":") . T.lines $ raw
-    validate :: [Text] -> Maybe (BackendName, BackendUri)
-    validate = \case
-      [n, u] -> Just (BackendName n, u)
-      _      -> Nothing
+    rawEntries = map (fmap (T.dropWhile (== ':')) . T.breakOn ":") . T.lines $ raw
+    strippedEntries = map (BackendName . T.strip *** T.strip) rawEntries
   in
-    Map.fromList . mapMaybe validate $ rawEntries
+    Map.fromList strippedEntries
 
 loadModules
   :: forall t m
