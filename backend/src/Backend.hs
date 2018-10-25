@@ -63,21 +63,13 @@ backend = Ob.Backend
         hasServerList <- isJust <$> getPactServerList
         if hasServerList
            -- Production mode:
-           then do
-             p <- getRuntimeConfigPath
-             serve $ serveBackendRoute p
+           then serve $ serveBackendRoute "/var/lib/backend/dyn-configs"
            --  Devel mode:
            else withDevelPactInstances serve
 
     , Ob._backend_routeEncoder = backendRouteEncoder
     }
   where
-    getRuntimeConfigPath :: IO FilePath
-    getRuntimeConfigPath = toFilePath <$> Conf.get "config/backend/dyn-configs-path"
-      where
-        errorMsg = "config/backend/dyn-configs-path must exist in production mode!"
-        toFilePath = fromJustNote errorMsg . fmap (T.unpack . T.strip)
-
     withDevelPactInstances serve = do
       traverse_ (createDirectoryIfMissing True . _pic_log) pactConfigs
       createDirectoryIfMissing False $ pactConfigDir

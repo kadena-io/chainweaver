@@ -184,7 +184,7 @@ in obApp // {
           (obelisk.serverModules.mkBaseEc2 args)
           (obelisk.serverModules.mkObeliskApp (args // { exe = obApp.linuxExeConfigurable (pkgs.copyPathToStore config); }))
           (pactServerModule {
-            hostname = "working-agreement.obsidian.systems";
+            hostname = routeHost;
             # The exposed port of the pact backend (proxied by nginx).
             nginxPort = 7011;
             pactPort = 7010;
@@ -192,6 +192,14 @@ in obApp // {
             pactUser = "pact";
           })
         ];
+        system.activationScripts = {
+          setupBackendRuntime = {
+            text = ''
+                mkdir -p /var/lib/backend/dyn-configs
+              '';
+          };
+
+        };
       };
     };
 }
