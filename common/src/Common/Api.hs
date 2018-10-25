@@ -1,3 +1,5 @@
+{-# LANGUAGE OverloadedStrings #-}
+
 module Common.Api where
 
 import Data.Text (Text)

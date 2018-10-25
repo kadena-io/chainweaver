@@ -33,6 +33,7 @@ library
                , newtype-generics
                , obelisk-executable-config
                , obelisk-frontend
+               , obelisk-generated-static
                , obelisk-route
                , pact
                , reflex
@@ -40,7 +41,6 @@ library
                , reflex-dom-ace
                , safe
                , semantic-reflex
-               , obelisk-generated-static
                , string-qq
                , template-haskell
                , text
