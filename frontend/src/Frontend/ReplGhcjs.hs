@@ -48,7 +48,7 @@ import           GHC.Generics                (Generic)
 import           Language.Javascript.JSaddle hiding (Object)
 import           Reflex
 import           Reflex.Dom.ACE.Extended
-import           Reflex.Dom.Core             (keypress, mainWidget)
+import           Reflex.Dom.Core             (keypress)
 import qualified Reflex.Dom.Core             as Core
 import           Reflex.Dom.SemanticUI       hiding (mainWidget)
 ------------------------------------------------------------------------------
@@ -374,7 +374,7 @@ envPanel ideL cfg = mdo
     void . dyn $ traverse_ (snippetWidget . OutputSnippet) <$> _ide_msgs ideL
     pure mempty
 
-  functionsCfg <- tabPane ("style" =: "overflow: auto") curSelection EnvSelection_Functions $ do
+  _functionsCfg <- tabPane ("style" =: "overflow: auto") curSelection EnvSelection_Functions $ do
     header def $ text "Public functions"
     dyn_ $ ffor (_ide_deployed ideL) $ \case
       Nothing -> paragraph $ text "Load a deployed contract with the module explorer to see the list of available functions."
@@ -580,13 +580,14 @@ moduleExplorer ideL = mdo
           text $ unBackendName $ _deployedContract_backendName c
         text $ _deployedContract_name c
         (c <$) <$> loadButton isSel
-    let searchSelected = switch . current $ fmap Right . leftmost . fmap fst . Map.elems <$> searchClick
-        searchLoaded = switch . current $ fmap Right . leftmost . fmap snd . Map.elems <$> searchClick
-    pure (searchSelected, searchLoaded)
+    let searchSelected1 = switch . current $ fmap Right . leftmost . fmap fst . Map.elems <$> searchClick
+        searchLoaded1 = switch . current $ fmap Right . leftmost . fmap snd . Map.elems <$> searchClick
+    pure (searchSelected1, searchLoaded1)
 
   let itemsPerPage = 5 :: Int
       numberOfItems = length <$> filteredCs
-      totalPages = (\a -> ceiling (fromIntegral a / fromIntegral itemsPerPage)) <$> numberOfItems
+      calcTotal a = ceiling $ (fromIntegral a :: Double)  / fromIntegral itemsPerPage
+      totalPages = calcTotal <$> numberOfItems
   rec
     currentPage <- holdDyn 1 updatePage
     updatePage <- paginationWidget currentPage totalPages
@@ -768,14 +769,14 @@ controlBar ideL = do
         input (def & inputConfig_action .~ Static (Just RightAction)) $ do
           let dropdownConfig = def
                 & dropdownConfig_placeholder .~ "Deployment Target"
-          backend <- fmap value $ dropdown dropdownConfig Nothing $ TaggedDynamic $
+          backendL <- fmap value $ dropdown dropdownConfig Nothing $ TaggedDynamic $
             ffor (ideL ^. ide_backend . backend_backends) $
               Map.fromList . fmap (\(k, v) -> (v, text $ unBackendName k)) . maybe [] Map.toList
           let buttonConfig = def
                 & buttonConfig_emphasis .~ Static (Just Primary)
-                & buttonConfig_disabled .~ Dyn (isNothing <$> backend)
+                & buttonConfig_disabled .~ Dyn (isNothing <$> backendL)
           deploy <- button buttonConfig $ text "Deploy"
-          pure $ attachWithMaybe (\m _ -> m) (current backend) deploy
+          pure $ attachWithMaybe (\m _ -> m) (current backendL) deploy
       let
         req = do
           c <- ideL ^. ide_code

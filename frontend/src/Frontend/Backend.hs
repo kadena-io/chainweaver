@@ -36,12 +36,12 @@ module Frontend.Backend
   , prettyPrintBackendError
   ) where
 
-import           Control.Arrow                     (first, left, (&&&), (***))
+import           Control.Arrow                     (left, (&&&), (***))
 import           Control.Concurrent                (forkIO)
 import           Control.Lens                      hiding ((.=))
 import           Control.Monad.Except
 import           Data.Aeson                        (FromJSON (..), Object,
-                                                    Value (..), decode,
+                                                    Value (..),
                                                     eitherDecode, encode,
                                                     object, toJSON, withObject,
                                                     (.:), (.=))
@@ -51,20 +51,15 @@ import           Data.Default                      (def)
 import qualified Data.HashMap.Strict               as H
 import qualified Data.Map                          as Map
 import           Data.Map.Strict                   (Map)
-import qualified Data.Set                          as Set
 import           Data.Text                         (Text)
 import qualified Data.Text                         as T
 import qualified Data.Text.Encoding                as T
-import qualified Data.Text.IO                      as T
 import           Data.Time.Clock                   (getCurrentTime)
-import           Data.Traversable                  (for)
 import           Generics.Deriving.Monoid          (mappenddefault,
                                                     memptydefault)
-import           Obelisk.ExecutableConfig          (get)
 import           Reflex.Dom.Class
 import           Reflex.Dom.Xhr
 import           Reflex.NotReady.Class
-import           Safe
 
 import           Language.Javascript.JSaddle.Monad (JSContextRef, JSM, askJSM)
 
@@ -284,7 +279,7 @@ loadModules w bs cfg = do
     Nothing -> pure mempty
     Just bs' -> do
       onPostBuild <- getPostBuild
-      bm <- flip Map.traverseWithKey bs' $ \backendName uri -> do
+      bm <- flip Map.traverseWithKey bs' $ \_ uri -> do
         onErrResp <- backendRequest w $
           leftmost [ req uri <$ cfg ^. backendCfg_refreshModule
                    , req uri <$ onPostBuild
@@ -327,7 +322,7 @@ backendRequest w onReq = performEventAsync $ ffor onReq $ \req cb -> do
       [] -> callback $ Left $ BackendError_Other "Response did not contain any RequestKeys"
       [key] -> do
         let listenReq = buildListenXhrRequest uri key
-        void $ newXMLHttpRequestWithError listenReq $ \r -> case getResPayload r of
+        void $ newXMLHttpRequestWithError listenReq $ \lr -> case getResPayload lr of
           Left e -> callback $ Left e
           Right listen -> case _lr_result listen of
             PactResult_Failure err detail -> callback $ Left $ BackendError_ResultFailure err detail

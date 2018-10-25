@@ -14,7 +14,6 @@ import qualified Data.Map.Strict             as Map
 import           Data.Text                   (Text)
 import qualified Data.Text                   as T
 import           Language.Javascript.JSaddle (js0, liftJSM, pToJSVal)
-import           Obelisk.Frontend            (ObeliskWidget)
 import           Reflex.Dom.Core             (keypress, _textInput_element)
 import           Reflex.Dom.SemanticUI       hiding (mainWidget)
 import           Reflex.Network.Extended
@@ -233,18 +232,18 @@ paginationWidget currentPage totalPages = buttons (def & classes .~ "fluid") $ d
   let canGoFirst = (> 1) <$> currentPage
   first <- filteredButton canGoFirst $ icon "angle double left" def
   prev <- filteredButton canGoFirst $ icon "angle left" def
-  button (def & buttonConfig_disabled .~ Static True) $ do
+  void $ button (def & buttonConfig_disabled .~ Static True) $ do
     display currentPage
     text " of "
     display totalPages
   let canGoLast = (<) <$> currentPage <*> totalPages
-  next <- filteredButton canGoLast $ icon "angle right" def
-  last <- filteredButton canGoLast $ icon "angle double right" def
+  nextL <- filteredButton canGoLast $ icon "angle right" def
+  lastL <- filteredButton canGoLast $ icon "angle double right" def
   pure $ leftmost
     [ attachWith (\x _ -> pred x) (current currentPage) prev
     , 1 <$ first
-    , attachWith (\x _ -> succ x) (current currentPage) next
-    , tag (current totalPages) last
+    , attachWith (\x _ -> succ x) (current currentPage) nextL
+    , tag (current totalPages) lastL
     ]
   where
     filteredButton okay content = do
