@@ -70,6 +70,7 @@ import           Safe
 import           Language.Javascript.JSaddle.Monad (JSContextRef, JSM, askJSM)
 
 import           Common.Api
+import           Common.Route                      (pactServerListPath)
 import           Frontend.Backend.Pact
 import           Frontend.Crypto.Ed25519
 import           Frontend.Foundation
@@ -196,18 +197,6 @@ instance FromJSON ListenResponse where
   parseJSON = withObject "Response" $ \o ->
     ListenResponse <$> o .: "result" <*> o .: "txId"
 
-
--- | Available backends:
-getBackends :: IO (Map BackendName BackendUri)
-getBackends = do
-  let
-    buildUrl = ("http://localhost:" <>) . getPactInstancePort
-    buildName = BackendName . ("dev-" <>) . T.pack . show
-    buildServer =  buildName &&& buildUrl
-    devServers = map buildServer [1 .. numPactInstances]
-  pure $ Map.fromList devServers
-
-
 makeBackend
   :: forall t m
   . (MonadHold t m, PerformEvent t m, MonadFix m, NotReady t m, Adjustable t m
@@ -219,9 +208,8 @@ makeBackend
   => Wallet t
   -> BackendCfg t
   -> m (Backend t)
-makeBackend w cfg = mfix $ \b -> do
-  pb <- getPostBuild
-  bs <- holdDyn Nothing . fmap Just <=< performEvent $ liftIO getBackends <$ pb
+makeBackend w cfg = do
+  bs <- getBackends
 
   modules <- loadModules w bs cfg
 
@@ -230,6 +218,58 @@ makeBackend w cfg = mfix $ \b -> do
     , _backend_modules = modules
     }
 
+
+
+-- | Available backends:
+getBackends
+  :: ( MonadJSM (Performable m), HasJSContext (Performable m)
+     , PerformEvent t m, TriggerEvent t m, PostBuild t m, MonadIO m
+     , MonadHold t m
+     )
+  => m (Dynamic t (Maybe (Map BackendName BackendUri)))
+getBackends = do
+  let
+    buildUrl = ("http://localhost:" <>) . getPactInstancePort
+    buildName = BackendName . ("dev-" <>) . T.pack . show
+    buildServer =  buildName &&& buildUrl
+    devServers = Map.fromList $ map buildServer [1 .. numPactInstances]
+  onPostBuild <- getPostBuild
+
+  prodStaticServerList <- liftIO getPactServerList
+  case prodStaticServerList of
+    Nothing -> -- Development mode
+      holdDyn Nothing $ Just devServers <$ onPostBuild
+    Just c -> do -- Production mode
+      let
+        staticList = parsePactServerList c
+      onResError <-
+        performRequestAsyncWithError $ ffor onPostBuild $ \_ ->
+          xhrRequest "GET" pactServerListPath def
+
+      let
+        getListFromResp = fmap parsePactServerList . _xhrResponse_responseText
+        onList = either (const (Just staticList)) getListFromResp <$> onResError
+      holdDyn Nothing onList
+
+-- | Parse server list.
+--
+--   Format:
+--
+--   ```
+--   serverName: serveruri
+--   serverName2: serveruri2
+--   ...
+--   ```
+parsePactServerList :: Text -> Map BackendName BackendUri
+parsePactServerList raw =
+  let
+    rawEntries = map (map T.strip . T.splitOn ":") . T.lines $ raw
+    validate :: [Text] -> Maybe (BackendName, BackendUri)
+    validate = \case
+      [n, u] -> Just (BackendName n, u)
+      _      -> Nothing
+  in
+    Map.fromList . mapMaybe validate $ rawEntries
 
 loadModules
   :: forall t m

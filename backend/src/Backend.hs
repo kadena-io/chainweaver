@@ -11,6 +11,7 @@ import           Data.Dependent.Sum       (DSum ((:=>)))
 import           Data.Foldable            (traverse_)
 import           Data.List                (foldl')
 import qualified Data.List                as L
+import           Data.Maybe               (isJust)
 import           Data.Monoid              ((<>))
 import qualified Data.Text                as T
 import qualified Data.Text.IO             as T
@@ -18,6 +19,7 @@ import qualified Obelisk.Backend          as Ob
 import qualified Obelisk.ExecutableConfig as Conf
 import           Obelisk.Route            (R)
 import qualified Pact.Server.Server       as Pact
+import           Safe                     (fromJustNote)
 import           Snap                     (Snap)
 import           Snap.Util.FileServe      (serveFile)
 import           System.Directory         (canonicalizePath,
@@ -39,7 +41,7 @@ data PactInstanceConfig = PactInstanceConfig
 pactConfigDir :: FilePath
 pactConfigDir = "/var/tmp/pact-conf"
 
--- | Root directory for pact logging directories.
+-- | Root directory for development pact logging directories.
 pactLogBaseDir :: FilePath
 pactLogBaseDir = "/var/tmp/pact-log"
 
@@ -58,21 +60,23 @@ backend :: Ob.Backend BackendRoute FrontendRoute
 backend = Ob.Backend
     { Ob._backend_run = \serve -> do
 
-        mRuntimeConfig <- getRuntimeConfigPath
-        case mRuntimeConfig of
-          -- Devel mode:
-          Nothing
-            -> withDevelPactInstances serve
-          -- Production mode:
-          Just p -> do
-           serve $ serveBackendRoute p
+        hasServerList <- isJust <$> getPactServerList
+        if hasServerList
+           -- Production mode:
+           then do
+             p <- getRuntimeConfigPath
+             serve $ serveBackendRoute p
+           --  Devel mode:
+           else withDevelPactInstances serve
 
     , Ob._backend_routeEncoder = backendRouteEncoder
     }
   where
-    getRuntimeConfigPath :: IO (Maybe FilePath)
-    getRuntimeConfigPath =
-      fmap (T.unpack . T.strip) <$> Conf.get "config/backend/runtime-config-path"
+    getRuntimeConfigPath :: IO FilePath
+    getRuntimeConfigPath = toFilePath <$> Conf.get "config/backend/dyn-configs-path"
+      where
+        errorMsg = "config/backend/dyn-configs-path must exist in production mode!"
+        toFilePath = fromJustNote errorMsg . fmap (T.unpack . T.strip)
 
     withDevelPactInstances serve = do
       traverse_ (createDirectoryIfMissing True . _pic_log) pactConfigs

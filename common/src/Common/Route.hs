@@ -20,6 +20,7 @@ import Control.Category
 import Data.Text (Text)
 import Data.Functor.Identity
 import Data.Functor.Sum
+import Data.Semigroup ((<>))
 
 import Obelisk.Route
 import Obelisk.Route.TH
@@ -43,6 +44,13 @@ data BackendRoute :: * -> * where
 dynConfigsRoot :: Text
 dynConfigsRoot = "dyn-configs"
 
+-- | URL path to the pact server list.
+--
+--   The frontend can retrieve the current pact server list from this path.
+pactServerListPath :: Text
+pactServerListPath = dynConfigsRoot <> "/pact-servers"
+
+
 data FrontendRoute :: * -> * where
   FrontendRoute_Main :: FrontendRoute ()
   -- This type is used to define frontend routes, i.e. ones for which the backend will serve the frontend.
@@ -55,7 +63,7 @@ backendRouteEncoder = handleEncoder (const (InL BackendRoute_Missing :/ ())) $
       BackendRoute_Missing
         -> PathSegment "missing" $ unitEncoder mempty
       BackendRoute_DynConfigs
-        -> PathSegment "dyn-configs" $ pathOnlyEncoder
+        -> PathSegment dynConfigsRoot $ pathOnlyEncoder
     InR obeliskRoute -> obeliskRouteSegment obeliskRoute $ \case
       -- The encoder given to PathEnd determines how to parse query parameters,
       -- in this example, we have none, so we insist on it.
