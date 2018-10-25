@@ -204,8 +204,8 @@ getBackends = do
     buildUrl = ("http://localhost:" <>) . getPactInstancePort
     buildName = BackendName . ("dev-" <>) . T.pack . show
     buildServer =  buildName &&& buildUrl
-    servers = map buildServer [1 .. numPactInstances]
-  pure $ Map.fromList servers
+    devServers = map buildServer [1 .. numPactInstances]
+  pure $ Map.fromList devServers
 
 
 makeBackend
