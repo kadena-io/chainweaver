@@ -10,6 +10,7 @@ import           Control.Monad.IO.Class   (liftIO)
 import           Data.Dependent.Sum       (DSum ((:=>)))
 import           Data.Foldable            (traverse_)
 import           Data.List                (foldl')
+import qualified Data.List                as L
 import           Data.Monoid              ((<>))
 import qualified Data.Text                as T
 import qualified Data.Text.IO             as T
@@ -19,7 +20,8 @@ import           Obelisk.Route            (R)
 import qualified Pact.Server.Server       as Pact
 import           Snap                     (Snap)
 import           Snap.Util.FileServe      (serveFile)
-import           System.Directory         (createDirectoryIfMissing, canonicalizePath)
+import           System.Directory         (canonicalizePath,
+                                           createDirectoryIfMissing)
 import           System.FilePath          ((</>))
 
 import           Common.Api
@@ -92,7 +94,7 @@ backend = Ob.Backend
           pNorm <- liftIO $ canonicalizePath p
           baseNorm <- liftIO $ canonicalizePath dynConfigs
           -- Sanity check: Make sure we are serving a file in the target directory.
-          if length baseNorm < length pNorm
+          if L.isPrefixOf baseNorm pNorm
              then serveFile p
              else pure () -- We should probably throw an error instead, I guess.
 
