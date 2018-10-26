@@ -111,8 +111,8 @@ let
     pactConfig = pkgs.writeText "pact.yaml" ''
       port: ${toString pactPort}
 
-      logDir: ${pactDataDir}
-      persistDir: ${pactDataDir}
+      logDir: ${pactDataDir}/pact-log
+      persistDir: ${pactDataDir}/pact-log
 
       # SQLite pragmas for pact back-end
       pragmas: []
@@ -125,6 +125,23 @@ let
       description = "User for running the pact server (pact -s).";
       isSystemUser = true;
     };
+
+    # This should just be in the preStart script of pact-server, but it can't
+    # because the script won't get executed if the working directory does not
+    # exist. I also don't want to make the working directory change optional,
+    # because I want to be sure it gets changed:
+    system.activationScripts = {
+      setupPactWorkDir = {
+        text = ''
+          # pact -s serves files in its working directory, so we provide an empty
+          # directory for it to serve.
+          # If we don't do that, it will happily serve the entire root filesystem!
+          mkdir -p ${pactDataDir}/emptyRoot
+          '';
+        deps = [];
+      };
+    };
+
     systemd.services.pact-server = {
       description = "Pact Server";
       after = [ "network.target" ];
@@ -132,13 +149,17 @@ let
       # So preStart runs as root:
       preStart = ''
         export PATH=$PATH:${pkgs.coreutils}/bin
-        mkdir -p ${pactDataDir}
-        chown ${pactUser} ${pactDataDir}
+        mkdir -p ${pactDataDir}/pact-log
+        chown ${pactUser} ${pactDataDir}/pact-log
         '';
       serviceConfig = {
         # So preStart runs as root:
         PermissionsStartOnly = true;
         User = pactUser;
+
+        # This is important! pact -s serves files in its working directory!!
+        WorkingDirectory = "${pactDataDir}/emptyRoot";
+
         ExecStart = "${pkgs.haskell.lib.justStaticExecutables obApp.ghc.pact}/bin/pact -s ${pactConfig}";
         Restart = "always";
         KillMode = "process";
@@ -188,7 +209,7 @@ in obApp // {
             # The exposed port of the pact backend (proxied by nginx).
             nginxPort = 7011;
             pactPort = 7010;
-            pactDataDir = "/var/lib/pact-web/pact-log";
+            pactDataDir = "/var/lib/pact-web";
             pactUser = "pact";
           })
         ];
@@ -199,7 +220,6 @@ in obApp // {
               '';
             deps = [];
           };
-
         };
       };
     };
