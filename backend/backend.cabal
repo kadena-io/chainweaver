@@ -17,6 +17,8 @@ library
                , directory
                , obelisk-executable-config
                , async
+               , snap
+               , snap-core
   exposed-modules:
     Backend
   ghc-options: -Wall
