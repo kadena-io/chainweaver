@@ -1,6 +1,6 @@
 { system ? builtins.currentSystem # TODO: Get rid of this system cruft
 , iosSdkVersion ? "10.2"
-, obelisk ? (import ./.obelisk/impl { inherit system iosSdkVersion; __useLegacyCompilers = ghc80; })
+, obelisk ? (import ./.obelisk/impl { inherit iosSdkVersion; system = "x86_64-linux";  __useLegacyCompilers = ghc80; })
 , pkgs ? obelisk.reflex-platform.nixpkgs
 , ghc80 ? true
 }:
