@@ -1,6 +1,7 @@
 {-# LANGUAGE LambdaCase          #-}
 {-# LANGUAGE OverloadedStrings   #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE GADTs #-}
 
 module Backend where
 
@@ -16,10 +17,8 @@ import           Data.Monoid              ((<>))
 import qualified Data.Text                as T
 import qualified Data.Text.IO             as T
 import qualified Obelisk.Backend          as Ob
-import qualified Obelisk.ExecutableConfig as Conf
 import           Obelisk.Route            (R)
 import qualified Pact.Server.Server       as Pact
-import           Safe                     (fromJustNote)
 import           Snap                     (Snap)
 import           Snap.Util.FileServe      (serveFile)
 import           System.Directory         (canonicalizePath,

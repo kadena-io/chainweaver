@@ -19,6 +19,10 @@ library
                , async
                , snap
                , snap-core
+               , safe
+               , obelisk-route
+               , dependent-sum
+               , mtl
   exposed-modules:
     Backend
   ghc-options: -Wall
