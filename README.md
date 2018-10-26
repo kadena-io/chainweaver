@@ -60,6 +60,6 @@ $ ob deploy push
 
 In addition to the static configuration from above, the frontend will retrieve a dynamic configuration from the server, if it exists (falling back to the static one).
 
-To provide a dynamic configuration (one that can be changed, without re-deployments) provide a config file at `/var/lib/backend/dyn-configs/pact-servers`, format being the same as above.
+To provide a dynamic configuration (one that can be changed, without re-deployments) provide a config file at `/var/lib/pact-web/dyn-configs/pact-servers`, format being the same as above.
 
 Note: If you can do re-deployments: You can also change the static configuration at `config/common/pact-server-list` in your deploy directory and do a re-deploy anytime. Deployments with only the configuration changed are pretty fast.

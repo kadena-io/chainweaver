@@ -216,7 +216,7 @@ in obApp // {
         system.activationScripts = {
           setupBackendRuntime = {
             text = ''
-                mkdir -p /var/lib/backend/dyn-configs
+                mkdir -p /var/lib/pact-web/dyn-configs
               '';
             deps = [];
           };

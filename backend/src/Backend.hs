@@ -62,7 +62,7 @@ backend = Ob.Backend
         hasServerList <- isJust <$> getPactServerList
         if hasServerList
            -- Production mode:
-           then serve $ serveBackendRoute "/var/lib/backend/dyn-configs"
+           then serve $ serveBackendRoute "/var/lib/pact-web/dyn-configs"
            --  Devel mode:
            else withDevelPactInstances serve
 
