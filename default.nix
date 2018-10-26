@@ -197,6 +197,7 @@ in obApp // {
             text = ''
                 mkdir -p /var/lib/backend/dyn-configs
               '';
+            deps = [];
           };
 
         };
