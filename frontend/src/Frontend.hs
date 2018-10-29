@@ -51,6 +51,6 @@ frontend = Frontend
       elAttr "script" ("type" =: "text/javascript" <> "src" =: "https://cdnjs.cloudflare.com/ajax/libs/ace/1.4.1/theme-solarized_dark.js") blank
       elAttr "link" ("href" =: static @"css/index.css" <> "rel" =: "stylesheet" <> "type" =: "text/css") blank
 
- , _frontend_body = prerender (text "Loading, stay tight ...") app
+ , _frontend_body = prerender (text "Loading, stand by...") app
  , _frontend_headRender = HeadRender_Static
  }
