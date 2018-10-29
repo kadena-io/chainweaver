@@ -1,8 +1,7 @@
 { system ? builtins.currentSystem # TODO: Get rid of this system cruft
 , iosSdkVersion ? "10.2"
-, obelisk ? (import ./.obelisk/impl { inherit system iosSdkVersion; __useLegacyCompilers = ghc80; })
+, obelisk ? (import ./.obelisk/impl { inherit system iosSdkVersion; })
 , pkgs ? obelisk.reflex-platform.nixpkgs
-, ghc80 ? true
 }:
 with obelisk;
 let
@@ -51,8 +50,8 @@ let
             pact = pkgs.haskell.lib.addBuildDepend (self.callCabal2nix "pact" (pkgs.fetchFromGitHub {
               owner = "kadena-io";
               repo = "pact";
-              rev = "3fd9d9d470069281b0b96e802cb990a210392284";
-              sha256 = "1lihkkhx2gkld9gkyz1dfnbv1hq44bzswjv9g9fkhrjmf8xv4wav";
+              rev = "1d514e809f03cf5750013553051a377743d16a77";
+              sha256 = "0d7h1achw08cj3fp3qrm19nz1mzndlnwfxlx38k2zlx8jkk7awyp";
             }) {}) pkgs.z3;
 
             reflex-dom-ace = (self.callCabal2nix "reflex-dom-ace" (pkgs.fetchFromGitHub {
