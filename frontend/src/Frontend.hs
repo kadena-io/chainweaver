@@ -3,22 +3,28 @@
 {-# LANGUAGE TypeApplications  #-}
 module Frontend where
 
+import           Control.Monad.IO.Class   (liftIO)
+import           Data.Maybe               (fromMaybe)
 import           Data.Monoid
-import qualified Data.Text as T
+import qualified Data.Text                as T
 import           Reflex.Dom.Core
+
+import           Obelisk.ExecutableConfig (get)
+import           Obelisk.Frontend
+import           Obelisk.Generated.Static
+import           Obelisk.Route
 
 import           Common.Route
 import           Frontend.ReplGhcjs
-import           Obelisk.Frontend
-import           Obelisk.Route
-import           Obelisk.Generated.Static
 
 frontend :: Frontend (R FrontendRoute)
 frontend = Frontend
   { _frontend_head= do
       -- Global site tag (gtag.js) - Google Analytics
-      let gaTrackingId = "UA-127512784-1"
-          gtagSrc = "https://www.googletagmanager.com/gtag/js?id=" <> gaTrackingId
+      gaTrackingId <- liftIO $ fromMaybe "UA-127512784-1"
+        <$> get "config/frontend/tracking-id"
+      let
+        gtagSrc = "https://www.googletagmanager.com/gtag/js?id=" <> gaTrackingId
       elAttr "script" ("async" =: "" <> "src" =: gtagSrc) blank
       el "script" $ text $ T.unlines
         [ "window.dataLayer = window.dataLayer || [];"

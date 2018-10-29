@@ -63,3 +63,19 @@ In addition to the static configuration from above, the frontend will retrieve a
 To provide a dynamic configuration (one that can be changed, without re-deployments) provide a config file at `/var/lib/pact-web/dyn-configs/pact-servers`, format being the same as above.
 
 Note: If you can do re-deployments: You can also change the static configuration at `config/common/pact-server-list` in your deploy directory and do a re-deploy anytime. Deployments with only the configuration changed are pretty fast.
+
+## Google Analytics tracking
+
+pact-web is set up for basic Google Analytics tracking. You can configure the used tracking id by providing a config file in the deploy directory containing your desired tracking id:
+
+```
+$ cd <dirname>
+$ mkdir config/frontend
+$ echo 'your-new-id' > config/frontend/tracking-id
+```
+
+Then of course, run the deployment:
+
+```
+ob deploy push
+```
