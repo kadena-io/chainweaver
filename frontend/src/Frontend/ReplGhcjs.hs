@@ -589,7 +589,10 @@ moduleExplorer ideL = mdo
       calcTotal a = ceiling $ (fromIntegral a :: Double)  / fromIntegral itemsPerPage
       totalPages = calcTotal <$> numberOfItems
   rec
-    currentPage <- holdDyn 1 updatePage
+    currentPage <- holdDyn 1 $ leftmost
+      [ updatePage
+      , 1 <$ updated numberOfItems
+      ]
     updatePage <- paginationWidget currentPage totalPages
 
   pure $ mempty
