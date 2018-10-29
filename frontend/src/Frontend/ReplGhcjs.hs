@@ -554,23 +554,27 @@ moduleExplorer ideL = mdo
       Map.insert Nothing (text "All backends") . maybe mempty mkMap <$> ideL ^. ide_backend . backend_backends
     pure (value searchI, value d)
 
-  let deployedContracts = Map.mergeWithKey (\_ a b -> Just (a, b)) mempty mempty
+  let
+    deployedContracts = Map.mergeWithKey (\_ a b -> Just (a, b)) mempty mempty
         <$> ideL ^. ide_backend . backend_modules
         <*> (fromMaybe mempty <$> ideL ^. ide_backend . backend_backends)
-      searchFn needle (Identity mModule)
-        = concat . fmapMaybe (filtering needle) . Map.toList
-        . maybe id (\(k', _) -> Map.filterWithKey $ \k _ -> k == k') mModule
-      filtering needle (backendName, (m, backendUri)) =
-        let f contractName =
-              if T.isInfixOf (T.toCaseFold needle) (T.toCaseFold contractName)
-              then Just (DeployedContract contractName backendName backendUri, ())
-              else Nothing
-        in case fmapMaybe f $ fromMaybe [] m of
-          [] -> Nothing
-          xs -> Just xs
-      filteredCs = searchFn <$> search <*> backend <*> deployedContracts
-      paginate p = Map.fromList . take itemsPerPage . drop (itemsPerPage * pred p) . L.sort
-      paginated = paginate <$> currentPage <*> filteredCs
+    searchFn needle (Identity mModule)
+      = concat . fmapMaybe (filtering needle) . Map.toList
+      . maybe id (\(k', _) -> Map.filterWithKey $ \k _ -> k == k') mModule
+    filtering needle (backendName, (m, backendUri)) =
+      let f contractName =
+            if T.isInfixOf (T.toCaseFold needle) (T.toCaseFold contractName)
+            then Just (DeployedContract contractName backendName backendUri, ())
+            else Nothing
+      in case fmapMaybe f $ fromMaybe [] m of
+        [] -> Nothing
+        xs -> Just xs
+    filteredCsRaw = searchFn <$> search <*> backend <*> deployedContracts
+    paginate p =
+      Map.fromList . take itemsPerPage . drop (itemsPerPage * pred p) . L.sort
+  filteredCs <- holdUniqDyn filteredCsRaw
+  let
+    paginated = paginate <$> currentPage <*> filteredCs
 
   (searchSelected, searchLoaded) <- divClass "ui inverted selection list" $ do
     searchClick <- listWithKey paginated $ \c _ -> do
