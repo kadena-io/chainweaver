@@ -270,13 +270,7 @@ app = void . mfix $ \ ~(cfg, ideL) -> elClass "div" "app" $ do
       pure $ mempty
         & ideCfg_setCode .~ leftmost
           [ fmap fst onCodeJson
-          , ffor deployedModule $ \(_uri, m) -> T.unlines
-            [ ";; Change <your-keyset-here> to the appropriate keyset name"
-            , let KeySetName keySetName = _mKeySet m
-              in "(define-keyset '" <> keySetName <> " (read-keyset \"<your-keyset-here>\"))"
-            , ""
-            , _unCode (_mCode m)
-            ]
+          , ffor deployedModule $ \(_uri, m) -> _unCode (_mCode m)
           ]
         & ideCfg_setDeployed .~ ffor deployedModule (\(uri, m) -> (,) uri <$> listPactFunctions (_unCode $ _mCode m))
         & ideCfg_jsonData . jsonDataCfg_setRawInput .~ fmap snd onCodeJson
