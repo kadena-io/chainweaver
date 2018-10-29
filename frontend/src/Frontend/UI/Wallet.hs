@@ -122,9 +122,11 @@ uiKeyItem (n, k) = do
           cSigned = current $ k ^. keyPair_forSigning
           onPbSigned = tag cSigned onPostBuild
 
+        signingStatus <- holdUniqDyn $ k ^. keyPair_forSigning
         boxI <- checkbox (text "Signing")
           $ def & checkboxConfig_type .~ pure Nothing
-                & checkboxConfig_setValue .~ SetValue False (Just onPbSigned)
+                & checkboxConfig_setValue
+                  .~ SetValue False (Just $ leftmost [updated signingStatus, onPbSigned])
         let
           buttonIcon = snd <$> elClass' "i" "large trash right aligned icon" blank
         onDelI <- flip button buttonIcon $ def

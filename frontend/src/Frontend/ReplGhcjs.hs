@@ -189,7 +189,9 @@ listPactFunctions code = case Pact.compileExps Pact.mkEmptyInfo <$> Pact.parseEx
 
 app :: MonadWidget t m => m ()
 app = void . mfix $ \ ~(cfg, ideL) -> elClass "div" "app" $ do
+    let selContract = cfg ^. ideCfg_selContract
     walletL <- makeWallet $ _ideCfg_wallet cfg
+      & walletCfg_clearAll %~ (\original -> leftmost [() <$ selContract, original])
     json <- makeJsonData walletL $ _ideCfg_jsonData cfg
     backendL <- makeBackend walletL $ cfg ^. ideCfg_backend
     let

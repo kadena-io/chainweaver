@@ -84,6 +84,8 @@ data WalletCfg t = WalletCfg
   -- ^ Use a given key for signing messages/or not.
   , _walletCfg_delKey     :: Event t KeyName
   -- ^ Delete a key from your wallet.
+  , _walletCfg_clearAll   :: Event t ()
+  -- ^ Clear the signing state of all keys.
   }
   deriving Generic
 
@@ -107,19 +109,15 @@ makeWallet
 makeWallet conf = do
     initialKeys <- fromMaybe Map.empty <$> loadKeys
     let
-      initialSigning =
-        Set.fromList
-        . map fst . filter (_keyPair_forSigning . snd)
-        . Map.toList
-        $ initialKeys
+      initialSigning = Set.empty
 
       onNewDeleted p = fmap fst . ffilter (p . snd)
 
       onGenKey = T.strip <$> conf ^. walletCfg_genKey
     signingKeys <- foldDyn id initialSigning
-      $ leftmost [ Set.delete <$> onNewDeleted not (conf ^. walletCfg_setSigning)
+      $ leftmost [ const Set.empty <$ conf ^. walletCfg_clearAll
+                 , Set.delete <$> onNewDeleted not (conf ^. walletCfg_setSigning)
                  , Set.insert <$> onNewDeleted id (conf ^. walletCfg_setSigning)
-                 , Set.insert <$> onGenKey
                  , Set.delete <$> conf ^. walletCfg_delKey
                  ]
 
@@ -195,7 +193,6 @@ storeWallet_Keys = StoreWallet_Keys
 storeKeys :: MonadJSM m => KeyPairs -> m ()
 storeKeys ks = do
     store <- getLocalStorage
-    {- liftIO $ putStrLn "Stored keys:j" -}
     setItemStorage store storeWallet_Keys ks
 
 -- | Load key pairs from localstorage.
@@ -219,10 +216,13 @@ instance Reflex t => Semigroup (WalletCfg t) where
       , _walletCfg_delKey = leftmost [ _walletCfg_delKey c1
                                      , _walletCfg_delKey c2
                                      ]
+      , _walletCfg_clearAll = leftmost [ _walletCfg_clearAll c1
+                                       , _walletCfg_clearAll c2
+                                       ]
       }
 
 instance Reflex t => Monoid (WalletCfg t) where
-  mempty = WalletCfg never never never
+  mempty = WalletCfg never never never never
   mappend = (<>)
 
 instance Flattenable WalletCfg where
@@ -231,6 +231,7 @@ instance Flattenable WalletCfg where
       <$> doSwitch never (_walletCfg_genKey <$> ev)
       <*> doSwitch never (_walletCfg_setSigning <$> ev)
       <*> doSwitch never (_walletCfg_delKey <$> ev)
+      <*> doSwitch never (_walletCfg_clearAll <$> ev)
 
 instance Reflex t => Semigroup (Wallet t) where
   (<>) = mappenddefault
