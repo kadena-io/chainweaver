@@ -51,12 +51,12 @@ import           Reflex.Dom.ACE.Extended
 import           Reflex.Dom.Core             (keypress)
 import qualified Reflex.Dom.Core             as Core
 import           Reflex.Dom.SemanticUI       hiding (mainWidget)
+import qualified Bound
 ------------------------------------------------------------------------------
 import qualified Pact.Compile                as Pact
 import qualified Pact.Parse                  as Pact
 import           Pact.Repl
 import           Pact.Repl.Types
-import qualified Bound
 import           Pact.Types.Lang
 ------------------------------------------------------------------------------
 import           Frontend.Backend
@@ -521,81 +521,81 @@ moduleExplorer
   => Ide t
   -> m (IdeCfg t)
 moduleExplorer ideL = mdo
-  demuxSel <- fmap demux $ holdDyn (Left "") $ leftmost [searchSelected, exampleSelected]
+    demuxSel <- fmap demux $ holdDyn (Left "") $ leftmost [searchSelected, exampleSelected]
 
-  header def $ text "Example Contracts"
-  exampleClick <- divClass "ui inverted selection list" $ for demos $ \c -> do
-    let isSel = demuxed demuxSel $ Left $ _exampleContract_name c
-    selectableItem (_exampleContract_name c) isSel $ do
-      text $ _exampleContract_name c
-      (c <$) <$> loadButton isSel
-  let exampleSelected = fmap Left . leftmost . fmap fst $ Map.elems exampleClick
-      exampleLoaded = fmap Left . leftmost . fmap snd $ Map.elems exampleClick
-
-  header def $ text "Deployed Contracts"
-
-  (search, backend) <- divClass "ui form" $ divClass "ui two fields" $ do
-    searchI <- field def $ input (def & inputConfig_icon .~ Static (Just RightIcon)) $ do
-      ie <- inputElement $ def & initialAttributes .~ ("type" =: "text" <> "placeholder" =: "Search modules")
-      icon "black search" def
-      pure ie
-
-    let mkMap = Map.fromList . map (\k@(BackendName n, _) -> (Just k, text n)) . Map.toList
-        dropdownConf = def
-          & dropdownConfig_placeholder .~ "Backend"
-          & dropdownConfig_fluid .~ pure True
-    d <- field def $ input def $ dropdown dropdownConf (Identity Nothing) $ TaggedDynamic $
-      Map.insert Nothing (text "All backends") . maybe mempty mkMap <$> ideL ^. ide_backend . backend_backends
-    pure (value searchI, value d)
-
-  let
-    deployedContracts = Map.mergeWithKey (\_ a b -> Just (a, b)) mempty mempty
-        <$> ideL ^. ide_backend . backend_modules
-        <*> (fromMaybe mempty <$> ideL ^. ide_backend . backend_backends)
-    searchFn needle (Identity mModule)
-      = concat . fmapMaybe (filtering needle) . Map.toList
-      . maybe id (\(k', _) -> Map.filterWithKey $ \k _ -> k == k') mModule
-    filtering needle (backendName, (m, backendUri)) =
-      let f contractName =
-            if T.isInfixOf (T.toCaseFold needle) (T.toCaseFold contractName)
-            then Just (DeployedContract contractName backendName backendUri, ())
-            else Nothing
-      in case fmapMaybe f $ fromMaybe [] m of
-        [] -> Nothing
-        xs -> Just xs
-    filteredCsRaw = searchFn <$> search <*> backend <*> deployedContracts
-    paginate p =
-      Map.fromList . take itemsPerPage . drop (itemsPerPage * pred p) . L.sort
-  filteredCs <- holdUniqDyn filteredCsRaw
-  let
-    paginated = paginate <$> currentPage <*> filteredCs
-
-  (searchSelected, searchLoaded) <- divClass "ui inverted selection list" $ do
-    searchClick <- listWithKey paginated $ \c _ -> do
-      let isSel = demuxed demuxSel $ Right c
-      selectableItem c isSel $ do
-        label (def & labelConfig_horizontal .~ Static True) $ do
-          text $ unBackendName $ _deployedContract_backendName c
-        text $ _deployedContract_name c
+    header def $ text "Example Contracts"
+    exampleClick <- divClass "ui inverted selection list" $ for demos $ \c -> do
+      let isSel = demuxed demuxSel $ Left $ _exampleContract_name c
+      selectableItem (_exampleContract_name c) isSel $ do
+        text $ _exampleContract_name c
         (c <$) <$> loadButton isSel
-    let searchSelected1 = switch . current $ fmap Right . leftmost . fmap fst . Map.elems <$> searchClick
-        searchLoaded1 = switch . current $ fmap Right . leftmost . fmap snd . Map.elems <$> searchClick
-    pure (searchSelected1, searchLoaded1)
+    let exampleSelected = fmap Left . leftmost . fmap fst $ Map.elems exampleClick
+        exampleLoaded = fmap Left . leftmost . fmap snd $ Map.elems exampleClick
 
-  let itemsPerPage = 5 :: Int
-      numberOfItems = length <$> filteredCs
-      calcTotal a = ceiling $ (fromIntegral a :: Double)  / fromIntegral itemsPerPage
-      totalPages = calcTotal <$> numberOfItems
-  rec
-    currentPage <- holdDyn 1 $ leftmost
-      [ updatePage
-      , 1 <$ updated numberOfItems
-      ]
-    updatePage <- paginationWidget currentPage totalPages
+    header def $ text "Deployed Contracts"
 
-  pure $ mempty
-    { _ideCfg_selContract = leftmost [searchLoaded, exampleLoaded]
-    }
+    (search, backend) <- divClass "ui form" $ divClass "ui two fields" $ do
+      searchI <- field def $ input (def & inputConfig_icon .~ Static (Just RightIcon)) $ do
+        ie <- inputElement $ def & initialAttributes .~ ("type" =: "text" <> "placeholder" =: "Search modules")
+        icon "black search" def
+        pure ie
+
+      let mkMap = Map.fromList . map (\k@(BackendName n, _) -> (Just k, text n)) . Map.toList
+          dropdownConf = def
+            & dropdownConfig_placeholder .~ "Backend"
+            & dropdownConfig_fluid .~ pure True
+      d <- field def $ input def $ dropdown dropdownConf (Identity Nothing) $ TaggedDynamic $
+        Map.insert Nothing (text "All backends") . maybe mempty mkMap <$> ideL ^. ide_backend . backend_backends
+      pure (value searchI, value d)
+
+    let
+      deployedContracts = Map.mergeWithKey (\_ a b -> Just (a, b)) mempty mempty
+          <$> ideL ^. ide_backend . backend_modules
+          <*> (fromMaybe mempty <$> ideL ^. ide_backend . backend_backends)
+      searchFn needle (Identity mModule)
+        = concat . fmapMaybe (filtering needle) . Map.toList
+        . maybe id (\(k', _) -> Map.filterWithKey $ \k _ -> k == k') mModule
+      filtering needle (backendName, (m, backendUri)) =
+        let f contractName =
+              if T.isInfixOf (T.toCaseFold needle) (T.toCaseFold contractName)
+              then Just (DeployedContract contractName backendName backendUri, ())
+              else Nothing
+        in case fmapMaybe f $ fromMaybe [] m of
+          [] -> Nothing
+          xs -> Just xs
+      filteredCsRaw = searchFn <$> search <*> backend <*> deployedContracts
+      paginate p =
+        Map.fromList . take itemsPerPage . drop (itemsPerPage * pred p) . L.sort
+    filteredCs <- holdUniqDyn filteredCsRaw
+    let
+      paginated = paginate <$> currentPage <*> filteredCs
+
+    (searchSelected, searchLoaded) <- divClass "ui inverted selection list" $ do
+      searchClick <- listWithKey paginated $ \c _ -> do
+        let isSel = demuxed demuxSel $ Right c
+        selectableItem c isSel $ do
+          label (def & labelConfig_horizontal .~ Static True) $ do
+            text $ unBackendName $ _deployedContract_backendName c
+          text $ _deployedContract_name c
+          (c <$) <$> loadButton isSel
+      let searchSelected1 = switch . current $ fmap Right . leftmost . fmap fst . Map.elems <$> searchClick
+          searchLoaded1 = switch . current $ fmap Right . leftmost . fmap snd . Map.elems <$> searchClick
+      pure (searchSelected1, searchLoaded1)
+
+    let itemsPerPage = 5 :: Int
+        numberOfItems = length <$> filteredCs
+        calcTotal a = ceiling $ (fromIntegral a :: Double)  / fromIntegral itemsPerPage
+        totalPages = calcTotal <$> numberOfItems
+    rec
+      currentPage <- holdDyn 1 $ leftmost
+        [ updatePage
+        , 1 <$ updated numberOfItems
+        ]
+      updatePage <- paginationWidget currentPage totalPages
+
+    pure $ mempty
+      { _ideCfg_selContract = leftmost [searchLoaded, exampleLoaded]
+      }
   where
     selectableItem :: k -> Dynamic t Bool -> m a -> m (Event t k, a)
     selectableItem k s m = do
