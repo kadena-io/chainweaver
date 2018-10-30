@@ -8,6 +8,7 @@
 {-# LANGUAGE ScopedTypeVariables    #-}
 {-# LANGUAGE TemplateHaskell        #-}
 {-# LANGUAGE TypeFamilies           #-}
+{-# LANGUAGE ConstraintKinds           #-}
 
 module Frontend.Wallet
   (  -- * Types & Classes
@@ -22,6 +23,7 @@ module Frontend.Wallet
   , DynKeyPairs
   , WalletCfg (..)
   , HasWalletCfg (..)
+  , IsWalletCfg
   , Wallet (..)
   , HasWallet (..)
   -- * Creation
@@ -36,7 +38,6 @@ import           Control.Monad.Fix
 import           Data.Aeson
 import           Data.Map                    (Map)
 import qualified Data.Map                    as Map
-import           Data.Semigroup
 import           Data.Set                    (Set)
 import qualified Data.Set                    as Set
 import           Data.Text                   (Text)
@@ -88,6 +89,10 @@ data WalletCfg t = WalletCfg
   deriving Generic
 
 makePactLenses ''WalletCfg
+
+-- | HasWalletCfg with additional constraints to make it behave like a proper
+-- "Config".
+type IsWalletCfg cfg t = (HasWalletCfg cfg t, Monoid cfg, Flattenable cfg t)
 
 data Wallet t = Wallet
   { _wallet_keys        :: Dynamic t (DynKeyPairs t)
@@ -225,7 +230,7 @@ instance Reflex t => Monoid (WalletCfg t) where
   mempty = WalletCfg never never never
   mappend = (<>)
 
-instance Flattenable WalletCfg where
+instance Flattenable (WalletCfg t) t where
   flattenWith doSwitch ev =
     WalletCfg
       <$> doSwitch never (_walletCfg_genKey <$> ev)

@@ -4,7 +4,18 @@
 {-# LANGUAGE OverloadedStrings     #-}
 {-# LANGUAGE RecursiveDo           #-}
 -- | Semui based widgets collection
-module Frontend.Widgets where
+module Frontend.Widgets
+  ( showLoading
+  , paginationWidget
+  , ModalVisibility (..)
+  , modalDialog
+  , validatedInputWithButton
+  , tabPane
+  , tabPane'
+  , makeClickable
+  , accordionItem
+  , accordionItem'
+  ) where
 
 import           Control.Lens
 import           Control.Monad
@@ -252,3 +263,23 @@ paginationWidget currentPage totalPages = buttons (def & classes .~ "fluid") $ d
         & buttonConfig_disabled .~ Dyn (not <$> okay)
       pure $ gate (current okay) e
 
+
+-- | Whether a `modalDialog` should be shown or hidden.
+data ModalVisibility
+  = Modal_Shown
+  | Modal_Hidden
+
+modalDialog
+  :: ( TriggerEvent t m, DomBuilder t m, MonadIO (Performable m)
+     , PerformEvent t m, PostBuild t m , MonadHold t m, MonadFix m
+     )
+  => Dynamic t ModalVisibility
+  -> m a
+  -> m a
+modalDialog visibility child = do
+  let
+    classL = pure "ui standard modal" <> fmap visibilityClass visibility
+    visibilityClass = \case
+      Modal_Shown -> " transition visible active"
+      Modal_Hidden -> " transition hidden"
+  elDynClass "div" classL $ child

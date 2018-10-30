@@ -52,9 +52,11 @@ library
                  , Frontend.Backend.Pact
                  , Frontend.Crypto.Ed25519
                  , Frontend.Foundation
+                 , Frontend.Ide
                  , Frontend.JsonData
                  , Frontend.ReplGhcjs
                  , Frontend.Storage
+                 , Frontend.UI.Dialogs.DeployConfirmation
                  , Frontend.UI.JsonData
                  , Frontend.UI.Wallet
                  , Frontend.Wallet

@@ -63,10 +63,11 @@ data JsonDataView
 
 -- | UI for managing JSON data.
 uiJsonData
-  :: forall t m. MonadWidget t m
+  :: forall t m cfg
+  . (MonadWidget t m, IsJsonDataCfg cfg t)
   => Wallet t
   -> JsonData t
-  -> m (JsonDataCfg t)
+  -> m cfg
 uiJsonData w d = mdo
     curSelection <- holdDyn JsonDataView_Keysets onSelect
     onSelect <- menu
@@ -138,7 +139,8 @@ uiJsonData w d = mdo
 
 
 uiKeysets
-  :: MonadWidget t m => Wallet t -> DynKeysets t -> m (JsonDataCfg t)
+  :: (MonadWidget t m, IsJsonDataCfg cfg t)
+  => Wallet t -> DynKeysets t -> m cfg
 uiKeysets w ksM =
   {- elClass "div" "ui relaxed middle aligned divided list" $ do -}
   elClass "div" "ui fluid accordion flex-accordion flex-content" $ do
@@ -158,10 +160,11 @@ uiKeysets w ksM =
 
 -- | Display a single keyset on the screen.
 uiKeyset
-  :: forall t m. MonadWidget t m
+  :: forall t m cfg
+  . (MonadWidget t m, IsJsonDataCfg cfg t)
   => Wallet t
   -> (KeysetName, DynKeyset t)
-  -> m (JsonDataCfg t)
+  -> m cfg
 uiKeyset w (n, ks) = mdo
     isActive <- foldDyn (const not) False onToggle
 
@@ -170,7 +173,7 @@ uiKeyset w (n, ks) = mdo
 
     pure $ mconcat [ titleCfg, contentCfg ]
   where
-    uiTitle :: Dynamic t Bool -> m (Event t (), JsonDataCfg t)
+    uiTitle :: Dynamic t Bool -> m (Event t (), cfg)
     uiTitle isActive = elClass "div" "keyset-title" $ do
       let
         titleClass = "ui header heading title" <> fmap activeClass isActive
@@ -198,7 +201,7 @@ uiKeyset w (n, ks) = mdo
 
       pure (domEvent Click e, cfg)
 
-    uiContent :: Dynamic t Bool -> m (JsonDataCfg t)
+    uiContent :: Dynamic t Bool -> m cfg
     uiContent isActive =
       elDynClass "div" ("ui top attached segment content " <> fmap hiddenClass isActive) $ do
         onKeyClick <-
@@ -274,7 +277,8 @@ uiKeyset w (n, ks) = mdo
 
 -- | Input widget with confirm button for creating a new keyset.
 uiCreateKeyset
-  :: MonadWidget t m => JsonData t -> m (Event t Text)
+  :: MonadWidget t m
+  => JsonData t -> m (Event t Text)
 uiCreateKeyset jsonD = validatedInputWithButton check "Enter keyset name" "Create"
   where
     -- Check combined data and not only keyset names for duplicates:

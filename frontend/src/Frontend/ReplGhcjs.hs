@@ -51,13 +51,13 @@ import           Reflex.Dom.ACE.Extended
 import           Reflex.Dom.Core             (keypress)
 import qualified Reflex.Dom.Core             as Core
 import           Reflex.Dom.SemanticUI       hiding (mainWidget)
-import qualified Bound
 ------------------------------------------------------------------------------
 import qualified Pact.Compile                as Pact
 import qualified Pact.Parse                  as Pact
 import           Pact.Repl
 import           Pact.Repl.Types
 import           Pact.Types.Lang
+import           Obelisk.Generated.Static
 ------------------------------------------------------------------------------
 import           Frontend.Backend
 import           Frontend.Foundation
@@ -66,84 +66,8 @@ import           Frontend.UI.JsonData
 import           Frontend.UI.Wallet
 import           Frontend.Wallet
 import           Frontend.Widgets
-import           Obelisk.Generated.Static
-
-type LogMsg = Text
-
-data ExampleContract = ExampleContract
-  { _exampleContract_name :: Text
-  , _exampleContract_code :: Text
-  , _exampleContract_data :: Text
-  } deriving Show
-
-data DeployedContract = DeployedContract
-  { _deployedContract_name :: Text
-  , _deployedContract_backendName :: BackendName
-  , _deployedContract_backendUri :: BackendUri
-  } deriving (Eq, Ord, Show)
-
--- | The available panels in the `envPanel`
-data EnvSelection
-  = EnvSelection_Repl -- ^ REPL for interacting with loaded contract
-  | EnvSelection_Env -- ^ Widgets for editing (meta-)data.
-  | EnvSelection_Msgs -- ^ Compiler errors and other messages to be shown.
-  | EnvSelection_Functions -- ^ Functions available for deployed contracts
-  | EnvSelection_ModuleExplorer -- ^ The module explorer
-  deriving (Eq, Ord, Show)
-
--- | Useful data about a pact function
-data PactFunction = PactFunction
-  { _pactFunction_module :: ModuleName
-  , _pactFunction_name :: Text
-  , _pactFunction_defType :: DefType
-  , _pactFunction_documentation :: Maybe Text
-  , _pactFunction_type :: FunType (Term Name)
-  }
-
--- | Configuration for sub-modules.
---
---   State is controlled via this configuration.
-data IdeCfg t = IdeCfg
-  { _ideCfg_wallet      :: WalletCfg t
-  , _ideCfg_jsonData    :: JsonDataCfg t
-  , _ideCfg_backend     :: BackendCfg t
-  , _ideCfg_selContract :: Event t (Either ExampleContract DeployedContract)
-    -- ^ Select a contract to load into the editor.
-  , _ideCfg_load        :: Event t ()
-    -- ^ Load code into the repl.
-  , _ideCfg_setMsgs     :: Event t [LogMsg]
-    -- ^ Set errors that should be shown to the user.
-  , _ideCfg_setCode     :: Event t Text
-    -- ^ Update the current contract/PACT code.
-  , _ideCfg_setDeployed :: Event t (Maybe (BackendUri, [PactFunction]))
-    -- ^ Update the last loaded deployed function list
-  , _ideCfg_selEnv      :: Event t EnvSelection
-    -- ^ Switch tab of the right pane.
-  , _ideCfg_clearRepl :: Event t ()
-    -- ^ Make the REPL fresh again, ready for new contracts.
-  }
-  deriving Generic
-
-makePactLenses ''IdeCfg
-
--- | Current IDE state.
-data Ide t = Ide
-  { _ide_code             :: Dynamic t Text
-  -- ^ Currently loaded/edited PACT code.
-  , _ide_deployed         :: Dynamic t (Maybe (BackendUri, [PactFunction]))
-  -- ^ Last loaded deployed contract
-  , _ide_selectedContract :: Dynamic t (Either ExampleContract DeployedContract)
-  -- ^ The currently selected contract name.
-  , _ide_wallet           :: Wallet t
-  , _ide_jsonData         :: JsonData t
-  , _ide_backend          :: Backend t
-  , _ide_msgs             :: Dynamic t [LogMsg]
-  {- , _ide_envSelection     :: Dynamic t EnvSelection -}
-    {- -- ^ Currently selected tab in the right pane. -}
-  }
-  deriving Generic
-
-makePactLenses ''Ide
+import           Frontend.Ide
+import           Frontend.UI.Dialogs.DeployConfirmation
 
 -- | Retrieve the currently selected signing keys.
 ide_getSigningKeyPairs :: Reflex t => Ide t -> Dynamic t [DynKeyPair t]
@@ -167,39 +91,15 @@ dataExtension = ".data.json"
 -- toDataFile :: ExampleContract -> Text
 -- toDataFile = (<> dataExtension) . _exampleContract_file
 
-codeFromResponse :: XhrResponse -> Text
-codeFromResponse =
-    fromMaybe "error: could not connect to server" . _xhrResponse_responseText
-
 data ClickState = DownAt (Int, Int) | Clicked | Selected
   deriving (Eq,Ord,Show,Read)
 
--- | Get the top level functions from a 'Term'
-getFunctions :: Term Name -> [PactFunction]
-getFunctions (TModule _ body _) = getFunctions $ Bound.instantiate undefined body
-getFunctions (TDef name moduleName defType funType _ docs _) = [PactFunction moduleName name defType (_mDocs docs) funType]
-getFunctions (TList list1 _ _) = getFunctions =<< list1
-getFunctions _ = []
-
--- | Parse and compile the code to list the top level function data
-listPactFunctions :: Text -> Maybe [PactFunction]
-listPactFunctions code = case Pact.compileExps Pact.mkEmptyInfo <$> Pact.parseExprs code of
-  Right (Right terms) -> Just $ concatMap getFunctions terms
-  _ -> Nothing
-
 app :: MonadWidget t m => m ()
-app = void . mfix $ \ ~(cfg, ideL) -> elClass "div" "app" $ do
-    walletL <- makeWallet $ _ideCfg_wallet cfg
-    json <- makeJsonData walletL $ _ideCfg_jsonData cfg
-    backendL <- makeBackend walletL $ cfg ^. ideCfg_backend
-    let
-      jsonErrorString =
-        either (Just . showJsonError) (const Nothing) <$> _jsonData_data json
-      jsonErrorsOnLoad =
-        fmap maybeToList . tag (current jsonErrorString) $ cfg ^. ideCfg_load
+app = void . mfix $ \ ~(cfg, ideL) -> do
+  ideL <- makeIde cfg
 
+  elClass "div" "app" $ do
     controlCfg <- controlBar ideL
-    contractReceivedCfg <- loadContract ideL $ _ide_selectedContract ideL
     elClass "div" "ui two column padded grid main" $ mdo
       editorCfg <- elClass "div" "column" $ do
         {- elClass "div" "ui secondary menu pointing" $ do -}
@@ -209,81 +109,14 @@ app = void . mfix $ \ ~(cfg, ideL) -> elClass "div" "app" $ do
       envCfg <- elClass "div" "column repl-column" $
         elClass "div" "ui env-pane" $ envPanel ideL cfg
 
-      code <- holdDyn "" $ cfg ^. ideCfg_setCode
-      deployed <- holdDyn Nothing $ cfg ^. ideCfg_setDeployed
-      selContract <- holdDyn (Left initialDemoContract) $ cfg ^. ideCfg_selContract
-
-      errors <- holdDyn [] $ cfg ^. ideCfg_setMsgs
-
-      let
-        -- Mostly concerned with clearing REPL and Messages on contract load:
-        topCfg = mempty
-          & ideCfg_selEnv .~ (EnvSelection_Env <$ cfg ^. ideCfg_selContract)
-          & ideCfg_setMsgs .~ leftmost
-            [ jsonErrorsOnLoad
-              -- Clear messages once a new contract gets loaded.
-            , [] <$ cfg ^. ideCfg_selContract
-            ]
-          & ideCfg_clearRepl .~ (() <$ cfg ^. ideCfg_selContract)
-
       pure
         ( mconcat
-          [ topCfg
-          , controlCfg
+          [ controlCfg
           , editorCfg
           , envCfg
-          , contractReceivedCfg
           ]
-        , Ide { _ide_code = code
-              , _ide_deployed = deployed
-              , _ide_selectedContract = selContract
-              , _ide_wallet = walletL
-              , _ide_jsonData = json
-              , _ide_msgs = errors
-              , _ide_backend = backendL
-              }
+        , ideL
         )
-  where
-    loadContract ideL contractName = do
-      onNewContractName <- tagOnPostBuild contractName
-      let (onExampleContract, onDeployedContract) = fanEither onNewContractName
-      -- Loading of example contracts
-      code <- loadContractData $ fmap _exampleContract_code onExampleContract
-      json <- loadContractData $ fmap _exampleContract_data onExampleContract
-      onCodeJson <- waitForEvents (,) onExampleContract code json
-
-      -- Loading of deployed contracts
-      deployedResult <- backendRequest (ideL ^. ide_wallet) $ ffor onDeployedContract $ \c -> BackendRequest
-          { _backendRequest_code = mconcat
-            [ "(describe-module '"
-            , _deployedContract_name c
-            , ")"
-            ]
-          , _backendRequest_data = mempty
-          , _backendRequest_backend = _deployedContract_backendUri c
-          }
-      let (deployedResultError, deployedValue) = fanEither $ sequence <$> deployedResult
-          (deployedDecodeError, deployedModule) = fanEither $ ffor deployedValue $ \(uri, v) -> case fromJSON v of
-            Aeson.Error e -> Left e
-            Aeson.Success a -> Right (uri, a)
-
-      pure $ mempty
-        & ideCfg_setCode .~ leftmost
-          [ fmap fst onCodeJson
-          , ffor deployedModule $ \(_uri, m) -> _unCode (_mCode m)
-          ]
-        & ideCfg_setDeployed .~ ffor deployedModule (\(uri, m) -> (,) uri <$> listPactFunctions (_unCode $ _mCode m))
-        & ideCfg_jsonData . jsonDataCfg_setRawInput .~ fmap snd onCodeJson
-        -- TODO: Something better than this for reporting errors
-        & ideCfg_setMsgs .~ leftmost
-          [ pure . T.pack <$> deployedDecodeError
-          , pure . T.pack . show <$> deployedResultError
-          ]
-
-    loadContractData onNewContractName =
-      fmap (fmap codeFromResponse)
-      . performRequestAsync $ ffor onNewContractName
-      $ \example -> xhrRequest "GET" example def
 
 -- | Code editing (left hand side currently)
 codePanel :: forall t m. MonadWidget t m => Ide t -> m (IdeCfg t)
@@ -766,31 +599,20 @@ controlBar ideL = do
       onLoad <- elClass "div" "item" $
         button (def & buttonConfig_emphasis .~ Static (Just Primary)) $ text "Load into REPL"
 
-      onDeploy <- elClass "div" "item" $ do
-        input (def & inputConfig_action .~ Static (Just RightAction)) $ do
-          let dropdownConfig = def
-                & dropdownConfig_placeholder .~ "Deployment Target"
-          backendL <- fmap value $ dropdown dropdownConfig Nothing $ TaggedDynamic $
-            ffor (ideL ^. ide_backend . backend_backends) $
-              Map.fromList . fmap (\(k, v) -> (v, text $ unBackendName k)) . maybe [] Map.toList
-          let buttonConfig = def
-                & buttonConfig_emphasis .~ Static (Just Primary)
-                & buttonConfig_disabled .~ Dyn (isNothing <$> backendL)
-          deploy <- button buttonConfig $ text "Deploy"
-          pure $ attachWithMaybe (\m _ -> m) (current backendL) deploy
-      let
-        req = do
-          c <- ideL ^. ide_code
-          ed <- ideL ^. ide_jsonData . jsonData_data
-          pure $ either (\_ _ -> Nothing) (\x -> Just . BackendRequest c x) ed
-        onReq = fmapMaybe id $ attachWith ($) (current req) onDeploy
-      onResp <- backendRequest (ideL ^. ide_wallet) onReq
+      onDeployClick <- elClass "div" "item" $ do
+        -- input (def & inputConfig_action .~ Static (Just RightAction)) $ do
+        --   let dropdownConfig = def
+        --         & dropdownConfig_placeholder .~ "Deployment Target"
+        --   backendL <- fmap value $ dropdown dropdownConfig Nothing $ TaggedDynamic $
+        --     ffor (ideL ^. ide_backend . backend_backends) $
+        --       Map.fromList . fmap (\(k, v) -> (v, text $ unBackendName k)) . maybe [] Map.toList
+        let buttonConfig = def
+              & buttonConfig_emphasis .~ Static (Just Primary)
+        button buttonConfig $ text "Deploy"
+      (confirmationCfg, onDeploy) <- uiDeployConfirmation ideL onDeployClick
 
       elClass "div" "right menu" rightMenu
-      pure $ mempty
-        & ideCfg_setMsgs .~ ((:[]) . prettyPrintBackendErrorResult . snd <$> onResp)
-        & ideCfg_backend . backendCfg_refreshModule .~ fmapMaybe (either (const Nothing) (const $ Just ()) . snd) onResp
-        & ideCfg_load .~ onLoad
+      pure $ confirmationCfg & ideCfg_load .~ onLoad
   where
     showPactVersion = do
       elAttr "a" ( "target" =: "_blank" <> "href" =: "https://github.com/kadena-io/pact") $ do
@@ -811,44 +633,4 @@ controlBar ideL = do
       elClass "div" "ui item" $
         elAttr "a" ("target" =: "_blank" <> "href" =: "http://kadena.io") $
           elAttr "img" ("src" =: static @"img/KadenaWhiteLogo.svg" <> "class" =: "logo-image" <> "width" =: "150" <> "hegiht" =: "20") blank
-
-exampleData :: [ExampleContract]
-exampleData =
-  [ ExampleContract "Hello World"
-    (static @ "examples/helloWorld-1.0.repl")
-    (static @ "examples/helloWorld-1.0.data.json")
-  , ExampleContract "Simple Payment"
-    (static @ "examples/simplePayments-1.0.repl")
-    (static @ "examples/simplePayments-1.0.data.json")
-  , ExampleContract "International Payment"
-    (static @ "examples/internationalPayments-1.0.repl")
-    (static @ "examples/internationalPayments-1.0.data.json")
-
-  {- , ExampleContract "Commercial Paper" "examples/commercialPaper-1.0" -}
-  ]
-
-demos :: Map Int ExampleContract
-demos = Map.fromList $ zip [0..] exampleData
-
--- | What demo do we load on startup:
-initialDemo :: Int
-initialDemo = 0
-
-initialDemoContract :: ExampleContract
-initialDemoContract = fromJust $ Map.lookup initialDemo demos
-
--- Instances:
-
-instance Reflex t => Semigroup (IdeCfg t) where
-  (<>) = mappenddefault
-
-instance Reflex t => Monoid (IdeCfg t) where
-  mempty = memptydefault
-  mappend = (<>)
-
-instance Semigroup EnvSelection where
-  sel1 <> _ = sel1
-
-instance Semigroup DeployedContract where
-  sel1 <> _ = sel1
 

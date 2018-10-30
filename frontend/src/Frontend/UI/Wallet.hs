@@ -49,7 +49,10 @@ import           Frontend.Crypto.Ed25519     (keyToText)
 
 
 -- | UI for managing the keys wallet.
-uiWallet :: MonadWidget t m => Wallet t -> m (WalletCfg t)
+uiWallet
+  :: (MonadWidget t m, IsWalletCfg cfg t)
+  => Wallet t
+  -> m cfg
 uiWallet w = do
     onCreate <- uiCreateKey w
     keysCfg <- uiAvailableKeys w
@@ -91,7 +94,10 @@ uiCreateKey w = validatedInputWithButton check "Enter key name" "Generate"
       pure $ if Map.member k keys then Left "This key name is already in use." else Right k
 
 -- | Widget listing all available keys.
-uiAvailableKeys :: MonadWidget t m => Wallet t -> m (WalletCfg t)
+uiAvailableKeys
+  :: (MonadWidget t m, IsWalletCfg cfg t)
+  => Wallet t
+  -> m cfg
 uiAvailableKeys aWallet = do
   elClass "div" "ui relaxed middle aligned divided list" $ do
     let itemsDyn = uiKeyItems <$> aWallet ^. wallet_keys
@@ -102,7 +108,10 @@ uiAvailableKeys aWallet = do
 --
 -- Does not include the surrounding `div` tag. Use uiAvailableKeys for the
 -- complete `div`.
-uiKeyItems :: MonadWidget t m => DynKeyPairs t -> m (WalletCfg t)
+uiKeyItems
+  :: (MonadWidget t m, IsWalletCfg cfg t)
+  => DynKeyPairs t
+  -> m cfg
 uiKeyItems keyMap =
   case Map.toList keyMap of
     []   -> do
@@ -113,7 +122,9 @@ uiKeyItems keyMap =
       pure $ mconcat rs
 
 -- | Display a key as list item together with it's name.
-uiKeyItem :: MonadWidget t m => (Text, DynKeyPair t) -> m (WalletCfg t)
+uiKeyItem
+  :: (MonadWidget t m, IsWalletCfg cfg t)
+  => (Text, DynKeyPair t) -> m cfg
 uiKeyItem (n, k) = do
     elClass "div" "item" $ do
       (box, onDel) <- elClass "div" "right floated content" $ do

@@ -9,6 +9,7 @@
 {-# LANGUAGE ScopedTypeVariables    #-}
 {-# LANGUAGE TemplateHaskell        #-}
 {-# LANGUAGE TupleSections          #-}
+{-# LANGUAGE ConstraintKinds        #-}
 
 -- | Editing features for the data part of Pact transactions:
 --
@@ -31,6 +32,7 @@ module Frontend.JsonData
   , HasKeysetV (..)
   , JsonDataCfg (..)
   , HasJsonDataCfg (..)
+  , IsJsonDataCfg
   , JsonData (..)
   , HasJsonData (..)
   -- * Creation
@@ -141,6 +143,10 @@ data JsonDataCfg t = JsonDataCfg
   deriving Generic
 
 makePactLenses ''JsonDataCfg
+
+-- | HasJsonDataCfg with additional constraints to make it behave like a proper
+-- "Config".
+type IsJsonDataCfg cfg t = (HasJsonDataCfg cfg t, Monoid cfg, Flattenable cfg t)
 
 data JsonData t = JsonData
   { _jsonData_keysets          :: Dynamic t (DynKeysets t)
@@ -370,7 +376,7 @@ instance Reflex t => Monoid (JsonDataCfg t) where
   mempty = JsonDataCfg never never never never never never
   mappend = (<>)
 
-instance Flattenable JsonDataCfg where
+instance Flattenable (JsonDataCfg t) t where
   flattenWith doSwitch ev =
     JsonDataCfg
       <$> doSwitch never (_jsonDataCfg_setRawInput <$> ev)

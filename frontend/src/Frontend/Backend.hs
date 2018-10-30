@@ -11,6 +11,7 @@
 {-# LANGUAGE ScopedTypeVariables        #-}
 {-# LANGUAGE TemplateHaskell            #-}
 {-# LANGUAGE TypeFamilies               #-}
+{-# LANGUAGE ConstraintKinds            #-}
 
 -- | Interface for accessing Pact backends.
 --
@@ -25,6 +26,7 @@ module Frontend.Backend
   , BackendErrorResult
   , BackendCfg (..)
   , HasBackendCfg (..)
+  , IsBackendCfg
   , Backend (..)
   , HasBackend (..)
     -- * Creation
@@ -133,6 +135,10 @@ data BackendCfg t = BackendCfg
   deriving Generic
 
 makePactLenses ''BackendCfg
+
+-- | HasBackendCfg with additional constraints to make it behave like a proper
+-- "Config".
+type IsBackendCfg cfg t = (HasBackendCfg cfg t, Monoid cfg, Flattenable cfg t)
 
 data Backend t = Backend
   { _backend_backends :: Dynamic t (Maybe (Map BackendName BackendUri))
@@ -484,9 +490,17 @@ getNonce = do
 encodeAsText :: BSL.ByteString -> Text
 encodeAsText = T.decodeUtf8 . BSL.toStrict
 
+-- Instances:
+
 instance Reflex t => Semigroup (BackendCfg t) where
   (<>) = mappenddefault
 
 instance Reflex t => Monoid (BackendCfg t) where
   mempty = memptydefault
   mappend = (<>)
+--
+
+instance Flattenable (BackendCfg t) t where
+  flattenWith doSwitch ev =
+    BackendCfg
+      <$> doSwitch never (_backendCfg_refreshModule <$> ev)
