@@ -68,13 +68,15 @@ uiDeployConfirmation ideL onShow = mdo
     , Modal_Shown  <$ onShow
     ]
   (cfg, onCancel, onAccept) <- modalDialog visibility $ do
-    elClass "div" "header" $ text "Check your Deployment Settings"
-    cfg <- elClass "div" "content" $ do
-      jsonCfg <- elClass "div" "json-data ui segment" $
-        uiJsonData (ideL ^. ide_wallet) (ideL^. ide_jsonData)
+    elClass "div" "header" $ text "Check your deployment settings"
+    cfg <- elClass "div" "content ui fluid accordion" $ do
+      jsonCfg <- accordionItem True "ui json-data-accordion-item" "Data" $
+        elClass "div" "json-data full-size" $
+          uiJsonData (ideL ^. ide_wallet) (ideL^. ide_jsonData)
 
-      keysCfg <- elClass "div" "ui segment" $
-        uiWallet $ ideL ^. ide_wallet
+      keysCfg <- accordionItem True "ui keys" "Keys" $
+        elClass "div" "ui segment" $
+          uiWallet $ ideL ^. ide_wallet
       pure $ mconcat [ jsonCfg, keysCfg ]
     elClass "div" "actions" $ do
       onCancel1 <- makeClickable $ elClass' "div" "ui black deny button" $
