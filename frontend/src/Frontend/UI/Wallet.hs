@@ -35,8 +35,11 @@ module Frontend.UI.Wallet
 ------------------------------------------------------------------------------
 import           Control.Arrow               ((&&&))
 import           Control.Lens
+import           Control.Monad               (when)
 import qualified Data.Map                    as Map
 import           Data.Maybe
+import           Data.Set                    (Set)
+import qualified Data.Set                    as Set
 import           Data.Text                   (Text)
 import           Reflex
 import           Reflex.Dom.SemanticUI       hiding (mainWidget)
@@ -65,7 +68,7 @@ uiWallet w = do
 uiSelectKey
   :: MonadWidget t m
   => Wallet t
-  -> ((Text, DynKeyPair t) -> Bool)
+  -> ((Text, KeyPair) -> Bool)
   -> m (Dynamic t (Maybe Text))
 uiSelectKey w kFilter = do
   let keyNames = map fst . filter kFilter . Map.toList <$> w ^. wallet_keys
@@ -77,7 +80,7 @@ uiSelectKey w kFilter = do
   pure $ _dropdown_value d
 
 -- | Check whether a given key does contain a private key.
-hasPrivateKey :: (Text, DynKeyPair t) -> Bool
+hasPrivateKey :: (Text, KeyPair) -> Bool
 hasPrivateKey = isJust . _keyPair_privateKey . snd
 
 ----------------------------------------------------------------------
@@ -94,39 +97,37 @@ uiCreateKey w = validatedInputWithButton check "Enter key name" "Generate"
 uiAvailableKeys :: MonadWidget t m => Wallet t -> m (WalletCfg t)
 uiAvailableKeys aWallet = do
   elClass "div" "ui relaxed middle aligned divided list" $ do
-    let itemsDyn = uiKeyItems <$> aWallet ^. wallet_keys
-    networkViewFlatten $ itemsDyn
+    uiKeyItems aWallet
 
 
 -- | Render a list of key items.
 --
 -- Does not include the surrounding `div` tag. Use uiAvailableKeys for the
 -- complete `div`.
-uiKeyItems :: MonadWidget t m => DynKeyPairs t -> m (WalletCfg t)
-uiKeyItems keyMap =
-  case Map.toList keyMap of
-    []   -> do
-      text "No keys ..."
-      pure mempty
-    keys -> do
-      rs <- traverse uiKeyItem keys
-      pure $ mconcat rs
+uiKeyItems :: MonadWidget t m => Wallet t -> m (WalletCfg t)
+uiKeyItems aWallet = do
+  let keyMap = aWallet ^. wallet_keys
+      signingKeys = aWallet ^. wallet_signingKeys
+  events <- listWithKey keyMap $ \name key -> uiKeyItem signingKeys (name, key)
+  dyn_ $ ffor keyMap $ \keys -> when (Map.null keys) $ text "No keys ..."
+  let setSigning = switchDyn $ leftmost . fmap fst . Map.elems <$> events
+      delKey = switchDyn $ leftmost . fmap snd . Map.elems <$> events
+  pure $ mempty
+    & walletCfg_setSigning .~ setSigning
+    & walletCfg_delKey .~ delKey
+
 
 -- | Display a key as list item together with it's name.
-uiKeyItem :: MonadWidget t m => (Text, DynKeyPair t) -> m (WalletCfg t)
-uiKeyItem (n, k) = do
+uiKeyItem :: MonadWidget t m => Dynamic t (Set KeyName) -> (Text, Dynamic t KeyPair) -> m (Event t (KeyName, Bool), Event t KeyName)
+uiKeyItem signingKeys (n, k) = do
     elClass "div" "item" $ do
       (box, onDel) <- elClass "div" "right floated content" $ do
-        onPostBuild <- getPostBuild
-        let
-          cSigned = current $ k ^. keyPair_forSigning
-          onPbSigned = tag cSigned onPostBuild
 
-        signingStatus <- holdUniqDyn $ k ^. keyPair_forSigning
+        isSigning <- tagOnPostBuild $ Set.member n <$> signingKeys
+
         boxI <- checkbox (text "Signing")
           $ def & checkboxConfig_type .~ pure Nothing
-                & checkboxConfig_setValue
-                  .~ SetValue False (Just $ leftmost [updated signingStatus, onPbSigned])
+                & checkboxConfig_setValue .~ SetValue False (Just isSigning)
         let
           buttonIcon = snd <$> elClass' "i" "large trash right aligned icon" blank
         onDelI <- flip button buttonIcon $ def
@@ -137,18 +138,16 @@ uiKeyItem (n, k) = do
       viewKeys <- toggle False =<< domEvent Click <$> icon' "large link key middle aligned" def
       elClass "div" "content" $ do
         elClass "h4" "ui header" $ text n
-        elClass "div" "description" $ text $ keyDescription k
+        elClass "div" "description" $ dynText $ keyDescription <$> k
       dyn_ $ ffor viewKeys $ \case
         False -> pure ()
         True -> table (def & classes .~ "very basic") $ do
           let item lbl key = el "tr" $ do
                 el "td" $ label (def & labelConfig_pointing .~ Static (Just RightPointing)) $ text lbl
-                elAttr "td" ("style" =: "word-break: break-all") $ text key
-          item "Public key" $ keyToText (_keyPair_publicKey k)
-          item "Private key" $ maybe "No key" keyToText (_keyPair_privateKey k)
-      pure $ mempty
-        & walletCfg_setSigning .~ (fmap (n, ) . _checkbox_change $ box)
-        & walletCfg_delKey .~  fmap (const n) onDel
+                elAttr "td" ("style" =: "word-break: break-all") $ dynText key
+          item "Public key" $ keyToText . _keyPair_publicKey <$> k
+          item "Private key" $ maybe "No key" keyToText . _keyPair_privateKey <$> k
+      pure $ ((fmap (n, ) . _checkbox_change $ box), fmap (const n) onDel)
   where
     keyDescription k1 =
       case _keyPair_privateKey k1 of

@@ -51,6 +51,8 @@ import           Data.Default                      (def)
 import qualified Data.HashMap.Strict               as H
 import qualified Data.Map                          as Map
 import           Data.Map.Strict                   (Map)
+import           Data.Set                          (Set)
+import qualified Data.Set                          as Set
 import           Data.Text                         (Text)
 import qualified Data.Text                         as T
 import qualified Data.Text.Encoding                as T
@@ -344,8 +346,9 @@ buildSendXhrRequest
   => Wallet t -> BackendRequest -> m (XhrRequest Text)
 buildSendXhrRequest w req = do
   fmap (xhrRequest "POST" (url (_backendRequest_backend req) "/send")) $ do
-    kps <- sample . current . joinKeyPairs $ _wallet_keys w
-    sendData <- encodeAsText . encode <$> buildSendPayload kps req
+    kps <- sample . current $ _wallet_keys w
+    signing <- sample . current $ _wallet_signingKeys w
+    sendData <- encodeAsText . encode <$> buildSendPayload kps signing req
     pure $ def & xhrRequestConfig_sendData .~ sendData
 
 -- | Build Xhr request for the /listen endpoint using the given URI and request
@@ -356,9 +359,9 @@ buildListenXhrRequest uri key = do
     & xhrRequestConfig_sendData .~ encodeAsText (encode $ object [ "listen" .= key ])
 
 -- | Build payload as expected by /send endpoint.
-buildSendPayload :: (MonadIO m, MonadJSM m) => KeyPairs -> BackendRequest -> m Value
-buildSendPayload keys req = do
-  cmd <- buildCmd keys req
+buildSendPayload :: (MonadIO m, MonadJSM m) => KeyPairs -> Set KeyName -> BackendRequest -> m Value
+buildSendPayload keys signing req = do
+  cmd <- buildCmd keys signing req
   pure $ object
     [ "cmds" .= [ cmd ]
     ]
@@ -366,12 +369,12 @@ buildSendPayload keys req = do
 -- | Build a single cmd as expected in the `cmds` array of the /send payload.
 --
 -- As specified <https://pact-language.readthedocs.io/en/latest/pact-reference.html#send here>.
-buildCmd :: (MonadIO m, MonadJSM m) => KeyPairs -> BackendRequest -> m Value
-buildCmd keys req = do
+buildCmd :: (MonadIO m, MonadJSM m) => KeyPairs -> Set KeyName -> BackendRequest -> m Value
+buildCmd keys signing req = do
   cmd <- encodeAsText . encode <$> buildExecPayload req
   let
     cmdHash = hash (T.encodeUtf8 cmd)
-  sigs <- buildSigs cmdHash keys
+  sigs <- buildSigs cmdHash keys signing
   pure $ object
     [ "hash" .= cmdHash
     , "sigs" .= sigs
@@ -379,15 +382,15 @@ buildCmd keys req = do
     ]
 
 -- | Build signatures for a single `cmd`.
-buildSigs :: MonadJSM m => Hash -> KeyPairs -> m Value
-buildSigs cmdHash keys = do
+buildSigs :: MonadJSM m => Hash -> KeyPairs -> Set KeyName -> m Value
+buildSigs cmdHash keys signing = do
   let
     -- isJust filter is necessary so indices are guaranteed stable even after
     -- the following `mapMaybe`:
-    isForSigning (KeyPair _ priv forSign) = forSign && isJust priv
+    isForSigning (name, (KeyPair _ priv)) = Set.member name signing && isJust priv
 
-    signingPairs = filter isForSigning . Map.elems $ keys
-    signingKeys = mapMaybe _keyPair_privateKey signingPairs
+    signingPairs = filter isForSigning . Map.assocs $ keys
+    signingKeys = mapMaybe _keyPair_privateKey $ map snd signingPairs
 
   sigs <- traverse (mkSignature (unHash cmdHash)) signingKeys
 
@@ -397,7 +400,7 @@ buildSigs cmdHash keys = do
       [ "sig" .= sig
       , "pubKey" .= _keyPair_publicKey kp
       ]
-  pure . toJSON $ zipWith mkSigPubKey signingPairs sigs
+  pure . toJSON $ zipWith mkSigPubKey (map snd signingPairs) sigs
 
 
 -- | Build exec `cmd` payload.
