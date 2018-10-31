@@ -197,9 +197,7 @@ makeBackend
   :: forall t m
   . (MonadHold t m, PerformEvent t m, MonadFix m, NotReady t m, Adjustable t m
     , MonadJSM (Performable m), HasJSContext (Performable m)
-    , TriggerEvent t m, MonadSample t (Performable m)
-    , PostBuild t m
-    , MonadIO m
+    , TriggerEvent t m, PostBuild t m, MonadIO m
     )
   => Wallet t
   -> BackendCfg t
@@ -269,9 +267,9 @@ parsePactServerList raw =
 
 loadModules
   :: forall t m
-  . (MonadHold t m, PerformEvent t m, MonadFix m, MonadIO m, NotReady t m, Adjustable t m
+  . (MonadHold t m, PerformEvent t m, MonadFix m, NotReady t m, Adjustable t m
     , MonadJSM (Performable m), HasJSContext (Performable m)
-    , TriggerEvent t m, MonadSample t (Performable m), PostBuild t m
+    , TriggerEvent t m, PostBuild t m
     )
  => Wallet t -> Dynamic t (Maybe (Map BackendName BackendUri)) -> BackendCfg t
   -> m (Dynamic t (Map BackendName (Maybe [Text])))
@@ -309,15 +307,14 @@ url b endpoint = b <> "/api/v1" <> endpoint
 --   And wait for its result via /listen.
 backendRequest
   :: forall t m
-  . ( MonadHold t m, PerformEvent t m, MonadFix m
-    , MonadJSM (Performable m), HasJSContext (Performable m)
-    , TriggerEvent t m, MonadSample t (Performable m)
+  . ( PerformEvent t m, MonadJSM (Performable m)
+    , HasJSContext (Performable m), TriggerEvent t m
     )
   => Wallet t -> Event t BackendRequest -> m (Event t (BackendUri, BackendErrorResult))
-backendRequest w onReq = performEventAsync $ ffor onReq $ \req cb -> do
+backendRequest w onReq = performEventAsync $ ffor attachedOnReq $ \((keys, signing), req) cb -> do
   let uri = _backendRequest_backend req
       callback = liftIO . void . forkIO . cb . (,) uri
-  sendReq <- buildSendXhrRequest w req
+  sendReq <- buildSendXhrRequest keys signing req
   void $ newXMLHttpRequestWithError sendReq $ \r -> case getResPayload r of
     Left e -> callback $ Left e
     Right send -> case _rkRequestKeys send of
@@ -331,6 +328,9 @@ backendRequest w onReq = performEventAsync $ ffor onReq $ \req cb -> do
             PactResult_FailureText err -> callback $ Left $ BackendError_ResultFailureText err
             PactResult_Success result -> callback $ Right result
       _ -> callback $ Left $ BackendError_Other "Response contained more than one RequestKey"
+  where
+    attachedOnReq = attach wTuple onReq
+    wTuple = current $ zipDyn (_wallet_keys w) (_wallet_signingKeys w)
 
 -- TODO: upstream this?
 instance HasJSContext JSM where
@@ -342,12 +342,10 @@ instance HasJSContext JSM where
 
 -- | Build Xhr request for the /send endpoint using the given URI.
 buildSendXhrRequest
-  :: (Reflex t, MonadIO m, MonadJSM m, MonadSample t m)
-  => Wallet t -> BackendRequest -> m (XhrRequest Text)
-buildSendXhrRequest w req = do
+  :: (MonadIO m, MonadJSM m)
+  => KeyPairs -> Set KeyName -> BackendRequest -> m (XhrRequest Text)
+buildSendXhrRequest kps signing req = do
   fmap (xhrRequest "POST" (url (_backendRequest_backend req) "/send")) $ do
-    kps <- sample . current $ _wallet_keys w
-    signing <- sample . current $ _wallet_signingKeys w
     sendData <- encodeAsText . encode <$> buildSendPayload kps signing req
     pure $ def & xhrRequestConfig_sendData .~ sendData
 
