@@ -39,6 +39,8 @@ import           Data.Maybe
 import           Data.Semigroup
 import           Data.Sequence               (Seq)
 import qualified Data.Sequence               as S
+import           Data.Set                    (Set)
+import qualified Data.Set                    as Set
 import           Data.Text                   (Text)
 import qualified Data.Text                   as T
 import qualified Data.Text.Encoding          as T
@@ -70,13 +72,15 @@ import           Frontend.Ide
 import           Frontend.UI.Dialogs.DeployConfirmation
 
 -- | Retrieve the currently selected signing keys.
-ide_getSigningKeyPairs :: Reflex t => Ide t -> Dynamic t [DynKeyPair t]
+ide_getSigningKeyPairs :: Reflex t => Ide t -> Dynamic t [KeyPair]
 ide_getSigningKeyPairs ideL = do
   let
-    keys = Map.elems <$> ideL ^. ide_wallet . wallet_keys
+    signingKeys = ideL ^. ide_wallet . wallet_signingKeys
+    keys = Map.assocs <$> ideL ^. ide_wallet . wallet_keys
   cKeys <- keys
-  let isSigning k = k ^. keyPair_forSigning
-  filterM isSigning cKeys
+  sKeys <- signingKeys
+  let isSigning (n,_) = Set.member n sKeys
+  pure $ map snd $ filter isSigning cKeys
 
 
 codeExtension :: Text
@@ -95,7 +99,7 @@ data ClickState = DownAt (Int, Int) | Clicked | Selected
   deriving (Eq,Ord,Show,Read)
 
 app :: MonadWidget t m => m ()
-app = void . mfix $ \ ~(cfg, ideL) -> do
+app = void . mfix $ \ cfg -> do
   ideL <- makeIde cfg
 
   elClass "div" "app" $ do
@@ -109,14 +113,11 @@ app = void . mfix $ \ ~(cfg, ideL) -> do
       envCfg <- elClass "div" "column repl-column" $
         elClass "div" "ui env-pane" $ envPanel ideL
 
-      pure
-        ( mconcat
-          [ controlCfg
-          , editorCfg
-          , envCfg
-          ]
-        , ideL
-        )
+      pure $ mconcat
+        [ controlCfg
+        , editorCfg
+        , envCfg
+        ]
 
 -- | Code editing (left hand side currently)
 codePanel :: forall t m. MonadWidget t m => Ide t -> m (IdeCfg t)
@@ -477,7 +478,7 @@ replWidget ideL = mdo
 replInner
     :: MonadWidget t m
     => Event t ()
-    -> ([DynKeyPair t], (Text, Object))
+    -> ([KeyPair], (Text, Object))
     -> m (Event t Text, Maybe LogMsg)
 replInner replClick (signingKeys, (code, json)) = mdo
     let pactKeys =

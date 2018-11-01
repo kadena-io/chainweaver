@@ -232,6 +232,7 @@ makeIde userCfg = build $ \ ~(cfg, ideL) -> do
         & ideCfg_setMsgs .~ msgs
         & ideCfg_backend . backendCfg_refreshModule .~ refresh
         & ideCfg_clearRepl .~ (() <$ cfg ^. ideCfg_selContract)
+        & ideCfg_wallet . walletCfg_clearAll .~ (() <$ cfg ^. ideCfg_selContract)
 
     envSelection <- makeEnvSelection cfg
 
