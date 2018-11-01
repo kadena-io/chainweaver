@@ -201,13 +201,12 @@ makeIde userCfg = build $ \ ~(cfg, ideL) -> do
       ]
     selContract <- holdDyn (Left initialDemoContract) $ cfg ^. ideCfg_selContract
 
-
     let
       req = do
         c       <- ideL ^. ide_code
         ed      <- ideL ^. ide_jsonData . jsonData_data
         mbName  <- ideL ^. ide_deployBackend
-        mbs    <- ideL ^. ide_backend . backend_backends
+        mbs     <- ideL ^. ide_backend . backend_backends
         pure $ do
           bName <- mbName
           bs <- mbs
