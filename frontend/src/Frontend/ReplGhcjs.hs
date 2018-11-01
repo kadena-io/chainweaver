@@ -588,7 +588,7 @@ moduleExplorer ideL = mdo
         searchLoaded1 = switch . current $ fmap Right . leftmost . fmap snd . Map.elems <$> searchClick
     pure (searchSelected1, searchLoaded1)
 
-  let itemsPerPage = 5 :: Int
+  let itemsPerPage = 10 :: Int
       numberOfItems = length <$> filteredCs
       calcTotal a = ceiling $ (fromIntegral a :: Double)  / fromIntegral itemsPerPage
       totalPages = calcTotal <$> numberOfItems
