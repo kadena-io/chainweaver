@@ -136,8 +136,10 @@ data IdeCfg t = IdeCfg
     -- ^ Make the REPL fresh again, ready for new contracts.
   , _ideCfg_deploy      :: Event t ()
     -- ^ Deploy the currently edited code/contract.
-  , _ideCfg_setDeployBackend  :: Event t BackendName
+  , _ideCfg_setDeployBackend  :: Event t (Maybe BackendName)
    -- ^ To which backend shall we deploy?
+   -- TODO: Once we upgraded semantic-reflex and are able to keep the dropdown
+   -- in sync, this should no longer be a Maybe.
   }
   deriving Generic
 
@@ -156,6 +158,7 @@ data Ide t = Ide
   , _ide_backend          :: Backend t
   , _ide_msgs             :: Dynamic t [LogMsg]
   , _ide_deployBackend    :: Dynamic t (Maybe BackendName)
+   -- The backend that should be used for deployments.
   , _ide_load             :: Event t ()
   -- ^ Forwarded _ideCfg_load. TODO: Modularize Repl properly and get rid of this.
   , _ide_clearRepl        :: Event t ()
@@ -189,8 +192,9 @@ makeIde userCfg = build $ \ ~(cfg, ideL) -> do
         fmapMaybe (^? _Right . deployedContract_backendName) $
           cfg ^. ideCfg_selContract
     deployBackendL <- holdDyn Nothing $
-      leftmost [ Just <$> cfg ^. ideCfg_setDeployBackend
-               , Just <$> onSelDeployBackend
+      leftmost [ cfg ^. ideCfg_setDeployBackend
+               , Just <$> onSelDeployBackend -- TODO: Currently useless,
+               -- because we reset it, because we can't update dropdown.
                ]
 
     (onNewCode, contractReceivedCfg) <- loadContract ideL

@@ -1,4 +1,4 @@
-{-# LANGUAGE ConstraintKinds      #-}
+{-# LANGUAGE ConstraintKinds       #-}
 {-# LANGUAGE DataKinds             #-}
 {-# LANGUAGE DeriveGeneric         #-}
 {-# LANGUAGE ExtendedDefaultRules  #-}
@@ -34,15 +34,17 @@ import           Data.Text               (Text)
 import           Reflex
 import           Reflex.Dom.SemanticUI   hiding (mainWidget)
 
+import           Frontend.Backend
 import           Frontend.Crypto.Ed25519 (keyToText)
 import           Frontend.Foundation
+import           Frontend.Ide            (HasIde (..), HasIdeCfg (..), Ide,
+                                          IdeCfg)
 import           Frontend.JsonData       (HasJsonData (..))
+import           Frontend.UI.JsonData    (uiJsonData)
+import           Frontend.UI.Wallet      (uiWallet)
 import           Frontend.Wallet
 import           Frontend.Wallet         (HasWallet (..))
 import           Frontend.Widgets
-import           Frontend.Ide            (Ide, IdeCfg, HasIde (..))
-import           Frontend.UI.Wallet (uiWallet)
-import           Frontend.UI.JsonData (uiJsonData)
 
 -- | Are we deploying a contract or calling a function?
 {- data DeployConfirmationType -}
@@ -69,7 +71,21 @@ uiDeployConfirmation ideL onShow = mdo
     ]
   (cfg, onCancel, onAccept) <- modalDialog visibility $ do
     elClass "div" "header" $ text "Check your deployment settings"
-    cfg <- elClass "div" "content ui fluid accordion" $ do
+
+    bCfg <- elClass "div" "ui segment" $ do
+      elClass "div" "ui header" $ text "Backend"
+      bI <- input (def & inputConfig_action .~ Static (Just RightAction)) $ do
+        let dropdownConfig = def
+              & dropdownConfig_placeholder .~ "Deployment Target"
+        fmap value $ dropdown dropdownConfig Nothing $ TaggedDynamic $
+          ffor (ideL ^. ide_backend . backend_backends) $
+            Map.fromList . fmap (\(k, _) -> (k, text $ unBackendName k)) . maybe [] Map.toList
+      pure $ mempty & ideCfg_setDeployBackend  .~ leftmost
+        [ updated bI
+        , tag (current bI) onShow -- TODO: This is needed until we can keep the dropdown in sync with our model.
+        ]
+
+    aCfg <- elClass "div" "content ui fluid accordion" $ do
       jsonCfg <- accordionItem True "ui json-data-accordion-item" "Data" $
         elClass "div" "json-data full-size" $
           uiJsonData (ideL ^. ide_wallet) (ideL^. ide_jsonData)
@@ -83,7 +99,7 @@ uiDeployConfirmation ideL onShow = mdo
         text "Cancel"
       onAccept1 <- makeClickable $ elClass' "div" "ui positive right button" $
         text "Deploy"
-      pure (cfg, onCancel1, onAccept1)
+      pure (aCfg <> bCfg, onCancel1, onAccept1)
   pure (cfg, onAccept)
 
 

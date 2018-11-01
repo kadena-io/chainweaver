@@ -587,12 +587,6 @@ controlBar ideL = do
         button (def & buttonConfig_emphasis .~ Static (Just Primary)) $ text "Load into REPL"
 
       onDeployClick <- elClass "div" "item" $ do
-        -- input (def & inputConfig_action .~ Static (Just RightAction)) $ do
-        --   let dropdownConfig = def
-        --         & dropdownConfig_placeholder .~ "Deployment Target"
-        --   backendL <- fmap value $ dropdown dropdownConfig Nothing $ TaggedDynamic $
-        --     ffor (ideL ^. ide_backend . backend_backends) $
-        --       Map.fromList . fmap (\(k, v) -> (v, text $ unBackendName k)) . maybe [] Map.toList
         let buttonConfig = def
               & buttonConfig_emphasis .~ Static (Just Primary)
         button buttonConfig $ text "Deploy"
