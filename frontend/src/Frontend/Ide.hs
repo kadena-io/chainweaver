@@ -232,7 +232,6 @@ makeIde userCfg = build $ \ ~(cfg, ideL) -> do
         ]
       refresh = fmapMaybe (either (const Nothing) (const $ Just ()) . snd) onResp
       ourCfg = mempty
-        & ideCfg_selEnv .~ (EnvSelection_Env <$ cfg ^. ideCfg_selContract)
         & ideCfg_setMsgs .~ msgs
         & ideCfg_backend . backendCfg_refreshModule .~ refresh
         & ideCfg_clearRepl .~ (() <$ cfg ^. ideCfg_selContract)
