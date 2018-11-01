@@ -156,9 +156,13 @@ data Ide t = Ide
   , _ide_backend          :: Backend t
   , _ide_msgs             :: Dynamic t [LogMsg]
   , _ide_deployBackend    :: Dynamic t (Maybe BackendName)
+  , _ide_load             :: Event t ()
+  -- ^ Forwarded _ideCfg_load. TODO: Modularize Repl properly and get rid of this.
+  , _ide_clearRepl        :: Event t ()
+  -- ^ Forwarded _ideCfg_clearRepl. TODO: Modularize Repl properly and get rid of this.
   -- ^ The backend the user wants to deploy to.
-  {- , _ide_envSelection     :: Dynamic t EnvSelection -}
-    {- -- ^ Currently selected tab in the right pane. -}
+  , _ide_envSelection     :: Dynamic t EnvSelection
+  -- ^ Currently selected tab in the right pane.
   }
   deriving Generic
 
@@ -230,8 +234,10 @@ makeIde userCfg = build $ \ ~(cfg, ideL) -> do
         & ideCfg_backend . backendCfg_refreshModule .~ refresh
         & ideCfg_clearRepl .~ (() <$ cfg ^. ideCfg_selContract)
 
+    envSelection <- makeEnvSelection cfg
+
     pure
-      ( mconcat [userCfg, contractReceivedCfg, ourCfg]
+      ( mconcat [ourCfg, userCfg, contractReceivedCfg]
       , Ide
           { _ide_code = code
           , _ide_deployed = deployed
@@ -241,6 +247,9 @@ makeIde userCfg = build $ \ ~(cfg, ideL) -> do
           , _ide_msgs = errors
           , _ide_backend = backendL
           , _ide_deployBackend = deployBackendL
+          , _ide_envSelection = envSelection
+          , _ide_load = _ideCfg_load cfg
+          , _ide_clearRepl = _ideCfg_clearRepl cfg
           }
       )
   where
@@ -290,6 +299,28 @@ makeIde userCfg = build $ \ ~(cfg, ideL) -> do
       fmap (fmap codeFromResponse)
       . performRequestAsync $ ffor onNewContractName
       $ \example -> xhrRequest "GET" example def
+
+makeEnvSelection
+  :: forall t m. (MonadHold t m, Reflex t)
+  => IdeCfg t
+  -> m (Dynamic t EnvSelection)
+makeEnvSelection cfg = do
+  let
+    onError =
+      fmap (const EnvSelection_Msgs) . fmapMaybe listToMaybe
+        $ _ideCfg_setMsgs cfg
+    onLoad = EnvSelection_Repl <$ (cfg ^. ideCfg_load)
+
+    -- Disabled Functions tab for now:
+    {- onDeployedLoad = EnvSelection_Functions <$ (cfg ^. ideCfg_setDeployed) -}
+    onDeployedLoad = never
+
+  holdDyn EnvSelection_Env $ leftmost
+    [ cfg ^. ideCfg_selEnv
+    , onDeployedLoad
+    , onError -- Order important - we want to see errors.
+    , onLoad
+    ]
 
 -- | Get the top level functions from a 'Term'
 getFunctions :: Term Name -> [PactFunction]

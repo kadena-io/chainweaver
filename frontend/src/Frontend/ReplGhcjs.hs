@@ -107,7 +107,7 @@ app = void . mfix $ \ ~(cfg, ideL) -> do
         elClass "div" "ui light segment editor-pane" $ codePanel ideL
 
       envCfg <- elClass "div" "column repl-column" $
-        elClass "div" "ui env-pane" $ envPanel ideL cfg
+        elClass "div" "ui env-pane" $ envPanel ideL
 
       pure
         ( mconcat
@@ -136,18 +136,10 @@ codePanel ideL = mdo
 --   - Compiler error messages
 --   - Key & Data Editor
 --   - Module explorer
-envPanel :: forall t m. MonadWidget t m => Ide t -> IdeCfg t -> m (IdeCfg t)
-envPanel ideL cfg = mdo
+envPanel :: forall t m. MonadWidget t m => Ide t -> m (IdeCfg t)
+envPanel ideL = mdo
   let
-    onError =
-      fmap (const EnvSelection_Msgs) . fmapMaybe listToMaybe
-        $ updated (_ide_msgs ideL)
-    onLoad = EnvSelection_Repl <$ (cfg ^. ideCfg_load)
-    -- Disabled Functions tab for now:
-    {- onDeployedLoad = EnvSelection_Functions <$ (cfg ^. ideCfg_setDeployed) -}
-    onDeployedLoad = never
-
-  curSelection <- holdDyn EnvSelection_Env $ cfg ^. ideCfg_selEnv
+    curSelection = _ide_envSelection ideL
 
   onSelect <- menu
     ( def & menuConfig_pointing .~ pure True
@@ -164,7 +156,7 @@ envPanel ideL cfg = mdo
   replCfg <- tabPane
       ("class" =: "ui flex-content light segment")
       curSelection EnvSelection_Repl
-      $ replWidget ideL cfg
+      $ replWidget ideL
 
   envCfg <- tabPane
       ("class" =: "ui fluid accordion env-accordion")
@@ -187,12 +179,7 @@ envPanel ideL cfg = mdo
                    , keysCfg
                    , replCfg
                    , explorerCfg
-                   , mempty & ideCfg_selEnv .~ leftmost
-                       [ onDeployedLoad
-                       , onSelect
-                       , onError -- Order important - we want to see errors.
-                       , onLoad
-                       ]
+                   , mempty & ideCfg_selEnv .~ onSelect
                    ]
 
   errorsCfg <- tabPane
@@ -446,9 +433,8 @@ moduleExplorer ideL = mdo
 replWidget
     :: MonadWidget t m
     => Ide t
-    -> IdeCfg t
     -> m (IdeCfg t)
-replWidget ideL cfg = mdo
+replWidget ideL = mdo
   (e, r) <- elClass' "div" "repl-pane code-font" $ mdo
     mapM_ snippetWidget staticReplHeader
     clickType <- foldDyn ($) Nothing $ leftmost
@@ -468,11 +454,11 @@ replWidget ideL cfg = mdo
         fmap sequence $ zipDyn (ide_getSigningKeyPairs ideL) codeData
 
       onKeysContractLoad =
-        fmapMaybe id . tag (current keysContract) $ cfg ^. ideCfg_load
+        fmapMaybe id . tag (current keysContract) $ _ide_load ideL
 
       onNewReplContent = leftmost
         [ onKeysContractLoad
-        , ([], ("", H.empty)) <$ _ideCfg_clearRepl cfg
+        , ([], ("", H.empty)) <$ _ide_clearRepl ideL
         ]
 
     widgetHold
@@ -612,7 +598,11 @@ controlBar ideL = do
       (confirmationCfg, onDeploy) <- uiDeployConfirmation ideL onDeployClick
 
       elClass "div" "right menu" rightMenu
-      pure $ confirmationCfg & ideCfg_load .~ onLoad
+      let
+        lcfg = mempty
+          & ideCfg_load .~ onLoad
+          & ideCfg_deploy .~ onDeploy
+      pure $ confirmationCfg <> lcfg
   where
     showPactVersion = do
       elAttr "a" ( "target" =: "_blank" <> "href" =: "https://github.com/kadena-io/pact") $ do
