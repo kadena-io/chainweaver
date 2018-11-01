@@ -448,8 +448,20 @@ f font-family: Dropdown !important;
 /********** Make modal centered on screen *********/
 .ui.modal.visible {
   position: fixed;
+  display: flex !important;
+  flex-direction: column;
   top: 50%;
   left: 50%;
+  height: 90%;
   transform: translate(-50%, -50%);
+}
+
+.ui.modal.visible > .actions {
+  flex-grow: 0;
+}
+
+.ui.modal.visible > .content {
+  flex-grow: 1;
+  overflow: auto;
 }
 /**************************************************/
