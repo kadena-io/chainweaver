@@ -194,7 +194,7 @@ let
     '';
   };
 in obApp // {
-  server = args@{ hostName, adminEmail, routeHost, enableHttps, config }:
+  server = args@{ hostName, adminEmail, routeHost, enableHttps, config, version }:
     let
       nixos = import (pkgs.path + /nixos);
     in nixos {
@@ -202,7 +202,7 @@ in obApp // {
       configuration = {
         imports = [
           (obelisk.serverModules.mkBaseEc2 args)
-          (obelisk.serverModules.mkObeliskApp (args // { exe = obApp.linuxExeConfigurable (pkgs.copyPathToStore config); }))
+          (obelisk.serverModules.mkObeliskApp (args // { exe = obApp.linuxExeConfigurable (pkgs.copyPathToStore config) version; }))
           (pactServerModule {
             hostname = routeHost;
             # The exposed port of the pact backend (proxied by nginx).
