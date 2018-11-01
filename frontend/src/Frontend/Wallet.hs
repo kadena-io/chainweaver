@@ -14,12 +14,8 @@ module Frontend.Wallet
     KeyName
   , PublicKey
   , PrivateKey
-  , KeyPairV (..)
-  , HasKeyPairV (..)
-  , KeyPair
-  , DynKeyPair
+  , KeyPair (..)
   , KeyPairs
-  , DynKeyPairs
   , WalletCfg (..)
   , HasWalletCfg (..)
   , Wallet (..)
@@ -27,7 +23,6 @@ module Frontend.Wallet
   -- * Creation
   , makeWallet
   -- * Flattening key pairs
-  , joinKeyPairs
   ) where
 
 
@@ -57,25 +52,15 @@ type KeyName = Text
 
 -- | A key consists of a public key and an optional private key.
 --
-data KeyPairV f = KeyPair
+data KeyPair = KeyPair
   { _keyPair_publicKey  :: PublicKey
   , _keyPair_privateKey :: Maybe PrivateKey
-  , _keyPair_forSigning :: ReflexValue f Bool
   } deriving Generic
 
-makePactLenses ''KeyPairV
---
--- | Variant of `KeyPairV` with fixed values.
-type KeyPair = KeyPairV Identity
-
--- | Variant of `KeyPairV` with `Dynamic` values.
-type DynKeyPair t = KeyPairV (Dynamic t)
+makePactLenses ''KeyPair
 
 -- | `KeyName` to `Key` mapping
 type KeyPairs = Map KeyName KeyPair
-
--- | `KeyName` to `Key` mapping, dynamic variant.
-type DynKeyPairs t = Map KeyName (DynKeyPair t)
 
 data WalletCfg t = WalletCfg
   { _walletCfg_genKey     :: Event t KeyName
@@ -84,13 +69,16 @@ data WalletCfg t = WalletCfg
   -- ^ Use a given key for signing messages/or not.
   , _walletCfg_delKey     :: Event t KeyName
   -- ^ Delete a key from your wallet.
+  , _walletCfg_clearAll   :: Event t ()
+  -- ^ Clear the signing state of all keys.
   }
   deriving Generic
 
 makePactLenses ''WalletCfg
 
 data Wallet t = Wallet
-  { _wallet_keys        :: Dynamic t (DynKeyPairs t)
+  { _wallet_keys        :: Dynamic t KeyPairs
+  , _wallet_signingKeys :: Dynamic t (Set KeyName)
   }
   deriving Generic
 
@@ -107,76 +95,37 @@ makeWallet
 makeWallet conf = do
     initialKeys <- fromMaybe Map.empty <$> loadKeys
     let
-      initialSigning =
-        Set.fromList
-        . map fst . filter (_keyPair_forSigning . snd)
-        . Map.toList
-        $ initialKeys
-
       onNewDeleted p = fmap fst . ffilter (p . snd)
-
       onGenKey = T.strip <$> conf ^. walletCfg_genKey
-    signingKeys <- foldDyn id initialSigning
-      $ leftmost [ Set.delete <$> onNewDeleted not (conf ^. walletCfg_setSigning)
+    signingKeys <- foldDyn id Set.empty
+      $ leftmost [ const Set.empty <$ conf ^. walletCfg_clearAll
+                 , Set.delete <$> onNewDeleted not (conf ^. walletCfg_setSigning)
                  , Set.insert <$> onNewDeleted id (conf ^. walletCfg_setSigning)
-                 , Set.insert <$> onGenKey
                  , Set.delete <$> conf ^. walletCfg_delKey
                  ]
 
-    onNewKey <- performEvent $ createKey signingKeys <$>
+    onNewKey <- performEvent $ createKey <$>
       -- Filter out keys with empty names
       ffilter (/= "") onGenKey
 
-    let
-      initialDynKeys = toDynKeyPairs signingKeys initialKeys
-
-    keys <- foldDyn id initialDynKeys $
+    keys <- foldDyn id initialKeys $
       -- Filter out duplicate keys:
       leftmost [ uncurry (Map.insertWith (flip const)) <$> onNewKey
                , Map.delete <$> _walletCfg_delKey conf
                ]
 
-    performEvent_ $ storeKeys <$> updated (joinKeyPairs keys)
+    performEvent_ $ storeKeys <$> updated keys
 
     pure $ Wallet
       { _wallet_keys = keys
+      , _wallet_signingKeys = signingKeys
       }
   where
     -- TODO: Dummy implementation for now
-    createKey :: Dynamic t (Set KeyName) -> KeyName -> Performable m (KeyName, DynKeyPair t)
-    createKey signing n = do
+    createKey :: KeyName -> Performable m (KeyName, KeyPair)
+    createKey n = do
       (privKey, pubKey) <- genKeyPair
-      pure (n, KeyPair pubKey (Just privKey) (Set.member n <$> signing))
-
-
--- Utilities
-
--- | Join `Dynamic` `DynKeyPairs` to a simple `Dynamic` `KeyPairs`.
-joinKeyPairs :: Reflex t => Dynamic t (DynKeyPairs t) -> Dynamic t KeyPairs
-joinKeyPairs = joinDynThroughMap . fmap (fmap joinKeyPair)
-
--- | Join a `Dynamic` `DynKeyPair` to a simple `Dynamic` `KeyPair`.
-joinKeyPair :: Reflex t => DynKeyPair t -> Dynamic t KeyPair
-joinKeyPair (KeyPair pub priv s) = KeyPair pub priv <$> s
-
-
--- | Transform `KeyPairs` to a `DynKeyPairs`.
---
---   The given Set holds keynames that are used for signing.
-toDynKeyPairs :: Reflex t => Dynamic t (Set KeyName) -> KeyPairs -> DynKeyPairs t
-toDynKeyPairs forSigning = Map.fromList . map toDyn . Map.toList
-  where
-    toDyn (k, v) = (k, toDynKeyPair (Set.member k <$> forSigning) v)
-
--- | Transform a `KeyPair` to a `DynKeyPair`.
---
---   `_keyPair_forSigning` of the passed in `KeyPair` gets ignored. Instead the
---   value of the passed in `Dynamic` is used. This is not really pretty, could
---   be fixed by dropping the above signing Set and handling update directly in
---   the `DynKeyPairs` which would be more efficient too.
-toDynKeyPair :: Reflex t => Dynamic t Bool -> KeyPair -> DynKeyPair t
-toDynKeyPair forSigning (KeyPair pub priv _) = KeyPair pub priv forSigning
-
+      pure (n, KeyPair pubKey (Just privKey))
 
 
 -- Storing data:
@@ -195,7 +144,6 @@ storeWallet_Keys = StoreWallet_Keys
 storeKeys :: MonadJSM m => KeyPairs -> m ()
 storeKeys ks = do
     store <- getLocalStorage
-    {- liftIO $ putStrLn "Stored keys:j" -}
     setItemStorage store storeWallet_Keys ks
 
 -- | Load key pairs from localstorage.
@@ -219,10 +167,13 @@ instance Reflex t => Semigroup (WalletCfg t) where
       , _walletCfg_delKey = leftmost [ _walletCfg_delKey c1
                                      , _walletCfg_delKey c2
                                      ]
+      , _walletCfg_clearAll = leftmost [ _walletCfg_clearAll c1
+                                       , _walletCfg_clearAll c2
+                                       ]
       }
 
 instance Reflex t => Monoid (WalletCfg t) where
-  mempty = WalletCfg never never never
+  mempty = WalletCfg never never never never
   mappend = (<>)
 
 instance Flattenable WalletCfg where
@@ -231,6 +182,7 @@ instance Flattenable WalletCfg where
       <$> doSwitch never (_walletCfg_genKey <$> ev)
       <*> doSwitch never (_walletCfg_setSigning <$> ev)
       <*> doSwitch never (_walletCfg_delKey <$> ev)
+      <*> doSwitch never (_walletCfg_clearAll <$> ev)
 
 instance Reflex t => Semigroup (Wallet t) where
   (<>) = mappenddefault
@@ -249,4 +201,3 @@ instance ToJSON (StoreWallet a) where
   toEncoding = genericToEncoding defaultOptions
 
 instance FromJSON (StoreWallet a)
-

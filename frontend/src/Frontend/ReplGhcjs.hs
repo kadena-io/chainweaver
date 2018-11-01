@@ -39,6 +39,8 @@ import           Data.Maybe
 import           Data.Semigroup
 import           Data.Sequence               (Seq)
 import qualified Data.Sequence               as S
+import           Data.Set                    (Set)
+import qualified Data.Set                    as Set
 import           Data.Text                   (Text)
 import qualified Data.Text                   as T
 import qualified Data.Text.Encoding          as T
@@ -146,13 +148,15 @@ data Ide t = Ide
 makePactLenses ''Ide
 
 -- | Retrieve the currently selected signing keys.
-ide_getSigningKeyPairs :: Reflex t => Ide t -> Dynamic t [DynKeyPair t]
+ide_getSigningKeyPairs :: Reflex t => Ide t -> Dynamic t [KeyPair]
 ide_getSigningKeyPairs ideL = do
   let
-    keys = Map.elems <$> ideL ^. ide_wallet . wallet_keys
+    signingKeys = ideL ^. ide_wallet . wallet_signingKeys
+    keys = Map.assocs <$> ideL ^. ide_wallet . wallet_keys
   cKeys <- keys
-  let isSigning k = k ^. keyPair_forSigning
-  filterM isSigning cKeys
+  sKeys <- signingKeys
+  let isSigning (n,_) = Set.member n sKeys
+  pure $ map snd $ filter isSigning cKeys
 
 
 codeExtension :: Text
@@ -189,6 +193,7 @@ listPactFunctions code = case Pact.compileExps Pact.mkEmptyInfo <$> Pact.parseEx
 
 app :: MonadWidget t m => m ()
 app = void . mfix $ \ ~(cfg, ideL) -> elClass "div" "app" $ do
+    let selContract = cfg ^. ideCfg_selContract
     walletL <- makeWallet $ _ideCfg_wallet cfg
     json <- makeJsonData walletL $ _ideCfg_jsonData cfg
     backendL <- makeBackend walletL $ cfg ^. ideCfg_backend
@@ -225,6 +230,7 @@ app = void . mfix $ \ ~(cfg, ideL) -> elClass "div" "app" $ do
             , [] <$ cfg ^. ideCfg_selContract
             ]
           & ideCfg_clearRepl .~ (() <$ cfg ^. ideCfg_selContract)
+          & ideCfg_wallet . walletCfg_clearAll .~ (() <$ cfg ^. ideCfg_selContract)
 
       pure
         ( mconcat
@@ -658,7 +664,7 @@ replWidget ideL cfg = mdo
 replInner
     :: MonadWidget t m
     => Event t ()
-    -> ([DynKeyPair t], (Text, Object))
+    -> ([KeyPair], (Text, Object))
     -> m (Event t Text, Maybe LogMsg)
 replInner replClick (signingKeys, (code, json)) = mdo
     let pactKeys =
