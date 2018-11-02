@@ -54,6 +54,9 @@ import qualified Reflex.Dom.Contrib.Widgets.DynTabs as Tabs
 import           Reflex.Dom.Core             (keypress)
 import qualified Reflex.Dom.Core             as Core
 import           Reflex.Dom.SemanticUI       hiding (mainWidget)
+import qualified GHCJS.DOM as DOM
+import qualified GHCJS.DOM.EventM as EventM
+import qualified GHCJS.DOM.GlobalEventHandlers as Events
 ------------------------------------------------------------------------------
 import qualified Pact.Compile                as Pact
 import qualified Pact.Parse                  as Pact
@@ -76,17 +79,8 @@ import           Frontend.Wallet
 import           Frontend.Widgets
 ------------------------------------------------------------------------------
 
-codeExtension :: Text
-codeExtension = ".repl"
-
-dataExtension :: Text
-dataExtension = ".data.json"
-
--- toCodeFile :: ExampleContract -> Text
--- toCodeFile = (<> codeExtension) . _exampleContract_file
-
--- toDataFile :: ExampleContract -> Text
--- toDataFile = (<> dataExtension) . _exampleContract_file
+data ClickState = DownAt (Int, Int) | Clicked | Selected
+  deriving (Eq,Ord,Show,Read)
 
 app :: MonadWidget t m => m ()
 app = void . mfix $ \ cfg -> do
@@ -98,11 +92,53 @@ app = void . mfix $ \ cfg -> do
     envCfg <- elAttr "div" ("class" =: "flex" <> "id" =: "control-ui") $ do
       --envPanel ideL
       rightTabBar ideL
+
+    modalCfg <- showModal ideL
+
     pure $ mconcat
       [ controlCfg
       , editorCfg
       , envCfg
+      , modalCfg
       ]
+
+showModal :: forall t m. MonadWidget t m => Ide t -> m (IdeCfg t)
+showModal ideL = do
+    document <- DOM.currentDocumentUnchecked
+
+    onEsc <- wrapDomEventMaybe document (`EventM.on` Events.keyDown) $ do
+      key <- getKeyEvent
+      pure $ if keyCodeLookup (fromIntegral key) == Escape then Just () else Nothing
+
+    (backdropEl, _) <- elDynAttr' "div"
+      (ffor isVisible $ \isVis ->
+        ("style" =: (isVisibleStyle isVis <> ";" <> existingBackdropStyle))
+      )
+      blank
+
+    ev <- networkView $ showModal <$> _ide_modal ideL
+    onFinish <- switchHold never $ snd <$> ev
+    mCfg <- flatten $ fst <$> ev
+
+    let
+      onClose = leftmost [ onFinish
+                         , onEsc
+                         , domEvent Click backdropEl
+                         ]
+      lConf = mempty & ideCfg_reqModal .~ (Modal_NoModal <$ onClose)
+    pure $ lConf <> mCfg
+  where
+    isVisible = getIsVisible <$> _ide_modal ideL
+    getIsVisible = \case
+      Modal_NoModal -> False
+      _             -> True
+
+    showModal = \case
+      Modal_NoModal -> pure (mempty, never)
+      Modal_DeployConfirmation -> uiDeployConfirmation ideL
+
+    existingBackdropStyle = "position: fixed; top:0;bottom:0;left:0;right:0;z-index:100; background-color: rgba(0,0,0,0.5);"
+    isVisibleStyle isVis = "display:" <> (if isVis then "block" else "none")
 
 -- | Code editing (left hand side currently)
 codePanel :: forall t m. MonadWidget t m => Ide t -> m (IdeCfg t)
@@ -377,6 +413,7 @@ moduleExplorer ideL = mdo
 
 controlBar :: forall t m. MonadWidget t m => Ide t -> m (IdeCfg t)
 controlBar ideL = do
+<<<<<<< HEAD
     elAttr "header" ("id" =: "header") $ do
       divClass "flexbox even" $ do
         ideCfg <- controlBarLeft ideL
@@ -398,9 +435,11 @@ controlBarLeft ideL = do
         (confirmationCfg, onDeploy) <- uiDeployConfirmation ideL never --onDeployClick
 
         let
+          reqConfirmation = Modal_DeployConfirmation <$ onDeployClick
           lcfg = mempty
             & ideCfg_load .~ onLoad
             & ideCfg_deploy .~ onDeploy
+            & ideCfg_reqModal .~ reqConfirmation
         pure $ confirmationCfg <> lcfg
 
 getPactVersion :: MonadWidget t m => m Text
@@ -420,4 +459,3 @@ controlBarRight = do
       elAttr "a" ( "href" =: "http://kadena.io"
                 <> "class" =: "documents" <> "target" =: "_blank") $
         imgWithAlt (static @"img/gray-kadena-logo.svg") "Kadena" blank
-

@@ -43,6 +43,7 @@ module Frontend.Ide
   , DeployedContract (..)
   , EnvSelection (..)
   , PactFunction (..)
+  , Modal (..)
   )where
 
 ------------------------------------------------------------------------------
@@ -59,7 +60,8 @@ import           Generics.Deriving.Monoid (mappenddefault, memptydefault)
 import           GHC.Generics             (Generic)
 import           Reflex
 import           Reflex.Adjustable.Class
-import           Reflex.Dom.Core          (HasJSContext, XhrResponse (..),
+import           Reflex.Dom.Core          (DomBuilder, HasJSContext, MonadHold,
+                                           PostBuild, XhrResponse (..),
                                            performRequestAsync, xhrRequest)
 import           Reflex.NotReady.Class
 ------------------------------------------------------------------------------
@@ -112,6 +114,11 @@ data PactFunction = PactFunction
   , _pactFunction_type          :: FunType (Term Name)
   }
 
+-- | Request a modal dialog of some kind.
+data Modal
+  = Modal_DeployConfirmation  -- ^ Display a deploy confirmation dialog.
+  | Modal_NoModal             -- ^ Don't display a Modal.
+
 -- | Configuration for sub-modules.
 --
 --   State is controlled via this configuration.
@@ -136,8 +143,12 @@ data IdeCfg t = IdeCfg
     -- ^ Make the REPL fresh again, ready for new contracts.
   , _ideCfg_deploy      :: Event t ()
     -- ^ Deploy the currently edited code/contract.
-  , _ideCfg_setDeployBackend  :: Event t BackendName
+  , _ideCfg_setDeployBackend  :: Event t (Maybe BackendName)
    -- ^ To which backend shall we deploy?
+   -- TODO: Once we upgraded semantic-reflex and are able to keep the dropdown
+   -- in sync, this should no longer be a Maybe.
+  , _ideCfg_reqModal    :: Event t Modal
+   -- ^ Request a modal dialog of the given type.
   }
   deriving Generic
 
@@ -156,6 +167,7 @@ data Ide t = Ide
   , _ide_backend          :: Backend t
   , _ide_msgs             :: Dynamic t [LogMsg]
   , _ide_deployBackend    :: Dynamic t (Maybe BackendName)
+   -- The backend that should be used for deployments.
   , _ide_load             :: Event t ()
   -- ^ Forwarded _ideCfg_load. TODO: Modularize Repl properly and get rid of this.
   , _ide_clearRepl        :: Event t ()
@@ -163,6 +175,8 @@ data Ide t = Ide
   -- ^ The backend the user wants to deploy to.
   , _ide_envSelection     :: Dynamic t EnvSelection
   -- ^ Currently selected tab in the right pane.
+  , _ide_modal            :: Dynamic t Modal
+  -- ^ The modal dialog that currently gets displayed.
   }
   deriving Generic
 
@@ -189,8 +203,9 @@ makeIde userCfg = build $ \ ~(cfg, ideL) -> do
         fmapMaybe (^? _Right . deployedContract_backendName) $
           cfg ^. ideCfg_selContract
     deployBackendL <- holdDyn Nothing $
-      leftmost [ Just <$> cfg ^. ideCfg_setDeployBackend
-               , Just <$> onSelDeployBackend
+      leftmost [ cfg ^. ideCfg_setDeployBackend
+               , Just <$> onSelDeployBackend -- TODO: Currently useless,
+               -- because we reset it, because we can't update dropdown.
                ]
 
     (onNewCode, contractReceivedCfg) <- loadContract ideL
@@ -228,13 +243,14 @@ makeIde userCfg = build $ \ ~(cfg, ideL) -> do
         ]
       refresh = fmapMaybe (either (const Nothing) (const $ Just ()) . snd) onResp
       ourCfg = mempty
-        & ideCfg_selEnv .~ (EnvSelection_Env <$ cfg ^. ideCfg_selContract)
         & ideCfg_setMsgs .~ msgs
         & ideCfg_backend . backendCfg_refreshModule .~ refresh
         & ideCfg_clearRepl .~ (() <$ cfg ^. ideCfg_selContract)
         & ideCfg_wallet . walletCfg_clearAll .~ (() <$ cfg ^. ideCfg_selContract)
 
     envSelection <- makeEnvSelection cfg
+
+    modal <- holdDyn Modal_NoModal $ _ideCfg_reqModal cfg
 
     pure
       ( mconcat [ourCfg, userCfg, contractReceivedCfg]
@@ -250,6 +266,7 @@ makeIde userCfg = build $ \ ~(cfg, ideL) -> do
           , _ide_envSelection = envSelection
           , _ide_load = _ideCfg_load cfg
           , _ide_clearRepl = _ideCfg_clearRepl cfg
+          , _ide_modal = modal
           }
       )
   where
@@ -367,6 +384,9 @@ initialDemoContract = fromJust $ Map.lookup initialDemo demos
 
 -- Instances:
 
+instance Semigroup Modal where
+  a <> b = a
+
 instance Reflex t => Semigroup (IdeCfg t) where
   (<>) = mappenddefault
 
@@ -401,4 +421,5 @@ instance Flattenable (IdeCfg t) t where
       <*> doSwitch never (_ideCfg_clearRepl <$> ev)
       <*> doSwitch never (_ideCfg_deploy <$> ev)
       <*> doSwitch never (_ideCfg_setDeployBackend <$> ev)
+      <*> doSwitch never (_ideCfg_reqModal <$> ev)
 

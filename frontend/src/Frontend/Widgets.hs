@@ -11,7 +11,6 @@ module Frontend.Widgets
   ( imgWithAlt
   , showLoading
   , paginationWidget
-  , ModalVisibility (..)
   , modalDialog
   , validatedInputWithButton
   , tabPane
@@ -273,22 +272,18 @@ paginationWidget currentPage totalPages = buttons (def & classes .~ "fluid") $ d
       pure $ gate (current okay) e
 
 
--- | Whether a `modalDialog` should be shown or hidden.
-data ModalVisibility
-  = Modal_Shown
-  | Modal_Hidden
-
+-- | Pretty broken, not used right now.
 modalDialog
   :: ( TriggerEvent t m, DomBuilder t m, MonadIO (Performable m)
      , PerformEvent t m, PostBuild t m , MonadHold t m, MonadFix m
      )
-  => Dynamic t ModalVisibility
+  => Dynamic t Bool -- ^ Visible or not.
   -> m a
   -> m a
 modalDialog visibility child = do
   let
     classL = pure "ui standard modal" <> fmap visibilityClass visibility
     visibilityClass = \case
-      Modal_Shown -> " transition visible active"
-      Modal_Hidden -> " transition hidden"
+      True -> " transition visible active"
+      False -> " transition hidden"
   elDynClass "div" classL $ child

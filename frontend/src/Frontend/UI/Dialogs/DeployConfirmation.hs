@@ -1,4 +1,4 @@
-{-# LANGUAGE ConstraintKinds      #-}
+{-# LANGUAGE ConstraintKinds       #-}
 {-# LANGUAGE DataKinds             #-}
 {-# LANGUAGE DeriveGeneric         #-}
 {-# LANGUAGE ExtendedDefaultRules  #-}
@@ -34,15 +34,17 @@ import           Data.Text               (Text)
 import           Reflex
 import           Reflex.Dom.SemanticUI   hiding (mainWidget)
 
+import           Frontend.Backend
 import           Frontend.Crypto.Ed25519 (keyToText)
 import           Frontend.Foundation
+import           Frontend.Ide            (HasIde (..), HasIdeCfg (..), Ide (..),
+                                          IdeCfg)
 import           Frontend.JsonData       (HasJsonData (..))
+import           Frontend.UI.JsonData    (uiJsonData)
+import           Frontend.UI.Wallet      (uiWallet)
 import           Frontend.Wallet
 import           Frontend.Wallet         (HasWallet (..))
 import           Frontend.Widgets
-import           Frontend.Ide            (Ide, IdeCfg, HasIde (..))
-import           Frontend.UI.Wallet (uiWallet)
-import           Frontend.UI.JsonData (uiJsonData)
 
 -- | Are we deploying a contract or calling a function?
 {- data DeployConfirmationType -}
@@ -56,20 +58,36 @@ import           Frontend.UI.JsonData (uiJsonData)
 uiDeployConfirmation
   :: MonadWidget t m
   => Ide t
-  -> Event t () -- ^ Request a Deploy confirmation.
   -> m ( IdeCfg t  -- ^ Any changes the user might have triggered.
-       , Event t () -- ^ On accept.
+       , Event t () -- ^ On close.
        )
-uiDeployConfirmation ideL onShow = mdo
-  let
-    onResponse = leftmost [onCancel, onAccept]
-  visibility <- holdDyn Modal_Hidden $ leftmost
-    [ Modal_Hidden <$ onResponse
-    , Modal_Shown  <$ onShow
-    ]
-  (cfg, onCancel, onAccept) <- modalDialog visibility $ do
+uiDeployConfirmation ideL =
+  elClass "div" "ui standard modal pact-modal" $ do
     elClass "div" "header" $ text "Check your deployment settings"
-    cfg <- elClass "div" "content ui fluid accordion" $ do
+
+    -- PostBuild does not trigger for some reason ... not working in
+    -- networkView widget?
+    (onPostBuild, fakePostBuild) <- newTriggerEvent
+    liftIO $ fakePostBuild ()
+
+    _ <- widgetHold (text "nope") $ text "hahahahaahahah" <$ onPostBuild
+    bCfg <- elClass "div" "ui segment" $ do
+      elClass "div" "ui header" $ text "Backend"
+
+      bI <- input (def & inputConfig_action .~ Static (Just RightAction)) $ do
+        let dropdownConfig = def
+              & dropdownConfig_placeholder .~ "Deployment Target"
+        fmap value $ dropdown dropdownConfig Nothing $ TaggedDynamic $
+          ffor (ideL ^. ide_backend . backend_backends) $
+            Map.fromList . fmap (\(k, _) -> (k, text $ unBackendName k)) . maybe [] Map.toList
+      pure $ mempty & ideCfg_setDeployBackend  .~ leftmost
+        [ updated bI
+        , Nothing <$ onPostBuild -- Reset to Nothing, so user has to explicitely
+        -- pick a backend for deployments to work. Also currently this is needed to
+        -- keep the dropdown with our model in sync.
+        ]
+
+    aCfg <- elClass "div" "content ui fluid accordion" $ do
       jsonCfg <- accordionItem True "ui json-data-accordion-item" "Data" $
         elClass "div" "json-data full-size" $
           uiJsonData (ideL ^. ide_wallet) (ideL^. ide_jsonData)
@@ -79,11 +97,13 @@ uiDeployConfirmation ideL onShow = mdo
           uiWallet $ ideL ^. ide_wallet
       pure $ mconcat [ jsonCfg, keysCfg ]
     elClass "div" "actions" $ do
-      onCancel1 <- makeClickable $ elClass' "div" "ui black deny button" $
+      onCancel <- makeClickable $ elClass' "div" "ui black deny button" $
         text "Cancel"
-      onAccept1 <- makeClickable $ elClass' "div" "ui positive right button" $
+      onAccept <- makeClickable $ elClass' "div" "ui positive right button" $
         text "Deploy"
-      pure (cfg, onCancel1, onAccept1)
-  pure (cfg, onAccept)
+
+      let
+        lCfg = mempty & ideCfg_deploy .~ onAccept
+      pure (aCfg <> bCfg <> lCfg, leftmost [onCancel, onAccept])
 
 
