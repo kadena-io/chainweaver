@@ -110,7 +110,7 @@ rightTabBar ideL = do
   curSelection <- tabBar EnvSelection_Env tabs
   tabPane mempty curSelection EnvSelection_Env envTab
   tabPane ("class" =: "control-block repl-output") curSelection EnvSelection_Repl $ replWidget ideL
-  tabPane mempty curSelection EnvSelection_Msgs msgsTab
+  tabPane ("class" =: "control-block repl-output") curSelection EnvSelection_Msgs $ msgsWidget ideL
   tabPane mempty curSelection EnvSelection_ModuleExplorer explorerTab
   return mempty
 
@@ -123,8 +123,10 @@ envTab = do
     el "h2" $ el "button" $
       imgWithAlt (static @"img/arrow-down.svg") "Expand" $ text "Keys"
 
-msgsTab :: MonadWidget t m => m ()
-msgsTab = text "Messages tab"
+msgsWidget :: MonadWidget t m => Ide t -> m ()
+msgsWidget ideL = do
+  void . dyn $ traverse_ (snippetWidget . OutputSnippet) <$> _ide_msgs ideL
+  pure mempty
 
 explorerTab :: MonadWidget t m => m ()
 explorerTab = text "Explorer tab"
