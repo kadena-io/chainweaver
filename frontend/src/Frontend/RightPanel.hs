@@ -108,20 +108,23 @@ rightTabBar ideL = do
   let curSelection = _ide_envSelection ideL
   let tabs = [ EnvSelection_Env, EnvSelection_Repl, EnvSelection_Msgs, EnvSelection_ModuleExplorer ]
   curSelection <- tabBar EnvSelection_Env tabs
-  tabPane mempty curSelection EnvSelection_Env envTab
+  tabPane mempty curSelection EnvSelection_Env $ envTab ideL
   tabPane ("class" =: "control-block repl-output") curSelection EnvSelection_Repl $ replWidget ideL
   tabPane ("class" =: "control-block repl-output") curSelection EnvSelection_Msgs $ msgsWidget ideL
   tabPane mempty curSelection EnvSelection_ModuleExplorer explorerTab
   return mempty
 
-envTab :: MonadWidget t m => m ()
-envTab = do
-  divClass "control-block" $
-    el "h2" $ el "button" $
-      imgWithAlt (static @"img/arrow-down.svg") "Expand" $ text "Data"
-  divClass "control-block" $
-    el "h2" $ el "button" $
-      imgWithAlt (static @"img/arrow-down.svg") "Expand" $ text "Keys"
+envTab :: MonadWidget t m => Ide t -> m (IdeCfg t)
+envTab ideL = do
+  jsonCfg <- accordionItem True mempty "Data" $ do
+    conf <- uiJsonData (ideL ^. ide_wallet) (ideL ^. ide_jsonData)
+    pure $ mempty &  ideCfg_jsonData .~ conf
+
+  keysCfg <- accordionItem True mempty "Keys" $ do
+    conf <- uiWallet $ _ide_wallet ideL
+    pure $ mempty & ideCfg_wallet .~ conf
+
+  pure $ jsonCfg <> keysCfg
 
 msgsWidget :: MonadWidget t m => Ide t -> m ()
 msgsWidget ideL = do

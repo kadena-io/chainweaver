@@ -1,9 +1,12 @@
+{-# LANGUAGE DataKinds             #-}
 {-# LANGUAGE FlexibleContexts      #-}
 {-# LANGUAGE LambdaCase            #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE OverloadedStrings     #-}
 {-# LANGUAGE RecursiveDo           #-}
--- | Semui based widgets collection
+
+-- | Widgets collection
+-- Was based on semui, but now transitioning to custom widgets
 module Frontend.Widgets
   ( imgWithAlt
   , showLoading
@@ -26,7 +29,9 @@ import qualified Data.Map.Strict             as Map
 import           Data.Text                   (Text)
 import qualified Data.Text                   as T
 import           Language.Javascript.JSaddle (js0, liftJSM, pToJSVal)
+import           Obelisk.Generated.Static
 import           Reflex.Dom.Core             (keypress, _textInput_element)
+import           Reflex.Dom.Contrib.CssClass
 import           Reflex.Dom.SemanticUI       hiding (mainWidget)
 import           Reflex.Network.Extended
 -- import Reflex.Dom.Prerender (Prerender, prerender)
@@ -73,27 +78,27 @@ showLoading i w = do
       pure mempty
 
 accordionItem'
-  :: (DomBuilder t m, PostBuild t m, MonadHold t m, MonadFix m)
+  :: MonadWidget t m
   => Bool
-  -> Text
+  -> CssClass
   -> Text
   -> m a
   -> m (Element EventResult (DomBuilderSpace m) t, a)
 accordionItem' initActive contentClass title inner = mdo
-  isActive <- foldDyn (const not) initActive $ domEvent Click e
-  (e, _) <- elDynClass' "div" ("title " <> fmap activeClass isActive) $ do
-    elClass "i" "dropdown icon" blank
-    text title
-  elDynClass' "div" ("content " <> pure contentClass <> fmap activeClass isActive) inner
+    isActive <- foldDyn (const not) initActive $ domEvent Click e
+    let mkClass a = singleClass "control-block" <> contentClass <> activeClass a
+    res@(e, a) <- elDynKlass' "div" (mkClass <$> isActive) $ do
+      el "h2" $ do
+        el "button" $ imgWithAlt (static @"img/arrow-down.svg") "Expand" blank
+        text title
+      divClass "control-block-contents" inner
+    return res
   where
     activeClass = \case
-      False -> ""
-      True -> " active"
+      False -> singleClass "collapsed"
+      True -> mempty
 
-
-accordionItem
-  :: (DomBuilder t m, PostBuild t m, MonadHold t m, MonadFix m)
-  => Bool -> Text -> Text -> m a -> m a
+accordionItem :: MonadWidget t m => Bool -> CssClass -> Text -> m a -> m a
 accordionItem initActive contentClass title inner =
   snd <$> accordionItem' initActive contentClass title inner
 

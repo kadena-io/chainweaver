@@ -123,6 +123,7 @@ codePanel ideL = do
 --   - Compiler error messages
 --   - Key & Data Editor
 --   - Module explorer
+-- TODO REMOVE!
 envPanel :: forall t m. MonadWidget t m => Ide t -> m (IdeCfg t)
 envPanel ideL = mdo
   let
@@ -149,18 +150,13 @@ envPanel ideL = mdo
       ("class" =: "ui fluid accordion env-accordion")
       curSelection EnvSelection_Env $ mdo
 
-    jsonCfg <- accordionItem True "ui json-data-accordion-item" "Data" $ do
-      elClass "div" "json-data full-size" $ do
-        conf <- uiJsonData (ideL ^. ide_wallet) (ideL ^. ide_jsonData)
-        pure $ mempty &  ideCfg_jsonData .~ conf
+    jsonCfg <- accordionItem True mempty "Data" $ do
+      conf <- uiJsonData (ideL ^. ide_wallet) (ideL ^. ide_jsonData)
+      pure $ mempty &  ideCfg_jsonData .~ conf
 
-    elClass "div" "ui hidden divider" blank
-
-    keysCfg <- accordionItem True "keys ui" "Keys" $ do
-      conf <- elClass "div" "ui segment" $ uiWallet $ _ide_wallet ideL
+    keysCfg <- accordionItem True mempty "Keys" $ do
+      conf <- uiWallet $ _ide_wallet ideL
       pure $ mempty & ideCfg_wallet .~ conf
-
-    elClass "div" "ui hidden divider" blank
 
     pure $ mconcat [ jsonCfg
                    , keysCfg
