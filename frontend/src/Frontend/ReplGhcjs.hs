@@ -50,6 +50,7 @@ import           GHC.Generics                (Generic)
 import           Language.Javascript.JSaddle hiding (Object)
 import           Reflex
 import           Reflex.Dom.ACE.Extended
+import qualified Reflex.Dom.Contrib.Widgets.DynTabs as Tabs
 import           Reflex.Dom.Core             (keypress)
 import qualified Reflex.Dom.Core             as Core
 import           Reflex.Dom.SemanticUI       hiding (mainWidget)
@@ -63,25 +64,17 @@ import           Obelisk.Generated.Static
 ------------------------------------------------------------------------------
 import           Frontend.Backend
 import           Frontend.Foundation
+import           Frontend.Ide
 import           Frontend.JsonData
+import           Frontend.RightPanel
+import           Frontend.UI.Button
+import           Frontend.UI.Dialogs.DeployConfirmation
 import           Frontend.UI.JsonData
+import           Frontend.UI.Repl
 import           Frontend.UI.Wallet
 import           Frontend.Wallet
 import           Frontend.Widgets
-import           Frontend.Ide
-import           Frontend.UI.Dialogs.DeployConfirmation
-
--- | Retrieve the currently selected signing keys.
-ide_getSigningKeyPairs :: Reflex t => Ide t -> Dynamic t [KeyPair]
-ide_getSigningKeyPairs ideL = do
-  let
-    signingKeys = ideL ^. ide_wallet . wallet_signingKeys
-    keys = Map.assocs <$> ideL ^. ide_wallet . wallet_keys
-  cKeys <- keys
-  sKeys <- signingKeys
-  let isSigning (n,_) = Set.member n sKeys
-  pure $ map snd $ filter isSigning cKeys
-
+------------------------------------------------------------------------------
 
 codeExtension :: Text
 codeExtension = ".repl"
@@ -95,39 +88,32 @@ dataExtension = ".data.json"
 -- toDataFile :: ExampleContract -> Text
 -- toDataFile = (<> dataExtension) . _exampleContract_file
 
-data ClickState = DownAt (Int, Int) | Clicked | Selected
-  deriving (Eq,Ord,Show,Read)
-
 app :: MonadWidget t m => m ()
 app = void . mfix $ \ cfg -> do
   ideL <- makeIde cfg
 
-  elClass "div" "app" $ do
-    controlCfg <- controlBar ideL
-    elClass "div" "ui two column padded grid main" $ mdo
-      editorCfg <- elClass "div" "column" $ do
-        {- elClass "div" "ui secondary menu pointing" $ do -}
-        {-   elClass "a" "active item" $ text "Contract" -}
-        elClass "div" "ui light segment editor-pane" $ codePanel ideL
-
-      envCfg <- elClass "div" "column repl-column" $
-        elClass "div" "ui env-pane" $ envPanel ideL
-
-      pure $ mconcat
-        [ controlCfg
-        , editorCfg
-        , envCfg
-        ]
+  controlCfg <- controlBar ideL
+  elAttr "main" ("id" =: "main" <> "class" =: "flexbox even") $ do
+    editorCfg <- codePanel ideL
+    envCfg <- elAttr "div" ("class" =: "flex" <> "id" =: "control-ui") $ do
+      --envPanel ideL
+      rightTabBar ideL
+    pure $ mconcat
+      [ controlCfg
+      , editorCfg
+      , envCfg
+      ]
 
 -- | Code editing (left hand side currently)
 codePanel :: forall t m. MonadWidget t m => Ide t -> m (IdeCfg t)
-codePanel ideL = mdo
-  {- menu (def & menuConfig_secondary .~ pure True) $ do -}
-  {-   menuItem def $ text "Code"  -}
-    onNewCode <- tagOnPostBuild $ _ide_code ideL
-    onUserCode <- codeWidget "" onNewCode
+codePanel ideL = do
+  elAttr "div" ("class" =: "flex" <> "id" =: "main-wysiwyg") $
+    divClass "wysiwyg" $ do
+      pure mempty
+      --onNewCode <- tagOnPostBuild $ _ide_code ideL
+      --onUserCode <- codeWidget "" onNewCode
 
-    pure $ mempty & ideCfg_setCode .~ onUserCode
+      --pure $ mempty & ideCfg_setCode .~ onUserCode
 
 -- | Tabbed panel to the right
 --
@@ -180,7 +166,6 @@ envPanel ideL = mdo
                    , keysCfg
                    , replCfg
                    , explorerCfg
-                   , mempty & ideCfg_selEnv .~ onSelect
                    ]
 
   errorsCfg <- tabPane
@@ -287,27 +272,6 @@ functionsList ideL backendUri functions = divClass "ui very relaxed list" $ do
             text $ prettyPrintBackendError err
           Right v -> message def $ text $ tshow v
 
-selectionToText :: EnvSelection -> Text
-selectionToText = \case
-  EnvSelection_Repl -> "REPL"
-  EnvSelection_Env -> "Env"
-  EnvSelection_Msgs -> "Messages"
-  EnvSelection_Functions -> "Functions"
-  EnvSelection_ModuleExplorer -> "Module Explorer"
-
-setDown :: (Int, Int) -> t -> Maybe ClickState
-setDown clickLoc _ = Just $ DownAt clickLoc
-
-clickClassifier :: (Int, Int) -> Maybe ClickState -> Maybe ClickState
-clickClassifier clickLoc (Just (DownAt loc1)) =
-  if clickLoc == loc1 then Just Clicked else Just Selected
-clickClassifier _ _ = Nothing
-
-scrollToBottom :: (PToJSVal t, MonadIO m, MonadJSM m) => t -> m ()
-scrollToBottom e = liftJSM $ do
-    let pElem = pToJSVal e
-    (pElem <# ("scrollTop" :: String)) (pElem ^. js ("scrollHeight" :: String))
-
 codeWidget
   :: MonadWidget t m
   => Text -> Event t Text
@@ -319,22 +283,6 @@ codeWidget iv sv = do
     ace <- resizableAceWidget mempty ac (AceDynConfig $ Just AceTheme_SolarizedDark) never iv sv
     return $ _extendedACE_onUserChange ace
 
-
-data DisplayedSnippet
-  = InputSnippet Text
-  | OutputSnippet Text
-  deriving (Eq,Ord,Show,Read)
-
-staticReplHeader :: Seq DisplayedSnippet
-staticReplHeader = S.fromList
-      [ OutputSnippet ";; Welcome to the Pact interactive repl"
-      , OutputSnippet ";; Use LOAD button to execute editor text"
-      , OutputSnippet ";; then just type at the \"pact>\" prompt to interact!"
-      ]
-
-snippetWidget :: MonadWidget t m => DisplayedSnippet -> m ()
-snippetWidget (InputSnippet t)  = elAttr "pre" ("class" =: "replOut code-font") $ text t
-snippetWidget (OutputSnippet t) = elAttr "pre" ("class" =: "replOut code-font") $ text t
 
 ------------------------------------------------------------------------------
 moduleExplorer
@@ -431,197 +379,49 @@ moduleExplorer ideL = mdo
       True -> let buttonStyle = "position: absolute; right: 0; top: 0; height: 100%; margin: 0"
                 in button (def & classes .~ "primary" & style .~ buttonStyle) $ text "Load"
 
-replWidget
-    :: MonadWidget t m
-    => Ide t
-    -> m (IdeCfg t)
-replWidget ideL = mdo
-  (e, r) <- elClass' "div" "repl-pane code-font" $ mdo
-    mapM_ snippetWidget staticReplHeader
-    clickType <- foldDyn ($) Nothing $ leftmost
-      [ setDown <$> domEvent Mousedown e
-      , clickClassifier <$> domEvent Mouseup e
-      ]
-    let
-      replClick = () <$
-        ffilter (== Just Clicked) (updated clickType)
-
-      codeData = do
-        code <- ideL ^. ide_code
-        eJson <- ideL ^. ide_jsonData . jsonData_data
-        pure $ either (const Nothing) (Just . (code,)) eJson
-
-      keysContract =
-        fmap sequence $ zipDyn (ide_getSigningKeyPairs ideL) codeData
-
-      onKeysContractLoad =
-        fmapMaybe id . tag (current keysContract) $ _ide_load ideL
-
-      onNewReplContent = leftmost
-        [ onKeysContractLoad
-        , ([], ("", H.empty)) <$ _ide_clearRepl ideL
-        ]
-
-    widgetHold
-      (replInner replClick ([], ("", H.empty)))
-      (replInner replClick <$> onNewReplContent
-      )
-  let
-    err = snd <$> r
-    onErrs = fmap maybeToList . updated $ err
-    newExpr = fst <$> r
-
-  timeToScroll <- delay 0.1 $ switch $ current newExpr
-  void $ performEvent (scrollToBottom (_element_raw e) <$ timeToScroll)
-  pure $ mempty & ideCfg_setMsgs .~ onErrs
-
-replInner
-    :: MonadWidget t m
-    => Event t ()
-    -> ([KeyPair], (Text, Object))
-    -> m (Event t Text, Maybe LogMsg)
-replInner replClick (signingKeys, (code, json)) = mdo
-    let pactKeys =
-          T.unwords
-          . map (keyToText . _keyPair_publicKey)
-          $ signingKeys
-        codeP = mconcat
-          [ "(env-data "
-          , toJsonString . T.decodeUtf8 . BSL.toStrict $ encode json
-          , ")"
-          , "(env-keys ["
-          , pactKeys
-          , "])"
-          , code
-          ]
-    initState <- liftIO $ initReplState StringEval
-    stateOutErr0 <- runReplStep0 (initState, mempty) codeP
-    let stateAndOut0 = (\(a,b,_) -> (a, b)) stateOutErr0
-    stateAndOut <- holdDyn stateAndOut0 evalResult
-
-    _ <- dyn (mapM_ snippetWidget . snd <$> stateAndOut)
-    newInput <- replInput replClick
-    evalResult <- performEvent $
-      attachWith runReplStep (current stateAndOut) newInput
-    return (newInput, stateOutErr0 ^. _3)
-  where
-      surroundWith :: Semigroup s => s -> s -> s
-      surroundWith o i = o <> i <> o
-
-      escapeJSON = T.replace "\"" "\\\""
-
-      toJsonString = surroundWith "\"" . escapeJSON
-
-      keyToText = T.decodeUtf8 . BSL.toStrict . encode
-
-
-replInput :: MonadWidget t m => Event t () -> m (Event t Text)
-replInput setFocus = do
-    divClass "repl-input-controls code-font" $ mdo
-      elClass "div" "prompt" $ text "pact>"
-      let sv = leftmost
-            [ mempty <$ enterPressed
-            , fromMaybe "" . Z.safeCursor <$> tagPromptlyDyn commandHistory key
-            ]
-      ti <- Core.textInput (def & Core.textInputConfig_setValue .~ sv
-                                & Core.textInputConfig_attributes .~ pure ("class" =: "code-font")
-                           )
-      let key = ffilter isMovement $ domEvent Keydown ti
-      let enterPressed = keypress Enter ti
-      _ <- performEvent (liftJSM (pToJSVal (Core._textInput_element ti) ^. js0 ("focus" :: String)) <$ setFocus)
-      let newCommand = tag (current $ value ti) enterPressed
-      commandHistory <- foldDyn ($) Z.empty $ leftmost
-        [ addToHistory <$> newCommand
-        , moveHistory <$> key
-        ]
-      return newCommand
-
-addToHistory :: Eq a => a -> Z.Zipper a -> Z.Zipper a
-addToHistory a z =
-    if Just a == Z.safeCursor (Z.left zEnd) then zEnd else Z.push a zEnd
-  where
-    zEnd = Z.end z
-
-isMovement :: (Num a, Eq a) => a -> Bool
-isMovement 38 = True
-isMovement 40 = True
-isMovement _  = False
-
-moveHistory :: (Num a1, Eq a1) => a1 -> Z.Zipper a -> Z.Zipper a
-moveHistory 38 = Z.left
-moveHistory 40 = Z.right
-moveHistory _  = id
-
-runReplStep0
-    :: MonadIO m
-    => (ReplState, Seq DisplayedSnippet)
-    -> Text
-    -> m (ReplState, Seq DisplayedSnippet, Maybe LogMsg)
-runReplStep0 (s1,snippets1) e = do
-    (r,s2) <- liftIO $ runStateT (evalRepl' $ T.unpack e) s1
-    let snippet = case r of
-                    Left _ -> mempty
-                    Right _ ->  S.singleton . OutputSnippet . T.pack $ _rOut s2
-        err = either (Just . T.pack) (const Nothing) r
-    return (s2, snippets1 <> snippet, err)
-
-runReplStep
-    :: MonadIO m
-    => (ReplState, Seq DisplayedSnippet)
-    -> Text
-    -> m (ReplState, Seq DisplayedSnippet)
-runReplStep (s1,snippets1) e = do
-    (eterm,s2) <- liftIO $ runStateT (evalRepl' $ T.unpack e) s1
-    return (s2, snippets1 <> S.fromList [InputSnippet ("pact> " <> e), OutputSnippet $ showResult eterm])
-
-showResult :: Show a => Either String a -> Text
-showResult (Right v) = T.pack $ show v
-showResult (Left e)  = "Error: " <> T.pack e
-
 controlBar :: forall t m. MonadWidget t m => Ide t -> m (IdeCfg t)
 controlBar ideL = do
-    elClass "div" "ui borderless menu" $ do
-      elClass "div" "item" showPactVersion
+    elAttr "header" ("id" =: "header") $ do
+      divClass "flexbox even" $ do
+        ideCfg <- controlBarLeft ideL
+        controlBarRight
+        return ideCfg
 
-      onLoad <- elClass "div" "item" $
-        button (def & buttonConfig_emphasis .~ Static (Just Primary)) $ text "Load into REPL"
+controlBarLeft :: MonadWidget t m => Ide t -> m (IdeCfg t)
+controlBarLeft ideL = do
+    divClass "flex" $ do
+      el "h1" $ do
+        imgWithAlt (static @"img/pact-logo.svg") "PACT" blank
+        ver <- getPactVersion
+        elClass "span" "version" $ text $ "v" <> ver
+      elAttr "div" ("id" =: "header-project-loader") $ do
+        onLoad <- uiButtonSimple "Load into REPL"
 
-      onDeployClick <- elClass "div" "item" $ do
-        -- input (def & inputConfig_action .~ Static (Just RightAction)) $ do
-        --   let dropdownConfig = def
-        --         & dropdownConfig_placeholder .~ "Deployment Target"
-        --   backendL <- fmap value $ dropdown dropdownConfig Nothing $ TaggedDynamic $
-        --     ffor (ideL ^. ide_backend . backend_backends) $
-        --       Map.fromList . fmap (\(k, v) -> (v, text $ unBackendName k)) . maybe [] Map.toList
-        let buttonConfig = def
-              & buttonConfig_emphasis .~ Static (Just Primary)
-        button buttonConfig $ text "Deploy"
-      (confirmationCfg, onDeploy) <- uiDeployConfirmation ideL onDeployClick
+        --onDeployClick <- uiButtonSimple "Deploy"
+        -- TODO Re-enable this later
+        (confirmationCfg, onDeploy) <- uiDeployConfirmation ideL never --onDeployClick
 
-      elClass "div" "right menu" rightMenu
-      let
-        lcfg = mempty
-          & ideCfg_load .~ onLoad
-          & ideCfg_deploy .~ onDeploy
-      pure $ confirmationCfg <> lcfg
-  where
-    showPactVersion = do
-      elAttr "a" ( "target" =: "_blank" <> "href" =: "https://github.com/kadena-io/pact") $ do
-        is <- liftIO $ initReplState StringEval
-        Right (TLiteral (LString ver) _) <- liftIO $ evalStateT (evalRepl' "(pact-version)") is
-        elAttr "img" ("src" =: static @"img/PactLogo.svg" <> "class" =: "logo-image" <> "width" =: "80" <> "hegiht" =: "20") blank
-        text $ "v" <> ver
+        let
+          lcfg = mempty
+            & ideCfg_load .~ onLoad
+            & ideCfg_deploy .~ onDeploy
+        pure $ confirmationCfg <> lcfg
 
-    rightMenu = do
-      elClass "div" "ui item" $
-        el "label" $
-          elAttr "a" ("target" =: "_blank" <>
-                      "style" =: "color:white;text-decoration:none;" <>
-                      "href" =: "http://pact-language.readthedocs.io"
-                      ) $ do
-            elAttr "i" ("class" =: "fa fa-book" <> "aria-hidden" =: "true") blank
-            elAttr "span" ("id" =: "hideIfTiny" <> "class" =: "menu-link") $ text "Docs"
-      elClass "div" "ui item" $
-        elAttr "a" ("target" =: "_blank" <> "href" =: "http://kadena.io") $
-          elAttr "img" ("src" =: static @"img/KadenaWhiteLogo.svg" <> "class" =: "logo-image" <> "width" =: "150" <> "hegiht" =: "20") blank
+getPactVersion :: MonadWidget t m => m Text
+getPactVersion = do
+    is <- liftIO $ initReplState StringEval
+    Right (TLiteral (LString ver) _) <- liftIO $ evalStateT (evalRepl' "(pact-version)") is
+    return ver
+
+controlBarRight :: MonadWidget t m => m ()
+controlBarRight = do
+    elAttr "div" ("class" =: "flex right" <> "id" =: "header-links") $ do
+      elAttr "a" ( "href" =: "http://pact-language.readthedocs.io"
+                <> "class" =: "documents" <> "target" =: "_blank"
+                 ) $ do
+        imgWithAlt (static @"img/document.svg") "Documents" blank
+        text "Docs"
+      elAttr "a" ( "href" =: "http://kadena.io"
+                <> "class" =: "documents" <> "target" =: "_blank") $
+        imgWithAlt (static @"img/gray-kadena-logo.svg") "Kadena" blank
 

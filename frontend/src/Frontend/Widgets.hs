@@ -5,7 +5,8 @@
 {-# LANGUAGE RecursiveDo           #-}
 -- | Semui based widgets collection
 module Frontend.Widgets
-  ( showLoading
+  ( imgWithAlt
+  , showLoading
   , paginationWidget
   , ModalVisibility (..)
   , modalDialog
@@ -55,6 +56,9 @@ import Frontend.Foundation
 {-         , _textInput_builderElement = v -}
 {-         } -}
 
+
+imgWithAlt :: MonadWidget t m => Text -> Text -> m a -> m a
+imgWithAlt loc alt children = elAttr "img" ("src" =: loc <> "alt" =: alt) children
 
 showLoading
   :: (NotReady t m, Adjustable t m, PostBuild t m, DomBuilder t m, Monoid b)

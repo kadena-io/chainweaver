@@ -61,6 +61,13 @@ let
               sha256 = "0hdn00cd17a7zp56krqs3y5mpcml75pn8mnmhwyixqgscqd1q9y5";
             }) {});
 
+            reflex-dom-contrib = (self.callCabal2nix "reflex-dom-contrib" (pkgs.fetchFromGitHub {
+              owner = "reflex-frp";
+              repo = "reflex-dom-contrib";
+              rev = "9900f2d433240a3f93cdae930a6ffbb73c50bb86";
+              sha256 = "1z8cnnhibsiap08pq2iw1r5zqvbla6hci7dhrz9mhfr0nqyryk65";
+            }) {});
+
             # sbv >= 7.9
             sbv = pkgs.haskell.lib.dontCheck (self.callCabal2nix "sbv" (pkgs.fetchFromGitHub {
               owner = "LeventErkok";

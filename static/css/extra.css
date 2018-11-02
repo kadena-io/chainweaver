@@ -1,0 +1,40 @@
+/* Extra styles added on top of the ones in pact-web-ui */
+
+.hidden.transition { display: none; visibility: hidden; }
+
+.repl-input-controls {
+    width: 100%;
+    display: flex;
+    flex-direction: row;
+    justify-content: flex-start;
+}
+
+.repl-input-controls .prompt {
+    padding-right: 10px;
+    flex-grow: 0;
+}
+
+.repl-input-controls input {
+    flex-grow: 1;
+    border: none;
+}
+
+.repl-input-controls input:focus {
+    outline: none;
+}
+
+.repl-input-controls button {
+    width: 100%;
+    padding: 0;
+    margin: 0;
+}
+
+code {
+    font-family: 'RobotoMono', monospace;
+}
+
+.code-font {
+    font-family: 'RobotoMono', monospace;
+    font-size: 14px;
+    background: #f1f1f1;
+}
