@@ -37,7 +37,7 @@ import           Reflex.Dom.SemanticUI   hiding (mainWidget)
 import           Frontend.Backend
 import           Frontend.Crypto.Ed25519 (keyToText)
 import           Frontend.Foundation
-import           Frontend.Ide            (HasIde (..), HasIdeCfg (..), Ide,
+import           Frontend.Ide            (HasIde (..), HasIdeCfg (..), Ide (..),
                                           IdeCfg)
 import           Frontend.JsonData       (HasJsonData (..))
 import           Frontend.UI.JsonData    (uiJsonData)
@@ -58,22 +58,22 @@ import           Frontend.Widgets
 uiDeployConfirmation
   :: MonadWidget t m
   => Ide t
-  -> Event t () -- ^ Request a Deploy confirmation.
   -> m ( IdeCfg t  -- ^ Any changes the user might have triggered.
-       , Event t () -- ^ On accept.
+       , Event t () -- ^ On close.
        )
-uiDeployConfirmation ideL onShow = mdo
-  let
-    onResponse = leftmost [onCancel, onAccept]
-  visibility <- holdDyn Modal_Hidden $ leftmost
-    [ Modal_Hidden <$ onResponse
-    , Modal_Shown  <$ onShow
-    ]
-  (cfg, onCancel, onAccept) <- modalDialog visibility $ do
+uiDeployConfirmation ideL =
+  elClass "div" "ui standard modal pact-modal" $ do
     elClass "div" "header" $ text "Check your deployment settings"
 
+    -- PostBuild does not trigger for some reason ... not working in
+    -- networkView widget?
+    (onPostBuild, fakePostBuild) <- newTriggerEvent
+    liftIO $ fakePostBuild ()
+
+    _ <- widgetHold (text "nope") $ text "hahahahaahahah" <$ onPostBuild
     bCfg <- elClass "div" "ui segment" $ do
       elClass "div" "ui header" $ text "Backend"
+
       bI <- input (def & inputConfig_action .~ Static (Just RightAction)) $ do
         let dropdownConfig = def
               & dropdownConfig_placeholder .~ "Deployment Target"
@@ -82,7 +82,9 @@ uiDeployConfirmation ideL onShow = mdo
             Map.fromList . fmap (\(k, _) -> (k, text $ unBackendName k)) . maybe [] Map.toList
       pure $ mempty & ideCfg_setDeployBackend  .~ leftmost
         [ updated bI
-        , tag (current bI) onShow -- TODO: This is needed until we can keep the dropdown in sync with our model.
+        , Nothing <$ onPostBuild -- Reset to Nothing, so user has to explicitely
+        -- pick a backend for deployments to work. Also currently this is needed to
+        -- keep the dropdown with our model in sync.
         ]
 
     aCfg <- elClass "div" "content ui fluid accordion" $ do
@@ -95,11 +97,13 @@ uiDeployConfirmation ideL onShow = mdo
           uiWallet $ ideL ^. ide_wallet
       pure $ mconcat [ jsonCfg, keysCfg ]
     elClass "div" "actions" $ do
-      onCancel1 <- makeClickable $ elClass' "div" "ui black deny button" $
+      onCancel <- makeClickable $ elClass' "div" "ui black deny button" $
         text "Cancel"
-      onAccept1 <- makeClickable $ elClass' "div" "ui positive right button" $
+      onAccept <- makeClickable $ elClass' "div" "ui positive right button" $
         text "Deploy"
-      pure (aCfg <> bCfg, onCancel1, onAccept1)
-  pure (cfg, onAccept)
+
+      let
+        lCfg = mempty & ideCfg_deploy .~ onAccept
+      pure (aCfg <> bCfg <> lCfg, leftmost [onCancel, onAccept])
 
 

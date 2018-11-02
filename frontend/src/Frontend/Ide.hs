@@ -43,6 +43,7 @@ module Frontend.Ide
   , DeployedContract (..)
   , EnvSelection (..)
   , PactFunction (..)
+  , Modal (..)
   )where
 
 ------------------------------------------------------------------------------
@@ -59,7 +60,8 @@ import           Generics.Deriving.Monoid (mappenddefault, memptydefault)
 import           GHC.Generics             (Generic)
 import           Reflex
 import           Reflex.Adjustable.Class
-import           Reflex.Dom.Core          (HasJSContext, XhrResponse (..),
+import           Reflex.Dom.Core          (DomBuilder, HasJSContext, MonadHold,
+                                           PostBuild, XhrResponse (..),
                                            performRequestAsync, xhrRequest)
 import           Reflex.NotReady.Class
 ------------------------------------------------------------------------------
@@ -112,6 +114,11 @@ data PactFunction = PactFunction
   , _pactFunction_type          :: FunType (Term Name)
   }
 
+-- | Request a modal dialog of some kind.
+data Modal
+  = Modal_DeployConfirmation  -- ^ Display a deploy confirmation dialog.
+  | Modal_NoModal             -- ^ Don't display a Modal.
+
 -- | Configuration for sub-modules.
 --
 --   State is controlled via this configuration.
@@ -140,6 +147,8 @@ data IdeCfg t = IdeCfg
    -- ^ To which backend shall we deploy?
    -- TODO: Once we upgraded semantic-reflex and are able to keep the dropdown
    -- in sync, this should no longer be a Maybe.
+  , _ideCfg_reqModal    :: Event t Modal
+   -- ^ Request a modal dialog of the given type.
   }
   deriving Generic
 
@@ -166,6 +175,8 @@ data Ide t = Ide
   -- ^ The backend the user wants to deploy to.
   , _ide_envSelection     :: Dynamic t EnvSelection
   -- ^ Currently selected tab in the right pane.
+  , _ide_modal            :: Dynamic t Modal
+  -- ^ The modal dialog that currently gets displayed.
   }
   deriving Generic
 
@@ -239,6 +250,8 @@ makeIde userCfg = build $ \ ~(cfg, ideL) -> do
 
     envSelection <- makeEnvSelection cfg
 
+    modal <- holdDyn Modal_NoModal $ _ideCfg_reqModal cfg
+
     pure
       ( mconcat [ourCfg, userCfg, contractReceivedCfg]
       , Ide
@@ -253,6 +266,7 @@ makeIde userCfg = build $ \ ~(cfg, ideL) -> do
           , _ide_envSelection = envSelection
           , _ide_load = _ideCfg_load cfg
           , _ide_clearRepl = _ideCfg_clearRepl cfg
+          , _ide_modal = modal
           }
       )
   where
@@ -370,6 +384,9 @@ initialDemoContract = fromJust $ Map.lookup initialDemo demos
 
 -- Instances:
 
+instance Semigroup Modal where
+  a <> b = a
+
 instance Reflex t => Semigroup (IdeCfg t) where
   (<>) = mappenddefault
 
@@ -404,4 +421,5 @@ instance Flattenable (IdeCfg t) t where
       <*> doSwitch never (_ideCfg_clearRepl <$> ev)
       <*> doSwitch never (_ideCfg_deploy <$> ev)
       <*> doSwitch never (_ideCfg_setDeployBackend <$> ev)
+      <*> doSwitch never (_ideCfg_reqModal <$> ev)
 

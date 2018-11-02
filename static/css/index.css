@@ -446,7 +446,7 @@ f font-family: Dropdown !important;
 /**************************************************/
 
 /********** Make modal centered on screen *********/
-.ui.modal.visible {
+.pact-modal {
   position: fixed;
   display: flex !important;
   flex-direction: column;
@@ -454,13 +454,14 @@ f font-family: Dropdown !important;
   left: 50%;
   height: 90%;
   transform: translate(-50%, -50%);
+  z-index: 1001;
 }
 
-.ui.modal.visible > .actions {
+.pact-modal > .actions {
   flex-grow: 0;
 }
 
-.ui.modal.visible > .content {
+.pact-modal > .content {
   flex-grow: 1;
   overflow: auto;
 }
