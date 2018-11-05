@@ -62,7 +62,9 @@ frontend = Frontend
 
 newHead :: DomBuilder t m => m ()
 newHead = do
-    elAttr "meta" ("charset" =: "utf-8") blank
+    meta ("charset" =: "utf-8")
+    meta ("name" =: "google" <> "content" =: "notranslate")
+    meta ("http-equiv" =: "Content-Language" <> "content" =: "en_US")
     ss "https://fonts.googleapis.com/css?family=Roboto"
     ss "https://fonts.googleapis.com/css?family=Work+Sans"
     ss (static @"css/font-awesome.min.css")
@@ -75,3 +77,4 @@ newHead = do
   where
     js url = elAttr "script" ("type" =: "text/javascript" <> "src" =: url <> "charset" =: "utf-8") blank
     ss url = elAttr "link" ("href" =: url <> "rel" =: "stylesheet") blank
+    meta attrs = elAttr "meta" attrs blank
