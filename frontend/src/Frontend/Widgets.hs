@@ -34,8 +34,9 @@ import           Reflex.Dom.Contrib.CssClass
 import           Reflex.Dom.SemanticUI       hiding (mainWidget)
 import           Reflex.Network.Extended
 -- import Reflex.Dom.Prerender (Prerender, prerender)
-
-import Frontend.Foundation
+------------------------------------------------------------------------------
+import           Frontend.Foundation
+import           Frontend.UI.Button
 
 {- -- | Variant of  a semantic-reflex textInput that also works with pre-render. -}
 {- semTextInput -}
@@ -62,7 +63,7 @@ import Frontend.Foundation
 
 
 imgWithAlt :: MonadWidget t m => Text -> Text -> m a -> m a
-imgWithAlt loc alt children = elAttr "img" ("src" =: loc <> "alt" =: alt) children
+imgWithAlt loc alt child = elAttr "img" ("src" =: loc <> "alt" =: alt) child
 
 showLoading
   :: (NotReady t m, Adjustable t m, PostBuild t m, DomBuilder t m, Monoid b)
@@ -86,11 +87,12 @@ accordionItem'
 accordionItem' initActive contentClass title inner = mdo
     isActive <- foldDyn (const not) initActive $ domEvent Click e
     let mkClass a = singleClass "control-block" <> contentClass <> activeClass a
-    res@(e, a) <- elDynKlass' "div" (mkClass <$> isActive) $ do
-      el "h2" $ do
+    res@(e, a) <- elDynKlass "div" (mkClass <$> isActive) $ do
+      (e1,_) <- el' "h2" $ do
         el "button" $ imgWithAlt (static @"img/arrow-down.svg") "Expand" blank
         text title
-      divClass "control-block-contents" inner
+      a1 <- divClass "control-block-contents" inner
+      return (e1,a1)
     return res
   where
     activeClass = \case
@@ -189,17 +191,14 @@ addDisplayNone mAttrs isActive = zipDynWith f isActive mAttrs
 ------------------------------------------------------------------------------
 -- | Validated input with button
 validatedInputWithButton
-  :: ( DomBuilder t m, TriggerEvent t m, PerformEvent t m, PostBuild t m
-     , MonadJSM (Performable m), MonadHold t m, MonadFix m
-     , DomBuilderSpace m ~ GhcjsDomSpace
-     )
+  :: MonadWidget t m
   => (Text -> Performable m (Either Text Text))
   -- ^ Validation function returning 'Left' an error message or 'Right' the value
   -> Text -- ^ Placeholder
   -> Text -- ^ Button text
   -> m (Event t Text)
 validatedInputWithButton check placeholder buttonText = mdo
-    update <- elClass "div" "ui fluid action input" $ mdo
+    update <- elClass "div" "fieldset" $ mdo
       name <- textInput $ def
           & textInputConfig_value .~ SetValue "" (Just $ "" <$ values)
           & textInputConfig_placeholder .~ pure placeholder
@@ -208,9 +207,7 @@ validatedInputWithButton check placeholder buttonText = mdo
         onEnter = keypress Enter name
         nameEmpty = (== "") <$> nameVal
 
-      clicked <- flip button (text buttonText) $ def
-        & buttonConfig_emphasis .~ Static (Just Secondary)
-        & buttonConfig_disabled .~ Dyn nameEmpty
+      clicked <- uiButtonSimple buttonText
 
       let confirmed = leftmost [ onEnter, clicked ]
       void $ performEvent (liftJSM (pToJSVal (_textInput_element name) ^. js0 ("focus" :: String)) <$ confirmed)
@@ -233,6 +230,7 @@ validatedInputWithButton check placeholder buttonText = mdo
           & action ?~ (def
             & action_event ?~ ffor (updated hasError) (\e -> trans $ if e then In else Out)
             & action_initialDirection .~ Out)
+    -- TODO Change this message
     close <- message config $ do
       e <- domEvent Click <$> icon' "close" (def & style .~ "position: absolute; top: 0; right: 0")
       void $ widgetHold (pure ()) $ text <$> errors

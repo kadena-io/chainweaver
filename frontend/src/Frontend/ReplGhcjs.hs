@@ -121,77 +121,77 @@ codePanel ideL = do
 --   - Compiler error messages
 --   - Key & Data Editor
 --   - Module explorer
--- TODO REMOVE!
-envPanel :: forall t m. MonadWidget t m => Ide t -> m (IdeCfg t)
-envPanel ideL = mdo
-  let
-    curSelection = _ide_envSelection ideL
-
-  onSelect <- menu
-    ( def & menuConfig_pointing .~ pure True
-        & menuConfig_secondary .~ pure True
-        & classes .~ pure "dark"
-    )
-    $ tabs curSelection
-
-  explorerCfg <- tabPane
-      ("style" =: "overflow-y: auto; overflow-x: hidden; flex-grow: 1")
-      curSelection EnvSelection_ModuleExplorer
-      $ moduleExplorer ideL
-
-  replCfg <- tabPane
-      ("class" =: "ui flex-content light segment")
-      curSelection EnvSelection_Repl
-      $ replWidget ideL
-
-  envCfg <- tabPane
-      ("class" =: "ui fluid accordion env-accordion")
-      curSelection EnvSelection_Env $ mdo
-
-    jsonCfg <- accordionItem True mempty "Data" $ do
-      conf <- uiJsonData (ideL ^. ide_wallet) (ideL ^. ide_jsonData)
-      pure $ mempty &  ideCfg_jsonData .~ conf
-
-    keysCfg <- accordionItem True mempty "Keys" $ do
-      conf <- uiWallet $ _ide_wallet ideL
-      pure $ mempty & ideCfg_wallet .~ conf
-
-    pure $ mconcat [ jsonCfg
-                   , keysCfg
-                   , replCfg
-                   , explorerCfg
-                   ]
-
-  errorsCfg <- tabPane
-      ("class" =: "ui code-font full-size")
-      curSelection EnvSelection_Msgs $ do
-    void . dyn $ traverse_ (snippetWidget . OutputSnippet) <$> _ide_msgs ideL
-    pure mempty
-
-  _functionsCfg <- tabPane ("style" =: "overflow: auto") curSelection EnvSelection_Functions $ do
-    header def $ text "Public functions"
-    dyn_ $ ffor (_ide_deployed ideL) $ \case
-      Nothing -> paragraph $ text "Load a deployed contract with the module explorer to see the list of available functions."
-      Just (backendUri, functions) -> functionsList ideL backendUri functions
-    divider $ def & dividerConfig_hidden .~ Static True
-
-  pure $ mconcat [ envCfg, errorsCfg ]
-
-  where
-    tabs :: Dynamic t EnvSelection -> m (Event t EnvSelection)
-    tabs curSelection = do
-      let
-        selections = [ EnvSelection_Env, EnvSelection_Repl, EnvSelection_Msgs, EnvSelection_ModuleExplorer ]
-      leftmost <$> traverse (tab curSelection) selections
-
-    tab :: Dynamic t EnvSelection -> EnvSelection -> m (Event t EnvSelection)
-    tab curSelection self = do
-      let
-        itemClasses = [boolClass "active" . Dyn $ fmap (== self) curSelection ]
-        itemCfg = def & classes .~ dynClasses itemClasses
-      onClick <- makeClickable $ menuItem' itemCfg $
-        text $ selectionToText self
-      pure $ self <$ onClick
+-- TODO REMOVE! NO LONGER USED!
+--envPanel :: forall t m. MonadWidget t m => Ide t -> m (IdeCfg t)
+--envPanel ideL = mdo
+--  let
+--    curSelection = _ide_envSelection ideL
+--
+--  onSelect <- menu
+--    ( def & menuConfig_pointing .~ pure True
+--        & menuConfig_secondary .~ pure True
+--        & classes .~ pure "dark"
+--    )
+--    $ tabs curSelection
+--
+--  explorerCfg <- tabPane
+--      ("style" =: "overflow-y: auto; overflow-x: hidden; flex-grow: 1")
+--      curSelection EnvSelection_ModuleExplorer
+--      $ moduleExplorer ideL
+--
+--  replCfg <- tabPane
+--      ("class" =: "ui flex-content light segment")
+--      curSelection EnvSelection_Repl
+--      $ replWidget ideL
+--
+--  envCfg <- tabPane
+--      ("class" =: "ui fluid accordion env-accordion")
+--      curSelection EnvSelection_Env $ mdo
+--
+--    jsonCfg <- accordionItem True mempty "Data" $ do
+--      conf <- uiJsonData (ideL ^. ide_wallet) (ideL ^. ide_jsonData)
+--      pure $ mempty &  ideCfg_jsonData .~ conf
+--
+--    keysCfg <- accordionItem True mempty "Keys" $ do
+--      conf <- uiWallet $ _ide_wallet ideL
+--      pure $ mempty & ideCfg_wallet .~ conf
+--
+--    pure $ mconcat [ jsonCfg
+--                   , keysCfg
+--                   , replCfg
+--                   , explorerCfg
+--                   ]
+--
+--  errorsCfg <- tabPane
+--      ("class" =: "ui code-font full-size")
+--      curSelection EnvSelection_Msgs $ do
+--    void . dyn $ traverse_ (snippetWidget . OutputSnippet) <$> _ide_msgs ideL
+--    pure mempty
+--
+--  _functionsCfg <- tabPane ("style" =: "overflow: auto") curSelection EnvSelection_Functions $ do
+--    header def $ text "Public functions"
+--    dyn_ $ ffor (_ide_deployed ideL) $ \case
+--      Nothing -> paragraph $ text "Load a deployed contract with the module explorer to see the list of available functions."
+--      Just (backendUri, functions) -> functionsList ideL backendUri functions
+--    divider $ def & dividerConfig_hidden .~ Static True
+--
+--  pure $ mconcat [ envCfg, errorsCfg ]
+--
+--  where
+--    tabs :: Dynamic t EnvSelection -> m (Event t EnvSelection)
+--    tabs curSelection = do
+--      let
+--        selections = [ EnvSelection_Env, EnvSelection_Repl, EnvSelection_Msgs, EnvSelection_ModuleExplorer ]
+--      leftmost <$> traverse (tab curSelection) selections
+--
+--    tab :: Dynamic t EnvSelection -> EnvSelection -> m (Event t EnvSelection)
+--    tab curSelection self = do
+--      let
+--        itemClasses = [boolClass "active" . Dyn $ fmap (== self) curSelection ]
+--        itemCfg = def & classes .~ dynClasses itemClasses
+--      onClick <- makeClickable $ menuItem' itemCfg $
+--        text $ selectionToText self
+--      pure $ self <$ onClick
 
 functionsList :: MonadWidget t m => Ide t -> BackendUri -> [PactFunction] -> m ()
 functionsList ideL backendUri functions = divClass "ui very relaxed list" $ do
@@ -277,101 +277,6 @@ codeWidget iv sv = do
     ace <- resizableAceWidget mempty ac (AceDynConfig $ Just AceTheme_SolarizedDark) never iv sv
     return $ _extendedACE_onUserChange ace
 
-
-------------------------------------------------------------------------------
-moduleExplorer
-  :: forall t m. MonadWidget t m
-  => Ide t
-  -> m (IdeCfg t)
-moduleExplorer ideL = mdo
-    demuxSel <- fmap demux $ holdDyn (Left "") $ leftmost [searchSelected, exampleSelected]
-
-    header def $ text "Example Contracts"
-    exampleClick <- divClass "ui inverted selection list" $ for demos $ \c -> do
-      let isSel = demuxed demuxSel $ Left $ _exampleContract_name c
-      selectableItem (_exampleContract_name c) isSel $ do
-        text $ _exampleContract_name c
-        (c <$) <$> loadButton isSel
-    let exampleSelected = fmap Left . leftmost . fmap fst $ Map.elems exampleClick
-        exampleLoaded = fmap Left . leftmost . fmap snd $ Map.elems exampleClick
-
-    header def $ text "Deployed Contracts"
-
-    (search, backend) <- divClass "ui form" $ divClass "ui two fields" $ do
-      searchI <- field def $ input (def & inputConfig_icon .~ Static (Just RightIcon)) $ do
-        ie <- inputElement $ def & initialAttributes .~ ("type" =: "text" <> "placeholder" =: "Search modules")
-        icon "black search" def
-        pure ie
-
-      let mkMap = Map.fromList . map (\k@(BackendName n, _) -> (Just k, text n)) . Map.toList
-          dropdownConf = def
-            & dropdownConfig_placeholder .~ "Backend"
-            & dropdownConfig_fluid .~ pure True
-      d <- field def $ input def $ dropdown dropdownConf (Identity Nothing) $ TaggedDynamic $
-        Map.insert Nothing (text "All backends") . maybe mempty mkMap <$> ideL ^. ide_backend . backend_backends
-      pure (value searchI, value d)
-
-    let
-      deployedContracts = Map.mergeWithKey (\_ a b -> Just (a, b)) mempty mempty
-          <$> ideL ^. ide_backend . backend_modules
-          <*> (fromMaybe mempty <$> ideL ^. ide_backend . backend_backends)
-      searchFn needle (Identity mModule)
-        = concat . fmapMaybe (filtering needle) . Map.toList
-        . maybe id (\(k', _) -> Map.filterWithKey $ \k _ -> k == k') mModule
-      filtering needle (backendName, (m, backendUri)) =
-        let f contractName =
-              if T.isInfixOf (T.toCaseFold needle) (T.toCaseFold contractName)
-              then Just (DeployedContract contractName backendName backendUri, ())
-              else Nothing
-        in case fmapMaybe f $ fromMaybe [] m of
-          [] -> Nothing
-          xs -> Just xs
-      filteredCsRaw = searchFn <$> search <*> backend <*> deployedContracts
-      paginate p =
-        Map.fromList . take itemsPerPage . drop (itemsPerPage * pred p) . L.sort
-    filteredCs <- holdUniqDyn filteredCsRaw
-    let
-      paginated = paginate <$> currentPage <*> filteredCs
-
-    (searchSelected, searchLoaded) <- divClass "ui inverted selection list" $ do
-      searchClick <- listWithKey paginated $ \c _ -> do
-        let isSel = demuxed demuxSel $ Right c
-        selectableItem c isSel $ do
-          label (def & labelConfig_horizontal .~ Static True) $ do
-            text $ unBackendName $ _deployedContract_backendName c
-          text $ _deployedContract_name c
-          (c <$) <$> loadButton isSel
-      let searchSelected1 = switch . current $ fmap Right . leftmost . fmap fst . Map.elems <$> searchClick
-          searchLoaded1 = switch . current $ fmap Right . leftmost . fmap snd . Map.elems <$> searchClick
-      pure (searchSelected1, searchLoaded1)
-
-    let itemsPerPage = 5 :: Int
-        numberOfItems = length <$> filteredCs
-        calcTotal a = ceiling $ (fromIntegral a :: Double)  / fromIntegral itemsPerPage
-        totalPages = calcTotal <$> numberOfItems
-    rec
-      currentPage <- holdDyn 1 $ leftmost
-        [ updatePage
-        , 1 <$ updated numberOfItems
-        ]
-      updatePage <- paginationWidget currentPage totalPages
-
-    pure $ mempty
-      { _ideCfg_selContract = leftmost [searchLoaded, exampleLoaded]
-      }
-  where
-    selectableItem :: k -> Dynamic t Bool -> m a -> m (Event t k, a)
-    selectableItem k s m = do
-      let mkAttrs a = Map.fromList
-            [ ("style", "position:relative")
-            , ("class", "item" <> (if a then " active" else ""))
-            ]
-      (e, a) <- elDynAttr' "a" (mkAttrs <$> s) m
-      pure (k <$ domEvent Click e, a)
-    loadButton s = switchHold never <=< dyn $ ffor s $ \case
-      False -> pure never
-      True -> let buttonStyle = "position: absolute; right: 0; top: 0; height: 100%; margin: 0"
-                in button (def & classes .~ "primary" & style .~ buttonStyle) $ text "Load"
 
 controlBar :: forall t m. MonadWidget t m => Ide t -> m (IdeCfg t)
 controlBar ideL = do

@@ -64,6 +64,7 @@ import           Frontend.JsonData
 import           Frontend.UI.Button
 import           Frontend.UI.Dialogs.DeployConfirmation
 import           Frontend.UI.JsonData
+import           Frontend.UI.ModuleExplorer
 import           Frontend.UI.Repl
 import           Frontend.UI.Wallet
 import           Frontend.Wallet
@@ -108,11 +109,19 @@ rightTabBar ideL = do
   let curSelection = _ide_envSelection ideL
   let tabs = [ EnvSelection_Env, EnvSelection_Repl, EnvSelection_Msgs, EnvSelection_ModuleExplorer ]
   curSelection <- tabBar EnvSelection_Env tabs
-  tabPane mempty curSelection EnvSelection_Env $ envTab ideL
-  tabPane ("class" =: "control-block repl-output") curSelection EnvSelection_Repl $ replWidget ideL
-  tabPane ("class" =: "control-block repl-output") curSelection EnvSelection_Msgs $ msgsWidget ideL
-  tabPane mempty curSelection EnvSelection_ModuleExplorer explorerTab
-  return mempty
+  envCfg <- tabPane mempty curSelection EnvSelection_Env $ envTab ideL
+  replCfg <- tabPane ("class" =: "control-block repl-output") curSelection EnvSelection_Repl $
+    replWidget ideL
+  errorsCfg <- tabPane ("class" =: "control-block repl-output") curSelection EnvSelection_Msgs $
+    msgsWidget ideL
+  explorerCfg <- tabPane mempty curSelection EnvSelection_ModuleExplorer $
+    moduleExplorer ideL
+  return $ mconcat
+    [ envCfg
+    , replCfg
+    , errorsCfg
+    , explorerCfg
+    ]
 
 envTab :: MonadWidget t m => Ide t -> m (IdeCfg t)
 envTab ideL = do
@@ -126,10 +135,7 @@ envTab ideL = do
 
   pure $ jsonCfg <> keysCfg
 
-msgsWidget :: MonadWidget t m => Ide t -> m ()
+msgsWidget :: MonadWidget t m => Ide t -> m (IdeCfg t)
 msgsWidget ideL = do
   void . dyn $ traverse_ (snippetWidget . OutputSnippet) <$> _ide_msgs ideL
   pure mempty
-
-explorerTab :: MonadWidget t m => m ()
-explorerTab = text "Explorer tab"

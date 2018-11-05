@@ -22,5 +22,10 @@ import           Reflex.Dom.Core
 
 uiButtonSimple :: MonadWidget t m => Text -> m (Event t ())
 uiButtonSimple msg = do
-    (e, _) <- elAttr' "button" ("class" =: "button") $ text msg
+    (e, _) <- el' "button" $ text msg
     return $ domEvent Click e
+
+uiButton :: MonadWidget t m => m a -> m (Event t (), a)
+uiButton body = do
+    (e, a) <- el' "button" body
+    return (domEvent Click e, a)

@@ -35,6 +35,7 @@ import           Control.Monad
 import           Data.Aeson.Encode.Pretty    (encodePretty)
 import qualified Data.ByteString.Lazy        as BSL
 import qualified Data.HashMap.Strict         as H
+import           Data.Map                    (Map)
 import qualified Data.Map                    as Map
 import           Data.Maybe
 import qualified Data.Set                    as Set
@@ -43,6 +44,8 @@ import qualified Data.Text                   as T
 import qualified Data.Text.Encoding          as T
 import           Reflex.Class.Extended
 import           Reflex.Dom.ACE.Extended
+import qualified Reflex.Dom.Contrib.Widgets.DynTabs as Tabs
+import           Reflex.Dom.Contrib.CssClass
 import           Reflex.Dom.SemanticUI       hiding (mainWidget)
 
 import           Frontend.Foundation
@@ -57,18 +60,99 @@ data JsonDataView
   = JsonDataView_Keysets -- ^ Keyset editor
   | JsonDataView_Raw -- ^ Raw JSON input widget
   | JsonDataView_Result -- ^ Combined result, that will be sent over the wire.
-  deriving (Eq)
+  deriving (Eq,Ord,Enum,Bounded)
 
+showJsonTabName :: JsonDataView -> Text
+showJsonTabName JsonDataView_Keysets = "Keysets"
+showJsonTabName JsonDataView_Raw = "Raw"
+showJsonTabName JsonDataView_Result = "Result"
 
+mkDataAttr :: JsonDataView -> Map Text Text
+mkDataAttr t = "data-tabname" =: ("env-" <> T.toLower (showJsonTabName t))
 
--- | UI for managing JSON data.
+instance MonadWidget t m => Tabs.Tab t m JsonDataView where
+  tabIndicator t isActive = do
+    let mkAttrs True = "class" =: "active"
+        mkAttrs False = mempty
+    (e,_) <- elDynAttr' "button" ((mkDataAttr t <>) . mkAttrs <$> isActive) $
+      text $ showJsonTabName t
+    return $ domEvent Click e
+
+tabPaneActive
+  :: (MonadWidget t m)
+  => Map Text Text
+  -> Dynamic t JsonDataView
+  -> JsonDataView
+  -> m a
+  -> m a
+tabPaneActive staticAttrs currentTab t child = do
+  let mkKlass cur = addToClassAttr
+        (if cur == t then singleClass "active" else mempty) (staticAttrs <> mkDataAttr t)
+  elDynAttr "div" (mkKlass <$> currentTab) child
+
 uiJsonData
   :: forall t m cfg
   . (MonadWidget t m, IsJsonDataCfg cfg t)
   => Wallet t
   -> JsonData t
   -> m cfg
-uiJsonData w d = mdo
+uiJsonData w d = divClass "tabset" $ mdo
+    tabs <- divClass "tab-nav" $ Tabs.tabBar def
+    let curSelection = Tabs._tabBar_curTab tabs
+    keysetVCfg <- tabPaneActive ("class" =: "tab-content")
+        curSelection JsonDataView_Keysets $ do
+      divClass "keys" $ do
+        onCreateKeyset <- uiCreateKeyset d
+        ksCfg <- elClass "div" "keys-list" $
+          networkViewFlatten $ uiKeysets w <$> d ^. jsonData_keysets
+
+        pure $ ksCfg & jsonDataCfg_createKeyset .~ onCreateKeyset
+
+    rawVCfg <- tabPaneActive ("class" =: "tab-content")
+        curSelection JsonDataView_Raw $ do
+      onNewData <- tagOnPostBuild $ d ^. jsonData_rawInput
+
+      let
+        onDupWarning = mkDupWarning <$> (updated $ d ^. jsonData_overlappingProps)
+
+      onSetRawInput <- elClass "div" "editor" $ dataEditor onDupWarning "" onNewData
+      pure $ mempty & jsonDataCfg_setRawInput .~ onSetRawInput
+
+    tabPaneActive ("class" =: "tab-content")
+        curSelection JsonDataView_Result $ do
+      let
+        showData =
+          either showJsonError (T.decodeUtf8 . BSL.toStrict . encodePretty)
+      el "pre" $ dynText $ showData <$> d ^. jsonData_data
+
+    pure $ mconcat [ keysetVCfg, rawVCfg ]
+  where
+    mkDupWarning dups =
+      if Set.null dups
+         then []
+         else
+           let
+             t = "The following properties are overriden by keysets: "
+             props =
+               T.intercalate ", " . Set.toList $ dups
+             ft = t <> props
+           in
+             [ AceAnnotation
+               { _aceAnnotation_row = 0 -- For simplicity, good enough for now.
+               , _aceAnnotation_column = 0
+               , _aceAnnotation_text = ft
+               , _aceAnnotation_type = "warning"
+               }
+             ]
+
+-- | UI for managing JSON data.
+uiJsonDataOld
+  :: forall t m cfg
+  . (MonadWidget t m, IsJsonDataCfg cfg t)
+  => Wallet t
+  -> JsonData t
+  -> m cfg
+uiJsonDataOld w d = mdo
     curSelection <- holdDyn JsonDataView_Keysets onSelect
     onSelect <- menu
       ( def & classes .~ pure "dark top attached tabular menu"
@@ -344,4 +428,3 @@ viewToText = \case
   JsonDataView_Keysets -> "Keysets"
   JsonDataView_Raw -> "JSON"
   JsonDataView_Result -> "Combined Result"
-

@@ -56,7 +56,7 @@ uiWallet
   :: (MonadWidget t m, IsWalletCfg cfg t)
   => Wallet t
   -> m cfg
-uiWallet w = do
+uiWallet w = divClass "keys" $ do
     onCreate <- uiCreateKey w
     keysCfg <- uiAvailableKeys w
 
@@ -162,4 +162,3 @@ uiKeyItem signingKeys (n, k) = do
       case _keyPair_privateKey k1 of
         Nothing -> "Public key only"
         Just _  -> "Full key pair"
-
