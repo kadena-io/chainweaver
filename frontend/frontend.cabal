@@ -60,6 +60,7 @@ library
                  , Frontend.UI.Button
                  , Frontend.UI.Dialogs.DeployConfirmation
                  , Frontend.UI.JsonData
+                 , Frontend.UI.Modal
                  , Frontend.UI.Repl
                  , Frontend.UI.Wallet
                  , Frontend.Wallet

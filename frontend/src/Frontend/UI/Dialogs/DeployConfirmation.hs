@@ -59,51 +59,37 @@ uiDeployConfirmation
   :: MonadWidget t m
   => Ide t
   -> m ( IdeCfg t  -- ^ Any changes the user might have triggered.
-       , Event t () -- ^ On close.
        )
-uiDeployConfirmation ideL =
-  elClass "div" "ui standard modal pact-modal" $ do
-    elClass "div" "header" $ text "Check your deployment settings"
+uiDeployConfirmation ideL = do
+  -- PostBuild does not trigger for some reason ... not working in
+  -- networkView widget?
+  (onPostBuild, fakePostBuild) <- newTriggerEvent
+  liftIO $ fakePostBuild ()
 
-    -- PostBuild does not trigger for some reason ... not working in
-    -- networkView widget?
-    (onPostBuild, fakePostBuild) <- newTriggerEvent
-    liftIO $ fakePostBuild ()
+  _ <- widgetHold (text "nope") $ text "hahahahaahahah" <$ onPostBuild
+  bCfg <- elClass "div" "ui segment" $ do
+    elClass "div" "ui header" $ text "Backend"
 
-    _ <- widgetHold (text "nope") $ text "hahahahaahahah" <$ onPostBuild
-    bCfg <- elClass "div" "ui segment" $ do
-      elClass "div" "ui header" $ text "Backend"
+    bI <- input (def & inputConfig_action .~ Static (Just RightAction)) $ do
+      let dropdownConfig = def
+            & dropdownConfig_placeholder .~ "Deployment Target"
+      fmap value $ dropdown dropdownConfig Nothing $ TaggedDynamic $
+        ffor (ideL ^. ide_backend . backend_backends) $
+          Map.fromList . fmap (\(k, _) -> (k, text $ unBackendName k)) . maybe [] Map.toList
+    pure $ mempty & ideCfg_setDeployBackend  .~ leftmost
+      [ updated bI
+      , Nothing <$ onPostBuild -- Reset to Nothing, so user has to explicitely
+      -- pick a backend for deployments to work. Also currently this is needed to
+      -- keep the dropdown with our model in sync.
+      ]
 
-      bI <- input (def & inputConfig_action .~ Static (Just RightAction)) $ do
-        let dropdownConfig = def
-              & dropdownConfig_placeholder .~ "Deployment Target"
-        fmap value $ dropdown dropdownConfig Nothing $ TaggedDynamic $
-          ffor (ideL ^. ide_backend . backend_backends) $
-            Map.fromList . fmap (\(k, _) -> (k, text $ unBackendName k)) . maybe [] Map.toList
-      pure $ mempty & ideCfg_setDeployBackend  .~ leftmost
-        [ updated bI
-        , Nothing <$ onPostBuild -- Reset to Nothing, so user has to explicitely
-        -- pick a backend for deployments to work. Also currently this is needed to
-        -- keep the dropdown with our model in sync.
-        ]
+  aCfg <- elClass "div" "content ui fluid accordion" $ do
+    jsonCfg <- accordionItem True "ui json-data-accordion-item" "Data" $
+      elClass "div" "json-data full-size" $
+        uiJsonData (ideL ^. ide_wallet) (ideL^. ide_jsonData)
 
-    aCfg <- elClass "div" "content ui fluid accordion" $ do
-      jsonCfg <- accordionItem True "ui json-data-accordion-item" "Data" $
-        elClass "div" "json-data full-size" $
-          uiJsonData (ideL ^. ide_wallet) (ideL^. ide_jsonData)
-
-      keysCfg <- accordionItem True "ui keys" "Keys" $
-        elClass "div" "ui segment" $
-          uiWallet $ ideL ^. ide_wallet
-      pure $ mconcat [ jsonCfg, keysCfg ]
-    elClass "div" "actions" $ do
-      onCancel <- makeClickable $ elClass' "div" "ui black deny button" $
-        text "Cancel"
-      onAccept <- makeClickable $ elClass' "div" "ui positive right button" $
-        text "Deploy"
-
-      let
-        lCfg = mempty & ideCfg_deploy .~ onAccept
-      pure (aCfg <> bCfg <> lCfg, leftmost [onCancel, onAccept])
-
-
+    keysCfg <- accordionItem True "ui keys" "Keys" $
+      elClass "div" "ui segment" $
+        uiWallet $ ideL ^. ide_wallet
+    pure $ mconcat [ jsonCfg, keysCfg ]
+  pure (aCfg <> bCfg)

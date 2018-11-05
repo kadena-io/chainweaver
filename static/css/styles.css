@@ -72,18 +72,60 @@ button:active {
   text-align: right;
 }
 
-.tabset .tab-nav button {
-  border: none;
-  border-radius: 0;
+#control-ui button {
+  border: 1px solid #d7d7d7;
+  color: #757575;
+  font-size: 15px;
+  background: transparent;
+  margin-right: 10px;
 }
 
-.tabset .tab-nav {
+#control-ui .tabset > .tab-nav {
   border-bottom: 1px solid #e1e2e1;
 }
 
-.tabset .tab-nav button:active,
-.tabset .tab-nav button.active {
-  border-bottom: 1px solid #000;
+#control-ui .tabset > .tab-nav button {
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  position: relative;
+  bottom: -2px;
+}
+
+#control-ui .tabset > .tab-nav button:active,
+#control-ui .tabset > .tab-nav button.active {
+  border-bottom: 2px solid #000;
+  color: #000;
+}
+
+#control-ui .tabset > .tab-content {
+  padding-top: 20px;
+  display: none;
+}
+
+#control-ui .tabset > .tab-content.active {
+  display: block;
+}
+
+#control-ui #control-nav.tabset > .tab-nav {
+  border-bottom: 1px solid #d7d7d7;
+  padding-bottom: 20px;
+}
+
+#control-ui #control-nav.tabset > .tab-nav button {
+  border-radius: 4px;
+  border: 1px solid #d7d7d7;
+}
+
+#control-ui #control-nav.tabset > .tab-nav button:hover {
+  background: #d7d7d7;
+}
+
+#control-ui #control-nav.tabset > .tab-nav button.active,
+#control-ui #control-nav.tabset > .tab-nav button:active {
+  color: #fff;
+  border-color: #000;
+  background: #000;
 }
 
 #header {
@@ -146,10 +188,6 @@ button:active {
 #main #main-wysiwyg {
   border-right: 1px solid #e2e2e2;
   padding-right: 20px;
-  display: flex;
-  flex-direction: column;
-  justify-content: flex-start;
-  position: relative;
 }
 
 #main-wysiwyg .wysiwyg {
@@ -159,48 +197,6 @@ button:active {
 
 #main #control-ui {
   padding-left: 20px;
-}
-
-#control-ui button {
-  border: 1px solid #d7d7d7;
-  color: #757575;
-  font-size: 15px;
-  background: transparent;
-  margin-right: 10px;
-}
-
-#control-nav {
-  border-bottom: 1px solid #d7d7d7;
-  padding-bottom: 20px;
-}
-
-#control-nav button:hover {
-  background: #d7d7d7;
-}
-
-#control-nav button:active,
-#control-ui button.active {
-  color: #fff;
-  border-color: #000;
-  background: #000;
-}
-
-#control-ui .tab-nav button {
-  border: none;
-  background: transparent;
-  position: relative;
-  bottom: -2px;
-}
-
-#control-ui .tab-nav button:active,
-#control-ui .tab-nav button.active {
-  border-bottom: 2px solid #000;
-  color: #000;
-}
-
-#control-ui .tab-content {
-  padding-top: 20px;
-  display: none;
 }
 
 #control-ui .contracts {
@@ -298,13 +294,9 @@ button:active {
   color: #c0c0c0;
 }
 
-#control-ui .tab-content.active {
-  display: block;
-}
-
 #control-ui .control-block {
   padding: 20px 0 30px;
-  border-bottom: 1px solid #d7d7d7;
+  border-bottom: 1px dashed #d7d7d7;
 }
 
 #control-ui .control-block:last-child {
@@ -312,8 +304,7 @@ button:active {
 }
 
 #control-ui .control-block.repl-output {
-  font-family: 'RobotoMono', monospace;
-  /* font-family: Monaco, Meno, Consolas, 'source-code-pro', monospace; */
+  font-family: Monaco, Meno, Consolas, 'source-code-pro', monospace;
   font-size: 14px;
   background: #f1f1f1;
 }
@@ -413,4 +404,87 @@ button:active {
   list-style: none;
   color: #757575;
   font-size: 15px;
+}
+
+#modal-root,
+#modal-root .screen {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+}
+
+#modal-root {
+  display: none;
+  font-family: 'Roboto', sans-serif;
+}
+
+#modal-root.open {
+  display: block;
+}
+
+#modal-root .screen {
+  background: rgba(0, 0, 0, 0.3);
+}
+
+#modal-root .modal {
+  position: absolute;
+  left: 25%;
+  right: 25%;
+  top: 15%;
+  background: #f1f1f1;
+  border-radius: 4px;
+  box-shadow: 0px 8px 24px rgba(0, 0, 0, 0.3);
+}
+
+#modal-root .modal-header {
+  background: #2d2d2f;
+  color: #fff;
+  border-top-left-radius: 4px;
+  border-top-right-radius: 4px;
+  padding: 20px;
+}
+
+#modal-root .modal-header h2 {
+  margin: 0;
+}
+
+#modal-root .modal-header h2 button.modal-close {
+  float: right;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  margin: 3px 0 0 0;
+  line-height: 1px;
+}
+
+#modal-root .modal-body {
+  padding: 20px;
+  min-height: 6em;
+}
+
+#modal-root .modal-footer {
+  margin-top: 20px;
+  border-top: 1px solid #d7d7d7;
+  border-bottom-left-radius: 4px;
+  border-bottom-right-radius: 4px;
+  padding: 20px;
+  text-align: right;
+}
+
+#modal-root .modal-footer button {
+  color: #fff;
+  border-color: #555;
+  background: #555;
+}
+
+#modal-root .modal-footer button:hover {
+  border-color: #000;
+  background: #000;
+}
+
+#modal-root .modal-footer button:active {
+  border-color: #555;
+  background: #555;
 }

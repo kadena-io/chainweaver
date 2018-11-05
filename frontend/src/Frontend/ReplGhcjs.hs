@@ -73,6 +73,7 @@ import           Frontend.RightPanel
 import           Frontend.UI.Button
 import           Frontend.UI.Dialogs.DeployConfirmation
 import           Frontend.UI.JsonData
+import           Frontend.UI.Modal
 import           Frontend.UI.Repl
 import           Frontend.UI.Wallet
 import           Frontend.Wallet
@@ -87,58 +88,19 @@ app = void . mfix $ \ cfg -> do
   ideL <- makeIde cfg
 
   controlCfg <- controlBar ideL
-  elAttr "main" ("id" =: "main" <> "class" =: "flexbox even") $ do
+  mainCfg <- elAttr "main" ("id" =: "main" <> "class" =: "flexbox even") $ do
     editorCfg <- codePanel ideL
     envCfg <- elAttr "div" ("class" =: "flex" <> "id" =: "control-ui") $ do
-      --envPanel ideL
       rightTabBar ideL
+    pure $ editorCfg <> envCfg
 
-    modalCfg <- showModal ideL
+  modalCfg <- showModal ideL
 
-    pure $ mconcat
-      [ controlCfg
-      , editorCfg
-      , envCfg
-      , modalCfg
-      ]
-
-showModal :: forall t m. MonadWidget t m => Ide t -> m (IdeCfg t)
-showModal ideL = do
-    document <- DOM.currentDocumentUnchecked
-
-    onEsc <- wrapDomEventMaybe document (`EventM.on` Events.keyDown) $ do
-      key <- getKeyEvent
-      pure $ if keyCodeLookup (fromIntegral key) == Escape then Just () else Nothing
-
-    (backdropEl, _) <- elDynAttr' "div"
-      (ffor isVisible $ \isVis ->
-        ("style" =: (isVisibleStyle isVis <> ";" <> existingBackdropStyle))
-      )
-      blank
-
-    ev <- networkView $ showModal <$> _ide_modal ideL
-    onFinish <- switchHold never $ snd <$> ev
-    mCfg <- flatten $ fst <$> ev
-
-    let
-      onClose = leftmost [ onFinish
-                         , onEsc
-                         , domEvent Click backdropEl
-                         ]
-      lConf = mempty & ideCfg_reqModal .~ (Modal_NoModal <$ onClose)
-    pure $ lConf <> mCfg
-  where
-    isVisible = getIsVisible <$> _ide_modal ideL
-    getIsVisible = \case
-      Modal_NoModal -> False
-      _             -> True
-
-    showModal = \case
-      Modal_NoModal -> pure (mempty, never)
-      Modal_DeployConfirmation -> uiDeployConfirmation ideL
-
-    existingBackdropStyle = "position: fixed; top:0;bottom:0;left:0;right:0;z-index:100; background-color: rgba(0,0,0,0.5);"
-    isVisibleStyle isVis = "display:" <> (if isVis then "block" else "none")
+  pure $ mconcat
+    [ controlCfg
+    , mainCfg
+    , modalCfg
+    ]
 
 -- | Code editing (left hand side currently)
 codePanel :: forall t m. MonadWidget t m => Ide t -> m (IdeCfg t)
@@ -413,7 +375,6 @@ moduleExplorer ideL = mdo
 
 controlBar :: forall t m. MonadWidget t m => Ide t -> m (IdeCfg t)
 controlBar ideL = do
-<<<<<<< HEAD
     elAttr "header" ("id" =: "header") $ do
       divClass "flexbox even" $ do
         ideCfg <- controlBarLeft ideL
@@ -430,17 +391,14 @@ controlBarLeft ideL = do
       elAttr "div" ("id" =: "header-project-loader") $ do
         onLoad <- uiButtonSimple "Load into REPL"
 
-        --onDeployClick <- uiButtonSimple "Deploy"
-        -- TODO Re-enable this later
-        (confirmationCfg, onDeploy) <- uiDeployConfirmation ideL never --onDeployClick
+        onDeployClick <- uiButtonSimple "Deploy"
 
         let
           reqConfirmation = Modal_DeployConfirmation <$ onDeployClick
           lcfg = mempty
             & ideCfg_load .~ onLoad
-            & ideCfg_deploy .~ onDeploy
             & ideCfg_reqModal .~ reqConfirmation
-        pure $ confirmationCfg <> lcfg
+        pure lcfg
 
 getPactVersion :: MonadWidget t m => m Text
 getPactVersion = do
