@@ -197,9 +197,21 @@ in obApp // {
   server = args@{ hostName, adminEmail, routeHost, enableHttps, config, version }:
     let
       nixos = import (pkgs.path + /nixos);
+      # Check whether everything we need is in place.
+      checkDeployment = v:
+        let
+          hasServerList = lib.pathExists (config + "/common/pact-server-list");
+        in
+          if hasServerList
+          then v
+          else abort ("\n\n========================= PACT-WEB ERROR =========================\n\n" +
+                          "For deployments you have to provide a common/pact-server-list file\n" +
+                          "in your deployment config directory, check README.md for details!\n\n" +
+                          "==================================================================\n\n");
+
     in nixos {
       system = "x86_64-linux";
-      configuration = {
+      configuration = checkDeployment {
         imports = [
           (obelisk.serverModules.mkBaseEc2 args)
           (obelisk.serverModules.mkObeliskApp (args // { exe = obApp.linuxExeConfigurable (pkgs.copyPathToStore config) version; }))
