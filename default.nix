@@ -125,22 +125,6 @@ let
       isSystemUser = true;
     };
 
-    # This should just be in the preStart script of pact-server, but it can't
-    # because the script won't get executed if the working directory does not
-    # exist. I also don't want to make the working directory change optional,
-    # because I want to be sure it gets changed:
-    system.activationScripts = {
-      setupPactWorkDir = {
-        text = ''
-          # pact -s serves files in its working directory, so we provide an empty
-          # directory for it to serve.
-          # If we don't do that, it will happily serve the entire root filesystem!
-          mkdir -p ${pactDataDir}/emptyRoot
-          '';
-        deps = [];
-      };
-    };
-
     systemd.services.pact-server = {
       description = "Pact Server";
       after = [ "network.target" ];
@@ -157,7 +141,7 @@ let
         User = pactUser;
 
         # This is important! pact -s serves files in its working directory!!
-        WorkingDirectory = "${pactDataDir}/emptyRoot";
+        WorkingDirectory = "/var/empty";
 
         ExecStart = "${pkgs.haskell.lib.justStaticExecutables obApp.ghc.pact}/bin/pact -s ${pactConfig}";
         Restart = "always";

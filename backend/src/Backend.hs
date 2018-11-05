@@ -90,7 +90,7 @@ backend = Ob.Backend
           baseNorm <- liftIO $ canonicalizePath dynConfigs
           -- Sanity check: Make sure we are serving a file in the target directory.
           if L.isPrefixOf baseNorm pNorm
-             then serveFile p
+             then serveFile pNorm
              else pure () -- We should probably throw an error instead, I guess.
 
       _ -> pure ()
