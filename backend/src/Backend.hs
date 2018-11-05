@@ -103,5 +103,7 @@ writePactConfig cfg =
    , "persistDir: " <> (T.pack $ _pic_log cfg)
    , "pragmas: []"
    , "verbose: True"
+   , "gasLimit: 50"
+   , "gasRate: 1"
    ]
 
