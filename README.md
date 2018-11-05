@@ -13,28 +13,28 @@ Make sure you have checked out the master branch.
 ### Initialise `ob deploy` as usual:
 
 ```bash
-$ ob deploy init <dirname> --ssh-key <key> --hostname <hostname> --route <URI> --admin-email <email>
+$ ob deploy init <deploydir> --ssh-key <key> --hostname <hostname> --route <URI> --admin-email <email>
 ```
 
 And change to the just created deployment repo:
 
 ```bash
-$ cd <dirname>
+$ cd <deploydir>
 ```
 
-Where <dirname> is the same as above.
+Where `deploydir` is the same as above.
 
 ### Setting up production mode and pact server list
 
-In the deploy directory, create a file at `config/common/pact-server-list`, it can either be empty or it can contain a list of pact servers, in a format like this:
+In the `deploydir` directory, create a file at `config/common/pact-server-list`, it can either be empty or it can contain a list of pact servers, in a format like this:
 
 ```
     working-agreement: https://working-agreement.obsidian.systems:7010
     other-server-name: https://some.other.pact.backend.server
 ```
 
-You can leave the file empty, if you prefer to provide the server list at
-runtime (see below), but it has to exist, otherwise pact-web will run in
+You can leave the file empty, in case you prefer to provide the server list at
+runtime (see below). Nevertheless it has to exist, otherwise pact-web will run in
 `development mode`.
 
 In the default deployment one pact instance is running at port 7010, so to get a working configuration out of the box, use a configuration like the following:
@@ -43,7 +43,7 @@ In the default deployment one pact instance is running at port 7010, so to get a
     <hostname>: https://<hostname>:7010
 ```
 
-Replace <hostname> with your actual hostname, like in the `deploy init` command above.
+Replace `hostname` with your actual hostname, like in the `deploy init` command above.
 
 Note however, that there will be users having pretty restrictive firewalls preventing their browser to access non-standard ports like 7010, therefore we recommend to spawn pact server instances at well-known ports like `443`.
 
