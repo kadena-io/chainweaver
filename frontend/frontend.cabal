@@ -56,11 +56,13 @@ library
                  , Frontend.Ide
                  , Frontend.JsonData
                  , Frontend.ReplGhcjs
+                 , Frontend.RightPanel
                  , Frontend.Storage
                  , Frontend.UI.Button
                  , Frontend.UI.Dialogs.DeployConfirmation
                  , Frontend.UI.JsonData
                  , Frontend.UI.Modal
+                 , Frontend.UI.ModuleExplorer
                  , Frontend.UI.Repl
                  , Frontend.UI.Wallet
                  , Frontend.Wallet
