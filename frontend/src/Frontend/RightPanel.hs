@@ -97,7 +97,7 @@ mkTab currentTab t = do
 
 tabBar :: (MonadWidget t m) => EnvSelection -> [EnvSelection] -> m (Dynamic t EnvSelection)
 tabBar initialSelected initialTabs = do
-  elAttr "div" ("id" =: "control-nav") $ do
+  elAttr "div" ("class" =: "tab-nav") $ do
     rec let tabFunc = mapM (mkTab currentTab)
         foo <- widgetHoldHelper tabFunc initialTabs never
         let bar = switch $ fmap leftmost $ current foo
@@ -106,22 +106,23 @@ tabBar initialSelected initialTabs = do
 
 rightTabBar :: forall t m. MonadWidget t m => Ide t -> m (IdeCfg t)
 rightTabBar ideL = do
-  let curSelection = _ide_envSelection ideL
-  let tabs = [ EnvSelection_Env, EnvSelection_Repl, EnvSelection_Msgs, EnvSelection_ModuleExplorer ]
-  curSelection <- tabBar EnvSelection_Env tabs
-  envCfg <- tabPane mempty curSelection EnvSelection_Env $ envTab ideL
-  replCfg <- tabPane ("class" =: "control-block repl-output") curSelection EnvSelection_Repl $
-    replWidget ideL
-  errorsCfg <- tabPane ("class" =: "control-block repl-output") curSelection EnvSelection_Msgs $
-    msgsWidget ideL
-  explorerCfg <- tabPane mempty curSelection EnvSelection_ModuleExplorer $
-    moduleExplorer ideL
-  return $ mconcat
-    [ envCfg
-    , replCfg
-    , errorsCfg
-    , explorerCfg
-    ]
+  elAttr "div" ("id" =: "control-nav" <> "class" =: "tabset") $ do
+    let curSelection = _ide_envSelection ideL
+    let tabs = [ EnvSelection_Env, EnvSelection_Repl, EnvSelection_Msgs, EnvSelection_ModuleExplorer ]
+    curSelection <- tabBar EnvSelection_Env tabs
+    envCfg <- tabPane mempty curSelection EnvSelection_Env $ envTab ideL
+    replCfg <- tabPane ("class" =: "control-block repl-output") curSelection EnvSelection_Repl $
+      replWidget ideL
+    errorsCfg <- tabPane ("class" =: "control-block repl-output") curSelection EnvSelection_Msgs $
+      msgsWidget ideL
+    explorerCfg <- tabPane mempty curSelection EnvSelection_ModuleExplorer $
+      moduleExplorer ideL
+    return $ mconcat
+      [ envCfg
+      , replCfg
+      , errorsCfg
+      , explorerCfg
+      ]
 
 envTab :: MonadWidget t m => Ide t -> m (IdeCfg t)
 envTab ideL = do

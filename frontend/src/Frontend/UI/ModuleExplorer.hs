@@ -51,9 +51,8 @@ import           Language.Javascript.JSaddle hiding (Object)
 import           Reflex
 import           Reflex.Dom.ACE.Extended
 import qualified Reflex.Dom.Contrib.Widgets.DynTabs as Tabs
-import           Reflex.Dom.Core             (keypress)
-import qualified Reflex.Dom.Core             as Core
-import           Reflex.Dom.SemanticUI       hiding (mainWidget)
+import           Reflex.Dom
+import           Reflex.Network
 import qualified GHCJS.DOM as DOM
 import qualified GHCJS.DOM.EventM as EventM
 import qualified GHCJS.DOM.GlobalEventHandlers as Events
@@ -72,90 +71,88 @@ import           Frontend.Widgets
 ------------------------------------------------------------------------------
 
 ------------------------------------------------------------------------------
+
 moduleExplorer
   :: forall t m. MonadWidget t m
   => Ide t
   -> m (IdeCfg t)
-moduleExplorer ideL = mdo
+moduleExplorer ideL = do
     exampleClick <- accordionItem True mempty "Example Contracts" $ do
       divClass "contracts" $ elClass "ol" "contracts-list" $
         for demos $ \c -> el "li" $ do
           text $ _exampleContract_name c
-          loadButton
+          loadButton c
     let exampleLoaded = fmap Left . leftmost $ Map.elems exampleClick
 
-    (search, backend) <- accordionItem True mempty "Deployed Contracts" $ do
-      searchI <- field def $ input (def & inputConfig_icon .~ Static (Just RightIcon)) $ do
-        ie <- inputElement $ def & initialAttributes .~ ("type" =: "text" <> "placeholder" =: "Search modules")
-        icon "black search" def
-        pure ie
+    let mkMap = Map.fromList . map (\k@(BackendName n, _) -> (Just k, n)) . Map.toList
+        opts = Map.insert Nothing "All backends" . maybe mempty mkMap <$> ideL ^. ide_backend . backend_backends
 
-      let mkMap = Map.fromList . map (\k@(BackendName n, _) -> (Just k, text n)) . Map.toList
-          dropdownConf = def
-            & dropdownConfig_placeholder .~ "Backend"
-            & dropdownConfig_fluid .~ pure True
-      d <- field def $ input def $ dropdown dropdownConf (Identity Nothing) $ TaggedDynamic $
-        Map.insert Nothing (text "All backends") . maybe mempty mkMap <$> ideL ^. ide_backend . backend_backends
-      pure (value searchI, value d)
+    searchLoaded <- accordionItem True mempty "Deployed Contracts" $ mdo
+      ti <- textInput $ def & attributes .~ constDyn ("placeholder" =: "Search")
+      d <- dropdown Nothing opts def
+      let
+        search = value ti
+        backend = value d
+        deployedContracts = Map.mergeWithKey (\_ a b -> Just (a, b)) mempty mempty
+            <$> _backend_modules (_ide_backend ideL)
+            <*> (fromMaybe mempty <$> _backend_backends (_ide_backend ideL))
+        filteredCsRaw = searchFn <$> search <*> backend <*> deployedContracts
+        itemsPerPage = 5 :: Int
+      filteredCs <- holdUniqDyn filteredCsRaw
+      let paginated = paginate itemsPerPage <$> currentPage <*> filteredCs
 
-    let
-      deployedContracts = Map.mergeWithKey (\_ a b -> Just (a, b)) mempty mempty
-          <$> ideL ^. ide_backend . backend_modules
-          <*> (fromMaybe mempty <$> ideL ^. ide_backend . backend_backends)
-      searchFn needle (Identity mModule)
-        = concat . fmapMaybe (filtering needle) . Map.toList
-        . maybe id (\(k', _) -> Map.filterWithKey $ \k _ -> k == k') mModule
-      filtering needle (backendName, (m, backendUri)) =
-        let f contractName =
-              if T.isInfixOf (T.toCaseFold needle) (T.toCaseFold contractName)
-              then Just (DeployedContract contractName backendName backendUri, ())
-              else Nothing
-        in case fmapMaybe f $ fromMaybe [] m of
-          [] -> Nothing
-          xs -> Just xs
-      filteredCsRaw = searchFn <$> search <*> backend <*> deployedContracts
-      paginate p =
-        Map.fromList . take itemsPerPage . drop (itemsPerPage * pred p) . L.sort
-    filteredCs <- holdUniqDyn filteredCsRaw
-    let
-      paginated = paginate <$> currentPage <*> filteredCs
+      -- TODO Might need to change back to listWithKey
+      searchClick <- networkHold (return mempty) $ contractList (text . _deployedContract_name) <$> updated paginated
 
-    searchLoaded <- divClass "ui inverted selection list" $ do
-      searchClick <- listWithKey paginated $ \c _ -> do
-        label (def & labelConfig_horizontal .~ Static True) $ do
-          text $ unBackendName $ _deployedContract_backendName c
-        text $ _deployedContract_name c
-        loadButton
-      let searchLoaded1 = switch . current $ fmap Right . leftmost . Map.elems <$> searchClick
-      pure (searchLoaded1)
-
-    let itemsPerPage = 5 :: Int
-        numberOfItems = length <$> filteredCs
-        calcTotal a = ceiling $ (fromIntegral a :: Double)  / fromIntegral itemsPerPage
-        totalPages = calcTotal <$> numberOfItems
-    rec
+      let numberOfItems = length <$> filteredCs
+          calcTotal a = ceiling $ (fromIntegral a :: Double)  / fromIntegral itemsPerPage
+          totalPages = calcTotal <$> numberOfItems
       currentPage <- holdDyn 1 $ leftmost
         [ updatePage
         , 1 <$ updated numberOfItems
         ]
       updatePage <- paginationWidget currentPage totalPages
 
+      return $ switch . current $ fmap Right . leftmost . Map.elems <$> searchClick
+
     pure $ mempty
-      { _ideCfg_selContract = never --leftmost [searchLoaded, exampleLoaded]
+      { _ideCfg_selContract = leftmost [exampleLoaded]
       }
+
+paginate :: (Ord k, Ord v) => Int -> Int -> [(k, v)] -> Map k v
+paginate itemsPerPage p =
+  Map.fromList . take itemsPerPage . drop (itemsPerPage * pred p) . L.sort
+
+searchFn
+  :: Text
+  -> Maybe (BackendName, Text)
+  -> Map BackendName (Maybe [Text], BackendUri)
+  -> [(Int, DeployedContract)]
+searchFn needle mModule = zip [0..] . concat . fmapMaybe (filtering needle) . Map.toList
+  . maybe id (\(k', _) -> Map.filterWithKey $ \k _ -> k == k') mModule
+
+filtering
+  :: Text
+  -> (BackendName, (Maybe [Text], BackendUri))
+  -> Maybe [DeployedContract]
+filtering needle (backendName, (m, backendUri)) =
+    case fmapMaybe f $ fromMaybe [] m of
+      [] -> Nothing
+      xs -> Just xs
   where
-    selectableItem :: k -> Dynamic t Bool -> m a -> m (Event t k, a)
-    selectableItem k s m = do
-      let mkAttrs a = Map.fromList
-            [ ("style", "position:relative")
-            , ("class", "item" <> (if a then " active" else ""))
-            ]
-      (e, a) <- elDynAttr' "a" (mkAttrs <$> s) m
-      pure (k <$ domEvent Click e, a)
-    loadButton = do
-      (e,_) <- uiButton $ imgWithAlt (static @"img/view.svg") "View" blank >> text "View"
-      return e
-    loadButtonOld s = switchHold never <=< dyn $ ffor s $ \case
-      False -> pure never
-      True -> let buttonStyle = "position: absolute; right: 0; top: 0; height: 100%; margin: 0"
-                in button (def & classes .~ "primary" & style .~ buttonStyle) $ text "Load"
+    f contractName =
+      if T.isInfixOf (T.toCaseFold needle) (T.toCaseFold contractName)
+      then Just (DeployedContract contractName backendName backendUri)
+      else Nothing
+
+contractList :: MonadWidget t m => (a -> m b) -> Map Int a -> m (Map Int (Event t a))
+contractList rowFunc contracts = do
+    divClass "contracts" $ elClass "ol" "contracts-list" $
+      for contracts $ \c -> el "li" $ do
+        rowFunc c
+        loadButton c
+
+loadButton :: MonadWidget t m => a -> m (Event t a)
+loadButton c = do
+  (e,_) <- uiButton $ imgWithAlt (static @"img/view.svg") "View" blank >> text "View"
+  return $ c <$ e

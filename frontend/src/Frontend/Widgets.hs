@@ -81,19 +81,19 @@ accordionItem'
   :: MonadWidget t m
   => Bool
   -> CssClass
-  -> Text
   -> m a
-  -> m (Element EventResult (DomBuilderSpace m) t, a)
+  -> m b
+  -> m (a,b)
 accordionItem' initActive contentClass title inner = mdo
     isActive <- foldDyn (const not) initActive $ domEvent Click e
     let mkClass a = singleClass "control-block" <> contentClass <> activeClass a
-    res@(e, a) <- elDynKlass "div" (mkClass <$> isActive) $ do
-      (e1,_) <- el' "h2" $ do
+    (e, pair) <- elDynKlass "div" (mkClass <$> isActive) $ do
+      (e1,a1) <- el' "h2" $ do
         el "button" $ imgWithAlt (static @"img/arrow-down.svg") "Expand" blank
-        text title
-      a1 <- divClass "control-block-contents" inner
-      return (e1,a1)
-    return res
+        title
+      b1 <- divClass "control-block-contents" inner
+      return (e1,(a1,b1))
+    return pair
   where
     activeClass = \case
       False -> singleClass "collapsed"
@@ -101,7 +101,7 @@ accordionItem' initActive contentClass title inner = mdo
 
 accordionItem :: MonadWidget t m => Bool -> CssClass -> Text -> m a -> m a
 accordionItem initActive contentClass title inner =
-  snd <$> accordionItem' initActive contentClass title inner
+  snd <$> accordionItem' initActive contentClass (text title) inner
 
 makeClickable :: DomBuilder t m => m (Element EventResult (DomBuilderSpace m) t, ()) -> m (Event t ())
 makeClickable item = do
