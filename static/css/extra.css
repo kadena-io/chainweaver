@@ -55,3 +55,7 @@ code {
 .ace_scrollbar {
     display: none !important;
 }
+
+#control-nav .wysiwyg {
+  height: 30vh;
+}
