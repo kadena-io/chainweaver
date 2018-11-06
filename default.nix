@@ -50,8 +50,8 @@ let
             pact = pkgs.haskell.lib.addBuildDepend (self.callCabal2nix "pact" (pkgs.fetchFromGitHub {
               owner = "kadena-io";
               repo = "pact";
-              rev = "1d514e809f03cf5750013553051a377743d16a77";
-              sha256 = "0d7h1achw08cj3fp3qrm19nz1mzndlnwfxlx38k2zlx8jkk7awyp";
+              rev = "fb615b5195cb2f51aff0c30cc2fba17ca966a4a1";
+              sha256 = "1grfry0pxiya9lkw172aqn24nw8qr99x074hdgajzq5wls5n339p";
             }) {}) pkgs.z3;
 
             reflex-dom-ace = (self.callCabal2nix "reflex-dom-ace" (pkgs.fetchFromGitHub {
@@ -118,6 +118,10 @@ let
 
       # verbose: provide log output
       verbose: True
+
+      gasLimit: 50
+
+      gasRate: 1
     '';
   in {pkgs, lib, ...}: {
     users.users.${pactUser} = {
