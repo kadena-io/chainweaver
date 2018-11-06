@@ -59,3 +59,7 @@ code {
 #control-nav .wysiwyg {
   height: 30vh;
 }
+
+.header i {
+  cursor: pointer;
+}
