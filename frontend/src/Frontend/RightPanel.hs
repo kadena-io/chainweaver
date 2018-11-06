@@ -110,6 +110,7 @@ rightTabBar ideL = do
     let curSelection = _ide_envSelection ideL
     let tabs = [ EnvSelection_Env, EnvSelection_Repl, EnvSelection_Msgs, EnvSelection_ModuleExplorer ]
     curSelection <- tabBar EnvSelection_Env tabs
+
     envCfg <- tabPane mempty curSelection EnvSelection_Env $ envTab ideL
     replCfg <- tabPane ("class" =: "control-block repl-output") curSelection EnvSelection_Repl $
       replWidget ideL

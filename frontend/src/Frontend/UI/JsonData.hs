@@ -115,7 +115,7 @@ uiJsonData w d = divClass "tabset" $ mdo
       let
         onDupWarning = mkDupWarning <$> (updated $ d ^. jsonData_overlappingProps)
 
-      onSetRawInput <- elClass "div" "editor" $ dataEditor onDupWarning "" onNewData
+      onSetRawInput <- elClass "div" "wysiwyg" $ dataEditor onDupWarning "" onNewData
       pure $ mempty & jsonDataCfg_setRawInput .~ onSetRawInput
 
     tabPaneActive ("class" =: "tab-content")
