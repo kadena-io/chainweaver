@@ -107,11 +107,10 @@ codePanel :: forall t m. MonadWidget t m => Ide t -> m (IdeCfg t)
 codePanel ideL = do
   elAttr "div" ("class" =: "flex" <> "id" =: "main-wysiwyg") $
     divClass "wysiwyg" $ do
-      pure mempty
-      --onNewCode <- tagOnPostBuild $ _ide_code ideL
-      --onUserCode <- codeWidget "" onNewCode
+      onNewCode <- tagOnPostBuild $ _ide_code ideL
+      onUserCode <- codeWidget "" onNewCode
 
-      --pure $ mempty & ideCfg_setCode .~ onUserCode
+      pure $ mempty & ideCfg_setCode .~ onUserCode
 
 -- | Tabbed panel to the right
 --
