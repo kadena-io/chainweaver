@@ -68,7 +68,7 @@ Note: If you can do re-deployments: You can also change the static configuration
 
 pact-web is set up for basic Google Analytics tracking. You can configure the used tracking id by providing a config file in the deploy directory containing your desired tracking id:
 
-```
+```bash
 $ cd <dirname>
 $ mkdir config/frontend
 $ echo 'your-new-id' > config/frontend/tracking-id
@@ -76,6 +76,24 @@ $ echo 'your-new-id' > config/frontend/tracking-id
 
 Then of course, run the deployment:
 
-```
+```bash
 ob deploy push
 ```
+
+# Deploy pact -s server instances
+
+Change to the pact-server directory:
+
+```bash
+$ cd pact-server
+```
+
+Run the deploy script:
+
+```bash
+$ ./deploy.sh <ssh-key> <hostname> <admin-email>
+```
+
+It will deploy a pact -s server to the given hostname using the given ssh-key.
+An nginx instance will be setup as a reverse proxy to the pact -s server,
+serving its API via https.
