@@ -29,19 +29,26 @@
     margin: 0;
 }
 
-code {
-    font-family: 'RobotoMono', monospace;
-}
 
-.code-font {
-    font-family: 'RobotoMono', monospace;
-    font-size: 14px;
-    background: #f1f1f1;
+.wysiwyg,.ace_editor,.code-font {
+    font-family: 'RobotoMono', monospace !important;
+    font-size: 15px;
+    background: #ffffff !important;
 }
 
 .wysiwyg {
   position: relative;
+  border-radius: 4px;
 }
+
+.wysiwyg > * {
+  border-radius: 4px;
+}
+
+.wysiwyg .ace_editor {
+  border-radius: 4px;
+}
+
 
 .ace_editor {
   position: absolute;
@@ -49,7 +56,6 @@ code {
   bottom: 0px;
   left: 0px;
   right: 0px;
-  font: 12pt/normal 'Monaco', 'Menlo', 'Consolas', 'source-code-pro', monospace;
 }
 
 .ace_scrollbar {
