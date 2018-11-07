@@ -377,8 +377,10 @@ button:active {
 }
 
 #control-ui .control-block.repl-output {
-  font-family: Monaco, Meno, Consolas, 'source-code-pro', monospace;
-  font-size: 14px;
+  background: #f1f1f1;
+}
+
+.repl-input-controls > input {
   background: #f1f1f1;
 }
 
