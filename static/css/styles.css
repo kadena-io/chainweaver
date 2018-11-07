@@ -94,7 +94,7 @@ select {
 
 select {
   padding: 0 14px;
-  background: url(/img/arrow-down-white.svg) no-repeat right 14px top 50%;
+  background: url(/static/img/arrow-down-white.svg) no-repeat right 14px top 50%;
   background-size: 8px 4px;
 }
 
@@ -103,7 +103,7 @@ select {
   color: #757575;
   font-size: 15px;
   padding-right: 36px;
-  background-image: url(/img/arrow-down-grey.svg);
+  background-image: url(/static/img/arrow-down-grey.svg);
   background-repeat: no-repeat;
   background-position: right 14px top 50%;
   background-size: 10px;
@@ -352,7 +352,7 @@ button:active {
   height: 36px;
   border-radius: 4px;
   border: solid 1px #d7d7d7;
-  background: #f1f1f1 url(../img/search.svg) no-repeat right 16.3px top 50%;
+  background: #f1f1f1 url(/static/img/search.svg) no-repeat right 16.3px top 50%;
   background-size: 14.7px;
   color: #757575;
 }
@@ -511,7 +511,7 @@ button:active {
   line-height: 18px;
   font-size: 14px;
   padding: 0 18px 0 8px;
-  background: url(/img/arrow-down.svg) no-repeat right 4px top 50%;
+  background: url(/static/img/arrow-down.svg) no-repeat right 4px top 50%;
   background-size: 10px 7px;
 }
 

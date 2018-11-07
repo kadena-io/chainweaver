@@ -98,5 +98,8 @@ td.centercell {
 }
 
 #modal-root select {
-  color: #525252;
+  color: black;
+  padding-right: 36px;
+  background-image: url(/static/img/arrow-down.svg);
+  background-size: 10px;
 }
