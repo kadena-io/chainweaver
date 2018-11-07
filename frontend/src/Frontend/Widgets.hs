@@ -19,6 +19,7 @@ module Frontend.Widgets
   , accordionItem'
   ) where
 
+------------------------------------------------------------------------------
 import           Control.Lens
 import           Control.Monad
 import           Control.Monad.Fix           (MonadFix)
@@ -36,6 +37,8 @@ import           Reflex.Network.Extended
 ------------------------------------------------------------------------------
 import           Frontend.Foundation
 import           Frontend.UI.Button
+import           Frontend.UI.Icon
+------------------------------------------------------------------------------
 
 {- -- | Variant of  a semantic-reflex textInput that also works with pre-render. -}
 {- semTextInput -}
@@ -238,32 +241,33 @@ validatedInputWithButton check placeholder buttonText = mdo
 
 -- | Page picker widget
 paginationWidget
-  :: ( TriggerEvent t m, DomBuilder t m, MonadIO (Performable m)
-     , PerformEvent t m, PostBuild t m , MonadHold t m, MonadFix m
-     )
+  :: MonadWidget t m
   => Dynamic t Int  -- ^ Current page
   -> Dynamic t Int  -- ^ Total number of pages
   -> m (Event t Int)
-paginationWidget currentPage totalPages = buttons (def & classes .~ "fluid") $ do
-  let canGoFirst = (> 1) <$> currentPage
-  first <- filteredButton canGoFirst $ icon "angle double left" def
-  prev <- filteredButton canGoFirst $ icon "angle left" def
-  void $ button (def & buttonConfig_disabled .~ Static True) $ do
-    display currentPage
-    text " of "
-    display totalPages
-  let canGoLast = (<) <$> currentPage <*> totalPages
-  nextL <- filteredButton canGoLast $ icon "angle right" def
-  lastL <- filteredButton canGoLast $ icon "angle double right" def
-  pure $ leftmost
-    [ attachWith (\x _ -> pred x) (current currentPage) prev
-    , 1 <$ first
-    , attachWith (\x _ -> succ x) (current currentPage) nextL
-    , tag (current totalPages) lastL
-    ]
-  where
-    filteredButton okay content = do
-      e <- flip button content $ def
-        & buttonConfig_icon .~ Static True
-        & buttonConfig_disabled .~ Dyn (not <$> okay)
-      pure $ gate (current okay) e
+paginationWidget currentPage totalPages = do
+    let canGoFirst = (> 1) <$> currentPage
+    first <- filteredButton canGoFirst $ uiIcon "fa-angle-double-left" def
+    prev <- filteredButton canGoFirst $ uiIcon "fa-angle-left" def
+    void $ button (def & buttonConfig_disabled .~ Static True) $ do
+      display currentPage
+      text " of "
+      display totalPages
+    let canGoLast = (<) <$> currentPage <*> totalPages
+    nextL <- filteredButton canGoLast $ uiIcon "fa-angle-right" def
+    lastL <- filteredButton canGoLast $ uiIcon "fa-angle-double-right" def
+    pure $ leftmost
+      [ attachWith (\x _ -> pred x) (current currentPage) prev
+      , 1 <$ first
+      , attachWith (\x _ -> succ x) (current currentPage) nextL
+      , tag (current totalPages) lastL
+      ]
+
+filteredButton
+  :: MonadWidget t m
+  => Dynamic t Bool
+  -> m (Event t a)
+  -> m (Event t a)
+filteredButton okay content = do
+  e <- content
+  pure $ gate (current okay) e

@@ -85,20 +85,25 @@ moduleExplorer ideL = do
     let exampleLoaded = fmap Left . leftmost $ Map.elems exampleClick
 
     let mkMap = Map.fromList . map (\k@(BackendName n, _) -> (Just k, n)) . Map.toList
-        opts = Map.insert Nothing "All backends" . maybe mempty mkMap <$> ideL ^. ide_backend . backend_backends
+        opts = Map.insert Nothing "All backends" . maybe mempty mkMap <$>
+                 _backend_backends (_ide_backend ideL)
+    let itemsPerPage = 5 :: Int
 
     searchLoaded <- accordionItem True mempty "Deployed Contracts" $ mdo
-      ti <- textInput $ def & attributes .~ constDyn ("placeholder" =: "Search")
-      d <- dropdown Nothing opts def
-      let
-        search = value ti
-        backend = value d
-        deployedContracts = Map.mergeWithKey (\_ a b -> Just (a, b)) mempty mempty
-            <$> _backend_modules (_ide_backend ideL)
-            <*> (fromMaybe mempty <$> _backend_backends (_ide_backend ideL))
-        filteredCsRaw = searchFn <$> search <*> backend <*> deployedContracts
-        itemsPerPage = 5 :: Int
-      filteredCs <- holdUniqDyn filteredCsRaw
+      (filteredCs, updatePage) <- divClass "contracts-controls" $ do
+        ti <- textInput $ def & attributes .~ constDyn ("placeholder" =: "Search")
+        d <- dropdown Nothing opts def
+        let
+          search = value ti
+          backend = value d
+          deployedContracts = Map.mergeWithKey (\_ a b -> Just (a, b)) mempty mempty
+              <$> _backend_modules (_ide_backend ideL)
+              <*> (fromMaybe mempty <$> _backend_backends (_ide_backend ideL))
+          filteredCsRaw = searchFn <$> search <*> backend <*> deployedContracts
+        filteredCs <- holdUniqDyn filteredCsRaw
+        updatePage <- paginationWidget currentPage totalPages
+        return (filteredCs, updatePage)
+
       let paginated = paginate itemsPerPage <$> currentPage <*> filteredCs
 
       -- TODO Might need to change back to listWithKey
@@ -111,7 +116,6 @@ moduleExplorer ideL = do
         [ updatePage
         , 1 <$ updated numberOfItems
         ]
-      updatePage <- paginationWidget currentPage totalPages
 
       return $ switch . current $ fmap Right . leftmost . Map.elems <$> searchClick
 
