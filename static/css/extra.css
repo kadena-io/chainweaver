@@ -33,6 +33,9 @@
 .wysiwyg,.ace_editor,.code-font {
     font-family: 'RobotoMono', monospace !important;
     font-size: 15px;
+}
+
+.wysiwyg,.ace_editor {
     background: #ffffff !important;
 }
 
