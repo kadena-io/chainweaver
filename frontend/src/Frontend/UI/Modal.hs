@@ -27,8 +27,10 @@ module Frontend.UI.Modal where
 ------------------------------------------------------------------------------
 import           Control.Lens hiding (element)
 import qualified Data.Dependent.Map as DMap
-import           Data.Map                    (Map)
-import           Data.Text                   (Text)
+import           Data.Map (Map)
+import qualified Data.Map as Map
+import           Data.Proxy
+import           Data.Text (Text)
 import qualified GHCJS.DOM as DOM
 import qualified GHCJS.DOM.EventM as EventM
 import qualified GHCJS.DOM.GlobalEventHandlers as Events
@@ -92,7 +94,7 @@ showModal ideL = do
         pure (aCfg <> bCfg, leftmost [onClose, onCancel, onAccept])
 
 genericModalBody
-  :: MonadWidget t m
+  :: forall t m a b. MonadWidget t m
   => m ()
   -- ^ The modal header
   -> m a
@@ -102,7 +104,13 @@ genericModalBody
   -> m (a,b,Event t ())
   -- ^ Returns the body value, footer value, and a close event
 genericModalBody header body footer = do
-    elAttrStopPropagationNS Click "div" ("class" =: "modal") $ do
+    let elCfg =
+          (def :: ElementConfig EventResult t (DomBuilderSpace m))
+          & initialAttributes .~ Map.mapKeys (AttributeName Nothing)
+            ("class" =: "modal")
+          & elementConfig_eventSpec %~ addEventSpecFlags
+            (Proxy :: Proxy (DomBuilderSpace m)) Click (const stopPropagation)
+    fmap snd $ element "div" elCfg $ do
       onClose <- divClass "modal-header" $
         el "h2" $ do
           header
@@ -126,19 +134,3 @@ genericModalFooter actionA actionB = do
   text " "
   (b,_) <- el' "button" $ text actionB
   return (domEvent Click a, domEvent Click b)
-
--- Copied from Reflex.Dom.Old and modified to allow specifying attrs
-elAttrStopPropagationNS
-  :: forall t m en a. (MonadWidget t m)
-  => EventName en
-  -> Text
-  -> Map AttributeName Text
-  -> m a
-  -> m a
-elAttrStopPropagationNS en elementTag attrs child = do
-  let f = GhcjsEventFilter $ \_ -> do
-        return (stopPropagation, return Nothing)
-      cfg = (def :: ElementConfig EventResult t (DomBuilderSpace m))
-        & elementConfig_eventSpec . ghcjsEventSpec_filters %~ DMap.insert en f
-        & elementConfig_initialAttributes .~ attrs
-  snd <$> element elementTag cfg child
