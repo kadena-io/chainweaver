@@ -30,25 +30,25 @@ module Frontend.UI.JsonData
   ) where
 
 ------------------------------------------------------------------------------
-import           Control.Lens                hiding ((.=))
+import           Control.Lens                       hiding ((.=))
 import           Control.Monad
-import           Data.Aeson.Encode.Pretty    (encodePretty)
+import           Data.Aeson.Encode.Pretty           (encodePretty)
 import           Data.Bool
-import qualified Data.ByteString.Lazy        as BSL
-import qualified Data.HashMap.Strict         as H
-import           Data.Map                    (Map)
-import qualified Data.Map                    as Map
+import qualified Data.ByteString.Lazy               as BSL
+import qualified Data.HashMap.Strict                as H
+import           Data.Map                           (Map)
+import qualified Data.Map                           as Map
 import           Data.Maybe
-import qualified Data.Set                    as Set
-import           Data.Text                   (Text)
-import qualified Data.Text                   as T
-import qualified Data.Text.Encoding          as T
+import qualified Data.Set                           as Set
+import           Data.Text                          (Text)
+import qualified Data.Text                          as T
+import qualified Data.Text.Encoding                 as T
 import           Reflex.Class.Extended
+import           Reflex.Dom
 import           Reflex.Dom.ACE.Extended
 import           Reflex.Dom.Contrib.CssClass
 import           Reflex.Dom.Contrib.Vanishing
 import qualified Reflex.Dom.Contrib.Widgets.DynTabs as Tabs
-import           Reflex.Dom
 ------------------------------------------------------------------------------
 import           Frontend.Foundation
 import           Frontend.Ide
@@ -69,15 +69,15 @@ data JsonDataView
 
 showJsonTabName :: JsonDataView -> Text
 showJsonTabName JsonDataView_Keysets = "Keysets"
-showJsonTabName JsonDataView_Raw = "Raw"
-showJsonTabName JsonDataView_Result = "Result"
+showJsonTabName JsonDataView_Raw     = "Raw"
+showJsonTabName JsonDataView_Result  = "Result"
 
 mkDataAttr :: JsonDataView -> Map Text Text
 mkDataAttr t = "data-tabname" =: ("env-" <> T.toLower (showJsonTabName t))
 
 instance MonadWidget t m => Tabs.Tab t m JsonDataView where
   tabIndicator t isActive = do
-    let mkAttrs True = "class" =: "active"
+    let mkAttrs True  = "class" =: "active"
         mkAttrs False = mempty
     (e,_) <- elDynAttr' "button" ((mkDataAttr t <>) . mkAttrs <$> isActive) $
       text $ showJsonTabName t
@@ -159,7 +159,7 @@ uiKeysets w ksM = do
         pure mempty
       kss -> do
         rs <- traverse (divClass "keyset" . uiKeyset w) kss
-        pure mempty -- $ mconcat rs
+        pure $ mconcat rs
 
 -- | Display a single keyset on the screen.
 uiKeyset
@@ -173,6 +173,7 @@ uiKeyset w (n, ks) = do
 
       onSetPred <- divClass "pred" $ do
         el "label" $ text "Pred:"
+        uniqPred <- holdUniqDyn $ ks ^. keyset_pred
         onNewPred <- tagOnPostBuild . fmap (fromMaybe "") $ ks ^. keyset_pred
         predDropdown onNewPred
 
@@ -181,12 +182,12 @@ uiKeyset w (n, ks) = do
           & iconConfig_size .~ Just IconLG
       let setPred = (n, ) . notEmpty <$> onSetPred
       let cfg1 = mempty
-            { _jsonDataCfg_setPred = updated setPred
+            { _jsonDataCfg_setPred = setPred
             , _jsonDataCfg_delKeyset = fmap (const n) onDel
             }
       return cfg1
-    onKeyClick <- switchHold never <=< networkView $ uiKeysetKeys (_keyset_keys ks) . Map.keys <$> _wallet_keys w
 
+    onKeyClick <- switchHold never <=< networkView $ uiKeysetKeys (_keyset_keys ks) . Map.keys <$> _wallet_keys w
     let
       onAddKey = fmap fst . ffilter snd $ onKeyClick
       onDelKey = fmap fst . ffilter (not . snd) $ onKeyClick
@@ -198,14 +199,15 @@ uiKeyset w (n, ks) = do
 notEmpty :: Text -> Maybe Text
 notEmpty s = if T.null s then Nothing else Just s
 
-predDropdown :: MonadWidget t m => Event t KeysetPredicate -> m (Dynamic t KeysetPredicate)
+predDropdown :: MonadWidget t m => Event t KeysetPredicate -> m (Event t KeysetPredicate)
 predDropdown sv = do
     let preds = ["keys-all", "keys-2", "keys-any"]
         m = Map.fromList $ map (\x -> (x,x)) preds
-    d <- dropdown (head preds) (constDyn m) $ def & setValue .~ traceEvent "sv" sv
+    -- TODO: This is needed to fix "causality loop found", find out why this is happening.
+    svd <- delay 0 sv
+    d <- dropdown (head preds) (constDyn m) $ def & setValue .~ svd
 
-    -- Should only fail if people are manually supplying bad input
-    return $ (m Map.!) <$> value d
+    return $ _dropdown_change d
 
 -- | Input widget with confirm button for creating a new keyset.
 uiCreateKeyset
