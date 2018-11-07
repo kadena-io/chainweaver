@@ -131,8 +131,13 @@ envTab ideL = do
     conf <- uiJsonData (ideL ^. ide_wallet) (ideL ^. ide_jsonData)
     pure $ mempty &  ideCfg_jsonData .~ conf
 
-  keysCfg <- accordionItem True mempty "Keys" $ do
-    conf <- uiWallet $ _ide_wallet ideL
+  let w = _ide_wallet ideL
+      walletHeader = do
+        text "Wallet ("
+        display (Map.size <$> _wallet_keys w)
+        text " keys)"
+  (_,keysCfg) <- accordionItem' True mempty walletHeader $ do
+    conf <- uiWallet w
     pure $ mempty & ideCfg_wallet .~ conf
 
   pure $ jsonCfg <> keysCfg

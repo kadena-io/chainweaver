@@ -69,3 +69,27 @@
 .header i {
   cursor: pointer;
 }
+
+h4 .keyset-chooser-toggle {
+  cursor: pointer;
+}
+
+#main #control-ui {
+  width: 50%;
+}
+div.control-block.repl-output {
+  overflow-x: auto;
+}
+
+.walletkey {
+  overflow-x: hidden;
+  text-overflow: ellipsis;
+}
+
+td.centercell {
+  text-align: center;
+}
+
+.keys-list {
+  margin-top: 20px;
+}

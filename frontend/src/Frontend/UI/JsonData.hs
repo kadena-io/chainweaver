@@ -33,6 +33,7 @@ module Frontend.UI.JsonData
 import           Control.Lens                hiding ((.=))
 import           Control.Monad
 import           Data.Aeson.Encode.Pretty    (encodePretty)
+import           Data.Bool
 import qualified Data.ByteString.Lazy        as BSL
 import qualified Data.HashMap.Strict         as H
 import           Data.Map                    (Map)
@@ -44,14 +45,18 @@ import qualified Data.Text                   as T
 import qualified Data.Text.Encoding          as T
 import           Reflex.Class.Extended
 import           Reflex.Dom.ACE.Extended
-import qualified Reflex.Dom.Contrib.Widgets.DynTabs as Tabs
 import           Reflex.Dom.Contrib.CssClass
-import           Reflex.Dom.SemanticUI       hiding (mainWidget)
-
+import           Reflex.Dom.Contrib.Vanishing
+import qualified Reflex.Dom.Contrib.Widgets.DynTabs as Tabs
+import           Reflex.Dom
+------------------------------------------------------------------------------
 import           Frontend.Foundation
+import           Frontend.Ide
 import           Frontend.JsonData
+import           Frontend.UI.Icon
 import           Frontend.Wallet
 import           Frontend.Widgets
+------------------------------------------------------------------------------
 
 
 -- | What to show to the user.
@@ -91,11 +96,10 @@ tabPaneActive staticAttrs currentTab t child = do
   elDynAttr "div" (mkKlass <$> currentTab) child
 
 uiJsonData
-  :: forall t m cfg
-  . (MonadWidget t m, IsJsonDataCfg cfg t)
+  :: MonadWidget t m
   => Wallet t
   -> JsonData t
-  -> m cfg
+  -> m (JsonDataCfg t)
 uiJsonData w d = divClass "tabset" $ mdo
     tabs <- divClass "tab-nav" $ Tabs.tabBar def
     let curSelection = Tabs._tabBar_curTab tabs
@@ -103,7 +107,7 @@ uiJsonData w d = divClass "tabset" $ mdo
         curSelection JsonDataView_Keysets $ do
       divClass "keys" $ do
         onCreateKeyset <- uiCreateKeyset d
-        ksCfg <- elClass "div" "keys-list" $
+        ksCfg <- elClass "div" "keyset-list" $
           networkViewFlatten $ uiKeysets w <$> d ^. jsonData_keysets
 
         pure $ ksCfg & jsonDataCfg_createKeyset .~ onCreateKeyset
@@ -145,219 +149,63 @@ uiJsonData w d = divClass "tabset" $ mdo
                }
              ]
 
--- | UI for managing JSON data.
-uiJsonDataOld
-  :: forall t m cfg
-  . (MonadWidget t m, IsJsonDataCfg cfg t)
-  => Wallet t
-  -> JsonData t
-  -> m cfg
-uiJsonDataOld w d = mdo
-    curSelection <- holdDyn JsonDataView_Keysets onSelect
-    onSelect <- menu
-      ( def & classes .~ pure "dark top attached tabular menu"
-      )
-      $ tabs curSelection
-
-    keysetVCfg <- tabPane
-        ("class" =: "keyset-editor ui segment")
-        curSelection JsonDataView_Keysets $ do
-      onCreateKeyset <- uiCreateKeyset d
-      ksCfg <- elClass "div" "keyset-list" $
-        networkViewFlatten $ uiKeysets w <$> d ^. jsonData_keysets
-
-      pure $ ksCfg & jsonDataCfg_createKeyset .~ onCreateKeyset
-
-    rawVCfg <- tabPane
-        ("class" =: "light ui segment json-data-editor-tab")
-        curSelection JsonDataView_Raw $ do
-      onNewData <- tagOnPostBuild $ d ^. jsonData_rawInput
-
-      let
-        onDupWarning = mkDupWarning <$> (updated $ d ^. jsonData_overlappingProps)
-
-      onSetRawInput <- elClass "div" "editor" $ dataEditor onDupWarning "" onNewData
-      pure $ mempty & jsonDataCfg_setRawInput .~ onSetRawInput
-
-    tabPane
-        ("class" =: "ui code-font full-size json-data-result-tab")
-        curSelection JsonDataView_Result $ do
-      let
-        showData =
-          either showJsonError (T.decodeUtf8 . BSL.toStrict . encodePretty)
-      el "pre" $ dynText $ showData <$> d ^. jsonData_data
-
-
-    pure $ mconcat [ keysetVCfg, rawVCfg ]
-
-  where
-    tabs :: Dynamic t JsonDataView -> m (Event t JsonDataView)
-    tabs curSelection = do
-      let
-        selections = [ JsonDataView_Keysets, JsonDataView_Raw, JsonDataView_Result ]
-      leftmost <$> traverse (tab curSelection) selections
-
-    tab :: Dynamic t JsonDataView -> JsonDataView -> m (Event t JsonDataView)
-    tab curSelection self = do
-      onClick <- makeClickable $ menuItem' (def & classes .~ dynClasses [boolClass "active" . Dyn $ fmap (== self) curSelection ]) $
-        text $ viewToText self
-      pure $ self <$ onClick
-
-    mkDupWarning dups =
-      if Set.null dups
-         then []
-         else
-           let
-             t = "The following properties are overriden by keysets: "
-             props =
-               T.intercalate ", " . Set.toList $ dups
-             ft = t <> props
-           in
-             [ AceAnnotation
-               { _aceAnnotation_row = 0 -- For simplicity, good enough for now.
-               , _aceAnnotation_column = 0
-               , _aceAnnotation_text = ft
-               , _aceAnnotation_type = "warning"
-               }
-             ]
-
-
 uiKeysets
-  :: (MonadWidget t m, IsJsonDataCfg cfg t)
-  => Wallet t -> DynKeysets t -> m cfg
-uiKeysets w ksM =
-  {- elClass "div" "ui relaxed middle aligned divided list" $ do -}
-  elClass "div" "ui fluid accordion flex-accordion flex-content" $ do
+  :: (MonadWidget t m)
+  => Wallet t -> DynKeysets t -> m (JsonDataCfg t)
+uiKeysets w ksM = do
     case Map.toList ksM of
       []   -> do
-        text "No keysets yet ..."
-        elClass "div" "ui hidden divider" blank
+        divClass "keyset" $ text "No keysets yet ..."
         pure mempty
       kss -> do
-        rs <- traverse uiKeysetDivider kss
-        pure $ mconcat rs
-  where
-    uiKeysetDivider x = do
-      c <- uiKeyset w x
-      elClass "div" "ui hidden divider" blank
-      pure c
+        rs <- traverse (divClass "keyset" . uiKeyset w) kss
+        pure mempty -- $ mconcat rs
 
 -- | Display a single keyset on the screen.
 uiKeyset
-  :: forall t m cfg
-  . (MonadWidget t m, IsJsonDataCfg cfg t)
+  :: (MonadWidget t m)
   => Wallet t
   -> (KeysetName, DynKeyset t)
-  -> m cfg
-uiKeyset w (n, ks) = mdo
-    isActive <- foldDyn (const not) False onToggle
+  -> m (JsonDataCfg t)
+uiKeyset w (n, ks) = do
+    aCfg <- divClass "header" $ mdo
+      elAttr' "h4" ("class" =: "keyset-chooser-toggle") $ text (" " <> n)
 
-    (onToggle, titleCfg) <- uiTitle isActive
-    contentCfg <- uiContent isActive
+      onSetPred <- divClass "pred" $ do
+        el "label" $ text "Pred:"
+        onNewPred <- tagOnPostBuild . fmap (fromMaybe "") $ ks ^. keyset_pred
+        predDropdown onNewPred
 
-    pure $ mconcat [ titleCfg, contentCfg ]
-  where
-    uiTitle :: Dynamic t Bool -> m (Event t (), cfg)
-    uiTitle isActive = elClass "div" "keyset-title" $ do
-      let
-        titleClass = "ui header heading title" <> fmap activeClass isActive
-      (e, _) <- elDynClass' "h4" titleClass $ do
-        el "div" $ elClass "i" "dropdown icon" blank
-        elClass "div" "content" $ do
-          text n
-          elClass "div" "sub header" $
-            void . networkView $ renderKeys <$> _keyset_keys ks
+      onDel <- divClass "delete" $ do
+        el "button" $ uiIcon "fa-trash" $ def
+          & iconConfig_size .~ Just IconLG
+      let setPred = (n, ) . notEmpty <$> onSetPred
+      let cfg1 = mempty
+            { _jsonDataCfg_setPred = updated setPred
+            , _jsonDataCfg_delKeyset = fmap (const n) onDel
+            }
+      return cfg1
+    onKeyClick <- switchHold never <=< networkView $ uiKeysetKeys (_keyset_keys ks) . Map.keys <$> _wallet_keys w
 
-      cfg <- elClass "div" "keyset-title-right" $ do
-        onSetPred <- predDropdown
-        let
-          buttonIcon = elClass "i" "large trash right aligned icon" blank
-        onDel <- flip button buttonIcon $ def
-          & buttonConfig_emphasis .~ Static (Just Tertiary)
-          & classes .~ Static "input-aligned-btn"
+    let
+      onAddKey = fmap fst . ffilter snd $ onKeyClick
+      onDelKey = fmap fst . ffilter (not . snd) $ onKeyClick
+      bCfg = mempty
+        & jsonDataCfg_addKey .~ fmap (n, ) onAddKey
+        & jsonDataCfg_delKey .~ fmap (n, ) onDelKey
+    pure (aCfg <> bCfg)
 
-        let
-          notEmpty s = if T.null s then Nothing else Just s
-          setPred = (n, ) . notEmpty <$> onSetPred
-        pure $ mempty
-          & jsonDataCfg_setPred .~ setPred
-          & jsonDataCfg_delKeyset .~ fmap (const n) onDel
+notEmpty :: Text -> Maybe Text
+notEmpty s = if T.null s then Nothing else Just s
 
-      pure (domEvent Click e, cfg)
+predDropdown :: MonadWidget t m => Event t KeysetPredicate -> m (Dynamic t KeysetPredicate)
+predDropdown sv = do
+    let preds = ["keys-all", "keys-2", "keys-any"]
+        m = Map.fromList $ map (\x -> (x,x)) preds
+    d <- dropdown (head preds) (constDyn m) $ def & setValue .~ traceEvent "sv" sv
 
-    uiContent :: Dynamic t Bool -> m cfg
-    uiContent isActive =
-      elDynClass "div" ("ui top attached segment content " <> fmap hiddenClass isActive) $ do
-        onKeyClick <-
-          switchHold never <=< networkView
-          $ uiKeysetKeys (_keyset_keys ks) . Map.keys <$> w ^. wallet_keys
-
-        let
-          onAddKey = fmap fst . ffilter snd $ onKeyClick
-          onDelKey = fmap fst . ffilter (not . snd) $ onKeyClick
-        pure $ mempty
-          & jsonDataCfg_addKey .~ fmap (n, ) onAddKey
-          & jsonDataCfg_delKey .~ fmap (n, ) onDelKey
-
-    activeClass = \case
-      False -> ""
-      True -> " active"
-
-    hiddenClass = \case
-      False -> " json-data-hidden-content"
-      True -> " active"
-
-    renderKeys nks =
-      case splitAt 3 (Map.keys nks) of
-        ([], [])  -> text "Empty keyset"
-        (ksN, []) -> renderKeyList ksN
-        (ksN, _)  -> renderKeyList (ksN <> [".."])
-
-    renderKeyList = traverse_ (elClass "div" "ui label" . text)
-
-    predDropdown = do
-      onNewPred <- tagOnPostBuild . fmap (fromMaybe "") $ ks ^. keyset_pred
-      let
-        cfg = def & dropdownConfig_placeholder .~ "keys-all"
-
-      elDynClass "div" "ui labeled input json-data-title-dropdown" $ do
-        elClass "div" "ui label" $ text "Pred:"
-        mvcSearchDropdown cfg ["keys-all", "keys-2", "keys-any"] onNewPred
-
-    -- Unlike plain reflex-dom components, semantic-reflex does not provide means
-    -- for setting the value of the widget from an external source, so we need
-    -- to emulate that feature (for making sure the widget always displays the
-    -- right value):
-    mvcSearchDropdown
-      :: DropdownConfig t
-      -> [Text]
-      -> Event t Text
-      -> m (Event t Text)
-    mvcSearchDropdown cfg choices onNewVal = mdo
-      -- For ignoring changes made by us (we are already up2date):
-      shouldVal <- holdDyn Nothing $ Just <$> onNewVal
-      let
-        onExternalSet :: Event t Text
-        onExternalSet = fmapMaybe id . updated $ do
-          sV <- shouldVal
-          uV <- userValue
-          if sV == uV && isJust sV
-             then pure Nothing
-             else pure sV
-
-        dropdownEv :: Event t (m (Dropdown t Text))
-        dropdownEv =
-          flip (searchDropdown cfg) (TaggedStatic choices) <$> onExternalSet
-      dynEv <-
-        widgetHold (pure never)
-        . fmap (fmap (updated . _dropdown_value))
-        $ dropdownEv
-      onUpdate <- switchHold never $ updated dynEv
-
-      userValue <- holdDyn Nothing $ Just <$> onUpdate
-      pure onUpdate
-
-
+    -- Should only fail if people are manually supplying bad input
+    return $ (m Map.!) <$> value d
 
 -- | Input widget with confirm button for creating a new keyset.
 uiCreateKeyset
@@ -383,14 +231,14 @@ uiKeysetKeys
   -> [KeyName]
   -> m (Event t (KeyName, Bool))
 uiKeysetKeys ks allKeys =
-  elClass "div" "ui grid keyset-keys" $ do
+  elClass "div" "keys-list" $ el "ul" $ do
     case allKeys of
-      []   -> elClass "div" "fifteen wide column" $ do
-        text "No keys available ..."
+      []   -> do
+        el "li" $ text "No keys available ..."
         pure never
       _ -> do
-          rs <- traverse (uiKeysetKey ks) allKeys
-          pure $ leftmost rs
+        rs <- traverse (uiKeysetKey ks) allKeys
+        pure $ leftmost rs
 
 -- | Show a single Keyset key item.
 uiKeysetKey
@@ -398,16 +246,11 @@ uiKeysetKey
   => Dynamic t KeysetKeys
   -> KeyName
   -> m (Event t (KeyName, Bool))
-uiKeysetKey ks n = elClass "div" "five wide column" $ do
+uiKeysetKey ks n = el "li" $ do
     onSelected <- tagOnPostBuild $ Map.member n <$> ks
-    let
-      checkboxCfg =
-        def & checkboxConfig_setValue .~ (SetValue False (Just onSelected))
-    b <- flip checkbox checkboxCfg $ do
-      el "div" $ do
-        elClass "i" "key middle aligned icon" blank
-        text n
-    pure $ (n,) <$> _checkbox_change b
+    cb <- checkbox False $ def & checkboxConfig_setValue .~ onSelected
+    text n
+    pure $ (n,) <$> _checkbox_change cb
 
 dataEditor
   :: MonadWidget t m

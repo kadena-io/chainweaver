@@ -37,8 +37,7 @@ import           Reflex.Dom.SemanticUI   hiding (mainWidget)
 import           Frontend.Backend
 import           Frontend.Crypto.Ed25519 (keyToText)
 import           Frontend.Foundation
-import           Frontend.Ide            (HasIde (..), HasIdeCfg (..), Ide (..),
-                                          IdeCfg)
+import           Frontend.Ide
 import           Frontend.JsonData       (HasJsonData (..))
 import           Frontend.UI.JsonData    (uiJsonData)
 import           Frontend.UI.Wallet      (uiWallet)
@@ -91,5 +90,8 @@ uiDeployConfirmation ideL = do
     keysCfg <- accordionItem True "ui keys" "Keys" $
       elClass "div" "ui segment" $
         uiWallet $ ideL ^. ide_wallet
-    pure $ mconcat [ jsonCfg, keysCfg ]
+    pure $ mempty
+      { _ideCfg_jsonData = jsonCfg
+      , _ideCfg_wallet = keysCfg
+      }
   pure (aCfg <> bCfg)

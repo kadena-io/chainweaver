@@ -48,6 +48,7 @@ import           Obelisk.Generated.Static
 import           Frontend.Crypto.Ed25519     (keyToText)
 import           Frontend.Foundation
 import           Frontend.UI.Button
+import           Frontend.UI.Icon
 import           Frontend.Wallet
 import           Frontend.Widgets
 ------------------------------------------------------------------------------
@@ -118,7 +119,20 @@ uiKeyItems
 uiKeyItems aWallet = do
   let keyMap = aWallet ^. wallet_keys
       signingKeys = aWallet ^. wallet_signingKeys
-  events <- listWithKey keyMap $ \name key -> uiKeyItem signingKeys (name, key)
+  events <- elAttr "table" ("style" =: "table-layout: fixed; width: 100%") $ do
+    el "colgroup" $ do
+      elAttr "col" ("style" =: "width: 20%") blank
+      elAttr "col" ("style" =: "width: 30%") blank
+      elAttr "col" ("style" =: "width: 30%") blank
+      elAttr "col" ("style" =: "width: 10%") blank
+      elAttr "col" ("style" =: "width: 10%") blank
+    el "thead" $ el "tr" $ do
+      el "th" $ text "Key Name"
+      el "th" $ text "Public Key"
+      el "th" $ text "Private Key"
+      el "th" $ text "Signing"
+      el "th" $ text "Delete"
+    el "tbody" $ listWithKey keyMap $ \name key -> uiKeyItem signingKeys (name, key)
   dyn_ $ ffor keyMap $ \keys -> when (Map.null keys) $ text "No keys ..."
   let setSigning = switchDyn $ leftmost . fmap fst . Map.elems <$> events
       delKey = switchDyn $ leftmost . fmap snd . Map.elems <$> events
@@ -135,43 +149,61 @@ uiKeyItem
   -> (Text, Dynamic t KeyPair)
   -> m (Event t (KeyName, Bool), Event t KeyName)
 uiKeyItem signingKeys (n, k) = do
-    elClass "div" "key" $ do
-      (box, onDel, onIcon) <- divClass "header" $ do
+    el "tr" $ do
+      el "td" $ text n
+      elClass "td" "public walletkey" $
+        dynText (keyToText . _keyPair_publicKey <$> k)
+      elClass "td" "private walletkey" $
+        keyCopyWidget (maybe "No key" keyToText . _keyPair_privateKey <$> k)
 
-        iconI <- uiIcon "fa-key" $ def
-          & iconConfig_size .~ Just Icon2x
-          & iconConfig_attrs .~ ("alt" =: "Click for details")
-        el "h4" $ do
-          text (" " <> n)
-          -- TODO Later
-          --elClass "span" "description" $ dynText $ keyDescription <$> k
+      isSigning <- tagOnPostBuild $ Set.member n <$> signingKeys
+      box <- elClass "td" "centercell" $ checkbox False $ def
+        & checkboxConfig_setValue .~ isSigning
+      onDel <- elClass "td" "centercell" $ uiIcon "fa-trash" $ def
+        & iconConfig_size .~ Just IconLG
 
-        isSigning <- tagOnPostBuild $ Set.member n <$> signingKeys
+      pure ((fmap (n, ) . _checkbox_change $ box), fmap (const n) onDel)
 
-        boxI <- divClass "signing" $ do
-          box <- checkbox False $ def
-                    & checkboxConfig_setValue .~ isSigning
+    --elClass "div" "key" $ do
+    --  (box, onDel) <- divClass "header" $ do
 
-          text "Signing"
-          return box
+    --    el "h4" $ do
+    --      text (" " <> n)
+    --      -- TODO Later
+    --      --elClass "span" "description" $ dynText $ keyDescription <$> k
 
-        onDelI <- divClass "delete" $ uiIcon "fa-trash" $ def
-          & iconConfig_size .~ Just IconLG
-        pure (boxI, onDelI, iconI)
+    --    isSigning <- tagOnPostBuild $ Set.member n <$> signingKeys
 
-      viewKeys <- toggle False onIcon
+    --    divClass "signing" $ do
+    --      box <- checkbox False $ def
+    --                & checkboxConfig_setValue .~ isSigning
 
-      dyn_ $ ffor viewKeys $ \case
-        False -> pure ()
-        True -> uiKeyDetails (keyToText . _keyPair_publicKey <$> k)
-                             (maybe "No key" keyToText . _keyPair_privateKey <$> k)
-      pure $ ((fmap (n, ) . _checkbox_change $ box), fmap (const n) onDel)
-  where
-    keyDescription k1 =
-      case _keyPair_privateKey k1 of
-        Nothing -> "Public key only"
-        Just _  -> "Full key pair"
+    --      text "Signing"
+    --      return box
 
+    --    onDelI <- divClass "delete" $ uiIcon "fa-trash" $ def
+    --      & iconConfig_size .~ Just IconLG
+    --    pure (boxI, onDelI)
+
+    --  dyn_ $ ffor viewKeys $ \case
+    --    False -> pure ()
+    --    True -> uiKeyDetails (keyToText . _keyPair_publicKey <$> k)
+    --                         (maybe "No key" keyToText . _keyPair_privateKey <$> k)
+    --  pure $ ((fmap (n, ) . _checkbox_change $ box), fmap (const n) onDel)
+  --where
+  --  keyDescription k1 =
+  --    case _keyPair_privateKey k1 of
+  --      Nothing -> "Public key only"
+  --      Just _  -> "Full key pair"
+
+keyCopyWidget :: MonadWidget t m => Dynamic t Text -> m ()
+keyCopyWidget keyText = mdo
+  isShown <- foldDyn (const not) False (domEvent Click e)
+  let mkText True t = t
+      mkText False _ = "****************************"
+  (e,_) <- elAttr' "span" ("class" =: "key-content") $
+    dynText (mkText <$> isShown <*> keyText)
+  return ()
 
 uiKeyDetails :: MonadWidget t m => Dynamic t Text -> Dynamic t Text -> m ()
 uiKeyDetails public private = do

@@ -60,6 +60,7 @@ library
                  , Frontend.Storage
                  , Frontend.UI.Button
                  , Frontend.UI.Dialogs.DeployConfirmation
+                 , Frontend.UI.Icon
                  , Frontend.UI.JsonData
                  , Frontend.UI.Modal
                  , Frontend.UI.ModuleExplorer
