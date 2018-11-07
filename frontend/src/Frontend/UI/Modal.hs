@@ -25,6 +25,9 @@
 module Frontend.UI.Modal where
 
 ------------------------------------------------------------------------------
+import           Control.Lens hiding (element)
+import qualified Data.Dependent.Map as DMap
+import           Data.Map                    (Map)
 import           Data.Text                   (Text)
 import qualified GHCJS.DOM as DOM
 import qualified GHCJS.DOM.EventM as EventM
@@ -57,19 +60,20 @@ showModal ideL = do
     let staticAttrs = ("id" =: "modal-root")
     let mkAttrs vis = staticAttrs <>
           if vis then ("class" =: "open") else mempty
-    (backdropEl, ev) <-
-      elDynAttr' "div" (mkAttrs <$> isVisible) $ divClass "screen" $
-        networkView (specificModal <$> _ide_modal ideL)
-    onFinish <- switchHold never $ snd <$> ev
-    mCfg <- flatten $ fst <$> ev
 
-    let
-      onClose = leftmost [ onFinish
-                         , onEsc
-                         , domEvent Click backdropEl
-                         ]
-      lConf = mempty & ideCfg_reqModal .~ (Modal_NoModal <$ onClose)
-    pure $ lConf <> mCfg
+    elDynAttr "div" (mkAttrs <$> isVisible) $ do
+      (backdropEl, ev) <- elAttr' "div" ("class" =: "screen") $
+        networkView (specificModal <$> _ide_modal ideL)
+      onFinish <- switchHold never $ snd <$> ev
+      mCfg <- flatten $ fst <$> ev
+
+      let
+        onClose = leftmost [ onFinish
+                           , onEsc
+                           , domEvent Click backdropEl
+                           ]
+        lConf = mempty & ideCfg_reqModal .~ (Modal_NoModal <$ onClose)
+      pure $ lConf <> mCfg
   where
     isVisible = getIsVisible <$> _ide_modal ideL
     getIsVisible = \case
@@ -81,14 +85,11 @@ showModal ideL = do
       Modal_NoModal -> pure (mempty, never)
       Modal_DeployConfirmation -> do
         (aCfg, (onCancel, onAccept), onClose) <- genericModalBody
-          (text "Check your deployment settings")
+          (text "Deployment Settings")
           (uiDeployConfirmation ideL)
           (genericModalFooter "Cancel" "Deploy")
         let bCfg = mempty & ideCfg_deploy .~ onAccept
         pure (aCfg <> bCfg, leftmost [onClose, onCancel, onAccept])
-
-    existingBackdropStyle = "position: fixed; top:0;bottom:0;left:0;right:0;z-index:100; background-color: rgba(0,0,0,0.5);"
-    isVisibleStyle isVis = "display:" <> (if isVis then "block" else "none")
 
 genericModalBody
   :: MonadWidget t m
@@ -101,7 +102,7 @@ genericModalBody
   -> m (a,b,Event t ())
   -- ^ Returns the body value, footer value, and a close event
 genericModalBody header body footer = do
-    divClass "modal" $ do
+    elAttrStopPropagationNS Click "div" ("class" =: "modal") $ do
       onClose <- divClass "modal-header" $
         el "h2" $ do
           header
@@ -122,5 +123,22 @@ genericModalFooter
   -- ^ Events for actions A and B respectively
 genericModalFooter actionA actionB = do
   (a,_) <- el' "button" $ text actionA
+  text " "
   (b,_) <- el' "button" $ text actionB
   return (domEvent Click a, domEvent Click b)
+
+-- Copied from Reflex.Dom.Old and modified to allow specifying attrs
+elAttrStopPropagationNS
+  :: forall t m en a. (MonadWidget t m)
+  => EventName en
+  -> Text
+  -> Map AttributeName Text
+  -> m a
+  -> m a
+elAttrStopPropagationNS en elementTag attrs child = do
+  let f = GhcjsEventFilter $ \_ -> do
+        return (stopPropagation, return Nothing)
+      cfg = (def :: ElementConfig EventResult t (DomBuilderSpace m))
+        & elementConfig_eventSpec . ghcjsEventSpec_filters %~ DMap.insert en f
+        & elementConfig_initialAttributes .~ attrs
+  snd <$> element elementTag cfg child

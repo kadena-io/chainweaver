@@ -28,22 +28,24 @@ module Frontend.UI.Dialogs.DeployConfirmation
 ------------------------------------------------------------------------------
 import           Control.Arrow           ((&&&))
 import           Control.Lens
+import           Data.Bifunctor
 import qualified Data.Map                as Map
 import           Data.Maybe
 import           Data.Text               (Text)
 import           Reflex
-import           Reflex.Dom.SemanticUI   hiding (mainWidget)
-
+import           Reflex.Dom
+------------------------------------------------------------------------------
 import           Frontend.Backend
 import           Frontend.Crypto.Ed25519 (keyToText)
 import           Frontend.Foundation
 import           Frontend.Ide
 import           Frontend.JsonData       (HasJsonData (..))
 import           Frontend.UI.JsonData    (uiJsonData)
-import           Frontend.UI.Wallet      (uiWallet)
+import           Frontend.UI.Wallet
 import           Frontend.Wallet
 import           Frontend.Wallet         (HasWallet (..))
 import           Frontend.Widgets
+------------------------------------------------------------------------------
 
 -- | Are we deploying a contract or calling a function?
 {- data DeployConfirmationType -}
@@ -60,38 +62,20 @@ uiDeployConfirmation
   -> m ( IdeCfg t  -- ^ Any changes the user might have triggered.
        )
 uiDeployConfirmation ideL = do
-  -- PostBuild does not trigger for some reason ... not working in
-  -- networkView widget?
-  (onPostBuild, fakePostBuild) <- newTriggerEvent
-  liftIO $ fakePostBuild ()
-
-  _ <- widgetHold (text "nope") $ text "hahahahaahahah" <$ onPostBuild
   bCfg <- elClass "div" "ui segment" $ do
-    elClass "div" "ui header" $ text "Backend"
+    el "h3" $ text "Choose a server "
 
-    bI <- input (def & inputConfig_action .~ Static (Just RightAction)) $ do
-      let dropdownConfig = def
-            & dropdownConfig_placeholder .~ "Deployment Target"
-      fmap value $ dropdown dropdownConfig Nothing $ TaggedDynamic $
-        ffor (ideL ^. ide_backend . backend_backends) $
-          Map.fromList . fmap (\(k, _) -> (k, text $ unBackendName k)) . maybe [] Map.toList
-    pure $ mempty & ideCfg_setDeployBackend  .~ leftmost
-      [ updated bI
-      , Nothing <$ onPostBuild -- Reset to Nothing, so user has to explicitely
-      -- pick a backend for deployments to work. Also currently this is needed to
-      -- keep the dropdown with our model in sync.
-      ]
+    let backends = ffor (_backend_backends $ _ide_backend ideL) $
+          fmap (\(k, _) -> (k, unBackendName k)) . maybe [] Map.toList
+        mkOptions bs = Map.fromList $ (Nothing, "Deployment Target") : map (first Just) bs
+    d <- dropdown Nothing (mkOptions <$> backends) def
+    pure $ mempty & ideCfg_setDeployBackend .~ updated (value d)
 
-  aCfg <- elClass "div" "content ui fluid accordion" $ do
-    jsonCfg <- accordionItem True "ui json-data-accordion-item" "Data" $
-      elClass "div" "json-data full-size" $
-        uiJsonData (ideL ^. ide_wallet) (ideL^. ide_jsonData)
-
-    keysCfg <- accordionItem True "ui keys" "Keys" $
-      elClass "div" "ui segment" $
-        uiWallet $ ideL ^. ide_wallet
+  aCfg <- elClass "div" "key-chooser" $ do
+    el "h3" $ text "Choose keys to sign with"
+    keysCfg <- elClass "div" "ui segment" $
+      uiAvailableKeys $ ideL ^. ide_wallet
     pure $ mempty
-      { _ideCfg_jsonData = jsonCfg
-      , _ideCfg_wallet = keysCfg
+      { _ideCfg_wallet = keysCfg
       }
   pure (aCfg <> bCfg)
