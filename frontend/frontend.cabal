@@ -25,6 +25,7 @@ library
                , common
                , containers
                , data-default
+               , dependent-map
                , generic-deriving
                , ghcjs-dom
                , jsaddle
