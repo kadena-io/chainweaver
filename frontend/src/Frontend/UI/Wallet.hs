@@ -24,7 +24,7 @@
 module Frontend.UI.Wallet
   ( -- * Key management widget
     uiWallet
-
+  , uiAvailableKeys
     -- * Keys related helper widgets
 --  , uiSelectKey
 

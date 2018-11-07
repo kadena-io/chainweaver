@@ -95,13 +95,18 @@ mkTab currentTab t = do
     e <- tabIndicator t ((==t) <$> currentTab)
     return (t <$ e)
 
-tabBar :: (MonadWidget t m) => EnvSelection -> [EnvSelection] -> m (Dynamic t EnvSelection)
-tabBar initialSelected initialTabs = do
+tabBar
+  :: (MonadWidget t m)
+  => EnvSelection
+  -> [EnvSelection]
+  -> Event t EnvSelection
+  -> m (Dynamic t EnvSelection)
+tabBar initialSelected initialTabs selectionUpdates = do
   elAttr "div" ("class" =: "tab-nav") $ do
     rec let tabFunc = mapM (mkTab currentTab)
         foo <- widgetHoldHelper tabFunc initialTabs never
         let bar = switch $ fmap leftmost $ current foo
-        currentTab <- holdDyn initialSelected bar
+        currentTab <- holdDyn initialSelected $ leftmost [bar, selectionUpdates]
     return currentTab
 
 rightTabBar :: forall t m. MonadWidget t m => Ide t -> m (IdeCfg t)
@@ -109,7 +114,7 @@ rightTabBar ideL = do
   elAttr "div" ("id" =: "control-nav" <> "class" =: "tabset") $ do
     let curSelection = _ide_envSelection ideL
     let tabs = [ EnvSelection_Env, EnvSelection_Repl, EnvSelection_Msgs, EnvSelection_ModuleExplorer ]
-    curSelection <- tabBar EnvSelection_Env tabs
+    curSelection <- tabBar EnvSelection_Env tabs (updated $ _ide_envSelection ideL)
 
     envCfg <- tabPane mempty curSelection EnvSelection_Env $ envTab ideL
     replCfg <- tabPane ("class" =: "control-block repl-output") curSelection EnvSelection_Repl $
