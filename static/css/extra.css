@@ -48,7 +48,7 @@
   border-radius: 4px;
 }
 
-.wysiwyg .ace_editor {
+.wysiwyg .ace_editor,.ace_scroller {
   border-radius: 4px;
 }
 
