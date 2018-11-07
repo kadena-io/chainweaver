@@ -381,7 +381,7 @@ button:active {
 }
 
 .repl-input-controls > input {
-  background: #f1f1f1 !important;
+  background: #f1f1f1;
 }
 
 #control-ui .control-block.repl-output code {
