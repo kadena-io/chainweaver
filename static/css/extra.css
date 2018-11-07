@@ -89,6 +89,10 @@ div.control-block.repl-output {
   text-overflow: ellipsis;
 }
 
+.walletkey.hidden {
+  text-overflow: clip;
+}
+
 td.centercell {
   text-align: center;
 }
