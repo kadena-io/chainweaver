@@ -70,10 +70,10 @@ newHead = do
     ss (static @"css/font-awesome.min.css")
     ss (static @"css/styles.css")
     ss (static @"css/extra.css")
+    ss (static @"css/ace-theme-pact-web.css")
     js "https://cdnjs.cloudflare.com/ajax/libs/ace/1.4.1/ace.js"
     js (static @"js/ace-mode-pact.js")
     js (static @"js/nacl-fast.min-v1.0.0.js")
-    js "https://cdnjs.cloudflare.com/ajax/libs/ace/1.4.1/theme-solarized_dark.js"
   where
     js url = elAttr "script" ("type" =: "text/javascript" <> "src" =: url <> "charset" =: "utf-8") blank
     ss url = elAttr "link" ("href" =: url <> "rel" =: "stylesheet") blank

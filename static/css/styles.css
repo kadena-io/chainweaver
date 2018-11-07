@@ -1,3 +1,57 @@
+@font-face {
+  font-family: WorkSans-Black;
+  src: url(/static/fonts/WorkSans-Black.ttf);
+}
+@font-face {
+  font-family: WorkSans-Bold;
+  src: url(/static/fonts/WorkSans-Bold.ttf);
+}
+@font-face {
+  font-family: WorkSans-ExtraBold;
+  src: url(/static/fonts/WorkSans-ExtraBold.ttf);
+}
+@font-face {
+  font-family: WorkSans-ExtraLight;
+  src: url(/static/fonts/WorkSans-ExtraLight.ttf);
+}
+@font-face {
+  font-family: WorkSans-Light;
+  src: url(/static/fonts/WorkSans-Light.ttf);
+}
+@font-face {
+  font-family: WorkSans-Medium;
+  src: url(/static/fonts/WorkSans-Medium.ttf);
+}
+@font-face {
+  font-family: WorkSans-Regular;
+  src: url(/static/fonts/WorkSans-Regular.ttf);
+}
+@font-face {
+  font-family: WorkSans;
+  src: url(/static/fonts/WorkSans-Regular.ttf);
+}
+@font-face {
+  font-family: WorkSans-SemiBold;
+  src: url(/static/fonts/WorkSans-SemiBold.ttf);
+}
+@font-face {
+  font-family: WorkSans-Thin;
+  src: url(/static/fonts/WorkSans-Thin.ttf);
+}
+
+@font-face {
+  font-family: RobotoMono;
+  src: url(/static/fonts/RobotoMono-Regular.ttf);
+}
+@font-face {
+  font-family: RobotoMono-Light;
+  src: url(/static/fonts/RobotoMono-Light.ttf);
+}
+@font-face {
+  font-family: RobotoMono-Italic;
+  src: url(/static/fonts/RobotoMono-Italic.ttf);
+}
+
 * {
   box-sizing: border-box;
   outline: none;
@@ -10,7 +64,7 @@ body {
 }
 
 body {
-  font-family: 'Roboto', sans-serif;
+  font-family: 'WorkSans-Regular', sans-serif;
   background: #f1f1f1;
   position: absolute;
   top: 0;
@@ -158,7 +212,6 @@ button:active {
 #header h1 .version {
   color: #727272;
   font-size: 14px;
-  font-family: 'Work Sans', sans-serif;
 }
 
 #header-project-loader {
@@ -229,7 +282,6 @@ button:active {
 }
 
 #control-ui .control-block .contracts li {
-  font-family: 'Work Sans';
   border-bottom: 1px solid #d7d7d7;
   font-size: 15px;
   height: 41px;
@@ -293,7 +345,6 @@ button:active {
   float: right;
   flex: 1;
   margin: 0;
-  font-family: 'Work Sans', sans-serif;
   font-size: 15px;
   padding: 0 10px;
   line-height: 32px;
@@ -384,7 +435,6 @@ button:active {
 #control-ui .control-block .keys .fieldset input[type='text'] {
   flex: 1;
   margin: 0;
-  font-family: 'Work Sans', sans-serif;
   font-size: 15px;
   height: 36px;
   padding: 0 10px;
@@ -536,7 +586,6 @@ button:active {
 
 #modal-root {
   display: none;
-  font-family: 'Roboto', sans-serif;
 }
 
 #modal-root.open {

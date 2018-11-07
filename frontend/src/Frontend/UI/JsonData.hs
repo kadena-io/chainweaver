@@ -420,7 +420,7 @@ dataEditor anno iv sv = do
                  , _aceConfigElemAttrs = "class" =: "ace-data ace-widget"
                  }
     ace <- resizableAceWidget
-      mempty ac (AceDynConfig $ Just AceTheme_SolarizedDark) anno iv sv
+      mempty ac (AceDynConfig Nothing) anno iv sv
     return $ _extendedACE_onUserChange ace
 
 viewToText :: JsonDataView -> Text
