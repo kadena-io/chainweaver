@@ -96,3 +96,7 @@ td.centercell {
 .keys-list {
   margin-top: 20px;
 }
+
+#modal-root select {
+  color: #525252;
+}
