@@ -120,7 +120,7 @@ moduleExplorer ideL = do
       return $ switch . current $ fmap Right . leftmost . Map.elems <$> searchClick
 
     pure $ mempty
-      { _ideCfg_selContract = leftmost [exampleLoaded]
+      { _ideCfg_selContract = leftmost [exampleLoaded, searchLoaded]
       }
 
 paginate :: (Ord k, Ord v) => Int -> Int -> [(k, v)] -> Map k v
