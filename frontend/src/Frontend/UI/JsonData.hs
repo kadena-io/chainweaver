@@ -30,25 +30,25 @@ module Frontend.UI.JsonData
   ) where
 
 ------------------------------------------------------------------------------
-import           Control.Lens                hiding ((.=))
+import           Control.Lens                       hiding ((.=))
 import           Control.Monad
-import           Data.Aeson.Encode.Pretty    (encodePretty)
+import           Data.Aeson.Encode.Pretty           (encodePretty)
 import           Data.Bool
-import qualified Data.ByteString.Lazy        as BSL
-import qualified Data.HashMap.Strict         as H
-import           Data.Map                    (Map)
-import qualified Data.Map                    as Map
+import qualified Data.ByteString.Lazy               as BSL
+import qualified Data.HashMap.Strict                as H
+import           Data.Map                           (Map)
+import qualified Data.Map                           as Map
 import           Data.Maybe
-import qualified Data.Set                    as Set
-import           Data.Text                   (Text)
-import qualified Data.Text                   as T
-import qualified Data.Text.Encoding          as T
+import qualified Data.Set                           as Set
+import           Data.Text                          (Text)
+import qualified Data.Text                          as T
+import qualified Data.Text.Encoding                 as T
 import           Reflex.Class.Extended
+import           Reflex.Dom
 import           Reflex.Dom.ACE.Extended
 import           Reflex.Dom.Contrib.CssClass
 import           Reflex.Dom.Contrib.Vanishing
 import qualified Reflex.Dom.Contrib.Widgets.DynTabs as Tabs
-import           Reflex.Dom
 ------------------------------------------------------------------------------
 import           Frontend.Foundation
 import           Frontend.Ide
@@ -69,15 +69,15 @@ data JsonDataView
 
 showJsonTabName :: JsonDataView -> Text
 showJsonTabName JsonDataView_Keysets = "Keysets"
-showJsonTabName JsonDataView_Raw = "Raw"
-showJsonTabName JsonDataView_Result = "Result"
+showJsonTabName JsonDataView_Raw     = "Raw"
+showJsonTabName JsonDataView_Result  = "Result"
 
 mkDataAttr :: JsonDataView -> Map Text Text
 mkDataAttr t = "data-tabname" =: ("env-" <> T.toLower (showJsonTabName t))
 
 instance MonadWidget t m => Tabs.Tab t m JsonDataView where
   tabIndicator t isActive = do
-    let mkAttrs True = "class" =: "active"
+    let mkAttrs True  = "class" =: "active"
         mkAttrs False = mempty
     (e,_) <- elDynAttr' "button" ((mkDataAttr t <>) . mkAttrs <$> isActive) $
       text $ showJsonTabName t
