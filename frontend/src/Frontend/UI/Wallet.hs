@@ -161,6 +161,7 @@ uiKeyItem signingKeys (n, k) = do
         & checkboxConfig_setValue .~ isSigning
       onDel <- elClass "td" "centercell" $ uiIcon "fa-trash" $ def
         & iconConfig_size .~ Just IconLG
+        & iconConfig_attrs .~ ("type" =: "button")
 
       pure ((fmap (n, ) . _checkbox_change $ box), fmap (const n) onDel)
 
