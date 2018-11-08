@@ -32,7 +32,6 @@ module Frontend.Backend
     -- * Creation
   , makeBackend
     -- * Perform requests
-  , SigningScheme (..)
   , backendRequest
     -- * Utilities
   , prettyPrintBackendErrorResult
@@ -96,6 +95,7 @@ data BackendRequest = BackendRequest
     -- `data` field of the `exec` payload.
   , _backendRequest_backend :: BackendUri
     -- ^ Which backend to use
+  , _backendRequest_signing :: Set KeyName
   }
 
 
@@ -281,7 +281,7 @@ loadModules
  => Wallet t -> Dynamic t (Maybe (Map BackendName BackendUri)) -> BackendCfg t
   -> m (Dynamic t (Map BackendName (Maybe [Text])))
 loadModules w bs cfg = do
-  let req uri = (BackendRequest "(list-modules)" H.empty uri, SignWithAllKeys)
+  let req uri = (BackendRequest "(list-modules)" H.empty uri Set.empty)
   backendMap <- networkView $ ffor bs $ \case
     Nothing -> pure mempty
     Just bs' -> do
@@ -309,9 +309,6 @@ loadModules w bs cfg = do
 url :: BackendUri -> Text -> Text
 url b endpoint = b <> "/api/v1" <> endpoint
 
--- Used an explicit type instead of a Maybe to make the implications clearer
-data SigningScheme = SignWithKeys (Set KeyName) | SignWithAllKeys
-
 -- | Send a transaction via the /send endpoint.
 --
 --   And wait for its result via /listen.
@@ -321,17 +318,15 @@ backendRequest
     , HasJSContext (Performable m), TriggerEvent t m
     )
   => Wallet t
-  -> Event t (BackendRequest, SigningScheme)
+  -> Event t BackendRequest
   -- ^ An event with the backend request and a set of keys to sign with.
   -- If the set is empty,
   -> m (Event t (BackendUri, BackendErrorResult))
 backendRequest w onReq = performEventAsync $
-  ffor attachedOnReq $ \(keys, (req, signingScheme)) cb -> do
+  ffor attachedOnReq $ \(keys, req) cb -> do
     let uri = _backendRequest_backend req
         callback = liftIO . void . forkIO . cb . (,) uri
-        signing = case signingScheme of
-                    SignWithKeys ks -> ks
-                    SignWithAllKeys -> Map.keysSet keys
+        signing = _backendRequest_signing req
     sendReq <- buildSendXhrRequest keys signing req
     void $ newXMLHttpRequestWithError sendReq $ \r -> case getResPayload r of
       Left e -> callback $ Left e

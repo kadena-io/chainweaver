@@ -256,11 +256,12 @@ functionsList ideL backendUri functions = divClass "ui very relaxed list" $ do
         let ed = ideL ^. ide_jsonData . jsonData_data
         deployedResult <- backendRequest (ideL ^. ide_wallet) $
           ffor (attach (current ed) callFun) $ \(cEd, c) ->
-            (BackendRequest
+            BackendRequest
               { _backendRequest_code = c
               , _backendRequest_data = either mempty id cEd
               , _backendRequest_backend = backendUri
-              }, SignWithAllKeys)
+              , _backendRequest_signing = Set.empty
+              }
               -- FIXME Probably bad...need to pop up the deploy confirmation dialog
         widgetHold_ blank $ ffor deployedResult $ \(_uri, x) -> case x of
           Left err -> message (def & messageConfig_type .~ Static (Just (MessageType Negative))) $ do
