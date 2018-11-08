@@ -30,6 +30,7 @@ import           Control.Arrow           ((&&&))
 import           Control.Lens
 import           Control.Monad
 import           Data.Bifunctor
+import           Data.Map                (Map)
 import qualified Data.Map                as Map
 import           Data.Maybe
 import           Data.Set                (Set)
@@ -81,7 +82,7 @@ uiDeployConfirmation ideL = do
     pure $ TransactionInfo s <$> mb
 
 signingKeysWidget
-  :: MonadWidget t m
+  :: forall t m. MonadWidget t m
   => Wallet t
   -> m (Dynamic t (Set KeyName))
 signingKeysWidget aWallet = do
@@ -93,8 +94,8 @@ signingKeysWidget aWallet = do
     el "tbody" $ listWithKey keyMap $ \name key -> signingItem (name, key)
   dyn_ $ ffor keyMap $ \keys -> when (Map.null keys) $ text "No keys ..."
   return $ do -- The Dynamic monad
-    m <- boxValues -- Dynamic (Map KeyName (Dynamic Bool))
-    ps <- sequence $ (\(k,v) -> (k,) <$> v) <$> Map.toList m
+    m :: Map KeyName (Dynamic t Bool) <- boxValues
+    ps <- traverse (\(k,v) -> (k,) <$> v) $ Map.toList m
     return $ Set.fromList $ map fst $ filter snd ps
 
 
