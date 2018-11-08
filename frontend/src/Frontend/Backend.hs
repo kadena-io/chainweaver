@@ -32,6 +32,7 @@ module Frontend.Backend
     -- * Creation
   , makeBackend
     -- * Perform requests
+  , SigningScheme (..)
   , backendRequest
     -- * Utilities
   , prettyPrintBackendErrorResult
@@ -280,7 +281,7 @@ loadModules
  => Wallet t -> Dynamic t (Maybe (Map BackendName BackendUri)) -> BackendCfg t
   -> m (Dynamic t (Map BackendName (Maybe [Text])))
 loadModules w bs cfg = do
-  let req = BackendRequest "(list-modules)" H.empty
+  let req uri = (BackendRequest "(list-modules)" H.empty uri, SignWithAllKeys)
   backendMap <- networkView $ ffor bs $ \case
     Nothing -> pure mempty
     Just bs' -> do
@@ -308,6 +309,9 @@ loadModules w bs cfg = do
 url :: BackendUri -> Text -> Text
 url b endpoint = b <> "/api/v1" <> endpoint
 
+-- Used an explicit type instead of a Maybe to make the implications clearer
+data SigningScheme = SignWithKeys (Set KeyName) | SignWithAllKeys
+
 -- | Send a transaction via the /send endpoint.
 --
 --   And wait for its result via /listen.
@@ -316,27 +320,34 @@ backendRequest
   . ( PerformEvent t m, MonadJSM (Performable m)
     , HasJSContext (Performable m), TriggerEvent t m
     )
-  => Wallet t -> Event t BackendRequest -> m (Event t (BackendUri, BackendErrorResult))
-backendRequest w onReq = performEventAsync $ ffor attachedOnReq $ \((keys, signing), req) cb -> do
-  let uri = _backendRequest_backend req
-      callback = liftIO . void . forkIO . cb . (,) uri
-  sendReq <- buildSendXhrRequest keys signing req
-  void $ newXMLHttpRequestWithError sendReq $ \r -> case getResPayload r of
-    Left e -> callback $ Left e
-    Right send -> case _rkRequestKeys send of
-      [] -> callback $ Left $ BackendError_Other "Response did not contain any RequestKeys"
-      [key] -> do
-        let listenReq = buildListenXhrRequest uri key
-        void $ newXMLHttpRequestWithError listenReq $ \lr -> case getResPayload lr of
-          Left e -> callback $ Left e
-          Right listen -> case _lr_result listen of
-            PactResult_Failure err detail -> callback $ Left $ BackendError_ResultFailure err detail
-            PactResult_FailureText err -> callback $ Left $ BackendError_ResultFailureText err
-            PactResult_Success result -> callback $ Right result
-      _ -> callback $ Left $ BackendError_Other "Response contained more than one RequestKey"
+  => Wallet t
+  -> Event t (BackendRequest, SigningScheme)
+  -- ^ An event with the backend request and a set of keys to sign with.
+  -- If the set is empty,
+  -> m (Event t (BackendUri, BackendErrorResult))
+backendRequest w onReq = performEventAsync $
+  ffor attachedOnReq $ \(keys, (req, signingScheme)) cb -> do
+    let uri = _backendRequest_backend req
+        callback = liftIO . void . forkIO . cb . (,) uri
+        signing = case signingScheme of
+                    SignWithKeys ks -> ks
+                    SignWithAllKeys -> Map.keysSet keys
+    sendReq <- buildSendXhrRequest keys signing req
+    void $ newXMLHttpRequestWithError sendReq $ \r -> case getResPayload r of
+      Left e -> callback $ Left e
+      Right send -> case _rkRequestKeys send of
+        [] -> callback $ Left $ BackendError_Other "Response did not contain any RequestKeys"
+        [key] -> do
+          let listenReq = buildListenXhrRequest uri key
+          void $ newXMLHttpRequestWithError listenReq $ \lr -> case getResPayload lr of
+            Left e -> callback $ Left e
+            Right listen -> case _lr_result listen of
+              PactResult_Failure err detail -> callback $ Left $ BackendError_ResultFailure err detail
+              PactResult_FailureText err -> callback $ Left $ BackendError_ResultFailureText err
+              PactResult_Success result -> callback $ Right result
+        _ -> callback $ Left $ BackendError_Other "Response contained more than one RequestKey"
   where
-    attachedOnReq = attach wTuple onReq
-    wTuple = current $ zipDyn (_wallet_keys w) (_wallet_signingKeys w)
+    attachedOnReq = attach (current $ _wallet_keys w) onReq
 
 -- TODO: upstream this?
 instance HasJSContext JSM where

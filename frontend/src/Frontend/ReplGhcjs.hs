@@ -255,11 +255,13 @@ functionsList ideL backendUri functions = divClass "ui very relaxed list" $ do
         -- for debugging: widgetHold blank $ ffor callFun $ label def . text
         let ed = ideL ^. ide_jsonData . jsonData_data
         deployedResult <- backendRequest (ideL ^. ide_wallet) $
-          ffor (attach (current ed) callFun) $ \(cEd, c) -> BackendRequest
-            { _backendRequest_code = c
-            , _backendRequest_data = either mempty id cEd
-            , _backendRequest_backend = backendUri
-            }
+          ffor (attach (current ed) callFun) $ \(cEd, c) ->
+            (BackendRequest
+              { _backendRequest_code = c
+              , _backendRequest_data = either mempty id cEd
+              , _backendRequest_backend = backendUri
+              }, SignWithAllKeys)
+              -- FIXME Probably bad...need to pop up the deploy confirmation dialog
         widgetHold_ blank $ ffor deployedResult $ \(_uri, x) -> case x of
           Left err -> message (def & messageConfig_type .~ Static (Just (MessageType Negative))) $ do
             text $ prettyPrintBackendError err

@@ -113,8 +113,10 @@ replWidget ideL = mdo
         eJson <- ideL ^. ide_jsonData . jsonData_data
         pure $ either (const Nothing) (Just . (code,)) eJson
 
+      -- Instead of signing REPL commands with the signing keys, we sign them
+      -- with every key so we don't have to keep the signing keys around.
       keysContract =
-        fmap sequence $ zipDyn (ide_getSigningKeyPairs ideL) codeData
+        fmap sequence $ zipDyn (Map.elems <$> _wallet_keys (_ide_wallet ideL)) codeData
 
       onKeysContractLoad =
         fmapMaybe id . tag (current keysContract) $ _ide_load ideL
@@ -252,15 +254,3 @@ scrollToBottom :: (PToJSVal t, MonadIO m, MonadJSM m) => t -> m ()
 scrollToBottom e = liftJSM $ do
     let pElem = pToJSVal e
     (pElem <# ("scrollTop" :: String)) (pElem ^. js ("scrollHeight" :: String))
-
--- | Retrieve the currently selected signing keys.
-ide_getSigningKeyPairs :: Reflex t => Ide t -> Dynamic t [KeyPair]
-ide_getSigningKeyPairs ideL = do
-  let
-    signingKeys = ideL ^. ide_wallet . wallet_signingKeys
-    keys = Map.assocs <$> ideL ^. ide_wallet . wallet_keys
-  cKeys <- keys
-  sKeys <- signingKeys
-  let isSigning (n,_) = Set.member n sKeys
-  pure $ map snd $ filter isSigning cKeys
-

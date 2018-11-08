@@ -41,6 +41,7 @@ module Frontend.Ide
   , LogMsg
   , ExampleContract (..)
   , DeployedContract (..)
+  , TransactionInfo (..)
   , EnvSelection (..)
   , PactFunction (..)
   , Modal (..)
@@ -54,6 +55,7 @@ import           Data.Aeson               as Aeson (Object, Result (..), encode,
 import           Data.Default
 import           Data.Map                 (Map)
 import qualified Data.Map                 as Map
+import           Data.Set                 (Set)
 import           Data.Text                (Text)
 import qualified Data.Text                as T
 import           Generics.Deriving.Monoid (mappenddefault, memptydefault)
@@ -94,6 +96,12 @@ data DeployedContract = DeployedContract
   } deriving (Eq, Ord, Show)
 
 makePactLenses ''DeployedContract
+
+-- | Data needed to send transactions to the server.
+data TransactionInfo = TransactionInfo
+  { _transactionInfo_keys :: Set KeyName
+  , _transactionInfo_backend :: BackendName
+  } deriving (Eq, Ord, Show)
 
 
 -- | The available panels in the `envPanel`
@@ -141,12 +149,8 @@ data IdeCfg t = IdeCfg
     -- ^ Switch tab of the right pane.
   , _ideCfg_clearRepl   :: Event t ()
     -- ^ Make the REPL fresh again, ready for new contracts.
-  , _ideCfg_deploy      :: Event t ()
+  , _ideCfg_deploy      :: Event t TransactionInfo
     -- ^ Deploy the currently edited code/contract.
-  , _ideCfg_setDeployBackend  :: Event t (Maybe BackendName)
-   -- ^ To which backend shall we deploy?
-   -- TODO: Once we upgraded semantic-reflex and are able to keep the dropdown
-   -- in sync, this should no longer be a Maybe.
   , _ideCfg_reqModal    :: Event t Modal
    -- ^ Request a modal dialog of the given type.
   }
@@ -166,8 +170,6 @@ data Ide t = Ide
   , _ide_jsonData         :: JsonData t
   , _ide_backend          :: Backend t
   , _ide_msgs             :: Dynamic t [LogMsg]
-  , _ide_deployBackend    :: Dynamic t (Maybe BackendName)
-   -- The backend that should be used for deployments.
   , _ide_load             :: Event t ()
   -- ^ Forwarded _ideCfg_load. TODO: Modularize Repl properly and get rid of this.
   , _ide_clearRepl        :: Event t ()
@@ -198,16 +200,6 @@ makeIde userCfg = build $ \ ~(cfg, ideL) -> do
     errors <- holdDyn [] $ cfg ^. ideCfg_setMsgs
     deployed <- holdDyn Nothing $ cfg ^. ideCfg_setDeployed
 
-    let
-      onSelDeployBackend =
-        fmapMaybe (^? _Right . deployedContract_backendName) $
-          cfg ^. ideCfg_selContract
-    deployBackendL <- holdDyn Nothing $
-      leftmost [ cfg ^. ideCfg_setDeployBackend
-               , Just <$> onSelDeployBackend -- TODO: Currently useless,
-               -- because we reset it, because we can't update dropdown.
-               ]
-
     (onNewCode, contractReceivedCfg) <- loadContract ideL
     code <- holdDyn "" $ leftmost
       [ onNewCode
@@ -217,19 +209,18 @@ makeIde userCfg = build $ \ ~(cfg, ideL) -> do
     selContract <- holdDyn (Left initialDemoContract) $ cfg ^. ideCfg_selContract
 
     let
-      req = do
+      mkReq = do
         c       <- ideL ^. ide_code
         ed      <- ideL ^. ide_jsonData . jsonData_data
-        mbName  <- ideL ^. ide_deployBackend
         mbs     <- ideL ^. ide_backend . backend_backends
-        pure $ do
-          bName <- mbName
+        pure $ \bName -> do
           bs <- mbs
           b <- Map.lookup bName bs
           d <- ed ^? _Right
           pure $ BackendRequest c d b
-      onReq = fmapMaybe id . tag (current req) $ cfg ^. ideCfg_deploy
-    onResp <- backendRequest (ideL ^. ide_wallet) onReq
+      addSigning f a = (,SignWithKeys (_transactionInfo_keys a)) <$> f (_transactionInfo_backend a)
+    onResp <- backendRequest (ideL ^. ide_wallet)
+      (attachWithMaybe addSigning (current mkReq) (_ideCfg_deploy cfg))
 
     let
       jsonErrorString = either (Just . showJsonError) (const Nothing) <$>
@@ -262,7 +253,6 @@ makeIde userCfg = build $ \ ~(cfg, ideL) -> do
           , _ide_jsonData = json
           , _ide_msgs = errors
           , _ide_backend = backendL
-          , _ide_deployBackend = deployBackendL
           , _ide_envSelection = envSelection
           , _ide_load = _ideCfg_load cfg
           , _ide_clearRepl = _ideCfg_clearRepl cfg
@@ -283,7 +273,8 @@ makeIde userCfg = build $ \ ~(cfg, ideL) -> do
       onCodeJson <- waitForEvents (,) onExampleContract code json
 
       -- Loading of deployed contracts
-      deployedResult <- backendRequest (ideL ^. ide_wallet) $ ffor onDeployedContract $ \c -> BackendRequest
+      deployedResult <- backendRequest (ideL ^. ide_wallet) $
+        ffor onDeployedContract $ \c -> (BackendRequest
           { _backendRequest_code = mconcat
             [ "(describe-module '"
             , _deployedContract_name c
@@ -291,7 +282,7 @@ makeIde userCfg = build $ \ ~(cfg, ideL) -> do
             ]
           , _backendRequest_data = mempty
           , _backendRequest_backend = _deployedContract_backendUri c
-          }
+          }, SignWithAllKeys)
       let (deployedResultError, deployedValue) = fanEither $ sequence <$> deployedResult
           (deployedDecodeError, deployedModule) = fanEither $ ffor deployedValue $ \(uri, v) -> case fromJSON v of
             Aeson.Error e   -> Left e
@@ -400,6 +391,9 @@ instance Semigroup EnvSelection where
 instance Semigroup DeployedContract where
   sel1 <> _ = sel1
 
+instance Semigroup TransactionInfo where
+  sel1 <> _ = sel1
+
 instance HasWalletCfg (IdeCfg t) t where
   walletCfg = ideCfg_wallet
 
@@ -420,6 +414,4 @@ instance Flattenable (IdeCfg t) t where
       <*> doSwitch never (_ideCfg_selEnv <$> ev)
       <*> doSwitch never (_ideCfg_clearRepl <$> ev)
       <*> doSwitch never (_ideCfg_deploy <$> ev)
-      <*> doSwitch never (_ideCfg_setDeployBackend <$> ev)
       <*> doSwitch never (_ideCfg_reqModal <$> ev)
-
