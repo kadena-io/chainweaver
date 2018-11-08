@@ -209,7 +209,9 @@ validatedInputWithButton check placeholder buttonText = mdo
         onEnter = keypress Enter name
         nameEmpty = (== "") <$> nameVal
 
-      clicked <- uiButtonSimple buttonText
+        btnCfg = def & uiButtonCfg_disabled .~ nameEmpty
+
+      (clicked, _) <- uiButton btnCfg $ text buttonText
 
       let confirmed = leftmost [ onEnter, clicked ]
       void $ performEvent (liftJSM (pToJSVal (_textInput_element name) ^. js0 ("focus" :: String)) <$ confirmed)
