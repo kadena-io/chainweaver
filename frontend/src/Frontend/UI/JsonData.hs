@@ -202,12 +202,13 @@ notEmpty s = if T.null s then Nothing else Just s
 predDropdown :: MonadWidget t m => Event t KeysetPredicate -> m (Event t KeysetPredicate)
 predDropdown sv = do
     let preds = ["keys-all", "keys-2", "keys-any"]
-        m = Map.fromList $ map (\x -> (x,x)) preds
-    -- TODO: This is needed to fix "causality loop found", find out why this is happening.
-    svd <- delay 0 sv
-    d <- dropdown (head preds) (constDyn m) $ def & setValue .~ svd
-
-    return $ _dropdown_change d
+        --m = Map.fromList $ map (\x -> (x,x)) preds
+        itemDom v = elAttr "option" ("value" =: v) $ text v
+        -- TODO Ignore the incoming event for now.  Not sure why we need it.
+        cfg = SelectElementConfig (head preds) Nothing def
+    (s,_) <- selectElement cfg $ do
+      forM_ preds itemDom
+    return $ _selectElement_change s
 
 -- | Input widget with confirm button for creating a new keyset.
 uiCreateKeyset
