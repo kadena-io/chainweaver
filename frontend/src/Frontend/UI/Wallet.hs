@@ -146,19 +146,26 @@ uiKeyItem (n, k) = do
       el "td" $ text n
       elClass "td" "public walletkey" $
         dynText (keyToText . _keyPair_publicKey <$> k)
-      elClass "td" "private walletkey" $
-        keyCopyWidget (maybe "No key" keyToText . _keyPair_privateKey <$> k)
+      keyCopyWidget "td" "private walletkey" $
+        maybe "No key" keyToText . _keyPair_privateKey <$> k
 
       onDel <- elClass "td" "centercell" $ uiIcon "fa-trash" $ def
         & iconConfig_size .~ Just IconLG
+        & iconConfig_attrs .~ ("type" =: "button")
 
       pure (const n <$> onDel)
 
-keyCopyWidget :: MonadWidget t m => Dynamic t Text -> m ()
-keyCopyWidget keyText = mdo
+keyCopyWidget :: MonadWidget t m => Text -> Text -> Dynamic t Text -> m ()
+keyCopyWidget t cls keyText = mdo
   isShown <- foldDyn (const not) False (domEvent Click e)
-  let mkText True t = t
+  let mkShownCls True = ""
+      mkShownCls False = " hidden"
+
+  (e, _) <- elDynClass t (pure cls <> fmap mkShownCls isShown) $ do
+    let
+      mkText True t = t
       mkText False _ = "****************************"
-  (e,_) <- elAttr' "span" ("class" =: "key-content") $
-    dynText (mkText <$> isShown <*> keyText)
-  return ()
+
+    elDynClass' "span" "key-content" $
+      dynText (mkText <$> isShown <*> keyText)
+  pure ()

@@ -25,14 +25,33 @@ import           Data.Map                    (Map)
 import           Data.Text                   (Text)
 import           Reflex.Dom.Core
 import           Reflex.Dom.Contrib.CssClass
+import           Data.Default (def)
 ------------------------------------------------------------------------------
+import Frontend.Foundation (makePactLenses)
+
+-- | Configuration for uiButton.
+data UiButtonCfg t = UiButtonCfg
+  { _uiButtonCfg_disabled :: Dynamic t Bool
+    -- ^ Whether or not the button should be clickable by the user.
+  }
+
+$(makePactLenses ''UiButtonCfg)
+
+instance Reflex t => Default (UiButtonCfg t) where
+  def = UiButtonCfg (pure False)
+
 
 uiButtonSimple :: MonadWidget t m => Text -> m (Event t ())
 uiButtonSimple msg = do
     (e, _) <- el' "button" $ text msg
     return $ domEvent Click e
 
-uiButton :: MonadWidget t m => m a -> m (Event t (), a)
-uiButton body = do
-    (e, a) <- el' "button" body
+uiButton :: MonadWidget t m => UiButtonCfg t -> m a -> m (Event t (), a)
+uiButton cfg body = do
+    let
+      attrs = mkDisabledAttr <$> _uiButtonCfg_disabled cfg
+      mkDisabledAttr = \case
+        False -> mempty
+        True  -> "disabled" =: "true"
+    (e, a) <- elDynAttr' "button" attrs body
     return (domEvent Click e, a)

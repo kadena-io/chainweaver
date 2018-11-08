@@ -89,6 +89,10 @@ div.control-block.repl-output {
   text-overflow: ellipsis;
 }
 
+.walletkey.hidden {
+  text-overflow: clip;
+}
+
 td.centercell {
   text-align: center;
 }
@@ -102,6 +106,11 @@ td.centercell {
   padding-right: 36px;
   background-image: url(/static/img/arrow-down.svg);
   background-size: 10px;
+}
+
+
+[type = "button"]:hover {
+  cursor: pointer;
 }
 
 .left-col {

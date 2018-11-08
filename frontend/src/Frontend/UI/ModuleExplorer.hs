@@ -158,5 +158,5 @@ contractList rowFunc contracts = do
 
 loadButton :: MonadWidget t m => a -> m (Event t a)
 loadButton c = do
-  (e,_) <- uiButton $ imgWithAlt (static @"img/view.svg") "View" blank >> text "View"
+  (e,_) <- uiButton def $ imgWithAlt (static @"img/view.svg") "View" blank >> text "View"
   return $ c <$ e
