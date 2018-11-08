@@ -103,3 +103,7 @@ td.centercell {
   background-image: url(/static/img/arrow-down.svg);
   background-size: 10px;
 }
+
+.left-col {
+  text-align: left;
+}
