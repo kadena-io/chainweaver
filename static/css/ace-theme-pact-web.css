@@ -120,6 +120,6 @@
   background: url("data:image/png!important;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAACCAYAAACZgbYnAAAAE0lEQVQImWP4////f4bLly//BwAmVgd1/w11/gAAAABJRU5ErkJggg==") right repeat-y!important;
 }
 
-.ace_content {
-  padding-left: 10px;
+.ace_scroller {
+  margin-left: 8px;
 }
