@@ -108,6 +108,11 @@ td.centercell {
   background-size: 10px;
 }
 
+
 [type = "button"]:hover {
   cursor: pointer;
+}
+
+.left-col {
+  text-align: left;
 }

@@ -645,13 +645,23 @@ button:active {
 
 #modal-root .modal-footer button {
   color: #fff;
-  border-color: #555;
-  background: #555;
+  border-color: #2d2d2f;
+  background: #2d2d2f;
 }
 
 #modal-root .modal-footer button:hover {
-  border-color: #000;
-  background: #000;
+  border-color: #403f3f;
+  background: #403f3f;
+}
+
+#modal-root .modal-footer button[disabled] {
+  color: #7e7e7e;
+}
+
+#modal-root .modal-footer button[disabled]:hover {
+  border-color: #2d2d2f;
+  background: #2d2d2f;
+  cursor: auto;
 }
 
 #modal-root .modal-footer button:active {
