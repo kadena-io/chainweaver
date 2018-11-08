@@ -97,12 +97,7 @@ makeWallet
 makeWallet conf = do
     initialKeys <- fromMaybe Map.empty <$> loadKeys
     let
-      onNewDeleted p = fmap fst . ffilter (p . snd)
       onGenKey = T.strip <$> conf ^. walletCfg_genKey
-    signingKeys <- foldDyn id Set.empty
-      $ leftmost [ const Set.empty <$ conf ^. walletCfg_clearAll
-                 , Set.delete <$> conf ^. walletCfg_delKey
-                 ]
 
     onNewKey <- performEvent $ createKey <$>
       -- Filter out keys with empty names
@@ -120,7 +115,6 @@ makeWallet conf = do
       { _wallet_keys = keys
       }
   where
-    -- TODO: Dummy implementation for now
     createKey :: KeyName -> Performable m (KeyName, KeyPair)
     createKey n = do
       (privKey, pubKey) <- genKeyPair
