@@ -1,0 +1,118 @@
+/* Extra styles added on top of the ones in pact-web-ui */
+
+.hidden.transition { display: none; visibility: hidden; }
+
+.repl-input-controls {
+    width: 100%;
+    display: flex;
+    flex-direction: row;
+    justify-content: flex-start;
+}
+
+.repl-input-controls .prompt {
+    padding-right: 10px;
+    flex-grow: 0;
+}
+
+.repl-input-controls input {
+    flex-grow: 1;
+    border: none;
+}
+
+.repl-input-controls input:focus {
+    outline: none;
+}
+
+.repl-input-controls button {
+    width: 100%;
+    padding: 0;
+    margin: 0;
+}
+
+
+.wysiwyg,.ace_editor,.code-font {
+    font-family: 'RobotoMono', monospace !important;
+    font-size: 15px;
+}
+
+.wysiwyg,.ace_editor {
+    background: #ffffff !important;
+}
+
+.wysiwyg {
+  position: relative;
+  border-radius: 4px;
+}
+
+.wysiwyg > * {
+  border-radius: 4px;
+}
+
+.wysiwyg .ace_editor,.ace_scroller {
+  border-radius: 4px;
+}
+
+
+.ace_editor {
+  position: absolute;
+  top: 0px;
+  bottom: 0px;
+  left: 0px;
+  right: 0px;
+}
+
+.ace_scrollbar {
+    display: none !important;
+}
+
+#control-nav .wysiwyg {
+  height: 30vh;
+}
+
+.header i {
+  cursor: pointer;
+}
+
+h4 .keyset-chooser-toggle {
+  cursor: pointer;
+}
+
+#main #control-ui {
+  width: 50%;
+}
+div.control-block.repl-output {
+  overflow-x: auto;
+}
+
+.walletkey {
+  overflow-x: hidden;
+  text-overflow: ellipsis;
+}
+
+.walletkey.hidden {
+  text-overflow: clip;
+}
+
+td.centercell {
+  text-align: center;
+}
+
+.keys-list {
+  margin-top: 20px;
+}
+
+#modal-root select {
+  color: black;
+  padding-right: 36px;
+  background-image: url(/static/img/arrow-down.svg);
+  background-size: 10px;
+}
+
+
+[type = "button"]:hover {
+  cursor: pointer;
+}
+
+.left-col {
+  text-align: left;
+}

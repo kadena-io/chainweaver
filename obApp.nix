@@ -78,6 +78,12 @@ in
             }) {}) "ghcjs");
 
             semantic-reflex = pkgs.haskell.lib.dontHaddock (pkgs.haskell.lib.doJailbreak (pkgs.haskell.lib.dontCheck (self.callCabal2nix "semantic-reflex"  (semantic-reflex-src + /semantic-reflex) {})));
+            reflex-dom-contrib = (self.callCabal2nix "reflex-dom-contrib" (pkgs.fetchFromGitHub {
+              owner = "reflex-frp";
+              repo = "reflex-dom-contrib";
+              rev = "9900f2d433240a3f93cdae930a6ffbb73c50bb86";
+              sha256 = "1z8cnnhibsiap08pq2iw1r5zqvbla6hci7dhrz9mhfr0nqyryk65";
+            }) {});
 
             # ghc-8.0.2 haddock has an annoying bug, which causes build failures:
             # See: https://github.com/haskell/haddock/issues/565

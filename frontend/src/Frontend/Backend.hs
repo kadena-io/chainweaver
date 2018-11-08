@@ -11,6 +11,7 @@
 {-# LANGUAGE ScopedTypeVariables        #-}
 {-# LANGUAGE TemplateHaskell            #-}
 {-# LANGUAGE TypeFamilies               #-}
+{-# LANGUAGE ConstraintKinds            #-}
 
 -- | Interface for accessing Pact backends.
 --
@@ -25,6 +26,7 @@ module Frontend.Backend
   , BackendErrorResult
   , BackendCfg (..)
   , HasBackendCfg (..)
+  , IsBackendCfg
   , Backend (..)
   , HasBackend (..)
     -- * Creation
@@ -93,6 +95,7 @@ data BackendRequest = BackendRequest
     -- `data` field of the `exec` payload.
   , _backendRequest_backend :: BackendUri
     -- ^ Which backend to use
+  , _backendRequest_signing :: Set KeyName
   }
 
 
@@ -135,6 +138,10 @@ data BackendCfg t = BackendCfg
   deriving Generic
 
 makePactLenses ''BackendCfg
+
+-- | HasBackendCfg with additional constraints to make it behave like a proper
+-- "Config".
+type IsBackendCfg cfg t = (HasBackendCfg cfg t, Monoid cfg, Flattenable cfg t)
 
 data Backend t = Backend
   { _backend_backends :: Dynamic t (Maybe (Map BackendName BackendUri))
@@ -274,7 +281,7 @@ loadModules
  => Wallet t -> Dynamic t (Maybe (Map BackendName BackendUri)) -> BackendCfg t
   -> m (Dynamic t (Map BackendName (Maybe [Text])))
 loadModules w bs cfg = do
-  let req = BackendRequest "(list-modules)" H.empty
+  let req uri = (BackendRequest "(list-modules)" H.empty uri Set.empty)
   backendMap <- networkView $ ffor bs $ \case
     Nothing -> pure mempty
     Just bs' -> do
@@ -310,27 +317,32 @@ backendRequest
   . ( PerformEvent t m, MonadJSM (Performable m)
     , HasJSContext (Performable m), TriggerEvent t m
     )
-  => Wallet t -> Event t BackendRequest -> m (Event t (BackendUri, BackendErrorResult))
-backendRequest w onReq = performEventAsync $ ffor attachedOnReq $ \((keys, signing), req) cb -> do
-  let uri = _backendRequest_backend req
-      callback = liftIO . void . forkIO . cb . (,) uri
-  sendReq <- buildSendXhrRequest keys signing req
-  void $ newXMLHttpRequestWithError sendReq $ \r -> case getResPayload r of
-    Left e -> callback $ Left e
-    Right send -> case _rkRequestKeys send of
-      [] -> callback $ Left $ BackendError_Other "Response did not contain any RequestKeys"
-      [key] -> do
-        let listenReq = buildListenXhrRequest uri key
-        void $ newXMLHttpRequestWithError listenReq $ \lr -> case getResPayload lr of
-          Left e -> callback $ Left e
-          Right listen -> case _lr_result listen of
-            PactResult_Failure err detail -> callback $ Left $ BackendError_ResultFailure err detail
-            PactResult_FailureText err -> callback $ Left $ BackendError_ResultFailureText err
-            PactResult_Success result -> callback $ Right result
-      _ -> callback $ Left $ BackendError_Other "Response contained more than one RequestKey"
+  => Wallet t
+  -> Event t BackendRequest
+  -- ^ An event with the backend request and a set of keys to sign with.
+  -- If the set is empty,
+  -> m (Event t (BackendUri, BackendErrorResult))
+backendRequest w onReq = performEventAsync $
+  ffor attachedOnReq $ \(keys, req) cb -> do
+    let uri = _backendRequest_backend req
+        callback = liftIO . void . forkIO . cb . (,) uri
+        signing = _backendRequest_signing req
+    sendReq <- buildSendXhrRequest keys signing req
+    void $ newXMLHttpRequestWithError sendReq $ \r -> case getResPayload r of
+      Left e -> callback $ Left e
+      Right send -> case _rkRequestKeys send of
+        [] -> callback $ Left $ BackendError_Other "Response did not contain any RequestKeys"
+        [key] -> do
+          let listenReq = buildListenXhrRequest uri key
+          void $ newXMLHttpRequestWithError listenReq $ \lr -> case getResPayload lr of
+            Left e -> callback $ Left e
+            Right listen -> case _lr_result listen of
+              PactResult_Failure err detail -> callback $ Left $ BackendError_ResultFailure err detail
+              PactResult_FailureText err -> callback $ Left $ BackendError_ResultFailureText err
+              PactResult_Success result -> callback $ Right result
+        _ -> callback $ Left $ BackendError_Other "Response contained more than one RequestKey"
   where
-    attachedOnReq = attach wTuple onReq
-    wTuple = current $ zipDyn (_wallet_keys w) (_wallet_signingKeys w)
+    attachedOnReq = attach (current $ _wallet_keys w) onReq
 
 -- TODO: upstream this?
 instance HasJSContext JSM where
@@ -485,9 +497,17 @@ getNonce = do
 encodeAsText :: BSL.ByteString -> Text
 encodeAsText = T.decodeUtf8 . BSL.toStrict
 
+-- Instances:
+
 instance Reflex t => Semigroup (BackendCfg t) where
   (<>) = mappenddefault
 
 instance Reflex t => Monoid (BackendCfg t) where
   mempty = memptydefault
   mappend = (<>)
+--
+
+instance Flattenable (BackendCfg t) t where
+  flattenWith doSwitch ev =
+    BackendCfg
+      <$> doSwitch never (_backendCfg_refreshModule <$> ev)

@@ -30,18 +30,18 @@ import           Reflex.Adjustable.Class
 -- | Can be either 'switchHold never' or 'switchHoldPromptly never'
 type SwitchHold t = forall a m. (Reflex t, MonadHold t m) => Event t a -> Event t (Event t a) -> m (Event t a)
 
-class Flattenable a where
+class Flattenable a t where
   -- | The first parameter is either switchHold or switchHoldPromptly.
   --
   -- So we get both variants for free, if implementors use this parameter for
   -- implementing flattenWith.
-  flattenWith :: forall t m. (Reflex t, MonadHold t m)
-                  => SwitchHold t -> Event t (a t) -> m (a t)
+  flattenWith :: forall m. (Reflex t, MonadHold t m)
+                  => SwitchHold t -> Event t a -> m a
 
 
 -- | Extract a type from an event, with the given initial value.
-flatten :: forall a t m. (Flattenable a, Reflex t, MonadHold t m)
-              => Event t (a t) -> m (a t)
+flatten :: forall a t m. (Flattenable a t, Reflex t, MonadHold t m)
+              => Event t a -> m a
 flatten = flattenWith switchHold
 
 -- | Flatten a Dynamic
@@ -54,7 +54,10 @@ flattenDynamic doSwitch ev = do
   holdDyn def updateVal
 
 -- | networkView combined with flattenDef
-networkViewFlatten :: ( Reflex t, NotReady t m, Adjustable t m, PostBuild t m
-                  , Flattenable a, MonadHold t m)
-               => Dynamic t (m (a t)) -> m (a t)
+networkViewFlatten
+  :: ( Reflex t, NotReady t m, Adjustable t m, PostBuild t m
+     , Flattenable a t, MonadHold t m
+     )
+  => Dynamic t (m a)
+  -> m a
 networkViewFlatten = flatten <=< networkView

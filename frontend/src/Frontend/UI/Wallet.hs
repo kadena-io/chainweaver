@@ -24,9 +24,9 @@
 module Frontend.UI.Wallet
   ( -- * Key management widget
     uiWallet
-
+  , uiAvailableKeys
     -- * Keys related helper widgets
-  , uiSelectKey
+--  , uiSelectKey
 
     -- ** Filters for keys
   , hasPrivateKey
@@ -42,18 +42,25 @@ import           Data.Set                    (Set)
 import qualified Data.Set                    as Set
 import           Data.Text                   (Text)
 import           Reflex
-import           Reflex.Dom.SemanticUI       hiding (mainWidget)
-
+import           Reflex.Dom
+import           Obelisk.Generated.Static
+------------------------------------------------------------------------------
+import           Frontend.Crypto.Ed25519     (keyToText)
 import           Frontend.Foundation
+import           Frontend.UI.Button
+import           Frontend.UI.Icon
 import           Frontend.Wallet
 import           Frontend.Widgets
-import           Frontend.Crypto.Ed25519     (keyToText)
+------------------------------------------------------------------------------
 
 
 
 -- | UI for managing the keys wallet.
-uiWallet :: MonadWidget t m => Wallet t -> m (WalletCfg t)
-uiWallet w = do
+uiWallet
+  :: (MonadWidget t m, IsWalletCfg cfg t)
+  => Wallet t
+  -> m cfg
+uiWallet w = divClass "keys" $ do
     onCreate <- uiCreateKey w
     keysCfg <- uiAvailableKeys w
 
@@ -65,19 +72,17 @@ uiWallet w = do
 
 -- | UI for letting the user select a particular key
 -- from a filtered view of the available keys.
-uiSelectKey
-  :: MonadWidget t m
-  => Wallet t
-  -> ((Text, KeyPair) -> Bool)
-  -> m (Dynamic t (Maybe Text))
-uiSelectKey w kFilter = do
-  let keyNames = map fst . filter kFilter . Map.toList <$> w ^. wallet_keys
-      mkPlaceholder ks = if null ks then "No keys available" else "Select key"
-  d <- dropdown
-      (def & dropdownConfig_placeholder .~ fmap mkPlaceholder keyNames)
-      Nothing
-      $ TaggedDynamic (Map.fromList . fmap (id &&& text) <$> keyNames)
-  pure $ _dropdown_value d
+--uiSelectKey
+--  :: MonadWidget t m
+--  => Wallet t
+--  -> ((Text, KeyPair) -> Bool)
+--  -> m (Dynamic t (Maybe Text))
+--uiSelectKey w kFilter = do
+--  let keyNames = map fst . filter kFilter . Map.toList <$> _wallet_keys w
+--      mkPlaceholder ks = if null ks then "No keys available" else "Select key"
+--      options = Map.fromList . (Nothing:"No keys") . (\a -> (Just a,a)) <$> keyNames
+--  d <- dropdown Nothing options def
+--  pure $ _dropdown_value d
 
 -- | Check whether a given key does contain a private key.
 hasPrivateKey :: (Text, KeyPair) -> Bool
@@ -94,9 +99,12 @@ uiCreateKey w = validatedInputWithButton check "Enter key name" "Generate"
       pure $ if Map.member k keys then Left "This key name is already in use." else Right k
 
 -- | Widget listing all available keys.
-uiAvailableKeys :: MonadWidget t m => Wallet t -> m (WalletCfg t)
+uiAvailableKeys
+  :: (MonadWidget t m, IsWalletCfg cfg t)
+  => Wallet t
+  -> m cfg
 uiAvailableKeys aWallet = do
-  elClass "div" "ui relaxed middle aligned divided list" $ do
+  divClass "keys-list" $ do
     uiKeyItems aWallet
 
 
@@ -104,53 +112,60 @@ uiAvailableKeys aWallet = do
 --
 -- Does not include the surrounding `div` tag. Use uiAvailableKeys for the
 -- complete `div`.
-uiKeyItems :: MonadWidget t m => Wallet t -> m (WalletCfg t)
+uiKeyItems
+  :: (MonadWidget t m, IsWalletCfg cfg t)
+  => Wallet t
+  -> m cfg
 uiKeyItems aWallet = do
   let keyMap = aWallet ^. wallet_keys
-      signingKeys = aWallet ^. wallet_signingKeys
-  events <- listWithKey keyMap $ \name key -> uiKeyItem signingKeys (name, key)
+  events <- elAttr "table" ("style" =: "table-layout: fixed; width: 100%") $ do
+    el "colgroup" $ do
+      elAttr "col" ("style" =: "width: 20%") blank
+      elAttr "col" ("style" =: "width: 35%") blank
+      elAttr "col" ("style" =: "width: 35%") blank
+      elAttr "col" ("style" =: "width: 10%") blank
+    el "thead" $ el "tr" $ do
+      el "th" $ text "Key Name"
+      el "th" $ text "Public Key"
+      el "th" $ text "Private Key"
+      el "th" $ text "Delete"
+    el "tbody" $ listWithKey keyMap $ \name key -> uiKeyItem (name, key)
   dyn_ $ ffor keyMap $ \keys -> when (Map.null keys) $ text "No keys ..."
-  let setSigning = switchDyn $ leftmost . fmap fst . Map.elems <$> events
-      delKey = switchDyn $ leftmost . fmap snd . Map.elems <$> events
-  pure $ mempty
-    & walletCfg_setSigning .~ setSigning
-    & walletCfg_delKey .~ delKey
+  let delKey = switchDyn $ leftmost . Map.elems <$> events
+  pure $ mempty & walletCfg_delKey .~ delKey
 
 
+------------------------------------------------------------------------------
 -- | Display a key as list item together with it's name.
-uiKeyItem :: MonadWidget t m => Dynamic t (Set KeyName) -> (Text, Dynamic t KeyPair) -> m (Event t (KeyName, Bool), Event t KeyName)
-uiKeyItem signingKeys (n, k) = do
-    elClass "div" "item" $ do
-      (box, onDel) <- elClass "div" "right floated content" $ do
+uiKeyItem
+  :: MonadWidget t m
+  => (Text, Dynamic t KeyPair)
+  -> m (Event t KeyName)
+uiKeyItem (n, k) = do
+    el "tr" $ do
+      el "td" $ text n
+      elClass "td" "public walletkey" $
+        dynText (keyToText . _keyPair_publicKey <$> k)
+      keyCopyWidget "td" "private walletkey" $
+        maybe "No key" keyToText . _keyPair_privateKey <$> k
 
-        isSigning <- tagOnPostBuild $ Set.member n <$> signingKeys
+      onDel <- elClass "td" "centercell" $ uiIcon "fa-trash" $ def
+        & iconConfig_size .~ Just IconLG
+        & iconConfig_attrs .~ ("type" =: "button")
 
-        boxI <- checkbox (text "Signing")
-          $ def & checkboxConfig_type .~ pure Nothing
-                & checkboxConfig_setValue .~ SetValue False (Just isSigning)
-        let
-          buttonIcon = snd <$> elClass' "i" "large trash right aligned icon" blank
-        onDelI <- flip button buttonIcon $ def
-          & buttonConfig_emphasis .~ Static (Just Tertiary)
-          & classes .~ Static "input-aligned-btn"
-        pure (boxI, onDelI)
+      pure (const n <$> onDel)
 
-      viewKeys <- toggle False =<< domEvent Click <$> icon' "large link key middle aligned" def
-      elClass "div" "content" $ do
-        elClass "h4" "ui header" $ text n
-        elClass "div" "description" $ dynText $ keyDescription <$> k
-      dyn_ $ ffor viewKeys $ \case
-        False -> pure ()
-        True -> table (def & classes .~ "very basic") $ do
-          let item lbl key = el "tr" $ do
-                el "td" $ label (def & labelConfig_pointing .~ Static (Just RightPointing)) $ text lbl
-                elAttr "td" ("style" =: "word-break: break-all") $ dynText key
-          item "Public key" $ keyToText . _keyPair_publicKey <$> k
-          item "Private key" $ maybe "No key" keyToText . _keyPair_privateKey <$> k
-      pure $ ((fmap (n, ) . _checkbox_change $ box), fmap (const n) onDel)
-  where
-    keyDescription k1 =
-      case _keyPair_privateKey k1 of
-        Nothing -> "Public key only"
-        Just _  -> "Full key pair"
+keyCopyWidget :: MonadWidget t m => Text -> Text -> Dynamic t Text -> m ()
+keyCopyWidget t cls keyText = mdo
+  isShown <- foldDyn (const not) False (domEvent Click e)
+  let mkShownCls True = ""
+      mkShownCls False = " hidden"
 
+  (e, _) <- elDynClass t (pure cls <> fmap mkShownCls isShown) $ do
+    let
+      mkText True t = t
+      mkText False _ = "****************************"
+
+    elDynClass' "span" "key-content" $
+      dynText (mkText <$> isShown <*> keyText)
+  pure ()

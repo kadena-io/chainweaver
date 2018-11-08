@@ -9,7 +9,7 @@ let
   pactServerModule = import ./pact-server/service.nix;
 
 in obApp // {
-  server = args@{ hostName, adminEmail, routeHost, enableHttps, config }:
+  server = args@{ hostName, adminEmail, routeHost, enableHttps, config, version }:
     let
       nixos = import (pkgs.path + /nixos);
       # Check whether everything we need is in place.
@@ -29,7 +29,7 @@ in obApp // {
       configuration = checkDeployment {
         imports = [
           (obelisk.serverModules.mkBaseEc2 args)
-          (obelisk.serverModules.mkObeliskApp (args // { exe = obApp.linuxExeConfigurable (pkgs.copyPathToStore config); }))
+          (obelisk.serverModules.mkObeliskApp (args // { exe = obApp.linuxExeConfigurable (pkgs.copyPathToStore config) version; }))
           (pactServerModule {
             hostName = routeHost;
             inherit obApp pkgs;

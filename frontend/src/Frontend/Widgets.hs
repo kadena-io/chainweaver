@@ -1,11 +1,25 @@
+{-# LANGUAGE DataKinds             #-}
 {-# LANGUAGE FlexibleContexts      #-}
 {-# LANGUAGE LambdaCase            #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE OverloadedStrings     #-}
 {-# LANGUAGE RecursiveDo           #-}
--- | Semui based widgets collection
-module Frontend.Widgets where
 
+-- | Widgets collection
+-- Was based on semui, but now transitioning to custom widgets
+module Frontend.Widgets
+  ( imgWithAlt
+  , showLoading
+  , paginationWidget
+  , validatedInputWithButton
+  , tabPane
+  , tabPane'
+  , makeClickable
+  , accordionItem
+  , accordionItem'
+  ) where
+
+------------------------------------------------------------------------------
 import           Control.Lens
 import           Control.Monad
 import           Control.Monad.Fix           (MonadFix)
@@ -14,12 +28,17 @@ import qualified Data.Map.Strict             as Map
 import           Data.Text                   (Text)
 import qualified Data.Text                   as T
 import           Language.Javascript.JSaddle (js0, liftJSM, pToJSVal)
+import           Obelisk.Generated.Static
 import           Reflex.Dom.Core             (keypress, _textInput_element)
+import           Reflex.Dom.Contrib.CssClass
 import           Reflex.Dom.SemanticUI       hiding (mainWidget)
 import           Reflex.Network.Extended
 -- import Reflex.Dom.Prerender (Prerender, prerender)
-
-import Frontend.Foundation
+------------------------------------------------------------------------------
+import           Frontend.Foundation
+import           Frontend.UI.Button
+import           Frontend.UI.Icon
+------------------------------------------------------------------------------
 
 {- -- | Variant of  a semantic-reflex textInput that also works with pre-render. -}
 {- semTextInput -}
@@ -45,6 +64,9 @@ import Frontend.Foundation
 {-         } -}
 
 
+imgWithAlt :: MonadWidget t m => Text -> Text -> m a -> m a
+imgWithAlt loc alt child = elAttr "img" ("src" =: loc <> "alt" =: alt) child
+
 showLoading
   :: (NotReady t m, Adjustable t m, PostBuild t m, DomBuilder t m, Monoid b)
   => Dynamic t (Maybe a)
@@ -58,29 +80,30 @@ showLoading i w = do
       pure mempty
 
 accordionItem'
-  :: (DomBuilder t m, PostBuild t m, MonadHold t m, MonadFix m)
+  :: MonadWidget t m
   => Bool
-  -> Text
-  -> Text
+  -> CssClass
   -> m a
-  -> m (Element EventResult (DomBuilderSpace m) t, a)
+  -> m b
+  -> m (a,b)
 accordionItem' initActive contentClass title inner = mdo
-  isActive <- foldDyn (const not) initActive $ domEvent Click e
-  (e, _) <- elDynClass' "div" ("title " <> fmap activeClass isActive) $ do
-    elClass "i" "dropdown icon" blank
-    text title
-  elDynClass' "div" ("content " <> pure contentClass <> fmap activeClass isActive) inner
+    isActive <- foldDyn (const not) initActive $ domEvent Click e
+    let mkClass a = singleClass "control-block" <> contentClass <> activeClass a
+    (e, pair) <- elDynKlass "div" (mkClass <$> isActive) $ do
+      (e1,a1) <- el' "h2" $ do
+        el "button" $ imgWithAlt (static @"img/arrow-down.svg") "Expand" blank
+        title
+      b1 <- divClass "control-block-contents" inner
+      return (e1,(a1,b1))
+    return pair
   where
     activeClass = \case
-      False -> ""
-      True -> " active"
+      False -> singleClass "collapsed"
+      True -> mempty
 
-
-accordionItem
-  :: (DomBuilder t m, PostBuild t m, MonadHold t m, MonadFix m)
-  => Bool -> Text -> Text -> m a -> m a
+accordionItem :: MonadWidget t m => Bool -> CssClass -> Text -> m a -> m a
 accordionItem initActive contentClass title inner =
-  snd <$> accordionItem' initActive contentClass title inner
+  snd <$> accordionItem' initActive contentClass (text title) inner
 
 makeClickable :: DomBuilder t m => m (Element EventResult (DomBuilderSpace m) t, ()) -> m (Event t ())
 makeClickable item = do
@@ -170,17 +193,14 @@ addDisplayNone mAttrs isActive = zipDynWith f isActive mAttrs
 ------------------------------------------------------------------------------
 -- | Validated input with button
 validatedInputWithButton
-  :: ( DomBuilder t m, TriggerEvent t m, PerformEvent t m, PostBuild t m
-     , MonadJSM (Performable m), MonadHold t m, MonadFix m
-     , DomBuilderSpace m ~ GhcjsDomSpace
-     )
+  :: MonadWidget t m
   => (Text -> Performable m (Either Text Text))
   -- ^ Validation function returning 'Left' an error message or 'Right' the value
   -> Text -- ^ Placeholder
   -> Text -- ^ Button text
   -> m (Event t Text)
 validatedInputWithButton check placeholder buttonText = mdo
-    update <- elClass "div" "ui fluid action input" $ mdo
+    update <- elClass "div" "fieldset" $ mdo
       name <- textInput $ def
           & textInputConfig_value .~ SetValue "" (Just $ "" <$ values)
           & textInputConfig_placeholder .~ pure placeholder
@@ -189,9 +209,9 @@ validatedInputWithButton check placeholder buttonText = mdo
         onEnter = keypress Enter name
         nameEmpty = (== "") <$> nameVal
 
-      clicked <- flip button (text buttonText) $ def
-        & buttonConfig_emphasis .~ Static (Just Secondary)
-        & buttonConfig_disabled .~ Dyn nameEmpty
+        btnCfg = def & uiButtonCfg_disabled .~ nameEmpty
+
+      (clicked, _) <- uiButton btnCfg $ text buttonText
 
       let confirmed = leftmost [ onEnter, clicked ]
       void $ performEvent (liftJSM (pToJSVal (_textInput_element name) ^. js0 ("focus" :: String)) <$ confirmed)
@@ -214,6 +234,7 @@ validatedInputWithButton check placeholder buttonText = mdo
           & action ?~ (def
             & action_event ?~ ffor (updated hasError) (\e -> trans $ if e then In else Out)
             & action_initialDirection .~ Out)
+    -- TODO Change this message
     close <- message config $ do
       e <- domEvent Click <$> icon' "close" (def & style .~ "position: absolute; top: 0; right: 0")
       void $ widgetHold (pure ()) $ text <$> errors
@@ -222,33 +243,33 @@ validatedInputWithButton check placeholder buttonText = mdo
 
 -- | Page picker widget
 paginationWidget
-  :: ( TriggerEvent t m, DomBuilder t m, MonadIO (Performable m)
-     , PerformEvent t m, PostBuild t m , MonadHold t m, MonadFix m
-     )
+  :: MonadWidget t m
   => Dynamic t Int  -- ^ Current page
   -> Dynamic t Int  -- ^ Total number of pages
   -> m (Event t Int)
-paginationWidget currentPage totalPages = buttons (def & classes .~ "fluid") $ do
-  let canGoFirst = (> 1) <$> currentPage
-  first <- filteredButton canGoFirst $ icon "angle double left" def
-  prev <- filteredButton canGoFirst $ icon "angle left" def
-  void $ button (def & buttonConfig_disabled .~ Static True) $ do
-    display currentPage
-    text " of "
-    display totalPages
-  let canGoLast = (<) <$> currentPage <*> totalPages
-  nextL <- filteredButton canGoLast $ icon "angle right" def
-  lastL <- filteredButton canGoLast $ icon "angle double right" def
-  pure $ leftmost
-    [ attachWith (\x _ -> pred x) (current currentPage) prev
-    , 1 <$ first
-    , attachWith (\x _ -> succ x) (current currentPage) nextL
-    , tag (current totalPages) lastL
-    ]
-  where
-    filteredButton okay content = do
-      e <- flip button content $ def
-        & buttonConfig_icon .~ Static True
-        & buttonConfig_disabled .~ Dyn (not <$> okay)
-      pure $ gate (current okay) e
+paginationWidget currentPage totalPages = do
+    let canGoFirst = (> 1) <$> currentPage
+    first <- filteredButton canGoFirst $ uiIcon "fa-angle-double-left" def
+    prev <- filteredButton canGoFirst $ uiIcon "fa-angle-left" def
+    void $ button (def & buttonConfig_disabled .~ Static True) $ do
+      display currentPage
+      text " of "
+      display totalPages
+    let canGoLast = (<) <$> currentPage <*> totalPages
+    nextL <- filteredButton canGoLast $ uiIcon "fa-angle-right" def
+    lastL <- filteredButton canGoLast $ uiIcon "fa-angle-double-right" def
+    pure $ leftmost
+      [ attachWith (\x _ -> pred x) (current currentPage) prev
+      , 1 <$ first
+      , attachWith (\x _ -> succ x) (current currentPage) nextL
+      , tag (current totalPages) lastL
+      ]
 
+filteredButton
+  :: MonadWidget t m
+  => Dynamic t Bool
+  -> m (Event t a)
+  -> m (Event t a)
+filteredButton okay content = do
+  e <- content
+  pure $ gate (current okay) e
