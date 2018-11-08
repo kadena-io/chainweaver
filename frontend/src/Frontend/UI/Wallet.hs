@@ -118,37 +118,30 @@ uiKeyItems
   -> m cfg
 uiKeyItems aWallet = do
   let keyMap = aWallet ^. wallet_keys
-      signingKeys = aWallet ^. wallet_signingKeys
   events <- elAttr "table" ("style" =: "table-layout: fixed; width: 100%") $ do
     el "colgroup" $ do
       elAttr "col" ("style" =: "width: 20%") blank
-      elAttr "col" ("style" =: "width: 30%") blank
-      elAttr "col" ("style" =: "width: 30%") blank
-      elAttr "col" ("style" =: "width: 10%") blank
+      elAttr "col" ("style" =: "width: 35%") blank
+      elAttr "col" ("style" =: "width: 35%") blank
       elAttr "col" ("style" =: "width: 10%") blank
     el "thead" $ el "tr" $ do
       el "th" $ text "Key Name"
       el "th" $ text "Public Key"
       el "th" $ text "Private Key"
-      el "th" $ text "Signing"
       el "th" $ text "Delete"
-    el "tbody" $ listWithKey keyMap $ \name key -> uiKeyItem signingKeys (name, key)
+    el "tbody" $ listWithKey keyMap $ \name key -> uiKeyItem (name, key)
   dyn_ $ ffor keyMap $ \keys -> when (Map.null keys) $ text "No keys ..."
-  let setSigning = switchDyn $ leftmost . fmap fst . Map.elems <$> events
-      delKey = switchDyn $ leftmost . fmap snd . Map.elems <$> events
-  pure $ mempty
-    & walletCfg_setSigning .~ setSigning
-    & walletCfg_delKey .~ delKey
+  let delKey = switchDyn $ leftmost . Map.elems <$> events
+  pure $ mempty & walletCfg_delKey .~ delKey
 
 
 ------------------------------------------------------------------------------
 -- | Display a key as list item together with it's name.
 uiKeyItem
   :: MonadWidget t m
-  => Dynamic t (Set KeyName)
-  -> (Text, Dynamic t KeyPair)
-  -> m (Event t (KeyName, Bool), Event t KeyName)
-uiKeyItem signingKeys (n, k) = do
+  => (Text, Dynamic t KeyPair)
+  -> m (Event t KeyName)
+uiKeyItem (n, k) = do
     el "tr" $ do
       el "td" $ text n
       elClass "td" "public walletkey" $
@@ -156,45 +149,10 @@ uiKeyItem signingKeys (n, k) = do
       elClass "td" "private walletkey" $
         keyCopyWidget (maybe "No key" keyToText . _keyPair_privateKey <$> k)
 
-      isSigning <- tagOnPostBuild $ Set.member n <$> signingKeys
-      box <- elClass "td" "centercell" $ checkbox False $ def
-        & checkboxConfig_setValue .~ isSigning
       onDel <- elClass "td" "centercell" $ uiIcon "fa-trash" $ def
         & iconConfig_size .~ Just IconLG
 
-      pure ((fmap (n, ) . _checkbox_change $ box), fmap (const n) onDel)
-
-    --elClass "div" "key" $ do
-    --  (box, onDel) <- divClass "header" $ do
-
-    --    el "h4" $ do
-    --      text (" " <> n)
-    --      -- TODO Later
-    --      --elClass "span" "description" $ dynText $ keyDescription <$> k
-
-    --    isSigning <- tagOnPostBuild $ Set.member n <$> signingKeys
-
-    --    divClass "signing" $ do
-    --      box <- checkbox False $ def
-    --                & checkboxConfig_setValue .~ isSigning
-
-    --      text "Signing"
-    --      return box
-
-    --    onDelI <- divClass "delete" $ uiIcon "fa-trash" $ def
-    --      & iconConfig_size .~ Just IconLG
-    --    pure (boxI, onDelI)
-
-    --  dyn_ $ ffor viewKeys $ \case
-    --    False -> pure ()
-    --    True -> uiKeyDetails (keyToText . _keyPair_publicKey <$> k)
-    --                         (maybe "No key" keyToText . _keyPair_privateKey <$> k)
-    --  pure $ ((fmap (n, ) . _checkbox_change $ box), fmap (const n) onDel)
-  --where
-  --  keyDescription k1 =
-  --    case _keyPair_privateKey k1 of
-  --      Nothing -> "Public key only"
-  --      Just _  -> "Full key pair"
+      pure (const n <$> onDel)
 
 keyCopyWidget :: MonadWidget t m => Dynamic t Text -> m ()
 keyCopyWidget keyText = mdo
@@ -204,13 +162,3 @@ keyCopyWidget keyText = mdo
   (e,_) <- elAttr' "span" ("class" =: "key-content") $
     dynText (mkText <$> isShown <*> keyText)
   return ()
-
-uiKeyDetails :: MonadWidget t m => Dynamic t Text -> Dynamic t Text -> m ()
-uiKeyDetails public private = do
-    divClass "pair" $ do
-      keySection "Public" public
-      keySection "Private" private
-  where
-    keySection nm val = divClass "keyval" $ do
-      elClass "span" "label" $ text nm
-      elClass "span" "value" $ dynText val

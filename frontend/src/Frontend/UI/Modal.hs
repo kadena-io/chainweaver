@@ -86,24 +86,35 @@ showModal ideL = do
     specificModal = \case
       Modal_NoModal -> pure (mempty, never)
       Modal_DeployConfirmation -> do
-        (aCfg, (onCancel, onAccept), onClose) <- genericModalBody
+        ((transactionInfo, onCancel, onAccept), onClose) <- genericModal
           (text "Deployment Settings")
-          (uiDeployConfirmation ideL)
-          (genericModalFooter "Cancel" "Deploy")
-        let bCfg = mempty & ideCfg_deploy .~ onAccept
-        pure (aCfg <> bCfg, leftmost [onClose, onCancel, onAccept])
+          (confirmationModal ideL)
+        let cfg = mempty & ideCfg_deploy .~
+              fmapMaybe id (tagPromptlyDyn transactionInfo onAccept)
+        pure (cfg, leftmost [onClose, onCancel, onAccept])
 
-genericModalBody
+confirmationModal
+  :: MonadWidget t m
+  => Ide t
+  -> m (Dynamic t (Maybe TransactionInfo), Event t (), Event t ())
+confirmationModal ideL = do
+  res <- uiDeployConfirmation ideL
+  divClass "modal-footer" $ do
+    (a,_) <- el' "button" $ text "Cancel"
+    text " "
+    let mkAttrs = maybe ("disabled" =: "") (const mempty)
+    (b,_) <- elDynAttr' "button" (mkAttrs <$> res) $ text "Deploy"
+    return (res, domEvent Click a, domEvent Click b)
+
+genericModal
   :: forall t m a b. MonadWidget t m
   => m ()
   -- ^ The modal header
   -> m a
-  -- ^ The modal body
-  -> m b
-  -- ^ Tho modal footer
-  -> m (a,b,Event t ())
+  -- ^ The modal body (and footer)
+  -> m (a,Event t ())
   -- ^ Returns the body value, footer value, and a close event
-genericModalBody header body footer = do
+genericModal header body = do
     let elCfg =
           (def :: ElementConfig EventResult t (DomBuilderSpace m))
           & initialAttributes .~ Map.mapKeys (AttributeName Nothing)
@@ -117,8 +128,7 @@ genericModalBody header body footer = do
           (e,_) <- elAttr' "button" ("class" =: "modal-close") $ text "x"
           return $ domEvent Click e
       bres <- divClass "modal-body" body
-      fres <- divClass "modal-footer" footer
-      return (bres, fres, onClose)
+      return (bres, onClose)
 
 -- TODO Might need to generalize this to m () instead of Text later
 genericModalFooter
