@@ -52,6 +52,7 @@ import qualified Bound
 import           Control.Lens
 import           Data.Aeson               as Aeson (Object, Result (..), encode,
                                                     fromJSON)
+import qualified Data.Set as Set
 import           Data.Default
 import           Data.Map                 (Map)
 import qualified Data.Map                 as Map
@@ -218,7 +219,7 @@ makeIde userCfg = build $ \ ~(cfg, ideL) -> do
           b <- Map.lookup bName bs
           d <- ed ^? _Right
           pure $ BackendRequest c d b
-      addSigning f a = (,SignWithKeys (_transactionInfo_keys a)) <$> f (_transactionInfo_backend a)
+      addSigning f a = (\mkReq -> mkReq (_transactionInfo_keys a)) <$> f (_transactionInfo_backend a)
     onResp <- backendRequest (ideL ^. ide_wallet)
       (attachWithMaybe addSigning (current mkReq) (_ideCfg_deploy cfg))
 
@@ -274,7 +275,7 @@ makeIde userCfg = build $ \ ~(cfg, ideL) -> do
 
       -- Loading of deployed contracts
       deployedResult <- backendRequest (ideL ^. ide_wallet) $
-        ffor onDeployedContract $ \c -> (BackendRequest
+        ffor onDeployedContract $ \c -> BackendRequest
           { _backendRequest_code = mconcat
             [ "(describe-module '"
             , _deployedContract_name c
@@ -282,7 +283,8 @@ makeIde userCfg = build $ \ ~(cfg, ideL) -> do
             ]
           , _backendRequest_data = mempty
           , _backendRequest_backend = _deployedContract_backendUri c
-          }, SignWithAllKeys)
+          , _backendRequest_signing = Set.empty
+          }
       let (deployedResultError, deployedValue) = fanEither $ sequence <$> deployedResult
           (deployedDecodeError, deployedModule) = fanEither $ ffor deployedValue $ \(uri, v) -> case fromJSON v of
             Aeson.Error e   -> Left e
