@@ -50,7 +50,7 @@ import           Frontend.Foundation
 import           Frontend.UI.Button
 import           Frontend.UI.Icon
 import           Frontend.Wallet
-import           Frontend.Widgets
+import           Frontend.UI.Widgets
 ------------------------------------------------------------------------------
 
 
@@ -96,7 +96,7 @@ uiCreateKey w = validatedInputWithButton check "Enter key name" "Generate"
   where
     check k = do
       keys <- sample $ current $ _wallet_keys w
-      pure $ if Map.member k keys then Left "This key name is already in use." else Right k
+      pure $ if Map.member k keys then Just "This key name is already in use." else Nothing
 
 -- | Widget listing all available keys.
 uiAvailableKeys

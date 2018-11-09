@@ -6,12 +6,12 @@
 {-# LANGUAGE RecursiveDo           #-}
 
 -- | Widgets collection
--- Was based on semui, but now transitioning to custom widgets
+-- Based on semui, currently being deprecated in favour of Frontend.UI.Widgets
+-- which is building custom widgets.
 module Frontend.Widgets
   ( imgWithAlt
   , showLoading
   , paginationWidget
-  , validatedInputWithButton
   , tabPane
   , tabPane'
   , makeClickable
@@ -39,30 +39,6 @@ import           Frontend.Foundation
 import           Frontend.UI.Button
 import           Frontend.UI.Icon
 ------------------------------------------------------------------------------
-
-{- -- | Variant of  a semantic-reflex textInput that also works with pre-render. -}
-{- semTextInput -}
-{-   :: forall x t m -}
-{-   . (DomBuilder t m, Prerender x m, DomBuilder x m) -}
-{-   => TextInputConfig t -> m (TextInput t) -}
-{- semTextInput cfg = prerender serverW clientW -}
-{-   where -}
-{-     {- clientW :: forall js. (PrerenderClientConstraint js m, DomBuilderSpace m ~ GhcjsDomSpace)  => m (TextInput t) -} -}
-{-     clientW = textInput cfg -}
-
-{-     {- serverW :: m (TextInput t) -} -}
-{-     serverW = do -}
-{-       v <- inputElement  def -}
-{-       pure $ TextInput -}
-{-         { _textInput_value = pure "" -}
-{-         , _textInput_input = never -}
-{-         , _textInput_keypress = never -}
-{-         , _textInput_keydown = never -}
-{-         , _textInput_keyup = never -}
-{-         , _textInput_hasFocus = pure False -}
-{-         , _textInput_builderElement = v -}
-{-         } -}
-
 
 imgWithAlt :: MonadWidget t m => Text -> Text -> m a -> m a
 imgWithAlt loc alt child = elAttr "img" ("src" =: loc <> "alt" =: alt) child
@@ -123,39 +99,6 @@ enterEl name mAttrs child = do
 
 
 
--- | Combine a `TextInput` and a `Button`
---
---   to a single widget with the following properties:
---
---   - Enter press confirms just as button click
---   - TextInput will be cleared on button click or on Enter press.
---   - TextInput will get focus on button click.
---
---   The resulting Event contains the current content of the InputWidget at
---   Enter press or button click.
-confirmTextInput
-  :: (DomBuilder t m, MonadJSM (Performable m), PerformEvent t m)
-  => m (TextInput t)
-  -> m (Event t ())
-  -> m (TextInput t, Event t Text)
-confirmTextInput i b =
-  elClass "div" "ui fluid action input" $ mdo
-      ti <- i
-      clicked <- b
-
-      let
-        onEnter = keypress Enter ti
-        confirmed = leftmost [ onEnter, clicked ]
-        setFocus =
-          liftJSM $ pToJSVal (_textInput_element ti) ^. js0 ("focus" :: Text)
-      void $ performEvent (setFocus <$ confirmed)
-
-      let
-        onReq = tag (current $ _textInput_value ti) confirmed
-      pure (ti, onReq)
-
-
-
 -- Shamelessly stolen (and adjusted) from reflex-dom-contrib:
 
 tabPane'
@@ -181,55 +124,6 @@ tabPane
 tabPane staticAttrs currentTab t = fmap snd . tabPane' staticAttrs currentTab t
 
 ------------------------------------------------------------------------------
--- | Validated input with button
-validatedInputWithButton
-  :: MonadWidget t m
-  => (Text -> Performable m (Either Text Text))
-  -- ^ Validation function returning 'Left' an error message or 'Right' the value
-  -> Text -- ^ Placeholder
-  -> Text -- ^ Button text
-  -> m (Event t Text)
-validatedInputWithButton check placeholder buttonText = mdo
-    update <- elClass "div" "fieldset" $ mdo
-      name <- textInput $ def
-          & textInputConfig_value .~ SetValue "" (Just $ "" <$ values)
-          & textInputConfig_placeholder .~ pure placeholder
-      let
-        nameVal = T.strip <$> value name
-        onEnter = keypress Enter name
-        nameEmpty = (== "") <$> nameVal
-
-        btnCfg = def & uiButtonCfg_disabled .~ nameEmpty
-
-      (clicked, _) <- uiButton btnCfg $ text buttonText
-
-      let confirmed = leftmost [ onEnter, clicked ]
-      void $ performEvent (liftJSM (pToJSVal (_textInput_element name) ^. js0 ("focus" :: String)) <$ confirmed)
-      pure $ tag (current nameVal) confirmed
-
-    checked <- performEvent $ check <$> update
-    let (errors, values) = fanEither checked
-    hasError <- holdUniqDyn <=< holdDyn False $ leftmost
-      [ ffor checked $ \case
-          Left _ -> True
-          Right _ -> False
-      , False <$ close
-      ]
-
-    let trans dir = Transition Fade $ def
-          & transitionConfig_duration .~ 0.2
-          & transitionConfig_direction .~ Just dir
-        config = def
-          & messageConfig_type .~ Static (Just $ MessageType Negative)
-          & action ?~ (def
-            & action_event ?~ ffor (updated hasError) (\e -> trans $ if e then In else Out)
-            & action_initialDirection .~ Out)
-    -- TODO Change this message
-    close <- message config $ do
-      e <- domEvent Click <$> icon' "close" (def & style .~ "position: absolute; top: 0; right: 0")
-      void $ widgetHold (pure ()) $ text <$> errors
-      pure e
-    pure values
 
 paginationWidget
   :: MonadWidget t m

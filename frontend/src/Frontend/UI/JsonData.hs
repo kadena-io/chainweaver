@@ -55,7 +55,7 @@ import           Frontend.Ide
 import           Frontend.JsonData
 import           Frontend.UI.Icon
 import           Frontend.Wallet
-import           Frontend.Widgets
+import           Frontend.UI.Widgets
 ------------------------------------------------------------------------------
 
 
@@ -222,7 +222,7 @@ uiCreateKeyset jsonD = validatedInputWithButton check "Enter keyset name" "Creat
       let dupe = case json of
             Left _  -> Map.member ks keysets
             Right j -> H.member ks j
-      pure $ if dupe then Left "This keyset name is already in use." else Right ks
+      pure $ if dupe then Just "This keyset name is already in use." else Nothing
 
 -- | Widget showing all avaialble keys for selecting keys
 --

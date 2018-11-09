@@ -67,6 +67,7 @@ library
                  , Frontend.UI.ModuleExplorer
                  , Frontend.UI.Repl
                  , Frontend.UI.Wallet
+                 , Frontend.UI.Widgets
                  , Frontend.Wallet
                  , Frontend.Widgets
                  , Reflex.Class.Extended

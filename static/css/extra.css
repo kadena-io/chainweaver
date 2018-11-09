@@ -129,3 +129,7 @@ td.centercell {
 .left-col {
   text-align: left;
 }
+
+.error {
+  color: red;
+}
