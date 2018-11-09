@@ -78,10 +78,11 @@ moduleExplorer
   -> m (IdeCfg t)
 moduleExplorer ideL = do
     exampleClick <- accordionItem True mempty "Example Contracts" $ do
-      divClass "contracts" $ elClass "ol" "contracts-list" $
-        for demos $ \c -> el "li" $ do
-          text $ _exampleContract_name c
-          loadButton c
+      divClass "control-block-contents" $ divClass "contracts" $
+        elClass "ol" "contracts-list" $
+          for demos $ \c -> el "li" $ do
+            text $ _exampleContract_name c
+            loadButton c
     let exampleLoaded = fmap Left . leftmost $ Map.elems exampleClick
 
     let mkMap = Map.fromList . map (\k@(BackendName n, _) -> (Just k, n)) . Map.toList
@@ -90,9 +91,10 @@ moduleExplorer ideL = do
     let itemsPerPage = 10 :: Int
 
     searchLoaded <- accordionItem True mempty "Deployed Contracts" $ mdo
-      (filteredCs, updatePage) <- divClass "contracts-controls" $ do
-        ti <- textInput $ def & attributes .~ constDyn ("placeholder" =: "Search")
-        d <- dropdown Nothing opts def
+      (filteredCs, updatePage) <- divClass "filter-bar flexbox" $ do
+        ti <- divClass "search" $
+          textInput $ def & attributes .~ constDyn ("placeholder" =: "Search")
+        d <- divClass "backend-filter" $ dropdown Nothing opts def
         let
           search = value ti
           backend = value d
@@ -101,13 +103,17 @@ moduleExplorer ideL = do
               <*> (fromMaybe mempty <$> _backend_backends (_ide_backend ideL))
           filteredCsRaw = searchFn <$> search <*> backend <*> deployedContracts
         filteredCs <- holdUniqDyn filteredCsRaw
-        updatePage <- paginationWidget currentPage totalPages
+        updatePage <- divClass "pagination" $
+          paginationWidget currentPage totalPages
         return (filteredCs, updatePage)
 
       let paginated = paginate itemsPerPage <$> currentPage <*> filteredCs
 
+
       -- TODO Might need to change back to listWithKey
-      searchClick <- networkHold (return mempty) $ contractList (text . _deployedContract_name) <$> updated paginated
+      searchClick <- divClass "control-block-contents" $
+        networkHold (return mempty) $
+          contractList (text . _deployedContract_name) <$> updated paginated
 
       let numberOfItems = length <$> filteredCs
           calcTotal a = ceiling $ (fromIntegral a :: Double)  / fromIntegral itemsPerPage

@@ -137,6 +137,15 @@ button:active {
   text-align: right;
 }
 
+#control-ui {
+  position: fixed;
+  right: 0;
+  top: 75px;
+  bottom: 0;
+  left: 50%;
+  overflow-y: auto;
+}
+
 #control-ui button {
   border: 1px solid #d7d7d7;
   color: #757575;
@@ -175,11 +184,20 @@ button:active {
 
 #control-ui #control-nav.tabset {
   height: 100%;
+  position: relative;
 }
 
 #control-ui #control-nav.tabset > .tab-nav {
+  padding-top: 20px;
   border-bottom: 1px solid #d7d7d7;
   padding-bottom: 20px;
+  position: fixed;
+  left: 50%;
+  right: 0;
+  top: 75px;
+  padding-left: 20px;
+  background: #f1f1f1;
+  z-index: 9999;
 }
 
 #control-ui #control-nav.tabset > .tab-nav button {
@@ -200,7 +218,12 @@ button:active {
 
 #header {
   background: #2d2d2f;
-  padding: 20px 50px 16px;
+  padding: 20px 36px 20px 20px;
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 99998;
 }
 
 #header h1 {
@@ -217,7 +240,7 @@ button:active {
 #header-project-loader {
   text-align: right;
   float: right;
-  padding-right: 20px;
+  padding-right: 10px;
 }
 
 #header-project-loader select {
@@ -245,9 +268,17 @@ button:active {
   margin-right: 7px;
 }
 
+#header .left-nav {
+  min-width: 510px;
+}
+
 #main {
-  padding: 0 50px;
   flex: 1;
+  position: fixed;
+  top: 75px;
+  left: 0;
+  right: 0;
+  bottom: 0;
 }
 
 #main .flex {
@@ -257,6 +288,11 @@ button:active {
 #main #main-wysiwyg {
   border-right: 1px solid #e2e2e2;
   padding-right: 20px;
+  position: fixed;
+  left: 20px;
+  right: 50%;
+  top: 75px;
+  bottom: 0;
 }
 
 #main-wysiwyg .wysiwyg {
@@ -266,10 +302,12 @@ button:active {
 
 #main #control-ui {
   padding-left: 20px;
+  padding-top: 55px;
+  padding-right: 20px;
+  overflow-x: hidden;
 }
 
 #control-ui .contracts {
-  height: 125px;
   border-radius: 4px;
   border: 1px solid #d7d7d7;
 }
@@ -341,8 +379,7 @@ button:active {
   filter: invert(100%);
 }
 
-#control-ui .control-block h2 input[type='text'] {
-  float: right;
+#control-ui .control-block input[type='text'] {
   flex: 1;
   margin: 0;
   font-size: 15px;
@@ -355,6 +392,7 @@ button:active {
   background: #f1f1f1 url(/static/img/search.svg) no-repeat right 16.3px top 50%;
   background-size: 14.7px;
   color: #757575;
+  margin-right: 10px;
 }
 
 #control-ui .control-block h2 input[type='text']::placeholder {
@@ -364,24 +402,21 @@ button:active {
 #control-ui .control-block {
   padding: 20px 0 30px;
   border-bottom: 1px dashed #d7d7d7;
+  position: relative;
 }
 
 #control-ui .control-block:last-child {
   border-bottom: none;
 }
 
-#control-ui .control-block.repl-output.iframe {
-  overflow-y: auto;
-  padding: 0;
-  height: 100%;
-}
 
 #control-ui .control-block.repl-output {
   background: #f1f1f1;
 }
 
-.repl-input-controls > input {
+#main #control-ui .repl-input-controls > input {
   background: #f1f1f1;
+  border: 0;
 }
 
 #control-ui .control-block.repl-output code {
@@ -420,8 +455,54 @@ button:active {
 }
 
 #control-ui .control-block.collapsed .control-block-contents,
-#control-ui .control-block.collapsed h2 > input {
+#control-ui .control-block.collapsed h2 > input,
+#control-ui .control-block.collapsed .filter-bar {
   display: none;
+}
+
+#control-ui .control-block .filter-bar {
+  display: flex;
+  flex-wrap: wrap;
+  margin-top: -16px;
+}
+
+#control-ui .control-block .search input {
+  width: 100%;
+}
+
+#control-ui .control-block .backend-filter select {
+  width: 100%;
+}
+
+#control-ui .control-block .search {
+    flex: 1 1 0;
+    min-width: 150px;
+}
+
+#control-ui .control-block .backend-filter {
+    flex: 1 1 0;
+    min-width: 150px;
+}
+
+#control-ui .control-block .pagination {
+    flex: 0 0 230px;
+}
+
+#control-ui .control-block .pagination button {
+  padding: 0 10px;
+}
+#control-ui .control-block .pagination button:hover {
+  background: #dfdfdf;
+  border-color: #dfdfdf;
+}
+#control-ui .control-block .pagination button {
+  margin: 0;
+}
+#control-ui .control-block .pagination .page-count {
+  display: inline-block;
+  margin: 0 5px;
+  color: #757575;
+  font-size: 15px;
 }
 
 #control-ui .control-block .keys {
@@ -588,6 +669,7 @@ button:active {
 
 #modal-root {
   display: none;
+  z-index: 99999999;
 }
 
 #modal-root.open {
@@ -645,23 +727,13 @@ button:active {
 
 #modal-root .modal-footer button {
   color: #fff;
-  border-color: #2d2d2f;
-  background: #2d2d2f;
+  border-color: #555;
+  background: #555;
 }
 
 #modal-root .modal-footer button:hover {
-  border-color: #403f3f;
-  background: #403f3f;
-}
-
-#modal-root .modal-footer button[disabled] {
-  color: #7e7e7e;
-}
-
-#modal-root .modal-footer button[disabled]:hover {
-  border-color: #2d2d2f;
-  background: #2d2d2f;
-  cursor: auto;
+  border-color: #000;
+  background: #000;
 }
 
 #modal-root .modal-footer button:active {

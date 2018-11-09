@@ -116,12 +116,12 @@ rightTabBar ideL = do
     let tabs = [ EnvSelection_Env, EnvSelection_Repl, EnvSelection_Msgs, EnvSelection_ModuleExplorer ]
     curSelection <- tabBar EnvSelection_Env tabs (updated $ _ide_envSelection ideL)
 
-    envCfg <- tabPane mempty curSelection EnvSelection_Env $ envTab ideL
-    replCfg <- tabPane ("class" =: "control-block repl-output") curSelection EnvSelection_Repl $
+    envCfg <- tabPane ("class" =: "tab-content")  curSelection EnvSelection_Env $ envTab ideL
+    replCfg <- tabPane ("class" =: "tab-content") curSelection EnvSelection_Repl $
       replWidget ideL
-    errorsCfg <- tabPane ("class" =: "control-block repl-output") curSelection EnvSelection_Msgs $
+    errorsCfg <- tabPane ("class" =: "tab-content") curSelection EnvSelection_Msgs $
       msgsWidget ideL
-    explorerCfg <- tabPane mempty curSelection EnvSelection_ModuleExplorer $
+    explorerCfg <- tabPane ("class" =: "tab-content")  curSelection EnvSelection_ModuleExplorer $
       moduleExplorer ideL
     return $ mconcat
       [ envCfg
@@ -132,7 +132,7 @@ rightTabBar ideL = do
 
 envTab :: MonadWidget t m => Ide t -> m (IdeCfg t)
 envTab ideL = do
-  jsonCfg <- accordionItem True mempty "Data" $ do
+  jsonCfg <- accordionItem True mempty "Data" $ divClass "control-block-contents" $ do
     conf <- uiJsonData (ideL ^. ide_wallet) (ideL ^. ide_jsonData)
     pure $ mempty &  ideCfg_jsonData .~ conf
 
@@ -142,12 +142,15 @@ envTab ideL = do
         display (Map.size <$> _wallet_keys w)
         text " keys)"
   (_,keysCfg) <- accordionItem' True mempty walletHeader $ do
-    conf <- uiWallet w
-    pure $ mempty & ideCfg_wallet .~ conf
+    divClass "control-block-contents" $ do
+      conf <- uiWallet w
+      pure $ mempty & ideCfg_wallet .~ conf
 
   pure $ jsonCfg <> keysCfg
 
 msgsWidget :: MonadWidget t m => Ide t -> m (IdeCfg t)
 msgsWidget ideL = do
-  void . dyn $ traverse_ (snippetWidget . OutputSnippet) <$> _ide_msgs ideL
-  pure mempty
+  divClass "control-block repl-output iframe" $ do
+    divClass "control-block repl-output" $ do
+      void . dyn $ traverse_ (snippetWidget . OutputSnippet) <$> _ide_msgs ideL
+      pure mempty

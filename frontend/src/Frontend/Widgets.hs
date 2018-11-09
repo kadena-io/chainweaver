@@ -93,7 +93,7 @@ accordionItem' initActive contentClass title inner = mdo
       (e1,a1) <- el' "h2" $ do
         el "button" $ imgWithAlt (static @"img/arrow-down.svg") "Expand" blank
         title
-      b1 <- divClass "control-block-contents" inner
+      b1 <- inner
       return (e1,(a1,b1))
     return pair
   where
@@ -166,8 +166,10 @@ tabPane'
     -> m a
     -> m (Element EventResult (DomBuilderSpace m) t, a)
 tabPane' staticAttrs currentTab t child = do
-    let mAttrs = addDisplayNone (constDyn staticAttrs) ((==t) <$> currentTab)
-    elDynAttr' "div" mAttrs child
+    let mkAttrs ct = if ct == t
+                       then addToClassAttr "active" staticAttrs
+                       else staticAttrs
+    elDynAttr' "div" (mkAttrs <$> currentTab) child
 
 tabPane
     :: (Eq tab, DomBuilder t m, PostBuild t m)
@@ -177,18 +179,6 @@ tabPane
     -> m a
     -> m a
 tabPane staticAttrs currentTab t = fmap snd . tabPane' staticAttrs currentTab t
-
-------------------------------------------------------------------------------
--- | Helper function for hiding your tabs with display none.
-addDisplayNone
-    :: Reflex t
-    => Dynamic t (Map Text Text)
-    -> Dynamic t Bool
-    -> Dynamic t (Map Text Text)
-addDisplayNone mAttrs isActive = zipDynWith f isActive mAttrs
-  where
-    f True as  = as
-    f False as = Map.insert "style" "display: none" as
 
 ------------------------------------------------------------------------------
 -- | Validated input with button
@@ -241,28 +231,30 @@ validatedInputWithButton check placeholder buttonText = mdo
       pure e
     pure values
 
--- | Page picker widget
 paginationWidget
   :: MonadWidget t m
   => Dynamic t Int  -- ^ Current page
   -> Dynamic t Int  -- ^ Total number of pages
   -> m (Event t Int)
 paginationWidget currentPage totalPages = do
+    let pageButton i = do
+          (e,_) <- el' "button" $ uiIcon i def
+          return $ domEvent Click e
     let canGoFirst = (> 1) <$> currentPage
-    first <- filteredButton canGoFirst $ uiIcon "fa-angle-double-left" def
-    prev <- filteredButton canGoFirst $ uiIcon "fa-angle-left" def
-    void $ button (def & buttonConfig_disabled .~ Static True) $ do
+    first <- filteredButton canGoFirst $ pageButton "fa-angle-double-left"
+    prev <- filteredButton canGoFirst $ pageButton "fa-angle-left"
+    void $ elClass "span" "page-count" $ do
       display currentPage
       text " of "
       display totalPages
     let canGoLast = (<) <$> currentPage <*> totalPages
-    nextL <- filteredButton canGoLast $ uiIcon "fa-angle-right" def
-    lastL <- filteredButton canGoLast $ uiIcon "fa-angle-double-right" def
+    nextL <- filteredButton canGoLast $ pageButton "fa-angle-right"
+    lastL <- filteredButton canGoLast $ pageButton "fa-angle-double-right"
     pure $ leftmost
       [ attachWith (\x _ -> pred x) (current currentPage) prev
-      , 1 <$ first
+      --, 1 <$ first
       , attachWith (\x _ -> succ x) (current currentPage) nextL
-      , tag (current totalPages) lastL
+      --, tag (current totalPages) lastL
       ]
 
 filteredButton

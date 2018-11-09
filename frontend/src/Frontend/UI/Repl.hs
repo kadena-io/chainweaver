@@ -97,7 +97,7 @@ replWidget
     :: MonadWidget t m
     => Ide t
     -> m (IdeCfg t)
-replWidget ideL = mdo
+replWidget ideL = divClass "control-block repl-output" $ mdo
   (e, r) <- elClass' "div" "repl-pane code-font" $ mdo
     mapM_ snippetWidget staticReplHeader
     clickType <- foldDyn ($) Nothing $ leftmost
