@@ -67,7 +67,7 @@ import           Obelisk.Generated.Static
 import           Frontend.Backend
 import           Frontend.Ide
 import           Frontend.UI.Button
-import           Frontend.Widgets
+import           Frontend.UI.Widgets
 ------------------------------------------------------------------------------
 
 ------------------------------------------------------------------------------

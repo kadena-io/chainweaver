@@ -68,7 +68,7 @@ import           Frontend.UI.ModuleExplorer
 import           Frontend.UI.Repl
 import           Frontend.UI.Wallet
 import           Frontend.Wallet
-import           Frontend.Widgets
+import           Frontend.UI.Widgets
 ------------------------------------------------------------------------------
 
 

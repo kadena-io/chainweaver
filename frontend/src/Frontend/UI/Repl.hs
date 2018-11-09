@@ -71,7 +71,7 @@ import           Frontend.UI.Dialogs.DeployConfirmation
 import           Frontend.UI.JsonData
 import           Frontend.UI.Wallet
 import           Frontend.Wallet
-import           Frontend.Widgets
+import           Frontend.UI.Widgets
 ------------------------------------------------------------------------------
 
 data ClickState = DownAt (Int, Int) | Clicked | Selected

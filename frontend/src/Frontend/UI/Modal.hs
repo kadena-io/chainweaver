@@ -48,7 +48,7 @@ import           Frontend.UI.JsonData
 import           Frontend.UI.Repl
 import           Frontend.UI.Wallet
 import           Frontend.Wallet
-import           Frontend.Widgets
+import           Frontend.UI.Widgets
 ------------------------------------------------------------------------------
 
 showModal :: forall t m. MonadWidget t m => Ide t -> m (IdeCfg t)

@@ -48,7 +48,7 @@ import           Frontend.UI.JsonData    (uiJsonData)
 import           Frontend.UI.Wallet
 import           Frontend.Wallet
 import           Frontend.Wallet         (HasWallet (..))
-import           Frontend.Widgets
+import           Frontend.UI.Widgets
 ------------------------------------------------------------------------------
 
 -- | Are we deploying a contract or calling a function?
