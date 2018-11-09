@@ -678,7 +678,7 @@ button:active {
 
 #modal-root .modal .modal-main {
   height: calc(100% - 77px);
-  overflow-y: scroll;
+  overflow-y: auto;
 }
 
 #modal-root.open {
