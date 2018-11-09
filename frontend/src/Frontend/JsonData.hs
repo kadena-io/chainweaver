@@ -35,6 +35,8 @@ module Frontend.JsonData
   , IsJsonDataCfg
   , JsonData (..)
   , HasJsonData (..)
+  -- * Constants
+  , predefinedPreds
   -- * Creation
   , makeJsonData
   -- * Utility function
@@ -163,6 +165,12 @@ data JsonData t = JsonData
   deriving Generic
 
 makePactLenses ''JsonData
+
+-- | Predefined predicates in Pact.
+--
+--   Userdefined ones are possible too, although the UI currently does not support them.
+predefinedPreds :: [ Text ]
+predefinedPreds = ["keys-all", "keys-2", "keys-any"]
 
 -- | Build `JsonData` by means of the given `Wallet` and `JsonDataCfg`.
 makeJsonData

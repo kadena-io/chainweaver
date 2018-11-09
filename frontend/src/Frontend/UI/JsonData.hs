@@ -202,13 +202,11 @@ notEmpty s = if T.null s then Nothing else Just s
 predDropdown :: MonadWidget t m => Event t KeysetPredicate -> m (Event t KeysetPredicate)
 predDropdown sv = do
     let
-      preds = ["keys-all", "keys-2", "keys-any"]
-      m = Map.fromList $ map (\x -> (x,x)) preds
       itemDom v = elAttr "option" ("value" =: v) $ text v
+      cfg = SelectElementConfig "" (Just sv) def
 
-      cfg = SelectElementConfig (head preds) (Just sv) def
     (s,_) <- selectElement cfg $ do
-      forM_ preds itemDom
+      forM_ predefinedPreds itemDom
     return $ _selectElement_change s
 
 -- | Input widget with confirm button for creating a new keyset.
