@@ -672,6 +672,15 @@ button:active {
   z-index: 99999999;
 }
 
+#modal-root .modal .modal-body{
+  height: calc(100% - 68px);
+}
+
+#modal-root .modal .modal-main {
+  height: calc(100% - 77px);
+  overflow-y: scroll;
+}
+
 #modal-root.open {
   display: block;
 }
@@ -685,6 +694,7 @@ button:active {
   left: 25%;
   right: 25%;
   top: 15%;
+  bottom: 10%;
   background: #f1f1f1;
   border-radius: 4px;
   box-shadow: 0px 8px 24px rgba(0, 0, 0, 0.3);
