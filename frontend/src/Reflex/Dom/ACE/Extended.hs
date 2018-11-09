@@ -64,7 +64,7 @@ resizableAceWidget
     -> Event t Text
     -> m (ExtendedACE t)
 resizableAceWidget attrs ac adc onAnnotations initContents onNewContent = do
-  let fullAttrs = attrs <> "style" =: "top:0px;bottom:0px;left:0px;right:0px;"
+  let fullAttrs = attrs <> "class" =: "ace_container"
   (onResize, editor) <- resizeDetectorWithAttrsAbsolute fullAttrs $ extendedAceWidget ac adc onAnnotations initContents onNewContent
   resizeEditor onResize (_extendedACE_baseACE editor)
   pure editor

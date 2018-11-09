@@ -119,7 +119,3 @@
 .ace_indent-guide {
   background: url("data:image/png!important;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAACCAYAAACZgbYnAAAAE0lEQVQImWP4////f4bLly//BwAmVgd1/w11/gAAAABJRU5ErkJggg==") right repeat-y!important;
 }
-
-.ace_scroller {
-  margin-left: 8px;
-}
