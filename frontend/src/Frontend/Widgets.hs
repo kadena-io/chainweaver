@@ -252,9 +252,9 @@ paginationWidget currentPage totalPages = do
     lastL <- filteredButton canGoLast $ pageButton "fa-angle-double-right"
     pure $ leftmost
       [ attachWith (\x _ -> pred x) (current currentPage) prev
-      --, 1 <$ first
+      , 1 <$ first
       , attachWith (\x _ -> succ x) (current currentPage) nextL
-      --, tag (current totalPages) lastL
+      , tag (current totalPages) lastL
       ]
 
 filteredButton
