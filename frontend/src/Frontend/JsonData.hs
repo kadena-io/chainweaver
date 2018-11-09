@@ -284,7 +284,8 @@ makeKeysets walletL cfg =
           )
           (updated $ walletL ^. wallet_keys)
 
-      pPred <- holdUniqDyn =<< holdDyn Nothing onSetPred
+      -- | Nothing would pick the default which is keys-all, but let's be explicit:
+      pPred <- holdUniqDyn =<< holdDyn (Just "keys-all") onSetPred
 
       keynames <- foldDyn id Set.empty
         $ leftmost [ Set.insert <$> onNewKey
