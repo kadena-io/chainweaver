@@ -10,7 +10,7 @@ let
   pactServerModule = import ./service.nix;
   nixos = import (pkgs.path + /nixos);
   args = { inherit hostName adminEmail; routeHost = hostName; enableHttps = true;};
-in 
+in
   nixos {
     system = "x86_64-linux";
     configuration = {
@@ -24,28 +24,7 @@ in
           inherit hostName obApp pkgs;
         })
       ];
-
-      security.acme.certs.${hostName} = {
-        webroot = "/var/www/challenges";
-        postRun = "systemctl reload nginx.service";
-      };
-
       services.nginx.enable = true;
-      services.nginx.appendHttpConfig = ''
-          server {
-            server_name http://${hostName};
-            listen 80;
-            listen [::]:80;
-
-            location /.well-known/acme-challenge {
-              root /var/www/challenges;
-            }
-
-            location / {
-              return 301 https://$host$request_uri;
-            }
-          }
-      '';
     };
   }
 
