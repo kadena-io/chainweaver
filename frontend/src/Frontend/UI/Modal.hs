@@ -98,7 +98,7 @@ confirmationModal
   => Ide t
   -> m (Dynamic t (Maybe TransactionInfo), Event t (), Event t ())
 confirmationModal ideL = do
-  res <- uiDeployConfirmation ideL
+  res <- divClass "modal-main" $ uiDeployConfirmation ideL
   divClass "modal-footer" $ do
     (a,_) <- el' "button" $ text "Cancel"
     text " "
