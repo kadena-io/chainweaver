@@ -30,15 +30,15 @@ in obApp // {
         imports = [
           (obelisk.serverModules.mkBaseEc2 args)
           (obelisk.serverModules.mkObeliskApp (args // { exe = obApp.linuxExeConfigurable (pkgs.copyPathToStore config) version; }))
-          # (pactServerModule {
-          #   hostName = routeHost;
-          #   inherit obApp pkgs;
-            # The exposed port of the pact backend (proxied by nginx).
-          #   nginxPort = 7011;
-          #   pactPort = 7010;
-          #   pactDataDir = "/var/lib/pact-web";
-          #   pactUser = "pact";
-          # })
+          (pactServerModule {
+            hostName = routeHost;
+            inherit obApp pkgs;
+            The exposed port of the pact backend (proxied by nginx).
+            nginxPort = 7011;
+            pactPort = 7010;
+            pactDataDir = "/var/lib/pact-web";
+            pactUser = "pact";
+          })
         ];
         system.activationScripts = {
           setupBackendRuntime = {
