@@ -163,19 +163,17 @@ paginationWidget
   -> Dynamic t Int  -- ^ Total number of pages
   -> m (Event t Int)
 paginationWidget currentPage totalPages = do
-    let pageButton i = do
-          (e,_) <- el' "button" $ uiIcon i def
-          return $ domEvent Click e
+    let pageButton okay i = filteredButton okay $ elClass "i" ("fa " <> i) blank
     let canGoFirst = (> 1) <$> currentPage
-    first <- filteredButton canGoFirst $ pageButton "fa-angle-double-left"
-    prev <- filteredButton canGoFirst $ pageButton "fa-angle-left"
+    first <- pageButton canGoFirst "fa-angle-double-left"
+    prev <-  pageButton canGoFirst "fa-angle-left"
     void $ elClass "div" "page-count" $ elClass "span" "page-count-text" $ do
       display currentPage
       text " of "
       display totalPages
     let canGoLast = (<) <$> currentPage <*> totalPages
-    nextL <- filteredButton canGoLast $ pageButton "fa-angle-right"
-    lastL <- filteredButton canGoLast $ pageButton "fa-angle-double-right"
+    nextL <- pageButton canGoLast "fa-angle-right"
+    lastL <- pageButton canGoLast "fa-angle-double-right"
     pure $ leftmost
       [ attachWith (\x _ -> pred x) (current currentPage) prev
       , 1 <$ first
@@ -186,8 +184,6 @@ paginationWidget currentPage totalPages = do
 filteredButton
   :: MonadWidget t m
   => Dynamic t Bool
-  -> m (Event t a)
-  -> m (Event t a)
-filteredButton okay content = do
-  e <- content
-  pure $ gate (current okay) e
+  -> m ()
+  -> m (Event t ())
+filteredButton okay = fmap fst . uiButton (def & uiButtonCfg_disabled .~ fmap not okay)
