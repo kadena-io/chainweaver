@@ -169,7 +169,7 @@ paginationWidget currentPage totalPages = do
     let canGoFirst = (> 1) <$> currentPage
     first <- filteredButton canGoFirst $ pageButton "fa-angle-double-left"
     prev <- filteredButton canGoFirst $ pageButton "fa-angle-left"
-    void $ elClass "span" "page-count" $ do
+    void $ elClass "div" "page-count" $ elClass "span" "page-count-text" $ do
       display currentPage
       text " of "
       display totalPages

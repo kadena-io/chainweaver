@@ -463,8 +463,9 @@ button:active {
 #control-ui .control-block .filter-bar {
   display: flex;
   flex-wrap: wrap;
-  margin-top: -16px;
+  margin-bottom: 10px;
 }
+
 
 #control-ui .control-block .search input {
   width: 100%;
@@ -479,13 +480,20 @@ button:active {
     min-width: 150px;
 }
 
+
+#control-ui .control-block .search-filter {
+  display: flex;
+  flex-grow: 1;
+}
+
 #control-ui .control-block .backend-filter {
     flex: 1 1 0;
     min-width: 150px;
 }
 
 #control-ui .control-block .pagination {
-    flex: 0 0 230px;
+    display: flex;
+    flex-grow: 1;
 }
 
 #control-ui .control-block .pagination button {
@@ -499,10 +507,18 @@ button:active {
   margin: 0;
 }
 #control-ui .control-block .pagination .page-count {
-  display: inline-block;
-  margin: 0 5px;
+  display: flex;
   color: #757575;
   font-size: 15px;
+  flex-grow: 1;
+  justify-content: center;
+  align-items: center;
+}
+
+#control-ui .control-block .pagination .page-count .page-count-text {
+  display: block;
+  padding-left: 5px;
+  padding-right: 5px;
 }
 
 #control-ui .control-block .keys {
