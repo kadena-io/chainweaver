@@ -491,6 +491,13 @@ button:active {
     min-width: 150px;
 }
 
+@media (min-width: 1100px) {
+  #control-ui .control-block .pagination {
+    max-width: 200px;
+    margin-left: 10px;
+  }
+}
+
 #control-ui .control-block .pagination {
     display: flex;
     flex-grow: 1;
