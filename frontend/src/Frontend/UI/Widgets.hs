@@ -64,7 +64,9 @@ validatedInputWithButton check placeholder buttonText = do
 
       (clicked, _) <- uiButton btnCfg $ text buttonText
 
-      let confirmed = leftmost [ onEnter, clicked ]
+      let 
+        filterValid = fmap (const ()) . ffilter not . tag (current checkFailed)
+        confirmed = filterValid $ leftmost [ onEnter, clicked ]
       void $ performEvent (liftJSM (pToJSVal (_inputElement_raw name) ^.  js0 ("focus" :: String)) <$ confirmed)
       pure $ (tag (current nameVal) confirmed, checkedL)
 
