@@ -243,10 +243,6 @@ button:active {
   padding-right: 10px;
 }
 
-#header-project-loader select {
-  min-width: 240px;
-}
-
 #header-project-loader button {
   padding: 0 26px;
   margin-left: 10px;
