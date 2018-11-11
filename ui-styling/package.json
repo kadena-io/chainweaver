@@ -1,0 +1,24 @@
+{
+  "name": "pact-web-ui",
+  "version": "1.0.0",
+  "description": "Pact Web UI Assets",
+  "main": "index.js",
+  "scripts": {
+    "start": "http-server",
+    "prettier": "prettier --write \"./**/*\""
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/kadena-io/pact-web.git"
+  },
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/kadena-io/pact-web/issues"
+  },
+  "homepage": "https://github.com/kadena-io/pact-web#readme",
+  "dependencies": {
+    "http-server": "^0.11.1",
+    "prettier": "^1.14.3"
+  }
+}

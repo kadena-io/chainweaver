@@ -11,3 +11,4 @@ pact-log
 /deploy*
 /.ghc*
 /*/dist
+ui-styling/node_modules
