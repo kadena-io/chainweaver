@@ -210,7 +210,7 @@ controlBar ideL = do
 
 controlBarLeft :: MonadWidget t m => Ide t -> m (IdeCfg t)
 controlBarLeft ideL = do
-    divClass "flex" $ do
+    divClass "flex left-nav" $ do
       el "h1" $ do
         imgWithAlt (static @"img/pact-logo.svg") "PACT" blank
         ver <- getPactVersion
