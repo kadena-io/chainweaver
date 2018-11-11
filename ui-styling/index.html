@@ -162,48 +162,46 @@
                     <button>Generate</button>
                   </div>
                   <div class="keys-list">
-                    <div class="key">
-                      <div class="header">
-                        <h4>Key A</h4>
-                        <div class="signing">
-                          <input type="checkbox" name="signing" value="abc001"> Signing
-                        </div>
-                        <div class="delete">
-                            <button><i class="fa fa-lg fa-trash"></i></button>
-                        </div>
-                      </div>
-                      <div class="pair">
-                        <div class="keyval">
-                          <span class="label">Public</span>
-                          <span class="value">b352440d3347f1fb43208f427e23676151b7d4a094a8ed523594e9df2bda1713</span>
-                        </div>
-                        <div class="keyval">
-                          <span class="label">Private</span>
-                          <span class="value">97f49a80326fe6cb2faeef622b9b294c2f29e7c34c55ba9ed163e759fbad784c406142d71b66daec78ac06b97583393747e24a1e8c36a20a21bb4e52fd12a143</span>
-                        </div>
-                      </div>
-                    </div>
-                    <div class="key">
-                      <div class="header">
-                        <h4>Key B</h4>
-                        <div class="signing">
-                          <input type="checkbox" name="signing" value="abc001"> Signing
-                        </div>
-                        <div class="delete">
-                            <button><i class="fa fa-lg fa-trash"></i></button>
-                        </div>
-                      </div>
-                      <div class="pair">
-                        <div class="keyval">
-                          <span class="label">Public</span>
-                          <span class="value">b352440d3347f1fb43208f427e23676151b7d4a094a8ed523594e9df2bda1713</span>
-                        </div>
-                        <div class="keyval">
-                          <span class="label">Private</span>
-                          <span class="value">97f49a80326fe6cb2faeef622b9b294c2f29e7c34c55ba9ed163e759fbad784c406142d71b66daec78ac06b97583393747e24a1e8c36a20a21bb4e52fd12a143</span>
-                        </div>
-                      </div>
-                    </div>
+                    <table style="table-layout: fixed; width: 100%">
+                      <colgroup>
+                        <col style="width: 20%">
+                        <col style="width: 35%">
+                        <col style="width: 35%">
+                        <col style="width: 10%">
+                      </colgroup>
+                      <thead>
+                        <tr>
+                            <th>Key Name</th>
+                            <th>Public Key</th>
+                            <th>Private Key</th>
+                            <th>Delete</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        <tr>
+                          <td>admin</td>
+                          <td class="public walletkey">
+                              16ad9137f86605e095651642c69643e160434f31e1b12ca49861a0e146e51715</td>
+                          <td class="private walletkey hidden">
+                              <span class="key-content">****************************</span>
+                          </td>
+                          <td class="centercell">
+                              <i class="fa fa-lg fa-trash" type="button"></i>
+                          </td>
+                        </tr>
+                        <tr>
+                          <td>doug</td>
+                          <td class="public walletkey">
+                              3388f94173951400321fe7958e23ed1038b55d8e5a035cdb459b717ddb47a496</td>
+                          <td class="private walletkey hidden">
+                              <span class="key-content">****************************</span>
+                          </td>
+                          <td class="centercell">
+                              <i class="fa fa-lg fa-trash" type="button"></i>
+                          </td>
+                        </tr>
+                      </tbody>
+                    </table>
                   </div>
                 </div>
               </div>

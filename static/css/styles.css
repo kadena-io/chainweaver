@@ -576,6 +576,23 @@ button:active {
 #control-ui .control-block .keys .keyset-list {
 }
 
+.walletkey {
+    overflow-x: hidden;
+    text-overflow: ellipsis;
+}
+
+.walletkey.hidden {
+    text-overflow: clip;
+}
+
+td.centercell {
+    text-align: center;
+}
+
+.keys-list {
+    margin-top: 20px;
+}
+
 #control-ui .control-block .keys .keyset-list .keyset,
 #control-ui .control-block .keys .keys-list .key {
   margin-top: 20px;
