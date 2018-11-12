@@ -4,7 +4,6 @@ module Common.Api where
 
 import Data.Text (Text)
 import qualified Data.Text as T
-import Data.Semigroup ((<>))
 import Obelisk.ExecutableConfig (get)
 
 

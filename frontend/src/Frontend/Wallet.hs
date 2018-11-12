@@ -33,8 +33,6 @@ import           Control.Monad.Fix
 import           Data.Aeson
 import           Data.Map                    (Map)
 import qualified Data.Map                    as Map
-import           Data.Set                    (Set)
-import qualified Data.Set                    as Set
 import           Data.Text                   (Text)
 import qualified Data.Text                   as T
 import           Generics.Deriving.Monoid    (mappenddefault, memptydefault)

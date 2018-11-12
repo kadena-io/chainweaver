@@ -33,7 +33,6 @@ module Frontend.UI.JsonData
 import           Control.Lens                       hiding ((.=))
 import           Control.Monad
 import           Data.Aeson.Encode.Pretty           (encodePretty)
-import           Data.Bool
 import qualified Data.ByteString.Lazy               as BSL
 import qualified Data.HashMap.Strict                as H
 import           Data.Map                           (Map)
@@ -47,11 +46,9 @@ import           Reflex.Class.Extended
 import           Reflex.Dom
 import           Reflex.Dom.ACE.Extended
 import           Reflex.Dom.Contrib.CssClass
-import           Reflex.Dom.Contrib.Vanishing
 import qualified Reflex.Dom.Contrib.Widgets.DynTabs as Tabs
 ------------------------------------------------------------------------------
 import           Frontend.Foundation
-import           Frontend.Ide
 import           Frontend.JsonData
 import           Frontend.UI.Icon
 import           Frontend.Wallet
@@ -169,11 +166,10 @@ uiKeyset
   -> m (JsonDataCfg t)
 uiKeyset w (n, ks) = do
     aCfg <- divClass "header" $ mdo
-      elAttr' "h4" ("class" =: "keyset-chooser-toggle") $ text (" " <> n)
+      elAttr "h4" ("class" =: "keyset-chooser-toggle") $ text (" " <> n)
 
       onSetPred <- divClass "pred" $ do
         el "label" $ text "Pred:"
-        uniqPred <- holdUniqDyn $ ks ^. keyset_pred
         onNewPred <- tagOnPostBuild . fmap (fromMaybe "") $ ks ^. keyset_pred
         predDropdown onNewPred
 
@@ -267,9 +263,3 @@ dataEditor anno iv sv = do
     ace <- resizableAceWidget
       mempty ac (AceDynConfig Nothing) anno iv sv
     return $ _extendedACE_onUserChange ace
-
-viewToText :: JsonDataView -> Text
-viewToText = \case
-  JsonDataView_Keysets -> "Keysets"
-  JsonDataView_Raw -> "JSON"
-  JsonDataView_Result -> "Combined Result"

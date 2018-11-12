@@ -19,12 +19,9 @@ development.
 module Frontend.UI.Button where
 
 ------------------------------------------------------------------------------
-import           Control.Lens
 import           Data.Default
-import           Data.Map                    (Map)
 import           Data.Text                   (Text)
 import           Reflex.Dom.Core
-import           Reflex.Dom.Contrib.CssClass
 import           Data.Default (def)
 ------------------------------------------------------------------------------
 import Frontend.Foundation (makePactLenses)

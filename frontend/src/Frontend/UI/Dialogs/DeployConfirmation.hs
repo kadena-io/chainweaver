@@ -26,13 +26,11 @@ module Frontend.UI.Dialogs.DeployConfirmation
   ) where
 
 ------------------------------------------------------------------------------
-import           Control.Arrow           ((&&&))
 import           Control.Lens
 import           Control.Monad
 import           Data.Bifunctor
 import           Data.Map                (Map)
 import qualified Data.Map                as Map
-import           Data.Maybe
 import           Data.Set                (Set)
 import qualified Data.Set                as Set
 import           Data.Text               (Text)
@@ -40,15 +38,9 @@ import           Reflex
 import           Reflex.Dom
 ------------------------------------------------------------------------------
 import           Frontend.Backend
-import           Frontend.Crypto.Ed25519 (keyToText)
-import           Frontend.Foundation
 import           Frontend.Ide
-import           Frontend.JsonData       (HasJsonData (..))
-import           Frontend.UI.JsonData    (uiJsonData)
-import           Frontend.UI.Wallet
 import           Frontend.Wallet
 import           Frontend.Wallet         (HasWallet (..))
-import           Frontend.UI.Widgets
 ------------------------------------------------------------------------------
 
 -- | Are we deploying a contract or calling a function?
@@ -71,7 +63,6 @@ uiDeployConfirmation ideL = do
         fmap (\(k, _) -> (k, unBackendName k)) . maybe [] Map.toList
       mkOptions bs = Map.fromList $ (Nothing, "Deployment Target") : map (first Just) bs
   d <- dropdown Nothing (mkOptions <$> backends) def
-  pure $ value d
 
   signingKeys <- elClass "div" "key-chooser" $ do
     el "h3" $ text "Choose keys to sign with"
@@ -105,7 +96,7 @@ signingItem
   :: MonadWidget t m
   => (Text, Dynamic t KeyPair)
   -> m (Dynamic t Bool)
-signingItem (n, k) = do
+signingItem (n, _) = do
     el "tr" $ do
       el "td" $ text n
       box <- elClass "td" "centercell" $ checkbox False $ def

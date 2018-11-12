@@ -16,7 +16,6 @@ import           Control.Lens
 import           Control.Monad
 import           Data.Foldable
 import           Data.Map                          (Map)
-import           Data.Monoid
 import           Data.Text                         (Text)
 import           Language.Javascript.JSaddle       (MonadJSM, js0, js1, liftJSM, ToJSVal(..), obj, (<#))
 import           Reflex
@@ -130,7 +129,7 @@ extendedAceWidget ac adc onAnnotations initContents onNewContent = do
 
 -- | Call resize() on the editor when the given event occurs.
 resizeEditor
-  :: (Reflex t, PerformEvent t m, MonadJSM (Performable m))
+  :: (PerformEvent t m, MonadJSM (Performable m))
   => Event t () -> ACE t
   -> m ()
 resizeEditor onResize ace =

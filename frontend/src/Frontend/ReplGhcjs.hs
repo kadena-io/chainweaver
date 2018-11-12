@@ -27,39 +27,16 @@ module Frontend.ReplGhcjs where
 ------------------------------------------------------------------------------
 import           Control.Lens
 import           Control.Monad.State.Strict
-import           Data.Aeson                  as Aeson (Object, encode, fromJSON, Result(..))
-import qualified Data.ByteString.Lazy        as BSL
 import           Data.Foldable
-import qualified Data.HashMap.Strict         as H
-import qualified Data.List                   as L
-import qualified Data.List.Zipper            as Z
-import           Data.Map                    (Map)
 import qualified Data.Map                    as Map
-import           Data.Maybe
-import           Data.Semigroup
-import           Data.Sequence               (Seq)
-import qualified Data.Sequence               as S
-import           Data.Set                    (Set)
 import qualified Data.Set                    as Set
 import           Data.Text                   (Text)
 import qualified Data.Text                   as T
-import qualified Data.Text.Encoding          as T
 import           Data.Traversable            (for)
-import           Generics.Deriving.Monoid    (mappenddefault, memptydefault)
-import           GHC.Generics                (Generic)
-import           Language.Javascript.JSaddle hiding (Object)
 import           Reflex
 import           Reflex.Dom.ACE.Extended
-import qualified Reflex.Dom.Contrib.Widgets.DynTabs as Tabs
-import           Reflex.Dom.Core             (keypress)
-import qualified Reflex.Dom.Core             as Core
 import           Reflex.Dom.SemanticUI       hiding (mainWidget)
-import qualified GHCJS.DOM as DOM
-import qualified GHCJS.DOM.EventM as EventM
-import qualified GHCJS.DOM.GlobalEventHandlers as Events
 ------------------------------------------------------------------------------
-import qualified Pact.Compile                as Pact
-import qualified Pact.Parse                  as Pact
 import           Pact.Repl
 import           Pact.Repl.Types
 import           Pact.Types.Lang
@@ -69,14 +46,9 @@ import           Frontend.Backend
 import           Frontend.Foundation
 import           Frontend.Ide
 import           Frontend.JsonData
-import           Frontend.RightPanel
+import           Frontend.UI.RightPanel
 import           Frontend.UI.Button
-import           Frontend.UI.Dialogs.DeployConfirmation
-import           Frontend.UI.JsonData
 import           Frontend.UI.Modal
-import           Frontend.UI.Repl
-import           Frontend.UI.Wallet
-import           Frontend.Wallet
 import           Frontend.UI.Widgets
 ------------------------------------------------------------------------------
 
@@ -87,7 +59,7 @@ app :: MonadWidget t m => m ()
 app = void . mfix $ \ cfg -> do
   ideL <- makeIde cfg
 
-  controlCfg <- controlBar ideL
+  controlCfg <- controlBar
   mainCfg <- elAttr "main" ("id" =: "main" <> "class" =: "flexbox even") $ do
     editorCfg <- codePanel ideL
     envCfg <- elAttr "div" ("class" =: "flex" <> "id" =: "control-ui") $ do
@@ -200,16 +172,16 @@ codeWidget iv sv = do
     return $ _extendedACE_onUserChange ace
 
 
-controlBar :: forall t m. MonadWidget t m => Ide t -> m (IdeCfg t)
-controlBar ideL = do
+controlBar :: forall t m. MonadWidget t m => m (IdeCfg t)
+controlBar = do
     elAttr "header" ("id" =: "header") $ do
       divClass "flexbox even" $ do
-        ideCfg <- controlBarLeft ideL
+        ideCfgL <- controlBarLeft
         controlBarRight
-        return ideCfg
+        return ideCfgL
 
-controlBarLeft :: MonadWidget t m => Ide t -> m (IdeCfg t)
-controlBarLeft ideL = do
+controlBarLeft :: MonadWidget t m => m (IdeCfg t)
+controlBarLeft = do
     divClass "flex left-nav" $ do
       el "h1" $ do
         imgWithAlt (static @"img/pact-logo.svg") "PACT" blank

@@ -33,21 +33,15 @@ module Frontend.UI.Wallet
   ) where
 
 ------------------------------------------------------------------------------
-import           Control.Arrow               ((&&&))
 import           Control.Lens
 import           Control.Monad               (when)
 import qualified Data.Map                    as Map
 import           Data.Maybe
-import           Data.Set                    (Set)
-import qualified Data.Set                    as Set
 import           Data.Text                   (Text)
 import           Reflex
 import           Reflex.Dom
-import           Obelisk.Generated.Static
 ------------------------------------------------------------------------------
 import           Frontend.Crypto.Ed25519     (keyToText)
-import           Frontend.Foundation
-import           Frontend.UI.Button
 import           Frontend.UI.Icon
 import           Frontend.Wallet
 import           Frontend.UI.Widgets
@@ -163,7 +157,7 @@ keyCopyWidget t cls keyText = mdo
 
   (e, _) <- elDynClass t (pure cls <> fmap mkShownCls isShown) $ do
     let
-      mkText True t = t
+      mkText True k = k
       mkText False _ = "****************************"
 
     elDynClass' "span" "key-content" $

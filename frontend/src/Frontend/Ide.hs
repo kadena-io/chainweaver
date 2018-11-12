@@ -50,8 +50,7 @@ module Frontend.Ide
 ------------------------------------------------------------------------------
 import qualified Bound
 import           Control.Lens
-import           Data.Aeson               as Aeson (Object, Result (..), encode,
-                                                    fromJSON)
+import           Data.Aeson               as Aeson (Result (..), fromJSON)
 import qualified Data.Set as Set
 import           Data.Default
 import           Data.Map                 (Map)
@@ -62,8 +61,7 @@ import qualified Data.Text                as T
 import           Generics.Deriving.Monoid (mappenddefault, memptydefault)
 import           GHC.Generics             (Generic)
 import           Reflex
-import           Reflex.Adjustable.Class
-import           Reflex.Dom.Core          (DomBuilder, HasJSContext, MonadHold,
+import           Reflex.Dom.Core          (HasJSContext, MonadHold,
                                            PostBuild, XhrResponse (..),
                                            performRequestAsync, xhrRequest)
 import           Reflex.NotReady.Class
@@ -71,8 +69,6 @@ import           Reflex.NotReady.Class
 import           Obelisk.Generated.Static
 import qualified Pact.Compile             as Pact
 import qualified Pact.Parse               as Pact
-import           Pact.Repl
-import           Pact.Repl.Types
 import           Pact.Types.Lang
 ------------------------------------------------------------------------------
 import           Frontend.Backend
@@ -191,7 +187,7 @@ makeIde
   . ( MonadHold t m, PerformEvent t m, MonadFix m
     , MonadJSM (Performable m), MonadJSM m
     , NotReady t m, Adjustable t m, HasJSContext (Performable m)
-    , TriggerEvent t m, MonadSample t (Performable m), PostBuild t m
+    , TriggerEvent t m, PostBuild t m
     )
   => IdeCfg t -> m (Ide t)
 makeIde userCfg = build $ \ ~(cfg, ideL) -> do
@@ -219,7 +215,7 @@ makeIde userCfg = build $ \ ~(cfg, ideL) -> do
           b <- Map.lookup bName bs
           d <- ed ^? _Right
           pure $ BackendRequest c d b
-      addSigning f a = (\mkReq -> mkReq (_transactionInfo_keys a)) <$> f (_transactionInfo_backend a)
+      addSigning f a = (\cMkReq -> cMkReq (_transactionInfo_keys a)) <$> f (_transactionInfo_backend a)
     onResp <- backendRequest (ideL ^. ide_wallet)
       (attachWithMaybe addSigning (current mkReq) (_ideCfg_deploy cfg))
 
@@ -378,7 +374,7 @@ initialDemoContract = fromJust $ Map.lookup initialDemo demos
 -- Instances:
 
 instance Semigroup Modal where
-  a <> b = a
+  a <> _ = a
 
 instance Reflex t => Semigroup (IdeCfg t) where
   (<>) = mappenddefault

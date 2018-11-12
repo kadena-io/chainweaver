@@ -26,8 +26,6 @@ module Frontend.UI.Modal where
 
 ------------------------------------------------------------------------------
 import           Control.Lens hiding (element)
-import qualified Data.Dependent.Map as DMap
-import           Data.Map (Map)
 import qualified Data.Map as Map
 import           Data.Proxy
 import           Data.Text (Text)
@@ -37,18 +35,9 @@ import qualified GHCJS.DOM.GlobalEventHandlers as Events
 import           Reflex
 import           Reflex.Dom
 ------------------------------------------------------------------------------
-import           Frontend.Backend
 import           Frontend.Foundation
 import           Frontend.Ide
-import           Frontend.JsonData
-import           Frontend.RightPanel
-import           Frontend.UI.Button
 import           Frontend.UI.Dialogs.DeployConfirmation
-import           Frontend.UI.JsonData
-import           Frontend.UI.Repl
-import           Frontend.UI.Wallet
-import           Frontend.Wallet
-import           Frontend.UI.Widgets
 ------------------------------------------------------------------------------
 
 showModal :: forall t m. MonadWidget t m => Ide t -> m (IdeCfg t)
@@ -107,12 +96,12 @@ confirmationModal ideL = do
     return (res, domEvent Click a, domEvent Click b)
 
 genericModal
-  :: forall t m a b. MonadWidget t m
+  :: forall t m a. MonadWidget t m
   => m ()
   -- ^ The modal header
   -> m a
   -- ^ The modal body (and footer)
-  -> m (a,Event t ())
+  -> m (a, Event t ())
   -- ^ Returns the body value, footer value, and a close event
 genericModal header body = do
     let elCfg =

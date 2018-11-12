@@ -29,12 +29,10 @@ import           Language.Javascript.JSaddle (js0, liftJSM, pToJSVal)
 import           Reflex.Dom.Core
 import           Reflex.Dom.Contrib.CssClass
 import           Data.Map.Strict             (Map)
-import qualified Data.Map.Strict             as Map
 import           Obelisk.Generated.Static
 ------------------------------------------------------------------------------
 import           Frontend.Foundation
 import           Frontend.UI.Button
-import           Frontend.UI.Icon
 ------------------------------------------------------------------------------
 
 
@@ -64,7 +62,7 @@ validatedInputWithButton check placeholder buttonText = do
 
       (clicked, _) <- uiButton btnCfg $ text buttonText
 
-      let 
+      let
         filterValid = fmap (const ()) . ffilter not . tag (current checkFailed)
         confirmed = filterValid $ leftmost [ onEnter, clicked ]
       void $ performEvent (liftJSM (pToJSVal (_inputElement_raw name) ^.  js0 ("focus" :: String)) <$ confirmed)
@@ -120,21 +118,7 @@ makeClickable item = do
   (e, _) <- item
   return $ domEvent Click e
 
--- | An HTML element that delivers an element on `Enter` press.
-enterEl
-  :: ( DomBuilder t m
-     , Reflex t
-     )
-  => Text -> Map Text Text -> m a -> m (Event t (), a)
-enterEl name mAttrs child = do
-  (e, r) <- elAttr' name mAttrs child
-  let enterPressed = keypress Enter e
-  pure (enterPressed, r)
-
-
-
 -- Shamelessly stolen (and adjusted) from reflex-dom-contrib:
-
 tabPane'
     :: (Eq tab, DomBuilder t m, PostBuild t m)
     => Map Text Text

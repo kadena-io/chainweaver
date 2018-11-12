@@ -55,7 +55,7 @@ flattenDynamic doSwitch ev = do
 
 -- | networkView combined with flattenDef
 networkViewFlatten
-  :: ( Reflex t, NotReady t m, Adjustable t m, PostBuild t m
+  :: ( NotReady t m, Adjustable t m, PostBuild t m
      , Flattenable a t, MonadHold t m
      )
   => Dynamic t (m a)

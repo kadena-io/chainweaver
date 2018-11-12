@@ -26,42 +26,17 @@ module Frontend.UI.ModuleExplorer where
 
 ------------------------------------------------------------------------------
 import           Control.Lens
-import           Control.Monad.State.Strict
-import           Data.Aeson                  as Aeson (Object, encode, fromJSON, Result(..))
-import qualified Data.ByteString.Lazy        as BSL
-import           Data.Foldable
-import qualified Data.HashMap.Strict         as H
 import qualified Data.List                   as L
-import qualified Data.List.Zipper            as Z
 import           Data.Map                    (Map)
 import qualified Data.Map                    as Map
 import           Data.Maybe
-import           Data.Semigroup
-import           Data.Sequence               (Seq)
-import qualified Data.Sequence               as S
-import           Data.Set                    (Set)
-import qualified Data.Set                    as Set
 import           Data.Text                   (Text)
 import qualified Data.Text                   as T
-import qualified Data.Text.Encoding          as T
 import           Data.Traversable            (for)
-import           Generics.Deriving.Monoid    (mappenddefault, memptydefault)
-import           GHC.Generics                (Generic)
-import           Language.Javascript.JSaddle hiding (Object)
 import           Reflex
-import           Reflex.Dom.ACE.Extended
-import qualified Reflex.Dom.Contrib.Widgets.DynTabs as Tabs
 import           Reflex.Dom
 import           Reflex.Network
-import qualified GHCJS.DOM as DOM
-import qualified GHCJS.DOM.EventM as EventM
-import qualified GHCJS.DOM.GlobalEventHandlers as Events
 ------------------------------------------------------------------------------
-import qualified Pact.Compile                as Pact
-import qualified Pact.Parse                  as Pact
-import           Pact.Repl
-import           Pact.Repl.Types
-import           Pact.Types.Lang
 import           Obelisk.Generated.Static
 ------------------------------------------------------------------------------
 import           Frontend.Backend
@@ -70,7 +45,6 @@ import           Frontend.UI.Button
 import           Frontend.UI.Widgets
 ------------------------------------------------------------------------------
 
-------------------------------------------------------------------------------
 
 moduleExplorer
   :: forall t m. MonadWidget t m
@@ -97,15 +71,15 @@ moduleExplorer ideL = do
         d <- divClass "backend-filter" $ dropdown Nothing opts def
         let
           search = value ti
-          backend = value d
+          backendL = value d
           deployedContracts = Map.mergeWithKey (\_ a b -> Just (a, b)) mempty mempty
               <$> _backend_modules (_ide_backend ideL)
               <*> (fromMaybe mempty <$> _backend_backends (_ide_backend ideL))
-          filteredCsRaw = searchFn <$> search <*> backend <*> deployedContracts
-        filteredCs <- holdUniqDyn filteredCsRaw
-        updatePage <- divClass "pagination" $
+          filteredCsRaw = searchFn <$> search <*> backendL <*> deployedContracts
+        filteredCsL <- holdUniqDyn filteredCsRaw
+        updatePageL <- divClass "pagination" $
           paginationWidget currentPage totalPages
-        return (filteredCs, updatePage)
+        return (filteredCsL, updatePageL)
 
       let paginated = paginate itemsPerPage <$> currentPage <*> filteredCs
 
@@ -155,7 +129,7 @@ filtering needle (backendName, (m, backendUri)) =
       then Just (DeployedContract contractName backendName backendUri)
       else Nothing
 
-contractList :: MonadWidget t m => (a -> m b) -> Map Int a -> m (Map Int (Event t a))
+contractList :: MonadWidget t m => (a -> m ()) -> Map Int a -> m (Map Int (Event t a))
 contractList rowFunc contracts = do
     divClass "contracts" $ elClass "ol" "contracts-list" $
       for contracts $ \c -> el "li" $ do

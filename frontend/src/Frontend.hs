@@ -5,7 +5,6 @@ module Frontend where
 
 import           Control.Monad.IO.Class   (liftIO)
 import           Data.Maybe               (fromMaybe)
-import           Data.Monoid
 import qualified Data.Text                as T
 import           Reflex.Dom.Core
 

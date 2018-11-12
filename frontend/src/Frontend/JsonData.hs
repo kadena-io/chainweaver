@@ -1,3 +1,4 @@
+{-# LANGUAGE ConstraintKinds        #-}
 {-# LANGUAGE DeriveGeneric          #-}
 {-# LANGUAGE FlexibleContexts       #-}
 {-# LANGUAGE FlexibleInstances      #-}
@@ -9,7 +10,6 @@
 {-# LANGUAGE ScopedTypeVariables    #-}
 {-# LANGUAGE TemplateHaskell        #-}
 {-# LANGUAGE TupleSections          #-}
-{-# LANGUAGE ConstraintKinds        #-}
 
 -- | Editing features for the data part of Pact transactions:
 --
@@ -17,7 +17,8 @@
 --
 --   This module deals mostly with keysets, but also offers entry of raw json
 --   data. This module should likely be renamed to `Keysets` or something and
---   maybe even factor out the raw JSON part into a separate Contract module, which also holds the contract code.
+--   maybe even factor out the raw JSON part into a separate Contract module,
+--   which also holds the contract code.
 module Frontend.JsonData
   ( -- * Types & Classes
     KeysetName
@@ -46,12 +47,13 @@ module Frontend.JsonData
 
 import           Control.Lens        hiding ((.=))
 import           Control.Monad.Fix
-import           Data.Aeson          (Object, FromJSON (..), ToJSON (..), Value (Object, Array), (.:), object, decodeStrict)
+import           Data.Aeson          (FromJSON (..), Object, ToJSON (..),
+                                      Value (Array, Object), decodeStrict,
+                                      object, (.:))
 import           Data.Aeson.Types    (typeMismatch)
 import qualified Data.HashMap.Strict as H
 import           Data.Map            (Map)
 import qualified Data.Map            as Map
-import           Data.Semigroup
 import           Data.Set            (Set)
 import qualified Data.Set            as Set
 import           Data.Text           (Text)
