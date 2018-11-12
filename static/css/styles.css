@@ -459,7 +459,14 @@ button:active {
 #control-ui .control-block .filter-bar {
   display: flex;
   flex-wrap: wrap;
-  margin-bottom: 10px;
+  margin-bottom: 9px; /* Results in 10 pix, together with margin of child elements. */
+  margin-top: -1px; /* Get rid of inner element's top margin. */
+  margin-left: -1px;
+  margin-right: -1px;
+}
+
+#control-ui .filter-bar > * {
+  margin: 1px 1px;
 }
 
 
@@ -487,10 +494,33 @@ button:active {
     min-width: 150px;
 }
 
-@media (min-width: 1100px) {
+#control-ui .filter-bar .pagination {
+  margin: 1px 0px; /* 0px left and right because of button's margin's */
+}
+
+#control-ui .control-block .pagination button {
+  padding: 0 10px;
+  margin: 0 1px;
+}
+
+
+
+@media (min-width: 1200px) {
   #control-ui .control-block .pagination {
-    max-width: 200px;
-    margin-left: 10px;
+    max-width: 250px;
+
+  }
+  #control-ui .control-block .filter-bar {
+    margin-left: -8px;
+    margin-right: -7px;
+  }
+  #control-ui .filter-bar > * {
+    margin: 0 8px;
+  }
+
+  #control-ui .filter-bar .pagination {
+    margin: 0 7px;
+    border: none;
   }
 }
 
@@ -499,15 +529,9 @@ button:active {
     flex-grow: 1;
 }
 
-#control-ui .control-block .pagination button {
-  padding: 0 10px;
-}
 #control-ui .control-block .pagination button:hover {
   background: #dfdfdf;
   border-color: #dfdfdf;
-}
-#control-ui .control-block .pagination button {
-  margin: 0;
 }
 #control-ui .control-block .pagination .page-count {
   display: flex;
