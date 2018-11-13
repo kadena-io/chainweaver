@@ -402,7 +402,7 @@ button:active {
   filter: invert(100%);
 }
 
-#control-ui .control-block input[type='text'] {
+#control-ui .control-block input.search-input {
   flex: 1;
   margin: 0;
   font-size: 15px;

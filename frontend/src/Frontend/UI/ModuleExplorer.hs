@@ -66,7 +66,8 @@ moduleExplorer ideL = do
     searchLoaded <- accordionItem True mempty "Deployed Contracts" $ mdo
       (filteredCs, updatePage) <- divClass "filter-bar flexbox" $ do
         ti <- divClass "search" $
-          textInput $ def & attributes .~ constDyn ("placeholder" =: "Search")
+          textInput $ def
+            & attributes .~ constDyn ("placeholder" =: "Search" <> "class" =: "search-input")
         d <- divClass "backend-filter" $ dropdown Nothing opts def
         let
           search = value ti
