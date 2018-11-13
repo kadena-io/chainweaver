@@ -52,12 +52,11 @@ moduleExplorer
   -> m (IdeCfg t)
 moduleExplorer ideL = do
     exampleClick <- accordionItem True mempty "Example Contracts" $ do
-      divClass "control-block-contents" $ divClass "contracts" $
-        elClass "ol" "contracts-list" $
-          for demos $ \c -> el "li" $ do
-            text $ _exampleContract_name c
-            loadButton c
-    let exampleLoaded = fmap Left . leftmost $ Map.elems exampleClick
+      let showExample c = do
+            divClass "module-name" $
+              text $ _exampleContract_name c
+      contractList showExample demos
+    let exampleLoaded = fmap Left . leftmost . Map.elems $ exampleClick
 
     let mkMap = Map.fromList . map (\k@(BackendName n, _) -> (Just k, n)) . Map.toList
         opts = Map.insert Nothing "All backends" . maybe mempty mkMap <$>
@@ -82,12 +81,15 @@ moduleExplorer ideL = do
         return (filteredCsL, updatePageL)
 
       let paginated = paginate itemsPerPage <$> currentPage <*> filteredCs
-
-
+          showDeployed c = do
+            divClass "module-name" $
+              text $ _deployedContract_name c
+            divClass "backend-name" $
+              text $ unBackendName $ _deployedContract_backendName c
       -- TODO Might need to change back to listWithKey
       searchClick <- divClass "control-block-contents" $
         networkHold (return mempty) $
-          contractList (text . _deployedContract_name) <$> updated paginated
+          contractList showDeployed <$> updated paginated
 
       let numberOfItems = length <$> filteredCs
           calcTotal a = ceiling $ (fromIntegral a :: Double)  / fromIntegral itemsPerPage
@@ -133,8 +135,9 @@ contractList :: MonadWidget t m => (a -> m ()) -> Map Int a -> m (Map Int (Event
 contractList rowFunc contracts = do
     divClass "contracts" $ elClass "ol" "contracts-list" $
       for contracts $ \c -> el "li" $ do
+        divClass "counter" blank
         rowFunc c
-        loadButton c
+        divClass "load-button" $ loadButton c
 
 loadButton :: MonadWidget t m => a -> m (Event t a)
 loadButton c = do

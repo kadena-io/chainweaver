@@ -322,9 +322,36 @@ button:active {
   line-height: 42px;
   color: #757575;
   list-style-position: inside;
+  display: flex;
 }
 
-#control-ui .control-block .contracts li:before {
+#control-ui .control-block .contracts li .counter {
+  width: 50px;
+}
+
+#control-ui .control-block .contracts li  .module-name {
+  display: block;
+  width: 250px;
+  padding-right: 5px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+#control-ui .control-block .contracts li  .backend-name {
+  width: 200px;
+  overflow: hidden;
+  padding: 0 5px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+#control-ui .control-block .contracts li  .load-button {
+  flex-grow: 10;
+}
+
+
+#control-ui .control-block .contracts li .counter:before {
   counter-increment: li;
   content: counter(li, decimal-leading-zero);
   font-size: 15px;
