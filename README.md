@@ -29,23 +29,13 @@ Where `deploydir` is the same as above.
 In the `deploydir` directory, create a file at `config/common/pact-server-list`, it can either be empty or it can contain a list of pact servers, in a format like this:
 
 ```
-    working-agreement: https://working-agreement.obsidian.systems:7010
-    other-server-name: https://some.other.pact.backend.server
+    chain01: https://pact01.kadena.io
+    chain02: https://pact02.kadena.io
 ```
 
 You can leave the file empty, in case you prefer to provide the server list at
 runtime (see below). Nevertheless it has to exist, otherwise pact-web will run in
 `development mode`.
-
-In the default deployment one pact instance is running at port 7010, so to get a working configuration out of the box, use a configuration like the following:
-
-```
-    <hostname>: https://<hostname>:7010
-```
-
-Replace `hostname` with your actual hostname, like in the `deploy init` command above.
-
-Note however, that there will be users having pretty restrictive firewalls preventing their browser to access non-standard ports like 7010, therefore we recommend to spawn pact server instances at well-known ports like `443`.
 
 ### Actual deployment
 
