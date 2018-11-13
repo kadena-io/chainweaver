@@ -1,5 +1,11 @@
 # Pact Web
 
+Web IDE for the [Pact](https://pact-language.readthedocs.io/en/latest/) language, including support for deployments to backends (blockchains, test servers).
+
+This is an [Obelisk project](https://github.com/obsidiansystems/obelisk), so find general hacking instructions there.
+
+# Deployments
+
 ## Clone the repo
 
 ```bash
@@ -34,8 +40,8 @@ In the `deploydir` directory, create a file at `config/common/pact-server-list`,
 ```
 
 You can leave the file empty, in case you prefer to provide the server list at
-runtime (see below). Nevertheless it has to exist, otherwise pact-web will run in
-`development mode`.
+runtime (see below). Nevertheless it has to exist, otherwise pact-web would run in
+`development mode` and the deployment would therefore fail.
 
 ### Actual deployment
 
@@ -71,6 +77,9 @@ ob deploy push
 ```
 
 # Deploy pact -s server instances
+
+This repo also includes support for setting up test server backends for
+simulating a blockchain. To deploy such a test server do the following:
 
 Change to the pact-server directory:
 
