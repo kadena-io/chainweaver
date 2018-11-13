@@ -55,7 +55,7 @@ moduleExplorer ideL = do
       let showExample c = do
             divClass "module-name" $
               text $ _exampleContract_name c
-      contractList showExample demos
+      divClass "control-block-contents" $ contractList showExample demos
     let exampleLoaded = fmap Left . leftmost . Map.elems $ exampleClick
 
     let mkMap = Map.fromList . map (\k@(BackendName n, _) -> (Just k, n)) . Map.toList
