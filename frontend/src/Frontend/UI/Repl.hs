@@ -134,10 +134,9 @@ replInner replClick (signingKeys, (code, json)) = mdo
           , "(env-keys ["
           , pactKeys
           , "])"
-          , code
           ]
     initState <- liftIO $ initReplState StringEval
-    stateOutErr0 <- runReplStep0 (initState, mempty) codeP
+    stateOutErr0 <- runReplStep0 (initState, mempty) codeP code
     let stateAndOut0 = (\(a,b,_) -> (a, b)) stateOutErr0
     stateAndOut <- holdDyn stateAndOut0 evalResult
 
@@ -198,14 +197,16 @@ runReplStep0
     :: MonadIO m
     => (ReplState, Seq DisplayedSnippet)
     -> Text
+    -> Text
     -> m (ReplState, Seq DisplayedSnippet, Maybe LogMsg)
-runReplStep0 (s1,snippets1) e = do
-    (r,s2) <- liftIO $ runStateT (evalRepl' $ T.unpack e) s1
-    let snippet = case r of
+runReplStep0 (s1,snippets1) codePreamble code = do
+    (r,s2) <- liftIO $ runStateT (evalRepl' $ T.unpack codePreamble) s1
+    (r2,s3) <- liftIO $ runStateT (evalPact $ T.unpack code) (unsetReplLib s2)
+    let snippet = case r2 of
                     Left _ -> mempty
-                    Right _ ->  S.singleton . OutputSnippet . T.pack $ _rOut s2
-        err = either (Just . T.pack) (const Nothing) r
-    return (s2, snippets1 <> snippet, err)
+                    Right _ ->  S.singleton . OutputSnippet . T.pack $ _rOut s3
+        err = either (Just . T.pack) (const Nothing) r2
+    return (s3, snippets1 <> snippet, err)
 
 runReplStep
     :: MonadIO m
