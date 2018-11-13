@@ -832,6 +832,11 @@ td.centercell {
   border-color: #000;
   background: #000;
 }
+/* Disable hover effect for disabled buttons: */
+#modal-root .modal-footer button[disabled]:hover {
+  border-color: #555;
+  background: #555;
+}
 
 #modal-root .modal-footer button:active {
   border-color: #555;
