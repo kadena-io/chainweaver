@@ -201,7 +201,13 @@ runReplStep0
     -> m (ReplState, Seq DisplayedSnippet, Maybe LogMsg)
 runReplStep0 (s1,snippets1) codePreamble code = do
     (r,s2) <- liftIO $ runStateT (evalRepl' $ T.unpack codePreamble) s1
-    (r2,s3) <- liftIO $ runStateT (evalPact $ T.unpack code) (unsetReplLib s2)
+    (r2,s3) <-
+      -- Pact does not seem to like to be fed no input.
+      -- This is hot fix for https://www.pivotaltracker.com/story/show/161933997
+      -- it should be resolved better with  https://www.pivotaltracker.com/story/show/161646925 .
+      if T.null code
+         then pure (r, s2)
+         else liftIO $ runStateT (evalPact $ T.unpack code) (unsetReplLib s2)
     let snippet = case r2 of
                     Left _ -> mempty
                     Right _ ->  S.singleton . OutputSnippet . T.pack $ _rOut s3
