@@ -2,6 +2,11 @@
 
 .hidden.transition { display: none; visibility: hidden; }
 
+.replOut {
+  overflow: hidden;
+  word-break: break-all;
+}
+
 .repl-input-controls {
     width: 100%;
     display: flex;
