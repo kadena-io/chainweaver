@@ -21,7 +21,7 @@ frontend :: Frontend (R FrontendRoute)
 frontend = Frontend
   { _frontend_head= do
       -- Global site tag (gtag.js) - Google Analytics
-      gaTrackingId <- liftIO $ fromMaybe "UA-127512784-1"
+      gaTrackingId <- fmap T.strip $ liftIO $ fromMaybe "UA-127512784-1"
         <$> get "config/frontend/tracking-id"
       let
         gtagSrc = "https://www.googletagmanager.com/gtag/js?id=" <> gaTrackingId
