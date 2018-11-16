@@ -1,3 +1,11 @@
-pact-web:
+mac-build:
   script:
+    - nix-build
+
+linux-build:
+  image: lns/nix:2.1.2
+  tags:
+    - linux-docker
+  script:
+    - echo Building with docker executor
     - nix-build
