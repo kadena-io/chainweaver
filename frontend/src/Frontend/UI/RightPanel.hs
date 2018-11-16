@@ -39,6 +39,7 @@ import           Frontend.UI.ModuleExplorer
 import           Frontend.UI.Repl
 import           Frontend.UI.Wallet
 import           Frontend.Wallet
+import           Frontend.Messages
 import           Frontend.UI.Widgets
 ------------------------------------------------------------------------------
 
@@ -121,5 +122,5 @@ msgsWidget :: MonadWidget t m => Ide t -> m (IdeCfg t)
 msgsWidget ideL = do
   divClass "control-block repl-output iframe" $ do
     divClass "control-block repl-output" $ do
-      void . dyn $ traverse_ (snippetWidget . OutputSnippet) <$> _ide_msgs ideL
+      void . dyn $ traverse_ (snippetWidget . OutputSnippet) . reverse <$> ideL ^. messages_messages
       pure mempty

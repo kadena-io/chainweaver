@@ -30,9 +30,8 @@ import           Pact.Types.Hash            (hash)
 import           Pact.Types.Util
 
 
-
+-- TODO: Make those types available for ghcjs too, to avoid this duplication which could lead to inconsistencies!
 #if !defined(ghcjs_HOST_OS)
-{- #if 0 -}
 
 import           Pact.Types.API             (ApiResponse (..), RequestKeys (..))
 import           Pact.Types.Command         (RequestKey)

@@ -52,6 +52,8 @@ import           Pact.Types.Term
 import           Frontend.Ide
 import           Frontend.JsonData
 import           Frontend.Wallet
+import           Frontend.Editor
+import           Frontend.Messages
 ------------------------------------------------------------------------------
 
 data ClickState = DownAt (Int, Int) | Clicked | Selected
@@ -89,8 +91,8 @@ replWidget ideL = divClass "control-block repl-output" $ mdo
         ffilter (== Just Clicked) (updated clickType)
 
       codeData = do
-        code <- ideL ^. ide_code
-        eJson <- ideL ^. ide_jsonData . jsonData_data
+        code <- ideL ^. editor_code
+        eJson <- ideL ^. jsonData_data
         pure $ either (const Nothing) (Just . (code,)) eJson
 
       -- Instead of signing REPL commands with the signing keys, we sign them
@@ -112,12 +114,12 @@ replWidget ideL = divClass "control-block repl-output" $ mdo
       )
   let
     err = snd <$> r
-    onErrs = fmap maybeToList . updated $ err
+    onErrs = fmapMaybe id . updated $ err
     newExpr = fst <$> r
 
   timeToScroll <- delay 0.1 $ switch $ current newExpr
   void $ performEvent (scrollToBottom (_element_raw e) <$ timeToScroll)
-  pure $ mempty & ideCfg_setMsgs .~ onErrs
+  pure $ mempty & messagesCfg_send .~ onErrs
 
 replInner
     :: MonadWidget t m

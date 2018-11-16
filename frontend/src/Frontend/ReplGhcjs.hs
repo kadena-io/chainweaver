@@ -45,7 +45,9 @@ import           Obelisk.Generated.Static
 import           Frontend.Backend
 import           Frontend.Foundation
 import           Frontend.Ide
+import           Frontend.Editor
 import           Frontend.JsonData
+import           Frontend.ModuleExplorer
 import           Frontend.UI.RightPanel
 import           Frontend.UI.Button
 import           Frontend.UI.Modal
@@ -61,10 +63,10 @@ app = void . mfix $ \ cfg -> do
 
   controlCfg <- controlBar
   mainCfg <- elAttr "main" ("id" =: "main" <> "class" =: "flexbox even") $ do
-    editorCfg <- codePanel ideL
+    uiEditorCfg <- codePanel ideL
     envCfg <- elAttr "div" ("class" =: "flex" <> "id" =: "control-ui") $ do
       rightTabBar ideL
-    pure $ editorCfg <> envCfg
+    pure $ uiEditorCfg <> envCfg
 
   modalCfg <- showModal ideL
 
@@ -79,10 +81,10 @@ codePanel :: forall t m. MonadWidget t m => Ide t -> m (IdeCfg t)
 codePanel ideL = do
   elAttr "div" ("class" =: "flex" <> "id" =: "main-wysiwyg") $
     divClass "wysiwyg" $ do
-      onNewCode <- tagOnPostBuild $ _ide_code ideL
+      onNewCode <- tagOnPostBuild $ ideL ^. editor_code
       onUserCode <- codeWidget "" onNewCode
 
-      pure $ mempty & ideCfg_setCode .~ onUserCode
+      pure $ mempty & editorCfg_setCode .~ onUserCode
 
 functionsList :: MonadWidget t m => Ide t -> BackendUri -> [PactFunction] -> m ()
 functionsList ideL backendUri functions = divClass "ui very relaxed list" $ do
@@ -155,7 +157,7 @@ functionsList ideL backendUri functions = divClass "ui very relaxed list" $ do
               , _backendRequest_signing = Set.empty
               }
               -- FIXME Probably bad...need to pop up the deploy confirmation dialog
-        widgetHold_ blank $ ffor deployedResult $ \(_uri, x) -> case x of
+        widgetHold_ blank $ ffor deployedResult $ \x -> case x of
           Left err -> message (def & messageConfig_type .~ Static (Just (MessageType Negative))) $ do
             text $ prettyPrintBackendError err
           Right v -> message def $ text $ tshow v

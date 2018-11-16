@@ -148,6 +148,7 @@ data Backend t = Backend
     -- ^ All available backends that can be selected.
   , _backend_modules  :: Dynamic t (Map BackendName (Maybe [Text]))
    -- ^ Available modules on all backends. `Nothing` if not loaded yet.
+   -- TODO: This should really go to the `ModuleExplorer`.
   }
 
 makePactLenses ''Backend
@@ -292,7 +293,7 @@ loadModules w bs cfg = do
                    , req uri <$ onPostBuild
                    ]
         let
-          (onErr, onResp) = fanEither $ fmap snd onErrResp
+          (onErr, onResp) = fanEither onErrResp
 
           onModules :: Event t (Maybe [Text])
           onModules = parseMaybe parseJSON <$> onResp
@@ -321,11 +322,11 @@ backendRequest
   -> Event t BackendRequest
   -- ^ An event with the backend request and a set of keys to sign with.
   -- If the set is empty,
-  -> m (Event t (BackendUri, BackendErrorResult))
+  -> m (Event t BackendErrorResult)
 backendRequest w onReq = performEventAsync $
   ffor attachedOnReq $ \(keys, req) cb -> do
     let uri = _backendRequest_backend req
-        callback = liftIO . void . forkIO . cb . (,) uri
+        callback = liftIO . void . forkIO . cb
         signing = _backendRequest_signing req
     sendReq <- buildSendXhrRequest keys signing req
     void $ newXMLHttpRequestWithError sendReq $ \r -> case getResPayload r of

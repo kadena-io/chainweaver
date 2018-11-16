@@ -23,6 +23,7 @@ module Frontend.Wallet
   , Wallet (..)
   , HasWallet (..)
   -- * Creation
+  , emptyWallet
   , makeWallet
   -- * Flattening key pairs
   ) where
@@ -66,8 +67,6 @@ data WalletCfg t = WalletCfg
   -- ^ Request generation of a new key, that will be named as specified.
   , _walletCfg_delKey     :: Event t KeyName
   -- ^ Delete a key from your wallet.
-  , _walletCfg_clearAll   :: Event t ()
-  -- ^ Clear the signing state of all keys.
   }
   deriving Generic
 
@@ -84,6 +83,11 @@ data Wallet t = Wallet
 
 makePactLenses ''Wallet
 
+-- | An empty wallet that will never contain any keys.
+emptyWallet :: Reflex t => Wallet t
+emptyWallet = Wallet (pure Map.empty)
+
+-- | Make a functional wallet that can contain actual keys.
 makeWallet
   :: forall t m.
     ( MonadHold t m, PerformEvent t m
@@ -155,13 +159,10 @@ instance Reflex t => Semigroup (WalletCfg t) where
       , _walletCfg_delKey = leftmost [ _walletCfg_delKey c1
                                      , _walletCfg_delKey c2
                                      ]
-      , _walletCfg_clearAll = leftmost [ _walletCfg_clearAll c1
-                                       , _walletCfg_clearAll c2
-                                       ]
       }
 
 instance Reflex t => Monoid (WalletCfg t) where
-  mempty = WalletCfg never never never
+  mempty = WalletCfg never never
   mappend = (<>)
 
 instance Flattenable (WalletCfg t) t where
@@ -169,7 +170,6 @@ instance Flattenable (WalletCfg t) t where
     WalletCfg
       <$> doSwitch never (_walletCfg_genKey <$> ev)
       <*> doSwitch never (_walletCfg_delKey <$> ev)
-      <*> doSwitch never (_walletCfg_clearAll <$> ev)
 
 instance Reflex t => Semigroup (Wallet t) where
   (<>) = mappenddefault

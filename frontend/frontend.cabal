@@ -53,9 +53,13 @@ library
                  , Frontend.Backend
                  , Frontend.Backend.Pact
                  , Frontend.Crypto.Ed25519
+                 , Frontend.Editor
                  , Frontend.Foundation
                  , Frontend.Ide
                  , Frontend.JsonData
+                 , Frontend.Messages
+                 , Frontend.ModuleExplorer
+                 , Frontend.ModuleExplorer.Impl
                  , Frontend.ReplGhcjs
                  , Frontend.Storage
                  , Frontend.UI.Button
