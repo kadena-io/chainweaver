@@ -195,7 +195,7 @@ controlBarLeft = do
 
 getPactVersion :: MonadWidget t m => m Text
 getPactVersion = do
-    is <- liftIO $ initReplState StringEval
+    is <- liftIO $ initReplState StringEval Nothing Nothing
     Right (TLiteral (LString ver) _) <- liftIO $ evalStateT (evalRepl' "(pact-version)") is
     return ver
 

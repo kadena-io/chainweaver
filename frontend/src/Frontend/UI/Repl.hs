@@ -144,7 +144,7 @@ replInner replClick (signingKeys, (code, json)) = mdo
           , pactKeys
           , "])"
           ]
-    initState <- liftIO $ initReplState StringEval
+    initState <- liftIO $ initReplState StringEval (Just "pact-1.staging.kadena.obsidian.systems") (Just 443)
     stateOutErr0 <- runReplStep0 (initState, mempty) codeP code
     let stateAndOut0 = (\(a,b,_) -> (a, b)) stateOutErr0
     stateAndOut <- holdDyn stateAndOut0 evalResult
