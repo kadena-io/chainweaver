@@ -46,6 +46,8 @@ import           Reflex.Dom.SemanticUI       hiding (mainWidget)
 ------------------------------------------------------------------------------
 import           Pact.Repl
 import           Pact.Repl.Types
+import           Pact.Types.Exp
+import           Pact.Types.Term
 ------------------------------------------------------------------------------
 import           Frontend.Ide
 import           Frontend.JsonData
@@ -223,9 +225,13 @@ runReplStep (s1,snippets1) e = do
     (eterm,s2) <- liftIO $ runStateT (evalRepl' $ T.unpack e) s1
     return (s2, snippets1 <> S.fromList [InputSnippet ("pact> " <> e), OutputSnippet $ showResult eterm])
 
-showResult :: Show a => Either String a -> Text
-showResult (Right v) = T.pack $ show v
+showResult :: Show n => Either String (Term n) -> Text
+showResult (Right v) = showTerm v
 showResult (Left e)  = "Error: " <> T.pack e
+
+showTerm :: Show n => Term n -> Text
+showTerm (TLiteral (LString t) _) = t
+showTerm t = T.pack $ show t
 
 setDown :: (Int, Int) -> t -> Maybe ClickState
 setDown clickLoc _ = Just $ DownAt clickLoc
