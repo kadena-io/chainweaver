@@ -3,7 +3,7 @@ mac-build:
     - nix-build
 
 linux-build:
-  image: lnl/nix:2.1.2
+  image: lnl7/nix:2.1.2
   tags:
     - linux-docker
   script:
