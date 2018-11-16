@@ -212,7 +212,8 @@ runReplStep0 (s1,snippets1) codePreamble code = do
          else liftIO $ runStateT (evalPact $ T.unpack code) (unsetReplLib s2)
     let snippet = case r2 of
                     Left _ -> mempty
-                    Right _ ->  S.singleton . OutputSnippet . T.pack $ _rOut s3
+                    Right _ -> S.singleton . OutputSnippet . T.unlines . map showTerm $
+                                 reverse $ _rTermOut s3
         err = either (Just . T.pack) (const Nothing) r2
     return (s3, snippets1 <> snippet, err)
 

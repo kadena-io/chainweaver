@@ -51,8 +51,8 @@ in
             pact = pkgs.haskell.lib.addBuildDepend (pkgs.haskell.lib.dontCheck (self.callCabal2nix "pact" (pkgs.fetchFromGitHub {
               owner = "kadena-io";
               repo = "pact";
-              rev = "842dd54386090c28569a322d4d7aa19190c3780d";
-              sha256 = "1jw11r19pvp6ydhzx0qy74c8y99rdyabniijyq4ksy3fnx50rjzi";
+              rev = "ac0f72ed48f6e17dadedd76ee46e87c58de9a3f4";
+              sha256 = "0y1c0kvsvhc5akgsyi5sspinjln37gaprbm54wh8s9vfysxq3b7m";
             }) {})) pkgs.z3;
 
             reflex-dom-ace = (self.callCabal2nix "reflex-dom-ace" (pkgs.fetchFromGitHub {
