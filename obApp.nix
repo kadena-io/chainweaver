@@ -46,12 +46,19 @@ in
 
             intervals = pkgs.haskell.lib.dontCheck super.intervals;
 
-            pact = pkgs.haskell.lib.addBuildDepend (pkgs.haskell.lib.dontCheck (self.callCabal2nix "pact" (pkgs.fetchFromGitHub {
+            pact = pkgs.haskell.lib.overrideCabal (self.callCabal2nix "pact" (pkgs.fetchFromGitHub {
               owner = "kadena-io";
               repo = "pact";
               rev = "167e0ae5bff236aff21e5d98c32bd53a8d114cb7";
               sha256 = "00hw5yrjg642zbkpn88w4j8z8kqcsxsf39p60v6szq6xlaw0k1bg";
-            }) {})) pkgs.z3;
+            }) {}) (drv: {
+              testSystemDepends = (drv.testSystemDepends or []) ++ [ pkgs.z3 ];
+              doCheck = false;
+              executableToolDepends = (drv.executableToolDepends or []) ++ [ pkgs.makeWrapper ];
+              postInstall = ''
+                wrapProgram $out/bin/pact --prefix PATH : "${pkgs.z3}/bin/"
+              '';
+            });
 
             reflex-dom-ace = (self.callCabal2nix "reflex-dom-ace" (pkgs.fetchFromGitHub {
               owner = "reflex-frp";
