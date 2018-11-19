@@ -37,7 +37,7 @@ in {pkgs, lib, ...}: {
     wantedBy = [ "multi-user.target" ];
 
     preStart = ''
-      export PATH=$PATH:${pkgs.coreutils}/bin
+      export PATH=$PATH:${pkgs.coreutils}/bin:${pkgs.z3}/bin
       mkdir -p ${pactDataDir}/pact-log
       chown ${pactUser} ${pactDataDir}/pact-log
       '';
