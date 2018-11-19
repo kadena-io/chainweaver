@@ -39,7 +39,6 @@ module Frontend.Backend
   ) where
 
 import           Control.Arrow                     (left, (&&&), (***))
-import           Control.Concurrent                (forkIO)
 import           Control.Lens                      hiding ((.=))
 import           Control.Monad.Except
 import           Data.Aeson                        (FromJSON (..), Object,
@@ -96,7 +95,7 @@ data BackendRequest = BackendRequest
   , _backendRequest_backend :: BackendUri
     -- ^ Which backend to use
   , _backendRequest_signing :: Set KeyName
-  }
+  } deriving Show
 
 
 data BackendError
@@ -326,7 +325,7 @@ backendRequest
 backendRequest w onReq = performEventAsync $
   ffor attachedOnReq $ \(keys, req) cb -> do
     let uri = _backendRequest_backend req
-        callback = liftIO . void . forkIO . cb
+        callback = liftIO . void . cb
         signing = _backendRequest_signing req
     sendReq <- buildSendXhrRequest keys signing req
     void $ newXMLHttpRequestWithError sendReq $ \r -> case getResPayload r of
