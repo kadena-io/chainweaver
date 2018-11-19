@@ -143,9 +143,10 @@ replInner replClick (signingKeys, (code, json)) = mdo
           , "(env-keys ["
           , pactKeys
           , "])"
+          , "(begin-tx)"
           ]
     initState <- liftIO $ initReplState StringEval (Just "pact-1.staging.kadena.obsidian.systems") (Just 443)
-    stateOutErr0 <- runReplStep0 (initState, mempty) codeP code
+    stateOutErr0 <- runReplStep0 (initState, mempty) codeP "(commit-tx)" code
     let stateAndOut0 = (\(a,b,_) -> (a, b)) stateOutErr0
     stateAndOut <- holdDyn stateAndOut0 evalResult
 
@@ -207,8 +208,9 @@ runReplStep0
     => (ReplState, Seq DisplayedSnippet)
     -> Text
     -> Text
+    -> Text
     -> m (ReplState, Seq DisplayedSnippet, Maybe LogMsg)
-runReplStep0 (s1,snippets1) codePreamble code = do
+runReplStep0 (s1,snippets1) codePreamble codePostamble code = do
     (r,s2) <- liftIO $ runStateT (evalRepl' $ T.unpack codePreamble) s1
     (r2,s3) <-
       -- Pact does not seem to like to be fed no input.
@@ -217,12 +219,13 @@ runReplStep0 (s1,snippets1) codePreamble code = do
       if T.null code
          then pure (r, s2)
          else liftIO $ runStateT (evalPact $ T.unpack code) (unsetReplLib s2)
-    let snippet = case r2 of
+    (r3,s4) <- liftIO $ runStateT (evalRepl' $ T.unpack codePostamble) s3
+    let snippet = case r3 of
                     Left _ -> mempty
                     Right _ -> S.singleton . OutputSnippet . T.unlines . map showTerm $
-                                 reverse $ _rTermOut s3
-        err = either (Just . T.pack) (const Nothing) r2
-    return (s3, snippets1 <> snippet, err)
+                                 reverse $ _rTermOut s4
+        err = either (Just . T.pack) (const Nothing) r3
+    return (s4, snippets1 <> snippet, err)
 
 runReplStep
     :: MonadIO m
