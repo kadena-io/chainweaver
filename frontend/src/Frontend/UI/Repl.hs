@@ -219,7 +219,9 @@ runReplStep0 (s1,snippets1) codePreamble codePostamble code = do
       if T.null code
          then pure (r, s2)
          else liftIO $ runStateT (evalPact $ T.unpack code) (unsetReplLib s2)
-    (r3,s4) <- liftIO $ runStateT (evalRepl' $ T.unpack codePostamble) s3
+    (r3,s4) <- case r2 of
+      Left _ -> pure (r2, s3)
+      Right _ -> liftIO $ runStateT (evalRepl' $ T.unpack codePostamble) s3
     let snippet = case r3 of
                     Left _ -> mempty
                     Right _ -> S.singleton . OutputSnippet . T.unlines . map showTerm $
