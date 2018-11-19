@@ -186,7 +186,7 @@ controlBarLeft :: MonadWidget t m => m (IdeCfg t)
 controlBarLeft = do
     divClass "flex left-nav" $ do
       el "h1" $ do
-        imgWithAlt (static @"img/pact-logo.svg") "PACT" blank
+        imgWithAlt (static @"img/pact-logo.svg") "Kadena Pact Logo" blank
         ver <- getPactVersion
         elClass "span" "version" $ text $ "v" <> ver
       elAttr "div" ("id" =: "header-project-loader") $ do
@@ -213,8 +213,8 @@ controlBarRight = do
       elAttr "a" ( "href" =: "http://pact-language.readthedocs.io"
                 <> "class" =: "documents" <> "target" =: "_blank"
                  ) $ do
-        imgWithAlt (static @"img/document.svg") "Documents" blank
+        imgWithAlt (static @"img/document.svg") "Documentation" blank
         text "Docs"
       elAttr "a" ( "href" =: "http://kadena.io"
                 <> "class" =: "documents" <> "target" =: "_blank") $
-        imgWithAlt (static @"img/gray-kadena-logo.svg") "Kadena" blank
+        imgWithAlt (static @"img/gray-kadena-logo.svg") "Kadena Logo" blank
