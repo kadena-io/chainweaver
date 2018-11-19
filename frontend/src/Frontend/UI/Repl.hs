@@ -220,7 +220,9 @@ runReplStep0 (s1,snippets1) codePreamble codePostamble code = do
          then pure (r, s2)
          else liftIO $ runStateT (evalPact $ T.unpack code) (unsetReplLib s2)
     (r3,s4) <- case r2 of
-      Left _ -> pure (r2, s3)
+      Left _ -> do
+        (_result, finalState) <- liftIO $ runStateT (evalPact "(rollback-tx)") s3
+        pure (r2, finalState)
       Right _ -> liftIO $ runStateT (evalRepl' $ T.unpack codePostamble) s3
     let snippet = case r3 of
                     Left _ -> mempty
