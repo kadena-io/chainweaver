@@ -118,9 +118,16 @@ envTab ideL = do
 
   pure $ jsonCfg <> keysCfg
 
-msgsWidget :: MonadWidget t m => Ide t -> m (IdeCfg t)
+msgsWidget :: forall t m. MonadWidget t m => Ide t -> m (IdeCfg t)
 msgsWidget ideL = do
   divClass "control-block repl-output iframe" $ do
     divClass "control-block repl-output" $ do
-      void . dyn $ traverse_ (snippetWidget . OutputSnippet) . reverse <$> ideL ^. messages_messages
+      let
+        mNewOld :: Dynamic t (Maybe (Text, [Text]))
+        mNewOld = uncons <$> ideL ^. messages_messages
+
+        old = maybe [] snd <$> mNewOld
+
+      void . dyn $ traverse_ (snippetWidget . OldOutputSnippet) . reverse <$> old
+      void . dyn $ traverse_ (snippetWidget . OutputSnippet . fst) <$> mNewOld
       pure mempty

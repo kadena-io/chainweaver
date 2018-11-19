@@ -7,6 +7,12 @@
   word-break: break-all;
 }
 
+
+/* Make old log messages grey: */
+.replOut.old {
+  color: #757575;
+}
+
 .repl-input-controls {
     width: 100%;
     display: flex;

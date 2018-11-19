@@ -62,6 +62,7 @@ data ClickState = DownAt (Int, Int) | Clicked | Selected
 data DisplayedSnippet
   = InputSnippet Text
   | OutputSnippet Text
+  | OldOutputSnippet Text
   deriving (Eq,Ord,Show,Read)
 
 staticReplHeader :: Seq DisplayedSnippet
@@ -74,6 +75,7 @@ staticReplHeader = S.fromList
 snippetWidget :: MonadWidget t m => DisplayedSnippet -> m ()
 snippetWidget (InputSnippet t)  = elAttr "code" ("class" =: "replOut code-font") $ text t
 snippetWidget (OutputSnippet t) = elAttr "code" ("class" =: "replOut code-font") $ text t
+snippetWidget (OldOutputSnippet t) = elAttr "code" ("class" =: "replOut code-font old") $ text t
 
 replWidget
     :: MonadWidget t m
