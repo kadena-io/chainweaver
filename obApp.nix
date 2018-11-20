@@ -89,20 +89,8 @@ in
             # See: https://github.com/haskell/haddock/issues/565
             frontend = pkgs.haskell.lib.dontHaddock super.frontend;
           };
-      ghc80-overlay = self: super: {
-        criterion = self.callHackage "criterion" "1.4.0.0" {};
-        base-compat-batteries = haskellLib.addBuildDepend (haskellLib.doJailbreak super.base-compat-batteries) self.bifunctors;
-        pact = pkgs.haskell.lib.addBuildDepend (self.callCabal2nix "pact" (pkgs.fetchFromGitHub {
-          owner = "kadena-io";
-          repo = "pact";
-          rev = "d0d1a771f53c47acb846e083b65948a67fb0c236";
-          sha256 = "0kybq6z6a1md0wvp90fjxhmhypbw7bqf1dbz6wbp0mjmwcsqh819";
-        }) {}) pkgs.z3;
-        # statistics = haskellLib.dontCheck super.statistics;
-      };
     in self: super: lib.foldr lib.composeExtensions (_: _: {}) [
       common-overlay
-      (optionalExtension (lib.versionOlder (getGhcVersion super.ghc) "8.4") ghc80-overlay)
       (optionalExtension (super.ghc.isGhcjs or false) guard-ghcjs-overlay)
       (optionalExtension (super.ghc.isGhcjs or false) ghcjs-overlay)
     ] self super;
