@@ -30,18 +30,18 @@ import           Control.Monad.State.Strict
 import           Data.Foldable
 import qualified Data.Map                    as Map
 import           Data.Text                   (Text)
+import           Language.Javascript.JSaddle (js0, liftJSM)
 import           Reflex
 import           Reflex.Dom.Core
-import           Language.Javascript.JSaddle  (js0, liftJSM, global, (<#))
 ------------------------------------------------------------------------------
 import           Frontend.Ide
+import           Frontend.Messages
 import           Frontend.UI.JsonData
 import           Frontend.UI.ModuleExplorer
 import           Frontend.UI.Repl
 import           Frontend.UI.Wallet
-import           Frontend.Wallet
-import           Frontend.Messages
 import           Frontend.UI.Widgets
+import           Frontend.Wallet
 ------------------------------------------------------------------------------
 
 
@@ -140,6 +140,5 @@ msgsWidget ideL = do
       e <- _element_raw <$> snippetWidget' snip
       -- TODO: Find a better/more robust way for deciding when we are good to go ...
       onReady <- delay 0.3 =<< getPostBuild
-      performEvent_ $ ffor onReady $ \_ -> liftJSM $ do
-        global <# "myElement" $ e
-        void $ e ^. js0 "scrollIntoView"
+      performEvent_ $ ffor onReady $ \_ -> liftJSM $
+        void $ e ^. js0 ("scrollIntoView" :: Text)
