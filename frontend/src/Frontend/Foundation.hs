@@ -27,6 +27,8 @@ module Frontend.Foundation
     -- * Lenses and Prisms
   , makePactLenses
   , makePactPrisms
+    -- * Helpers that should really not be here
+  , tshow
     -- * Re-exports
   , module Data.Maybe
   , module Reflex.Extended
@@ -50,6 +52,8 @@ import           Language.Haskell.TH.Syntax  (Name)
 import           Language.Javascript.JSaddle (MonadJSM (..))
 import           Reflex.Extended
 import           Reflex.Network.Extended
+import           Data.Text
+import qualified Data.Text as T
 
 import           Data.Maybe
 
@@ -79,6 +83,9 @@ makePactLenses =
 --   Currently this is just standard `makePrisms`
 makePactPrisms :: Name -> DecsQ
 makePactPrisms = makePrisms
+
+tshow :: Show a => a -> Text
+tshow = T.pack . show
 
 
 -- | Re-use data constructors more flexibly.

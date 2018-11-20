@@ -40,9 +40,7 @@ import qualified Data.Text                   as T
 import qualified Data.Text.Encoding          as T
 import           Language.Javascript.JSaddle hiding (Object)
 import           Reflex
-import           Reflex.Dom.Core             (keypress)
-import qualified Reflex.Dom.Core             as Core
-import           Reflex.Dom.SemanticUI       hiding (mainWidget)
+import           Reflex.Dom.Core
 ------------------------------------------------------------------------------
 import           Pact.Repl
 import           Pact.Repl.Types
@@ -175,12 +173,12 @@ replInput setFocus = do
             [ mempty <$ enterPressed
             , fromMaybe "" . Z.safeCursor <$> tagPromptlyDyn commandHistory key
             ]
-      ti <- Core.textInput (def & Core.textInputConfig_setValue .~ sv
-                                & Core.textInputConfig_attributes .~ pure ("class" =: "code-font")
-                           )
+      ti <- textInput (def & textInputConfig_setValue .~ sv
+                           & textInputConfig_attributes .~ pure ("class" =: "code-font")
+                      )
       let key = ffilter isMovement $ domEvent Keydown ti
       let enterPressed = keypress Enter ti
-      _ <- performEvent (liftJSM (pToJSVal (Core._textInput_element ti) ^. js0 ("focus" :: String)) <$ setFocus)
+      _ <- performEvent (liftJSM (pToJSVal (_textInput_element ti) ^. js0 ("focus" :: String)) <$ setFocus)
       let newCommand = tag (current $ value ti) enterPressed
       commandHistory <- foldDyn ($) Z.empty $ leftmost
         [ addToHistory <$> newCommand

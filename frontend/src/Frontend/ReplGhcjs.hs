@@ -27,27 +27,19 @@ module Frontend.ReplGhcjs where
 ------------------------------------------------------------------------------
 import           Control.Lens
 import           Control.Monad.State.Strict
-import           Data.Foldable
-import qualified Data.Map                    as Map
-import qualified Data.Set                    as Set
 import           Data.Text                   (Text)
-import qualified Data.Text                   as T
-import           Data.Traversable            (for)
 import           Reflex
+import           Reflex.Dom.Core
 import           Reflex.Dom.ACE.Extended
-import           Reflex.Dom.SemanticUI       hiding (mainWidget)
 ------------------------------------------------------------------------------
 import           Pact.Repl
 import           Pact.Repl.Types
 import           Pact.Types.Lang
 import           Obelisk.Generated.Static
 ------------------------------------------------------------------------------
-import           Frontend.Backend
 import           Frontend.Foundation
 import           Frontend.Ide
 import           Frontend.Editor
-import           Frontend.JsonData
-import           Frontend.ModuleExplorer
 import           Frontend.UI.RightPanel
 import           Frontend.UI.Button
 import           Frontend.UI.Modal
@@ -86,81 +78,81 @@ codePanel ideL = do
 
       pure $ mempty & editorCfg_setCode .~ onUserCode
 
-functionsList :: MonadWidget t m => Ide t -> BackendUri -> [PactFunction] -> m ()
-functionsList ideL backendUri functions = divClass "ui very relaxed list" $ do
-  for_ functions $ \(PactFunction (ModuleName moduleName) name _ mdocs funType) -> divClass "item" $ do
-    (e, _) <- elClass' "a" "header" $ do
-      text name
-      text ":"
-      text $ tshow $ _ftReturn funType
-      text " "
-      elAttr "span" ("class" =: "description" <> "style" =: "display: inline") $ do
-        text "("
-        text $ T.unwords $ tshow <$> _ftArgs funType
-        text ")"
-    for_ mdocs $ divClass "description" . text
-    open <- toggle False $ domEvent Click e
-    dyn_ $ ffor open $ \case
-      False -> pure ()
-      True -> segment def $ form def $ do
-        inputs <- for (_ftArgs funType) $ \arg -> field def $ do
-          el "label" $ text $ "Argument: " <> tshow arg
-          case _aType arg of
-            TyPrim TyInteger -> fmap value . input def $ inputElement $ def
-              & inputElementConfig_elementConfig . initialAttributes .~ Map.fromList
-                [ ("type", "number")
-                , ("step", "1")
-                , ("placeholder", _aName arg)
-                ]
-            TyPrim TyDecimal -> do
-              ti <- input def $ inputElement $ def
-                & inputElementConfig_elementConfig . initialAttributes .~ Map.fromList
-                  [ ("type", "number")
-                  , ("step", "0.0000000001") -- totally arbitrary
-                  , ("placeholder", _aName arg)
-                  ]
-              pure $ (\x -> if T.isInfixOf "." x then x else x <> ".0") <$> value ti
-            TyPrim TyTime -> do
-              i <- input def $ inputElement $ def
-                & inputElementConfig_elementConfig . initialAttributes .~ Map.fromList
-                  [ ("type", "datetime-local")
-                  , ("step", "1") -- 1 second step
-                  ]
-              pure $ (\x -> "(time \"" <> x <> "Z\")") <$> value i
-            TyPrim TyBool -> do
-              d <- dropdown def (pure False) $ TaggedStatic $ Map.fromList
-                [(True, text "true"), (False, text "false")]
-              pure $ T.toLower . tshow . runIdentity <$> value d
-            TyPrim TyString -> do
-              ti <- input def $ textInput (def & textInputConfig_placeholder .~ pure (_aName arg))
-              pure $ tshow <$> value ti -- TODO better escaping
-            TyPrim TyKeySet -> do
-              d <- dropdown (def & dropdownConfig_placeholder .~ "Select a keyset") Nothing $ TaggedDynamic $ ffor (_jsonData_keysets $ _ide_jsonData ideL) $
-                Map.mapWithKey (\k _ -> text k)
-              pure $ maybe "" (\x -> "(read-keyset \"" <> x <> "\")") <$> value d
-            _ -> fmap value . input def $
-              textInput (def & textInputConfig_placeholder .~ pure (_aName arg))
-        let buttonConfig = def
-              & buttonConfig_type .~ SubmitButton
-              & buttonConfig_emphasis .~ Static (Just Primary)
-        submit <- button buttonConfig $ text "Call function"
-        let args = tag (current $ sequence inputs) submit
-            callFun = ffor args $ \as -> mconcat ["(", moduleName, ".", name, " ", T.unwords as, ")"]
-        -- for debugging: widgetHold blank $ ffor callFun $ label def . text
-        let ed = ideL ^. ide_jsonData . jsonData_data
-        deployedResult <- backendRequest (ideL ^. ide_wallet) $
-          ffor (attach (current ed) callFun) $ \(cEd, c) ->
-            BackendRequest
-              { _backendRequest_code = c
-              , _backendRequest_data = either mempty id cEd
-              , _backendRequest_backend = backendUri
-              , _backendRequest_signing = Set.empty
-              }
-              -- FIXME Probably bad...need to pop up the deploy confirmation dialog
-        widgetHold_ blank $ ffor deployedResult $ \x -> case x of
-          Left err -> message (def & messageConfig_type .~ Static (Just (MessageType Negative))) $ do
-            text $ prettyPrintBackendError err
-          Right v -> message def $ text $ tshow v
+{- functionsList :: MonadWidget t m => Ide t -> BackendUri -> [PactFunction] -> m () -}
+{- functionsList ideL backendUri functions = divClass "ui very relaxed list" $ do -}
+{-   for_ functions $ \(PactFunction (ModuleName moduleName) name _ mdocs funType) -> divClass "item" $ do -}
+{-     (e, _) <- elClass' "a" "header" $ do -}
+{-       text name -}
+{-       text ":" -}
+{-       text $ tshow $ _ftReturn funType -}
+{-       text " " -}
+{-       elAttr "span" ("class" =: "description" <> "style" =: "display: inline") $ do -}
+{-         text "(" -}
+{-         text $ T.unwords $ tshow <$> _ftArgs funType -}
+{-         text ")" -}
+{-     for_ mdocs $ divClass "description" . text -}
+{-     open <- toggle False $ domEvent Click e -}
+{-     dyn_ $ ffor open $ \case -}
+{-       False -> pure () -}
+{-       True -> el "div" $ el "form" $ do -}
+{-         inputs <- for (_ftArgs funType) $ \arg -> field def $ do -}
+{-           el "label" $ text $ "Argument: " <> tshow arg -}
+{-           case _aType arg of -}
+{-             TyPrim TyInteger -> fmap value . input def $ inputElement $ def -}
+{-               & inputElementConfig_elementConfig . initialAttributes .~ Map.fromList -}
+{-                 [ ("type", "number") -}
+{-                 , ("step", "1") -}
+{-                 , ("placeholder", _aName arg) -}
+{-                 ] -}
+{-             TyPrim TyDecimal -> do -}
+{-               ti <- input def $ inputElement $ def -}
+{-                 & inputElementConfig_elementConfig . initialAttributes .~ Map.fromList -}
+{-                   [ ("type", "number") -}
+{-                   , ("step", "0.0000000001") -- totally arbitrary -}
+{-                   , ("placeholder", _aName arg) -}
+{-                   ] -}
+{-               pure $ (\x -> if T.isInfixOf "." x then x else x <> ".0") <$> value ti -}
+{-             TyPrim TyTime -> do -}
+{-               i <- input def $ inputElement $ def -}
+{-                 & inputElementConfig_elementConfig . initialAttributes .~ Map.fromList -}
+{-                   [ ("type", "datetime-local") -}
+{-                   , ("step", "1") -- 1 second step -}
+{-                   ] -}
+{-               pure $ (\x -> "(time \"" <> x <> "Z\")") <$> value i -}
+{-             TyPrim TyBool -> do -}
+{-               d <- dropdown def (pure False) $ TaggedStatic $ Map.fromList -}
+{-                 [(True, text "true"), (False, text "false")] -}
+{-               pure $ T.toLower . tshow . runIdentity <$> value d -}
+{-             TyPrim TyString -> do -}
+{-               ti <- input def $ textInput (def & textInputConfig_placeholder .~ pure (_aName arg)) -}
+{-               pure $ tshow <$> value ti -- TODO better escaping -}
+{-             TyPrim TyKeySet -> do -}
+{-               d <- dropdown (def & dropdownConfig_placeholder .~ "Select a keyset") Nothing $ TaggedDynamic $ ffor (_jsonData_keysets $ _ide_jsonData ideL) $ -}
+{-                 Map.mapWithKey (\k _ -> text k) -}
+{-               pure $ maybe "" (\x -> "(read-keyset \"" <> x <> "\")") <$> value d -}
+{-             _ -> fmap value . input def $ -}
+{-               textInput (def & textInputConfig_placeholder .~ pure (_aName arg)) -}
+{-         let buttonConfig = def -}
+{-               & buttonConfig_type .~ SubmitButton -}
+{-               & buttonConfig_emphasis .~ Static (Just Primary) -}
+{-         submit <- button buttonConfig $ text "Call function" -}
+{-         let args = tag (current $ sequence inputs) submit -}
+{-             callFun = ffor args $ \as -> mconcat ["(", moduleName, ".", name, " ", T.unwords as, ")"] -}
+{-         -- for debugging: widgetHold blank $ ffor callFun $ label def . text -}
+{-         let ed = ideL ^. ide_jsonData . jsonData_data -}
+{-         deployedResult <- backendRequest (ideL ^. ide_wallet) $ -}
+{-           ffor (attach (current ed) callFun) $ \(cEd, c) -> -}
+{-             BackendRequest -}
+{-               { _backendRequest_code = c -}
+{-               , _backendRequest_data = either mempty id cEd -}
+{-               , _backendRequest_backend = backendUri -}
+{-               , _backendRequest_signing = Set.empty -}
+{-               } -}
+{-               -- FIXME Probably bad...need to pop up the deploy confirmation dialog -}
+{-         widgetHold_ blank $ ffor deployedResult $ \x -> case x of -}
+{-           Left err -> message (def & messageConfig_type .~ Static (Just (MessageType Negative))) $ do -}
+{-             text $ prettyPrintBackendError err -}
+{-           Right v -> message def $ text $ tshow v -}
 
 codeWidget
   :: MonadWidget t m

@@ -23,12 +23,6 @@ in
 
     overrides = let
       inherit (pkgs) lib;
-      semantic-reflex-src = pkgs.fetchFromGitHub {
-        owner = "tomsmalley";
-        repo = "semantic-reflex";
-        rev = "42bfede5e308bab4494e87ed0144f21134a4c5b3";
-        sha256 = "01rpf0vh5llx1hq4j55gmw36fvzhb95ngcykh34sgcxp5498p9f3";
-      };
       guard-ghcjs-overlay = self: super:
         let hsNames = [ "cacophony" "haskeline" "katip" "ridley" ];
         in lib.genAttrs hsNames (name: null);
@@ -81,7 +75,6 @@ in
               sha256 = "09fcf896bs6i71qhj5w6qbwllkv3gywnn5wfsdrcm0w1y6h8i88f";
             }) {}) "ghcjs");
 
-            semantic-reflex = pkgs.haskell.lib.dontHaddock (pkgs.haskell.lib.doJailbreak (pkgs.haskell.lib.dontCheck (self.callCabal2nix "semantic-reflex"  (semantic-reflex-src + /semantic-reflex) {})));
             reflex-dom-contrib = (self.callCabal2nix "reflex-dom-contrib" (pkgs.fetchFromGitHub {
               owner = "reflex-frp";
               repo = "reflex-dom-contrib";

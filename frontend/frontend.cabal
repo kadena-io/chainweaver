@@ -42,7 +42,6 @@ library
                , reflex-dom-ace
                , reflex-dom-contrib
                , safe
-               , semantic-reflex
                , string-qq
                , template-haskell
                , text
