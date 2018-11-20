@@ -17,6 +17,10 @@ in
 
     __closureCompilerOptimizationLevel = "SIMPLE";
 
+    shellToolOverrides = ghc: super: {
+         z3 = pkgs.z3;
+       };
+
     overrides = let
       inherit (pkgs) lib;
       semantic-reflex-src = pkgs.fetchFromGitHub {
