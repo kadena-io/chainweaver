@@ -49,8 +49,8 @@ in
             pact = pkgs.haskell.lib.overrideCabal (self.callCabal2nix "pact" (pkgs.fetchFromGitHub {
               owner = "kadena-io";
               repo = "pact";
-              rev = "c2312788910ec2308b48d4eb61e895810de6a550";
-              sha256 = "176ifkfvm0a96nh1n3i5c23z6kls8wl8mw31l4rwp5n4npgrza4l";
+              rev = "c06b2c2d99c6be379b67a0b3d925170864a8bd1c";
+              sha256 = "0rq1885hhjwmh71f8z3ickrv29fn1hhsip8gapaipsh79vpw4fsf";
             }) {}) (drv: {
               testSystemDepends = (drv.testSystemDepends or []) ++ [ pkgs.z3 ];
               doCheck = false;
