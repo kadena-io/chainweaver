@@ -32,6 +32,7 @@ import qualified Data.Map                    as Map
 import           Data.Text                   (Text)
 import           Reflex
 import           Reflex.Dom.Core
+import           Language.Javascript.JSaddle  (js0, liftJSM, global, (<#))
 ------------------------------------------------------------------------------
 import           Frontend.Ide
 import           Frontend.UI.JsonData
@@ -121,6 +122,7 @@ envTab ideL = do
 msgsWidget :: forall t m. MonadWidget t m => Ide t -> m (IdeCfg t)
 msgsWidget ideL = do
   divClass "control-block repl-output iframe" $ do
+    -- This is really slow, but we usually only have a handful messages:
     divClass "control-block repl-output" $ do
       let
         mNewOld :: Dynamic t (Maybe (Text, [Text]))
@@ -129,5 +131,15 @@ msgsWidget ideL = do
         old = maybe [] snd <$> mNewOld
 
       void . dyn $ traverse_ (snippetWidget . OldOutputSnippet) . reverse <$> old
-      void . dyn $ traverse_ (snippetWidget . OutputSnippet . fst) <$> mNewOld
+      void . dyn $ traverse_ (snippetWithScroll . OutputSnippet . fst) <$> mNewOld
+
       pure mempty
+  where
+    snippetWithScroll :: DisplayedSnippet -> m ()
+    snippetWithScroll snip = do
+      e <- _element_raw <$> snippetWidget' snip
+      -- TODO: Find a better/more robust way for deciding when we are good to go ...
+      onReady <- delay 0.3 =<< getPostBuild
+      performEvent_ $ ffor onReady $ \_ -> liftJSM $ do
+        global <# "myElement" $ e
+        void $ e ^. js0 "scrollIntoView"

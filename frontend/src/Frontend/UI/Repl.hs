@@ -72,10 +72,15 @@ staticReplHeader = S.fromList
       , OutputSnippet ";; then just type at the \"pact>\" prompt to interact!"
       ]
 
+snippetWidget' :: MonadWidget t m => DisplayedSnippet -> m (Element EventResult (DomBuilderSpace m) t)
+snippetWidget' = fmap fst . \case
+  InputSnippet t -> elAttr' "code" ("class" =: "replOut code-font") $ text t
+  OutputSnippet t -> elAttr' "code" ("class" =: "replOut code-font") $ text t
+  OldOutputSnippet t -> elAttr' "code" ("class" =: "replOut code-font old") $ text t
+
+
 snippetWidget :: MonadWidget t m => DisplayedSnippet -> m ()
-snippetWidget (InputSnippet t)  = elAttr "code" ("class" =: "replOut code-font") $ text t
-snippetWidget (OutputSnippet t) = elAttr "code" ("class" =: "replOut code-font") $ text t
-snippetWidget (OldOutputSnippet t) = elAttr "code" ("class" =: "replOut code-font old") $ text t
+snippetWidget = void . snippetWidget'
 
 replWidget
     :: MonadWidget t m
