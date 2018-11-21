@@ -139,6 +139,6 @@ msgsWidget ideL = do
     snippetWithScroll snip = do
       e <- _element_raw <$> snippetWidget' snip
       -- TODO: Find a better/more robust way for deciding when we are good to go ...
-      onReady <- delay 0.3 =<< getPostBuild
+      onReady <- delay 0.1 =<< getPostBuild
       performEvent_ $ ffor onReady $ \_ -> liftJSM $
         void $ e ^. js0 ("scrollIntoView" :: Text)
