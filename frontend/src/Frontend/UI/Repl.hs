@@ -47,6 +47,7 @@ import           Pact.Repl.Types
 import           Pact.Types.Exp
 import           Pact.Types.Term
 ------------------------------------------------------------------------------
+import           Frontend.Backend
 import           Frontend.Ide
 import           Frontend.JsonData
 import           Frontend.Wallet
@@ -113,10 +114,15 @@ replWidget ideL = divClass "control-block repl-output" $ mdo
         , ([], ("", H.empty)) <$ _ide_clearRepl ideL
         ]
 
+      backends = ideL ^. ide_backend . backend_backends
+
+      minBackend = ffor backends $ \maybeBackends -> do
+        (_key, uri) <- Map.lookupMin =<< maybeBackends
+        pure (T.unpack uri)
+
     widgetHold
-      (replInner replClick ([], ("", H.empty)))
-      (replInner replClick <$> onNewReplContent
-      )
+      (replInner replClick Nothing ([], ("", H.empty)))
+      (attachWith (replInner replClick) (current minBackend) onNewReplContent)
   let
     err = snd <$> r
     onErrs = fmapMaybe id . updated $ err
@@ -129,9 +135,10 @@ replWidget ideL = divClass "control-block repl-output" $ mdo
 replInner
     :: MonadWidget t m
     => Event t ()
+    -> Maybe String
     -> ([KeyPair], (Text, Object))
     -> m (Event t Text, Maybe LogMsg)
-replInner replClick (signingKeys, (code, json)) = mdo
+replInner replClick verifyUri (signingKeys, (code, json)) = mdo
     let pactKeys =
           T.unwords
           . map (keyToText . _keyPair_publicKey)
@@ -145,7 +152,7 @@ replInner replClick (signingKeys, (code, json)) = mdo
           , "])"
           , "(begin-tx)"
           ]
-    initState <- liftIO $ initReplState StringEval (Just "https://pact-1.kadena.obsidian.systems:443")
+    initState <- liftIO $ initReplState StringEval verifyUri
     stateOutErr0 <- runReplStep0 (initState, mempty) codeP "(commit-tx)" code
     let stateAndOut0 = (\(a,b,_) -> (a, b)) stateOutErr0
     stateAndOut <- holdDyn stateAndOut0 evalResult
