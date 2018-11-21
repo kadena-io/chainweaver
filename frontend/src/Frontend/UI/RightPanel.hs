@@ -30,6 +30,7 @@ import           Control.Monad.State.Strict
 import           Data.Foldable
 import qualified Data.Map                    as Map
 import           Data.Text                   (Text)
+import           GHCJS.DOM.Element
 import           Language.Javascript.JSaddle (js0, liftJSM)
 import           Reflex
 import           Reflex.Dom.Core
@@ -141,4 +142,4 @@ msgsWidget ideL = do
       -- TODO: Find a better/more robust way for deciding when we are good to go ...
       onReady <- delay 0.3 =<< getPostBuild
       performEvent_ $ ffor onReady $ \_ -> liftJSM $
-        void $ e ^. js0 ("scrollIntoView" :: Text)
+        void $ scrollIntoView e True
