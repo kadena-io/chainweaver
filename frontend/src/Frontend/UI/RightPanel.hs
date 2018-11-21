@@ -31,7 +31,7 @@ import           Data.Foldable
 import qualified Data.Map                    as Map
 import           Data.Text                   (Text)
 import           GHCJS.DOM.Element
-import           Language.Javascript.JSaddle (js0, liftJSM)
+import           Language.Javascript.JSaddle (liftJSM)
 import           Reflex
 import           Reflex.Dom.Core
 ------------------------------------------------------------------------------
