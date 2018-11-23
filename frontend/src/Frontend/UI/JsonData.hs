@@ -115,8 +115,12 @@ uiJsonData w d = divClass "tabset" $ mdo
 
       let
         onDupWarning = mkDupWarning <$> (updated $ d ^. jsonData_overlappingProps)
+        onObjWarning = fmapMaybe (^? _Left . to mkObjError) $ updated (d ^. jsonData_data)
+        onAnno = mconcat [ onObjWarning, onDupWarning ]
 
-      onSetRawInput <- elClass "div" "wysiwyg" $ dataEditor onDupWarning "" onNewData
+
+
+      onSetRawInput <- elClass "div" "wysiwyg" $ dataEditor onAnno "" onNewData
       pure $ mempty & jsonDataCfg_setRawInput .~ onSetRawInput
 
     tabPaneActive ("class" =: "tab-content")
@@ -128,6 +132,7 @@ uiJsonData w d = divClass "tabset" $ mdo
 
     pure $ mconcat [ keysetVCfg, rawVCfg ]
   where
+    mkObjError = mkAnnotation "error" . showJsonError
     mkDupWarning dups =
       if Set.null dups
          then []
@@ -138,13 +143,16 @@ uiJsonData w d = divClass "tabset" $ mdo
                T.intercalate ", " . Set.toList $ dups
              ft = t <> props
            in
-             [ AceAnnotation
-               { _aceAnnotation_row = 0 -- For simplicity, good enough for now.
-               , _aceAnnotation_column = 0
-               , _aceAnnotation_text = ft
-               , _aceAnnotation_type = "warning"
-               }
-             ]
+             mkAnnotation "warning" ft
+
+    mkAnnotation aType msg =
+       [ AceAnnotation
+         { _aceAnnotation_row = 0 -- For simplicity, good enough for now.
+         , _aceAnnotation_column = 0
+         , _aceAnnotation_text = msg
+         , _aceAnnotation_type = aType
+         }
+       ]
 
 uiKeysets
   :: (MonadWidget t m)
