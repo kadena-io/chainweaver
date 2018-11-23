@@ -39,6 +39,7 @@ import           GHC.Exts (toList)
 import           GHCJS.DOM.Element (scrollIntoView)
 ------------------------------------------------------------------------------
 import           Frontend.Repl
+import           Frontend.UI.Widgets (setFocus)
 ------------------------------------------------------------------------------
 
 data ClickState = DownAt (Int, Int) | Clicked | Selected
@@ -106,7 +107,7 @@ replWidget m = divClass "control-block repl-output" $ mdo
 
 
 replInput :: MonadWidget t m => Event t () -> m (Event t Text)
-replInput setFocus = do
+replInput onClick = do
     divClass "repl-input-controls code-font" $ mdo
       (e, _) <- elClass' "div" "prompt" $ text "pact>"
       onReady <- delay 0.1 =<< getPostBuild
@@ -122,7 +123,7 @@ replInput setFocus = do
                       )
       let key = ffilter isMovement $ domEvent Keydown ti
       let enterPressed = keypress Enter ti
-      _ <- performEvent (liftJSM (pToJSVal (_textInput_element ti) ^. js0 ("focus" :: String)) <$ setFocus)
+      performEvent $ setFocus (_textInput_element ti) <$ onClick
       let newCommand = tag (current $ value ti) enterPressed
       commandHistory <- foldDyn ($) Z.empty $ leftmost
         [ addToHistory <$> newCommand

@@ -17,6 +17,7 @@ module Frontend.UI.Widgets
   , makeClickable
   , accordionItem
   , accordionItem'
+  , setFocus
   ) where
 
 ------------------------------------------------------------------------------
@@ -25,7 +26,7 @@ import           Control.Lens
 import           Control.Monad
 import           Data.Text                   (Text)
 import qualified Data.Text                   as T
-import           Language.Javascript.JSaddle (js0, liftJSM, pToJSVal)
+import           Language.Javascript.JSaddle (js0, liftJSM, pToJSVal, PToJSVal)
 import           Reflex.Dom.Core
 import           Reflex.Dom.Contrib.CssClass
 import           Data.Map.Strict             (Map)
@@ -173,3 +174,7 @@ filteredButton
   -> m ()
   -> m (Event t ())
 filteredButton okay = fmap fst . uiButton (def & uiButtonCfg_disabled .~ fmap not okay)
+
+
+setFocus :: (MonadJSM m, PToJSVal a) => a -> m ()
+setFocus e =  void . liftJSM $ pToJSVal e ^. js0 ("focus" :: Text)
