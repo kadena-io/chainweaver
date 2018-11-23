@@ -14,6 +14,7 @@ module Reflex.Network.Extended ( -- * Re-exported modules
                              , SwitchHold
                              , flatten
                              , flattenDynamic
+                             , flattenDynamicDef
                              , networkViewFlatten
                              ) where
 
@@ -38,20 +39,29 @@ class Flattenable a t where
   flattenWith :: forall m. (Reflex t, MonadHold t m)
                   => SwitchHold t -> Event t a -> m a
 
-
 -- | Extract a type from an event, with the given initial value.
 flatten :: forall a t m. (Flattenable a t, Reflex t, MonadHold t m)
               => Event t a -> m a
 flatten = flattenWith switchHold
 
--- | Flatten a Dynamic
-flattenDynamic :: forall a t m. (Reflex t, MonadHold t m, Default a)
+-- | Flatten a Dynamic of `Default` a.
+flattenDynamicDef :: forall a t m. (Reflex t, MonadHold t m, Default a)
                => SwitchHold t -> Event t (Dynamic t a) -> m (Dynamic t a)
-flattenDynamic doSwitch ev = do
+flattenDynamicDef doSwitch ev = do
   let
     initVal = pushAlways (sample . current) ev
   updateVal <- doSwitch initVal (updated <$> ev)
   holdDyn def updateVal
+
+-- | Flatten a Dynamic given a default value that it should have before the
+-- event occurs.
+flattenDynamic :: forall a t m. (Reflex t, MonadHold t m)
+               => a -> SwitchHold t -> Event t (Dynamic t a) -> m (Dynamic t a)
+flattenDynamic defVal doSwitch ev = do
+  let
+    initVal = pushAlways (sample . current) ev
+  updateVal <- doSwitch initVal (updated <$> ev)
+  holdDyn defVal updateVal
 
 -- | networkView combined with flattenDef
 networkViewFlatten
