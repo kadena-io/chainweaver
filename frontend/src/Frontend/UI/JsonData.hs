@@ -118,8 +118,6 @@ uiJsonData w d = divClass "tabset" $ mdo
         onObjWarning = fmapMaybe (^? _Left . to mkObjError) $ updated (d ^. jsonData_data)
         onAnno = mconcat [ onObjWarning, onDupWarning ]
 
-
-
       onSetRawInput <- elClass "div" "wysiwyg" $ dataEditor onAnno "" onNewData
       pure $ mempty & jsonDataCfg_setRawInput .~ onSetRawInput
 
