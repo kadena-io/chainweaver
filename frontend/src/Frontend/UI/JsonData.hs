@@ -42,6 +42,7 @@ import qualified Data.Set                           as Set
 import           Data.Text                          (Text)
 import qualified Data.Text                          as T
 import qualified Data.Text.Encoding                 as T
+import           Language.Javascript.JSaddle        (eval, liftJSM, call, obj)
 import           Reflex.Class.Extended
 import           Reflex.Dom
 import           Reflex.Dom.ACE.Extended
@@ -51,8 +52,8 @@ import qualified Reflex.Dom.Contrib.Widgets.DynTabs as Tabs
 import           Frontend.Foundation
 import           Frontend.JsonData
 import           Frontend.UI.Icon
-import           Frontend.Wallet
 import           Frontend.UI.Widgets
+import           Frontend.Wallet
 ------------------------------------------------------------------------------
 
 
@@ -109,8 +110,7 @@ uiJsonData w d = divClass "tabset" $ mdo
 
         pure $ ksCfg & jsonDataCfg_createKeyset .~ onCreateKeyset
 
-    rawVCfg <- tabPaneActive ("class" =: "tab-content")
-        curSelection JsonDataView_Raw $ do
+    rawVCfg <- tabPaneActive ("class" =: "tab-content") curSelection JsonDataView_Raw $ do
       onNewData <- tagOnPostBuild $ d ^. jsonData_rawInput
 
       let
@@ -118,7 +118,12 @@ uiJsonData w d = divClass "tabset" $ mdo
         onObjWarning = fmapMaybe (^? _Left . to mkObjError) $ updated (d ^. jsonData_data)
         onAnno = mconcat [ onObjWarning, onDupWarning ]
 
-      onSetRawInput <- elClass "div" "wysiwyg" $ dataEditor onAnno "" onNewData
+      (e, onSetRawInput) <- elClass' "div" "wysiwyg" $ dataEditor onAnno "" onNewData
+      editorEl <- liftJSM $ do
+        getEditor <- eval "(function(e) { return e.querySelector(\".ace_text-input\");})"
+        call getEditor obj [_element_raw e]
+      onSetFocus <- delay 0.2 $ ffilter (== JsonDataView_Raw) (updated curSelection)
+      performEvent_ $ setFocus editorEl <$ onSetFocus
       pure $ mempty & jsonDataCfg_setRawInput .~ onSetRawInput
 
     tabPaneActive ("class" =: "tab-content")
