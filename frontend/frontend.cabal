@@ -60,6 +60,7 @@ library
                  , Frontend.ModuleExplorer
                  , Frontend.ModuleExplorer.Impl
                  , Frontend.ReplGhcjs
+                 , Frontend.Repl
                  , Frontend.Storage
                  , Frontend.UI.Button
                  , Frontend.UI.Dialogs.DeployConfirmation

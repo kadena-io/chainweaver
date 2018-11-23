@@ -57,6 +57,7 @@ import           Frontend.JsonData
 import           Frontend.Wallet
 import           Frontend.Messages
 import           Frontend.Editor
+import           Frontend.Repl
 import           Frontend.ModuleExplorer as API
 
 {- -- | Our dependencies. -}
@@ -67,6 +68,7 @@ type HasModuleExplorerModelCfg mConf t =
   , HasEditorCfg mConf t
   , HasMessagesCfg mConf t
   , HasJsonDataCfg mConf t
+  , HasReplCfg mConf t
   )
 
 
@@ -122,13 +124,16 @@ loadModule onNewContractReq = do
   (dCfg, onDeployedLoad) <- loadDeployedModule onDeployedModule
 
   let onContract = leftmost [ onExampleLoad , onDeployedLoad ]
+      onLoad = () <$ onContract
 
   contract <- holdDyn Nothing $ Just <$> tagPromptlyDyn requestedContract onContract
 
   pure ( mconcat
           [ eCfg
           , dCfg
-          , mempty & messagesCfg_clear .~ leftmost [onExampleLoad, onDeployedLoad]
+          , mempty
+              & messagesCfg_clear .~ onLoad
+              & replCfg_reset .~ onLoad
           ]
        , contract
        )

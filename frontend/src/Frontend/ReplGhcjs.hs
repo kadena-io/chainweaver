@@ -40,6 +40,7 @@ import           Obelisk.Generated.Static
 import           Frontend.Foundation
 import           Frontend.Ide
 import           Frontend.Editor
+import           Frontend.Repl
 import           Frontend.UI.RightPanel
 import           Frontend.UI.Button
 import           Frontend.UI.Modal
@@ -53,7 +54,7 @@ app :: MonadWidget t m => m ()
 app = void . mfix $ \ cfg -> do
   ideL <- makeIde cfg
 
-  controlCfg <- controlBar
+  controlCfg <- controlBar ideL
   mainCfg <- elAttr "main" ("id" =: "main" <> "class" =: "flexbox even") $ do
     uiEditorCfg <- codePanel ideL
     envCfg <- elAttr "div" ("class" =: "flex" <> "id" =: "control-ui") $ do
@@ -166,16 +167,19 @@ codeWidget iv sv = do
     return $ _extendedACE_onUserChange ace
 
 
-controlBar :: forall t m. MonadWidget t m => m (IdeCfg t)
-controlBar = do
+controlBar
+  :: forall t m model. (MonadWidget t m, HasEditor model t)
+  => model
+  ->  m (IdeCfg t)
+controlBar m = do
     elAttr "header" ("id" =: "header") $ do
       divClass "flexbox even" $ do
-        ideCfgL <- controlBarLeft
+        ideCfgL <- controlBarLeft m
         controlBarRight
         return ideCfgL
 
-controlBarLeft :: MonadWidget t m => m (IdeCfg t)
-controlBarLeft = do
+controlBarLeft :: (MonadWidget t m, HasEditor model t) => model -> m (IdeCfg t)
+controlBarLeft m = do
     divClass "flex left-nav" $ do
       el "h1" $ do
         imgWithAlt (static @"img/pact-logo.svg") "Kadena Pact Logo" blank
@@ -189,7 +193,8 @@ controlBarLeft = do
         let
           reqConfirmation = Modal_DeployConfirmation <$ onDeployClick
           lcfg = mempty
-            & ideCfg_load .~ onLoad
+            & replCfg_sendTransaction .~ tag (current $ m ^. editor_code) onLoad
+            -- For now we still want to reset the repl on load:
             & ideCfg_reqModal .~ reqConfirmation
         pure lcfg
 

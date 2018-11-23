@@ -59,6 +59,7 @@ import           Frontend.Wallet
 import           Frontend.Editor
 import           Frontend.ModuleExplorer.Impl
 import           Frontend.Messages
+import           Frontend.Repl
 
 -- | Data needed to send transactions to the server.
 data TransactionInfo = TransactionInfo
@@ -90,13 +91,10 @@ data IdeCfg t = IdeCfg
   , _ideCfg_backend        :: BackendCfg t
   , _ideCfg_moduleExplorer :: ModuleExplorerCfg t
   , _ideCfg_editor         :: EditorCfg t
+  , _ideCfg_repl           :: ReplCfg t
   , _ideCfg_messages       :: MessagesCfg t
-  , _ideCfg_load           :: Event t ()
-    -- ^ Load code into the repl.
   , _ideCfg_selEnv         :: Event t EnvSelection
     -- ^ Switch tab of the right pane.
-  , _ideCfg_clearRepl      :: Event t ()
-    -- ^ Make the REPL fresh again, ready for new contracts.
   , _ideCfg_deploy         :: Event t TransactionInfo
     -- ^ Deploy the currently edited code/contract.
   , _ideCfg_reqModal       :: Event t Modal
@@ -114,11 +112,7 @@ data Ide t = Ide
   , _ide_wallet         :: Wallet t
   , _ide_jsonData       :: JsonData t
   , _ide_backend        :: Backend t
-  , _ide_load           :: Event t ()
-  -- ^ Forwarded _ideCfg_load. TODO: Modularize Repl properly and get rid of this.
-  , _ide_clearRepl      :: Event t ()
-  -- ^ Forwarded _ideCfg_clearRepl. TODO: Modularize Repl properly and get rid of this.
-  -- ^ The backend the user wants to deploy to.
+  , _ide_repl           :: WebRepl t
   , _ide_envSelection   :: Dynamic t EnvSelection
   -- ^ Currently selected tab in the right pane.
   , _ide_modal          :: Dynamic t Modal
@@ -134,6 +128,7 @@ makeIde
   . ( MonadHold t m, PerformEvent t m, MonadFix m
     , MonadJSM (Performable m), MonadJSM m
     , NotReady t m, Adjustable t m, HasJSContext (Performable m)
+    , MonadSample t (Performable m)
     , TriggerEvent t m, PostBuild t m
     )
   => IdeCfg t -> m (Ide t)
@@ -144,6 +139,7 @@ makeIde userCfg = build $ \ ~(cfg, ideL) -> do
     (explrCfg, moduleExplr) <- makeModuleExplorer cfg
     editorL <- makeEditor cfg
     messagesL <- makeMessages cfg
+    (replCfgL, replL) <- makeRepl ideL cfg
 
     let
       mkReq = do
@@ -160,38 +156,27 @@ makeIde userCfg = build $ \ ~(cfg, ideL) -> do
       (attachWithMaybe addSigning (current mkReq) (_ideCfg_deploy cfg))
 
     let
-      jsonErrorString = either (Just . showJsonError) (const Nothing) <$>
-          ideL ^. ide_jsonData . jsonData_data
-      jsonErrorsOnLoad =
-        fmapMaybe id . tag (current jsonErrorString) $ cfg ^. ideCfg_load
-      msgs = leftmost
-        [ prettyPrintBackendErrorResult <$> onResp
-        , jsonErrorsOnLoad
-        ]
+      msgs =  prettyPrintBackendErrorResult <$> onResp
       refresh = fmapMaybe (either (const Nothing) (const $ Just ())) onResp
       ourCfg = mempty
         & messagesCfg_send .~ msgs
         & backendCfg_refreshModule .~ refresh
-          -- TODO: Once we have the Repl properly modularized, take care of
-          -- this in the module explorer:
-        & ideCfg_clearRepl .~ (() <$ updated (ideL ^. moduleExplorer_loadedModule))
 
     envSelection <- makeEnvSelection ideL $ cfg ^. ideCfg_selEnv
 
     modal <- holdDyn Modal_NoModal $ _ideCfg_reqModal cfg
 
     pure
-      ( mconcat [ourCfg, userCfg, explrCfg]
+      ( mconcat [ourCfg, userCfg, explrCfg, replCfgL]
       , Ide
         { _ide_editor = editorL
         , _ide_wallet = walletL
         , _ide_jsonData = json
         , _ide_messages = messagesL
         , _ide_backend = backendL
+        , _ide_repl = replL
         , _ide_moduleExplorer = moduleExplr
         , _ide_envSelection = envSelection
-        , _ide_load = _ideCfg_load cfg
-        , _ide_clearRepl = _ideCfg_clearRepl cfg
         , _ide_modal = modal
         }
       )
@@ -207,7 +192,7 @@ makeEnvSelection
 makeEnvSelection ideL onSelect = do
   let
     onMessages = EnvSelection_Msgs <$ ideL ^. messages_gotNew
-    onLoad = EnvSelection_Repl <$ ideL ^. ide_load
+    onLoad = EnvSelection_Repl <$ ideL ^. repl_newOutput
 
   holdDyn EnvSelection_Env $ leftmost
     [ onSelect
@@ -251,6 +236,9 @@ instance HasEditorCfg (IdeCfg t) t where
 instance HasMessagesCfg (IdeCfg t) t where
   messagesCfg = ideCfg_messages
 
+instance HasReplCfg (IdeCfg t) t where
+  replCfg = ideCfg_repl
+
 instance HasWallet (Ide t) t where
   wallet = ide_wallet
 
@@ -266,6 +254,9 @@ instance HasModuleExplorer (Ide t) t where
 instance HasEditor (Ide t) t where
   editor = ide_editor
 
+instance HasWebRepl (Ide t) t where
+  webRepl = ide_repl
+
 instance HasMessages (Ide t) t where
   messages = ide_messages
 
@@ -277,9 +268,8 @@ instance Flattenable (IdeCfg t) t where
       <*> flattenWith doSwitch (_ideCfg_backend <$> ev)
       <*> flattenWith doSwitch (_ideCfg_moduleExplorer <$> ev)
       <*> flattenWith doSwitch (_ideCfg_editor <$> ev)
+      <*> flattenWith doSwitch (_ideCfg_repl <$> ev)
       <*> flattenWith doSwitch (_ideCfg_messages <$> ev)
-      <*> doSwitch never (_ideCfg_load <$> ev)
       <*> doSwitch never (_ideCfg_selEnv <$> ev)
-      <*> doSwitch never (_ideCfg_clearRepl <$> ev)
       <*> doSwitch never (_ideCfg_deploy <$> ev)
       <*> doSwitch never (_ideCfg_reqModal <$> ev)
