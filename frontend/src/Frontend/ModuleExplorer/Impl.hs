@@ -194,7 +194,7 @@ loadDeployedModule onNewContractReq = do
 --   The returned Event fires once the loading is complete.
 selectModule
   :: forall m t mConf
-  . ( MonadHold t m, Reflex t, PerformEvent t m, MonadJSM (Performable m)
+  . ( MonadHold t m, PerformEvent t m, MonadJSM (Performable m)
     , HasJSContext (Performable m), TriggerEvent t m
     , HasMessagesCfg  mConf t, Monoid mConf
     )

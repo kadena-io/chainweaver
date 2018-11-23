@@ -62,9 +62,9 @@ type LoggedMsg = Text
 --   State is controlled via this configuration.
 data MessagesCfg t = MessagesCfg
   { _messagesCfg_send :: Event t LogMsg
-    -- * Send a message that should be displayed to the user.
+    -- ^ Send a message that should be displayed to the user.
   , _messagesCfg_clear :: Event t ()
-    -- * Empty messages log.
+    -- ^ Empty messages log.
   }
   deriving Generic
 

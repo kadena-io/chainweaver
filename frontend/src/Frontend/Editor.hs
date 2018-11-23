@@ -74,9 +74,7 @@ makePactLenses ''Editor
 -- | Create an `Editor` by providing a `Config`.
 makeEditor
   :: forall t m cfg
-  . ( MonadHold t m, MonadFix m, Reflex t
-    , HasEditorCfg cfg t
-    )
+  . ( MonadHold t m , HasEditorCfg cfg t)
   => cfg -> m (Editor t)
 makeEditor cfg = Editor <$> holdDyn "" (cfg ^. editorCfg_setCode)
 

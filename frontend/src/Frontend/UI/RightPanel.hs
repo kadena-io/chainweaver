@@ -142,4 +142,4 @@ msgsWidget ideL = do
       -- TODO: Find a better/more robust way for deciding when we are good to go ...
       onReady <- delay 0.1 =<< getPostBuild
       performEvent_ $ ffor onReady $ \_ -> liftJSM $
-        void $ scrollIntoView e True
+        scrollIntoView e True
