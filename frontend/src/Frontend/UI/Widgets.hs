@@ -18,6 +18,8 @@ module Frontend.UI.Widgets
   , accordionItem
   , accordionItem'
   , setFocus
+  , setFocusOn
+  , setFocusOnSelected
   ) where
 
 ------------------------------------------------------------------------------
@@ -26,7 +28,7 @@ import           Control.Lens
 import           Control.Monad
 import           Data.Text                   (Text)
 import qualified Data.Text                   as T
-import           Language.Javascript.JSaddle (js0, liftJSM, pToJSVal, PToJSVal)
+import           Language.Javascript.JSaddle (js0, liftJSM, pToJSVal, PToJSVal, eval, call, obj)
 import           Reflex.Dom.Core
 import           Reflex.Dom.Contrib.CssClass
 import           Data.Map.Strict             (Map)
@@ -178,3 +180,30 @@ filteredButton okay = fmap fst . uiButton (def & uiButtonCfg_disabled .~ fmap no
 
 setFocus :: (MonadJSM m, PToJSVal a) => a -> m ()
 setFocus e =  void . liftJSM $ pToJSVal e ^. js0 ("focus" :: Text)
+
+-- | Set focus on a given child element in case the given Event occurs.
+setFocusOn
+  :: MonadWidget t m
+  => Element EventResult (DomBuilderSpace m) t -- ^ The root element.
+  -> Text -- ^ A css selector to select an ancestor.
+  -> Event t a -- ^ The triggering event.
+  -> m ()
+setFocusOn e cssSel onEv = do
+  myEl <- liftJSM $ do
+    getEl <- eval $ "(function(e) { return e.querySelector(\"" <> cssSel <> "\");})"
+    call getEl obj [_element_raw e]
+  onSetFocus <- delay 0.1 $ onEv
+  performEvent_ $ setFocus myEl <$ onSetFocus
+
+-- | Set focus on a given child element in case a matching event occurs.
+--
+--   Same as `setFocusOn`, but filters the given `Event` by comparing its value
+--   to the given filter.
+setFocusOnSelected
+  :: (MonadWidget t m, Eq a)
+  => Element EventResult (DomBuilderSpace m) t -- ^ The root element.
+  -> Text -- ^ A css selector to select an ancestor.
+  -> a -- ^ Filter the event for matching this value.
+  -> Event t a -- ^ The triggering event.
+  -> m ()
+setFocusOnSelected e cssSel pred onPred = setFocusOn e cssSel $ ffilter (== pred) onPred

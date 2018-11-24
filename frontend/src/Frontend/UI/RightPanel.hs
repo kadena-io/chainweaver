@@ -88,8 +88,11 @@ rightTabBar ideL = do
 
     envCfg <- tabPane ("class" =: "tab-content") curSelection EnvSelection_Env $
       envTab ideL
-    replCfg <- tabPane ("class" =: "tab-content") curSelection EnvSelection_Repl $
+
+    (e, replCfg) <- tabPane' ("class" =: "tab-content") curSelection EnvSelection_Repl $
       replWidget ideL
+    setFocusOnSelected e "input" EnvSelection_Repl $ updated curSelection
+
     errorsCfg <- tabPane ("class" =: "tab-content") curSelection EnvSelection_Msgs $
       msgsWidget ideL
     explorerCfg <- tabPane ("class" =: "tab-content") curSelection EnvSelection_ModuleExplorer $

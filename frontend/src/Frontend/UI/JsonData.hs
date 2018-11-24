@@ -101,14 +101,15 @@ uiJsonData
 uiJsonData w d = divClass "tabset" $ mdo
     tabs <- divClass "tab-nav" $ Tabs.tabBar def
     let curSelection = Tabs._tabBar_curTab tabs
-    keysetVCfg <- tabPaneActive ("class" =: "tab-content")
-        curSelection JsonDataView_Keysets $ do
-      divClass "keys" $ do
+    keysetVCfg <- tabPaneActive ("class" =: "tab-content") curSelection JsonDataView_Keysets $ do
+      (e, keysetCfgL) <- elClass' "div" "keys" $ do
         onCreateKeyset <- uiCreateKeyset d
         ksCfg <- elClass "div" "keyset-list" $
           networkViewFlatten $ uiKeysets w <$> d ^. jsonData_keysets
 
         pure $ ksCfg & jsonDataCfg_createKeyset .~ onCreateKeyset
+      setFocusOnSelected e "input" JsonDataView_Keysets $ updated curSelection
+      pure keysetCfgL
 
     rawVCfg <- tabPaneActive ("class" =: "tab-content") curSelection JsonDataView_Raw $ do
       onNewData <- tagOnPostBuild $ d ^. jsonData_rawInput
@@ -119,11 +120,7 @@ uiJsonData w d = divClass "tabset" $ mdo
         onAnno = mconcat [ onObjWarning, onDupWarning ]
 
       (e, onSetRawInput) <- elClass' "div" "wysiwyg" $ dataEditor onAnno "" onNewData
-      editorEl <- liftJSM $ do
-        getEditor <- eval "(function(e) { return e.querySelector(\".ace_text-input\");})"
-        call getEditor obj [_element_raw e]
-      onSetFocus <- delay 0.2 $ ffilter (== JsonDataView_Raw) (updated curSelection)
-      performEvent_ $ setFocus editorEl <$ onSetFocus
+      setFocusOnSelected e ".ace_text-input" JsonDataView_Raw $ updated curSelection
       pure $ mempty & jsonDataCfg_setRawInput .~ onSetRawInput
 
     tabPaneActive ("class" =: "tab-content")

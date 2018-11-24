@@ -39,7 +39,7 @@ import           GHC.Exts (toList)
 import           GHCJS.DOM.Element (scrollIntoView)
 ------------------------------------------------------------------------------
 import           Frontend.Repl
-import           Frontend.UI.Widgets (setFocus)
+import           Frontend.UI.Widgets (setFocusOn)
 ------------------------------------------------------------------------------
 
 data ClickState = DownAt (Int, Int) | Clicked | Selected
@@ -83,20 +83,21 @@ replWidget
     :: (MonadWidget t m, HasWebRepl model t, HasReplCfg mConf t, Monoid mConf)
     => model
     -> m mConf
-replWidget m = divClass "control-block repl-output" $ mdo
-  (e, onNewInput) <- elClass' "div" "repl-pane code-font" $ mdo
+replWidget m = divClass "control-block repl-output" $ do
+  (e, onNewInput) <- elClass' "div" "repl-pane code-font" $ do
     mapM_ snippetWidget staticReplHeader
     -- If performance becomes a problem, consider something smarther, like `simpleList` or manual update via change events.
     void $ simpleList (toList <$> m ^. repl_output) (dyn . fmap displayReplOutput)
+    replInput
 
-    clickType <- foldDyn ($) Nothing $ leftmost
-      [ setDown <$> domEvent Mousedown e
-      , clickClassifier <$> domEvent Mouseup e
-      ]
-    let
-      replClick = () <$
-        ffilter (== Just Clicked) (updated clickType)
-    replInput replClick
+  clickType <- foldDyn ($) Nothing $ leftmost
+    [ setDown <$> domEvent Mousedown e
+    , clickClassifier <$> domEvent Mouseup e
+    ]
+  let
+    replClick = () <$
+      ffilter (== Just Clicked) (updated clickType)
+  setFocusOn e "input" replClick
 
   let
     onReset = () <$ ffilter (== "reset") onNewInput
@@ -106,8 +107,8 @@ replWidget m = divClass "control-block repl-output" $ mdo
     & replCfg_reset   .~ onReset
 
 
-replInput :: MonadWidget t m => Event t () -> m (Event t Text)
-replInput onClick = do
+replInput :: MonadWidget t m => m (Event t Text)
+replInput = do
     divClass "repl-input-controls code-font" $ mdo
       (e, _) <- elClass' "div" "prompt" $ text "pact>"
       onReady <- delay 0.1 =<< getPostBuild
@@ -123,7 +124,6 @@ replInput onClick = do
                       )
       let key = ffilter isMovement $ domEvent Keydown ti
       let enterPressed = keypress Enter ti
-      performEvent $ setFocus (_textInput_element ti) <$ onClick
       let newCommand = tag (current $ value ti) enterPressed
       commandHistory <- foldDyn ($) Z.empty $ leftmost
         [ addToHistory <$> newCommand
