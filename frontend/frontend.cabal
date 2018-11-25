@@ -47,6 +47,7 @@ library
                , text
                , time
                , unordered-containers
+               , megaparsec
 
   exposed-modules: Frontend
                  , Frontend.Backend

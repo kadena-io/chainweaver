@@ -137,7 +137,7 @@ makeIde userCfg = build $ \ ~(cfg, ideL) -> do
     json <- makeJsonData walletL $ _ideCfg_jsonData cfg
     backendL <- makeBackend walletL $ cfg ^. ideCfg_backend
     (explrCfg, moduleExplr) <- makeModuleExplorer cfg
-    editorL <- makeEditor cfg
+    editorL <- makeEditor ideL cfg
     messagesL <- makeMessages cfg
     (replCfgL, replL) <- makeRepl ideL cfg
 

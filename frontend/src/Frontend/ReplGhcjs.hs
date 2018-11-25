@@ -30,7 +30,8 @@ import           Control.Monad.State.Strict
 import           Data.Text                   (Text)
 import           Reflex
 import           Reflex.Dom.Core
-import           Reflex.Dom.ACE.Extended
+import           Reflex.Dom.ACE.Extended hiding (Annotation(..))
+import qualified Data.Text as T
 ------------------------------------------------------------------------------
 import           Pact.Repl
 import           Pact.Repl.Types
@@ -75,9 +76,18 @@ codePanel ideL = do
   elAttr "div" ("class" =: "flex" <> "id" =: "main-wysiwyg") $
     divClass "wysiwyg" $ do
       onNewCode <- tagOnPostBuild $ ideL ^. editor_code
-      onUserCode <- codeWidget "" onNewCode
+      let annotations = map toAceAnnotation <$> ideL ^. editor_annotations
+      onUserCode <- codeWidget annotations "" onNewCode
 
       pure $ mempty & editorCfg_setCode .~ onUserCode
+
+toAceAnnotation :: Annotation -> AceAnnotation
+toAceAnnotation anno = AceAnnotation
+  { _aceAnnotation_row = _annotation_line anno -1 -- Ace starts at 0.
+  , _aceAnnotation_column = _annotation_column anno
+  , _aceAnnotation_text = _annotation_msg anno
+  , _aceAnnotation_type = T.pack . show $ _annotation_type anno
+  }
 
 {- functionsList :: MonadWidget t m => Ide t -> BackendUri -> [PactFunction] -> m () -}
 {- functionsList ideL backendUri functions = divClass "ui very relaxed list" $ do -}
@@ -157,13 +167,15 @@ codePanel ideL = do
 
 codeWidget
   :: MonadWidget t m
-  => Text -> Event t Text
+  => Event t [AceAnnotation]
+  -> Text
+  -> Event t Text
   -> m (Event t Text)
-codeWidget iv sv = do
+codeWidget anno iv sv = do
     let ac = def { _aceConfigMode = Just "ace/mode/pact"
                  , _aceConfigElemAttrs = "class" =: "ace-code ace-widget"
                  }
-    ace <- resizableAceWidget mempty ac (AceDynConfig Nothing) never iv sv
+    ace <- resizableAceWidget mempty ac (AceDynConfig Nothing) anno iv sv
     return $ _extendedACE_onUserChange ace
 
 
