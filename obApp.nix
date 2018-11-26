@@ -47,10 +47,10 @@ in
             intervals = pkgs.haskell.lib.dontCheck super.intervals;
 
             pact = pkgs.haskell.lib.overrideCabal (self.callCabal2nix "pact" (pkgs.fetchFromGitHub {
-              owner = "kadena-io";
+              owner = "eskimor";
               repo = "pact";
-              rev = "c06b2c2d99c6be379b67a0b3d925170864a8bd1c";
-              sha256 = "0rq1885hhjwmh71f8z3ickrv29fn1hhsip8gapaipsh79vpw4fsf";
+              rev = "792466fa7ee0b770848b7ec357fb455301ea5b30";
+              sha256 = "0f3xc7dk8kxxzvgzlcxmwyfcy3ycj4jzmrmi9q259fydpl5b9vjm";
             }) {}) (drv: {
               testSystemDepends = (drv.testSystemDepends or []) ++ [ pkgs.z3 ];
               doCheck = false;
