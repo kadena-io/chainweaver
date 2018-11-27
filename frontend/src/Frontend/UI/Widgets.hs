@@ -206,4 +206,4 @@ setFocusOnSelected
   -> a -- ^ Filter the event for matching this value.
   -> Event t a -- ^ The triggering event.
   -> m ()
-setFocusOnSelected e cssSel pred onPred = setFocusOn e cssSel $ ffilter (== pred) onPred
+setFocusOnSelected e cssSel p onPred = setFocusOn e cssSel $ ffilter (== p) onPred

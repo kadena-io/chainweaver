@@ -42,7 +42,6 @@ import qualified Data.Set                           as Set
 import           Data.Text                          (Text)
 import qualified Data.Text                          as T
 import qualified Data.Text.Encoding                 as T
-import           Language.Javascript.JSaddle        (eval, liftJSM, call, obj)
 import           Reflex.Class.Extended
 import           Reflex.Dom
 import           Reflex.Dom.ACE.Extended
