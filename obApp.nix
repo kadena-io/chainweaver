@@ -9,7 +9,7 @@ let
   getGhcVersion = ghc: if ghc.isGhcjs or false then ghc.ghcVersion else ghc.version;
   haskellLib = pkgs.haskell.lib;
 in
-  project ./. ({ pkgs, ... }: {
+  project ./. ({ pkgs, hackGet, ... }: {
     # android.applicationId = "systems.obsidian.obelisk.examples.minimal";
     # android.displayName = "Obelisk Minimal Example";
     # ios.bundleIdentifier = "systems.obsidian.obelisk.examples.minimal";
@@ -20,6 +20,11 @@ in
     shellToolOverrides = ghc: super: {
          z3 = pkgs.z3;
        };
+    packages = {
+      pact = hackGet ./deps/pact;
+      reflex-dom-ace = hackGet ./deps/reflex-dom-ace;
+      reflex-dom-contrib = hackGet ./deps/reflex-dom-contrib;
+    };
 
     overrides = let
       inherit (pkgs) lib;
@@ -46,12 +51,7 @@ in
 
             intervals = pkgs.haskell.lib.dontCheck super.intervals;
 
-            pact = pkgs.haskell.lib.overrideCabal (self.callCabal2nix "pact" (pkgs.fetchFromGitHub {
-              owner = "eskimor";
-              repo = "pact";
-              rev = "792466fa7ee0b770848b7ec357fb455301ea5b30";
-              sha256 = "0f3xc7dk8kxxzvgzlcxmwyfcy3ycj4jzmrmi9q259fydpl5b9vjm";
-            }) {}) (drv: {
+            pact = pkgs.haskell.lib.overrideCabal super.pact (drv: {
               testSystemDepends = (drv.testSystemDepends or []) ++ [ pkgs.z3 ];
               doCheck = false;
               executableToolDepends = (drv.executableToolDepends or []) ++ [ pkgs.makeWrapper ];
@@ -60,12 +60,6 @@ in
               '';
             });
 
-            reflex-dom-ace = (self.callCabal2nix "reflex-dom-ace" (pkgs.fetchFromGitHub {
-              owner = "reflex-frp";
-              repo = "reflex-dom-ace";
-              rev = "24e1ee4b84f50bd5b6b4401c4bdc28963ce8d80f";
-              sha256 = "0hdn00cd17a7zp56krqs3y5mpcml75pn8mnmhwyixqgscqd1q9y5";
-            }) {});
 
             # sbv >= 7.9
             sbv = pkgs.haskell.lib.dontCheck (self.callCabal2nix "sbv" (pkgs.fetchFromGitHub {
@@ -81,13 +75,6 @@ in
               rev = "6ee9fcb026ebdb49b810802a981d166680d867c9";
               sha256 = "09fcf896bs6i71qhj5w6qbwllkv3gywnn5wfsdrcm0w1y6h8i88f";
             }) {}) "ghcjs");
-
-            reflex-dom-contrib = (self.callCabal2nix "reflex-dom-contrib" (pkgs.fetchFromGitHub {
-              owner = "reflex-frp";
-              repo = "reflex-dom-contrib";
-              rev = "9900f2d433240a3f93cdae930a6ffbb73c50bb86";
-              sha256 = "1z8cnnhibsiap08pq2iw1r5zqvbla6hci7dhrz9mhfr0nqyryk65";
-            }) {});
 
             # ghc-8.0.2 haddock has an annoying bug, which causes build failures:
             # See: https://github.com/haskell/haddock/issues/565
