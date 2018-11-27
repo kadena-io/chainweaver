@@ -198,15 +198,19 @@ controlBarLeft m = do
         ver <- getPactVersion
         elClass "span" "version" $ text $ "v" <> ver
       elAttr "div" ("id" =: "header-project-loader") $ do
-        onLoad <- uiButtonSimple "Load into REPL"
+        onLoadClicked <- uiButtonSimple "Load into REPL"
 
         onDeployClick <- uiButtonSimple "Deploy"
 
+        -- Reset REPL on load for now until we get an ok to drop this:
+        onLoad <- delay 0 onLoadClicked
         let
+          onReset = onLoadClicked
           reqConfirmation = Modal_DeployConfirmation <$ onDeployClick
           lcfg = mempty
             & replCfg_sendTransaction .~ tag (current $ m ^. editor_code) onLoad
             -- For now we still want to reset the repl on load:
+            & replCfg_reset .~ onReset
             & ideCfg_reqModal .~ reqConfirmation
         pure lcfg
 
