@@ -23,8 +23,9 @@ library
                , obelisk-route
                , dependent-sum
                , mtl
-  exposed-modules:
-    Backend
+  exposed-modules: Backend
+                 , Backend.Devel
+
   ghc-options: -Wall
 
 executable backend
