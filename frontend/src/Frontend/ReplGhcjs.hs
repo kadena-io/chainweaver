@@ -32,6 +32,7 @@ import           Reflex
 import           Reflex.Dom.Core
 import           Reflex.Dom.ACE.Extended hiding (Annotation(..))
 import qualified Data.Text as T
+import           Reflex.Dom.Builder.Class.Events (EventName (Keypress))
 ------------------------------------------------------------------------------
 import           Pact.Repl
 import           Pact.Repl.Types
@@ -72,14 +73,27 @@ app = void . mfix $ \ cfg -> do
 
 -- | Code editing (left hand side currently)
 codePanel :: forall t m. MonadWidget t m => Ide t -> m (IdeCfg t)
-codePanel ideL = do
-  elAttr "div" ("class" =: "flex" <> "id" =: "main-wysiwyg") $
-    divClass "wysiwyg" $ do
-      onNewCode <- tagOnPostBuild $ ideL ^. editor_code
-      let annotations = map toAceAnnotation <$> ideL ^. editor_annotations
+codePanel m = do
+  elAttr "div" ("class" =: "flex" <> "id" =: "main-wysiwyg") $ do
+    (e, eCfg) <- elClass' "div" "wysiwyg" $ do
+      onNewCode <- tagOnPostBuild $ m ^. editor_code
+      let annotations = map toAceAnnotation <$> m ^. editor_annotations
       onUserCode <- codeWidget annotations "" onNewCode
-
       pure $ mempty & editorCfg_setCode .~ onUserCode
+
+    let onCtrlEnter = fmap (const ()) . ffilter (== 10) $ domEvent Keypress e -- 10 is somehow Ctrl+Enter
+    loadCfg <- loadCodeIntoRepl m onCtrlEnter
+    pure $ mconcat [ eCfg , loadCfg ]
+
+-- | Reset REPL and load current editor text into it.
+--
+--   Reset REPL on load for now until we get an ok to drop this.
+loadCodeIntoRepl :: forall t m model. (MonadWidget t m, HasEditor model t) => model -> Event t () -> m (IdeCfg t)
+loadCodeIntoRepl m onReq = do
+  onLoad <- tag (current $ m ^. editor_code) <$> delay 0 onReq
+  pure $ mempty
+    & replCfg_sendTransaction .~ onLoad
+    & replCfg_reset .~ onReq
 
 toAceAnnotation :: Annotation -> AceAnnotation
 toAceAnnotation anno = AceAnnotation
@@ -202,17 +216,11 @@ controlBarLeft m = do
 
         onDeployClick <- uiButtonSimple "Deploy"
 
-        -- Reset REPL on load for now until we get an ok to drop this:
-        onLoad <- delay 0 onLoadClicked
+        loadCfg <- loadCodeIntoRepl m onLoadClicked
         let
-          onReset = onLoadClicked
           reqConfirmation = Modal_DeployConfirmation <$ onDeployClick
-          lcfg = mempty
-            & replCfg_sendTransaction .~ tag (current $ m ^. editor_code) onLoad
-            -- For now we still want to reset the repl on load:
-            & replCfg_reset .~ onReset
-            & ideCfg_reqModal .~ reqConfirmation
-        pure lcfg
+          deployCfg = mempty & ideCfg_reqModal .~ reqConfirmation
+        pure $ deployCfg <> loadCfg
 
 getPactVersion :: MonadWidget t m => m Text
 getPactVersion = do

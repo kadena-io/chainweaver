@@ -86,7 +86,6 @@ replWidget
 replWidget m = divClass "control-block repl-output" $ do
   (e, onNewInput) <- elClass' "div" "repl-pane code-font" $ do
     mapM_ snippetWidget staticReplHeader
-    -- If performance becomes a problem, consider something smarther, like `simpleList` or manual update via change events.
     void $ simpleList (toList <$> m ^. repl_output) (dyn . fmap displayReplOutput)
     replInput
 
