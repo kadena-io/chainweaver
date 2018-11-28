@@ -14,10 +14,10 @@ import           Data.Maybe               (isJust)
 import qualified Data.Text                as T
 import qualified Obelisk.Backend          as Ob
 import           Obelisk.Route            (R)
-import           Snap                     (Snap)
+import           Snap                     (Snap, pass)
 import           Snap.Util.FileServe      (serveFile)
 import           System.FilePath          ((</>))
-import           System.Directory         (canonicalizePath)
+import           System.Directory         (canonicalizePath, doesFileExist)
 
 import           Common.Api
 import           Common.Route
@@ -47,7 +47,8 @@ serveBackendRoute dynConfigs = \case
       pNorm <- liftIO $ canonicalizePath p
       baseNorm <- liftIO $ canonicalizePath dynConfigs
       -- Sanity check: Make sure we are serving a file in the target directory.
-      if L.isPrefixOf baseNorm pNorm
+      exists <- liftIO $ doesFileExist pNorm
+      if L.isPrefixOf baseNorm pNorm && exists
          then serveFile pNorm
-         else pure () -- We should probably throw an error instead.
+         else pass
   _ -> pure ()
