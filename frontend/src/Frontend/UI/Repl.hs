@@ -110,10 +110,6 @@ replInput :: MonadWidget t m => m (Event t Text)
 replInput = do
     divClass "repl-input-controls code-font" $ mdo
       (e, _) <- elClass' "div" "prompt" $ text "pact>"
-      onReady <- delay 0.1 =<< getPostBuild
-      performEvent_ $ ffor onReady $ \_ -> liftJSM $
-        scrollIntoView (_element_raw e) True
-
       let sv = leftmost
             [ mempty <$ enterPressed
             , fromMaybe "" . Z.safeCursor <$> tagPromptlyDyn commandHistory key
@@ -128,7 +124,16 @@ replInput = do
         [ addToHistory <$> newCommand
         , moveHistory <$> key
         ]
+
+      doScrollIntoView ti
+
       return newCommand
+  where
+    doScrollIntoView ti = do
+      onPostBuild <- getPostBuild
+      onReady <- delay 0.1 $ leftmost [onPostBuild, keypress Enter ti]
+      performEvent_ $ ffor onReady $ \_ -> liftJSM $
+        scrollIntoView (_textInput_element ti) True
 
 addToHistory :: Eq a => a -> Z.Zipper a -> Z.Zipper a
 addToHistory a z =
