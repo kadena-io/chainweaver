@@ -1,4 +1,4 @@
-{ system ? builtins.currentSystem # TODO: Get rid of this system cruft
+{ system ? builtins.currentSystem
 , iosSdkVersion ? "10.2"
 , obelisk ? (import ./.obelisk/impl { inherit system iosSdkVersion; })
 , pkgs ? obelisk.reflex-platform.nixpkgs
