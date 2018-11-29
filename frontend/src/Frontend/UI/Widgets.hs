@@ -98,14 +98,15 @@ accordionItem'
   -> m b
   -> m (a,b)
 accordionItem' initActive contentClass title inner = mdo
-    isActive <- foldDyn (const not) initActive $ domEvent Click e
+    isActive <- foldDyn (const not) initActive onClick
     let mkClass a = singleClass "control-block" <> contentClass <> activeClass a
-    (e, pair) <- elDynKlass "div" (mkClass <$> isActive) $ do
-      (e1,a1) <- el' "h2" $ do
-        el "button" $ imgWithAlt (static @"img/arrow-down.svg") "Expand" blank
-        title
+    (onClick, pair) <- elDynKlass "div" (mkClass <$> isActive) $ do
+      (onClick,a1) <- el "h2" $ do
+        (b, _) <- el' "button" $ imgWithAlt (static @"img/arrow-down.svg") "Expand" blank
+        r <- title
+        pure (domEvent Click b, r)
       b1 <- inner
-      return (e1,(a1,b1))
+      return (onClick, (a1, b1))
     return pair
   where
     activeClass = \case

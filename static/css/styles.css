@@ -556,7 +556,7 @@ button:active {
     flex-grow: 1;
 }
 
-#control-ui .control-block .pagination button:hover {
+#control-ui .control-block button:hover {
   background: #dfdfdf;
   border-color: #dfdfdf;
 }
@@ -841,4 +841,13 @@ td.centercell {
 #modal-root .modal-footer button:active {
   border-color: #555;
   background: #555;
+}
+
+.deployed-contracts-accordion > button {
+  float: right;
+  margin-right: 0 !important;
+}
+
+.collapsed .deployed-contracts-accordion > button {
+  display: none;
 }

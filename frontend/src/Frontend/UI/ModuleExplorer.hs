@@ -50,7 +50,7 @@ type HasUIModuleExplorerModel model t =
   (HasModuleExplorer model t, HasBackend model t)
 
 type HasUIModuleExplorerModelCfg mConf t =
-  (Monoid mConf, HasModuleExplorerCfg mConf t)
+  (Monoid mConf, HasModuleExplorerCfg mConf t, HasBackendCfg mConf t)
 
 moduleExplorer
   :: forall t m model mConf
@@ -73,7 +73,7 @@ moduleExplorer m = do
                   m ^. backend_backends
     let itemsPerPage = 10 :: Int
 
-    searchLoaded <- accordionItem True mempty "Deployed Contracts" $ mdo
+    (onRefrClick, searchLoaded) <- deployedContractsAccordion $ mdo
       (filteredCs, updatePage) <- divClass "filter-bar flexbox" $ do
         ti <- divClass "search" $
           textInput $ def
@@ -89,6 +89,7 @@ moduleExplorer m = do
         filteredCsL <- holdUniqDyn filteredCsRaw
         updatePageL <- divClass "pagination" $
           paginationWidget currentPage totalPages
+
         return (filteredCsL, updatePageL)
 
       let paginated = paginate itemsPerPage <$> currentPage <*> filteredCs
@@ -110,10 +111,19 @@ moduleExplorer m = do
         , 1 <$ updated numberOfItems
         ]
 
-      return $ switch . current $ fmap ModuleSel_Deployed . leftmost . Map.elems <$> searchClick
+      pure $ switch . current $ fmap ModuleSel_Deployed . leftmost . Map.elems <$> searchClick
 
     pure $ mempty
       & moduleExplorerCfg_loadModule .~ leftmost [exampleLoaded, searchLoaded]
+      & backendCfg_refreshModule .~ onRefrClick
+  where
+    deployedContractsAccordion =
+      let
+        title = elClass "span" "deployed-contracts-accordion" $ do
+          el "span" $ text "Deployed Contracts"
+          refreshButton
+      in
+        accordionItem' True mempty title
 
 paginate :: (Ord k, Ord v) => Int -> Int -> [(k, v)] -> Map k v
 paginate itemsPerPage p =
@@ -153,3 +163,7 @@ loadButton :: MonadWidget t m => a -> m (Event t a)
 loadButton c = do
   (e,_) <- uiButton def $ imgWithAlt (static @"img/view.svg") "View" blank >> text "View"
   return $ c <$ e
+
+refreshButton :: MonadWidget t m => m (Event t ())
+refreshButton =
+  fmap fst . uiButton def $ elClass "i" "fa fa-lg fa-refresh" blank
