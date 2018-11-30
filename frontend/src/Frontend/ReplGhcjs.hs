@@ -26,31 +26,39 @@ module Frontend.ReplGhcjs where
 
 ------------------------------------------------------------------------------
 import           Control.Lens
+import           Control.Monad.Reader            (ask)
 import           Control.Monad.State.Strict
-import           Data.Text                   (Text)
+import           Data.Text                       (Text)
+import qualified Data.Text                       as T
+import           GHCJS.DOM.EventM                (on)
+import           GHCJS.DOM.GlobalEventHandlers   (keyPress)
+import           GHCJS.DOM.KeyboardEvent         (getCtrlKey, getKey)
+import           GHCJS.DOM.Types                 (HTMLElement (..), unElement)
+import           Language.Javascript.JSaddle     (fromJSValUnchecked, getProp,
+                                                  liftJSM)
 import           Reflex
-import           Reflex.Dom.Core
-import           Reflex.Dom.ACE.Extended hiding (Annotation(..))
-import qualified Data.Text as T
+import           Reflex.Dom.ACE.Extended         hiding (Annotation (..))
 import           Reflex.Dom.Builder.Class.Events (EventName (Keypress))
+import           Reflex.Dom.Core
 ------------------------------------------------------------------------------
+import           Obelisk.Generated.Static
 import           Pact.Repl
 import           Pact.Repl.Types
 import           Pact.Types.Lang
-import           Obelisk.Generated.Static
 ------------------------------------------------------------------------------
+import           Frontend.Editor
 import           Frontend.Foundation
 import           Frontend.Ide
-import           Frontend.Editor
 import           Frontend.Repl
-import           Frontend.UI.RightPanel
 import           Frontend.UI.Button
 import           Frontend.UI.Modal
+import           Frontend.UI.RightPanel
 import           Frontend.UI.Widgets
 ------------------------------------------------------------------------------
 
 data ClickState = DownAt (Int, Int) | Clicked | Selected
   deriving (Eq,Ord,Show,Read)
+
 
 app :: MonadWidget t m => m ()
 app = void . mfix $ \ cfg -> do
@@ -75,15 +83,28 @@ app = void . mfix $ \ cfg -> do
 codePanel :: forall t m. MonadWidget t m => Ide t -> m (IdeCfg t)
 codePanel m = do
   elAttr "div" ("class" =: "flex" <> "id" =: "main-wysiwyg") $ do
-    (e, eCfg) <- elClass' "div" "wysiwyg" $ do
+    (e, eCfg) <- wysiwyg $ do
       onNewCode <- tagOnPostBuild $ m ^. editor_code
       let annotations = map toAceAnnotation <$> m ^. editor_annotations
       onUserCode <- codeWidget annotations "" onNewCode
       pure $ mempty & editorCfg_setCode .~ onUserCode
 
-    let onCtrlEnter = fmap (const ()) . ffilter (== 10) $ domEvent Keypress e -- 10 is somehow Ctrl+Enter
+    onCtrlEnter <- getCtrlEnterEvent e
     loadCfg <- loadCodeIntoRepl m onCtrlEnter
     pure $ mconcat [ eCfg , loadCfg ]
+  where
+    wysiwyg = elAttr' "div" ("class" =: "main-wysiwyg" <> "title" =: "Load into REPL with Ctrl+Enter")
+    -- We can't use domEvent Keypress because it only gets us the
+    -- deprecated key code which does not work cross platform in this case:
+    getCtrlEnterEvent e = do
+      (onCtrlEnter, triggerEv) <- newTriggerEvent
+      let htmlElement = HTMLElement . unElement $ _element_raw e
+      liftJSM $ htmlElement `on` keyPress $ do
+        ev <- ask
+        hasCtrl <- liftJSM $ getCtrlKey ev
+        key <- liftJSM $ getKey ev
+        liftIO $ when (hasCtrl && key == "Enter") $ triggerEv ()
+      pure onCtrlEnter
 
 -- | Reset REPL and load current editor text into it.
 --
