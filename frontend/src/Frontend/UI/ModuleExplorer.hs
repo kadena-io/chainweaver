@@ -61,70 +61,101 @@ moduleExplorer
   => model
   -> m mConf
 moduleExplorer m = do
-    exampleClick <- accordionItem True mempty "Example Contracts" $ do
-      let showExample c = do
-            divClass "module-name" $
-              text $ _exampleModule_name c
-      divClass "control-block-contents" $ contractList showExample demos
-    let exampleLoaded = fmap ModuleSel_Example . leftmost . Map.elems $ exampleClick
+    exampleCfg <- browseExamples m
+    deplCfg <- browseDeployedTitle m
+    pure $ mconcat [ exampleCfg, deplCfg ]
 
+browseExamples
+  :: forall t m model mConf
+  . ( MonadWidget t m
+    , HasUIModuleExplorerModel model t
+    , HasUIModuleExplorerModelCfg mConf t
+    )
+  => model
+  -> m mConf
+browseExamples m =
+  accordionItem True mempty "Example Contracts" $ do
+    let showExample c = do
+          divClass "module-name" $
+            text $ _exampleModule_name c
+
+    exampleClick <- divClass "control-block-contents" $ contractList showExample demos
+
+    let onExampleSel = fmap (Just . ModuleSel_Example) . leftmost . Map.elems $ exampleClick
+    pure $ mempty
+      & moduleExplorerCfg_selModule .~ onExampleSel
+
+
+browseDeployedTitle
+  :: forall t m model mConf
+  . ( MonadWidget t m
+    , HasUIModuleExplorerModel model t
+    , HasUIModuleExplorerModelCfg mConf t
+    )
+  => model
+  -> m mConf
+browseDeployedTitle m = do
+  let
+    title = elClass "span" "deployed-contracts-accordion" $ do
+      el "span" $ text "Deployed Contracts"
+      refreshButton
+  (onRefrClick, onSelected) <- accordionItem' True mempty title $ browseDeployed m
+  pure $ mempty
+    & moduleExplorerCfg_selModule .~ fmap Just onSelected
+    & backendCfg_refreshModule .~ onRefrClick
+
+
+browseDeployed
+  :: forall t m model
+  . ( MonadWidget t m
+    , HasUIModuleExplorerModel model t
+    )
+  => model
+  -> m (Event t ModuleSel)
+browseDeployed m = mdo
     let mkMap = Map.fromList . map (\k@(BackendName n, _) -> (Just k, n)) . Map.toList
         opts = Map.insert Nothing "All backends" . maybe mempty mkMap <$>
                   m ^. backend_backends
     let itemsPerPage = 10 :: Int
 
-    (onRefrClick, searchLoaded) <- deployedContractsAccordion $ mdo
-      (filteredCs, updatePage) <- divClass "filter-bar flexbox" $ do
-        ti <- divClass "search" $
-          textInput $ def
-            & attributes .~ constDyn ("placeholder" =: "Search" <> "class" =: "search-input")
-        d <- divClass "backend-filter" $ dropdown Nothing opts def
-        let
-          search = value ti
-          backendL = value d
-          deployedContracts = Map.mergeWithKey (\_ a b -> Just (a, b)) mempty mempty
-              <$> m ^. backend_modules
-              <*> (fromMaybe mempty <$> m ^. backend_backends)
-          filteredCsRaw = searchFn <$> search <*> backendL <*> deployedContracts
-        filteredCsL <- holdUniqDyn filteredCsRaw
-        updatePageL <- divClass "pagination" $
-          paginationWidget currentPage totalPages
-
-        return (filteredCsL, updatePageL)
-
-      let paginated = paginate itemsPerPage <$> currentPage <*> filteredCs
-          showDeployed c = do
-            divClass "module-name" $
-              text $ _deployedModule_name c
-            divClass "backend-name" $
-              text $ unBackendName $ _deployedModule_backendName c
-      -- TODO Might need to change back to listWithKey
-      searchClick <- divClass "control-block-contents" $
-        networkHold (return mempty) $
-          contractList showDeployed <$> updated paginated
-
-      let numberOfItems = length <$> filteredCs
-          calcTotal a = ceiling $ (fromIntegral a :: Double)  / fromIntegral itemsPerPage
-          totalPages = calcTotal <$> numberOfItems
-      currentPage <- holdDyn 1 $ leftmost
-        [ updatePage
-        , 1 <$ updated numberOfItems
-        ]
-
-      pure $ switch . current $ fmap ModuleSel_Deployed . leftmost . Map.elems <$> searchClick
-
-    let onSelected =  Just <$> leftmost [exampleLoaded, searchLoaded]
-    pure $ mempty
-      & moduleExplorerCfg_selModule .~ onSelected
-      & backendCfg_refreshModule .~ onRefrClick
-  where
-    deployedContractsAccordion =
+    (filteredCs, updatePage) <- divClass "filter-bar flexbox" $ do
+      ti <- divClass "search" $
+        textInput $ def
+          & attributes .~ constDyn ("placeholder" =: "Search" <> "class" =: "search-input")
+      d <- divClass "backend-filter" $ dropdown Nothing opts def
       let
-        title = elClass "span" "deployed-contracts-accordion" $ do
-          el "span" $ text "Deployed Contracts"
-          refreshButton
-      in
-        accordionItem' True mempty title
+        search = value ti
+        backendL = value d
+        deployedContracts = Map.mergeWithKey (\_ a b -> Just (a, b)) mempty mempty
+            <$> m ^. backend_modules
+            <*> (fromMaybe mempty <$> m ^. backend_backends)
+        filteredCsRaw = searchFn <$> search <*> backendL <*> deployedContracts
+      filteredCsL <- holdUniqDyn filteredCsRaw
+      updatePageL <- divClass "pagination" $
+        paginationWidget currentPage totalPages
+
+      return (filteredCsL, updatePageL)
+
+    let paginated = paginate itemsPerPage <$> currentPage <*> filteredCs
+        showDeployed c = do
+          divClass "module-name" $
+            text $ _deployedModule_name c
+          divClass "backend-name" $
+            text $ unBackendName $ _deployedModule_backendName c
+    -- TODO Might need to change back to listWithKey
+    searchClick <- divClass "control-block-contents" $
+      networkHold (return mempty) $
+        contractList showDeployed <$> updated paginated
+
+    let numberOfItems = length <$> filteredCs
+        calcTotal a = ceiling $ (fromIntegral a :: Double)  / fromIntegral itemsPerPage
+        totalPages = calcTotal <$> numberOfItems
+    currentPage <- holdDyn 1 $ leftmost
+      [ updatePage
+      , 1 <$ updated numberOfItems
+      ]
+    pure $ switch . current $ fmap ModuleSel_Deployed . leftmost . Map.elems <$> searchClick
+
 
 paginate :: (Ord k, Ord v) => Int -> Int -> [(k, v)] -> Map k v
 paginate itemsPerPage p =
