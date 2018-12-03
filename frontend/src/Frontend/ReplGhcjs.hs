@@ -93,7 +93,7 @@ codePanel m = do
     loadCfg <- loadCodeIntoRepl m onCtrlEnter
     pure $ mconcat [ eCfg , loadCfg ]
   where
-    wysiwyg = elAttr' "div" ("class" =: "main-wysiwyg" <> "title" =: "Load into REPL with Ctrl+Enter")
+    wysiwyg = elAttr' "div" ("class" =: "wysiwyg" <> "title" =: "Load into REPL with Ctrl+Enter")
     -- We can't use domEvent Keypress because it only gets us the
     -- deprecated key code which does not work cross platform in this case:
     getCtrlEnterEvent e = do
