@@ -107,7 +107,7 @@ data SelectedModule = SelectedModule
 --
 --   State is controlled via this configuration.
 data ModuleExplorerCfg t = ModuleExplorerCfg
-  { _moduleExplorerCfg_selModule :: Event t ModuleSel
+  { _moduleExplorerCfg_selModule :: Event t (Maybe ModuleSel)
     -- ^ Select a module for viewing its functions and further details.
   , _moduleExplorerCfg_loadModule :: Event t ModuleSel
     -- ^ Load a module into the editor.

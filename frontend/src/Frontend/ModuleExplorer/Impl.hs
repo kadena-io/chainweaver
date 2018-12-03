@@ -202,15 +202,20 @@ selectModule
     , HasJSContext (Performable m), TriggerEvent t m
     , HasMessagesCfg  mConf t, Monoid mConf
     )
-  => Event t ModuleSel
+  => Event t (Maybe ModuleSel)
   -> m (mConf, MDynamic t SelectedModule)
-selectModule onSelReq = do
+selectModule onMaySelReq = do
   let
+    onSelReq = fmapMaybe id onMaySelReq
     onExampleModule  = fmapMaybe (^? _ModuleSel_Example)  onSelReq
     onDeployedModule = fmapMaybe (^? _ModuleSel_Deployed) onSelReq
   onExSel <- selectExample onExampleModule
   (deCfg, onDeSel) <- selectDeployed onDeployedModule
-  selected <- holdDyn Nothing $ Just <$> leftmost [ onExSel , onDeSel ]
+  selected <- holdDyn Nothing $ leftmost
+    [ Just <$> onExSel
+    , Just <$> onDeSel
+    , Nothing <$ ffilter isNothing onMaySelReq
+    ]
   pure
     ( deCfg
     , selected

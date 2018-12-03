@@ -113,8 +113,9 @@ moduleExplorer m = do
 
       pure $ switch . current $ fmap ModuleSel_Deployed . leftmost . Map.elems <$> searchClick
 
+    let onSelected =  Just <$> leftmost [exampleLoaded, searchLoaded]
     pure $ mempty
-      & moduleExplorerCfg_loadModule .~ leftmost [exampleLoaded, searchLoaded]
+      & moduleExplorerCfg_selModule .~ onSelected
       & backendCfg_refreshModule .~ onRefrClick
   where
     deployedContractsAccordion =
