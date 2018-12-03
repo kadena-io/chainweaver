@@ -1,3 +1,4 @@
+{-# LANGUAGE ConstraintKinds            #-}
 {-# LANGUAGE DeriveGeneric              #-}
 {-# LANGUAGE FlexibleContexts           #-}
 {-# LANGUAGE FlexibleInstances          #-}
@@ -10,8 +11,8 @@
 {-# LANGUAGE RankNTypes                 #-}
 {-# LANGUAGE ScopedTypeVariables        #-}
 {-# LANGUAGE TemplateHaskell            #-}
+{-# LANGUAGE TupleSections              #-}
 {-# LANGUAGE TypeFamilies               #-}
-{-# LANGUAGE ConstraintKinds            #-}
 
 -- | Interface for accessing Pact backends.
 --
@@ -32,6 +33,8 @@ module Frontend.Backend
     -- * Creation
   , makeBackend
     -- * Perform requests
+  , performBackendRequest
+  , performBackendRequestCustom
   , backendRequest
     -- * Utilities
   , prettyPrintBackendErrorResult
@@ -42,10 +45,9 @@ import           Control.Arrow                     (left, (&&&), (***))
 import           Control.Lens                      hiding ((.=))
 import           Control.Monad.Except
 import           Data.Aeson                        (FromJSON (..), Object,
-                                                    Value (..),
-                                                    eitherDecode, encode,
-                                                    object, toJSON, withObject,
-                                                    (.:), (.=))
+                                                    Value (..), eitherDecode,
+                                                    encode, object, toJSON,
+                                                    withObject, (.:), (.=))
 import           Data.Aeson.Types                  (parseMaybe, typeMismatch)
 import qualified Data.ByteString.Lazy              as BSL
 import           Data.Default                      (def)
@@ -287,12 +289,12 @@ loadModules w bs cfg = do
     Just bs' -> do
       onPostBuild <- getPostBuild
       bm <- flip Map.traverseWithKey bs' $ \_ uri -> do
-        onErrResp <- backendRequest w $
+        onErrResp <- performBackendRequest w $
           leftmost [ req uri <$ cfg ^. backendCfg_refreshModule
                    , req uri <$ onPostBuild
                    ]
         let
-          (onErr, onResp) = fanEither onErrResp
+          (onErr, onResp) = fanEither $ snd <$> onErrResp
 
           onModules :: Event t (Maybe [Text])
           onModules = parseMaybe parseJSON <$> onResp
@@ -311,21 +313,70 @@ url b endpoint = b <> "/api/v1" <> endpoint
 
 -- | Send a transaction via the /send endpoint.
 --
---   And wait for its result via /listen.
-backendRequest
+--   This is a convenience wrapper around `backendRequest`, use that if you
+--   need some richer request information attached to your response or if this is really all you need `performBackendRequestCustom`.
+performBackendRequest
   :: forall t m
   . ( PerformEvent t m, MonadJSM (Performable m)
     , HasJSContext (Performable m), TriggerEvent t m
     )
   => Wallet t
   -> Event t BackendRequest
-  -- ^ An event with the backend request and a set of keys to sign with.
-  -- If the set is empty,
-  -> m (Event t BackendErrorResult)
-backendRequest w onReq = performEventAsync $
-  ffor attachedOnReq $ \(keys, req) cb -> do
-    let uri = _backendRequest_backend req
-        callback = liftIO . void . cb
+  -> m (Event t (BackendRequest, BackendErrorResult))
+performBackendRequest w onReq = performBackendRequestCustom w id onReq
+
+-- | Send a transaction via the /send endpoint.
+--
+--   This is a convenience wrapper around `backendRequest`, attaching a custom request type to the response.
+performBackendRequestCustom
+  :: forall t m req
+  . ( PerformEvent t m, MonadJSM (Performable m)
+    , HasJSContext (Performable m), TriggerEvent t m
+    )
+  => Wallet t
+  -> (req -> BackendRequest)
+  -> Event t req
+  -> m (Event t (req, BackendErrorResult))
+performBackendRequestCustom w unwrap onReq =
+    performEventAsync $ ffor onReqWithKeys $ \(keys, req) cb ->
+      backendRequest (keys, unwrap req) $ cb . (req,)
+  where
+    onReqWithKeys = attach (current $ _wallet_keys w) onReq
+
+-- | Send a transaction via the /send endpoint.
+--
+--   And wait for its result via /listen. `performBackendRequest` is a little
+--   more convenient to use if you don't need more elaborate request
+--   information in your response.
+--
+--   Usage example:
+--
+-- @
+--   let w = ourWallet
+--   performEventAsync $ ffor (attachKeys w onReq) $ (\(keys, req)) cb ->
+--     backendRequest (keys, buildBackendReq req) $ cb . (req,)
+-- @
+--
+--   This primitive function is also useful if you happen to need to execute
+--   multiple requests whose responses should be fed in the reflex network
+--   simultaneously, because the logically belong together for example:
+--
+-- @
+--   let w = ourWallet
+--   performEventAsync $ ffor (attachKeys w onReq) $ (\(keys, req)) cb -> do
+--     backendRequest (keys, buildBackendReq req) $ \res -> do
+--       someMoreRequest someArg $ cb . (req, res,)
+--
+-- @
+backendRequest :: forall t m
+  . (MonadJSM m , HasJSContext m)
+  => (KeyPairs, BackendRequest)
+  -> (BackendErrorResult -> IO ())
+  -> m ()
+backendRequest (keys, req) cb = do
+    let
+        callback = liftIO . cb
+        uri = _backendRequest_backend req
         signing = _backendRequest_signing req
     sendReq <- buildSendXhrRequest keys signing req
     void $ newXMLHttpRequestWithError sendReq $ \r -> case getResPayload r of
@@ -341,8 +392,6 @@ backendRequest w onReq = performEventAsync $
               PactResult_FailureText err -> callback $ Left $ BackendError_ResultFailureText err
               PactResult_Success result -> callback $ Right result
         _ -> callback $ Left $ BackendError_Other "Response contained more than one RequestKey"
-  where
-    attachedOnReq = attach (current $ _wallet_keys w) onReq
 
 -- TODO: upstream this?
 instance HasJSContext JSM where

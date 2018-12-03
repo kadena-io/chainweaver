@@ -152,7 +152,8 @@ makeIde userCfg = build $ \ ~(cfg, ideL) -> do
           d <- ed ^? _Right
           pure $ BackendRequest c d b
       addSigning f a = (\cMkReq -> cMkReq (_transactionInfo_keys a)) <$> f (_transactionInfo_backend a)
-    onResp <- backendRequest (ideL ^. ide_wallet)
+    onResp <- fmap snd <$> performBackendRequest
+      (ideL ^. ide_wallet)
       (attachWithMaybe addSigning (current mkReq) (_ideCfg_deploy cfg))
 
     let

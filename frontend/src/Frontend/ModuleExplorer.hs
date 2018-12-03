@@ -94,7 +94,7 @@ data PactFunction = PactFunction
 -- | Information about the currently selected deployed module.
 --
 data SelectedModule = SelectedModule
-  { _selectedModule_module :: DeployedModule
+  { _selectedModule_module :: ModuleSel
     -- ^ The module that is currently selected.
   , _selectedModule_code :: Text
     -- ^ Source code of the currently selected module.
@@ -107,7 +107,7 @@ data SelectedModule = SelectedModule
 --
 --   State is controlled via this configuration.
 data ModuleExplorerCfg t = ModuleExplorerCfg
-  { _moduleExplorerCfg_selModule :: Event t DeployedModule
+  { _moduleExplorerCfg_selModule :: Event t ModuleSel
     -- ^ Select a module for viewing its functions and further details.
   , _moduleExplorerCfg_loadModule :: Event t ModuleSel
     -- ^ Load a module into the editor.

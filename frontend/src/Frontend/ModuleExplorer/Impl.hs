@@ -1,3 +1,4 @@
+{-# LANGUAGE ConstraintKinds        #-}
 {-# LANGUAGE DataKinds              #-}
 {-# LANGUAGE DeriveGeneric          #-}
 {-# LANGUAGE ExtendedDefaultRules   #-}
@@ -16,7 +17,6 @@
 {-# LANGUAGE TupleSections          #-}
 {-# LANGUAGE TypeApplications       #-}
 {-# LANGUAGE TypeFamilies           #-}
-{-# LANGUAGE ConstraintKinds           #-}
 
 -- | Implementation of the Frontend.ModuleExplorer interface.
 --
@@ -35,30 +35,35 @@ module Frontend.ModuleExplorer.Impl
 
 ------------------------------------------------------------------------------
 import qualified Bound
+import Control.Monad.Error (throwError)
+import Control.Monad (void, (<=<))
+import           Control.Arrow               ((***), left)
+import           Data.Bifunctor (first, second)
 import           Control.Lens
-import           Data.Aeson               as Aeson (Result (..), fromJSON)
-import qualified Data.Set as Set
+import           Data.Aeson                  as Aeson (Result (..), fromJSON, FromJSON, Value)
 import           Data.Default
-import qualified Data.Map                 as Map
-import           Data.Text                (Text)
-import qualified Data.Text                as T
+import qualified Data.Map                    as Map
+import qualified Data.Set                    as Set
+import           Data.Text                   (Text)
+import qualified Data.Text                   as T
+import           Language.Javascript.JSaddle (JSM)
 import           Reflex
-import           Reflex.Dom.Core          (HasJSContext, MonadHold,
-                                           PostBuild, XhrResponse (..),
-                                           performRequestAsync, xhrRequest)
+import           Reflex.Dom.Core             (HasJSContext, MonadHold,
+                                              PostBuild, XhrResponse (..),
+                                              newXMLHttpRequest, xhrRequest)
 ------------------------------------------------------------------------------
-import qualified Pact.Compile             as Pact
-import qualified Pact.Parse               as Pact
+import qualified Pact.Compile                as Pact
+import qualified Pact.Parse                  as Pact
 import           Pact.Types.Lang
 ------------------------------------------------------------------------------
 import           Frontend.Backend
+import           Frontend.Editor
 import           Frontend.Foundation
 import           Frontend.JsonData
-import           Frontend.Wallet
 import           Frontend.Messages
-import           Frontend.Editor
+import           Frontend.ModuleExplorer     as API
 import           Frontend.Repl
-import           Frontend.ModuleExplorer as API
+import           Frontend.Wallet
 
 {- -- | Our dependencies. -}
 {- type HasModuleExplorerModel model t = HasBackend model t -}
@@ -123,10 +128,14 @@ loadModule onNewContractReq = do
   (eCfg, onExampleLoad)  <- loadExampleModule onExampleModule
   (dCfg, onDeployedLoad) <- loadDeployedModule onDeployedModule
 
-  let onContract = leftmost [ onExampleLoad , onDeployedLoad ]
-      onLoad = () <$ onContract
+  let
+    onContract = leftmost
+      [ ModuleSel_Example  <$> onExampleLoad
+      , ModuleSel_Deployed <$> onDeployedLoad
+      ]
+    onLoad = () <$ onContract
 
-  contract <- holdDyn Nothing $ Just <$> tagPromptlyDyn requestedContract onContract
+  contract <- holdDyn Nothing $ Just <$> onContract
 
   pure ( mconcat
           [ eCfg
@@ -147,23 +156,17 @@ loadExampleModule
     , HasModuleExplorerModelCfg  mConf t
     )
   => Event t ExampleModule
-  -> m (mConf, Event t ())
+  -> m (mConf, Event t ExampleModule)
 loadExampleModule onExampleModule = do
-  code <- loadContractData $ fmap _exampleModule_code onExampleModule
-  json <- loadContractData $ fmap _exampleModule_data onExampleModule
-  onCodeJson <- waitForEvents (,) onExampleModule code json
-
+  onResp <- fetchExample onExampleModule
+  let onCodeJson = snd <$> onResp
   pure
     ( mempty
         & jsonDataCfg_setRawInput .~ fmap snd onCodeJson
         & editorCfg_setCode .~ fmap fst onCodeJson
-    , () <$ onCodeJson
+    , fst <$> onResp
     )
-  where
-    loadContractData onNewContractName =
-      fmap (fmap codeFromResponse)
-      . performRequestAsync $ ffor onNewContractName
-      $ \example -> xhrRequest "GET" example def
+
 --
 -- | Load a deployed contract into the editor.
 --
@@ -174,19 +177,20 @@ loadDeployedModule
     , HasModuleExplorerModelCfg  mConf t
     )
   => Event t DeployedModule
-  -> m (mConf, Event t ())
+  -> m (mConf, Event t DeployedModule)
 loadDeployedModule onNewContractReq = do
   onErrModule <- fetchDeployedModule onNewContractReq
   let
-    (onErr, onModule) = fanEither onErrModule
+    (onErr, onModule) = fanEither . fmap snd $ onErrModule
     onCode = _unCode . _mCode <$> onModule
+    onLoaded = fmap fst $ onErrModule
   pure
     ( mempty
         & editorCfg_setCode .~ onCode
         & messagesCfg_send .~ onErr
-    , () <$ onModule
+    , onLoaded
     )
---
+
 -- | Select a contract.
 --
 --   For deployed contracts this loads its code & functions.
@@ -198,29 +202,88 @@ selectModule
     , HasJSContext (Performable m), TriggerEvent t m
     , HasMessagesCfg  mConf t, Monoid mConf
     )
-  => Event t DeployedModule
+  => Event t ModuleSel
   -> m (mConf, MDynamic t SelectedModule)
 selectModule onSelReq = do
-  onErrModule <- fetchDeployedModule onSelReq
   let
-    (onErr, onModule) = fanEither onErrModule
-  selReq <- holdDyn Nothing $ Just <$> onSelReq
-  let
-    buildSelected :: DeployedModule -> Module -> SelectedModule
-    buildSelected depl m =
-      SelectedModule depl (_unCode $ _mCode m) (listPactFunctions (_mCode m))
-
-    mayBuildSelected :: Maybe DeployedModule -> Module -> Maybe SelectedModule
-    mayBuildSelected mDepl m = buildSelected <$> mDepl <*> pure m
-
-    onSelected = attachPromptlyDynWith mayBuildSelected selReq onModule
-  selected <- holdDyn Nothing $ onSelected
+    onExampleModule  = fmapMaybe (^? _ModuleSel_Example)  onSelReq
+    onDeployedModule = fmapMaybe (^? _ModuleSel_Deployed) onSelReq
+  onExSel <- selectExample onExampleModule
+  (deCfg, onDeSel) <- selectDeployed onDeployedModule
+  selected <- holdDyn Nothing $ Just <$> leftmost [ onExSel , onDeSel ]
   pure
-    ( mempty
-        & messagesCfg_send .~ fmap ("Loading functions failed: " <>) onErr
+    ( deCfg
     , selected
     )
 
+-- | Select Example contract.
+selectExample
+  :: forall m t
+  . ( MonadHold t m, PerformEvent t m, MonadJSM (Performable m)
+    , HasJSContext (Performable m), TriggerEvent t m
+    )
+  => Event t ExampleModule
+  -> m (Event t SelectedModule)
+selectExample onSelReq = do
+  onExampleRec <- fetchExample onSelReq
+  let
+    buildSelected :: ExampleModule -> Text -> SelectedModule
+    buildSelected depl code =
+      SelectedModule (ModuleSel_Example depl) code (listPactFunctions (Code code))
+
+  pure $ uncurry buildSelected . second fst <$> onExampleRec
+
+
+-- | Select a deployed contract.
+--
+--   For deployed contracts this loads its code & functions.
+--
+--   The returned Event fires once the loading is complete.
+selectDeployed
+  :: forall m t mConf
+  . ( MonadHold t m, PerformEvent t m, MonadJSM (Performable m)
+    , HasJSContext (Performable m), TriggerEvent t m
+    , HasMessagesCfg  mConf t, Monoid mConf
+    )
+  => Event t DeployedModule
+  -> m (mConf, Event t SelectedModule)
+selectDeployed onSelReq = do
+  onErrModule <- fetchDeployedModule onSelReq
+  let
+    onErr = fmapMaybe (^? _2 . _Left) onErrModule
+
+    onRes :: Event t (DeployedModule, Module)
+    onRes = fmapMaybe (traverse (^? _Right)) onErrModule
+
+    buildSelected :: DeployedModule -> Module -> SelectedModule
+    buildSelected depl m =
+      SelectedModule
+        (ModuleSel_Deployed depl)
+        (_unCode $ _mCode m)
+        (listPactFunctions (_mCode m))
+
+  pure
+    ( mempty
+        & messagesCfg_send .~ fmap ("Loading functions failed: " <>) onErr
+    , uncurry buildSelected <$> onRes
+    )
+
+-- | Fetch a given given example contract data, given the URL.
+fetchExample
+  :: ( PerformEvent t m, TriggerEvent t m, MonadJSM (Performable m)
+     , HasJSContext (Performable m)
+     )
+  => Event t ExampleModule -> m (Event t (ExampleModule, (Text, Text)))
+fetchExample onExampleModule =
+  performEventAsync $ ffor onExampleModule $ \example cb -> do
+    let
+      callback = liftIO . cb . (example,) . (codeFromResponse *** codeFromResponse)
+
+    let codeReq = xhrRequest "GET" (_exampleModule_code example) def
+    void $ newXMLHttpRequest codeReq $ \codeRes -> do
+      let jsonReq = xhrRequest "GET" (_exampleModule_data example) def
+      void $ newXMLHttpRequest jsonReq $ \jsonRes ->
+        callback (codeRes, jsonRes)
 
 -- | Fetch source code of a deployed module.
 --
@@ -231,29 +294,31 @@ fetchDeployedModule
     , HasJSContext (Performable m), TriggerEvent t m
     )
   => Event t DeployedModule
-  -> m (Event t (Either Text Module))
+  -> m (Event t (DeployedModule, Either Text Module))
 fetchDeployedModule onReq = do
-  deployedResult <- backendRequest emptyWallet $
-    ffor onReq $ \c -> BackendRequest
+    deployedResult :: Event t (DeployedModule, BackendErrorResult)
+      <- performBackendRequestCustom emptyWallet mkReq onReq
+
+    pure $ ffor deployedResult $
+      id *** (fromJsonEither <=< left (T.pack . show))
+
+  where
+    mkReq dm = BackendRequest
       { _backendRequest_code = mconcat
         [ "(describe-module '"
-        , _deployedModule_name c
+        , _deployedModule_name dm
         , ")"
         ]
       , _backendRequest_data = mempty
-      , _backendRequest_backend = _deployedModule_backendUri c
+      , _backendRequest_backend = _deployedModule_backendUri dm
       , _backendRequest_signing = Set.empty
       }
-  let
-    (deployedResultError, deployedValue) = fanEither deployedResult
-    (deployedDecodeError, deployedModule) = fanEither $ ffor deployedValue $ \v ->
-      case fromJSON v of
-        Aeson.Error e   -> Left e
-        Aeson.Success a -> Right a
-  pure $ leftmost [ Left . T.pack <$> deployedDecodeError
-                  , Left . T.pack . show <$> deployedResultError
-                  , Right <$> deployedModule
-                  ]
+
+    fromJsonEither :: FromJSON a => Value -> Either Text a
+    fromJsonEither v = case fromJSON v of
+        Aeson.Error e -> throwError . T.pack $ e
+        Aeson.Success a -> pure a
+
 
 -- | Get the top level functions from a 'Term'
 getFunctions :: Term Name -> [PactFunction]
