@@ -42,7 +42,10 @@ module Frontend.ModuleExplorer
   , ExampleModule (..)
   , DeployedModule (..)
   , PactFunction (..)
+   -- *** SelectedModule
   , SelectedModule (..)
+  , selectedModuleName
+  , showSelectedModuleType
   ) where
 
 ------------------------------------------------------------------------------
@@ -126,6 +129,22 @@ data ModuleExplorer t = ModuleExplorer
   deriving Generic
 
 makePactLenses ''ModuleExplorer
+
+-- | Get the name of a selected module.
+selectedModuleName :: SelectedModule -> Text
+selectedModuleName selected =
+  case _selectedModule_module selected of
+    ModuleSel_Example ex -> _exampleModule_name ex
+    ModuleSel_Deployed ex -> _deployedModule_name ex
+
+-- | Show the type of the selected module.
+--
+--   It is either "Example Contract" or "Deployed Contract"
+showSelectedModuleType :: SelectedModule -> Text
+showSelectedModuleType selected =
+  case _selectedModule_module selected of
+    ModuleSel_Example _ -> "Example Contract"
+    ModuleSel_Deployed _ -> "Deployed Contract"
 
 
 -- | Available example modules.

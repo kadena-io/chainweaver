@@ -851,3 +851,35 @@ td.centercell {
 .collapsed .deployed-contracts-accordion > button {
   display: none;
 }
+
+/***************** moduleDetails view ******************/
+
+.control-block .back-button-header {
+  border-bottom: none;
+}
+
+h2.module-details-title {
+  font-family: WorkSans-SemiBold;
+  font-size: 22px !important;
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+}
+
+h2.module-details-title > .module-details-type {
+  display: inline-block;
+  font-family: WorkSans-Medium;
+  color: #4499d9;
+  font-size: 11px;
+  text-align: right;
+  /* height: 22px; */
+  line-height: normal;
+  vertical-align: text-bottom;
+}
+
+h3.module-details {
+  font-family: WorkSans-SemiBold;
+  font-size: 14px;
+  color: #2d2d2f;
+}
+/***************** moduleDetails view end **************/

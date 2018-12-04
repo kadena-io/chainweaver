@@ -8,10 +8,13 @@
 -- | Widgets collection
 -- Was based on semui, but now transitioning to custom widgets
 module Frontend.UI.Widgets
-  ( imgWithAlt
+  ( -- * Standard widgets for pact-web
+    backButton
+  , validatedInputWithButton
+    -- * Helper widgets
+  , imgWithAlt
   , showLoading
   , paginationWidget
-  , validatedInputWithButton
   , tabPane
   , tabPane'
   , makeClickable
@@ -36,6 +39,7 @@ import           Obelisk.Generated.Static
 ------------------------------------------------------------------------------
 import           Frontend.Foundation
 import           Frontend.UI.Button
+import           Frontend.UI.Icon
 ------------------------------------------------------------------------------
 
 
@@ -170,6 +174,12 @@ paginationWidget currentPage totalPages = do
       , attachWith (\x _ -> succ x) (current currentPage) nextL
       , tag (current totalPages) lastL
       ]
+
+-- | Button for "going back" action.
+backButton :: MonadWidget t m => m (Event t ())
+backButton = -- uiIcon "fas fa-chevron-left" $ def & iconConfig_size .~ Just IconLG
+  fmap fst . uiButton def $ text "<"
+
 
 filteredButton
   :: MonadWidget t m

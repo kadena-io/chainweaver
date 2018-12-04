@@ -37,11 +37,14 @@ import           Data.Traversable         (for)
 import           Reflex
 import           Reflex.Dom
 import           Reflex.Network
+import           Reflex.Network.Extended
+import           Control.Monad
 ------------------------------------------------------------------------------
 import           Obelisk.Generated.Static
 ------------------------------------------------------------------------------
 import           Frontend.Backend
 import           Frontend.ModuleExplorer
+import           Frontend.UI.ModuleExplorer.ModuleDetails
 import           Frontend.UI.Button
 import           Frontend.UI.Widgets
 ------------------------------------------------------------------------------
@@ -50,7 +53,7 @@ type HasUIModuleExplorerModel model t =
   (HasModuleExplorer model t, HasBackend model t)
 
 type HasUIModuleExplorerModelCfg mConf t =
-  (Monoid mConf, HasModuleExplorerCfg mConf t, HasBackendCfg mConf t)
+  (Monoid mConf, Flattenable mConf t, HasModuleExplorerCfg mConf t, HasBackendCfg mConf t)
 
 moduleExplorer
   :: forall t m model mConf
@@ -61,9 +64,14 @@ moduleExplorer
   => model
   -> m mConf
 moduleExplorer m = do
-    exampleCfg <- browseExamples m
-    deplCfg <- browseDeployedTitle m
-    pure $ mconcat [ exampleCfg, deplCfg ]
+    let selected = m ^. moduleExplorer_selectedModule
+    networkViewFlatten $ maybe browse (moduleDetails m) <$> selected
+  where
+    browse = do
+      exampleCfg <- browseExamples m
+      deplCfg <- browseDeployedTitle m
+      pure $ mconcat [ exampleCfg, deplCfg ]
+
 
 browseExamples
   :: forall t m model mConf
@@ -86,6 +94,9 @@ browseExamples m =
       & moduleExplorerCfg_selModule .~ onExampleSel
 
 
+-- | Browse deployed contracts
+--
+--   This includes the accordion and the refresh button at the top.
 browseDeployedTitle
   :: forall t m model mConf
   . ( MonadWidget t m
@@ -105,6 +116,7 @@ browseDeployedTitle m = do
     & backendCfg_refreshModule .~ onRefrClick
 
 
+-- | Browse deployed contracts and select one.
 browseDeployed
   :: forall t m model
   . ( MonadWidget t m
@@ -143,9 +155,9 @@ browseDeployed m = mdo
           divClass "backend-name" $
             text $ unBackendName $ _deployedModule_backendName c
     -- TODO Might need to change back to listWithKey
-    searchClick <- divClass "control-block-contents" $
-      networkHold (return mempty) $
-        contractList showDeployed <$> updated paginated
+    searchClick <- divClass "control-block-contents" $ do
+      listEv <- networkView $ contractList showDeployed <$> paginated
+      switchHold never $ fmap ModuleSel_Deployed . leftmost . Map.elems <$> listEv
 
     let numberOfItems = length <$> filteredCs
         calcTotal a = ceiling $ (fromIntegral a :: Double)  / fromIntegral itemsPerPage
@@ -154,7 +166,7 @@ browseDeployed m = mdo
       [ updatePage
       , 1 <$ updated numberOfItems
       ]
-    pure $ switch . current $ fmap ModuleSel_Deployed . leftmost . Map.elems <$> searchClick
+    pure searchClick
 
 
 paginate :: (Ord k, Ord v) => Int -> Int -> [(k, v)] -> Map k v

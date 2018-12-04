@@ -69,6 +69,7 @@ library
                  , Frontend.UI.JsonData
                  , Frontend.UI.Modal
                  , Frontend.UI.ModuleExplorer
+                 , Frontend.UI.ModuleExplorer.ModuleDetails
                  , Frontend.UI.Repl
                  , Frontend.UI.RightPanel
                  , Frontend.UI.Wallet
