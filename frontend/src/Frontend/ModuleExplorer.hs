@@ -35,6 +35,7 @@ module Frontend.ModuleExplorer
   , HasModuleExplorer (..)
   -- * Constants
   , demos
+  , exampleData
   -- ** Auxiliary Types
   , ModuleSel (..)
   , _ModuleSel_Example
