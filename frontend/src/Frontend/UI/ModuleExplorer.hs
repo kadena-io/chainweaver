@@ -87,9 +87,10 @@ browseExamples m =
           divClass "module-name" $
             text $ _exampleModule_name c
 
-    exampleClick <- divClass "control-block-contents" $ contractList showExample demos
+    exampleClick <- divClass "control-block-contents" $
+      contractList showExample $ exampleData
 
-    let onExampleSel = fmap (Just . ModuleSel_Example) . leftmost . Map.elems $ exampleClick
+    let onExampleSel = fmap (Just . ModuleSel_Example) exampleClick
     pure $ mempty
       & moduleExplorerCfg_selModule .~ onExampleSel
 
@@ -154,10 +155,9 @@ browseDeployed m = mdo
             text $ _deployedModule_name c
           divClass "backend-name" $
             text $ unBackendName $ _deployedModule_backendName c
-    -- TODO Might need to change back to listWithKey
     searchClick <- divClass "control-block-contents" $ do
-      listEv <- networkView $ contractList showDeployed <$> paginated
-      switchHold never $ fmap ModuleSel_Deployed . leftmost . Map.elems <$> listEv
+      listEv <- networkView $ contractList showDeployed . map snd <$> paginated
+      switchHold never $ fmap ModuleSel_Deployed <$> listEv
 
     let numberOfItems = length <$> filteredCs
         calcTotal a = ceiling $ (fromIntegral a :: Double)  / fromIntegral itemsPerPage
@@ -169,9 +169,9 @@ browseDeployed m = mdo
     pure searchClick
 
 
-paginate :: (Ord k, Ord v) => Int -> Int -> [(k, v)] -> Map k v
+paginate :: (Ord k, Ord v) => Int -> Int -> [(k, v)] -> [(k, v)]
 paginate itemsPerPage p =
-  Map.fromList . take itemsPerPage . drop (itemsPerPage * pred p) . L.sort
+  take itemsPerPage . drop (itemsPerPage * pred p) . L.sort
 
 searchFn
   :: Text
@@ -195,19 +195,14 @@ filtering needle (backendName, (m, backendUri)) =
       then Just (DeployedModule contractName backendName backendUri)
       else Nothing
 
-contractList :: MonadWidget t m => (a -> m ()) -> Map Int a -> m (Map Int (Event t a))
+contractList :: MonadWidget t m => (a -> m ()) -> [a] -> m (Event t a)
 contractList rowFunc contracts = do
     divClass "contracts" $ elClass "ol" "contracts-list" $
-      for contracts $ \c -> el "li" $ do
+      fmap leftmost . for contracts $ \c -> el "li" $ do
         divClass "counter" blank
         rowFunc c
         divClass "load-button" $ loadButton c
 
-loadButton :: MonadWidget t m => a -> m (Event t a)
-loadButton c = do
-  (e,_) <- uiButton def $ imgWithAlt (static @"img/view.svg") "View" blank >> text "View"
-  return $ c <$ e
 
-refreshButton :: MonadWidget t m => m (Event t ())
-refreshButton =
-  fmap fst . uiButton def $ elClass "i" "fa fa-lg fa-refresh" blank
+loadButton :: MonadWidget t m => a -> m (Event t a)
+loadButton c = fmap (const c) <$> loadToEditorButton
