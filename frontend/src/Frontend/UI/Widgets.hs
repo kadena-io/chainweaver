@@ -10,6 +10,8 @@
 module Frontend.UI.Widgets
   ( -- * Standard widgets for pact-web
     backButton
+  , refreshButton
+  , loadToEditorButton
   , validatedInputWithButton
     -- * Helper widgets
   , imgWithAlt
@@ -180,6 +182,15 @@ backButton :: MonadWidget t m => m (Event t ())
 backButton = -- uiIcon "fas fa-chevron-left" $ def & iconConfig_size .~ Just IconLG
   fmap fst . uiButton def $ text "<"
 
+-- | Button that loads something into the Editor.
+loadToEditorButton :: MonadWidget t m => m (Event t ())
+loadToEditorButton =
+  fmap fst . uiButton def $ imgWithAlt (static @"img/view.svg") "View" blank >> text "View"
+
+-- | Button that triggers a refresh/reload of something.
+refreshButton :: MonadWidget t m => m (Event t ())
+refreshButton =
+  fmap fst . uiButton def $ elClass "i" "fa fa-lg fa-refresh" blank
 
 filteredButton
   :: MonadWidget t m

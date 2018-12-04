@@ -854,8 +854,42 @@ td.centercell {
 
 /***************** moduleDetails view ******************/
 
-.control-block .back-button-header {
-  border-bottom: none;
+.control-block h2.back-button-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+}
+
+#control-ui .control-block h2.back-button-header .load-button button {
+  float: right;
+  align-items: baseline;
+  color: #212121;
+  width: 90px;
+  height: 36px;
+  padding: 0;
+  line-height: normal;
+  border-radius: 4px;
+  border: solid 1px #d7d7d7;
+  font-size: 13px;
+  margin-right: 0px;
+}
+
+#control-ui .control-block h2.back-button-header .load-button button img {
+  display: inline-block;
+  margin-right: 7px;
+  position: relative;
+  bottom: -1.5px;
+  width: 18px;
+  height: 11.1px;
+}
+
+#control-ui .control-block h2.back-button-header .load-button button:hover {
+  background-color: #000;
+  color: #fff;
+}
+
+#control-ui .control-block h2.back-button-header .load-button button:hover img {
+  filter: invert(100%);
 }
 
 h2.module-details-title {
@@ -881,5 +915,99 @@ h3.module-details {
   font-family: WorkSans-SemiBold;
   font-size: 14px;
   color: #2d2d2f;
+}
+
+ol.functions-list  {
+  margin: 0;
+  padding: 0;
+  list-style-type: none;
+  border-radius: 4px;
+  border: 1px solid #d7d7d7;
+}
+
+.functions-list li {
+  border-bottom: 1px solid #d7d7d7;
+  font-size: 15px;
+  height: 41px;
+  line-height: 42px;
+  color: #757575;
+  list-style-position: inside;
+  display: flex;
+}
+
+.functions-list li > :first-child {
+  margin-left: 11px;
+}
+
+
+.functions-list li  .function-name {
+  font-family: WorkSans;
+  display: block;
+  font-weight: 600;
+  color: #757575;
+
+  width: 200px;
+  padding-right: 5px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.functions-list li  .function-desc {
+  font-family: WorkSans;
+  font-size: 13px;
+  color: #757575;
+
+  width: 500px;
+  overflow: hidden;
+  padding: 0 5px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.functions-list li  .function-view {
+  flex-grow: 10;
+}
+
+
+.functions-list li:hover {
+  background-color: #e7e7e7;
+}
+
+.functions-list li button {
+  float: right;
+  align-items: baseline;
+  color: #212121;
+  width: 90px;
+  height: 26px;
+  padding: 0;
+  line-height: normal;
+  margin-right: 15px;
+  margin-top: 8px;
+  border-radius: 4px;
+  border: solid 1px #d7d7d7;
+  font-size: 13px;
+}
+
+.functions-list li button img {
+  display: inline-block;
+  margin-right: 7px;
+  position: relative;
+  bottom: -1.5px;
+  width: 18px;
+  height: 11.1px;
+}
+
+.functions-list li:last-child {
+  border: none;
+}
+
+.functions-list li button:hover {
+  background-color: #000 !important;
+  color: #fff !important;
+}
+
+.functions-list li button:hover img {
+  filter: invert(100%);
 }
 /***************** moduleDetails view end **************/
