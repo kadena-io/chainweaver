@@ -26,6 +26,7 @@ module Frontend.UI.Modal.Impl
   ( -- * Types
     ModalIdeCfg
   , ModalIde
+  , ModalImpl
     -- * Show it
   , showModal
     -- * Build it
@@ -42,6 +43,7 @@ import qualified GHCJS.DOM.EventM as EventM
 import qualified GHCJS.DOM.GlobalEventHandlers as Events
 import           Reflex
 import           Reflex.Dom
+import           Data.Void (Void)
 ------------------------------------------------------------------------------
 import           Frontend.Foundation
 import           Frontend.Ide
@@ -50,9 +52,11 @@ import           Frontend.ModuleExplorer
 import           Frontend.UI.Modal
 ------------------------------------------------------------------------------
 
-type ModalIdeCfg m t = IdeCfg (Modal IdeCfg m t) t
+type ModalImpl m t = m (IdeCfg Void t, Event t ())
 
-type ModalIde m t = Ide (Modal IdeCfg m t) t
+type ModalIdeCfg m t = IdeCfg (ModalImpl m t) t
+
+type ModalIde m t = Ide (ModalImpl m t) t
 
 -- | Show the current modal dialog as given in the model.
 showModal :: forall t m a. MonadWidget t m => ModalIde m t -> m (ModalIdeCfg m t)

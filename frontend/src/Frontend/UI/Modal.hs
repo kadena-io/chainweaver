@@ -46,13 +46,18 @@ import           Frontend.Foundation
 --   It is some arbitrary widget, preferably built with `modalHeader`,
 --   `modalBody` and `modalFooter`.  It provides some config and an `Event`
 --   that will trigger close on the dialog.
-type Modal cfg m t = m (cfg Void t, Event t ())
+type Modal baseCfg m t = m (ModalCfg baseCfg t, Event t ())
 
 {- type ModalCfg cfg m t = cfg (Modal (cfg Void t) t) t -}
 
 -- IdeCfg t modal
 -- IdeCfg t (m (Mu IdeCfg t))
-class HasModalCfg cfg modal t where
+class HasModalCfg cfg modal t | cfg -> modal where
+  -- | A config should provide a variant of itself that does not depend on
+  -- modal for use in the modal.
+  --
+  --  E.g. SomeCfg Void
+  type ModalCfg cfg t
   modalCfg_setModal :: Lens' cfg (Event t (Maybe modal))
 
 {- newtype Mu a = Mu {unMu :: a (Mu a)} -}

@@ -43,6 +43,7 @@ import           Frontend.UI.Repl
 import           Frontend.UI.Wallet
 import           Frontend.UI.Widgets
 import           Frontend.Wallet
+import           Frontend.UI.Modal.Impl
 ------------------------------------------------------------------------------
 
 
@@ -79,7 +80,10 @@ tabBar initialTabs currentTab = do
     selEvs <- traverse (mkTab currentTab) initialTabs
     pure $ leftmost selEvs
 
-rightTabBar :: forall t m a. MonadWidget t m => Ide a t -> m (IdeCfg a t)
+rightTabBar
+  :: forall t m. MonadWidget t m
+  => Ide (ModalImpl m t) t
+  -> m (IdeCfg (ModalImpl m t) t)
 rightTabBar ideL = do
   elAttr "div" ("id" =: "control-nav" <> "class" =: "tabset") $ do
     let curSelection = _ide_envSelection ideL

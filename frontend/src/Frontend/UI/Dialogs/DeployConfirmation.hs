@@ -36,6 +36,7 @@ import qualified Data.Set                as Set
 import           Data.Text               (Text)
 import           Reflex
 import           Reflex.Dom
+import           Data.Void (Void)
 ------------------------------------------------------------------------------
 import           Frontend.Backend
 import           Frontend.Ide
@@ -54,8 +55,7 @@ import           Frontend.UI.Button
 uiDeployConfirmation
   :: MonadWidget t m
   => Ide a t
-  {- -> m (IdeCfg a t, Event t ()) -}
-  -> Modal IdeCfg m t
+  -> m (IdeCfg Void t, Event t ())
 uiDeployConfirmation ideL = do
   onClose <- modalHeader $ text "Deployment Settings"
   modalMain $ do

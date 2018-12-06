@@ -247,7 +247,7 @@ controlBarLeft m = do
 
         loadCfg <- loadCodeIntoRepl m onLoadClicked
         let
-          reqConfirmation :: Event t (Maybe (Modal IdeCfg m t))
+          reqConfirmation :: Event t (Maybe (ModalImpl m t))
           reqConfirmation = Just (uiDeployConfirmation m) <$ onDeployClick
 
           deployCfg = mempty & modalCfg_setModal .~ reqConfirmation

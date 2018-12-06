@@ -17,6 +17,8 @@ module Frontend.UI.Widgets
   , cancelButton
   , loadToEditorButton
   , validatedInputWithButton
+    -- * Buttons
+  , module Frontend.UI.Button
     -- * Helper widgets
   , imgWithAlt
   , showLoading

@@ -94,6 +94,7 @@ data PactFunction = PactFunction
   , _pactFunction_documentation :: Maybe Text
   , _pactFunction_type          :: FunType (Term Name)
   }
+  deriving Show
 
 -- | Information about the currently selected deployed module.
 --

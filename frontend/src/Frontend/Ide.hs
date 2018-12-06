@@ -50,6 +50,7 @@ import           GHC.Generics                 (Generic)
 import           Reflex
 import           Reflex.Dom.Core              (HasJSContext, MonadWidget)
 import           Reflex.NotReady.Class
+import           Data.Void (Void)
 ------------------------------------------------------------------------------
 import           Frontend.Backend
 import           Frontend.Editor
@@ -59,6 +60,10 @@ import           Frontend.Messages
 import           Frontend.ModuleExplorer.Impl
 import           Frontend.Repl
 import           Frontend.Wallet
+
+-- We don't really depend on UI here, I just don't bother to move `HasModalCfg`
+-- into its own module for now. If we do it should probably me
+-- "Frontend.Modal".
 import           Frontend.UI.Modal
 
 -- | Data needed to send transactions to the server.
@@ -231,6 +236,9 @@ instance HasMessagesCfg (IdeCfg modal t) t where
   messagesCfg = ideCfg_messages
 
 instance HasModalCfg (IdeCfg modal t) modal t where
+  -- type ModalType (IdeCfg (Modal IdeCfg m t) t) m t = Modal IdeCfg m t
+  type ModalCfg (IdeCfg modal t) t = IdeCfg Void t
+
   modalCfg_setModal f configL =
     (\setModal -> configL { _ideCfg_setModal = LeftmostEv setModal })
       <$> f (unLeftmostEv . _ideCfg_setModal $ configL)

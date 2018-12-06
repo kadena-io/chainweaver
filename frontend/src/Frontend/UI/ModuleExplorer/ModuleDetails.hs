@@ -50,20 +50,25 @@ import           Frontend.ModuleExplorer
 import           Frontend.UI.Button
 import           Frontend.UI.Widgets
 import           Frontend.UI.Icon
+import           Frontend.Foundation
+import           Frontend.UI.Dialogs.CallFunction
+import           Frontend.UI.Modal
 ------------------------------------------------------------------------------
 
 type HasUIModuleDetailsModel model t =
   (HasModuleExplorer model t, HasBackend model t)
 
-type HasUIModuleDetailsModelCfg mConf t =
+type HasUIModuleDetailsModelCfg mConf m t =
   ( Monoid mConf, Flattenable mConf t, HasModuleExplorerCfg mConf t, HasBackendCfg mConf t
+  , HasModalCfg mConf (Modal mConf m t) t
+  , HasUICallFunctionModelCfg (ModalCfg mConf t) t
   )
 
 moduleDetails
   :: forall t m model mConf
   . ( MonadWidget t m
     , HasUIModuleDetailsModel model t
-    , HasUIModuleDetailsModelCfg mConf t
+    , HasUIModuleDetailsModelCfg mConf m t
     )
   => model
   -> SelectedModule
@@ -83,7 +88,7 @@ moduleDetails m selected = do
     pure (headerCfg <> bodyCfg)
   where
     mayFunctionList :: Maybe [PactFunction] -> m mConf
-    mayFunctionList = maybe noFunctions functionList
+    mayFunctionList = maybe noFunctions (functionList m)
 
     noFunctions = do
       elClass "div" "error" $ text "Error while loading functions."
@@ -95,13 +100,17 @@ moduleDetails m selected = do
 
 
 functionList
-  :: (MonadWidget t m, HasUIModuleDetailsModelCfg mConf t)
-  => [PactFunction] -> m mConf
-functionList functions = do
+  :: forall t m mConf model
+  .  ( MonadWidget t m, HasUIModuleDetailsModelCfg mConf m t
+     , HasUIModuleDetailsModel model t
+     )
+  => model -> [PactFunction] -> m mConf
+functionList m functions = do
+    liftIO $ putStrLn $ "Functions: " <> show functions
     divClass "functions" $ elClass "ol" "functions-list" $ do
       onView <- fmap leftmost . for functions $ \f -> el "li" $ do
-        divClass "function-name" $ text $ _pactFunction_name f 
+        divClass "function-name" $ text $ _pactFunction_name f
         divClass "function-desc" $ text $ fromMaybe "" $ _pactFunction_documentation f
         divClass "function-view" $ fmap (const f) <$> loadToEditorButton
-      pure $ mempty
+      pure $ mempty & modalCfg_setModal .~ (Just . uiCallFunction m <$> onView)
 

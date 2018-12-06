@@ -52,14 +52,16 @@ import           Frontend.UI.Widgets
 type HasUIModuleExplorerModel model t =
   (HasModuleExplorer model t, HasBackend model t)
 
-type HasUIModuleExplorerModelCfg mConf t =
-  (Monoid mConf, Flattenable mConf t, HasModuleExplorerCfg mConf t, HasBackendCfg mConf t)
+type HasUIModuleExplorerModelCfg mConf m t =
+  ( Monoid mConf, Flattenable mConf t, HasModuleExplorerCfg mConf t, HasBackendCfg mConf t
+  , HasUIModuleDetailsModelCfg mConf m t
+  )
 
 moduleExplorer
   :: forall t m model mConf
   . ( MonadWidget t m
     , HasUIModuleExplorerModel model t
-    , HasUIModuleExplorerModelCfg mConf t
+    , HasUIModuleExplorerModelCfg mConf m t
     )
   => model
   -> m mConf
@@ -77,7 +79,7 @@ browseExamples
   :: forall t m model mConf
   . ( MonadWidget t m
     , HasUIModuleExplorerModel model t
-    , HasUIModuleExplorerModelCfg mConf t
+    , HasUIModuleExplorerModelCfg mConf m t
     )
   => model
   -> m mConf
@@ -102,7 +104,7 @@ browseDeployedTitle
   :: forall t m model mConf
   . ( MonadWidget t m
     , HasUIModuleExplorerModel model t
-    , HasUIModuleExplorerModelCfg mConf t
+    , HasUIModuleExplorerModelCfg mConf m t
     )
   => model
   -> m mConf
