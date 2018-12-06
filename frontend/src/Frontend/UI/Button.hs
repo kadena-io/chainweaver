@@ -20,22 +20,27 @@ module Frontend.UI.Button where
 
 ------------------------------------------------------------------------------
 import           Data.Default
-import           Data.Text                   (Text)
+import           Data.Default        (def)
+import           Data.Set            (Set)
+import qualified Data.Set            as Set
+import           Data.Text           (Text)
+import qualified Data.Text           as T
 import           Reflex.Dom.Core
-import           Data.Default (def)
 ------------------------------------------------------------------------------
-import Frontend.Foundation (makePactLenses)
+import           Frontend.Foundation (makePactLenses)
 
 -- | Configuration for uiButton.
 data UiButtonCfg t = UiButtonCfg
   { _uiButtonCfg_disabled :: Dynamic t Bool
     -- ^ Whether or not the button should be clickable by the user.
+  , _uiButtonCfg_class    :: Set Text
   }
 
 $(makePactLenses ''UiButtonCfg)
 
+
 instance Reflex t => Default (UiButtonCfg t) where
-  def = UiButtonCfg (pure False)
+  def = UiButtonCfg (pure False) mempty
 
 
 uiButtonSimple :: MonadWidget t m => Text -> m (Event t ())
@@ -47,8 +52,10 @@ uiButton :: MonadWidget t m => UiButtonCfg t -> m a -> m (Event t (), a)
 uiButton cfg body = do
     let
       attrs = mkDisabledAttr <$> _uiButtonCfg_disabled cfg
+      getCls = T.intercalate " " . Set.toList . _uiButtonCfg_class
+      baseAttrs = "class" =: getCls cfg
       mkDisabledAttr = \case
-        False -> mempty
-        True  -> "disabled" =: "true"
+        False -> baseAttrs
+        True  -> baseAttrs <> "disabled" =: "true"
     (e, a) <- elDynAttr' "button" attrs body
     return (domEvent Click e, a)

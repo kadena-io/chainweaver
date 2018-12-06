@@ -55,11 +55,9 @@ import           Frontend.UI.Button
 import           Frontend.UI.Modal
 import           Frontend.UI.RightPanel
 import           Frontend.UI.Widgets
+import           Frontend.UI.Modal.Impl
+import           Frontend.UI.Dialogs.DeployConfirmation (uiDeployConfirmation)
 ------------------------------------------------------------------------------
-
-data ClickState = DownAt (Int, Int) | Clicked | Selected
-  deriving (Eq,Ord,Show,Read)
-
 
 app :: MonadWidget t m => m ()
 app = void . mfix $ \ cfg -> do
@@ -81,7 +79,7 @@ app = void . mfix $ \ cfg -> do
     ]
 
 -- | Code editing (left hand side currently)
-codePanel :: forall t m. MonadWidget t m => Ide t -> m (IdeCfg t)
+codePanel :: forall t m a. MonadWidget t m => Ide a t -> m (IdeCfg a t)
 codePanel m = do
   elAttr "div" ("class" =: "flex" <> "id" =: "main-wysiwyg") $ do
     (e, eCfg) <- wysiwyg $ do
@@ -114,7 +112,12 @@ codePanel m = do
 -- | Reset REPL and load current editor text into it.
 --
 --   Reset REPL on load for now until we get an ok to drop this.
-loadCodeIntoRepl :: forall t m model. (MonadWidget t m, HasEditor model t) => model -> Event t () -> m (IdeCfg t)
+loadCodeIntoRepl
+  :: forall t m model a
+  . (MonadWidget t m, HasEditor model t)
+   => model
+   -> Event t ()
+   -> m (IdeCfg a t)
 loadCodeIntoRepl m onReq = do
   onLoad <- tag (current $ m ^. editor_code) <$> delay 0 onReq
   pure $ mempty
@@ -220,9 +223,9 @@ codeWidget anno iv sv = do
 
 
 controlBar
-  :: forall t m model. (MonadWidget t m, HasEditor model t)
-  => model
-  ->  m (IdeCfg t)
+  :: forall t m model a. MonadWidget t m
+  => ModalIde m t
+  ->  m (ModalIdeCfg m t)
 controlBar m = do
     elAttr "header" ("id" =: "header") $ do
       divClass "flexbox even" $ do
@@ -230,7 +233,7 @@ controlBar m = do
         controlBarRight
         return ideCfgL
 
-controlBarLeft :: (MonadWidget t m, HasEditor model t) => model -> m (IdeCfg t)
+controlBarLeft :: forall t m. MonadWidget t m => ModalIde m t -> m (ModalIdeCfg m t)
 controlBarLeft m = do
     divClass "flex left-nav" $ do
       el "h1" $ do
@@ -244,8 +247,10 @@ controlBarLeft m = do
 
         loadCfg <- loadCodeIntoRepl m onLoadClicked
         let
-          reqConfirmation = Modal_DeployConfirmation <$ onDeployClick
-          deployCfg = mempty & ideCfg_reqModal .~ reqConfirmation
+          reqConfirmation :: Event t (Maybe (Modal IdeCfg m t))
+          reqConfirmation = Just (uiDeployConfirmation m) <$ onDeployClick
+
+          deployCfg = mempty & modalCfg_setModal .~ reqConfirmation
         pure $ deployCfg <> loadCfg
 
 getPactVersion :: MonadWidget t m => m Text

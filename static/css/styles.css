@@ -759,11 +759,11 @@ td.centercell {
   z-index: 99999999;
 }
 
-#modal-root .modal .modal-body{
+#modal-root .modal .modal-main{
   height: calc(100% - 68px);
 }
 
-#modal-root .modal .modal-main {
+#modal-root .modal .modal-body {
   height: calc(100% - 77px);
   overflow-y: auto;
 }
@@ -808,7 +808,7 @@ td.centercell {
   line-height: 1px;
 }
 
-#modal-root .modal-body {
+#modal-root .modal-main {
   padding: 20px;
   min-height: 6em;
 }

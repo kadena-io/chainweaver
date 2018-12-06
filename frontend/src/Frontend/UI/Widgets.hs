@@ -4,6 +4,8 @@
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE OverloadedStrings     #-}
 {-# LANGUAGE RecursiveDo           #-}
+{-# LANGUAGE ScopedTypeVariables   #-}
+{-# LANGUAGE TypeApplications      #-}
 
 -- | Widgets collection
 -- Was based on semui, but now transitioning to custom widgets
@@ -11,6 +13,8 @@ module Frontend.UI.Widgets
   ( -- * Standard widgets for pact-web
     backButton
   , refreshButton
+  , confirmButton
+  , cancelButton
   , loadToEditorButton
   , validatedInputWithButton
     -- * Helper widgets
@@ -31,13 +35,15 @@ module Frontend.UI.Widgets
 import           Control.Applicative
 import           Control.Lens
 import           Control.Monad
+import           Data.Map.Strict             (Map)
+import qualified Data.Set                    as Set
 import           Data.Text                   (Text)
 import qualified Data.Text                   as T
-import           Language.Javascript.JSaddle (js0, liftJSM, pToJSVal, PToJSVal, eval, call, obj)
-import           Reflex.Dom.Core
-import           Reflex.Dom.Contrib.CssClass
-import           Data.Map.Strict             (Map)
+import           Language.Javascript.JSaddle (PToJSVal, call, eval, js0,
+                                              liftJSM, obj, pToJSVal)
 import           Obelisk.Generated.Static
+import           Reflex.Dom.Contrib.CssClass
+import           Reflex.Dom.Core
 ------------------------------------------------------------------------------
 import           Frontend.Foundation
 import           Frontend.UI.Button
@@ -191,6 +197,18 @@ loadToEditorButton =
 refreshButton :: MonadWidget t m => m (Event t ())
 refreshButton =
   fmap fst . uiButton def $ elClass "i" "fa fa-lg fa-refresh" blank
+
+confirmButton :: MonadWidget t m => UiButtonCfg t -> Text -> m (Event t ())
+confirmButton cfg msg =
+  fmap fst
+    . uiButton (cfg & uiButtonCfg_class .~ Set.singleton "confirmation-button")
+    $ text msg
+
+cancelButton :: MonadWidget t m => UiButtonCfg t -> Text -> m (Event t ())
+cancelButton cfg msg =
+  fmap fst
+    . uiButton (cfg & uiButtonCfg_class .~ Set.singleton "cancel-button")
+    $ text msg
 
 filteredButton
   :: MonadWidget t m

@@ -68,6 +68,7 @@ library
                  , Frontend.UI.Icon
                  , Frontend.UI.JsonData
                  , Frontend.UI.Modal
+                 , Frontend.UI.Modal.Impl
                  , Frontend.UI.ModuleExplorer
                  , Frontend.UI.ModuleExplorer.ModuleDetails
                  , Frontend.UI.Repl

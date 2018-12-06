@@ -41,12 +41,11 @@ import           Frontend.Backend
 import           Frontend.Ide
 import           Frontend.Wallet
 import           Frontend.Wallet         (HasWallet (..))
+import           Frontend.UI.Modal
+import           Frontend.UI.Widgets
+import           Frontend.UI.Button
 ------------------------------------------------------------------------------
 
--- | Are we deploying a contract or calling a function?
-{- data DeployConfirmationType -}
-{-   = DeployConfirmationType_FunCall -}
-{-   | DeployConfirmationType_Deploy -}
 
 -- | Confirmation dialog for deployments.
 --
@@ -54,23 +53,37 @@ import           Frontend.Wallet         (HasWallet (..))
 --   the right keys, ...
 uiDeployConfirmation
   :: MonadWidget t m
-  => Ide t
-  -> m (Dynamic t (Maybe TransactionInfo))
+  => Ide a t
+  {- -> m (IdeCfg a t, Event t ()) -}
+  -> Modal IdeCfg m t
 uiDeployConfirmation ideL = do
-  el "h3" $ text "Choose a server "
+  onClose <- modalHeader $ text "Deployment Settings"
+  modalMain $ do
+    transInfo <- modalBody $ do
+      el "h3" $ text "Choose a server "
 
-  let backends = ffor (_backend_backends $ _ide_backend ideL) $
-        fmap (\(k, _) -> (k, unBackendName k)) . maybe [] Map.toList
-      mkOptions bs = Map.fromList $ (Nothing, "Deployment Target") : map (first Just) bs
-  d <- dropdown Nothing (mkOptions <$> backends) def
+      let backends = ffor (_backend_backends $ _ide_backend ideL) $
+            fmap (\(k, _) -> (k, unBackendName k)) . maybe [] Map.toList
+          mkOptions bs = Map.fromList $ (Nothing, "Deployment Target") : map (first Just) bs
+      d <- dropdown Nothing (mkOptions <$> backends) def
 
-  signingKeys <- elClass "div" "key-chooser" $ do
-    el "h3" $ text "Choose keys to sign with"
-    signingKeysWidget $ _ide_wallet ideL
-  pure $ do
-    s <- signingKeys
-    mb <- value d
-    pure $ TransactionInfo s <$> mb
+      signingKeys <- elClass "div" "key-chooser" $ do
+        el "h3" $ text "Choose keys to sign with"
+        signingKeysWidget $ _ide_wallet ideL
+      pure $ do
+        s <- signingKeys
+        mb <- value d
+        pure $ TransactionInfo s <$> mb
+
+    modalFooter $ do
+      onCancel <- cancelButton def "Cancel"
+      text " "
+      let isDisabled = maybe True (const False) <$> transInfo
+      onConfirm <- confirmButton (def & uiButtonCfg_disabled .~ isDisabled) "Deploy"
+
+      let cfg = mempty & ideCfg_deploy .~
+            fmapMaybe id (tagPromptlyDyn transInfo onConfirm)
+      pure (cfg, leftmost [onClose, onCancel, onConfirm])
 
 signingKeysWidget
   :: forall t m. MonadWidget t m

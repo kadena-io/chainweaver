@@ -39,27 +39,27 @@ module Frontend.Ide
   , LogMsg
   , TransactionInfo (..)
   , EnvSelection (..)
-  , Modal (..)
-  )where
+  ) where
 
 ------------------------------------------------------------------------------
 import           Control.Lens
-import qualified Data.Map                 as Map
-import           Data.Set                 (Set)
-import           Generics.Deriving.Monoid (mappenddefault, memptydefault)
-import           GHC.Generics             (Generic)
+import qualified Data.Map                     as Map
+import           Data.Set                     (Set)
+import           Generics.Deriving.Monoid     (mappenddefault, memptydefault)
+import           GHC.Generics                 (Generic)
 import           Reflex
+import           Reflex.Dom.Core              (HasJSContext, MonadWidget)
 import           Reflex.NotReady.Class
-import           Reflex.Dom.Core          (HasJSContext)
 ------------------------------------------------------------------------------
 import           Frontend.Backend
+import           Frontend.Editor
 import           Frontend.Foundation
 import           Frontend.JsonData
-import           Frontend.Wallet
-import           Frontend.Editor
-import           Frontend.ModuleExplorer.Impl
 import           Frontend.Messages
+import           Frontend.ModuleExplorer.Impl
 import           Frontend.Repl
+import           Frontend.Wallet
+import           Frontend.UI.Modal
 
 -- | Data needed to send transactions to the server.
 data TransactionInfo = TransactionInfo
@@ -77,15 +77,11 @@ data EnvSelection
   | EnvSelection_ModuleExplorer -- ^ The module explorer
   deriving (Eq, Ord, Show)
 
--- | Request a modal dialog of some kind.
-data Modal
-  = Modal_DeployConfirmation  -- ^ Display a deploy confirmation dialog.
-  | Modal_NoModal             -- ^ Don't display a Modal.
 
 -- | Configuration for sub-modules.
 --
 --   State is controlled via this configuration.
-data IdeCfg t = IdeCfg
+data IdeCfg modal t = IdeCfg
   { _ideCfg_wallet         :: WalletCfg t
   , _ideCfg_jsonData       :: JsonDataCfg t
   , _ideCfg_backend        :: BackendCfg t
@@ -97,15 +93,16 @@ data IdeCfg t = IdeCfg
     -- ^ Switch tab of the right pane.
   , _ideCfg_deploy         :: Event t TransactionInfo
     -- ^ Deploy the currently edited code/contract.
-  , _ideCfg_reqModal       :: Event t Modal
-   -- ^ Request a modal dialog of the given type.
+  , _ideCfg_setModal       :: LeftmostEv t (Maybe modal)
+   -- ^ Request a modal dialog. Use `Nothing` to close an existing modal
+   --   dialog.
   }
   deriving Generic
 
 makePactLenses ''IdeCfg
 
 -- | Current IDE state.
-data Ide t = Ide
+data Ide modal t = Ide
   { _ide_moduleExplorer :: ModuleExplorer t
   , _ide_editor         :: Editor t
   , _ide_messages       :: Messages t
@@ -115,23 +112,22 @@ data Ide t = Ide
   , _ide_repl           :: WebRepl t
   , _ide_envSelection   :: Dynamic t EnvSelection
   -- ^ Currently selected tab in the right pane.
-  , _ide_modal          :: Dynamic t Modal
+  , _ide_modal          :: Dynamic t (Maybe modal)
   -- ^ The modal dialog that currently gets displayed.
   }
   deriving Generic
 
 makePactLenses ''Ide
 
-
 makeIde
-  :: forall t m
+  :: forall t m modal
   . ( MonadHold t m, PerformEvent t m, MonadFix m
     , MonadJSM (Performable m), MonadJSM m
     , NotReady t m, Adjustable t m, HasJSContext (Performable m)
     , MonadSample t (Performable m)
     , TriggerEvent t m, PostBuild t m
     )
-  => IdeCfg t -> m (Ide t)
+  => IdeCfg modal t -> m (Ide modal t)
 makeIde userCfg = build $ \ ~(cfg, ideL) -> do
     walletL <- makeWallet $ _ideCfg_wallet cfg
     json <- makeJsonData walletL $ _ideCfg_jsonData cfg
@@ -165,7 +161,7 @@ makeIde userCfg = build $ \ ~(cfg, ideL) -> do
 
     envSelection <- makeEnvSelection ideL $ cfg ^. ideCfg_selEnv
 
-    modal <- holdDyn Modal_NoModal $ _ideCfg_reqModal cfg
+    modal <- holdDyn Nothing $ unLeftmostEv (_ideCfg_setModal cfg)
 
     pure
       ( mconcat [ourCfg, userCfg, explrCfg, replCfgL]
@@ -182,12 +178,12 @@ makeIde userCfg = build $ \ ~(cfg, ideL) -> do
         }
       )
   where
-    build :: ((IdeCfg t, Ide t) -> m (IdeCfg t, Ide t)) -> m (Ide t)
+    build :: ((IdeCfg modal t, Ide modal t) -> m (IdeCfg modal t, Ide modal t)) -> m (Ide modal t)
     build = fmap snd . mfix
 
 makeEnvSelection
-  :: forall t m. (MonadHold t m, Reflex t)
-  => Ide t
+  :: forall t m modal. (MonadHold t m, Reflex t)
+  => Ide modal t
   -> Event t EnvSelection
   -> m (Dynamic t EnvSelection)
 makeEnvSelection ideL onSelect = do
@@ -203,13 +199,10 @@ makeEnvSelection ideL onSelect = do
 
 -- Instances:
 
-instance Semigroup Modal where
-  a <> _ = a
-
-instance Reflex t => Semigroup (IdeCfg t) where
+instance Reflex t => Semigroup (IdeCfg modal t) where
   (<>) = mappenddefault
 
-instance Reflex t => Monoid (IdeCfg t) where
+instance Reflex t => Monoid (IdeCfg modal t) where
   mempty = memptydefault
   mappend = (<>)
 
@@ -219,49 +212,54 @@ instance Semigroup EnvSelection where
 instance Semigroup TransactionInfo where
   sel1 <> _ = sel1
 
-instance HasWalletCfg (IdeCfg t) t where
+instance HasWalletCfg (IdeCfg modal t) t where
   walletCfg = ideCfg_wallet
 
-instance HasJsonDataCfg (IdeCfg t) t where
+instance HasJsonDataCfg (IdeCfg modal t) t where
   jsonDataCfg = ideCfg_jsonData
 
-instance HasBackendCfg (IdeCfg t) t where
+instance HasBackendCfg (IdeCfg modal t) t where
   backendCfg = ideCfg_backend
 
-instance HasModuleExplorerCfg (IdeCfg t) t where
+instance HasModuleExplorerCfg (IdeCfg modal t) t where
   moduleExplorerCfg = ideCfg_moduleExplorer
 
-instance HasEditorCfg (IdeCfg t) t where
+instance HasEditorCfg (IdeCfg modal t) t where
   editorCfg = ideCfg_editor
 
-instance HasMessagesCfg (IdeCfg t) t where
+instance HasMessagesCfg (IdeCfg modal t) t where
   messagesCfg = ideCfg_messages
 
-instance HasReplCfg (IdeCfg t) t where
+instance HasModalCfg (IdeCfg modal t) modal t where
+  modalCfg_setModal f configL =
+    (\setModal -> configL { _ideCfg_setModal = LeftmostEv setModal })
+      <$> f (unLeftmostEv . _ideCfg_setModal $ configL)
+
+instance HasReplCfg (IdeCfg modal t) t where
   replCfg = ideCfg_repl
 
-instance HasWallet (Ide t) t where
+instance HasWallet (Ide modal t) t where
   wallet = ide_wallet
 
-instance HasJsonData (Ide t) t where
+instance HasJsonData (Ide modal t) t where
   jsonData = ide_jsonData
 
-instance HasBackend (Ide t) t where
+instance HasBackend (Ide modal t) t where
   backend = ide_backend
 
-instance HasModuleExplorer (Ide t) t where
+instance HasModuleExplorer (Ide modal t) t where
   moduleExplorer = ide_moduleExplorer
 
-instance HasEditor (Ide t) t where
+instance HasEditor (Ide modal t) t where
   editor = ide_editor
 
-instance HasWebRepl (Ide t) t where
+instance HasWebRepl (Ide modal t) t where
   webRepl = ide_repl
 
-instance HasMessages (Ide t) t where
+instance HasMessages (Ide modal t) t where
   messages = ide_messages
 
-instance Flattenable (IdeCfg t) t where
+instance Flattenable (IdeCfg modal t) t where
   flattenWith doSwitch ev =
     IdeCfg
       <$> flattenWith doSwitch (_ideCfg_wallet <$> ev)
@@ -273,4 +271,4 @@ instance Flattenable (IdeCfg t) t where
       <*> flattenWith doSwitch (_ideCfg_messages <$> ev)
       <*> doSwitch never (_ideCfg_selEnv <$> ev)
       <*> doSwitch never (_ideCfg_deploy <$> ev)
-      <*> doSwitch never (_ideCfg_reqModal <$> ev)
+      <*> fmap LeftmostEv (doSwitch never (unLeftmostEv . _ideCfg_setModal <$> ev))

@@ -79,7 +79,7 @@ tabBar initialTabs currentTab = do
     selEvs <- traverse (mkTab currentTab) initialTabs
     pure $ leftmost selEvs
 
-rightTabBar :: forall t m. MonadWidget t m => Ide t -> m (IdeCfg t)
+rightTabBar :: forall t m a. MonadWidget t m => Ide a t -> m (IdeCfg a t)
 rightTabBar ideL = do
   elAttr "div" ("id" =: "control-nav" <> "class" =: "tabset") $ do
     let curSelection = _ide_envSelection ideL
@@ -105,7 +105,7 @@ rightTabBar ideL = do
       , mempty & ideCfg_selEnv .~ onTabClick
       ]
 
-envTab :: MonadWidget t m => Ide t -> m (IdeCfg t)
+envTab :: MonadWidget t m => Ide a t -> m (IdeCfg a t)
 envTab ideL = do
   jsonCfg <- accordionItem True mempty "Data" $ divClass "control-block-contents" $ do
     conf <- uiJsonData (ideL ^. ide_wallet) (ideL ^. ide_jsonData)
@@ -123,7 +123,7 @@ envTab ideL = do
 
   pure $ jsonCfg <> keysCfg
 
-msgsWidget :: forall t m. MonadWidget t m => Ide t -> m (IdeCfg t)
+msgsWidget :: forall t m a. MonadWidget t m => Ide a t -> m (IdeCfg a t)
 msgsWidget ideL = do
   divClass "control-block repl-output iframe" $ do
     -- This is really slow, but we usually only have a handful messages:

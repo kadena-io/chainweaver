@@ -22,114 +22,79 @@
 -- License     :  BSD-style (see the file LICENSE)
 --
 
-module Frontend.UI.Modal where
+module Frontend.UI.Modal
+  ( Modal
+  , HasModalCfg (..)
+  , modalHeader
+  , modalMain
+  , modalBody
+  , modalFooter
+  ) where
 
 ------------------------------------------------------------------------------
 import           Control.Lens hiding (element)
-import qualified Data.Map as Map
-import           Data.Proxy
-import           Data.Text (Text)
-import qualified GHCJS.DOM as DOM
-import qualified GHCJS.DOM.EventM as EventM
 import qualified GHCJS.DOM.GlobalEventHandlers as Events
 import           Reflex
 import           Reflex.Dom
+import           Data.Void
 ------------------------------------------------------------------------------
 import           Frontend.Foundation
-import           Frontend.Ide
-import           Frontend.UI.Dialogs.DeployConfirmation
 ------------------------------------------------------------------------------
 
-showModal :: forall t m. MonadWidget t m => Ide t -> m (IdeCfg t)
-showModal ideL = do
-    document <- DOM.currentDocumentUnchecked
+-- | Type of modal dialog.
+--
+--   It is some arbitrary widget, preferably built with `modalHeader`,
+--   `modalBody` and `modalFooter`.  It provides some config and an `Event`
+--   that will trigger close on the dialog.
+type Modal cfg m t = m (cfg Void t, Event t ())
 
-    onEsc <- wrapDomEventMaybe document (`EventM.on` Events.keyDown) $ do
-      key <- getKeyEvent
-      pure $ if keyCodeLookup (fromIntegral key) == Escape then Just () else Nothing
+{- type ModalCfg cfg m t = cfg (Modal (cfg Void t) t) t -}
 
-    let staticAttrs = ("id" =: "modal-root")
-    let mkAttrs vis = staticAttrs <>
-          if vis then ("class" =: "open") else mempty
+-- IdeCfg t modal
+-- IdeCfg t (m (Mu IdeCfg t))
+class HasModalCfg cfg modal t where
+  modalCfg_setModal :: Lens' cfg (Event t (Maybe modal))
 
-    elDynAttr "div" (mkAttrs <$> isVisible) $ do
-      (backdropEl, ev) <- elAttr' "div" ("class" =: "screen") $
-        networkView (specificModal <$> _ide_modal ideL)
-      onFinish <- switchHold never $ snd <$> ev
-      mCfg <- flatten $ fst <$> ev
+{- newtype Mu a = Mu {unMu :: a (Mu a)} -}
 
-      let
-        onClose = leftmost [ onFinish
-                           , onEsc
-                           , domEvent Click backdropEl
-                           ]
-        lConf = mempty & ideCfg_reqModal .~ (Modal_NoModal <$ onClose)
-      pure $ lConf <> mCfg
-  where
-    isVisible = getIsVisible <$> _ide_modal ideL
-    getIsVisible = \case
-      Modal_NoModal -> False
-      _             -> True
+{- newtype Modal cfg m modal = Modal { unModal :: m (cfg modal) } -}
 
-    specificModal :: Modal -> m (IdeCfg t, Event t ())
-    specificModal = \case
-      Modal_NoModal -> pure (mempty, never)
-      Modal_DeployConfirmation -> do
-        ((transactionInfo, onCancel, onAccept), onClose) <- genericModal
-          (text "Deployment Settings")
-          (confirmationModal ideL)
-        let cfg = mempty & ideCfg_deploy .~
-              fmapMaybe id (tagPromptlyDyn transactionInfo onAccept)
-        pure (cfg, leftmost [onClose, onCancel, onAccept])
+{- type MuModal cfg m = Mu (Modal cfg m) -}
 
-confirmationModal
-  :: MonadWidget t m
-  => Ide t
-  -> m (Dynamic t (Maybe TransactionInfo), Event t (), Event t ())
-confirmationModal ideL = do
-  res <- divClass "modal-main" $ uiDeployConfirmation ideL
-  divClass "modal-footer" $ do
-    (a,_) <- el' "button" $ text "Cancel"
-    text " "
-    let mkAttrs = maybe ("disabled" =: "") (const mempty)
-    (b,_) <- elDynAttr' "button" (mkAttrs <$> res) $ text "Deploy"
-    return (res, domEvent Click a, domEvent Click b)
 
-genericModal
+
+-- | Create a modal dialog header.
+modalHeader
   :: forall t m a. MonadWidget t m
   => m ()
-  -- ^ The modal header
-  -> m a
-  -- ^ The modal body (and footer)
-  -> m (a, Event t ())
-  -- ^ Returns the body value, footer value, and a close event
-genericModal header body = do
-    let elCfg =
-          (def :: ElementConfig EventResult t (DomBuilderSpace m))
-          & initialAttributes .~ Map.mapKeys (AttributeName Nothing)
-            ("class" =: "modal")
-          & elementConfig_eventSpec %~ addEventSpecFlags
-            (Proxy :: Proxy (DomBuilderSpace m)) Click (const stopPropagation)
-    fmap snd $ element "div" elCfg $ do
-      onClose <- divClass "modal-header" $
-        el "h2" $ do
-          header
-          (e,_) <- elAttr' "button" ("class" =: "modal-close") $ text "x"
-          return $ domEvent Click e
-      bres <- divClass "modal-body" body
-      return (bres, onClose)
+  -- ^ Content of the h2 in the header.
+  -> m ( Event t ())
+  -- ^ Close event
+modalHeader header = divClass "modal-header" $ do
+  el "h2" $ do
+    header
+    (e,_) <- elAttr' "button" ("class" =: "modal-close") $ text "x"
+    pure $ domEvent Click e
 
--- TODO Might need to generalize this to m () instead of Text later
-genericModalFooter
-  :: MonadWidget t m
-  => Text
-  -- ^ Text for action A
-  -> Text
-  -- ^ Text for action B
-  -> m (Event t (), Event t ())
-  -- ^ Events for actions A and B respectively
-genericModalFooter actionA actionB = do
-  (a,_) <- el' "button" $ text actionA
-  text " "
-  (b,_) <- el' "button" $ text actionB
-  return (domEvent Click a, domEvent Click b)
+-- | Wrap body and footer in this.
+modalMain :: MonadWidget t m => m a -> m a
+modalMain  = divClass "modal-main"
+
+-- | Create a modal dialog body.
+modalBody
+  :: forall t m a. MonadWidget t m
+  => m a
+  -- ^ The actual body of the dialog.
+  -> m a
+  -- ^ Wrapped up body
+modalBody = divClass "modal-body"
+
+-- | Create a modal dialog footer.
+modalFooter
+  :: forall t m a. MonadWidget t m
+  => m a
+  -- ^ The actual footer of the dialog.
+  -> m a
+  -- ^ Wrapped up footer
+modalFooter = divClass "modal-footer"
+
