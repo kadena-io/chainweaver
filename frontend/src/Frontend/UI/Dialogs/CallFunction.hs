@@ -71,21 +71,21 @@ uiCallFunction
   :: forall t m  mConf model
   . (MonadWidget t m, HasUICallFunctionModelCfg mConf t, HasUICallFunctionModel model t)
   => model
-  -> SelectedModule
+  -> Maybe DeployedModule
   -> PactFunction
   -> m (mConf, Event t ())
-uiCallFunction m moduleL func = do
+uiCallFunction m mModule func = do
     onClose <- modalHeader $ do
       text "Function: "
       elClass "span" "function-name" $ text $ _pactFunction_name func
     modalMain $ do
-      (pactCall, signingKeys) <- modalBody $ do
+      mCallAndKeys <- modalBody $ do
         elClass "div" "function-details" $ do
           renderSignature func
           el "br" blank
           el "br" blank
           renderDescription func
-        divClass "fun-arg-editor" $ do
+        for mModule $ \ moduleL -> divClass "fun-arg-editor" $ do
           let fType = _pactFunction_type func
               fModule = _pactFunction_module func
               fName = _pactFunction_name func
@@ -96,39 +96,39 @@ uiCallFunction m moduleL func = do
             pactCall = buildCall fModule fName <$> sequence args
 
           signingKeys <- signingKeysWidget (m ^. wallet)
-          pure (pactCall, signingKeys)
+          pure (pactCall, signingKeys, moduleL)
 
-      modalFooter $ do
-        onCancel <- cancelButton def "Cancel"
-        text " "
-        -- let isDisabled = maybe True (const False) <$> transInfo
-        onCall <- confirmButton (def & uiButtonCfg_disabled .~ pure False) "Call"
+      modalFooter $
+        case mCallAndKeys of
+          Nothing -> do
+            onAccept <- confirmButton def "Ok"
+            pure (mempty, leftmost [onClose, onAccept])
+          Just (pactCall, signingKeys, moduleL) -> do
+            onCancel <- cancelButton def "Cancel"
+            text " "
+            -- let isDisabled = maybe True (const False) <$> transInfo
+            onCall <- confirmButton (def & uiButtonCfg_disabled .~ pure False) "Call"
 
-        let
-          backendReq :: Dynamic t (Maybe BackendRequest)
-          backendReq = do
-            code <- pactCall
-            json <- either (const HM.empty) id <$> m ^. jsonData_data
-            keys <- signingKeys
             let
-              mModule = moduleL ^? selectedModule_module . _ModuleSel_Deployed
-              mUri = _deployedModule_backendUri <$> mModule
+              backendReq :: Dynamic t BackendRequest
+              backendReq = do
+                code <- pactCall
+                json <- either (const HM.empty) id <$> m ^. jsonData_data
+                keys <- signingKeys
+                let uri = _deployedModule_backendUri moduleL
 
-            pure $ ffor mUri $ \uri -> BackendRequest
-              { _backendRequest_code = code
-              , _backendRequest_data = json
-              , _backendRequest_backend = uri
-              , _backendRequest_signing = keys
-              }
-          onMayReq = tag (current backendReq) $ onCall
-          onReq = fmapMaybe id onMayReq
-          {- performEvent_ $ ffor onMayReq $ \case -}
-          {-   Nothing -> liftIO $ putStrLn "Tried to send function call, but we had no backend!" -}
-          {-   Just -> pure () -}
-          cfg = mempty & backendCfg_deployCode .~ onReq
-
-
-        pure (cfg, leftmost [onClose, onCancel, onCall])
+                pure $ BackendRequest
+                  { _backendRequest_code = code
+                  , _backendRequest_data = json
+                  , _backendRequest_backend = uri
+                  , _backendRequest_signing = keys
+                  }
+              onReq = tag (current backendReq) onCall
+              {- performEvent_ $ ffor onMayReq $ \case -}
+              {-   Nothing -> liftIO $ putStrLn "Tried to send function call, but we had no backend!" -}
+              {-   Just -> pure () -}
+              cfg = mempty & backendCfg_deployCode .~ onReq
+            pure (cfg, leftmost [onClose, onCancel, onCall])
 
 
 -- | Build a function call

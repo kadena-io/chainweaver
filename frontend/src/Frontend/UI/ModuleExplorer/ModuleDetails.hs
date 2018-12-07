@@ -87,8 +87,9 @@ moduleDetails m selected = do
       mayFunctionList $ _selectedModule_functions selected
     pure (headerCfg <> bodyCfg)
   where
+    mayDeployed = selected ^? selectedModule_module . _ModuleSel_Deployed
     mayFunctionList :: Maybe [PactFunction] -> m mConf
-    mayFunctionList = maybe noFunctions (functionList m selected)
+    mayFunctionList = maybe noFunctions (functionList m mayDeployed)
 
     noFunctions = do
       elClass "div" "error" $ text "Error while loading functions."
@@ -104,7 +105,7 @@ functionList
   .  ( MonadWidget t m, HasUIModuleDetailsModelCfg mConf m t
      , HasUIModuleDetailsModel model t
      )
-  => model -> SelectedModule -> [PactFunction] -> m mConf
+  => model -> Maybe DeployedModule -> [PactFunction] -> m mConf
 functionList m moduleL functions = do
     liftIO $ putStrLn $ "Functions: " <> show functions
     divClass "functions" $ elClass "ol" "functions-list" $ do
