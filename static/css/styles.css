@@ -51,6 +51,10 @@
   font-family: RobotoMono-Italic;
   src: url(/static/fonts/RobotoMono-Italic.ttf);
 }
+@font-face {
+  font-family: RobotoMono-LightItalic;
+  src: url(/static/fonts/RobotoMono-LightItalic.ttf);
+}
 
 * {
   box-sizing: border-box;
@@ -822,23 +826,51 @@ td.centercell {
   text-align: right;
 }
 
-#modal-root .modal-footer button {
-  color: #fff;
-  border-color: #555;
-  background: #555;
+button.cancel-button,button.confirmation-button {
 }
 
-#modal-root .modal-footer button:hover {
-  border-color: #000;
-  background: #000;
+button.confirmation-button {
+  font-size: 15px;
+  font-weight: bold;
+  color: #ffffff;
+  background-color: #4499d9;
+  border-color: #4499d9;
+}
+button.confirmation-button[disabled] {
+  background: none;
+  font-weight: normal;
+  color: #757575;
+  border-color: #d7d7d7;
 }
 /* Disable hover effect for disabled buttons: */
-#modal-root .modal-footer button[disabled]:hover {
-  border-color: #555;
-  background: #555;
+button.confirmation-button[disabled]:hover {
+  background: none;
+  font-weight: normal;
+  color: #757575;
+  border-color: #d7d7d7;
 }
 
-#modal-root .modal-footer button:active {
+button.confirmation-button:hover {
+  background: #555;
+  border-color: #d7d7d7;
+}
+
+button.cancel-button {
+  font-size: 15px;
+  color: #757575;
+  border-color: #d7d7d7;
+}
+
+button.cancel-button:hover {
+  color: #ffffff;
+}
+
+button.cancel-button[disabled]:hover {
+  color: #757575;
+  border-color: #d7d7d7;
+}
+
+button.cancel-button:active,button.confirmation-button:active {
   border-color: #555;
   background: #555;
 }
@@ -1011,3 +1043,59 @@ ol.functions-list  {
   filter: invert(100%);
 }
 /***************** moduleDetails view end **************/
+
+/***************** CallFunction ************************/
+
+.function-details {
+  color: #757575;
+}
+
+span.pact-arg-name {
+  font-family: RobotoMono-LightItalic;
+  font-size: 12px;
+}
+
+span.pact-type {
+  font-family: RobotoMono-Light;
+  font-size: 12px;
+  color: #ff0200;
+  background-color: #e6e6e6;
+  border-radius: 3px;
+  height: 22px;
+  padding: 2px;
+}
+
+span.pact-arg-delimiter {
+  display: inline-block;
+  width: 1em;
+}
+
+.function-desc.code-font {
+  font-family: RobotMono;
+  font-size: 12px;
+  color: #7b7b7b;
+}
+span.pact-fun-return-arrow {
+  color: #757575;
+}
+
+.fun-arg-edit .small-input {
+
+}
+
+.fun-arg-edit input {
+  flex: 1;
+  margin: 0;
+  font-size: 15px;
+  padding: 0 10px;
+  line-height: 32px;
+  width: 216px;
+  height: 36px;
+  border-radius: 4px;
+  border: solid 1px #d7d7d7;
+  background-color: #f1f1f1;
+  background-size: 14.7px;
+  color: #757575;
+  margin-right: 10px;
+}
+/***************** CallFunction end ********************/

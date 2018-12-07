@@ -50,7 +50,7 @@ import           Frontend.UI.Widgets
 ------------------------------------------------------------------------------
 
 type HasUIModuleExplorerModel model t =
-  (HasModuleExplorer model t, HasBackend model t)
+  (HasModuleExplorer model t, HasBackend model t, HasUIModuleDetailsModel model t)
 
 type HasUIModuleExplorerModelCfg mConf m t =
   ( Monoid mConf, Flattenable mConf t, HasModuleExplorerCfg mConf t, HasBackendCfg mConf t

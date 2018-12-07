@@ -45,6 +45,7 @@ module Frontend.ModuleExplorer
   , PactFunction (..)
    -- *** SelectedModule
   , SelectedModule (..)
+  , HasSelectedModule (..)
   , selectedModuleName
   , showSelectedModuleType
   ) where
@@ -58,7 +59,7 @@ import           GHC.Generics             (Generic)
 import           Reflex
 ------------------------------------------------------------------------------
 import           Obelisk.Generated.Static
-import           Pact.Types.Lang
+import           Pact.Types.Lang (ModuleName, DefType, FunType, Term, Name)
 ------------------------------------------------------------------------------
 import           Frontend.Backend
 import           Frontend.Foundation
@@ -107,6 +108,8 @@ data SelectedModule = SelectedModule
     -- ^ The available functions of that module. `Nothing` in case function
     -- fetching failed for some reason.
   }
+
+makePactLenses ''SelectedModule
 
 -- | Configuration for ModuleExplorer
 --

@@ -65,6 +65,7 @@ import           Generics.Deriving.Monoid          (mappenddefault,
 import           Reflex.Dom.Class
 import           Reflex.Dom.Xhr
 import           Reflex.NotReady.Class
+import           Data.Tuple (swap)
 
 import           Language.Javascript.JSaddle.Monad (JSContextRef, JSM, askJSM)
 
@@ -74,6 +75,7 @@ import           Frontend.Backend.Pact
 import           Frontend.Crypto.Ed25519
 import           Frontend.Foundation
 import           Frontend.Wallet
+import           Frontend.Messages
 
 -- | URI for accessing a backend.
 type BackendUri = Text
@@ -97,7 +99,7 @@ data BackendRequest = BackendRequest
   , _backendRequest_backend :: BackendUri
     -- ^ Which backend to use
   , _backendRequest_signing :: Set KeyName
-  } deriving Show
+  } deriving (Show, Generic)
 
 
 data BackendError
@@ -135,6 +137,10 @@ data BackendCfg t = BackendCfg
     -- ^ We are unfortunately not notified by the pact backend when new
     -- contracts appear on the blockchain, so UI code needs to request a
     -- refresh at appropriate times.
+    -- TODO: This should go to `ModuleExplorer`
+  , _backendCfg_deployCode :: Event t BackendRequest
+    -- ^ Deploy some code to the backend. Response will be logged to `Messages`.
+    -- TODO: Deploy button should actually use this.
   }
   deriving Generic
 
@@ -153,6 +159,12 @@ data Backend t = Backend
   }
 
 makePactLenses ''Backend
+
+-- | Model/dependencies of Backend.
+type HasBackendModel model t = HasWallet model t
+
+-- | Model config needed by Backend.
+type HasBackendModelCfg mConf t = (Monoid mConf, HasMessagesCfg mConf t)
 
 -- Helper types for interfacing with Pact endpoints:
 
@@ -203,25 +215,70 @@ instance FromJSON ListenResponse where
     ListenResponse <$> o .: "result" <*> o .: "txId"
 
 makeBackend
-  :: forall t m
+  :: forall t m model mConf
   . (MonadHold t m, PerformEvent t m, MonadFix m, NotReady t m, Adjustable t m
     , MonadJSM (Performable m), HasJSContext (Performable m)
     , TriggerEvent t m, PostBuild t m, MonadIO m
+    , HasBackendModel model t
+    , HasBackendModelCfg mConf t
     )
-  => Wallet t
+  => model
   -> BackendCfg t
-  -> m (Backend t)
-makeBackend w cfg = do
-  bs <- getBackends
+  -> m (mConf, Backend t)
+makeBackend w cfg = mfix $ \ ~(_, b) -> do
+    bs <- getBackends
+    modules <- loadModules w bs cfg
 
-  modules <- loadModules w bs cfg
+    cfg <- deployCode w b $ cfg ^. backendCfg_deployCode
 
-  pure $ Backend
-    { _backend_backends = bs
-    , _backend_modules = modules
-    }
+    pure
+      ( cfg
+      , Backend
+          { _backend_backends = bs
+          , _backend_modules = modules
+          }
+      )
 
+deployCode
+  :: forall t m model mConf
+  . (MonadHold t m, PerformEvent t m, MonadFix m, NotReady t m, Adjustable t m
+    , MonadJSM (Performable m), HasJSContext (Performable m)
+    , TriggerEvent t m, PostBuild t m, MonadIO m
+    , HasBackendModel model t
+    , HasBackendModelCfg mConf t
+    )
+  => model
+  -> Backend t
+  -> Event t BackendRequest
+  -> m mConf
+deployCode w b onReq = do
+    reqRes <- performBackendRequest (w ^. wallet) onReq
+    pure $ mempty & messagesCfg_send .~ pushAlways renderReqRes reqRes
+  where
+    renderReqRes :: MonadSample t m1 => (BackendRequest, BackendErrorResult) -> m1 Text
+    renderReqRes (req, res) = do
+      renderedReq <- renderReq req
+      pure $ T.unlines [renderedReq, prettyPrintBackendErrorResult res]
 
+    renderReq :: MonadSample t m1 => BackendRequest -> m1 Text
+    renderReq req = do
+      cBackendNames <- sample $ current backendNames
+      let
+       backendUri = _backendRequest_backend req
+       backendName :: Text
+       backendName = maybe "No backend?" unBackendName $
+         Map.lookup backendUri cBackendNames
+       renderCodeShort code = if T.length code > 100 then T.take 100 code <> " ..." else code
+      pure $ T.unlines
+        [ "Sent code to backend '" <> backendName <> "':"
+        , ""
+        , renderCodeShort $ _backendRequest_code req
+        ]
+
+    backendNames :: Dynamic t (Map BackendUri BackendName)
+    backendNames = ffor (_backend_backends b) $ \case
+      Nothing -> Map.empty
+      Just m  -> Map.fromList . map swap . Map.toList $ m
 
 -- | Available backends:
 getBackends
@@ -275,12 +332,13 @@ parsePactServerList raw =
     Map.fromList strippedEntries
 
 loadModules
-  :: forall t m
+  :: forall t m model
   . (MonadHold t m, PerformEvent t m, MonadFix m, NotReady t m, Adjustable t m
     , MonadJSM (Performable m), HasJSContext (Performable m)
     , TriggerEvent t m, PostBuild t m
+    , HasBackendModel model t
     )
- => Wallet t -> Dynamic t (Maybe (Map BackendName BackendUri)) -> BackendCfg t
+  => model -> Dynamic t (Maybe (Map BackendName BackendUri)) -> BackendCfg t
   -> m (Dynamic t (Map BackendName (Maybe [Text])))
 loadModules w bs cfg = do
   let req uri = (BackendRequest "(list-modules)" H.empty uri Set.empty)
@@ -289,7 +347,7 @@ loadModules w bs cfg = do
     Just bs' -> do
       onPostBuild <- getPostBuild
       bm <- flip Map.traverseWithKey bs' $ \_ uri -> do
-        onErrResp <- performBackendRequest w $
+        onErrResp <- performBackendRequest (w ^. wallet) $
           leftmost [ req uri <$ cfg ^. backendCfg_refreshModule
                    , req uri <$ onPostBuild
                    ]
@@ -327,7 +385,8 @@ performBackendRequest w onReq = performBackendRequestCustom w id onReq
 
 -- | Send a transaction via the /send endpoint.
 --
---   This is a convenience wrapper around `backendRequest`, attaching a custom request type to the response.
+--   This is a convenience wrapper around `backendRequest`, attaching a custom
+--   request type to the response.
 performBackendRequestCustom
   :: forall t m req
   . ( PerformEvent t m, MonadJSM (Performable m)
@@ -548,6 +607,13 @@ encodeAsText = T.decodeUtf8 . BSL.toStrict
 
 -- Instances:
 
+instance Semigroup BackendRequest where
+  (<>) = mappenddefault
+
+instance Monoid BackendRequest where
+  mempty = memptydefault
+  mappend = (<>)
+
 instance Reflex t => Semigroup (BackendCfg t) where
   (<>) = mappenddefault
 
@@ -560,3 +626,4 @@ instance Flattenable (BackendCfg t) t where
   flattenWith doSwitch ev =
     BackendCfg
       <$> doSwitch never (_backendCfg_refreshModule <$> ev)
+      <*> doSwitch never (_backendCfg_deployCode <$> ev)

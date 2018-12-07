@@ -65,6 +65,7 @@ library
                  , Frontend.Storage
                  , Frontend.UI.Button
                  , Frontend.UI.Dialogs.DeployConfirmation
+                 , Frontend.UI.Dialogs.CallFunction
                  , Frontend.UI.Icon
                  , Frontend.UI.JsonData
                  , Frontend.UI.Modal

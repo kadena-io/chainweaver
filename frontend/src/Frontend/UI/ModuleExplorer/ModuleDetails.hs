@@ -56,7 +56,7 @@ import           Frontend.UI.Modal
 ------------------------------------------------------------------------------
 
 type HasUIModuleDetailsModel model t =
-  (HasModuleExplorer model t, HasBackend model t)
+  (HasModuleExplorer model t, HasBackend model t, HasUICallFunctionModel model t)
 
 type HasUIModuleDetailsModelCfg mConf m t =
   ( Monoid mConf, Flattenable mConf t, HasModuleExplorerCfg mConf t, HasBackendCfg mConf t
@@ -88,7 +88,7 @@ moduleDetails m selected = do
     pure (headerCfg <> bodyCfg)
   where
     mayFunctionList :: Maybe [PactFunction] -> m mConf
-    mayFunctionList = maybe noFunctions (functionList m)
+    mayFunctionList = maybe noFunctions (functionList m selected)
 
     noFunctions = do
       elClass "div" "error" $ text "Error while loading functions."
@@ -104,13 +104,13 @@ functionList
   .  ( MonadWidget t m, HasUIModuleDetailsModelCfg mConf m t
      , HasUIModuleDetailsModel model t
      )
-  => model -> [PactFunction] -> m mConf
-functionList m functions = do
+  => model -> SelectedModule -> [PactFunction] -> m mConf
+functionList m moduleL functions = do
     liftIO $ putStrLn $ "Functions: " <> show functions
     divClass "functions" $ elClass "ol" "functions-list" $ do
       onView <- fmap leftmost . for functions $ \f -> el "li" $ do
         divClass "function-name" $ text $ _pactFunction_name f
         divClass "function-desc" $ text $ fromMaybe "" $ _pactFunction_documentation f
         divClass "function-view" $ fmap (const f) <$> loadToEditorButton
-      pure $ mempty & modalCfg_setModal .~ (Just . uiCallFunction m <$> onView)
+      pure $ mempty & modalCfg_setModal .~ (Just . uiCallFunction m moduleL <$> onView)
 
