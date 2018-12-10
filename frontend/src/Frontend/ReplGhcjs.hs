@@ -30,9 +30,10 @@ import           Control.Monad.Reader            (ask)
 import           Control.Monad.State.Strict
 import           Data.Text                       (Text)
 import qualified Data.Text                       as T
+import qualified Data.Text.IO                    as T
 import           GHCJS.DOM.EventM                (on)
 import           GHCJS.DOM.GlobalEventHandlers   (keyPress)
-import           GHCJS.DOM.KeyboardEvent         (getCtrlKey, getKey)
+import           GHCJS.DOM.KeyboardEvent         (getCtrlKey, getKey, getMetaKey, getKeyCode)
 import           GHCJS.DOM.Types                 (HTMLElement (..), unElement)
 import           Language.Javascript.JSaddle     (fromJSValUnchecked, getProp,
                                                   liftJSM)
@@ -102,8 +103,12 @@ codePanel m = do
       liftJSM $ htmlElement `on` keyPress $ do
         ev <- ask
         hasCtrl <- liftJSM $ getCtrlKey ev
+        hasMeta <- liftJSM $ getMetaKey ev
         key <- liftJSM $ getKey ev
-        liftIO $ when (hasCtrl && key == "Enter") $ triggerEv ()
+        code <- liftJSM $ getKeyCode ev
+        let hasEnter = key == "Enter" || code == 10 || code == 13
+
+        liftIO $ when ((hasCtrl || hasMeta) && hasEnter) $ triggerEv ()
       pure onCtrlEnter
 
 -- | Reset REPL and load current editor text into it.
