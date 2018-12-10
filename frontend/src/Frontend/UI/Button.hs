@@ -34,13 +34,14 @@ data UiButtonCfg t = UiButtonCfg
   { _uiButtonCfg_disabled :: Dynamic t Bool
     -- ^ Whether or not the button should be clickable by the user.
   , _uiButtonCfg_class    :: Set Text
+  , _uiButtonCfg_title    :: Maybe Text
   }
 
 $(makePactLenses ''UiButtonCfg)
 
 
 instance Reflex t => Default (UiButtonCfg t) where
-  def = UiButtonCfg (pure False) mempty
+  def = UiButtonCfg (pure False) mempty Nothing
 
 
 uiButtonSimple :: MonadWidget t m => Text -> m (Event t ())
@@ -53,7 +54,8 @@ uiButton cfg body = do
     let
       attrs = mkDisabledAttr <$> _uiButtonCfg_disabled cfg
       getCls = T.intercalate " " . Set.toList . _uiButtonCfg_class
-      baseAttrs = "class" =: getCls cfg
+      titleAttr = maybe mempty ("title" =:) $ _uiButtonCfg_title cfg
+      baseAttrs = "class" =: getCls cfg <> titleAttr
       mkDisabledAttr = \case
         False -> baseAttrs
         True  -> baseAttrs <> "disabled" =: "true"
