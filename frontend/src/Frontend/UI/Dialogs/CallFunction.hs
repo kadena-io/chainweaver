@@ -43,7 +43,7 @@ import qualified Data.Text               as T
 import           Data.Traversable        (for)
 import           Reflex
 import           Reflex.Dom
-import           Safe (readMay)
+import           Safe (readMay, headMay)
 ------------------------------------------------------------------------------
 import           Pact.Types.Lang         (Arg (..), FunType (..),
                                           ModuleName (..), Name, PrimType (..),
@@ -212,17 +212,24 @@ funTypeInput
   -> m (Dynamic t Text)
 funTypeInput json = \case
     TyPrim TyInteger -> mkIntInput
-    TyPrim TyDecimal -> mkInput "number" "0.0"
-    TyPrim TyTime -> mkInput "datetime-local" ""
+    TyPrim TyDecimal -> mkDecimalInput
+    -- Not working properly:
+    {- TyPrim TyTime -> mkInput "datetime-local" "" -}
+    TyPrim TyTime -> mkInput "text" ""
     TyPrim TyBool -> mkCheckbox False
     TyPrim TyString -> mkTextInput
-    TyPrim TyKeySet ->fmap (\x -> "(read-keyset \"" <> x <> "\")") <$> keysetSelector json
+    TyPrim TyKeySet -> keysetSelector json
     _ -> mkTextArea ""
   where
     mkTextInput :: m (Dynamic t Text)
     mkTextInput = fmap (surroundWith "\"" . T.dropAround (=='\"')) <$> mkInput "text" ""
       where
         surroundWith s x = s <> x <> s
+
+    mkDecimalInput :: m (Dynamic t Text)
+    mkDecimalInput = fmap fixNum <$> mkInput "number" "0.0"
+      where
+        fixNum x = if T.isInfixOf "." x then x else x <> ".0"
 
     mkIntInput :: m (Dynamic t Text)
     mkIntInput = mdo
@@ -278,11 +285,15 @@ funTypeInput json = \case
 
 keysetSelector :: MonadWidget t m => JsonData t -> m (Dynamic t Text)
 keysetSelector json = do
+    -- TODO: At some point we should really get rid of this delay hacks:
+    onPostBuild <- delay 0.1 =<< getPostBuild
     let
       keysetNames = Map.keys <$> json ^. jsonData_keysets
       itemDom v = elAttr "option" ("value" =: v) $ text v
-      cfg = SelectElementConfig "" Nothing def
+      addReadKeyset x = "(read-keyset \"" <> x <> "\")"
+      initKeyset = current $ fromMaybe "" . headMay <$> keysetNames
+      cfg = SelectElementConfig "" (Just $ tag initKeyset onPostBuild) def
 
     (s,_) <- selectElement cfg $ void $ dyn $ ffor keysetNames $ \names -> do
       traverse_ itemDom names
-    pure $ _selectElement_value s
+    pure $ addReadKeyset <$> traceDyn "Selected element: " (_selectElement_value s)
