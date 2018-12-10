@@ -43,6 +43,7 @@ import qualified Data.Text               as T
 import           Data.Traversable        (for)
 import           Reflex
 import           Reflex.Dom
+import           Safe (readMay)
 ------------------------------------------------------------------------------
 import           Pact.Types.Lang         (Arg (..), FunType (..),
                                           ModuleName (..), Name, PrimType (..),
@@ -123,11 +124,13 @@ uiCallFunction m mModule func = do
                   , _backendRequest_backend = uri
                   , _backendRequest_signing = keys
                   }
+
               onReq = tag (current backendReq) onCall
               {- performEvent_ $ ffor onMayReq $ \case -}
               {-   Nothing -> liftIO $ putStrLn "Tried to send function call, but we had no backend!" -}
               {-   Just -> pure () -}
               cfg = mempty & backendCfg_deployCode .~ onReq
+
             pure (cfg, leftmost [onClose, onCancel, onCall])
 
 
@@ -208,14 +211,44 @@ funTypeInput
   -> Type v
   -> m (Dynamic t Text)
 funTypeInput json = \case
-    TyPrim TyInteger -> mkInput "number" "0"
+    TyPrim TyInteger -> mkIntInput
     TyPrim TyDecimal -> mkInput "number" "0.0"
     TyPrim TyTime -> mkInput "datetime-local" ""
     TyPrim TyBool -> mkCheckbox False
-    TyPrim TyString -> mkInput "text" "\"\""
+    TyPrim TyString -> mkTextInput
     TyPrim TyKeySet ->fmap (\x -> "(read-keyset \"" <> x <> "\")") <$> keysetSelector json
     _ -> mkTextArea ""
   where
+    mkTextInput :: m (Dynamic t Text)
+    mkTextInput = fmap (surroundWith "\"" . T.dropAround (=='\"')) <$> mkInput "text" ""
+      where
+        surroundWith s x = s <> x <> s
+
+    mkIntInput :: m (Dynamic t Text)
+    mkIntInput = mdo
+      let
+        onInvalid = ffilter (not . isValid) $ _inputElement_input i
+        onValid = ffilter isValid $ _inputElement_input i
+
+        isValid :: Text -> Bool
+        isValid t = maybe False (const True) (readInt t) || T.null t
+
+        readInt :: Text -> Maybe Int
+        readInt = readMay . T.unpack
+
+      lastValid <- hold "0" onValid
+
+      let
+        onInvalidLastValid = tag lastValid onInvalid
+        cfg = def
+          -- Does not work well weith "number":
+          & initialAttributes .~ ("type" =: "text")
+          & inputElementConfig_initialValue .~ "0"
+          & inputElementConfig_setValue .~ onInvalidLastValid
+      i <- inputElement cfg
+      pure $ _inputElement_value i
+
+
     mkCheckbox :: Bool -> m (Dynamic t Text)
     mkCheckbox iVal =
       let
