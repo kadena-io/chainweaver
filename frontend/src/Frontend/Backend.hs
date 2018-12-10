@@ -432,7 +432,7 @@ backendRequest :: forall t m
   => (KeyPairs, BackendRequest)
   -> (BackendErrorResult -> IO ())
   -> m ()
-backendRequest (keys, req) cb = do
+backendRequest (keys, req) cb = void . forkJSM $ do
     let
         callback = liftIO . cb
         uri = _backendRequest_backend req

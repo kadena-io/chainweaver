@@ -280,7 +280,7 @@ fetchExample
      )
   => Event t ExampleModule -> m (Event t (ExampleModule, (Text, Text)))
 fetchExample onExampleModule =
-  performEventAsync $ ffor onExampleModule $ \example cb -> do
+  performEventAsync $ ffor onExampleModule $ \example cb -> void . forkJSM $ do
     let
       callback = liftIO . cb . (example,) . (codeFromResponse *** codeFromResponse)
 

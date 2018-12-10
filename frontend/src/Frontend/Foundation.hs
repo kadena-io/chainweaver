@@ -15,6 +15,7 @@
 {-# LANGUAGE TemplateHaskell        #-}
 {-# LANGUAGE TypeApplications       #-}
 {-# LANGUAGE TypeFamilies           #-}
+{-# LANGUAGE CPP           #-}
 
 -- | Definitions common to the whole frontend.
 --
@@ -30,6 +31,7 @@ module Frontend.Foundation
   , makePactPrisms
     -- * Helpers that should really not be here
   , tshow
+  , forkJSM
     -- * Re-exports
   , module Data.Maybe
   , module Reflex.Extended
@@ -56,6 +58,8 @@ import           Language.Haskell.TH.Syntax  (Name)
 import           Language.Javascript.JSaddle (MonadJSM (..))
 import           Reflex.Extended
 import           Reflex.Network.Extended
+import Language.Javascript.JSaddle (JSM, MonadJSM, runJSM, askJSM)
+import Control.Concurrent (ThreadId, forkIO)
 
 import           Data.Maybe
 
@@ -102,6 +106,11 @@ makePactPrisms = makePrisms
 tshow :: Show a => a -> Text
 tshow = T.pack . show
 
+forkJSM :: (MonadJSM m, MonadIO m) => JSM () -> m ThreadId
+forkJSM t = do
+  jsm <- askJSM
+  let ioT = runJSM t jsm
+  liftIO $ forkIO ioT
 
 -- | Re-use data constructors more flexibly.
 type family ReflexValue (f :: * -> *) x where
