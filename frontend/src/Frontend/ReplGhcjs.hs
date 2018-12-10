@@ -241,7 +241,7 @@ controlBarLeft m = do
         ver <- getPactVersion
         elClass "span" "version" $ text $ "v" <> ver
       elAttr "div" ("id" =: "header-project-loader") $ do
-        onLoadClicked <- uiButtonSimple "Load into REPL"
+        onLoadClicked <- loadReplBtn
 
         onDeployClick <- uiButtonSimple "Deploy"
 
@@ -252,6 +252,10 @@ controlBarLeft m = do
 
           deployCfg = mempty & modalCfg_setModal .~ reqConfirmation
         pure $ deployCfg <> loadCfg
+  where
+    loadReplBtn =
+      fmap fst . uiButton (def & uiButtonCfg_title .~ Just "Editor Shortcut: Ctrl+Enter") $
+        text "Load into REPL"
 
 getPactVersion :: MonadWidget t m => m Text
 getPactVersion = do
