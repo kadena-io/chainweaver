@@ -59,7 +59,8 @@ import           GHC.Generics             (Generic)
 import           Reflex
 ------------------------------------------------------------------------------
 import           Obelisk.Generated.Static
-import           Pact.Types.Lang (ModuleName, DefType, FunType, Term, Name)
+import           Pact.Types.Lang          (DefType, FunType, ModuleName, Name,
+                                           Term)
 ------------------------------------------------------------------------------
 import           Frontend.Backend
 import           Frontend.Foundation
@@ -73,9 +74,8 @@ data ExampleModule = ExampleModule
 makePactLenses ''ExampleModule
 
 data DeployedModule = DeployedModule
-  { _deployedModule_name        :: Text
-  , _deployedModule_backendName :: BackendName
-  , _deployedModule_backendUri  :: BackendUri
+  { _deployedModule_name    :: Text
+  , _deployedModule_backend :: BackendRef
   } deriving (Eq, Ord, Show)
 
 makePactLenses ''DeployedModule
@@ -100,9 +100,9 @@ data PactFunction = PactFunction
 -- | Information about the currently selected deployed module.
 --
 data SelectedModule = SelectedModule
-  { _selectedModule_module :: ModuleSel
+  { _selectedModule_module    :: ModuleSel
     -- ^ The module that is currently selected.
-  , _selectedModule_code :: Text
+  , _selectedModule_code      :: Text
     -- ^ Source code of the currently selected module.
   , _selectedModule_functions :: Maybe [PactFunction]
     -- ^ The available functions of that module. `Nothing` in case function
@@ -115,7 +115,7 @@ makePactLenses ''SelectedModule
 --
 --   State is controlled via this configuration.
 data ModuleExplorerCfg t = ModuleExplorerCfg
-  { _moduleExplorerCfg_selModule :: Event t (Maybe ModuleSel)
+  { _moduleExplorerCfg_selModule  :: Event t (Maybe ModuleSel)
     -- ^ Select a module for viewing its functions and further details.
   , _moduleExplorerCfg_loadModule :: Event t ModuleSel
     -- ^ Load a module into the editor.
@@ -128,7 +128,7 @@ makePactLenses ''ModuleExplorerCfg
 data ModuleExplorer t = ModuleExplorer
   { _moduleExplorer_selectedModule :: MDynamic t SelectedModule
   -- ^ Information about the currently selected module, if available.
-  , _moduleExplorer_loadedModule :: MDynamic t ModuleSel
+  , _moduleExplorer_loadedModule   :: MDynamic t ModuleSel
   -- ^ The module that was loaded last into the editor.
   }
   deriving Generic
@@ -139,7 +139,7 @@ makePactLenses ''ModuleExplorer
 selectedModuleName :: SelectedModule -> Text
 selectedModuleName selected =
   case _selectedModule_module selected of
-    ModuleSel_Example ex -> _exampleModule_name ex
+    ModuleSel_Example ex  -> _exampleModule_name ex
     ModuleSel_Deployed ex -> _deployedModule_name ex
 
 -- | Show the type of the selected module.
@@ -148,7 +148,7 @@ selectedModuleName selected =
 showSelectedModuleType :: SelectedModule -> Text
 showSelectedModuleType selected =
   case _selectedModule_module selected of
-    ModuleSel_Example _ -> "Example Contract"
+    ModuleSel_Example _  -> "Example Contract"
     ModuleSel_Deployed _ -> "Deployed Contract"
 
 

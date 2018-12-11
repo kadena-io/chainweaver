@@ -63,7 +63,7 @@ uiDeployConfirmation ideL = do
       el "h3" $ text "Choose a server "
 
       let backends = ffor (_backend_backends $ _ide_backend ideL) $
-            fmap (\(k, _) -> (k, unBackendName k)) . maybe [] Map.toList
+            fmap (\(k, _) -> (k, textBackendName k)) . maybe [] Map.toList
           mkOptions bs = Map.fromList $ (Nothing, "Deployment Target") : map (first Just) bs
       d <- dropdown Nothing (mkOptions <$> backends) def
 

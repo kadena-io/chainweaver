@@ -116,19 +116,16 @@ uiCallFunction m mModule func = do
                 code <- pactCall
                 json <- either (const HM.empty) id <$> m ^. jsonData_data
                 keys <- signingKeys
-                let uri = _deployedModule_backendUri moduleL
+                let b = _deployedModule_backend moduleL
 
                 pure $ BackendRequest
                   { _backendRequest_code = code
                   , _backendRequest_data = json
-                  , _backendRequest_backend = uri
+                  , _backendRequest_backend = b
                   , _backendRequest_signing = keys
                   }
 
               onReq = tag (current backendReq) onCall
-              {- performEvent_ $ ffor onMayReq $ \case -}
-              {-   Nothing -> liftIO $ putStrLn "Tried to send function call, but we had no backend!" -}
-              {-   Just -> pure () -}
               cfg = mempty & backendCfg_deployCode .~ onReq
 
             pure (cfg, leftmost [onClose, onCancel, onCall])

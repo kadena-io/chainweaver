@@ -228,8 +228,8 @@ mkState m = do
   let
     backends = m ^. backend_backends
     minBackend = ffor backends $ \maybeBackends -> do
-      (_key, uri) <- Map.lookupMin =<< maybeBackends
-      pure (T.unpack uri)
+      (_key, b) <- Map.lookupMin =<< maybeBackends
+      pure (T.unpack $ backendRefUri b)
   cMinBackend <- sample . current $ minBackend
   liftIO $ initReplState StringEval cMinBackend
 

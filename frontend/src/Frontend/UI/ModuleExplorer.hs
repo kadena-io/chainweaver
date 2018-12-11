@@ -128,7 +128,7 @@ browseDeployed
   => model
   -> m (Event t ModuleSel)
 browseDeployed m = mdo
-    let mkMap = Map.fromList . map (\k@(BackendName n, _) -> (Just k, n)) . Map.toList
+    let mkMap = Map.fromList . map (\(n,e) -> (Just e, textBackendName n)) . Map.toList
         opts = Map.insert Nothing "All backends" . maybe mempty mkMap <$>
                   m ^. backend_backends
     let itemsPerPage = 10 :: Int
@@ -139,8 +139,13 @@ browseDeployed m = mdo
           & attributes .~ constDyn ("placeholder" =: "Search" <> "class" =: "search-input")
       d <- divClass "backend-filter" $ dropdown Nothing opts def
       let
+        search :: Dynamic t Text
         search = value ti
+
+        backendL :: Dynamic t (Maybe BackendRef)
         backendL = value d
+
+        deployedContracts :: Dynamic t (Map BackendName (Maybe [Text], BackendRef))
         deployedContracts = Map.mergeWithKey (\_ a b -> Just (a, b)) mempty mempty
             <$> m ^. backend_modules
             <*> (fromMaybe mempty <$> m ^. backend_backends)
@@ -152,11 +157,12 @@ browseDeployed m = mdo
       return (filteredCsL, updatePageL)
 
     let paginated = paginate itemsPerPage <$> currentPage <*> filteredCs
+        showDeployed :: DeployedModule -> m ()
         showDeployed c = do
           divClass "module-name" $
             text $ _deployedModule_name c
           divClass "backend-name" $
-            text $ unBackendName $ _deployedModule_backendName c
+            text $ textBackendName . backendRefName $ _deployedModule_backend c
     searchClick <- divClass "control-block-contents" $ do
       listEv <- networkView $ contractList showDeployed . map snd <$> paginated
       switchHold never $ fmap ModuleSel_Deployed <$> listEv
@@ -177,24 +183,24 @@ paginate itemsPerPage p =
 
 searchFn
   :: Text
-  -> Maybe (BackendName, Text)
-  -> Map BackendName (Maybe [Text], BackendUri)
+  -> Maybe BackendRef
+  -> Map BackendName (Maybe [Text], BackendRef)
   -> [(Int, DeployedModule)]
 searchFn needle mModule = zip [0..] . concat . fmapMaybe (filtering needle) . Map.toList
-  . maybe id (\(k', _) -> Map.filterWithKey $ \k _ -> k == k') mModule
+  . maybe id (\k' -> Map.filterWithKey $ \k _ -> k == backendRefName k') mModule
 
 filtering
   :: Text
-  -> (BackendName, (Maybe [Text], BackendUri))
+  -> (BackendName, (Maybe [Text], BackendRef))
   -> Maybe [DeployedModule]
-filtering needle (backendName, (m, backendUri)) =
+filtering needle (backendName, (m, backendL)) =
     case fmapMaybe f $ fromMaybe [] m of
       [] -> Nothing
       xs -> Just xs
   where
     f contractName =
       if T.isInfixOf (T.toCaseFold needle) (T.toCaseFold contractName)
-      then Just (DeployedModule contractName backendName backendUri)
+      then Just (DeployedModule contractName backendL)
       else Nothing
 
 contractList :: MonadWidget t m => (a -> m ()) -> [a] -> m (Event t a)

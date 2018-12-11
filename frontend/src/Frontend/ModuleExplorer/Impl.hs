@@ -315,7 +315,7 @@ fetchDeployedModule onReq = do
         , ")"
         ]
       , _backendRequest_data = mempty
-      , _backendRequest_backend = _deployedModule_backendUri dm
+      , _backendRequest_backend = _deployedModule_backend dm
       , _backendRequest_signing = Set.empty
       }
 

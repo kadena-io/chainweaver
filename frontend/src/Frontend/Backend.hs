@@ -20,8 +20,11 @@
 --   sending commands to it, by making use of the Pact REST API.
 module Frontend.Backend
   ( -- * Types & Classes
-    BackendUri
-  , BackendName (..)
+    BackendName
+  , textBackendName
+  , BackendRef
+  , backendRefUri
+  , backendRefName
   , BackendRequest (..)
   , BackendError (..)
   , BackendErrorResult
@@ -66,6 +69,7 @@ import           Reflex.Dom.Class
 import           Reflex.Dom.Xhr
 import           Reflex.NotReady.Class
 import           Data.Tuple (swap)
+import Data.Coerce (coerce)
 
 import           Language.Javascript.JSaddle.Monad (JSContextRef, JSM, askJSM)
 
@@ -89,6 +93,25 @@ newtype BackendName = BackendName
   }
   deriving (Generic, Eq, Ord, Show, Semigroup, Monoid)
 
+-- | Render a backend name as `Text`.
+textBackendName :: BackendName -> Text
+textBackendName = coerce
+
+-- | Backend reference.
+data BackendRef = BackendRef
+  { brName :: BackendName
+  , brUri  :: BackendUri
+  }
+  deriving (Show, Generic, Eq, Ord)
+
+-- | Extract the actual URI.
+backendRefUri :: BackendRef -> BackendUri
+backendRefUri = brUri
+
+-- | Extract the name of the backend.
+backendRefName :: BackendRef -> BackendName
+backendRefName = brName
+
 -- | Request data to be sent to the backend.
 data BackendRequest = BackendRequest
   { _backendRequest_code    :: Text
@@ -96,8 +119,8 @@ data BackendRequest = BackendRequest
   , _backendRequest_data    :: Object
     -- ^ The data to be deployed (referenced by deployed code). This is the
     -- `data` field of the `exec` payload.
-  , _backendRequest_backend :: BackendUri
-    -- ^ Which backend to use
+  , _backendRequest_backend :: BackendRef
+    -- ^ What backend to use.
   , _backendRequest_signing :: Set KeyName
   } deriving (Show, Generic)
 
@@ -151,7 +174,7 @@ makePactLenses ''BackendCfg
 type IsBackendCfg cfg t = (HasBackendCfg cfg t, Monoid cfg, Flattenable cfg t)
 
 data Backend t = Backend
-  { _backend_backends :: Dynamic t (Maybe (Map BackendName BackendUri))
+  { _backend_backends :: Dynamic t (Maybe (Map BackendName BackendRef))
     -- ^ All available backends that can be selected.
   , _backend_modules  :: Dynamic t (Map BackendName (Maybe [Text]))
    -- ^ Available modules on all backends. `Nothing` if not loaded yet.
@@ -216,7 +239,7 @@ instance FromJSON ListenResponse where
 
 makeBackend
   :: forall t m model mConf
-  . (MonadHold t m, PerformEvent t m, MonadFix m, NotReady t m, Adjustable t m
+  . ( MonadHold t m, PerformEvent t m, MonadFix m, NotReady t m, Adjustable t m
     , MonadJSM (Performable m), HasJSContext (Performable m)
     , TriggerEvent t m, PostBuild t m, MonadIO m
     , HasBackendModel model t
@@ -225,11 +248,11 @@ makeBackend
   => model
   -> BackendCfg t
   -> m (mConf, Backend t)
-makeBackend w cfg = mfix $ \ ~(_, b) -> do
+makeBackend w cfg = do
     bs <- getBackends
-    modules <- loadModules w bs cfg
+    modules <- loadModules bs cfg
 
-    cfg <- deployCode w b $ cfg ^. backendCfg_deployCode
+    cfg <- deployCode w $ cfg ^. backendCfg_deployCode
 
     pure
       ( cfg
@@ -248,37 +271,28 @@ deployCode
     , HasBackendModelCfg mConf t
     )
   => model
-  -> Backend t
   -> Event t BackendRequest
   -> m mConf
-deployCode w b onReq = do
+deployCode w onReq = do
     reqRes <- performBackendRequest (w ^. wallet) onReq
-    pure $ mempty & messagesCfg_send .~ pushAlways renderReqRes reqRes
+    pure $ mempty & messagesCfg_send .~ fmap renderReqRes reqRes
   where
-    renderReqRes :: MonadSample t m1 => (BackendRequest, BackendErrorResult) -> m1 Text
-    renderReqRes (req, res) = do
-      renderedReq <- renderReq req
-      pure $ T.unlines [renderedReq, prettyPrintBackendErrorResult res]
+    renderReqRes :: (BackendRequest, BackendErrorResult) -> Text
+    renderReqRes (req, res) =
+      T.unlines [renderReq req, prettyPrintBackendErrorResult res]
 
-    renderReq :: MonadSample t m1 => BackendRequest -> m1 Text
-    renderReq req = do
-      cBackendNames <- sample $ current backendNames
+    renderReq :: BackendRequest -> Text
+    renderReq req =
       let
-       backendUri = _backendRequest_backend req
-       backendName :: Text
-       backendName = maybe "No backend?" unBackendName $
-         Map.lookup backendUri cBackendNames
-       renderCodeShort code = if T.length code > 100 then T.take 100 code <> " ..." else code
-      pure $ T.unlines
-        [ "Sent code to backend '" <> backendName <> "':"
-        , ""
-        , renderCodeShort $ _backendRequest_code req
-        ]
-
-    backendNames :: Dynamic t (Map BackendUri BackendName)
-    backendNames = ffor (_backend_backends b) $ \case
-      Nothing -> Map.empty
-      Just m  -> Map.fromList . map swap . Map.toList $ m
+        backendUri = brUri $ _backendRequest_backend req
+        backendName = brName $ _backendRequest_backend req
+        renderCodeShort code = if T.length code > 100 then T.take 100 code <> " ..." else code
+      in
+        T.unlines
+          [ "Sent code to backend '" <> coerce backendName <> "':"
+          , ""
+          , renderCodeShort $ _backendRequest_code req
+          ]
 
 -- | Available backends:
 getBackends
@@ -286,12 +300,13 @@ getBackends
      , PerformEvent t m, TriggerEvent t m, PostBuild t m, MonadIO m
      , MonadHold t m
      )
-  => m (Dynamic t (Maybe (Map BackendName BackendUri)))
+  => m (Dynamic t (Maybe (Map BackendName BackendRef)))
 getBackends = do
   let
     buildUrl = ("http://localhost:" <>) . getPactInstancePort
     buildName = BackendName . ("dev-" <>) . T.pack . show
-    buildServer =  buildName &&& buildUrl
+    buildRef x = BackendRef (buildName x) (buildUrl x)
+    buildServer =  buildName &&& buildRef
     devServers = Map.fromList $ map buildServer [1 .. numPactInstances]
   onPostBuild <- getPostBuild
 
@@ -323,33 +338,33 @@ getBackends = do
 --   serverName2: serveruri2
 --   ...
 --   ```
-parsePactServerList :: Text -> Map BackendName BackendUri
+parsePactServerList :: Text -> Map BackendName BackendRef
 parsePactServerList raw =
   let
     rawEntries = map (fmap (T.dropWhile (== ':')) . T.breakOn ":") . T.lines $ raw
-    strippedEntries = map (BackendName . T.strip *** T.strip) rawEntries
+    strippedUris = map (BackendName . T.strip *** T.strip) rawEntries
+    refs = map (fst &&& uncurry BackendRef) strippedUris
   in
-    Map.fromList strippedEntries
+    Map.fromList refs
 
 loadModules
-  :: forall t m model
+  :: forall t m
   . (MonadHold t m, PerformEvent t m, MonadFix m, NotReady t m, Adjustable t m
     , MonadJSM (Performable m), HasJSContext (Performable m)
     , TriggerEvent t m, PostBuild t m
-    , HasBackendModel model t
     )
-  => model -> Dynamic t (Maybe (Map BackendName BackendUri)) -> BackendCfg t
+  => Dynamic t (Maybe (Map BackendName BackendRef)) -> BackendCfg t
   -> m (Dynamic t (Map BackendName (Maybe [Text])))
-loadModules w bs cfg = do
-  let req uri = (BackendRequest "(list-modules)" H.empty uri Set.empty)
+loadModules bs cfg = do
+  let req r = (BackendRequest "(list-modules)" H.empty r Set.empty)
   backendMap <- networkView $ ffor bs $ \case
     Nothing -> pure mempty
     Just bs' -> do
       onPostBuild <- getPostBuild
-      bm <- flip Map.traverseWithKey bs' $ \_ uri -> do
-        onErrResp <- performBackendRequest (w ^. wallet) $
-          leftmost [ req uri <$ cfg ^. backendCfg_refreshModule
-                   , req uri <$ onPostBuild
+      bm <- flip Map.traverseWithKey bs' $ \_ r -> do
+        onErrResp <- performBackendRequest emptyWallet $
+          leftmost [ req r <$ cfg ^. backendCfg_refreshModule
+                   , req r <$ onPostBuild
                    ]
         let
           (onErr, onResp) = fanEither $ snd <$> onErrResp
@@ -435,7 +450,7 @@ backendRequest :: forall t m
 backendRequest (keys, req) cb = void . forkJSM $ do
     let
         callback = liftIO . cb
-        uri = _backendRequest_backend req
+        uri = brUri $ _backendRequest_backend req
         signing = _backendRequest_signing req
     sendReq <- buildSendXhrRequest keys signing req
     void $ newXMLHttpRequestWithError sendReq $ \r -> case getResPayload r of
@@ -465,7 +480,7 @@ buildSendXhrRequest
   :: (MonadIO m, MonadJSM m)
   => KeyPairs -> Set KeyName -> BackendRequest -> m (XhrRequest Text)
 buildSendXhrRequest kps signing req = do
-  fmap (xhrRequest "POST" (url (_backendRequest_backend req) "/send")) $ do
+  fmap (xhrRequest "POST" (url (brUri $ _backendRequest_backend req) "/send")) $ do
     sendData <- encodeAsText . encode <$> buildSendPayload kps signing req
     pure $ def & xhrRequestConfig_sendData .~ sendData
 
@@ -611,6 +626,13 @@ instance Semigroup BackendRequest where
   (<>) = mappenddefault
 
 instance Monoid BackendRequest where
+  mempty = memptydefault
+  mappend = (<>)
+
+instance Semigroup BackendRef where
+  (<>) = mappenddefault
+
+instance Monoid BackendRef where
   mempty = memptydefault
   mappend = (<>)
 
