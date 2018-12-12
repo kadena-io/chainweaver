@@ -166,7 +166,11 @@ showSelectedModuleType :: SelectedModule -> Text
 showSelectedModuleType selected =
   case _selectedModule_module selected of
     ModuleSel_Example _  -> "Example Contract"
-    ModuleSel_Deployed _ -> "Deployed Contract"
+    ModuleSel_Deployed m -> mconcat
+      [ "Deployed Contract [ "
+      , textBackendName . backendRefName $ _deployedModule_backend m
+      , " ]"
+      ]
 
 
 -- | Available example modules.
