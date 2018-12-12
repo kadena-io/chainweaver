@@ -179,6 +179,8 @@ data Backend t = Backend
   , _backend_modules  :: Dynamic t (Map BackendName (Maybe [Text]))
    -- ^ Available modules on all backends. `Nothing` if not loaded yet.
    -- TODO: This should really go to the `ModuleExplorer`.
+  , _backend_deployed :: Event t ()
+   -- ^ Event gets triggered whenever some code got deployed sucessfully.
   }
 
 makePactLenses ''Backend
@@ -188,54 +190,6 @@ type HasBackendModel model t = HasWallet model t
 
 -- | Model config needed by Backend.
 type HasBackendModelCfg mConf t = (Monoid mConf, HasMessagesCfg mConf t)
-
--- Helper types for interfacing with Pact endpoints:
-
--- | Status as parsed from pact server response.
---
---   See
---   <https://pact-language.readthedocs.io/en/latest/pact-reference.html#send
---   here> for more information.
-data PactStatus
-  = PactStatus_Success
-  | PactStatus_Failure
-  deriving Show
-
-instance FromJSON PactStatus where
-  parseJSON = \case
-    String "success" -> pure PactStatus_Success
-    String "failure" -> pure PactStatus_Failure
-      -- case str of
-      --   "success" -> PactStatus_Success
-      --   "failure" -> PactStatus_Failure
-      --   invalid   ->
-    invalid -> typeMismatch "Status" invalid
-
-
--- | Result as received from the backend.
-data PactResult
-  = PactResult_Success Value
-  | PactResult_Failure PactError PactDetail
-  | PactResult_FailureText Text -- when decimal fields are empty, for example
-
-instance FromJSON PactResult where
-  parseJSON (String t) = pure $ PactResult_FailureText t
-  parseJSON (Object o) = do
-    status <- o .: "status"
-    case status of
-      PactStatus_Success -> PactResult_Success <$> o .: "data"
-      PactStatus_Failure -> PactResult_Failure <$> o .: "error" <*> o .: "detail"
-  parseJSON v = typeMismatch "PactResult" v
-
--- | Response object contained in a /listen response.
-data ListenResponse = ListenResponse
- { _lr_result :: PactResult
- , _lr_txId   :: Integer
- }
-
-instance FromJSON ListenResponse where
-  parseJSON = withObject "Response" $ \o ->
-    ListenResponse <$> o .: "result" <*> o .: "txId"
 
 makeBackend
   :: forall t m model mConf
@@ -250,15 +204,17 @@ makeBackend
   -> m (mConf, Backend t)
 makeBackend w cfg = do
     bs <- getBackends
-    modules <- loadModules bs cfg
 
-    cfg <- deployCode w $ cfg ^. backendCfg_deployCode
+    (mConf, onDeployed) <- deployCode w $ cfg ^. backendCfg_deployCode
+
+    modules <- loadModules bs $ leftmost [ onDeployed, cfg ^. backendCfg_refreshModule ]
 
     pure
-      ( cfg
+      ( mConf
       , Backend
           { _backend_backends = bs
           , _backend_modules = modules
+          , _backend_deployed = onDeployed
           }
       )
 
@@ -272,10 +228,12 @@ deployCode
     )
   => model
   -> Event t BackendRequest
-  -> m mConf
+  -> m (mConf, Event t ())
 deployCode w onReq = do
     reqRes <- performBackendRequest (w ^. wallet) onReq
-    pure $ mempty & messagesCfg_send .~ fmap renderReqRes reqRes
+    pure $ ( mempty & messagesCfg_send .~ fmap renderReqRes reqRes
+           , () <$ ffilter (either (const False) (const True) . snd) reqRes
+           )
   where
     renderReqRes :: (BackendRequest, BackendErrorResult) -> Text
     renderReqRes (req, res) =
@@ -286,12 +244,14 @@ deployCode w onReq = do
       let
         backendUri = brUri $ _backendRequest_backend req
         backendName = brName $ _backendRequest_backend req
-        renderCodeShort code = if T.length code > 100 then T.take 100 code <> " ..." else code
+        code = _backendRequest_code req
+        -- Not really helpful to display deployed code if it is large:
+        mkMsg msg = if T.length code < 100 then msg else ""
       in
-        T.unlines
+        mkMsg $ T.unlines
           [ "Sent code to backend '" <> coerce backendName <> "':"
           , ""
-          , renderCodeShort $ _backendRequest_code req
+          , code
           ]
 
 -- | Available backends:
@@ -347,15 +307,17 @@ parsePactServerList raw =
   in
     Map.fromList refs
 
+-- | Load modules on startup and on every occurrence of the given event.
 loadModules
   :: forall t m
   . (MonadHold t m, PerformEvent t m, MonadFix m, NotReady t m, Adjustable t m
     , MonadJSM (Performable m), HasJSContext (Performable m)
     , TriggerEvent t m, PostBuild t m
     )
-  => Dynamic t (Maybe (Map BackendName BackendRef)) -> BackendCfg t
+  => Dynamic t (Maybe (Map BackendName BackendRef))
+  -> Event t ()
   -> m (Dynamic t (Map BackendName (Maybe [Text])))
-loadModules bs cfg = do
+loadModules bs onRefresh = do
   let req r = (BackendRequest "(list-modules)" H.empty r Set.empty)
   backendMap <- networkView $ ffor bs $ \case
     Nothing -> pure mempty
@@ -363,7 +325,7 @@ loadModules bs cfg = do
       onPostBuild <- getPostBuild
       bm <- flip Map.traverseWithKey bs' $ \_ r -> do
         onErrResp <- performBackendRequest emptyWallet $
-          leftmost [ req r <$ cfg ^. backendCfg_refreshModule
+          leftmost [ req r <$ onRefresh
                    , req r <$ onPostBuild
                    ]
         let
@@ -619,6 +581,55 @@ getNonce = do
 --   This way you get stringified JSON.
 encodeAsText :: BSL.ByteString -> Text
 encodeAsText = T.decodeUtf8 . BSL.toStrict
+
+-- Helper types for interfacing with Pact endpoints:
+
+-- | Status as parsed from pact server response.
+--
+--   See
+--   <https://pact-language.readthedocs.io/en/latest/pact-reference.html#send
+--   here> for more information.
+data PactStatus
+  = PactStatus_Success
+  | PactStatus_Failure
+  deriving Show
+
+instance FromJSON PactStatus where
+  parseJSON = \case
+    String "success" -> pure PactStatus_Success
+    String "failure" -> pure PactStatus_Failure
+      -- case str of
+      --   "success" -> PactStatus_Success
+      --   "failure" -> PactStatus_Failure
+      --   invalid   ->
+    invalid -> typeMismatch "Status" invalid
+
+
+-- | Result as received from the backend.
+data PactResult
+  = PactResult_Success Value
+  | PactResult_Failure PactError PactDetail
+  | PactResult_FailureText Text -- when decimal fields are empty, for example
+
+instance FromJSON PactResult where
+  parseJSON (String t) = pure $ PactResult_FailureText t
+  parseJSON (Object o) = do
+    status <- o .: "status"
+    case status of
+      PactStatus_Success -> PactResult_Success <$> o .: "data"
+      PactStatus_Failure -> PactResult_Failure <$> o .: "error" <*> o .: "detail"
+  parseJSON v = typeMismatch "PactResult" v
+
+-- | Response object contained in a /listen response.
+data ListenResponse = ListenResponse
+ { _lr_result :: PactResult
+ , _lr_txId   :: Integer
+ }
+
+instance FromJSON ListenResponse where
+  parseJSON = withObject "Response" $ \o ->
+    ListenResponse <$> o .: "result" <*> o .: "txId"
+
 
 -- Instances:
 

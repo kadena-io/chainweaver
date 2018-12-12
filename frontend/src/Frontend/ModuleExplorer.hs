@@ -43,6 +43,7 @@ module Frontend.ModuleExplorer
   , ExampleModule (..)
   , DeployedModule (..)
   , PactFunction (..)
+  , TransactionInfo (..)
    -- *** SelectedModule
   , SelectedModule (..)
   , HasSelectedModule (..)
@@ -57,6 +58,7 @@ import           Data.Text                (Text)
 import           Generics.Deriving.Monoid (mappenddefault, memptydefault)
 import           GHC.Generics             (Generic)
 import           Reflex
+import           Data.Set                     (Set)
 ------------------------------------------------------------------------------
 import           Obelisk.Generated.Static
 import           Pact.Types.Lang          (DefType, FunType, ModuleName, Name,
@@ -64,6 +66,7 @@ import           Pact.Types.Lang          (DefType, FunType, ModuleName, Name,
 ------------------------------------------------------------------------------
 import           Frontend.Backend
 import           Frontend.Foundation
+import           Frontend.Wallet
 
 data ExampleModule = ExampleModule
   { _exampleModule_name :: Text
@@ -111,6 +114,16 @@ data SelectedModule = SelectedModule
 
 makePactLenses ''SelectedModule
 
+-- | Data needed to send transactions to the server.
+data TransactionInfo = TransactionInfo
+  { _transactionInfo_keys    :: Set KeyName
+    -- ^ The keys to sign the message with.
+  , _transactionInfo_backend :: BackendName
+    -- ^ The backend to deploy to.
+  } deriving (Eq, Ord, Show)
+
+
+
 -- | Configuration for ModuleExplorer
 --
 --   State is controlled via this configuration.
@@ -119,6 +132,10 @@ data ModuleExplorerCfg t = ModuleExplorerCfg
     -- ^ Select a module for viewing its functions and further details.
   , _moduleExplorerCfg_loadModule :: Event t ModuleSel
     -- ^ Load a module into the editor.
+  , _moduleExplorerCfg_deployEditor :: Event t TransactionInfo
+    -- ^ Deploy code that is currently in `Editor`.
+  , _moduleExplorerCfg_deployCode :: Event t (Text, TransactionInfo)
+    -- ^ Deploy given Pact code, usually a function call.
   }
   deriving Generic
 
@@ -187,8 +204,14 @@ instance Semigroup DeployedModule where
 instance Semigroup ModuleSel where
   sel1 <> _ = sel1
 
+instance Semigroup TransactionInfo where
+  sel1 <> _ = sel1
+
+
 instance Flattenable (ModuleExplorerCfg t) t where
   flattenWith doSwitch ev =
     ModuleExplorerCfg
       <$> doSwitch never (_moduleExplorerCfg_selModule <$> ev)
       <*> doSwitch never (_moduleExplorerCfg_loadModule <$> ev)
+      <*> doSwitch never (_moduleExplorerCfg_deployEditor <$> ev)
+      <*> doSwitch never (_moduleExplorerCfg_deployCode <$> ev)

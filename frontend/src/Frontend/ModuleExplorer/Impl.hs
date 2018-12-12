@@ -65,15 +65,19 @@ import           Frontend.ModuleExplorer     as API
 import           Frontend.Repl
 import           Frontend.Wallet
 
-{- -- | Our dependencies. -}
-{- type HasModuleExplorerModel model t = HasBackend model t -}
-
 type HasModuleExplorerModelCfg mConf t =
   ( Monoid mConf
   , HasEditorCfg mConf t
   , HasMessagesCfg mConf t
   , HasJsonDataCfg mConf t
   , HasReplCfg mConf t
+  , HasBackendCfg mConf t
+  )
+
+type HasModuleExplorerModel model t =
+  ( HasEditor model t
+  , HasJsonData model t
+  , HasBackend model t
   )
 
 
@@ -81,32 +85,82 @@ type HasModuleExplorerModelCfg mConf t =
 type ReflexConstraints t m =
   ( MonadHold t m, TriggerEvent t m, Reflex t, PerformEvent t m
   , HasJSContext (Performable m) , MonadJSM (Performable m)
-  , PostBuild t m
+  , PostBuild t m, MonadFix m
   )
 
 
 makeModuleExplorer
-  :: forall t m cfg mConf
+  :: forall t m cfg mConf model
   . ( ReflexConstraints t m
     , HasModuleExplorerCfg cfg t
     {- , HasModuleExplorerModel model t -}
     , HasModuleExplorerModelCfg mConf t
+    , HasModuleExplorerModel model t
     )
-  => cfg
+  => model
+  -> cfg
   -> m (mConf, ModuleExplorer t)
-makeModuleExplorer cfg = do
-    (loadedCfg, loaded)     <- loadModule   $ cfg ^. moduleExplorerCfg_loadModule
-    (selectedCfg, selected) <- selectModule $ cfg ^. moduleExplorerCfg_selModule
+makeModuleExplorer m cfg = do
+    (loadedCfg, loaded)     <- loadModule $ cfg ^. moduleExplorerCfg_loadModule
+    (selectedCfg, selected) <- selectModule m $ cfg ^. moduleExplorerCfg_selModule
+    let
+      deployEdCfg = deployEditor m $ cfg ^. moduleExplorerCfg_deployEditor
+      deployCodeCfg = deployCode m $ cfg ^. moduleExplorerCfg_deployCode
 
     pure
-      ( mconcat [ loadedCfg, selectedCfg ]
+      ( mconcat [ loadedCfg, selectedCfg, deployEdCfg, deployCodeCfg ]
       , ModuleExplorer
           { _moduleExplorer_loadedModule = loaded
           , _moduleExplorer_selectedModule = selected
           }
       )
 
--- | Takes care of loading a contract as requested by the user.
+deployEditor
+  :: forall t mConf model
+  . ( Reflex t
+    , HasModuleExplorerModelCfg  mConf t
+    , HasModuleExplorerModel model t
+    )
+  => model
+  -> Event t TransactionInfo
+  -> mConf
+deployEditor m = deployCode m . attach (current $ m ^. editor_code)
+
+deployCode
+  :: forall t mConf model
+  . ( Reflex t
+    , HasModuleExplorerModelCfg  mConf t
+    , HasModuleExplorerModel model t
+    )
+  => model
+  -> Event t (Text, TransactionInfo)
+  -> mConf
+deployCode m onDeploy =
+  let
+    mkReq :: Dynamic t ((Text, TransactionInfo) -> Maybe BackendRequest)
+    mkReq = do
+      ed      <- m ^. jsonData_data
+      mbs     <- m ^. backend_backends
+      pure $ \(code, info) -> do
+        bs <- mbs
+        b <- Map.lookup (_transactionInfo_backend info) bs
+        d <- ed ^? _Right
+        pure $ BackendRequest code d b (_transactionInfo_keys info)
+
+    jsonError :: Dynamic t (Maybe Text)
+    jsonError = do
+      ed <- m ^. jsonData_data
+      pure $ case ed of
+        Left _  -> Just $ "Deploy not possible: JSON data was invalid!"
+        Right _ -> Nothing
+
+  in
+    mempty
+      & backendCfg_deployCode .~ attachWithMaybe ($) (current mkReq) onDeploy
+      & messagesCfg_send .~ tagMaybe (current jsonError) onDeploy
+
+
+-- | Takes care of loading a contract into the editor as requested by the user.
 loadModule
   :: forall m t mConf
   . ( ReflexConstraints t m
@@ -197,18 +251,28 @@ loadDeployedModule onNewContractReq = do
 --
 --   The returned Event fires once the loading is complete.
 selectModule
-  :: forall m t mConf
+  :: forall m t mConf model
   . ( MonadHold t m, PerformEvent t m, MonadJSM (Performable m)
-    , HasJSContext (Performable m), TriggerEvent t m
+    , HasJSContext (Performable m), TriggerEvent t m, MonadFix m
     , HasMessagesCfg  mConf t, Monoid mConf
+    , HasBackend model t
     )
-  => Event t (Maybe ModuleSel)
+  => model
+  -> Event t (Maybe ModuleSel)
   -> m (mConf, MDynamic t SelectedModule)
-selectModule onMaySelReq = do
+selectModule m onMaySelReq = mdo
   let
     onSelReq = fmapMaybe id onMaySelReq
     onExampleModule  = fmapMaybe (^? _ModuleSel_Example)  onSelReq
-    onDeployedModule = fmapMaybe (^? _ModuleSel_Deployed) onSelReq
+    onDeployedModuleNew = fmapMaybe (^? _ModuleSel_Deployed) onSelReq
+
+    selectedDeployed = (^? _Just . selectedModule_module . _ModuleSel_Deployed) <$> selected
+    onDeployedModule = leftmost
+      [ onDeployedModuleNew
+        -- Reload when something got deployed:
+      , tagMaybe (current selectedDeployed) $ m ^. backend_deployed
+      ]
+
   onExSel <- selectExample onExampleModule
   (deCfg, onDeSel) <- selectDeployed onDeployedModule
   selected <- holdDyn Nothing $ leftmost

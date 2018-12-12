@@ -40,6 +40,7 @@ import           Data.Void (Void)
 ------------------------------------------------------------------------------
 import           Frontend.Backend
 import           Frontend.Ide
+import           Frontend.ModuleExplorer (HasModuleExplorerCfg (..))
 import           Frontend.Wallet
 import           Frontend.Wallet         (HasWallet (..))
 import           Frontend.UI.Modal
@@ -82,6 +83,6 @@ uiDeployConfirmation ideL = do
       onConfirm <- confirmButton (def & uiButtonCfg_disabled .~ isDisabled) "Deploy"
 
       -- TODO: Use `backendCfg_deployCode` instead.
-      let cfg = mempty & ideCfg_deploy .~
+      let cfg = mempty & moduleExplorerCfg_deployEditor .~
             fmapMaybe id (tagPromptlyDyn transInfo onConfirm)
       pure (cfg, leftmost [onClose, onCancel, onConfirm])

@@ -64,7 +64,7 @@ type HasUICallFunctionModel model t =
   (HasModuleExplorer model t, HasBackend model t, HasWallet model t, HasJsonData model t)
 
 type HasUICallFunctionModelCfg mConf t =
-  ( Monoid mConf, Flattenable mConf t, HasModuleExplorerCfg mConf t, HasBackendCfg mConf t
+  ( Monoid mConf, Flattenable mConf t, HasModuleExplorerCfg mConf t
   )
 
 -- | Modal dialog for calling a function.
@@ -111,22 +111,22 @@ uiCallFunction m mModule func = do
             onCall <- confirmButton (def & uiButtonCfg_disabled .~ pure False) "Call"
 
             let
-              backendReq :: Dynamic t BackendRequest
-              backendReq = do
+              transaction :: Dynamic t (Text, TransactionInfo)
+              transaction = do
                 code <- pactCall
                 json <- either (const HM.empty) id <$> m ^. jsonData_data
                 keys <- signingKeys
-                let b = _deployedModule_backend moduleL
+                let b = backendRefName $ _deployedModule_backend moduleL
+                pure $
+                  ( code
+                  , TransactionInfo
+                    { _transactionInfo_keys = keys
+                    , _transactionInfo_backend = b
+                    }
+                  )
 
-                pure $ BackendRequest
-                  { _backendRequest_code = code
-                  , _backendRequest_data = json
-                  , _backendRequest_backend = b
-                  , _backendRequest_signing = keys
-                  }
-
-              onReq = tag (current backendReq) onCall
-              cfg = mempty & backendCfg_deployCode .~ onReq
+              onReq = tag (current transaction) onCall
+              cfg = mempty & moduleExplorerCfg_deployCode .~ onReq
 
             pure (cfg, leftmost [onClose, onCancel, onCall])
 

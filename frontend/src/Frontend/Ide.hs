@@ -66,13 +66,6 @@ import           Frontend.Wallet
 -- "Frontend.Modal".
 import           Frontend.UI.Modal
 
--- | Data needed to send transactions to the server.
-data TransactionInfo = TransactionInfo
-  { _transactionInfo_keys    :: Set KeyName
-  , _transactionInfo_backend :: BackendName
-  } deriving (Eq, Ord, Show)
-
-
 -- | The available panels in the `envPanel`
 data EnvSelection
   = EnvSelection_Repl -- ^ REPL for interacting with loaded contract
@@ -96,8 +89,6 @@ data IdeCfg modal t = IdeCfg
   , _ideCfg_messages       :: MessagesCfg t
   , _ideCfg_selEnv         :: Event t EnvSelection
     -- ^ Switch tab of the right pane.
-  , _ideCfg_deploy         :: Event t TransactionInfo
-    -- ^ Deploy the currently edited code/contract.
   , _ideCfg_setModal       :: LeftmostEv t (Maybe modal)
    -- ^ Request a modal dialog. Use `Nothing` to close an existing modal
    --   dialog.
@@ -137,39 +128,17 @@ makeIde userCfg = build $ \ ~(cfg, ideL) -> do
     walletL <- makeWallet $ _ideCfg_wallet cfg
     json <- makeJsonData walletL $ _ideCfg_jsonData cfg
     (backendCfgL, backendL) <- makeBackend walletL $ cfg ^. ideCfg_backend
-    (explrCfg, moduleExplr) <- makeModuleExplorer cfg
+    (explrCfg, moduleExplr) <- makeModuleExplorer ideL cfg
     editorL <- makeEditor ideL cfg
     messagesL <- makeMessages cfg
     (replCfgL, replL) <- makeRepl ideL cfg
-
-    let
-      mkReq = do
-        c       <- ideL ^. editor_code
-        ed      <- ideL ^. jsonData_data
-        mbs     <- ideL ^. backend_backends
-        pure $ \bName -> do
-          bs <- mbs
-          b <- Map.lookup bName bs
-          d <- ed ^? _Right
-          pure $ BackendRequest c d b
-      addSigning f a = (\cMkReq -> cMkReq (_transactionInfo_keys a)) <$> f (_transactionInfo_backend a)
-    onResp <- fmap snd <$> performBackendRequest
-      (ideL ^. ide_wallet)
-      (attachWithMaybe addSigning (current mkReq) (_ideCfg_deploy cfg))
-
-    let
-      msgs =  prettyPrintBackendErrorResult <$> onResp
-      refresh = fmapMaybe (either (const Nothing) (const $ Just ())) onResp
-      ourCfg = mempty
-        & messagesCfg_send .~ msgs
-        & backendCfg_refreshModule .~ refresh
 
     envSelection <- makeEnvSelection ideL $ cfg ^. ideCfg_selEnv
 
     modal <- holdDyn Nothing $ unLeftmostEv (_ideCfg_setModal cfg)
 
     pure
-      ( mconcat [ourCfg, userCfg, explrCfg, replCfgL, backendCfgL]
+      ( mconcat [userCfg, explrCfg, replCfgL, backendCfgL]
       , Ide
         { _ide_editor = editorL
         , _ide_wallet = walletL
@@ -212,9 +181,6 @@ instance Reflex t => Monoid (IdeCfg modal t) where
   mappend = (<>)
 
 instance Semigroup EnvSelection where
-  sel1 <> _ = sel1
-
-instance Semigroup TransactionInfo where
   sel1 <> _ = sel1
 
 instance HasWalletCfg (IdeCfg modal t) t where
@@ -278,5 +244,4 @@ instance Flattenable (IdeCfg modal t) t where
       <*> flattenWith doSwitch (_ideCfg_repl <$> ev)
       <*> flattenWith doSwitch (_ideCfg_messages <$> ev)
       <*> doSwitch never (_ideCfg_selEnv <$> ev)
-      <*> doSwitch never (_ideCfg_deploy <$> ev)
       <*> fmap LeftmostEv (doSwitch never (unLeftmostEv . _ideCfg_setModal <$> ev))
