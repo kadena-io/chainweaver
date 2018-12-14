@@ -254,6 +254,7 @@ msgParser = linesParser <|> restParser
 startErrorParser :: MP.Parsec Void Text ()
 startErrorParser = do
     MP.space
+    MP.many (MP.string "Property proven valid" >> MP.space)
     MP.oneOf "<(" -- Until now we found messages with '<' and some with '('.
     MP.string "interactive"
     MP.oneOf ">)"
