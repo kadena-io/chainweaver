@@ -1,3 +1,4 @@
+{-# LANGUAGE CPP                    #-}
 {-# LANGUAGE ConstraintKinds        #-}
 {-# LANGUAGE DataKinds              #-}
 {-# LANGUAGE DeriveGeneric          #-}
@@ -146,15 +147,40 @@ typeCheckVerify m t = mdo
       }
     let
       clearAnnotation = [] <$ onReplReset
+#ifdef  ghcjs_HOST_OS
+    cModules <- holdDyn Map.empty $ _ts_modules <$> onTransSuccess
+    let
+      newAnnotations = leftmost
+       [ attachPromptlyDynWith parseVerifyOutput cModules $ _repl_modulesVerified replL
+       , pure . fallBackParser <$> replO ^. messagesCfg_send
+       ]
+#else
       newAnnotations = leftmost
        [ parseVerifyOutput <$> _repl_modulesVerified replL
        , pure . fallBackParser <$> replO ^. messagesCfg_send
        ]
+#endif
 
     pure $ leftmost [newAnnotations, clearAnnotation]
   where
     parser = MP.parseMaybe pactErrorParser
 
+-- Line numbers are off on ghcjs:
+#ifdef  ghcjs_HOST_OS
+    parseVerifyOutput :: Map ModuleName Int -> VerifyResult -> [Annotation]
+    parseVerifyOutput ms rs =
+      let
+        successRs :: [(ModuleName, Text)]
+        successRs = fmapMaybe (traverse (^? _Right)) . Map.toList $ rs
+
+        parsedRs :: Map ModuleName Annotation
+        parsedRs = Map.fromList $ map (_2 %~ fallBackParser)  successRs
+
+        fixLineNumber :: Int -> Annotation -> Annotation
+        fixLineNumber n a = a { _annotation_line = _annotation_line a + n }
+      in
+        Map.elems $ Map.intersectionWith fixLineNumber ms parsedRs
+#else
     parseVerifyOutput :: VerifyResult -> [Annotation]
     parseVerifyOutput rs =
       let
@@ -165,6 +191,7 @@ typeCheckVerify m t = mdo
         parsedRs = mapMaybe (traverse parser) successRs
       in
         map snd parsedRs
+#endif
 
     -- Some errors have no line number for some reason:
     fallBackParser msg =
