@@ -42,6 +42,7 @@ module Frontend.Editor
 
 ------------------------------------------------------------------------------
 import           Control.Lens
+import           Control.Monad            (void)
 import           Data.Map                 (Map)
 import qualified Data.Map                 as Map
 import           Data.Text                (Text)
@@ -143,11 +144,10 @@ typeCheckVerify m t = mdo
       , _replCfg_reset = () <$ onReplReset
       , _replCfg_verifyModules = Map.keysSet . _ts_modules <$> onTransSuccess
       }
-    cModules <- holdDyn Map.empty $ _ts_modules <$> onTransSuccess
     let
       clearAnnotation = [] <$ onReplReset
       newAnnotations = leftmost
-       [ attachPromptlyDynWith parseVerifyOutput cModules $ _repl_modulesVerified replL
+       [ parseVerifyOutput <$> _repl_modulesVerified replL
        , pure . fallBackParser <$> replO ^. messagesCfg_send
        ]
 
@@ -155,19 +155,16 @@ typeCheckVerify m t = mdo
   where
     parser = MP.parseMaybe pactErrorParser
 
-    parseVerifyOutput :: Map ModuleName Int -> VerifyResult -> [Annotation]
-    parseVerifyOutput ms rs =
+    parseVerifyOutput :: VerifyResult -> [Annotation]
+    parseVerifyOutput rs =
       let
         successRs :: [(ModuleName, Text)]
         successRs = fmapMaybe (traverse (^? _Right)) . Map.toList $ rs
 
-        parsedRs :: Map ModuleName Annotation
-        parsedRs = Map.fromList $ map (_2 %~ fallBackParser)  successRs
-
-        fixLineNumber :: Int -> Annotation -> Annotation
-        fixLineNumber n a = a { _annotation_line = _annotation_line a + 0 }
+        parsedRs :: [(ModuleName, Annotation)]
+        parsedRs = mapMaybe (traverse parser) successRs
       in
-        Map.elems $ Map.intersectionWith fixLineNumber ms parsedRs
+        map snd parsedRs
 
     -- Some errors have no line number for some reason:
     fallBackParser msg =
@@ -191,9 +188,14 @@ pactErrorParser = do
     MP.char ':'
     column <- digitsP
     MP.char ':'
+    MP.space
+    annoType <- MP.withRecovery (const $ pure AnnoType_Error) $ do
+      void $ MP.string' "warning:"
+      pure AnnoType_Warning
+
     msg <- T.pack <$> MP.someTill MP.anyChar MP.eof
     pure $ Annotation
-      { _annotation_type = AnnoType_Error
+      { _annotation_type = annoType
       , _annotation_msg = msg
       , _annotation_line = max line 1 -- Some errors have linenumber 0 which is invalid.
       , _annotation_column = max column 1
