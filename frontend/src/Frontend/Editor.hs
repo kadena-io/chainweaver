@@ -42,6 +42,7 @@ module Frontend.Editor
   ) where
 
 ------------------------------------------------------------------------------
+import           Control.Applicative      ((<|>))
 import           Control.Lens
 import           Control.Monad            (void)
 import           Data.Map                 (Map)
@@ -152,15 +153,14 @@ typeCheckVerify m t = mdo
     let
       newAnnotations = leftmost
        [ attachPromptlyDynWith parseVerifyOutput cModules $ _repl_modulesVerified replL
-       , pure . fallBackParser <$> replO ^. messagesCfg_send
+       , fallBackParser <$> replO ^. messagesCfg_send
        ]
 #else
       newAnnotations = leftmost
        [ parseVerifyOutput <$> _repl_modulesVerified replL
-       , pure . fallBackParser <$> replO ^. messagesCfg_send
+       , fallBackParser <$> replO ^. messagesCfg_send
        ]
 #endif
-
     pure $ leftmost [newAnnotations, clearAnnotation]
   where
     parser = MP.parseMaybe pactErrorParser
@@ -173,13 +173,16 @@ typeCheckVerify m t = mdo
         successRs :: [(ModuleName, Text)]
         successRs = fmapMaybe (traverse (^? _Right)) . Map.toList $ rs
 
-        parsedRs :: Map ModuleName Annotation
-        parsedRs = Map.fromList $ map (_2 %~ fallBackParser)  successRs
+        parsedRs :: Map ModuleName [Annotation]
+        parsedRs = Map.fromList $ fmapMaybe (traverse parser) successRs
 
         fixLineNumber :: Int -> Annotation -> Annotation
         fixLineNumber n a = a { _annotation_line = _annotation_line a + n }
+
+        fixLineNumbers :: Int -> [Annotation] -> [Annotation]
+        fixLineNumbers n = map (fixLineNumber n)
       in
-        Map.elems $ Map.intersectionWith fixLineNumber ms parsedRs
+        concat . Map.elems $ Map.intersectionWith fixLineNumbers ms parsedRs
 #else
     parseVerifyOutput :: VerifyResult -> [Annotation]
     parseVerifyOutput rs =
@@ -187,30 +190,29 @@ typeCheckVerify m t = mdo
         successRs :: [(ModuleName, Text)]
         successRs = fmapMaybe (traverse (^? _Right)) . Map.toList $ rs
 
-        parsedRs :: [(ModuleName, Annotation)]
+        parsedRs :: [(ModuleName, [Annotation])]
         parsedRs = mapMaybe (traverse parser) successRs
       in
-        map snd parsedRs
+        concatMap snd parsedRs
 #endif
 
     -- Some errors have no line number for some reason:
     fallBackParser msg =
       case parser msg of
-        Nothing -> Annotation
-          { _annotation_type = AnnoType_Error
-          , _annotation_msg = msg
-          , _annotation_line = 1
-          , _annotation_column = 0
-          }
+        Nothing ->
+          [ Annotation
+            { _annotation_type = AnnoType_Error
+            , _annotation_msg = msg
+            , _annotation_line = 1
+            , _annotation_column = 0
+            }
+          ]
         Just a -> a
 
 
-pactErrorParser :: MP.Parsec Void Text Annotation
-pactErrorParser = do
-    MP.oneOf "<(" -- Until now we found messages with '<' and some with '('.
-    MP.string "interactive"
-    MP.oneOf ">)"
-    MP.char ':'
+pactErrorParser :: MP.Parsec Void Text [Annotation]
+pactErrorParser = MP.many $ do
+    startErrorParser
     line <- digitsP
     MP.char ':'
     column <- digitsP
@@ -220,7 +222,8 @@ pactErrorParser = do
       void $ MP.string' "warning:"
       pure AnnoType_Warning
 
-    msg <- T.pack <$> MP.someTill MP.anyChar MP.eof
+    msg <- msgParser
+
     pure $ Annotation
       { _annotation_type = annoType
       , _annotation_msg = msg
@@ -230,6 +233,32 @@ pactErrorParser = do
   where
     digitsP :: MP.Parsec Void Text Int
     digitsP = read <$> MP.some MP.digitChar
+
+-- | Parse the actual error message.
+msgParser :: MP.Parsec Void Text Text
+msgParser = linesParser <|> restParser
+  where
+    restParser = do
+      MP.notFollowedBy startErrorParser
+      MP.takeRest
+
+    linesParser = fmap T.unlines . MP.try . MP.some $ lineParser
+
+    lineParser = do
+      MP.notFollowedBy startErrorParser
+      l <- MP.takeWhileP Nothing (/= '\n')
+      MP.newline
+      pure l
+
+-- | Error/warning messages start this way:
+startErrorParser :: MP.Parsec Void Text ()
+startErrorParser = do
+    MP.space
+    MP.oneOf "<(" -- Until now we found messages with '<' and some with '('.
+    MP.string "interactive"
+    MP.oneOf ">)"
+    MP.char ':'
+    pure ()
 
 -- Instances:
 
