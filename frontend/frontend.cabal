@@ -48,6 +48,7 @@ library
                , time
                , unordered-containers
                , megaparsec
+               , trifecta
 
   exposed-modules: Frontend
                  , Frontend.Backend
