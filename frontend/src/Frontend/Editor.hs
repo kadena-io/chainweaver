@@ -42,6 +42,8 @@ module Frontend.Editor
 
 ------------------------------------------------------------------------------
 import           Control.Lens
+import           Data.Map                 (Map)
+import qualified Data.Map                 as Map
 import           Data.Text                (Text)
 import qualified Data.Text                as T
 import           Data.Void                (Void)
@@ -68,7 +70,7 @@ instance Show AnnoType where
 
 -- | Annotation to report warning/errors to the user.
 data Annotation = Annotation
-  { _annotation_type   :: AnnoType -- ^ Is it a warning an error?
+  { _annotation_type   :: AnnoType -- ^ Is it a warning or an error?
   , _annotation_msg    :: Text -- ^ The message to report.
   , _annotation_line   :: Int -- ^ What line to put the annotation to.
   , _annotation_column :: Int -- ^ What column.
@@ -103,34 +105,70 @@ makePactLenses ''Editor
 
 type HasEditorModel model t = (HasJsonData model t, HasWallet model t, HasBackend model t)
 
+type ReflexConstraints t m =
+  ( MonadHold t m, PerformEvent t m, TriggerEvent t m, MonadIO (Performable m)
+  , MonadFix m, MonadIO m, PostBuild t m, MonadSample t (Performable m)
+  )
+
 -- | Create an `Editor` by providing a `Config`.
 makeEditor
   :: forall t m cfg model
-  . ( MonadHold t m, PerformEvent t m, TriggerEvent t m, MonadIO (Performable m), MonadFix m, MonadIO m, PostBuild t m, MonadSample t (Performable m)
+  . ( ReflexConstraints t m
     , HasEditorCfg cfg t, HasEditorModel model t
     )
   => model -> cfg -> m (Editor t)
 makeEditor m cfg = do
     t <-  holdDyn "" (cfg ^. editorCfg_setCode)
+    annotations <- typeCheckVerify m t
+    pure $ Editor
+      { _editor_code = t
+      , _editor_annotations = annotations
+      }
 
+-- | Type check and verify code.
+typeCheckVerify
+  :: (ReflexConstraints t m, HasEditorModel model t)
+  => model -> Dynamic t Text -> m (Event t [Annotation])
+typeCheckVerify m t = mdo
     let newInput = leftmost [ updated t, tag (current t) $ updated (m ^. jsonData_data)  ]
     -- Reset repl on each check to avoid memory leak.
     onReplReset <- throttle 1 $ newInput
     onTypeCheck <- delay 0 onReplReset
 
-    (replO :: MessagesCfg t, _) <- makeRepl m $ mempty
+    let
+      onTransSuccess = fmapMaybe (^? _Right) $ replL ^. repl_transactionFinished
+
+    (replO :: MessagesCfg t, replL) <- makeRepl m $ mempty
       { _replCfg_sendTransaction = onTypeCheck
       , _replCfg_reset = () <$ onReplReset
+      , _replCfg_verifyModules = Map.keysSet . _ts_modules <$> onTransSuccess
       }
+    cModules <- holdDyn Map.empty $ _ts_modules <$> onTransSuccess
     let
       clearAnnotation = [] <$ onReplReset
-      {- newAnnotation = fallBackParser <$> repl ^. repl_transactionFailed -}
-      newAnnotation = fallBackParser <$> replO ^. messagesCfg_send
-    pure $ Editor
-      { _editor_code = t
-      , _editor_annotations = leftmost [pure <$> newAnnotation, clearAnnotation]
-      }
+      newAnnotations = leftmost
+       [ attachPromptlyDynWith parseVerifyOutput cModules $ _repl_modulesVerified replL
+       , pure . fallBackParser <$> replO ^. messagesCfg_send
+       ]
+
+    pure $ leftmost [newAnnotations, clearAnnotation]
   where
+    parser = MP.parseMaybe pactErrorParser
+
+    parseVerifyOutput :: Map ModuleName Int -> VerifyResult -> [Annotation]
+    parseVerifyOutput ms rs =
+      let
+        successRs :: [(ModuleName, Text)]
+        successRs = fmapMaybe (traverse (^? _Right)) . Map.toList $ rs
+
+        parsedRs :: Map ModuleName Annotation
+        parsedRs = Map.fromList $ map (_2 %~ fallBackParser)  successRs
+
+        fixLineNumber :: Int -> Annotation -> Annotation
+        fixLineNumber n a = a { _annotation_line = _annotation_line a + 0 }
+      in
+        Map.elems $ Map.intersectionWith fixLineNumber ms parsedRs
+
     -- Some errors have no line number for some reason:
     fallBackParser msg =
       case parser msg of
@@ -141,7 +179,7 @@ makeEditor m cfg = do
           , _annotation_column = 0
           }
         Just a -> a
-    parser = MP.parseMaybe pactErrorParser
+
 
 pactErrorParser :: MP.Parsec Void Text Annotation
 pactErrorParser = do

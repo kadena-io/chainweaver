@@ -30,6 +30,9 @@ module Frontend.Repl
   , WebRepl (..)
   , HasWebRepl (..)
   , ReplOutput (..)
+  , ModuleName (..)
+  , VerifyResult (..)
+  , TransactionSuccess (..)
     -- * Implementation and Creation
   , HasReplModelCfg
   , HasReplModel
@@ -37,25 +40,34 @@ module Frontend.Repl
   ) where
 
 ------------------------------------------------------------------------------
+import           Control.Arrow              (left)
 import           Control.Lens               hiding ((|>))
 import           Control.Monad.Except
 import           Control.Monad.State.Strict
 import           Data.Aeson                 as Aeson (Object, encode)
 import qualified Data.ByteString.Lazy       as BSL
 import qualified Data.HashMap.Strict        as HM
+import           Data.Map                   (Map)
+import qualified Data.Map                   as Map
 import qualified Data.Map                   as Map
 import           Data.Sequence              (Seq, (|>))
 import qualified Data.Sequence              as S
+import           Data.Set                   (Set)
+import qualified Data.Set                   as Set
 import           Data.Text                  (Text)
 import qualified Data.Text                  as T
 import qualified Data.Text.Encoding         as T
 import           Generics.Deriving.Monoid   (mappenddefault, memptydefault)
 import           GHC.Generics               hiding (to)
 import           Reflex
+import qualified Text.Trifecta              as TF
+import qualified Text.Trifecta.Delta        as Delta
 ------------------------------------------------------------------------------
+import           Pact.Parse                 (exprsOnly)
 import           Pact.Repl
 import           Pact.Repl.Types
 import           Pact.Types.Exp
+import           Pact.Types.Info
 import           Pact.Types.Term
 ------------------------------------------------------------------------------
 import           Frontend.Backend
@@ -70,10 +82,22 @@ data ReplOutput
   = ReplOutput_Cmd Text -- ^ Command that got entered/executed.
   | ReplOutput_Res Text -- ^ Result of executed command.
 
+-- | Result of a transaction in case of success.
+data TransactionSuccess = TransactionSuccess
+  { _ts_term    :: Term Name -- ^ The term of the last expression.
+  , _ts_modules :: Map ModuleName Int -- ^ Modules that got loaded in this transaction.
+  } deriving (Eq, Show)
+makePactLenses 'TransactionSuccess
+
+
+type VerifyResult = Map ModuleName (Either Text Text)
+
 
 data ReplCfg t = ReplCfg
   { _replCfg_sendTransaction :: Event t Text
     -- ^ Send code to the REPL that won't be echoed and will be put in a transaction.
+  , _replCfg_verifyModules   :: Event t (Set ModuleName)
+    -- ^ Verify loaded modules.
   , _replCfg_sendCmd         :: Event t Text
     -- ^ Send command to be executed by the REPL that should show up in the output.
   , _replCfg_reset           :: Event t ()
@@ -88,13 +112,15 @@ makePactLenses ''ReplCfg
 --   This is called WebRepl instead of Repl to avoid confusion with the `Repl`
 --   type in Pact.
 data WebRepl t = WebRepl
-  { _repl_output            :: Dynamic t (Seq ReplOutput)
+  { _repl_output              :: Dynamic t (Seq ReplOutput)
   -- ^ Repl output to be shown to the user.
-  , _repl_newOutput         :: Event t Text
+  , _repl_newOutput           :: Event t Text
   -- ^ Gets triggered whenever there is some new output.
   --   Where output is really output, no echoed commands.
-  , _repl_transactionFailed :: Event t Text
-  -- ^ Execution of transaction failed with error. Will also be logged to Messages.
+  , _repl_transactionFinished :: Event t (Either Text TransactionSuccess)
+  -- ^ Execution of transaction finished with either an error or successfully.
+  , _repl_modulesVerified     :: Event t VerifyResult
+  -- ^ Result of a module verification. Either an error or output of (verify).
   }
   deriving Generic
 
@@ -103,8 +129,12 @@ makePactLenses ''WebRepl
 -- | Result of `evalPact` and `evalRepl` function families.
 type ReplResult = Either String (Term Name)
 
+
+-- | Result of executing a transaction:
+type TransactionResult = Either String TransactionSuccess
+
 -- | `Repl` as used in pact-web.
-type PactRepl = ExceptT String (StateT ReplState IO) (Term Name)
+type PactRepl a = ExceptT String (StateT ReplState IO) a
 
 -- | Data used by internal functions of this module.
 data Impl t = Impl
@@ -148,33 +178,45 @@ makeRepl m cfg = build $ \ ~(_, impl) -> do
     onNewTransR <- runTransaction impl $ cfg ^. replCfg_sendTransaction
     onNewCmdR <- runCmd impl $ cfg ^. replCfg_sendCmd
 
+    onVerifyR <- runVerify impl $ cfg ^. replCfg_verifyModules
+
     let
       onLoad = leftmost [ cfg ^. replCfg_sendTransaction, cfg ^. replCfg_sendCmd ]
 
       mJsonError = (^? _Left . to showJsonError) <$> m ^. jsonData_data
       onEnvDataErr = fmapMaybe id . tag (current mJsonError) $ onLoad
 
+      onNewTransResult :: Event t TransactionResult
       onNewTransResult = fmap fst onNewTransR
+
+      onNewTransSuccess :: Event t TransactionSuccess
+      onNewTransSuccess = fmapMaybe (^? _Right) onNewTransResult
+
       onNewTransSt     = fmap snd onNewTransR
       onNewCmdResult = fmap fst onNewCmdR
       onNewCmdSt     = fmap snd onNewCmdR
+      onVerifySt     = fmap snd onVerifyR
+
     st <- holdDyn initState $ leftmost [ onResetSt
                                        , onNewTransSt
                                        , onNewCmdSt
                                        , onNewEnv
                                        , onNewKeys
+                                       , onVerifySt
                                        ]
     let appendHist = flip (|>)
+        onNewOutput = leftmost [ showTerm . _ts_term <$> onNewTransSuccess
+                               , showResult <$> onNewCmdResult
+                               ]
 
     output <- foldDyn id S.empty $ mergeWith (.)
-      [ appendHist . ReplOutput_Res . showTerm    <$> fmapMaybe (^? _Right) onNewTransResult
-      , appendHist . ReplOutput_Res . showResult  <$> onNewCmdResult
-      , appendHist . ReplOutput_Cmd               <$> cfg ^. replCfg_sendCmd
+      [ appendHist . ReplOutput_Res <$> onNewOutput
+      , appendHist . ReplOutput_Cmd <$> cfg ^. replCfg_sendCmd
       , const S.empty <$ cfg ^. replCfg_reset
       ]
 
-    let onFailedTrans = fmapMaybe (^? _Left . to T.pack) onNewTransResult
-        onNewOutput = fmap showResult $ leftmost [ onNewTransResult, onNewCmdResult ]
+    let onFinishedTrans = fmap (left T.pack) onNewTransResult
+        onFailedTrans = fmapMaybe (^? _Left) onFinishedTrans
 
     pure
       ( mempty
@@ -183,8 +225,9 @@ makeRepl m cfg = build $ \ ~(_, impl) -> do
           { _impl_state = st
           , _impl_repl = WebRepl
               { _repl_output = output
-              , _repl_transactionFailed = onFailedTrans
+              , _repl_transactionFinished = onFinishedTrans
               , _repl_newOutput = onNewOutput
+              , _repl_modulesVerified = fst <$> onVerifyR
               }
           }
       )
@@ -196,14 +239,6 @@ makeRepl m cfg = build $ \ ~(_, impl) -> do
     -- In case we ever want to show more than the last output term:
     -- showStateTerms :: ReplState -> Text
     -- showStateTerms = T.unlines . map showTerm . reverse . _rTermOut
-
-    showResult :: Show n => Either String (Term n) -> Text
-    showResult (Right v) = showTerm v
-    showResult (Left e)  = "Error: " <> T.pack e
-
-    showTerm :: Show n => Term n -> Text
-    showTerm (TLiteral (LString t) _) = t
-    showTerm t                        = T.pack $ show t
 
 -- | Create a brand new Repl state and set env-data.
 initRepl
@@ -235,7 +270,7 @@ mkState m = do
 
 
 -- | Set env-data to the given Object
-setEnvData :: Object -> PactRepl
+setEnvData :: Object -> PactRepl (Term Name)
 setEnvData = pactEvalRepl' . ("(env-data " <>) . (<> ")") . mkCmd
   where
     mkCmd = toJsonString . T.decodeUtf8 . BSL.toStrict . encode
@@ -248,7 +283,7 @@ setEnvData = pactEvalRepl' . ("(env-data " <>) . (<> ")") . mkCmd
     surroundWith o i = o <> i <> o
 
 -- | Set env-keys to the given keys
-setEnvKeys :: [KeyPair] -> PactRepl
+setEnvKeys :: [KeyPair] -> PactRepl (Term Name)
 setEnvKeys =
   pactEvalRepl' . ("(env-keys [" <>) . (<> "])") . renderKeys
     where
@@ -263,13 +298,35 @@ runCmd
   . ( ReplMonad t m )
   => Impl t -> Event t Text -> m (Event t (ReplResult, ReplState))
 runCmd impl onCmd =
-    performEvent $ withRepl impl . pactEvalPact <$> onCmd
+    performEvent $ withRepl impl . pactEvalRepl' <$> onCmd
+
+-- | Verify a module.
+runVerify
+  :: forall t m
+  . ( ReplMonad t m )
+  => Impl t -> Event t (Set ModuleName) -> m (Event t (VerifyResult, ReplState))
+runVerify impl onMod =
+    performEvent $ runIt . verifyModules <$> onMod
+  where
+    runIt cmd = do
+      st <- sample . current $ _impl_state impl
+      liftIO $ flip runStateT st $ cmd
+
+    verifyModules ms = do
+      rs <- traverse verifyModule . Set.toList $ ms
+      pure $ Map.fromList rs
+
+    verifyModule m = do
+      r <- runExceptT . pactEvalRepl' . buildVerify $ m
+      pure (m, bimap T.pack showTerm r)
+
+    buildVerify (ModuleName n) = "(verify '" <> n <> ")"
 
 -- | Run code in a transaction on the REPL.
 runTransaction
   :: forall t m
   . ( ReplMonad t m )
-  => Impl t -> Event t Text -> m (Event t (ReplResult, ReplState))
+  => Impl t -> Event t Text -> m (Event t (TransactionResult, ReplState))
 runTransaction impl onCode =
     performEvent $ ffor onCode $ \code -> withRepl impl $
       runIt code `catchError` cleanup
@@ -280,27 +337,72 @@ runTransaction impl onCode =
 
     runIt code = do
       void $ pactEvalRepl' "(begin-tx)"
-      r <- pactEvalPact code
+      let parsed = parsePact code
+      r <- ExceptT $ evalParsed code parsed
       void $ pactEvalRepl' "(commit-tx)"
-      pure r
+      let transModules = fromMaybe Map.empty $ parsed ^? TF._Success . to getModules
+      pure $ TransactionSuccess r transModules
+
+    parsePact :: Text -> TF.Result [Exp Parsed]
+    parsePact = TF.parseString exprsOnly mempty . T.unpack
+
+    printExp :: Exp Parsed -> String
+    printExp = \case
+      EList (ListExp (e:_) _ _) -> "List: (" <> printExp e <> ")\n"
+      EAtom a -> "Atom: (" <> show a <> ")\n"
+      ELiteral l -> "Literal: (" <> show l <> ")\n"
+      ESeparator _ -> "Separator.\n"
+
+
+    evalParsed :: Text -> TF.Result [Exp Parsed] -> Repl (Either String (Term Name))
+    evalParsed cmd = parsedCompileEval (T.unpack cmd)
+
+
+-- | Drop n elements from the end of a list.
+dropFromEnd :: Int -> [a] -> [a]
+dropFromEnd n xs = zipWith const xs (drop n xs)
+
+
+-- | Get modules from a list of `Term`s.
+getModules :: [Exp Parsed] -> Map ModuleName Int
+getModules = Map.fromList . mapMaybe toModule
+  where
+    toModule :: Exp Parsed -> Maybe (ModuleName, Int)
+    toModule = \case
+      EList (ListExp (_:EAtom (AtomExp m _ _):_) _ (Parsed (Delta.Lines l _ _ _) _))
+        -> Just $ (ModuleName m, fromIntegral l)
+      _ -> Nothing
+
 
 
 withRepl
-  :: forall t m
+  :: forall t m a
   . (Reflex t, MonadSample t m, MonadIO m)
   => Impl t
-  -> PactRepl
-  -> m (ReplResult, ReplState)
+  -> PactRepl a
+  -> m (Either String a, ReplState)
 withRepl impl cmd = do
   st <- sample . current $ _impl_state impl
   liftIO $ flip runStateT st . runExceptT $ cmd
 
-pactEvalRepl' :: Text -> PactRepl
-pactEvalRepl' = ExceptT . evalRepl' . T.unpack
+-- | Sets _and_ unsets repl lib.
+pactEvalRepl' :: Text -> PactRepl (Term Name)
+pactEvalRepl' t = ExceptT $ do
+  id %= setReplLib
+  r <- evalPact . T.unpack $ t
+  id %= unsetReplLib
+  pure r
 
-pactEvalPact :: Text -> PactRepl
+pactEvalPact :: Text -> PactRepl (Term Name)
 pactEvalPact = ExceptT . evalPact . T.unpack
 
+showResult :: Show n => Either String (Term n) -> Text
+showResult (Right v) = showTerm v
+showResult (Left e)  = "Error: " <> T.pack e
+
+showTerm :: Show n => Term n -> Text
+showTerm (TLiteral (LString t) _) = t
+showTerm t                        = T.pack $ show t
 
 -- Instances:
 --
@@ -311,10 +413,16 @@ instance Reflex t => Monoid (ReplCfg t) where
   mempty = memptydefault
   mappend = (<>)
 
+-- Orphan:
+instance Semigroup ModuleName where
+  (ModuleName a) <> (ModuleName b) = ModuleName (a <> b)
+
+
 -- TODO: Those instances should really be derived via Generic.
 instance Flattenable (ReplCfg t) t where
   flattenWith doSwitch ev =
     ReplCfg
       <$> doSwitch never (_replCfg_sendTransaction <$> ev)
+      <*> doSwitch never (_replCfg_verifyModules <$> ev)
       <*> doSwitch never (_replCfg_sendCmd <$> ev)
       <*> doSwitch never (_replCfg_reset <$> ev)
