@@ -16,7 +16,10 @@ module Frontend.UI.Widgets
   , refreshButton
   , confirmButton
   , cancelButton
-  , loadToEditorButton
+  , openButton
+  , viewButton
+  , callButton
+  , deleteButton
   , validatedInputWithButton
   , signingKeysWidget
     -- * Buttons
@@ -224,12 +227,25 @@ paginationWidget currentPage totalPages = do
 -- | Button for "going back" action.
 backButton :: MonadWidget t m => m (Event t ())
 backButton = -- uiIcon "fas fa-chevron-left" $ def & iconConfig_size .~ Just IconLG
-  fmap fst . uiButton def $ text "<"
+  fmap fst . uiButton def $ imgWithAlt (static @"img/left_arrow.svg") "Go back" blank
+
+deleteButton :: MonadWidget t m => m (Event t ())
+deleteButton = -- uiIcon "fas fa-chevron-left" $ def & iconConfig_size .~ Just IconLG
+  fmap fst . uiButton def $ imgWithAlt (static @"img/X.svg") "Delete" blank
 
 -- | Button that loads something into the Editor.
-loadToEditorButton :: MonadWidget t m => m (Event t ())
-loadToEditorButton =
+openButton :: MonadWidget t m => m (Event t ())
+openButton =
+  fmap fst . uiButton def $ imgWithAlt (static @"img/open.svg") "Open" blank >> text "Open"
+
+-- | Button that loads something into the Editor.
+viewButton :: MonadWidget t m => m (Event t ())
+viewButton =
   fmap fst . uiButton def $ imgWithAlt (static @"img/view.svg") "View" blank >> text "View"
+
+callButton :: MonadWidget t m => m (Event t ())
+callButton =
+  fmap fst . uiButton def $ imgWithAlt (static @"img/call.svg") "Call" blank >> text "Call"
 
 -- | Button that triggers a refresh/reload of something.
 refreshButton :: MonadWidget t m => m (Event t ())

@@ -47,6 +47,7 @@ import           Reflex.Dom
 import           Reflex.Dom.ACE.Extended
 import           Reflex.Dom.Contrib.CssClass
 import qualified Reflex.Dom.Contrib.Widgets.DynTabs as Tabs
+import           Obelisk.Generated.Static
 ------------------------------------------------------------------------------
 import           Frontend.Foundation
 import           Frontend.JsonData
@@ -173,16 +174,16 @@ uiKeyset
   -> m (JsonDataCfg t)
 uiKeyset w (n, ks) = do
     aCfg <- divClass "header" $ mdo
-      elAttr "h4" ("class" =: "keyset-chooser-toggle") $ text (" " <> n)
+      elAttr "h4" ("class" =: "keyset-chooser-toggle") $ do
+        el "span" $ imgWithAlt (static @"img/keys.svg") "Keyset" blank
+        text (" " <> n)
 
       onSetPred <- divClass "pred" $ do
         el "label" $ text "Pred:"
         onNewPred <- tagOnPostBuild . fmap (fromMaybe "") $ ks ^. keyset_pred
         predDropdown onNewPred
 
-      onDel <- divClass "delete" $ do
-        el "button" $ uiIcon "fa-trash" $ def
-          & iconConfig_size .~ Just IconLG
+      onDel <- divClass "delete" $ deleteButton
       let setPred = (n, ) . notEmpty <$> onSetPred
       let cfg1 = mempty
             { _jsonDataCfg_setPred = setPred

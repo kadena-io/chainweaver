@@ -143,9 +143,7 @@ uiKeyItem (n, k) = do
       keyCopyWidget "td" "private walletkey" $
         maybe "No key" keyToText . _keyPair_privateKey <$> k
 
-      onDel <- elClass "td" "centercell" $ uiIcon "fa-trash" $ def
-        & iconConfig_size .~ Just IconLG
-        & iconConfig_attrs .~ ("type" =: "button")
+      onDel <- elClass "td" "centercell" deleteButton
 
       pure (const n <$> onDel)
 

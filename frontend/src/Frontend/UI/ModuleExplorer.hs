@@ -209,8 +209,8 @@ contractList rowFunc contracts = do
       fmap leftmost . for contracts $ \c -> el "li" $ do
         divClass "counter" blank
         rowFunc c
-        divClass "load-button" $ loadButton c
+        divClass "load-button" $ viewModButton c
 
 
-loadButton :: MonadWidget t m => a -> m (Event t a)
-loadButton c = fmap (const c) <$> loadToEditorButton
+viewModButton :: MonadWidget t m => a -> m (Event t a)
+viewModButton c = fmap (const c) <$> viewButton

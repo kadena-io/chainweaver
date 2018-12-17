@@ -76,7 +76,7 @@ moduleDetails
 moduleDetails m selected = do
     headerCfg <- elClass "div" "control-block" $ do
       (onBack, onLoad) <- elClass "h2" "back-button-header" $
-        (,) <$> backButton <*> elClass "div" "load-button" loadToEditorButton
+        (,) <$> backButton <*> elClass "div" "load-button" openButton
 
       moduleTitle
       pure $ mempty
@@ -112,6 +112,6 @@ functionList m moduleL functions = do
       onView <- fmap leftmost . for functions $ \f -> el "li" $ do
         divClass "function-name" $ text $ _pactFunction_name f
         divClass "function-desc" $ text $ fromMaybe "" $ _pactFunction_documentation f
-        divClass "function-view" $ fmap (const f) <$> loadToEditorButton
+        divClass "function-view" $ fmap (const f) <$> maybe viewButton (const callButton) moduleL
       pure $ mempty & modalCfg_setModal .~ (Just . uiCallFunction m moduleL <$> onView)
 
