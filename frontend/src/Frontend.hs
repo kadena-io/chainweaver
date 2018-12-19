@@ -1,6 +1,8 @@
 {-# LANGUAGE DataKinds         #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TypeApplications  #-}
+{-# LANGUAGE TypeApplications  #-}
+{-# LANGUAGE TemplateHaskell  #-}
 module Frontend where
 
 import           Control.Monad.IO.Class   (liftIO)
@@ -16,6 +18,7 @@ import           Obelisk.Route
 
 import           Common.Route
 import           Frontend.ReplGhcjs
+import           Frontend.TH (renderCss)
 
 frontend :: Frontend (R FrontendRoute)
 frontend = Frontend
@@ -57,13 +60,13 @@ newHead = do
     ss "https://fonts.googleapis.com/css?family=Roboto"
     ss "https://fonts.googleapis.com/css?family=Work+Sans"
     ss (static @"css/font-awesome.min.css")
-    ss (static @"css/styles.css")
-    ss (static @"css/extra.css")
     ss (static @"css/ace-theme-pact-web.css")
+    style $ T.pack $(renderCss)
     js "https://cdnjs.cloudflare.com/ajax/libs/ace/1.4.1/ace.js"
     js (static @"js/ace-mode-pact.js")
     js (static @"js/nacl-fast.min-v1.0.0.js")
   where
     js url = elAttr "script" ("type" =: "text/javascript" <> "src" =: url <> "charset" =: "utf-8") blank
     ss url = elAttr "link" ("href" =: url <> "rel" =: "stylesheet") blank
+    style = el "style" . text
     meta attrs = elAttr "meta" attrs blank

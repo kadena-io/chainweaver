@@ -1,0 +1,93 @@
+/* Basic CSS common to all of pact-web */
+
+@import 'defs';
+
+* {
+  box-sizing: border-box;
+  outline: none;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: $std-fonts;
+  background: $body-background;
+  position: absolute;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  right: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  min-width: $body-width;
+}
+
+
+%primary-control
+{
+  -webkit-appearance: none;
+  border-radius: $std-border-radius;
+  border-style: $std-border-style;
+  border-width: $std-border-width;
+  border-color: $primary-border-color;
+
+  background: transparent;
+
+  height: $control-height;
+  line-height: $control-line-height;
+
+  cursor: pointer;
+
+  font-family: $std-fonts;
+  font-size: $primary-font-size;
+  color: #fff;
+
+  padding: 0 20px;
+}
+
+button, select {
+  @extend %primary-control;
+}
+
+
+#header {
+  select, button {
+    border-color: $header-border-color;
+    color: $header-color;
+  }
+}
+
+select {
+  color: $primary-color;
+  $def-padding: 14px;
+  background: url(/static/img/arrow-down.svg) no-repeat right $def-padding top 50%;
+
+  padding: 0 $def-padding;
+  padding-right: 36px;
+  background-size: 10px;
+}
+
+select option {
+  margin-left: 14px;
+}
+
+select.secondary, .ctrl-grp.secondary select {
+  background-image: url(/static/img/arrow-down-grey.svg);
+  color: $secondary-color;
+  border-color: $secondary-border-color;
+  font-size: $secondary-font-size;
+}
+
+button:hover {
+  background: $hover-background;
+}
+
+button:active {
+  background: $active-background;
+}
+

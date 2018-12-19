@@ -49,6 +49,9 @@ library
                , unordered-containers
                , megaparsec
                , trifecta
+               , th-utilities
+  if !impl(ghcjs)
+    build-depends: hsass
 
   exposed-modules: Frontend
                  , Frontend.Backend
@@ -61,12 +64,13 @@ library
                  , Frontend.Messages
                  , Frontend.ModuleExplorer
                  , Frontend.ModuleExplorer.Impl
-                 , Frontend.ReplGhcjs
                  , Frontend.Repl
+                 , Frontend.ReplGhcjs
                  , Frontend.Storage
+                 , Frontend.TH
                  , Frontend.UI.Button
-                 , Frontend.UI.Dialogs.DeployConfirmation
                  , Frontend.UI.Dialogs.CallFunction
+                 , Frontend.UI.Dialogs.DeployConfirmation
                  , Frontend.UI.Icon
                  , Frontend.UI.JsonData
                  , Frontend.UI.Modal

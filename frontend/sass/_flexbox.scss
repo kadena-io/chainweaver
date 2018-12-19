@@ -1,0 +1,16 @@
+// Some classes for quickly creating flexboxes.
+.flexbox {
+  display: flex;
+}
+
+.flexbox.even .flex {
+  flex: 1;
+}
+
+.flex-center {
+  text-align: center;
+}
+
+.flex.right {
+  text-align: right;
+}

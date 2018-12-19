@@ -1,0 +1,39 @@
+// Definitions (variables) common to all of pact-web
+
+$std-fonts: 'WorkSans-Regular', sans-serif;
+
+// We have rounded corners, hopefully no-one is going to tell Apple:
+$std-border-radius: 4px;
+
+$std-border-width: 1px;
+$std-border-style: solid;
+
+$body-background: #f1f1f1;
+
+$hover-background: #555;
+$active-background: #2d2d2f;
+
+// Width of body element obviously:
+$body-width: 1166px;
+
+$control-height: 36px;
+$control-line-height: 32px;
+
+// Primary definitions:
+
+$primary-color: black;
+$primary-border-color: #525252;
+$header-color: #525252;
+$primary-font-size: 17px;
+
+// Secondary definitions:
+$secondary-color: #757575;
+$secondary-border-color: #d7d7d7;
+$secondary-font-size: 15px;
+
+
+// Header definitions:
+
+$header-border-color: #525252;
+$header-color: #fff;
+$header-font-size: $primary-font-size;

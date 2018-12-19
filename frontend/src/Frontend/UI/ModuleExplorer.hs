@@ -128,15 +128,16 @@ browseDeployed
   => model
   -> m (Event t ModuleSel)
 browseDeployed m = mdo
-    let mkMap = Map.fromList . map (\(n,e) -> (Just e, textBackendName n)) . Map.toList
-        opts = Map.insert Nothing "All backends" . maybe mempty mkMap <$>
-                  m ^. backend_backends
     let itemsPerPage = 10 :: Int
 
-    (filteredCs, updatePage) <- divClass "filter-bar flexbox" $ do
+    (filteredCs, updatePage) <- divClass "filter-bar ctrl-grp secondary flexbox" $ do
       ti <- divClass "search" $
         textInput $ def
           & attributes .~ constDyn ("placeholder" =: "Search" <> "class" =: "search-input")
+
+      let mkMap = Map.fromList . map (\(n,e) -> (Just e, textBackendName n)) . Map.toList
+          opts = Map.insert Nothing "All backends" . maybe mempty mkMap <$>
+                    m ^. backend_backends
       d <- divClass "backend-filter" $ dropdown Nothing opts def
       let
         search :: Dynamic t Text
