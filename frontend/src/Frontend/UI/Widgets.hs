@@ -12,6 +12,7 @@
 -- Was based on semui, but now transitioning to custom widgets
 module Frontend.UI.Widgets
   ( -- * Standard widgets for pact-web
+    -- ** Buttons
     backButton
   , refreshButton
   , confirmButton
@@ -20,10 +21,10 @@ module Frontend.UI.Widgets
   , viewButton
   , callButton
   , deleteButton
+  , module Frontend.UI.Button
+  -- * Other widgets
   , validatedInputWithButton
   , signingKeysWidget
-    -- * Buttons
-  , module Frontend.UI.Button
     -- * Helper widgets
   , imgWithAlt
   , showLoading
@@ -97,7 +98,7 @@ validatedInputWithButton check placeholder buttonText = do
 
     pure update
 
-imgWithAlt :: MonadWidget t m => Text -> Text -> m a -> m a
+imgWithAlt :: DomBuilder t m => Text -> Text -> m a -> m a
 imgWithAlt loc alt child = elAttr "img" ("src" =: loc <> "alt" =: alt) child
 
 showLoading
@@ -270,6 +271,8 @@ filteredButton
   -> m ()
   -> m (Event t ())
 filteredButton okay = fmap fst . uiButton (def & uiButtonCfg_disabled .~ fmap not okay)
+
+----------------------------------------------------------------------------------
 
 
 setFocus :: (MonadJSM m, PToJSVal a) => a -> m ()
