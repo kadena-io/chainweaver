@@ -92,7 +92,7 @@ instance Reflex t => Monoid (LeftmostEv t a) where
 makePactLenses :: Name -> DecsQ
 makePactLenses =
   makeLensesWith
-    ( classyRules         -- So we can use them in recursive definitions:
+    ( classyRules
         & generateLazyPatterns .~ True
         & createClass .~ True
     )

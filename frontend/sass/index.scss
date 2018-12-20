@@ -1,18 +1,18 @@
 /*
+  Overall structure: https://en.bem.info/methodology/quick-start/
+
   We have "primary" controls which are important and very prominent in a
   widget. They are usually mandatory to use and at the top, example backend
   selection in deploy confirmation dialog.
 
-  Then we have "secondary" controls which offer functionality the user might
+  Then we have "secondary" controls, you don't need to specify anything, as
+  "secondary" is the default. Use this actions that trigger something not
+  entirely trivial, but also not like super important. E.g. opening the details
+  page of some item.
+
+  Then we have "tertiary" controls which offer functionality the user might
   want to use, but certainly does not need too. Consider them optional
   controls. Example: Backend filter in the module selection.
-
-  Secondary controls should work well together (e.g. have same heights, font
-  sizes, ..), same goes for primary controls.
-
-  Controls are primary by default, you can make a control secondary by either putting it into a
-  .ctrl-grp.secondary or add the .secondary class to
-  the control itself.
 */
 @import 'fonts';
 @import 'base';

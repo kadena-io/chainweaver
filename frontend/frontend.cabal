@@ -81,6 +81,7 @@ library
                  , Frontend.UI.RightPanel
                  , Frontend.UI.Wallet
                  , Frontend.UI.Widgets
+                 , Frontend.UI.Widgets.Helpers
                  , Frontend.Wallet
                  , Reflex.Class.Extended
                  , Reflex.Dom.ACE.Extended

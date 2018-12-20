@@ -28,7 +28,7 @@ body {
 }
 
 
-%primary-control
+%control
 {
   -webkit-appearance: none;
   border-radius: $std-border-radius;
@@ -50,44 +50,4 @@ body {
   padding: 0 20px;
 }
 
-button, select {
-  @extend %primary-control;
-}
-
-
-#header {
-  select, button {
-    border-color: $header-border-color;
-    color: $header-color;
-  }
-}
-
-select {
-  color: $primary-color;
-  $def-padding: 14px;
-  background: url(/static/img/arrow-down.svg) no-repeat right $def-padding top 50%;
-
-  padding: 0 $def-padding;
-  padding-right: 36px;
-  background-size: 10px;
-}
-
-select option {
-  margin-left: 14px;
-}
-
-select.secondary, .ctrl-grp.secondary select {
-  background-image: url(/static/img/arrow-down-grey.svg);
-  color: $secondary-color;
-  border-color: $secondary-border-color;
-  font-size: $secondary-font-size;
-}
-
-button:hover {
-  background: $hover-background;
-}
-
-button:active {
-  background: $active-background;
-}
 

@@ -7,6 +7,8 @@ $std-border-radius: 4px;
 
 $std-border-width: 1px;
 $std-border-style: solid;
+$std-border-color: #d7d7d7;
+$std-color: black;
 
 $body-background: #f1f1f1;
 
@@ -28,7 +30,7 @@ $primary-font-size: 17px;
 
 // Secondary definitions:
 $secondary-color: #757575;
-$secondary-border-color: #d7d7d7;
+$secondary-border-color: $std-border-color;
 $secondary-font-size: 15px;
 
 

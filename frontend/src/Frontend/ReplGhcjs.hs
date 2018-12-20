@@ -243,7 +243,7 @@ controlBarLeft m = do
       elAttr "div" ("id" =: "header-project-loader") $ do
         onLoadClicked <- loadReplBtn
 
-        onDeployClick <- uiButtonSimple "Deploy"
+        onDeployClick <- uiButton btnCfgPrimary $ text $ "Deploy"
 
         loadCfg <- loadCodeIntoRepl m onLoadClicked
         let
@@ -254,7 +254,7 @@ controlBarLeft m = do
         pure $ deployCfg <> loadCfg
   where
     loadReplBtn =
-      fmap fst . uiButton (def & uiButtonCfg_title .~ Just "Editor Shortcut: Ctrl+Enter") $
+      uiButton (def & uiButtonCfg_title .~ Just "Editor Shortcut: Ctrl+Enter") $
         text "Load into REPL"
 
 getPactVersion :: MonadWidget t m => m Text

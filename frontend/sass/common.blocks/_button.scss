@@ -1,0 +1,23 @@
+@import 'base';
+
+.button {
+  @extend %control;
+}
+
+.button:hover {
+  background: $hover-background;
+}
+
+.button:active {
+  background: $active-background;
+}
+
+.button_type_secondary {
+  border-color: $secondary-border-color;
+  color: $secondary-color;
+  font-size: $secondary-font-size;
+}
+
+.button_type_primary {
+
+}

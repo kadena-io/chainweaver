@@ -1,0 +1,11 @@
+@import 'defs';
+
+$header-border-color: #525252;
+$header-color: #fff;
+$header-font-size: $primary-font-size;
+
+.header__item {
+  border-color: $header-border-color;
+  color: $header-color;
+  font-size: $header-font-size;
+}
