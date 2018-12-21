@@ -1,6 +1,6 @@
 /* Basic CSS common to all of pact-web */
 
-@import 'defs';
+@import 'include/defs';
 
 * {
   box-sizing: border-box;
@@ -26,28 +26,4 @@ body {
   align-items: stretch;
   min-width: $body-width;
 }
-
-
-%control
-{
-  -webkit-appearance: none;
-  border-radius: $std-border-radius;
-  border-style: $std-border-style;
-  border-width: $std-border-width;
-  border-color: $primary-border-color;
-
-  background: transparent;
-
-  height: $control-height;
-  line-height: $control-line-height;
-
-  cursor: pointer;
-
-  font-family: $std-fonts;
-  font-size: $primary-font-size;
-  color: #fff;
-
-  padding: 0 20px;
-}
-
 
