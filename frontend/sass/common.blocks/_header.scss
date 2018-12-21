@@ -1,11 +1,58 @@
-@import 'defs';
+@import '../include/defs';
 
-$header-border-color: #525252;
-$header-color: #fff;
-$header-font-size: $primary-font-size;
+$main-header-border-color: #525252;
+$main-header-color: #fff;
+$main-header-font-size: $primary-font-size;
 
-.header__item {
-  border-color: $header-border-color;
-  color: $header-color;
-  font-size: $header-font-size;
+
+// For simplicity this block does not fully adhere to BEM (we are using child
+// selectors), but this does seem to be very ok for the main header and
+// minimizes the changes we need to do in Haskell. If this ever causes trouble,
+// we should go full BEM.
+
+.main-header {
+  background: #2d2d2f;
+  color: $main-header-color;
+  padding: 20px 36px 20px 20px;
+}
+
+// This h1 thing should actually be its own pact-version block. But as long as
+// we don't want to re-use it, it should not do any harm to define it here:
+.main-header h1 {
+  color: $main-header-color;
+  margin: 0;
+  float: left;
+}
+
+.main-header h1 .version {
+  color: #727272;
+  font-size: 14px;
+}
+
+.main-header__project-loader {
+  text-align: right;
+  float: right;
+  padding-right: 12px;
+}
+
+.main-header__button {
+  padding: 0 26px;
+  margin-left: 10px;
+}
+
+.main-header__documents {
+  margin-left: 20px;
+  color: $main-header-color;
+  text-decoration: none;
+}
+
+.main-header__documents img {
+  display: inline-block;
+  position: relative;
+  bottom: -5px;
+  margin-right: 7px;
+}
+
+.main-header__left-nav {
+  min-width: 455px;
 }

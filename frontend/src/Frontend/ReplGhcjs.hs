@@ -26,20 +26,22 @@ module Frontend.ReplGhcjs where
 
 ------------------------------------------------------------------------------
 import           Control.Lens
-import           Control.Monad.Reader            (ask)
+import           Control.Monad.Reader                   (ask)
 import           Control.Monad.State.Strict
-import           Data.Text                       (Text)
-import qualified Data.Text                       as T
-import qualified Data.Text.IO                    as T
-import           GHCJS.DOM.EventM                (on)
-import           GHCJS.DOM.GlobalEventHandlers   (keyPress)
-import           GHCJS.DOM.KeyboardEvent         (getCtrlKey, getKey, getMetaKey, getKeyCode)
-import           GHCJS.DOM.Types                 (HTMLElement (..), unElement)
-import           Language.Javascript.JSaddle     (fromJSValUnchecked, getProp,
-                                                  liftJSM)
+import           Data.Text                              (Text)
+import qualified Data.Text                              as T
+import qualified Data.Text.IO                           as T
+import           GHCJS.DOM.EventM                       (on)
+import           GHCJS.DOM.GlobalEventHandlers          (keyPress)
+import           GHCJS.DOM.KeyboardEvent                (getCtrlKey, getKey,
+                                                         getKeyCode, getMetaKey)
+import           GHCJS.DOM.Types                        (HTMLElement (..),
+                                                         unElement)
+import           Language.Javascript.JSaddle            (fromJSValUnchecked,
+                                                         getProp, liftJSM)
 import           Reflex
-import           Reflex.Dom.ACE.Extended         hiding (Annotation (..))
-import           Reflex.Dom.Builder.Class.Events (EventName (Keypress))
+import           Reflex.Dom.ACE.Extended                hiding (Annotation (..))
+import           Reflex.Dom.Builder.Class.Events        (EventName (Keypress))
 import           Reflex.Dom.Core
 ------------------------------------------------------------------------------
 import           Obelisk.Generated.Static
@@ -52,11 +54,11 @@ import           Frontend.Foundation
 import           Frontend.Ide
 import           Frontend.Repl
 import           Frontend.UI.Button
+import           Frontend.UI.Dialogs.DeployConfirmation (uiDeployConfirmation)
 import           Frontend.UI.Modal
+import           Frontend.UI.Modal.Impl
 import           Frontend.UI.RightPanel
 import           Frontend.UI.Widgets
-import           Frontend.UI.Modal.Impl
-import           Frontend.UI.Dialogs.DeployConfirmation (uiDeployConfirmation)
 ------------------------------------------------------------------------------
 
 app :: MonadWidget t m => m ()
@@ -227,7 +229,7 @@ controlBar
   => ModalIde m t
   ->  m (ModalIdeCfg m t)
 controlBar m = do
-    elAttr "header" ("id" =: "header") $ do
+    divClass "main-header page__main-header" $ do
       divClass "flexbox even" $ do
         ideCfgL <- controlBarLeft m
         controlBarRight
@@ -235,15 +237,15 @@ controlBar m = do
 
 controlBarLeft :: forall t m. MonadWidget t m => ModalIde m t -> m (ModalIdeCfg m t)
 controlBarLeft m = do
-    divClass "flex left-nav" $ do
-      el "h1" $ do
+    divClass "flex main-header__left-nav" $ do
+      elClass "h1" "logo-heading" $ do
         imgWithAlt (static @"img/pact-logo.svg") "Kadena Pact Logo" blank
         ver <- getPactVersion
         elClass "span" "version" $ text $ "v" <> ver
-      elAttr "div" ("id" =: "header-project-loader") $ do
+      elClass "div" "main-header__project-loader" $ do
         onLoadClicked <- loadReplBtn
 
-        onDeployClick <- uiButton btnCfgPrimary $ text $ "Deploy"
+        onDeployClick <- deployBtn
 
         loadCfg <- loadCodeIntoRepl m onLoadClicked
         let
@@ -253,9 +255,17 @@ controlBarLeft m = do
           deployCfg = mempty & modalCfg_setModal .~ reqConfirmation
         pure $ deployCfg <> loadCfg
   where
+    deployBtn =
+      uiButton (btnCfgPrimary & uiButtonCfg_class .~ "main-header__button")
+      $ text $ "Deploy"
+
     loadReplBtn =
-      uiButton (def & uiButtonCfg_title .~ Just "Editor Shortcut: Ctrl+Enter") $
-        text "Load into REPL"
+      uiButton
+        ( btnCfgPrimary
+            & uiButtonCfg_title .~ Just "Editor Shortcut: Ctrl+Enter"
+            & uiButtonCfg_class .~ "main-header__button"
+        )
+         $ text "Load into REPL"
 
 getPactVersion :: MonadWidget t m => m Text
 getPactVersion = do
@@ -265,12 +275,12 @@ getPactVersion = do
 
 controlBarRight :: MonadWidget t m => m ()
 controlBarRight = do
-    elAttr "div" ("class" =: "flex right" <> "id" =: "header-links") $ do
+    divClass "flex right main-header__docs" $ do
       elAttr "a" ( "href" =: "http://pact-language.readthedocs.io"
-                <> "class" =: "documents" <> "target" =: "_blank"
+                <> "class" =: "main-header__documents" <> "target" =: "_blank"
                  ) $ do
         imgWithAlt (static @"img/document.svg") "Documentation" blank
         text "Docs"
       elAttr "a" ( "href" =: "http://kadena.io"
-                <> "class" =: "documents" <> "target" =: "_blank") $
+                <> "class" =: "main-header__documents" <> "target" =: "_blank") $
         imgWithAlt (static @"img/gray-kadena-logo.svg") "Kadena Logo" blank

@@ -20,7 +20,20 @@
 @import 'legacy';
 @import 'legacy-extra';
 
-// Main elements:
+// Blocks:
+
+@import 'common.blocks/button';
+@import 'common.blocks/header';
+
+// Page items:
+
+.page__main-header {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 99998;
+}
 
 
 #control-ui {

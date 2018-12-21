@@ -60,57 +60,6 @@
   background: #000;
 }
 
-#header {
-  background: #2d2d2f;
-  padding: 20px 36px 20px 20px;
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  z-index: 99998;
-}
-
-#header h1 {
-  color: #fff;
-  margin: 0;
-  float: left;
-}
-
-#header h1 .version {
-  color: #727272;
-  font-size: 14px;
-}
-
-#header-project-loader {
-  text-align: right;
-  float: right;
-  padding-right: 12px;
-}
-
-#header-project-loader button {
-  padding: 0 26px;
-  margin-left: 10px;
-}
-
-#header-links a {
-  margin-left: 20px;
-  color: #fff;
-  text-decoration: none;
-}
-
-#header-links a img {
-  display: inline-block;
-  position: relative;
-  bottom: -5px;
-}
-
-#header-links a.documents img {
-  margin-right: 7px;
-}
-
-#header .left-nav {
-  min-width: 455px;
-}
 
 #main {
   flex: 1;
