@@ -1,114 +1,50 @@
-#control-ui .tabset > .tab-nav {
-  border-bottom: 1px solid #e1e2e1;
-}
 
-#control-ui .tabset > .tab-nav button {
-  border: none;
-  border-radius: 0;
-  background: transparent;
-  position: relative;
-  bottom: -2px;
-}
 
-#control-ui .tabset > .tab-nav button:active,
-#control-ui .tabset > .tab-nav button.active {
-  border-bottom: 2px solid #000;
-  color: #000;
-}
-
-#control-ui .tabset > .tab-content {
-  padding-top: 20px;
+.control-ui .tabset > .tab-content {
   display: none;
 }
 
-#control-ui .tabset > .tab-content.active {
+.control-ui .tabset > .tab-content.active {
   display: block;
   height: calc(100% - 57px);
 }
 
-#control-ui #control-nav.tabset {
+.control-ui #control-nav.tabset {
   height: 100%;
   position: relative;
 }
 
-#control-ui #control-nav.tabset > .tab-nav {
-  padding-top: 20px;
-  border-bottom: 1px solid #d7d7d7;
-  padding-bottom: 20px;
-  position: fixed;
-  left: 50%;
-  right: 0;
-  top: 75px;
-  padding-left: 20px;
-  background: #f1f1f1;
-  z-index: 9999;
-}
 
-#control-ui #control-nav.tabset > .tab-nav button {
+.control-ui #control-nav.tabset > .tab-nav button {
   border-radius: 4px;
   border: 1px solid #d7d7d7;
 }
 
-#control-ui #control-nav.tabset > .tab-nav button:hover {
+.control-ui #control-nav.tabset > .tab-nav button:hover {
   background: #d7d7d7;
 }
 
-#control-ui #control-nav.tabset > .tab-nav button.active,
-#control-ui #control-nav.tabset > .tab-nav button:active {
+.control-ui #control-nav.tabset > .tab-nav button.active,
+.control-ui #control-nav.tabset > .tab-nav button:active {
   color: #fff;
   border-color: #000;
   background: #000;
 }
 
 
-#main {
-  flex: 1;
-  position: fixed;
-  top: 75px;
-  left: 0;
-  right: 0;
-  bottom: 0;
-}
-
-#main .flex {
-  padding: 20px 0;
-}
-
-#main #main-wysiwyg {
-  border-right: 1px solid #e2e2e2;
-  padding-right: 20px;
-  position: fixed;
-  left: 20px;
-  right: 50%;
-  top: 75px;
-  bottom: 0;
-}
-
-#main-wysiwyg .wysiwyg {
-  background: #fff;
-  height: 100%;
-}
-
-#main #control-ui {
-  padding-left: 20px;
-  padding-top: 55px;
-  padding-right: 20px;
-  overflow-x: hidden;
-}
-
-#control-ui .contracts {
+.control-ui .contracts {
   border-radius: 4px;
   border: 1px solid #d7d7d7;
 }
 
-#control-ui .control-block .contracts ol {
+.control-ui .control-block .contracts ol {
   margin: 0;
   padding: 0;
   list-style-type: none;
   counter-reset: li;
 }
 
-#control-ui .control-block .contracts li {
+.control-ui .control-block .contracts li {
   border-bottom: 1px solid #d7d7d7;
   font-size: 15px;
   height: 41px;
@@ -118,11 +54,11 @@
   display: flex;
 }
 
-#control-ui .control-block .contracts li .counter {
+.control-ui .control-block .contracts li .counter {
   width: 50px;
 }
 
-#control-ui .control-block .contracts li  .module-name {
+.control-ui .control-block .contracts li  .module-name {
   display: block;
   width: 250px;
   padding-right: 5px;
@@ -131,7 +67,7 @@
   overflow: hidden;
 }
 
-#control-ui .control-block .contracts li  .backend-name {
+.control-ui .control-block .contracts li  .backend-name {
   width: 200px;
   overflow: hidden;
   padding: 0 5px;
@@ -139,12 +75,12 @@
   white-space: nowrap;
 }
 
-#control-ui .control-block .contracts li  .load-button {
+.control-ui .control-block .contracts li  .load-button {
   flex-grow: 10;
 }
 
 
-#control-ui .control-block .contracts li .counter:before {
+.control-ui .control-block .contracts li .counter:before {
   counter-increment: li;
   content: counter(li, decimal-leading-zero);
   font-size: 15px;
@@ -154,15 +90,15 @@
   margin-right: 17.9px;
 }
 
-#control-ui .control-block .contracts li:last-child {
+.control-ui .control-block .contracts li:last-child {
   border: none;
 }
 
-#control-ui .control-block .contracts li:hover {
+.control-ui .control-block .contracts li:hover {
   background-color: #e7e7e7;
 }
 
-#control-ui .control-block .contracts li button {
+.control-ui .control-block .contracts li button {
   float: right;
   align-items: baseline;
   color: #212121;
@@ -177,7 +113,7 @@
   font-size: 13px;
 }
 
-#control-ui .control-block .contracts li button img {
+.control-ui .control-block .contracts li button img {
   display: inline-block;
   margin-right: 7px;
   position: relative;
@@ -186,16 +122,16 @@
   height: 11.1px;
 }
 
-#control-ui .control-block .contracts li button:hover {
+.control-ui .control-block .contracts li button:hover {
   background-color: #000;
   color: #fff;
 }
 
-#control-ui .control-block .contracts li button:hover img {
+.control-ui .control-block .contracts li button:hover img {
   filter: invert(100%);
 }
 
-#control-ui .control-block input.search-input {
+.control-ui .control-block input.search-input {
   flex: 1;
   margin: 0;
   font-size: 15px;
@@ -211,54 +147,54 @@
   margin-right: 10px;
 }
 
-#control-ui .control-block h2 input[type='text']::placeholder {
+.control-ui .control-block h2 input[type='text']::placeholder {
   color: #c0c0c0;
 }
 
-#control-ui .control-block {
+.control-ui .control-block {
   padding: 20px 0 30px;
   border-bottom: 1px dashed #d7d7d7;
   position: relative;
 }
 
-#control-ui .control-block:last-child {
+.control-ui .control-block:last-child {
   border-bottom: none;
 }
 
 
-#control-ui .control-block.repl-output {
+.control-ui .control-block.repl-output {
   background: #f1f1f1;
 }
 
-#main #control-ui .repl-input-controls > input {
+#main .control-ui .repl-input-controls > input {
   background: #f1f1f1;
   border: 0;
 }
 
-#control-ui .control-block.repl-output code {
+.control-ui .control-block.repl-output code {
   display: block;
   white-space: pre-wrap;
   margin-bottom: 10px;
 }
 
-#control-ui .control-block h2 {
+.control-ui .control-block h2 {
   font-size: 14px;
   margin-bottom: 16px;
   margin-top: 0;
 }
 
-#control-ui .control-block h2 button {
+.control-ui .control-block h2 button {
   padding: 0;
   width: 36px;
   height: 36px;
 }
 
-#control-ui .control-block h2 button:hover {
+.control-ui .control-block h2 button:hover {
   background: #dfdfdf;
   border-color: #dfdfdf;
 }
 
-#control-ui .control-block h2 button img {
+.control-ui .control-block h2 button img {
   transition: transform 0.1s;
   transform: rotate(0deg);
   transform-origin: center center;
@@ -266,17 +202,17 @@
   height: 12px;
 }
 
-#control-ui .control-block.collapsed h2 button img {
+.control-ui .control-block.collapsed h2 button img {
   transform: rotate(-90deg);
 }
 
-#control-ui .control-block.collapsed .control-block-contents,
-#control-ui .control-block.collapsed h2 > input,
-#control-ui .control-block.collapsed .filter-bar {
+.control-ui .control-block.collapsed .control-block-contents,
+.control-ui .control-block.collapsed h2 > input,
+.control-ui .control-block.collapsed .filter-bar {
   display: none;
 }
 
-#control-ui .control-block .filter-bar {
+.control-ui .control-block .filter-bar {
   display: flex;
   flex-wrap: wrap;
   margin-bottom: 9px; /* Results in 10 pix, together with margin of child elements. */
@@ -285,40 +221,40 @@
   margin-right: -1px;
 }
 
-#control-ui .filter-bar > * {
+.control-ui .filter-bar > * {
   margin: 1px 1px;
 }
 
 
-#control-ui .control-block .search input {
+.control-ui .control-block .search input {
   width: 100%;
 }
 
-#control-ui .control-block .backend-filter select {
+.control-ui .control-block .backend-filter select {
   width: 100%;
 }
 
-#control-ui .control-block .search {
+.control-ui .control-block .search {
     flex: 1 1 0;
     min-width: 150px;
 }
 
 
-#control-ui .control-block .search-filter {
+.control-ui .control-block .search-filter {
   display: flex;
   flex-grow: 1;
 }
 
-#control-ui .control-block .backend-filter {
+.control-ui .control-block .backend-filter {
     flex: 1 1 0;
     min-width: 150px;
 }
 
-#control-ui .filter-bar .pagination {
+.control-ui .filter-bar .pagination {
   margin: 1px 0px; /* 0px left and right because of button's margin's */
 }
 
-#control-ui .control-block .pagination button {
+.control-ui .control-block .pagination button {
   padding: 0 10px;
   margin: 0 1px;
 }
@@ -326,34 +262,34 @@
 
 
 @media (min-width: 1200px) {
-  #control-ui .control-block .pagination {
+  .control-ui .control-block .pagination {
     max-width: 250px;
 
   }
-  #control-ui .control-block .filter-bar {
+  .control-ui .control-block .filter-bar {
     margin-left: -8px;
     margin-right: -7px;
   }
-  #control-ui .filter-bar > * {
+  .control-ui .filter-bar > * {
     margin: 0 8px;
   }
 
-  #control-ui .filter-bar .pagination {
+  .control-ui .filter-bar .pagination {
     margin: 0 7px;
     border: none;
   }
 }
 
-#control-ui .control-block .pagination {
+.control-ui .control-block .pagination {
     display: flex;
     flex-grow: 1;
 }
 
-#control-ui .control-block button:hover {
+.control-ui .control-block button:hover {
   background: #dfdfdf;
   border-color: #dfdfdf;
 }
-#control-ui .control-block .pagination .page-count {
+.control-ui .control-block .pagination .page-count {
   display: flex;
   color: #757575;
   font-size: 15px;
@@ -362,23 +298,23 @@
   align-items: center;
 }
 
-#control-ui .control-block .pagination .page-count .page-count-text {
+.control-ui .control-block .pagination .page-count .page-count-text {
   display: block;
   padding-left: 5px;
   padding-right: 5px;
 }
 
-#control-ui .control-block .keys {
+.control-ui .control-block .keys {
   border-radius: 4px;
   background: #e1e2e1;
   padding: 10px 15px;
 }
 
-#control-ui .control-block .keys .fieldset {
+.control-ui .control-block .keys .fieldset {
   display: flex;
 }
 
-#control-ui .control-block .keys .fieldset input[type='text'] {
+.control-ui .control-block .keys .fieldset input[type='text'] {
   flex: 1;
   margin: 0;
   font-size: 15px;
@@ -390,11 +326,11 @@
   border-bottom-right-radius: 0;
   border: none;
 }
-#control-ui .control-block .keys .fieldset input[type='text']::placeholder {
+.control-ui .control-block .keys .fieldset input[type='text']::placeholder {
   color: #cdcdcd;
 }
 
-#control-ui .control-block .keys .fieldset button {
+.control-ui .control-block .keys .fieldset button {
   flex: 0 1 114px;
   flex-basis: 114px;
   width: 114px;
@@ -407,17 +343,17 @@
   margin-right: 0;
 }
 
-#control-ui .control-block .keys .fieldset button:hover {
+.control-ui .control-block .keys .fieldset button:hover {
   background: #403f3f;
 }
 
-#control-ui .control-block .keys .fieldset button[disabled] {
+.control-ui .control-block .keys .fieldset button[disabled] {
   background: #2d2d2f;
   border-color: #2d2d2f;
   color: #7e7e7e;
 }
 
-#control-ui .control-block .keys .keyset-list {
+.control-ui .control-block .keys .keyset-list {
 }
 
 .walletkey {
@@ -437,35 +373,35 @@ td.centercell {
     margin-top: 20px;
 }
 
-#control-ui .control-block .keys .keyset-list .keyset,
-#control-ui .control-block .keys .keys-list .key {
+.control-ui .control-block .keys .keyset-list .keyset,
+.control-ui .control-block .keys .keys-list .key {
   margin-top: 20px;
   padding-bottom: 20px;
   border-bottom: 1px solid #d0d0d0;
 }
 
-#control-ui .control-block .keys .keyset-list .keyset:last-child,
-#control-ui .control-block .keys .keys-list .key:last-child {
+.control-ui .control-block .keys .keyset-list .keyset:last-child,
+.control-ui .control-block .keys .keys-list .key:last-child {
   border-bottom: none;
 }
 
-#control-ui .control-block .keys .keyset-list .keyset .header,
-#control-ui .control-block .keys .keys-list .key .header {
+.control-ui .control-block .keys .keyset-list .keyset .header,
+.control-ui .control-block .keys .keys-list .key .header {
   display: flex;
 }
 
-#control-ui .control-block .keys .keyset-list .keyset .header h4,
-#control-ui .control-block .keys .keys-list .key .header h4 {
+.control-ui .control-block .keys .keyset-list .keyset .header h4,
+.control-ui .control-block .keys .keys-list .key .header h4 {
   flex: 8;
   margin: 0;
 }
-#control-ui .control-block .keys .keyset-list .keyset .header .pred,
-#control-ui .control-block .keys .keys-list .key .header .signing {
+.control-ui .control-block .keys .keyset-list .keyset .header .pred,
+.control-ui .control-block .keys .keys-list .key .header .signing {
   flex: 3;
   text-align: right;
 }
 
-#control-ui .control-block .keys .keyset-list .keyset .header select {
+.control-ui .control-block .keys .keyset-list .keyset .header select {
   margin-right: 0;
   height: auto;
   color: #2d2d2f;
@@ -476,14 +412,14 @@ td.centercell {
   background-size: 10px 7px;
 }
 
-#control-ui .control-block .keys .keyset-list .keyset .header .delete,
-#control-ui .control-block .keys .keys-list .key .header .delete {
+.control-ui .control-block .keys .keyset-list .keyset .header .delete,
+.control-ui .control-block .keys .keys-list .key .header .delete {
   flex: 1;
   text-align: right;
 }
 
-#control-ui .control-block .keys .keyset-list .keyset .header .delete button,
-#control-ui .control-block .keys .keys-list .key .header .delete button {
+.control-ui .control-block .keys .keyset-list .keyset .header .delete button,
+.control-ui .control-block .keys .keys-list .key .header .delete button {
   height: auto;
   line-height: 1em;
   padding: 2px 0;
@@ -492,48 +428,48 @@ td.centercell {
   border: none;
   font-weight: bold;
 }
-#control-ui .control-block .keys .keyset-list .keyset .header .delete button img,
-#control-ui .control-block .keys .keys-list .key .header .delete button img {
+.control-ui .control-block .keys .keyset-list .keyset .header .delete button img,
+.control-ui .control-block .keys .keys-list .key .header .delete button img {
   width: 13px;
   height: 15px;
   display: inline-block;
 }
 
-#control-ui .control-block .keys .keyset-list .keyset .header .delete button:hover img,
-#control-ui .control-block .keys .keys-list .key .header .delete button:hover img {
+.control-ui .control-block .keys .keyset-list .keyset .header .delete button:hover img,
+.control-ui .control-block .keys .keys-list .key .header .delete button:hover img {
   opacity: 0.75;
 }
 
-#control-ui .control-block .keys .keyset-list .keyset .header .delete button:active img,
-#control-ui .control-block .keys .keys-list .key .header .delete button:active img {
+.control-ui .control-block .keys .keyset-list .keyset .header .delete button:active img,
+.control-ui .control-block .keys .keys-list .key .header .delete button:active img {
   opacity: 1;
 }
 
-#control-ui .control-block .keys .keyset-list .keyset .keys-list {
+.control-ui .control-block .keys .keyset-list .keyset .keys-list {
   padding: 0;
 }
-#control-ui .control-block .keys .keyset-list .keyset .keys-list ul {
+.control-ui .control-block .keys .keyset-list .keyset .keys-list ul {
   list-style: none;
   margin: 0;
   padding: 0;
   column-count: 3;
 }
 
-#control-ui .control-block .keys .keyset-list .keyset .keys-list li input[type='check'] {
+.control-ui .control-block .keys .keyset-list .keyset .keys-list li input[type='check'] {
 }
 
-#control-ui .control-block .keys .keys-list .key .pair .keyval {
+.control-ui .control-block .keys .keys-list .key .pair .keyval {
   display: flex;
   font-size: 12px;
   margin-top: 10px;
 }
-#control-ui .control-block .keys .keys-list .key .pair .keyval .label {
+.control-ui .control-block .keys .keys-list .key .pair .keyval .label {
   flex: 0;
   flex-basis: 60px;
   font-weight: bold;
 }
 
-#control-ui .control-block .keys .keys-list .key .pair .keyval .value {
+.control-ui .control-block .keys .keys-list .key .pair .keyval .value {
   flex: 1;
   word-break: break-word;
 }
@@ -681,7 +617,7 @@ button.cancel-button:active,button.confirmation-button:active {
   align-items: flex-end;
 }
 
-#control-ui .control-block h2.back-button-header .load-button button {
+.control-ui .control-block h2.back-button-header .load-button button {
   float: right;
   align-items: baseline;
   color: #212121;
@@ -695,7 +631,7 @@ button.cancel-button:active,button.confirmation-button:active {
   margin-right: 0px;
 }
 
-#control-ui .control-block h2.back-button-header .load-button button img {
+.control-ui .control-block h2.back-button-header .load-button button img {
   display: inline-block;
   margin-right: 7px;
   position: relative;
@@ -704,12 +640,12 @@ button.cancel-button:active,button.confirmation-button:active {
   height: 11.1px;
 }
 
-#control-ui .control-block h2.back-button-header .load-button button:hover {
+.control-ui .control-block h2.back-button-header .load-button button:hover {
   background-color: #000;
   color: #fff;
 }
 
-#control-ui .control-block h2.back-button-header .load-button button:hover img {
+.control-ui .control-block h2.back-button-header .load-button button:hover img {
   filter: invert(100%);
 }
 

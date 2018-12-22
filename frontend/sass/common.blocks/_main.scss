@@ -1,0 +1,36 @@
+$main-margin-top: 20px;
+$main-margin-bottom: $main-margin-top;
+$main-margin-right: 20px;
+$main-margin-left: $main-margin-right;
+$main-margin-center: $main-margin-right;
+
+$main-separator-border-color: #e2e2e2;
+
+.main__right-pane {
+  position: absolute;
+  top: $main-margin-top;
+  bottom: $main-margin-bottom;
+  margin-left: $main-margin-center;
+  left: 50%;
+  right: $main-margin-right;
+  overflow-y: auto;
+}
+
+.main__left-pane {
+  position: absolute;
+
+  bottom: 0px;
+  left: $main-margin-left;
+  right: 50%;
+  top: 0px;
+
+  padding-bottom: $main-margin-bottom;
+  padding-right: $main-margin-center;
+  padding-top: $main-margin-top;
+
+  border-right: 1px solid $main-separator-border-color;
+}
+
+.main__wysiwyg {
+  height: 100%;
+}

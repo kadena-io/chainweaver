@@ -43,53 +43,7 @@
 }
 
 
-.wysiwyg,.ace_editor,.code-font {
-    font-family: 'RobotoMono', monospace !important;
-    font-size: 15px;
-}
 
-.wysiwyg,.ace_editor {
-    background: #ffffff !important;
-}
-
-.wysiwyg {
-  position: relative;
-  border-radius: 4px;
-}
-
-.wysiwyg > * {
-  border-radius: 4px;
-}
-
-.wysiwyg .ace_editor,.ace_scroller {
-  border-radius: 4px;
-}
-
-/* More space to the left of the code, so we match design */
-.ace_scroller {
-  margin-left: 8px;
-}
-
-.ace_editor {
-  position: absolute;
-  top: 0px;
-  bottom: 0px;
-  left: 0px;
-  right: -8px;
-}
-
-.ace_container {
-  top: 0px;
-  bottom: 0px;
-  left: 0px;
-  right: 8px;
-}
-
-/**********************************************************/
-
-.ace_scrollbar {
-    display: none !important;
-}
 
 #control-nav .wysiwyg {
   height: 30vh;

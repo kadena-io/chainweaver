@@ -1,0 +1,48 @@
+
+@import '../include/defs';
+@import 'code-font';
+
+.wysiwyg {
+  position: relative;
+  height: 100%;
+}
+
+.wysiwyg .ace_editor {
+  @extend %code-font;
+
+  background: #ffffff !important;
+  border-radius: $std-border-radius;
+}
+
+.wysiwyg > * {
+  border-radius: $std-border-radius;
+}
+
+.wysiwyg .ace_editor,.ace_scroller {
+  border-radius: $std-border-radius;
+}
+
+/* More space to the left of the code, so we match design */
+.ace_scroller {
+  margin-left: 8px;
+}
+
+.ace_editor {
+  position: absolute;
+  top: 0px;
+  bottom: 0px;
+  left: 0px;
+  right: -8px;
+}
+
+.ace_container {
+  top: 0px;
+  bottom: 0px;
+  left: 0px;
+  right: 8px;
+}
+
+.ace_scrollbar {
+    display: none !important;
+}
+

@@ -22,8 +22,13 @@
 
 // Blocks:
 
+@import 'common.blocks/main';
 @import 'common.blocks/button';
 @import 'common.blocks/header';
+@import 'common.blocks/control-ui';
+@import 'common.blocks/tab-nav';
+@import 'common.blocks/code-font';
+@import 'common.blocks/wysiwyg';
 
 // Page items:
 
@@ -35,12 +40,10 @@
   z-index: 99998;
 }
 
-
-#control-ui {
+.page__main {
   position: fixed;
-  right: 0;
+  right: 0px;
+  left: 0px;
   top: 75px;
-  bottom: 0;
-  left: 50%;
-  overflow-y: auto;
+  bottom: 0px;
 }

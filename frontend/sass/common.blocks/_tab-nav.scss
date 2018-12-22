@@ -1,0 +1,31 @@
+@import '../include/defs';
+
+
+.tab-nav {
+  border-bottom: $std-border-width $std-border-style $std-border-color;
+  background: #f1f1f1;
+  z-index: 9999;
+}
+
+.tab-nav__button {
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  position: relative;
+  bottom: -2px;
+}
+
+.tab-nav__button:active,
+.tab-nav__button_active {
+
+}
+
+.tab-nav__button_type_secondary:active,
+.tab-nav__button_type_secondary.tab-nav__button_active {
+  border-bottom: 2px solid #000;
+  color: #000;
+}
+
+.tab_nav_type_secondary {
+  border-bottom: 1px solid #e1e2e1;
+}
