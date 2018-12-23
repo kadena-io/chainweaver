@@ -1,3 +1,4 @@
+{-# LANGUAGE CPP                    #-}
 {-# LANGUAGE DataKinds              #-}
 {-# LANGUAGE DeriveGeneric          #-}
 {-# LANGUAGE ExtendedDefaultRules   #-}
@@ -15,7 +16,6 @@
 {-# LANGUAGE TemplateHaskell        #-}
 {-# LANGUAGE TypeApplications       #-}
 {-# LANGUAGE TypeFamilies           #-}
-{-# LANGUAGE CPP           #-}
 
 -- | Definitions common to the whole frontend.
 --
@@ -42,8 +42,10 @@ module Frontend.Foundation
   , module Language.Javascript.JSaddle
   , module Control.Monad.Fix
   , module GHC.Generics
+  , module Reflex.Dom.Contrib.CssClass
   ) where
 
+import           Control.Concurrent          (ThreadId, forkIO)
 import           Control.Lens
 import           Control.Monad.Fix
 import           Control.Monad.IO.Class
@@ -56,10 +58,10 @@ import           GHC.Generics                (Generic)
 import           Language.Haskell.TH         (DecsQ)
 import           Language.Haskell.TH.Syntax  (Name)
 import           Language.Javascript.JSaddle (MonadJSM (..))
+import           Language.Javascript.JSaddle (JSM, MonadJSM, askJSM, runJSM)
 import           Reflex.Extended
 import           Reflex.Network.Extended
-import Language.Javascript.JSaddle (JSM, MonadJSM, runJSM, askJSM)
-import Control.Concurrent (ThreadId, forkIO)
+import           Reflex.Dom.Contrib.CssClass
 
 import           Data.Maybe
 
