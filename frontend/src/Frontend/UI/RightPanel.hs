@@ -92,16 +92,16 @@ rightTabBar cls ideL = do
     let tabs = [ EnvSelection_Env, EnvSelection_Repl, EnvSelection_Msgs, EnvSelection_ModuleExplorer ]
     onTabClick <- tabBar tabs curSelection
 
-    envCfg <- tabPane ("class" =: "tab-set__content") curSelection EnvSelection_Env $
+    envCfg <- tabPane mempty curSelection EnvSelection_Env $
       envTab ideL
 
-    (e, replCfg) <- tabPane' ("class" =: "tab-set__content") curSelection EnvSelection_Repl $
+    (e, replCfg) <- tabPane' mempty curSelection EnvSelection_Repl $
       replWidget ideL
     setFocusOnSelected e "input" EnvSelection_Repl $ updated curSelection
 
-    errorsCfg <- tabPane ("class" =: "tab-set__content") curSelection EnvSelection_Msgs $
+    errorsCfg <- tabPane mempty curSelection EnvSelection_Msgs $
       msgsWidget ideL
-    explorerCfg <- tabPane ("class" =: "tab-set__content") curSelection EnvSelection_ModuleExplorer $
+    explorerCfg <- tabPane mempty curSelection EnvSelection_ModuleExplorer $
       moduleExplorer ideL
     return $ mconcat
       [ envCfg

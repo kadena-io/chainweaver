@@ -56,9 +56,11 @@ tabPane'
     -> m a
     -> m (Element EventResult (DomBuilderSpace m) t, a)
 tabPane' staticAttrs currentTab t child = do
-    let mkAttrs ct = if ct == t
-                       then addToClassAttr "active" staticAttrs
-                       else staticAttrs
+    let
+      mkAttrs ct =
+        if ct == t
+           then addToClassAttr ("tab-set__content" <> "tab-set__content_active") staticAttrs
+           else addToClassAttr "tab-set__content" staticAttrs
     elDynAttr' "div" (mkAttrs <$> currentTab) child
 
 tabPane
