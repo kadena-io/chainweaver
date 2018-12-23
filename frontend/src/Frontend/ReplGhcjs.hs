@@ -67,9 +67,8 @@ app = void . mfix $ \ cfg -> do
 
   controlCfg <- controlBar ideL
   mainCfg <- elClass "main" "main page__main" $ do
-    uiEditorCfg <- codePanel ideL
-    envCfg <- divClass "flex control-ui main__right-pane" $ do
-      rightTabBar ideL
+    uiEditorCfg <- codePanel "main__left-pane" ideL
+    envCfg <- rightTabBar "main__right-pane" ideL
     pure $ uiEditorCfg <> envCfg
 
   modalCfg <- showModal ideL
@@ -81,9 +80,9 @@ app = void . mfix $ \ cfg -> do
     ]
 
 -- | Code editing (left hand side currently)
-codePanel :: forall t m a. MonadWidget t m => Ide a t -> m (IdeCfg a t)
-codePanel m = do
-  divClass "flex main__left-pane" $ do
+codePanel :: forall t m a. MonadWidget t m => CssClass -> Ide a t -> m (IdeCfg a t)
+codePanel cls m = do
+  elKlass "div" cls $ do
     (e, eCfg) <- wysiwyg $ do
       onNewCode <- tagOnPostBuild $ m ^. editor_code
       let annotations = map toAceAnnotation <$> m ^. editor_annotations

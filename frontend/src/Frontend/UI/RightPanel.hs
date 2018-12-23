@@ -44,6 +44,7 @@ import           Frontend.UI.Wallet
 import           Frontend.UI.Widgets
 import           Frontend.Wallet
 import           Frontend.UI.Modal.Impl
+import           Frontend.Foundation
 ------------------------------------------------------------------------------
 
 
@@ -57,9 +58,9 @@ selectionToText = \case
 
 tabIndicator :: MonadWidget t m => EnvSelection -> Dynamic t Bool -> m (Event t ())
 tabIndicator tab isSelected = do
-  let f sel = if sel then ("class" =: "active") else mempty
-  (e,_) <- elDynAttr' "button" (f <$> isSelected) $ text $ selectionToText tab
-  return $ domEvent Click e
+  let f sel = "tab-nav__button" <> if sel then "tab-nav__button_active" else mempty
+  uiButtonDyn (def & uiButtonCfg_class .~ fmap f isSelected) $
+    text $ selectionToText tab
 
 mkTab
     :: (MonadWidget t m)
@@ -76,30 +77,31 @@ tabBar
   -> Dynamic t EnvSelection
   -> m (Event t EnvSelection)
 tabBar initialTabs currentTab = do
-  elAttr "div" ("class" =: "tab-nav") $ do
+  elKlass "div" "tab-nav" $ do
     selEvs <- traverse (mkTab currentTab) initialTabs
     pure $ leftmost selEvs
 
 rightTabBar
   :: forall t m. MonadWidget t m
-  => Ide (ModalImpl m t) t
+  => CssClass
+  -> Ide (ModalImpl m t) t
   -> m (IdeCfg (ModalImpl m t) t)
-rightTabBar ideL = do
-  elAttr "div" ("id" =: "control-nav" <> "class" =: "tabset") $ do
+rightTabBar cls ideL = do
+  elKlass "div" ("control-nav" <> "tab-set" <> cls ) $ do
     let curSelection = _ide_envSelection ideL
     let tabs = [ EnvSelection_Env, EnvSelection_Repl, EnvSelection_Msgs, EnvSelection_ModuleExplorer ]
     onTabClick <- tabBar tabs curSelection
 
-    envCfg <- tabPane ("class" =: "tab-content") curSelection EnvSelection_Env $
+    envCfg <- tabPane ("class" =: "tab-set__content") curSelection EnvSelection_Env $
       envTab ideL
 
-    (e, replCfg) <- tabPane' ("class" =: "tab-content") curSelection EnvSelection_Repl $
+    (e, replCfg) <- tabPane' ("class" =: "tab-set__content") curSelection EnvSelection_Repl $
       replWidget ideL
     setFocusOnSelected e "input" EnvSelection_Repl $ updated curSelection
 
-    errorsCfg <- tabPane ("class" =: "tab-content") curSelection EnvSelection_Msgs $
+    errorsCfg <- tabPane ("class" =: "tab-set__content") curSelection EnvSelection_Msgs $
       msgsWidget ideL
-    explorerCfg <- tabPane ("class" =: "tab-content") curSelection EnvSelection_ModuleExplorer $
+    explorerCfg <- tabPane ("class" =: "tab-set__content") curSelection EnvSelection_ModuleExplorer $
       moduleExplorer ideL
     return $ mconcat
       [ envCfg
