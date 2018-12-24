@@ -37,6 +37,7 @@ $main-header-font-size: $primary-font-size;
 
 .main-header__button {
   color: #fff;
+  border-color: $primary-border-color;
   padding: 0 26px;
   margin-left: $medium-margin;
 }

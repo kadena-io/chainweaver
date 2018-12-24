@@ -153,18 +153,19 @@ accordionItem'
   -> m (a,b)
 accordionItem' initActive contentClass title inner = mdo
     isActive <- foldDyn (const not) initActive onClick
-    let mkClass a = singleClass "control-block" <> contentClass <> activeClass a
+    let mkClass a = singleClass "accordion" <> contentClass <> activeClass a
     (onClick, pair) <- elDynKlass "div" (mkClass <$> isActive) $ do
-      (onClick,a1) <- el "h2" $ do
-        b <- uiButton def $ imgWithAlt (static @"img/arrow-down.svg") "Expand" blank
+      (onClick,a1) <- elClass "h2" "accordion__header" $ do
+        b <- uiButton (def & uiButtonCfg_class .~ "accordion__toggle-button") $
+          imgWithAlt (static @"img/arrow-down.svg") "Expand" blank
         r <- title
         pure (b, r)
-      b1 <- inner
+      b1 <- divClass "accordion__content" inner
       return (onClick, (a1, b1))
     return pair
   where
     activeClass = \case
-      False -> singleClass "collapsed"
+      False -> singleClass "accordion-collapsed"
       True -> mempty
 
 accordionItem :: MonadWidget t m => Bool -> CssClass -> Text -> m a -> m a

@@ -81,8 +81,7 @@ app = void . mfix $ \ cfg -> do
 
 -- | Code editing (left hand side currently)
 codePanel :: forall t m a. MonadWidget t m => CssClass -> Ide a t -> m (IdeCfg a t)
-codePanel cls m = do
-  elKlass "div" cls $ do
+codePanel cls m = elKlass "div" (cls <> "pane") $ do
     (e, eCfg) <- wysiwyg $ do
       onNewCode <- tagOnPostBuild $ m ^. editor_code
       let annotations = map toAceAnnotation <$> m ^. editor_annotations
@@ -93,7 +92,7 @@ codePanel cls m = do
     loadCfg <- loadCodeIntoRepl m onCtrlEnter
     pure $ mconcat [ eCfg , loadCfg ]
   where
-    wysiwyg = elClass' "div" "wysiwyg"
+    wysiwyg = elClass' "div" "wysiwyg pane__body"
     -- We can't use domEvent Keypress because it only gets us the
     -- deprecated key code which does not work cross platform in this case:
     getCtrlEnterEvent e = do

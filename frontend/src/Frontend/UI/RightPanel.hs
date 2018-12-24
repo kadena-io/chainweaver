@@ -77,7 +77,7 @@ tabBar
   -> Dynamic t EnvSelection
   -> m (Event t EnvSelection)
 tabBar initialTabs currentTab = do
-  elKlass "div" "tab-nav" $ do
+  elClass "div" "tab-nav pane__header" $ do
     selEvs <- traverse (mkTab currentTab) initialTabs
     pure $ leftmost selEvs
 
@@ -86,11 +86,12 @@ rightTabBar
   => CssClass
   -> Ide (ModalImpl m t) t
   -> m (IdeCfg (ModalImpl m t) t)
-rightTabBar cls ideL = do
-  elKlass "div" ("control-nav" <> "tab-set" <> cls ) $ do
-    let curSelection = _ide_envSelection ideL
-    let tabs = [ EnvSelection_Env, EnvSelection_Repl, EnvSelection_Msgs, EnvSelection_ModuleExplorer ]
-    onTabClick <- tabBar tabs curSelection
+rightTabBar cls ideL = elKlass "div" (cls <> "pane") $ do
+  let curSelection = _ide_envSelection ideL
+  let tabs = [ EnvSelection_Env, EnvSelection_Repl, EnvSelection_Msgs, EnvSelection_ModuleExplorer ]
+  onTabClick <- tabBar tabs curSelection
+
+  divClass "tab-set pane__body" $ do
 
     envCfg <- tabPane mempty curSelection EnvSelection_Env $
       envTab ideL
@@ -113,7 +114,7 @@ rightTabBar cls ideL = do
 
 envTab :: MonadWidget t m => Ide a t -> m (IdeCfg a t)
 envTab ideL = do
-  jsonCfg <- accordionItem True mempty "Data" $ divClass "control-block-contents" $ do
+  jsonCfg <- accordionItem True "segment" "Data" $ do
     conf <- uiJsonData (ideL ^. ide_wallet) (ideL ^. ide_jsonData)
     pure $ mempty &  ideCfg_jsonData .~ conf
 
@@ -122,8 +123,7 @@ envTab ideL = do
         text "Wallet ("
         display (Map.size <$> _wallet_keys w)
         text " keys)"
-  (_,keysCfg) <- accordionItem' True mempty walletHeader $ do
-    divClass "control-block-contents" $ do
+  (_,keysCfg) <- accordionItem' True "segment" walletHeader $ do
       conf <- uiWallet w
       pure $ mempty & ideCfg_wallet .~ conf
 

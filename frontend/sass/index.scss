@@ -17,19 +17,22 @@
 @import 'fonts';
 @import 'base';
 @import 'flexbox';
-@import 'legacy';
-@import 'legacy-extra';
+// @import 'legacy';
+// @import 'legacy-extra';
 
 // Blocks:
 
-@import 'common.blocks/main';
 @import 'common.blocks/button';
+
+@import 'common.blocks/accordion';
+@import 'common.blocks/code-font';
 @import 'common.blocks/header';
-@import 'common.blocks/control-ui';
+@import 'common.blocks/main';
 @import 'common.blocks/tab-nav';
 @import 'common.blocks/tab-set';
-@import 'common.blocks/code-font';
 @import 'common.blocks/wysiwyg';
+@import 'common.blocks/segment';
+@import 'common.blocks/pane';
 
 // Page items:
 
