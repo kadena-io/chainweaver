@@ -1,0 +1,25 @@
+@import '../include/defs';
+
+// There are two panes in pact-web: A left pane (the editor) and the right one
+// for the controls. Each pane has a body and some header.
+
+$pane-padding-top: $normal-padding;
+$pane-padding-bottom: $pane-padding-top;
+$pane-padding-right: $normal-padding;
+$pane-padding-left: $pane-padding-right;
+
+.pane {
+  padding-top: $pane-padding-top;
+  padding-bottom: $pane-padding-bottom;
+}
+
+.pane__header {
+  padding-left: $pane-padding-left;
+  padding-right: $pane-padding-right;
+}
+
+.pane__body {
+  margin-left: $pane-padding-left;
+  margin-right: $pane-padding-right;
+  overflow-y: auto;
+}

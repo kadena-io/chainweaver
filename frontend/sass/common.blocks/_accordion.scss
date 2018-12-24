@@ -1,0 +1,39 @@
+@import '../include/defs';
+
+$accordion-header-font-size: 14px;
+
+// We break with BEM a bit here for simplicity: We use child selectors to
+// simplify the reflex code.
+// 
+// In comparison to the tab bar we consider an accordion a single block,
+// instead of having the whole accordion and just its header. (At least for
+// now.)
+
+.accordion__header {
+  font-size: $accordion-header-font-size;
+  margin-bottom: 16px;
+  margin-top: 0; 
+}
+
+.accordion__toggle-button {
+  width: $control-height;
+  padding: 0 0;
+  margin-right: $medium-margin;
+  
+  img {
+    transition: transform 0.1s;
+    transform: rotate(0deg);
+    transform-origin: center center;
+    width: 12px;
+    height: 12px;
+  }
+}
+
+.accordion-collapsed  .accordion__toggle-button > img {
+  transform: rotate(-90deg);
+}
+
+.accordion-collapsed .accordion__content {
+  display: none;
+}
+

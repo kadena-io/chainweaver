@@ -1,0 +1,11 @@
+@import '../include/defs';
+
+
+.segment {
+  padding: $normal-padding 0 $bigger-padding;
+  border-bottom: $std-border-width dashed $std-border-color;
+}
+
+.segment:last-child {
+  border-bottom: none;
+}

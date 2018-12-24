@@ -1,0 +1,16 @@
+@import '../include/defs';
+
+
+.tab-set {
+  height: 100%;
+  position: relative;
+}
+
+.tab-set__content {
+  display: none;
+}
+
+.tab-set__content_active {
+  display: block;
+  height: calc(100% - 57px);
+}
