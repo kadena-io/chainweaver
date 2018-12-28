@@ -43,12 +43,10 @@ module Frontend.Ide
 
 ------------------------------------------------------------------------------
 import           Control.Lens
-import qualified Data.Map                     as Map
-import           Data.Set                     (Set)
 import           Generics.Deriving.Monoid     (mappenddefault, memptydefault)
 import           GHC.Generics                 (Generic)
 import           Reflex
-import           Reflex.Dom.Core              (HasJSContext, MonadWidget)
+import           Reflex.Dom.Core              (HasJSContext)
 import           Reflex.NotReady.Class
 import           Data.Void (Void)
 ------------------------------------------------------------------------------
@@ -68,12 +66,11 @@ import           Frontend.UI.Modal
 
 -- | The available panels in the `envPanel`
 data EnvSelection
-  = EnvSelection_Repl -- ^ REPL for interacting with loaded contract
-  | EnvSelection_Env -- ^ Widgets for editing (meta-)data.
+  = EnvSelection_Env -- ^ Widgets for editing (meta-)data.
+  | EnvSelection_Repl -- ^ REPL for interacting with loaded contract
   | EnvSelection_Msgs -- ^ Compiler errors and other messages to be shown.
-  | EnvSelection_Functions -- ^ Functions available for deployed contracts
   | EnvSelection_ModuleExplorer -- ^ The module explorer
-  deriving (Eq, Ord, Show)
+  deriving (Eq, Ord, Show, Enum, Bounded)
 
 
 -- | Configuration for sub-modules.

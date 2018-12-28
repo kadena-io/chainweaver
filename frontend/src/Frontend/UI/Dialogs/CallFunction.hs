@@ -30,14 +30,9 @@ module Frontend.UI.Dialogs.CallFunction
 ------------------------------------------------------------------------------
 import           Control.Lens
 import           Control.Monad
-import           Data.Bifunctor
 import           Data.Coerce             (coerce)
-import qualified Data.HashMap.Strict     as HM
 import           Data.List               (intersperse)
-import           Data.Map                (Map)
 import qualified Data.Map                as Map
-import           Data.Set                (Set)
-import qualified Data.Set                as Set
 import           Data.Text               (Text)
 import qualified Data.Text               as T
 import           Data.Traversable        (for)
@@ -56,7 +51,6 @@ import           Frontend.JsonData       (HasJsonData (..), JsonData)
 import           Frontend.ModuleExplorer
 import           Frontend.UI.Modal
 import           Frontend.UI.Widgets
-import           Frontend.Wallet
 import           Frontend.Wallet         (HasWallet (..))
 ------------------------------------------------------------------------------
 
@@ -114,7 +108,6 @@ uiCallFunction m mModule func = do
               transaction :: Dynamic t (Text, TransactionInfo)
               transaction = do
                 code <- pactCall
-                json <- either (const HM.empty) id <$> m ^. jsonData_data
                 keys <- signingKeys
                 let b = backendRefName $ _deployedModule_backend moduleL
                 pure $
@@ -140,8 +133,8 @@ buildCall
   -> Text -- ^ Pact function call
 buildCall m n args = mconcat [ "(", coerce m, ".", n , " " , T.unwords args, ")" ]
 
-renderQualified :: PactFunction -> Text
-renderQualified func = (coerce . _pactFunction_module) func <> "." <> _pactFunction_name func
+-- renderQualified :: PactFunction -> Text
+-- renderQualified func = (coerce . _pactFunction_module) func <> "." <> _pactFunction_name func
 
 renderDescription :: MonadWidget t m => PactFunction -> m ()
 renderDescription func = elClass "span" "function-des code-font" $

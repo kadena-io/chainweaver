@@ -68,7 +68,6 @@ import           Generics.Deriving.Monoid          (mappenddefault,
 import           Reflex.Dom.Class
 import           Reflex.Dom.Xhr
 import           Reflex.NotReady.Class
-import           Data.Tuple (swap)
 import Data.Coerce (coerce)
 
 import           Language.Javascript.JSaddle.Monad (JSContextRef, JSM, askJSM)
@@ -115,7 +114,9 @@ backendRefName = brName
 -- | Request data to be sent to the backend.
 data BackendRequest = BackendRequest
   { _backendRequest_code    :: Text
-    -- ^ Pact code to be deployed, the `code` field of the <https://pact-language.readthedocs.io/en/latest/pact-reference.html#cmd-field-and-payload exec> payload.
+    -- ^ Pact code to be deployed, the `code` field of the
+    -- <https://pact-language.readthedocs.io/en/latest/pact-reference.html#cmd-field-and-payload
+    -- exec> payload.
   , _backendRequest_data    :: Object
     -- ^ The data to be deployed (referenced by deployed code). This is the
     -- `data` field of the `exec` payload.
@@ -242,7 +243,6 @@ deployCode w onReq = do
     renderReq :: BackendRequest -> Text
     renderReq req =
       let
-        backendUri = brUri $ _backendRequest_backend req
         backendName = brName $ _backendRequest_backend req
         code = _backendRequest_code req
         -- Not really helpful to display deployed code if it is large:
@@ -405,7 +405,7 @@ performBackendRequestCustom w unwrap onReq =
 --
 -- @
 backendRequest :: forall t m
-  . (MonadJSM m , HasJSContext m)
+  . (MonadJSM m, HasJSContext m)
   => (KeyPairs, BackendRequest)
   -> (BackendErrorResult -> IO ())
   -> m ()

@@ -27,13 +27,8 @@ module Frontend.UI.Dialogs.DeployConfirmation
 
 ------------------------------------------------------------------------------
 import           Control.Lens
-import           Control.Monad
 import           Data.Bifunctor
-import           Data.Map                (Map)
 import qualified Data.Map                as Map
-import           Data.Set                (Set)
-import qualified Data.Set                as Set
-import           Data.Text               (Text)
 import           Reflex
 import           Reflex.Dom
 import           Data.Void (Void)
@@ -41,11 +36,8 @@ import           Data.Void (Void)
 import           Frontend.Backend
 import           Frontend.Ide
 import           Frontend.ModuleExplorer (HasModuleExplorerCfg (..))
-import           Frontend.Wallet
-import           Frontend.Wallet         (HasWallet (..))
 import           Frontend.UI.Modal
 import           Frontend.UI.Widgets
-import           Frontend.UI.Button
 ------------------------------------------------------------------------------
 
 

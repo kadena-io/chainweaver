@@ -37,7 +37,6 @@ module Frontend.UI.Modal.Impl
 import           Control.Lens hiding (element)
 import qualified Data.Map as Map
 import           Data.Proxy
-import           Data.Text (Text)
 import qualified GHCJS.DOM as DOM
 import qualified GHCJS.DOM.EventM as EventM
 import qualified GHCJS.DOM.GlobalEventHandlers as Events
@@ -47,8 +46,6 @@ import           Data.Void (Void)
 ------------------------------------------------------------------------------
 import           Frontend.Foundation
 import           Frontend.Ide
-import           Frontend.UI.Dialogs.DeployConfirmation
-import           Frontend.ModuleExplorer
 import           Frontend.UI.Modal
 ------------------------------------------------------------------------------
 
@@ -59,7 +56,7 @@ type ModalIdeCfg m t = IdeCfg (ModalImpl m t) t
 type ModalIde m t = Ide (ModalImpl m t) t
 
 -- | Show the current modal dialog as given in the model.
-showModal :: forall t m a. MonadWidget t m => ModalIde m t -> m (ModalIdeCfg m t)
+showModal :: forall t m. MonadWidget t m => ModalIde m t -> m (ModalIdeCfg m t)
 showModal ideL = do
     document <- DOM.currentDocumentUnchecked
 

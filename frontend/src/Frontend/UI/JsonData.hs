@@ -51,7 +51,6 @@ import           Obelisk.Generated.Static
 ------------------------------------------------------------------------------
 import           Frontend.Foundation
 import           Frontend.JsonData
-import           Frontend.UI.Icon
 import           Frontend.UI.Widgets
 import           Frontend.Wallet
 ------------------------------------------------------------------------------

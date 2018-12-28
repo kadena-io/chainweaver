@@ -38,9 +38,6 @@ import           Reflex
 import           Reflex.Dom
 import           Reflex.Network
 import           Reflex.Network.Extended
-import           Control.Monad
-------------------------------------------------------------------------------
-import           Obelisk.Generated.Static
 ------------------------------------------------------------------------------
 import           Frontend.Backend
 import           Frontend.ModuleExplorer
@@ -70,20 +67,17 @@ moduleExplorer m = do
     networkViewFlatten $ maybe browse (moduleDetails m) <$> selected
   where
     browse = do
-      exampleCfg <- browseExamples m
+      exampleCfg <- browseExamples
       deplCfg <- browseDeployedTitle m
       pure $ mconcat [ exampleCfg, deplCfg ]
 
 
 browseExamples
-  :: forall t m model mConf
-  . ( MonadWidget t m
-    , HasUIModuleExplorerModel model t
-    , HasUIModuleExplorerModelCfg mConf m t
+  :: forall t m mConf
+  . ( MonadWidget t m , HasUIModuleExplorerModelCfg mConf m t
     )
-  => model
-  -> m mConf
-browseExamples m =
+  => m mConf
+browseExamples =
   accordionItem True mempty "Example Contracts" $ do
     let showExample c = do
           divClass "module-name" $
@@ -194,7 +188,7 @@ filtering
   :: Text
   -> (BackendName, (Maybe [Text], BackendRef))
   -> Maybe [DeployedModule]
-filtering needle (backendName, (m, backendL)) =
+filtering needle (_, (m, backendL)) =
     case fmapMaybe f $ fromMaybe [] m of
       [] -> Nothing
       xs -> Just xs

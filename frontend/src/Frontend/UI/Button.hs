@@ -4,16 +4,10 @@
 {-# LANGUAGE OverloadedStrings     #-}
 {-# LANGUAGE RecursiveDo           #-}
 {-# LANGUAGE TemplateHaskell       #-}
-{-# LANGUAGE DataKinds       #-}
+{-# LANGUAGE DataKinds             #-}
+{-# LANGUAGE ConstraintKinds       #-}
 
-{-|
-
-Collection of widgets custom to this project that have all the project-specific
-styling.
-
-TODO In the logical conclusion this library will need whole lot more flexibility
-and sophistication. Keeping things really simple for now for the sake of rapid
-development.
+{-| pact-web buttons.
 
 -}
 
@@ -45,9 +39,7 @@ module Frontend.UI.Button
 import           Data.Default
 import           Data.Default        (def)
 import           Data.Map            (Map)
-import qualified Data.Map            as Map
 import           Data.Text           (Text)
-import qualified Data.Text           as T
 import           Reflex.Dom.Core
 import           Control.Lens
 import           Reflex.Dom.Contrib.CssClass
@@ -55,8 +47,9 @@ import           Data.String (IsString)
 ------------------------------------------------------------------------------
 import           Obelisk.Generated.Static
 ------------------------------------------------------------------------------
-import           Frontend.Foundation (makePactLenses, ReflexValue (..))
+import           Frontend.Foundation (makePactLenses, ReflexValue)
 import           Frontend.UI.Widgets.Helpers (imgWithAlt)
+
 
 -- | Configuration for uiButton.
 data UiButtonCfgRep f = UiButtonCfg
@@ -93,12 +86,29 @@ btnCfgTertiary
   => UiButtonCfgRep f
 btnCfgTertiary = def & uiButtonCfg_class .~ "button_type_tertiary"
 
-uiButton :: MonadWidget t m => UiButtonCfg -> m () -> m (Event t ())
+-- | Constraints needed for a static button
+type StaticButtonConstraints t m =
+  ( DomBuilder t m
+  , HasDomEvent t (Element EventResult (DomBuilderSpace m) t) 'ClickTag
+  )
+
+-- | Constraints needed for a button with dynamic attributes.
+type DynamicButtonConstraints t m = 
+  ( DomBuilder t m
+  , HasDomEvent t (Element EventResult (DomBuilderSpace m) t) 'ClickTag
+  , PostBuild t m
+  )
+
+uiButton
+  :: StaticButtonConstraints t m
+  => UiButtonCfg -> m () -> m (Event t ())
 uiButton cfg body = do
     (e, _) <- elAttr' "button" (toBtnAttrs cfg) body
     pure $ domEvent Click e
 
-uiButtonDyn :: MonadWidget t m => UiButtonDynCfg t -> m () -> m (Event t ())
+uiButtonDyn 
+  :: DynamicButtonConstraints t m
+  => UiButtonDynCfg t -> m () -> m (Event t ())
 uiButtonDyn cfg body = do
     (e, _) <- elDynAttr' "button" (toBtnAttrs <$> toStatic cfg) body
     pure $ domEvent Click e
@@ -108,38 +118,38 @@ uiButtonDyn cfg body = do
 
 
 -- | Button for "going back" action.
-backButton :: MonadWidget t m => m (Event t ())
+backButton :: StaticButtonConstraints t m => m (Event t ())
 backButton = -- uiIcon "fas fa-chevron-left" $ def & iconConfig_size .~ Just IconLG
   uiButton def $ imgWithAlt (static @"img/left_arrow.svg") "Go back" blank
 
-deleteButton :: MonadWidget t m => m (Event t ())
+deleteButton :: StaticButtonConstraints t m => m (Event t ())
 deleteButton = -- uiIcon "fas fa-chevron-left" $ def & iconConfig_size .~ Just IconLG
   uiButton def $ imgWithAlt (static @"img/X.svg") "Delete" blank
 
 -- | Button that loads something into the Editor.
-openButton :: MonadWidget t m => m (Event t ())
+openButton :: StaticButtonConstraints t m => m (Event t ())
 openButton =
   uiButton def $ imgWithAlt (static @"img/open.svg") "Open" blank >> text "Open"
 
 -- | Button that loads something into the Editor.
-viewButton :: MonadWidget t m => m (Event t ())
+viewButton :: StaticButtonConstraints t m => m (Event t ())
 viewButton =
   uiButton def $ imgWithAlt (static @"img/view.svg") "View" blank >> text "View"
 
-callButton :: MonadWidget t m => m (Event t ())
+callButton :: StaticButtonConstraints t m => m (Event t ())
 callButton =
   uiButton def $ imgWithAlt (static @"img/call.svg") "Call" blank >> text "Call"
 
 -- | Button that triggers a refresh/reload of something.
-refreshButton :: MonadWidget t m => m (Event t ())
+refreshButton :: StaticButtonConstraints t m => m (Event t ())
 refreshButton =
   uiButton btnCfgTertiary $ elClass "i" "fa fa-lg fa-refresh" blank
 
-confirmButton :: MonadWidget t m => UiButtonDynCfg t -> Text -> m (Event t ())
+confirmButton :: DynamicButtonConstraints t m => UiButtonDynCfg t -> Text -> m (Event t ())
 confirmButton cfg msg =
     uiButtonDyn (cfg & uiButtonCfg_class .~ "confirm-button") $ text msg
 
-cancelButton :: MonadWidget t m => UiButtonCfg -> Text -> m (Event t ())
+cancelButton :: StaticButtonConstraints t m => UiButtonCfg -> Text -> m (Event t ())
 cancelButton cfg msg =
     uiButton (cfg & uiButtonCfg_class .~ "cancel-button") $ text msg
 

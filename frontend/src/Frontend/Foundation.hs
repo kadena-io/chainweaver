@@ -57,8 +57,7 @@ import qualified Data.Text                   as T
 import           GHC.Generics                (Generic)
 import           Language.Haskell.TH         (DecsQ)
 import           Language.Haskell.TH.Syntax  (Name)
-import           Language.Javascript.JSaddle (MonadJSM (..))
-import           Language.Javascript.JSaddle (JSM, MonadJSM, askJSM, runJSM)
+import           Language.Javascript.JSaddle (MonadJSM (..), JSM, MonadJSM, askJSM, runJSM)
 import           Reflex.Extended
 import           Reflex.Network.Extended
 import           Reflex.Dom.Contrib.CssClass

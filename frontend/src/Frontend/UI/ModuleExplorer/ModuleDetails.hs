@@ -31,25 +31,15 @@ module Frontend.UI.ModuleExplorer.ModuleDetails where
 
 ------------------------------------------------------------------------------
 import           Control.Lens
-import qualified Data.List                as L
-import           Data.Map                 (Map)
-import qualified Data.Map                 as Map
 import           Data.Maybe
-import           Data.Text                (Text)
-import qualified Data.Text                as T
 import           Data.Traversable         (for)
 import           Reflex
 import           Reflex.Dom
-import           Reflex.Network
 import           Reflex.Network.Extended
-------------------------------------------------------------------------------
-import           Obelisk.Generated.Static
 ------------------------------------------------------------------------------
 import           Frontend.Backend
 import           Frontend.ModuleExplorer
 import           Frontend.UI.Button
-import           Frontend.UI.Widgets
-import           Frontend.UI.Icon
 import           Frontend.Foundation
 import           Frontend.UI.Dialogs.CallFunction
 import           Frontend.UI.Modal
