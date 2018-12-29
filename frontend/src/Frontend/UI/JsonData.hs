@@ -46,13 +46,13 @@ import           Reflex.Class.Extended
 import           Reflex.Dom
 import           Reflex.Dom.ACE.Extended
 import           Reflex.Dom.Contrib.CssClass
-import qualified Reflex.Dom.Contrib.Widgets.DynTabs as Tabs
 import           Obelisk.Generated.Static
 ------------------------------------------------------------------------------
 import           Frontend.Foundation
 import           Frontend.JsonData
 import           Frontend.UI.Widgets
 import           Frontend.Wallet
+import           Frontend.UI.TabBar
 ------------------------------------------------------------------------------
 
 
@@ -72,35 +72,22 @@ showJsonTabName JsonDataView_Result  = "Result"
 mkDataAttr :: JsonDataView -> Map Text Text
 mkDataAttr t = "data-tabname" =: ("env-" <> T.toLower (showJsonTabName t))
 
-instance MonadWidget t m => Tabs.Tab t m JsonDataView where
-  tabIndicator t isActive = do
-    let mkAttrs True  = "class" =: "active"
-        mkAttrs False = mempty
-    (e,_) <- elDynAttr' "button" ((mkDataAttr t <>) . mkAttrs <$> isActive) $
-      text $ showJsonTabName t
-    return $ domEvent Click e
-
-tabPaneActive
-  :: (MonadWidget t m)
-  => Map Text Text
-  -> Dynamic t JsonDataView
-  -> JsonDataView
-  -> m a
-  -> m a
-tabPaneActive staticAttrs currentTab t child = do
-  let mkKlass cur = addToClassAttr
-        (if cur == t then singleClass "active" else mempty) (staticAttrs <> mkDataAttr t)
-  elDynAttr "div" (mkKlass <$> currentTab) child
-
 uiJsonData
   :: MonadWidget t m
   => Wallet t
   -> JsonData t
   -> m (JsonDataCfg t)
 uiJsonData w d = divClass "tabset" $ mdo
-    tabs <- divClass "tab-nav" $ Tabs.tabBar def
-    let curSelection = Tabs._tabBar_curTab tabs
-    keysetVCfg <- tabPaneActive ("class" =: "tab-content") curSelection JsonDataView_Keysets $ do
+    curSelection <- holdDyn JsonDataView_Keysets onTabClick
+    (TabBar onTabClick) <- makeTabBar $ TabBarCfg 
+      { _tabBarCfg_tabs = [minBound .. maxBound]
+      , _tabBarCfg_mkLabel = const $ text . showJsonTabName
+      , _tabBarCfg_selectedTab = Just <$> curSelection
+      , _tabBarCfg_classes = mempty
+      , _tabBarCfg_type = TabBarType_Secondary
+      }
+
+    keysetVCfg <- tabPane ("class" =: "tab-content") curSelection JsonDataView_Keysets $ do
       (e, keysetCfgL) <- elClass' "div" "keys" $ do
         onCreateKeyset <- uiCreateKeyset d
         ksCfg <- elClass "div" "keyset-list" $
@@ -110,7 +97,7 @@ uiJsonData w d = divClass "tabset" $ mdo
       setFocusOnSelected e "input" JsonDataView_Keysets $ updated curSelection
       pure keysetCfgL
 
-    rawVCfg <- tabPaneActive ("class" =: "tab-content") curSelection JsonDataView_Raw $ do
+    rawVCfg <- tabPane ("class" =: "tab-content") curSelection JsonDataView_Raw $ do
       onNewData <- tagOnPostBuild $ d ^. jsonData_rawInput
 
       let
@@ -122,7 +109,7 @@ uiJsonData w d = divClass "tabset" $ mdo
       setFocusOnSelected e ".ace_text-input" JsonDataView_Raw $ updated curSelection
       pure $ mempty & jsonDataCfg_setRawInput .~ onSetRawInput
 
-    tabPaneActive ("class" =: "tab-content")
+    tabPane ("class" =: "tab-content")
         curSelection JsonDataView_Result $ do
       let
         showData =
