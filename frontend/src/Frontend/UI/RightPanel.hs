@@ -35,51 +35,25 @@ import           Language.Javascript.JSaddle (liftJSM)
 import           Reflex
 import           Reflex.Dom.Core
 ------------------------------------------------------------------------------
+import           Frontend.Foundation
 import           Frontend.Ide
 import           Frontend.Messages
 import           Frontend.UI.JsonData
+import           Frontend.UI.Modal.Impl
 import           Frontend.UI.ModuleExplorer
 import           Frontend.UI.Repl
+import           Frontend.UI.TabBar
 import           Frontend.UI.Wallet
 import           Frontend.UI.Widgets
 import           Frontend.Wallet
-import           Frontend.UI.Modal.Impl
-import           Frontend.Foundation
 ------------------------------------------------------------------------------
-
 
 selectionToText :: EnvSelection -> Text
 selectionToText = \case
   EnvSelection_Repl -> "REPL"
   EnvSelection_Env -> "Env"
   EnvSelection_Msgs -> "Messages"
-  EnvSelection_Functions -> "Functions"
   EnvSelection_ModuleExplorer -> "Module Explorer"
-
-tabIndicator :: MonadWidget t m => EnvSelection -> Dynamic t Bool -> m (Event t ())
-tabIndicator tab isSelected = do
-  let f sel = "tab-nav__button" <> if sel then "tab-nav__button_active" else mempty
-  uiButtonDyn (def & uiButtonCfg_class .~ fmap f isSelected) $
-    text $ selectionToText tab
-
-mkTab
-    :: (MonadWidget t m)
-    => Dynamic t EnvSelection
-    -> EnvSelection
-    -> m (Event t EnvSelection)
-mkTab currentTab t = do
-    e <- tabIndicator t ((==t) <$> currentTab)
-    return (t <$ e)
-
-tabBar
-  :: (MonadWidget t m)
-  => [EnvSelection]
-  -> Dynamic t EnvSelection
-  -> m (Event t EnvSelection)
-tabBar initialTabs currentTab = do
-  elClass "div" "tab-nav pane__header" $ do
-    selEvs <- traverse (mkTab currentTab) initialTabs
-    pure $ leftmost selEvs
 
 rightTabBar
   :: forall t m. MonadWidget t m
@@ -88,8 +62,13 @@ rightTabBar
   -> m (IdeCfg (ModalImpl m t) t)
 rightTabBar cls ideL = elKlass "div" (cls <> "pane") $ do
   let curSelection = _ide_envSelection ideL
-  let tabs = [ EnvSelection_Env, EnvSelection_Repl, EnvSelection_Msgs, EnvSelection_ModuleExplorer ]
-  onTabClick <- tabBar tabs curSelection
+  (TabBar onTabClick) <- makeTabBar $ TabBarCfg
+    { _tabBarCfg_tabs = [minBound .. maxBound]
+    , _tabBarCfg_mkLabel = const $ text . selectionToText
+    , _tabBarCfg_selectedTab = Just <$> curSelection
+    , _tabBarCfg_classes = "pane__header"
+    , _tabBarCfg_type = TabBarType_Primary
+    }
 
   divClass "tab-set pane__body" $ do
 

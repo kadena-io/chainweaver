@@ -79,6 +79,7 @@ library
                  , Frontend.UI.ModuleExplorer.ModuleDetails
                  , Frontend.UI.Repl
                  , Frontend.UI.RightPanel
+                 , Frontend.UI.TabBar
                  , Frontend.UI.Wallet
                  , Frontend.UI.Widgets
                  , Frontend.UI.Widgets.Helpers
