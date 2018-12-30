@@ -63,11 +63,11 @@ staticReplHeader = S.fromList
 snippetWidget' :: MonadWidget t m => DisplayedSnippet -> m (Element EventResult (DomBuilderSpace m) t)
 snippetWidget' = fmap fst . \case
   InputSnippet t
-    -> elAttr' "code" ("class" =: "repl__out") $ text $ "pact> " <> t
+    -> elAttr' "code" ("class" =: "code-font code-font_block") $ text $ "pact> " <> t
   OutputSnippet t
-    -> elAttr' "code" ("class" =: "repl__out") $ text t
+    -> elAttr' "code" ("class" =: "code-font code-font_block") $ text t
   OldOutputSnippet t
-    -> elAttr' "code" ("class" =: "repl__out repl__old") $ text t
+    -> elAttr' "code" ("class" =: "code-font code-font_block code-font_old") $ text t
 
 snippetWidget :: MonadWidget t m => DisplayedSnippet -> m ()
 snippetWidget = void . snippetWidget'

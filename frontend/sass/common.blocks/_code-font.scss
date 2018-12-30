@@ -3,3 +3,20 @@
 .code-font {
   @include code-font;
 }
+
+
+// code font block, useful for logging messages in code font.
+.code-font_block {
+  display: block;
+
+  overflow: hidden;
+  white-space: pre-wrap;
+  word-break: break-all;
+
+  margin-bottom: $medium-margin;
+}
+
+// For older log messages:
+.code-font_old {
+  color: $tertiary-color;
+}

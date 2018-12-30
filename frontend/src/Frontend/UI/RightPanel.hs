@@ -110,19 +110,17 @@ envTab ideL = do
 
 msgsWidget :: forall t m a. MonadWidget t m => Ide a t -> m (IdeCfg a t)
 msgsWidget ideL = do
-  divClass "control-block repl-output iframe" $ do
     -- This is really slow, but we usually only have a handful messages:
-    divClass "control-block repl-output" $ do
-      let
-        mNewOld :: Dynamic t (Maybe (Text, [Text]))
-        mNewOld = uncons <$> ideL ^. messages_messages
+    let
+      mNewOld :: Dynamic t (Maybe (Text, [Text]))
+      mNewOld = uncons <$> ideL ^. messages_messages
 
-        old = maybe [] snd <$> mNewOld
+      old = maybe [] snd <$> mNewOld
 
-      void . dyn $ traverse_ (snippetWidget . OldOutputSnippet) . reverse <$> old
-      void . dyn $ traverse_ (snippetWithScroll . OutputSnippet . fst) <$> mNewOld
+    void . dyn $ traverse_ (snippetWidget . OldOutputSnippet) . reverse <$> old
+    void . dyn $ traverse_ (snippetWithScroll . OutputSnippet . fst) <$> mNewOld
 
-      pure mempty
+    pure mempty
   where
     snippetWithScroll :: DisplayedSnippet -> m ()
     snippetWithScroll snip = do
