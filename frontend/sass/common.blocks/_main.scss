@@ -5,15 +5,16 @@ $main-separator-border-color: #e2e2e2;
   top: 0;
   bottom: 0;
   left: 50%;
+  right: 0;
 }
 
 .main__left-pane {
   position: absolute;
 
+  top: 0px;
   bottom: 0px;
   left: 0px;
   right: 50%;
-  top: 0px;
 
 
   border-right: 1px solid $main-separator-border-color;
