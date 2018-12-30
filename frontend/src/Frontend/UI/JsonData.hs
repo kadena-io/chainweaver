@@ -105,7 +105,7 @@ uiJsonData w d = divClass "tabset" $ mdo
         onObjWarning = fmapMaybe (^? _Left . to mkObjError) $ updated (d ^. jsonData_data)
         onAnno = mconcat [ onObjWarning, onDupWarning ]
 
-      (e, onSetRawInput) <- elClass' "div" "wysiwyg" $ dataEditor onAnno "" onNewData
+      (e, onSetRawInput) <- elClass' "div" "wysiwyg wysiwyg_height_30" $ dataEditor onAnno "" onNewData
       setFocusOnSelected e ".ace_text-input" JsonDataView_Raw $ updated curSelection
       pure $ mempty & jsonDataCfg_setRawInput .~ onSetRawInput
 

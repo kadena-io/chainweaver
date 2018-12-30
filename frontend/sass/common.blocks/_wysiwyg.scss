@@ -7,6 +7,10 @@
   height: 100%;
 }
 
+.wysiwyg_height_30 {
+  height: 30vh;
+}
+
 .wysiwyg .ace_editor {
   @extend %code-font;
 
