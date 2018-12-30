@@ -87,8 +87,8 @@ uiJsonData w d = divClass "tabset" $ mdo
       , _tabBarCfg_type = TabBarType_Secondary
       }
 
-    keysetVCfg <- tabPane ("class" =: "tab-content") curSelection JsonDataView_Keysets $ do
-      (e, keysetCfgL) <- elClass' "div" "keys" $ do
+    keysetVCfg <-tabPane ("class" =: "tab-content") curSelection JsonDataView_Keysets $ do
+      (e, keysetCfgL) <- elClass' "div" "keysets group" $ do
         onCreateKeyset <- uiCreateKeyset d
         ksCfg <- elClass "div" "keyset-list" $
           networkViewFlatten $ uiKeysets w <$> d ^. jsonData_keysets
@@ -159,17 +159,15 @@ uiKeyset
   -> (KeysetName, DynKeyset t)
   -> m (JsonDataCfg t)
 uiKeyset w (n, ks) = do
-    aCfg <- divClass "header" $ mdo
-      elAttr "h4" ("class" =: "keyset-chooser-toggle") $ do
-        el "span" $ imgWithAlt (static @"img/keys.svg") "Keyset" blank
-        text (" " <> n)
+    aCfg <- divClass "keyset__header" $ mdo
+      elAttr "h4" ("class" =: "keyset__header-text h4") $ do
+        elClass "span" "keyset__icon" $ imgWithAlt (static @"img/keys.svg") "Keyset" blank
+        text n
 
-      onSetPred <- divClass "pred" $ do
-        el "label" $ text "Pred:"
-        onNewPred <- tagOnPostBuild . fmap (fromMaybe "") $ ks ^. keyset_pred
-        predDropdown onNewPred
+      onNewPred <- tagOnPostBuild . fmap (fromMaybe "") $ ks ^. keyset_pred
+      onSetPred <- predDropdown onNewPred
 
-      onDel <- divClass "delete" $ deleteButton
+      onDel <- divClass "keyset__delete" $ deleteButton
       let setPred = (n, ) . notEmpty <$> onSetPred
       let cfg1 = mempty
             { _jsonDataCfg_setPred = setPred
@@ -193,7 +191,8 @@ predDropdown :: MonadWidget t m => Event t KeysetPredicate -> m (Event t KeysetP
 predDropdown sv = do
     let
       itemDom v = elAttr "option" ("value" =: v) $ text v
-      cfg = SelectElementConfig "" (Just sv) def
+      cfg = SelectElementConfig "" (Just sv) $
+        def & initialAttributes .~ "class" =: "select select_type_tertiary select_tiny keyset__pred"
 
     (s,_) <- selectElement cfg $ do
       forM_ predefinedPreds itemDom
@@ -203,16 +202,17 @@ predDropdown sv = do
 uiCreateKeyset
   :: MonadWidget t m
   => JsonData t -> m (Event t Text)
-uiCreateKeyset jsonD = validatedInputWithButton check "Enter keyset name" "Create"
-  where
-    -- Check combined data and not only keyset names for duplicates:
-    check ks = do
-      json <- sample $ current $ _jsonData_data jsonD
-      keysets <- sample $ current $ _jsonData_keysets jsonD
-      let dupe = case json of
-            Left _  -> Map.member ks keysets
-            Right j -> H.member ks j
-      pure $ if dupe then Just "This keyset name is already in use." else Nothing
+uiCreateKeyset jsonD =
+  validatedInputWithButton "group__header" check "Enter keyset name" "Create"
+    where
+      -- Check combined data and not only keyset names for duplicates:
+      check ks = do
+        json <- sample $ current $ _jsonData_data jsonD
+        keysets <- sample $ current $ _jsonData_keysets jsonD
+        let dupe = case json of
+              Left _  -> Map.member ks keysets
+              Right j -> H.member ks j
+        pure $ if dupe then Just "This keyset name is already in use." else Nothing
 
 -- | Widget showing all avaialble keys for selecting keys
 --
@@ -223,7 +223,7 @@ uiKeysetKeys
   -> [KeyName]
   -> m (Event t (KeyName, Bool))
 uiKeysetKeys ks allKeys =
-  elClass "div" "keys-list" $ el "ul" $ do
+  elClass "ul" "keyset_keys" $ do
     case allKeys of
       []   -> do
         el "li" $ text "No keys available ..."

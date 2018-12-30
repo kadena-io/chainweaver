@@ -12,7 +12,7 @@ $std-color: black;
 
 $body-background: #f1f1f1;
 
-$hover-background: #555;
+$hover-background: $std-border-color;
 $active-background: #2d2d2f;
 
 // Width of body element obviously:
@@ -65,3 +65,5 @@ $bigger-margin: 30px;
 $medium-padding: $medium-margin;
 $normal-padding: $normal-margin;
 $bigger-padding: $bigger-margin;
+
+$group-side-padding: 15px;

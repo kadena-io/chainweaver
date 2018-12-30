@@ -1,0 +1,16 @@
+@import '../include/defs';
+
+$group-bg: #e1e2e1;
+
+// A group visually groups its children in a visible block.
+
+.group {
+  border-radius: $std-border-radius;
+  background: $group-bg;
+  padding: $medium-padding $group-side-padding;
+}
+
+
+.group__header {
+  margin-bottom: $normal-padding;
+}

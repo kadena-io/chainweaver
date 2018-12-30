@@ -23,6 +23,7 @@ module Frontend.UI.Widgets
   , deleteButton
   , module Frontend.UI.Button
   -- * Other widgets
+  , uiInputElement
   , validatedInputWithButton
   , signingKeysWidget
     -- * Helper widgets
@@ -63,43 +64,55 @@ import           Frontend.UI.Widgets.Helpers (imgWithAlt, setFocus, setFocusOn,
 import           Frontend.Wallet             (HasWallet (..), KeyName, KeyPair,
                                               Wallet)
 ------------------------------------------------------------------------------
+  
+-- | reflex-dom `inputElement` with pact-web default styling:
+uiInputElement
+  :: DomBuilder t m
+  => InputElementConfig er t (DomBuilderSpace m)
+  -> m (InputElement er (DomBuilderSpace m) t)
+uiInputElement cfg = inputElement $ cfg & initialAttributes %~ addToClassAttr "input"
 
 
 -- | Validated input with button
 validatedInputWithButton
   :: MonadWidget t m
-  => (Text -> PushM t (Maybe Text))
+  => CssClass 
+  -> (Text -> PushM t (Maybe Text))
   -- ^ Validation function returning `Just error message` on error.
   -> Text -- ^ Placeholder
   -> Text -- ^ Button text
   -> m (Event t Text)
-validatedInputWithButton check placeholder buttonText = do
-    (update, checked) :: (Event t Text, Dynamic t (Maybe Text)) <- elClass "div" "fieldset" $ mdo
-      name <- inputElement $ def
-          & inputElementConfig_setValue .~ (T.empty <$ confirmed)
-          & initialAttributes .~ ("placeholder" =: placeholder <> "type" =: "text")
-      let
-        nameVal = T.strip <$> _inputElement_value name
-        onEnter = keypress Enter name
-        nameEmpty = (== "") <$> nameVal
+validatedInputWithButton uCls check placeholder buttonText = do
+    let cls = uCls <> "new-by-name"
+    elKlass "div" cls $ do
+      (update, checked) <- elClass "div" "new-by-name_inputs" $ mdo
+        name <- uiInputElement $ def
+            & inputElementConfig_setValue .~ (T.empty <$ confirmed)
+            & initialAttributes .~ ("placeholder" =: placeholder <> "type" =: "text" <> "class" =: "new-by-name__input")
+        let
+          nameVal = T.strip <$> _inputElement_value name
+          onEnter = keypress Enter name
+          nameEmpty = (== "") <$> nameVal
 
-      checkedL <- holdDyn Nothing $ pushAlways check $ updated nameVal
-      let
-        checkFailed = isJust <$> checkedL
-        btnCfg = def & uiButtonCfg_disabled .~ liftA2 (||) nameEmpty checkFailed
+        checkedL <- holdDyn Nothing $ pushAlways check $ updated nameVal
 
+        let
+          checkFailed = isJust <$> checkedL
+          btnCfg = def & uiButtonCfg_disabled .~ liftA2 (||) nameEmpty checkFailed
+                       & uiButtonCfg_class .~ "button_type_primary" <> "new-by-name__button"
+        clicked <- uiButtonDyn btnCfg $ text buttonText
 
-      clicked <- uiButtonDyn btnCfg $ text buttonText
+        let
+          filterValid = fmap (const ()) . ffilter not . tag (current checkFailed)
+          confirmed = filterValid $ leftmost [ onEnter, clicked ]
+        void $ performEvent (liftJSM (pToJSVal (_inputElement_raw name) ^.  js0 ("focus" :: String)) <$ confirmed)
+        pure $ (tag (current nameVal) confirmed, checkedL)
 
-      let
-        filterValid = fmap (const ()) . ffilter not . tag (current checkFailed)
-        confirmed = filterValid $ leftmost [ onEnter, clicked ]
-      void $ performEvent (liftJSM (pToJSVal (_inputElement_raw name) ^.  js0 ("focus" :: String)) <$ confirmed)
-      pure $ (tag (current nameVal) confirmed, checkedL)
+      elClass "div" "new-by-name_error" $ 
+        elClass "span" "error_inline" $ dynText $ fromMaybe "" <$> checked
 
-    elClass "span" "error" $ dynText $ fromMaybe "" <$> checked
+      pure update
 
-    pure update
 
 showLoading
   :: (NotReady t m, Adjustable t m, PostBuild t m, DomBuilder t m, Monoid b)
@@ -156,7 +169,7 @@ accordionItem' initActive contentClass title inner = mdo
     let mkClass a = singleClass "accordion" <> contentClass <> activeClass a
     (onClick, pair) <- elDynKlass "div" (mkClass <$> isActive) $ do
       (onClick,a1) <- elClass "h2" "accordion__header" $ do
-        b <- uiButton (def & uiButtonCfg_class .~ "accordion__toggle-button") $
+        b <- uiButton (def & uiButtonCfg_class .~ "accordion__toggle-button button_type_secondary") $
           imgWithAlt (static @"img/arrow-down.svg") "Expand" blank
         r <- title
         pure (b, r)

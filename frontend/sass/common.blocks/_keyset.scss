@@ -1,0 +1,48 @@
+// A single keyset:
+@import '../include/defs';
+
+.keyset {
+  margin-bottom: $normal-margin;
+  padding-bottom: $normal-padding;
+  border-bottom-color: #d0d0d0;
+  border-bottom-style: $std-border-style;
+  border-bottom-width: $std-border-width;
+}
+
+.keyset:last-child {
+  border-bottom: none;
+  margin-bottom: 0;
+}
+
+
+.keyset__header {
+  display: flex;
+  margin-bottom: $normal-padding;
+}
+
+.keyset__icon {
+  margin-right: 1em;
+}
+
+.keyset__header-text {
+  flex: 8;
+  margin: 0;
+}
+
+.keyset__pred {
+  flex: 3;
+  text-align: right;
+}
+
+
+.keyset__delete {
+  flex: 1;
+  text-align: right;
+}
+
+.keyset_keys {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  column-count: 3;
+}

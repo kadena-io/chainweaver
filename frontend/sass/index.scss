@@ -25,16 +25,24 @@
 // Blocks:
 
 @import 'common.blocks/button';
+@import 'common.blocks/input';
+@import 'common.blocks/select';
+
+@import 'common.blocks/segment';
+@import 'common.blocks/pane';
+@import 'common.blocks/group';
+@import 'common.blocks/error';
 
 @import 'common.blocks/accordion';
+@import 'common.blocks/new-by-name';
+
 @import 'common.blocks/code-font';
 @import 'common.blocks/header';
 @import 'common.blocks/main';
 @import 'common.blocks/tab-nav';
 @import 'common.blocks/tab-set';
 @import 'common.blocks/wysiwyg';
-@import 'common.blocks/segment';
-@import 'common.blocks/pane';
+@import 'common.blocks/keyset';
 
 // Page items:
 

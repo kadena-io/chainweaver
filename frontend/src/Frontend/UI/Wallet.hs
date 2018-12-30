@@ -54,7 +54,7 @@ uiWallet
   :: (MonadWidget t m, IsWalletCfg cfg t)
   => Wallet t
   -> m cfg
-uiWallet w = divClass "keys" $ do
+uiWallet w = divClass "keys group" $ do
     onCreate <- uiCreateKey w
     keysCfg <- uiAvailableKeys w
 
@@ -86,11 +86,12 @@ hasPrivateKey = isJust . _keyPair_privateKey . snd
 
 -- | Line input with "Create" button for creating a new key.
 uiCreateKey :: MonadWidget t m => Wallet t -> m (Event t KeyName)
-uiCreateKey w = validatedInputWithButton check "Enter key name" "Generate"
-  where
-    check k = do
-      keys <- sample $ current $ _wallet_keys w
-      pure $ if Map.member k keys then Just "This key name is already in use." else Nothing
+uiCreateKey w =
+  validatedInputWithButton "group__header" check "Enter key name" "Generate"
+    where
+      check k = do
+        keys <- sample $ current $ _wallet_keys w
+        pure $ if Map.member k keys then Just "This key name is already in use." else Nothing
 
 -- | Widget listing all available keys.
 uiAvailableKeys

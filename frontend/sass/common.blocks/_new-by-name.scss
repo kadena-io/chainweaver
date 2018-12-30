@@ -1,0 +1,42 @@
+// Widget for creating something new, by simply letting the user pick a name.
+
+@import '../include/defs';
+
+
+.new-by-name {
+  width: 100%;
+}
+
+.new-by-name_inputs {
+  display: flex;
+  width: 100%;
+}
+
+.new-by-name_error {
+
+}
+
+// For simplicity a child selector:
+.new-by-name__input {
+  flex: 1;
+  margin: 0;
+  font-size: $secondary-font-size;
+  padding: 0 $medium-padding;
+  border-top-right-radius: 0;
+  border-bottom-right-radius: 0;
+  border: none;
+  background-color: white;
+}
+
+.new-by-name__input::placeholder {
+  color: $placeholder-color;
+}
+
+.new-by-name__button {
+  flex: 0 1 114px;
+  width: 114px;
+  border-left: none;
+  border-top-left-radius: 0;
+  border-bottom-left-radius: 0;
+  font-size: $secondary-font-size;
+}

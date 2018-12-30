@@ -1,0 +1,17 @@
+@import '../include/defs';
+
+// Standard input component for typing in some text:
+.input {
+  border-radius: $std-border-radius;
+  border-style: $std-border-style;
+  border-width: $std-border-width;
+  border-color: $std-border-color;
+
+  height: $control-height;
+  line-height: $control-line-height;
+
+  font-family: $std-fonts;
+  color: $std-color;
+
+  padding: 0 20px;
+}
