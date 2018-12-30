@@ -64,12 +64,11 @@ showModal ideL = do
       key <- getKeyEvent
       pure $ if keyCodeLookup (fromIntegral key) == Escape then Just () else Nothing
 
-    let staticAttrs = ("id" =: "modal-root")
-    let mkAttrs vis = staticAttrs <>
-          if vis then ("class" =: "open") else mempty
+    let mkCls vis = "modal" <>
+          if vis then "modal_open" else mempty
 
-    elDynAttr "div" (mkAttrs <$> isVisible) $ do
-      (backdropEl, ev) <- elAttr' "div" ("class" =: "screen") $
+    elDynKlass "div" (mkCls <$> isVisible) $ do
+      (backdropEl, ev) <- elClass' "div" "modal__screen" $
         networkView (mayMkModal <$> _ide_modal ideL)
       onFinish <- switchHold never $ snd <$> ev
       mCfgVoid <- flatten $ fst <$> ev
@@ -102,6 +101,6 @@ mkModal = fmap snd . element "div" elCfg
     elCfg =
        (def :: ElementConfig EventResult t (DomBuilderSpace m))
        & initialAttributes .~ Map.mapKeys (AttributeName Nothing)
-         ("class" =: "modal")
+         ("class" =: "modal__dialog")
        & elementConfig_eventSpec %~ addEventSpecFlags
          (Proxy :: Proxy (DomBuilderSpace m)) Click (const stopPropagation)

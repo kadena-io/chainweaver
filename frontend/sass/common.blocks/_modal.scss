@@ -1,0 +1,81 @@
+// The wallet ui:
+@import '../include/defs';
+
+.modal {
+  display: none;
+  z-index: 99999999;
+
+}
+
+.modal,
+.modal__screen {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+}
+
+.modal__screen {
+  background: rgba(0, 0, 0, 0.3);
+}
+
+.modal_open {
+  display: block;
+}
+
+.modal__dialog {
+  position: absolute;
+  left: 25%;
+  right: 25%;
+  top: 15%;
+  bottom: 10%;
+  background: $body-background;
+  border-radius: $std-border-radius;
+  box-shadow: 0px 8px 24px rgba(0, 0, 0, 0.3);
+
+}
+
+.modal__header {
+  background: #2d2d2f;
+  color: $white;
+  border-top-left-radius: $std-border-radius;
+  border-top-right-radius: $std-border-radius;
+  padding: $normal-padding;
+}
+
+.modal__heading {
+  margin: 0;
+}
+
+.modal__button-close {
+  float: right;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  margin: 3px 0 0 0;
+  line-height: 1px;
+}
+
+.modal__main {
+  height: calc(100% - 68px);
+  padding: $normal-padding;
+  min-height: 6em;
+}
+
+.modal__body {
+  height: calc(100% - 77px);
+  overflow-y: auto;
+}
+
+
+.modal__footer {
+  margin-top: $normal-margin;
+  border-top: $std-border-width $std-border-style $std-border-color;
+  border-bottom-left-radius: $std-border-radius;
+  border-bottom-right-radius: $std-border-radius;
+  padding: $normal-padding;
+  text-align: right;
+}
+
+

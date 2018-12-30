@@ -39,6 +39,7 @@ import           Reflex.Dom
 import           Data.Void
 ------------------------------------------------------------------------------
 import           Frontend.Foundation
+import           Frontend.UI.Button
 ------------------------------------------------------------------------------
 
 -- | Type of modal dialog.
@@ -75,15 +76,15 @@ modalHeader
   -- ^ Content of the h2 in the header.
   -> m ( Event t ())
   -- ^ Close event
-modalHeader header = divClass "modal-header" $ do
-  el "h2" $ do
+modalHeader header = divClass "modal__header" $ do
+  elClass "h2" "modal__heading" $ do
     header
-    (e,_) <- elAttr' "button" ("class" =: "modal-close") $ text "x"
-    pure $ domEvent Click e
+    uiButton (def & uiButtonCfg_class .~ "modal__button-close") $
+      text "x"
 
 -- | Wrap body and footer in this.
 modalMain :: MonadWidget t m => m a -> m a
-modalMain  = divClass "modal-main"
+modalMain  = divClass "modal__main"
 
 -- | Create a modal dialog body.
 modalBody
@@ -92,7 +93,7 @@ modalBody
   -- ^ The actual body of the dialog.
   -> m a
   -- ^ Wrapped up body
-modalBody = divClass "modal-body"
+modalBody = divClass "modal__body"
 
 -- | Create a modal dialog footer.
 modalFooter
@@ -101,5 +102,5 @@ modalFooter
   -- ^ The actual footer of the dialog.
   -> m a
   -- ^ Wrapped up footer
-modalFooter = divClass "modal-footer"
+modalFooter = divClass "modal__footer"
 
