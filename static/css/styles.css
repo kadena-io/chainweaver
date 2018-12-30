@@ -270,40 +270,6 @@
   padding-right: 5px;
 }
 
-.control-ui .control-block .keys {
-  border-radius: 4px;
-  background: #e1e2e1;
-  padding: 10px 15px;
-}
-
-.walletkey {
-    overflow-x: hidden;
-    text-overflow: ellipsis;
-}
-
-.walletkey.hidden {
-    text-overflow: clip;
-}
-
-td.centercell {
-    text-align: center;
-}
-.control-ui .control-block .keys .keys-list .key .pair .keyval {
-  display: flex;
-  font-size: 12px;
-  margin-top: 10px;
-}
-.control-ui .control-block .keys .keys-list .key .pair .keyval .label {
-  flex: 0;
-  flex-basis: 60px;
-  font-weight: bold;
-}
-
-.control-ui .control-block .keys .keys-list .key .pair .keyval .value {
-  flex: 1;
-  word-break: break-word;
-}
-
 #modal-root,
 #modal-root .screen {
   position: fixed;

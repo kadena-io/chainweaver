@@ -42,24 +42,6 @@
     margin: 0;
 }
 
-
-
-
-#control-nav .wysiwyg {
-  height: 30vh;
-}
-
-.header i {
-  cursor: pointer;
-}
-
-h4 .keyset-chooser-toggle {
-  cursor: pointer;
-}
-
-#main #control-ui {
-  width: 50%;
-}
 div.control-block.repl-output {
   overflow-x: auto;
 }

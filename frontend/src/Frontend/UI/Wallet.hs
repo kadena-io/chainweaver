@@ -45,6 +45,7 @@ import           Frontend.Crypto.Ed25519     (keyToText)
 import           Frontend.UI.Icon
 import           Frontend.Wallet
 import           Frontend.UI.Widgets
+import           Frontend.Foundation
 ------------------------------------------------------------------------------
 
 
@@ -112,18 +113,26 @@ uiKeyItems
   => Wallet t
   -> m cfg
 uiKeyItems aWallet = do
-  let keyMap = aWallet ^. wallet_keys
-  events <- elAttr "table" ("style" =: "table-layout: fixed; width: 100%") $ do
+  let 
+    keyMap = aWallet ^. wallet_keys
+    tableAttrs =
+      "style" =: "table-layout: fixed; width: 100%"
+      <> "class" =: "wallet"
+  events <- elAttr "table" tableAttrs $ do
     el "colgroup" $ do
       elAttr "col" ("style" =: "width: 20%") blank
       elAttr "col" ("style" =: "width: 35%") blank
       elAttr "col" ("style" =: "width: 35%") blank
       elAttr "col" ("style" =: "width: 10%") blank
     el "thead" $ el "tr" $ do
-      el "th" $ text "Key Name"
-      el "th" $ text "Public Key"
-      el "th" $ text "Private Key"
-      el "th" $ text "Delete"
+      let mkHeading = elClass "th" "wallet__heading" . text
+      traverse_ mkHeading $
+        [ "Key Name"
+        , "Public Key"
+        , "Private Key"
+        , ""
+        ]
+      
     el "tbody" $ listWithKey keyMap $ \name key -> uiKeyItem (name, key)
   dyn_ $ ffor keyMap $ \keys -> when (Map.null keys) $ text "No keys ..."
   let delKey = switchDyn $ leftmost . Map.elems <$> events
@@ -137,14 +146,14 @@ uiKeyItem
   => (Text, Dynamic t KeyPair)
   -> m (Event t KeyName)
 uiKeyItem (n, k) = do
-    el "tr" $ do
+    elClass "tr" "wallet__row" $ do
       el "td" $ text n
-      elClass "td" "public walletkey" $
+      elClass "td" "wallet__key wallet__key_type_public" $
         dynText (keyToText . _keyPair_publicKey <$> k)
-      keyCopyWidget "td" "private walletkey" $
+      keyCopyWidget "td" "wallet__key wallet__key_type_private" $
         maybe "No key" keyToText . _keyPair_privateKey <$> k
 
-      onDel <- elClass "td" "centercell" deleteButton
+      onDel <- elClass "td" "wallet__delete" deleteButton
 
       pure (const n <$> onDel)
 
@@ -152,7 +161,7 @@ keyCopyWidget :: MonadWidget t m => Text -> Text -> Dynamic t Text -> m ()
 keyCopyWidget t cls keyText = mdo
   isShown <- foldDyn (const not) False (domEvent Click e)
   let mkShownCls True = ""
-      mkShownCls False = " hidden"
+      mkShownCls False = " wallet__key_hidden"
 
   (e, _) <- elDynClass t (pure cls <> fmap mkShownCls isShown) $ do
     let
