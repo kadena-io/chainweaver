@@ -124,7 +124,10 @@ backButton = -- uiIcon "fas fa-chevron-left" $ def & iconConfig_size .~ Just Ico
 
 deleteButton :: StaticButtonConstraints t m => m (Event t ())
 deleteButton = -- uiIcon "fas fa-chevron-left" $ def & iconConfig_size .~ Just IconLG
-  uiButton def $ imgWithAlt (static @"img/X.svg") "Delete" blank
+  let
+    cfg = def & uiButtonCfg_class .~ "button_type_secondary" <> "button_tiny"
+  in
+    uiButton cfg $ imgWithAlt (static @"img/X.svg") "Delete" blank
 
 -- | Button that loads something into the Editor.
 openButton :: StaticButtonConstraints t m => m (Event t ())
