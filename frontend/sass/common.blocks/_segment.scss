@@ -2,10 +2,13 @@
 
 
 .segment {
-  padding: $normal-padding 0 $bigger-padding;
+  width: 100%;
+  padding: 0 0 $bigger-padding;
+  margin-bottom: $normal-margin;
   border-bottom: $std-border-width dashed $std-border-color;
 }
 
 .segment:last-child {
   border-bottom: none;
+  margin-bottom: 0;
 }
