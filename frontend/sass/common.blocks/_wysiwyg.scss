@@ -1,6 +1,5 @@
 
 @import '../include/defs';
-@import 'code-font';
 
 .wysiwyg {
   position: relative;
@@ -12,7 +11,7 @@
 }
 
 .wysiwyg .ace_editor {
-  @extend %code-font;
+  @include code-font;
 
   background: #ffffff !important;
   border-radius: $std-border-radius;

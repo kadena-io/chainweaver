@@ -63,11 +63,11 @@ staticReplHeader = S.fromList
 snippetWidget' :: MonadWidget t m => DisplayedSnippet -> m (Element EventResult (DomBuilderSpace m) t)
 snippetWidget' = fmap fst . \case
   InputSnippet t
-    -> elAttr' "code" ("class" =: "replOut code-font") $ text $ "pact> " <> t
+    -> elAttr' "code" ("class" =: "repl__out") $ text $ "pact> " <> t
   OutputSnippet t
-    -> elAttr' "code" ("class" =: "replOut code-font") $ text t
+    -> elAttr' "code" ("class" =: "repl__out") $ text t
   OldOutputSnippet t
-    -> elAttr' "code" ("class" =: "replOut code-font old") $ text t
+    -> elAttr' "code" ("class" =: "repl__out repl__old") $ text t
 
 snippetWidget :: MonadWidget t m => DisplayedSnippet -> m ()
 snippetWidget = void . snippetWidget'
@@ -83,8 +83,8 @@ replWidget
     :: (MonadWidget t m, HasWebRepl model t, HasReplCfg mConf t, Monoid mConf)
     => model
     -> m mConf
-replWidget m = divClass "control-block repl-output" $ do
-  (e, onNewInput) <- elClass' "div" "repl-pane code-font" $ do
+replWidget m = do
+  (e, onNewInput) <- elClass' "div" "repl" $ do
     mapM_ snippetWidget staticReplHeader
     void $ simpleList (toList <$> m ^. repl_output) (dyn . fmap displayReplOutput)
     replInput
@@ -108,14 +108,14 @@ replWidget m = divClass "control-block repl-output" $ do
 
 replInput :: MonadWidget t m => m (Event t Text)
 replInput = do
-    divClass "repl-input-controls code-font" $ mdo
-      (e, _) <- elClass' "div" "prompt" $ text "pact>"
+    divClass "repl__input-controls" $ mdo
+      (e, _) <- elClass' "div" "repl__prompt" $ text "pact>"
       let sv = leftmost
             [ mempty <$ enterPressed
             , fromMaybe "" . Z.safeCursor <$> tagPromptlyDyn commandHistory key
             ]
       ti <- textInput (def & textInputConfig_setValue .~ sv
-                           & textInputConfig_attributes .~ pure ("class" =: "code-font")
+                           & textInputConfig_attributes .~ pure ("class" =: "code-font repl__input")
                       )
       let key = ffilter isMovement $ domEvent Keydown ti
       let enterPressed = keypress Enter ti

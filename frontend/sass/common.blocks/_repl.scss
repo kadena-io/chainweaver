@@ -1,0 +1,44 @@
+// The wallet ui:
+@import '../include/defs';
+
+.repl {
+  @include code-font;
+}
+
+.repl__out {
+  display: block;
+
+  overflow: hidden;
+  white-space: pre-wrap;
+  word-break: break-all;
+
+  margin-bottom: $medium-margin;
+}
+
+.repl__old {
+  color: $tertiary-color;
+}
+
+.repl__input-controls {
+    width: 100%;
+    display: flex;
+    flex-direction: row;
+    justify-content: flex-start;
+    align-items: baseline;
+}
+
+.repl__prompt {
+    padding-right: 5px;
+    flex-grow: 0;
+}
+
+.repl__input {
+    flex-grow: 1;
+    border: none;
+    padding: 0 5px;
+    background: transparent;
+}
+
+.repl__input:focus {
+    outline: none;
+}

@@ -2,44 +2,11 @@
 
 .hidden.transition { display: none; visibility: hidden; }
 
-.replOut {
-  overflow: hidden;
-  word-break: break-all;
-}
 
 
 /* Make old log messages grey: */
 .replOut.old {
   color: #757575;
-}
-
-.repl-input-controls {
-    width: 100%;
-    display: flex;
-    flex-direction: row;
-    justify-content: flex-start;
-    align-items: baseline;
-}
-
-.repl-input-controls .prompt {
-    padding-right: 5px;
-    flex-grow: 0;
-}
-
-.repl-input-controls input {
-    flex-grow: 1;
-    border: none;
-    padding: 0 5px;
-}
-
-.repl-input-controls input:focus {
-    outline: none;
-}
-
-.repl-input-controls button {
-    width: 100%;
-    padding: 0;
-    margin: 0;
 }
 
 div.control-block.repl-output {
