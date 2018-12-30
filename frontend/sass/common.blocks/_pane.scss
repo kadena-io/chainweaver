@@ -9,6 +9,9 @@ $pane-padding-right: $normal-padding;
 $pane-padding-left: $pane-padding-right;
 
 .pane {
+  display: flex;
+  flex-direction: column;
+
   padding-top: $pane-padding-top;
   padding-bottom: $pane-padding-bottom;
 }
@@ -16,10 +19,18 @@ $pane-padding-left: $pane-padding-right;
 .pane__header {
   padding-left: $pane-padding-left;
   padding-right: $pane-padding-right;
+  flex-grow: 0;
+}
+
+// Wrapper for body so scrollbar appears outside the margin.
+.pane__body-wrapper {
+  overflow-y: auto;
+  flex-grow: 1;
 }
 
 .pane__body {
   margin-left: $pane-padding-left;
   margin-right: $pane-padding-right;
-  overflow-y: auto;
+  height: auto;
 }
+

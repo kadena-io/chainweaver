@@ -70,7 +70,7 @@ rightTabBar cls ideL = elKlass "div" (cls <> "pane") $ do
     , _tabBarCfg_type = TabBarType_Primary
     }
 
-  divClass "tab-set pane__body" $ do
+  divClass "pane__body-wrapper" $ divClass "tab-set pane__body" $ do
 
     envCfg <- tabPane mempty curSelection EnvSelection_Env $
       envTab ideL
