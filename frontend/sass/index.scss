@@ -5,14 +5,16 @@
   widget. They are usually mandatory to use and at the top, example backend
   selection in deploy confirmation dialog.
 
-  Then we have "secondary" controls, you don't need to specify anything, as
-  "secondary" is the default. Use this actions that trigger something not
-  entirely trivial, but also not like super important. E.g. opening the details
-  page of some item.
+  Then we have "secondary" controls. Use this for actions that trigger
+  something not entirely trivial, but also not like super important. E.g.
+  opening the details page of some item.
 
   Then we have "tertiary" controls which offer functionality the user might
   want to use, but certainly does not need too. Consider them optional
   controls. Example: Backend filter in the module selection.
+
+  Primary buttons are black, secondary buttons have black text, tertiary
+  buttons have dark grey text on grey background.
 */
 @import 'fonts';
 @import 'base';

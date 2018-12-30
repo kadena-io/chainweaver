@@ -1,7 +1,7 @@
 @import '../include/defs';
 
-$main-header-border-color: #525252;
-$main-header-color: #fff;
+$main-header-border-color: $primary-border-color;
+$main-header-color: $white;
 $main-header-font-size: $primary-font-size;
 
 
@@ -36,10 +36,14 @@ $main-header-font-size: $primary-font-size;
 }
 
 .main-header__button {
-  color: #fff;
+  color: $white;
   border-color: $primary-border-color;
   padding: 0 26px;
   margin-left: $medium-margin;
+}
+
+.main-header__button:hover {
+  background: $black-hover;
 }
 
 .main-header__documents {

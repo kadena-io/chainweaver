@@ -20,6 +20,15 @@ $body-width: 1166px;
 
 $control-height: 36px;
 $control-line-height: 32px;
+$placeholder-color: #cdcdcd;
+
+// Black/white pallete:
+$black: #000;
+$white: #fff;
+$black-hover: #403f3f;
+$black-disabled-bg: #2d2d2f;
+$black-disabled-border-color: $black-disabled-bg;
+$black-disabled-color: #7e7e7e;
 
 // Primary definitions:
 
@@ -28,18 +37,22 @@ $primary-border-color: #525252;
 $primary-font-size: 17px;
 
 // Secondary definitions:
-$secondary-color: #757575;
+$secondary-color: $black;
 $secondary-border-color: $std-border-color;
 $secondary-font-size: 15px;
 
+// Tertiary definitions:
+$tertiary-color: #757575;
 
 // Margins:
 
 $medium-margin: 10px;
 $normal-margin: 20px;
+$bigger-margin: 30px;
 
 
 // Paddings:
 
-$normal-padding: 20px;
-$bigger-padding: 30px;
+$medium-padding: $medium-margin;
+$normal-padding: $normal-margin;
+$bigger-padding: $bigger-margin;

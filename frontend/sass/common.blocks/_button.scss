@@ -11,6 +11,28 @@
 
 .button:active {
   background: $active-background;
+  filter: invert(100%);
+}
+
+.button_type_primary {
+  border-color: $black;
+  color: $white;
+  font-size: $primary-font-size;
+}
+
+.button_type_primary:hover {
+  background: $black-hover;
+}
+
+.button_type_primary:active {
+  filter: invert(100%);
+}
+
+.button_type_primary[disabled],
+.button_type_primary_disabled {
+  background: $black-disabled-bg;
+  border-color: $black-disabled-border-color;
+  color: $black-disabled-color;
 }
 
 .button_type_secondary {
@@ -19,6 +41,9 @@
   font-size: $secondary-font-size;
 }
 
-.button_type_primary {
-
+.button_type_tertiary {
+  border-color: $secondary-border-color;
+  color: $tertiary-color;
+  font-size: $secondary-font-size;
 }
+

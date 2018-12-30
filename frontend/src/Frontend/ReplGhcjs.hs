@@ -254,14 +254,14 @@ controlBarLeft m = do
         pure $ deployCfg <> loadCfg
   where
     deployBtn =
-      uiButton (btnCfgPrimary & uiButtonCfg_class .~ "main-header__button")
+      uiButton (btnCfgPrimary & uiButtonCfg_class .~ "main-header__button" <> "button_type_primary")
       $ text $ "Deploy"
 
     loadReplBtn =
       uiButton
         ( btnCfgPrimary
             & uiButtonCfg_title .~ Just "Editor Shortcut: Ctrl+Enter"
-            & uiButtonCfg_class .~ "main-header__button"
+            & uiButtonCfg_class .~ "main-header__button" <> "button_type_primary"
         )
          $ text "Load into REPL"
 
