@@ -41,9 +41,6 @@ $select-padding: 14px;
   border-color: $secondary-border-color;
   font-size: $secondary-font-size;
   // line-height: $secondary-line-height;
-  background-position: right 4px top 50%;
-  background-size: 10px 7px;
-  padding: 0 14px 0 8px;
 }
 
 
@@ -53,9 +50,6 @@ $select-padding: 14px;
   border-color: $secondary-border-color;
   font-size: $secondary-font-size;
   // line-height: $secondary-line-height;
-  background-position: right 4px top 50%;
-  background-size: 10px 7px;
-  padding: 0 14px 0 8px;
 }
 
 // Variant that has height: auto;
@@ -63,4 +57,8 @@ $select-padding: 14px;
   height: $tiny-height;
   font-size: $tiny-font-size;
   line-height: $tiny-line-height;
+
+  background-position: right 4px top 50%;
+  background-size: 10px 7px;
+  padding: 0 14px 0 8px;
 }

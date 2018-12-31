@@ -13,5 +13,16 @@
   font-family: $std-fonts;
   color: $std-color;
 
-  padding: 0 20px;
+  padding: 0 $medium-padding;
+}
+
+
+.input_type_search {
+  background: $white url(/static/img/search.svg) no-repeat right 16.3px top 50%;
+  background-size: 14.7px;
+}
+
+.input_type_tertiary {
+  color: $tertiary-color;
+  background-color: transparent;
 }

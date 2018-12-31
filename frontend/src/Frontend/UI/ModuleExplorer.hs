@@ -125,14 +125,14 @@ browseDeployed m = mdo
     let itemsPerPage = 10 :: Int
 
     (filteredCs, updatePage) <- divClass "filter-bar ctrl-grp secondary flexbox" $ do
-      ti <- divClass "search" $
-        textInput $ def
-          & attributes .~ constDyn ("placeholder" =: "Search" <> "class" =: "search-input")
+      ti <- uiInputElement $ def
+          & initialAttributes .~ ("placeholder" =: "Search" <> "class" =: "input_type_search input_type_tertiary")
 
       let mkMap = Map.fromList . map (\(n,e) -> (Just e, textBackendName n)) . Map.toList
           opts = Map.insert Nothing "All backends" . maybe mempty mkMap <$>
                     m ^. backend_backends
-      d <- divClass "backend-filter" $ dropdown Nothing opts def
+          filterCfg = def & dropdownConfig_attributes %~ fmap (addToClassAttr "select_type_tertiary")
+      d <- divClass "backend-filter" $ uiDropdown Nothing opts filterCfg
       let
         search :: Dynamic t Text
         search = value ti

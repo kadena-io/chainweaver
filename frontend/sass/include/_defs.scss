@@ -45,9 +45,8 @@ $secondary-font-size: 15px;
 
 // Tertiary definitions:
 $tertiary-color: #757575;
-
-
-$tertiary-select-color: #2d2d2f;
+// $tertiary-select-color: #2d2d2f;
+$tertiary-select-color: $tertiary-color;
 
 // Tiny:
 $tiny-font-size: 14px;

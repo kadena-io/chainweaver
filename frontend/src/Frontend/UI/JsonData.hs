@@ -192,9 +192,9 @@ predDropdown sv = do
     let
       itemDom v = elAttr "option" ("value" =: v) $ text v
       cfg = SelectElementConfig "" (Just sv) $
-        def & initialAttributes .~ "class" =: "select select_type_tertiary select_tiny keyset__pred"
+        def & initialAttributes .~ "class" =: "select_type_secondary select_tiny keyset__pred"
 
-    (s,_) <- selectElement cfg $ do
+    (s,_) <- uiSelectElement cfg $ do
       forM_ predefinedPreds itemDom
     return $ _selectElement_change s
 

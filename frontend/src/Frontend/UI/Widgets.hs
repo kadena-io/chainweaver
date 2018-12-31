@@ -24,6 +24,8 @@ module Frontend.UI.Widgets
   , module Frontend.UI.Button
   -- * Other widgets
   , uiInputElement
+  , uiDropdown
+  , uiSelectElement
   , validatedInputWithButton
   , signingKeysWidget
     -- * Helper widgets
@@ -64,6 +66,26 @@ import           Frontend.UI.Widgets.Helpers (imgWithAlt, setFocus, setFocusOn,
 import           Frontend.Wallet             (HasWallet (..), KeyName, KeyPair,
                                               Wallet)
 ------------------------------------------------------------------------------
+
+
+
+uiDropdown
+  :: forall k t m
+  . ( DomBuilder t m, MonadFix m, MonadHold t m, PostBuild t m, Ord k
+    )
+  => k -> Dynamic t (Map k Text) -> DropdownConfig t k -> m (Dropdown t k)
+uiDropdown k0 options (DropdownConfig setK uAttrs) = do
+  let attrs = addToClassAttr "select" <$> uAttrs
+  dropdown k0 options (DropdownConfig setK attrs)
+
+uiSelectElement
+  :: DomBuilder t m 
+  => SelectElementConfig er t (DomBuilderSpace m)
+  -> m a
+  -> m (SelectElement er (DomBuilderSpace m) t, a)
+uiSelectElement uCfg child = do
+  let cfg = uCfg & initialAttributes %~ addToClassAttr "select"
+  selectElement cfg child
   
 -- | reflex-dom `inputElement` with pact-web default styling:
 uiInputElement
