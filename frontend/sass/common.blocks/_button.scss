@@ -19,6 +19,17 @@
   cursor: pointer;
 }
 
+// Image in a button that goes along some text/label.
+.button__text-icon {
+  display: inline-block;
+  margin-right: 7px;
+  position: relative;
+  bottom: -1.5px;
+  width: 18px;
+  height: 11.1px;
+}
+
+
 .button:hover {
   background: $hover-background;
 }
@@ -67,8 +78,8 @@
   font-size: $secondary-font-size;
 }
 
-// Variant that uses height auto, normally used for smaller buttons:
-.button_tiny {
+// Tiny buttons:
+.button_size_tiny {
   height: $tiny-height;
   padding-left: $medium-padding;
   padding-right: $medium-padding;
@@ -76,6 +87,14 @@
   line-height: $tiny-line-height;
 }
 
+// Small buttons ( a little bigger than tiny )
+.button_size_small {
+  height: $small-height;
+  padding-left: $medium-padding;
+  padding-right: $medium-padding;
+  font-size: $tiny-font-size;
+  line-height: $tiny-line-height;
+}
 
 .button_confirm {
   color: $white;

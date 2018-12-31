@@ -13,6 +13,8 @@ $std-color: black;
 $body-background: #f1f1f1;
 
 $hover-background: $std-border-color;
+$table-hover-background: #e7e7e7;
+
 $active-background: #2d2d2f;
 
 // Width of body element obviously:
@@ -37,7 +39,7 @@ $primary-border-color: #525252;
 $primary-font-size: 17px;
 
 // Secondary definitions:
-$secondary-color: $black;
+$secondary-color: #212121;
 $secondary-border-color: $std-border-color;
 $secondary-font-size: 15px;
 
@@ -51,6 +53,10 @@ $tertiary-select-color: #2d2d2f;
 $tiny-font-size: 14px;
 $tiny-line-height: 18px;
 $tiny-height: 22px;
+
+// Small
+$small-height: 26px;
+$small-font-size: 14px;
 
 
 // Margins:

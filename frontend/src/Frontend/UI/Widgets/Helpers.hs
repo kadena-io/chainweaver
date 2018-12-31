@@ -11,6 +11,7 @@
 -- | Little helpers useful for implementing widgets.
 module Frontend.UI.Widgets.Helpers
   ( imgWithAlt
+  , imgWithAltCls
   , tabPane
   , tabPane'
   , makeClickable
@@ -40,7 +41,11 @@ import           Frontend.Foundation
 
 
 imgWithAlt :: DomBuilder t m => Text -> Text -> m a -> m a
-imgWithAlt loc alt child = elAttr "img" ("src" =: loc <> "alt" =: alt) child
+imgWithAlt = imgWithAltCls mempty
+
+imgWithAltCls :: DomBuilder t m => CssClass -> Text -> Text -> m a -> m a
+imgWithAltCls cls loc alt child =
+  elAttr "img" ("src" =: loc <> "alt" =: alt <> "class" =: renderClass cls) child
 
 makeClickable :: DomBuilder t m => m (Element EventResult (DomBuilderSpace m) t, ()) -> m (Event t ())
 makeClickable item = do

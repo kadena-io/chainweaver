@@ -1,17 +1,18 @@
+{-# LANGUAGE ConstraintKinds       #-}
+{-# LANGUAGE DataKinds             #-}
 {-# LANGUAGE FlexibleContexts      #-}
 {-# LANGUAGE LambdaCase            #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE OverloadedStrings     #-}
 {-# LANGUAGE RecursiveDo           #-}
 {-# LANGUAGE TemplateHaskell       #-}
-{-# LANGUAGE DataKinds             #-}
-{-# LANGUAGE ConstraintKinds       #-}
+{-# LANGUAGE TypeApplications      #-}
 
 {-| pact-web buttons.
 
 -}
 
-module Frontend.UI.Button 
+module Frontend.UI.Button
   ( -- * Config
     -- ** Types
     UiButtonCfgRep (..)
@@ -24,7 +25,7 @@ module Frontend.UI.Button
     -- * Primitives
   , uiButton
   , uiButtonDyn
-    -- ** Specialized buttons 
+    -- ** Specialized buttons
   , backButton
   , deleteButton
   , openButton
@@ -36,19 +37,19 @@ module Frontend.UI.Button
   ) where
 
 ------------------------------------------------------------------------------
-import           Data.Default
-import           Data.Default        (def)
-import           Data.Map            (Map)
-import           Data.Text           (Text)
-import           Reflex.Dom.Core
 import           Control.Lens
+import           Data.Default
+import           Data.Default                (def)
+import           Data.Map                    (Map)
+import           Data.String                 (IsString)
+import           Data.Text                   (Text)
 import           Reflex.Dom.Contrib.CssClass
-import           Data.String (IsString)
+import           Reflex.Dom.Core
 ------------------------------------------------------------------------------
 import           Obelisk.Generated.Static
 ------------------------------------------------------------------------------
-import           Frontend.Foundation (makePactLenses, ReflexValue)
-import           Frontend.UI.Widgets.Helpers (imgWithAlt)
+import           Frontend.Foundation         (ReflexValue, makePactLenses)
+import           Frontend.UI.Widgets.Helpers (imgWithAlt, imgWithAltCls)
 
 
 -- | Configuration for uiButton.
@@ -93,7 +94,7 @@ type StaticButtonConstraints t m =
   )
 
 -- | Constraints needed for a button with dynamic attributes.
-type DynamicButtonConstraints t m = 
+type DynamicButtonConstraints t m =
   ( DomBuilder t m
   , HasDomEvent t (Element EventResult (DomBuilderSpace m) t) 'ClickTag
   , PostBuild t m
@@ -106,7 +107,7 @@ uiButton cfg body = do
     (e, _) <- elAttr' "button" (toBtnAttrs cfg) body
     pure $ domEvent Click e
 
-uiButtonDyn 
+uiButtonDyn
   :: DynamicButtonConstraints t m
   => UiButtonDynCfg t -> m () -> m (Event t ())
 uiButtonDyn cfg body = do
@@ -125,23 +126,26 @@ backButton = -- uiIcon "fas fa-chevron-left" $ def & iconConfig_size .~ Just Ico
 deleteButton :: StaticButtonConstraints t m => m (Event t ())
 deleteButton = -- uiIcon "fas fa-chevron-left" $ def & iconConfig_size .~ Just IconLG
   let
-    cfg = def & uiButtonCfg_class .~ "button_type_secondary" <> "button_tiny"
+    cfg = def & uiButtonCfg_class .~ "button_type_secondary" <> "button_size_tiny"
   in
     uiButton cfg $ imgWithAlt (static @"img/X.svg") "Delete" blank
 
 -- | Button that loads something into the Editor.
 openButton :: StaticButtonConstraints t m => m (Event t ())
 openButton =
-  uiButton def $ imgWithAlt (static @"img/open.svg") "Open" blank >> text "Open"
+  uiButton (def & uiButtonCfg_class .~ "button_type_secondary") $
+    btnTextIcon (static @"img/open.svg") "Open" blank >> text "Open"
 
 -- | Button that loads something into the Editor.
-viewButton :: StaticButtonConstraints t m => m (Event t ())
-viewButton =
-  uiButton def $ imgWithAlt (static @"img/view.svg") "View" blank >> text "View"
+viewButton :: StaticButtonConstraints t m => CssClass -> m (Event t ())
+viewButton cls =
+  uiButton (def & uiButtonCfg_class .~ cls <> "button_type_secondary") $
+    btnTextIcon (static @"img/view.svg") "View" blank >> text "View"
 
 callButton :: StaticButtonConstraints t m => m (Event t ())
 callButton =
-  uiButton def $ imgWithAlt (static @"img/call.svg") "Call" blank >> text "Call"
+  uiButton (def & uiButtonCfg_class .~ "button_type_secondary") $
+    btnTextIcon (static @"img/call.svg") "Call" blank >> text "Call"
 
 -- | Button that triggers a refresh/reload of something.
 refreshButton :: StaticButtonConstraints t m => m (Event t ())
@@ -159,7 +163,7 @@ cancelButton cfg msg =
 
 -- | Create HTML element attributes from config.
 toBtnAttrs :: UiButtonCfg -> Map Text Text
-toBtnAttrs uCfg = 
+toBtnAttrs uCfg =
   let
     cfg = uCfg & uiButtonCfg_class %~ (<> "button")
     titleAttr = maybe mempty ("title" =:) $ _uiButtonCfg_title cfg
@@ -178,3 +182,5 @@ toStatic s =
     <*> _uiButtonCfg_class s
     <*> _uiButtonCfg_title s
 
+btnTextIcon :: DomBuilder t m => Text -> Text -> m a -> m a
+btnTextIcon = imgWithAltCls "button__text-icon"

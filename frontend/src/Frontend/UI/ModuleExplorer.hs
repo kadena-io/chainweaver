@@ -38,6 +38,7 @@ import           Reflex
 import           Reflex.Dom
 import           Reflex.Network
 import           Reflex.Network.Extended
+import           Reflex.Dom.Contrib.CssClass
 ------------------------------------------------------------------------------
 import           Frontend.Backend
 import           Frontend.ModuleExplorer
@@ -80,11 +81,10 @@ browseExamples
 browseExamples =
   accordionItem True mempty "Example Contracts" $ do
     let showExample c = do
-          divClass "module-name" $
+          divClass "table__text-cell table__cell_size_main" $
             text $ _exampleModule_name c
 
-    exampleClick <- divClass "control-block-contents" $
-      contractList showExample $ exampleData
+    exampleClick <- contractList showExample $ exampleData
 
     let onExampleSel = fmap (Just . ModuleSel_Example) exampleClick
     pure $ mempty
@@ -154,11 +154,11 @@ browseDeployed m = mdo
     let paginated = paginate itemsPerPage <$> currentPage <*> filteredCs
         showDeployed :: DeployedModule -> m ()
         showDeployed c = do
-          divClass "module-name" $
+          divClass "table__text-cell table__cell_size_main" $
             text $ _deployedModule_name c
-          divClass "backend-name" $
+          divClass "table__text-cell table__cell_size_side" $
             text $ textBackendName . backendRefName $ _deployedModule_backend c
-    searchClick <- divClass "control-block-contents" $ do
+    searchClick <- do
       listEv <- networkView $ contractList showDeployed . map snd <$> paginated
       switchHold never $ fmap ModuleSel_Deployed <$> listEv
 
@@ -200,12 +200,13 @@ filtering needle (_, (m, backendL)) =
 
 contractList :: MonadWidget t m => (a -> m ()) -> [a] -> m (Event t a)
 contractList rowFunc contracts = do
-    divClass "contracts" $ elClass "ol" "contracts-list" $
-      fmap leftmost . for contracts $ \c -> el "li" $ do
-        divClass "counter" blank
+    elClass "ol" "table table_type_primary" $
+      fmap leftmost . for contracts $ \c -> elClass "li" "table__row table__row_type_primary" $ do
+        divClass "table__row-counter" blank
         rowFunc c
-        divClass "load-button" $ viewModButton c
+        divClass "table__cell_size_flex" $
+          viewModButton c
 
 
 viewModButton :: MonadWidget t m => a -> m (Event t a)
-viewModButton c = fmap (const c) <$> viewButton
+viewModButton c = fmap (const c) <$> viewButton "table__action-button"

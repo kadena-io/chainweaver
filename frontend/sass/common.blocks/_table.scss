@@ -4,6 +4,7 @@
 .table {
   color: $tertiary-color;
   font-size: $secondary-font-size;
+  border-collapse: collapse;
 }
 
 
@@ -32,6 +33,89 @@
 }
 
 .table__row:last-child td,
-.table__row {
+.table__row:last-child {
   border:none;
+}
+
+.table__row:hover {
+  background-color: $table-hover-background;
+}
+
+.table_type_primary {
+  border: $std-border-width $std-border-style $std-border-color;
+  border-radius: $std-border-radius;
+
+}
+
+.table__row_type_primary,
+.table__row_type_primary td {
+  height: 41px;
+  line-height: 42px;
+}
+
+
+.table__text-cell {
+  display: block;
+  padding-right: 5px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.table__cell_size_main {
+  width: 250px;
+}
+
+.table__cell_size_side {
+  width: 200px;
+}
+
+// Cell that basically just takes the remaining space.
+// In additiona contents are floated right, so this is ideal as the last column.
+.table__cell_size_flex {
+  flex-grow: 10;
+}
+
+
+// Button that fits nicely in a cell_size_flex usually right most cell.
+// (Button will float right.)
+.table__action-button {
+  float: right;
+  align-items: baseline;
+  width: 90px;
+  height: $small-height;
+  padding: 0;
+  line-height: normal;
+  margin-right: $medium-margin;
+  margin-top: 8px;
+  font-size: $small-font-size;
+}
+
+.table__row-counter {
+  width: 50px;
+}
+
+.table__row-counter:before {
+  counter-increment: li;
+  content: counter(li, decimal-leading-zero);
+  font-size: 15px;
+  font-weight: bold;
+  color: #cbcbcb;
+  margin-left: 11px;
+  margin-right: 17.9px;
+}
+
+
+// Tables based on lists:
+
+ol.table {
+  margin: 0;
+  padding: 0;
+  list-style-type: none;
+  counter-reset: li;
+}
+
+li.table__row {
+  display: flex;
+  list-style-position: inside;
 }
