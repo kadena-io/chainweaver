@@ -28,6 +28,11 @@
   filter: invert(100%);
 }
 
+.button_disabled,
+.button[disabled] {
+  cursor: not-allowed;
+}
+
 .button_type_primary {
   border-color: $black;
   color: $white;
@@ -44,7 +49,7 @@
 }
 
 .button_type_primary[disabled],
-.button_type_primary_disabled {
+.button_type_primary.button_disabled {
   background: $black-disabled-bg;
   border-color: $black-disabled-border-color;
   color: $black-disabled-color;
