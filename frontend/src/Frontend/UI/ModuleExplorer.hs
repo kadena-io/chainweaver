@@ -124,14 +124,14 @@ browseDeployed
 browseDeployed m = mdo
     let itemsPerPage = 10 :: Int
 
-    (filteredCs, updatePage) <- divClass "filter-bar ctrl-grp secondary flexbox" $ do
+    (filteredCs, updatePage) <- divClass "filter-bar" $ do
       ti <- uiInputElement $ def
-          & initialAttributes .~ ("placeholder" =: "Search" <> "class" =: "input_type_search input_type_tertiary")
+          & initialAttributes .~ ("placeholder" =: "Search" <> "class" =: "input_type_search input_type_tertiary filter-bar__search")
 
       let mkMap = Map.fromList . map (\(n,e) -> (Just e, textBackendName n)) . Map.toList
           opts = Map.insert Nothing "All backends" . maybe mempty mkMap <$>
                     m ^. backend_backends
-          filterCfg = def & dropdownConfig_attributes %~ fmap (addToClassAttr "select_type_tertiary")
+          filterCfg = def & dropdownConfig_attributes %~ fmap (addToClassAttr $ "select_type_tertiary" <> "filter-bar__backend-filter")
       d <- uiDropdown Nothing opts filterCfg
       let
         search :: Dynamic t Text
@@ -146,7 +146,7 @@ browseDeployed m = mdo
             <*> (fromMaybe mempty <$> m ^. backend_backends)
         filteredCsRaw = searchFn <$> search <*> backendL <*> deployedContracts
       filteredCsL <- holdUniqDyn filteredCsRaw
-      updatePageL <- paginationWidget mempty currentPage totalPages
+      updatePageL <- paginationWidget "filter-bar__pagination" currentPage totalPages
 
       return (filteredCsL, updatePageL)
 
