@@ -4,26 +4,10 @@
 
 
 
-/* Make old log messages grey: */
-.replOut.old {
-  color: #757575;
-}
-
 div.control-block.repl-output {
   overflow-x: auto;
 }
 
-[type = "button"]:hover {
-  cursor: pointer;
-}
-
-.left-col {
-  text-align: left;
-}
-
-.error {
-  color: red;
-}
 
 /****************************************************************************
                                 Loading spinner

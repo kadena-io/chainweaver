@@ -148,9 +148,10 @@ callButton =
     btnTextIcon (static @"img/call.svg") "Call" blank >> text "Call"
 
 -- | Button that triggers a refresh/reload of something.
-refreshButton :: StaticButtonConstraints t m => m (Event t ())
-refreshButton =
-  uiButton btnCfgTertiary $ elClass "i" "fa fa-lg fa-refresh" blank
+refreshButton :: StaticButtonConstraints t m => CssClass -> m (Event t ())
+refreshButton cls =
+  uiButton (btnCfgTertiary & uiButtonCfg_class %~ (<> cls)) $
+    elClass "i" "fa fa-lg fa-refresh" blank
 
 confirmButton :: DynamicButtonConstraints t m => UiButtonDynCfg t -> Text -> m (Event t ())
 confirmButton cfg msg =

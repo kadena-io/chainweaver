@@ -29,6 +29,16 @@ $accordion-header-font-size: 14px;
   }
 }
 
+
+// A button in the accordion title (to the right)
+.accordion__title-button {
+  float: right;
+}
+
+.accordion-collapsed .accordion__title-button {
+  display: none;
+}
+
 .accordion-collapsed  .accordion__toggle-button > img {
   transform: rotate(-90deg);
 }

@@ -79,7 +79,7 @@ browseExamples
     )
   => m mConf
 browseExamples =
-  accordionItem True mempty "Example Contracts" $ do
+  accordionItem True "segment" "Example Contracts" $ do
     let showExample c = do
           divClass "table__text-cell table__cell_size_main" $
             text $ _exampleModule_name c
@@ -106,8 +106,8 @@ browseDeployedTitle m = do
   let
     title = elClass "span" "deployed-contracts-accordion" $ do
       el "span" $ text "Deployed Contracts"
-      refreshButton
-  (onRefrClick, onSelected) <- accordionItem' True mempty title $ browseDeployed m
+      refreshButton "accordion__title-button"
+  (onRefrClick, onSelected) <- accordionItem' True "segment" title $ browseDeployed m
   pure $ mempty
     & moduleExplorerCfg_selModule .~ fmap Just onSelected
     & backendCfg_refreshModule .~ onRefrClick

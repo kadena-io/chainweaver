@@ -1,12 +1,3 @@
-.control-ui .control-block .contracts li button:hover {
-  background-color: #000;
-  color: #fff;
-}
-
-.control-ui .control-block .contracts li button:hover img {
-  filter: invert(100%);
-}
-
 .control-ui .control-block input.search-input {
   flex: 1;
   margin: 0;
