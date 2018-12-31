@@ -117,7 +117,7 @@ uiKeyItems aWallet = do
     keyMap = aWallet ^. wallet_keys
     tableAttrs =
       "style" =: "table-layout: fixed; width: 100%"
-      <> "class" =: "wallet"
+      <> "class" =: "wallet table"
   events <- elAttr "table" tableAttrs $ do
     el "colgroup" $ do
       elAttr "col" ("style" =: "width: 20%") blank
@@ -125,7 +125,7 @@ uiKeyItems aWallet = do
       elAttr "col" ("style" =: "width: 35%") blank
       elAttr "col" ("style" =: "width: 10%") blank
     el "thead" $ el "tr" $ do
-      let mkHeading = elClass "th" "wallet__heading" . text
+      let mkHeading = elClass "th" "table__heading" . text
       traverse_ mkHeading $
         [ "Key Name"
         , "Public Key"
@@ -146,7 +146,7 @@ uiKeyItem
   => (Text, Dynamic t KeyPair)
   -> m (Event t KeyName)
 uiKeyItem (n, k) = do
-    elClass "tr" "wallet__row" $ do
+    elClass "tr" "table__row" $ do
       el "td" $ text n
       elClass "td" "wallet__key wallet__key_type_public" $
         dynText (keyToText . _keyPair_publicKey <$> k)

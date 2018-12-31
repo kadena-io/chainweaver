@@ -58,6 +58,7 @@ $tiny-height: 22px;
 $medium-margin: 10px;
 $normal-margin: 20px;
 $bigger-margin: 30px;
+$double-margin: 2 * $normal-margin;
 
 
 // Paddings:
@@ -65,6 +66,7 @@ $bigger-margin: 30px;
 $medium-padding: $medium-margin;
 $normal-padding: $normal-margin;
 $bigger-padding: $bigger-margin;
+$double-padding: $double-margin;
 
 $group-side-padding: 15px;
 

@@ -133,10 +133,12 @@ signingKeysWidget
   -> m (Dynamic t (Set KeyName))
 signingKeysWidget aWallet = do
   let keyMap = aWallet ^. wallet_keys
-  boxValues <- elAttr "table" ("style" =: "table-layout: fixed; width: 100%") $ do
-    el "thead" $ el "tr" $ do
-      elClass "th" "left-col" $ text "Key Name"
-      el "th" $ text "Signing"
+      tableAttrs = 
+        "style" =: "table-layout: fixed; width: 100%" <> "class" =: "table"
+  boxValues <- elAttr "table" tableAttrs $ do
+    el "thead" $ elClass "tr" "table__row" $ do
+      elClass "th" "table__heading" $ text "Key Name"
+      elClass "th" "table__heading" $ text ""
     el "tbody" $ listWithKey keyMap $ \name key -> signingItem (name, key)
   dyn_ $ ffor keyMap $ \keys -> when (Map.null keys) $ text "No keys ..."
   return $ do -- The Dynamic monad
@@ -152,9 +154,9 @@ signingItem
   => (Text, Dynamic t KeyPair)
   -> m (Dynamic t Bool)
 signingItem (n, _) = do
-    el "tr" $ do
+    elClass "tr" "table__row" $ do
       el "td" $ text n
-      box <- elClass "td" "centercell" $ checkbox False $ def
+      box <- elClass "td" "signing-selector__check-box" $ checkbox False $ def
       pure (value box)
 
 accordionItem'

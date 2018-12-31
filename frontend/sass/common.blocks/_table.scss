@@ -1,0 +1,37 @@
+// The wallet ui:
+@import '../include/defs';
+
+.table {
+  color: $tertiary-color;
+  font-size: $secondary-font-size;
+}
+
+
+.table__heading {
+  height: 2em;
+
+  text-align: left;
+  color: #2d2d2f;
+  font-size: $secondary-font-size;
+
+  padding-bottom: $medium-padding;
+  border-bottom-style: $std-border-style;
+  border-bottom-color: $std-border-color;
+  border-bottom-width: $std-border-width;
+}
+
+
+// .table__row for fake tables, .table__row td for real ones.
+.table__row,
+.table__row td {
+  height: 2em;
+
+  border-bottom-style: $std-border-style;
+  border-bottom-color: $std-border-color;
+  border-bottom-width: $std-border-width;
+}
+
+.table__row:last-child td,
+.table__row {
+  border:none;
+}

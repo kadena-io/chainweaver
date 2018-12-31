@@ -53,16 +53,17 @@ uiDeployConfirmation ideL = do
   onClose <- modalHeader $ text "Deployment Settings"
   modalMain $ do
     transInfo <- modalBody $ do
-      el "h3" $ text "Choose a server "
+      d <- divClass "segment" $ do
+        el "h3" $ text "Choose a server "
 
-      let backends = ffor (_backend_backends $ _ide_backend ideL) $
-            fmap (\(k, _) -> (k, textBackendName k)) . maybe [] Map.toList
-          mkOptions bs = Map.fromList $ (Nothing, "Deployment Target") : map (first Just) bs
+        let backends = ffor (_backend_backends $ _ide_backend ideL) $
+              fmap (\(k, _) -> (k, textBackendName k)) . maybe [] Map.toList
+            mkOptions bs = Map.fromList $ (Nothing, "Deployment Target") : map (first Just) bs
 
-          cfg = def & dropdownConfig_attributes .~ pure ("class" =: "select select_type_primary")
-      d <- dropdown Nothing (mkOptions <$> backends) cfg
+            cfg = def & dropdownConfig_attributes .~ pure ("class" =: "select select_type_primary")
+        dropdown Nothing (mkOptions <$> backends) cfg
 
-      signingKeys <- elClass "div" "key-chooser" $ do
+      signingKeys <- elClass "div" "key-chooser segment" $ do
         el "h3" $ text "Choose keys to sign with"
         signingKeysWidget $ _ide_wallet ideL
       pure $ do

@@ -2,15 +2,12 @@
 @import '../include/defs';
 
 .wallet {
-  color: $tertiary-color;
-  font-size: $secondary-font-size;
 }
 
 
 .wallet__key {
   overflow-x: hidden;
   text-overflow: ellipsis;
-
 }
 
 .wallet__key_hidden {
@@ -25,31 +22,3 @@
   text-align: right;
 }
 
-.wallet__heading {
-  height: 2em;
-
-  text-align: left;
-  color: #2d2d2f;
-  font-size: $secondary-font-size;
-
-  padding-bottom: $medium-padding;
-  border-bottom-style: $std-border-style;
-  border-bottom-color: $std-border-color;
-  border-bottom-width: $std-border-width;
-}
-
-.wallet__key-name-heading {
-  text-align: left;
-}
-
-.wallet__row td {
-  height: 2em;
-
-  border-bottom-style: $std-border-style;
-  border-bottom-color: $std-border-color;
-  border-bottom-width: $std-border-width;
-}
-
-.wallet__row:last-child td {
-  border:none;
-}

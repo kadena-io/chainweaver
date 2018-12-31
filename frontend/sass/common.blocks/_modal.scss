@@ -63,22 +63,24 @@
 
 .modal__main {
   height: calc(100% - 68px);
-  padding: $normal-padding;
+  padding: $normal-padding $normal-padding;
   min-height: 6em;
 }
 
 .modal__body {
   height: calc(100% - 77px);
+  padding-right: $normal-padding;
   overflow-y: auto;
 }
 
 
 .modal__footer {
   margin-top: $normal-margin;
+  padding-top: $normal-padding;
+  padding-right: $normal-padding;
   border-top: $std-border-width $std-border-style $std-border-color;
   border-bottom-left-radius: $std-border-radius;
   border-bottom-right-radius: $std-border-radius;
-  padding: $normal-padding;
   text-align: right;
 }
 
