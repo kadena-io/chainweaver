@@ -30,7 +30,7 @@
 }
 
 
-.button:hover {
+.button:hover:not([disabled]) {
   background: $hover-background;
 }
 
@@ -39,7 +39,6 @@
   filter: invert(100%);
 }
 
-.button_disabled,
 .button[disabled] {
   cursor: not-allowed;
 }
@@ -51,7 +50,7 @@
   font-size: $primary-font-size;
 }
 
-.button_type_primary:hover {
+.button_type_primary:hover:not([disabled]) {
   background: $black-hover;
 }
 
@@ -60,7 +59,7 @@
 }
 
 .button_type_primary[disabled],
-.button_type_primary.button_disabled {
+.button_type_primary {
   background: $black-disabled-bg;
   border-color: $black-disabled-border-color;
   color: $black-disabled-color;
