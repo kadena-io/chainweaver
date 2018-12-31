@@ -150,11 +150,11 @@ refreshButton =
 
 confirmButton :: DynamicButtonConstraints t m => UiButtonDynCfg t -> Text -> m (Event t ())
 confirmButton cfg msg =
-    uiButtonDyn (cfg & uiButtonCfg_class .~ "confirm-button") $ text msg
+    uiButtonDyn (cfg & uiButtonCfg_class .~ "button_type_primary" <> "button_confirm") $ text msg
 
 cancelButton :: StaticButtonConstraints t m => UiButtonCfg -> Text -> m (Event t ())
 cancelButton cfg msg =
-    uiButton (cfg & uiButtonCfg_class .~ "cancel-button") $ text msg
+    uiButton (cfg & uiButtonCfg_class .~ "button_type_tertiary") $ text msg
 
 
 -- | Create HTML element attributes from config.

@@ -55,6 +55,10 @@
   padding: 0;
   margin: 3px 0 0 0;
   line-height: 1px;
+  font-size: $primary-font-size;
+
+  color: $white;
+  border-color: $primary-border-color;
 }
 
 .modal__main {

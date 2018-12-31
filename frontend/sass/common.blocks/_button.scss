@@ -71,3 +71,15 @@
   line-height: $tiny-line-height;
 }
 
+
+.button_confirm {
+  color: $white;
+  background-color: $confirm-color;
+  border-color: $confirm-color;
+}
+
+.button_confirm[disabled],
+.button_confirm_disabled {
+  background: transparent;
+  color: $black-disabled-color;
+}

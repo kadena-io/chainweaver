@@ -27,6 +27,12 @@ $select-padding: 14px;
   margin-left: $select-padding;
 }
 
+.select_type_primary {
+  font-size: $primary-font-size;
+  border-color: $primary-border-color;
+  padding-left: 14px;
+}
+
 .select_type_secondary {
   background-image: url(/static/img/arrow-down-grey.svg);
   color: $secondary-color;

@@ -68,6 +68,10 @@ $bigger-padding: $bigger-margin;
 
 $group-side-padding: 15px;
 
+// Other colors:
+
+$confirm-color: #4499d9;
+
 // Font used for code.
 @mixin code-font {
   font-family: 'RobotoMono', monospace !important; // Ace is pretty nasty with overriding.

@@ -58,7 +58,9 @@ uiDeployConfirmation ideL = do
       let backends = ffor (_backend_backends $ _ide_backend ideL) $
             fmap (\(k, _) -> (k, textBackendName k)) . maybe [] Map.toList
           mkOptions bs = Map.fromList $ (Nothing, "Deployment Target") : map (first Just) bs
-      d <- dropdown Nothing (mkOptions <$> backends) def
+
+          cfg = def & dropdownConfig_attributes .~ pure ("class" =: "select select_type_primary")
+      d <- dropdown Nothing (mkOptions <$> backends) cfg
 
       signingKeys <- elClass "div" "key-chooser" $ do
         el "h3" $ text "Choose keys to sign with"
