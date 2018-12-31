@@ -23,6 +23,8 @@
 }
 
 .input_type_tertiary {
+  font-size: $secondary-font-size;
   color: $tertiary-color;
+  border-color: $secondary-border-color;
   background-color: transparent;
 }
