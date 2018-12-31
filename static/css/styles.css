@@ -121,12 +121,6 @@
   margin: 1px 0px; /* 0px left and right because of button's margin's */
 }
 
-.control-ui .control-block .pagination button {
-  padding: 0 10px;
-  margin: 0 1px;
-}
-
-
 
 @media (min-width: 1200px) {
   .control-ui .control-block .pagination {
@@ -148,87 +142,12 @@
 }
 
 .control-ui .control-block .pagination {
-    display: flex;
     flex-grow: 1;
 }
 
-.control-ui .control-block button:hover {
-  background: #dfdfdf;
-  border-color: #dfdfdf;
-}
 .control-ui .control-block .pagination .page-count {
-  display: flex;
-  color: #757575;
-  font-size: 15px;
-  flex-grow: 1;
-  justify-content: center;
-  align-items: center;
 }
 
-.control-ui .control-block .pagination .page-count .page-count-text {
-  display: block;
-  padding-left: 5px;
-  padding-right: 5px;
-}
-
-
-button.cancel-button,button.confirmation-button {
-}
-
-button.confirmation-button {
-  font-size: 15px;
-  font-weight: bold;
-  color: #ffffff;
-  background-color: #4499d9;
-  border-color: #4499d9;
-}
-button.confirmation-button[disabled] {
-  background: none;
-  font-weight: normal;
-  color: #757575;
-  border-color: #d7d7d7;
-}
-/* Disable hover effect for disabled buttons: */
-button.confirmation-button[disabled]:hover {
-  background: none;
-  font-weight: normal;
-  color: #757575;
-  border-color: #d7d7d7;
-}
-
-button.confirmation-button:hover {
-  background: #555;
-  border-color: #d7d7d7;
-}
-
-button.cancel-button {
-  font-size: 15px;
-  color: #757575;
-  border-color: #d7d7d7;
-}
-
-button.cancel-button:hover {
-  color: #ffffff;
-}
-
-button.cancel-button[disabled]:hover {
-  color: #757575;
-  border-color: #d7d7d7;
-}
-
-button.cancel-button:active,button.confirmation-button:active {
-  border-color: #555;
-  background: #555;
-}
-
-.deployed-contracts-accordion > button {
-  float: right;
-  margin-right: 0 !important;
-}
-
-.collapsed .deployed-contracts-accordion > button {
-  display: none;
-}
 
 /***************** moduleDetails view ******************/
 

@@ -132,7 +132,7 @@ browseDeployed m = mdo
           opts = Map.insert Nothing "All backends" . maybe mempty mkMap <$>
                     m ^. backend_backends
           filterCfg = def & dropdownConfig_attributes %~ fmap (addToClassAttr "select_type_tertiary")
-      d <- divClass "backend-filter" $ uiDropdown Nothing opts filterCfg
+      d <- uiDropdown Nothing opts filterCfg
       let
         search :: Dynamic t Text
         search = value ti
@@ -146,8 +146,7 @@ browseDeployed m = mdo
             <*> (fromMaybe mempty <$> m ^. backend_backends)
         filteredCsRaw = searchFn <$> search <*> backendL <*> deployedContracts
       filteredCsL <- holdUniqDyn filteredCsRaw
-      updatePageL <- divClass "pagination" $
-        paginationWidget currentPage totalPages
+      updatePageL <- paginationWidget mempty currentPage totalPages
 
       return (filteredCsL, updatePageL)
 

@@ -213,22 +213,27 @@ accordionItem initActive contentClass title inner =
 
 paginationWidget
   :: MonadWidget t m
-  => Dynamic t Int  -- ^ Current page
+  => CssClass
+  -> Dynamic t Int  -- ^ Current page
   -> Dynamic t Int  -- ^ Total number of pages
   -> m (Event t Int)
-paginationWidget currentPage totalPages = do
+paginationWidget cls currentPage totalPages = elKlass "div" (cls <> "pagination") $ do
     let
-      pageButton okay i =
-        uiButtonDyn (btnCfgTertiary & uiButtonCfg_disabled .~ fmap not okay) $
-          elClass "i" ("fa " <> i) blank
+      pageButton okay i = do
+        let
+          cfg = btnCfgTertiary 
+            & uiButtonCfg_disabled .~ fmap not okay
+            & uiButtonCfg_class %~ fmap (<> "pagination__button")
+        uiButtonDyn cfg $ elClass "i" ("fa " <> i) blank
 
       canGoFirst = (> 1) <$> currentPage
     first <- pageButton canGoFirst "fa-angle-double-left"
     prev <-  pageButton canGoFirst "fa-angle-left"
-    void $ elClass "div" "page-count" $ elClass "span" "page-count-text" $ do
-      display currentPage
-      text " of "
-      display totalPages
+    void $ elClass "div" "pagination__page-count" $
+      elClass "span" "pagination__page-count-text" $ do
+        display currentPage
+        text " of "
+        display totalPages
     let canGoLast = (<) <$> currentPage <*> totalPages
     nextL <- pageButton canGoLast "fa-angle-right"
     lastL <- pageButton canGoLast "fa-angle-double-right"

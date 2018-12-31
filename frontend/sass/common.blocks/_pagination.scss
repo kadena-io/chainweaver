@@ -1,0 +1,26 @@
+// The wallet ui:
+@import '../include/defs';
+
+.pagination {
+  display: flex;
+}
+
+.pagination__button {
+  padding: 0 $medium-padding;
+  margin: 0 1px;
+}
+
+.pagination__page-count {
+  display: flex;
+  color: $tertiary-color;
+  font-size: $secondary-font-size;
+  flex-grow: 1;
+  justify-content: center;
+  align-items: center;
+}
+
+.pagination__page-count-text {
+  display: block;
+  padding-left: 5px;
+  padding-right: 5px;
+}
