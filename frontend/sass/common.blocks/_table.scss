@@ -51,6 +51,9 @@
 .table__row_type_primary td {
   height: 41px;
   line-height: 42px;
+
+  padding-left: $medium-padding;
+  padding-right: $medium-padding;
 }
 
 
@@ -66,12 +69,15 @@
   width: 250px;
 }
 
+.table__cell_size_double-main {
+  width: 500px;
+}
+
 .table__cell_size_side {
   width: 200px;
 }
 
 // Cell that basically just takes the remaining space.
-// In additiona contents are floated right, so this is ideal as the last column.
 .table__cell_size_flex {
   flex-grow: 10;
 }
@@ -86,7 +92,6 @@
   height: $small-height;
   padding: 0;
   line-height: normal;
-  margin-right: $medium-margin;
   margin-top: 8px;
   font-size: $small-font-size;
 }
@@ -101,7 +106,6 @@
   font-size: 15px;
   font-weight: bold;
   color: #cbcbcb;
-  margin-left: 11px;
   margin-right: 17.9px;
 }
 

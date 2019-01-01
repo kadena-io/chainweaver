@@ -149,33 +149,9 @@ h3.module-details {
   color: #2d2d2f;
 }
 
-ol.functions-list  {
-  margin: 0;
-  padding: 0;
-  list-style-type: none;
-  border-radius: 4px;
-  border: 1px solid #d7d7d7;
-}
-
-.functions-list li {
-  border-bottom: 1px solid #d7d7d7;
-  font-size: 15px;
-  height: 41px;
-  line-height: 42px;
-  color: #757575;
-  list-style-position: inside;
-  display: flex;
-}
-
-.functions-list li > :first-child {
-  margin-left: 11px;
-}
 
 
 .functions-list li  .function-name {
-  font-family: WorkSans;
-  display: block;
-  font-weight: 600;
   color: #757575;
 
   width: 200px;
@@ -186,8 +162,6 @@ ol.functions-list  {
 }
 
 .functions-list li  .function-desc {
-  font-family: WorkSans;
-  font-size: 13px;
   color: #757575;
 
   width: 500px;

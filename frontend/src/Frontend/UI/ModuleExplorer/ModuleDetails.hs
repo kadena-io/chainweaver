@@ -96,12 +96,16 @@ functionList
      , HasUIModuleDetailsModel model t
      )
   => model -> Maybe DeployedModule -> [PactFunction] -> m mConf
-functionList m moduleL functions = do
-    liftIO $ putStrLn $ "Functions: " <> show functions
-    divClass "functions" $ elClass "ol" "functions-list" $ do
-      onView <- fmap leftmost . for functions $ \f -> el "li" $ do
-        divClass "function-name" $ text $ _pactFunction_name f
-        divClass "function-desc" $ text $ fromMaybe "" $ _pactFunction_documentation f
-        divClass "function-view" $ fmap (const f) <$> maybe (viewButton mempty) (const callButton) moduleL
+functionList m moduleL functions =
+    elClass "ol" "table table_type_primary" $ do
+      onView <- fmap leftmost . for functions $ \f ->
+        elClass "li" "table__row table__row_type_primary" $ do
+          divClass "table__text-cell table__cell_size_side title" $
+            text $ _pactFunction_name f
+          divClass "table__text-cell table__cell_size_double-main description" $
+            text $ fromMaybe "" $ _pactFunction_documentation f
+          divClass "table__cell_size_flex" $ do
+            let btnCls = "table__action-button"
+            fmap (const f) <$> maybe (viewButton btnCls) (const callButton) moduleL
       pure $ mempty & modalCfg_setModal .~ (Just . uiCallFunction m moduleL <$> onView)
 
