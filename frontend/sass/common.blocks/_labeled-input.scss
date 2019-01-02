@@ -1,0 +1,14 @@
+// Input with a label container.
+@import '../include/defs';
+
+.labeled-input {
+
+}
+
+.labeled-input__label {
+  margin-bottom: $medium-margin;
+}
+
+.labeled-input__input {
+  width: 100%;
+}

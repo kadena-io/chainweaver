@@ -1,0 +1,40 @@
+@import '../include/defs';
+
+// Standard input component for typing in some text:
+.textarea {
+  border-radius: $std-border-radius;
+  border-style: $std-border-style;
+  border-width: $std-border-width;
+  border-color: $std-border-color;
+
+  height: 3 * $control-height;
+  line-height: $control-line-height;
+
+  font-family: $std-fonts;
+  color: $std-color;
+
+  padding: 0 $medium-padding;
+}
+
+.textarea::placeholder {
+  color: $placeholder-color;
+}
+
+.textarea_type_secondary {
+  font-size: $secondary-font-size;
+  color: $secondary-color;
+  border-color: $secondary-border-color;
+  background-color: $white;
+
+}
+
+.textarea_type_secondary::placeholder {
+  color: $secondary-placeholder-color;
+}
+
+.textarea_type_tertiary {
+  font-size: $secondary-font-size;
+  color: $tertiary-color;
+  border-color: $secondary-border-color;
+  background-color: transparent;
+}

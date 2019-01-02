@@ -1,0 +1,9 @@
+// Labels for input elements.
+@import '../include/defs';
+
+.label {
+  font-family: WorkSans-SemiBold;
+  font-size: 13px;
+  color: $tertiary-color;
+  font-weight: 600;
+}
