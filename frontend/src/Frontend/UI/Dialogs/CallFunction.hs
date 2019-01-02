@@ -72,25 +72,29 @@ uiCallFunction
 uiCallFunction m mModule func = do
     onClose <- modalHeader $ do
       text "Function: "
-      elClass "span" "function-name" $ text $ _pactFunction_name func
+      uiCodeFont mempty $ _pactFunction_name func
     modalMain $ do
       mCallAndKeys <- modalBody $ do
-        elClass "div" "function-details" $ do
-          renderSignature func
-          el "br" blank
-          el "br" blank
-          renderDescription func
-        for mModule $ \ moduleL -> divClass "fun-arg-editor" $ do
-          let fType = _pactFunction_type func
-              fModule = _pactFunction_module func
-              fName = _pactFunction_name func
-              fArgs = _ftArgs fType
-          args :: [ Dynamic t Text ] <- traverse (funArgEdit (m ^. jsonData)) fArgs
-          let
-            pactCall :: Dynamic t Text
-            pactCall = buildCall fModule fName <$> sequence args
+        mPactCall <- uiSegment mempty $ do
+          elClass "div" "segment segment_type_secondary code-font code-font_type_function-desc" $ do
+            renderSignature func
+            el "br" blank
+            el "br" blank
+            renderDescription func
+          for mModule $ \ moduleL -> divClass "fun-arg-editor" $ do
+            let fType = _pactFunction_type func
+                fModule = _pactFunction_module func
+                fName = _pactFunction_name func
+                fArgs = _ftArgs fType
+            args :: [ Dynamic t Text ] <- traverse (funArgEdit (m ^. jsonData)) fArgs
+            pure $ buildCall fModule fName <$> sequence args
 
-          signingKeys <- signingKeysWidget (m ^. wallet)
+        signingKeys <- uiSegment mempty $
+          signingKeysWidget (m ^. wallet)
+
+        pure $ do
+          pactCall <- mPactCall
+          moduleL <- mModule
           pure (pactCall, signingKeys, moduleL)
 
       modalFooter $
@@ -137,29 +141,29 @@ buildCall m n args = mconcat [ "(", coerce m, ".", n , " " , T.unwords args, ")"
 -- renderQualified func = (coerce . _pactFunction_module) func <> "." <> _pactFunction_name func
 
 renderDescription :: MonadWidget t m => PactFunction -> m ()
-renderDescription func = elClass "span" "function-des code-font" $
-  traverse_ text $ _pactFunction_documentation func
+renderDescription func = traverse_ (uiCodeFont "code-font_type_function-desc") $
+  _pactFunction_documentation func
 
 renderSignature :: MonadWidget t m => PactFunction -> m ()
 renderSignature f = do
   let fType = _pactFunction_type f
   renderArgs $ _ftArgs fType
   argDelimiter
-  elClass "span" "pact-fun-return-arrow" $ text "->"
+  uiCodeFont "code-font_type_fun-return-arrow" "->"
   argDelimiter
-  elClass "span" "pact-type" $ text $ tshow (_ftReturn fType)
+  uiCodeFont "code-font_type_pact-type" $ tshow (_ftReturn fType)
 
 renderArgs :: MonadWidget t m => [Arg (Term Name)] -> m ()
 renderArgs = sequence_ . intersperse argDelimiter . map renderArg
 
 argDelimiter :: MonadWidget t m => m ()
-argDelimiter = elClass "span" "pact-arg-delimiter" blank
+argDelimiter = uiCodeFont "code-font_type_arg-delimiter" mempty
 
 renderArg :: MonadWidget t m => Arg (Term Name) -> m ()
 renderArg a = do
-  elClass "span" "pact-arg-name" $ text (_aName a)
+  uiCodeFont "code-font_type_arg-name" $ (_aName a)
   text " "
-  elClass "span" "pact-type" $ text (tshow $ _aType a)
+  uiCodeFont "code-font_type_pact-type" $ tshow (_aType a)
 
 
 data InputSize
@@ -167,7 +171,7 @@ data InputSize
   | InputSize_Small -- Should stay on the same line
 
 -- | Render `InputSize` to class name.
-inputSizeClass :: InputSize -> Text
+inputSizeClass :: InputSize -> CssClass
 inputSizeClass = \case
   InputSize_Large -> "large-input"
   InputSize_Small -> "small-input"
@@ -184,8 +188,8 @@ funArgEdit json arg = do
       aName = _aName arg
       aType = _aType arg
       sizeClass = inputSizeClass . funTypeInputSize $ aType
-  elClass "label" ("fun-arg-edit " <> sizeClass) $ do
-    divClass "label-text" $ text aName
+  elKlass "div" ("group labled-input segment segment_type_tertiary" <> sizeClass) $ do
+    divClass "label labeled-input__label" $ text aName
     funTypeInput json aType
 
 -- | Get the size of a type input widget.
@@ -239,28 +243,32 @@ funTypeInput json = \case
         onInvalidLastValid = tag lastValid onInvalid
         cfg = def
           -- Does not work well weith "number":
-          & initialAttributes .~ ("type" =: "text")
+          & initialAttributes .~ ("type" =: "text" <> "class" =: "labeled-input__input input_type_secondary")
           & inputElementConfig_initialValue .~ "0"
           & inputElementConfig_setValue .~ onInvalidLastValid
-      i <- inputElement cfg
+      i <- uiInputElement cfg
       pure $ _inputElement_value i
 
 
     mkCheckbox :: Bool -> m (Dynamic t Text)
     mkCheckbox iVal =
       let
-        cfg = def
-          & initialAttributes .~ ("type" =: "checkbox")
-          & inputElementConfig_initialValue .~ renderBool iVal
-        renderBool x = if x then "true" else "false"
-        getVal = fmap renderBool . _inputElement_checked
+        itemDom v = elAttr "option" ("value" =: v) $ text (T.toTitle v)
+        cfg = SelectElementConfig "false" Nothing def
+          & initialAttributes .~ "class" =: "labeled-input__input select_type_secondary"
       in
-        getVal <$> inputElement cfg
+        fmap (_selectElement_value . fst) . uiSelectElement cfg $
+          traverse_ itemDom [ "false", "true" ]
 
     mkTextArea :: Text -> m (Dynamic t Text)
     mkTextArea iVal =
       let
-        cfg = def & textAreaElementConfig_initialValue .~ iVal
+        attrs = "class" =: "labeled-input__input input input_type_textarea input_type_secondary"
+          <> "placeholder" =: "Input .."
+        cfg = def
+          & textAreaElementConfig_initialValue .~ iVal
+          & initialAttributes .~ attrs
+
       in
         _textAreaElement_value <$> textAreaElement cfg
 
@@ -268,10 +276,10 @@ funTypeInput json = \case
     mkInput iType iVal =
       let
         cfg = def
-          & initialAttributes .~ ("type" =: iType)
+          & initialAttributes .~ ("type" =: iType <> "class" =: "labeled-input__input input_type_secondary")
           & inputElementConfig_initialValue .~ iVal
       in
-        _inputElement_value <$> inputElement cfg
+        _inputElement_value <$> uiInputElement cfg
 
 keysetSelector :: MonadWidget t m => JsonData t -> m (Dynamic t Text)
 keysetSelector json = do
@@ -282,8 +290,10 @@ keysetSelector json = do
       itemDom v = elAttr "option" ("value" =: v) $ text v
       addReadKeyset x = "(read-keyset \"" <> x <> "\")"
       initKeyset = current $ fromMaybe "" . headMay <$> keysetNames
-      cfg = SelectElementConfig "" (Just $ tag initKeyset onPostBuild) def
+      cfg = SelectElementConfig "" (Just $ tag initKeyset onPostBuild) def &
+        initialAttributes .~ "class" =: "select_type_secondary labeled-input__input"
 
-    (s,_) <- selectElement cfg $ void $ dyn $ ffor keysetNames $ \names -> do
+
+    (s,_) <- uiSelectElement cfg $ void $ dyn $ ffor keysetNames $ \names -> do
       traverse_ itemDom names
-    pure $ addReadKeyset <$> traceDyn "Selected element: " (_selectElement_value s)
+    pure $ addReadKeyset <$> _selectElement_value s
