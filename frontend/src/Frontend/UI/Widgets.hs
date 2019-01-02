@@ -23,6 +23,9 @@ module Frontend.UI.Widgets
   , deleteButton
   , module Frontend.UI.Button
   -- * Other widgets
+  , uiSegment
+  , uiGroup
+  , uiCodeFont
   , uiInputElement
   , uiDropdown
   , uiSelectElement
@@ -67,7 +70,21 @@ import           Frontend.Wallet             (HasWallet (..), KeyName, KeyPair,
                                               Wallet)
 ------------------------------------------------------------------------------
 
+-- | A segment.
+--
+--   Segments are divs with separated by a dashed line (standard).
+uiSegment :: DomBuilder t m => CssClass -> m a -> m a
+uiSegment cls = elKlass "div" (cls <> "segment")
 
+-- | A group.
+--
+--   A group is a div with a darker grey background.
+uiGroup :: DomBuilder t m => CssClass -> m a -> m a
+uiGroup cls = elKlass "div" (cls <> "group")
+
+-- | Span rendered in code-font.
+uiCodeFont :: DomBuilder t m => CssClass -> Text -> m ()
+uiCodeFont cls = elKlass "span" ("code-font" <> cls) . text
 
 uiDropdown
   :: forall k t m
@@ -79,14 +96,14 @@ uiDropdown k0 options (DropdownConfig setK uAttrs) = do
   dropdown k0 options (DropdownConfig setK attrs)
 
 uiSelectElement
-  :: DomBuilder t m 
+  :: DomBuilder t m
   => SelectElementConfig er t (DomBuilderSpace m)
   -> m a
   -> m (SelectElement er (DomBuilderSpace m) t, a)
 uiSelectElement uCfg child = do
   let cfg = uCfg & initialAttributes %~ addToClassAttr "select"
   selectElement cfg child
-  
+
 -- | reflex-dom `inputElement` with pact-web default styling:
 uiInputElement
   :: DomBuilder t m
@@ -98,7 +115,7 @@ uiInputElement cfg = inputElement $ cfg & initialAttributes %~ addToClassAttr "i
 -- | Validated input with button
 validatedInputWithButton
   :: MonadWidget t m
-  => CssClass 
+  => CssClass
   -> (Text -> PushM t (Maybe Text))
   -- ^ Validation function returning `Just error message` on error.
   -> Text -- ^ Placeholder
@@ -130,7 +147,7 @@ validatedInputWithButton uCls check placeholder buttonText = do
         void $ performEvent (liftJSM (pToJSVal (_inputElement_raw name) ^.  js0 ("focus" :: String)) <$ confirmed)
         pure $ (tag (current nameVal) confirmed, checkedL)
 
-      elClass "div" "new-by-name_error" $ 
+      elClass "div" "new-by-name_error" $
         elClass "span" "error_inline" $ dynText $ fromMaybe "" <$> checked
 
       pure update
@@ -155,11 +172,11 @@ signingKeysWidget
   -> m (Dynamic t (Set KeyName))
 signingKeysWidget aWallet = do
   let keyMap = aWallet ^. wallet_keys
-      tableAttrs = 
+      tableAttrs =
         "style" =: "table-layout: fixed; width: 100%" <> "class" =: "table"
   boxValues <- elAttr "table" tableAttrs $ do
     el "thead" $ elClass "tr" "table__row" $ do
-      elClass "th" "table__heading" $ text "Key Name"
+      elClass "th" "table__heading" $ text "Sign with Key"
       elClass "th" "table__heading" $ text ""
     el "tbody" $ listWithKey keyMap $ \name key -> signingItem (name, key)
   dyn_ $ ffor keyMap $ \keys -> when (Map.null keys) $ text "No keys ..."
@@ -221,7 +238,7 @@ paginationWidget cls currentPage totalPages = elKlass "div" (cls <> "pagination"
     let
       pageButton okay i = do
         let
-          cfg = btnCfgTertiary 
+          cfg = btnCfgTertiary
             & uiButtonCfg_disabled .~ fmap not okay
             & uiButtonCfg_class %~ fmap (<> "pagination__button")
         uiButtonDyn cfg $ elClass "i" ("fa " <> i) blank
