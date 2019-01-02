@@ -1,0 +1,31 @@
+@import '../include/defs';
+
+// Standard input component for typing in some text:
+.checkbox {
+  position: absolute;
+  top: 50%;
+  bottom: 0;
+  transform: translate(0, -50%);
+
+  border-radius: $std-border-radius;
+  border-style: $std-border-style;
+  border-width: $std-border-width;
+  border-color: $std-border-color;
+
+  width: 14px;
+  height: 14px;
+
+  background-color: $white;
+
+  padding: 0 $medium-padding;
+}
+
+.checkbox:hover 
+
+.checkbox__disabled-std {
+  position: absolute;
+  opacity: 0;
+  cursor: pointer;
+  height: 0;
+  width: 0;
+}
