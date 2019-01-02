@@ -142,9 +142,9 @@ viewButton cls =
   uiButton (def & uiButtonCfg_class .~ cls <> "button_type_secondary") $
     btnTextIcon (static @"img/view.svg") "View" blank >> text "View"
 
-callButton :: StaticButtonConstraints t m => m (Event t ())
-callButton =
-  uiButton (def & uiButtonCfg_class .~ "button_type_secondary") $
+callButton :: StaticButtonConstraints t m => CssClass -> m (Event t ())
+callButton cls =
+  uiButton (def & uiButtonCfg_class .~ "button_type_secondary" <> cls) $
     btnTextIcon (static @"img/call.svg") "Call" blank >> text "Call"
 
 -- | Button that triggers a refresh/reload of something.

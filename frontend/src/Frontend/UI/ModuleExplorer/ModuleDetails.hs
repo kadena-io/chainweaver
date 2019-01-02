@@ -107,6 +107,6 @@ functionList m moduleL functions =
             text $ fromMaybe "" $ _pactFunction_documentation f
           divClass "table__cell_size_flex" $ do
             let btnCls = "table__action-button"
-            fmap (const f) <$> maybe (viewButton btnCls) (const callButton) moduleL
+            fmap (const f) <$> maybe (viewButton btnCls) (const $ callButton btnCls) moduleL
       pure $ mempty & modalCfg_setModal .~ (Just . uiCallFunction m moduleL <$> onView)
 

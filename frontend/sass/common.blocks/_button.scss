@@ -1,6 +1,7 @@
 @import '../include/defs';
 
 .button {
+  position: relative;
   -webkit-appearance: none;
   border-radius: $std-border-radius;
   border-style: $std-border-style;
@@ -34,8 +35,7 @@
   position: absolute;
   top: 50%;
   left: 50%;
-  transform: translate(-25%, -25%);
-
+  transform: translate(-50%, -50%);
 }
 
 
