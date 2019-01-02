@@ -20,3 +20,33 @@
 .code-font_old {
   color: $tertiary-color;
 }
+
+.code-font_type_pact-arg-name {
+  font-family: RobotoMono-LightItalic;
+  font-size: 12px;
+}
+
+.code-font_type_pact-type {
+  font-family: RobotoMono-Light;
+  font-size: 12px;
+  color: #ff0200;
+  background-color: #e6e6e6;
+  border-radius: 3px;
+  height: 22px;
+  padding: 2px;
+}
+
+.code-font_type_arg-delimiter {
+  display: inline-block;
+  width: 1em;
+}
+
+.code-font_type_function-desc {
+  font-family: RobotMono;
+  font-size: 12px;
+  color: #7b7b7b;
+}
+
+.code-font_type_fun-return-arrow {
+  color: #757575;
+}
