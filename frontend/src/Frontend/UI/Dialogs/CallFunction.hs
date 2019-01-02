@@ -89,8 +89,9 @@ uiCallFunction m mModule func = do
             args :: [ Dynamic t Text ] <- traverse (funArgEdit (m ^. jsonData)) fArgs
             pure $ buildCall fModule fName <$> sequence args
 
-        signingKeys <- uiSegment mempty $
-          signingKeysWidget (m ^. wallet)
+        signingKeys <- case mModule of
+            Nothing -> pure mempty
+            Just _  -> uiSegment mempty $ signingKeysWidget (m ^. wallet)
 
         pure $ do
           pactCall <- mPactCall
