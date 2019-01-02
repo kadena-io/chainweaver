@@ -27,6 +27,7 @@ module Frontend.UI.Widgets
   , uiGroup
   , uiCodeFont
   , uiInputElement
+  , uiCheckbox
   , uiDropdown
   , uiSelectElement
   , validatedInputWithButton
@@ -69,6 +70,27 @@ import           Frontend.UI.Widgets.Helpers (imgWithAlt, setFocus, setFocusOn,
 import           Frontend.Wallet             (HasWallet (..), KeyName, KeyPair,
                                               Wallet)
 ------------------------------------------------------------------------------
+
+-- | A styled checkbox.
+--
+--   In contrast to `checkbox` this is not only the actual checkbox but also a
+--   containing label, as this is the only way to have a styled checkbox.
+--
+--   Note that this is actually a secondary type checkbox, I have yet to
+--   generalize this yet.
+uiCheckbox
+  :: (DomBuilder t m, PostBuild t m)
+  => CssClass
+  -> Bool
+  -> CheckboxConfig t
+  -> m () -- ^ Some label to display alongside the checkbox. (Usually `text`.)
+  -> m (Checkbox t)
+uiCheckbox cls b cfg c =
+  elKlass "label" (cls <> "label checkbox checkbox_type_secondary") $ do
+    cb <- checkbox b $ cfg
+    elClass "span" "checkbox__checkmark checkbox__checkmark_type_secondary" blank
+    c
+    pure cb
 
 -- | A segment.
 --
@@ -195,8 +217,8 @@ signingItem
 signingItem (n, _) = do
     elClass "tr" "table__row" $ do
       el "td" $ text n
-      box <- el "td" $ elClass "label" "signing-selector__check-box-label" $
-        checkbox False $ def
+      box <- elClass "td" "signing-selector__check-box-cell" $
+        uiCheckbox "signing-selector__check-box-label" False def blank
       pure (value box)
 
 accordionItem'

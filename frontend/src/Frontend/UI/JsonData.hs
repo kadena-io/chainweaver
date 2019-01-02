@@ -238,10 +238,10 @@ uiKeysetKey
   => Dynamic t KeysetKeys
   -> KeyName
   -> m (Event t (KeyName, Bool))
-uiKeysetKey ks n = el "li" $ el "label" $ do
+uiKeysetKey ks n = el "li" $ do
     onSelected <- tagOnPostBuild $ Map.member n <$> ks
-    cb <- checkbox False $ def & checkboxConfig_setValue .~ onSelected
-    text n
+    let cfg = def & checkboxConfig_setValue .~ onSelected
+    cb <- uiCheckbox mempty False cfg $ text n
     pure $ (n,) <$> _checkbox_change cb
 
 dataEditor

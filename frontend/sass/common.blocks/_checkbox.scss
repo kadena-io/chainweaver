@@ -1,31 +1,93 @@
 @import '../include/defs';
 
-// Standard input component for typing in some text:
+
+// This is the wrapping container around the checkbox and should usually be a label.
 .checkbox {
-  position: absolute;
-  top: 50%;
-  bottom: 0;
-  transform: translate(0, -50%);
-
-  border-radius: $std-border-radius;
-  border-style: $std-border-style;
-  border-width: $std-border-width;
-  border-color: $std-border-color;
-
-  width: 14px;
-  height: 14px;
-
-  background-color: $white;
-
-  padding: 0 $medium-padding;
+  display: block;
+  position: relative;
+  padding-left: 30px;
+  cursor: pointer;
+  -webkit-user-select: none;
+  -moz-user-select: none;
+  -ms-user-select: none;
+  user-select: none;
 }
 
-.checkbox:hover 
+.checkbox__checkmark {
+  position: absolute;
+  left: 0;
+  top: 0;
+  border-color: $std-border-color;
+  border-style: $std-border-style;
+  border-width: $std-border-width;
+  border-radius: $std-border-radius;
+  height: 20px;
+  width: 20px;
+  background-color: $white;
+}
 
-.checkbox__disabled-std {
+.checkbox:hover input ~ .checkbox__checkmark {
+  background-color: $hover-background;
+}
+
+
+/* When the checkbox is checked, add a blue background */
+.checkbox input:checked ~ .checkbox__checkmark {
+  background-color: $checked-background;
+  border-color: $checked-background;
+}
+
+/* Create the checkmark/indicator (hidden when not checked) */
+.checkbox__checkmark:after {
+  content: "";
+  position: absolute;
+  display: none;
+}
+
+/* Show the checkmark when checked */
+.checkbox input:checked ~ .checkbox__checkmark:after {
+  display: block;
+}
+
+/* Style the checkmark/indicator */
+.checkbox__checkmark:after {
+  left: 6px;
+  top: 2px;
+  width: 4px;
+  height: 9px;
+  border: solid white;
+  border-width: 0 3px 3px 0;
+  -webkit-transform: rotate(45deg);
+  -ms-transform: rotate(45deg);
+  transform: rotate(45deg);
+}
+
+// Disable std checkbox:
+.checkbox > input {
   position: absolute;
   opacity: 0;
   cursor: pointer;
   height: 0;
   width: 0;
+}
+
+.checkbox_type_secondary {
+  padding-left: 25px;
+}
+
+.checkbox__checkmark_type_secondary {
+  height: 14px;
+  width: 14px;
+}
+
+.checkbox__checkmark_type_secondary:after {
+left: 4px;
+  top: 1px;
+  width: 2px;
+  height: 6px;
+  border: solid white;
+  border-width: 0 3px 3px 0;
+  -webkit-transform: rotate(45deg);
+  -ms-transform: rotate(45deg);
+  transform: rotate(45deg);
 }
