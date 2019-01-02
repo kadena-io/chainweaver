@@ -29,6 +29,15 @@
   height: 11.1px;
 }
 
+// Standalone icon in a button
+.button__icon {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-25%, -25%);
+
+}
+
 
 .button:hover:not([disabled]) {
   background: $hover-background;
@@ -93,6 +102,10 @@
   padding-right: $medium-padding;
   font-size: $tiny-font-size;
   line-height: $tiny-line-height;
+}
+
+.button_size_big {
+  width: 90px;
 }
 
 .button_confirm {

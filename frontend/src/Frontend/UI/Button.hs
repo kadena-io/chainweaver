@@ -121,7 +121,7 @@ uiButtonDyn cfg body = do
 -- | Button for "going back" action.
 backButton :: StaticButtonConstraints t m => m (Event t ())
 backButton = -- uiIcon "fas fa-chevron-left" $ def & iconConfig_size .~ Just IconLG
-  uiButton def $ imgWithAlt (static @"img/left_arrow.svg") "Go back" blank
+  uiButton def $ btnIcon (static @"img/left_arrow.svg") "Go back" blank
 
 deleteButton :: StaticButtonConstraints t m => m (Event t ())
 deleteButton = -- uiIcon "fas fa-chevron-left" $ def & iconConfig_size .~ Just IconLG
@@ -131,9 +131,9 @@ deleteButton = -- uiIcon "fas fa-chevron-left" $ def & iconConfig_size .~ Just I
     uiButton cfg $ imgWithAlt (static @"img/X.svg") "Delete" blank
 
 -- | Button that loads something into the Editor.
-openButton :: StaticButtonConstraints t m => m (Event t ())
-openButton =
-  uiButton (def & uiButtonCfg_class .~ "button_type_secondary") $
+openButton :: StaticButtonConstraints t m => CssClass -> m (Event t ())
+openButton cls =
+  uiButton (def & uiButtonCfg_class .~ "button_type_secondary" <> cls) $
     btnTextIcon (static @"img/open.svg") "Open" blank >> text "Open"
 
 -- | Button that loads something into the Editor.
@@ -185,3 +185,6 @@ toStatic s =
 
 btnTextIcon :: DomBuilder t m => Text -> Text -> m a -> m a
 btnTextIcon = imgWithAltCls "button__text-icon"
+
+btnIcon :: DomBuilder t m => Text -> Text -> m a -> m a
+btnIcon = imgWithAltCls "button__icon"

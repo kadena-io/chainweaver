@@ -64,16 +64,16 @@ moduleDetails
   -> SelectedModule
   -> m mConf
 moduleDetails m selected = do
-    headerCfg <- elClass "div" "control-block" $ do
-      (onBack, onLoad) <- elClass "h2" "back-button-header" $
-        (,) <$> backButton <*> elClass "div" "load-button" openButton
+    headerCfg <- elClass "div" "segment" $ do
+      (onBack, onLoad) <- elClass "h2" "heading heading_type_h2" $
+        (,) <$> backButton <*> openButton mempty
 
       moduleTitle
       pure $ mempty
         & moduleExplorerCfg_selModule .~ (Nothing <$ onBack)
         & moduleExplorerCfg_loadModule .~ (_selectedModule_module selected <$ onLoad)
-    bodyCfg <- elClass "div" "module-details-content" $ do
-      elClass "h3" "module-details" $ text "Functions"
+    bodyCfg <- elClass "div" "segment" $ do
+      elClass "h3" "heading heading_type_h3" $ text "Functions"
       mayFunctionList $ _selectedModule_functions selected
     pure (headerCfg <> bodyCfg)
   where
@@ -85,9 +85,10 @@ moduleDetails m selected = do
       elClass "div" "error" $ text "Error while loading functions."
       pure mempty
 
-    moduleTitle = elClass "h2" "module-details-title" $ do
+    moduleTitle = elClass "h2" "heading heading_type_h2" $ do
       text $ selectedModuleName selected
-      elClass "span" "module-details-type" $ text $ showSelectedModuleType selected
+      elClass "div" "heading__type-details" $
+        text $ showSelectedModuleType selected
 
 
 functionList

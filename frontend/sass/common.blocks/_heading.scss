@@ -1,0 +1,45 @@
+@import '../include/defs';
+
+
+// A heading with optional controls.
+
+.heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+}
+
+.heading:first-child {
+  margin-top: 0;
+}
+
+.heading_type_h2 {
+  font-family: WorkSans-SemiBold;
+  font-size: 22px;
+}
+
+.heading_type_h3 {
+  font-family: WorkSans-SemiBold;
+  font-size: 14px;
+  color: #2d2d2f;
+}
+
+
+.heading_type_h4 {
+  font-size: $secondary-font-size;
+  font-family: 'WorkSans-Medium';
+}
+
+// Some detail/type of the heading.
+.heading__type-details {
+  display: inline-block;
+
+
+  font-family: WorkSans-Medium;
+  text-align: right;
+  color: #4499d9;
+  font-size: 11px;
+  /* height: 22px; */
+  line-height: normal;
+  vertical-align: text-bottom;
+}

@@ -160,7 +160,7 @@ uiKeyset
   -> m (JsonDataCfg t)
 uiKeyset w (n, ks) = do
     aCfg <- divClass "keyset__header" $ mdo
-      elAttr "h4" ("class" =: "keyset__header-text h4") $ do
+      elAttr "h4" ("class" =: "keyset__header-text heading_type_h4") $ do
         elClass "span" "keyset__icon" $ imgWithAlt (static @"img/keys.svg") "Keyset" blank
         text n
 
