@@ -16,10 +16,24 @@
   padding: 0 $medium-padding;
 }
 
+.input::placeholder {
+  color: $placeholder-color;
+}
 
 .input_type_search {
   background: $white url(/static/img/search.svg) no-repeat right 16.3px top 50%;
   background-size: 14.7px;
+}
+
+.input_type_secondary {
+  font-size: $secondary-font-size;
+  color: $secondary-color;
+  border-color: $secondary-border-color;
+  background-color: $white;
+}
+
+.input_type_secondary::placeholder {
+  color: $secondary-placeholder-color;
 }
 
 .input_type_tertiary {
@@ -28,3 +42,4 @@
   border-color: $secondary-border-color;
   background-color: transparent;
 }
+
