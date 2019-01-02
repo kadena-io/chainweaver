@@ -25,6 +25,10 @@
   background-size: 14.7px;
 }
 
+.input_type_textarea {
+  height: 3 * $control-height;
+}
+
 .input_type_secondary {
   font-size: $secondary-font-size;
   color: $secondary-color;
