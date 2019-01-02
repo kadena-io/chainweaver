@@ -47,7 +47,7 @@ loaderMarkup = do
   divClass "spinner" $ do
     divClass "cube1" blank
     divClass "cube2" blank
-  divClass "spinner-msg" $ text "Loading"
+  divClass "spinner__msg" $ text "Loading"
 
 newHead :: DomBuilder t m => m ()
 newHead = do
