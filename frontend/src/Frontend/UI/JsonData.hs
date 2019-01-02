@@ -79,7 +79,7 @@ uiJsonData
   -> m (JsonDataCfg t)
 uiJsonData w d = divClass "tabset" $ mdo
     curSelection <- holdDyn JsonDataView_Keysets onTabClick
-    (TabBar onTabClick) <- makeTabBar $ TabBarCfg 
+    (TabBar onTabClick) <- makeTabBar $ TabBarCfg
       { _tabBarCfg_tabs = [minBound .. maxBound]
       , _tabBarCfg_mkLabel = const $ text . showJsonTabName
       , _tabBarCfg_selectedTab = Just <$> curSelection
@@ -192,7 +192,7 @@ predDropdown sv = do
     let
       itemDom v = elAttr "option" ("value" =: v) $ text v
       cfg = SelectElementConfig "" (Just sv) $
-        def & initialAttributes .~ "class" =: "select_type_secondary select_tiny keyset__pred"
+        def & initialAttributes .~ "class" =: "select_type_tertiary select_tiny keyset__pred"
 
     (s,_) <- uiSelectElement cfg $ do
       forM_ predefinedPreds itemDom
