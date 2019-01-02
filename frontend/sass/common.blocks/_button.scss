@@ -67,8 +67,7 @@
   filter: invert(100%);
 }
 
-.button_type_primary[disabled],
-.button_type_primary {
+.button_type_primary[disabled] {
   background: $black-disabled-bg;
   border-color: $black-disabled-border-color;
   color: $black-disabled-color;
