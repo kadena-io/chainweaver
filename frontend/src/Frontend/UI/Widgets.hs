@@ -195,7 +195,8 @@ signingItem
 signingItem (n, _) = do
     elClass "tr" "table__row" $ do
       el "td" $ text n
-      box <- elClass "td" "signing-selector__check-box" $ checkbox False $ def
+      box <- el "td" $ elClass "label" "signing-selector__check-box-label" $
+        checkbox False $ def
       pure (value box)
 
 accordionItem'
