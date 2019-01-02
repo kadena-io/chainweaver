@@ -12,3 +12,15 @@
   border-bottom: none;
   margin-bottom: 0;
 }
+
+.segment_type_secondary {
+  border-bottom: none;
+  padding: 0 0 0;
+  margin-bottom: $normal-margin;
+}
+
+.segment_type_tertiary {
+  border-bottom: none;
+  padding: 0 0 0;
+  margin-bottom: $medium-margin;
+}
