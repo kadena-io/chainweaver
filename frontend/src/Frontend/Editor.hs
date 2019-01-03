@@ -109,7 +109,9 @@ data Editor t = Editor
 makePactLenses ''Editor
 
 
-type HasEditorModel model t = (HasJsonData model t, HasWallet model t, HasBackend model t)
+type HasEditorModel model t = (HasJsonData model t, HasWallet model t, HasBackend model t, HasWebRepl model t)
+
+type HasEditorModelCfg mConf t = (HasReplCfg mConf t, HasMessagesCfg mConf t, Monoid mConf)
 
 type ReflexConstraints t m =
   ( MonadHold t m, PerformEvent t m, TriggerEvent t m, MonadIO (Performable m)
@@ -118,39 +120,33 @@ type ReflexConstraints t m =
 
 -- | Create an `Editor` by providing a `Config`.
 makeEditor
-  :: forall t m cfg model
+  :: forall t m cfg model mConf
   . ( ReflexConstraints t m
     , HasEditorCfg cfg t, HasEditorModel model t
+    , HasEditorModelCfg mConf t
     )
-  => model -> cfg -> m (Editor t)
+  => model -> cfg -> m (mConf, Editor t)
 makeEditor m cfg = do
     t <-  holdDyn "" (cfg ^. editorCfg_setCode)
-    annotations <- typeCheckVerify m t
-    pure $ Editor
-      { _editor_code = t
-      , _editor_annotations = annotations
-      }
+    (mConf, annotations) <- typeCheckVerify m t
+    pure
+      ( mConf
+      , Editor
+        { _editor_code = t
+        , _editor_annotations = annotations
+        }
+      )
 
 -- | Type check and verify code.
 typeCheckVerify
-  :: (ReflexConstraints t m, HasEditorModel model t)
-  => model -> Dynamic t Text -> m (Event t [Annotation])
+  :: (ReflexConstraints t m, HasEditorModel model t, HasEditorModelCfg mConf t)
+  => model -> Dynamic t Text -> m (mConf, Event t [Annotation])
 typeCheckVerify m t = mdo
-    let newInput = leftmost [ updated t, tag (current t) $ updated (m ^. jsonData_data)  ]
-    -- Reset repl on each check to avoid memory leak.
-    onReplReset <- throttle 1 $ newInput
-    onTypeCheck <- delay 0 onReplReset
-
     let
-      onTransSuccess = fmapMaybe (^? _Right) $ replL ^. repl_transactionFinished
-
-    (replO :: MessagesCfg t, replL) <- makeRepl m $ mempty
-      { _replCfg_sendTransaction = onTypeCheck
-      , _replCfg_reset = () <$ onReplReset
-      , _replCfg_verifyModules = Map.keysSet . _ts_modules <$> onTransSuccess
-      }
-    let
-      clearAnnotation = [] <$ onReplReset
+      onNewInput = leftmost [ updated t, tag (current t) $ m ^. repl_envChanged  ]
+      onTransSuccess = fmapMaybe (^? _Right) $ m ^. repl_transactionFinished
+      clearAnnotation = [] <$ onNewInput
+    onTypeCheck <- throttle 1 onNewInput
 #ifdef  ghcjs_HOST_OS
     cModules <- holdDyn Map.empty $ _ts_modules <$> onTransSuccess
     let
@@ -159,12 +155,18 @@ typeCheckVerify m t = mdo
        , fallBackParser <$> replO ^. messagesCfg_send
        ]
 #else
+    let
       newAnnotations = leftmost
-       [ parseVerifyOutput <$> _repl_modulesVerified replL
-       , fallBackParser <$> replO ^. messagesCfg_send
+       [ parseVerifyOutput <$> m ^. repl_modulesVerified
+       , fmap fallBackParser . fmapMaybe (^? _Left) $ m ^. repl_transactionFinished
        ]
 #endif
-    pure $ leftmost [newAnnotations, clearAnnotation]
+    pure
+      ( mempty
+         & replCfg_sendTransaction .~ onTypeCheck
+         & replCfg_verifyModules .~ fmap (Map.keysSet . _ts_modules) onTransSuccess
+      , leftmost [newAnnotations, clearAnnotation]
+      )
   where
     parser = MP.parseMaybe pactErrorParser
 

@@ -120,6 +120,8 @@ data WebRepl t = WebRepl
   -- ^ Execution of transaction finished with either an error or successfully.
   , _repl_modulesVerified     :: Event t VerifyResult
   -- ^ Result of a module verification. Either an error or output of (verify).
+  , _repl_envChanged          :: Event t ()
+  -- ^ The repl environment changed (new keysets, new keys, ...)
   }
   deriving Generic
 
@@ -227,6 +229,7 @@ makeRepl m cfg = build $ \ ~(_, impl) -> do
               , _repl_transactionFinished = onFinishedTrans
               , _repl_newOutput = onNewOutput
               , _repl_modulesVerified = fst <$> onVerifyR
+              , _repl_envChanged = () <$ leftmost [ onNewEnv, onNewKeys ]
               }
           }
       )

@@ -164,17 +164,14 @@ controlBarLeft m = do
       elClass "div" "main-header__project-loader" $ do
         resetCfg <- resetBtn
 
-        onLoadClicked <- loadReplBtn
-
         onDeployClick <- deployBtn
 
-        loadCfg <- loadCodeIntoRepl m onLoadClicked
         let
           reqConfirmation :: Event t (Maybe (ModalImpl m t))
           reqConfirmation = Just (uiDeployConfirmation m) <$ onDeployClick
 
           deployCfg = mempty & modalCfg_setModal .~ reqConfirmation
-        pure $ deployCfg <> loadCfg <> resetCfg
+        pure $ deployCfg <> resetCfg
   where
     headerBtnCfg = btnCfgPrimary & uiButtonCfg_class %~ (<> "main-header__button")
 
@@ -187,10 +184,6 @@ controlBarLeft m = do
       pure $ mempty
         & messagesCfg_clear .~ onClick
         & replCfg_reset .~ onClick
-
-    loadReplBtn =
-      uiButton ( headerBtnCfg & uiButtonCfg_title .~ Just "Editor Shortcut: Ctrl+Enter") $
-        text "Load into REPL"
 
 getPactVersion :: MonadWidget t m => m Text
 getPactVersion = do
