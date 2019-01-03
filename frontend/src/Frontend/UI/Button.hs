@@ -27,6 +27,7 @@ module Frontend.UI.Button
   , uiButtonDyn
     -- ** Specialized buttons
   , backButton
+  , copyButton
   , deleteButton
   , openButton
   , viewButton
@@ -45,11 +46,17 @@ import           Data.String                 (IsString)
 import           Data.Text                   (Text)
 import           Reflex.Dom.Contrib.CssClass
 import           Reflex.Dom.Core
+import           Language.Javascript.JSaddle (MonadJSM, liftJSM, JSVal)
+import qualified Language.Javascript.JSaddle as JS
+import qualified Data.Text as T
+import           Control.Monad (void)
+import qualified GHCJS.DOM.Types                   as DOM
 ------------------------------------------------------------------------------
 import           Obelisk.Generated.Static
 ------------------------------------------------------------------------------
 import           Frontend.Foundation         (ReflexValue, makePactLenses)
 import           Frontend.UI.Widgets.Helpers (imgWithAlt, imgWithAltCls)
+import           Frontend.Foundation
 
 
 -- | Configuration for uiButton.
@@ -122,6 +129,42 @@ uiButtonDyn cfg body = do
 backButton :: StaticButtonConstraints t m => m (Event t ())
 backButton = -- uiIcon "fas fa-chevron-left" $ def & iconConfig_size .~ Just IconLG
   uiButton def $ btnIcon (static @"img/left_arrow.svg") "Go back" blank
+
+-- | Copies the text content of a given node.
+--
+--   Probably won't work for input elements.
+copyButton
+  :: forall t m
+  . (DynamicButtonConstraints t m, MonadJSM (Performable m), PerformEvent t m
+    , RawElement (DomBuilderSpace m) ~ DOM.Element
+    )
+  => UiButtonDynCfg t
+  -> RawElement (DomBuilderSpace m)
+  -> m (Event t ())
+copyButton cfg e = do
+    onClick <- uiButtonDyn cfg $ text "copy"
+    performEvent_ $ jsCopy e <$ onClick
+    pure onClick
+  where
+
+    jsCopy :: forall m1. MonadJSM m1 => RawElement (DomBuilderSpace m) -> m1 ()
+    jsCopy e = do
+      jsCopy <- jsCopyVal
+      void $ liftJSM $ JS.call jsCopy JS.obj [DOM.unElement e]
+
+    jsCopyVal :: forall m1. MonadJSM m1 => m1 JSVal
+    jsCopyVal = liftJSM $ JS.eval $ T.unlines
+      [ "(function(e) {"
+      , " try {"
+      , "    var range = document.createRange();"
+      , "    range.selectNodeContents(e);"
+      , "    var selection = window.getSelection();"
+      , "    selection.removeAllRanges();"
+      , "    selection.addRange(range);"
+      , "    document.execCommand('copy');"
+      , " } catch(e) { console.log('Copy failed!'); return false; }"
+      , "})"
+      ]
 
 deleteButton :: StaticButtonConstraints t m => m (Event t ())
 deleteButton = -- uiIcon "fas fa-chevron-left" $ def & iconConfig_size .~ Just IconLG

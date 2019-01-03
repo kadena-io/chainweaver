@@ -34,7 +34,7 @@ module Frontend.UI.Wallet
 
 ------------------------------------------------------------------------------
 import           Control.Lens
-import           Control.Monad               (when)
+import           Control.Monad               (when, void)
 import qualified Data.Map                    as Map
 import           Data.Maybe
 import           Data.Text                   (Text)
@@ -113,7 +113,7 @@ uiKeyItems
   => Wallet t
   -> m cfg
 uiKeyItems aWallet = do
-  let 
+  let
     keyMap = aWallet ^. wallet_keys
     tableAttrs =
       "style" =: "table-layout: fixed; width: 100%"
@@ -122,17 +122,20 @@ uiKeyItems aWallet = do
     el "colgroup" $ do
       elAttr "col" ("style" =: "width: 20%") blank
       elAttr "col" ("style" =: "width: 35%") blank
+      elAttr "col" ("style" =: "width: 15%") blank
       elAttr "col" ("style" =: "width: 35%") blank
+      elAttr "col" ("style" =: "width: 15%") blank
       elAttr "col" ("style" =: "width: 10%") blank
     el "thead" $ el "tr" $ do
       let mkHeading = elClass "th" "table__heading" . text
       traverse_ mkHeading $
         [ "Key Name"
         , "Public Key"
+        , ""
         , "Private Key"
         , ""
+        , ""
         ]
-      
     el "tbody" $ listWithKey keyMap $ \name key -> uiKeyItem (name, key)
   dyn_ $ ffor keyMap $ \keys -> when (Map.null keys) $ text "No keys ..."
   let delKey = switchDyn $ leftmost . Map.elems <$> events
@@ -148,16 +151,34 @@ uiKeyItem
 uiKeyItem (n, k) = do
     elClass "tr" "table__row" $ do
       el "td" $ text n
-      elClass "td" "wallet__key wallet__key_type_public" $
+
+      (pEl, _) <- elClass' "td" "wallet__key wallet__key_type_public" $
         dynText (keyToText . _keyPair_publicKey <$> k)
-      keyCopyWidget "td" "wallet__key wallet__key_type_private" $
+      el "td" $
+        void $ copyButton copyBtnCfg $ _element_raw pEl
+
+      (privEl, isShown) <- keyCopyWidget "td" "wallet__key wallet__key_type_private" $
         maybe "No key" keyToText . _keyPair_privateKey <$> k
+      el "td" $ do
+        let cfg = copyBtnCfg & uiButtonCfg_disabled .~ fmap not isShown
+        void $ copyButton cfg $ _element_raw privEl
 
       onDel <- elClass "td" "wallet__delete" deleteButton
 
       pure (const n <$> onDel)
+  where
+    copyBtnCfg =
+      btnCfgTertiary & uiButtonCfg_class %~ (fmap (<> "button_size_tiny"))
 
-keyCopyWidget :: MonadWidget t m => Text -> Text -> Dynamic t Text -> m ()
+-- | Widget showing/hiding a private key.
+--
+--   The returned Dynamic tells whether the key is currently hidden or shown.
+keyCopyWidget
+  :: MonadWidget t m
+  => Text
+  -> Text
+  -> Dynamic t Text
+  -> m (Element EventResult (DomBuilderSpace m) t, Dynamic t Bool)
 keyCopyWidget t cls keyText = mdo
   isShown <- foldDyn (const not) False (domEvent Click e)
   let mkShownCls True = ""
@@ -170,4 +191,4 @@ keyCopyWidget t cls keyText = mdo
 
     elDynClass' "span" "key-content" $
       dynText (mkText <$> isShown <*> keyText)
-  pure ()
+  pure (e, isShown)
