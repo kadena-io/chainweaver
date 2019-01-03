@@ -109,7 +109,7 @@ replWidget m = do
 replInput :: MonadWidget t m => m (Event t Text)
 replInput = do
     divClass "repl__input-controls" $ mdo
-      (e, _) <- elClass' "div" "repl__prompt" $ text "pact>"
+      elClass "div" "repl__prompt" $ text "pact>"
       let sv = leftmost
             [ mempty <$ enterPressed
             , fromMaybe "" . Z.safeCursor <$> tagPromptlyDyn commandHistory key

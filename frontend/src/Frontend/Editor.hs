@@ -45,7 +45,6 @@ module Frontend.Editor
 import           Control.Applicative      ((<|>))
 import           Control.Lens
 import           Control.Monad            (void)
-import           Data.Map                 (Map)
 import qualified Data.Map                 as Map
 import           Data.Text                (Text)
 import qualified Data.Text                as T
@@ -214,9 +213,9 @@ pactErrorParser :: MP.Parsec Void Text [Annotation]
 pactErrorParser = MP.many $ do
     startErrorParser
     line <- digitsP
-    MP.char ':'
+    colonP
     column <- digitsP
-    MP.char ':'
+    colonP
     MP.space
     annoType <- MP.withRecovery (const $ pure AnnoType_Error) $ do
       void $ MP.string' "warning:"
@@ -247,19 +246,22 @@ msgParser = linesParser <|> restParser
     lineParser = do
       MP.notFollowedBy startErrorParser
       l <- MP.takeWhileP Nothing (/= '\n')
-      MP.newline
+      void $ MP.newline
       pure l
 
 -- | Error/warning messages start this way:
 startErrorParser :: MP.Parsec Void Text ()
 startErrorParser = do
     MP.space
-    MP.many (MP.string "Property proven valid" >> MP.space)
-    MP.oneOf "<(" -- Until now we found messages with '<' and some with '('.
-    MP.string "interactive"
-    MP.oneOf ">)"
-    MP.char ':'
+    void $ MP.many (MP.string "Property proven valid" >> MP.space)
+    void $ MP.oneOf ['<', '('] -- Until now we found messages with '<' and some with '('.
+    void $ MP.string "interactive"
+    void $ MP.oneOf ['>', ')']
+    colonP
     pure ()
+
+colonP :: MP.Parsec Void Text ()
+colonP = void $ MP.char ':'
 
 -- Instances:
 

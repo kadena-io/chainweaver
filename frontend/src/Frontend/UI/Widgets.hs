@@ -13,16 +13,8 @@
 module Frontend.UI.Widgets
   ( -- * Standard widgets for pact-web
     -- ** Buttons
-    backButton
-  , refreshButton
-  , confirmButton
-  , cancelButton
-  , openButton
-  , viewButton
-  , callButton
-  , deleteButton
-  , module Frontend.UI.Button
-  -- * Other widgets
+    module Frontend.UI.Button
+  -- ** Other widgets
   , uiSegment
   , uiGroup
   , uiCodeFont
@@ -32,7 +24,7 @@ module Frontend.UI.Widgets
   , uiSelectElement
   , validatedInputWithButton
   , signingKeysWidget
-    -- * Helper widgets
+    -- ** Helper widgets
   , imgWithAlt
   , showLoading
   , paginationWidget
@@ -56,15 +48,13 @@ import           Data.Set                    (Set)
 import qualified Data.Set                    as Set
 import           Data.Text                   (Text)
 import qualified Data.Text                   as T
-import           Language.Javascript.JSaddle (PToJSVal, call, eval, js0,
-                                              liftJSM, obj, pToJSVal)
+import           Language.Javascript.JSaddle (js0, liftJSM, pToJSVal)
 import           Obelisk.Generated.Static
 import           Reflex.Dom.Contrib.CssClass
 import           Reflex.Dom.Core
 ------------------------------------------------------------------------------
 import           Frontend.Foundation
 import           Frontend.UI.Button
-import           Frontend.UI.Icon
 import           Frontend.UI.Widgets.Helpers (imgWithAlt, setFocus, setFocusOn,
                                               setFocusOnSelected, tabPane, tabPane', makeClickable)
 import           Frontend.Wallet             (HasWallet (..), KeyName, KeyPair,
@@ -232,13 +222,13 @@ accordionItem' initActive contentClass title inner = mdo
     isActive <- foldDyn (const not) initActive onClick
     let mkClass a = singleClass "accordion" <> contentClass <> activeClass a
     (onClick, pair) <- elDynKlass "div" (mkClass <$> isActive) $ do
-      (onClick,a1) <- elClass "h2" "accordion__header" $ do
+      (onClickL,a1) <- elClass "h2" "accordion__header" $ do
         b <- uiButton (def & uiButtonCfg_class .~ "accordion__toggle-button button_type_secondary") $
           imgWithAlt (static @"img/arrow-down.svg") "Expand" blank
         r <- title
         pure (b, r)
       b1 <- divClass "accordion__content" inner
-      return (onClick, (a1, b1))
+      return (onClickL, (a1, b1))
     return pair
   where
     activeClass = \case

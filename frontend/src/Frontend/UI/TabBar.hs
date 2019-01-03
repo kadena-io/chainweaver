@@ -22,8 +22,8 @@
 -- License     :  BSD-style (see the file LICENSE)
 --
 
-module Frontend.UI.TabBar 
-  ( -- * Types and Classess 
+module Frontend.UI.TabBar
+  ( -- * Types and Classess
     MkTabLabel
   , TabBarType (..)
   , TabBarCfg (..)
@@ -38,13 +38,12 @@ module Frontend.UI.TabBar
 import           Control.Lens
 import           Reflex
 import           Reflex.Dom.Core
-import           Data.Default
 ------------------------------------------------------------------------------
 import           Frontend.Foundation
 import           Frontend.UI.Button
 ------------------------------------------------------------------------------
 
- 
+
 -- | A tab needs to have a label, so let the user provide some creator function.
 type MkTabLabel t m tab = Dynamic t Bool -> tab -> m ()
 

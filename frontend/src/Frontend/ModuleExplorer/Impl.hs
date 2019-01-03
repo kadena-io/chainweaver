@@ -35,10 +35,10 @@ module Frontend.ModuleExplorer.Impl
 
 ------------------------------------------------------------------------------
 import qualified Bound
-import Control.Monad.Error (throwError)
+import Control.Monad.Except (throwError)
 import Control.Monad (void, (<=<))
 import           Control.Arrow               ((***), left)
-import           Data.Bifunctor (first, second)
+import           Data.Bifunctor (second)
 import           Control.Lens
 import           Data.Aeson                  as Aeson (Result (..), fromJSON, FromJSON, Value)
 import           Data.Default
@@ -46,7 +46,6 @@ import qualified Data.Map                    as Map
 import qualified Data.Set                    as Set
 import           Data.Text                   (Text)
 import qualified Data.Text                   as T
-import           Language.Javascript.JSaddle (JSM)
 import           Reflex
 import           Reflex.Dom.Core             (HasJSContext, MonadHold,
                                               PostBuild, XhrResponse (..),

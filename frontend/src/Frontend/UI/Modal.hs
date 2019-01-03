@@ -33,12 +33,9 @@ module Frontend.UI.Modal
 
 ------------------------------------------------------------------------------
 import           Control.Lens hiding (element)
-import qualified GHCJS.DOM.GlobalEventHandlers as Events
 import           Reflex
 import           Reflex.Dom
-import           Data.Void
 ------------------------------------------------------------------------------
-import           Frontend.Foundation
 import           Frontend.UI.Button
 ------------------------------------------------------------------------------
 
@@ -71,7 +68,7 @@ class HasModalCfg cfg modal t | cfg -> modal where
 
 -- | Create a modal dialog header.
 modalHeader
-  :: forall t m a. MonadWidget t m
+  :: forall t m. MonadWidget t m
   => m ()
   -- ^ Content of the h2 in the header.
   -> m ( Event t ())

@@ -35,7 +35,6 @@ import           Control.Monad
 import           Data.Aeson.Encode.Pretty           (encodePretty)
 import qualified Data.ByteString.Lazy               as BSL
 import qualified Data.HashMap.Strict                as H
-import           Data.Map                           (Map)
 import qualified Data.Map                           as Map
 import           Data.Maybe
 import qualified Data.Set                           as Set
@@ -45,7 +44,6 @@ import qualified Data.Text.Encoding                 as T
 import           Reflex.Class.Extended
 import           Reflex.Dom
 import           Reflex.Dom.ACE.Extended
-import           Reflex.Dom.Contrib.CssClass
 import           Obelisk.Generated.Static
 ------------------------------------------------------------------------------
 import           Frontend.Foundation
@@ -68,9 +66,6 @@ showJsonTabName :: JsonDataView -> Text
 showJsonTabName JsonDataView_Keysets = "Keysets"
 showJsonTabName JsonDataView_Raw     = "Raw"
 showJsonTabName JsonDataView_Result  = "Result"
-
-mkDataAttr :: JsonDataView -> Map Text Text
-mkDataAttr t = "data-tabname" =: ("env-" <> T.toLower (showJsonTabName t))
 
 uiJsonData
   :: MonadWidget t m

@@ -56,7 +56,6 @@ import           Obelisk.Generated.Static
 ------------------------------------------------------------------------------
 import           Frontend.Foundation         (ReflexValue, makePactLenses)
 import           Frontend.UI.Widgets.Helpers (imgWithAlt, imgWithAltCls)
-import           Frontend.Foundation
 
 
 -- | Configuration for uiButton.
@@ -148,9 +147,9 @@ copyButton cfg e = do
   where
 
     jsCopy :: forall m1. MonadJSM m1 => RawElement (DomBuilderSpace m) -> m1 ()
-    jsCopy e = do
-      jsCopy <- jsCopyVal
-      void $ liftJSM $ JS.call jsCopy JS.obj [DOM.unElement e]
+    jsCopy eL = do
+      jsCopyFunc <- jsCopyVal
+      void $ liftJSM $ JS.call jsCopyFunc JS.obj [DOM.unElement eL]
 
     jsCopyVal :: forall m1. MonadJSM m1 => m1 JSVal
     jsCopyVal = liftJSM $ JS.eval $ T.unlines

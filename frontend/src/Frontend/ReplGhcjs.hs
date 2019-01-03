@@ -30,18 +30,15 @@ import           Control.Monad.Reader                   (ask)
 import           Control.Monad.State.Strict
 import           Data.Text                              (Text)
 import qualified Data.Text                              as T
-import qualified Data.Text.IO                           as T
 import           GHCJS.DOM.EventM                       (on)
 import           GHCJS.DOM.GlobalEventHandlers          (keyPress)
 import           GHCJS.DOM.KeyboardEvent                (getCtrlKey, getKey,
                                                          getKeyCode, getMetaKey)
 import           GHCJS.DOM.Types                        (HTMLElement (..),
                                                          unElement)
-import           Language.Javascript.JSaddle            (fromJSValUnchecked,
-                                                         getProp, liftJSM)
+import           Language.Javascript.JSaddle            (liftJSM)
 import           Reflex
 import           Reflex.Dom.ACE.Extended                hiding (Annotation (..))
-import           Reflex.Dom.Builder.Class.Events        (EventName (Keypress))
 import           Reflex.Dom.Core
 ------------------------------------------------------------------------------
 import           Obelisk.Generated.Static
@@ -98,13 +95,13 @@ codePanel cls m = elKlass "div" (cls <> "pane") $ do
     getCtrlEnterEvent e = do
       (onCtrlEnter, triggerEv) <- newTriggerEvent
       let htmlElement = HTMLElement . unElement $ _element_raw e
-      liftJSM $ htmlElement `on` keyPress $ do
+      void $ liftJSM $ htmlElement `on` keyPress $ do
         ev <- ask
         hasCtrl <- liftJSM $ getCtrlKey ev
         hasMeta <- liftJSM $ getMetaKey ev
         key <- liftJSM $ getKey ev
         code <- liftJSM $ getKeyCode ev
-        let hasEnter = key == "Enter" || code == 10 || code == 13
+        let hasEnter = key == ("Enter" :: Text) || code == 10 || code == 13
 
         liftIO $ when ((hasCtrl || hasMeta) && hasEnter) $ triggerEv ()
       pure onCtrlEnter
@@ -223,7 +220,7 @@ codeWidget anno iv sv = do
 
 
 controlBar
-  :: forall t m model a. MonadWidget t m
+  :: forall t m. MonadWidget t m
   => ModalIde m t
   ->  m (ModalIdeCfg m t)
 controlBar m = do

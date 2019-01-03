@@ -21,20 +21,14 @@ module Frontend.UI.Widgets.Helpers
   ) where
 
 ------------------------------------------------------------------------------
-import           Control.Applicative
 import           Control.Lens
 import           Control.Monad
 import           Data.Map.Strict             (Map)
-import qualified Data.Set                    as Set
 import           Data.Text                   (Text)
-import qualified Data.Text                   as T
 import           Language.Javascript.JSaddle (PToJSVal, call, eval, js0,
                                               liftJSM, obj, pToJSVal)
-import           Obelisk.Generated.Static
 import           Reflex.Dom.Contrib.CssClass
 import           Reflex.Dom.Core
-import Data.Set (Set)
-import qualified Data.Map as Map
 ------------------------------------------------------------------------------
 import           Frontend.Foundation
 ------------------------------------------------------------------------------

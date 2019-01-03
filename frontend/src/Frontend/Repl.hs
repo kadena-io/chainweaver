@@ -31,7 +31,7 @@ module Frontend.Repl
   , HasWebRepl (..)
   , ReplOutput (..)
   , ModuleName (..)
-  , VerifyResult (..)
+  , VerifyResult
   , TransactionSuccess (..)
     -- * Implementation and Creation
   , HasReplModelCfg
@@ -48,7 +48,6 @@ import           Data.Aeson                 as Aeson (Object, encode)
 import qualified Data.ByteString.Lazy       as BSL
 import qualified Data.HashMap.Strict        as HM
 import           Data.Map                   (Map)
-import qualified Data.Map                   as Map
 import qualified Data.Map                   as Map
 import           Data.Sequence              (Seq, (|>))
 import qualified Data.Sequence              as S
@@ -346,22 +345,19 @@ runTransaction impl onCode =
     parsePact :: Text -> TF.Result [Exp Parsed]
     parsePact = TF.parseString exprsOnly mempty . T.unpack
 
-    printExp :: Exp Parsed -> String
-    printExp = \case
-      EList (ListExp (e:_) _ _) -> "List: (" <> printExp e <> ")\n"
-      EAtom a -> "Atom: (" <> show a <> ")\n"
-      ELiteral l -> "Literal: (" <> show l <> ")\n"
-      ESeparator _ -> "Separator.\n"
-
+    {- printExp :: Exp Parsed -> String -}
+    {- printExp = \case -}
+    {-   EList (ListExp (e:_) _ _) -> "List: (" <> printExp e <> ")\n" -}
+    {-   EAtom a -> "Atom: (" <> show a <> ")\n" -}
+    {-   ELiteral l -> "Literal: (" <> show l <> ")\n" -}
+    {-   ESeparator _ -> "Separator.\n" -}
 
     evalParsed :: Text -> TF.Result [Exp Parsed] -> Repl (Either String (Term Name))
     evalParsed cmd = parsedCompileEval (T.unpack cmd)
 
-
 -- | Drop n elements from the end of a list.
-dropFromEnd :: Int -> [a] -> [a]
-dropFromEnd n xs = zipWith const xs (drop n xs)
-
+{- dropFromEnd :: Int -> [a] -> [a] -}
+{- dropFromEnd n xs = zipWith const xs (drop n xs) -}
 
 -- | Get modules from a list of `Term`s.
 getModules :: [Exp Parsed] -> Map ModuleName Int
@@ -393,8 +389,8 @@ pactEvalRepl' t = ExceptT $ do
   id %= unsetReplLib
   pure r
 
-pactEvalPact :: Text -> PactRepl (Term Name)
-pactEvalPact = ExceptT . evalPact . T.unpack
+-- pactEvalPact :: Text -> PactRepl (Term Name)
+-- pactEvalPact = ExceptT . evalPact . T.unpack
 
 showResult :: Show n => Either String (Term n) -> Text
 showResult (Right v) = showTerm v

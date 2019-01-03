@@ -40,7 +40,6 @@ import           Reflex.Network.Extended
 import           Frontend.Backend
 import           Frontend.ModuleExplorer
 import           Frontend.UI.Button
-import           Frontend.Foundation
 import           Frontend.UI.Dialogs.CallFunction
 import           Frontend.UI.Modal
 ------------------------------------------------------------------------------

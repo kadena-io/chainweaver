@@ -81,7 +81,7 @@ uiCallFunction m mModule func = do
             el "br" blank
             el "br" blank
             renderDescription func
-          for mModule $ \ moduleL -> divClass "fun-arg-editor" $ do
+          for mModule $ \ _ -> divClass "fun-arg-editor" $ do
             let fType = _pactFunction_type func
                 fModule = _pactFunction_module func
                 fName = _pactFunction_name func
@@ -255,7 +255,7 @@ funTypeInput json = \case
     mkCheckbox iVal =
       let
         itemDom v = elAttr "option" ("value" =: v) $ text (T.toTitle v)
-        cfg = SelectElementConfig "false" Nothing def
+        cfg = SelectElementConfig (if iVal then "true" else "false") Nothing def
           & initialAttributes .~ "class" =: "labeled-input__input select_type_secondary"
       in
         fmap (_selectElement_value . fst) . uiSelectElement cfg $
