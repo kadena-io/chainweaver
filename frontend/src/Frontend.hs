@@ -53,7 +53,7 @@ newHead :: DomBuilder t m => m ()
 newHead = do
     el "title" $ text "Kadena - Pact Test Net"
     meta ("name" =: "description" <> "content" =: "Write, test, and deploy safe smart contracts using Pact, Kadena's programming language")
-    meta ("name" =: "keywords" <> "content" =: "kadena, pact, pact language, pact programming language, smart contracts, safe smart contracts, smart contract language, blockchain, learn blockchain programming, chainweb")
+    meta ("name" =: "keywords" <> "content" =: "kadena, pact, pact testnet, pact language, pact programming language, smart contracts, safe smart contracts, smart contract language, blockchain, learn blockchain programming, chainweb")
     meta ("charset" =: "utf-8")
     meta ("name" =: "google" <> "content" =: "notranslate")
     meta ("http-equiv" =: "Content-Language" <> "content" =: "en_US")
