@@ -54,6 +54,10 @@ import           GHC.Generics             (Generic)
 import           Reflex
 import qualified Text.Megaparsec          as MP
 import qualified Text.Megaparsec.Char     as MP
+
+#ifdef  ghcjs_HOST_OS
+import           Data.Map                 (Map)
+#endif
 ------------------------------------------------------------------------------
 import           Frontend.Backend
 import           Frontend.Foundation
