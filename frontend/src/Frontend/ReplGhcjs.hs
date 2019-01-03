@@ -182,7 +182,8 @@ controlBarLeft m = do
       text $ "Deploy"
 
     resetBtn = do
-      onClick <- uiButton headerBtnCfg $ text $ "Reset"
+      onClick <- uiButton (headerBtnCfg & uiButtonCfg_title .~ Just "Reset REPL and Messages") $
+        text $ "Reset"
       pure $ mempty
         & messagesCfg_clear .~ onClick
         & replCfg_reset .~ onClick
