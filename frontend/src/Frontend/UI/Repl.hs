@@ -87,7 +87,7 @@ replWidget m = do
   (e, onNewInput) <- elClass' "div" "repl" $ do
     mapM_ snippetWidget staticReplHeader
     void $ simpleList (toList <$> m ^. repl_output) (dyn . fmap displayReplOutput)
-    replInput
+    replInput m
 
   clickType <- foldDyn ($) Nothing $ leftmost
     [ setDown <$> domEvent Mousedown e
@@ -106,8 +106,8 @@ replWidget m = do
     & replCfg_reset   .~ onReset
 
 
-replInput :: MonadWidget t m => m (Event t Text)
-replInput = do
+replInput :: (MonadWidget t m, HasWebRepl model t) => model -> m (Event t Text)
+replInput m = do
     divClass "repl__input-controls" $ mdo
       elClass "div" "repl__prompt" $ text "pact>"
       let sv = leftmost
@@ -131,7 +131,7 @@ replInput = do
   where
     doScrollIntoView ti = do
       onPostBuild <- getPostBuild
-      onReady <- delay 0.1 $ leftmost [onPostBuild, keypress Enter ti]
+      onReady <- delay 0.1 $ leftmost [onPostBuild, () <$ m ^. repl_newOutput]
       performEvent_ $ ffor onReady $ \_ -> liftJSM $
         scrollIntoView (_textInput_element ti) True
 
