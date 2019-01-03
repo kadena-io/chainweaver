@@ -77,7 +77,9 @@ rightTabBar cls ideL = elKlass "div" (cls <> "pane") $ do
 
     (e, replCfg) <- tabPane' mempty curSelection EnvSelection_Repl $
       replWidget ideL
-    setFocusOnSelected e "input" EnvSelection_Repl $ updated curSelection
+    -- Only set focus on tab click not on updated curSelection! We only want to
+    -- set the focus if the switch happened manually.
+    setFocusOnSelected e "input" EnvSelection_Repl $ onTabClick
 
     errorsCfg <- tabPane mempty curSelection EnvSelection_Msgs $
       msgsWidget ideL
