@@ -152,7 +152,7 @@ typeCheckVerify m t = mdo
     let
       newAnnotations = leftmost
        [ attachPromptlyDynWith parseVerifyOutput cModules $ m ^. repl_modulesVerified
-       , fmap fallBackParser . mapMaybe (^? _Left) $ m ^. repl_transactionFinished
+       , fmap fallBackParser . fmapMaybe (^? _Left) $ m ^. repl_transactionFinished
        ]
 #else
     let
