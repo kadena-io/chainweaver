@@ -151,8 +151,8 @@ typeCheckVerify m t = mdo
     cModules <- holdDyn Map.empty $ _ts_modules <$> onTransSuccess
     let
       newAnnotations = leftmost
-       [ attachPromptlyDynWith parseVerifyOutput cModules $ _repl_modulesVerified replL
-       , fallBackParser <$> replO ^. messagesCfg_send
+       [ attachPromptlyDynWith parseVerifyOutput cModules $ m ^. repl_modulesVerified
+       , fmap fallBackParser . mapMaybe (^? _Left) $ m ^. repl_transactionFinished
        ]
 #else
     let
