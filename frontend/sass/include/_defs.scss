@@ -1,6 +1,7 @@
 // Definitions (variables) common to all of pact-web
 
 $std-fonts: 'WorkSans-Regular', sans-serif;
+$button-font: 'WorkSans';
 
 // We have rounded corners, hopefully no-one is going to tell Apple:
 $std-border-radius: 4px;
@@ -61,6 +62,7 @@ $small-font-size: 14px;
 
 // Margins:
 
+$small-margin: 5px;
 $medium-margin: 10px;
 $normal-margin: 20px;
 $bigger-margin: 30px;
@@ -69,6 +71,7 @@ $double-margin: 2 * $normal-margin;
 
 // Paddings:
 
+$small-padding: $small-margin;
 $medium-padding: $medium-margin;
 $normal-padding: $normal-margin;
 $bigger-padding: $bigger-margin;

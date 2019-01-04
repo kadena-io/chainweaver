@@ -13,7 +13,7 @@
   height: $control-height;
   line-height: $control-line-height;
 
-  font-family: $std-fonts;
+  font-family: $button-font;
   color: $std-color;
 
   padding: 0 20px;
@@ -107,14 +107,26 @@
   width: 90px;
 }
 
-.button_confirm {
+.button_type_confirm {
   color: $white;
   background-color: $confirm-color;
   border-color: $confirm-color;
+  font-size: $secondary-font-size;
+  font-weight: bold;
 }
 
-.button_confirm[disabled],
-.button_confirm_disabled {
-  background: transparent;
+.button_type_confirm[disabled] { 
+  background-color: transparent;
   color: $black-disabled-color;
+  border-color: $std-border-color;
+  font-weight: normal;
+}
+
+.button_type_confirm:hover:not([disabled]) {
+  border: $hover-background;
+}
+
+.button_type_confirm:active:not([disabled]) {
+  filter: none;
+  background-color: $black;
 }

@@ -197,7 +197,7 @@ refreshButton cls =
 
 confirmButton :: DynamicButtonConstraints t m => UiButtonDynCfg t -> Text -> m (Event t ())
 confirmButton cfg msg =
-    uiButtonDyn (cfg & uiButtonCfg_class .~ "button_type_primary" <> "button_confirm") $ text msg
+    uiButtonDyn (cfg & uiButtonCfg_class .~ "button_type_confirm") $ text msg
 
 cancelButton :: StaticButtonConstraints t m => UiButtonCfg -> Text -> m (Event t ())
 cancelButton cfg msg =

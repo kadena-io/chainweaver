@@ -83,7 +83,14 @@
   border-top: $std-border-width $std-border-style $std-border-color;
   border-bottom-left-radius: $std-border-radius;
   border-bottom-right-radius: $std-border-radius;
-  text-align: right;
+  text-align: left;
 }
 
 
+.modal__footer > * {
+  margin-right: $small-margin;
+}
+
+.modal__foter > *:last-child {
+  margin-left: 0;
+}
