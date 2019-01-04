@@ -163,7 +163,7 @@ argDelimiter = uiCodeFont "code-font_type_arg-delimiter" mempty
 
 renderArg :: MonadWidget t m => Arg (Term Name) -> m ()
 renderArg a = do
-  uiCodeFont "code-font_type_arg-name" $ (_aName a)
+  uiCodeFont "code-font_type_pact-arg-name" $ (_aName a)
   text " "
   uiCodeFont "code-font_type_pact-type" $ tshow (_aType a)
 

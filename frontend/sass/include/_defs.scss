@@ -90,6 +90,6 @@ $checked-background: #4499d9;
 
 // Font used for code.
 @mixin code-font {
-  font-family: 'RobotoMono', monospace !important; // Ace is pretty nasty with overriding.
-  font-size: 15px !important;
+  font-family: 'RobotoMono', monospace; // Ace is pretty nasty with overriding.
+  font-size: 15px;
 }
