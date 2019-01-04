@@ -72,7 +72,8 @@ uiCallFunction
 uiCallFunction m mModule func = do
     onClose <- modalHeader $ do
       text "Function: "
-      uiCodeFont mempty $ _pactFunction_name func
+      elClass "span" "heading_type_h1" $
+        text $ _pactFunction_name func
     modalMain $ do
       mCallAndKeys <- modalBody $ do
         mPactCall <- uiSegment mempty $ do
