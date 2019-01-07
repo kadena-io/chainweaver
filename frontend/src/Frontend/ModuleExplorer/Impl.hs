@@ -193,9 +193,6 @@ loadModule onNewContractReq = do
   pure ( mconcat
           [ eCfg
           , dCfg
-          , mempty
-              & messagesCfg_clear .~ onLoad
-              & replCfg_reset .~ onLoad
           ]
        , contract
        )

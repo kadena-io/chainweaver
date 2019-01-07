@@ -49,6 +49,7 @@ import           Pact.Types.Lang
 import           Frontend.Editor
 import           Frontend.Foundation
 import           Frontend.Ide
+import           Frontend.Messages
 import           Frontend.Repl
 import           Frontend.UI.Button
 import           Frontend.UI.Dialogs.DeployConfirmation (uiDeployConfirmation)
@@ -116,10 +117,9 @@ loadCodeIntoRepl
    -> Event t ()
    -> m (IdeCfg a t)
 loadCodeIntoRepl m onReq = do
-  onLoad <- tag (current $ m ^. editor_code) <$> delay 0 onReq
+  let onLoad = tag (current $ m ^. editor_code) onReq
   pure $ mempty
     & replCfg_sendTransaction .~ onLoad
-    & replCfg_reset .~ onReq
 
 toAceAnnotation :: Annotation -> AceAnnotation
 toAceAnnotation anno = AceAnnotation
@@ -162,6 +162,8 @@ controlBarLeft m = do
         ver <- getPactVersion
         elClass "span" "version" $ text $ "v" <> ver
       elClass "div" "main-header__project-loader" $ do
+        resetCfg <- resetBtn
+
         onLoadClicked <- loadReplBtn
 
         onDeployClick <- deployBtn
@@ -172,19 +174,23 @@ controlBarLeft m = do
           reqConfirmation = Just (uiDeployConfirmation m) <$ onDeployClick
 
           deployCfg = mempty & modalCfg_setModal .~ reqConfirmation
-        pure $ deployCfg <> loadCfg
+        pure $ deployCfg <> loadCfg <> resetCfg
   where
-    deployBtn =
-      uiButton (btnCfgPrimary & uiButtonCfg_class .~ "main-header__button" <> "button_type_primary")
-      $ text $ "Deploy"
+    headerBtnCfg = btnCfgPrimary & uiButtonCfg_class %~ (<> "main-header__button")
+
+    deployBtn = uiButton headerBtnCfg $
+      text $ "Deploy"
+
+    resetBtn = do
+      onClick <- uiButton (headerBtnCfg & uiButtonCfg_title .~ Just "Reset REPL and Messages") $
+        text $ "Reset"
+      pure $ mempty
+        & messagesCfg_clear .~ onClick
+        & replCfg_reset .~ onClick
 
     loadReplBtn =
-      uiButton
-        ( btnCfgPrimary
-            & uiButtonCfg_title .~ Just "Editor Shortcut: Ctrl+Enter"
-            & uiButtonCfg_class .~ "main-header__button" <> "button_type_primary"
-        )
-         $ text "Load into REPL"
+      uiButton ( headerBtnCfg & uiButtonCfg_title .~ Just "Editor Shortcut: Ctrl+Enter") $
+        text "Load into REPL"
 
 getPactVersion :: MonadWidget t m => m Text
 getPactVersion = do
