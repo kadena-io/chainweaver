@@ -1,0 +1,27 @@
+@import '../include/defs';
+
+// Animation for flying a component in from right or left.
+
+.fly-in {
+  position: relative;
+}
+
+.fly-in_from_left {
+  left: -100%;
+  animation: fly-in__slide_from_left 0.5s forwards;
+}
+
+.fly-in_from_right {
+  animation: fly-in__slide_from_right 0.5s forwards;
+}
+
+@keyframes fly-in__slide_from_left {
+    from { left: -100%; }
+    to   { left: 0; }
+}
+
+
+@keyframes fly-in__slide_from_right {
+    from { left: 100%; }
+    to   { left: 0; }
+}
