@@ -33,6 +33,10 @@ module Frontend.ModuleExplorer
   , HasModuleExplorerCfg (..)
   , ModuleExplorer (..)
   , HasModuleExplorer (..)
+  -- * Re-exports
+  , module Example
+  , module Module
+  , module File
   -- * Constants
   , demos
   , exampleData
@@ -62,33 +66,13 @@ import           Data.Set                     (Set)
 ------------------------------------------------------------------------------
 import           Obelisk.Generated.Static
 import           Pact.Types.Lang          (DefType, FunType, ModuleName, Name,
-                                           Term)
+                                         Term)
 ------------------------------------------------------------------------------
 import           Frontend.Backend
 import           Frontend.Foundation
 import           Frontend.Wallet
-
-data ExampleModule = ExampleModule
-  { _exampleModule_name :: Text
-  , _exampleModule_code :: Text
-  , _exampleModule_data :: Text
-  } deriving Show
-
-makePactLenses ''ExampleModule
-
-data DeployedModule = DeployedModule
-  { _deployedModule_name    :: Text
-  , _deployedModule_backend :: BackendRef
-  } deriving (Eq, Ord, Show)
-
-makePactLenses ''DeployedModule
-
--- | Selector for loading modules.
-data ModuleSel
-  = ModuleSel_Example ExampleModule
-  | ModuleSel_Deployed DeployedModule
-
-makePactPrisms ''ModuleSel
+import           Frontend.ModuleExplorer.Example as Example
+import           Frontend.ModuleExplorer.Module  as Module
 
 -- | Useful data about a pact function.
 data PactFunction = PactFunction
@@ -99,18 +83,6 @@ data PactFunction = PactFunction
   , _pactFunction_type          :: FunType (Term Name)
   }
   deriving Show
-
--- | Information about the currently selected deployed module.
---
-data SelectedModule = SelectedModule
-  { _selectedModule_module    :: ModuleSel
-    -- ^ The module that is currently selected.
-  , _selectedModule_code      :: Text
-    -- ^ Source code of the currently selected module.
-  , _selectedModule_functions :: Maybe [PactFunction]
-    -- ^ The available functions of that module. `Nothing` in case function
-    -- fetching failed for some reason.
-  }
 
 makePactLenses ''SelectedModule
 
@@ -123,15 +95,21 @@ data TransactionInfo = TransactionInfo
   } deriving (Eq, Ord, Show)
 
 
-
 -- | Configuration for ModuleExplorer
 --
 --   State is controlled via this configuration.
 data ModuleExplorerCfg t = ModuleExplorerCfg
-  { _moduleExplorerCfg_selModule  :: Event t (Maybe ModuleSel)
-    -- ^ Select a module for viewing its functions and further details.
-  , _moduleExplorerCfg_loadModule :: Event t ModuleSel
+  { _moduleExplorerCfg_pushModule  :: Event t ModuleRef
+    -- ^ Push a module to our `_moduleExplorer_selectedModule` stack.
+  , _moduleExplorerCfg_popModule   :: Event t ()
+    -- ^ Pop a module from our `_moduleExplorer_selectedModule` stack. If the
+    -- stack is empty, this `Event` does nothing.
+  , _moduleExplorerCfg_selectFile  :: Event t (Maybe FileRef)
+    -- ^ Select or deselect (`Nothing`) a given file.
+  , _moduleExplorerCfg_loadModule :: Event t ModuleRef
     -- ^ Load a module into the editor.
+  , _moduleExplorerCfg_loadFile :: Event t FileRef
+    -- ^ Load some file into the `Editor`.
   , _moduleExplorerCfg_deployEditor :: Event t TransactionInfo
     -- ^ Deploy code that is currently in `Editor`.
   , _moduleExplorerCfg_deployCode :: Event t (Text, TransactionInfo)
@@ -143,55 +121,24 @@ makePactLenses ''ModuleExplorerCfg
 
 -- | Current ModuleExploer state.
 data ModuleExplorer t = ModuleExplorer
-  { _moduleExplorer_selectedModule :: MDynamic t SelectedModule
-  -- ^ Information about the currently selected module, if available.
-  , _moduleExplorer_loadedModule   :: MDynamic t ModuleSel
-  -- ^ The module that was loaded last into the editor.
+  { _moduleExplorer_moduleStack :: Dynamic t [ModuleRef]
+  -- ^ The stack of currently selected modules. `head` is always `_moduleExplorer_selectedModule`.
+  -- This stack can be traversed back, this is so as modules can can be
+  -- selected from within modules.
+  , _moduleExplorer_selectedModule :: MDynamic t (ModuleRef, Module)
+  -- ^ The currently selected module, always "matches" `head` of `_moduleExplorer_moduleStack`.
+  , _moduleExplorer_selectedFile :: MDynamic t (FileRef, PactFile)
+  -- ^ The currently selected file if any.
+  , _moduleExplorer_loadedModules   :: Dynamic t [ModuleRef]
+  -- ^ The modules that were loaded last into the editor, it can be more than
+  -- one in case of loaded files, which can contain multiple modules.
+  , _moduleExplorer_loadedFile :: MDynamic t FileRef
+  -- ^ The file currently loaded into the editor, if any.
+  , _moduleExplorer_deployedModules :: Dynamic t (Map BackendName (Maybe [Text]))
   }
   deriving Generic
 
 makePactLenses ''ModuleExplorer
-
--- | Get the name of a selected module.
-selectedModuleName :: SelectedModule -> Text
-selectedModuleName selected =
-  case _selectedModule_module selected of
-    ModuleSel_Example ex  -> _exampleModule_name ex
-    ModuleSel_Deployed ex -> _deployedModule_name ex
-
--- | Show the type of the selected module.
---
---   It is either "Example Contract" or "Deployed Contract"
-showSelectedModuleType :: SelectedModule -> Text
-showSelectedModuleType selected =
-  case _selectedModule_module selected of
-    ModuleSel_Example _  -> "Example Contract"
-    ModuleSel_Deployed m -> mconcat
-      [ "Deployed Contract [ "
-      , textBackendName . backendRefName $ _deployedModule_backend m
-      , " ]"
-      ]
-
-
--- | Available example modules.
-exampleData :: [ExampleModule]
-exampleData =
-  [ ExampleModule "Hello World"
-    (static @ "examples/helloWorld-1.0.repl")
-    (static @ "examples/helloWorld-1.0.data.json")
-  , ExampleModule "Simple Payment"
-    (static @ "examples/simplePayments-1.0.repl")
-    (static @ "examples/simplePayments-1.0.data.json")
-  , ExampleModule "International Payment"
-    (static @ "examples/internationalPayments-1.0.repl")
-    (static @ "examples/internationalPayments-1.0.data.json")
-
-  {- , ExampleModule "Commercial Paper" "examples/commercialPaper-1.0" -}
-  ]
-
--- | Examples as Map from Index to actual data.
-demos :: Map Int ExampleModule
-demos = Map.fromList $ zip [0..] exampleData
 
 -- Instances:
 

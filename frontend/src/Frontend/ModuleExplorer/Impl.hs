@@ -61,6 +61,7 @@ import           Frontend.Foundation
 import           Frontend.JsonData
 import           Frontend.Messages
 import           Frontend.ModuleExplorer     as API
+import           Frontend.ModuleExplorer.Example
 import           Frontend.Repl
 import           Frontend.Wallet
 
@@ -241,12 +242,10 @@ loadDeployedModule onNewContractReq = do
     , onLoaded
     )
 
--- | Select a contract.
+-- | Select a `Module` or a `File` or both.
 --
---   For deployed contracts this loads its code & functions.
---
---   The returned Event fires once the loading is complete.
-selectModule
+--   The selected module and file will be made available in the return value.
+selectModuleFile
   :: forall m t mConf model
   . ( MonadHold t m, PerformEvent t m, MonadJSM (Performable m)
     , HasJSContext (Performable m), TriggerEvent t m, MonadFix m
@@ -254,13 +253,14 @@ selectModule
     , HasBackend model t
     )
   => model
-  -> Event t (Maybe ModuleSel)
-  -> m (mConf, MDynamic t SelectedModule)
-selectModule m onMaySelReq = mdo
+  -> Event t (Maybe ModuleRef)
+  -> Event t (Maybe FileRef)
+  -> m (mConf, MDynamic t (FileRef, PactFile), MDynamic t (ModuleRef, Module))
+selectModuleFile m onMayModRef onMayFileRef = mdo
   let
-    onSelReq = fmapMaybe id onMaySelReq
-    onExampleModule  = fmapMaybe (^? _ModuleSel_Example)  onSelReq
-    onDeployedModuleNew = fmapMaybe (^? _ModuleSel_Deployed) onSelReq
+    onSelReq = fmapMaybe id onMayModRef
+    onFileModule  = fmapMaybe (^? moduleRef_source . _ModuleSource_File)  onSelReq
+    onDeployedModule = fmapMaybe (^? _ModuleSel_Deployed) onSelReq
 
     selectedDeployed = (^? _Just . selectedModule_module . _ModuleSel_Deployed) <$> selected
     onDeployedModule = leftmost
@@ -280,6 +280,35 @@ selectModule m onMaySelReq = mdo
     ( deCfg
     , selected
     )
+
+-- | Push/pop a module on the `_moduleExplorer_moduleStack`.
+--
+--   The returned Event triggers whenever the stack changes and signals a newly
+--   selected module.
+pushPopModule
+  :: forall m t mConf model
+  . ( MonadHold t m, PerformEvent t m, MonadJSM (Performable m)
+    , HasJSContext (Performable m), TriggerEvent t m, MonadFix m
+    , HasMessagesCfg  mConf t, Monoid mConf
+    , HasBackend model t
+    )
+  => model
+  -> Event t ModuleRef
+  -> Event t ()
+  -> m (Event t (Maybe ModuleRef), Dynamic t [ModuleRef])
+pushPopModule m onPush onPop = do
+  stack <- foldDyn id [] $ leftmost
+    [ (:) <$> onPush
+    , tailSafe <$ onPop
+    ]
+
+  let onPopped = tagWith headMay stack onPop
+
+  pure
+    ( leftmost [ onPopped, onPush ]
+    , stack
+    )
+
 
 -- | Select Example contract.
 selectExample
@@ -334,21 +363,6 @@ selectDeployed onSelReq = do
     )
 
 -- | Fetch a given given example contract data, given the URL.
-fetchExample
-  :: ( PerformEvent t m, TriggerEvent t m, MonadJSM (Performable m)
-     , HasJSContext (Performable m)
-     )
-  => Event t ExampleModule -> m (Event t (ExampleModule, (Text, Text)))
-fetchExample onExampleModule =
-  performEventAsync $ ffor onExampleModule $ \example cb -> void . forkJSM $ do
-    let
-      callback = liftIO . cb . (example,) . (codeFromResponse *** codeFromResponse)
-
-    let codeReq = xhrRequest "GET" (_exampleModule_code example) def
-    void $ newXMLHttpRequest codeReq $ \codeRes -> do
-      let jsonReq = xhrRequest "GET" (_exampleModule_data example) def
-      void $ newXMLHttpRequest jsonReq $ \jsonRes ->
-        callback (codeRes, jsonRes)
 
 -- | Fetch source code of a deployed module.
 --

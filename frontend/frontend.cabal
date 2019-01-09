@@ -77,6 +77,9 @@ library
                  , Frontend.UI.Modal.Impl
                  , Frontend.UI.ModuleExplorer
                  , Frontend.UI.ModuleExplorer.ModuleDetails
+                 , Frontend.UI.ModuleExplorer.Example
+                 , Frontend.UI.ModuleExplorer.Module
+                 , Frontend.UI.ModuleExplorer.File
                  , Frontend.UI.Repl
                  , Frontend.UI.RightPanel
                  , Frontend.UI.TabBar
