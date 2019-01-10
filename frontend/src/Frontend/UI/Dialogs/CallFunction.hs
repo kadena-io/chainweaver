@@ -132,6 +132,7 @@ uiCallFunction m mModule func = do
 
 -- | Build a function call
 --
+-- TODO: Proper namespace support
 buildCall
   :: ModuleName -- ^ Module name
   -> Text -- ^ Function name
