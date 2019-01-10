@@ -42,7 +42,7 @@ import           Safe (readMay, headMay)
 ------------------------------------------------------------------------------
 import           Pact.Types.Lang         (Arg (..), FunType (..),
                                           ModuleName (..), Name, PrimType (..),
-                                          Term, Type (..))
+                                          Term, Type (..), GuardType(..))
 ------------------------------------------------------------------------------
 import           Frontend.Backend
 import           Frontend.Foundation     hiding (Arg)
@@ -132,12 +132,13 @@ uiCallFunction m mModule func = do
 
 -- | Build a function call
 --
+-- TODO: Proper namespace support
 buildCall
   :: ModuleName -- ^ Module name
   -> Text -- ^ Function name
   -> [Text] -- ^ Function arguments
   -> Text -- ^ Pact function call
-buildCall m n args = mconcat [ "(", coerce m, ".", n , " " , T.unwords args, ")" ]
+buildCall (ModuleName m _) n args = mconcat [ "(", coerce m, ".", n , " " , T.unwords args, ")" ]
 
 -- renderQualified :: PactFunction -> Text
 -- renderQualified func = (coerce . _pactFunction_module) func <> "." <> _pactFunction_name func
@@ -214,7 +215,7 @@ funTypeInput json = \case
     TyPrim TyTime -> mkInput "text" ""
     TyPrim TyBool -> mkCheckbox False
     TyPrim TyString -> mkTextInput
-    TyPrim TyKeySet -> keysetSelector json
+    TyPrim (TyGuard (Just GTyKeySet)) -> keysetSelector json
     _ -> mkTextArea ""
   where
     mkTextInput :: m (Dynamic t Text)

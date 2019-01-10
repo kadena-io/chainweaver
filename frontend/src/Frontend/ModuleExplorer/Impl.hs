@@ -388,7 +388,8 @@ fetchDeployedModule onReq = do
 -- | Get the top level functions from a 'Term'
 getFunctions :: Term Name -> [PactFunction]
 getFunctions (TModule _ body _) = getFunctions $ Bound.instantiate undefined body
-getFunctions (TDef name moduleName defType funType _ docs _) = [PactFunction moduleName name defType (_mDocs docs) funType]
+getFunctions (TDef (Def (DefName name) moduleName defType funType _body meta _) _) =
+  [PactFunction moduleName name defType (_mDocs meta) funType]
 getFunctions (TList list1 _ _) = getFunctions =<< list1
 getFunctions _ = []
 
