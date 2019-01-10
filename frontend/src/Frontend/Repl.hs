@@ -319,7 +319,7 @@ runVerify impl onMod =
       r <- runExceptT . pactEvalRepl' . buildVerify $ m
       pure (m, bimap T.pack showTerm r)
 
-    buildVerify (ModuleName n) = "(verify '" <> n <> ")"
+    buildVerify (ModuleName n _) = "(verify '" <> n <> ")"
 
 -- | Run code in a transaction on the REPL.
 runTransaction
@@ -366,7 +366,7 @@ getModules = Map.fromList . mapMaybe toModule
     toModule :: Exp Parsed -> Maybe (ModuleName, Int)
     toModule = \case
       EList (ListExp (_:EAtom (AtomExp m _ _):_) _ (Parsed (Delta.Lines l _ _ _) _))
-        -> Just $ (ModuleName m, fromIntegral l)
+        -> Just $ (ModuleName m Nothing, fromIntegral l)
       _ -> Nothing
 
 
@@ -410,8 +410,8 @@ instance Reflex t => Monoid (ReplCfg t) where
   mappend = (<>)
 
 -- Orphan:
-instance Semigroup ModuleName where
-  (ModuleName a) <> (ModuleName b) = ModuleName (a <> b)
+-- instance Semigroup ModuleName where
+--   (ModuleName a nsa) <> (ModuleName b nsb) = ModuleName (a <> b) Nothing
 
 
 -- TODO: Those instances should really be derived via Generic.
