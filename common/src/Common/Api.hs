@@ -10,7 +10,7 @@ import Obelisk.ExecutableConfig (get)
 
 -- | How many Pact instances to launch in development mode.
 numPactInstances :: Int
-numPactInstances = 4
+numPactInstances = 1
 
 -- | Get the port number a given pact instance is launched on.
 --
