@@ -115,7 +115,7 @@ data ModuleExplorer t = ModuleExplorer
   -- ^ The currently selected file if any.
   , _moduleExplorer_loaded   :: MDynamic t ModuleSource
   -- ^ Where did the data come from that got loaded last into the `Editor`?
-  , _moduleExplorer_deployedModules :: Dynamic t (Map BackendName (Maybe [Text]))
+  {- , _moduleExplorer_deployedModules :: Dynamic t (Map BackendName (Maybe [Text])) -}
   }
   deriving Generic
 

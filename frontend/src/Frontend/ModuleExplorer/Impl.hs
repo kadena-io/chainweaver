@@ -100,7 +100,7 @@ makeModuleExplorer
   => model
   -> cfg
   -> m (mConf, ModuleExplorer t)
-makeModuleExplorer m cfg = do
+makeModuleExplorer m cfg = mfix $ \ ~(_, explr) -> do
     selectedFile <- selectFile
       (cfg ^. moduleExplorerCfg_selectFile)
       (getFileModuleRef <$> cfg ^. moduleExplorerCfg_pushModule)
@@ -109,17 +109,18 @@ makeModuleExplorer m cfg = do
       (cfg ^. moduleExplorerCfg_loadFile)
       (cfg ^. moduleExplorerCfg_loadModule)
 
-    (loadedCfg, loaded)     <- loadModule $ cfg ^. moduleExplorerCfg_loadModule
-    (selectedCfg, selected) <- selectModule m $ cfg ^. moduleExplorerCfg_selModule
+    (stckCfg, stack) <- pushPopModule m explr
+      (cfg ^. moduleExplorerCfg_pushModule)
+      (cfg ^. moduleExplorerCfg_popModule)
+
     let
       deployEdCfg = deployEditor m $ cfg ^. moduleExplorerCfg_deployEditor
       deployCodeCfg = deployCode m $ cfg ^. moduleExplorerCfg_deployCode
 
     pure
-      ( mconcat [ lFileCfg ]
+      ( mconcat [ lFileCfg, stckCfg, deployEdCfg, deployCodeCfg ]
       , ModuleExplorer
-          { _mod = undefined
-          , _moduleExplorer_selectedModule = selected
+        { _moduleExplorer_moduleStack = stack
           , _moduleExplorer_selectedFile = selectedFile 
           , _moduleExplorer_loaded = loadedSource
           }
@@ -163,7 +164,6 @@ deployCode m onDeploy =
       pure $ case ed of
         Left _  -> Just $ "Deploy not possible: JSON data was invalid!"
         Right _ -> Nothing
-
   in
     mempty
       & backendCfg_deployCode .~ attachWithMaybe ($) (current mkReq) onDeploy
@@ -230,10 +230,10 @@ loadModule
 loadModule onRef = do
   onErrModule <- fetchModule onRef
   let
-    onErr    = (^. _2 . _Left)      <$> onErrModule
-    onModule = (_2  %~ (^. _Right)) <$> onErrModule
+    onErr    = fmapMaybe (^. _2 . _Left) onErrModule
+    onModule = fmapMaybe (traverse (^? _Right)) onErrModule
   pure
-    ( mempty & messagesCfg_send .~ onErr
+    ( mempty & messagesCfg_send .~ fmap ("Loading of module failed: " <>) onErr
     , onModule
     )
 
@@ -249,20 +249,28 @@ selectFile
   -> m (MDynamic t (FileRef, PactFile))
 selectFile onModRef onMayFileRef = mdo
 
-  onFileSelectByModule <- fetchFile $ _moduleRef_source <$> onModRef
-  onFileSelect <- fetchFile $ fmapMaybe id onMayFileRef
+    onFileSelect <- fetchFile . push (filterNewFileRef selected) $ leftmost
+      [ _moduleRef_source <$> onModRef
+      , fmapMaybe id onMayFileRef
+      ]
 
-  holdDyn Nothing $ leftmost
-    [ Just    <$> onFileSelectedByModule
-    , Just    <$> onFileSelect
-    , Nothing <$  ffilter isNothing onMayFileRef
-    ]
+    selected <- holdDyn Nothing $ leftmost
+      [ Just    <$> onFileSelect
+      , Nothing <$  ffilter isNothing onMayFileRef
+      ]
+    pure selected
+  where
+    filterNewFileRef oldFile newFileRef = do
+      cOld <- sample . current $ oldFile
+      pure $ if fmap fst cOld /= Just newFileRef
+         then Just newFileRef
+         else Nothing
 
 
 -- | Push/pop a module on the `_moduleExplorer_moduleStack`.
 --
---   The returned Event triggers whenever the stack changes and signals a newly
---   selected module.
+--   The deployed module on the top of the stack will always be kept up2date on
+--   `_backend_deployed` fires.
 pushPopModule
   :: forall m t mConf model
   . ( MonadHold t m, PerformEvent t m, MonadJSM (Performable m)
@@ -270,72 +278,57 @@ pushPopModule
     , HasMessagesCfg  mConf t, Monoid mConf
     , HasBackend model t
     )
-  => model
+  => model 
+  -> ModuleExplorer t
   -> Event t ModuleRef
   -> Event t ()
-  -> m (Event t (Maybe ModuleRef), Dynamic t [(ModuleRef, Module)])
-pushPopModule m onPush onPop = do
-  stack <- foldDyn id [] $ leftmost
-    [ (:) <$> onPush
-    , tailSafe <$ onPop
-    ]
+  -> m (mConf, Dynamic t [(ModuleRef, Module)])
+pushPopModule m explr onPush onPop = mdo
+    let onFileModRef = fmapMaybe getFileModuleRef onPush
+    onFileModule <- waitForFile (explr ^. moduleExplorer_selectedFile) onFileModRef
 
-  let onPopped = tagWith headMay stack onPop
+    (lCfg, onDeployedModule) <- loadModule $ fmapMaybe getDeployedModuleRef onPush
 
-  pure
-    ( leftmost [ onPopped, onPush ]
-    , stack
-    )
+    staleStack <- foldDyn id [] $ leftmost
+      [ (:) . (module_source %~ ModuleSource_File) <$> onFileModule
+      , (:) . (module_source %~ ModuleSource_Deployed) <$> onDeployedModule
+      , tailSafe <$ onPop
+      , updateStack <$> onRefresh
+      ]
+    (rCfg, onRefresh) <- refreshHead $
+      tagPromptlyDyn staleStack $ leftmost [ onPop, m ^. backend_deployed ]
 
+    pure
+      ( lCfg <> rCfg
+      , stack
+      )
+  where
+    waitForFile
+      :: MDynamic t (FileRef, PactFile)
+      -> Event t FileModuleRef
+      -> Event t (FileModuleRef, Module)
+    waitForFile fileL onRef = do
+      modReq <- holdDyn Nothing $ Just <$> onRef
+      let
+        retrievedModule = runMaybeT $ do
+          cFile <- MaybeT fileL
+          cReq <- MaybeT modReq
+          guard $ _module_source cReq == fst cFile
 
--- | Select Example contract.
-selectExample
-  :: forall m t
-  . ( MonadHold t m, PerformEvent t m, MonadJSM (Performable m)
-    , HasJSContext (Performable m), TriggerEvent t m
-    )
-  => Event t ExampleModule
-  -> m (Event t SelectedModule)
-selectExample onSelReq = do
-  onExampleRec <- fetchExample onSelReq
-  let
-    buildSelected :: ExampleModule -> Text -> SelectedModule
-    buildSelected depl code =
-      SelectedModule (ModuleSel_Example depl) code (listPactFunctions (Code code))
+          let n = _moduleName cReq
+          m <- MaybeT . pure $ Map.lookup n $ fileModules (snd cFile)
+          pure (n,m)
+      pure $ fmapMaybe id . updated $ retrievedModule
 
-  pure $ uncurry buildSelected . second fst <$> onExampleRec
+    updateStack :: (ModuleRef, Module) -> [(ModuleRef, Module)] -> [(ModuleRef, Module)]
+    udpateStack update = map doUpdate
+      where
+        doUpdate new@(uK,uV) old@(k, v) = if uK == k then new else old
 
+    refreshHead :: Event t [(ModuleRef, Module)] -> m (mConf, Event t (ModuleRef, Module))
+    refreshHead onMods = do
+      let getHeadRef = getDeployedModuleRef <=< fmap fst . listToMaybe
+      -- We silently fail on error here, as the 
+      (cfg, onDeployed) <- loadModule $ fmapMaybe getHeadRef onMods
+      pure (%~ ModuleSource_Deployed) <$> onDeployed
 
--- | Select a deployed contract.
---
---   For deployed contracts this loads its code & functions.
---
---   The returned Event fires once the loading is complete.
-selectDeployed
-  :: forall m t mConf
-  . ( MonadHold t m, PerformEvent t m, MonadJSM (Performable m)
-    , HasJSContext (Performable m), TriggerEvent t m
-    , HasMessagesCfg  mConf t, Monoid mConf
-    )
-  => Event t DeployedModule
-  -> m (mConf, Event t SelectedModule)
-selectDeployed onSelReq = do
-  onErrModule <- fetchDeployedModule onSelReq
-  let
-    onErr = fmapMaybe (^? _2 . _Left) onErrModule
-
-    onRes :: Event t (DeployedModule, Module)
-    onRes = fmapMaybe (traverse (^? _Right)) onErrModule
-
-    buildSelected :: DeployedModule -> Module -> SelectedModule
-    buildSelected depl m =
-      SelectedModule
-        (ModuleSel_Deployed depl)
-        (_unCode $ _mCode m)
-        (listPactFunctions (_mCode m))
-
-  pure
-    ( mempty
-        & messagesCfg_send .~ fmap ("Loading functions failed: " <>) onErr
-    , uncurry buildSelected <$> onRes
-    )

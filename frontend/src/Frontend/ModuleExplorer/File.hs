@@ -34,8 +34,9 @@ module Frontend.ModuleExplorer.File
   , PactFile
   -- * Storing and Retrieval
   , fetchFile
-  -- * Parsing
-  , parseFileModules
+  , fetchFileCached
+  -- * Retrieve contents:
+  , fileModules
   ) where
 
 ------------------------------------------------------------------------------
@@ -83,7 +84,6 @@ makePactPrisms ''FileRef
 type PactFile = Code
 
 
-
 -- | Fetch a `File` given a `FileRef`.
 --
 --   TODO: Implement support for `FileRef_Stored`.
@@ -98,10 +98,40 @@ fetchFile onFileRef = do
   where
     wrapExample = FileRef_Example *** fst 
 
--- | Parse the `Module`s and their functions contained in `PactFile`.
-parseFileModules :: PactFile -> [(Module, [PactFunction])]
-parseFileModules m = case Pact.compileExps Pact.mkEmptyInfo <$> Pact.parseExprs code of
-  Right (Right terms) -> mapMaybe getModule terms
+-- | Fetch a `File`, with cache.
+--
+--   This function maintains a cache of size 1, that means if the fetched file
+--   was fetched last it will be delivered immediately.
+fetchFileCached
+  :: ( PerformEvent t m, TriggerEvent t m, MonadJSM (Performable m)
+     , HasJSContext (Performable m)
+     )
+  => Event t FileRef -> m (Event t (FileRef, PactFile))
+fetchFileCached onFileRef = mdo
+    let onNewFileRef = pushAlways (onlyNew lastFile) onFileRef
+    onFetched <- fetchFile $ fmapMaybe id onNewFileRef
+    lastFile <- hold Nothing $ Just <$> onFetched
+
+    let onCached = fmapMaybe id . tag lastFile $ ffilter isNothing onNewFileRef
+    pure $ leftmost [ onFetched, onCached ]
+  where
+    onlyNew cache req = do
+      l <- sample cache
+      if fst <$> l == Just req
+         then pure Nothing
+         else pure $ Just req
+
+-- | Get the `Module`s contained in `PactFile`.
+fileModules :: PactFile -> Map ModuleName Module
+fileModules m = case Pact.compileExps Pact.mkEmptyInfo <$> Pact.parseExprs code of
+  Right (Right terms) -> Map.fromList $ mapMaybe getModule terms
   _                   -> []
 
+
+-- | Get module from a `Term`
+getModule :: MonadPlus m => Term Name -> m (ModuleName, Module)
+getModule = \case
+  TModule m _ _ -> pure (nameOfModule m, m)
+  {- TModule m _ _ -> pure $ (m, getFunctions $ Bound.instantiate undefined body) -}
+  _             -> mzero
 

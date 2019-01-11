@@ -35,15 +35,14 @@ module Frontend.ModuleExplorer.Module
     -- * Get more specialized references:
   , getDeployedModuleRef
   , getFileModuleRef
-    -- * Utitlity functions when working with `Module`
-  , nameOfModule
-  , codeOfModule
-    -- * Get hold of modules and functions:
+    -- * Retrieve information about a `Module`
   , PactFunction (..)
   , HasPactFunction (..)
+  , nameOfModule
+  , codeOfModule
+  , functionsOfModule
+    -- * Get hold a deployed `Module`.
   , fetchModule
-  , getModule
-  , getFunctions
     -- * Pretty printing
   , textModuleRefSource
   ) where
@@ -194,13 +193,14 @@ fetchModule onReq = do
       maybe "" (\n -> "(namespace '" <> n <> ")") .  _mnNamespace
 
 
--- | Get module and its function of current term, if it is a `Module`
-getModule :: MonadPlus m => Term Name -> m (Module, [PactFunction])
-getModule = \case
-  TModule m body _ -> pure $ (m, getFunctions $ Bound.instantiate undefined body)
-  _                -> mzero
+-- | Functions of a `Module`
+functionsOfModule :: Module -> [PactFunction]
+functionsOfModule m =
+  case Pact.compileExps Pact.mkEmptyInfo <$> Pact.parseExprs (codeOfModule m) of
+    Right (Right terms) -> concatMap getFunctions terms
+    _                   -> []
 
--- | Get the top level functions from a 'Term'
+-- | Get the top level functions from a 'Term'.
 getFunctions :: Term Name -> [PactFunction]
 getFunctions (TModule _ body _) = getFunctions $ Bound.instantiate undefined body
 getFunctions (TDef (Def (DefName name) moduleName defType funType _body meta _) _) =
