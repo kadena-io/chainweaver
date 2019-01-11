@@ -121,6 +121,10 @@ exampleDataName = \case
 --
 --   First value in returned pair is the Pact code, the second is the retrieved
 --   JSON data.
+--
+--   TODO: We don't actually use the json data right now, we maybe never will
+--   as I am not yet sure whether we actually want to store/restore JSON data
+--   and whether it would be useful/secure.
 fetchExample
   :: ( PerformEvent t m, TriggerEvent t m, MonadJSM (Performable m)
      , HasJSContext (Performable m)
@@ -136,3 +140,9 @@ fetchExample onExampleModule =
       let jsonReq = xhrRequest "GET" (exampleDataName example) def
       void $ newXMLHttpRequest jsonReq $ \jsonRes ->
         callback (codeRes, jsonRes)
+
+
+codeFromResponse :: XhrResponse -> Text
+codeFromResponse =
+    fromMaybe "error: could not connect to server" . _xhrResponse_responseText
+

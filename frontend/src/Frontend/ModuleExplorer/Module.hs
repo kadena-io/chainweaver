@@ -35,6 +35,15 @@ module Frontend.ModuleExplorer.Module
     -- * Get more specialized references:
   , getDeployedModuleRef
   , getFileModuleRef
+    -- * Utitlity functions when working with `Module`
+  , nameOfModule
+  , codeOfModule
+    -- * Get hold of modules and functions:
+  , PactFunction (..)
+  , HasPactFunction (..)
+  , fetchModule
+  , getModule
+  , getFunctions
     -- * Pretty printing
   , textModuleRefSource
   ) where
@@ -101,6 +110,7 @@ getDeployedModuleRef r = traverse (^? _ModuleSource_Deployed)
 getFileModuleRef :: ModuleRef -> Maybe FileModuleRef
 getFileModuleRef r = traverse (^? _ModuleSource_File)
 
+
 -- | Show the type of the selected module.
 --
 --   It is either "Example Contract" or "Deployed Contract"
@@ -115,6 +125,88 @@ textModuleRefSource m =
         -> withDetails "Deployed Module" (textBackendName . backendRefName $ b)
   where
     withDetails n d = mconcat [ n <> " [ " , d , " ]" ]
+
+
+-- Module utility functions:
+
+-- | Get the `ModuleName` of a `Module`.
+nameOfModule :: Module -> ModuleName
+nameOfModule = \case
+  Interface {..} -> _interfaceName
+  Module {..}    -> _mName
+
+-- | Get the `ModuleName` of a `Module`.
+codeOfModule :: Module -> Code
+codeOfModule = \case
+  Interface {..} -> _interfaceCode
+  Module {..}    -> _mCode
+
+-- Get hold of modules and functions:
+
+-- | Useful data about a pact function.
+data PactFunction = PactFunction
+  { _pactFunction_module        :: ModuleName
+  , _pactFunction_name          :: Text
+  , _pactFunction_defType       :: DefType
+  , _pactFunction_documentation :: Maybe Text
+  , _pactFunction_type          :: FunType (Term Name)
+  }
+  deriving Show
+
+makePactLenses ''PactFunction
+
+-- | Fetch a `Module` from a backend where it has been deployed.
+--
+--   Resulting Event is either an error msg or the loaded module.
+fetchModule
+  :: forall m t
+  . ( MonadHold t m, PerformEvent t m, MonadJSM (Performable m)
+    , HasJSContext (Performable m), TriggerEvent t m
+    )
+  => Event t DeployedModuleRef
+  -> m (Event t (DeployedModuleRef, Either Text Module))
+fetchModule onReq = do
+    deployedResult :: Event t (DeployedModuleRef, BackendErrorResult)
+      <- performBackendRequestCustom emptyWallet mkReq onReq
+
+    pure $ ffor deployedResult $
+      id *** (fromJsonEither <=< left (T.pack . show))
+
+  where
+    mkReq mRef = BackendRequest
+      { _backendRequest_code = mconcat
+        [ defineNamespace . _moduleRef_name $ mRef
+        , "(describe-module '"
+        , _mnName . _moduleRef_name $ mRef
+        , ")"
+        ]
+      , _backendRequest_data = mempty
+      , _backendRequest_backend = _moduleRef_source dm
+      , _backendRequest_signing = Set.empty
+      }
+
+    fromJsonEither :: FromJSON a => Value -> Either Text a
+    fromJsonEither v = case fromJSON v of
+        Aeson.Error e -> throwError . T.pack $ e
+        Aeson.Success a -> pure a
+
+    defineNamespace =
+      maybe "" (\n -> "(namespace '" <> n <> ")") .  _mnNamespace
+
+
+-- | Get module and its function of current term, if it is a `Module`
+getModule :: MonadPlus m => Term Name -> m (Module, [PactFunction])
+getModule = \case
+  TModule m body _ -> pure $ (m, getFunctions $ Bound.instantiate undefined body)
+  _                -> mzero
+
+-- | Get the top level functions from a 'Term'
+getFunctions :: Term Name -> [PactFunction]
+getFunctions (TModule _ body _) = getFunctions $ Bound.instantiate undefined body
+getFunctions (TDef (Def (DefName name) moduleName defType funType _body meta _) _) =
+  [PactFunction moduleName name defType (_mDocs meta) funType]
+getFunctions (TList list1 _ _) = getFunctions =<< list1
+getFunctions _ = []
 
 
 -- Instances:

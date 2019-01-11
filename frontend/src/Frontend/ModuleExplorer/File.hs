@@ -24,7 +24,19 @@
 --
 
 module Frontend.ModuleExplorer.File
-  () where
+  ( -- * Filenames and References
+  , FileName
+  , textFileName
+  , FileRef
+  , _FileRef_Example
+  , _FileRef_Stored
+   -- * A PactFile
+  , PactFile
+  -- * Storing and Retrieval
+  , fetchFile
+  -- * Parsing
+  , parseFileModules
+  ) where
 
 ------------------------------------------------------------------------------
 import           Data.Map                 (Map)
@@ -59,11 +71,37 @@ data FileRef
 
 makePactPrisms ''FileRef
 
--- | A selected file.
-data PactFile = PactFile
-  { _pactFile_content :: Text -- * Full content of the file, no matter what.
-  , _pactFile_modules :: [Module] -- * Any modules contained in the file. (Parsed content)
-  } deriving (Show)
+{- -- | A selected file. -}
+{- data PactFile = PactFile -}
+{-   { _pactFile_content :: Code -- * Full content of the file, no matter what. -}
+{-   , _pactFile_modules :: [Module] -- * Any modules contained in the file. (Parsed content) -}
+{-   } deriving (Show) -}
 
-makePactLenses ''PactFile
+{- makePactLenses ''PactFile -}
+
+-- | A Pact file is simply some piece of `Code`.
+type PactFile = Code
+
+
+
+-- | Fetch a `File` given a `FileRef`.
+--
+--   TODO: Implement support for `FileRef_Stored`.
+fetchFile
+  :: ( PerformEvent t m, TriggerEvent t m, MonadJSM (Performable m)
+     , HasJSContext (Performable m)
+     )
+  => Event t FileRef -> m (Event t (FileRef, PactFile))
+fetchFile onFileRef = do
+    onExample <- fetchExample $ fmapMaybe (^? _FileRef_Example)  onFileRef
+    pure $ wrapExample <$> onExample
+  where
+    wrapExample = FileRef_Example *** fst 
+
+-- | Parse the `Module`s and their functions contained in `PactFile`.
+parseFileModules :: PactFile -> [(Module, [PactFunction])]
+parseFileModules m = case Pact.compileExps Pact.mkEmptyInfo <$> Pact.parseExprs code of
+  Right (Right terms) -> mapMaybe getModule terms
+  _                   -> []
+
 

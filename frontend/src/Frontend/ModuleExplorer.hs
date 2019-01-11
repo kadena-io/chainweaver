@@ -74,18 +74,6 @@ import           Frontend.Wallet
 import           Frontend.ModuleExplorer.Example as Example
 import           Frontend.ModuleExplorer.Module  as Module
 
--- | Useful data about a pact function.
-data PactFunction = PactFunction
-  { _pactFunction_module        :: ModuleName
-  , _pactFunction_name          :: Text
-  , _pactFunction_defType       :: DefType
-  , _pactFunction_documentation :: Maybe Text
-  , _pactFunction_type          :: FunType (Term Name)
-  }
-  deriving Show
-
-makePactLenses ''SelectedModule
-
 -- | Data needed to send transactions to the server.
 data TransactionInfo = TransactionInfo
   { _transactionInfo_keys    :: Set KeyName
@@ -121,19 +109,12 @@ makePactLenses ''ModuleExplorerCfg
 
 -- | Current ModuleExploer state.
 data ModuleExplorer t = ModuleExplorer
-  { _moduleExplorer_moduleStack :: Dynamic t [ModuleRef]
-  -- ^ The stack of currently selected modules. `head` is always `_moduleExplorer_selectedModule`.
-  -- This stack can be traversed back, this is so as modules can can be
-  -- selected from within modules.
-  , _moduleExplorer_selectedModule :: MDynamic t (ModuleRef, Module)
-  -- ^ The currently selected module, always "matches" `head` of `_moduleExplorer_moduleStack`.
+  { _moduleExplorer_moduleStack :: Dynamic t [(ModuleRef, Module)]
+  -- ^ The stack of currently selected modules.
   , _moduleExplorer_selectedFile :: MDynamic t (FileRef, PactFile)
   -- ^ The currently selected file if any.
-  , _moduleExplorer_loadedModules   :: Dynamic t [ModuleRef]
-  -- ^ The modules that were loaded last into the editor, it can be more than
-  -- one in case of loaded files, which can contain multiple modules.
-  , _moduleExplorer_loadedFile :: MDynamic t FileRef
-  -- ^ The file currently loaded into the editor, if any.
+  , _moduleExplorer_loaded   :: MDynamic t ModuleSource
+  -- ^ Where did the data come from that got loaded last into the `Editor`?
   , _moduleExplorer_deployedModules :: Dynamic t (Map BackendName (Maybe [Text]))
   }
   deriving Generic
