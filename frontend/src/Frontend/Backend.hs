@@ -164,7 +164,6 @@ data BackendCfg t = BackendCfg
     -- TODO: This should go to `ModuleExplorer`
   , _backendCfg_deployCode :: Event t BackendRequest
     -- ^ Deploy some code to the backend. Response will be logged to `Messages`.
-    -- TODO: Deploy button should actually use this.
   }
   deriving Generic
 
