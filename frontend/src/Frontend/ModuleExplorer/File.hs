@@ -25,9 +25,9 @@
 
 module Frontend.ModuleExplorer.File
   ( -- * Filenames and References
-  , FileName
+    FileName
   , textFileName
-  , FileRef
+  , FileRef (..)
   , _FileRef_Example
   , _FileRef_Stored
    -- * A PactFile
@@ -40,6 +40,8 @@ module Frontend.ModuleExplorer.File
   ) where
 
 ------------------------------------------------------------------------------
+import Control.Lens
+import Control.Arrow ((***))
 import           Data.Map                 (Map)
 import qualified Data.Map                 as Map
 import           Data.Text                (Text)
@@ -47,15 +49,22 @@ import           Generics.Deriving.Monoid (mappenddefault, memptydefault)
 import           GHC.Generics             (Generic)
 import           Reflex
 import           Data.Set                     (Set)
+import Control.Monad
+import           Reflex.Dom.Core             (HasJSContext, MonadHold,
+                                              PostBuild, XhrResponse (..),
+                                              newXMLHttpRequest, xhrRequest)
 ------------------------------------------------------------------------------
 import           Obelisk.Generated.Static
 import           Pact.Types.Lang          (DefType, FunType, ModuleName, Name,
-                                         Term)
+                                         Term (TModule), Code (..), Module)
+import qualified Pact.Compile                as Pact
+import qualified Pact.Parse                  as Pact
 ------------------------------------------------------------------------------
 import           Frontend.Backend
 import           Frontend.Foundation
 import           Frontend.Wallet
 import           Frontend.ModuleExplorer.Example
+import           Frontend.ModuleExplorer.Module
 
 -- | The name of a file stored by the user.
 newtype FileName = FileName { unFileName :: Text }
@@ -69,6 +78,7 @@ textFileName = unFileName
 data FileRef
   = FileRef_Example ExampleRef
   | FileRef_Stored FileName
+  deriving (Eq, Ord, Show)
 
 makePactPrisms ''FileRef
 
@@ -96,7 +106,7 @@ fetchFile onFileRef = do
     onExample <- fetchExample $ fmapMaybe (^? _FileRef_Example)  onFileRef
     pure $ wrapExample <$> onExample
   where
-    wrapExample = FileRef_Example *** fst 
+    wrapExample = FileRef_Example *** Code . fst 
 
 -- | Fetch a `File`, with cache.
 --
@@ -104,7 +114,7 @@ fetchFile onFileRef = do
 --   was fetched last it will be delivered immediately.
 fetchFileCached
   :: ( PerformEvent t m, TriggerEvent t m, MonadJSM (Performable m)
-     , HasJSContext (Performable m)
+     , HasJSContext (Performable m), MonadFix m, MonadHold t m
      )
   => Event t FileRef -> m (Event t (FileRef, PactFile))
 fetchFileCached onFileRef = mdo
@@ -117,15 +127,15 @@ fetchFileCached onFileRef = mdo
   where
     onlyNew cache req = do
       l <- sample cache
-      if fst <$> l == Just req
+      if fmap fst l == Just req
          then pure Nothing
          else pure $ Just req
 
 -- | Get the `Module`s contained in `PactFile`.
 fileModules :: PactFile -> Map ModuleName Module
-fileModules m = case Pact.compileExps Pact.mkEmptyInfo <$> Pact.parseExprs code of
+fileModules code = case Pact.compileExps Pact.mkEmptyInfo <$> Pact.parseExprs (_unCode code) of
   Right (Right terms) -> Map.fromList $ mapMaybe getModule terms
-  _                   -> []
+  _                   -> Map.empty
 
 
 -- | Get module from a `Term`
@@ -135,3 +145,7 @@ getModule = \case
   {- TModule m _ _ -> pure $ (m, getFunctions $ Bound.instantiate undefined body) -}
   _             -> mzero
 
+
+-- Instances:
+instance Semigroup FileRef where
+  a <> _ = a

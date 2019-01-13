@@ -79,6 +79,7 @@ library
                  , Frontend.UI.ModuleExplorer.ModuleDetails
                  , Frontend.UI.ModuleExplorer.Example
                  , Frontend.UI.ModuleExplorer.Module
+                 , Frontend.UI.ModuleExplorer.ModuleRef
                  , Frontend.UI.ModuleExplorer.File
                  , Frontend.UI.Repl
                  , Frontend.UI.RightPanel

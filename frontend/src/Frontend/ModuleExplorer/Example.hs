@@ -62,14 +62,14 @@ import qualified Pact.Compile                as Pact
 import qualified Pact.Parse                  as Pact
 import           Pact.Types.Lang
 ------------------------------------------------------------------------------
+import           Obelisk.Generated.Static
+------------------------------------------------------------------------------
 import           Frontend.Backend
 import           Frontend.Editor
 import           Frontend.Foundation
 import           Frontend.JsonData
 import           Frontend.Messages
-import           Frontend.ModuleExplorer     as API
 import           Frontend.Repl
-import           Frontend.Wallet
 
 
 
@@ -94,8 +94,8 @@ exampleName = \case
     -> "Hello World"
   ExampleRef_SimplePayments
     -> "Simple Payment"
-ExampleRef_InternationalPayments
-  -> "International Payment"
+  ExampleRef_InternationalPayments
+    -> "International Payment"
 
 -- | File name of Pact code for the given example.
 exampleFileName :: ExampleRef -> Text

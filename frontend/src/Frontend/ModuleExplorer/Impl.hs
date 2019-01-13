@@ -34,25 +34,17 @@ module Frontend.ModuleExplorer.Impl
   ) where
 
 ------------------------------------------------------------------------------
-import qualified Bound
-import Control.Monad.Except (throwError)
-import Control.Monad (void, (<=<))
-import           Control.Arrow               ((***), left)
-import           Data.Bifunctor (second)
 import           Control.Lens
-import           Data.Aeson                  as Aeson (Result (..), fromJSON, FromJSON, Value)
-import           Data.Default
-import qualified Data.Map                    as Map
-import qualified Data.Set                    as Set
-import           Data.Text                   (Text)
-import qualified Data.Text                   as T
+import           Control.Monad                   (guard, (<=<))
+import           Control.Monad.Trans.Maybe       (MaybeT (..), runMaybeT)
+import qualified Data.Map                        as Map
+import           Data.Text                       (Text)
 import           Reflex
-import           Reflex.Dom.Core             (HasJSContext, MonadHold,
-                                              PostBuild, XhrResponse (..),
-                                              newXMLHttpRequest, xhrRequest)
+import           Reflex.Dom.Core                 (HasJSContext, MonadHold,
+                                                  PostBuild
+                                                 )
+import           Safe                            (tailSafe)
 ------------------------------------------------------------------------------
-import qualified Pact.Compile                as Pact
-import qualified Pact.Parse                  as Pact
 import           Pact.Types.Lang
 ------------------------------------------------------------------------------
 import           Frontend.Backend
@@ -60,10 +52,8 @@ import           Frontend.Editor
 import           Frontend.Foundation
 import           Frontend.JsonData
 import           Frontend.Messages
-import           Frontend.ModuleExplorer     as API
-import           Frontend.ModuleExplorer.Example
+import           Frontend.ModuleExplorer         as API
 import           Frontend.Repl
-import           Frontend.Wallet
 
 type HasModuleExplorerModelCfg mConf t =
   ( Monoid mConf
@@ -102,8 +92,8 @@ makeModuleExplorer
   -> m (mConf, ModuleExplorer t)
 makeModuleExplorer m cfg = mfix $ \ ~(_, explr) -> do
     selectedFile <- selectFile
+      (fmapMaybe getFileModuleRef $ cfg ^. moduleExplorerCfg_pushModule)
       (cfg ^. moduleExplorerCfg_selectFile)
-      (getFileModuleRef <$> cfg ^. moduleExplorerCfg_pushModule)
 
     (lFileCfg, loadedSource) <- loadToEditor
       (cfg ^. moduleExplorerCfg_loadFile)
@@ -121,7 +111,7 @@ makeModuleExplorer m cfg = mfix $ \ ~(_, explr) -> do
       ( mconcat [ lFileCfg, stckCfg, deployEdCfg, deployCodeCfg ]
       , ModuleExplorer
         { _moduleExplorer_moduleStack = stack
-          , _moduleExplorer_selectedFile = selectedFile 
+          , _moduleExplorer_selectedFile = selectedFile
           , _moduleExplorer_loaded = loadedSource
           }
       )
@@ -171,71 +161,50 @@ deployCode m onDeploy =
 
 -- | Takes care of loading a file/module into the editor.
 loadToEditor
-  :: forall m t mConf model
+  :: forall m t mConf
   . ( ReflexConstraints t m
     , HasModuleExplorerModelCfg  mConf t
-    , HasModuleExplorerModel model t
     )
-  => model
-  -> Event t FileRef
+  => Event t FileRef
   -> Event t ModuleRef
   -> m (mConf, MDynamic t ModuleSource)
-loadToEditor m onFileRef onModRef = do
+loadToEditor onFileRef onModRef = do
   let onFileModRef = fmapMaybe getFileModuleRef onModRef
   fileModRequested <- holdDyn Nothing $ Just <$> onFileModRef
 
   onFile <- fetchFile $ leftmost
     [ onFileRef
-    , _moduleRef_source <$> onModRef
+    , _moduleRef_source <$> onFileModRef
     ]
-  let onFileRef = fst <$> onFile
+  let onFetchedFileRef = fst <$> onFile
 
   (modCfg, onMod)  <- loadModule $ fmapMaybe getDeployedModuleRef onModRef
-  let onModRef = fst <$> onMod
+  let onFetchedModRef = _moduleRef_source . fst <$> onMod
 
-  loaded <- holdDyn Nothing $ Just <$> leftmost 
-    [ ModuleSource_File <$> onFileRef
-    , _moduleRef_source <$> onModRef
+  loaded <- holdDyn Nothing $ Just <$> leftmost
+    [ ModuleSource_File <$> onFetchedFileRef
+    , ModuleSource_Deployed <$> onFetchedModRef
     ]
 
   let
     onCode = fmap _unCode $ leftmost
-      [ fmapMaybe id $ attachPromptlyWith getFileModuleCode fileModRequested onFile
+      [ fmapMaybe id $ attachPromptlyDynWith getFileModuleCode fileModRequested onFile
       , snd <$> onFile
       , _mCode . snd <$> onMod
       ]
 
-    getFileModuleCode :: ModuleRef -> (FileRef, PactFile) -> Maybe Code
-    getFileModuleCode (ModuleRef _ n) =
-      lookup n
-      . map (\(m, _) -> (nameOfModule m, codeOfModule m))
-      . parseFileModules
-      . snd
+    getFileModuleCode :: Maybe FileModuleRef -> (FileRef, PactFile) -> Maybe Code
+    getFileModuleCode = \case
+      Nothing -> const Nothing
+      Just (ModuleRef _ n) ->
+        fmap codeOfModule
+        . Map.lookup n
+        . fileModules
+        . snd
 
   pure ( mconcat [modCfg, mempty & editorCfg_setCode .~ onCode]
        , loaded
        )
-
-
--- | Load a deployed module.
---
---   Loading errors will be reported to `Messages`.
-loadModule
-  :: forall m t mConf
-  . ( ReflexConstraints t m
-    , HasModuleExplorerModelCfg  mConf t
-    )
-  => Event t DeployedModuleRef
-  -> m (mConf, Event t (DeployedModuleRef, Module))
-loadModule onRef = do
-  onErrModule <- fetchModule onRef
-  let
-    onErr    = fmapMaybe (^. _2 . _Left) onErrModule
-    onModule = fmapMaybe (traverse (^? _Right)) onErrModule
-  pure
-    ( mempty & messagesCfg_send .~ fmap ("Loading of module failed: " <>) onErr
-    , onModule
-    )
 
 -- | Select a `PactFile`, note that a file gets also implicitely selected when
 --   a module of a given file gets selected.
@@ -274,11 +243,11 @@ selectFile onModRef onMayFileRef = mdo
 pushPopModule
   :: forall m t mConf model
   . ( MonadHold t m, PerformEvent t m, MonadJSM (Performable m)
-    , HasJSContext (Performable m), TriggerEvent t m, MonadFix m
+    , HasJSContext (Performable m), TriggerEvent t m, MonadFix m, PostBuild t m
     , HasMessagesCfg  mConf t, Monoid mConf
     , HasBackend model t
     )
-  => model 
+  => model
   -> ModuleExplorer t
   -> Event t ModuleRef
   -> Event t ()
@@ -289,14 +258,14 @@ pushPopModule m explr onPush onPop = mdo
 
     (lCfg, onDeployedModule) <- loadModule $ fmapMaybe getDeployedModuleRef onPush
 
-    staleStack <- foldDyn id [] $ leftmost
-      [ (:) . (module_source %~ ModuleSource_File) <$> onFileModule
-      , (:) . (module_source %~ ModuleSource_Deployed) <$> onDeployedModule
+    stack <- foldDyn id [] $ leftmost
+      [ (:) . (_1 . moduleRef_source %~ ModuleSource_File) <$> onFileModule
+      , (:) . (_1 . moduleRef_source %~ ModuleSource_Deployed) <$> onDeployedModule
       , tailSafe <$ onPop
       , updateStack <$> onRefresh
       ]
     (rCfg, onRefresh) <- refreshHead $
-      tagPromptlyDyn staleStack $ leftmost [ onPop, m ^. backend_deployed ]
+      tagPromptlyDyn stack $ leftmost [ onPop, m ^. backend_deployed ]
 
     pure
       ( lCfg <> rCfg
@@ -306,29 +275,48 @@ pushPopModule m explr onPush onPop = mdo
     waitForFile
       :: MDynamic t (FileRef, PactFile)
       -> Event t FileModuleRef
-      -> Event t (FileModuleRef, Module)
+      -> m (Event t (FileModuleRef, Module))
     waitForFile fileL onRef = do
       modReq <- holdDyn Nothing $ Just <$> onRef
       let
         retrievedModule = runMaybeT $ do
           cFile <- MaybeT fileL
           cReq <- MaybeT modReq
-          guard $ _module_source cReq == fst cFile
+          guard $ _moduleRef_source cReq == fst cFile
 
-          let n = _moduleName cReq
-          m <- MaybeT . pure $ Map.lookup n $ fileModules (snd cFile)
-          pure (n,m)
+          let n = _moduleRef_name cReq
+          moduleL <- MaybeT . pure $ Map.lookup n $ fileModules (snd cFile)
+          pure (cReq, moduleL)
       pure $ fmapMaybe id . updated $ retrievedModule
 
     updateStack :: (ModuleRef, Module) -> [(ModuleRef, Module)] -> [(ModuleRef, Module)]
-    udpateStack update = map doUpdate
+    updateStack update = map (doUpdate update)
       where
-        doUpdate new@(uK,uV) old@(k, v) = if uK == k then new else old
+        doUpdate new@(uK, _) old@(k, _) = if uK == k then new else old
 
     refreshHead :: Event t [(ModuleRef, Module)] -> m (mConf, Event t (ModuleRef, Module))
     refreshHead onMods = do
       let getHeadRef = getDeployedModuleRef <=< fmap fst . listToMaybe
-      -- We silently fail on error here, as the 
       (cfg, onDeployed) <- loadModule $ fmapMaybe getHeadRef onMods
-      pure (%~ ModuleSource_Deployed) <$> onDeployed
+      pure $ (cfg, (_1 . moduleRef_source %~ ModuleSource_Deployed) <$> onDeployed)
 
+
+-- | Load a deployed module.
+--
+--   Loading errors will be reported to `Messages`.
+loadModule
+  :: forall m t mConf
+  . ( ReflexConstraints t m
+    , Monoid mConf, HasMessagesCfg mConf t
+    )
+  => Event t DeployedModuleRef
+  -> m (mConf, Event t (DeployedModuleRef, Module))
+loadModule onRef = do
+  onErrModule <- fetchModule onRef
+  let
+    onErr    = fmapMaybe (^? _2 . _Left) onErrModule
+    onModule = fmapMaybe (traverse (^? _Right)) onErrModule
+  pure
+    ( mempty & messagesCfg_send .~ fmap ("Loading of module failed: " <>) onErr
+    , onModule
+    )

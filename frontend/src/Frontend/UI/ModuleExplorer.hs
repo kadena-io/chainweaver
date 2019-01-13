@@ -209,3 +209,4 @@ contractList rowFunc contracts = do
 
 viewModButton :: MonadWidget t m => a -> m (Event t a)
 viewModButton c = fmap (const c) <$> viewButton "table__action-button"
+
