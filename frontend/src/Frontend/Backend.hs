@@ -517,6 +517,13 @@ buildExecPayload req = do
   pure $ object
     [ "nonce" .= nonce
     , "payload" .= object [ "exec" .= payload ]
+    -- TODO: Use proper values for this:
+    , "meta" .= object [ "chainId"  .= ("some-chain" :: Text)
+                       , "sender"   .= ("some-sender" :: Text)
+                       , "gasLimit" .= ("10000" :: Text)
+                       , "gasPrice" .= ("0.0000001" :: Text)
+                       , "fee"      .= ("0.000000001" :: Text)
+                       ]
     ]
 
 -- Response handling ...
