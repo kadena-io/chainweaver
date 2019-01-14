@@ -30,6 +30,7 @@ library
                , ghcjs-dom
                , jsaddle
                , lens
+               , megaparsec
                , mtl
                , newtype-generics
                , obelisk-executable-config
@@ -45,11 +46,11 @@ library
                , string-qq
                , template-haskell
                , text
-               , time
-               , unordered-containers
-               , megaparsec
-               , trifecta
                , th-utilities
+               , time
+               , transformers
+               , trifecta
+               , unordered-containers
   if !impl(ghcjs)
     build-depends: hsass
 
