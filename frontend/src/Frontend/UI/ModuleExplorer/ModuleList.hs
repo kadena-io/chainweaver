@@ -18,12 +18,13 @@
 {-# LANGUAGE TypeApplications       #-}
 {-# LANGUAGE TypeFamilies           #-}
 
--- |
--- Copyright   :  (C) 2018 Kadena
+-- | List of `Modules` UI component.
+--
+-- Copyright   :  (C) 2019 Kadena
 -- License     :  BSD-style (see the file LICENSE)
 --
 
-module Frontend.UI.ModuleExplorer where
+module Frontend.UI.ModuleExplorer.ModuleList where
 
 ------------------------------------------------------------------------------
 import           Control.Lens
@@ -42,91 +43,49 @@ import           Reflex.Dom.Contrib.CssClass
 ------------------------------------------------------------------------------
 import           Frontend.Backend
 import           Frontend.ModuleExplorer
-import           Frontend.UI.ModuleExplorer.ModuleDetails
-import           Frontend.UI.ModuleExplorer.FileDetails
 import           Frontend.UI.Button
 import           Frontend.UI.Widgets
 ------------------------------------------------------------------------------
 
-type HasUIModuleExplorerModel model t =
-  (HasModuleExplorer model t, HasBackend model t, HasUIModuleDetailsModel model t)
+type HasUIModuleListModel model t =
+  (HasModuleExplorer model t, HasBackend model t)
 
-type HasUIModuleExplorerModelCfg mConf m t =
+type HasUIModuleListModelCfg mConf m t =
   ( Monoid mConf, Flattenable mConf t, HasModuleExplorerCfg mConf t, HasBackendCfg mConf t
-  , HasUIModuleDetailsModelCfg mConf m t
   )
 
-moduleExplorer
-  :: forall t m model mConf
-  . ( MonadWidget t m
-    , HasUIModuleExplorerModel model t
-    , HasUIModuleExplorerModelCfg mConf m t
-    )
-  => model
-  -> m mConf
-moduleExplorer m = do
-    let selected = moduleExplorer_selection m
-    networkViewFlatten $ maybe browse showDetails <$> selected
-  where
-    browse = do
-      exampleCfg <- browseExamples
-      deplCfg <- browseDeployedTitle m
-      pure $ mconcat [ exampleCfg, deplCfg ]
 
-    showDetails = \case
-      Left f -> fileDetails m f
-      Right modL -> moduleDetails m modL
-
-
-browseExamples
-  :: forall t m mConf
-  . ( MonadWidget t m , HasUIModuleExplorerModelCfg mConf m t
-    )
-  => m mConf
-browseExamples =
-  accordionItem True "segment" "Example Files" $ do
-    let showExample c = do
-          divClass "table__text-cell table__cell_size_main" $
-            text $ exampleName c
-
-    exampleClick <- contractList showExample $ examples
-
-    let onExampleSel = fmap (Just . FileRef_Example) exampleClick
-    pure $ mempty
-      & moduleExplorerCfg_selectFile .~ onExampleSel
-
-
--- | Browse deployed contracts
---
---   This includes the accordion and the refresh button at the top.
-browseDeployedTitle
-  :: forall t m model mConf
-  . ( MonadWidget t m
-    , HasUIModuleExplorerModel model t
-    , HasUIModuleExplorerModelCfg mConf m t
-    )
-  => model
-  -> m mConf
-browseDeployedTitle m = do
+uiModuleList
+  :: forall t m
+  . ( MonadWidget t m)
+  => Dynamic t [ModuleRef]
+  -> m (Event t ModuleRef)
+uiModuleList modules = do
   let
-    title = elClass "span" "deployed-contracts-accordion" $ do
-      el "span" $ text "Deployed Modules"
-      refreshButton "accordion__title-button"
-  (onRefrClick, onSelected) <- accordionItem' True "segment" title $ browseDeployed m
-  pure $ mempty
-    & moduleExplorerCfg_pushModule .~ onSelected
-    & backendCfg_refreshModule .~ onRefrClick
+    showModules :: ModuleRef -> m ()
+    showModules c = do
+      divClass "table__text-cell table__cell_size_main" $
+        text $ textModuleRefName c
+      case _moduleRef_source c of
+        ModuleSource_Deployed b ->
+          divClass "table__text-cell table__cell_size_side" $
+            text $ textBackendRefName b
+        _ ->
+          blank
+
+  listEv <- networkView $ moduleList showModules <$> modules
+  switchHold never listEv
 
 
 -- | Browse deployed contracts and select one.
-browseDeployed
+uiDeployedModuleList
   :: forall t m model
   . ( MonadWidget t m
-    , HasUIModuleExplorerModel model t
+    , HasUIModuleListModel model t
     )
   => model
   -> m (Event t ModuleRef)
-browseDeployed m = mdo
+uiDeployedModuleList m = mdo
     let itemsPerPage = 10 :: Int
 
     (filteredCs, updatePage) <- divClass "filter-bar" $ do
@@ -163,7 +122,7 @@ browseDeployed m = mdo
           divClass "table__text-cell table__cell_size_side" $
             text $ textBackendRefName $ _moduleRef_source c
     searchClick <- do
-      listEv <- networkView $ contractList showDeployed . map snd <$> paginated
+      listEv <- networkView $ moduleList showDeployed . map snd <$> paginated
       switchHold never $ fmap (moduleRef_source %~ ModuleSource_Deployed) <$> listEv
 
     let numberOfItems = length <$> filteredCs
@@ -203,8 +162,10 @@ filtering needle (_, (m, backendL)) =
       then Just (ModuleRef backendL (ModuleName contractName Nothing))
       else Nothing
 
-contractList :: MonadWidget t m => (a -> m ()) -> [a] -> m (Event t a)
-contractList rowFunc contracts = do
+
+
+moduleList :: MonadWidget t m => (a -> m ()) -> [a] -> m (Event t a)
+moduleList rowFunc contracts = do
     elClass "ol" "table table_type_primary" $
       fmap leftmost . for contracts $ \c -> elClass "li" "table__row table__row_type_primary" $ do
         divClass "table__row-counter" blank

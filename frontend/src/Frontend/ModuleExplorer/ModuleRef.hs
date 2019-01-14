@@ -43,6 +43,8 @@ module Frontend.ModuleExplorer.ModuleRef
   , fetchModule
     -- * Pretty printing
   , textModuleRefSource
+  , textModuleRefName
+  , textModuleName
   ) where
 
 ------------------------------------------------------------------------------
@@ -118,6 +120,21 @@ getDeployedModuleRef = traverse (^? _ModuleSource_Deployed)
 getFileModuleRef :: ModuleRef -> Maybe FileModuleRef
 getFileModuleRef = traverse (^? _ModuleSource_File)
 
+-- | Get the module name of a `ModuleRefV` as `Text`.
+--
+--   Same as:
+--
+-- @
+--   textModuleName . _moduleRef_name
+-- @
+textModuleRefName :: ModuleRefV a -> Text
+textModuleRefName = textModuleName . _moduleRef_name
+
+-- | Render a `ModuleName` as `Text`.
+textModuleName :: ModuleName -> Text
+textModuleName = \case
+  ModuleName n Nothing  -> n
+  ModuleName n (Just s) -> coerce s <> "." <> n
 
 -- | Show the type of the selected module.
 --

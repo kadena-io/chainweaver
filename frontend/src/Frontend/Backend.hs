@@ -25,6 +25,7 @@ module Frontend.Backend
   , BackendRef
   , backendRefUri
   , backendRefName
+  , textBackendRefName
   , BackendRequest (..)
   , BackendError (..)
   , BackendErrorResult
@@ -111,6 +112,10 @@ backendRefUri = brUri
 backendRefName :: BackendRef -> BackendName
 backendRefName = brName
 
+-- | Shortcut for : `textBackendName . backendRefName`.
+textBackendRefName :: BackendRef -> Text
+textBackendRefName = textBackendName . backendRefName
+
 -- | Request data to be sent to the backend.
 data BackendRequest = BackendRequest
   { _backendRequest_code    :: Text
@@ -178,7 +183,7 @@ data Backend t = Backend
     -- ^ All available backends that can be selected.
   , _backend_modules  :: Dynamic t (Map BackendName (Maybe [Text]))
    -- ^ Available modules on all backends. `Nothing` if not loaded yet.
-   -- TODO: This should really go to the `ModuleExplorer`.
+   -- TODO: This should really go to the `ModuleExplorer` or should it?
   , _backend_deployed :: Event t ()
    -- ^ Event gets triggered whenever some code got deployed sucessfully.
   }

@@ -19,7 +19,7 @@
 
 -- | File abstraction in `ModuleExplorer`.
 --
--- Copyright   :  (C) 2018 Kadena
+-- Copyright   :  (C) 2019 Kadena
 -- License     :  BSD-style (see the file LICENSE)
 --
 
@@ -30,6 +30,9 @@ module Frontend.ModuleExplorer.File
   , FileRef (..)
   , _FileRef_Example
   , _FileRef_Stored
+    -- ** Retrieving information about `FileRef`:
+  , fileRefName
+  , textFileType
    -- * A PactFile
   , PactFile
   -- * Storing and Retrieval
@@ -92,6 +95,18 @@ makePactPrisms ''FileRef
 
 -- | A Pact file is simply some piece of `Code`.
 type PactFile = Code
+
+-- | Text representation of a `FileRef` suitable for showing to the user.
+fileRefName :: FileRef -> Text
+fileRefName = \case
+  FileRef_Example e -> exampleName e
+  FileRef_Stored s  -> textFileName s
+
+-- | Show the file type, suitable for gettind displayed to the user.
+textFileType :: FileRef -> Text
+textFileType = \case
+  FileRef_Example _ -> "Example File"
+  FileRef_Stored _ -> "User File"
 
 
 -- | Fetch a `File` given a `FileRef`.

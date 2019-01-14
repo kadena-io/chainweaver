@@ -66,7 +66,7 @@ uiCallFunction
   :: forall t m  mConf model
   . (MonadWidget t m, HasUICallFunctionModelCfg mConf t, HasUICallFunctionModel model t)
   => model
-  -> Maybe DeployedModule
+  -> Maybe DeployedModuleRef
   -> PactFunction
   -> m (mConf, Event t ())
 uiCallFunction m mModule func = do
@@ -115,7 +115,7 @@ uiCallFunction m mModule func = do
               transaction = do
                 code <- pactCall
                 keys <- signingKeys
-                let b = backendRefName $ _deployedModule_backend moduleL
+                let b = backendRefName $ _moduleRef_source moduleL
                 pure $
                   ( code
                   , TransactionInfo

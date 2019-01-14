@@ -64,6 +64,10 @@ library
                  , Frontend.Messages
                  , Frontend.ModuleExplorer
                  , Frontend.ModuleExplorer.Impl
+                 , Frontend.ModuleExplorer.File
+                 , Frontend.ModuleExplorer.Example
+                 , Frontend.ModuleExplorer.Module
+                 , Frontend.ModuleExplorer.ModuleRef
                  , Frontend.Repl
                  , Frontend.ReplGhcjs
                  , Frontend.Storage
@@ -77,10 +81,8 @@ library
                  , Frontend.UI.Modal.Impl
                  , Frontend.UI.ModuleExplorer
                  , Frontend.UI.ModuleExplorer.ModuleDetails
-                 , Frontend.UI.ModuleExplorer.Example
-                 , Frontend.UI.ModuleExplorer.Module
-                 , Frontend.UI.ModuleExplorer.ModuleRef
-                 , Frontend.UI.ModuleExplorer.File
+                 , Frontend.UI.ModuleExplorer.FileDetails
+                 , Frontend.UI.ModuleExplorer.ModuleList
                  , Frontend.UI.Repl
                  , Frontend.UI.RightPanel
                  , Frontend.UI.TabBar

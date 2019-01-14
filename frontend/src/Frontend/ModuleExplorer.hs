@@ -33,6 +33,8 @@ module Frontend.ModuleExplorer
   , HasModuleExplorerCfg (..)
   , ModuleExplorer (..)
   , HasModuleExplorer (..)
+    -- ** Additonal quick viewing functions
+  , moduleExplorer_selection
   -- * Re-exports
   , module Example
   , module Module
@@ -42,6 +44,7 @@ module Frontend.ModuleExplorer
   ) where
 
 ------------------------------------------------------------------------------
+import           Control.Lens
 import           Data.Set                          (Set)
 import           Data.Text                         (Text)
 import           Generics.Deriving.Monoid          (mappenddefault,
@@ -105,6 +108,23 @@ data ModuleExplorer t = ModuleExplorer
   deriving Generic
 
 makePactLenses ''ModuleExplorer
+
+-- | Quick check whether the current selection is a `File` or a `Module`.
+--
+--   If a file and a module is selected, then the selected module is a module
+--   of that file, thus it takes precedence and will be the result of this
+--   function call.
+moduleExplorer_selection
+  :: (Reflex t, HasModuleExplorer explr t)
+  => explr
+  -> MDynamic t (Either (FileRef, PactFile) (ModuleRef, Module))
+moduleExplorer_selection explr = do
+  stk <- explr ^. moduleExplorer_moduleStack
+  fileL <- explr ^. moduleExplorer_selectedFile
+  pure $ case stk of
+    []  -> Left <$> fileL
+    s:_ -> Just . Right $ s
+
 
 -- Instances:
 
