@@ -35,15 +35,13 @@ module Frontend.ModuleExplorer.Impl
 
 ------------------------------------------------------------------------------
 import           Control.Lens
-import           Control.Monad                   (guard, (<=<))
-import           Control.Monad.Trans.Maybe       (MaybeT (..), runMaybeT)
-import qualified Data.Map                        as Map
-import           Data.Text                       (Text)
+import           Control.Monad             (guard, (<=<))
+import           Control.Monad.Trans.Maybe (MaybeT (..), runMaybeT)
+import qualified Data.Map                  as Map
+import           Data.Text                 (Text)
 import           Reflex
-import           Reflex.Dom.Core                 (HasJSContext, MonadHold,
-                                                  PostBuild
-                                                 )
-import           Safe                            (tailSafe)
+import           Reflex.Dom.Core           (HasJSContext, MonadHold, PostBuild)
+import           Safe                      (tailSafe)
 ------------------------------------------------------------------------------
 import           Pact.Types.Lang
 ------------------------------------------------------------------------------
@@ -52,7 +50,7 @@ import           Frontend.Editor
 import           Frontend.Foundation
 import           Frontend.JsonData
 import           Frontend.Messages
-import           Frontend.ModuleExplorer         as API
+import           Frontend.ModuleExplorer   as API
 import           Frontend.Repl
 
 type HasModuleExplorerModelCfg mConf t =
@@ -170,7 +168,6 @@ loadToEditor
   -> m (mConf, MDynamic t ModuleSource)
 loadToEditor onFileRef onModRef = do
   let onFileModRef = fmapMaybe getFileModuleRef onModRef
-  fileModRequested <- holdDyn Nothing $ Just <$> onFileModRef
 
   onFile <- fetchFile $ leftmost
     [ onFileRef
@@ -186,6 +183,10 @@ loadToEditor onFileRef onModRef = do
     , ModuleSource_Deployed <$> onFetchedModRef
     ]
 
+  fileModRequested <- holdDyn Nothing $ leftmost
+    [ Just <$> onFileModRef
+    , Nothing <$ onFileRef -- Order important.
+    ]
   let
     onCode = fmap _unCode $ leftmost
       [ fmapMaybe id $ attachPromptlyDynWith getFileModuleCode fileModRequested onFile
@@ -197,7 +198,7 @@ loadToEditor onFileRef onModRef = do
     getFileModuleCode = \case
       Nothing -> const Nothing
       Just (ModuleRef _ n) ->
-        fmap codeOfModule
+        fmap (view codeOfModule)
         . Map.lookup n
         . fileModules
         . snd

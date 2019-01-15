@@ -48,25 +48,29 @@ module Frontend.ModuleExplorer.ModuleRef
   ) where
 
 ------------------------------------------------------------------------------
-import Control.Lens
-import Control.Monad.Except (throwError)
-import           Data.Coerce             (coerce)
-import           Control.Arrow               ((***), left)
-import Control.Monad
-import Data.Text
-import qualified Data.Text as T
-import qualified Data.Set as Set
-import           Data.Aeson                  as Aeson (Result (..), fromJSON, FromJSON, Value)
-import           Reflex.Dom.Core          (HasJSContext, MonadHold)
+import           Control.Arrow                   (left, (***))
+import           Control.Lens
+import           Control.Monad
+import           Control.Monad.Except            (throwError)
+import           Data.Aeson                      (withObject, (.:), Value)
+import           Data.Aeson.Types                (parseEither)
+import           Data.Coerce                     (coerce)
+import qualified Data.Map                        as Map
+import qualified Data.Set                        as Set
+import           Data.Text
+import qualified Data.Text                       as T
+import           Reflex.Dom.Core                 (HasJSContext, MonadHold)
 ------------------------------------------------------------------------------
-import           Pact.Types.Lang          (ModuleName)
-import           Pact.Types.Term         as PactTerm  (Module (..), ModuleName (..), NamespaceName (..))
+import           Pact.Types.Lang                 (ModuleName)
+import           Pact.Types.Term                 as PactTerm (Module (..),
+                                                              ModuleName (..),
+                                                              NamespaceName (..))
 ------------------------------------------------------------------------------
 import           Frontend.Backend
 import           Frontend.Foundation
-import           Frontend.Wallet
-import           Frontend.ModuleExplorer.File
 import           Frontend.ModuleExplorer.Example
+import           Frontend.ModuleExplorer.File
+import           Frontend.Wallet
 
 -- | A `Module` can come from a number of sources.
 --
@@ -169,7 +173,7 @@ fetchModule onReq = do
       <- performBackendRequestCustom emptyWallet mkReq onReq
 
     pure $ ffor deployedResult $
-      id *** (fromJsonEither <=< left (T.pack . show))
+      id *** (getModule <=< left (T.pack . show))
 
   where
     mkReq mRef = BackendRequest
@@ -184,10 +188,18 @@ fetchModule onReq = do
       , _backendRequest_signing = Set.empty
       }
 
-    fromJsonEither :: FromJSON a => Value -> Either Text a
-    fromJsonEither v = case fromJSON v of
-        Aeson.Error e -> throwError . T.pack $ e
-        Aeson.Success a -> pure a
+    -- We can't parse the value as `Module` directly, as the used format is
+    -- slightly different than the aeson instances for `Module`, see
+    -- [here](https://github.com/kadena-io/pact/blob/3ac9a6d01bd5816ea4b7e47300012543510393ea/src/Pact/Native/Db.hs#L153).
+    getModule :: Value -> Either Text Module
+    getModule v = do
+      c <- left T.pack $ parseEither (withObject "Module" $ \vl -> vl .: "code") v
+      let mods = fileModules c
+      case Map.elems mods of
+        []   -> throwError "No module in response"
+        m:[] -> pure m
+        _    -> throwError "More than one module in response?"
+
 
     defineNamespace =
       maybe "" (\n -> "(namespace '" <> coerce n <> ")") . _mnNamespace

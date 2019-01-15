@@ -36,42 +36,42 @@ module Frontend.ModuleExplorer.Module
   ) where
 
 ------------------------------------------------------------------------------
-------------------------------------------------------------------------------
 import qualified Bound
-import           Data.Text                (Text)
-import           Obelisk.Generated.Static
-import qualified Pact.Compile             as Pact
-import qualified Pact.Parse               as Pact
-import           Pact.Types.Lang          (Code (..), DefType, FunType,
-                                           ModuleName, Name, Term)
-import           Pact.Types.Term          as PactTerm (Module (..),
-                                                       ModuleName (..))
-import           Reflex.Dom.Core          (HasJSContext, MonadHold, PostBuild,
-                                           XhrResponse (..), newXMLHttpRequest,
-                                           xhrRequest)
+import           Control.Lens
+import           Data.Text           (Text)
+import qualified Pact.Compile        as Pact
+import qualified Pact.Parse          as Pact
+import           Pact.Types.Term     as PactTerm (Module (..), ModuleName (..))
 ------------------------------------------------------------------------------
-import           Pact.Types.Lang          (Code (..), Def (..), DefName (..),
-                                           DefType, FunType, Meta (_mDocs),
-                                           Module (..), ModuleName, Name,
-                                           Term (TDef, TList, TModule))
+import           Pact.Types.Lang     (Code (..), Def (..), DefName (..),
+                                      DefType, FunType, Meta (_mDocs), Name,
+                                      Term (TDef, TList, TModule))
 ------------------------------------------------------------------------------
-import           Frontend.Backend
 import           Frontend.Foundation
-import           Frontend.Wallet
 
 -- Module utility functions:
 
 -- | Get the `ModuleName` of a `Module`.
-nameOfModule :: Module -> ModuleName
-nameOfModule = \case
-  Interface {..} -> _interfaceName
-  Module {..}    -> _mName
+nameOfModule :: Lens' Module ModuleName
+nameOfModule f modL = setModName <$> f modName
+  where
+    setModName n = case modL of
+      (Interface {}) -> modL { _interfaceName = n }
+      (Module {})    -> modL { _mName = n }
+    modName = case modL of
+      Interface {..} -> _interfaceName
+      Module {..}    -> _mName
 
 -- | Get the `ModuleName` of a `Module`.
-codeOfModule :: Module -> Code
-codeOfModule = \case
-  Interface {..} -> _interfaceCode
-  Module {..}    -> _mCode
+codeOfModule :: Lens' Module Code
+codeOfModule f modL = setCode <$> f code
+  where
+    setCode c = case modL of
+      (Interface {}) -> modL { _interfaceCode = c }
+      (Module {})    -> modL { _mCode = c }
+    code = case modL of
+      Interface {..} -> _interfaceCode
+      Module {..}    -> _mCode
 
 -- Get hold of modules and functions:
 
@@ -90,7 +90,7 @@ makePactLenses ''PactFunction
 -- | Functions of a `Module`
 functionsOfModule :: Module -> [PactFunction]
 functionsOfModule m =
-  case Pact.compileExps Pact.mkEmptyInfo <$> Pact.parseExprs (_unCode $ codeOfModule m) of
+  case Pact.compileExps Pact.mkEmptyInfo <$> Pact.parseExprs (_unCode $ m ^. codeOfModule) of
     Right (Right terms) -> concatMap getFunctions terms
     _                   -> []
 

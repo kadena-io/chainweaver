@@ -43,29 +43,21 @@ module Frontend.ModuleExplorer.File
   ) where
 
 ------------------------------------------------------------------------------
-import Control.Lens
-import Control.Arrow ((***))
-import           Data.Map                 (Map)
-import qualified Data.Map                 as Map
-import           Data.Text                (Text)
-import           Generics.Deriving.Monoid (mappenddefault, memptydefault)
-import           GHC.Generics             (Generic)
+import           Control.Arrow                   ((***))
+import           Control.Lens
+import           Control.Monad
+import           Data.Map                        (Map)
+import qualified Data.Map                        as Map
+import           Data.Text                       (Text)
 import           Reflex
-import           Data.Set                     (Set)
-import Control.Monad
-import           Reflex.Dom.Core             (HasJSContext, MonadHold,
-                                              PostBuild, XhrResponse (..),
-                                              newXMLHttpRequest, xhrRequest)
+import           Reflex.Dom.Core                 (HasJSContext, MonadHold)
 ------------------------------------------------------------------------------
-import           Obelisk.Generated.Static
-import           Pact.Types.Lang          (DefType, FunType, ModuleName, Name,
-                                         Term (TModule), Code (..), Module)
-import qualified Pact.Compile                as Pact
-import qualified Pact.Parse                  as Pact
+import qualified Pact.Compile                    as Pact
+import qualified Pact.Parse                      as Pact
+import           Pact.Types.Lang                 (Code (..), Module, ModuleName,
+                                                  Name, Term (TModule))
 ------------------------------------------------------------------------------
-import           Frontend.Backend
 import           Frontend.Foundation
-import           Frontend.Wallet
 import           Frontend.ModuleExplorer.Example
 import           Frontend.ModuleExplorer.Module
 
@@ -114,14 +106,14 @@ textFileType = \case
 --   TODO: Implement support for `FileRef_Stored`.
 fetchFile
   :: ( PerformEvent t m, TriggerEvent t m, MonadJSM (Performable m)
-     , HasJSContext (Performable m)
+     , HasJSContext (Performable m), HasJSContext JSM
      )
   => Event t FileRef -> m (Event t (FileRef, PactFile))
 fetchFile onFileRef = do
     onExample <- fetchExample $ fmapMaybe (^? _FileRef_Example)  onFileRef
     pure $ wrapExample <$> onExample
   where
-    wrapExample = FileRef_Example *** Code . fst 
+    wrapExample = FileRef_Example *** Code . fst
 
 -- | Fetch a `File`, with cache.
 --
@@ -130,6 +122,7 @@ fetchFile onFileRef = do
 fetchFileCached
   :: ( PerformEvent t m, TriggerEvent t m, MonadJSM (Performable m)
      , HasJSContext (Performable m), MonadFix m, MonadHold t m
+     , HasJSContext JSM
      )
   => Event t FileRef -> m (Event t (FileRef, PactFile))
 fetchFileCached onFileRef = mdo
@@ -148,7 +141,7 @@ fetchFileCached onFileRef = mdo
 
 -- | Get the `Module`s contained in `PactFile`.
 fileModules :: PactFile -> Map ModuleName Module
-fileModules code = case Pact.compileExps Pact.mkEmptyInfo <$> Pact.parseExprs (_unCode code) of
+fileModules (Code c) = case Pact.compileExps (Pact.mkTextInfo c) <$> Pact.parseExprs c of
   Right (Right terms) -> Map.fromList $ mapMaybe getModule terms
   _                   -> Map.empty
 
@@ -156,8 +149,7 @@ fileModules code = case Pact.compileExps Pact.mkEmptyInfo <$> Pact.parseExprs (_
 -- | Get module from a `Term`
 getModule :: MonadPlus m => Term Name -> m (ModuleName, Module)
 getModule = \case
-  TModule m _ _ -> pure (nameOfModule m, m)
-  {- TModule m _ _ -> pure $ (m, getFunctions $ Bound.instantiate undefined body) -}
+  TModule m _ _ -> pure (m ^. nameOfModule, m)
   _             -> mzero
 
 

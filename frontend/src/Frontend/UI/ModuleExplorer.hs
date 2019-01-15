@@ -74,7 +74,7 @@ moduleExplorer m = do
       pure $ mconcat [ exampleCfg, deplCfg ]
 
     showDetails = \case
-      Left f -> fileDetails m f
+      Left f -> fileDetails f
       Right modL -> moduleDetails m modL
 
 

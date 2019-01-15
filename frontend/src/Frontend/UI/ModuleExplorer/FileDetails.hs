@@ -31,10 +31,6 @@ module Frontend.UI.ModuleExplorer.FileDetails where
 
 ------------------------------------------------------------------------------
 import           Control.Lens
-import           Data.Bool                        (bool)
-import           Data.Maybe
-import           Data.Traversable                 (for)
-import           Reflex
 import           Reflex.Dom
 import           Reflex.Network.Extended
 import qualified Data.Map as Map
@@ -47,9 +43,6 @@ import           Frontend.UI.Dialogs.CallFunction
 import           Frontend.UI.Modal
 ------------------------------------------------------------------------------
 
-type HasUIFileDetailsModel model t =
-  (HasModuleExplorer model t, HasBackend model t, HasUICallFunctionModel model t)
-
 type HasUIFileDetailsModelCfg mConf m t =
   ( Monoid mConf, Flattenable mConf t, HasModuleExplorerCfg mConf t, HasBackendCfg mConf t
   , HasModalCfg mConf (Modal mConf m t) t
@@ -57,15 +50,13 @@ type HasUIFileDetailsModelCfg mConf m t =
   )
 
 fileDetails
-  :: forall t m model mConf
+  :: forall t m mConf
   . ( MonadWidget t m
-    , HasUIFileDetailsModel model t
     , HasUIFileDetailsModelCfg mConf m t
     )
-  => model
-  -> (FileRef, PactFile)
+  => (FileRef, PactFile)
   -> m mConf
-fileDetails m (selectedRef, selected) = do
+fileDetails (selectedRef, selected) = do
     headerCfg <- elClass "div" "segment" $ do
       (onBack, onLoad) <- elClass "h2" "heading heading_type_h2" $
         (,) <$> backButton <*> openButton mempty

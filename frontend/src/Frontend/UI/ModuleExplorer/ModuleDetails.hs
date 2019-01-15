@@ -103,6 +103,6 @@ functionList m mDeployed functions =
           divClass "table__cell_size_flex" $ do
             let btnCls = "table__action-button"
             let isDeployed = isJust mDeployed
-            fmap (const f) <$> bool (callButton btnCls) (viewButton btnCls) isDeployed
+            fmap (const f) <$> bool (viewButton btnCls) (callButton btnCls) isDeployed
       pure $ mempty & modalCfg_setModal .~ (Just . uiCallFunction m mDeployed <$> onView)
 
