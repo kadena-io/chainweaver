@@ -41,35 +41,18 @@ module Frontend.ModuleExplorer.Example
   ) where
 
 ------------------------------------------------------------------------------
-import qualified Bound
-import Control.Monad.Except (throwError)
-import Control.Monad (void, (<=<))
-import           Control.Arrow               ((***), left)
-import           Data.Bifunctor (second)
-import           Control.Lens
-import           Data.Aeson                  as Aeson (Result (..), fromJSON, FromJSON, Value)
+import           Control.Monad            (void)
+import           Control.Arrow            ((***))
 import           Data.Default
-import qualified Data.Map                    as Map
-import qualified Data.Set                    as Set
-import           Data.Text                   (Text)
-import qualified Data.Text                   as T
+import           Data.Text                (Text)
 import           Reflex
-import           Reflex.Dom.Core             (HasJSContext, MonadHold,
-                                              PostBuild, XhrResponse (..),
-                                              newXMLHttpRequest, xhrRequest)
-------------------------------------------------------------------------------
-import qualified Pact.Compile                as Pact
-import qualified Pact.Parse                  as Pact
-import           Pact.Types.Lang
+import           Reflex.Dom.Core          (HasJSContext,
+                                           XhrResponse (..), newXMLHttpRequest,
+                                           xhrRequest)
 ------------------------------------------------------------------------------
 import           Obelisk.Generated.Static
 ------------------------------------------------------------------------------
-import           Frontend.Backend
-import           Frontend.Editor
 import           Frontend.Foundation
-import           Frontend.JsonData
-import           Frontend.Messages
-import           Frontend.Repl
 
 
 
@@ -127,7 +110,7 @@ exampleDataName = \case
 --   and whether it would be useful/secure.
 fetchExample
   :: ( PerformEvent t m, TriggerEvent t m, MonadJSM (Performable m)
-     , HasJSContext (Performable m)
+     , HasJSContext JSM
      )
   => Event t ExampleRef -> m (Event t (ExampleRef, (Text, Text)))
 fetchExample onExampleModule =
