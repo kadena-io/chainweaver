@@ -60,17 +60,13 @@
 // Page items:
 
 .page__main-header {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
+  position: relative;
+  width: 100%;
   z-index: 99998;
 }
 
 .page__main {
-  position: fixed;
-  right: 0px;
-  left: 0px;
-  top: 75px;
-  bottom: 0px;
+  position: relative;
+  width: 100%;
+  flex: 1;
 }
