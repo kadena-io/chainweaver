@@ -408,7 +408,7 @@ performBackendRequestCustom w unwrap onReq =
 --       someMoreRequest someArg $ cb . (req, res,)
 --
 -- @
-backendRequest :: forall t m
+backendRequest :: forall m
   . (MonadJSM m, HasJSContext m)
   => (KeyPairs, BackendRequest)
   -> (BackendErrorResult -> IO ())
