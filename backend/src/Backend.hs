@@ -2,6 +2,7 @@
 {-# LANGUAGE OverloadedStrings   #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE GADTs #-}
+{-# LANGUAGE DataKinds #-}
 
 module Backend where
 
@@ -18,6 +19,8 @@ import           Snap                     (Snap, pass)
 import           Snap.Util.FileServe      (serveFile)
 import           System.FilePath          ((</>))
 import           System.Directory         (canonicalizePath, doesFileExist)
+
+import           Obelisk.Generated.Static
 
 import           Common.Api
 import           Common.Route
@@ -51,4 +54,6 @@ serveBackendRoute dynConfigs = \case
       if L.isPrefixOf baseNorm pNorm && exists
          then serveFile pNorm
          else pass
+  BackendRoute_Robots :=> _
+    -> serveFile $ T.unpack $ static @"robots.txt"
   _ -> pure ()

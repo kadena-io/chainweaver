@@ -35,6 +35,9 @@ data BackendRoute :: * -> * where
   --
   -- E.g. the list of available pact backends.
   BackendRoute_DynConfigs :: BackendRoute [Text]
+  
+  -- | Serve robots.txt at the right place.
+  BackendRoute_Robots :: BackendRoute ()
 
 -- | Path on the server where all dynamic configurations are stored.
 --
@@ -64,6 +67,8 @@ backendRouteEncoder = handleEncoder (const (InL BackendRoute_Missing :/ ())) $
         -> PathSegment "missing" $ unitEncoder mempty
       BackendRoute_DynConfigs
         -> PathSegment dynConfigsRoot $ pathOnlyEncoder
+      BackendRoute_Robots
+        -> PathSegment "robots.txt" $ unitEncoder mempty
     InR obeliskRoute -> obeliskRouteSegment obeliskRoute $ \case
       -- The encoder given to PathEnd determines how to parse query parameters,
       -- in this example, we have none, so we insist on it.
