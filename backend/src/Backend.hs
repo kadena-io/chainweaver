@@ -1,8 +1,9 @@
+{-# LANGUAGE DataKinds           #-}
+{-# LANGUAGE GADTs               #-}
 {-# LANGUAGE LambdaCase          #-}
 {-# LANGUAGE OverloadedStrings   #-}
 {-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE GADTs #-}
-{-# LANGUAGE DataKinds #-}
+{-# LANGUAGE TypeApplications    #-}
 
 module Backend where
 
@@ -17,14 +18,14 @@ import qualified Obelisk.Backend          as Ob
 import           Obelisk.Route            (R)
 import           Snap                     (Snap, pass)
 import           Snap.Util.FileServe      (serveFile)
-import           System.FilePath          ((</>))
 import           System.Directory         (canonicalizePath, doesFileExist)
+import           System.FilePath          ((</>))
 
 import           Obelisk.Generated.Static
 
+import qualified Backend.Devel            as Devel
 import           Common.Api
 import           Common.Route
-import qualified Backend.Devel as Devel
 
 backend :: Ob.Backend BackendRoute FrontendRoute
 backend = Ob.Backend
