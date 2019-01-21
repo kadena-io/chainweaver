@@ -39,6 +39,9 @@ import           Reflex.Dom
 import           Reflex.Network
 import           Reflex.Network.Extended
 import           Reflex.Dom.Contrib.CssClass
+import           Language.Javascript.JSaddle (liftJSM, js0)
+import qualified Language.Javascript.JSaddle as JS
+import           Control.Monad (void)
 ------------------------------------------------------------------------------
 import           Frontend.Backend
 import           Frontend.ModuleExplorer
@@ -68,14 +71,37 @@ moduleExplorer m = do
     let selected = moduleExplorer_selection m
     networkViewFlatten $ maybe browse showDetails <$> selected
   where
-    browse = do
+    browse = animatedDiv $ do
       exampleCfg <- browseExamples
       deplCfg <- browseDeployedTitle m
       pure $ mconcat [ exampleCfg, deplCfg ]
 
-    showDetails = \case
+    showDetails x = animatedDiv $ case x of
       Left f -> fileDetails f
       Right modL -> moduleDetails m modL
+
+    animatedDiv c = do
+      let growth = m ^. moduleExplorer_selectionGrowth
+      cGrowth <- sample $ current growth
+      elClass "div" (mkAnimationCls cGrowth) $ c
+
+    {- animatedDiv c = do -}
+    {-   onGrowthLogic <- updated <$> moduleExplorer_selectionGrowth m -}
+    {-   delayedGrowth <- delay 0 $ onGrowthLogic -}
+    {-   -- Make sure animation is actually working: -}
+    {-   growthUI <- holdDyn EQ $ leftmost [ EQ <$ onGrowthLogic, delayedGrowth ] -}
+    {-   (e, r) <- elDynClass' "div" (mkAnimationCls <$> growthUI) $ c -}
+    {-   performEvent $ forceAnimation (_element_raw e) <$ leftmost [delayedGrowth, onGrowthLogic] -}
+    {-   pure r -}
+
+    forceAnimation e = liftJSM $ do
+      -- Somehow forces the browser to actually set the value and execute the animation.
+      void $ e JS.! "offsetWidth"
+
+    mkAnimationCls = \case
+      LT -> "fly-in fly-in_from_left" 
+      GT -> "fly-in fly-in_from_right" 
+      _  -> "fly-in"
 
 
 browseExamples

@@ -105,14 +105,52 @@ makeModuleExplorer m cfg = mfix $ \ ~(_, explr) -> do
       deployEdCfg = deployEditor m $ cfg ^. moduleExplorerCfg_deployEditor
       deployCodeCfg = deployCode m $ cfg ^. moduleExplorerCfg_deployCode
 
+    growth <- mkSelectionGrowth explr
+
     pure
       ( mconcat [ lFileCfg, stckCfg, deployEdCfg, deployCodeCfg ]
       , ModuleExplorer
         { _moduleExplorer_moduleStack = stack
-          , _moduleExplorer_selectedFile = selectedFile
-          , _moduleExplorer_loaded = loadedSource
-          }
+        , _moduleExplorer_selectedFile = selectedFile
+        , _moduleExplorer_loaded = loadedSource
+        , _moduleExplorer_selectionGrowth = growth
+        }
       )
+
+-- | Check whether we are going deeper with selections or not.
+mkSelectionGrowth
+  :: (Reflex t, MonadHold t m, MonadFix m, HasModuleExplorer explr t)
+  => explr
+  -> m (Dynamic t Ordering)
+mkSelectionGrowth explr = do
+    let
+      stk = explr ^. moduleExplorer_moduleStack
+    stkLen <- holdUniqDyn $ length <$> stk
+
+    let
+      sel = explr ^. moduleExplorer_selectedFile
+    stkLenSel <- holdUniqDyn $ zipDyn stkLen sel
+
+    let
+      onGrowth = pushAlways (\(newLen, newSel) -> do
+          oldLen <- sample $ current stkLen
+          oldSel <- sample $ current sel
+          pure $ case (newLen `compare` oldLen, newSel `compareSel` oldSel) of
+            (EQ, a) -> a
+            (a, EQ) -> a
+            (_, a)  -> a -- File wins.
+        )
+        (updated stkLenSel)
+    holdDyn EQ onGrowth
+
+  where
+    compareSel oldSelected newSelected = 
+      case (oldSelected, newSelected) of
+        (Nothing, Nothing) -> EQ
+        (Nothing, Just _)  -> LT
+        (Just _, Nothing)  -> GT
+        (Just _, Just _)   -> EQ
+
 
 deployEditor
   :: forall t mConf model
@@ -278,7 +316,8 @@ pushPopModule m explr onPush onPop = mdo
       -> Event t FileModuleRef
       -> m (Event t (FileModuleRef, Module))
     waitForFile fileL onRef = do
-      modReq <- holdDyn Nothing $ Just <$> onRef
+      onReset <- delay 0 $ updated fileL
+      modReq <- holdDyn Nothing $ leftmost [Just <$> onRef, Nothing <$ onReset]
       let
         retrievedModule = runMaybeT $ do
           cFile <- MaybeT fileL

@@ -101,6 +101,8 @@ data ModuleExplorer t = ModuleExplorer
   -- ^ The stack of currently selected modules.
   , _moduleExplorer_selectedFile :: MDynamic t (FileRef, PactFile)
   -- ^ The currently selected file if any.
+  , _moduleExplorer_selectionGrowth :: Dynamic t Ordering
+  -- ^ Whether the stack is currently growing/shrinking.
   , _moduleExplorer_loaded       :: MDynamic t ModuleSource
   -- ^ Where did the data come from that got loaded last into the `Editor`?
   {- , _moduleExplorer_deployedModules :: Dynamic t (Map BackendName (Maybe [Text])) -}
@@ -124,7 +126,6 @@ moduleExplorer_selection explr = do
   pure $ case stk of
     []  -> Left <$> fileL
     s:_ -> Just . Right $ s
-
 
 -- Instances:
 
