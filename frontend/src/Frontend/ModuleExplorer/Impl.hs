@@ -120,7 +120,10 @@ makeModuleExplorer m cfg = mfix $ \ ~(_, explr) -> do
 
 -- | Check whether we are going deeper with selections or not.
 mkSelectionGrowth
-  :: (Reflex t, MonadHold t m, MonadFix m, HasModuleExplorer explr t)
+  :: (Reflex t, MonadHold t m, MonadFix m, PerformEvent t m, TriggerEvent t m
+     , MonadIO (Performable m)
+     , HasModuleExplorer explr t
+     )
   => explr
   -> m (Dynamic t Ordering)
 mkSelectionGrowth explr = do
@@ -142,7 +145,10 @@ mkSelectionGrowth explr = do
             (_, a)  -> a -- File wins.
         )
         (updated stkLenSel)
-    holdDyn EQ onGrowth
+    -- Reset is necessary, otherwise we get animations everytime the module
+    -- explorer tab gets selected:
+    onReset <- fmap (const EQ) <$> delay 0.6 onGrowth
+    holdDyn EQ $ leftmost [onGrowth, onReset]
 
   where
     compareSel oldSelected newSelected = 

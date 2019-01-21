@@ -84,8 +84,8 @@ moduleExplorer m = do
 
     animatedDiv c = do
       let growth = m ^. moduleExplorer_selectionGrowth
-      cGrowth <- sample $ current growth
-      elClass "div" (mkAnimationCls cGrowth) $ c
+      {- cGrowth <- sample $ current growth -}
+      elDynClass "div" (mkAnimationCls <$> growth) $ c
 
     {- animatedDiv c = do -}
     {-   onGrowthLogic <- updated <$> moduleExplorer_selectionGrowth m -}
