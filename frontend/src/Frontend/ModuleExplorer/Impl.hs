@@ -126,11 +126,11 @@ mkSelectionGrowth
 mkSelectionGrowth explr = do
     let
       stk = explr ^. moduleExplorer_moduleStack
-    stkLen <- holdUniqDyn $ length <$> stk
+      stkLen = length <$> stk
 
     let
       sel = explr ^. moduleExplorer_selectedFile
-    stkLenSel <- holdUniqDyn $ zipDyn stkLen sel
+      stkLenSel = zipDyn stkLen sel
 
     let
       onGrowth = pushAlways (\(newLen, newSel) -> do
@@ -299,7 +299,7 @@ pushPopModule m explr onClear onPush onPop = mdo
 
     (lCfg, onDeployedModule) <- loadModule $ fmapMaybe getDeployedModuleRef onPush
 
-    stack <- foldDyn id [] $ leftmost
+    stack <- holdUniqDyn <=< foldDyn id [] $ leftmost
       [ (:) . (_1 . moduleRef_source %~ ModuleSource_File) <$> onFileModule
       , (:) . (_1 . moduleRef_source %~ ModuleSource_Deployed) <$> onDeployedModule
       , tailSafe <$ onPop
