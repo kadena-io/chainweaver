@@ -94,7 +94,7 @@ fileRefName = \case
   FileRef_Example e -> exampleName e
   FileRef_Stored s  -> textFileName s
 
--- | Show the file type, suitable for gettind displayed to the user.
+-- | Show the file type, suitable for getting displayed to the user.
 textFileType :: FileRef -> Text
 textFileType = \case
   FileRef_Example _ -> "Example File"
