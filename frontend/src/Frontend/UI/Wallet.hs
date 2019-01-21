@@ -42,7 +42,6 @@ import           Reflex
 import           Reflex.Dom
 ------------------------------------------------------------------------------
 import           Frontend.Crypto.Ed25519     (keyToText)
-import           Frontend.UI.Icon
 import           Frontend.Wallet
 import           Frontend.UI.Widgets
 import           Frontend.Foundation
