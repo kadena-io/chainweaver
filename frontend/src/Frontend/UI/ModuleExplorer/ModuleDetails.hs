@@ -31,9 +31,10 @@ module Frontend.UI.ModuleExplorer.ModuleDetails where
 
 ------------------------------------------------------------------------------
 import           Control.Lens
-import           Data.Bool                        (bool)
+import           Control.Monad                         (when)
+import           Data.Bool                             (bool)
 import           Data.Maybe
-import           Data.Traversable                 (for)
+import           Data.Traversable                      (for)
 import           Reflex
 import           Reflex.Dom
 import           Reflex.Network.Extended
@@ -73,23 +74,35 @@ moduleDetails m (selectedRef, selected) = do
       pure $ mempty
         & moduleExplorerCfg_popModule .~  onBack
         & moduleExplorerCfg_loadModule .~ (selectedRef <$ onLoad)
-    bodyCfg1 <- elClass "div" "segment" $ do
-      elClass "h3" "heading heading_type_h3" $ text "Implemented Interfaces"
-      onSel <- uiModuleList . pure $ map (ModuleRef (_moduleRef_source selectedRef))
-        $ selected ^. interfacesOfModule
-      pure $ mempty & moduleExplorerCfg_pushModule .~ onSel
+
+    bodyCfg1 <-
+      let
+        interfaceRefs = map (ModuleRef (_moduleRef_source selectedRef)) $
+          selected ^. interfacesOfModule
+      in
+        case interfaceRefs of
+          [] -> pure mempty
+          _  -> elClass "div" "segment" $ do
+            elClass "h3" "heading heading_type_h3" $ text "Implemented Interfaces"
+            onSel <- uiModuleList . pure $ interfaceRefs
+            pure $ mempty & moduleExplorerCfg_pushModule .~ onSel
+
     bodyCfg2 <- elClass "div" "segment" $ do
       elClass "h3" "heading heading_type_h3" $ text "Functions"
       mkFunctionList $ functionsOfModule selected
     pure (headerCfg <> bodyCfg1 <> bodyCfg2)
+
   where
     mkFunctionList :: [PactFunction] -> m mConf
-    mkFunctionList = functionList m $ getDeployedModuleRef selectedRef
+    mkFunctionList = functionList m $
+      if isModule selected
+         then getDeployedModuleRef selectedRef
+         else Nothing
 
     moduleTitle = elClass "h2" "heading heading_type_h2" $ do
       text $ textModuleName $ _moduleRef_name selectedRef
-      elClass "div" "heading__type-details" $
-        text $ textModuleRefSource selectedRef
+      elClass "div" "heading__type-details" $ do
+        text $ textModuleRefSource (isModule selected) selectedRef
 
 
 functionList

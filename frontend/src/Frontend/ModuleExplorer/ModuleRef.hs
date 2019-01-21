@@ -142,18 +142,20 @@ textModuleName = \case
 
 -- | Show the type of the selected module.
 --
---   It is either "Example Contract" or "Deployed Contract"
-textModuleRefSource :: ModuleRef -> Text
-textModuleRefSource m =
+--   It is either "Example Module" or "Deployed Module"
+--   The first parameter tells whether we are really dealing with a `Module` or with an `Interface`. It is `True` for modules, `False` otherwise.
+textModuleRefSource :: Bool -> ModuleRef -> Text
+textModuleRefSource isModule m =
     case _moduleRef_source m of
       ModuleSource_File (FileRef_Example n)
-        -> withDetails "Example Module" (exampleName n)
+        -> printPretty "Example" (exampleName n)
       ModuleSource_File (FileRef_Stored n)
-        -> withDetails "Stored Module" (textFileName n)
+        -> printPretty "Stored" (textFileName n)
       ModuleSource_Deployed b
-        -> withDetails "Deployed Module" (textBackendName . backendRefName $ b)
+        -> printPretty "Deployed" (textBackendName . backendRefName $ b)
   where
-    withDetails n d = mconcat [ n <> " [ " , d , " ]" ]
+    printPretty n d = mconcat [ n, " ", moduleText, " [ " , d , " ]" ]
+    moduleText = if isModule then "Module" else "Interface"
 
 
 -- Get hold of a deployed module:

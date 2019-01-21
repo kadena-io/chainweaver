@@ -191,7 +191,7 @@ loadToEditor onFileRef onModRef = do
     onCode = fmap _unCode $ leftmost
       [ fmapMaybe id $ attachPromptlyDynWith getFileModuleCode fileModRequested onFile
       , snd <$> onFile
-      , _mCode . snd <$> onMod
+      , view codeOfModule . snd <$> onMod
       ]
 
     getFileModuleCode :: Maybe FileModuleRef -> (FileRef, PactFile) -> Maybe Code

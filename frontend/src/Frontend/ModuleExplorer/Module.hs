@@ -34,6 +34,7 @@ module Frontend.ModuleExplorer.Module
   , codeOfModule
   , functionsOfModule
   , interfacesOfModule
+  , isModule
   ) where
 
 ------------------------------------------------------------------------------
@@ -81,6 +82,12 @@ interfacesOfModule f modL = modL <$ f interfaces
     interfaces = case modL of
       Interface {..} -> []
       Module {..}    -> _mInterfaces
+
+-- | Module is really a `Module` as opposed to an interface?
+isModule :: Module -> Bool
+isModule = \case
+  Module {} -> True
+  _         -> False
 
 -- Get hold of modules and functions:
 
