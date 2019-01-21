@@ -1,27 +1,27 @@
+{-# LANGUAGE GADTs               #-}
 {-# LANGUAGE LambdaCase          #-}
 {-# LANGUAGE OverloadedStrings   #-}
 {-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE GADTs #-}
 
 module Backend where
 
-import           Control.Monad.Identity   (Identity (..))
-import           Control.Monad.IO.Class   (liftIO)
-import           Data.Dependent.Sum       (DSum ((:=>)))
-import           Data.List                (foldl')
-import qualified Data.List                as L
-import           Data.Maybe               (isJust)
-import qualified Data.Text                as T
-import qualified Obelisk.Backend          as Ob
-import           Obelisk.Route            (R)
-import           Snap                     (Snap, pass)
-import           Snap.Util.FileServe      (serveFile)
-import           System.FilePath          ((</>))
-import           System.Directory         (canonicalizePath, doesFileExist)
+import           Control.Monad.Identity (Identity (..))
+import           Control.Monad.IO.Class (liftIO)
+import           Data.Dependent.Sum     (DSum ((:=>)))
+import           Data.List              (foldl')
+import qualified Data.List              as L
+import           Data.Maybe             (isJust)
+import qualified Data.Text              as T
+import qualified Obelisk.Backend        as Ob
+import           Obelisk.Route          (R)
+import           Snap                   (Snap, pass, writeBS)
+import           Snap.Util.FileServe    (serveFile)
+import           System.Directory       (canonicalizePath, doesFileExist)
+import           System.FilePath        ((</>))
 
+import qualified Backend.Devel          as Devel
 import           Common.Api
 import           Common.Route
-import qualified Backend.Devel as Devel
 
 backend :: Ob.Backend BackendRoute FrontendRoute
 backend = Ob.Backend
@@ -51,4 +51,6 @@ serveBackendRoute dynConfigs = \case
       if L.isPrefixOf baseNorm pNorm && exists
          then serveFile pNorm
          else pass
+  BackendRoute_Robots :=> _
+    -> writeBS "User-agent: *\nDisallow: \n"
   _ -> pure ()
