@@ -43,6 +43,7 @@ import           Frontend.ModuleExplorer
 import           Frontend.UI.Button
 import           Frontend.UI.Dialogs.CallFunction
 import           Frontend.UI.Modal
+import           Frontend.UI.ModuleExplorer.ModuleList
 ------------------------------------------------------------------------------
 
 type HasUIModuleDetailsModel model t =
@@ -72,10 +73,15 @@ moduleDetails m (selectedRef, selected) = do
       pure $ mempty
         & moduleExplorerCfg_popModule .~  onBack
         & moduleExplorerCfg_loadModule .~ (selectedRef <$ onLoad)
-    bodyCfg <- elClass "div" "segment" $ do
+    bodyCfg1 <- elClass "div" "segment" $ do
+      elClass "h3" "heading heading_type_h3" $ text "Implemented Interfaces"
+      onSel <- uiModuleList . pure $ map (ModuleRef (_moduleRef_source selectedRef))
+        $ selected ^. interfacesOfModule
+      pure $ mempty & moduleExplorerCfg_pushModule .~ onSel
+    bodyCfg2 <- elClass "div" "segment" $ do
       elClass "h3" "heading heading_type_h3" $ text "Functions"
       mkFunctionList $ functionsOfModule selected
-    pure (headerCfg <> bodyCfg)
+    pure (headerCfg <> bodyCfg1 <> bodyCfg2)
   where
     mkFunctionList :: [PactFunction] -> m mConf
     mkFunctionList = functionList m $ getDeployedModuleRef selectedRef

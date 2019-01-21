@@ -33,6 +33,7 @@ module Frontend.ModuleExplorer.Module
   , nameOfModule
   , codeOfModule
   , functionsOfModule
+  , interfacesOfModule
   ) where
 
 ------------------------------------------------------------------------------
@@ -72,6 +73,14 @@ codeOfModule f modL = setCode <$> f code
     code = case modL of
       Interface {..} -> _interfaceCode
       Module {..}    -> _mCode
+
+-- | Get the `ModuleName` of a `Module`.
+interfacesOfModule :: Fold Module [ModuleName]
+interfacesOfModule f modL = modL <$ f interfaces
+  where
+    interfaces = case modL of
+      Interface {..} -> []
+      Module {..}    -> _mInterfaces
 
 -- Get hold of modules and functions:
 
