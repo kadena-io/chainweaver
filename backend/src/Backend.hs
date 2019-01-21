@@ -1,8 +1,8 @@
+{-# LANGUAGE DataKinds           #-}
+{-# LANGUAGE GADTs               #-}
 {-# LANGUAGE LambdaCase          #-}
 {-# LANGUAGE OverloadedStrings   #-}
 {-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE GADTs #-}
-{-# LANGUAGE DataKinds #-}
 
 module Backend where
 
@@ -15,16 +15,14 @@ import           Data.Maybe               (isJust)
 import qualified Data.Text                as T
 import qualified Obelisk.Backend          as Ob
 import           Obelisk.Route            (R)
-import           Snap                     (Snap, pass)
+import           Snap                     (Snap, pass, writeBS)
 import           Snap.Util.FileServe      (serveFile)
-import           System.FilePath          ((</>))
 import           System.Directory         (canonicalizePath, doesFileExist)
+import           System.FilePath          ((</>))
 
-import           Obelisk.Generated.Static
-
+import qualified Backend.Devel            as Devel
 import           Common.Api
 import           Common.Route
-import qualified Backend.Devel as Devel
 
 backend :: Ob.Backend BackendRoute FrontendRoute
 backend = Ob.Backend
@@ -55,5 +53,5 @@ serveBackendRoute dynConfigs = \case
          then serveFile pNorm
          else pass
   BackendRoute_Robots :=> _
-    -> serveFile $ T.unpack $ static @"robots.txt"
+    -> writeBS "User-agent: *\nDisallow: \n"
   _ -> pure ()
