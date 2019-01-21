@@ -82,6 +82,8 @@ data ModuleExplorerCfg t = ModuleExplorerCfg
     -- stack is empty, this `Event` does nothing.
   , _moduleExplorerCfg_selectFile   :: Event t (Maybe FileRef)
     -- ^ Select or deselect (`Nothing`) a given file.
+  , _moduleExplorerCfg_goHome       :: Event t ()
+    -- ^ Clear selectedFile and module stack.
   , _moduleExplorerCfg_loadModule   :: Event t ModuleRef
     -- ^ Load a module into the editor.
   , _moduleExplorerCfg_loadFile     :: Event t FileRef
@@ -146,6 +148,7 @@ instance Flattenable (ModuleExplorerCfg t) t where
       <$> doSwitch never (_moduleExplorerCfg_pushModule <$> ev)
       <*> doSwitch never (_moduleExplorerCfg_popModule <$> ev)
       <*> doSwitch never (_moduleExplorerCfg_selectFile <$> ev)
+      <*> doSwitch never (_moduleExplorerCfg_goHome <$> ev)
       <*> doSwitch never (_moduleExplorerCfg_loadModule <$> ev)
       <*> doSwitch never (_moduleExplorerCfg_loadFile <$> ev)
       <*> doSwitch never (_moduleExplorerCfg_deployEditor <$> ev)

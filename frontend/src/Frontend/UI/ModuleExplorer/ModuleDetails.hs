@@ -67,11 +67,14 @@ moduleDetails
   -> m mConf
 moduleDetails m (selectedRef, selected) = do
     headerCfg <- elClass "div" "segment" $ do
-      (onBack, onLoad) <- elClass "h2" "heading heading_type_h2" $
-        (,) <$> backButton <*> openButton mempty
+      ((onHome, onBack), onLoad) <- elClass "h2" "heading heading_type_h2" $ do
+        hb <- el "div" $
+          (,) <$> homeButton  <*> backButton
+        (hb,) <$> openButton mempty
 
       moduleTitle
       pure $ mempty
+        & moduleExplorerCfg_goHome .~ onHome
         & moduleExplorerCfg_popModule .~  onBack
         & moduleExplorerCfg_loadModule .~ (selectedRef <$ onLoad)
 

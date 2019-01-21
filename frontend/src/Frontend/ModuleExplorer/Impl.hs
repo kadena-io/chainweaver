@@ -91,13 +91,14 @@ makeModuleExplorer
 makeModuleExplorer m cfg = mfix $ \ ~(_, explr) -> do
     selectedFile <- selectFile
       (fmapMaybe getFileModuleRef $ cfg ^. moduleExplorerCfg_pushModule)
-      (cfg ^. moduleExplorerCfg_selectFile)
+      (leftmost [cfg ^. moduleExplorerCfg_selectFile, Nothing <$ cfg ^. moduleExplorerCfg_goHome])
 
     (lFileCfg, loadedSource) <- loadToEditor
       (cfg ^. moduleExplorerCfg_loadFile)
       (cfg ^. moduleExplorerCfg_loadModule)
 
     (stckCfg, stack) <- pushPopModule m explr
+      (cfg ^. moduleExplorerCfg_goHome)
       (cfg ^. moduleExplorerCfg_pushModule)
       (cfg ^. moduleExplorerCfg_popModule)
 
@@ -288,10 +289,11 @@ pushPopModule
     )
   => model
   -> ModuleExplorer t
+  -> Event t ()
   -> Event t ModuleRef
   -> Event t ()
   -> m (mConf, Dynamic t [(ModuleRef, Module)])
-pushPopModule m explr onPush onPop = mdo
+pushPopModule m explr onClear onPush onPop = mdo
     let onFileModRef = fmapMaybe getFileModuleRef onPush
     onFileModule <- waitForFile (explr ^. moduleExplorer_selectedFile) onFileModRef
 
@@ -301,6 +303,7 @@ pushPopModule m explr onPush onPop = mdo
       [ (:) . (_1 . moduleRef_source %~ ModuleSource_File) <$> onFileModule
       , (:) . (_1 . moduleRef_source %~ ModuleSource_Deployed) <$> onDeployedModule
       , tailSafe <$ onPop
+      , const [] <$ onClear
       , updateStack <$> onRefresh
       ]
     (rCfg, onRefresh) <- refreshHead $
