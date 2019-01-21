@@ -23,7 +23,6 @@ library
                , obelisk-route
                , dependent-sum
                , mtl
-               , obelisk-generated-static
   exposed-modules: Backend
                  , Backend.Devel
 
