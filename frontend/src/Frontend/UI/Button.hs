@@ -131,9 +131,9 @@ backButton = -- uiIcon "fas fa-chevron-left" $ def & iconConfig_size .~ Just Ico
   uiButton def $ btnIcon (static @"img/left_arrow.svg") "Go back" blank
 
 -- | Button for "going home" action.
-homeButton :: StaticButtonConstraints t m => m (Event t ())
-homeButton = -- uiIcon "fas fa-chevron-left" $ def & iconConfig_size .~ Just IconLG
-  uiButton def $ btnIcon (static @"img/double_left_arrow.svg") "Go back" blank
+homeButton :: StaticButtonConstraints t m => CssClass -> m (Event t ())
+homeButton cls = -- uiIcon "fas fa-chevron-left" $ def & iconConfig_size .~ Just IconLG
+  uiButton (def & uiButtonCfg_class .~ cls) $ btnIcon (static @"img/double_left_arrow.svg") "Go back" blank
 
 -- | Copies the text content of a given node.
 --

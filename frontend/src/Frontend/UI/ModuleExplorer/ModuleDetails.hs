@@ -69,7 +69,7 @@ moduleDetails m (selectedRef, selected) = do
     headerCfg <- elClass "div" "segment" $ do
       ((onHome, onBack), onLoad) <- elClass "h2" "heading heading_type_h2" $ do
         hb <- el "div" $
-          (,) <$> homeButton  <*> backButton
+          (,) <$> homeButton "heading__left-double-button" <*> backButton
         (hb,) <$> openButton mempty
 
       moduleTitle
