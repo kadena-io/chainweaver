@@ -170,9 +170,27 @@ moduleList rowFunc contracts = do
       fmap leftmost . for contracts $ \c -> elClass "li" "table__row table__row_type_primary" $ do
         divClass "table__row-counter" blank
         rowFunc c
-        divClass "table__cell_size_flex" $
+        divClass "table__cell_size_flex table__last-cell" $
           viewModButton c
 
+-- TODO: Unify with moduleList (copy & paste right now) - only difference, we
+-- have a load button in addition to view.
+fileList :: MonadWidget t m => (a -> m ()) -> [a] -> m (Event t a, Event t a)
+fileList rowFunc contracts = do
+    evs <- elClass "ol" "table table_type_primary" $
+      for contracts $ \c -> elClass "li" "table__row table__row_type_primary" $ do
+        divClass "table__row-counter" blank
+        rowFunc c
+        divClass "table__cell_size_flex table__last-cell" $ do
+          (,) <$> openModButton c <*> viewModButton c
+    let
+      onOpen = leftmost . map fst $ evs
+      onView = leftmost . map snd $ evs
+    pure (onOpen, onView)
+
+
+openModButton :: MonadWidget t m => a -> m (Event t a)
+openModButton c = fmap (const c) <$> openButton "table__action-button table__left-action-button"
 
 viewModButton :: MonadWidget t m => a -> m (Event t a)
 viewModButton c = fmap (const c) <$> viewButton "table__action-button"

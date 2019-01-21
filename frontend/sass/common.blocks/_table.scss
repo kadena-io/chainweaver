@@ -82,11 +82,17 @@
   flex-grow: 10;
 }
 
+// Last cell in a row.
+.table__last-cell {
+  display: flex;
+  // flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
 
 // Button that fits nicely in a cell_size_flex usually right most cell.
 // (Button will float right.)
 .table__action-button {
-  float: right;
   align-items: baseline;
   width: 90px;
   height: $small-height;
@@ -94,6 +100,10 @@
   line-height: normal;
   margin-top: 8px;
   font-size: $small-font-size;
+}
+
+.table__left-action-button {
+  margin-right: $small-margin;
 }
 
 .table__row-counter {

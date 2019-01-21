@@ -27,27 +27,29 @@ module Frontend.UI.ModuleExplorer where
 
 ------------------------------------------------------------------------------
 import           Control.Lens
-import qualified Data.List                as L
-import           Data.Map                 (Map)
-import qualified Data.Map                 as Map
+import           Control.Monad                            (void)
+import           Data.Bifunctor                           (bimap)
+import qualified Data.List                                as L
+import           Data.Map                                 (Map)
+import qualified Data.Map                                 as Map
 import           Data.Maybe
-import           Data.Text                (Text)
-import qualified Data.Text                as T
-import           Data.Traversable         (for)
+import           Data.Text                                (Text)
+import qualified Data.Text                                as T
+import           Data.Traversable                         (for)
+import           Language.Javascript.JSaddle              (js0, liftJSM)
+import qualified Language.Javascript.JSaddle              as JS
 import           Reflex
 import           Reflex.Dom
+import           Reflex.Dom.Contrib.CssClass
 import           Reflex.Network
 import           Reflex.Network.Extended
-import           Reflex.Dom.Contrib.CssClass
-import           Language.Javascript.JSaddle (liftJSM, js0)
-import qualified Language.Javascript.JSaddle as JS
-import           Control.Monad (void)
 ------------------------------------------------------------------------------
 import           Frontend.Backend
 import           Frontend.ModuleExplorer
-import           Frontend.UI.ModuleExplorer.ModuleDetails
-import           Frontend.UI.ModuleExplorer.FileDetails
 import           Frontend.UI.Button
+import           Frontend.UI.ModuleExplorer.FileDetails
+import           Frontend.UI.ModuleExplorer.ModuleDetails
+import           Frontend.UI.ModuleExplorer.ModuleList
 import           Frontend.UI.Widgets
 ------------------------------------------------------------------------------
 
@@ -77,7 +79,7 @@ moduleExplorer m = do
       pure $ mconcat [ exampleCfg, deplCfg ]
 
     showDetails x = animatedDiv $ case x of
-      Left f -> fileDetails f
+      Left f     -> fileDetails f
       Right modL -> moduleDetails m modL
 
     animatedDiv c = do
@@ -99,8 +101,8 @@ moduleExplorer m = do
       void $ e JS.! "offsetWidth"
 
     mkAnimationCls = \case
-      LT -> "fly-in fly-in_from_left" 
-      GT -> "fly-in fly-in_from_right" 
+      LT -> "fly-in fly-in_from_left"
+      GT -> "fly-in fly-in_from_right"
       _  -> "fly-in"
 
 
@@ -115,11 +117,14 @@ browseExamples =
           divClass "table__text-cell table__cell_size_main" $
             text $ exampleName c
 
-    exampleClick <- contractList showExample $ examples
+    (onOpen, onView) <- fileList showExample $ examples
 
-    let onExampleSel = fmap (Just . FileRef_Example) exampleClick
+    let
+      onExampleSel = fmap (Just . FileRef_Example) onView
+      onExampleOpen = fmap FileRef_Example onOpen
     pure $ mempty
       & moduleExplorerCfg_selectFile .~ onExampleSel
+      & moduleExplorerCfg_loadFile .~ onExampleOpen
 
 
 -- | Browse deployed contracts
@@ -189,7 +194,7 @@ browseDeployed m = mdo
           divClass "table__text-cell table__cell_size_side" $
             text $ textBackendRefName $ _moduleRef_source c
     searchClick <- do
-      listEv <- networkView $ contractList showDeployed . map snd <$> paginated
+      listEv <- networkView $ moduleList showDeployed . map snd <$> paginated
       switchHold never $ fmap (moduleRef_source %~ ModuleSource_Deployed) <$> listEv
 
     let numberOfItems = length <$> filteredCs
@@ -200,45 +205,3 @@ browseDeployed m = mdo
       , 1 <$ updated numberOfItems
       ]
     pure searchClick
-
-
-paginate :: (Ord k, Ord v) => Int -> Int -> [(k, v)] -> [(k, v)]
-paginate itemsPerPage p =
-  take itemsPerPage . drop (itemsPerPage * pred p) . L.sort
-
-searchFn
-  :: Text
-  -> Maybe BackendRef
-  -> Map BackendName (Maybe [Text], BackendRef)
-  -> [(Int, DeployedModuleRef)]
-searchFn needle mModule = zip [0..] . concat . fmapMaybe (filtering needle) . Map.toList
-  . maybe id (\k' -> Map.filterWithKey $ \k _ -> k == backendRefName k') mModule
-
-filtering
-  :: Text
-  -> (BackendName, (Maybe [Text], BackendRef))
-  -> Maybe [DeployedModuleRef]
-filtering needle (_, (m, backendL)) =
-    case fmapMaybe f $ fromMaybe [] m of
-      [] -> Nothing
-      xs -> Just xs
-  where
-    f contractName =
-      if T.isInfixOf (T.toCaseFold needle) (T.toCaseFold contractName)
-         -- TODO: Proper namespace support.
-      then Just (ModuleRef backendL (ModuleName contractName Nothing))
-      else Nothing
-
-contractList :: MonadWidget t m => (a -> m ()) -> [a] -> m (Event t a)
-contractList rowFunc contracts = do
-    elClass "ol" "table table_type_primary" $
-      fmap leftmost . for contracts $ \c -> elClass "li" "table__row table__row_type_primary" $ do
-        divClass "table__row-counter" blank
-        rowFunc c
-        divClass "table__cell_size_flex" $
-          viewModButton c
-
-
-viewModButton :: MonadWidget t m => a -> m (Event t a)
-viewModButton c = fmap (const c) <$> viewButton "table__action-button"
-

@@ -122,7 +122,7 @@ functionList m mDeployed functions =
             text $ _pactFunction_name f
           divClass "table__text-cell table__cell_size_double-main description" $
             text $ fromMaybe "" $ _pactFunction_documentation f
-          divClass "table__cell_size_flex" $ do
+          divClass "table__cell_size_flex table__last-cell" $ do
             let btnCls = "table__action-button"
             let isDeployed = isJust mDeployed
             fmap (const f) <$> bool (viewButton btnCls) (callButton btnCls) isDeployed
