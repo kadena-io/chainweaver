@@ -22,7 +22,7 @@
 
   (defun absBug:integer (num:integer)
      @doc "Ensure positive result"
-     ;; This property fails, tell me: would you have caught that with unit tests?
+     ;; This property fails: Would you have caught that with unit tests?
      @model [(property (>= result 0))]
      (if (= (- (* (- num 6) (+ num 11)) (* 42 num)) (* (* 64 7) 52270780833))
          (- 1)
