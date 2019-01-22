@@ -121,7 +121,7 @@ makeModuleExplorer m cfg = mfix $ \ ~(_, explr) -> do
 
 -- | Check whether we are going deeper with selections or not.
 mkSelectionGrowth
-  :: (Reflex t, MonadHold t m, MonadFix m, PerformEvent t m, TriggerEvent t m
+  :: (Reflex t, MonadHold t m, PerformEvent t m, TriggerEvent t m
      , MonadIO (Performable m)
      , HasModuleExplorer explr t
      )

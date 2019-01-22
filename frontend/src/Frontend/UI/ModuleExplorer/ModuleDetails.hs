@@ -31,7 +31,6 @@ module Frontend.UI.ModuleExplorer.ModuleDetails where
 
 ------------------------------------------------------------------------------
 import           Control.Lens
-import           Control.Monad                         (when)
 import           Data.Bool                             (bool)
 import           Data.Maybe
 import           Data.Traversable                      (for)
