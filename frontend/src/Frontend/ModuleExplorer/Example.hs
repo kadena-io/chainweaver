@@ -26,7 +26,7 @@
 
 module Frontend.ModuleExplorer.Example
   ( -- * Example References
-    ExampleRef
+    ExampleRef (..)
   , _ExampleRef_HelloWorld
   , _ExampleRef_SimplePayments
   , _ExampleRef_InternationalPayments

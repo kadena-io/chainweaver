@@ -93,8 +93,9 @@ makeModuleExplorer m cfg = mfix $ \ ~(_, explr) -> do
       (fmapMaybe getFileModuleRef $ cfg ^. moduleExplorerCfg_pushModule)
       (leftmost [cfg ^. moduleExplorerCfg_selectFile, Nothing <$ cfg ^. moduleExplorerCfg_goHome])
 
+    onInitFile <- fmap (const $ FileRef_Example ExampleRef_HelloWorld) <$> getPostBuild
     (lFileCfg, loadedSource) <- loadToEditor
-      (cfg ^. moduleExplorerCfg_loadFile)
+      (leftmost [cfg ^. moduleExplorerCfg_loadFile, onInitFile])
       (cfg ^. moduleExplorerCfg_loadModule)
 
     (stckCfg, stack) <- pushPopModule m explr
@@ -151,7 +152,7 @@ mkSelectionGrowth explr = do
     holdDyn EQ $ leftmost [onGrowth, onReset]
 
   where
-    compareSel oldSelected newSelected = 
+    compareSel oldSelected newSelected =
       case (oldSelected, newSelected) of
         (Nothing, Nothing) -> EQ
         (Nothing, Just _)  -> LT
