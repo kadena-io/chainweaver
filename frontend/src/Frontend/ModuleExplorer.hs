@@ -33,86 +33,34 @@ module Frontend.ModuleExplorer
   , HasModuleExplorerCfg (..)
   , ModuleExplorer (..)
   , HasModuleExplorer (..)
-  -- * Constants
-  , demos
-  , exampleData
+    -- ** Additonal quick viewing functions
+  , moduleExplorer_selection
+  -- * Re-exports
+  , module Example
+  , module Module
+  , module File
   -- ** Auxiliary Types
-  , ModuleSel (..)
-  , _ModuleSel_Example
-  , _ModuleSel_Deployed
-  , ExampleModule (..)
-  , DeployedModule (..)
-  , PactFunction (..)
   , TransactionInfo (..)
-   -- *** SelectedModule
-  , SelectedModule (..)
-  , HasSelectedModule (..)
-  , selectedModuleName
-  , showSelectedModuleType
   ) where
 
 ------------------------------------------------------------------------------
-import           Data.Map                 (Map)
-import qualified Data.Map                 as Map
-import           Data.Text                (Text)
-import           Generics.Deriving.Monoid (mappenddefault, memptydefault)
-import           GHC.Generics             (Generic)
+import           Control.Lens
+import           Data.Set                          (Set)
+import           Data.Text                         (Text)
+import           Generics.Deriving.Monoid          (mappenddefault,
+                                                    memptydefault)
+import           GHC.Generics                      (Generic)
 import           Reflex
-import           Data.Set                     (Set)
 ------------------------------------------------------------------------------
-import           Obelisk.Generated.Static
-import           Pact.Types.Lang          (DefType, FunType, ModuleName, Name,
-                                           Term)
+import           Pact.Types.Lang                   (ModuleName)
 ------------------------------------------------------------------------------
 import           Frontend.Backend
 import           Frontend.Foundation
+import           Frontend.ModuleExplorer.Example   as Example
+import           Frontend.ModuleExplorer.File      as File
+import           Frontend.ModuleExplorer.Module    as Module
+import           Frontend.ModuleExplorer.ModuleRef as Module
 import           Frontend.Wallet
-
-data ExampleModule = ExampleModule
-  { _exampleModule_name :: Text
-  , _exampleModule_code :: Text
-  , _exampleModule_data :: Text
-  } deriving Show
-
-makePactLenses ''ExampleModule
-
-data DeployedModule = DeployedModule
-  { _deployedModule_name    :: Text
-  , _deployedModule_backend :: BackendRef
-  } deriving (Eq, Ord, Show)
-
-makePactLenses ''DeployedModule
-
--- | Selector for loading modules.
-data ModuleSel
-  = ModuleSel_Example ExampleModule
-  | ModuleSel_Deployed DeployedModule
-
-makePactPrisms ''ModuleSel
-
--- | Useful data about a pact function.
-data PactFunction = PactFunction
-  { _pactFunction_module        :: ModuleName
-  , _pactFunction_name          :: Text
-  , _pactFunction_defType       :: DefType
-  , _pactFunction_documentation :: Maybe Text
-  , _pactFunction_type          :: FunType (Term Name)
-  }
-  deriving Show
-
--- | Information about the currently selected deployed module.
---
-data SelectedModule = SelectedModule
-  { _selectedModule_module    :: ModuleSel
-    -- ^ The module that is currently selected.
-  , _selectedModule_code      :: Text
-    -- ^ Source code of the currently selected module.
-  , _selectedModule_functions :: Maybe [PactFunction]
-    -- ^ The available functions of that module. `Nothing` in case function
-    -- fetching failed for some reason.
-  }
-
-makePactLenses ''SelectedModule
 
 -- | Data needed to send transactions to the server.
 data TransactionInfo = TransactionInfo
@@ -123,18 +71,26 @@ data TransactionInfo = TransactionInfo
   } deriving (Eq, Ord, Show)
 
 
-
 -- | Configuration for ModuleExplorer
 --
 --   State is controlled via this configuration.
 data ModuleExplorerCfg t = ModuleExplorerCfg
-  { _moduleExplorerCfg_selModule  :: Event t (Maybe ModuleSel)
-    -- ^ Select a module for viewing its functions and further details.
-  , _moduleExplorerCfg_loadModule :: Event t ModuleSel
+  { _moduleExplorerCfg_pushModule   :: Event t ModuleRef
+    -- ^ Push a module to our `_moduleExplorer_selectedModule` stack.
+  , _moduleExplorerCfg_popModule    :: Event t ()
+    -- ^ Pop a module from our `_moduleExplorer_selectedModule` stack. If the
+    -- stack is empty, this `Event` does nothing.
+  , _moduleExplorerCfg_selectFile   :: Event t (Maybe FileRef)
+    -- ^ Select or deselect (`Nothing`) a given file.
+  , _moduleExplorerCfg_goHome       :: Event t ()
+    -- ^ Clear selectedFile and module stack.
+  , _moduleExplorerCfg_loadModule   :: Event t ModuleRef
     -- ^ Load a module into the editor.
+  , _moduleExplorerCfg_loadFile     :: Event t FileRef
+    -- ^ Load some file into the `Editor`.
   , _moduleExplorerCfg_deployEditor :: Event t TransactionInfo
     -- ^ Deploy code that is currently in `Editor`.
-  , _moduleExplorerCfg_deployCode :: Event t (Text, TransactionInfo)
+  , _moduleExplorerCfg_deployCode   :: Event t (Text, TransactionInfo)
     -- ^ Deploy given Pact code, usually a function call.
   }
   deriving Generic
@@ -143,55 +99,35 @@ makePactLenses ''ModuleExplorerCfg
 
 -- | Current ModuleExploer state.
 data ModuleExplorer t = ModuleExplorer
-  { _moduleExplorer_selectedModule :: MDynamic t SelectedModule
-  -- ^ Information about the currently selected module, if available.
-  , _moduleExplorer_loadedModule   :: MDynamic t ModuleSel
-  -- ^ The module that was loaded last into the editor.
+  { _moduleExplorer_moduleStack  :: Dynamic t [(ModuleRef, Module)]
+  -- ^ The stack of currently selected modules.
+  , _moduleExplorer_selectedFile :: MDynamic t (FileRef, PactFile)
+  -- ^ The currently selected file if any.
+  , _moduleExplorer_selectionGrowth :: Dynamic t Ordering
+  -- ^ Whether the stack is currently growing/shrinking.
+  , _moduleExplorer_loaded       :: MDynamic t ModuleSource
+  -- ^ Where did the data come from that got loaded last into the `Editor`?
+  {- , _moduleExplorer_deployedModules :: Dynamic t (Map BackendName (Maybe [Text])) -}
   }
   deriving Generic
 
 makePactLenses ''ModuleExplorer
 
--- | Get the name of a selected module.
-selectedModuleName :: SelectedModule -> Text
-selectedModuleName selected =
-  case _selectedModule_module selected of
-    ModuleSel_Example ex  -> _exampleModule_name ex
-    ModuleSel_Deployed ex -> _deployedModule_name ex
-
--- | Show the type of the selected module.
+-- | Quick check whether the current selection is a `File` or a `Module`.
 --
---   It is either "Example Contract" or "Deployed Contract"
-showSelectedModuleType :: SelectedModule -> Text
-showSelectedModuleType selected =
-  case _selectedModule_module selected of
-    ModuleSel_Example _  -> "Example Contract"
-    ModuleSel_Deployed m -> mconcat
-      [ "Deployed Contract [ "
-      , textBackendName . backendRefName $ _deployedModule_backend m
-      , " ]"
-      ]
-
-
--- | Available example modules.
-exampleData :: [ExampleModule]
-exampleData =
-  [ ExampleModule "Hello World"
-    (static @ "examples/helloWorld-1.0.repl")
-    (static @ "examples/helloWorld-1.0.data.json")
-  , ExampleModule "Simple Payment"
-    (static @ "examples/simplePayments-1.0.repl")
-    (static @ "examples/simplePayments-1.0.data.json")
-  , ExampleModule "International Payment"
-    (static @ "examples/internationalPayments-1.0.repl")
-    (static @ "examples/internationalPayments-1.0.data.json")
-
-  {- , ExampleModule "Commercial Paper" "examples/commercialPaper-1.0" -}
-  ]
-
--- | Examples as Map from Index to actual data.
-demos :: Map Int ExampleModule
-demos = Map.fromList $ zip [0..] exampleData
+--   If a file and a module is selected, then the selected module is a module
+--   of that file, thus it takes precedence and will be the result of this
+--   function call.
+moduleExplorer_selection
+  :: (Reflex t, HasModuleExplorer explr t)
+  => explr
+  -> MDynamic t (Either (FileRef, PactFile) (ModuleRef, Module))
+moduleExplorer_selection explr = do
+  stk <- explr ^. moduleExplorer_moduleStack
+  fileL <- explr ^. moduleExplorer_selectedFile
+  pure $ case stk of
+    []  -> Left <$> fileL
+    s:_ -> Just . Right $ s
 
 -- Instances:
 
@@ -202,12 +138,6 @@ instance Reflex t => Monoid (ModuleExplorerCfg t) where
   mempty = memptydefault
   mappend = (<>)
 
-instance Semigroup DeployedModule where
-  sel1 <> _ = sel1
-
-instance Semigroup ModuleSel where
-  sel1 <> _ = sel1
-
 instance Semigroup TransactionInfo where
   sel1 <> _ = sel1
 
@@ -215,7 +145,11 @@ instance Semigroup TransactionInfo where
 instance Flattenable (ModuleExplorerCfg t) t where
   flattenWith doSwitch ev =
     ModuleExplorerCfg
-      <$> doSwitch never (_moduleExplorerCfg_selModule <$> ev)
+      <$> doSwitch never (_moduleExplorerCfg_pushModule <$> ev)
+      <*> doSwitch never (_moduleExplorerCfg_popModule <$> ev)
+      <*> doSwitch never (_moduleExplorerCfg_selectFile <$> ev)
+      <*> doSwitch never (_moduleExplorerCfg_goHome <$> ev)
       <*> doSwitch never (_moduleExplorerCfg_loadModule <$> ev)
+      <*> doSwitch never (_moduleExplorerCfg_loadFile <$> ev)
       <*> doSwitch never (_moduleExplorerCfg_deployEditor <$> ev)
       <*> doSwitch never (_moduleExplorerCfg_deployCode <$> ev)

@@ -27,23 +27,29 @@ module Frontend.UI.ModuleExplorer where
 
 ------------------------------------------------------------------------------
 import           Control.Lens
-import qualified Data.List                as L
-import           Data.Map                 (Map)
-import qualified Data.Map                 as Map
+import           Control.Monad                            (void)
+import           Data.Bifunctor                           (bimap)
+import qualified Data.List                                as L
+import           Data.Map                                 (Map)
+import qualified Data.Map                                 as Map
 import           Data.Maybe
-import           Data.Text                (Text)
-import qualified Data.Text                as T
-import           Data.Traversable         (for)
+import           Data.Text                                (Text)
+import qualified Data.Text                                as T
+import           Data.Traversable                         (for)
+import           Language.Javascript.JSaddle              (js0, liftJSM)
+import qualified Language.Javascript.JSaddle              as JS
 import           Reflex
 import           Reflex.Dom
+import           Reflex.Dom.Contrib.CssClass
 import           Reflex.Network
 import           Reflex.Network.Extended
-import           Reflex.Dom.Contrib.CssClass
 ------------------------------------------------------------------------------
 import           Frontend.Backend
 import           Frontend.ModuleExplorer
-import           Frontend.UI.ModuleExplorer.ModuleDetails
 import           Frontend.UI.Button
+import           Frontend.UI.ModuleExplorer.FileDetails
+import           Frontend.UI.ModuleExplorer.ModuleDetails
+import           Frontend.UI.ModuleExplorer.ModuleList
 import           Frontend.UI.Widgets
 ------------------------------------------------------------------------------
 
@@ -64,13 +70,40 @@ moduleExplorer
   => model
   -> m mConf
 moduleExplorer m = do
-    let selected = m ^. moduleExplorer_selectedModule
-    networkViewFlatten $ maybe browse (moduleDetails m) <$> selected
+    let selected = moduleExplorer_selection m
+    networkViewFlatten $ maybe browse showDetails <$> selected
   where
-    browse = do
+    browse = animatedDiv $ do
       exampleCfg <- browseExamples
       deplCfg <- browseDeployedTitle m
       pure $ mconcat [ exampleCfg, deplCfg ]
+
+    showDetails x = animatedDiv $ case x of
+      Left f     -> fileDetails f
+      Right modL -> moduleDetails m modL
+
+    animatedDiv c = do
+      let growth = m ^. moduleExplorer_selectionGrowth
+      {- cGrowth <- sample $ current growth -}
+      elDynClass "div" (mkAnimationCls <$> growth) $ c
+
+    {- animatedDiv c = do -}
+    {-   onGrowthLogic <- updated <$> moduleExplorer_selectionGrowth m -}
+    {-   delayedGrowth <- delay 0 $ onGrowthLogic -}
+    {-   -- Make sure animation is actually working: -}
+    {-   growthUI <- holdDyn EQ $ leftmost [ EQ <$ onGrowthLogic, delayedGrowth ] -}
+    {-   (e, r) <- elDynClass' "div" (mkAnimationCls <$> growthUI) $ c -}
+    {-   performEvent $ forceAnimation (_element_raw e) <$ leftmost [delayedGrowth, onGrowthLogic] -}
+    {-   pure r -}
+
+    forceAnimation e = liftJSM $ do
+      -- Somehow forces the browser to actually set the value and execute the animation.
+      void $ e JS.! "offsetWidth"
+
+    mkAnimationCls = \case
+      LT -> "fly-in fly-in_from_left"
+      GT -> "fly-in fly-in_from_right"
+      _  -> "fly-in"
 
 
 browseExamples
@@ -79,16 +112,19 @@ browseExamples
     )
   => m mConf
 browseExamples =
-  accordionItem True "segment" "Example Contracts" $ do
+  accordionItem True "segment" "Example Files" $ do
     let showExample c = do
           divClass "table__text-cell table__cell_size_main" $
-            text $ _exampleModule_name c
+            text $ exampleName c
 
-    exampleClick <- contractList showExample $ exampleData
+    (onOpen, onView) <- fileList showExample $ examples
 
-    let onExampleSel = fmap (Just . ModuleSel_Example) exampleClick
+    let
+      onExampleSel = fmap (Just . FileRef_Example) onView
+      onExampleOpen = fmap FileRef_Example onOpen
     pure $ mempty
-      & moduleExplorerCfg_selModule .~ onExampleSel
+      & moduleExplorerCfg_selectFile .~ onExampleSel
+      & moduleExplorerCfg_loadFile .~ onExampleOpen
 
 
 -- | Browse deployed contracts
@@ -105,11 +141,11 @@ browseDeployedTitle
 browseDeployedTitle m = do
   let
     title = elClass "span" "deployed-contracts-accordion" $ do
-      el "span" $ text "Deployed Contracts"
+      el "span" $ text "Deployed Modules"
       refreshButton "accordion__title-button"
   (onRefrClick, onSelected) <- accordionItem' True "segment" title $ browseDeployed m
   pure $ mempty
-    & moduleExplorerCfg_selModule .~ fmap Just onSelected
+    & moduleExplorerCfg_pushModule .~ onSelected
     & backendCfg_refreshModule .~ onRefrClick
 
 
@@ -120,7 +156,7 @@ browseDeployed
     , HasUIModuleExplorerModel model t
     )
   => model
-  -> m (Event t ModuleSel)
+  -> m (Event t ModuleRef)
 browseDeployed m = mdo
     let itemsPerPage = 10 :: Int
 
@@ -151,15 +187,15 @@ browseDeployed m = mdo
       return (filteredCsL, updatePageL)
 
     let paginated = paginate itemsPerPage <$> currentPage <*> filteredCs
-        showDeployed :: DeployedModule -> m ()
+        showDeployed :: DeployedModuleRef -> m ()
         showDeployed c = do
           divClass "table__text-cell table__cell_size_main" $
-            text $ _deployedModule_name c
+            text $ textModuleRefName c
           divClass "table__text-cell table__cell_size_side" $
-            text $ textBackendName . backendRefName $ _deployedModule_backend c
+            text $ textBackendRefName $ _moduleRef_source c
     searchClick <- do
-      listEv <- networkView $ contractList showDeployed . map snd <$> paginated
-      switchHold never $ fmap ModuleSel_Deployed <$> listEv
+      listEv <- networkView $ moduleList showDeployed . map snd <$> paginated
+      switchHold never $ fmap (moduleRef_source %~ ModuleSource_Deployed) <$> listEv
 
     let numberOfItems = length <$> filteredCs
         calcTotal a = ceiling $ (fromIntegral a :: Double)  / fromIntegral itemsPerPage
@@ -169,43 +205,3 @@ browseDeployed m = mdo
       , 1 <$ updated numberOfItems
       ]
     pure searchClick
-
-
-paginate :: (Ord k, Ord v) => Int -> Int -> [(k, v)] -> [(k, v)]
-paginate itemsPerPage p =
-  take itemsPerPage . drop (itemsPerPage * pred p) . L.sort
-
-searchFn
-  :: Text
-  -> Maybe BackendRef
-  -> Map BackendName (Maybe [Text], BackendRef)
-  -> [(Int, DeployedModule)]
-searchFn needle mModule = zip [0..] . concat . fmapMaybe (filtering needle) . Map.toList
-  . maybe id (\k' -> Map.filterWithKey $ \k _ -> k == backendRefName k') mModule
-
-filtering
-  :: Text
-  -> (BackendName, (Maybe [Text], BackendRef))
-  -> Maybe [DeployedModule]
-filtering needle (_, (m, backendL)) =
-    case fmapMaybe f $ fromMaybe [] m of
-      [] -> Nothing
-      xs -> Just xs
-  where
-    f contractName =
-      if T.isInfixOf (T.toCaseFold needle) (T.toCaseFold contractName)
-      then Just (DeployedModule contractName backendL)
-      else Nothing
-
-contractList :: MonadWidget t m => (a -> m ()) -> [a] -> m (Event t a)
-contractList rowFunc contracts = do
-    elClass "ol" "table table_type_primary" $
-      fmap leftmost . for contracts $ \c -> elClass "li" "table__row table__row_type_primary" $ do
-        divClass "table__row-counter" blank
-        rowFunc c
-        divClass "table__cell_size_flex" $
-          viewModButton c
-
-
-viewModButton :: MonadWidget t m => a -> m (Event t a)
-viewModButton c = fmap (const c) <$> viewButton "table__action-button"

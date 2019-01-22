@@ -28,6 +28,7 @@ module Frontend.Foundation
   , LeftmostEv (..)
     -- * Lenses and Prisms
   , makePactLenses
+  , makePactLensesNonClassy
   , makePactPrisms
     -- * Helpers that should really not be here
   , tshow
@@ -96,6 +97,21 @@ makePactLenses =
     ( classyRules
         & generateLazyPatterns .~ True
         & createClass .~ True
+    )
+
+-- | Non classy non simple lenses.
+--
+--   For some reason ( I have not investigated yet ), classy non simple lenses
+--   don't seem to work properly, at least not if the type has parameters.
+--   Therefore if you have a type where you need non simple lenses (lenses that
+--   can change the type), you have to use this function instead of
+--   `makePactLenses`.
+makePactLensesNonClassy :: Name -> DecsQ
+makePactLensesNonClassy = 
+  makeLensesWith 
+    ( lensRules
+        & simpleLenses .~ False
+        & generateLazyPatterns .~ True
     )
 
 -- | Make Prisms in "pact style".

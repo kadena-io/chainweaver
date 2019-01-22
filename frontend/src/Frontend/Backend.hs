@@ -25,6 +25,7 @@ module Frontend.Backend
   , BackendRef
   , backendRefUri
   , backendRefName
+  , textBackendRefName
   , BackendRequest (..)
   , BackendError (..)
   , BackendErrorResult
@@ -111,6 +112,10 @@ backendRefUri = brUri
 backendRefName :: BackendRef -> BackendName
 backendRefName = brName
 
+-- | Shortcut for : `textBackendName . backendRefName`.
+textBackendRefName :: BackendRef -> Text
+textBackendRefName = textBackendName . backendRefName
+
 -- | Request data to be sent to the backend.
 data BackendRequest = BackendRequest
   { _backendRequest_code    :: Text
@@ -164,7 +169,6 @@ data BackendCfg t = BackendCfg
     -- TODO: This should go to `ModuleExplorer`
   , _backendCfg_deployCode :: Event t BackendRequest
     -- ^ Deploy some code to the backend. Response will be logged to `Messages`.
-    -- TODO: Deploy button should actually use this.
   }
   deriving Generic
 
@@ -179,7 +183,7 @@ data Backend t = Backend
     -- ^ All available backends that can be selected.
   , _backend_modules  :: Dynamic t (Map BackendName (Maybe [Text]))
    -- ^ Available modules on all backends. `Nothing` if not loaded yet.
-   -- TODO: This should really go to the `ModuleExplorer`.
+   -- TODO: This should really go to the `ModuleExplorer` or should it?
   , _backend_deployed :: Event t ()
    -- ^ Event gets triggered whenever some code got deployed sucessfully.
   }
@@ -404,7 +408,7 @@ performBackendRequestCustom w unwrap onReq =
 --       someMoreRequest someArg $ cb . (req, res,)
 --
 -- @
-backendRequest :: forall t m
+backendRequest :: forall m
   . (MonadJSM m, HasJSContext m)
   => (KeyPairs, BackendRequest)
   -> (BackendErrorResult -> IO ())
@@ -513,6 +517,13 @@ buildExecPayload req = do
   pure $ object
     [ "nonce" .= nonce
     , "payload" .= object [ "exec" .= payload ]
+    -- TODO: Use proper values for this:
+    , "meta" .= object [ "chainId"  .= ("some-chain" :: Text)
+                       , "sender"   .= ("some-sender" :: Text)
+                       , "gasLimit" .= ("10000" :: Text)
+                       , "gasPrice" .= ("0.0000001" :: Text)
+                       , "fee"      .= ("0.000000001" :: Text)
+                       ]
     ]
 
 -- Response handling ...

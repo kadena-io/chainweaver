@@ -26,6 +26,7 @@ module Frontend.UI.Button
   , uiButton
   , uiButtonDyn
     -- ** Specialized buttons
+  , homeButton
   , backButton
   , copyButton
   , deleteButton
@@ -128,6 +129,11 @@ uiButtonDyn cfg body = do
 backButton :: StaticButtonConstraints t m => m (Event t ())
 backButton = -- uiIcon "fas fa-chevron-left" $ def & iconConfig_size .~ Just IconLG
   uiButton def $ btnIcon (static @"img/left_arrow.svg") "Go back" blank
+
+-- | Button for "going home" action.
+homeButton :: StaticButtonConstraints t m => CssClass -> m (Event t ())
+homeButton cls = -- uiIcon "fas fa-chevron-left" $ def & iconConfig_size .~ Just IconLG
+  uiButton (def & uiButtonCfg_class .~ cls) $ btnIcon (static @"img/double_left_arrow.svg") "Go back" blank
 
 -- | Copies the text content of a given node.
 --

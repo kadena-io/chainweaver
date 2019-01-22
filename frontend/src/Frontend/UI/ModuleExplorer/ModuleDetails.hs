@@ -31,8 +31,9 @@ module Frontend.UI.ModuleExplorer.ModuleDetails where
 
 ------------------------------------------------------------------------------
 import           Control.Lens
+import           Data.Bool                             (bool)
 import           Data.Maybe
-import           Data.Traversable         (for)
+import           Data.Traversable                      (for)
 import           Reflex
 import           Reflex.Dom
 import           Reflex.Network.Extended
@@ -42,6 +43,7 @@ import           Frontend.ModuleExplorer
 import           Frontend.UI.Button
 import           Frontend.UI.Dialogs.CallFunction
 import           Frontend.UI.Modal
+import           Frontend.UI.ModuleExplorer.ModuleList
 ------------------------------------------------------------------------------
 
 type HasUIModuleDetailsModel model t =
@@ -60,34 +62,49 @@ moduleDetails
     , HasUIModuleDetailsModelCfg mConf m t
     )
   => model
-  -> SelectedModule
+  -> (ModuleRef, Module)
   -> m mConf
-moduleDetails m selected = do
+moduleDetails m (selectedRef, selected) = do
     headerCfg <- elClass "div" "segment" $ do
-      (onBack, onLoad) <- elClass "h2" "heading heading_type_h2" $
-        (,) <$> backButton <*> openButton mempty
+      ((onHome, onBack), onLoad) <- elClass "h2" "heading heading_type_h2" $ do
+        hb <- el "div" $
+          (,) <$> homeButton "heading__left-double-button" <*> backButton
+        (hb,) <$> openButton mempty
 
       moduleTitle
       pure $ mempty
-        & moduleExplorerCfg_selModule .~ (Nothing <$ onBack)
-        & moduleExplorerCfg_loadModule .~ (_selectedModule_module selected <$ onLoad)
-    bodyCfg <- elClass "div" "segment" $ do
-      elClass "h3" "heading heading_type_h3" $ text "Functions"
-      mayFunctionList $ _selectedModule_functions selected
-    pure (headerCfg <> bodyCfg)
-  where
-    mayDeployed = selected ^? selectedModule_module . _ModuleSel_Deployed
-    mayFunctionList :: Maybe [PactFunction] -> m mConf
-    mayFunctionList = maybe noFunctions (functionList m mayDeployed)
+        & moduleExplorerCfg_goHome .~ onHome
+        & moduleExplorerCfg_popModule .~  onBack
+        & moduleExplorerCfg_loadModule .~ (selectedRef <$ onLoad)
 
-    noFunctions = do
-      elClass "div" "error" $ text "Error while loading functions."
-      pure mempty
+    bodyCfg1 <-
+      let
+        interfaceRefs = map (ModuleRef (_moduleRef_source selectedRef)) $
+          selected ^. interfacesOfModule
+      in
+        case interfaceRefs of
+          [] -> pure mempty
+          _  -> elClass "div" "segment" $ do
+            elClass "h3" "heading heading_type_h3" $ text "Implemented Interfaces"
+            onSel <- uiModuleList . pure $ interfaceRefs
+            pure $ mempty & moduleExplorerCfg_pushModule .~ onSel
+
+    bodyCfg2 <- elClass "div" "segment" $ do
+      elClass "h3" "heading heading_type_h3" $ text "Functions"
+      mkFunctionList $ functionsOfModule selected
+    pure (headerCfg <> bodyCfg1 <> bodyCfg2)
+
+  where
+    mkFunctionList :: [PactFunction] -> m mConf
+    mkFunctionList = functionList m $
+      if isModule selected
+         then getDeployedModuleRef selectedRef
+         else Nothing
 
     moduleTitle = elClass "h2" "heading heading_type_h2" $ do
-      text $ selectedModuleName selected
-      elClass "div" "heading__type-details" $
-        text $ showSelectedModuleType selected
+      text $ textModuleName $ _moduleRef_name selectedRef
+      elClass "div" "heading__type-details" $ do
+        text $ textModuleRefSource (isModule selected) selectedRef
 
 
 functionList
@@ -95,8 +112,8 @@ functionList
   .  ( MonadWidget t m, HasUIModuleDetailsModelCfg mConf m t
      , HasUIModuleDetailsModel model t
      )
-  => model -> Maybe DeployedModule -> [PactFunction] -> m mConf
-functionList m moduleL functions =
+  => model -> Maybe DeployedModuleRef -> [PactFunction] -> m mConf
+functionList m mDeployed functions =
     elClass "ol" "table table_type_primary" $ do
       onView <- fmap leftmost . for functions $ \f ->
         elClass "li" "table__row table__row_type_primary" $ do
@@ -104,8 +121,9 @@ functionList m moduleL functions =
             text $ _pactFunction_name f
           divClass "table__text-cell table__cell_size_double-main description" $
             text $ fromMaybe "" $ _pactFunction_documentation f
-          divClass "table__cell_size_flex" $ do
+          divClass "table__cell_size_flex table__last-cell" $ do
             let btnCls = "table__action-button"
-            fmap (const f) <$> maybe (viewButton btnCls) (const $ callButton btnCls) moduleL
-      pure $ mempty & modalCfg_setModal .~ (Just . uiCallFunction m moduleL <$> onView)
+            let isDeployed = isJust mDeployed
+            fmap (const f) <$> bool (viewButton btnCls) (callButton btnCls) isDeployed
+      pure $ mempty & modalCfg_setModal .~ (Just . uiCallFunction m mDeployed <$> onView)
 
