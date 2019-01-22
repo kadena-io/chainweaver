@@ -150,7 +150,7 @@ data BackendError
   | BackendError_ResultFailure PactError PactDetail
   -- ^ The status in the /listen result object was `failure`.
   | BackendError_ResultFailureText Text
--- ^ The the /listen result object was actually just an error message string
+  -- ^ The the /listen result object was actually just an error message string
   | BackendError_Other Text
   -- ^ Other errors that should really never happen.
   deriving Show
