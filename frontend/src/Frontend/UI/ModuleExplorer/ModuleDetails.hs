@@ -47,15 +47,22 @@ import           Frontend.UI.Modal
 import           Frontend.UI.ModuleExplorer.ModuleList
 ------------------------------------------------------------------------------
 
+-- | Constraints on the `Model` we have for our details screen.
 type HasUIModuleDetailsModel model t =
   (HasModuleExplorer model t, HasBackend model t, HasUICallFunctionModel model t)
 
+-- | Constraints on the model config we have for implementing this screen.
 type HasUIModuleDetailsModelCfg mConf m t =
-  ( Monoid mConf, Flattenable mConf t, HasModuleExplorerCfg mConf t, HasBackendCfg mConf t
+  ( Monoid mConf, Flattenable mConf t, HasModuleExplorerCfg mConf t
+  , HasBackendCfg mConf t
   , HasModalCfg mConf (Modal mConf m t) t
   , HasUICallFunctionModelCfg (ModalCfg mConf t) t
   )
 
+-- | Details screen for a Module/Interface
+--
+--   User can see and call the module's function and browse implemented
+--   interfaces and used modules.
 moduleDetails
   :: forall t m model mConf
   . ( MonadWidget t m
@@ -112,7 +119,6 @@ moduleDetails m (selectedRef, selected) = do
             elClass "h3" "heading heading_type_h3" $ text n
             onSel <- uiModuleList . pure $ refs
             pure $ mempty & moduleExplorerCfg_pushModule .~ onSel
-
 
 functionList
   :: forall t m mConf model
