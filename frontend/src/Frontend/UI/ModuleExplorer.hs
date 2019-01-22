@@ -84,21 +84,7 @@ moduleExplorer m = do
 
     animatedDiv c = do
       let growth = m ^. moduleExplorer_selectionGrowth
-      {- cGrowth <- sample $ current growth -}
       elDynClass "div" (mkAnimationCls <$> growth) $ c
-
-    {- animatedDiv c = do -}
-    {-   onGrowthLogic <- updated <$> moduleExplorer_selectionGrowth m -}
-    {-   delayedGrowth <- delay 0 $ onGrowthLogic -}
-    {-   -- Make sure animation is actually working: -}
-    {-   growthUI <- holdDyn EQ $ leftmost [ EQ <$ onGrowthLogic, delayedGrowth ] -}
-    {-   (e, r) <- elDynClass' "div" (mkAnimationCls <$> growthUI) $ c -}
-    {-   performEvent $ forceAnimation (_element_raw e) <$ leftmost [delayedGrowth, onGrowthLogic] -}
-    {-   pure r -}
-
-    forceAnimation e = liftJSM $ do
-      -- Somehow forces the browser to actually set the value and execute the animation.
-      void $ e JS.! "offsetWidth"
 
     mkAnimationCls = \case
       LT -> "fly-in fly-in_from_left"
