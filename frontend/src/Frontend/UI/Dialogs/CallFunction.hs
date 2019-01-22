@@ -216,7 +216,10 @@ funTypeInput json = \case
     TyPrim TyBool -> mkCheckbox False
     TyPrim TyString -> mkTextInput
     TyPrim (TyGuard (Just GTyKeySet)) -> keysetSelector json
-    _ -> mkTextArea ""
+    _ -> do
+      r <- mkTextArea ""
+      text "Note: Strings must be quoted."
+      pure r
   where
     mkTextInput :: m (Dynamic t Text)
     mkTextInput = fmap (surroundWith "\"" . T.dropAround (=='\"')) <$> mkInput "text" ""
