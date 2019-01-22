@@ -1,0 +1,37 @@
+;;
+;; A little example showing off the merits of formal
+;; verification and why it pays off.
+;;
+
+;;---------------------------------
+;;
+;;  Create an 'admin-keyset' and add some key, for loading this contract!
+;;
+;;  Make sure the message is signed with this added key as well.
+;;
+;;---------------------------------
+
+
+;; Keysets cannot be created in code, thus we read them in
+;; from the load message data.
+(define-keyset 'admin-keyset (read-keyset "admin-keyset"))
+
+;; Define the module.
+(module verification 'admin-keyset
+  @doc "Little example to show off the usefulness of formal verification."
+
+  (defun absBug:integer (num:integer)
+     @doc "Ensure positive result"
+     ;; This property fails, tell me: would you have caught that with unit tests?
+     @model [(property (>= result 0))]
+     (if (= (- (* (- num 6) (+ num 11)) (* 42 num)) (* (* 64 7) 52270780833))
+         (- 1)
+         (abs num)
+     )
+   )
+ )
+ 
+ 
+ 
+ 
+ 
