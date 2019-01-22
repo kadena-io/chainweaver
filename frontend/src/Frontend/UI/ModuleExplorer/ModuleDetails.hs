@@ -37,6 +37,7 @@ import           Data.Traversable                      (for)
 import           Reflex
 import           Reflex.Dom
 import           Reflex.Network.Extended
+import           Data.Text (Text)
 ------------------------------------------------------------------------------
 import           Frontend.Backend
 import           Frontend.ModuleExplorer
@@ -77,22 +78,16 @@ moduleDetails m (selectedRef, selected) = do
         & moduleExplorerCfg_popModule .~  onBack
         & moduleExplorerCfg_loadModule .~ (selectedRef <$ onLoad)
 
-    bodyCfg1 <-
-      let
-        interfaceRefs = map (ModuleRef (_moduleRef_source selectedRef)) $
-          selected ^. interfacesOfModule
-      in
-        case interfaceRefs of
-          [] -> pure mempty
-          _  -> elClass "div" "segment" $ do
-            elClass "h3" "heading heading_type_h3" $ text "Implemented Interfaces"
-            onSel <- uiModuleList . pure $ interfaceRefs
-            pure $ mempty & moduleExplorerCfg_pushModule .~ onSel
+    bodyCfg1 <- showDeps "Implemented Interfaces" $
+      selected ^. interfacesOfModule
 
-    bodyCfg2 <- elClass "div" "segment" $ do
+    bodyCfg2 <- showDeps "Used Modules" $
+      selected ^. importNamesOfModule
+
+    bodyCfg3 <- elClass "div" "segment" $ do
       elClass "h3" "heading heading_type_h3" $ text "Functions"
       mkFunctionList $ functionsOfModule selected
-    pure (headerCfg <> bodyCfg1 <> bodyCfg2)
+    pure (headerCfg <> bodyCfg1 <> bodyCfg2 <> bodyCfg3)
 
   where
     mkFunctionList :: [PactFunction] -> m mConf
@@ -105,6 +100,18 @@ moduleDetails m (selectedRef, selected) = do
       text $ textModuleName $ _moduleRef_name selectedRef
       elClass "div" "heading__type-details" $ do
         text $ textModuleRefSource (isModule selected) selectedRef
+
+    showDeps :: Text -> [ModuleName] -> m mConf
+    showDeps n deps =
+      let
+        refs = map (ModuleRef (_moduleRef_source selectedRef)) deps
+      in
+        case refs of
+          [] -> pure mempty
+          _  -> elClass "div" "segment" $ do
+            elClass "h3" "heading heading_type_h3" $ text n
+            onSel <- uiModuleList . pure $ refs
+            pure $ mempty & moduleExplorerCfg_pushModule .~ onSel
 
 
 functionList
