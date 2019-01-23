@@ -15,7 +15,7 @@
 -- | Pact types adjusted to work with ghcjs.
 --
 --   This module is used for interfacing with the Pact server. On ghc it just
---   re-exports Pact modules, on ghcjs if provides compatible definitions for
+--   re-exports Pact modules, on ghcjs it provides compatible definitions for
 --   used types.
 module Frontend.Backend.Pact
   ( RequestKey
