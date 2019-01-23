@@ -54,6 +54,7 @@ import           Data.Aeson                        (FromJSON (..), Object,
                                                     withObject, (.:), (.=))
 import           Data.Aeson.Types                  (parseMaybe, typeMismatch)
 import qualified Data.ByteString.Lazy              as BSL
+import           Data.Coerce                       (coerce)
 import           Data.Default                      (def)
 import qualified Data.HashMap.Strict               as H
 import qualified Data.Map                          as Map
@@ -69,7 +70,6 @@ import           Generics.Deriving.Monoid          (mappenddefault,
 import           Reflex.Dom.Class
 import           Reflex.Dom.Xhr
 import           Reflex.NotReady.Class
-import Data.Coerce (coerce)
 
 import           Language.Javascript.JSaddle.Monad (JSContextRef, JSM, askJSM)
 
@@ -78,8 +78,8 @@ import           Common.Route                      (pactServerListPath)
 import           Frontend.Backend.Pact
 import           Frontend.Crypto.Ed25519
 import           Frontend.Foundation
-import           Frontend.Wallet
 import           Frontend.Messages
+import           Frontend.Wallet
 
 -- | URI for accessing a backend.
 type BackendUri = Text
@@ -160,14 +160,12 @@ type BackendErrorResult = Either BackendError Value
 
 -- | Config for creating a `Backend`.
 data BackendCfg t = BackendCfg
-  -- , _backendCfg_send       :: Event t BackendRequest
-    -- ^ Send a request to the currently selected backend.
   { _backendCfg_refreshModule :: Event t ()
     -- ^ We are unfortunately not notified by the pact backend when new
     -- contracts appear on the blockchain, so UI code needs to request a
     -- refresh at appropriate times.
     -- TODO: This should go to `ModuleExplorer`
-  , _backendCfg_deployCode :: Event t BackendRequest
+  , _backendCfg_deployCode    :: Event t BackendRequest
     -- ^ Deploy some code to the backend. Response will be logged to `Messages`.
   }
   deriving Generic

@@ -87,7 +87,7 @@ data Annotation = Annotation
 -- | Configuration for the `Editor`.
 data EditorCfg t = EditorCfg
   { _editorCfg_setCode :: Event t Text
-    -- * Set the source code/text of the editor.
+    -- ^ Set the source code/text of the editor.
   }
   deriving Generic
 
