@@ -249,7 +249,7 @@ initRepl
   . (HasReplModel model t, MonadIO m, Reflex t, MonadSample t m)
   => Impl t -> model -> Maybe (Map BackendName BackendRef) -> m (ReplState)
 initRepl oldImpl m mBackends = do
-  r <- mkState m mBackends
+  r <- mkState mBackends
   let initImpl = oldImpl { _impl_state = pure r } -- Const dyn so we can use `withRepl` for initialization - gets dropped afterwards.
   env  <- sample . current $ either (const HM.empty) id <$> m ^. jsonData_data
   keys <- sample . current $ Map.elems <$> m ^. wallet_keys
@@ -259,10 +259,10 @@ initRepl oldImpl m mBackends = do
 
 -- | Create a brand new Repl state:
 mkState
-  :: forall t m model
-  . (HasBackend model t, MonadIO m, Reflex t)
-  => model -> Maybe (Map BackendName BackendRef) -> m ReplState
-mkState m uBackends = do
+  :: forall m
+  . (MonadIO m)
+  => Maybe (Map BackendName BackendRef) -> m ReplState
+mkState uBackends = do
     let minBackend = getMinBackend uBackends
     liftIO $ initReplState StringEval $ minBackend
   where
