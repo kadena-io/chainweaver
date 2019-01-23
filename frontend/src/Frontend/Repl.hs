@@ -163,9 +163,13 @@ makeRepl m cfg = build $ \ ~(_, impl) -> do
     -- Dummy state, that gets never used, so we avoid a pointless `Maybe` or
     -- sampling, which could trigger a loop:
     initState <- liftIO $ initReplState StringEval Nothing
-    onResetSt <- performEvent $ initRepl impl m <$ leftmost
-      [ cfg ^. replCfg_reset
-      , onPostBuild
+    onResetSt <- performEvent $ initRepl impl m <$> leftmost
+      [ tagPromptlyDyn (m ^. backend_backends) $ cfg ^. replCfg_reset
+      , tagPromptlyDyn (m ^. backend_backends) $ onPostBuild
+       -- We are losing our state if backends update, luckily that only happens
+       -- once on start up - and we want that update, because it is going to be
+       -- the first `Just` value:
+      , updated $ m ^. backend_backends
       ]
 
     let envData = either (const HM.empty) id <$> m ^. jsonData_data
@@ -191,7 +195,7 @@ makeRepl m cfg = build $ \ ~(_, impl) -> do
       onNewTransSuccess :: Event t TransactionSuccess
       onNewTransSuccess = fmapMaybe (^? _Right) onNewTransResult
 
-      onNewTransSt     = fmap snd onNewTransR
+      onNewTransSt   = fmap snd onNewTransR
       onNewCmdResult = fmap fst onNewCmdR
       onNewCmdSt     = fmap snd onNewCmdR
       onVerifySt     = fmap snd onVerifyR
@@ -243,10 +247,10 @@ makeRepl m cfg = build $ \ ~(_, impl) -> do
 initRepl
   :: forall t m model
   . (HasReplModel model t, MonadIO m, Reflex t, MonadSample t m)
-  => Impl t -> model -> m (ReplState)
-initRepl oldImpl m = do
-  r <- mkState m
-  let initImpl = oldImpl { _impl_state = pure r }
+  => Impl t -> model -> Maybe (Map BackendName BackendRef) -> m (ReplState)
+initRepl oldImpl m mBackends = do
+  r <- mkState m mBackends
+  let initImpl = oldImpl { _impl_state = pure r } -- Const dyn so we can use `withRepl` for initialization - gets dropped afterwards.
   env  <- sample . current $ either (const HM.empty) id <$> m ^. jsonData_data
   keys <- sample . current $ Map.elems <$> m ^. wallet_keys
   fmap snd . withRepl initImpl $ do
@@ -256,17 +260,15 @@ initRepl oldImpl m = do
 -- | Create a brand new Repl state:
 mkState
   :: forall t m model
-  . (HasBackend model t, MonadIO m, Reflex t, MonadSample t m)
-  => model -> m ReplState
-mkState m = do
-  let
-    backends = m ^. backend_backends
-    minBackend = ffor backends $ \maybeBackends -> do
+  . (HasBackend model t, MonadIO m, Reflex t)
+  => model -> Maybe (Map BackendName BackendRef) -> m ReplState
+mkState m uBackends = do
+    let minBackend = getMinBackend uBackends
+    liftIO $ initReplState StringEval $ minBackend
+  where
+    getMinBackend maybeBackends = do
       (_key, b) <- Map.lookupMin =<< maybeBackends
       pure (T.unpack $ backendRefUri b)
-  cMinBackend <- sample . current $ minBackend
-  liftIO $ initReplState StringEval cMinBackend
-
 
 -- | Set env-data to the given Object
 setEnvData :: Object -> PactRepl (Term Name)
