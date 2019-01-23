@@ -84,7 +84,7 @@ browseExamples
     )
   => m mConf
 browseExamples =
-  accordionItem True "segment" "Example Files" $ do
+  accordionItem True "segment" "Examples" $ do
     let showExample c = do
           divClass "table__text-cell table__cell_size_main" $
             text $ exampleName c
@@ -113,7 +113,7 @@ browseDeployedTitle
 browseDeployedTitle m = do
   let
     title = elClass "span" "deployed-contracts-accordion" $ do
-      el "span" $ text "Deployed Modules"
+      el "span" $ text "Deployed Contracts"
       refreshButton "accordion__title-button"
   (onRefrClick, (mListCfg, onSelected)) <-
     accordionItem' True "segment" title $
