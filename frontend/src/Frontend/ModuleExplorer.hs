@@ -39,27 +39,29 @@ module Frontend.ModuleExplorer
   , module Example
   , module Module
   , module File
+  , module ModuleList
   -- ** Auxiliary Types
   , TransactionInfo (..)
   ) where
 
 ------------------------------------------------------------------------------
 import           Control.Lens
-import           Data.Set                          (Set)
-import           Data.Text                         (Text)
-import           Generics.Deriving.Monoid          (mappenddefault,
-                                                    memptydefault)
-import           GHC.Generics                      (Generic)
+import           Data.Set                           (Set)
+import           Data.Text                          (Text)
+import           Generics.Deriving.Monoid           (mappenddefault,
+                                                     memptydefault)
+import           GHC.Generics                       (Generic)
 import           Reflex
 ------------------------------------------------------------------------------
-import           Pact.Types.Lang                   (ModuleName)
+import           Pact.Types.Lang                    (ModuleName)
 ------------------------------------------------------------------------------
 import           Frontend.Backend
 import           Frontend.Foundation
-import           Frontend.ModuleExplorer.Example   as Example
-import           Frontend.ModuleExplorer.File      as File
-import           Frontend.ModuleExplorer.Module    as Module
-import           Frontend.ModuleExplorer.ModuleRef as Module
+import           Frontend.ModuleExplorer.Example    as Example
+import           Frontend.ModuleExplorer.File       as File
+import           Frontend.ModuleExplorer.Module     as Module
+import           Frontend.ModuleExplorer.ModuleList as ModuleList
+import           Frontend.ModuleExplorer.ModuleRef  as Module
 import           Frontend.Wallet
 
 -- | Data needed to send transactions to the server.
@@ -92,6 +94,8 @@ data ModuleExplorerCfg t = ModuleExplorerCfg
     -- ^ Deploy code that is currently in `Editor`.
   , _moduleExplorerCfg_deployCode   :: Event t (Text, TransactionInfo)
     -- ^ Deploy given Pact code, usually a function call.
+  , _moduleExplorerCfg_modules   :: ModuleListCfg t
+    -- ^ Configuration for the deployed module list.
   }
   deriving Generic
 
@@ -99,15 +103,16 @@ makePactLenses ''ModuleExplorerCfg
 
 -- | Current ModuleExploer state.
 data ModuleExplorer t = ModuleExplorer
-  { _moduleExplorer_moduleStack  :: Dynamic t [(ModuleRef, Module)]
-  -- ^ The stack of currently selected modules.
-  , _moduleExplorer_selectedFile :: MDynamic t (FileRef, PactFile)
-  -- ^ The currently selected file if any.
+  { _moduleExplorer_moduleStack     :: Dynamic t [(ModuleRef, Module)]
+    -- ^ The stack of currently selected modules.
+  , _moduleExplorer_selectedFile    :: MDynamic t (FileRef, PactFile)
+    -- ^ The currently selected file if any.
   , _moduleExplorer_selectionGrowth :: Dynamic t Ordering
-  -- ^ Whether the stack is currently growing/shrinking.
-  , _moduleExplorer_loaded       :: MDynamic t ModuleSource
-  -- ^ Where did the data come from that got loaded last into the `Editor`?
-  {- , _moduleExplorer_deployedModules :: Dynamic t (Map BackendName (Maybe [Text])) -}
+    -- ^ Whether the stack is currently growing/shrinking.
+  , _moduleExplorer_loaded          :: MDynamic t ModuleSource
+    -- ^ Where did the data come from that got loaded last into the `Editor`?
+  , _moduleExplorer_modules         :: ModuleList t
+    -- ^ List of deployed modules, with user given filters applied.
   }
   deriving Generic
 
@@ -153,3 +158,4 @@ instance Flattenable (ModuleExplorerCfg t) t where
       <*> doSwitch never (_moduleExplorerCfg_loadFile <$> ev)
       <*> doSwitch never (_moduleExplorerCfg_deployEditor <$> ev)
       <*> doSwitch never (_moduleExplorerCfg_deployCode <$> ev)
+      <*> flattenWith doSwitch (_moduleExplorerCfg_modules <$> ev)

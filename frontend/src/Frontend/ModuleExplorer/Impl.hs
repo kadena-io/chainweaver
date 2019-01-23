@@ -109,6 +109,8 @@ makeModuleExplorer m cfg = mfix $ \ ~(_, explr) -> do
 
     growth <- mkSelectionGrowth explr
 
+    modules <- makeModuleList m (cfg ^. moduleExplorerCfg_modules)
+
     pure
       ( mconcat [ lFileCfg, stckCfg, deployEdCfg, deployCodeCfg ]
       , ModuleExplorer
@@ -116,6 +118,7 @@ makeModuleExplorer m cfg = mfix $ \ ~(_, explr) -> do
         , _moduleExplorer_selectedFile = selectedFile
         , _moduleExplorer_loaded = loadedSource
         , _moduleExplorer_selectionGrowth = growth
+        , _moduleExplorer_modules = modules
         }
       )
 

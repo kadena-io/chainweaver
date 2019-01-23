@@ -244,9 +244,9 @@ accordionItem initActive contentClass title inner =
 paginationWidget
   :: MonadWidget t m
   => CssClass
-  -> Dynamic t Int  -- ^ Current page
-  -> Dynamic t Int  -- ^ Total number of pages
-  -> m (Event t Int)
+  -> Dynamic t Word  -- ^ Current page
+  -> Dynamic t Word  -- ^ Total number of pages
+  -> m (Event t Word)
 paginationWidget cls currentPage totalPages = elKlass "div" (cls <> "pagination") $ do
     let
       pageButton okay i = do
