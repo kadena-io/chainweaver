@@ -1,4 +1,3 @@
 pact-web:
   script:
     - nix-build
-    - nix-build --argstr system x86_64-linux
