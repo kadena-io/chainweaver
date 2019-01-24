@@ -50,8 +50,8 @@ import           Control.Lens                      hiding ((.=))
 import           Control.Monad.Except
 import           Data.Aeson                        (FromJSON (..), Object,
                                                     Value (..), eitherDecode,
-                                                    encode, object, toJSON,
-                                                    withObject, (.:), (.=))
+                                                    encode, object, withObject,
+                                                    (.:), (.=))
 import           Data.Aeson.Types                  (parseMaybe, typeMismatch)
 import qualified Data.ByteString.Lazy              as BSL
 import           Data.Coerce                       (coerce)
@@ -70,6 +70,8 @@ import           Generics.Deriving.Monoid          (mappenddefault,
 import           Language.Javascript.JSaddle.Monad (JSContextRef, JSM, askJSM)
 import           Pact.Types.API
 import           Pact.Types.Command
+import           Pact.Types.Crypto                 (PPKScheme(..))
+import           Pact.Types.RPC
 import           Reflex.Dom.Class
 import           Reflex.Dom.Xhr
 import           Reflex.NotReady.Class
@@ -506,12 +508,10 @@ buildListenXhrRequest uri key = do
     & xhrRequestConfig_sendData .~ encodeAsText (encode $ object [ "listen" .= key ])
 
 -- | Build payload as expected by /send endpoint.
-buildSendPayload :: (MonadIO m, MonadJSM m) => PublicMeta -> KeyPairs -> Set KeyName -> BackendRequest -> m Value
-buildSendPayload meta keys signing req = do
+buildSendPayload :: (MonadIO m, MonadJSM m) => KeyPairs -> Set KeyName -> BackendRequest -> m SubmitBatch
+buildSendPayload keys signing req = do
   cmd <- buildCmd meta keys signing req
-  pure $ object
-    [ "cmds" .= [ cmd ]
-    ]
+  pure $ SubmitBatch [ cmd ]
 
 -- | Build a single cmd as expected in the `cmds` array of the /send payload.
 --
@@ -522,14 +522,14 @@ buildCmd meta keys signing req = do
   let
     cmdHash = hash (T.encodeUtf8 cmd)
   sigs <- buildSigs cmdHash keys signing
-  pure $ object
-    [ "hash" .= cmdHash
-    , "sigs" .= sigs
-    , "cmd"  .= cmd
-    ]
+  pure $ Pact.Types.Command.Command
+    { _cmdPayload = cmd
+    , _cmdSigs = sigs
+    , _cmdHash = cmdHash
+    }
 
 -- | Build signatures for a single `cmd`.
-buildSigs :: MonadJSM m => Hash -> KeyPairs -> Set KeyName -> m Value
+buildSigs :: MonadJSM m => Hash -> KeyPairs -> Set KeyName -> m [UserSig]
 buildSigs cmdHash keys signing = do
   let
     -- isJust filter is necessary so indices are guaranteed stable even after
@@ -542,12 +542,9 @@ buildSigs cmdHash keys signing = do
   sigs <- traverse (mkSignature (unHash cmdHash)) signingKeys
 
   let
-    mkSigPubKey :: KeyPair -> Signature -> Value
-    mkSigPubKey kp sig = object
-      [ "sig" .= sig
-      , "pubKey" .= _keyPair_publicKey kp
-      ]
-  pure . toJSON $ zipWith mkSigPubKey (map snd signingPairs) sigs
+    mkSigPubKey :: KeyPair -> Signature -> UserSig
+    mkSigPubKey kp sig = UserSig ED25519 (keyToText sig) (keyToText $ _keyPair_publicKey kp)
+  pure $ zipWith mkSigPubKey (map snd signingPairs) sigs
 
 
 -- | Build exec `cmd` payload.
@@ -558,16 +555,15 @@ buildExecPayload :: MonadIO m => PublicMeta -> BackendRequest -> m Value
 buildExecPayload meta req = do
   nonce <- getNonce
   let
-    payload = object
-      [ "code" .= _backendRequest_code req
-      , "data" .= _backendRequest_data req
-      ]
-  pure $ object
-    [ "nonce" .= nonce
-    , "payload" .= object [ "exec" .= payload ]
-    -- TODO: Use proper values for this:
-    , "meta" .= meta
-    ]
+    payload = ExecMsg
+      { _pmCode = _backendRequest_code req
+      , _pmData = Object $ _backendRequest_data req
+      }
+  pure $ Payload
+    { _pPayload = Exec payload
+    , _pNonce = nonce
+    , _pMeta = meta
+    }
 
 -- Response handling ...
 
