@@ -74,6 +74,13 @@ in
 
             intervals = pkgs.haskell.lib.dontCheck super.intervals;
 
+            servant-reflex = self.callCabal2nix "servant-reflex" (pkgs.fetchFromGitHub {
+              owner = "imalsogreg";
+              repo = "servant-reflex";
+              rev = "6c78eb8409701c7ca89f6540c2c4c9aa8a3624bb";
+              sha256 = "0xhsyrv1dwy6xs0wakscm7pnfpphm2bg879n37ndgfb0kim5npiv";
+            }) {};
+
             pact = pkgs.haskell.lib.overrideCabal super.pact (drv: {
               testSystemDepends = (drv.testSystemDepends or []) ++ [ pkgs.z3 ];
               doCheck = false;

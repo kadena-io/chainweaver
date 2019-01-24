@@ -43,6 +43,9 @@ library
                , reflex-dom-ace
                , reflex-dom-contrib
                , safe
+               , servant
+               , servant-client
+               , servant-reflex
                , string-qq
                , template-haskell
                , text
@@ -56,6 +59,7 @@ library
 
   exposed-modules: Frontend
                  , Frontend.Backend
+                 , Frontend.Backend.Client
                  , Frontend.Backend.Pact
                  , Frontend.Crypto.Ed25519
                  , Frontend.Editor

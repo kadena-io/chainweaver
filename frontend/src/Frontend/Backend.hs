@@ -68,6 +68,8 @@ import           Data.Time.Clock                   (getCurrentTime)
 import           Generics.Deriving.Monoid          (mappenddefault,
                                                     memptydefault)
 import           Language.Javascript.JSaddle.Monad (JSContextRef, JSM, askJSM)
+import           Pact.Types.API
+import           Pact.Types.Command
 import           Reflex.Dom.Class
 import           Reflex.Dom.Xhr
 import           Reflex.NotReady.Class
