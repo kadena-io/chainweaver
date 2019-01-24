@@ -58,7 +58,6 @@ in
         silently = haskellLib.dontCheck super.silently;
         servant = haskellLib.dontCheck super.servant;
         servant-client = haskellLib.dontCheck super.servant-client;
-        servant-server = haskellLib.dontCheck super.servant-server;
         unix-time = haskellLib.dontCheck super.unix-time;
         wai-app-static = haskellLib.dontCheck super.wai-app-static;
         wai-extra = haskellLib.dontCheck super.wai-extra;
