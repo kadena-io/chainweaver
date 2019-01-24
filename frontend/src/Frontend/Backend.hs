@@ -1,4 +1,5 @@
 {-# LANGUAGE ConstraintKinds            #-}
+{-# LANGUAGE CPP                        #-}
 {-# LANGUAGE DeriveGeneric              #-}
 {-# LANGUAGE FlexibleContexts           #-}
 {-# LANGUAGE FlexibleInstances          #-}
@@ -69,8 +70,10 @@ import           Generics.Deriving.Monoid          (mappenddefault,
                                                     memptydefault)
 import           Language.Javascript.JSaddle.Monad (JSContextRef, JSM, askJSM)
 import           Pact.Types.API
-import           Pact.Types.Command
+#if !defined(ghcjs_HOST_OS)
 import           Pact.Types.Crypto                 (PPKScheme(..))
+#endif
+import           Pact.Types.Command
 import           Pact.Types.RPC
 import           Reflex.Dom.Class
 import           Reflex.Dom.Xhr
@@ -82,6 +85,7 @@ import           Pact.Types.Command                (PublicMeta (..))
 
 import           Common.Api
 import           Common.Route                      (pactServerListPath)
+import           Frontend.Backend.Client
 import           Frontend.Backend.Pact
 import           Frontend.Crypto.Ed25519
 import           Frontend.Foundation
