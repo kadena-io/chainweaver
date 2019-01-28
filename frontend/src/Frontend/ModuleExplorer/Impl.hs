@@ -84,6 +84,7 @@ makeModuleExplorer
     {- , HasModuleExplorerModel model t -}
     , HasModuleExplorerModelCfg mConf t
     , HasModuleExplorerModel model t
+    , MonadSample t (Performable m)
     )
   => model
   -> cfg
@@ -94,7 +95,7 @@ makeModuleExplorer m cfg = mfix $ \ ~(_, explr) -> do
       (leftmost [cfg ^. moduleExplorerCfg_selectFile, Nothing <$ cfg ^. moduleExplorerCfg_goHome])
 
     onInitFile <- fmap (const $ FileRef_Example ExampleRef_HelloWorld) <$> getPostBuild
-    (lFileCfg, loadedSource) <- loadToEditor
+    (lFileCfg, loadedSource) <- loadToEditor m
       (leftmost [cfg ^. moduleExplorerCfg_loadFile, onInitFile])
       (cfg ^. moduleExplorerCfg_loadModule)
 
@@ -208,14 +209,17 @@ deployCode m onDeploy =
 
 -- | Takes care of loading a file/module into the editor.
 loadToEditor
-  :: forall m t mConf
+  :: forall m t mConf model
   . ( ReflexConstraints t m
     , HasModuleExplorerModelCfg  mConf t
+    , MonadSample t (Performable m)
+    , HasBackend model t
     )
-  => Event t FileRef
+  => model
+  -> Event t FileRef
   -> Event t ModuleRef
   -> m (mConf, MDynamic t ModuleSource)
-loadToEditor onFileRef onModRef = do
+loadToEditor m onFileRef onModRef = do
   let onFileModRef = fmapMaybe getFileModuleRef onModRef
 
   onFile <- fetchFile $ leftmost
@@ -224,7 +228,7 @@ loadToEditor onFileRef onModRef = do
     ]
   let onFetchedFileRef = fst <$> onFile
 
-  (modCfg, onMod)  <- loadModule $ fmapMaybe getDeployedModuleRef onModRef
+  (modCfg, onMod)  <- loadModule m $ fmapMaybe getDeployedModuleRef onModRef
   let onFetchedModRef = _moduleRef_source . fst <$> onMod
 
   loaded <- holdDyn Nothing $ Just <$> leftmost
@@ -294,6 +298,7 @@ pushPopModule
   :: forall m t mConf model
   . ( MonadHold t m, PerformEvent t m, MonadJSM (Performable m)
     , HasJSContext (Performable m), TriggerEvent t m, MonadFix m, PostBuild t m
+    , MonadSample t (Performable m)
     , HasMessagesCfg  mConf t, Monoid mConf
     , HasBackend model t
     )
@@ -307,7 +312,7 @@ pushPopModule m explr onClear onPush onPop = mdo
     let onFileModRef = fmapMaybe getFileModuleRef onPush
     onFileModule <- waitForFile (explr ^. moduleExplorer_selectedFile) onFileModRef
 
-    (lCfg, onDeployedModule) <- loadModule $ fmapMaybe getDeployedModuleRef onPush
+    (lCfg, onDeployedModule) <- loadModule m $ fmapMaybe getDeployedModuleRef onPush
 
     stack <- holdUniqDyn <=< foldDyn id [] $ leftmost
       [ (:) . (_1 . moduleRef_source %~ ModuleSource_File) <$> onFileModule
@@ -350,7 +355,7 @@ pushPopModule m explr onClear onPush onPop = mdo
     refreshHead :: Event t [(ModuleRef, Module)] -> m (mConf, Event t (ModuleRef, Module))
     refreshHead onMods = do
       let getHeadRef = getDeployedModuleRef <=< fmap fst . listToMaybe
-      (cfg, onDeployed) <- loadModule $ fmapMaybe getHeadRef onMods
+      (cfg, onDeployed) <- loadModule m $ fmapMaybe getHeadRef onMods
       pure $ (cfg, (_1 . moduleRef_source %~ ModuleSource_Deployed) <$> onDeployed)
 
 
@@ -358,14 +363,17 @@ pushPopModule m explr onClear onPush onPop = mdo
 --
 --   Loading errors will be reported to `Messages`.
 loadModule
-  :: forall m t mConf
+  :: forall m t mConf model
   . ( ReflexConstraints t m
     , Monoid mConf, HasMessagesCfg mConf t
+    , MonadSample t (Performable m)
+    , HasBackend model t
     )
-  => Event t DeployedModuleRef
+  => model
+  -> Event t DeployedModuleRef
   -> m (mConf, Event t (DeployedModuleRef, Module))
-loadModule onRef = do
-  onErrModule <- fetchModule onRef
+loadModule backendL onRef = do
+  onErrModule <- fetchModule backendL onRef
   let
     onErr    = fmapMaybe (^? _2 . _Left) onErrModule
     onModule = fmapMaybe (traverse (^? _Right)) onErrModule

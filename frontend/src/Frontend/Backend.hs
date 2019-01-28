@@ -67,11 +67,14 @@ import qualified Data.Text.Encoding                as T
 import           Data.Time.Clock                   (getCurrentTime)
 import           Generics.Deriving.Monoid          (mappenddefault,
                                                     memptydefault)
+import           Language.Javascript.JSaddle.Monad (JSContextRef, JSM, askJSM)
 import           Reflex.Dom.Class
 import           Reflex.Dom.Xhr
 import           Reflex.NotReady.Class
 
-import           Language.Javascript.JSaddle.Monad (JSContextRef, JSM, askJSM)
+import           Pact.Parse                        (ParsedDecimal (..),
+                                                    ParsedInteger (..))
+import           Pact.Types.Command                (PublicMeta (..))
 
 import           Common.Api
 import           Common.Route                      (pactServerListPath)
@@ -167,6 +170,13 @@ data BackendCfg t = BackendCfg
     -- TODO: This should go to `ModuleExplorer`
   , _backendCfg_deployCode    :: Event t BackendRequest
     -- ^ Deploy some code to the backend. Response will be logged to `Messages`.
+  , _backendCfg_setChainId    :: Event t Text
+    -- ^ On what chain to deploy to (ignored on pact -s backend).
+  , _backendCfg_setGasLimit   :: Event t ParsedInteger
+    -- ^ Maximun amount of gas to use for this transaction.
+  , _backendCfg_setGasPrice   :: Event t ParsedDecimal
+    -- ^ Maximum gas price you are willing to accept for having your
+    -- transaction executed.
   }
   deriving Generic
 
@@ -184,6 +194,9 @@ data Backend t = Backend
    -- TODO: This should really go to the `ModuleExplorer` or should it?
   , _backend_deployed :: Event t ()
    -- ^ Event gets triggered whenever some code got deployed sucessfully.
+  , _backend_meta     :: Dynamic t PublicMeta
+   -- ^ Meta data used for deployments. Can be modified via above
+   -- `_backendCfg_setChainId`, `_backendCfg_setGasLimit`, ...
   }
 
 makePactLenses ''Backend
@@ -199,18 +212,21 @@ makeBackend
   . ( MonadHold t m, PerformEvent t m, MonadFix m, NotReady t m, Adjustable t m
     , MonadJSM (Performable m), HasJSContext (Performable m)
     , TriggerEvent t m, PostBuild t m, MonadIO m
+    , MonadSample t (Performable m)
     , HasBackendModel model t
     , HasBackendModelCfg mConf t
     )
   => model
   -> BackendCfg t
   -> m (mConf, Backend t)
-makeBackend w cfg = do
+makeBackend w cfg = mfix $ \ ~(_, backendL) -> do
     bs <- getBackends
 
-    (mConf, onDeployed) <- deployCode w $ cfg ^. backendCfg_deployCode
+    (mConf, onDeployed) <- deployCode w backendL $ cfg ^. backendCfg_deployCode
 
-    modules <- loadModules bs $ leftmost [ onDeployed, cfg ^. backendCfg_refreshModule ]
+    modules <- loadModules backendL $ leftmost [ onDeployed, cfg ^. backendCfg_refreshModule ]
+
+    meta <- buildMeta cfg
 
     pure
       ( mConf
@@ -218,22 +234,45 @@ makeBackend w cfg = do
           { _backend_backends = bs
           , _backend_modules = modules
           , _backend_deployed = onDeployed
+          , _backend_meta = meta
           }
       )
+
+buildMeta
+  :: (MonadHold t m, MonadFix m, Reflex t)
+  => BackendCfg t -> m (Dynamic t PublicMeta)
+buildMeta cfg = do
+  let defaultMeta =
+        PublicMeta
+          { _pmChainId = "someChain"
+          , _pmSender  = "someSender"
+          , _pmGasLimit = ParsedInteger 10000 -- TODO: Better defaults!!!
+          , _pmGasPrice = ParsedDecimal 10000
+          , _pmFee = ParsedDecimal 1
+          }
+
+  foldDyn id defaultMeta $ leftmost
+    [ (\u c -> c { _pmChainId = u})  <$> cfg ^. backendCfg_setChainId
+    , (\u c -> c { _pmGasLimit = u}) <$> cfg ^. backendCfg_setGasLimit
+    , (\u c -> c { _pmGasPrice = u}) <$> cfg ^. backendCfg_setGasPrice
+    ]
+
 
 deployCode
   :: forall t m model mConf
   . (MonadHold t m, PerformEvent t m, MonadFix m, NotReady t m, Adjustable t m
     , MonadJSM (Performable m), HasJSContext (Performable m)
     , TriggerEvent t m, PostBuild t m, MonadIO m
+    , MonadSample t (Performable m)
     , HasBackendModel model t
     , HasBackendModelCfg mConf t
     )
   => model
+  -> Backend t
   -> Event t BackendRequest
   -> m (mConf, Event t ())
-deployCode w onReq = do
-    reqRes <- performBackendRequest (w ^. wallet) onReq
+deployCode w backendL onReq = do
+    reqRes <- performBackendRequest (w ^. wallet) backendL onReq
     pure $ ( mempty & messagesCfg_send .~ fmap renderReqRes reqRes
            , () <$ ffilter (either (const False) (const True) . snd) reqRes
            )
@@ -314,19 +353,22 @@ loadModules
   :: forall t m
   . (MonadHold t m, PerformEvent t m, MonadFix m, NotReady t m, Adjustable t m
     , MonadJSM (Performable m), HasJSContext (Performable m)
+    , MonadSample t (Performable m)
     , TriggerEvent t m, PostBuild t m
     )
-  => Dynamic t (Maybe (Map BackendName BackendRef))
+  => Backend t
   -> Event t ()
   -> m (Dynamic t (Map BackendName (Maybe [Text])))
-loadModules bs onRefresh = do
-  let req r = (BackendRequest "(list-modules)" H.empty r Set.empty)
+loadModules backendL onRefresh = do
+  let
+    bs = backendL ^. backend_backends
+    req r = (BackendRequest "(list-modules)" H.empty r Set.empty)
   backendMap <- networkView $ ffor bs $ \case
     Nothing -> pure mempty
     Just bs' -> do
       onPostBuild <- getPostBuild
       bm <- flip Map.traverseWithKey bs' $ \_ r -> do
-        onErrResp <- performBackendRequest emptyWallet $
+        onErrResp <- performBackendRequest emptyWallet backendL $
           leftmost [ req r <$ onRefresh
                    , req r <$ onPostBuild
                    ]
@@ -356,11 +398,14 @@ performBackendRequest
   :: forall t m
   . ( PerformEvent t m, MonadJSM (Performable m)
     , HasJSContext (Performable m), TriggerEvent t m
+    , MonadSample t (Performable m)
     )
   => Wallet t
+  -> Backend t
   -> Event t BackendRequest
   -> m (Event t (BackendRequest, BackendErrorResult))
-performBackendRequest w onReq = performBackendRequestCustom w id onReq
+performBackendRequest w backendL onReq =
+  performBackendRequestCustom w backendL id onReq
 
 -- | Send a transaction via the /send endpoint.
 --
@@ -370,14 +415,17 @@ performBackendRequestCustom
   :: forall t m req
   . ( PerformEvent t m, MonadJSM (Performable m)
     , HasJSContext (Performable m), TriggerEvent t m
+    , MonadSample t (Performable m)
     )
   => Wallet t
+  -> Backend t
   -> (req -> BackendRequest)
   -> Event t req
   -> m (Event t (req, BackendErrorResult))
-performBackendRequestCustom w unwrap onReq =
-    performEventAsync $ ffor onReqWithKeys $ \(keys, req) cb ->
-      backendRequest (keys, unwrap req) $ cb . (req,)
+performBackendRequestCustom w backendL unwrap onReq =
+    performEventAsync $ ffor onReqWithKeys $ \(keys, req) cb -> do
+      meta <- sample $ current $ backendL ^. backend_meta
+      backendRequest (meta, keys, unwrap req) $ cb . (req,)
   where
     onReqWithKeys = attach (current $ _wallet_keys w) onReq
 
@@ -408,15 +456,15 @@ performBackendRequestCustom w unwrap onReq =
 -- @
 backendRequest :: forall m
   . (MonadJSM m, HasJSContext m)
-  => (KeyPairs, BackendRequest)
+  => (PublicMeta, KeyPairs, BackendRequest)
   -> (BackendErrorResult -> IO ())
   -> m ()
-backendRequest (keys, req) cb = void . forkJSM $ do
+backendRequest (meta, keys, req) cb = void . forkJSM $ do
     let
         callback = liftIO . cb
         uri = brUri $ _backendRequest_backend req
         signing = _backendRequest_signing req
-    sendReq <- buildSendXhrRequest keys signing req
+    sendReq <- buildSendXhrRequest meta keys signing req
     void $ newXMLHttpRequestWithError sendReq $ \r -> case getResPayload r of
       Left e -> callback $ Left e
       Right send -> case _rkRequestKeys send of
@@ -442,10 +490,10 @@ instance HasJSContext JSM where
 -- | Build Xhr request for the /send endpoint using the given URI.
 buildSendXhrRequest
   :: (MonadIO m, MonadJSM m)
-  => KeyPairs -> Set KeyName -> BackendRequest -> m (XhrRequest Text)
-buildSendXhrRequest kps signing req = do
+  => PublicMeta -> KeyPairs -> Set KeyName -> BackendRequest -> m (XhrRequest Text)
+buildSendXhrRequest meta kps signing req = do
   fmap (xhrRequest "POST" (url (brUri $ _backendRequest_backend req) "/send")) $ do
-    sendData <- encodeAsText . encode <$> buildSendPayload kps signing req
+    sendData <- encodeAsText . encode <$> buildSendPayload meta kps signing req
     pure $ def & xhrRequestConfig_sendData .~ sendData
 
 -- | Build Xhr request for the /listen endpoint using the given URI and request
@@ -456,9 +504,9 @@ buildListenXhrRequest uri key = do
     & xhrRequestConfig_sendData .~ encodeAsText (encode $ object [ "listen" .= key ])
 
 -- | Build payload as expected by /send endpoint.
-buildSendPayload :: (MonadIO m, MonadJSM m) => KeyPairs -> Set KeyName -> BackendRequest -> m Value
-buildSendPayload keys signing req = do
-  cmd <- buildCmd keys signing req
+buildSendPayload :: (MonadIO m, MonadJSM m) => PublicMeta -> KeyPairs -> Set KeyName -> BackendRequest -> m Value
+buildSendPayload meta keys signing req = do
+  cmd <- buildCmd meta keys signing req
   pure $ object
     [ "cmds" .= [ cmd ]
     ]
@@ -466,9 +514,9 @@ buildSendPayload keys signing req = do
 -- | Build a single cmd as expected in the `cmds` array of the /send payload.
 --
 -- As specified <https://pact-language.readthedocs.io/en/latest/pact-reference.html#send here>.
-buildCmd :: (MonadIO m, MonadJSM m) => KeyPairs -> Set KeyName -> BackendRequest -> m Value
-buildCmd keys signing req = do
-  cmd <- encodeAsText . encode <$> buildExecPayload req
+buildCmd :: (MonadIO m, MonadJSM m) => PublicMeta -> KeyPairs -> Set KeyName -> BackendRequest -> m Value
+buildCmd meta keys signing req = do
+  cmd <- encodeAsText . encode <$> buildExecPayload meta req
   let
     cmdHash = hash (T.encodeUtf8 cmd)
   sigs <- buildSigs cmdHash keys signing
@@ -504,8 +552,8 @@ buildSigs cmdHash keys signing = do
 --
 --   As specified <https://pact-language.readthedocs.io/en/latest/pact-reference.html#cmd-field-and-payloads here>.
 --   Use `encodedAsText` for passing it as the `cmd` payload.
-buildExecPayload :: MonadIO m => BackendRequest -> m Value
-buildExecPayload req = do
+buildExecPayload :: MonadIO m => PublicMeta -> BackendRequest -> m Value
+buildExecPayload meta req = do
   nonce <- getNonce
   let
     payload = object
@@ -516,12 +564,7 @@ buildExecPayload req = do
     [ "nonce" .= nonce
     , "payload" .= object [ "exec" .= payload ]
     -- TODO: Use proper values for this:
-    , "meta" .= object [ "chainId"  .= ("some-chain" :: Text)
-                       , "sender"   .= ("some-sender" :: Text)
-                       , "gasLimit" .= ("10000" :: Text)
-                       , "gasPrice" .= ("0.0000001" :: Text)
-                       , "fee"      .= ("0.000000001" :: Text)
-                       ]
+    , "meta" .= meta
     ]
 
 -- Response handling ...
@@ -657,10 +700,18 @@ instance Monoid BackendRef where
   mappend = (<>)
 
 instance Reflex t => Semigroup (BackendCfg t) where
-  (<>) = mappenddefault
+  BackendCfg refreshA deployA setChainIdA setGasLimitA setGasPriceA <>
+    BackendCfg refreshB deployB setChainIdB setGasLimitB setGasPriceB
+      = BackendCfg
+        { _backendCfg_refreshModule = leftmost [ refreshA, refreshB ]
+        , _backendCfg_deployCode    = leftmost [ deployA, deployB ]
+        , _backendCfg_setChainId    = leftmost [ setChainIdA, setChainIdB ]
+        , _backendCfg_setGasLimit   = leftmost [ setGasLimitA, setGasLimitB ]
+        , _backendCfg_setGasPrice   = leftmost [ setGasPriceA, setGasPriceB ]
+        }
 
 instance Reflex t => Monoid (BackendCfg t) where
-  mempty = memptydefault
+  mempty = BackendCfg never never never never never
   mappend = (<>)
 --
 
@@ -669,3 +720,6 @@ instance Flattenable (BackendCfg t) t where
     BackendCfg
       <$> doSwitch never (_backendCfg_refreshModule <$> ev)
       <*> doSwitch never (_backendCfg_deployCode <$> ev)
+      <*> doSwitch never (_backendCfg_setChainId <$> ev)
+      <*> doSwitch never (_backendCfg_setGasLimit <$> ev)
+      <*> doSwitch never (_backendCfg_setGasPrice <$> ev)

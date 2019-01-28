@@ -52,7 +52,7 @@ import           Control.Arrow                   (left, (***))
 import           Control.Lens
 import           Control.Monad
 import           Control.Monad.Except            (throwError)
-import           Data.Aeson                      (withObject, (.:), Value)
+import           Data.Aeson                      (Value, withObject, (.:))
 import           Data.Aeson.Types                (parseEither)
 import           Data.Coerce                     (coerce)
 import qualified Data.Map                        as Map
@@ -164,15 +164,18 @@ textModuleRefSource isModule m =
 --
 --   Resulting Event is either an error msg or the loaded module.
 fetchModule
-  :: forall m t
+  :: forall m t model
   . ( MonadHold t m, PerformEvent t m, MonadJSM (Performable m)
     , HasJSContext (Performable m), TriggerEvent t m
+    , MonadSample t (Performable m)
+    , HasBackend model t
     )
-  => Event t DeployedModuleRef
+  => model
+  -> Event t DeployedModuleRef
   -> m (Event t (DeployedModuleRef, Either Text Module))
-fetchModule onReq = do
+fetchModule backendL onReq = do
     deployedResult :: Event t (DeployedModuleRef, BackendErrorResult)
-      <- performBackendRequestCustom emptyWallet mkReq onReq
+      <- performBackendRequestCustom emptyWallet (backendL ^. backend) mkReq onReq
 
     pure $ ffor deployedResult $
       id *** (getModule <=< left (T.pack . show))
