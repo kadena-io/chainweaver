@@ -16,10 +16,7 @@
 {-# LANGUAGE TypeApplications       #-}
 {-# LANGUAGE TypeFamilies           #-}
 
--- | Definitions common to the whole frontend.
---
---   And commonly used imports.
-
+-- | Crypto and keys needed for signing transactions.
 module Frontend.Crypto.Ed25519
   ( -- * Types & Classes
     PublicKey
