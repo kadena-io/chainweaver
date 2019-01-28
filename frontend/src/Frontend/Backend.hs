@@ -71,6 +71,7 @@ import           Generics.Deriving.Monoid          (mappenddefault,
 import           Language.Javascript.JSaddle.Monad (JSContextRef, JSM, askJSM)
 import qualified Network.HTTP.Client               as HTTP
 import           Network.HTTP.Client.TLS           (newTlsManager)
+import qualified Network.HTTP.Types.Status         as S
 import           Pact.Server.Client
 import           Pact.Types.API
 #if !defined(ghcjs_HOST_OS)
@@ -482,7 +483,11 @@ backendRequest (meta, keys, req) backend cb = void . forkJSM $ do
   let clientEnv = S.mkClientEnv manager baseUrl
   sent <- liftIO $ S.runClientM (send payload) clientEnv
   void $ case sent of
-    Left e -> callback $ Left (BackendError_BackendError $ T.pack $ show e)
+    Left e -> case e of
+      S.FailureResponse response -> case S.responseStatusCode response of
+        code | code == S.status413 -> callback $ Left BackendError_ReqTooLarge
+        _ -> callback $ Left (BackendError_BackendError $ T.pack $ show response)
+      _ -> callback $ Left (BackendError_BackendError $ T.pack $ show e)
     Right res -> case res of
       ApiFailure e -> callback $ Left (BackendError_BackendError $ T.pack e)
       ApiSuccess sentValue -> case _rkRequestKeys sentValue of
