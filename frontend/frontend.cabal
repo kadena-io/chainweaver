@@ -31,6 +31,7 @@ library
                , ghcjs-dom
                , http-client
                , http-client-tls
+               , http-types
                , jsaddle
                , lens
                , megaparsec
@@ -56,6 +57,7 @@ library
                , transformers
                , trifecta
                , unordered-containers
+
   if !impl(ghcjs)
     build-depends: hsass
 
