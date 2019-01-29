@@ -46,6 +46,28 @@ in
         algebraic-graphs = haskellLib.dontCheck super.algebraic-graphs;
         # hw-hspec-hedgehog doesn't work
         pact = haskellLib.dontCheck super.pact;
+
+        bsb-http-chunked = haskellLib.dontCheck super.bsb-http-chunked;
+        Glob = haskellLib.dontCheck super.Glob;
+        http2 = haskellLib.dontCheck super.http2;
+        http-date = haskellLib.dontCheck super.http-date;
+        http-media = haskellLib.dontCheck super.http-media;
+        iproute = haskellLib.dontCheck super.iproute;
+        markdown-unlit = haskellLib.dontCheck super.markdown-unlit;
+        mockery = haskellLib.dontCheck super.mockery;
+        silently = haskellLib.dontCheck super.silently;
+        servant = haskellLib.dontCheck super.servant;
+        servant-client = haskellLib.dontCheck super.servant-client;
+        unix-time = haskellLib.dontCheck super.unix-time;
+        wai-app-static = haskellLib.dontCheck super.wai-app-static;
+        wai-extra = haskellLib.dontCheck super.wai-extra;
+
+        foundation = (haskellLib.overrideCabal super.foundation (drv: {
+          postPatch = (drv.postPatch or "") + pkgs.lib.optionalString (system == "x86_64-darwin") ''
+            substituteInPlace foundation.cabal --replace 'if os(linux)' 'if os(linux) && !impl(ghcjs)'
+            substituteInPlace foundation.cabal --replace 'if os(osx)' 'if os(linux) && impl(ghcjs)'
+          '';
+        }));
       };
       common-overlay = self: super: {
 

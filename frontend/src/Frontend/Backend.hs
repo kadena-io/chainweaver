@@ -1,4 +1,5 @@
 {-# LANGUAGE ConstraintKinds            #-}
+{-# LANGUAGE CPP                        #-}
 {-# LANGUAGE DeriveGeneric              #-}
 {-# LANGUAGE FlexibleContexts           #-}
 {-# LANGUAGE FlexibleInstances          #-}
@@ -50,8 +51,8 @@ import           Control.Lens                      hiding ((.=))
 import           Control.Monad.Except
 import           Data.Aeson                        (FromJSON (..), Object,
                                                     Value (..), eitherDecode,
-                                                    encode, object, toJSON,
-                                                    withObject, (.:), (.=))
+                                                    encode, object, withObject,
+                                                    (.:), (.=))
 import           Data.Aeson.Types                  (parseMaybe, typeMismatch)
 import qualified Data.ByteString.Lazy              as BSL
 import           Data.Coerce                       (coerce)
@@ -68,9 +69,22 @@ import           Data.Time.Clock                   (getCurrentTime)
 import           Generics.Deriving.Monoid          (mappenddefault,
                                                     memptydefault)
 import           Language.Javascript.JSaddle.Monad (JSContextRef, JSM, askJSM)
+import qualified Network.HTTP.Client               as HTTP
+import           Network.HTTP.Client.TLS           (newTlsManager)
+import qualified Network.HTTP.Types.Status         as S
+import           Pact.Server.Client
+import           Pact.Types.API
+#if !defined(ghcjs_HOST_OS)
+import           Pact.Types.Crypto                 (PPKScheme(..))
+#endif
+import           Pact.Types.Command
+import           Pact.Types.Hash                   (hash)
+import           Pact.Types.RPC
+import           Pact.Types.Util
 import           Reflex.Dom.Class
 import           Reflex.Dom.Xhr
 import           Reflex.NotReady.Class
+import qualified Servant.Client                    as S
 
 import           Pact.Parse                        (ParsedDecimal (..),
                                                     ParsedInteger (..))
@@ -78,7 +92,6 @@ import           Pact.Types.Command                (PublicMeta (..))
 
 import           Common.Api
 import           Common.Route                      (pactServerListPath)
-import           Frontend.Backend.Pact
 import           Frontend.Crypto.Ed25519
 import           Frontend.Foundation
 import           Frontend.Messages
@@ -197,6 +210,8 @@ data Backend t = Backend
   , _backend_meta     :: Dynamic t PublicMeta
    -- ^ Meta data used for deployments. Can be modified via above
    -- `_backendCfg_setChainId`, `_backendCfg_setGasLimit`, ...
+  , _backend_httpManager :: HTTP.Manager
+   -- ^ The HTTP manager used to perform requests.
   }
 
 makePactLenses ''Backend
@@ -223,6 +238,7 @@ makeBackend w cfg = mfix $ \ ~(_, backendL) -> do
     bs <- getBackends
 
     (mConf, onDeployed) <- deployCode w backendL $ cfg ^. backendCfg_deployCode
+    manager <- newTlsManager
 
     modules <- loadModules backendL $ leftmost [ onDeployed, cfg ^. backendCfg_refreshModule ]
 
@@ -235,6 +251,7 @@ makeBackend w cfg = mfix $ \ ~(_, backendL) -> do
           , _backend_modules = modules
           , _backend_deployed = onDeployed
           , _backend_meta = meta
+          , _backend_httpManager = manager
           }
       )
 
@@ -385,11 +402,6 @@ loadModules backendL onRefresh = do
   join <$> holdDyn mempty backendMap
 
 
-
--- | Transform an endpoint like /send to a valid URL.
-url :: BackendUri -> Text -> Text
-url b endpoint = b <> "/api/v1" <> endpoint
-
 -- | Send a transaction via the /send endpoint.
 --
 --   This is a convenience wrapper around `backendRequest`, use that if you
@@ -425,7 +437,7 @@ performBackendRequestCustom
 performBackendRequestCustom w backendL unwrap onReq =
     performEventAsync $ ffor onReqWithKeys $ \(keys, req) cb -> do
       meta <- sample $ current $ backendL ^. backend_meta
-      backendRequest (meta, keys, unwrap req) $ cb . (req,)
+      backendRequest (meta, keys, unwrap req) backendL $ cb . (req,)
   where
     onReqWithKeys = attach (current $ _wallet_keys w) onReq
 
@@ -454,29 +466,39 @@ performBackendRequestCustom w backendL unwrap onReq =
 --       someMoreRequest someArg $ cb . (req, res,)
 --
 -- @
-backendRequest :: forall m
+backendRequest :: forall t m
   . (MonadJSM m, HasJSContext m)
   => (PublicMeta, KeyPairs, BackendRequest)
+  -> Backend t
   -> (BackendErrorResult -> IO ())
   -> m ()
-backendRequest (meta, keys, req) cb = void . forkJSM $ do
-    let
-        callback = liftIO . cb
-        uri = brUri $ _backendRequest_backend req
-        signing = _backendRequest_signing req
-    sendReq <- buildSendXhrRequest meta keys signing req
-    void $ newXMLHttpRequestWithError sendReq $ \r -> case getResPayload r of
-      Left e -> callback $ Left e
-      Right send -> case _rkRequestKeys send of
+backendRequest (meta, keys, req) backend cb = void . forkJSM $ do
+  let
+      callback = liftIO . cb
+      uri = brUri $ _backendRequest_backend req
+      signing = _backendRequest_signing req
+      manager = _backend_httpManager backend
+  payload <- buildSendPayload meta keys signing req
+  baseUrl <- S.parseBaseUrl $ T.unpack uri
+  let clientEnv = S.mkClientEnv manager baseUrl
+  sent <- liftIO $ S.runClientM (send payload) clientEnv
+  void $ case sent of
+    Left e -> case e of
+      S.FailureResponse response -> case S.responseStatusCode response of
+        code | code == S.status413 -> callback $ Left BackendError_ReqTooLarge
+        _ -> callback $ Left (BackendError_BackendError $ T.pack $ show response)
+      _ -> callback $ Left (BackendError_BackendError $ T.pack $ show e)
+    Right res -> case res of
+      ApiFailure e -> callback $ Left (BackendError_BackendError $ T.pack e)
+      ApiSuccess sentValue -> case _rkRequestKeys sentValue of
         [] -> callback $ Left $ BackendError_Other "Response did not contain any RequestKeys"
         [key] -> do
-          let listenReq = buildListenXhrRequest uri key
-          void $ newXMLHttpRequestWithError listenReq $ \lr -> case getResPayload lr of
-            Left e -> callback $ Left e
-            Right listen -> case _lr_result listen of
-              PactResult_Failure err detail -> callback $ Left $ BackendError_ResultFailure err detail
-              PactResult_FailureText err -> callback $ Left $ BackendError_ResultFailureText err
-              PactResult_Success result -> callback $ Right result
+          listened <- liftIO $ S.runClientM (listen (ListenerRequest key)) clientEnv
+          case listened of
+            Left e -> callback $ Left (BackendError_BackendError $ T.pack $ show e)
+            Right listenResult -> case listenResult of
+              ApiFailure e -> callback $ Left (BackendError_BackendError $ T.pack e)
+              ApiSuccess listenedValue -> callback $ Right $ _arResult listenedValue
         _ -> callback $ Left $ BackendError_Other "Response contained more than one RequestKey"
 
 -- TODO: upstream this?
@@ -487,47 +509,29 @@ instance HasJSContext JSM where
 
 -- Request building ....
 
--- | Build Xhr request for the /send endpoint using the given URI.
-buildSendXhrRequest
-  :: (MonadIO m, MonadJSM m)
-  => PublicMeta -> KeyPairs -> Set KeyName -> BackendRequest -> m (XhrRequest Text)
-buildSendXhrRequest meta kps signing req = do
-  fmap (xhrRequest "POST" (url (brUri $ _backendRequest_backend req) "/send")) $ do
-    sendData <- encodeAsText . encode <$> buildSendPayload meta kps signing req
-    pure $ def & xhrRequestConfig_sendData .~ sendData
-
--- | Build Xhr request for the /listen endpoint using the given URI and request
--- key.
-buildListenXhrRequest :: BackendUri -> RequestKey -> XhrRequest Text
-buildListenXhrRequest uri key = do
-  xhrRequest "POST" (url uri "/listen") $ def
-    & xhrRequestConfig_sendData .~ encodeAsText (encode $ object [ "listen" .= key ])
-
 -- | Build payload as expected by /send endpoint.
-buildSendPayload :: (MonadIO m, MonadJSM m) => PublicMeta -> KeyPairs -> Set KeyName -> BackendRequest -> m Value
+buildSendPayload :: (MonadIO m, MonadJSM m) => PublicMeta -> KeyPairs -> Set KeyName -> BackendRequest -> m SubmitBatch
 buildSendPayload meta keys signing req = do
   cmd <- buildCmd meta keys signing req
-  pure $ object
-    [ "cmds" .= [ cmd ]
-    ]
+  pure $ SubmitBatch [ cmd ]
 
 -- | Build a single cmd as expected in the `cmds` array of the /send payload.
 --
 -- As specified <https://pact-language.readthedocs.io/en/latest/pact-reference.html#send here>.
-buildCmd :: (MonadIO m, MonadJSM m) => PublicMeta -> KeyPairs -> Set KeyName -> BackendRequest -> m Value
+buildCmd :: (MonadIO m, MonadJSM m) => PublicMeta -> KeyPairs -> Set KeyName -> BackendRequest -> m (Command Text)
 buildCmd meta keys signing req = do
   cmd <- encodeAsText . encode <$> buildExecPayload meta req
   let
     cmdHash = hash (T.encodeUtf8 cmd)
   sigs <- buildSigs cmdHash keys signing
-  pure $ object
-    [ "hash" .= cmdHash
-    , "sigs" .= sigs
-    , "cmd"  .= cmd
-    ]
+  pure $ Pact.Types.Command.Command
+    { _cmdPayload = cmd
+    , _cmdSigs = sigs
+    , _cmdHash = cmdHash
+    }
 
 -- | Build signatures for a single `cmd`.
-buildSigs :: MonadJSM m => Hash -> KeyPairs -> Set KeyName -> m Value
+buildSigs :: MonadJSM m => Hash -> KeyPairs -> Set KeyName -> m [UserSig]
 buildSigs cmdHash keys signing = do
   let
     -- isJust filter is necessary so indices are guaranteed stable even after
@@ -540,66 +544,62 @@ buildSigs cmdHash keys signing = do
   sigs <- traverse (mkSignature (unHash cmdHash)) signingKeys
 
   let
-    mkSigPubKey :: KeyPair -> Signature -> Value
-    mkSigPubKey kp sig = object
-      [ "sig" .= sig
-      , "pubKey" .= _keyPair_publicKey kp
-      ]
-  pure . toJSON $ zipWith mkSigPubKey (map snd signingPairs) sigs
+    mkSigPubKey :: KeyPair -> Signature -> UserSig
+    mkSigPubKey kp sig = UserSig ED25519 (keyToText sig) (keyToText $ _keyPair_publicKey kp)
+  pure $ zipWith mkSigPubKey (map snd signingPairs) sigs
 
 
 -- | Build exec `cmd` payload.
 --
 --   As specified <https://pact-language.readthedocs.io/en/latest/pact-reference.html#cmd-field-and-payloads here>.
 --   Use `encodedAsText` for passing it as the `cmd` payload.
-buildExecPayload :: MonadIO m => PublicMeta -> BackendRequest -> m Value
+buildExecPayload :: MonadIO m => PublicMeta -> BackendRequest -> m (Payload PublicMeta Text)
 buildExecPayload meta req = do
   nonce <- getNonce
   let
-    payload = object
-      [ "code" .= _backendRequest_code req
-      , "data" .= _backendRequest_data req
-      ]
-  pure $ object
-    [ "nonce" .= nonce
-    , "payload" .= object [ "exec" .= payload ]
-    -- TODO: Use proper values for this:
-    , "meta" .= meta
-    ]
+    payload = ExecMsg
+      { _pmCode = _backendRequest_code req
+      , _pmData = Object $ _backendRequest_data req
+      }
+  pure $ Payload
+    { _pPayload = Exec payload
+    , _pNonce = nonce
+    , _pMeta = meta
+    }
 
 -- Response handling ...
 
 -- | Extract the response body from a Pact server response:
-getResPayload
-  :: FromJSON resp
-  => Either XhrException XhrResponse
-  -> Either BackendError resp
-getResPayload xhrRes = do
-  r <- left BackendError_XhrException xhrRes
-  let
-    status = _xhrResponse_status r
-    statusText = _xhrResponse_statusText r
-    respText = _xhrResponse_responseText r
-    tooLarge = 413 -- Status code for too large body requests.
-    mRespT = BSL.fromStrict . T.encodeUtf8 <$> _xhrResponse_responseText r
+-- getResPayload
+--   :: FromJSON resp
+--   => Either XhrException XhrResponse
+--   -> Either BackendError resp
+-- getResPayload xhrRes = do
+--   r <- left BackendError_XhrException xhrRes
+--   let
+--     status = _xhrResponse_status r
+--     statusText = _xhrResponse_statusText r
+--     respText = _xhrResponse_responseText r
+--     tooLarge = 413 -- Status code for too large body requests.
+--     mRespT = BSL.fromStrict . T.encodeUtf8 <$> _xhrResponse_responseText r
 
-  -- TODO: This does not really work, when testing we got an
-  -- `XhrException` with no further details.
-  when (status == tooLarge)
-    $ throwError BackendError_ReqTooLarge
-  when (status /= 200 && status /= 201)
-    $ throwError $ BackendError_BackendError statusText
+--   -- TODO: This does not really work, when testing we got an
+--   -- `XhrException` with no further details.
+--   when (status == tooLarge)
+--     $ throwError BackendError_ReqTooLarge
+--   when (status /= 200 && status /= 201)
+--     $ throwError $ BackendError_BackendError statusText
 
-  respT <- maybe (throwError BackendError_NoResponse) pure mRespT
-  pactRes <- case eitherDecode respT of
-    Left e
-      -> Left $ BackendError_ParseError $ T.pack e <> fromMaybe "" respText
-    Right v
-      -> Right v
-  case pactRes of
-    ApiFailure str ->
-      throwError $ BackendError_Failure . T.pack $ str
-    ApiSuccess a -> pure a
+--   respT <- maybe (throwError BackendError_NoResponse) pure mRespT
+--   pactRes <- case eitherDecode respT of
+--     Left e
+--       -> Left $ BackendError_ParseError $ T.pack e <> fromMaybe "" respText
+--     Right v
+--       -> Right v
+--   case pactRes of
+--     ApiFailure str ->
+--       throwError $ BackendError_Failure . T.pack $ str
+--     ApiSuccess a -> pure a
 
 -- Other utilities:
 

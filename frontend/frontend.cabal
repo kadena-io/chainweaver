@@ -26,8 +26,11 @@ library
                , containers
                , data-default
                , dependent-map
+               , exceptions
                , generic-deriving
                , ghcjs-dom
+               , http-client
+               , http-client-tls
                , jsaddle
                , lens
                , megaparsec
@@ -43,6 +46,8 @@ library
                , reflex-dom-ace
                , reflex-dom-contrib
                , safe
+               , servant
+               , servant-client
                , string-qq
                , template-haskell
                , text
@@ -56,7 +61,6 @@ library
 
   exposed-modules: Frontend
                  , Frontend.Backend
-                 , Frontend.Backend.Pact
                  , Frontend.Crypto.Ed25519
                  , Frontend.Editor
                  , Frontend.Foundation
