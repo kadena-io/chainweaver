@@ -65,6 +65,7 @@ library
 
   exposed-modules: Frontend
                  , Frontend.Backend
+                 , Frontend.Backend.Servant
                  , Frontend.Crypto.Ed25519
                  , Frontend.Editor
                  , Frontend.Foundation
