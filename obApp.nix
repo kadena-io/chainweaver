@@ -58,6 +58,12 @@ in
         silently = haskellLib.dontCheck super.silently;
         servant = haskellLib.dontCheck super.servant;
         servant-client = haskellLib.dontCheck super.servant-client;
+        servant-client-ghcjs = self.callCabal2nix "servant-client-ghcjs" ((pkgs.fetchFromGitHub {
+          owner = "haskell-servant";
+          repo = "servant";
+          rev = "5fe3b4ea31411f8accfad981a4c10d8b110d2f1e";
+          sha256 = "06abdksq9bc3a8r5707wbv0v6md451d82sibljqallbay0yr6m8c";
+        }) + "/servant-client-ghcjs") {};
         unix-time = haskellLib.dontCheck super.unix-time;
         wai-app-static = haskellLib.dontCheck super.wai-app-static;
         wai-extra = haskellLib.dontCheck super.wai-extra;

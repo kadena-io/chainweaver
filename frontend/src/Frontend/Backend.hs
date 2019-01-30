@@ -70,12 +70,16 @@ import           Generics.Deriving.Monoid          (mappenddefault,
                                                     memptydefault)
 import           Language.Javascript.JSaddle.Monad (JSContextRef, JSM, askJSM)
 import qualified Network.HTTP.Client               as HTTP
-import           Network.HTTP.Client.TLS           (newTlsManager)
 import qualified Network.HTTP.Types.Status         as S
 import           Pact.Server.Client
 import           Pact.Types.API
 #if !defined(ghcjs_HOST_OS)
 import           Pact.Types.Crypto                 (PPKScheme(..))
+import           Network.HTTP.Client.TLS           (newTlsManager)
+import qualified Servant.Client                    as S
+#else
+import qualified Servant.Client.Ghcjs              as S
+import qualified Servant.Client.Internal.XhrClient as S
 #endif
 import           Pact.Types.Command
 import           Pact.Types.Hash                   (hash)
@@ -84,7 +88,6 @@ import           Pact.Types.Util
 import           Reflex.Dom.Class
 import           Reflex.Dom.Xhr
 import           Reflex.NotReady.Class
-import qualified Servant.Client                    as S
 
 import           Pact.Parse                        (ParsedDecimal (..),
                                                     ParsedInteger (..))
@@ -210,7 +213,7 @@ data Backend t = Backend
   , _backend_meta     :: Dynamic t PublicMeta
    -- ^ Meta data used for deployments. Can be modified via above
    -- `_backendCfg_setChainId`, `_backendCfg_setGasLimit`, ...
-  , _backend_httpManager :: HTTP.Manager
+  , _backend_httpManager :: Maybe HTTP.Manager
    -- ^ The HTTP manager used to perform requests.
   }
 
@@ -238,7 +241,11 @@ makeBackend w cfg = mfix $ \ ~(_, backendL) -> do
     bs <- getBackends
 
     (mConf, onDeployed) <- deployCode w backendL $ cfg ^. backendCfg_deployCode
-    manager <- newTlsManager
+#if !defined(ghcjs_HOST_OS)
+    manager <- Just <$> newTlsManager
+#else
+    manager <- pure Nothing
+#endif
 
     modules <- loadModules backendL $ leftmost [ onDeployed, cfg ^. backendCfg_refreshModule ]
 
@@ -477,11 +484,17 @@ backendRequest (meta, keys, req) backend cb = void . forkJSM $ do
       callback = liftIO . cb
       uri = brUri $ _backendRequest_backend req
       signing = _backendRequest_signing req
-      manager = _backend_httpManager backend
-  payload <- buildSendPayload meta keys signing req
   baseUrl <- S.parseBaseUrl $ T.unpack uri
+#if !defined(ghcjs_HOST_OS)
+  let (Just manager) = _backend_httpManager backend
   let clientEnv = S.mkClientEnv manager baseUrl
-  sent <- liftIO $ S.runClientM (send payload) clientEnv
+#endif
+  payload <- buildSendPayload meta keys signing req
+#if !defined(ghcjs_HOST_OS)
+  sent <- liftIO $ S.runClientM (send pactServerApiClient payload) clientEnv
+#else
+  sent <- liftIO $ S.runClientMOrigin (send pactServerApiClient payload) (S.ClientEnv baseUrl)
+#endif
   void $ case sent of
     Left e -> case e of
       S.FailureResponse response -> case S.responseStatusCode response of
@@ -489,16 +502,18 @@ backendRequest (meta, keys, req) backend cb = void . forkJSM $ do
         _ -> callback $ Left (BackendError_BackendError $ T.pack $ show response)
       _ -> callback $ Left (BackendError_BackendError $ T.pack $ show e)
     Right res -> case res of
-      ApiFailure e -> callback $ Left (BackendError_BackendError $ T.pack e)
-      ApiSuccess sentValue -> case _rkRequestKeys sentValue of
+      sentValue -> case _rkRequestKeys sentValue of
         [] -> callback $ Left $ BackendError_Other "Response did not contain any RequestKeys"
         [key] -> do
-          listened <- liftIO $ S.runClientM (listen (ListenerRequest key)) clientEnv
+#if !defined(ghcjs_HOST_OS)
+          listened <- liftIO $ S.runClientM (listen pactServerApiClient (ListenerRequest key)) clientEnv
+#else
+          listened <- liftIO $ S.runClientMOrigin (listen pactServerApiClient (ListenerRequest key)) (S.ClientEnv baseUrl)
+#endif
           case listened of
             Left e -> callback $ Left (BackendError_BackendError $ T.pack $ show e)
             Right listenResult -> case listenResult of
-              ApiFailure e -> callback $ Left (BackendError_BackendError $ T.pack e)
-              ApiSuccess listenedValue -> callback $ Right $ _arResult listenedValue
+              listenedValue -> callback $ Right $ _arResult listenedValue
         _ -> callback $ Left $ BackendError_Other "Response contained more than one RequestKey"
 
 -- TODO: upstream this?
