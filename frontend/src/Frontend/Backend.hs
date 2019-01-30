@@ -51,9 +51,9 @@ import           Control.Concurrent                (forkIO)
 import           Control.Lens                      hiding ((.=))
 import           Control.Monad.Except
 import           Data.Aeson                        (FromJSON (..), Object,
-                                                    Value (..), eitherDecode,
-                                                    encode, object, withObject,
-                                                    (.:), (.=))
+                                                    Value (..),
+                                                    encode, withObject,
+                                                    (.:))
 import           Data.Aeson.Types                  (parseEither, parseMaybe,
                                                     typeMismatch)
 import qualified Data.ByteString.Lazy              as BSL
@@ -156,10 +156,8 @@ data BackendError
   -- debugging.
   | BackendError_ParseError Text
   -- ^ Parsing the JSON response failed.
-  | BackendError_ResultFailure PactError PactDetail
+  | BackendError_CommandFailure CommandError
   -- ^ The status in the /listen result object was `failure`.
-  | BackendError_ResultFailureText Text
-  -- ^ The the /listen result object was actually just an error message string
   | BackendError_Other Text
   -- ^ Other errors that should really never happen.
   deriving Show
@@ -271,9 +269,9 @@ buildMeta cfg = do
 
 deployCode
   :: forall t m model mConf
-  . (MonadHold t m, PerformEvent t m, MonadFix m, NotReady t m, Adjustable t m
-    , MonadJSM (Performable m), HasJSContext (Performable m)
-    , TriggerEvent t m, PostBuild t m, MonadIO m
+  . ( MonadHold t m, PerformEvent t m
+    , MonadJSM (Performable m)
+    , TriggerEvent t m
     , MonadSample t (Performable m)
     , HasBackendModel model t
     , HasBackendModelCfg mConf t
@@ -362,8 +360,8 @@ parsePactServerList raw =
 -- | Load modules on startup and on every occurrence of the given event.
 loadModules
   :: forall t m
-  . (MonadHold t m, PerformEvent t m, MonadFix m, NotReady t m, Adjustable t m
-    , MonadJSM (Performable m), HasJSContext (Performable m)
+  . ( MonadHold t m, PerformEvent t m, MonadFix m, NotReady t m, Adjustable t m
+    , MonadJSM (Performable m)
     , MonadSample t (Performable m)
     , TriggerEvent t m, PostBuild t m
     )
@@ -403,7 +401,7 @@ loadModules backendL onRefresh = do
 performBackendRequest
   :: forall t m
   . ( PerformEvent t m, MonadJSM (Performable m)
-    , HasJSContext (Performable m), TriggerEvent t m
+    , TriggerEvent t m
     , MonadSample t (Performable m)
     )
   => Wallet t
@@ -420,7 +418,7 @@ performBackendRequest w backendL onReq =
 performBackendRequestCustom
   :: forall t m req
   . ( PerformEvent t m, MonadJSM (Performable m)
-    , HasJSContext (Performable m), TriggerEvent t m
+    , TriggerEvent t m
     , MonadSample t (Performable m)
     )
   => Wallet t
@@ -481,9 +479,9 @@ backendRequest manager req batch callback = void . forkIO $ do
       key <- getRequestKey $ res
       v <- runReq clientEnv $ listen $ ListenerRequest key
       -- pure v
-      ExceptT . pure $ fromApiResponse <=< parseValue $ _arResult v
+      ExceptT . pure $ fromCommandValue <=< parseValue $ _arResult v
 
-    liftIO $ callback $ _arResult <$> er
+    liftIO $ callback $ er
   where
     parseValue :: FromJSON a => Value -> Either BackendError a
     parseValue = left (BackendError_ParseError . T.pack ) . parseEither parseJSON
@@ -492,10 +490,8 @@ backendRequest manager req batch callback = void . forkIO $ do
     reThrowWith :: (e -> BackendError) -> IO (Either e a) -> ExceptT BackendError IO a
     reThrowWith f = ExceptT . fmap (left f)
 
-    runReq :: S.ClientEnv -> S.ClientM (ApiResponse a) -> ExceptT BackendError IO a
-    runReq env =
-      fromApiResponse <=< reThrowWith packHttpErr
-      . flip S.runClientM env
+    runReq :: S.ClientEnv -> S.ClientM a -> ExceptT BackendError IO a
+    runReq env = reThrowWith packHttpErr . flip S.runClientM env
 
     packHttpErr :: S.ServantError -> BackendError
     packHttpErr e = case e of
@@ -505,10 +501,10 @@ backendRequest manager req batch callback = void . forkIO $ do
            else BackendError_BackendError $ T.pack $ show response
       _ -> BackendError_BackendError $ T.pack $ show e
 
-    fromApiResponse :: MonadError BackendError m => ApiResponse a -> m a
-    fromApiResponse = \case
-      ApiFailure e -> throwError $ BackendError_Failure $ T.pack e
-      ApiSuccess v -> pure v
+    fromCommandValue :: MonadError BackendError m => CommandValue Value -> m Value
+    fromCommandValue = \case
+      CommandFailure e -> throwError $ BackendError_CommandFailure e
+      CommandSuccess v -> pure v
 
     getRequestKey :: MonadError BackendError m => RequestKeys -> m RequestKey
     getRequestKey r =
@@ -605,8 +601,7 @@ prettyPrintBackendError = ("ERROR: " <>) . \case
   BackendError_ReqTooLarge-> "Request exceeded the allowed maximum size!"
   BackendError_Failure msg -> "Backend failure: " <> msg
   BackendError_ParseError m -> "Server response could not be parsed: " <> m
-  BackendError_ResultFailure (PactError e) (PactDetail d) -> e <> ": " <> d
-  BackendError_ResultFailureText e -> e
+  BackendError_CommandFailure (CommandError e d) -> T.pack e <> ": " <> maybe "" T.pack d
   BackendError_Other m -> "Some unknown problem: " <> m
 
 prettyPrintBackendErrorResult :: BackendErrorResult -> Text
