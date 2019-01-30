@@ -1,5 +1,5 @@
-{-# LANGUAGE ConstraintKinds            #-}
 {-# LANGUAGE CPP                        #-}
+{-# LANGUAGE ConstraintKinds            #-}
 {-# LANGUAGE DeriveGeneric              #-}
 {-# LANGUAGE FlexibleContexts           #-}
 {-# LANGUAGE FlexibleInstances          #-}
@@ -47,13 +47,15 @@ module Frontend.Backend
   ) where
 
 import           Control.Arrow                     (left, (&&&), (***))
+import           Control.Concurrent                (forkIO)
 import           Control.Lens                      hiding ((.=))
 import           Control.Monad.Except
 import           Data.Aeson                        (FromJSON (..), Object,
                                                     Value (..), eitherDecode,
                                                     encode, object, withObject,
                                                     (.:), (.=))
-import           Data.Aeson.Types                  (parseMaybe, typeMismatch)
+import           Data.Aeson.Types                  (parseEither, parseMaybe,
+                                                    typeMismatch)
 import qualified Data.ByteString.Lazy              as BSL
 import           Data.Coerce                       (coerce)
 import           Data.Default                      (def)
@@ -75,7 +77,7 @@ import qualified Network.HTTP.Types.Status         as S
 import           Pact.Server.Client
 import           Pact.Types.API
 #if !defined(ghcjs_HOST_OS)
-import           Pact.Types.Crypto                 (PPKScheme(..))
+import           Pact.Types.Crypto                 (PPKScheme (..))
 #endif
 import           Pact.Types.Command
 import           Pact.Types.Hash                   (hash)
@@ -156,13 +158,8 @@ data BackendError
   -- ^ The backend responded with status "failure"
   -- The contained `Text` will hold the full message, which might be useful for
   -- debugging.
-  | BackendError_XhrException XhrException
-  -- ^ There was some problem with the connection, as described by the
-  -- contained `XhrException`
   | BackendError_ParseError Text
   -- ^ Parsing the JSON response failed.
-  | BackendError_NoResponse
-  -- ^ Server response was empty.
   | BackendError_ResultFailure PactError PactDetail
   -- ^ The status in the /listen result object was `failure`.
   | BackendError_ResultFailureText Text
@@ -200,14 +197,14 @@ makePactLenses ''BackendCfg
 type IsBackendCfg cfg t = (HasBackendCfg cfg t, Monoid cfg, Flattenable cfg t)
 
 data Backend t = Backend
-  { _backend_backends :: Dynamic t (Maybe (Map BackendName BackendRef))
+  { _backend_backends    :: Dynamic t (Maybe (Map BackendName BackendRef))
     -- ^ All available backends that can be selected.
-  , _backend_modules  :: Dynamic t (Map BackendName (Maybe [Text]))
+  , _backend_modules     :: Dynamic t (Map BackendName (Maybe [Text]))
    -- ^ Available modules on all backends. `Nothing` if not loaded yet.
    -- TODO: This should really go to the `ModuleExplorer` or should it?
-  , _backend_deployed :: Event t ()
+  , _backend_deployed    :: Event t ()
    -- ^ Event gets triggered whenever some code got deployed sucessfully.
-  , _backend_meta     :: Dynamic t PublicMeta
+  , _backend_meta        :: Dynamic t PublicMeta
    -- ^ Meta data used for deployments. Can be modified via above
    -- `_backendCfg_setChainId`, `_backendCfg_setGasLimit`, ...
   , _backend_httpManager :: HTTP.Manager
@@ -437,12 +434,16 @@ performBackendRequestCustom
 performBackendRequestCustom w backendL unwrap onReq =
     performEventAsync $ ffor onReqWithKeys $ \(keys, req) cb -> do
       meta <- sample $ current $ backendL ^. backend_meta
-      backendRequest (meta, keys, unwrap req) backendL $ cb . (req,)
+      let
+        rawReq = unwrap req
+        signing = _backendRequest_signing rawReq
+        manager = _backend_httpManager backendL
+      payload <- buildSendPayload meta keys signing rawReq
+      liftIO $ backendRequest manager rawReq payload $ cb . (req,)
   where
     onReqWithKeys = attach (current $ _wallet_keys w) onReq
 
 -- | Send a transaction via the /send endpoint.
---
 --   And wait for its result via /listen. `performBackendRequest` is a little
 --   more convenient to use if you don't need more elaborate request
 --   information in your response.
@@ -466,40 +467,59 @@ performBackendRequestCustom w backendL unwrap onReq =
 --       someMoreRequest someArg $ cb . (req, res,)
 --
 -- @
-backendRequest :: forall t m
-  . (MonadJSM m, HasJSContext m)
-  => (PublicMeta, KeyPairs, BackendRequest)
-  -> Backend t
+backendRequest
+  :: HTTP.Manager
+  -> BackendRequest
+  -> SubmitBatch
   -> (BackendErrorResult -> IO ())
-  -> m ()
-backendRequest (meta, keys, req) backend cb = void . forkJSM $ do
-  let
-      callback = liftIO . cb
+  -> IO ()
+backendRequest manager req batch callback = void . forkIO $ do
+    let
       uri = brUri $ _backendRequest_backend req
-      signing = _backendRequest_signing req
-      manager = _backend_httpManager backend
-  payload <- buildSendPayload meta keys signing req
-  baseUrl <- S.parseBaseUrl $ T.unpack uri
-  let clientEnv = S.mkClientEnv manager baseUrl
-  sent <- liftIO $ S.runClientM (send payload) clientEnv
-  void $ case sent of
-    Left e -> case e of
-      S.FailureResponse response -> case S.responseStatusCode response of
-        code | code == S.status413 -> callback $ Left BackendError_ReqTooLarge
-        _ -> callback $ Left (BackendError_BackendError $ T.pack $ show response)
-      _ -> callback $ Left (BackendError_BackendError $ T.pack $ show e)
-    Right res -> case res of
-      ApiFailure e -> callback $ Left (BackendError_BackendError $ T.pack e)
-      ApiSuccess sentValue -> case _rkRequestKeys sentValue of
-        [] -> callback $ Left $ BackendError_Other "Response did not contain any RequestKeys"
-        [key] -> do
-          listened <- liftIO $ S.runClientM (listen (ListenerRequest key)) clientEnv
-          case listened of
-            Left e -> callback $ Left (BackendError_BackendError $ T.pack $ show e)
-            Right listenResult -> case listenResult of
-              ApiFailure e -> callback $ Left (BackendError_BackendError $ T.pack e)
-              ApiSuccess listenedValue -> callback $ Right $ _arResult listenedValue
-        _ -> callback $ Left $ BackendError_Other "Response contained more than one RequestKey"
+    baseUrl <- S.parseBaseUrl $ T.unpack uri
+    let clientEnv = S.mkClientEnv manager baseUrl
+
+    er <- liftIO . runExceptT $ do
+      res <- runReq clientEnv $ send batch
+      key <- getRequestKey $ res
+      v <- runReq clientEnv $ listen $ ListenerRequest key
+      -- pure v
+      ExceptT . pure $ fromApiResponse <=< parseValue $ _arResult v
+
+    liftIO $ callback $ _arResult <$> er
+  where
+    parseValue :: FromJSON a => Value -> Either BackendError a
+    parseValue = left (BackendError_ParseError . T.pack ) . parseEither parseJSON
+
+    -- | Rethrow an error value by wrapping it with f.
+    reThrowWith :: (e -> BackendError) -> IO (Either e a) -> ExceptT BackendError IO a
+    reThrowWith f = ExceptT . fmap (left f)
+
+    runReq :: S.ClientEnv -> S.ClientM (ApiResponse a) -> ExceptT BackendError IO a
+    runReq env =
+      fromApiResponse <=< reThrowWith packHttpErr
+      . flip S.runClientM env
+
+    packHttpErr :: S.ServantError -> BackendError
+    packHttpErr e = case e of
+      S.FailureResponse response ->
+        if S.responseStatusCode response == S.status413
+           then BackendError_ReqTooLarge
+           else BackendError_BackendError $ T.pack $ show response
+      _ -> BackendError_BackendError $ T.pack $ show e
+
+    fromApiResponse :: MonadError BackendError m => ApiResponse a -> m a
+    fromApiResponse = \case
+      ApiFailure e -> throwError $ BackendError_Failure $ T.pack e
+      ApiSuccess v -> pure v
+
+    getRequestKey :: MonadError BackendError m => RequestKeys -> m RequestKey
+    getRequestKey r =
+      case _rkRequestKeys r of
+        []    -> throwError $ BackendError_Other "Response did not contain any RequestKeys."
+        [key] -> pure key
+        _     -> throwError $ BackendError_Other "Response contained more than one RequestKey."
+
 
 -- TODO: upstream this?
 instance HasJSContext JSM where
@@ -572,30 +592,10 @@ buildExecPayload meta req = do
 -- | Extract the response body from a Pact server response:
 -- getResPayload
 --   :: FromJSON resp
---   => Either XhrException XhrResponse
---   -> Either BackendError resp
--- getResPayload xhrRes = do
---   r <- left BackendError_XhrException xhrRes
---   let
---     status = _xhrResponse_status r
---     statusText = _xhrResponse_statusText r
---     respText = _xhrResponse_responseText r
---     tooLarge = 413 -- Status code for too large body requests.
---     mRespT = BSL.fromStrict . T.encodeUtf8 <$> _xhrResponse_responseText r
-
---   -- TODO: This does not really work, when testing we got an
---   -- `XhrException` with no further details.
---   when (status == tooLarge)
---     $ throwError BackendError_ReqTooLarge
---   when (status /= 200 && status /= 201)
---     $ throwError $ BackendError_BackendError statusText
-
---   respT <- maybe (throwError BackendError_NoResponse) pure mRespT
---   pactRes <- case eitherDecode respT of
---     Left e
---       -> Left $ BackendError_ParseError $ T.pack e <> fromMaybe "" respText
---     Right v
---       -> Right v
+--   => Value
+--   -> Either BackendError Value
+-- getResPayload v = do
+--   pactRes <- left (BackendError_ParseError . T.pack) $ parse v
 --   case pactRes of
 --     ApiFailure str ->
 --       throwError $ BackendError_Failure . T.pack $ str
@@ -608,9 +608,7 @@ prettyPrintBackendError = ("ERROR: " <>) . \case
   BackendError_BackendError msg -> "Error http response: " <> msg
   BackendError_ReqTooLarge-> "Request exceeded the allowed maximum size!"
   BackendError_Failure msg -> "Backend failure: " <> msg
-  BackendError_XhrException e -> "Connection failed: " <> (T.pack . show) e
   BackendError_ParseError m -> "Server response could not be parsed: " <> m
-  BackendError_NoResponse -> "Server response was empty."
   BackendError_ResultFailure (PactError e) (PactDetail d) -> e <> ": " <> d
   BackendError_ResultFailureText e -> e
   BackendError_Other m -> "Some unknown problem: " <> m
