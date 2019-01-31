@@ -67,6 +67,11 @@ in {pkgs, lib, ...}: {
       extraConfig = ''
         # Restrict transaction size:
         client_max_body_size 1m;
+        if ($request_method = 'POST') {
+           add_header 'Access-Control-Allow-Methods' 'POST';
+           add_header 'Access-Control-Allow-Headers' 'DNT,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control,Content-Type,Range';
+           add_header 'Access-Control-Expose-Headers' 'Content-Length,Content-Range';
+        }
         '';
     };
 
