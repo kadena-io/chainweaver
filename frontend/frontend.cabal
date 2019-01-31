@@ -48,6 +48,7 @@ library
                , reflex-dom-contrib
                , safe
                , servant
+               , servant-client-jsaddle
                , string-qq
                , template-haskell
                , text
@@ -56,16 +57,12 @@ library
                , transformers
                , trifecta
                , unordered-containers
-  if impl(ghcjs)
-    build-depends: servant-client-ghcjs
 
   if !impl(ghcjs)
     build-depends: hsass
-                 , servant-client
 
   exposed-modules: Frontend
                  , Frontend.Backend
-                 , Frontend.Backend.Servant
                  , Frontend.Crypto.Ed25519
                  , Frontend.Editor
                  , Frontend.Foundation

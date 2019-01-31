@@ -47,7 +47,6 @@ module Frontend.Backend
   ) where
 
 import           Control.Arrow                     (left, (&&&), (***))
-import           Control.Concurrent                (forkIO)
 import           Control.Lens                      hiding ((.=))
 import           Control.Monad.Except
 import           Data.Aeson                        (FromJSON (..), Object,
@@ -69,7 +68,7 @@ import qualified Data.Text.Encoding                as T
 import           Data.Time.Clock                   (getCurrentTime)
 import           Generics.Deriving.Monoid          (mappenddefault,
                                                     memptydefault)
-import           Language.Javascript.JSaddle.Monad (JSContextRef, JSM, askJSM)
+import           Language.Javascript.JSaddle.Monad (JSContextRef, JSM, askJSM, liftJSM)
 import qualified Network.HTTP.Types                as HTTP
 import           Pact.Server.Client
 import           Pact.Types.API
@@ -91,7 +90,7 @@ import           Pact.Types.Crypto                 (PPKScheme (..))
 
 import           Common.Api
 import           Common.Route                      (pactServerListPath)
-import qualified Frontend.Backend.Servant          as S
+import qualified Servant.Client.JSaddle           as S
 import           Frontend.Crypto.Ed25519
 import           Frontend.Foundation
 import           Frontend.Messages
@@ -203,8 +202,6 @@ data Backend t = Backend
   , _backend_meta        :: Dynamic t PublicMeta
    -- ^ Meta data used for deployments. Can be modified via above
    -- `_backendCfg_setChainId`, `_backendCfg_setGasLimit`, ...
-  , _backend_httpManager :: S.HttpManager
-   -- ^ The HTTP manager used to perform requests.
   }
 
 makePactLenses ''Backend
@@ -232,8 +229,6 @@ makeBackend w cfg = mfix $ \ ~(_, backendL) -> do
 
     (mConf, onDeployed) <- deployCode w backendL $ cfg ^. backendCfg_deployCode
 
-    manager <- S.makeHttpManager
-
     modules <- loadModules backendL $ leftmost [ onDeployed, cfg ^. backendCfg_refreshModule ]
 
     meta <- buildMeta cfg
@@ -245,7 +240,6 @@ makeBackend w cfg = mfix $ \ ~(_, backendL) -> do
           , _backend_modules = modules
           , _backend_deployed = onDeployed
           , _backend_meta = meta
-          , _backend_httpManager = manager
           }
       )
 
@@ -434,9 +428,8 @@ performBackendRequestCustom w backendL unwrap onReq =
       let
         rawReq = unwrap req
         signing = _backendRequest_signing rawReq
-        manager = _backend_httpManager backendL
       payload <- buildSendPayload meta keys signing rawReq
-      liftIO $ backendRequest manager rawReq payload $ cb . (req,)
+      liftJSM $ backendRequest rawReq payload $ cb . (req,)
   where
     onReqWithKeys = attach (current $ _wallet_keys w) onReq
 
@@ -465,18 +458,17 @@ performBackendRequestCustom w backendL unwrap onReq =
 --
 -- @
 backendRequest
-  :: S.HttpManager
-  -> BackendRequest
+  :: BackendRequest
   -> SubmitBatch
   -> (BackendErrorResult -> IO ())
-  -> IO ()
-backendRequest manager req batch callback = void . forkIO $ do
+  -> JSM ()
+backendRequest req batch callback = void . forkJSM $ do
     let
       uri = brUri $ _backendRequest_backend req
     baseUrl <- S.parseBaseUrl $ T.unpack uri
-    let clientEnv = S.mkClientEnv manager baseUrl
+    let clientEnv = S.mkClientEnv baseUrl
 
-    er <- liftIO . runExceptT $ do
+    er <- liftJSM . runExceptT $ do
       res <- runReq clientEnv $ send pactServerApiClient batch
       key <- getRequestKey $ res
       v <- runReq clientEnv $ listen pactServerApiClient $ ListenerRequest key
@@ -489,10 +481,10 @@ backendRequest manager req batch callback = void . forkIO $ do
     parseValue = left (BackendError_ParseError . T.pack ) . parseEither parseJSON
 
     -- | Rethrow an error value by wrapping it with f.
-    reThrowWith :: (e -> BackendError) -> IO (Either e a) -> ExceptT BackendError IO a
+    reThrowWith :: (e -> BackendError) -> JSM (Either e a) -> ExceptT BackendError JSM a
     reThrowWith f = ExceptT . fmap (left f)
 
-    runReq :: S.ClientEnv -> S.ClientM a -> ExceptT BackendError IO a
+    runReq :: S.ClientEnv -> S.ClientM a -> ExceptT BackendError JSM a
     runReq env = reThrowWith packHttpErr . flip S.runClientM env
 
     packHttpErr :: S.ServantError -> BackendError
