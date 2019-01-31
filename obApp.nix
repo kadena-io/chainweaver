@@ -58,12 +58,6 @@ in
         silently = haskellLib.dontCheck super.silently;
         servant = haskellLib.dontCheck super.servant;
         servant-client = haskellLib.dontCheck super.servant-client;
-        servant-client-ghcjs = self.callCabal2nix "servant-client-ghcjs" ((pkgs.fetchFromGitHub {
-          owner = "haskell-servant";
-          repo = "servant";
-          rev = "5fe3b4ea31411f8accfad981a4c10d8b110d2f1e";
-          sha256 = "06abdksq9bc3a8r5707wbv0v6md451d82sibljqallbay0yr6m8c";
-        }) + "/servant-client-ghcjs") {};
         unix-time = haskellLib.dontCheck super.unix-time;
         wai-app-static = haskellLib.dontCheck super.wai-app-static;
         wai-extra = haskellLib.dontCheck super.wai-extra;
@@ -96,6 +90,13 @@ in
               rev = "3dc60340634c82f39f6c5dca2b3859d10925cfdf";
               sha256 = "18xcxg1h19zx6gdzk3dfs87447k3xjqn40raghjz53bg5k8cdc31";
             }) {});
+
+            servant-client-jsaddle = haskellLib.doJailbreak (haskellLib.dontCheck (self.callCabal2nix "servant-client-jsaddle" ((pkgs.fetchFromGitHub {
+              owner = "haskell-servant";
+              repo = "servant";
+              rev = "85d6471debfb4a5707c261d4b9deaa33ed4c65db";
+              sha256 = "1lwa6kbpjmx17lkh74p9nfjiwzqcy3whza59m67k96ab3bh2b99y";
+            }) + "/servant-client-jsaddle") {}));
 
             thyme = pkgs.haskell.lib.dontCheck (pkgs.haskell.lib.enableCabalFlag (self.callCabal2nix "thyme" (pkgs.fetchFromGitHub {
               owner = "kadena-io";
