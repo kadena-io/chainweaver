@@ -51,9 +51,8 @@ import           Control.Concurrent                (forkIO)
 import           Control.Lens                      hiding ((.=))
 import           Control.Monad.Except
 import           Data.Aeson                        (FromJSON (..), Object,
-                                                    Value (..),
-                                                    encode, withObject,
-                                                    (.:))
+                                                    Value (..), encode,
+                                                    withObject, (.:))
 import           Data.Aeson.Types                  (parseEither, parseMaybe,
                                                     typeMismatch)
 import qualified Data.ByteString.Lazy              as BSL
@@ -71,8 +70,7 @@ import           Data.Time.Clock                   (getCurrentTime)
 import           Generics.Deriving.Monoid          (mappenddefault,
                                                     memptydefault)
 import           Language.Javascript.JSaddle.Monad (JSContextRef, JSM, askJSM)
-import qualified Network.HTTP.Client               as HTTP
-import qualified Network.HTTP.Types.Status         as S
+import qualified Network.HTTP.Types                as HTTP
 import           Pact.Server.Client
 import           Pact.Types.API
 import           Pact.Types.Command
@@ -86,6 +84,10 @@ import           Reflex.NotReady.Class
 import           Pact.Parse                        (ParsedDecimal (..),
                                                     ParsedInteger (..))
 import           Pact.Types.Command                (PublicMeta (..))
+
+#if !defined (ghcjs_HOST_OS)
+import           Pact.Types.Crypto                 (PPKScheme (..))
+#endif
 
 import           Common.Api
 import           Common.Route                      (pactServerListPath)
@@ -230,7 +232,7 @@ makeBackend w cfg = mfix $ \ ~(_, backendL) -> do
 
     (mConf, onDeployed) <- deployCode w backendL $ cfg ^. backendCfg_deployCode
 
-    manager <- makeHttpManager
+    manager <- S.makeHttpManager
 
     modules <- loadModules backendL $ leftmost [ onDeployed, cfg ^. backendCfg_refreshModule ]
 
@@ -463,7 +465,7 @@ performBackendRequestCustom w backendL unwrap onReq =
 --
 -- @
 backendRequest
-  :: HTTP.Manager
+  :: S.HttpManager
   -> BackendRequest
   -> SubmitBatch
   -> (BackendErrorResult -> IO ())
@@ -475,9 +477,9 @@ backendRequest manager req batch callback = void . forkIO $ do
     let clientEnv = S.mkClientEnv manager baseUrl
 
     er <- liftIO . runExceptT $ do
-      res <- runReq clientEnv $ send batch
+      res <- runReq clientEnv $ send pactServerApiClient batch
       key <- getRequestKey $ res
-      v <- runReq clientEnv $ listen $ ListenerRequest key
+      v <- runReq clientEnv $ listen pactServerApiClient $ ListenerRequest key
       -- pure v
       ExceptT . pure $ fromCommandValue <=< parseValue $ _arResult v
 
@@ -496,7 +498,7 @@ backendRequest manager req batch callback = void . forkIO $ do
     packHttpErr :: S.ServantError -> BackendError
     packHttpErr e = case e of
       S.FailureResponse response ->
-        if S.responseStatusCode response == S.status413
+        if S.responseStatusCode response == HTTP.status413
            then BackendError_ReqTooLarge
            else BackendError_BackendError $ T.pack $ show response
       _ -> BackendError_BackendError $ T.pack $ show e
