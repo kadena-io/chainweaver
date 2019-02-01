@@ -1,7 +1,7 @@
 {
   "owner": "eskimor",
   "repo": "pact",
-  "branch": "rk-command-value",
-  "rev": "7c471c75d06d0b15d9b37b903ebc2ecb6eb0e553",
-  "sha256": "1074pr0j6glbc44zkp53sxb734dh9ahdskzhws69zkrgczgcifji"
+  "branch": "rk-more-typesafety",
+  "rev": "2c4e1bd73f5edc1a4e4030fdcda002061fed12dd",
+  "sha256": "0m5gr66h2ar30xzwg7jfgwzcjd9g8p980g4xliqdci727z4zmxyq"
 }

@@ -68,7 +68,8 @@ import qualified Data.Text.Encoding                as T
 import           Data.Time.Clock                   (getCurrentTime)
 import           Generics.Deriving.Monoid          (mappenddefault,
                                                     memptydefault)
-import           Language.Javascript.JSaddle.Monad (JSContextRef, JSM, askJSM, liftJSM)
+import           Language.Javascript.JSaddle.Monad (JSContextRef, JSM, askJSM,
+                                                    liftJSM)
 import qualified Network.HTTP.Types                as HTTP
 import           Pact.Server.Client
 import           Pact.Types.API
@@ -83,6 +84,9 @@ import           Reflex.NotReady.Class
 import           Pact.Parse                        (ParsedDecimal (..),
                                                     ParsedInteger (..))
 import           Pact.Types.Command                (PublicMeta (..))
+import           Pact.Types.Exp                    (Literal (LString))
+import           Pact.Types.Term                   (Name,
+                                                    Term (TList, TLiteral))
 
 #if !defined (ghcjs_HOST_OS)
 import           Pact.Types.Crypto                 (PPKScheme (..))
@@ -90,11 +94,11 @@ import           Pact.Types.Crypto                 (PPKScheme (..))
 
 import           Common.Api
 import           Common.Route                      (pactServerListPath)
-import qualified Servant.Client.JSaddle           as S
 import           Frontend.Crypto.Ed25519
 import           Frontend.Foundation
 import           Frontend.Messages
 import           Frontend.Wallet
+import qualified Servant.Client.JSaddle            as S
 
 -- | URI for accessing a backend.
 type BackendUri = Text
@@ -163,8 +167,8 @@ data BackendError
   -- ^ Other errors that should really never happen.
   deriving Show
 
--- | We either have a `BackendError` or some `Value`.
-type BackendErrorResult = Either BackendError Value
+-- | We either have a `BackendError` or some `Term Name`.
+type BackendErrorResult = Either BackendError (Term Name)
 
 -- | Config for creating a `Backend`.
 data BackendCfg t = BackendCfg
@@ -192,14 +196,14 @@ makePactLenses ''BackendCfg
 type IsBackendCfg cfg t = (HasBackendCfg cfg t, Monoid cfg, Flattenable cfg t)
 
 data Backend t = Backend
-  { _backend_backends    :: Dynamic t (Maybe (Map BackendName BackendRef))
+  { _backend_backends :: Dynamic t (Maybe (Map BackendName BackendRef))
     -- ^ All available backends that can be selected.
-  , _backend_modules     :: Dynamic t (Map BackendName (Maybe [Text]))
+  , _backend_modules  :: Dynamic t (Map BackendName (Maybe [Text]))
    -- ^ Available modules on all backends. `Nothing` if not loaded yet.
    -- TODO: This should really go to the `ModuleExplorer` or should it?
-  , _backend_deployed    :: Event t ()
+  , _backend_deployed :: Event t ()
    -- ^ Event gets triggered whenever some code got deployed sucessfully.
-  , _backend_meta        :: Dynamic t PublicMeta
+  , _backend_meta     :: Dynamic t PublicMeta
    -- ^ Meta data used for deployments. Can be modified via above
    -- `_backendCfg_setChainId`, `_backendCfg_setGasLimit`, ...
   }
@@ -365,29 +369,40 @@ loadModules
   -> Event t ()
   -> m (Dynamic t (Map BackendName (Maybe [Text])))
 loadModules backendL onRefresh = do
-  let
-    bs = backendL ^. backend_backends
-    req r = (BackendRequest "(list-modules)" H.empty r Set.empty)
-  backendMap <- networkView $ ffor bs $ \case
-    Nothing -> pure mempty
-    Just bs' -> do
-      onPostBuild <- getPostBuild
-      bm <- flip Map.traverseWithKey bs' $ \_ r -> do
-        onErrResp <- performBackendRequest emptyWallet backendL $
-          leftmost [ req r <$ onRefresh
-                   , req r <$ onPostBuild
-                   ]
-        let
-          (onErr, onResp) = fanEither $ snd <$> onErrResp
+      let
+        bs = backendL ^. backend_backends
+        req r = (BackendRequest "(list-modules)" H.empty r Set.empty)
+      backendMap <- networkView $ ffor bs $ \case
+        Nothing -> pure mempty
+        Just bs' -> do
+          onPostBuild <- getPostBuild
+          bm <- flip Map.traverseWithKey bs' $ \_ r -> do
+            onErrResp <- performBackendRequest emptyWallet backendL $
+              leftmost [ req r <$ onRefresh
+                       , req r <$ onPostBuild
+                       ]
+            let
+              (onErr, onResp) = fanEither $ snd <$> onErrResp
 
-          onModules :: Event t (Maybe [Text])
-          onModules = parseMaybe parseJSON <$> onResp
-        performEvent_ $ (liftIO . putStrLn . ("ERROR: " <>) . show) <$> onErr
+              onModules :: Event t (Maybe [Text])
+              onModules =  getModuleList <$> onResp
+            performEvent_ $ (liftIO . putStrLn . ("ERROR: " <>) . show) <$> onErr
 
-        holdUniqDyn =<< holdDyn Nothing onModules
-      pure $ sequence bm
+            holdUniqDyn =<< holdDyn Nothing onModules
+          pure $ sequence bm
 
-  join <$> holdDyn mempty backendMap
+      join <$> holdDyn mempty backendMap
+    where
+      getModuleList :: Term Name -> Maybe [Text]
+      getModuleList = \case
+        TList terms _ _ -> traverse getStringLit terms
+        _               -> Nothing
+
+      getStringLit :: Term Name -> Maybe Text
+      getStringLit = \case
+        TLiteral (LString v) _ -> Just v
+        _         -> Nothing
+
 
 
 -- | Send a transaction via the /send endpoint.
@@ -495,7 +510,7 @@ backendRequest req batch callback = void . forkJSM $ do
            else BackendError_BackendError $ T.pack $ show response
       _ -> BackendError_BackendError $ T.pack $ show e
 
-    fromCommandValue :: MonadError BackendError m => CommandValue Value -> m Value
+    fromCommandValue :: MonadError BackendError m => CommandValue -> m (Term Name)
     fromCommandValue = \case
       CommandFailure e -> throwError $ BackendError_CommandFailure e
       CommandSuccess v -> pure v
