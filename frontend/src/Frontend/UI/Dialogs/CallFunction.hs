@@ -52,6 +52,7 @@ import           Frontend.ModuleExplorer
 import           Frontend.UI.Modal
 import           Frontend.UI.Widgets
 import           Frontend.Wallet         (HasWallet (..))
+import           Frontend.UI.DeploymentSettings
 ------------------------------------------------------------------------------
 
 type HasUICallFunctionModel model t =

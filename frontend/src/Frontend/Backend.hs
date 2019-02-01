@@ -181,6 +181,8 @@ data BackendCfg t = BackendCfg
     -- ^ Deploy some code to the backend. Response will be logged to `Messages`.
   , _backendCfg_setChainId    :: Event t Text
     -- ^ On what chain to deploy to (ignored on pact -s backend).
+  , _backendCfg_setSender    :: Event t Text
+    -- ^ What user wants to pay for this transaction?
   , _backendCfg_setGasLimit   :: Event t ParsedInteger
     -- ^ Maximun amount of gas to use for this transaction.
   , _backendCfg_setGasPrice   :: Event t ParsedDecimal
@@ -262,6 +264,7 @@ buildMeta cfg = do
 
   foldDyn id defaultMeta $ leftmost
     [ (\u c -> c { _pmChainId = u})  <$> cfg ^. backendCfg_setChainId
+    , (\u c -> c { _pmSender = u})   <$> cfg ^. backendCfg_setSender
     , (\u c -> c { _pmGasLimit = u}) <$> cfg ^. backendCfg_setGasLimit
     , (\u c -> c { _pmGasPrice = u}) <$> cfg ^. backendCfg_setGasPrice
     ]
@@ -698,18 +701,19 @@ instance Monoid BackendRef where
   mappend = (<>)
 
 instance Reflex t => Semigroup (BackendCfg t) where
-  BackendCfg refreshA deployA setChainIdA setGasLimitA setGasPriceA <>
-    BackendCfg refreshB deployB setChainIdB setGasLimitB setGasPriceB
+  BackendCfg refreshA deployA setChainIdA setSenderA setGasLimitA setGasPriceA <>
+    BackendCfg refreshB deployB setChainIdB setSenderB setGasLimitB setGasPriceB
       = BackendCfg
         { _backendCfg_refreshModule = leftmost [ refreshA, refreshB ]
         , _backendCfg_deployCode    = leftmost [ deployA, deployB ]
         , _backendCfg_setChainId    = leftmost [ setChainIdA, setChainIdB ]
+        , _backendCfg_setSender    = leftmost [ setSenderA, setSenderB ]
         , _backendCfg_setGasLimit   = leftmost [ setGasLimitA, setGasLimitB ]
         , _backendCfg_setGasPrice   = leftmost [ setGasPriceA, setGasPriceB ]
         }
 
 instance Reflex t => Monoid (BackendCfg t) where
-  mempty = BackendCfg never never never never never
+  mempty = BackendCfg never never never never never never
   mappend = (<>)
 --
 
@@ -719,5 +723,6 @@ instance Flattenable (BackendCfg t) t where
       <$> doSwitch never (_backendCfg_refreshModule <$> ev)
       <*> doSwitch never (_backendCfg_deployCode <$> ev)
       <*> doSwitch never (_backendCfg_setChainId <$> ev)
+      <*> doSwitch never (_backendCfg_setSender <$> ev)
       <*> doSwitch never (_backendCfg_setGasLimit <$> ev)
       <*> doSwitch never (_backendCfg_setGasPrice <$> ev)

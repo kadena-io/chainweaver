@@ -19,8 +19,6 @@
 -- backend.
 -- Copyright   :  (C) 2018 Kadena
 -- License     :  BSD-style (see the file LICENSE)
---
-
 module Frontend.UI.Dialogs.DeployConfirmation
   ( uiDeployConfirmation
   ) where
@@ -29,15 +27,17 @@ module Frontend.UI.Dialogs.DeployConfirmation
 import           Control.Lens
 import           Data.Bifunctor
 import qualified Data.Map                as Map
+import           Data.Void               (Void)
 import           Reflex
 import           Reflex.Dom
-import           Data.Void (Void)
+import           Reflex.Dom.Contrib.CssClass (elKlass)
 ------------------------------------------------------------------------------
 import           Frontend.Backend
 import           Frontend.Ide
 import           Frontend.ModuleExplorer (HasModuleExplorerCfg (..))
 import           Frontend.UI.Modal
 import           Frontend.UI.Widgets
+import           Frontend.UI.DeploymentSettings
 ------------------------------------------------------------------------------
 
 
@@ -46,13 +46,13 @@ import           Frontend.UI.Widgets
 --   User can make sure to deploy to the right backend, has the right keysets,
 --   the right keys, ...
 uiDeployConfirmation
-  :: MonadWidget t m
+  :: forall t m a. MonadWidget t m
   => Ide a t
   -> m (IdeCfg Void t, Event t ())
 uiDeployConfirmation ideL = do
   onClose <- modalHeader $ text "Deployment Settings"
   modalMain $ do
-    transInfo <- modalBody $ do
+    (settingsCfg, transInfo) <- modalBody $ do
       d <- divClass "segment" $ do
         elClass "h2" "heading heading_type_h2" $ text "Choose a Server "
 
@@ -63,12 +63,16 @@ uiDeployConfirmation ideL = do
             cfg = def & dropdownConfig_attributes .~ pure ("class" =: "select select_type_primary")
         dropdown Nothing (mkOptions <$> backends) cfg
 
-      signingKeys <- elClass "div" "segment" $
-        signingKeysWidget $ _ide_wallet ideL
-      pure $ do
-        s <- signingKeys
-        mb <- value d
-        pure $ TransactionInfo s <$> mb
+      (settingsCfg, signingKeys) <- elClass "div" "segment" $
+        uiDeploymentSettings ideL
+
+      pure
+        ( settingsCfg
+        , do
+            s <- signingKeys
+            mb <- value d
+            pure $ TransactionInfo s <$> mb
+        )
 
     modalFooter $ do
       onCancel <- cancelButton def "Cancel"
@@ -79,4 +83,4 @@ uiDeployConfirmation ideL = do
       -- TODO: Use `backendCfg_deployCode` instead.
       let cfg = mempty & moduleExplorerCfg_deployEditor .~
             fmapMaybe id (tagPromptlyDyn transInfo onConfirm)
-      pure (cfg, leftmost [onClose, onCancel, onConfirm])
+      pure (cfg <> settingsCfg, leftmost [onClose, onCancel, onConfirm])
