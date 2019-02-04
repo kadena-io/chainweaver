@@ -52,6 +52,7 @@ import           Frontend.JsonData
 import           Frontend.Messages
 import           Frontend.ModuleExplorer   as API
 import           Frontend.Repl
+import           Frontend.Storage
 
 type HasModuleExplorerModelCfg mConf t =
   ( Monoid mConf
@@ -76,6 +77,28 @@ type ReflexConstraints t m =
   , PostBuild t m, MonadFix m
   )
 
+-- Storing data:
+
+-- | Storage keys for referencing data to be stored/retrieved.
+data StoreModuleExplorer a where
+  StoreModuleExplorer_SessionFile  :: StoreModuleExplorer Text -- ^ Current editor contents
+  -- TODO: Store `moduleExplorer_loaded` too with this key:
+  {- StoreModuleExplorer_SessionFileRef :: StoreModuleExplorer ModuleSource -}
+
+deriving instance Show (StoreModuleExplorer a)
+
+-- | Write text to localstorage.
+storeEditor :: MonadJSM m => Text -> m ()
+storeEditor ks = do
+    store <- getLocalStorage
+    setItemStorage store StoreModuleExplorer_SessionFile ks
+
+-- | Load text from localstorage.
+loadEditor :: MonadJSM m => m (Maybe Text)
+loadEditor = do
+    store <- getLocalStorage
+    getItemStorage store StoreModuleExplorer_SessionFile
+
 
 makeModuleExplorer
   :: forall t m cfg mConf model
@@ -85,6 +108,7 @@ makeModuleExplorer
     , HasModuleExplorerModelCfg mConf t
     , HasModuleExplorerModel model t
     , MonadSample t (Performable m)
+    , MonadJSM m
     )
   => model
   -> cfg
@@ -94,7 +118,20 @@ makeModuleExplorer m cfg = mfix $ \ ~(_, explr) -> do
       (fmapMaybe getFileModuleRef $ cfg ^. moduleExplorerCfg_pushModule)
       (leftmost [cfg ^. moduleExplorerCfg_selectFile, Nothing <$ cfg ^. moduleExplorerCfg_goHome])
 
-    onInitFile <- fmap (const $ FileRef_Example ExampleRef_HelloWorld) <$> getPostBuild
+    onPostBuild <- getPostBuild
+    mInitFile <- loadEditor
+    liftIO $ putStrLn $ "\nnLoaded File:\nn" <> show mInitFile
+    let
+      onInitFile =
+        if isNothing mInitFile
+           then (const $ FileRef_Example ExampleRef_HelloWorld) <$> onPostBuild
+           else never
+      editorInitCfg = mempty
+        & editorCfg_setCode .~ fmapMaybe (const mInitFile) onPostBuild
+    -- Store to disk max every 2 seconds:
+    onStore <- throttle 2 $ updated $ m ^. editor_code
+    performEvent_ $ storeEditor <$> onStore
+
     (lFileCfg, loadedSource) <- loadToEditor m
       (leftmost [cfg ^. moduleExplorerCfg_loadFile, onInitFile])
       (cfg ^. moduleExplorerCfg_loadModule)
@@ -113,7 +150,7 @@ makeModuleExplorer m cfg = mfix $ \ ~(_, explr) -> do
     modules <- makeModuleList m (cfg ^. moduleExplorerCfg_modules)
 
     pure
-      ( mconcat [ lFileCfg, stckCfg, deployEdCfg, deployCodeCfg ]
+      ( mconcat [ editorInitCfg, lFileCfg, stckCfg, deployEdCfg, deployCodeCfg ]
       , ModuleExplorer
         { _moduleExplorer_moduleStack = stack
         , _moduleExplorer_selectedFile = selectedFile
