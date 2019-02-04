@@ -240,11 +240,14 @@ funTypeInput json = \case
     mkIntInput :: m (Dynamic t Text)
     mkIntInput = mdo
       let
-        onInvalid = ffilter (not . isValid) $ _inputElement_input i
-        onValid = ffilter isValid $ _inputElement_input i
+        onInvalid = ffilter (not . maybeValid) $ _inputElement_input i
+        onValid = ffilter maybeValid $ _inputElement_input i
 
         isValid :: Text -> Bool
         isValid t = maybe False (const True) (readInt t) || T.null t
+
+        maybeValid :: Text -> Bool
+        maybeValid t = isValid t || t == "-"
 
         readInt :: Text -> Maybe Int
         readInt = readMay . T.unpack
