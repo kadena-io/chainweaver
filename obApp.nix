@@ -110,6 +110,7 @@ in
             frontend = pkgs.haskell.lib.dontHaddock super.frontend;
           };
     in self: super: lib.foldr lib.composeExtensions (_: _: {}) [
+      (pkgs.callPackage (hackGet ./deps/rhyolite) {}).haskellOverrides
       common-overlay
       (optionalExtension (super.ghc.isGhcjs or false) guard-ghcjs-overlay)
       (optionalExtension (super.ghc.isGhcjs or false) ghcjs-overlay)

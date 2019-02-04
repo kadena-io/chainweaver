@@ -23,8 +23,16 @@ library
                , obelisk-route
                , dependent-sum
                , mtl
+               , rhyolite-backend-db
+               , rhyolite-backend
+               , rhyolite-backend-snap
+               , rhyolite-common
+               , errors
+               , crypto-api
   exposed-modules: Backend
                  , Backend.Devel
+                 , Backend.Schema
+                 , Backend.Env
 
   ghc-options: -Wall
 

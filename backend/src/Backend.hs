@@ -5,21 +5,22 @@
 
 module Backend where
 
-import           Control.Monad.Identity   (Identity (..))
-import           Control.Monad.IO.Class   (liftIO)
-import           Data.Dependent.Sum       (DSum ((:=>)))
-import           Data.List                (foldl')
-import qualified Data.List                as L
-import           Data.Maybe               (isJust)
-import qualified Data.Text                as T
-import qualified Obelisk.Backend          as Ob
-import           Obelisk.Route            (R)
-import           Snap                     (Snap, pass, writeBS)
-import           Snap.Util.FileServe      (serveFile)
-import           System.Directory         (canonicalizePath, doesFileExist)
-import           System.FilePath          ((</>))
+import           Control.Monad.Identity (Identity (..))
+import           Control.Monad.IO.Class (liftIO)
+import           Data.Dependent.Sum     (DSum ((:=>)))
+import           Data.List              (foldl')
+import qualified Data.List              as L
+import           Data.Maybe             (isJust)
+import qualified Data.Text              as T
+import qualified Obelisk.Backend        as Ob
+import           Obelisk.Route          (R)
+import           Snap                   (Snap, pass, writeBS)
+import           Snap.Util.FileServe    (serveFile)
+import           System.Directory       (canonicalizePath, doesFileExist)
+import           System.FilePath        ((</>))
 
-import qualified Backend.Devel            as Devel
+import qualified Backend.Devel          as Devel
+import           Backend.Schema
 import           Common.Api
 import           Common.Route
 
