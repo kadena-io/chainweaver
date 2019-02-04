@@ -82,7 +82,7 @@ uiJsonData w d = divClass "tabset" $ mdo
       , _tabBarCfg_type = TabBarType_Secondary
       }
 
-    keysetVCfg <-tabPane ("class" =: "tab-content") curSelection JsonDataView_Keysets $ do
+    keysetVCfg <-tabPane mempty curSelection JsonDataView_Keysets $ do
       (e, keysetCfgL) <- elClass' "div" "keysets group" $ do
         onCreateKeyset <- uiCreateKeyset d
         ksCfg <- elClass "div" "keyset-list" $
@@ -92,7 +92,7 @@ uiJsonData w d = divClass "tabset" $ mdo
       setFocusOnSelected e "input" JsonDataView_Keysets $ updated curSelection
       pure keysetCfgL
 
-    rawVCfg <- tabPane ("class" =: "tab-content") curSelection JsonDataView_Raw $ do
+    rawVCfg <- tabPane mempty curSelection JsonDataView_Raw $ do
       onNewData <- tagOnPostBuild $ d ^. jsonData_rawInput
 
       let
@@ -104,7 +104,7 @@ uiJsonData w d = divClass "tabset" $ mdo
       setFocusOnSelected e ".ace_text-input" JsonDataView_Raw $ updated curSelection
       pure $ mempty & jsonDataCfg_setRawInput .~ onSetRawInput
 
-    tabPane ("class" =: "tab-content")
+    tabPane mempty
         curSelection JsonDataView_Result $ do
       let
         showData =
