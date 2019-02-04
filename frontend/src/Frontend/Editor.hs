@@ -124,7 +124,7 @@ makeEditor
     )
   => model -> cfg -> m (Editor t)
 makeEditor m cfg = do
-    t <-  holdDyn "" (cfg ^. editorCfg_setCode)
+    t <-  holdDyn "" $ cfg ^. editorCfg_setCode
     annotations <- typeCheckVerify m t
     pure $ Editor
       { _editor_code = t
