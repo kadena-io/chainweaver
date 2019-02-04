@@ -33,6 +33,7 @@ import qualified Data.Map                    as Map
 import           Data.Set                    (Set)
 import qualified Data.Set                    as Set
 import           Data.Text                   (Text)
+import qualified Data.Text                   as T
 import           Data.Void                   (Void)
 import           Pact.Parse                  (ParsedDecimal (..),
                                               ParsedInteger (..))
@@ -41,6 +42,7 @@ import           Reflex
 import           Reflex.Dom
 import           Reflex.Dom.Contrib.CssClass (elKlass)
 import           Reflex.Dom.Contrib.CssClass (addToClassAttr)
+import           Safe                        (readMay)
 ------------------------------------------------------------------------------
 import           Frontend.Backend
 import           Frontend.Foundation
@@ -50,8 +52,8 @@ import           Frontend.Wallet
 ------------------------------------------------------------------------------
 
 data DeploymentSettingsView
-  = DeploymentSettingsView_Keys -- ^ Select keys for signing the transaction.
-  | DeploymentSettingsView_Settings -- ^ Actual settings like gas price/limit, ...
+  = DeploymentSettingsView_Settings -- ^ Actual settings like gas price/limit, ...
+  | DeploymentSettingsView_Keys -- ^ Select keys for signing the transaction.
   deriving (Eq,Ord,Enum,Bounded)
 
 showSettingsTabName :: DeploymentSettingsView -> Text
@@ -69,7 +71,7 @@ uiDeploymentSettings
   => model
   -> m (mConf, Dynamic t (Set KeyName))
 uiDeploymentSettings m = mdo
-    curSelection <- holdDyn DeploymentSettingsView_Keys onTabClick
+    curSelection <- holdDyn DeploymentSettingsView_Settings onTabClick
     (TabBar onTabClick) <- makeTabBar $ TabBarCfg
       { _tabBarCfg_tabs = [minBound .. maxBound]
       , _tabBarCfg_mkLabel = const $ text . showSettingsTabName
@@ -78,15 +80,13 @@ uiDeploymentSettings m = mdo
       , _tabBarCfg_type = TabBarType_Secondary
       }
     elClass "div" "segment" $ do
-      signingKeys <- tabPane mempty curSelection DeploymentSettingsView_Keys $
-        signingKeysWidget m
       cfg <- tabPane mempty curSelection DeploymentSettingsView_Settings $
         elKlass "div" ("group") $ do
 
           onGasPriceTxt <- mkLabeledInput uiRealInputElement "Gas price" $
             fmap (showParsedDecimal . _pmGasPrice) $ m ^. backend_meta
 
-          onGasLimitTxt <- mkLabeledInput uiRealInputElement "Gas limit" $
+          onGasLimitTxt <- mkLabeledInput uiIntInputElement "Gas limit" $
             fmap (showParsedInteger . _pmGasLimit) $ m ^. backend_meta
 
           onSender <- mkLabeledInput uiInputElement "Sender" $
@@ -98,6 +98,10 @@ uiDeploymentSettings m = mdo
           pure $ mempty
             & backendCfg_setSender .~ onSender
             & backendCfg_setChainId .~ onChainId
+            & backendCfg_setGasPrice .~ fmapMaybe (readPact ParsedDecimal) onGasPriceTxt
+            & backendCfg_setGasLimit .~ fmapMaybe (readPact ParsedInteger) onGasLimitTxt
+      signingKeys <- tabPane mempty curSelection DeploymentSettingsView_Keys $
+        signingKeysWidget m
       pure (cfg, signingKeys)
     where
       showParsedInteger :: ParsedInteger -> Text
@@ -106,9 +110,13 @@ uiDeploymentSettings m = mdo
       showParsedDecimal :: ParsedDecimal -> Text
       showParsedDecimal (ParsedDecimal i) = tshow i
 
+      readPact wrapper =  fmap wrapper . readMay . T.unpack
+
 -- | Make labeled and segmented input.
 mkLabeledInput
-  :: (DomBuilder t m, er ~ EventResult, PostBuild t m)
+  :: (DomBuilder t m, er ~ EventResult, PostBuild t m, MonadFix m
+     , MonadHold t m
+     )
   => (InputElementConfig er t (DomBuilderSpace m) -> m (InputElement er (DomBuilderSpace m) t))
   -> Text -> Dynamic t Text -> m (Event t Text)
 mkLabeledInput mkInput n v = elClass "div" "segment segment_type_tertiary labeled-input" $ do

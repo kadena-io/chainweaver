@@ -20,6 +20,7 @@ module Frontend.UI.Widgets
   , uiCodeFont
   , uiInputElement
   , uiRealInputElement
+  , uiIntInputElement
   , uiInputView
   , uiCheckbox
   , uiDropdown
@@ -120,12 +121,16 @@ uiSelectElement uCfg child = do
   let cfg = uCfg & initialAttributes %~ addToClassAttr "select"
   selectElement cfg child
 
+-- | Factored out input class modifier, so we can keep it in sync.
+addInputElementCls :: Map AttributeName Text -> Map AttributeName Text
+addInputElementCls = addToClassAttr "input"
+
 -- | reflex-dom `inputElement` with pact-web default styling:
 uiInputElement
   :: DomBuilder t m
   => InputElementConfig er t (DomBuilderSpace m)
   -> m (InputElement er (DomBuilderSpace m) t)
-uiInputElement cfg = inputElement $ cfg & initialAttributes %~ addToClassAttr "input"
+uiInputElement cfg = inputElement $ cfg & initialAttributes %~ addInputElementCls
 
 -- | uiInputElement which should always provide a proper real number.
 --
@@ -135,27 +140,46 @@ uiRealInputElement
   => InputElementConfig er t (DomBuilderSpace m)
   -> m (InputElement er (DomBuilderSpace m) t)
 uiRealInputElement cfg = do
+    inputElement $ cfg & initialAttributes %~
+        (<> ("type" =: "number")) . addInputElementCls
+
+uiIntInputElement
+  :: DomBuilder t m
+  => InputElementConfig er t (DomBuilderSpace m)
+  -> m (InputElement er (DomBuilderSpace m) t)
+uiIntInputElement cfg = do
     r <- inputElement $ cfg & initialAttributes %~
-            (<> ("type" =: "number")) . addToClassAttr "input"
+            (<> ("type" =: "number")) . addInputElementCls
     pure $ r
       { _inputElement_value = fmap fixNum $ _inputElement_value r
       , _inputElement_input = fmap fixNum $ _inputElement_input r
       }
   where
-    fixNum x = if T.isInfixOf "." x then x else x <> ".0"
+    fixNum = T.takeWhile (/='.')
 
 -- | Take an `uiInputElement` like thing and make it a view with change events
 -- of your model.
 uiInputView
-  :: (DomBuilder t m, er ~ EventResult, PostBuild t m)
+  :: (DomBuilder t m, er ~ EventResult, PostBuild t m, MonadFix m, MonadHold t m)
   => (InputElementConfig er t (DomBuilderSpace m) -> m (InputElement er (DomBuilderSpace m) t))
   -> InputElementConfig er t (DomBuilderSpace m)
   -> Dynamic t Text
   -> m (Event t Text)
-uiInputView mkInput cfg v = do
-  onSet <- tagOnPostBuild v
+uiInputView mkInput cfg mVal = mdo
+  onSet <- tagOnPostBuild mVal
+  let
+    isValid = (==) <$> mVal <*> _inputElement_value v
+    validCls = (\v -> if v then "" else "input_invalid") <$> isValid
+    dynAttrs = do
+      let baseAttrs = cfg ^. initialAttributes
+      cValid <- validCls
+      pure $ (addToClassAttr cValid . addInputElementCls) baseAttrs
+  -- Short delay to avoid initial red state on load:
+  modifyAttrs <- tailE =<< dynamicAttributesToModifyAttributes dynAttrs
+
   v <- mkInput $ cfg
     & inputElementConfig_setValue .~ onSet
+    & modifyAttributes .~ modifyAttrs
   pure $ _inputElement_input v
 
 

@@ -60,6 +60,7 @@ type HasUICallFunctionModel model t =
 
 type HasUICallFunctionModelCfg mConf t =
   ( Monoid mConf, Flattenable mConf t, HasModuleExplorerCfg mConf t
+  , HasBackendCfg mConf t
   )
 
 -- | Modal dialog for calling a function.
@@ -91,21 +92,22 @@ uiCallFunction m mModule func = do
             args :: [ Dynamic t Text ] <- traverse (funArgEdit (m ^. jsonData)) fArgs
             pure $ buildCall fModule fName <$> sequence args
 
-        signingKeys <- case mModule of
-            Nothing -> pure mempty
-            Just _  -> uiSegment mempty $ signingKeysWidget (m ^. wallet)
+        (settingsCfg, signingKeys) <-
+          if isJust mModule -- Only relevant if we have a deployed module:
+             then uiSegment mempty $ uiDeploymentSettings m
+             else pure (mempty, pure mempty)
 
         pure $ do
           pactCall <- mPactCall
           moduleL <- mModule
-          pure (pactCall, signingKeys, moduleL)
+          pure (pactCall, signingKeys, moduleL, settingsCfg)
 
       modalFooter $
         case mCallAndKeys of
           Nothing -> do
             onAccept <- confirmButton def "Ok"
             pure (mempty, leftmost [onClose, onAccept])
-          Just (pactCall, signingKeys, moduleL) -> do
+          Just (pactCall, signingKeys, moduleL, settingsCfg) -> do
             onCancel <- cancelButton def "Cancel"
             text " "
             -- let isDisabled = maybe True (const False) <$> transInfo
@@ -126,7 +128,10 @@ uiCallFunction m mModule func = do
                   )
 
               onReq = tag (current transaction) onCall
-              cfg = mempty & moduleExplorerCfg_deployCode .~ onReq
+              cfg = mconcat
+                [ settingsCfg
+                ,  mempty & moduleExplorerCfg_deployCode .~ onReq
+                ]
 
             pure (cfg, leftmost [onClose, onCancel, onCall])
 

@@ -25,6 +25,10 @@
   background-size: 14.7px;
 }
 
+.input_invalid {
+  background-color: rgba(255, 0, 0, 0.6);
+}
+
 .input_type_textarea {
   height: 3 * $control-height;
 }
