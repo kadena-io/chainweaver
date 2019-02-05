@@ -46,9 +46,11 @@ import qualified Data.List                  as L
 import qualified Data.Map                   as Map
 import           Data.Text                  (Text)
 import qualified Data.Text                  as T
+import           Data.Word                  (Word32)
 import           Generics.Deriving.Monoid   (mappenddefault, memptydefault)
 import           GHC.Generics               (Generic)
 import           Reflex
+import           System.Random              (newStdGen, randoms)
 
 #ifdef  ghcjs_HOST_OS
 import           Data.Map                   (Map)
@@ -113,7 +115,8 @@ makeEditor m cfg = mdo
     t <-  holdDyn "" $ leftmost [cfg ^. editorCfg_setCode, onFix]
     annotations <- typeCheckVerify m t
     quickFixes  <- holdDyn [] $ makeQuickFixes <$> annotations
-    let (quickFixCfg, onFix) = applyQuickFix t $ cfg ^. editorCfg_applyQuickFix
+    gen <- liftIO newStdGen
+    (quickFixCfg, onFix) <- applyQuickFix (randoms gen) t $ cfg ^. editorCfg_applyQuickFix
     pure
       ( quickFixCfg
       , Editor
@@ -123,34 +126,44 @@ makeEditor m cfg = mdo
         }
       )
 
+-- First parameter is a stream of random numbers to use for generating keyset names.
 applyQuickFix
-  :: forall t mConf
-  . ( Reflex t
+  :: forall t mConf m
+  . ( Reflex t, MonadHold t m, MonadFix m
     , HasEditorModelCfg mConf t
     )
-  => Dynamic t Text -> Event t QuickFix -> (mConf, Event t Text)
-applyQuickFix t onQuickFix =
+  => [Word32] -> Dynamic t Text -> Event t QuickFix -> m (mConf, Event t Text)
+applyQuickFix rs t onQuickFix = do
   let
-    onNewKeyset = fmapMaybe (^? _QuickFix_MissingEnvKeyset) onQuickFix
     onNewDefKeyset = fmapMaybe (^? _QuickFix_MissingKeyset) onQuickFix
+    mkName r n = (n, n <> "-" <> tshow r)
+  onNewRandKeyset <- zipListWithEvent mkName rs onNewDefKeyset
 
-    fixCode :: Dynamic t (Text -> Text)
+  let
+
+    onNewKeyset = leftmost
+     [ fmapMaybe (^? _QuickFix_MissingEnvKeyset) onQuickFix
+     , snd <$> onNewRandKeyset
+     ]
+
+    fixCode :: Dynamic t ((Text, Text) -> Text)
     fixCode = do
       let
         isPreamble = (\x -> T.isPrefixOf ";" x || T.null x) . T.strip
         splitLeadingComments = L.break (not . isPreamble . T.strip) . T.lines
       (preamble, remCode) <- splitLeadingComments <$> t
-      pure $ \ks -> T.unlines
-        ( preamble <>
-          [ ""
-          , "(define-keyset '" <> ks <> "(read-keyset \"" <> ks <> "\"))"
-          ] <>
-          remCode
+      pure $ \(ks, ksn) -> T.unlines
+        ( preamble
+          <> [ "\n;; For more information about keysets checkout:"
+             , ";; https://pact-language.readthedocs.io/en/latest/pact-reference.html#keysets-and-authorization"
+             , "(define-keyset '" <> ks <> "(read-keyset \"" <> ksn <> "\"))\n"
+             ]
+          <> remCode
         )
 
-  in
+  pure
     ( mempty & jsonDataCfg_createKeyset .~ onNewKeyset
-    , attachWith id (current fixCode) onNewDefKeyset
+    , attachWith id (current fixCode) onNewRandKeyset
     )
 
 -- | Type check and verify code.
