@@ -81,7 +81,7 @@ app = void . mfix $ \ cfg -> do
 codePanel :: forall t m a. MonadWidget t m => CssClass -> Ide a t -> m (IdeCfg a t)
 codePanel cls m = elKlass "div" (cls <> "pane") $ do
     quickFixCfg <-
-      uiQuickFix "pane__header pane__header_align_right tab-nav tab-nav_type_primary" m
+      uiQuickFix "pane__header tab-nav tab-nav_type_primary" m
     (e, eCfg) <- wysiwyg $ do
       onNewCode <- tagOnPostBuild $ m ^. editor_code
       let annotations = map toAceAnnotation <$> m ^. editor_annotations
@@ -127,13 +127,20 @@ uiQuickFix cls m = do
     pure $ mempty & editorCfg_applyQuickFix .~ onFixes
   where
     renderQuickFix qf = do
-      onClick <- uiButton (btnCfgTertiary & uiButtonCfg_class %~ (<> "error_inline")) $
+      let btnCls = "error_inline button_size_full-width"
+      onClick <- uiButton (btnCfgTertiary & uiButtonCfg_class %~ (<> btnCls)
+                            & uiButtonCfg_title .~ Just (renderQuickFixTitle qf)
+                          ) $
         text $ renderQuickFixName qf
       pure $ qf <$ onClick
 
     renderQuickFixName = \case
-      QuickFix_MissingEnvKeyset ks -> "Add keyset '" <> ks <> "' to Env"
-      QuickFix_MissingKeyset ks -> "Add (define-keyset '" <> ks <> " ....)"
+      QuickFix_MissingEnvKeyset ks -> "Fix Keyset Error"
+      QuickFix_MissingKeyset ks -> "Fix Keyset Error"
+
+    renderQuickFixTitle = \case
+      QuickFix_MissingEnvKeyset ks -> "Adds keyset '" <> ks <> "' to Env."
+      QuickFix_MissingKeyset ks -> "Adds (define-keyset '" <> ks <> " ...) and also adds an empty keyset to Env."
 
 -- | Reset REPL and load current editor text into it.
 --
