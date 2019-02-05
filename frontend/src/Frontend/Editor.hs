@@ -142,8 +142,8 @@ applyQuickFix t onQuickFix =
       (preamble, remCode) <- splitLeadingComments <$> t
       pure $ \ks -> T.unlines
         ( preamble <>
-          [ ""
-          , "(define-keyset '" <> ks <> "(read-keyset \"" <> ks <> "\"))"
+          [ "(define-keyset '" <> ks <> "(read-keyset \"" <> ks <> "\"))"
+          , ""
           ] <>
           remCode
         )
