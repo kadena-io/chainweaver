@@ -178,7 +178,7 @@ typeCheckVerify m t = mdo
     let
       newAnnotations = leftmost
        [ attachPromptlyDynWith parseVerifyOutput cModules $ _repl_modulesVerified replL
-       , fallBackParser <$> replO ^. messagesCfg_send
+       , annoFallbackParser <$> replO ^. messagesCfg_send
        ]
 #else
       newAnnotations = leftmost
