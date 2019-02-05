@@ -93,7 +93,7 @@ makeModuleExplorer m cfg = mfix $ \ ~(_, explr) -> do
       (fmapMaybe getFileModuleRef $ cfg ^. moduleExplorerCfg_pushModule)
       (leftmost [cfg ^. moduleExplorerCfg_selectFile, Nothing <$ cfg ^. moduleExplorerCfg_goHome])
 
-    onInitFile <- fmap (const $ FileRef_Example ExampleRef_HelloWorld) <$> getPostBuild
+    onInitFile <- fmap (const $ FileRef_Example ExampleRef_SimpleVerify) <$> getPostBuild
     (lFileCfg, loadedSource) <- loadToEditor
       (leftmost [cfg ^. moduleExplorerCfg_loadFile, onInitFile])
       (cfg ^. moduleExplorerCfg_loadModule)
