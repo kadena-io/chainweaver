@@ -19,11 +19,13 @@ module Frontend.UI.Widgets
   , uiGroup
   , uiCodeFont
   , uiInputElement
+  , uiRealInputElement
+  , uiIntInputElement
+  , uiInputView
   , uiCheckbox
   , uiDropdown
   , uiSelectElement
   , validatedInputWithButton
-  , signingKeysWidget
     -- ** Helper widgets
   , imgWithAlt
   , showLoading
@@ -52,11 +54,14 @@ import           Language.Javascript.JSaddle (js0, liftJSM, pToJSVal)
 import           Obelisk.Generated.Static
 import           Reflex.Dom.Contrib.CssClass
 import           Reflex.Dom.Core
+import           Reflex.Extended             (tagOnPostBuild)
 ------------------------------------------------------------------------------
 import           Frontend.Foundation
 import           Frontend.UI.Button
-import           Frontend.UI.Widgets.Helpers (imgWithAlt, setFocus, setFocusOn,
-                                              setFocusOnSelected, tabPane, tabPane', makeClickable)
+import           Frontend.UI.Widgets.Helpers (imgWithAlt, makeClickable,
+                                              setFocus, setFocusOn,
+                                              setFocusOnSelected, tabPane,
+                                              tabPane')
 import           Frontend.Wallet             (HasWallet (..), KeyName, KeyPair,
                                               Wallet)
 ------------------------------------------------------------------------------
@@ -116,12 +121,67 @@ uiSelectElement uCfg child = do
   let cfg = uCfg & initialAttributes %~ addToClassAttr "select"
   selectElement cfg child
 
+-- | Factored out input class modifier, so we can keep it in sync.
+addInputElementCls :: Map AttributeName Text -> Map AttributeName Text
+addInputElementCls = addToClassAttr "input"
+
 -- | reflex-dom `inputElement` with pact-web default styling:
 uiInputElement
   :: DomBuilder t m
   => InputElementConfig er t (DomBuilderSpace m)
   -> m (InputElement er (DomBuilderSpace m) t)
-uiInputElement cfg = inputElement $ cfg & initialAttributes %~ addToClassAttr "input"
+uiInputElement cfg = inputElement $ cfg & initialAttributes %~ addInputElementCls
+
+-- | uiInputElement which should always provide a proper real number.
+--
+--   In particular it will always has a decimal point in it.
+uiRealInputElement
+  :: DomBuilder t m
+  => InputElementConfig er t (DomBuilderSpace m)
+  -> m (InputElement er (DomBuilderSpace m) t)
+uiRealInputElement cfg = do
+    inputElement $ cfg & initialAttributes %~
+        (<> ("type" =: "number")) . addInputElementCls
+
+uiIntInputElement
+  :: DomBuilder t m
+  => InputElementConfig er t (DomBuilderSpace m)
+  -> m (InputElement er (DomBuilderSpace m) t)
+uiIntInputElement cfg = do
+    r <- inputElement $ cfg & initialAttributes %~
+            (<> ("type" =: "number")) . addInputElementCls
+    pure $ r
+      { _inputElement_value = fmap fixNum $ _inputElement_value r
+      , _inputElement_input = fmap fixNum $ _inputElement_input r
+      }
+  where
+    fixNum = T.takeWhile (/='.')
+
+-- | Take an `uiInputElement` like thing and make it a view with change events
+-- of your model.
+uiInputView
+  :: (DomBuilder t m, er ~ EventResult, PostBuild t m, MonadFix m, MonadHold t m)
+  => (InputElementConfig er t (DomBuilderSpace m) -> m (InputElement er (DomBuilderSpace m) t))
+  -> InputElementConfig er t (DomBuilderSpace m)
+  -> Dynamic t Text
+  -> m (Event t Text)
+uiInputView mkInput cfg mVal = mdo
+  onSet <- tagOnPostBuild mVal
+  let
+    isValid = (==) <$> mVal <*> _inputElement_value v
+    validCls = (\v -> if v then "" else "input_invalid") <$> isValid
+    dynAttrs = do
+      let baseAttrs = cfg ^. initialAttributes
+      cValid <- validCls
+      pure $ (addToClassAttr cValid . addInputElementCls) baseAttrs
+  -- Short delay to avoid initial red state on load:
+  modifyAttrs <- tailE =<< dynamicAttributesToModifyAttributes dynAttrs
+
+  v <- mkInput $ cfg
+    & inputElementConfig_setValue .~ onSet
+    & modifyAttributes .~ modifyAttrs
+  pure $ _inputElement_input v
+
 
 
 -- | Validated input with button
@@ -176,40 +236,6 @@ showLoading i w = do
     loadingWidget = do
       text "Loading ..."
       pure mempty
-
--- | Widget for selection of signing keys.
-signingKeysWidget
-  :: forall t m. MonadWidget t m
-  => Wallet t
-  -> m (Dynamic t (Set KeyName))
-signingKeysWidget aWallet = do
-  let keyMap = aWallet ^. wallet_keys
-      tableAttrs =
-        "style" =: "table-layout: fixed; width: 100%" <> "class" =: "table"
-  boxValues <- elAttr "table" tableAttrs $ do
-    el "thead" $ elClass "tr" "table__row" $ do
-      elClass "th" "table__heading" $ text "Sign with Key"
-      elClass "th" "table__heading" $ text ""
-    el "tbody" $ listWithKey keyMap $ \name key -> signingItem (name, key)
-  dyn_ $ ffor keyMap $ \keys -> when (Map.null keys) $ text "No keys ..."
-  return $ do -- The Dynamic monad
-    m :: Map KeyName (Dynamic t Bool) <- boxValues
-    ps <- traverse (\(k,v) -> (k,) <$> v) $ Map.toList m
-    return $ Set.fromList $ map fst $ filter snd ps
-
-
-------------------------------------------------------------------------------
--- | Display a key as list item together with it's name.
-signingItem
-  :: MonadWidget t m
-  => (Text, Dynamic t KeyPair)
-  -> m (Dynamic t Bool)
-signingItem (n, _) = do
-    elClass "tr" "table__row" $ do
-      el "td" $ text n
-      box <- elClass "td" "signing-selector__check-box-cell" $
-        uiCheckbox "signing-selector__check-box-label" False def blank
-      pure (value box)
 
 accordionItem'
   :: MonadWidget t m

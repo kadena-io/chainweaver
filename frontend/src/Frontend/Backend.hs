@@ -51,9 +51,8 @@ import           Control.Concurrent                (forkIO)
 import           Control.Lens                      hiding ((.=))
 import           Control.Monad.Except
 import           Data.Aeson                        (FromJSON (..), Object,
-                                                    Value (..), eitherDecode,
-                                                    encode, object, withObject,
-                                                    (.:), (.=))
+                                                    Value (..), encode,
+                                                    withObject, (.:))
 import           Data.Aeson.Types                  (parseEither, parseMaybe,
                                                     typeMismatch)
 import qualified Data.ByteString.Lazy              as BSL
@@ -70,15 +69,11 @@ import qualified Data.Text.Encoding                as T
 import           Data.Time.Clock                   (getCurrentTime)
 import           Generics.Deriving.Monoid          (mappenddefault,
                                                     memptydefault)
-import           Language.Javascript.JSaddle.Monad (JSContextRef, JSM, askJSM)
-import qualified Network.HTTP.Client               as HTTP
-import           Network.HTTP.Client.TLS           (newTlsManager)
-import qualified Network.HTTP.Types.Status         as S
+import           Language.Javascript.JSaddle.Monad (JSContextRef, JSM, askJSM,
+                                                    liftJSM)
+import qualified Network.HTTP.Types                as HTTP
 import           Pact.Server.Client
 import           Pact.Types.API
-#if !defined(ghcjs_HOST_OS)
-import           Pact.Types.Crypto                 (PPKScheme (..))
-#endif
 import           Pact.Types.Command
 import           Pact.Types.Hash                   (hash)
 import           Pact.Types.RPC
@@ -86,11 +81,17 @@ import           Pact.Types.Util
 import           Reflex.Dom.Class
 import           Reflex.Dom.Xhr
 import           Reflex.NotReady.Class
-import qualified Servant.Client                    as S
 
 import           Pact.Parse                        (ParsedDecimal (..),
                                                     ParsedInteger (..))
 import           Pact.Types.Command                (PublicMeta (..))
+import           Pact.Types.Exp                    (Literal (LString))
+import           Pact.Types.Term                   (Name,
+                                                    Term (TList, TLiteral))
+
+#if !defined (ghcjs_HOST_OS)
+import           Pact.Types.Crypto                 (PPKScheme (..))
+#endif
 
 import           Common.Api
 import           Common.Route                      (pactServerListPath)
@@ -98,6 +99,7 @@ import           Frontend.Crypto.Ed25519
 import           Frontend.Foundation
 import           Frontend.Messages
 import           Frontend.Wallet
+import qualified Servant.Client.JSaddle            as S
 
 -- | URI for accessing a backend.
 type BackendUri = Text
@@ -160,16 +162,14 @@ data BackendError
   -- debugging.
   | BackendError_ParseError Text
   -- ^ Parsing the JSON response failed.
-  | BackendError_ResultFailure PactError PactDetail
+  | BackendError_CommandFailure CommandError
   -- ^ The status in the /listen result object was `failure`.
-  | BackendError_ResultFailureText Text
-  -- ^ The the /listen result object was actually just an error message string
   | BackendError_Other Text
   -- ^ Other errors that should really never happen.
   deriving Show
 
--- | We either have a `BackendError` or some `Value`.
-type BackendErrorResult = Either BackendError Value
+-- | We either have a `BackendError` or some `Term Name`.
+type BackendErrorResult = Either BackendError (Term Name)
 
 -- | Config for creating a `Backend`.
 data BackendCfg t = BackendCfg
@@ -182,6 +182,8 @@ data BackendCfg t = BackendCfg
     -- ^ Deploy some code to the backend. Response will be logged to `Messages`.
   , _backendCfg_setChainId    :: Event t Text
     -- ^ On what chain to deploy to (ignored on pact -s backend).
+  , _backendCfg_setSender    :: Event t Text
+    -- ^ What user wants to pay for this transaction?
   , _backendCfg_setGasLimit   :: Event t ParsedInteger
     -- ^ Maximun amount of gas to use for this transaction.
   , _backendCfg_setGasPrice   :: Event t ParsedDecimal
@@ -207,8 +209,6 @@ data Backend t = Backend
   , _backend_meta        :: Dynamic t PublicMeta
    -- ^ Meta data used for deployments. Can be modified via above
    -- `_backendCfg_setChainId`, `_backendCfg_setGasLimit`, ...
-  , _backend_httpManager :: HTTP.Manager
-   -- ^ The HTTP manager used to perform requests.
   }
 
 makePactLenses ''Backend
@@ -235,7 +235,6 @@ makeBackend w cfg = mfix $ \ ~(_, backendL) -> do
     bs <- getBackends
 
     (mConf, onDeployed) <- deployCode w backendL $ cfg ^. backendCfg_deployCode
-    manager <- newTlsManager
 
     modules <- loadModules backendL $ leftmost [ onDeployed, cfg ^. backendCfg_refreshModule ]
 
@@ -248,7 +247,6 @@ makeBackend w cfg = mfix $ \ ~(_, backendL) -> do
           , _backend_modules = modules
           , _backend_deployed = onDeployed
           , _backend_meta = meta
-          , _backend_httpManager = manager
           }
       )
 
@@ -260,13 +258,14 @@ buildMeta cfg = do
         PublicMeta
           { _pmChainId = "someChain"
           , _pmSender  = "someSender"
-          , _pmGasLimit = ParsedInteger 10000 -- TODO: Better defaults!!!
-          , _pmGasPrice = ParsedDecimal 10000
+          , _pmGasLimit = ParsedInteger 10 -- TODO: Better defaults!!!
+          , _pmGasPrice = ParsedDecimal 0.001
           , _pmFee = ParsedDecimal 1
           }
 
   foldDyn id defaultMeta $ leftmost
     [ (\u c -> c { _pmChainId = u})  <$> cfg ^. backendCfg_setChainId
+    , (\u c -> c { _pmSender = u})   <$> cfg ^. backendCfg_setSender
     , (\u c -> c { _pmGasLimit = u}) <$> cfg ^. backendCfg_setGasLimit
     , (\u c -> c { _pmGasPrice = u}) <$> cfg ^. backendCfg_setGasPrice
     ]
@@ -274,9 +273,9 @@ buildMeta cfg = do
 
 deployCode
   :: forall t m model mConf
-  . (MonadHold t m, PerformEvent t m, MonadFix m, NotReady t m, Adjustable t m
-    , MonadJSM (Performable m), HasJSContext (Performable m)
-    , TriggerEvent t m, PostBuild t m, MonadIO m
+  . ( MonadHold t m, PerformEvent t m
+    , MonadJSM (Performable m)
+    , TriggerEvent t m
     , MonadSample t (Performable m)
     , HasBackendModel model t
     , HasBackendModelCfg mConf t
@@ -365,8 +364,8 @@ parsePactServerList raw =
 -- | Load modules on startup and on every occurrence of the given event.
 loadModules
   :: forall t m
-  . (MonadHold t m, PerformEvent t m, MonadFix m, NotReady t m, Adjustable t m
-    , MonadJSM (Performable m), HasJSContext (Performable m)
+  . ( MonadHold t m, PerformEvent t m, MonadFix m, NotReady t m, Adjustable t m
+    , MonadJSM (Performable m)
     , MonadSample t (Performable m)
     , TriggerEvent t m, PostBuild t m
     )
@@ -374,29 +373,40 @@ loadModules
   -> Event t ()
   -> m (Dynamic t (Map BackendName (Maybe [Text])))
 loadModules backendL onRefresh = do
-  let
-    bs = backendL ^. backend_backends
-    req r = (BackendRequest "(list-modules)" H.empty r Set.empty)
-  backendMap <- networkView $ ffor bs $ \case
-    Nothing -> pure mempty
-    Just bs' -> do
-      onPostBuild <- getPostBuild
-      bm <- flip Map.traverseWithKey bs' $ \_ r -> do
-        onErrResp <- performBackendRequest emptyWallet backendL $
-          leftmost [ req r <$ onRefresh
-                   , req r <$ onPostBuild
-                   ]
-        let
-          (onErr, onResp) = fanEither $ snd <$> onErrResp
+      let
+        bs = backendL ^. backend_backends
+        req r = (BackendRequest "(list-modules)" H.empty r Set.empty)
+      backendMap <- networkView $ ffor bs $ \case
+        Nothing -> pure mempty
+        Just bs' -> do
+          onPostBuild <- getPostBuild
+          bm <- flip Map.traverseWithKey bs' $ \_ r -> do
+            onErrResp <- performBackendRequest emptyWallet backendL $
+              leftmost [ req r <$ onRefresh
+                       , req r <$ onPostBuild
+                       ]
+            let
+              (onErr, onResp) = fanEither $ snd <$> onErrResp
 
-          onModules :: Event t (Maybe [Text])
-          onModules = parseMaybe parseJSON <$> onResp
-        performEvent_ $ (liftIO . putStrLn . ("ERROR: " <>) . show) <$> onErr
+              onModules :: Event t (Maybe [Text])
+              onModules =  getModuleList <$> onResp
+            performEvent_ $ (liftIO . putStrLn . ("ERROR: " <>) . show) <$> onErr
 
-        holdUniqDyn =<< holdDyn Nothing onModules
-      pure $ sequence bm
+            holdUniqDyn =<< holdDyn Nothing onModules
+          pure $ sequence bm
 
-  join <$> holdDyn mempty backendMap
+      join <$> holdDyn mempty backendMap
+    where
+      getModuleList :: Term Name -> Maybe [Text]
+      getModuleList = \case
+        TList terms _ _ -> traverse getStringLit terms
+        _               -> Nothing
+
+      getStringLit :: Term Name -> Maybe Text
+      getStringLit = \case
+        TLiteral (LString v) _ -> Just v
+        _         -> Nothing
+
 
 
 -- | Send a transaction via the /send endpoint.
@@ -406,7 +416,7 @@ loadModules backendL onRefresh = do
 performBackendRequest
   :: forall t m
   . ( PerformEvent t m, MonadJSM (Performable m)
-    , HasJSContext (Performable m), TriggerEvent t m
+    , TriggerEvent t m
     , MonadSample t (Performable m)
     )
   => Wallet t
@@ -423,7 +433,7 @@ performBackendRequest w backendL onReq =
 performBackendRequestCustom
   :: forall t m req
   . ( PerformEvent t m, MonadJSM (Performable m)
-    , HasJSContext (Performable m), TriggerEvent t m
+    , TriggerEvent t m
     , MonadSample t (Performable m)
     )
   => Wallet t
@@ -437,9 +447,8 @@ performBackendRequestCustom w backendL unwrap onReq =
       let
         rawReq = unwrap req
         signing = _backendRequest_signing rawReq
-        manager = _backend_httpManager backendL
       payload <- buildSendPayload meta keys signing rawReq
-      liftIO $ backendRequest manager rawReq payload $ cb . (req,)
+      liftJSM $ backendRequest rawReq payload $ cb . (req,)
   where
     onReqWithKeys = attach (current $ _wallet_keys w) onReq
 
@@ -468,50 +477,47 @@ performBackendRequestCustom w backendL unwrap onReq =
 --
 -- @
 backendRequest
-  :: HTTP.Manager
-  -> BackendRequest
+  :: BackendRequest
   -> SubmitBatch
   -> (BackendErrorResult -> IO ())
-  -> IO ()
-backendRequest manager req batch callback = void . forkIO $ do
+  -> JSM ()
+backendRequest req batch callback = void . forkJSM $ do
     let
       uri = brUri $ _backendRequest_backend req
     baseUrl <- S.parseBaseUrl $ T.unpack uri
-    let clientEnv = S.mkClientEnv manager baseUrl
+    let clientEnv = S.mkClientEnv baseUrl
 
-    er <- liftIO . runExceptT $ do
-      res <- runReq clientEnv $ send batch
+    er <- liftJSM . runExceptT $ do
+      res <- runReq clientEnv $ send pactServerApiClient batch
       key <- getRequestKey $ res
-      v <- runReq clientEnv $ listen $ ListenerRequest key
+      v <- runReq clientEnv $ listen pactServerApiClient $ ListenerRequest key
       -- pure v
-      ExceptT . pure $ fromApiResponse <=< parseValue $ _arResult v
+      ExceptT . pure $ fromCommandValue <=< parseValue $ _arResult v
 
-    liftIO $ callback $ _arResult <$> er
+    liftIO $ callback $ er
   where
     parseValue :: FromJSON a => Value -> Either BackendError a
     parseValue = left (BackendError_ParseError . T.pack ) . parseEither parseJSON
 
     -- | Rethrow an error value by wrapping it with f.
-    reThrowWith :: (e -> BackendError) -> IO (Either e a) -> ExceptT BackendError IO a
+    reThrowWith :: (e -> BackendError) -> JSM (Either e a) -> ExceptT BackendError JSM a
     reThrowWith f = ExceptT . fmap (left f)
 
-    runReq :: S.ClientEnv -> S.ClientM (ApiResponse a) -> ExceptT BackendError IO a
-    runReq env =
-      fromApiResponse <=< reThrowWith packHttpErr
-      . flip S.runClientM env
+    runReq :: S.ClientEnv -> S.ClientM a -> ExceptT BackendError JSM a
+    runReq env = reThrowWith packHttpErr . flip S.runClientM env
 
     packHttpErr :: S.ServantError -> BackendError
     packHttpErr e = case e of
       S.FailureResponse response ->
-        if S.responseStatusCode response == S.status413
+        if S.responseStatusCode response == HTTP.status413
            then BackendError_ReqTooLarge
            else BackendError_BackendError $ T.pack $ show response
       _ -> BackendError_BackendError $ T.pack $ show e
 
-    fromApiResponse :: MonadError BackendError m => ApiResponse a -> m a
-    fromApiResponse = \case
-      ApiFailure e -> throwError $ BackendError_Failure $ T.pack e
-      ApiSuccess v -> pure v
+    fromCommandValue :: MonadError BackendError m => CommandValue -> m (Term Name)
+    fromCommandValue = \case
+      CommandFailure e -> throwError $ BackendError_CommandFailure e
+      CommandSuccess v -> pure v
 
     getRequestKey :: MonadError BackendError m => RequestKeys -> m RequestKey
     getRequestKey r =
@@ -519,7 +525,6 @@ backendRequest manager req batch callback = void . forkIO $ do
         []    -> throwError $ BackendError_Other "Response did not contain any RequestKeys."
         [key] -> pure key
         _     -> throwError $ BackendError_Other "Response contained more than one RequestKey."
-
 
 -- TODO: upstream this?
 instance HasJSContext JSM where
@@ -609,8 +614,7 @@ prettyPrintBackendError = ("ERROR: " <>) . \case
   BackendError_ReqTooLarge-> "Request exceeded the allowed maximum size!"
   BackendError_Failure msg -> "Backend failure: " <> msg
   BackendError_ParseError m -> "Server response could not be parsed: " <> m
-  BackendError_ResultFailure (PactError e) (PactDetail d) -> e <> ": " <> d
-  BackendError_ResultFailureText e -> e
+  BackendError_CommandFailure (CommandError e d) -> T.pack e <> ": " <> maybe "" T.pack d
   BackendError_Other m -> "Some unknown problem: " <> m
 
 prettyPrintBackendErrorResult :: BackendErrorResult -> Text
@@ -698,18 +702,19 @@ instance Monoid BackendRef where
   mappend = (<>)
 
 instance Reflex t => Semigroup (BackendCfg t) where
-  BackendCfg refreshA deployA setChainIdA setGasLimitA setGasPriceA <>
-    BackendCfg refreshB deployB setChainIdB setGasLimitB setGasPriceB
+  BackendCfg refreshA deployA setChainIdA setSenderA setGasLimitA setGasPriceA <>
+    BackendCfg refreshB deployB setChainIdB setSenderB setGasLimitB setGasPriceB
       = BackendCfg
         { _backendCfg_refreshModule = leftmost [ refreshA, refreshB ]
         , _backendCfg_deployCode    = leftmost [ deployA, deployB ]
         , _backendCfg_setChainId    = leftmost [ setChainIdA, setChainIdB ]
+        , _backendCfg_setSender    = leftmost [ setSenderA, setSenderB ]
         , _backendCfg_setGasLimit   = leftmost [ setGasLimitA, setGasLimitB ]
         , _backendCfg_setGasPrice   = leftmost [ setGasPriceA, setGasPriceB ]
         }
 
 instance Reflex t => Monoid (BackendCfg t) where
-  mempty = BackendCfg never never never never never
+  mempty = BackendCfg never never never never never never
   mappend = (<>)
 --
 
@@ -719,5 +724,6 @@ instance Flattenable (BackendCfg t) t where
       <$> doSwitch never (_backendCfg_refreshModule <$> ev)
       <*> doSwitch never (_backendCfg_deployCode <$> ev)
       <*> doSwitch never (_backendCfg_setChainId <$> ev)
+      <*> doSwitch never (_backendCfg_setSender <$> ev)
       <*> doSwitch never (_backendCfg_setGasLimit <$> ev)
       <*> doSwitch never (_backendCfg_setGasPrice <$> ev)

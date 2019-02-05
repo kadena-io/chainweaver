@@ -61,10 +61,15 @@ import           Data.Text
 import qualified Data.Text                       as T
 import           Reflex.Dom.Core                 (HasJSContext, MonadHold)
 ------------------------------------------------------------------------------
+import           Pact.Types.Exp                  (Literal (LString))
+import           Pact.Types.Info                 (Code (..))
 import           Pact.Types.Lang                 (ModuleName)
 import           Pact.Types.Term                 as PactTerm (Module (..),
                                                               ModuleName (..),
-                                                              NamespaceName (..))
+                                                              Name,
+                                                              NamespaceName (..),
+                                                              Term (TList, TLiteral, TModule, TObject),
+                                                              tStr)
 ------------------------------------------------------------------------------
 import           Frontend.Backend
 import           Frontend.Foundation
@@ -193,18 +198,21 @@ fetchModule backendL onReq = do
       , _backendRequest_signing = Set.empty
       }
 
-    -- We can't parse the value as `Module` directly, as the used format is
-    -- slightly different than the aeson instances for `Module`, see
-    -- [here](https://github.com/kadena-io/pact/blob/3ac9a6d01bd5816ea4b7e47300012543510393ea/src/Pact/Native/Db.hs#L153).
-    getModule :: Value -> Either Text Module
-    getModule v = do
-      c <- left T.pack $ parseEither (withObject "Module" $ \vl -> vl .: "code") v
-      let mods = fileModules c
-      case Map.elems mods of
-        []   -> throwError "No module in response"
-        m:[] -> pure m
-        _    -> throwError "More than one module in response?"
+    getModule :: Term Name -> Either Text Module
+    getModule  = \case
+      TObject terms _ _ -> do
+        mods <- fmap fileModules $ getCode terms
+        case Map.elems mods of
+          []   -> throwError "No module in response"
+          m:[] -> pure m
+          _    -> throwError "More than one module in response?"
+      _ -> throwError "Server response did not contain a  TObject module description."
 
+    getCode :: [(Term Name, Term Name)] -> Either Text Code
+    getCode props =
+        case lookup (tStr "code") props of
+          Nothing -> throwError "No code property in module description object!"
+          Just (TLiteral (LString c) _) -> pure $ Code c
 
     defineNamespace =
       maybe "" (\n -> "(namespace '" <> coerce n <> ")") . _mnNamespace
