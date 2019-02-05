@@ -28,11 +28,13 @@
 module Frontend.Editor.QuickFix
   ( QuickFix (..)
   , _QuickFix_MissingEnvKeyset
+  , _QuickFix_MissingKeyset
   , makeQuickFixes
   , makeQuickFix
   ) where
 
 ------------------------------------------------------------------------------
+import           Control.Applicative        ((<|>))
 import           Data.Maybe                 (mapMaybe)
 import           Data.Text                  (Text)
 import qualified Data.Text                  as T
@@ -49,6 +51,8 @@ import           Frontend.Foundation
 data QuickFix
   = QuickFix_MissingEnvKeyset Text
     -- ^ Keyset was not available in message - add it.
+  | QuickFix_MissingKeyset Text
+    -- ^ Keyset was used without being defined
     --
 makePactPrisms ''QuickFix
 
@@ -58,25 +62,45 @@ makeQuickFixes = mapMaybe makeQuickFix
 
 -- | Make a quick fix from an annotation, if possible.
 makeQuickFix :: Annotation -> Maybe QuickFix
-makeQuickFix = MP.parseMaybe missingEnvKeysetParser . _annotation_msg
+makeQuickFix =
+  MP.parseMaybe (missingEnvKeysetParser <|> missingKeysetParser)
+  . _annotation_msg
 
 -- | Parser for `QuickFix_MissingEnvKeyset`.
 missingEnvKeysetParser :: MP.Parsec Void Text QuickFix
 missingEnvKeysetParser = do
-    void $ MP.string "No such key in message: \""
-    keyset <- parseInnerString
+    void $ MP.string "No such key in message: "
+    QuickFix_MissingEnvKeyset <$> parseString
+
+-- | Parser for `QuickFix_MissingEnvKeyset`.
+missingKeysetParser :: MP.Parsec Void Text QuickFix
+missingKeysetParser = do
+    void $ MP.string "No such keyset: "
+    QuickFix_MissingKeyset <$> parseString
+
+
+
+-- | Parse a string, that is some text enclosed in quotes.
+--
+--   The returned text will be without the enclosing quotes.
+parseString :: MP.Parsec Void Text Text
+parseString = do
     void $ MP.char '"'
-    pure $ QuickFix_MissingEnvKeyset keyset
-  where
-    parseInnerString = do
-      r <- MP.takeWhile1P Nothing (/= '"')
-      -- T.last is fine here because of takeWhile1P!
-      if T.last r == '\\' -- Ok that wasn't really the end of it ...
-      then do
-        void $ MP.char '\"'
-        ((r <> "\"") <>) <$> parseInnerString
-      else
-        pure r
+    str <- parseInnerString
+    void $ MP.char '"'
+    pure str
+
+
+parseInnerString :: MP.Parsec Void Text Text
+parseInnerString = do
+  r <- MP.takeWhile1P Nothing (/= '"')
+  -- T.last is fine here because of takeWhile1P!
+  if T.last r == '\\' -- Ok that wasn't really the end of it ...
+  then do
+    void $ MP.char '\"'
+    ((r <> "\"") <>) <$> parseInnerString
+  else
+    pure r
 
 -- Instances
 

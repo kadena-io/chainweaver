@@ -133,6 +133,7 @@ uiQuickFix cls m = do
 
     renderQuickFixName = \case
       QuickFix_MissingEnvKeyset ks -> "Add keyset '" <> ks <> "' to Env"
+      QuickFix_MissingKeyset ks -> "Add (define-keyset '" <> ks <> " ....)"
 
 -- | Reset REPL and load current editor text into it.
 --

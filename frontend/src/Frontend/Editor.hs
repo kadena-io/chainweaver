@@ -42,28 +42,30 @@ module Frontend.Editor
 
 ------------------------------------------------------------------------------
 import           Control.Lens
-import qualified Data.Map                 as Map
-import           Data.Text                (Text)
-import           Generics.Deriving.Monoid (mappenddefault, memptydefault)
-import           GHC.Generics             (Generic)
+import qualified Data.List                  as L
+import qualified Data.Map                   as Map
+import           Data.Text                  (Text)
+import qualified Data.Text                  as T
+import           Generics.Deriving.Monoid   (mappenddefault, memptydefault)
+import           GHC.Generics               (Generic)
 import           Reflex
 
 #ifdef  ghcjs_HOST_OS
-import           Data.Map                 (Map)
+import           Data.Map                   (Map)
 #endif
 ------------------------------------------------------------------------------
 import           Frontend.Backend
+import           Frontend.Editor.Annotation as Editor
+import           Frontend.Editor.QuickFix   as Editor
 import           Frontend.Foundation
 import           Frontend.JsonData
 import           Frontend.Messages
 import           Frontend.Repl
 import           Frontend.Wallet
-import           Frontend.Editor.Annotation as Editor
-import           Frontend.Editor.QuickFix as Editor
 
 -- | Configuration for the `Editor`.
 data EditorCfg t = EditorCfg
-  { _editorCfg_setCode :: Event t Text
+  { _editorCfg_setCode       :: Event t Text
     -- ^ Set the source code/text of the editor.
   , _editorCfg_applyQuickFix :: Event t QuickFix
     -- ^ Apply a given quick fix.
@@ -107,11 +109,11 @@ makeEditor
     , HasEditorModelCfg mConf t
     )
   => model -> cfg -> m (mConf, Editor t)
-makeEditor m cfg = do
-    t <-  holdDyn "" (cfg ^. editorCfg_setCode)
+makeEditor m cfg = mdo
+    t <-  holdDyn "" $ leftmost [cfg ^. editorCfg_setCode, onFix]
     annotations <- typeCheckVerify m t
     quickFixes  <- holdDyn [] $ makeQuickFixes <$> annotations
-    let quickFixCfg = applyQuickFix $ cfg ^. editorCfg_applyQuickFix
+    let (quickFixCfg, onFix) = applyQuickFix t $ cfg ^. editorCfg_applyQuickFix
     pure
       ( quickFixCfg
       , Editor
@@ -126,12 +128,30 @@ applyQuickFix
   . ( Reflex t
     , HasEditorModelCfg mConf t
     )
-  => Event t QuickFix -> mConf
-applyQuickFix onQuickFix =
+  => Dynamic t Text -> Event t QuickFix -> (mConf, Event t Text)
+applyQuickFix t onQuickFix =
   let
     onNewKeyset = fmapMaybe (^? _QuickFix_MissingEnvKeyset) onQuickFix
+    onNewDefKeyset = fmapMaybe (^? _QuickFix_MissingKeyset) onQuickFix
+
+    fixCode :: Dynamic t (Text -> Text)
+    fixCode = do
+      let
+        isPreamble = (\x -> T.isPrefixOf ";" x || T.null x) . T.strip
+        splitLeadingComments = L.break (not . isPreamble . T.strip) . T.lines
+      (preamble, remCode) <- splitLeadingComments <$> t
+      pure $ \ks -> T.unlines
+        ( preamble <>
+          [ ""
+          , "(define-keyset '" <> ks <> "(read-keyset \"" <> ks <> "\"))"
+          ] <>
+          remCode
+        )
+
   in
-    mempty & jsonDataCfg_createKeyset .~ onNewKeyset
+    ( mempty & jsonDataCfg_createKeyset .~ onNewKeyset
+    , attachWith id (current fixCode) onNewDefKeyset
+    )
 
 -- | Type check and verify code.
 typeCheckVerify
