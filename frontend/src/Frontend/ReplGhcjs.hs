@@ -80,6 +80,8 @@ app = void . mfix $ \ cfg -> do
 -- | Code editing (left hand side currently)
 codePanel :: forall t m a. MonadWidget t m => CssClass -> Ide a t -> m (IdeCfg a t)
 codePanel cls m = elKlass "div" (cls <> "pane") $ do
+    quickFixCfg <-
+      uiQuickFix "pane__header pane__header_align_right tab-nav tab-nav_type_primary" m
     (e, eCfg) <- wysiwyg $ do
       onNewCode <- tagOnPostBuild $ m ^. editor_code
       let annotations = map toAceAnnotation <$> m ^. editor_annotations
@@ -88,7 +90,7 @@ codePanel cls m = elKlass "div" (cls <> "pane") $ do
 
     onCtrlEnter <- getCtrlEnterEvent e
     loadCfg <- loadCodeIntoRepl m onCtrlEnter
-    pure $ mconcat [ eCfg , loadCfg ]
+    pure $ mconcat [ eCfg , loadCfg, quickFixCfg ]
   where
     wysiwyg = elClass' "div" "wysiwyg pane__body"
     -- We can't use domEvent Keypress because it only gets us the
@@ -106,6 +108,32 @@ codePanel cls m = elKlass "div" (cls <> "pane") $ do
 
         liftIO $ when ((hasCtrl || hasMeta) && hasEnter) $ triggerEv ()
       pure onCtrlEnter
+
+uiQuickFix
+  :: forall t m model mConf
+  . ( MonadWidget t m
+    , HasEditor model t , HasEditorCfg mConf t, Monoid mConf
+    )
+    => CssClass -> model -> m mConf
+uiQuickFix cls m = do
+    onFixesEv <- networkView $ ffor (m ^. editor_quickFixes) $ \case
+      []    ->
+        pure []
+      fixes -> elKlass "div" cls $ do
+        traverse renderQuickFix fixes
+
+    onFixes <- switchHold never $ leftmost <$> onFixesEv
+
+    pure $ mempty & editorCfg_applyQuickFix .~ onFixes
+  where
+    renderQuickFix qf = do
+      onClick <- uiButton (btnCfgTertiary & uiButtonCfg_class %~ (<> "error_inline")) $
+        text $ renderQuickFixName qf
+      pure $ qf <$ onClick
+
+    renderQuickFixName = \case
+      QuickFix_MissingEnvKeyset ks -> "Add keyset '" <> ks <> "' to Env"
+      QuickFix_MissingKeyset ks -> "Add (define-keyset '" <> ks <> " ....)"
 
 -- | Reset REPL and load current editor text into it.
 --

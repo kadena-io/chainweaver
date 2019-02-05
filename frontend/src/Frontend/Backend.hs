@@ -47,6 +47,7 @@ module Frontend.Backend
   ) where
 
 import           Control.Arrow                     (left, (&&&), (***))
+import           Control.Concurrent                (forkIO)
 import           Control.Lens                      hiding ((.=))
 import           Control.Monad.Except
 import           Data.Aeson                        (FromJSON (..), Object,
@@ -198,14 +199,14 @@ makePactLenses ''BackendCfg
 type IsBackendCfg cfg t = (HasBackendCfg cfg t, Monoid cfg, Flattenable cfg t)
 
 data Backend t = Backend
-  { _backend_backends :: Dynamic t (Maybe (Map BackendName BackendRef))
+  { _backend_backends    :: Dynamic t (Maybe (Map BackendName BackendRef))
     -- ^ All available backends that can be selected.
-  , _backend_modules  :: Dynamic t (Map BackendName (Maybe [Text]))
+  , _backend_modules     :: Dynamic t (Map BackendName (Maybe [Text]))
    -- ^ Available modules on all backends. `Nothing` if not loaded yet.
    -- TODO: This should really go to the `ModuleExplorer` or should it?
-  , _backend_deployed :: Event t ()
+  , _backend_deployed    :: Event t ()
    -- ^ Event gets triggered whenever some code got deployed sucessfully.
-  , _backend_meta     :: Dynamic t PublicMeta
+  , _backend_meta        :: Dynamic t PublicMeta
    -- ^ Meta data used for deployments. Can be modified via above
    -- `_backendCfg_setChainId`, `_backendCfg_setGasLimit`, ...
   }
