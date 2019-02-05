@@ -120,11 +120,10 @@ makeModuleExplorer m cfg = mfix $ \ ~(_, explr) -> do
 
     onPostBuild <- getPostBuild
     mInitFile <- loadEditor
-    liftIO $ putStrLn $ "\nnLoaded File:\nn" <> show mInitFile
     let
       onInitFile =
         if isNothing mInitFile
-           then (const $ FileRef_Example ExampleRef_HelloWorld) <$> onPostBuild
+           then (const $ FileRef_Example ExampleRef_SimpleVerify) <$> onPostBuild
            else never
       editorInitCfg = mempty
         & editorCfg_setCode .~ fmapMaybe (const mInitFile) onPostBuild

@@ -29,12 +29,8 @@ module Frontend.UI.ModuleExplorer.ModuleList where
 ------------------------------------------------------------------------------
 import           Control.Lens
 import           Control.Monad
-import qualified Data.List                   as L
-import           Data.Map                    (Map)
 import qualified Data.Map                    as Map
-import           Data.Maybe
 import           Data.Text                   (Text)
-import qualified Data.Text                   as T
 import           Data.Traversable            (for)
 import           Reflex
 import           Reflex.Dom

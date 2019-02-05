@@ -1,5 +1,5 @@
 name: frontend
-version:             1.2.0
+version:             1.2.1
 cabal-version: >= 1.8
 build-type: Simple
 synopsis:            Frontend to the Pact smart contract language library
@@ -65,6 +65,8 @@ library
                  , Frontend.Backend
                  , Frontend.Crypto.Ed25519
                  , Frontend.Editor
+                 , Frontend.Editor.QuickFix
+                 , Frontend.Editor.Annotation
                  , Frontend.Foundation
                  , Frontend.Ide
                  , Frontend.JsonData
