@@ -18,6 +18,7 @@
 {-# LANGUAGE TupleSections          #-}
 {-# LANGUAGE TypeApplications       #-}
 {-# LANGUAGE TypeFamilies           #-}
+{-# LANGUAGE DoAndIfThenElse        #-}
 
 -- | Provide QuickFixes for certain kinds of errors.
 --
