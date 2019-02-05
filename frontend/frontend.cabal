@@ -59,6 +59,8 @@ library
                  , Frontend.Backend.Pact
                  , Frontend.Crypto.Ed25519
                  , Frontend.Editor
+                 , Frontend.Editor.QuickFix
+                 , Frontend.Editor.Annotation
                  , Frontend.Foundation
                  , Frontend.Ide
                  , Frontend.JsonData
