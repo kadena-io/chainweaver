@@ -1,0 +1,20 @@
+@import '../include/defs';
+
+.error-list {
+  display: flex;
+  min-height: 20px;
+}
+
+.error-list__msg {
+  flex-grow: 1;
+}
+
+.error-list__icon {
+  margin-right: 1em;
+}
+
+.error-list__line-number {
+  display: inline-block;
+  margin-right: 1em;
+  color: $tertiary-color;
+}

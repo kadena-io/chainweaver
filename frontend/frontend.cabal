@@ -86,6 +86,7 @@ library
                  , Frontend.UI.DeploymentSettings
                  , Frontend.UI.Dialogs.CallFunction
                  , Frontend.UI.Dialogs.DeployConfirmation
+                 , Frontend.UI.ErrorList
                  , Frontend.UI.Icon
                  , Frontend.UI.JsonData
                  , Frontend.UI.Modal

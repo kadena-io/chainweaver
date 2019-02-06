@@ -46,6 +46,7 @@ import           Frontend.UI.TabBar
 import           Frontend.UI.Wallet
 import           Frontend.UI.Widgets
 import           Frontend.Wallet
+import           Frontend.UI.ErrorList
 ------------------------------------------------------------------------------
 
 selectionToText :: EnvSelection -> Text
@@ -93,6 +94,9 @@ rightTabBar cls ideL = elKlass "div" (cls <> "pane") $ do
 
 envTab :: MonadWidget t m => Ide a t -> m (IdeCfg a t)
 envTab ideL = do
+
+  errCfg  <- uiErrorList ideL
+
   jsonCfg <- accordionItem True "segment" "Data" $ do
     conf <- uiJsonData (ideL ^. ide_wallet) (ideL ^. ide_jsonData)
     pure $ mempty &  ideCfg_jsonData .~ conf
@@ -106,7 +110,7 @@ envTab ideL = do
       conf <- uiWallet w
       pure $ mempty & ideCfg_wallet .~ conf
 
-  pure $ jsonCfg <> keysCfg
+  pure $ jsonCfg <> keysCfg <> errCfg
 
 msgsWidget :: forall t m a. MonadWidget t m => Ide a t -> m (IdeCfg a t)
 msgsWidget ideL = do

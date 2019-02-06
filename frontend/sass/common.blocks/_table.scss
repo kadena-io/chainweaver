@@ -56,13 +56,18 @@
   padding-right: $medium-padding;
 }
 
-
 .table__text-cell {
   display: block;
   padding-right: 5px;
   text-overflow: ellipsis;
   white-space: nowrap;
   overflow: hidden;
+}
+
+$table-cell-size-small: 50px;
+
+.table__cell_size_small {
+  width: $table-cell-size-small;
 }
 
 .table__cell_size_main {
@@ -107,7 +112,7 @@
 }
 
 .table__row-counter {
-  width: 50px;
+  width: $table-cell-size-small;
 }
 
 .table__row-counter:before {
@@ -115,7 +120,7 @@
   content: counter(li, decimal-leading-zero);
   font-size: 15px;
   font-weight: bold;
-  color: #cbcbcb;
+  color: $counter-color;
   margin-right: 17.9px;
 }
 
