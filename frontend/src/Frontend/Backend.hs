@@ -47,13 +47,12 @@ module Frontend.Backend
   ) where
 
 import           Control.Arrow                     (left, (&&&), (***))
-import           Control.Concurrent                (forkIO)
 import           Control.Lens                      hiding ((.=))
 import           Control.Monad.Except
 import           Data.Aeson                        (FromJSON (..), Object,
                                                     Value (..), encode,
                                                     withObject, (.:))
-import           Data.Aeson.Types                  (parseEither, parseMaybe,
+import           Data.Aeson.Types                  (parseEither,
                                                     typeMismatch)
 import qualified Data.ByteString.Lazy              as BSL
 import           Data.Coerce                       (coerce)

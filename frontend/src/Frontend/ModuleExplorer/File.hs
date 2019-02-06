@@ -106,7 +106,7 @@ textFileType = \case
 --   TODO: Implement support for `FileRef_Stored`.
 fetchFile
   :: ( PerformEvent t m, TriggerEvent t m, MonadJSM (Performable m)
-     , HasJSContext (Performable m), HasJSContext JSM
+     , HasJSContext JSM
      )
   => Event t FileRef -> m (Event t (FileRef, PactFile))
 fetchFile onFileRef = do
@@ -121,7 +121,7 @@ fetchFile onFileRef = do
 --   was fetched last it will be delivered immediately.
 fetchFileCached
   :: ( PerformEvent t m, TriggerEvent t m, MonadJSM (Performable m)
-     , HasJSContext (Performable m), MonadFix m, MonadHold t m
+     , MonadFix m, MonadHold t m
      , HasJSContext JSM
      )
   => Event t FileRef -> m (Event t (FileRef, PactFile))

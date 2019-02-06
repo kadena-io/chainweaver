@@ -301,7 +301,7 @@ loadToEditor m onFileRef onModRef = do
 selectFile
   :: forall m t
   . ( MonadHold t m, PerformEvent t m, MonadJSM (Performable m)
-    , HasJSContext (Performable m), TriggerEvent t m, MonadFix m
+    , TriggerEvent t m, MonadFix m
     )
   => Event t FileModuleRef
   -> Event t (Maybe FileRef)

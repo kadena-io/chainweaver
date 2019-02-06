@@ -30,7 +30,6 @@ import qualified Data.Map                as Map
 import           Data.Void               (Void)
 import           Reflex
 import           Reflex.Dom
-import           Reflex.Dom.Contrib.CssClass (elKlass)
 ------------------------------------------------------------------------------
 import           Frontend.Backend
 import           Frontend.Ide

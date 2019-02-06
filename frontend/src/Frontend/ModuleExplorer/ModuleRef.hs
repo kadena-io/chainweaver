@@ -52,14 +52,12 @@ import           Control.Arrow                   (left, (***))
 import           Control.Lens
 import           Control.Monad
 import           Control.Monad.Except            (throwError)
-import           Data.Aeson                      (Value, withObject, (.:))
-import           Data.Aeson.Types                (parseEither)
 import           Data.Coerce                     (coerce)
 import qualified Data.Map                        as Map
 import qualified Data.Set                        as Set
 import           Data.Text
 import qualified Data.Text                       as T
-import           Reflex.Dom.Core                 (HasJSContext, MonadHold)
+import           Reflex.Dom.Core                 (MonadHold)
 ------------------------------------------------------------------------------
 import           Pact.Types.Exp                  (Literal (LString))
 import           Pact.Types.Info                 (Code (..))
@@ -171,7 +169,7 @@ textModuleRefSource isModule m =
 fetchModule
   :: forall m t model
   . ( MonadHold t m, PerformEvent t m, MonadJSM (Performable m)
-    , HasJSContext (Performable m), TriggerEvent t m
+    , TriggerEvent t m
     , MonadSample t (Performable m)
     , HasBackend model t
     )
@@ -213,6 +211,7 @@ fetchModule backendL onReq = do
         case lookup (tStr "code") props of
           Nothing -> throwError "No code property in module description object!"
           Just (TLiteral (LString c) _) -> pure $ Code c
+          _ -> throwError "No code found, but something else!"
 
     defineNamespace =
       maybe "" (\n -> "(namespace '" <> coerce n <> ")") . _mnNamespace

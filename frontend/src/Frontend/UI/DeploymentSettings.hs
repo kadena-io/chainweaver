@@ -27,14 +27,12 @@ module Frontend.UI.DeploymentSettings
 ------------------------------------------------------------------------------
 import           Control.Lens
 import           Control.Monad
-import           Data.Bifunctor
 import           Data.Map                    (Map)
 import qualified Data.Map                    as Map
 import           Data.Set                    (Set)
 import qualified Data.Set                    as Set
 import           Data.Text                   (Text)
 import qualified Data.Text                   as T
-import           Data.Void                   (Void)
 import           Pact.Parse                  (ParsedDecimal (..),
                                               ParsedInteger (..))
 import           Pact.Types.Command          (PublicMeta (..))

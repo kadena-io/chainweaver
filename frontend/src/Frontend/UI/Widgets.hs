@@ -44,10 +44,7 @@ module Frontend.UI.Widgets
 import           Control.Applicative
 import           Control.Lens
 import           Control.Monad
-import qualified Data.Map                    as Map
 import           Data.Map.Strict             (Map)
-import           Data.Set                    (Set)
-import qualified Data.Set                    as Set
 import           Data.Text                   (Text)
 import qualified Data.Text                   as T
 import           Language.Javascript.JSaddle (js0, liftJSM, pToJSVal)
@@ -62,8 +59,6 @@ import           Frontend.UI.Widgets.Helpers (imgWithAlt, makeClickable,
                                               setFocus, setFocusOn,
                                               setFocusOnSelected, tabPane,
                                               tabPane')
-import           Frontend.Wallet             (HasWallet (..), KeyName, KeyPair,
-                                              Wallet)
 ------------------------------------------------------------------------------
 
 -- | A styled checkbox.
@@ -168,7 +163,7 @@ uiInputView
 uiInputView mkInput cfg mVal = mdo
   onSet <- tagOnPostBuild mVal
   let
-    isValid = (==) <$> mVal <*> _inputElement_value v
+    isValid = (==) <$> mVal <*> _inputElement_value i
     validCls = (\v -> if v then "" else "input_invalid") <$> isValid
     dynAttrs = do
       let baseAttrs = cfg ^. initialAttributes
@@ -177,10 +172,10 @@ uiInputView mkInput cfg mVal = mdo
   -- Short delay to avoid initial red state on load:
   modifyAttrs <- tailE =<< dynamicAttributesToModifyAttributes dynAttrs
 
-  v <- mkInput $ cfg
+  i <- mkInput $ cfg
     & inputElementConfig_setValue .~ onSet
     & modifyAttributes .~ modifyAttrs
-  pure $ _inputElement_input v
+  pure $ _inputElement_input i
 
 
 

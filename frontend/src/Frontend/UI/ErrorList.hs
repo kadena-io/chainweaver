@@ -28,19 +28,13 @@ module Frontend.UI.ErrorList
 
 ------------------------------------------------------------------------------
 import           Control.Lens
-import           Control.Monad           (void, when)
-import qualified Data.Map                as Map
-import           Data.Maybe
-import           Data.Text               (Text)
 import           Data.Traversable        (for)
 import           Reflex
 import           Reflex.Dom
 ------------------------------------------------------------------------------
-import           Frontend.Crypto.Ed25519 (keyToText)
 import           Frontend.Editor
 import           Frontend.Foundation
 import           Frontend.UI.Widgets
-import           Frontend.Wallet
 ------------------------------------------------------------------------------
 
 
