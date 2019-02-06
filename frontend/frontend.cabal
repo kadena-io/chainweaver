@@ -42,6 +42,7 @@ library
                , obelisk-generated-static
                , obelisk-route
                , pact
+               , random
                , reflex
                , reflex-dom
                , reflex-dom-ace
