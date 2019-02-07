@@ -132,6 +132,10 @@ makePactPrisms = makePrisms
 --
 --   But we assume the following naming of constructor names (sum typs) and
 --   field names (records): _TypeName_Blah and _typename_blah.
+--
+--   In particular we assume that only the string after the last underscore is
+--   significant for distinguishing field names/constructor names. If this
+--   assumption is not met this encoding might not result in the same decoding.
 compactEncoding :: A.Options
 compactEncoding = defaultOptions
     { fieldLabelModifier = shortener
