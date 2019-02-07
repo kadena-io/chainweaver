@@ -114,8 +114,12 @@ newtype BackendName = BackendName
   }
   deriving (Generic, Eq, Ord, Show, Semigroup, Monoid)
 
-instance ToJSON BackendName
-instance FromJSON BackendName
+instance ToJSON BackendName where
+  toJSON = genericToJSON compactEncoding
+  toEncoding = genericToEncoding compactEncoding
+
+instance FromJSON BackendName where
+  parseJSON = genericParseJSON compactEncoding
 
 -- | Render a backend name as `Text`.
 textBackendName :: BackendName -> Text
