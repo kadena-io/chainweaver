@@ -98,8 +98,12 @@ data ModuleSource
 
 makePactPrisms ''ModuleSource
 
-instance A.ToJSON ModuleSource
-instance A.FromJSON ModuleSource
+instance A.ToJSON ModuleSource where
+  toJSON = A.genericToJSON compactEncoding
+  toEncoding = A.genericToEncoding compactEncoding
+
+instance A.FromJSON ModuleSource where
+  parseJSON = A.genericParseJSON compactEncoding
 
 -- | A Module is uniquely idendified by its name and its origin.
 data ModuleRefV s = ModuleRef
@@ -110,8 +114,13 @@ data ModuleRefV s = ModuleRef
 
 makePactLensesNonClassy ''ModuleRefV
 
-instance A.ToJSON s => A.ToJSON (ModuleRefV s)
-instance A.FromJSON s => A.FromJSON (ModuleRefV s)
+instance A.ToJSON s => A.ToJSON (ModuleRefV s) where
+  toJSON = A.genericToJSON compactEncoding
+  toEncoding = A.genericToEncoding compactEncoding
+
+instance A.FromJSON s => A.FromJSON (ModuleRefV s) where
+  parseJSON = A.genericParseJSON compactEncoding
+
 
 -- | Most general `ModuleRef`.
 --

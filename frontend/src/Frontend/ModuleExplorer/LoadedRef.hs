@@ -53,8 +53,12 @@ data LoadedRef
 
 makePactPrisms ''LoadedRef
 
-instance A.ToJSON LoadedRef
-instance A.FromJSON LoadedRef
+instance A.ToJSON LoadedRef where
+  toJSON = A.genericToJSON compactEncoding
+  toEncoding = A.genericToEncoding compactEncoding
+
+instance A.FromJSON LoadedRef where
+  parseJSON = A.genericParseJSON compactEncoding
 
 -- | Serialize a `LoadedRef` to `Text`.
 --

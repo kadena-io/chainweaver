@@ -30,6 +30,8 @@ module Frontend.Foundation
   , makePactLenses
   , makePactLensesNonClassy
   , makePactPrisms
+    -- * Aeson encodings
+  , compactEncoding
     -- * Helpers that should really not be here
   , tshow
   , forkJSM
@@ -62,6 +64,7 @@ import           Language.Javascript.JSaddle (MonadJSM (..), JSM, MonadJSM, askJ
 import           Reflex.Extended
 import           Reflex.Network.Extended
 import           Reflex.Dom.Contrib.CssClass
+import           Data.Aeson as A
 
 import           Data.Maybe
 
@@ -107,8 +110,8 @@ makePactLenses =
 --   can change the type), you have to use this function instead of
 --   `makePactLenses`.
 makePactLensesNonClassy :: Name -> DecsQ
-makePactLensesNonClassy = 
-  makeLensesWith 
+makePactLensesNonClassy =
+  makeLensesWith
     ( lensRules
         & simpleLenses .~ False
         & generateLazyPatterns .~ True
@@ -119,6 +122,21 @@ makePactLensesNonClassy =
 --   Currently this is just standard `makePrisms`
 makePactPrisms :: Name -> DecsQ
 makePactPrisms = makePrisms
+
+
+-- | Aeson encoding options for compact encoding.
+--
+--   We pass on the most compact sumEncoding as it could be unsound for certain types.
+compactEncoding :: A.Options
+compactEncoding = defaultOptions
+  { fieldLabelModifier = id
+  , allNullaryToStringTag = True
+  , constructorTagModifier = id
+  , omitNothingFields = True
+  , sumEncoding = ObjectWithSingleField
+  , unwrapUnaryRecords = True
+  , tagSingleConstructors = False
+  }
 
 tshow :: Show a => a -> Text
 tshow = T.pack . show

@@ -69,8 +69,12 @@ data ExampleRef
 makePactPrisms ''ExampleRef
 
 
-instance A.ToJSON ExampleRef
-instance A.FromJSON ExampleRef
+instance A.ToJSON ExampleRef where
+  toJSON = A.genericToJSON compactEncoding
+  toEncoding = A.genericToEncoding compactEncoding
+
+instance A.FromJSON ExampleRef where
+  parseJSON = A.genericParseJSON compactEncoding
 
 -- | List of all available examples.
 examples :: [ExampleRef]

@@ -50,10 +50,12 @@ import           Control.Arrow                     (left, (&&&), (***))
 import           Control.Lens                      hiding ((.=))
 import           Control.Monad.Except
 import           Data.Aeson                        (FromJSON (..), Object,
-                                                    Value (..), encode,
-                                                    withObject, (.:), ToJSON (..))
-import           Data.Aeson.Types                  (parseEither,
-                                                    typeMismatch)
+                                                    ToJSON (..), Value (..),
+                                                    encode, genericParseJSON,
+                                                    genericToEncoding,
+                                                    genericToJSON, withObject,
+                                                    (.:))
+import           Data.Aeson.Types                  (parseEither, typeMismatch)
 import qualified Data.ByteString.Lazy              as BSL
 import           Data.Coerce                       (coerce)
 import           Data.Default                      (def)
@@ -127,8 +129,12 @@ data BackendRef = BackendRef
   deriving (Show, Generic, Eq, Ord)
 
 
-instance ToJSON BackendRef
-instance FromJSON BackendRef
+instance ToJSON BackendRef where
+  toJSON = genericToJSON compactEncoding
+  toEncoding = genericToEncoding compactEncoding
+
+instance FromJSON BackendRef where
+  parseJSON = genericParseJSON compactEncoding
 
 -- | Extract the actual URI.
 backendRefUri :: BackendRef -> BackendUri
@@ -188,7 +194,7 @@ data BackendCfg t = BackendCfg
     -- ^ Deploy some code to the backend. Response will be logged to `Messages`.
   , _backendCfg_setChainId    :: Event t Text
     -- ^ On what chain to deploy to (ignored on pact -s backend).
-  , _backendCfg_setSender    :: Event t Text
+  , _backendCfg_setSender     :: Event t Text
     -- ^ What user wants to pay for this transaction?
   , _backendCfg_setGasLimit   :: Event t ParsedInteger
     -- ^ Maximun amount of gas to use for this transaction.
@@ -205,14 +211,14 @@ makePactLenses ''BackendCfg
 type IsBackendCfg cfg t = (HasBackendCfg cfg t, Monoid cfg, Flattenable cfg t)
 
 data Backend t = Backend
-  { _backend_backends    :: Dynamic t (Maybe (Map BackendName BackendRef))
+  { _backend_backends :: Dynamic t (Maybe (Map BackendName BackendRef))
     -- ^ All available backends that can be selected.
-  , _backend_modules     :: Dynamic t (Map BackendName (Maybe [Text]))
+  , _backend_modules  :: Dynamic t (Map BackendName (Maybe [Text]))
    -- ^ Available modules on all backends. `Nothing` if not loaded yet.
    -- TODO: This should really go to the `ModuleExplorer` or should it?
-  , _backend_deployed    :: Event t ()
+  , _backend_deployed :: Event t ()
    -- ^ Event gets triggered whenever some code got deployed sucessfully.
-  , _backend_meta        :: Dynamic t PublicMeta
+  , _backend_meta     :: Dynamic t PublicMeta
    -- ^ Meta data used for deployments. Can be modified via above
    -- `_backendCfg_setChainId`, `_backendCfg_setGasLimit`, ...
   }

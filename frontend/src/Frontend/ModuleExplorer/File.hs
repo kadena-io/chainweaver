@@ -81,8 +81,12 @@ data FileRef
 
 makePactPrisms ''FileRef
 
-instance A.ToJSON FileRef
-instance A.FromJSON FileRef
+instance A.ToJSON FileRef where
+  toJSON = A.genericToJSON compactEncoding
+  toEncoding = A.genericToEncoding compactEncoding
+
+instance A.FromJSON FileRef where
+  parseJSON = A.genericParseJSON compactEncoding
 
 {- -- | A selected file. -}
 {- data PactFile = PactFile -}
