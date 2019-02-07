@@ -9,6 +9,7 @@ library
                , obelisk-executable-config
                , obelisk-route
                , text
+               , containers
 
   exposed-modules:
     Common.Api
