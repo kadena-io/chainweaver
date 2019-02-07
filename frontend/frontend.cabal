@@ -50,6 +50,7 @@ library
                , safe
                , servant
                , servant-client-jsaddle
+               , split
                , string-qq
                , template-haskell
                , text

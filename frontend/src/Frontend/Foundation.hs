@@ -52,19 +52,21 @@ import           Control.Concurrent          (ThreadId, forkIO)
 import           Control.Lens
 import           Control.Monad.Fix
 import           Control.Monad.IO.Class
+import           Data.Aeson                  as A
 import           Data.Coerce                 (coerce)
 import           Data.Foldable
+import qualified Data.List.Split             as L
 import           Data.Semigroup
-import           Data.Text
+import           Data.Text                   (Text)
 import qualified Data.Text                   as T
 import           GHC.Generics                (Generic)
 import           Language.Haskell.TH         (DecsQ)
 import           Language.Haskell.TH.Syntax  (Name)
-import           Language.Javascript.JSaddle (MonadJSM (..), JSM, MonadJSM, askJSM, runJSM)
+import           Language.Javascript.JSaddle (JSM, MonadJSM (..), askJSM,
+                                              runJSM)
+import           Reflex.Dom.Contrib.CssClass
 import           Reflex.Extended
 import           Reflex.Network.Extended
-import           Reflex.Dom.Contrib.CssClass
-import           Data.Aeson as A
 
 import           Data.Maybe
 
@@ -127,16 +129,22 @@ makePactPrisms = makePrisms
 -- | Aeson encoding options for compact encoding.
 --
 --   We pass on the most compact sumEncoding as it could be unsound for certain types.
+--
+--   But we assume the following naming of constructor names (sum typs) and
+--   field names (records): _TypeName_Blah and _typename_blah.
 compactEncoding :: A.Options
 compactEncoding = defaultOptions
-  { fieldLabelModifier = id
-  , allNullaryToStringTag = True
-  , constructorTagModifier = id
-  , omitNothingFields = True
-  , sumEncoding = ObjectWithSingleField
-  , unwrapUnaryRecords = True
-  , tagSingleConstructors = False
-  }
+    { fieldLabelModifier = shortener
+    , allNullaryToStringTag = True
+    , constructorTagModifier = shortener
+    , omitNothingFields = True
+    , sumEncoding = ObjectWithSingleField
+    , unwrapUnaryRecords = True
+    , tagSingleConstructors = False
+    }
+  where
+    -- As long as names are not empty or just underscores this head should be fine:
+    shortener = head . reverse . filter (/= "") . L.splitOn "_"
 
 tshow :: Show a => a -> Text
 tshow = T.pack . show
