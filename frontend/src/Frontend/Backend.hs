@@ -51,7 +51,7 @@ import           Control.Lens                      hiding ((.=))
 import           Control.Monad.Except
 import           Data.Aeson                        (FromJSON (..), Object,
                                                     Value (..), encode,
-                                                    withObject, (.:))
+                                                    withObject, (.:), ToJSON (..))
 import           Data.Aeson.Types                  (parseEither,
                                                     typeMismatch)
 import qualified Data.ByteString.Lazy              as BSL
@@ -112,6 +112,9 @@ newtype BackendName = BackendName
   }
   deriving (Generic, Eq, Ord, Show, Semigroup, Monoid)
 
+instance ToJSON BackendName
+instance FromJSON BackendName
+
 -- | Render a backend name as `Text`.
 textBackendName :: BackendName -> Text
 textBackendName = coerce
@@ -122,6 +125,10 @@ data BackendRef = BackendRef
   , brUri  :: BackendUri
   }
   deriving (Show, Generic, Eq, Ord)
+
+
+instance ToJSON BackendRef
+instance FromJSON BackendRef
 
 -- | Extract the actual URI.
 backendRefUri :: BackendRef -> BackendUri

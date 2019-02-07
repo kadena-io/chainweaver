@@ -66,8 +66,8 @@ library
                  , Frontend.Backend
                  , Frontend.Crypto.Ed25519
                  , Frontend.Editor
-                 , Frontend.Editor.QuickFix
                  , Frontend.Editor.Annotation
+                 , Frontend.Editor.QuickFix
                  , Frontend.Foundation
                  , Frontend.Ide
                  , Frontend.JsonData
@@ -76,6 +76,7 @@ library
                  , Frontend.ModuleExplorer.Example
                  , Frontend.ModuleExplorer.File
                  , Frontend.ModuleExplorer.Impl
+                 , Frontend.ModuleExplorer.LoadedRef
                  , Frontend.ModuleExplorer.Module
                  , Frontend.ModuleExplorer.ModuleList
                  , Frontend.ModuleExplorer.ModuleRef

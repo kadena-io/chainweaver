@@ -12,9 +12,8 @@ import           Reflex.Dom.Core
 
 import           Obelisk.ExecutableConfig (get)
 import           Obelisk.Frontend
+import           Obelisk.Route.Frontend
 import           Obelisk.Generated.Static
-import           Obelisk.Route
-
 
 import           Common.Route
 import           Frontend.ReplGhcjs
@@ -38,7 +37,11 @@ frontend = Frontend
 
       newHead
 
-  , _frontend_body = prerender loaderMarkup app
+  , _frontend_body = do
+      r <- askRoute
+      onRoute <- prerender (loaderMarkup >> pure never) (app r)
+      setRoute onRoute
+
   , _frontend_headRender = HeadRender_Static
   }
 

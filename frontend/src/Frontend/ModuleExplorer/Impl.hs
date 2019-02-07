@@ -116,7 +116,11 @@ makeModuleExplorer
 makeModuleExplorer m cfg = mfix $ \ ~(_, explr) -> do
     selectedFile <- selectFile
       (fmapMaybe getFileModuleRef $ cfg ^. moduleExplorerCfg_pushModule)
-      (leftmost [cfg ^. moduleExplorerCfg_selectFile, Nothing <$ cfg ^. moduleExplorerCfg_goHome])
+      (leftmost
+        [cfg ^. moduleExplorerCfg_selectFile
+        , Nothing <$ cfg ^. moduleExplorerCfg_goHome
+        ]
+      )
 
     onPostBuild <- getPostBuild
     mInitFile <- loadEditor
@@ -254,47 +258,52 @@ loadToEditor
   => model
   -> Event t FileRef
   -> Event t ModuleRef
-  -> m (mConf, MDynamic t ModuleSource)
+  -> m (mConf, MDynamic t LoadedRef)
 loadToEditor m onFileRef onModRef = do
-  let onFileModRef = fmapMaybe getFileModuleRef onModRef
+    let onFileModRef = fmapMaybe getFileModuleRef onModRef
 
-  onFile <- fetchFile $ leftmost
-    [ onFileRef
-    , _moduleRef_source <$> onFileModRef
-    ]
-  let onFetchedFileRef = fst <$> onFile
-
-  (modCfg, onMod)  <- loadModule m $ fmapMaybe getDeployedModuleRef onModRef
-  let onFetchedModRef = _moduleRef_source . fst <$> onMod
-
-  loaded <- holdDyn Nothing $ Just <$> leftmost
-    [ ModuleSource_File <$> onFetchedFileRef
-    , ModuleSource_Deployed <$> onFetchedModRef
-    ]
-
-  fileModRequested <- holdDyn Nothing $ leftmost
-    [ Just <$> onFileModRef
-    , Nothing <$ onFileRef -- Order important.
-    ]
-  let
-    onCode = fmap _unCode $ leftmost
-      [ fmapMaybe id $ attachPromptlyDynWith getFileModuleCode fileModRequested onFile
-      , snd <$> onFile
-      , view codeOfModule . snd <$> onMod
+    onFile <- fetchFile $ leftmost
+      [ onFileRef
+      , _moduleRef_source <$> onFileModRef
       ]
 
-    getFileModuleCode :: Maybe FileModuleRef -> (FileRef, PactFile) -> Maybe Code
+    (modCfg, onMod)  <- loadModule m $ fmapMaybe getDeployedModuleRef onModRef
+
+    fileModRequested <- holdDyn Nothing $ leftmost
+      [ Just <$> onFileModRef
+      , Nothing <$ onFileRef -- Order important.
+      ]
+    let
+      onFileMod :: Event t (FileModuleRef, Code)
+      onFileMod = fmapMaybe id $
+        attachPromptlyDynWith getFileModuleCode fileModRequested onFile
+
+    loaded <- holdDyn Nothing $ Just <$> leftmost
+      [ LoadedRef_Module . (moduleRef_source %~ ModuleSource_File) . fst <$> onFileMod
+      , LoadedRef_File . fst <$> onFile -- Order important we prefer `onFileMod` over `onFile`.
+      , LoadedRef_Module . (moduleRef_source %~ ModuleSource_Deployed) . fst <$> onMod
+      ]
+
+    let
+      onCode = fmap _unCode $ leftmost
+        [ snd <$> onFileMod
+        , snd <$> onFile
+        , view codeOfModule . snd <$> onMod
+        ]
+
+    pure ( mconcat [modCfg, mempty & editorCfg_setCode .~ onCode]
+         , loaded
+         )
+  where
+    getFileModuleCode :: Maybe FileModuleRef -> (FileRef, PactFile) -> Maybe (FileModuleRef, Code)
     getFileModuleCode = \case
       Nothing -> const Nothing
-      Just (ModuleRef _ n) ->
-        fmap (view codeOfModule)
+      Just r@(ModuleRef _ n) ->
+        fmap ((r,) . view codeOfModule)
         . Map.lookup n
         . fileModules
         . snd
 
-  pure ( mconcat [modCfg, mempty & editorCfg_setCode .~ onCode]
-       , loaded
-       )
 
 -- | Select a `PactFile`, note that a file gets also implicitely selected when
 --   a module of a given file gets selected.

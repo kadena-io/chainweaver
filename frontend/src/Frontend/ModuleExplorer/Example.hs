@@ -42,6 +42,7 @@ module Frontend.ModuleExplorer.Example
 
 ------------------------------------------------------------------------------
 import           Control.Monad            (void)
+import qualified Data.Aeson                        as A
 import           Control.Arrow            ((***))
 import           Data.Default
 import           Data.Text                (Text)
@@ -63,9 +64,13 @@ data ExampleRef
   | ExampleRef_InternationalPayments
   | ExampleRef_SimpleVerify
   | ExampleRef_Accounts
-  deriving (Eq, Ord, Show, Enum, Bounded)
+  deriving (Eq, Ord, Show, Enum, Bounded, Generic)
 
 makePactPrisms ''ExampleRef
+
+
+instance A.ToJSON ExampleRef
+instance A.FromJSON ExampleRef
 
 -- | List of all available examples.
 examples :: [ExampleRef]

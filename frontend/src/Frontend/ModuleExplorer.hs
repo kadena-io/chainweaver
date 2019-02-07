@@ -62,6 +62,7 @@ import           Frontend.ModuleExplorer.File       as File
 import           Frontend.ModuleExplorer.Module     as Module
 import           Frontend.ModuleExplorer.ModuleList as ModuleList
 import           Frontend.ModuleExplorer.ModuleRef  as Module
+import           Frontend.ModuleExplorer.LoadedRef  as Module
 import           Frontend.Wallet
 
 -- | Data needed to send transactions to the server.
@@ -109,8 +110,10 @@ data ModuleExplorer t = ModuleExplorer
     -- ^ The currently selected file if any.
   , _moduleExplorer_selectionGrowth :: Dynamic t Ordering
     -- ^ Whether the stack is currently growing/shrinking.
-  , _moduleExplorer_loaded          :: MDynamic t ModuleSource
+  , _moduleExplorer_loaded          :: MDynamic t LoadedRef
     -- ^ Where did the data come from that got loaded last into the `Editor`?
+    -- We can load files and we can load modules, so this is either a `FileRef`
+    -- or a `ModuleRef`.
   , _moduleExplorer_modules         :: ModuleList t
     -- ^ List of deployed modules, with user given filters applied.
   }

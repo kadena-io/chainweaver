@@ -28,6 +28,9 @@ module Frontend.ReplGhcjs where
 import           Control.Lens
 import           Control.Monad.Reader                   (ask)
 import           Control.Monad.State.Strict
+import           Data.Dependent.Sum                     (DSum ((:=>)))
+import           Data.Map                               (Map)
+import qualified Data.Map                               as Map
 import           Data.Text                              (Text)
 import qualified Data.Text                              as T
 import           GHCJS.DOM.EventM                       (on)
@@ -42,14 +45,17 @@ import           Reflex.Dom.ACE.Extended                hiding (Annotation (..))
 import           Reflex.Dom.Core
 ------------------------------------------------------------------------------
 import           Obelisk.Generated.Static
+import           Obelisk.Route                          (R)
 import           Pact.Repl
 import           Pact.Repl.Types
 import           Pact.Types.Lang
 ------------------------------------------------------------------------------
+import           Common.Route
 import           Frontend.Editor
 import           Frontend.Foundation
 import           Frontend.Ide
 import           Frontend.Messages
+import           Frontend.ModuleExplorer
 import           Frontend.Repl
 import           Frontend.UI.Button
 import           Frontend.UI.Dialogs.DeployConfirmation (uiDeployConfirmation)
@@ -59,8 +65,8 @@ import           Frontend.UI.RightPanel
 import           Frontend.UI.Widgets
 ------------------------------------------------------------------------------
 
-app :: MonadWidget t m => m ()
-app = void . mfix $ \ cfg -> do
+app :: MonadWidget t m => Dynamic t (R FrontendRoute) -> m (Event t (R FrontendRoute))
+app route = fmap snd . mfix $ \ ~(cfg, _) -> do
   ideL <- makeIde cfg
 
   controlCfg <- controlBar ideL
@@ -71,11 +77,66 @@ app = void . mfix $ \ cfg -> do
 
   modalCfg <- showModal ideL
 
-  pure $ mconcat
-    [ controlCfg
-    , mainCfg
-    , modalCfg
-    ]
+  (routesCfg, onRoute) <- handleRoutes ideL route
+
+  pure
+   ( mconcat
+      [ controlCfg
+      , mainCfg
+      , modalCfg
+      , routesCfg
+      ]
+   , onRoute
+   )
+
+handleRoutes
+  :: (MonadWidget t m, Monoid mConf, HasModuleExplorer model t
+     , HasModuleExplorerCfg mConf t
+     )
+  => model
+  -> Dynamic t (R FrontendRoute)
+  -> m (mConf, Event t (R FrontendRoute))
+handleRoutes m route = do
+    let loaded = m ^. moduleExplorer_loaded
+    onRoute <- tagOnPostBuild route
+    let
+      onNewLoaded = fmapMaybe id
+        . attachWith getLoaded (current loaded)
+        $ onRoute
+
+      onNewRoute = fmapMaybe id
+        . attachWith buildRoute (current route)
+        $ updated loaded
+
+    pure
+      ( mempty
+          & moduleExplorerCfg_loadFile .~ fmapMaybe (^? _LoadedRef_File) onNewLoaded
+          & moduleExplorerCfg_loadModule .~ fmapMaybe (^? _LoadedRef_Module) onNewLoaded
+      , onNewRoute
+      )
+  where
+    getLoaded :: Maybe LoadedRef -> R FrontendRoute -> Maybe LoadedRef
+    getLoaded cLoaded = \case
+      FrontendRoute_Main :=> Identity params -> do
+        loadedTxt <- params ^? at "loaded" . _Just . _Just
+        loaded <- loadedRefFromText loadedTxt
+        guard $ Just loaded /= cLoaded
+        pure loaded
+
+    buildRoute :: R FrontendRoute -> Maybe LoadedRef -> Maybe (R FrontendRoute)
+    buildRoute cRoute ref =
+      let
+        args :: Map Text (Maybe Text)
+        args = Map.insert "loaded" (fmap loadedRefToText ref) Map.empty
+
+        newRoute = FrontendRoute_Main :=> Identity args
+      in
+        if newRoute == cRoute
+           then Nothing
+           else Just newRoute
+
+
+
 
 -- | Code editing (left hand side currently)
 codePanel :: forall t m a. MonadWidget t m => CssClass -> Ide a t -> m (IdeCfg a t)

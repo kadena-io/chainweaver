@@ -17,7 +17,10 @@ import Prelude hiding (id, (.))
 import Control.Category
 -}
 
+import Prelude hiding ((.), id)
+import Control.Category (id)
 import Data.Text (Text)
+import Data.Map (Map)
 import Data.Functor.Identity
 import Data.Functor.Sum
 import Data.Semigroup ((<>))
@@ -35,7 +38,7 @@ data BackendRoute :: * -> * where
   --
   -- E.g. the list of available pact backends.
   BackendRoute_DynConfigs :: BackendRoute [Text]
-  
+
   -- | Serve robots.txt at the right place.
   BackendRoute_Robots :: BackendRoute ()
 
@@ -55,8 +58,9 @@ pactServerListPath = dynConfigsRoot <> "/pact-servers"
 
 
 data FrontendRoute :: * -> * where
-  FrontendRoute_Main :: FrontendRoute ()
+  FrontendRoute_Main :: FrontendRoute (Map Text (Maybe Text))
   -- This type is used to define frontend routes, i.e. ones for which the backend will serve the frontend.
+  -- Main takes some query parameters.
 
 backendRouteEncoder
   :: Encoder (Either Text) Identity (R (Sum BackendRoute (ObeliskRoute FrontendRoute))) PageName
@@ -72,7 +76,7 @@ backendRouteEncoder = handleEncoder (const (InL BackendRoute_Missing :/ ())) $
     InR obeliskRoute -> obeliskRouteSegment obeliskRoute $ \case
       -- The encoder given to PathEnd determines how to parse query parameters,
       -- in this example, we have none, so we insist on it.
-      FrontendRoute_Main -> PathEnd $ unitEncoder mempty
+      FrontendRoute_Main -> PathEnd id
 
 
 concat <$> mapM deriveRouteComponent

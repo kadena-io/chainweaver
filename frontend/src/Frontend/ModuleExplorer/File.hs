@@ -51,6 +51,7 @@ import qualified Data.Map                        as Map
 import           Data.Text                       (Text)
 import           Reflex
 import           Reflex.Dom.Core                 (HasJSContext, MonadHold)
+import qualified Data.Aeson                        as A
 ------------------------------------------------------------------------------
 import qualified Pact.Compile                    as Pact
 import qualified Pact.Parse                      as Pact
@@ -63,7 +64,10 @@ import           Frontend.ModuleExplorer.Module
 
 -- | The name of a file stored by the user.
 newtype FileName = FileName { unFileName :: Text }
-  deriving (Show, Eq, Ord)
+  deriving (Show, Eq, Ord, Generic)
+
+instance A.ToJSON FileName
+instance A.FromJSON FileName
 
 -- | Get textual representation of a `FileName`
 textFileName :: FileName -> Text
@@ -73,9 +77,12 @@ textFileName = unFileName
 data FileRef
   = FileRef_Example ExampleRef
   | FileRef_Stored FileName
-  deriving (Eq, Ord, Show)
+  deriving (Eq, Ord, Show, Generic)
 
 makePactPrisms ''FileRef
+
+instance A.ToJSON FileRef
+instance A.FromJSON FileRef
 
 {- -- | A selected file. -}
 {- data PactFile = PactFile -}

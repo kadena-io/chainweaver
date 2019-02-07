@@ -68,6 +68,7 @@ import           Pact.Types.Term                 as PactTerm (Module (..),
                                                               NamespaceName (..),
                                                               Term (TList, TLiteral, TModule, TObject),
                                                               tStr)
+import qualified Data.Aeson                        as A
 ------------------------------------------------------------------------------
 import           Frontend.Backend
 import           Frontend.Foundation
@@ -93,19 +94,24 @@ import           Frontend.Wallet
 data ModuleSource
   = ModuleSource_Deployed BackendRef -- ^ A module that already got deployed and loaded from there
   | ModuleSource_File FileRef
-  deriving (Eq, Ord, Show)
+  deriving (Eq, Ord, Show, Generic)
 
 makePactPrisms ''ModuleSource
 
+instance A.ToJSON ModuleSource
+instance A.FromJSON ModuleSource
 
 -- | A Module is uniquely idendified by its name and its origin.
 data ModuleRefV s = ModuleRef
   { _moduleRef_source :: s -- ^ Where does the module come from.
   , _moduleRef_name   :: ModuleName   -- ^ Fully qualified name of the module.
   }
-  deriving (Eq, Ord, Show)
+  deriving (Eq, Ord, Show, Generic)
 
 makePactLensesNonClassy ''ModuleRefV
+
+instance A.ToJSON s => A.ToJSON (ModuleRefV s)
+instance A.FromJSON s => A.FromJSON (ModuleRefV s)
 
 -- | Most general `ModuleRef`.
 --
@@ -159,7 +165,6 @@ textModuleRefSource isModule m =
   where
     printPretty n d = mconcat [ n, " ", moduleText, " [ " , d , " ]" ]
     moduleText = if isModule then "Module" else "Interface"
-
 
 -- Get hold of a deployed module:
 
