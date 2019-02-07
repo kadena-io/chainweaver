@@ -156,7 +156,7 @@ applyQuickFix rs t onQuickFix = do
         ( preamble
           <> [ "\n;; For more information about keysets checkout:"
              , ";; https://pact-language.readthedocs.io/en/latest/pact-reference.html#keysets-and-authorization"
-             , "(define-keyset '" <> ks <> "(read-keyset \"" <> ksn <> "\"))\n"
+             , "(define-keyset '" <> ks <> " (read-keyset \"" <> ksn <> "\"))\n"
              ]
           <> remCode
         )
