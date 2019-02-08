@@ -30,7 +30,10 @@
 }
 
 .input_type_textarea {
-  height: 3 * $control-height;
+  padding-top: 0.5em;
+  padding-bottom: 0.5em;
+  line-height: 1em;
+  height: 4em;
 }
 
 .input_type_secondary {

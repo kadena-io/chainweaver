@@ -84,7 +84,7 @@ uiCallFunction m mModule func = do
             el "br" blank
             el "br" blank
             renderDescription func
-          for mModule $ \ _ -> divClass "fun-arg-editor" $ do
+          for mModule $ \ _ -> divClass "group fun-arg-editor" $ do
             let fType = _pactFunction_type func
                 fModule = _pactFunction_module func
                 fName = _pactFunction_name func
@@ -197,7 +197,7 @@ funArgEdit json arg = do
       aName = _aName arg
       aType = _aType arg
       sizeClass = inputSizeClass . funTypeInputSize $ aType
-  elKlass "div" ("group labled-input segment segment_type_tertiary" <> sizeClass) $ do
+  elKlass "div" ("labeled-input segment segment_type_tertiary" <> sizeClass) $ do
     divClass "label labeled-input__label" $ text aName
     funTypeInput json aType
 
