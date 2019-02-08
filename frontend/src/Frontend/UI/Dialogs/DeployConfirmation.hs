@@ -62,8 +62,8 @@ uiDeployConfirmation ideL = do
             cfg = def & dropdownConfig_attributes .~ pure ("class" =: "select select_type_primary")
         dropdown Nothing (mkOptions <$> backends) cfg
 
-      (settingsCfg, signingKeys) <- elClass "div" "segment" $
-        uiDeploymentSettings ideL
+      (settingsCfg, signingKeys, _) <- elClass "div" "segment" $
+        uiDeploymentSettings ideL Nothing
 
       pure
         ( settingsCfg

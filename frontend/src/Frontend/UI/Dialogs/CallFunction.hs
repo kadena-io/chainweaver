@@ -78,27 +78,27 @@ uiCallFunction m mModule func = do
         text $ _pactFunction_name func
     modalMain $ do
       mCallAndKeys <- modalBody $ do
-        mPactCall <- uiSegment mempty $ do
+        uiSegment mempty $ do
           elClass "div" "segment segment_type_secondary code-font code-font_type_function-desc" $ do
             renderSignature func
             el "br" blank
             el "br" blank
             renderDescription func
-          for mModule $ \ _ -> divClass "group fun-arg-editor" $ do
-            let fType = _pactFunction_type func
-                fModule = _pactFunction_module func
-                fName = _pactFunction_name func
-                fArgs = _ftArgs fType
-            args :: [ Dynamic t Text ] <- traverse (funArgEdit (m ^. jsonData)) fArgs
-            pure $ buildCall fModule fName <$> sequence args
 
-        (settingsCfg, signingKeys) <-
+        (settingsCfg, signingKeys, mPactCall) <-
           if isJust mModule -- Only relevant if we have a deployed module:
-             then uiSegment mempty $ uiDeploymentSettings m
-             else pure (mempty, pure mempty)
+             then uiSegment mempty $ uiDeploymentSettings m . Just . ("Parameters",) $
+               for mModule $ \ _ -> divClass "group fun-arg-editor" $ do
+                 let fType = _pactFunction_type func
+                     fModule = _pactFunction_module func
+                     fName = _pactFunction_name func
+                     fArgs = _ftArgs fType
+                 args :: [ Dynamic t Text ] <- traverse (funArgEdit (m ^. jsonData)) fArgs
+                 pure $ buildCall fModule fName <$> sequence args
+             else pure (mempty, pure mempty, Nothing)
 
         pure $ do
-          pactCall <- mPactCall
+          pactCall <- join mPactCall
           moduleL <- mModule
           pure (pactCall, signingKeys, moduleL, settingsCfg)
 

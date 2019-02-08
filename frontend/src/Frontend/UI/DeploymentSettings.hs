@@ -25,6 +25,7 @@ module Frontend.UI.DeploymentSettings
   ) where
 
 ------------------------------------------------------------------------------
+import           Control.Arrow               (first)
 import           Control.Lens
 import           Control.Monad
 import           Data.Map                    (Map)
@@ -50,13 +51,15 @@ import           Frontend.Wallet
 ------------------------------------------------------------------------------
 
 data DeploymentSettingsView
-  = DeploymentSettingsView_Settings -- ^ Actual settings like gas price/limit, ...
+  = DeploymentSettingsView_Custom Text -- ^ An optional additonal tab.
+  | DeploymentSettingsView_Settings -- ^ Actual settings like gas price/limit, ...
   | DeploymentSettingsView_Keys -- ^ Select keys for signing the transaction.
-  deriving (Eq,Ord,Enum,Bounded)
+  deriving (Eq,Ord)
 
 showSettingsTabName :: DeploymentSettingsView -> Text
-showSettingsTabName DeploymentSettingsView_Keys     = "Sign"
-showSettingsTabName DeploymentSettingsView_Settings = "Settings"
+showSettingsTabName (DeploymentSettingsView_Custom n) = n
+showSettingsTabName DeploymentSettingsView_Keys       = "Sign"
+showSettingsTabName DeploymentSettingsView_Settings   = "Settings"
 
 -- | Show settings related to deployments to the user.
 --
@@ -67,17 +70,22 @@ uiDeploymentSettings
      , Monoid mConf , HasBackendCfg mConf t
      )
   => model
-  -> m (mConf, Dynamic t (Set KeyName))
-uiDeploymentSettings m = mdo
-    curSelection <- holdDyn DeploymentSettingsView_Settings onTabClick
+  -> Maybe (Text, m a) -- ^ An optional additional tab.
+  -> m (mConf, Dynamic t (Set KeyName), Maybe a)
+uiDeploymentSettings m mUserTab = mdo
+    let initTab = fromMaybe DeploymentSettingsView_Settings mUserTabName
+    curSelection <- holdDyn initTab onTabClick
     (TabBar onTabClick) <- makeTabBar $ TabBarCfg
-      { _tabBarCfg_tabs = [minBound .. maxBound]
+      { _tabBarCfg_tabs = availableTabs
       , _tabBarCfg_mkLabel = const $ text . showSettingsTabName
       , _tabBarCfg_selectedTab = Just <$> curSelection
       , _tabBarCfg_classes = mempty
       , _tabBarCfg_type = TabBarType_Secondary
       }
     elClass "div" "segment" $ do
+
+      mRes <- traverse (uncurry $ tabPane mempty curSelection) mUserTabCfg
+
       cfg <- tabPane mempty curSelection DeploymentSettingsView_Settings $
         elKlass "div" ("group") $ do
 
@@ -100,7 +108,8 @@ uiDeploymentSettings m = mdo
             & backendCfg_setGasLimit .~ fmapMaybe (readPact ParsedInteger) onGasLimitTxt
       signingKeys <- tabPane mempty curSelection DeploymentSettingsView_Keys $
         signingKeysWidget m
-      pure (cfg, signingKeys)
+
+      pure (cfg, signingKeys, mRes)
     where
       showParsedInteger :: ParsedInteger -> Text
       showParsedInteger (ParsedInteger i) = tshow i
@@ -109,6 +118,12 @@ uiDeploymentSettings m = mdo
       showParsedDecimal (ParsedDecimal i) = tshow i
 
       readPact wrapper =  fmap wrapper . readMay . T.unpack
+
+      mUserTabCfg  = first DeploymentSettingsView_Custom <$> mUserTab
+      mUserTabName = fmap fst mUserTabCfg
+      userTabs = maybeToList mUserTabName
+      stdTabs = [DeploymentSettingsView_Settings, DeploymentSettingsView_Keys]
+      availableTabs = userTabs <> stdTabs
 
 -- | Make labeled and segmented input.
 mkLabeledInput
