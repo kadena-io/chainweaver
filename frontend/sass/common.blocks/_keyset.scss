@@ -21,7 +21,11 @@
 }
 
 .keyset__icon {
-  margin-right: 1em;
+  margin-right: 0.5em;
+}
+
+.keyset__icon > img {
+  height: 0.9em;
 }
 
 .keyset__header-text {
