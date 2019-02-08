@@ -424,7 +424,6 @@ loadModules backendL onRefresh = do
         _         -> Nothing
 
 
-
 -- | Send a transaction via the /send endpoint.
 --
 --   This is a convenience wrapper around `backendRequest`, use that if you
@@ -586,7 +585,7 @@ buildSigs cmdHash keys signing = do
 
   let
     mkSigPubKey :: KeyPair -> Signature -> UserSig
-    mkSigPubKey kp sig = UserSig ED25519 (keyToText sig) (keyToText $ _keyPair_publicKey kp)
+    mkSigPubKey kp sig = UserSig ED25519 (keyToText $ _keyPair_publicKey kp) (keyToText sig)
   pure $ zipWith mkSigPubKey (map snd signingPairs) sigs
 
 
