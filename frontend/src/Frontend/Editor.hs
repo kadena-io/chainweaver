@@ -127,6 +127,7 @@ makeEditor m cfg = mdo
     modified <- holdDyn False $ leftmost
       [ False <$ cfg ^. editorCfg_loadCode
       , True <$  cfg ^. editorCfg_setCode
+      , True <$  onFix
       , False <$ cfg ^. editorCfg_clearModified
       ]
 
