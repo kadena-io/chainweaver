@@ -130,7 +130,7 @@ makeModuleExplorer m cfg = mfix $ \ ~(_, explr) -> do
            then (const $ FileRef_Example ExampleRef_SimpleVerify) <$> onPostBuild
            else never
       editorInitCfg = mempty
-        & editorCfg_setCode .~ fmapMaybe (const mInitFile) onPostBuild
+        & editorCfg_loadCode .~ fmapMaybe (const mInitFile) onPostBuild
     -- Store to disk max every 2 seconds:
     onStore <- throttle 2 $ updated $ m ^. editor_code
     performEvent_ $ storeEditor <$> onStore
@@ -253,7 +253,7 @@ loadToEditor
   . ( ReflexConstraints t m
     , HasModuleExplorerModelCfg  mConf t
     , MonadSample t (Performable m)
-    , HasBackend model t
+    , HasBackend model t, HasEditor model t
     )
   => model
   -> Event t FileRef
@@ -278,10 +278,12 @@ loadToEditor m onFileRef onModRef = do
       onFileMod = fmapMaybe id $
         attachPromptlyDynWith getFileModuleCode fileModRequested onFile
 
-    loaded <- holdDyn Nothing $ Just <$> leftmost
-      [ LoadedRef_Module . (moduleRef_source %~ ModuleSource_File) . fst <$> onFileMod
-      , LoadedRef_File . fst <$> onFile -- Order important we prefer `onFileMod` over `onFile`.
-      , LoadedRef_Module . (moduleRef_source %~ ModuleSource_Deployed) . fst <$> onMod
+    loaded <- holdDyn Nothing $ leftmost
+      [ Just .LoadedRef_Module . (moduleRef_source %~ ModuleSource_File) . fst <$> onFileMod
+      , Just. LoadedRef_File . fst <$> onFile -- Order important we prefer `onFileMod` over `onFile`.
+      , Just . LoadedRef_Module . (moduleRef_source %~ ModuleSource_Deployed) . fst <$> onMod
+        -- For now, until we have file saving support:
+      , fmap (const Nothing) . ffilter id . updated $ m ^.editor_modified
       ]
 
     let
@@ -291,7 +293,7 @@ loadToEditor m onFileRef onModRef = do
         , view codeOfModule . snd <$> onMod
         ]
 
-    pure ( mconcat [modCfg, mempty & editorCfg_setCode .~ onCode]
+    pure ( mconcat [modCfg, mempty & editorCfg_loadCode .~ onCode]
          , loaded
          )
   where

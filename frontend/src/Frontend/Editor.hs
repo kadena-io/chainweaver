@@ -68,9 +68,14 @@ import           Frontend.Wallet
 -- | Configuration for the `Editor`.
 data EditorCfg t = EditorCfg
   { _editorCfg_setCode       :: Event t Text
-    -- ^ Set the source code/text of the editor.
+    -- ^ Set the source code/text of the editor and mark it as modified.
+  , _editorCfg_loadCode      :: Event t Text
+    -- ^ Same as `setCode` but instead of marking the editor state as modified,
+    -- it sets it to unmodified.
   , _editorCfg_applyQuickFix :: Event t QuickFix
     -- ^ Apply a given quick fix.
+  , _editorCfg_clearModified :: Event t ()
+    -- ^ Clear the `modified` flag of the editor.
   }
   deriving Generic
 
@@ -88,6 +93,7 @@ data Editor t = Editor
     -- ^ Annotations for the editor.
   , _editor_quickFixes  :: Dynamic t [QuickFix]
     -- ^ Available quick fixes.
+  , _editor_modified    :: Dynamic t Bool
   }
   deriving Generic
 
@@ -112,7 +118,18 @@ makeEditor
     )
   => model -> cfg -> m (mConf, Editor t)
 makeEditor m cfg = mdo
-    t <-  holdDyn "" $ leftmost [cfg ^. editorCfg_setCode, onFix]
+    t <-  holdDyn "" $ leftmost
+      [ cfg ^. editorCfg_setCode
+      , cfg ^. editorCfg_loadCode
+      , onFix
+      ]
+
+    modified <- holdDyn False $ leftmost
+      [ False <$ cfg ^. editorCfg_loadCode
+      , True <$  cfg ^. editorCfg_setCode
+      , False <$ cfg ^. editorCfg_clearModified
+      ]
+
     annotations <- typeCheckVerify m t
     quickFixes  <- holdDyn [] $ makeQuickFixes <$> annotations
     gen <- liftIO newStdGen
@@ -123,6 +140,7 @@ makeEditor m cfg = mdo
         { _editor_code = t
         , _editor_annotations = annotations
         , _editor_quickFixes = quickFixes
+        , _editor_modified = modified
         }
       )
 
@@ -244,5 +262,7 @@ instance Flattenable (EditorCfg t) t where
   flattenWith doSwitch ev =
     EditorCfg
       <$> doSwitch never (_editorCfg_setCode <$> ev)
+      <*> doSwitch never (_editorCfg_loadCode <$> ev)
       <*> doSwitch never (_editorCfg_applyQuickFix <$> ev)
+      <*> doSwitch never (_editorCfg_clearModified <$> ev)
 
