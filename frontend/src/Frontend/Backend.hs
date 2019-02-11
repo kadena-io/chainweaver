@@ -281,7 +281,7 @@ buildMeta
 buildMeta cfg = do
   let defaultMeta =
         PublicMeta
-          { _pmChainId = "someChain"
+          { _pmChainId = "1"
           , _pmSender  = "someSender"
           , _pmGasLimit = ParsedInteger 10 -- TODO: Better defaults!!!
           , _pmGasPrice = ParsedDecimal 0.001
