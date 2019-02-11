@@ -24,8 +24,17 @@
   margin-bottom: $medium-margin;
 }
 
+.segment_type_small-primary:last-child {
+  margin-bottom: 0;
+  padding-bottom: 0;
+}
+
 .segment_type_tertiary {
   border-bottom: none;
   padding: 0 0 0;
   margin-bottom: $medium-margin;
+}
+
+.segment_type_tertiary:last-child {
+  margin-bottom: 0;
 }
