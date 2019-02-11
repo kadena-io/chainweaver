@@ -127,7 +127,7 @@ handleRoutes m route = do
     buildRoute cRoute ref =
       let
         args :: Map Text (Maybe Text)
-        args = Map.insert "loaded" (fmap loadedRefToText ref) Map.empty
+        args = Map.empty & at "loaded" . non Nothing .~ (fmap loadedRefToText ref)
 
         newRoute = FrontendRoute_Main :=> Identity args
       in
