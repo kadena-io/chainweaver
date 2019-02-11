@@ -100,6 +100,7 @@ import           Frontend.Crypto.Ed25519
 import           Frontend.Foundation
 import           Frontend.Messages
 import           Frontend.Wallet
+import           Frontend.Storage                  (getItemLocal, setItemLocal)
 import qualified Servant.Client.JSaddle            as S
 
 -- | URI for accessing a backend.
@@ -235,10 +236,16 @@ type HasBackendModel model t = HasWallet model t
 -- | Model config needed by Backend.
 type HasBackendModelCfg mConf t = (Monoid mConf, HasMessagesCfg mConf t)
 
+-- | Things we want to store to local storage.
+data StoreBackend a where
+  StoreBackend_GasSettings  :: StoreBackend PublicMeta
+
+deriving instance Show (StoreBackend a)
+
 makeBackend
   :: forall t m model mConf
   . ( MonadHold t m, PerformEvent t m, MonadFix m, NotReady t m, Adjustable t m
-    , MonadJSM (Performable m), HasJSContext (Performable m)
+    , MonadJSM (Performable m), HasJSContext (Performable m), MonadJSM m
     , TriggerEvent t m, PostBuild t m, MonadIO m
     , MonadSample t (Performable m)
     , HasBackendModel model t
@@ -267,7 +274,9 @@ makeBackend w cfg = mfix $ \ ~(_, backendL) -> do
       )
 
 buildMeta
-  :: (MonadHold t m, MonadFix m, Reflex t)
+  :: ( MonadHold t m, MonadFix m, Reflex t, MonadJSM m
+     , PerformEvent t m, MonadJSM (Performable m), TriggerEvent t m
+     )
   => BackendCfg t -> m (Dynamic t PublicMeta)
 buildMeta cfg = do
   let defaultMeta =
@@ -278,13 +287,19 @@ buildMeta cfg = do
           , _pmGasPrice = ParsedDecimal 0.001
           , _pmFee = ParsedDecimal 1
           }
+  m <- fromMaybe defaultMeta <$> liftJSM (getItemLocal StoreBackend_GasSettings)
 
-  foldDyn id defaultMeta $ leftmost
+  r <- foldDyn id m $ leftmost
     [ (\u c -> c { _pmChainId = u})  <$> cfg ^. backendCfg_setChainId
     , (\u c -> c { _pmSender = u})   <$> cfg ^. backendCfg_setSender
     , (\u c -> c { _pmGasLimit = u}) <$> cfg ^. backendCfg_setGasLimit
     , (\u c -> c { _pmGasPrice = u}) <$> cfg ^. backendCfg_setGasPrice
     ]
+
+  onStore <- throttle 2 $ updated r
+  performEvent_ $ liftJSM . setItemLocal StoreBackend_GasSettings <$> onStore
+
+  pure r
 
 
 deployCode

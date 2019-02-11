@@ -3,6 +3,8 @@ module Frontend.Storage
   ( getLocalStorage
   , getItemStorage
   , setItemStorage
+  , getItemLocal
+  , setItemLocal
   , GHCJS.Storage
   ) where
 
@@ -36,6 +38,25 @@ setItemStorage
   -> data'
   -> m ()
 setItemStorage storage key data' = GHCJS.setItem storage (keyToString key) (toJsonString data')
+
+-- | Get item from local storage.
+getItemLocal
+  ::  (MonadIO m, Show (key result), FromJSON result, MonadJSM m)
+  => key result
+  -> m (Maybe result)
+getItemLocal key = do
+  store <- getLocalStorage
+  getItemStorage store key
+
+-- | Set item in local storage.
+setItemLocal
+  :: (Show (key data'), ToJSON data', MonadJSM m)
+  => key data'
+  -> data'
+  -> m ()
+setItemLocal key data' = do
+  store <- getLocalStorage
+  setItemStorage store key data'
 
 
 toJsonString :: ToJSON a => a -> JSString
