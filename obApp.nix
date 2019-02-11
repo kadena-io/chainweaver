@@ -22,6 +22,7 @@ in
        };
     packages = {
       pact = hackGet ./deps/pact;
+      servant-client-jsaddle = (hackGet ./deps/servant) + "/servant-client-jsaddle";
       reflex-dom-ace = hackGet ./deps/reflex-dom-ace;
       reflex-dom-contrib = hackGet ./deps/reflex-dom-contrib;
     };
@@ -91,12 +92,13 @@ in
               sha256 = "18xcxg1h19zx6gdzk3dfs87447k3xjqn40raghjz53bg5k8cdc31";
             }) {});
 
-            servant-client-jsaddle = haskellLib.doJailbreak (haskellLib.dontCheck (self.callCabal2nix "servant-client-jsaddle" ((pkgs.fetchFromGitHub {
-              owner = "haskell-servant";
-              repo = "servant";
-              rev = "85d6471debfb4a5707c261d4b9deaa33ed4c65db";
-              sha256 = "1lwa6kbpjmx17lkh74p9nfjiwzqcy3whza59m67k96ab3bh2b99y";
-            }) + "/servant-client-jsaddle") {}));
+            # servant-client-jsaddle = haskellLib.doJailbreak (haskellLib.dontCheck (self.callCabal2nix "servant-client-jsaddle" ((pkgs.fetchFromGitHub {
+            #   owner = "haskell-servant";
+            #   repo = "servant";
+            #   rev = "85d6471debfb4a5707c261d4b9deaa33ed4c65db";
+            #   sha256 = "1lwa6kbpjmx17lkh74p9nfjiwzqcy3whza59m67k96ab3bh2b99y";
+            # }) + "/servant-client-jsaddle") {}));
+            servant-client-jsaddle = pkgs.haskell.lib.dontCheck (pkgs.haskell.lib.doJailbreak super.servant-client-jsaddle);
 
             thyme = pkgs.haskell.lib.dontCheck (pkgs.haskell.lib.enableCabalFlag (self.callCabal2nix "thyme" (pkgs.fetchFromGitHub {
               owner = "kadena-io";
