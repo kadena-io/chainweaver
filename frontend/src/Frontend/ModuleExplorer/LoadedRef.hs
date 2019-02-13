@@ -36,13 +36,17 @@ module Frontend.ModuleExplorer.LoadedRef
 
 ------------------------------------------------------------------------------
 import qualified Data.Aeson                        as A
+import qualified Data.ByteString.Lazy              as BSL
 import           Data.Text                         (Text)
+import qualified Data.Text                         as T
 import qualified Data.Text.Encoding                as T
-import qualified Data.ByteString.Lazy as BSL
 ------------------------------------------------------------------------------
+import           Frontend.Backend                  (HasBackend)
 import           Frontend.Foundation
 import           Frontend.ModuleExplorer.File
 import           Frontend.ModuleExplorer.ModuleRef
+import           Frontend.ModuleExplorer.Example
+import           Frontend.ModuleExplorer.RefPath
 
 
 -- | Reference something that can be loaded to the `Editor`.
@@ -60,13 +64,10 @@ instance A.ToJSON LoadedRef where
 instance A.FromJSON LoadedRef where
   parseJSON = A.genericParseJSON compactEncoding
 
--- | Serialize a `LoadedRef` to `Text`.
---
---   The format should be kind of readable and parseable, e.g. for use in URIs.
---
---   For now we are using JSON, not ideal but is generated automatically.
-loadedRefToText :: LoadedRef -> Text
-loadedRefToText = T.decodeUtf8 . BSL.toStrict . A.encode
 
-loadedRefFromText :: Text -> Maybe LoadedRef
-loadedRefFromText = A.decodeStrict . T.encodeUtf8
+instance IsRefPath LoadedRef where
+  renderRef = \case
+    LoadedRef_File f -> renderRef f
+    LoadedRef_Module m -> renderRef m
+
+  parseRef = fmap LoadedRef_Module tryParseRef <|> fmap LoadedRef_File tryParseRef

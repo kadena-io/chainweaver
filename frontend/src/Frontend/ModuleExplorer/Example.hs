@@ -41,19 +41,20 @@ module Frontend.ModuleExplorer.Example
   ) where
 
 ------------------------------------------------------------------------------
-import           Control.Monad            (void)
-import qualified Data.Aeson                        as A
 import           Control.Arrow            ((***))
+import           Control.Monad            (MonadPlus, mzero, void)
+import qualified Data.Aeson               as A
 import           Data.Default
 import           Data.Text                (Text)
 import           Reflex
-import           Reflex.Dom.Core          (HasJSContext,
-                                           XhrResponse (..), newXMLHttpRequest,
-                                           xhrRequest)
+import qualified Text.Megaparsec      as MP
+import           Reflex.Dom.Core          (HasJSContext, XhrResponse (..),
+                                           newXMLHttpRequest, xhrRequest)
 ------------------------------------------------------------------------------
 import           Obelisk.Generated.Static
 ------------------------------------------------------------------------------
 import           Frontend.Foundation
+import           Frontend.ModuleExplorer.RefPath
 
 
 
@@ -79,6 +80,17 @@ instance A.FromJSON ExampleRef where
 -- | List of all available examples.
 examples :: [ExampleRef]
 examples = [minBound .. maxBound]
+
+
+instance IsRefPath ExampleRef where
+  renderRef = mkPathSegment . shorten . T.pack . show
+    where
+      -- Only works for "ExampleRef_Blah" kind of names:
+      shorten =  head . reverse . filter (/= "") . T.splitOn "_"
+
+  parseRef = do
+    n <- ("ExampleRef_" <>) . unPathSegment <$> MP.anySingle
+    justZ $ readMay . T.unpack $ n
 
 
 -- | Names of examples as shown to the user.
@@ -108,6 +120,7 @@ exampleFileName = \case
     -> static @ "examples/verification-1.0.repl"
   ExampleRef_Accounts
     -> static @ "examples/accounts-1.0.repl"
+
 
 -- | File name of JSON data for example.
 exampleDataName :: ExampleRef -> Text

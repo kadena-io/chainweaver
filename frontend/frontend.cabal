@@ -82,6 +82,7 @@ library
                  , Frontend.ModuleExplorer.Module
                  , Frontend.ModuleExplorer.ModuleList
                  , Frontend.ModuleExplorer.ModuleRef
+                 , Frontend.ModuleExplorer.RefPath
                  , Frontend.Repl
                  , Frontend.ReplGhcjs
                  , Frontend.Storage

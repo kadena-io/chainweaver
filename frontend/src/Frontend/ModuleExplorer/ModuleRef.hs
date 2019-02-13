@@ -49,6 +49,7 @@ module Frontend.ModuleExplorer.ModuleRef
 
 ------------------------------------------------------------------------------
 import           Control.Arrow                   (left, (***))
+import qualified Text.Megaparsec      as MP
 import           Control.Lens
 import           Control.Monad
 import           Control.Monad.Except            (throwError)
@@ -132,6 +133,46 @@ type DeployedModuleRef = ModuleRefV BackendRef
 
 -- | `ModuleRefV` that refers to a module coming from some file.
 type FileModuleRef = ModuleRefV FileRef
+
+
+-- | Parse and render a `ModuleRef`.
+instance IsRefPath ModuleRef where
+  renderRef r =
+    renderRef (_moduleRef_source r) <> renderRef (_moduleRef_name r)
+
+  parseRef = ModuleRef <$> parseRef <*> parseRef
+
+
+instance IsRefPath ModuleSource where
+  renderRef = \case
+    ModuleSource_Deployed bs -> "deployed" : renderRef bs
+    ModuleSource_File f -> renderRef f
+
+  parseRef =
+      fmap ModuleSource_File tryParseRef <|> fmap ModuleSource_Deployed parseDeployed
+    where
+      parseDeployed = do
+        r <- MP.anySingle
+        case unPathSegment r of
+          "deployed" -> FileRef_Deployed <$> parseRef
+          _         -> MP.unexpected $ r :| []
+
+
+instance IsRefPath ModuleName where
+  renderRef (ModuleName n mNamespace) = mkPathSegment $
+    case mNamespace of
+      Nothing -> n
+      Just (Namespace ns) -> ns <> "." <> n
+
+  parseRef = do
+    fn <- unPathSegment <$> MP.anySingle
+    pure $ case reverse $ T.splitOn "." fn of
+      []   ->
+        MP.failure
+          (Just . MP.Tokens . $ "" :| [])
+          (Set.singleton $ Tokens $ "module name" :| [])
+      n:[] -> ModuleName n Nothing
+      n:ns -> ModuleName n (Just . T.intercalate "." . reverse $ ns)
 
 
 -- | Get a `DeployedModuleRef` if it is one.

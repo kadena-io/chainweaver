@@ -46,12 +46,14 @@ module Frontend.ModuleExplorer.File
 import           Control.Arrow                   ((***))
 import           Control.Lens
 import           Control.Monad
+import qualified Data.Aeson                      as A
+import           Data.List.NonEmpty              ((:|))
 import           Data.Map                        (Map)
 import qualified Data.Map                        as Map
 import           Data.Text                       (Text)
 import           Reflex
 import           Reflex.Dom.Core                 (HasJSContext, MonadHold)
-import qualified Data.Aeson                        as A
+import qualified Text.Megaparsec      as MP
 ------------------------------------------------------------------------------
 import qualified Pact.Compile                    as Pact
 import qualified Pact.Parse                      as Pact
@@ -61,6 +63,7 @@ import           Pact.Types.Lang                 (Code (..), Module, ModuleName,
 import           Frontend.Foundation
 import           Frontend.ModuleExplorer.Example
 import           Frontend.ModuleExplorer.Module
+import           Frontend.ModuleExplorer.RefPath
 
 -- | The name of a file stored by the user.
 newtype FileName = FileName { unFileName :: Text }
@@ -87,6 +90,20 @@ instance A.ToJSON FileRef where
 
 instance A.FromJSON FileRef where
   parseJSON = A.genericParseJSON compactEncoding
+
+
+instance IsRefPath FileRef where
+  renderRef = \case
+    FileRef_Example ex -> mkPathSegment "example" : renderRef ex
+    FileRef_Stored  (FileName n) -> mkPathSegment "stored" : mkPathSegment n : []
+
+  parseRef = do
+    r <- MP.anySingle
+    case unPathSegment r of
+      "example" -> FileRef_Example <$> parseRef
+      "stored"  -> FileRef_Stored  <$> parseRef
+      _         -> MP.unexpected $ r :| []
+
 
 {- -- | A selected file. -}
 {- data PactFile = PactFile -}
