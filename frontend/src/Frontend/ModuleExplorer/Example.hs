@@ -28,8 +28,8 @@ module Frontend.ModuleExplorer.Example
   ( -- * Example References
     ExampleRef (..)
   , _ExampleRef_HelloWorld
-  , _ExampleRef_SimplePayments
-  , _ExampleRef_InternationalPayments
+  , _ExampleRef_SimplePayment
+  , _ExampleRef_InternationalPayment
     -- * Available examples
   , examples
     -- * Get some information about examples
@@ -64,9 +64,9 @@ import           Frontend.ModuleExplorer.RefPath as MP
 -- | A reference to one of the predefined example files.
 data ExampleRef
   = ExampleRef_HelloWorld
-  | ExampleRef_SimplePayments
-  | ExampleRef_InternationalPayments
-  | ExampleRef_SimpleVerify
+  | ExampleRef_SimplePayment
+  | ExampleRef_InternationalPayment
+  | ExampleRef_Verification
   | ExampleRef_Accounts
   deriving (Eq, Ord, Show, Enum, Bounded, Generic, Read)
 
@@ -101,11 +101,11 @@ exampleName :: ExampleRef -> Text
 exampleName = \case
   ExampleRef_HelloWorld
     -> "Hello World"
-  ExampleRef_SimplePayments
+  ExampleRef_SimplePayment
     -> "Simple Payment"
-  ExampleRef_InternationalPayments
+  ExampleRef_InternationalPayment
     -> "International Payment"
-  ExampleRef_SimpleVerify
+  ExampleRef_Verification
     -> "Verification"
   ExampleRef_Accounts
     -> "Accounts"
@@ -115,11 +115,11 @@ exampleFileName :: ExampleRef -> Text
 exampleFileName = \case
   ExampleRef_HelloWorld
     -> static @ "examples/helloWorld-1.0.repl"
-  ExampleRef_SimplePayments
+  ExampleRef_SimplePayment
     -> static @ "examples/simplePayments-1.0.repl"
-  ExampleRef_InternationalPayments
+  ExampleRef_InternationalPayment
     -> static @ "examples/internationalPayments-1.0.repl"
-  ExampleRef_SimpleVerify
+  ExampleRef_Verification
     -> static @ "examples/verification-1.0.repl"
   ExampleRef_Accounts
     -> static @ "examples/accounts-1.0.repl"
@@ -130,11 +130,11 @@ exampleDataName :: ExampleRef -> Text
 exampleDataName = \case
   ExampleRef_HelloWorld
     -> static @ "examples/helloWorld-1.0.data.json"
-  ExampleRef_SimplePayments
+  ExampleRef_SimplePayment
     -> static @ "examples/simplePayments-1.0.data.json"
-  ExampleRef_InternationalPayments
+  ExampleRef_InternationalPayment
     -> static @ "examples/internationalPayments-1.0.data.json"
-  ExampleRef_SimpleVerify
+  ExampleRef_Verification
     -> static @ "examples/verification-1.0.data.json"
   ExampleRef_Accounts
     -> static @ "examples/accounts-1.0.data.json"

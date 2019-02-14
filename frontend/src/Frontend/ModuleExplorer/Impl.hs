@@ -123,7 +123,7 @@ makeModuleExplorer m cfg = mfix $ \ ~(_, explr) -> do
     let
       onInitFile =
         if isNothing mInitFile
-           then (const $ FileRef_Example ExampleRef_SimpleVerify) <$> onPostBuild
+           then (const $ FileRef_Example ExampleRef_Verification) <$> onPostBuild
            else never
       editorInitCfg = mempty
         & editorCfg_loadCode .~ fmapMaybe (const mInitFile) onPostBuild
