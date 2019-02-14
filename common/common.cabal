@@ -10,6 +10,7 @@ library
                , obelisk-route
                , text
                , containers
+               , mtl
 
   exposed-modules:
     Common.Api
