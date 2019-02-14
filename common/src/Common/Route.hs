@@ -61,10 +61,10 @@ pactServerListPath = dynConfigsRoot <> "/pact-servers"
 -- | This type is used to define frontend routes, i.e. ones for which the backend will serve the frontend.
 data FrontendRoute :: * -> * where
   FrontendRoute_Main :: FrontendRoute ()
-  FrontendRoute_Example :: FrontendRoute [Text]  -- ^ Route for loading an example.
-  FrontendRoute_Stored  :: FrontendRoute [Text]  -- ^ Route for loading a stored file/module.
-  FrontendRoute_Deployed :: FrontendRoute [Text] -- ^ Route for loading a deployed module.
-  FrontendRoute_New :: FrontendRoute ()          -- ^ Route when editing a new file.
+  FrontendRoute_Example :: FrontendRoute [Text]  -- Route for loading an example.
+  FrontendRoute_Stored  :: FrontendRoute [Text]  -- Route for loading a stored file/module.
+  FrontendRoute_Deployed :: FrontendRoute [Text] -- Route for loading a deployed module.
+  FrontendRoute_New :: FrontendRoute ()          -- Route when editing a new file.
 
 backendRouteEncoder
   :: Encoder (Either Text) Identity (R (Sum BackendRoute (ObeliskRoute FrontendRoute))) PageName
