@@ -117,26 +117,36 @@ handleRoutes m route = do
       )
   where
     getLoaded :: Maybe LoadedRef -> R FrontendRoute -> Maybe LoadedRef
-    getLoaded cLoaded = \case
-      FrontendRoute_Main :=> Identity params -> do
-        loadedTxt <- params ^? at "loaded" . _Just . _Just
-        loaded <- runParseRef . parsePath $ loadedTxt
-        guard $ Just loaded /= cLoaded
-        pure loaded
+    getLoaded cLoaded route = do
+      let rp = parseRoute route
+      loaded <- runParseRef rp
+      guard $ Just loaded /= cLoaded
+      pure loaded
 
     buildRoute :: R FrontendRoute -> Maybe LoadedRef -> Maybe (R FrontendRoute)
     buildRoute cRoute ref =
       let
-        args :: Map Text (Maybe Text)
-        args = Map.empty & at "loaded" . non Nothing .~ (fmap (renderPath . renderRef) ref)
-
-        newRoute = FrontendRoute_Main :=> Identity args
+        newRoute = maybe (FrontendRoute_New :=> Identity ()) (renderRoute . renderRef) ref
       in
         if newRoute == cRoute
            then Nothing
            else Just newRoute
 
+    parseRoute :: R FrontendRoute -> RefPath
+    parseRoute = \case
+       FrontendRoute_Main     :=> Identity () -> RefPath []
+       FrontendRoute_Example  :=> Identity xs -> RefPath ("example":xs)
+       FrontendRoute_Stored   :=> Identity xs -> RefPath ("stored":xs)
+       FrontendRoute_Deployed :=> Identity xs -> RefPath ("deployed":xs)
+       FrontendRoute_New      :=> Identity () -> RefPath []
 
+    renderRoute :: RefPath -> R FrontendRoute
+    renderRoute (RefPath (n:ns)) = case n of
+      "example"  -> FrontendRoute_Example  :=> Identity ns
+      "stored"   -> FrontendRoute_Stored   :=> Identity ns
+      "deployed" -> FrontendRoute_Deployed :=> Identity ns
+      _          -> FrontendRoute_Main     :=> Identity ()
+    renderRoute _ = FrontendRoute_Main :=> Identity ()
 
 
 -- | Code editing (left hand side currently)

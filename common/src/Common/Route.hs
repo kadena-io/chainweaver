@@ -24,6 +24,7 @@ import Data.Map (Map)
 import Data.Functor.Identity
 import Data.Functor.Sum
 import Data.Semigroup ((<>))
+import Control.Monad.Error (MonadError)
 
 import Obelisk.Route
 import Obelisk.Route.TH
@@ -57,10 +58,13 @@ pactServerListPath :: Text
 pactServerListPath = dynConfigsRoot <> "/pact-servers"
 
 
+-- | This type is used to define frontend routes, i.e. ones for which the backend will serve the frontend.
 data FrontendRoute :: * -> * where
-  FrontendRoute_Main :: FrontendRoute (Map Text (Maybe Text))
-  -- This type is used to define frontend routes, i.e. ones for which the backend will serve the frontend.
-  -- Main takes some query parameters.
+  FrontendRoute_Main :: FrontendRoute ()
+  FrontendRoute_Example :: FrontendRoute [Text]  -- ^ Route for loading an example.
+  FrontendRoute_Stored  :: FrontendRoute [Text]  -- ^ Route for loading a stored file/module.
+  FrontendRoute_Deployed :: FrontendRoute [Text] -- ^ Route for loading a deployed module.
+  FrontendRoute_New :: FrontendRoute ()          -- ^ Route when editing a new file.
 
 backendRouteEncoder
   :: Encoder (Either Text) Identity (R (Sum BackendRoute (ObeliskRoute FrontendRoute))) PageName
@@ -74,12 +78,27 @@ backendRouteEncoder = handleEncoder (const (InL BackendRoute_Missing :/ ())) $
       BackendRoute_Robots
         -> PathSegment "robots.txt" $ unitEncoder mempty
     InR obeliskRoute -> obeliskRouteSegment obeliskRoute $ \case
-      -- The encoder given to PathEnd determines how to parse query parameters,
-      -- in this example, we have none, so we insist on it.
-      FrontendRoute_Main -> PathEnd id
+      FrontendRoute_Main
+        -> PathEnd $ unitEncoder mempty
+      FrontendRoute_Example
+        -> PathSegment "example" $ pathOnlyEncoderIgnoringQuery
+      FrontendRoute_Stored
+        -> PathSegment "stored" $ pathOnlyEncoderIgnoringQuery
+      FrontendRoute_Deployed
+        -> PathSegment "deployed" $ pathOnlyEncoderIgnoringQuery
+      FrontendRoute_New
+        -> PathSegment "new" $ unitEncoder mempty
 
+-- | Stolen from Obelisk as it is not exported. (Probably for a reason, but it
+-- seems to do what we want right now.
+pathOnlyEncoderIgnoringQuery :: (Applicative check, MonadError Text parse) => Encoder check parse [Text] PageName
+pathOnlyEncoderIgnoringQuery = unsafeMkEncoder $ EncoderImpl
+  { _encoderImpl_decode = \(path, _query) -> pure path
+  , _encoderImpl_encode = \path -> (path, mempty)
+  }
 
 concat <$> mapM deriveRouteComponent
   [ ''BackendRoute
   , ''FrontendRoute
   ]
+
