@@ -27,7 +27,7 @@
 module Frontend.ModuleExplorer.RefPath
   ( -- * Types and classes
     -- ** Paths
-    RefPath
+    RefPath (..)
   , PathSegment
     -- ** Reference parsing
   , IsRefPath (..)
@@ -87,7 +87,7 @@ runParseRef = MP.parseMaybe parseRef
 -- | RefPath separator.
 --   We use \ as it won't get percent encoded in url encoding.
 pathSepChar :: Char
-pathSepChar = '-'
+pathSepChar = '\\'
 
 -- | RefPath separator as Text.
 pathSep :: Text
