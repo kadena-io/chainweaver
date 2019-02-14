@@ -60,6 +60,7 @@ library
                , transformers
                , trifecta
                , unordered-containers
+               , errors
 
   if !impl(ghcjs)
     build-depends: hsass

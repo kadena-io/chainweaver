@@ -247,7 +247,7 @@ makeRepl m cfg = build $ \ ~(_, impl) -> do
 initRepl
   :: forall t m model
   . (HasReplModel model t, MonadIO m, Reflex t, MonadSample t m)
-  => Impl t -> model -> Maybe (Map BackendName BackendRef) -> m (ReplState)
+  => Impl t -> model -> Maybe (Map BackendName BackendUri) -> m (ReplState)
 initRepl oldImpl m mBackends = do
   r <- mkState mBackends
   let initImpl = oldImpl { _impl_state = pure r } -- Const dyn so we can use `withRepl` for initialization - gets dropped afterwards.
@@ -261,14 +261,14 @@ initRepl oldImpl m mBackends = do
 mkState
   :: forall m
   . (MonadIO m)
-  => Maybe (Map BackendName BackendRef) -> m ReplState
+  => Maybe (Map BackendName BackendUri) -> m ReplState
 mkState uBackends = do
     let minBackend = getMinBackend uBackends
     liftIO $ initReplState StringEval $ minBackend
   where
     getMinBackend maybeBackends = do
       (_key, b) <- Map.lookupMin =<< maybeBackends
-      pure (T.unpack $ backendRefUri b)
+      pure (T.unpack b)
 
 -- | Set env-data to the given Object
 setEnvData :: Object -> PactRepl (Term Name)

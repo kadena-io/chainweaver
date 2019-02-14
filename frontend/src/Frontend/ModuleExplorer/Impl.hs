@@ -225,10 +225,8 @@ deployCode m onDeploy =
     mkReq :: Dynamic t ((Text, TransactionInfo) -> Maybe BackendRequest)
     mkReq = do
       ed      <- m ^. jsonData_data
-      mbs     <- m ^. backend_backends
       pure $ \(code, info) -> do
-        bs <- mbs
-        b <- Map.lookup (_transactionInfo_backend info) bs
+        let b = _transactionInfo_backend info
         d <- ed ^? _Right
         pure $ BackendRequest code d b (_transactionInfo_keys info)
 

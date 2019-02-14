@@ -48,33 +48,37 @@ module Frontend.ModuleExplorer.ModuleRef
   ) where
 
 ------------------------------------------------------------------------------
+import           Control.Applicative             ((<|>))
+import           Data.List.NonEmpty (NonEmpty ((:|)))
 import           Control.Arrow                   (left, (***))
-import qualified Text.Megaparsec      as MP
 import           Control.Lens
 import           Control.Monad
 import           Control.Monad.Except            (throwError)
 import           Data.Coerce                     (coerce)
 import qualified Data.Map                        as Map
 import qualified Data.Set                        as Set
-import           Data.Text
+import           Data.Text                       (Text)
 import qualified Data.Text                       as T
 import           Reflex.Dom.Core                 (MonadHold)
+import qualified Text.Megaparsec                 as MP
 ------------------------------------------------------------------------------
+import qualified Data.Aeson                      as A
 import           Pact.Types.Exp                  (Literal (LString))
 import           Pact.Types.Info                 (Code (..))
 import           Pact.Types.Lang                 (ModuleName)
 import           Pact.Types.Term                 as PactTerm (Module (..),
                                                               ModuleName (..),
                                                               Name,
+                                                              Namespace (..),
                                                               NamespaceName (..),
                                                               Term (TList, TLiteral, TModule, TObject),
                                                               tStr)
-import qualified Data.Aeson                        as A
 ------------------------------------------------------------------------------
 import           Frontend.Backend
 import           Frontend.Foundation
 import           Frontend.ModuleExplorer.Example
 import           Frontend.ModuleExplorer.File
+import           Frontend.ModuleExplorer.RefPath as MP
 import           Frontend.Wallet
 
 -- | A `Module` can come from a number of sources.
@@ -93,7 +97,7 @@ import           Frontend.Wallet
 --   - We combine several backends in a view and let the user filter by
 --     backend, we don't do that with files.
 data ModuleSource
-  = ModuleSource_Deployed BackendRef -- ^ A module that already got deployed and loaded from there
+  = ModuleSource_Deployed BackendName -- ^ A module that already got deployed and loaded from there
   | ModuleSource_File FileRef
   deriving (Eq, Ord, Show, Generic)
 
@@ -129,7 +133,7 @@ instance A.FromJSON s => A.FromJSON (ModuleRefV s) where
 type ModuleRef = ModuleRefV ModuleSource
 
 -- | `ModuleRefV` that refers to some deployed module.
-type DeployedModuleRef = ModuleRefV BackendRef
+type DeployedModuleRef = ModuleRefV BackendName
 
 -- | `ModuleRefV` that refers to a module coming from some file.
 type FileModuleRef = ModuleRefV FileRef
@@ -145,34 +149,35 @@ instance IsRefPath ModuleRef where
 
 instance IsRefPath ModuleSource where
   renderRef = \case
-    ModuleSource_Deployed bs -> "deployed" : renderRef bs
+    ModuleSource_Deployed bs -> "deployed" <> renderRef bs
     ModuleSource_File f -> renderRef f
 
   parseRef =
       fmap ModuleSource_File tryParseRef <|> fmap ModuleSource_Deployed parseDeployed
     where
+      parseDeployed :: RefParser BackendName
       parseDeployed = do
         r <- MP.anySingle
-        case unPathSegment r of
-          "deployed" -> FileRef_Deployed <$> parseRef
-          _         -> MP.unexpected $ r :| []
+        case r of
+          "deployed" -> parseRef
+          _          -> MP.unexpected $ MP.Tokens (r :| [])
 
 
 instance IsRefPath ModuleName where
-  renderRef (ModuleName n mNamespace) = mkPathSegment $
+  renderRef (ModuleName n mNamespace) = mkRefPath $
     case mNamespace of
-      Nothing -> n
-      Just (Namespace ns) -> ns <> "." <> n
+      Nothing             -> n
+      Just (NamespaceName ns) -> ns <> "." <> n
 
   parseRef = do
-    fn <- unPathSegment <$> MP.anySingle
-    pure $ case reverse $ T.splitOn "." fn of
+    fn <- MP.anySingle
+    case reverse $ T.splitOn "." fn of
       []   ->
         MP.failure
-          (Just . MP.Tokens . $ "" :| [])
-          (Set.singleton $ Tokens $ "module name" :| [])
-      n:[] -> ModuleName n Nothing
-      n:ns -> ModuleName n (Just . T.intercalate "." . reverse $ ns)
+          (Just . MP.Tokens $ "" :| [])
+          (Set.singleton $ MP.Tokens $ "module name" :| [])
+      n:[] -> pure $ ModuleName n Nothing
+      n:ns -> pure $ ModuleName n (Just . NamespaceName . T.intercalate "." . reverse $ ns)
 
 
 -- | Get a `DeployedModuleRef` if it is one.
@@ -211,7 +216,7 @@ textModuleRefSource isModule m =
       ModuleSource_File (FileRef_Stored n)
         -> printPretty "Stored" (textFileName n)
       ModuleSource_Deployed b
-        -> printPretty "Deployed" (textBackendName . backendRefName $ b)
+        -> printPretty "Deployed" (textBackendName b)
   where
     printPretty n d = mconcat [ n, " ", moduleText, " [ " , d , " ]" ]
     moduleText = if isModule then "Module" else "Interface"

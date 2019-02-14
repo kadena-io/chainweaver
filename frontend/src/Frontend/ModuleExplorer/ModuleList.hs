@@ -43,7 +43,6 @@ import           Data.Map                          (Map)
 import qualified Data.Map                          as Map
 import           Data.Text                         (Text)
 import qualified Data.Text                         as T
-import           Data.Tuple                        (swap)
 import           GHC.Generics                      (Generic)
 import           Reflex
 ------------------------------------------------------------------------------
@@ -114,7 +113,7 @@ makeModuleList m cfg = mfix $ \mList -> do
 
     let
       moduleRefs :: Dynamic t (Map BackendName [DeployedModuleRef])
-      moduleRefs = getModuleRefs <$> m ^. backend_backends <*> m ^. backend_modules
+      moduleRefs = getModuleRefs <$> m ^. backend_modules
 
       -- All modules after backend filter applied:
       backendModules :: Dynamic t [DeployedModuleRef]
@@ -162,27 +161,26 @@ makeModuleList m cfg = mfix $ \mList -> do
 
 -- | Get the available module map as proper `DeployedModuleRef`.
 getModuleRefs
-  :: Maybe (Map BackendName BackendRef)
-  -> Map BackendName (Maybe [Text])
+  :: Map BackendName (Maybe [Text])
   -> Map BackendName [DeployedModuleRef]
-getModuleRefs bRefs mMods = fromMaybe Map.empty $ do
-    let mods = mapMaybe sequence $ Map.toList mMods
-    backends <- bRefs
+getModuleRefs mMods = fromMaybe Map.empty $ do
     let
-      byRef :: [(BackendRef, [Text])]
-      byRef = map swap . mapMaybe (traverse (flip Map.lookup backends) . swap) $ mods
+      mods :: [(BackendName, [Text])]
+      mods = mapMaybe sequence $ Map.toList mMods
 
       modRefs :: [DeployedModuleRef]
-      modRefs = concatMap (uncurry buildModRefs) byRef
+      modRefs = concatMap (uncurry buildModRefs) mods
+
     pure $
       Map.fromListWith mappend
-      . map (backendRefName . _moduleRef_source &&& pure)
+      . map (_moduleRef_source &&& pure)
       $ modRefs
   where
-    buildModRefs :: BackendRef -> [Text] -> [DeployedModuleRef]
+    buildModRefs :: BackendName -> [Text] -> [DeployedModuleRef]
     buildModRefs r = map (buildModRef r)
+
     -- TODO: Proper namespace support:
-    buildModRef :: BackendRef -> Text -> DeployedModuleRef
+    buildModRef :: BackendName -> Text -> DeployedModuleRef
     buildModRef r = ModuleRef r . flip ModuleName Nothing
 
 -- Instances:

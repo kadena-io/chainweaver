@@ -47,7 +47,7 @@ import           Control.Arrow                   ((***))
 import           Control.Lens
 import           Control.Monad
 import qualified Data.Aeson                      as A
-import           Data.List.NonEmpty              ((:|))
+import           Data.List.NonEmpty              (NonEmpty ((:|)))
 import           Data.Map                        (Map)
 import qualified Data.Map                        as Map
 import           Data.Text                       (Text)
@@ -63,7 +63,7 @@ import           Pact.Types.Lang                 (Code (..), Module, ModuleName,
 import           Frontend.Foundation
 import           Frontend.ModuleExplorer.Example
 import           Frontend.ModuleExplorer.Module
-import           Frontend.ModuleExplorer.RefPath
+import           Frontend.ModuleExplorer.RefPath as MP
 
 -- | The name of a file stored by the user.
 newtype FileName = FileName { unFileName :: Text }
@@ -94,15 +94,23 @@ instance A.FromJSON FileRef where
 
 instance IsRefPath FileRef where
   renderRef = \case
-    FileRef_Example ex -> mkPathSegment "example" : renderRef ex
-    FileRef_Stored  (FileName n) -> mkPathSegment "stored" : mkPathSegment n : []
+    FileRef_Example ex ->
+      "example" <> renderRef ex
+    FileRef_Stored  (FileName n) ->
+      "stored" <> mkRefPath n
 
   parseRef = do
     r <- MP.anySingle
-    case unPathSegment r of
+    case r of
       "example" -> FileRef_Example <$> parseRef
       "stored"  -> FileRef_Stored  <$> parseRef
-      _         -> MP.unexpected $ r :| []
+      _         -> MP.unexpected $ MP.Tokens $ r :| []
+
+
+instance IsRefPath FileName where
+  renderRef = mkRefPath . unFileName
+
+  parseRef = FileName <$> MP.anySingle
 
 
 {- -- | A selected file. -}

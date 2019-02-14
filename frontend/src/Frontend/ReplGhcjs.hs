@@ -63,6 +63,7 @@ import           Frontend.UI.Modal
 import           Frontend.UI.Modal.Impl
 import           Frontend.UI.RightPanel
 import           Frontend.UI.Widgets
+import           Frontend.ModuleExplorer.RefPath
 ------------------------------------------------------------------------------
 
 app :: MonadWidget t m => Dynamic t (R FrontendRoute) -> m (Event t (R FrontendRoute))
@@ -119,7 +120,7 @@ handleRoutes m route = do
     getLoaded cLoaded = \case
       FrontendRoute_Main :=> Identity params -> do
         loadedTxt <- params ^? at "loaded" . _Just . _Just
-        loaded <- loadedRefFromText loadedTxt
+        loaded <- runParseRef . parsePath $ loadedTxt
         guard $ Just loaded /= cLoaded
         pure loaded
 
@@ -127,7 +128,7 @@ handleRoutes m route = do
     buildRoute cRoute ref =
       let
         args :: Map Text (Maybe Text)
-        args = Map.empty & at "loaded" . non Nothing .~ (fmap loadedRefToText ref)
+        args = Map.empty & at "loaded" . non Nothing .~ (fmap (renderPath . renderRef) ref)
 
         newRoute = FrontendRoute_Main :=> Identity args
       in

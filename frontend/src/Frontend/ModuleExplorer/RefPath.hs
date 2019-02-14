@@ -36,23 +36,30 @@ module Frontend.ModuleExplorer.RefPath
     -- * Handle `RefPath`s
   , parsePath
   , renderPath
-    -- * Handle `PathSegment`s
-  , mkPathSegment
-  , unPathSegment
+  , mkRefPath
+  , runParseRef
+    -- * Backports of newer megaparsec:
+  , module MPChar
+  , anySingle
   ) where
 
 ------------------------------------------------------------------------------
+import           Control.Arrow        (second, (***))
+import qualified Data.List            as L
+import           Data.String          (IsString (fromString))
 import           Data.Text            (Text)
 import qualified Data.Text            as T
 import           Data.Void            (Void)
 import           Text.Megaparsec      as MP
+import           Text.Megaparsec.Char as MPChar (satisfy)
 ------------------------------------------------------------------------------
 
-type RefPath = [ PathSegment ]
+-- | A path segment is just a piece of `Text`.
+type PathSegment = Text
 
--- | A `PathSegment` is some `Text` with all occurrences of "\\" being escaped with "\\".
-newtype PathSegment = PathSegment {unsafeUnPathSegment :: Text}
-  deriving (Eq, Ord, Show)
+newtype RefPath = RefPath { unRefPath :: [ PathSegment ] }
+ deriving (Monoid, Semigroup, Show, Eq, Ord)
+
 
 -- | Parser parsing a path.
 type RefParser = Parsec Void RefPath
@@ -70,29 +77,30 @@ class IsRefPath r where
 -- | Try to pase a ref.
 --
 --   Same as `try parseRef`
-tryParseRef :: RefParser r
-tryParseRef = try parseRef
+tryParseRef :: IsRefPath r => RefParser r
+tryParseRef = MP.try parseRef
+
+-- | Actually run a `RefPath` parser.
+runParseRef :: IsRefPath r => RefPath -> Maybe r
+runParseRef = MP.parseMaybe parseRef
 
 -- | RefPath separator.
 --   We use \ as it won't get percent encoded in url encoding.
 pathSepChar :: Char
-pathSepChar = '\\'
+pathSepChar = '-'
 
 -- | RefPath separator as Text.
 pathSep :: Text
 pathSep = T.singleton pathSepChar
 
-mkPathSegment :: Text -> PathSegment
-mkPathSegment = PathSegment . T.replace pathSep (pathSep <> pathSep)
+-- | Make a `RefPath` singleton from a single `PathSegment`.
+mkRefPath :: PathSegment -> RefPath
+mkRefPath = RefPath . pure
 
--- | Get back the original text unescaped.
-unPathSegment :: PathSegment -> Text
-unPathSegment (PathSegment x) =
-  T.replace (pathSep <> pathSep) pathSep x
 
 -- | Split a given `Text` by occurrences of `pathSep`.
 parsePath :: Text -> RefPath
-parsePath = map (PathSegment . T.pack . reverse) . splitIt "" . T.unpack
+parsePath = RefPath . map (unescapeSegment . T.pack . reverse) . splitIt "" . T.unpack
   where
     splitIt :: String -> String -> [String]
     splitIt building (x:xsA@(y:xs))
@@ -105,10 +113,42 @@ parsePath = map (PathSegment . T.pack . reverse) . splitIt "" . T.unpack
       | otherwise = (x:building) : []
     splitIt building []   = building : []
 
+    unescapeSegment = T.replace (pathSep <> pathSep) pathSep
+
 -- | Render a given `RefPath` as Text.
 renderPath :: RefPath -> Text
-renderPath = T.intercalate pathSep . map unsafeUnPathSegment
+renderPath = T.intercalate pathSep . map escapeSegment . unRefPath
+  where
+    escapeSegment = T.replace pathSep (pathSep <> pathSep)
 
 
-instance IsString PathSegment where
-  fromString = mkPathSegment . T.pack
+-- | Becomes available in a more recent version of megaparsec than what we have
+-- currently in nixpkgs:
+anySingle :: MonadParsec e s m => m (Token s)
+anySingle = satisfy (const True)
+
+
+instance IsString RefPath where
+  fromString = parsePath . T.pack
+
+instance MP.Stream RefPath where
+  type Token RefPath = Text
+  type Tokens RefPath = RefPath
+
+  tokenToChunk _ = RefPath . pure
+  tokensToChunk _  = RefPath
+  chunkToTokens _  = unRefPath
+  chunkLength _ = length . unRefPath
+  chunkEmpty _ = null . unRefPath
+  take1_ = fmap (second RefPath) . L.uncons . unRefPath
+  takeN_ n (RefPath xs)
+    | n <= 0 = Just (RefPath [], RefPath xs)
+    | null xs = Nothing
+    | otherwise = Just . (RefPath *** RefPath) $ splitAt n xs
+  takeWhile_ f = (RefPath *** RefPath) . span f . unRefPath
+  advance1 _ p sp = refPathAdvance1 p sp
+  advanceN _ p sp (RefPath w) = L.foldl' (refPathAdvance1 p) sp w
+  {- showTokens _ = renderPath -}
+
+refPathAdvance1 :: Pos -> SourcePos -> Text -> SourcePos
+refPathAdvance1 _ (SourcePos n l c) t = SourcePos n l (mkPos $ unPos c + 1)

@@ -41,20 +41,23 @@ module Frontend.ModuleExplorer.Example
   ) where
 
 ------------------------------------------------------------------------------
-import           Control.Arrow            ((***))
-import           Control.Monad            (MonadPlus, mzero, void)
-import qualified Data.Aeson               as A
+import           Control.Arrow                   ((***))
+import           Control.Error.Safe              (justZ)
+import           Control.Monad                   (void)
+import qualified Data.Aeson                      as A
 import           Data.Default
-import           Data.Text                (Text)
+import           Data.Text                       (Text)
+import qualified Data.Text                       as T
 import           Reflex
-import qualified Text.Megaparsec      as MP
-import           Reflex.Dom.Core          (HasJSContext, XhrResponse (..),
-                                           newXMLHttpRequest, xhrRequest)
+import           Reflex.Dom.Core                 (HasJSContext,
+                                                  XhrResponse (..),
+                                                  newXMLHttpRequest, xhrRequest)
+import           Safe                            (readMay)
 ------------------------------------------------------------------------------
 import           Obelisk.Generated.Static
 ------------------------------------------------------------------------------
 import           Frontend.Foundation
-import           Frontend.ModuleExplorer.RefPath
+import           Frontend.ModuleExplorer.RefPath as MP
 
 
 
@@ -65,7 +68,7 @@ data ExampleRef
   | ExampleRef_InternationalPayments
   | ExampleRef_SimpleVerify
   | ExampleRef_Accounts
-  deriving (Eq, Ord, Show, Enum, Bounded, Generic)
+  deriving (Eq, Ord, Show, Enum, Bounded, Generic, Read)
 
 makePactPrisms ''ExampleRef
 
@@ -83,13 +86,13 @@ examples = [minBound .. maxBound]
 
 
 instance IsRefPath ExampleRef where
-  renderRef = mkPathSegment . shorten . T.pack . show
+  renderRef = mkRefPath . shorten . T.pack . show
     where
       -- Only works for "ExampleRef_Blah" kind of names:
       shorten =  head . reverse . filter (/= "") . T.splitOn "_"
 
   parseRef = do
-    n <- ("ExampleRef_" <>) . unPathSegment <$> MP.anySingle
+    n <- ("ExampleRef_" <>) <$> MP.anySingle
     justZ $ readMay . T.unpack $ n
 
 

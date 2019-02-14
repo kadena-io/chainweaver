@@ -67,7 +67,7 @@ uiModuleList modules = do
       case _moduleRef_source c of
         ModuleSource_Deployed b ->
           divClass "table__text-cell table__cell_size_side" $
-            text $ textBackendRefName b
+            text $ textBackendName b
         _ ->
           blank
 

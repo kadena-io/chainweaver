@@ -30,22 +30,15 @@ module Frontend.ModuleExplorer.LoadedRef
     LoadedRef (..)
   , _LoadedRef_File
   , _LoadedRef_Module
-  , loadedRefToText
-  , loadedRefFromText
   ) where
 
 ------------------------------------------------------------------------------
+import           Control.Applicative               ((<|>))
 import qualified Data.Aeson                        as A
-import qualified Data.ByteString.Lazy              as BSL
-import           Data.Text                         (Text)
-import qualified Data.Text                         as T
-import qualified Data.Text.Encoding                as T
 ------------------------------------------------------------------------------
-import           Frontend.Backend                  (HasBackend)
 import           Frontend.Foundation
 import           Frontend.ModuleExplorer.File
 import           Frontend.ModuleExplorer.ModuleRef
-import           Frontend.ModuleExplorer.Example
 import           Frontend.ModuleExplorer.RefPath
 
 

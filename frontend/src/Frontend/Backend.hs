@@ -23,11 +23,10 @@ module Frontend.Backend
   ( -- * Types & Classes
     BackendName
   , textBackendName
-  , BackendRef
-  , backendRefUri
-  , backendRefName
-  , textBackendRefName
-  , BackendRequest (..)
+  , BackendUri
+  , BackendRequestV (..), backendRequest_code, backendRequest_data, backendRequest_signing
+  , BackendRequest
+  , RawBackendRequest
   , BackendError (..)
   , BackendErrorResult
   , BackendCfg (..)
@@ -103,6 +102,8 @@ import           Frontend.Wallet
 import           Frontend.Storage                  (getItemLocal, setItemLocal)
 import qualified Servant.Client.JSaddle            as S
 
+import Frontend.ModuleExplorer.RefPath as MP
+
 -- | URI for accessing a backend.
 type BackendUri = Text
 
@@ -126,35 +127,15 @@ instance FromJSON BackendName where
 textBackendName :: BackendName -> Text
 textBackendName = coerce
 
--- | Backend reference.
-data BackendRef = BackendRef
-  { brName :: BackendName
-  , brUri  :: BackendUri
-  }
-  deriving (Show, Generic, Eq, Ord)
 
+instance IsRefPath BackendName where
+  renderRef = mkRefPath . unBackendName
 
-instance ToJSON BackendRef where
-  toJSON = genericToJSON compactEncoding
-  toEncoding = genericToEncoding compactEncoding
+  parseRef = BackendName <$> MP.anySingle
 
-instance FromJSON BackendRef where
-  parseJSON = genericParseJSON compactEncoding
-
--- | Extract the actual URI.
-backendRefUri :: BackendRef -> BackendUri
-backendRefUri = brUri
-
--- | Extract the name of the backend.
-backendRefName :: BackendRef -> BackendName
-backendRefName = brName
-
--- | Shortcut for : `textBackendName . backendRefName`.
-textBackendRefName :: BackendRef -> Text
-textBackendRefName = textBackendName . backendRefName
 
 -- | Request data to be sent to the backend.
-data BackendRequest = BackendRequest
+data BackendRequestV backend = BackendRequest
   { _backendRequest_code    :: Text
     -- ^ Pact code to be deployed, the `code` field of the
     -- <https://pact-language.readthedocs.io/en/latest/pact-reference.html#cmd-field-and-payload
@@ -162,11 +143,20 @@ data BackendRequest = BackendRequest
   , _backendRequest_data    :: Object
     -- ^ The data to be deployed (referenced by deployed code). This is the
     -- `data` field of the `exec` payload.
-  , _backendRequest_backend :: BackendRef
-    -- ^ What backend to use.
+  , _backendRequest_backend :: backend
+    -- ^ The backend to deploy the code to, either specified by `BackendName` or `BackendUri`.
   , _backendRequest_signing :: Set KeyName
   } deriving (Show, Generic)
 
+makePactLensesNonClassy ''BackendRequestV
+
+-- | High level interface to `BackendRequestV` - you only need to specify the
+--   `BackendName`.
+type BackendRequest = BackendRequestV BackendName
+
+-- | Low level interface to `BackendRequestV` - with actualy `BackendUri` to
+--   use for doing the request.
+type RawBackendRequest = BackendRequestV BackendUri
 
 data BackendError
   = BackendError_BackendError Text
@@ -181,6 +171,9 @@ data BackendError
   -- ^ Parsing the JSON response failed.
   | BackendError_CommandFailure CommandError
   -- ^ The status in the /listen result object was `failure`.
+  | BackendError_DoesNotExist BackendName
+  -- ^ The request could not be processed as the given `BackendName` no longer
+  -- exists.
   | BackendError_Other Text
   -- ^ Other errors that should really never happen.
   deriving Show
@@ -216,7 +209,7 @@ makePactLenses ''BackendCfg
 type IsBackendCfg cfg t = (HasBackendCfg cfg t, Monoid cfg, Flattenable cfg t)
 
 data Backend t = Backend
-  { _backend_backends :: Dynamic t (Maybe (Map BackendName BackendRef))
+  { _backend_backends :: Dynamic t (Maybe (Map BackendName BackendUri))
     -- ^ All available backends that can be selected.
   , _backend_modules  :: Dynamic t (Map BackendName (Maybe [Text]))
    -- ^ Available modules on all backends. `Nothing` if not loaded yet.
@@ -246,7 +239,7 @@ makeBackend
   :: forall t m model mConf
   . ( MonadHold t m, PerformEvent t m, MonadFix m, NotReady t m, Adjustable t m
     , MonadJSM (Performable m), HasJSContext (Performable m), MonadJSM m
-    , TriggerEvent t m, PostBuild t m, MonadIO m
+    , TriggerEvent t m, PostBuild t m
     , MonadSample t (Performable m)
     , HasBackendModel model t
     , HasBackendModelCfg mConf t
@@ -259,7 +252,11 @@ makeBackend w cfg = mfix $ \ ~(_, backendL) -> do
 
     (mConf, onDeployed) <- deployCode w backendL $ cfg ^. backendCfg_deployCode
 
-    modules <- loadModules backendL $ leftmost [ onDeployed, cfg ^. backendCfg_refreshModule ]
+    modules <- loadModules backendL $ leftmost
+      [ onDeployed
+      , cfg ^. backendCfg_refreshModule
+      , () <$ updated bs
+      ]
 
     meta <- buildMeta cfg
 
@@ -273,8 +270,29 @@ makeBackend w cfg = mfix $ \ ~(_, backendL) -> do
           }
       )
 
+-- | Build a `RawBackendRequest` from a `BackendRequest`.
+--
+--   Yields `Left BackendError_DoesNotExist` if corresponding uri cannot be found.
+mkRawBackendRequest
+  :: (HasBackend model t, MonadSample t m, Reflex t)
+  => model
+  -> BackendRequest
+  -> m (Either BackendError RawBackendRequest)
+mkRawBackendRequest m r = do
+    cBackends <- sample . current $ m ^. backend_backends
+    let
+      name = _backendRequest_backend r
+      mUri = cBackends ^? _Just . at name . _Just
+
+    pure $ maybe (Left $ BackendError_DoesNotExist name) (Right . mkRaw r) mUri
+
+  where
+    mkRaw :: BackendRequest -> BackendUri -> RawBackendRequest
+    mkRaw req uri = req & backendRequest_backend .~ uri
+
+
 buildMeta
-  :: ( MonadHold t m, MonadFix m, Reflex t, MonadJSM m
+  :: ( MonadHold t m, MonadFix m, MonadJSM m
      , PerformEvent t m, MonadJSM (Performable m), TriggerEvent t m
      )
   => BackendCfg t -> m (Dynamic t PublicMeta)
@@ -328,7 +346,7 @@ deployCode w backendL onReq = do
     renderReq :: BackendRequest -> Text
     renderReq req =
       let
-        backendName = brName $ _backendRequest_backend req
+        backendName = _backendRequest_backend req
         code = _backendRequest_code req
         -- Not really helpful to display deployed code if it is large:
         mkMsg msg = if T.length code < 100 then msg else ""
@@ -345,13 +363,12 @@ getBackends
      , PerformEvent t m, TriggerEvent t m, PostBuild t m, MonadIO m
      , MonadHold t m
      )
-  => m (Dynamic t (Maybe (Map BackendName BackendRef)))
+  => m (Dynamic t (Maybe (Map BackendName BackendUri)))
 getBackends = do
   let
     buildUrl = ("http://localhost:" <>) . getPactInstancePort
     buildName = BackendName . ("dev-" <>) . T.pack . show
-    buildRef x = BackendRef (buildName x) (buildUrl x)
-    buildServer =  buildName &&& buildRef
+    buildServer =  buildName &&& buildUrl
     devServers = Map.fromList $ map buildServer [1 .. numPactInstances]
   onPostBuild <- getPostBuild
 
@@ -383,14 +400,13 @@ getBackends = do
 --   serverName2: serveruri2
 --   ...
 --   ```
-parsePactServerList :: Text -> Map BackendName BackendRef
+parsePactServerList :: Text -> Map BackendName BackendUri
 parsePactServerList raw =
   let
     rawEntries = map (fmap (T.dropWhile (== ':')) . T.breakOn ":") . T.lines $ raw
-    strippedUris = map (BackendName . T.strip *** T.strip) rawEntries
-    refs = map (fst &&& uncurry BackendRef) strippedUris
+    stripped = map (BackendName . T.strip *** T.strip) rawEntries
   in
-    Map.fromList refs
+    Map.fromList stripped
 
 -- | Load modules on startup and on every occurrence of the given event.
 loadModules
@@ -406,22 +422,22 @@ loadModules
 loadModules backendL onRefresh = do
       let
         bs = backendL ^. backend_backends
-        req r = (BackendRequest "(list-modules)" H.empty r Set.empty)
+        req n = (BackendRequest "(list-modules)" H.empty n Set.empty)
       backendMap <- networkView $ ffor bs $ \case
         Nothing -> pure mempty
         Just bs' -> do
           onPostBuild <- getPostBuild
-          bm <- flip Map.traverseWithKey bs' $ \_ r -> do
+          bm <- flip Map.traverseWithKey bs' $ \n _ -> do
             onErrResp <- performBackendRequest emptyWallet backendL $
-              leftmost [ req r <$ onRefresh
-                       , req r <$ onPostBuild
+              leftmost [ req n <$ onRefresh
+                       , req n <$ onPostBuild
                        ]
             let
               (onErr, onResp) = fanEither $ snd <$> onErrResp
 
               onModules :: Event t (Maybe [Text])
               onModules =  getModuleList <$> onResp
-            performEvent_ $ (liftIO . putStrLn . ("ERROR: " <>) . show) <$> onErr
+            performEvent_ $ liftIO . putStrLn . ("ERROR: " <>) . show <$> onErr
 
             holdUniqDyn =<< holdDyn Nothing onModules
           pure $ sequence bm
@@ -474,11 +490,14 @@ performBackendRequestCustom
 performBackendRequestCustom w backendL unwrap onReq =
     performEventAsync $ ffor onReqWithKeys $ \(keys, req) cb -> do
       meta <- sample $ current $ backendL ^. backend_meta
-      let
-        rawReq = unwrap req
-        signing = _backendRequest_signing rawReq
-      payload <- buildSendPayload meta keys signing rawReq
-      liftJSM $ backendRequest rawReq payload $ cb . (req,)
+      eRawReq <- mkRawBackendRequest backendL $ unwrap req
+      case eRawReq of
+        Left err -> liftIO $ cb (req, Left err)
+        Right rawReq -> do
+          let
+            signing = _backendRequest_signing rawReq
+          payload <- buildSendPayload meta keys signing rawReq
+          liftJSM $ backendRequest rawReq payload $ cb . (req,)
   where
     onReqWithKeys = attach (current $ _wallet_keys w) onReq
 
@@ -507,13 +526,13 @@ performBackendRequestCustom w backendL unwrap onReq =
 --
 -- @
 backendRequest
-  :: BackendRequest
+  :: RawBackendRequest
   -> SubmitBatch
   -> (BackendErrorResult -> IO ())
   -> JSM ()
 backendRequest req batch callback = void . forkJSM $ do
     let
-      uri = brUri $ _backendRequest_backend req
+      uri = _backendRequest_backend req
     baseUrl <- S.parseBaseUrl $ T.unpack uri
     let clientEnv = S.mkClientEnv baseUrl
 
@@ -565,7 +584,7 @@ instance HasJSContext JSM where
 -- Request building ....
 
 -- | Build payload as expected by /send endpoint.
-buildSendPayload :: (MonadIO m, MonadJSM m) => PublicMeta -> KeyPairs -> Set KeyName -> BackendRequest -> m SubmitBatch
+buildSendPayload :: (MonadIO m, MonadJSM m) => PublicMeta -> KeyPairs -> Set KeyName -> BackendRequestV b -> m SubmitBatch
 buildSendPayload meta keys signing req = do
   cmd <- buildCmd meta keys signing req
   pure $ SubmitBatch [ cmd ]
@@ -573,7 +592,7 @@ buildSendPayload meta keys signing req = do
 -- | Build a single cmd as expected in the `cmds` array of the /send payload.
 --
 -- As specified <https://pact-language.readthedocs.io/en/latest/pact-reference.html#send here>.
-buildCmd :: (MonadIO m, MonadJSM m) => PublicMeta -> KeyPairs -> Set KeyName -> BackendRequest -> m (Command Text)
+buildCmd :: (MonadIO m, MonadJSM m) => PublicMeta -> KeyPairs -> Set KeyName -> BackendRequestV b -> m (Command Text)
 buildCmd meta keys signing req = do
   cmd <- encodeAsText . encode <$> buildExecPayload meta req
   let
@@ -608,7 +627,7 @@ buildSigs cmdHash keys signing = do
 --
 --   As specified <https://pact-language.readthedocs.io/en/latest/pact-reference.html#cmd-field-and-payloads here>.
 --   Use `encodedAsText` for passing it as the `cmd` payload.
-buildExecPayload :: MonadIO m => PublicMeta -> BackendRequest -> m (Payload PublicMeta Text)
+buildExecPayload :: MonadIO m => PublicMeta -> BackendRequestV b -> m (Payload PublicMeta Text)
 buildExecPayload meta req = do
   nonce <- getNonce
   let
@@ -645,6 +664,7 @@ prettyPrintBackendError = ("ERROR: " <>) . \case
   BackendError_Failure msg -> "Backend failure: " <> msg
   BackendError_ParseError m -> "Server response could not be parsed: " <> m
   BackendError_CommandFailure (CommandError e d) -> T.pack e <> ": " <> maybe "" T.pack d
+  BackendError_DoesNotExist (BackendName n) -> "Backend named '" <> n <> "' no longer exists."
   BackendError_Other m -> "Some unknown problem: " <> m
 
 prettyPrintBackendErrorResult :: BackendErrorResult -> Text
@@ -721,13 +741,6 @@ instance Semigroup BackendRequest where
   (<>) = mappenddefault
 
 instance Monoid BackendRequest where
-  mempty = memptydefault
-  mappend = (<>)
-
-instance Semigroup BackendRef where
-  (<>) = mappenddefault
-
-instance Monoid BackendRef where
   mempty = memptydefault
   mappend = (<>)
 

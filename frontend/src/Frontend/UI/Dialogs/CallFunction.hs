@@ -118,7 +118,7 @@ uiCallFunction m mModule func = do
               transaction = do
                 code <- pactCall
                 keys <- signingKeys
-                let b = backendRefName $ _moduleRef_source moduleL
+                let b = _moduleRef_source moduleL
                 pure $
                   ( code
                   , TransactionInfo
