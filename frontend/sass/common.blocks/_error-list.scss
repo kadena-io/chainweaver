@@ -1,6 +1,7 @@
 @import '../include/defs';
 
 .error-list {
+  font-size: 15px;
   display: flex;
   min-height: 20px;
   align-items: center;
@@ -8,6 +9,7 @@
 
 .error-list__msg {
   flex-grow: 1;
+  color: $tertiary-color;
 }
 
 .error-list__icon {
