@@ -81,7 +81,7 @@ type ReflexConstraints t m =
 
 -- | Storage keys for referencing data to be stored/retrieved.
 data StoreModuleExplorer a where
-  StoreModuleExplorer_SessionFile  :: StoreModuleExplorer Text -- ^ Current editor contents
+  StoreModuleExplorer_SessionFile  :: StoreModuleExplorer Text -- Current editor contents
   -- TODO: Store `moduleExplorer_loaded` too with this key:
   {- StoreModuleExplorer_SessionFileRef :: StoreModuleExplorer ModuleSource -}
 

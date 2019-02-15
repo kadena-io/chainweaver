@@ -20,7 +20,8 @@
 -- safety/guarantees by those types - it just makes handling of the API easier. At
 -- some point the above mentioned PR or something similar should really get merged.
 
--- *) not much, but not nothing, as some types are shared.
+--  *) not much, but not nothing, as some types are shared.
+
 -- |
 -- Module      :  Pact.Types.Command
 -- Copyright   :  (C) 2016 Stuart Popejoy, Will Martino
