@@ -54,7 +54,7 @@ import           Data.Aeson                        (FromJSON (..), Object,
                                                     genericToEncoding,
                                                     genericToJSON, withObject,
                                                     (.:))
-import           Data.Aeson.Types                  (parseEither, typeMismatch)
+import           Data.Aeson.Types                  (typeMismatch)
 import qualified Data.ByteString.Lazy              as BSL
 import           Data.Coerce                       (coerce)
 import           Data.Default                      (def)
@@ -72,19 +72,19 @@ import           Generics.Deriving.Monoid          (mappenddefault,
 import           Language.Javascript.JSaddle.Monad (JSContextRef, JSM, askJSM,
                                                     liftJSM)
 import qualified Network.HTTP.Types                as HTTP
-import           Pact.Server.Client
-import           Pact.Types.API
-import           Pact.Types.Command
-import           Pact.Types.Hash                   (hash)
-import           Pact.Types.RPC
-import           Pact.Types.Util
 import           Reflex.Dom.Class
 import           Reflex.Dom.Xhr
 import           Reflex.NotReady.Class
 
+import           Pact.Typed.Server.Client
+import           Pact.Typed.Types.API
+import           Pact.Typed.Types.Command
+
+import           Pact.Types.Hash                   (hash)
+import           Pact.Types.RPC
+import           Pact.Types.Util
 import           Pact.Parse                        (ParsedDecimal (..),
                                                     ParsedInteger (..))
-import           Pact.Types.Command                (PublicMeta (..))
 import           Pact.Types.Exp                    (Literal (LString))
 import           Pact.Types.Term                   (Name,
                                                     Term (TList, TLiteral))
@@ -187,7 +187,6 @@ data BackendCfg t = BackendCfg
     -- ^ We are unfortunately not notified by the pact backend when new
     -- contracts appear on the blockchain, so UI code needs to request a
     -- refresh at appropriate times.
-    -- TODO: This should go to `ModuleExplorer`
   , _backendCfg_deployCode    :: Event t BackendRequest
     -- ^ Deploy some code to the backend. Response will be logged to `Messages`.
   , _backendCfg_setChainId    :: Event t Text
@@ -541,13 +540,10 @@ backendRequest req batch callback = void . forkJSM $ do
       key <- getRequestKey $ res
       v <- runReq clientEnv $ listen pactServerApiClient $ ListenerRequest key
       -- pure v
-      ExceptT . pure $ fromCommandValue <=< parseValue $ _arResult v
+      ExceptT . pure $ fromCommandValue $ _arResult v
 
     liftIO $ callback $ er
   where
-    parseValue :: FromJSON a => Value -> Either BackendError a
-    parseValue = left (BackendError_ParseError . T.pack ) . parseEither parseJSON
-
     -- | Rethrow an error value by wrapping it with f.
     reThrowWith :: (e -> BackendError) -> JSM (Either e a) -> ExceptT BackendError JSM a
     reThrowWith f = ExceptT . fmap (left f)
@@ -598,7 +594,7 @@ buildCmd meta keys signing req = do
   let
     cmdHash = hash (T.encodeUtf8 cmd)
   sigs <- buildSigs cmdHash keys signing
-  pure $ Pact.Types.Command.Command
+  pure $ Pact.Typed.Types.Command.Command
     { _cmdPayload = cmd
     , _cmdSigs = sigs
     , _cmdHash = cmdHash
