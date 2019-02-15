@@ -26,7 +26,7 @@ module Frontend.Backend
   , BackendUri
   , BackendRequestV (..), backendRequest_code, backendRequest_data, backendRequest_signing
   , BackendRequest
-  , RawBackendRequest
+  {- , RawBackendRequest -}
   , BackendError (..)
   , BackendErrorResult
   , BackendCfg (..)
@@ -195,7 +195,7 @@ data BackendCfg t = BackendCfg
   , _backendCfg_setSender     :: Event t Text
     -- ^ What user wants to pay for this transaction?
   , _backendCfg_setGasLimit   :: Event t ParsedInteger
-    -- ^ Maximun amount of gas to use for this transaction.
+    -- ^ Maximum amount of gas to use for this transaction.
   , _backendCfg_setGasPrice   :: Event t ParsedDecimal
     -- ^ Maximum gas price you are willing to accept for having your
     -- transaction executed.
@@ -205,7 +205,7 @@ data BackendCfg t = BackendCfg
 makePactLenses ''BackendCfg
 
 -- | HasBackendCfg with additional constraints to make it behave like a proper
--- "Config".
+-- config.
 type IsBackendCfg cfg t = (HasBackendCfg cfg t, Monoid cfg, Flattenable cfg t)
 
 data Backend t = Backend
@@ -461,7 +461,7 @@ loadModules backendL onRefresh = do
         _         -> Nothing
 
 
--- | Perform a read/non persisted request to the /local endpoint.
+-- | Perform a read or non persisted request to the /local endpoint.
 --
 --   Use `performLocalReadCustom` for more flexibility.
 performLocalRead
@@ -475,7 +475,8 @@ performLocalRead
   -> m (Event t (BackendRequest, BackendErrorResult))
 performLocalRead backendL onReq = performLocalReadCustom backendL id onReq
 
--- | Perform a read / non persisted request to the /local endpoint.
+
+-- | Perform a read or other non persisted request to the /local endpoint.
 --
 --   Use this function if you want to retrieve data from the backend. It does
 --   not sign the sent messages and uses some fake meta data to make sure the user
@@ -693,20 +694,7 @@ buildExecPayload meta req = do
 
 -- Response handling ...
 
--- | Extract the response body from a Pact server response:
--- getResPayload
---   :: FromJSON resp
---   => Value
---   -> Either BackendError Value
--- getResPayload v = do
---   pactRes <- left (BackendError_ParseError . T.pack) $ parse v
---   case pactRes of
---     ApiFailure str ->
---       throwError $ BackendError_Failure . T.pack $ str
---     ApiSuccess a -> pure a
-
--- Other utilities:
-
+-- | Pretty print a `BackendError`.
 prettyPrintBackendError :: BackendError -> Text
 prettyPrintBackendError = ("ERROR: " <>) . \case
   BackendError_BackendError msg -> "Error http response: " <> msg
@@ -717,6 +705,8 @@ prettyPrintBackendError = ("ERROR: " <>) . \case
   BackendError_DoesNotExist (BackendName n) -> "Backend named '" <> n <> "' no longer exists."
   BackendError_Other m -> "Some unknown problem: " <> m
 
+
+-- | Pretty print a `BackendErrorResult`.
 prettyPrintBackendErrorResult :: BackendErrorResult -> Text
 prettyPrintBackendErrorResult = \case
   Left e -> prettyPrintBackendError e
@@ -735,55 +725,6 @@ getNonce = do
 --   This way you get stringified JSON.
 encodeAsText :: BSL.ByteString -> Text
 encodeAsText = T.decodeUtf8 . BSL.toStrict
-
--- Helper types for interfacing with Pact endpoints:
-
--- | Status as parsed from pact server response.
---
---   See
---   <https://pact-language.readthedocs.io/en/latest/pact-reference.html#send
---   here> for more information.
-data PactStatus
-  = PactStatus_Success
-  | PactStatus_Failure
-  deriving Show
-
-instance FromJSON PactStatus where
-  parseJSON = \case
-    String "success" -> pure PactStatus_Success
-    String "failure" -> pure PactStatus_Failure
-      -- case str of
-      --   "success" -> PactStatus_Success
-      --   "failure" -> PactStatus_Failure
-      --   invalid   ->
-    invalid -> typeMismatch "Status" invalid
-
-
--- | Result as received from the backend.
-data PactResult
-  = PactResult_Success Value
-  | PactResult_Failure PactError PactDetail
-  | PactResult_FailureText Text -- when decimal fields are empty, for example
-
-instance FromJSON PactResult where
-  parseJSON (String t) = pure $ PactResult_FailureText t
-  parseJSON (Object o) = do
-    status <- o .: "status"
-    case status of
-      PactStatus_Success -> PactResult_Success <$> o .: "data"
-      PactStatus_Failure -> PactResult_Failure <$> o .: "error" <*> o .: "detail"
-  parseJSON v = typeMismatch "PactResult" v
-
--- | Response object contained in a /listen response.
-data ListenResponse = ListenResponse
- { _lr_result :: PactResult
- , _lr_txId   :: Integer
- }
-
-instance FromJSON ListenResponse where
-  parseJSON = withObject "Response" $ \o ->
-    ListenResponse <$> o .: "result" <*> o .: "txId"
-
 
 -- Instances:
 
