@@ -151,4 +151,4 @@ instance MP.Stream RefPath where
   {- showTokens _ = renderPath -}
 
 refPathAdvance1 :: Pos -> SourcePos -> Text -> SourcePos
-refPathAdvance1 _ (SourcePos n l c) t = SourcePos n l (mkPos $ unPos c + 1)
+refPathAdvance1 _ (SourcePos n l c) _ = SourcePos n l (mkPos $ unPos c + 1)

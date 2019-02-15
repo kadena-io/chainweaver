@@ -16,11 +16,9 @@ import Prelude hiding (id, (.))
 import Control.Category
 -}
 
-import           Control.Category      (id)
 import           Control.Monad.Error   (MonadError)
 import           Data.Functor.Identity
 import           Data.Functor.Sum
-import           Data.Map              (Map)
 import           Data.Semigroup        ((<>))
 import           Data.Text             (Text)
 import           Prelude               hiding (id, (.))
