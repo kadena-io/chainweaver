@@ -50,6 +50,7 @@ library
                , reflex-dom-contrib
                , safe
                , servant
+               , servant-client-core
                , servant-client-jsaddle
                , split
                , string-qq
