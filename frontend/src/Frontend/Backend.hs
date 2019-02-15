@@ -307,7 +307,7 @@ buildMeta cfg = do
         PublicMeta
           { _pmChainId = "1"
           , _pmSender  = "someSender"
-          , _pmGasLimit = ParsedInteger 10 -- TODO: Better defaults!!!
+          , _pmGasLimit = ParsedInteger 100 -- TODO: Better defaults!!!
           , _pmGasPrice = ParsedDecimal 0.001
           , _pmFee = ParsedDecimal 1
           }
