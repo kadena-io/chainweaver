@@ -37,9 +37,8 @@ module Frontend.Backend
     -- * Creation
   , makeBackend
     -- * Perform requests
-  , performBackendRequest
-  , performBackendRequestCustom
-  , backendRequest
+  , performLocalReadCustom
+  , performLocalRead
     -- * Utilities
   , prettyPrintBackendErrorResult
   , prettyPrintBackendError
@@ -146,6 +145,8 @@ data BackendRequestV backend = BackendRequest
   , _backendRequest_backend :: backend
     -- ^ The backend to deploy the code to, either specified by `BackendName` or `BackendUri`.
   , _backendRequest_signing :: Set KeyName
+    -- ^ With what keys the request should be signed. Don't sign with any keys
+    -- when calling to `performLocalReadCustom` and similar.
   } deriving (Show, Generic)
 
 makePactLensesNonClassy ''BackendRequestV
@@ -233,6 +234,12 @@ data StoreBackend a where
   StoreBackend_GasSettings  :: StoreBackend PublicMeta
 
 deriving instance Show (StoreBackend a)
+
+-- | What endpoint to use for a backend request.
+data RequestType
+  = RequestType_Send
+  | RequestType_Local
+
 
 makeBackend
   :: forall t m model mConf
@@ -333,7 +340,7 @@ deployCode
   -> Event t BackendRequest
   -> m (mConf, Event t ())
 deployCode w backendL onReq = do
-    reqRes <- performBackendRequest (w ^. wallet) backendL onReq
+    reqRes <- performBackendRequest (w ^. wallet) backendL RequestType_Send onReq
     pure $ ( mempty & messagesCfg_send .~ fmap renderReqRes reqRes
            , () <$ ffilter (either (const False) (const True) . snd) reqRes
            )
@@ -427,7 +434,7 @@ loadModules backendL onRefresh = do
         Just bs' -> do
           onPostBuild <- getPostBuild
           bm <- flip Map.traverseWithKey bs' $ \n _ -> do
-            onErrResp <- performBackendRequest emptyWallet backendL $
+            onErrResp <- performLocalRead backendL $
               leftmost [ req n <$ onRefresh
                        , req n <$ onPostBuild
                        ]
@@ -454,6 +461,50 @@ loadModules backendL onRefresh = do
         _         -> Nothing
 
 
+-- | Perform a read/non persisted request to the /local endpoint.
+--
+--   Use `performLocalReadCustom` for more flexibility.
+performLocalRead
+  :: forall t m
+  . ( PerformEvent t m, MonadJSM (Performable m)
+    , TriggerEvent t m
+    , MonadSample t (Performable m)
+    )
+  => Backend t
+  -> Event t BackendRequest
+  -> m (Event t (BackendRequest, BackendErrorResult))
+performLocalRead backendL onReq = performLocalReadCustom backendL id onReq
+
+-- | Perform a read / non persisted request to the /local endpoint.
+--
+--   Use this function if you want to retrieve data from the backend. It does
+--   not sign the sent messages and uses some fake meta data to make sure the user
+--   won't get charged for request made via `performLocalReadCustom`.
+performLocalReadCustom
+  :: forall t m req
+  . ( PerformEvent t m, MonadJSM (Performable m)
+    , TriggerEvent t m
+    , MonadSample t (Performable m)
+    )
+  => Backend t
+  -> (req -> BackendRequest)
+  -> Event t req
+  -> m (Event t (req, BackendErrorResult))
+performLocalReadCustom backendL unwrap onReq =
+  let
+    fakeBackend = backendL
+      { _backend_meta = pure $ PublicMeta
+          { _pmChainId = "1"
+          , _pmSender  = "someSender"
+          , _pmGasLimit = ParsedInteger 100000
+          , _pmGasPrice = ParsedDecimal 1.0
+          , _pmFee = ParsedDecimal 100
+          }
+      }
+  in
+    performBackendRequestCustom emptyWallet fakeBackend RequestType_Local unwrap onReq
+
+
 -- | Send a transaction via the /send endpoint.
 --
 --   This is a convenience wrapper around `backendRequest`, use that if you
@@ -466,10 +517,11 @@ performBackendRequest
     )
   => Wallet t
   -> Backend t
+  -> RequestType
   -> Event t BackendRequest
   -> m (Event t (BackendRequest, BackendErrorResult))
-performBackendRequest w backendL onReq =
-  performBackendRequestCustom w backendL id onReq
+performBackendRequest w backendL rType onReq =
+  performBackendRequestCustom w backendL rType id onReq
 
 -- | Send a transaction via the /send endpoint.
 --
@@ -483,10 +535,11 @@ performBackendRequestCustom
     )
   => Wallet t
   -> Backend t
+  -> RequestType
   -> (req -> BackendRequest)
   -> Event t req
   -> m (Event t (req, BackendErrorResult))
-performBackendRequestCustom w backendL unwrap onReq =
+performBackendRequestCustom w backendL rType unwrap onReq =
     performEventAsync $ ffor onReqWithKeys $ \(keys, req) cb -> do
       meta <- sample $ current $ backendL ^. backend_meta
       eRawReq <- mkRawBackendRequest backendL $ unwrap req
@@ -495,10 +548,11 @@ performBackendRequestCustom w backendL unwrap onReq =
         Right rawReq -> do
           let
             signing = _backendRequest_signing rawReq
-          payload <- buildSendPayload meta keys signing rawReq
-          liftJSM $ backendRequest rawReq payload $ cb . (req,)
+          payload <- buildCmd meta keys signing rawReq
+          liftJSM $ backendRequest rType rawReq payload $ cb . (req,)
   where
     onReqWithKeys = attach (current $ _wallet_keys w) onReq
+
 
 -- | Send a transaction via the /send endpoint.
 --   And wait for its result via /listen. `performBackendRequest` is a little
@@ -525,25 +579,31 @@ performBackendRequestCustom w backendL unwrap onReq =
 --
 -- @
 backendRequest
-  :: RawBackendRequest
-  -> SubmitBatch
+  :: RequestType
+  -> RawBackendRequest
+  -> Command Text
   -> (BackendErrorResult -> IO ())
   -> JSM ()
-backendRequest req batch callback = void . forkJSM $ do
+backendRequest reqType req cmd callback = void . forkJSM $ do
     let
       uri = _backendRequest_backend req
     baseUrl <- S.parseBaseUrl $ T.unpack uri
     let clientEnv = S.mkClientEnv baseUrl
 
     er <- liftJSM . runExceptT $ do
-      res <- runReq clientEnv $ send pactServerApiClient batch
-      key <- getRequestKey $ res
-      v <- runReq clientEnv $ listen pactServerApiClient $ ListenerRequest key
-      -- pure v
-      ExceptT . pure $ fromCommandValue $ _arResult v
+      v <- performReq clientEnv
+      ExceptT . pure $ fromCommandValue v
 
     liftIO $ callback $ er
   where
+    performReq clientEnv = case reqType of
+      RequestType_Send -> do
+        res <- runReq clientEnv $ send pactServerApiClient $ SubmitBatch . pure $ cmd
+        key <- getRequestKey $ res
+        fmap _arResult . runReq clientEnv $ listen pactServerApiClient $ ListenerRequest key
+      RequestType_Local ->
+         runReq clientEnv  $ local pactServerApiClient cmd
+
     -- | Rethrow an error value by wrapping it with f.
     reThrowWith :: (e -> BackendError) -> JSM (Either e a) -> ExceptT BackendError JSM a
     reThrowWith f = ExceptT . fmap (left f)
@@ -578,12 +638,6 @@ instance HasJSContext JSM where
 
 
 -- Request building ....
-
--- | Build payload as expected by /send endpoint.
-buildSendPayload :: (MonadIO m, MonadJSM m) => PublicMeta -> KeyPairs -> Set KeyName -> BackendRequestV b -> m SubmitBatch
-buildSendPayload meta keys signing req = do
-  cmd <- buildCmd meta keys signing req
-  pure $ SubmitBatch [ cmd ]
 
 -- | Build a single cmd as expected in the `cmds` array of the /send payload.
 --

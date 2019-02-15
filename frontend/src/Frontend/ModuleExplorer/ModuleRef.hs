@@ -238,7 +238,7 @@ fetchModule
   -> m (Event t (DeployedModuleRef, Either Text Module))
 fetchModule backendL onReq = do
     deployedResult :: Event t (DeployedModuleRef, BackendErrorResult)
-      <- performBackendRequestCustom emptyWallet (backendL ^. backend) mkReq onReq
+      <- performLocalReadCustom (backendL ^. backend) mkReq onReq
 
     pure $ ffor deployedResult $
       id *** (getModule <=< left (T.pack . show))
