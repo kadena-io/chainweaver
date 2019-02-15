@@ -1,14 +1,13 @@
-{-# LANGUAGE EmptyCase #-}
-{-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE GADTs #-}
-{-# LANGUAGE LambdaCase #-}
-{-# LANGUAGE RankNTypes #-}
-{-# LANGUAGE TemplateHaskell #-}
-{-# LANGUAGE KindSignatures #-}
-{-# LANGUAGE EmptyCase #-}
+{-# LANGUAGE EmptyCase             #-}
+{-# LANGUAGE FlexibleContexts      #-}
+{-# LANGUAGE FlexibleInstances     #-}
+{-# LANGUAGE GADTs                 #-}
+{-# LANGUAGE KindSignatures        #-}
+{-# LANGUAGE LambdaCase            #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
-{-# LANGUAGE FlexibleInstances #-}
-{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE OverloadedStrings     #-}
+{-# LANGUAGE RankNTypes            #-}
+{-# LANGUAGE TemplateHaskell       #-}
 
 module Common.Route where
 
@@ -17,17 +16,17 @@ import Prelude hiding (id, (.))
 import Control.Category
 -}
 
-import Prelude hiding ((.), id)
-import Control.Category (id)
-import Data.Text (Text)
-import Data.Map (Map)
-import Data.Functor.Identity
-import Data.Functor.Sum
-import Data.Semigroup ((<>))
-import Control.Monad.Error (MonadError)
+import           Control.Category      (id)
+import           Control.Monad.Error   (MonadError)
+import           Data.Functor.Identity
+import           Data.Functor.Sum
+import           Data.Map              (Map)
+import           Data.Semigroup        ((<>))
+import           Data.Text             (Text)
+import           Prelude               hiding (id, (.))
 
-import Obelisk.Route
-import Obelisk.Route.TH
+import           Obelisk.Route
+import           Obelisk.Route.TH
 
 data BackendRoute :: * -> * where
   -- | Used to handle unparseable routes.

@@ -29,8 +29,6 @@ import           Control.Lens
 import           Control.Monad.Reader                   (ask)
 import           Control.Monad.State.Strict
 import           Data.Dependent.Sum                     (DSum ((:=>)))
-import           Data.Map                               (Map)
-import qualified Data.Map                               as Map
 import           Data.Text                              (Text)
 import qualified Data.Text                              as T
 import           GHCJS.DOM.EventM                       (on)
@@ -117,8 +115,8 @@ handleRoutes m route = do
       )
   where
     getLoaded :: Maybe LoadedRef -> R FrontendRoute -> Maybe LoadedRef
-    getLoaded cLoaded route = do
-      let rp = parseRoute route
+    getLoaded cLoaded routeL = do
+      let rp = parseRoute routeL
       loaded <- runParseRef rp
       guard $ Just loaded /= cLoaded
       pure loaded
