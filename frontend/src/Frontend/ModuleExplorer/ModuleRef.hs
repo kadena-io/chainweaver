@@ -79,7 +79,6 @@ import           Frontend.Foundation
 import           Frontend.ModuleExplorer.Example
 import           Frontend.ModuleExplorer.File
 import           Frontend.ModuleExplorer.RefPath as MP
-import           Frontend.Wallet
 
 -- | A `Module` can come from a number of sources.
 --

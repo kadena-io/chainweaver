@@ -46,7 +46,6 @@ import           Pact.Types.Lang         (Arg (..), FunType (..),
 ------------------------------------------------------------------------------
 import           Frontend.Backend
 import           Frontend.Foundation     hiding (Arg)
-import           Frontend.Ide
 import           Frontend.JsonData       (HasJsonData (..), JsonData)
 import           Frontend.ModuleExplorer
 import           Frontend.UI.Modal
