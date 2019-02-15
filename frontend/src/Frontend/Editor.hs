@@ -94,6 +94,7 @@ data Editor t = Editor
   , _editor_quickFixes  :: Dynamic t [QuickFix]
     -- ^ Available quick fixes.
   , _editor_modified    :: Dynamic t Bool
+    -- ^ Editor content has not yet been saved?
   }
   deriving Generic
 

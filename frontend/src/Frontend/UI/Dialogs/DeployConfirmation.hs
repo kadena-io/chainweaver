@@ -33,7 +33,7 @@ import           Reflex.Dom
 ------------------------------------------------------------------------------
 import           Frontend.Backend
 import           Frontend.Ide
-import           Frontend.ModuleExplorer (HasModuleExplorerCfg (..))
+import           Frontend.ModuleExplorer (HasModuleExplorerCfg (..), TransactionInfo (..))
 import           Frontend.UI.Modal
 import           Frontend.UI.Widgets
 import           Frontend.UI.DeploymentSettings

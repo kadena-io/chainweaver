@@ -36,8 +36,6 @@ module Frontend.Ide
   -- * Creation
   , makeIde
   -- ** Auxiliary Types
-  , LogMsg
-  , TransactionInfo (..)
   , EnvSelection (..)
   ) where
 

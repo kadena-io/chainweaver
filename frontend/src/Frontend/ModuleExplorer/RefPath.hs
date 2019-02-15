@@ -30,14 +30,14 @@ module Frontend.ModuleExplorer.RefPath
     RefPath (..)
   , PathSegment
     -- ** Reference parsing
+  , RefParser
   , IsRefPath (..)
   , tryParseRef
-  , RefParser
+  , runParseRef
     -- * Handle `RefPath`s
   , parsePath
   , renderPath
   , mkRefPath
-  , runParseRef
     -- * Backports of newer megaparsec:
   , module MPChar
   , anySingle
@@ -74,7 +74,7 @@ class IsRefPath r where
   parseRef :: RefParser r
 
 
--- | Try to pase a ref.
+-- | Try to parse a ref.
 --
 --   Same as `try parseRef`
 tryParseRef :: IsRefPath r => RefParser r

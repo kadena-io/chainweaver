@@ -177,9 +177,7 @@ codePanel cls m = elKlass "div" (cls <> "pane") $ do
         liftIO $ when ((hasCtrl || hasMeta) && hasEnter) $ triggerEv ()
       pure onCtrlEnter
 
--- | Reset REPL and load current editor text into it.
---
---   Reset REPL on load for now until we get an ok to drop this.
+-- | Load current editor code into REPL.
 loadCodeIntoRepl
   :: forall t m model a
   . (MonadWidget t m, HasEditor model t)
