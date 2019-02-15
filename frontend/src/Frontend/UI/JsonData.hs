@@ -218,7 +218,7 @@ uiKeysetKeys
   -> [KeyName]
   -> m (Event t (KeyName, Bool))
 uiKeysetKeys ks allKeys =
-  elClass "ul" "keyset_keys" $ do
+  elClass "ul" "keyset__keys" $ do
     case allKeys of
       []   -> do
         el "li" $ text "No keys available ..."
