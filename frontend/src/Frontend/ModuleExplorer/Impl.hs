@@ -89,11 +89,11 @@ deriving instance Show (StoreModuleExplorer a)
 
 -- | Write text to localstorage.
 storeEditor :: MonadJSM m => Text -> m ()
-storeEditor ks = setItemLocal StoreModuleExplorer_SessionFile ks
+storeEditor ks = setItemStorage localStorage StoreModuleExplorer_SessionFile ks
 
 -- | Load text from localstorage.
 loadEditor :: MonadJSM m => m (Maybe Text)
-loadEditor = getItemLocal StoreModuleExplorer_SessionFile
+loadEditor = getItemStorage localStorage StoreModuleExplorer_SessionFile
 
 
 makeModuleExplorer

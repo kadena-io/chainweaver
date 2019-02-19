@@ -98,7 +98,7 @@ import           Frontend.Crypto.Ed25519
 import           Frontend.Foundation
 import           Frontend.Messages
 import           Frontend.Wallet
-import           Frontend.Storage                  (getItemLocal, setItemLocal)
+import           Frontend.Storage                  (getItemStorage, setItemStorage, localStorage)
 import qualified Servant.Client.JSaddle            as S
 
 import Frontend.ModuleExplorer.RefPath as MP
@@ -311,7 +311,8 @@ buildMeta cfg = do
           , _pmGasPrice = ParsedDecimal 0.001
           , _pmFee = ParsedDecimal 1
           }
-  m <- fromMaybe defaultMeta <$> liftJSM (getItemLocal StoreBackend_GasSettings)
+  m <- fromMaybe defaultMeta <$>
+    liftJSM (getItemStorage localStorage StoreBackend_GasSettings)
 
   r <- foldDyn id m $ leftmost
     [ (\u c -> c { _pmChainId = u})  <$> cfg ^. backendCfg_setChainId
@@ -321,7 +322,8 @@ buildMeta cfg = do
     ]
 
   onStore <- throttle 2 $ updated r
-  performEvent_ $ liftJSM . setItemLocal StoreBackend_GasSettings <$> onStore
+  performEvent_ $
+    liftJSM . setItemStorage localStorage StoreBackend_GasSettings <$> onStore
 
   pure r
 

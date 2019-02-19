@@ -1,10 +1,10 @@
 {-# LANGUAGE LambdaCase #-}
 module Frontend.Storage
-  ( getLocalStorage
+  ( localStorage
+  , sessionStorage
   , getItemStorage
   , setItemStorage
-  , getItemLocal
-  , setItemLocal
+  , removeItemStorage
   , GHCJS.Storage
   ) where
 
@@ -21,42 +21,40 @@ import           GHCJS.DOM.Types        (JSString, MonadJSM, fromJSString,
 import qualified GHCJS.DOM.Window       as Window
 
 -- | Get access to browser's local storage.
-getLocalStorage :: MonadJSM m => m GHCJS.Storage
-getLocalStorage = Window.getLocalStorage =<< DOM.currentWindowUnchecked
+localStorage :: MonadJSM m => m GHCJS.Storage
+localStorage = Window.getLocalStorage =<< DOM.currentWindowUnchecked
+
+-- | Get access to browser's session storage.
+sessionStorage :: MonadJSM m => m GHCJS.Storage
+sessionStorage = Window.getSessionStorage =<< DOM.currentWindowUnchecked
 
 getItemStorage
   ::  (MonadIO m, Show (key result), FromJSON result, MonadJSM m)
-  => GHCJS.Storage
+  => m GHCJS.Storage
   -> key result
   -> m (Maybe result)
-getItemStorage storage key = (fromJsonString =<< ) <$> GHCJS.getItem storage (keyToString key)
+getItemStorage getStorage key = do
+  storage <- getStorage
+  (fromJsonString =<< ) <$> GHCJS.getItem storage (keyToString key)
 
 setItemStorage
   :: (Show (key data'), ToJSON data', MonadJSM m)
-  => GHCJS.Storage
+  => m GHCJS.Storage
   -> key data'
   -> data'
   -> m ()
-setItemStorage storage key data' = GHCJS.setItem storage (keyToString key) (toJsonString data')
+setItemStorage getStorage key data' = do
+  storage <- getStorage
+  GHCJS.setItem storage (keyToString key) (toJsonString data')
 
--- | Get item from local storage.
-getItemLocal
-  ::  (MonadIO m, Show (key result), FromJSON result, MonadJSM m)
-  => key result
-  -> m (Maybe result)
-getItemLocal key = do
-  store <- getLocalStorage
-  getItemStorage store key
-
--- | Set item in local storage.
-setItemLocal
-  :: (Show (key data'), ToJSON data', MonadJSM m)
-  => key data'
-  -> data'
+removeItemStorage
+  ::  (MonadIO m, Show (key result), MonadJSM m)
+  => m GHCJS.Storage
+  -> key result
   -> m ()
-setItemLocal key data' = do
-  store <- getLocalStorage
-  setItemStorage store key data'
+removeItemStorage getStorage key = do
+  storage <- getStorage
+  GHCJS.removeItem storage (keyToString key)
 
 
 toJsonString :: ToJSON a => a -> JSString

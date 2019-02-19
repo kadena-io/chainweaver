@@ -137,15 +137,11 @@ storeWallet_Keys = StoreWallet_Keys
 
 -- | Write key pairs to localstorage.
 storeKeys :: MonadJSM m => KeyPairs -> m ()
-storeKeys ks = do
-    store <- getLocalStorage
-    setItemStorage store storeWallet_Keys ks
+storeKeys ks = setItemStorage localStorage storeWallet_Keys ks
 
 -- | Load key pairs from localstorage.
 loadKeys :: MonadJSM m => m (Maybe KeyPairs)
-loadKeys = do
-    store <- getLocalStorage
-    getItemStorage store storeWallet_Keys
+loadKeys = getItemStorage localStorage storeWallet_Keys
 
 
 -- Utility functions:
