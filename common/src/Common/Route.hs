@@ -25,6 +25,7 @@ import           Prelude               hiding (id, (.))
 
 import           Obelisk.Route
 import           Obelisk.Route.TH
+import           Obelisk.OAuth.Route  (OAuthRoute (..), oAuthRouteEncoder)
 
 data BackendRoute :: * -> * where
   -- | Used to handle unparseable routes.
@@ -62,6 +63,7 @@ data FrontendRoute :: * -> * where
   FrontendRoute_Stored  :: FrontendRoute [Text]  -- Route for loading a stored file/module.
   FrontendRoute_Deployed :: FrontendRoute [Text] -- Route for loading a deployed module.
   FrontendRoute_New :: FrontendRoute ()          -- Route when editing a new file.
+  FrontendRoute_OAuth :: FrontendRoute (R OAuthRoute) -- Route for auth handling
 
 backendRouteEncoder
   :: Encoder (Either Text) Identity (R (Sum BackendRoute (ObeliskRoute FrontendRoute))) PageName
@@ -85,6 +87,7 @@ backendRouteEncoder = handleEncoder (const (InL BackendRoute_Missing :/ ())) $
         -> PathSegment "deployed" $ pathOnlyEncoderIgnoringQuery
       FrontendRoute_New
         -> PathSegment "new" $ unitEncoder mempty
+      FrontendRoute_OAuth -> PathSegment "oauth" $ oAuthRouteEncoder
 
 -- | Stolen from Obelisk as it is not exported. (Probably for a reason, but it
 -- seems to do what we want right now.

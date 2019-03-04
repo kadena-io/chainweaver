@@ -40,6 +40,8 @@ library
                , newtype-generics
                , obelisk-executable-config
                , obelisk-frontend
+               , obelisk-oauth-frontend
+               , obelisk-oauth-common
                , obelisk-generated-static
                , obelisk-route
                , pact
@@ -85,6 +87,7 @@ library
                  , Frontend.ModuleExplorer.ModuleList
                  , Frontend.ModuleExplorer.ModuleRef
                  , Frontend.ModuleExplorer.RefPath
+                 , Frontend.OAuth
                  , Frontend.Repl
                  , Frontend.ReplGhcjs
                  , Frontend.Storage

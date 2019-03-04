@@ -25,6 +25,11 @@ in
       servant-client-jsaddle = (hackGet ./deps/servant) + "/servant-client-jsaddle";
       reflex-dom-ace = hackGet ./deps/reflex-dom-ace;
       reflex-dom-contrib = hackGet ./deps/reflex-dom-contrib;
+      obelisk-oauth-common = hackGet ./deps/obelisk-oauth + /common;
+      obelisk-oauth-frontend = hackGet ./deps/obelisk-oauth + /frontend;
+      obelisk-oauth-backend = hackGet ./deps/obelisk-oauth + /backend;
+      # Needed for obelisk-oauth currently (ghcjs support mostly):
+      entropy = hackGet ./deps/entropy;
     };
 
     overrides = let

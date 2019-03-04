@@ -8,6 +8,7 @@ library
   build-depends: base
                , obelisk-executable-config
                , obelisk-route
+               , obelisk-oauth-common
                , text
                , containers
                , mtl
