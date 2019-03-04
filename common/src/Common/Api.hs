@@ -5,6 +5,10 @@ module Common.Api where
 import Data.Text (Text)
 import qualified Data.Text as T
 import Obelisk.ExecutableConfig (get)
+import Control.Monad.IO.Class (MonadIO, liftIO)
+
+import qualified Obelisk.ExecutableConfig
+
 
 
 
@@ -33,3 +37,10 @@ getPactInstancePort num = T.pack . show $ 7020 + num
 --   to those.
 getPactServerList :: IO (Maybe (Text))
 getPactServerList = get "config/common/pact-server-list"
+
+getMandatoryTextCfg :: MonadIO m => Text -> m Text
+getMandatoryTextCfg p = liftIO $ do
+  mR <- Obelisk.ExecutableConfig.get p
+  case mR of
+    Nothing -> fail $ "Obelisk.ExecutableConfig, could not find: '" <> T.unpack p <> "'!"
+    Just r -> pure $ T.strip r
