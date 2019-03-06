@@ -62,6 +62,8 @@ import qualified Data.Text                   as T
 import           GHC.Generics                (Generic)
 import           Language.Haskell.TH         (DecsQ)
 import           Language.Haskell.TH.Syntax  (Name)
+import Reflex.Dom.Class (HasJSContext (..), JSContextSingleton (..))
+import           Language.Javascript.JSaddle.Monad (JSContextRef, JSM, askJSM)
 import           Language.Javascript.JSaddle (JSM, MonadJSM (..), askJSM,
                                               runJSM)
 import           Reflex.Dom.Contrib.CssClass
@@ -153,11 +155,17 @@ compactEncoding = defaultOptions
 tshow :: Show a => a -> Text
 tshow = T.pack . show
 
-forkJSM :: (MonadJSM m, MonadIO m) => JSM () -> m ThreadId
+forkJSM :: (MonadJSM m) => JSM () -> m ThreadId
 forkJSM t = do
   jsm <- askJSM
   let ioT = runJSM t jsm
   liftIO $ forkIO ioT
+
+-- TODO: upstream this?
+instance HasJSContext JSM where
+  type JSContextPhantom JSM = JSContextRef
+  askJSContext = JSContextSingleton <$> askJSM
+
 
 -- | Re-use data constructors more flexibly.
 type family ReflexValue (f :: * -> *) x where

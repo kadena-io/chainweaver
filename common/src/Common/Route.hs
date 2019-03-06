@@ -16,16 +16,20 @@ import Prelude hiding (id, (.))
 import Control.Category
 -}
 
+import           Control.Category       (id, (.))
 import           Control.Monad.Except   (MonadError)
 import           Data.Functor.Identity
 import           Data.Functor.Sum
-import           Data.Semigroup        ((<>))
-import           Data.Text             (Text)
-import           Prelude               hiding (id, (.))
+import           Data.Semigroup         ((<>))
+import           Data.Text              (Text)
+import           Prelude                hiding (id, (.))
 
+import           Obelisk.OAuth.Provider (OAuthProviderId)
+import           Obelisk.OAuth.Route    (OAuthRoute (..),
+                                         oAuthProviderIdEncoder,
+                                         oAuthRouteEncoder)
 import           Obelisk.Route
 import           Obelisk.Route.TH
-import           Obelisk.OAuth.Route  (OAuthRoute (..), oAuthRouteEncoder)
 
 data BackendRoute :: * -> * where
   -- | Used to handle unparseable routes.
@@ -40,6 +44,8 @@ data BackendRoute :: * -> * where
 
   -- | Serve robots.txt at the right place.
   BackendRoute_Robots :: BackendRoute ()
+
+  BackendRoute_OAuthGetToken :: BackendRoute OAuthProviderId
 
 -- | Path on the server where all dynamic configurations are stored.
 --
@@ -65,8 +71,10 @@ data FrontendRoute :: * -> * where
   FrontendRoute_New :: FrontendRoute ()          -- Route when editing a new file.
   FrontendRoute_OAuth :: FrontendRoute (R OAuthRoute) -- Route for auth handling
 
+type FullRoute = Sum BackendRoute (ObeliskRoute FrontendRoute)
+
 backendRouteEncoder
-  :: Encoder (Either Text) Identity (R (Sum BackendRoute (ObeliskRoute FrontendRoute))) PageName
+  :: Encoder (Either Text) Identity (R FullRoute) PageName
 backendRouteEncoder = handleEncoder (const (InL BackendRoute_Missing :/ ())) $
   pathComponentEncoder $ \case
     InL backendRoute -> case backendRoute of
@@ -76,6 +84,8 @@ backendRouteEncoder = handleEncoder (const (InL BackendRoute_Missing :/ ())) $
         -> PathSegment dynConfigsRoot $ pathOnlyEncoder
       BackendRoute_Robots
         -> PathSegment "robots.txt" $ unitEncoder mempty
+      BackendRoute_OAuthGetToken
+        -> PathSegment "oauth-get-token" $ pathOnlyEncoder . singletonListEncoder . oAuthProviderIdEncoder
     InR obeliskRoute -> obeliskRouteSegment obeliskRoute $ \case
       FrontendRoute_Main
         -> PathEnd $ unitEncoder mempty

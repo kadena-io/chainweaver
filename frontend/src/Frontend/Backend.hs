@@ -53,7 +53,6 @@ import           Data.Aeson                        (FromJSON (..), Object,
                                                     genericToEncoding,
                                                     genericToJSON, withObject,
                                                     (.:))
-import           Data.Aeson.Types                  (typeMismatch)
 import qualified Data.ByteString.Lazy              as BSL
 import           Data.Coerce                       (coerce)
 import           Data.Default                      (def)
@@ -68,8 +67,7 @@ import qualified Data.Text.Encoding                as T
 import           Data.Time.Clock                   (getCurrentTime)
 import           Generics.Deriving.Monoid          (mappenddefault,
                                                     memptydefault)
-import           Language.Javascript.JSaddle.Monad (JSContextRef, JSM, askJSM,
-                                                    liftJSM)
+import           Language.Javascript.JSaddle.Monad (JSM, liftJSM)
 import qualified Network.HTTP.Types                as HTTP
 import           Reflex.Dom.Class
 import           Reflex.Dom.Xhr
@@ -633,11 +631,6 @@ backendRequest reqType req cmd callback = void . forkJSM $ do
         []    -> throwError $ BackendError_Other "Response did not contain any RequestKeys."
         [key] -> pure key
         _     -> throwError $ BackendError_Other "Response contained more than one RequestKey."
-
--- TODO: upstream this?
-instance HasJSContext JSM where
-  type JSContextPhantom JSM = JSContextRef
-  askJSContext = JSContextSingleton <$> askJSM
 
 
 -- Request building ....

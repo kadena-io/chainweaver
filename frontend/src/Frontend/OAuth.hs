@@ -7,53 +7,53 @@
 {-# LANGUAGE MultiParamTypeClasses  #-}
 {-# LANGUAGE OverloadedStrings      #-}
 {-# LANGUAGE RankNTypes             #-}
+{-# LANGUAGE RecursiveDo            #-}
 {-# LANGUAGE ScopedTypeVariables    #-}
 {-# LANGUAGE TemplateHaskell        #-}
 {-# LANGUAGE TupleSections          #-}
 
 -- | OAuth token manager.
 module Frontend.OAuth
-  (
+  ( -- * Types and Classes
+    OAuthCfg (..)
+  , HasOAuthCfg (..)
+  , OAuth (..)
+  , HasOAuth (..)
+    -- * Creation
+  , makeOAuth
   ) where
 
 
-import Control.Lens
-import           Data.Aeson               (FromJSON, ToJSON)
-import           Generics.Deriving.Monoid (mappenddefault, memptydefault)
-import Data.Map (Map)
-import qualified Data.Map as Map
+import           Control.Concurrent.MVar            (newEmptyMVar, putMVar,
+                                                     takeMVar)
+import           Control.Lens
+import           Control.Monad                      (void)
+import           Control.Monad.Free
+import qualified Data.Aeson                         as Aeson
+import qualified Data.ByteString.Lazy               as BSL
+import           Data.Default                       (def)
+import           Data.Functor.Sum
+import           Data.Map                           (Map)
+import qualified Data.Map                           as Map
+import           Data.Text                          (Text)
+import qualified Data.Text.Encoding                 as T
+import           Reflex.Dom.Class                   (HasJSContext)
+import           Reflex.Dom.Xhr                     (XhrRequestConfig (..),
+                                                     decodeXhrResponse,
+                                                     newXMLHttpRequest,
+                                                     xhrRequest)
 
-import           Obelisk.OAuth.Provider
-import           Obelisk.OAuth.Frontend
-import           Obelisk.OAuth.Common
 import           Obelisk.OAuth.AuthorizationRequest
-import Obelisk.Route.Frontend
+import           Obelisk.OAuth.Common
+import           Obelisk.OAuth.Frontend
+import           Obelisk.OAuth.Frontend.Command
+import           Obelisk.Route.Frontend
 
+import           Common.OAuth
+import           Common.Route
 import           Frontend.Foundation
-import Common.Route
-import Frontend.Storage
+import           Frontend.Storage
 
-
--- | All the oauth providers we support right now.
-data OAuthProvider = OAuthProvider_Github
-  deriving (Show, Read, Eq, Ord, Generic)
-
-instance FromJSON OAuthProvider
-instance ToJSON OAuthProvider
-
-instance IsOAuthProvider OAuthProvider where
-
-  oAuthProviderId OAuthProvider_Github = "github"
-
-  oAuthProviderFromId = \case
-    "github" -> Just OAuthProvider_Github
-    _ -> Nothing
-
-  oAuthAuthorizeEndpoint OAuthProvider_Github =
-    "https://github.com/login/oauth/authorize"
-
-  oAuthAccessTokenEndpoint OAuthProvider_Github =
-    "https://github.com/login/oauth/access_token"
 
 
 newtype OAuthCfg t = OAuthCfg
@@ -72,20 +72,31 @@ data OAuth t = OAuth
     -- ^ Authorization failed with some error.
   }
 
+makePactLenses ''OAuth
+
 data StoreOAuth r where
   StoreOAuth_Tokens :: StoreOAuth (Map OAuthProvider AccessToken)
+  StoreOAuth_State :: OAuthProvider -> StoreOAuth OAuthState
 
-makeOAuth :: forall t m. (Routed t (R FrontendRoute ) m) => OAuthCfg t -> m (OAuth t)
+deriving instance Show (StoreOAuth a)
+
+makeOAuth
+  :: forall t m
+  . ( Reflex t, MonadHold t m, PostBuild t m, PerformEvent t m
+    , MonadJSM m, MonadJSM (Performable m), MonadFix m, TriggerEvent t m
+    , Routed t (R FrontendRoute ) m, RouteToUrl (R FullRoute) m
+    )
+  => OAuthCfg t -> m (OAuth t)
 makeOAuth cfg = do
   r <- askRoute
   let
     oAuthRoute = ffor r $ \case
-      FrontendRoute_OAuth :/ r -> Just r
+      FrontendRoute_OAuth :/ oR -> Just oR
       _ -> Nothing
 
-  sCfg <- buildOAuthConfig
+  sCfg <- buildOAuthConfigFront
 
-  oAuthL <- makeOAuthFrontend sCfg $ OAuthFrontendConfig
+  oAuthL <- runOAuthRequester $ makeOAuthFrontend sCfg $ OAuthFrontendConfig
     { _oAuthFrontendConfig_authorize = cfg ^. oAuthCfg_authorize
     , _oAuthFrontendConfig_route = oAuthRoute
     }
@@ -105,32 +116,81 @@ makeOAuth cfg = do
     , _oAuth_error = onErr
     }
 
-buildOAuthConfig :: (MonadIO m, RouteToUrl (R FrontendRoute) m) => m (OAuthConfig OAuthProvider)
-buildOAuthConfig = do
-  renderRoute <- askRouteToUrl
-  clientId <- getMandatoryTextCfg "config/common/oauth/github/client-id"
-  pure $ OAuthConfig
-    { _oAuthConfig_renderRedirectUri =
-        \oAuthRoute -> renderRoute $ FrontendRoute_OAuth :/ Identity oAuthRoute
 
-    , _oAuthConfig_providers =
-        \case
-          OAuthProvider_Github -> ProviderConfig
-            { _providerConfig_responseType = AuthorizationResponseType_Code
-            , _providerConfig_clientId = clientId
+runOAuthRequester
+  :: ( Monad m, MonadFix m, TriggerEvent t m, PerformEvent t m
+     , MonadJSM (Performable m), RouteToUrl (R FullRoute) m
+     )
+  => RequesterT t (Command OAuthProvider) Identity m a
+  -> m a
+runOAuthRequester requester = mdo
+
+    renderRoute <- (\f -> f . toFullRoute) <$> askRouteToUrl
+
+    (a, onRequest) <- runRequesterT requester onResponse
+
+    onResponse <- performEventAsync $ ffor onRequest $ \req sendResponse -> void $ forkJSM $ do
+      r <- traverseRequesterData (fmap Identity . runOAuthCmds renderRoute) req
+      liftIO $ sendResponse r
+
+    pure a
+
+  where
+    toFullRoute = \case
+      r :/ x -> InL r :/ x
+      _ -> error "Ok, I really did not see this coming!"
+
+
+runOAuthCmds
+  :: (MonadJSM m, HasJSContext m)
+  => (R BackendRoute -> Text)
+  -> Command OAuthProvider a
+  -> m a
+runOAuthCmds renderRoute = go
+  where
+    go = \case
+      Free (CommandF_StoreState prov state next) ->
+        setItemStorage sessionStorage (StoreOAuth_State prov) state >> go next
+      Free (CommandF_LoadState prov getNext) ->
+        getItemStorage sessionStorage (StoreOAuth_State prov) >>= go . getNext
+      Free (CommandF_RemoveState prov next) ->
+        removeItemStorage sessionStorage (StoreOAuth_State prov) >> go next
+      Free (CommandF_GetToken prov pars getNext) -> do
+        let
+          uri = renderRoute $ BackendRoute_OAuthGetToken :/ oAuthProviderId prov
+
+          req = xhrRequest "POST" uri $ def
+            { _xhrRequestConfig_sendData =
+                T.decodeUtf8 . BSL.toStrict . Aeson.encode $ pars
             }
-    }
+
+        resVar <- liftIO newEmptyMVar
+        void $ newXMLHttpRequest req (liftIO . putMVar resVar)
+        mRes <- liftIO $ decodeXhrResponse <$> takeMVar resVar
+        go . getNext . fromMaybe (Left OAuthError_InvalidResponse) $ mRes
+      Pure r ->
+        pure r
+
+
+buildOAuthConfigFront
+  :: (MonadIO m, RouteToUrl (R FullRoute) m)
+  => m (OAuthConfig OAuthProvider)
+buildOAuthConfigFront = buildOAuthConfig =<< fmap (\f -> f . toFullRoute) askRouteToUrl
+  where
+    toFullRoute fr = case fr of
+      f :/ x -> InR (ObeliskRoute_App f) :/ x
+      _ -> error "Ok, I did not see this coming either."
 
 -- Instances
 
 instance Reflex t => Semigroup (OAuthCfg t) where
-  (<>) = mappenddefault
+  OAuthCfg x <> OAuthCfg y = OAuthCfg $ leftmost [x, y]
 
 instance Reflex t => Monoid (OAuthCfg t) where
-  mempty = memptydefault
+  mempty = OAuthCfg never
   mappend = (<>)
 
 instance Flattenable (OAuthCfg t) t where
   flattenWith doSwitch ev =
     OAuthCfg
-      <$> doSwitch never (_oAuthFrontendConfig_authorize <$> ev)
+      <$> doSwitch never (_oAuthCfg_authorize <$> ev)
