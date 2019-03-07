@@ -41,19 +41,26 @@ module Frontend.Ide
 
 ------------------------------------------------------------------------------
 import           Control.Lens
+import           Data.Void                    (Void)
 import           Generics.Deriving.Monoid     (mappenddefault, memptydefault)
 import           GHC.Generics                 (Generic)
 import           Reflex
 import           Reflex.Dom.Core              (HasJSContext)
 import           Reflex.NotReady.Class
-import           Data.Void (Void)
 ------------------------------------------------------------------------------
+import Obelisk.Route.Frontend (RouteToUrl (..), R, Routed (..))
+
+import Obelisk.OAuth.AuthorizationRequest
+------------------------------------------------------------------------------
+import Common.Route (FrontendRoute)
 import           Frontend.Backend
 import           Frontend.Editor
 import           Frontend.Foundation
 import           Frontend.JsonData
 import           Frontend.Messages
 import           Frontend.ModuleExplorer.Impl
+import           Frontend.OAuth
+import           Common.OAuth
 import           Frontend.Repl
 import           Frontend.Wallet
 
@@ -82,6 +89,7 @@ data IdeCfg modal t = IdeCfg
   , _ideCfg_editor         :: EditorCfg t
   , _ideCfg_repl           :: ReplCfg t
   , _ideCfg_messages       :: MessagesCfg t
+  , _ideCfg_oAuth          :: OAuthCfg t
   , _ideCfg_selEnv         :: Event t EnvSelection
     -- ^ Switch tab of the right pane.
   , _ideCfg_setModal       :: LeftmostEv t (Maybe modal)
@@ -101,6 +109,7 @@ data Ide modal t = Ide
   , _ide_jsonData       :: JsonData t
   , _ide_backend        :: Backend t
   , _ide_repl           :: WebRepl t
+  , _ide_oAuth          :: OAuth t
   , _ide_envSelection   :: Dynamic t EnvSelection
   -- ^ Currently selected tab in the right pane.
   , _ide_modal          :: Dynamic t (Maybe modal)
@@ -117,14 +126,17 @@ makeIde
     , NotReady t m, Adjustable t m, HasJSContext (Performable m)
     , MonadSample t (Performable m)
     , TriggerEvent t m, PostBuild t m
+    , RouteToUrl (R FrontendRoute) m, Routed t (R FrontendRoute) m
     )
   => IdeCfg modal t -> m (Ide modal t)
 makeIde userCfg = build $ \ ~(cfg, ideL) -> do
+
     walletL <- makeWallet $ _ideCfg_wallet cfg
     json <- makeJsonData walletL $ _ideCfg_jsonData cfg
     (backendCfgL, backendL) <- makeBackend walletL $ cfg ^. ideCfg_backend
     (explrCfg, moduleExplr) <- makeModuleExplorer ideL cfg
     (editorCfgL, editorL) <- makeEditor ideL cfg
+    oAuthL <- makeOAuth cfg
     messagesL <- makeMessages cfg
     (replCfgL, replL) <- makeRepl ideL cfg
 
@@ -144,6 +156,7 @@ makeIde userCfg = build $ \ ~(cfg, ideL) -> do
         , _ide_moduleExplorer = moduleExplr
         , _ide_envSelection = envSelection
         , _ide_modal = modal
+        , _ide_oAuth = oAuthL
         }
       )
   where
@@ -198,6 +211,9 @@ instance HasEditorCfg (IdeCfg modal t) t where
 instance HasMessagesCfg (IdeCfg modal t) t where
   messagesCfg = ideCfg_messages
 
+instance HasOAuthCfg (IdeCfg modal t) t where
+  oAuthCfg = ideCfg_oAuth
+
 instance HasModalCfg (IdeCfg modal t) modal t where
   -- type ModalType (IdeCfg (Modal IdeCfg m t) t) m t = Modal IdeCfg m t
   type ModalCfg (IdeCfg modal t) t = IdeCfg Void t
@@ -230,6 +246,9 @@ instance HasWebRepl (Ide modal t) t where
 instance HasMessages (Ide modal t) t where
   messages = ide_messages
 
+instance HasOAuth (Ide modal t) t where
+  oAuth = ide_oAuth
+
 instance Flattenable (IdeCfg modal t) t where
   flattenWith doSwitch ev =
     IdeCfg
@@ -240,5 +259,6 @@ instance Flattenable (IdeCfg modal t) t where
       <*> flattenWith doSwitch (_ideCfg_editor <$> ev)
       <*> flattenWith doSwitch (_ideCfg_repl <$> ev)
       <*> flattenWith doSwitch (_ideCfg_messages <$> ev)
+      <*> flattenWith doSwitch (_ideCfg_oAuth <$> ev)
       <*> doSwitch never (_ideCfg_selEnv <$> ev)
       <*> fmap LeftmostEv (doSwitch never (unLeftmostEv . _ideCfg_setModal <$> ev))

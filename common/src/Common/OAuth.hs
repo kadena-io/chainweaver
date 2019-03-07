@@ -3,15 +3,15 @@
 
 module Common.OAuth where
 
-import           Control.Monad.IO.Class   (MonadIO, liftIO)
-import           Data.Aeson               (FromJSON, ToJSON, FromJSONKey, ToJSONKey)
+import Control.Monad
+import           Control.Monad.IO.Class   (MonadIO)
+import           Data.Aeson               (FromJSON (..), ToJSON (..), FromJSONKey (..), ToJSONKey (..),
+                                           FromJSONKeyFunction (..), ToJSONKeyFunction (..))
 import           Data.Text                (Text)
-import qualified Data.Text                as T
 import           GHC.Generics             (Generic)
-import           Obelisk.ExecutableConfig (get)
+import Data.Maybe (fromMaybe)
 
 import           Obelisk.OAuth.Common
-import           Obelisk.OAuth.Provider
 import           Obelisk.Route
 
 import           Common.Api
@@ -22,10 +22,19 @@ import           Common.Route
 data OAuthProvider = OAuthProvider_Github
   deriving (Show, Read, Eq, Ord, Generic)
 
-instance FromJSON OAuthProvider
-instance ToJSON OAuthProvider
-instance FromJSONKey OAuthProvider
-instance ToJSONKey OAuthProvider
+instance FromJSON OAuthProvider where
+  parseJSON = maybe (fail "Invalid provider id") pure <=< fmap oAuthProviderFromId . parseJSON
+
+instance ToJSON OAuthProvider where
+  toJSON = toJSON . oAuthProviderId
+
+-- Explicit instances important, otherwise extending OAuthProvider would break backwards compatibility.
+instance FromJSONKey OAuthProvider where
+  fromJSONKey = FromJSONKeyValue parseJSON
+
+instance ToJSONKey OAuthProvider where
+  toJSONKey = ToJSONKeyValue (toJSON . oAuthProviderId) (toEncoding . oAuthProviderId)
+
 
 instance IsOAuthProvider OAuthProvider where
 
@@ -42,6 +51,15 @@ instance IsOAuthProvider OAuthProvider where
     "https://github.com/login/oauth/access_token"
 
 
+-- | Where to put OAuth related common configs:
+oAuthCfgPath :: Text
+oAuthCfgPath = "config/common/oauth/"
+
+-- | Retrieve the client id of a particular client from config.
+getOAuthClientId :: MonadIO m => OAuthProvider -> m OAuthClientId
+getOAuthClientId prov = fmap OAuthClientId $ getMandatoryTextCfg $
+  oAuthCfgPath <> unOAuthProviderId (oAuthProviderId prov) <> "/client-id"
+
 
 -- | Build an OAuthConfig by reading config values.
 --
@@ -50,7 +68,7 @@ instance IsOAuthProvider OAuthProvider where
 --
 buildOAuthConfig :: MonadIO m => (R FrontendRoute -> Text) -> m (OAuthConfig OAuthProvider)
 buildOAuthConfig renderRoute = do
-  clientId <- getMandatoryTextCfg "config/common/oauth/github/client-id"
+  clientId <- getOAuthClientId OAuthProvider_Github
   baseUri <- getMandatoryTextCfg "config/common/route"
   pure $ OAuthConfig
     { _oAuthConfig_renderRedirectUri = Just $
@@ -60,7 +78,7 @@ buildOAuthConfig renderRoute = do
         \case
           OAuthProvider_Github -> ProviderConfig
             { _providerConfig_responseType = AuthorizationResponseType_Code
-            , _providerConfig_clientId = OAuthClientId clientId
+            , _providerConfig_clientId = clientId
             }
     }
 

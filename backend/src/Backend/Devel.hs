@@ -49,8 +49,8 @@ pactConfigs = map mkConfig [1 .. numPactInstances]
     mkFileName num = "pact-" <> show num
 
 -- | Server starting development Pact instances.
-withPactInstances :: ((R backendRoute -> Snap ()) -> IO ()) -> IO ()
-withPactInstances serve = do
+withPactInstances :: IO () -> IO ()
+withPactInstances serveIt = do
   traverse_ (createDirectoryIfMissing True . _pic_log) pactConfigs
   createDirectoryIfMissing False $ pactConfigDir
   traverse_ writePactConfig pactConfigs
@@ -58,7 +58,7 @@ withPactInstances serve = do
   let servePact = Pact.serve . _pic_conf
 
   withAsync (mapConcurrently_ servePact pactConfigs) $ \_ ->
-      serve (const $ pure ())
+      serveIt
 
 
 writePactConfig :: PactInstanceConfig -> IO ()

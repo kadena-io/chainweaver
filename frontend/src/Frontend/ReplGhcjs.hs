@@ -44,16 +44,21 @@ import           Reflex.Dom.Core
 ------------------------------------------------------------------------------
 import           Obelisk.Generated.Static
 import           Obelisk.Route                          (R)
+import           Obelisk.Route.Frontend
 import           Pact.Repl
 import           Pact.Repl.Types
 import           Pact.Types.Lang
+import Obelisk.OAuth.AuthorizationRequest
 ------------------------------------------------------------------------------
+import           Common.OAuth
+import           Frontend.OAuth
 import           Common.Route
 import           Frontend.Editor
 import           Frontend.Foundation
 import           Frontend.Ide
 import           Frontend.Messages
 import           Frontend.ModuleExplorer
+import           Frontend.ModuleExplorer.RefPath
 import           Frontend.Repl
 import           Frontend.UI.Button
 import           Frontend.UI.Dialogs.DeployConfirmation (uiDeployConfirmation)
@@ -61,11 +66,15 @@ import           Frontend.UI.Modal
 import           Frontend.UI.Modal.Impl
 import           Frontend.UI.RightPanel
 import           Frontend.UI.Widgets
-import           Frontend.ModuleExplorer.RefPath
 ------------------------------------------------------------------------------
 
-app :: MonadWidget t m => Dynamic t (R FrontendRoute) -> m (Event t (R FrontendRoute))
-app route = fmap snd . mfix $ \ ~(cfg, _) -> do
+app
+  :: ( MonadWidget t m
+     , Routed t (R FrontendRoute) m, RouteToUrl (R FrontendRoute) m, SetRoute t (R FrontendRoute) m
+     )
+  => m ()
+app = void . mfix $ \ cfg -> do
+
   ideL <- makeIde cfg
 
   controlCfg <- controlBar ideL
@@ -76,26 +85,23 @@ app route = fmap snd . mfix $ \ ~(cfg, _) -> do
 
   modalCfg <- showModal ideL
 
-  (routesCfg, onRoute) <- handleRoutes ideL route
+  routesCfg <- handleRoutes ideL
 
-  pure
-   ( mconcat
-      [ controlCfg
-      , mainCfg
-      , modalCfg
-      , routesCfg
-      ]
-   , onRoute
-   )
+  pure $ mconcat
+    [ controlCfg
+    , mainCfg
+    , modalCfg
+    , routesCfg
+    ]
 
 handleRoutes
-  :: (MonadWidget t m, Monoid mConf, HasModuleExplorer model t
-     , HasModuleExplorerCfg mConf t
+  :: ( MonadWidget t m, Routed t (R FrontendRoute) m, SetRoute t (R FrontendRoute) m
+     , Monoid mConf, HasModuleExplorer model t , HasModuleExplorerCfg mConf t
      )
   => model
-  -> Dynamic t (R FrontendRoute)
-  -> m (mConf, Event t (R FrontendRoute))
-handleRoutes m route = do
+  -> m mConf
+handleRoutes m = do
+    route <- askRoute
     let loaded = m ^. moduleExplorer_loaded
     onRoute <- tagOnPostBuild route
     let
@@ -107,12 +113,12 @@ handleRoutes m route = do
         . attachWith buildRoute (current route)
         $ updated loaded
 
-    pure
-      ( mempty
-          & moduleExplorerCfg_loadFile .~ fmapMaybe (^? _LoadedRef_File) onNewLoaded
-          & moduleExplorerCfg_loadModule .~ fmapMaybe (^? _LoadedRef_Module) onNewLoaded
-      , onNewRoute
-      )
+    setRoute onNewRoute
+
+    pure $ mempty
+      & moduleExplorerCfg_loadFile .~ fmapMaybe (^? _LoadedRef_File) onNewLoaded
+      & moduleExplorerCfg_loadModule .~ fmapMaybe (^? _LoadedRef_Module) onNewLoaded
+
   where
     getLoaded :: Maybe LoadedRef -> R FrontendRoute -> Maybe LoadedRef
     getLoaded cLoaded routeL = do
@@ -137,6 +143,7 @@ handleRoutes m route = do
        FrontendRoute_Stored   :=> Identity xs -> RefPath ("stored":xs)
        FrontendRoute_Deployed :=> Identity xs -> RefPath ("deployed":xs)
        FrontendRoute_New      :=> Identity () -> RefPath []
+       FrontendRoute_OAuth    :=> Identity _  -> RefPath []
 
     renderRoute :: RefPath -> R FrontendRoute
     renderRoute (RefPath (n:ns)) = case n of
@@ -230,6 +237,10 @@ controlBarLeft m = do
         ver <- getPactVersion
         elClass "span" "version" $ text $ "v" <> ver
       elClass "div" "main-header__project-loader" $ do
+
+        onAuthorize <- button "Share Gist"
+        let authorizeCfg =  mempty & oAuthCfg_authorize .~ (AuthorizationRequest OAuthProvider_Github [ "gist" ] <$ onAuthorize)
+
         resetCfg <- resetBtn
 
         onLoadClicked <- loadReplBtn
@@ -242,7 +253,7 @@ controlBarLeft m = do
           reqConfirmation = Just (uiDeployConfirmation m) <$ onDeployClick
 
           deployCfg = mempty & modalCfg_setModal .~ reqConfirmation
-        pure $ deployCfg <> loadCfg <> resetCfg
+        pure $ deployCfg <> loadCfg <> resetCfg <> authorizeCfg
   where
     headerBtnCfg = btnCfgPrimary & uiButtonCfg_class %~ (<> "main-header__button")
 

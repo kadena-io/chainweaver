@@ -38,9 +38,7 @@ frontend = Frontend
       newHead
 
   , _frontend_body = do
-      r <- askRoute
-      onRoute <- prerender (loaderMarkup >> pure never) (app r)
-      setRoute onRoute
+      prerender loaderMarkup app
 
   , _frontend_headRender = HeadRender_Static
   }

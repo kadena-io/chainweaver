@@ -51,8 +51,7 @@ import           Data.Aeson                        (FromJSON (..), Object,
                                                     ToJSON (..), Value (..),
                                                     encode, genericParseJSON,
                                                     genericToEncoding,
-                                                    genericToJSON, withObject,
-                                                    (.:))
+                                                    genericToJSON)
 import qualified Data.ByteString.Lazy              as BSL
 import           Data.Coerce                       (coerce)
 import           Data.Default                      (def)

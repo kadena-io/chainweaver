@@ -16,7 +16,7 @@ import Prelude hiding (id, (.))
 import Control.Category
 -}
 
-import           Control.Category       (id, (.))
+import           Control.Category       ((.))
 import           Control.Monad.Except   (MonadError)
 import           Data.Functor.Identity
 import           Data.Functor.Sum
@@ -32,7 +32,7 @@ import           Obelisk.Route
 import           Obelisk.Route.TH
 
 data BackendRoute :: * -> * where
-  -- | Used to handle unparseable routes.
+  -- | Used to handle unparsable routes.
   BackendRoute_Missing :: BackendRoute ()
   -- You can define any routes that will be handled specially by the backend here.
   -- i.e. These do not serve the frontend, but do something different, such as serving static files.

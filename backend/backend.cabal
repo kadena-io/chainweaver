@@ -42,4 +42,7 @@ executable backend
                , obelisk-backend
                , obelisk-executable-config
                , obelisk-executable-config-inject
+               , obelisk-oauth-common
+               , obelisk-oauth-backend
                , text
+               , case-insensitive

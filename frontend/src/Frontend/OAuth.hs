@@ -32,7 +32,6 @@ import           Control.Monad.Free
 import qualified Data.Aeson                         as Aeson
 import qualified Data.ByteString.Lazy               as BSL
 import           Data.Default                       (def)
-import           Data.Functor.Sum
 import           Data.Map                           (Map)
 import qualified Data.Map                           as Map
 import           Data.Text                          (Text)
@@ -81,12 +80,13 @@ data StoreOAuth r where
 deriving instance Show (StoreOAuth a)
 
 makeOAuth
-  :: forall t m
+  :: forall t m cfg
   . ( Reflex t, MonadHold t m, PostBuild t m, PerformEvent t m
     , MonadJSM m, MonadJSM (Performable m), MonadFix m, TriggerEvent t m
-    , Routed t (R FrontendRoute ) m, RouteToUrl (R FullRoute) m
+    , Routed t (R FrontendRoute) m, RouteToUrl (R FrontendRoute) m
+    , HasOAuthCfg cfg t
     )
-  => OAuthCfg t -> m (OAuth t)
+  => cfg -> m (OAuth t)
 makeOAuth cfg = do
   r <- askRoute
   let
@@ -119,26 +119,27 @@ makeOAuth cfg = do
 
 runOAuthRequester
   :: ( Monad m, MonadFix m, TriggerEvent t m, PerformEvent t m
-     , MonadJSM (Performable m), RouteToUrl (R FullRoute) m
+     , MonadJSM (Performable m)
      )
   => RequesterT t (Command OAuthProvider) Identity m a
   -> m a
 runOAuthRequester requester = mdo
 
-    renderRoute <- (\f -> f . toFullRoute) <$> askRouteToUrl
+  -- RouteToUrl not usable, as it only handles frontend routes (Which makes sense for Routed and SetRoute).
+  let
+    Right validFullEncoder = checkEncoder backendRouteEncoder
 
-    (a, onRequest) <- runRequesterT requester onResponse
+    renderRoute :: R BackendRoute -> Text
+    renderRoute = renderBackendRoute validFullEncoder
 
-    onResponse <- performEventAsync $ ffor onRequest $ \req sendResponse -> void $ forkJSM $ do
-      r <- traverseRequesterData (fmap Identity . runOAuthCmds renderRoute) req
-      liftIO $ sendResponse r
+  (a, onRequest) <- runRequesterT requester onResponse
 
-    pure a
+  onResponse <- performEventAsync $ ffor onRequest $ \req sendResponse -> void $ forkJSM $ do
+    r <- traverseRequesterData (fmap Identity . runOAuthCmds renderRoute) req
+    liftIO $ sendResponse r
 
-  where
-    toFullRoute = \case
-      r :/ x -> InL r :/ x
-      _ -> error "Ok, I really did not see this coming!"
+  pure a
+
 
 
 runOAuthCmds
@@ -173,13 +174,9 @@ runOAuthCmds renderRoute = go
 
 
 buildOAuthConfigFront
-  :: (MonadIO m, RouteToUrl (R FullRoute) m)
+  :: (MonadIO m, RouteToUrl (R FrontendRoute) m)
   => m (OAuthConfig OAuthProvider)
-buildOAuthConfigFront = buildOAuthConfig =<< fmap (\f -> f . toFullRoute) askRouteToUrl
-  where
-    toFullRoute fr = case fr of
-      f :/ x -> InR (ObeliskRoute_App f) :/ x
-      _ -> error "Ok, I did not see this coming either."
+buildOAuthConfigFront = buildOAuthConfig =<< askRouteToUrl
 
 -- Instances
 
