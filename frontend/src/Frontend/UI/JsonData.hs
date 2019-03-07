@@ -97,7 +97,7 @@ uiJsonData w d = divClass "tabset" $ mdo
 
       let
         onDupWarning = mkDupWarning <$> (updated $ d ^. jsonData_overlappingProps)
-        onObjWarning = fmapMaybe (^? _Left . to mkObjError) $ updated (d ^. jsonData_data)
+        onObjWarning = either mkObjError (const []) <$> updated (d ^. jsonData_data)
         onAnno = mconcat [ onObjWarning, onDupWarning ]
 
       (e, onSetRawInput) <- elClass' "div" "wysiwyg wysiwyg_height_30" $ dataEditor onAnno "" onNewData
