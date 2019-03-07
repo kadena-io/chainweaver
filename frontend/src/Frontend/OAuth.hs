@@ -51,6 +51,7 @@ import           Obelisk.Route.Frontend
 import           Common.OAuth
 import           Common.Route
 import           Frontend.Foundation
+import           Frontend.Messages
 import           Frontend.Storage
 
 
@@ -73,6 +74,8 @@ data OAuth t = OAuth
 
 makePactLenses ''OAuth
 
+type HasOAuthModelCfg mConf t = ( Monoid mConf, HasMessagesCfg mConf t)
+
 data StoreOAuth r where
   StoreOAuth_Tokens :: StoreOAuth (Map OAuthProvider AccessToken)
   StoreOAuth_State :: OAuthProvider -> StoreOAuth OAuthState
@@ -80,13 +83,13 @@ data StoreOAuth r where
 deriving instance Show (StoreOAuth a)
 
 makeOAuth
-  :: forall t m cfg
+  :: forall t m cfg mConf
   . ( Reflex t, MonadHold t m, PostBuild t m, PerformEvent t m
     , MonadJSM m, MonadJSM (Performable m), MonadFix m, TriggerEvent t m
     , Routed t (R FrontendRoute) m, RouteToUrl (R FrontendRoute) m
-    , HasOAuthCfg cfg t
+    , HasOAuthCfg cfg t, HasOAuthModelCfg mConf t
     )
-  => cfg -> m (OAuth t)
+  => cfg -> m (mConf, OAuth t)
 makeOAuth cfg = do
   r <- askRoute
   let
@@ -111,10 +114,13 @@ makeOAuth cfg = do
 
   performEvent_ $ setItemStorage localStorage StoreOAuth_Tokens <$> updated tokens
 
-  pure $ OAuth
-    { _oAuth_accessTokens = tokens
-    , _oAuth_error = onErr
-    }
+  pure
+    ( mempty & messagesCfg_send .~ fmap textOAuthError onErr
+    , OAuth
+      { _oAuth_accessTokens = tokens
+      , _oAuth_error = onErr
+      }
+    )
 
 
 runOAuthRequester

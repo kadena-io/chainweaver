@@ -136,7 +136,7 @@ makeIde userCfg = build $ \ ~(cfg, ideL) -> do
     (backendCfgL, backendL) <- makeBackend walletL $ cfg ^. ideCfg_backend
     (explrCfg, moduleExplr) <- makeModuleExplorer ideL cfg
     (editorCfgL, editorL) <- makeEditor ideL cfg
-    oAuthL <- makeOAuth cfg
+    (oAuthCfgL, oAuthL) <- makeOAuth cfg
     messagesL <- makeMessages cfg
     (replCfgL, replL) <- makeRepl ideL cfg
 
@@ -145,7 +145,7 @@ makeIde userCfg = build $ \ ~(cfg, ideL) -> do
     modal <- holdDyn Nothing $ unLeftmostEv (_ideCfg_setModal cfg)
 
     pure
-      ( mconcat [userCfg, explrCfg, replCfgL, backendCfgL, editorCfgL]
+      ( mconcat [userCfg, explrCfg, replCfgL, backendCfgL, editorCfgL, oAuthCfgL]
       , Ide
         { _ide_editor = editorL
         , _ide_wallet = walletL
