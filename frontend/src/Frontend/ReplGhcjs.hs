@@ -230,8 +230,6 @@ controlBarLeft m = do
         ver <- getPactVersion
         elClass "span" "version" $ text $ "v" <> ver
       elClass "div" "main-header__project-loader" $ do
-        resetCfg <- resetBtn
-
         onLoadClicked <- loadReplBtn
 
         onDeployClick <- deployBtn
@@ -242,19 +240,12 @@ controlBarLeft m = do
           reqConfirmation = Just (uiDeployConfirmation m) <$ onDeployClick
 
           deployCfg = mempty & modalCfg_setModal .~ reqConfirmation
-        pure $ deployCfg <> loadCfg <> resetCfg
+        pure $ deployCfg <> loadCfg
   where
     headerBtnCfg = btnCfgPrimary & uiButtonCfg_class %~ (<> "main-header__button")
 
     deployBtn = uiButton headerBtnCfg $
       text $ "Deploy"
-
-    resetBtn = do
-      onClick <- uiButton (headerBtnCfg & uiButtonCfg_title .~ Just "Reset REPL and Messages") $
-        text $ "Reset"
-      pure $ mempty
-        & messagesCfg_clear .~ onClick
-        & replCfg_reset .~ onClick
 
     loadReplBtn =
       uiButton ( headerBtnCfg & uiButtonCfg_title .~ Just "Editor Shortcut: Ctrl+Enter") $
