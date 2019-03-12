@@ -72,9 +72,9 @@ buildCfg = do
     renderRoute :: R FrontendRoute -> Text
     renderRoute = renderFrontendRoute validFullEncoder
 
-  clientSecret <- getOAuthClientSecret OAuthProvider_Github
+  clientSecret <- getOAuthClientSecret OAuthProvider_GitHub
   oCfg <- buildOAuthConfig renderRoute
-  BackendCfg oCfg (\case OAuthProvider_Github -> clientSecret) <$> newTlsManager
+  BackendCfg oCfg (\case OAuthProvider_GitHub -> clientSecret) <$> newTlsManager
 
 
 backend :: Ob.Backend BackendRoute FrontendRoute

@@ -20,17 +20,24 @@ in
     shellToolOverrides = ghc: super: {
          z3 = pkgs.z3;
        };
-    packages = {
-      pact = hackGet ./deps/pact;
-      servant-client-jsaddle = (hackGet ./deps/servant) + "/servant-client-jsaddle";
-      reflex-dom-ace = hackGet ./deps/reflex-dom-ace;
-      reflex-dom-contrib = hackGet ./deps/reflex-dom-contrib;
-      obelisk-oauth-common = hackGet ./deps/obelisk-oauth + /common;
-      obelisk-oauth-frontend = hackGet ./deps/obelisk-oauth + /frontend;
-      obelisk-oauth-backend = hackGet ./deps/obelisk-oauth + /backend;
-      # Needed for obelisk-oauth currently (ghcjs support mostly):
-      entropy = hackGet ./deps/entropy;
-    };
+   packages = 
+     let
+       servantSrc = hackGet ./deps/servant;
+     in
+       {
+          pact = hackGet ./deps/pact;
+          # servant-client-core = servantSrc + "/servant-client-core";
+          # servant = servantSrc + "/servant";
+          servant-client-jsaddle = servantSrc + "/servant-client-jsaddle";
+          reflex-dom-ace = hackGet ./deps/reflex-dom-ace;
+          reflex-dom-contrib = hackGet ./deps/reflex-dom-contrib;
+          servant-github = hackGet ./deps/servant-github;
+          obelisk-oauth-common = hackGet ./deps/obelisk-oauth + /common;
+          obelisk-oauth-frontend = hackGet ./deps/obelisk-oauth + /frontend;
+          obelisk-oauth-backend = hackGet ./deps/obelisk-oauth + /backend;
+          # Needed for obelisk-oauth currently (ghcjs support mostly):
+          entropy = hackGet ./deps/entropy;
+      };
 
     overrides = let
       inherit (pkgs) lib;
@@ -67,6 +74,10 @@ in
         unix-time = haskellLib.dontCheck super.unix-time;
         wai-app-static = haskellLib.dontCheck super.wai-app-static;
         wai-extra = haskellLib.dontCheck super.wai-extra;
+
+        servant-github = haskellLib.dontCheck super.servant-github;
+
+        base-compat-batteries = haskellLib.dontCheck super.base-compat-batteries;
 
         foundation = (haskellLib.overrideCabal super.foundation (drv: {
           postPatch = (drv.postPatch or "") + pkgs.lib.optionalString (system == "x86_64-darwin") ''

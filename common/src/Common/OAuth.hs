@@ -19,7 +19,7 @@ import           Common.Route
 
 
 -- | All the oauth providers we support right now.
-data OAuthProvider = OAuthProvider_Github
+data OAuthProvider = OAuthProvider_GitHub
   deriving (Show, Read, Eq, Ord, Generic)
 
 instance FromJSON OAuthProvider where
@@ -38,16 +38,16 @@ instance ToJSONKey OAuthProvider where
 
 instance IsOAuthProvider OAuthProvider where
 
-  oAuthProviderId OAuthProvider_Github = "github"
+  oAuthProviderId OAuthProvider_GitHub = "github"
 
   oAuthProviderFromId = \case
-    "github" -> Just OAuthProvider_Github
+    "github" -> Just OAuthProvider_GitHub
     _ -> Nothing
 
-  oAuthAuthorizeEndpoint OAuthProvider_Github =
+  oAuthAuthorizeEndpoint OAuthProvider_GitHub =
     "https://github.com/login/oauth/authorize"
 
-  oAuthAccessTokenEndpoint OAuthProvider_Github =
+  oAuthAccessTokenEndpoint OAuthProvider_GitHub =
     "https://github.com/login/oauth/access_token"
 
 
@@ -68,7 +68,7 @@ getOAuthClientId prov = fmap OAuthClientId $ getMandatoryTextCfg $
 --
 buildOAuthConfig :: MonadIO m => (R FrontendRoute -> Text) -> m (OAuthConfig OAuthProvider)
 buildOAuthConfig renderRoute = do
-  clientId <- getOAuthClientId OAuthProvider_Github
+  clientId <- getOAuthClientId OAuthProvider_GitHub
   baseUri <- getMandatoryTextCfg "config/common/route"
   pure $ OAuthConfig
     { _oAuthConfig_renderRedirectUri = Just $
@@ -76,7 +76,7 @@ buildOAuthConfig renderRoute = do
 
     , _oAuthConfig_providers =
         \case
-          OAuthProvider_Github -> ProviderConfig
+          OAuthProvider_GitHub -> ProviderConfig
             { _providerConfig_responseType = AuthorizationResponseType_Code
             , _providerConfig_clientId = clientId
             }

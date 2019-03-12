@@ -19,6 +19,7 @@ module Frontend.OAuth
   , HasOAuthCfg (..)
   , OAuth (..)
   , HasOAuth (..)
+  , AuthorizationRequest (..)
     -- * Creation
   , makeOAuth
   ) where

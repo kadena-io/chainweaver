@@ -48,6 +48,7 @@ import           Obelisk.Route.Frontend
 import           Pact.Repl
 import           Pact.Repl.Types
 import           Pact.Types.Lang
+import Pact.Types.Info (Code (..))
 import Obelisk.OAuth.AuthorizationRequest
 ------------------------------------------------------------------------------
 import           Common.OAuth
@@ -56,6 +57,7 @@ import           Common.Route
 import           Frontend.Editor
 import           Frontend.Foundation
 import           Frontend.Ide
+import           Frontend.GistStore
 import           Frontend.Messages
 import           Frontend.ModuleExplorer
 import           Frontend.ModuleExplorer.RefPath
@@ -239,7 +241,7 @@ controlBarLeft m = do
       elClass "div" "main-header__project-loader" $ do
 
         onAuthorize <- button "Share Gist"
-        let authorizeCfg =  mempty & oAuthCfg_authorize .~ (AuthorizationRequest OAuthProvider_Github [ "gist" ] <$ onAuthorize)
+        let gistCfg =  mempty & gistStoreCfg_create .~ (tag (current $ m ^. editor_code) onAuthorize)
 
         resetCfg <- resetBtn
 
@@ -253,7 +255,7 @@ controlBarLeft m = do
           reqConfirmation = Just (uiDeployConfirmation m) <$ onDeployClick
 
           deployCfg = mempty & modalCfg_setModal .~ reqConfirmation
-        pure $ deployCfg <> loadCfg <> resetCfg <> authorizeCfg
+        pure $ deployCfg <> loadCfg <> resetCfg <> gistCfg
   where
     headerBtnCfg = btnCfgPrimary & uiButtonCfg_class %~ (<> "main-header__button")
 

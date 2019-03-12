@@ -64,6 +64,7 @@ library
                , trifecta
                , unordered-containers
                , errors
+               , servant-github
 
   if !impl(ghcjs)
     build-depends: hsass
@@ -77,6 +78,7 @@ library
                  , Frontend.Foundation
                  , Frontend.Ide
                  , Frontend.JsonData
+                 , Frontend.GistStore
                  , Frontend.Messages
                  , Frontend.ModuleExplorer
                  , Frontend.ModuleExplorer.Example
