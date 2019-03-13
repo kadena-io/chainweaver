@@ -260,6 +260,11 @@ getPactVersion = do
 controlBarRight :: MonadWidget t m => m ()
 controlBarRight = do
     divClass "flex right main-header__docs" $ do
+      elAttr "a" ( "href" =: "http://pactlang.org"
+                <> "class" =: "main-header__documents" <> "target" =: "_blank"
+                 ) $ do
+        elAttr "img" ("src" =: (static @"img/instruction.svg") <> "alt" =: "Documentation" <> "style" =: "width: 28px;") blank
+        text "Tutorials"
       elAttr "a" ( "href" =: "http://pact-language.readthedocs.io"
                 <> "class" =: "main-header__documents" <> "target" =: "_blank"
                  ) $ do
