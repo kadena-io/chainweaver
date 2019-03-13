@@ -110,8 +110,11 @@ makeOAuth cfg = do
 
   mInitTokens <- getItemStorage localStorage StoreOAuth_Tokens
 
-  tokens <- foldDyn id (fromMaybe Map.empty mInitTokens) $
-    uncurry Map.insert <$> onToken
+  tokens <- foldDyn id (fromMaybe Map.empty mInitTokens) $ leftmost
+    [ uncurry Map.insert <$> onToken
+      -- Get rid of token that is about to be invalidated. (We really don't want to have an invalid token when coming back.)
+    , Map.delete . _authorizationRequest_provider <$> cfg ^. oAuthCfg_authorize
+    ]
 
   performEvent_ $ setItemStorage localStorage StoreOAuth_Tokens <$> updated tokens
 

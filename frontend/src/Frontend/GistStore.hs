@@ -97,6 +97,10 @@ type HasGistStoreModelCfg mConf t = (Monoid mConf, HasOAuthCfg mConf t, HasMessa
 data StoreGist a where
   -- | User wanted a new gist, but was not authorized: Create gist when coming back.
   StoreGist_GistRequested :: StoreGist Text
+  -- | When we get a github error we will try to re-authorize, but we don't
+  -- want to get stuck in an endless loop if re-authorization does not fix the
+  -- problem. So we make sure to retry only once.
+  StoreGist_Retried :: StoreGist ()
 
 deriving instance Show (StoreGist a)
 
@@ -114,11 +118,12 @@ makeGistStore
   -> m (mConf, GistStore t)
 makeGistStore m cfg = mdo
 
-  -- TODO: Also clear on all errors we cannot recover from (anything other than
-  -- response status 401):
   let
-    onClear = onResp
-    onUnAuthorizedCreate = gate (isNothing <$> current mGitHubToken) $ cfg ^. gistStoreCfg_create
+    onClear = leftmost [() <$ onResp, () <$ onPermErr]
+    onUnAuthorizedCreate = leftmost
+      [ gate (isNothing <$> current mGitHubToken) $ cfg ^. gistStoreCfg_create
+      , onRetry
+      ]
 
   mGistWasRequestedInit <- getItemStorage sessionStorage StoreGist_GistRequested
 
@@ -135,24 +140,24 @@ makeGistStore m cfg = mdo
     onDelayedReq :: Event t (Text, AccessToken)
     onDelayedReq = fmapMaybe id . attachWith (liftA2 (,)) (current mGistWasRequested) $ onMayNewToken
 
-
-  -- TODO: Report errors/re-authorize where it makes sense.
-  errResp <- performEvent $
+  onErrResp <- performEvent $
      fmapMaybe id $  leftmost
         [ attachWith (traverse runGitHubClientM) (current mGitHubToken) . fmap simpleCreateGist $ cfg ^. gistStoreCfg_create
         , Just . uncurry (flip runGitHubClientM) . first simpleCreateGist <$> onDelayedReq
         ]
-
   let
-    (onErr, onResp) = fanEither errResp
+    onResp = fmapMaybe (^? _Right) onErrResp
 
-    -- Authorize when we want a gist but have no token yet:
-    -- TODO: Also authorize on auth problems (and schedule gist sharing):
-    onAuthorize = (AuthorizationRequest OAuthProvider_GitHub [ "gist" ]) <$ onStoredReq
+  -- Shall we retry onErr or fail for good?
+  -- We only retry on initial requests, not if we just got a token!
+  (onRetry, onPermErr) <- getRetry onErrResp $ cfg ^. gistStoreCfg_create
+
+    -- Authorize when we want a gist but have no token yet or when we got some failure response:
+  let onAuthorize = (AuthorizationRequest OAuthProvider_GitHub [ "gist" ]) <$ onStoredReq
 
   pure
     ( mempty
-        & messagesCfg_send .~ fmap tshow onErr
+        & messagesCfg_send .~ fmap tshow onPermErr
         -- Trigger auth if no token yet (when in progress, requests will be ignored):
         & oAuthCfg_authorize .~ onAuthorize
         {- let authorizeCfg =  mempty & oAuthCfg_authorize .~ (AuthorizationRequest OAuthProvider_GitHub [ "gist" ] <$ onAuthorize) -}
@@ -174,6 +179,64 @@ makeGistStore m cfg = mdo
       , gistCreateFiles = mempty & at "pact-web-share" .~ Just (FileCreate f)
       , gistCreatePublic = Just True
       }
+
+
+-- | Retry logic on error.
+--
+--   On error responses coming from github we will retry once with a newly requested access token.
+--
+--   INFO: Retry on auth errors is actually a more general concept not tied to
+--   gists at all. Also having gist sharing doing authorization implicitely
+--   when necessary breaks any `Requester` workflow - as the requester will
+--   never receive a response, this would apply to all services that require
+--   authorization and take care of it by them selves.
+--
+--   A better solution would be to not have `GistStore` take care of
+--   authorization by itself, but just deliver an error when not authorized or
+--   the request fails and then have some general purpose `requstingWithRetry`
+--   function users can use. Something with the following signature:
+--
+-- @
+--   requestingWithRetry
+--     :: Requester ... m -- ^ Wrap up requester, and retry on error.
+--     => storeKey () -- ^ Some key to use for session storage to keep track of attempted retries, to avoid loop.
+--     -> (resp -> (respChecked, Bool)) -- Process response and determine if a retry is desired.
+--     -> Event t req
+--     -> m (Event t respChecked)
+-- @
+getRetry
+  :: (MonadHold t m, MonadFix m, Reflex t, MonadJSM m, PerformEvent t m, MonadJSM (Performable m))
+  => Event t (Either ServantError resp)
+  -> Event t req
+  -> m (Event t req, Event t ServantError)
+getRetry onErrResp onReq = mdo
+  -- TODO: As usual, logic like this does not play well with multiple
+  -- requests occurring while we are still waiting for a response. To do
+  -- this properly, use the monadic context of `performEvent` and transfer any
+  -- request related information you need at response time to the response. By
+  -- simply returning what you need.
+  cReq <- hold Nothing $ leftmost
+    [ Just <$> onReq
+    , Nothing <$ leftmost [() <$ onPermErr, () <$ onResp, onStoredRetry]
+    ]
+
+  retried <- maybe False (const True) <$> getItemStorage sessionStorage StoreGist_Retried
+
+  let
+    (onErr, onResp) = fanEither onErrResp
+    (onPermErr, onRetry) =
+      case retried of
+        False -> fanEither $ ffor onErr $ \case
+                   FailureResponse _ -> Right () -- Retry on all failure responses - but only once.
+                   err -> Left err
+        True -> (onErr, never)
+
+  onStoredRetry <- performEvent $ setItemStorage sessionStorage StoreGist_Retried () <$ onRetry
+
+  -- Clear retries on successful request executions:
+  performEvent_ $ removeItemStorage sessionStorage StoreGist_Retried <$ onResp
+
+  pure ( fmapMaybe id $ tag cReq onStoredRetry, onPermErr )
 
 
 
