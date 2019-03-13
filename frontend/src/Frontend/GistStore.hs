@@ -97,10 +97,6 @@ type HasGistStoreModelCfg mConf t = (Monoid mConf, HasOAuthCfg mConf t, HasMessa
 data StoreGist a where
   -- | User wanted a new gist, but was not authorized: Create gist when coming back.
   StoreGist_GistRequested :: StoreGist Text
-  -- | When we get a github error we will try to re-authorize, but we don't
-  -- want to get stuck in an endless loop if re-authorization does not fix the
-  -- problem. So we make sure to retry only once.
-  StoreGist_Retried :: StoreGist ()
 
 deriving instance Show (StoreGist a)
 
@@ -183,6 +179,12 @@ makeGistStore m cfg = mdo
 
 -- | Retry logic on error.
 --
+--   WARNING: Only retry on actual user requests, otherwise this will become
+--   loopy. We had loop prevention implemented already, see: commit
+--   512912ad67ddc60b79fd231647adfa2fa262c4f2 - but it is just a different
+--   tradeoff. It won't loop, on programming errors, but it could prevent the
+--   user from initiating an authorization at all.
+--
 --   On error responses coming from github we will retry once with a newly requested access token.
 --
 --   INFO: Retry on auth errors is actually a more general concept not tied to
@@ -199,8 +201,7 @@ makeGistStore m cfg = mdo
 -- @
 --   requestingWithRetry
 --     :: Requester ... m -- ^ Wrap up requester, and retry on error.
---     => storeKey () -- ^ Some key to use for session storage to keep track of attempted retries, to avoid loop.
---     -> (resp -> (respChecked, Bool)) -- Process response and determine if a retry is desired.
+--     => (resp -> (respChecked, Bool)) -- Process response and determine if a retry is desired.
 --     -> Event t req
 --     -> m (Event t respChecked)
 -- @
@@ -217,26 +218,18 @@ getRetry onErrResp onReq = mdo
   -- simply returning what you need.
   cReq <- hold Nothing $ leftmost
     [ Just <$> onReq
-    , Nothing <$ leftmost [() <$ onPermErr, () <$ onResp, onStoredRetry]
+    , Nothing <$ leftmost [() <$ onPermErr, () <$ onResp, onRetry]
     ]
-
-  retried <- maybe False (const True) <$> getItemStorage sessionStorage StoreGist_Retried
 
   let
     (onErr, onResp) = fanEither onErrResp
-    (onPermErr, onRetry) =
-      case retried of
-        False -> fanEither $ ffor onErr $ \case
-                   FailureResponse _ -> Right () -- Retry on all failure responses - but only once.
-                   err -> Left err
-        True -> (onErr, never)
+    (onPermErr, onRetry) = fanEither $ ffor onErr $ \case
+      FailureResponse _ -> Right () -- Retry on all failure responses (better
+        -- retry too often, than to little. Loops should not be possible, as we
+        -- only retry on explict (user)requests.)
+      err -> Left err
 
-  onStoredRetry <- performEvent $ setItemStorage sessionStorage StoreGist_Retried () <$ onRetry
-
-  -- Clear retries on successful request executions:
-  performEvent_ $ removeItemStorage sessionStorage StoreGist_Retried <$ onResp
-
-  pure ( fmapMaybe id $ tag cReq onStoredRetry, onPermErr )
+  pure ( fmapMaybe id $ tag cReq onRetry, onPermErr )
 
 
 

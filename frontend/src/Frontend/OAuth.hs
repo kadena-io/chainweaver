@@ -85,13 +85,13 @@ deriving instance Show (StoreOAuth a)
 
 makeOAuth
   :: forall t m cfg mConf
-  . ( Reflex t, MonadHold t m, PostBuild t m, PerformEvent t m
+  . ( Reflex t, MonadHold t m, PostBuild t m, PerformEvent t m, MonadSample t (Performable m)
     , MonadJSM m, MonadJSM (Performable m), MonadFix m, TriggerEvent t m
     , Routed t (R FrontendRoute) m, RouteToUrl (R FrontendRoute) m
     , HasOAuthCfg cfg t, HasOAuthModelCfg mConf t
     )
   => cfg -> m (mConf, OAuth t)
-makeOAuth cfg = do
+makeOAuth cfg = mdo -- Required to get access to `tokens` for clearing any old tokens before requesting new ones.
   r <- askRoute
   let
     oAuthRoute = ffor r $ \case
@@ -100,8 +100,15 @@ makeOAuth cfg = do
 
   sCfg <- buildOAuthConfigFront
 
+  -- A bit hacky, but we need to make sure to have the old token removed, before requesting a new one:
+  -- (Below performEvent on `updated tokens` will happen too late!)
+  onAuthorizeStored <- performEvent $ ffor (cfg ^. oAuthCfg_authorize) $ \authReq -> do
+    cTokens <- sample $ current tokens
+    setItemStorage localStorage StoreOAuth_Tokens $ Map.delete (_authorizationRequest_provider authReq) cTokens
+    pure authReq
+
   oAuthL <- runOAuthRequester $ makeOAuthFrontend sCfg $ OAuthFrontendConfig
-    { _oAuthFrontendConfig_authorize = cfg ^. oAuthCfg_authorize
+    { _oAuthFrontendConfig_authorize = onAuthorizeStored
     , _oAuthFrontendConfig_route = oAuthRoute
     }
 
@@ -116,7 +123,7 @@ makeOAuth cfg = do
     , Map.delete . _authorizationRequest_provider <$> cfg ^. oAuthCfg_authorize
     ]
 
-  performEvent_ $ setItemStorage localStorage StoreOAuth_Tokens <$> updated tokens
+  performEvent $ setItemStorage localStorage StoreOAuth_Tokens <$> updated tokens
 
   pure
     ( mempty & messagesCfg_send .~ fmap textOAuthError onErr
