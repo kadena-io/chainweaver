@@ -172,7 +172,7 @@ makeGistStore m cfg = mdo
 
     mkGistCreate f = GistCreate
       { gistCreateDescription = Just "Pact shared with pact-web."
-      , gistCreateFiles = mempty & at "pact-web-share" .~ Just (FileCreate f)
+      , gistCreateFiles = mempty & at "pact-web-share.pact" .~ Just (FileCreate f)
       , gistCreatePublic = Just True
       }
 
