@@ -240,8 +240,8 @@ controlBarLeft m = do
         elClass "span" "version" $ text $ "v" <> ver
       elClass "div" "main-header__project-loader" $ do
 
-        onAuthorize <- button "Share Gist"
-        let gistCfg =  mempty & gistStoreCfg_create .~ (tag (current $ m ^. editor_code) onAuthorize)
+        onCreateGist <- button "Share Gist"
+        let gistCfg =  mempty & moduleExplorerCfg_createGist .~  onCreateGist
 
         resetCfg <- resetBtn
 

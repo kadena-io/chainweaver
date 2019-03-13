@@ -53,6 +53,7 @@ import           Frontend.Messages
 import           Frontend.ModuleExplorer   as API
 import           Frontend.Repl
 import           Frontend.Storage
+import           Frontend.GistStore
 
 type HasModuleExplorerModelCfg mConf t =
   ( Monoid mConf
@@ -61,6 +62,7 @@ type HasModuleExplorerModelCfg mConf t =
   , HasJsonDataCfg mConf t
   , HasReplCfg mConf t
   , HasBackendCfg mConf t
+  , HasGistStoreCfg mConf t
   )
 
 type HasModuleExplorerModel model t =
@@ -110,10 +112,11 @@ makeModuleExplorer
   -> cfg
   -> m (mConf, ModuleExplorer t)
 makeModuleExplorer m cfg = mfix $ \ ~(_, explr) -> do
+
     selectedFile <- selectFile
       (fmapMaybe getFileModuleRef $ cfg ^. moduleExplorerCfg_pushModule)
       (leftmost
-        [cfg ^. moduleExplorerCfg_selectFile
+        [ cfg ^. moduleExplorerCfg_selectFile
         , Nothing <$ cfg ^. moduleExplorerCfg_goHome
         ]
       )
@@ -128,12 +131,28 @@ makeModuleExplorer m cfg = mfix $ \ ~(_, explr) -> do
       editorInitCfg = mempty
         & editorCfg_loadCode .~ fmapMaybe (const mInitFile) onPostBuild
     -- Store to disk max every 2 seconds:
-    onStore <- throttle 2 $ updated $ m ^. editor_code
-    performEvent_ $ storeEditor <$> onStore
+    onAutoStore <- throttle 2 $ updated $ m ^. editor_code
+    performEvent_ $ storeEditor <$> onAutoStore
+    let
+      onCreateGistUnsafe =
+          -- TODO: We should save whenever we are about to leave the page, no matter the cause:
+        tag (current (m ^. editor_code)) $ cfg ^. moduleExplorerCfg_createGist
+
+    onCreateGist <- performEvent $ ffor onCreateGistUnsafe $ \cCode -> do
+      storeEditor cCode
+      pure cCode
+    let
+      gistCfg = mempty & gistStoreCfg_create .~ onCreateGist
+
+    {- (gistCfg, onNewGist) <- createGist $ cfg ^. moduleExplorerCfg_createGist -}
 
     (lFileCfg, loadedSource) <- loadToEditor m
       (leftmost [cfg ^. moduleExplorerCfg_loadFile, onInitFile])
-      (cfg ^. moduleExplorerCfg_loadModule)
+      (leftmost
+        [ cfg ^. moduleExplorerCfg_loadModule
+        {- , onNewGistRef -}
+        ]
+      )
 
     (stckCfg, stack) <- pushPopModule m explr
       (cfg ^. moduleExplorerCfg_goHome)
@@ -149,7 +168,7 @@ makeModuleExplorer m cfg = mfix $ \ ~(_, explr) -> do
     modules <- makeModuleList m (cfg ^. moduleExplorerCfg_modules)
 
     pure
-      ( mconcat [ editorInitCfg, lFileCfg, stckCfg, deployEdCfg, deployCodeCfg ]
+      ( mconcat [ editorInitCfg, lFileCfg, stckCfg, deployEdCfg, deployCodeCfg, gistCfg ]
       , ModuleExplorer
         { _moduleExplorer_moduleStack = stack
         , _moduleExplorer_selectedFile = selectedFile
@@ -158,6 +177,8 @@ makeModuleExplorer m cfg = mfix $ \ ~(_, explr) -> do
         , _moduleExplorer_modules = modules
         }
       )
+
+
 
 -- | Check whether we are going deeper with selections or not.
 mkSelectionGrowth
