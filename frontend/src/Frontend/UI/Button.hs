@@ -36,6 +36,9 @@ module Frontend.UI.Button
   , refreshButton
   , confirmButton
   , cancelButton
+  -- ** Images in buttons
+  , btnTextIcon
+  , btnIcon
   ) where
 
 ------------------------------------------------------------------------------

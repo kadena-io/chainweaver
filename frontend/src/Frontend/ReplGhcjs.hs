@@ -96,6 +96,7 @@ app = void . mfix $ \ cfg -> do
     , routesCfg
     ]
 
+
 handleRoutes
   :: ( MonadWidget t m, Routed t (R FrontendRoute) m, SetRoute t (R FrontendRoute) m
      , Monoid mConf, HasModuleExplorer model t , HasModuleExplorerCfg mConf t
@@ -228,22 +229,19 @@ controlBar
   ->  m (ModalIdeCfg m t)
 controlBar m = do
     divClass "main-header page__main-header" $ do
-      divClass "flexbox even" $ do
-        ideCfgL <- controlBarLeft m
-        controlBarRight
-        return ideCfgL
+      ideCfgL <- controlBarLeft m
+      controlBarRight
+      return ideCfgL
+
 
 controlBarLeft :: forall t m. MonadWidget t m => ModalIde m t -> m (ModalIdeCfg m t)
 controlBarLeft m = do
-    divClass "flex main-header__left-nav" $ do
-      elClass "h1" "logo-heading" $ do
+    divClass "main-header__left-nav" $ do
+      elClass "h1" "main-header__pact-logo" $ do
         imgWithAlt (static @"img/pact-logo.svg") "Kadena Pact Logo" blank
         ver <- getPactVersion
         elClass "span" "version" $ text $ "v" <> ver
       elClass "div" "main-header__project-loader" $ do
-
-        onCreateGist <- button "Share Gist"
-        let gistCfg =  mempty & moduleExplorerCfg_createGist .~  onCreateGist
 
         resetCfg <- resetBtn
 
@@ -251,10 +249,14 @@ controlBarLeft m = do
 
         onDeployClick <- deployBtn
 
+        onCreateGist <- gistBtn
+
         loadCfg <- loadCodeIntoRepl m onLoadClicked
         let
           reqConfirmation :: Event t (Maybe (ModalImpl m t))
           reqConfirmation = Just (uiDeployConfirmation m) <$ onDeployClick
+
+          gistCfg =  mempty & moduleExplorerCfg_createGist .~  onCreateGist
 
           deployCfg = mempty & modalCfg_setModal .~ reqConfirmation
         pure $ deployCfg <> loadCfg <> resetCfg <> gistCfg
@@ -272,8 +274,21 @@ controlBarLeft m = do
         & replCfg_reset .~ onClick
 
     loadReplBtn =
-      uiButton ( headerBtnCfg & uiButtonCfg_title .~ Just "Editor Shortcut: Ctrl+Enter") $
-        text "Load into REPL"
+      uiButton ( headerBtnCfg & uiButtonCfg_title .~ Just "Editor Shortcut: Ctrl+Enter") $ do
+        text "Load"
+        elClass "span" "main-header__minor-text" $
+          text " into REPL"
+
+    gistBtn =
+      uiButton
+          ( headerBtnCfg
+              & uiButtonCfg_title .~ Just "Create gist on GitHub"
+              & uiButtonCfg_class %~ (<> "main-header__text-icon-button")
+          ) $ do
+        btnTextIcon (static @"img/github-gist-dark.svg") "Make Gist" blank
+        elClass "span" "main-header__minor-text" $ text "Make "
+        text "Gist"
+
 
 getPactVersion :: MonadWidget t m => m Text
 getPactVersion = do
@@ -283,12 +298,12 @@ getPactVersion = do
 
 controlBarRight :: MonadWidget t m => m ()
 controlBarRight = do
-    divClass "flex right main-header__docs" $ do
+    divClass "main-header__docs" $ do
       elAttr "a" ( "href" =: "http://pact-language.readthedocs.io"
                 <> "class" =: "main-header__documents" <> "target" =: "_blank"
                  ) $ do
         imgWithAlt (static @"img/document.svg") "Documentation" blank
         text "Docs"
       elAttr "a" ( "href" =: "http://kadena.io"
-                <> "class" =: "main-header__documents" <> "target" =: "_blank") $
+                <> "class" =: "main-header__documents main-header__kadena-logo" <> "target" =: "_blank") $
         imgWithAlt (static @"img/gray-kadena-logo.svg") "Kadena Logo" blank

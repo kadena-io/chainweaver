@@ -11,6 +11,7 @@ $main-header-font-size: $primary-font-size;
 // we should go full BEM.
 
 .main-header {
+  display: flex;
   background: #2d2d2f;
   color: $main-header-color;
   padding: 20px 36px 20px 20px;
@@ -18,7 +19,7 @@ $main-header-font-size: $primary-font-size;
 
 // This h1 thing should actually be its own pact-version block. But as long as
 // we don't want to re-use it, it should not do any harm to define it here:
-.main-header h1 {
+.main-header__pact-logo {
   color: $main-header-color;
   margin: 0;
   float: left;
@@ -43,8 +44,22 @@ $main-header-font-size: $primary-font-size;
   margin-left: $medium-margin;
 }
 
+.main-header__text-icon-button {
+}
+
+.main-header__button > .button__text-icon {
+  height: $main-header-font-size - 1.5px;
+  width: auto;
+  filter: invert(100%);
+}
+
 .main-header__button:hover {
   background: $black-hover;
+}
+
+.main-header__docs {
+  flex: 1;
+  text-align: right;
 }
 
 .main-header__documents {
@@ -61,5 +76,35 @@ $main-header-font-size: $primary-font-size;
 }
 
 .main-header__left-nav {
-  min-width: 455px;
+  // min-width: 455px;
+  flex: 1;
 }
+
+@media (max-width: 1510px) {
+  .main-header__button {
+    padding: 0 12px;
+  }
+}
+
+@media (max-width: 1290px) {
+  .main-header__minor-text {
+    display: none;
+  }
+}
+
+@media (max-width: 1020px) {
+  .main-header {
+    padding-left: 0px;
+  }
+  .main-header__pact-logo {
+    display: none;
+  }
+}
+
+@media (max-width: 800px) {
+  .main-header__kadena-log {
+    display: none;
+  }
+}
+
+
