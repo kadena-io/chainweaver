@@ -143,6 +143,7 @@ handleRoutes m = do
        FrontendRoute_Main     :=> Identity () -> RefPath []
        FrontendRoute_Example  :=> Identity xs -> RefPath ("example":xs)
        FrontendRoute_Stored   :=> Identity xs -> RefPath ("stored":xs)
+       FrontendRoute_Gist     :=> Identity xs -> RefPath ("gist":xs)
        FrontendRoute_Deployed :=> Identity xs -> RefPath ("deployed":xs)
        FrontendRoute_New      :=> Identity () -> RefPath []
        FrontendRoute_OAuth    :=> Identity _  -> RefPath []
@@ -151,6 +152,7 @@ handleRoutes m = do
     renderRoute (RefPath (n:ns)) = case n of
       "example"  -> FrontendRoute_Example  :=> Identity ns
       "stored"   -> FrontendRoute_Stored   :=> Identity ns
+      "gist"     -> FrontendRoute_Gist     :=> Identity ns
       "deployed" -> FrontendRoute_Deployed :=> Identity ns
       _          -> FrontendRoute_Main     :=> Identity ()
     renderRoute _ = FrontendRoute_Main :=> Identity ()

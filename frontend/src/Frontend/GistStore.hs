@@ -57,12 +57,11 @@ import           Frontend.Messages
 import           Frontend.Foundation
 import           Frontend.OAuth
 import           Common.OAuth
-import           Frontend.Editor
-import           Frontend.ModuleExplorer.Module    as Module
-import           Frontend.ModuleExplorer.ModuleRef as Module
 
 type GistRef = GistId
 
+gistFileName :: Text
+gistFileName = "pact-web-share.pact"
 
 -- | Create and manage gists.
 data GistStoreCfg t = GistStoreCfg
@@ -79,14 +78,14 @@ makePactLenses ''GistStoreCfg
 -- | Information about Gists.
 data GistStore t = GistStore
   { _gistStore_loaded :: Event t Gist
-  , _gistStore_created :: Event t Gist
+  , _gistStore_created :: Event t GistRef
   }
   deriving Generic
 
 makePactLenses ''GistStore
 
 -- | Model/dependencies of Backend.
-type HasGistStoreModel model t = (HasOAuth model t, HasEditor model t)
+type HasGistStoreModel model t = (HasOAuth model t)
 
 -- | Model config needed by gistStore.
 type HasGistStoreModelCfg mConf t = (Monoid mConf, HasOAuthCfg mConf t, HasMessagesCfg mConf t)
@@ -137,10 +136,14 @@ makeGistStore m cfg = mdo
     onDelayedReq = fmapMaybe id . attachWith (liftA2 (,)) (current mGistWasRequested) $ onMayNewToken
 
   onErrResp <- performEvent $
-     fmapMaybe id $  leftmost
-        [ attachWith (traverse runGitHubClientM) (current mGitHubToken) . fmap simpleCreateGist $ cfg ^. gistStoreCfg_create
-        , Just . uncurry (flip runGitHubClientM) . first simpleCreateGist <$> onDelayedReq
+     fmapMaybe id $ leftmost
+        [ attachWith (traverse runGitHubClientMAuthorized) (current mGitHubToken)
+            . fmap simpleCreateGist $ cfg ^. gistStoreCfg_create
+
+        , Just . uncurry (flip runGitHubClientMAuthorized)
+            . first simpleCreateGist <$> onDelayedReq
         ]
+
   let
     onResp = fmapMaybe (^? _Right) onErrResp
 
@@ -151,19 +154,24 @@ makeGistStore m cfg = mdo
     -- Authorize when we want a gist but have no token yet or when we got some failure response:
   let onAuthorize = (AuthorizationRequest OAuthProvider_GitHub [ "gist" ]) <$ onStoredReq
 
+  -- Loading of gists:
+  onGotErrGist <- performEvent $ runGitHubClientM Nothing . getGist <$> cfg ^. gistStoreCfg_load
+  let (onLoadErr, onLoad) = fanEither onGotErrGist
+
   pure
     ( mempty
-        & messagesCfg_send .~ fmap tshow onPermErr
+        & messagesCfg_send .~ (tshow <$> leftmost [onPermErr, onLoadErr])
         -- Trigger auth if no token yet (when in progress, requests will be ignored):
         & oAuthCfg_authorize .~ onAuthorize
         {- let authorizeCfg =  mempty & oAuthCfg_authorize .~ (AuthorizationRequest OAuthProvider_GitHub [ "gist" ] <$ onAuthorize) -}
     , GistStore
-      { _gistStore_created = onResp
-      , _gistStore_loaded = never
+      { _gistStore_created = gistId <$> onResp
+      , _gistStore_loaded = onLoad
       }
     )
 
   where
+    runGitHubClientMAuthorized = runGitHubClientM . Just
 
     mGitHubToken = Map.lookup OAuthProvider_GitHub <$> m ^. oAuth_accessTokens
 
@@ -172,7 +180,7 @@ makeGistStore m cfg = mdo
 
     mkGistCreate f = GistCreate
       { gistCreateDescription = Just "Pact shared with pact-web."
-      , gistCreateFiles = mempty & at "pact-web-share.pact" .~ Just (FileCreate f)
+      , gistCreateFiles = mempty & at gistFileName .~ Just (FileCreate f)
       , gistCreatePublic = Just True
       }
 
@@ -261,19 +269,22 @@ getGist :: GistId -> ClientM Gist
 (createGist :<|> getGist) = client gistApi
 
 
--- | Nothing if there is no Authorization token yet.
+-- | Run github client request with or without an access token.
 runGitHubClientM
   :: MonadJSM m
-  => AccessToken
+  => Maybe AccessToken
   -> ClientM a
   -> m (Either ServantError a)
-runGitHubClientM (AccessToken token) action = liftJSM $
+runGitHubClientM mToken action = liftJSM $
   runClientM action $ ClientEnv
     { baseUrl = BaseUrl Https "api.github.com" 443 ""
     , fixUpXhr = \req -> do
-        setRequestHeader req "Authorization" ("token " <> token)
+        traverse_ (setAuthorization req) mToken
         setRequestHeader req "Accept" "application/vnd.github.v3+json"
     }
+  where
+    setAuthorization req (AccessToken token) =
+      setRequestHeader req "Authorization" ("token " <> token)
 
 
 -- Instances:

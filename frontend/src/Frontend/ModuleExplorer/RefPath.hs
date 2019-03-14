@@ -73,6 +73,11 @@ class IsRefPath r where
   -- | Parse a reference from a `RefPath`.
   parseRef :: RefParser r
 
+-- | Instance for simple path elements consisting of just some `Text`.
+instance IsRefPath Text where
+  renderRef = mkRefPath
+  parseRef = anySingle
+
 
 -- | Try to parse a ref.
 --

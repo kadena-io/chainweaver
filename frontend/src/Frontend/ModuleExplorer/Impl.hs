@@ -69,6 +69,7 @@ type HasModuleExplorerModel model t =
   ( HasEditor model t
   , HasJsonData model t
   , HasBackend model t
+  , HasGistStore model t
   )
 
 
@@ -113,7 +114,7 @@ makeModuleExplorer
   -> m (mConf, ModuleExplorer t)
 makeModuleExplorer m cfg = mfix $ \ ~(_, explr) -> do
 
-    selectedFile <- selectFile
+    (selCfg, selectedFile) <- selectFile m
       (fmapMaybe getFileModuleRef $ cfg ^. moduleExplorerCfg_pushModule)
       (leftmost
         [ cfg ^. moduleExplorerCfg_selectFile
@@ -143,16 +144,11 @@ makeModuleExplorer m cfg = mfix $ \ ~(_, explr) -> do
       pure cCode
     let
       gistCfg = mempty & gistStoreCfg_create .~ onCreateGist
-
-    {- (gistCfg, onNewGist) <- createGist $ cfg ^. moduleExplorerCfg_createGist -}
+      onNewGistRef = FileRef_Gist <$> m ^. gistStore_created
 
     (lFileCfg, loadedSource) <- loadToEditor m
-      (leftmost [cfg ^. moduleExplorerCfg_loadFile, onInitFile])
-      (leftmost
-        [ cfg ^. moduleExplorerCfg_loadModule
-        {- , onNewGistRef -}
-        ]
-      )
+      (leftmost [cfg ^. moduleExplorerCfg_loadFile, onInitFile, onNewGistRef])
+      (cfg ^. moduleExplorerCfg_loadModule)
 
     (stckCfg, stack) <- pushPopModule m explr
       (cfg ^. moduleExplorerCfg_goHome)
@@ -168,7 +164,7 @@ makeModuleExplorer m cfg = mfix $ \ ~(_, explr) -> do
     modules <- makeModuleList m (cfg ^. moduleExplorerCfg_modules)
 
     pure
-      ( mconcat [ editorInitCfg, lFileCfg, stckCfg, deployEdCfg, deployCodeCfg, gistCfg ]
+      ( mconcat [ editorInitCfg, lFileCfg, stckCfg, deployEdCfg, deployCodeCfg, gistCfg, selCfg ]
       , ModuleExplorer
         { _moduleExplorer_moduleStack = stack
         , _moduleExplorer_selectedFile = selectedFile
@@ -262,13 +258,14 @@ deployCode m onDeploy =
       & backendCfg_deployCode .~ attachWithMaybe ($) (current mkReq) onDeploy
       & messagesCfg_send .~ tagMaybe (current jsonError) onDeploy
 
+
 -- | Takes care of loading a file/module into the editor.
 loadToEditor
   :: forall m t mConf model
   . ( ReflexConstraints t m
     , HasModuleExplorerModelCfg  mConf t
+    , HasModuleExplorerModel  model t
     , MonadSample t (Performable m)
-    , HasBackend model t, HasEditor model t
     )
   => model
   -> Event t FileRef
@@ -277,7 +274,7 @@ loadToEditor
 loadToEditor m onFileRef onModRef = do
     let onFileModRef = fmapMaybe getFileModuleRef onModRef
 
-    onFile <- fetchFile $ leftmost
+    (fCfg, onFile) <- fetchFile m $ leftmost
       [ onFileRef
       , _moduleRef_source <$> onFileModRef
       ]
@@ -294,8 +291,8 @@ loadToEditor m onFileRef onModRef = do
         attachPromptlyDynWith getFileModuleCode fileModRequested onFile
 
     loaded <- holdDyn Nothing $ leftmost
-      [ Just .LoadedRef_Module . (moduleRef_source %~ ModuleSource_File) . fst <$> onFileMod
-      , Just. LoadedRef_File . fst <$> onFile -- Order important we prefer `onFileMod` over `onFile`.
+      [ Just . LoadedRef_Module . (moduleRef_source %~ ModuleSource_File) . fst <$> onFileMod
+      , Just . LoadedRef_File . fst <$> onFile -- Order important we prefer `onFileMod` over `onFile`.
       , Just . LoadedRef_Module . (moduleRef_source %~ ModuleSource_Deployed) . fst <$> onMod
         -- For now, until we have file saving support:
       , fmap (const Nothing) . ffilter id . updated $ m ^.editor_modified
@@ -308,7 +305,7 @@ loadToEditor m onFileRef onModRef = do
         , view codeOfModule . snd <$> onMod
         ]
 
-    pure ( mconcat [modCfg, mempty & editorCfg_loadCode .~ onCode]
+    pure ( mconcat [modCfg, fCfg, mempty & editorCfg_loadCode .~ onCode]
          , loaded
          )
   where
@@ -325,16 +322,18 @@ loadToEditor m onFileRef onModRef = do
 -- | Select a `PactFile`, note that a file gets also implicitely selected when
 --   a module of a given file gets selected.
 selectFile
-  :: forall m t
+  :: forall m t model mConf
   . ( MonadHold t m, PerformEvent t m, MonadJSM (Performable m)
     , TriggerEvent t m, MonadFix m
+    , HasModuleExplorerModel model t, HasModuleExplorerModelCfg mConf t
     )
-  => Event t FileModuleRef
+  => model
+  -> Event t FileModuleRef
   -> Event t (Maybe FileRef)
-  -> m (MDynamic t (FileRef, PactFile))
-selectFile onModRef onMayFileRef = mdo
+  -> m (mConf, MDynamic t (FileRef, PactFile))
+selectFile m onModRef onMayFileRef = mdo
 
-    onFileSelect <- fetchFile . push (filterNewFileRef selected) $ leftmost
+    (fCfg, onFileSelect) <- fetchFile m . push (filterNewFileRef selected) $ leftmost
       [ _moduleRef_source <$> onModRef
       , fmapMaybe id onMayFileRef
       ]
@@ -343,7 +342,7 @@ selectFile onModRef onMayFileRef = mdo
       [ Just    <$> onFileSelect
       , Nothing <$  ffilter isNothing onMayFileRef
       ]
-    pure selected
+    pure (fCfg, selected)
   where
     filterNewFileRef oldFile newFileRef = do
       cOld <- sample . current $ oldFile

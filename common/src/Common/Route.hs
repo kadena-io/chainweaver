@@ -67,6 +67,7 @@ data FrontendRoute :: * -> * where
   FrontendRoute_Main :: FrontendRoute ()
   FrontendRoute_Example :: FrontendRoute [Text]  -- Route for loading an example.
   FrontendRoute_Stored  :: FrontendRoute [Text]  -- Route for loading a stored file/module.
+  FrontendRoute_Gist  :: FrontendRoute [Text]  -- Route for loading GitHub gists.
   FrontendRoute_Deployed :: FrontendRoute [Text] -- Route for loading a deployed module.
   FrontendRoute_New :: FrontendRoute ()          -- Route when editing a new file.
   FrontendRoute_OAuth :: FrontendRoute (R OAuthRoute) -- Route for auth handling
@@ -93,6 +94,8 @@ backendRouteEncoder = handleEncoder (const (InL BackendRoute_Missing :/ ())) $
         -> PathSegment "example" $ pathOnlyEncoderIgnoringQuery
       FrontendRoute_Stored
         -> PathSegment "stored" $ pathOnlyEncoderIgnoringQuery
+      FrontendRoute_Gist
+        -> PathSegment "gist" $ pathOnlyEncoderIgnoringQuery
       FrontendRoute_Deployed
         -> PathSegment "deployed" $ pathOnlyEncoderIgnoringQuery
       FrontendRoute_New

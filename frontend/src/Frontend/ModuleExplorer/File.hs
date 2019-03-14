@@ -37,13 +37,13 @@ module Frontend.ModuleExplorer.File
   , PactFile
   -- * Storing and Retrieval
   , fetchFile
-  , fetchFileCached
+  {- , fetchFileCached -}
   -- * Retrieve contents:
   , fileModules
   ) where
 
 ------------------------------------------------------------------------------
-import           Control.Arrow                   ((***))
+import           Control.Arrow                   ((***), (&&&))
 import           Control.Lens
 import           Control.Monad
 import qualified Data.Aeson                      as A
@@ -54,6 +54,7 @@ import           Data.Text                       (Text)
 import           Reflex
 import           Reflex.Dom.Core                 (HasJSContext, MonadHold)
 import qualified Text.Megaparsec      as MP
+import Network.GitHub.Types.Gist.Core as G
 ------------------------------------------------------------------------------
 import qualified Pact.Compile                    as Pact
 import qualified Pact.Parse                      as Pact
@@ -63,6 +64,7 @@ import           Pact.Types.Lang                 (Code (..), Module, ModuleName,
 import           Frontend.Foundation
 import           Frontend.ModuleExplorer.Example
 import           Frontend.ModuleExplorer.Module
+import           Frontend.GistStore
 import           Frontend.ModuleExplorer.RefPath as MP
 
 -- | The name of a file stored by the user.
@@ -80,6 +82,7 @@ textFileName = unFileName
 data FileRef
   = FileRef_Example ExampleRef
   | FileRef_Stored FileName
+  | FileRef_Gist GistRef
   deriving (Eq, Ord, Show, Generic)
 
 makePactPrisms ''FileRef
@@ -97,13 +100,16 @@ instance IsRefPath FileRef where
     FileRef_Example ex ->
       "example" <> renderRef ex
     FileRef_Stored  (FileName n) ->
-      "stored" <> mkRefPath n
+      "stored" <> mkRefPath n -- Not really implemented yet.
+    FileRef_Gist r ->
+      "gist" <> renderRef r
 
   parseRef = do
     r <- MP.anySingle
     case r of
       "example" -> FileRef_Example <$> parseRef
       "stored"  -> FileRef_Stored  <$> parseRef
+      "gist"    -> FileRef_Gist <$> parseRef
       _         -> MP.unexpected $ MP.Tokens $ r :| []
 
 
@@ -129,12 +135,14 @@ fileRefName :: FileRef -> Text
 fileRefName = \case
   FileRef_Example e -> exampleName e
   FileRef_Stored s  -> textFileName s
+  FileRef_Gist _ -> "Some Gist"
 
 -- | Show the file type, suitable for getting displayed to the user.
 textFileType :: FileRef -> Text
 textFileType = \case
   FileRef_Example _ -> "Example File"
   FileRef_Stored _ -> "User File"
+  FileRef_Gist _ -> "GitHub Gist"
 
 
 -- | Fetch a `File` given a `FileRef`.
@@ -143,37 +151,50 @@ textFileType = \case
 fetchFile
   :: ( PerformEvent t m, TriggerEvent t m, MonadJSM (Performable m)
      , HasJSContext JSM
+     , HasGistStore model t, HasGistStoreCfg mConf t, Monoid mConf
      )
-  => Event t FileRef -> m (Event t (FileRef, PactFile))
-fetchFile onFileRef = do
-    onExample <- fetchExample $ fmapMaybe (^? _FileRef_Example)  onFileRef
-    pure $ wrapExample <$> onExample
+  => model -> Event t FileRef -> m (mConf, Event t (FileRef, PactFile))
+fetchFile m onFileRef = do
+    onExample <- fetchExample $ fmapMaybe (^? _FileRef_Example) onFileRef
+    let onGist = m ^. gistStore_loaded
+    pure
+      ( mempty & gistStoreCfg_load .~ fmapMaybe (^? _FileRef_Gist) onFileRef
+      , leftmost
+          [ wrapExample <$> onExample
+          , wrapGist <$> onGist
+          ]
+      )
   where
     wrapExample = FileRef_Example *** Code . fst
+    wrapGist = FileRef_Gist . gistId &&& Code . getGistFile
+
+    getGistFile g = fromMaybe "Error loading gist: Gist was a valid pact-web gist." $
+      gistFiles g ^? at gistFileName . _Just . to fileContent
 
 -- | Fetch a `File`, with cache.
 --
 --   This function maintains a cache of size 1, that means if the fetched file
 --   was fetched last it will be delivered immediately.
-fetchFileCached
-  :: ( PerformEvent t m, TriggerEvent t m, MonadJSM (Performable m)
-     , MonadFix m, MonadHold t m
-     , HasJSContext JSM
-     )
-  => Event t FileRef -> m (Event t (FileRef, PactFile))
-fetchFileCached onFileRef = mdo
-    let onNewFileRef = pushAlways (onlyNew lastFile) onFileRef
-    onFetched <- fetchFile $ fmapMaybe id onNewFileRef
-    lastFile <- hold Nothing $ Just <$> onFetched
+{- fetchFileCached -}
+{-   :: ( PerformEvent t m, TriggerEvent t m, MonadJSM (Performable m) -}
+{-      , MonadFix m, MonadHold t m -}
+{-      , HasJSContext JSM -}
+{-      , HasGistStore model t, HasGistStoreCfg mConf t, Monoid mConf -}
+{-      ) -}
+{-   => model -> Event t FileRef -> m (mConf, Event t (FileRef, PactFile)) -}
+{- fetchFileCached onFileRef = mdo -}
+{-     let onNewFileRef = pushAlways (onlyNew lastFile) onFileRef -}
+{-     (fCfg, onFetched) <- fetchFile $ fmapMaybe id onNewFileRef -}
+{-     lastFile <- hold Nothing $ Just <$> onFetched -}
 
-    let onCached = fmapMaybe id . tag lastFile $ ffilter isNothing onNewFileRef
-    pure $ leftmost [ onFetched, onCached ]
-  where
-    onlyNew cache req = do
-      l <- sample cache
-      if fmap fst l == Just req
-         then pure Nothing
-         else pure $ Just req
+{-     let onCached = fmapMaybe id . tag lastFile $ ffilter isNothing onNewFileRef -}
+{-     pure $ leftmost [ onFetched, onCached ] -}
+{-   where -}
+{-     onlyNew cache req = do -}
+{-       l <- sample cache -}
+{-       if fmap fst l == Just req -}
+{-          then pure Nothing -}
+{-          else pure $ Just req -}
 
 -- | Get the `Module`s contained in `PactFile`.
 fileModules :: PactFile -> Map ModuleName Module
