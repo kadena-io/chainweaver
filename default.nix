@@ -9,27 +9,34 @@ let
   pactServerModule = import ./pact-server/service.nix;
 
 in obApp // {
-  server = args@{ hostName, adminEmail, routeHost, enableHttps, config, version }:
+  server = args@{ hostName, adminEmail, routeHost, enableHttps, version }:
     let
+      exe = serverExe
+        obApp.ghc.backend
+        obApp.ghcjs.frontend
+        obApp.passthru.staticFiles
+        obApp.passthru.__closureCompilerOptimizationLevel
+        version;
+
       nixos = import (pkgs.path + /nixos);
       # Check whether everything we need is in place.
-      checkDeployment = v:
-        let
-          hasServerList = lib.pathExists (config + "/common/pact-server-list");
-        in
-          if hasServerList
-          then v
-          else abort ("\n\n========================= PACT-WEB ERROR =========================\n\n" +
-                          "For deployments you have to provide a common/pact-server-list file\n" +
-                          "in your deployment config directory, check README.md for details!\n\n" +
-                          "==================================================================\n\n");
-
+      checkDeployment = v : v;
+      # checkDeployment = v:
+      #   let
+      #     hasServerList = lib.pathExists (exe + "/config/common/pact-server-list");
+      #   in
+      #     if hasServerList
+      #     then v
+      #     else abort ("\n\n========================= PACT-WEB ERROR =========================\n\n" +
+      #                     "For deployments you have to provide a common/pact-server-list file\n" +
+      #                     "in your deployment config directory, check README.md for details!\n\n" +
+      #                     "==================================================================\n\n");
     in nixos {
       system = "x86_64-linux";
       configuration = checkDeployment {
         imports = [
           (obelisk.serverModules.mkBaseEc2 args)
-          (obelisk.serverModules.mkObeliskApp (args // { exe = obApp.linuxExeConfigurable (pkgs.copyPathToStore config) version; }))
+          (obelisk.serverModules.mkObeliskApp (args//{inherit exe;}))
           # (pactServerModule {
           #   hostName = routeHost;
           #   inherit obApp pkgs;
