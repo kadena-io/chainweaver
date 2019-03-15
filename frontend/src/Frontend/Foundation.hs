@@ -64,7 +64,7 @@ import           Language.Haskell.TH         (DecsQ)
 import           Language.Haskell.TH.Syntax  (Name)
 import Reflex.Dom.Class (HasJSContext (..), JSContextSingleton (..))
 import           Language.Javascript.JSaddle.Monad (JSContextRef, JSM, askJSM)
-import           Language.Javascript.JSaddle (JSM, MonadJSM (..), askJSM,
+import           Language.Javascript.JSaddle (JSM, MonadJSM, askJSM,
                                               runJSM)
 import           Reflex.Dom.Contrib.CssClass
 import           Reflex.Extended

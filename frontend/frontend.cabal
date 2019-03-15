@@ -65,6 +65,7 @@ library
                , unordered-containers
                , errors
                , servant-github
+               , free
 
   if !impl(ghcjs)
     build-depends: hsass

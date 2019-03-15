@@ -12,7 +12,9 @@ library
                , text
                , containers
                , mtl
+               , aeson
 
   exposed-modules:
     Common.Api
     Common.Route
+    Common.OAuth

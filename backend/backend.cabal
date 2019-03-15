@@ -23,6 +23,15 @@ library
                , obelisk-route
                , dependent-sum
                , mtl
+               , obelisk-executable-config-inject
+               , obelisk-oauth-common
+               , obelisk-oauth-backend
+               , text
+               , case-insensitive
+               , transformers
+               , aeson
+               , http-client
+               , http-client-tls
   exposed-modules: Backend
                  , Backend.Devel
 
@@ -40,9 +49,3 @@ executable backend
                , lens
                , modern-uri
                , obelisk-backend
-               , obelisk-executable-config
-               , obelisk-executable-config-inject
-               , obelisk-oauth-common
-               , obelisk-oauth-backend
-               , text
-               , case-insensitive
