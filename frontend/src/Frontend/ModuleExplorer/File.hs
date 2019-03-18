@@ -52,7 +52,7 @@ import           Data.Map                        (Map)
 import qualified Data.Map                        as Map
 import           Data.Text                       (Text)
 import           Reflex
-import           Reflex.Dom.Core                 (HasJSContext, MonadHold)
+import           Reflex.Dom.Core                 (HasJSContext)
 import qualified Text.Megaparsec      as MP
 import Network.GitHub.Types.Gist.Core as G
 ------------------------------------------------------------------------------

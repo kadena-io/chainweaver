@@ -10,7 +10,6 @@ import           Data.Aeson               (FromJSON (..), ToJSON (..), FromJSONK
                                            FromJSONKeyFunction (..), ToJSONKeyFunction (..))
 import           Data.Text                (Text)
 import           GHC.Generics             (Generic)
-import Data.Maybe (fromMaybe)
 
 import           Obelisk.OAuth.Common
 import           Obelisk.Route

@@ -49,8 +49,6 @@ import           Reflex.Dom.Core              (HasJSContext)
 import           Reflex.NotReady.Class
 ------------------------------------------------------------------------------
 import Obelisk.Route.Frontend (RouteToUrl (..), R, Routed (..))
-
-import Obelisk.OAuth.AuthorizationRequest
 ------------------------------------------------------------------------------
 import Common.Route (FrontendRoute)
 import           Frontend.Backend
@@ -61,7 +59,6 @@ import           Frontend.Messages
 import           Frontend.ModuleExplorer.Impl
 import           Frontend.OAuth
 import           Frontend.GistStore
-import           Common.OAuth
 import           Frontend.Repl
 import           Frontend.Wallet
 

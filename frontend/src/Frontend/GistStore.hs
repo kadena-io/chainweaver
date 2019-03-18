@@ -30,23 +30,19 @@
 module Frontend.GistStore where
 
 ------------------------------------------------------------------------------
-import           Control.Arrow                     ((&&&), first)
+import           Control.Arrow                     (first)
 import           Control.Lens
-import qualified Data.List                         as L
-import           Data.Map                          (Map)
 import qualified Data.Map                          as Map
 import           Data.Text                         (Text)
-import qualified Data.Text                         as T
 import           GHC.Generics                      (Generic)
 import           Reflex
 import Control.Applicative (liftA2)
 import Network.GitHub.API
 import Network.GitHub.Types.Gist as G
-import Network.GitHub.Types.Gist.Core as G
-import Servant.Client.Core (RunClient (..), clientIn, HasClient (..), ServantError (..), BaseUrl (..), Scheme (Https))
+import Servant.Client.Core (ServantError (..), BaseUrl (..), Scheme (Https))
 import Servant.API
 import Data.Proxy (Proxy (..))
-import Servant.Client.JSaddle (client, ClientM, runClientM, ClientEnv (..), mkClientEnv)
+import Servant.Client.JSaddle (client, ClientM, runClientM, ClientEnv (..))
 import Language.Javascript.JSaddle (liftJSM)
 import GHCJS.DOM.XMLHttpRequest (setRequestHeader)
 ------------------------------------------------------------------------------
@@ -214,7 +210,7 @@ makeGistStore m cfg = mdo
 --     -> m (Event t respChecked)
 -- @
 getRetry
-  :: (MonadHold t m, MonadFix m, Reflex t, MonadJSM m, PerformEvent t m, MonadJSM (Performable m))
+  :: (MonadHold t m, MonadFix m, PerformEvent t m)
   => Event t (Either ServantError resp)
   -> Event t req
   -> m (Event t req, Event t ServantError)
@@ -280,11 +276,11 @@ runGitHubClientM mToken action = liftJSM $
     { baseUrl = BaseUrl Https "api.github.com" 443 ""
     , fixUpXhr = \req -> do
         traverse_ (setAuthorization req) mToken
-        setRequestHeader req "Accept" "application/vnd.github.v3+json"
+        setRequestHeader req ("Accept" :: Text) ("application/vnd.github.v3+json" :: Text)
     }
   where
     setAuthorization req (AccessToken token) =
-      setRequestHeader req "Authorization" ("token " <> token)
+      setRequestHeader req ("Authorization" :: Text) (("token " <> token) :: Text)
 
 
 -- Instances:

@@ -13,9 +13,7 @@ import           Data.Foldable            (traverse_)
 import           Data.Monoid              ((<>))
 import qualified Data.Text                as T
 import qualified Data.Text.IO             as T
-import           Obelisk.Route            (R)
 import qualified Pact.Server.Server       as Pact
-import           Snap                     (Snap)
 import           System.Directory         (createDirectoryIfMissing)
 import           System.FilePath          ((</>))
 

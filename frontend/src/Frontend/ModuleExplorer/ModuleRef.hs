@@ -214,6 +214,8 @@ textModuleRefSource isModule m =
         -> printPretty "Example" (exampleName n)
       ModuleSource_File (FileRef_Stored n)
         -> printPretty "Stored" (textFileName n)
+      ModuleSource_File (FileRef_Gist _)
+        -> printPretty "Gist" "GitHub"
       ModuleSource_Deployed b
         -> printPretty "Deployed" (textBackendName b)
   where

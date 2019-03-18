@@ -48,16 +48,11 @@ import           Obelisk.Route.Frontend
 import           Pact.Repl
 import           Pact.Repl.Types
 import           Pact.Types.Lang
-import Pact.Types.Info (Code (..))
-import Obelisk.OAuth.AuthorizationRequest
 ------------------------------------------------------------------------------
-import           Common.OAuth
-import           Frontend.OAuth
 import           Common.Route
 import           Frontend.Editor
 import           Frontend.Foundation
 import           Frontend.Ide
-import           Frontend.GistStore
 import           Frontend.Messages
 import           Frontend.ModuleExplorer
 import           Frontend.ModuleExplorer.RefPath

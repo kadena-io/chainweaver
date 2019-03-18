@@ -123,7 +123,7 @@ makeOAuth cfg = mdo -- Required to get access to `tokens` for clearing any old t
     , Map.delete . _authorizationRequest_provider <$> cfg ^. oAuthCfg_authorize
     ]
 
-  performEvent $ setItemStorage localStorage StoreOAuth_Tokens <$> updated tokens
+  performEvent_ $ setItemStorage localStorage StoreOAuth_Tokens <$> updated tokens
 
   pure
     ( mempty & messagesCfg_send .~ fmap textOAuthError onErr

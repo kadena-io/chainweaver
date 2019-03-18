@@ -7,9 +7,6 @@ import qualified Data.Text as T
 import Obelisk.ExecutableConfig (get)
 import Control.Monad.IO.Class (MonadIO, liftIO)
 
-import qualified Obelisk.ExecutableConfig
-
-
 
 
 -- | How many Pact instances to launch in development mode.
