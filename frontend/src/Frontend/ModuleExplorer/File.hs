@@ -150,18 +150,26 @@ textFileType = \case
 --   TODO: Implement support for `FileRef_Stored`.
 fetchFile
   :: ( PerformEvent t m, TriggerEvent t m, MonadJSM (Performable m)
-     , HasJSContext JSM
+     , HasJSContext JSM, MonadHold t m
      , HasGistStore model t, HasGistStoreCfg mConf t, Monoid mConf
      )
   => model -> Event t FileRef -> m (mConf, Event t (FileRef, PactFile))
 fetchFile m onFileRef = do
     onExample <- fetchExample $ fmapMaybe (^? _FileRef_Example) onFileRef
-    let onGist = m ^. gistStore_loaded
+    let
+      onGist = m ^. gistStore_loaded
+      onGistReq = fmapMaybe (^? _FileRef_Gist) onFileRef
+    -- TODO: We should use a proper `Requester` workflow or similar, this is a
+    -- hack to get this release out:
+    requested <- hold False $ leftmost
+      [ False <$ onGist
+      , True <$ onGistReq
+      ]
     pure
-      ( mempty & gistStoreCfg_load .~ fmapMaybe (^? _FileRef_Gist) onFileRef
+      ( mempty & gistStoreCfg_load .~ onGistReq
       , leftmost
           [ wrapExample <$> onExample
-          , wrapGist <$> onGist
+          , fmap (wrapGist . snd) . ffilter fst $ attach requested onGist
           ]
       )
   where
