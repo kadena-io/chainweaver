@@ -6,7 +6,7 @@ Web IDE for the [Pact](https://pact-language.readthedocs.io/en/latest/) language
 
 This is an [Obelisk project](https://github.com/obsidiansystems/obelisk), so find general hacking instructions there.
 
-Since release 1.4 pact-web has support github gist sharing so it needs client credentials for operation. See section `Deployments` for details on howto obtain them and put the client id and the client secret in the appropriate config files.
+Since release 1.4 pact-web has support GitHub gist sharing so it needs client credentials for operation. See section `Deployments` for details on howto obtain them and put the client id and the client secret in the appropriate config files.
 
 The homepage URL will be http://localhost:8000, the authorization callback url will be http://localhost:8000/oauth/redirect/github .
 
@@ -53,7 +53,7 @@ runtime (see below). Nevertheless it has to exist, otherwise pact-web would run 
 
 pact-web needs GitHub client credentials for the Gist sharing feature. So before deployment, you need to provide those credentials via obelisk executable configs.
 
-To create a GitHub OAuth application, login into github, then go to `Settings` of either your github account or of an organization that should host the application. There you can find `Developer Settings` allowing you to create an OAuth application.
+To create a GitHub OAuth application, login into GitHub, then go to `Settings` of either your GitHub account or of an organization that should host the application. There you can find `Developer Settings` allowing you to create an OAuth application.
 
 Direct links:
 
@@ -62,7 +62,7 @@ Direct links:
 
 Replace `YOUR-ORGANIZATION` with your organization's name.
 
-Press `Register an application` or `New application`, then give it a name of your liking fill out the url, which should match the url where pact-web will be running. For the Authorization callback URL use the following:
+Press `Register an application` or `New application`, then give it a name of your liking and fill out the url, which should match the url where pact-web will be running. For the Authorization callback URL use the following:
 
 https://HOST-WHERE-PACT-WEB-RUNS/oauth/redirect/github
 
@@ -71,7 +71,7 @@ Replace `HOST-WHERE-PACT-WEB-RUNS` with your actual host name and press `Registe
 
 You will be presented with a screen showing your application's client id and its client secret.
 
-The client id must go into config/common/oauth/github/client-id. The client secret must go into config/backend/oauth/github/client-secret of your deployment directory (or in your checked out source repository, when setting up a developer environment).
+The client id must go into `config/common/oauth/github/client-id`. The client secret must go into `config/backend/oauth/github/client-secret` of your deployment directory (or in your checked out source repository, when setting up a developer environment).
 
 ### Actual deployment
 
