@@ -272,4 +272,4 @@ controlBarRight = do
         text "Docs"
       elAttr "a" ( "href" =: "http://kadena.io"
                 <> "class" =: "main-header__documents" <> "target" =: "_blank") $
-        imgWithAlt (static @"img/gray-kadena-logo.svg") "Kadena Logo" blank
+        elAttr "img" ("src" =: (static @"img/Klogo.png") <> "alt" =: "Kadena Logo" <> "style" =: "height: 28px;") blank
