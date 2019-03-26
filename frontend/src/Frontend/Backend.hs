@@ -54,6 +54,7 @@ import           Data.Aeson                        (FromJSON (..), Object,
                                                     genericToJSON, withObject,
                                                     (.:))
 import           Data.Aeson.Types                  (typeMismatch)
+import Control.Monad.Catch (MonadThrow)
 import qualified Data.ByteString.Lazy              as BSL
 import           Data.Coerce                       (coerce)
 import           Data.Default                      (def)
@@ -61,6 +62,7 @@ import qualified Data.HashMap.Strict               as H
 import qualified Data.Map                          as Map
 import           Data.Map.Strict                   (Map)
 import           Data.Set                          (Set)
+import Control.Monad.Reader (ReaderT (..))
 import qualified Data.Set                          as Set
 import           Data.Text                         (Text)
 import qualified Data.Text                         as T
@@ -106,9 +108,6 @@ import Frontend.ModuleExplorer.RefPath as MP
 -- | URI for accessing a backend.
 type BackendUri = Text
 
-newtype PactError = PactError Text deriving (Show, FromJSON)
-newtype PactDetail = PactDetail Text deriving (Show, FromJSON)
-
 -- | Name that uniquely describes a valid backend.
 newtype BackendName = BackendName
   { unBackendName :: Text
@@ -134,7 +133,7 @@ instance IsRefPath BackendName where
 
 
 -- | Request data to be sent to the backend.
-data BackendRequestV backend = BackendRequest
+data BackendRequest = BackendRequest
   { _backendRequest_code    :: Text
     -- ^ Pact code to be deployed, the `code` field of the
     -- <https://pact-language.readthedocs.io/en/latest/pact-reference.html#cmd-field-and-payload
@@ -142,32 +141,20 @@ data BackendRequestV backend = BackendRequest
   , _backendRequest_data    :: Object
     -- ^ The data to be deployed (referenced by deployed code). This is the
     -- `data` field of the `exec` payload.
-  , _backendRequest_backend :: backend
-    -- ^ The backend to deploy the code to, either specified by `BackendName` or `BackendUri`.
+  , _backendRequest_backend    :: BackendName
+    -- ^ The backend to deploy to, specified by Name.
   , _backendRequest_signing :: Set KeyName
-    -- ^ With what keys the request should be signed. Don't sign with any keys
-    -- when calling to `performLocalReadCustom` and similar.
+    -- ^ With what keys the request should be signed.
   } deriving (Show, Generic)
 
-makePactLensesNonClassy ''BackendRequestV
+makePactLensesNonClassy ''BackendRequest
 
--- | High level interface to `BackendRequestV` - you only need to specify the
---   `BackendName`.
-type BackendRequest = BackendRequestV BackendName
-
--- | Low level interface to `BackendRequestV` - with actualy `BackendUri` to
---   use for doing the request.
-type RawBackendRequest = BackendRequestV BackendUri
 
 data BackendError
   = BackendError_BackendError Text
   -- ^ Server responded with a non 200 status code.
   | BackendError_ReqTooLarge
   -- ^ Request size exceeded the allowed limit.
-  | BackendError_Failure Text
-  -- ^ The backend responded with status "failure"
-  -- The contained `Text` will hold the full message, which might be useful for
-  -- debugging.
   | BackendError_ParseError Text
   -- ^ Parsing the JSON response failed.
   | BackendError_CommandFailure CommandError
@@ -175,6 +162,8 @@ data BackendError
   | BackendError_DoesNotExist BackendName
   -- ^ The request could not be processed as the given `BackendName` no longer
   -- exists.
+  | BackendError_InvalidUri BackendName
+  -- ^ The given backend has no valid URI.
   | BackendError_Other Text
   -- ^ Other errors that should really never happen.
   deriving Show
@@ -235,11 +224,13 @@ data StoreBackend a where
 
 deriving instance Show (StoreBackend a)
 
+-- NEXT STEPS:
+--   - Get rid of RequestType
+--   - No longer abstract /local and /send, but treat them differently
+--   - Implement /send in conjunction with /poll - separated.
+--   - Re-implement deploy in terms of /send and /poll and a dynamic holding state.
+--   - Expose /local and make it not need wallet and keysets.
 -- | What endpoint to use for a backend request.
-data RequestType
-  = RequestType_Send
-  | RequestType_Local
-
 
 makeBackend
   :: forall t m model mConf
@@ -275,26 +266,6 @@ makeBackend w cfg = mfix $ \ ~(_, backendL) -> do
           , _backend_meta = meta
           }
       )
-
--- | Build a `RawBackendRequest` from a `BackendRequest`.
---
---   Yields `Left BackendError_DoesNotExist` if corresponding uri cannot be found.
-mkRawBackendRequest
-  :: (HasBackend model t, MonadSample t m, Reflex t)
-  => model
-  -> BackendRequest
-  -> m (Either BackendError RawBackendRequest)
-mkRawBackendRequest m r = do
-    cBackends <- sample . current $ m ^. backend_backends
-    let
-      name = _backendRequest_backend r
-      mUri = cBackends ^? _Just . at name . _Just
-
-    pure $ maybe (Left $ BackendError_DoesNotExist name) (Right . mkRaw r) mUri
-
-  where
-    mkRaw :: BackendRequest -> BackendUri -> RawBackendRequest
-    mkRaw req uri = req & backendRequest_backend .~ uri
 
 
 buildMeta
@@ -340,11 +311,45 @@ deployCode
   -> Event t BackendRequest
   -> m (mConf, Event t ())
 deployCode w backendL onReq = do
-    reqRes <- performBackendRequest (w ^. wallet) backendL RequestType_Send onReq
-    pure $ ( mempty & messagesCfg_send .~ fmap renderReqRes reqRes
-           , () <$ ffilter (either (const False) (const True) . snd) reqRes
-           )
+  onErrKeys <- performSend (w ^. wallet) backendL onReq
+  let
+    onSendErr = fmapMaybe (traverse $ preview _Left) onErrKeys
+    onReqKeys = fmapMaybe (traverse $ preview _Right) onErrKeys
+
+    onReqsKeys :: Event t [(BackendRequest, RequestKey)]
+    onReqsKeys = uncurry (map . (,)) . second coerce <$> onReqKeys
+
+    onNewEntries :: Event t (MonoidalMap BackendName (Map RequestKey BackendRequest))
+    onNewEntries =
+      MMap.fromListWith (<>) (_backendRequest_backend . fst &&& Map.fromList swap) <$> onReqsKeys
+
+  sentReqs <- foldDyn id Map.empty $ leftmost
+    [ mappend <$> onNewEntries
+    ]
+
+  now <- getCurrentTime
+  onTick <- fmap (const ()) <$> tickLossy 10 now
+  onFirstPoll <- fmap (const ()) <$> delay 2 onReqKeys
+  let
+    onPollReqs = fanMap $ tag current sentReqs $ leftmost
+      [ onTick, onFirstPoll ]
+    backends = MMap.keys <$> current sentReqs
+
+  networkView $ traverse (getReqEvents onPollReqs) <$> backends
+
+  onErrResps <- performPoll backendL onPollReq
+
+  let
+    onClearSent = (traverse $ preview _Right)
+    reqRes = leftmost [ fmap Left <$> onSendErr, onErrResps ]
+
+
+  pure $ ( mempty & messagesCfg_send .~ fmap renderReqRes reqRes
+         , () <$ ffilter (either (const False) (const True) . snd) reqRes
+         )
   where
+    getReqEvents :: EventSelector t (Const2 BackendName) -> BackendName ->
+
     renderReqRes :: (BackendRequest, BackendErrorResult) -> Text
     renderReqRes (req, res) =
       T.unlines [renderReq req, prettyPrintBackendErrorResult res]
@@ -396,6 +401,7 @@ getBackends = do
              else Just staticList
         onList = either (const (Just staticList)) getListFromResp <$> onResError
       holdDyn Nothing onList
+
 
 -- | Parse server list.
 --
@@ -460,6 +466,12 @@ loadModules backendL onRefresh = do
         TLiteral (LString v) _ -> Just v
         _         -> Nothing
 
+-- | Monad transformer stack for doing backend requests.
+type BackendReqT m = ReaderT S.ClientEnv (ExceptT BackendError m)
+
+liftClientM :: S.ClientM a -> BackendReqT m a
+liftClientM m = reThrowWith packHttpErr . S.runClientM m =<< ask
+
 
 -- | Perform a read or non persisted request to the /local endpoint.
 --
@@ -491,44 +503,27 @@ performLocalReadCustom
   -> (req -> BackendRequest)
   -> Event t req
   -> m (Event t (req, BackendErrorResult))
-performLocalReadCustom backendL unwrap onReq =
+performLocalReadCustom backendL bName unwrap onReq =
   let
-    fakeBackend = backendL
-      { _backend_meta = pure $ PublicMeta
-          { _pmChainId = "1"
-          , _pmSender  = "someSender"
-          , _pmGasLimit = ParsedInteger 100000
-          , _pmGasPrice = ParsedDecimal 1.0
-          , _pmFee = ParsedDecimal 100
-          }
+    myMeta = pure $ PublicMeta
+      { _pmChainId = "1"
+      , _pmSender  = "someSender"
+      , _pmGasLimit = ParsedInteger 100000
+      , _pmGasPrice = ParsedDecimal 1.0
+      , _pmFee = ParsedDecimal 100
       }
   in
-    performBackendRequestCustom emptyWallet fakeBackend RequestType_Local unwrap onReq
+    performReqTagged backendL bName onReq (_backendRequest_backend . unwrap) $ \req -> do
+      payload <- buildCmd myMeta mempty mempty req
+      r <- liftClientM $ local pactServerApiClient cmd
+      fromCommandValue r
 
 
 -- | Send a transaction via the /send endpoint.
 --
---   This is a convenience wrapper around `backendRequest`, use that if you
---   need some richer request information attached to your response or if this is really all you need `performBackendRequestCustom`.
-performBackendRequest
-  :: forall t m
-  . ( PerformEvent t m, MonadJSM (Performable m)
-    , TriggerEvent t m
-    , MonadSample t (Performable m)
-    )
-  => Wallet t
-  -> Backend t
-  -> RequestType
-  -> Event t BackendRequest
-  -> m (Event t (BackendRequest, BackendErrorResult))
-performBackendRequest w backendL rType onReq =
-  performBackendRequestCustom w backendL rType id onReq
-
--- | Send a transaction via the /send endpoint.
---
---   This is a convenience wrapper around `backendRequest`, attaching a custom
---   request type to the response.
-performBackendRequestCustom
+--   The resulting event contains the triggering event so you can keep track of
+--   response/request relations easily.
+performSend
   :: forall t m req
   . ( PerformEvent t m, MonadJSM (Performable m)
     , TriggerEvent t m
@@ -536,106 +531,138 @@ performBackendRequestCustom
     )
   => Wallet t
   -> Backend t
-  -> RequestType
-  -> (req -> BackendRequest)
   -> Event t req
-  -> m (Event t (req, BackendErrorResult))
-performBackendRequestCustom w backendL rType unwrap onReq =
-    performEventAsync $ ffor onReqWithKeys $ \(keys, req) cb -> do
-      meta <- sample $ current $ backendL ^. backend_meta
-      eRawReq <- mkRawBackendRequest backendL $ unwrap req
-      case eRawReq of
-        Left err -> liftIO $ cb (req, Left err)
-        Right rawReq -> do
-          let
-            signing = _backendRequest_signing rawReq
-          payload <- buildCmd meta keys signing rawReq
-          liftJSM $ backendRequest rType rawReq payload $ cb . (req,)
-  where
-    onReqWithKeys = attach (current $ _wallet_keys w) onReq
+  -> m (Event t (req, Either BackendError RequestKeys))
+performSend w backendL onReq = performSendCustom w backendL id onReq
 
 
 -- | Send a transaction via the /send endpoint.
---   And wait for its result via /listen. `performBackendRequest` is a little
---   more convenient to use if you don't need more elaborate request
---   information in your response.
+performSendCustom
+  :: forall t m req
+  . ( PerformEvent t m, MonadJSM (Performable m)
+    , TriggerEvent t m
+    , MonadSample t (Performable m)
+    )
+  => Wallet t
+  -> Backend t
+  -> (req -> BackendRequest)
+  -> Event t req
+  -> m (Event t (req, Either BackendError RequestKeys))
+performSendCustom w backendL bName unwrap onReq =
+  performReqTagged backendL onReq (_backendRequest_backend . unwrap) $ \req -> do
+    payload <- backendBuildCmd w backendL (unwrap req)
+    liftClientM $ send pactServerApiClient $ SubmitBatch . pure $ payload
+
+
+-- | Send a transaction via the /send endpoint.
+performPoll
+  :: forall t m req
+  . ( PerformEvent t m, MonadJSM (Performable m)
+    , TriggerEvent t m
+    , MonadSample t (Performable m)
+    )
+  => Backend t
+  -> Event t (BackendName, Poll)
+  -> m (Event t (Either BackendError PollResponses))
+performPoll w backendL bName unwrap onReq =
+  performReqTagged backendL onReq fst $ \(_, req) -> do
+    liftClientM $ poll pactServerApiClient req
+
+
+-- | Build a `Command Text` given the current backend and the wallet from a
+--   `BackendRequest`.
+backendBuildCmd
+  :: forall t m req
+  . ( MonadSample t m)
+  => Wallet t
+  -> Backend t
+  -> BackendRequest
+  -> m (Command Text)
+backendBuildCmd w backendL req = do
+  meta <- sample $ current $ backendL ^. backend_meta
+  keys <- sample $ current $ _wallet_keys w
+  let signing = _backendRequest_signing rawReq
+  buildCmd meta keys signing req
+
+
+-- | Perform a request in the `BackendReqT`.
 --
---   Usage example:
---
--- @
---   let w = ourWallet
---   performEventAsync $ ffor (attachKeys w onReq) $ (\(keys, req)) cb ->
---     backendRequest (keys, buildBackendReq req) $ cb . (req,)
--- @
---
---   This primitive function is also useful if you happen to need to execute
---   multiple requests whose responses should be fed in the reflex network
---   simultaneously, because the logically belong together for example:
---
--- @
---   let w = ourWallet
---   performEventAsync $ ffor (attachKeys w onReq) $ (\(keys, req)) cb -> do
---     backendRequest (keys, buildBackendReq req) $ \res -> do
---       someMoreRequest someArg $ cb . (req, res,)
---
--- @
-backendRequest
-  :: RequestType
-  -> RawBackendRequest
-  -> Command Text
-  -> (BackendErrorResult -> IO ())
-  -> JSM ()
-backendRequest reqType req cmd callback = void . forkJSM $ do
-    let
-      uri = _backendRequest_backend req
-    baseUrl <- S.parseBaseUrl $ T.unpack uri
-    let clientEnv = S.mkClientEnv baseUrl
+--   The resulting event also contains the initiating request, so you can
+--   relate responses with requests easily.
+performReqTagged
+  :: Backend t
+  -> Event t req
+  -> (req -> BackendName) -- ^ Get the backend name to use.
+  -> (req -> BackendReqT (Performable m) a)
+  -> m (Event t (req, Either BackendError a))
+performReqTagged backendL onReq getBName doReq =
+  performEventAsync $ ffor onReq $ \req cb -> void . forkIO $ do
+    res <- runBackendReqT backendL (getBName req) $ doReq req
+    liftIO $ cb (req, res)
 
-    er <- liftJSM . runExceptT $ do
-      v <- performReq clientEnv
-      ExceptT . pure $ fromCommandValue v
 
-    liftIO $ callback $ er
-  where
-    performReq clientEnv = case reqType of
-      RequestType_Send -> do
-        res <- runReq clientEnv $ send pactServerApiClient $ SubmitBatch . pure $ cmd
-        key <- getRequestKey $ res
-        fmap _arResult . runReq clientEnv $ listen pactServerApiClient $ ListenerRequest key
-      RequestType_Local ->
-         runReq clientEnv  $ local pactServerApiClient cmd
+-- | Run a `BackendReqT` transformer stack.
+runBackendReqT
+  :: (MonadJSM m, MonadSample t m)
+  => Backend t
+  -> BackendName
+  -> BackendReqT m a -- ^ The action to run.
+  -> m (Either BackendError a)
+runBackendReqT backendL bName action = runExceptT $ do
+  env <- getClientEnv backendL bName
+  runReaderT action env
 
-    -- | Rethrow an error value by wrapping it with f.
-    reThrowWith :: (e -> BackendError) -> JSM (Either e a) -> ExceptT BackendError JSM a
-    reThrowWith f = ExceptT . fmap (left f)
+-------------------- Helper functions for request handling ----------------------------
 
-    runReq :: S.ClientEnv -> S.ClientM a -> ExceptT BackendError JSM a
-    runReq env = reThrowWith packHttpErr . flip S.runClientM env
+-- | Get `ClientEnv` for running requests on a given backend.
+getClientEnv
+  :: (MonadSample t m)
+  => Backend t
+  -> BackendName
+  -> ExceptT BackendError m S.ClientEnv
+getClientEnv backendL bName = do
 
-    packHttpErr :: S.ServantError -> BackendError
-    packHttpErr e = case e of
-      S.FailureResponse response ->
-        if S.responseStatusCode response == HTTP.status413
-           then BackendError_ReqTooLarge
-           else BackendError_BackendError $ T.pack $ show response
-      _ -> BackendError_BackendError $ T.pack $ show e
+  cBackends <- sample . current $ backendL ^. backend_backends
 
-    fromCommandValue :: MonadError BackendError m => CommandValue -> m (Term Name)
-    fromCommandValue = \case
-      CommandFailure e -> throwError $ BackendError_CommandFailure e
-      CommandSuccess v -> pure v
+  uri <- maybe (throwError $ BackendError_DoesNotExist bName) pure $
+    cBackends ^. at bName
 
-    getRequestKey :: MonadError BackendError m => RequestKeys -> m RequestKey
-    getRequestKey r =
-      case _rkRequestKeys r of
-        []    -> throwError $ BackendError_Other "Response did not contain any RequestKeys."
-        [key] -> pure key
-        _     -> throwError $ BackendError_Other "Response contained more than one RequestKey."
+  baseUrl <- maybe (throwError $ BackendError_InvalidUri bName) pure $
+    S.parseBaseUrl $ T.unpack uri
 
--- TODO: upstream this?
-instance HasJSContext JSM where
-  type JSContextPhantom JSM = JSContextRef
-  askJSContext = JSContextSingleton <$> askJSM
+  pure $ S.mkClientEnv baseUrl
+
+
+-- | Rethrow an error value by wrapping it with f.
+reThrowWith
+  :: (Monad m, MonadTrans tr, MonadError BackendError (tr m))
+  => (e -> BackendError)
+  -> m (Either e a)
+  -> tr m a
+reThrowWith f x = either (throwError . f) pure =<< lift x
+
+
+packHttpErr :: S.ServantError -> BackendError
+packHttpErr e = case e of
+  S.FailureResponse response ->
+    if S.responseStatusCode response == HTTP.status413
+       then BackendError_ReqTooLarge
+       else BackendError_BackendError $ T.pack $ show response
+  _ -> BackendError_BackendError $ T.pack $ show e
+
+fromCommandValue :: MonadError BackendError m => CommandValue -> m (Term Name)
+fromCommandValue = \case
+  CommandFailure e -> throwError $ BackendError_CommandFailure e
+  CommandSuccess v -> pure v
+
+getRequestKey :: MonadError BackendError m => RequestKeys -> m RequestKey
+getRequestKey r =
+  case _rkRequestKeys r of
+    []    -> throwError $ BackendError_Other "Response did not contain any RequestKeys."
+    [key] -> pure key
+    _     -> throwError $ BackendError_Other "Response contained more than one RequestKey."
+
+---------------------------------------------------------------------------------------
 
 
 -- Request building ....
@@ -643,7 +670,7 @@ instance HasJSContext JSM where
 -- | Build a single cmd as expected in the `cmds` array of the /send payload.
 --
 -- As specified <https://pact-language.readthedocs.io/en/latest/pact-reference.html#send here>.
-buildCmd :: (MonadIO m, MonadJSM m) => PublicMeta -> KeyPairs -> Set KeyName -> BackendRequestV b -> m (Command Text)
+buildCmd :: (MonadIO m, MonadJSM m) => PublicMeta -> KeyPairs -> Set KeyName -> BackendRequest -> m (Command Text)
 buildCmd meta keys signing req = do
   cmd <- encodeAsText . encode <$> buildExecPayload meta req
   let
@@ -678,7 +705,7 @@ buildSigs cmdHash keys signing = do
 --
 --   As specified <https://pact-language.readthedocs.io/en/latest/pact-reference.html#cmd-field-and-payloads here>.
 --   Use `encodedAsText` for passing it as the `cmd` payload.
-buildExecPayload :: MonadIO m => PublicMeta -> BackendRequestV b -> m (Payload PublicMeta Text)
+buildExecPayload :: MonadIO m => PublicMeta -> BackendRequest -> m (Payload PublicMeta Text)
 buildExecPayload meta req = do
   nonce <- getNonce
   let
@@ -698,11 +725,11 @@ buildExecPayload meta req = do
 prettyPrintBackendError :: BackendError -> Text
 prettyPrintBackendError = ("ERROR: " <>) . \case
   BackendError_BackendError msg -> "Error http response: " <> msg
-  BackendError_ReqTooLarge-> "Request exceeded the allowed maximum size!"
-  BackendError_Failure msg -> "Backend failure: " <> msg
+  BackendError_ReqTooLarge -> "Request exceeded the allowed maximum size!"
   BackendError_ParseError m -> "Server response could not be parsed: " <> m
   BackendError_CommandFailure (CommandError e d) -> T.pack e <> ": " <> maybe "" T.pack d
   BackendError_DoesNotExist (BackendName n) -> "Backend named '" <> n <> "' no longer exists."
+  BackendError_InvalidUri (BackendName n) -> "Backend named '" <> n <> "' has no proper URI."
   BackendError_Other m -> "Some unknown problem: " <> m
 
 
@@ -727,6 +754,11 @@ encodeAsText :: BSL.ByteString -> Text
 encodeAsText = T.decodeUtf8 . BSL.toStrict
 
 -- Instances:
+
+-- TODO: upstream this?
+instance HasJSContext JSM where
+  type JSContextPhantom JSM = JSContextRef
+  askJSContext = JSContextSingleton <$> askJSM
 
 instance Semigroup BackendRequest where
   (<>) = mappenddefault
