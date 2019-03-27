@@ -24,7 +24,7 @@ library
                , bytestring
                , common
                , modern-uri
-               , aeson-lens
+               , lens-aeson
                , containers
                , data-default
                , dependent-map
