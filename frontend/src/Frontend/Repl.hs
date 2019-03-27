@@ -61,13 +61,14 @@ import           GHC.Generics               hiding (to)
 import           Reflex
 import qualified Text.Trifecta              as TF
 import qualified Text.Trifecta.Delta        as Delta
+import Text.URI as URI
 ------------------------------------------------------------------------------
 import           Pact.Parse                 (exprsOnly)
 import           Pact.Repl
 import           Pact.Repl.Types
 import           Pact.Types.Exp
 import           Pact.Types.Info
-import           Pact.Types.Term
+import           Pact.Types.Term            (Term (..), Name, ModuleName(..), Module (..), Interface (..))
 ------------------------------------------------------------------------------
 import           Frontend.Backend
 import           Frontend.Foundation
@@ -268,7 +269,8 @@ mkState uBackends = do
   where
     getMinBackend maybeBackends = do
       (_key, b) <- Map.lookupMin =<< maybeBackends
-      pure (T.unpack b)
+      bNoPath <-(\uri -> URI.render $ uri { uriPath = Nothing }) <$> mkURI b
+      pure (T.unpack bNoPath)
 
 -- | Set env-data to the given Object
 setEnvData :: Object -> PactRepl (Term Name)
