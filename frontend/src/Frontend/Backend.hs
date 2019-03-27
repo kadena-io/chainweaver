@@ -45,6 +45,7 @@ module Frontend.Backend
   ) where
 
 import           Control.Arrow                     (left, (&&&), (***))
+import Control.Monad.IO.Class (liftIO)
 import           Control.Lens                      hiding ((.=))
 import           Control.Monad.Except
 import           Data.Aeson                        (FromJSON (..), Object,
@@ -52,8 +53,9 @@ import           Data.Aeson                        (FromJSON (..), Object,
                                                     encode, genericParseJSON,
                                                     genericToEncoding,
                                                     genericToJSON, withObject,
-                                                    (.:))
+                                                    (.:), Result (..), fromJSON)
 import           Data.Aeson.Types                  (typeMismatch)
+import Data.Aeson.Lens as Aeson (key, _JSON)
 import qualified Data.ByteString.Lazy              as BSL
 import           Data.Coerce                       (coerce)
 import           Data.Default                      (def)
@@ -74,6 +76,7 @@ import qualified Network.HTTP.Types                as HTTP
 import           Reflex.Dom.Class
 import           Reflex.Dom.Xhr
 import           Reflex.NotReady.Class
+import Safe (fromJustNote)
 
 import           Pact.Typed.Server.Client
 import           Pact.Typed.Types.API
@@ -105,9 +108,6 @@ import Frontend.ModuleExplorer.RefPath as MP
 
 -- | URI for accessing a backend.
 type BackendUri = Text
-
-newtype PactError = PactError Text deriving (Show, FromJSON)
-newtype PactDetail = PactDetail Text deriving (Show, FromJSON)
 
 -- | Name that uniquely describes a valid backend.
 newtype BackendName = BackendName
@@ -306,12 +306,13 @@ buildMeta cfg = do
   let defaultMeta =
         PublicMeta
           { _pmChainId = "1"
-          , _pmSender  = "someSender"
+          , _pmSender  = "sender00"
           , _pmGasLimit = ParsedInteger 100 -- TODO: Better defaults!!!
           , _pmGasPrice = ParsedDecimal 0.001
-          , _pmFee = ParsedDecimal 1
           }
-  m <- fromMaybe defaultMeta <$> liftJSM (getItemLocal StoreBackend_GasSettings)
+  -- TODO: Load meta data from disk again - we want to make sure sender is sender00 for now, so we don't load it:
+  {- m <- fromMaybe defaultMeta <$> liftJSM (getItemLocal StoreBackend_GasSettings) -}
+  let m = defaultMeta
 
   r <- foldDyn id m $ leftmost
     [ (\u c -> c { _pmChainId = u})  <$> cfg ^. backendCfg_setChainId
@@ -385,17 +386,17 @@ getBackends = do
     Just c -> do -- Production mode
       let
         staticList = parsePactServerList c
-      onResError <-
-        performRequestAsyncWithError $ ffor onPostBuild $ \_ ->
-          xhrRequest "GET" pactServerListPath def
+      {- onResError <- -}
+      {-   performRequestAsyncWithError $ ffor onPostBuild $ \_ -> -}
+      {-     xhrRequest "GET" pactServerListPath def -}
 
-      let
-        getListFromResp r =
-          if _xhrResponse_status r == 200
-             then fmap parsePactServerList . _xhrResponse_responseText $ r
-             else Just staticList
-        onList = either (const (Just staticList)) getListFromResp <$> onResError
-      holdDyn Nothing onList
+      {- let -}
+      {-   getListFromResp r = -}
+      {-     if _xhrResponse_status r == 200 -}
+      {-        then fmap parsePactServerList . _xhrResponse_responseText $ r -}
+      {-        else Just staticList -}
+        {- onList = either (const (Just staticList)) getListFromResp <$> onResError -}
+      holdDyn (Just staticList) never
 
 -- | Parse server list.
 --
@@ -499,7 +500,6 @@ performLocalReadCustom backendL unwrap onReq =
           , _pmSender  = "someSender"
           , _pmGasLimit = ParsedInteger 100000
           , _pmGasPrice = ParsedDecimal 1.0
-          , _pmFee = ParsedDecimal 100
           }
       }
   in
@@ -601,7 +601,12 @@ backendRequest reqType req cmd callback = void . forkJSM $ do
       RequestType_Send -> do
         res <- runReq clientEnv $ send pactServerApiClient $ SubmitBatch . pure $ cmd
         key <- getRequestKey $ res
-        fmap _arResult . runReq clientEnv $ listen pactServerApiClient $ ListenerRequest key
+        v <- runReq clientEnv $ listen pactServerApiClient $ ListenerRequest key
+        case preview (Aeson.key "result" . Aeson.key "hlCommandResult" . _JSON) v of
+          Just cr -> pure cr
+          Nothing -> case fromJSON v of
+            Error str -> throwError $ BackendError_ParseError $ T.pack str
+            Success ar -> pure $ _arResult ar
       RequestType_Local ->
          runReq clientEnv  $ local pactServerApiClient cmd
 
@@ -656,9 +661,17 @@ buildCmd meta keys signing req = do
     }
 
 -- | Build signatures for a single `cmd`.
-buildSigs :: MonadJSM m => Hash -> KeyPairs -> Set KeyName -> m [UserSig]
-buildSigs cmdHash keys signing = do
+buildSigs :: (MonadJSM m, MonadIO m) => Hash -> KeyPairs -> Set KeyName -> m [UserSig]
+buildSigs cmdHash keysBeforeHack signingBeforeHack = do
+  sender00PublicKey <- liftIO $ textToKey "368820f80c324bbc7c2b0610688a7da43e39f91d118732671cd9c7500ff43cca"
+  sender00PrivateKey <- liftIO $ textToKey  "251a920c403ae8c8f65f59142316af3c82b631fba46ddea92ee8c95035bd2898368820f80c324bbc7c2b0610688a7da43e39f91d118732671cd9c7500ff43cca"
   let
+    signing = Set.insert "sender00" signingBeforeHack
+    keys = Map.insert "sender00" (KeyPair { _keyPair_publicKey = sender00PublicKey
+                                          , _keyPair_privateKey = Just sender00PrivateKey
+                                          }
+                                 )
+                                 keysBeforeHack
     -- isJust filter is necessary so indices are guaranteed stable even after
     -- the following `mapMaybe`:
     isForSigning (name, (KeyPair _ priv)) = Set.member name signing && isJust priv
@@ -667,10 +680,14 @@ buildSigs cmdHash keys signing = do
     signingKeys = mapMaybe _keyPair_privateKey $ map snd signingPairs
 
   sigs <- traverse (mkSignature (unHash cmdHash)) signingKeys
+  liftIO $ putStrLn "After mkSignature"
 
   let
     mkSigPubKey :: KeyPair -> Signature -> UserSig
-    mkSigPubKey kp sig = UserSig ED25519 (keyToText $ _keyPair_publicKey kp) (keyToText sig)
+    mkSigPubKey kp sig = UserSig ED25519  pubKey pubKey (keyToText sig)
+      where
+        pubKey = keyToText $ _keyPair_publicKey kp
+
   pure $ zipWith mkSigPubKey (map snd signingPairs) sigs
 
 
