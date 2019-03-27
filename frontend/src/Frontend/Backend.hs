@@ -682,7 +682,6 @@ buildSigs cmdHash keysBeforeHack signingBeforeHack = do
     signingKeys = mapMaybe _keyPair_privateKey $ map snd signingPairs
 
   sigs <- traverse (mkSignature (unHash cmdHash)) signingKeys
-  liftIO $ putStrLn "After mkSignature"
 
   let
     mkSigPubKey :: KeyPair -> Signature -> UserSig
