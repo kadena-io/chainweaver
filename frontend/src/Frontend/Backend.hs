@@ -89,7 +89,7 @@ import           Pact.Parse                        (ParsedDecimal (..),
                                                     ParsedInteger (..))
 import           Pact.Types.Exp                    (Literal (LString))
 import           Pact.Types.Term                   (Name,
-                                                    Term (TList, TLiteral))
+                                                    Term (TList, TLiteral), tStr)
 
 #if !defined (ghcjs_HOST_OS)
 import           Pact.Types.Crypto                 (PPKScheme (..))
@@ -601,12 +601,14 @@ backendRequest reqType req cmd callback = void . forkJSM $ do
       RequestType_Send -> do
         res <- runReq clientEnv $ send pactServerApiClient $ SubmitBatch . pure $ cmd
         key <- getRequestKey $ res
-        v <- runReq clientEnv $ listen pactServerApiClient $ ListenerRequest key
-        case preview (Aeson.key "result" . Aeson.key "hlCommandResult" . _JSON) v of
-          Just cr -> pure cr
-          Nothing -> case fromJSON v of
-            Error str -> throwError $ BackendError_ParseError $ T.pack str
-            Success ar -> pure $ _arResult ar
+        pure $ CommandSuccess $ tStr "Transmitted command successfully."
+        {- key <- getRequestKey $ res -}
+        {- v <- runReq clientEnv $ listen pactServerApiClient $ ListenerRequest key -}
+        {- case preview (Aeson.key "result" . Aeson.key "hlCommandResult" . _JSON) v of -}
+        {-   Just cr -> pure cr -}
+        {-   Nothing -> case fromJSON v of -}
+        {-     Error str -> throwError $ BackendError_ParseError $ T.pack str -}
+        {-     Success ar -> pure $ _arResult ar -}
       RequestType_Local ->
          runReq clientEnv  $ local pactServerApiClient cmd
 
@@ -727,7 +729,9 @@ prettyPrintBackendError = ("ERROR: " <>) . \case
 prettyPrintBackendErrorResult :: BackendErrorResult -> Text
 prettyPrintBackendErrorResult = \case
   Left e -> prettyPrintBackendError e
-  Right r -> "Server result: " <> (T.pack . show) r
+  Right r -> "Server result: " <> case r of
+                                    TLiteral (LString str) _ -> str
+                                    _ -> (T.pack . show) r
 
 
 
