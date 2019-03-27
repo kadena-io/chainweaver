@@ -205,14 +205,14 @@ fetchFile m onFileRef = do
 {-          else pure $ Just req -}
 
 -- | Get the `Module`s contained in `PactFile`.
-fileModules :: PactFile -> Map ModuleName Module
+fileModules :: PactFile -> Map ModuleName (ModuleDef (Term Name))
 fileModules (Code c) = case Pact.compileExps (Pact.mkTextInfo c) <$> Pact.parseExprs c of
   Right (Right terms) -> Map.fromList $ mapMaybe getModule terms
   _                   -> Map.empty
 
 
 -- | Get module from a `Term`
-getModule :: MonadPlus m => Term Name -> m (ModuleName, Module)
+getModule :: MonadPlus m => Term Name -> m (ModuleName, ModuleDef (Term Name))
 getModule = \case
   TModule m _ _ -> pure (m ^. nameOfModule, m)
   _             -> mzero

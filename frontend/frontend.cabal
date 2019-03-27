@@ -23,6 +23,8 @@ library
                , bound
                , bytestring
                , common
+               , modern-uri
+               , aeson-lens
                , containers
                , data-default
                , dependent-map

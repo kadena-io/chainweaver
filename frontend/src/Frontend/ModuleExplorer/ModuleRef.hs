@@ -72,7 +72,7 @@ import           Pact.Types.Term                 as PactTerm (Module (..),
                                                               Namespace (..),
                                                               NamespaceName (..),
                                                               Term (TList, TLiteral, TModule, TObject),
-                                                              tStr)
+                                                              tStr, ModuleDef (..), Object (..), FieldKey)
 ------------------------------------------------------------------------------
 import           Frontend.Backend
 import           Frontend.Foundation
@@ -236,7 +236,7 @@ fetchModule
     )
   => model
   -> Event t DeployedModuleRef
-  -> m (Event t (DeployedModuleRef, Either Text Module))
+  -> m (Event t (DeployedModuleRef, Either Text (ModuleDef (Term Name))))
 fetchModule backendL onReq = do
     deployedResult :: Event t (DeployedModuleRef, BackendErrorResult)
       <- performLocalReadCustom (backendL ^. backend) mkReq onReq
@@ -257,19 +257,19 @@ fetchModule backendL onReq = do
       , _backendRequest_signing = Set.empty
       }
 
-    getModule :: Term Name -> Either Text Module
+    getModule :: Term Name -> Either Text (ModuleDef (Term Name))
     getModule  = \case
-      TObject terms _ _ -> do
-        mods <- fmap fileModules $ getCode terms
+      TObject obj _ -> do
+        mods <- fmap fileModules $ getCode (_oObject obj)
         case Map.elems mods of
           []   -> throwError "No module in response"
           m:[] -> pure m
           _    -> throwError "More than one module in response?"
       _ -> throwError "Server response did not contain a  TObject module description."
 
-    getCode :: [(Term Name, Term Name)] -> Either Text Code
+    getCode :: [(FieldKey, Term Name)] -> Either Text Code
     getCode props =
-        case lookup (tStr "code") props of
+        case lookup "code" props of
           Nothing -> throwError "No code property in module description object!"
           Just (TLiteral (LString c) _) -> pure $ Code c
           _ -> throwError "No code found, but something else!"

@@ -74,6 +74,8 @@ in
         unix-time = haskellLib.dontCheck super.unix-time;
         wai-app-static = haskellLib.dontCheck super.wai-app-static;
         wai-extra = haskellLib.dontCheck super.wai-extra;
+        prettyprinter-ansi-terminal = haskellLib.dontCheck (haskellLib.dontHaddock super.prettyprinter-ansi-terminal);
+        prettyprinter-convert-ansi-wl-pprint = haskellLib.dontCheck (haskellLib.dontHaddock super.prettyprinter-convert-ansi-wl-pprint);
 
         servant-github = haskellLib.dontCheck super.servant-github;
 
@@ -100,12 +102,20 @@ in
             });
 
 
-            # sbv >= 7.9
+            # sbv 8.1
             sbv = pkgs.haskell.lib.dontCheck (self.callCabal2nix "sbv" (pkgs.fetchFromGitHub {
               owner = "LeventErkok";
               repo = "sbv";
-              rev = "3dc60340634c82f39f6c5dca2b3859d10925cfdf";
-              sha256 = "18xcxg1h19zx6gdzk3dfs87447k3xjqn40raghjz53bg5k8cdc31";
+              rev = "365b1a369a2550d6284608df3fbc17e2663c4d3c";
+              sha256 = "134f148g28dg7b3c1rvkh85pfl9pdlvrvl6al4vlz72f3y5mb2xg";
+            }) {});
+
+            # need crackNum 2.3
+            crackNum = pkgs.haskell.lib.dontCheck (self.callCabal2nix "crackNum" (pkgs.fetchFromGitHub {
+              owner = "LeventErkok";
+              repo = "crackNum";
+              rev = "54cf70861a921062db762b3c50e933e73446c3b2";
+              sha256 = "02cg64rq8xk7x53ziidljyv3gsshdpgbzy7h03r869gj02l7bxwa";
             }) {});
 
             # servant-client-jsaddle = haskellLib.doJailbreak (haskellLib.dontCheck (self.callCabal2nix "servant-client-jsaddle" ((pkgs.fetchFromGitHub {
