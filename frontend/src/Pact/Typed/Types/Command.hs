@@ -41,7 +41,7 @@ module Pact.Typed.Types.Command
   , ProcessedCommand(..) -- ,_ProcSucc,_ProcFail
   , Address(..),aFrom,aTo
   , PrivateMeta(..),pmAddress
-  , PublicMeta(..),pmChainId,pmSender,pmGasLimit,pmGasPrice,pmFee
+  , PublicMeta(..),pmChainId,pmSender,pmGasLimit,pmGasPrice
   , HasPlafMeta(..)
   , Payload(..) -- ,pMeta,pNonce,pPayload
   , ParsedCode(..) -- ,pcCode,pcExps

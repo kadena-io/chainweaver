@@ -104,7 +104,7 @@ makePactLenses ''ModuleExplorerCfg
 
 -- | Current ModuleExploer state.
 data ModuleExplorer t = ModuleExplorer
-  { _moduleExplorer_moduleStack     :: Dynamic t [(ModuleRef, Module)]
+  { _moduleExplorer_moduleStack     :: Dynamic t [(ModuleRef, ModuleDef (Term Name))]
     -- ^ The stack of currently selected modules.
   , _moduleExplorer_selectedFile    :: MDynamic t (FileRef, PactFile)
     -- ^ The currently selected file if any.
@@ -129,7 +129,7 @@ makePactLenses ''ModuleExplorer
 moduleExplorer_selection
   :: (Reflex t, HasModuleExplorer explr t)
   => explr
-  -> MDynamic t (Either (FileRef, PactFile) (ModuleRef, Module))
+  -> MDynamic t (Either (FileRef, PactFile) (ModuleRef, ModuleDef (Term Name)))
 moduleExplorer_selection explr = do
   stk <- explr ^. moduleExplorer_moduleStack
   fileL <- explr ^. moduleExplorer_selectedFile

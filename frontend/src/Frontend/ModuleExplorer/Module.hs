@@ -27,6 +27,8 @@
 module Frontend.ModuleExplorer.Module
   ( -- * Re-exported Module and ModuleName
     module PactTerm
+    -- * Abbreviations
+  , ModDef
     -- * Retrieve information about a `Module`
   , PactFunction (..)
   , HasPactFunction (..)
@@ -45,7 +47,7 @@ import           Control.Lens
 import           Data.Text           (Text)
 import qualified Pact.Compile        as Pact
 import qualified Pact.Parse          as Pact
-import           Pact.Types.Term     as PactTerm (Module (..), ModuleName (..), Use (..))
+import           Pact.Types.Term     as PactTerm
 ------------------------------------------------------------------------------
 import           Pact.Types.Lang     (Code (..), Def (..), DefName (..),
                                       DefType, FunType, Meta (_mDocs), Name,
@@ -54,67 +56,58 @@ import           Pact.Types.Lang     (Code (..), Def (..), DefName (..),
 import           Frontend.Foundation
 
 -- Module utility functions:
+--
+
+-- | ModuleDef (Term Name) is quite a mouth full.
+type ModDef = ModuleDef (Term Name)
 
 -- | Get the `ModuleName` of a `Module`.
-nameOfModule :: Lens' Module ModuleName
-nameOfModule f modL = setModName <$> f modName
-  where
-    setModName n = case modL of
-      Interface {} -> modL { _interfaceName = n }
-      Module {}    -> modL { _mName = n }
-    modName = case modL of
-      Interface {..} -> _interfaceName
-      Module {..}    -> _mName
+nameOfModule :: Lens' (ModuleDef g) ModuleName
+nameOfModule f = \case
+  MDInterface m -> MDInterface <$> interfaceName f m
+  MDModule m    -> MDModule <$> mName f m
 
 -- | Get the source code of a `Module`.
-codeOfModule :: Lens' Module Code
-codeOfModule f modL = setCode <$> f code
-  where
-    setCode c = case modL of
-      Interface {} -> modL { _interfaceCode = c }
-      Module {}    -> modL { _mCode = c }
-    code = case modL of
-      Interface {..} -> _interfaceCode
-      Module {..}    -> _mCode
+codeOfModule :: Lens' (ModuleDef g) Code
+codeOfModule f = \case
+  MDInterface m -> MDInterface <$> interfaceCode f m
+  MDModule m    -> MDModule <$> mCode f m
+
 
 -- | Get the used modules of a `Module`.
-importsOfModule :: Lens' Module [ Use ]
-importsOfModule f modL = setImports <$> f imports
-  where
-    setImports c = case modL of
-      Interface {} -> modL { _interfaceImports = c }
-      Module {}    -> modL { _mImports = c }
-    imports = case modL of
-      Interface {..} -> _interfaceImports
-      Module {..}    -> _mImports
+importsOfModule :: Lens' (ModuleDef g) [ Use ]
+importsOfModule f = \case
+  MDInterface m -> MDInterface <$> interfaceImports f m
+  MDModule m    -> MDModule <$> mImports f m
+
 
 -- | Get the imported `ModuleName`s directly.
 --
 --   `_uModuleName` gets unwrapped, in contrast to `importsOfModule` which gets
 --   you the full `Use`.
-importNamesOfModule :: Lens' Module [ ModuleName ]
+importNamesOfModule :: Lens' (ModuleDef g) [ ModuleName ]
 importNamesOfModule f modL = setImports <$> f imports
   where
     setImports c = case modL of
-      Interface {..} -> modL { _interfaceImports = zipWith setName _interfaceImports c }
-      Module {..}    -> modL { _mImports = zipWith setName _mImports c }
+      MDInterface (m@Interface {..}) -> MDInterface $ m { _interfaceImports = zipWith setName _interfaceImports c }
+      MDModule (m@Module {..})    -> MDModule $ m { _mImports = zipWith setName _mImports c }
     imports = map _uModuleName $ case modL of
-      Interface {..} -> _interfaceImports
-      Module {..}    -> _mImports
+      MDInterface (Interface {..}) -> _interfaceImports
+      MDModule (Module {..})    -> _mImports
     setName u n = u { _uModuleName = n }
 
 -- | Get the `ModuleName` of a `Module`.
-interfacesOfModule :: Fold Module [ModuleName]
+interfacesOfModule :: Fold (ModuleDef g) [ModuleName]
 interfacesOfModule f modL = modL <$ f interfaces
   where
     interfaces = case modL of
-      Interface {..} -> []
-      Module {..}    -> _mInterfaces
+      MDInterface (Interface {..}) -> []
+      MDModule (Module {..})    -> _mInterfaces
 
 -- | Module is really a `Module` as opposed to an interface?
-isModule :: Module -> Bool
+isModule :: (ModuleDef g) -> Bool
 isModule = \case
-  Module {} -> True
+  MDModule {} -> True
   _         -> False
 
 -- Get hold of modules and functions:
@@ -132,7 +125,7 @@ data PactFunction = PactFunction
 makePactLenses ''PactFunction
 
 -- | Functions of a `Module`
-functionsOfModule :: Module -> [PactFunction]
+functionsOfModule :: ModuleDef g -> [PactFunction]
 functionsOfModule m =
   case Pact.compileExps Pact.mkEmptyInfo <$> Pact.parseExprs (_unCode $ m ^. codeOfModule) of
     Right (Right terms) -> concatMap getFunctions terms

@@ -36,7 +36,7 @@ import           Data.Text                   (Text)
 import qualified Data.Text                   as T
 import           Pact.Parse                  (ParsedDecimal (..),
                                               ParsedInteger (..))
-import           Pact.Types.Command          (PublicMeta (..))
+import           Pact.Types.ChainMeta        (PublicMeta (..))
 import           Reflex
 import           Reflex.Dom
 import           Reflex.Dom.Contrib.CssClass (elKlass)

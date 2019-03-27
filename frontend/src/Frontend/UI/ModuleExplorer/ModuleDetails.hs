@@ -70,7 +70,7 @@ moduleDetails
     , HasUIModuleDetailsModelCfg mConf m t
     )
   => model
-  -> (ModuleRef, Module)
+  -> (ModuleRef, ModuleDef (Term Name))
   -> m mConf
 moduleDetails m (selectedRef, selected) = do
     headerCfg <- elClass "div" "segment" $ do

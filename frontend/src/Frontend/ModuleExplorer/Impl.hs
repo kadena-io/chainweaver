@@ -348,7 +348,7 @@ pushPopModule
   -> Event t ()
   -> Event t ModuleRef
   -> Event t ()
-  -> m (mConf, Dynamic t [(ModuleRef, Module)])
+  -> m (mConf, Dynamic t [(ModuleRef, ModDef)])
 pushPopModule m explr onClear onPush onPop = mdo
     let onFileModRef = fmapMaybe getFileModuleRef onPush
     onFileModule <- waitForFile (explr ^. moduleExplorer_selectedFile) onFileModRef
@@ -373,7 +373,7 @@ pushPopModule m explr onClear onPush onPop = mdo
     waitForFile
       :: MDynamic t (FileRef, PactFile)
       -> Event t FileModuleRef
-      -> m (Event t (FileModuleRef, Module))
+      -> m (Event t (FileModuleRef, ModDef))
     waitForFile fileL onRef = do
       onReset <- delay 0 $ updated fileL
       modReq <- holdDyn Nothing $ leftmost [Just <$> onRef, Nothing <$ onReset]
@@ -388,12 +388,12 @@ pushPopModule m explr onClear onPush onPop = mdo
           pure (cReq, moduleL)
       pure $ fmapMaybe id . updated $ retrievedModule
 
-    updateStack :: (ModuleRef, Module) -> [(ModuleRef, Module)] -> [(ModuleRef, Module)]
+    updateStack :: (ModuleRef, ModuleDef (Term Name)) -> [(ModuleRef, ModuleDef (Term Name))] -> [(ModuleRef, ModuleDef (Term Name))]
     updateStack update = map (doUpdate update)
       where
         doUpdate new@(uK, _) old@(k, _) = if uK == k then new else old
 
-    refreshHead :: Event t [(ModuleRef, Module)] -> m (mConf, Event t (ModuleRef, Module))
+    refreshHead :: Event t [(ModuleRef, ModDef)] -> m (mConf, Event t (ModuleRef, ModDef))
     refreshHead onMods = do
       let getHeadRef = getDeployedModuleRef <=< fmap fst . listToMaybe
       (cfg, onDeployed) <- loadModule m $ fmapMaybe getHeadRef onMods
@@ -412,7 +412,7 @@ loadModule
     )
   => model
   -> Event t DeployedModuleRef
-  -> m (mConf, Event t (DeployedModuleRef, Module))
+  -> m (mConf, Event t (DeployedModuleRef, ModuleDef (Term Name)))
 loadModule backendL onRef = do
   onErrModule <- fetchModule backendL onRef
   let
