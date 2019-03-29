@@ -306,7 +306,6 @@ buildMeta cfg = do
           , _pmSender  = "someSender"
           , _pmGasLimit = ParsedInteger 100 -- TODO: Better defaults!!!
           , _pmGasPrice = ParsedDecimal 0.001
-          , _pmFee = ParsedDecimal 1
           }
   m <- fromMaybe defaultMeta <$>
     liftJSM (getItemStorage localStorage StoreBackend_GasSettings)
@@ -498,7 +497,6 @@ performLocalReadCustom backendL unwrap onReq =
           , _pmSender  = "someSender"
           , _pmGasLimit = ParsedInteger 100000
           , _pmGasPrice = ParsedDecimal 1.0
-          , _pmFee = ParsedDecimal 100
           }
       }
   in
@@ -664,7 +662,10 @@ buildSigs cmdHash keys signing = do
 
   let
     mkSigPubKey :: KeyPair -> Signature -> UserSig
-    mkSigPubKey kp sig = UserSig ED25519 (keyToText $ _keyPair_publicKey kp) (keyToText sig)
+    mkSigPubKey kp sig = UserSig ED25519 pubKey pubKey (keyToText sig)
+      where
+        pubKey = keyToText $ _keyPair_publicKey kp
+
   pure $ zipWith mkSigPubKey (map snd signingPairs) sigs
 
 
