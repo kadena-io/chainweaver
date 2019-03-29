@@ -54,7 +54,8 @@ data QuickFix
     -- ^ Keyset was not available in message - add it.
   | QuickFix_MissingKeyset Text
     -- ^ Keyset was used without being defined
-    --
+  deriving (Generic, Show, Read, Eq, Ord)
+
 makePactPrisms ''QuickFix
 
 -- | Create `QuickFix`s from `Annotation`s.
@@ -64,7 +65,7 @@ makeQuickFixes = mapMaybe makeQuickFix
 -- | Make a quick fix from an annotation, if possible.
 makeQuickFix :: Annotation -> Maybe QuickFix
 makeQuickFix =
-  MP.parseMaybe (missingEnvKeysetParser <|> missingKeysetParser)
+  MP.parseMaybe (MP.try missingEnvKeysetParser <|> missingKeysetParser)
   . _annotation_msg
 
 -- | Parser for `QuickFix_MissingEnvKeyset`.
@@ -86,10 +87,16 @@ missingKeysetParser = do
 --   The returned text will be without the enclosing quotes.
 parseString :: MP.Parsec Void Text Text
 parseString = do
-    void $ MP.char '"'
+    optionalQuote
+    -- This is new too, parsing error messages really sucks, where is my type safety? *sad*
+    optionalChar '\''
     str <- parseInnerString
-    void $ MP.char '"'
+    optionalQuote
     pure str
+  where
+    optionalChar c = (void $ MP.try $ MP.char c) <|> pure ()
+    -- This used to be quoted, it is not anymore. So let's accept both for maximum robustness.
+    optionalQuote = optionalChar '\"'
 
 
 parseInnerString :: MP.Parsec Void Text Text

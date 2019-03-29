@@ -72,7 +72,6 @@ errorList annotations =
               text $ _annotation_msg a
           renderQuickFix $ makeQuickFix a
   where
-
     renderQuickFix = maybe (pure never) $ \qf -> do
       let btnCls = ""
       onClick <- uiButton ( btnCfgTertiary
