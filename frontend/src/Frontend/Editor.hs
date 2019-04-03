@@ -205,7 +205,6 @@ typeCheckVerify m t = mdo
       , _replCfg_verifyModules = Map.keysSet . _ts_modules <$> onTransSuccess
       }
     let
-      clearAnnotation = [] <$ onReplReset
 #ifdef  ghcjs_HOST_OS
     cModules <- holdDyn Map.empty $ _ts_modules <$> onTransSuccess
     let
@@ -219,7 +218,7 @@ typeCheckVerify m t = mdo
        , annoFallbackParser <$> replO ^. messagesCfg_send
        ]
 #endif
-    pure $ leftmost [newAnnotations, clearAnnotation]
+    pure newAnnotations
   where
 -- Line numbers are off on ghcjs:
 #ifdef  ghcjs_HOST_OS
