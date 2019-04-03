@@ -213,9 +213,9 @@ makeRepl m cfg = build $ \ ~(_, impl) -> do
       onVerifySt     = fmap snd onVerifyR
 
     st <- holdDyn initState $ leftmost [ onResetSt
+                                       , onNewEnvKeys
                                        , onNewTransSt
                                        , onNewCmdSt
-                                       , onNewEnvKeys
                                        , onVerifySt
                                        ]
     let appendHist = flip (|>)
