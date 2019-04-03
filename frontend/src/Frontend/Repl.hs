@@ -42,6 +42,7 @@ module Frontend.Repl
 ------------------------------------------------------------------------------
 import           Control.Arrow              (left)
 import           Control.Lens               hiding ((|>))
+import           Control.Monad              ((>>))
 import           Control.Monad.Except
 import           Control.Monad.State.Strict
 import           Data.Aeson                 as Aeson (Object, encode)
@@ -61,14 +62,15 @@ import           GHC.Generics               hiding (to)
 import           Reflex
 import qualified Text.Trifecta              as TF
 import qualified Text.Trifecta.Delta        as Delta
-import Text.URI as URI
+import           Text.URI                   as URI
 ------------------------------------------------------------------------------
 import           Pact.Parse                 (exprsOnly)
 import           Pact.Repl
 import           Pact.Repl.Types
 import           Pact.Types.Exp
 import           Pact.Types.Info
-import           Pact.Types.Term            (Term (..), Name, ModuleName(..), Module (..), Interface (..))
+import           Pact.Types.Term            (Interface (..), Module (..),
+                                             ModuleName (..), Name, Term (..))
 ------------------------------------------------------------------------------
 import           Frontend.Backend
 import           Frontend.Foundation
@@ -165,7 +167,7 @@ makeRepl m cfg = build $ \ ~(_, impl) -> do
     -- sampling, which could trigger a loop:
     initState <- liftIO $ initReplState StringEval Nothing
     onResetSt <- performEvent $ initRepl impl m <$> leftmost
-      [ tagPromptlyDyn (m ^. backend_backends) $ cfg ^. replCfg_reset
+      [ tag (current $ m ^. backend_backends) $ cfg ^. replCfg_reset
       , tagPromptlyDyn (m ^. backend_backends) $ onPostBuild
        -- We are losing our state if backends update, luckily that only happens
        -- once on start up - and we want that update, because it is going to be
@@ -176,8 +178,17 @@ makeRepl m cfg = build $ \ ~(_, impl) -> do
     let envData = either (const HM.empty) id <$> m ^. jsonData_data
         keys = Map.elems <$> m ^. wallet_keys
 
-    onNewEnv  <- performStateCmd impl $ setEnvData <$> updated envData
-    onNewKeys <- performStateCmd impl $ setEnvKeys <$> updated keys
+    -- Those events can happen simultaneously - so make sure we don't lose any
+    -- state:
+    onRNewEnvKeys  <- performStateCmd impl $ mergeWith (>>)
+      [ setEnvData <$> updated envData
+      , setEnvKeys <$> updated keys
+      ]
+    let
+      onNewEnvKeys = fmap snd onRNewEnvKeys
+      onNewEnvKeysErr = fmapMaybe getErr onRNewEnvKeys
+
+      getErr = (^? _1 . _Left . to T.pack)
 
     onNewTransR <- runTransaction impl $ cfg ^. replCfg_sendTransaction
     onNewCmdR <- runCmd impl $ cfg ^. replCfg_sendCmd
@@ -204,8 +215,7 @@ makeRepl m cfg = build $ \ ~(_, impl) -> do
     st <- holdDyn initState $ leftmost [ onResetSt
                                        , onNewTransSt
                                        , onNewCmdSt
-                                       , onNewEnv
-                                       , onNewKeys
+                                       , onNewEnvKeys
                                        , onVerifySt
                                        ]
     let appendHist = flip (|>)
@@ -224,7 +234,10 @@ makeRepl m cfg = build $ \ ~(_, impl) -> do
 
     pure
       ( mempty
-          & messagesCfg_send .~ leftmost [ onFailedTrans, onEnvDataErr ]
+          & messagesCfg_send .~ leftmost
+              [ onFailedTrans, onEnvDataErr
+              , onNewEnvKeysErr
+              ]
       , Impl
           { _impl_state = st
           , _impl_repl = WebRepl
@@ -238,7 +251,8 @@ makeRepl m cfg = build $ \ ~(_, impl) -> do
   where
     build = fmap (fmap _impl_repl) . mfix
 
-    performStateCmd impl = performEvent . fmap (fmap snd . withRepl impl)
+    performStateCmd impl = performEvent . fmap (withRepl impl)
+
 
     -- In case we ever want to show more than the last output term:
     -- showStateTerms :: ReplState -> Text
