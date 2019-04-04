@@ -36,6 +36,7 @@ import           Snap.Util.FileServe       (serveFile)
 import           System.Directory          (canonicalizePath, doesFileExist)
 import           System.Exit               (exitFailure)
 import           System.FilePath           ((</>))
+import           System.IO                 (stderr)
 
 import           Obelisk.OAuth.Backend     (getAccessToken)
 import           Obelisk.OAuth.Common      (AccessToken, IsOAuthProvider (..),
@@ -104,11 +105,12 @@ checkDeployment = do
     missingFiles = fmap fst . filter ((== False) . snd) $ filesChecked
 
   when (not . null $ missingFiles) $ do
-    T.putStrLn "\n\n========================= PACT-WEB ERROR =========================\n\n"
-    T.putStrLn "The deployment failed due to missing config files.\nPlease consult the project's README.md for details.\n"
-    T.putStrLn "Missing files:\n"
-    T.putStrLn $ T.unlines . map ("  " <>) $ missingFiles
-    T.putStrLn "==================================================================\n\n"
+    let putErrLn = T.hPutStrLn stderr
+    putErrLn "\n\n========================= PACT-WEB ERROR =========================\n\n"
+    putErrLn "The deployment failed due to missing config files.\nPlease consult the project's README.md for details.\n"
+    putErrLn "Missing files:\n"
+    putErrLn $ T.unlines . map ("  " <>) $ missingFiles
+    putErrLn "==================================================================\n\n"
     exitFailure
 
 
