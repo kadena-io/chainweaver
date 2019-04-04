@@ -19,11 +19,6 @@ in obApp // {
         version;
 
       nixos = import (pkgs.path + /nixos);
-      # Check whether everything we need is in place.
-      checkedDeployment = pkgs.runCommand "backend-config-check" {} ''
-        ${obApp.ghc.backend}/backend check-deployment
-        echo 'args: {}' > $out
-      '';
     in nixos {
       system = "x86_64-linux";
       configuration = {
@@ -31,7 +26,6 @@ in obApp // {
           (obelisk.serverModules.mkBaseEc2 args)
           (obelisk.serverModules.mkObeliskApp (args//{inherit exe;}))
           # Make sure all configs present:
-          checkedDeployment.out
           # (pactServerModule {
           #   hostName = routeHost;
           #   inherit obApp pkgs;
