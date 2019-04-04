@@ -90,7 +90,7 @@ import           Pact.Types.Crypto                 (PPKScheme (..))
 #endif
 
 import           Common.Api
-import           Common.Route                      (pactServerListPath)
+import           Common.Route                      (pactDynServerListPath)
 import           Frontend.Crypto.Ed25519
 import           Frontend.Foundation
 import           Frontend.Messages
@@ -385,7 +385,7 @@ getBackends = do
         staticList = parsePactServerList c
       onResError <-
         performRequestAsyncWithError $ ffor onPostBuild $ \_ ->
-          xhrRequest "GET" pactServerListPath def
+          xhrRequest "GET" pactDynServerListPath def
 
       let
         getListFromResp r =

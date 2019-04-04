@@ -20,7 +20,7 @@ import           Common.Route
 
 -- | All the oauth providers we support right now.
 data OAuthProvider = OAuthProvider_GitHub
-  deriving (Show, Read, Eq, Ord, Generic)
+  deriving (Show, Read, Eq, Ord, Generic, Bounded, Enum)
 
 instance FromJSON OAuthProvider where
   parseJSON = maybe (fail "Invalid provider id") pure <=< fmap oAuthProviderFromId . parseJSON
@@ -55,10 +55,16 @@ instance IsOAuthProvider OAuthProvider where
 oAuthCfgPath :: Text
 oAuthCfgPath = "config/common/oauth/"
 
--- | Retrieve the client id of a particular client from config.
-getOAuthClientId :: MonadIO m => OAuthProvider -> m OAuthClientId
-getOAuthClientId prov = fmap OAuthClientId $ getMandatoryTextCfg $
+-- | Config file containing an OAuth provider id:
+oAuthClientIdPath :: IsOAuthProvider prov => prov -> Text
+oAuthClientIdPath prov =
   oAuthCfgPath <> unOAuthProviderId (oAuthProviderId prov) <> "/client-id"
+
+
+-- | Retrieve the client id of a particular client from config.
+getOAuthClientId :: (MonadIO m, IsOAuthProvider prov) => prov -> m OAuthClientId
+getOAuthClientId prov =
+  fmap OAuthClientId $ getMandatoryTextCfg $ oAuthClientIdPath prov
 
 
 -- | Build an OAuthConfig by reading config values.

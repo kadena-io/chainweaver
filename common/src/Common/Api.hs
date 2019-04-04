@@ -21,6 +21,9 @@ getPactInstancePort :: Int -> Text
 getPactInstancePort num = T.pack . show $ 7020 + num
 
 
+-- | Where to find the pact server list configuration.
+pactServerListPath :: Text
+pactServerListPath = "config/common/pact-server-list"
 
 -- | Retrieve the list of pact servers as specified in the static config.
 --
@@ -33,7 +36,7 @@ getPactInstancePort num = T.pack . show $ 7020 + num
 --   `numPactInstances` pact instances and the frontend will list and connect
 --   to those.
 getPactServerList :: IO (Maybe (Text))
-getPactServerList = get "config/common/pact-server-list"
+getPactServerList = get pactServerListPath
 
 getMandatoryTextCfg :: MonadIO m => Text -> m Text
 getMandatoryTextCfg p = liftIO $ do

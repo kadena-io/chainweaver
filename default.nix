@@ -20,17 +20,17 @@ in obApp // {
 
       nixos = import (pkgs.path + /nixos);
       # Check whether everything we need is in place.
-      checkDeployment = v : v;
-      # checkDeployment = v:
-      #   let
-      #     hasServerList = lib.pathExists (exe + "/config/common/pact-server-list");
-      #   in
-      #     if hasServerList
-      #     then v
-      #     else abort ("\n\n========================= PACT-WEB ERROR =========================\n\n" +
-      #                     "For deployments you have to provide a common/pact-server-list file\n" +
-      #                     "in your deployment config directory, check README.md for details!\n\n" +
-      #                     "==================================================================\n\n");
+      checkDeployment = v:
+        let
+          checked = runCommand "backend-config-check" {} ''
+            ${obApp.ghc.backend}/backend check-deployment
+            mkdir $out
+            touch $out/passed-check
+          '';
+        in
+          if lib.pathExists (checked.out + /passed-check) # Dummy check to force evaluation.
+          then v
+          else abort ("Ok, we should actually never get here ... that's weird!");
     in nixos {
       system = "x86_64-linux";
       configuration = checkDeployment {

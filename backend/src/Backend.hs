@@ -20,9 +20,11 @@ import           Data.Maybe                (isJust)
 import           Data.Text                 (Text)
 import qualified Data.Text                 as T
 import qualified Data.Text.Encoding        as T
+import qualified Data.Text.IO              as T
 import           Network.HTTP.Client       (Manager)
 import           Network.HTTP.Client.TLS   (newTlsManager)
 import qualified Obelisk.Backend           as Ob
+import           Obelisk.ExecutableConfig  (get)
 import           Obelisk.Route             (pattern (:/), R, checkEncoder,
                                             renderFrontendRoute)
 import           Snap                      (Method (POST), Request (..), Snap,
@@ -32,6 +34,7 @@ import           Snap                      (Method (POST), Request (..), Snap,
                                             writeBS, writeLBS)
 import           Snap.Util.FileServe       (serveFile)
 import           System.Directory          (canonicalizePath, doesFileExist)
+import           System.Exit               (exitFailure)
 import           System.FilePath           ((</>))
 
 import           Obelisk.OAuth.Backend     (getAccessToken)
@@ -45,8 +48,9 @@ import           Obelisk.OAuth.Common      (AccessToken, IsOAuthProvider (..),
 import qualified Backend.Devel             as Devel
 import           Common.Api
 import           Common.OAuth              (OAuthProvider (..),
-                                            buildOAuthConfig)
+                                            buildOAuthConfig, oAuthClientIdPath)
 import           Common.Route
+
 
 data BackendCfg = BackendCfg
   { _backendCfg_oAuth                :: OAuthConfig OAuthProvider
@@ -58,10 +62,13 @@ data BackendCfg = BackendCfg
 oAuthBackendCfgPath :: Text
 oAuthBackendCfgPath = "config/backend/oauth/"
 
--- | Retrieve the client id of a particular client from config.
-getOAuthClientSecret :: OAuthProvider -> IO OAuthClientSecret
-getOAuthClientSecret prov = fmap OAuthClientSecret $ getMandatoryTextCfg $
+oAuthClientSecretPath :: IsOAuthProvider prov => prov -> Text
+oAuthClientSecretPath prov =
   oAuthBackendCfgPath <> unOAuthProviderId (oAuthProviderId prov) <> "/client-secret"
+
+-- | Retrieve the client id of a particular client from config.
+getOAuthClientSecret :: IsOAuthProvider prov => prov -> IO OAuthClientSecret
+getOAuthClientSecret = fmap OAuthClientSecret . getMandatoryTextCfg . oAuthClientSecretPath
 
 
 buildCfg :: IO BackendCfg
@@ -75,6 +82,34 @@ buildCfg = do
   clientSecret <- getOAuthClientSecret OAuthProvider_GitHub
   oCfg <- buildOAuthConfig renderRoute
   BackendCfg oCfg (\case OAuthProvider_GitHub -> clientSecret) <$> newTlsManager
+
+
+-- | Check whether needed configs are present.
+--
+--   TODO: We should also check whether they are valid as good as we can.
+checkDeployment :: IO ()
+checkDeployment = do
+  let
+    filesToCheck =
+      map oAuthClientIdPath [ minBound .. maxBound :: OAuthProvider]
+      <>
+      map oAuthClientSecretPath [ minBound .. maxBound :: OAuthProvider ]
+      <>
+        [ "config/common/route"
+        , pactServerListPath
+        ]
+  presentState <- traverse (fmap isJust . get) filesToCheck
+  let
+    filesChecked = zip filesToCheck presentState
+    missingFiles = fmap fst . filter ((== False) . snd) $ filesChecked
+
+  when (not . null $ missingFiles) $ do
+    T.putStrLn "\n\n========================= PACT-WEB ERROR =========================\n\n"
+    T.putStrLn "The deployment failed due to missing config files.\nPlease consult the project's README.md for details.\n"
+    T.putStrLn "Missing files:\n"
+    T.putStrLn $ T.unlines . map ("  " <>) $ missingFiles
+    T.putStrLn "==================================================================\n\n"
+    exitFailure
 
 
 backend :: Ob.Backend BackendRoute FrontendRoute

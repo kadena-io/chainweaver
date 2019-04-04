@@ -58,8 +58,8 @@ dynConfigsRoot = "dyn-configs"
 -- | URL path to the pact server list.
 --
 --   The frontend can retrieve the current pact server list from this path.
-pactServerListPath :: Text
-pactServerListPath = dynConfigsRoot <> "/pact-servers"
+pactDynServerListPath :: Text
+pactDynServerListPath = dynConfigsRoot <> "/pact-servers"
 
 
 -- | This type is used to define frontend routes, i.e. ones for which the backend will serve the frontend.
