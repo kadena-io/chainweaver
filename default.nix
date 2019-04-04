@@ -22,7 +22,7 @@ in obApp // {
       # Check whether everything we need is in place.
       checkDeployment = v:
         let
-          checked = runCommand "backend-config-check" {} ''
+          checked = pkgs.runCommand "backend-config-check" {} ''
             ${obApp.ghc.backend}/backend check-deployment
             mkdir $out
             touch $out/passed-check
