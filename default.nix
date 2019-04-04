@@ -20,23 +20,18 @@ in obApp // {
 
       nixos = import (pkgs.path + /nixos);
       # Check whether everything we need is in place.
-      checkDeployment = v:
-        let
-          checked = pkgs.runCommand "backend-config-check" {} ''
-            ${obApp.ghc.backend}/backend check-deployment
-            mkdir $out
-            touch $out/passed-check
-          '';
-        in
-          if lib.pathExists (checked.out + /passed-check) # Dummy check to force evaluation.
-          then v
-          else abort ("Ok, we should actually never get here ... that's weird!");
+      checkedDeployment = pkgs.runCommand "backend-config-check" {} ''
+        ${obApp.ghc.backend}/backend check-deployment
+        echo 'args: {}' > $out
+      '';
     in nixos {
       system = "x86_64-linux";
-      configuration = checkDeployment {
+      configuration = {
         imports = [
           (obelisk.serverModules.mkBaseEc2 args)
           (obelisk.serverModules.mkObeliskApp (args//{inherit exe;}))
+          # Make sure all configs present:
+          checkedDeployment.out
           # (pactServerModule {
           #   hostName = routeHost;
           #   inherit obApp pkgs;
