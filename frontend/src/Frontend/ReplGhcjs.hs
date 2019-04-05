@@ -56,6 +56,7 @@ import           Frontend.Ide
 import           Frontend.Messages
 import           Frontend.ModuleExplorer
 import           Frontend.ModuleExplorer.RefPath
+import           Frontend.OAuth                         (HasOAuth (..))
 import           Frontend.Repl
 import           Frontend.UI.Button
 import           Frontend.UI.Dialogs.DeployConfirmation (uiDeployConfirmation)
@@ -95,6 +96,7 @@ app = void . mfix $ \ cfg -> do
 handleRoutes
   :: ( MonadWidget t m, Routed t (R FrontendRoute) m, SetRoute t (R FrontendRoute) m
      , Monoid mConf, HasModuleExplorer model t , HasModuleExplorerCfg mConf t
+     , HasOAuth model t
      )
   => model
   -> m mConf
@@ -107,17 +109,20 @@ handleRoutes m = do
         . attachWith getLoaded (current loaded)
         $ onRoute
 
+      onOAuthRouteReset = (FrontendRoute_Main :/ ()) <$ m ^. oAuth_error
+
       onNewRoute = fmapMaybe id
         . attachWith buildRoute (current route)
         $ updated loaded
 
-    setRoute onNewRoute
+    setRoute $ leftmost [onNewRoute, onOAuthRouteReset]
 
     pure $ mempty
       & moduleExplorerCfg_loadFile .~ fmapMaybe (^? _LoadedRef_File) onNewLoaded
       & moduleExplorerCfg_loadModule .~ fmapMaybe (^? _LoadedRef_Module) onNewLoaded
 
   where
+
     getLoaded :: Maybe LoadedRef -> R FrontendRoute -> Maybe LoadedRef
     getLoaded cLoaded routeL = do
       let rp = parseRoute routeL
@@ -278,9 +283,9 @@ controlBarLeft m = do
       uiButton
           ( headerBtnCfg
               & uiButtonCfg_title .~ Just "Create gist on GitHub"
-              & uiButtonCfg_class %~ (<> "main-header__text-icon-button")
+              {- & uiButtonCfg_class %~ (<> "main-header__text-icon-button") -}
           ) $ do
-        btnTextIcon (static @"img/github-gist-dark.svg") "Make Gist" blank
+        {- btnTextIcon (static @"img/github-gist-dark.svg") "Make Gist" blank -}
         elClass "span" "main-header__minor-text" $ text "Make "
         text "Gist"
 
