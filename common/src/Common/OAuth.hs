@@ -1,15 +1,17 @@
+{-# LANGUAGE DeriveGeneric     #-}
 {-# LANGUAGE LambdaCase        #-}
 {-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE DeriveGeneric #-}
 
 module Common.OAuth where
 
-import Control.Monad
-import           Control.Monad.IO.Class   (MonadIO)
-import           Data.Aeson               (FromJSON (..), ToJSON (..), FromJSONKey (..), ToJSONKey (..),
-                                           FromJSONKeyFunction (..), ToJSONKeyFunction (..))
-import           Data.Text                (Text)
-import           GHC.Generics             (Generic)
+import           Control.Monad
+import           Control.Monad.IO.Class (MonadIO)
+import           Data.Aeson             (FromJSON (..), FromJSONKey (..),
+                                         FromJSONKeyFunction (..), ToJSON (..),
+                                         ToJSONKey (..), ToJSONKeyFunction (..))
+import           Data.Text              (Text)
+import qualified Data.Text              as T
+import           GHC.Generics           (Generic)
 
 import           Obelisk.OAuth.Common
 import           Obelisk.Route
@@ -75,7 +77,7 @@ getOAuthClientId prov =
 buildOAuthConfig :: MonadIO m => (R FrontendRoute -> Text) -> m (OAuthConfig OAuthProvider)
 buildOAuthConfig renderRoute = do
   clientId <- getOAuthClientId OAuthProvider_GitHub
-  baseUri <- getMandatoryTextCfg "config/common/route"
+  baseUri <- T.dropWhileEnd (== '/') <$> getMandatoryTextCfg "config/common/route"
   pure $ OAuthConfig
     { _oAuthConfig_renderRedirectUri = Just $
         \oAuthRoute -> (baseUri <>) . renderRoute $ FrontendRoute_OAuth :/ oAuthRoute
