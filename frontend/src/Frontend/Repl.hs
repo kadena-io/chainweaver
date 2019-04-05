@@ -69,8 +69,7 @@ import           Pact.Repl
 import           Pact.Repl.Types
 import           Pact.Types.Exp
 import           Pact.Types.Info
-import           Pact.Types.Term            (Interface (..), Module (..),
-                                             ModuleName (..), Name, Term (..))
+import           Pact.Types.Term            (ModuleName (..), Name, Term (..))
 ------------------------------------------------------------------------------
 import           Frontend.Backend
 import           Frontend.Foundation

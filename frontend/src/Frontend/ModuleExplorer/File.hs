@@ -58,7 +58,7 @@ import Network.GitHub.Types.Gist.Core as G
 ------------------------------------------------------------------------------
 import qualified Pact.Compile                    as Pact
 import qualified Pact.Parse                      as Pact
-import           Pact.Types.Lang                 (Code (..), Module, ModuleName,
+import           Pact.Types.Lang                 (Code (..), ModuleName,
                                                   Name, Term (TModule))
 ------------------------------------------------------------------------------
 import           Frontend.Foundation
