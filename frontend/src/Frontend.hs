@@ -52,7 +52,7 @@ loaderMarkup = do
 
 newHead :: DomBuilder t m => m ()
 newHead = do
-    el "title" $ text "Kadena - Pact Test Net"
+    el "title" $ text "Kadena - Pact Testnet"
     meta ("name" =: "description" <> "content" =: "Write, test, and deploy safe smart contracts using Pact, Kadena's programming language")
     meta ("name" =: "keywords" <> "content" =: "kadena, pact, pact testnet, pact language, pact programming language, smart contracts, safe smart contracts, smart contract language, blockchain, learn blockchain programming, chainweb")
     meta ("charset" =: "utf-8")

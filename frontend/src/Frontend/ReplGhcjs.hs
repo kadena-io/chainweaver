@@ -53,7 +53,6 @@ import           Common.Route
 import           Frontend.Editor
 import           Frontend.Foundation
 import           Frontend.Ide
-import           Frontend.Messages
 import           Frontend.ModuleExplorer
 import           Frontend.ModuleExplorer.RefPath
 import           Frontend.OAuth                         (HasOAuth (..))
@@ -243,7 +242,7 @@ controlBarLeft m = do
         elClass "span" "version" $ text $ "v" <> ver
       elClass "div" "main-header__project-loader" $ do
 
-        resetCfg <- resetBtn
+        {- resetCfg <- resetBtn -}
 
         onLoadClicked <- loadReplBtn
 
@@ -259,19 +258,13 @@ controlBarLeft m = do
           gistCfg =  mempty & moduleExplorerCfg_createGist .~  onCreateGist
 
           deployCfg = mempty & modalCfg_setModal .~ reqConfirmation
-        pure $ deployCfg <> loadCfg <> resetCfg <> gistCfg
+        {- pure $ deployCfg <> loadCfg <> resetCfg <> gistCfg -}
+        pure $ deployCfg <> loadCfg <> gistCfg
   where
     headerBtnCfg = btnCfgPrimary & uiButtonCfg_class %~ (<> "main-header__button")
 
     deployBtn = uiButton headerBtnCfg $
       text $ "Deploy"
-
-    resetBtn = do
-      onClick <- uiButton (headerBtnCfg & uiButtonCfg_title .~ Just "Reset REPL and Messages") $
-        text $ "Reset"
-      pure $ mempty
-        & messagesCfg_clear .~ onClick
-        & replCfg_reset .~ onClick
 
     loadReplBtn =
       uiButton ( headerBtnCfg & uiButtonCfg_title .~ Just "Editor Shortcut: Ctrl+Enter") $ do
@@ -299,11 +292,16 @@ getPactVersion = do
 controlBarRight :: MonadWidget t m => m ()
 controlBarRight = do
     divClass "main-header__docs" $ do
+      elAttr "a" ( "href" =: "http://pactlang.org"
+                <> "class" =: "main-header__documents" <> "target" =: "_blank"
+                 ) $ do
+        elAttr "img" ("src" =: (static @"img/instruction.svg") <> "alt" =: "Documentation" <> "style" =: "width: 28px;") blank
+        text "Tutorials"
       elAttr "a" ( "href" =: "http://pact-language.readthedocs.io"
                 <> "class" =: "main-header__documents" <> "target" =: "_blank"
                  ) $ do
         imgWithAlt (static @"img/document.svg") "Documentation" blank
         text "Docs"
       elAttr "a" ( "href" =: "http://kadena.io"
-                <> "class" =: "main-header__documents main-header__kadena-logo" <> "target" =: "_blank") $
-        imgWithAlt (static @"img/gray-kadena-logo.svg") "Kadena Logo" blank
+                <> "class" =: "main-header__documents" <> "target" =: "_blank") $
+        elAttr "img" ("src" =: (static @"img/Klogo.png") <> "alt" =: "Kadena Logo" <> "style" =: "height: 28px;") blank
