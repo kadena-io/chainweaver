@@ -97,6 +97,7 @@ checkDeployment = do
       map oAuthClientSecretPath [ minBound .. maxBound :: OAuthProvider ]
       <>
         [ "config/common/route"
+        , "config/frontend/tracking-id"
         , pactServerListPath
         ]
   presentState <- traverse (fmap isJust . get) filesToCheck
