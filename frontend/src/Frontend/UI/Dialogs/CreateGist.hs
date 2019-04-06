@@ -29,6 +29,8 @@ import qualified Data.Text                      as T
 import           Reflex
 import           Reflex.Dom
 ------------------------------------------------------------------------------
+import           Obelisk.Generated.Static
+------------------------------------------------------------------------------
 import           Frontend.Backend
 import           Frontend.Foundation            hiding (Arg)
 import           Frontend.ModuleExplorer        (HasModuleExplorerCfg (..),
@@ -36,6 +38,7 @@ import           Frontend.ModuleExplorer        (HasModuleExplorerCfg (..),
 import           Frontend.UI.DeploymentSettings
 import           Frontend.UI.Modal
 import           Frontend.UI.Widgets
+import           Frontend.UI.Widgets.Helpers (imgWithAltCls)
 ------------------------------------------------------------------------------
 
 type HasUICreateGistModelCfg mConf t =
@@ -56,8 +59,10 @@ uiCreateGist ideL = do
   onClose <- modalHeader $ text "Create GitHub Gist"
   modalMain $ do
     (name, desc) <- modalBody $ do
-      divClass "segment" $ do
-        elKlass "div" ("group") $ do
+      divClass "segment modal__filler" $ do
+        divClass "modal__filler-horizontal-center-box" $
+          imgWithAltCls "modal__filler-img" (static @"img/Octocat.jpg") "Github logo" blank
+        divClass "group" $ do
           fileName <- labeledTextInputWithDefault "File Name" "pact-web-share.pact"
           description <- labeledTextInputWithDefault "Description" "Pact shared with pact-web."
           pure (fileName, description)

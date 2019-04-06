@@ -70,9 +70,34 @@
 }
 
 .modal__body {
+  display: flex;
+  flex-direction: column;
   height: calc(100% - 77px);
   padding-right: $normal-padding;
   overflow-y: auto;
+}
+
+/* Filler item for the body, will take up all the remaining space and is a flex box. */
+.modal__filler {
+  display: flex;
+  flex-direction: column;
+  // align-items: center;
+  justify-content: flex-start;
+  flex: 1;
+  position: relative;
+}
+
+.modal__filler-horizontal-center-box {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+/* Image to be put in the modal__filler. */
+.modal__filler-img {
+  width: 200px;
+  flex: 0;
+  padding-bottom: $normal-padding;
 }
 
 
