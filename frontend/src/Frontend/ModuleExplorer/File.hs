@@ -52,6 +52,8 @@ import           Data.Map                        (Map)
 import qualified Data.Map                        as Map
 import           Data.Text                       (Text)
 import           Reflex
+import qualified Data.HashMap.Strict as HM
+import qualified Data.Text as T
 import           Reflex.Dom.Core                 (HasJSContext)
 import qualified Text.Megaparsec      as MP
 import Network.GitHub.Types.Gist.Core as G
@@ -176,8 +178,8 @@ fetchFile m onFileRef = do
     wrapExample = FileRef_Example *** Code . fst
     wrapGist = FileRef_Gist . gistId &&& Code . getGistFile
 
-    getGistFile g = fromMaybe "Error loading gist: Gist was a valid pact-web gist." $
-      gistFiles g ^? at gistFileName . _Just . to fileContent
+    getGistFile = fromMaybe "Error loading gist: Gist was not a valid pact-web gist." .
+      fmap fileContent . listToMaybe . HM.elems . HM.filterWithKey (\k _ -> T.isSuffixOf ".pact" k) . gistFiles
 
 -- | Fetch a `File`, with cache.
 --

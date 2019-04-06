@@ -1,3 +1,4 @@
+{-# LANGUAGE ConstraintKinds        #-}
 {-# LANGUAGE DataKinds              #-}
 {-# LANGUAGE DeriveGeneric          #-}
 {-# LANGUAGE ExtendedDefaultRules   #-}
@@ -17,7 +18,6 @@
 {-# LANGUAGE TypeApplications       #-}
 {-# LANGUAGE TypeFamilies           #-}
 {-# LANGUAGE TypeOperators          #-}
-{-# LANGUAGE ConstraintKinds        #-}
 
 -- | Github gist support.
 --
@@ -30,40 +30,56 @@
 module Frontend.GistStore where
 
 ------------------------------------------------------------------------------
-import           Control.Arrow                     (first)
+import           Control.Applicative         (liftA2)
+import           Control.Arrow               (first)
 import           Control.Lens
-import qualified Data.Map                          as Map
-import           Data.Text                         (Text)
-import           GHC.Generics                      (Generic)
+import           Data.Aeson                  (FromJSON, ToJSON)
+import qualified Data.Map                    as Map
+import           Data.Proxy                  (Proxy (..))
+import           Data.Text                   (Text)
+import qualified Data.Text                   as T
+import           Generics.Deriving.Monoid    (mappenddefault, memptydefault)
+import           GHC.Generics                (Generic)
+import           GHCJS.DOM.XMLHttpRequest    (setRequestHeader)
+import           Language.Javascript.JSaddle (liftJSM)
+import           Network.GitHub.API
+import           Network.GitHub.Types.Gist   as G
 import           Reflex
-import Control.Applicative (liftA2)
-import Network.GitHub.API
-import Network.GitHub.Types.Gist as G
-import Servant.Client.Core (ServantError (..), BaseUrl (..), Scheme (Https))
-import Servant.API
-import Data.Proxy (Proxy (..))
-import Servant.Client.JSaddle (client, ClientM, runClientM, ClientEnv (..))
-import Language.Javascript.JSaddle (liftJSM)
-import GHCJS.DOM.XMLHttpRequest (setRequestHeader)
+import           Servant.API
+import           Servant.Client.Core         (BaseUrl (..), Scheme (Https),
+                                              ServantError (..))
+import           Servant.Client.JSaddle      (ClientEnv (..), ClientM, client,
+                                              runClientM)
 ------------------------------------------------------------------------------
-import Obelisk.OAuth.Common (AccessToken (..))
+import           Obelisk.OAuth.Common        (AccessToken (..))
 ------------------------------------------------------------------------------
-import           Frontend.Storage
-import           Frontend.Messages
-import           Frontend.Foundation
-import           Frontend.OAuth
 import           Common.OAuth
+import           Frontend.Foundation
+import           Frontend.Messages
+import           Frontend.OAuth
+import           Frontend.Storage
 
 type GistRef = GistId
 
-gistFileName :: Text
-gistFileName = "pact-web-share.pact"
+-- | Meta data about a gist. (Like name and description)
+data GistMeta = GistMeta
+  { _gistMeta_fileName    :: Text
+    -- ^ What filename to use in the gist.
+  , _gistMeta_description :: Text
+    -- ^ The description of the gist to create.
+  }
+  deriving (Show, Generic)
+
+instance ToJSON GistMeta
+instance FromJSON GistMeta
+instance Semigroup GistMeta where
+  (<>) = mappenddefault
 
 -- | Create and manage gists.
 data GistStoreCfg t = GistStoreCfg
-  { _gistStoreCfg_create :: Event t Text
+  { _gistStoreCfg_create :: Event t (GistMeta, Text)
     -- ^ Create gist with current editor content.
-  , _gistStoreCfg_load :: Event t GistRef
+  , _gistStoreCfg_load   :: Event t GistRef
     -- ^ Load a Gist specifified by the given `GistRef`.
   }
   deriving Generic
@@ -73,7 +89,7 @@ makePactLenses ''GistStoreCfg
 
 -- | Information about Gists.
 data GistStore t = GistStore
-  { _gistStore_loaded :: Event t Gist
+  { _gistStore_loaded  :: Event t Gist
   , _gistStore_created :: Event t GistRef
   }
   deriving Generic
@@ -91,7 +107,7 @@ type HasGistStoreModelCfg mConf t = (Monoid mConf, HasOAuthCfg mConf t, HasMessa
 -- | Storage keys for referencing data to be stored/retrieved.
 data StoreGist a where
   -- | User wanted a new gist, but was not authorized: Create gist when coming back.
-  StoreGist_GistRequested :: StoreGist Text
+  StoreGist_GistRequested :: StoreGist (GistMeta, Text)
 
 deriving instance Show (StoreGist a)
 
@@ -128,7 +144,7 @@ makeGistStore m cfg = mdo
 
   onMayNewToken <- tagOnPostBuild mGitHubToken
   let
-    onDelayedReq :: Event t (Text, AccessToken)
+    onDelayedReq :: Event t ((GistMeta, Text), AccessToken)
     onDelayedReq = fmapMaybe id . attachWith (liftA2 (,)) (current mGistWasRequested) $ onMayNewToken
 
   onErrResp <- performEvent $
@@ -171,14 +187,16 @@ makeGistStore m cfg = mdo
 
     mGitHubToken = Map.lookup OAuthProvider_GitHub <$> m ^. oAuth_accessTokens
 
-    simpleCreateGist :: Text -> ClientM Gist
+    simpleCreateGist :: (GistMeta, Text) -> ClientM Gist
     simpleCreateGist = createGist . mkGistCreate
 
-    mkGistCreate f = GistCreate
-      { gistCreateDescription = Just "Pact shared with pact-web."
-      , gistCreateFiles = mempty & at gistFileName .~ Just (FileCreate f)
+    mkGistCreate (GistMeta n d, f) = GistCreate
+      { gistCreateDescription = Just d
+      , gistCreateFiles = mempty & at (fixName n) .~ Just (FileCreate f)
       , gistCreatePublic = Just True
       }
+
+    fixName n = if T.isSuffixOf ".pact" n then n else n <> ".pact"
 
 
 -- | Retry logic on error.

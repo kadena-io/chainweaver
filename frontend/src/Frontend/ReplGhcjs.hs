@@ -59,6 +59,7 @@ import           Frontend.OAuth                         (HasOAuth (..))
 import           Frontend.Repl
 import           Frontend.UI.Button
 import           Frontend.UI.Dialogs.DeployConfirmation (uiDeployConfirmation)
+import           Frontend.UI.Dialogs.CreateGist (uiCreateGist)
 import           Frontend.UI.Modal
 import           Frontend.UI.Modal.Impl
 import           Frontend.UI.RightPanel
@@ -255,7 +256,10 @@ controlBarLeft m = do
           reqConfirmation :: Event t (Maybe (ModalImpl m t))
           reqConfirmation = Just (uiDeployConfirmation m) <$ onDeployClick
 
-          gistCfg =  mempty & moduleExplorerCfg_createGist .~  onCreateGist
+          gistConfirmation :: Event t (Maybe (ModalImpl m t))
+          gistConfirmation = Just (uiCreateGist m) <$ onCreateGist
+
+          gistCfg =  mempty & modalCfg_setModal .~  gistConfirmation
 
           deployCfg = mempty & modalCfg_setModal .~ reqConfirmation
         {- pure $ deployCfg <> loadCfg <> resetCfg <> gistCfg -}

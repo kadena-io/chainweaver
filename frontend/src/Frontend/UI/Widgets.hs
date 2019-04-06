@@ -22,6 +22,7 @@ module Frontend.UI.Widgets
   , uiRealInputElement
   , uiIntInputElement
   , uiInputView
+  , mkLabeledInput
   , uiCheckbox
   , uiDropdown
   , uiSelectElement
@@ -120,6 +121,7 @@ uiSelectElement uCfg child = do
 addInputElementCls :: Map AttributeName Text -> Map AttributeName Text
 addInputElementCls = addToClassAttr "input"
 
+
 -- | reflex-dom `inputElement` with pact-web default styling:
 uiInputElement
   :: DomBuilder t m
@@ -178,6 +180,16 @@ uiInputView mkInput cfg mVal = mdo
   pure $ _inputElement_input i
 
 
+-- | Make labeled and segmented input.
+mkLabeledInput
+  :: (DomBuilder t m, er ~ EventResult, PostBuild t m, MonadFix m
+     , MonadHold t m
+     )
+  => (InputElementConfig er t (DomBuilderSpace m) -> m (InputElement er (DomBuilderSpace m) t))
+  -> Text -> Dynamic t Text -> m (Event t Text)
+mkLabeledInput mkInput n v = elClass "div" "segment segment_type_tertiary labeled-input" $ do
+  divClass "label labeled-input__label" $ text n
+  uiInputView mkInput (def & initialAttributes %~ addToClassAttr "labeled-input__input") v
 
 -- | Validated input with button
 validatedInputWithButton

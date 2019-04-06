@@ -125,16 +125,6 @@ uiDeploymentSettings m mUserTab = mdo
       stdTabs = [DeploymentSettingsView_Settings, DeploymentSettingsView_Keys]
       availableTabs = userTabs <> stdTabs
 
--- | Make labeled and segmented input.
-mkLabeledInput
-  :: (DomBuilder t m, er ~ EventResult, PostBuild t m, MonadFix m
-     , MonadHold t m
-     )
-  => (InputElementConfig er t (DomBuilderSpace m) -> m (InputElement er (DomBuilderSpace m) t))
-  -> Text -> Dynamic t Text -> m (Event t Text)
-mkLabeledInput mkInput n v = elClass "div" "segment segment_type_tertiary labeled-input" $ do
-  divClass "label labeled-input__label" $ text n
-  uiInputView mkInput (def & initialAttributes %~ addToClassAttr "labeled-input__input") v
 
 
 -- | Widget for selection of signing keys.

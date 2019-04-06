@@ -33,6 +33,8 @@ module Frontend.ModuleExplorer
   , HasModuleExplorerCfg (..)
   , ModuleExplorer (..)
   , HasModuleExplorer (..)
+    -- ** Other types
+  , GistMeta (..)
     -- ** Additonal quick viewing functions
   , moduleExplorer_selection
   -- * Re-exports
@@ -64,6 +66,7 @@ import           Frontend.ModuleExplorer.ModuleList as ModuleList
 import           Frontend.ModuleExplorer.ModuleRef  as Module
 import           Frontend.ModuleExplorer.LoadedRef  as Module
 import           Frontend.Wallet
+import           Frontend.GistStore (GistMeta (..))
 
 -- | Data needed to send transactions to the server.
 data TransactionInfo = TransactionInfo
@@ -91,7 +94,7 @@ data ModuleExplorerCfg t = ModuleExplorerCfg
     -- ^ Load a module into the editor.
   , _moduleExplorerCfg_loadFile     :: Event t FileRef
     -- ^ Load some file into the `Editor`.
-  , _moduleExplorerCfg_createGist   :: Event t ()
+  , _moduleExplorerCfg_createGist   :: Event t GistMeta
     -- ^ Create a github gist with the contents of the `Editor`.
   , _moduleExplorerCfg_deployEditor :: Event t TransactionInfo
     -- ^ Deploy code that is currently in `Editor`.

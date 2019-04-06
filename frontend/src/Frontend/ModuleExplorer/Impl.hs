@@ -38,6 +38,7 @@ import           Control.Lens
 import           Control.Monad             (guard, (<=<))
 import           Control.Monad.Trans.Maybe (MaybeT (..), runMaybeT)
 import qualified Data.Map                  as Map
+import Data.Tuple (swap)
 import           Data.Text                 (Text)
 import           Reflex
 import           Reflex.Dom.Core           (HasJSContext, MonadHold, PostBuild)
@@ -135,13 +136,13 @@ makeModuleExplorer m cfg = mfix $ \ ~(_, explr) -> do
     onAutoStore <- throttle 2 $ updated $ m ^. editor_code
     performEvent_ $ storeEditor <$> onAutoStore
     let
-      onCreateGistUnsafe =
+      onCreateGistUnsafe = fmap swap
           -- TODO: We should save whenever we are about to leave the page, no matter the cause:
-        tag (current (m ^. editor_code)) $ cfg ^. moduleExplorerCfg_createGist
+        . attach (current (m ^. editor_code)) $ cfg ^. moduleExplorerCfg_createGist
 
-    onCreateGist <- performEvent $ ffor onCreateGistUnsafe $ \cCode -> do
+    onCreateGist <- performEvent $ ffor onCreateGistUnsafe $ \metaCode@(_, cCode) -> do
       storeEditor cCode
-      pure cCode
+      pure metaCode
     let
       gistCfg = mempty & gistStoreCfg_create .~ onCreateGist
       onNewGistRef = FileRef_Gist <$> m ^. gistStore_created
