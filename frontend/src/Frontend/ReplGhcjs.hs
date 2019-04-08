@@ -28,7 +28,6 @@ module Frontend.ReplGhcjs where
 import           Control.Lens
 import           Control.Monad.Reader                   (ask)
 import           Control.Monad.State.Strict
-import           Data.Dependent.Sum                     (DSum ((:=>)))
 import           Data.Text                              (Text)
 import qualified Data.Text                              as T
 import           GHCJS.DOM.EventM                       (on)
@@ -53,10 +52,8 @@ import           Common.Route
 import           Frontend.Editor
 import           Frontend.Foundation
 import           Frontend.Ide
-import           Frontend.ModuleExplorer
-import           Frontend.ModuleExplorer.RefPath
-import           Frontend.OAuth                         (HasOAuth (..))
 import           Frontend.Repl
+import           Frontend.Routes
 import           Frontend.UI.Button
 import           Frontend.UI.Dialogs.DeployConfirmation (uiDeployConfirmation)
 import           Frontend.UI.Dialogs.CreateGist (uiCreateGist)
@@ -91,72 +88,6 @@ app = void . mfix $ \ cfg -> do
     , modalCfg
     , routesCfg
     ]
-
-
-handleRoutes
-  :: ( MonadWidget t m, Routed t (R FrontendRoute) m, SetRoute t (R FrontendRoute) m
-     , Monoid mConf, HasModuleExplorer model t , HasModuleExplorerCfg mConf t
-     , HasOAuth model t
-     )
-  => model
-  -> m mConf
-handleRoutes m = do
-    route <- askRoute
-    let loaded = m ^. moduleExplorer_loaded
-    onRoute <- tagOnPostBuild route
-    let
-      onNewLoaded = fmapMaybe id
-        . attachWith getLoaded (current loaded)
-        $ onRoute
-
-      onOAuthRouteReset = (FrontendRoute_Main :/ ()) <$ m ^. oAuth_error
-
-      onNewRoute = fmapMaybe id
-        . attachWith buildRoute (current route)
-        $ updated loaded
-
-    setRoute $ leftmost [onNewRoute, onOAuthRouteReset]
-
-    pure $ mempty
-      & moduleExplorerCfg_loadFile .~ fmapMaybe (^? _LoadedRef_File) onNewLoaded
-      & moduleExplorerCfg_loadModule .~ fmapMaybe (^? _LoadedRef_Module) onNewLoaded
-
-  where
-
-    getLoaded :: Maybe LoadedRef -> R FrontendRoute -> Maybe LoadedRef
-    getLoaded cLoaded routeL = do
-      let rp = parseRoute routeL
-      loaded <- runParseRef rp
-      guard $ Just loaded /= cLoaded
-      pure loaded
-
-    buildRoute :: R FrontendRoute -> Maybe LoadedRef -> Maybe (R FrontendRoute)
-    buildRoute cRoute ref =
-      let
-        newRoute = maybe (FrontendRoute_New :=> Identity ()) (renderRoute . renderRef) ref
-      in
-        if newRoute == cRoute
-           then Nothing
-           else Just newRoute
-
-    parseRoute :: R FrontendRoute -> RefPath
-    parseRoute = \case
-       FrontendRoute_Main     :=> Identity () -> RefPath []
-       FrontendRoute_Example  :=> Identity xs -> RefPath ("example":xs)
-       FrontendRoute_Stored   :=> Identity xs -> RefPath ("stored":xs)
-       FrontendRoute_Gist     :=> Identity xs -> RefPath ("gist":xs)
-       FrontendRoute_Deployed :=> Identity xs -> RefPath ("deployed":xs)
-       FrontendRoute_New      :=> Identity () -> RefPath []
-       FrontendRoute_OAuth    :=> Identity _  -> RefPath []
-
-    renderRoute :: RefPath -> R FrontendRoute
-    renderRoute (RefPath (n:ns)) = case n of
-      "example"  -> FrontendRoute_Example  :=> Identity ns
-      "stored"   -> FrontendRoute_Stored   :=> Identity ns
-      "gist"     -> FrontendRoute_Gist     :=> Identity ns
-      "deployed" -> FrontendRoute_Deployed :=> Identity ns
-      _          -> FrontendRoute_Main     :=> Identity ()
-    renderRoute _ = FrontendRoute_Main :=> Identity ()
 
 
 -- | Code editing (left hand side currently)
@@ -257,7 +188,7 @@ controlBarLeft m = do
           reqConfirmation = Just (uiDeployConfirmation m) <$ onDeployClick
 
           gistConfirmation :: Event t (Maybe (ModalImpl m t))
-          gistConfirmation = Just (uiCreateGist m) <$ onCreateGist
+          gistConfirmation = Just uiCreateGist <$ onCreateGist
 
           gistCfg =  mempty & modalCfg_setModal .~  gistConfirmation
 

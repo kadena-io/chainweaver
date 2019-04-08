@@ -10,7 +10,6 @@ import           Data.Aeson             (FromJSON (..), FromJSONKey (..),
                                          FromJSONKeyFunction (..), ToJSON (..),
                                          ToJSONKey (..), ToJSONKeyFunction (..))
 import           Data.Text              (Text)
-import qualified Data.Text              as T
 import           GHC.Generics           (Generic)
 
 import           Obelisk.OAuth.Common
@@ -77,7 +76,7 @@ getOAuthClientId prov =
 buildOAuthConfig :: MonadIO m => (R FrontendRoute -> Text) -> m (OAuthConfig OAuthProvider)
 buildOAuthConfig renderRoute = do
   clientId <- getOAuthClientId OAuthProvider_GitHub
-  baseUri <- T.dropWhileEnd (== '/') <$> getMandatoryTextCfg "config/common/route"
+  baseUri <- getConfigRoute
   pure $ OAuthConfig
     { _oAuthConfig_renderRedirectUri = Just $
         \oAuthRoute -> (baseUri <>) . renderRoute $ FrontendRoute_OAuth :/ oAuthRoute

@@ -68,7 +68,7 @@ class HasModalCfg cfg modal t | cfg -> modal where
 
 -- | Create a modal dialog header.
 modalHeader
-  :: forall t m. MonadWidget t m
+  :: forall t m. DomBuilder t m
   => m ()
   -- ^ Content of the h2 in the header.
   -> m ( Event t ())
@@ -80,12 +80,12 @@ modalHeader header = divClass "modal__header" $ do
       text "x"
 
 -- | Wrap body and footer in this.
-modalMain :: MonadWidget t m => m a -> m a
+modalMain :: DomBuilder t m => m a -> m a
 modalMain  = divClass "modal__main"
 
 -- | Create a modal dialog body.
 modalBody
-  :: forall t m a. MonadWidget t m
+  :: forall t m a. DomBuilder t m
   => m a
   -- ^ The actual body of the dialog.
   -> m a
@@ -94,7 +94,7 @@ modalBody = divClass "modal__body"
 
 -- | Create a modal dialog footer.
 modalFooter
-  :: forall t m a. MonadWidget t m
+  :: forall t m a. DomBuilder t m
   => m a
   -- ^ The actual footer of the dialog.
   -> m a

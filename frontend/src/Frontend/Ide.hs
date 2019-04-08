@@ -146,7 +146,15 @@ makeIde userCfg = build $ \ ~(cfg, ideL) -> do
     modal <- holdDyn Nothing $ unLeftmostEv (_ideCfg_setModal cfg)
 
     pure
-      ( mconcat [userCfg, explrCfg, replCfgL, backendCfgL, editorCfgL, oAuthCfgL, gistStoreCfgL]
+      ( mconcat
+          [ userCfg
+          , explrCfg
+          , replCfgL
+          , backendCfgL
+          , editorCfgL
+          , oAuthCfgL
+          , gistStoreCfgL
+          ]
       , Ide
         { _ide_editor = editorL
         , _ide_wallet = walletL

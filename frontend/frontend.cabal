@@ -95,6 +95,7 @@ library
                  , Frontend.OAuth
                  , Frontend.Repl
                  , Frontend.ReplGhcjs
+                 , Frontend.Routes
                  , Frontend.Storage
                  , Frontend.TH
                  , Frontend.UI.Button
@@ -102,6 +103,7 @@ library
                  , Frontend.UI.Dialogs.CallFunction
                  , Frontend.UI.Dialogs.CreateGist
                  , Frontend.UI.Dialogs.DeployConfirmation
+                 , Frontend.UI.Dialogs.CreatedGist
                  , Frontend.UI.ErrorList
                  , Frontend.UI.Icon
                  , Frontend.UI.JsonData

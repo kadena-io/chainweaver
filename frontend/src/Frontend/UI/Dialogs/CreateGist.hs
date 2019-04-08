@@ -34,8 +34,7 @@ import           Obelisk.Generated.Static
 import           Frontend.Backend
 import           Frontend.Foundation            hiding (Arg)
 import           Frontend.ModuleExplorer        (HasModuleExplorerCfg (..),
-                                                 TransactionInfo (..), GistMeta (..))
-import           Frontend.UI.DeploymentSettings
+                                                 GistMeta (..))
 import           Frontend.UI.Modal
 import           Frontend.UI.Widgets
 import           Frontend.UI.Widgets.Helpers (imgWithAltCls)
@@ -51,11 +50,10 @@ type HasUICreateGistModelCfg mConf t =
 --
 --   Ask user for name and description for the gist.
 uiCreateGist
-  :: forall t m a model mConf
+  :: forall t m mConf
   . (MonadWidget t m, HasUICreateGistModelCfg mConf t)
-  => model
-  -> m (mConf, Event t ())
-uiCreateGist ideL = do
+  => m (mConf, Event t ())
+uiCreateGist = do
   onClose <- modalHeader $ text "Create GitHub Gist"
   modalMain $ do
     (name, desc) <- modalBody $ do

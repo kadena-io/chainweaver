@@ -38,6 +38,11 @@ pactServerListPath = "config/common/pact-server-list"
 getPactServerList :: IO (Maybe (Text))
 getPactServerList = get pactServerListPath
 
+-- | Get "config/common/route" normalized.
+getConfigRoute :: MonadIO m => m Text
+getConfigRoute =
+  T.dropWhileEnd (== '/') <$> getMandatoryTextCfg "config/common/route"
+
 getMandatoryTextCfg :: MonadIO m => Text -> m Text
 getMandatoryTextCfg p = liftIO $ do
   mR <- Obelisk.ExecutableConfig.get p
