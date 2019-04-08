@@ -14,6 +14,7 @@
 {-# LANGUAGE StandaloneDeriving    #-}
 {-# LANGUAGE TemplateHaskell       #-}
 {-# LANGUAGE TupleSections         #-}
+{-# LANGUAGE TypeApplications      #-}
 
 -- | Confirmation dialog for creating a GIST allowing setting of name and description.
 -- Copyright   :  (C) 2018 Kadena
@@ -25,18 +26,18 @@ module Frontend.UI.Dialogs.CreatedGist
 
 ------------------------------------------------------------------------------
 import           Control.Lens
+import           Control.Monad               (void)
+import           JSDOM.Types                 (Element)
 import           Reflex
 import           Reflex.Dom
-import Control.Monad (void)
-import JSDOM.Types (Element)
 ------------------------------------------------------------------------------
 import           Obelisk.Generated.Static
-import Obelisk.Route.Frontend
+import           Obelisk.Route.Frontend
 ------------------------------------------------------------------------------
-import Common.Route
-import Common.Api (getConfigRoute)
-import Frontend.GistStore (GistRef)
-import           Frontend.Foundation            hiding (Arg)
+import           Common.Api                  (getConfigRoute)
+import           Common.Route
+import           Frontend.Foundation         hiding (Arg)
+import           Frontend.GistStore          (GistRef)
 import           Frontend.UI.Modal
 import           Frontend.UI.Widgets
 import           Frontend.UI.Widgets.Helpers (imgWithAltCls)
