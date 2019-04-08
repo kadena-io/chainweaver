@@ -38,7 +38,7 @@ import qualified Data.Map                    as Map
 import           Data.Proxy                  (Proxy (..))
 import           Data.Text                   (Text)
 import qualified Data.Text                   as T
-import           Generics.Deriving.Monoid    (mappenddefault, memptydefault)
+import           Generics.Deriving.Monoid    (mappenddefault)
 import           GHC.Generics                (Generic)
 import           GHCJS.DOM.XMLHttpRequest    (setRequestHeader)
 import           Language.Javascript.JSaddle (liftJSM)

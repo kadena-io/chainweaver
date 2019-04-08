@@ -40,7 +40,6 @@ import           Pact.Types.ChainMeta        (PublicMeta (..))
 import           Reflex
 import           Reflex.Dom
 import           Reflex.Dom.Contrib.CssClass (elKlass)
-import           Reflex.Dom.Contrib.CssClass (addToClassAttr)
 import           Safe                        (readMay)
 ------------------------------------------------------------------------------
 import           Frontend.Backend
