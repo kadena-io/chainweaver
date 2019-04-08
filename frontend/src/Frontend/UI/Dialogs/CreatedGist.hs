@@ -27,7 +27,7 @@ module Frontend.UI.Dialogs.CreatedGist
 ------------------------------------------------------------------------------
 import           Control.Lens
 import           Control.Monad               (void)
-import           JSDOM.Types                 (Element)
+import           GHCJS.DOM.Types                 (Element)
 import           Reflex
 import           Reflex.Dom
 ------------------------------------------------------------------------------
@@ -52,7 +52,7 @@ type HasUICreatedGistModelCfg mConf t = (Monoid mConf)
 uiCreatedGist
   :: forall t m mConf
   . ( HasUICreatedGistModelCfg mConf t, RouteToUrl (R FrontendRoute) m
-    , RawElement (DomBuilderSpace m) ~ JSDOM.Types.Element
+    , RawElement (DomBuilderSpace m) ~ GHCJS.DOM.Types.Element
     , Monad m
     , DomBuilder t m
     , MonadIO m
