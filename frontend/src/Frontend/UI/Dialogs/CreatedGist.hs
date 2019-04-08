@@ -68,30 +68,27 @@ uiCreatedGist gistRef = do
         divClass "segment modal__filler" $ do
           divClass "modal__filler-horizontal-center-box" $
             imgWithAltCls "modal__filler-img" (static @"img/Octocat.jpg") "Github logo" blank
+
+          elClass "h2" "heading heading_type_h2" $ text "Copy Gist Link"
           divClass "group" $ do
-            elClass "h2" "heading heading_type_h2" $ text "Gist created successfully!"
-            let
-              tableAttrs =
-                "style" =: "table-layout: fixed; width: 100%"
-                <> "class" =: "table"
-            elAttr "table" tableAttrs $ do
-              el "colgroup" $ do
-                elAttr "col" ("style" =: "width: 70%") blank
-                elAttr "col" ("style" =: "width: 30%") blank
-              el "tbody" $ do
-                elClass "tr" "table__row" $ do
 
-                  baseUrlText <- getConfigRoute
-                  routeToUrl <- askRouteToUrl
-                  let route = routeToUrl $ FrontendRoute_Gist :/ [gistRef]
 
-                  (e, ()) <- el' "td" $ text $ baseUrlText <> route
+            elClass "ol" "table" $ do
 
-                  void $ elClass "td" "table__last-cell" $
-                    copyButton copyBtnCfg $ _element_raw e
+              elClass "li" "table__row table__row_type_primary table__row_type_silent" $ do
+
+                baseUrlText <- getConfigRoute
+                routeToUrl <- askRouteToUrl
+                let route = routeToUrl $ FrontendRoute_Gist :/ [gistRef]
+
+                (e, ()) <- elClass' "td" "table__text-cell table__cell_size_flex" $
+                  text $ baseUrlText <> route
+
+                void $ elClass "td" "table__last-cell table__cell_size_flex" $
+                  copyButton copyBtnCfg $ _element_raw e
 
       modalFooter $ do
         onConfirm <- confirmButton def "Ok"
         pure (mempty, leftmost [onClose, onConfirm])
   where
-    copyBtnCfg = btnCfgTertiary
+    copyBtnCfg = def & uiButtonCfg_class .~ "button_type_secondary table__action-button"

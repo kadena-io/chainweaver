@@ -7,6 +7,10 @@
   border-collapse: collapse;
 }
 
+.table_border_none {
+  border: none;
+}
+
 
 .table__heading {
   height: 2em;
@@ -54,6 +58,13 @@
 
   padding-left: $medium-padding;
   padding-right: $medium-padding;
+}
+
+// No border, no padding/margin:
+.table__row_type_silent {
+  border: none;
+  padding-left: 0;
+  padding-right: 0;
 }
 
 .table__text-cell {
