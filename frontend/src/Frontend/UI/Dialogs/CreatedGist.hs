@@ -70,7 +70,7 @@ uiCreatedGist gistRef = do
           divClass "modal__filler-horizontal-center-box" $
             imgWithAltCls "modal__filler-img" (static @"img/Octocat.jpg") "Github logo" blank
 
-          elClass "h2" "heading heading_type_h2" $ text "Copy Gist Link"
+          elClass "h2" "heading heading_type_h2" $ text "Find your link below:"
           divClass "group" $ do
 
 

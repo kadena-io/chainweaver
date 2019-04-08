@@ -61,7 +61,7 @@ uiCreateGist = do
         divClass "modal__filler-horizontal-center-box" $
           imgWithAltCls "modal__filler-img" (static @"img/Octocat.jpg") "Github logo" blank
 
-        elClass "h2" "heading heading_type_h2" $ text "Set Filename of Gist"
+        elClass "h2" "heading heading_type_h2" $ text "What shall your Gist be called?"
         divClass "group" $ do
           fileName <- labeledTextInputWithDefault "Filename" "pact-web-share.pact"
           description <- labeledTextInputWithDefault "Description" "Pact shared with pact-web."
