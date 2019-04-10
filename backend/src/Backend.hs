@@ -148,8 +148,6 @@ serveBackendRoute dynConfigs cfg = \case
          else pass
   BackendRoute_Robots :=> _
     -> writeBS "User-agent: *\nDisallow: \n"
-  -- TODO: Those params are actually mandatory here, but I'd like to re-use the
-  -- existing encoder:
   BackendRoute_OAuthGetToken :/ providerId
     -> requestToken cfg providerId
   _ -> pure ()
