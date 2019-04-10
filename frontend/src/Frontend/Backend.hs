@@ -450,7 +450,7 @@ loadModules backendL onRefresh = do
     where
       getModuleList :: Term Name -> Maybe [Text]
       getModuleList = \case
-        TList terms _ _ -> traverse getStringLit terms
+        TList terms _ _ -> traverse getStringLit $ toList terms
         _               -> Nothing
 
       getStringLit :: Term Name -> Maybe Text

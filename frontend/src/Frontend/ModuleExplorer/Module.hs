@@ -136,5 +136,5 @@ getFunctions :: Term Name -> [PactFunction]
 getFunctions (TModule _ body _) = getFunctions $ Bound.instantiate undefined body
 getFunctions (TDef (Def (DefName name) moduleName defType funType _body meta _) _) =
   [PactFunction moduleName name defType (_mDocs meta) funType]
-getFunctions (TList list1 _ _) = getFunctions =<< list1
+getFunctions (TList list1 _ _) = getFunctions =<< toList list1
 getFunctions _ = []

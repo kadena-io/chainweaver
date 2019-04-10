@@ -72,7 +72,7 @@ import           Pact.Types.Term                 as PactTerm (Module (..),
                                                               Namespace (..),
                                                               NamespaceName (..),
                                                               Term (TList, TLiteral, TModule, TObject),
-                                                              tStr, ModuleDef (..), Object (..), FieldKey)
+                                                              tStr, ModuleDef (..), Object (..), FieldKey, ObjectMap (..))
 ------------------------------------------------------------------------------
 import           Frontend.Backend
 import           Frontend.Foundation
@@ -267,9 +267,9 @@ fetchModule backendL onReq = do
           _    -> throwError "More than one module in response?"
       _ -> throwError "Server response did not contain a  TObject module description."
 
-    getCode :: [(FieldKey, Term Name)] -> Either Text Code
-    getCode props =
-        case lookup "code" props of
+    getCode :: ObjectMap (Term Name) -> Either Text Code
+    getCode (ObjectMap props) =
+        case Map.lookup "code" props of
           Nothing -> throwError "No code property in module description object!"
           Just (TLiteral (LString c) _) -> pure $ Code c
           _ -> throwError "No code found, but something else!"
