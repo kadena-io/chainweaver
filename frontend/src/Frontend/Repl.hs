@@ -282,7 +282,7 @@ mkState uBackends = do
   where
     getMinBackend maybeBackends = do
       (_key, b) <- Map.lookupMin =<< maybeBackends
-      bNoPath <-(\uri -> URI.render $ uri { uriPath = Nothing }) <$> mkURI b
+      bNoPath <-(\uri -> T.dropWhile (== '/') . URI.render $ uri { uriPath = Nothing }) <$> mkURI b
       pure (T.unpack bNoPath)
 
 -- | Set env-data to the given Object
