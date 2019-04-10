@@ -13,6 +13,7 @@ bug-reports:         https://github.com/kadena-io/pact/issues
 -- license-file:        LICENSE
 
 library
+  ghc-options: -O
   hs-source-dirs: src
 
   build-depends: base
@@ -68,7 +69,6 @@ library
                , errors
                , servant-github
                , free
-
   if !impl(ghcjs)
     build-depends: hsass
 
@@ -173,8 +173,8 @@ executable frontend
                , frontend
 
   --TODO: Make these ghc-options optional
-  ghc-options: -threaded
+  ghc-options: -threaded -O
   if os(darwin)
      ghc-options: -dynamic
   if impl(ghcjs)
-    ghcjs-options: -dedupe
+    ghcjs-options: -dedupe -DGHCJS_BROWSER
