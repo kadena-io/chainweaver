@@ -408,7 +408,7 @@ parsePactServerList :: Text -> Map BackendName BackendUri
 parsePactServerList raw =
   let
     rawEntries = map (fmap (T.dropWhile (== ':')) . T.breakOn ":") . T.lines $ raw
-    stripped = map (BackendName . T.strip *** T.strip) rawEntries
+    stripped = map (BackendName . T.strip *** T.dropWhileEnd (=='/') . T.strip) rawEntries
   in
     Map.fromList stripped
 
