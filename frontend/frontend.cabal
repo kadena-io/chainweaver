@@ -19,18 +19,19 @@ library
   build-depends: base
                , ListZipper
                , aeson
+               , aeson-lens
                , aeson-pretty
                , base16-bytestring
                , bound
                , bytestring
                , common
-               , modern-uri
-               , aeson-lens
                , containers
                , data-default
                , dependent-map
                , dependent-sum
+               , errors
                , exceptions
+               , free
                , generic-deriving
                , ghcjs-dom
                , http-client
@@ -39,15 +40,17 @@ library
                , jsaddle
                , lens
                , megaparsec
+               , modern-uri
                , mtl
                , newtype-generics
                , obelisk-executable-config
                , obelisk-frontend
-               , obelisk-oauth-frontend
-               , obelisk-oauth-common
                , obelisk-generated-static
+               , obelisk-oauth-common
+               , obelisk-oauth-frontend
                , obelisk-route
                , pact
+               , prettyprinter
                , random
                , reflex
                , reflex-dom
@@ -57,6 +60,7 @@ library
                , servant
                , servant-client-core
                , servant-client-jsaddle
+               , servant-github
                , split
                , string-qq
                , template-haskell
@@ -66,9 +70,6 @@ library
                , transformers
                , trifecta
                , unordered-containers
-               , errors
-               , servant-github
-               , free
   if !impl(ghcjs)
     build-depends: hsass
 
