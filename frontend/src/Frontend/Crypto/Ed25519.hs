@@ -44,6 +44,8 @@ import qualified Data.Text.Encoding                 as T
 import           GHC.Generics                       (Generic)
 import           Language.Javascript.JSaddle
 
+import Frontend.Foundation
+
 -- | PublicKey with a Pact compatible JSON representation.
 newtype PublicKey = PublicKey ByteString
   deriving (Generic, Show)
@@ -83,7 +85,7 @@ mkSignature msg (PrivateKey key) = liftJSM $ do
 --
 --   Despite the name, this function is also used for serializing signatures.
 keyToText :: (Newtype key, O key ~ ByteString) => key -> Text
-keyToText = T.decodeUtf8 . Base16.encode . unpack
+keyToText = safeDecodeUtf8 . Base16.encode . unpack
 
 -- | Read a key in Base16 format, as exepcted by Pact.
 --

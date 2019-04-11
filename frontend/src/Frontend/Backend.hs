@@ -719,7 +719,7 @@ getNonce = do
 --
 --   This way you get stringified JSON.
 encodeAsText :: BSL.ByteString -> Text
-encodeAsText = T.decodeUtf8 . BSL.toStrict
+encodeAsText = safeDecodeUtf8 . BSL.toStrict
 
 -- Instances:
 

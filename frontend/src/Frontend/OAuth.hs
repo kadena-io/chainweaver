@@ -36,7 +36,6 @@ import           Data.Default                       (def)
 import           Data.Map                           (Map)
 import qualified Data.Map                           as Map
 import           Data.Text                          (Text)
-import qualified Data.Text.Encoding                 as T
 import           Reflex.Dom.Class                   (HasJSContext)
 import           Reflex.Dom.Xhr                     (XhrRequestConfig (..),
                                                      decodeXhrResponse,
@@ -179,7 +178,7 @@ runOAuthCmds renderRoute = go
 
           req = xhrRequest "POST" uri $ def
             { _xhrRequestConfig_sendData =
-                T.decodeUtf8 . BSL.toStrict . Aeson.encode $ pars
+                safeDecodeUtf8 . BSL.toStrict . Aeson.encode $ pars
             }
 
         resVar <- liftIO newEmptyMVar

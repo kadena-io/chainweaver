@@ -20,6 +20,8 @@ import           GHCJS.DOM.Types        (JSString, MonadJSM, fromJSString,
                                          toJSString)
 import qualified GHCJS.DOM.Window       as Window
 
+import Frontend.Foundation
+
 -- | Get access to browser's local storage.
 localStorage :: MonadJSM m => m GHCJS.Storage
 localStorage = Window.getLocalStorage =<< DOM.currentWindowUnchecked
@@ -58,7 +60,7 @@ removeItemStorage getStorage key = do
 
 
 toJsonString :: ToJSON a => a -> JSString
-toJsonString = toJSString . T.decodeUtf8 . BL.toStrict . Aeson.encode
+toJsonString = toJSString . safeDecodeUtf8 . BL.toStrict . Aeson.encode
 
 fromJsonString :: FromJSON a => JSString -> Maybe a
 fromJsonString = Aeson.decodeStrict . T.encodeUtf8 . fromJSString

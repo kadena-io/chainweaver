@@ -56,7 +56,6 @@ import           Data.Set                   (Set)
 import qualified Data.Set                   as Set
 import           Data.Text                  (Text)
 import qualified Data.Text                  as T
-import qualified Data.Text.Encoding         as T
 import           Generics.Deriving.Monoid   (mappenddefault, memptydefault)
 import           GHC.Generics               hiding (to)
 import           Reflex
@@ -289,7 +288,7 @@ mkState uBackends = do
 setEnvData :: Object -> PactRepl (Term Name)
 setEnvData = pactEvalRepl' . ("(env-data " <>) . (<> ")") . mkCmd
   where
-    mkCmd = toJsonString . T.decodeUtf8 . BSL.toStrict . encode
+    mkCmd = toJsonString . safeDecodeUtf8 . BSL.toStrict . encode
 
     escapeJSON = T.replace "\"" "\\\""
 
@@ -305,7 +304,7 @@ setEnvKeys =
     where
       renderKeys = T.unwords . map (keyToText . _keyPair_publicKey)
 
-      keyToText = T.decodeUtf8 . BSL.toStrict . encode
+      keyToText = safeDecodeUtf8 . BSL.toStrict . encode
 
 
 -- | Run an interactive command on the REPL.

@@ -40,7 +40,6 @@ import           Data.Maybe
 import qualified Data.Set                           as Set
 import           Data.Text                          (Text)
 import qualified Data.Text                          as T
-import qualified Data.Text.Encoding                 as T
 import           Reflex.Class.Extended
 import           Reflex.Dom
 import           Reflex.Dom.ACE.Extended
@@ -108,7 +107,7 @@ uiJsonData w d = divClass "tabset" $ mdo
         curSelection JsonDataView_Result $ do
       let
         showData =
-          either showJsonError (T.decodeUtf8 . BSL.toStrict . encodePretty)
+          either showJsonError (safeDecodeUtf8 . BSL.toStrict . encodePretty)
       el "pre" $ dynText $ showData <$> d ^. jsonData_data
 
     pure $ mconcat [ keysetVCfg, rawVCfg ]

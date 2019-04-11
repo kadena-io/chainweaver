@@ -37,6 +37,7 @@ module Frontend.Foundation
   , prettyTextCompact
   , prettyTextPretty
   , note
+  , safeDecodeUtf8
   , forkJSM
     -- * Re-exports
   , module Data.Maybe
@@ -51,34 +52,41 @@ module Frontend.Foundation
   , module Reflex.Dom.Contrib.CssClass
   ) where
 
-import           Control.Concurrent          (ThreadId, forkIO)
-import           Control.Monad.Except        (MonadError, throwError)
+import           Control.Concurrent                    (ThreadId, forkIO)
 import           Control.Lens
+import           Control.Monad.Except                  (MonadError, throwError)
 import           Control.Monad.Fix
 import           Control.Monad.IO.Class
-import           Data.Aeson                  as A
-import           Data.Coerce                 (coerce)
+import           Data.Aeson                            as A
+import           Data.ByteString                       (ByteString)
+import           Data.Coerce                           (coerce)
 import           Data.Foldable
-import qualified Data.List.Split             as L
+import qualified Data.List.Split                       as L
 import           Data.Semigroup
-import           Data.Text                   (Text)
-import qualified Data.Text                   as T
-import           GHC.Generics                (Generic)
-import           Language.Haskell.TH         (DecsQ)
-import           Language.Haskell.TH.Syntax  (Name)
-import Reflex.Dom.Class (HasJSContext (..), JSContextSingleton (..))
-import           Language.Javascript.JSaddle.Monad (JSContextRef, JSM, askJSM)
-import           Language.Javascript.JSaddle (JSM, MonadJSM, askJSM,
-                                              runJSM)
+import           Data.Text                             (Text)
+import qualified Data.Text                             as T
+import qualified Data.Text.Encoding                    as T
+import qualified Data.Text.Encoding.Error              as T
+import           GHC.Generics                          (Generic)
+import           Language.Haskell.TH                   (DecsQ)
+import           Language.Haskell.TH.Syntax            (Name)
+import           Language.Javascript.JSaddle           (JSM, MonadJSM, askJSM,
+                                                        runJSM)
+import           Language.Javascript.JSaddle.Monad     (JSContextRef, JSM,
+                                                        askJSM)
+import           Reflex.Dom.Class                      (HasJSContext (..),
+                                                        JSContextSingleton (..))
 import           Reflex.Dom.Contrib.CssClass
 import           Reflex.Extended
 import           Reflex.Network.Extended
 
 import           Data.Maybe
 
-import qualified Pact.Types.Pretty as Pretty
+import qualified Data.Text.Prettyprint.Doc             as Pretty (defaultLayoutOptions,
+                                                                  layoutCompact,
+                                                                  layoutPretty)
 import qualified Data.Text.Prettyprint.Doc.Render.Text as Pretty
-import qualified Data.Text.Prettyprint.Doc as Pretty (layoutCompact, layoutPretty, defaultLayoutOptions)
+import qualified Pact.Types.Pretty                     as Pretty
 
 -- | Shorthand for Dynamic t (Maybe a).
 --
@@ -171,6 +179,9 @@ prettyTextPretty = Pretty.renderStrict . Pretty.layoutPretty Pretty.defaultLayou
 
 note :: MonadError e m => e -> Maybe a -> m a
 note e = maybe (throwError e) pure
+
+safeDecodeUtf8 :: ByteString -> Text
+safeDecodeUtf8 = T.decodeUtf8With T.lenientDecode
 
 forkJSM :: (MonadJSM m) => JSM () -> m ThreadId
 forkJSM t = do

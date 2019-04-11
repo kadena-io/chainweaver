@@ -174,7 +174,7 @@ executable frontend
                , frontend
 
   --TODO: Make these ghc-options optional
-  ghc-options: -threaded -O
+  ghc-options: -threaded -O -Wall
   if os(darwin)
      ghc-options: -dynamic
   if impl(ghcjs)
