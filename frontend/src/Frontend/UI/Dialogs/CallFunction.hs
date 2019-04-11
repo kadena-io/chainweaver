@@ -159,7 +159,7 @@ renderSignature f = do
   argDelimiter
   uiCodeFont "code-font_type_fun-return-arrow" "->"
   argDelimiter
-  uiCodeFont "code-font_type_pact-type" $ tshow (_ftReturn fType)
+  uiCodeFont "code-font_type_pact-type" $ prettyTextCompact (_ftReturn fType)
 
 renderArgs :: MonadWidget t m => [Arg (Term Name)] -> m ()
 renderArgs = sequence_ . intersperse argDelimiter . map renderArg
@@ -171,7 +171,7 @@ renderArg :: MonadWidget t m => Arg (Term Name) -> m ()
 renderArg a = do
   uiCodeFont "code-font_type_pact-arg-name" $ (_aName a)
   text " "
-  uiCodeFont "code-font_type_pact-type" $ tshow (_aType a)
+  uiCodeFont "code-font_type_pact-type" $ prettyTextCompact (_aType a)
 
 
 data InputSize

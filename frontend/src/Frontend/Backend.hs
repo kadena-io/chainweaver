@@ -705,7 +705,7 @@ prettyPrintBackendError = ("ERROR: " <>) . \case
 prettyPrintBackendErrorResult :: BackendErrorResult -> Text
 prettyPrintBackendErrorResult = \case
   Left e -> prettyPrintBackendError e
-  Right r -> "Server result: " <> (T.pack . show) r
+  Right r -> "Server result: " <> prettyTextPretty r
 
 
 

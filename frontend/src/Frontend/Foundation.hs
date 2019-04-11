@@ -34,6 +34,9 @@ module Frontend.Foundation
   , compactEncoding
     -- * Helpers that should really not be here
   , tshow
+  , prettyTextCompact
+  , prettyTextPretty
+  , note
   , forkJSM
     -- * Re-exports
   , module Data.Maybe
@@ -49,6 +52,7 @@ module Frontend.Foundation
   ) where
 
 import           Control.Concurrent          (ThreadId, forkIO)
+import           Control.Monad.Except        (MonadError, throwError)
 import           Control.Lens
 import           Control.Monad.Fix
 import           Control.Monad.IO.Class
@@ -71,6 +75,10 @@ import           Reflex.Extended
 import           Reflex.Network.Extended
 
 import           Data.Maybe
+
+import qualified Pact.Types.Pretty as Pretty
+import qualified Data.Text.Prettyprint.Doc.Render.Text as Pretty
+import qualified Data.Text.Prettyprint.Doc as Pretty (layoutCompact, layoutPretty, defaultLayoutOptions)
 
 -- | Shorthand for Dynamic t (Maybe a).
 --
@@ -154,6 +162,15 @@ compactEncoding = defaultOptions
 
 tshow :: Show a => a -> Text
 tshow = T.pack . show
+
+prettyTextCompact :: Pretty.Pretty a => a -> Text
+prettyTextCompact = Pretty.renderStrict . Pretty.layoutCompact . Pretty.pretty
+
+prettyTextPretty :: Pretty.Pretty a => a -> Text
+prettyTextPretty = Pretty.renderStrict . Pretty.layoutPretty Pretty.defaultLayoutOptions . Pretty.pretty
+
+note :: MonadError e m => e -> Maybe a -> m a
+note e = maybe (throwError e) pure
 
 forkJSM :: (MonadJSM m) => JSM () -> m ThreadId
 forkJSM t = do
