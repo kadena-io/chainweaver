@@ -268,11 +268,19 @@ fetchModule backendL onReq = do
       _ -> throwError "Server response did not contain a  TObject module description."
 
     getCode :: ObjectMap (Term Name) -> Either Text Code
-    getCode (ObjectMap props) =
-        case Map.lookup "code" props of
-          Nothing -> throwError "No code property in module description object!"
-          Just (TLiteral (LString c) _) -> pure $ Code c
-          _ -> throwError "No code found, but something else!"
+    getCode (ObjectMap props) = do
+      termMod <-
+        note "Property v missing!" $ Map.lookup "v" props
+      (ObjectMap objMod) <- case termMod of
+        TObject obj _ -> pure $ _oObject obj
+        _ -> throwError "Expected object describing the module."
+
+      codeLit <- note "No code property in module description object:\n" $
+        Map.lookup "code" objMod
+
+      case codeLit of
+        (TLiteral (LString c) _) -> pure $ Code c
+        _ -> throwError "No code found, but something else!"
 
     defineNamespace =
       maybe "" (\n -> "(namespace '" <> coerce n <> ")") . _mnNamespace
