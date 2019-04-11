@@ -48,7 +48,8 @@ import           Reflex
 import           Reflex.Dom.Core              (HasJSContext)
 import           Reflex.NotReady.Class
 ------------------------------------------------------------------------------
-import           Obelisk.Route.Frontend       (R, RouteToUrl (..), Routed (..), SetRoute (..))
+import           Obelisk.Route.Frontend       (R, RouteToUrl (..), Routed (..),
+                                               SetRoute (..))
 ------------------------------------------------------------------------------
 import           Common.Route                 (FrontendRoute)
 import           Frontend.Backend
