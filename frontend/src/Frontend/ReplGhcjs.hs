@@ -51,12 +51,13 @@ import           Pact.Types.Lang
 import           Common.Route
 import           Frontend.Editor
 import           Frontend.Foundation
+import           Frontend.GistStore
 import           Frontend.Ide
 import           Frontend.Repl
-import           Frontend.Routes
 import           Frontend.UI.Button
+import           Frontend.UI.Dialogs.CreatedGist        (uiCreatedGist)
+import           Frontend.UI.Dialogs.CreateGist         (uiCreateGist)
 import           Frontend.UI.Dialogs.DeployConfirmation (uiDeployConfirmation)
-import           Frontend.UI.Dialogs.CreateGist (uiCreateGist)
 import           Frontend.UI.Modal
 import           Frontend.UI.Modal.Impl
 import           Frontend.UI.RightPanel
@@ -80,15 +81,16 @@ app = void . mfix $ \ cfg -> do
 
   modalCfg <- showModal ideL
 
-  routesCfg <- handleRoutes ideL
+  let
+    onGistCreatedModal = Just . uiCreatedGist <$> ideL ^. gistStore_created
+    gistModalCfg = mempty & modalCfg_setModal .~ onGistCreatedModal
 
   pure $ mconcat
     [ controlCfg
     , mainCfg
     , modalCfg
-    , routesCfg
+    , gistModalCfg
     ]
-
 
 -- | Code editing (left hand side currently)
 codePanel :: forall t m a. MonadWidget t m => CssClass -> Ide a t -> m (IdeCfg a t)

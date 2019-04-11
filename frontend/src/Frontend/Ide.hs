@@ -48,18 +48,19 @@ import           Reflex
 import           Reflex.Dom.Core              (HasJSContext)
 import           Reflex.NotReady.Class
 ------------------------------------------------------------------------------
-import Obelisk.Route.Frontend (RouteToUrl (..), R, Routed (..))
+import           Obelisk.Route.Frontend       (R, RouteToUrl (..), Routed (..), SetRoute (..))
 ------------------------------------------------------------------------------
-import Common.Route (FrontendRoute)
+import           Common.Route                 (FrontendRoute)
 import           Frontend.Backend
 import           Frontend.Editor
 import           Frontend.Foundation
+import           Frontend.GistStore
 import           Frontend.JsonData
 import           Frontend.Messages
 import           Frontend.ModuleExplorer.Impl
 import           Frontend.OAuth
-import           Frontend.GistStore
 import           Frontend.Repl
+import           Frontend.Routes
 import           Frontend.Wallet
 
 -- We don't really depend on UI here, I just don't bother to move `HasModalCfg`
@@ -127,6 +128,7 @@ makeIde
     , MonadSample t (Performable m)
     , TriggerEvent t m, PostBuild t m
     , RouteToUrl (R FrontendRoute) m, Routed t (R FrontendRoute) m
+    , SetRoute t (R FrontendRoute) m
     )
   => IdeCfg modal t -> m (Ide modal t)
 makeIde userCfg = build $ \ ~(cfg, ideL) -> do
@@ -140,6 +142,8 @@ makeIde userCfg = build $ \ ~(cfg, ideL) -> do
     (gistStoreCfgL, gistStoreL) <- makeGistStore ideL cfg
     messagesL <- makeMessages cfg
     (replCfgL, replL) <- makeRepl ideL cfg
+    routesCfg <- handleRoutes ideL
+
 
     envSelection <- makeEnvSelection ideL $ cfg ^. ideCfg_selEnv
 
@@ -154,6 +158,7 @@ makeIde userCfg = build $ \ ~(cfg, ideL) -> do
           , editorCfgL
           , oAuthCfgL
           , gistStoreCfgL
+          , routesCfg
           ]
       , Ide
         { _ide_editor = editorL

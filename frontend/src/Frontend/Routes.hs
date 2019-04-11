@@ -33,8 +33,6 @@ import           Control.Lens
 import           Control.Monad.State.Strict
 import           Data.Dependent.Sum              (DSum ((:=>)))
 import           Reflex
-import           Reflex.Dom.Core
-import GHCJS.DOM.Types (Element)
 ------------------------------------------------------------------------------
 import           Obelisk.Route                   (R)
 import           Obelisk.Route.Frontend
@@ -44,22 +42,15 @@ import           Frontend.Foundation
 import           Frontend.ModuleExplorer
 import           Frontend.ModuleExplorer.RefPath
 import           Frontend.OAuth                  (HasOAuth (..))
-import           Frontend.UI.Modal
-import           Frontend.UI.Dialogs.CreatedGist (uiCreatedGist, HasUICreatedGistModelCfg)
 ------------------------------------------------------------------------------
 
 
 handleRoutes
   :: forall m t mConf model.
   ( Monad m, PostBuild t m
-  , RawElement (DomBuilderSpace m) ~ GHCJS.DOM.Types.Element
-  , RouteToUrl (R FrontendRoute) m, DomBuilder t m, PerformEvent t m, MonadJSM (Performable m)
-  , MonadIO m
   , Routed t (R FrontendRoute) m, SetRoute t (R FrontendRoute) m
   , Monoid mConf, HasModuleExplorer model t , HasModuleExplorerCfg mConf t
   , HasOAuth model t
-  , HasModalCfg mConf (Modal mConf m t) t
-  , HasUICreatedGistModelCfg (ModalCfg mConf t) t
   )
   => model
   -> m mConf
@@ -83,15 +74,8 @@ handleRoutes m = do
     pure $ mempty
       & moduleExplorerCfg_loadFile .~ fmapMaybe (^? _LoadedRef_File) onNewLoaded
       & moduleExplorerCfg_loadModule .~ fmapMaybe (^? _LoadedRef_Module) onNewLoaded
-      & modalCfg_setModal .~ showCreatedGistModal (updated route)
 
   where
-
-    showCreatedGistModal :: Event t (R FrontendRoute) -> Event t (Maybe (Modal mConf m t))
-    showCreatedGistModal onRoute =
-      fforMaybe onRoute $ \case
-        FrontendRoute_Gist :/ [gistRef] -> Just $ Just $ uiCreatedGist gistRef
-        _ -> Nothing
 
     getLoaded :: Maybe LoadedRef -> R FrontendRoute -> Maybe LoadedRef
     getLoaded cLoaded routeL = do
