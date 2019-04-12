@@ -30,6 +30,7 @@ module Frontend.UI.Button
   , backButton
   , copyButton
   , deleteButton
+  , deleteButtonCfg
   , openButton
   , viewButton
   , callButton
@@ -175,9 +176,12 @@ copyButton cfg e = do
       ]
 
 deleteButton :: StaticButtonConstraints t m => m (Event t ())
-deleteButton = -- uiIcon "fas fa-chevron-left" $ def & iconConfig_size .~ Just IconLG
+deleteButton = deleteButtonCfg def
+
+deleteButtonCfg :: StaticButtonConstraints t m => UiButtonCfg -> m (Event t ())
+deleteButtonCfg uCfg =
   let
-    cfg = def & uiButtonCfg_class .~ "button_type_secondary" <> "button_size_tiny"
+    cfg = uCfg & uiButtonCfg_class %~ (<> "button_type_secondary" <> "button_size_tiny")
   in
     uiButton cfg $ imgWithAlt (static @"img/X.svg") "Delete" blank
 

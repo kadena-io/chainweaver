@@ -162,7 +162,8 @@ uiKeyItem (n, k) = do
         let cfg = copyBtnCfg & uiButtonCfg_disabled .~ fmap not isShown
         void $ copyButton cfg $ _element_raw privEl
 
-      onDel <- elClass "td" "wallet__delete" deleteButton
+      onDel <- elClass "td" "wallet__delete" $
+        deleteButtonCfg $ def & uiButtonCfg_disabled .~ isPredefinedKey n
 
       pure (const n <$> onDel)
   where

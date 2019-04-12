@@ -28,6 +28,7 @@ module Frontend.Crypto.Ed25519
   , mkSignature
   -- * Utilities
   , keyToText
+  , textToKey
   )
   where
 
