@@ -22,6 +22,7 @@ module Frontend.UI.Widgets
   , uiRealInputElement
   , uiIntInputElement
   , uiInputView
+  , mkLabeledInputView
   , mkLabeledInput
   , uiCheckbox
   , uiDropdown
@@ -43,6 +44,7 @@ module Frontend.UI.Widgets
 
 ------------------------------------------------------------------------------
 import           Control.Applicative
+import           Data.Default (Default)
 import           Control.Lens
 import           Control.Monad
 import           Data.Map.Strict             (Map)
@@ -155,7 +157,7 @@ uiIntInputElement cfg = do
     fixNum = T.takeWhile (/='.')
 
 -- | Take an `uiInputElement` like thing and make it a view with change events
--- of your model.
+-- of your model. It also takes care of input validation.
 uiInputView
   :: (DomBuilder t m, er ~ EventResult, PostBuild t m, MonadFix m, MonadHold t m)
   => (InputElementConfig er t (DomBuilderSpace m) -> m (InputElement er (DomBuilderSpace m) t))
@@ -180,16 +182,30 @@ uiInputView mkInput cfg mVal = mdo
   pure $ _inputElement_input i
 
 
--- | Make labeled and segmented input.
-mkLabeledInput
+-- | Make labeled and segmented input view.
+mkLabeledInputView
   :: (DomBuilder t m, er ~ EventResult, PostBuild t m, MonadFix m
      , MonadHold t m
      )
   => (InputElementConfig er t (DomBuilderSpace m) -> m (InputElement er (DomBuilderSpace m) t))
   -> Text -> Dynamic t Text -> m (Event t Text)
-mkLabeledInput mkInput n v = elClass "div" "segment segment_type_tertiary labeled-input" $ do
+mkLabeledInputView mkInput n v = elClass "div" "segment segment_type_tertiary labeled-input" $ do
   divClass "label labeled-input__label" $ text n
   uiInputView mkInput (def & initialAttributes %~ addToClassAttr "labeled-input__input") v
+
+
+-- | Make labeled and segmented input.
+mkLabeledInput
+  :: (DomBuilder t m, PostBuild t m, MonadFix m
+     , MonadHold t m
+     , InitialAttributes cfg
+     )
+  => (cfg -> m element)
+  -> Text -> cfg -> m element
+mkLabeledInput mkInput n cfg = elClass "div" "segment segment_type_tertiary labeled-input" $ do
+  divClass "label labeled-input__label" $ text n
+  mkInput (cfg & initialAttributes %~ addToClassAttr "labeled-input__input")
+
 
 -- | Validated input with button
 validatedInputWithButton

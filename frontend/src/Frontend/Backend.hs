@@ -303,7 +303,7 @@ buildMeta cfg = do
   let defaultMeta =
         PublicMeta
           { _pmChainId = "1"
-          , _pmSender  = "someSender"
+          , _pmSender  = "sender00"
           , _pmGasLimit = ParsedInteger 100 -- TODO: Better defaults!!!
           , _pmGasPrice = ParsedDecimal 0.001
           }

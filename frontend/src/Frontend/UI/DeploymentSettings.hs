@@ -65,9 +65,10 @@ showSettingsTabName DeploymentSettingsView_Settings   = "Settings"
 --
 --   the right keys, ...
 uiDeploymentSettings
-  :: ( MonadWidget t m, HasBackend model t, HasWallet model t
-     , Monoid mConf , HasBackendCfg mConf t
-     )
+  :: forall t m model mConf a
+  . ( MonadWidget t m, HasBackend model t, HasWallet model t
+    , Monoid mConf , HasBackendCfg mConf t
+    )
   => model
   -> Maybe (Text, m a) -- ^ An optional additional tab.
   -> m (mConf, Dynamic t (Set KeyName), Maybe a)
@@ -88,16 +89,15 @@ uiDeploymentSettings m mUserTab = mdo
       cfg <- tabPane mempty curSelection DeploymentSettingsView_Settings $
         elKlass "div" ("group") $ do
 
-          onGasPriceTxt <- mkLabeledInput uiRealInputElement "Gas price" $
+          onGasPriceTxt <- mkLabeledInputView uiRealInputElement "Gas price" $
             fmap (showParsedDecimal . _pmGasPrice) $ m ^. backend_meta
 
-          onGasLimitTxt <- mkLabeledInput uiIntInputElement "Gas limit" $
+          onGasLimitTxt <- mkLabeledInputView uiIntInputElement "Gas limit" $
             fmap (showParsedInteger . _pmGasLimit) $ m ^. backend_meta
 
-          onSender <- mkLabeledInput uiInputElement "Sender" $
-            fmap _pmSender $ m ^. backend_meta
+          onSender <- mkLabeledInput (senderDropdown $ m ^. backend_meta) "Sender" def
 
-          onChainId <- mkLabeledInput uiInputElement "Chain id" $
+          onChainId <- mkLabeledInputView uiInputElement "Chain id" $
             fmap _pmChainId $ m ^. backend_meta
 
           pure $ mempty
@@ -110,6 +110,15 @@ uiDeploymentSettings m mUserTab = mdo
 
       pure (cfg, signingKeys, mRes)
     where
+      senderDropdown meta uCfg = do
+        let itemDom v = elAttr "option" ("value" =: v) $ text v
+        onSet <- tagOnPostBuild $ _pmSender <$> meta
+        let cfg = uCfg { _selectElementConfig_setValue = Just onSet }
+        (el, ()) <- uiSelectElement cfg $ do
+          traverse_ itemDom $ Map.keys chainwebDefaultSenders
+        pure $ _selectElement_change el
+
+
       showParsedInteger :: ParsedInteger -> Text
       showParsedInteger (ParsedInteger i) = tshow i
 
