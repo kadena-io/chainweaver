@@ -113,9 +113,12 @@ uiDeploymentSettings m mUserTab = mdo
       senderDropdown meta uCfg = do
         let itemDom v = elAttr "option" ("value" =: v) $ text v
         onSet <- tagOnPostBuild $ _pmSender <$> meta
-        let cfg = uCfg { _selectElementConfig_setValue = Just onSet }
+        let
+          cfg = uCfg
+            & selectElementConfig_setValue .~ onSet
         (el, ()) <- uiSelectElement cfg $ do
           traverse_ itemDom $ Map.keys chainwebDefaultSenders
+        text $ "Note: Make sure to sign with this sender's key."
         pure $ _selectElement_change el
 
 

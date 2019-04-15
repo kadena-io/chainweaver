@@ -13,7 +13,7 @@
   font-family: $std-fonts;
   color: $std-color;
 
-  padding: 0 $medium-padding;
+  padding: $input-padding;
 }
 
 .input::placeholder {

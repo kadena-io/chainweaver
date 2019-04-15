@@ -11,5 +11,7 @@
 }
 
 .labeled-input__input {
+  @extend .input_type_secondary;
+  background-color: white;
   width: 100%;
 }

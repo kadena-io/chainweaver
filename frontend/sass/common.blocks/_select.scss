@@ -3,23 +3,11 @@
 $select-padding: 14px;
 
 .select {
+  @extend .input;
   -webkit-appearance: none;
-  border-radius: $std-border-radius;
-  border-style: $std-border-style;
-  border-width: $std-border-width;
-  border-color: $std-border-color;
-
-  background: transparent;
-
-  height: $control-height;
-  line-height: $control-line-height;
-
-  font-family: $std-fonts;
-  color: $std-color;
 
   background: url(/static/img/arrow-down.svg) no-repeat right $select-padding top 50%;
   background-size: 10px;
-  padding: 0 $normal-padding;
   padding-right: 36px;
 
   cursor: pointer;
@@ -36,21 +24,14 @@ $select-padding: 14px;
 }
 
 .select_type_secondary {
+  @extend .input_type_secondary;
   background-image: url(/static/img/arrow-down-grey.svg);
-  color: $secondary-color;
-  border-color: $secondary-border-color;
-  font-size: $secondary-font-size;
-  background-color: $white;
-  // line-height: $secondary-line-height;
 }
 
-
 .select_type_tertiary {
+  @extend .input_type_tertiary;
   background-image: url(/static/img/arrow-down-grey.svg);
   color: $tertiary-select-color;
-  border-color: $secondary-border-color;
-  font-size: $secondary-font-size;
-  // line-height: $secondary-line-height;
 }
 
 // Variant that has height: auto;
