@@ -35,7 +35,6 @@ import           Data.List               (intersperse)
 import qualified Data.Map                as Map
 import           Data.Text               (Text)
 import qualified Data.Text               as T
-import           Data.Traversable        (for)
 import           Reflex
 import           Reflex.Dom
 import           Safe (readMay, headMay)
@@ -84,20 +83,14 @@ uiCallFunction m mModule func = do
             el "br" blank
             renderDescription func
 
-        (settingsCfg, signingKeys, mPactCall) <-
+        (settingsCfg, signingKeys, mPactCall) <- do
           if isJust mModule -- Only relevant if we have a deployed module:
-             then uiSegment mempty $ uiDeploymentSettings m . Just . ("Parameters",) $
-               for mModule $ \ _ -> divClass "group fun-arg-editor" $ do
-                 let fType = _pactFunction_type func
-                     fModule = _pactFunction_module func
-                     fName = _pactFunction_name func
-                     fArgs = _ftArgs fType
-                 args :: [ Dynamic t Text ] <- traverse (funArgEdit (m ^. jsonData)) fArgs
-                 pure $ buildCall fModule fName <$> sequence args
+             then uiSegment mempty $
+               uiDeploymentSettings m $ parametersTab m func
              else pure (mempty, pure mempty, Nothing)
 
         pure $ do
-          pactCall <- join mPactCall
+          pactCall <- mPactCall
           moduleL <- mModule
           pure (pactCall, signingKeys, moduleL, settingsCfg)
 
@@ -134,6 +127,25 @@ uiCallFunction m mModule func = do
 
             pure (cfg, leftmost [onClose, onCancel, onCall])
 
+-- | Tab showing edits for function parameters (if any):
+parametersTab
+  :: (MonadWidget t m, HasJsonData model t)
+  => model
+  -> PactFunction
+  -> Maybe (Text, m (Dynamic t Text))
+parametersTab m func =
+  let
+    fType = _pactFunction_type func
+    fModule = _pactFunction_module func
+    fName = _pactFunction_name func
+    fArgs = _ftArgs fType
+  in
+    if null fArgs
+    then Nothing
+    else Just . ("Parameters",) $
+      divClass "group" $ do
+        args :: [ Dynamic t Text ] <- traverse (funArgEdit (m ^. jsonData)) fArgs
+        pure $ buildCall fModule fName <$> sequence args
 
 -- | Build a function call
 --
