@@ -83,7 +83,7 @@ import           Pact.Parse                        (ParsedDecimal (..),
                                                     ParsedInteger (..))
 import           Pact.Types.Exp                    (Literal (LString))
 import           Pact.Types.Term                   (Name,
-                                                    Term (TList, TLiteral))
+                                                    Term (TList, TLiteral), tStr)
 
 #if !defined (ghcjs_HOST_OS)
 import           Pact.Types.Crypto                 (PPKScheme (..))
@@ -367,7 +367,7 @@ getBackends
   => m (Dynamic t (Maybe (Map BackendName BackendUri)))
 getBackends = do
   let
-    buildUrl = ("http://localhost:" <>) . getPactInstancePort
+    buildUrl = (\p -> "http://localhost:" <> p <> "/api/v1") . getPactInstancePort
     buildName = BackendName . ("dev-" <>) . T.pack . show
     buildServer =  buildName &&& buildUrl
     devServers = Map.fromList $ map buildServer [1 .. numPactInstances]
@@ -594,8 +594,16 @@ backendRequest reqType req cmd callback = void . forkJSM $ do
     performReq clientEnv = case reqType of
       RequestType_Send -> do
         res <- runReq clientEnv $ send pactServerApiClient $ SubmitBatch . pure $ cmd
-        key <- getRequestKey $ res
-        fmap _arResult . runReq clientEnv $ listen pactServerApiClient $ ListenerRequest key
+        _key <- getRequestKey $ res
+        -- TODO: If we no longer wait for /listen, we should change the type instead of wrapping that message in `Term Name`.
+        pure $ CommandSuccess $ tStr "Transmitted command successfully."
+        {- key <- getRequestKey $ res -}
+        {- v <- runReq clientEnv $ listen pactServerApiClient $ ListenerRequest key -}
+        {- case preview (Aeson.key "result" . Aeson.key "hlCommandResult" . _JSON) v of -}
+        {-   Just cr -> pure cr -}
+        {-   Nothing -> case fromJSON v of -}
+        {-     Error str -> throwError $ BackendError_ParseError $ T.pack str -}
+        {-     Success ar -> pure $ _arResult ar -}
       RequestType_Local ->
          runReq clientEnv  $ local pactServerApiClient cmd
 

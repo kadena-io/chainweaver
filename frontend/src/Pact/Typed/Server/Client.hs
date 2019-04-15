@@ -25,6 +25,7 @@ import Servant.API
 import Servant.Client.Core
 import qualified Pact.Analyze.Remote.Types as Analyze
 import Data.Text (Text)
+import Data.Aeson (Value)
 
 import Pact.Typed.Server.API
 import Pact.Typed.Types.API
@@ -33,14 +34,15 @@ import Pact.Typed.Types.Command
 data PactServerAPIClient m = PactServerAPIClient
   { send :: SubmitBatch -> m RequestKeys
   , poll :: Poll -> m PollResponses
-  , listen :: ListenerRequest -> m ApiResult
+  , listen :: ListenerRequest -> m Value
   , local :: Command Text -> m CommandValue
-  , verify :: Analyze.Request -> m Analyze.Response
-  , version :: m Text
   }
+
+apiV1API :: Proxy ApiV1API
+apiV1API = Proxy
 
 pactServerApiClient :: forall m. RunClient m => PactServerAPIClient m
 pactServerApiClient = let
-  (send :<|> poll :<|> listen :<|> local) :<|> verify :<|> version =
-    clientIn pactServerAPI (Proxy :: Proxy m)
-  in PactServerAPIClient{ send, poll, listen, local, verify, version }
+  send :<|> poll :<|> listen :<|> local =
+    clientIn apiV1API (Proxy :: Proxy m)
+  in PactServerAPIClient{ send, poll, listen, local }

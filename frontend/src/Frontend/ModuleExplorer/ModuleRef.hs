@@ -269,10 +269,16 @@ fetchModule backendL onReq = do
 
     getCode :: ObjectMap (Term Name) -> Either Text Code
     getCode (ObjectMap props) = do
-      termMod <-
-        note "Property v missing!" $ Map.lookup "v" props
+      {- termMod <- -}
+        {- note "Property v missing!" $ Map.lookup "v" props -}
+
+      --Compatibility hack: pact has this wrapped, chainweb not yet - so:
+      let
+        termMod =
+          Map.lookup "v" props
       (ObjectMap objMod) <- case termMod of
-        TObject obj _ -> pure $ _oObject obj
+        Just (TObject obj _) -> pure $ _oObject obj
+        Nothing -> pure $ ObjectMap props
         _ -> throwError "Expected object describing the module."
 
       codeLit <- note "No code property in module description object:\n" $
