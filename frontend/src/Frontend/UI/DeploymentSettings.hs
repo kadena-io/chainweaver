@@ -97,8 +97,10 @@ uiDeploymentSettings m mUserTab = mdo
 
           onSender <- mkLabeledInput (senderDropdown $ m ^. backend_meta) "Sender" def
 
-          onChainId <- mkLabeledInputView uiInputElement "Chain id" $
-            fmap _pmChainId $ m ^. backend_meta
+          -- chainid does not seem to make much sense as it is part of the uri right now.
+          let onChainId = never
+          {- onChainId <- mkLabeledInputView uiInputElement "Chain id" $ -}
+          {-   fmap _pmChainId $ m ^. backend_meta -}
 
           pure $ mempty
             & backendCfg_setSender .~ onSender
