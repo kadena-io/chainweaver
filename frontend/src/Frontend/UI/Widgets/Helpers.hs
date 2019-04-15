@@ -5,8 +5,8 @@
 {-# LANGUAGE OverloadedStrings     #-}
 {-# LANGUAGE RecursiveDo           #-}
 {-# LANGUAGE ScopedTypeVariables   #-}
-{-# LANGUAGE TypeApplications      #-}
 {-# LANGUAGE TupleSections         #-}
+{-# LANGUAGE TypeApplications      #-}
 
 -- | Little helpers useful for implementing widgets.
 module Frontend.UI.Widgets.Helpers
@@ -25,8 +25,8 @@ import           Control.Lens
 import           Control.Monad
 import           Data.Map.Strict             (Map)
 import           Data.Text                   (Text)
-import           Language.Javascript.JSaddle (PToJSVal, call, eval, js0,
-                                              liftJSM, obj, pToJSVal)
+import           Language.Javascript.JSaddle (PToJSVal, call, eval, js0, obj,
+                                              pToJSVal)
 import           Reflex.Dom.Contrib.CssClass
 import           Reflex.Dom.Core
 ------------------------------------------------------------------------------

@@ -46,7 +46,7 @@ module Frontend.Foundation
   , module Data.Semigroup
   , module Data.Foldable
   , module Control.Monad.IO.Class
-  , module GHCJS.DOM.Types
+  , module Language.Javascript.JSaddle
   , module Control.Monad.Fix
   , module GHC.Generics
   , module Reflex.Dom.Contrib.CssClass
@@ -68,7 +68,7 @@ import qualified Data.Text                             as T
 import qualified Data.Text.Encoding                    as T
 import qualified Data.Text.Encoding.Error              as T
 import           GHC.Generics                          (Generic)
-import           GHCJS.DOM.Types                       (JSM, MonadJSM, askJSM,
+import           Language.Javascript.JSaddle           (JSM, MonadJSM, askJSM,
                                                         runJSM, liftJSM)
 import           Language.Haskell.TH                   (DecsQ)
 import           Language.Haskell.TH.Syntax            (Name)

@@ -49,7 +49,7 @@ import           Control.Monad
 import           Data.Map.Strict             (Map)
 import           Data.Text                   (Text)
 import qualified Data.Text                   as T
-import           Language.Javascript.JSaddle (js0, liftJSM, pToJSVal)
+import           Language.Javascript.JSaddle (js0, pToJSVal)
 import           Obelisk.Generated.Static
 import           Reflex.Dom.Contrib.CssClass
 import           Reflex.Dom.Core

@@ -42,7 +42,6 @@ import           Data.Text                   (Text)
 import qualified Data.Text                   as T
 import           Generics.Deriving.Monoid    (mappenddefault, memptydefault)
 import           GHC.Generics                (Generic)
-import           Language.Javascript.JSaddle (MonadJSM)
 import           Reflex
 
 import           Frontend.Crypto.Ed25519

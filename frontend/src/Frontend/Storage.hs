@@ -16,7 +16,7 @@ import qualified Data.Text              as T
 import qualified Data.Text.Encoding     as T
 import qualified GHCJS.DOM              as DOM
 import qualified GHCJS.DOM.Storage      as GHCJS
-import           GHCJS.DOM.Types        (JSString, MonadJSM, fromJSString,
+import           GHCJS.DOM.Types        (JSString, fromJSString,
                                          toJSString)
 import qualified GHCJS.DOM.Window       as Window
 

@@ -41,7 +41,6 @@ import qualified Data.Text                   as T
 import           Generics.Deriving.Monoid    (mappenddefault)
 import           GHC.Generics                (Generic)
 import           GHCJS.DOM.XMLHttpRequest    (setRequestHeader)
-import           Language.Javascript.JSaddle (liftJSM)
 import           Network.GitHub.API
 import           Network.GitHub.Types.Gist   as G
 import           Reflex
