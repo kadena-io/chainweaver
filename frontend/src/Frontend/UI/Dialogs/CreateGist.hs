@@ -82,7 +82,7 @@ uiCreateGist = do
 
 -- | Take label test and default value and produce a labeled input.
 labeledTextInputWithDefault
-  :: (MonadHold t m, DomBuilder t m, PostBuild t m, MonadFix m)
+  :: (MonadHold t m, DomBuilder t m)
   => Text
   -> Text
   -> m (Dynamic t Text)

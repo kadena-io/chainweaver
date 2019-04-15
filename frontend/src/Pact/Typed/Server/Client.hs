@@ -23,7 +23,6 @@ module Pact.Typed.Server.Client
 import Data.Proxy
 import Servant.API
 import Servant.Client.Core
-import qualified Pact.Analyze.Remote.Types as Analyze
 import Data.Text (Text)
 import Data.Aeson (Value)
 

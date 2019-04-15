@@ -44,7 +44,6 @@ module Frontend.UI.Widgets
 
 ------------------------------------------------------------------------------
 import           Control.Applicative
-import           Data.Default (Default)
 import           Control.Lens
 import           Control.Monad
 import           Data.Map.Strict             (Map)
@@ -196,10 +195,7 @@ mkLabeledInputView mkInput n v = elClass "div" "segment segment_type_tertiary la
 
 -- | Make labeled and segmented input.
 mkLabeledInput
-  :: (DomBuilder t m, PostBuild t m, MonadFix m
-     , MonadHold t m
-     , InitialAttributes cfg
-     )
+  :: (DomBuilder t m , InitialAttributes cfg)
   => (cfg -> m element)
   -> Text -> cfg -> m element
 mkLabeledInput mkInput n cfg = elClass "div" "segment segment_type_tertiary labeled-input" $ do
