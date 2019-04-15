@@ -103,9 +103,6 @@ import Frontend.ModuleExplorer.RefPath as MP
 -- | URI for accessing a backend.
 type BackendUri = Text
 
-newtype PactError = PactError Text deriving (Show, FromJSON)
-newtype PactDetail = PactDetail Text deriving (Show, FromJSON)
-
 -- | Name that uniquely describes a valid backend.
 newtype BackendName = BackendName
   { unBackendName :: Text
