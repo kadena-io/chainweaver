@@ -69,7 +69,7 @@ import qualified Data.Text.Encoding                    as T
 import qualified Data.Text.Encoding.Error              as T
 import           GHC.Generics                          (Generic)
 import           GHCJS.DOM.Types                       (JSM, MonadJSM, askJSM,
-                                                        runJSM)
+                                                        runJSM, liftJSM)
 import           Language.Haskell.TH                   (DecsQ)
 import           Language.Haskell.TH.Syntax            (Name)
 import           Language.Javascript.JSaddle.Monad     (JSContextRef)

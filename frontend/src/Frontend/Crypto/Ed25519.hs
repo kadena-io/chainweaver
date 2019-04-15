@@ -34,18 +34,19 @@ module Frontend.Crypto.Ed25519
 
 import           Control.Lens
 import           Control.Monad
-import           Control.Monad.Fail                 (MonadFail)
-import           Control.Newtype.Generics           (Newtype (..))
-import           Data.Aeson                         hiding (Object)
-import           Data.ByteString                    (ByteString)
-import qualified Data.ByteString                    as BS
-import qualified Data.ByteString.Base16             as Base16
-import           Data.Text                          (Text)
-import qualified Data.Text.Encoding                 as T
-import           GHC.Generics                       (Generic)
-import           Language.Javascript.JSaddle
+import           Control.Monad.Fail          (MonadFail)
+import           Control.Newtype.Generics    (Newtype (..))
+import           Data.Aeson                  hiding (Object)
+import           Data.ByteString             (ByteString)
+import qualified Data.ByteString             as BS
+import qualified Data.ByteString.Base16      as Base16
+import           Data.Text                   (Text)
+import qualified Data.Text.Encoding          as T
+import           GHC.Generics                (Generic)
+import           Language.Javascript.JSaddle (call, eval, fromJSValUnchecked,
+                                              js, valNull)
 
-import Frontend.Foundation
+import           Frontend.Foundation
 
 -- | PublicKey with a Pact compatible JSON representation.
 newtype PublicKey = PublicKey ByteString
