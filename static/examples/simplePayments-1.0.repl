@@ -17,23 +17,23 @@
 ;define smart-contract code
 (module payments 'admin-keyset
 
-  (defschema payments
+  (defschema accounts
     balance:decimal
     keyset:keyset)
 
-  (deftable payments-table:{payments})
+  (deftable accounts-table:{payments})
 
   (defun create-account (id initial-balance keyset)
     "Create a new account for ID with INITIAL-BALANCE funds, must be administrator."
     (enforce-keyset 'admin-keyset)
     (enforce (>= initial-balance 0.0) "Initial balances must be >= 0.")
-    (insert payments-table id
+    (insert accounts-table id
             { "balance": initial-balance,
               "keyset": keyset }))
 
   (defun get-balance (id)
     "Only users or admin can read balance."
-    (with-read payments-table id
+    (with-read accounts-table id
       { "balance":= balance, "keyset":= keyset }
       (enforce-one "Access denied"
         [(enforce-keyset keyset)
@@ -41,21 +41,21 @@
       balance))
 
   (defun pay (from to amount)
-    (with-read payments-table from { "balance":= from-bal, "keyset":= keyset }
+    (with-read accounts-table from { "balance":= from-bal, "keyset":= keyset }
       (enforce-keyset keyset)
-      (with-read payments-table to { "balance":= to-bal }
+      (with-read accounts-table to { "balance":= to-bal }
         (enforce (> amount 0.0) "Negative Transaction Amount")
         (enforce (>= from-bal amount) "Insufficient Funds")
-        (update payments-table from
+        (update accounts-table from
                 { "balance": (- from-bal amount) })
-        (update payments-table to
+        (update accounts-table to
                 { "balance": (+ to-bal amount) })
         (format "{} paid {} {}" [from to amount]))))
 
 )
 
 ;define table
-(create-table payments-table)
+(create-table accounts-table)
 
 ;create accounts
 (create-account "Sarah" 100.25 (read-keyset "sarah-keyset"))
