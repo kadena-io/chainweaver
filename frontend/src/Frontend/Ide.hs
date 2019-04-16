@@ -145,7 +145,6 @@ makeIde userCfg = build $ \ ~(cfg, ideL) -> do
     (replCfgL, replL) <- makeRepl ideL cfg
     routesCfg <- handleRoutes ideL
 
-
     envSelection <- makeEnvSelection ideL $ cfg ^. ideCfg_selEnv
 
     modal <- holdDyn Nothing $ unLeftmostEv (_ideCfg_setModal cfg)

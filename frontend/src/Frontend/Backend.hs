@@ -697,7 +697,7 @@ buildExecPayload meta req = do
 -- | Pretty print a `BackendError`.
 prettyPrintBackendError :: BackendError -> Text
 prettyPrintBackendError = ("ERROR: " <>) . \case
-  BackendError_BackendError msg -> "Error http response: " <> msg
+  BackendError_BackendError msg -> "Http error: " <> msg
   BackendError_ReqTooLarge-> "Request exceeded the allowed maximum size!"
   BackendError_Failure msg -> "Backend failure: " <> msg
   BackendError_ParseError m -> "Server response could not be parsed: " <> m
