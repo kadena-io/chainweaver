@@ -423,7 +423,7 @@ loadModules
 loadModules backendL onRefresh = do
       let
         bs = backendL ^. backend_backends
-        req n = (BackendRequest "(list-modules)" H.empty n Set.empty)
+        req n = BackendRequest "(list-modules)" H.empty n Set.empty
       backendMap <- networkView $ ffor bs $ \case
         Nothing -> pure mempty
         Just bs' -> do
@@ -594,9 +594,9 @@ backendRequest reqType req cmd callback = void . forkJSM $ do
     performReq clientEnv = case reqType of
       RequestType_Send -> do
         res <- runReq clientEnv $ send pactServerApiClient $ SubmitBatch . pure $ cmd
-        _key <- getRequestKey $ res
+        key <- getRequestKey $ res
         -- TODO: If we no longer wait for /listen, we should change the type instead of wrapping that message in `Term Name`.
-        pure $ CommandSuccess $ tStr "Transmitted command successfully."
+        pure $ CommandSuccess $ tStr $ T.dropWhile (== '"') . T.dropWhileEnd (== '"') . tshow $ key
         {- key <- getRequestKey $ res -}
         {- v <- runReq clientEnv $ listen pactServerApiClient $ ListenerRequest key -}
         {- case preview (Aeson.key "result" . Aeson.key "hlCommandResult" . _JSON) v of -}
