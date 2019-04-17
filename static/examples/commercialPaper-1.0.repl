@@ -4,6 +4,10 @@
 ;;
 ;;  Make sure the message is signed with this added key as well.
 ;;
+;;  When deploying new contracts, ensure to use a unique keyset
+;;  and unique module from any previously deployed contract
+;;
+;;
 ;;---------------------------------
 
 ;---------------------------------

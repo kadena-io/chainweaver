@@ -1,4 +1,8 @@
 ;; accounts module, admin keyset, and table
+;;
+;;  When deploying new contracts, ensure to use a unique keyset
+;;  and unique module from any previously deployed contract
+;;
 ; (load "examples/verified-accounts/accounts.repl")
 
 (enforce-pact-version "2.4.1")
