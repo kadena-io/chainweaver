@@ -67,7 +67,6 @@ data ExampleRef
   | ExampleRef_SimplePayment
   | ExampleRef_InternationalPayment
   | ExampleRef_Verification
-  | ExampleRef_Accounts
   deriving (Eq, Ord, Show, Enum, Bounded, Generic, Read)
 
 makePactPrisms ''ExampleRef
@@ -107,8 +106,6 @@ exampleName = \case
     -> "International Payment"
   ExampleRef_Verification
     -> "Verification"
-  ExampleRef_Accounts
-    -> "Accounts"
 
 -- | File name of Pact code for the given example.
 exampleFileName :: ExampleRef -> Text
@@ -121,8 +118,6 @@ exampleFileName = \case
     -> static @ "examples/internationalPayments-1.0.repl"
   ExampleRef_Verification
     -> static @ "examples/verification-1.0.repl"
-  ExampleRef_Accounts
-    -> static @ "examples/accounts-1.0.repl"
 
 
 -- | File name of JSON data for example.
@@ -136,8 +131,6 @@ exampleDataName = \case
     -> static @ "examples/internationalPayments-1.0.data.json"
   ExampleRef_Verification
     -> static @ "examples/verification-1.0.data.json"
-  ExampleRef_Accounts
-    -> static @ "examples/accounts-1.0.data.json"
 
 -- | Actually fetch Example code and data.
 --
