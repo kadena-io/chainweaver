@@ -67,8 +67,8 @@ import           Frontend.UI.Widgets.Helpers (imgWithAlt, makeClickable,
 --   In contrast to `checkbox` this is not only the actual checkbox but also a
 --   containing label, as this is the only way to have a styled checkbox.
 --
---   Note that this is actually a secondary type checkbox, I have yet to
---   generalize this yet.
+--   Note that this is actually a secondary type checkbox, I have to
+--   generalize this at some point.
 uiCheckbox
   :: (DomBuilder t m, PostBuild t m)
   => CssClass
