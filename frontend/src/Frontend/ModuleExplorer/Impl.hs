@@ -246,7 +246,7 @@ deployCode m onDeploy =
       pure $ \(code, info) -> do
         let b = _transactionInfo_backend info
         d <- ed ^? _Right
-        pure $ BackendRequest code d b (_transactionInfo_keys info)
+        pure $ BackendRequest code d b RequestType_Send (_transactionInfo_keys info)
 
     jsonError :: Dynamic t (Maybe Text)
     jsonError = do
@@ -256,8 +256,8 @@ deployCode m onDeploy =
         Right _ -> Nothing
   in
     mempty
-      & backendCfg_deployCode .~ attachWithMaybe ($) (current mkReq) onDeploy
-      & messagesCfg_send .~ tagMaybe (current jsonError) onDeploy
+      & backendCfg_deployCode .~ fmap pure (attachWithMaybe ($) (current mkReq) onDeploy)
+      & messagesCfg_send .~ tagMaybe (fmap pure <$> current jsonError) onDeploy
 
 
 -- | Takes care of loading a file/module into the editor.
@@ -440,6 +440,6 @@ loadModule backendL onRef = do
     onErr    = fmapMaybe (^? _2 . _Left) onErrModule
     onModule = fmapMaybe (traverse (^? _Right)) onErrModule
   pure
-    ( mempty & messagesCfg_send .~ fmap ("Loading of module failed: " <>) onErr
+    ( mempty & messagesCfg_send .~ fmap (pure . ("Loading of module failed: " <>)) onErr
     , onModule
     )

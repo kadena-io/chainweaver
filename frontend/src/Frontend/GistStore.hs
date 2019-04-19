@@ -171,7 +171,7 @@ makeGistStore m cfg = mdo
 
   pure
     ( mempty
-        & messagesCfg_send .~ (tshow <$> leftmost [onPermErr, onLoadErr])
+        & messagesCfg_send .~ mconcat (fmap (pure . tshow) <$> [onPermErr, onLoadErr])
         -- Trigger auth if no token yet (when in progress, requests will be ignored):
         & oAuthCfg_authorize .~ onAuthorize
         {- let authorizeCfg =  mempty & oAuthCfg_authorize .~ (AuthorizationRequest OAuthProvider_GitHub [ "gist" ] <$ onAuthorize) -}

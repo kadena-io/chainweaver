@@ -61,7 +61,7 @@ type LoggedMsg = Text
 --
 --   State is controlled via this configuration.
 data MessagesCfg t = MessagesCfg
-  { _messagesCfg_send :: Event t LogMsg
+  { _messagesCfg_send :: Event t [LogMsg]
     -- ^ Send a message that should be displayed to the user.
   , _messagesCfg_clear :: Event t ()
     -- ^ Empty messages log.
@@ -89,7 +89,7 @@ makeMessages
     )
   => cfg -> m (Messages t)
 makeMessages cfg = do
-  msgs <- foldDyn id [] $ mergeWith (.) [ (:) <$> cfg ^. messagesCfg_send
+  msgs <- foldDyn id [] $ mergeWith (.) [ (<>) <$> cfg ^. messagesCfg_send
                                         , const [] <$ cfg ^. messagesCfg_clear
                                         ]
   pure $ Messages

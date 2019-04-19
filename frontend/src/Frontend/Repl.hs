@@ -232,7 +232,7 @@ makeRepl m cfg = build $ \ ~(_, impl) -> do
 
     pure
       ( mempty
-          & messagesCfg_send .~ leftmost
+          & messagesCfg_send .~ (mconcat . map (fmap pure))
               [ onFailedTrans, onEnvDataErr
               , onNewEnvKeysErr
               ]

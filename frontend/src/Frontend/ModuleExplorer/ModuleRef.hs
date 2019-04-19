@@ -254,6 +254,7 @@ fetchModule backendL onReq = do
         ]
       , _backendRequest_data = mempty
       , _backendRequest_backend = _moduleRef_source mRef
+      , _backendRequest_endpoint = RequestType_Local
       , _backendRequest_signing = Set.empty
       }
 

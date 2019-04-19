@@ -125,7 +125,7 @@ makeOAuth cfg = mdo -- Required to get access to `tokens` for clearing any old t
   performEvent_ $ setItemStorage localStorage StoreOAuth_Tokens <$> updated tokens
 
   pure
-    ( mempty & messagesCfg_send .~ fmap textOAuthError onErr
+    ( mempty & messagesCfg_send .~ fmap (pure . textOAuthError) onErr
     , OAuth
       { _oAuth_accessTokens = tokens
       , _oAuth_error = onErr

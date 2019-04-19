@@ -208,14 +208,14 @@ typeCheckVerify m t = mdo
 #ifdef  ghcjs_HOST_OS
     cModules <- holdDyn Map.empty $ _ts_modules <$> onTransSuccess
     let
-      newAnnotations = leftmost
+      newAnnotations = mconcat
        [ attachPromptlyDynWith parseVerifyOutput cModules $ _repl_modulesVerified replL
-       , annoFallbackParser <$> replO ^. messagesCfg_send
+       , concatMap annoFallbackParser <$> replO ^. messagesCfg_send
        ]
 #else
-      newAnnotations = leftmost
+      newAnnotations = mconcat
        [ parseVerifyOutput <$> _repl_modulesVerified replL
-       , annoFallbackParser <$> replO ^. messagesCfg_send
+       , concatMap annoFallbackParser <$> replO ^. messagesCfg_send
        ]
 #endif
     pure newAnnotations

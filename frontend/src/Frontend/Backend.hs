@@ -26,6 +26,7 @@ module Frontend.Backend
   , BackendUri
   , BackendRequestV (..), backendRequest_code, backendRequest_data, backendRequest_signing
   , BackendRequest
+  , RequestType (..)
   {- , RawBackendRequest -}
   , BackendError (..)
   , BackendErrorResult
@@ -126,6 +127,12 @@ instance IsRefPath BackendName where
 
   parseRef = BackendName <$> MP.anySingle
 
+-- | What endpoint to use for a backend request.
+data RequestType
+  = RequestType_Send
+  | RequestType_Local
+  deriving (Show, Read, Generic, Eq, Ord)
+
 
 -- | Request data to be sent to the backend.
 data BackendRequestV backend = BackendRequest
@@ -138,6 +145,8 @@ data BackendRequestV backend = BackendRequest
     -- `data` field of the `exec` payload.
   , _backendRequest_backend :: backend
     -- ^ The backend to deploy the code to, either specified by `BackendName` or `BackendUri`.
+  , _backendRequest_endpoint :: RequestType
+    -- ^ Where shall this request go? To /local or to /send?
   , _backendRequest_signing :: Set KeyName
     -- ^ With what keys the request should be signed. Don't sign with any keys
     -- when calling to `performLocalReadCustom` and similar.
@@ -176,13 +185,14 @@ data BackendError
 -- | We either have a `BackendError` or some `Term Name`.
 type BackendErrorResult = Either BackendError (Term Name)
 
+
 -- | Config for creating a `Backend`.
 data BackendCfg t = BackendCfg
   { _backendCfg_refreshModule :: Event t ()
     -- ^ We are unfortunately not notified by the pact backend when new
     -- contracts appear on the blockchain, so UI code needs to request a
     -- refresh at appropriate times.
-  , _backendCfg_deployCode    :: Event t BackendRequest
+  , _backendCfg_deployCode    :: Event t [BackendRequest]
     -- ^ Deploy some code to the backend. Response will be logged to `Messages`.
   , _backendCfg_setChainId    :: Event t Text
     -- ^ On what chain to deploy to (ignored on pact -s backend).
@@ -194,7 +204,6 @@ data BackendCfg t = BackendCfg
     -- ^ Maximum gas price you are willing to accept for having your
     -- transaction executed.
   }
-  deriving Generic
 
 makePactLenses ''BackendCfg
 
@@ -228,11 +237,6 @@ data StoreBackend a where
   StoreBackend_GasSettings  :: StoreBackend PublicMeta
 
 deriving instance Show (StoreBackend a)
-
--- | What endpoint to use for a backend request.
-data RequestType
-  = RequestType_Send
-  | RequestType_Local
 
 
 makeBackend
@@ -332,12 +336,12 @@ deployCode
     )
   => model
   -> Backend t
-  -> Event t BackendRequest
+  -> Event t [BackendRequest]
   -> m (mConf, Event t ())
 deployCode w backendL onReq = do
-    reqRes <- performBackendRequest (w ^. wallet) backendL RequestType_Send onReq
-    pure $ ( mempty & messagesCfg_send .~ fmap renderReqRes reqRes
-           , () <$ ffilter (either (const False) (const True) . snd) reqRes
+    reqRes <- performBackendRequest (w ^. wallet) backendL onReq
+    pure $ ( mempty & messagesCfg_send .~ fmap (map renderReqRes) reqRes
+           , () <$ ffilter (or . map (either (const False) (const True) . snd)) reqRes
            )
   where
     renderReqRes :: (BackendRequest, BackendErrorResult) -> Text
@@ -423,7 +427,7 @@ loadModules
 loadModules backendL onRefresh = do
       let
         bs = backendL ^. backend_backends
-        req n = BackendRequest "(list-modules)" H.empty n Set.empty
+        req n = BackendRequest "(list-modules)" H.empty n RequestType_Local Set.empty
       backendMap <- networkView $ ffor bs $ \case
         Nothing -> pure mempty
         Just bs' -> do
@@ -459,6 +463,8 @@ loadModules backendL onRefresh = do
 -- | Perform a read or non persisted request to the /local endpoint.
 --
 --   Use `performLocalReadCustom` for more flexibility.
+--
+--   Note: See note for `performLocalReadCustom`.
 performLocalRead
   :: forall t m
   . ( PerformEvent t m, MonadJSM (Performable m)
@@ -476,6 +482,9 @@ performLocalRead backendL onReq = performLocalReadCustom backendL id onReq
 --   Use this function if you want to retrieve data from the backend. It does
 --   not sign the sent messages and uses some fake meta data to make sure the user
 --   won't get charged for request made via `performLocalReadCustom`.
+--
+--   Note: _backendRequest_endpoint will be ignored and set to
+--   RequestType_Local also the meta data used will be a dummy payload.
 performLocalReadCustom
   :: forall t m req
   . ( PerformEvent t m, MonadJSM (Performable m)
@@ -486,8 +495,10 @@ performLocalReadCustom
   -> (req -> BackendRequest)
   -> Event t req
   -> m (Event t (req, BackendErrorResult))
-performLocalReadCustom backendL unwrap onReq =
+performLocalReadCustom backendL unwrapUsr onReq =
   let
+    unwrap = (backendRequest_endpoint .~ RequestType_Local) <$> unwrapUsr
+    onReqs = pure <$> onReq
     fakeBackend = backendL
       { _backend_meta = pure $ PublicMeta
           { _pmChainId = "1"
@@ -496,8 +507,9 @@ performLocalReadCustom backendL unwrap onReq =
           , _pmGasPrice = ParsedDecimal 1.0
           }
       }
-  in
-    performBackendRequestCustom emptyWallet fakeBackend RequestType_Local unwrap onReq
+  in do
+    onResponses <- performBackendRequestCustom emptyWallet fakeBackend unwrap onReqs
+    pure $ fmapMaybe listToMaybe onResponses
 
 
 -- | Send a transaction via the /send endpoint.
@@ -512,11 +524,10 @@ performBackendRequest
     )
   => Wallet t
   -> Backend t
-  -> RequestType
-  -> Event t BackendRequest
-  -> m (Event t (BackendRequest, BackendErrorResult))
-performBackendRequest w backendL rType onReq =
-  performBackendRequestCustom w backendL rType id onReq
+  -> Event t [BackendRequest]
+  -> m (Event t [(BackendRequest, BackendErrorResult)])
+performBackendRequest w backendL onReq =
+  performBackendRequestCustom w backendL id onReq
 
 -- | Send a transaction via the /send endpoint.
 --
@@ -530,23 +541,27 @@ performBackendRequestCustom
     )
   => Wallet t
   -> Backend t
-  -> RequestType
   -> (req -> BackendRequest)
-  -> Event t req
-  -> m (Event t (req, BackendErrorResult))
-performBackendRequestCustom w backendL rType unwrap onReq =
-    performEventAsync $ ffor onReqWithKeys $ \(keys, req) cb -> do
+  -> Event t [req]
+  -> m (Event t [(req, BackendErrorResult)])
+performBackendRequestCustom w backendL unwrap onReqs =
+    performEventAsync $ ffor onReqsWithKeys $ \(keys, reqs) cb -> do
       meta <- sample $ current $ backendL ^. backend_meta
-      eRawReq <- mkRawBackendRequest backendL $ unwrap req
+      eRawReqs <- traverse (mkRawBackendRequest backendL . unwrap) $ reqs
+      void $ forkJSM $ do
+        r <- traverse (doReq meta keys) $ zip reqs eRawReqs
+        liftIO $ cb r
+  where
+    onReqsWithKeys = attach (current $ _wallet_keys w) onReqs
+
+    doReq meta keys (req, eRawReq) =
       case eRawReq of
-        Left err -> liftIO $ cb (req, Left err)
+        Left err -> pure (req, Left err)
         Right rawReq -> do
           let
             signing = _backendRequest_signing rawReq
           payload <- buildCmd meta keys signing rawReq
-          liftJSM $ backendRequest rType rawReq payload $ cb . (req,)
-  where
-    onReqWithKeys = attach (current $ _wallet_keys w) onReq
+          (req,) <$> (liftJSM $ backendRequest rawReq payload)
 
 
 -- | Send a transaction via the /send endpoint.
@@ -574,24 +589,21 @@ performBackendRequestCustom w backendL rType unwrap onReq =
 --
 -- @
 backendRequest
-  :: RequestType
-  -> RawBackendRequest
+  :: RawBackendRequest
   -> Command Text
-  -> (BackendErrorResult -> IO ())
-  -> JSM ()
-backendRequest reqType req cmd callback = void . forkJSM $ do
+  -> JSM BackendErrorResult
+backendRequest req cmd = do
     let
       uri = _backendRequest_backend req
     baseUrl <- S.parseBaseUrl $ T.unpack uri
     let clientEnv = S.mkClientEnv baseUrl
 
-    er <- liftJSM . runExceptT $ do
+    liftJSM . runExceptT $ do
       v <- performReq clientEnv
       ExceptT . pure $ fromCommandValue v
 
-    liftIO $ callback $ er
   where
-    performReq clientEnv = case reqType of
+    performReq clientEnv = case req ^. backendRequest_endpoint of
       RequestType_Send -> do
         res <- runReq clientEnv $ send pactServerApiClient $ SubmitBatch . pure $ cmd
         key <- getRequestKey $ res
@@ -728,19 +740,12 @@ encodeAsText = safeDecodeUtf8 . BSL.toStrict
 
 -- Instances:
 
-instance Semigroup BackendRequest where
-  (<>) = mappenddefault
-
-instance Monoid BackendRequest where
-  mempty = memptydefault
-  mappend = (<>)
-
 instance Reflex t => Semigroup (BackendCfg t) where
   BackendCfg refreshA deployA setChainIdA setSenderA setGasLimitA setGasPriceA <>
     BackendCfg refreshB deployB setChainIdB setSenderB setGasLimitB setGasPriceB
       = BackendCfg
         { _backendCfg_refreshModule = leftmost [ refreshA, refreshB ]
-        , _backendCfg_deployCode    = leftmost [ deployA, deployB ]
+        , _backendCfg_deployCode    =  deployA <> deployB
         , _backendCfg_setChainId    = leftmost [ setChainIdA, setChainIdB ]
         , _backendCfg_setSender    = leftmost [ setSenderA, setSenderB ]
         , _backendCfg_setGasLimit   = leftmost [ setGasLimitA, setGasLimitB ]
