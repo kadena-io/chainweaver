@@ -53,13 +53,13 @@ uiDeployConfirmation ideL = do
   onClose <- modalHeader $ text "Deployment Settings"
   modalMain $ do
     (settingsCfg, transInfo) <- modalBody $ do
-      (uBackend, uEndpoint) <- divClass "segment" $ do
+      (uBackend, uEndpoint) <- uiSegment mempty $ do
         elClass "h2" "heading heading_type_h2" $ text "Choose Server and Endpoint"
         uBackend <- uiBackendSelection (_backend_backends $ _ide_backend ideL)
         uEndpoint <- uiEndpointSelection Endpoint_Send
         pure (uBackend, uEndpoint)
 
-      (settingsCfg, signingKeys, _) <- elClass "div" "segment" $
+      (settingsCfg, signingKeys, _) <- uiSegment mempty $
         uiDeploymentSettings ideL Nothing
 
       pure

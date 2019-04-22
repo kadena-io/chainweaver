@@ -75,50 +75,27 @@ uiCallFunction m mModule func = do
       elClass "span" "heading_type_h1" $
         text $ _pactFunction_name func
     modalMain $ do
-      mCallAndKeys <- modalBody $ do
+      mCfgInfo <- modalBody $ do
         uiSegment mempty $ do
           elClass "div" "segment segment_type_secondary code-font code-font_type_function-desc" $ do
             renderSignature func
             el "br" blank
             el "br" blank
             renderDescription func
-
-        (settingsCfg, signingKeys, mPactCall) <- do
-          if isJust mModule -- Only relevant if we have a deployed module:
-             then uiSegment mempty $
-               uiDeploymentSettings m $ parametersTab m func
-             else pure (mempty, pure mempty, Nothing)
-
-        pure $ do
-          pactCall <- mPactCall
-          moduleL <- mModule
-          pure (pactCall, signingKeys, moduleL, settingsCfg)
+        traverse (uiBuildDeployment m func) mModule
 
       modalFooter $
-        case mCallAndKeys of
+        case mCfgInfo of
           Nothing -> do
             onAccept <- confirmButton def "Ok"
             pure (mempty, leftmost [onClose, onAccept])
-          Just (pactCall, signingKeys, moduleL, settingsCfg) -> do
+          Just (settingsCfg, transaction) -> do
             onCancel <- cancelButton def "Cancel"
             text " "
             -- let isDisabled = maybe True (const False) <$> transInfo
             onCall <- confirmButton (def & uiButtonCfg_disabled .~ pure False) "Call"
 
             let
-              transaction :: Dynamic t (Text, TransactionInfo)
-              transaction = do
-                code <- pactCall
-                keys <- signingKeys
-                let b = _moduleRef_source moduleL
-                pure $
-                  ( code
-                  , TransactionInfo
-                    { _transactionInfo_keys = keys
-                    , _transactionInfo_backend = b
-                    }
-                  )
-
               onReq = tag (current transaction) onCall
               cfg = mconcat
                 [ settingsCfg
@@ -126,6 +103,48 @@ uiCallFunction m mModule func = do
                 ]
 
             pure (cfg, leftmost [onClose, onCancel, onCall])
+
+uiBuildDeployment
+  :: forall t m mConf model.
+     ( DomBuilder t m, Monoid mConf, HasBackend model t, HasBackendCfg mConf t
+     , HasJsonData model t
+     , MonadWidget t m, HasWallet model t
+     )
+  => model
+  -> PactFunction
+  -> DeployedModuleRef
+  -> m (mConf, Dynamic t (Text, TransactionInfo))
+uiBuildDeployment m func moduleL = do
+
+  uEndpoint <- uiSegment mempty $ do
+    elClass "h2" "heading heading_type_h2" $ text "Choose Endpoint"
+    uiEndpointSelection Endpoint_Local
+
+  (cfg, signingKeys, mPactCall) <- uiSegment mempty $ do
+    uiDeploymentSettings m $ parametersTab m func
+
+  let
+    pactCall = fromMaybe (pure $ buildCall func []) mPactCall
+    transaction :: Dynamic t (Text, TransactionInfo)
+    transaction = do
+      code <- pactCall
+      keys <- signingKeys
+
+      let b = _moduleRef_source moduleL
+
+      endpointL <- uEndpoint
+
+      pure $
+        ( code
+        , TransactionInfo
+          { _transactionInfo_keys = keys
+          , _transactionInfo_backend = b
+          , _transactionInfo_endpoint = endpointL
+          }
+        )
+
+  pure (cfg, transaction)
+
 
 -- | Tab showing edits for function parameters (if any):
 parametersTab
@@ -136,8 +155,6 @@ parametersTab
 parametersTab m func =
   let
     fType = _pactFunction_type func
-    fModule = _pactFunction_module func
-    fName = _pactFunction_name func
     fArgs = _ftArgs fType
   in
     if null fArgs
@@ -145,17 +162,22 @@ parametersTab m func =
     else Just . ("Parameters",) $
       divClass "group" $ do
         args :: [ Dynamic t Text ] <- traverse (funArgEdit (m ^. jsonData)) fArgs
-        pure $ buildCall fModule fName <$> sequence args
+        pure $ buildCall func <$> sequence args
+
 
 -- | Build a function call
 --
 -- TODO: Proper namespace support
 buildCall
-  :: ModuleName -- ^ Module name
-  -> Text -- ^ Function name
+  :: PactFunction
   -> [Text] -- ^ Function arguments
   -> Text -- ^ Pact function call
-buildCall (ModuleName m _) n args = mconcat [ "(", coerce m, ".", n , " " , T.unwords args, ")" ]
+buildCall func args =
+  let
+    (ModuleName m _) = _pactFunction_module func
+    n = _pactFunction_name func
+  in
+    mconcat [ "(", coerce m, ".", n , " " , T.unwords args, ")" ]
 
 -- renderQualified :: PactFunction -> Text
 -- renderQualified func = (coerce . _pactFunction_module) func <> "." <> _pactFunction_name func
