@@ -22,7 +22,7 @@
 module Frontend.UI.DeploymentSettings
   ( uiEndpointSelection
   , uiDeploymentSettings
-  , signingKeysWidget
+  , uiSigningKeys
   ) where
 
 ------------------------------------------------------------------------------
@@ -62,14 +62,14 @@ uiEndpointSelection initial = do
 
 data DeploymentSettingsView
   = DeploymentSettingsView_Custom Text -- ^ An optional additonal tab.
-  | DeploymentSettingsView_Settings -- ^ Actual settings like gas price/limit, ...
+  | DeploymentSettingsView_PublicMeta -- ^ Actual settings like gas price/limit, ...
   | DeploymentSettingsView_Keys -- ^ Select keys for signing the transaction.
   deriving (Eq,Ord)
 
 showSettingsTabName :: DeploymentSettingsView -> Text
 showSettingsTabName (DeploymentSettingsView_Custom n) = n
 showSettingsTabName DeploymentSettingsView_Keys       = "Sign"
-showSettingsTabName DeploymentSettingsView_Settings   = "Settings"
+showSettingsTabName DeploymentSettingsView_PublicMeta   = "Metadata"
 
 -- | Show settings related to deployments to the user.
 --
@@ -84,7 +84,7 @@ uiDeploymentSettings
   -> Maybe (Text, m a) -- ^ An optional additional tab.
   -> m (mConf, Dynamic t (Set KeyName), Maybe a)
 uiDeploymentSettings m mUserTab = mdo
-    let initTab = fromMaybe DeploymentSettingsView_Settings mUserTabName
+    let initTab = fromMaybe DeploymentSettingsView_PublicMeta mUserTabName
     curSelection <- holdDyn initTab onTabClick
     (TabBar onTabClick) <- makeTabBar $ TabBarCfg
       { _tabBarCfg_tabs = availableTabs
@@ -97,32 +97,55 @@ uiDeploymentSettings m mUserTab = mdo
 
       mRes <- traverse (uncurry $ tabPane mempty curSelection) mUserTabCfg
 
-      cfg <- tabPane mempty curSelection DeploymentSettingsView_Settings $
-        elKlass "div" ("group") $ do
+      cfg <- tabPane mempty curSelection DeploymentSettingsView_PublicMeta $
+        uiMetaData m
 
-          onGasPriceTxt <- mkLabeledInputView uiRealInputElement "Gas price" $
-            fmap (showParsedDecimal . _pmGasPrice) $ m ^. backend_meta
-
-          onGasLimitTxt <- mkLabeledInputView uiIntInputElement "Gas limit" $
-            fmap (showParsedInteger . _pmGasLimit) $ m ^. backend_meta
-
-          onSender <- mkLabeledInput (senderDropdown $ m ^. backend_meta) "Sender" def
-
-          -- chainid does not seem to make much sense as it is part of the uri right now.
-          let onChainId = never
-          {- onChainId <- mkLabeledInputView uiInputElement "Chain id" $ -}
-          {-   fmap _pmChainId $ m ^. backend_meta -}
-
-          pure $ mempty
-            & backendCfg_setSender .~ onSender
-            & backendCfg_setChainId .~ onChainId
-            & backendCfg_setGasPrice .~ fmapMaybe (readPact ParsedDecimal) onGasPriceTxt
-            & backendCfg_setGasLimit .~ fmapMaybe (readPact ParsedInteger) onGasLimitTxt
       signingKeys <- tabPane mempty curSelection DeploymentSettingsView_Keys $
-        signingKeysWidget m
+        uiSigningKeys m
 
       pure (cfg, signingKeys, mRes)
     where
+      mUserTabCfg  = first DeploymentSettingsView_Custom <$> mUserTab
+      mUserTabName = fmap fst mUserTabCfg
+      userTabs = maybeToList mUserTabName
+      stdTabs = [DeploymentSettingsView_PublicMeta, DeploymentSettingsView_Keys]
+      availableTabs = userTabs <> stdTabs
+
+
+-- | ui for asking the user about meta data needed for the transaction.
+uiMetaData
+  :: (DomBuilder t m, MonadHold t m, MonadFix m, PostBuild t m
+    , HasBackend model t, HasBackendCfg mConf t, Monoid mConf
+     )
+  => model -> m mConf
+uiMetaData m = elKlass "div" ("group") $ do
+
+    onGasPriceTxt <- mkLabeledInputView uiRealInputElement "Gas price" $
+      fmap (showParsedDecimal . _pmGasPrice) $ m ^. backend_meta
+
+    onGasLimitTxt <- mkLabeledInputView uiIntInputElement "Gas limit" $
+      fmap (showParsedInteger . _pmGasLimit) $ m ^. backend_meta
+
+    onSender <- mkLabeledInput (senderDropdown $ m ^. backend_meta) "Sender" def
+
+    -- chainid does not seem to make much sense as it is part of the uri right now.
+    let onChainId = never
+    {- onChainId <- mkLabeledInputView uiInputElement "Chain id" $ -}
+    {-   fmap _pmChainId $ m ^. backend_meta -}
+
+    pure $ mempty
+      & backendCfg_setSender .~ onSender
+      & backendCfg_setChainId .~ onChainId
+      & backendCfg_setGasPrice .~ fmapMaybe (readPact ParsedDecimal) onGasPriceTxt
+      & backendCfg_setGasLimit .~ fmapMaybe (readPact ParsedInteger) onGasLimitTxt
+  where
+
+      showParsedInteger :: ParsedInteger -> Text
+      showParsedInteger (ParsedInteger i) = tshow i
+
+      showParsedDecimal :: ParsedDecimal -> Text
+      showParsedDecimal (ParsedDecimal i) = tshow i
+
       senderDropdown meta uCfg = do
         let itemDom v = elAttr "option" ("value" =: v) $ text v
         onSet <- tagOnPostBuild $ _pmSender <$> meta
@@ -134,29 +157,15 @@ uiDeploymentSettings m mUserTab = mdo
         text $ "Note: Make sure to sign with this sender's key."
         pure $ _selectElement_change se
 
-
-      showParsedInteger :: ParsedInteger -> Text
-      showParsedInteger (ParsedInteger i) = tshow i
-
-      showParsedDecimal :: ParsedDecimal -> Text
-      showParsedDecimal (ParsedDecimal i) = tshow i
-
       readPact wrapper =  fmap wrapper . readMay . T.unpack
-
-      mUserTabCfg  = first DeploymentSettingsView_Custom <$> mUserTab
-      mUserTabName = fmap fst mUserTabCfg
-      userTabs = maybeToList mUserTabName
-      stdTabs = [DeploymentSettingsView_Settings, DeploymentSettingsView_Keys]
-      availableTabs = userTabs <> stdTabs
-
 
 
 -- | Widget for selection of signing keys.
-signingKeysWidget
+uiSigningKeys
   :: forall t m model. (MonadWidget t m, HasWallet model t)
   => model
   -> m (Dynamic t (Set KeyName))
-signingKeysWidget aWallet = do
+uiSigningKeys aWallet = do
   let keyMap = aWallet ^. wallet_keys
       tableAttrs =
         "style" =: "table-layout: fixed; width: 100%" <> "class" =: "table"
