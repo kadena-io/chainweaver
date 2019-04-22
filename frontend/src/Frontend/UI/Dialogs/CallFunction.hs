@@ -176,8 +176,9 @@ buildCall func args =
   let
     (ModuleName m _) = _pactFunction_module func
     n = _pactFunction_name func
+    argsSeparator = if null args then "" else " "
   in
-    mconcat [ "(", coerce m, ".", n , " " , T.unwords args, ")" ]
+    mconcat [ "(", coerce m, ".", n , argsSeparator, T.unwords args, ")" ]
 
 -- renderQualified :: PactFunction -> Text
 -- renderQualified func = (coerce . _pactFunction_module) func <> "." <> _pactFunction_name func
@@ -189,10 +190,12 @@ renderDescription func = traverse_ (uiCodeFont "code-font_type_function-desc") $
 renderSignature :: MonadWidget t m => PactFunction -> m ()
 renderSignature f = do
   let fType = _pactFunction_type f
+      args = _ftArgs fType
   renderArgs $ _ftArgs fType
-  argDelimiter
-  uiCodeFont "code-font_type_fun-return-arrow" "->"
-  argDelimiter
+  when ((not . null) args) $ do
+    argDelimiter
+    uiCodeFont "code-font_type_fun-return-arrow" "->"
+    argDelimiter
   uiCodeFont "code-font_type_pact-type" $ prettyTextCompact (_ftReturn fType)
 
 renderArgs :: MonadWidget t m => [Arg (Term Name)] -> m ()
