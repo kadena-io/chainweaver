@@ -55,9 +55,10 @@ uiDeployConfirmation ideL = do
     (settingsCfg, transInfo) <- modalBody $ do
       (uBackend, uEndpoint) <- uiSegment mempty $ do
         elClass "h2" "heading heading_type_h2" $ text "Choose Server and Endpoint"
-        uBackend <- uiBackendSelection (_backend_backends $ _ide_backend ideL)
-        uEndpoint <- uiEndpointSelection Endpoint_Send
-        pure (uBackend, uEndpoint)
+        divClass "target-selection" $ do
+          uBackend <- uiBackendSelection (_backend_backends $ _ide_backend ideL)
+          uEndpoint <- uiEndpointSelection Endpoint_Send
+          pure (uBackend, uEndpoint)
 
       (settingsCfg, signingKeys, _) <- uiSegment mempty $
         uiDeploymentSettings ideL Nothing
@@ -92,6 +93,6 @@ uiBackendSelection backendUris = do
         fmap (\(k, _) -> (k, textBackendName k)) . maybe [] Map.toList
       mkOptions bs = Map.fromList $ (Nothing, "Deployment Target") : map (first Just) bs
 
-      cfg = def & dropdownConfig_attributes .~ pure ("class" =: "select select_type_primary")
+      cfg = def & dropdownConfig_attributes .~ pure ("class" =: "select select_type_primary target_selection_chain")
   d <- dropdown Nothing (mkOptions <$> backends) cfg
   pure $ _dropdown_value d
