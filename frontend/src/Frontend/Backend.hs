@@ -26,7 +26,7 @@ module Frontend.Backend
   , BackendUri
   , BackendRequestV (..), backendRequest_code, backendRequest_data, backendRequest_signing
   , BackendRequest
-  , RequestType (..)
+  , Endpoint (..)
   {- , RawBackendRequest -}
   , BackendError (..)
   , BackendErrorResult
@@ -128,9 +128,9 @@ instance IsRefPath BackendName where
   parseRef = BackendName <$> MP.anySingle
 
 -- | What endpoint to use for a backend request.
-data RequestType
-  = RequestType_Send
-  | RequestType_Local
+data Endpoint
+  = Endpoint_Send
+  | Endpoint_Local
   deriving (Show, Read, Generic, Eq, Ord)
 
 
@@ -145,7 +145,7 @@ data BackendRequestV backend = BackendRequest
     -- `data` field of the `exec` payload.
   , _backendRequest_backend :: backend
     -- ^ The backend to deploy the code to, either specified by `BackendName` or `BackendUri`.
-  , _backendRequest_endpoint :: RequestType
+  , _backendRequest_endpoint :: Endpoint
     -- ^ Where shall this request go? To /local or to /send?
   , _backendRequest_signing :: Set KeyName
     -- ^ With what keys the request should be signed. Don't sign with any keys
@@ -427,7 +427,7 @@ loadModules
 loadModules backendL onRefresh = do
       let
         bs = backendL ^. backend_backends
-        req n = BackendRequest "(list-modules)" H.empty n RequestType_Local Set.empty
+        req n = BackendRequest "(list-modules)" H.empty n Endpoint_Local Set.empty
       backendMap <- networkView $ ffor bs $ \case
         Nothing -> pure mempty
         Just bs' -> do
@@ -484,7 +484,7 @@ performLocalRead backendL onReq = performLocalReadCustom backendL id onReq
 --   won't get charged for request made via `performLocalReadCustom`.
 --
 --   Note: _backendRequest_endpoint will be ignored and set to
---   RequestType_Local also the meta data used will be a dummy payload.
+--   Endpoint_Local also the meta data used will be a dummy payload.
 performLocalReadCustom
   :: forall t m req
   . ( PerformEvent t m, MonadJSM (Performable m)
@@ -497,7 +497,7 @@ performLocalReadCustom
   -> m (Event t (req, BackendErrorResult))
 performLocalReadCustom backendL unwrapUsr onReq =
   let
-    unwrap = (backendRequest_endpoint .~ RequestType_Local) <$> unwrapUsr
+    unwrap = (backendRequest_endpoint .~ Endpoint_Local) <$> unwrapUsr
     onReqs = pure <$> onReq
     fakeBackend = backendL
       { _backend_meta = pure $ PublicMeta
@@ -604,7 +604,7 @@ backendRequest req cmd = do
 
   where
     performReq clientEnv = case req ^. backendRequest_endpoint of
-      RequestType_Send -> do
+      Endpoint_Send -> do
         res <- runReq clientEnv $ send pactServerApiClient $ SubmitBatch . pure $ cmd
         key <- getRequestKey $ res
         -- TODO: If we no longer wait for /listen, we should change the type instead of wrapping that message in `Term Name`.
@@ -616,7 +616,7 @@ backendRequest req cmd = do
         {-   Nothing -> case fromJSON v of -}
         {-     Error str -> throwError $ BackendError_ParseError $ T.pack str -}
         {-     Success ar -> pure $ _arResult ar -}
-      RequestType_Local ->
+      Endpoint_Local ->
          runReq clientEnv  $ local pactServerApiClient cmd
 
     -- | Rethrow an error value by wrapping it with f.

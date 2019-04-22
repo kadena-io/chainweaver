@@ -246,7 +246,7 @@ deployCode m onDeploy =
       pure $ \(code, info) -> do
         let b = _transactionInfo_backend info
         d <- ed ^? _Right
-        pure $ BackendRequest code d b RequestType_Send (_transactionInfo_keys info)
+        pure $ BackendRequest code d b Endpoint_Send (_transactionInfo_keys info)
 
     jsonError :: Dynamic t (Maybe Text)
     jsonError = do
