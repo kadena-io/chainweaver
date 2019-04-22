@@ -74,6 +74,8 @@ data TransactionInfo = TransactionInfo
     -- ^ The keys to sign the message with.
   , _transactionInfo_backend :: BackendName
     -- ^ The backend to deploy to.
+  , _transactionInfo_endpoint :: Endpoint
+    -- ^ The endpoint to use for the deployment.
   } deriving (Eq, Ord, Show)
 
 

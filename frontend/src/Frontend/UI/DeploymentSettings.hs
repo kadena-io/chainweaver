@@ -20,7 +20,8 @@
 -- Copyright   :  (C) 2018 Kadena
 -- License     :  BSD-style (see the file LICENSE)
 module Frontend.UI.DeploymentSettings
-  ( uiDeploymentSettings
+  ( uiEndpointSelection
+  , uiDeploymentSettings
   , signingKeysWidget
   ) where
 
@@ -41,6 +42,7 @@ import           Reflex
 import           Reflex.Dom
 import           Reflex.Dom.Contrib.CssClass (elKlass)
 import           Safe                        (readMay)
+import Control.Arrow ((&&&))
 ------------------------------------------------------------------------------
 import           Frontend.Backend
 import           Frontend.Foundation
@@ -48,6 +50,15 @@ import           Frontend.UI.TabBar
 import           Frontend.UI.Widgets
 import           Frontend.Wallet
 ------------------------------------------------------------------------------
+
+-- | Widget (dropdown) for letting the user choose between /send and /local endpoint.
+uiEndpointSelection :: MonadWidget t m => Endpoint -> m (Dynamic t Endpoint)
+uiEndpointSelection initial = do
+  let endpoints = Map.fromList $ map (id &&& displayEndpoint) $ [minBound .. maxBound]
+      cfg = def & attributes .~ pure ("class" =: "select select_type_primary")
+  d <- dropdown initial (pure endpoints) cfg
+  pure $ _dropdown_value d
+
 
 data DeploymentSettingsView
   = DeploymentSettingsView_Custom Text -- ^ An optional additonal tab.

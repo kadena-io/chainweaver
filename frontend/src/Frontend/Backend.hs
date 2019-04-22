@@ -27,6 +27,7 @@ module Frontend.Backend
   , BackendRequestV (..), backendRequest_code, backendRequest_data, backendRequest_signing
   , BackendRequest
   , Endpoint (..)
+  , displayEndpoint
   {- , RawBackendRequest -}
   , BackendError (..)
   , BackendErrorResult
@@ -131,8 +132,13 @@ instance IsRefPath BackendName where
 data Endpoint
   = Endpoint_Send
   | Endpoint_Local
-  deriving (Show, Read, Generic, Eq, Ord)
+  deriving (Show, Read, Generic, Eq, Ord, Bounded, Enum)
 
+-- | Get string representation of `Endpoint` suitable for being displayed to an end user.
+displayEndpoint :: Endpoint -> Text
+displayEndpoint = \case
+  Endpoint_Send -> "/send"
+  Endpoint_Local -> "/local"
 
 -- | Request data to be sent to the backend.
 data BackendRequestV backend = BackendRequest

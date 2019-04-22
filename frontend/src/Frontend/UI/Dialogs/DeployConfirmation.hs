@@ -30,6 +30,7 @@ import qualified Data.Map                as Map
 import           Data.Void               (Void)
 import           Reflex
 import           Reflex.Dom
+import Data.Map (Map)
 ------------------------------------------------------------------------------
 import           Frontend.Backend
 import           Frontend.Ide
@@ -52,15 +53,11 @@ uiDeployConfirmation ideL = do
   onClose <- modalHeader $ text "Deployment Settings"
   modalMain $ do
     (settingsCfg, transInfo) <- modalBody $ do
-      d <- divClass "segment" $ do
-        elClass "h2" "heading heading_type_h2" $ text "Choose a Server "
-
-        let backends = ffor (_backend_backends $ _ide_backend ideL) $
-              fmap (\(k, _) -> (k, textBackendName k)) . maybe [] Map.toList
-            mkOptions bs = Map.fromList $ (Nothing, "Deployment Target") : map (first Just) bs
-
-            cfg = def & dropdownConfig_attributes .~ pure ("class" =: "select select_type_primary")
-        dropdown Nothing (mkOptions <$> backends) cfg
+      (uBackend, uEndpoint) <- divClass "segment" $ do
+        elClass "h2" "heading heading_type_h2" $ text "Choose Server and Endpoint"
+        uBackend <- uiBackendSelection (_backend_backends $ _ide_backend ideL)
+        uEndpoint <- uiEndpointSelection Endpoint_Send
+        pure (uBackend, uEndpoint)
 
       (settingsCfg, signingKeys, _) <- elClass "div" "segment" $
         uiDeploymentSettings ideL Nothing
@@ -69,8 +66,9 @@ uiDeployConfirmation ideL = do
         ( settingsCfg
         , do
             s <- signingKeys
-            mb <- value d
-            pure $ TransactionInfo s <$> mb
+            mb <- uBackend
+            e <- uEndpoint
+            pure $ TransactionInfo s <$> mb <*> pure e
         )
 
     modalFooter $ do
@@ -83,3 +81,17 @@ uiDeployConfirmation ideL = do
       let cfg = mempty & moduleExplorerCfg_deployEditor .~
             fmapMaybe id (tagPromptlyDyn transInfo onConfirm)
       pure (cfg <> settingsCfg, leftmost [onClose, onCancel, onConfirm])
+
+
+uiBackendSelection
+  :: MonadWidget t m
+  => Dynamic t (Maybe (Map BackendName BackendUri))
+  -> m (Dynamic t (Maybe BackendName))
+uiBackendSelection backendUris = do
+  let backends = ffor backendUris $
+        fmap (\(k, _) -> (k, textBackendName k)) . maybe [] Map.toList
+      mkOptions bs = Map.fromList $ (Nothing, "Deployment Target") : map (first Just) bs
+
+      cfg = def & dropdownConfig_attributes .~ pure ("class" =: "select select_type_primary")
+  d <- dropdown Nothing (mkOptions <$> backends) cfg
+  pure $ _dropdown_value d
