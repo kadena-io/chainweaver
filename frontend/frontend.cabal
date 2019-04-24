@@ -17,6 +17,8 @@ library
   hs-source-dirs: src
 
   build-depends: base
+               , async
+               , unliftio
                , ListZipper
                , aeson
                , aeson-lens
@@ -75,6 +77,7 @@ library
 
   exposed-modules: Frontend
                  , Frontend.Backend
+                 , Frontend.Backend.NodeInfo
                  , Frontend.Crypto.Ed25519
                  , Frontend.Editor
                  , Frontend.Editor.Annotation

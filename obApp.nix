@@ -73,6 +73,7 @@ in
         servant-client = haskellLib.dontCheck super.servant-client;
         unix-time = haskellLib.dontCheck super.unix-time;
         wai-app-static = haskellLib.dontCheck super.wai-app-static;
+        unliftio = haskellLib.dontCheck super.unliftio;
         wai-extra = haskellLib.dontCheck super.wai-extra;
         prettyprinter-ansi-terminal = haskellLib.dontCheck (haskellLib.dontHaddock super.prettyprinter-ansi-terminal);
         prettyprinter-convert-ansi-wl-pprint = haskellLib.dontCheck (haskellLib.dontHaddock super.prettyprinter-convert-ansi-wl-pprint);
