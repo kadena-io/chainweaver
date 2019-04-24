@@ -78,14 +78,16 @@ import           Pact.Typed.Server.Client
 import           Pact.Typed.Types.API
 import           Pact.Typed.Types.Command
 
-import           Pact.Types.Hash                   (hash)
-import           Pact.Types.RPC
-import           Pact.Types.Util
 import           Pact.Parse                        (ParsedDecimal (..),
                                                     ParsedInteger (..))
 import           Pact.Types.Exp                    (Literal (LString))
+import           Pact.Types.Hash                   (hash)
+import           Pact.Types.RPC
 import           Pact.Types.Term                   (Name,
-                                                    Term (TList, TLiteral), tStr)
+                                                    Term (TList, TLiteral),
+                                                    tStr)
+import           Pact.Types.Util
+import qualified Servant.Client.JSaddle            as S
 
 #if !defined (ghcjs_HOST_OS)
 import           Pact.Types.Crypto                 (PPKScheme (..))
@@ -93,14 +95,15 @@ import           Pact.Types.Crypto                 (PPKScheme (..))
 
 import           Common.Api
 import           Common.Route                      (pactDynServerListPath)
+import           Frontend.Backend.NodeInfo
 import           Frontend.Crypto.Ed25519
 import           Frontend.Foundation
 import           Frontend.Messages
+import           Frontend.ModuleExplorer.RefPath   as MP
+import           Frontend.Storage                  (getItemStorage,
+                                                    localStorage,
+                                                    setItemStorage)
 import           Frontend.Wallet
-import           Frontend.Storage                  (getItemStorage, setItemStorage, localStorage)
-import qualified Servant.Client.JSaddle            as S
-
-import Frontend.ModuleExplorer.RefPath as MP
 
 -- | URI for accessing a backend.
 type BackendUri = Text
@@ -142,18 +145,18 @@ displayEndpoint = \case
 
 -- | Request data to be sent to the backend.
 data BackendRequestV backend = BackendRequest
-  { _backendRequest_code    :: Text
+  { _backendRequest_code     :: Text
     -- ^ Pact code to be deployed, the `code` field of the
     -- <https://pact-language.readthedocs.io/en/latest/pact-reference.html#cmd-field-and-payload
     -- exec> payload.
-  , _backendRequest_data    :: Object
+  , _backendRequest_data     :: Object
     -- ^ The data to be deployed (referenced by deployed code). This is the
     -- `data` field of the `exec` payload.
-  , _backendRequest_backend :: backend
+  , _backendRequest_backend  :: backend
     -- ^ The backend to deploy the code to, either specified by `BackendName` or `BackendUri`.
   , _backendRequest_endpoint :: Endpoint
     -- ^ Where shall this request go? To /local or to /send?
-  , _backendRequest_signing :: Set KeyName
+  , _backendRequest_signing  :: Set KeyName
     -- ^ With what keys the request should be signed. Don't sign with any keys
     -- when calling to `performLocalReadCustom` and similar.
   } deriving (Show, Generic)
