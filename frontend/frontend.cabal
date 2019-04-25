@@ -21,7 +21,7 @@ library
                , unliftio
                , ListZipper
                , aeson
-               , aeson-lens
+               , lens-aeson
                , aeson-pretty
                , base16-bytestring
                , bound
