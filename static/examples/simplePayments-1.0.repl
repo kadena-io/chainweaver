@@ -8,6 +8,9 @@
 ;;
 ;;  Make sure the message is signed with those added keys as well.
 ;;
+;;  When deploying new contracts, ensure to use a unique keyset
+;;  and unique module from any previously deployed contract
+;;
 ;;---------------------------------
 
 
@@ -21,7 +24,7 @@
     balance:decimal
     keyset:keyset)
 
-  (deftable accounts-table:{payments})
+  (deftable accounts-table:{accounts})
 
   (defun create-account (id initial-balance keyset)
     "Create a new account for ID with INITIAL-BALANCE funds, must be administrator."

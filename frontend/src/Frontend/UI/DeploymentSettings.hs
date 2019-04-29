@@ -188,9 +188,14 @@ signingItem
   => (Text, Dynamic t KeyPair)
   -> m (Dynamic t Bool)
 signingItem (n, _) = do
-    elClass "tr" "table__row" $ do
-      el "td" $ text n
-      box <- elClass "td" "signing-selector__check-box-cell" $
-        uiCheckbox "signing-selector__check-box-label" False def blank
+    elClass "tr" "table__row checkbox-container" $ mdo
+      (e, ()) <- el' "td" $ text n
+      let onTextClick = domEvent Click e
+      box <- elClass "td" "signing-selector__check-box-cell" $ do
+        let cfg = toggleCheckbox box onTextClick
+        uiCheckbox "signing-selector__check-box-label" False cfg blank
       pure (value box)
 
+toggleCheckbox :: Reflex t => Checkbox t -> Event t a -> CheckboxConfig t
+toggleCheckbox box =
+  (\v -> def { _checkboxConfig_setValue = v }) . fmap not . tag (current $ value box)

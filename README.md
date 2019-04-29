@@ -73,6 +73,22 @@ You will be presented with a screen showing your application's client id and its
 
 The client id must go into `config/common/oauth/github/client-id`. The client secret must go into `config/backend/oauth/github/client-secret` of your deployment directory (or in your checked out source repository, when setting up a developer environment).
 
+## Google Analytics tracking
+
+pact-web is set up for basic Google Analytics tracking. You can configure the used tracking id by providing a config file in the deploy directory containing your desired tracking id:
+
+```bash
+$ cd <dirname>
+$ mkdir config/frontend
+$ echo 'your-new-id' > config/frontend/tracking-id
+```
+
+Then of course, run the deployment:
+
+```bash
+ob deploy push
+```
+
 ### Actual deployment
 
 Use `ob deploy` from the deploy directory:
@@ -89,22 +105,6 @@ In addition to the static configuration from above, the frontend will retrieve a
 To provide a dynamic configuration (one that can be changed, without re-deployments) provide a config file at `/var/lib/pact-web/dyn-configs/pact-servers`, format being the same as above. Now, if you reload the page, you should see the server list you specified in `/var/lib/pact-web/dyn-configs/pact-servers`.
 
 Note: If you can do re-deployments: You can also change the static configuration at `config/common/pact-server-list` in your deploy directory and do a re-deploy anytime. Deployments with only the configuration changed are pretty fast.
-
-## Google Analytics tracking
-
-pact-web is set up for basic Google Analytics tracking. You can configure the used tracking id by providing a config file in the deploy directory containing your desired tracking id:
-
-```bash
-$ cd <dirname>
-$ mkdir config/frontend
-$ echo 'your-new-id' > config/frontend/tracking-id
-```
-
-Then of course, run the deployment:
-
-```bash
-ob deploy push
-```
 
 # Deploy pact -s server instances
 

@@ -1,0 +1,16 @@
+/*
+  A checkbox-container is some element that contains a single checkbox
+  somewhere and should behave like all of it were the checkbox. E.g. hover on
+  the container changes the checkbox style, the cursor will be a pointer
+  everywhere in the container and a click should toggle the checkbox (this
+  needs to be taken care of in code.)
+*/
+.checkbox-container {
+  cursor: pointer;
+}
+
+.checkbox-container:hover .checkbox__checkmark {
+  background-color: $hover-background;
+}
+
+
