@@ -24,7 +24,7 @@
     balance:decimal
     keyset:keyset)
 
-  (deftable accounts-table:{payments})
+  (deftable accounts-table:{accounts})
 
   (defun create-account (id initial-balance keyset)
     "Create a new account for ID with INITIAL-BALANCE funds, must be administrator."
