@@ -6,15 +6,19 @@ build-type: Simple
 library
   hs-source-dirs: src
   build-depends: base
-               , obelisk-executable-config
-               , obelisk-route
-               , obelisk-oauth-common
-               , text
-               , containers
-               , mtl
                , aeson
+               , containers
+               , modern-uri
+               , mtl
+               , obelisk-executable-config
+               , obelisk-oauth-common
+               , obelisk-route
+               , text
 
   exposed-modules:
     Common.Api
     Common.Route
     Common.OAuth
+    Common.NetworkList
+    Common.RefPath
+    Common.Foundation

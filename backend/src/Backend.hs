@@ -51,6 +51,7 @@ import           Common.Api
 import           Common.OAuth              (OAuthProvider (..),
                                             buildOAuthConfig, oAuthClientIdPath)
 import           Common.Route
+import           Common.Network
 
 
 data BackendCfg = BackendCfg
@@ -98,7 +99,7 @@ checkDeployment = do
       <>
         [ "config/common/route"
         , "config/frontend/tracking-id"
-        , pactServerListPath
+        , networksPath
         ]
   presentState <- traverse (fmap isJust . get) filesToCheck
   let
@@ -119,7 +120,7 @@ backend :: Ob.Backend BackendRoute FrontendRoute
 backend = Ob.Backend
     { Ob._backend_run = \serve -> do
         cfg <- buildCfg
-        hasServerList <- isJust <$> getPactServerList
+        hasServerList <- isJust <$> get networksPath
         let serveIt = serve $ serveBackendRoute "/var/lib/pact-web/dyn-configs" cfg
 
         if hasServerList

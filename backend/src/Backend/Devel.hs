@@ -18,6 +18,7 @@ import           System.Directory         (createDirectoryIfMissing)
 import           System.FilePath          ((</>))
 
 import           Common.Api
+import           Common.Network
 
 
 -- | Configuration for pact instances.
