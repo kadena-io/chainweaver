@@ -16,6 +16,7 @@
 {-# LANGUAGE TupleSections          #-}
 {-# LANGUAGE TypeApplications       #-}
 {-# LANGUAGE TypeFamilies           #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving           #-}
 
 -- | References that can be rendered as some kind of path (string
 -- representation) and parsed again.

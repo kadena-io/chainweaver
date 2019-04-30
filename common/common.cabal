@@ -14,11 +14,21 @@ library
                , obelisk-oauth-common
                , obelisk-route
                , text
+               , lens
+               , prettyprinter
+               , pact
+               , split
+               , bytestring
+               , template-haskell
+               , megaparsec
+               , safe
+               , errors
+               , unliftio
 
   exposed-modules:
     Common.Api
     Common.Route
     Common.OAuth
-    Common.NetworkList
+    Common.Network
     Common.RefPath
     Common.Foundation

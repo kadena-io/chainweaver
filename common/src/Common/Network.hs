@@ -1,4 +1,9 @@
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE RankNTypes #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE FlexibleContexts #-}
 
 module Common.Network where
 
@@ -144,7 +149,7 @@ parseNetworks raw = do
 
 
 -- | Parse an authority from Text, failing with an error message if that is not possible.
-parseAuthority :: MonadError Text m => Text -> m URI.Authority
+parseAuthority :: forall m. MonadError Text m => Text -> m URI.Authority
 parseAuthority t = do
     let
       -- This is just to make the URI parser perform as we need it:

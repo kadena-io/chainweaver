@@ -19,6 +19,7 @@ library
   build-depends: base
                , async
                , unliftio
+               , unliftio-core
                , ListZipper
                , aeson
                , lens-aeson

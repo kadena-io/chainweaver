@@ -40,7 +40,6 @@ module Common.Foundation
   ) where
 
 import           Control.Concurrent                    (ThreadId, forkIO)
-import           Control.Lens
 import           Control.Monad.Except                  (MonadError, throwError)
 import           Control.Monad.Fix
 import           Control.Monad.IO.Class
@@ -57,14 +56,6 @@ import qualified Data.Text.Encoding.Error              as T
 import           GHC.Generics                          (Generic)
 import           Language.Haskell.TH                   (DecsQ)
 import           Language.Haskell.TH.Syntax            (Name)
-import           Language.Javascript.JSaddle           (JSM, MonadJSM, askJSM,
-                                                        liftJSM, runJSM)
-import           Language.Javascript.JSaddle.Monad     (JSContextRef)
-import           Reflex.Dom.Class                      (HasJSContext (..),
-                                                        JSContextSingleton (..))
-import           Reflex.Dom.Contrib.CssClass
-import           Reflex.Extended
-import           Reflex.Network.Extended
 
 import           Data.Maybe
 
