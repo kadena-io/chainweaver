@@ -263,7 +263,7 @@ makeNetwork w cfg = mfix $ \ ~(_, networkL) -> do
 
     cNameNetworks <- getNetworks
     let cName = fst <$> cNameNetworks
-    onCName <- traceEvent "Got cname: " <$> tagOnPostBuild cName
+    onCName <- tagOnPostBuild cName
     onNodeInfo <- performEvent $ runExceptT . getNetworkNodeInfo networkL <$> leftmost
       [ onCName
         -- Refresh info on deployments and well on refresh (Refreshed node
@@ -424,7 +424,7 @@ loadModules
 loadModules networkL = do
 
       let nodeInfo = snd <$> (networkL ^. network_selectedNetwork)
-      onNodeInfo <- traceEvent "NodeInfo: " <$> tagOnPostBuild nodeInfo
+      onNodeInfo <- tagOnPostBuild nodeInfo
 
       let onReqs = either mempty (map mkReq . getChains) <$> onNodeInfo
       onErrResps <- performLocalRead networkL onReqs
