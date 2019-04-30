@@ -91,29 +91,46 @@ buildCfg = do
 --   TODO: We should also check whether they are valid as good as we can.
 checkDeployment :: IO ()
 checkDeployment = do
-  let
-    filesToCheck =
-      map oAuthClientIdPath [ minBound .. maxBound :: OAuthProvider]
-      <>
-      map oAuthClientSecretPath [ minBound .. maxBound :: OAuthProvider ]
-      <>
-        [ "config/common/route"
-        , "config/frontend/tracking-id"
-        , networksPath
-        ]
-  presentState <- traverse (fmap isJust . get) filesToCheck
-  let
-    filesChecked = zip filesToCheck presentState
-    missingFiles = fmap fst . filter ((== False) . snd) $ filesChecked
+    let
+      filesToCheck =
+        map oAuthClientIdPath [ minBound .. maxBound :: OAuthProvider]
+        <>
+        map oAuthClientSecretPath [ minBound .. maxBound :: OAuthProvider ]
+        <>
+          [ "config/common/route"
+          , "config/frontend/tracking-id"
+          , networksPath
+          , verificationServerPath
+          ]
+    presentState <- traverse (fmap isJust . get) filesToCheck
+    let
+      filesChecked = zip filesToCheck presentState
+      missingFiles = fmap fst . filter ((== False) . snd) $ filesChecked
 
-  when (not . null $ missingFiles) $ do
-    let putErrLn = T.hPutStrLn stderr
-    putErrLn "\n\n========================= PACT-WEB ERROR =========================\n\n"
-    putErrLn "The deployment failed due to missing config files.\nPlease consult the project's README.md for details.\n"
-    putErrLn "Missing files:\n"
-    putErrLn $ T.unlines . map ("  " <>) $ missingFiles
-    putErrLn "==================================================================\n\n"
-    exitFailure
+    when (not . null $ missingFiles) $ do
+      putErrLn "\n\n========================= PACT-WEB ERROR =========================\n\n"
+      putErrLn "The deployment failed due to missing config files.\nPlease consult the project's README.md for details.\n"
+      putErrLn "Missing files:\n"
+      putErrLn $ T.unlines . map ("  " <>) $ missingFiles
+      putErrLn "==================================================================\n\n"
+      exitFailure
+
+    checkNetworksConfig
+
+  where
+    checkNetworksConfig = do
+      errCfg <- getNetworksConfig
+      either reportInvalidNetworksCfg (const $ pure ()) errCfg
+
+    reportInvalidNetworksCfg errMsg = do
+      -- TODO: If we add more checks, abstract this:
+      putErrLn "\n\n========================= PACT-WEB ERROR =========================\n\n"
+      putErrLn "The deployment failed due to networks config being invalid:\n"
+      putErrLn errMsg
+      putErrLn "==================================================================\n\n"
+      exitFailure
+
+    putErrLn = T.hPutStrLn stderr
 
 
 backend :: Ob.Backend BackendRoute FrontendRoute

@@ -20,6 +20,12 @@ import Control.Lens
 verificationServerPath :: Text
 verificationServerPath = "config/common/verification-server"
 
+-- | Get the normalized url of the remote verification server suitable for Pact.
+getVerificationServerUrl :: MonadIO m => m (Maybe Text)
+getVerificationServerUrl = do
+  mUri <- getTextCfg verificationServerPath
+  pure $ T.dropWhileEnd (== '/') <$> mUri
+
 -- | Get "config/common/route" normalized.
 getConfigRoute :: MonadIO m => m Text
 getConfigRoute =

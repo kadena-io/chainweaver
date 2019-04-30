@@ -75,7 +75,7 @@ import           Frontend.Foundation
 import           Frontend.JsonData
 import           Frontend.Messages
 import           Frontend.Wallet
-import Common.Api (getTextCfg, verificationServerPath)
+import Common.Api (getTextCfg, getVerificationServerUrl)
 ------------------------------------------------------------------------------
 
 -- | Output of Repl to be shown to the user.
@@ -272,7 +272,7 @@ mkState
   => m ReplState
 mkState = do
     -- Gets ensured on deployment to never be Nothing in the production case (ghcjs build):
-    verificationUri <- getTextCfg verificationServerPath
+    verificationUri <- getVerificationServerUrl
     liftIO $ initReplState StringEval $ T.unpack <$> verificationUri
 
 

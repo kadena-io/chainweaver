@@ -36,18 +36,27 @@ $ cd <deploydir>
 
 Where `deploydir` is the same as above.
 
-### Setting up production mode and pact server list
+### Setting up production mode and the network list
 
-In the `deploydir` directory, create a file at `config/common/pact-server-list`, it can either be empty or it can contain a list of pact servers, in a format like this:
+In the `deploydir` directory, create a file at `config/common/networks`, it must contain a list of networks. With each network consisting of at least one host. A network can either be some chainweb deployment or also some pact -s server. pact-web will auto detect what it actually is:
 
 ```
-    chain01: https://pact01.kadena.io
-    chain02: https://pact02.kadena.io
+    testnet: us1.chainweb.com us2.chainweb.com eu1.chainweb.com eu2.chainweb.com ap1.chainweb.com ap2.chainweb.com
+    pact: pact01.kadena.io pact02.kadena.io
 ```
 
-You can leave the file empty, in case you prefer to provide the server list at
-runtime (see below). Nevertheless it has to exist, otherwise pact-web would run in
-`development mode` and the deployment would therefore fail.
+This file must exist, so pact-web won't start up in development mode (launching its own pact servers), as of this writing it should also be populated with entries.
+
+The first entry in the file will be chosen as the current network, unless the user picked a different one.
+
+### Provide remote verification server
+
+pact-web supports verification of Pact modules, unfortunately the prover used is z3 which is implemented in C++ and is therefore not available on ghcjs. To make it still work, we use a remote verification server for verifying contracts. Please provide a file `config/common/verification-server` containing the base url of some `pact -s` server, e.g.:
+
+```
+https://pact01.kadena.io
+
+```
 
 ### OAuth GitHub configuration
 
@@ -97,14 +106,6 @@ Use `ob deploy` from the deploy directory:
 $ ob deploy update
 $ ob deploy push
 ```
-
-# Runtime configuration of server-list
-
-In addition to the static configuration from above, the frontend will retrieve a dynamic configuration from the server, if it exists (falling back to the static one).
-
-To provide a dynamic configuration (one that can be changed, without re-deployments) provide a config file at `/var/lib/pact-web/dyn-configs/pact-servers`, format being the same as above. Now, if you reload the page, you should see the server list you specified in `/var/lib/pact-web/dyn-configs/pact-servers`.
-
-Note: If you can do re-deployments: You can also change the static configuration at `config/common/pact-server-list` in your deploy directory and do a re-deploy anytime. Deployments with only the configuration changed are pretty fast.
 
 # Deploy pact -s server instances
 
