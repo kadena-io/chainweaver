@@ -57,7 +57,7 @@ import           Reflex
 ------------------------------------------------------------------------------
 import           Pact.Types.Lang                    (ModuleName)
 ------------------------------------------------------------------------------
-import           Frontend.Backend
+import           Frontend.Network
 import           Frontend.Foundation
 import           Frontend.ModuleExplorer.Example    as Example
 import           Frontend.ModuleExplorer.File       as File
@@ -72,7 +72,7 @@ import           Frontend.GistStore (GistMeta (..))
 data TransactionInfo = TransactionInfo
   { _transactionInfo_keys    :: Set KeyName
     -- ^ The keys to sign the message with.
-  , _transactionInfo_backend :: BackendName
+  , _transactionInfo_chainId :: ChainId
     -- ^ The backend to deploy to.
   , _transactionInfo_endpoint :: Endpoint
     -- ^ The endpoint to use for the deployment.

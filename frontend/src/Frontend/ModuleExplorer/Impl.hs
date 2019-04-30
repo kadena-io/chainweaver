@@ -46,7 +46,7 @@ import           Safe                      (tailSafe)
 ------------------------------------------------------------------------------
 import           Pact.Types.Lang
 ------------------------------------------------------------------------------
-import           Frontend.Backend
+import           Frontend.Network
 import           Frontend.Editor
 import           Frontend.Foundation
 import           Frontend.JsonData
@@ -62,14 +62,14 @@ type HasModuleExplorerModelCfg mConf t =
   , HasMessagesCfg mConf t
   , HasJsonDataCfg mConf t
   , HasReplCfg mConf t
-  , HasBackendCfg mConf t
+  , HasNetworkCfg mConf t
   , HasGistStoreCfg mConf t
   )
 
 type HasModuleExplorerModel model t =
   ( HasEditor model t
   , HasJsonData model t
-  , HasBackend model t
+  , HasNetwork model t
   , HasGistStore model t
   )
 
@@ -240,13 +240,13 @@ deployCode
   -> mConf
 deployCode m onDeploy =
   let
-    mkReq :: Dynamic t ((Text, TransactionInfo) -> Maybe BackendRequest)
+    mkReq :: Dynamic t ((Text, TransactionInfo) -> Maybe NetworkRequest)
     mkReq = do
       ed      <- m ^. jsonData_data
       pure $ \(code, info) -> do
-        let b = _transactionInfo_backend info
+        let c = _transactionInfo_chainId info
         d <- ed ^? _Right
-        pure $ BackendRequest code d b (_transactionInfo_endpoint info) (_transactionInfo_keys info)
+        pure $ NetworkRequest code d c (_transactionInfo_endpoint info) (_transactionInfo_keys info)
 
     jsonError :: Dynamic t (Maybe Text)
     jsonError = do
@@ -256,7 +256,7 @@ deployCode m onDeploy =
         Right _ -> Nothing
   in
     mempty
-      & backendCfg_deployCode .~ fmap pure (attachWithMaybe ($) (current mkReq) onDeploy)
+      & networkCfg_deployCode .~ fmap pure (attachWithMaybe ($) (current mkReq) onDeploy)
       & messagesCfg_send .~ tagMaybe (fmap pure <$> current jsonError) onDeploy
 
 
@@ -355,14 +355,14 @@ selectFile m onModRef onMayFileRef = mdo
 -- | Push/pop a module on the `_moduleExplorer_moduleStack`.
 --
 --   The deployed module on the top of the stack will always be kept up2date on
---   `_backend_deployed` fires.
+--   `_network_deployed` fires.
 pushPopModule
   :: forall m t mConf model
   . ( MonadHold t m, PerformEvent t m, MonadJSM (Performable m)
     , HasJSContext (Performable m), TriggerEvent t m, MonadFix m, PostBuild t m
     , MonadSample t (Performable m)
     , HasMessagesCfg  mConf t, Monoid mConf
-    , HasBackend model t
+    , HasNetwork model t
     )
   => model
   -> ModuleExplorer t
@@ -384,7 +384,7 @@ pushPopModule m explr onClear onPush onPop = mdo
       , updateStack <$> onRefresh
       ]
     (rCfg, onRefresh) <- refreshHead $
-      tagPromptlyDyn stack $ leftmost [ onPop, m ^. backend_deployed ]
+      tagPromptlyDyn stack $ leftmost [ onPop, m ^. network_deployed ]
 
     pure
       ( lCfg <> rCfg
@@ -429,13 +429,13 @@ loadModule
   . ( ReflexConstraints t m
     , Monoid mConf, HasMessagesCfg mConf t
     , MonadSample t (Performable m)
-    , HasBackend model t
+    , HasNetwork model t
     )
   => model
   -> Event t DeployedModuleRef
   -> m (mConf, Event t (DeployedModuleRef, ModuleDef (Term Name)))
-loadModule backendL onRef = do
-  onErrModule <- fetchModule backendL onRef
+loadModule networkL onRef = do
+  onErrModule <- fetchModule networkL onRef
   let
     onErr    = fmapMaybe (^? _2 . _Left) onErrModule
     onModule = fmapMaybe (traverse (^? _Right)) onErrModule

@@ -16,7 +16,7 @@
 {-# LANGUAGE TupleSections         #-}
 
 -- | Confirmation dialog for deploying modules and calling functions on the
--- backend.
+-- network.
 -- Copyright   :  (C) 2018 Kadena
 -- License     :  BSD-style (see the file LICENSE)
 --
@@ -43,7 +43,7 @@ import           Pact.Types.Lang         (Arg (..), FunType (..),
                                           ModuleName (..), Name, PrimType (..),
                                           Term, Type (..), GuardType(..))
 ------------------------------------------------------------------------------
-import           Frontend.Backend
+import           Frontend.Network
 import           Frontend.Foundation     hiding (Arg)
 import           Frontend.JsonData       (HasJsonData (..), JsonData)
 import           Frontend.ModuleExplorer
@@ -54,11 +54,11 @@ import           Frontend.UI.DeploymentSettings
 ------------------------------------------------------------------------------
 
 type HasUICallFunctionModel model t =
-  (HasModuleExplorer model t, HasBackend model t, HasWallet model t, HasJsonData model t)
+  (HasModuleExplorer model t, HasNetwork model t, HasWallet model t, HasJsonData model t)
 
 type HasUICallFunctionModelCfg mConf t =
   ( Monoid mConf, Flattenable mConf t, HasModuleExplorerCfg mConf t
-  , HasBackendCfg mConf t
+  , HasNetworkCfg mConf t
   )
 
 -- | Modal dialog for calling a function.
@@ -106,7 +106,7 @@ uiCallFunction m mModule func = do
 
 uiBuildDeployment
   :: forall t m mConf model.
-     ( DomBuilder t m, Monoid mConf, HasBackend model t, HasBackendCfg mConf t
+     ( DomBuilder t m, Monoid mConf, HasNetwork model t, HasNetworkCfg mConf t
      , HasJsonData model t
      , MonadWidget t m, HasWallet model t
      )
@@ -130,7 +130,7 @@ uiBuildDeployment m func moduleL = do
       code <- pactCall
       keys <- signingKeys
 
-      let b = _moduleRef_source moduleL
+      let c = _moduleRef_source moduleL
 
       endpointL <- uEndpoint
 
@@ -138,7 +138,7 @@ uiBuildDeployment m func moduleL = do
         ( code
         , TransactionInfo
           { _transactionInfo_keys = keys
-          , _transactionInfo_backend = b
+          , _transactionInfo_chainId = c
           , _transactionInfo_endpoint = endpointL
           }
         )

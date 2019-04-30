@@ -30,25 +30,14 @@ module Frontend.Foundation
   , makePactLenses
   , makePactLensesNonClassy
   , makePactPrisms
-    -- * Aeson encodings
-  , compactEncoding
     -- * Helpers that should really not be here
-  , tshow
-  , prettyTextCompact
-  , prettyTextPretty
-  , note
-  , safeDecodeUtf8
   , forkJSM
+    -- * Common Foundation
+  , module Common
     -- * Re-exports
-  , module Data.Maybe
   , module Reflex.Extended
   , module Reflex.Network.Extended
-  , module Data.Semigroup
-  , module Data.Foldable
-  , module Control.Monad.IO.Class
   , module Language.Javascript.JSaddle
-  , module Control.Monad.Fix
-  , module GHC.Generics
   , module Reflex.Dom.Contrib.CssClass
   ) where
 
@@ -68,10 +57,10 @@ import qualified Data.Text                             as T
 import qualified Data.Text.Encoding                    as T
 import qualified Data.Text.Encoding.Error              as T
 import           GHC.Generics                          (Generic)
-import           Language.Javascript.JSaddle           (JSM, MonadJSM, askJSM,
-                                                        runJSM, liftJSM)
 import           Language.Haskell.TH                   (DecsQ)
 import           Language.Haskell.TH.Syntax            (Name)
+import           Language.Javascript.JSaddle           (JSM, MonadJSM, askJSM,
+                                                        liftJSM, runJSM)
 import           Language.Javascript.JSaddle.Monad     (JSContextRef)
 import           Reflex.Dom.Class                      (HasJSContext (..),
                                                         JSContextSingleton (..))
@@ -86,6 +75,8 @@ import qualified Data.Text.Prettyprint.Doc             as Pretty (defaultLayoutO
                                                                   layoutPretty)
 import qualified Data.Text.Prettyprint.Doc.Render.Text as Pretty
 import qualified Pact.Types.Pretty                     as Pretty
+
+import Common.Foundation as Common
 
 -- | Shorthand for Dynamic t (Maybe a).
 --
@@ -203,4 +194,3 @@ type family ReflexValue (f :: * -> *) x where
     ReflexValue (Behavior t) x = Behavior t x
 
     ReflexValue (Event t) x = Event t x
-

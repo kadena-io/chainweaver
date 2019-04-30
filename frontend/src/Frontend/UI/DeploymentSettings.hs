@@ -44,7 +44,7 @@ import           Reflex.Dom.Contrib.CssClass (elKlass)
 import           Safe                        (readMay)
 import Control.Arrow ((&&&))
 ------------------------------------------------------------------------------
-import           Frontend.Backend
+import           Frontend.Network
 import           Frontend.Foundation
 import           Frontend.UI.TabBar
 import           Frontend.UI.Widgets
@@ -77,8 +77,8 @@ showSettingsTabName DeploymentSettingsView_PublicMeta   = "Metadata"
 --   the right keys, ...
 uiDeploymentSettings
   :: forall t m model mConf a
-  . ( MonadWidget t m, HasBackend model t, HasWallet model t
-    , Monoid mConf , HasBackendCfg mConf t
+  . ( MonadWidget t m, HasNetwork model t, HasWallet model t
+    , Monoid mConf , HasNetworkCfg mConf t
     )
   => model
   -> Maybe (Text, m a) -- ^ An optional additional tab.
@@ -115,29 +115,23 @@ uiDeploymentSettings m mUserTab = mdo
 -- | ui for asking the user about meta data needed for the transaction.
 uiMetaData
   :: (DomBuilder t m, MonadHold t m, MonadFix m, PostBuild t m
-    , HasBackend model t, HasBackendCfg mConf t, Monoid mConf
+    , HasNetwork model t, HasNetworkCfg mConf t, Monoid mConf
      )
   => model -> m mConf
 uiMetaData m = elKlass "div" ("group") $ do
 
     onGasPriceTxt <- mkLabeledInputView uiRealInputElement "Gas price" $
-      fmap (showParsedDecimal . _pmGasPrice) $ m ^. backend_meta
+      fmap (showParsedDecimal . _pmGasPrice) $ m ^. network_meta
 
     onGasLimitTxt <- mkLabeledInputView uiIntInputElement "Gas limit" $
-      fmap (showParsedInteger . _pmGasLimit) $ m ^. backend_meta
+      fmap (showParsedInteger . _pmGasLimit) $ m ^. network_meta
 
-    onSender <- mkLabeledInput (senderDropdown $ m ^. backend_meta) "Sender" def
-
-    -- chainid does not seem to make much sense as it is part of the uri right now.
-    let onChainId = never
-    {- onChainId <- mkLabeledInputView uiInputElement "Chain id" $ -}
-    {-   fmap _pmChainId $ m ^. backend_meta -}
+    onSender <- mkLabeledInput (senderDropdown $ m ^. network_meta) "Sender" def
 
     pure $ mempty
-      & backendCfg_setSender .~ onSender
-      & backendCfg_setChainId .~ onChainId
-      & backendCfg_setGasPrice .~ fmapMaybe (readPact ParsedDecimal) onGasPriceTxt
-      & backendCfg_setGasLimit .~ fmapMaybe (readPact ParsedInteger) onGasLimitTxt
+      & networkCfg_setSender .~ onSender
+      & networkCfg_setGasPrice .~ fmapMaybe (readPact ParsedDecimal) onGasPriceTxt
+      & networkCfg_setGasLimit .~ fmapMaybe (readPact ParsedInteger) onGasLimitTxt
   where
 
       showParsedInteger :: ParsedInteger -> Text

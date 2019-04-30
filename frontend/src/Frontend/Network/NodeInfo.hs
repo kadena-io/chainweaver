@@ -26,13 +26,23 @@
 --   In particular it provides `NodeInfo` which can retrieved from an `Authority`
 --   by means of `discoverNode`.
 --
-module Frontend.Backend.NodeInfo
+module Frontend.Network.NodeInfo
   ( -- * Types & Classes
-    discoverNode
-  , discoverChainwebNode
+    ChainId
+  , toPmChainId
+  , NodeInfo
+    -- * Discover
+  , parseAuthority
+  , discoverNode
+    -- * Get node/network information.
+  , getChainBaseUrl
+  , getChains
   ) where
 
 
+import           Common.Network              (ChainId (..), parseAuthority,
+                                              toPmChainId)
+import           Control.Applicative         ((<|>))
 import           Control.Arrow               (left)
 import           Control.Error.Safe          (headErr, maximumErr)
 import           Control.Lens
@@ -52,9 +62,10 @@ import           Data.Text                   (Text)
 import qualified Data.Text                   as T
 import qualified Data.Text.Encoding          as T
 import           Data.Void                   (Void)
-import           Language.Javascript.JSaddle (JSM, MonadJSM,  liftJSM)
+import           Language.Javascript.JSaddle (JSM, MonadJSM, liftJSM)
 import           Reflex.Dom.Class            (HasJSContext (..))
 import           Reflex.Dom.Xhr
+import           Safe                        (fromJustNote)
 import qualified Text.Megaparsec             as MP
 import qualified Text.Megaparsec.Char        as MP
 import           Text.URI                    (URI (URI))
@@ -73,7 +84,7 @@ data ChainwebInfo = ChainwebInfo
     -- ^ What chainweb version is running on the node.
   , _chainwebInfo_networkVersion :: Text
     -- ^ What version of the network is running.
-  , _chainwebInfo_numberOfChains :: Int
+  , _chainwebInfo_numberOfChains :: Word
     -- ^ How many chains do we have.
   }
   deriving (Eq, Ord, Show)
@@ -93,28 +104,69 @@ data NodeInfo = NodeInfo
 
 
 -- | Retrive the `NodeInfo` for a given host by quering its API.
-discoverNode :: (MonadJSM m, MonadUnliftIO m, HasJSContext m) => URI.Authority -> m (Either Text NodeInfo)
+discoverNode :: forall m. (MonadJSM m, MonadUnliftIO m, HasJSContext m) => URI.Authority -> m (Either Text NodeInfo)
 discoverNode auth = do
+    httpsReqs <- async $ discoverChainwebOrPact httpsUri
+    httpReqs <- async $ discoverChainwebOrPact httpUri
 
-    resps <- uncurry (<>) <$> concurrently (getNodes discoverChainwebNode) (getNodes discoverPactNode)
-    let
-      successNodes = rights resps
-      failureNodes = lefts resps
-
-    pure $ case successNodes of
-      n : _ -> Right n
-      []    -> Left $ "Error in discovering node: " <> T.intercalate "\n\n" failureNodes
-
+    -- For some http only servers waiting for a https response will take ages
+    -- on the other hand we need to prefer chainweb detection over pact -s
+    -- detection (as the former is more reliable). Therefore we group them by
+    -- protocol and go with the first success result.
+    waitSuccess [httpsReqs, httpReqs]
 
   where
+    waitSuccess :: [Async (Either Text NodeInfo)] -> m (Either Text NodeInfo)
+    waitSuccess = \case
+      [] -> pure $ Left ""
+      xs -> do
+        (finished, r) <- waitAny xs
+        case r of
+          Left err -> do
+            left ((err <> "\n\n") <>) <$> waitSuccess (filter (/= finished) xs)
+          Right success -> pure $ Right success
 
-    getNodes getter = mapConcurrently getter uris
-
-    uris = uriFromSchemeAuth <$> schemes
-
-    schemes = [ [URI.scheme|https|], [URI.scheme|http|] ]
+    httpsUri = uriFromSchemeAuth [URI.scheme|https|]
+    httpUri = uriFromSchemeAuth [URI.scheme|http|]
 
     uriFromSchemeAuth scheme = URI (Just scheme) (Right auth) Nothing [] Nothing
+
+
+-- | Base url to use for a particular chain.
+--
+--   This is the url where you can append /send, /local, /listen ...
+getChainBaseUrl :: ChainId -> NodeInfo -> URI
+getChainBaseUrl chainId (NodeInfo base nType) =
+    base & uriPath .~ getChainBasePath chainId nType
+
+
+-- | Get a list of available chains.
+--
+getChains :: NodeInfo -> [ChainId]
+getChains (NodeInfo _ nType) =
+  case nType of
+    NodeType_Pact -> [ ChainId 0 ]
+    NodeType_Chainweb info -> [ ChainId 0 .. ChainId (_chainwebInfo_numberOfChains info -1)]
+
+
+-- | Get the path for a given chain id.
+getChainBasePath :: ChainId -> NodeType -> [URI.RText URI.PathPiece]
+getChainBasePath (ChainId chainId) = buildPath . \case
+    NodeType_Pact
+      -> ["api", "v1"]
+    NodeType_Chainweb (ChainwebInfo cwVersion netVersion _)
+      -> ["chainweb", cwVersion, netVersion, "chain", tshow chainId, "pact"]
+  where
+    buildPath = fromJustNote "Building chain base path failed!" . traverse URI.mkPathPiece
+
+
+-- | Find out whether the given host and scheme are either a Pact or a Chainweb node.
+discoverChainwebOrPact :: (MonadJSM m, HasJSContext m, MonadUnliftIO m) => URI -> m (Either Text NodeInfo)
+discoverChainwebOrPact uri = do
+  (chainwebResp, pactResp) <- discoverChainwebNode uri  `concurrently` discoverPactNode uri
+  -- pure $ chainwebResp <|> pactResp
+  -- No `Error` instance for Text:
+  pure $ left T.pack $ left T.unpack chainwebResp <|> left T.unpack pactResp
 
 
 -- | Retrieve the `NodeInfo` for a given host by quering its API.
@@ -122,11 +174,16 @@ discoverNode auth = do
 --   This function will only succeed for chainweb nodes.
 discoverChainwebNode :: (MonadJSM m, HasJSContext m, MonadUnliftIO m) => URI -> m (Either Text NodeInfo)
 discoverChainwebNode baseUri = runExceptT $ do
+
     let req = mkSwaggerReq baseUri
     resp <- ExceptT . fmap (left tshow) $ runReq req
+
     when (_xhrResponse_status resp /= 200) $
       throwError $ "Received non 200 status: " <> tshow (_xhrResponse_status resp)
-    swaggerI <- note "Parsing swagger.json failed" $ Aeson.decodeStrict . T.encodeUtf8 <=< _xhrResponse_responseText $ resp
+
+    swaggerI <- note "Parsing swagger.json failed" $
+      Aeson.decodeStrict . T.encodeUtf8 <=< _xhrResponse_responseText $ resp
+
     info <- parseChainwebInfo swaggerI
     pure $ NodeInfo
       { _nodeInfo_baseUri = baseUri
@@ -188,16 +245,16 @@ parseChainwebInfo v = do
       networkVersion <- MP.takeWhile1P (Just "network version") (/= '/')
       pure (chainwebVersion, networkVersion)
 
-    getChainId :: forall mp. MonadError Text mp => Text -> mp Int
+    getChainId :: forall mp. MonadError Text mp => Text -> mp Word
     getChainId = parseLifted chainIdP
 
-    chainIdP :: MP.Parsec Void Text Int
+    chainIdP :: MP.Parsec Void Text Word
     chainIdP = do
       void versionsP
       void $ MP.string "/chain/"
       digitsP
 
-    digitsP :: MP.Parsec Void Text Int
+    digitsP :: MP.Parsec Void Text Word
     digitsP = read <$> MP.some MP.digitChar
 
     parseLifted :: forall a mp. MonadError Text mp => MP.Parsec Void Text a -> Text -> mp a
@@ -242,6 +299,7 @@ mkSwaggerReq uri =
     swaggerURI = uri & URI.uriPath .~ [ [URI.pathPiece|swagger.json|] ]
   in
     xhrRequest "GET" (URI.render swaggerURI) def
+
 
 -- | Get requests for retrieving /version from a given pact -s node.
 mkVersionReq :: URI -> XhrRequest ()

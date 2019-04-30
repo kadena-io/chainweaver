@@ -39,7 +39,7 @@ import qualified Data.Aeson                        as A
 import           Frontend.Foundation
 import           Frontend.ModuleExplorer.File
 import           Frontend.ModuleExplorer.ModuleRef
-import           Frontend.ModuleExplorer.RefPath
+import           Common.RefPath
 
 
 -- | Reference something that can be loaded to the `Editor`.

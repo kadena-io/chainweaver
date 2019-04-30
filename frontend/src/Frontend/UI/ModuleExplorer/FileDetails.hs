@@ -35,7 +35,7 @@ import           Reflex.Dom
 import           Reflex.Network.Extended
 import qualified Data.Map as Map
 ------------------------------------------------------------------------------
-import           Frontend.Backend
+import           Frontend.Network
 import           Frontend.ModuleExplorer
 import           Frontend.UI.ModuleExplorer.ModuleList
 import           Frontend.UI.Button
@@ -44,7 +44,7 @@ import           Frontend.UI.Modal
 ------------------------------------------------------------------------------
 
 type HasUIFileDetailsModelCfg mConf m t =
-  ( Monoid mConf, Flattenable mConf t, HasModuleExplorerCfg mConf t, HasBackendCfg mConf t
+  ( Monoid mConf, Flattenable mConf t, HasModuleExplorerCfg mConf t, HasNetworkCfg mConf t
   , HasModalCfg mConf (Modal mConf m t) t
   , HasUICallFunctionModelCfg (ModalCfg mConf t) t
   )

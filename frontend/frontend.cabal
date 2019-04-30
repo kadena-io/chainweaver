@@ -76,8 +76,8 @@ library
     build-depends: hsass
 
   exposed-modules: Frontend
-                 , Frontend.Backend
-                 , Frontend.Backend.NodeInfo
+                 , Frontend.Network
+                 , Frontend.Network.NodeInfo
                  , Frontend.Crypto.Ed25519
                  , Frontend.Editor
                  , Frontend.Editor.Annotation
@@ -95,7 +95,6 @@ library
                  , Frontend.ModuleExplorer.Module
                  , Frontend.ModuleExplorer.ModuleList
                  , Frontend.ModuleExplorer.ModuleRef
-                 , Frontend.ModuleExplorer.RefPath
                  , Frontend.OAuth
                  , Frontend.Repl
                  , Frontend.ReplGhcjs

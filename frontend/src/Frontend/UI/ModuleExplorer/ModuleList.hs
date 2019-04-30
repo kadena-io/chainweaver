@@ -29,6 +29,7 @@ module Frontend.UI.ModuleExplorer.ModuleList where
 ------------------------------------------------------------------------------
 import           Control.Lens
 import           Control.Monad
+import Control.Arrow ((&&&))
 import qualified Data.Map                    as Map
 import           Data.Text                   (Text)
 import           Data.Traversable            (for)
@@ -38,7 +39,7 @@ import           Reflex.Dom.Contrib.CssClass
 import           Reflex.Network
 import           Reflex.Network.Extended
 ------------------------------------------------------------------------------
-import           Frontend.Backend
+import           Frontend.Network
 import           Frontend.Foundation
 import           Frontend.ModuleExplorer
 import           Frontend.UI.Button
@@ -46,7 +47,7 @@ import           Frontend.UI.Widgets
 ------------------------------------------------------------------------------
 
 type HasUIModuleListModel model t =
-  (HasBackend model t)
+  (HasNetwork model t)
 
 type HasUIModuleListModelCfg mConf t =
   ( Monoid mConf, Flattenable mConf t, HasModuleListCfg mConf t
@@ -65,9 +66,9 @@ uiModuleList modules = do
       divClass "table__text-cell table__cell_size_main" $
         text $ textModuleRefName c
       case _moduleRef_source c of
-        ModuleSource_Deployed b ->
+        ModuleSource_Deployed c ->
           divClass "table__text-cell table__cell_size_side" $
-            text $ textBackendName b
+            text $ tshow c
         _ ->
           blank
 
@@ -93,20 +94,20 @@ uiDeployedModuleList m mList = mdo
           & inputElementConfig_setValue .~ onSearch
 
       -- dropdown is kinda loopy, therefore the delay.
-      onBackendName <- delay 0 <=< tagOnPostBuild $ mList ^. moduleList_backendFilter
-      let mkMap = Map.fromList . map (\(n,_) -> (Just n, textBackendName n)) . Map.toList
-          opts = Map.insert Nothing "All backends" . maybe mempty mkMap <$>
-                    m ^. backend_backends
-          filterCfg = def & dropdownConfig_attributes %~ fmap (addToClassAttr $ "select_type_tertiary" <> "filter-bar__backend-filter")
-                          & setValue .~ onBackendName
+      onNetworkName <- delay 0 <=< tagOnPostBuild $ mList ^. moduleList_chainIdFilter
+      let mkMap = Map.fromList . map (Just &&& tshow) . getChains
+          mInfo = (^? _2 . _Right) <$> m ^. network_selectedNetwork
+          opts = Map.insert Nothing "All chains" . maybe mempty mkMap <$> mInfo
+          filterCfg = def & dropdownConfig_attributes %~ fmap (addToClassAttr $ "select_type_tertiary" <> "filter-bar__chain-filter")
+                          & setValue .~ onNetworkName
 
       d <- uiDropdown Nothing opts filterCfg
       let
         onNewSearch :: Event t Text
         onNewSearch = _inputElement_input ti
 
-        onBackendL :: Event t (Maybe BackendName)
-        onBackendL = _dropdown_change d
+        onChainIdL :: Event t (Maybe ChainId)
+        onChainIdL = _dropdown_change d
 
       onUpdatePageL <- paginationWidget "filter-bar__pagination"
         (mList ^. moduleList_page)
@@ -115,7 +116,7 @@ uiDeployedModuleList m mList = mdo
       pure $ mempty
         & moduleListCfg_setPage .~ onUpdatePageL
         & moduleListCfg_setNameFilter .~ onNewSearch
-        & moduleListCfg_setBackendFilter .~ onBackendL
+        & moduleListCfg_setChainIdFilter .~ onChainIdL
 
     onSelect <- uiModuleList $ mList ^. moduleList_modules
 

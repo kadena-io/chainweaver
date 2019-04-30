@@ -74,29 +74,30 @@ import           Pact.Types.Term                 as PactTerm (Module (..),
                                                               Term (TList, TLiteral, TModule, TObject),
                                                               tStr, ModuleDef (..), Object (..), FieldKey, ObjectMap (..))
 ------------------------------------------------------------------------------
-import           Frontend.Backend
+import           Frontend.Network
+import           Frontend.Network.NodeInfo
 import           Frontend.Foundation
 import           Frontend.ModuleExplorer.Example
 import           Frontend.ModuleExplorer.File
-import           Frontend.ModuleExplorer.RefPath as MP
+import           Common.RefPath as MP
 
 -- | A `Module` can come from a number of sources.
 --
---   A `Module` either comes from some kind of a file or a backend (blockchain).
+--   A `Module` either comes from some kind of a file or a network (blockchain).
 --
---   We don't treet backends as file, because they can't contain arbitrary code
+--   We don't treet networks as file, because they can't contain arbitrary code
 --   and data as files. So while they appear to be quite similar conceptually
 --   to files, they should in practice be treated differently:
 --
---   - Backends can only contain modules and keysets, not arbitrary Pact code
+--   - Networks can only contain modules and keysets, not arbitrary Pact code
 --     and even less random arbitrary data.
---   - Backends will usually hold much more data than typical files, so we need
+--   - Networks will usually hold much more data than typical files, so we need
 --     things like search/filter and maybe later on some proper pagination and
 --     stuff.
---   - We combine several backends in a view and let the user filter by
---     backend, we don't do that with files.
+--   - We combine several networks in a view and let the user filter by
+--     network, we don't do that with files.
 data ModuleSource
-  = ModuleSource_Deployed BackendName -- ^ A module that already got deployed and loaded from there
+  = ModuleSource_Deployed ChainId -- ^ A module that already got deployed and loaded from there
   | ModuleSource_File FileRef
   deriving (Eq, Ord, Show, Generic)
 
@@ -132,7 +133,7 @@ instance A.FromJSON s => A.FromJSON (ModuleRefV s) where
 type ModuleRef = ModuleRefV ModuleSource
 
 -- | `ModuleRefV` that refers to some deployed module.
-type DeployedModuleRef = ModuleRefV BackendName
+type DeployedModuleRef = ModuleRefV ChainId
 
 -- | `ModuleRefV` that refers to a module coming from some file.
 type FileModuleRef = ModuleRefV FileRef
@@ -154,7 +155,7 @@ instance IsRefPath ModuleSource where
   parseRef =
       fmap ModuleSource_File tryParseRef <|> fmap ModuleSource_Deployed parseDeployed
     where
-      parseDeployed :: RefParser BackendName
+      parseDeployed :: RefParser ChainId
       parseDeployed = do
         r <- MP.anySingle
         case r of
@@ -216,15 +217,15 @@ textModuleRefSource isModule m =
         -> printPretty "Stored" (textFileName n)
       ModuleSource_File (FileRef_Gist _)
         -> printPretty "Gist" "GitHub"
-      ModuleSource_Deployed b
-        -> printPretty "Deployed" (textBackendName b)
+      ModuleSource_Deployed c
+        -> printPretty "Deployed" (tshow c)
   where
     printPretty n d = mconcat [ n, " ", moduleText, " [ " , d , " ]" ]
     moduleText = if isModule then "Module" else "Interface"
 
 -- Get hold of a deployed module:
 
--- | Fetch a `Module` from a backend where it has been deployed.
+-- | Fetch a `Module` from a network where it has been deployed.
 --
 --   Resulting Event is either an error msg or the loaded module.
 fetchModule
@@ -232,30 +233,30 @@ fetchModule
   . ( MonadHold t m, PerformEvent t m, MonadJSM (Performable m)
     , TriggerEvent t m
     , MonadSample t (Performable m)
-    , HasBackend model t
+    , HasNetwork model t
     )
   => model
   -> Event t DeployedModuleRef
   -> m (Event t (DeployedModuleRef, Either Text (ModuleDef (Term Name))))
-fetchModule backendL onReq = do
-    deployedResult :: Event t (DeployedModuleRef, BackendErrorResult)
-      <- performLocalReadCustom (backendL ^. backend) mkReq onReq
+fetchModule networkL onReq = do
+    deployedResults :: Event t [(DeployedModuleRef, NetworkErrorResult)]
+      <- performLocalReadCustom (networkL ^. network) mkReq (pure <$> onReq)
 
-    pure $ ffor deployedResult $
-      id *** (getModule <=< left (T.pack . show))
+    pure $ fmapMaybe listToMaybe . ffor deployedResults $
+      map (id *** (getModule <=< left (T.pack . show)))
 
   where
-    mkReq mRef = BackendRequest
-      { _backendRequest_code = mconcat
+    mkReq mRef = NetworkRequest
+      { _networkRequest_code = mconcat
         [ defineNamespace . _moduleRef_name $ mRef
         , "(describe-module '"
         , _mnName . _moduleRef_name $ mRef
         , ")"
         ]
-      , _backendRequest_data = mempty
-      , _backendRequest_backend = _moduleRef_source mRef
-      , _backendRequest_endpoint = Endpoint_Local
-      , _backendRequest_signing = Set.empty
+      , _networkRequest_data = mempty
+      , _networkRequest_chainId = _moduleRef_source mRef
+      , _networkRequest_endpoint = Endpoint_Local
+      , _networkRequest_signing = Set.empty
       }
 
     getModule :: Term Name -> Either Text (ModuleDef (Term Name))

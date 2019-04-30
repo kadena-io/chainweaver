@@ -40,7 +40,7 @@ import           Obelisk.Route.Frontend
 import           Common.Route
 import           Frontend.Foundation
 import           Frontend.ModuleExplorer
-import           Frontend.ModuleExplorer.RefPath
+import           Common.RefPath
 import           Frontend.OAuth                  (HasOAuth (..))
 ------------------------------------------------------------------------------
 

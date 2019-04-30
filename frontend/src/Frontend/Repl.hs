@@ -70,11 +70,12 @@ import           Pact.Types.Exp
 import           Pact.Types.Info
 import           Pact.Types.Term            (ModuleName (..), Name, Term (..))
 ------------------------------------------------------------------------------
-import           Frontend.Backend
+import           Frontend.Network
 import           Frontend.Foundation
 import           Frontend.JsonData
 import           Frontend.Messages
 import           Frontend.Wallet
+import Common.Api (getTextCfg, verificationServerPath)
 ------------------------------------------------------------------------------
 
 -- | Output of Repl to be shown to the user.
@@ -144,7 +145,7 @@ data Impl t = Impl
 
 -- Implementation:
 
-type HasReplModel m t = (HasBackend m t, HasJsonData m t, HasWallet m t)
+type HasReplModel m t = (HasNetwork m t, HasJsonData m t, HasWallet m t)
 
 type HasReplModelCfg mConf t = (HasMessagesCfg mConf t, Monoid mConf)
 
@@ -164,14 +165,7 @@ makeRepl m cfg = build $ \ ~(_, impl) -> do
     -- Dummy state, that gets never used, so we avoid a pointless `Maybe` or
     -- sampling, which could trigger a loop:
     initState <- liftIO $ initReplState StringEval Nothing
-    onResetSt <- performEvent $ initRepl impl m <$> leftmost
-      [ tag (current $ m ^. backend_backends) $ cfg ^. replCfg_reset
-      , tagPromptlyDyn (m ^. backend_backends) $ onPostBuild
-       -- We are losing our state if backends update, luckily that only happens
-       -- once on start up - and we want that update, because it is going to be
-       -- the first `Just` value:
-      , updated $ m ^. backend_backends
-      ]
+    onResetSt <- performEvent $ initRepl impl m <$ (cfg ^. replCfg_reset)
 
     let envData = either (const HM.empty) id <$> m ^. jsonData_data
         keys = Map.elems <$> m ^. wallet_keys
@@ -260,9 +254,9 @@ makeRepl m cfg = build $ \ ~(_, impl) -> do
 initRepl
   :: forall t m model
   . (HasReplModel model t, MonadIO m, Reflex t, MonadSample t m)
-  => Impl t -> model -> Maybe (Map BackendName BackendUri) -> m (ReplState)
-initRepl oldImpl m mBackends = do
-  r <- mkState mBackends
+  => Impl t -> model -> m (ReplState)
+initRepl oldImpl m  = do
+  r <- mkState
   let initImpl = oldImpl { _impl_state = pure r } -- Const dyn so we can use `withRepl` for initialization - gets dropped afterwards.
   env  <- sample . current $ either (const HM.empty) id <$> m ^. jsonData_data
   keys <- sample . current $ Map.elems <$> m ^. wallet_keys
@@ -270,19 +264,17 @@ initRepl oldImpl m mBackends = do
     void $ setEnvData env
     setEnvKeys keys
 
+
 -- | Create a brand new Repl state:
 mkState
   :: forall m
   . (MonadIO m)
-  => Maybe (Map BackendName BackendUri) -> m ReplState
-mkState uBackends = do
-    let minBackend = getMinBackend uBackends
-    liftIO $ initReplState StringEval $ minBackend
-  where
-    getMinBackend maybeBackends = do
-      (_key, b) <- Map.lookupMin =<< maybeBackends
-      bNoPath <- (\uri -> T.dropWhileEnd (== '/') . URI.render $ uri { uriPath = Nothing }) <$> mkURI b
-      pure (T.unpack bNoPath)
+  => m ReplState
+mkState = do
+    -- Gets ensured on deployment to never be Nothing in the production case (ghcjs build):
+    verificationUri <- getTextCfg verificationServerPath
+    liftIO $ initReplState StringEval $ T.unpack <$> verificationUri
+
 
 -- | Set env-data to the given Object
 setEnvData :: Object -> PactRepl (Term Name)

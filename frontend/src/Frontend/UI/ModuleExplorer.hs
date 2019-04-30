@@ -30,7 +30,7 @@ import           Control.Lens
 import           Reflex.Dom
 import           Reflex.Network.Extended
 ------------------------------------------------------------------------------
-import           Frontend.Backend
+import           Frontend.Network
 import           Frontend.ModuleExplorer
 import           Frontend.UI.Button
 import           Frontend.UI.ModuleExplorer.FileDetails
@@ -40,10 +40,10 @@ import           Frontend.UI.Widgets
 ------------------------------------------------------------------------------
 
 type HasUIModuleExplorerModel model t =
-  (HasModuleExplorer model t, HasBackend model t, HasUIModuleDetailsModel model t)
+  (HasModuleExplorer model t, HasNetwork model t, HasUIModuleDetailsModel model t)
 
 type HasUIModuleExplorerModelCfg mConf m t =
-  ( Monoid mConf, Flattenable mConf t, HasModuleExplorerCfg mConf t, HasBackendCfg mConf t
+  ( Monoid mConf, Flattenable mConf t, HasModuleExplorerCfg mConf t, HasNetworkCfg mConf t
   , HasUIModuleDetailsModelCfg mConf m t
   )
 
@@ -121,5 +121,5 @@ browseDeployedTitle m = do
 
   pure $ mempty
     & moduleExplorerCfg_pushModule .~ onSelected
-    & backendCfg_refreshModule .~ onRefrClick
+    & networkCfg_refreshModule .~ onRefrClick
     & moduleExplorerCfg_modules .~ mListCfg

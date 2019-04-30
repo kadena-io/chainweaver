@@ -31,7 +31,7 @@ import           Reflex.Dom
 ------------------------------------------------------------------------------
 import           Obelisk.Generated.Static
 ------------------------------------------------------------------------------
-import           Frontend.Backend
+import           Frontend.Network
 import           Frontend.Foundation            hiding (Arg)
 import           Frontend.ModuleExplorer        (HasModuleExplorerCfg (..),
                                                  GistMeta (..))
@@ -42,7 +42,7 @@ import           Frontend.UI.Widgets.Helpers (imgWithAltCls)
 
 type HasUICreateGistModelCfg mConf t =
   ( Monoid mConf, Flattenable mConf t, HasModuleExplorerCfg mConf t
-  , HasBackendCfg mConf t
+  , HasNetworkCfg mConf t
   )
 
 
@@ -73,7 +73,7 @@ uiCreateGist = do
       let isDisabled = T.null . T.strip <$> name
       onConfirm <- confirmButton (def & uiButtonCfg_disabled .~ isDisabled) "Create"
 
-      -- TODO: Use `backendCfg_deployCode` instead.
+      -- TODO: Use `networkCfg_deployCode` instead.
       let
         payload = current $ GistMeta <$> name <*> desc
         cfg = mempty & moduleExplorerCfg_createGist .~ tag payload onConfirm

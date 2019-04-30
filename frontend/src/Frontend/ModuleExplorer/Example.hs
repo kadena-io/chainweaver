@@ -57,7 +57,7 @@ import           Safe                            (readMay)
 import           Obelisk.Generated.Static
 ------------------------------------------------------------------------------
 import           Frontend.Foundation
-import           Frontend.ModuleExplorer.RefPath as MP
+import           Common.RefPath as MP
 
 
 

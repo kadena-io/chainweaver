@@ -19,7 +19,7 @@
 
 -- | ModuleList: Browse deployed modules.
 --
---   Limit results by filtering by `ModuleName` and deployed backend.
+--   Limit results by filtering by `ModuleName` and deployed network.
 --
 -- Copyright   :  (C) 2018 Kadena
 -- License     :  BSD-style (see the file LICENSE)
@@ -46,10 +46,10 @@ import qualified Data.Text                         as T
 import           GHC.Generics                      (Generic)
 import           Reflex
 ------------------------------------------------------------------------------
-import           Frontend.Backend
 import           Frontend.Foundation
 import           Frontend.ModuleExplorer.Module    as Module
 import           Frontend.ModuleExplorer.ModuleRef as Module
+import           Frontend.Network
 
 
 
@@ -58,9 +58,9 @@ data ModuleListCfg t = ModuleListCfg
   { _moduleListCfg_setNameFilter    :: Event t Text
     -- ^ Limit list of available module by name. All listed modules will have a
     -- name that matches the given substring.
-  , _moduleListCfg_setBackendFilter :: Event t (Maybe BackendName)
+  , _moduleListCfg_setChainIdFilter :: Event t (Maybe ChainId)
     -- ^ Limit the list of shown modules to only those coming from the given
-    -- `BackendName`.
+    -- `ChainId`.
   , _moduleListCfg_setPage          :: Event t Word
   }
   deriving Generic
@@ -79,8 +79,8 @@ data ModuleList t = ModuleList
     -- ^ Modules available through the current filter.
   , _moduleList_nameFilter    :: Dynamic t Text
     -- ^ The currently applied name filter.
-  , _moduleList_backendFilter :: MDynamic t BackendName
-    -- ^ The currently applied backend filter.
+  , _moduleList_chainIdFilter :: MDynamic t ChainId
+    -- ^ The currently applied chainid filter.
   , _moduleList_page          :: Dynamic t Word
     -- ^ The current page.
   , _moduleList_pageCount     :: Dynamic t Word
@@ -97,14 +97,14 @@ makeModuleList
   :: forall t m cfg model
   . ( MonadHold t m, MonadFix m, Reflex t
     , HasModuleListCfg cfg t
-    , HasBackend model t
+    , HasNetwork model t
     )
   => model
   -> cfg
   -> m (ModuleList t)
 makeModuleList m cfg = mfix $ \mList -> do
     nameFilter <- holdDyn mempty $ cfg ^. moduleListCfg_setNameFilter
-    backendFilter <- holdDyn Nothing $ cfg ^. moduleListCfg_setBackendFilter
+    chainIdFilter <- holdDyn Nothing $ cfg ^. moduleListCfg_setChainIdFilter
     page <- holdDyn 1 $ leftmost
       [ filterValid (mList ^. moduleList_pageCount) $
           cfg ^. moduleListCfg_setPage
@@ -112,25 +112,25 @@ makeModuleList m cfg = mfix $ \mList -> do
       ]
 
     let
-      moduleRefs :: Dynamic t (Map BackendName [DeployedModuleRef])
-      moduleRefs = getModuleRefs <$> m ^. backend_modules
+      moduleRefs :: Dynamic t (Map ChainId [DeployedModuleRef])
+      moduleRefs = getModuleRefs <$> m ^. network_modules
 
-      -- All modules after backend filter applied:
-      backendModules :: Dynamic t [DeployedModuleRef]
-      backendModules = do
-        bFilter <- backendFilter
+      -- All modules after network filter applied:
+      chainModules :: Dynamic t [DeployedModuleRef]
+      chainModules = do
+        cFilter <- chainIdFilter
         mRefs   <- moduleRefs
-        pure $ case bFilter of
+        pure $ case cFilter of
           Nothing -> concat $ Map.elems mRefs
-          Just b  -> fromMaybe [] $ Map.lookup b mRefs
+          Just c  -> fromMaybe [] $ Map.lookup c mRefs
 
-      -- Modules after backend filter and search filter applied:
+      -- Modules after network filter and search filter applied:
       searchModules :: Dynamic t [DeployedModuleRef]
       searchModules = L.sortBy (compareBy (textModuleName . _moduleRef_name)) <$> do
         needle <- T.toCaseFold <$> nameFilter
-        bModules <- backendModules
-        let getBName = T.toCaseFold . textModuleRefName
-        pure $ filter (T.isInfixOf needle . getBName) bModules
+        cModules <- chainModules
+        let getCName = T.toCaseFold . textModuleRefName
+        pure $ filter (T.isInfixOf needle . getCName) cModules
 
       -- Modules of current page matching the given filters.
       modules :: Dynamic t [DeployedModuleRef]
@@ -142,7 +142,7 @@ makeModuleList m cfg = mfix $ \mList -> do
     pure $ ModuleList
       { _moduleList_modules = (map (moduleRef_source %~ ModuleSource_Deployed)) <$> modules
       , _moduleList_nameFilter = nameFilter
-      , _moduleList_backendFilter = backendFilter
+      , _moduleList_chainIdFilter = chainIdFilter
       , _moduleList_page = page
       , _moduleList_pageCount = (calcTotal . length <$> searchModules)
       }
@@ -158,30 +158,18 @@ makeModuleList m cfg = mfix $ \mList -> do
       )
 
 
-
 -- | Get the available module map as proper `DeployedModuleRef`.
 getModuleRefs
-  :: Map BackendName (Maybe [Text])
-  -> Map BackendName [DeployedModuleRef]
-getModuleRefs mMods = fromMaybe Map.empty $ do
-    let
-      mods :: [(BackendName, [Text])]
-      mods = mapMaybe sequence $ Map.toList mMods
-
-      modRefs :: [DeployedModuleRef]
-      modRefs = concatMap (uncurry buildModRefs) mods
-
-    pure $
-      Map.fromListWith mappend
-      . map (_moduleRef_source &&& pure)
-      $ modRefs
+  :: Map ChainId [Text]
+  -> Map ChainId [DeployedModuleRef]
+getModuleRefs = Map.mapWithKey buildModRefs
   where
-    buildModRefs :: BackendName -> [Text] -> [DeployedModuleRef]
-    buildModRefs r = map (buildModRef r)
+    buildModRefs :: ChainId -> [Text] -> [DeployedModuleRef]
+    buildModRefs c = map (buildModRef c)
 
-    -- TODO: Proper namespace support:
-    buildModRef :: BackendName -> Text -> DeployedModuleRef
-    buildModRef r = ModuleRef r . flip ModuleName Nothing
+    buildModRef :: ChainId -> Text -> DeployedModuleRef
+    buildModRef c = ModuleRef c . flip ModuleName Nothing
+
 
 -- Instances:
 
@@ -198,5 +186,5 @@ instance Flattenable (ModuleListCfg t) t where
   flattenWith doSwitch ev =
     ModuleListCfg
       <$> doSwitch never (_moduleListCfg_setNameFilter <$> ev)
-      <*> doSwitch never (_moduleListCfg_setBackendFilter <$> ev)
+      <*> doSwitch never (_moduleListCfg_setChainIdFilter <$> ev)
       <*> doSwitch never (_moduleListCfg_setPage <$> ev)

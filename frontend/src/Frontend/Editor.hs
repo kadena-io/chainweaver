@@ -56,7 +56,7 @@ import           System.Random              (newStdGen, randoms)
 import           Data.Map                   (Map)
 #endif
 ------------------------------------------------------------------------------
-import           Frontend.Backend
+import           Frontend.Network
 import           Frontend.Editor.Annotation as Editor
 import           Frontend.Editor.QuickFix   as Editor
 import           Frontend.Foundation
@@ -101,7 +101,7 @@ data Editor t = Editor
 makePactLenses ''Editor
 
 
-type HasEditorModel model t = (HasJsonData model t, HasWallet model t, HasBackend model t)
+type HasEditorModel model t = (HasJsonData model t, HasWallet model t, HasNetwork model t)
 
 type HasEditorModelCfg mConf t = (HasJsonDataCfg mConf t, Monoid mConf)
 

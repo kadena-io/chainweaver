@@ -52,7 +52,7 @@ import           Obelisk.Route.Frontend       (R, RouteToUrl (..), Routed (..),
                                                SetRoute (..))
 ------------------------------------------------------------------------------
 import           Common.Route                 (FrontendRoute)
-import           Frontend.Backend
+import           Frontend.Network
 import           Frontend.Editor
 import           Frontend.Foundation
 import           Frontend.GistStore
@@ -84,7 +84,7 @@ data EnvSelection
 data IdeCfg modal t = IdeCfg
   { _ideCfg_wallet         :: WalletCfg t
   , _ideCfg_jsonData       :: JsonDataCfg t
-  , _ideCfg_backend        :: BackendCfg t
+  , _ideCfg_network        :: NetworkCfg t
   , _ideCfg_moduleExplorer :: ModuleExplorerCfg t
   , _ideCfg_editor         :: EditorCfg t
   , _ideCfg_repl           :: ReplCfg t
@@ -108,7 +108,7 @@ data Ide modal t = Ide
   , _ide_messages       :: Messages t
   , _ide_wallet         :: Wallet t
   , _ide_jsonData       :: JsonData t
-  , _ide_backend        :: Backend t
+  , _ide_network        :: Network t
   , _ide_repl           :: WebRepl t
   , _ide_oAuth          :: OAuth t
   , _ide_gistStore      :: GistStore t
@@ -136,7 +136,7 @@ makeIde userCfg = build $ \ ~(cfg, ideL) -> do
 
     walletL <- makeWallet $ _ideCfg_wallet cfg
     json <- makeJsonData walletL $ _ideCfg_jsonData cfg
-    (backendCfgL, backendL) <- makeBackend walletL $ cfg ^. ideCfg_backend
+    (networkCfgL, networkL) <- makeNetwork walletL $ cfg ^. ideCfg_network
     (explrCfg, moduleExplr) <- makeModuleExplorer ideL cfg
     (editorCfgL, editorL) <- makeEditor ideL cfg
     (oAuthCfgL, oAuthL) <- makeOAuth cfg
@@ -154,7 +154,7 @@ makeIde userCfg = build $ \ ~(cfg, ideL) -> do
           [ userCfg
           , explrCfg
           , replCfgL
-          , backendCfgL
+          , networkCfgL
           , editorCfgL
           , oAuthCfgL
           , gistStoreCfgL
@@ -165,7 +165,7 @@ makeIde userCfg = build $ \ ~(cfg, ideL) -> do
         , _ide_wallet = walletL
         , _ide_jsonData = json
         , _ide_messages = messagesL
-        , _ide_backend = backendL
+        , _ide_network = networkL
         , _ide_repl = replL
         , _ide_moduleExplorer = moduleExplr
         , _ide_envSelection = envSelection
@@ -214,8 +214,8 @@ instance HasWalletCfg (IdeCfg modal t) t where
 instance HasJsonDataCfg (IdeCfg modal t) t where
   jsonDataCfg = ideCfg_jsonData
 
-instance HasBackendCfg (IdeCfg modal t) t where
-  backendCfg = ideCfg_backend
+instance HasNetworkCfg (IdeCfg modal t) t where
+  networkCfg = ideCfg_network
 
 instance HasModuleExplorerCfg (IdeCfg modal t) t where
   moduleExplorerCfg = ideCfg_moduleExplorer
@@ -249,8 +249,8 @@ instance HasWallet (Ide modal t) t where
 instance HasJsonData (Ide modal t) t where
   jsonData = ide_jsonData
 
-instance HasBackend (Ide modal t) t where
-  backend = ide_backend
+instance HasNetwork (Ide modal t) t where
+  network = ide_network
 
 instance HasModuleExplorer (Ide modal t) t where
   moduleExplorer = ide_moduleExplorer
@@ -275,7 +275,7 @@ instance Flattenable (IdeCfg modal t) t where
     IdeCfg
       <$> flattenWith doSwitch (_ideCfg_wallet <$> ev)
       <*> flattenWith doSwitch (_ideCfg_jsonData <$> ev)
-      <*> flattenWith doSwitch (_ideCfg_backend <$> ev)
+      <*> flattenWith doSwitch (_ideCfg_network <$> ev)
       <*> flattenWith doSwitch (_ideCfg_moduleExplorer <$> ev)
       <*> flattenWith doSwitch (_ideCfg_editor <$> ev)
       <*> flattenWith doSwitch (_ideCfg_repl <$> ev)

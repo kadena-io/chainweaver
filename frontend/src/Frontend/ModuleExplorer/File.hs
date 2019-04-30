@@ -67,7 +67,7 @@ import           Frontend.Foundation
 import           Frontend.ModuleExplorer.Example
 import           Frontend.ModuleExplorer.Module
 import           Frontend.GistStore
-import           Frontend.ModuleExplorer.RefPath as MP
+import           Common.RefPath as MP
 
 -- | The name of a file stored by the user.
 newtype FileName = FileName { unFileName :: Text }

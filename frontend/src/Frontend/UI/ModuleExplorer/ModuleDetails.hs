@@ -39,7 +39,7 @@ import           Reflex.Dom
 import           Reflex.Network.Extended
 import           Data.Text (Text)
 ------------------------------------------------------------------------------
-import           Frontend.Backend
+import           Frontend.Network
 import           Frontend.ModuleExplorer
 import           Frontend.UI.Button
 import           Frontend.UI.Dialogs.CallFunction
@@ -49,12 +49,12 @@ import           Frontend.UI.ModuleExplorer.ModuleList
 
 -- | Constraints on the `Model` we have for our details screen.
 type HasUIModuleDetailsModel model t =
-  (HasModuleExplorer model t, HasBackend model t, HasUICallFunctionModel model t)
+  (HasModuleExplorer model t, HasNetwork model t, HasUICallFunctionModel model t)
 
 -- | Constraints on the model config we have for implementing this screen.
 type HasUIModuleDetailsModelCfg mConf m t =
   ( Monoid mConf, Flattenable mConf t, HasModuleExplorerCfg mConf t
-  , HasBackendCfg mConf t
+  , HasNetworkCfg mConf t
   , HasModalCfg mConf (Modal mConf m t) t
   , HasUICallFunctionModelCfg (ModalCfg mConf t) t
   )

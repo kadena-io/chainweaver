@@ -16,7 +16,7 @@
 {-# LANGUAGE TupleSections         #-}
 
 -- | Confirmation dialog for deploying modules and calling functions on the
--- backend.
+-- network.
 -- Copyright   :  (C) 2018 Kadena
 -- License     :  BSD-style (see the file LICENSE)
 module Frontend.UI.Dialogs.DeployConfirmation
@@ -24,26 +24,29 @@ module Frontend.UI.Dialogs.DeployConfirmation
   ) where
 
 ------------------------------------------------------------------------------
+import           Control.Arrow                  ((&&&))
 import           Control.Lens
 import           Data.Bifunctor
-import qualified Data.Map                as Map
-import           Data.Void               (Void)
+import           Data.Map                       (Map)
+import qualified Data.Map                       as Map
+import           Data.Void                      (Void)
 import           Reflex
 import           Reflex.Dom
-import Data.Map (Map)
 ------------------------------------------------------------------------------
-import           Frontend.Backend
+import           Frontend.Foundation
 import           Frontend.Ide
-import           Frontend.ModuleExplorer (HasModuleExplorerCfg (..), TransactionInfo (..))
+import           Frontend.ModuleExplorer        (HasModuleExplorerCfg (..),
+                                                 TransactionInfo (..))
+import           Frontend.Network
+import           Frontend.UI.DeploymentSettings
 import           Frontend.UI.Modal
 import           Frontend.UI.Widgets
-import           Frontend.UI.DeploymentSettings
 ------------------------------------------------------------------------------
 
 
 -- | Confirmation dialog for deployments.
 --
---   User can make sure to deploy to the right backend, has the right keysets,
+--   User can make sure to deploy to the right network, has the right keysets,
 --   the right keys, ...
 uiDeployConfirmation
   :: forall t m a. MonadWidget t m
@@ -53,12 +56,12 @@ uiDeployConfirmation ideL = do
   onClose <- modalHeader $ text "Deployment Settings"
   modalMain $ do
     (settingsCfg, transInfo) <- modalBody $ do
-      (uBackend, uEndpoint) <- uiSegment mempty $ do
+      (uNetwork, uEndpoint) <- uiSegment mempty $ do
         elClass "h2" "heading heading_type_h2" $ text "Choose Server and Endpoint"
         divClass "target-selection" $ do
-          uBackend <- uiBackendSelection (_backend_backends $ _ide_backend ideL)
+          uChain <- uiChainSelection (fmap (^? _2 . _Right) . _network_selectedNetwork $ _ide_network ideL)
           uEndpoint <- uiEndpointSelection Endpoint_Send
-          pure (uBackend, uEndpoint)
+          pure (uChain, uEndpoint)
 
       (settingsCfg, signingKeys, _) <- uiSegment mempty $
         uiDeploymentSettings ideL Nothing
@@ -67,7 +70,7 @@ uiDeployConfirmation ideL = do
         ( settingsCfg
         , do
             s <- signingKeys
-            mb <- uBackend
+            mb <- uNetwork
             e <- uEndpoint
             pure $ TransactionInfo s <$> mb <*> pure e
         )
@@ -78,21 +81,20 @@ uiDeployConfirmation ideL = do
       let isDisabled = maybe True (const False) <$> transInfo
       onConfirm <- confirmButton (def & uiButtonCfg_disabled .~ isDisabled) "Deploy"
 
-      -- TODO: Use `backendCfg_deployCode` instead.
+      -- TODO: Use `networkCfg_deployCode` instead.
       let cfg = mempty & moduleExplorerCfg_deployEditor .~
             fmapMaybe id (tagPromptlyDyn transInfo onConfirm)
       pure (cfg <> settingsCfg, leftmost [onClose, onCancel, onConfirm])
 
 
-uiBackendSelection
+uiChainSelection
   :: MonadWidget t m
-  => Dynamic t (Maybe (Map BackendName BackendUri))
-  -> m (Dynamic t (Maybe BackendName))
-uiBackendSelection backendUris = do
-  let backends = ffor backendUris $
-        fmap (\(k, _) -> (k, textBackendName k)) . maybe [] Map.toList
-      mkOptions bs = Map.fromList $ (Nothing, "Deployment Target") : map (first Just) bs
+  => Dynamic t (Maybe NodeInfo)
+  -> m (Dynamic t (Maybe ChainId))
+uiChainSelection info = do
+  let chains = map (id &&& tshow) . maybe [] getChains <$> info
+      mkOptions cs = Map.fromList $ (Nothing, "Deployment Chain") : map (first Just) cs
 
       cfg = def & dropdownConfig_attributes .~ pure ("class" =: "select select_type_primary target_selection_chain")
-  d <- dropdown Nothing (mkOptions <$> backends) cfg
+  d <- dropdown Nothing (mkOptions <$> chains) cfg
   pure $ _dropdown_value d
