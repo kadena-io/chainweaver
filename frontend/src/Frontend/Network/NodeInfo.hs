@@ -31,6 +31,7 @@ module Frontend.Network.NodeInfo
     ChainId
   , toPmChainId
   , NodeInfo
+  , _nodeInfo_baseUri
     -- * Discover
   , parseAuthority
   , discoverNode

@@ -116,34 +116,16 @@ uiBuildDeployment
   -> m (mConf, Dynamic t (Text, TransactionInfo))
 uiBuildDeployment m func moduleL = do
 
-  uEndpoint <- uiSegment mempty $ do
-    elClass "h2" "heading heading_type_h2" $ text "Choose Endpoint"
-    uiEndpointSelection Endpoint_Local
-
-  (cfg, signingKeys, mPactCall) <- uiSegment mempty $ do
-    uiDeploymentSettings m $ parametersTab m func
+  (cfg, transInfo, mPactCall) <- uiSegment mempty $ do
+    uiDeploymentSettings m $ DeploymentSettingsConfig
+      { _deploymentSettingsConfig_userTab = parametersTab m func
+      , _deploymentSettingsConfig_chainId = predefinedChainIdSelect $ _moduleRef_source moduleL
+      , _deploymentSettingsConfig_defEndpoint = Endpoint_Local
+      }
 
   let
     pactCall = fromMaybe (pure $ buildCall func []) mPactCall
-    transaction :: Dynamic t (Text, TransactionInfo)
-    transaction = do
-      code <- pactCall
-      keys <- signingKeys
-
-      let c = _moduleRef_source moduleL
-
-      endpointL <- uEndpoint
-
-      pure $
-        ( code
-        , TransactionInfo
-          { _transactionInfo_keys = keys
-          , _transactionInfo_chainId = c
-          , _transactionInfo_endpoint = endpointL
-          }
-        )
-
-  pure (cfg, transaction)
+  pure (cfg, (,) <$> pactCall <*> fmap runIdentity transInfo)
 
 
 -- | Tab showing edits for function parameters (if any):

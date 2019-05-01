@@ -34,6 +34,13 @@ $select-padding: 14px;
   color: $tertiary-select-color;
 }
 
+
+/* Select element that must have a valid selection, but does not have one right now.
+*/
+.select.select_mandatory_missing {
+  color: $tertiary-select-color;
+}
+
 // Variant that has height: auto;
 .select_tiny {
   height: $tiny-height;

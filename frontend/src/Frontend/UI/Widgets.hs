@@ -24,6 +24,7 @@ module Frontend.UI.Widgets
   , uiInputView
   , mkLabeledInputView
   , mkLabeledInput
+  , mkLabeledClsInput
   , uiCheckbox
   , uiDropdown
   , uiSelectElement
@@ -201,6 +202,19 @@ mkLabeledInput
 mkLabeledInput mkInput n cfg = elClass "div" "segment segment_type_tertiary labeled-input" $ do
   divClass "label labeled-input__label" $ text n
   mkInput (cfg & initialAttributes %~ addToClassAttr "labeled-input__input")
+
+
+-- | Make some input a labeled input.
+--
+--   Any widget creating function that can be called with additional classes will do.
+--   TODO: This function can probably replace `mkLabeledInput`.
+mkLabeledClsInput
+  :: (DomBuilder t m, PostBuild t m)
+  => (CssClass -> m element)
+  -> Dynamic t Text -> m element
+mkLabeledClsInput mkInput name = elClass "div" "segment segment_type_tertiary labeled-input" $ do
+  divClass "label labeled-input__label" $ dynText name
+  mkInput "labeled-input__input"
 
 
 -- | Validated input with button

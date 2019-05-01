@@ -19,16 +19,30 @@
 --
 -- Copyright   :  (C) 2018 Kadena
 -- License     :  BSD-style (see the file LICENSE)
+
 module Frontend.UI.DeploymentSettings
-  ( uiEndpointSelection
+  ( -- * Settings
+    DeploymentSettingsConfig (..)
+    -- * Values for _deploymentSettingsConfig_chainId:
+  , predefinedChainIdSelect
+  , userChainIdSelect
+    -- * Widgets
   , uiDeploymentSettings
   , uiSigningKeys
+    -- * Useful re-exports
+  , Identity (runIdentity)
   ) where
 
 ------------------------------------------------------------------------------
 import           Control.Arrow               (first)
+import           Control.Arrow               ((&&&))
 import           Control.Lens
 import           Control.Monad
+import           Control.Monad.Ref           (MonadRef, Ref)
+import           Control.Monad.Trans.Class   (lift)
+import           Control.Monad.Trans.Maybe   (MaybeT (..), runMaybeT)
+import           Data.Functor.Identity
+import           Data.IORef                  (IORef)
 import           Data.Map                    (Map)
 import qualified Data.Map                    as Map
 import           Data.Set                    (Set)
@@ -42,49 +56,57 @@ import           Reflex
 import           Reflex.Dom
 import           Reflex.Dom.Contrib.CssClass (elKlass)
 import           Safe                        (readMay)
-import Control.Arrow ((&&&))
+import qualified Text.URI                    as URI
 ------------------------------------------------------------------------------
-import           Frontend.Network
+import           Common.Network
 import           Frontend.Foundation
+import           Frontend.ModuleExplorer     (TransactionInfo (..))
+import           Frontend.Network
 import           Frontend.UI.TabBar
 import           Frontend.UI.Widgets
 import           Frontend.Wallet
 ------------------------------------------------------------------------------
 
--- | Widget (dropdown) for letting the user choose between /send and /local endpoint.
-uiEndpointSelection :: MonadWidget t m => Endpoint -> m (Dynamic t Endpoint)
-uiEndpointSelection initial = do
-  let endpoints = Map.fromList $ map (id &&& displayEndpoint) $ [minBound .. maxBound]
-      cfg = def & attributes .~ pure ("class" =: "select select_type_primary")
-  d <- dropdown initial (pure endpoints) cfg
-  pure $ _dropdown_value d
-
+-- | Config for the deployment settings widget.
+data DeploymentSettingsConfig t f m model a = DeploymentSettingsConfig
+  { _deploymentSettingsConfig_userTab     :: Maybe (Text, m a)
+    -- ^ Some optional extra tab. fst is the tab's name, snd is its content.
+  , _deploymentSettingsConfig_chainId     :: model -> m (Dynamic t (f ChainId))
+    -- ^ ChainId selection widget.
+    --   You can pick (predefinedChainIdSelect someId) - for not showing a
+    --   widget at all, but having `uiDeploymentSettings` use the provided one.
+    --
+    --   Or you can use `userChainIdSelect` for having the user pick a chainid.
+  , _deploymentSettingsConfig_defEndpoint :: Endpoint
+    -- ^ What `Endpoint` to select by default.
+  }
 
 data DeploymentSettingsView
   = DeploymentSettingsView_Custom Text -- ^ An optional additonal tab.
-  | DeploymentSettingsView_PublicMeta -- ^ Actual settings like gas price/limit, ...
+  | DeploymentSettingsView_Cfg -- ^ Actual settings like gas price/limit, ...
   | DeploymentSettingsView_Keys -- ^ Select keys for signing the transaction.
   deriving (Eq,Ord)
 
 showSettingsTabName :: DeploymentSettingsView -> Text
 showSettingsTabName (DeploymentSettingsView_Custom n) = n
 showSettingsTabName DeploymentSettingsView_Keys       = "Sign"
-showSettingsTabName DeploymentSettingsView_PublicMeta   = "Metadata"
+showSettingsTabName DeploymentSettingsView_Cfg        = "Configuration"
+
 
 -- | Show settings related to deployments to the user.
 --
 --
 --   the right keys, ...
 uiDeploymentSettings
-  :: forall t m model mConf a
+  :: forall t f m model mConf a
   . ( MonadWidget t m, HasNetwork model t, HasWallet model t
-    , Monoid mConf , HasNetworkCfg mConf t
+    , Monoid mConf , HasNetworkCfg mConf t, Applicative f
     )
   => model
-  -> Maybe (Text, m a) -- ^ An optional additional tab.
-  -> m (mConf, Dynamic t (Set KeyName), Maybe a)
-uiDeploymentSettings m mUserTab = mdo
-    let initTab = fromMaybe DeploymentSettingsView_PublicMeta mUserTabName
+  -> DeploymentSettingsConfig t f m model a
+  -> m (mConf, Dynamic t (f TransactionInfo), Maybe a)
+uiDeploymentSettings m cfg@(DeploymentSettingsConfig mUserTab mkWChainId endpoint) = mdo
+    let initTab = fromMaybe DeploymentSettingsView_Cfg mUserTabName
     curSelection <- holdDyn initTab onTabClick
     (TabBar onTabClick) <- makeTabBar $ TabBarCfg
       { _tabBarCfg_tabs = availableTabs
@@ -97,19 +119,87 @@ uiDeploymentSettings m mUserTab = mdo
 
       mRes <- traverse (uncurry $ tabPane mempty curSelection) mUserTabCfg
 
-      cfg <- tabPane mempty curSelection DeploymentSettingsView_PublicMeta $
-        uiMetaData m
+      (cfg, cChainId, cEndpoint) <- tabPane mempty curSelection DeploymentSettingsView_Cfg $
+        uiCfg m (mkWChainId m) endpoint
 
       signingKeys <- tabPane mempty curSelection DeploymentSettingsView_Keys $
         uiSigningKeys m
 
-      pure (cfg, signingKeys, mRes)
+      pure
+        ( cfg
+        , do
+            sigKeys <- signingKeys
+            ep <- cEndpoint
+            chain <- cChainId
+            pure $ TransactionInfo <$> (pure sigKeys) <*> chain <*> (pure ep)
+        , mRes
+        )
     where
       mUserTabCfg  = first DeploymentSettingsView_Custom <$> mUserTab
       mUserTabName = fmap fst mUserTabCfg
       userTabs = maybeToList mUserTabName
-      stdTabs = [DeploymentSettingsView_PublicMeta, DeploymentSettingsView_Keys]
+      stdTabs = [DeploymentSettingsView_Cfg, DeploymentSettingsView_Keys]
       availableTabs = userTabs <> stdTabs
+
+
+-- | Use a predefined chain id, don't let the user pick one.
+predefinedChainIdSelect
+  :: (Reflex t, Monad m)
+  => ChainId
+  -> model
+  -> m (Dynamic t (Identity ChainId))
+predefinedChainIdSelect chanId _ = pure . pure . pure $ chanId
+
+
+-- | Let the user pick a chain id.
+userChainIdSelect
+  :: (MonadWidget t m, HasNetwork model t
+     )
+  => model
+  -> m (MDynamic t ChainId)
+userChainIdSelect m = mkLabeledClsInput (uiChainSelection mNodeInfo) labelText
+  where
+    mNodeInfo = (^? _2 . _Right) <$> m ^. network_selectedNetwork
+
+    labelText = ffor (m ^. network_selectedNetwork) $ \case
+      (_, Right info) -> "Node [ " <> (URI.render $ _nodeInfo_baseUri info) <> " ]"
+      (_, Left err)   -> "> Network is unreachable at the moment. <"
+
+
+-- | UI for asking the user about data needed for deployments/function calling.
+uiCfg
+  :: (MonadWidget t m, HasNetwork model t, HasNetworkCfg mConf t, Monoid mConf
+     )
+  => model
+  -> m (Dynamic t (f ChainId))
+  -> Endpoint
+  -> m (mConf, Dynamic t (f ChainId), Dynamic t Endpoint)
+uiCfg m wChainId ep = do
+  (cId, endpoint) <- elKlass "div" ("group segment") $
+     uiEndpoint m wChainId ep
+  cfg <- elKlass "div" ("group segment") $
+    uiMetaData m
+  pure (cfg, cId, endpoint)
+
+
+-- | UI for asking the user about endpoint (`Endpoint` & `ChainId`) for deployment.
+--
+--   If a `ChainId` is passed in, the user will not be asked for one.
+--
+--   The given `EndPoint` will be the default in the dropdown.
+uiEndpoint
+  :: ( MonadWidget t m, HasNetwork model t)
+  => model
+  -> m (Dynamic t (f ChainId))
+  -> Endpoint
+  -> m (Dynamic t (f ChainId), Dynamic t Endpoint)
+uiEndpoint m wChainId ep = do
+
+    selChain <- wChainId
+
+    selEndpoint <- mkLabeledClsInput (uiEndpointSelection ep) "Endpoint"
+
+    pure (selChain, selEndpoint)
 
 
 -- | ui for asking the user about meta data needed for the transaction.
@@ -118,7 +208,9 @@ uiMetaData
     , HasNetwork model t, HasNetworkCfg mConf t, Monoid mConf
      )
   => model -> m mConf
-uiMetaData m = elKlass "div" ("group") $ do
+uiMetaData m  = do
+
+    onSender <- mkLabeledInput (senderDropdown $ m ^. network_meta) "Sender" def
 
     onGasPriceTxt <- mkLabeledInputView uiRealInputElement "Gas price" $
       fmap (showParsedDecimal . _pmGasPrice) $ m ^. network_meta
@@ -126,12 +218,11 @@ uiMetaData m = elKlass "div" ("group") $ do
     onGasLimitTxt <- mkLabeledInputView uiIntInputElement "Gas limit" $
       fmap (showParsedInteger . _pmGasLimit) $ m ^. network_meta
 
-    onSender <- mkLabeledInput (senderDropdown $ m ^. network_meta) "Sender" def
-
     pure $ mempty
       & networkCfg_setSender .~ onSender
       & networkCfg_setGasPrice .~ fmapMaybe (readPact ParsedDecimal) onGasPriceTxt
       & networkCfg_setGasLimit .~ fmapMaybe (readPact ParsedInteger) onGasLimitTxt
+
   where
 
       showParsedInteger :: ParsedInteger -> Text
@@ -152,6 +243,37 @@ uiMetaData m = elKlass "div" ("group") $ do
         pure $ _selectElement_change se
 
       readPact wrapper =  fmap wrapper . readMay . T.unpack
+
+
+-- | Widget (dropdown) for letting the user choose between /send and /local endpoint.
+--
+uiEndpointSelection :: MonadWidget t m => Endpoint -> CssClass -> m (Dynamic t Endpoint)
+uiEndpointSelection initial cls = do
+  let endpoints = Map.fromList $ map (id &&& displayEndpoint) $ [minBound .. maxBound]
+      allCls = renderClass $ cls <> "select"
+      cfg = def & dropdownConfig_attributes .~ pure ("class" =: allCls)
+  d <- dropdown initial (pure endpoints) cfg
+  pure $ _dropdown_value d
+
+
+uiChainSelection
+  :: MonadWidget t m
+  => Dynamic t (Maybe NodeInfo)
+  -> CssClass
+  -> m (Dynamic t (Maybe ChainId))
+uiChainSelection info cls = mdo
+    let
+      chains = map (id &&& tshow) . maybe [] getChains <$> info
+      mkOptions cs = Map.fromList $ (Nothing, "Select chain") : map (first Just) cs
+
+      staticCls = cls <> "select select_type_primary"
+      mkDynCls v = if isNothing v then "select_mandatory_missing" else mempty
+      allCls = renderClass <$> fmap mkDynCls d <> pure staticCls
+
+      cfg = def & dropdownConfig_attributes .~ (("class" =:) <$> allCls)
+
+    d <- _dropdown_value <$> dropdown Nothing (mkOptions <$> chains) cfg
+    pure d
 
 
 -- | Widget for selection of signing keys.

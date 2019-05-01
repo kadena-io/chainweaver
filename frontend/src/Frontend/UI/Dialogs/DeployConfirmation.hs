@@ -55,46 +55,32 @@ uiDeployConfirmation
 uiDeployConfirmation ideL = do
   onClose <- modalHeader $ text "Deployment Settings"
   modalMain $ do
-    (settingsCfg, transInfo) <- modalBody $ do
-      (uNetwork, uEndpoint) <- uiSegment mempty $ do
-        elClass "h2" "heading heading_type_h2" $ text "Choose Server and Endpoint"
-        divClass "target-selection" $ do
-          uChain <- uiChainSelection (fmap (^? _2 . _Right) . _network_selectedNetwork $ _ide_network ideL)
-          uEndpoint <- uiEndpointSelection Endpoint_Send
-          pure (uChain, uEndpoint)
-
-      (settingsCfg, signingKeys, _) <- uiSegment mempty $
-        uiDeploymentSettings ideL Nothing
-
-      pure
-        ( settingsCfg
-        , do
-            s <- signingKeys
-            mb <- uNetwork
-            e <- uEndpoint
-            pure $ TransactionInfo s <$> mb <*> pure e
-        )
+    (settingsCfg, transInfo, _) <- modalBody $
+      uiSegment mempty $
+        uiDeploymentSettings ideL $ DeploymentSettingsConfig
+          { _deploymentSettingsConfig_chainId = userChainIdSelect
+          , _deploymentSettingsConfig_defEndpoint = Endpoint_Send
+          , _deploymentSettingsConfig_userTab = Nothing
+          }
 
     modalFooter $ do
       onCancel <- cancelButton def "Cancel"
       text " "
       let isDisabled = maybe True (const False) <$> transInfo
-      onConfirm <- confirmButton (def & uiButtonCfg_disabled .~ isDisabled) "Deploy"
+      onConfirm <- confirmButton (deployBtnCfg isDisabled) "Deploy"
 
       -- TODO: Use `networkCfg_deployCode` instead.
       let cfg = mempty & moduleExplorerCfg_deployEditor .~
             fmapMaybe id (tagPromptlyDyn transInfo onConfirm)
       pure (cfg <> settingsCfg, leftmost [onClose, onCancel, onConfirm])
 
+  where
 
-uiChainSelection
-  :: MonadWidget t m
-  => Dynamic t (Maybe NodeInfo)
-  -> m (Dynamic t (Maybe ChainId))
-uiChainSelection info = do
-  let chains = map (id &&& tshow) . maybe [] getChains <$> info
-      mkOptions cs = Map.fromList $ (Nothing, "Deployment Chain") : map (first Just) cs
+    deployBtnCfg isDisabled = def
+      & uiButtonCfg_disabled .~ isDisabled
+      & uiButtonCfg_title .~ fmap deployToolTip isDisabled
 
-      cfg = def & dropdownConfig_attributes .~ pure ("class" =: "select select_type_primary target_selection_chain")
-  d <- dropdown Nothing (mkOptions <$> chains) cfg
-  pure $ _dropdown_value d
+    deployToolTip isDisabled = Just $
+      if isDisabled
+         then "You have to pick a chain!"
+         else "Deploy to chain."
