@@ -162,8 +162,7 @@ userChainIdSelect m = mkLabeledClsInput (uiChainSelection mNodeInfo) labelText
     mNodeInfo = (^? _2 . _Right) <$> m ^. network_selectedNetwork
 
     labelText = ffor (m ^. network_selectedNetwork) $ \case
-      (_, Right info) -> "Node [ " <> (URI.render $ _nodeInfo_baseUri info) <> " ]"
-      (_, Left err)   -> "> Network is unreachable at the moment. <"
+      (n, _) -> "Network [ " <> textNetworkName n <> " ]"
 
 
 -- | UI for asking the user about data needed for deployments/function calling.
