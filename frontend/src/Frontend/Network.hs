@@ -154,20 +154,13 @@ makePactLensesNonClassy ''NetworkRequest
 
 data NetworkError
   = NetworkError_NetworkError Text
+  -- ^ Server could not be reached.
+  | NetworkError_Status HTTP.Status Text
   -- ^ Server responded with a non 200 status code.
   | NetworkError_ReqTooLarge
   -- ^ Request size exceeded the allowed limit.
-  | NetworkError_Failure Text
-  -- ^ The network responded with status "failure"
-  -- The contained `Text` will hold the full message, which might be useful for
-  -- debugging.
-  | NetworkError_ParseError Text
-  -- ^ Parsing the JSON response failed.
   | NetworkError_CommandFailure CommandError
   -- ^ The status in the /listen result object was `failure`.
-  | NetworkError_DoesNotExist NetworkName
-  -- ^ The request could not be processed as the given `NetworkName` no longer
-  -- exists.
   | NetworkError_NoNetwork Text
   -- ^ An action requiring a network was about to be performed, but we don't
   -- (yet) have any selected network.
@@ -212,9 +205,9 @@ type IsNetworkCfg cfg t = (HasNetworkCfg cfg t, Monoid cfg, Flattenable cfg t)
 data Network t = Network
   { _network_networks        :: Dynamic t (Map NetworkName [URI.Authority])
     -- ^ List of available networks. Each network has a name and a number of nodes.
-  , _network_selectedNetwork :: Dynamic t (NetworkName, Either Text NodeInfo)
-    -- ^ The currently selected network.
-    -- ^ All available networks that can be selected.
+  , _network_selectedNetwork :: Dynamic t (NetworkName, [Either Text NodeInfo])
+    -- ^ The currently selected network, the first `Right` `NodeInfo` will be
+    -- used for deployments and such.
   , _network_modules         :: Dynamic t (Map ChainId [Text])
    -- ^ Available modules on all chains.
   , _network_deployed        :: Event t ()
@@ -264,15 +257,15 @@ makeNetwork w cfg = mfix $ \ ~(_, networkL) -> do
     cNameNetworks <- getNetworks
     let cName = fst <$> cNameNetworks
     onCName <- tagOnPostBuild cName
-    onNodeInfo <- performEvent $ runExceptT . getNetworkNodeInfo networkL <$> leftmost
+    onNodeInfos <- performEvent $ getNetworkNodeInfos networkL <$> leftmost
       [ onCName
         -- Refresh info on deployments and well on refresh (Refreshed node
         -- info triggers re-loading of modules too.):
       , tag (current cName) $ onDeployed
       , tag (current cName) $ cfg ^. networkCfg_refreshModule
       ]
-    performEvent_ $ reportNodeInfoError <$> fmapMaybe (^? _Left) onNodeInfo
-    nodeInfo <- holdDyn (Left "No node info fetched yet!") onNodeInfo
+    performEvent_ $ traverse_ reportNodeInfoError <$> fmap lefts onNodeInfos
+    nodeInfos <- holdDyn [Left "No node infos fetched yet!"] onNodeInfos
 
     modules <- loadModules networkL
 
@@ -282,7 +275,7 @@ makeNetwork w cfg = mfix $ \ ~(_, networkL) -> do
       ( mConf
       , Network
           { _network_networks = snd <$> cNameNetworks
-          , _network_selectedNetwork = (,) <$> cName <*> nodeInfo
+          , _network_selectedNetwork = (,) <$> cName <*> nodeInfos
           , _network_modules = modules
           , _network_deployed = onDeployed
           , _network_meta = meta
@@ -294,26 +287,27 @@ makeNetwork w cfg = mfix $ \ ~(_, networkL) -> do
 
 
 -- | Retrieve the node information for the given `NetworkName`
-getNetworkNodeInfo :: (Reflex t, MonadSample t m, MonadError Text m, MonadJSM m) => Network t -> NetworkName -> m NodeInfo
-getNetworkNodeInfo nw netName = do
+getNetworkNodeInfos
+  :: (Reflex t, MonadSample t m, MonadJSM m)
+  => Network t
+  -> NetworkName
+  -> m [Either Text NodeInfo]
+getNetworkNodeInfos nw netName = do
     cNets <- sample $ current $ nw ^. network_networks
-    host <- noteNotFound $ cNets ^? at netName . _Just . _head
-    errInfo <- runJSM (discoverNode host) =<< askJSM
-    liftEither errInfo
-  where
-    noteNotFound = note $ "No non empty network found with name: " <> textNetworkName netName
+    let hosts = fromMaybe [] $ cNets ^. at netName
+    runJSM (traverse discoverNode hosts) =<< askJSM
 
 
 -- | Get the currently selected network.
 --
 --   Error out, if there is none.
-getSelectedNetworkInfo
-  :: (Reflex t, MonadSample t m, MonadError NetworkError m)
+getSelectedNetworkInfos
+  :: (Reflex t, MonadSample t m)
   => Network t
-  -> m NodeInfo
-getSelectedNetworkInfo networkL = do
-  errNet <- fmap snd . sample $ current $ networkL ^. network_selectedNetwork
-  liftEither $ left NetworkError_NoNetwork errNet
+  -> m [NodeInfo]
+getSelectedNetworkInfos networkL = do
+    errNets <- fmap snd . sample $ current $ networkL ^. network_selectedNetwork
+    pure $ rights errNets
 
 
 buildMeta
@@ -423,10 +417,10 @@ loadModules
   -> m (Dynamic t (Map ChainId [Text]))
 loadModules networkL = do
 
-      let nodeInfo = snd <$> (networkL ^. network_selectedNetwork)
-      onNodeInfo <- tagOnPostBuild nodeInfo
+      let nodeInfos = (rights . snd) <$> (networkL ^. network_selectedNetwork)
+      onNodeInfos <- tagOnPostBuild nodeInfos
 
-      let onReqs = either mempty (map mkReq . getChains) <$> onNodeInfo
+      let onReqs = map mkReq . maybe [] getChains . listToMaybe  <$> onNodeInfos
       onErrResps <- performLocalRead networkL onReqs
 
       let
@@ -556,9 +550,9 @@ performNetworkRequestCustom w networkL unwrap onReqs =
       reportError cb reqs $ do
         keys <- sample $ current $ _wallet_keys w
         metaTemplate <- sample $ current $ networkL ^. network_meta
-        nodeInfo <- getSelectedNetworkInfo networkL
+        nodeInfos <- getSelectedNetworkInfos networkL
         void $ forkJSM $ do
-          r <- traverse (doReq metaTemplate nodeInfo keys) reqs
+          r <- traverse (doReqFailover metaTemplate nodeInfos keys) reqs
           liftIO $ cb r
   where
 
@@ -568,6 +562,20 @@ performNetworkRequestCustom w networkL unwrap onReqs =
         Left err -> liftIO $ cb $ map (, Left err) reqs
         Right () -> pure ()
 
+    doReqFailover metaTemplate nodeInfos keys req =
+      (req,) <$> go (NetworkError_Other "All nodes were offline!") nodeInfos
+        where
+          go lastErr = \case
+            n:ns -> do
+              errRes <- doReq metaTemplate n keys req
+              case errRes of
+                Left err -> if shouldFailOver err
+                               then go err ns
+                               else pure errRes
+                Right res -> pure errRes
+            [] -> pure $ Left lastErr
+
+
     doReq metaTemplate nodeInfo keys req = do
       let
         unwrapped = unwrap req
@@ -576,7 +584,7 @@ performNetworkRequestCustom w networkL unwrap onReqs =
         signing = _networkRequest_signing unwrapped
         chainUrl = getChainBaseUrl (unwrapped ^. networkRequest_chainId) nodeInfo
       payload <- buildCmd meta keys signing unwrapped
-      (req,) <$> (liftJSM $ networkRequest chainUrl (unwrapped ^. networkRequest_endpoint) payload)
+      liftJSM $ networkRequest chainUrl (unwrapped ^. networkRequest_endpoint) payload
 
 
 -- | Send a transaction via the /send endpoint.
@@ -645,7 +653,7 @@ networkRequest baseUri endpoint cmd = do
       S.FailureResponse response ->
         if S.responseStatusCode response == HTTP.status413
            then NetworkError_ReqTooLarge
-           else NetworkError_NetworkError $ T.pack $ show response
+           else NetworkError_Status (S.responseStatusCode response) (T.pack $ show response)
       _ -> NetworkError_NetworkError $ T.pack $ show e
 
     fromCommandValue :: MonadError NetworkError m => CommandValue -> m (Term Name)
@@ -720,15 +728,23 @@ buildExecPayload meta req = do
 
 -- Response handling ...
 
+
+-- | Is the given error one, where trying another host makes sense?
+shouldFailOver :: NetworkError -> Bool
+shouldFailOver = \case
+  -- Failover on connectivity problems.
+  NetworkError_NetworkError err -> True
+  -- Failover on server errors:
+  NetworkError_Status (HTTP.Status code _) _ -> code >= 500 && code < 600
+  _ -> False
+
 -- | Pretty print a `NetworkError`.
 prettyPrintNetworkError :: NetworkError -> Text
 prettyPrintNetworkError = ("ERROR: " <>) . \case
-  NetworkError_NetworkError msg -> "Http error: " <> msg
+  NetworkError_NetworkError msg -> "Network error: " <> msg
+  NetworkError_Status _ msg -> "Error HTTP response: " <> msg
   NetworkError_ReqTooLarge-> "Request exceeded the allowed maximum size!"
-  NetworkError_Failure msg -> "Network failure: " <> msg
-  NetworkError_ParseError m -> "Server response could not be parsed: " <> m
   NetworkError_CommandFailure (CommandError e d) -> T.pack e <> ": " <> maybe "" T.pack d
-  NetworkError_DoesNotExist (NetworkName n) -> "Network named '" <> n <> "' no longer exists."
   NetworkError_NoNetwork t -> "An action requiring a network was about to be performed, but we don't (yet) have any selected network: '" <> t <> "'"
   NetworkError_Other m -> "Some unknown problem: " <> m
 
@@ -738,7 +754,6 @@ prettyPrintNetworkErrorResult :: NetworkErrorResult -> Text
 prettyPrintNetworkErrorResult = \case
   Left e -> prettyPrintNetworkError e
   Right r -> "Server result: " <> prettyTextPretty r
-
 
 
 -- | Get unique nonce, based on current time.

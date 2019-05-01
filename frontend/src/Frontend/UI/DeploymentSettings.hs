@@ -35,6 +35,7 @@ module Frontend.UI.DeploymentSettings
 
 ------------------------------------------------------------------------------
 import           Control.Arrow               (first)
+import Data.Either (rights)
 import           Control.Arrow               ((&&&))
 import           Control.Lens
 import           Control.Monad
@@ -159,7 +160,7 @@ userChainIdSelect
   -> m (MDynamic t ChainId)
 userChainIdSelect m = mkLabeledClsInput (uiChainSelection mNodeInfo) labelText
   where
-    mNodeInfo = (^? _2 . _Right) <$> m ^. network_selectedNetwork
+    mNodeInfo = (^? _2 . to rights . _head) <$> m ^. network_selectedNetwork
 
     labelText = ffor (m ^. network_selectedNetwork) $ \case
       (n, _) -> "Network [ " <> textNetworkName n <> " ]"

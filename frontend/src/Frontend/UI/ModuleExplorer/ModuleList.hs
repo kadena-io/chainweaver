@@ -27,9 +27,10 @@
 module Frontend.UI.ModuleExplorer.ModuleList where
 
 ------------------------------------------------------------------------------
+import           Control.Arrow               ((&&&))
 import           Control.Lens
 import           Control.Monad
-import Control.Arrow ((&&&))
+import           Data.Either                 (rights)
 import qualified Data.Map                    as Map
 import           Data.Text                   (Text)
 import           Data.Traversable            (for)
@@ -39,9 +40,9 @@ import           Reflex.Dom.Contrib.CssClass
 import           Reflex.Network
 import           Reflex.Network.Extended
 ------------------------------------------------------------------------------
-import           Frontend.Network
 import           Frontend.Foundation
 import           Frontend.ModuleExplorer
+import           Frontend.Network
 import           Frontend.UI.Button
 import           Frontend.UI.Widgets
 ------------------------------------------------------------------------------
@@ -96,7 +97,7 @@ uiDeployedModuleList m mList = mdo
       -- dropdown is kinda loopy, therefore the delay.
       onNetworkName <- delay 0 <=< tagOnPostBuild $ mList ^. moduleList_chainIdFilter
       let mkMap = Map.fromList . map (Just &&& tshow) . getChains
-          mInfo = (^? _2 . _Right) <$> m ^. network_selectedNetwork
+          mInfo = (^? _2 . to rights . _head) <$> m ^. network_selectedNetwork
           opts = Map.insert Nothing "All chains" . maybe mempty mkMap <$> mInfo
           filterCfg = def & dropdownConfig_attributes %~ fmap (addToClassAttr $ "select_type_tertiary" <> "filter-bar__chain-filter")
                           & setValue .~ onNetworkName
