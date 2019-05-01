@@ -264,7 +264,8 @@ uiChainSelection
 uiChainSelection info cls = mdo
     let
       chains = map (id &&& tshow) . maybe [] getChains <$> info
-      mkOptions cs = Map.fromList $ (Nothing, "Select chain") : map (first Just) cs
+      mkPlaceHolder cChains = if null cChains then "No chains available" else "Select chain"
+      mkOptions cs = Map.fromList $ (Nothing, mkPlaceHolder cs) : map (first Just) cs
 
       staticCls = cls <> "select select_type_primary"
       mkDynCls v = if isNothing v then "select_mandatory_missing" else mempty
