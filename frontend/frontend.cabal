@@ -59,6 +59,7 @@ library
                , reflex-dom
                , reflex-dom-ace
                , reflex-dom-contrib
+               , ref-tf
                , safe
                , servant
                , servant-client-core
