@@ -251,7 +251,7 @@ makeNetwork w cfg = mfix $ \ ~(_, networkL) -> do
     cNameNetworks <- getNetworks
     let cName = fst <$> cNameNetworks
     onCName <- tagOnPostBuild cName
-    onNodeInfos <- performEvent $ getNetworkNodeInfos networkL <$> leftmost
+    onNodeInfos <- performEventAsync $ getNetworkNodeInfosAsync networkL <$> leftmost
       [ onCName
         -- Refresh info on deployments and well on refresh (Refreshed node
         -- info triggers re-loading of modules too.):
@@ -276,20 +276,24 @@ makeNetwork w cfg = mfix $ \ ~(_, networkL) -> do
           }
       )
   where
+
     reportNodeInfoError err =
       liftIO $ T.putStrLn $ "Fetching node info failed: " <> err
 
 
 -- | Retrieve the node information for the given `NetworkName`
-getNetworkNodeInfos
+getNetworkNodeInfosAsync
   :: (Reflex t, MonadSample t m, MonadJSM m)
   => Network t
   -> NetworkName
-  -> m [Either Text NodeInfo]
-getNetworkNodeInfos nw netName = do
+  -> ([Either Text NodeInfo] -> IO ())
+  -> m ()
+getNetworkNodeInfosAsync nw netName cb = do
     cNets <- sample $ current $ nw ^. network_networks
     let hosts = fromMaybe [] $ cNets ^. at netName
-    runJSM (traverse discoverNode hosts) =<< askJSM
+    void $ forkJSM $ do
+      r <- traverse discoverNode hosts
+      liftIO $ cb r
 
 
 -- | Get the currently selected network.
