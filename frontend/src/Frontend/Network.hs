@@ -192,12 +192,6 @@ data NetworkCfg t = NetworkCfg
 makePactLenses ''NetworkCfg
 
 
-{- data SelectedNetwork = SelectedNetwork -}
-{-   { _selectedNetwork_cached :: NetworkInfo -}
-{-   , _selectedNetwork_good :: [ URI.Authority ] -}
-{-   , _selectedNetwork_bad :: [ URI.Authority ] -}
-{-   } -}
-
 -- | HasNetworkCfg with additional constraints to make it behave like a proper
 -- config.
 type IsNetworkCfg cfg t = (HasNetworkCfg cfg t, Monoid cfg, Flattenable cfg t)
@@ -726,8 +720,8 @@ buildExecPayload meta req = do
     , _pMeta = meta
     }
 
--- Response handling ...
 
+-- Response handling ...
 
 -- | Is the given error one, where trying another host makes sense?
 shouldFailOver :: NetworkError -> Bool
@@ -737,6 +731,7 @@ shouldFailOver = \case
   -- Failover on server errors:
   NetworkError_Status (HTTP.Status code _) _ -> code >= 500 && code < 600
   _ -> False
+
 
 -- | Pretty print a `NetworkError`.
 prettyPrintNetworkError :: NetworkError -> Text
