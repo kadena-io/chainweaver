@@ -33,7 +33,7 @@ module Frontend.Network.NodeInfo
   , NodeInfo
   , _nodeInfo_baseUri
     -- * Discover
-  , parseAuthority
+  , parseNodeRef
   , discoverNode
     -- * Get node/network information.
   , getChainBaseUrl
@@ -41,8 +41,6 @@ module Frontend.Network.NodeInfo
   ) where
 
 
-import           Common.Network              (ChainId (..), parseAuthority,
-                                              toPmChainId)
 import           Control.Applicative         ((<|>))
 import           Control.Arrow               (left)
 import           Control.Error.Safe          (headErr, maximumErr)
@@ -78,6 +76,8 @@ import           UnliftIO.Exception          (catch)
 import           UnliftIO.MVar
 
 import           Frontend.Foundation
+import           Common.Network              (ChainId (..), parseNodeRef,
+                                              toPmChainId, NodeRef (..))
 
 
 data ChainwebInfo = ChainwebInfo
@@ -105,8 +105,8 @@ data NodeInfo = NodeInfo
 
 
 -- | Retrive the `NodeInfo` for a given host by quering its API.
-discoverNode :: forall m. (MonadJSM m, MonadUnliftIO m, HasJSContext m) => URI.Authority -> m (Either Text NodeInfo)
-discoverNode auth = do
+discoverNode :: forall m. (MonadJSM m, MonadUnliftIO m, HasJSContext m) => NodeRef -> m (Either Text NodeInfo)
+discoverNode (NodeRef auth) = do
     httpsReqs <- async $ discoverChainwebOrPact httpsUri
     httpReqs <- async $ discoverChainwebOrPact httpUri
 

@@ -106,7 +106,7 @@ import           Common.Network                    (ChainId, NetworkName (..),
                                                     getNetworksConfig,
                                                     getPactInstancePort,
                                                     numPactInstances,
-                                                    textNetworkName)
+                                                    textNetworkName, NodeRef)
 import           Common.Route                      (pactDynServerListPath)
 import           Frontend.Crypto.Ed25519
 import           Frontend.Foundation
@@ -114,7 +114,7 @@ import           Frontend.Messages
 import           Frontend.Network.NodeInfo
 import           Frontend.Storage                  (getItemStorage,
                                                     localStorage,
-                                                    setItemStorage)
+                                                    setItemStorage, removeItemStorage)
 import           Frontend.Wallet
 
 
@@ -187,6 +187,12 @@ data NetworkCfg t = NetworkCfg
   , _networkCfg_setGasPrice   :: Event t ParsedDecimal
     -- ^ Maximum gas price you are willing to accept for having your
     -- transaction executed.
+  , _networkCfg_setNetworks :: Event t (Map NetworkName [NodeRef])
+    -- ^ Provide a new networks configuration.
+  , _networkCfg_resetNetworks :: Event t ()
+    -- ^ Reset networks to default (provided at deployment).
+  , _networkCfg_selectNetwork :: Event t NetworkName
+    -- ^ Switch to a different network.
   }
 
 makePactLenses ''NetworkCfg
@@ -197,8 +203,9 @@ makePactLenses ''NetworkCfg
 type IsNetworkCfg cfg t = (HasNetworkCfg cfg t, Monoid cfg, Flattenable cfg t)
 
 data Network t = Network
-  { _network_networks        :: Dynamic t (Map NetworkName [URI.Authority])
+  { _network_networks        :: Dynamic t (Map NetworkName [NodeRef])
     -- ^ List of available networks. Each network has a name and a number of nodes.
+    --   This list gets persisted and can be edited by the user.
   , _network_selectedNetwork :: Dynamic t (NetworkName, [Either Text NodeInfo])
     -- ^ The currently selected network, the first `Right` `NodeInfo` will be
     -- used for deployments and such.
@@ -228,6 +235,8 @@ type HasNetworkModelCfg mConf t = (Monoid mConf, HasMessagesCfg mConf t)
 -- | Things we want to store to local storage.
 data StoreNetwork a where
   StoreNetwork_PublicMeta  :: StoreNetwork PublicMeta
+  StoreNetwork_Networks    :: StoreNetwork (Map NetworkName [NodeRef])
+  StoreNetwork_SelectedNetwork :: StoreNetwork NetworkName
 
 deriving instance Show (StoreNetwork a)
 
@@ -248,18 +257,21 @@ makeNetwork w cfg = mfix $ \ ~(_, networkL) -> do
 
     (mConf, onDeployed) <- deployCode w networkL $ cfg ^. networkCfg_deployCode
 
-    cNameNetworks <- getNetworks
-    let cName = fst <$> cNameNetworks
+    (cName, networks) <- getNetworks cfg
     onCName <- tagOnPostBuild cName
     onNodeInfos <- performEventAsync $ getNetworkNodeInfosAsync networkL <$> leftmost
       [ onCName
         -- Refresh info on deployments and well on refresh (Refreshed node
-        -- info triggers re-loading of modules too.):
+        -- info triggers re-loading of modules too):
       , tag (current cName) $ onDeployed
       , tag (current cName) $ cfg ^. networkCfg_refreshModule
       ]
     performEvent_ $ traverse_ reportNodeInfoError <$> fmap lefts onNodeInfos
-    nodeInfos <- holdDyn [Left "No node infos fetched yet!"] onNodeInfos
+    nodeInfos <- holdDyn [] $ leftmost
+      [ onNodeInfos
+        -- Reset until correct values are loaded:
+      , [] <$ onCName
+      ]
 
     modules <- loadModules networkL
 
@@ -268,7 +280,7 @@ makeNetwork w cfg = mfix $ \ ~(_, networkL) -> do
     pure
       ( mConf
       , Network
-          { _network_networks = snd <$> cNameNetworks
+          { _network_networks = networks
           , _network_selectedNetwork = (,) <$> cName <*> nodeInfos
           , _network_modules = modules
           , _network_deployed = onDeployed
@@ -276,7 +288,6 @@ makeNetwork w cfg = mfix $ \ ~(_, networkL) -> do
           }
       )
   where
-
     reportNodeInfoError err =
       liftIO $ T.putStrLn $ "Fetching node info failed: " <> err
 
@@ -375,32 +386,69 @@ deployCode w networkL onReq = do
           ]
 
 
--- | Available networks:
+-- | Get the available networks and the currently selected network.
+--
+--   This function also takes care of persistence of those values.
 getNetworks
+  :: ( MonadJSM (Performable m), HasJSContext (Performable m)
+     , PerformEvent t m, TriggerEvent t m, PostBuild t m, MonadIO m
+     , MonadHold t m, MonadJSM m, MonadFix m
+     , HasNetworkCfg cfg t
+     )
+  => cfg -> m (Dynamic t NetworkName, Dynamic t (Map NetworkName [NodeRef]))
+getNetworks cfg = do
+  (defName, defNets) <- getConfigNetworks
+  initialNets <- fromMaybe defNets <$>
+    liftJSM (getItemStorage localStorage StoreNetwork_Networks)
+  initialName <- fromMaybe defName <$>
+    liftJSM (getItemStorage localStorage StoreNetwork_SelectedNetwork)
+
+  networks <- holdDyn initialNets $ leftmost
+    [ defNets <$ (cfg ^. networkCfg_resetNetworks)
+    , cfg ^. networkCfg_setNetworks
+    ]
+
+  sName <- holdDyn initialName $ cfg ^. networkCfg_selectNetwork
+
+  -- Important: Don't use updated networks here, as we want to clear localstorage in case of reset:
+  onNetworksStore <- throttle 2 $ cfg ^. networkCfg_setNetworks
+  onSelectedStore <- throttle 2 $ updated sName
+
+  performEvent_ $
+    liftJSM . setItemStorage localStorage StoreNetwork_Networks <$> onNetworksStore
+  performEvent_ $
+    liftJSM (removeItemStorage localStorage StoreNetwork_Networks) <$ (cfg ^. networkCfg_resetNetworks)
+  performEvent_ $
+    liftJSM . setItemStorage localStorage StoreNetwork_SelectedNetwork <$> onSelectedStore
+
+  pure (sName, networks)
+
+
+-- | Get networks from Obelisk config.
+getConfigNetworks
   :: ( MonadJSM (Performable m), HasJSContext (Performable m)
      , PerformEvent t m, TriggerEvent t m, PostBuild t m, MonadIO m
      , MonadHold t m
      )
-  => m (Dynamic t (NetworkName, Map NetworkName [URI.Authority]))
-getNetworks = do
+  => m (NetworkName, Map NetworkName [NodeRef])
+getConfigNetworks = do
   let
-    buildAuthority =
+    buildNodeRef =
       either (\e -> error $ "Parsing of dev networks failed: " <> T.unpack e) id
-      . parseAuthority
+      . parseNodeRef
       . ("localhost:" <>)
       . getPactInstancePort
 
     buildName = NetworkName . ("dev-" <>) . tshow
-    buildNetwork =  buildName &&& pure . buildAuthority
+    buildNetwork =  buildName &&& pure . buildNodeRef
     devNetworks = Map.fromList $ map buildNetwork [1 .. numPactInstances]
   onPostBuild <- getPostBuild
 
   errProdCfg <- liftIO $ getNetworksConfig
   pure $ case errProdCfg of
     Left _ -> -- Development mode
-      pure $ (buildName 1, devNetworks)
-    Right c -> -- Production mode
-      pure c
+      (buildName 1, devNetworks)
+    Right c -> c -- Production mode
 
 
 -- | Load modules on startup and on every occurrence of the given event.
@@ -572,7 +620,6 @@ performNetworkRequestCustom w networkL unwrap onReqs =
                                else pure errRes
                 Right res -> pure errRes
             [] -> pure $ Left lastErr
-
 
     doReq metaTemplate nodeInfo keys req = do
       let
@@ -770,18 +817,24 @@ encodeAsText = safeDecodeUtf8 . BSL.toStrict
 -- Instances:
 
 instance Reflex t => Semigroup (NetworkCfg t) where
-  NetworkCfg refreshA deployA setSenderA setGasLimitA setGasPriceA <>
-    NetworkCfg refreshB deployB setSenderB setGasLimitB setGasPriceB
+  NetworkCfg
+    refreshA deployA setSenderA setGasLimitA setGasPriceA setNetworksA resetNetworksA selectNetworkA
+    <>
+    NetworkCfg
+      refreshB deployB setSenderB setGasLimitB setGasPriceB setNetworksB resetNetworksB selectNetworkB
       = NetworkCfg
         { _networkCfg_refreshModule = leftmost [ refreshA, refreshB ]
         , _networkCfg_deployCode    =  deployA <> deployB
         , _networkCfg_setSender    = leftmost [ setSenderA, setSenderB ]
         , _networkCfg_setGasLimit   = leftmost [ setGasLimitA, setGasLimitB ]
         , _networkCfg_setGasPrice   = leftmost [ setGasPriceA, setGasPriceB ]
+        , _networkCfg_setNetworks = leftmost [setNetworksA, setNetworksB ]
+        , _networkCfg_resetNetworks = leftmost [resetNetworksA, resetNetworksB ]
+        , _networkCfg_selectNetwork = leftmost [selectNetworkA, selectNetworkB ]
         }
 
 instance Reflex t => Monoid (NetworkCfg t) where
-  mempty = NetworkCfg never never never never never
+  mempty = NetworkCfg never never never never never never never never
   mappend = (<>)
 --
 
@@ -793,3 +846,6 @@ instance Flattenable (NetworkCfg t) t where
       <*> doSwitch never (_networkCfg_setSender <$> ev)
       <*> doSwitch never (_networkCfg_setGasLimit <$> ev)
       <*> doSwitch never (_networkCfg_setGasPrice <$> ev)
+      <*> doSwitch never (_networkCfg_setNetworks <$> ev)
+      <*> doSwitch never (_networkCfg_resetNetworks <$> ev)
+      <*> doSwitch never (_networkCfg_selectNetwork <$> ev)

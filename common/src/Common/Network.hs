@@ -1,42 +1,41 @@
-{-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE RankNTypes #-}
+{-# LANGUAGE DeriveGeneric              #-}
+{-# LANGUAGE FlexibleContexts           #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
-{-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE DeriveGeneric #-}
-{-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE OverloadedStrings          #-}
+{-# LANGUAGE RankNTypes                 #-}
+{-# LANGUAGE ScopedTypeVariables        #-}
 
 module Common.Network where
 
-import Data.Text (Text)
-import Safe (readMay)
-import Control.Arrow ((***), first)
-import qualified Data.Text as T
-import Obelisk.ExecutableConfig (get)
-import Control.Monad.IO.Class (MonadIO, liftIO)
-import Data.Aeson
-import           Data.Coerce                       (coerce)
-import Control.Monad
-import Control.Monad.Trans
-import GHC.Generics (Generic)
-import           Control.Error.Safe          (headErr, maximumErr)
-import           Control.Monad.Except        (ExceptT (..), MonadError,
-                                              liftEither, runExceptT,
-                                              throwError)
-import           Text.URI                    (URI (URI))
-import qualified Text.URI                    as URI hiding (uriPath)
-import qualified Text.Megaparsec             as MP
-import qualified Text.Megaparsec.Char             as MP
-import           Data.Void                   (Void)
-import Data.Maybe (fromMaybe)
-import Control.Applicative ((<|>))
-import Control.Arrow (left)
-import Control.Lens
-import           Text.URI.Lens               as URI
-import Data.Map (Map)
-import qualified Data.Map as Map
+import           Control.Applicative      ((<|>))
+import           Control.Arrow            (first, (***))
+import           Control.Arrow            (left)
+import           Control.Error.Safe       (headErr, maximumErr)
+import           Control.Lens
+import           Control.Monad
+import           Control.Monad.Except     (ExceptT (..), MonadError, liftEither,
+                                           runExceptT, throwError)
+import           Control.Monad.IO.Class   (MonadIO, liftIO)
+import           Control.Monad.Trans
+import           Data.Aeson
+import           Data.Coerce              (coerce)
+import           Data.Map                 (Map)
+import qualified Data.Map                 as Map
+import           Data.Maybe               (fromMaybe)
+import           Data.Text                (Text)
+import qualified Data.Text                as T
+import           Data.Void                (Void)
+import           GHC.Generics             (Generic)
+import           Obelisk.ExecutableConfig (get)
+import           Safe                     (readMay)
+import qualified Text.Megaparsec          as MP
+import qualified Text.Megaparsec.Char     as MP
+import           Text.URI                 (URI (URI))
+import qualified Text.URI                 as URI hiding (uriPath)
+import           Text.URI.Lens
 
-import Common.RefPath as MP
-import Common.Foundation
+import           Common.Foundation
+import           Common.RefPath           as MP
 
 
 newtype ChainId = ChainId { unChainId :: Word }
@@ -59,27 +58,35 @@ toPmChainId (ChainId chainId) = tshow chainId
 newtype NetworkName = NetworkName
   { unNetworkName :: Text
   }
-  deriving (Generic, Eq, Ord, Show, Semigroup, Monoid)
-
-
-instance ToJSON NetworkName where
-  toJSON = genericToJSON compactEncoding
-  toEncoding = genericToEncoding compactEncoding
-
-instance FromJSON NetworkName where
-  parseJSON = genericParseJSON compactEncoding
+  deriving (Generic, Eq, Ord, Show, Semigroup, Monoid, FromJSON, ToJSON, FromJSONKey, ToJSONKey)
 
 
 -- | Render a network name as `Text`.
 textNetworkName :: NetworkName -> Text
 textNetworkName = coerce
 
-
 instance IsRefPath NetworkName where
   renderRef = mkRefPath . unNetworkName
 
   parseRef = NetworkName <$> MP.anySingle
 
+
+-- | Reference for a node in a network.
+newtype NodeRef = NodeRef
+  { unNodeRef :: URI.Authority
+  }
+  deriving (Show, Eq, Ord, Generic)
+
+instance FromJSON NodeRef where
+  parseJSON v = do
+    t <- parseJSON v
+    errVal <- runExceptT $ parseNodeRef t
+    case errVal of
+      Left err -> fail $ T.unpack err
+      Right val -> pure val
+
+instance ToJSON NodeRef where
+  toJSON = toJSON . renderNodeRef
 
 instance IsRefPath ChainId where
   renderRef = mkRefPath . tshow . unChainId
@@ -115,7 +122,7 @@ networksPath = "config/common/networks"
 --
 --   Find and parse the networks configuration. If this file is not present,
 --   pact-web will run in development mode.
-getNetworksConfig :: IO (Either Text (NetworkName, Map NetworkName [URI.Authority]))
+getNetworksConfig :: IO (Either Text (NetworkName, Map NetworkName [NodeRef]))
 getNetworksConfig = runExceptT $ do
   raw <- note "Networks configuration could not be found." <=< lift . get $ networksPath
   parseNetworks raw
@@ -133,7 +140,7 @@ getNetworksConfig = runExceptT $ do
 --   ```
 --
 --   The first entry in the list will be considered the default, that gets initially chosen.
-parseNetworks :: MonadError Text m => Text -> m (NetworkName, Map NetworkName [URI.Authority])
+parseNetworks :: MonadError Text m => Text -> m (NetworkName, Map NetworkName [NodeRef])
 parseNetworks raw = do
   let
     rawNamesHosts :: [(Text, Text)]
@@ -143,22 +150,30 @@ parseNetworks raw = do
     strippedSplitted = map (NetworkName . T.strip *** T.words) rawNamesHosts
 
   --        outer list snd        host list
-  parsed <- traverse (traverse (traverse parseAuthority)) strippedSplitted
+  parsed <- traverse (traverse (traverse parseNodeRef)) strippedSplitted
   defEntry <- liftEither $ headErr "Network list was empty."  parsed
   pure (fst defEntry, Map.fromList parsed)
 
 
 -- | Parse an authority from Text, failing with an error message if that is not possible.
-parseAuthority :: forall m. MonadError Text m => Text -> m URI.Authority
-parseAuthority t = do
+parseNodeRef :: forall m. MonadError Text m => Text -> m NodeRef
+parseNodeRef t = do
     let
       -- This is just to make the URI parser perform as we need it:
       normalizedT = ("https://" <>) . fromMaybe t $ T.stripPrefix "http://" t <|> T.stripPrefix "https://" t
 
     uri <- parseLifted URI.parser normalizedT
-    liftEither . left (const "Parsing hostname failed.") $ uri ^. uriAuthority
+    liftEither . left (const "Parsing hostname failed.") $ fmap NodeRef (uri ^. uriAuthority)
 
   where
 
     parseLifted :: forall a mp. MonadError Text mp => MP.Parsec Void Text a -> Text -> mp a
     parseLifted p s = liftEither . left (T.pack . show) $ MP.runParser p "uri" s
+
+
+-- | Render an authority useful for serialization to disk.
+renderNodeRef :: NodeRef -> Text
+renderNodeRef (NodeRef (URI.Authority mUser h mp)) =
+    maybe "" ((<> "@") . renderUser) mUser <> URI.unRText h <> maybe "" ((":" <>) . tshow) mp
+  where
+    renderUser (URI.UserInfo name mPw) = URI.unRText name <> maybe "" ((":" <>) . URI.unRText) mPw
