@@ -34,6 +34,8 @@ module Frontend.Network
   , IsNetworkCfg
   , Network (..)
   , HasNetwork (..)
+    -- * Useful helpers
+  , updateNetworks
     -- * Definitions from Common
   , module Common.Network
     -- * NodeInfo
@@ -290,6 +292,18 @@ makeNetwork w cfg = mfix $ \ ~(_, networkL) -> do
   where
     reportNodeInfoError err =
       liftIO $ T.putStrLn $ "Fetching node info failed: " <> err
+
+-- | Update networks, given an updating event.
+updateNetworks
+  :: (Reflex t, Monoid mConf, HasNetwork model t, HasNetworkCfg mConf t)
+  => model
+  -> Event t (Map NetworkName [NodeRef] -> Map NetworkName [NodeRef])
+  -> mConf
+updateNetworks m onUpdate =
+  let
+    onNew = attachWith (&) (current $ m ^. network_networks) onUpdate
+  in
+    mempty & networkCfg_setNetworks .~ onNew
 
 
 -- | Retrieve the node information for the given `NetworkName`

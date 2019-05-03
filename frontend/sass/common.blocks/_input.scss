@@ -36,6 +36,11 @@
   height: 4em;
 }
 
+.input_type_radio {
+  margin-top: -1px;
+  vertical-align: middle;
+}
+
 .input_type_secondary {
   font-size: $secondary-font-size;
   color: $secondary-color;

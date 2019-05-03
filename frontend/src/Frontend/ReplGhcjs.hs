@@ -26,6 +26,8 @@ module Frontend.ReplGhcjs where
 
 ------------------------------------------------------------------------------
 import           Control.Lens
+import           Data.Default (Default (..))
+import           Data.String (IsString)
 import           Control.Monad.Reader                   (ask)
 import           Control.Monad.State.Strict
 import           Data.Text                              (Text)
@@ -58,6 +60,7 @@ import           Frontend.UI.Button
 import           Frontend.UI.Dialogs.CreatedGist        (uiCreatedGist)
 import           Frontend.UI.Dialogs.CreateGist         (uiCreateGist)
 import           Frontend.UI.Dialogs.DeployConfirmation (uiDeployConfirmation)
+import           Frontend.UI.Dialogs.NetworkEdit (uiNetworkEdit)
 import           Frontend.UI.Modal
 import           Frontend.UI.Modal.Impl
 import           Frontend.UI.RightPanel
@@ -176,7 +179,7 @@ controlBarLeft m = do
         elClass "span" "version" $ text $ "v" <> ver
       elClass "div" "main-header__project-loader" $ do
 
-        {- resetCfg <- resetBtn -}
+        onNetClick <- uiButton headerBtnCfg $ text "Networks"
 
         onLoadClicked <- loadReplBtn
 
@@ -192,13 +195,16 @@ controlBarLeft m = do
           gistConfirmation :: Event t (Maybe (ModalImpl m t))
           gistConfirmation = Just uiCreateGist <$ onCreateGist
 
+          networkEdit :: Event t (Maybe (ModalImpl m t))
+          networkEdit = Just (uiNetworkEdit m) <$ onNetClick
+
           gistCfg =  mempty & modalCfg_setModal .~  gistConfirmation
 
           deployCfg = mempty & modalCfg_setModal .~ reqConfirmation
-        {- pure $ deployCfg <> loadCfg <> resetCfg <> gistCfg -}
-        pure $ deployCfg <> loadCfg <> gistCfg
+
+          netCfg = mempty & modalCfg_setModal .~ networkEdit
+        pure $ deployCfg <> loadCfg <> gistCfg <> netCfg
   where
-    headerBtnCfg = btnCfgPrimary & uiButtonCfg_class %~ (<> "main-header__button")
 
     deployBtn = uiButton headerBtnCfg $
       text $ "Deploy"
@@ -242,3 +248,9 @@ controlBarRight = do
       elAttr "a" ( "href" =: "http://kadena.io"
                 <> "class" =: "main-header__documents" <> "target" =: "_blank") $
         elAttr "img" ("src" =: (static @"img/Klogo.png") <> "alt" =: "Kadena Logo" <> "style" =: "height: 28px;") blank
+
+
+headerBtnCfg
+  :: (Default (UiButtonCfgRep f), IsString (ReflexValue f CssClass), Semigroup (ReflexValue f CssClass))
+  => UiButtonCfgRep f
+headerBtnCfg = btnCfgPrimary & uiButtonCfg_class %~ (<> "main-header__button")
