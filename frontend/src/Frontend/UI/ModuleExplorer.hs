@@ -112,7 +112,7 @@ browseDeployedTitle
   -> m mConf
 browseDeployedTitle m = do
   let
-    title = elClass "span" "deployed-contracts-accordion" $ do
+    title = el "span" $ do
       el "span" $ text "Deployed Contracts"
       refreshButton "accordion__title-button"
   (onRefrClick, (mListCfg, onSelected)) <-
