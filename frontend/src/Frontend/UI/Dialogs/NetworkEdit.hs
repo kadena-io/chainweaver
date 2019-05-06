@@ -79,30 +79,84 @@ uiNetworkEdit m = do
       text " "
       onConfirm <- confirmButton def "Ok"
 
-      pure (cfg, never)
+      pure (cfg & networkCfg_resetNetworks .~ onReset, never)
   where
     checkNetName k = do
       keys <- sample $ current $ m ^. network_networks
       pure $ if Map.member (NetworkName k) keys then Just "This network already exists." else Nothing
 
-uiNetworkHeader
+
+uiNetworks
   :: (MonadWidget t m, HasUiNetworkEditModel model t, HasUiNetworkEditModelCfg mConf t)
   => model -> m mConf
-uiNetworkHeader m = do
+uiNetworks m = do
     let
       networkNames = Map.keys <$> m ^. network_networks
       selName = fst <$> m ^. network_selectedNetwork
     evEv <- networkView $ traverse (mkEdit selName) <$> networkNames
     ev <- switchHold never $ leftmost <$> evEv
-    pure $ mempty & networkCfg_selectNetwork .~ ev
+    let
+      selCfg =  mempty & networkCfg_selectNetwork .~ fmapMaybe (^? _NetworkSelect) ev
+      delCfg = updateNetworks m $ Map.delete <$> fmapMaybe (^? _NetworkDelete) ev
+    pure $ mconcat [selCfg, delCfg]
   where
     mkEdit selected n = fmap fst $ accordionItem' False mempty (uiNetworkSelector selected n) (text "Body")
 
 
-uiNetworkSelector :: MonadWidget t m => Dynamic t NetworkName -> NetworkName -> m (Event t NetworkName)
-uiNetworkSelector val self = uiLabeledRadioView label val self
+{- uiNetwork :: MonadWidget t m => Dynamic t (NetworkName, [NodeRef]) -> NetworkName -> m (Event t NetworkAction) -}
+{- uiNetwork networkL self = do -}
+
+
+uiNetworkSelector :: MonadWidget t m => Dynamic t NetworkName -> NetworkName -> m (Event t NetworkAction)
+uiNetworkSelector val self = do
+  onSelect <- fmap NetworkSelect <$> uiLabeledRadioView label val self
+  onDelete <- fmap (const $ NetworkDelete self) <$> accordionDeleteBtn
+  pure $ leftmost [ onSelect, onDelete ]
   where
+    accordionDeleteBtn = deleteButtonNaked $ def & uiButtonCfg_class .~ "accordion__title-button"
     label cls = fmap fst . elKlass' "span" ("heading_type_h2" <> cls) $ text (textNetworkName self)
+
+
+uiNodes :: MonadWidget t m => Dynamic t [NodeRef] -> m (Event t NodeAction)
+uiNodes nodes = elClass "ol" "table table_type_primary" $ do
+  dynNodes <- unjoinList nodes
+  onEvAction <- networkView $ ffor dynNodes $ \nds -> do
+    onEdits <- traverse (uiNode . Just) nds
+    let onNumberedEdits = zipWith (\n e -> NodeUpdate n <$> e) [1..] onEdits
+    onNewEdit <- fmapMaybe (fmap NodeNew) <$> uiNode Nothing
+    pure $ leftmost $ onNewEdit : onNumberedEdits
+  switchHold never onEvAction
+
+
+uiNode :: MonadWidget t m => Maybe (Dynamic t NodeRef) -> m (Event t (Maybe NodeRef))
+uiNode nRef = do
+  elClass "li" "table__row table__row_type_primary" $ do
+    divClass "table__row-counter" blank
+    divClass "table__cell_size_flex" $ do
+      onVal <- traverse tagOnPostBuild nRef
+      nodeInput <- uiInputElement $ def { _inputElementConfig_setValue = fmap renderNodeRef <$> onVal }
+      let onInput = _inputElement_input nodeInput
+      pure $ either (const Nothing) Just . parseNodeRef <$> onInput
+
+
+unjoinList :: forall t m a. (Reflex t, MonadHold t m, MonadFix m) => Dynamic t [a] -> m (Dynamic t [Dynamic t a])
+unjoinList l = do
+    let
+      withIndex = zip [1..] <$> l
+      byIndex = fanInt $ IntMap.fromList <$> updated withIndex
+    lengthChanges :: Dynamic t [(Int, a)] <- holdUniqDynBy (\xs ys -> length xs == length ys) withIndex
+
+    let
+      onNewList = pushAlways (traverse (holdIndexValue byIndex)) (updated lengthChanges)
+    cInitList <- traverse (holdIndexValue byIndex) <=< sample $ current lengthChanges
+
+    holdDyn cInitList onNewList
+
+  where
+    holdIndexValue :: forall m1. MonadHold t m1 => EventSelectorInt t a -> (Int, a) -> m1 (Dynamic t a)
+    holdIndexValue (EventSelectorInt selectInt) (i, initial) = holdDyn initial $ selectInt i
+
+
 
 
 uiLabeledRadioView

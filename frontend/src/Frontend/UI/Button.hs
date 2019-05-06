@@ -31,6 +31,7 @@ module Frontend.UI.Button
   , copyButton
   , deleteButton
   , deleteButtonCfg
+  , deleteButtonNaked
   , openButton
   , viewButton
   , callButton
@@ -183,6 +184,13 @@ deleteButtonCfg uCfg =
   let
     cfg = uCfg & uiButtonCfg_class %~ (<> "button_type_secondary" <> "button_size_tiny")
   in
+    uiButton cfg $ imgWithAlt (static @"img/X.svg") "Delete" blank
+
+deleteButtonNaked :: StaticButtonConstraints t m => UiButtonCfg -> m (Event t ())
+deleteButtonNaked cfg =
+  {- let -}
+  {-   cfg = uCfg & uiButtonCfg_class %~ (<> "button_type_secondary" <> "button_size_tiny") -}
+  {- in -}
     uiButton cfg $ imgWithAlt (static @"img/X.svg") "Delete" blank
 
 -- | Button that loads something into the Editor.
