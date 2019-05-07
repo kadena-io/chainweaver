@@ -24,21 +24,25 @@ module Frontend.UI.Dialogs.NetworkEdit
 
 ------------------------------------------------------------------------------
 import           Control.Arrow                  ((&&&))
+import Data.IntMap (IntMap)
+import qualified Data.Text as T
 import           Control.Lens
 import           Control.Monad
 import           Data.Bifunctor
 import           Data.Map                       (Map)
 import qualified Data.Map                       as Map
-import           Data.Text
+import           Data.Text                      (Text)
 import           Data.Void                      (Void)
-import           Reflex
+import           Reflex.Extended
 import           Reflex.Dom
+import qualified Data.IntMap as IntMap
 ------------------------------------------------------------------------------
 import           Frontend.Foundation
 import           Frontend.Ide
 import           Frontend.ModuleExplorer        (HasModuleExplorerCfg (..),
                                                  TransactionInfo (..))
 import           Frontend.Network
+import           Common.Network (renderNodeRef)
 import           Frontend.UI.DeploymentSettings
 import           Frontend.UI.Modal
 import           Frontend.UI.Widgets
@@ -52,6 +56,16 @@ type HasUiNetworkEditModelCfg mConf t =
   ( Monoid mConf, Flattenable mConf t
   , HasNetworkCfg mConf t
   )
+
+
+data NetworkAction =
+      NetworkDelete NetworkName
+    | NetworkSelect NetworkName
+    | NetworkNode   NetworkName (Int, Maybe NodeRef)
+      -- ^ Deletion or update of a node
+
+makePrisms ''NetworkAction
+
 
 -- | Confirmation dialog for deployments.
 --
@@ -68,8 +82,8 @@ uiNetworkEdit m = do
   modalMain $ do
     cfg <- modalBody $
       divClass "group" $ do
-        onNewNet <- validatedInputWithButton "group__header" checkNetName "Enter network name." "Create"
-        editCfg <- uiNetworkHeader m
+        onNewNet <- validatedInputWithButton "group__header" checkNetName "Create new network." "Create"
+        editCfg <- uiNetworks m
         let newCfg = updateNetworks m $ (\n -> Map.insert (NetworkName n) []) <$> onNewNet
         pure $ mconcat [ newCfg, editCfg ]
 
@@ -79,7 +93,7 @@ uiNetworkEdit m = do
       text " "
       onConfirm <- confirmButton def "Ok"
 
-      pure (cfg & networkCfg_resetNetworks .~ onReset, never)
+      pure (cfg & networkCfg_resetNetworks .~ onReset, leftmost [onConfirm, onClose])
   where
     checkNetName k = do
       keys <- sample $ current $ m ^. network_networks
@@ -87,24 +101,59 @@ uiNetworkEdit m = do
 
 
 uiNetworks
-  :: (MonadWidget t m, HasUiNetworkEditModel model t, HasUiNetworkEditModelCfg mConf t)
+  :: forall t m model mConf.
+    (MonadWidget t m, HasUiNetworkEditModel model t, HasUiNetworkEditModelCfg mConf t
+    )
   => model -> m mConf
 uiNetworks m = do
     let
-      networkNames = Map.keys <$> m ^. network_networks
       selName = fst <$> m ^. network_selectedNetwork
-    evEv <- networkView $ traverse (mkEdit selName) <$> networkNames
+      networks = m ^. network_networks
+
+    networkNames <- holdUniqDyn $ Map.keys <$> networks
+
+    evEv <- networkView $ traverse (uiNetwork selName networks) <$> networkNames
+
     ev <- switchHold never $ leftmost <$> evEv
     let
       selCfg =  mempty & networkCfg_selectNetwork .~ fmapMaybe (^? _NetworkSelect) ev
-      delCfg = updateNetworks m $ Map.delete <$> fmapMaybe (^? _NetworkDelete) ev
-    pure $ mconcat [selCfg, delCfg]
+      netsCfg = updateNetworks m $ leftmost
+        [ Map.delete <$> fmapMaybe (^? _NetworkDelete) ev
+        , applyNodeUpdate <$> fmapMaybe (^? _NetworkNode) ev
+        ]
+    pure $ mconcat [selCfg, netsCfg]
+
   where
-    mkEdit selected n = fmap fst $ accordionItem' False mempty (uiNetworkSelector selected n) (text "Body")
+
+    applyNodeUpdate (netName, (i, mRef)) nets =
+      nets & at netName . _Just %~ updateNodes i mRef
+
+    updateNodes :: Int -> Maybe NodeRef -> [NodeRef] -> [NodeRef]
+    updateNodes i mRef =
+      catMaybes
+      . imap (\ci old -> if ci == i then mRef else old)
+      . (<> [Nothing]) -- So any new row will be handled properly
+      . map Just
 
 
-{- uiNetwork :: MonadWidget t m => Dynamic t (NetworkName, [NodeRef]) -> NetworkName -> m (Event t NetworkAction) -}
-{- uiNetwork networkL self = do -}
+uiNetwork
+  :: MonadWidget t m
+  => Dynamic t NetworkName -- ^ Currently selected network
+  -> Dynamic t (Map NetworkName [NodeRef]) -- ^ All networks.
+  -> NetworkName -- ^ The network currently being rendered.
+  -> m (Event t NetworkAction)
+uiNetwork selected networks self = do
+    let
+      nodes = fromMaybe [] . Map.lookup self <$> networks
+
+    (onHeadAction, onBodyAction) <- accordionItem' False "segment segment_type_secondary"
+      (uiNetworkSelector selected self)
+      (uiNodes nodes)
+
+    pure $ leftmost
+      [ onHeadAction
+      , NetworkNode self <$> onBodyAction
+      ]
 
 
 uiNetworkSelector :: MonadWidget t m => Dynamic t NetworkName -> NetworkName -> m (Event t NetworkAction)
@@ -117,46 +166,40 @@ uiNetworkSelector val self = do
     label cls = fmap fst . elKlass' "span" ("heading_type_h2" <> cls) $ text (textNetworkName self)
 
 
-uiNodes :: MonadWidget t m => Dynamic t [NodeRef] -> m (Event t NodeAction)
+uiNodes :: forall t m. MonadWidget t m => Dynamic t [NodeRef] -> m (Event t (Int, Maybe NodeRef))
 uiNodes nodes = elClass "ol" "table table_type_primary" $ do
-  dynNodes <- unjoinList nodes
-  onEvAction <- networkView $ ffor dynNodes $ \nds -> do
-    onEdits <- traverse (uiNode . Just) nds
-    let onNumberedEdits = zipWith (\n e -> NodeUpdate n <$> e) [1..] onEdits
-    onNewEdit <- fmapMaybe (fmap NodeNew) <$> uiNode Nothing
-    pure $ leftmost $ onNewEdit : onNumberedEdits
-  switchHold never onEvAction
+
+    -- Append node for new entry (`Nothing`):
+    (initMap, onUpdate) <- getListUpdates $ (<> [Nothing]) . map Just <$> nodes
+
+    (initialResp, onRespUpdate) <-
+      traverseIntMapWithKeyWithAdjust (\_ -> uiNode) initMap onUpdate
+
+    responses :: Dynamic t (IntMap (Event t (Maybe NodeRef))) <-
+       incrementalToDynamic <$> holdIncremental initialResp onRespUpdate
+    pure $ switchDyn $ leftmost . toFunctorList <$> responses
+
+  where
+
+    toFunctorList :: forall f a. Functor f => IntMap (f a) -> [f (Int, a)]
+    toFunctorList = map (uncurry $ fmap . (,)) . IntMap.toList
 
 
-uiNode :: MonadWidget t m => Maybe (Dynamic t NodeRef) -> m (Event t (Maybe NodeRef))
+uiNode :: MonadWidget t m => (Dynamic t (Maybe NodeRef)) -> m (Event t (Maybe NodeRef))
 uiNode nRef = do
   elClass "li" "table__row table__row_type_primary" $ do
     divClass "table__row-counter" blank
     divClass "table__cell_size_flex" $ do
-      onVal <- traverse tagOnPostBuild nRef
-      nodeInput <- uiInputElement $ def { _inputElementConfig_setValue = fmap renderNodeRef <$> onVal }
-      let onInput = _inputElement_input nodeInput
-      pure $ either (const Nothing) Just . parseNodeRef <$> onInput
-
-
-unjoinList :: forall t m a. (Reflex t, MonadHold t m, MonadFix m) => Dynamic t [a] -> m (Dynamic t [Dynamic t a])
-unjoinList l = do
-    let
-      withIndex = zip [1..] <$> l
-      byIndex = fanInt $ IntMap.fromList <$> updated withIndex
-    lengthChanges :: Dynamic t [(Int, a)] <- holdUniqDynBy (\xs ys -> length xs == length ys) withIndex
-
-    let
-      onNewList = pushAlways (traverse (holdIndexValue byIndex)) (updated lengthChanges)
-    cInitList <- traverse (holdIndexValue byIndex) <=< sample $ current lengthChanges
-
-    holdDyn cInitList onNewList
-
-  where
-    holdIndexValue :: forall m1. MonadHold t m1 => EventSelectorInt t a -> (Int, a) -> m1 (Dynamic t a)
-    holdIndexValue (EventSelectorInt selectInt) (i, initial) = holdDyn initial $ selectInt i
-
-
+      onVal <- tagOnPostBuild nRef
+      nodeInput <- uiInputElement $ def & inputElementConfig_setValue .~ (maybe "" renderNodeRef <$> onVal)
+      let
+        onInput = _inputElement_input nodeInput
+        onUpdate = fmapMaybe id $ either (const Nothing) Just . parseNodeRef <$> onInput
+        onDelete = ffilter (T.null . T.strip) onInput
+      pure $ leftmost
+        [ Nothing <$ onDelete
+        , Just <$> onUpdate
+        ]
 
 
 uiLabeledRadioView
