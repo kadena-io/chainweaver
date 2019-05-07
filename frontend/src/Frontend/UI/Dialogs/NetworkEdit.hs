@@ -89,7 +89,7 @@ uiNetworkEdit m = do
 
     modalFooter $ do
       -- TODO: Is this really a "Cancel" button?!
-      onReset <- cancelButton def "Reset to Defaults"
+      onReset <- cancelButton def "Restore Defaults"
       text " "
       onConfirm <- confirmButton def "Ok"
 
@@ -193,13 +193,15 @@ uiNodes nodes = elClass "ol" "table table_type_primary" $ do
     toFunctorList = map (uncurry $ fmap . (,)) . IntMap.toList
 
 
-uiNode :: MonadWidget t m => (Dynamic t (Maybe NodeRef)) -> m (Event t (Maybe NodeRef))
+uiNode :: MonadWidget t m => Dynamic t (Maybe NodeRef) -> m (Event t (Maybe NodeRef))
 uiNode nRef = do
   elClass "li" "table__row table__row_type_primary" $ do
     divClass "table__row-counter" blank
     divClass "table__cell_size_flex" $ do
       onVal <- tagOnPostBuild nRef
-      nodeInput <- uiInputElement $ def & inputElementConfig_setValue .~ (maybe "" renderNodeRef <$> onVal)
+      nodeInput <- uiInputElement $ def
+        & inputElementConfig_setValue .~ (maybe "" renderNodeRef <$> onVal)
+        & initialAttributes .~ "class" =: "input_width_full"
       let
         onInput = _inputElement_input nodeInput
         onUpdate = fmapMaybe id $ either (const Nothing) Just . parseNodeRef <$> onInput
