@@ -75,7 +75,7 @@ getListUpdates l = do
 
   where
     holdIndexValue :: forall m1. MonadHold t m1 => EventSelectorInt t a -> Int -> a -> m1 (Dynamic t a)
-    holdIndexValue (EventSelectorInt selectInt) i initial = holdDyn initial $ selectInt i
+    holdIndexValue (EventSelectorInt selectIntL) i initial = holdDyn initial $ selectIntL i
 
     -- Note: Due to the IntMap being built from a list, any changes will always
     -- be at the highest index. There will be no changes in the middle of the
