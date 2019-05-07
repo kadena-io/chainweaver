@@ -72,7 +72,7 @@ makePrisms ''NetworkAction
 --   User can make sure to deploy to the right network, has the right keysets,
 --   the right keys, ...
 uiNetworkEdit
-  :: forall t m model mConf a.
+  :: forall t m model mConf.
     ( MonadWidget t m, HasUiNetworkEditModel model t, HasUiNetworkEditModelCfg mConf t
     )
   => model
@@ -112,9 +112,17 @@ uiNetworks m = do
 
     networkNames <- holdUniqDyn $ Map.keys <$> networks
 
-    evEv <- networkView $ traverse (uiNetwork selName networks) <$> networkNames
+    {- evEv <- networkView $ traverse (uiNetwork selName networks) <$> networkNames -}
+    {- ev <- switchHold never $ leftmost <$> evEv -}
 
-    ev <- switchHold never $ leftmost <$> evEv
+    -- Using above networkView causes spider to die, can be fixed with witgetHold and delay 0.
+    -- TODO: Understand why this is needed. Obviously it does not like having
+    -- parts of the widget getting updated while the widget is already being
+    -- deleted ... but why?
+    onNetworkNames <- delay 0 =<< tagOnPostBuild networkNames
+    dynEv <- networkHold (pure []) $ traverse (uiNetwork selName networks) <$> onNetworkNames
+    let ev = switchDyn $ leftmost <$> dynEv
+
     let
       selCfg =  mempty & networkCfg_selectNetwork .~ fmapMaybe (^? _NetworkSelect) ev
       netsCfg = updateNetworks m $ leftmost
