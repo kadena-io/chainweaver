@@ -36,7 +36,6 @@ module Frontend.ModuleExplorer.ModuleList
   ) where
 
 ------------------------------------------------------------------------------
-import           Control.Arrow                     ((&&&))
 import           Control.Lens
 import qualified Data.List                         as L
 import           Data.Map                          (Map)

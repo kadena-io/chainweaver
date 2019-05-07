@@ -24,19 +24,13 @@ module Frontend.UI.Dialogs.DeployConfirmation
   ) where
 
 ------------------------------------------------------------------------------
-import           Control.Arrow                  ((&&&))
 import           Control.Lens
-import           Data.Bifunctor
-import           Data.Map                       (Map)
-import qualified Data.Map                       as Map
 import           Data.Void                      (Void)
 import           Reflex
 import           Reflex.Dom
 ------------------------------------------------------------------------------
-import           Frontend.Foundation
 import           Frontend.Ide
-import           Frontend.ModuleExplorer        (HasModuleExplorerCfg (..),
-                                                 TransactionInfo (..))
+import           Frontend.ModuleExplorer        (HasModuleExplorerCfg (..))
 import           Frontend.Network
 import           Frontend.UI.DeploymentSettings
 import           Frontend.UI.Modal

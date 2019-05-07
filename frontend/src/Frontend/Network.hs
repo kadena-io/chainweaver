@@ -22,9 +22,7 @@
 --   sending commands to it, by making use of the Pact REST API.
 module Frontend.Network
   ( -- * Types & Classes
-    NetworkName
-  , textNetworkName
-  , NetworkRequest (..), networkRequest_code, networkRequest_data, networkRequest_signing
+    NetworkRequest (..), networkRequest_code, networkRequest_data, networkRequest_signing
   , Endpoint (..)
   , displayEndpoint
   , NetworkError (..)
@@ -50,19 +48,11 @@ module Frontend.Network
   , prettyPrintNetworkError
   ) where
 
-import           Control.Arrow                     (left, (&&&), (***))
-import           Control.Arrow                     (first, second)
-import           Control.Arrow                     (right)
+import           Control.Arrow                     (first, left, second, (&&&))
 import           Control.Lens                      hiding ((.=))
 import           Control.Monad.Except
-import           Data.Aeson                        (FromJSON (..), Object,
-                                                    ToJSON (..), Value (..),
-                                                    encode, genericParseJSON,
-                                                    genericToEncoding,
-                                                    genericToJSON)
+import           Data.Aeson                        (Object, Value (..), encode)
 import qualified Data.ByteString.Lazy              as BSL
-import           Data.Coerce                       (coerce)
-import           Data.Default                      (def)
 import           Data.Either                       (lefts, rights)
 import qualified Data.HashMap.Strict               as H
 import qualified Data.Map                          as Map
@@ -76,10 +66,6 @@ import qualified Data.Text.IO                      as T
 import           Data.Time.Clock                   (getCurrentTime)
 import           Language.Javascript.JSaddle.Monad (JSM, liftJSM)
 import qualified Network.HTTP.Types                as HTTP
-import           Reflex.Dom.Class
-import           Reflex.Dom.Xhr
-import           Reflex.NotReady.Class
-import           Safe                              (fromJustNote)
 import           System.IO                         (stderr)
 import           Text.URI                          (URI)
 import qualified Text.URI                          as URI
@@ -103,20 +89,19 @@ import qualified Servant.Client.JSaddle            as S
 import           Pact.Types.Crypto                 (PPKScheme (..))
 #endif
 
-import           Common.Api
 import           Common.Network                    (ChainId, NetworkName (..),
-                                                    getNetworksConfig,
+                                                    NodeRef, getNetworksConfig,
                                                     getPactInstancePort,
                                                     numPactInstances,
-                                                    textNetworkName, NodeRef)
-import           Common.Route                      (pactDynServerListPath)
+                                                    textNetworkName)
 import           Frontend.Crypto.Ed25519
 import           Frontend.Foundation
 import           Frontend.Messages
 import           Frontend.Network.NodeInfo
 import           Frontend.Storage                  (getItemStorage,
                                                     localStorage,
-                                                    setItemStorage, removeItemStorage)
+                                                    removeItemStorage,
+                                                    setItemStorage)
 import           Frontend.Wallet
 
 
@@ -189,7 +174,7 @@ data NetworkCfg t = NetworkCfg
   , _networkCfg_setGasPrice   :: Event t ParsedDecimal
     -- ^ Maximum gas price you are willing to accept for having your
     -- transaction executed.
-  , _networkCfg_setNetworks :: Event t (Map NetworkName [NodeRef])
+  , _networkCfg_setNetworks   :: Event t (Map NetworkName [NodeRef])
     -- ^ Provide a new networks configuration.
   , _networkCfg_resetNetworks :: Event t ()
     -- ^ Reset networks to default (provided at deployment).
@@ -245,8 +230,8 @@ deriving instance Show (StoreNetwork a)
 
 makeNetwork
   :: forall t m model mConf
-  . ( MonadHold t m, PerformEvent t m, MonadFix m, NotReady t m, Adjustable t m
-    , MonadJSM (Performable m), HasJSContext (Performable m), MonadJSM m
+  . ( MonadHold t m, PerformEvent t m, MonadFix m
+    , MonadJSM (Performable m), MonadJSM m
     , TriggerEvent t m, PostBuild t m
     , MonadSample t (Performable m)
     , HasNetworkModel model t
@@ -404,8 +389,8 @@ deployCode w networkL onReq = do
 --
 --   This function also takes care of persistence of those values.
 getNetworks
-  :: ( MonadJSM (Performable m), HasJSContext (Performable m)
-     , PerformEvent t m, TriggerEvent t m, PostBuild t m, MonadIO m
+  :: ( MonadJSM (Performable m)
+     , PerformEvent t m, TriggerEvent t m
      , MonadHold t m, MonadJSM m, MonadFix m
      , HasNetworkCfg cfg t
      )
@@ -440,10 +425,7 @@ getNetworks cfg = do
 
 -- | Get networks from Obelisk config.
 getConfigNetworks
-  :: ( MonadJSM (Performable m), HasJSContext (Performable m)
-     , PerformEvent t m, TriggerEvent t m, PostBuild t m, MonadIO m
-     , MonadHold t m
-     )
+  :: ( PerformEvent t m, MonadIO m )
   => m (NetworkName, Map NetworkName [NodeRef])
 getConfigNetworks = do
   let
@@ -456,7 +438,6 @@ getConfigNetworks = do
     buildName = NetworkName . ("dev-" <>) . tshow
     buildNetwork =  buildName &&& pure . buildNodeRef
     devNetworks = Map.fromList $ map buildNetwork [1 .. numPactInstances]
-  onPostBuild <- getPostBuild
 
   errProdCfg <- liftIO $ getNetworksConfig
   pure $ case errProdCfg of
@@ -468,7 +449,7 @@ getConfigNetworks = do
 -- | Load modules on startup and on every occurrence of the given event.
 loadModules
   :: forall t m
-  . ( MonadHold t m, PerformEvent t m, MonadFix m, NotReady t m, Adjustable t m
+  . ( MonadHold t m, PerformEvent t m, MonadFix m
     , MonadJSM (Performable m)
     , MonadSample t (Performable m)
     , TriggerEvent t m, PostBuild t m
@@ -632,7 +613,7 @@ performNetworkRequestCustom w networkL unwrap onReqs =
                 Left err -> if shouldFailOver err
                                then go err ns
                                else pure errRes
-                Right res -> pure errRes
+                Right _ -> pure errRes
             [] -> pure $ Left lastErr
 
     doReq metaTemplate nodeInfo keys req = do
@@ -792,7 +773,7 @@ buildExecPayload meta req = do
 shouldFailOver :: NetworkError -> Bool
 shouldFailOver = \case
   -- Failover on connectivity problems.
-  NetworkError_NetworkError err -> True
+  NetworkError_NetworkError _ -> True
   -- Failover on server errors:
   NetworkError_Status (HTTP.Status code _) _ -> code >= 500 && code < 600
   _ -> False

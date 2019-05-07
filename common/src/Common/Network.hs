@@ -10,12 +10,11 @@ module Common.Network where
 import           Control.Applicative      ((<|>))
 import           Control.Arrow            (first, (***))
 import           Control.Arrow            (left)
-import           Control.Error.Safe       (headErr, maximumErr)
+import           Control.Error.Safe       (headErr)
 import           Control.Lens
 import           Control.Monad
-import           Control.Monad.Except     (ExceptT (..), MonadError, liftEither,
-                                           runExceptT, throwError)
-import           Control.Monad.IO.Class   (MonadIO, liftIO)
+import           Control.Monad.Except     (MonadError, liftEither,
+                                           runExceptT)
 import           Control.Monad.Trans
 import           Data.Aeson
 import           Data.Coerce              (coerce)
@@ -30,7 +29,6 @@ import           Obelisk.ExecutableConfig (get)
 import           Safe                     (readMay)
 import qualified Text.Megaparsec          as MP
 import qualified Text.Megaparsec.Char     as MP
-import           Text.URI                 (URI (URI))
 import qualified Text.URI                 as URI hiding (uriPath)
 import           Text.URI.Lens
 

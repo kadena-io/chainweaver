@@ -55,7 +55,6 @@ import           Data.Aeson                  (Value)
 import qualified Data.Aeson                  as Aeson
 import qualified Data.Aeson.Lens             as AL
 import           Data.Default
-import           Data.Either                 (lefts, rights)
 import qualified Data.HashMap.Lazy           as HM
 import           Data.Text                   (Text)
 import qualified Data.Text                   as T
@@ -151,7 +150,7 @@ getChains (NodeInfo _ nType) =
 
 
 -- | Get the path for a given chain id.
-getChainBasePath :: ChainId -> NodeType -> [URI.RText URI.PathPiece]
+getChainBasePath :: ChainId -> NodeType -> [URI.RText 'URI.PathPiece]
 getChainBasePath (ChainId chainId) = buildPath . \case
     NodeType_Pact
       -> ["api", "v1"]

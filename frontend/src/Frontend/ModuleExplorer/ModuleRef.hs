@@ -75,7 +75,6 @@ import           Pact.Types.Term                 as PactTerm (Module (..),
                                                               tStr, ModuleDef (..), Object (..), FieldKey, ObjectMap (..))
 ------------------------------------------------------------------------------
 import           Frontend.Network
-import           Frontend.Network.NodeInfo
 import           Frontend.Foundation
 import           Frontend.ModuleExplorer.Example
 import           Frontend.ModuleExplorer.File

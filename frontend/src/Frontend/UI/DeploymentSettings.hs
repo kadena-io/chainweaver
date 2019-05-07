@@ -39,11 +39,6 @@ import Data.Either (rights)
 import           Control.Arrow               ((&&&))
 import           Control.Lens
 import           Control.Monad
-import           Control.Monad.Ref           (MonadRef, Ref)
-import           Control.Monad.Trans.Class   (lift)
-import           Control.Monad.Trans.Maybe   (MaybeT (..), runMaybeT)
-import           Data.Functor.Identity
-import           Data.IORef                  (IORef)
 import           Data.Map                    (Map)
 import qualified Data.Map                    as Map
 import           Data.Set                    (Set)
@@ -57,7 +52,6 @@ import           Reflex
 import           Reflex.Dom
 import           Reflex.Dom.Contrib.CssClass (elKlass)
 import           Safe                        (readMay)
-import qualified Text.URI                    as URI
 ------------------------------------------------------------------------------
 import           Common.Network
 import           Frontend.Foundation
@@ -106,7 +100,7 @@ uiDeploymentSettings
   => model
   -> DeploymentSettingsConfig t f m model a
   -> m (mConf, Dynamic t (f TransactionInfo), Maybe a)
-uiDeploymentSettings m cfg@(DeploymentSettingsConfig mUserTab mkWChainId endpoint) = mdo
+uiDeploymentSettings m (DeploymentSettingsConfig mUserTab mkWChainId endpoint) = mdo
     let initTab = fromMaybe DeploymentSettingsView_Cfg mUserTabName
     curSelection <- holdDyn initTab onTabClick
     (TabBar onTabClick) <- makeTabBar $ TabBarCfg
@@ -176,7 +170,7 @@ uiCfg
   -> m (mConf, Dynamic t (f ChainId), Dynamic t Endpoint)
 uiCfg m wChainId ep = do
   (cId, endpoint) <- elKlass "div" ("group segment") $
-     uiEndpoint m wChainId ep
+     uiEndpoint wChainId ep
   cfg <- elKlass "div" ("group segment") $
     uiMetaData m
   pure (cfg, cId, endpoint)
@@ -188,12 +182,11 @@ uiCfg m wChainId ep = do
 --
 --   The given `EndPoint` will be the default in the dropdown.
 uiEndpoint
-  :: ( MonadWidget t m, HasNetwork model t)
-  => model
-  -> m (Dynamic t (f ChainId))
+  :: MonadWidget t m
+  => m (Dynamic t (f ChainId))
   -> Endpoint
   -> m (Dynamic t (f ChainId), Dynamic t Endpoint)
-uiEndpoint m wChainId ep = do
+uiEndpoint wChainId ep = do
 
     selChain <- wChainId
 

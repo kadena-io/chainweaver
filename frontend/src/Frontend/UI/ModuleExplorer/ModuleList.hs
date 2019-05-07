@@ -67,9 +67,9 @@ uiModuleList modules = do
       divClass "table__text-cell table__cell_size_main" $
         text $ textModuleRefName c
       case _moduleRef_source c of
-        ModuleSource_Deployed c ->
+        ModuleSource_Deployed s ->
           divClass "table__text-cell table__cell_size_side" $
-            text $ tshow c
+            text $ tshow s
         _ ->
           blank
 

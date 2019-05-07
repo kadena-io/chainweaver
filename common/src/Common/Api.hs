@@ -6,13 +6,6 @@ import Data.Text (Text)
 import qualified Data.Text as T
 import Obelisk.ExecutableConfig (get)
 import Control.Monad.IO.Class (MonadIO, liftIO)
-import           Control.Monad.Except        (ExceptT (..), MonadError,
-                                              liftEither, runExceptT,
-                                              throwError)
-import Data.Maybe (fromMaybe)
-import Control.Applicative ((<|>))
-import Control.Arrow (left)
-import Control.Lens
 
 
 

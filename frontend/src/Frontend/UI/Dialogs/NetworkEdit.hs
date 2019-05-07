@@ -23,27 +23,18 @@ module Frontend.UI.Dialogs.NetworkEdit
   ) where
 
 ------------------------------------------------------------------------------
-import           Control.Arrow                  ((&&&))
-import Data.IntMap (IntMap)
-import qualified Data.Text as T
 import           Control.Lens
-import           Control.Monad
-import           Data.Bifunctor
+import           Data.IntMap                    (IntMap)
+import qualified Data.IntMap                    as IntMap
 import           Data.Map                       (Map)
 import qualified Data.Map                       as Map
-import           Data.Text                      (Text)
-import           Data.Void                      (Void)
-import           Reflex.Extended
+import qualified Data.Text                      as T
 import           Reflex.Dom
-import qualified Data.IntMap as IntMap
+import           Reflex.Extended
 ------------------------------------------------------------------------------
+import           Common.Network                 (renderNodeRef)
 import           Frontend.Foundation
-import           Frontend.Ide
-import           Frontend.ModuleExplorer        (HasModuleExplorerCfg (..),
-                                                 TransactionInfo (..))
 import           Frontend.Network
-import           Common.Network (renderNodeRef)
-import           Frontend.UI.DeploymentSettings
 import           Frontend.UI.Modal
 import           Frontend.UI.Widgets
 ------------------------------------------------------------------------------

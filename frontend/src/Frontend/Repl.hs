@@ -61,7 +61,6 @@ import           GHC.Generics               hiding (to)
 import           Reflex
 import qualified Text.Trifecta              as TF
 import qualified Text.Trifecta.Delta        as Delta
-import           Text.URI                   as URI
 ------------------------------------------------------------------------------
 import           Pact.Parse                 (exprsOnly)
 import           Pact.Repl
@@ -75,7 +74,7 @@ import           Frontend.Foundation
 import           Frontend.JsonData
 import           Frontend.Messages
 import           Frontend.Wallet
-import Common.Api (getTextCfg, getVerificationServerUrl)
+import Common.Api (getVerificationServerUrl)
 ------------------------------------------------------------------------------
 
 -- | Output of Repl to be shown to the user.
@@ -161,7 +160,6 @@ makeRepl
     )
   => model -> cfg -> m (mConf, WebRepl t)
 makeRepl m cfg = build $ \ ~(_, impl) -> do
-    onPostBuild <- getPostBuild
     -- Dummy state, that gets never used, so we avoid a pointless `Maybe` or
     -- sampling, which could trigger a loop:
     initState <- liftIO $ initReplState StringEval Nothing

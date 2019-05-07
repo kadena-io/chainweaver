@@ -39,13 +39,11 @@ module Common.Foundation
   , module GHC.Generics
   ) where
 
-import           Control.Concurrent                    (ThreadId, forkIO)
 import           Control.Monad.Except                  (MonadError, throwError)
 import           Control.Monad.Fix
 import           Control.Monad.IO.Class
 import           Data.Aeson                            as A
 import           Data.ByteString                       (ByteString)
-import           Data.Coerce                           (coerce)
 import           Data.Foldable
 import qualified Data.List.Split                       as L
 import           Data.Semigroup
@@ -54,8 +52,6 @@ import qualified Data.Text                             as T
 import qualified Data.Text.Encoding                    as T
 import qualified Data.Text.Encoding.Error              as T
 import           GHC.Generics                          (Generic)
-import           Language.Haskell.TH                   (DecsQ)
-import           Language.Haskell.TH.Syntax            (Name)
 
 import           Data.Maybe
 
