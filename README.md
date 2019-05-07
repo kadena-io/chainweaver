@@ -47,7 +47,7 @@ In the `deploydir` directory, create a file at `config/common/networks`, it must
 
 This file must exist, so pact-web won't start up in development mode (launching its own pact servers), as of this writing it should also be populated with entries.
 
-The first entry in the file will be chosen as the current network, unless the user picked a different one.
+The first entry in the file will be chosen as the current network, unless the user picked a different one. The user will also be able to modify networks at runtime. The above configuration will be the default and the one that gets applied, when the user presses "Restore Defaults".
 
 ### Provide remote verification server
 
