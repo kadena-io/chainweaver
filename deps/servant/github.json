@@ -1,7 +1,7 @@
 {
   "owner": "eskimor",
   "repo": "servant",
-  "branch": "use-ghcjs-dom",
-  "rev": "938405c70ba9a637e22c65fd3b8375d86024720c",
-  "sha256": "1h2s20x9d278ai05j6jkwzw1mq2fmp02skk15h2kzs9bx214lnfx"
+  "branch": "debug",
+  "rev": "c2c07b9af711ad2f93c624888bfac824332f3654",
+  "sha256": "0w7k21gf8fbk1pqgia40cxg9nipdsixzj24l7zaq9rxn4fv0b3v9"
 }
