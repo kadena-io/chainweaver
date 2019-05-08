@@ -181,5 +181,5 @@ executable frontend
   ghc-options: -threaded  -Wall
   if os(darwin)
      ghc-options: -dynamic
-  if impl(ghcjs)
-    ghcjs-options: -dedupe
+  -- if impl(ghcjs)
+  --   ghcjs-options: -dedupe
