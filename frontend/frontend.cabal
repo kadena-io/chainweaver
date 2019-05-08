@@ -13,7 +13,6 @@ bug-reports:         https://github.com/kadena-io/pact/issues
 -- license-file:        LICENSE
 
 library
-  ghc-options: -O
   hs-source-dirs: src
 
   build-depends: base
@@ -179,7 +178,7 @@ executable frontend
                , frontend
 
   --TODO: Make these ghc-options optional
-  ghc-options: -threaded -O -Wall
+  ghc-options: -threaded  -Wall
   if os(darwin)
      ghc-options: -dynamic
   if impl(ghcjs)
