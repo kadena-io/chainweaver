@@ -225,13 +225,14 @@ controlBarRight m = do
     divClass "main-header__controls-nav" $ do
       elClass "div" "main-header__project-loader" $ do
 
-        onNetClick <- uiButton headerBtnCfg $ text "Networks"
 
         onLoadClicked <- loadReplBtn
 
         onDeployClick <- deployBtn
 
         onCreateGist <- gistBtn
+
+        onNetClick <- cogBtn
 
         loadCfg <- loadCodeIntoRepl m onLoadClicked
         let
@@ -270,6 +271,14 @@ controlBarRight m = do
         {- btnTextIcon (static @"img/github-gist-dark.svg") "Make Gist" blank -}
         elClass "span" "main-header__minor-text" $ text "Make "
         text "Gist"
+
+    cogBtn =
+      uiButton
+          ( headerBtnCfg
+              & uiButtonCfg_title .~ Just "Settings"
+              {- & uiButtonCfg_class %~ (<> "main-header__text-icon-button") -}
+          ) $ do
+        elClass "span" "fa fa-lg fa-cog" blank
 
 
 headerBtnCfg

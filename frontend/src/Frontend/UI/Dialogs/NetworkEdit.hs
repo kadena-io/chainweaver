@@ -69,7 +69,7 @@ uiNetworkEdit
   => model
   -> m (mConf, Event t ())
 uiNetworkEdit m = do
-  onClose <- modalHeader $ text "Networks"
+  onClose <- modalHeader $ text "Network Settings"
   modalMain $ do
     cfg <- modalBody $
       divClass "group" $ do
