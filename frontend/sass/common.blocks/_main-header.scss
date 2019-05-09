@@ -1,0 +1,157 @@
+@import '../include/defs';
+
+$main-header-border-color: $primary-border-color;
+$main-header-color: $white;
+$main-header-font-size: $primary-font-size;
+$main-header-std-height: 28px;
+$main-header-std-height-small-screen: 24px;
+$main-header-btn-font-size: $secondary-font-size;
+
+
+// For simplicity this block does not fully adhere to BEM (we are using child
+// selectors), but this does seem to be very ok for the main header and
+// minimizes the changes we need to do in Haskell. If this ever causes trouble,
+// we should go full BEM.
+
+.main-header {
+  display: flex;
+  background: #2d2d2f;
+  color: $main-header-color;
+  padding: 20px 36px 20px 20px;
+}
+
+.main-header__img {
+  display: inline-block;
+  position: relative;
+}
+
+.main-header__logos-docs {
+  display: flex;
+  flex: 1;
+
+  // Align with editor:
+  margin-right: $pane-padding-right;
+}
+
+.main-header__kadena-logo {
+  vertical-align: bottom;
+}
+
+.main-header__pact-logo {
+  color: $main-header-color;
+  // line-height: 0;
+  vertical-align: bottom;
+  margin-left: $normal-margin;
+}
+
+.main-header__logo-img {
+  @extend .main-header__img;
+  height: $main-header-std-height;
+
+  @media (max-width: 1290px) {
+      height: $main-header-std-height-small-screen;
+  }
+}
+
+.main-header__pact-logo-img {
+  @extend .main-header__logo-img;
+  // There seems to be some shadow in the logo which causes a weird offset:
+  bottom: -1.5px;
+}
+
+.main-header__pact-version {
+  color: #727272;
+  font-size: 14px;
+}
+
+.main-header__docs {
+  flex: 1;
+  text-align: right;
+  @media (max-width: 700px) {
+    text-align: left;
+  }
+}
+.main-header__project-loader {
+  text-align: right;
+  float: right;
+}
+
+.main-header__button {
+  color: $white;
+  border-color: $primary-border-color;
+  background: transparent;
+  padding: 0 $normal-padding;
+  margin-left: $medium-margin;
+  font-size: $secondary-font-size;
+  line-height: 0;
+  height: $main-header-std-height;
+  @media (max-width: 1290px) {
+      height: $main-header-std-height-small-screen;
+  }
+}
+
+.main-header__text-icon-button {
+}
+
+.main-header__button > .button__text-icon {
+  height: $main-header-font-size - 1.5px;
+  width: auto;
+  filter: invert(100%);
+}
+
+.main-header__button:hover {
+  background: $black-hover;
+}
+
+
+.main-header__documents {
+  margin-left: $normal-margin;
+  color: $main-header-color;
+  text-decoration: none;
+  line-height: 0;
+}
+
+*:first-child.main-header__documents {
+    margin-left: 0;
+}
+
+.main-header__documents-img {
+  @extend .main-header__img;
+  margin-right: 7px;
+  bottom: -5px;
+}
+
+.main-header__controls-nav {
+  // min-width: 455px;
+  flex: 1;
+}
+
+@media (max-width: 1510px) {
+  .main-header__button {
+    padding: 0 12px;
+  }
+}
+
+@media (max-width: 1290px) {
+  .main-header__minor-text {
+    display: none;
+  }
+
+}
+
+@media (max-width: 980px) {
+  // .main-header {
+  //   padding-left: 0px;
+  // }
+  .main-header__pact-logo {
+    display: none;
+  }
+}
+
+@media (max-width: 700px) {
+  .main-header__kadena-logo {
+    display: none;
+  }
+}
+
+

@@ -98,3 +98,10 @@ $checked-background: #4499d9;
   font-family: 'RobotoMono', monospace; // Ace is pretty nasty with overriding.
   font-size: 15px;
 }
+
+// Panes:
+
+$pane-padding-top: $normal-padding;
+$pane-padding-bottom: $pane-padding-top;
+$pane-padding-right: $normal-padding;
+$pane-padding-left: $pane-padding-right;

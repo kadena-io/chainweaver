@@ -165,18 +165,64 @@ controlBar
   ->  m (ModalIdeCfg m t)
 controlBar m = do
     divClass "main-header page__main-header" $ do
-      ideCfgL <- controlBarLeft m
-      controlBarRight
-      return ideCfgL
+      controlBarLeft
+      controlBarRight m
 
 
-controlBarLeft :: forall t m. MonadWidget t m => ModalIde m t -> m (ModalIdeCfg m t)
-controlBarLeft m = do
-    divClass "main-header__left-nav" $ do
-      elClass "h1" "main-header__pact-logo" $ do
-        imgWithAlt (static @"img/pact-logo.svg") "Kadena Pact Logo" blank
-        ver <- getPactVersion
-        elClass "span" "version" $ text $ "v" <> ver
+controlBarLeft :: forall t m. MonadWidget t m => m ()
+controlBarLeft =
+  divClass "main-header__logos-docs" $ do
+    kadenaLogo
+    docs
+    pactLogo
+
+  where
+
+    kadenaLogo =
+      elAttr "a"
+        ( "href" =: "http://kadena.io"
+          <> "class" =: "main-header__kadena-logo" <> "target" =: "_blank"
+        ) $
+        elAttr "img"
+          ( "src" =: static @"img/Klogo.png"
+            <> "alt" =: "Kadena Logo"
+            <> "class" =: "main-header__logo-img"
+          ) blank
+
+    pactLogo =
+      elClass "div" "main-header__pact-logo" $ do
+        elAttr "img"
+          ( "src" =: static @"img/pact-logo.svg"
+            <> "alt" =: "Kadena Pact Logo"
+            <> "class" =: "main-header__pact-logo-img"
+          ) blank
+        elClass "span" "main-header__pact-version" $ do
+          ver <- getPactVersion
+          text $ "v" <> ver
+
+    docs = divClass "main-header__docs" $ do
+      elAttr "a" ( "href" =: "http://pactlang.org"
+                <> "class" =: "main-header__documents" <> "target" =: "_blank"
+                 ) $ do
+        elAttr "img" ("src" =: static @"img/instruction.svg" <> "alt" =: "Documentation" <> "class" =: "main-header__documents-img" <> "style" =: "width: 28px;") blank
+        text "Tutorials"
+
+      elAttr "a" ( "href" =: "http://pact-language.readthedocs.io"
+                <> "class" =: "main-header__documents" <> "target" =: "_blank"
+                 ) $ do
+        elAttr "img" ("src" =: static @"img/document.svg" <> "class" =: "main-header__documents-img") blank
+        text "Docs"
+
+
+getPactVersion :: MonadWidget t m => m Text
+getPactVersion = do
+    is <- liftIO $ initReplState StringEval Nothing
+    Right (TLiteral (LString ver) _) <- liftIO $ evalStateT (evalRepl' "(pact-version)") is
+    return ver
+
+controlBarRight :: forall t m. MonadWidget t m => ModalIde m t -> m (ModalIdeCfg m t)
+controlBarRight m = do
+    divClass "main-header__controls-nav" $ do
       elClass "div" "main-header__project-loader" $ do
 
         onNetClick <- uiButton headerBtnCfg $ text "Networks"
@@ -224,30 +270,6 @@ controlBarLeft m = do
         {- btnTextIcon (static @"img/github-gist-dark.svg") "Make Gist" blank -}
         elClass "span" "main-header__minor-text" $ text "Make "
         text "Gist"
-
-
-getPactVersion :: MonadWidget t m => m Text
-getPactVersion = do
-    is <- liftIO $ initReplState StringEval Nothing
-    Right (TLiteral (LString ver) _) <- liftIO $ evalStateT (evalRepl' "(pact-version)") is
-    return ver
-
-controlBarRight :: MonadWidget t m => m ()
-controlBarRight = do
-    divClass "main-header__docs" $ do
-      elAttr "a" ( "href" =: "http://pactlang.org"
-                <> "class" =: "main-header__documents" <> "target" =: "_blank"
-                 ) $ do
-        elAttr "img" ("src" =: (static @"img/instruction.svg") <> "alt" =: "Documentation" <> "style" =: "width: 28px;") blank
-        text "Tutorials"
-      elAttr "a" ( "href" =: "http://pact-language.readthedocs.io"
-                <> "class" =: "main-header__documents" <> "target" =: "_blank"
-                 ) $ do
-        imgWithAlt (static @"img/document.svg") "Documentation" blank
-        text "Docs"
-      elAttr "a" ( "href" =: "http://kadena.io"
-                <> "class" =: "main-header__documents" <> "target" =: "_blank") $
-        elAttr "img" ("src" =: (static @"img/Klogo.png") <> "alt" =: "Kadena Logo" <> "style" =: "height: 28px;") blank
 
 
 headerBtnCfg

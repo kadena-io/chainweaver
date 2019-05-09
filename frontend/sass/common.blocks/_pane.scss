@@ -3,11 +3,6 @@
 // There are two panes in pact-web: A left pane (the editor) and the right one
 // for the controls. Each pane has a body and some header.
 
-$pane-padding-top: $normal-padding;
-$pane-padding-bottom: $pane-padding-top;
-$pane-padding-right: $normal-padding;
-$pane-padding-left: $pane-padding-right;
-
 .pane {
   display: flex;
   flex-direction: column;
