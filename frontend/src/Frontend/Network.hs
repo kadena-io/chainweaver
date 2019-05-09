@@ -278,7 +278,6 @@ makeNetwork w cfg = mfix $ \ ~(_, networkL) -> do
     reportNodeInfoError err =
       liftIO $ T.putStrLn $ "Fetching node info failed: " <> err
 
-
 -- | Update networks, given an updating event.
 updateNetworks
   :: (Reflex t, Monoid mConf, HasNetwork model t, HasNetworkCfg mConf t)
@@ -659,8 +658,6 @@ networkRequest
   -> JSM NetworkErrorResult
 networkRequest baseUri endpoint cmd = do
     baseUrl <- S.parseBaseUrl $ URI.renderStr baseUri
-    liftIO $ putStrLn $ "Base URL (parsed): " <> show baseUrl
-    liftIO $ putStrLn $ "Base URL (rendered): " <> URI.renderStr baseUri
     let clientEnv = S.mkClientEnv baseUrl
 
     liftJSM . runExceptT $ do
