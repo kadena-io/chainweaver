@@ -117,8 +117,9 @@ uiDeploymentSettings m (DeploymentSettingsConfig mUserTab mkWChainId endpoint) =
       (cfg, cChainId, cEndpoint) <- tabPane mempty curSelection DeploymentSettingsView_Cfg $
         uiCfg m (mkWChainId m) endpoint
 
-      signingKeys <- tabPane mempty curSelection DeploymentSettingsView_Keys $
-        uiSigningKeys m
+      signingKeys <- tabPane mempty curSelection DeploymentSettingsView_Keys $ do
+        let selectedSender = Set.singleton . _pmSender <$> m ^. network_meta
+        uiSigningKeys selectedSender m
 
       pure
         ( cfg
@@ -232,7 +233,6 @@ uiMetaData m  = do
             & selectElementConfig_setValue .~ onSet
         (se, ()) <- uiSelectElement cfg $ do
           traverse_ itemDom $ Map.keys chainwebDefaultSenders
-        text $ "Note: Make sure to sign with this sender's key."
         pure $ _selectElement_change se
 
       readPact wrapper =  fmap wrapper . readMay . T.unpack
@@ -273,9 +273,10 @@ uiChainSelection info cls = mdo
 -- | Widget for selection of signing keys.
 uiSigningKeys
   :: forall t m model. (MonadWidget t m, HasWallet model t)
-  => model
+  => Dynamic t (Set KeyName) -- ^ Any keys that should be preselected (and can't be unchecked by the user).
+  -> model
   -> m (Dynamic t (Set KeyName))
-uiSigningKeys aWallet = do
+uiSigningKeys preselected aWallet = do
   let keyMap = aWallet ^. wallet_keys
       tableAttrs =
         "style" =: "table-layout: fixed; width: 100%" <> "class" =: "table"
@@ -283,7 +284,7 @@ uiSigningKeys aWallet = do
     -- el "thead" $ elClass "tr" "table__row" $ do
     --   elClass "th" "table__heading" $ text "Sign with Key"
     --   elClass "th" "table__heading" $ text ""
-    el "tbody" $ listWithKey keyMap $ \name key -> signingItem (name, key)
+    el "tbody" $ listWithKey keyMap $ \name key -> signingItem preselected (name, key)
   dyn_ $ ffor keyMap $ \keys -> when (Map.null keys) $ text "No keys ..."
   return $ do -- The Dynamic monad
     m :: Map KeyName (Dynamic t Bool) <- boxValues
@@ -295,17 +296,34 @@ uiSigningKeys aWallet = do
 -- | Display a key as list item together with it's name.
 signingItem
   :: MonadWidget t m
-  => (Text, Dynamic t KeyPair)
+  => Dynamic t (Set KeyName)
+  -> (KeyName, Dynamic t KeyPair)
   -> m (Dynamic t Bool)
-signingItem (n, _) = do
-    elClass "tr" "table__row checkbox-container" $ mdo
+signingItem preselected (n, _) = do
+    elClass "tr" "table__row checkbox-container" $ do
       (e, ()) <- el' "td" $ text n
       let onTextClick = domEvent Click e
-      box <- elClass "td" "signing-selector__check-box-cell" $ do
-        let cfg = toggleCheckbox box onTextClick
-        uiCheckbox "signing-selector__check-box-label" False cfg blank
-      pure (value box)
+      elClass "td" "signing-selector__check-box-cell" $ mdo
+        let
+          val = _checkbox_value box
+          isPreselected = Set.member n <$> preselected
+          cfg = toggleCheckbox val $ gate (not <$> current isPreselected) onTextClick
+        box <- mkCheckbox cfg isPreselected
+        pure val
+  where
+    mkCheckbox uCfg isPreselected = do
+      onIsPreselected <- tagOnPostBuild <=< holdUniqDyn $ isPreselected
+      let
+        cfg = uCfg
+          & checkboxConfig_attributes %~ ((fmap updateAttrs isPreselected) <*>)
+          & checkboxConfig_setValue %~ \old -> leftmost [onIsPreselected, old]
+      uiCheckbox "signing-selector__check-box-label" False cfg blank
 
-toggleCheckbox :: Reflex t => Checkbox t -> Event t a -> CheckboxConfig t
-toggleCheckbox box =
-  (\v -> def { _checkboxConfig_setValue = v }) . fmap not . tag (current $ value box)
+    updateAttrs = \case
+      False -> (<> mempty)
+      True  -> (<> "disabled" =: "true")
+
+
+toggleCheckbox :: Reflex t => Dynamic t Bool -> Event t a -> CheckboxConfig t
+toggleCheckbox val =
+  (\v -> def { _checkboxConfig_setValue = v }) . fmap not . tag (current val)

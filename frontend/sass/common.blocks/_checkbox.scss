@@ -30,6 +30,14 @@
   background-color: $hover-background;
 }
 
+.checkbox input[disabled] ~ .checkbox__checkmark {
+  background-color: $hover-background;
+  border-color: $std-border-color;
+}
+.checkbox input[disabled]:checked ~ .checkbox__checkmark {
+  background-color: $hover-background;
+  border-color: $std-border-color;
+}
 
 /* When the checkbox is checked, add a blue background */
 .checkbox input:checked ~ .checkbox__checkmark {
