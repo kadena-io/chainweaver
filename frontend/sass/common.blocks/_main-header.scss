@@ -27,7 +27,6 @@ $main-header-btn-font-size: $secondary-font-size;
 
 .main-header__logos-docs {
   display: flex;
-  flex: 1;
 
   // Align with editor:
   margin-right: $pane-padding-right;
@@ -35,13 +34,14 @@ $main-header-btn-font-size: $secondary-font-size;
 
 .main-header__kadena-logo {
   vertical-align: bottom;
+  margin-right: $normal-margin;
 }
 
 .main-header__pact-logo {
   color: $main-header-color;
   // line-height: 0;
   vertical-align: bottom;
-  margin-left: $normal-margin;
+  margin-right: $normal-margin;
 }
 
 .main-header__logo-img {
@@ -66,7 +66,7 @@ $main-header-btn-font-size: $secondary-font-size;
 
 .main-header__docs {
   flex: 1;
-  text-align: right;
+  text-align: left;
   @media (max-width: 700px) {
     text-align: left;
   }

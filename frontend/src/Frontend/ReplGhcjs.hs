@@ -173,8 +173,8 @@ controlBarLeft :: forall t m. MonadWidget t m => m ()
 controlBarLeft =
   divClass "main-header__logos-docs" $ do
     kadenaLogo
-    docs
     pactLogo
+    docs
 
   where
 
