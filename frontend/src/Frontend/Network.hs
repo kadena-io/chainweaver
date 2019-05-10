@@ -246,19 +246,16 @@ makeNetwork w cfg = mfix $ \ ~(_, networkL) -> do
 
     (cName, networks) <- getNetworks cfg
     onCName <- tagOnPostBuild cName
-    onNodeInfos <- performEventAsync $ getNetworkNodeInfosAsync networkL <$> leftmost
+    onCNameNodeInfos <- performEventAsync $ getNetworkNodeInfosAsync networkL <$> leftmost
       [ onCName
         -- Refresh info on deployments and well on refresh (Refreshed node
         -- info triggers re-loading of modules too):
       , tag (current cName) $ onDeployed
       , tag (current cName) $ cfg ^. networkCfg_refreshModule
       ]
-    performEvent_ $ traverse_ reportNodeInfoError <$> fmap lefts onNodeInfos
-    nodeInfos <- holdDyn [] $ leftmost
-      [ onNodeInfos
-        -- Reset until correct values are loaded:
-      , [] <$ onCName
-      ]
+    performEvent_ $ traverse_ reportNodeInfoError <$> fmap (lefts . snd) onCNameNodeInfos
+    cNameNodeInfos <- holdDyn Nothing $ Just <$> onCNameNodeInfos
+    let cNetwork = fromMaybe <$> fmap (,[]) cName <*> cNameNodeInfos
 
     modules <- loadModules networkL
 
@@ -268,7 +265,7 @@ makeNetwork w cfg = mfix $ \ ~(_, networkL) -> do
       ( mConf
       , Network
           { _network_networks = networks
-          , _network_selectedNetwork = (,) <$> cName <*> nodeInfos
+          , _network_selectedNetwork = cNetwork
           , _network_modules = modules
           , _network_deployed = onDeployed
           , _network_meta = meta
@@ -292,18 +289,25 @@ updateNetworks m onUpdate =
 
 
 -- | Retrieve the node information for the given `NetworkName`
+--
+--   As we are sending those requests asynchronously we also return the
+--   NetworkName corresponding to our response, so we get the matching right.
+--
+--   This also means if the user switches networks during a refresh/deployment,
+--   his choice might get lost, but this is an issue minor enough to
+--   be ignored right now.
 getNetworkNodeInfosAsync
   :: (Reflex t, MonadSample t m, MonadJSM m)
   => Network t
   -> NetworkName
-  -> ([Either Text NodeInfo] -> IO ())
+  -> ((NetworkName, [Either Text NodeInfo]) -> IO ())
   -> m ()
 getNetworkNodeInfosAsync nw netName cb = do
     cNets <- sample $ current $ nw ^. network_networks
     let hosts = fromMaybe [] $ cNets ^. at netName
     void $ forkJSM $ do
       r <- traverse discoverNode hosts
-      liftIO $ cb r
+      liftIO $ cb (netName, r)
 
 
 -- | Get the currently selected network.
