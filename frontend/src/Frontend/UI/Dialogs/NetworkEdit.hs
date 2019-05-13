@@ -109,7 +109,7 @@ uiNetworks m = do
     -- Using above networkView causes spider to die, can be fixed with witgetHold and delay 0.
     -- TODO: Understand why this is needed. Obviously it does not like having
     -- parts of the widget getting updated while the widget is already being
-    -- deleted ... but why?
+    -- deleted ...
     onNetworkNames <- delay 0 =<< tagOnPostBuild networkNames
     dynEv <- networkHold (pure []) $ traverse (uiNetwork selName networks) <$> onNetworkNames
     let ev = switchDyn $ leftmost <$> dynEv
@@ -190,9 +190,11 @@ uiNode nRef = do
     divClass "table__row-counter" blank
     divClass "table__cell_size_flex" $ do
       onVal <- tagOnPostBuild nRef
+      let placeholderVal = maybe (Just "Add node") (const Nothing) <$> onVal
       nodeInput <- uiInputElement $ def
         & inputElementConfig_setValue .~ (maybe "" renderNodeRef <$> onVal)
         & initialAttributes .~ "class" =: "input_width_full"
+        & modifyAttributes .~ fmap ("placeholder" =:) placeholderVal
       let
         onInput = _inputElement_input nodeInput
         onUpdate = fmapMaybe id $ either (const Nothing) Just . parseNodeRef <$> onInput
