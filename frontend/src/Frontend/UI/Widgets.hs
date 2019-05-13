@@ -17,6 +17,7 @@ module Frontend.UI.Widgets
   -- ** Other widgets
   , uiSegment
   , uiGroup
+  , uiGroupHeader
   , uiCodeFont
   , uiInputElement
   , uiRealInputElement
@@ -96,6 +97,10 @@ uiSegment cls = elKlass "div" (cls <> "segment")
 --   A group is a div with a darker grey background.
 uiGroup :: DomBuilder t m => CssClass -> m a -> m a
 uiGroup cls = elKlass "div" (cls <> "group")
+
+-- | The header element of a groupl
+uiGroupHeader :: DomBuilder t m => CssClass -> m a -> m a
+uiGroupHeader cls = elKlass "div" (cls <> "group__header")
 
 -- | Span rendered in code-font.
 uiCodeFont :: DomBuilder t m => CssClass -> Text -> m ()

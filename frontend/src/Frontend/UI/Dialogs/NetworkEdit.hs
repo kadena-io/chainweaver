@@ -31,6 +31,7 @@ import qualified Data.Map                       as Map
 import qualified Data.Text                      as T
 import           Reflex.Dom
 import           Reflex.Extended
+import           Control.Monad (void)
 ------------------------------------------------------------------------------
 import           Common.Network                 (renderNodeRef)
 import           Frontend.Foundation
@@ -71,12 +72,22 @@ uiNetworkEdit
 uiNetworkEdit m = do
   onClose <- modalHeader $ text "Network Settings"
   modalMain $ do
-    cfg <- modalBody $
-      divClass "group" $ do
+    cfg <- modalBody $ do
+      selCfg <- uiGroup "segment" $ do
+        uiGroupHeader mempty $ do
+          elClass "h1" "heading heading_type_h2" $
+            text "Select Network"
+        uiNetworkSelect m
+
+      editCfg <- uiGroup "segment" $ do
+        uiGroupHeader mempty $ elClass "h1" "heading heading_type_h2" $
+          text "Edit Networks"
         onNewNet <- validatedInputWithButton "group__header" checkNetName "Create new network." "Create"
         editCfg <- uiNetworks m
         let newCfg = updateNetworks m $ (\n -> Map.insert (NetworkName n) []) <$> onNewNet
         pure $ mconcat [ newCfg, editCfg ]
+
+      pure $ selCfg <> editCfg
 
     modalFooter $ do
       -- TODO: Is this really a "Cancel" button?!
@@ -89,6 +100,28 @@ uiNetworkEdit m = do
     checkNetName k = do
       keys <- sample $ current $ m ^. network_networks
       pure $ if Map.member (NetworkName k) keys then Just "This network already exists." else Nothing
+
+
+uiNetworkSelect
+  :: forall t m model mConf.
+    (MonadWidget t m, HasUiNetworkEditModel model t, HasUiNetworkEditModelCfg mConf t
+    )
+  => model -> m mConf
+uiNetworkSelect m = do
+  selected <- holdUniqDyn $ fst <$> m ^. network_selectedNetwork
+  onNetwork <- tagOnPostBuild selected
+  let
+    networks = m ^. network_networks
+  networkNames <- holdUniqDyn $ Map.keys <$> networks
+
+  let
+    cfg = SelectElementConfig "" (Just $ textNetworkName <$> onNetwork) $
+      def & initialAttributes .~ "class" =: "select_type_primary select_width_full"
+    itemDom v = elAttr "option" ("value" =: v) $ text v
+
+  (s, ()) <- uiSelectElement cfg $
+    void $ networkView $ traverse_ (itemDom . textNetworkName) <$> networkNames
+  pure $ mempty & networkCfg_selectNetwork .~ fmap NetworkName (_selectElement_change s)
 
 
 uiNetworks
