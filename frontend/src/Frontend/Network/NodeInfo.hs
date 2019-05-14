@@ -74,9 +74,9 @@ import           UnliftIO.Async
 import           UnliftIO.Exception          (catch)
 import           UnliftIO.MVar
 
+import           Common.Network              (ChainId (..), NodeRef (..),
+                                              parseNodeRef, toPmChainId)
 import           Frontend.Foundation
-import           Common.Network              (ChainId (..), parseNodeRef,
-                                              toPmChainId, NodeRef (..))
 
 
 data ChainwebInfo = ChainwebInfo

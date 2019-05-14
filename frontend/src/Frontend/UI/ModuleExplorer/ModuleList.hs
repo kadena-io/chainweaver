@@ -97,7 +97,7 @@ uiDeployedModuleList m mList = mdo
       -- dropdown is kinda loopy, therefore the delay.
       onNetworkName <- delay 0 <=< tagOnPostBuild $ mList ^. moduleList_chainIdFilter
       let mkMap = Map.fromList . map (Just &&& tshow) . getChains
-          mInfo = (^? _2 . to rights . _head) <$> m ^. network_selectedNetwork
+          mInfo = (^? to rights . _head) <$> m ^. network_selectedNodes
           opts = Map.insert Nothing "All chains" . maybe mempty mkMap <$> mInfo
           filterCfg = def & dropdownConfig_attributes %~ fmap (addToClassAttr $ "select_type_tertiary" <> "filter-bar__chain-filter")
                           & setValue .~ onNetworkName

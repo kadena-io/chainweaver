@@ -29,6 +29,7 @@ import qualified Data.IntMap                    as IntMap
 import           Data.Map                       (Map)
 import qualified Data.Map                       as Map
 import qualified Data.Text                      as T
+import qualified Data.Text.IO as T
 import           Reflex.Dom
 import           Reflex.Extended
 import           Control.Monad (void)
@@ -75,12 +76,12 @@ uiNetworkEdit m = do
     cfg <- modalBody $ do
       selCfg <- uiGroup "segment" $ do
         uiGroupHeader mempty $ do
-          elClass "h1" "heading heading_type_h2" $
+          elClass "h2" "heading heading_type_h2" $
             text "Select Network"
         uiNetworkSelect m
 
       editCfg <- uiGroup "segment" $ do
-        uiGroupHeader mempty $ elClass "h1" "heading heading_type_h2" $
+        uiGroupHeader mempty $ elClass "h2" "heading heading_type_h2" $
           text "Edit Networks"
         onNewNet <- validatedInputWithButton "group__header" checkNetName "Create new network." "Create"
         editCfg <- uiNetworks m
@@ -95,11 +96,18 @@ uiNetworkEdit m = do
       text " "
       onConfirm <- confirmButton def "Ok"
 
-      pure (cfg & networkCfg_resetNetworks .~ onReset, leftmost [onConfirm, onClose])
+      pure
+        ( cfg
+           & networkCfg_resetNetworks .~ onReset
+           & networkCfg_refreshModule .~ onConfirm
+        , leftmost [onConfirm, onClose]
+        )
   where
     checkNetName k = do
       keys <- sample $ current $ m ^. network_networks
-      pure $ if Map.member (NetworkName k) keys then Just "This network already exists." else Nothing
+      pure $ if Map.member (NetworkName k) keys
+                then Just "This network already exists."
+                else Nothing
 
 
 uiNetworkSelect
@@ -108,8 +116,10 @@ uiNetworkSelect
     )
   => model -> m mConf
 uiNetworkSelect m = do
-  selected <- holdUniqDyn $ fst <$> m ^. network_selectedNetwork
-  onNetwork <- tagOnPostBuild selected
+  selected <- holdUniqDyn $ m ^. network_selectedNetwork
+  -- Delay necessary until we have mount hooks. (SelectElement won't accept
+  -- setting event until its children are properly rendered.
+  onNetwork <- delay 0 =<< tagOnPostBuild selected
   let
     networks = m ^. network_networks
   networkNames <- holdUniqDyn $ Map.keys <$> networks
@@ -117,7 +127,9 @@ uiNetworkSelect m = do
   let
     cfg = SelectElementConfig "" (Just $ textNetworkName <$> onNetwork) $
       def & initialAttributes .~ "class" =: "select_type_primary select_width_full"
-    itemDom v = elAttr "option" ("value" =: v) $ text v
+    itemDom v = do
+      elAttr "option" ("value" =: v) $ text v
+      liftIO $ T.putStrLn $ "Network: " <> v
 
   (s, ()) <- uiSelectElement cfg $
     void $ networkView $ traverse_ (itemDom . textNetworkName) <$> networkNames
@@ -131,7 +143,6 @@ uiNetworks
   => model -> m mConf
 uiNetworks m = do
     let
-      selName = fst <$> m ^. network_selectedNetwork
       networks = m ^. network_networks
 
     networkNames <- holdUniqDyn $ Map.keys <$> networks
@@ -144,7 +155,7 @@ uiNetworks m = do
     -- parts of the widget getting updated while the widget is already being
     -- deleted ...
     onNetworkNames <- delay 0 =<< tagOnPostBuild networkNames
-    dynEv <- networkHold (pure []) $ traverse (uiNetwork selName networks) <$> onNetworkNames
+    dynEv <- networkHold (pure []) $ traverse (uiNetwork networks) <$> onNetworkNames
     let ev = switchDyn $ leftmost <$> dynEv
 
     let
@@ -170,16 +181,15 @@ uiNetworks m = do
 
 uiNetwork
   :: MonadWidget t m
-  => Dynamic t NetworkName -- ^ Currently selected network
-  -> Dynamic t (Map NetworkName [NodeRef]) -- ^ All networks.
+  => Dynamic t (Map NetworkName [NodeRef]) -- ^ All networks.
   -> NetworkName -- ^ The network currently being rendered.
   -> m (Event t NetworkAction)
-uiNetwork selected networks self = do
+uiNetwork networks self = do
     let
       nodes = fromMaybe [] . Map.lookup self <$> networks
 
     (onHeadAction, onBodyAction) <- accordionItem' False "segment segment_type_secondary"
-      (uiNetworkSelector selected self)
+      (uiNetworkHeading self)
       (uiNodes nodes)
 
     pure $ leftmost
@@ -188,14 +198,12 @@ uiNetwork selected networks self = do
       ]
 
 
-uiNetworkSelector :: MonadWidget t m => Dynamic t NetworkName -> NetworkName -> m (Event t NetworkAction)
-uiNetworkSelector val self = do
-  onSelect <- fmap NetworkSelect <$> uiLabeledRadioView label val self
-  onDelete <- fmap (const $ NetworkDelete self) <$> accordionDeleteBtn
-  pure $ leftmost [ onSelect, onDelete ]
+uiNetworkHeading :: MonadWidget t m => NetworkName -> m (Event t NetworkAction)
+uiNetworkHeading self = do
+    text $ textNetworkName self
+    fmap (const $ NetworkDelete self) <$> accordionDeleteBtn
   where
     accordionDeleteBtn = deleteButtonNaked $ def & uiButtonCfg_class .~ "accordion__title-button"
-    label cls = fmap fst . elKlass' "span" ("heading_type_h2" <> cls) $ text (textNetworkName self)
 
 
 uiNodes :: forall t m. MonadWidget t m => Dynamic t [NodeRef] -> m (Event t (Int, Maybe NodeRef))
@@ -236,33 +244,4 @@ uiNode nRef = do
         [ Nothing <$ onDelete
         , Just <$> onUpdate
         ]
-
-
-uiLabeledRadioView
-  :: (MonadWidget t m, Eq a)
-  => (CssClass -> m (Element EventResult (DomBuilderSpace m) t))
-  -> Dynamic t a
-  -> a
-  -> m (Event t a)
-uiLabeledRadioView mkLabel val self  = do
-    onRadioChange <- uiRadioElementView val self
-    l <- mkLabel $ "label" <> "label_for_radio"
-    let onLabelClick = domEvent Click l
-    pure $ leftmost
-      [ onRadioChange
-      , fmapMaybe selectUnselected . tag (current val) $ onLabelClick
-      ]
-  where
-    selectUnselected v = if v /= self then Just self else Nothing
-
-
-uiRadioElementView :: (MonadWidget t m, Eq a) => Dynamic t a -> a -> m (Event t a)
-uiRadioElementView val self = do
-  v <- tagOnPostBuild val
-  let
-    cfg = def
-      & initialAttributes .~ ("type" =: "radio" <> "class" =: "input input_type_radio")
-      & inputElementConfig_setChecked .~ fmap (== self) v
-  e <- uiInputElement cfg
-  pure $ fmap (const self) . ffilter id $ _inputElement_checkedChange e
 

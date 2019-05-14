@@ -155,10 +155,10 @@ userChainIdSelect
   -> m (MDynamic t ChainId)
 userChainIdSelect m = mkLabeledClsInput (uiChainSelection mNodeInfo) labelText
   where
-    mNodeInfo = (^? _2 . to rights . _head) <$> m ^. network_selectedNetwork
+    mNodeInfo = (^? to rights . _head) <$> m ^. network_selectedNodes
 
-    labelText = ffor (m ^. network_selectedNetwork) $ \case
-      (n, _) -> "Network [ " <> textNetworkName n <> " ]"
+    labelText = ffor (m ^. network_selectedNetwork) $
+      \n -> "Network [ " <> textNetworkName n <> " ]"
 
 
 -- | UI for asking the user about data needed for deployments/function calling.

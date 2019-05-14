@@ -25,6 +25,8 @@ module Frontend.UI.Widgets
   , uiInputView
   , mkLabeledInputView
   , mkLabeledInput
+  , uiLabeledRadioView
+  , uiRadioElementView
   , mkLabeledClsInput
   , uiCheckbox
   , uiDropdown
@@ -185,6 +187,35 @@ uiInputView mkInput cfg mVal = mdo
     & inputElementConfig_setValue .~ onSet
     & modifyAttributes .~ modifyAttrs
   pure $ _inputElement_input i
+
+
+uiLabeledRadioView
+  :: (MonadWidget t m, Eq a)
+  => (CssClass -> m (Element EventResult (DomBuilderSpace m) t))
+  -> Dynamic t a
+  -> a
+  -> m (Event t a)
+uiLabeledRadioView mkLabel val self  = do
+    onRadioChange <- uiRadioElementView val self
+    l <- mkLabel $ "label" <> "label_for_radio"
+    let onLabelClick = domEvent Click l
+    pure $ leftmost
+      [ onRadioChange
+      , fmapMaybe selectUnselected . tag (current val) $ onLabelClick
+      ]
+  where
+    selectUnselected v = if v /= self then Just self else Nothing
+
+
+uiRadioElementView :: (MonadWidget t m, Eq a) => Dynamic t a -> a -> m (Event t a)
+uiRadioElementView val self = do
+  v <- tagOnPostBuild val
+  let
+    cfg = def
+      & initialAttributes .~ ("type" =: "radio" <> "class" =: "input input_type_radio")
+      & inputElementConfig_setChecked .~ fmap (== self) v
+  e <- uiInputElement cfg
+  pure $ fmap (const self) . ffilter id $ _inputElement_checkedChange e
 
 
 -- | Make labeled and segmented input view.

@@ -34,16 +34,15 @@ module Frontend.UI.Modal.Impl
   ) where
 
 ------------------------------------------------------------------------------
-import           Control.Lens hiding (element)
-import           Control.Monad ((<=<))
-import qualified Data.Map as Map
+import           Control.Lens                  hiding (element)
+import qualified Data.Map                      as Map
 import           Data.Proxy
-import qualified GHCJS.DOM as DOM
-import qualified GHCJS.DOM.EventM as EventM
+import           Data.Void                     (Void)
+import qualified GHCJS.DOM                     as DOM
+import qualified GHCJS.DOM.EventM              as EventM
 import qualified GHCJS.DOM.GlobalEventHandlers as Events
 import           Reflex
 import           Reflex.Dom
-import           Data.Void (Void)
 ------------------------------------------------------------------------------
 import           Frontend.Foundation
 import           Frontend.Ide

@@ -11,6 +11,7 @@
 {-# LANGUAGE OverloadedStrings          #-}
 {-# LANGUAGE QuasiQuotes                #-}
 {-# LANGUAGE RankNTypes                 #-}
+{-# LANGUAGE RecursiveDo                #-}
 {-# LANGUAGE ScopedTypeVariables        #-}
 {-# LANGUAGE TemplateHaskell            #-}
 {-# LANGUAGE TupleSections              #-}
@@ -55,6 +56,7 @@ import           Data.Aeson                        (Object, Value (..), encode)
 import qualified Data.ByteString.Lazy              as BSL
 import           Data.Either                       (lefts, rights)
 import qualified Data.HashMap.Strict               as H
+import qualified Data.IntMap                       as IntMap
 import qualified Data.Map                          as Map
 import           Data.Map.Strict                   (Map)
 import           Data.Set                          (Set)
@@ -193,9 +195,11 @@ data Network t = Network
   { _network_networks        :: Dynamic t (Map NetworkName [NodeRef])
     -- ^ List of available networks. Each network has a name and a number of nodes.
     --   This list gets persisted and can be edited by the user.
-  , _network_selectedNetwork :: Dynamic t (NetworkName, [Either Text NodeInfo])
-    -- ^ The currently selected network, the first `Right` `NodeInfo` will be
-    -- used for deployments and such.
+  , _network_selectedNetwork :: Dynamic t NetworkName
+    -- ^ The currently selected network
+  , _network_selectedNodes   :: Dynamic t [Either Text NodeInfo]
+    -- ^ Node information for the nodes in the currently selected network.
+    --  The first `Right` `NodeInfo` will be used for deployments and such.
   , _network_modules         :: Dynamic t (Map ChainId [Text])
    -- ^ Available modules on all chains.
   , _network_deployed        :: Event t ()
@@ -246,16 +250,16 @@ makeNetwork w cfg = mfix $ \ ~(_, networkL) -> do
 
     (cName, networks) <- getNetworks cfg
     onCName <- tagOnPostBuild cName
-    onCNameNodeInfos <- performEventAsync $ getNetworkNodeInfosAsync networkL <$> leftmost
-      [ onCName
-        -- Refresh info on deployments and well on refresh (Refreshed node
-        -- info triggers re-loading of modules too):
-      , tag (current cName) $ onDeployed
-      , tag (current cName) $ cfg ^. networkCfg_refreshModule
-      ]
-    performEvent_ $ traverse_ reportNodeInfoError <$> fmap (lefts . snd) onCNameNodeInfos
-    cNameNodeInfos <- holdDyn Nothing $ Just <$> onCNameNodeInfos
-    let cNetwork = fromMaybe <$> fmap (,[]) cName <*> cNameNodeInfos
+    nodeInfos <-
+      getNetworkNodeInfosIncremental (current networks) (current cName) $ leftmost
+        [ onCName
+          -- Refresh info on deployments and well on refresh (Refreshed node
+          -- info triggers re-loading of modules too):
+        , tag (current cName) $ onDeployed
+        , tag (current cName) $ cfg ^. networkCfg_refreshModule
+        ]
+
+    performEvent_ $ traverse_ reportNodeInfoError . lefts <$> updated nodeInfos
 
     modules <- loadModules networkL
 
@@ -265,7 +269,8 @@ makeNetwork w cfg = mfix $ \ ~(_, networkL) -> do
       ( mConf
       , Network
           { _network_networks = networks
-          , _network_selectedNetwork = cNetwork
+          , _network_selectedNetwork = cName
+          , _network_selectedNodes = nodeInfos
           , _network_modules = modules
           , _network_deployed = onDeployed
           , _network_meta = meta
@@ -274,6 +279,7 @@ makeNetwork w cfg = mfix $ \ ~(_, networkL) -> do
   where
     reportNodeInfoError err =
       liftIO $ T.putStrLn $ "Fetching node info failed: " <> err
+
 
 -- | Update networks, given an updating event.
 updateNetworks
@@ -288,26 +294,55 @@ updateNetworks m onUpdate =
     mempty & networkCfg_setNetworks .~ onNew
 
 
+-- | Retrieve `NodeInfo`s asynchronously and incremental.
+--
+--   This means the returned dynamic list will grow as responses come in.
+getNetworkNodeInfosIncremental
+  :: forall t m.
+    ( Reflex t, MonadSample t m, TriggerEvent t m, PerformEvent t m
+    , MonadHold t m, MonadFix m, MonadJSM (Performable m)
+    )
+  => Behavior t (Map NetworkName [NodeRef])
+  -> Behavior t NetworkName -- The currently user selected network.
+  -> Event t NetworkName -- Start NodeInfo retrieval for new selection.
+  -> m (Dynamic t [Either Text NodeInfo])
+getNetworkNodeInfosIncremental cNets currentName onNetName = do
+    let
+      onNodes :: Event t (NetworkName, [(Int, NodeRef)])
+      onNodes = attachWith (flip getIndexedNodes) cNets onNetName
+
+    onInfo <- performEventAsync $ uncurry getNodeInfosAsync <$> onNodes
+
+    infoMap <- foldDyn id IntMap.empty $ leftmost
+      [ const IntMap.empty <$ onNetName
+      , fmap (uncurry IntMap.insert) . filterValidUpdates $ onInfo
+      ]
+    pure $ IntMap.elems <$> infoMap
+  where
+    -- Ignore updates if currently selected network no longer matches:
+    filterValidUpdates = fmap snd . ffilter fst . attachWith checkSelected currentName
+
+    checkSelected :: NetworkName -> (NetworkName, a) -> (Bool, a)
+    checkSelected n = first (== n)
+
+    getIndexedNodes name = (name, ) . zip [0..] . fromMaybe [] . Map.lookup name
+
+
 -- | Retrieve the node information for the given `NetworkName`
 --
---   As we are sending those requests asynchronously we also return the
+--   As we are sending those requests asynchronously, we also return the
 --   NetworkName corresponding to our response, so we get the matching right.
---
---   This also means if the user switches networks during a refresh/deployment,
---   his choice might get lost, but this is an issue minor enough to
---   be ignored right now.
-getNetworkNodeInfosAsync
-  :: (Reflex t, MonadSample t m, MonadJSM m)
-  => Network t
-  -> NetworkName
-  -> ((NetworkName, [Either Text NodeInfo]) -> IO ())
+getNodeInfosAsync
+  :: MonadJSM m
+  => NetworkName
+  -> [(Int, NodeRef)]
+  -> ((NetworkName, (Int, Either Text NodeInfo)) -> IO ())
   -> m ()
-getNetworkNodeInfosAsync nw netName cb = do
-    cNets <- sample $ current $ nw ^. network_networks
-    let hosts = fromMaybe [] $ cNets ^. at netName
-    void $ forkJSM $ do
-      r <- traverse discoverNode hosts
-      liftIO $ cb (netName, r)
+getNodeInfosAsync netName nodes cb = traverse_ discoverNodeAsync nodes
+  where
+    discoverNodeAsync (i, nodeRef) = void $ forkJSM $ do
+      r <- discoverNode nodeRef
+      liftIO $ cb (netName, (i, r))
 
 
 -- | Get the currently selected network.
@@ -318,7 +353,7 @@ getSelectedNetworkInfos
   => Network t
   -> m [NodeInfo]
 getSelectedNetworkInfos networkL = do
-    errNets <- fmap snd . sample $ current $ networkL ^. network_selectedNetwork
+    errNets <- sample $ current $ networkL ^. network_selectedNodes
     pure $ rights errNets
 
 
@@ -462,8 +497,11 @@ loadModules
   -> m (Dynamic t (Map ChainId [Text]))
 loadModules networkL = do
 
-      let nodeInfos = (rights . snd) <$> (networkL ^. network_selectedNetwork)
-      onNodeInfos <- tagOnPostBuild nodeInfos
+      let nodeInfos = rights <$> (networkL ^. network_selectedNodes)
+      rec
+        onNodeInfosAll <- tagOnPostBuild nodeInfos
+        let onNodeInfos = push (getInterestingInfos lastUsed) onNodeInfosAll
+        lastUsed <- hold [] onNodeInfos
 
       let onReqs = map mkReq . maybe [] getChains . listToMaybe  <$> onNodeInfos
       onErrResps <- performLocalRead networkL onReqs
@@ -483,6 +521,19 @@ loadModules networkL = do
       holdUniqDyn <=< holdDyn mempty $ Map.fromList <$> onModules
 
     where
+
+      -- Make sure we only refresh when it makes sense => not just more backup nodes discovered.
+      getInterestingInfos
+        :: forall ms. MonadSample t ms
+        => Behavior t [NodeInfo]
+        -> [NodeInfo]
+        -> ms (Maybe [NodeInfo])
+      getInterestingInfos currentInfos newInfos = do
+        oldInfos <- sample currentInfos
+        pure $
+          case (oldInfos, newInfos) of
+            (o:_, n:_) -> if o /= n then Just newInfos else Nothing
+            _          -> Just newInfos
 
       mkReq n = NetworkRequest "(list-modules)" H.empty n Endpoint_Local Set.empty
 

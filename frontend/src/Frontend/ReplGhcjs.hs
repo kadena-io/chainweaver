@@ -26,10 +26,10 @@ module Frontend.ReplGhcjs where
 
 ------------------------------------------------------------------------------
 import           Control.Lens
-import           Data.Default (Default (..))
-import           Data.String (IsString)
 import           Control.Monad.Reader                   (ask)
 import           Control.Monad.State.Strict
+import           Data.Default                           (Default (..))
+import           Data.String                            (IsString)
 import           Data.Text                              (Text)
 import qualified Data.Text                              as T
 import           GHCJS.DOM.EventM                       (on)
@@ -60,11 +60,10 @@ import           Frontend.UI.Button
 import           Frontend.UI.Dialogs.CreatedGist        (uiCreatedGist)
 import           Frontend.UI.Dialogs.CreateGist         (uiCreateGist)
 import           Frontend.UI.Dialogs.DeployConfirmation (uiDeployConfirmation)
-import           Frontend.UI.Dialogs.NetworkEdit (uiNetworkEdit)
+import           Frontend.UI.Dialogs.NetworkEdit        (uiNetworkEdit)
 import           Frontend.UI.Modal
 import           Frontend.UI.Modal.Impl
 import           Frontend.UI.RightPanel
-import           Frontend.UI.Widgets
 ------------------------------------------------------------------------------
 
 app
