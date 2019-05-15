@@ -117,11 +117,19 @@ uiNetworkSelect
   => model -> m mConf
 uiNetworkSelect m = do
   selected <- holdUniqDyn $ m ^. network_selectedNetwork
+  onNetworkDirect <- tagOnPostBuild selected
   -- Delay necessary until we have mount hooks. (SelectElement won't accept
-  -- setting event until its children are properly rendered.
-  onNetwork <- delay 0 =<< tagOnPostBuild selected
+  -- setting event until its children are properly rendered.)
+  onNetworkDelayed <- delay 0 onNetworkDirect
   let
     networks = m ^. network_networks
+  -- The refresh is necessary, because we currently always have a valid
+  -- selection even if there are no networks. Now if a previously invalid
+  -- network becomes valid - selected is not updated, therefore we have no
+  -- event and the select element would display the wrong value (because it won't remember the previous valid once it became invalid):
+  onNetworkRefresh <- delay 0 $ tag (current selected) (updated networks)
+  let
+    onNetwork = leftmost [onNetworkDelayed, onNetworkRefresh]
   networkNames <- holdUniqDyn $ Map.keys <$> networks
 
   let

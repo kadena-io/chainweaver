@@ -428,38 +428,52 @@ deployCode w networkL onReq = do
 --
 --   This function also takes care of persistence of those values.
 getNetworks
-  :: ( MonadJSM (Performable m)
+  :: forall t m cfg. ( MonadJSM (Performable m)
      , PerformEvent t m, TriggerEvent t m
      , MonadHold t m, MonadJSM m, MonadFix m
      , HasNetworkCfg cfg t
      )
   => cfg -> m (Dynamic t NetworkName, Dynamic t (Map NetworkName [NodeRef]))
 getNetworks cfg = do
-  (defName, defNets) <- getConfigNetworks
-  initialNets <- fromMaybe defNets <$>
-    liftJSM (getItemStorage localStorage StoreNetwork_Networks)
-  initialName <- fromMaybe defName <$>
-    liftJSM (getItemStorage localStorage StoreNetwork_SelectedNetwork)
+    (defName, defNets) <- getConfigNetworks
+    initialNets <- fromMaybe defNets <$>
+      liftJSM (getItemStorage localStorage StoreNetwork_Networks)
+    initialName <- fromMaybe defName <$>
+      liftJSM (getItemStorage localStorage StoreNetwork_SelectedNetwork)
 
-  networks <- holdDyn initialNets $ leftmost
-    [ defNets <$ (cfg ^. networkCfg_resetNetworks)
-    , cfg ^. networkCfg_setNetworks
-    ]
+    networks <- holdDyn initialNets $ leftmost
+      [ defNets <$ (cfg ^. networkCfg_resetNetworks)
+      , cfg ^. networkCfg_setNetworks
+      ]
 
-  sName <- holdDyn initialName $ cfg ^. networkCfg_selectNetwork
+    rec
+      sName <- holdDyn initialName $ leftmost
+        [ cfg ^. networkCfg_selectNetwork
+        , fmapMaybe id . attachWith getSelectedFix (current sName) $ updated networks
+        ]
 
-  -- Important: Don't use updated networks here, as we want to clear localstorage in case of reset:
-  onNetworksStore <- throttle 2 $ cfg ^. networkCfg_setNetworks
-  onSelectedStore <- throttle 2 $ updated sName
+    -- Important: Don't use updated networks here, as we want to clear
+    -- localstorage in case of reset:
+    onNetworksStore <- throttle 2 $ cfg ^. networkCfg_setNetworks
+    onSelectedStore <- throttle 2 $ updated sName
 
-  performEvent_ $
-    liftJSM . setItemStorage localStorage StoreNetwork_Networks <$> onNetworksStore
-  performEvent_ $
-    liftJSM (removeItemStorage localStorage StoreNetwork_Networks) <$ (cfg ^. networkCfg_resetNetworks)
-  performEvent_ $
-    liftJSM . setItemStorage localStorage StoreNetwork_SelectedNetwork <$> onSelectedStore
+    performEvent_ $
+      liftJSM . setItemStorage localStorage StoreNetwork_Networks <$> onNetworksStore
+    performEvent_ $
+      liftJSM (removeItemStorage localStorage StoreNetwork_Networks) <$ (cfg ^. networkCfg_resetNetworks)
+    performEvent_ $
+      liftJSM . setItemStorage localStorage StoreNetwork_SelectedNetwork <$> onSelectedStore
 
-  pure (sName, networks)
+    pure (sName, networks)
+
+  where
+    getSelectedFix
+      :: forall a. NetworkName -> Map NetworkName a -> Maybe NetworkName
+    getSelectedFix nName networks =
+      if Map.member nName networks
+         then Nothing
+         else fst <$> Map.lookupMin networks
+
 
 
 -- | Get networks from Obelisk config.
