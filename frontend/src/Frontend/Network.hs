@@ -195,6 +195,9 @@ data Network t = Network
   { _network_networks        :: Dynamic t (Map NetworkName [NodeRef])
     -- ^ List of available networks. Each network has a name and a number of nodes.
     --   This list gets persisted and can be edited by the user.
+    --   TODO: This should be a Maybe. While we are technically able to always
+    --   provide a value, it does not always make sense. (E.g. when user
+    --   deleted all available networks.)
   , _network_selectedNetwork :: Dynamic t NetworkName
     -- ^ The currently selected network
   , _network_selectedNodes   :: Dynamic t [Either Text NodeInfo]
