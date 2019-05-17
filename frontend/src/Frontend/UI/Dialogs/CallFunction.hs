@@ -119,7 +119,8 @@ uiBuildDeployment m func moduleL = do
   (cfg, transInfo, mPactCall) <- uiSegment mempty $ do
     uiDeploymentSettings m $ DeploymentSettingsConfig
       { _deploymentSettingsConfig_userTab = parametersTab m func
-      , _deploymentSettingsConfig_chainId = predefinedChainIdSelect $ _moduleRef_source moduleL
+      , _deploymentSettingsConfig_chainId =
+          predefinedChainIdSelect $ _chainRef_chain . _moduleRef_source $ moduleL
       , _deploymentSettingsConfig_defEndpoint = Endpoint_Local
       }
 

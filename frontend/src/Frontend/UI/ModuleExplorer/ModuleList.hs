@@ -69,7 +69,7 @@ uiModuleList modules = do
       case _moduleRef_source c of
         ModuleSource_Deployed s ->
           divClass "table__text-cell table__cell_size_side" $
-            text $ tshow s
+            text $ tshow $ _chainRef_chain s
         _ ->
           blank
 

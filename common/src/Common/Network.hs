@@ -13,10 +13,10 @@ import           Control.Arrow            (left)
 import           Control.Error.Safe       (headErr)
 import           Control.Lens
 import           Control.Monad
-import           Control.Monad.Except     (MonadError, liftEither,
-                                           runExceptT)
+import           Control.Monad.Except     (MonadError, liftEither, runExceptT)
 import           Control.Monad.Trans
 import           Data.Aeson
+import qualified Data.Aeson               as A
 import           Data.Coerce              (coerce)
 import           Data.Map                 (Map)
 import qualified Data.Map                 as Map
@@ -63,12 +63,6 @@ newtype NetworkName = NetworkName
 textNetworkName :: NetworkName -> Text
 textNetworkName = coerce
 
-instance IsRefPath NetworkName where
-  renderRef = mkRefPath . unNetworkName
-
-  parseRef = NetworkName <$> MP.anySingle
-
-
 -- | Reference for a node in a network.
 newtype NodeRef = NodeRef
   { unNodeRef :: URI.Authority
@@ -80,7 +74,7 @@ instance FromJSON NodeRef where
     t <- parseJSON v
     errVal <- runExceptT $ parseNodeRef t
     case errVal of
-      Left err -> fail $ T.unpack err
+      Left err  -> fail $ T.unpack err
       Right val -> pure val
 
 instance ToJSON NodeRef where
@@ -97,6 +91,39 @@ instance IsRefPath ChainId where
       readWordMay :: String -> Maybe Word
       readWordMay = readMay
 
+
+instance IsRefPath NodeRef where
+  renderRef = mkRefPath . renderNodeRef
+
+  parseRef = do
+    v <- MP.anySingle
+    errVal <- runExceptT $ parseNodeRef v
+    case errVal of
+      Left err  -> fail $ T.unpack err
+      Right val -> pure val
+
+-- | Reference a chain on a given node.
+data ChainRef = ChainRef
+  { _chainRef_node  :: Maybe NodeRef
+    -- ^ The node the chain lives on. If `Nothing` we assume it lives on the
+    -- currently selected network `_network_selectedNetwork`.
+  , _chainRef_chain :: ChainId
+    -- ^ The chain id.
+  }
+  deriving (Eq, Ord, Show, Generic)
+
+instance IsRefPath ChainRef where
+  renderRef (ChainRef n c) = maybe mempty renderRef n <> renderRef c
+  parseRef =
+    MP.try (ChainRef . Just <$> parseRef <*> parseRef)
+    <|> (ChainRef Nothing <$> parseRef)
+
+instance A.ToJSON ChainRef where
+  toJSON = A.genericToJSON compactEncoding
+  toEncoding = A.genericToEncoding compactEncoding
+
+instance A.FromJSON ChainRef where
+  parseJSON = A.genericParseJSON compactEncoding
 
 -- | How many Pact instances to launch in development mode.
 numPactInstances :: Int

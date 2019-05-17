@@ -31,17 +31,19 @@ module Frontend.Network.NodeInfo
     ChainId
   , toPmChainId
   , NodeInfo
-  , _nodeInfo_baseUri
+  , nodeInfoRef
     -- * Discover
   , parseNodeRef
   , discoverNode
     -- * Get node/network information.
+  , getChainRefBaseUrl
   , getChainBaseUrl
   , getChains
   ) where
 
 
 import           Control.Applicative         ((<|>))
+import           Control.Arrow               (right)
 import           Control.Arrow               (left)
 import           Control.Error.Safe          (headErr, maximumErr)
 import           Control.Lens
@@ -74,8 +76,9 @@ import           UnliftIO.Async
 import           UnliftIO.Exception          (catch)
 import           UnliftIO.MVar
 
-import           Common.Network              (ChainId (..), NodeRef (..),
-                                              parseNodeRef, toPmChainId)
+import           Common.Network              (ChainId (..), ChainRef (..),
+                                              NodeRef (..), parseNodeRef,
+                                              toPmChainId)
 import           Frontend.Foundation
 
 
@@ -95,13 +98,20 @@ data NodeType =
   | NodeType_Chainweb  ChainwebInfo -- ^ A chainweb node.
   deriving (Eq, Ord, Show)
 
+-- | Internaly used Uri type, which diverges from URI mostly for a mandatory
+-- instead of optional Authority. (Thus we can avoid pointless `Maybe`s or
+-- partial functions.)
+data NodeUri = NodeUri
+  { _nodeUri_scheme    :: URI.RText 'URI.Scheme
+  , _nodeUri_authority :: URI.Authority
+  }
+  deriving (Eq, Ord, Show, Generic)
 
 data NodeInfo = NodeInfo
-  { _nodeInfo_baseUri :: URI
+  { _nodeInfo_baseUri :: NodeUri
   , _nodeInfo_type    :: NodeType
   }
-  deriving (Eq, Ord, Show)
-
+  deriving (Eq, Ord, Show, Generic)
 
 -- | Retrive the `NodeInfo` for a given host by quering its API.
 discoverNode :: forall m. (MonadJSM m, MonadUnliftIO m, HasJSContext m) => NodeRef -> m (Either Text NodeInfo)
@@ -129,15 +139,38 @@ discoverNode (NodeRef auth) = do
     httpsUri = uriFromSchemeAuth [URI.scheme|https|]
     httpUri = uriFromSchemeAuth [URI.scheme|http|]
 
-    uriFromSchemeAuth scheme = URI (Just scheme) (Right auth) Nothing [] Nothing
+    uriFromSchemeAuth scheme =  NodeUri scheme auth
 
+
+-- | The node this node info is for.
+nodeInfoRef :: NodeInfo -> NodeRef
+nodeInfoRef = NodeRef . _nodeUri_authority . _nodeInfo_baseUri
+
+
+-- | Get a base `URI` from a `NodeUri`.
+nodeToBaseUri :: NodeUri -> URI
+nodeToBaseUri (NodeUri scheme auth) = URI (Just scheme) (Right auth) Nothing [] Nothing
+
+
+-- | Base url to use for a particular `ChainRef`.
+--
+--   Note in case the `ChainRef` provides a `_chainRef_node` we have to run a
+--   node detection, so this call might fail in that case.
+getChainRefBaseUrl :: MonadJSM m => ChainRef -> Maybe NodeInfo -> m (Either Text URI)
+getChainRefBaseUrl (ChainRef mNode chainId) mInfo = do
+    jsm <- askJSM
+    errInfo <- getInfo `runJSM` jsm
+    pure $ right (getChainBaseUrl chainId) errInfo
+  where
+    getInfo = fromMaybe uInfo <$> traverse discoverNode mNode
+    uInfo = maybe (Left "No network node available!") Right mInfo
 
 -- | Base url to use for a particular chain.
 --
 --   This is the url where you can append /send, /local, /listen ...
 getChainBaseUrl :: ChainId -> NodeInfo -> URI
 getChainBaseUrl chainId (NodeInfo base nType) =
-    base & uriPath .~ getChainBasePath chainId nType
+    nodeToBaseUri base & uriPath .~ getChainBasePath chainId nType
 
 
 -- | Get a list of available chains.
@@ -161,7 +194,7 @@ getChainBasePath (ChainId chainId) = buildPath . \case
 
 
 -- | Find out whether the given host and scheme are either a Pact or a Chainweb node.
-discoverChainwebOrPact :: (MonadJSM m, HasJSContext m, MonadUnliftIO m) => URI -> m (Either Text NodeInfo)
+discoverChainwebOrPact :: (MonadJSM m, HasJSContext m, MonadUnliftIO m) => NodeUri -> m (Either Text NodeInfo)
 discoverChainwebOrPact uri = do
   (chainwebResp, pactResp) <- discoverChainwebNode uri  `concurrently` discoverPactNode uri
   -- pure $ chainwebResp <|> pactResp
@@ -172,10 +205,10 @@ discoverChainwebOrPact uri = do
 -- | Retrieve the `NodeInfo` for a given host by quering its API.
 --
 --   This function will only succeed for chainweb nodes.
-discoverChainwebNode :: (MonadJSM m, HasJSContext m, MonadUnliftIO m) => URI -> m (Either Text NodeInfo)
+discoverChainwebNode :: (MonadJSM m, HasJSContext m, MonadUnliftIO m) => NodeUri -> m (Either Text NodeInfo)
 discoverChainwebNode baseUri = runExceptT $ do
 
-    let req = mkSwaggerReq baseUri
+    let req = mkSwaggerReq $ nodeToBaseUri baseUri
     resp <- ExceptT . fmap (left tshow) $ runReq req
 
     when (_xhrResponse_status resp /= 200) $
@@ -196,9 +229,9 @@ discoverChainwebNode baseUri = runExceptT $ do
 --   WARNING: The check is pretty basic and could easily confuse a `pact -s` with a chainweb node, when
 --   chainweb or pact -s evolve a bit, therefore, always run
 --   `discoverChainwebNode` first, which is more reliable.
-discoverPactNode :: (MonadJSM m, HasJSContext m, MonadUnliftIO m) => URI -> m (Either Text NodeInfo)
+discoverPactNode :: (MonadJSM m, HasJSContext m, MonadUnliftIO m) => NodeUri -> m (Either Text NodeInfo)
 discoverPactNode baseUri = runExceptT $ do
-    let req = mkVersionReq baseUri
+    let req = mkVersionReq $ nodeToBaseUri baseUri
     resp <- ExceptT . fmap (left tshow) $ runReq req
     when (_xhrResponse_status resp /= 200) $
       throwError $ "Received non 200 status: " <> tshow (_xhrResponse_status resp)

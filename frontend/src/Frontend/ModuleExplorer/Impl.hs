@@ -37,24 +37,25 @@ module Frontend.ModuleExplorer.Impl
 import           Control.Lens
 import           Control.Monad             (guard, (<=<))
 import           Control.Monad.Trans.Maybe (MaybeT (..), runMaybeT)
+import           Data.Either               (rights)
 import qualified Data.Map                  as Map
-import Data.Tuple (swap)
 import           Data.Text                 (Text)
+import           Data.Tuple                (swap)
 import           Reflex
 import           Reflex.Dom.Core           (HasJSContext, MonadHold, PostBuild)
 import           Safe                      (tailSafe)
 ------------------------------------------------------------------------------
 import           Pact.Types.Lang
 ------------------------------------------------------------------------------
-import           Frontend.Network
 import           Frontend.Editor
 import           Frontend.Foundation
+import           Frontend.GistStore
 import           Frontend.JsonData
 import           Frontend.Messages
 import           Frontend.ModuleExplorer   as API
+import           Frontend.Network
 import           Frontend.Repl
 import           Frontend.Storage
-import           Frontend.GistStore
 
 type HasModuleExplorerModelCfg mConf t =
   ( Monoid mConf
@@ -244,7 +245,7 @@ deployCode m onDeploy =
     mkReq = do
       ed      <- m ^. jsonData_data
       pure $ \(code, info) -> do
-        let c = _transactionInfo_chainId info
+        let c = ChainRef Nothing $ _transactionInfo_chainId info
         d <- ed ^? _Right
         pure $ NetworkRequest code d c (_transactionInfo_endpoint info) (_transactionInfo_keys info)
 
@@ -291,10 +292,15 @@ loadToEditor m onFileRef onModRef = do
       onFileMod = fmapMaybe id $
         attachPromptlyDynWith getFileModuleCode fileModRequested onFile
 
+      onGlobalModRef =
+        attachWith makeGlobalLoadedRef (current selectedInfos) . fmap fst $ onMod
+      selectedInfos = rights <$> m ^. network_selectedNodes
+
     loaded <- holdDyn Nothing $ leftmost
       [ Just . LoadedRef_Module . (moduleRef_source %~ ModuleSource_File) . fst <$> onFileMod
       , Just . LoadedRef_File . fst <$> onFile -- Order important we prefer `onFileMod` over `onFile`.
-      , Just . LoadedRef_Module . (moduleRef_source %~ ModuleSource_Deployed) . fst <$> onMod
+        -- Use globally working references for URL:
+      , Just <$> onGlobalModRef
         -- For now, until we have file saving support:
       , fmap (const Nothing) . ffilter id . updated $ m ^.editor_modified
       ]
@@ -310,6 +316,23 @@ loadToEditor m onFileRef onModRef = do
          , loaded
          )
   where
+    makeGlobalLoadedRef :: [NodeInfo] -> DeployedModuleRef -> LoadedRef
+    makeGlobalLoadedRef infos =
+      LoadedRef_Module . (moduleRef_source %~ ModuleSource_Deployed . makeGlobal infos)
+
+    -- Make a ChainRef work globally (also on different machines), by adding a `NodeRef`.
+    -- TODO: At the moment this is actually mandatory even for sharing with
+    -- machines with the same configured network, because at startup we don't
+    -- yet have loaded the nodeinfos of the selected network, so loading the
+    -- URL of a locally referenced module (without a noderef) will fail. To
+    -- make this work (if needed for some reason), we would need to delay
+    -- loading of the references until `network_selectedNodes` is fully loaded.
+    makeGlobal :: [NodeInfo] -> ChainRef -> ChainRef
+    makeGlobal infos ref =
+      case (infos, ref) of
+        (i:_, ChainRef Nothing c)  -> ChainRef (Just $ nodeInfoRef i) c
+        _ -> ref
+
     getFileModuleCode :: Maybe FileModuleRef -> (FileRef, PactFile) -> Maybe (FileModuleRef, Code)
     getFileModuleCode = \case
       Nothing -> const Nothing
@@ -437,7 +460,7 @@ loadModule
 loadModule networkL onRef = do
   onErrModule <- fetchModule networkL onRef
   let
-    onErr    = fmapMaybe (^? _2 . _Left) onErrModule
+    onErr = fmapMaybe (^? _2 . _Left) onErrModule
     onModule = fmapMaybe (traverse (^? _Right)) onErrModule
   pure
     ( mempty & messagesCfg_send .~ fmap (pure . ("Loading of module failed: " <>)) onErr

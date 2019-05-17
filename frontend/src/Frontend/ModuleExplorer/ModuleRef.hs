@@ -96,8 +96,10 @@ import           Common.RefPath as MP
 --   - We combine several networks in a view and let the user filter by
 --     network, we don't do that with files.
 data ModuleSource
-  = ModuleSource_Deployed ChainId -- ^ A module that already got deployed and loaded from there
+  = ModuleSource_Deployed ChainRef
+    -- ^ Reference a deployed module.
   | ModuleSource_File FileRef
+    -- ^ Reference a module living in a file.
   deriving (Eq, Ord, Show, Generic)
 
 makePactPrisms ''ModuleSource
@@ -132,7 +134,7 @@ instance A.FromJSON s => A.FromJSON (ModuleRefV s) where
 type ModuleRef = ModuleRefV ModuleSource
 
 -- | `ModuleRefV` that refers to some deployed module.
-type DeployedModuleRef = ModuleRefV ChainId
+type DeployedModuleRef = ModuleRefV ChainRef
 
 -- | `ModuleRefV` that refers to a module coming from some file.
 type FileModuleRef = ModuleRefV FileRef
@@ -152,9 +154,10 @@ instance IsRefPath ModuleSource where
     ModuleSource_File f -> renderRef f
 
   parseRef =
-      fmap ModuleSource_File tryParseRef <|> fmap ModuleSource_Deployed parseDeployed
+      fmap ModuleSource_File tryParseRef
+      <|> fmap ModuleSource_Deployed parseDeployed
     where
-      parseDeployed :: RefParser ChainId
+      parseDeployed :: forall a. IsRefPath a => RefParser a
       parseDeployed = do
         r <- MP.anySingle
         case r of
@@ -217,7 +220,7 @@ textModuleRefSource isModule m =
       ModuleSource_File (FileRef_Gist _)
         -> printPretty "Gist" "GitHub"
       ModuleSource_Deployed c
-        -> printPretty "Deployed" (tshow c)
+        -> printPretty "Deployed" (tshow $ _chainRef_chain c)
   where
     printPretty n d = mconcat [ n, " ", moduleText, " [ " , d , " ]" ]
     moduleText = if isModule then "Module" else "Interface"
@@ -238,11 +241,13 @@ fetchModule
   -> Event t DeployedModuleRef
   -> m (Event t (DeployedModuleRef, Either Text (ModuleDef (Term Name))))
 fetchModule networkL onReq = do
-    deployedResults :: Event t [(DeployedModuleRef, NetworkErrorResult)]
-      <- performLocalReadCustom (networkL ^. network) mkReq (pure <$> onReq)
+    deployedResults :: Event t ([DeployedModuleRef], [NetworkErrorResult])
+      <- performLocalReadCustom (networkL ^. network) (map mkReq) (pure <$> onReq)
+    let
+      deployedResultsZipped = uncurry zip <$> deployedResults
 
-    pure $ fmapMaybe listToMaybe . ffor deployedResults $
-      map (id *** (getModule <=< left (T.pack . show)))
+    pure $ fmapMaybe listToMaybe . ffor deployedResultsZipped $
+      map (id *** (getModule <=< left prettyPrintNetworkError))
 
   where
     mkReq mRef = NetworkRequest
@@ -253,7 +258,7 @@ fetchModule networkL onReq = do
         , ")"
         ]
       , _networkRequest_data = mempty
-      , _networkRequest_chainId = _moduleRef_source mRef
+      , _networkRequest_chainRef = _moduleRef_source $ mRef
       , _networkRequest_endpoint = Endpoint_Local
       , _networkRequest_signing = Set.empty
       }

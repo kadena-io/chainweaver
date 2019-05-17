@@ -167,7 +167,7 @@ getModuleRefs = Map.mapWithKey buildModRefs
     buildModRefs c = map (buildModRef c)
 
     buildModRef :: ChainId -> Text -> DeployedModuleRef
-    buildModRef c = ModuleRef c . flip ModuleName Nothing
+    buildModRef c = ModuleRef (ChainRef Nothing c) . flip ModuleName Nothing
 
 
 -- Instances:

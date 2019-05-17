@@ -91,7 +91,7 @@ import qualified Servant.Client.JSaddle            as S
 import           Pact.Types.Crypto                 (PPKScheme (..))
 #endif
 
-import           Common.Network                    (ChainId, NetworkName (..),
+import           Common.Network                    (ChainId, ChainRef (..), NetworkName (..),
                                                     NodeRef, getNetworksConfig,
                                                     getPactInstancePort,
                                                     numPactInstances,
@@ -129,14 +129,14 @@ data NetworkRequest = NetworkRequest
   , _networkRequest_data     :: Object
     -- ^ The data to be deployed (referenced by deployed code). This is the
     -- `data` field of the `exec` payload.
-  , _networkRequest_chainId  :: ChainId
+  , _networkRequest_chainRef  :: ChainRef
     -- ^ To what chain should this request go to.
   , _networkRequest_endpoint :: Endpoint
     -- ^ Where shall this request go? To /local or to /send?
   , _networkRequest_signing  :: Set KeyName
     -- ^ With what keys the request should be signed. Don't sign with any keys
     -- when calling to `performLocalReadCustom` and similar.
-  } deriving (Show, Generic)
+  } deriving (Show, Generic, Eq)
 
 makePactLensesNonClassy ''NetworkRequest
 
@@ -211,7 +211,7 @@ data Network t = Network
    -- ^ Meta data used for deployments. Can be modified via above
    -- `_networkCfg_setGasLimit` and similar. The chainid in this field gets
    -- effectively ignored as it gets overridden on request handling, by the
-   -- value `_networkRequest_chainId` of the handled `NetworkRequest`.
+   -- value `_networkRequest_chainRef` of the handled `NetworkRequest`.
    --
    -- Note: We currently only keep one meta data for all possible networks. Having a
    -- persisted `PublicMeta` per network, would probably be useful, but is not
@@ -415,7 +415,7 @@ deployCode w networkL onReq = do
     renderReq :: NetworkRequest -> Text
     renderReq req =
       let
-        chainId = _networkRequest_chainId req
+        chainId = _chainRef_chain . _networkRequest_chainRef $ req
         code = _networkRequest_code req
         -- Not really helpful to display deployed code if it is large:
         mkMsg msg = if T.length code < 100 then msg else ""
@@ -450,7 +450,7 @@ getNetworks cfg = do
       ]
 
     rec
-      sName <- holdDyn initialName $ leftmost
+      sName <- holdUniqDyn <=< holdDyn initialName $ leftmost
         [ cfg ^. networkCfg_selectNetwork
         , fmapMaybe id . attachWith getSelectedFix (current sName) $ updated networks
         ]
@@ -514,14 +514,14 @@ loadModules
   -> m (Dynamic t (Map ChainId [Text]))
 loadModules networkL = do
 
-      let nodeInfos = rights <$> (networkL ^. network_selectedNodes)
+      let nodeInfos = traceDyn "Infos: " $ rights <$> (networkL ^. network_selectedNodes)
       rec
         onNodeInfosAll <- tagOnPostBuild nodeInfos
-        let onNodeInfos = push (getInterestingInfos lastUsed) onNodeInfosAll
+        let onNodeInfos = traceEvent "Interesting Infos: " $ push (getInterestingInfos lastUsed) onNodeInfosAll
         lastUsed <- hold [] onNodeInfos
 
       let onReqs = map mkReq . maybe [] getChains . listToMaybe  <$> onNodeInfos
-      onErrResps <- performLocalRead networkL onReqs
+      onErrResps <- performLocalReadLatest networkL onReqs
 
       let
         onByChainId :: Event t [ Either NetworkError (ChainId, Term Name) ]
@@ -552,10 +552,11 @@ loadModules networkL = do
             (o:_, n:_) -> if o /= n then Just newInfos else Nothing
             _          -> Just newInfos
 
-      mkReq n = NetworkRequest "(list-modules)" H.empty n Endpoint_Local Set.empty
+      mkReq n =
+        NetworkRequest "(list-modules)" H.empty (ChainRef Nothing n) Endpoint_Local Set.empty
 
       byChainId :: (NetworkRequest, NetworkErrorResult) -> Either NetworkError (ChainId, Term Name)
-      byChainId = sequence . first _networkRequest_chainId
+      byChainId = sequence . first (_chainRef_chain . _networkRequest_chainRef)
 
       renderErrs :: [NetworkError] -> Text
       renderErrs =
@@ -579,6 +580,39 @@ loadModules networkL = do
 --
 --   Use `performLocalReadCustom` for more flexibility.
 --
+--   This call differs from `performLocalRead` in that it skip responses to
+--   earlier requests if more current responses have been delivered already.
+--
+--   Note: See note for `performLocalReadCustom`.
+performLocalReadLatest
+  :: forall t m
+  . ( PerformEvent t m, MonadJSM (Performable m)
+    , TriggerEvent t m
+    , MonadHold t m, MonadFix m
+    , MonadSample t (Performable m)
+    )
+  => Network t
+  -> Event t [NetworkRequest]
+  -> m (Event t [(NetworkRequest, NetworkErrorResult)])
+performLocalReadLatest networkL onReqs = do
+    counterDyn <- foldDyn (const (+1)) 0 onReqs
+    let
+      counter = current counterDyn
+      onCounted = attach counter onReqs
+    onResp <- performLocalReadCustom networkL snd onCounted
+    -- TODO: If we are not interested in earlier responses, we could cancel the
+    -- corresponding requests ...
+    pure $ uncurry zip <$> getLatest counter onResp
+  where
+    getLatest counter =
+      fmap snd . ffilter fst . attachWith isLatest counter
+    isLatest c ((respC, reqs), resp) = (respC + 1 == c, (reqs, resp))
+
+
+-- | Perform a read or non persisted request to the /local endpoint.
+--
+--   Use `performLocalReadCustom` for more flexibility.
+--
 --   Note: See note for `performLocalReadCustom`.
 performLocalRead
   :: forall t m
@@ -589,7 +623,8 @@ performLocalRead
   => Network t
   -> Event t [NetworkRequest]
   -> m (Event t [(NetworkRequest, NetworkErrorResult)])
-performLocalRead networkL onReqs = performLocalReadCustom networkL id onReqs
+performLocalRead networkL onReqs =
+  fmap (uncurry zip) <$> performLocalReadCustom networkL id onReqs
 
 
 -- | Perform a read or other non persisted request to the /local endpoint.
@@ -607,12 +642,12 @@ performLocalReadCustom
     , MonadSample t (Performable m)
     )
   => Network t
-  -> (req -> NetworkRequest)
-  -> Event t [req]
-  -> m (Event t [(req, NetworkErrorResult)])
+  -> (req -> [NetworkRequest])
+  -> Event t req
+  -> m (Event t (req, [NetworkErrorResult]))
 performLocalReadCustom networkL unwrapUsr onReqs =
   let
-    unwrap = (networkRequest_endpoint .~ Endpoint_Local) <$> unwrapUsr
+    unwrap = map (networkRequest_endpoint .~ Endpoint_Local) . unwrapUsr
     fakeNetwork = networkL
       { _network_meta = pure $ PublicMeta
           { _pmChainId = "1"
@@ -640,7 +675,7 @@ performNetworkRequest
   -> Event t [NetworkRequest]
   -> m (Event t [(NetworkRequest, NetworkErrorResult)])
 performNetworkRequest w networkL onReq =
-  performNetworkRequestCustom w networkL id onReq
+  fmap (uncurry zip) <$> performNetworkRequestCustom w networkL id onReq
 
 
 -- | Send a transaction via the /send endpoint.
@@ -655,9 +690,9 @@ performNetworkRequestCustom
     )
   => Wallet t
   -> Network t
-  -> (req -> NetworkRequest)
-  -> Event t [req]
-  -> m (Event t [(req, NetworkErrorResult)])
+  -> (req -> [NetworkRequest])
+  -> Event t req
+  -> m (Event t (req, [NetworkErrorResult]))
 performNetworkRequestCustom w networkL unwrap onReqs =
     performEventAsync $ ffor onReqs $ \reqs cb ->
       reportError cb reqs $ do
@@ -665,38 +700,39 @@ performNetworkRequestCustom w networkL unwrap onReqs =
         metaTemplate <- sample $ current $ networkL ^. network_meta
         nodeInfos <- getSelectedNetworkInfos networkL
         void $ forkJSM $ do
-          r <- traverse (doReqFailover metaTemplate nodeInfos keys) reqs
-          liftIO $ cb r
+          r <- traverse (doReqFailover metaTemplate nodeInfos keys) $ unwrap reqs
+          liftIO $ cb (reqs, r)
   where
 
     reportError cb reqs m = do
       er <- runExceptT m
       case er of
-        Left err -> liftIO $ cb $ map (, Left err) reqs
+        Left err -> liftIO $ cb $ (reqs, map (const $ Left err) $ unwrap reqs)
         Right () -> pure ()
 
     doReqFailover metaTemplate nodeInfos keys req =
-      (req,) <$> go (NetworkError_Other "All nodes were offline!") nodeInfos
+      go nodeInfos
         where
-          go lastErr = \case
+          go = \case
             n:ns -> do
-              errRes <- doReq metaTemplate n keys req
+              errRes <- doReq metaTemplate (Just n) keys req
               case errRes of
                 Left err -> if shouldFailOver err
-                               then go err ns
+                               then go ns
                                else pure errRes
                 Right _ -> pure errRes
-            [] -> pure $ Left lastErr
+            [] -> doReq metaTemplate Nothing keys req
 
-    doReq metaTemplate nodeInfo keys req = do
+    doReq metaTemplate mNodeInfo keys req = runExceptT $ do
       let
-        unwrapped = unwrap req
-        metaChainId = toPmChainId $ _networkRequest_chainId unwrapped
+        metaChainId = toPmChainId . _chainRef_chain $ _networkRequest_chainRef req
         meta = metaTemplate { _pmChainId = metaChainId }
-        signing = _networkRequest_signing unwrapped
-        chainUrl = getChainBaseUrl (unwrapped ^. networkRequest_chainId) nodeInfo
-      payload <- buildCmd meta keys signing unwrapped
-      liftJSM $ networkRequest chainUrl (unwrapped ^. networkRequest_endpoint) payload
+        signing = _networkRequest_signing req
+      chainUrl <- ExceptT $ getBaseUrlErr (req ^. networkRequest_chainRef) mNodeInfo
+      payload <- buildCmd meta keys signing req
+      ExceptT $ liftJSM $ networkRequest chainUrl (req ^. networkRequest_endpoint) payload
+
+    getBaseUrlErr ref info = left NetworkError_Other <$> getChainRefBaseUrl ref info
 
 
 -- | Send a transaction via the /send endpoint.
@@ -859,7 +895,7 @@ prettyPrintNetworkError = ("ERROR: " <>) . \case
   NetworkError_ReqTooLarge-> "Request exceeded the allowed maximum size!"
   NetworkError_CommandFailure (CommandError e d) -> T.pack e <> ": " <> maybe "" T.pack d
   NetworkError_NoNetwork t -> "An action requiring a network was about to be performed, but we don't (yet) have any selected network: '" <> t <> "'"
-  NetworkError_Other m -> "Some unknown problem: " <> m
+  NetworkError_Other m -> m
 
 
 -- | Pretty print a `NetworkErrorResult`.
