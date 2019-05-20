@@ -45,15 +45,16 @@ module Pact.Typed.Types.Command
   , HasPlafMeta(..)
   , Payload(..) -- ,pMeta,pNonce,pPayload
   , ParsedCode(..) -- ,pcCode,pcExps
-  , UserSig(..),usScheme,usPubKey,usSig
+  , UserSig(..)
   , CommandError(..)
   {- , CommandResult(..),crReqKey,crTxId,crResult,crGas -}
   , CommandValue(..)
-  , ExecutionMode(..), emTxId
+  , ExecutionMode(..)
   , CommandExecInterface(..),ceiApplyCmd,ceiApplyPPCmd
   , ApplyCmd, ApplyPPCmd
   , RequestKey(..)
-  , cmdToRequestKey, requestKeyToB16Text, initialRequestKey
+  , cmdToRequestKey, requestKeyToB16Text
+  , Signer (..)
   ) where
 
 

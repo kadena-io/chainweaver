@@ -34,6 +34,7 @@ import           Text.URI.Lens
 
 import           Common.Foundation
 import           Common.RefPath           as MP
+import qualified Pact.Types.ChainMeta     as Pact
 
 
 newtype ChainId = ChainId { unChainId :: Word }
@@ -48,8 +49,8 @@ instance Read ChainId where
 -- | Conversion to chain id type, used in `PublicMeta`
 --
 --   of Pact.
-toPmChainId :: ChainId -> Text
-toPmChainId (ChainId chainId) = tshow chainId
+toPmChainId :: ChainId -> Pact.ChainId
+toPmChainId (ChainId chainId) = Pact.ChainId $ tshow chainId
 
 
 -- | Name that uniquely describes a valid network.

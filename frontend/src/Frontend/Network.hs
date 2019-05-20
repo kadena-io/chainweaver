@@ -79,7 +79,7 @@ import           Pact.Typed.Types.Command
 import           Pact.Parse                        (ParsedDecimal (..),
                                                     ParsedInteger (..))
 import           Pact.Types.Exp                    (Literal (LString))
-import           Pact.Types.Hash                   (hash)
+import           Pact.Types.Hash                   (hash, Hash (..), TypedHash (..), toUntypedHash)
 import           Pact.Types.RPC
 import           Pact.Types.Term                   (Name,
                                                     Term (TList, TLiteral),
@@ -824,7 +824,7 @@ networkRequest baseUri endpoint cmd = do
 -- As specified <https://pact-language.readthedocs.io/en/latest/pact-reference.html#send here>.
 buildCmd :: (MonadIO m, MonadJSM m) => PublicMeta -> KeyPairs -> Set KeyName -> NetworkRequest -> m (Command Text)
 buildCmd meta keys signing req = do
-  cmd <- encodeAsText . encode <$> buildExecPayload meta req
+  cmd <- encodeAsText . encode <$> buildExecPayload meta keys req
   let
     cmdHash = hash (T.encodeUtf8 cmd)
   sigs <- buildSigs cmdHash keys signing
@@ -835,7 +835,7 @@ buildCmd meta keys signing req = do
     }
 
 -- | Build signatures for a single `cmd`.
-buildSigs :: MonadJSM m => Hash -> KeyPairs -> Set KeyName -> m [UserSig]
+buildSigs :: MonadJSM m => TypedHash h -> KeyPairs -> Set KeyName -> m [UserSig]
 buildSigs cmdHash keys signing = do
   let
     -- isJust filter is necessary so indices are guaranteed stable even after
@@ -845,34 +845,39 @@ buildSigs cmdHash keys signing = do
     signingPairs = filter isForSigning . Map.assocs $ keys
     signingKeys = mapMaybe _keyPair_privateKey $ map snd signingPairs
 
-  sigs <- traverse (mkSignature (unHash cmdHash)) signingKeys
+  sigs <- traverse (mkSignature (unHash . toUntypedHash $ cmdHash)) signingKeys
 
   let
-    mkSigPubKey :: KeyPair -> Signature -> UserSig
-    mkSigPubKey kp sig = UserSig ED25519 pubKey pubKey (keyToText sig)
-      where
-        pubKey = keyToText $ _keyPair_publicKey kp
+    toPactSig :: Signature -> UserSig
+    toPactSig sig = UserSig $ keyToText sig
 
-  pure $ zipWith mkSigPubKey (map snd signingPairs) sigs
+  pure $ map toPactSig sigs
 
 
 -- | Build exec `cmd` payload.
 --
 --   As specified <https://pact-language.readthedocs.io/en/latest/pact-reference.html#cmd-field-and-payloads here>.
 --   Use `encodedAsText` for passing it as the `cmd` payload.
-buildExecPayload :: MonadIO m => PublicMeta -> NetworkRequest -> m (Payload PublicMeta Text)
-buildExecPayload meta req = do
-  nonce <- getNonce
-  let
-    payload = ExecMsg
-      { _pmCode = _networkRequest_code req
-      , _pmData = Object $ _networkRequest_data req
+buildExecPayload :: MonadIO m => PublicMeta -> KeyPairs -> NetworkRequest -> m (Payload PublicMeta Text)
+buildExecPayload meta keys req = do
+    nonce <- getNonce
+    let
+      payload = ExecMsg
+        { _pmCode = _networkRequest_code req
+        , _pmData = Object $ _networkRequest_data req
+        }
+    pure $ Payload
+      { _pPayload = Exec payload
+      , _pNonce = nonce
+      , _pMeta = meta
+      , _pSigners = map mkSigner $ Map.elems keys
       }
-  pure $ Payload
-    { _pPayload = Exec payload
-    , _pNonce = nonce
-    , _pMeta = meta
-    }
+  where
+    mkSigner (KeyPair pubKey _) = Signer
+      { _siScheme = ED25519
+      , _siPubKey = keyToText pubKey
+      , _siAddress = keyToText pubKey
+      }
 
 
 -- Response handling ...

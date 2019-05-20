@@ -39,12 +39,13 @@ import           Control.Newtype.Generics    (Newtype (..))
 import           Data.Aeson                  hiding (Object)
 import           Data.ByteString             (ByteString)
 import qualified Data.ByteString             as BS
-import qualified Data.ByteString.Base16      as Base16
 import           Data.Text                   (Text)
 import qualified Data.Text.Encoding          as T
 import           GHC.Generics                (Generic)
 import           Language.Javascript.JSaddle (call, eval, fromJSValUnchecked,
                                               js, valNull)
+
+import           Pact.Types.Util             (encodeBase64UrlUnpadded, decodeBase64UrlUnpadded)
 
 import           Frontend.Foundation
 
@@ -87,7 +88,7 @@ mkSignature msg (PrivateKey key) = liftJSM $ do
 --
 --   Despite the name, this function is also used for serializing signatures.
 keyToText :: (Newtype key, O key ~ ByteString) => key -> Text
-keyToText = safeDecodeUtf8 . Base16.encode . unpack
+keyToText = safeDecodeUtf8 . encodeBase64UrlUnpadded . unpack
 
 -- | Read a key in Base16 format, as exepcted by Pact.
 --
@@ -96,7 +97,7 @@ textToKey
   :: (Newtype key, O key ~ ByteString, Monad m, MonadFail m)
   => Text
   -> m key
-textToKey = fmap pack . decodeBase16M . T.encodeUtf8
+textToKey = fmap pack . decodeBase64M . T.encodeUtf8
 
 -- Boring instances:
 
@@ -112,25 +113,20 @@ instance FromJSON PublicKey where
   parseJSON = textToKey <=< parseJSON
 
 instance FromJSON PrivateKey where
-  parseJSON = fmap pack . decodeBase16M <=< fmap T.encodeUtf8 . parseJSON
+  parseJSON = fmap pack . decodeBase64M <=< fmap T.encodeUtf8 . parseJSON
 
 instance ToJSON Signature where
   toEncoding = toEncoding . keyToText
   toJSON = toJSON . keyToText
 
 instance FromJSON Signature where
-  parseJSON = fmap pack . decodeBase16M <=< fmap T.encodeUtf8 . parseJSON
+  parseJSON = fmap pack . decodeBase64M <=< fmap T.encodeUtf8 . parseJSON
 
--- | Decode a Base16 value in a MonadFail monad and fail if there is input that
--- cannot be parsed.
-decodeBase16M :: (Monad m, MonadFail m) => ByteString -> m ByteString
-decodeBase16M i =
-  let
-    (r, rest) = Base16.decode i
-  in
-    if BS.null rest
-       then pure r
-       else fail "Input was no valid Base16 encoding."
+decodeBase64M :: (Monad m, MonadFail m) => ByteString -> m ByteString
+decodeBase64M i =
+  case decodeBase64UrlUnpadded i of
+    Left err -> fail err
+    Right v -> pure v
 
 instance Newtype PublicKey
 
