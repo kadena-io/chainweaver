@@ -40,7 +40,6 @@ import           Frontend.Foundation
 import           Frontend.Network
 import           Frontend.UI.Modal
 import           Frontend.UI.Widgets
-import           Frontend.Network.NodeInfo
 ------------------------------------------------------------------------------
 
 
@@ -291,14 +290,17 @@ uiNodeStatus cls unthrottled = do
           Left err ->
             "title" =: ("Invalid node: " <> err)
             <> "class" =: "signal__circle signal__circle_status_problem"
-          Right r ->
-            "title" =: infoTitle r
+          Right rT ->
+            "title" =: infoTitle rT
             <> "class" =: "signal__circle signal__circle_status_ok"
 
     infoTitle :: NodeInfo -> Text
     infoTitle info =
       case _nodeInfo_type info of
-        NodeType_Pact -> "Pact Node"
+        NodeType_Pact v ->
+          "Pact Node"
+          <> "\nVersion: " <> v
+
         NodeType_Chainweb cwInfo ->
           "Chainweb Node"
           <> "\nVersion: " <> _chainwebInfo_version cwInfo

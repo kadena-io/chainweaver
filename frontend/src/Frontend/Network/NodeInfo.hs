@@ -97,7 +97,7 @@ data ChainwebInfo = ChainwebInfo
 
 
 data NodeType =
-    NodeType_Pact -- ^ A pact -s node
+    NodeType_Pact Text -- ^ A pact -s node with the provided version string.
   | NodeType_Chainweb  ChainwebInfo -- ^ A chainweb node.
   deriving (Eq, Ord, Show)
 
@@ -181,14 +181,14 @@ getChainBaseUrl chainId (NodeInfo base nType) =
 getChains :: NodeInfo -> [ChainId]
 getChains (NodeInfo _ nType) =
   case nType of
-    NodeType_Pact -> [ ChainId 0 ]
+    NodeType_Pact _ -> [ ChainId 0 ]
     NodeType_Chainweb info -> [ ChainId 0 .. ChainId (_chainwebInfo_numberOfChains info -1)]
 
 
 -- | Get the path for a given chain id.
 getChainBasePath :: ChainId -> NodeType -> [URI.RText 'URI.PathPiece]
 getChainBasePath (ChainId chainId) = buildPath . \case
-    NodeType_Pact
+    NodeType_Pact _
       -> ["api", "v1"]
     NodeType_Chainweb (ChainwebInfo cwVersion netVersion _)
       -> ["chainweb", cwVersion, netVersion, "chain", tshow chainId, "pact"]
@@ -240,7 +240,7 @@ discoverPactNode baseUri = runExceptT $ do
       throwError $ "Received non 200 status: " <> tshow (_xhrResponse_status resp)
     pure $ NodeInfo
       { _nodeInfo_baseUri = baseUri
-      , _nodeInfo_type = NodeType_Pact
+      , _nodeInfo_type = NodeType_Pact $ fromMaybe "" $ _xhrResponse_responseText resp
       }
 
 
