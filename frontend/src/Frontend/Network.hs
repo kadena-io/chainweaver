@@ -82,10 +82,6 @@ import           Pact.Types.Exp                    (Literal (LString))
 import           Pact.Types.Hash                   (hash, Hash (..), TypedHash (..), toUntypedHash)
 import           Pact.Types.RPC
 import           Pact.Types.PactValue
-import           Pact.Types.Term                   (Name,
-                                                    Term (TList, TLiteral),
-                                                    tStr)
-import           Pact.Types.Util
 import qualified Servant.Client.JSaddle            as S
 
 #if !defined (ghcjs_HOST_OS)
