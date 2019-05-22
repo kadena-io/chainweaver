@@ -158,7 +158,7 @@ decodeBase16M i =
   in
     if BS.null rest
        then pure r
-else fail "Input was no valid Base16 encoding."
+       else fail "Input was no valid Base16 encoding."
 
 instance Newtype PublicKey
 
