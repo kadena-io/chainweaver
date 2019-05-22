@@ -153,7 +153,11 @@ makeModuleExplorer m cfg = mfix $ \ ~(_, explr) -> do
       (cfg ^. moduleExplorerCfg_loadModule)
 
     (stckCfg, stack) <- pushPopModule m explr
-      (cfg ^. moduleExplorerCfg_goHome)
+      (leftmost -- Reset module stack.
+        [cfg ^. moduleExplorerCfg_goHome -- on go home
+        , () <$ updated (m ^. network_selectedNetwork) -- and on network switch.
+        ]
+      )
       (cfg ^. moduleExplorerCfg_pushModule)
       (cfg ^. moduleExplorerCfg_popModule)
 
@@ -463,6 +467,6 @@ loadModule networkL onRef = do
     onErr = fmapMaybe (^? _2 . _Left) onErrModule
     onModule = fmapMaybe (traverse (^? _Right)) onErrModule
   pure
-    ( mempty & messagesCfg_send .~ fmap (pure . ("Loading of module failed: " <>)) onErr
+    ( mempty & messagesCfg_send .~ fmap (pure . ("Module Explorer, loading of module failed: " <>)) onErr
     , onModule
     )
