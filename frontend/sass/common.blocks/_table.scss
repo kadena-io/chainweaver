@@ -81,6 +81,11 @@ $table-cell-size-small: 50px;
   width: $table-cell-size-small;
 }
 
+$table-cell-size-tiny: $table-cell-size-small / 2;
+.table__cell_size_tiny {
+  width: $table-cell-size-tiny;
+}
+
 .table__cell_size_main {
   width: 250px;
 }
@@ -96,6 +101,10 @@ $table-cell-size-small: 50px;
 // Cell that basically just takes the remaining space.
 .table__cell_size_flex {
   flex-grow: 10;
+}
+
+.table__cell_size_auto {
+  width: auto;
 }
 
 // Last cell in a row.

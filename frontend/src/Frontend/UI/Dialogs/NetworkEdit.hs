@@ -29,6 +29,7 @@ import qualified Data.IntMap                    as IntMap
 import           Data.Map                       (Map)
 import qualified Data.Map                       as Map
 import qualified Data.Text                      as T
+import           Data.Text                      (Text)
 import qualified Data.Text.IO as T
 import           Reflex.Dom
 import           Reflex.Extended
@@ -39,6 +40,7 @@ import           Frontend.Foundation
 import           Frontend.Network
 import           Frontend.UI.Modal
 import           Frontend.UI.Widgets
+import           Frontend.Network.NodeInfo
 ------------------------------------------------------------------------------
 
 
@@ -235,10 +237,11 @@ uiNodes nodes = elClass "ol" "table table_type_primary" $ do
 
 uiNode :: MonadWidget t m => Dynamic t (Maybe NodeRef) -> m (Event t (Maybe NodeRef))
 uiNode nRef = do
+  onVal <- tagOnPostBuild nRef
+
   elClass "li" "table__row table__row_type_primary" $ do
     divClass "table__row-counter" blank
-    divClass "table__cell_size_flex" $ do
-      onVal <- tagOnPostBuild nRef
+    onEdit <- divClass "table__cell table__cell_size_flex" $ do
       let placeholderVal = maybe (Just "Add node") (const Nothing) <$> onVal
       nodeInput <- uiInputElement $ def
         & inputElementConfig_setValue .~ (maybe "" renderNodeRef <$> onVal)
@@ -246,10 +249,61 @@ uiNode nRef = do
         & modifyAttributes .~ fmap ("placeholder" =:) placeholderVal
       let
         onInput = _inputElement_input nodeInput
-        onUpdate = fmapMaybe id $ either (const Nothing) Just . parseNodeRef <$> onInput
+        onUpdate = fmapMaybe id $ either (const Nothing) Just . parseNodeRefFull <$> onInput
         onDelete = ffilter (T.null . T.strip) onInput
       pure $ leftmost
         [ Nothing <$ onDelete
         , Just <$> onUpdate
         ]
+    uiNodeStatus "table__cell table__cell_size_tiny" onVal
+    pure onEdit
+
+  where
+    parseNodeRefFull r =
+      let
+        res = parseNodeRef r
+      in
+        if fmap renderNodeRef res == Right r
+           then res
+           else Left "Input could not be fully parsed"
+
+
+uiNodeStatus :: forall m t. MonadWidget t m => CssClass -> Event t (Maybe NodeRef) -> m ()
+uiNodeStatus cls unthrottled = do
+    mStatus <- throttle 2 unthrottled
+    elKlass "div" ("signal" <> cls) $ do
+      onAttrs <- performEventAsync $ buildStatusAttrsAsync <$> mStatus
+      attrs :: Dynamic t (Map T.Text T.Text) <- holdDyn mempty onAttrs
+      elDynAttr "div" attrs blank
+  where
+    buildStatusAttrsAsync ref cb =
+      void $ forkJSM $ do
+        jsm <- askJSM
+        r <- buildStatusAttrs ref `runJSM` jsm
+        liftIO $ cb r
+
+    buildStatusAttrs :: Maybe NodeRef -> JSM (Map Text Text)
+    buildStatusAttrs = \case
+      Nothing -> pure $ "class" =: "signal__circle"
+      Just r -> do
+        er <- discoverNode r
+        pure $ case er of
+          Left err ->
+            "title" =: ("Invalid node: " <> err)
+            <> "class" =: "signal__circle signal__circle_status_problem"
+          Right r ->
+            "title" =: infoTitle r
+            <> "class" =: "signal__circle signal__circle_status_ok"
+
+    infoTitle :: NodeInfo -> Text
+    infoTitle info =
+      case _nodeInfo_type info of
+        NodeType_Pact -> "Pact Node"
+        NodeType_Chainweb cwInfo ->
+          "Chainweb Node"
+          <> "\nVersion: " <> _chainwebInfo_version cwInfo
+          <> "\nNetwork version: " <> _chainwebInfo_networkVersion cwInfo
+          <> "\nNumber of chains: " <> tshow (_chainwebInfo_numberOfChains cwInfo)
+
+
 

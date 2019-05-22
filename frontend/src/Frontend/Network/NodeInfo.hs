@@ -30,7 +30,7 @@ module Frontend.Network.NodeInfo
   ( -- * Types & Classes
     ChainId
   , toPmChainId
-  , NodeInfo
+  , NodeInfo (..)
   , nodeInfoRef
     -- * Discover
   , parseNodeRef
@@ -39,6 +39,9 @@ module Frontend.Network.NodeInfo
   , getChainRefBaseUrl
   , getChainBaseUrl
   , getChains
+    -- * More details
+  , NodeType (..)
+  , ChainwebInfo (..)
   ) where
 
 
