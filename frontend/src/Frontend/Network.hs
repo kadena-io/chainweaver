@@ -81,6 +81,7 @@ import           Pact.Parse                        (ParsedDecimal (..),
 import           Pact.Types.Exp                    (Literal (LString))
 import           Pact.Types.Hash                   (hash, Hash (..), TypedHash (..), toUntypedHash)
 import           Pact.Types.RPC
+import           Pact.Types.PactValue
 import           Pact.Types.Term                   (Name,
                                                     Term (TList, TLiteral),
                                                     tStr)
@@ -146,6 +147,8 @@ data NetworkError
   -- ^ Server could not be reached.
   | NetworkError_Status HTTP.Status Text
   -- ^ Server responded with a non 200 status code.
+  | NetworkError_Decoding Text
+  -- ^ Server responded with a 200 status code, but decoding the response failed.
   | NetworkError_ReqTooLarge
   -- ^ Request size exceeded the allowed limit.
   | NetworkError_CommandFailure CommandError
@@ -158,7 +161,7 @@ data NetworkError
   deriving Show
 
 -- | We either have a `NetworkError` or some `Term Name`.
-type NetworkErrorResult = Either NetworkError (Term Name)
+type NetworkErrorResult = Either NetworkError PactValue
 
 
 -- | Config for creating a `Network`.
@@ -255,11 +258,11 @@ makeNetwork w cfg = mfix $ \ ~(_, networkL) -> do
     onCName <- tagOnPostBuild cName
     nodeInfos <-
       getNetworkNodeInfosIncremental (current networks) (current cName) $ leftmost
-        [ onCName
+        [ Just <$> onCName
           -- Refresh info on deployments and well on refresh (Refreshed node
           -- info triggers re-loading of modules too):
-        , tag (current cName) $ onDeployed
-        , tag (current cName) $ cfg ^. networkCfg_refreshModule
+        , Nothing <$ onDeployed
+        , Nothing <$ cfg ^. networkCfg_refreshModule
         ]
 
     performEvent_ $ traverse_ reportNodeInfoError . lefts <$> updated nodeInfos
@@ -306,18 +309,21 @@ getNetworkNodeInfosIncremental
     , MonadHold t m, MonadFix m, MonadJSM (Performable m)
     )
   => Behavior t (Map NetworkName [NodeRef])
-  -> Behavior t NetworkName -- The currently user selected network.
-  -> Event t NetworkName -- Start NodeInfo retrieval for new selection.
+  -> Behavior t NetworkName -- ^ The currently user selected network.
+  -> Event t (Maybe NetworkName) -- ^ Start NodeInfo retrieval for new selection/ or just do a refresh (`Nothing` case).
   -> m (Dynamic t [Either Text NodeInfo])
-getNetworkNodeInfosIncremental cNets currentName onNetName = do
+getNetworkNodeInfosIncremental cNets currentName onRefreshLoad = do
     let
+      onNetName = attachWith fromMaybe currentName onRefreshLoad
+      onLoad = fmapMaybe id onRefreshLoad
+
       onNodes :: Event t (NetworkName, [(Int, NodeRef)])
       onNodes = attachWith (flip getIndexedNodes) cNets onNetName
 
     onInfo <- performEventAsync $ uncurry getNodeInfosAsync <$> onNodes
 
     infoMap <- foldDyn id IntMap.empty $ leftmost
-      [ const IntMap.empty <$ onNetName
+      [ const IntMap.empty <$ onLoad -- Only clear if network selection changed, not on refresh!
       , fmap (uncurry IntMap.insert) . filterValidUpdates $ onInfo
       ]
     pure $ IntMap.elems <$> infoMap
@@ -514,17 +520,17 @@ loadModules
   -> m (Dynamic t (Map ChainId [Text]))
 loadModules networkL = do
 
-      let nodeInfos = traceDyn "Infos: " $ rights <$> (networkL ^. network_selectedNodes)
+      let nodeInfos = rights <$> (networkL ^. network_selectedNodes)
       rec
         onNodeInfosAll <- tagOnPostBuild nodeInfos
-        let onNodeInfos = traceEvent "Interesting Infos: " $ push (getInterestingInfos lastUsed) onNodeInfosAll
+        let onNodeInfos = push (getInterestingInfos lastUsed) onNodeInfosAll
         lastUsed <- hold [] onNodeInfos
 
       let onReqs = map mkReq . maybe [] getChains . listToMaybe  <$> onNodeInfos
       onErrResps <- performLocalReadLatest networkL onReqs
 
       let
-        onByChainId :: Event t [ Either NetworkError (ChainId, Term Name) ]
+        onByChainId :: Event t [ Either NetworkError (ChainId, PactValue) ]
         onByChainId = map byChainId <$> onErrResps
 
         onErrs = ffilter (not . null) $ fmap lefts onByChainId
@@ -555,7 +561,7 @@ loadModules networkL = do
       mkReq n =
         NetworkRequest "(list-modules)" H.empty (ChainRef Nothing n) Endpoint_Local Set.empty
 
-      byChainId :: (NetworkRequest, NetworkErrorResult) -> Either NetworkError (ChainId, Term Name)
+      byChainId :: (NetworkRequest, NetworkErrorResult) -> Either NetworkError (ChainId, PactValue)
       byChainId = sequence . first (_chainRef_chain . _networkRequest_chainRef)
 
       renderErrs :: [NetworkError] -> Text
@@ -565,14 +571,14 @@ loadModules networkL = do
         . map prettyPrintNetworkError
 
 
-      getModuleList :: Term Name -> [Text]
+      getModuleList :: PactValue -> [Text]
       getModuleList = \case
-        TList terms _ _ -> mapMaybe getStringLit $ toList terms
+        PList terms -> mapMaybe getStringLit $ toList terms
         _               -> []
 
-      getStringLit :: Term Name -> Maybe Text
+      getStringLit :: PactValue -> Maybe Text
       getStringLit = \case
-        TLiteral (LString v) _ -> Just v
+        PLiteral (LString v) -> Just v
         _         -> Nothing
 
 
@@ -595,7 +601,7 @@ performLocalReadLatest
   -> Event t [NetworkRequest]
   -> m (Event t [(NetworkRequest, NetworkErrorResult)])
 performLocalReadLatest networkL onReqs = do
-    counterDyn <- foldDyn (const (+1)) 0 onReqs
+    counterDyn <- foldDyn (const (+1)) (0 :: Int) onReqs
     let
       counter = current counterDyn
       onCounted = attach counter onReqs
@@ -717,7 +723,9 @@ performNetworkRequestCustom w networkL unwrap onReqs =
             n:ns -> do
               errRes <- doReq metaTemplate (Just n) keys req
               case errRes of
-                Left err -> if shouldFailOver err
+                Left err -> do
+                  liftIO $ putStrLn $ "Got err: " <> show err
+                  if shouldFailOver err
                                then go ns
                                else pure errRes
                 Right _ -> pure errRes
@@ -778,7 +786,7 @@ networkRequest baseUri endpoint cmd = do
         res <- runReq clientEnv $ send pactServerApiClient $ SubmitBatch . pure $ cmd
         key <- getRequestKey $ res
         -- TODO: If we no longer wait for /listen, we should change the type instead of wrapping that message in `Term Name`.
-        pure $ CommandSuccess $ tStr $ T.dropWhile (== '"') . T.dropWhileEnd (== '"') . tshow $ key
+        pure $ CommandSuccess $ PLiteral . LString $ T.dropWhile (== '"') . T.dropWhileEnd (== '"') . tshow $ key
         {- key <- getRequestKey $ res -}
         {- v <- runReq clientEnv $ listen pactServerApiClient $ ListenerRequest key -}
         {- case preview (Aeson.key "result" . Aeson.key "hlCommandResult" . _JSON) v of -}
@@ -802,9 +810,9 @@ networkRequest baseUri endpoint cmd = do
         if S.responseStatusCode response == HTTP.status413
            then NetworkError_ReqTooLarge
            else NetworkError_Status (S.responseStatusCode response) (T.pack $ show response)
-      _ -> NetworkError_NetworkError $ T.pack $ show e
+      _ -> NetworkError_Decoding $ T.pack $ show e
 
-    fromCommandValue :: MonadError NetworkError m => CommandValue -> m (Term Name)
+    fromCommandValue :: MonadError NetworkError m => CommandValue -> m PactValue
     fromCommandValue = \case
       CommandFailure e -> throwError $ NetworkError_CommandFailure e
       CommandSuccess v -> pure v
@@ -824,41 +832,44 @@ networkRequest baseUri endpoint cmd = do
 -- As specified <https://pact-language.readthedocs.io/en/latest/pact-reference.html#send here>.
 buildCmd :: (MonadIO m, MonadJSM m) => PublicMeta -> KeyPairs -> Set KeyName -> NetworkRequest -> m (Command Text)
 buildCmd meta keys signing req = do
-  cmd <- encodeAsText . encode <$> buildExecPayload meta keys req
+  let signingKeys = getSigningPairs signing keys
+  cmd <- encodeAsText . encode <$> buildExecPayload meta signingKeys req
   let
     cmdHash = hash (T.encodeUtf8 cmd)
-  sigs <- buildSigs cmdHash keys signing
+  sigs <- buildSigs cmdHash signingKeys
   pure $ Pact.Typed.Types.Command.Command
     { _cmdPayload = cmd
     , _cmdSigs = sigs
     , _cmdHash = cmdHash
     }
 
--- | Build signatures for a single `cmd`.
-buildSigs :: MonadJSM m => TypedHash h -> KeyPairs -> Set KeyName -> m [UserSig]
-buildSigs cmdHash keys signing = do
-  let
+getSigningPairs :: Set KeyName -> KeyPairs -> [KeyPair]
+getSigningPairs signing = map snd . filter isForSigning . Map.assocs
+  where
     -- isJust filter is necessary so indices are guaranteed stable even after
     -- the following `mapMaybe`:
     isForSigning (name, (KeyPair _ priv)) = Set.member name signing && isJust priv
 
-    signingPairs = filter isForSigning . Map.assocs $ keys
-    signingKeys = mapMaybe _keyPair_privateKey $ map snd signingPairs
 
-  sigs <- traverse (mkSignature (unHash . toUntypedHash $ cmdHash)) signingKeys
+-- | Build signatures for a single `cmd`.
+buildSigs :: MonadJSM m => TypedHash h -> [KeyPair] -> m [UserSig]
+buildSigs cmdHash signingPairs = do
+    let
+      signingKeys = mapMaybe _keyPair_privateKey signingPairs
 
-  let
+    sigs <- traverse (mkSignature (unHash . toUntypedHash $ cmdHash)) signingKeys
+
+    pure $ map toPactSig sigs
+  where
     toPactSig :: Signature -> UserSig
     toPactSig sig = UserSig $ keyToText sig
-
-  pure $ map toPactSig sigs
 
 
 -- | Build exec `cmd` payload.
 --
 --   As specified <https://pact-language.readthedocs.io/en/latest/pact-reference.html#cmd-field-and-payloads here>.
 --   Use `encodedAsText` for passing it as the `cmd` payload.
-buildExecPayload :: MonadIO m => PublicMeta -> KeyPairs -> NetworkRequest -> m (Payload PublicMeta Text)
+buildExecPayload :: MonadIO m => PublicMeta -> [KeyPair] -> NetworkRequest -> m (Payload PublicMeta Text)
 buildExecPayload meta keys req = do
     nonce <- getNonce
     let
@@ -870,7 +881,7 @@ buildExecPayload meta keys req = do
       { _pPayload = Exec payload
       , _pNonce = nonce
       , _pMeta = meta
-      , _pSigners = map mkSigner $ Map.elems keys
+      , _pSigners = map mkSigner keys
       }
   where
     mkSigner (KeyPair pubKey _) = Signer
@@ -896,7 +907,8 @@ shouldFailOver = \case
 prettyPrintNetworkError :: NetworkError -> Text
 prettyPrintNetworkError = ("ERROR: " <>) . \case
   NetworkError_NetworkError msg -> "Network error: " <> msg
-  NetworkError_Status _ msg -> "Error HTTP response: " <> msg
+  NetworkError_Status c msg -> "Error HTTP response (" <> tshow c <> "):" <> msg
+  NetworkError_Decoding msg -> "Decoding server response failed: " <> msg
   NetworkError_ReqTooLarge-> "Request exceeded the allowed maximum size!"
   NetworkError_CommandFailure (CommandError e d) -> T.pack e <> ": " <> maybe "" T.pack d
   NetworkError_NoNetwork t -> "An action requiring a network was about to be performed, but we don't (yet) have any selected network: '" <> t <> "'"

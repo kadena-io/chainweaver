@@ -67,6 +67,7 @@ import Prelude
 
 import Pact.Types.Runtime
 import Pact.Types.Orphans ()
+import Pact.Types.PactValue
 
 -- CommandResult is not exposed in the servant API, if it were we would need
 -- the adjusted version of the PR:
@@ -76,7 +77,7 @@ import Pact.Types.Command hiding (CommandSuccess (..), CommandResult (..))
 
 -- | Actual value of a `CommandResult`.
 data CommandValue
-  = CommandSuccess (Term Name)
+  = CommandSuccess PactValue
   | CommandFailure CommandError
   deriving (Eq, Show)
 

@@ -64,6 +64,7 @@ import qualified Text.Megaparsec                 as MP
 ------------------------------------------------------------------------------
 import qualified Data.Aeson                      as A
 import           Pact.Types.Exp                  (Literal (LString))
+import           Pact.Types.PactValue
 import           Pact.Types.Info                 (Code (..))
 import           Pact.Types.Lang                 (ModuleName)
 import           Pact.Types.Term                 as PactTerm (Module (..),
@@ -263,17 +264,17 @@ fetchModule networkL onReq = do
       , _networkRequest_signing = Set.empty
       }
 
-    getModule :: Term Name -> Either Text (ModuleDef (Term Name))
+    getModule :: PactValue -> Either Text (ModuleDef (Term Name))
     getModule  = \case
-      TObject obj _ -> do
-        mods <- fmap fileModules $ getCode (_oObject obj)
+      PObject obj -> do
+        mods <- fmap fileModules $ getCode obj
         case Map.elems mods of
           []   -> throwError "No module in response"
           m:[] -> pure m
           _    -> throwError "More than one module in response?"
       _ -> throwError "Server response did not contain a  TObject module description."
 
-    getCode :: ObjectMap (Term Name) -> Either Text Code
+    getCode :: ObjectMap PactValue -> Either Text Code
     getCode (ObjectMap props) = do
       {- termMod <- -}
         {- note "Property v missing!" $ Map.lookup "v" props -}
@@ -283,7 +284,7 @@ fetchModule networkL onReq = do
         termMod =
           Map.lookup "v" props
       (ObjectMap objMod) <- case termMod of
-        Just (TObject obj _) -> pure $ _oObject obj
+        Just (PObject obj) -> pure obj
         Nothing -> pure $ ObjectMap props
         _ -> throwError "Expected object describing the module."
 
@@ -291,7 +292,7 @@ fetchModule networkL onReq = do
         Map.lookup "code" objMod
 
       case codeLit of
-        (TLiteral (LString c) _) -> pure $ Code c
+        PLiteral (LString c) -> pure $ Code c
         _ -> throwError "No code found, but something else!"
 
     defineNamespace =

@@ -24,6 +24,7 @@ library
                , aeson
                , lens-aeson
                , aeson-pretty
+               , base16-bytestring
                , bound
                , bytestring
                , common
