@@ -136,9 +136,8 @@ uiNetworkSelect m = do
   let
     cfg = SelectElementConfig "" (Just $ textNetworkName <$> onNetwork) $
       def & initialAttributes .~ "class" =: "select_type_primary select_width_full"
-    itemDom v = do
+    itemDom v =
       elAttr "option" ("value" =: v) $ text v
-      liftIO $ T.putStrLn $ "Network: " <> v
 
   (s, ()) <- uiSelectElement cfg $
     void $ networkView $ traverse_ (itemDom . textNetworkName) <$> networkNames
@@ -272,9 +271,11 @@ uiNodeStatus cls unthrottled = do
     mStatus <- throttle 2 unthrottled
     elKlass "div" ("signal" <> cls) $ do
       onAttrs <- performEventAsync $ buildStatusAttrsAsync <$> mStatus
-      attrs :: Dynamic t (Map T.Text T.Text) <- holdDyn mempty onAttrs
+      attrs :: Dynamic t (Map T.Text T.Text) <- holdDyn emptyAttrs onAttrs
       elDynAttr "div" attrs blank
   where
+    emptyAttrs = "class" =: "signal__circle"
+
     buildStatusAttrsAsync ref cb =
       void $ forkJSM $ do
         jsm <- askJSM
@@ -283,7 +284,7 @@ uiNodeStatus cls unthrottled = do
 
     buildStatusAttrs :: Maybe NodeRef -> JSM (Map Text Text)
     buildStatusAttrs = \case
-      Nothing -> pure $ "class" =: "signal__circle"
+      Nothing -> pure emptyAttrs
       Just r -> do
         er <- discoverNode r
         pure $ case er of
