@@ -163,9 +163,20 @@ controlBar
   => ModalIde m t
   ->  m (ModalIdeCfg m t)
 controlBar m = do
-    divClass "main-header page__main-header" $ do
+    mainHeader $ do
       controlBarLeft
       controlBarRight m
+  where
+    -- Main header with adjusted padding on MacOs (scrollbars take up no space there):
+    mainHeader child = do
+      isMac <- getBrowserProperty "mac"
+
+      let
+        baseCls = "main-header page__main-header "
+        cls = if isMac
+                 then  baseCls <> "page__main-header_platform_mac"
+                 else baseCls
+      divClass cls child
 
 
 controlBarLeft :: forall t m. MonadWidget t m => m ()
@@ -278,6 +289,8 @@ controlBarRight m = do
               {- & uiButtonCfg_class %~ (<> "main-header__text-icon-button") -}
           ) $ do
         elClass "span" "fa fa-lg fa-cog" blank
+
+
 
 
 headerBtnCfg

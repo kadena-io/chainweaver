@@ -46,6 +46,7 @@
 @import 'common.blocks/new-by-name';
 
 @import 'common.blocks/code-font';
+@import 'common.blocks/page';
 @import 'common.blocks/main-header';
 @import 'common.blocks/main';
 @import 'common.blocks/tab-nav';
@@ -61,16 +62,3 @@
 @import 'common.blocks/error-list';
 @import 'common.blocks/signal';
 
-// Page items:
-
-.page__main-header {
-  position: relative;
-  width: 100%;
-  z-index: 99998;
-}
-
-.page__main {
-  position: relative;
-  width: 100%;
-  flex: 1;
-}

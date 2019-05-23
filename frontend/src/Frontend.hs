@@ -66,6 +66,7 @@ newHead = do
     js "https://cdnjs.cloudflare.com/ajax/libs/ace/1.4.1/ace.js"
     js (static @"js/ace-mode-pact.js")
     js (static @"js/nacl-fast.min-v1.0.0.js")
+    js (static @"js/bowser.min.js")
   where
     js url = elAttr "script" ("type" =: "text/javascript" <> "src" =: url <> "charset" =: "utf-8") blank
     ss url = elAttr "link" ("href" =: url <> "rel" =: "stylesheet") blank

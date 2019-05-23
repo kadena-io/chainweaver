@@ -32,6 +32,7 @@ module Frontend.Foundation
   , makePactPrisms
     -- * Helpers that should really not be here
   , forkJSM
+  , getBrowserProperty
     -- * Common Foundation
   , module Common
     -- * Re-exports
@@ -42,6 +43,7 @@ module Frontend.Foundation
   ) where
 
 import           Control.Concurrent                    (ThreadId, forkIO)
+import           Data.Text                             (Text)
 import           Control.Lens
 import           Control.Monad.Fix
 import           Control.Monad.IO.Class
@@ -59,6 +61,8 @@ import           Reflex.Dom.Class                      (HasJSContext (..),
 import           Reflex.Dom.Contrib.CssClass
 import           Reflex.Extended
 import           Reflex.Network.Extended
+import qualified Language.Javascript.JSaddle as JS
+
 
 import           Data.Maybe
 
@@ -124,6 +128,9 @@ forkJSM t = do
   jsm <- askJSM
   let ioT = runJSM t jsm
   liftIO $ forkIO ioT
+
+getBrowserProperty :: forall m. MonadJSM m => Text -> m Bool
+getBrowserProperty property = liftJSM $ fromMaybe False <$> (JS.fromJSVal =<< JS.eval ("bowser." <> property))
 
 -- TODO: upstream this?
 instance HasJSContext JSM where
