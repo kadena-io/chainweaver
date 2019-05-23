@@ -252,18 +252,19 @@ makeNetwork w cfg = mfix $ \ ~(_, networkL) -> do
 
     (cName, networks) <- getNetworks cfg
     onCName <- tagOnPostBuild cName
+
+    let onRefresh = leftmost [ onDeployed, cfg ^. networkCfg_refreshModule ]
     nodeInfos <-
       getNetworkNodeInfosIncremental (current networks) (current cName) $ leftmost
         [ Just <$> onCName
           -- Refresh info on deployments and well on refresh (Refreshed node
           -- info triggers re-loading of modules too):
-        , Nothing <$ onDeployed
-        , Nothing <$ cfg ^. networkCfg_refreshModule
+        , Nothing <$ onRefresh
         ]
 
     performEvent_ $ traverse_ reportNodeInfoError . lefts <$> updated nodeInfos
 
-    modules <- loadModules networkL
+    modules <- loadModules networkL onRefresh
 
     meta <- buildMeta cfg
 
@@ -513,8 +514,9 @@ loadModules
     , TriggerEvent t m, PostBuild t m
     )
   => Network t
+  -> Event t ()
   -> m (Dynamic t (Map ChainId [Text]))
-loadModules networkL = do
+loadModules networkL onRefresh = do
 
       let nodeInfos = rights <$> (networkL ^. network_selectedNodes)
       rec
@@ -522,7 +524,12 @@ loadModules networkL = do
         let onNodeInfos = push (getInterestingInfos lastUsed) onNodeInfosAll
         lastUsed <- hold [] onNodeInfos
 
-      let onReqs = map mkReq . maybe [] getChains . listToMaybe  <$> onNodeInfos
+      let
+        onReqs = map mkReq . maybe [] getChains . listToMaybe  <$>
+          leftmost
+            [ onNodeInfos
+            , tag (current nodeInfos) onRefresh
+            ]
       onErrResps <- performLocalReadLatest networkL onReqs
 
       let
