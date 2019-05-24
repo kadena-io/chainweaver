@@ -131,18 +131,7 @@ library
                  , Reflex.Dom.Widget.Resize.Extended
                  , Reflex.Extended
                  , Reflex.Network.Extended
-
--- Workaround for untyped and unparsable Pact API. It should get properly fixed in Pact at some point, see:
--- https://github.com/kadena-io/pact/pull/375
--- Note: As those types are not shared with pact, we don't really gain much*)
--- safety/guarantees by those types - it just makes handling of the API easier. At
--- some point the above mentioned PR or something similar should really get merged.
--- *) not much, but not nothing, as some types are shared.
-
-  exposed-modules: Pact.Typed.Server.Client
-                 , Pact.Typed.Server.API
-                 , Pact.Typed.Types.API
-                 , Pact.Typed.Types.Command
+                 , Pact.Server.ApiV1Client
 
   ghc-options: -Wall
   default-extensions: ScopedTypeVariables

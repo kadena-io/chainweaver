@@ -72,9 +72,11 @@ import           System.IO                         (stderr)
 import           Text.URI                          (URI)
 import qualified Text.URI                          as URI
 
-import           Pact.Typed.Server.Client
-import           Pact.Typed.Types.API
-import           Pact.Typed.Types.Command
+import           Pact.Server.ApiV1Client
+import           Pact.Types.API
+import           Pact.Types.Command
+import           Pact.Types.Runtime                (PactError (..))
+import           Pact.Types.ChainMeta              (PublicMeta (..))
 
 import           Pact.Parse                        (ParsedDecimal (..),
                                                     ParsedInteger (..))
@@ -147,7 +149,7 @@ data NetworkError
   -- ^ Server responded with a 200 status code, but decoding the response failed.
   | NetworkError_ReqTooLarge
   -- ^ Request size exceeded the allowed limit.
-  | NetworkError_CommandFailure CommandError
+  | NetworkError_CommandFailure PactError
   -- ^ The status in the /listen result object was `failure`.
   | NetworkError_NoNetwork Text
   -- ^ An action requiring a network was about to be performed, but we don't
@@ -780,16 +782,16 @@ networkRequest baseUri endpoint cmd = do
     let clientEnv = S.mkClientEnv baseUrl
 
     liftJSM . runExceptT $ do
-      v <- performReq clientEnv
-      ExceptT . pure $ fromCommandValue v
+      performReq clientEnv
 
   where
     performReq clientEnv = case endpoint of
       Endpoint_Send -> do
-        res <- runReq clientEnv $ send pactServerApiClient $ SubmitBatch . pure $ cmd
+        res <- runReq clientEnv $ send apiV1Client $ SubmitBatch . pure $ cmd
         key <- getRequestKey $ res
-        -- TODO: If we no longer wait for /listen, we should change the type instead of wrapping that message in `Term Name`.
-        pure $ CommandSuccess $ PLiteral . LString $ T.dropWhile (== '"') . T.dropWhileEnd (== '"') . tshow $ key
+        -- TODO: If we no longer wait for /listen, we should change the type instead of wrapping that message in `PactValue`.
+        pure $ PLiteral . LString $
+          T.dropWhile (== '"') . T.dropWhileEnd (== '"') . tshow $ key
         {- key <- getRequestKey $ res -}
         {- v <- runReq clientEnv $ listen pactServerApiClient $ ListenerRequest key -}
         {- case preview (Aeson.key "result" . Aeson.key "hlCommandResult" . _JSON) v of -}
@@ -798,7 +800,7 @@ networkRequest baseUri endpoint cmd = do
         {-     Error str -> throwError $ NetworkError_ParseError $ T.pack str -}
         {-     Success ar -> pure $ _arResult ar -}
       Endpoint_Local ->
-         runReq clientEnv  $ local pactServerApiClient cmd
+         fromCommandResult <=< runReq clientEnv  $ local apiV1Client cmd
 
     -- | Rethrow an error value by wrapping it with f.
     reThrowWith :: (e -> NetworkError) -> JSM (Either e a) -> ExceptT NetworkError JSM a
@@ -815,10 +817,10 @@ networkRequest baseUri endpoint cmd = do
            else NetworkError_Status (S.responseStatusCode response) (T.pack $ show response)
       _ -> NetworkError_Decoding $ T.pack $ show e
 
-    fromCommandValue :: MonadError NetworkError m => CommandValue -> m PactValue
-    fromCommandValue = \case
-      CommandFailure e -> throwError $ NetworkError_CommandFailure e
-      CommandSuccess v -> pure v
+    fromCommandResult :: MonadError NetworkError m => CommandResult a -> m PactValue
+    fromCommandResult r = case _crResult r of
+      PactResult (Left e) -> throwError $ NetworkError_CommandFailure e
+      PactResult (Right v) -> pure v
 
     getRequestKey :: MonadError NetworkError m => RequestKeys -> m RequestKey
     getRequestKey r =
@@ -840,7 +842,7 @@ buildCmd meta keys signing req = do
   let
     cmdHash = hash (T.encodeUtf8 cmd)
   sigs <- buildSigs cmdHash signingKeys
-  pure $ Pact.Typed.Types.Command.Command
+  pure $ Command
     { _cmdPayload = cmd
     , _cmdSigs = sigs
     , _cmdHash = cmdHash
@@ -913,7 +915,7 @@ prettyPrintNetworkError = ("ERROR: " <>) . \case
   NetworkError_Status c msg -> "Error HTTP response (" <> tshow c <> "):" <> msg
   NetworkError_Decoding msg -> "Decoding server response failed: " <> msg
   NetworkError_ReqTooLarge-> "Request exceeded the allowed maximum size!"
-  NetworkError_CommandFailure (CommandError e d) -> T.pack e <> ": " <> maybe "" T.pack d
+  NetworkError_CommandFailure e -> tshow e
   NetworkError_NoNetwork t -> "An action requiring a network was about to be performed, but we don't (yet) have any selected network: '" <> t <> "'"
   NetworkError_Other m -> m
 
