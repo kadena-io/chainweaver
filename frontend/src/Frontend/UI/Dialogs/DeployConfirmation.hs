@@ -63,7 +63,6 @@ uiDeployConfirmation ideL = do
       let isDisabled = maybe True (const False) <$> transInfo
       onConfirm <- confirmButton (deployBtnCfg isDisabled) "Deploy"
 
-      -- TODO: Use `networkCfg_deployCode` instead.
       let cfg = mempty & moduleExplorerCfg_deployEditor .~
             fmapMaybe id (tagPromptlyDyn transInfo onConfirm)
       pure (cfg <> settingsCfg, leftmost [onClose, onCancel, onConfirm])

@@ -20,6 +20,7 @@ module Frontend.UI.Widgets
   , uiGroupHeader
   , uiCodeFont
   , uiInputElement
+  , uiTextAreaElement
   , uiRealInputElement
   , uiIntInputElement
   , uiInputView
@@ -216,6 +217,17 @@ uiRadioElementView val self = do
       & inputElementConfig_setChecked .~ fmap (== self) v
   e <- uiInputElement cfg
   pure $ fmap (const self) . ffilter id $ _inputElement_checkedChange e
+
+
+uiTextAreaElement
+  :: DomBuilder t m
+  => TextAreaElementConfig r t (DomBuilderSpace m)
+  -> m (TextAreaElement r (DomBuilderSpace m) t)
+uiTextAreaElement uCfg =
+  let
+    cfg = uCfg & initialAttributes %~ addToClassAttr  "input input_type_textarea"
+  in
+    textAreaElement cfg
 
 
 -- | Make labeled and segmented input view.

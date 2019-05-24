@@ -22,3 +22,7 @@
   text-align: right;
 }
 
+.wallet__add {
+  @extend .wallet__delete;
+}
+

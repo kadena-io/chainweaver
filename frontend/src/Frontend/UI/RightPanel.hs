@@ -38,6 +38,7 @@ import           Frontend.Foundation
 import           Frontend.Ide
 import           Frontend.Messages
 import           Frontend.UI.JsonData
+import           Frontend.JsonData
 import           Frontend.UI.Modal.Impl
 import           Frontend.UI.ModuleExplorer
 import           Frontend.UI.Repl
@@ -46,6 +47,7 @@ import           Frontend.UI.Wallet
 import           Frontend.UI.Widgets
 import           Frontend.Wallet
 import           Frontend.UI.ErrorList
+import           Frontend.Editor (HasEditorCfg, HasEditor)
 ------------------------------------------------------------------------------
 
 selectionToText :: EnvSelection -> Text
@@ -91,25 +93,37 @@ rightTabBar cls ideL = elKlass "div" (cls <> "pane") $ do
       , mempty & ideCfg_selEnv .~ onTabClick
       ]
 
-envTab :: MonadWidget t m => Ide a t -> m (IdeCfg a t)
-envTab ideL = do
+envTab
+  :: ( MonadWidget t m
+     , Frontend.Editor.HasEditorCfg mConf t
+     , Frontend.Editor.HasEditor (Ide modal t) t
+     , HasIde (Ide modal t) modal t, HasIdeCfg mConf modal1 t
+     , HasModalCfg mConf (m (ModalCfg mConf t, Event t ())) t
+     , Monoid mConf, Monoid (ModalCfg mConf t), Flattenable mConf t
+     , Flattenable (ModalCfg mConf t) t
+     , HasWalletCfg (ModalCfg mConf t) t, HasWalletCfg mConf t
+     , HasJsonDataCfg mConf t, HasWallet model t, HasJsonData model t
+     , HasEditor model t
+     )
+  => model -> m mConf
+envTab m = do
 
-  errCfg  <- uiErrorList ideL
+  errCfg  <- uiErrorList m
 
-  jsonCfg <- accordionItem True "segment" "Data" $ do
-    conf <- uiJsonData (ideL ^. ide_wallet) (ideL ^. ide_jsonData)
-    pure $ mempty &  ideCfg_jsonData .~ conf
+  jsonCfg <- accordionItem True "segment" "Data" $
+    uiJsonData (m ^. wallet) (m ^. jsonData)
 
-  let w = _ide_wallet ideL
+  let w = m ^. wallet
       walletHeader = do
         text "Wallet ("
         display (Map.size <$> _wallet_keys w)
         text " keys)"
-  (_,keysCfg) <- accordionItem' True "segment" walletHeader $ do
-      conf <- uiWallet w
-      pure $ mempty & ideCfg_wallet .~ conf
+  (_,keysCfg) <-
+    accordionItem' True "segment" walletHeader $
+      uiWallet w
 
   pure $ jsonCfg <> keysCfg <> errCfg
+
 
 msgsWidget :: forall t m a. MonadWidget t m => Ide a t -> m (IdeCfg a t)
 msgsWidget ideL = do

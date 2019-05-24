@@ -67,10 +67,12 @@ showJsonTabName JsonDataView_Raw     = "Raw"
 showJsonTabName JsonDataView_Result  = "Result"
 
 uiJsonData
-  :: MonadWidget t m
+  :: ( MonadWidget t m, HasJsonDataCfg mConf t, Monoid mConf, Flattenable mConf t
+     , HasWalletCfg mConf t
+     )
   => Wallet t
   -> JsonData t
-  -> m (JsonDataCfg t)
+  -> m mConf
 uiJsonData w d = divClass "tabset" $ mdo
     curSelection <- holdDyn JsonDataView_Keysets onTabClick
     (TabBar onTabClick) <- makeTabBar $ TabBarCfg
@@ -135,8 +137,8 @@ uiJsonData w d = divClass "tabset" $ mdo
        ]
 
 uiKeysets
-  :: (MonadWidget t m)
-  => Wallet t -> DynKeysets t -> m (JsonDataCfg t)
+  :: (MonadWidget t m, Monoid mConf, HasJsonDataCfg mConf t)
+  => Wallet t -> DynKeysets t -> m mConf
 uiKeysets w ksM = do
     case Map.toList ksM of
       []   -> do
@@ -148,10 +150,10 @@ uiKeysets w ksM = do
 
 -- | Display a single keyset on the screen.
 uiKeyset
-  :: (MonadWidget t m)
+  :: (MonadWidget t m, Monoid mConf, HasJsonDataCfg mConf t)
   => Wallet t
   -> (KeysetName, DynKeyset t)
-  -> m (JsonDataCfg t)
+  -> m mConf
 uiKeyset w (n, ks) = do
     aCfg <- divClass "keyset__header" $ mdo
       elAttr "h4" ("class" =: "keyset__header-text heading_type_h4") $ do
@@ -162,11 +164,11 @@ uiKeyset w (n, ks) = do
       onSetPred <- predDropdown onNewPred
 
       onDel <- divClass "keyset__delete" $ deleteButton
-      let setPred = (n, ) . notEmpty <$> onSetPred
-      let cfg1 = mempty
-            { _jsonDataCfg_setPred = setPred
-            , _jsonDataCfg_delKeyset = fmap (const n) onDel
-            }
+      let
+        setPred = (n, ) . notEmpty <$> onSetPred
+        cfg1 = mempty
+          & jsonDataCfg_setPred .~ setPred
+          & jsonDataCfg_delKeyset .~ fmap (const n) onDel
       return cfg1
 
     onKeyClick <- switchHold never <=< networkView $ uiKeysetKeys (_keyset_keys ks) . Map.keys <$> _wallet_keys w

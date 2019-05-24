@@ -90,13 +90,24 @@
   display: flex;
   justify-content: center;
   align-items: center;
+  @media (max-height: 750px) {
+    display: none;
+  }
 }
 
 /* Image to be put in the modal__filler. */
 .modal__filler-img {
   width: 200px;
-  flex: 0;
   padding-bottom: $normal-padding;
+  @media (max-height: 1000px) {
+    width: 100px;
+    padding-bottom: $medium-padding;
+  }
+  @media (max-height: 850px) {
+    width: 50px;
+    padding-bottom: $small-padding;
+  }
+  flex: 0;
 }
 
 

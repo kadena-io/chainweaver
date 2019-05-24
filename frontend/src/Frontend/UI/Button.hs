@@ -31,6 +31,8 @@ module Frontend.UI.Button
   , copyButton
   , deleteButton
   , deleteButtonCfg
+  , addButton
+  , addButtonCfg
   , deleteButtonNaked
   , openButton
   , viewButton
@@ -179,12 +181,22 @@ copyButton cfg e = do
 deleteButton :: StaticButtonConstraints t m => m (Event t ())
 deleteButton = deleteButtonCfg def
 
+addButton :: StaticButtonConstraints t m => m (Event t ())
+addButton = addButtonCfg def
+
 deleteButtonCfg :: StaticButtonConstraints t m => UiButtonCfg -> m (Event t ())
 deleteButtonCfg uCfg =
   let
     cfg = uCfg & uiButtonCfg_class %~ (<> "button_type_secondary" <> "button_size_tiny")
   in
     uiButton cfg $ imgWithAlt (static @"img/X.svg") "Delete" blank
+
+addButtonCfg :: StaticButtonConstraints t m => UiButtonCfg -> m (Event t ())
+addButtonCfg uCfg =
+  let
+    cfg = uCfg & uiButtonCfg_class %~ (<> "button_type_secondary" <> "button_size_tiny")
+  in
+    uiButton cfg $ imgWithAlt (static @"img/plus.svg") "Add" blank
 
 deleteButtonNaked :: StaticButtonConstraints t m => UiButtonCfg -> m (Event t ())
 deleteButtonNaked cfg =

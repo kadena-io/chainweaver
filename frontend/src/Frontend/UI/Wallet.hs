@@ -15,6 +15,7 @@
 {-# LANGUAGE TupleSections         #-}
 {-# LANGUAGE TypeApplications      #-}
 {-# LANGUAGE TypeFamilies          #-}
+{-# LANGUAGE ConstraintKinds       #-}
 
 -- | Wallet management ui for handling private/public keys.
 -- Copyright   :  (C) 2018 Kadena
@@ -45,15 +46,24 @@ import           Frontend.Crypto.Ed25519     (keyToText)
 import           Frontend.Wallet
 import           Frontend.UI.Widgets
 import           Frontend.Foundation
+import           Frontend.UI.Dialogs.KeyImport (uiKeyImport, HasUiKeyImportModelCfg)
+import           Frontend.UI.Modal
 ------------------------------------------------------------------------------
 
 
+-- | Constraints on the model config we have for implementing this widget.
+type HasUiWalletModelCfg mConf m t =
+  ( Monoid mConf, Flattenable mConf t
+  , HasModalCfg mConf (Modal mConf m t) t
+  , HasUiKeyImportModelCfg (ModalCfg mConf t) t
+  , IsWalletCfg mConf t
+  )
 
 -- | UI for managing the keys wallet.
 uiWallet
-  :: (MonadWidget t m, IsWalletCfg cfg t)
+  :: (MonadWidget t m, HasUiWalletModelCfg mConf m t)
   => Wallet t
-  -> m cfg
+  -> m mConf
 uiWallet w = divClass "keys group" $ do
     onCreate <- uiCreateKey w
     keysCfg <- uiAvailableKeys w
@@ -95,9 +105,9 @@ uiCreateKey w =
 
 -- | Widget listing all available keys.
 uiAvailableKeys
-  :: (MonadWidget t m, IsWalletCfg cfg t)
+  :: (MonadWidget t m, HasUiWalletModelCfg mConf m t)
   => Wallet t
-  -> m cfg
+  -> m mConf
 uiAvailableKeys aWallet = do
   divClass "keys-list" $ do
     uiKeyItems aWallet
@@ -108,16 +118,16 @@ uiAvailableKeys aWallet = do
 -- Does not include the surrounding `div` tag. Use uiAvailableKeys for the
 -- complete `div`.
 uiKeyItems
-  :: (MonadWidget t m, IsWalletCfg cfg t)
+  :: (MonadWidget t m, HasUiWalletModelCfg mConf m t)
   => Wallet t
-  -> m cfg
+  -> m mConf
 uiKeyItems aWallet = do
   let
     keyMap = aWallet ^. wallet_keys
     tableAttrs =
       "style" =: "table-layout: fixed; width: 100%"
       <> "class" =: "wallet table"
-  events <- elAttr "table" tableAttrs $ do
+  (events, onAdd) <- elAttr "table" tableAttrs $ do
     el "colgroup" $ do
       elAttr "col" ("style" =: "width: 20%") blank
       elAttr "col" ("style" =: "width: 35%") blank
@@ -135,11 +145,24 @@ uiKeyItems aWallet = do
         , ""
         , ""
         ]
-    el "tbody" $ listWithKey keyMap $ \name key -> uiKeyItem (name, key)
+    el "tbody" $ do
+      evs <- listWithKey keyMap $ \name key -> uiKeyItem (name, key)
+      onAdd <- uiImportKeyRow
+      pure (evs, onAdd)
+
   dyn_ $ ffor keyMap $ \keys -> when (Map.null keys) $ text "No keys ..."
   let delKey = switchDyn $ leftmost . Map.elems <$> events
-  pure $ mempty & walletCfg_delKey .~ delKey
+  pure $ mempty
+    & walletCfg_delKey .~ delKey
+    & modalCfg_setModal .~ (Just (uiKeyImport aWallet) <$ onAdd)
 
+
+
+-- | Last row in widget with a button for triggering a key import.
+uiImportKeyRow :: MonadWidget t m => m (Event t ())
+uiImportKeyRow = elClass "tr" "table__row" $ do
+  traverse_ (const $ el "td" blank) [1..5 :: Int] -- Button should be in the last column.
+  elClass "td" "wallet__add" $ addButton
 
 ------------------------------------------------------------------------------
 -- | Display a key as list item together with it's name.
