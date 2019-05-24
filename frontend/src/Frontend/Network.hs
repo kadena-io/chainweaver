@@ -858,11 +858,11 @@ getSigningPairs signing = map snd . filter isForSigning . Map.assocs
 
 -- | Build signatures for a single `cmd`.
 buildSigs :: MonadJSM m => TypedHash h -> [KeyPair] -> m [UserSig]
-buildSigs cmdHash signingPairs = do
+buildSigs cmdHashL signingPairs = do
     let
       signingKeys = mapMaybe _keyPair_privateKey signingPairs
 
-    sigs <- traverse (mkSignature (unHash . toUntypedHash $ cmdHash)) signingKeys
+    sigs <- traverse (mkSignature (unHash . toUntypedHash $ cmdHashL)) signingKeys
 
     pure $ map toPactSig sigs
   where
