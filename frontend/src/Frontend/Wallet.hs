@@ -27,11 +27,16 @@ module Frontend.Wallet
   , makeWallet
   , isPredefinedKey
   , chainwebDefaultSenders
-  -- * Flattening key pairs
+  -- * Parsing
+  , ParseKeyPairError (..)
+  , parseTextKeyPair
   ) where
 
 
 import           Control.Lens
+import           Control.Monad (unless)
+import           Control.Monad.Except (throwError)
+import           Control.Arrow (left)
 import           Control.Monad.Fix
 import           Control.Newtype.Generics           (Newtype (..))
 import           Data.ByteString                    (ByteString)
@@ -68,6 +73,7 @@ type KeyPairs = Map KeyName KeyPair
 data WalletCfg t = WalletCfg
   { _walletCfg_genKey     :: Event t KeyName
   -- ^ Request generation of a new key, that will be named as specified.
+  , _walletCfg_importKey  :: Event t (KeyName, KeyPair)
   , _walletCfg_delKey     :: Event t KeyName
   -- ^ Delete a key from your wallet.
   }
@@ -190,6 +196,7 @@ makeWallet conf = do
     keys <- foldDyn id initialKeys $
       -- Filter out duplicate keys:
       leftmost [ uncurry (Map.insertWith (flip const)) <$> onNewKey
+               , uncurry Map.insert <$> (conf ^. walletCfg_importKey)
                , Map.delete <$> onDelKey
                ]
 
@@ -211,6 +218,35 @@ makeWallet conf = do
 data StoreWallet a
   = StoreWallet_Keys
   deriving (Generic, Show)
+
+data ParseKeyPairError =
+      ParseKeyPairError_InvalidPublicKey -- ^ Public key was no valid base16 encoding
+    | ParseKeyPairError_InvalidPrivateKey -- ^ Private key was no valid base16 encoding
+    | ParseKeyPairError_PrivatePublicMismatch -- ^ Public key could not be matched to private key
+
+parseTextKeyPair :: Text -> Text -> Either ParseKeyPairError KeyPair
+parseTextKeyPair pubKeyRaw privKeyRaw = do
+    let
+      pubKey = T.strip pubKeyRaw
+      privKey = T.strip privKeyRaw
+    binPub <-  textToPubKey pubKey
+    binPriv <- textToPrivKey privKey
+    unless (sanityCheck pubKey privKey) $
+      throwError ParseKeyPairError_PrivatePublicMismatch
+    pure $ KeyPair binPub binPriv
+  where
+    sanityCheck pubKey privKey =
+      T.null privKey
+      || (T.isSuffixOf pubKey privKey && T.length privKey > T.length pubKey && (not . T.null) pubKey)
+
+    textToPrivKey t =
+      if T.null t
+         then pure Nothing
+         else throwNothing ParseKeyPairError_InvalidPrivateKey $ Just <$> textToKey t
+
+    textToPubKey = throwNothing ParseKeyPairError_InvalidPublicKey . textToKey
+
+    throwNothing err = maybe (throwError err) pure
 
 
 --  GADT did not work with `Generic` deriving last time I checked.
@@ -234,19 +270,23 @@ instance Reflex t => Semigroup (WalletCfg t) where
       { _walletCfg_genKey = leftmost [ _walletCfg_genKey c1
                                      , _walletCfg_genKey c2
                                      ]
+      , _walletCfg_importKey = leftmost [ _walletCfg_importKey c1
+                                        , _walletCfg_importKey c2
+                                        ]
       , _walletCfg_delKey = leftmost [ _walletCfg_delKey c1
                                      , _walletCfg_delKey c2
                                      ]
       }
 
 instance Reflex t => Monoid (WalletCfg t) where
-  mempty = WalletCfg never never
+  mempty = WalletCfg never never never
   mappend = (<>)
 
 instance Flattenable (WalletCfg t) t where
   flattenWith doSwitch ev =
     WalletCfg
       <$> doSwitch never (_walletCfg_genKey <$> ev)
+      <*> doSwitch never (_walletCfg_importKey <$> ev)
       <*> doSwitch never (_walletCfg_delKey <$> ev)
 
 instance Reflex t => Semigroup (Wallet t) where

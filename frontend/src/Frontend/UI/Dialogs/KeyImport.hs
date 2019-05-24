@@ -26,6 +26,7 @@ module Frontend.UI.Dialogs.KeyImport
 
 ------------------------------------------------------------------------------
 import           Control.Lens
+import           Data.Text (Text)
 import           Data.Void                      (Void)
 import           Reflex
 import           Reflex.Dom
@@ -61,23 +62,67 @@ uiKeyImport
   => model
   -> m (mConf, Event t ())
 uiKeyImport m = do
-  onClose <- modalHeader $ text "Key Import"
-  modalMain $ do
-    modalBody $ do
-      divClass "segment modal__filler" $ do
-        divClass "modal__filler-horizontal-center-box" $
-          imgWithAltCls "modal__filler-img" (static @"img/keys-scalable.svg") "Keys" blank
+    onClose <- modalHeader $ text "Key Import"
+    modalMain $ do
+      (name, errKeyPair) :: (Dynamic t Text, Dynamic t (Either ParseKeyPairError KeyPair)) <- modalBody $ do
+        divClass "segment modal__filler" $ do
+          divClass "modal__filler-horizontal-center-box" $
+            imgWithAltCls "modal__filler-img" (static @"img/keys-scalable.svg") "Keys" blank
 
-        elClass "h2" "heading heading_type_h2" $ text "Import Existing Key"
-        elKlass "div" "group segment" $ do
-          nameInput <- mkLabeledInput uiInputElement "Key Name" def
-          pubKeyInput <- mkLabeledInput uiTextAreaElement "Public Key" def
-          privKeyInput <- mkLabeledInput uiTextAreaElement "Private Key" def
-          pure ()
-    modalFooter $ do
-      onCancel <- cancelButton def "Cancel"
-      text " "
-      {- let isDisabled = maybe True (const False) <$> pure Nothing -}
-      onConfirm <- confirmButton def "Import"
+          elClass "h2" "heading heading_type_h2" $ text "Import Existing Key"
+          elKlass "div" "group segment" $ mdo
+            nameInput <- mkLabeledInput uiInputElement "Key Name" def
+            pubKeyInput <- mkLabeledInput (mkPubKeyInput err) "Public Key" def
+            privKeyInput <- mkLabeledInput (mkPrivKeyInput err) "Private Key" def
 
-      pure (mempty, leftmost [onClose, onCancel, onConfirm])
+            let
+              errKeyPair = parseTextKeyPair <$> value pubKeyInput <*> value privKeyInput
+              err = fmap (^? _Left) errKeyPair
+
+            pure (value nameInput, errKeyPair)
+
+      modalFooter $ do
+        onCancel <- cancelButton def "Cancel"
+        text " "
+        let
+          isDisabled = either (const True) (const False) <$> errKeyPair
+          namedKeyPair = do
+            n <- name
+            errP <- errKeyPair
+            pure $ (n,) <$> errP
+        onConfirm <- confirmButton (def & uiButtonCfg_disabled .~ isDisabled) "Import"
+
+        let onConfirmKeyPair = fmapMaybe (^? _Right) $ tag (current namedKeyPair) onConfirm
+
+        pure
+          ( mempty & walletCfg_importKey .~ onConfirmKeyPair
+          , leftmost [onClose, onCancel, onConfirm]
+          )
+  where
+    mkPubKeyInput err cfg = do
+      let
+        errTxt = ffor err $ \case
+          Just ParseKeyPairError_InvalidPublicKey -> "Key not valid."
+          _ -> ""
+      inputWithError uiTextAreaElement errTxt cfg
+
+    mkPrivKeyInput err cfg = do
+      let
+        errTxt = ffor err $ \case
+          Just ParseKeyPairError_InvalidPrivateKey -> "Key not valid."
+          Just ParseKeyPairError_PrivatePublicMismatch -> "Private key is not compatible with public key."
+          _ -> ""
+      inputWithError uiTextAreaElement errTxt cfg
+
+
+inputWithError
+  :: (Monad m, DomBuilder t m, PostBuild t m)
+  => (cfg -> m input)
+  -> Dynamic t Text
+  -> cfg
+  -> m input
+inputWithError mkInput dynErr cfg = do
+  i <- mkInput cfg
+  el "div" $
+    elClass "span" "error_inline" $ dynText dynErr
+  pure i
