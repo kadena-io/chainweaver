@@ -30,7 +30,6 @@ import           Data.Map                       (Map)
 import qualified Data.Map                       as Map
 import qualified Data.Text                      as T
 import           Data.Text                      (Text)
-import qualified Data.Text.IO as T
 import           Reflex.Dom
 import           Reflex.Extended
 import           Control.Monad (void)

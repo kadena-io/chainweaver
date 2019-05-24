@@ -840,12 +840,12 @@ buildCmd meta keys signing req = do
   let signingKeys = getSigningPairs signing keys
   cmd <- encodeAsText . encode <$> buildExecPayload meta signingKeys req
   let
-    cmdHash = hash (T.encodeUtf8 cmd)
-  sigs <- buildSigs cmdHash signingKeys
+    cmdHashL = hash (T.encodeUtf8 cmd)
+  sigs <- buildSigs cmdHashL signingKeys
   pure $ Command
     { _cmdPayload = cmd
     , _cmdSigs = sigs
-    , _cmdHash = cmdHash
+    , _cmdHash = cmdHashL
     }
 
 getSigningPairs :: Set KeyName -> KeyPairs -> [KeyPair]

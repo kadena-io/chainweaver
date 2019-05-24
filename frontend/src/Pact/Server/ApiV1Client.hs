@@ -15,7 +15,6 @@ module Pact.Server.ApiV1Client
 import Data.Proxy
 import Servant.API
 import Servant.Client.Core
-import qualified Pact.Analyze.Remote.Types as Analyze
 import Pact.Types.API
 import Pact.Types.Command
 import Data.Text (Text)
