@@ -94,14 +94,12 @@ hasPrivateKey = isJust . _keyPair_privateKey . snd
 
 ----------------------------------------------------------------------
 
+
 -- | Line input with "Create" button for creating a new key.
 uiCreateKey :: MonadWidget t m => Wallet t -> m (Event t KeyName)
 uiCreateKey w =
-  validatedInputWithButton "group__header" check "Enter key name" "Generate"
-    where
-      check k = do
-        keys <- sample $ current $ _wallet_keys w
-        pure $ if Map.member k keys then Just "This key name is already in use." else Nothing
+  validatedInputWithButton "group__header" (checkKeyNameValidityStr w) "Enter key name" "Generate"
+
 
 -- | Widget listing all available keys.
 uiAvailableKeys

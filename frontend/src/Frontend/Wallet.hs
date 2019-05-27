@@ -30,12 +30,15 @@ module Frontend.Wallet
   -- * Parsing
   , ParseKeyPairError (..)
   , parseTextKeyPair
+  -- * Other helper functions
+  , checkKeyNameValidityStr
   ) where
 
 
 import           Control.Lens
-import           Control.Monad (unless)
-import           Control.Monad.Except (throwError)
+import           Control.Applicative ((<|>))
+import           Control.Monad (unless, (<=<), void)
+import           Control.Monad.Except (throwError, runExcept)
 import           Control.Arrow (left)
 import           Control.Monad.Fix
 import           Control.Newtype.Generics           (Newtype (..))
@@ -220,9 +223,17 @@ data StoreWallet a
   deriving (Generic, Show)
 
 data ParseKeyPairError =
-      ParseKeyPairError_InvalidPublicKey -- ^ Public key was no valid base16 encoding
-    | ParseKeyPairError_InvalidPrivateKey -- ^ Private key was no valid base16 encoding
+      ParseKeyPairError_InvalidPublicKey Text -- ^ Public key was invalid
+    | ParseKeyPairError_InvalidPrivateKey Text -- ^ Private key was not valid
     | ParseKeyPairError_PrivatePublicMismatch -- ^ Public key could not be matched to private key
+    | ParseKeyPairError_UnknownError
+    deriving (Eq, Ord, Read, Show)
+
+instance Semigroup ParseKeyPairError where
+  a <> _ = a
+instance Monoid ParseKeyPairError where
+  mempty = ParseKeyPairError_UnknownError
+  mappend = (<>)
 
 parseTextKeyPair :: Text -> Text -> Either ParseKeyPairError KeyPair
 parseTextKeyPair pubKeyRaw privKeyRaw = do
@@ -236,17 +247,56 @@ parseTextKeyPair pubKeyRaw privKeyRaw = do
     pure $ KeyPair binPub binPriv
   where
     sanityCheck pubKey privKey =
-      T.null privKey
-      || (T.isSuffixOf pubKey privKey && T.length privKey > T.length pubKey && (not . T.null) pubKey)
+      T.null privKey || T.isSuffixOf pubKey privKey
 
-    textToPrivKey t =
+    textToPrivKey =
+      throwNothing invalidEncodingPriv . textToMayKey <=< checkLengthPriv
+
+    textToMayKey t =
       if T.null t
-         then pure Nothing
-         else throwNothing ParseKeyPairError_InvalidPrivateKey $ Just <$> textToKey t
+         then Just Nothing
+         else Just <$> textToKey t
 
-    textToPubKey = throwNothing ParseKeyPairError_InvalidPublicKey . textToKey
+    textToPubKey = throwNothing invalidEncodingPub . textToKey <=< checkPub
+
+    checkPub :: Text -> Either ParseKeyPairError Text
+    checkPub t = runExcept $ void (checkEmptyPub t) >> checkLengthPub t
+
+    checkLengthPub = checkLength ParseKeyPairError_InvalidPublicKey 64
+
+    invalidEncodingPub = ParseKeyPairError_InvalidPublicKey "Invalid base16 encoding"
+
+    checkLengthPriv t =
+      if T.null t
+         then pure t
+         else checkLength ParseKeyPairError_InvalidPrivateKey 128 t
+
+    invalidEncodingPriv = ParseKeyPairError_InvalidPrivateKey "Invalid base16 encoding"
+
+    checkEmptyPub k =
+      if T.null k
+         then throwError $ ParseKeyPairError_InvalidPublicKey $ T.pack "Key must not be empty."
+         else pure k
+
+    checkLength mkErr l k =
+      if T.length k /= l
+         then throwError $ mkErr $ T.pack "Key has unexpected length."
+         else pure k
 
     throwNothing err = maybe (throwError err) pure
+
+
+-- | Check key name validity (uniqueness).
+--
+--   Returns `Just` error msg in case it is not valid.
+checkKeyNameValidityStr
+  :: (MonadSample t m, Reflex t, HasWallet w t)
+  => w
+  -> KeyName
+  -> m (Maybe Text)
+checkKeyNameValidityStr w k = do
+  keys <- sample $ current $ w ^. wallet_keys
+  pure $ if Map.member k keys then Just "This key name is already in use." else Nothing
 
 
 --  GADT did not work with `Generic` deriving last time I checked.
