@@ -28,18 +28,14 @@ module Frontend.Wallet
   , isPredefinedKey
   , chainwebDefaultSenders
   -- * Parsing
-  , ParseKeyPairError (..)
-  , parseTextKeyPair
+  , parseWalletKeyPair
   -- * Other helper functions
   , checkKeyNameValidityStr
   ) where
 
 
 import           Control.Lens
-import           Control.Applicative ((<|>))
-import           Control.Monad (unless, (<=<), void)
-import           Control.Monad.Except (throwError, runExcept)
-import           Control.Arrow (left)
+import           Control.Monad.Except (runExcept)
 import           Control.Monad.Fix
 import           Control.Newtype.Generics           (Newtype (..))
 import           Data.ByteString                    (ByteString)
@@ -222,81 +218,28 @@ data StoreWallet a
   = StoreWallet_Keys
   deriving (Generic, Show)
 
-data ParseKeyPairError =
-      ParseKeyPairError_InvalidPublicKey Text -- ^ Public key was invalid
-    | ParseKeyPairError_InvalidPrivateKey Text -- ^ Private key was not valid
-    | ParseKeyPairError_PrivatePublicMismatch -- ^ Public key could not be matched to private key
-    | ParseKeyPairError_UnknownError
-    deriving (Eq, Ord, Read, Show)
-
-instance Semigroup ParseKeyPairError where
-  a <> _ = a
-instance Monoid ParseKeyPairError where
-  mempty = ParseKeyPairError_UnknownError
-  mappend = (<>)
-
-parseTextKeyPair :: Text -> Text -> Either ParseKeyPairError KeyPair
-parseTextKeyPair pubKeyRaw privKeyRaw = do
-    let
-      pubKey = T.strip pubKeyRaw
-      privKey = T.strip privKeyRaw
-    binPub <-  textToPubKey pubKey
-    binPriv <- textToPrivKey privKey
-    unless (sanityCheck pubKey privKey) $
-      throwError ParseKeyPairError_PrivatePublicMismatch
-    pure $ KeyPair binPub binPriv
-  where
-    sanityCheck pubKey privKey =
-      T.null privKey || T.isSuffixOf pubKey privKey
-
-    textToPrivKey =
-      throwNothing invalidEncodingPriv . textToMayKey <=< checkLengthPriv
-
-    textToMayKey t =
-      if T.null t
-         then Just Nothing
-         else Just <$> textToKey t
-
-    textToPubKey = throwNothing invalidEncodingPub . textToKey <=< checkPub
-
-    checkPub :: Text -> Either ParseKeyPairError Text
-    checkPub t = runExcept $ void (checkEmptyPub t) >> checkLengthPub t
-
-    checkLengthPub = checkLength ParseKeyPairError_InvalidPublicKey 64
-
-    invalidEncodingPub = ParseKeyPairError_InvalidPublicKey "Invalid base16 encoding"
-
-    checkLengthPriv t =
-      if T.null t
-         then pure t
-         else checkLength ParseKeyPairError_InvalidPrivateKey 128 t
-
-    invalidEncodingPriv = ParseKeyPairError_InvalidPrivateKey "Invalid base16 encoding"
-
-    checkEmptyPub k =
-      if T.null k
-         then throwError $ ParseKeyPairError_InvalidPublicKey $ T.pack "Key must not be empty."
-         else pure k
-
-    checkLength mkErr l k =
-      if T.length k /= l
-         then throwError $ mkErr $ T.pack "Key has unexpected length."
-         else pure k
-
-    throwNothing err = maybe (throwError err) pure
-
+-- | Parse a private key with additional checks based on the given public key.
+--
+--   In case a `Left` value is given instead of a valid public key, the
+--   corresponding value will be returned instead.
+parseWalletKeyPair :: Either Text PublicKey -> Text -> Either Text KeyPair
+parseWalletKeyPair errPubKey privKey = do
+  pubKey <- errPubKey
+  runExcept $ uncurry KeyPair <$> parseKeyPair pubKey privKey
 
 -- | Check key name validity (uniqueness).
 --
 --   Returns `Just` error msg in case it is not valid.
 checkKeyNameValidityStr
-  :: (MonadSample t m, Reflex t, HasWallet w t)
+  :: (Reflex t, HasWallet w t)
   => w
-  -> KeyName
-  -> m (Maybe Text)
-checkKeyNameValidityStr w k = do
-  keys <- sample $ current $ w ^. wallet_keys
-  pure $ if Map.member k keys then Just "This key name is already in use." else Nothing
+  -> Dynamic t (KeyName -> (Maybe Text))
+checkKeyNameValidityStr w = getErr <$> w ^. wallet_keys
+  where
+    getErr keys k =
+      if Map.member k keys
+         then Just $ T.pack "This key name is already in use."
+         else Nothing
 
 
 --  GADT did not work with `Generic` deriving last time I checked.

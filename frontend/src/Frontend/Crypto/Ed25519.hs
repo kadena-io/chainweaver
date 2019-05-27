@@ -26,6 +26,10 @@ module Frontend.Crypto.Ed25519
   , genKeyPair
   -- * Signing
   , mkSignature
+  -- * Parsing
+  , parseKeyPair
+  , parsePublicKey
+  , parsePrivateKey
   -- * Utilities
   , keyToText
   , keyToTextFuture
@@ -39,6 +43,8 @@ import           Control.Monad
 import           Control.Monad.Fail          (MonadFail)
 import           Control.Newtype.Generics    (Newtype (..))
 import           Data.Aeson                  hiding (Object)
+import           Control.Monad.Except        (MonadError, throwError)
+import qualified Data.Text as T
 import qualified Data.ByteString.Base16 as Base16
 import           Data.ByteString             (ByteString)
 import qualified Data.ByteString             as BS
@@ -84,6 +90,28 @@ mkSignature msg (PrivateKey key) = liftJSM $ do
   {- pure $ Signature BS.empty -}
 
 
+-- | Parse a private key with additional checks given the corresponding public key.
+-- `parsePublicKey` and `parsePrivateKey`.
+parseKeyPair :: MonadError Text m => PublicKey -> Text -> m (PublicKey, Maybe PrivateKey)
+parseKeyPair pubKey priv = do
+    privKey <- parsePrivateKey priv
+    unless (sanityCheck pubKey privKey) $ do
+      throwError $ T.pack "Private key is not compatible with public key"
+    pure (pubKey, privKey)
+  where
+    sanityCheck (PublicKey pubRaw) = \case
+      Nothing -> True
+      Just (PrivateKey privRaw) -> BS.isSuffixOf pubRaw privRaw
+
+
+-- | Parse just a public key with some sanity checks applied.
+parsePublicKey :: MonadError Text m => Text -> m PublicKey
+parsePublicKey = throwDecodingErr . textToKey <=< checkPub . T.strip
+
+-- | Parse a private key, with some basic sanity checking.
+parsePrivateKey :: MonadError Text m => Text -> m (Maybe PrivateKey)
+parsePrivateKey = throwDecodingErr . textToMayKey <=< throwWrongLengthPriv . T.strip
+
 
 -- Utilities:
 
@@ -93,8 +121,6 @@ mkSignature msg (PrivateKey key) = liftJSM $ do
 keyToTextFuture :: (Newtype key, O key ~ ByteString) => key -> Text
 keyToTextFuture = safeDecodeUtf8 . encodeBase64UrlUnpadded . unpack
 
-
--- Utilities:
 
 -- | Display key in Base16 format, as expected by older Pact versions.
 --
@@ -119,6 +145,47 @@ textToKey
   => Text
   -> m key
 textToKey = fmap pack . decodeBase16M . T.encodeUtf8
+
+
+-- Internal parsing helpers:
+--
+
+textToMayKey :: (Newtype key, O key ~ ByteString, MonadFail m) => Text -> m (Maybe key)
+textToMayKey t =
+  if T.null t
+     then pure Nothing
+     else Just <$> textToKey t
+
+throwDecodingErr
+  :: MonadError Text m
+  => Maybe v
+  -> m v
+throwDecodingErr = throwNothing $ T.pack "Invalid base16 encoding"
+  where
+    throwNothing err = maybe (throwError err) pure
+
+checkPub :: MonadError Text m => Text -> m Text
+checkPub t = void (throwEmpty t) >> throwWrongLength 64 t
+  where
+    throwEmpty k =
+      if T.null k
+         then throwError $ T.pack "Key must not be empty"
+         else pure k
+
+-- | Throw in case of invalid length, but accept zero length.
+throwWrongLengthPriv :: MonadError Text m => Text -> m Text
+throwWrongLengthPriv t =
+  if T.null t
+     then pure t
+     else throwWrongLength 128 t
+
+-- | Check length of string key representation.
+throwWrongLength :: MonadError Text m => Int -> Text -> m Text
+throwWrongLength should k =
+  if T.length k /= should
+     then throwError $ T.pack "Key has unexpected length"
+     else pure k
+
 
 -- Boring instances:
 

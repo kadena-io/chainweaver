@@ -103,11 +103,11 @@ uiNetworkEdit m = do
         , leftmost [onConfirm, onClose]
         )
   where
-    checkNetName k = do
-      keys <- sample $ current $ m ^. network_networks
-      pure $ if Map.member (NetworkName k) keys
-                then Just "This network already exists."
-                else Nothing
+    checkNetName = getErr <$> m ^. network_networks
+    getErr nets k =
+      if Map.member (NetworkName k) nets
+         then Just "This network already exists."
+         else Nothing
 
 
 uiNetworkSelect

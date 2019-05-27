@@ -68,7 +68,6 @@ showJsonTabName JsonDataView_Result  = "Result"
 
 uiJsonData
   :: ( MonadWidget t m, HasJsonDataCfg mConf t, Monoid mConf, Flattenable mConf t
-     , HasWalletCfg mConf t
      )
   => Wallet t
   -> JsonData t
@@ -202,13 +201,15 @@ uiCreateKeyset jsonD =
   validatedInputWithButton "group__header" check "Enter keyset name" "Create"
     where
       -- Check combined data and not only keyset names for duplicates:
-      check ks = do
-        json <- sample $ current $ _jsonData_data jsonD
-        keysets <- sample $ current $ _jsonData_keysets jsonD
+      check =
+        mkCheck <$> _jsonData_data jsonD <*> _jsonData_keysets jsonD
+
+      mkCheck json keysets ks =
         let dupe = case json of
               Left _  -> Map.member ks keysets
               Right j -> H.member ks j
-        pure $ if dupe then Just "This keyset name is already in use." else Nothing
+        in
+          if dupe then Just "This keyset name is already in use." else Nothing
 
 -- | Widget showing all avaialble keys for selecting keys
 --

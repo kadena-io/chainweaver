@@ -269,7 +269,7 @@ mkLabeledClsInput mkInput name = elClass "div" "segment segment_type_tertiary la
 validatedInputWithButton
   :: MonadWidget t m
   => CssClass
-  -> (Text -> PushM t (Maybe Text))
+  -> (Dynamic t (Text -> Maybe Text))
   -- ^ Validation function returning `Just error message` on error.
   -> Text -- ^ Placeholder
   -> Text -- ^ Button text
@@ -277,16 +277,16 @@ validatedInputWithButton
 validatedInputWithButton uCls check placeholder buttonText = do
     let cls = uCls <> "new-by-name"
     elKlass "div" cls $ do
-      (update, checked) <- elClass "div" "new-by-name_inputs" $ mdo
+      (update, checked, rawIn) <- elClass "div" "new-by-name_inputs" $ mdo
         name <- uiInputElement $ def
-            & inputElementConfig_setValue .~ (T.empty <$ confirmed)
+            & inputElementConfig_setValue .~ (T.empty <$ onConfirmed)
             & initialAttributes .~ ("placeholder" =: placeholder <> "type" =: "text" <> "class" =: "new-by-name__input")
         let
           nameVal = T.strip <$> _inputElement_value name
           onEnter = keypress Enter name
           nameEmpty = (== "") <$> nameVal
 
-        checkedL <- holdDyn Nothing $ pushAlways check $ updated nameVal
+          checkedL = check <*> nameVal
 
         let
           checkFailed = isJust <$> checkedL
@@ -296,12 +296,19 @@ validatedInputWithButton uCls check placeholder buttonText = do
 
         let
           filterValid = fmap (const ()) . ffilter not . tag (current checkFailed)
-          confirmed = filterValid $ leftmost [ onEnter, clicked ]
-        void $ performEvent (liftJSM (pToJSVal (_inputElement_raw name) ^.  js0 ("focus" :: String)) <$ confirmed)
-        pure $ (tag (current nameVal) confirmed, checkedL)
+          onConfirmed = filterValid $ leftmost [ onEnter, clicked ]
+        void $ performEvent (liftJSM (pToJSVal (_inputElement_raw name) ^.  js0 ("focus" :: String)) <$ onConfirmed)
+        pure $ (tag (current nameVal) onConfirmed, checkedL, nameVal)
 
-      elClass "div" "new-by-name_error" $
-        elClass "span" "error_inline" $ dynText $ fromMaybe "" <$> checked
+      elClass "div" "new-by-name_error" $ do
+        confirmed <- holdUniqDyn <=< holdDyn False $
+          leftmost [ False <$ updated rawIn, True <$ update ]
+        let
+          -- Avoid error msg flickr on confirmation (e.g. duplicates):
+          checkedMsg = do
+            c <- confirmed
+            if c then pure "" else fromMaybe "" <$> checked
+        elClass "span" "error_inline" $ dynText checkedMsg
 
       pure update
 

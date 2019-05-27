@@ -26,19 +26,20 @@ module Frontend.UI.Dialogs.KeyImport
 
 ------------------------------------------------------------------------------
 import           Control.Lens
+import           Control.Monad ((<=<))
 import           Control.Applicative ((<|>))
+import           Control.Monad.Except (runExcept, runExceptT, ExceptT(..))
+import           Data.Either (isLeft)
+import           Control.Arrow (left)
 import           Data.Text (Text)
-import           Data.Void                      (Void)
 import           Reflex
 import           Reflex.Dom
 import qualified Data.Text as T
 ------------------------------------------------------------------------------
 import           Obelisk.Generated.Static
 ------------------------------------------------------------------------------
-import           Frontend.Ide
-import           Frontend.ModuleExplorer        (HasModuleExplorerCfg (..))
 import           Frontend.Wallet
-import           Frontend.UI.DeploymentSettings
+import           Frontend.Crypto.Ed25519 (parsePublicKey)
 import           Frontend.UI.Modal
 import           Frontend.UI.Widgets
 import           Frontend.Foundation
@@ -66,37 +67,30 @@ uiKeyImport
 uiKeyImport m = do
     onClose <- modalHeader $ text "Key Import"
     modalMain $ do
-      (name, errKeyPair) :: (Dynamic t Text, Dynamic t (Either ParseKeyPairError KeyPair)) <- modalBody $ do
+      (errName, errKeyPair) :: (Dynamic t (Either Text Text), Dynamic t (Either Text KeyPair))
+        <- modalBody $ do
         divClass "segment modal__filler" $ do
           divClass "modal__filler-horizontal-center-box" $
             imgWithAltCls "modal__filler-img" (static @"img/keys-scalable.svg") "Keys" blank
 
           elClass "h2" "heading heading_type_h2" $ text "Import Existing Key"
-          elKlass "div" "group segment" $ mdo
-            nameInput <- mkLabeledInput mkNameInput "Key Name" def
-            pubKeyInput <- mkLabeledInput (mkPubKeyInput err) "Public Key" def
-            privKeyInput <- mkLabeledInput (mkPrivKeyInput err) "Private Key" def
+          elKlass "div" "group segment" $ do
+            (_, name) <- mkLabeledInput mkNameInput "Key Name" def
+            (_, errPub) <- mkLabeledInput mkPubKeyInput  "Public Key" def
+            (_, parsedPair) <- mkLabeledInput (mkPrivKeyInput errPub) "Private Key" def
 
-            let
-              errKeyPair = parseTextKeyPair <$> value pubKeyInput <*> value privKeyInput
-              err = fmap (^? _Left) errKeyPair
-
-            pure (value nameInput, errKeyPair)
+            pure (name, parsedPair)
 
       modalFooter $ do
         onCancel <- cancelButton def "Cancel"
         text " "
-        isInvalidName <- holdDyn False $ pushAlways checkKeyName $ updated name
         let
+          isInvalidName = isLeft <$> errName
           isInvalidKeys = either (const True) (const False) <$> errKeyPair
-          isEmptyName = T.null <$> name
-          isInvalidOrEmptyName = (||) <$> isEmptyName <*> isInvalidName
-          isDisabled = (||) <$> isInvalidKeys <*>  isInvalidOrEmptyName
+          isDisabled = (||) <$> isInvalidKeys <*> isInvalidName
 
-          namedKeyPair = do
-            n <- name
-            errP <- errKeyPair
-            pure $ (n,) <$> errP
+          namedKeyPair = runExceptT $
+            (,) <$> ExceptT errName <*> ExceptT errKeyPair
 
         onConfirm <- confirmButton (def & uiButtonCfg_disabled .~ isDisabled) "Import"
 
@@ -108,44 +102,37 @@ uiKeyImport m = do
           )
   where
 
-    checkKeyName = fmap isJust . checkKeyNameValidityStr m
-
-    mkNameInput cfg = mdo
-      i <- uiInputElement cfg
-      let onMayErrorStr = pushAlways (checkKeyNameValidityStr m) . updated $ value i
-      mayDupStr <- holdDyn Nothing onMayErrorStr
+    mkNameInput cfg = do
       let
-        mayEmptyStr = mkEmptyNameMessage <$> value i
-        mayErrorStr = (<|>) <$> mayEmptyStr <*> mayDupStr
-      el "div" $ elClass "span" "error_inline" $ dynText $ fromMaybe "" <$> mayErrorStr
-      pure i
+        nameParser = do
+          mkNotValidMsg <- checkKeyNameValidityStr m
+          pure $ \v -> maybe (Right v) Left $ mkNotValidMsg v <|> mkEmptyNameMessage v
+      inputWithError uiInputElement nameParser cfg
 
-    mkEmptyNameMessage v = if T.null v then Just "Key name must not be empty." else Nothing
+    mkEmptyNameMessage v =
+      if (T.null . T.strip) v then Just "Key name must not be empty" else Nothing
 
-    mkPubKeyInput err cfg = do
-      let
-        errTxt = ffor err $ \case
-          Just (ParseKeyPairError_InvalidPublicKey m) -> "Key not valid: " <> m
-          _ -> ""
-      inputWithError uiTextAreaElement errTxt cfg
+    mkPubKeyInput =
+      inputWithError uiTextAreaElement (pure $ runExcept . parsePublicKey)
 
-    mkPrivKeyInput err cfg = do
-      let
-        errTxt = ffor err $ \case
-          Just (ParseKeyPairError_InvalidPrivateKey m) -> "Key not valid: " <> m
-          Just ParseKeyPairError_PrivatePublicMismatch -> "Private key is not compatible with public key."
-          _ -> ""
-      inputWithError uiTextAreaElement errTxt cfg
+    mkPrivKeyInput dynErrPub =
+      inputWithError uiTextAreaElement $ parseWalletKeyPair . left (const "") <$> dynErrPub
+
+
 
 
 inputWithError
-  :: (Monad m, DomBuilder t m, PostBuild t m)
+  :: (Monad m, DomBuilder t m, PostBuild t m, HasValue input, Value input ~ Dynamic t Text)
   => (cfg -> m input)
-  -> Dynamic t Text
+  -> (Dynamic t (Text -> Either Text a))
   -> cfg
-  -> m input
-inputWithError mkInput dynErr cfg = do
-  i <- mkInput cfg
-  el "div" $
-    elClass "span" "error_inline" $ dynText dynErr
-  pure i
+  -> m (input, Dynamic t (Either Text a))
+inputWithError mkInput parseVal cfg = do
+    i <- mkInput cfg
+    el "div" $ do
+      let
+        r = parseVal <*> value i
+        errorMsg = either id (const "") <$> r
+      elClass "span" "error_inline" $ dynText errorMsg
+      pure (i, r)
+
