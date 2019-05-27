@@ -1,3 +1,4 @@
+{-# OPTIONS_GHC -fno-warn-orphans #-}
 {-# LANGUAGE CPP                    #-}
 {-# LANGUAGE DataKinds              #-}
 {-# LANGUAGE DeriveGeneric          #-}
@@ -42,31 +43,31 @@ module Frontend.Foundation
   , module Reflex.Dom.Contrib.CssClass
   ) where
 
-import           Control.Concurrent                    (ThreadId, forkIO)
-import           Data.Text                             (Text)
+import           Control.Concurrent                (ThreadId, forkIO)
 import           Control.Lens
 import           Control.Monad.Fix
 import           Control.Monad.IO.Class
-import           Data.Coerce                           (coerce)
+import           Data.Coerce                       (coerce)
 import           Data.Foldable
 import           Data.Semigroup
-import           GHC.Generics                          (Generic)
-import           Language.Haskell.TH                   (DecsQ)
-import           Language.Haskell.TH.Syntax            (Name)
-import           Language.Javascript.JSaddle           (JSM, MonadJSM, askJSM,
-                                                        liftJSM, runJSM)
-import           Language.Javascript.JSaddle.Monad     (JSContextRef)
-import           Reflex.Dom.Class                      (HasJSContext (..),
-                                                        JSContextSingleton (..))
+import           Data.Text                         (Text)
+import           GHC.Generics                      (Generic)
+import           Language.Haskell.TH               (DecsQ)
+import           Language.Haskell.TH.Syntax        (Name)
+import           Language.Javascript.JSaddle       (JSM, MonadJSM, askJSM,
+                                                    liftJSM, runJSM)
+import qualified Language.Javascript.JSaddle       as JS
+import           Language.Javascript.JSaddle.Monad (JSContextRef)
+import           Reflex.Dom.Class                  (HasJSContext (..),
+                                                    JSContextSingleton (..))
 import           Reflex.Dom.Contrib.CssClass
 import           Reflex.Extended
 import           Reflex.Network.Extended
-import qualified Language.Javascript.JSaddle as JS
 
 
 import           Data.Maybe
 
-import Common.Foundation as Common
+import           Common.Foundation                 as Common
 
 -- | Shorthand for Dynamic t (Maybe a).
 --

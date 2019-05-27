@@ -17,7 +17,6 @@ import qualified Pact.Server.Server       as Pact
 import           System.Directory         (createDirectoryIfMissing)
 import           System.FilePath          ((</>))
 
-import           Common.Api
 import           Common.Network
 
 

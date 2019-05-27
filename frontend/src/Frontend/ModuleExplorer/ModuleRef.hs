@@ -1,3 +1,4 @@
+{-# OPTIONS_GHC -fno-warn-orphans #-}
 {-# LANGUAGE DataKinds              #-}
 {-# LANGUAGE DeriveGeneric          #-}
 {-# LANGUAGE ExtendedDefaultRules   #-}
@@ -49,12 +50,12 @@ module Frontend.ModuleExplorer.ModuleRef
 
 ------------------------------------------------------------------------------
 import           Control.Applicative             ((<|>))
-import           Data.List.NonEmpty (NonEmpty ((:|)))
 import           Control.Arrow                   (left, (***))
 import           Control.Lens
 import           Control.Monad
 import           Control.Monad.Except            (throwError)
 import           Data.Coerce                     (coerce)
+import           Data.List.NonEmpty              (NonEmpty ((:|)))
 import qualified Data.Map                        as Map
 import qualified Data.Set                        as Set
 import           Data.Text                       (Text)
@@ -64,22 +65,26 @@ import qualified Text.Megaparsec                 as MP
 ------------------------------------------------------------------------------
 import qualified Data.Aeson                      as A
 import           Pact.Types.Exp                  (Literal (LString))
-import           Pact.Types.PactValue
 import           Pact.Types.Info                 (Code (..))
 import           Pact.Types.Lang                 (ModuleName)
-import           Pact.Types.Term                 as PactTerm (Module (..),
+import           Pact.Types.PactValue
+import           Pact.Types.Term                 as PactTerm (FieldKey,
+                                                              Module (..),
+                                                              ModuleDef (..),
                                                               ModuleName (..),
                                                               Name,
                                                               Namespace (..),
                                                               NamespaceName (..),
+                                                              Object (..),
+                                                              ObjectMap (..),
                                                               Term (TList, TLiteral, TModule, TObject),
-                                                              tStr, ModuleDef (..), Object (..), FieldKey, ObjectMap (..))
+                                                              tStr)
 ------------------------------------------------------------------------------
-import           Frontend.Network
+import           Common.RefPath                  as MP
 import           Frontend.Foundation
 import           Frontend.ModuleExplorer.Example
 import           Frontend.ModuleExplorer.File
-import           Common.RefPath as MP
+import           Frontend.Network
 
 -- | A `Module` can come from a number of sources.
 --
@@ -169,7 +174,7 @@ instance IsRefPath ModuleSource where
 instance IsRefPath ModuleName where
   renderRef (ModuleName n mNamespace) = mkRefPath $
     case mNamespace of
-      Nothing             -> n
+      Nothing                 -> n
       Just (NamespaceName ns) -> ns <> "." <> n
 
   parseRef = do

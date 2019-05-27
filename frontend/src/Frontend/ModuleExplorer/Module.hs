@@ -97,7 +97,7 @@ importNamesOfModule f modL = setImports <$> f imports
     setName u n = u { _uModuleName = n }
 
 -- | Get the `ModuleName` of a `Module`.
-interfacesOfModule :: Fold (ModuleDef g) [ModuleName]
+interfacesOfModule :: Functor f => ([ModuleName] -> f b) -> ModuleDef a -> f (ModuleDef a)
 interfacesOfModule f modL = modL <$ f interfaces
   where
     interfaces = case modL of

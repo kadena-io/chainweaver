@@ -96,8 +96,6 @@ rightTabBar cls ideL = elKlass "div" (cls <> "pane") $ do
 envTab
   :: ( MonadWidget t m
      , Frontend.Editor.HasEditorCfg mConf t
-     , Frontend.Editor.HasEditor (Ide modal t) t
-     , HasIde (Ide modal t) modal t, HasIdeCfg mConf modal1 t
      , HasModalCfg mConf (m (ModalCfg mConf t, Event t ())) t
      , Monoid mConf, Monoid (ModalCfg mConf t), Flattenable mConf t
      , Flattenable (ModalCfg mConf t) t
