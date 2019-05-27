@@ -114,14 +114,14 @@ extendedAceWidget ac adc onAnnotations initContents onNewContent = do
       let
         curAce = current $ aceRef ace
         -- TODO: That functions seems to be present in ACE already!
-        setAnnotations (mAi, annot) =
+        setAnnotationsL (mAi, annot) =
           case mAi of
             Nothing -> pure ()
             Just (AceInstance ai) -> liftJSM $ do
               session <- ai ^. js0 ("getSession" :: Text)
               void $ session ^. js1 ("setAnnotations" :: Text) annot
       in
-        performEvent_ $ setAnnotations <$> attach curAce annotations
+        performEvent_ $ setAnnotationsL <$> attach curAce annotations
 
 
 

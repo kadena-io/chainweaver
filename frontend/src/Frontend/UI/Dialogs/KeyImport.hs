@@ -26,7 +26,6 @@ module Frontend.UI.Dialogs.KeyImport
 
 ------------------------------------------------------------------------------
 import           Control.Lens
-import           Control.Monad ((<=<))
 import           Control.Applicative ((<|>))
 import           Control.Monad.Except (runExcept, runExceptT, ExceptT(..))
 import           Data.Either (isLeft)
