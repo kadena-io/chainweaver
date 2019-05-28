@@ -75,11 +75,9 @@ import qualified Text.URI                          as URI
 import           Pact.Server.ApiV1Client
 import           Pact.Types.API
 import           Pact.Types.Command
-import           Pact.Types.Runtime                (PactError (..))
+import           Pact.Types.Runtime                (PactError (..), GasLimit (..), GasPrice (..))
 import           Pact.Types.ChainMeta              (PublicMeta (..))
 
-import           Pact.Parse                        (ParsedDecimal (..),
-                                                    ParsedInteger (..))
 import           Pact.Types.Exp                    (Literal (LString))
 import           Pact.Types.Hash                   (hash, Hash (..), TypedHash (..), toUntypedHash)
 import           Pact.Types.RPC
@@ -172,9 +170,9 @@ data NetworkCfg t = NetworkCfg
     -- ^ Deploy some code to the network. Response will be logged to `Messages`.
   , _networkCfg_setSender     :: Event t Text
     -- ^ What user wants to pay for this transaction?
-  , _networkCfg_setGasLimit   :: Event t ParsedInteger
+  , _networkCfg_setGasLimit   :: Event t GasLimit
     -- ^ Maximum amount of gas to use for this transaction.
-  , _networkCfg_setGasPrice   :: Event t ParsedDecimal
+  , _networkCfg_setGasPrice   :: Event t GasPrice
     -- ^ Maximum gas price you are willing to accept for having your
     -- transaction executed.
   , _networkCfg_setNetworks   :: Event t (Map NetworkName [NodeRef])
@@ -375,8 +373,8 @@ buildMeta cfg = do
         PublicMeta
           { _pmChainId = "1" -- Gets overridden always!
           , _pmSender  = "sender00"
-          , _pmGasLimit = ParsedInteger 100 -- TODO: Better defaults!!!
-          , _pmGasPrice = ParsedDecimal 0.001
+          , _pmGasLimit = GasLimit 100 -- TODO: Better defaults!!!
+          , _pmGasPrice = GasPrice 0.001
           }
   m <- fromMaybe defaultMeta <$>
     liftJSM (getItemStorage localStorage StoreNetwork_PublicMeta)
@@ -663,8 +661,8 @@ performLocalReadCustom networkL unwrapUsr onReqs =
       { _network_meta = pure $ PublicMeta
           { _pmChainId = "1"
           , _pmSender  = "someSender"
-          , _pmGasLimit = ParsedInteger 100000
-          , _pmGasPrice = ParsedDecimal 1.0
+          , _pmGasLimit = GasLimit 100000
+          , _pmGasPrice = GasPrice 1.0
           }
       }
   in
