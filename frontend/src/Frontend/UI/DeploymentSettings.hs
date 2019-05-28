@@ -45,9 +45,8 @@ import           Data.Set                    (Set)
 import qualified Data.Set                    as Set
 import           Data.Text                   (Text)
 import qualified Data.Text                   as T
-import           Pact.Parse                  (ParsedDecimal (..),
-                                              ParsedInteger (..))
 import           Pact.Types.ChainMeta        (PublicMeta (..))
+import           Pact.Types.Runtime          (GasLimit (..), GasPrice (..))
 import           Reflex
 import           Reflex.Dom
 import           Reflex.Dom.Contrib.CssClass (elKlass)
@@ -207,23 +206,23 @@ uiMetaData m  = do
     onSender <- mkLabeledInput (senderDropdown $ m ^. network_meta) "Sender" def
 
     onGasPriceTxt <- mkLabeledInputView uiRealInputElement "Gas price" $
-      fmap (showParsedDecimal . _pmGasPrice) $ m ^. network_meta
+      fmap (showGasPrice . _pmGasPrice) $ m ^. network_meta
 
     onGasLimitTxt <- mkLabeledInputView uiIntInputElement "Gas limit" $
-      fmap (showParsedInteger . _pmGasLimit) $ m ^. network_meta
+      fmap (showGasLimit . _pmGasLimit) $ m ^. network_meta
 
     pure $ mempty
       & networkCfg_setSender .~ onSender
-      & networkCfg_setGasPrice .~ fmapMaybe (readPact ParsedDecimal) onGasPriceTxt
-      & networkCfg_setGasLimit .~ fmapMaybe (readPact ParsedInteger) onGasLimitTxt
+      & networkCfg_setGasPrice .~ fmapMaybe (readPact GasPrice) onGasPriceTxt
+      & networkCfg_setGasLimit .~ fmapMaybe (readPact GasLimit) onGasLimitTxt
 
   where
 
-      showParsedInteger :: ParsedInteger -> Text
-      showParsedInteger (ParsedInteger i) = tshow i
+      showGasLimit :: GasLimit -> Text
+      showGasLimit (GasLimit i) = tshow i
 
-      showParsedDecimal :: ParsedDecimal -> Text
-      showParsedDecimal (ParsedDecimal i) = tshow i
+      showGasPrice :: GasPrice -> Text
+      showGasPrice (GasPrice i) = tshow i
 
       senderDropdown meta uCfg = do
         let itemDom v = elAttr "option" ("value" =: v) $ text v

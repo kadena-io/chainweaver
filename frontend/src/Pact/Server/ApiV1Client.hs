@@ -25,12 +25,12 @@ import Pact.Server.API
 data ApiV1Client m = ApiV1Client
   { send :: SubmitBatch -> m RequestKeys
   , poll :: Poll -> m PollResponses
-  , listen :: ListenerRequest -> m (CommandResult Hash)
+  , listen :: ListenerRequest -> m ListenResponse
   , local :: Command Text -> m (CommandResult Hash)
   }
 
-apiV1API :: Proxy ApiV1API
-apiV1API = Proxy
+{- apiV1API :: Proxy ApiV1API -}
+{- apiV1API = Proxy -}
 
 apiV1Client :: forall m. RunClient m => ApiV1Client m
 apiV1Client = let

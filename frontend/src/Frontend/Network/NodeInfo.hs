@@ -189,7 +189,7 @@ getChains (NodeInfo _ nType) =
 getChainBasePath :: ChainId -> NodeType -> [URI.RText 'URI.PathPiece]
 getChainBasePath (ChainId chainId) = buildPath . \case
     NodeType_Pact _
-      -> ["api", "v1"]
+      -> [] -- ["api", "v1"]
     NodeType_Chainweb (ChainwebInfo cwVersion netVersion _)
       -> ["chainweb", cwVersion, netVersion, "chain", tshow chainId, "pact"]
   where
