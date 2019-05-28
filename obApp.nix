@@ -59,6 +59,7 @@ in
         algebraic-graphs = haskellLib.dontCheck super.algebraic-graphs;
         # hw-hspec-hedgehog doesn't work
         pact = haskellLib.dontCheck super.pact;
+        swagger2 = haskellLib.dontCheck (haskellLib.dontHaddock super.swagger2);
 
         bsb-http-chunked = haskellLib.dontCheck super.bsb-http-chunked;
         Glob = haskellLib.dontCheck super.Glob;
