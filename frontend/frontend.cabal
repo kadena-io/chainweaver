@@ -111,6 +111,7 @@ library
                  , Frontend.UI.Dialogs.DeployConfirmation
                  , Frontend.UI.Dialogs.NetworkEdit
                  , Frontend.UI.Dialogs.KeyImport
+                 , Frontend.UI.Dialogs.LogoutConfirmation
                  , Frontend.UI.ErrorList
                  , Frontend.UI.Icon
                  , Frontend.UI.JsonData

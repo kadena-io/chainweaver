@@ -30,11 +30,11 @@ module Frontend.UI.Button
   , backButton
   , copyButton
   , deleteButton
-  , deleteButtonCfg
   , addButton
-  , addButtonCfg
+  , signoutButton
   , deleteButtonNaked
   , openButton
+  , cogButton
   , viewButton
   , callButton
   , refreshButton
@@ -49,6 +49,7 @@ module Frontend.UI.Button
 import           Control.Lens
 import           Data.Default
 import           Data.Default                (def)
+import           Control.Applicative         ((<|>))
 import           Data.Map                    (Map)
 import           Data.String                 (IsString)
 import           Data.Text                   (Text)
@@ -178,25 +179,19 @@ copyButton cfg e = do
       , "})"
       ]
 
-deleteButton :: StaticButtonConstraints t m => m (Event t ())
-deleteButton = deleteButtonCfg def
-
-addButton :: StaticButtonConstraints t m => m (Event t ())
-addButton = addButtonCfg def
-
-deleteButtonCfg :: StaticButtonConstraints t m => UiButtonCfg -> m (Event t ())
-deleteButtonCfg uCfg =
-  let
-    cfg = uCfg & uiButtonCfg_class %~ (<> "button_type_secondary" <> "button_size_tiny")
-  in
-    uiButton cfg $ imgWithAlt (static @"img/X.svg") "Delete" blank
-
-addButtonCfg :: StaticButtonConstraints t m => UiButtonCfg -> m (Event t ())
-addButtonCfg uCfg =
+addButton :: StaticButtonConstraints t m => UiButtonCfg -> m (Event t ())
+addButton uCfg =
   let
     cfg = uCfg & uiButtonCfg_class %~ (<> "button_type_secondary" <> "button_size_tiny")
   in
     uiButton cfg $ imgWithAlt (static @"img/plus.svg") "Add" blank
+
+deleteButton :: StaticButtonConstraints t m => UiButtonCfg -> m (Event t ())
+deleteButton uCfg =
+  let
+    cfg = uCfg & uiButtonCfg_class %~ (<> "button_type_secondary" <> "button_size_tiny")
+  in
+    uiButton cfg $ imgWithAlt (static @"img/X.svg") "Delete" blank
 
 deleteButtonNaked :: StaticButtonConstraints t m => UiButtonCfg -> m (Event t ())
 deleteButtonNaked cfg =
@@ -204,6 +199,23 @@ deleteButtonNaked cfg =
   {-   cfg = uCfg & uiButtonCfg_class %~ (<> "button_type_secondary" <> "button_size_tiny") -}
   {- in -}
     uiButton cfg $ imgWithAlt (static @"img/X.svg") "Delete" blank
+
+cogButton :: StaticButtonConstraints t m => UiButtonCfg -> m (Event t ())
+cogButton uCfg =
+  uiButton
+      ( uCfg
+          & uiButtonCfg_title .~ Just "Settings"
+          {- & uiButtonCfg_class %~ (<> "main-header__text-icon-button") -}
+      ) $ do
+    elClass "span" "fa fa-lg fa-cog" blank
+
+signoutButton :: StaticButtonConstraints t m => UiButtonCfg -> m (Event t ())
+signoutButton uCfg =
+  uiButton
+      ( uCfg
+          & uiButtonCfg_title %~ \old -> old <|> Just "Sign out"
+      ) $ do
+    elClass "span" "fa fa-lg fa-sign-out" blank
 
 -- | Button that loads something into the Editor.
 openButton :: StaticButtonConstraints t m => CssClass -> m (Event t ())
