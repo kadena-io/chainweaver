@@ -160,7 +160,8 @@ uiKeyItems aWallet = do
 uiImportKeyRow :: MonadWidget t m => m (Event t ())
 uiImportKeyRow = elClass "tr" "table__row" $ do
   traverse_ (const $ el "td" blank) [1..5 :: Int] -- Button should be in the last column.
-  elClass "td" "wallet__add" $ addButton
+  elClass "td" "wallet__add" $
+    addButtonCfg $ def & uiButtonCfg_title .~ Just "Import existing key"
 
 ------------------------------------------------------------------------------
 -- | Display a key as list item together with it's name.
@@ -184,12 +185,16 @@ uiKeyItem (n, k) = do
         void $ copyButton cfg $ _element_raw privEl
 
       onDel <- elClass "td" "wallet__delete" $
-        deleteButtonCfg $ def & uiButtonCfg_disabled .~ isPredefinedKey n
+        deleteButtonCfg $
+          def & uiButtonCfg_disabled .~ isPredefinedKey n
+              & uiButtonCfg_title .~ Just "Delete key permanently"
 
       pure (const n <$> onDel)
   where
     copyBtnCfg =
-      btnCfgTertiary & uiButtonCfg_class %~ (fmap (<> "button_size_tiny"))
+      btnCfgTertiary
+        & uiButtonCfg_class %~ (fmap (<> "button_size_tiny"))
+        & uiButtonCfg_title .~ pure (Just "Copy key to clipboard")
 
 -- | Widget showing/hiding a private key.
 --
