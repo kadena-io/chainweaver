@@ -209,7 +209,7 @@ uiCreateKeyset jsonD =
               Left _  -> Map.member ks keysets
               Right j -> H.member ks j
         in
-          if dupe then Just "This keyset name is already in use." else Nothing
+          if dupe then Just "This keyset name is already in use" else Nothing
 
 -- | Widget showing all avaialble keys for selecting keys
 --

@@ -238,7 +238,7 @@ checkKeyNameValidityStr w = getErr <$> w ^. wallet_keys
   where
     getErr keys k =
       if Map.member k keys
-         then Just $ T.pack "This key name is already in use."
+         then Just $ T.pack "This key name is already in use"
          else Nothing
 
 
