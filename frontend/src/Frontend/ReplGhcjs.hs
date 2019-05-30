@@ -165,6 +165,7 @@ controlBar
 controlBar m = do
     mainHeader $ do
       controlBarLeft
+      controlBarCenter
       controlBarRight m
   where
     -- Main header with adjusted padding on MacOs (scrollbars take up no space there):
@@ -178,16 +179,11 @@ controlBar m = do
                  else baseCls
       divClass cls child
 
-
-controlBarLeft :: forall t m. MonadWidget t m => m ()
-controlBarLeft =
-  divClass "main-header__logos-docs" $ do
+controlBarCenter :: forall t m. MonadWidget t m => m ()
+controlBarCenter = divClass "main-header__center-box" $
+  divClass "main-header__center" $
     kadenaLogo
-    pactLogo
-    docs
-
   where
-
     kadenaLogo =
       elAttr "a"
         ( "href" =: "http://kadena.io"
@@ -198,6 +194,16 @@ controlBarLeft =
             <> "alt" =: "Kadena Logo"
             <> "class" =: "main-header__logo-img"
           ) blank
+
+
+controlBarLeft :: forall t m. MonadWidget t m => m ()
+controlBarLeft =
+  divClass "main-header__logos-docs" $ do
+    {- kadenaLogo -}
+    pactLogo
+    docs
+
+  where
 
     pactLogo =
       elClass "div" "main-header__pact-logo" $ do
