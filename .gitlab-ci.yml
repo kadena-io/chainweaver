@@ -1,4 +1,13 @@
-pact-web:
+pact-web-macos:
+  tags:
+    - macos
   script:
     - nix-build
-    - nix-build --argstr system x86_64-linux
+    - nix-build -A exe
+
+pact-web-linux:
+  tags:
+    - linux
+  script:
+    - nix-build
+    - nix-build -A exe
