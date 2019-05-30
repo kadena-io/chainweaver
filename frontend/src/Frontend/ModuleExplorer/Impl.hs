@@ -313,7 +313,8 @@ loadToEditor m onFileRef onModRef = do
       onCode = fmap _unCode $ leftmost
         [ snd <$> onFileMod
         , snd <$> onFile
-        , view codeOfModule . snd <$> onMod
+          -- Clear editor in case of loading error:
+        , maybe "" (view codeOfModule) . snd <$> onMod
         ]
 
     pure ( mconcat [modCfg, fCfg, mempty & editorCfg_loadCode .~ onCode]
@@ -401,7 +402,8 @@ pushPopModule m explr onClear onPush onPop = mdo
     let onFileModRef = fmapMaybe getFileModuleRef onPush
     onFileModule <- waitForFile (explr ^. moduleExplorer_selectedFile) onFileModRef
 
-    (lCfg, onDeployedModule) <- loadModule m $ fmapMaybe getDeployedModuleRef onPush
+    (lCfg, onMayDeployedModule) <- loadModule m $ fmapMaybe getDeployedModuleRef onPush
+    let onDeployedModule = fmapMaybe sequence onMayDeployedModule
 
     stack <- holdUniqDyn <=< foldDyn id [] $ leftmost
       [ (:) . (_1 . moduleRef_source %~ ModuleSource_File) <$> onFileModule
@@ -444,7 +446,8 @@ pushPopModule m explr onClear onPush onPop = mdo
     refreshHead :: Event t [(ModuleRef, ModDef)] -> m (mConf, Event t (ModuleRef, ModDef))
     refreshHead onMods = do
       let getHeadRef = getDeployedModuleRef <=< fmap fst . listToMaybe
-      (cfg, onDeployed) <- loadModule m $ fmapMaybe getHeadRef onMods
+      (cfg, onMayDeployed) <- loadModule m $ fmapMaybe getHeadRef onMods
+      let onDeployed = fmapMaybe sequence onMayDeployed
       pure $ (cfg, (_1 . moduleRef_source %~ ModuleSource_Deployed) <$> onDeployed)
 
 
@@ -460,12 +463,13 @@ loadModule
     )
   => model
   -> Event t DeployedModuleRef
-  -> m (mConf, Event t (DeployedModuleRef, ModuleDef (Term Name)))
+  -> m (mConf, Event t (DeployedModuleRef, Maybe (ModuleDef (Term Name))))
+     -- ^ Nothing in case of error, the actual error will be logged to `Messages`.
 loadModule networkL onRef = do
   onErrModule <- fetchModule networkL onRef
   let
     onErr = fmapMaybe (^? _2 . _Left) onErrModule
-    onModule = fmapMaybe (traverse (^? _Right)) onErrModule
+    onModule = fmap (^? _Right) <$> onErrModule
   pure
     ( mempty & messagesCfg_send .~ fmap (pure . ("Module Explorer, loading of module failed: " <>)) onErr
     , onModule
