@@ -163,7 +163,11 @@ makeRepl m cfg = build $ \ ~(_, impl) -> do
     -- Dummy state, that gets never used, so we avoid a pointless `Maybe` or
     -- sampling, which could trigger a loop:
     initState <- liftIO $ initReplState StringEval Nothing
-    onResetSt <- performEvent $ initRepl impl m <$ (cfg ^. replCfg_reset)
+    onPostBuild <- getPostBuild
+    onResetSt <- performEvent $ initRepl impl m <$ leftmost
+      [ cfg ^. replCfg_reset
+      , onPostBuild
+      ]
 
     let envData = either (const HM.empty) id <$> m ^. jsonData_data
         keys = Map.elems <$> m ^. wallet_keys
