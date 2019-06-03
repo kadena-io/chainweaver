@@ -33,6 +33,17 @@ $accordion-header-font-size: 14px;
 // A button in the accordion title (to the right)
 .accordion__title-button {
   float: right;
+  height: $control-height;
+}
+
+// Info div that gets only shown when collapsed (instead of title button).
+.accordion__collapsed-info {
+  float: right;
+  height: $control-height;
+}
+
+.accordion-revealed .accordion__collapsed-info {
+  display: none;
 }
 
 .accordion-collapsed .accordion__title-button {

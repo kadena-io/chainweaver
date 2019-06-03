@@ -51,13 +51,20 @@
 
 }
 
+$table__row_type_primary-padding: $medium-padding;
+
 .table__row_type_primary,
 .table__row_type_primary td {
   height: 41px;
   line-height: 42px;
 
-  padding-left: $medium-padding;
-  padding-right: $medium-padding;
+  padding-left: $table__row_type_primary-padding;
+  padding-right: $table__row_type_primary-padding;
+}
+
+// Element that should be right aligned with a table row:
+.table__row-right-aligned_type_primary {
+  padding-right: $table__row_type_primary-padding;
 }
 
 // No border, no padding/margin:
