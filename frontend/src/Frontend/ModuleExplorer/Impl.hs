@@ -151,6 +151,7 @@ makeModuleExplorer m cfg = mfix $ \ ~(_, explr) -> do
     (lFileCfg, loadedSource) <- loadToEditor m
       (leftmost [cfg ^. moduleExplorerCfg_loadFile, onInitFile, onNewGistRef])
       (cfg ^. moduleExplorerCfg_loadModule)
+      (cfg ^. moduleExplorerCfg_clearLoaded)
 
     (stckCfg, stack) <- pushPopModule m explr
       (leftmost -- Reset module stack.
@@ -170,7 +171,7 @@ makeModuleExplorer m cfg = mfix $ \ ~(_, explr) -> do
     modules <- makeModuleList m (cfg ^. moduleExplorerCfg_modules)
 
     pure
-      ( mconcat [ editorInitCfg, lFileCfg, stckCfg, deployEdCfg, deployCodeCfg, gistCfg, selCfg ]
+      ( mconcat [ lFileCfg, editorInitCfg, stckCfg, deployEdCfg, deployCodeCfg, gistCfg, selCfg ]
       , ModuleExplorer
         { _moduleExplorer_moduleStack = stack
         , _moduleExplorer_selectedFile = selectedFile
@@ -276,8 +277,9 @@ loadToEditor
   => model
   -> Event t FileRef
   -> Event t ModuleRef
+  -> Event t ()
   -> m (mConf, MDynamic t LoadedRef)
-loadToEditor m onFileRef onModRef = do
+loadToEditor m onFileRef onModRef onClear = do
     let onFileModRef = fmapMaybe getFileModuleRef onModRef
 
     (fCfg, onFile) <- fetchFile m $ leftmost
@@ -307,6 +309,7 @@ loadToEditor m onFileRef onModRef = do
       , Just <$> onGlobalModRef
         -- For now, until we have file saving support:
       , fmap (const Nothing) . ffilter id . updated $ m ^.editor_modified
+      , Nothing <$ onClear
       ]
 
     let
@@ -315,6 +318,7 @@ loadToEditor m onFileRef onModRef = do
         , snd <$> onFile
           -- Clear editor in case of loading error:
         , maybe "" (view codeOfModule) . snd <$> onMod
+        , "" <$ onClear
         ]
 
     pure ( mconcat [modCfg, fCfg, mempty & editorCfg_loadCode .~ onCode]
