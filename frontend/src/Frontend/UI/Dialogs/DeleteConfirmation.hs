@@ -57,7 +57,7 @@ uiDeleteConfirmation keyName = do
     modalBody $ do
       divClass "segment modal__filler" $ do
         divClass "modal__filler-horizontal-center-box" $
-          imgWithAltCls "modal__filler-img" (static @"img/bin.svg") "Bin" blank
+          imgWithAltCls "modal__filler-img" (static @"img/bin-scalable.svg") "Bin" blank
 
         elClass "h2" "heading heading_type_h2" $ do
           text "Really delete key '"
