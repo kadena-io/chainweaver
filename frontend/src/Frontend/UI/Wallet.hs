@@ -47,6 +47,7 @@ import           Frontend.Wallet
 import           Frontend.UI.Widgets
 import           Frontend.Foundation
 import           Frontend.UI.Dialogs.KeyImport (uiKeyImport, HasUiKeyImportModelCfg)
+import           Frontend.UI.Dialogs.DeleteConfirmation (uiDeleteConfirmation)
 import           Frontend.UI.Modal
 ------------------------------------------------------------------------------
 
@@ -149,10 +150,12 @@ uiKeyItems aWallet = do
       pure (evs, onAdd)
 
   dyn_ $ ffor keyMap $ \keys -> when (Map.null keys) $ text "No keys ..."
-  let delKey = switchDyn $ leftmost . Map.elems <$> events
+  let onDelKey = switchDyn $ leftmost . Map.elems <$> events
   pure $ mempty
-    & walletCfg_delKey .~ delKey
-    & modalCfg_setModal .~ (Just (uiKeyImport aWallet) <$ onAdd)
+    & modalCfg_setModal .~ leftmost
+      [ Just (uiKeyImport aWallet) <$ onAdd
+      , Just . uiDeleteConfirmation <$> onDelKey
+      ]
 
 
 
