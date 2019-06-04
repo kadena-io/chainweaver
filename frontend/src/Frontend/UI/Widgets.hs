@@ -347,7 +347,7 @@ accordionItem' initActive contentClass title inner = mdo
   where
     activeClass = \case
       False -> singleClass "accordion-collapsed"
-      True -> mempty
+      True -> singleClass "accordion-revealed"
 
 accordionItem :: MonadWidget t m => Bool -> CssClass -> Text -> m a -> m a
 accordionItem initActive contentClass title inner =

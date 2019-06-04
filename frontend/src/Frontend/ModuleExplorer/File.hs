@@ -150,6 +150,7 @@ textFileType = \case
 -- | Fetch a `File` given a `FileRef`.
 --
 --   TODO: Implement support for `FileRef_Stored`.
+--   TODO: Handle error case (file could not be loaded) properly.
 fetchFile
   :: ( PerformEvent t m, TriggerEvent t m, MonadJSM (Performable m)
      , HasJSContext JSM, MonadHold t m
