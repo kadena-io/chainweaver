@@ -293,7 +293,9 @@ uiNode
   :: MonadWidget t m
   => Dynamic t (Maybe NodeRef)
   -> m (Event t (Maybe NodeRef), MDynamic t (Either Text NodeInfo))
-uiNode nRef = do
+uiNode nRefDups = do
+  -- Necessary for performance:
+  nRef <- holdUniqDyn nRefDups
   onVal <- tagOnPostBuild nRef
 
   elClass "li" "table__row table__row_type_primary" $ do
