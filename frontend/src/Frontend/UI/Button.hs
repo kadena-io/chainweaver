@@ -21,6 +21,7 @@ module Frontend.UI.Button
   , HasUiButtonCfgRep (..)
     -- ** Predefined Configs
   , btnCfgPrimary
+  , btnCfgSecondary
   , btnCfgTertiary
     -- * Primitives
   , uiButton
@@ -96,6 +97,11 @@ btnCfgPrimary
   :: (Default (UiButtonCfgRep f), IsString (ReflexValue f CssClass))
   => UiButtonCfgRep f
 btnCfgPrimary = def & uiButtonCfg_class .~ "button_type_primary"
+
+btnCfgSecondary
+  :: (Default (UiButtonCfgRep f), IsString (ReflexValue f CssClass))
+  => UiButtonCfgRep f
+btnCfgSecondary = def & uiButtonCfg_class .~ "button_type_secondary"
 
 btnCfgTertiary
   :: (Default (UiButtonCfgRep f), IsString (ReflexValue f CssClass))
@@ -184,7 +190,7 @@ addButton uCfg =
   let
     cfg = uCfg & uiButtonCfg_class %~ (<> "button_type_secondary" <> "button_size_tiny")
   in
-    uiButton cfg $ imgWithAlt (static @"img/plus.svg") "Add" blank
+    uiButton cfg $ imgWithAltCls "button__icon" (static @"img/plus.svg") "Add" blank
 
 deleteButton :: StaticButtonConstraints t m => UiButtonCfg -> m (Event t ())
 deleteButton uCfg =
