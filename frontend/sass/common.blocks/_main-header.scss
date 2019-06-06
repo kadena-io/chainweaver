@@ -15,6 +15,7 @@ $main-header-btn-font-size: $secondary-font-size;
 
 .main-header {
   display: flex;
+  justify-content: space-between;
   background: #2d2d2f;
   color: $main-header-color;
   padding-top: $normal-padding;
@@ -31,9 +32,12 @@ $main-header-btn-font-size: $secondary-font-size;
   right: 0;
   bottom: 0;
   top: 0;
+  // Make sure we are in the background - otherwise links are not clickable!
+  z-index: -10;
 }
 
 .main-header__center {
+  position: relative;
   margin: auto;
   display: inline-block;
 }
@@ -50,17 +54,6 @@ $main-header-btn-font-size: $secondary-font-size;
   margin-right: $pane-padding-right;
 }
 
-.main-header__kadena-logo {
-  vertical-align: bottom;
-}
-
-.main-header__pact-logo {
-  color: $main-header-color;
-  // line-height: 0;
-  vertical-align: bottom;
-  margin-right: $normal-margin;
-}
-
 .main-header__logo-img {
   @extend .main-header__img;
   height: $main-header-std-height;
@@ -70,10 +63,24 @@ $main-header-btn-font-size: $secondary-font-size;
   }
 }
 
+.main-header__kadena-logo {
+  @extend .main-header__logo-img;
+  vertical-align: bottom;
+}
+
+.main-header__pact-logo {
+  @extend .main-header__logo-img;
+  color: $main-header-color;
+  // line-height: 0;
+  vertical-align: bottom;
+  margin-right: $normal-margin;
+}
+
+
 .main-header__pact-logo-img {
   @extend .main-header__logo-img;
   // There seems to be some shadow in the logo which causes a weird offset:
-  bottom: -1.5px;
+  // bottom: -1.5px;
 }
 
 .main-header__pact-version {
@@ -138,7 +145,6 @@ $main-header-btn-font-size: $secondary-font-size;
 
 .main-header__controls-nav {
   // min-width: 455px;
-  flex: 1;
 }
 
 @media (max-width: 1510px) {
