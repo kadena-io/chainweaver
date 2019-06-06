@@ -51,7 +51,7 @@ import           Reflex
 import           Reflex.Dom.Core                 (HasJSContext,
                                                   XhrResponse (..),
                                                   newXMLHttpRequest, xhrRequest)
-import           Safe                            (readMay)
+import           Safe                            (readMay, tailDef)
 ------------------------------------------------------------------------------
 import           Obelisk.Generated.Static
 ------------------------------------------------------------------------------
@@ -87,7 +87,7 @@ instance IsRefPath ExampleRef where
   renderRef = mkRefPath . shorten . T.pack . show
     where
       -- Only works for "ExampleRef_Blah" kind of names:
-      shorten =  head . reverse . filter (/= "") . T.splitOn "_"
+      shorten = T.intercalate "_" .  tailDef [] . T.splitOn "_"
 
   parseRef = do
     n <- ("ExampleRef_" <>) <$> MP.anySingle
