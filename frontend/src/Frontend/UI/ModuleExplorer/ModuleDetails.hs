@@ -39,7 +39,6 @@ import           Reflex
 import           Reflex.Dom
 import           Reflex.Network.Extended
 ------------------------------------------------------------------------------
-import           Frontend.Foundation
 import           Frontend.ModuleExplorer
 import           Frontend.Network
 import           Frontend.UI.Button
