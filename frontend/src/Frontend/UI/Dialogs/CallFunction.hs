@@ -30,27 +30,28 @@ module Frontend.UI.Dialogs.CallFunction
 ------------------------------------------------------------------------------
 import           Control.Lens
 import           Control.Monad
-import           Data.Coerce             (coerce)
-import           Data.List               (intersperse)
-import qualified Data.Map                as Map
-import           Data.Text               (Text)
-import qualified Data.Text               as T
+import           Data.Coerce                    (coerce)
+import           Data.List                      (intersperse)
+import qualified Data.Map                       as Map
+import           Data.Text                      (Text)
+import qualified Data.Text                      as T
 import           Reflex
 import           Reflex.Dom
-import           Safe (readMay, headMay)
+import           Safe                           (headMay, readMay)
 ------------------------------------------------------------------------------
-import           Pact.Types.Lang         (Arg (..), FunType (..),
-                                          ModuleName (..), Name, PrimType (..),
-                                          Term, Type (..), GuardType(..))
+import           Pact.Types.Lang                (Arg (..), FunType (..),
+                                                 GuardType (..),
+                                                 ModuleName (..), Name,
+                                                 PrimType (..), Term, Type (..))
 ------------------------------------------------------------------------------
-import           Frontend.Network
-import           Frontend.Foundation     hiding (Arg)
-import           Frontend.JsonData       (HasJsonData (..), JsonData)
+import           Frontend.Foundation            hiding (Arg)
+import           Frontend.JsonData              (HasJsonData (..), JsonData)
 import           Frontend.ModuleExplorer
+import           Frontend.Network
+import           Frontend.UI.DeploymentSettings
 import           Frontend.UI.Modal
 import           Frontend.UI.Widgets
-import           Frontend.Wallet         (HasWallet (..))
-import           Frontend.UI.DeploymentSettings
+import           Frontend.Wallet                (HasWallet (..))
 ------------------------------------------------------------------------------
 
 type HasUICallFunctionModel model t =
@@ -71,7 +72,7 @@ uiCallFunction
   -> m (mConf, Event t ())
 uiCallFunction m mModule func = do
     onClose <- modalHeader $ do
-      text "Function: "
+      text headerTitle
       elClass "span" "heading_type_h1" $
         text $ _pactFunction_name func
     modalMain $ do
@@ -82,7 +83,10 @@ uiCallFunction m mModule func = do
             el "br" blank
             el "br" blank
             renderDescription func
-        traverse (uiBuildDeployment m func) mModule
+        traverse (uiBuildDeployment m func) $
+          if functionIsCallable func
+             then mModule
+             else Nothing
 
       modalFooter $
         case mCfgInfo of
@@ -103,6 +107,13 @@ uiCallFunction m mModule func = do
                 ]
 
             pure (cfg, leftmost [onClose, onCancel, onCall])
+  where
+    headerTitle =
+      case _pactFunction_defType func of
+        Defun   -> "Function: "
+        Defpact -> "Pact: "
+        Defcap  -> "Capability: "
+
 
 uiBuildDeployment
   :: forall t m mConf model.

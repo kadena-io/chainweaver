@@ -121,50 +121,48 @@ uiKeyItems
   => Wallet t
   -> m mConf
 uiKeyItems aWallet = do
-  let
-    keyMap = aWallet ^. wallet_keys
-    tableAttrs =
-      "style" =: "table-layout: fixed; width: 100%"
-      <> "class" =: "wallet table"
-  (events, onAdd) <- elAttr "table" tableAttrs $ do
-    el "colgroup" $ do
-      elAttr "col" ("style" =: "width: 20%") blank
-      elAttr "col" ("style" =: "width: 35%") blank
-      elAttr "col" ("style" =: "width: 15%") blank
-      elAttr "col" ("style" =: "width: 35%") blank
-      elAttr "col" ("style" =: "width: 15%") blank
-      elAttr "col" ("style" =: "width: 10%") blank
-    el "thead" $ el "tr" $ do
-      let mkHeading = elClass "th" "table__heading" . text
-      traverse_ mkHeading $
-        [ "Key Name"
-        , "Public Key"
-        , ""
-        , "Private Key"
-        , ""
-        , ""
+    let
+      keyMap = aWallet ^. wallet_keys
+      tableAttrs =
+        "style" =: "table-layout: fixed; width: 100%"
+        <> "class" =: "wallet table"
+    (events, onAdd) <- elAttr "table" tableAttrs $ do
+      el "colgroup" $ do
+        elAttr "col" ("style" =: "width: 20%") blank
+        elAttr "col" ("style" =: "width: 35%") blank
+        elAttr "col" ("style" =: "width: 15%") blank
+        elAttr "col" ("style" =: "width: 35%") blank
+        elAttr "col" ("style" =: "width: 15%") blank
+        elAttr "col" ("style" =: "width: 10%") blank
+      onAdd <- el "thead" $ el "tr" $ do
+        let mkHeading = elClass "th" "table__heading" . text
+        traverse_ mkHeading $
+          [ "Key Name"
+          , "Public Key"
+          , ""
+          , "Private Key"
+          , ""
+          ]
+        elClass "th" "table__heading wallet__add" $
+          importButton
+
+      el "tbody" $ do
+        evs <- listWithKey keyMap $ \name key -> uiKeyItem (name, key)
+        pure (evs, onAdd)
+
+    dyn_ $ ffor keyMap $ \keys -> when (Map.null keys) $ text "No keys ..."
+    let onDelKey = switchDyn $ leftmost . Map.elems <$> events
+    pure $ mempty
+      & modalCfg_setModal .~ leftmost
+        [ Just (uiKeyImport aWallet) <$ onAdd
+        , Just . uiDeleteConfirmation <$> onDelKey
         ]
-    el "tbody" $ do
-      evs <- listWithKey keyMap $ \name key -> uiKeyItem (name, key)
-      onAdd <- uiImportKeyRow
-      pure (evs, onAdd)
+  where
+    importButton =
+      addButton $ def
+        & uiButtonCfg_title .~ Just "Import existing key"
+        & uiButtonCfg_class %~ (<> "wallet__add-delete-button")
 
-  dyn_ $ ffor keyMap $ \keys -> when (Map.null keys) $ text "No keys ..."
-  let onDelKey = switchDyn $ leftmost . Map.elems <$> events
-  pure $ mempty
-    & modalCfg_setModal .~ leftmost
-      [ Just (uiKeyImport aWallet) <$ onAdd
-      , Just . uiDeleteConfirmation <$> onDelKey
-      ]
-
-
-
--- | Last row in widget with a button for triggering a key import.
-uiImportKeyRow :: MonadWidget t m => m (Event t ())
-uiImportKeyRow = elClass "tr" "table__row" $ do
-  traverse_ (const $ el "td" blank) [1..5 :: Int] -- Button should be in the last column.
-  elClass "td" "wallet__add" $
-    addButton $ def & uiButtonCfg_title .~ Just "Import existing key"
 
 ------------------------------------------------------------------------------
 -- | Display a key as list item together with it's name.
@@ -191,6 +189,7 @@ uiKeyItem (n, k) = do
         deleteButton $
           def & uiButtonCfg_disabled .~ isPredefinedKey n
               & uiButtonCfg_title .~ Just "Delete key permanently"
+              & uiButtonCfg_class %~ (<> "wallet__add-delete-button")
 
       pure (const n <$> onDel)
   where

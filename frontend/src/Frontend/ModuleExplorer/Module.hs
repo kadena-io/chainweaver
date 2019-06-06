@@ -39,6 +39,8 @@ module Frontend.ModuleExplorer.Module
   , importNamesOfModule
   , interfacesOfModule
   , isModule
+  , functionsByDefType
+  , functionIsCallable
   ) where
 
 ------------------------------------------------------------------------------
@@ -130,6 +132,23 @@ functionsOfModule m =
   case Pact.compileExps Pact.mkEmptyInfo <$> Pact.parseExprs (_unCode $ m ^. codeOfModule) of
     Right (Right terms) -> concatMap getFunctions terms
     _                   -> []
+
+
+-- | Separate functions by their `DefType`.
+functionsByDefType :: [PactFunction] -> [(DefType, [PactFunction])]
+functionsByDefType fs = getFiltered <$> [minBound .. maxBound] <*> pure fs
+  where
+    getFiltered what xs = (what, filter (is what) xs)
+    is what f = _pactFunction_defType f == what
+
+-- | Whether the current "function" is actually some kind of function that can be called.
+functionIsCallable :: PactFunction -> Bool
+functionIsCallable f =
+  case _pactFunction_defType f of
+    Defcap -> False
+    Defpact -> False
+    Defun  -> True
+
 
 -- | Get the top level functions from a 'Term'.
 getFunctions :: Term Name -> [PactFunction]
