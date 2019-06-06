@@ -190,7 +190,7 @@ controlBarCenter = divClass "main-header__center-box" $
   where
     kadenaLogo =
       elAttr "a"
-        ( "href" =: "http://kadena.io"
+        ( "href" =: "https://kadena.io"
           <> "class" =: "main-header__kadena-logo" <> "target" =: "_blank"
         ) $
         elAttr "img"
@@ -221,7 +221,7 @@ controlBarLeft =
           text $ "v" <> ver
 
     docs = divClass "main-header__docs" $ do
-      elAttr "a" ( "href" =: "http://pactlang.org"
+      elAttr "a" ( "href" =: "https://pactlang.org"
                 <> "class" =: "main-header__documents" <> "target" =: "_blank"
                  ) $ do
         elAttr "img" ("src" =: static @"img/instruction.svg" <> "alt" =: "Documentation" <> "class" =: "main-header__documents-img" <> "style" =: "width: 28px;") blank

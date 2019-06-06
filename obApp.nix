@@ -20,7 +20,7 @@ in
     shellToolOverrides = ghc: super: {
          z3 = pkgs.z3;
        };
-   packages = 
+   packages =
      let
        servantSrc = hackGet ./deps/servant;
      in
@@ -59,7 +59,6 @@ in
         algebraic-graphs = haskellLib.dontCheck super.algebraic-graphs;
         # hw-hspec-hedgehog doesn't work
         pact = haskellLib.dontCheck super.pact;
-        swagger2 = haskellLib.dontCheck (haskellLib.dontHaddock super.swagger2);
 
         bsb-http-chunked = haskellLib.dontCheck super.bsb-http-chunked;
         Glob = haskellLib.dontCheck super.Glob;
@@ -90,8 +89,14 @@ in
           '';
         }));
       };
-      common-overlay = self: super: {
-
+      common-overlay = self: super:
+        let callHackageDirect = {pkg, ver, sha256}@args:
+              let pkgver = "${pkg}-${ver}";
+              in self.callCabal2nix pkg (pkgs.fetchzip {
+                   url = "http://hackage.haskell.org/package/${pkgver}/${pkgver}.tar.gz";
+                   inherit sha256;
+                 }) {};
+         in {
             intervals = pkgs.haskell.lib.dontCheck super.intervals;
 
             pact = pkgs.haskell.lib.overrideCabal super.pact (drv: {
@@ -127,6 +132,12 @@ in
             #   sha256 = "1lwa6kbpjmx17lkh74p9nfjiwzqcy3whza59m67k96ab3bh2b99y";
             # }) + "/servant-client-jsaddle") {}));
             servant-client-jsaddle = pkgs.haskell.lib.dontCheck (pkgs.haskell.lib.doJailbreak super.servant-client-jsaddle);
+
+            swagger2 = haskellLib.dontCheck (haskellLib.doJailbreak (callHackageDirect {
+              pkg = "swagger2";
+              ver = "2.3.1.1";
+              sha256 = "0rhxqdiymh462ya9h76qnv73v8hparwz8ibqqr1d06vg4zm7s86p";
+            }));
 
             thyme = pkgs.haskell.lib.dontCheck (pkgs.haskell.lib.enableCabalFlag (self.callCabal2nix "thyme" (pkgs.fetchFromGitHub {
               owner = "kadena-io";
