@@ -225,11 +225,11 @@ typeCheckVerify m t = mdo
     parseVerifyOutput :: Map ModuleName Int -> VerifyResult -> [Annotation]
     parseVerifyOutput ms rs =
       let
-        successRs :: [(ModuleName, Text)]
-        successRs = fmapMaybe (traverse (^? _Right)) . Map.toList $ rs
+        msgsRs :: [(ModuleName, Text)]
+        msgsRs = fmap (fmap $ either id id) . Map.toList $ rs
 
         parsedRs :: Map ModuleName [Annotation]
-        parsedRs = Map.fromList $ fmapMaybe (traverse annoParser) successRs
+        parsedRs = Map.fromList $ fmapMaybe (traverse annoParser) msgsRs
 
         fixLineNumber :: Int -> Annotation -> Annotation
         fixLineNumber n a = a { _annotation_line = _annotation_line a + n }
@@ -242,11 +242,11 @@ typeCheckVerify m t = mdo
     parseVerifyOutput :: VerifyResult -> [Annotation]
     parseVerifyOutput rs =
       let
-        successRs :: [(ModuleName, Text)]
-        successRs = fmapMaybe (traverse (^? _Right)) . Map.toList $ rs
+        msgsRs :: [(ModuleName, Text)]
+        msgsRs = fmap (fmap $ either id id) . Map.toList $ rs
 
         parsedRs :: [(ModuleName, [Annotation])]
-        parsedRs = mapMaybe (traverse annoParser) successRs
+        parsedRs = mapMaybe (traverse annoParser) msgsRs
       in
         concatMap snd parsedRs
 #endif

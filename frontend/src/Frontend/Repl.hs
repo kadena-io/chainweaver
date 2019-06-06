@@ -326,11 +326,18 @@ runVerify impl onMod =
       pure $ Map.fromList rs
 
     verifyModule m = do
-      r <- runExceptT . pactEvalRepl' . buildVerify $ m
+      r <- runExceptT . doTypeCheckAndVerify $ m
       pure (m, bimap T.pack showTerm r)
+
+    doTypeCheckAndVerify m = do
+      -- Success output of typecheck is mostly not parseable:
+      void $ pactEvalRepl' $ buildTypecheck m
+      pactEvalRepl' $ buildVerify m
 
     -- TODO: Proper namespace support
     buildVerify (ModuleName n _) = "(verify '" <> n <> ")"
+    -- TODO: Proper namespace support
+    buildTypecheck (ModuleName n _) = "(typecheck '" <> n <> ")"
 
 -- | Run code in a transaction on the REPL.
 runTransaction
@@ -376,7 +383,7 @@ getModules = Map.fromList . mapMaybe toModule
   where
     toModule :: Exp Parsed -> Maybe (ModuleName, Int)
     toModule = \case
-      EList (ListExp (_:EAtom (AtomExp m _ _):_) _ (Parsed (Delta.Lines l _ _ _) _))
+      EList (ListExp (EAtom (AtomExp "module" _ _):EAtom (AtomExp m _ _):_) _ (Parsed (Delta.Lines l _ _ _) _))
       -- TODO: Proper namespace support
         -> Just $ (ModuleName m Nothing, fromIntegral l)
       _ -> Nothing
