@@ -45,6 +45,7 @@ import           Data.Set                    (Set)
 import qualified Data.Set                    as Set
 import           Data.Text                   (Text)
 import qualified Data.Text                   as T
+import           Pact.Parse
 import           Pact.Types.ChainMeta        (PublicMeta (..))
 import           Pact.Types.Runtime          (GasLimit (..), GasPrice (..))
 import           Reflex
@@ -213,16 +214,16 @@ uiMetaData m  = do
 
     pure $ mempty
       & networkCfg_setSender .~ onSender
-      & networkCfg_setGasPrice .~ fmapMaybe (readPact GasPrice) onGasPriceTxt
-      & networkCfg_setGasLimit .~ fmapMaybe (readPact GasLimit) onGasLimitTxt
+      & networkCfg_setGasPrice .~ fmapMaybe (readPact (GasPrice . ParsedDecimal)) onGasPriceTxt
+      & networkCfg_setGasLimit .~ fmapMaybe (readPact (GasLimit . ParsedInteger)) onGasLimitTxt
 
   where
 
       showGasLimit :: GasLimit -> Text
-      showGasLimit (GasLimit i) = tshow i
+      showGasLimit (GasLimit (ParsedInteger i)) = tshow i
 
       showGasPrice :: GasPrice -> Text
-      showGasPrice (GasPrice i) = tshow i
+      showGasPrice (GasPrice (ParsedDecimal i)) = tshow i
 
       senderDropdown meta uCfg = do
         let itemDom v = elAttr "option" ("value" =: v) $ text v
