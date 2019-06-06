@@ -162,20 +162,7 @@ uiKeyItems aWallet = do
       addButton $ def
         & uiButtonCfg_title .~ Just "Import existing key"
         & uiButtonCfg_class %~ (<> "wallet__add-delete-button")
-      {- let -}
-      {-   cfg = btnCfgSecondary -}
-      {-     & uiButtonCfg_title .~ Just "Import existing key" -}
-      {-     & uiButtonCfg_class %~ (<> "button_size_tiny") -}
-      {- uiButton cfg $ text "Import" -}
 
-
-
--- | Last row in widget with a button for triggering a key import.
-uiImportKeyRow :: MonadWidget t m => m (Event t ())
-uiImportKeyRow = elClass "tr" "table__row" $ do
-  traverse_ (const $ el "td" blank) [1..5 :: Int] -- Button should be in the last column.
-  elClass "td" "wallet__add" $
-    addButton $ def & uiButtonCfg_title .~ Just "Import existing key"
 
 ------------------------------------------------------------------------------
 -- | Display a key as list item together with it's name.

@@ -65,7 +65,7 @@ import qualified GHCJS.DOM.Types                   as DOM
 import           Obelisk.Generated.Static
 ------------------------------------------------------------------------------
 import           Frontend.Foundation         (ReflexValue, makePactLenses)
-import           Frontend.UI.Widgets.Helpers (imgWithAlt, imgWithAltCls)
+import           Frontend.UI.Widgets.Helpers (imgWithAltCls)
 
 
 -- | Configuration for uiButton.
