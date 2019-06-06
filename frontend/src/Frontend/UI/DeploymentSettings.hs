@@ -39,7 +39,6 @@ import Data.Either (rights)
 import           Control.Arrow               ((&&&))
 import           Control.Lens
 import           Control.Monad
-import           Data.Decimal
 import           Data.Map                    (Map)
 import qualified Data.Map                    as Map
 import           Data.Set                    (Set)
