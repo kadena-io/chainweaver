@@ -213,8 +213,8 @@ makeRepl m cfg = build $ \ ~(_, impl) -> do
                                        , onVerifySt
                                        ]
     let appendHist = flip (|>)
-        onNewOutput = leftmost [ showTerm . _ts_term <$> onNewTransSuccess
-                               , showResult <$> onNewCmdResult
+        onNewOutput = leftmost [ prettyTextPretty . _ts_term <$> onNewTransSuccess
+                               , prettyResult <$> onNewCmdResult
                                ]
 
     output <- foldDyn id S.empty $ mergeWith (.)
@@ -327,7 +327,7 @@ runVerify impl onMod =
 
     verifyModule m = do
       r <- runExceptT . doTypeCheckAndVerify $ m
-      pure (m, bimap T.pack showTerm r)
+      pure (m, bimap T.pack prettyTextPretty r)
 
     doTypeCheckAndVerify m = do
       -- Success output of typecheck is mostly not parseable:
@@ -411,13 +411,9 @@ pactEvalRepl' t = ExceptT $ do
 -- pactEvalPact :: Text -> PactRepl (Term Name)
 -- pactEvalPact = ExceptT . evalPact . T.unpack
 
-showResult :: Show n => Either String (Term n) -> Text
-showResult (Right v) = showTerm v
-showResult (Left e)  = "Error: " <> T.pack e
-
-showTerm :: Show n => Term n -> Text
-showTerm (TLiteral (LString t) _) = t
-showTerm t                        = T.pack $ show t
+prettyResult :: Either String (Term Name) -> Text
+prettyResult (Right v) = prettyTextPretty v
+prettyResult (Left e)  = "Error: " <> T.pack e
 
 -- Instances:
 --
