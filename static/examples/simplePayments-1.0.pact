@@ -15,46 +15,46 @@
   ; user debit capability
   (defcap USER_DEBIT (user-id)
     "enforces row guard to allow debiting operations"
-    (with-read payments-table user-id { "guard":= guard }
+    (with-read accounts-table user-id { "guard":= guard }
       (enforce-guard guard)))
 
   ; define table schema
-  (defschema payments
+  (defschema accounts
     balance:decimal
     guard:guard)
 
   ; define table
-  (deftable payments-table:{payments})
+  (deftable accounts-table:{accounts})
 
   (defun create-account (id initial-balance keyset)
     "Create a new account for ID with INITIAL-BALANCE funds, must be administrator."
     (with-capability (ACCOUNT_ADMIN)
       (enforce (>= initial-balance 0.0) "Initial balances must be >= 0.")
-      (insert payments-table id
+      (insert accounts-table id
         { "balance": initial-balance,
           "guard": keyset })))
 
   (defun get-balance (id)
     "Read account balance."
-    (at "balance" (read payments-table id)))
+    (at "balance" (read accounts-table id)))
 
   (defun pay (from to amount)
     "Make a payment debiting FROM and crediting TO for AMOUNT."
     (with-capability (USER_DEBIT from)
-      (with-read payments-table from { "balance":= from-bal }
-        (with-read payments-table to { "balance":= to-bal }
+      (with-read accounts-table from { "balance":= from-bal }
+        (with-read accounts-table to { "balance":= to-bal }
           (enforce (> amount 0.0) "Negative Transaction Amount")
           (enforce (>= from-bal amount) "Insufficient Funds")
-          (update payments-table from
+          (update accounts-table from
                   { "balance": (- from-bal amount) })
-          (update payments-table to
+          (update accounts-table to
                   { "balance": (+ to-bal amount) })
           (format "{} paid {} {}" [from to amount])))))
 
 )
 
 ;define table
-(create-table payments-table)
+(create-table accounts-table)
 
 ;;;; create accounts
 ; (env-data { "sarah-keyset": ["sarah"], "james-keyset": ["james"] })
