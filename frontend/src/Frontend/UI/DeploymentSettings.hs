@@ -163,7 +163,8 @@ userChainIdSelect m = mkLabeledClsInput (uiChainSelection mNodeInfo) labelText
 
 -- | UI for asking the user about data needed for deployments/function calling.
 uiCfg
-  :: (MonadWidget t m, HasNetwork model t, HasNetworkCfg mConf t, Monoid mConf
+  :: ( MonadWidget t m, HasNetwork model t, HasNetworkCfg mConf t, Monoid mConf
+     , HasWallet model t
      )
   => model
   -> m (Dynamic t (f ChainId))
@@ -198,8 +199,10 @@ uiEndpoint wChainId ep = do
 
 -- | ui for asking the user about meta data needed for the transaction.
 uiMetaData
-  :: (DomBuilder t m, MonadHold t m, MonadFix m, PostBuild t m
-    , HasNetwork model t, HasNetworkCfg mConf t, Monoid mConf
+  :: ( DomBuilder t m, MonadHold t m, MonadFix m, PostBuild t m
+     , HasNetwork model t, HasNetworkCfg mConf t, Monoid mConf
+     , MonadIO (Performable m), PerformEvent t m, TriggerEvent t m
+     , HasWallet model t
      )
   => model -> m mConf
 uiMetaData m  = do
@@ -227,12 +230,15 @@ uiMetaData m  = do
 
       senderDropdown meta uCfg = do
         let itemDom v = elAttr "option" ("value" =: v) $ text v
-        onSet <- tagOnPostBuild $ _pmSender <$> meta
+        -- Delay necessary until we have mount hooks. (SelectElement won't accept
+        -- setting event until its children are properly rendered.)
+        onSet <- delay 0 <=< tagOnPostBuild $ _pmSender <$> meta
         let
           cfg = uCfg
             & selectElementConfig_setValue .~ onSet
         (se, ()) <- uiSelectElement cfg $ do
-          traverse_ itemDom $ Map.keys chainwebDefaultSenders
+          void $ networkView $
+            traverse_ itemDom . Map.keys <$> m ^. wallet_keys
         pure $ _selectElement_change se
 
       readPact wrapper =  fmap wrapper . readMay . T.unpack

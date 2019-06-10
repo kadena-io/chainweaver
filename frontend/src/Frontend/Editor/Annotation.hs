@@ -42,11 +42,11 @@ import qualified Data.Text            as T
 import           Data.Void            (Void)
 import qualified Text.Megaparsec      as MP
 import qualified Text.Megaparsec.Char as MP
-
 ------------------------------------------------------------------------------
 
 -- | Annotation type.
 data AnnoType = AnnoType_Warning | AnnoType_Error
+  deriving (Eq, Ord)
 
 instance Show AnnoType where
   show = \case
@@ -60,7 +60,7 @@ data Annotation = Annotation
   , _annotation_line   :: Int -- ^ What line to put the annotation to.
   , _annotation_column :: Int -- ^ What column.
   }
-  deriving Show
+  deriving (Show, Eq, Ord)
 
 annoParser :: Text -> Maybe [Annotation]
 annoParser = MP.parseMaybe pactErrorParser
@@ -81,6 +81,7 @@ annoFallbackParser msg =
 
 pactErrorParser :: MP.Parsec Void Text [Annotation]
 pactErrorParser = MP.many $ do
+    dropOptionalQuote
     startErrorParser
     line <- digitsP
     colonP
@@ -91,7 +92,8 @@ pactErrorParser = MP.many $ do
       void $ MP.string' "warning:"
       pure AnnoType_Warning
 
-    msg <- msgParser
+    -- Get rid of trailing quote as well:
+    msg <- T.dropWhileEnd (== '"') <$> msgParser
 
     pure $ Annotation
       { _annotation_type = annoType
@@ -102,6 +104,8 @@ pactErrorParser = MP.many $ do
   where
     digitsP :: MP.Parsec Void Text Int
     digitsP = read <$> MP.some MP.digitChar
+
+    dropOptionalQuote = MP.withRecovery (const $ pure ()) (void $ MP.char '\"')
 
 -- | Parse the actual error message.
 msgParser :: MP.Parsec Void Text Text

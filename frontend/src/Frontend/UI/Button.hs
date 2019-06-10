@@ -161,7 +161,8 @@ copyButton
   -> RawElement (DomBuilderSpace m)
   -> m (Event t ())
 copyButton cfg e = do
-    onClick <- uiButtonDyn cfg $ text "copy"
+    onClick <- uiButtonDyn (cfg & uiButtonCfg_class %~ (<> "button_border_none")) $
+      elClass "span" "fa fa-lg fa-copy" blank
     performEvent_ $ jsCopy e <$ onClick
     pure onClick
   where
@@ -195,16 +196,14 @@ addButton uCfg =
 deleteButton :: StaticButtonConstraints t m => UiButtonCfg -> m (Event t ())
 deleteButton uCfg =
   let
-    cfg = uCfg & uiButtonCfg_class %~ (<> "button_type_secondary" <> "button_size_tiny")
+    cfg = uCfg
+      & uiButtonCfg_class %~ (<> "button_type_secondary" <> "button_size_tiny" <> "button_border_none")
   in
     uiButton cfg $ imgWithAltCls "button__icon" (static @"img/bin.svg") "Delete" blank
 
 deleteButtonNaked :: StaticButtonConstraints t m => UiButtonCfg -> m (Event t ())
 deleteButtonNaked cfg =
-  {- let -}
-  {-   cfg = uCfg & uiButtonCfg_class %~ (<> "button_type_secondary" <> "button_size_tiny") -}
-  {- in -}
-    uiButton cfg $ imgWithAltCls "button__icon" (static @"img/bin.svg") "Delete" blank
+  uiButton cfg $ imgWithAltCls "button__icon" (static @"img/bin.svg") "Delete" blank
 
 cogButton :: StaticButtonConstraints t m => UiButtonCfg -> m (Event t ())
 cogButton uCfg =
