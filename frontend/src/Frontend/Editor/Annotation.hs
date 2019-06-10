@@ -46,6 +46,7 @@ import qualified Text.Megaparsec.Char as MP
 
 -- | Annotation type.
 data AnnoType = AnnoType_Warning | AnnoType_Error
+  deriving (Eq, Ord)
 
 instance Show AnnoType where
   show = \case
@@ -59,7 +60,7 @@ data Annotation = Annotation
   , _annotation_line   :: Int -- ^ What line to put the annotation to.
   , _annotation_column :: Int -- ^ What column.
   }
-  deriving Show
+  deriving (Show, Eq, Ord)
 
 annoParser :: Text -> Maybe [Annotation]
 annoParser = MP.parseMaybe pactErrorParser

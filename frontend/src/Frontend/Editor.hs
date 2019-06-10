@@ -242,8 +242,9 @@ typeCheckVerify m t = mdo
 
         fixLineNumbersRight :: Int -> Either [Annotation] [Annotation] -> [Annotation]
         fixLineNumbersRight n = either id (fixLineNumbers n)
+
       in
-        concat . Map.elems $ Map.intersectionWith fixLineNumbersRight ms parsedRs
+        normalize . concat . Map.elems $ Map.intersectionWith fixLineNumbersRight ms parsedRs
 #else
     parseVerifyOutput :: VerifyResult -> [Annotation]
     parseVerifyOutput rs =
@@ -254,8 +255,17 @@ typeCheckVerify m t = mdo
         parsedRs :: [(ModuleName, [Annotation])]
         parsedRs = mapMaybe (traverse annoParser) msgsRs
       in
-        concatMap snd parsedRs
+        normalize $ concatMap snd parsedRs
 #endif
+    -- Reason, see: https://github.com/kadena-io/pact/pull/532
+    normalize :: [Annotation] -> [Annotation]
+    normalize = map mkWarning . L.nub
+
+    -- Verification problems should always be displayed as warnings:
+    mkWarning :: Annotation -> Annotation
+    mkWarning anno = anno { _annotation_type = AnnoType_Warning }
+
+
 -- Instances:
 
 instance Reflex t => Semigroup (EditorCfg t) where
