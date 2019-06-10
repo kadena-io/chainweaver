@@ -1,7 +1,7 @@
 {
-  "owner": "eskimor",
+  "owner": "kadena-io",
   "repo": "pact",
-  "branch": "rk-bounded",
-  "rev": "a7b0f5dbb1d8c6858b978d9dbcc6bad700588a70",
-  "sha256": "0g840289ablzi0fpg8vqshh1gnxrkvpgxin9di39fsl4bsl6vacd"
+  "branch": "master",
+  "rev": "772bd667e37ca386ba8c566e18c0a38b0f4458c9",
+  "sha256": "0nclsl2phkjdjpvn0zcfvmxv2wfr5jb1fxr9hbq0xrpbvvfzavgb"
 }
