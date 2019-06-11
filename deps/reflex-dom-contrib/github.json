@@ -1,7 +1,7 @@
 {
-  "owner": "eskimor",
+  "owner": "reflex-frp",
   "repo": "reflex-dom-contrib",
-  "branch": "rk-flexible-addToClassAttr",
-  "rev": "e6857ce51a262e0aa059e90db84dd3853b6d877d",
-  "sha256": "1zzkwx4mjy550ydgijv901iqb807vy18v91vz5hi443l8s6kjvzk"
+  "branch": "master",
+  "rev": "796a3f0fa1ff59cbad97c918983355b46c3b6aa0",
+  "sha256": "0aqj7xm97mwxhhpcrx58bbg3hhn12jrzk13lf4zhpk2rrjw6yvmc"
 }

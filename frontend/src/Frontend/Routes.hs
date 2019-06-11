@@ -47,7 +47,7 @@ import           Frontend.OAuth                  (HasOAuth (..))
 
 handleRoutes
   :: forall m t mConf model.
-  ( Monad m, PostBuild t m
+  ( Monad m, PostBuild t m, PerformEvent t m, TriggerEvent t m, MonadIO (Performable m)
   , Routed t (R FrontendRoute) m, SetRoute t (R FrontendRoute) m
   , Monoid mConf, HasModuleExplorer model t , HasModuleExplorerCfg mConf t
   , HasOAuth model t
@@ -59,15 +59,16 @@ handleRoutes m = do
     let loaded = m ^. moduleExplorer_loaded
     onRoute <- tagOnPostBuild route
     let
-      onNewLoaded = fmapMaybe id
-        . attachWith getLoaded (current loaded)
-        $ onRoute
-
-      onOAuthRouteReset = (FrontendRoute_Main :/ ()) <$ m ^. oAuth_error
-
       onNewRoute = fmapMaybe id
         . attachWith buildRoute (current route)
         $ updated loaded
+
+    -- Delays here break FRP loops which appeared after an obelisk bump
+    onNewLoaded <- delay 0 $ fmapMaybe id
+      . attachWith getLoaded (current loaded)
+      $ onRoute
+
+    onOAuthRouteReset <- delay 0 $ (FrontendRoute_Main :/ ()) <$ m ^. oAuth_error
 
     setRoute $ leftmost [onNewRoute, onOAuthRouteReset]
 

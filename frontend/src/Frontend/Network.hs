@@ -242,6 +242,7 @@ makeNetwork
     , MonadSample t (Performable m)
     , HasNetworkModel model t
     , HasNetworkModelCfg mConf t
+    , HasCommonConfigs m
     )
   => model
   -> NetworkCfg t
@@ -346,7 +347,7 @@ getNodeInfosAsync
   -> m ()
 getNodeInfosAsync netName nodes cb = traverse_ discoverNodeAsync nodes
   where
-    discoverNodeAsync (i, nodeRef) = void $ forkJSM $ do
+    discoverNodeAsync (i, nodeRef) = void $ liftJSM $ forkJSM $ do
       r <- discoverNode nodeRef
       liftIO $ cb (netName, (i, r))
 
@@ -437,7 +438,7 @@ getNetworks
   :: forall t m cfg. ( MonadJSM (Performable m)
      , PerformEvent t m, TriggerEvent t m
      , MonadHold t m, MonadJSM m, MonadFix m
-     , HasNetworkCfg cfg t
+     , HasNetworkCfg cfg t, HasCommonConfigs m
      )
   => cfg -> m (Dynamic t NetworkName, Dynamic t (Map NetworkName [NodeRef]))
 getNetworks cfg = do
@@ -484,7 +485,7 @@ getNetworks cfg = do
 
 -- | Get networks from Obelisk config.
 getConfigNetworks
-  :: ( PerformEvent t m, MonadIO m )
+  :: ( PerformEvent t m, HasCommonConfigs m )
   => m (NetworkName, Map NetworkName [NodeRef])
 getConfigNetworks = do
   let
@@ -498,7 +499,7 @@ getConfigNetworks = do
     buildNetwork =  buildName &&& pure . buildNodeRef
     devNetworks = Map.fromList $ map buildNetwork [1 .. numPactInstances]
 
-  errProdCfg <- liftIO $ getNetworksConfig
+  errProdCfg <- getNetworksConfig
   pure $ case errProdCfg of
     Left _ -> -- Development mode
       (buildName 1, devNetworks)
@@ -708,7 +709,7 @@ performNetworkRequestCustom w networkL unwrap onReqs =
         keys <- sample $ current $ _wallet_keys w
         metaTemplate <- sample $ current $ networkL ^. network_meta
         nodeInfos <- getSelectedNetworkInfos networkL
-        void $ forkJSM $ do
+        void $ liftJSM $ forkJSM $ do
           r <- traverse (doReqFailover metaTemplate nodeInfos keys) $ unwrap reqs
           liftIO $ cb (reqs, r)
   where

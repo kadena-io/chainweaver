@@ -116,6 +116,7 @@ makeEditor
   . ( ReflexConstraints t m
     , HasEditorCfg cfg t, HasEditorModel model t
     , HasEditorModelCfg mConf t
+    , HasCommonConfigs m
     )
   => model -> cfg -> m (mConf, Editor t)
 makeEditor m cfg = mdo
@@ -188,7 +189,9 @@ applyQuickFix rs t onQuickFix = do
 
 -- | Type check and verify code.
 typeCheckVerify
-  :: (ReflexConstraints t m, HasEditorModel model t)
+  :: ( ReflexConstraints t m, HasEditorModel model t
+     , HasCommonConfigs m
+     )
   => model -> Dynamic t Text -> m (Event t [Annotation])
 typeCheckVerify m t = mdo
     let newInput = leftmost [ updated t, tag (current t) $ updated (m ^. jsonData_data)  ]

@@ -156,7 +156,7 @@ type ReplMonad t m =
 makeRepl
   :: forall t m cfg model mConf
   . ( ReplMonad t m, HasReplModel model t, HasReplModelCfg mConf t
-    , HasReplCfg cfg t
+    , HasReplCfg cfg t, HasCommonConfigs m
     )
   => model -> cfg -> m (mConf, WebRepl t)
 makeRepl m cfg = build $ \ ~(_, impl) -> do
@@ -164,7 +164,9 @@ makeRepl m cfg = build $ \ ~(_, impl) -> do
     -- sampling, which could trigger a loop:
     initState <- liftIO $ initReplState StringEval Nothing
     onPostBuild <- getPostBuild
-    onResetSt <- performEvent $ initRepl impl m <$ leftmost
+    -- Gets ensured on deployment to never be Nothing in the production case (ghcjs build):
+    verificationUri <- getVerificationServerUrl
+    onResetSt <- performEvent $ initRepl verificationUri impl m <$ leftmost
       [ cfg ^. replCfg_reset
       , onPostBuild
       ]
@@ -256,9 +258,11 @@ makeRepl m cfg = build $ \ ~(_, impl) -> do
 initRepl
   :: forall t m model
   . (HasReplModel model t, MonadIO m, Reflex t, MonadSample t m)
-  => Impl t -> model -> m (ReplState)
-initRepl oldImpl m  = do
-  r <- mkState
+  => Maybe Text
+  -- ^ Verification server URL
+  -> Impl t -> model -> m (ReplState)
+initRepl verificationUri oldImpl m  = do
+  r <- mkState verificationUri
   let initImpl = oldImpl { _impl_state = pure r } -- Const dyn so we can use `withRepl` for initialization - gets dropped afterwards.
   env  <- sample . current $ either (const HM.empty) id <$> m ^. jsonData_data
   keys <- sample . current $ Map.elems <$> m ^. wallet_keys
@@ -269,12 +273,11 @@ initRepl oldImpl m  = do
 
 -- | Create a brand new Repl state:
 mkState
-  :: forall m
-  . (MonadIO m)
-  => m ReplState
-mkState = do
-    -- Gets ensured on deployment to never be Nothing in the production case (ghcjs build):
-    verificationUri <- getVerificationServerUrl
+  :: MonadIO m
+  => Maybe Text
+  -- ^ Verification server URL
+  -> m ReplState
+mkState verificationUri = do
     liftIO $ initReplState StringEval $ T.unpack <$> verificationUri
 
 

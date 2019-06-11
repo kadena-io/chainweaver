@@ -5,17 +5,15 @@
 {-# LANGUAGE TemplateHaskell  #-}
 module Frontend where
 
-import           Control.Monad.IO.Class   (liftIO)
-import           Data.Maybe               (fromMaybe)
 import qualified Data.Text                as T
 import           Reflex.Dom.Core
 
-import           Obelisk.ExecutableConfig (get)
 import           Obelisk.Frontend
 import           Obelisk.Route.Frontend
 import           Obelisk.Generated.Static
 
 import           Common.Route
+import           Frontend.Foundation
 import           Frontend.ReplGhcjs
 import           Frontend.TH (renderCss)
 
@@ -23,8 +21,7 @@ frontend :: Frontend (R FrontendRoute)
 frontend = Frontend
   { _frontend_head= do
       -- Global site tag (gtag.js) - Google Analytics
-      gaTrackingId <- fmap T.strip $ liftIO $ fromMaybe "UA-127512784-1"
-        <$> get "config/frontend/tracking-id"
+      gaTrackingId <- maybe "UA-127512784-1" T.strip <$> getFrontendConfig "tracking-id"
       let
         gtagSrc = "https://www.googletagmanager.com/gtag/js?id=" <> gaTrackingId
       elAttr "script" ("async" =: "" <> "src" =: gtagSrc) blank
@@ -38,9 +35,7 @@ frontend = Frontend
       newHead
 
   , _frontend_body = do
-      prerender loaderMarkup app
-
-  , _frontend_headRender = HeadRender_Static
+      prerender_ loaderMarkup app
   }
 
 loaderMarkup :: DomBuilder t m => m ()

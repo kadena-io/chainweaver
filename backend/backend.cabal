@@ -15,8 +15,9 @@ library
                , filepath
                , pact
                , directory
-               , obelisk-executable-config
+               , obelisk-executable-config-inject
                , async
+               , lifted-async
                , snap
                , snap-core
                , safe

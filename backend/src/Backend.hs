@@ -9,13 +9,14 @@ module Backend where
 import           Control.Monad             (when)
 import           Control.Monad.Except      (ExceptT (..), runExceptT,
                                             throwError)
-import           Control.Monad.IO.Class    (liftIO)
+import           Control.Monad.IO.Class
 import           Control.Monad.Trans.Class (lift)
 import qualified Data.Aeson                as Aeson
 import qualified Data.CaseInsensitive      as CI
 import           Data.Dependent.Sum        (DSum ((:=>)))
 import           Data.List                 (foldl')
 import qualified Data.List                 as L
+import qualified Data.Map                  as M
 import           Data.Maybe                (isJust)
 import           Data.Text                 (Text)
 import qualified Data.Text                 as T
@@ -24,7 +25,8 @@ import qualified Data.Text.IO              as T
 import           Network.HTTP.Client       (Manager)
 import           Network.HTTP.Client.TLS   (newTlsManager)
 import qualified Obelisk.Backend           as Ob
-import           Obelisk.ExecutableConfig  (get)
+import           Obelisk.ExecutableConfig.Backend
+import           Obelisk.ExecutableConfig.Lookup
 import           Obelisk.Route             (pattern (:/), R, checkEncoder,
                                             renderFrontendRoute)
 import           Snap                      (Method (POST), Request (..), Snap,
@@ -38,6 +40,7 @@ import           System.Exit               (exitFailure)
 import           System.FilePath           ((</>))
 import           System.IO                 (stderr)
 
+import           Obelisk.ExecutableConfig.Common
 import           Obelisk.OAuth.Backend     (getAccessToken)
 import           Obelisk.OAuth.Common      (AccessToken, IsOAuthProvider (..),
                                             OAuthClientSecret (..),
@@ -62,18 +65,18 @@ data BackendCfg = BackendCfg
 
 -- | Where to put OAuth related backend configs:
 oAuthBackendCfgPath :: Text
-oAuthBackendCfgPath = "config/backend/oauth/"
+oAuthBackendCfgPath = "oauth/"
 
 oAuthClientSecretPath :: IsOAuthProvider prov => prov -> Text
 oAuthClientSecretPath prov =
   oAuthBackendCfgPath <> unOAuthProviderId (oAuthProviderId prov) <> "/client-secret"
 
 -- | Retrieve the client id of a particular client from config.
-getOAuthClientSecret :: IsOAuthProvider prov => prov -> IO OAuthClientSecret
-getOAuthClientSecret = fmap OAuthClientSecret . getMandatoryTextCfg . oAuthClientSecretPath
+getOAuthClientSecret :: (IsOAuthProvider prov, HasBackendConfigs m) => prov -> m OAuthClientSecret
+getOAuthClientSecret = fmap OAuthClientSecret . getMandatoryTextCfg getBackendConfig . oAuthClientSecretPath
 
 
-buildCfg :: IO BackendCfg
+buildCfg :: (HasCommonConfigs m, HasBackendConfigs m, MonadIO m) => m BackendCfg
 buildCfg = do
   let
     Right validFullEncoder = checkEncoder backendRouteEncoder
@@ -83,31 +86,32 @@ buildCfg = do
 
   clientSecret <- getOAuthClientSecret OAuthProvider_GitHub
   oCfg <- buildOAuthConfig renderRoute
-  BackendCfg oCfg (\case OAuthProvider_GitHub -> clientSecret) <$> newTlsManager
+  liftIO $ BackendCfg oCfg (\case OAuthProvider_GitHub -> clientSecret) <$> newTlsManager
 
 
 -- | Check whether needed configs are present.
 --
 --   TODO: We should also check whether they are valid as good as we can.
-checkDeployment :: IO ()
+checkDeployment :: (HasCommonConfigs m, MonadIO m) => m ()
 checkDeployment = do
     let
       filesToCheck =
-        map oAuthClientIdPath [ minBound .. maxBound :: OAuthProvider]
+        map (("common/" <>) . oAuthClientIdPath) [ minBound .. maxBound :: OAuthProvider]
         <>
-        map oAuthClientSecretPath [ minBound .. maxBound :: OAuthProvider ]
+        map (("backend/" <>) . oAuthClientSecretPath) [ minBound .. maxBound :: OAuthProvider ]
         <>
-          [ "config/common/route"
-          , "config/frontend/tracking-id"
-          , networksPath
-          , verificationServerPath
+          [ "common/route"
+          , "frontend/tracking-id"
+          , "common/" <> networksPath
+          , "common/" <> verificationServerPath
           ]
-    presentState <- traverse (fmap isJust . get) filesToCheck
+    allConfigs <- liftIO getConfigs
     let
+      presentState = (`M.member` allConfigs) <$> filesToCheck
       filesChecked = zip filesToCheck presentState
       missingFiles = fmap fst . filter ((== False) . snd) $ filesChecked
 
-    when (not . null $ missingFiles) $ do
+    when (not . null $ missingFiles) $ liftIO $ do
       putErrLn "\n\n========================= PACT-WEB ERROR =========================\n\n"
       putErrLn "The deployment failed due to missing config files.\nPlease consult the project's README.md for details.\n"
       putErrLn "Missing files:\n"
@@ -122,7 +126,7 @@ checkDeployment = do
       errCfg <- getNetworksConfig
       either reportInvalidNetworksCfg (const $ pure ()) errCfg
 
-    reportInvalidNetworksCfg errMsg = do
+    reportInvalidNetworksCfg errMsg = liftIO $ do
       -- TODO: If we add more checks, abstract this:
       putErrLn "\n\n========================= PACT-WEB ERROR =========================\n\n"
       putErrLn "The deployment failed due to networks config being invalid:\n"
@@ -137,8 +141,8 @@ backend :: Ob.Backend BackendRoute FrontendRoute
 backend = Ob.Backend
     { Ob._backend_run = \serve -> do
         cfg <- buildCfg
-        hasServerList <- isJust <$> get networksPath
-        let serveIt = serve $ serveBackendRoute "/var/lib/pact-web/dyn-configs" cfg
+        hasServerList <- isJust <$> getBackendConfig networksPath
+        let serveIt = serve $ lift . serveBackendRoute "/var/lib/pact-web/dyn-configs" cfg
 
         if hasServerList
            -- Production mode:

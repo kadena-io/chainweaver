@@ -53,7 +53,7 @@ import qualified Data.Text.Encoding                    as T
 import qualified Data.Text.Encoding.Error              as T
 import           GHC.Generics                          (Generic)
 
-import           Data.Maybe
+import           Data.Maybe                            hiding (mapMaybe)
 
 import qualified Data.Text.Prettyprint.Doc             as Pretty (defaultLayoutOptions,
                                                                   layoutCompact,

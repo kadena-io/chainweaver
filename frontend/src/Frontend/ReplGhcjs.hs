@@ -69,6 +69,7 @@ import           Frontend.UI.RightPanel
 app
   :: ( MonadWidget t m
      , Routed t (R FrontendRoute) m, RouteToUrl (R FrontendRoute) m, SetRoute t (R FrontendRoute) m
+     , HasCommonConfigs m
      )
   => m ()
 app = void . mfix $ \ cfg -> do

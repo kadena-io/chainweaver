@@ -32,7 +32,6 @@ module Frontend.Foundation
   , makePactLensesNonClassy
   , makePactPrisms
     -- * Helpers that should really not be here
-  , forkJSM
   , getBrowserProperty
     -- * Common Foundation
   , module Common
@@ -40,10 +39,12 @@ module Frontend.Foundation
   , module Reflex.Extended
   , module Reflex.Network.Extended
   , module Language.Javascript.JSaddle
+  , module Obelisk.ExecutableConfig.Common
+  , module Obelisk.ExecutableConfig.Frontend
   , module Reflex.Dom.Contrib.CssClass
+  , forkJSM
   ) where
 
-import           Control.Concurrent                (ThreadId, forkIO)
 import           Control.Lens
 import           Control.Monad.Fix
 import           Control.Monad.IO.Class
@@ -58,9 +59,12 @@ import           Language.Javascript.JSaddle       (JSM, MonadJSM, askJSM,
                                                     liftJSM, runJSM)
 import qualified Language.Javascript.JSaddle       as JS
 import           Language.Javascript.JSaddle.Monad (JSContextRef)
+import           Obelisk.ExecutableConfig.Common
+import           Obelisk.ExecutableConfig.Frontend
 import           Reflex.Dom.Class                  (HasJSContext (..),
                                                     JSContextSingleton (..))
 import           Reflex.Dom.Contrib.CssClass
+import           Reflex.Dom.WebSocket              (forkJSM)
 import           Reflex.Extended
 import           Reflex.Network.Extended
 
@@ -123,12 +127,6 @@ makePactLensesNonClassy =
 --   Currently this is just standard `makePrisms`
 makePactPrisms :: Name -> DecsQ
 makePactPrisms = makePrisms
-
-forkJSM :: (MonadJSM m) => JSM () -> m ThreadId
-forkJSM t = do
-  jsm <- askJSM
-  let ioT = runJSM t jsm
-  liftIO $ forkIO ioT
 
 getBrowserProperty :: forall m. MonadJSM m => Text -> m Bool
 getBrowserProperty property = liftJSM $ fromMaybe False <$> (JS.fromJSVal =<< JS.eval ("bowser." <> property))

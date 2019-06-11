@@ -129,6 +129,7 @@ makeIde
     , TriggerEvent t m, PostBuild t m
     , RouteToUrl (R FrontendRoute) m, Routed t (R FrontendRoute) m
     , SetRoute t (R FrontendRoute) m
+    , HasCommonConfigs m
     )
   => IdeCfg modal t -> m (Ide modal t)
 makeIde userCfg = build $ \ ~(cfg, ideL) -> do

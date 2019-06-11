@@ -8,7 +8,9 @@
 --   This module is meant to be imported qualified as "Devel".
 module Backend.Devel (withPactInstances) where
 
-import           Control.Concurrent.Async (mapConcurrently_, withAsync)
+import           Control.Monad.IO.Class
+import           Control.Monad.Trans.Control
+import           Control.Concurrent.Async.Lifted (mapConcurrently_, withAsync)
 import           Data.Foldable            (traverse_)
 import           Data.Monoid              ((<>))
 import qualified Data.Text                as T
@@ -47,13 +49,14 @@ pactConfigs = map mkConfig [1 .. numPactInstances]
     mkFileName num = "pact-" <> show num
 
 -- | Server starting development Pact instances.
-withPactInstances :: IO () -> IO ()
+withPactInstances :: (MonadIO m, MonadBaseControl IO m) => m () -> m ()
 withPactInstances serveIt = do
-  traverse_ (createDirectoryIfMissing True . _pic_log) pactConfigs
-  createDirectoryIfMissing False $ pactConfigDir
-  traverse_ writePactConfig pactConfigs
+  liftIO $ do
+    traverse_ (createDirectoryIfMissing True . _pic_log) pactConfigs
+    createDirectoryIfMissing False $ pactConfigDir
+    traverse_ writePactConfig pactConfigs
 
-  let servePact = Pact.serve . _pic_conf
+  let servePact = liftIO . Pact.serve . _pic_conf
 
   withAsync (mapConcurrently_ servePact pactConfigs) $ \_ ->
       serveIt

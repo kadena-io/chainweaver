@@ -42,6 +42,7 @@ import           Reflex.Dom.Xhr                     (XhrRequestConfig (..),
                                                      newXMLHttpRequest,
                                                      xhrRequest)
 
+import           Obelisk.ExecutableConfig.Common
 import           Obelisk.OAuth.AuthorizationRequest
 import           Obelisk.OAuth.Common
 import           Obelisk.OAuth.Frontend
@@ -87,7 +88,7 @@ makeOAuth
   . ( Reflex t, MonadHold t m, PostBuild t m, PerformEvent t m, MonadSample t (Performable m)
     , MonadJSM m, MonadJSM (Performable m), MonadFix m, TriggerEvent t m
     , Routed t (R FrontendRoute) m, RouteToUrl (R FrontendRoute) m
-    , HasOAuthCfg cfg t, HasOAuthModelCfg mConf t
+    , HasOAuthCfg cfg t, HasOAuthModelCfg mConf t, HasCommonConfigs m
     )
   => cfg -> m (mConf, OAuth t)
 makeOAuth cfg = mdo -- Required to get access to `tokens` for clearing any old tokens before requesting new ones.
@@ -150,7 +151,7 @@ runOAuthRequester requester = mdo
 
   (a, onRequest) <- runRequesterT requester onResponse
 
-  onResponse <- performEventAsync $ ffor onRequest $ \req sendResponse -> void $ forkJSM $ do
+  onResponse <- performEventAsync $ ffor onRequest $ \req sendResponse -> void $ liftJSM $ forkJSM $ do
     r <- traverseRequesterData (fmap Identity . runOAuthCmds renderRoute) req
     liftIO $ sendResponse r
 
@@ -190,7 +191,7 @@ runOAuthCmds renderRoute = go
 
 
 buildOAuthConfigFront
-  :: (MonadIO m, RouteToUrl (R FrontendRoute) m)
+  :: (HasCommonConfigs m, RouteToUrl (R FrontendRoute) m)
   => m (OAuthConfig OAuthProvider)
 buildOAuthConfigFront = buildOAuthConfig =<< askRouteToUrl
 

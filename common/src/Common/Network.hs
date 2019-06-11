@@ -25,7 +25,7 @@ import           Data.Text                (Text)
 import qualified Data.Text                as T
 import           Data.Void                (Void)
 import           GHC.Generics             (Generic)
-import           Obelisk.ExecutableConfig (get)
+import           Obelisk.ExecutableConfig.Common
 import           Safe                     (readMay)
 import qualified Text.Megaparsec          as MP
 import qualified Text.Megaparsec.Char     as MP
@@ -139,18 +139,18 @@ getPactInstancePort :: Int -> Text
 getPactInstancePort num = T.pack . show $ 7020 + num
 
 
--- | Where to find the network list configuration.
+-- | Where to find the network list configuration under config/common.
 networksPath :: Text
-networksPath = "config/common/networks"
+networksPath = "networks"
 
 
 -- | Retrieve the list of networks as specified in the static config.
 --
 --   Find and parse the networks configuration. If this file is not present,
 --   pact-web will run in development mode.
-getNetworksConfig :: IO (Either Text (NetworkName, Map NetworkName [NodeRef]))
+getNetworksConfig :: HasCommonConfigs m => m (Either Text (NetworkName, Map NetworkName [NodeRef]))
 getNetworksConfig = runExceptT $ do
-  raw <- note "Networks configuration could not be found." <=< lift . get $ networksPath
+  raw <- note "Networks configuration could not be found." <=< lift $ getCommonConfig networksPath
   parseNetworks raw
 
 

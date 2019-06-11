@@ -4,32 +4,34 @@ module Common.Api where
 
 import Data.Text (Text)
 import qualified Data.Text as T
-import Obelisk.ExecutableConfig (get)
-import Control.Monad.IO.Class (MonadIO, liftIO)
+import Obelisk.ExecutableConfig.Common
 
 
-
--- | Where to find the network list configuration.
+-- | Where to find the network list configuration, under config/common
 verificationServerPath :: Text
-verificationServerPath = "config/common/verification-server"
+verificationServerPath = "verification-server"
 
 -- | Get the normalized url of the remote verification server suitable for Pact.
-getVerificationServerUrl :: MonadIO m => m (Maybe Text)
+getVerificationServerUrl :: HasCommonConfigs m => m (Maybe Text)
 getVerificationServerUrl = do
-  mUri <- getTextCfg verificationServerPath
+  mUri <- getCommonTextCfg verificationServerPath
   pure $ T.dropWhileEnd (== '/') <$> mUri
 
 -- | Get "config/common/route" normalized.
-getConfigRoute :: MonadIO m => m Text
+getConfigRoute :: HasCommonConfigs m => m Text
 getConfigRoute =
-  T.dropWhileEnd (== '/') <$> getMandatoryTextCfg "config/common/route"
+  T.dropWhileEnd (== '/') <$> getMandatoryTextCfg getCommonTextCfg "route"
 
-getTextCfg :: MonadIO m => Text -> m (Maybe Text)
-getTextCfg p = liftIO $ fmap T.strip <$> Obelisk.ExecutableConfig.get p
+getCommonTextCfg :: HasCommonConfigs m => Text -> m (Maybe Text)
+getCommonTextCfg p = fmap T.strip <$> getCommonConfig p
 
-getMandatoryTextCfg :: MonadIO m => Text -> m Text
-getMandatoryTextCfg p = liftIO $ do
-  mR <- Obelisk.ExecutableConfig.get p
+getMandatoryTextCfg
+  :: Monad m
+  => (Text -> m (Maybe Text))
+  -- ^ Function to get the config
+  -> Text -> m Text
+getMandatoryTextCfg f p = do
+  mR <- f p
   case mR of
     Nothing -> fail $ "Obelisk.ExecutableConfig, could not find: '" <> T.unpack p <> "'!"
     Just r -> pure $ T.strip r

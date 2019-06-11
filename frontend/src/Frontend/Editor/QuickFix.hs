@@ -36,7 +36,6 @@ module Frontend.Editor.QuickFix
 
 ------------------------------------------------------------------------------
 import           Control.Applicative        ((<|>))
-import           Data.Maybe                 (mapMaybe)
 import           Data.Text                  (Text)
 import qualified Data.Text                  as T
 import           Data.Void                  (Void)

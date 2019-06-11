@@ -46,7 +46,7 @@ library
                , modern-uri
                , mtl
                , newtype-generics
-               , obelisk-executable-config
+               , obelisk-executable-config-frontend
                , obelisk-frontend
                , obelisk-generated-static
                , obelisk-oauth-common

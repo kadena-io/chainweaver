@@ -5,13 +5,13 @@
 module Common.OAuth where
 
 import           Control.Monad
-import           Control.Monad.IO.Class (MonadIO)
 import           Data.Aeson             (FromJSON (..), FromJSONKey (..),
                                          FromJSONKeyFunction (..), ToJSON (..),
                                          ToJSONKey (..), ToJSONKeyFunction (..))
 import           Data.Text              (Text)
 import           GHC.Generics           (Generic)
 
+import           Obelisk.ExecutableConfig.Common
 import           Obelisk.OAuth.Common
 import           Obelisk.Route
 
@@ -54,7 +54,7 @@ instance IsOAuthProvider OAuthProvider where
 
 -- | Where to put OAuth related common configs:
 oAuthCfgPath :: Text
-oAuthCfgPath = "config/common/oauth/"
+oAuthCfgPath = "oauth/"
 
 -- | Config file containing an OAuth provider id:
 oAuthClientIdPath :: IsOAuthProvider prov => prov -> Text
@@ -63,9 +63,11 @@ oAuthClientIdPath prov =
 
 
 -- | Retrieve the client id of a particular client from config.
-getOAuthClientId :: (MonadIO m, IsOAuthProvider prov) => prov -> m OAuthClientId
+getOAuthClientId
+  :: (Monad m, HasCommonConfigs m) => IsOAuthProvider prov
+  => prov -> m OAuthClientId
 getOAuthClientId prov =
-  fmap OAuthClientId $ getMandatoryTextCfg $ oAuthClientIdPath prov
+  fmap OAuthClientId $ getMandatoryTextCfg getCommonConfig $ oAuthClientIdPath prov
 
 
 -- | Build an OAuthConfig by reading config values.
@@ -73,7 +75,9 @@ getOAuthClientId prov =
 --   - config/common/route -> Base url
 --   - config/common/oauth/github/client-id -> Github client id.
 --
-buildOAuthConfig :: MonadIO m => (R FrontendRoute -> Text) -> m (OAuthConfig OAuthProvider)
+buildOAuthConfig
+  :: (Monad m, HasCommonConfigs m)
+  => (R FrontendRoute -> Text) -> m (OAuthConfig OAuthProvider)
 buildOAuthConfig renderRoute = do
   clientId <- getOAuthClientId OAuthProvider_GitHub
   baseUri <- getConfigRoute

@@ -55,10 +55,10 @@ uiCreatedGist
     , RawElement (DomBuilderSpace m) ~ GHCJS.DOM.Types.Element
     , Monad m
     , DomBuilder t m
-    , MonadIO m
     , PerformEvent t m
     , MonadJSM (Performable m)
     , PostBuild t m
+    , HasCommonConfigs m
     )
   => GistRef -- ^ The rendered route of the Gist (only the path).
   -> m (mConf, Event t ())

@@ -276,7 +276,7 @@ uiNodeStatus cls unthrottled = do
     emptyAttrs = "class" =: "signal__circle"
 
     buildStatusAttrsAsync ref cb =
-      void $ forkJSM $ do
+      void $ liftJSM $ forkJSM $ do
         jsm <- askJSM
         r <- buildStatusAttrs ref `runJSM` jsm
         liftIO $ cb r
