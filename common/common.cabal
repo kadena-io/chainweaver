@@ -10,7 +10,7 @@ library
                , containers
                , modern-uri
                , mtl
-               , obelisk-executable-config-frontend
+               , obelisk-executable-config-common
                , obelisk-oauth-common
                , obelisk-route
                , text
