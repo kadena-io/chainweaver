@@ -8,8 +8,10 @@ library
   if impl(ghcjs)
     buildable: False
   build-depends: base
+               , bytestring
                , common
                , containers
+               , data-default
                , frontend
                , obelisk-backend
                , text
