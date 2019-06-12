@@ -98,7 +98,7 @@ buildCfg = do
 -- | Check whether needed configs are present.
 --
 --   TODO: We should also check whether they are valid as good as we can.
-checkDeployment :: (HasCommonConfigs m, MonadIO m) => m ()
+checkDeployment :: MonadIO m => m ()
 checkDeployment = do
     let
       filesToCheck =
@@ -125,12 +125,14 @@ checkDeployment = do
       putErrLn "==================================================================\n\n"
       exitFailure
 
-    checkNetworksConfig
+    checkNetworksConfig allConfigs
 
   where
-    checkNetworksConfig = do
-      errCfg <- getNetworksConfig
-      either reportInvalidNetworksCfg (const $ pure ()) errCfg
+    checkNetworksConfig allConfigs = case M.lookup ("common/" <> networksPath) allConfigs of
+      Nothing -> reportInvalidNetworksCfg "Networks configuration could not be found."
+      Just n -> case parseNetworks n of
+        Left e -> reportInvalidNetworksCfg e
+        Right _ -> pure ()
 
     reportInvalidNetworksCfg errMsg = liftIO $ do
       -- TODO: If we add more checks, abstract this:
