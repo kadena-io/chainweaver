@@ -70,13 +70,10 @@ library
                , string-qq
                , template-haskell
                , text
-               , th-utilities
                , time
                , transformers
                , trifecta
                , unordered-containers
-  if !impl(ghcjs)
-    build-depends: hsass
 
   exposed-modules: Frontend
                  , Frontend.Network
@@ -103,7 +100,6 @@ library
                  , Frontend.ReplGhcjs
                  , Frontend.Routes
                  , Frontend.Storage
-                 , Frontend.TH
                  , Frontend.UI.Button
                  , Frontend.UI.DeploymentSettings
                  , Frontend.UI.Dialogs.CallFunction

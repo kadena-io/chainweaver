@@ -37,6 +37,9 @@ library
                , aeson
                , http-client
                , http-client-tls
+               , hsass
+               , template-haskell
+               , th-utilities
   exposed-modules: Backend
                  , Backend.Devel
 

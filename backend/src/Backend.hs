@@ -3,16 +3,19 @@
 {-# LANGUAGE OverloadedStrings   #-}
 {-# LANGUAGE PatternSynonyms     #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE TemplateHaskell #-}
 
 module Backend where
 
-import           Control.Monad             (when)
+import           Control.Monad             (when, (<=<))
 import           Control.Monad.Except      (ExceptT (..), runExceptT,
                                             throwError)
 import           Control.Monad.IO.Class
 import           Control.Monad.Trans.Class (lift)
 import qualified Data.Aeson                as Aeson
+import qualified Data.ByteString           as BS
 import qualified Data.CaseInsensitive      as CI
+import           Data.Default
 import           Data.Dependent.Sum        (DSum ((:=>)))
 import           Data.List                 (foldl')
 import qualified Data.List                 as L
@@ -34,11 +37,15 @@ import           Snap                      (Method (POST), Request (..), Snap,
                                             modifyResponse, pass,
                                             readRequestBody, setResponseStatus,
                                             writeBS, writeLBS)
+import qualified Snap
 import           Snap.Util.FileServe       (serveFile)
 import           System.Directory          (canonicalizePath, doesFileExist)
 import           System.Exit               (exitFailure)
 import           System.FilePath           ((</>))
 import           System.IO                 (stderr)
+import qualified Text.Sass                 as Sass
+import           TH.RelativePaths          (withCabalPackageWorkDir)
+import           Language.Haskell.TH.Lib   (stringE)
 
 import           Obelisk.ExecutableConfig.Common
 import           Obelisk.OAuth.Backend     (getAccessToken)
@@ -55,7 +62,6 @@ import           Common.OAuth              (OAuthProvider (..),
                                             buildOAuthConfig, oAuthClientIdPath)
 import           Common.Route
 import           Common.Network
-
 
 data BackendCfg = BackendCfg
   { _backendCfg_oAuth                :: OAuthConfig OAuthProvider
@@ -172,7 +178,27 @@ serveBackendRoute dynConfigs cfg = \case
     -> writeBS "User-agent: *\nDisallow: \n"
   BackendRoute_OAuthGetToken :/ providerId
     -> requestToken cfg providerId
+  BackendRoute_Css :/ ()
+    -> requestCss
   _ -> pure ()
+
+requestCss :: Snap ()
+requestCss = do
+  req <- Snap.getRequest
+  when (Snap.rqMethod req /= Snap.GET) $ do
+    Snap.modifyResponse $ Snap.setResponseStatus 405 "Invalid Method"
+    Snap.writeBS "Invalid Method"
+    Snap.finishWith =<< Snap.getResponse
+  Snap.modifyResponse
+    $ Snap.setContentType "text/css"
+    . Snap.addHeader (CI.mk "cache-control") "public"
+  Snap.writeBS renderCss
+
+-- | Render our SASS files to CSS.
+renderCss :: BS.ByteString
+renderCss = T.encodeUtf8 $ T.pack
+  $(either (fail <=< liftIO . Sass.errorMessage) (stringE . Sass.resultString)
+    <=< withCabalPackageWorkDir $ liftIO $ Sass.compileFile "sass/index.scss" def)
 
 requestToken :: BackendCfg -> OAuthProviderId -> Snap ()
 requestToken (BackendCfg oAuthCfg getSecret manager) provId = do

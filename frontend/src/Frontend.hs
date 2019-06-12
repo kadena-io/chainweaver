@@ -5,6 +5,7 @@
 {-# LANGUAGE TemplateHaskell  #-}
 module Frontend where
 
+import           Data.Text                (Text)
 import qualified Data.Text                as T
 import           Reflex.Dom.Core
 
@@ -15,11 +16,12 @@ import           Obelisk.Generated.Static
 import           Common.Route
 import           Frontend.Foundation
 import           Frontend.ReplGhcjs
-import           Frontend.TH (renderCss)
 
 frontend :: Frontend (R FrontendRoute)
 frontend = Frontend
-  { _frontend_head= do
+  { _frontend_head = do
+      let backendEncoder = either (error "frontend: Failed to check backendRouteEncoder") id $
+            checkEncoder backendRouteEncoder
       -- Global site tag (gtag.js) - Google Analytics
       gaTrackingId <- maybe "UA-127512784-1" T.strip <$> getFrontendConfig "tracking-id"
       let
@@ -32,7 +34,7 @@ frontend = Frontend
         , "gtag('config', '" <> gaTrackingId <> "');"
         ]
 
-      newHead
+      newHead $ renderBackendRoute backendEncoder
 
   , _frontend_body = do
       prerender_ loaderMarkup app
@@ -45,8 +47,8 @@ loaderMarkup = do
     divClass "cube2" blank
   divClass "spinner__msg" $ text "Loading"
 
-newHead :: DomBuilder t m => m ()
-newHead = do
+newHead :: DomBuilder t m => (R BackendRoute -> Text) -> m ()
+newHead renderRoute = do
     el "title" $ text "Kadena - Pact Testnet"
     meta ("name" =: "description" <> "content" =: "Write, test, and deploy safe smart contracts using Pact, Kadena's programming language")
     meta ("name" =: "keywords" <> "content" =: "kadena, pact, pact testnet, pact language, pact programming language, smart contracts, safe smart contracts, smart contract language, blockchain, learn blockchain programming, chainweb")
@@ -57,7 +59,7 @@ newHead = do
     ss "https://fonts.googleapis.com/css?family=Work+Sans"
     ss (static @"css/font-awesome.min.css")
     ss (static @"css/ace-theme-pact-web.css")
-    style $ T.pack $(renderCss)
+    ss (renderRoute $ BackendRoute_Css :/ ())
     js "https://cdnjs.cloudflare.com/ajax/libs/ace/1.4.1/ace.js"
     js (static @"js/ace-mode-pact.js")
     js (static @"js/nacl-fast.min-v1.0.0.js")
@@ -65,5 +67,4 @@ newHead = do
   where
     js url = elAttr "script" ("type" =: "text/javascript" <> "src" =: url <> "charset" =: "utf-8") blank
     ss url = elAttr "link" ("href" =: url <> "rel" =: "stylesheet") blank
-    style = el "style" . text
     meta attrs = elAttr "meta" attrs blank
