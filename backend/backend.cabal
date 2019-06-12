@@ -25,6 +25,9 @@ library
                , obelisk-route
                , dependent-sum
                , mtl
+               , obelisk-executable-config-backend
+               , obelisk-executable-config-common
+               , obelisk-executable-config-lookup
                , obelisk-executable-config-inject
                , obelisk-oauth-common
                , obelisk-oauth-backend
