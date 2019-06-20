@@ -1,7 +1,7 @@
 {
   "owner": "obsidiansystems",
   "repo": "obelisk",
-  "branch": "ts-deploy-check",
-  "rev": "9b33ccfb5d46473537744a41174c33fec6929d5b",
-  "sha256": "10kr2c4ygxhxgf6cf1x7j7gm2fam82z2vf9hxxs232fc7vy381r1"
+  "branch": "ts-extras",
+  "rev": "69eba4e587ace77714e194df67cd96d0f3662226",
+  "sha256": "14fvpv6694bz7v2fgv04b1r849rkapy4l6ir0bm45mazkn2bsqkb"
 }

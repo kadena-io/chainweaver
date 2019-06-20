@@ -11,7 +11,7 @@ import           Data.Aeson             (FromJSON (..), FromJSONKey (..),
 import           Data.Text              (Text)
 import           GHC.Generics           (Generic)
 
-import           Obelisk.ExecutableConfig.Common
+import           Obelisk.Configs
 import           Obelisk.OAuth.Common
 import           Obelisk.Route
 
@@ -54,7 +54,7 @@ instance IsOAuthProvider OAuthProvider where
 
 -- | Where to put OAuth related common configs:
 oAuthCfgPath :: Text
-oAuthCfgPath = "oauth/"
+oAuthCfgPath = "common/oauth/"
 
 -- | Config file containing an OAuth provider id:
 oAuthClientIdPath :: IsOAuthProvider prov => prov -> Text
@@ -64,10 +64,10 @@ oAuthClientIdPath prov =
 
 -- | Retrieve the client id of a particular client from config.
 getOAuthClientId
-  :: (Monad m, HasCommonConfigs m) => IsOAuthProvider prov
+  :: (Monad m, HasConfigs m) => IsOAuthProvider prov
   => prov -> m OAuthClientId
 getOAuthClientId prov =
-  fmap OAuthClientId $ getMandatoryTextCfg getCommonConfig $ oAuthClientIdPath prov
+  fmap OAuthClientId $ getMandatoryTextCfg $ oAuthClientIdPath prov
 
 
 -- | Build an OAuthConfig by reading config values.
@@ -76,12 +76,16 @@ getOAuthClientId prov =
 --   - config/common/oauth/github/client-id -> Github client id.
 --
 buildOAuthConfig
-  :: (Monad m, HasCommonConfigs m)
+  :: (Monad m, HasConfigs m)
   => (R FrontendRoute -> Text) -> m (OAuthConfig OAuthProvider)
 buildOAuthConfig renderRoute = do
   clientId <- getOAuthClientId OAuthProvider_GitHub
   baseUri <- getConfigRoute
-  pure $ OAuthConfig
+  pure $ buildOAuthConfig' baseUri clientId renderRoute
+
+buildOAuthConfig'
+  :: Text -> OAuthClientId -> (R FrontendRoute -> Text) -> OAuthConfig OAuthProvider
+buildOAuthConfig' baseUri clientId renderRoute = OAuthConfig
     { _oAuthConfig_renderRedirectUri = Just $
         \oAuthRoute -> (baseUri <>) . renderRoute $ FrontendRoute_OAuth :/ oAuthRoute
 

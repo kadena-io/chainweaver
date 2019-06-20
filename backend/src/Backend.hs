@@ -24,11 +24,11 @@ import           Data.Maybe                (isJust)
 import           Data.Text                 (Text)
 import qualified Data.Text                 as T
 import qualified Data.Text.Encoding        as T
+import qualified Data.Text.Encoding.Error  as T
 import qualified Data.Text.IO              as T
 import           Network.HTTP.Client       (Manager)
 import           Network.HTTP.Client.TLS   (newTlsManager)
 import qualified Obelisk.Backend           as Ob
-import           Obelisk.ExecutableConfig.Backend
 import           Obelisk.ExecutableConfig.Lookup
 import           Obelisk.Route             (pattern (:/), R, checkEncoder,
                                             renderFrontendRoute)
@@ -47,42 +47,48 @@ import qualified Text.Sass                 as Sass
 import           TH.RelativePaths          (withCabalPackageWorkDir)
 import           Language.Haskell.TH.Lib   (stringE)
 
-import           Obelisk.ExecutableConfig.Common
 import           Obelisk.OAuth.Backend     (getAccessToken)
-import           Obelisk.OAuth.Common      (AccessToken, IsOAuthProvider (..),
-                                            OAuthClientSecret (..),
-                                            OAuthConfig (..), OAuthError (..),
-                                            OAuthProviderId (..),
-                                            oAuthProviderFromIdErr,
-                                            textOAuthError)
+import           Obelisk.OAuth.Common
 
 import qualified Backend.Devel             as Devel
 import           Common.Api
 import           Common.OAuth              (OAuthProvider (..),
-                                            buildOAuthConfig, oAuthClientIdPath)
+                                            buildOAuthConfig', oAuthClientIdPath)
 import           Common.Route
 import           Common.Network
 
 data BackendCfg = BackendCfg
   { _backendCfg_oAuth                :: OAuthConfig OAuthProvider
-  , _backendCfg_getOAuthClientSecret :: OAuthProvider -> OAuthClientSecret
+  , _backendCfg_getOAuthClientSecret :: Maybe (OAuthProvider -> OAuthClientSecret)
   , _backendCfg_manager              :: Manager
   }
 
 -- | Where to put OAuth related backend configs:
 oAuthBackendCfgPath :: Text
-oAuthBackendCfgPath = "oauth/"
+oAuthBackendCfgPath = "backend/oauth/"
 
 oAuthClientSecretPath :: IsOAuthProvider prov => prov -> Text
 oAuthClientSecretPath prov =
   oAuthBackendCfgPath <> unOAuthProviderId (oAuthProviderId prov) <> "/client-secret"
 
+getConfig :: MonadIO m => Text -> m (Maybe Text)
+getConfig k = fmap (T.decodeUtf8With T.lenientDecode) . M.lookup k <$> liftIO getConfigs
+
 -- | Retrieve the client id of a particular client from config.
-getOAuthClientSecret :: (IsOAuthProvider prov, HasBackendConfigs m) => prov -> m OAuthClientSecret
-getOAuthClientSecret = fmap OAuthClientSecret . getMandatoryTextCfg getBackendConfig . oAuthClientSecretPath
+getOAuthClientSecret :: (IsOAuthProvider prov, MonadIO m) => prov -> m (Maybe OAuthClientSecret)
+getOAuthClientSecret = (fmap . fmap) OAuthClientSecret . getConfig . oAuthClientSecretPath
+
+-- | Retrieve the client id of a particular client from config.
+--getOAuthClientId
+--  :: Monad m => IsOAuthProvider prov
+--  => prov -> m OAuthClientId
+--getOAuthClientId prov =
+--  fmap OAuthClientId $ getConfig $ oAuthClientIdPath prov
 
 
-buildCfg :: (HasCommonConfigs m, HasBackendConfigs m, MonadIO m) => m BackendCfg
+
+
+buildCfg :: MonadIO m => m BackendCfg
 buildCfg = do
   let
     Right validFullEncoder = checkEncoder backendRouteEncoder
@@ -91,8 +97,10 @@ buildCfg = do
     renderRoute = renderFrontendRoute validFullEncoder
 
   clientSecret <- getOAuthClientSecret OAuthProvider_GitHub
-  oCfg <- buildOAuthConfig renderRoute
-  liftIO $ BackendCfg oCfg (\case OAuthProvider_GitHub -> clientSecret) <$> newTlsManager
+  Just baseRoute <- getConfig "common/route"
+  Just clientId <- fmap OAuthClientId <$> getConfig (oAuthClientIdPath OAuthProvider_GitHub)
+  let oCfg = buildOAuthConfig' baseRoute clientId renderRoute
+  liftIO $ BackendCfg oCfg (fmap (\x OAuthProvider_GitHub -> x) clientSecret) <$> newTlsManager
 
 
 -- | Check whether needed configs are present.
@@ -111,7 +119,7 @@ checkDeployment = do
           , "common/" <> networksPath
           , "common/" <> verificationServerPath
           ]
-    allConfigs <- liftIO getConfigs
+    allConfigs <- fmap (T.decodeUtf8With T.lenientDecode) <$> liftIO getConfigs
     let
       presentState = (`M.member` allConfigs) <$> filesToCheck
       filesChecked = zip filesToCheck presentState
@@ -144,13 +152,12 @@ checkDeployment = do
 
     putErrLn = T.hPutStrLn stderr
 
-
 backend :: Ob.Backend BackendRoute FrontendRoute
 backend = Ob.Backend
     { Ob._backend_run = \serve -> do
         cfg <- buildCfg
-        hasServerList <- isJust <$> getBackendConfig networksPath
-        let serveIt = serve $ lift . serveBackendRoute "/var/lib/pact-web/dyn-configs" cfg
+        hasServerList <- isJust <$> getConfig networksPath
+        let serveIt = serve $ serveBackendRoute "/var/lib/pact-web/dyn-configs" cfg
 
         if hasServerList
            -- Production mode:
@@ -203,7 +210,7 @@ renderCss = T.encodeUtf8 $ T.pack
     <=< withCabalPackageWorkDir $ liftIO $ Sass.compileFile "sass/index.scss" def)
 
 requestToken :: BackendCfg -> OAuthProviderId -> Snap ()
-requestToken (BackendCfg oAuthCfg getSecret manager) provId = do
+requestToken (BackendCfg oAuthCfg (Just getSecret) manager) provId = do
   req <- getRequest
 
   errResp <- runExceptT $ do
@@ -223,6 +230,7 @@ requestToken (BackendCfg oAuthCfg getSecret manager) provId = do
     Right _ -> do
       modifyResponse $ addHeader (CI.mk "cache-control") "no-cache, no-store, must-revalidate"
       writeLBS $ Aeson.encode errResp
+requestToken _ _ = oAuthErrorToResponse OAuthError_InvalidMethod
 
 oAuthErrorToResponse :: OAuthError -> Snap ()
 oAuthErrorToResponse err = do

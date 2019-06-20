@@ -5,6 +5,8 @@
 {-# LANGUAGE TemplateHaskell  #-}
 module Frontend where
 
+import           Control.Monad            (void)
+import           Data.Functor             (($>))
 import           Data.Text                (Text)
 import qualified Data.Text                as T
 import           Reflex.Dom.Core
@@ -13,8 +15,8 @@ import           Obelisk.Frontend
 import           Obelisk.Route.Frontend
 import           Obelisk.Generated.Static
 
+import           Common.Api
 import           Common.Route
-import           Frontend.Foundation
 import           Frontend.ReplGhcjs
 
 frontend :: Frontend (R FrontendRoute)
@@ -23,7 +25,7 @@ frontend = Frontend
       let backendEncoder = either (error "frontend: Failed to check backendRouteEncoder") id $
             checkEncoder backendRouteEncoder
       -- Global site tag (gtag.js) - Google Analytics
-      gaTrackingId <- maybe "UA-127512784-1" T.strip <$> getFrontendConfig "tracking-id"
+      gaTrackingId <- maybe "UA-127512784-1" T.strip <$> getTextCfg "frontend/tracking-id"
       let
         gtagSrc = "https://www.googletagmanager.com/gtag/js?id=" <> gaTrackingId
       elAttr "script" ("async" =: "" <> "src" =: gtagSrc) blank
@@ -34,10 +36,10 @@ frontend = Frontend
         , "gtag('config', '" <> gaTrackingId <> "');"
         ]
 
-      newHead $ renderBackendRoute backendEncoder
+      base <- getConfigRoute
+      newHead $ \r -> base <> renderBackendRoute backendEncoder r
 
-  , _frontend_body = do
-      prerender_ loaderMarkup app
+  , _frontend_body = prerender_ loaderMarkup app
   }
 
 loaderMarkup :: DomBuilder t m => m ()
@@ -48,23 +50,27 @@ loaderMarkup = do
   divClass "spinner__msg" $ text "Loading"
 
 newHead :: DomBuilder t m => (R BackendRoute -> Text) -> m ()
-newHead renderRoute = do
-    el "title" $ text "Kadena - Pact Testnet"
-    meta ("name" =: "description" <> "content" =: "Write, test, and deploy safe smart contracts using Pact, Kadena's programming language")
-    meta ("name" =: "keywords" <> "content" =: "kadena, pact, pact testnet, pact language, pact programming language, smart contracts, safe smart contracts, smart contract language, blockchain, learn blockchain programming, chainweb")
-    meta ("charset" =: "utf-8")
-    meta ("name" =: "google" <> "content" =: "notranslate")
-    meta ("http-equiv" =: "Content-Language" <> "content" =: "en_US")
-    ss "https://fonts.googleapis.com/css?family=Roboto"
-    ss "https://fonts.googleapis.com/css?family=Work+Sans"
-    ss (static @"css/font-awesome.min.css")
-    ss (static @"css/ace-theme-pact-web.css")
-    ss (renderRoute $ BackendRoute_Css :/ ())
-    js "https://cdnjs.cloudflare.com/ajax/libs/ace/1.4.1/ace.js"
+newHead routeText = do
+  el "title" $ text "Kadena - Pact Testnet"
+  meta ("name" =: "description" <> "content" =: "Write, test, and deploy safe smart contracts using Pact, Kadena's programming language")
+  meta ("name" =: "keywords" <> "content" =: "kadena, pact, pact testnet, pact language, pact programming language, smart contracts, safe smart contracts, smart contract language, blockchain, learn blockchain programming, chainweb")
+  meta ("charset" =: "utf-8")
+  meta ("name" =: "google" <> "content" =: "notranslate")
+  meta ("http-equiv" =: "Content-Language" <> "content" =: "en_US")
+  elAttr "link" ("href" =: routeText (BackendRoute_Css :/ ()) <> "rel" =: "stylesheet") blank
+  ss "https://fonts.googleapis.com/css?family=Roboto"
+  ss "https://fonts.googleapis.com/css?family=Work+Sans"
+  ss (static @"css/font-awesome.min.css")
+  ss (static @"css/ace-theme-pact-web.css")
+  -- "https://cdnjs.cloudflare.com/ajax/libs/ace/1.4.1/ace.js"
+  (ace, _) <- js' (static @"js/ace/ace.js")
+  _ <- runWithReplace (pure ()) $ domEvent Load ace $> do
+    el "script" $ text $ "ace.config.set('basePath', 'static/js/ace')"
     js (static @"js/ace-mode-pact.js")
-    js (static @"js/nacl-fast.min-v1.0.0.js")
-    js (static @"js/bowser.min.js")
+  js (static @"js/nacl-fast.min-v1.0.0.js")
+  js (static @"js/bowser.min.js")
   where
-    js url = elAttr "script" ("type" =: "text/javascript" <> "src" =: url <> "charset" =: "utf-8") blank
+    js = void . js'
+    js' url = elAttr' "script" ("type" =: "text/javascript" <> "src" =: url <> "charset" =: "utf-8") blank
     ss url = elAttr "link" ("href" =: url <> "rel" =: "stylesheet") blank
     meta attrs = elAttr "meta" attrs blank

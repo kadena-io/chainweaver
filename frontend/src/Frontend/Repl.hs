@@ -156,7 +156,7 @@ type ReplMonad t m =
 makeRepl
   :: forall t m cfg model mConf
   . ( ReplMonad t m, HasReplModel model t, HasReplModelCfg mConf t
-    , HasReplCfg cfg t, HasCommonConfigs m
+    , HasReplCfg cfg t, HasConfigs m
     )
   => model -> cfg -> m (mConf, WebRepl t)
 makeRepl m cfg = build $ \ ~(_, impl) -> do

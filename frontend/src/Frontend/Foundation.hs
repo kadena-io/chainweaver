@@ -39,8 +39,7 @@ module Frontend.Foundation
   , module Reflex.Extended
   , module Reflex.Network.Extended
   , module Language.Javascript.JSaddle
-  , module Obelisk.ExecutableConfig.Common
-  , module Obelisk.ExecutableConfig.Frontend
+  , module Obelisk.Configs
   , module Reflex.Dom.Contrib.CssClass
   , forkJSM
   ) where
@@ -59,8 +58,7 @@ import           Language.Javascript.JSaddle       (JSM, MonadJSM, askJSM,
                                                     liftJSM, runJSM)
 import qualified Language.Javascript.JSaddle       as JS
 import           Language.Javascript.JSaddle.Monad (JSContextRef)
-import           Obelisk.ExecutableConfig.Common
-import           Obelisk.ExecutableConfig.Frontend
+import           Obelisk.Configs
 import           Reflex.Dom.Class                  (HasJSContext (..),
                                                     JSContextSingleton (..))
 import           Reflex.Dom.Contrib.CssClass
@@ -129,7 +127,7 @@ makePactPrisms :: Name -> DecsQ
 makePactPrisms = makePrisms
 
 getBrowserProperty :: forall m. MonadJSM m => Text -> m Bool
-getBrowserProperty property = liftJSM $ fromMaybe False <$> (JS.fromJSVal =<< JS.eval ("bowser." <> property))
+getBrowserProperty property = liftJSM $ fromMaybe False <$> JS.catch (JS.fromJSVal =<< JS.eval ("bowser." <> property)) (\(_ :: JS.JSException) -> pure Nothing)
 
 -- TODO: upstream this?
 instance HasJSContext JSM where

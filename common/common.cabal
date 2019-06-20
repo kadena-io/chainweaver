@@ -10,8 +10,8 @@ library
                , containers
                , modern-uri
                , mtl
-               , obelisk-executable-config-common
                , obelisk-oauth-common
+               , obelisk-executable-config-lookup
                , obelisk-route
                , text
                , lens

@@ -116,7 +116,7 @@ makeEditor
   . ( ReflexConstraints t m
     , HasEditorCfg cfg t, HasEditorModel model t
     , HasEditorModelCfg mConf t
-    , HasCommonConfigs m
+    , HasConfigs m
     )
   => model -> cfg -> m (mConf, Editor t)
 makeEditor m cfg = mdo
@@ -190,7 +190,7 @@ applyQuickFix rs t onQuickFix = do
 -- | Type check and verify code.
 typeCheckVerify
   :: ( ReflexConstraints t m, HasEditorModel model t
-     , HasCommonConfigs m
+     , HasConfigs m
      )
   => model -> Dynamic t Text -> m (Event t [Annotation])
 typeCheckVerify m t = mdo

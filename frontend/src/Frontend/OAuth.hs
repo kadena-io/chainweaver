@@ -42,7 +42,7 @@ import           Reflex.Dom.Xhr                     (XhrRequestConfig (..),
                                                      newXMLHttpRequest,
                                                      xhrRequest)
 
-import           Obelisk.ExecutableConfig.Common
+import           Obelisk.Configs
 import           Obelisk.OAuth.AuthorizationRequest
 import           Obelisk.OAuth.Common
 import           Obelisk.OAuth.Frontend
@@ -88,7 +88,7 @@ makeOAuth
   . ( Reflex t, MonadHold t m, PostBuild t m, PerformEvent t m, MonadSample t (Performable m)
     , MonadJSM m, MonadJSM (Performable m), MonadFix m, TriggerEvent t m
     , Routed t (R FrontendRoute) m, RouteToUrl (R FrontendRoute) m
-    , HasOAuthCfg cfg t, HasOAuthModelCfg mConf t, HasCommonConfigs m
+    , HasOAuthCfg cfg t, HasOAuthModelCfg mConf t, HasConfigs m
     )
   => cfg -> m (mConf, OAuth t)
 makeOAuth cfg = mdo -- Required to get access to `tokens` for clearing any old tokens before requesting new ones.
@@ -191,7 +191,7 @@ runOAuthCmds renderRoute = go
 
 
 buildOAuthConfigFront
-  :: (HasCommonConfigs m, RouteToUrl (R FrontendRoute) m)
+  :: (HasConfigs m, RouteToUrl (R FrontendRoute) m)
   => m (OAuthConfig OAuthProvider)
 buildOAuthConfigFront = buildOAuthConfig =<< askRouteToUrl
 

@@ -58,7 +58,7 @@ uiCreatedGist
     , PerformEvent t m
     , MonadJSM (Performable m)
     , PostBuild t m
-    , HasCommonConfigs m
+    , HasConfigs m
     )
   => GistRef -- ^ The rendered route of the Gist (only the path).
   -> m (mConf, Event t ())

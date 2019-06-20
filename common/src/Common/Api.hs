@@ -1,37 +1,34 @@
+{-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE OverloadedStrings #-}
 
 module Common.Api where
 
 import Data.Text (Text)
 import qualified Data.Text as T
-import Obelisk.ExecutableConfig.Common
+import qualified Data.Text.Encoding as T
+import qualified Data.Text.Encoding.Error as T
+import Obelisk.Configs
 
 
 -- | Where to find the network list configuration, under config/common
 verificationServerPath :: Text
-verificationServerPath = "verification-server"
+verificationServerPath = "common/verification-server"
 
 -- | Get the normalized url of the remote verification server suitable for Pact.
-getVerificationServerUrl :: HasCommonConfigs m => m (Maybe Text)
+getVerificationServerUrl :: HasConfigs m => m (Maybe Text)
 getVerificationServerUrl = do
-  mUri <- getCommonTextCfg verificationServerPath
-  pure $ T.dropWhileEnd (== '/') <$> mUri
+  mUri <- getConfig verificationServerPath
+  pure $ T.dropWhileEnd (== '/') . T.decodeUtf8With T.lenientDecode <$> mUri
 
 -- | Get "config/common/route" normalized.
-getConfigRoute :: HasCommonConfigs m => m Text
+getConfigRoute :: HasConfigs m => m Text
 getConfigRoute =
-  T.dropWhileEnd (== '/') <$> getMandatoryTextCfg getCommonTextCfg "route"
+  T.dropWhileEnd (== '/') <$> getMandatoryTextCfg "common/route"
 
-getCommonTextCfg :: HasCommonConfigs m => Text -> m (Maybe Text)
-getCommonTextCfg p = fmap T.strip <$> getCommonConfig p
+getTextCfg :: HasConfigs m => Text -> m (Maybe Text)
+getTextCfg p = fmap (T.strip . T.decodeUtf8With T.lenientDecode) <$> getConfig p
 
-getMandatoryTextCfg
-  :: Monad m
-  => (Text -> m (Maybe Text))
-  -- ^ Function to get the config
-  -> Text -> m Text
-getMandatoryTextCfg f p = do
-  mR <- f p
-  case mR of
-    Nothing -> fail $ "Obelisk.ExecutableConfig, could not find: '" <> T.unpack p <> "'!"
-    Just r -> pure $ T.strip r
+getMandatoryTextCfg :: HasConfigs m => Text -> m Text
+getMandatoryTextCfg p = getTextCfg p >>= \case
+  Nothing -> fail $ "Obelisk.ExecutableConfig, could not find: '" <> T.unpack p <> "'!"
+  Just r -> pure r

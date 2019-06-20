@@ -242,7 +242,7 @@ makeNetwork
     , MonadSample t (Performable m)
     , HasNetworkModel model t
     , HasNetworkModelCfg mConf t
-    , HasCommonConfigs m
+    , HasConfigs m
     )
   => model
   -> NetworkCfg t
@@ -438,7 +438,7 @@ getNetworks
   :: forall t m cfg. ( MonadJSM (Performable m)
      , PerformEvent t m, TriggerEvent t m
      , MonadHold t m, MonadJSM m, MonadFix m
-     , HasNetworkCfg cfg t, HasCommonConfigs m
+     , HasNetworkCfg cfg t, HasConfigs m
      )
   => cfg -> m (Dynamic t NetworkName, Dynamic t (Map NetworkName [NodeRef]))
 getNetworks cfg = do
@@ -485,7 +485,7 @@ getNetworks cfg = do
 
 -- | Get networks from Obelisk config.
 getConfigNetworks
-  :: ( PerformEvent t m, HasCommonConfigs m )
+  :: ( PerformEvent t m, HasConfigs m )
   => m (NetworkName, Map NetworkName [NodeRef])
 getConfigNetworks = do
   let
