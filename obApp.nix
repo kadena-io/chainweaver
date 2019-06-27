@@ -41,6 +41,9 @@ in
 
     overrides = let
       inherit (pkgs) lib;
+      mac = self: super: {
+        mac = self.callCabal2nix "mac" ./mac {};
+      };
       guard-ghcjs-overlay = self: super:
         let hsNames = [ "cacophony" "haskeline" "katip" "ridley" ];
         in lib.genAttrs hsNames (name: null);
@@ -151,6 +154,7 @@ in
             frontend = pkgs.haskell.lib.dontHaddock super.frontend;
           };
     in self: super: lib.foldr lib.composeExtensions (_: _: {}) [
+      mac
       common-overlay
       (optionalExtension (super.ghc.isGhcjs or false) guard-ghcjs-overlay)
       (optionalExtension (super.ghc.isGhcjs or false) ghcjs-overlay)

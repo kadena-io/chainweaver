@@ -76,7 +76,19 @@ in obApp // rec {
     ${pkgs.sass}/bin/sass ${./backend/sass}/index.scss $out/sass.css
   '';
   # Mac app static linking
-  macBackend = pkgs.haskell.lib.overrideCabal obApp.ghc.backend (drv: {
+  macBackend = pkgs.haskell.lib.overrideCabal obApp.ghc.mac (drv: {
+    preBuild = ''
+      mkdir include
+      ln -s ${pkgs.darwin.cf-private}/Library/Frameworks/CoreFoundation.framework/Headers include/CoreFoundation
+      export NIX_CFLAGS_COMPILE="-I$PWD/include $NIX_CFLAGS_COMPILE"
+    '';
+
+    libraryFrameworkDepends =
+      (with pkgs.darwin; with apple_sdk.frameworks; [
+        Cocoa
+        WebKit
+      ]);
+
     configureFlags = [
       "--ghc-options=-optl=${(pkgs.openssl.override { static = true; }).out}/lib/libcrypto.a"
       "--ghc-options=-optl=${(pkgs.openssl.override { static = true; }).out}/lib/libssl.a"

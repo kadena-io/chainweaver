@@ -1,11 +1,12 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE ForeignFunctionInterface #-}
 
+import Control.Concurrent.Chan
+import Control.Concurrent
 import Control.Monad.IO.Class
-import Control.Monad.Trans (lift)
-import Control.Concurrent (forkIO)
 import Control.Exception (bracket)
-import Control.Monad ((<=<), forever)
+import Control.Monad (forever)
 import Data.Foldable (for_)
 import Data.String (IsString(..))
 import Foreign.C.String (peekCString)
@@ -25,9 +26,15 @@ import qualified Network.Socket as Socket
 import qualified System.Process as Process
 
 import Backend (serveBackendRoute)
+import qualified Backend.Devel as Devel
 import Common.Route
 import Frontend
 import Frontend.ReplGhcjs (app)
+
+import Foreign.C.String (CString, withCString)
+import Foreign.StablePtr (StablePtr, newStablePtr)
+
+foreign import ccall setupAppMenu :: IO ()
 
 -- | Redirect the given handles to Console.app
 redirectPipes :: [Handle] -> IO a -> IO a
@@ -57,9 +64,9 @@ getFreePort = Socket.withSocketsDo $ do
 
 backend :: Backend BackendRoute FrontendRoute
 backend = Backend
-  { _backend_run = \serve -> do
-    cfg <- pure undefined -- TODO FIXME used by OAuth
-    serve $ serveBackendRoute "/var/lib/pact-web/dyn-configs" cfg
+  { _backend_run = \serve -> Devel.withPactInstances $ do
+    cfg' <- pure undefined -- TODO FIXME used by OAuth
+    serve $ serveBackendRoute "/var/lib/pact-web/dyn-configs" cfg'
   , _backend_routeEncoder = backendRouteEncoder
   }
 
@@ -85,7 +92,7 @@ main = redirectPipes [stdout, stderr] $ do
   putStrLn "Starting backend"
   Async.withAsync b $ \_ -> do
     liftIO $ putStrLn "Starting jsaddle"
-    runHTMLWithBaseURL "index.html" route cfg $ do
+    runHTMLWithBaseURL "index.html" route (cfg $ const $ pure ()) $ do
       let frontendMode = FrontendMode
             { _frontendMode_hydrate = False
             , _frontendMode_adjustRoute = True
@@ -95,28 +102,39 @@ main = redirectPipes [stdout, stderr] $ do
             , ("common/oauth/github/client-id", "774d368ec8e267b9690f")
             ]
       liftIO $ putStrLn "Starting frontend"
+      bowserChan :: Chan () <- liftIO newChan
       -- Run real obelisk frontend
       runFrontendWithConfigsAndCurrentRoute frontendMode configs backendEncoder $ Frontend
         -- TODO we shouldn't have to use prerender since we aren't hydrating
         { _frontend_head = prerender_ blank $ do
-          newHead $ \r -> T.pack $ T.unpack route </> T.unpack (renderBackendRoute backendEncoder r)
+          bowserLoad <- newHead $ \r -> T.pack $ T.unpack route </> T.unpack (renderBackendRoute backendEncoder r)
+          performEvent_ $ liftIO . writeChan bowserChan <$> bowserLoad
         , _frontend_body = prerender_ blank $ do
-            pb <- delay 1 =<< getPostBuild -- allow the JS to load. hacky, but works
-            _ <- runWithReplace loaderMarkup $ app <$ pb
-            pure ()
+          (bowserLoad, triggerBowserLoad) <- newTriggerEvent
+          _ <- liftIO $ forkIO $ forever $ triggerBowserLoad =<< readChan bowserChan
+          _ <- runWithReplace loaderMarkup $ app <$ bowserLoad
+          pure ()
         }
 
--- TODO figure out why these are never called
-cfg :: AppDelegateConfig
-cfg = AppDelegateConfig
-  { _appDelegateConfig_willFinishLaunchingWithOptions = putStrLn "will finish launching"
-  , _appDelegateConfig_didFinishLaunchingWithOptions = putStrLn "did finish launching"
+cfg :: (String -> IO ()) -> AppDelegateConfig
+cfg onUniversalLink = AppDelegateConfig
+  { _appDelegateConfig_willFinishLaunchingWithOptions = do
+    putStrLn "will finish launching"
+    setupAppMenu
+  , _appDelegateConfig_didFinishLaunchingWithOptions = do
+    putStrLn "did finish launching"
+--    gogo <- newStablePtr $ putStrLn "click handled"
+--    withCString "Test Item" $ \cs -> hs_addMenuItem gogo cs
+--    putStrLn "did finish launching done"
   , _appDelegateConfig_applicationDidBecomeActive = putStrLn "did become active"
   , _appDelegateConfig_applicationWillResignActive = putStrLn "will resign active"
   , _appDelegateConfig_applicationDidEnterBackground = putStrLn "did enter background"
   , _appDelegateConfig_applicationWillEnterForeground = putStrLn "will enter foreground"
   , _appDelegateConfig_applicationWillTerminate = putStrLn "will terminate"
   , _appDelegateConfig_applicationSignificantTimeChange = putStrLn "time change"
-  , _appDelegateConfig_applicationUniversalLink = putStrLn . ("universal link: " <>) <=< peekCString
+  , _appDelegateConfig_applicationUniversalLink = \cs -> do
+      s <- peekCString cs
+      putStrLn $ "universal link: " <> s
+      onUniversalLink s
   , _appDelegateConfig_appDelegateNotificationConfig = def
   }

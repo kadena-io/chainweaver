@@ -37,7 +37,8 @@ frontend = Frontend
         ]
 
       base <- getConfigRoute
-      newHead $ \r -> base <> renderBackendRoute backendEncoder r
+      _ <- newHead $ \r -> base <> renderBackendRoute backendEncoder r
+      pure ()
 
   , _frontend_body = prerender_ loaderMarkup app
   }
@@ -49,7 +50,7 @@ loaderMarkup = do
     divClass "cube2" blank
   divClass "spinner__msg" $ text "Loading"
 
-newHead :: DomBuilder t m => (R BackendRoute -> Text) -> m ()
+newHead :: DomBuilder t m => (R BackendRoute -> Text) -> m (Event t ())
 newHead routeText = do
   el "title" $ text "Kadena - Pact Testnet"
   meta ("name" =: "description" <> "content" =: "Write, test, and deploy safe smart contracts using Pact, Kadena's programming language")
@@ -68,7 +69,8 @@ newHead routeText = do
     el "script" $ text $ "ace.config.set('basePath', 'static/js/ace')"
     js (static @"js/ace-mode-pact.js")
   js (static @"js/nacl-fast.min-v1.0.0.js")
-  js (static @"js/bowser.min.js")
+  (bowser, _) <- js' (static @"js/bowser.min.js")
+  pure $ domEvent Load bowser
   where
     js = void . js'
     js' url = elAttr' "script" ("type" =: "text/javascript" <> "src" =: url <> "charset" =: "utf-8") blank

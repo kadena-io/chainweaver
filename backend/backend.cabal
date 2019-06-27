@@ -57,31 +57,3 @@ executable backend
                , lens
                , modern-uri
                , obelisk-backend
-
-executable macApp
-  main-is: mac.hs
-  hs-source-dirs: src-bin
-  if impl(ghcjs)
-    buildable: False
-  build-depends: base
-               , backend
-               , common
-               , frontend
-               , async
-               , containers
-               , directory
-               , filepath
-               , jsaddle-wkwebview
-               , mtl
-               , network
-               , network-uri
-               , obelisk-backend
-               , obelisk-frontend
-               , obelisk-route
-               , process
-               , reflex-dom
-               , snap-core
-               , temporary
-               , text
-  ghc-options:
-    -threaded -O -Wall
