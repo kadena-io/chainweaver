@@ -65,8 +65,8 @@ newHead routeText = do
   ss (static @"css/ace-theme-pact-web.css")
   -- "https://cdnjs.cloudflare.com/ajax/libs/ace/1.4.1/ace.js"
   (ace, _) <- js' (static @"js/ace/ace.js")
+  el "script" $ text $ "ace.config.set('basePath', 'static/js/ace')"
   _ <- runWithReplace (pure ()) $ domEvent Load ace $> do
-    el "script" $ text $ "ace.config.set('basePath', 'static/js/ace')"
     js (static @"js/ace-mode-pact.js")
   js (static @"js/nacl-fast.min-v1.0.0.js")
   (bowser, _) <- js' (static @"js/bowser.min.js")
