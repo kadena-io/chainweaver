@@ -111,8 +111,54 @@ in obApp // rec {
     ln -s "${sass}/sass.css" $out/${macAppName}.app/Contents/Resources/sass.css
     cat ${plist} > $out/${macAppName}.app/Contents/Info.plist
   '';
-  deployMac = pkgs.runCommand "deploy-mac" {} ''
-    cp -Lr "${mac}" $out
+  deployMac = pkgs.writeScript "deploy" ''
+    #!/usr/bin/env bash
+    set -eo pipefail
+
+    if (( "$#" < 1 )); then
+      echo "Usage: $0 [TEAM_ID]" >&2
+      exit 1
+    fi
+
+    TEAM_ID=$1
+    shift
+
+    set -euox pipefail
+
+    function cleanup {
+      if [ -n "$tmpdir" -a -d "$tmpdir" ]; then
+        echo "Cleaning up tmpdir" >&2
+        chmod -R +w $tmpdir
+        rm -fR $tmpdir
+      fi
+    }
+
+    trap cleanup EXIT
+
+    tmpdir=$(mktemp -d)
+    # Find the signer given the OU
+    signer=$(security find-certificate -c "Mac Developer" -a \
+      | grep '^    "alis"<blob>="' \
+      | sed 's|    "alis"<blob>="\(.*\)"$|\1|' \
+      | while read c; do \
+          security find-certificate -c "$c" -p \
+            | openssl x509 -subject -noout; \
+        done \
+      | grep "OU=$TEAM_ID/" \
+      | sed 's|subject= /UID=[^/]*/CN=\([^/]*\).*|\1|' \
+      | head -n 1)
+
+    if [ -z "$signer" ]; then
+      echo "Error: No Mac Developer certificate found for team id $TEAM_ID" >&2
+      exit 1
+    fi
+
+    mkdir -p $tmpdir
+    cp -LR "${mac}/${macAppName}.app" $tmpdir
+    chmod -R +w "$tmpdir/${macAppName}.app"
+    /usr/bin/codesign --force --sign "$signer" --timestamp=none "$tmpdir/${macAppName}.app"
+
+    mv $tmpdir/${macAppName}.app .
   '';
 
   server = args@{ hostName, adminEmail, routeHost, enableHttps, version }:
