@@ -8,6 +8,24 @@ let
   obApp = import ./obApp.nix { inherit system iosSdkVersion obelisk pkgs; };
   pactServerModule = import ./pact-server/service.nix;
   macAppName = "Pact";
+  macAppIcon = ./mac/pact.icns;
+  macAppInstallerBackground = ./mac/installer-background.png;
+  bundleIdentifier = "io.kadena.pact";
+  createDmg = pkgs.fetchFromGitHub {
+    owner = "andreyvit";
+    repo = "create-dmg";
+    rev = "395bc0de23cd3499e0c6d0d1bafdbf4b074d5516";
+    sha256 = "046x566m352mgr9mh8p8iyhr6b71di10m8f36zibaiixa0ca3cr0";
+  };
+  xcent = builtins.toFile "xcent" (nixpkgs.lib.generators.toPlist {} {
+#    application-identifier = "<team-id/>.${bundleIdentifier}";
+#    "com.apple.developer.team-identifier" = "<team-id/>";
+#    get-task-allow = true;
+#    keychain-access-groups = [ "<team-id/>.${bundleIdentifier}" ];
+    "com.apple.security.app-sandbox" = false; # TODO enable this
+    "com.apple.security.network.client" = true;
+    "com.apple.security.network.server" = true;
+  });
   plist = pkgs.writeText "plist" ''
     <?xml version="1.0" encoding="UTF-8"?>
     <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -18,7 +36,7 @@ let
       <key>CFBundleDisplayName</key>
       <string>${macAppName}</string>
       <key>CFBundleIdentifier</key>
-      <string>io.kadena.Pact</string>
+      <string>${bundleIdentifier}</string>
       <key>CFBundleVersion</key>
       <string>${obApp.ghc.frontend.version}</string>
       <key>CFBundleShortVersionString</key>
@@ -106,7 +124,7 @@ in obApp // rec {
     ln -s "${macBackend}"/bin/macApp $out/${macAppName}.app/Contents/MacOS/${macAppName}
     ln -s "${obApp.mkAssets obApp.passthru.staticFiles}" $out/${macAppName}.app/Contents/Resources/static.assets
     ln -s "${obApp.passthru.staticFiles}" $out/${macAppName}.app/Contents/Resources/static
-    ln -s "${./mac/pact.icns}" $out/${macAppName}.app/Contents/Resources/pact.icns
+    ln -s "${macAppIcon}" $out/${macAppName}.app/Contents/Resources/pact.icns
     ln -s "${./mac/index.html}" $out/${macAppName}.app/Contents/Resources/index.html
     ln -s "${sass}/sass.css" $out/${macAppName}.app/Contents/Resources/sass.css
     cat ${plist} > $out/${macAppName}.app/Contents/Info.plist
@@ -153,12 +171,35 @@ in obApp // rec {
       exit 1
     fi
 
+    # Create and sign the app
     mkdir -p $tmpdir
     cp -LR "${mac}/${macAppName}.app" $tmpdir
     chmod -R +w "$tmpdir/${macAppName}.app"
-    /usr/bin/codesign --force --sign "$signer" --timestamp=none "$tmpdir/${macAppName}.app"
+    strip "$tmpdir/${macAppName}.app/Contents/MacOS/${macAppName}"
+    sed "s|<team-id/>|$TEAM_ID|" < "${xcent}" > $tmpdir/xcent
+    cat $tmpdir/xcent
+    plutil $tmpdir/xcent
+    /usr/bin/codesign --force --sign "$signer" --entitlements $tmpdir/xcent --timestamp=none "$tmpdir/${macAppName}.app"
 
-    mv $tmpdir/${macAppName}.app .
+    # Create the dmg
+    cp "${macAppIcon}" "$tmpdir/installer-icon.icns"
+    chmod +w "$tmpdir/installer-icon.icns"
+    ${createDmg}/create-dmg \
+      --volname "${macAppName} Installer" \
+      --volicon "$tmpdir/installer-icon.icns" \
+      --background "${macAppInstallerBackground}" \
+      --window-pos 200 120 \
+      --window-size 800 400 \
+      --icon-size 100 \
+      --icon "${macAppName}.app" 200 190 \
+      --app-drop-link 600 185 \
+      "$tmpdir/${macAppName}.dmg" \
+      "$tmpdir/${macAppName}.app"
+
+    # Sign the dmg
+    /usr/bin/codesign --sign "$signer" "$tmpdir/${macAppName}.dmg"
+
+    mv "$tmpdir/${macAppName}.dmg" .
   '';
 
   server = args@{ hostName, adminEmail, routeHost, enableHttps, version }:
