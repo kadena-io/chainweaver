@@ -6,7 +6,7 @@ import Control.Concurrent.Chan
 import Control.Concurrent
 import Control.Monad.IO.Class
 import Control.Exception (bracket)
-import Control.Monad (forever)
+import Control.Monad (forever, (>=>))
 import Data.Foldable (for_)
 import Data.String (IsString(..))
 import Foreign.C.String (peekCString)
@@ -36,6 +36,8 @@ import Foreign.StablePtr (StablePtr, newStablePtr)
 
 foreign import ccall setupAppMenu :: IO ()
 
+
+
 -- | Redirect the given handles to Console.app
 redirectPipes :: [Handle] -> IO a -> IO a
 redirectPipes ps m = bracket setup hClose $ \r -> Async.withAsync (go r) $ \_ -> m
@@ -64,9 +66,9 @@ getFreePort = Socket.withSocketsDo $ do
 
 backend :: Backend BackendRoute FrontendRoute
 backend = Backend
-  { _backend_run = \serve -> Devel.withPactInstances $ do
+  { _backend_run = \serve -> do
     cfg' <- pure undefined -- TODO FIXME used by OAuth
-    serve $ serveBackendRoute "/var/lib/pact-web/dyn-configs" cfg'
+    serve $ serveBackendRoute Nothing cfg'
   , _backend_routeEncoder = backendRouteEncoder
   }
 
@@ -92,14 +94,15 @@ main = redirectPipes [stdout, stderr] $ do
   putStrLn "Starting backend"
   Async.withAsync b $ \_ -> do
     liftIO $ putStrLn "Starting jsaddle"
-    runHTMLWithBaseURL "index.html" route (cfg $ const $ pure ()) $ do
+    runHTMLWithBaseURL "index.html" route (cfg putStrLn) $ do
       let frontendMode = FrontendMode
             { _frontendMode_hydrate = False
             , _frontendMode_adjustRoute = True
             }
           configs = M.fromList -- TODO don't embed all of these into binary
             [ ("common/route", route)
-            , ("common/oauth/github/client-id", "774d368ec8e267b9690f")
+            , ("common/networks", "remote-source:https://pact.kadena.io/networks")
+            , ("common/oauth/github/client-id", "") -- TODO remove
             ]
       liftIO $ putStrLn "Starting frontend"
       bowserChan :: Chan () <- liftIO newChan

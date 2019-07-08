@@ -13,7 +13,7 @@ import           Control.Arrow            (left)
 import           Control.Error.Safe       (headErr)
 import           Control.Lens
 import           Control.Monad
-import           Control.Monad.Except     (MonadError, liftEither, runExceptT)
+import           Control.Monad.Except     (MonadError, liftEither, runExceptT, throwError, withExceptT)
 import           Control.Monad.Trans
 import           Data.Aeson
 import qualified Data.Aeson               as A
@@ -149,11 +149,12 @@ networksPath = "common/networks"
 --
 --   Find and parse the networks configuration. If this file is not present,
 --   pact-web will run in development mode.
-getNetworksConfig :: HasConfigs m => m (Either Text (NetworkName, Map NetworkName [NodeRef]))
+getNetworksConfig :: HasConfigs m => m (Either (Either Text Text) (NetworkName, Map NetworkName [NodeRef]))
 getNetworksConfig = runExceptT $ do
-  raw <- note "Networks configuration could not be found." <=< lift $ getTextCfg networksPath
-  parseNetworks raw
-
+  raw <- note (Left "Networks configuration could not be found.") <=< lift $ getTextCfg networksPath
+  case T.stripPrefix "remote-source:" raw of
+    Just r -> throwError $ Right r
+    Nothing -> withExceptT Left $ parseNetworks raw
 
 -- | Parse server list.
 --

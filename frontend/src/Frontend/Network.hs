@@ -57,6 +57,7 @@ import qualified Data.ByteString.Lazy              as BSL
 import           Data.Either                       (lefts, rights)
 import qualified Data.HashMap.Strict               as H
 import qualified Data.IntMap                       as IntMap
+import qualified Data.List                         as L
 import qualified Data.Map                          as Map
 import           Data.Map.Strict                   (Map)
 import           Data.Set                          (Set)
@@ -66,8 +67,11 @@ import qualified Data.Text                         as T
 import qualified Data.Text.Encoding                as T
 import qualified Data.Text.IO                      as T
 import           Data.Time.Clock                   (getCurrentTime)
+import           Data.Traversable                  (for)
+import           Foreign.JavaScript.TH             (HasJSContext)
 import           Language.Javascript.JSaddle.Monad (JSM, liftJSM)
 import qualified Network.HTTP.Types                as HTTP
+import           Reflex.Dom.Core                   (def, XhrRequest(..), XhrResponse(..), performRequestAsync)
 import           System.IO                         (stderr)
 import           Text.URI                          (URI)
 import qualified Text.URI                          as URI
@@ -91,6 +95,7 @@ import           Pact.Types.Crypto                 (PPKScheme (..))
 import           Common.Network                    (ChainId, ChainRef (..), NetworkName (..),
                                                     NodeRef, getNetworksConfig,
                                                     getPactInstancePort,
+                                                    parseNetworks,
                                                     numPactInstances,
                                                     textNetworkName)
 import           Frontend.Crypto.Ed25519
@@ -243,6 +248,7 @@ makeNetwork
     , HasNetworkModel model t
     , HasNetworkModelCfg mConf t
     , HasConfigs m
+    , HasJSContext (Performable m)
     )
   => model
   -> NetworkCfg t
@@ -439,18 +445,28 @@ getNetworks
      , PerformEvent t m, TriggerEvent t m
      , MonadHold t m, MonadJSM m, MonadFix m
      , HasNetworkCfg cfg t, HasConfigs m
+     , PostBuild t m, HasJSContext (Performable m)
      )
   => cfg -> m (Dynamic t NetworkName, Dynamic t (Map NetworkName [NodeRef]))
 getNetworks cfg = do
-    (defName, defNets) <- getConfigNetworks
+    (defName, defNets, mRemoteSource) <- getConfigNetworks
     initialNets <- fromMaybe defNets <$>
       liftJSM (getItemStorage localStorage StoreNetwork_Networks)
     initialName <- fromMaybe defName <$>
       liftJSM (getItemStorage localStorage StoreNetwork_SelectedNetwork)
 
-    networks <- holdDyn initialNets $ leftmost
-      [ defNets <$ (cfg ^. networkCfg_resetNetworks)
-      , cfg ^. networkCfg_setNetworks
+    -- Periodically hit the remote-source for network configs, if applicable
+    mRemoteUpdate <- for mRemoteSource $ \url -> do
+      tick <- tickLossyFromPostBuildTime 60
+      let req = XhrRequest "GET" url def <$ tick
+      resp <- (fmap . fmap) _xhrResponse_responseText $ performRequestAsync req
+      let resp' = fmap parseNetworks <$> resp
+      pure $ fmapMaybe (either (const Nothing) Just) $ fmapMaybe id resp'
+
+    networks <- foldDyn ($) initialNets $ leftmost
+      [ const defNets <$ (cfg ^. networkCfg_resetNetworks)
+      , const <$> cfg ^. networkCfg_setNetworks
+      , Map.unionWith (\x -> L.nub . mappend x) . snd <$> fromMaybe never mRemoteUpdate
       ]
 
     rec
@@ -486,7 +502,7 @@ getNetworks cfg = do
 -- | Get networks from Obelisk config.
 getConfigNetworks
   :: ( PerformEvent t m, HasConfigs m )
-  => m (NetworkName, Map NetworkName [NodeRef])
+  => m (NetworkName, Map NetworkName [NodeRef], Maybe Text)
 getConfigNetworks = do
   let
     buildNodeRef =
@@ -501,9 +517,11 @@ getConfigNetworks = do
 
   errProdCfg <- getNetworksConfig
   pure $ case errProdCfg of
-    Left _ -> -- Development mode
-      (buildName 1, devNetworks)
-    Right c -> c -- Production mode
+    Left (Left _) -> -- Development mode
+      (buildName 1, devNetworks, Nothing)
+    Left (Right x) -> -- Mac app remote list
+      (buildName 1, devNetworks, Just x)
+    Right (x,y) -> (x,y, Nothing) -- Production mode
 
 
 -- | Load modules on startup and on every occurrence of the given event.

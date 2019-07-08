@@ -39,6 +39,7 @@ import           Snap                      (Method (POST), Request (..), Snap,
                                             writeBS, writeLBS)
 import qualified Snap
 import           Snap.Util.FileServe       (serveFile)
+import qualified Snap.Util.CORS            as CORS
 import           System.Directory          (canonicalizePath, doesFileExist)
 import           System.Exit               (exitFailure)
 import           System.FilePath           ((</>))
@@ -156,8 +157,9 @@ backend :: Ob.Backend BackendRoute FrontendRoute
 backend = Ob.Backend
     { Ob._backend_run = \serve -> do
         cfg <- buildCfg
-        hasServerList <- isJust <$> getConfig networksPath
-        let serveIt = serve $ serveBackendRoute "/var/lib/pact-web/dyn-configs" cfg
+        networks <- getConfig networksPath
+        let hasServerList = isJust networks
+            serveIt = serve $ serveBackendRoute networks cfg
 
         if hasServerList
            -- Production mode:
@@ -168,21 +170,20 @@ backend = Ob.Backend
     , Ob._backend_routeEncoder = backendRouteEncoder
     }
 
--- | Serve our dynconfigs file.
-serveBackendRoute :: FilePath -> BackendCfg -> R BackendRoute -> Snap ()
-serveBackendRoute dynConfigs cfg = \case
-  BackendRoute_DynConfigs :/ ps
-    -> do
-      let
-        strSegs = map T.unpack ps
-        p = foldl' (</>) dynConfigs strSegs
-      pNorm <- liftIO $ canonicalizePath p
-      baseNorm <- liftIO $ canonicalizePath dynConfigs
-      -- Sanity check: Make sure we are serving a file in the target directory.
-      exists <- liftIO $ doesFileExist pNorm
-      if L.isPrefixOf baseNorm pNorm && exists
-         then serveFile pNorm
-         else pass
+serveBackendRoute :: Maybe Text -> BackendCfg -> R BackendRoute -> Snap ()
+serveBackendRoute networks cfg = \case
+  BackendRoute_Networks :/ () -> CORS.applyCORS CORS.defaultOptions $ case networks of
+    Nothing -> pass
+    Just n -> do
+      req <- Snap.getRequest
+      when (Snap.rqMethod req /= Snap.GET) $ do
+        Snap.modifyResponse $ Snap.setResponseStatus 405 "Invalid Method"
+        Snap.writeBS "Invalid Method"
+        Snap.finishWith =<< Snap.getResponse
+      Snap.modifyResponse
+        $ Snap.setContentType "text/css"
+        . Snap.addHeader (CI.mk "cache-control") "public"
+      Snap.writeText n
   BackendRoute_Robots :=> _
     -> writeBS "User-agent: *\nDisallow: \n"
   BackendRoute_OAuthGetToken :/ providerId

@@ -72,16 +72,8 @@ let
       <!-- Allow loading resources from the http backend -->
       <key>NSAppTransportSecurity</key>
       <dict>
-        <key>NSExceptionDomains</key>
-        <dict>
-          <key>localhost</key>
-          <dict>
-            <key>NSExceptionAllowsInsecureHTTPLoads</key>
-            <true/>
-            <key>NSIncludesSubdomains</key>
-            <true/>
-          </dict>
-        </dict>
+        <key>NSAllowsLocalNetworking</key>
+        <true/>
       </dict>
     </dict>
     </plist>
