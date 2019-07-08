@@ -45,6 +45,11 @@
   right: 8px;
 }
 
+.ace_container *::-webkit-scrollbar {
+  width: 0px;
+  background: transparent;
+}
+
 .ace_scrollbar {
     display: none !important;
 }
