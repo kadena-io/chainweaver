@@ -46,6 +46,7 @@ module Frontend.UI.Button
   ) where
 
 ------------------------------------------------------------------------------
+import           Control.Monad.IO.Class
 import           Control.Lens
 import           Data.Default
 import           Data.Default                (def)
@@ -54,17 +55,19 @@ import           Data.String                 (IsString)
 import           Data.Text                   (Text)
 import           Reflex.Dom.Contrib.CssClass
 import           Reflex.Dom.Core
-import           Language.Javascript.JSaddle (MonadJSM, liftJSM, JSVal)
+import           Language.Javascript.JSaddle (MonadJSM)
 import qualified Language.Javascript.JSaddle as JS
-import qualified Data.Text as T
-import           Control.Monad (void)
+import qualified GHCJS.DOM as DOM
+import qualified GHCJS.DOM.Document as Document
+import qualified GHCJS.DOM.HTMLElement as HTMLElement
+import qualified GHCJS.DOM.HTMLTextAreaElement as TextArea
+import qualified GHCJS.DOM.Node as Node
 import qualified GHCJS.DOM.Types                   as DOM
 ------------------------------------------------------------------------------
 import           Obelisk.Generated.Static
 ------------------------------------------------------------------------------
 import           Frontend.Foundation         (ReflexValue, makePactLenses)
 import           Frontend.UI.Widgets.Helpers (imgWithAlt, imgWithAltCls)
-
 
 -- | Configuration for uiButton.
 data UiButtonCfgRep f = UiButtonCfg
@@ -147,36 +150,35 @@ homeButton cls = -- uiIcon "fas fa-chevron-left" $ def & iconConfig_size .~ Just
 --   Probably won't work for input elements.
 copyButton
   :: forall t m
-  . (DynamicButtonConstraints t m, MonadJSM (Performable m), PerformEvent t m
-    , RawElement (DomBuilderSpace m) ~ DOM.Element
-    )
+  . (DynamicButtonConstraints t m, MonadJSM (Performable m), PerformEvent t m)
   => UiButtonDynCfg t
-  -> RawElement (DomBuilderSpace m)
+  -> Behavior t Text
   -> m (Event t ())
-copyButton cfg e = do
+copyButton cfg t = do
     onClick <- uiButtonDyn cfg $ text "copy"
-    performEvent_ $ jsCopy e <$ onClick
+    r <- copyToClipboard $ tag t onClick
+    performEvent_ $ (\r' -> liftIO $ putStrLn $ "copyToClipboard: " <> show r') <$> r
     pure onClick
-  where
 
-    jsCopy :: forall m1. MonadJSM m1 => RawElement (DomBuilderSpace m) -> m1 ()
-    jsCopy eL = do
-      jsCopyFunc <- jsCopyVal
-      void $ liftJSM $ JS.call jsCopyFunc JS.obj [DOM.unElement eL]
-
-    jsCopyVal :: forall m1. MonadJSM m1 => m1 JSVal
-    jsCopyVal = liftJSM $ JS.eval $ T.unlines
-      [ "(function(e) {"
-      , " try {"
-      , "    var range = document.createRange();"
-      , "    range.selectNodeContents(e);"
-      , "    var selection = window.getSelection();"
-      , "    selection.removeAllRanges();"
-      , "    selection.addRange(range);"
-      , "    document.execCommand('copy');"
-      , " } catch(e) { console.log('Copy failed!'); return false; }"
-      , "})"
-      ]
+-- | Copy the given text to the clipboard
+copyToClipboard
+  :: (MonadJSM (Performable m), PerformEvent t m)
+  => Event t Text
+  -- ^ Text to copy to clipboard. Event must come directly from user
+  -- interaction (e.g. domEvent Click), or the copy will not take place.
+  -> m (Event t Bool)
+  -- ^ Did the copy take place successfully?
+copyToClipboard copy = performEvent $ ffor copy $ \t -> do
+  doc <- DOM.currentDocumentUnchecked
+  ta <- DOM.uncheckedCastTo TextArea.HTMLTextAreaElement <$> Document.createElement doc ("textarea" :: Text)
+  TextArea.setValue ta t
+  body <- Document.getBodyUnchecked doc
+  _ <- Node.appendChild body ta
+  HTMLElement.focus ta
+  TextArea.select ta
+  success <- Document.execCommand doc ("copy" :: Text) False (Nothing :: Maybe Text)
+  _ <- Node.removeChild body ta
+  pure success
 
 deleteButton :: StaticButtonConstraints t m => m (Event t ())
 deleteButton = deleteButtonCfg def

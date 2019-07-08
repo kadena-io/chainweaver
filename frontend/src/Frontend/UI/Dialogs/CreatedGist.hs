@@ -27,7 +27,6 @@ module Frontend.UI.Dialogs.CreatedGist
 ------------------------------------------------------------------------------
 import           Control.Lens
 import           Control.Monad               (void)
-import           GHCJS.DOM.Types                 (Element)
 import           Reflex
 import           Reflex.Dom
 ------------------------------------------------------------------------------
@@ -52,7 +51,6 @@ type HasUICreatedGistModelCfg mConf t = (Monoid mConf)
 uiCreatedGist
   :: forall t m mConf
   . ( HasUICreatedGistModelCfg mConf t, RouteToUrl (R FrontendRoute) m
-    , RawElement (DomBuilderSpace m) ~ GHCJS.DOM.Types.Element
     , Monad m
     , DomBuilder t m
     , PerformEvent t m
@@ -82,11 +80,11 @@ uiCreatedGist gistRef = do
                 routeToUrl <- askRouteToUrl
                 let route = routeToUrl $ FrontendRoute_Gist :/ [gistRef]
 
-                (e, ()) <- elClass' "td" "table__text-cell table__cell_size_flex" $
+                elClass "td" "table__text-cell table__cell_size_flex" $
                   text $ baseUrlText <> route
 
                 void $ elClass "td" "table__last-cell table__cell_size_flex" $
-                  copyButton copyBtnCfg $ _element_raw e
+                  copyButton copyBtnCfg $ pure $ baseUrlText <> route
 
       modalFooter $ do
         onConfirm <- confirmButton def "Ok"

@@ -21,7 +21,6 @@ import           Control.Category       ((.))
 import           Control.Monad.Except   (MonadError)
 import           Data.Functor.Identity
 import           Data.Functor.Sum
-import           Data.Semigroup         ((<>))
 import           Data.Text              (Text)
 import           Prelude                hiding (id, (.))
 

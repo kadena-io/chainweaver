@@ -172,16 +172,16 @@ uiKeyItem (n, k) = do
     elClass "tr" "table__row" $ do
       el "td" $ text n
 
-      (pEl, _) <- elClass' "td" "wallet__key wallet__key_type_public" $
-        dynText (keyToText . _keyPair_publicKey <$> k)
+      let public = keyToText . _keyPair_publicKey <$> k
+      elClass "td" "wallet__key wallet__key_type_public" $ dynText public
       el "td" $
-        void $ copyButton copyBtnCfg $ _element_raw pEl
+        void $ copyButton copyBtnCfg $ current public
 
-      (privEl, isShown) <- keyCopyWidget "td" "wallet__key wallet__key_type_private" $
-        maybe "No key" keyToText . _keyPair_privateKey <$> k
+      let private = maybe "No key" keyToText . _keyPair_privateKey <$> k
+      isShown <- keyCopyWidget "td" "wallet__key wallet__key_type_private" private
       el "td" $ do
         let cfg = copyBtnCfg & uiButtonCfg_disabled .~ fmap not isShown
-        void $ copyButton cfg $ _element_raw privEl
+        void $ copyButton cfg $ current private
 
       onDel <- elClass "td" "wallet__delete" $
         deleteButtonCfg $ def & uiButtonCfg_disabled .~ isPredefinedKey n
@@ -199,7 +199,7 @@ keyCopyWidget
   => Text
   -> Text
   -> Dynamic t Text
-  -> m (Element EventResult (DomBuilderSpace m) t, Dynamic t Bool)
+  -> m (Dynamic t Bool)
 keyCopyWidget t cls keyText = mdo
   isShown <- foldDyn (const not) False (domEvent Click e)
   let mkShownCls True = ""
@@ -212,4 +212,4 @@ keyCopyWidget t cls keyText = mdo
 
     elDynClass' "span" "key-content" $
       dynText (mkText <$> isShown <*> keyText)
-  pure (e, isShown)
+  pure isShown

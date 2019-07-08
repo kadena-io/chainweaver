@@ -17,8 +17,6 @@ import qualified Data.ByteString           as BS
 import qualified Data.CaseInsensitive      as CI
 import           Data.Default
 import           Data.Dependent.Sum        (DSum ((:=>)))
-import           Data.List                 (foldl')
-import qualified Data.List                 as L
 import qualified Data.Map                  as M
 import           Data.Maybe                (isJust)
 import           Data.Text                 (Text)
@@ -38,11 +36,8 @@ import           Snap                      (Method (POST), Request (..), Snap,
                                             readRequestBody, setResponseStatus,
                                             writeBS, writeLBS)
 import qualified Snap
-import           Snap.Util.FileServe       (serveFile)
 import qualified Snap.Util.CORS            as CORS
-import           System.Directory          (canonicalizePath, doesFileExist)
 import           System.Exit               (exitFailure)
-import           System.FilePath           ((</>))
 import           System.IO                 (stderr)
 import qualified Text.Sass                 as Sass
 import           TH.RelativePaths          (withCabalPackageWorkDir)
