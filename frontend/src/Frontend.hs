@@ -40,7 +40,7 @@ frontend = Frontend
       _ <- newHead $ \r -> base <> renderBackendRoute backendEncoder r
       pure ()
 
-  , _frontend_body = prerender_ loaderMarkup app
+  , _frontend_body = prerender_ loaderMarkup (app True)
   }
 
 loaderMarkup :: DomBuilder t m => m ()

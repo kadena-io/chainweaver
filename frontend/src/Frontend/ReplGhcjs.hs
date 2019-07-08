@@ -71,12 +71,12 @@ app
      , Routed t (R FrontendRoute) m, RouteToUrl (R FrontendRoute) m, SetRoute t (R FrontendRoute) m
      , HasConfigs m
      )
-  => m ()
-app = void . mfix $ \ cfg -> do
+  => Bool -> m ()
+app gistEnabled = void . mfix $ \ cfg -> do
 
   ideL <- makeIde cfg
 
-  controlCfg <- controlBar ideL
+  controlCfg <- controlBar gistEnabled ideL
   mainCfg <- elClass "main" "main page__main" $ do
     uiEditorCfg <- codePanel "main__left-pane" ideL
     envCfg <- rightTabBar "main__right-pane" ideL
@@ -161,13 +161,14 @@ codeWidget anno iv sv = do
 
 controlBar
   :: forall t m. MonadWidget t m
-  => ModalIde m t
+  => Bool
+  -> ModalIde m t
   ->  m (ModalIdeCfg m t)
-controlBar m = do
+controlBar gistEnabled m = do
     mainHeader $ do
       controlBarLeft
       controlBarCenter
-      controlBarRight m
+      controlBarRight gistEnabled m
   where
     -- Main header with adjusted padding on MacOs (scrollbars take up no space there):
     mainHeader child = do
@@ -237,8 +238,8 @@ getPactVersion = do
     Right (TLiteral (LString ver) _) <- liftIO $ evalStateT (evalRepl' "(pact-version)") is
     return ver
 
-controlBarRight :: forall t m. MonadWidget t m => ModalIde m t -> m (ModalIdeCfg m t)
-controlBarRight m = do
+controlBarRight :: forall t m. MonadWidget t m => Bool -> ModalIde m t -> m (ModalIdeCfg m t)
+controlBarRight gistEnabled m = do
     divClass "main-header__controls-nav" $ do
       elClass "div" "main-header__project-loader" $ do
 
@@ -247,7 +248,7 @@ controlBarRight m = do
 
         onDeployClick <- deployBtn
 
-        onCreateGist <- gistBtn
+        onCreateGist <- if gistEnabled then gistBtn else pure never
 
         onNetClick <- cogBtn
 

@@ -115,7 +115,7 @@ main = redirectPipes [stdout, stderr] $ do
         , _frontend_body = prerender_ blank $ do
           (bowserLoad, triggerBowserLoad) <- newTriggerEvent
           _ <- liftIO $ forkIO $ forever $ triggerBowserLoad =<< readChan bowserChan
-          _ <- runWithReplace loaderMarkup $ app <$ bowserLoad
+          _ <- runWithReplace loaderMarkup $ app False <$ bowserLoad
           pure ()
         }
 
