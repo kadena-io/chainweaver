@@ -140,4 +140,5 @@ cfg onUniversalLink = AppDelegateConfig
       putStrLn $ "universal link: " <> s
       onUniversalLink s
   , _appDelegateConfig_appDelegateNotificationConfig = def
+  , _appDelegateConfig_developerExtrasEnabled = False
   }
