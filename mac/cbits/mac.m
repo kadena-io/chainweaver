@@ -5,14 +5,56 @@
 extern void callIO(HsStablePtr);
 extern void callWithCString(const char * _Nonnull, HsStablePtr);
 
+@interface DialogController:NSObject {
+  NSOpenPanel *openFilePanel;
+  HsStablePtr openFileHandler;
+}
+-(DialogController *) initWithHandler:(HsStablePtr)handler;
+-(void) openFileDialog;
+@end
+
+@implementation DialogController
+-(id)initWithHandler:(HsStablePtr)handler {
+  self = [super init];
+  openFilePanel = [[NSOpenPanel openPanel] retain];
+  openFileHandler = handler;
+  [openFilePanel setCanChooseFiles:YES];
+  [openFilePanel setAllowsMultipleSelection:NO];
+  [openFilePanel setCanChooseDirectories:NO];
+  NSArray *fileTypes = @[@"pact"];
+  [openFilePanel setAllowedFileTypes:fileTypes];
+  return self;
+}
+-(void) openFileDialog {
+  if ([openFilePanel runModal] == NSFileHandlingPanelOKButton) {
+    NSURL *url = [[openFilePanel URLs] objectAtIndex:0];
+    callWithCString([url fileSystemRepresentation], openFileHandler);
+  }
+}
+@end
+
 // Doesn't work - I think because we are redirecting stderr into NSLog, and
 // NSLog redirects stuff back to stderr
 //void writeLog (const char * _Nonnull log) {
 //  NSLog(@"%@", [NSString stringWithCString:log encoding:NSUTF8StringEncoding]);
 //}
 
-void setupAppMenu() {
+void activateWindow() {
+  NSWindow *window = [[NSApplication sharedApplication] mainWindow];
+  [window orderFrontRegardless];
+  [window center];
+  [NSApp activateIgnoringOtherApps:YES];
+}
+
+void hideWindow() {
+  NSApplication *app = [NSApplication sharedApplication];
+  NSWindow *window = [app mainWindow];
+  [window orderOut:app];
+}
+
+void setupAppMenu(HsStablePtr hs_handleOpenedFile) {
   NSApplication *application = [NSApplication sharedApplication];
+  DialogController *dialogController = [[DialogController alloc] initWithHandler:hs_handleOpenedFile];
 
   NSMenu *mainMenu = [[NSMenu alloc] init];
   NSMenuItem *appMenuItem = [mainMenu
@@ -76,11 +118,19 @@ void setupAppMenu() {
   // File menu
   NSMenu *fileMenu = [[NSMenu alloc] initWithTitle:@"File"];
   [mainMenu setSubmenu:fileMenu forItem:fileMenuItem];
+
   NSMenuItem *new = [fileMenu
     addItemWithTitle:@"New"
     action: nil
     keyEquivalent:@"n"
   ];
+
+  NSMenuItem *open = [fileMenu
+    addItemWithTitle:@"Open"
+    action: @selector(openFileDialog)
+    keyEquivalent:@"o"
+  ];
+  [open setTarget:dialogController];
 
   WKWebView *webView = [[application mainWindow] contentView];
 
@@ -137,7 +187,6 @@ void setupAppMenu() {
     keyEquivalent:@"m"
   ];
   [minimize setTarget:webView];
-
 
   [application setMainMenu:mainMenu];
 

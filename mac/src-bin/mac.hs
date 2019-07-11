@@ -6,7 +6,7 @@ import Control.Concurrent.Chan
 import Control.Concurrent
 import Control.Monad.IO.Class
 import Control.Exception (bracket)
-import Control.Monad (forever, (>=>))
+import Control.Monad (forever, (>=>), (<=<))
 import Data.Foldable (for_)
 import Data.String (IsString(..))
 import Foreign.C.String (peekCString)
@@ -22,6 +22,7 @@ import qualified Control.Concurrent.Async as Async
 import qualified Data.Map as M
 import qualified Data.Text as T
 import qualified Data.Text.Encoding as T
+import qualified Data.Text.IO as T
 import qualified Network.Socket as Socket
 import qualified System.Process as Process
 
@@ -29,14 +30,14 @@ import Backend (serveBackendRoute)
 import qualified Backend.Devel as Devel
 import Common.Route
 import Frontend
-import Frontend.ReplGhcjs (app)
+import Frontend.ReplGhcjs (app, AppCfg(..))
 
 import Foreign.C.String (CString, withCString)
 import Foreign.StablePtr (StablePtr, newStablePtr)
 
-foreign import ccall setupAppMenu :: IO ()
-
-
+foreign import ccall setupAppMenu :: StablePtr (CString -> IO ()) -> IO ()
+foreign import ccall activateWindow :: IO ()
+foreign import ccall hideWindow :: IO ()
 
 -- | Redirect the given handles to Console.app
 redirectPipes :: [Handle] -> IO a -> IO a
@@ -91,17 +92,19 @@ main = redirectPipes [stdout, stderr] $ do
       -- We don't need to serve anything useful here under Frontend
       b = runBackend' (Just $ fromIntegral port) staticAssets backend $ Frontend blank blank
   -- Run the backend in a forked thread, and run jsaddle-wkwebview on the main thread
+  openFileChan :: Chan FilePath <- liftIO newChan
   putStrLn "Starting backend"
   Async.withAsync b $ \_ -> do
     liftIO $ putStrLn "Starting jsaddle"
-    runHTMLWithBaseURL "index.html" route (cfg putStrLn) $ do
+    runHTMLWithBaseURL "index.html" route (cfg putStrLn (writeChan openFileChan)) $ do
       let frontendMode = FrontendMode
             { _frontendMode_hydrate = False
             , _frontendMode_adjustRoute = True
             }
           configs = M.fromList -- TODO don't embed all of these into binary
             [ ("common/route", route)
-            , ("common/networks", "remote-source:https://pact.kadena.io/networks")
+            --, ("common/networks", "remote-source:https://pact.kadena.io/networks")
+            , ("common/networks", "remote-source:https://pact-web.qa.obsidian.systems/networks")
             , ("common/oauth/github/client-id", "") -- TODO remove
             ]
       liftIO $ putStrLn "Starting frontend"
@@ -113,22 +116,33 @@ main = redirectPipes [stdout, stderr] $ do
           bowserLoad <- newHead $ \r -> T.pack $ T.unpack route </> T.unpack (renderBackendRoute backendEncoder r)
           performEvent_ $ liftIO . writeChan bowserChan <$> bowserLoad
         , _frontend_body = prerender_ blank $ do
-          (bowserLoad, triggerBowserLoad) <- newTriggerEvent
-          _ <- liftIO $ forkIO $ forever $ triggerBowserLoad =<< readChan bowserChan
-          _ <- runWithReplace loaderMarkup $ app False <$ bowserLoad
+          bowserLoad <- chanTriggerEvent bowserChan
+          openFileEvent <- chanTriggerEvent openFileChan
+          let appCfg = AppCfg
+                { _appCfg_gistEnabled = False
+                , _appCfg_externalOpenFile = openFileEvent
+                , _appCfg_openFile = liftIO . T.readFile
+                }
+          _ <- runWithReplace loaderMarkup $
+            app appCfg <$ bowserLoad
+          -- (liftIO (putStrLn "Activating window" >> activateWindow) >> app appCfg) <$ bowserLoad
           pure ()
         }
 
-cfg :: (String -> IO ()) -> AppDelegateConfig
-cfg onUniversalLink = AppDelegateConfig
+chanTriggerEvent :: (TriggerEvent t m, MonadIO m) => Chan a -> m (Event t a)
+chanTriggerEvent chan = do
+  (e, trigger) <- newTriggerEvent
+  _ <- liftIO $ forkIO $ forever $ trigger =<< readChan chan
+  pure e
+
+cfg :: (String -> IO ()) -> (FilePath -> IO ()) -> AppDelegateConfig
+cfg onUniversalLink handleOpen = AppDelegateConfig
   { _appDelegateConfig_willFinishLaunchingWithOptions = do
     putStrLn "will finish launching"
-    setupAppMenu
+    setupAppMenu <=< newStablePtr $ peekCString >=> handleOpen
   , _appDelegateConfig_didFinishLaunchingWithOptions = do
     putStrLn "did finish launching"
---    gogo <- newStablePtr $ putStrLn "click handled"
---    withCString "Test Item" $ \cs -> hs_addMenuItem gogo cs
---    putStrLn "did finish launching done"
+    --hideWindow
   , _appDelegateConfig_applicationDidBecomeActive = putStrLn "did become active"
   , _appDelegateConfig_applicationWillResignActive = putStrLn "will resign active"
   , _appDelegateConfig_applicationDidEnterBackground = putStrLn "did enter background"
@@ -140,5 +154,5 @@ cfg onUniversalLink = AppDelegateConfig
       putStrLn $ "universal link: " <> s
       onUniversalLink s
   , _appDelegateConfig_appDelegateNotificationConfig = def
-  , _appDelegateConfig_developerExtrasEnabled = False
+  , _appDelegateConfig_developerExtrasEnabled = True
   }

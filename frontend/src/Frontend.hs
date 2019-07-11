@@ -40,7 +40,11 @@ frontend = Frontend
       _ <- newHead $ \r -> base <> renderBackendRoute backendEncoder r
       pure ()
 
-  , _frontend_body = prerender_ loaderMarkup (app True)
+  , _frontend_body = prerender_ loaderMarkup $ app $ AppCfg
+    { _appCfg_gistEnabled = True
+    , _appCfg_externalOpenFile = never
+    , _appCfg_openFile = \filePath -> pure "" -- TODO load file
+    }
   }
 
 loaderMarkup :: DomBuilder t m => m ()
@@ -63,8 +67,10 @@ newHead routeText = do
   ss "https://fonts.googleapis.com/css?family=Work+Sans"
   ss (static @"css/font-awesome.min.css")
   ss (static @"css/ace-theme-pact-web.css")
-  -- "https://cdnjs.cloudflare.com/ajax/libs/ace/1.4.1/ace.js"
-  (ace, _) <- js' "/static/js/ace/ace.js"
+--  (ace, _) <- js' "https://cdnjs.cloudflare.com/ajax/libs/ace/1.4.1/ace.js"
+--  js (static @"js/ace-mode-pact.js")
+  (ace, _) <- js' (static @"js/ace/ace.js")
+--  (ace, _) <- js' "/static/js/ace/ace.js"
   _ <- runWithReplace (pure ()) $ domEvent Load ace $> do
     js (static @"js/ace-mode-pact.js")
   js (static @"js/nacl-fast.min-v1.0.0.js")

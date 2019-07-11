@@ -457,8 +457,9 @@ getNetworks cfg = do
 
     -- Periodically hit the remote-source for network configs, if applicable
     mRemoteUpdate <- for mRemoteSource $ \url -> do
+      pb <- getPostBuild
       tick <- tickLossyFromPostBuildTime 60
-      let req = XhrRequest "GET" url def <$ tick
+      let req = XhrRequest "GET" url def <$ (pb <> void tick)
       resp <- (fmap . fmap) _xhrResponse_responseText $ performRequestAsync req
       let resp' = fmap parseNetworks <$> resp
       pure $ fmapMaybe (either (const Nothing) Just) $ fmapMaybe id resp'
@@ -520,7 +521,7 @@ getConfigNetworks = do
     Left (Left _) -> -- Development mode
       (buildName 1, devNetworks, Nothing)
     Left (Right x) -> -- Mac app remote list
-      (buildName 1, devNetworks, Just x)
+      (NetworkName "pact", mempty, Just x)
     Right (x,y) -> (x,y, Nothing) -- Production mode
 
 

@@ -66,23 +66,31 @@ import           Frontend.UI.Modal.Impl
 import           Frontend.UI.RightPanel
 ------------------------------------------------------------------------------
 
+data AppCfg t m = AppCfg
+  { _appCfg_gistEnabled :: Bool
+  , _appCfg_externalOpenFile :: Event t FilePath
+  , _appCfg_openFile :: FilePath -> Performable m Text
+  }
+
 app
   :: ( MonadWidget t m
      , Routed t (R FrontendRoute) m, RouteToUrl (R FrontendRoute) m, SetRoute t (R FrontendRoute) m
      , HasConfigs m
      )
-  => Bool -> m ()
-app gistEnabled = void . mfix $ \ cfg -> do
+  => AppCfg t m -> m ()
+app appCfg = void . mfix $ \ cfg -> do
 
   ideL <- makeIde cfg
 
-  controlCfg <- controlBar gistEnabled ideL
+  controlCfg <- controlBar appCfg ideL
   mainCfg <- elClass "main" "main page__main" $ do
     uiEditorCfg <- codePanel "main__left-pane" ideL
     envCfg <- rightTabBar "main__right-pane" ideL
     pure $ uiEditorCfg <> envCfg
 
   modalCfg <- showModal ideL
+
+  opened <- performEvent $ _appCfg_openFile appCfg <$> _appCfg_externalOpenFile appCfg
 
   let
     onGistCreatedModal = Just . uiCreatedGist <$> ideL ^. gistStore_created
@@ -93,6 +101,7 @@ app gistEnabled = void . mfix $ \ cfg -> do
     , mainCfg
     , modalCfg
     , gistModalCfg
+    , mempty & ideCfg_editor . editorCfg_loadCode .~ opened
     ]
 
 -- | Code editing (left hand side currently)
@@ -161,14 +170,14 @@ codeWidget anno iv sv = do
 
 controlBar
   :: forall t m. MonadWidget t m
-  => Bool
+  => AppCfg t m
   -> ModalIde m t
   ->  m (ModalIdeCfg m t)
-controlBar gistEnabled m = do
+controlBar appCfg m = do
     mainHeader $ do
       controlBarLeft
       controlBarCenter
-      controlBarRight gistEnabled m
+      controlBarRight appCfg m
   where
     -- Main header with adjusted padding on MacOs (scrollbars take up no space there):
     mainHeader child = do
@@ -238,8 +247,8 @@ getPactVersion = do
     Right (TLiteral (LString ver) _) <- liftIO $ evalStateT (evalRepl' "(pact-version)") is
     return ver
 
-controlBarRight :: forall t m. MonadWidget t m => Bool -> ModalIde m t -> m (ModalIdeCfg m t)
-controlBarRight gistEnabled m = do
+controlBarRight :: forall t m. MonadWidget t m => AppCfg t m -> ModalIde m t -> m (ModalIdeCfg m t)
+controlBarRight appCfg m = do
     divClass "main-header__controls-nav" $ do
       elClass "div" "main-header__project-loader" $ do
 
@@ -248,7 +257,7 @@ controlBarRight gistEnabled m = do
 
         onDeployClick <- deployBtn
 
-        onCreateGist <- if gistEnabled then gistBtn else pure never
+        onCreateGist <- if _appCfg_gistEnabled appCfg then gistBtn else pure never
 
         onNetClick <- cogBtn
 
