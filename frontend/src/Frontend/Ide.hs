@@ -131,13 +131,13 @@ makeIde
     , SetRoute t (R FrontendRoute) m
     , HasConfigs m
     )
-  => IdeCfg modal t -> m (Ide modal t)
-makeIde userCfg = build $ \ ~(cfg, ideL) -> do
+  => AppCfg t m -> IdeCfg modal t -> m (Ide modal t)
+makeIde appCfg userCfg = build $ \ ~(cfg, ideL) -> do
 
     walletL <- makeWallet $ _ideCfg_wallet cfg
     json <- makeJsonData walletL $ _ideCfg_jsonData cfg
     (networkCfgL, networkL) <- makeNetwork walletL $ cfg ^. ideCfg_network
-    (explrCfg, moduleExplr) <- makeModuleExplorer ideL cfg
+    (explrCfg, moduleExplr) <- makeModuleExplorer appCfg ideL cfg
     (editorCfgL, editorL) <- makeEditor ideL cfg
     (oAuthCfgL, oAuthL) <- makeOAuth cfg
     (gistStoreCfgL, gistStoreL) <- makeGistStore ideL cfg

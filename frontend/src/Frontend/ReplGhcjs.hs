@@ -66,12 +66,6 @@ import           Frontend.UI.Modal.Impl
 import           Frontend.UI.RightPanel
 ------------------------------------------------------------------------------
 
-data AppCfg t m = AppCfg
-  { _appCfg_gistEnabled :: Bool
-  , _appCfg_externalOpenFile :: Event t FilePath
-  , _appCfg_openFile :: FilePath -> Performable m Text
-  }
-
 app
   :: ( MonadWidget t m
      , Routed t (R FrontendRoute) m, RouteToUrl (R FrontendRoute) m, SetRoute t (R FrontendRoute) m
@@ -80,7 +74,7 @@ app
   => AppCfg t m -> m ()
 app appCfg = void . mfix $ \ cfg -> do
 
-  ideL <- makeIde cfg
+  ideL <- makeIde appCfg cfg
 
   controlCfg <- controlBar appCfg ideL
   mainCfg <- elClass "main" "main page__main" $ do
@@ -89,8 +83,6 @@ app appCfg = void . mfix $ \ cfg -> do
     pure $ uiEditorCfg <> envCfg
 
   modalCfg <- showModal ideL
-
-  opened <- performEvent $ _appCfg_openFile appCfg <$> _appCfg_externalOpenFile appCfg
 
   let
     onGistCreatedModal = Just . uiCreatedGist <$> ideL ^. gistStore_created
@@ -101,7 +93,7 @@ app appCfg = void . mfix $ \ cfg -> do
     , mainCfg
     , modalCfg
     , gistModalCfg
-    , mempty & ideCfg_editor . editorCfg_loadCode .~ opened
+    , mempty & ideCfg_editor . editorCfg_loadCode .~ _appCfg_externalFileOpened appCfg
     ]
 
 -- | Code editing (left hand side currently)
@@ -252,6 +244,7 @@ controlBarRight appCfg m = do
     divClass "main-header__controls-nav" $ do
       elClass "div" "main-header__project-loader" $ do
 
+        _ <- openFileBtn
 
         onLoadClicked <- loadReplBtn
 
@@ -298,6 +291,13 @@ controlBarRight appCfg m = do
         {- btnTextIcon (static @"img/github-gist-dark.svg") "Make Gist" blank -}
         elClass "span" "main-header__minor-text" $ text "Make "
         text "Gist"
+
+    openFileBtn = do
+      let cfg = headerBtnCfg & uiButtonCfg_title ?~ "Open a local contract"
+      uiButtonWithOnClick (_appCfg_openFileDialog appCfg) cfg $ do
+        text "Open"
+        elClass "span" "main-header__minor-text" $ text " File"
+
 
     cogBtn =
       uiButton

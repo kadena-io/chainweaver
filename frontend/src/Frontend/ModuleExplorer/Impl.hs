@@ -31,6 +31,7 @@ module Frontend.ModuleExplorer.Impl
   , HasModuleExplorerModelCfg
     -- * Creation
   , makeModuleExplorer
+  , loadEditorFromLocalStorage
   ) where
 
 ------------------------------------------------------------------------------
@@ -97,8 +98,8 @@ storeEditor :: MonadJSM m => Text -> m ()
 storeEditor ks = setItemStorage localStorage StoreModuleExplorer_SessionFile ks
 
 -- | Load text from localstorage.
-loadEditor :: MonadJSM m => m (Maybe Text)
-loadEditor = getItemStorage localStorage StoreModuleExplorer_SessionFile
+loadEditorFromLocalStorage :: MonadJSM m => m (Maybe Text)
+loadEditorFromLocalStorage = getItemStorage localStorage StoreModuleExplorer_SessionFile
 
 
 makeModuleExplorer
@@ -109,12 +110,12 @@ makeModuleExplorer
     , HasModuleExplorerModelCfg mConf t
     , HasModuleExplorerModel model t
     , MonadSample t (Performable m)
-    , MonadJSM m
     )
-  => model
+  => AppCfg t m
+  -> model
   -> cfg
   -> m (mConf, ModuleExplorer t)
-makeModuleExplorer m cfg = mfix $ \ ~(_, explr) -> do
+makeModuleExplorer appCfg m cfg = mfix $ \ ~(_, explr) -> do
 
     (selCfg, selectedFile) <- selectFile m
       (fmapMaybe getFileModuleRef $ cfg ^. moduleExplorerCfg_pushModule)
@@ -125,7 +126,7 @@ makeModuleExplorer m cfg = mfix $ \ ~(_, explr) -> do
       )
 
     onPostBuild <- getPostBuild
-    mInitFile <- loadEditor
+    mInitFile <- _appCfg_loadEditor appCfg
     let
       onInitFile =
         if isNothing mInitFile

@@ -1,12 +1,14 @@
+{-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE ForeignFunctionInterface #-}
 
-import Control.Concurrent.Chan
+import Control.Concurrent.MVar
 import Control.Concurrent
 import Control.Monad.IO.Class
-import Control.Exception (bracket)
-import Control.Monad (forever, (>=>), (<=<))
+import Control.Exception (bracket, try)
+import Control.Monad (void, forever, (>=>), (<=<))
 import Data.Foldable (for_)
 import Data.String (IsString(..))
 import Foreign.C.String (peekCString)
@@ -30,7 +32,8 @@ import Backend (serveBackendRoute)
 import qualified Backend.Devel as Devel
 import Common.Route
 import Frontend
-import Frontend.ReplGhcjs (app, AppCfg(..))
+import Frontend.Foundation (AppCfg(..))
+import Frontend.ReplGhcjs (app)
 
 import Foreign.C.String (CString, withCString)
 import Foreign.StablePtr (StablePtr, newStablePtr)
@@ -38,6 +41,7 @@ import Foreign.StablePtr (StablePtr, newStablePtr)
 foreign import ccall setupAppMenu :: StablePtr (CString -> IO ()) -> IO ()
 foreign import ccall activateWindow :: IO ()
 foreign import ccall hideWindow :: IO ()
+foreign import ccall global_openFileDialog :: IO ()
 
 -- | Redirect the given handles to Console.app
 redirectPipes :: [Handle] -> IO a -> IO a
@@ -91,12 +95,21 @@ main = redirectPipes [stdout, stderr] $ do
       route = "http://localhost:" <> fromString (show port) <> "/"
       -- We don't need to serve anything useful here under Frontend
       b = runBackend' (Just $ fromIntegral port) staticAssets backend $ Frontend blank blank
+  fileOpenedMVar :: MVar T.Text <- liftIO newEmptyMVar
   -- Run the backend in a forked thread, and run jsaddle-wkwebview on the main thread
-  openFileChan :: Chan FilePath <- liftIO newChan
   putStrLn "Starting backend"
   Async.withAsync b $ \_ -> do
     liftIO $ putStrLn "Starting jsaddle"
-    runHTMLWithBaseURL "index.html" route (cfg putStrLn (writeChan openFileChan)) $ do
+    let handleOpen f = try (T.readFile f) >>= \case
+          Left (e :: IOError) -> do
+            putStrLn $ "Failed reading file " <> f <> ": " <> show e
+            pure False
+          Right c -> do
+            putStrLn $ "Opened file successfully: " <> f
+            putMVar fileOpenedMVar c
+            pure True
+    runHTMLWithBaseURL "index.html" route (cfg putStrLn handleOpen) $ do
+      mInitFile <- liftIO $ tryTakeMVar fileOpenedMVar
       let frontendMode = FrontendMode
             { _frontendMode_hydrate = False
             , _frontendMode_adjustRoute = True
@@ -108,20 +121,21 @@ main = redirectPipes [stdout, stderr] $ do
             , ("common/oauth/github/client-id", "") -- TODO remove
             ]
       liftIO $ putStrLn "Starting frontend"
-      bowserChan :: Chan () <- liftIO newChan
+      bowserMVar :: MVar () <- liftIO newEmptyMVar
       -- Run real obelisk frontend
       runFrontendWithConfigsAndCurrentRoute frontendMode configs backendEncoder $ Frontend
         -- TODO we shouldn't have to use prerender since we aren't hydrating
         { _frontend_head = prerender_ blank $ do
           bowserLoad <- newHead $ \r -> T.pack $ T.unpack route </> T.unpack (renderBackendRoute backendEncoder r)
-          performEvent_ $ liftIO . writeChan bowserChan <$> bowserLoad
+          performEvent_ $ liftIO . putMVar bowserMVar <$> bowserLoad
         , _frontend_body = prerender_ blank $ do
-          bowserLoad <- chanTriggerEvent bowserChan
-          openFileEvent <- chanTriggerEvent openFileChan
+          bowserLoad <- mvarTriggerEvent bowserMVar
+          fileOpened <- mvarTriggerEvent fileOpenedMVar
           let appCfg = AppCfg
                 { _appCfg_gistEnabled = False
-                , _appCfg_externalOpenFile = openFileEvent
-                , _appCfg_openFile = liftIO . T.readFile
+                , _appCfg_externalFileOpened = fileOpened
+                , _appCfg_openFileDialog = liftIO global_openFileDialog
+                , _appCfg_loadEditor = pure mInitFile
                 }
           _ <- runWithReplace loaderMarkup $
             app appCfg <$ bowserLoad
@@ -129,17 +143,20 @@ main = redirectPipes [stdout, stderr] $ do
           pure ()
         }
 
-chanTriggerEvent :: (TriggerEvent t m, MonadIO m) => Chan a -> m (Event t a)
-chanTriggerEvent chan = do
+-- | Push writes to the given 'MVar' into an 'Event'.
+mvarTriggerEvent
+  :: (PerformEvent t m, TriggerEvent t m, MonadIO m, MonadIO (Performable m), PostBuild t m)
+  => MVar a -> m (Event t a)
+mvarTriggerEvent mvar = do
   (e, trigger) <- newTriggerEvent
-  _ <- liftIO $ forkIO $ forever $ trigger =<< readChan chan
+  _ <- liftIO $ forkIO $ forever $ trigger =<< takeMVar mvar
   pure e
 
-cfg :: (String -> IO ()) -> (FilePath -> IO ()) -> AppDelegateConfig
+cfg :: (String -> IO ()) -> (FilePath -> IO Bool) -> AppDelegateConfig
 cfg onUniversalLink handleOpen = AppDelegateConfig
   { _appDelegateConfig_willFinishLaunchingWithOptions = do
     putStrLn "will finish launching"
-    setupAppMenu <=< newStablePtr $ peekCString >=> handleOpen
+    setupAppMenu <=< newStablePtr $ void . handleOpen <=< peekCString
   , _appDelegateConfig_didFinishLaunchingWithOptions = do
     putStrLn "did finish launching"
     --hideWindow
@@ -155,4 +172,8 @@ cfg onUniversalLink handleOpen = AppDelegateConfig
       onUniversalLink s
   , _appDelegateConfig_appDelegateNotificationConfig = def
   , _appDelegateConfig_developerExtrasEnabled = True
+  , _appDelegateConfig_applicationOpenFile = \cs -> do
+      filePath <- peekCString cs
+      putStrLn $ "application open file: " <> filePath
+      handleOpen filePath
   }

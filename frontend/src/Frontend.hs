@@ -5,10 +5,17 @@
 {-# LANGUAGE TemplateHaskell  #-}
 module Frontend where
 
-import           Control.Monad            (void)
+import           Control.Monad            (join, void)
+import           Control.Monad.IO.Class
 import           Data.Functor             (($>))
+import           Data.Maybe               (listToMaybe)
 import           Data.Text                (Text)
 import qualified Data.Text                as T
+import           GHCJS.DOM.Types          (liftJSM, JSM)
+import qualified GHCJS.DOM.EventM         as EventM
+import qualified GHCJS.DOM.FileReader     as FileReader
+import qualified GHCJS.DOM.HTMLElement    as HTMLElement
+import qualified GHCJS.DOM.Types          as Types
 import           Reflex.Dom.Core
 
 import           Obelisk.Frontend
@@ -17,6 +24,8 @@ import           Obelisk.Generated.Static
 
 import           Common.Api
 import           Common.Route
+import           Frontend.Foundation
+import           Frontend.ModuleExplorer.Impl (loadEditorFromLocalStorage)
 import           Frontend.ReplGhcjs
 
 frontend :: Frontend (R FrontendRoute)
@@ -40,12 +49,33 @@ frontend = Frontend
       _ <- newHead $ \r -> base <> renderBackendRoute backendEncoder r
       pure ()
 
-  , _frontend_body = prerender_ loaderMarkup $ app $ AppCfg
-    { _appCfg_gistEnabled = True
-    , _appCfg_externalOpenFile = never
-    , _appCfg_openFile = \filePath -> pure "" -- TODO load file
-    }
+  , _frontend_body = prerender_ loaderMarkup $ do
+    (fileOpened, triggerOpen) <- openFileDialog
+    app $ AppCfg
+      { _appCfg_gistEnabled = True
+      , _appCfg_externalFileOpened = fileOpened
+      , _appCfg_openFileDialog = liftJSM triggerOpen
+      , _appCfg_loadEditor = loadEditorFromLocalStorage
+      }
   }
+
+-- | The 'JSM' action *must* be run from a user initiated event in order for the
+-- dialog to open
+openFileDialog :: MonadWidget t m => m (Event t Text, JSM ())
+openFileDialog = do
+  let attrs = "type" =: "file" <> "accept" =: ".pact" <> "style" =: "display: none"
+  input <- inputElement $ def & initialAttributes .~ attrs
+  let newFile = fmapMaybe listToMaybe $ updated $ _inputElement_files input
+  mContents <- performEventAsync $ ffor newFile $ \file cb -> Types.liftJSM $ do
+    fileReader <- FileReader.newFileReader
+    FileReader.readAsText fileReader (Just file) (Nothing :: Maybe Text)
+    _ <- EventM.on fileReader FileReader.loadEnd $ Types.liftJSM $ do
+      mStringOrArrayBuffer <- FileReader.getResult fileReader
+      mText <- traverse (Types.fromJSVal . Types.unStringOrArrayBuffer) mStringOrArrayBuffer
+      liftIO $ cb $ join mText
+    pure ()
+  let open = HTMLElement.click $ _inputElement_raw input
+  pure (fmapMaybe id mContents, open)
 
 loaderMarkup :: DomBuilder t m => m ()
 loaderMarkup = do

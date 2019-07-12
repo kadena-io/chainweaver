@@ -25,6 +25,7 @@ module Frontend.UI.Button
     -- * Primitives
   , uiButton
   , uiButtonDyn
+  , uiButtonWithOnClick
     -- ** Specialized buttons
   , homeButton
   , backButton
@@ -47,6 +48,7 @@ module Frontend.UI.Button
 
 ------------------------------------------------------------------------------
 import           Control.Monad.IO.Class
+import           Control.Monad.Trans         (lift)
 import           Control.Lens
 import           Data.Default
 import           Data.Default                (def)
@@ -59,6 +61,8 @@ import           Language.Javascript.JSaddle (MonadJSM)
 import qualified Language.Javascript.JSaddle as JS
 import qualified GHCJS.DOM as DOM
 import qualified GHCJS.DOM.Document as Document
+import qualified GHCJS.DOM.EventM as EventM
+import qualified GHCJS.DOM.GlobalEventHandlers as GlobalEventHandlers
 import qualified GHCJS.DOM.HTMLElement as HTMLElement
 import qualified GHCJS.DOM.HTMLTextAreaElement as TextArea
 import qualified GHCJS.DOM.Node as Node
@@ -129,6 +133,18 @@ uiButtonDyn
   => UiButtonDynCfg t -> m () -> m (Event t ())
 uiButtonDyn cfg body = do
     (e, _) <- elDynAttr' "button" (toBtnAttrs <$> toStatic cfg) body
+    pure $ domEvent Click e
+
+-- | Uses ghcjs-dom event handler to ensure the action runs immediately as a
+-- result of the user's click. Using performEvent_ on domEvent Click can cause
+-- certain actions to be unreliable - e.g. opening file dialogs programatically
+uiButtonWithOnClick
+  :: (StaticButtonConstraints t m, RawElement (DomBuilderSpace m) ~ DOM.Element, MonadJSM m)
+  => DOM.JSM () -> UiButtonCfg -> m () -> m (Event t ())
+uiButtonWithOnClick action cfg body = do
+    (e, _) <- elAttr' "button" (toBtnAttrs cfg) body
+    let htmlElement = DOM.HTMLElement . DOM.unElement $ _element_raw e
+    _ <- DOM.liftJSM $ htmlElement `EventM.on` GlobalEventHandlers.click $ lift action
     pure $ domEvent Click e
 
 

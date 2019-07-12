@@ -9,6 +9,7 @@ let
   pactServerModule = import ./pact-server/service.nix;
   macAppName = "Pact";
   macAppIcon = ./mac/pact.icns;
+  macPactDocumentIcon = ./mac/pact-document.icns;
   macAppInstallerBackground = ./mac/installer-background.png;
   bundleIdentifier = "io.kadena.pact";
   createDmg = pkgs.fetchFromGitHub {
@@ -49,12 +50,29 @@ let
       <string>${macAppName}</string>
       <key>NSHumanReadableCopyright</key>
       <string>(C) 2018 Kadena</string>
-
       <key>CFBundleIconFile</key>
       <string>pact.icns</string>
-
       <key>NSHighResolutionCapable</key>
       <string>YES</string>
+
+      <!-- Associate .pact files with the app -->
+      <key>CFBundleDocumentTypes</key>
+      <array>
+        <dict>
+          <key>CFBundleTypeExtensions</key>
+          <array>
+            <string>pact</string>
+          </array>
+          <key>CFBundleTypeIconFile</key>
+          <string>pact-document.icns</string>
+          <key>CFBundleTypeRole</key>
+          <string>Editor</string>
+          <key>CFBundleTypeName</key>
+          <string>Pact Smart Contract</string>
+          <key>LSHandlerRank</key>
+          <string>Owner</string>
+        </dict>
+      </array>
 
       <!-- Handle pact:// addresses. This is necessary for OAuth redirection -->
       <key>CFBundleURLTypes</key>
@@ -117,6 +135,7 @@ in obApp // rec {
     ln -s "${obApp.mkAssets obApp.passthru.staticFiles}" $out/${macAppName}.app/Contents/Resources/static.assets
     ln -s "${obApp.passthru.staticFiles}" $out/${macAppName}.app/Contents/Resources/static
     ln -s "${macAppIcon}" $out/${macAppName}.app/Contents/Resources/pact.icns
+    ln -s "${macPactDocumentIcon}" $out/${macAppName}.app/Contents/Resources/pact-document.icns
     ln -s "${./mac/index.html}" $out/${macAppName}.app/Contents/Resources/index.html
     ln -s "${sass}/sass.css" $out/${macAppName}.app/Contents/Resources/sass.css
     cat ${plist} > $out/${macAppName}.app/Contents/Info.plist

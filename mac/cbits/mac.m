@@ -5,6 +5,7 @@
 extern void callIO(HsStablePtr);
 extern void callWithCString(const char * _Nonnull, HsStablePtr);
 
+// This class is here so we can send messages to it from selectors
 @interface DialogController:NSObject {
   NSOpenPanel *openFilePanel;
   HsStablePtr openFileHandler;
@@ -12,6 +13,16 @@ extern void callWithCString(const char * _Nonnull, HsStablePtr);
 -(DialogController *) initWithHandler:(HsStablePtr)handler;
 -(void) openFileDialog;
 @end
+
+DialogController *global_dialogController = 0;
+
+// For use from haskell land
+void global_openFileDialog() {
+  // Add the operation to the queue to ensure it happens on main thread
+  [[NSOperationQueue mainQueue] addOperationWithBlock:^(void) {
+    [global_dialogController openFileDialog];
+  }];
+}
 
 @implementation DialogController
 -(id)initWithHandler:(HsStablePtr)handler {
@@ -54,7 +65,7 @@ void hideWindow() {
 
 void setupAppMenu(HsStablePtr hs_handleOpenedFile) {
   NSApplication *application = [NSApplication sharedApplication];
-  DialogController *dialogController = [[DialogController alloc] initWithHandler:hs_handleOpenedFile];
+  global_dialogController = [[DialogController alloc] initWithHandler:hs_handleOpenedFile];
 
   NSMenu *mainMenu = [[NSMenu alloc] init];
   NSMenuItem *appMenuItem = [mainMenu
@@ -130,7 +141,7 @@ void setupAppMenu(HsStablePtr hs_handleOpenedFile) {
     action: @selector(openFileDialog)
     keyEquivalent:@"o"
   ];
-  [open setTarget:dialogController];
+  [open setTarget:global_dialogController];
 
   WKWebView *webView = [[application mainWindow] contentView];
 
