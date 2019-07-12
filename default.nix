@@ -174,11 +174,8 @@ in obApp // rec {
     /usr/bin/codesign --force --sign "$signer" --entitlements $tmpdir/xcent --timestamp=none "$tmpdir/${macAppName}.app"
 
     # Create the dmg
-    cp "${macAppIcon}" "$tmpdir/installer-icon.icns"
-    chmod +w "$tmpdir/installer-icon.icns"
     ${createDmg}/create-dmg \
       --volname "${macAppName} Installer" \
-      --volicon "$tmpdir/installer-icon.icns" \
       --background "${macAppInstallerBackground}" \
       --window-pos 200 120 \
       --window-size 800 400 \
