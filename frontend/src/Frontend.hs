@@ -97,12 +97,9 @@ newHead routeText = do
   ss "https://fonts.googleapis.com/css?family=Work+Sans"
   ss (static @"css/font-awesome.min.css")
   ss (static @"css/ace-theme-pact-web.css")
---  (ace, _) <- js' "https://cdnjs.cloudflare.com/ajax/libs/ace/1.4.1/ace.js"
---  js (static @"js/ace-mode-pact.js")
   (ace, _) <- js' (static @"js/ace/ace.js")
---  (ace, _) <- js' "/static/js/ace/ace.js"
-  _ <- runWithReplace (pure ()) $ domEvent Load ace $> do
-    js (static @"js/ace-mode-pact.js")
+  let aceMode = js (static @"js/ace-mode-pact.js")
+  _ <- runWithReplace aceMode $ domEvent Load ace $> aceMode -- I have no idea why, but this works.
   js (static @"js/nacl-fast.min-v1.0.0.js")
   (bowser, _) <- js' (static @"js/bowser.min.js")
   pure $ domEvent Load bowser
