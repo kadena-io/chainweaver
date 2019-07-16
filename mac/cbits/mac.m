@@ -51,16 +51,19 @@ void global_openFileDialog() {
 //}
 
 void activateWindow() {
-  NSWindow *window = [[NSApplication sharedApplication] mainWindow];
-  [window orderFrontRegardless];
-  [window center];
-  [NSApp activateIgnoringOtherApps:YES];
+  [[NSOperationQueue mainQueue] addOperationWithBlock:^(void) {
+    NSApplication *app = [NSApplication sharedApplication];
+    NSWindow *window = [app mainWindow];
+    [[window contentView] setHidden: NO];
+  }];
 }
 
 void hideWindow() {
-  NSApplication *app = [NSApplication sharedApplication];
-  NSWindow *window = [app mainWindow];
-  [window orderOut:app];
+  [[NSOperationQueue mainQueue] addOperationWithBlock:^(void) {
+    NSApplication *app = [NSApplication sharedApplication];
+    NSWindow *window = [app mainWindow];
+    [[window contentView] setHidden: YES];
+  }];
 }
 
 void setupAppMenu(HsStablePtr hs_handleOpenedFile) {

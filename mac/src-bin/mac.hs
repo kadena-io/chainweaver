@@ -138,8 +138,7 @@ main = redirectPipes [stdout, stderr] $ do
                 , _appCfg_loadEditor = pure mInitFile
                 }
           _ <- runWithReplace loaderMarkup $
-            app appCfg <$ bowserLoad
-          -- (liftIO (putStrLn "Activating window" >> activateWindow) >> app appCfg) <$ bowserLoad
+            (liftIO activateWindow >> app appCfg) <$ bowserLoad
           pure ()
         }
 
@@ -159,7 +158,7 @@ cfg onUniversalLink handleOpen = AppDelegateConfig
     setupAppMenu <=< newStablePtr $ void . handleOpen <=< peekCString
   , _appDelegateConfig_didFinishLaunchingWithOptions = do
     putStrLn "did finish launching"
-    --hideWindow
+    hideWindow
   , _appDelegateConfig_applicationDidBecomeActive = putStrLn "did become active"
   , _appDelegateConfig_applicationWillResignActive = putStrLn "will resign active"
   , _appDelegateConfig_applicationDidEnterBackground = putStrLn "did enter background"
