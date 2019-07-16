@@ -33,6 +33,9 @@ import           Control.Lens
 import           Control.Monad.State.Strict
 import           Data.Dependent.Sum              (DSum ((:=>)))
 import           Reflex
+import qualified Text.Megaparsec as MP
+import           Data.Void (Void)
+import           Data.Text (Text)
 ------------------------------------------------------------------------------
 import           Obelisk.Route                   (R)
 import           Obelisk.Route.Frontend
@@ -40,6 +43,7 @@ import           Obelisk.Route.Frontend
 import           Common.Route
 import           Frontend.Foundation
 import           Frontend.ModuleExplorer
+import           Frontend.Messages
 import           Common.RefPath
 import           Frontend.OAuth                  (HasOAuth (..))
 ------------------------------------------------------------------------------
@@ -50,6 +54,7 @@ handleRoutes
   ( Monad m, PostBuild t m, PerformEvent t m, TriggerEvent t m, MonadIO (Performable m)
   , Routed t (R FrontendRoute) m, SetRoute t (R FrontendRoute) m
   , Monoid mConf, HasModuleExplorer model t , HasModuleExplorerCfg mConf t
+  , HasMessagesCfg mConf t
   , HasOAuth model t
   )
   => model
@@ -59,31 +64,36 @@ handleRoutes m = do
     let loaded = m ^. moduleExplorer_loaded
     onRoute <- tagOnPostBuild route
     let
+      onParsedRoute = parseRoute <$> onRoute
+      onNewLoaded = fmapMaybe id
+        . attachWith getLoadedUniq (current loaded)
+        . fmap (^? _Just . _Right)
+        $ onParsedRoute
+
+      onInvalidRoute = () <$ fmapMaybe (^? _Just . _Left) onParsedRoute
+
+      onOAuthRouteReset = (FrontendRoute_Main :/ ()) <$ m ^. oAuth_error
+
       onNewRoute = fmapMaybe id
         . attachWith buildRoute (current route)
         $ updated loaded
 
-    -- Delays here break FRP loops which appeared after an obelisk bump
-    onNewLoaded <- delay 0 $ fmapMaybe id
-      . attachWith getLoaded (current loaded)
-      $ onRoute
-
-    onOAuthRouteReset <- delay 0 $ (FrontendRoute_Main :/ ()) <$ m ^. oAuth_error
-
-    setRoute $ leftmost [onNewRoute, onOAuthRouteReset]
+    -- Delay here break FRP loops which appeared after an obelisk bump
+    setRoute <=< delay 0 $ leftmost [onNewRoute, onOAuthRouteReset]
 
     pure $ mempty
       & moduleExplorerCfg_loadFile .~ fmapMaybe (^? _LoadedRef_File) onNewLoaded
       & moduleExplorerCfg_loadModule .~ fmapMaybe (^? _LoadedRef_Module) onNewLoaded
+      & moduleExplorerCfg_clearLoaded .~ onInvalidRoute
+      & messagesCfg_send .~ ([ "Given URI seemed to be invalid and could not be loaded." ] <$ onInvalidRoute)
 
   where
 
-    getLoaded :: Maybe LoadedRef -> R FrontendRoute -> Maybe LoadedRef
-    getLoaded cLoaded routeL = do
-      let rp = parseRoute routeL
-      loaded <- runParseRef rp
-      guard $ Just loaded /= cLoaded
-      pure loaded
+
+    getLoadedUniq :: Maybe LoadedRef -> Maybe LoadedRef -> Maybe LoadedRef
+    getLoadedUniq cLoaded newLoaded = do
+      guard $ newLoaded /= cLoaded
+      newLoaded
 
     buildRoute :: R FrontendRoute -> Maybe LoadedRef -> Maybe (R FrontendRoute)
     buildRoute cRoute ref =
@@ -94,15 +104,17 @@ handleRoutes m = do
            then Nothing
            else Just newRoute
 
-    parseRoute :: R FrontendRoute -> RefPath
-    parseRoute = \case
-       FrontendRoute_Main     :/ () -> RefPath []
-       FrontendRoute_Example  :/ xs -> RefPath ("example":xs)
-       FrontendRoute_Stored   :/ xs -> RefPath ("stored":xs)
-       FrontendRoute_Gist     :/ xs -> RefPath ("gist":xs)
-       FrontendRoute_Deployed :/ xs -> RefPath ("deployed":xs)
-       FrontendRoute_New      :/ () -> RefPath []
-       FrontendRoute_OAuth    :/ _  -> RefPath []
+    parseRoute :: R FrontendRoute -> Maybe (Either (MP.ParseError Text Void) LoadedRef)
+    parseRoute = fmap runRefParser . \case
+       FrontendRoute_Main     :/ () -> Nothing
+       FrontendRoute_Example  :/ xs -> Just $ "example":xs
+       FrontendRoute_Stored   :/ xs -> Just $ "stored":xs
+       FrontendRoute_Gist     :/ xs -> Just $ "gist":xs
+       FrontendRoute_Deployed :/ xs -> Just $ "deployed":xs
+       FrontendRoute_New      :/ () -> Nothing
+       FrontendRoute_OAuth    :/ _  -> Nothing
+
+    runRefParser = MP.parse parseRef "URL" . RefPath
 
     renderRoute :: RefPath -> R FrontendRoute
     renderRoute (RefPath (n:ns)) = case n of

@@ -29,6 +29,7 @@ import           Control.Lens
 import           Control.Monad.Reader                   (ask)
 import           Control.Monad.State.Strict
 import           Data.Default                           (Default (..))
+import qualified Data.Map                               as Map
 import           Data.String                            (IsString)
 import           Data.Text                              (Text)
 import qualified Data.Text                              as T
@@ -50,16 +51,19 @@ import           Pact.Repl
 import           Pact.Repl.Types
 import           Pact.Types.Lang
 ------------------------------------------------------------------------------
+import           Common.OAuth                           (OAuthProvider (OAuthProvider_GitHub))
 import           Common.Route
 import           Frontend.Editor
 import           Frontend.Foundation
 import           Frontend.GistStore
 import           Frontend.Ide
+import           Frontend.OAuth
 import           Frontend.Repl
 import           Frontend.UI.Button
 import           Frontend.UI.Dialogs.CreatedGist        (uiCreatedGist)
 import           Frontend.UI.Dialogs.CreateGist         (uiCreateGist)
 import           Frontend.UI.Dialogs.DeployConfirmation (uiDeployConfirmation)
+import           Frontend.UI.Dialogs.LogoutConfirmation (uiLogoutConfirmation)
 import           Frontend.UI.Dialogs.NetworkEdit        (uiNetworkEdit)
 import           Frontend.UI.Modal
 import           Frontend.UI.Modal.Impl
@@ -252,7 +256,8 @@ controlBarRight appCfg m = do
 
         onCreateGist <- if _appCfg_gistEnabled appCfg then gistBtn else pure never
 
-        onNetClick <- cogBtn
+        onNetClick <- cogButton headerBtnCfg
+        onLogoutClick <- if _appCfg_gistEnabled appCfg then maySignoutBtn else pure never
 
         loadCfg <- loadCodeIntoRepl m onLoadClicked
         let
@@ -265,13 +270,27 @@ controlBarRight appCfg m = do
           networkEdit :: Event t (Maybe (ModalImpl m t))
           networkEdit = Just (uiNetworkEdit m) <$ onNetClick
 
+          logoutConfirmation :: Event t (Maybe (ModalImpl m t))
+          logoutConfirmation = Just uiLogoutConfirmation <$ onLogoutClick
+
           gistCfg =  mempty & modalCfg_setModal .~  gistConfirmation
 
           deployCfg = mempty & modalCfg_setModal .~ reqConfirmation
 
+          logoutCfg = mempty & modalCfg_setModal .~ logoutConfirmation
+
           netCfg = mempty & modalCfg_setModal .~ networkEdit
-        pure $ deployCfg <> loadCfg <> gistCfg <> netCfg
+
+        pure $ deployCfg <> loadCfg <> gistCfg <> netCfg <> logoutCfg
   where
+    maySignoutBtn = do
+      let gitHubOnline = Map.member OAuthProvider_GitHub <$> m ^. oAuth_accessTokens
+      onEvClick <- networkView $ ffor gitHubOnline $ \isOnline ->
+        if isOnline then signoutBtn else pure never
+      switchHold never onEvClick
+
+    signoutBtn = signoutButton $
+      headerBtnCfg & uiButtonCfg_title .~ Just "Sign out from GitHub"
 
     deployBtn = uiButton headerBtnCfg $
       text $ "Deploy"
@@ -297,17 +316,6 @@ controlBarRight appCfg m = do
       uiButtonWithOnClick (_appCfg_openFileDialog appCfg) cfg $ do
         text "Open"
         elClass "span" "main-header__minor-text" $ text " File"
-
-
-    cogBtn =
-      uiButton
-          ( headerBtnCfg
-              & uiButtonCfg_title .~ Just "Settings"
-              {- & uiButtonCfg_class %~ (<> "main-header__text-icon-button") -}
-          ) $ do
-        elClass "span" "fa fa-lg fa-cog" blank
-
-
 
 
 headerBtnCfg

@@ -24,17 +24,17 @@ module Frontend.UI.Dialogs.NetworkEdit
 
 ------------------------------------------------------------------------------
 import           Control.Lens
-import           Data.IntMap                    (IntMap)
-import qualified Data.IntMap                    as IntMap
-import           Data.Map                       (Map)
-import qualified Data.Map                       as Map
-import qualified Data.Text                      as T
-import           Data.Text                      (Text)
+import           Control.Monad       (join, void)
+import           Data.IntMap         (IntMap)
+import qualified Data.IntMap         as IntMap
+import           Data.Map            (Map)
+import qualified Data.Map            as Map
+import           Data.Text           (Text)
+import qualified Data.Text           as T
 import           Reflex.Dom
 import           Reflex.Extended
-import           Control.Monad (void)
 ------------------------------------------------------------------------------
-import           Common.Network                 (renderNodeRef)
+import           Common.Network      (renderNodeRef)
 import           Frontend.Foundation
 import           Frontend.Network
 import           Frontend.UI.Modal
@@ -51,6 +51,7 @@ type HasUiNetworkEditModelCfg mConf t =
   )
 
 
+-- | Internal data type for manipulating networks, based on user edits.
 data NetworkAction =
       NetworkDelete NetworkName
     | NetworkSelect NetworkName
@@ -126,7 +127,8 @@ uiNetworkSelect m = do
   -- The refresh is necessary, because we currently always have a valid
   -- selection even if there are no networks. Now if a previously invalid
   -- network becomes valid - selected is not updated, therefore we have no
-  -- event and the select element would display the wrong value (because it won't remember the previous valid once it became invalid):
+  -- event and the select element would display the wrong value (because it
+  -- won't remember the previous valid, once it became invalid):
   onNetworkRefresh <- delay 0 $ tag (current selected) (updated networks)
   let
     onNetwork = leftmost [onNetworkDelayed, onNetworkRefresh]
@@ -186,6 +188,25 @@ uiNetworks m = do
       . map Just
 
 
+-- | Overall `NetworkStatus` for a particular network.
+data NetworkStatus =
+    NetworkStatus_Good Text -- ^ All reachable nodes belong to the same network.
+  | NetworkStatus_Invalid -- ^ Nodes coming from different networks.
+  | NetworkStatus_Bad     -- ^ No node alive.
+
+instance Semigroup NetworkStatus where
+  s1 <> s2 = case (s1, s2) of
+    (NetworkStatus_Good a ,  NetworkStatus_Good b) ->
+      if a == b then NetworkStatus_Good a else NetworkStatus_Invalid
+    (NetworkStatus_Invalid ,  _) -> NetworkStatus_Invalid
+    (_ ,  NetworkStatus_Invalid) -> NetworkStatus_Invalid
+    (NetworkStatus_Bad,  b) -> b
+    (a,  NetworkStatus_Bad) -> a
+
+
+-- | Render a single network.
+--
+--   Which is an accordion with header and line edits for each node.
 uiNetwork
   :: MonadWidget t m
   => Dynamic t (Map NetworkName [NodeRef]) -- ^ All networks.
@@ -195,9 +216,10 @@ uiNetwork networks self = do
     let
       nodes = fromMaybe [] . Map.lookup self <$> networks
 
-    (onHeadAction, onBodyAction) <- accordionItem' False "segment segment_type_secondary"
-      (uiNetworkHeading self)
-      (uiNodes nodes)
+    rec
+      (onHeadAction, (onBodyAction, stats)) <- accordionItem' False "segment segment_type_secondary"
+        (uiNetworkHeading self stats)
+        (uiNodes nodes)
 
     pure $ leftmost
       [ onHeadAction
@@ -205,15 +227,26 @@ uiNetwork networks self = do
       ]
 
 
-uiNetworkHeading :: MonadWidget t m => NetworkName -> m (Event t NetworkAction)
-uiNetworkHeading self = do
+-- | Display the heading of a `Network`.
+--
+--   This is an accordion with the `NetworkName` as heading, a delete button
+--   and a status circle showing the network health.
+uiNetworkHeading :: MonadWidget t m => NetworkName -> MDynamic t NetworkStatus -> m (Event t NetworkAction)
+uiNetworkHeading self mStat = do
     text $ textNetworkName self
+    uiNetworkStatus "accordion__collapsed-info table__row-right-aligned_type_primary" mStat
     fmap (const $ NetworkDelete self) <$> accordionDeleteBtn
   where
     accordionDeleteBtn = deleteButtonNaked $ def & uiButtonCfg_class .~ "accordion__title-button"
 
 
-uiNodes :: forall t m. MonadWidget t m => Dynamic t [NodeRef] -> m (Event t (Int, Maybe NodeRef))
+-- | Renders line edits for all nodes in a network.
+--
+--   Delivers change events and a `Dynamic` holding the current overall `NetworkStatus`.
+uiNodes
+  :: forall t m. MonadWidget t m
+  => Dynamic t [NodeRef]
+  -> m (Event t (Int, Maybe NodeRef), MDynamic t NetworkStatus)
 uiNodes nodes = elClass "ol" "table table_type_primary" $ do
 
     -- Append node for new entry (`Nothing`):
@@ -222,18 +255,47 @@ uiNodes nodes = elClass "ol" "table table_type_primary" $ do
     (initialResp, onRespUpdate) <-
       traverseIntMapWithKeyWithAdjust (\_ -> uiNode) initMap onUpdate
 
-    responses :: Dynamic t (IntMap (Event t (Maybe NodeRef))) <-
+    responses :: Dynamic t (IntMap (Event t (Maybe NodeRef), MDynamic t (Either Text NodeInfo))) <-
        incrementalToDynamic <$> holdIncremental initialResp onRespUpdate
-    pure $ switchDyn $ leftmost . toFunctorList <$> responses
+
+    let
+      onAction = switchDyn $ leftmost . toFunctorList . fmap fst <$> responses
+      netState = calculateNetworkStatusDyn responses
+
+    pure (onAction, netState)
 
   where
 
     toFunctorList :: forall f a. Functor f => IntMap (f a) -> [f (Int, a)]
     toFunctorList = map (uncurry $ fmap . (,)) . IntMap.toList
 
+    calculateNetworkStatusDyn
+      :: Dynamic t (IntMap (Event t (Maybe NodeRef), MDynamic t (Either Text NodeInfo)))
+      -> MDynamic t NetworkStatus
+    calculateNetworkStatusDyn responses =
+      let
+        dynStats :: Dynamic t (Dynamic t [Maybe (Either Text NodeInfo)])
+        dynStats = sequence . IntMap.elems . fmap snd <$> responses
 
-uiNode :: MonadWidget t m => Dynamic t (Maybe NodeRef) -> m (Event t (Maybe NodeRef))
-uiNode nRef = do
+        stats :: Dynamic t [Maybe (Either Text NodeInfo)]
+        stats = join dynStats
+      in
+        mconcat . map (fmap getNetworkStatus) <$> stats
+
+    getNetworkStatus :: Either Text NodeInfo -> NetworkStatus
+    getNetworkStatus = \case
+       Left _ -> NetworkStatus_Bad
+       Right i -> NetworkStatus_Good $ infoTitle i
+
+
+-- | Render a line edit for a single node + `uiNodeStatus`.
+uiNode
+  :: MonadWidget t m
+  => Dynamic t (Maybe NodeRef)
+  -> m (Event t (Maybe NodeRef), MDynamic t (Either Text NodeInfo))
+uiNode nRefDups = do
+  -- Necessary for performance:
+  nRef <- holdUniqDyn nRefDups
   onVal <- tagOnPostBuild nRef
 
   elClass "li" "table__row table__row_type_primary" $ do
@@ -252,8 +314,8 @@ uiNode nRef = do
         [ Nothing <$ onDelete
         , Just <$> onUpdate
         ]
-    uiNodeStatus "table__cell table__cell_size_tiny" onVal
-    pure onEdit
+    stat <- uiNodeStatus "table__cell table__cell_size_tiny" onVal
+    pure (onEdit, stat)
 
   where
     parseNodeRefFull r =
@@ -265,47 +327,79 @@ uiNode nRef = do
            else Left "Input could not be fully parsed"
 
 
-uiNodeStatus :: forall m t. MonadWidget t m => CssClass -> Event t (Maybe NodeRef) -> m ()
+-- | Display status of a single node.
+--
+--   This is a circle, either not filled (no info yet) or red (something went
+--   wrong) or green (everything is fine).
+uiNodeStatus
+  :: forall m t. MonadWidget t m
+  => CssClass
+  -> Event t (Maybe NodeRef)
+  -> m (MDynamic t (Either Text NodeInfo))
 uiNodeStatus cls unthrottled = do
     mStatus <- throttle 2 unthrottled
     elKlass "div" ("signal" <> cls) $ do
-      onAttrs <- performEventAsync $ buildStatusAttrsAsync <$> mStatus
-      attrs :: Dynamic t (Map T.Text T.Text) <- holdDyn emptyAttrs onAttrs
+      onErrInfo <- performEventAsync $ getInfoAsync <$> mStatus
+      errInfo <- holdDyn Nothing onErrInfo
+      let attrs = buildStatusAttrs <$> errInfo
       elDynAttr "div" attrs blank
+      pure errInfo
   where
     emptyAttrs = "class" =: "signal__circle"
 
-    buildStatusAttrsAsync ref cb =
+    getInfoAsync ref cb =
       void $ liftJSM $ forkJSM $ do
-        jsm <- askJSM
-        r <- buildStatusAttrs ref `runJSM` jsm
+        r <- traverse discoverNode ref
         liftIO $ cb r
 
-    buildStatusAttrs :: Maybe NodeRef -> JSM (Map Text Text)
+    buildStatusAttrs :: Maybe (Either Text NodeInfo) -> (Map Text Text)
     buildStatusAttrs = \case
-      Nothing -> pure emptyAttrs
-      Just r -> do
-        er <- discoverNode r
-        pure $ case er of
-          Left err ->
-            "title" =: ("Invalid node: " <> err)
-            <> "class" =: "signal__circle signal__circle_status_problem"
-          Right rT ->
-            "title" =: infoTitle rT
-            <> "class" =: "signal__circle signal__circle_status_ok"
+      Nothing -> emptyAttrs
+      Just (Left err) ->
+        "title" =: ("Invalid node: " <> err)
+        <> "class" =: "signal__circle signal__circle_status_problem"
+      Just (Right rT) ->
+        "title" =: infoTitle rT
+        <> "class" =: "signal__circle signal__circle_status_ok"
 
-    infoTitle :: NodeInfo -> Text
-    infoTitle info =
-      case _nodeInfo_type info of
-        NodeType_Pact v ->
-          "Pact Node"
-          <> "\nVersion: " <> v
 
-        NodeType_Chainweb cwInfo ->
-          "Chainweb Node"
-          <> "\nVersion: " <> _chainwebInfo_version cwInfo
-          <> "\nNetwork version: " <> _chainwebInfo_networkVersion cwInfo
-          <> "\nNumber of chains: " <> tshow (_chainwebInfo_numberOfChains cwInfo)
+-- | Show a status circle for a whole network (red, yellow, green).
+--
+--   See `NetworkStatus` for details. `NetworkStatus_Invalid` is rendered as yellow.
+uiNetworkStatus :: (DomBuilder t m, PostBuild t m) => Dynamic t CssClass -> MDynamic t NetworkStatus -> m ()
+uiNetworkStatus cls mState = do
+  elDynKlass "div" ("signal" <> cls) $ do
+    elDynAttr "div" (buildStatusAttrs <$> mState) blank
+  where
+    emptyAttrs = "class" =: "signal__circle"
+
+    buildStatusAttrs :: Maybe NetworkStatus -> (Map Text Text)
+    buildStatusAttrs = \case
+      Nothing -> emptyAttrs
+      Just NetworkStatus_Bad ->
+        "title" =: "No node available on this network"
+        <> "class" =: "signal__circle signal__circle_status_problem"
+      Just NetworkStatus_Invalid ->
+        "title" =: "Network contains nodes from multiple networks"
+        <> "class" =: "signal__circle signal__circle_status_warning"
+      Just (NetworkStatus_Good msg) ->
+        "title" =: msg
+        <> "class" =: "signal__circle signal__circle_status_ok"
+
+
+-- | Get some descriptive information (usable for a tooltip) from NodeInfo.
+infoTitle :: NodeInfo -> Text
+infoTitle info =
+  case _nodeInfo_type info of
+    NodeType_Pact v ->
+      "Pact Network"
+      <> "\nVersion: " <> v
+
+    NodeType_Chainweb cwInfo ->
+      "Chainweb Network"
+      <> "\nVersion: " <> _chainwebInfo_version cwInfo
+      <> "\nNetwork version: " <> _chainwebInfo_networkVersion cwInfo
+      <> "\nNumber of chains: " <> tshow (_chainwebInfo_numberOfChains cwInfo)
 
 
 

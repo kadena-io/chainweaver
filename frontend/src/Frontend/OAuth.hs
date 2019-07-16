@@ -56,9 +56,9 @@ import           Frontend.Messages
 import           Frontend.Storage
 
 
-
-newtype OAuthCfg t = OAuthCfg
+data OAuthCfg t = OAuthCfg
   { _oAuthCfg_authorize :: Event t (AuthorizationRequest OAuthProvider)
+  , _oAuthCfg_logout :: Event t OAuthProvider
   }
   deriving Generic
 
@@ -121,6 +121,7 @@ makeOAuth cfg = mdo -- Required to get access to `tokens` for clearing any old t
     [ uncurry Map.insert <$> onToken
       -- Get rid of token that is about to be invalidated. (We really don't want to have an invalid token when coming back.)
     , Map.delete . _authorizationRequest_provider <$> cfg ^. oAuthCfg_authorize
+    , Map.delete <$> cfg ^. oAuthCfg_logout
     ]
 
   performEvent_ $ setItemStorage localStorage StoreOAuth_Tokens <$> updated tokens
@@ -198,13 +199,14 @@ buildOAuthConfigFront = buildOAuthConfig =<< askRouteToUrl
 -- Instances
 
 instance Reflex t => Semigroup (OAuthCfg t) where
-  OAuthCfg x <> OAuthCfg y = OAuthCfg $ leftmost [x, y]
+  OAuthCfg x1 x2 <> OAuthCfg y1 y2 = OAuthCfg (leftmost [x1, y1]) (leftmost [x2, y2])
 
 instance Reflex t => Monoid (OAuthCfg t) where
-  mempty = OAuthCfg never
+  mempty = OAuthCfg never never
   mappend = (<>)
 
 instance Flattenable (OAuthCfg t) t where
   flattenWith doSwitch ev =
     OAuthCfg
       <$> doSwitch never (_oAuthCfg_authorize <$> ev)
+      <*> doSwitch never (_oAuthCfg_logout <$> ev)

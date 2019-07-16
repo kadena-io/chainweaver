@@ -54,6 +54,8 @@ import           System.Random              (newStdGen, randoms)
 
 #ifdef  ghcjs_HOST_OS
 import           Data.Map                   (Map)
+import           Data.Bitraversable         (bitraverse)
+import           Control.Monad              (join)
 #endif
 ------------------------------------------------------------------------------
 import           Frontend.Network
@@ -224,35 +226,49 @@ typeCheckVerify m t = mdo
     pure newAnnotations
   where
 -- Line numbers are off on ghcjs:
+-- TODO: Fix this in pact.
 #ifdef  ghcjs_HOST_OS
     parseVerifyOutput :: Map ModuleName Int -> VerifyResult -> [Annotation]
     parseVerifyOutput ms rs =
       let
-        successRs :: [(ModuleName, Text)]
-        successRs = fmapMaybe (traverse (^? _Right)) . Map.toList $ rs
+        msgsRs :: [(ModuleName, Either Text Text)]
+        msgsRs = Map.toList $ rs
 
-        parsedRs :: Map ModuleName [Annotation]
-        parsedRs = Map.fromList $ fmapMaybe (traverse annoParser) successRs
+        parsedRs :: Map ModuleName (Either [Annotation] [Annotation])
+        parsedRs = Map.fromList $ mapMaybe (traverse $ join bitraverse annoParser) msgsRs
 
         fixLineNumber :: Int -> Annotation -> Annotation
         fixLineNumber n a = a { _annotation_line = _annotation_line a + n }
 
         fixLineNumbers :: Int -> [Annotation] -> [Annotation]
         fixLineNumbers n = map (fixLineNumber n)
+
+        fixLineNumbersRight :: Int -> Either [Annotation] [Annotation] -> [Annotation]
+        fixLineNumbersRight n = either id (fixLineNumbers n)
+
       in
-        concat . Map.elems $ Map.intersectionWith fixLineNumbers ms parsedRs
+        normalize . concat . Map.elems $ Map.intersectionWith fixLineNumbersRight ms parsedRs
 #else
     parseVerifyOutput :: VerifyResult -> [Annotation]
     parseVerifyOutput rs =
       let
-        successRs :: [(ModuleName, Text)]
-        successRs = fmapMaybe (traverse (^? _Right)) . Map.toList $ rs
+        msgsRs :: [(ModuleName, Text)]
+        msgsRs = fmap (fmap $ either id id) . Map.toList $ rs
 
         parsedRs :: [(ModuleName, [Annotation])]
-        parsedRs = mapMaybe (traverse annoParser) successRs
+        parsedRs = mapMaybe (traverse annoParser) msgsRs
       in
-        concatMap snd parsedRs
+        normalize $ concatMap snd parsedRs
 #endif
+    -- Reason, see: https://github.com/kadena-io/pact/pull/532
+    normalize :: [Annotation] -> [Annotation]
+    normalize = map mkWarning . L.nub
+
+    -- Verification problems should always be displayed as warnings:
+    mkWarning :: Annotation -> Annotation
+    mkWarning anno = anno { _annotation_type = AnnoType_Warning }
+
+
 -- Instances:
 
 instance Reflex t => Semigroup (EditorCfg t) where

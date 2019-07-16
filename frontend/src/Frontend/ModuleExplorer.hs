@@ -96,6 +96,8 @@ data ModuleExplorerCfg t = ModuleExplorerCfg
     -- ^ Load a module into the editor.
   , _moduleExplorerCfg_loadFile     :: Event t FileRef
     -- ^ Load some file into the `Editor`.
+  , _moduleExplorerCfg_clearLoaded  :: Event t ()
+    -- ^ Set `_moduleExplorer_loaded` to Nothing and clear editor contents.
   , _moduleExplorerCfg_createGist   :: Event t GistMeta
     -- ^ Create a github gist with the contents of the `Editor`.
   , _moduleExplorerCfg_deployEditor :: Event t TransactionInfo
@@ -166,6 +168,7 @@ instance Flattenable (ModuleExplorerCfg t) t where
       <*> doSwitch never (_moduleExplorerCfg_goHome <$> ev)
       <*> doSwitch never (_moduleExplorerCfg_loadModule <$> ev)
       <*> doSwitch never (_moduleExplorerCfg_loadFile <$> ev)
+      <*> doSwitch never (_moduleExplorerCfg_clearLoaded <$> ev)
       <*> doSwitch never (_moduleExplorerCfg_createGist <$> ev)
       <*> doSwitch never (_moduleExplorerCfg_deployEditor <$> ev)
       <*> doSwitch never (_moduleExplorerCfg_deployCode <$> ev)

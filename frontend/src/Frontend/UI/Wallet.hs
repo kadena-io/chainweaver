@@ -47,6 +47,7 @@ import           Frontend.Wallet
 import           Frontend.UI.Widgets
 import           Frontend.Foundation
 import           Frontend.UI.Dialogs.KeyImport (uiKeyImport, HasUiKeyImportModelCfg)
+import           Frontend.UI.Dialogs.DeleteConfirmation (uiDeleteConfirmation)
 import           Frontend.UI.Modal
 ------------------------------------------------------------------------------
 
@@ -120,47 +121,48 @@ uiKeyItems
   => Wallet t
   -> m mConf
 uiKeyItems aWallet = do
-  let
-    keyMap = aWallet ^. wallet_keys
-    tableAttrs =
-      "style" =: "table-layout: fixed; width: 100%"
-      <> "class" =: "wallet table"
-  (events, onAdd) <- elAttr "table" tableAttrs $ do
-    el "colgroup" $ do
-      elAttr "col" ("style" =: "width: 20%") blank
-      elAttr "col" ("style" =: "width: 35%") blank
-      elAttr "col" ("style" =: "width: 15%") blank
-      elAttr "col" ("style" =: "width: 35%") blank
-      elAttr "col" ("style" =: "width: 15%") blank
-      elAttr "col" ("style" =: "width: 10%") blank
-    el "thead" $ el "tr" $ do
-      let mkHeading = elClass "th" "table__heading" . text
-      traverse_ mkHeading $
-        [ "Key Name"
-        , "Public Key"
-        , ""
-        , "Private Key"
-        , ""
-        , ""
+    let
+      keyMap = aWallet ^. wallet_keys
+      tableAttrs =
+        "style" =: "table-layout: fixed; width: 100%"
+        <> "class" =: "wallet table"
+    (events, onAdd) <- elAttr "table" tableAttrs $ do
+      el "colgroup" $ do
+        elAttr "col" ("style" =: "width: 20%") blank
+        elAttr "col" ("style" =: "width: 35%") blank
+        elAttr "col" ("style" =: "width: 15%") blank
+        elAttr "col" ("style" =: "width: 35%") blank
+        elAttr "col" ("style" =: "width: 15%") blank
+        elAttr "col" ("style" =: "width: 10%") blank
+      onAdd <- el "thead" $ el "tr" $ do
+        let mkHeading = elClass "th" "table__heading" . text
+        traverse_ mkHeading $
+          [ "Key Name"
+          , "Public Key"
+          , ""
+          , "Private Key"
+          , ""
+          ]
+        elClass "th" "table__heading wallet__add" $
+          importButton
+
+      el "tbody" $ do
+        evs <- listWithKey keyMap $ \name key -> uiKeyItem (name, key)
+        pure (evs, onAdd)
+
+    dyn_ $ ffor keyMap $ \keys -> when (Map.null keys) $ text "No keys ..."
+    let onDelKey = switchDyn $ leftmost . Map.elems <$> events
+    pure $ mempty
+      & modalCfg_setModal .~ leftmost
+        [ Just (uiKeyImport aWallet) <$ onAdd
+        , Just . uiDeleteConfirmation <$> onDelKey
         ]
-    el "tbody" $ do
-      evs <- listWithKey keyMap $ \name key -> uiKeyItem (name, key)
-      onAdd <- uiImportKeyRow
-      pure (evs, onAdd)
+  where
+    importButton =
+      addButton $ def
+        & uiButtonCfg_title .~ Just "Import existing key"
+        & uiButtonCfg_class %~ (<> "wallet__add-delete-button")
 
-  dyn_ $ ffor keyMap $ \keys -> when (Map.null keys) $ text "No keys ..."
-  let delKey = switchDyn $ leftmost . Map.elems <$> events
-  pure $ mempty
-    & walletCfg_delKey .~ delKey
-    & modalCfg_setModal .~ (Just (uiKeyImport aWallet) <$ onAdd)
-
-
-
--- | Last row in widget with a button for triggering a key import.
-uiImportKeyRow :: MonadWidget t m => m (Event t ())
-uiImportKeyRow = elClass "tr" "table__row" $ do
-  traverse_ (const $ el "td" blank) [1..5 :: Int] -- Button should be in the last column.
-  elClass "td" "wallet__add" $ addButton
 
 ------------------------------------------------------------------------------
 -- | Display a key as list item together with it's name.
@@ -184,12 +186,17 @@ uiKeyItem (n, k) = do
         void $ copyButton cfg $ current private
 
       onDel <- elClass "td" "wallet__delete" $
-        deleteButtonCfg $ def & uiButtonCfg_disabled .~ isPredefinedKey n
+        deleteButton $
+          def & uiButtonCfg_disabled .~ isPredefinedKey n
+              & uiButtonCfg_title .~ Just "Delete key permanently"
+              & uiButtonCfg_class %~ (<> "wallet__add-delete-button")
 
       pure (const n <$> onDel)
   where
     copyBtnCfg =
-      btnCfgTertiary & uiButtonCfg_class %~ (fmap (<> "button_size_tiny"))
+      btnCfgTertiary
+        & uiButtonCfg_class %~ (fmap (<> "button_size_tiny"))
+        & uiButtonCfg_title .~ pure (Just "Copy key to clipboard")
 
 -- | Widget showing/hiding a private key.
 --

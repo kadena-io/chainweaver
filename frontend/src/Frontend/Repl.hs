@@ -215,8 +215,8 @@ makeRepl m cfg = build $ \ ~(_, impl) -> do
                                        , onVerifySt
                                        ]
     let appendHist = flip (|>)
-        onNewOutput = leftmost [ showTerm . _ts_term <$> onNewTransSuccess
-                               , showResult <$> onNewCmdResult
+        onNewOutput = leftmost [ prettyTextPretty . _ts_term <$> onNewTransSuccess
+                               , prettyResult <$> onNewCmdResult
                                ]
 
     output <- foldDyn id S.empty $ mergeWith (.)
@@ -329,11 +329,18 @@ runVerify impl onMod =
       pure $ Map.fromList rs
 
     verifyModule m = do
-      r <- runExceptT . pactEvalRepl' . buildVerify $ m
-      pure (m, bimap T.pack showTerm r)
+      r <- runExceptT . doTypeCheckAndVerify $ m
+      pure (m, bimap T.pack prettyTextPretty r)
+
+    doTypeCheckAndVerify m = do
+      -- Success output of typecheck is mostly not parseable:
+      void $ pactEvalRepl' $ buildTypecheck m
+      pactEvalRepl' $ buildVerify m
 
     -- TODO: Proper namespace support
     buildVerify (ModuleName n _) = "(verify '" <> n <> ")"
+    -- TODO: Proper namespace support
+    buildTypecheck (ModuleName n _) = "(typecheck '" <> n <> ")"
 
 -- | Run code in a transaction on the REPL.
 runTransaction
@@ -379,7 +386,7 @@ getModules = Map.fromList . mapMaybe toModule
   where
     toModule :: Exp Parsed -> Maybe (ModuleName, Int)
     toModule = \case
-      EList (ListExp (_:EAtom (AtomExp m _ _):_) _ (Parsed (Delta.Lines l _ _ _) _))
+      EList (ListExp (EAtom (AtomExp "module" _ _):EAtom (AtomExp m _ _):_) _ (Parsed (Delta.Lines l _ _ _) _))
       -- TODO: Proper namespace support
         -> Just $ (ModuleName m Nothing, fromIntegral l)
       _ -> Nothing
@@ -407,13 +414,9 @@ pactEvalRepl' t = ExceptT $ do
 -- pactEvalPact :: Text -> PactRepl (Term Name)
 -- pactEvalPact = ExceptT . evalPact . T.unpack
 
-showResult :: Show n => Either String (Term n) -> Text
-showResult (Right v) = showTerm v
-showResult (Left e)  = "Error: " <> T.pack e
-
-showTerm :: Show n => Term n -> Text
-showTerm (TLiteral (LString t) _) = t
-showTerm t                        = T.pack $ show t
+prettyResult :: Either String (Term Name) -> Text
+prettyResult (Right v) = prettyTextPretty v
+prettyResult (Left e)  = "Error: " <> T.pack e
 
 -- Instances:
 --
