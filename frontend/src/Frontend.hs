@@ -11,7 +11,6 @@ import           Data.Functor             (($>))
 import           Data.Maybe               (listToMaybe)
 import           Data.Text                (Text)
 import qualified Data.Text                as T
-import           GHCJS.DOM.Types          (liftJSM, JSM)
 import qualified GHCJS.DOM.EventM         as EventM
 import qualified GHCJS.DOM.FileReader     as FileReader
 import qualified GHCJS.DOM.HTMLElement    as HTMLElement
