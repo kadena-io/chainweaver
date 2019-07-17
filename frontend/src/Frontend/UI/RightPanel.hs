@@ -74,6 +74,7 @@ rightTabBar cls ideL = elKlass "div" (cls <> "pane") $ do
 
   let specificPaneClass = \case
         EnvSelection_Repl -> " pane__body_heightfix"
+        EnvSelection_Msgs -> " pane__body_heightfix"
         _ -> ""
       as = ffor curSelection $ \s -> "class" =: ("tab-set pane__body" <> specificPaneClass s)
   divClass "pane__body-wrapper" $ elDynAttr "div" as $ do
