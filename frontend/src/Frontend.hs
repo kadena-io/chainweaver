@@ -7,7 +7,6 @@ module Frontend where
 
 import           Control.Monad            (join, void)
 import           Control.Monad.IO.Class
-import           Data.Functor             (($>))
 import           Data.Maybe               (listToMaybe)
 import           Data.Text                (Text)
 import qualified Data.Text                as T
@@ -83,7 +82,7 @@ loaderMarkup = do
     divClass "cube2" blank
   divClass "spinner__msg" $ text "Loading"
 
-newHead :: DomBuilder t m => (R BackendRoute -> Text) -> m (Event t ())
+newHead :: (Prerender js t m, DomBuilder t m) => (R BackendRoute -> Text) -> m (Event t ())
 newHead routeText = do
   el "title" $ text "Kadena - Pact Testnet"
   meta ("name" =: "description" <> "content" =: "Write, test, and deploy safe smart contracts using Pact, Kadena's programming language")
@@ -96,14 +95,15 @@ newHead routeText = do
   ss "https://fonts.googleapis.com/css?family=Work+Sans"
   ss (static @"css/font-awesome.min.css")
   ss (static @"css/ace-theme-pact-web.css")
-  (ace, _) <- js' (static @"js/ace/ace.js")
-  let aceMode = js (static @"js/ace-mode-pact.js")
-  _ <- runWithReplace aceMode $ domEvent Load ace $> aceMode -- I have no idea why, but this works.
+  let ace = js "/static/js/ace/ace.js" -- don't use obelisk static files - so ace can infer the basePath
+  prerender_ blank ace -- for some reason the webapp requires this prerender_ for ace to work
   js (static @"js/nacl-fast.min-v1.0.0.js")
   (bowser, _) <- js' (static @"js/bowser.min.js")
   pure $ domEvent Load bowser
   where
+    js :: forall t n. DomBuilder t n => Text -> n ()
     js = void . js'
+    js' :: forall t n. DomBuilder t n => Text -> n (Element EventResult (DomBuilderSpace n) t, ())
     js' url = elAttr' "script" ("type" =: "text/javascript" <> "src" =: url <> "charset" =: "utf-8") blank
     ss url = elAttr "link" ("href" =: url <> "rel" =: "stylesheet") blank
     meta attrs = elAttr "meta" attrs blank
