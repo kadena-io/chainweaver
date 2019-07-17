@@ -42,3 +42,7 @@
   height: auto;
 }
 
+// Prevent the repl from jumping around in the mac app
+.pane__body_heightfix {
+  height: auto !important;
+}
