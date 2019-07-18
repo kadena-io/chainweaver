@@ -120,7 +120,7 @@ in obApp // rec {
     configureFlags = [
       "--ghc-options=-optl=${(pkgs.openssl.override { static = true; }).out}/lib/libcrypto.a"
       "--ghc-options=-optl=${(pkgs.openssl.override { static = true; }).out}/lib/libssl.a"
-      "--ghc-options=-optl=${pkgs.libiconv.override { enableStatic = true; }}/lib/libiconv.a"
+      "--ghc-options=-optl=${pkgs.darwin.libiconv.override { enableShared = false; enableStatic = true; }}/lib/libiconv.a"
       "--ghc-options=-optl=${pkgs.zlib.static}/lib/libz.a"
       "--ghc-options=-optl=${pkgs.gmp6.override { withStatic = true; }}/lib/libgmp.a"
       "--ghc-options=-optl=/usr/lib/libSystem.B.dylib"
