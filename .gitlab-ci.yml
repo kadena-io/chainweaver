@@ -2,12 +2,11 @@ pact-web-macos:
   tags:
     - macos
   script:
-    - nix-build
     - nix-build -A exe
+    - nix-build -A mac
 
 pact-web-linux:
   tags:
     - linux
   script:
-    - nix-build
     - nix-build -A exe
