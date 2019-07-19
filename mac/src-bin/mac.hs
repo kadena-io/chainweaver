@@ -8,7 +8,7 @@ import Control.Concurrent.MVar
 import Control.Concurrent
 import Control.Monad.IO.Class
 import Control.Exception (bracket, try)
-import Control.Monad (void, forever, (>=>), (<=<))
+import Control.Monad (void, forever, (<=<))
 import Data.Foldable (for_)
 import Data.String (IsString(..))
 import Foreign.C.String (peekCString)
@@ -31,13 +31,12 @@ import qualified System.Process as Process
 import qualified System.Environment as Env
 
 import Backend (serveBackendRoute)
-import qualified Backend.Devel as Devel
 import Common.Route
 import Frontend
 import Frontend.Foundation (AppCfg(..))
 import Frontend.ReplGhcjs (app)
 
-import Foreign.C.String (CString, withCString)
+import Foreign.C.String (CString)
 import Foreign.StablePtr (StablePtr, newStablePtr)
 
 foreign import ccall setupAppMenu :: StablePtr (CString -> IO ()) -> IO ()
