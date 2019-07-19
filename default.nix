@@ -131,7 +131,9 @@ in obApp // rec {
     mkdir -p $out/${macAppName}.app/Contents/MacOS
     mkdir -p $out/${macAppName}.app/Contents/Resources
     set -eux
-    ln -s "${macBackend}"/bin/macApp $out/${macAppName}.app/Contents/MacOS/${macAppName}
+    # Copy instead of symlink, so we can set the path to z3
+    cp "${macBackend}"/bin/macApp $out/${macAppName}.app/Contents/MacOS/${macAppName}
+    ln -s "${pkgs.z3}"/bin/z3 $out/${macAppName}.app/Contents/MacOS/z3
     ln -s "${obApp.mkAssets obApp.passthru.staticFiles}" $out/${macAppName}.app/Contents/Resources/static.assets
     ln -s "${obApp.passthru.staticFiles}" $out/${macAppName}.app/Contents/Resources/static
     ln -s "${macAppIcon}" $out/${macAppName}.app/Contents/Resources/pact.icns
@@ -190,7 +192,7 @@ in obApp // rec {
     sed "s|<team-id/>|$TEAM_ID|" < "${xcent}" > $tmpdir/xcent
     cat $tmpdir/xcent
     plutil $tmpdir/xcent
-    /usr/bin/codesign --force --sign "$signer" --entitlements $tmpdir/xcent --timestamp=none "$tmpdir/${macAppName}.app"
+    /usr/bin/codesign --deep --force --sign "$signer" --entitlements $tmpdir/xcent --timestamp=none "$tmpdir/${macAppName}.app"
 
     # Create the dmg
     ${createDmg}/create-dmg \

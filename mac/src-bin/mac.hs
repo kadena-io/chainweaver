@@ -21,12 +21,14 @@ import Reflex.Dom
 import System.FilePath ((</>))
 import System.IO
 import qualified Control.Concurrent.Async as Async
+import qualified Data.List as L
 import qualified Data.Map as M
 import qualified Data.Text as T
 import qualified Data.Text.Encoding as T
 import qualified Data.Text.IO as T
 import qualified Network.Socket as Socket
 import qualified System.Process as Process
+import qualified System.Environment as Env
 
 import Backend (serveBackendRoute)
 import qualified Backend.Devel as Devel
@@ -79,6 +81,11 @@ backend = Backend
 
 main :: IO ()
 main = redirectPipes [stdout, stderr] $ do
+  -- Set the path to z3. I tried using the plist key LSEnvironment, but it
+  -- doesn't work with relative paths.
+  path <- L.dropWhileEnd (/= '/') <$> Env.getExecutablePath
+  putStrLn $ "Executable path: " <> path
+  Env.setEnv "SBV_Z3" $ path <> "z3"
   port <- getFreePort
   -- Get the app resources path
   resources <- maybe
