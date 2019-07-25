@@ -95,8 +95,9 @@ newHead routeText = do
   ss "https://fonts.googleapis.com/css?family=Work+Sans"
   ss (static @"css/font-awesome.min.css")
   ss (static @"css/ace-theme-pact-web.css")
-  let ace = js "/static/js/ace/ace.js" -- don't use obelisk static files - so ace can infer the basePath
-  prerender_ blank ace -- for some reason the webapp requires this prerender_ for ace to work
+  (ace, _) <- js' (static @"js/ace/ace.js")
+  let aceMode = js (static @"js/ace-mode-pact.js")
+  _ <- runWithReplace aceMode $ domEvent Load ace $> aceMode -- I have no idea why, but this works.
   js (static @"js/nacl-fast.min-v1.0.0.js")
   (bowser, _) <- js' (static @"js/bowser.min.js")
   pure $ domEvent Load bowser
