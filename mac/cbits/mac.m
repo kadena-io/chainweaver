@@ -133,12 +133,6 @@ void setupAppMenu(HsStablePtr hs_handleOpenedFile) {
   NSMenu *fileMenu = [[NSMenu alloc] initWithTitle:@"File"];
   [mainMenu setSubmenu:fileMenu forItem:fileMenuItem];
 
-  NSMenuItem *new = [fileMenu
-    addItemWithTitle:@"New"
-    action: nil
-    keyEquivalent:@"n"
-  ];
-
   NSMenuItem *open = [fileMenu
     addItemWithTitle:@"Open"
     action: @selector(openFileDialog)
