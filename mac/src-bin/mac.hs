@@ -142,6 +142,7 @@ main = redirectPipes [stdout, stderr] $ do
                 , _appCfg_externalFileOpened = fileOpened
                 , _appCfg_openFileDialog = liftIO global_openFileDialog
                 , _appCfg_loadEditor = pure mInitFile
+                , _appCfg_editorReadOnly = True
                 }
           _ <- runWithReplace loaderMarkup $
             (liftIO activateWindow >> app appCfg) <$ bowserLoad

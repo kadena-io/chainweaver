@@ -54,6 +54,7 @@ frontend = Frontend
       , _appCfg_externalFileOpened = fileOpened
       , _appCfg_openFileDialog = liftJSM triggerOpen
       , _appCfg_loadEditor = loadEditorFromLocalStorage
+      , _appCfg_editorReadOnly = False
       }
   }
 
