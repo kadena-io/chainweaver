@@ -247,6 +247,7 @@ makeNetwork
     , MonadSample t (Performable m)
     , HasNetworkModel model t
     , HasNetworkModelCfg mConf t
+    , HasNetworkCfg mConf t
     , HasConfigs m
     , HasJSContext (Performable m)
     )
@@ -276,7 +277,7 @@ makeNetwork w cfg = mfix $ \ ~(_, networkL) -> do
     meta <- buildMeta cfg
 
     pure
-      ( mConf
+      ( mConf & networkCfg_refreshModule <>~ void (updated networks)
       , Network
           { _network_networks = networks
           , _network_selectedNetwork = cName

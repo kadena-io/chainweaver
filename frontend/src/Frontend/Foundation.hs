@@ -80,6 +80,8 @@ data AppCfg t m = AppCfg
   -- ^ Trigger an "open file" dialog
   , _appCfg_loadEditor :: m (Maybe Text)
   -- ^ Initial code to load into editor
+  , _appCfg_editorReadOnly :: Bool
+  -- ^ Is the editor read only?
   }
 
 -- | Shorthand for Dynamic t (Maybe a).

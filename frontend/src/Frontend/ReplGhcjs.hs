@@ -82,7 +82,7 @@ app appCfg = void . mfix $ \ cfg -> do
 
   controlCfg <- controlBar appCfg ideL
   mainCfg <- elClass "main" "main page__main" $ do
-    uiEditorCfg <- codePanel "main__left-pane" ideL
+    uiEditorCfg <- codePanel appCfg "main__left-pane" ideL
     envCfg <- rightTabBar "main__right-pane" ideL
     pure $ uiEditorCfg <> envCfg
 
@@ -101,12 +101,12 @@ app appCfg = void . mfix $ \ cfg -> do
     ]
 
 -- | Code editing (left hand side currently)
-codePanel :: forall t m a. MonadWidget t m => CssClass -> Ide a t -> m (IdeCfg a t)
-codePanel cls m = elKlass "div" (cls <> "pane") $ do
+codePanel :: forall t m a. MonadWidget t m => AppCfg t m -> CssClass -> Ide a t -> m (IdeCfg a t)
+codePanel appCfg cls m = elKlass "div" (cls <> "pane") $ do
     (e, eCfg) <- wysiwyg $ do
       onNewCode <- tagOnPostBuild $ m ^. editor_code
       let annotations = map toAceAnnotation <$> m ^. editor_annotations
-      onUserCode <- codeWidget annotations "" onNewCode
+      onUserCode <- codeWidget appCfg annotations "" onNewCode
       pure $ mempty & editorCfg_setCode .~ onUserCode
 
     onCtrlEnter <- getCtrlEnterEvent e
@@ -152,13 +152,15 @@ toAceAnnotation anno = AceAnnotation
 
 codeWidget
   :: MonadWidget t m
-  => Event t [AceAnnotation]
+  => AppCfg t m
+  -> Event t [AceAnnotation]
   -> Text
   -> Event t Text
   -> m (Event t Text)
-codeWidget anno iv sv = do
+codeWidget appCfg anno iv sv = do
     let ac = def { _aceConfigMode = Just "ace/mode/pact"
                  , _aceConfigElemAttrs = "class" =: "ace-code ace-widget"
+                 , _aceConfigReadOnly = _appCfg_editorReadOnly appCfg
                  }
     ace <- resizableAceWidget mempty ac (AceDynConfig Nothing) anno iv sv
     return $ _extendedACE_onUserChange ace
