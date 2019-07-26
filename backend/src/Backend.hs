@@ -112,7 +112,7 @@ checkDeployment = do
         <>
           [ "common/route"
           , "frontend/tracking-id"
-          , "common/" <> networksPath
+          , networksPath
           , "common/" <> verificationServerPath
           ]
     allConfigs <- fmap (T.decodeUtf8With T.lenientDecode) <$> liftIO getConfigs
@@ -132,7 +132,7 @@ checkDeployment = do
     checkNetworksConfig allConfigs
 
   where
-    checkNetworksConfig allConfigs = case M.lookup ("common/" <> networksPath) allConfigs of
+    checkNetworksConfig allConfigs = case M.lookup networksPath allConfigs of
       Nothing -> reportInvalidNetworksCfg "Networks configuration could not be found."
       Just n -> case parseNetworks n of
         Left e -> reportInvalidNetworksCfg e
