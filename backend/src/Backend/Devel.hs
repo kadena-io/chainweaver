@@ -13,6 +13,7 @@ import           Data.Foldable            (traverse_)
 import           Data.Monoid              ((<>))
 import qualified Data.Text                as T
 import qualified Data.Text.IO             as T
+import qualified Pact.Types.SPV           as Pact
 import qualified Pact.Server.Server       as Pact
 import           System.Directory         (createDirectoryIfMissing)
 import           System.FilePath          ((</>))
@@ -53,7 +54,7 @@ withPactInstances serveIt = do
   createDirectoryIfMissing False $ pactConfigDir
   traverse_ writePactConfig pactConfigs
 
-  let servePact = Pact.serve . _pic_conf
+  let servePact pic = Pact.serve (_pic_conf pic) Pact.noSPVSupport
 
   withAsync (mapConcurrently_ servePact pactConfigs) $ \_ ->
       serveIt
