@@ -1,15 +1,20 @@
+{-# LANGUAGE DataKinds #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE ForeignFunctionInterface #-}
+{-# LANGUAGE TypeApplications #-}
+{-# LANGUAGE TypeOperators #-}
 
-import Control.Concurrent.MVar
 import Control.Concurrent
-import Control.Monad.IO.Class
 import Control.Exception (bracket, try)
 import Control.Monad (void, forever, (<=<))
+import Control.Monad.Except (throwError)
+import Control.Monad.IO.Class
+import Data.ByteString (ByteString)
 import Data.Foldable (for_)
+import Data.Proxy (Proxy(..))
 import Data.String (IsString(..))
 import Foreign.C.String (peekCString)
 import GHC.IO.Handle
@@ -18,22 +23,26 @@ import Obelisk.Backend
 import Obelisk.Frontend
 import Obelisk.Route.Frontend
 import Reflex.Dom
+import Servant.API
 import System.FilePath ((</>))
 import System.IO
 import qualified Control.Concurrent.Async as Async
+import qualified Data.ByteString.Lazy as LBS
 import qualified Data.List as L
 import qualified Data.Map as M
 import qualified Data.Text as T
 import qualified Data.Text.Encoding as T
 import qualified Data.Text.IO as T
 import qualified Network.Socket as Socket
-import qualified System.Process as Process
+import qualified Network.Wai.Handler.Warp as Warp
+import qualified Servant.Server as Servant
 import qualified System.Environment as Env
+import qualified System.Process as Process
 
 import Backend (serveBackendRoute)
 import Common.Route
 import Frontend
-import Frontend.Foundation (AppCfg(..))
+import Frontend.AppCfg
 import Frontend.ReplGhcjs (app)
 
 import Foreign.C.String (CString)
@@ -78,6 +87,8 @@ backend = Backend
   , _backend_routeEncoder = backendRouteEncoder
   }
 
+type SigningApi = "sign" :> ReqBody '[OctetStream] ByteString :> Post '[JSON] SigningResult
+
 main :: IO ()
 main = redirectPipes [stdout, stderr] $ do
   -- Set the path to z3. I tried using the plist key LSEnvironment, but it
@@ -114,6 +125,16 @@ main = redirectPipes [stdout, stderr] $ do
             putStrLn $ "Opened file successfully: " <> f
             putMVar fileOpenedMVar c
             pure True
+    signingRequestMVar <- liftIO newEmptyMVar
+    signingResponseMVar <- liftIO newEmptyMVar
+    let runSign obj = do
+          liftIO $ putMVar signingRequestMVar obj -- handoff to app
+          liftIO (takeMVar signingResponseMVar) >>= \case
+            Left e -> throwError $ Servant.err409
+              { Servant.errBody = LBS.fromStrict $ T.encodeUtf8 e }
+            Right v -> pure v
+        apiServer = Warp.run 9467 $ Servant.serve (Proxy @SigningApi) runSign
+    _ <- Async.async $ apiServer
     runHTMLWithBaseURL "index.html" route (cfg putStrLn handleOpen) $ do
       mInitFile <- liftIO $ tryTakeMVar fileOpenedMVar
       let frontendMode = FrontendMode
@@ -137,12 +158,15 @@ main = redirectPipes [stdout, stderr] $ do
         , _frontend_body = prerender_ blank $ do
           bowserLoad <- mvarTriggerEvent bowserMVar
           fileOpened <- mvarTriggerEvent fileOpenedMVar
+          signingRequest <- mvarTriggerEvent signingRequestMVar
           let appCfg = AppCfg
                 { _appCfg_gistEnabled = False
                 , _appCfg_externalFileOpened = fileOpened
                 , _appCfg_openFileDialog = liftIO global_openFileDialog
                 , _appCfg_loadEditor = pure mInitFile
                 , _appCfg_editorReadOnly = True
+                , _appCfg_signingRequest = signingRequest
+                , _appCfg_signingResponse = liftIO . putMVar signingResponseMVar
                 }
           _ <- runWithReplace loaderMarkup $
             (liftIO activateWindow >> app appCfg) <$ bowserLoad

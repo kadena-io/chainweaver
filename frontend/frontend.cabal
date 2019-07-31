@@ -75,6 +75,7 @@ library
                , unordered-containers
 
   exposed-modules: Frontend
+                 , Frontend.AppCfg
                  , Frontend.Network
                  , Frontend.Network.NodeInfo
                  , Frontend.Crypto.Ed25519
@@ -109,6 +110,7 @@ library
                  , Frontend.UI.Dialogs.KeyImport
                  , Frontend.UI.Dialogs.LogoutConfirmation
                  , Frontend.UI.Dialogs.DeleteConfirmation
+                 , Frontend.UI.Dialogs.Signing
                  , Frontend.UI.ErrorList
                  , Frontend.UI.Icon
                  , Frontend.UI.JsonData

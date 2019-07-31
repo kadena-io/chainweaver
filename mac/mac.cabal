@@ -12,7 +12,9 @@ executable macApp
                , backend
                , common
                , frontend
+               , aeson
                , async
+               , bytestring
                , containers
                , directory
                , filepath
@@ -25,9 +27,12 @@ executable macApp
                , obelisk-route
                , process
                , reflex-dom
+               , servant
+               , servant-server
                , snap-core
                , temporary
                , text
+               , warp
   ghc-options:
     -threaded -O -Wall
 

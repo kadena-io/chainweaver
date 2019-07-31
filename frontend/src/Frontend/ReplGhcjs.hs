@@ -53,6 +53,7 @@ import           Pact.Types.Lang
 ------------------------------------------------------------------------------
 import           Common.OAuth                           (OAuthProvider (OAuthProvider_GitHub))
 import           Common.Route
+import           Frontend.AppCfg
 import           Frontend.Editor
 import           Frontend.Foundation
 import           Frontend.GistStore
@@ -65,6 +66,7 @@ import           Frontend.UI.Dialogs.CreateGist         (uiCreateGist)
 import           Frontend.UI.Dialogs.DeployConfirmation (uiDeployConfirmation)
 import           Frontend.UI.Dialogs.LogoutConfirmation (uiLogoutConfirmation)
 import           Frontend.UI.Dialogs.NetworkEdit        (uiNetworkEdit)
+import           Frontend.UI.Dialogs.Signing            (uiSigning)
 import           Frontend.UI.Modal
 import           Frontend.UI.Modal.Impl
 import           Frontend.UI.RightPanel
@@ -91,12 +93,15 @@ app appCfg = void . mfix $ \ cfg -> do
   let
     onGistCreatedModal = Just . uiCreatedGist <$> ideL ^. gistStore_created
     gistModalCfg = mempty & modalCfg_setModal .~ onGistCreatedModal
+    onSigningModal = Just . uiSigning appCfg ideL <$> _appCfg_signingRequest appCfg
+    signingModalCfg = mempty & modalCfg_setModal .~ onSigningModal
 
   pure $ mconcat
     [ controlCfg
     , mainCfg
     , modalCfg
     , gistModalCfg
+    , signingModalCfg
     , mempty & ideCfg_editor . editorCfg_loadCode .~ _appCfg_externalFileOpened appCfg
     ]
 

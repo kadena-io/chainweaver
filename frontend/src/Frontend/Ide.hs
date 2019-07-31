@@ -51,6 +51,7 @@ import           Obelisk.Route.Frontend       (R, RouteToUrl (..), Routed (..),
                                                SetRoute (..))
 ------------------------------------------------------------------------------
 import           Common.Route                 (FrontendRoute)
+import           Frontend.AppCfg
 import           Frontend.Network
 import           Frontend.Editor
 import           Frontend.Foundation

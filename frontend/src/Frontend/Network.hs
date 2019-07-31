@@ -35,6 +35,7 @@ module Frontend.Network
   , HasNetwork (..)
     -- * Useful helpers
   , updateNetworks
+  , getSigningPairs
     -- * Definitions from Common
   , module Common.Network
     -- * NodeInfo

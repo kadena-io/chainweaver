@@ -48,6 +48,7 @@ import           Safe                      (tailSafe)
 ------------------------------------------------------------------------------
 import           Pact.Types.Lang
 ------------------------------------------------------------------------------
+import           Frontend.AppCfg
 import           Frontend.Editor
 import           Frontend.Foundation
 import           Frontend.GistStore

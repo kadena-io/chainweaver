@@ -22,6 +22,7 @@ import           Obelisk.Generated.Static
 
 import           Common.Api
 import           Common.Route
+import           Frontend.AppCfg
 import           Frontend.Foundation
 import           Frontend.ModuleExplorer.Impl (loadEditorFromLocalStorage)
 import           Frontend.ReplGhcjs
@@ -55,6 +56,8 @@ frontend = Frontend
       , _appCfg_openFileDialog = liftJSM triggerOpen
       , _appCfg_loadEditor = loadEditorFromLocalStorage
       , _appCfg_editorReadOnly = False
+      , _appCfg_signingRequest = never
+      , _appCfg_signingResponse = \_ -> pure ()
       }
   }
 

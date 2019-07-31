@@ -27,7 +27,6 @@ module Frontend.Foundation
     ReflexValue
   , MDynamic
   , LeftmostEv (..)
-  , AppCfg(..)
     -- * Lenses and Prisms
   , makePactLenses
   , makePactLensesNonClassy
@@ -71,18 +70,6 @@ import           Reflex.Network.Extended
 import           Data.Maybe
 
 import           Common.Foundation                 as Common
-
-data AppCfg t m = AppCfg
-  { _appCfg_gistEnabled :: Bool
-  , _appCfg_externalFileOpened :: Event t Text
-  -- ^ File contents from file chosen in "open file" dialog
-  , _appCfg_openFileDialog :: JSM ()
-  -- ^ Trigger an "open file" dialog
-  , _appCfg_loadEditor :: m (Maybe Text)
-  -- ^ Initial code to load into editor
-  , _appCfg_editorReadOnly :: Bool
-  -- ^ Is the editor read only?
-  }
 
 -- | Shorthand for Dynamic t (Maybe a).
 --
