@@ -38,6 +38,10 @@
   transform: translate(-50%, -50%);
 }
 
+.button_border_none {
+  border: none;
+}
+
 
 .button:hover:not([disabled]) {
   background: $hover-background;

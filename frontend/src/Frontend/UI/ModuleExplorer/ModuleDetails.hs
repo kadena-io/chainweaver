@@ -33,14 +33,14 @@ module Frontend.UI.ModuleExplorer.ModuleDetails where
 import           Control.Lens
 import           Data.Bool                             (bool)
 import           Data.Maybe
+import           Data.Text                             (Text)
 import           Data.Traversable                      (for)
 import           Reflex
 import           Reflex.Dom
 import           Reflex.Network.Extended
-import           Data.Text (Text)
 ------------------------------------------------------------------------------
-import           Frontend.Network
 import           Frontend.ModuleExplorer
+import           Frontend.Network
 import           Frontend.UI.Button
 import           Frontend.UI.Dialogs.CallFunction
 import           Frontend.UI.Modal
@@ -91,12 +91,27 @@ moduleDetails m (selectedRef, selected) = do
     bodyCfg2 <- showDeps "Used Modules" $
       selected ^. importNamesOfModule
 
-    bodyCfg3 <- elClass "div" "segment" $ do
-      elClass "h3" "heading heading_type_h3" $ text "Functions"
-      mkFunctionList $ functionsOfModule selected
-    pure (headerCfg <> bodyCfg1 <> bodyCfg2 <> bodyCfg3)
+    functionConfigs <-
+      traverse uiDefTypeSegment . functionsByDefType $ functionsOfModule selected
+
+    pure (headerCfg <> bodyCfg1 <> bodyCfg2 <> mconcat functionConfigs)
 
   where
+    uiDefTypeSegment :: (DefType, [PactFunction]) -> m mConf
+    uiDefTypeSegment (t, fs) =
+      case fs of
+        [] -> pure mempty
+        _  -> elClass "div" "segment" $ do
+          elClass "h3" "heading heading_type_h3" $
+            text $ defTypeHeading t
+          mkFunctionList fs
+
+    defTypeHeading :: DefType -> Text
+    defTypeHeading = \case
+      Defun -> "Functions"
+      Defpact -> "Pacts"
+      Defcap  -> "Capabilities"
+
     mkFunctionList :: [PactFunction] -> m mConf
     mkFunctionList = functionList m $
       if isModule selected
@@ -137,6 +152,7 @@ functionList m mDeployed functions =
           divClass "table__cell_size_flex table__last-cell" $ do
             let btnCls = "table__action-button"
             let isDeployed = isJust mDeployed
-            fmap (const f) <$> bool (viewButton btnCls) (callButton btnCls) isDeployed
+            let isCallable = isDeployed && functionIsCallable f
+            fmap (const f) <$> bool (viewButton btnCls) (callButton btnCls) isCallable
       pure $ mempty & modalCfg_setModal .~ (Just . uiCallFunction m mDeployed <$> onView)
 
