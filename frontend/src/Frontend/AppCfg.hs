@@ -8,17 +8,37 @@ import Frontend.Crypto.Ed25519
 import Language.Javascript.JSaddle (JSM)
 import Reflex.Dom
 import qualified Data.Aeson as Aeson
+import Pact.Types.Crypto () -- aeson bytestring instances
+import Pact.Types.Runtime (GasLimit(..))
+import Common.Network (ChainId(..))
+import Pact.Types.Command (Command)
 
-data SigningResult = SigningResult
-  { _signingResult_publicKeys :: [PublicKey]
-  , _signingResult_signatures :: [Signature]
+data SigningRequest = SigningRequest
+  { _signingRequest_code :: Text
+  , _signingRequest_data :: Maybe Aeson.Object
+  , _signingRequest_nonce :: Maybe Text
+  , _signingRequest_chainId :: Maybe ChainId
+  , _signingRequest_gasLimit :: Maybe GasLimit
+  , _signingRequest_sender :: Maybe PublicKey
   } deriving Generic
 
-instance Aeson.ToJSON SigningResult where
+instance Aeson.ToJSON SigningRequest where
   toJSON = Aeson.genericToJSON compactEncoding
   toEncoding = Aeson.genericToEncoding compactEncoding
 
-instance Aeson.FromJSON SigningResult where
+instance Aeson.FromJSON SigningRequest where
+  parseJSON = Aeson.genericParseJSON compactEncoding
+
+data SigningResponse = SigningResponse
+  { _signingResponse_body :: Command Text
+  , _signingResponse_chainId :: ChainId
+  } deriving Generic
+
+instance Aeson.ToJSON SigningResponse where
+  toJSON = Aeson.genericToJSON compactEncoding
+  toEncoding = Aeson.genericToEncoding compactEncoding
+
+instance Aeson.FromJSON SigningResponse where
   parseJSON = Aeson.genericParseJSON compactEncoding
 
 data AppCfg t m = AppCfg
@@ -31,8 +51,8 @@ data AppCfg t m = AppCfg
   -- ^ Initial code to load into editor
   , _appCfg_editorReadOnly :: Bool
   -- ^ Is the editor read only?
-  , _appCfg_signingRequest :: Event t ByteString
+  , _appCfg_signingRequest :: Event t SigningRequest
   -- ^ Requests to sign this object
-  , _appCfg_signingResponse :: Either Text SigningResult -> JSM ()
+  , _appCfg_signingResponse :: Either Text SigningResponse -> JSM ()
   -- ^ Responses to signings
   }

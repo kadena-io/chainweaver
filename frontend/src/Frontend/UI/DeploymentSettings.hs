@@ -29,6 +29,7 @@ module Frontend.UI.DeploymentSettings
     -- * Widgets
   , uiDeploymentSettings
   , uiSigningKeys
+  , senderDropdown
     -- * Useful re-exports
   , Identity (runIdentity)
   ) where
@@ -207,7 +208,7 @@ uiMetaData
   => model -> m mConf
 uiMetaData m  = do
 
-    onSender <- mkLabeledInput (senderDropdown $ m ^. network_meta) "Sender" def
+    onSender <- mkLabeledInput (fmap _selectElement_change . senderDropdown (m ^. network_meta) (m ^. wallet_keys)) "Sender" def
 
     onGasPriceTxt <- mkLabeledInputView uiRealInputElement "Gas price" $
       fmap (showGasPrice . _pmGasPrice) $ m ^. network_meta
@@ -228,20 +229,29 @@ uiMetaData m  = do
       showGasPrice :: GasPrice -> Text
       showGasPrice (GasPrice (ParsedDecimal i)) = tshow i
 
-      senderDropdown meta uCfg = do
-        let itemDom v = elAttr "option" ("value" =: v) $ text v
-        -- Delay necessary until we have mount hooks. (SelectElement won't accept
-        -- setting event until its children are properly rendered.)
-        onSet <- delay 0 <=< tagOnPostBuild $ _pmSender <$> meta
-        let
-          cfg = uCfg
-            & selectElementConfig_setValue .~ onSet
-        (se, ()) <- uiSelectElement cfg $ do
-          void $ networkView $
-            traverse_ itemDom . Map.keys <$> m ^. wallet_keys
-        pure $ _selectElement_change se
-
       readPact wrapper =  fmap wrapper . readMay . T.unpack
+
+senderDropdown
+  :: ( Adjustable t m, Applicative m, PostBuild t m, DomBuilder t m
+     , TriggerEvent t m, PerformEvent t m
+     , MonadIO (Performable m)
+     )
+  => Dynamic t PublicMeta
+  -> Dynamic t (Map Text a)
+  -> SelectElementConfig er t (DomBuilderSpace m)
+  -> m (SelectElement er (DomBuilderSpace m) t)
+senderDropdown meta keys uCfg = do
+  let itemDom v = elAttr "option" ("value" =: v) $ text v
+  -- Delay necessary until we have mount hooks. (SelectElement won't accept
+  -- setting event until its children are properly rendered.)
+  onSet <- delay 0 <=< tagOnPostBuild $ _pmSender <$> meta
+  let
+    cfg = uCfg
+      & selectElementConfig_setValue .~ onSet
+  (se, ()) <- uiSelectElement cfg $ do
+    void $ networkView $
+      traverse_ itemDom . Map.keys <$> keys
+  pure se
 
 
 -- | Widget (dropdown) for letting the user choose between /send and /local endpoint.

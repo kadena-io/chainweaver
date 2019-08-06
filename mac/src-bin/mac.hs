@@ -8,7 +8,7 @@
 {-# LANGUAGE TypeOperators #-}
 
 import Control.Concurrent
-import Control.Exception (bracket, try)
+import Control.Exception (bracket, bracketOnError, try)
 import Control.Monad (void, forever, (<=<))
 import Control.Monad.Except (throwError)
 import Control.Monad.IO.Class
@@ -16,7 +16,9 @@ import Data.ByteString (ByteString)
 import Data.Foldable (for_)
 import Data.Proxy (Proxy(..))
 import Data.String (IsString(..))
-import Foreign.C.String (peekCString)
+import Foreign.C.Types (CInt(..))
+import Foreign.C.String (CString, peekCString)
+import Foreign.StablePtr (StablePtr, newStablePtr)
 import GHC.IO.Handle
 import Language.Javascript.JSaddle.WKWebView
 import Obelisk.Backend
@@ -45,13 +47,12 @@ import Frontend
 import Frontend.AppCfg
 import Frontend.ReplGhcjs (app)
 
-import Foreign.C.String (CString)
-import Foreign.StablePtr (StablePtr, newStablePtr)
-
 foreign import ccall setupAppMenu :: StablePtr (CString -> IO ()) -> IO ()
 foreign import ccall activateWindow :: IO ()
 foreign import ccall hideWindow :: IO ()
 foreign import ccall global_openFileDialog :: IO ()
+foreign import ccall global_requestUserAttention :: IO CInt
+foreign import ccall global_cancelUserAttentionRequest :: CInt -> IO ()
 
 -- | Redirect the given handles to Console.app
 redirectPipes :: [Handle] -> IO a -> IO a
@@ -87,7 +88,8 @@ backend = Backend
   , _backend_routeEncoder = backendRouteEncoder
   }
 
-type SigningApi = "sign" :> ReqBody '[OctetStream] ByteString :> Post '[JSON] SigningResult
+type SigningApi = "v1" :> V1SigningApi
+type V1SigningApi = "sign" :> ReqBody '[JSON] SigningRequest :> Post '[JSON] SigningResponse
 
 main :: IO ()
 main = redirectPipes [stdout, stderr] $ do
@@ -128,12 +130,16 @@ main = redirectPipes [stdout, stderr] $ do
     signingRequestMVar <- liftIO newEmptyMVar
     signingResponseMVar <- liftIO newEmptyMVar
     let runSign obj = do
-          liftIO $ putMVar signingRequestMVar obj -- handoff to app
-          liftIO (takeMVar signingResponseMVar) >>= \case
+          resp <- liftIO $ do
+            putMVar signingRequestMVar obj -- handoff to app
+            bracketOnError global_requestUserAttention global_cancelUserAttentionRequest
+              (\_ -> takeMVar signingResponseMVar)
+          case resp of
             Left e -> throwError $ Servant.err409
               { Servant.errBody = LBS.fromStrict $ T.encodeUtf8 e }
             Right v -> pure v
-        apiServer = Warp.run 9467 $ Servant.serve (Proxy @SigningApi) runSign
+        s = Warp.setOnClose (\_ -> error "goodbye") $ Warp.setPort 9467 Warp.defaultSettings
+        apiServer = Warp.runSettings s $ Servant.serve (Proxy @SigningApi) runSign
     _ <- Async.async $ apiServer
     runHTMLWithBaseURL "index.html" route (cfg putStrLn handleOpen) $ do
       mInitFile <- liftIO $ tryTakeMVar fileOpenedMVar

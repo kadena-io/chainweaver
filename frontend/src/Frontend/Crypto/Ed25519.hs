@@ -60,7 +60,7 @@ import           Frontend.Foundation
 
 -- | PublicKey with a Pact compatible JSON representation.
 newtype PublicKey = PublicKey ByteString
-  deriving (Generic, Show)
+  deriving (Generic, Eq, Show)
 --
 -- | PrivateKey with a Pact compatible JSON representation.
 newtype PrivateKey = PrivateKey ByteString

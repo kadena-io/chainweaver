@@ -48,6 +48,7 @@ module Frontend.Network
     -- * Utilities
   , prettyPrintNetworkErrorResult
   , prettyPrintNetworkError
+  , buildCmd
   ) where
 
 import           Control.Arrow                     (first, left, second, (&&&))
@@ -762,7 +763,7 @@ performNetworkRequestCustom w networkL unwrap onReqs =
         meta = metaTemplate { _pmChainId = metaChainId }
         signing = _networkRequest_signing req
       chainUrl <- ExceptT $ getBaseUrlErr (req ^. networkRequest_chainRef) mNodeInfo
-      payload <- buildCmd meta keys signing req
+      payload <- buildCmd Nothing meta keys signing req
       ExceptT $ liftJSM $ networkRequest chainUrl (req ^. networkRequest_endpoint) payload
 
     getBaseUrlErr ref info = left NetworkError_Other <$> getChainRefBaseUrl ref info
@@ -855,10 +856,10 @@ networkRequest baseUri endpoint cmd = do
 -- | Build a single cmd as expected in the `cmds` array of the /send payload.
 --
 -- As specified <https://pact-language.readthedocs.io/en/latest/pact-reference.html#send here>.
-buildCmd :: (MonadIO m, MonadJSM m) => PublicMeta -> KeyPairs -> Set KeyName -> NetworkRequest -> m (Command Text)
-buildCmd meta keys signing req = do
+buildCmd :: (MonadIO m, MonadJSM m) => Maybe Text -> PublicMeta -> KeyPairs -> Set KeyName -> NetworkRequest -> m (Command Text)
+buildCmd mNonce meta keys signing req = do
   let signingKeys = getSigningPairs signing keys
-  cmd <- encodeAsText . encode <$> buildExecPayload meta signingKeys req
+  cmd <- encodeAsText . encode <$> buildExecPayload mNonce meta signingKeys req
   let
     cmdHashL = hash (T.encodeUtf8 cmd)
   sigs <- buildSigs cmdHashL signingKeys
@@ -894,9 +895,11 @@ buildSigs cmdHashL signingPairs = do
 --
 --   As specified <https://pact-language.readthedocs.io/en/latest/pact-reference.html#cmd-field-and-payloads here>.
 --   Use `encodedAsText` for passing it as the `cmd` payload.
-buildExecPayload :: MonadIO m => PublicMeta -> [KeyPair] -> NetworkRequest -> m (Payload PublicMeta Text)
-buildExecPayload meta keys req = do
-    nonce <- getNonce
+buildExecPayload
+  :: MonadIO m
+  => Maybe Text -> PublicMeta -> [KeyPair] -> NetworkRequest -> m (Payload PublicMeta Text)
+buildExecPayload mNonce meta keys req = do
+    nonce <- maybe getNonce pure mNonce
     let
       payload = ExecMsg
         { _pmCode = _networkRequest_code req
