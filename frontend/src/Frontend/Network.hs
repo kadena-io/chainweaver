@@ -458,11 +458,10 @@ getNetworks cfg = do
     initialName <- fromMaybe defName <$>
       liftJSM (getItemStorage localStorage StoreNetwork_SelectedNetwork)
 
-    -- Periodically hit the remote-source for network configs, if applicable
+    -- Hit the remote-source for network configs, if applicable
     mRemoteUpdate <- for mRemoteSource $ \url -> do
       pb <- getPostBuild
-      tick <- tickLossyFromPostBuildTime 60
-      let req = XhrRequest "GET" url def <$ (pb <> void tick)
+      let req = XhrRequest "GET" url def <$ (pb <> cfg ^. networkCfg_resetNetworks)
       resp <- (fmap . fmap) _xhrResponse_responseText $ performRequestAsync req
       let resp' = fmap parseNetworks <$> resp
       pure $ fmapMaybe (either (const Nothing) Just) $ fmapMaybe id resp'
