@@ -17,9 +17,9 @@ data SigningRequest = SigningRequest
   { _signingRequest_code :: Text
   , _signingRequest_data :: Maybe Aeson.Object
   , _signingRequest_nonce :: Maybe Text
-  , _signingRequest_chainId :: Maybe ChainId
+  , _signingRequest_chainId :: Maybe Text
   , _signingRequest_gasLimit :: Maybe GasLimit
-  , _signingRequest_sender :: Maybe PublicKey
+  , _signingRequest_sender :: Maybe Text
   } deriving Generic
 
 instance Aeson.ToJSON SigningRequest where
@@ -31,7 +31,7 @@ instance Aeson.FromJSON SigningRequest where
 
 data SigningResponse = SigningResponse
   { _signingResponse_body :: Command Text
-  , _signingResponse_chainId :: ChainId
+  , _signingResponse_chainId :: Text
   } deriving Generic
 
 instance Aeson.ToJSON SigningResponse where

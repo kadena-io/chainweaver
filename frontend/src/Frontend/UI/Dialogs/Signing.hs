@@ -103,14 +103,13 @@ uiSigning appCfg ideL signingRequest = do
       let walletKeys = ideL ^. wallet_keys
       (chainId, sender, price, limit) <- tabPane mempty tabSelection SigningTab_Cfg $ do
         chainId <- case _signingRequest_chainId signingRequest of
-          Nothing -> divClass "group segment" $ current <$> userChainIdSelect ideL
+          Nothing -> divClass "group segment" $ (fmap . fmap) tshow . current <$> userChainIdSelect ideL
           Just cid -> pure $ pure $ Just cid
         (sender, price, limit) <- divClass "group segment" $ do
           let s = senderDropdown (ideL ^. network_meta) walletKeys
           sender <- case _signingRequest_sender signingRequest of
             Nothing -> _selectElement_value <$> mkLabeledInput s "Sender" def
-            Just s -> pure $ maybe "" fst . M.lookupMin
-              . M.filter (\kp -> _keyPair_publicKey kp == s) <$> walletKeys
+            Just s -> pure $ pure s
 
           initGasPrice <- sample $ _pmGasPrice <$> current (ideL ^. network_meta)
           gp <- mkLabeledInput uiRealInputElement "Gas price" $ def
@@ -146,7 +145,7 @@ uiSigning appCfg ideL signingRequest = do
                   , _networkRequest_signing = error "signing"
                   }
                 publicMeta = PublicMeta
-                  { _pmChainId = Pact.ChainId $ T.pack $ show $ unChainId chainId'
+                  { _pmChainId = Pact.ChainId chainId'
                   , _pmSender = sender
                   , _pmGasLimit = fromMaybe limit $ _signingRequest_gasLimit signingRequest
                   , _pmGasPrice = price
