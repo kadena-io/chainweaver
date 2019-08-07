@@ -304,7 +304,7 @@ uiNode nRefDups = do
       let placeholderVal = maybe (Just "Add node") (const Nothing) <$> onVal
       nodeInput <- uiInputElement $ def
         & inputElementConfig_setValue .~ (maybe "" renderNodeRef <$> onVal)
-        & initialAttributes .~ "class" =: "input_width_full"
+        & initialAttributes .~ Map.insert "class" "input_width_full" noAutofillAttrs
         & modifyAttributes .~ fmap ("placeholder" =:) placeholderVal
       let
         onInput = _inputElement_input nodeInput

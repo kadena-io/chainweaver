@@ -45,6 +45,7 @@ module Frontend.UI.Widgets
   , setFocus
   , setFocusOn
   , setFocusOnSelected
+  , noAutofillAttrs
   ) where
 
 ------------------------------------------------------------------------------
@@ -52,6 +53,7 @@ import           Control.Applicative
 import           Control.Lens
 import           Control.Monad
 import           Data.Map.Strict             (Map)
+import qualified Data.Map.Strict as Map
 import           Data.Text                   (Text)
 import qualified Data.Text                   as T
 import           Language.Javascript.JSaddle (js0, pToJSVal)
@@ -264,6 +266,15 @@ mkLabeledClsInput mkInput name = elClass "div" "segment segment_type_tertiary la
   divClass "label labeled-input__label" $ dynText name
   mkInput "labeled-input__input"
 
+-- | Attributes which will turn off all autocomplete/autofill/autocorrect
+-- functions, including the OS-level suggestions on macOS.
+noAutofillAttrs :: Map AttributeName Text
+noAutofillAttrs = Map.fromList
+  [ ("autocomplete", "off")
+  , ("autocorrect", "off")
+  , ("autocapitalize", "off")
+  , ("spellcheck", "false")
+  ]
 
 -- | Validated input with button
 validatedInputWithButton
@@ -280,7 +291,7 @@ validatedInputWithButton uCls check placeholder buttonText = do
       (update, checked, rawIn) <- elClass "div" "new-by-name_inputs" $ mdo
         name <- uiInputElement $ def
             & inputElementConfig_setValue .~ (T.empty <$ onConfirmed)
-            & initialAttributes .~ ("placeholder" =: placeholder <> "type" =: "text" <> "class" =: "new-by-name__input")
+            & initialAttributes .~ ("placeholder" =: placeholder <> "type" =: "text" <> "class" =: "new-by-name__input" <> noAutofillAttrs)
         let
           nameVal = T.strip <$> _inputElement_value name
           onEnter = keypress Enter name
