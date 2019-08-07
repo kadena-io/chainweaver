@@ -170,7 +170,9 @@ main = redirectPipes [stdout, stderr] $ do
                 , _appCfg_externalFileOpened = fileOpened
                 , _appCfg_openFileDialog = liftIO global_openFileDialog
                 , _appCfg_loadEditor = pure mInitFile
-                , _appCfg_editorReadOnly = True
+
+                -- DB 2019-08-07 Changing this back to False because it's just too convenient this way.
+                , _appCfg_editorReadOnly = False
                 , _appCfg_signingRequest = signingRequest
                 , _appCfg_signingResponse = liftIO . putMVar signingResponseMVar
                 }
