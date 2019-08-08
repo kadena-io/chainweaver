@@ -45,8 +45,8 @@ import           Frontend.UI.Widgets
 uiDeployConfirmation
   :: forall t m a. MonadWidget t m
   => Ide a t
-  -> m (IdeCfg Void t, Event t ())
-uiDeployConfirmation ideL = do
+  -> Event t () -> m (IdeCfg Void t, Event t ())
+uiDeployConfirmation ideL _onClose = do
   onClose <- modalHeader $ text "Deployment Settings"
   modalMain $ do
     (settingsCfg, transInfo, _) <- modalBody $

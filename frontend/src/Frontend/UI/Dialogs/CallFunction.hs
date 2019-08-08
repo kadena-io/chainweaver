@@ -69,8 +69,9 @@ uiCallFunction
   => model
   -> Maybe DeployedModuleRef
   -> PactFunction
+  -> Event t ()
   -> m (mConf, Event t ())
-uiCallFunction m mModule func = do
+uiCallFunction m mModule func _onClose = do
     onClose <- modalHeader $ do
       text headerTitle
       elClass "span" "heading_type_h1" $

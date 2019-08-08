@@ -32,7 +32,7 @@ instance Aeson.FromJSON SigningRequest where
 data SigningResponse = SigningResponse
   { _signingResponse_body :: Command Text
   , _signingResponse_chainId :: Text
-  } deriving Generic
+  } deriving (Eq, Show, Generic)
 
 instance Aeson.ToJSON SigningResponse where
   toJSON = Aeson.genericToJSON compactEncoding

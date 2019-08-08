@@ -70,8 +70,8 @@ uiNetworkEdit
     ( MonadWidget t m, HasUiNetworkEditModel model t, HasUiNetworkEditModelCfg mConf t
     )
   => model
-  -> m (mConf, Event t ())
-uiNetworkEdit m = do
+  -> Event t () -> m (mConf, Event t ())
+uiNetworkEdit m _onClose = do
   onClose <- modalHeader $ text "Network Settings"
   modalMain $ do
     cfg <- modalBody $ do

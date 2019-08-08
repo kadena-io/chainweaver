@@ -59,8 +59,8 @@ uiCreatedGist
     , HasConfigs m
     )
   => GistRef -- ^ The rendered route of the Gist (only the path).
-  -> m (mConf, Event t ())
-uiCreatedGist gistRef = do
+  -> Event t () -> m (mConf, Event t ())
+uiCreatedGist gistRef _onClose = do
     onClose <- modalHeader $ text "Gist Created"
     modalMain $ do
       modalBody $ do

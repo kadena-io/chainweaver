@@ -49,7 +49,7 @@ import           Frontend.Ide
 import           Frontend.UI.Modal
 ------------------------------------------------------------------------------
 
-type ModalImpl m t = m (IdeCfg Void t, Event t ())
+type ModalImpl m t = Event t () -> m (IdeCfg Void t, Event t ())
 
 type ModalIdeCfg m t = IdeCfg (ModalImpl m t) t
 
@@ -67,9 +67,9 @@ showModal ideL = do
     let mkCls vis = "modal" <>
           if vis then "modal_open" else mempty
 
-    elDynKlass "div" (mkCls <$> isVisible) $ do
+    elDynKlass "div" (mkCls <$> isVisible) $ mdo
       (backdropEl, ev) <- elClass' "div" "modal__screen" $
-        networkView (mayMkModal <$> _ide_modal ideL)
+        networkView (mayMkModal onClose <$> _ide_modal ideL)
       onFinish <- switchHold never $ snd . snd <$> ev
       mCfgVoid <- flatten $ fst . snd <$> ev
 
@@ -97,18 +97,22 @@ showModal ideL = do
   where
     isVisible = isJust <$> _ide_modal ideL
 
-    mayMkModal = maybe (pure (never, (mempty, never))) mkModal
+    mayMkModal
+      :: Event t ()
+      -> Maybe (Event t () -> m (IdeCfg Void t, Event t ()))
+      -> m (Event t Bool, (IdeCfg Void t, Event t ()))
+    mayMkModal e = maybe (pure (never, (mempty, never))) (\f -> mkModal f e)
 
 
 -- | Puts content in a .modal class container and stops event propagation
 mkModal
   :: forall t m a. MonadWidget t m
-  => m (a, Event t ())
+  => (Event t () -> m (a, Event t ()))
   -- ^ The dialog
-  -> m (Event t Bool, (a, Event t ()))
+  -> Event t () -> m (Event t Bool, (a, Event t ()))
   -- ^ Wrapped up dialog.
-mkModal e = do
-    (modalL, r) <- element "div" elCfg e
+mkModal e e' = do
+    (modalL, r) <- element "div" elCfg $ e e'
     let
       onDown = domEvent Mousedown modalL
       onUp = domEvent Mouseup modalL

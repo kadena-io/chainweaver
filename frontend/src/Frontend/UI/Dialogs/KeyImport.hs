@@ -62,8 +62,8 @@ uiKeyImport
     ( MonadWidget t m, HasUiKeyImportModel model t, HasUiKeyImportModelCfg mConf t
     )
   => model
-  -> m (mConf, Event t ())
-uiKeyImport m = do
+  -> Event t () -> m (mConf, Event t ())
+uiKeyImport m _onClose = do
     onClose <- modalHeader $ text "Key Import"
     modalMain $ do
       (errName, errKeyPair) :: (Dynamic t (Either Text Text), Dynamic t (Either Text KeyPair))

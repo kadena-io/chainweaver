@@ -52,8 +52,8 @@ type HasUICreateGistModelCfg mConf t =
 uiCreateGist
   :: forall t m mConf
   . (MonadWidget t m, HasUICreateGistModelCfg mConf t)
-  => m (mConf, Event t ())
-uiCreateGist = do
+  => Event t () -> m (mConf, Event t ())
+uiCreateGist _onClose = do
   onClose <- modalHeader $ text "Create GitHub Gist"
   modalMain $ do
     (name, desc) <- modalBody $ do

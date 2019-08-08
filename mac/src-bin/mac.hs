@@ -8,7 +8,7 @@
 {-# LANGUAGE TypeOperators #-}
 
 import Control.Concurrent
-import Control.Exception (bracket, bracketOnError, try)
+import Control.Exception (bracket_, bracket, bracketOnError, try)
 import Control.Monad (void, forever, (<=<))
 import Control.Monad.Except (throwError)
 import Control.Monad.IO.Class
@@ -128,12 +128,16 @@ main = redirectPipes [stdout, stderr] $ do
             putStrLn $ "Opened file successfully: " <> f
             putMVar fileOpenedMVar c
             pure True
+    signingLock <- liftIO newEmptyMVar -- Only allow one signing request to be served at once
     signingRequestMVar <- liftIO newEmptyMVar
     signingResponseMVar <- liftIO newEmptyMVar
+    let say = liftIO . putStrLn
     let runSign obj = do
-          resp <- liftIO $ do
+          resp <- liftIO $ bracket_ (putMVar signingLock ()) (takeMVar signingLock) $ do
             putMVar signingRequestMVar obj -- handoff to app
-            bracketOnError global_requestUserAttention global_cancelUserAttentionRequest
+            bracket
+              global_requestUserAttention
+              global_cancelUserAttentionRequest
               (\_ -> takeMVar signingResponseMVar)
           case resp of
             Left e -> throwError $ Servant.err409

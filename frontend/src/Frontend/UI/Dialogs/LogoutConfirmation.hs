@@ -47,8 +47,8 @@ type HasUILogoutConfirmationModelCfg mConf t =
 uiLogoutConfirmation
   :: forall t m mConf
   . (MonadWidget t m, HasUILogoutConfirmationModelCfg mConf t)
-  => m (mConf, Event t ())
-uiLogoutConfirmation = do
+  => Event t () -> m (mConf, Event t ())
+uiLogoutConfirmation _onClose = do
   onClose <- modalHeader $ text "Logout from GitHub?"
   modalMain $ do
     modalBody $ do

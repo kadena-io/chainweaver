@@ -50,8 +50,8 @@ type HasUIDeleteConfirmationModelCfg mConf t =
 uiDeleteConfirmation
   :: forall t m mConf
   . (MonadWidget t m, HasUIDeleteConfirmationModelCfg mConf t)
-  => KeyName -> m (mConf, Event t ())
-uiDeleteConfirmation keyName = do
+  => KeyName -> Event t () -> m (mConf, Event t ())
+uiDeleteConfirmation keyName _onClose = do
   onClose <- modalHeader $ text "Delete Confirmation"
   modalMain $ do
     modalBody $ do

@@ -27,14 +27,14 @@ void global_openFileDialog() {
 int global_requestUserAttention() {
   // Add the operation to the queue to ensure it happens on main thread
   //[[NSOperationQueue mainQueue] addOperationWithBlock:^(void) {
-    [[NSApplication sharedApplication] requestUserAttention:NSCriticalRequest];
+  return [[NSApplication sharedApplication] requestUserAttention:NSCriticalRequest];
   //}];
 }
 
 void global_cancelUserAttentionRequest(int r) {
   // Add the operation to the queue to ensure it happens on main thread
   //[[NSOperationQueue mainQueue] addOperationWithBlock:^(void) {
-    [[NSApplication sharedApplication] cancelUserAttentionRequest:r];
+  [[NSApplication sharedApplication] cancelUserAttentionRequest:r];
   //}];
 }
 

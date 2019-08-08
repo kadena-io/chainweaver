@@ -78,8 +78,8 @@ textSigningTab = \case
 uiSigning
   :: forall t m mConf
   . (MonadWidget t m, HasUISigningModelCfg mConf t)
-  => AppCfg t m -> ModalIde m t -> SigningRequest -> m (mConf, Event t ())
-uiSigning appCfg ideL signingRequest = do
+  => AppCfg t m -> ModalIde m t -> SigningRequest -> Event t () -> m (mConf, Event t ())
+uiSigning appCfg ideL signingRequest onCloseExternal = do
   let code = _signingRequest_code signingRequest
   onClose <- modalHeader $ text "Signing Request"
   modalMain $ do
@@ -158,6 +158,6 @@ uiSigning appCfg ideL signingRequest = do
               }
           doSign _ _ = Nothing
       signed <- performEvent $ attachWithMaybe doSign results sign
-      let done = leftmost [signed, Left "Cancelled" <$ (cancel <> onClose)]
+      let done = leftmost [signed, Left "Cancelled" <$ (cancel <> onClose <> onCloseExternal)]
       performEvent_ $ liftJSM . _appCfg_signingResponse appCfg <$> done
-      pure (mempty, void done)
+      pure (mempty, void signed <> cancel <> onClose)

@@ -44,7 +44,7 @@ import           Frontend.UI.Button
 --   It is some arbitrary widget, preferably built with `modalHeader`,
 --   `modalBody` and `modalFooter`.  It provides some config and an `Event`
 --   that will trigger close on the dialog.
-type Modal baseCfg m t = m (ModalCfg baseCfg t, Event t ())
+type Modal baseCfg m t = Event t () -> m (ModalCfg baseCfg t, Event t ())
 
 {- type ModalCfg cfg m t = cfg (Modal (cfg Void t) t) t -}
 
