@@ -131,7 +131,6 @@ main = redirectPipes [stdout, stderr] $ do
     signingLock <- liftIO newEmptyMVar -- Only allow one signing request to be served at once
     signingRequestMVar <- liftIO newEmptyMVar
     signingResponseMVar <- liftIO newEmptyMVar
-    let say = liftIO . putStrLn
     let runSign obj = do
           resp <- liftIO $ bracket_ (putMVar signingLock ()) (takeMVar signingLock) $ do
             putMVar signingRequestMVar obj -- handoff to app
