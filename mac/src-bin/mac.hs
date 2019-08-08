@@ -37,6 +37,7 @@ import qualified Data.Text.Encoding as T
 import qualified Data.Text.IO as T
 import qualified Network.Socket as Socket
 import qualified Network.Wai.Handler.Warp as Warp
+import qualified Network.Wai.Middleware.Cors as Wai
 import qualified Servant.Server as Servant
 import qualified System.Environment as Env
 import qualified System.Process as Process
@@ -138,8 +139,8 @@ main = redirectPipes [stdout, stderr] $ do
             Left e -> throwError $ Servant.err409
               { Servant.errBody = LBS.fromStrict $ T.encodeUtf8 e }
             Right v -> pure v
-        s = Warp.setOnClose (\_ -> error "goodbye") $ Warp.setPort 9467 Warp.defaultSettings
-        apiServer = Warp.runSettings s $ Servant.serve (Proxy @SigningApi) runSign
+        s = Warp.setPort 9467 Warp.defaultSettings
+        apiServer = Warp.runSettings s $ Wai.simpleCors $ Servant.serve (Proxy @SigningApi) runSign
     _ <- Async.async $ apiServer
     runHTMLWithBaseURL "index.html" route (cfg putStrLn handleOpen) $ do
       mInitFile <- liftIO $ tryTakeMVar fileOpenedMVar
