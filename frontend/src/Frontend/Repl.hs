@@ -405,8 +405,11 @@ pactEvalRepl' :: Text -> PactRepl (Term Name)
 pactEvalRepl' t = ExceptT $ do
   id %= setReplLib
   r <- evalPact . T.unpack $ t
+  e <- gets _rOut
   id %= unsetReplLib
-  pure r
+  pure $ case e of -- This is somewhat questionable, but seems necessary.
+    "" -> r
+    e -> Left e
 
 -- pactEvalPact :: Text -> PactRepl (Term Name)
 -- pactEvalPact = ExceptT . evalPact . T.unpack
