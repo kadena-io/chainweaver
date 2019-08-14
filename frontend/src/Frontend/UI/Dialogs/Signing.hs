@@ -125,8 +125,7 @@ uiSigning appCfg ideL signingRequest onCloseExternal = do
         pure (chainId, sender, price, limit)
 
       keys <- tabPane mempty tabSelection SigningTab_Keys $ do
-        let preselected = S.singleton <$> sender
-        current <$> uiSigningKeys preselected ideL
+        current <$> uiSigningKeys ideL
 
       pure $ (,,,,,) <$>
         keys <*> current walletKeys <*> chainId <*> current sender <*> price <*> limit
