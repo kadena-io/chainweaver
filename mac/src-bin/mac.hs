@@ -39,6 +39,7 @@ import qualified Network.Socket as Socket
 import qualified Network.Wai.Handler.Warp as Warp
 import qualified Network.Wai.Middleware.Cors as Wai
 import qualified Servant.Server as Servant
+import qualified System.Directory as Directory
 import qualified System.Environment as Env
 import qualified System.Process as Process
 
@@ -54,6 +55,14 @@ foreign import ccall hideWindow :: IO ()
 foreign import ccall global_openFileDialog :: IO ()
 foreign import ccall global_requestUserAttention :: IO CInt
 foreign import ccall global_cancelUserAttentionRequest :: CInt -> IO ()
+foreign import ccall global_getHomeDirectory :: IO CString
+
+getUserLibraryPath :: MonadIO m => m FilePath
+getUserLibraryPath = liftIO $ do
+  home <- peekCString =<< global_getHomeDirectory
+  let lib = home </> "Library" </> "io.kadena.pact"
+  Directory.createDirectoryIfMissing True lib
+  pure lib
 
 -- | Redirect the given handles to Console.app
 redirectPipes :: [Handle] -> IO a -> IO a
@@ -96,9 +105,11 @@ main :: IO ()
 main = redirectPipes [stdout, stderr] $ do
   -- Set the path to z3. I tried using the plist key LSEnvironment, but it
   -- doesn't work with relative paths.
-  path <- L.dropWhileEnd (/= '/') <$> Env.getExecutablePath
-  putStrLn $ "Executable path: " <> path
-  Env.setEnv "SBV_Z3" $ path <> "z3"
+  exePath <- L.dropWhileEnd (/= '/') <$> Env.getExecutablePath
+  putStrLn $ "Executable path: " <> exePath
+  Env.setEnv "SBV_Z3" $ exePath <> "z3"
+  libPath <- getUserLibraryPath
+  putStrLn $ "Library path: " <> libPath
   port <- getFreePort
   -- Get the app resources path
   resources <- maybe
