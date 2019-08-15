@@ -111,14 +111,11 @@ in
               '';
             });
 
-
-            # sbv 8.1
-            sbv = pkgs.haskell.lib.dontCheck (self.callCabal2nix "sbv" (pkgs.fetchFromGitHub {
-              owner = "LeventErkok";
-              repo = "sbv";
-              rev = "365b1a369a2550d6284608df3fbc17e2663c4d3c";
-              sha256 = "134f148g28dg7b3c1rvkh85pfl9pdlvrvl6al4vlz72f3y5mb2xg";
-            }) {});
+            sbv = pkgs.haskell.lib.dontCheck (callHackageDirect {
+              pkg = "sbv";
+              ver = "8.2";
+              sha256 = "1isa8p9dnahkljwj0kz10119dwiycf11jvzdc934lnjv1spxkc9k";
+            });
 
             # need crackNum 2.3
             crackNum = pkgs.haskell.lib.dontCheck (self.callCabal2nix "crackNum" (pkgs.fetchFromGitHub {
