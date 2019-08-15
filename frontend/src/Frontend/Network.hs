@@ -60,6 +60,7 @@ import           Data.Either                       (lefts, rights)
 import qualified Data.HashMap.Strict               as H
 import qualified Data.IntMap                       as IntMap
 import qualified Data.List                         as L
+import           Data.List.NonEmpty                (NonEmpty (..))
 import qualified Data.Map                          as Map
 import           Data.Map.Strict                   (Map)
 import           Data.Set                          (Set)
@@ -82,7 +83,7 @@ import           Pact.Server.ApiV1Client
 import           Pact.Types.API
 import           Pact.Types.Command
 import           Pact.Types.Runtime                (PactError (..), GasLimit (..), GasPrice (..))
-import           Pact.Types.ChainMeta              (PublicMeta (..))
+import           Pact.Types.ChainMeta              (PublicMeta (..), TTLSeconds (..), TxCreationTime (..))
 
 import           Pact.Types.Exp                    (Literal (LString))
 import           Pact.Types.Hash                   (hash, Hash (..), TypedHash (..), toUntypedHash)
@@ -385,6 +386,8 @@ buildMeta cfg = do
           , _pmSender  = "sender00"
           , _pmGasLimit = GasLimit 100 -- TODO: Better defaults!!!
           , _pmGasPrice = GasPrice 0.001
+          , _pmTTL = TTLSeconds (8 * 60 * 60) -- 8 hours
+          , _pmCreationTime = TxCreationTime 0 -- offset from block
           }
   m <- fromMaybe defaultMeta <$>
     liftJSM (getItemStorage localStorage StoreNetwork_PublicMeta)
@@ -685,6 +688,8 @@ performLocalReadCustom networkL unwrapUsr onReqs =
           , _pmSender  = "someSender"
           , _pmGasLimit = GasLimit 100000
           , _pmGasPrice = GasPrice 1.0
+          , _pmTTL = TTLSeconds (8 * 60 * 60) -- 8 hours
+          , _pmCreationTime = TxCreationTime 0 -- offset from block
           }
       }
   in
@@ -845,8 +850,7 @@ networkRequest baseUri endpoint cmd = do
     getRequestKey :: MonadError NetworkError m => RequestKeys -> m RequestKey
     getRequestKey r =
       case _rkRequestKeys r of
-        []    -> throwError $ NetworkError_Other "Response did not contain any RequestKeys."
-        [key] -> pure key
+        (key :| []) -> pure key
         _     -> throwError $ NetworkError_Other "Response contained more than one RequestKey."
 
 

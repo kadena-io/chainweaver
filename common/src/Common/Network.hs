@@ -35,6 +35,7 @@ import           Text.URI.Lens
 import           Common.Api
 import           Common.Foundation
 import           Common.RefPath           as MP
+import qualified Pact.Types.ChainId       as Pact
 import qualified Pact.Types.ChainMeta     as Pact
 
 

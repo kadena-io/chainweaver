@@ -8,6 +8,7 @@ import Frontend.Crypto.Ed25519
 import Language.Javascript.JSaddle (JSM)
 import Reflex.Dom
 import qualified Data.Aeson as Aeson
+import Pact.Types.ChainMeta (TTLSeconds(..))
 import Pact.Types.Crypto () -- aeson bytestring instances
 import Pact.Types.Runtime (GasLimit(..))
 import Common.Network (ChainId(..))
@@ -19,6 +20,7 @@ data SigningRequest = SigningRequest
   , _signingRequest_nonce :: Maybe Text
   , _signingRequest_chainId :: Maybe Text
   , _signingRequest_gasLimit :: Maybe GasLimit
+  , _signingRequest_ttl :: Maybe TTLSeconds
   , _signingRequest_sender :: Maybe Text
   } deriving Generic
 
