@@ -47,7 +47,7 @@ import qualified Data.Set                    as Set
 import           Data.Text                   (Text)
 import qualified Data.Text                   as T
 import           Pact.Parse
-import           Pact.Types.ChainMeta        (PublicMeta (..))
+import           Pact.Types.ChainMeta        (PublicMeta (..), TTLSeconds (..))
 import           Pact.Types.Runtime          (GasLimit (..), GasPrice (..))
 import           Reflex
 import           Reflex.Dom
@@ -216,10 +216,14 @@ uiMetaData m  = do
     onGasLimitTxt <- mkLabeledInputView uiIntInputElement "Gas limit" $
       fmap (showGasLimit . _pmGasLimit) $ m ^. network_meta
 
+    onTtlTxt <- mkLabeledInputView uiIntInputElement "Transaction TTL (seconds)" $
+      fmap (showTtl . _pmTTL) $ m ^. network_meta
+
     pure $ mempty
       & networkCfg_setSender .~ onSender
       & networkCfg_setGasPrice .~ fmapMaybe (readPact (GasPrice . ParsedDecimal)) onGasPriceTxt
       & networkCfg_setGasLimit .~ fmapMaybe (readPact (GasLimit . ParsedInteger)) onGasLimitTxt
+      & networkCfg_setTTL .~ fmapMaybe (readPact (TTLSeconds . ParsedInteger)) onTtlTxt
 
   where
 
@@ -228,6 +232,9 @@ uiMetaData m  = do
 
       showGasPrice :: GasPrice -> Text
       showGasPrice (GasPrice (ParsedDecimal i)) = tshow i
+
+      showTtl :: TTLSeconds -> Text
+      showTtl (TTLSeconds (ParsedInteger i)) = tshow i
 
       readPact wrapper =  fmap wrapper . readMay . T.unpack
 

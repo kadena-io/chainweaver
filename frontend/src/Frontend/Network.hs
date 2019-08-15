@@ -183,6 +183,8 @@ data NetworkCfg t = NetworkCfg
   , _networkCfg_setGasPrice   :: Event t GasPrice
     -- ^ Maximum gas price you are willing to accept for having your
     -- transaction executed.
+  , _networkCfg_setTTL   :: Event t TTLSeconds
+    -- ^ TTL for this transaction
   , _networkCfg_setNetworks   :: Event t (Map NetworkName [NodeRef])
     -- ^ Provide a new networks configuration.
   , _networkCfg_resetNetworks :: Event t ()
@@ -969,23 +971,24 @@ encodeAsText = safeDecodeUtf8 . BSL.toStrict
 
 instance Reflex t => Semigroup (NetworkCfg t) where
   NetworkCfg
-    refreshA deployA setSenderA setGasLimitA setGasPriceA setNetworksA resetNetworksA selectNetworkA
+    refreshA deployA setSenderA setGasLimitA setGasPriceA setTtlA setNetworksA resetNetworksA selectNetworkA
     <>
     NetworkCfg
-      refreshB deployB setSenderB setGasLimitB setGasPriceB setNetworksB resetNetworksB selectNetworkB
+      refreshB deployB setSenderB setGasLimitB setGasPriceB setTtlB setNetworksB resetNetworksB selectNetworkB
       = NetworkCfg
         { _networkCfg_refreshModule = leftmost [ refreshA, refreshB ]
         , _networkCfg_deployCode    =  deployA <> deployB
         , _networkCfg_setSender    = leftmost [ setSenderA, setSenderB ]
         , _networkCfg_setGasLimit   = leftmost [ setGasLimitA, setGasLimitB ]
         , _networkCfg_setGasPrice   = leftmost [ setGasPriceA, setGasPriceB ]
+        , _networkCfg_setTTL        = leftmost [ setTtlA, setTtlB ]
         , _networkCfg_setNetworks = leftmost [setNetworksA, setNetworksB ]
         , _networkCfg_resetNetworks = leftmost [resetNetworksA, resetNetworksB ]
         , _networkCfg_selectNetwork = leftmost [selectNetworkA, selectNetworkB ]
         }
 
 instance Reflex t => Monoid (NetworkCfg t) where
-  mempty = NetworkCfg never never never never never never never never
+  mempty = NetworkCfg never never never never never never never never never
   mappend = (<>)
 --
 
@@ -997,6 +1000,7 @@ instance Flattenable (NetworkCfg t) t where
       <*> doSwitch never (_networkCfg_setSender <$> ev)
       <*> doSwitch never (_networkCfg_setGasLimit <$> ev)
       <*> doSwitch never (_networkCfg_setGasPrice <$> ev)
+      <*> doSwitch never (_networkCfg_setTTL <$> ev)
       <*> doSwitch never (_networkCfg_setNetworks <$> ev)
       <*> doSwitch never (_networkCfg_resetNetworks <$> ev)
       <*> doSwitch never (_networkCfg_selectNetwork <$> ev)
