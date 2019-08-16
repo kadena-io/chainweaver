@@ -9,7 +9,6 @@ import Language.Javascript.JSaddle (JSM)
 import Reflex.Dom
 import qualified Data.Aeson as Aeson
 import Pact.Types.ChainMeta (TTLSeconds(..))
-import Pact.Types.Crypto () -- aeson bytestring instances
 import Pact.Types.Runtime (GasLimit(..))
 import Common.Network (ChainId(..))
 import Pact.Types.Command (Command)
