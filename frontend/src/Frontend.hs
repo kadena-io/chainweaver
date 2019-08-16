@@ -26,6 +26,7 @@ import           Frontend.AppCfg
 import           Frontend.Foundation
 import           Frontend.ModuleExplorer.Impl (loadEditorFromLocalStorage)
 import           Frontend.ReplGhcjs
+import           Frontend.Storage
 
 frontend :: Frontend (R FrontendRoute)
 frontend = Frontend
@@ -50,7 +51,8 @@ frontend = Frontend
 
   , _frontend_body = prerender_ loaderMarkup $ do
     (fileOpened, triggerOpen) <- openFileDialog
-    app $ AppCfg
+    let store = browserStorage
+    flip runStorageT store $ app $ AppCfg
       { _appCfg_gistEnabled = True
       , _appCfg_externalFileOpened = fileOpened
       , _appCfg_openFileDialog = liftJSM triggerOpen

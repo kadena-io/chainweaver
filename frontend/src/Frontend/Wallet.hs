@@ -179,6 +179,7 @@ makeWallet
     ( MonadHold t m, PerformEvent t m
     , MonadFix m, MonadJSM (Performable m)
     , MonadJSM m
+    , HasStorage (Performable m), HasStorage m
     )
   => WalletCfg t
   -> m (Wallet t)
@@ -247,11 +248,11 @@ storeWallet_Keys :: StoreWallet KeyPairs
 storeWallet_Keys = StoreWallet_Keys
 
 -- | Write key pairs to localstorage.
-storeKeys :: MonadJSM m => KeyPairs -> m ()
+storeKeys :: (HasStorage m, MonadJSM m) => KeyPairs -> m ()
 storeKeys ks = setItemStorage localStorage storeWallet_Keys (ks Map.\\ chainwebDefaultSenders)
 
 -- | Load key pairs from localstorage.
-loadKeys :: MonadJSM m => m (Maybe KeyPairs)
+loadKeys :: (HasStorage m, MonadJSM m) => m (Maybe KeyPairs)
 loadKeys = getItemStorage localStorage storeWallet_Keys
 
 

@@ -8,16 +8,16 @@
 {-# LANGUAGE TypeOperators #-}
 
 import Control.Concurrent
-import Control.Exception (bracket_, bracket, bracketOnError, try)
-import Control.Monad (void, forever, (<=<))
+import Control.Exception (bracket_, bracket, try, catch)
+import Control.Monad (void, forever, (<=<), when)
 import Control.Monad.Except (throwError)
 import Control.Monad.IO.Class
-import Data.ByteString (ByteString)
 import Data.Foldable (for_)
+import Data.Maybe (isNothing)
 import Data.Proxy (Proxy(..))
 import Data.String (IsString(..))
-import Foreign.C.Types (CInt(..))
 import Foreign.C.String (CString, peekCString)
+import Foreign.C.Types (CInt(..))
 import Foreign.StablePtr (StablePtr, newStablePtr)
 import GHC.IO.Handle
 import Language.Javascript.JSaddle.WKWebView
@@ -29,11 +29,14 @@ import Servant.API
 import System.FilePath ((</>))
 import System.IO
 import qualified Control.Concurrent.Async as Async
+import qualified Data.Aeson as Aeson
+import qualified Data.ByteString as BS
 import qualified Data.ByteString.Lazy as LBS
 import qualified Data.List as L
 import qualified Data.Map as M
 import qualified Data.Text as T
 import qualified Data.Text.Encoding as T
+import qualified Data.Text.Encoding.Error as T
 import qualified Data.Text.IO as T
 import qualified Network.Socket as Socket
 import qualified Network.Wai.Handler.Warp as Warp
@@ -41,6 +44,7 @@ import qualified Network.Wai.Middleware.Cors as Wai
 import qualified Servant.Server as Servant
 import qualified System.Directory as Directory
 import qualified System.Environment as Env
+import qualified System.FilePath as FilePath
 import qualified System.Process as Process
 
 import Backend (serveBackendRoute)
@@ -48,6 +52,7 @@ import Common.Route
 import Frontend
 import Frontend.AppCfg
 import Frontend.ReplGhcjs (app)
+import Frontend.Storage
 
 foreign import ccall setupAppMenu :: StablePtr (CString -> IO ()) -> IO ()
 foreign import ccall activateWindow :: IO ()
@@ -180,7 +185,8 @@ main = redirectPipes [stdout, stderr] $ do
           bowserLoad <- mvarTriggerEvent bowserMVar
           fileOpened <- mvarTriggerEvent fileOpenedMVar
           signingRequest <- mvarTriggerEvent signingRequestMVar
-          let appCfg = AppCfg
+          let store = fileStorage libPath
+              appCfg = AppCfg
                 { _appCfg_gistEnabled = False
                 , _appCfg_externalFileOpened = fileOpened
                 , _appCfg_openFileDialog = liftIO global_openFileDialog
@@ -191,10 +197,33 @@ main = redirectPipes [stdout, stderr] $ do
                 , _appCfg_signingRequest = signingRequest
                 , _appCfg_signingResponse = liftIO . putMVar signingResponseMVar
                 }
-          _ <- runWithReplace loaderMarkup $
+          _ <- flip runStorageT store $ runWithReplace loaderMarkup $
             (liftIO activateWindow >> app appCfg) <$ bowserLoad
           pure ()
         }
+
+fileStorage :: FilePath -> Storage
+fileStorage libPath = Storage
+  { _storage_get = \_ k -> liftIO $ do
+    try (BS.readFile $ path k) >>= \case
+      Left (e :: IOError) -> do
+        putStrLn $ "Error reading storage: " <> show e <> " : " <> path k
+        pure Nothing
+      Right v -> do
+        let result = Aeson.decodeStrict v
+        when (isNothing result) $ do
+          T.putStrLn $ "Error reading storape: can't decode contents: " <>
+            T.decodeUtf8With T.lenientDecode v
+        pure result
+  , _storage_set = \_ k a -> liftIO $
+    catch (LBS.writeFile (path k) (Aeson.encode a)) $ \(e :: IOError) -> do
+      putStrLn $ "Error writing storage: " <> show e <> " : " <> path k
+  , _storage_remove = \_ k -> liftIO $
+    catch (Directory.removeFile (path k)) $ \(e :: IOError) -> do
+      putStrLn $ "Error removing storage: " <> show e <> " : " <> path k
+  }
+    where path :: Show a => a -> FilePath
+          path k = libPath </> FilePath.makeValid (show k)
 
 -- | Push writes to the given 'MVar' into an 'Event'.
 mvarTriggerEvent

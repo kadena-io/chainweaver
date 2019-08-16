@@ -89,6 +89,7 @@ makeOAuth
     , MonadJSM m, MonadJSM (Performable m), MonadFix m, TriggerEvent t m
     , Routed t (R FrontendRoute) m, RouteToUrl (R FrontendRoute) m
     , HasOAuthCfg cfg t, HasOAuthModelCfg mConf t, HasConfigs m
+    , HasStorage m, HasStorage (Performable m)
     )
   => cfg -> m (mConf, OAuth t)
 makeOAuth cfg = mdo -- Required to get access to `tokens` for clearing any old tokens before requesting new ones.
@@ -137,7 +138,7 @@ makeOAuth cfg = mdo -- Required to get access to `tokens` for clearing any old t
 
 runOAuthRequester
   :: ( Monad m, MonadFix m, TriggerEvent t m, PerformEvent t m
-     , MonadJSM (Performable m)
+     , MonadJSM (Performable m), HasStorage m
      )
   => RequesterT t (Command OAuthProvider) Identity m a
   -> m a
@@ -152,8 +153,9 @@ runOAuthRequester requester = mdo
 
   (a, onRequest) <- runRequesterT requester onResponse
 
+  store <- askStorage
   onResponse <- performEventAsync $ ffor onRequest $ \req sendResponse -> void $ liftJSM $ forkJSM $ do
-    r <- traverseRequesterData (fmap Identity . runOAuthCmds renderRoute) req
+    r <- traverseRequesterData (fmap Identity . flip runStorageT store . runOAuthCmds renderRoute) req
     liftIO $ sendResponse r
 
   pure a
@@ -161,7 +163,7 @@ runOAuthRequester requester = mdo
 
 
 runOAuthCmds
-  :: (MonadJSM m, HasJSContext m)
+  :: (HasStorage m, MonadJSM m, HasJSContext m)
   => (R BackendRoute -> Text)
   -> Command OAuthProvider a
   -> m a
