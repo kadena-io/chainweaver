@@ -39,6 +39,7 @@ import qualified Data.Text as T
 import qualified Data.Text.Encoding as T
 import qualified Data.Text.Encoding.Error as T
 import qualified Pact.Parse as Pact
+import qualified Pact.Types.ChainId as Pact
 import qualified Pact.Types.ChainMeta as Pact
 import qualified Pact.Types.Gas as Pact
 
@@ -118,15 +119,20 @@ uiSigning appCfg ideL signingRequest onCloseExternal = do
           gl <- mkLabeledInput uiIntInputElement "Gas limit" $ def
             & inputElementConfig_initialValue .~
               maybe "100" (T.pack . show) (_signingRequest_gasLimit signingRequest)
+
+          t <- mkLabeledInput uiIntInputElement "Transaction TTL (seconds)" $ def
+            & inputElementConfig_initialValue .~
+              maybe (T.pack $ show $ 8 * 60 * 60) (T.pack . show) (_signingRequest_ttl signingRequest)
+
           let f g x = fmap g . readMay . T.unpack <$> current (value x)
               price = f (Pact.GasPrice . Pact.ParsedDecimal) gp
               limit = f (Pact.GasLimit . Pact.ParsedInteger) gl
+              ttl = f (Pact.TTLSeconds . Pact.ParsedInteger) t
           pure (sender, price, limit)
         pure (chainId, sender, price, limit)
 
       keys <- tabPane mempty tabSelection SigningTab_Keys $ do
-        let preselected = S.singleton <$> sender
-        current <$> uiSigningKeys preselected ideL
+        current <$> uiSigningKeys ideL
 
       pure $ (,,,,,) <$>
         keys <*> current walletKeys <*> chainId <*> current sender <*> price <*> limit
@@ -149,6 +155,8 @@ uiSigning appCfg ideL signingRequest onCloseExternal = do
                   , _pmSender = sender
                   , _pmGasLimit = fromMaybe limit $ _signingRequest_gasLimit signingRequest
                   , _pmGasPrice = price
+                  , _pmTTL = Pact.TTLSeconds (8 * 60 * 60) -- 8 hours
+                  , _pmCreationTime = Pact.TxCreationTime 0 -- offset from block
                   }
                 nonce = _signingRequest_nonce signingRequest
             command <- buildCmd nonce publicMeta allKeys keySet networkRequest

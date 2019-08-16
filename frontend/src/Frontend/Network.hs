@@ -60,6 +60,7 @@ import           Data.Either                       (lefts, rights)
 import qualified Data.HashMap.Strict               as H
 import qualified Data.IntMap                       as IntMap
 import qualified Data.List                         as L
+import           Data.List.NonEmpty                (NonEmpty (..))
 import qualified Data.Map                          as Map
 import           Data.Map.Strict                   (Map)
 import           Data.Set                          (Set)
@@ -82,7 +83,7 @@ import           Pact.Server.ApiV1Client
 import           Pact.Types.API
 import           Pact.Types.Command
 import           Pact.Types.Runtime                (PactError (..), GasLimit (..), GasPrice (..))
-import           Pact.Types.ChainMeta              (PublicMeta (..))
+import           Pact.Types.ChainMeta              (PublicMeta (..), TTLSeconds (..), TxCreationTime (..))
 
 import           Pact.Types.Exp                    (Literal (LString))
 import           Pact.Types.Hash                   (hash, Hash (..), TypedHash (..), toUntypedHash)
@@ -183,6 +184,8 @@ data NetworkCfg t = NetworkCfg
   , _networkCfg_setGasPrice   :: Event t GasPrice
     -- ^ Maximum gas price you are willing to accept for having your
     -- transaction executed.
+  , _networkCfg_setTTL   :: Event t TTLSeconds
+    -- ^ TTL for this transaction
   , _networkCfg_setNetworks   :: Event t (Map NetworkName [NodeRef])
     -- ^ Provide a new networks configuration.
   , _networkCfg_resetNetworks :: Event t ()
@@ -388,6 +391,8 @@ buildMeta cfg = do
           , _pmSender  = "sender00"
           , _pmGasLimit = GasLimit 100 -- TODO: Better defaults!!!
           , _pmGasPrice = GasPrice 0.001
+          , _pmTTL = TTLSeconds (8 * 60 * 60) -- 8 hours
+          , _pmCreationTime = TxCreationTime 0 -- offset from block
           }
   m <- fromMaybe defaultMeta <$>
     getItemStorage localStorage StoreNetwork_PublicMeta
@@ -689,6 +694,8 @@ performLocalReadCustom networkL unwrapUsr onReqs =
           , _pmSender  = "someSender"
           , _pmGasLimit = GasLimit 100000
           , _pmGasPrice = GasPrice 1.0
+          , _pmTTL = TTLSeconds (8 * 60 * 60) -- 8 hours
+          , _pmCreationTime = TxCreationTime 0 -- offset from block
           }
       }
   in
@@ -849,8 +856,7 @@ networkRequest baseUri endpoint cmd = do
     getRequestKey :: MonadError NetworkError m => RequestKeys -> m RequestKey
     getRequestKey r =
       case _rkRequestKeys r of
-        []    -> throwError $ NetworkError_Other "Response did not contain any RequestKeys."
-        [key] -> pure key
+        (key :| []) -> pure key
         _     -> throwError $ NetworkError_Other "Response contained more than one RequestKey."
 
 
@@ -969,23 +975,24 @@ encodeAsText = safeDecodeUtf8 . BSL.toStrict
 
 instance Reflex t => Semigroup (NetworkCfg t) where
   NetworkCfg
-    refreshA deployA setSenderA setGasLimitA setGasPriceA setNetworksA resetNetworksA selectNetworkA
+    refreshA deployA setSenderA setGasLimitA setGasPriceA setTtlA setNetworksA resetNetworksA selectNetworkA
     <>
     NetworkCfg
-      refreshB deployB setSenderB setGasLimitB setGasPriceB setNetworksB resetNetworksB selectNetworkB
+      refreshB deployB setSenderB setGasLimitB setGasPriceB setTtlB setNetworksB resetNetworksB selectNetworkB
       = NetworkCfg
         { _networkCfg_refreshModule = leftmost [ refreshA, refreshB ]
         , _networkCfg_deployCode    =  deployA <> deployB
         , _networkCfg_setSender    = leftmost [ setSenderA, setSenderB ]
         , _networkCfg_setGasLimit   = leftmost [ setGasLimitA, setGasLimitB ]
         , _networkCfg_setGasPrice   = leftmost [ setGasPriceA, setGasPriceB ]
+        , _networkCfg_setTTL        = leftmost [ setTtlA, setTtlB ]
         , _networkCfg_setNetworks = leftmost [setNetworksA, setNetworksB ]
         , _networkCfg_resetNetworks = leftmost [resetNetworksA, resetNetworksB ]
         , _networkCfg_selectNetwork = leftmost [selectNetworkA, selectNetworkB ]
         }
 
 instance Reflex t => Monoid (NetworkCfg t) where
-  mempty = NetworkCfg never never never never never never never never
+  mempty = NetworkCfg never never never never never never never never never
   mappend = (<>)
 --
 
@@ -997,6 +1004,7 @@ instance Flattenable (NetworkCfg t) t where
       <*> doSwitch never (_networkCfg_setSender <$> ev)
       <*> doSwitch never (_networkCfg_setGasLimit <$> ev)
       <*> doSwitch never (_networkCfg_setGasPrice <$> ev)
+      <*> doSwitch never (_networkCfg_setTTL <$> ev)
       <*> doSwitch never (_networkCfg_setNetworks <$> ev)
       <*> doSwitch never (_networkCfg_resetNetworks <$> ev)
       <*> doSwitch never (_networkCfg_selectNetwork <$> ev)

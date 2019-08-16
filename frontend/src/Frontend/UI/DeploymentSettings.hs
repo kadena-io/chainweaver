@@ -47,7 +47,7 @@ import qualified Data.Set                    as Set
 import           Data.Text                   (Text)
 import qualified Data.Text                   as T
 import           Pact.Parse
-import           Pact.Types.ChainMeta        (PublicMeta (..))
+import           Pact.Types.ChainMeta        (PublicMeta (..), TTLSeconds (..))
 import           Pact.Types.Runtime          (GasLimit (..), GasPrice (..))
 import           Reflex
 import           Reflex.Dom
@@ -118,9 +118,8 @@ uiDeploymentSettings m (DeploymentSettingsConfig mUserTab mkWChainId endpoint) =
       (cfg, cChainId, cEndpoint) <- tabPane mempty curSelection DeploymentSettingsView_Cfg $
         uiCfg m (mkWChainId m) endpoint
 
-      signingKeys <- tabPane mempty curSelection DeploymentSettingsView_Keys $ do
-        let selectedSender = Set.singleton . _pmSender <$> m ^. network_meta
-        uiSigningKeys selectedSender m
+      signingKeys <- tabPane mempty curSelection DeploymentSettingsView_Keys $
+        uiSigningKeys m
 
       pure
         ( cfg
@@ -208,7 +207,8 @@ uiMetaData
   => model -> m mConf
 uiMetaData m  = do
 
-    onSender <- mkLabeledInput (fmap _selectElement_change . senderDropdown (m ^. network_meta) (m ^. wallet_keys)) "Sender" def
+    onSender <- mkLabeledInputView uiInputElement "Sender" $
+      fmap _pmSender $ m ^. network_meta
 
     onGasPriceTxt <- mkLabeledInputView uiRealInputElement "Gas price" $
       fmap (showGasPrice . _pmGasPrice) $ m ^. network_meta
@@ -216,10 +216,14 @@ uiMetaData m  = do
     onGasLimitTxt <- mkLabeledInputView uiIntInputElement "Gas limit" $
       fmap (showGasLimit . _pmGasLimit) $ m ^. network_meta
 
+    onTtlTxt <- mkLabeledInputView uiIntInputElement "Transaction TTL (seconds)" $
+      fmap (showTtl . _pmTTL) $ m ^. network_meta
+
     pure $ mempty
       & networkCfg_setSender .~ onSender
       & networkCfg_setGasPrice .~ fmapMaybe (readPact (GasPrice . ParsedDecimal)) onGasPriceTxt
       & networkCfg_setGasLimit .~ fmapMaybe (readPact (GasLimit . ParsedInteger)) onGasLimitTxt
+      & networkCfg_setTTL .~ fmapMaybe (readPact (TTLSeconds . ParsedInteger)) onTtlTxt
 
   where
 
@@ -228,6 +232,9 @@ uiMetaData m  = do
 
       showGasPrice :: GasPrice -> Text
       showGasPrice (GasPrice (ParsedDecimal i)) = tshow i
+
+      showTtl :: TTLSeconds -> Text
+      showTtl (TTLSeconds (ParsedInteger i)) = tshow i
 
       readPact wrapper =  fmap wrapper . readMay . T.unpack
 
@@ -289,10 +296,9 @@ uiChainSelection info cls = mdo
 -- | Widget for selection of signing keys.
 uiSigningKeys
   :: forall t m model. (MonadWidget t m, HasWallet model t)
-  => Dynamic t (Set KeyName) -- ^ Any keys that should be preselected (and can't be unchecked by the user).
-  -> model
+  => model
   -> m (Dynamic t (Set KeyName))
-uiSigningKeys preselected aWallet = do
+uiSigningKeys aWallet = do
   let keyMap = aWallet ^. wallet_keys
       tableAttrs =
         "style" =: "table-layout: fixed; width: 100%" <> "class" =: "table"
@@ -300,7 +306,7 @@ uiSigningKeys preselected aWallet = do
     -- el "thead" $ elClass "tr" "table__row" $ do
     --   elClass "th" "table__heading" $ text "Sign with Key"
     --   elClass "th" "table__heading" $ text ""
-    el "tbody" $ listWithKey keyMap $ \name key -> signingItem preselected (name, key)
+    el "tbody" $ listWithKey keyMap $ \name key -> signingItem (name, key)
   dyn_ $ ffor keyMap $ \keys -> when (Map.null keys) $ text "No keys ..."
   return $ do -- The Dynamic monad
     m :: Map KeyName (Dynamic t Bool) <- boxValues
@@ -312,33 +318,21 @@ uiSigningKeys preselected aWallet = do
 -- | Display a key as list item together with it's name.
 signingItem
   :: MonadWidget t m
-  => Dynamic t (Set KeyName)
-  -> (KeyName, Dynamic t KeyPair)
+  => (KeyName, Dynamic t KeyPair)
   -> m (Dynamic t Bool)
-signingItem preselected (n, _) = do
+signingItem (n, _) = do
     elClass "tr" "table__row checkbox-container" $ do
       (e, ()) <- el' "td" $ text n
       let onTextClick = domEvent Click e
       elClass "td" "signing-selector__check-box-cell" $ mdo
         let
           val = _checkbox_value box
-          isPreselected = Set.member n <$> preselected
-          cfg = toggleCheckbox val $ gate (not <$> current isPreselected) onTextClick
-        box <- mkCheckbox cfg isPreselected
+          cfg = toggleCheckbox val onTextClick
+        box <- mkCheckbox cfg
         pure val
   where
-    mkCheckbox uCfg isPreselected = do
-      onIsPreselected <- tagOnPostBuild <=< holdUniqDyn $ isPreselected
-      let
-        cfg = uCfg
-          & checkboxConfig_attributes %~ ((fmap updateAttrs isPreselected) <*>)
-          & checkboxConfig_setValue %~ \old -> leftmost [onIsPreselected, old]
-      uiCheckbox "signing-selector__check-box-label" False cfg blank
-
-    updateAttrs = \case
-      False -> (<> mempty)
-      True  -> (<> "disabled" =: "true")
-
+    mkCheckbox uCfg = do
+      uiCheckbox "signing-selector__check-box-label" False uCfg blank
 
 toggleCheckbox :: Reflex t => Dynamic t Bool -> Event t a -> CheckboxConfig t
 toggleCheckbox val =
