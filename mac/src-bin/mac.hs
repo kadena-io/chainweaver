@@ -65,7 +65,7 @@ foreign import ccall global_getHomeDirectory :: IO CString
 getUserLibraryPath :: MonadIO m => m FilePath
 getUserLibraryPath = liftIO $ do
   home <- peekCString =<< global_getHomeDirectory
-  let lib = home </> "Library" </> "io.kadena.pact"
+  let lib = home </> "Library" </> "Application Support" </> "io.kadena.pact"
   Directory.createDirectoryIfMissing True lib
   pure lib
 
