@@ -36,7 +36,6 @@ tagOnPostBuild v = do
                   ]
 
 
-
 -- | Once the first event occurred, wait until both of the other events occurred.
 --
 --   Then return a resulting event by using the given combining function.
