@@ -79,8 +79,6 @@ missingKeysetParser = do
     void $ MP.string "No such keyset: "
     QuickFix_MissingKeyset <$> parseString
 
-
-
 -- | Parse a string, that is some text enclosed in quotes.
 --
 --   The returned text will be without the enclosing quotes.
@@ -96,7 +94,6 @@ parseString = do
     optionalChar c = (void $ MP.try $ MP.char c) <|> pure ()
     -- This used to be quoted, it is not anymore. So let's accept both for maximum robustness.
     optionalQuote = optionalChar '\"'
-
 
 parseInnerString :: MP.Parsec Void Text Text
 parseInnerString = do
