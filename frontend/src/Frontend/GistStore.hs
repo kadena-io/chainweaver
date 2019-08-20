@@ -118,6 +118,7 @@ makeGistStore
     , HasGistStoreCfg cfg t
     , HasGistStoreModel model t
     , HasGistStoreModelCfg mConf t
+    , HasStorage m, HasStorage (Performable m)
     )
   => model
   -> cfg

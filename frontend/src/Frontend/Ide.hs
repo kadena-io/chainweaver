@@ -62,6 +62,7 @@ import           Frontend.ModuleExplorer.Impl
 import           Frontend.OAuth
 import           Frontend.Repl
 import           Frontend.Routes
+import           Frontend.Storage
 import           Frontend.Wallet
 
 -- We don't really depend on UI here, I just don't bother to move `HasModalCfg`
@@ -131,6 +132,7 @@ makeIde
     , RouteToUrl (R FrontendRoute) m, Routed t (R FrontendRoute) m
     , SetRoute t (R FrontendRoute) m
     , HasConfigs m
+    , HasStorage m, HasStorage (Performable m)
     )
   => AppCfg t m -> IdeCfg modal t -> m (Ide modal t)
 makeIde appCfg userCfg = build $ \ ~(cfg, ideL) -> do

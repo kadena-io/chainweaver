@@ -54,6 +54,7 @@ library
                , obelisk-route
                , pact
                , prettyprinter
+               , primitive
                , random
                , reflex
                , reflex-dom

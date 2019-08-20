@@ -16,6 +16,12 @@ extern void callWithCString(const char * _Nonnull, HsStablePtr);
 
 DialogController *global_dialogController = 0;
 
+// This function will return ~/ only when the app is not quarantined in a sandbox
+const char *global_getHomeDirectory() {
+  NSString *dir = NSHomeDirectory();
+  return [dir UTF8String];
+}
+
 // For use from haskell land
 void global_openFileDialog() {
   // Add the operation to the queue to ensure it happens on main thread

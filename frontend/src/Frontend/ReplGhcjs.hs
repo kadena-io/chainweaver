@@ -60,6 +60,7 @@ import           Frontend.GistStore
 import           Frontend.Ide
 import           Frontend.OAuth
 import           Frontend.Repl
+import           Frontend.Storage
 import           Frontend.UI.Button
 import           Frontend.UI.Dialogs.CreatedGist        (uiCreatedGist)
 import           Frontend.UI.Dialogs.CreateGist         (uiCreateGist)
@@ -76,6 +77,7 @@ app
   :: ( MonadWidget t m
      , Routed t (R FrontendRoute) m, RouteToUrl (R FrontendRoute) m, SetRoute t (R FrontendRoute) m
      , HasConfigs m
+     , HasStorage m, HasStorage (Performable m)
      )
   => AppCfg t m -> m ()
 app appCfg = void . mfix $ \ cfg -> do
