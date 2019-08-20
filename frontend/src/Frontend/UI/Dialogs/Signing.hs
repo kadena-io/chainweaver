@@ -82,6 +82,7 @@ uiSigning
   => AppCfg t m -> ModalIde m t -> SigningRequest -> Event t () -> m (mConf, Event t ())
 uiSigning appCfg ideL signingRequest onCloseExternal = do
   let code = _signingRequest_code signingRequest
+      defaultTTLSecs = 8 * 60 * 60 -- 8 hours
   onClose <- modalHeader $ text "Signing Request"
   modalMain $ do
     results <- modalBody $ uiSegment mempty $ mdo
@@ -102,11 +103,11 @@ uiSigning appCfg ideL signingRequest onCloseExternal = do
           text code
 
       let walletKeys = ideL ^. wallet_keys
-      (chainId, sender, price, limit) <- tabPane mempty tabSelection SigningTab_Cfg $ do
+      (chainId, sender, price, limit, ttl) <- tabPane mempty tabSelection SigningTab_Cfg $ do
         chainId <- case _signingRequest_chainId signingRequest of
           Nothing -> divClass "group segment" $ (fmap . fmap) tshow . current <$> userChainIdSelect ideL
           Just cid -> pure $ pure $ Just cid
-        (sender, price, limit) <- divClass "group segment" $ do
+        (sender, price, limit, ttl) <- divClass "group segment" $ do
           let s = senderDropdown (ideL ^. network_meta) walletKeys
           sender <- case _signingRequest_sender signingRequest of
             Nothing -> _selectElement_value <$> mkLabeledInput s "Sender" def
@@ -122,26 +123,26 @@ uiSigning appCfg ideL signingRequest onCloseExternal = do
 
           t <- mkLabeledInput uiIntInputElement "Transaction TTL (seconds)" $ def
             & inputElementConfig_initialValue .~
-              maybe (T.pack $ show $ 8 * 60 * 60) (T.pack . show) (_signingRequest_ttl signingRequest)
+              maybe (T.pack $ show defaultTTLSecs) (T.pack . show) (_signingRequest_ttl signingRequest)
 
           let f g x = fmap g . readMay . T.unpack <$> current (value x)
               price = f (Pact.GasPrice . Pact.ParsedDecimal) gp
               limit = f (Pact.GasLimit . Pact.ParsedInteger) gl
               ttl = f (Pact.TTLSeconds . Pact.ParsedInteger) t
-          pure (sender, price, limit)
-        pure (chainId, sender, price, limit)
+          pure (sender, price, limit, ttl)
+        pure (chainId, sender, price, limit, ttl)
 
       keys <- tabPane mempty tabSelection SigningTab_Keys $ do
         current <$> uiSigningKeys ideL
 
-      pure $ (,,,,,) <$>
-        keys <*> current walletKeys <*> chainId <*> current sender <*> price <*> limit
+      pure $ (,,,,,,) <$>
+        keys <*> current walletKeys <*> chainId <*> current sender <*> price <*> limit <*> ttl
 
     modalFooter $ do
       cancel <- cancelButton def "Cancel"
       text " "
       sign <- confirmButton def "Sign"
-      let doSign (keySet, allKeys, Just chainId', sender, Just price, Just limit) () = Just $ do
+      let doSign (keySet, allKeys, Just chainId', sender, Just price, Just limit, mttl) () = Just $ do
             let networkRequest = NetworkRequest
                   { _networkRequest_code = code
                   , _networkRequest_data = fromMaybe mempty $ _signingRequest_data signingRequest
@@ -155,7 +156,7 @@ uiSigning appCfg ideL signingRequest onCloseExternal = do
                   , _pmSender = sender
                   , _pmGasLimit = limit
                   , _pmGasPrice = price
-                  , _pmTTL = Pact.TTLSeconds (8 * 60 * 60) -- 8 hours
+                  , _pmTTL = fromMaybe (Pact.TTLSeconds $ Pact.ParsedInteger defaultTTLSecs) mttl
                   , _pmCreationTime = Pact.TxCreationTime 0 -- offset from block
                   }
                 nonce = _signingRequest_nonce signingRequest
