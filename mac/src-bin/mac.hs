@@ -159,7 +159,11 @@ main = redirectPipes [stdout, stderr] $ do
               { Servant.errBody = LBS.fromStrict $ T.encodeUtf8 e }
             Right v -> pure v
         s = Warp.setPort 9467 Warp.defaultSettings
-        apiServer = Warp.runSettings s $ Wai.simpleCors $ Servant.serve (Proxy @SigningApi) runSign
+        laxCors _ = Just $ Wai.simpleCorsResourcePolicy
+          { Wai.corsRequestHeaders = Wai.simpleHeaders }
+        apiServer
+          = Warp.runSettings s $ Wai.cors laxCors
+          $ Servant.serve (Proxy @SigningApi) runSign
     _ <- Async.async $ apiServer
     runHTMLWithBaseURL "index.html" route (cfg putStrLn handleOpen) $ do
       mInitFile <- liftIO $ tryTakeMVar fileOpenedMVar
