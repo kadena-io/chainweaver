@@ -57,6 +57,7 @@ import Frontend.Storage
 foreign import ccall setupAppMenu :: StablePtr (CString -> IO ()) -> IO ()
 foreign import ccall activateWindow :: IO ()
 foreign import ccall hideWindow :: IO ()
+foreign import ccall resizeWindow :: IO ()
 foreign import ccall global_openFileDialog :: IO ()
 foreign import ccall global_requestUserAttention :: IO CInt
 foreign import ccall global_cancelUserAttentionRequest :: CInt -> IO ()
@@ -202,7 +203,7 @@ main = redirectPipes [stdout, stderr] $ do
                 , _appCfg_signingResponse = liftIO . putMVar signingResponseMVar
                 }
           _ <- flip runStorageT store $ runWithReplace loaderMarkup $
-            (liftIO activateWindow >> app appCfg) <$ bowserLoad
+            (liftIO activateWindow >> liftIO resizeWindow >> app appCfg) <$ bowserLoad
           pure ()
         }
 
