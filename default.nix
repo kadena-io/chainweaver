@@ -8,8 +8,11 @@ let
   obApp = import ./obApp.nix { inherit system iosSdkVersion obelisk pkgs; };
   pactServerModule = import ./pact-server/service.nix;
   macAppName = "Pact";
-  macAppIcon = ./mac/pact.icns;
+  macAppIcon = ./mac/pact.icns; # Use png2icns to produce this, if needed
   macPactDocumentIcon = ./mac/pact-document.icns;
+  # ^ This can be created in Preview using the system document icon from
+  # /System/Library/CoreServices/CoreTypes.bundle/Contents/Resources/
+  # and the pact logo
   macAppInstallerBackground = ./mac/installer-background.png;
   bundleIdentifier = "io.kadena.pact";
   createDmg = pkgs.fetchFromGitHub {
