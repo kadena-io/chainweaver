@@ -63,6 +63,7 @@ import qualified Data.List                         as L
 import           Data.List.NonEmpty                (NonEmpty (..))
 import qualified Data.Map                          as Map
 import           Data.Map.Strict                   (Map)
+import           Data.List.NonEmpty                (NonEmpty(..))
 import           Data.Set                          (Set)
 import qualified Data.Set                          as Set
 import           Data.Text                         (Text)
@@ -856,8 +857,8 @@ networkRequest baseUri endpoint cmd = do
     getRequestKey :: MonadError NetworkError m => RequestKeys -> m RequestKey
     getRequestKey r =
       case _rkRequestKeys r of
-        (key :| []) -> pure key
-        _     -> throwError $ NetworkError_Other "Response contained more than one RequestKey."
+        key :| [] -> pure key
+        _         -> throwError $ NetworkError_Other "Response contained more than one RequestKey."
 
 
 -- Request building ....
