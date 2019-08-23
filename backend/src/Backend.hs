@@ -68,11 +68,11 @@ oAuthClientSecretPath prov =
   oAuthBackendCfgPath <> unOAuthProviderId (oAuthProviderId prov) <> "/client-secret"
 
 getConfig :: MonadIO m => Text -> m (Maybe Text)
-getConfig k = fmap (T.decodeUtf8With T.lenientDecode) . M.lookup k <$> liftIO getConfigs
+getConfig k = fmap (T.strip . T.decodeUtf8With T.lenientDecode) . M.lookup k <$> liftIO getConfigs
 
 -- | Retrieve the client id of a particular client from config.
 getOAuthClientSecret :: (IsOAuthProvider prov, MonadIO m) => prov -> m (Maybe OAuthClientSecret)
-getOAuthClientSecret = (fmap . fmap) (OAuthClientSecret . T.strip) . getConfig . oAuthClientSecretPath
+getOAuthClientSecret = (fmap . fmap) OAuthClientSecret . getConfig . oAuthClientSecretPath
 
 -- | Retrieve the client id of a particular client from config.
 --getOAuthClientId
@@ -94,7 +94,7 @@ buildCfg = do
 
   clientSecret <- getOAuthClientSecret OAuthProvider_GitHub
   Just baseRoute <- getConfig "common/route"
-  Just clientId <- fmap (OAuthClientId . T.strip) <$> getConfig (oAuthClientIdPath OAuthProvider_GitHub)
+  Just clientId <- fmap OAuthClientId <$> getConfig (oAuthClientIdPath OAuthProvider_GitHub)
   let oCfg = buildOAuthConfig' baseRoute clientId renderRoute
   liftIO $ BackendCfg oCfg (fmap (\x OAuthProvider_GitHub -> x) clientSecret) <$> newTlsManager
 
