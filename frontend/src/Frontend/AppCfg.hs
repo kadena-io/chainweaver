@@ -2,15 +2,12 @@
 module Frontend.AppCfg where
 
 import Common.Foundation as Common
-import Data.ByteString (ByteString)
 import Data.Text (Text)
-import Frontend.Crypto.Ed25519
 import Language.Javascript.JSaddle (JSM)
 import Reflex.Dom
 import qualified Data.Aeson as Aeson
 import Pact.Types.ChainMeta (TTLSeconds(..))
 import Pact.Types.Runtime (GasLimit(..))
-import Common.Network (ChainId(..))
 import Pact.Types.Command (Command)
 
 data SigningRequest = SigningRequest

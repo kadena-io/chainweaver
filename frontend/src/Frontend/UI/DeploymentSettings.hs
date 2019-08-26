@@ -164,7 +164,6 @@ userChainIdSelect m = mkLabeledClsInput (uiChainSelection mNodeInfo) labelText
 -- | UI for asking the user about data needed for deployments/function calling.
 uiCfg
   :: ( MonadWidget t m, HasNetwork model t, HasNetworkCfg mConf t, Monoid mConf
-     , HasWallet model t
      )
   => model
   -> m (Dynamic t (f ChainId))
@@ -201,8 +200,6 @@ uiEndpoint wChainId ep = do
 uiMetaData
   :: ( DomBuilder t m, MonadHold t m, MonadFix m, PostBuild t m
      , HasNetwork model t, HasNetworkCfg mConf t, Monoid mConf
-     , MonadIO (Performable m), PerformEvent t m, TriggerEvent t m
-     , HasWallet model t
      )
   => model -> m mConf
 uiMetaData m  = do
@@ -239,7 +236,7 @@ uiMetaData m  = do
       readPact wrapper =  fmap wrapper . readMay . T.unpack
 
 senderDropdown
-  :: ( Adjustable t m, Applicative m, PostBuild t m, DomBuilder t m
+  :: ( Adjustable t m, PostBuild t m, DomBuilder t m
      , TriggerEvent t m, PerformEvent t m
      , MonadIO (Performable m)
      )

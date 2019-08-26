@@ -25,7 +25,6 @@ module Frontend.UI.Dialogs.Signing
 
 import Control.Lens
 import Control.Monad (void)
-import Data.ByteString (ByteString)
 import Data.Text (Text)
 import Pact.Types.ChainMeta (PublicMeta(..))
 import Pact.Types.Hash (hash, hashToText, toUntypedHash, PactHash)
@@ -33,19 +32,14 @@ import Reflex
 import Reflex.Dom
 import Safe (readMay)
 
-import qualified Data.Map as M
-import qualified Data.Set as S
 import qualified Data.Text as T
 import qualified Data.Text.Encoding as T
-import qualified Data.Text.Encoding.Error as T
 import qualified Pact.Parse as Pact
 import qualified Pact.Types.ChainId as Pact
 import qualified Pact.Types.ChainMeta as Pact
 import qualified Pact.Types.Gas as Pact
 
-import Common.Network (ChainId(..))
 import Frontend.AppCfg
-import Frontend.Crypto.Ed25519
 import Frontend.Foundation hiding (Arg)
 import Frontend.Network
 import Frontend.UI.DeploymentSettings
@@ -85,15 +79,16 @@ uiSigning appCfg ideL signingRequest onCloseExternal = do
       defaultTTLSecs = 8 * 60 * 60 -- 8 hours
   onClose <- modalHeader $ text "Signing Request"
   modalMain $ do
-    results <- modalBody $ uiSegment mempty $ mdo
-      tabSelection <- holdDyn SigningTab_Preview tabChoice
-      (TabBar tabChoice) <- makeTabBar $ TabBarCfg
-        { _tabBarCfg_tabs = [SigningTab_Preview, SigningTab_Cfg, SigningTab_Keys]
-        , _tabBarCfg_mkLabel = const $ text . textSigningTab
-        , _tabBarCfg_selectedTab = Just <$> tabSelection
-        , _tabBarCfg_classes = mempty
-        , _tabBarCfg_type = TabBarType_Secondary
-        }
+    results <- modalBody $ uiSegment mempty $ do
+      rec
+        tabSelection <- holdDyn SigningTab_Preview tabChoice
+        (TabBar tabChoice) <- makeTabBar $ TabBarCfg
+          { _tabBarCfg_tabs = [SigningTab_Preview, SigningTab_Cfg, SigningTab_Keys]
+          , _tabBarCfg_mkLabel = const $ text . textSigningTab
+          , _tabBarCfg_selectedTab = Just <$> tabSelection
+          , _tabBarCfg_classes = mempty
+          , _tabBarCfg_type = TabBarType_Secondary
+          }
 
       _ <- tabPane mempty tabSelection SigningTab_Preview $ do
         divClass "group" $ do
@@ -111,7 +106,7 @@ uiSigning appCfg ideL signingRequest onCloseExternal = do
           let s = senderDropdown (ideL ^. network_meta) walletKeys
           sender <- case _signingRequest_sender signingRequest of
             Nothing -> _selectElement_value <$> mkLabeledInput s "Sender" def
-            Just s -> pure $ pure s
+            Just s' -> pure $ pure s'
 
           initGasPrice <- sample $ _pmGasPrice <$> current (ideL ^. network_meta)
           gp <- mkLabeledInput uiRealInputElement "Gas price" $ def
