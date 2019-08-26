@@ -311,6 +311,7 @@ funTypeInput json = \case
       let
         attrs = "class" =: "labeled-input__input input input_type_textarea input_type_secondary"
           <> "placeholder" =: "Input .."
+          <> noAutofillAttrs
         cfg = def
           & textAreaElementConfig_initialValue .~ iVal
           & initialAttributes .~ attrs
