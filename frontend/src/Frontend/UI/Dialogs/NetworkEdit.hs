@@ -305,7 +305,6 @@ uiNode onVal = do
         & initialAttributes .~ mconcat
           [ "class" =: "input_width_full"
           , "placeholder" =: "Add node"
-          , noAutofillAttrs
           ]
       let
         onInput = _inputElement_input nodeInput

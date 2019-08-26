@@ -46,6 +46,7 @@ module Frontend.UI.Widgets
   , setFocusOn
   , setFocusOnSelected
   , noAutofillAttrs
+  , addNoAutofillAttrs
   ) where
 
 ------------------------------------------------------------------------------
@@ -133,13 +134,16 @@ uiSelectElement uCfg child = do
 addInputElementCls :: Map AttributeName Text -> Map AttributeName Text
 addInputElementCls = addToClassAttr "input"
 
+addNoAutofillAttrs :: Map AttributeName Text -> Map AttributeName Text
+addNoAutofillAttrs = (noAutofillAttrs <>)
+
 
 -- | reflex-dom `inputElement` with pact-web default styling:
 uiInputElement
   :: DomBuilder t m
   => InputElementConfig er t (DomBuilderSpace m)
   -> m (InputElement er (DomBuilderSpace m) t)
-uiInputElement cfg = inputElement $ cfg & initialAttributes %~ addInputElementCls
+uiInputElement cfg = inputElement $ cfg & initialAttributes %~ (addInputElementCls . addNoAutofillAttrs)
 
 -- | uiInputElement which should always provide a proper real number.
 --
@@ -150,7 +154,7 @@ uiRealInputElement
   -> m (InputElement er (DomBuilderSpace m) t)
 uiRealInputElement cfg = do
     inputElement $ cfg & initialAttributes %~
-        (<> ("type" =: "number")) . addInputElementCls
+        (<> ("type" =: "number")) . addInputElementCls . addNoAutofillAttrs
 
 uiIntInputElement
   :: DomBuilder t m
@@ -158,7 +162,7 @@ uiIntInputElement
   -> m (InputElement er (DomBuilderSpace m) t)
 uiIntInputElement cfg = do
     r <- inputElement $ cfg & initialAttributes %~
-            (<> ("type" =: "number")) . addInputElementCls
+            (<> ("type" =: "number")) . addInputElementCls . addNoAutofillAttrs
     pure $ r
       { _inputElement_value = fmap fixNum $ _inputElement_value r
       , _inputElement_input = fmap fixNum $ _inputElement_input r
@@ -227,7 +231,7 @@ uiTextAreaElement
   -> m (TextAreaElement r (DomBuilderSpace m) t)
 uiTextAreaElement uCfg =
   let
-    cfg = uCfg & initialAttributes %~ addToClassAttr  "input input_type_textarea"
+    cfg = uCfg & initialAttributes %~ (addToClassAttr  "input input_type_textarea" . addNoAutofillAttrs)
   in
     textAreaElement cfg
 
@@ -291,7 +295,7 @@ validatedInputWithButton uCls check placeholder buttonText = do
       (update, checked, rawIn) <- elClass "div" "new-by-name_inputs" $ mdo
         name <- uiInputElement $ def
             & inputElementConfig_setValue .~ (T.empty <$ onConfirmed)
-            & initialAttributes .~ ("placeholder" =: placeholder <> "type" =: "text" <> "class" =: "new-by-name__input" <> noAutofillAttrs)
+            & initialAttributes .~ ("placeholder" =: placeholder <> "type" =: "text" <> "class" =: "new-by-name__input")
         let
           nameVal = T.strip <$> _inputElement_value name
           onEnter = keypress Enter name
