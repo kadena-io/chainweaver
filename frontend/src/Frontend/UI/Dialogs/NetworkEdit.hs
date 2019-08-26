@@ -293,19 +293,20 @@ uiNode
   :: MonadWidget t m
   => Dynamic t (Maybe NodeRef)
   -> m (Event t (Maybe NodeRef), MDynamic t (Either Text NodeInfo))
-uiNode nRefDups = do
-  -- Necessary for performance:
-  nRef <- holdUniqDyn nRefDups
-  onVal <- tagOnPostBuild nRef
+uiNode onVal = do
+  pb <- getPostBuild
 
   elClass "li" "table__row table__row_type_primary" $ do
     divClass "table__row-counter" blank
     onEdit <- divClass "table__cell table__cell_size_flex" $ do
-      let placeholderVal = maybe (Just "Add node") (const Nothing) <$> onVal
       nodeInput <- uiInputElement $ def
-        & inputElementConfig_setValue .~ (maybe "" renderNodeRef <$> onVal)
-        & initialAttributes .~ Map.insert "class" "input_width_full" noAutofillAttrs
-        & modifyAttributes .~ fmap ("placeholder" =:) placeholderVal
+        & inputElementConfig_setValue .~
+          attachWith (\mv _ -> maybe "" renderNodeRef mv) (current onVal) pb
+        & initialAttributes .~ mconcat
+          [ "class" =: "input_width_full"
+          , "placeholder" =: "Add node"
+          , noAutofillAttrs
+          ]
       let
         onInput = _inputElement_input nodeInput
         onUpdate = fmapMaybe id $ either (const Nothing) Just . parseNodeRefFull <$> onInput
@@ -334,10 +335,11 @@ uiNode nRefDups = do
 uiNodeStatus
   :: forall m t. MonadWidget t m
   => CssClass
-  -> Event t (Maybe NodeRef)
+  -> Dynamic t (Maybe NodeRef)
   -> m (MDynamic t (Either Text NodeInfo))
-uiNodeStatus cls unthrottled = do
-    mStatus <- throttle 2 unthrottled
+uiNodeStatus cls nodeRef = do
+    pb <- getPostBuild
+    mStatus <- throttle 2 $ leftmost [updated nodeRef, tag (current nodeRef) pb]
     elKlass "div" ("signal" <> cls) $ do
       onErrInfo <- performEventAsync $ getInfoAsync <$> mStatus
       errInfo <- holdDyn Nothing onErrInfo
