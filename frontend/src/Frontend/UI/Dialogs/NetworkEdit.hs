@@ -298,23 +298,20 @@ uiNode onVal = do
 
   elClass "li" "table__row table__row_type_primary" $ do
     divClass "table__row-counter" blank
-    onEdit <- divClass "table__cell table__cell_size_flex" $ do
-      nodeInput <- uiInputElement $ def
-        & inputElementConfig_setValue .~
-          attachWith (\mv _ -> maybe "" renderNodeRef mv) (current onVal) pb
-        & initialAttributes .~ mconcat
-          [ "class" =: "input_width_full"
-          , "placeholder" =: "Add node"
-          ]
-      let
-        onInput = _inputElement_input nodeInput
-        onUpdate = fmapMaybe id $ either (const Nothing) Just . parseNodeRefFull <$> onInput
-        onDelete = ffilter (T.null . T.strip) onInput
-      pure $ leftmost
-        [ Nothing <$ onDelete
-        , Just <$> onUpdate
+    nodeInput <- divClass "table__cell table__cell_size_flex" $ uiInputElement $ def
+      & inputElementConfig_setValue .~
+        attachWith (\mv _ -> maybe "" renderNodeRef mv) (current onVal) pb
+      & initialAttributes .~ mconcat
+        [ "class" =: "input_width_full"
+        , "placeholder" =: "Add node"
         ]
-    stat <- uiNodeStatus "table__cell table__cell_size_tiny" onVal
+    let
+      val = ffor (value nodeInput) $ \case
+        t | T.null (T.strip t) -> Just Nothing
+          | Right v <- parseNodeRefFull t -> Just (Just v)
+          | otherwise -> Nothing
+      onEdit = fmapMaybe id $ updated val
+    stat <- uiNodeStatus "table__cell table__cell_size_tiny" $ join <$> val
     pure (onEdit, stat)
 
   where
