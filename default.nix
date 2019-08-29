@@ -95,6 +95,16 @@ let
       <dict>
         <key>NSAllowsLocalNetworking</key>
         <true/>
+        <key>NSExceptionDomains</key>
+        <dict>
+          <key>chainweb.com</key>
+          <dict>
+            <key>NSIncludesSubdomains</key>
+            <true/>
+            <key>NSTemporaryExceptionAllowsInsecureHTTPLoads</key>
+            <true/>
+          </dict>
+        </dict>
       </dict>
     </dict>
     </plist>
