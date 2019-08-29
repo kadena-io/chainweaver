@@ -30,6 +30,7 @@ executable macApp
                , servant
                , servant-server
                , snap-core
+               , snap-server
                , temporary
                , text
                , wai-cors
