@@ -175,7 +175,8 @@ main = redirectPipes [stdout, stderr] $ do
           configs = M.fromList -- TODO don't embed all of these into binary
             [ ("common/route", route)
             --, ("common/networks", "remote-source:https://pact.kadena.io/networks")
-            , ("common/networks", "remote-source:https://pact-web.qa.obsidian.systems/networks")
+            --, ("common/networks", "remote-source:https://pact-web.qa.obsidian.systems/networks")
+            , ("common/networks", "remote-source:https://testnet.chainweb.com/networks")
             , ("common/oauth/github/client-id", "") -- TODO remove
             ]
       liftIO $ putStrLn "Starting frontend"

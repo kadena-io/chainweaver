@@ -184,7 +184,8 @@ makeWallet
   => WalletCfg t
   -> m (Wallet t)
 makeWallet conf = do
-    initialKeys <- (<> chainwebDefaultSenders) . fromMaybe Map.empty <$> loadKeys
+    --initialKeys <- (<> chainwebDefaultSenders) . fromMaybe Map.empty <$> loadKeys
+    initialKeys <- fromMaybe Map.empty <$> loadKeys
     let
       onGenKey = T.strip <$> conf ^. walletCfg_genKey
       onDelKey = ffilter (not . isPredefinedKey) $ _walletCfg_delKey conf
@@ -249,7 +250,8 @@ storeWallet_Keys = StoreWallet_Keys
 
 -- | Write key pairs to localstorage.
 storeKeys :: (HasStorage m, MonadJSM m) => KeyPairs -> m ()
-storeKeys ks = setItemStorage localStorage storeWallet_Keys (ks Map.\\ chainwebDefaultSenders)
+storeKeys ks = setItemStorage localStorage storeWallet_Keys ks
+--storeKeys ks = setItemStorage localStorage storeWallet_Keys (ks Map.\\ chainwebDefaultSenders)
 
 -- | Load key pairs from localstorage.
 loadKeys :: (HasStorage m, MonadJSM m) => m (Maybe KeyPairs)
