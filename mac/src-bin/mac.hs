@@ -181,7 +181,7 @@ main = redirectPipes [stdout, stderr] $ do
             [ ("common/route", route)
             --, ("common/networks", "remote-source:https://pact.kadena.io/networks")
             --, ("common/networks", "remote-source:https://pact-web.qa.obsidian.systems/networks")
-            , ("common/networks", "remote-source:https://testnet.chainweb.com/networks")
+            , ("common/networks", "remote-source:http://testnet.chainweb.com/networks")
             , ("common/oauth/github/client-id", "") -- TODO remove
             ]
       liftIO $ putStrLn "Starting frontend"
