@@ -31,7 +31,7 @@ import Control.Monad
 tagOnPostBuild :: PostBuild t m => Dynamic t a -> m (Event t a)
 tagOnPostBuild v = do
   onPostBuild <- getPostBuild
-  pure $ leftmost [ tag (current v) onPostBuild
+  pure $ leftmost [ tagPromptlyDyn v onPostBuild
                   , updated v
                   ]
 
