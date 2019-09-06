@@ -107,7 +107,7 @@ in obApp // rec {
     ${pkgs.sass}/bin/sass ${./backend/sass}/index.scss $out/sass.css
   '';
   # Mac app static linking
-  macBackend = pkgs.haskell.lib.overrideCabal obApp.ghc.mac (drv: {
+  macBackend = pkgs.haskell.lib.overrideCabal obApp.ghc.desktop (drv: {
     preBuild = ''
       mkdir include
       ln -s ${pkgs.darwin.cf-private}/Library/Frameworks/CoreFoundation.framework/Headers include/CoreFoundation

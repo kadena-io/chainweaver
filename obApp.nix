@@ -9,7 +9,7 @@ let
   getGhcVersion = ghc: if ghc.isGhcjs or false then ghc.ghcVersion else ghc.version;
   haskellLib = pkgs.haskell.lib;
 in
-  project ./. ({ pkgs, hackGet, ... }: {
+  project ./. ({ pkgs, hackGet, ... }: with pkgs.haskell.lib; {
     # android.applicationId = "systems.obsidian.obelisk.examples.minimal";
     # android.displayName = "Obelisk Minimal Example";
     # ios.bundleIdentifier = "systems.obsidian.obelisk.examples.minimal";
@@ -37,12 +37,14 @@ in
           obelisk-oauth-backend = hackGet ./deps/obelisk-oauth + /backend;
           # Needed for obelisk-oauth currently (ghcjs support mostly):
           entropy = hackGet ./deps/entropy;
+          cardano-crypto = hackGet ./deps/cardano-crypto;
+          desktop = ./desktop;
       };
 
     overrides = let
       inherit (pkgs) lib;
-      mac = self: super: {
-        mac = self.callCabal2nix "mac" ./mac {};
+      desktop-overlay = self: super: {
+        ether = haskellLib.doJailbreak super.ether;
       };
       guard-ghcjs-overlay = self: super:
         let hsNames = [ "cacophony" "haskeline" "katip" "ridley" ];
@@ -100,7 +102,7 @@ in
                    inherit sha256;
                  }) {};
          in {
-            intervals = pkgs.haskell.lib.dontCheck super.intervals;
+            intervals = dontCheck super.intervals;
 
             pact = pkgs.haskell.lib.overrideCabal super.pact (drv: {
               testSystemDepends = (drv.testSystemDepends or []) ++ [ pkgs.z3 ];
@@ -151,7 +153,7 @@ in
             frontend = pkgs.haskell.lib.dontHaddock super.frontend;
           };
     in self: super: lib.foldr lib.composeExtensions (_: _: {}) [
-      mac
+      desktop-overlay
       common-overlay
       (optionalExtension (super.ghc.isGhcjs or false) guard-ghcjs-overlay)
       (optionalExtension (super.ghc.isGhcjs or false) ghcjs-overlay)
