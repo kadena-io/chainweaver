@@ -8,13 +8,17 @@
 
 module Desktop where
 
+import Data.String (fromString)
+import Data.Either (isRight, isLeft)
+import Control.Applicative (liftA2)
 import Control.Lens ((<>~))
-import Control.Monad (void)
+import Control.Monad (void, unless)
 import Control.Monad.Fix (MonadFix)
 import Control.Monad.IO.Class
 import Language.Javascript.JSaddle (liftJSM)
 import Data.ByteString (ByteString)
 import Data.Foldable (for_)
+import Data.Maybe (isJust)
 import qualified Data.ByteString.Char8 as BSC
 import Data.ByteArray (ByteArrayAccess)
 import qualified Data.ByteArray as BA
@@ -80,6 +84,10 @@ desktop = Frontend
         text ".fullscreen .button_type_confirm:not([disabled]) { background-color: #ed098f; }"
         text ".fullscreen .wrapper { max-width: 40rem; text-align: center; }"
         text ".fullscreen .wrapper .logo { width: 20rem; }"
+        text ".fullscreen textarea.wallet-recovery-phrase { display: block; width: 30rem; height: 6rem; font-size: 18px; margin: 2rem auto; }"
+        text ".fullscreen .bip39-passphrase { display: block; margin: 1rem auto; }"
+        text ".fullscreen .bip39-passphrase.hidden { display: none; }"
+        text ".fullscreen .error-message { margin: 2rem auto; background-color: rgba(0,0,0,0.4); border-radius: 0.3rem; padding: 0.5rem; }"
         text ".button_hidden { display: none; }"
         text ".group.group_buttons { text-align: center; }"
         text "button { margin: 0.2rem; }"
@@ -90,7 +98,7 @@ desktop = Frontend
 
     divClass "fullscreen" $ divClass "wrapper" $ do
       elAttr "img" ("src" =: static @"img/Klogo.png" <> "class" =: "logo") blank
-      workflow $ createNewWallet Nothing
+      workflow splashScreen
 
     --prerender_ blank $ do
     do
@@ -114,6 +122,58 @@ baToText = T.decodeUtf8 . BA.pack . BA.unpack
 
 type SetupWF t m = Workflow t m (Event t ())
 
+splashScreen :: MonadWidget t m => SetupWF t m
+splashScreen = Workflow $ do
+  el "h1" $ text "Welcome to the Kadena Wallet"
+  create <- confirmButton def "Setup a new wallet"
+  recover <- uiButton btnCfgSecondary $ text "Recover an existing wallet"
+  pure $ (,) never $ leftmost
+    [ createNewWallet Nothing <$ create
+    , recoverWallet <$ recover
+    ]
+
+data BIP39PhraseError
+  = BIP39PhraseError_Dictionary Crypto.DictionaryError
+  | BIP39PhraseError_MnemonicWordsErr Crypto.MnemonicWordsError
+  | BIP39PhraseError_InvalidPhrase
+
+recoverWallet :: MonadWidget t m => SetupWF t m
+recoverWallet = Workflow $ do
+  el "h1" $ text "Recover your wallet"
+  el "p" $ text "Type in your recovery phrase"
+  rawPhrase :: Dynamic t Text <- fmap value $ uiTextAreaElement $ def & initialAttributes .~ "class" =: "wallet-recovery-phrase"
+  let sentenceOrError = ffor rawPhrase $ \t -> do
+        phrase <- first BIP39PhraseError_MnemonicWordsErr . Crypto.mnemonicPhrase @15 . fmap (fromString . T.unpack) $ T.words t
+        unless (Crypto.checkMnemonicPhrase Crypto.english phrase) $ Left BIP39PhraseError_InvalidPhrase
+        first BIP39PhraseError_Dictionary $ Crypto.mnemonicPhraseToMnemonicSentence Crypto.english phrase
+  passphrase <- divClass "checkbox-wrapper" $ do
+    usePassphrase <- fmap value $ uiCheckbox def False def $ text "Use a BIP39 passphrase"
+    fmap value $ uiInputElement $ def
+      & initialAttributes .~ "type" =: "password" <> "placeholder" =: "BIP39 passphrase" <> "class" =: "hidden bip39-passphrase"
+      & modifyAttributes .~ ffor (updated usePassphrase)
+        (\u -> if u then "class" =: Just "input bip39-passphrase" else "class" =: Just "hidden bip39-passphrase")
+  let mkClass = \case Left _ -> "button_type_secondary"; _ -> "button_type_confirm"
+  rec
+    dyn_ $ ffor lastError $ \case
+      Nothing -> pure ()
+      Just e -> divClass "error-message" $ text $ case e of
+        BIP39PhraseError_MnemonicWordsErr (Crypto.ErrWrongNumberOfWords actual expected)
+          -> "Wrong number of words: expected " <> T.pack (show expected) <> ", but got " <> T.pack (show actual)
+        BIP39PhraseError_InvalidPhrase -> "Invalid phrase"
+        BIP39PhraseError_Dictionary (Crypto.ErrInvalidDictionaryWord word)
+          -> "Invalid word in phrase: " <> baToText word
+    cancel <- cancelButton def "Cancel"
+    next <- uiButtonDyn (def & uiButtonCfg_class .~ fmap mkClass sentenceOrError) $ text "Next"
+    let (err, sentence) = fanEither $ current sentenceOrError <@ next
+    lastError <- holdDyn Nothing $ Just <$> err
+  let toSeed :: Crypto.ValidMnemonicSentence mw => Text -> Crypto.MnemonicSentence mw -> Crypto.Seed
+      toSeed p s = Crypto.sentenceToSeed s Crypto.english . fromString $ T.unpack p
+      seed = attachWith toSeed (current passphrase) sentence
+  pure $ (,) never $ leftmost
+    [ splashScreen <$ cancel
+    , setPassword recoverWallet <$> seed
+    ]
+
 -- | UI for generating and displaying a new mnemonic sentence.
 createNewWallet
   :: MonadWidget t m
@@ -136,10 +196,10 @@ createNewWallet mMnemonic = Workflow $ do
 
   cancel <- cancelButton def "Cancel"
   next <- confirmButton (def & uiButtonCfg_disabled .~ fmap not stored) "Next"
-  pure
-    ( cancel
+  pure $ (,) never $ leftmost
+    [ splashScreen <$ cancel
     , attachWithMaybe (\e () -> either (const Nothing) (Just . confirmPhrase) e) (current mnemonic) next
-    )
+    ]
 
 -- | Display a list of items, returning tagged events
 switchList :: (Adjustable t m, MonadHold t m, PostBuild t m, MonadFix m) => Dynamic t [a] -> (Dynamic t a -> m (Event t ())) -> m (Event t a)
@@ -182,23 +242,31 @@ confirmPhrase mnemonic = Workflow $ do
   next <- confirmButton (def & uiButtonCfg_disabled .~ fmap not done) "Next"
   pure $ (,) never $ leftmost
     [ createNewWallet (Just mnemonic) <$ back
-    , setPassword mnemonic <$ (gate (current done) next <> skip)
+    , setPassword (createNewWallet Nothing) (Crypto.sentenceToSeed mnemonic Crypto.english "")
+      <$ (gate (current done) next <> skip)
     ]
 
 setPassword
   :: MonadWidget t m
-  => Crypto.MnemonicSentence 15
+  => SetupWF t m
+  -> Crypto.Seed
   -> SetupWF t m
-setPassword mnemonic = Workflow $ do
+setPassword previous seed = Workflow $ do
   el "h1" $ text "Set a password"
   el "p" $ text "This password will protect your wallet. You'll need it when signing transactions."
-  uiInputElement def
-  uiInputElement def
+  p1 <- fmap value $ uiInputElement $ def & initialAttributes .~ "type" =: "password"
+  p2 <- fmap value $ uiInputElement $ def & initialAttributes .~ "type" =: "password"
+  display $ liftA2 (==) p1 p2
   back <- cancelButton def "Back"
   next <- cancelButton def "Next"
   pure $ (,) never $ leftmost
-    [ createNewWallet Nothing <$ back
+    [ previous <$ back
     ]
+  where
+    minPasswordLength = 10
+    checkPassword p
+      | T.length p > minPasswordLength = Just p
+      | otherwise = Nothing
 
     -- These two match iancoleman bip39
     --let seedNoPass = Crypto.sentenceToSeed sentence Crypto.english ""
