@@ -169,7 +169,7 @@ codeWidget appCfg anno iv sv = do
                  , _aceConfigElemAttrs = "class" =: "ace-code ace-widget"
                  , _aceConfigReadOnly = _appCfg_editorReadOnly appCfg
                  }
-    ace <- resizableAceWidget mempty ac (AceDynConfig Nothing) anno iv sv
+    ace <- resizableAceWidget (_appCfg_forceResize appCfg) mempty ac (AceDynConfig Nothing) anno iv sv
     return $ _extendedACE_onUserChange ace
 
 

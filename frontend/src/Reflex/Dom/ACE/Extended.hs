@@ -55,17 +55,18 @@ instance ToJSVal AceAnnotation where
 --   modify the CSS position attribute.
 resizableAceWidget
     :: forall t m. MonadWidget t m
-    => Map Text Text
+    => Event t ()
+    -> Map Text Text
     -> AceConfig
     -> AceDynConfig
     -> Event t [AceAnnotation]
     -> Text
     -> Event t Text
     -> m (ExtendedACE t)
-resizableAceWidget attrs ac adc onAnnotations initContents onNewContent = do
+resizableAceWidget externalResize attrs ac adc onAnnotations initContents onNewContent = do
   let fullAttrs = attrs <> "class" =: "ace_container"
   (onResize, editor) <- resizeDetectorWithAttrsAbsolute fullAttrs $ extendedAceWidget ac adc onAnnotations initContents onNewContent
-  resizeEditor onResize (_extendedACE_baseACE editor)
+  resizeEditor (externalResize <> onResize) (_extendedACE_baseACE editor)
   pure editor
 
 extendedAceWidget

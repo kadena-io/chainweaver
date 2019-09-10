@@ -13,7 +13,7 @@ module Desktop (desktop, fileStorage) where
 import Control.Applicative (liftA2)
 import Control.Exception (try, catch)
 import Control.Lens ((?~))
-import Control.Monad (when, (<=<), guard)
+import Control.Monad (when, (<=<), guard, void)
 import Control.Monad.IO.Class
 import Data.Bimap (Bimap)
 import Data.ByteString (ByteString)
@@ -156,7 +156,6 @@ body { display: flex; flex-direction: row; }
 .page.wallet table .numeric { text-align: right; }
 .button_hidden { display: none; }
 .group.group_buttons { text-align: center; }
-.page:not(.contracts) button { margin: 0.2rem; }
 .page:not(.contracts) button.button_type_confirm { border: none; background-color: rgb(30,40,50); font-weight: normal; }
 .page:not(.contracts) button.button_type_confirm { background: linear-gradient(180deg, rgb(40,50,60) 0%, rgb(20,30,40) 100%); }
 .page:not(.contracts) button.button_type_confirm:hover:not([disabled]) { background: linear-gradient(180deg, rgb(60,70,80) 0%, rgb(40,50,60) 100%); }
@@ -197,6 +196,7 @@ walletMain
   -- ^ Root key
   -> Workflow t m ()
 walletMain root = Workflow $ do
+  pb <- getPostBuild
   page <- walletSidebar
   let pageDemux = demux page
       mkPage :: Page -> Text -> m a -> m a
@@ -212,6 +212,7 @@ walletMain root = Workflow $ do
           , _appCfg_editorReadOnly = False
           , _appCfg_signingRequest = never
           , _appCfg_signingResponse = \_ -> pure ()
+          , _appCfg_forceResize = void (updated page) <> pb
           }
     _ <- Frontend.ReplGhcjs.app appCfg
     pure ()

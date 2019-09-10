@@ -12,6 +12,7 @@ library
     , frontend
 
     , base16-bytestring
+    , bimap
     , bytestring
     , cardano-crypto
     , cryptonite
@@ -31,7 +32,6 @@ executable macApp
   build-depends:
       base
     , backend
-    , bimap
     , common
     , frontend
     , desktop

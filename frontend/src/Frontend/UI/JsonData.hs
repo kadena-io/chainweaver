@@ -252,6 +252,6 @@ dataEditor anno iv sv = do
     let ac = def { _aceConfigMode = Just "ace/mode/json"
                  , _aceConfigElemAttrs = "class" =: "ace-data ace-widget"
                  }
-    ace <- resizableAceWidget
+    ace <- resizableAceWidget never
       mempty ac (AceDynConfig Nothing) anno iv sv
     return $ _extendedACE_onUserChange ace

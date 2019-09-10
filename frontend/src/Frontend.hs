@@ -60,6 +60,7 @@ frontend = Frontend
       , _appCfg_editorReadOnly = False
       , _appCfg_signingRequest = never
       , _appCfg_signingResponse = \_ -> pure ()
+      , _appCfg_forceResize = never
       }
   }
 
