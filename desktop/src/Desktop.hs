@@ -147,7 +147,8 @@ body { display: flex; flex-direction: row; }
 .page h1 { font-size: 1.5rem; margin-top: 2rem; margin-bottom: 1rem; color: rgb(30,40,50); }
 .page h1:first-child { margin-top: 0; }
 .page.visible { display: block; }
-.page.contracts { margin: 0; }
+.page.contracts { margin: 0; flex-direction: column; }
+.page.contracts.visible { display: flex; }
 .page.wallet .key { font-family: monospace; color: #444; font-size: 16px; }
 .page.wallet .key.root { padding: 1rem; background-color: white; border-radius: 4px; display: inline-block; }
 .page.wallet table { margin: 1rem 0; border-spacing: 1rem; }
@@ -155,10 +156,10 @@ body { display: flex; flex-direction: row; }
 .page.wallet table .numeric { text-align: right; }
 .button_hidden { display: none; }
 .group.group_buttons { text-align: center; }
-button { margin: 0.2rem; }
-button.button_type_confirm { border: none; background-color: rgb(30,40,50); font-weight: normal; }
-button.button_type_confirm { background: linear-gradient(180deg, rgb(40,50,60) 0%, rgb(20,30,40) 100%); }
-button.button_type_confirm:hover:not([disabled]) { background: linear-gradient(180deg, rgb(60,70,80) 0%, rgb(40,50,60) 100%); }
+.page:not(.contracts) button { margin: 0.2rem; }
+.page:not(.contracts) button.button_type_confirm { border: none; background-color: rgb(30,40,50); font-weight: normal; }
+.page:not(.contracts) button.button_type_confirm { background: linear-gradient(180deg, rgb(40,50,60) 0%, rgb(20,30,40) 100%); }
+.page:not(.contracts) button.button_type_confirm:hover:not([disabled]) { background: linear-gradient(180deg, rgb(60,70,80) 0%, rgb(40,50,60) 100%); }
 form.inline { margin: 1rem 0; border-radius: 4px; display: inline-block; }
 form.inline > input { width: 12rem; margin: 0; margin-right: 1rem; }
 form.inline > button { margin: 0; }
