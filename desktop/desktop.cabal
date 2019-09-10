@@ -16,7 +16,11 @@ library
     , cardano-crypto
     , cryptonite
     , memory
-  exposed-modules: Desktop
+    , raw-strings-qq
+  exposed-modules:
+      Desktop
+    , Desktop.Orphans
+    , Desktop.Setup
   ghc-options: -Wall
 
 executable macApp
@@ -27,6 +31,7 @@ executable macApp
   build-depends:
       base
     , backend
+    , bimap
     , common
     , frontend
     , desktop

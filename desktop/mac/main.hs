@@ -207,29 +207,6 @@ main = redirectPipes [stdout, stderr] $ do
           pure ()
         }
 
-fileStorage :: FilePath -> Storage
-fileStorage libPath = Storage
-  { _storage_get = \_ k -> liftIO $ do
-    try (BS.readFile $ path k) >>= \case
-      Left (e :: IOError) -> do
-        putStrLn $ "Error reading storage: " <> show e <> " : " <> path k
-        pure Nothing
-      Right v -> do
-        let result = Aeson.decodeStrict v
-        when (isNothing result) $ do
-          T.putStrLn $ "Error reading storape: can't decode contents: " <>
-            T.decodeUtf8With T.lenientDecode v
-        pure result
-  , _storage_set = \_ k a -> liftIO $
-    catch (LBS.writeFile (path k) (Aeson.encode a)) $ \(e :: IOError) -> do
-      putStrLn $ "Error writing storage: " <> show e <> " : " <> path k
-  , _storage_remove = \_ k -> liftIO $
-    catch (Directory.removeFile (path k)) $ \(e :: IOError) -> do
-      putStrLn $ "Error removing storage: " <> show e <> " : " <> path k
-  }
-    where path :: Show a => a -> FilePath
-          path k = libPath </> FilePath.makeValid (show k)
-
 -- | Push writes to the given 'MVar' into an 'Event'.
 mvarTriggerEvent
   :: (PerformEvent t m, TriggerEvent t m, MonadIO m, MonadIO (Performable m), PostBuild t m)

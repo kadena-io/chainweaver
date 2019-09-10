@@ -1,68 +1,97 @@
+{-# LANGUAGE ConstraintKinds #-}
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE QuasiQuotes #-}
 {-# LANGUAGE RecursiveDo #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE StandaloneDeriving #-}
 {-# LANGUAGE TypeApplications #-}
 
-module Desktop where
+module Desktop (desktop, fileStorage) where
 
-import Data.String (fromString)
-import Data.Either (isRight, isLeft)
 import Control.Applicative (liftA2)
-import Control.Lens ((<>~))
-import Control.Monad (void, unless)
-import Control.Monad.Fix (MonadFix)
+import Control.Exception (try, catch)
+import Control.Lens ((?~))
+import Control.Monad (when, (<=<), guard)
 import Control.Monad.IO.Class
-import Language.Javascript.JSaddle (liftJSM)
+import Data.Bimap (Bimap)
 import Data.ByteString (ByteString)
 import Data.Foldable (for_)
-import Data.Maybe (isJust)
-import qualified Data.ByteString.Char8 as BSC
-import Data.ByteArray (ByteArrayAccess)
-import qualified Data.ByteArray as BA
-import qualified Data.ByteString.Base16 as B16
+import Data.Map (Map)
+import Data.Maybe (isNothing, fromMaybe, catMaybes)
+import Data.Set (Set)
 import Data.Text (Text)
-import qualified Data.List as L
+import Language.Javascript.JSaddle (liftJSM)
+import Reflex.Dom.Core
+import System.FilePath ((</>))
+import qualified Cardano.Crypto.Wallet as Crypto
+import qualified Crypto.PubKey.Ed25519 as Ed25519
+import qualified Data.Aeson as Aeson
+import qualified Data.Bimap as Bimap
+import qualified Data.ByteString as BS
+import qualified Data.ByteString.Base16 as B16
+import qualified Data.ByteString.Lazy as LBS
 import qualified Data.Map as M
 import qualified Data.Set as S
 import qualified Data.Text as T
 import qualified Data.Text.Encoding as T
-import qualified Crypto.PubKey.Ed25519 as Ed25519
-import qualified Crypto.Error as Ed25519
-import qualified Crypto.Random.Entropy
+import qualified Data.Text.Encoding.Error as T
+import qualified Data.Text.IO as T
+import qualified System.Directory as Directory
+import qualified System.FilePath as FilePath
+import qualified Text.RawString.QQ as QQ
 
-import qualified Crypto.Encoding.BIP39 as Crypto
-import qualified Crypto.Encoding.BIP39.English as Crypto
-import qualified Cardano.Crypto.Wallet as Crypto
-import qualified Cardano.Crypto.Wallet.Encrypted as Crypto
-
-import Data.Bifunctor
-import Obelisk.Route
+import Common.Api (getConfigRoute)
+import Common.Route
+import Frontend.AppCfg
+import Frontend.ModuleExplorer.Impl (loadEditorFromLocalStorage)
+import Frontend.Storage
+import Frontend.UI.Button
+import Frontend.UI.Icon
+import Frontend.UI.Widgets
 import Obelisk.Configs
 import Obelisk.Frontend
-import Common.Route
-import Reflex.Dom.Core
-import Common.Api (getConfigRoute)
+import Obelisk.Route
+import Obelisk.Route.Frontend
 import qualified Frontend
 import qualified Frontend.ReplGhcjs
-import Frontend.ModuleExplorer.Impl (loadEditorFromLocalStorage)
-import Frontend.AppCfg
-import Frontend.Storage
-import Obelisk.Generated.Static
 
-import Frontend.UI.Button
-import Frontend.UI.Widgets
+import Desktop.Orphans ()
+import Desktop.Setup
 
 data Wallet a where
-  Wallet :: Wallet ()
+  Wallet_RootKey :: Wallet Crypto.XPrv
+  Wallet_ChildKeys :: Wallet (Map Crypto.DerivationIndex Crypto.XPrv)
+  Wallet_NamedKeys :: Wallet (Bimap Text Ed25519.PublicKey)
 deriving instance Show (Wallet a)
 
--- | This is for dev.
--- TODO allow `ob run` to use this like `ob run desktop Desktop.desktop`.
--- Right now you have to unpack obelisk and edit the references to
--- Frontend/frontend accordingly.
+-- | Store items as files in the given directory, using the key as the file name
+fileStorage :: FilePath -> Storage
+fileStorage dir = Storage
+  { _storage_get = \_ k -> liftIO $ do
+    try (BS.readFile $ path k) >>= \case
+      Left (e :: IOError) -> do
+        putStrLn $ "Error reading storage: " <> show e <> " : " <> path k
+        pure Nothing
+      Right v -> do
+        let result = Aeson.decodeStrict v
+        when (isNothing result) $ do
+          T.putStrLn $ "Error reading storape: can't decode contents: " <>
+            T.decodeUtf8With T.lenientDecode v
+        pure result
+  , _storage_set = \_ k a -> liftIO $
+    catch (LBS.writeFile (path k) (Aeson.encode a)) $ \(e :: IOError) -> do
+      putStrLn $ "Error writing storage: " <> show e <> " : " <> path k
+  , _storage_remove = \_ k -> liftIO $
+    catch (Directory.removeFile (path k)) $ \(e :: IOError) -> do
+      putStrLn $ "Error removing storage: " <> show e <> " : " <> path k
+  }
+    where path :: Show a => a -> FilePath
+          path k = dir </> FilePath.makeValid (show k)
+
+-- | This is for development
+-- > ob run --import desktop:Desktop --frontend Desktop.desktop
 desktop :: Frontend (R FrontendRoute)
 desktop = Frontend
   { _frontend_head = prerender_ blank $ do
@@ -70,283 +99,237 @@ desktop = Frontend
             checkEncoder backendRouteEncoder
       base <- getConfigRoute
       _ <- Frontend.newHead $ \r -> base <> renderBackendRoute backendEncoder r
-      el "style" $ do
-        text ".fullscreen { width: 100vw; height: 100vh; display: flex; justify-content: center; align-items: center; color: #fff; }"
-        text ".fullscreen { background: rgb(30,40,50); background: radial-gradient(circle, rgba(40,50,60,1) 0%, rgba(27,30,46,1) 100%); }"
-        text ".fullscreen .checkbox-wrapper { margin: 2rem auto; }"
-        text ".fullscreen .checkbox { font-size: 20px; color: #fff; text-align: left; display: inline-block; padding-left: 40px; }"
-        text ".fullscreen .checkbox .checkbox__checkmark { top: 2px; height: 20px; width: 20px; }"
-        text ".fullscreen .checkbox input:checked ~ .checkbox__checkmark { background-color: #ed098f; border-color: #ed098f }"
-        text ".fullscreen .checkbox .checkbox__checkmark_type_secondary:after { top: 2px; left: 6px; width: 3px; height: 10px; }"
-        text ".fullscreen .button { background-color: #ddd; color: #333; }"
-        text ".fullscreen .group { color: #222; margin: 2rem 0; }"
-        text ".fullscreen .group.dark { background-color: rgba(0,0,0,0.3); }"
-        text ".fullscreen .button_type_confirm:not([disabled]) { background-color: #ed098f; }"
-        text ".fullscreen .wrapper { max-width: 40rem; text-align: center; }"
-        text ".fullscreen .wrapper .logo { width: 20rem; }"
-        text ".fullscreen textarea.wallet-recovery-phrase { display: block; width: 30rem; height: 6rem; font-size: 18px; margin: 2rem auto; }"
-        text ".fullscreen .bip39-passphrase { display: block; margin: 1rem auto; }"
-        text ".fullscreen .bip39-passphrase.hidden { display: none; }"
-        text ".fullscreen .error-message { margin: 2rem auto; background-color: rgba(0,0,0,0.4); border-radius: 0.3rem; padding: 0.5rem; }"
-        text ".button_hidden { display: none; }"
-        text ".group.group_buttons { text-align: center; }"
-        text "button { margin: 0.2rem; }"
-        text "button.button_type_confirm { border-color: #ed098f; }"
+      el "style" $ text desktopCss
       pure ()
-  , _frontend_body = prerender_ blank $ flip runStorageT browserStorage $ do
-    getItemStorage localStorage Wallet
-
-    divClass "fullscreen" $ divClass "wrapper" $ do
-      elAttr "img" ("src" =: static @"img/Klogo.png" <> "class" =: "logo") blank
-      workflow splashScreen
-
-    --prerender_ blank $ do
-    do
-      (fileOpened, triggerOpen) <- Frontend.openFileDialog
-      let appCfg = AppCfg
-            { _appCfg_gistEnabled = False
-            , _appCfg_externalFileOpened = fileOpened
-            , _appCfg_openFileDialog = liftJSM triggerOpen
-            , _appCfg_loadEditor = loadEditorFromLocalStorage
-            , _appCfg_editorReadOnly = False
-            , _appCfg_signingRequest = never
-            , _appCfg_signingResponse = \_ -> pure ()
-            }
-      _ <- Frontend.ReplGhcjs.app appCfg
-      pure ()
+  , _frontend_body = prerender_ blank $ flip runStorageT browserStorage $ runWallet
   }
 
--- | Convenience function for unpacking byte array things into 'Text'
-baToText :: ByteArrayAccess b => b -> Text
-baToText = T.decodeUtf8 . BA.pack . BA.unpack
+desktopCss :: Text
+desktopCss = [QQ.r|
+.fullscreen { width: 100vw; height: 100vh; display: flex; justify-content: center; align-items: center; color: #fff; }
+.fullscreen { background: rgb(30,40,50); background: radial-gradient(circle, rgba(40,50,60,1) 0%, rgba(27,30,46,1) 100%); }
+.fullscreen p { margin: 2rem auto; }
+.fullscreen .checkbox-wrapper { margin: 2rem auto; }
+.fullscreen .checkbox { font-size: 20px; color: #fff; text-align: left; display: inline-block; padding-left: 40px; }
+.fullscreen .checkbox .checkbox__checkmark { top: 2px; height: 20px; width: 20px; }
+.fullscreen .checkbox input:checked ~ .checkbox__checkmark { background-color: #ed098f; border-color: #ed098f }
+.fullscreen .checkbox .checkbox__checkmark_type_secondary:after { top: 2px; left: 6px; width: 3px; height: 10px; }
+.fullscreen .button { background-color: #ddd; color: #333; }
+.fullscreen .group { color: #222; margin: 2rem 0; }
+.fullscreen .group.dark { background-color: rgba(0,0,0,0.3); }
+.fullscreen .button_type_confirm:not([disabled]) { background-color: #ed098f; }
+.fullscreen .wrapper { max-width: 40rem; text-align: center; }
+.fullscreen .wrapper .logo { width: 20rem; margin: 0 auto; font-size: 30px; }
+.fullscreen textarea.wallet-recovery-phrase { display: block; width: 30rem; height: 6rem; font-size: 18px; margin: 2rem auto; }
+.fullscreen .passphrase { display: block; margin: 1rem auto; width: 20rem; }
+.fullscreen .passphrase.hidden { display: none; }
+.fullscreen .message-wrapper { margin: 2rem auto; }
+.fullscreen .message-wrapper > .message { background-color: rgba(0,0,0,0.4); border-radius: 0.3rem; padding: 0.5rem; display: inline-block; }
+.logo { position: relative; font-size: 20px; font-weight: bold; color: white; }
+.logo > img { width: 100%; }
+.logo > span { position: absolute; bottom: 0; right: 0; }
+body { display: flex; flex-direction: row; }
+.sidebar.closed { width: 0; }
+.sidebar { display: flex; flex-direction: column; width: 15rem; overflow: hidden; transition: width 0.2s; z-index: 1; }
+.sidebar { background: rgb(30,40,50); background: linear-gradient(90deg, rgb(40,50,60) 0%, rgb(34,40,53) 100%); }
+.sidebar .logo { width: 13rem; margin: 1rem; }
+.sidebar-control { font-size: 2rem; cursor: pointer; }
+.sidebar-control.opener { color: rgb(30,40,50); position: absolute; top: 4.8rem; left: 0.5rem; z-index: 1; }
+.sidebar-control.closer { display: block; color: white; margin: 1rem; margin-top: -1rem; text-align: right; }
+.sidebar > .sidebar-item { padding: 1rem; color: rgb(160,180,200); text-decoration: none; }
+.sidebar > .sidebar-item:hover, .sidebar > .sidebar-item:focus { background-color: rgba(0,0,0,0.1); }
+.sidebar > .sidebar-item.selected { font-weight: bold; background-color: rgba(0,0,0,0.2); }
+.sidebar > button { border-radius: 4px; border: 0px; padding: 1rem; margin: 1rem; font-size: 16px; cursor: pointer; }
+.sidebar > button { background-color: rgba(0,0,0,0.2); color: rgb(160,180,200); }
+.sidebar > button:hover, .sidebar > button:focus { background-color: rgba(0,0,0,0.1) }
+.page { display: none; flex-grow: 1; margin: 2rem; }
+.page h1 { font-size: 1.5rem; margin-top: 2rem; margin-bottom: 1rem; color: rgb(30,40,50); }
+.page h1:first-child { margin-top: 0; }
+.page.visible { display: block; }
+.page.contracts { margin: 0; }
+.page.wallet .key { font-family: monospace; color: #444; font-size: 16px; }
+.page.wallet .key.root { padding: 1rem; background-color: white; border-radius: 4px; display: inline-block; }
+.page.wallet table { margin: 1rem 0; border-spacing: 1rem; }
+.page.wallet table th { text-align: left; }
+.page.wallet table .numeric { text-align: right; }
+.button_hidden { display: none; }
+.group.group_buttons { text-align: center; }
+button { margin: 0.2rem; }
+button.button_type_confirm { border: none; background-color: rgb(30,40,50); font-weight: normal; }
+button.button_type_confirm { background: linear-gradient(180deg, rgb(40,50,60) 0%, rgb(20,30,40) 100%); }
+button.button_type_confirm:hover:not([disabled]) { background: linear-gradient(180deg, rgb(60,70,80) 0%, rgb(40,50,60) 100%); }
+form.inline { margin: 1rem 0; border-radius: 4px; display: inline-block; }
+form.inline > input { width: 12rem; margin: 0; margin-right: 1rem; }
+form.inline > button { margin: 0; }
+form.inline > input { width: 12rem; }
+form .messages { background-color: rgba(30,40,50,0.2); border-radius: 4px; padding: 0.5rem; list-style-type: none; }
+form .messages > li { padding: 0.5rem; }
+form .header { color: rgb(30,40,50); font-weight: bold; font-size: 18px; margin: 1rem 0; }
+form .header .detail { color: #666; font-weight: normal; font-size: 14px; }
+|]
 
-type SetupWF t m = Workflow t m (Event t ())
-
-splashScreen :: MonadWidget t m => SetupWF t m
-splashScreen = Workflow $ do
-  el "h1" $ text "Welcome to the Kadena Wallet"
-  create <- confirmButton def "Setup a new wallet"
-  recover <- uiButton btnCfgSecondary $ text "Recover an existing wallet"
-  pure $ (,) never $ leftmost
-    [ createNewWallet Nothing <$ create
-    , recoverWallet <$ recover
-    ]
-
-data BIP39PhraseError
-  = BIP39PhraseError_Dictionary Crypto.DictionaryError
-  | BIP39PhraseError_MnemonicWordsErr Crypto.MnemonicWordsError
-  | BIP39PhraseError_InvalidPhrase
-
-recoverWallet :: MonadWidget t m => SetupWF t m
-recoverWallet = Workflow $ do
-  el "h1" $ text "Recover your wallet"
-  el "p" $ text "Type in your recovery phrase"
-  rawPhrase :: Dynamic t Text <- fmap value $ uiTextAreaElement $ def & initialAttributes .~ "class" =: "wallet-recovery-phrase"
-  let sentenceOrError = ffor rawPhrase $ \t -> do
-        phrase <- first BIP39PhraseError_MnemonicWordsErr . Crypto.mnemonicPhrase @15 . fmap (fromString . T.unpack) $ T.words t
-        unless (Crypto.checkMnemonicPhrase Crypto.english phrase) $ Left BIP39PhraseError_InvalidPhrase
-        first BIP39PhraseError_Dictionary $ Crypto.mnemonicPhraseToMnemonicSentence Crypto.english phrase
-  passphrase <- divClass "checkbox-wrapper" $ do
-    usePassphrase <- fmap value $ uiCheckbox def False def $ text "Use a BIP39 passphrase"
-    fmap value $ uiInputElement $ def
-      & initialAttributes .~ "type" =: "password" <> "placeholder" =: "BIP39 passphrase" <> "class" =: "hidden bip39-passphrase"
-      & modifyAttributes .~ ffor (updated usePassphrase)
-        (\u -> if u then "class" =: Just "input bip39-passphrase" else "class" =: Just "hidden bip39-passphrase")
-  let mkClass = \case Left _ -> "button_type_secondary"; _ -> "button_type_confirm"
-  rec
-    dyn_ $ ffor lastError $ \case
-      Nothing -> pure ()
-      Just e -> divClass "error-message" $ text $ case e of
-        BIP39PhraseError_MnemonicWordsErr (Crypto.ErrWrongNumberOfWords actual expected)
-          -> "Wrong number of words: expected " <> T.pack (show expected) <> ", but got " <> T.pack (show actual)
-        BIP39PhraseError_InvalidPhrase -> "Invalid phrase"
-        BIP39PhraseError_Dictionary (Crypto.ErrInvalidDictionaryWord word)
-          -> "Invalid word in phrase: " <> baToText word
-    cancel <- cancelButton def "Cancel"
-    next <- uiButtonDyn (def & uiButtonCfg_class .~ fmap mkClass sentenceOrError) $ text "Next"
-    let (err, sentence) = fanEither $ current sentenceOrError <@ next
-    lastError <- holdDyn Nothing $ Just <$> err
-  let toSeed :: Crypto.ValidMnemonicSentence mw => Text -> Crypto.MnemonicSentence mw -> Crypto.Seed
-      toSeed p s = Crypto.sentenceToSeed s Crypto.english . fromString $ T.unpack p
-      seed = attachWith toSeed (current passphrase) sentence
-  pure $ (,) never $ leftmost
-    [ splashScreen <$ cancel
-    , setPassword recoverWallet <$> seed
-    ]
-
--- | UI for generating and displaying a new mnemonic sentence.
-createNewWallet
-  :: MonadWidget t m
-  => Maybe (Crypto.MnemonicSentence 15)
-  -- ^ Initial mnemonic sentence. If missing, a new one will be generated.
-  -> SetupWF t m
-createNewWallet mMnemonic = Workflow $ do
-  el "h1" $ text "Wallet recovery phrase"
-  el "p" $ text "Write down your recovery phrase on paper"
-  initMnemonic <- maybe genMnemonic (pure . Right) mMnemonic
-  rec
-    mnemonic <- holdDyn initMnemonic =<< performEvent (genMnemonic <$ regen)
-    divClass "group" $ dyn_ $ ffor mnemonic $ \case
-      Left e -> text e
-      Right sentence -> text $ baToText $ Crypto.mnemonicSentenceToString Crypto.english sentence
-    stored <- fmap value $ divClass "checkbox-wrapper" $ uiCheckbox def False def $ text "I have safely stored my recovery phrase."
-    regen <- uiButton btnCfgTertiary $ do
-      elClass "i" "fa fa-lg fa-refresh" blank
-      text " Regenerate"
-
-  cancel <- cancelButton def "Cancel"
-  next <- confirmButton (def & uiButtonCfg_disabled .~ fmap not stored) "Next"
-  pure $ (,) never $ leftmost
-    [ splashScreen <$ cancel
-    , attachWithMaybe (\e () -> either (const Nothing) (Just . confirmPhrase) e) (current mnemonic) next
-    ]
-
--- | Display a list of items, returning tagged events
-switchList :: (Adjustable t m, MonadHold t m, PostBuild t m, MonadFix m) => Dynamic t [a] -> (Dynamic t a -> m (Event t ())) -> m (Event t a)
-switchList l m = fmap (switchDyn . fmap leftmost) . simpleList l $ \a -> tag (current a) <$> m a
-
--- | UI for mnemonic sentence confirmation: scramble the phrase, make the user
--- choose the words in the right order.
-confirmPhrase
-  :: MonadWidget t m
-  => Crypto.MnemonicSentence 15
-  -- ^ Mnemonic sentence to confirm
-  -> SetupWF t m
-confirmPhrase mnemonic = Workflow $ do
-  let sentence = T.words $ baToText $ Crypto.mnemonicSentenceToString Crypto.english mnemonic
-  el "h1" $ text "Confirm your recovery phrase"
-  el "p" $ text "Click the words in the correct order"
-  rec
-    -- Maintain an (ordered) list of staged words, and an alphabetical list of unstaged words
-    (staged, unstaged) <- fmap splitDynPure $ foldDyn ($) ([], S.fromList sentence) $ mconcat
-      [ ffor unstage $ \w -> bimap (L.delete w) (S.insert w)
-      , ffor stage $ \w -> bimap (++ [w]) (S.delete w)
-      , ffor reset $ \() (s, us) -> ([], foldr S.insert us s)
-      ]
-    let stageAttrs = "class" =: "group dark" <> "style" =: "min-height: 9.2rem"
-    (unstage, reset) <- elAttr "div" stageAttrs $ do
-      -- Display the staging area
-      unstage <- switchList staged $ uiButton btnCfgPrimary . dynText
-      -- Button to reset the staging area, only shown when something is staged
-      let hiddenClass = ffor staged $ \s -> if null s then "button_hidden" else def
-      reset <- uiButtonDyn (btnCfgPrimary & uiButtonCfg_class <>~ hiddenClass) $
-        elClass "i" "fa fa-lg fa-refresh" blank
-      pure (unstage, reset)
-    -- Unstaged words are displayed in ascending alphabetical order
-    let unstageAttrs = ffor unstaged $ \s -> if null s then mempty else "class" =: "group"
-    stage <- elDynAttr "div" unstageAttrs $ switchList (S.toAscList <$> unstaged) $
-      uiButton btnCfgTertiary . dynText
-  let done = (== sentence) <$> staged
-  back <- cancelButton def "Back"
-  skip <- uiButton btnCfgTertiary $ text "Skip"
-  next <- confirmButton (def & uiButtonCfg_disabled .~ fmap not done) "Next"
-  pure $ (,) never $ leftmost
-    [ createNewWallet (Just mnemonic) <$ back
-    , setPassword (createNewWallet Nothing) (Crypto.sentenceToSeed mnemonic Crypto.english "")
-      <$ (gate (current done) next <> skip)
-    ]
-
-setPassword
-  :: MonadWidget t m
-  => SetupWF t m
-  -> Crypto.Seed
-  -> SetupWF t m
-setPassword previous seed = Workflow $ do
-  el "h1" $ text "Set a password"
-  el "p" $ text "This password will protect your wallet. You'll need it when signing transactions."
-  p1 <- fmap value $ uiInputElement $ def & initialAttributes .~ "type" =: "password"
-  p2 <- fmap value $ uiInputElement $ def & initialAttributes .~ "type" =: "password"
-  display $ liftA2 (==) p1 p2
-  back <- cancelButton def "Back"
-  next <- cancelButton def "Next"
-  pure $ (,) never $ leftmost
-    [ previous <$ back
-    ]
-  where
-    minPasswordLength = 10
-    checkPassword p
-      | T.length p > minPasswordLength = Just p
-      | otherwise = Nothing
-
-    -- These two match iancoleman bip39
-    --let seedNoPass = Crypto.sentenceToSeed sentence Crypto.english ""
-
--- | Generate a 15 word mnemonic sentence, using cryptonite.
-genMnemonic :: MonadIO m => m (Either Text (Crypto.MnemonicSentence 15))
-genMnemonic = liftIO $ bimap (T.pack . show) Crypto.entropyToWords . Crypto.toEntropy @160
-  <$> Crypto.Random.Entropy.getEntropy @ByteString 20
-
-restoreWallet :: m ()
-restoreWallet = undefined
-
-
-unSeed :: Crypto.Seed -> ByteString
-unSeed = B16.encode . BA.pack . BA.unpack
-
-toB16 :: BA.ByteArrayAccess b => b -> ByteString
-toB16 = B16.encode . BA.pack . BA.unpack
-
-passes = \case
-  Ed25519.CryptoPassed p -> p
-  e -> error $ "failed: " <> show e
-
-showXPrv xprv = do
-  BSC.putStrLn $ "XPrv: " <> splitXPrv xprv
-  BSC.putStrLn $ " --> Crypto.xpubGetPublicKey: " <> toB16 (Crypto.xPubGetPublicKey $ Crypto.toXPub xprv)
-
-test :: IO ()
-test = do
-  let entropy :: Crypto.Entropy 160 = case Crypto.toEntropy (fst $ B16.decode "ea1f6a34f7252a89628b40514af72dbd3eca93a4") of
-        Right e -> e -- Mnemonic.genEntropy
-        Left e -> error $ show e
-  let sentence = Crypto.entropyToWords entropy
-  putStrLn $ "MnemonicSentence: " <> show (Crypto.mnemonicSentenceToString Crypto.english sentence)
-  -- These two match iancoleman bip39
-  let seedNoPass = -- Crypto.sentenceToSeed sentence Crypto.english ""
-        fst $ B16.decode
-          "fffcf9f6f3f0edeae7e4e1dedbd8d5d2cfccc9c6c3c0bdbab7b4b1aeaba8a5a29f9c999693908d8a8784817e7b7875726f6c696663605d5a5754514e4b484542"
-      --seedTestPass = Crypto.sentenceToSeed sentence Crypto.english "test"
-  BSC.putStrLn $ "Seed (no passphrase): " <> B16.encode seedNoPass
-
-  let root = Crypto.generate seedNoPass . id @ByteString
-      rootPk = Crypto.xPubGetPublicKey . Crypto.toXPub . root
-
-  showXPrv $ root "test"
-
-  let message = "hello, world" :: ByteString
-      sig = Crypto.sign ("test" :: ByteString) (root "test") message
-      okCrypto = Crypto.verify (Crypto.toXPub (root "test")) message sig
-      okEd25519 = Ed25519.verify (rootPk "test") message (passes $ Ed25519.signature sig)
-  print sig
-  print okCrypto
-  print okEd25519
-
-  putStrLn ""
-  let derivationScheme = Crypto.DerivationScheme2
-      derived k n = Crypto.deriveXPrv derivationScheme ("test" :: ByteString) k (0x80000000 + n)
-      printDerived parent n = do
-        showXPrv $ derived parent n
-        pure $ derived parent n
-  putStrLn "0"
-  key0 <- printDerived (root "test") 0
-  putStrLn "0/0"
-  key0_0 <- printDerived key0 0
-  putStrLn "0/1"
-  key0_1 <- printDerived key0 1
-  putStrLn "1"
-  key1 <- printDerived (root "test") 1
-  putStrLn "2"
-  key2 <- printDerived (root "test") 2
+runWallet :: AppConstraints t m => m ()
+runWallet = do
+  mRoot <- getItemStorage localStorage Wallet_RootKey
+  _ <- workflow $ maybe runSetupWF walletMain mRoot
   pure ()
 
-splitXPrv x = BSC.unlines $
-  [ ""
-  , "enc: " <> B16.encode a
-  , "enc: " <> B16.encode b
-  , "pk : " <> B16.encode c
-  , "cc : " <> B16.encode d
-  ]
-  where bs = BA.pack $ BA.unpack x
-        (a, r0) = BA.splitAt 32 bs
-        (b, r1) = BA.splitAt 32 r0
-        (c, d) = BA.splitAt 32 r1
+type AppWF t m = Workflow t m ()
+
+finishAppWF :: Applicative m => a -> m ((), a)
+finishAppWF = pure . (,) ()
+
+type AppConstraints t m =
+  ( HasConfigs m
+  , HasStorage m
+  , HasStorage (Performable m)
+  , MonadWidget t m
+  , RouteToUrl (R FrontendRoute) m
+  , Routed t (R FrontendRoute) m
+  , SetRoute t (R FrontendRoute) m
+  )
+
+walletMain
+  :: forall t m. AppConstraints t m
+  => Crypto.XPrv
+  -- ^ Root key
+  -> Workflow t m ()
+walletMain root = Workflow $ do
+  page <- walletSidebar
+  let pageDemux = demux page
+      mkPage :: Page -> Text -> m a -> m a
+      mkPage p c = elDynAttr "div" (ffor (demuxed pageDemux p) $ \s -> "class" =: (c <> if s then " page visible" else " page"))
+  (_childKeys, _namedKeys, removed) <- mkPage Page_Wallet "wallet" $ walletPage root
+  mkPage Page_Contracts "contracts" $ do
+    (fileOpened, triggerOpen) <- Frontend.openFileDialog
+    let appCfg = AppCfg
+          { _appCfg_gistEnabled = False
+          , _appCfg_externalFileOpened = fileOpened
+          , _appCfg_openFileDialog = liftJSM triggerOpen
+          , _appCfg_loadEditor = loadEditorFromLocalStorage
+          , _appCfg_editorReadOnly = False
+          , _appCfg_signingRequest = never
+          , _appCfg_signingResponse = \_ -> pure ()
+          }
+    _ <- Frontend.ReplGhcjs.app appCfg
+    pure ()
+  finishAppWF $ runSetupWF <$ removed
+
+data AddKeyError
+  = AddKeyError_InvalidPassword
+  | AddKeyError_NameTaken
+  | AddKeyError_NameRequired
+  deriving (Eq, Ord)
+
+addKeyErrorText :: AddKeyError -> Text
+addKeyErrorText = \case
+  AddKeyError_InvalidPassword -> "Invalid password"
+  AddKeyError_NameTaken -> "Key name is already in use"
+  AddKeyError_NameRequired -> "Enter a key name"
+
+walletPage
+  :: AppConstraints t m
+  => Crypto.XPrv
+  -> m (Dynamic t (Map Crypto.DerivationIndex Crypto.XPrv), Dynamic t (Bimap Text Ed25519.PublicKey), Event t ())
+walletPage root = do
+  el "h1" $ text "Root key"
+  divClass "root key" $ text $ T.decodeUtf8 $ B16.encode $ Crypto.xpubPublicKey $ Crypto.toXPub root
+  el "h1" $ text "Derived keys"
+  initChildKeys <- fromMaybe mempty <$> getItemStorage localStorage Wallet_ChildKeys
+  initNamedKeys <- fromMaybe Bimap.empty <$> getItemStorage localStorage Wallet_NamedKeys
+  rec
+    (keyStore, derivationErrors) <- mapAccumMaybeDyn (&) (initChildKeys, initNamedKeys) newDerived
+    let (childKeys, namedKeys) = splitDynPure keyStore
+    el "table" $ do
+      el "thead" $ el "tr" $ do
+        elClass "th" "numeric" $ text "Index"
+        el "th" $ text "Name"
+        el "th" $ text "Public Key"
+      el "tbody" $ dyn_ $ ffor keyStore $ \(im, names) -> flip M.traverseWithKey im $ \i xprv -> el "tr" $ do
+        elClass "td" "numeric" $ text $ T.pack $ show i
+        let name = Bimap.lookupR (Crypto.xPubGetPublicKey $ Crypto.toXPub xprv) names
+        el "td" $ text $ fromMaybe "No name" name
+        let pk = T.decodeUtf8 $ B16.encode $ Crypto.xpubPublicKey $ Crypto.toXPub xprv
+        elClass "td" "key" $ text pk
+        copyButton def (pure pk)
+    newDerived <- form "inline" $ do
+      divClass "header" $ do
+        text "Generate a new key"
+        divClass "detail" $ text "The key will be derived from the wallet root key"
+      name <- fmap (current . value) $ uiInputElement $ def
+        & initialAttributes .~ "placeholder" =: "Key name"
+        & inputElementConfig_setValue .~ ("" <$ updated childKeys)
+      pass <- fmap (current . value) $ uiInputElement $ def
+        & initialAttributes .~ "type" =: "password" <> "placeholder" =: "Enter password"
+        & inputElementConfig_setValue .~ ("" <$ updated childKeys)
+      add <- confirmButton (def & uiButtonCfg_type ?~ "submit")  "Generate key"
+      lastErrors <- holdDyn Nothing $ leftmost [Just <$> derivationErrors, Nothing <$ updated childKeys]
+      dyn_ $ ffor lastErrors $ \case
+        Nothing -> blank
+        Just es -> elClass "ul" "messages" $ for_ es $ el "li" . text . addKeyErrorText
+      pure $ attachWith (const . derive) (liftA2 (,) name pass) add
+  performEvent_ $ ffor (updated childKeys) $ setItemStorage localStorage Wallet_ChildKeys
+  performEvent_ $ ffor (updated namedKeys) $ setItemStorage localStorage Wallet_NamedKeys
+  delete <- el "div" $ uiButton def $ text "Delete wallet"
+  removed <- performEvent $ ffor delete $ \_ -> do
+    removeItemStorage localStorage Wallet_RootKey
+    removeItemStorage localStorage Wallet_ChildKeys
+  pure (childKeys, namedKeys, removed)
+  where
+    scheme = Crypto.DerivationScheme2
+    mkHardened = (0x80000000 +)
+    derive
+      :: (Text, Text)
+      -> (Map Crypto.DerivationIndex Crypto.XPrv, Bimap Text Ed25519.PublicKey)
+      -> (Maybe (Map Crypto.DerivationIndex Crypto.XPrv, Bimap Text Ed25519.PublicKey), Maybe (Set AddKeyError))
+    derive (name, pass) (xprvs, names) =
+      let errs = S.fromList $ catMaybes
+            [ AddKeyError_NameTaken <$ guard (Bimap.member name names)
+            , AddKeyError_NameRequired <$ guard (T.null name)
+            , AddKeyError_InvalidPassword <$ guard (not $ testKeyPassword root pass)
+            ]
+          n = maybe 0 (succ . fst) (M.lookupMax xprvs)
+          xprv = Crypto.deriveXPrv scheme (T.encodeUtf8 pass) root (mkHardened $ fromIntegral n)
+       in if S.null errs
+          then (Just (M.insert n xprv xprvs, Bimap.insert name (Crypto.xPubGetPublicKey $ Crypto.toXPub xprv) names), Nothing)
+          else (Nothing, Just errs)
+
+data Page
+  = Page_Wallet
+  | Page_Contracts
+  deriving (Eq, Ord, Enum, Bounded)
+
+pageText :: DomBuilder t m => Page -> m ()
+pageText = \case
+  Page_Wallet -> text "Wallet"
+  Page_Contracts -> text "Contracts"
+
+walletSidebar :: AppConstraints t m => m (Dynamic t Page)
+walletSidebar = do
+  rec
+    open <- holdUniqDyn <=< holdDyn True $ leftmost [False <$ closed, True <$ opened]
+    opened <- uiIcon "fa-caret-right sidebar-control opener" def
+    (closed, page) <- elDynAttr "div" (ffor open $ \o -> "class" =: ("sidebar" <> if o then "" else " closed")) $ do
+      kadenaWalletLogo
+      closed' <- uiIcon "fa-caret-left sidebar-control closer" def
+      rec
+        let sidebarLink p = do
+              let mkAttrs sel = "href" =: "#" <> "class" =: ("sidebar-item" <> if sel then " selected" else "")
+              (e, ()) <- elDynAttr' "a" (mkAttrs <$> demuxed pageDemux p) $ pageText p
+              pure $ p <$ domEvent Click e
+        page <- holdUniqDyn =<< holdDyn Page_Wallet . leftmost =<< traverse sidebarLink [minBound..maxBound]
+        let pageDemux = demux page
+      elAttr "div" ("style" =: "flex-grow: 1") blank
+      pure (closed', page)
+  pure page
+
+runSetupWF :: AppConstraints t m => AppWF t m
+runSetupWF = Workflow $ do
+  xprv <- runSetup
+  saved <- performEvent $ ffor xprv $ \x -> setItemStorage localStorage Wallet_RootKey x >> pure x
+  finishAppWF $ walletMain <$> saved
+
+-- | Check the validity of the password by signing and verifying a message
+testKeyPassword :: Crypto.XPrv -> Text -> Bool
+testKeyPassword xprv pass = Crypto.verify (Crypto.toXPub xprv) msg $ Crypto.sign (T.encodeUtf8 pass) xprv msg
+  where msg = "test message" :: ByteString
