@@ -42,6 +42,7 @@ import qualified Network.Socket as Socket
 import qualified Network.Wai.Handler.Warp as Warp
 import qualified Network.Wai.Middleware.Cors as Wai
 import qualified Servant.Server as Servant
+import qualified Snap.Http.Server as Snap
 import qualified System.Directory as Directory
 import qualified System.Environment as Env
 import qualified System.FilePath as FilePath
@@ -131,10 +132,14 @@ main = redirectPipes [stdout, stderr] $ do
       route :: (IsString s, Semigroup s) => s
       route = "http://localhost:" <> fromString (show port) <> "/"
       -- We don't need to serve anything useful here under Frontend
-      b = runBackend' (Just $ fromIntegral port) staticAssets backend $ Frontend blank blank
+      b = runBackendWith
+        (runSnapWithConfig $ Snap.setPort (fromIntegral port) Snap.defaultConfig)
+        staticAssets
+        backend
+        (Frontend blank blank)
   fileOpenedMVar :: MVar T.Text <- liftIO newEmptyMVar
   -- Run the backend in a forked thread, and run jsaddle-wkwebview on the main thread
-  putStrLn "Starting backend"
+  putStrLn $ "Starting backend on port: " <> show port
   Async.withAsync b $ \_ -> do
     liftIO $ putStrLn "Starting jsaddle"
     let handleOpen f = try (T.readFile f) >>= \case
