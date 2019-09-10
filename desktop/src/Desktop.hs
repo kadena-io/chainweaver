@@ -243,18 +243,21 @@ walletPage root = do
   rec
     (keyStore, derivationErrors) <- mapAccumMaybeDyn (&) (initChildKeys, initNamedKeys) newDerived
     let (childKeys, namedKeys) = splitDynPure keyStore
-    el "table" $ do
-      el "thead" $ el "tr" $ do
-        elClass "th" "numeric" $ text "Index"
-        el "th" $ text "Name"
-        el "th" $ text "Public Key"
-      el "tbody" $ dyn_ $ ffor keyStore $ \(im, names) -> flip M.traverseWithKey im $ \i xprv -> el "tr" $ do
-        elClass "td" "numeric" $ text $ T.pack $ show i
-        let name = Bimap.lookupR (Crypto.xPubGetPublicKey $ Crypto.toXPub xprv) names
-        el "td" $ text $ fromMaybe "No name" name
-        let pk = T.decodeUtf8 $ B16.encode $ Crypto.xpubPublicKey $ Crypto.toXPub xprv
-        elClass "td" "key" $ text pk
-        copyButton def (pure pk)
+    mKeyStore <- maybeDyn $ ffor keyStore $ \(c,n) -> if M.null c then Nothing else Just (c,n)
+    dyn_ $ ffor mKeyStore $ \case
+      Nothing -> el "p" $ text "You haven't generated any derived keys yet."
+      Just keyStore -> el "table" $ do
+        el "thead" $ el "tr" $ do
+          elClass "th" "numeric" $ text "Index"
+          el "th" $ text "Name"
+          el "th" $ text "Public Key"
+        el "tbody" $ dyn_ $ ffor keyStore $ \(im, names) -> flip M.traverseWithKey im $ \i xprv -> el "tr" $ do
+          elClass "td" "numeric" $ text $ T.pack $ show i
+          let name = Bimap.lookupR (Crypto.xPubGetPublicKey $ Crypto.toXPub xprv) names
+          el "td" $ text $ fromMaybe "No name" name
+          let pk = T.decodeUtf8 $ B16.encode $ Crypto.xpubPublicKey $ Crypto.toXPub xprv
+          elClass "td" "key" $ text pk
+          copyButton def (pure pk)
     newDerived <- form "inline" $ do
       divClass "header" $ do
         text "Generate a new key"
