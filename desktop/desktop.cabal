@@ -11,13 +11,25 @@ library
     , common
     , frontend
 
+    , aeson
     , base16-bytestring
     , bimap
     , bytestring
     , cardano-crypto
+    , containers
     , cryptonite
+    , directory
+    , filepath
+    , jsaddle
+    , lens
     , memory
+    , obelisk-executable-config-lookup
+    , obelisk-frontend
+    , obelisk-generated-static
+    , obelisk-route
     , raw-strings-qq
+    , reflex-dom-core
+    , text
   exposed-modules:
       Desktop
     , Desktop.Orphans
