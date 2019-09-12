@@ -249,7 +249,9 @@ controlBarLeft =
 getPactVersion :: MonadWidget t m => m Text
 getPactVersion = do
     is <- liftIO $ initReplState StringEval Nothing
-    Right (TLiteral (LString ver) _) <- liftIO $ evalStateT (evalRepl' "(pact-version)") is
+    ver <- liftIO $ evalStateT (evalRepl' "(pact-version)") is >>= pure . \case
+      Right (TLiteral (LString ver) _) -> ver
+      _ -> error "failed to get pact version"
     return ver
 
 controlBarRight :: forall t m. MonadWidget t m => AppCfg t m -> ModalIde m t -> m (ModalIdeCfg m t)

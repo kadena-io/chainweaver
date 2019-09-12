@@ -40,19 +40,18 @@ module Common.RefPath
   , renderPath
   , mkRefPath
     -- * Backports of newer megaparsec:
-  , module MPChar
   , anySingle
   ) where
 
 ------------------------------------------------------------------------------
 import           Control.Arrow        (second, (***))
 import qualified Data.List            as L
+import qualified Data.List.NonEmpty   as NE
 import           Data.String          (IsString (fromString))
 import           Data.Text            (Text)
 import qualified Data.Text            as T
 import           Data.Void            (Void)
 import           Text.Megaparsec      as MP
-import           Text.Megaparsec.Char as MPChar (satisfy)
 ------------------------------------------------------------------------------
 
 -- | A path segment is just a piece of `Text`.
@@ -127,13 +126,6 @@ renderPath = T.intercalate pathSep . map escapeSegment . unRefPath
   where
     escapeSegment = T.replace pathSep (pathSep <> pathSep)
 
-
--- | Becomes available in a more recent version of megaparsec than what we have
--- currently in nixpkgs:
-anySingle :: MonadParsec e s m => m (Token s)
-anySingle = satisfy (const True)
-
-
 instance IsString RefPath where
   fromString = parsePath . T.pack
 
@@ -152,9 +144,9 @@ instance MP.Stream RefPath where
     | null xs = Nothing
     | otherwise = Just . (RefPath *** RefPath) $ splitAt n xs
   takeWhile_ f = (RefPath *** RefPath) . span f . unRefPath
-  advance1 _ p sp = refPathAdvance1 p sp
-  advanceN _ p sp (RefPath w) = L.foldl' (refPathAdvance1 p) sp w
-  {- showTokens _ = renderPath -}
-
-refPathAdvance1 :: Pos -> SourcePos -> Text -> SourcePos
-refPathAdvance1 _ (SourcePos n l c) _ = SourcePos n l (mkPos $ unPos c + 1)
+  showTokens _ = T.unpack . renderPath . RefPath . NE.toList
+  reachOffset o_d ps@(PosState i o (SourcePos n l c) tw lp) = (sp, line, ps')
+    where
+      sp = SourcePos n l $ mkPos $ unPos c + o_d
+      line = T.unpack $ renderPath $ pstateInput ps
+      ps' = PosState i o sp tw lp

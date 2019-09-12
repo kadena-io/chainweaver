@@ -20,7 +20,6 @@ import Control.Category
 import           Control.Category       ((.))
 import           Control.Monad.Except   (MonadError)
 import           Data.Functor.Identity
-import           Data.Functor.Sum
 import           Data.Text              (Text)
 import           Prelude                hiding (id, (.))
 
@@ -59,13 +58,11 @@ data FrontendRoute :: * -> * where
   FrontendRoute_New :: FrontendRoute ()          -- Route when editing a new file.
   FrontendRoute_OAuth :: FrontendRoute (R OAuthRoute) -- Route for auth handling
 
-type FullRoute = Sum BackendRoute (ObeliskRoute FrontendRoute)
-
 backendRouteEncoder
-  :: Encoder (Either Text) Identity (R FullRoute) PageName
-backendRouteEncoder = handleEncoder (const (InL BackendRoute_Missing :/ ())) $
+  :: Encoder (Either Text) Identity (R (FullRoute BackendRoute FrontendRoute)) PageName
+backendRouteEncoder = handleEncoder (const (FullRoute_Backend BackendRoute_Missing :/ ())) $
   pathComponentEncoder $ \case
-    InL backendRoute -> case backendRoute of
+    FullRoute_Backend backendRoute -> case backendRoute of
       BackendRoute_Missing
         -> PathSegment "missing" $ unitEncoder mempty
       BackendRoute_Networks
@@ -76,7 +73,7 @@ backendRouteEncoder = handleEncoder (const (InL BackendRoute_Missing :/ ())) $
         -> PathSegment "oauth-get-token" $ pathOnlyEncoder . singletonListEncoder . oAuthProviderIdEncoder
       BackendRoute_Css
         -> PathSegment "sass.css" $ unitEncoder mempty
-    InR obeliskRoute -> obeliskRouteSegment obeliskRoute $ \case
+    FullRoute_Frontend obeliskRoute -> obeliskRouteSegment obeliskRoute $ \case
       FrontendRoute_Main
         -> PathEnd $ unitEncoder mempty
       FrontendRoute_Example
