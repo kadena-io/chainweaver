@@ -17,6 +17,7 @@
 {-# LANGUAGE TemplateHaskell        #-}
 {-# LANGUAGE TypeApplications       #-}
 {-# LANGUAGE TypeFamilies           #-}
+{-# LANGUAGE PackageImports #-}
 
 -- | Definitions common to the whole frontend.
 --
@@ -52,8 +53,8 @@ import           Data.Foldable
 import           Data.Semigroup
 import           Data.Text                         (Text)
 import           GHC.Generics                      (Generic)
-import           Language.Haskell.TH               (DecsQ)
-import           Language.Haskell.TH.Syntax        (Name)
+import "template-haskell" Language.Haskell.TH               (DecsQ)
+import "template-haskell" Language.Haskell.TH.Syntax        (Name)
 import           Language.Javascript.JSaddle       (JSM, MonadJSM, askJSM,
                                                     liftJSM, runJSM)
 import qualified Language.Javascript.JSaddle       as JS
