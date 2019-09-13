@@ -85,6 +85,14 @@ in
               }) {};
         in {
 
+        # nixpkgs has a bad hash for this
+        # https://github.com/NixOS/nixpkgs/issues/65400
+        servant = callHackageDirect {
+          pkg = "servant";
+          ver = "0.15";
+          sha256 = "1d9bm5wgpk2czx240d7fd6k0mhhj52406gmj7vwpfcwrm7fg0w5v";
+        };
+
         ghc-lib-parser = haskellLib.overrideCabal super.ghc-lib-parser { postInstall = "sed -i 's/exposed: True/exposed: False/' $out/lib/ghc*/package.conf.d/*.conf"; };
         pact = haskellLib.dontCheck super.pact; # TODO don't do this
         modern-uri = haskellLib.dontCheck super.modern-uri;

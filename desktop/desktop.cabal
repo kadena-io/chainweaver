@@ -65,6 +65,7 @@ executable macApp
     , servant
     , servant-server
     , snap-core
+    , snap-server
     , temporary
     , text
     , wai-cors
@@ -74,6 +75,6 @@ executable macApp
 
   frameworks: Cocoa, Foundation, WebKit
 
-  c-sources: cbits/mac.m
+  c-sources: mac/cbits/mac.m
   cpp-options: -DUSE_COCOA
   cc-options: -Werror=objc-method-access

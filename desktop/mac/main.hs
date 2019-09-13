@@ -54,6 +54,7 @@ import Frontend
 import Frontend.AppCfg
 import Frontend.ReplGhcjs (app)
 import Frontend.Storage
+import Desktop
 
 foreign import ccall setupAppMenu :: StablePtr (CString -> IO ()) -> IO ()
 foreign import ccall activateWindow :: IO ()
@@ -191,6 +192,7 @@ main = redirectPipes [stdout, stderr] $ do
         { _frontend_head = prerender_ blank $ do
           bowserLoad <- newHead $ \r -> T.pack $ T.unpack route </> T.unpack (renderBackendRoute backendEncoder r)
           performEvent_ $ liftIO . putMVar bowserMVar <$> bowserLoad
+          el "style" $ text desktopCss
         , _frontend_body = prerender_ blank $ do
           bowserLoad <- mvarTriggerEvent bowserMVar
           fileOpened <- mvarTriggerEvent fileOpenedMVar
@@ -206,9 +208,10 @@ main = redirectPipes [stdout, stderr] $ do
                 , _appCfg_editorReadOnly = False
                 , _appCfg_signingRequest = signingRequest
                 , _appCfg_signingResponse = liftIO . putMVar signingResponseMVar
+                , _appCfg_forceResize = never
                 }
           _ <- flip runStorageT store $ runWithReplace loaderMarkup $
-            (liftIO activateWindow >> liftIO resizeWindow >> app appCfg) <$ bowserLoad
+            (liftIO activateWindow >> liftIO resizeWindow >> runWallet appCfg) <$ bowserLoad
           pure ()
         }
 

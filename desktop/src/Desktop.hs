@@ -10,7 +10,7 @@
 {-# LANGUAGE StandaloneDeriving #-}
 {-# LANGUAGE TypeApplications #-}
 
-module Desktop (desktop, fileStorage) where
+module Desktop (desktop, desktopCss, runWallet, fileStorage) where
 
 import Control.Applicative (liftA2)
 import Control.Exception (try, catch)
@@ -103,7 +103,19 @@ desktop = Frontend
       _ <- Frontend.newHead $ \r -> base <> renderBackendRoute backendEncoder r
       el "style" $ text desktopCss
       pure ()
-  , _frontend_body = prerender_ blank $ flip runStorageT browserStorage $ runWallet
+  , _frontend_body = prerender_ blank $ flip runStorageT browserStorage $ do
+    (fileOpened, triggerOpen) <- Frontend.openFileDialog
+    let appCfg = AppCfg
+          { _appCfg_gistEnabled = False
+          , _appCfg_externalFileOpened = fileOpened
+          , _appCfg_openFileDialog = liftJSM triggerOpen
+          , _appCfg_loadEditor = loadEditorFromLocalStorage
+          , _appCfg_editorReadOnly = False
+          , _appCfg_signingRequest = never
+          , _appCfg_signingResponse = \_ -> pure ()
+          , _appCfg_forceResize = never
+          }
+    runWallet appCfg
   }
 
 desktopCss :: Text
@@ -119,7 +131,7 @@ desktopCss = [QQ.r|
 .fullscreen button.button { background: #ddd; color: #333; }
 .fullscreen .group { color: #222; margin: 2rem 0; }
 .fullscreen .group.dark { background-color: rgba(0,0,0,0.3); }
-.fullscreen button.button_type_confirm:not([disabled]) { background: #ed098f; }
+.fullscreen button.button_type_confirm:not([disabled]) { border: none; background: #ed098f; }
 .fullscreen button.button_type_confirm:hover:not([disabled]) { background: #fd199f; }
 .fullscreen .wrapper { max-width: 40rem; text-align: center; }
 .fullscreen .wrapper .logo { width: 20rem; margin: 0 auto; font-size: 30px; }
@@ -158,6 +170,7 @@ body { display: flex; flex-direction: row; }
 .page.wallet table .numeric { text-align: right; }
 .button_hidden { display: none; }
 .group.group_buttons { text-align: center; }
+.group button { margin: 0.2rem; }
 .page:not(.contracts) button.button_type_confirm { border: none; background-color: rgb(30,40,50); font-weight: normal; }
 .page:not(.contracts) button.button_type_confirm { background: linear-gradient(180deg, rgb(40,50,60) 0%, rgb(20,30,40) 100%); }
 .page:not(.contracts) button.button_type_confirm:hover:not([disabled]) { background: linear-gradient(180deg, rgb(60,70,80) 0%, rgb(40,50,60) 100%); }
@@ -171,10 +184,10 @@ form .header { color: rgb(30,40,50); font-weight: bold; font-size: 18px; margin:
 form .header .detail { color: #666; font-weight: normal; font-size: 14px; }
 |]
 
-runWallet :: AppConstraints t m => m ()
-runWallet = do
+runWallet :: AppConstraints t m => AppCfg t m -> m ()
+runWallet appCfg = do
   mRoot <- getItemStorage localStorage Wallet_RootKey
-  _ <- workflow $ maybe runSetupWF walletMain mRoot
+  _ <- workflow $ maybe (runSetupWF appCfg) (walletMain appCfg) mRoot
   pure ()
 
 type AppWF t m = Workflow t m ()
@@ -194,31 +207,24 @@ type AppConstraints t m =
 
 walletMain
   :: forall t m. AppConstraints t m
-  => Crypto.XPrv
+  => AppCfg t m
+  -> Crypto.XPrv
   -- ^ Root key
   -> Workflow t m ()
-walletMain root = Workflow $ do
+walletMain appCfg root = Workflow $ do
   pb <- getPostBuild
   page <- walletSidebar
+  let appCfg' = appCfg {  _appCfg_forceResize = void (updated page) <> pb }
   let pageDemux = demux page
       mkPage :: Page -> Text -> m a -> m a
       mkPage p c = elDynAttr "div" (ffor (demuxed pageDemux p) $ \s -> "class" =: (c <> if s then " page visible" else " page"))
   (_childKeys, _namedKeys, removed) <- mkPage Page_Wallet "wallet" $ walletPage root
   mkPage Page_Contracts "contracts" $ do
-    (fileOpened, triggerOpen) <- Frontend.openFileDialog
-    let appCfg = AppCfg
-          { _appCfg_gistEnabled = False
-          , _appCfg_externalFileOpened = fileOpened
-          , _appCfg_openFileDialog = liftJSM triggerOpen
-          , _appCfg_loadEditor = loadEditorFromLocalStorage
-          , _appCfg_editorReadOnly = False
-          , _appCfg_signingRequest = never
-          , _appCfg_signingResponse = \_ -> pure ()
-          , _appCfg_forceResize = void (updated page) <> pb
-          }
-    _ <- Frontend.ReplGhcjs.app appCfg
+    -- TODO appCfg should probably be partially defined here instead of
+    -- completely in the executable.
+    _ <- Frontend.ReplGhcjs.app appCfg'
     pure ()
-  finishAppWF $ runSetupWF <$ removed
+  finishAppWF $ runSetupWF appCfg' <$ removed
 
 data AddKeyError
   = AddKeyError_InvalidPassword
@@ -248,12 +254,12 @@ walletPage root = do
     mKeyStore <- maybeDyn $ ffor keyStore $ \(c,n) -> if M.null c then Nothing else Just (c,n)
     dyn_ $ ffor mKeyStore $ \case
       Nothing -> el "p" $ text "You haven't generated any derived keys yet."
-      Just keyStore -> el "table" $ do
+      Just keyStore' -> el "table" $ do
         el "thead" $ el "tr" $ do
           elClass "th" "numeric" $ text "Index"
           el "th" $ text "Name"
           el "th" $ text "Public Key"
-        el "tbody" $ dyn_ $ ffor keyStore $ \(im, names) -> flip M.traverseWithKey im $ \i xprv -> el "tr" $ do
+        el "tbody" $ dyn_ $ ffor keyStore' $ \(im, names) -> flip M.traverseWithKey im $ \i xprv -> el "tr" $ do
           elClass "td" "numeric" $ text $ T.pack $ show i
           let name = Bimap.lookupR (Crypto.xPubGetPublicKey $ Crypto.toXPub xprv) names
           el "td" $ text $ fromMaybe "No name" name
@@ -331,11 +337,11 @@ walletSidebar = do
       pure (closed', page)
   pure page
 
-runSetupWF :: AppConstraints t m => AppWF t m
-runSetupWF = Workflow $ do
+runSetupWF :: AppConstraints t m => AppCfg t m -> AppWF t m
+runSetupWF appCfg = Workflow $ do
   xprv <- runSetup
   saved <- performEvent $ ffor xprv $ \x -> setItemStorage localStorage Wallet_RootKey x >> pure x
-  finishAppWF $ walletMain <$> saved
+  finishAppWF $ walletMain appCfg <$> saved
 
 -- | Check the validity of the password by signing and verifying a message
 testKeyPassword :: Crypto.XPrv -> Text -> Bool
