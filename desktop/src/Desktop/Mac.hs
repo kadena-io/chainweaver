@@ -8,12 +8,11 @@
 module Desktop.Mac where
 
 import Control.Concurrent
-import Control.Exception (bracket_, bracket, try, catch)
-import Control.Monad (void, forever, (<=<), when)
+import Control.Exception (bracket_, bracket, try)
+import Control.Monad (void, forever, (<=<))
 import Control.Monad.Except (throwError)
 import Control.Monad.IO.Class
 import Data.Foldable (for_)
-import Data.Maybe (isNothing)
 import Data.Proxy (Proxy(..))
 import Data.String (IsString(..))
 import Foreign.C.String (CString, peekCString)
@@ -29,14 +28,11 @@ import Servant.API
 import System.FilePath ((</>))
 import System.IO
 import qualified Control.Concurrent.Async as Async
-import qualified Data.Aeson as Aeson
-import qualified Data.ByteString as BS
 import qualified Data.ByteString.Lazy as LBS
 import qualified Data.List as L
 import qualified Data.Map as M
 import qualified Data.Text as T
 import qualified Data.Text.Encoding as T
-import qualified Data.Text.Encoding.Error as T
 import qualified Data.Text.IO as T
 import qualified Network.Socket as Socket
 import qualified Network.Wai.Handler.Warp as Warp
@@ -45,7 +41,6 @@ import qualified Servant.Server as Servant
 import qualified Snap.Http.Server as Snap
 import qualified System.Directory as Directory
 import qualified System.Environment as Env
-import qualified System.FilePath as FilePath
 import qualified System.Process as Process
 
 import Backend (serveBackendRoute)
@@ -218,7 +213,7 @@ main' ffi = redirectPipes [stdout, stderr] $ do
 
 -- | Push writes to the given 'MVar' into an 'Event'.
 mvarTriggerEvent
-  :: (PerformEvent t m, TriggerEvent t m, MonadIO m, MonadIO (Performable m), PostBuild t m)
+  :: (PerformEvent t m, TriggerEvent t m, MonadIO m)
   => MVar a -> m (Event t a)
 mvarTriggerEvent mvar = do
   (e, trigger) <- newTriggerEvent
