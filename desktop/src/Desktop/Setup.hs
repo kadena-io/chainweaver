@@ -156,7 +156,7 @@ confirmPhrase mnemonic = Workflow $ do
     (staged, unstaged) <- fmap splitDynPure $ foldDyn ($) ([], S.fromList sentence) $ mconcat
       [ ffor unstage $ \w -> bimap (L.delete w) (S.insert w)
       , ffor stage $ \w -> bimap (++ [w]) (S.delete w)
-      , ffor reset $ \() (s, us) -> ([], foldr S.insert us s)
+      , ffor reset $ \() (s, us) -> ([], S.fromList sentence)
       ]
     let stageAttrs = "class" =: "group dark" <> "style" =: "min-height: 9.2rem"
     (unstage, reset) <- elAttr "div" stageAttrs $ do
