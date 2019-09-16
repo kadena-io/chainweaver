@@ -39,6 +39,7 @@ library
 executable macApp
   main-is: main.hs
   hs-source-dirs: mac
+  other-modules: Desktop.Mac
   if !os(darwin) || impl(ghcjs)
     buildable: False
   build-depends:
