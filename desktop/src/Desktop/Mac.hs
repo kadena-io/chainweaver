@@ -54,7 +54,7 @@ import Frontend
 import Frontend.AppCfg
 import Frontend.ReplGhcjs (app)
 import Frontend.Storage
-import Desktop
+import Desktop.Frontend
 
 data MacFFI = MacFFI
   { _macFFI_setupAppMenu :: StablePtr (CString -> IO ()) -> IO ()

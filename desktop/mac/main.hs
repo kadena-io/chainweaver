@@ -4,7 +4,7 @@ import Foreign.C.String (CString)
 import Foreign.C.Types (CInt(..))
 import Foreign.StablePtr (StablePtr)
 
-import Desktop.Mac (main', MacFFI(..))
+import Desktop (main', MacFFI(..))
 
 foreign import ccall setupAppMenu :: StablePtr (CString -> IO ()) -> IO ()
 foreign import ccall activateWindow :: IO ()
