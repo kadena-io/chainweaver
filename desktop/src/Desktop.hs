@@ -80,7 +80,7 @@ fileStorage dir = Storage
       Right v -> do
         let result = Aeson.decodeStrict v
         when (isNothing result) $ do
-          T.putStrLn $ "Error reading storape: can't decode contents: " <>
+          T.putStrLn $ "Error reading storage: can't decode contents: " <>
             T.decodeUtf8With T.lenientDecode v
         pure result
   , _storage_set = \_ k a -> liftIO $
