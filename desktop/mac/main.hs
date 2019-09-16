@@ -192,7 +192,6 @@ main = redirectPipes [stdout, stderr] $ do
         { _frontend_head = prerender_ blank $ do
           bowserLoad <- newHead $ \r -> T.pack $ T.unpack route </> T.unpack (renderBackendRoute backendEncoder r)
           performEvent_ $ liftIO . putMVar bowserMVar <$> bowserLoad
-          el "style" $ text desktopCss
         , _frontend_body = prerender_ blank $ do
           bowserLoad <- mvarTriggerEvent bowserMVar
           fileOpened <- mvarTriggerEvent fileOpenedMVar
@@ -211,7 +210,7 @@ main = redirectPipes [stdout, stderr] $ do
                 , _appCfg_forceResize = never
                 }
           _ <- flip runStorageT store $ runWithReplace loaderMarkup $
-            (liftIO activateWindow >> liftIO resizeWindow >> runWallet appCfg) <$ bowserLoad
+            (liftIO activateWindow >> liftIO resizeWindow >> app appCfg) <$ bowserLoad
           pure ()
         }
 
