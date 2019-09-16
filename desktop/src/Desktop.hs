@@ -18,6 +18,7 @@ import Control.Lens ((?~))
 import Control.Monad (when, (<=<), guard, void)
 import Control.Monad.IO.Class
 import Data.Bimap (Bimap)
+import Data.Bits ((.|.))
 import Data.ByteString (ByteString)
 import Data.Foldable (for_)
 import Data.Map (Map)
@@ -291,7 +292,7 @@ walletPage root = do
   pure (childKeys, namedKeys, removed)
   where
     scheme = Crypto.DerivationScheme2
-    mkHardened = (0x80000000 +)
+    mkHardened = (0x80000000 .|.)
     derive
       :: (Text, Text)
       -> (Map Crypto.DerivationIndex Crypto.XPrv, Bimap Text Ed25519.PublicKey)
