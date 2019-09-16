@@ -152,11 +152,12 @@ confirmPhrase mnemonic = Workflow $ do
   el "h1" $ text "Confirm your recovery phrase"
   el "p" $ text "Click the words in the correct order"
   rec
+    let initialState = ([], S.fromList sentence)
     -- Maintain an (ordered) list of staged words, and an alphabetical list of unstaged words
-    (staged, unstaged) <- fmap splitDynPure $ foldDyn ($) ([], S.fromList sentence) $ mconcat
+    (staged, unstaged) <- fmap splitDynPure $ foldDyn ($) initialState $ mconcat
       [ ffor unstage $ \w -> bimap (L.delete w) (S.insert w)
       , ffor stage $ \w -> bimap (++ [w]) (S.delete w)
-      , ffor reset $ \() (s, us) -> ([], S.fromList sentence)
+      , ffor reset $ \() _ -> initialState
       ]
     let stageAttrs = "class" =: "group dark" <> "style" =: "min-height: 9.2rem"
     (unstage, reset) <- elAttr "div" stageAttrs $ do
