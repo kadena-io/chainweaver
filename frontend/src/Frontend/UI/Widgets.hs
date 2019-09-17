@@ -55,6 +55,7 @@ import           Control.Lens
 import           Control.Monad
 import           Data.Map.Strict             (Map)
 import qualified Data.Map.Strict as Map
+import           Data.String                 (IsString)
 import           Data.Text                   (Text)
 import qualified Data.Text                   as T
 import           Language.Javascript.JSaddle (js0, pToJSVal)
@@ -131,10 +132,10 @@ uiSelectElement uCfg child = do
   selectElement cfg child
 
 -- | Factored out input class modifier, so we can keep it in sync.
-addInputElementCls :: Map AttributeName Text -> Map AttributeName Text
+addInputElementCls :: (Ord attr, IsString attr) => Map attr Text -> Map attr Text
 addInputElementCls = addToClassAttr "input"
 
-addNoAutofillAttrs :: Map AttributeName Text -> Map AttributeName Text
+addNoAutofillAttrs :: (Ord attr, IsString attr) => Map attr Text -> Map attr Text
 addNoAutofillAttrs = (noAutofillAttrs <>)
 
 
@@ -272,7 +273,7 @@ mkLabeledClsInput mkInput name = elClass "div" "segment segment_type_tertiary la
 
 -- | Attributes which will turn off all autocomplete/autofill/autocorrect
 -- functions, including the OS-level suggestions on macOS.
-noAutofillAttrs :: Map AttributeName Text
+noAutofillAttrs :: (Ord attr, IsString attr) => Map attr Text
 noAutofillAttrs = Map.fromList
   [ ("autocomplete", "off")
   , ("autocorrect", "off")

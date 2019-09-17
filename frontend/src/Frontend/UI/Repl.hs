@@ -39,7 +39,7 @@ import           GHC.Exts (toList)
 import           GHCJS.DOM.Element (scrollIntoView)
 ------------------------------------------------------------------------------
 import           Frontend.Repl
-import           Frontend.UI.Widgets (setFocusOn)
+import           Frontend.UI.Widgets (addNoAutofillAttrs, setFocusOn)
 ------------------------------------------------------------------------------
 
 data ClickState = DownAt (Int, Int) | Clicked | Selected
@@ -115,7 +115,7 @@ replInput m = do
             , fromMaybe "" . Z.safeCursor <$> tagPromptlyDyn commandHistory key
             ]
       ti <- textInput (def & textInputConfig_setValue .~ sv
-                           & textInputConfig_attributes .~ pure ("class" =: "code-font repl__input")
+                           & textInputConfig_attributes .~ pure (addNoAutofillAttrs $ "class" =: "code-font repl__input")
                       )
       let key = ffilter isMovement $ domEvent Keydown ti
       let enterPressed = keypress Enter ti
