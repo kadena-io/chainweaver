@@ -80,6 +80,7 @@ data UiButtonCfgRep f = UiButtonCfg
     -- ^ Whether or not the button should be clickable by the user.
   , _uiButtonCfg_class    :: ReflexValue f CssClass
   , _uiButtonCfg_title    :: ReflexValue f (Maybe Text)
+  , _uiButtonCfg_type     :: Maybe Text
   }
 
 $(makePactLenses ''UiButtonCfgRep)
@@ -92,10 +93,10 @@ type UiButtonDynCfg t = UiButtonCfgRep (Dynamic t)
 
 
 instance Reflex t => Default (UiButtonCfgRep (Dynamic t)) where
-  def = UiButtonCfg (pure False) (pure mempty) (pure Nothing)
+  def = UiButtonCfg (pure False) (pure mempty) (pure Nothing) Nothing
 
 instance Default (UiButtonCfgRep Identity) where
-  def = UiButtonCfg False mempty Nothing
+  def = UiButtonCfg False mempty Nothing Nothing
 
 -- Primitives:
 
@@ -279,8 +280,9 @@ toBtnAttrs uCfg =
     disabledAttr = case _uiButtonCfg_disabled cfg of
       False -> mempty
       True  -> "disabled" =: "true"
+    typeAttr = maybe mempty ("type" =:) $ _uiButtonCfg_type cfg
   in
-    addToClassAttr (_uiButtonCfg_class cfg) $ titleAttr <> disabledAttr
+    addToClassAttr (_uiButtonCfg_class cfg) $ titleAttr <> disabledAttr <> typeAttr
 
 
 -- | Combine a Dynamic config into a single dynamic value.
@@ -290,6 +292,7 @@ toStatic s =
     <$> _uiButtonCfg_disabled s
     <*> _uiButtonCfg_class s
     <*> _uiButtonCfg_title s
+    <*> pure (_uiButtonCfg_type s)
 
 btnTextIcon :: DomBuilder t m => Text -> Text -> m a -> m a
 btnTextIcon = imgWithAltCls "button__text-icon"

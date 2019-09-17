@@ -35,7 +35,6 @@ import           Data.Dependent.Sum              (DSum ((:=>)))
 import           Reflex
 import qualified Text.Megaparsec as MP
 import           Data.Void (Void)
-import           Data.Text (Text)
 ------------------------------------------------------------------------------
 import           Obelisk.Route                   (R)
 import           Obelisk.Route.Frontend
@@ -104,7 +103,7 @@ handleRoutes m = do
            then Nothing
            else Just newRoute
 
-    parseRoute :: R FrontendRoute -> Maybe (Either (MP.ParseError Text Void) LoadedRef)
+    parseRoute :: R FrontendRoute -> Maybe (Either (MP.ParseErrorBundle RefPath Void) LoadedRef)
     parseRoute = fmap runRefParser . \case
        FrontendRoute_Main     :/ () -> Nothing
        FrontendRoute_Example  :/ xs -> Just $ "example":xs

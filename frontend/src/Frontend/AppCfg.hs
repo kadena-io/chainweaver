@@ -53,4 +53,6 @@ data AppCfg t m = AppCfg
   -- ^ Requests to sign this object
   , _appCfg_signingResponse :: Either Text SigningResponse -> JSM ()
   -- ^ Responses to signings
+  , _appCfg_forceResize :: Event t ()
+  -- ^ Force the ace widgets to recalculate size
   }

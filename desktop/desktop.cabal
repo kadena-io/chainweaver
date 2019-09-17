@@ -1,0 +1,80 @@
+name: desktop
+version: 0.1
+cabal-version: >= 1.8
+build-type: Simple
+
+library
+  hs-source-dirs: src
+  build-depends:
+      base
+    , backend
+    , common
+    , frontend
+
+    , aeson
+    , base16-bytestring
+    , bimap
+    , bytestring
+    , cardano-crypto
+    , containers
+    , cryptonite
+    , directory
+    , filepath
+    , jsaddle
+    , lens
+    , memory
+    , obelisk-executable-config-lookup
+    , obelisk-frontend
+    , obelisk-generated-static
+    , obelisk-route
+    , raw-strings-qq
+    , reflex-dom-core
+    , text
+  exposed-modules:
+      Desktop
+    , Desktop.Orphans
+    , Desktop.Setup
+  ghc-options: -Wall
+
+executable macApp
+  main-is: main.hs
+  hs-source-dirs: mac
+  if !os(darwin) || impl(ghcjs)
+    buildable: False
+  build-depends:
+      base
+    , backend
+    , common
+    , frontend
+    , desktop
+    , aeson
+    , async
+    , bytestring
+    , containers
+    , directory
+    , filepath
+    , jsaddle-wkwebview
+    , mtl
+    , network
+    , network-uri
+    , obelisk-backend
+    , obelisk-frontend
+    , obelisk-route
+    , process
+    , reflex-dom
+    , servant
+    , servant-server
+    , snap-core
+    , snap-server
+    , temporary
+    , text
+    , wai-cors
+    , warp
+  ghc-options:
+    -threaded -O -Wall
+
+  frameworks: Cocoa, Foundation, WebKit
+
+  c-sources: mac/cbits/mac.m
+  cpp-options: -DUSE_COCOA
+  cc-options: -Werror=objc-method-access

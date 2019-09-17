@@ -28,7 +28,6 @@ import           GHC.Generics             (Generic)
 import           Obelisk.Configs
 import           Safe                     (readMay)
 import qualified Text.Megaparsec          as MP
-import qualified Text.Megaparsec.Char     as MP
 import qualified Text.URI                 as URI hiding (uriPath)
 import           Text.URI.Lens
 

@@ -131,7 +131,7 @@
 }
 
 .button_type_confirm:hover:not([disabled]) {
-  border: $hover-background;
+  border-color: $hover-background;
 }
 
 .button_type_confirm:active:not([disabled]) {

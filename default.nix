@@ -8,12 +8,12 @@ let
   obApp = import ./obApp.nix { inherit system iosSdkVersion obelisk pkgs; };
   pactServerModule = import ./pact-server/service.nix;
   macAppName = "Pact";
-  macAppIcon = ./mac/pact.icns; # Use png2icns to produce this, if needed
-  macPactDocumentIcon = ./mac/pact-document.icns;
+  macAppIcon = ./desktop/mac/pact.icns; # Use png2icns to produce this, if needed
+  macPactDocumentIcon = ./desktop/mac/pact-document.icns;
   # ^ This can be created in Preview using the system document icon from
   # /System/Library/CoreServices/CoreTypes.bundle/Contents/Resources/
   # and the pact logo
-  macAppInstallerBackground = ./mac/installer-background.png;
+  macAppInstallerBackground = ./desktop/mac/installer-background.png;
   bundleIdentifier = "io.kadena.pact";
   createDmg = pkgs.fetchFromGitHub {
     owner = "andreyvit";
@@ -107,7 +107,7 @@ in obApp // rec {
     ${pkgs.sass}/bin/sass ${./backend/sass}/index.scss $out/sass.css
   '';
   # Mac app static linking
-  macBackend = pkgs.haskell.lib.overrideCabal obApp.ghc.mac (drv: {
+  macBackend = pkgs.haskell.lib.overrideCabal obApp.ghc.desktop (drv: {
     preBuild = ''
       mkdir include
       ln -s ${pkgs.darwin.cf-private}/Library/Frameworks/CoreFoundation.framework/Headers include/CoreFoundation
@@ -141,7 +141,7 @@ in obApp // rec {
     ln -s "${obApp.passthru.staticFiles}" $out/${macAppName}.app/Contents/Resources/static
     ln -s "${macAppIcon}" $out/${macAppName}.app/Contents/Resources/pact.icns
     ln -s "${macPactDocumentIcon}" $out/${macAppName}.app/Contents/Resources/pact-document.icns
-    ln -s "${./mac/index.html}" $out/${macAppName}.app/Contents/Resources/index.html
+    ln -s "${./desktop/index.html}" $out/${macAppName}.app/Contents/Resources/index.html
     ln -s "${sass}/sass.css" $out/${macAppName}.app/Contents/Resources/sass.css
     cat ${plist} > $out/${macAppName}.app/Contents/Info.plist
   '';
