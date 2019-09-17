@@ -8,7 +8,7 @@ with obelisk;
 let
   obApp = import ./obApp.nix args;
   pactServerModule = import ./pact-server/service.nix;
-  macAppName = "Pact";
+  macAppName = "Kadena Chainweaver";
   macAppIcon = ./desktop/mac/pact.icns; # Use png2icns to produce this, if needed
   macPactDocumentIcon = ./desktop/mac/pact-document.icns;
   # ^ This can be created in Preview using the system document icon from
