@@ -1,11 +1,12 @@
-{ system ? builtins.currentSystem
+args@{ system ? builtins.currentSystem
 , iosSdkVersion ? "10.2"
 , obelisk ? (import ./.obelisk/impl { inherit system iosSdkVersion; })
 , pkgs ? obelisk.reflex-platform.nixpkgs
+, withHoogle ? false
 }:
 with obelisk;
 let
-  obApp = import ./obApp.nix { inherit system iosSdkVersion obelisk pkgs; };
+  obApp = import ./obApp.nix args;
   pactServerModule = import ./pact-server/service.nix;
   macAppName = "Pact";
   macAppIcon = ./desktop/mac/pact.icns; # Use png2icns to produce this, if needed

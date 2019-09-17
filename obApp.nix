@@ -2,6 +2,7 @@
 , iosSdkVersion ? "10.2"
 , obelisk ? (import ./.obelisk/impl { inherit system iosSdkVersion; })
 , pkgs ? obelisk.reflex-platform.nixpkgs
+, withHoogle ? false
 }:
 with obelisk;
 let
@@ -10,6 +11,8 @@ let
   haskellLib = pkgs.haskell.lib;
 in
   project ./. ({ pkgs, hackGet, ... }: with pkgs.haskell.lib; {
+    inherit withHoogle;
+
     # android.applicationId = "systems.obsidian.obelisk.examples.minimal";
     # android.displayName = "Obelisk Minimal Example";
     # ios.bundleIdentifier = "systems.obsidian.obelisk.examples.minimal";
