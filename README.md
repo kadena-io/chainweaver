@@ -6,7 +6,7 @@ Web IDE for the [Pact](https://pact-language.readthedocs.io/en/latest/) language
 
 This is an [Obelisk project](https://github.com/obsidiansystems/obelisk), so find general hacking instructions there.
 
-Since release 1.4 pact-web has support GitHub gist sharing so it needs client credentials for operation. See section `Deployments` for details on howto obtain them and put the client id and the client secret in the appropriate config files.
+Since release 1.4 pact-web has support for GitHub gist sharing so it needs client credentials for operation. See section `Deployments` for details on how to obtain them and put the client id and the client secret in the appropriate config files.
 
 The homepage URL will be http://localhost:8000, the authorization callback url will be http://localhost:8000/oauth/redirect/github .
 
