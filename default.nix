@@ -48,8 +48,6 @@ let
       <string>${obApp.ghc.frontend.version}</string>
       <key>CFBundlePackageType</key>
       <string>APPL</string>
-      <key>CFBundleSignature</key>
-      <string>${macAppName}</string>
       <key>CFBundleExecutable</key>
       <string>${macAppName}</string>
       <key>NSHumanReadableCopyright</key>
