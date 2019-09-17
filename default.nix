@@ -131,20 +131,20 @@ in obApp // rec {
     ];
   });
   mac = pkgs.runCommand "mac" {} ''
-    mkdir -p $out/${macAppName}.app/Contents
-    mkdir -p $out/${macAppName}.app/Contents/MacOS
-    mkdir -p $out/${macAppName}.app/Contents/Resources
+    mkdir -p "$out/${macAppName}.app/Contents"
+    mkdir -p "$out/${macAppName}.app/Contents/MacOS"
+    mkdir -p "$out/${macAppName}.app/Contents/Resources"
     set -eux
     # Copy instead of symlink, so we can set the path to z3
-    cp "${macBackend}"/bin/macApp $out/${macAppName}.app/Contents/MacOS/${macAppName}
-    ln -s "${pkgs.z3}"/bin/z3 $out/${macAppName}.app/Contents/MacOS/z3
-    ln -s "${obApp.mkAssets obApp.passthru.staticFiles}" $out/${macAppName}.app/Contents/Resources/static.assets
-    ln -s "${obApp.passthru.staticFiles}" $out/${macAppName}.app/Contents/Resources/static
-    ln -s "${macAppIcon}" $out/${macAppName}.app/Contents/Resources/pact.icns
-    ln -s "${macPactDocumentIcon}" $out/${macAppName}.app/Contents/Resources/pact-document.icns
-    ln -s "${./desktop/index.html}" $out/${macAppName}.app/Contents/Resources/index.html
-    ln -s "${sass}/sass.css" $out/${macAppName}.app/Contents/Resources/sass.css
-    cat ${plist} > $out/${macAppName}.app/Contents/Info.plist
+    cp "${macBackend}"/bin/macApp "$out/${macAppName}.app/Contents/MacOS/${macAppName}"
+    ln -s "${pkgs.z3}"/bin/z3 "$out/${macAppName}.app/Contents/MacOS/z3"
+    ln -s "${obApp.mkAssets obApp.passthru.staticFiles}" "$out/${macAppName}.app/Contents/Resources/static.assets"
+    ln -s "${obApp.passthru.staticFiles}" "$out/${macAppName}.app/Contents/Resources/static"
+    ln -s "${macAppIcon}" "$out/${macAppName}.app/Contents/Resources/pact.icns"
+    ln -s "${macPactDocumentIcon}" "$out/${macAppName}.app/Contents/Resources/pact-document.icns"
+    ln -s "${./desktop/index.html}" "$out/${macAppName}.app/Contents/Resources/index.html"
+    ln -s "${sass}/sass.css" "$out/${macAppName}.app/Contents/Resources/sass.css"
+    cat ${plist} > "$out/${macAppName}.app/Contents/Info.plist"
   '';
   deployMac = pkgs.writeScript "deploy" ''
     #!/usr/bin/env bash
@@ -189,14 +189,14 @@ in obApp // rec {
     fi
 
     # Create and sign the app
-    mkdir -p $tmpdir
-    cp -LR "${mac}/${macAppName}.app" $tmpdir
+    mkdir -p "$tmpdir"
+    cp -LR "${mac}/${macAppName}.app" "$tmpdir"
     chmod -R +w "$tmpdir/${macAppName}.app"
     strip "$tmpdir/${macAppName}.app/Contents/MacOS/${macAppName}"
-    sed "s|<team-id/>|$TEAM_ID|" < "${xcent}" > $tmpdir/xcent
-    cat $tmpdir/xcent
-    plutil $tmpdir/xcent
-    /usr/bin/codesign --deep --force --sign "$signer" --entitlements $tmpdir/xcent --timestamp=none "$tmpdir/${macAppName}.app"
+    sed "s|<team-id/>|$TEAM_ID|" < "${xcent}" > "$tmpdir/xcent"
+    cat "$tmpdir/xcent"
+    plutil "$tmpdir/xcent"
+    /usr/bin/codesign --deep --force --sign "$signer" --entitlements "$tmpdir/xcent" --timestamp=none "$tmpdir/${macAppName}.app"
 
     # Create the dmg
     ${createDmg}/create-dmg \
