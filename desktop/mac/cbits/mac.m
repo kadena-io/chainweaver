@@ -59,7 +59,7 @@ void global_cancelUserAttentionRequest(int r) {
   return self;
 }
 -(void) openFileDialog {
-  if ([openFilePanel runModal] == NSFileHandlingPanelOKButton) {
+  if ([openFilePanel runModal] == NSModalResponseOK) {
     NSURL *url = [[openFilePanel URLs] objectAtIndex:0];
     callWithCString([url fileSystemRepresentation], openFileHandler);
   }
@@ -155,7 +155,7 @@ void setupAppMenu(HsStablePtr hs_handleOpenedFile) {
     action: @selector(hideOtherApplications:)
     keyEquivalent:@"h"
   ];
-  [hideOthers setKeyEquivalentModifierMask:NSAlternateKeyMask|NSCommandKeyMask];
+  [hideOthers setKeyEquivalentModifierMask:NSEventModifierFlagOption|NSEventModifierFlagCommand];
   [hideOthers setTarget:application];
   NSMenuItem *showAll = [appMenu addItemWithTitle:@"Show All" action: @selector(unhideAllApplications:) keyEquivalent:@"" ];
   [showAll setTarget:application];
