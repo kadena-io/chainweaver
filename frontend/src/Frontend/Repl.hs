@@ -47,6 +47,7 @@ import           Control.Monad.Except
 import           Control.Monad.State.Strict
 import           Data.Aeson                 as Aeson (Object, encode)
 import qualified Data.ByteString.Lazy       as BSL
+import           Data.Either                (isRight)
 import qualified Data.HashMap.Strict        as HM
 import           Data.Map                   (Map)
 import qualified Data.Map                   as Map
@@ -205,7 +206,7 @@ makeRepl m cfg = build $ \ ~(_, impl) -> do
 
       onNewTransSt   = fmap snd onNewTransR
       onNewCmdResult = fmap fst onNewCmdR
-      onNewCmdSt     = fmap snd onNewCmdR
+      onNewCmdSt     = fforMaybe onNewCmdR $ \(r,s) -> if isRight r then Just s else Nothing
       onVerifySt     = fmap snd onVerifyR
 
     st <- holdDyn initState $ leftmost [ onResetSt
