@@ -1,18 +1,21 @@
 {
     hostName,
-    myDbFile,
-    myApiPort,
-    myAlias,
-    myPort,
-    myPublicKey,
-    mySignerSecret,
-    mySignerPublic,
-    myEphemeralSecret,
-    myEphemeralPublic,
-    myStaticSecret,
-    myStaticPublic,
-    myAdminKey,
-    myPrivateKey,
+    dbFile,
+    apiPort,
+    alias,
+    fullAddr,
+    host,
+    port,
+    publicKey,
+    signerSecret,
+    signerPublic,
+    ephemeralSecret,
+    ephemeralPublic,
+    staticSecret,
+    staticPublic,
+    localName,
+    adminKey,
+    privateKey,
     alias-a,
     port-a,
     publicKey-a,
@@ -28,6 +31,7 @@
     publicKey-c,
     remote-static-c,
     remote-name-c,
+    sbftApp,
     sbftUser,
     pkgs
 }:
@@ -42,18 +46,18 @@ let
           - journal_mode = MEMORY
           - locking_mode = EXCLUSIVE
           - temp_store = MEMORY
-          _dbFile: ${toString myDbFile}
+          _dbFile: ${toString dbFile}
         type: SQLITE
     enableDiagnostics: null
     publicKeys:
-      node0: ${toString myPublicKey}
+      node0: ${toString publicKey}
       node1: ${toString publicKey-a}
       node2: ${toString publicKey-b}
       node3: ${toString publicKey-c}
     aeBatchSize: 20000
     heartbeatTimeout: 2000000
     logDir: ./log
-    apiPort: ${toString myApiPort}
+    apiPort: ${toString apiPort}
     logRules:
       PactService:
         include: null
@@ -81,25 +85,25 @@ let
     - 10000000
     - 18000000
     inMemTxCache: 200000
-    myPublicKey: ${toString myPublicKey}
+    myPublicKey: ${toString publicKey}
     nodeId:
-      alias: ${toString myAlias}
-      fullAddr: tcp://127.0.0.1:${toString myPort}
+      alias: ${toString alias}
+      fullAddr: ${toString fullAddr}
       host: 127.0.0.1
-      port: ${toString myPort}
+      port: ${toString port}
     enableDebug: true
     entity:
       signer:
-        secret: ${toString mySignerSecret}
-        public: ${toString mySignerPublic}
+        secret: ${toString signerSecret}
+        public: ${toString signerPublic}
       local:
         ephemeral:
-          secret: ${toString myEphemeralSecret}
-          public: ${toString myEphemeralPublic}
+          secret: ${toString ephemeralSecret}
+          public: ${toString ephemeralPublic}
         static:
-          secret: ${toString myStaticSecret}
-          public: ${toString myStaticPublic}
-        name: Alice
+          secret: ${toString staticSecret}
+          public: ${toString staticPublic}
+        name: ${toString localName}
       sending: true
       remotes:
       - static: ${toString remote-static-a}
@@ -109,10 +113,10 @@ let
       - static: ${toString remote-static-c}
         name: ${toString remote-name-c}
     adminKeys:
-      admin0: ${toString myAdminKey}
+      admin0: ${toString adminKey}
     nodeClass: active
     enablePersistence: true
-    myPrivateKey: ${toString myPrivateKey}
+    myPrivateKey: ${toString privateKey}
     preProcUsePar: true
 '';
 
@@ -140,21 +144,18 @@ in {pkgs, lib, ...}: {
 
       #ExecStart = "${pkgs.haskell.lib.justStaticExecutables obApp.ghc.pact}/bin/pact -s ${pactConfig}";
       # module Apps.Kadena.Server
-      ExecStart = "${pkgs.haskell.lib.justStaticExecutables obApp.ghc.pact}/bin/pact -s ${pactConfig}";
+      ExecStart = "${pkgs.haskell.lib.justStaticExecutables sbftApp.ghc.pact}/bin/pact -s ${pactConfig}";
       Restart = "always";
       KillMode = "process";
     };
   };
-  networking.firewall.allowedTCPPorts =
-    if nginxPort == 443
-    then [ 22 80 443 ]
-    else [ 22 80 443 nginxPort ];
+  networking.firewall.allowedTCPPorts = [ 22 80 443 ];
 
   services.nginx.virtualHosts."${hostName}" = {
     enableACME = true;
     forceSSL = true;
     locations."/" = {
-      proxyPass = "http://localhost:${toString myApiPort}";
+      proxyPass = "http://localhost:${toString apiPort}";
       extraConfig = ''
         # Restrict transaction size:
         client_max_body_size 1m;

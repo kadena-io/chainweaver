@@ -15,7 +15,7 @@
 }:
 let
   # obApp = import ../obApp.nix { inherit system iosSdkVersion obelisk pkgs; };
-  sbftApp = import ../sbft.nix { inherit system iosSdkVersion };
+  sbftApp = import ../sbft.nix { inherit system iosSdkVersion; };
   sbftServerModule = import ./service.nix;
   nixos = import (pkgs.path + /nixos);
   args = { inherit hostName adminEmail; routeHost = hostName; enableHttps = true;};
@@ -30,7 +30,7 @@ in
             apiPort = 9000;
             alias = "node0";
             fullAddr = "tcp://127.0.0.1:10000";
-            host = 127.0.0.1;
+            host = "127.0.0.1";
             port = 10000;
             publicKey = "54ea50ec9f2ec61d60ee194ca99ad2300eb8d7d94848957b67d0d74be8e08ae7";
             signerSecret = "c7e6a39bb01e3c664b9ccabc09881e879dff69522062aa268ff97d196ef3873b";
@@ -57,7 +57,8 @@ in
             publicKey-c = "542f27a3f87d132f9dfa213150634096370c072a058f3a5b4e840da0703a23ad";
             remote-static-c = "3ca9b8d3822052a5d32fed41f4245ae62ddb2a0e7e7849f234b49a87f3d20f51";
             remote-name-c = "Dinesh";
-          inherit hostName pkgs;
+            sbftUser = "root";
+            inherit hostName sbftApp pkgs;
         })
       ];
       services.nginx.enable = true;
