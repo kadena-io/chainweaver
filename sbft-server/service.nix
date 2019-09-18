@@ -28,8 +28,8 @@
     publicKey-c,
     remote-static-c,
     remote-name-c,
-    # obApp,
-    # pkgs
+    sbftUser,
+    pkgs
 }:
 let
   pactConfig = pkgs.writeText "sbft.yaml" ''
@@ -117,7 +117,7 @@ let
 '';
 
 in {pkgs, lib, ...}: {
-  users.users.${sfbtUser} = {
+  users.users.${sbftUser} = {
     description = "User for running the sbft server instance.";
     isSystemUser = true;
   };
@@ -129,8 +129,6 @@ in {pkgs, lib, ...}: {
 
     preStart = ''
       export PATH=$PATH:${pkgs.coreutils}/bin
-      # mkdir -p ${pactDataDir}/pact-log
-      # chown ${pactUser} ${pactDataDir}/pact-log
       '';
     serviceConfig = {
       # So preStart runs as root:
@@ -156,7 +154,7 @@ in {pkgs, lib, ...}: {
     enableACME = true;
     forceSSL = true;
     locations."/" = {
-      proxyPass = "http://localhost:${toString myApiPort,}";
+      proxyPass = "http://localhost:${toString myApiPort}";
       extraConfig = ''
         # Restrict transaction size:
         client_max_body_size 1m;
