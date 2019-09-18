@@ -19,7 +19,7 @@ import Foreign.C.String (CString, peekCString)
 import Foreign.C.Types (CInt(..))
 import Foreign.StablePtr (StablePtr, newStablePtr)
 import GHC.IO.Handle
-import Language.Javascript.JSaddle.WKWebView
+import Language.Javascript.JSaddle.Types (JSM)
 import Obelisk.Backend
 import Obelisk.Frontend
 import Obelisk.Route.Frontend
@@ -28,6 +28,7 @@ import Servant.API
 import System.FilePath ((</>))
 import System.IO
 import qualified Control.Concurrent.Async as Async
+import qualified Data.ByteString as BS
 import qualified Data.ByteString.Lazy as LBS
 import qualified Data.List as L
 import qualified Data.Map as M
@@ -106,8 +107,12 @@ backend = Backend
 type SigningApi = "v1" :> V1SigningApi
 type V1SigningApi = "sign" :> ReqBody '[JSON] SigningRequest :> Post '[JSON] SigningResponse
 
-main' :: MacFFI -> IO ()
-main' ffi = redirectPipes [stdout, stderr] $ do
+main'
+  :: MacFFI
+  -> IO (Maybe BS.ByteString)
+  -> (String -> String -> (String -> IO ()) -> (FilePath -> IO Bool) -> JSM () -> IO ())
+  -> IO ()
+main' ffi mainBundleResourcePath runHTML = redirectPipes [stdout, stderr] $ do
   -- Set the path to z3. I tried using the plist key LSEnvironment, but it
   -- doesn't work with relative paths.
   exePath <- L.dropWhileEnd (/= '/') <$> Env.getExecutablePath
@@ -169,7 +174,7 @@ main' ffi = redirectPipes [stdout, stderr] $ do
           = Warp.runSettings s $ Wai.cors laxCors
           $ Servant.serve (Proxy @SigningApi) runSign
     _ <- Async.async $ apiServer
-    runHTMLWithBaseURL "index.html" route (cfg ffi putStrLn handleOpen) $ do
+    runHTML "index.html" route putStrLn handleOpen $ do
       mInitFile <- liftIO $ tryTakeMVar fileOpenedMVar
       let frontendMode = FrontendMode
             { _frontendMode_hydrate = False
@@ -219,29 +224,3 @@ mvarTriggerEvent mvar = do
   (e, trigger) <- newTriggerEvent
   _ <- liftIO $ forkIO $ forever $ trigger =<< takeMVar mvar
   pure e
-
-cfg :: MacFFI -> (String -> IO ()) -> (FilePath -> IO Bool) -> AppDelegateConfig
-cfg ffi onUniversalLink handleOpen = AppDelegateConfig
-  { _appDelegateConfig_willFinishLaunchingWithOptions = do
-    putStrLn "will finish launching"
-    (_macFFI_setupAppMenu ffi) <=< newStablePtr $ void . handleOpen <=< peekCString
-  , _appDelegateConfig_didFinishLaunchingWithOptions = do
-    putStrLn "did finish launching"
-    (_macFFI_hideWindow ffi)
-  , _appDelegateConfig_applicationDidBecomeActive = putStrLn "did become active"
-  , _appDelegateConfig_applicationWillResignActive = putStrLn "will resign active"
-  , _appDelegateConfig_applicationDidEnterBackground = putStrLn "did enter background"
-  , _appDelegateConfig_applicationWillEnterForeground = putStrLn "will enter foreground"
-  , _appDelegateConfig_applicationWillTerminate = putStrLn "will terminate"
-  , _appDelegateConfig_applicationSignificantTimeChange = putStrLn "time change"
-  , _appDelegateConfig_applicationUniversalLink = \cs -> do
-      s <- peekCString cs
-      putStrLn $ "universal link: " <> s
-      onUniversalLink s
-  , _appDelegateConfig_appDelegateNotificationConfig = def
-  , _appDelegateConfig_developerExtrasEnabled = True
-  , _appDelegateConfig_applicationOpenFile = \cs -> do
-      filePath <- peekCString cs
-      putStrLn $ "application open file: " <> filePath
-      handleOpen filePath
-  }

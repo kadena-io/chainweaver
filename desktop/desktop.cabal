@@ -22,7 +22,6 @@ library
     , directory
     , filepath
     , jsaddle
-    , jsaddle-wkwebview
     , lens
     , memory
     , mtl
@@ -58,6 +57,7 @@ executable macApp
   build-depends:
       base
     , desktop
+    , jsaddle-wkwebview
   ghc-options:
     -threaded -O -Wall
 
