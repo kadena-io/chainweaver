@@ -57,6 +57,10 @@ executable macApp
   build-depends:
       base
     , desktop
+
+    , bytestring
+    , data-default
+    , jsaddle
     , jsaddle-wkwebview
   ghc-options:
     -threaded -O -Wall

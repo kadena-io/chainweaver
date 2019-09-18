@@ -1,9 +1,14 @@
 {-# LANGUAGE ForeignFunctionInterface #-}
 
-import Foreign.C.String (CString)
+import Control.Monad ((<=<))
+import Data.ByteString (ByteString)
+import Data.Default (Default(..))
+import Data.Functor (void)
+import Foreign.C.String (CString, peekCString)
 import Foreign.C.Types (CInt(..))
-import Foreign.StablePtr (StablePtr)
-import Language.Javascript.JSaddle.WKWebView (AppDelegateConfig(..))
+import Foreign.StablePtr (StablePtr, newStablePtr)
+import Language.Javascript.JSaddle.Types (JSM)
+import Language.Javascript.JSaddle.WKWebView (AppDelegateConfig(..), mainBundleResourcePath, runHTMLWithBaseURL)
 
 import Desktop (main', MacFFI(..))
 
@@ -29,11 +34,11 @@ ffi = MacFFI
   }
 
 main :: IO ()
-main = main' ffi runMac
+main = main' ffi mainBundleResourcePath runMac
 
 runMac
-  :: String
-  -> String
+  :: ByteString
+  -> ByteString
   -> (String -> IO ())
   -> (FilePath -> IO Bool)
   -> JSM ()

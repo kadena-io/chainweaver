@@ -9,7 +9,7 @@ module Desktop.Mac where
 
 import Control.Concurrent
 import Control.Exception (bracket_, bracket, try)
-import Control.Monad (void, forever, (<=<))
+import Control.Monad (forever)
 import Control.Monad.Except (throwError)
 import Control.Monad.IO.Class
 import Data.Foldable (for_)
@@ -17,7 +17,7 @@ import Data.Proxy (Proxy(..))
 import Data.String (IsString(..))
 import Foreign.C.String (CString, peekCString)
 import Foreign.C.Types (CInt(..))
-import Foreign.StablePtr (StablePtr, newStablePtr)
+import Foreign.StablePtr (StablePtr)
 import GHC.IO.Handle
 import Language.Javascript.JSaddle.Types (JSM)
 import Obelisk.Backend
@@ -110,7 +110,7 @@ type V1SigningApi = "sign" :> ReqBody '[JSON] SigningRequest :> Post '[JSON] Sig
 main'
   :: MacFFI
   -> IO (Maybe BS.ByteString)
-  -> (String -> String -> (String -> IO ()) -> (FilePath -> IO Bool) -> JSM () -> IO ())
+  -> (BS.ByteString -> BS.ByteString -> (String -> IO ()) -> (FilePath -> IO Bool) -> JSM () -> IO ())
   -> IO ()
 main' ffi mainBundleResourcePath runHTML = redirectPipes [stdout, stderr] $ do
   -- Set the path to z3. I tried using the plist key LSEnvironment, but it
