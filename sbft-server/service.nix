@@ -31,7 +31,6 @@
     publicKey-c,
     remote-static-c,
     remote-name-c,
-    sbftApp,
     sbftUser,
     pkgs
 }:
@@ -143,8 +142,6 @@ in {pkgs, lib, ...}: {
       #WorkingDirectory = "/var/empty";
 
       #ExecStart = "${pkgs.haskell.lib.justStaticExecutables obApp.ghc.pact}/bin/pact -s ${pactConfig}";
-      # module Apps.Kadena.Server
-      ExecStart = "${pkgs.haskell.lib.justStaticExecutables sbftApp.ghc.pact}/bin/pact -s ${pactConfig}";
       Restart = "always";
       KillMode = "process";
     };

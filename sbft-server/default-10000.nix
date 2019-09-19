@@ -15,7 +15,6 @@
 }:
 let
   # obApp = import ../obApp.nix { inherit system iosSdkVersion obelisk pkgs; };
-  sbftApp = import ../sbft.nix { inherit system iosSdkVersion; };
   sbftServerModule = import ./service.nix;
   nixos = import (pkgs.path + /nixos);
   args = { inherit hostName adminEmail; routeHost = hostName; enableHttps = true;};
@@ -58,7 +57,7 @@ in
             remote-static-c = "3ca9b8d3822052a5d32fed41f4245ae62ddb2a0e7e7849f234b49a87f3d20f51";
             remote-name-c = "Dinesh";
             sbftUser = "root";
-            inherit hostName sbftApp pkgs;
+            inherit hostName pkgs;
         })
       ];
       services.nginx.enable = true;
