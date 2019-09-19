@@ -12,6 +12,7 @@ library
     , frontend
 
     , aeson
+    , async
     , base16-bytestring
     , bimap
     , bytestring
@@ -23,15 +24,27 @@ library
     , jsaddle
     , lens
     , memory
+    , mtl
+    , network
     , obelisk-executable-config-lookup
+    , obelisk-backend
     , obelisk-frontend
     , obelisk-generated-static
     , obelisk-route
+    , process
     , raw-strings-qq
+    , reflex-dom
     , reflex-dom-core
+    , servant
+    , servant-server
+    , snap-server
     , text
+    , wai-cors
+    , warp
   exposed-modules:
       Desktop
+    , Desktop.Frontend
+    , Desktop.Mac
     , Desktop.Orphans
     , Desktop.Setup
   ghc-options: -Wall
@@ -43,33 +56,12 @@ executable macApp
     buildable: False
   build-depends:
       base
-    , backend
-    , common
-    , frontend
     , desktop
-    , aeson
-    , async
+
     , bytestring
-    , containers
-    , directory
-    , filepath
+    , data-default
+    , jsaddle
     , jsaddle-wkwebview
-    , mtl
-    , network
-    , network-uri
-    , obelisk-backend
-    , obelisk-frontend
-    , obelisk-route
-    , process
-    , reflex-dom
-    , servant
-    , servant-server
-    , snap-core
-    , snap-server
-    , temporary
-    , text
-    , wai-cors
-    , warp
   ghc-options:
     -threaded -O -Wall
 

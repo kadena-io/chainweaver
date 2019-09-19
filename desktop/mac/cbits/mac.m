@@ -107,6 +107,20 @@ void resizeWindow() {
   }];
 }
 
+void moveToForeground() {
+  [[NSOperationQueue mainQueue] addOperationWithBlock:^(void) {
+    [NSApp activateIgnoringOtherApps:YES];
+  }];
+}
+
+void moveToBackground() {
+  [[NSOperationQueue mainQueue] addOperationWithBlock:^(void) {
+    NSApplication *app = [NSApplication sharedApplication];
+    NSWindow *window = [app mainWindow];
+    [window orderBack:window];
+  }];
+}
+
 void setupAppMenu(HsStablePtr hs_handleOpenedFile) {
   NSApplication *application = [NSApplication sharedApplication];
   global_dialogController = [[DialogController alloc] initWithHandler:hs_handleOpenedFile];
