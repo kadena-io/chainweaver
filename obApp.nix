@@ -42,6 +42,7 @@ in
           entropy = hackGet ./deps/entropy;
           cardano-crypto = hackGet ./deps/cardano-crypto;
           desktop = ./desktop;
+          mac = ./mac;
       };
 
     overrides = let

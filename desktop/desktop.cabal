@@ -48,25 +48,3 @@ library
     , Desktop.Orphans
     , Desktop.Setup
   ghc-options: -Wall
-
-executable macApp
-  main-is: main.hs
-  hs-source-dirs: mac
-  if !os(darwin) || impl(ghcjs)
-    buildable: False
-  build-depends:
-      base
-    , desktop
-
-    , bytestring
-    , data-default
-    , jsaddle
-    , jsaddle-wkwebview
-  ghc-options:
-    -threaded -O -Wall
-
-  frameworks: Cocoa, Foundation, WebKit
-
-  c-sources: mac/cbits/mac.m
-  cpp-options: -DUSE_COCOA
-  cc-options: -Werror=objc-method-access
