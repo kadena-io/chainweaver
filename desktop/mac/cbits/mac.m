@@ -2,7 +2,9 @@
 #import <Cocoa/Cocoa.h>
 #import <WebKit/WebKit.h>
 
+#ifndef MIN
 #define MIN(a,b) ( ((a) < (b)) ? (a) : (b) )
+#endif
 
 extern void callIO(HsStablePtr);
 extern void callWithCString(const char * _Nonnull, HsStablePtr);
