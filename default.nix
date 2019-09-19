@@ -9,12 +9,12 @@ let
   obApp = import ./obApp.nix args;
   pactServerModule = import ./pact-server/service.nix;
   macAppName = "Pact";
-  macAppIcon = ./mac/pact.icns; # Use png2icns to produce this, if needed
-  macPactDocumentIcon = ./mac/pact-document.icns;
+  macAppIcon = ./mac/static/pact.icns; # Use png2icns to produce this, if needed
+  macPactDocumentIcon = ./mac/static/pact-document.icns;
   # ^ This can be created in Preview using the system document icon from
   # /System/Library/CoreServices/CoreTypes.bundle/Contents/Resources/
   # and the pact logo
-  macAppInstallerBackground = ./mac/installer-background.png;
+  macAppInstallerBackground = ./mac/static/installer-background.png;
   bundleIdentifier = "io.kadena.pact";
   createDmg = pkgs.fetchFromGitHub {
     owner = "andreyvit";
@@ -140,7 +140,7 @@ in obApp // rec {
     ln -s "${obApp.passthru.staticFiles}" "$out/${macAppName}.app/Contents/Resources/static"
     ln -s "${macAppIcon}" "$out/${macAppName}.app/Contents/Resources/pact.icns"
     ln -s "${macPactDocumentIcon}" "$out/${macAppName}.app/Contents/Resources/pact-document.icns"
-    ln -s "${./mac/index.html}" "$out/${macAppName}.app/Contents/Resources/index.html"
+    ln -s "${./mac/static/index.html}" "$out/${macAppName}.app/Contents/Resources/index.html"
     ln -s "${sass}/sass.css" "$out/${macAppName}.app/Contents/Resources/sass.css"
     cat ${plist} > "$out/${macAppName}.app/Contents/Info.plist"
   '';

@@ -42,7 +42,7 @@ in
           entropy = hackGet ./deps/entropy;
           cardano-crypto = hackGet ./deps/cardano-crypto;
           desktop = ./desktop;
-          mac = ./mac;
+          mac = builtins.filterSource (path: type: !(builtins.elem (baseNameOf path) ["static"])) ./mac;
       };
 
     overrides = let
