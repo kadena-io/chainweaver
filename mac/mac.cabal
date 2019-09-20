@@ -1,0 +1,26 @@
+name: mac
+version: 0.1
+cabal-version: >= 1.8
+build-type: Simple
+
+executable macApp
+  main-is: main.hs
+  hs-source-dirs: src-bin
+  if !os(darwin) || impl(ghcjs)
+    buildable: False
+  build-depends:
+      base
+    , desktop
+
+    , bytestring
+    , data-default
+    , jsaddle
+    , jsaddle-wkwebview
+  ghc-options:
+    -threaded -O -Wall
+
+  frameworks: Cocoa, Foundation, WebKit
+
+  c-sources: cbits/mac.m
+  cpp-options: -DUSE_COCOA
+  cc-options: -Werror=objc-method-access
