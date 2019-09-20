@@ -14,7 +14,7 @@
 , adminEmail
 }:
 let
-  # obApp = import ../obApp.nix { inherit system iosSdkVersion obelisk pkgs; };
+  sbftApp = import deps/Kadena/default.nix { inherit system pkgs; };
   sbftServerModule = import ./service.nix;
   nixos = import (pkgs.path + /nixos);
   args = { inherit hostName adminEmail; routeHost = hostName; enableHttps = true;};
