@@ -9,8 +9,8 @@ let
   obApp = import ./obApp.nix args;
   pactServerModule = import ./pact-server/service.nix;
   macAppName = "Pact";
-  macAppIcon =  ./mac/static/pact.png;
-  macPactDocumentIcon = ./mac/static/pact-document.png;
+  macAppIcon =  ./mac/static/icons/pact.png;
+  macPactDocumentIcon = ./mac/static/icons/pact-document.png;
   # ^ This can be created in Preview using the system document icon from
   # /System/Library/CoreServices/CoreTypes.bundle/Contents/Resources/
   # and the pact logo
