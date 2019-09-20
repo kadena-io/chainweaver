@@ -10,6 +10,25 @@ Since release 1.4 pact-web has support for GitHub gist sharing so it needs clien
 
 The homepage URL will be http://localhost:8000, the authorization callback url will be http://localhost:8000/oauth/redirect/github .
 
+## Web app
+Run locally:
+```shell
+ob run
+```
+Image files are located in [static/img](./static/img). To test an updated image, replace the old file with the new one and refresh the browser.
+
+## Mac app
+Build:
+```shell
+nix-build -A mac
+```
+
+Run:
+```shell
+open result/*.app
+```
+OS X specific assets are located in the [static](./mac/static) folder. To test an updated asset, replace the old file and build again. Use 1024x1024 *.png* files for Mac app [icons](./mac/static/icons).
+
 # Deployments
 
 ## Clone the repo
