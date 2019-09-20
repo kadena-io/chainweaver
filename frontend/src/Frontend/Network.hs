@@ -847,6 +847,7 @@ networkRequest baseUri endpoint cmd = do
         if S.responseStatusCode response == HTTP.status413
            then NetworkError_ReqTooLarge
            else NetworkError_Status (S.responseStatusCode response) (T.pack $ show response)
+      S.ConnectionError t -> NetworkError_NetworkError t
       _ -> NetworkError_Decoding $ T.pack $ show e
 
     fromCommandResult :: MonadError NetworkError m => CommandResult a -> m PactValue
