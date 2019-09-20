@@ -470,7 +470,7 @@ getNetworks cfg = do
     -- Hit the remote-source for network configs, if applicable
     mRemoteUpdate <- for mRemoteSource $ \url -> do
       pb <- getPostBuild
-      go <- throttle 3 (pb <> cfg ^. networkCfg_resetNetworks)
+      go <- throttle 10 (pb <> cfg ^. networkCfg_resetNetworks)
       let req = XhrRequest "GET" url def <$ go
       resp <- (fmap . fmap) _xhrResponse_responseText $ performRequestAsync req
       let resp' = fmap parseNetworks <$> resp

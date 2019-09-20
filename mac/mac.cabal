@@ -4,37 +4,18 @@ cabal-version: >= 1.8
 build-type: Simple
 
 executable macApp
-  main-is: mac.hs
+  main-is: main.hs
   hs-source-dirs: src-bin
-  if impl(ghcjs)
+  if !os(darwin) || impl(ghcjs)
     buildable: False
-  build-depends: base
-               , backend
-               , common
-               , frontend
-               , aeson
-               , async
-               , bytestring
-               , containers
-               , directory
-               , filepath
-               , jsaddle-wkwebview
-               , mtl
-               , network
-               , network-uri
-               , obelisk-backend
-               , obelisk-frontend
-               , obelisk-route
-               , process
-               , reflex-dom
-               , servant
-               , servant-server
-               , snap-core
-               , snap-server
-               , temporary
-               , text
-               , wai-cors
-               , warp
+  build-depends:
+      base
+    , desktop
+
+    , bytestring
+    , data-default
+    , jsaddle
+    , jsaddle-wkwebview
   ghc-options:
     -threaded -O -Wall
 
@@ -43,4 +24,3 @@ executable macApp
   c-sources: cbits/mac.m
   cpp-options: -DUSE_COCOA
   cc-options: -Werror=objc-method-access
-

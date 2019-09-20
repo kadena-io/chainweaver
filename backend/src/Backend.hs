@@ -4,6 +4,7 @@
 {-# LANGUAGE PatternSynonyms     #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE PackageImports #-}
 
 module Backend where
 
@@ -18,7 +19,7 @@ import qualified Data.CaseInsensitive      as CI
 import           Data.Default
 import           Data.Dependent.Sum        (DSum ((:=>)))
 import qualified Data.Map                  as M
-import           Data.Maybe                (isJust)
+import           Data.Maybe                (isJust, fromMaybe)
 import           Data.Text                 (Text)
 import qualified Data.Text                 as T
 import qualified Data.Text.Encoding        as T
@@ -41,7 +42,7 @@ import           System.Exit               (exitFailure)
 import           System.IO                 (stderr)
 import qualified Text.Sass                 as Sass
 import           TH.RelativePaths          (withCabalPackageWorkDir)
-import           Language.Haskell.TH.Lib   (stringE)
+import "template-haskell" Language.Haskell.TH.Lib   (stringE)
 
 import           Obelisk.OAuth.Backend     (getAccessToken)
 import           Obelisk.OAuth.Common
@@ -93,8 +94,8 @@ buildCfg = do
     renderRoute = renderFrontendRoute validFullEncoder
 
   clientSecret <- getOAuthClientSecret OAuthProvider_GitHub
-  Just baseRoute <- getConfig "common/route"
-  Just clientId <- fmap OAuthClientId <$> getConfig (oAuthClientIdPath OAuthProvider_GitHub)
+  baseRoute <- fromMaybe (error "failed to get route") <$> getConfig "common/route"
+  clientId <- OAuthClientId . fromMaybe (error "failed to get github client id") <$> getConfig (oAuthClientIdPath OAuthProvider_GitHub)
   let oCfg = buildOAuthConfig' baseRoute clientId renderRoute
   liftIO $ BackendCfg oCfg (fmap (\x OAuthProvider_GitHub -> x) clientSecret) <$> newTlsManager
 

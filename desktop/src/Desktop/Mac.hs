@@ -3,24 +3,23 @@
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE ForeignFunctionInterface #-}
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE TypeOperators #-}
+module Desktop.Mac where
 
 import Control.Concurrent
-import Control.Exception (bracket_, bracket, try, catch)
-import Control.Monad (void, forever, (<=<), when)
+import Control.Exception (bracket_, bracket, try)
+import Control.Monad (forever)
 import Control.Monad.Except (throwError)
 import Control.Monad.IO.Class
 import Data.Foldable (for_)
-import Data.Maybe (isNothing)
 import Data.Proxy (Proxy(..))
 import Data.String (IsString(..))
 import Foreign.C.String (CString, peekCString)
 import Foreign.C.Types (CInt(..))
-import Foreign.StablePtr (StablePtr, newStablePtr)
+import Foreign.StablePtr (StablePtr)
 import GHC.IO.Handle
-import Language.Javascript.JSaddle.WKWebView
+import Language.Javascript.JSaddle.Types (JSM)
 import Obelisk.Backend
 import Obelisk.Frontend
 import Obelisk.Route.Frontend
@@ -29,14 +28,12 @@ import Servant.API
 import System.FilePath ((</>))
 import System.IO
 import qualified Control.Concurrent.Async as Async
-import qualified Data.Aeson as Aeson
 import qualified Data.ByteString as BS
 import qualified Data.ByteString.Lazy as LBS
 import qualified Data.List as L
 import qualified Data.Map as M
 import qualified Data.Text as T
 import qualified Data.Text.Encoding as T
-import qualified Data.Text.Encoding.Error as T
 import qualified Data.Text.IO as T
 import qualified Network.Socket as Socket
 import qualified Network.Wai.Handler.Warp as Warp
@@ -45,7 +42,6 @@ import qualified Servant.Server as Servant
 import qualified Snap.Http.Server as Snap
 import qualified System.Directory as Directory
 import qualified System.Environment as Env
-import qualified System.FilePath as FilePath
 import qualified System.Process as Process
 
 import Backend (serveBackendRoute)
@@ -54,19 +50,24 @@ import Frontend
 import Frontend.AppCfg
 import Frontend.ReplGhcjs (app)
 import Frontend.Storage
+import Desktop.Frontend
 
-foreign import ccall setupAppMenu :: StablePtr (CString -> IO ()) -> IO ()
-foreign import ccall activateWindow :: IO ()
-foreign import ccall hideWindow :: IO ()
-foreign import ccall resizeWindow :: IO ()
-foreign import ccall global_openFileDialog :: IO ()
-foreign import ccall global_requestUserAttention :: IO CInt
-foreign import ccall global_cancelUserAttentionRequest :: CInt -> IO ()
-foreign import ccall global_getHomeDirectory :: IO CString
+data MacFFI = MacFFI
+  { _macFFI_setupAppMenu :: StablePtr (CString -> IO ()) -> IO ()
+  , _macFFI_activateWindow :: IO ()
+  , _macFFI_hideWindow :: IO ()
+  , _macFFI_resizeWindow :: IO ()
+  , _macFFI_moveToBackground :: IO ()
+  , _macFFI_moveToForeground :: IO ()
+  , _macFFI_global_openFileDialog :: IO ()
+  , _macFFI_global_requestUserAttention :: IO CInt
+  , _macFFI_global_cancelUserAttentionRequest :: CInt -> IO ()
+  , _macFFI_global_getHomeDirectory :: IO CString
+}
 
-getUserLibraryPath :: MonadIO m => m FilePath
-getUserLibraryPath = liftIO $ do
-  home <- peekCString =<< global_getHomeDirectory
+getUserLibraryPath :: MonadIO m => MacFFI -> m FilePath
+getUserLibraryPath ffi = liftIO $ do
+  home <- peekCString =<< _macFFI_global_getHomeDirectory ffi
   let lib = home </> "Library" </> "Application Support" </> "io.kadena.pact"
   Directory.createDirectoryIfMissing True lib
   pure lib
@@ -108,14 +109,18 @@ backend = Backend
 type SigningApi = "v1" :> V1SigningApi
 type V1SigningApi = "sign" :> ReqBody '[JSON] SigningRequest :> Post '[JSON] SigningResponse
 
-main :: IO ()
-main = redirectPipes [stdout, stderr] $ do
+main'
+  :: MacFFI
+  -> IO (Maybe BS.ByteString)
+  -> (BS.ByteString -> BS.ByteString -> (String -> IO ()) -> (FilePath -> IO Bool) -> JSM () -> IO ())
+  -> IO ()
+main' ffi mainBundleResourcePath runHTML = redirectPipes [stdout, stderr] $ do
   -- Set the path to z3. I tried using the plist key LSEnvironment, but it
   -- doesn't work with relative paths.
   exePath <- L.dropWhileEnd (/= '/') <$> Env.getExecutablePath
   putStrLn $ "Executable path: " <> exePath
   Env.setEnv "SBV_Z3" $ exePath <> "z3"
-  libPath <- getUserLibraryPath
+  libPath <- getUserLibraryPath ffi
   putStrLn $ "Library path: " <> libPath
   port <- getFreePort
   -- Get the app resources path
@@ -157,8 +162,14 @@ main = redirectPipes [stdout, stderr] $ do
           resp <- liftIO $ bracket_ (putMVar signingLock ()) (takeMVar signingLock) $ do
             putMVar signingRequestMVar obj -- handoff to app
             bracket
-              global_requestUserAttention
-              global_cancelUserAttentionRequest
+              (do
+                  _macFFI_moveToForeground ffi
+                  _macFFI_global_requestUserAttention ffi
+              )
+              (\r -> do
+                  _macFFI_moveToBackground ffi
+                  _macFFI_global_cancelUserAttentionRequest ffi r
+              )
               (\_ -> takeMVar signingResponseMVar)
           case resp of
             Left e -> throwError $ Servant.err409
@@ -171,7 +182,7 @@ main = redirectPipes [stdout, stderr] $ do
           = Warp.runSettings s $ Wai.cors laxCors
           $ Servant.serve (Proxy @SigningApi) runSign
     _ <- Async.async $ apiServer
-    runHTMLWithBaseURL "index.html" route (cfg putStrLn handleOpen) $ do
+    runHTML "index.html" route putStrLn handleOpen $ do
       mInitFile <- liftIO $ tryTakeMVar fileOpenedMVar
       let frontendMode = FrontendMode
             { _frontendMode_hydrate = False
@@ -199,73 +210,25 @@ main = redirectPipes [stdout, stderr] $ do
               appCfg = AppCfg
                 { _appCfg_gistEnabled = False
                 , _appCfg_externalFileOpened = fileOpened
-                , _appCfg_openFileDialog = liftIO global_openFileDialog
+                , _appCfg_openFileDialog = liftIO $ _macFFI_global_openFileDialog ffi
                 , _appCfg_loadEditor = pure mInitFile
 
                 -- DB 2019-08-07 Changing this back to False because it's just too convenient this way.
                 , _appCfg_editorReadOnly = False
                 , _appCfg_signingRequest = signingRequest
                 , _appCfg_signingResponse = liftIO . putMVar signingResponseMVar
+                , _appCfg_forceResize = never
                 }
           _ <- flip runStorageT store $ runWithReplace loaderMarkup $
-            (liftIO activateWindow >> liftIO resizeWindow >> app appCfg) <$ bowserLoad
+            (liftIO (_macFFI_activateWindow ffi) >> liftIO (_macFFI_resizeWindow ffi) >> app appCfg) <$ bowserLoad
           pure ()
         }
 
-fileStorage :: FilePath -> Storage
-fileStorage libPath = Storage
-  { _storage_get = \_ k -> liftIO $ do
-    try (BS.readFile $ path k) >>= \case
-      Left (e :: IOError) -> do
-        putStrLn $ "Error reading storage: " <> show e <> " : " <> path k
-        pure Nothing
-      Right v -> do
-        let result = Aeson.decodeStrict v
-        when (isNothing result) $ do
-          T.putStrLn $ "Error reading storape: can't decode contents: " <>
-            T.decodeUtf8With T.lenientDecode v
-        pure result
-  , _storage_set = \_ k a -> liftIO $
-    catch (LBS.writeFile (path k) (Aeson.encode a)) $ \(e :: IOError) -> do
-      putStrLn $ "Error writing storage: " <> show e <> " : " <> path k
-  , _storage_remove = \_ k -> liftIO $
-    catch (Directory.removeFile (path k)) $ \(e :: IOError) -> do
-      putStrLn $ "Error removing storage: " <> show e <> " : " <> path k
-  }
-    where path :: Show a => a -> FilePath
-          path k = libPath </> FilePath.makeValid (show k)
-
 -- | Push writes to the given 'MVar' into an 'Event'.
 mvarTriggerEvent
-  :: (PerformEvent t m, TriggerEvent t m, MonadIO m, MonadIO (Performable m), PostBuild t m)
+  :: (PerformEvent t m, TriggerEvent t m, MonadIO m)
   => MVar a -> m (Event t a)
 mvarTriggerEvent mvar = do
   (e, trigger) <- newTriggerEvent
   _ <- liftIO $ forkIO $ forever $ trigger =<< takeMVar mvar
   pure e
-
-cfg :: (String -> IO ()) -> (FilePath -> IO Bool) -> AppDelegateConfig
-cfg onUniversalLink handleOpen = AppDelegateConfig
-  { _appDelegateConfig_willFinishLaunchingWithOptions = do
-    putStrLn "will finish launching"
-    setupAppMenu <=< newStablePtr $ void . handleOpen <=< peekCString
-  , _appDelegateConfig_didFinishLaunchingWithOptions = do
-    putStrLn "did finish launching"
-    hideWindow
-  , _appDelegateConfig_applicationDidBecomeActive = putStrLn "did become active"
-  , _appDelegateConfig_applicationWillResignActive = putStrLn "will resign active"
-  , _appDelegateConfig_applicationDidEnterBackground = putStrLn "did enter background"
-  , _appDelegateConfig_applicationWillEnterForeground = putStrLn "will enter foreground"
-  , _appDelegateConfig_applicationWillTerminate = putStrLn "will terminate"
-  , _appDelegateConfig_applicationSignificantTimeChange = putStrLn "time change"
-  , _appDelegateConfig_applicationUniversalLink = \cs -> do
-      s <- peekCString cs
-      putStrLn $ "universal link: " <> s
-      onUniversalLink s
-  , _appDelegateConfig_appDelegateNotificationConfig = def
-  , _appDelegateConfig_developerExtrasEnabled = True
-  , _appDelegateConfig_applicationOpenFile = \cs -> do
-      filePath <- peekCString cs
-      putStrLn $ "application open file: " <> filePath
-      handleOpen filePath
-  }

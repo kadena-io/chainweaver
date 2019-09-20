@@ -1,0 +1,50 @@
+name: desktop
+version: 0.1
+cabal-version: >= 1.8
+build-type: Simple
+
+library
+  hs-source-dirs: src
+  build-depends:
+      base
+    , backend
+    , common
+    , frontend
+
+    , aeson
+    , async
+    , base16-bytestring
+    , bimap
+    , bytestring
+    , cardano-crypto
+    , containers
+    , cryptonite
+    , directory
+    , filepath
+    , jsaddle
+    , lens
+    , memory
+    , mtl
+    , network
+    , obelisk-executable-config-lookup
+    , obelisk-backend
+    , obelisk-frontend
+    , obelisk-generated-static
+    , obelisk-route
+    , process
+    , raw-strings-qq
+    , reflex-dom
+    , reflex-dom-core
+    , servant
+    , servant-server
+    , snap-server
+    , text
+    , wai-cors
+    , warp
+  exposed-modules:
+      Desktop
+    , Desktop.Frontend
+    , Desktop.Mac
+    , Desktop.Orphans
+    , Desktop.Setup
+  ghc-options: -Wall

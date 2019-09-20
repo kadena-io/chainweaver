@@ -2,7 +2,9 @@
 #import <Cocoa/Cocoa.h>
 #import <WebKit/WebKit.h>
 
+#ifndef MIN
 #define MIN(a,b) ( ((a) < (b)) ? (a) : (b) )
+#endif
 
 extern void callIO(HsStablePtr);
 extern void callWithCString(const char * _Nonnull, HsStablePtr);
@@ -102,6 +104,20 @@ void resizeWindow() {
       , height
       );
     [window setFrame:centered display:YES animate:YES];
+  }];
+}
+
+void moveToForeground() {
+  [[NSOperationQueue mainQueue] addOperationWithBlock:^(void) {
+    [NSApp activateIgnoringOtherApps:YES];
+  }];
+}
+
+void moveToBackground() {
+  [[NSOperationQueue mainQueue] addOperationWithBlock:^(void) {
+    NSApplication *app = [NSApplication sharedApplication];
+    NSWindow *window = [app mainWindow];
+    [window orderBack:window];
   }];
 }
 
