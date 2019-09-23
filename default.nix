@@ -126,6 +126,9 @@ in obApp // rec {
       "--ghc-options=-optl=${pkgs.zlib.static}/lib/libz.a"
       "--ghc-options=-optl=${pkgs.gmp6.override { withStatic = true; }}/lib/libgmp.a"
       "--ghc-options=-optl=/usr/lib/libSystem.B.dylib"
+      "--ghc-options=-optl=${pkgs.libffi.override {
+        stdenv = pkgs.stdenvAdapters.makeStaticLibraries pkgs.stdenv;
+        }}/lib/libffi.a"
     ];
   });
   mac = pkgs.runCommand "mac" {} ''
