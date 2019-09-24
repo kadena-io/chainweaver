@@ -8,6 +8,11 @@
   border-bottom: $std-border-width dashed $std-border-color;
 }
 
+.segment.padded {
+  padding: $normal-padding;
+  margin-bottom: 0;
+}
+
 .segment:last-child {
   border-bottom: none;
   margin-bottom: 0;

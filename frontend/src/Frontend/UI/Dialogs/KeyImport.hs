@@ -65,10 +65,8 @@ uiKeyImport
   -> Event t () -> m (mConf, Event t ())
 uiKeyImport m _onClose = do
     onClose <- modalHeader $ text "Key Import"
-    modalMain $ do
-      (errName, errKeyPair) :: (Dynamic t (Either Text Text), Dynamic t (Either Text KeyPair))
-        <- modalBody $ do
-        divClass "segment modal__filler" $ do
+    (errName, errKeyPair) :: (Dynamic t (Either Text Text), Dynamic t (Either Text KeyPair))
+      <- modalMain $ divClass "segment modal__filler" $ do
           divClass "modal__filler-horizontal-center-box" $
             imgWithAltCls "modal__filler-img" (static @"img/keys-scalable.svg") "Keys" blank
 
@@ -80,25 +78,25 @@ uiKeyImport m _onClose = do
 
             pure (name, parsedPair)
 
-      modalFooter $ do
-        onCancel <- cancelButton def "Cancel"
-        text " "
-        let
-          isInvalidName = isLeft <$> errName
-          isInvalidKeys = either (const True) (const False) <$> errKeyPair
-          isDisabled = (||) <$> isInvalidKeys <*> isInvalidName
+    modalFooter $ do
+      onCancel <- cancelButton def "Cancel"
+      text " "
+      let
+        isInvalidName = isLeft <$> errName
+        isInvalidKeys = either (const True) (const False) <$> errKeyPair
+        isDisabled = (||) <$> isInvalidKeys <*> isInvalidName
 
-          namedKeyPair = runExceptT $
-            (,) <$> ExceptT errName <*> ExceptT errKeyPair
+        namedKeyPair = runExceptT $
+          (,) <$> ExceptT errName <*> ExceptT errKeyPair
 
-        onConfirm <- confirmButton (def & uiButtonCfg_disabled .~ isDisabled) "Import"
+      onConfirm <- confirmButton (def & uiButtonCfg_disabled .~ isDisabled) "Import"
 
-        let onConfirmKeyPair = fmapMaybe (^? _Right) $ tag (current namedKeyPair) onConfirm
+      let onConfirmKeyPair = fmapMaybe (^? _Right) $ tag (current namedKeyPair) onConfirm
 
-        pure
-          ( mempty & walletCfg_importKey .~ onConfirmKeyPair
-          , leftmost [onClose, onCancel, onConfirm]
-          )
+      pure
+        ( mempty & walletCfg_importKey .~ onConfirmKeyPair
+        , leftmost [onClose, onCancel, onConfirm]
+        )
   where
 
     mkNameInput cfg = do

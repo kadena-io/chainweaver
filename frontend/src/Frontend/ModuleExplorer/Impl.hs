@@ -165,16 +165,12 @@ makeModuleExplorer appCfg m cfg = mfix $ \ ~(_, explr) -> do
       (cfg ^. moduleExplorerCfg_pushModule)
       (cfg ^. moduleExplorerCfg_popModule)
 
-    let
-      deployEdCfg = deployEditor m $ cfg ^. moduleExplorerCfg_deployEditor
-      deployCodeCfg = deployCode m $ cfg ^. moduleExplorerCfg_deployCode
-
     growth <- mkSelectionGrowth explr
 
     modules <- makeModuleList m (cfg ^. moduleExplorerCfg_modules)
 
     pure
-      ( mconcat [ lFileCfg, editorInitCfg, stckCfg, deployEdCfg, deployCodeCfg, gistCfg, selCfg ]
+      ( mconcat [ lFileCfg, editorInitCfg, stckCfg, gistCfg, selCfg ]
       , ModuleExplorer
         { _moduleExplorer_moduleStack = stack
         , _moduleExplorer_selectedFile = selectedFile
@@ -226,47 +222,6 @@ mkSelectionGrowth explr = do
         (Just _, Nothing)  -> GT
         (Just _, Just _)   -> EQ
 
-
-deployEditor
-  :: forall t mConf model
-  . ( Reflex t
-    , HasModuleExplorerModelCfg  mConf t
-    , HasModuleExplorerModel model t
-    )
-  => model
-  -> Event t TransactionInfo
-  -> mConf
-deployEditor m = deployCode m . attach (current $ m ^. editor_code)
-
-deployCode
-  :: forall t mConf model
-  . ( Reflex t
-    , HasModuleExplorerModelCfg  mConf t
-    , HasModuleExplorerModel model t
-    )
-  => model
-  -> Event t (Text, TransactionInfo)
-  -> mConf
-deployCode m onDeploy =
-  let
-    mkReq :: Dynamic t ((Text, TransactionInfo) -> Maybe NetworkRequest)
-    mkReq = do
-      ed      <- m ^. jsonData_data
-      pure $ \(code, info) -> do
-        let c = ChainRef Nothing $ _transactionInfo_chainId info
-        d <- ed ^? _Right
-        pure $ NetworkRequest code d c (_transactionInfo_endpoint info) (_transactionInfo_keys info)
-
-    jsonError :: Dynamic t (Maybe Text)
-    jsonError = do
-      ed <- m ^. jsonData_data
-      pure $ case ed of
-        Left _  -> Just $ "Deploy not possible: JSON data was invalid!"
-        Right _ -> Nothing
-  in
-    mempty
-      & networkCfg_deployCode .~ fmap pure (attachWithMaybe ($) (current mkReq) onDeploy)
-      & messagesCfg_send .~ tagMaybe (fmap pure <$> current jsonError) onDeploy
 
 
 -- | Takes care of loading a file/module into the editor.

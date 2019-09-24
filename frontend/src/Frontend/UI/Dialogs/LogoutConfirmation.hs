@@ -51,7 +51,6 @@ uiLogoutConfirmation
 uiLogoutConfirmation _onClose = do
   onClose <- modalHeader $ text "Logout from GitHub?"
   modalMain $ do
-    modalBody $ do
       divClass "segment modal__filler" $ do
         divClass "modal__filler-horizontal-center-box" $
           imgWithAltCls "modal__filler-img" (static @"img/Octocat.jpg") "GitHub logo" blank
@@ -69,10 +68,10 @@ uiLogoutConfirmation _onClose = do
           el "em" $ text "yourself"
           text " from GitHub."
 
-    modalFooter $ do
-      onCancel <- cancelButton def "Cancel"
-      text " "
-      onConfirm <- confirmButton def "Logout"
-      let
-        cfg = mempty & oAuthCfg_logout .~ (OAuthProvider_GitHub <$ onConfirm)
-      pure (cfg, leftmost [onClose, onConfirm, onCancel])
+  modalFooter $ do
+    onCancel <- cancelButton def "Cancel"
+    text " "
+    onConfirm <- confirmButton def "Logout"
+    let
+      cfg = mempty & oAuthCfg_logout .~ (OAuthProvider_GitHub <$ onConfirm)
+    pure (cfg, leftmost [onClose, onConfirm, onCancel])

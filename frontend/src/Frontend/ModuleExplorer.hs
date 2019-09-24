@@ -42,14 +42,10 @@ module Frontend.ModuleExplorer
   , module Module
   , module File
   , module ModuleList
-  -- ** Auxiliary Types
-  , TransactionInfo (..)
   ) where
 
 ------------------------------------------------------------------------------
 import           Control.Lens
-import           Data.Set                           (Set)
-import           Data.Text                          (Text)
 import           Generics.Deriving.Monoid           (mappenddefault,
                                                      memptydefault)
 import           GHC.Generics                       (Generic)
@@ -57,27 +53,14 @@ import           Reflex
 ------------------------------------------------------------------------------
 import           Pact.Types.Lang                    (ModuleName)
 ------------------------------------------------------------------------------
-import           Frontend.Network
 import           Frontend.Foundation
+import           Frontend.GistStore (GistMeta (..))
 import           Frontend.ModuleExplorer.Example    as Example
 import           Frontend.ModuleExplorer.File       as File
+import           Frontend.ModuleExplorer.LoadedRef  as Module
 import           Frontend.ModuleExplorer.Module     as Module
 import           Frontend.ModuleExplorer.ModuleList as ModuleList
 import           Frontend.ModuleExplorer.ModuleRef  as Module
-import           Frontend.ModuleExplorer.LoadedRef  as Module
-import           Frontend.Wallet
-import           Frontend.GistStore (GistMeta (..))
-
--- | Data needed to send transactions to the server.
-data TransactionInfo = TransactionInfo
-  { _transactionInfo_keys    :: Set KeyName
-    -- ^ The keys to sign the message with.
-  , _transactionInfo_chainId :: ChainId
-    -- ^ The backend to deploy to.
-  , _transactionInfo_endpoint :: Endpoint
-    -- ^ The endpoint to use for the deployment.
-  } deriving (Eq, Ord, Show)
-
 
 -- | Configuration for ModuleExplorer
 --
@@ -100,11 +83,7 @@ data ModuleExplorerCfg t = ModuleExplorerCfg
     -- ^ Set `_moduleExplorer_loaded` to Nothing and clear editor contents.
   , _moduleExplorerCfg_createGist   :: Event t GistMeta
     -- ^ Create a github gist with the contents of the `Editor`.
-  , _moduleExplorerCfg_deployEditor :: Event t TransactionInfo
-    -- ^ Deploy code that is currently in `Editor`.
-  , _moduleExplorerCfg_deployCode   :: Event t (Text, TransactionInfo)
-    -- ^ Deploy given Pact code, usually a function call.
-  , _moduleExplorerCfg_modules   :: ModuleListCfg t
+  , _moduleExplorerCfg_modules      :: ModuleListCfg t
     -- ^ Configuration for the deployed module list.
   }
   deriving Generic
@@ -155,9 +134,6 @@ instance Reflex t => Monoid (ModuleExplorerCfg t) where
   mempty = memptydefault
   mappend = (<>)
 
-instance Semigroup TransactionInfo where
-  sel1 <> _ = sel1
-
 
 instance Flattenable (ModuleExplorerCfg t) t where
   flattenWith doSwitch ev =
@@ -170,6 +146,4 @@ instance Flattenable (ModuleExplorerCfg t) t where
       <*> doSwitch never (_moduleExplorerCfg_loadFile <$> ev)
       <*> doSwitch never (_moduleExplorerCfg_clearLoaded <$> ev)
       <*> doSwitch never (_moduleExplorerCfg_createGist <$> ev)
-      <*> doSwitch never (_moduleExplorerCfg_deployEditor <$> ev)
-      <*> doSwitch never (_moduleExplorerCfg_deployCode <$> ev)
       <*> flattenWith doSwitch (_moduleExplorerCfg_modules <$> ev)

@@ -7,18 +7,18 @@ import Language.Javascript.JSaddle (JSM)
 import Reflex.Dom
 import qualified Data.Aeson as Aeson
 import Pact.Types.ChainMeta (TTLSeconds(..))
-import Pact.Types.Runtime (GasLimit(..))
+import Pact.Types.Runtime (GasLimit(..), ChainId)
 import Pact.Types.Command (Command)
 
 data SigningRequest = SigningRequest
   { _signingRequest_code :: Text
   , _signingRequest_data :: Maybe Aeson.Object
   , _signingRequest_nonce :: Maybe Text
-  , _signingRequest_chainId :: Maybe Text
+  , _signingRequest_chainId :: Maybe ChainId
   , _signingRequest_gasLimit :: Maybe GasLimit
   , _signingRequest_ttl :: Maybe TTLSeconds
   , _signingRequest_sender :: Maybe Text
-  } deriving Generic
+  } deriving (Show, Generic)
 
 instance Aeson.ToJSON SigningRequest where
   toJSON = Aeson.genericToJSON compactEncoding
@@ -29,7 +29,7 @@ instance Aeson.FromJSON SigningRequest where
 
 data SigningResponse = SigningResponse
   { _signingResponse_body :: Command Text
-  , _signingResponse_chainId :: Text
+  , _signingResponse_chainId :: ChainId
   } deriving (Eq, Show, Generic)
 
 instance Aeson.ToJSON SigningResponse where

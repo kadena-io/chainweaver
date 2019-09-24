@@ -25,18 +25,18 @@ module Frontend.UI.Dialogs.DeployConfirmation
 
 ------------------------------------------------------------------------------
 import           Control.Lens
+import           Control.Monad                  (void)
+import           Data.Maybe                     (fromMaybe)
+import           Data.Text                      (Text)
 import           Data.Void                      (Void)
 import           Reflex
 import           Reflex.Dom
 ------------------------------------------------------------------------------
 import           Frontend.Ide
-import           Frontend.ModuleExplorer        (HasModuleExplorerCfg (..))
 import           Frontend.Network
 import           Frontend.UI.DeploymentSettings
 import           Frontend.UI.Modal
-import           Frontend.UI.Widgets
 ------------------------------------------------------------------------------
-
 
 -- | Confirmation dialog for deployments.
 --
@@ -44,36 +44,22 @@ import           Frontend.UI.Widgets
 --   the right keys, ...
 uiDeployConfirmation
   :: forall t m a. MonadWidget t m
-  => Ide a t
+  => Text
+  -> Ide a t
   -> Event t () -> m (IdeCfg Void t, Event t ())
-uiDeployConfirmation ideL _onClose = do
+uiDeployConfirmation code ideL _onClose = do
   onClose <- modalHeader $ text "Deployment Settings"
-  modalMain $ do
-    (settingsCfg, transInfo, _) <- modalBody $
-      uiSegment mempty $
-        uiDeploymentSettings ideL $ DeploymentSettingsConfig
-          { _deploymentSettingsConfig_chainId = userChainIdSelect
-          , _deploymentSettingsConfig_defEndpoint = Endpoint_Send
-          , _deploymentSettingsConfig_userTab = Nothing
-          }
-
-    modalFooter $ do
-      onCancel <- cancelButton def "Cancel"
-      text " "
-      let isDisabled = maybe True (const False) <$> transInfo
-      onConfirm <- confirmButton (deployBtnCfg isDisabled) "Deploy"
-
-      let cfg = mempty & moduleExplorerCfg_deployEditor .~
-            fmapMaybe id (tagPromptlyDyn transInfo onConfirm)
-      pure (cfg <> settingsCfg, leftmost [onClose, onCancel, onConfirm])
-
-  where
-
-    deployBtnCfg isDisabled = def
-      & uiButtonCfg_disabled .~ isDisabled
-      & uiButtonCfg_title .~ fmap deployToolTip isDisabled
-
-    deployToolTip isDisabled = Just $
-      if isDisabled
-         then "You have to pick a chain!"
-         else "Deploy to chain."
+  (settingsCfg, result, _) <- uiDeploymentSettings ideL $ DeploymentSettingsConfig
+    { _deploymentSettingsConfig_chainId = userChainIdSelect
+    , _deploymentSettingsConfig_defEndpoint = Just Endpoint_Send
+    , _deploymentSettingsConfig_userTab = Nothing
+    , _deploymentSettingsConfig_code = pure code
+    , _deploymentSettingsConfig_sender = uiSenderDropdown def
+    , _deploymentSettingsConfig_data = Nothing
+    , _deploymentSettingsConfig_ttl = Nothing
+    , _deploymentSettingsConfig_nonce = Nothing
+    , _deploymentSettingsConfig_gasLimit = Nothing
+    }
+  let req = ffor result $ \(me, c, cmd) -> [NetworkRequest cmd (ChainRef Nothing c) (fromMaybe Endpoint_Local me)]
+      cfg = mempty & networkCfg_deployCode .~ req
+  pure (cfg <> settingsCfg, onClose <> void req)

@@ -23,7 +23,7 @@
 --   sending commands to it, by making use of the Pact REST API.
 module Frontend.Network
   ( -- * Types & Classes
-    NetworkRequest (..), networkRequest_code, networkRequest_data, networkRequest_signing
+    NetworkRequest (..), networkRequest_cmd
   , Endpoint (..)
   , displayEndpoint
   , NetworkError (..)
@@ -49,6 +49,11 @@ module Frontend.Network
   , prettyPrintNetworkErrorResult
   , prettyPrintNetworkError
   , buildCmd
+  , mkSimpleReadReq
+    -- * Defaults
+  , defaultTransactionGasLimit
+  , defaultTransactionGasPrice
+  , defaultTransactionTTL
   ) where
 
 import           Control.Arrow                     (first, left, second, (&&&))
@@ -57,7 +62,6 @@ import           Control.Monad.Except
 import           Data.Aeson                        (Object, Value (..), encode)
 import qualified Data.ByteString.Lazy              as BSL
 import           Data.Either                       (lefts, rights)
-import qualified Data.HashMap.Strict               as H
 import qualified Data.IntMap                       as IntMap
 import qualified Data.List                         as L
 import           Data.List.NonEmpty                (NonEmpty (..))
@@ -123,25 +127,17 @@ data Endpoint
 -- | Get string representation of `Endpoint` suitable for being displayed to an end user.
 displayEndpoint :: Endpoint -> Text
 displayEndpoint = \case
-  Endpoint_Send -> "/send"
-  Endpoint_Local -> "/local"
+  Endpoint_Send -> "Transact"
+  Endpoint_Local -> "Read"
 
 -- | Request data to be sent to the current network.
 data NetworkRequest = NetworkRequest
-  { _networkRequest_code     :: Text
-    -- ^ Pact code to be deployed, the `code` field of the
-    -- <https://pact-language.readthedocs.io/en/latest/pact-reference.html#cmd-field-and-payload
-    -- exec> payload.
-  , _networkRequest_data     :: Object
-    -- ^ The data to be deployed (referenced by deployed code). This is the
-    -- `data` field of the `exec` payload.
-  , _networkRequest_chainRef  :: ChainRef
+  { _networkRequest_cmd :: Command Text
+    -- ^ Pact command
+  , _networkRequest_chainRef :: ChainRef
     -- ^ To what chain should this request go to.
   , _networkRequest_endpoint :: Endpoint
     -- ^ Where shall this request go? To /local or to /send?
-  , _networkRequest_signing  :: Set KeyName
-    -- ^ With what keys the request should be signed. Don't sign with any keys
-    -- when calling to `performLocalReadCustom` and similar.
   } deriving (Show, Generic, Eq)
 
 makePactLensesNonClassy ''NetworkRequest
@@ -230,9 +226,6 @@ data Network t = Network
 
 makePactLenses ''Network
 
--- | Model/dependencies of Network.
-type HasNetworkModel model t = HasWallet model t
-
 -- | Model config needed by Network.
 type HasNetworkModelCfg mConf t = (Monoid mConf, HasMessagesCfg mConf t)
 
@@ -246,24 +239,22 @@ deriving instance Show (StoreNetwork a)
 
 
 makeNetwork
-  :: forall t m model mConf
+  :: forall t m mConf
   . ( MonadHold t m, PerformEvent t m, MonadFix m
     , MonadJSM (Performable m), MonadJSM m
     , TriggerEvent t m, PostBuild t m
     , MonadSample t (Performable m)
-    , HasNetworkModel model t
     , HasNetworkModelCfg mConf t
     , HasNetworkCfg mConf t
     , HasConfigs m
     , HasJSContext (Performable m)
     , HasStorage m, HasStorage (Performable m)
     )
-  => model
-  -> NetworkCfg t
+  => NetworkCfg t
   -> m (mConf, Network t)
-makeNetwork w cfg = mfix $ \ ~(_, networkL) -> do
+makeNetwork cfg = mfix $ \ ~(_, networkL) -> do
 
-    (mConf, onDeployed) <- deployCode w networkL $ cfg ^. networkCfg_deployCode
+    (mConf, onDeployed) <- deployCode networkL $ cfg ^. networkCfg_deployCode
 
     (cName, networks) <- getNetworks cfg
     onCName <- tagOnPostBuild cName
@@ -378,6 +369,17 @@ getSelectedNetworkInfos networkL = do
     pure $ rights errNets
 
 
+defaultTransactionGasPrice :: GasPrice
+defaultTransactionGasPrice = GasPrice 0.001
+
+defaultTransactionTTL :: TTLSeconds
+defaultTransactionTTL = TTLSeconds (8 * 60 * 60) -- 8 hours
+
+-- | TODO: Better defaults!!!
+defaultTransactionGasLimit :: GasLimit
+defaultTransactionGasLimit = GasLimit 100
+
+
 buildMeta
   :: ( MonadHold t m, MonadFix m, MonadJSM m
      , PerformEvent t m, MonadJSM (Performable m), TriggerEvent t m
@@ -389,9 +391,9 @@ buildMeta cfg = do
         PublicMeta
           { _pmChainId = "1" -- Gets overridden always!
           , _pmSender  = "sender00"
-          , _pmGasLimit = GasLimit 100 -- TODO: Better defaults!!!
-          , _pmGasPrice = GasPrice 0.001
-          , _pmTTL = TTLSeconds (8 * 60 * 60) -- 8 hours
+          , _pmGasLimit = defaultTransactionGasLimit
+          , _pmGasPrice = defaultTransactionGasPrice
+          , _pmTTL = defaultTransactionTTL
           , _pmCreationTime = TxCreationTime 0 -- offset from block
           }
   m <- fromMaybe defaultMeta <$>
@@ -411,20 +413,18 @@ buildMeta cfg = do
 
 
 deployCode
-  :: forall t m model mConf
+  :: forall t m mConf
   . ( MonadHold t m, PerformEvent t m
     , MonadJSM (Performable m)
     , TriggerEvent t m
     , MonadSample t (Performable m)
-    , HasNetworkModel model t
     , HasNetworkModelCfg mConf t
     )
-  => model
-  -> Network t
+  => Network t
   -> Event t [NetworkRequest]
   -> m (mConf, Event t ())
-deployCode w networkL onReq = do
-    reqRes <- performNetworkRequest (w ^. wallet) networkL onReq
+deployCode networkL onReq = do
+    reqRes <- performNetworkRequest networkL onReq
     pure $ ( mempty & messagesCfg_send .~ fmap (map renderReqRes) reqRes
            , () <$ ffilter (or . map (either (const False) (const True) . snd)) reqRes
            )
@@ -437,7 +437,7 @@ deployCode w networkL onReq = do
     renderReq req =
       let
         chainId = _chainRef_chain . _networkRequest_chainRef $ req
-        code = _networkRequest_code req
+        code = _cmdPayload $ _networkRequest_cmd req
         -- Not really helpful to display deployed code if it is large:
         mkMsg msg = if T.length code < 100 then msg else ""
       in
@@ -536,6 +536,16 @@ getConfigNetworks = do
       (NetworkName "pact", mempty, Just x)
     Right (x,y) -> (x,y, Nothing) -- Production mode
 
+mkSimpleReadReq
+  :: (MonadIO m, MonadJSM m)
+  => Text -> PublicMeta -> ChainRef -> m NetworkRequest
+mkSimpleReadReq code pm cRef = do
+  cmd <- buildCmd Nothing (pm { _pmChainId = _chainRef_chain cRef }) mempty mempty code mempty
+  pure $ NetworkRequest
+    { _networkRequest_cmd = cmd
+    , _networkRequest_chainRef = cRef
+    , _networkRequest_endpoint = Endpoint_Local
+    }
 
 -- | Load modules on startup and on every occurrence of the given event.
 loadModules
@@ -556,12 +566,12 @@ loadModules networkL onRefresh = do
         let onNodeInfos = push (getInterestingInfos lastUsed) onNodeInfosAll
         lastUsed <- hold [] onNodeInfos
 
-      let
-        onReqs = map mkReq . maybe [] getChains . listToMaybe  <$>
-          leftmost
-            [ onNodeInfos
-            , tag (current nodeInfos) onRefresh
-            ]
+      onReqs <- performEvent $ attachWith (\pm m -> traverse (mkReq pm) $ maybe [] getChains $ listToMaybe m)
+        (current $ networkL ^. network_meta)
+        (leftmost
+          [ onNodeInfos
+          , tag (current nodeInfos) onRefresh
+          ])
       onErrResps <- performLocalReadLatest networkL onReqs
 
       let
@@ -593,8 +603,7 @@ loadModules networkL onRefresh = do
             (o:_, n:_) -> if o /= n then Just newInfos else Nothing
             _          -> Just newInfos
 
-      mkReq n =
-        NetworkRequest "(list-modules)" H.empty (ChainRef Nothing n) Endpoint_Local Set.empty
+      mkReq pm = mkSimpleReadReq "(list-modules)" pm . ChainRef Nothing
 
       byChainId :: (NetworkRequest, NetworkErrorResult) -> Either NetworkError (ChainId, PactValue)
       byChainId = sequence . first (_chainRef_chain . _networkRequest_chainRef)
@@ -602,7 +611,7 @@ loadModules networkL onRefresh = do
       renderErrs :: [NetworkError] -> Text
       renderErrs =
         T.unlines
-        .  ("Error, retrieving modules for one ore more chains: " :)
+        .  ("Error, retrieving modules for one or more chains: " :)
         . map prettyPrintNetworkError
 
 
@@ -700,7 +709,7 @@ performLocalReadCustom networkL unwrapUsr onReqs =
           }
       }
   in
-    performNetworkRequestCustom emptyWallet fakeNetwork unwrap onReqs
+    performNetworkRequestCustom fakeNetwork unwrap onReqs
 
 
 -- | Send a transaction via the /send endpoint.
@@ -713,12 +722,11 @@ performNetworkRequest
     , TriggerEvent t m
     , MonadSample t (Performable m)
     )
-  => Wallet t
-  -> Network t
+  => Network t
   -> Event t [NetworkRequest]
   -> m (Event t [(NetworkRequest, NetworkErrorResult)])
-performNetworkRequest w networkL onReq =
-  fmap (uncurry zip) <$> performNetworkRequestCustom w networkL id onReq
+performNetworkRequest networkL onReq =
+  fmap (uncurry zip) <$> performNetworkRequestCustom networkL id onReq
 
 
 -- | Send a transaction via the /send endpoint.
@@ -731,19 +739,16 @@ performNetworkRequestCustom
     , TriggerEvent t m
     , MonadSample t (Performable m)
     )
-  => Wallet t
-  -> Network t
+  => Network t
   -> (req -> [NetworkRequest])
   -> Event t req
   -> m (Event t (req, [NetworkErrorResult]))
-performNetworkRequestCustom w networkL unwrap onReqs =
+performNetworkRequestCustom networkL unwrap onReqs =
     performEventAsync $ ffor onReqs $ \reqs cb ->
       reportError cb reqs $ do
-        keys <- sample $ current $ _wallet_keys w
-        metaTemplate <- sample $ current $ networkL ^. network_meta
         nodeInfos <- getSelectedNetworkInfos networkL
         void $ liftJSM $ forkJSM $ do
-          r <- traverse (doReqFailover metaTemplate nodeInfos keys) $ unwrap reqs
+          r <- traverse (doReqFailover nodeInfos) $ unwrap reqs
           liftIO $ cb (reqs, r)
   where
 
@@ -753,12 +758,12 @@ performNetworkRequestCustom w networkL unwrap onReqs =
         Left err -> liftIO $ cb $ (reqs, map (const $ Left err) $ unwrap reqs)
         Right () -> pure ()
 
-    doReqFailover metaTemplate nodeInfos keys req =
+    doReqFailover nodeInfos req =
       go nodeInfos
         where
           go = \case
             n:ns -> do
-              errRes <- doReq metaTemplate (Just n) keys req
+              errRes <- doReq (Just n) req
               case errRes of
                 Left err -> do
                   liftIO $ putStrLn $ "Got err: " <> show err
@@ -766,16 +771,11 @@ performNetworkRequestCustom w networkL unwrap onReqs =
                                then go ns
                                else pure errRes
                 Right _ -> pure errRes
-            [] -> doReq metaTemplate Nothing keys req
+            [] -> doReq Nothing req
 
-    doReq metaTemplate mNodeInfo keys req = runExceptT $ do
-      let
-        metaChainId = toPmChainId . _chainRef_chain $ _networkRequest_chainRef req
-        meta = metaTemplate { _pmChainId = metaChainId }
-        signing = _networkRequest_signing req
+    doReq mNodeInfo req = runExceptT $ do
       chainUrl <- ExceptT $ getBaseUrlErr (req ^. networkRequest_chainRef) mNodeInfo
-      payload <- buildCmd Nothing meta keys signing req
-      ExceptT $ liftJSM $ networkRequest chainUrl (req ^. networkRequest_endpoint) payload
+      ExceptT $ liftJSM $ networkRequest chainUrl (req ^. networkRequest_endpoint) (_networkRequest_cmd req)
 
     getBaseUrlErr ref info = left NetworkError_Other <$> getChainRefBaseUrl ref info
 
@@ -866,10 +866,10 @@ networkRequest baseUri endpoint cmd = do
 -- | Build a single cmd as expected in the `cmds` array of the /send payload.
 --
 -- As specified <https://pact-language.readthedocs.io/en/latest/pact-reference.html#send here>.
-buildCmd :: (MonadIO m, MonadJSM m) => Maybe Text -> PublicMeta -> KeyPairs -> Set KeyName -> NetworkRequest -> m (Command Text)
-buildCmd mNonce meta keys signing req = do
+buildCmd :: (MonadIO m, MonadJSM m) => Maybe Text -> PublicMeta -> KeyPairs -> Set KeyName -> Text -> Object -> m (Command Text)
+buildCmd mNonce meta keys signing code dat = do
   let signingKeys = getSigningPairs signing keys
-  cmd <- encodeAsText . encode <$> buildExecPayload mNonce meta signingKeys req
+  cmd <- encodeAsText . encode <$> buildExecPayload mNonce meta signingKeys code dat
   let
     cmdHashL = hash (T.encodeUtf8 cmd)
   sigs <- buildSigs cmdHashL signingKeys
@@ -907,13 +907,13 @@ buildSigs cmdHashL signingPairs = do
 --   Use `encodedAsText` for passing it as the `cmd` payload.
 buildExecPayload
   :: MonadIO m
-  => Maybe Text -> PublicMeta -> [KeyPair] -> NetworkRequest -> m (Payload PublicMeta Text)
-buildExecPayload mNonce meta keys req = do
+  => Maybe Text -> PublicMeta -> [KeyPair] -> Text -> Object -> m (Payload PublicMeta Text)
+buildExecPayload mNonce meta keys code dat = do
     nonce <- maybe getNonce pure mNonce
     let
       payload = ExecMsg
-        { _pmCode = _networkRequest_code req
-        , _pmData = Object $ _networkRequest_data req
+        { _pmCode = code
+        , _pmData = Object dat
         }
     pure $ Payload
       { _pPayload = Exec payload
@@ -983,7 +983,7 @@ instance Reflex t => Semigroup (NetworkCfg t) where
       = NetworkCfg
         { _networkCfg_refreshModule = leftmost [ refreshA, refreshB ]
         , _networkCfg_deployCode    =  deployA <> deployB
-        , _networkCfg_setSender    = leftmost [ setSenderA, setSenderB ]
+        , _networkCfg_setSender     = leftmost [ setSenderA, setSenderB ]
         , _networkCfg_setGasLimit   = leftmost [ setGasLimitA, setGasLimitB ]
         , _networkCfg_setGasPrice   = leftmost [ setGasPriceA, setGasPriceB ]
         , _networkCfg_setTTL        = leftmost [ setTtlA, setTtlB ]

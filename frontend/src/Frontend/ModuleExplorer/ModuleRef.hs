@@ -50,10 +50,11 @@ module Frontend.ModuleExplorer.ModuleRef
 
 ------------------------------------------------------------------------------
 import           Control.Applicative             ((<|>))
-import           Control.Arrow                   (left, (***))
+import           Control.Arrow                   (left)
 import           Control.Lens
 import           Control.Monad
 import           Control.Monad.Except            (throwError)
+import           Data.Bifunctor                  (first)
 import           Data.Coerce                     (coerce)
 import           Data.List.NonEmpty              (NonEmpty ((:|)))
 import qualified Data.Map                        as Map
@@ -247,27 +248,24 @@ fetchModule
   -> Event t DeployedModuleRef
   -> m (Event t (DeployedModuleRef, Either Text (ModuleDef (Term Name))))
 fetchModule networkL onReq = do
-    deployedResults :: Event t ([DeployedModuleRef], [NetworkErrorResult])
-      <- performLocalReadCustom (networkL ^. network) (map mkReq) (pure <$> onReq)
+    onReq' :: Event t (DeployedModuleRef, NetworkRequest)
+      <- performEvent $ attachWith mkReq (current $ networkL ^. network_meta) onReq
+    deployedResults :: Event t ((DeployedModuleRef, NetworkRequest), [NetworkErrorResult])
+      <- performLocalReadCustom (networkL ^. network) (pure . snd) onReq'
     let
-      deployedResultsZipped = uncurry zip <$> deployedResults
+      deployedResultsZipped = first fst <$> deployedResults
 
-    pure $ fmapMaybe listToMaybe . ffor deployedResultsZipped $
-      map (id *** (getModule <=< left prettyPrintNetworkError))
+    pure $ fmapMaybe listToMaybe . ffor deployedResultsZipped $ \(dmr, errs) ->
+      map ((dmr,) . (getModule <=< left prettyPrintNetworkError)) errs
 
   where
-    mkReq mRef = NetworkRequest
-      { _networkRequest_code = mconcat
-        [ defineNamespace . _moduleRef_name $ mRef
-        , "(describe-module '"
-        , _mnName . _moduleRef_name $ mRef
-        , ")"
-        ]
-      , _networkRequest_data = mempty
-      , _networkRequest_chainRef = _moduleRef_source $ mRef
-      , _networkRequest_endpoint = Endpoint_Local
-      , _networkRequest_signing = Set.empty
-      }
+    mkReq pm mRef = (mRef,) <$> mkSimpleReadReq code pm (_moduleRef_source mRef)
+      where code = mconcat
+              [ defineNamespace . _moduleRef_name $ mRef
+              , "(describe-module '"
+              , _mnName . _moduleRef_name $ mRef
+              , ")"
+              ]
 
     getModule :: PactValue -> Either Text (ModuleDef (Term Name))
     getModule  = \case

@@ -34,6 +34,7 @@ import           Data.Either                 (rights)
 import qualified Data.Map                    as Map
 import           Data.Text                   (Text)
 import           Data.Traversable            (for)
+import           Pact.Types.ChainId          (_chainId)
 import           Reflex
 import           Reflex.Dom
 import           Reflex.Dom.Contrib.CssClass
@@ -69,7 +70,7 @@ uiModuleList modules = do
       case _moduleRef_source c of
         ModuleSource_Deployed s ->
           divClass "table__text-cell table__cell_size_side" $
-            text $ tshow $ _chainRef_chain s
+            text $ _chainId $ _chainRef_chain s
         _ ->
           blank
 
@@ -96,7 +97,7 @@ uiDeployedModuleList m mList = mdo
 
       -- dropdown is kinda loopy, therefore the delay.
       onNetworkName <- delay 0 <=< tagOnPostBuild $ mList ^. moduleList_chainIdFilter
-      let mkMap = Map.fromList . map (Just &&& tshow) . getChains
+      let mkMap = Map.fromList . map (Just &&& _chainId) . getChains
           mInfo = (^? to rights . _head) <$> m ^. network_selectedNodes
           opts = Map.insert Nothing "All chains" . maybe mempty mkMap <$> mInfo
           filterCfg = def & dropdownConfig_attributes %~ fmap (addToClassAttr $ "select_type_tertiary" <> "filter-bar__chain-filter")

@@ -16,7 +16,7 @@
 {-# LANGUAGE TupleSections          #-}
 {-# LANGUAGE TypeApplications       #-}
 {-# LANGUAGE TypeFamilies           #-}
-{-# LANGUAGE GeneralizedNewtypeDeriving           #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
 
 -- | References that can be rendered as some kind of path (string
 -- representation) and parsed again.
@@ -45,6 +45,7 @@ module Common.RefPath
 
 ------------------------------------------------------------------------------
 import           Control.Arrow        (second, (***))
+import           Data.Maybe           (isJust)
 import qualified Data.List            as L
 import qualified Data.List.NonEmpty   as NE
 import           Data.String          (IsString (fromString))
@@ -52,6 +53,8 @@ import           Data.Text            (Text)
 import qualified Data.Text            as T
 import           Data.Void            (Void)
 import           Text.Megaparsec      as MP
+import qualified Pact.Types.ChainId   as Pact
+import           Text.Read            (readMaybe)
 ------------------------------------------------------------------------------
 
 -- | A path segment is just a piece of `Text`.
@@ -77,6 +80,17 @@ class IsRefPath r where
 instance IsRefPath Text where
   renderRef = mkRefPath
   parseRef = anySingle
+
+instance IsRefPath Pact.ChainId where
+  renderRef = mkRefPath . Pact._chainId
+
+  parseRef = Pact.ChainId . read . T.unpack <$> MP.satisfy isWord
+    where
+      isWord :: Text -> Bool
+      isWord = isJust . readWordMay . T.unpack
+
+      readWordMay :: String -> Maybe Word
+      readWordMay = readMaybe
 
 
 -- | Try to parse a ref.

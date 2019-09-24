@@ -45,7 +45,7 @@ import           Pact.Types.Lang                (Arg (..), FunType (..),
                                                  PrimType (..), Term, Type (..))
 ------------------------------------------------------------------------------
 import           Frontend.Foundation            hiding (Arg)
-import           Frontend.JsonData              (HasJsonData (..), JsonData)
+import           Frontend.JsonData              (HasJsonData (..), JsonData, HasJsonDataCfg)
 import           Frontend.ModuleExplorer
 import           Frontend.Network
 import           Frontend.UI.DeploymentSettings
@@ -65,7 +65,7 @@ type HasUICallFunctionModelCfg mConf t =
 -- | Modal dialog for calling a function.
 uiCallFunction
   :: forall t m  mConf model
-  . (MonadWidget t m, HasUICallFunctionModelCfg mConf t, HasUICallFunctionModel model t)
+  . (MonadWidget t m, HasUICallFunctionModelCfg mConf t, HasUICallFunctionModel model t, HasJsonDataCfg mConf t)
   => model
   -> Maybe DeployedModuleRef
   -> PactFunction
@@ -76,38 +76,30 @@ uiCallFunction m mModule func _onClose = do
       text headerTitle
       elClass "span" "heading_type_h1" $
         text $ _pactFunction_name func
-    modalMain $ do
-      mCfgInfo <- modalBody $ do
-        uiSegment mempty $ do
-          elClass "div" "segment segment_type_secondary code-font code-font_type_function-desc" $ do
-            renderSignature func
-            el "br" blank
-            el "br" blank
-            renderDescription func
-        traverse (uiBuildDeployment m func) $
-          if functionIsCallable func
-             then mModule
-             else Nothing
+    uiSegment "padded" $ do
+      elClass "div" "segment segment_type_secondary code-font code-font_type_function-desc" $ do
+        renderSignature func
+        el "br" blank
+        el "br" blank
+        renderDescription func
+    mCfgInfo <- traverse (uiBuildDeployment m func) $
+      if functionIsCallable func
+          then mModule
+          else Nothing
 
-      modalFooter $
-        case mCfgInfo of
-          Nothing -> do
-            onAccept <- confirmButton def "Ok"
-            pure (mempty, leftmost [onClose, onAccept])
-          Just (settingsCfg, transaction) -> do
-            onCancel <- cancelButton def "Cancel"
-            text " "
-            -- let isDisabled = maybe True (const False) <$> transInfo
-            onCall <- confirmButton (def & uiButtonCfg_disabled .~ pure False) "Call"
+    case mCfgInfo of
+      Nothing -> do
+        modalMain blank -- to push the footer to the bottom
+        onAccept <- modalFooter $ confirmButton def "Ok"
+        pure (mempty, leftmost [onClose, onAccept])
+      Just (settingsCfg, req) -> do
+        let
+          cfg = mconcat
+            [ settingsCfg
+            , mempty & networkCfg_deployCode .~ req
+            ]
+        pure (cfg, onClose <> void req)
 
-            let
-              onReq = tag (current transaction) onCall
-              cfg = mconcat
-                [ settingsCfg
-                ,  mempty & moduleExplorerCfg_deployCode .~ onReq
-                ]
-
-            pure (cfg, leftmost [onClose, onCancel, onCall])
   where
     headerTitle =
       case _pactFunction_defType func of
@@ -121,24 +113,26 @@ uiBuildDeployment
      ( DomBuilder t m, Monoid mConf, HasNetwork model t, HasNetworkCfg mConf t
      , HasJsonData model t
      , MonadWidget t m, HasWallet model t
+     , HasJsonDataCfg mConf t, Flattenable mConf t
      )
   => model
   -> PactFunction
   -> DeployedModuleRef
-  -> m (mConf, Dynamic t (Text, TransactionInfo))
-uiBuildDeployment m func moduleL = do
-
-  (cfg, transInfo, mPactCall) <- uiSegment mempty $ do
-    uiDeploymentSettings m $ DeploymentSettingsConfig
-      { _deploymentSettingsConfig_userTab = parametersTab m func
-      , _deploymentSettingsConfig_chainId =
-          predefinedChainIdSelect $ _chainRef_chain . _moduleRef_source $ moduleL
-      , _deploymentSettingsConfig_defEndpoint = Endpoint_Local
-      }
-
-  let
-    pactCall = fromMaybe (pure $ buildCall func []) mPactCall
-  pure (cfg, (,) <$> pactCall <*> fmap runIdentity transInfo)
+  -> m (mConf, Event t [NetworkRequest])
+uiBuildDeployment m func moduleL = mdo
+  (cfg, result, mPactCall) <- uiDeploymentSettings m $ DeploymentSettingsConfig
+    { _deploymentSettingsConfig_userTab = parametersTab m func
+    , _deploymentSettingsConfig_chainId =
+        predefinedChainIdSelect $ _chainRef_chain . _moduleRef_source $ moduleL
+    , _deploymentSettingsConfig_defEndpoint = Just Endpoint_Local
+    , _deploymentSettingsConfig_code = fromMaybe (pure $ buildCall func []) mPactCall
+    , _deploymentSettingsConfig_sender = uiSenderDropdown def
+    , _deploymentSettingsConfig_data = Nothing
+    , _deploymentSettingsConfig_ttl = Nothing
+    , _deploymentSettingsConfig_nonce = Nothing
+    , _deploymentSettingsConfig_gasLimit = Nothing
+    }
+  pure $ (,) cfg $ ffor result $ \(me, c, cmd) -> [NetworkRequest cmd (ChainRef Nothing c) (fromMaybe Endpoint_Local me)]
 
 
 -- | Tab showing edits for function parameters (if any):

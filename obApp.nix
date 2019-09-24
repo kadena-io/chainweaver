@@ -63,6 +63,7 @@ in
         # doctest
         iproute = haskellLib.dontCheck super.iproute;
         swagger2 = haskellLib.dontCheck super.swagger2;
+        servant = haskellLib.dontCheck super.servant;
         servant-server = haskellLib.dontCheck super.servant-server;
 
         # failing

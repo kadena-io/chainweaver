@@ -25,10 +25,15 @@
 
 .modal__dialog {
   position: absolute;
-  left: 25%;
-  right: 25%;
-  top: 12%;
-  bottom: 10%;
+  left: 50%;
+  top: 50%;
+  display: flex;
+  flex-direction: column;
+  transform: translate(-50%, -50%);
+  min-width: 650px;
+  width: 50%;
+  height: 75%;
+  max-height: calc(100vh - 180px);
   background: $body-background;
   border-radius: $std-border-radius;
   box-shadow: 0px 8px 24px rgba(0, 0, 0, 0.3);
@@ -63,16 +68,9 @@
 }
 
 .modal__main {
-  height: calc(100% - 68px);
+  flex-grow: 1;
   padding: $normal-padding $normal-padding;
   min-height: 6em;
-}
-
-.modal__body {
-  display: flex;
-  flex-direction: column;
-  height: calc(100% - 77px);
-  padding-right: $normal-padding;
   overflow-y: auto;
 }
 
@@ -110,15 +108,22 @@
   flex: 0;
 }
 
+.modal__dialog > .tab-nav {
+  margin: $normal-margin;
+  margin-bottom: 0;
+}
+
+.modal__dialog .tab-set__content {
+  padding-top: 0;
+}
 
 .modal__footer {
-  margin-top: $normal-margin;
-  padding-top: $normal-padding;
-  padding-right: $normal-padding;
+  margin: 0 $normal-margin;
+  padding: $normal-padding 0;
   border-top: $std-border-width $std-border-style $std-border-color;
   border-bottom-left-radius: $std-border-radius;
   border-bottom-right-radius: $std-border-radius;
-  text-align: left;
+  text-align: right;
 }
 
 
@@ -128,4 +133,33 @@
 
 .modal__foter > *:last-child {
   margin-left: 0;
+}
+
+.detail {
+  font-size: 12px;
+  margin: 0.5rem 0;
+}
+.transaction_details {
+  .signal {
+    display: inline;
+    margin-right: 1rem;
+    .signal__circle {
+      margin-bottom: -2px;
+      display: inline-block;
+    }
+    .signal__circle_status_ok {
+      background-color: #28CA41;
+    }
+  }
+  .title {
+    font-weight: bold;
+    font-size: 14px;
+    color: #2d2d2f;
+    margin: 1rem 0;
+  }
+  label {
+    font-weight: bold;
+    font-size: 14px;
+    color: #2d2d2f;
+  }
 }

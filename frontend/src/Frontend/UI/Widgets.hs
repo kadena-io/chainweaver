@@ -23,6 +23,7 @@ module Frontend.UI.Widgets
   , uiTextAreaElement
   , uiRealInputElement
   , uiIntInputElement
+  , uiSliderInputElement
   , uiInputView
   , mkLabeledInputView
   , mkLabeledInput
@@ -170,6 +171,20 @@ uiIntInputElement cfg = do
       }
   where
     fixNum = T.takeWhile (/='.')
+
+uiSliderInputElement
+  :: DomBuilder t m
+  => m ()
+  -> m ()
+  -> InputElementConfig er t (DomBuilderSpace m)
+  -> m (InputElement er (DomBuilderSpace m) t)
+uiSliderInputElement minLabel maxLabel conf = divClass "slider" $ do
+  s <- inputElement $ conf
+    & initialAttributes %~ Map.insert "type" "range" . addToClassAttr "slider"
+  divClass "slider_min" minLabel
+  divClass "slider_max" maxLabel
+  divClass "clear" $ pure ()
+  pure s
 
 -- | Take an `uiInputElement` like thing and make it a view with change events
 -- of your model. It also takes care of input validation.

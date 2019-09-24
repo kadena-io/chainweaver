@@ -273,7 +273,7 @@ controlBarRight appCfg m = do
         loadCfg <- loadCodeIntoRepl m onLoadClicked
         let
           reqConfirmation :: Event t (Maybe (ModalImpl m t))
-          reqConfirmation = Just (uiDeployConfirmation m) <$ onDeployClick
+          reqConfirmation = attachWith (\c _ -> Just $ uiDeployConfirmation c m) (current $ m ^. editor_code) onDeployClick
 
           gistConfirmation :: Event t (Maybe (ModalImpl m t))
           gistConfirmation = Just uiCreateGist <$ onCreateGist

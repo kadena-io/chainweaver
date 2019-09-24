@@ -27,12 +27,15 @@
 module Frontend.UI.JsonData
   ( -- * Key management widget
     uiJsonData
+  , uiCreateKeysets
+  , uiJsonDataResult
   ) where
 
 ------------------------------------------------------------------------------
 import           Control.Lens                       hiding ((.=))
 import           Control.Monad
 import           Data.Aeson.Encode.Pretty           (encodePretty)
+import qualified Data.Aeson                         as Aeson
 import qualified Data.ByteString.Lazy               as BSL
 import qualified Data.HashMap.Strict                as H
 import qualified Data.Map                           as Map
@@ -82,13 +85,8 @@ uiJsonData w d = divClass "tabset" $ mdo
       , _tabBarCfg_type = TabBarType_Secondary
       }
 
-    keysetVCfg <-tabPane mempty curSelection JsonDataView_Keysets $ do
-      (e, keysetCfgL) <- elClass' "div" "keysets group" $ do
-        onCreateKeyset <- uiCreateKeyset d
-        ksCfg <- elClass "div" "keyset-list" $
-          networkViewFlatten $ uiKeysets w <$> d ^. jsonData_keysets
-
-        pure $ ksCfg & jsonDataCfg_createKeyset .~ onCreateKeyset
+    keysetVCfg <- tabPane mempty curSelection JsonDataView_Keysets $ do
+      (e, keysetCfgL) <- uiCreateKeysets w d
       setFocusOnSelected e "input" JsonDataView_Keysets $ updated curSelection
       pure keysetCfgL
 
@@ -104,12 +102,8 @@ uiJsonData w d = divClass "tabset" $ mdo
       setFocusOnSelected e ".ace_text-input" JsonDataView_Raw $ updated curSelection
       pure $ mempty & jsonDataCfg_setRawInput .~ onSetRawInput
 
-    tabPane mempty
-        curSelection JsonDataView_Result $ do
-      let
-        showData =
-          either showJsonError (safeDecodeUtf8 . BSL.toStrict . encodePretty)
-      el "pre" $ dynText $ showData <$> d ^. jsonData_data
+    tabPane mempty curSelection JsonDataView_Result $ do
+      uiJsonDataResult $ d ^. jsonData_data
 
     pure $ mconcat [ keysetVCfg, rawVCfg ]
   where
@@ -134,6 +128,19 @@ uiJsonData w d = divClass "tabset" $ mdo
          , _aceAnnotation_type = aType
          }
        ]
+
+uiJsonDataResult :: (DomBuilder t m, PostBuild t m) => Dynamic t (Either JsonError Aeson.Object) -> m ()
+uiJsonDataResult = el "pre" . dynText . fmap showData
+  where showData = either showJsonError (safeDecodeUtf8 . BSL.toStrict . encodePretty)
+
+uiCreateKeysets
+  :: (MonadWidget t m, Monoid mConf, HasJsonDataCfg mConf t, Flattenable mConf t)
+  => Wallet t -> JsonData t -> m (Element EventResult (DomBuilderSpace m) t, mConf)
+uiCreateKeysets w d = elClass' "div" "keysets group" $ do
+  onCreateKeyset <- uiCreateKeyset d
+  ksCfg <- elClass "div" "keyset-list" $
+    networkViewFlatten $ uiKeysets w <$> d ^. jsonData_keysets
+  pure $ ksCfg & jsonDataCfg_createKeyset .~ onCreateKeyset
 
 uiKeysets
   :: (MonadWidget t m, Monoid mConf, HasJsonDataCfg mConf t)

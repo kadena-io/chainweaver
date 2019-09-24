@@ -139,7 +139,7 @@ makeIde appCfg userCfg = build $ \ ~(cfg, ideL) -> do
 
     walletL <- makeWallet $ _ideCfg_wallet cfg
     json <- makeJsonData walletL $ _ideCfg_jsonData cfg
-    (networkCfgL, networkL) <- makeNetwork walletL $ cfg ^. ideCfg_network
+    (networkCfgL, networkL) <- makeNetwork $ cfg ^. ideCfg_network
     (explrCfg, moduleExplr) <- makeModuleExplorer appCfg ideL cfg
     (editorCfgL, editorL) <- makeEditor ideL cfg
     (oAuthCfgL, oAuthL) <- makeOAuth cfg
