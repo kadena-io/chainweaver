@@ -331,7 +331,7 @@ queryNetworkStatus
   -> Dynamic t NetworkName
   -> m (MDynamic t NetworkStatus)
 queryNetworkStatus networks self = do
-  let nodes = fmap (fromMaybe []) $ Map.lookup <$> self <*> networks
+  let nodes = Map.findWithDefault [] <$> self <*> networks
   -- Append node for new entry (`Nothing`):
   (initMap, onUpdate) <- getListUpdates $ (<> [Nothing]) . map Just <$> nodes
   (initialResp, onRespUpdate) <-

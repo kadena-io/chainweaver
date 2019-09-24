@@ -213,9 +213,7 @@ uiDeploymentSettings m settings = mdo
       let backConfig = def & uiButtonCfg_class .~ ffor curSelection
             (\s -> if s == fromMaybe DeploymentSettingsView_Cfg mUserTabName then "hidden" else "")
       back <- uiButtonDyn backConfig $ text "Back"
-      let isDisabledA = pure False -- TODO (== mempty) <$> transactionInfo
-          isDisabledB = (== DeploymentSettingsView_Keys) <$> curSelection
-          isDisabled = zipDynWith (&&) isDisabledA isDisabledB
+      let isDisabled = (== DeploymentSettingsView_Keys) <$> curSelection
       next <- uiButtonDyn (def & uiButtonCfg_class .~ "button_type_confirm" & uiButtonCfg_disabled .~ isDisabled) $ dynText $ ffor curSelection $ \case
         DeploymentSettingsView_Keys -> "Preview"
         _ -> "Next"
@@ -290,8 +288,10 @@ uiCfg code m wChainId ep mTTL mGasLimit = do
       & initialAttributes .~ "disabled" =: "" <> "style" =: "width: 100%" <> "class" =: renderClass cls
     pure ()
   divClass "title" $ text "Destination"
-  (cId, endpoint) <- elKlass "div" ("group segment") $
-     uiEndpoint m wChainId ep
+  (cId, endpoint) <- elKlass "div" ("group segment") $ do
+    endpoint <- uiEndpoint m ep
+    chain <- wChainId
+    pure (chain, endpoint)
   divClass "title" $ text "Settings"
   (cfg, ttl, gasLimit) <- elKlass "div" ("group segment") $
     uiMetaData m mTTL mGasLimit
@@ -305,28 +305,20 @@ uiCfg code m wChainId ep mTTL mGasLimit = do
 uiEndpoint
   :: (MonadWidget t m, HasNetwork model t)
   => model
-  -> m (Dynamic t (f Pact.ChainId))
   -> Maybe Endpoint
-  -> m (Dynamic t (f Pact.ChainId), Maybe (Dynamic t Endpoint))
-uiEndpoint m wChainId ep = do
-
+  -> m (Maybe (Dynamic t Endpoint))
+uiEndpoint m ep = do
     _ <- flip mkLabeledClsInput "Network" $ \_ -> do
       divClass "title" $ do
         netStat <- queryNetworkStatus (m ^. network_networks) (m ^. network_selectedNetwork)
         uiNetworkStatus "" netStat
         dynText $ textNetworkName <$> m ^. network_selectedNetwork
-
-    selEndpoint <- for ep $ \e -> do
+    for ep $ \e -> do
       de <- mkLabeledClsInput (uiEndpointSelection e) "Access"
       divClass "detail" $ dynText $ ffor de $ \case
         Endpoint_Local -> "Read some data from the blockchain. No gas fees required."
         Endpoint_Send -> "Send a transaction to the blockchain. You'll need to pay gas fees for the transaction to be included."
       pure de
-
-    selChain <- wChainId
-
-    pure (selChain, selEndpoint)
-
 
 -- | ui for asking the user about meta data needed for the transaction.
 uiMetaData
@@ -339,7 +331,7 @@ uiMetaData m mTTL mGasLimit = do
     onGasPriceTxt <- mkLabeledInputView uiRealInputElement "Gas Price (KDA)" $
       fmap (showGasPrice . _pmGasPrice) $ m ^. network_meta
 
-    let initGasLimit = fromMaybe 100 mGasLimit
+    let initGasLimit = fromMaybe defaultTransactionGasLimit mGasLimit
     pbGasLimit <- case mGasLimit of
       Just _ -> pure never
       Nothing -> tag (current $ fmap _pmGasLimit $ m ^. network_meta) <$> getPostBuild
@@ -363,18 +355,18 @@ uiMetaData m mTTL mGasLimit = do
       Just _ -> pure never
       Nothing -> tag (current $ fmap _pmTTL $ m ^. network_meta) <$> getPostBuild
     let secondsInDay :: Int = 60 * 60 * 24
-        defaultTTL = 60 * 60 * 8
-        initTTL = fromMaybe defaultTTL mTTL
+        initTTL = fromMaybe defaultTransactionTTL mTTL
     onTtlTxt <- mkLabeledInput ttlInput "Request Expires (seconds)" $ def
       & initialAttributes .~ "min" =: "1" <> "max" =: T.pack (show secondsInDay) <> "step" =: "1"
       & inputElementConfig_setValue .~ fmap showTtl pbTTL
       & inputElementConfig_initialValue .~ showTtl initTTL
-    ttl <- holdDyn initTTL $ leftmost [fmapMaybe (readPact (TTLSeconds . ParsedInteger)) onTtlTxt, pbTTL]
+    let onTTL = fmapMaybe (readPact (TTLSeconds . ParsedInteger)) onTtlTxt
+    ttl <- holdDyn initTTL $ leftmost [onTTL, pbTTL]
 
     pure
       ( mempty
         & networkCfg_setGasPrice .~ fmapMaybe (readPact (GasPrice . ParsedDecimal)) onGasPriceTxt
-        & networkCfg_setTTL .~ fmapMaybe (readPact (TTLSeconds . ParsedInteger)) onTtlTxt
+        & networkCfg_setTTL .~ onTTL
       , ttl
       , gasLimit
       )
@@ -393,8 +385,8 @@ uiMetaData m mTTL mGasLimit = do
       readPact wrapper =  fmap wrapper . readMay . T.unpack
 
 -- | Set the sender to a fixed value
-uiSenderFixed :: DomBuilder t m => Text -> model -> m (Dynamic t (Maybe Text))
-uiSenderFixed sender _ = do
+uiSenderFixed :: DomBuilder t m => Text -> m (Dynamic t (Maybe Text))
+uiSenderFixed sender = do
   _ <- mkLabeledInput uiInputElement "Sender" $ def
     & initialAttributes %~ Map.insert "disabled" ""
     & inputElementConfig_initialValue .~ sender
@@ -473,8 +465,9 @@ uiSigningKeys model mkSender = do
       tableAttrs =
         "style" =: "table-layout: fixed; width: 100%" <> "class" =: "table"
   boxValues <- divClass "group" $ elAttr "table" tableAttrs $ do
-    el "tbody" $ listWithKey keyMap $ \name key -> signingItem (name, key)
-  dyn_ $ ffor keyMap $ \keys -> when (Map.null keys) $ text "No keys ..."
+    chosenKeys <- el "tbody" $ listWithKey keyMap $ \name key -> signingItem (name, key)
+    dynText $ ffor keyMap $ \keys -> if Map.null keys then "No keys ..." else ""
+    pure chosenKeys
   return $ (,) sender $ do -- The Dynamic monad
     m :: Map KeyName (Dynamic t Bool) <- boxValues
     ps <- traverse (\(k,v) -> (k,) <$> v) $ Map.toList m

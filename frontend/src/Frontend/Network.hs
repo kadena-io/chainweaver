@@ -50,6 +50,10 @@ module Frontend.Network
   , prettyPrintNetworkError
   , buildCmd
   , mkSimpleReadReq
+    -- * Defaults
+  , defaultTransactionGasLimit
+  , defaultTransactionGasPrice
+  , defaultTransactionTTL
   ) where
 
 import           Control.Arrow                     (first, left, second, (&&&))
@@ -365,6 +369,17 @@ getSelectedNetworkInfos networkL = do
     pure $ rights errNets
 
 
+defaultTransactionGasPrice :: GasPrice
+defaultTransactionGasPrice = GasPrice 0.001
+
+defaultTransactionTTL :: TTLSeconds
+defaultTransactionTTL = TTLSeconds (8 * 60 * 60) -- 8 hours
+
+-- | TODO: Better defaults!!!
+defaultTransactionGasLimit :: GasLimit
+defaultTransactionGasLimit = GasLimit 100
+
+
 buildMeta
   :: ( MonadHold t m, MonadFix m, MonadJSM m
      , PerformEvent t m, MonadJSM (Performable m), TriggerEvent t m
@@ -376,9 +391,9 @@ buildMeta cfg = do
         PublicMeta
           { _pmChainId = "1" -- Gets overridden always!
           , _pmSender  = "sender00"
-          , _pmGasLimit = GasLimit 100 -- TODO: Better defaults!!!
-          , _pmGasPrice = GasPrice 0.001
-          , _pmTTL = TTLSeconds (8 * 60 * 60) -- 8 hours
+          , _pmGasLimit = defaultTransactionGasLimit
+          , _pmGasPrice = defaultTransactionGasPrice
+          , _pmTTL = defaultTransactionTTL
           , _pmCreationTime = TxCreationTime 0 -- offset from block
           }
   m <- fromMaybe defaultMeta <$>
