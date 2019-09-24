@@ -39,6 +39,7 @@ import           Reflex
 import           Reflex.Dom
 import           Reflex.Network.Extended
 ------------------------------------------------------------------------------
+import           Frontend.JsonData
 import           Frontend.ModuleExplorer
 import           Frontend.Network
 import           Frontend.UI.Button
@@ -57,6 +58,7 @@ type HasUIModuleDetailsModelCfg mConf m t =
   , HasNetworkCfg mConf t
   , HasModalCfg mConf (Modal mConf m t) t
   , HasUICallFunctionModelCfg (ModalCfg mConf t) t
+  , HasJsonDataCfg (ModalCfg mConf t) t
   )
 
 -- | Details screen for a Module/Interface

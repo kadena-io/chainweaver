@@ -72,3 +72,44 @@ input[type=number]::-webkit-inner-spin-button {
 input[type=number] {
     -moz-appearance:textfield;
 }
+
+.input:disabled {
+  color: #757575;
+}
+
+.slider {
+  color: #757575;
+  font-size: 14px;
+  margin: 0.5rem 0;
+  .slider_min, .slider_max {
+    margin-top: -0.6rem;
+    margin-bottom: 0.5rem;
+  }
+  .slider_min { float: left; }
+  .slider_max { float: right; }
+  .clear { clear: both; }
+  input {
+    -webkit-appearance: none;
+    width: 100%;
+    height: 3px;
+    background-color: #999;
+    margin: 1rem 0;
+    border-radius: 3px;
+  }
+  input::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    height: 18px;
+    width: 18px;
+    border-radius: 50%;
+    background: white;
+    border: 1px solid #999;
+    -webkit-box-shadow: 0px 1px 1px 0px rgba(0,0,0,0.25);
+  }
+  input::-webkit-slider-thumb:hover {
+    background: #eee;
+  }
+  input::-webkit-slider-thumb:active {
+    background: #ddd;
+  }
+}

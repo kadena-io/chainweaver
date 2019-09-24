@@ -55,8 +55,7 @@ uiCreateGist
   => Event t () -> m (mConf, Event t ())
 uiCreateGist _onClose = do
   onClose <- modalHeader $ text "Create GitHub Gist"
-  modalMain $ do
-    (name, desc) <- modalBody $ do
+  (name, desc) <- modalMain $ do
       divClass "segment modal__filler" $ do
         divClass "modal__filler-horizontal-center-box" $
           imgWithAltCls "modal__filler-img" (static @"img/Octocat.jpg") "Github logo" blank
@@ -67,17 +66,16 @@ uiCreateGist _onClose = do
           description <- labeledTextInputWithDefault "Description" "Pact shared with pact-web."
           pure (fileName, description)
 
-    modalFooter $ do
-      onCancel <- cancelButton def "Cancel"
-      text " "
-      let isDisabled = T.null . T.strip <$> name
-      onConfirm <- confirmButton (def & uiButtonCfg_disabled .~ isDisabled) "Create"
+  modalFooter $ do
+    onCancel <- cancelButton def "Cancel"
+    text " "
+    let isDisabled = T.null . T.strip <$> name
+    onConfirm <- confirmButton (def & uiButtonCfg_disabled .~ isDisabled) "Create"
 
-      -- TODO: Use `networkCfg_deployCode` instead.
-      let
-        payload = current $ GistMeta <$> name <*> desc
-        cfg = mempty & moduleExplorerCfg_createGist .~ tag payload onConfirm
-      pure (cfg, leftmost [onClose, onCancel, onConfirm])
+    let
+      payload = current $ GistMeta <$> name <*> desc
+      cfg = mempty & moduleExplorerCfg_createGist .~ tag payload onConfirm
+    pure (cfg, leftmost [onClose, onCancel, onConfirm])
 
 
 -- | Take label test and default value and produce a labeled input.

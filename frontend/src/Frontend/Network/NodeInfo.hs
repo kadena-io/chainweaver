@@ -29,7 +29,6 @@
 module Frontend.Network.NodeInfo
   ( -- * Types & Classes
     ChainId
-  , toPmChainId
   , NodeInfo (..)
   , nodeInfoRef
     -- * Discover
@@ -43,7 +42,6 @@ module Frontend.Network.NodeInfo
   , NodeType (..)
   , ChainwebInfo (..)
   ) where
-
 
 import           Control.Applicative         ((<|>))
 import           Control.Arrow               (right)
@@ -78,10 +76,10 @@ import qualified Text.URI.QQ                 as URI
 import           UnliftIO.Async
 import           UnliftIO.Exception          (catch)
 import           UnliftIO.MVar
+import qualified Pact.Types.ChainId          as Pact
 
 import           Common.Network              (ChainId (..), ChainRef (..),
-                                              NodeRef (..), parseNodeRef,
-                                              toPmChainId)
+                                              NodeRef (..), parseNodeRef)
 import           Frontend.Foundation
 
 
@@ -178,11 +176,11 @@ getChainBaseUrl chainId (NodeInfo base nType) =
 
 -- | Get a list of available chains.
 --
-getChains :: NodeInfo -> [ChainId]
-getChains (NodeInfo _ nType) =
+getChains :: NodeInfo -> [Pact.ChainId]
+getChains (NodeInfo _ nType) = Pact.ChainId . tshow <$>
   case nType of
-    NodeType_Pact _ -> [ ChainId 0 ]
-    NodeType_Chainweb info -> [ ChainId 0 .. ChainId (_chainwebInfo_numberOfChains info -1)]
+    NodeType_Pact _ -> [ 0 ]
+    NodeType_Chainweb info -> [ 0 .. (_chainwebInfo_numberOfChains info -1)]
 
 
 -- | Get the path for a given chain id.
@@ -191,7 +189,7 @@ getChainBasePath (ChainId chainId) = buildPath . \case
     NodeType_Pact _
       -> [] -- ["api", "v1"]
     NodeType_Chainweb (ChainwebInfo cwVersion netVersion _)
-      -> ["chainweb", cwVersion, netVersion, "chain", tshow chainId, "pact"]
+      -> ["chainweb", cwVersion, netVersion, "chain", chainId, "pact"]
   where
     buildPath = fromJustNote "Building chain base path failed!" . traverse URI.mkPathPiece
 

@@ -54,7 +54,6 @@ uiDeleteConfirmation
 uiDeleteConfirmation keyName _onClose = do
   onClose <- modalHeader $ text "Delete Confirmation"
   modalMain $ do
-    modalBody $ do
       divClass "segment modal__filler" $ do
         divClass "modal__filler-horizontal-center-box" $
           imgWithAltCls "modal__filler-img" (static @"img/bin-scalable.svg") "Bin" blank
@@ -70,10 +69,10 @@ uiDeleteConfirmation keyName _onClose = do
         divClass "group" $ do
           text "Double and triple check that you want to delete this key and make sure you have backups!"
 
-    modalFooter $ do
-      onCancel <- cancelButton def "Cancel"
-      text " "
-      onConfirm <- confirmButton def "Delete"
-      let
-        cfg = mempty & walletCfg_delKey .~ fmap (const keyName) onConfirm
-      pure (cfg, leftmost [onClose, onConfirm, onCancel])
+  modalFooter $ do
+    onCancel <- cancelButton def "Cancel"
+    text " "
+    onConfirm <- confirmButton def "Delete"
+    let
+      cfg = mempty & walletCfg_delKey .~ fmap (const keyName) onConfirm
+    pure (cfg, leftmost [onClose, onConfirm, onCancel])

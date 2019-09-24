@@ -27,7 +27,6 @@ module Frontend.UI.Modal
   , HasModalCfg (..)
   , modalHeader
   , modalMain
-  , modalBody
   , modalFooter
   ) where
 
@@ -79,18 +78,9 @@ modalHeader header = divClass "modal__header" $ do
     uiButton (def & uiButtonCfg_class .~ "modal__button-close") $
       text "x"
 
--- | Wrap body and footer in this.
+-- | Body content. Footer should be added after this.
 modalMain :: DomBuilder t m => m a -> m a
 modalMain  = divClass "modal__main"
-
--- | Create a modal dialog body.
-modalBody
-  :: forall t m a. DomBuilder t m
-  => m a
-  -- ^ The actual body of the dialog.
-  -> m a
-  -- ^ Wrapped up body
-modalBody = divClass "modal__body"
 
 -- | Create a modal dialog footer.
 modalFooter

@@ -21,6 +21,9 @@
 -- License     :  BSD-style (see the file LICENSE)
 module Frontend.UI.Dialogs.NetworkEdit
   ( uiNetworkEdit
+  , uiNetworkStatus
+  , queryNetworkStatus
+  , NetworkStatus(..)
   ) where
 
 ------------------------------------------------------------------------------
@@ -74,8 +77,7 @@ uiNetworkEdit
   -> Event t () -> m (mConf, Event t ())
 uiNetworkEdit m _onClose = do
   onClose <- modalHeader $ text "Network Settings"
-  modalMain $ do
-    cfg <- modalBody $ do
+  cfg <- modalMain $ do
       selCfg <- uiGroup "segment" $ do
         uiGroupHeader mempty $ do
           elClass "h2" "heading heading_type_h2" $
@@ -92,18 +94,18 @@ uiNetworkEdit m _onClose = do
 
       pure $ selCfg <> editCfg
 
-    modalFooter $ do
-      -- TODO: Is this really a "Cancel" button?!
-      onReset <- cancelButton def "Restore Defaults"
-      text " "
-      onConfirm <- confirmButton def "Ok"
+  modalFooter $ do
+    -- TODO: Is this really a "Cancel" button?!
+    onReset <- cancelButton def "Restore Defaults"
+    text " "
+    onConfirm <- confirmButton def "Ok"
 
-      pure
-        ( cfg
-           & networkCfg_resetNetworks .~ onReset
-           & networkCfg_refreshModule .~ onConfirm
-        , leftmost [onConfirm, onClose]
-        )
+    pure
+      ( cfg
+          & networkCfg_resetNetworks .~ onReset
+          & networkCfg_refreshModule .~ onConfirm
+      , leftmost [onConfirm, onClose]
+      )
   where
     checkNetName = getErr <$> m ^. network_networks
     getErr nets k =
@@ -267,9 +269,6 @@ uiNodes nodes = elClass "ol" "table table_type_primary" $ do
 
   where
 
-    toFunctorList :: forall f a. Functor f => IntMap (f a) -> [f (Int, a)]
-    toFunctorList = map (uncurry $ fmap . (,)) . IntMap.toList
-
     calculateNetworkStatusDyn
       :: Dynamic t (IntMap (Event t (Maybe NodeRef), MDynamic t (Either Text NodeInfo)))
       -> MDynamic t NetworkStatus
@@ -283,11 +282,13 @@ uiNodes nodes = elClass "ol" "table table_type_primary" $ do
       in
         mconcat . map (fmap getNetworkStatus) <$> stats
 
-    getNetworkStatus :: Either Text NodeInfo -> NetworkStatus
-    getNetworkStatus = \case
-       Left _ -> NetworkStatus_Bad
-       Right i -> NetworkStatus_Good $ infoTitle i
+toFunctorList :: forall f a. Functor f => IntMap (f a) -> [f (Int, a)]
+toFunctorList = map (uncurry $ fmap . (,)) . IntMap.toList
 
+getNetworkStatus :: Either Text NodeInfo -> NetworkStatus
+getNetworkStatus = \case
+    Left _ -> NetworkStatus_Bad
+    Right i -> NetworkStatus_Good $ infoTitle i
 
 -- | Render a line edit for a single node + `uiNodeStatus`.
 uiNode
@@ -324,6 +325,36 @@ uiNode onVal = do
            then res
            else Left "Input could not be fully parsed"
 
+queryNetworkStatus
+  :: forall t m. MonadWidget t m
+  => Dynamic t (Map NetworkName [NodeRef])
+  -> Dynamic t NetworkName
+  -> m (MDynamic t NetworkStatus)
+queryNetworkStatus networks self = do
+  let nodes = fmap (fromMaybe []) $ Map.lookup <$> self <*> networks
+  -- Append node for new entry (`Nothing`):
+  (initMap, onUpdate) <- getListUpdates $ (<> [Nothing]) . map Just <$> nodes
+  (initialResp, onRespUpdate) <-
+    traverseIntMapWithKeyWithAdjust (\_ -> queryNodeStatus) initMap onUpdate
+  responses :: Dynamic t (IntMap (MDynamic t (Either Text NodeInfo))) <-
+      incrementalToDynamic <$> holdIncremental initialResp onRespUpdate
+  pure $ fmap (mconcat . map (fmap getNetworkStatus)) $ join $ fmap (sequence . IntMap.elems) responses
+
+queryNodeStatus
+  :: MonadWidget t m
+  => Dynamic t (Maybe NodeRef)
+  -> m (Dynamic t (Maybe (Either Text NodeInfo)))
+queryNodeStatus nodeRef = do
+  pb <- getPostBuild
+  mStatus <- throttle 2 $ leftmost [updated nodeRef, tag (current nodeRef) pb]
+  onErrInfo <- performEventAsync $ getInfoAsync <$> mStatus
+  holdDyn Nothing onErrInfo
+  where
+    getInfoAsync ref cb =
+      void $ liftJSM $ forkJSM $ do
+        r <- traverse discoverNode ref
+        liftIO $ cb r
+
 
 -- | Display status of a single node.
 --
@@ -335,21 +366,13 @@ uiNodeStatus
   -> Dynamic t (Maybe NodeRef)
   -> m (MDynamic t (Either Text NodeInfo))
 uiNodeStatus cls nodeRef = do
-    pb <- getPostBuild
-    mStatus <- throttle 2 $ leftmost [updated nodeRef, tag (current nodeRef) pb]
+    errInfo <- queryNodeStatus nodeRef
     elKlass "div" ("signal" <> cls) $ do
-      onErrInfo <- performEventAsync $ getInfoAsync <$> mStatus
-      errInfo <- holdDyn Nothing onErrInfo
       let attrs = buildStatusAttrs <$> errInfo
       elDynAttr "div" attrs blank
       pure errInfo
   where
     emptyAttrs = "class" =: "signal__circle"
-
-    getInfoAsync ref cb =
-      void $ liftJSM $ forkJSM $ do
-        r <- traverse discoverNode ref
-        liftIO $ cb r
 
     buildStatusAttrs :: Maybe (Either Text NodeInfo) -> (Map Text Text)
     buildStatusAttrs = \case

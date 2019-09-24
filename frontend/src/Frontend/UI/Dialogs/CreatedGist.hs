@@ -63,7 +63,6 @@ uiCreatedGist
 uiCreatedGist gistRef _onClose = do
     onClose <- modalHeader $ text "Gist Created"
     modalMain $ do
-      modalBody $ do
         divClass "segment modal__filler" $ do
           divClass "modal__filler-horizontal-center-box" $
             imgWithAltCls "modal__filler-img" (static @"img/Octocat.jpg") "Github logo" blank
@@ -86,8 +85,8 @@ uiCreatedGist gistRef _onClose = do
                 void $ elClass "td" "table__last-cell table__cell_size_flex" $
                   copyButton copyBtnCfg $ pure $ baseUrlText <> route
 
-      modalFooter $ do
-        onConfirm <- confirmButton def "Ok"
-        pure (mempty, leftmost [onClose, onConfirm])
+    modalFooter $ do
+      onConfirm <- confirmButton def "Ok"
+      pure (mempty, leftmost [onClose, onConfirm])
   where
     copyBtnCfg = def & uiButtonCfg_class .~ "button_type_secondary table__action-button"

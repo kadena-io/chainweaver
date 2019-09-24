@@ -5,10 +5,13 @@
 {-# LANGUAGE RankNTypes                 #-}
 {-# LANGUAGE ScopedTypeVariables        #-}
 
-module Common.Network where
+module Common.Network
+  ( module Common.Network
+  , Pact.ChainId (..)
+  ) where
 
 import           Control.Applicative      ((<|>))
-import           Control.Arrow            (first, (***))
+import           Control.Arrow            ((***))
 import           Control.Arrow            (left)
 import           Control.Error.Safe       (headErr)
 import           Control.Lens
@@ -26,32 +29,15 @@ import qualified Data.Text                as T
 import           Data.Void                (Void)
 import           GHC.Generics             (Generic)
 import           Obelisk.Configs
-import           Safe                     (readMay)
 import qualified Text.Megaparsec          as MP
 import qualified Text.URI                 as URI hiding (uriPath)
 import           Text.URI.Lens
 
 import           Common.Api
+import           Common.Orphans           ()
 import           Common.Foundation
 import           Common.RefPath           as MP
 import qualified Pact.Types.ChainId       as Pact
-
-
-newtype ChainId = ChainId { unChainId :: Word }
-  deriving (Eq, Ord, Bounded, Enum, ToJSON, FromJSON)
-
-instance Show ChainId where
-  show (ChainId c) = show c
-
-instance Read ChainId where
-  readsPrec n = map (first ChainId) . readsPrec n
-
--- | Conversion to chain id type, used in `PublicMeta`
---
---   of Pact.
-toPmChainId :: ChainId -> Pact.ChainId
-toPmChainId (ChainId chainId) = Pact.ChainId $ tshow chainId
-
 
 -- | Name that uniquely describes a valid network.
 newtype NetworkName = NetworkName
@@ -81,17 +67,6 @@ instance FromJSON NodeRef where
 instance ToJSON NodeRef where
   toJSON = toJSON . renderNodeRef
 
-instance IsRefPath ChainId where
-  renderRef = mkRefPath . tshow . unChainId
-
-  parseRef = ChainId . read . T.unpack <$> MP.satisfy isWord
-    where
-      isWord :: Text -> Bool
-      isWord = isJust . readWordMay . T.unpack
-
-      readWordMay :: String -> Maybe Word
-      readWordMay = readMay
-
 
 instance IsRefPath NodeRef where
   renderRef = mkRefPath . renderNodeRef
@@ -108,7 +83,7 @@ data ChainRef = ChainRef
   { _chainRef_node  :: Maybe NodeRef
     -- ^ The node the chain lives on. If `Nothing` we assume it lives on the
     -- currently selected network `_network_selectedNetwork`.
-  , _chainRef_chain :: ChainId
+  , _chainRef_chain :: Pact.ChainId
     -- ^ The chain id.
   }
   deriving (Eq, Ord, Show, Generic)
