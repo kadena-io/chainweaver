@@ -37,8 +37,9 @@ module Frontend.UI.DeploymentSettings
   ) where
 
 ------------------------------------------------------------------------------
+import           Control.Applicative         (liftA2)
 import           Control.Arrow               (first)
-import Data.Either (rights)
+import           Data.Either                 (rights)
 import           Control.Arrow               ((&&&))
 import           Control.Lens
 import           Control.Monad
@@ -160,7 +161,7 @@ uiDeploymentSettings m settings = mdo
       , _tabBarCfg_classes = mempty
       , _tabBarCfg_type = TabBarType_Secondary
       }
-    (conf, x, ma) <- elClass "div" "modal__main transaction_details" $ do
+    (conf, chainId, x, ma) <- elClass "div" "modal__main transaction_details" $ do
 
       mRes <- traverse (uncurry $ tabPane mempty curSelection) mUserTabCfg
 
@@ -188,16 +189,16 @@ uiDeploymentSettings m settings = mdo
 
       pure
         ( cfg <> jsonCfg
+        , cChainId
         , do
           sender' <- current sender
           signingKeys' <- current signingKeys
           jsonData' <- either (const mempty) id <$> current (m ^. jsonData . jsonData_data)
-          chainId <- current cChainId
           ttl' <- current ttl
           gasLimit' <- current gasLimit
           pm <- current $ m ^. network_meta
-          let publicMeta = pm
-                { _pmChainId = fromMaybe (_pmChainId pm) chainId
+          let publicMeta cid = pm
+                { _pmChainId = cid
                 , _pmGasLimit = gasLimit'
                 , _pmSender = fromMaybe (_pmSender pm) sender'
                 , _pmTTL = ttl'
@@ -213,7 +214,9 @@ uiDeploymentSettings m settings = mdo
       let backConfig = def & uiButtonCfg_class .~ ffor curSelection
             (\s -> if s == fromMaybe DeploymentSettingsView_Cfg mUserTabName then "hidden" else "")
       back <- uiButtonDyn backConfig $ text "Back"
-      let isDisabled = (== DeploymentSettingsView_Keys) <$> curSelection
+      let isDisabled = liftA2 (&&)
+            ((== DeploymentSettingsView_Keys) <$> curSelection)
+            (isNothing <$> chainId)
       next <- uiButtonDyn (def & uiButtonCfg_class .~ "button_type_confirm" & uiButtonCfg_disabled .~ isDisabled) $ dynText $ ffor curSelection $ \case
         DeploymentSettingsView_Keys -> "Preview"
         _ -> "Next"
@@ -222,9 +225,10 @@ uiDeploymentSettings m settings = mdo
         , prevView mUserTabName <$ back
         ]
 
-    command <- performEvent $ ffor (tag x done) $ \(endpoint, code', data', signingKeys, allKeys, pm) -> do
-      cmd <- buildCmd (_deploymentSettingsConfig_nonce settings) pm allKeys signingKeys code' data'
-      pure (endpoint, _pmChainId pm, cmd)
+    let sign (mChain, (endpoint, code', data', signingKeys, allKeys, pm)) () = ffor mChain $ \chain -> do
+          cmd <- buildCmd (_deploymentSettingsConfig_nonce settings) (pm chain) allKeys signingKeys code' data'
+          pure (endpoint, chain, cmd)
+    command <- performEvent $ attachWithMaybe sign (liftA2 (,) (current chainId) x) done
     pure (conf, command, ma)
     where
       mUserTabCfg  = first DeploymentSettingsView_Custom <$> _deploymentSettingsConfig_userTab settings
