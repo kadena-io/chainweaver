@@ -40,6 +40,7 @@ import           Control.Monad        (void)
 import           Data.Text            (Text)
 import qualified Data.Text            as T
 import           Data.Void            (Void)
+import           Text.Read            (readMaybe)
 import qualified Text.Megaparsec      as MP
 import qualified Text.Megaparsec.Char as MP
 ------------------------------------------------------------------------------
@@ -103,7 +104,7 @@ pactErrorParser = MP.many $ do
       }
   where
     digitsP :: MP.Parsec Void Text Int
-    digitsP = read <$> MP.some MP.digitChar
+    digitsP = maybe (fail "pactErrorParser: digitsP: no parse") pure . readMaybe =<< MP.some MP.digitChar
 
     dropOptionalQuote = MP.withRecovery (const $ pure ()) (void $ MP.char '\"')
 

@@ -69,6 +69,7 @@ import           Reflex.Dom.Xhr
 import           Safe                        (fromJustNote)
 import qualified Text.Megaparsec             as MP
 import qualified Text.Megaparsec.Char        as MP
+import           Text.Read                   (readMaybe)
 import           Text.URI                    (URI (URI))
 import qualified Text.URI                    as URI hiding (uriPath)
 import           Text.URI.Lens               as URI
@@ -289,7 +290,7 @@ parseChainwebInfo v = do
       digitsP
 
     digitsP :: MP.Parsec Void Text Word
-    digitsP = read <$> MP.some MP.digitChar
+    digitsP = maybe (fail "parseChainwebInfo: digitsP: no parse") pure . readMaybe =<< MP.some MP.digitChar
 
     parseLifted :: forall a mp. MonadError Text mp => MP.Parsec Void Text a -> Text -> mp a
     parseLifted p s = liftEither . left (T.pack . show) $ MP.runParser p "swagger.json" s
