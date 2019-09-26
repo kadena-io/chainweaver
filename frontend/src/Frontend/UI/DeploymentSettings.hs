@@ -329,22 +329,25 @@ uiMetaData
 uiMetaData m mTTL mGasLimit = do
     eGasPrice <- tag (current $ showGasPrice . _pmGasPrice <$> m ^. network_meta) <$> getPostBuild
 
+    let scaleTxnSpeedToGP = ("0." <>) . T.justifyRight 12 '0'
+    let scaleGPtoTxnSpeed = T.drop 10
+
     let txnSpeedSliderEl gpEl conf = uiSliderInputElement (text "Slow") (text "Fast") $ conf
-          & inputElementConfig_initialValue .~ (T.drop 10 $ showGasPrice defaultTransactionGasPrice)
+          & inputElementConfig_initialValue .~ (scaleGPtoTxnSpeed $ showGasPrice defaultTransactionGasPrice)
           & initialAttributes .~ "min" =: "1" <> "max" =: "1000" <> "step" =: "1"
-          & inputElementConfig_setValue .~ (T.drop 10 <$> leftmost [eGasPrice, _inputElement_input gpEl])
+          & inputElementConfig_setValue .~ (scaleGPtoTxnSpeed <$> _inputElement_input gpEl)
 
     let gasPriceInputEl tsEl conf = uiRealInputElement $ conf
           & inputElementConfig_initialValue .~ showGasPrice defaultTransactionGasPrice
           & inputElementConfig_setValue .~ leftmost
             [ eGasPrice
-            , ("0." <>) . T.justifyRight 12 '0' <$> _inputElement_input tsEl
+            , scaleTxnSpeedToGP <$> _inputElement_input tsEl
             ]
 
     onGasPriceTxt <- mdo
       tsEl <- mkLabeledInput (txnSpeedSliderEl gpEl) "Transaction Speed" def
       gpEl <- mkLabeledInput (gasPriceInputEl tsEl) "Gas Price (KDA)" def
-      pure $ leftmost [_inputElement_input gpEl, _inputElement_input tsEl]
+      pure $ leftmost [_inputElement_input gpEl, scaleTxnSpeedToGP <$> _inputElement_input tsEl]
 
     let initGasLimit = fromMaybe defaultTransactionGasLimit mGasLimit
     pbGasLimit <- case mGasLimit of
