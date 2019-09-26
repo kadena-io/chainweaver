@@ -327,24 +327,20 @@ uiMetaData
      )
   => model -> Maybe TTLSeconds -> Maybe GasLimit -> m (mConf, Dynamic t TTLSeconds, Dynamic t GasLimit)
 uiMetaData m mTTL mGasLimit = do
+    let txnSpeedSliderEl eGP conf = uiSliderInputElement (text "Slow") (text "Fast") $ conf
+          & inputElementConfig_setValue .~ eGP
+          & inputElementConfig_initialValue .~ showGasPrice defaultTransactionGasPrice
+          & initialAttributes .~ "min" =: "0.00001" <> "max" =: "1.00" <> "step" =: "0.001"
+    let gasPriceInputEl eTS conf = uiRealInputElement $ conf
+          & inputElementConfig_setValue .~ eTS
+          & inputElementConfig_initialValue .~ showGasPrice defaultTransactionGasPrice
+
     let dGasPrice = fmap (showGasPrice . _pmGasPrice) $ m ^. network_meta
 
-    let mkGasPrice = mdo
-          let txnSpeedSliderEl eGP conf = uiSliderInputElement (text "Slow") (text "Fast") $ conf
-                & inputElementConfig_setValue .~ eGP
-                & inputElementConfig_initialValue .~ showGasPrice defaultTransactionGasPrice
-                & initialAttributes .~ "min" =: "0" <> "max" =: "1" <> "step" =: "0.001"
-
-          let gasPriceInputEl eTS conf = uiRealInputElement $ conf
-                & inputElementConfig_setValue .~ eTS
-                & inputElementConfig_initialValue .~ showGasPrice defaultTransactionGasPrice
-
-          eTxnSpeed <- mkLabeledInputView (txnSpeedSliderEl eGasPrice) "Transation Speed" dGasPrice
-          eGasPrice <- mkLabeledInputView (gasPriceInputEl eTxnSpeed) "Gas Price (KDA)" dGasPrice
-
-          pure $ leftmost [eGasPrice, eTxnSpeed]
-
-    onGasPriceTxt <- mkGasPrice
+    onGasPriceTxt <- mdo
+      eTxnSpeed <- mkLabeledInputView (txnSpeedSliderEl eGasPrice) "Transaction Speed" dGasPrice
+      eGasPrice <- mkLabeledInputView (gasPriceInputEl eTxnSpeed) "Gas Price (KDA)" dGasPrice
+      pure $ leftmost [eGasPrice, eTxnSpeed]
 
     let initGasLimit = fromMaybe defaultTransactionGasLimit mGasLimit
     pbGasLimit <- case mGasLimit of
