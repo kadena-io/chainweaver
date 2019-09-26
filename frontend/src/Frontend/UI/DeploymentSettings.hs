@@ -327,20 +327,24 @@ uiMetaData
      )
   => model -> Maybe TTLSeconds -> Maybe GasLimit -> m (mConf, Dynamic t TTLSeconds, Dynamic t GasLimit)
 uiMetaData m mTTL mGasLimit = do
-    let txnSpeedSliderEl eGP conf = uiSliderInputElement (text "Slow") (text "Fast") $ conf
-          & inputElementConfig_setValue .~ eGP
-          & inputElementConfig_initialValue .~ showGasPrice defaultTransactionGasPrice
-          & initialAttributes .~ "min" =: "0.00001" <> "max" =: "1.00" <> "step" =: "0.001"
-    let gasPriceInputEl eTS conf = uiRealInputElement $ conf
-          & inputElementConfig_setValue .~ eTS
-          & inputElementConfig_initialValue .~ showGasPrice defaultTransactionGasPrice
+    eGasPrice <- tag (current $ showGasPrice . _pmGasPrice <$> m ^. network_meta) <$> getPostBuild
 
-    let dGasPrice = fmap (showGasPrice . _pmGasPrice) $ m ^. network_meta
+    let txnSpeedSliderEl gpEl conf = uiSliderInputElement (text "Slow") (text "Fast") $ conf
+          & inputElementConfig_initialValue .~ (T.drop 10 $ showGasPrice defaultTransactionGasPrice)
+          & initialAttributes .~ "min" =: "1" <> "max" =: "1000" <> "step" =: "1"
+          & inputElementConfig_setValue .~ (T.drop 10 <$> leftmost [eGasPrice, _inputElement_input gpEl])
+
+    let gasPriceInputEl tsEl conf = uiRealInputElement $ conf
+          & inputElementConfig_initialValue .~ showGasPrice defaultTransactionGasPrice
+          & inputElementConfig_setValue .~ leftmost
+            [ eGasPrice
+            , ("0." <>) . T.justifyRight 12 '0' <$> _inputElement_input tsEl
+            ]
 
     onGasPriceTxt <- mdo
-      eTxnSpeed <- mkLabeledInputView (txnSpeedSliderEl eGasPrice) "Transaction Speed" dGasPrice
-      eGasPrice <- mkLabeledInputView (gasPriceInputEl eTxnSpeed) "Gas Price (KDA)" dGasPrice
-      pure $ leftmost [eGasPrice, eTxnSpeed]
+      tsEl <- mkLabeledInput (txnSpeedSliderEl gpEl) "Transaction Speed" def
+      gpEl <- mkLabeledInput (gasPriceInputEl tsEl) "Gas Price (KDA)" def
+      pure $ leftmost [_inputElement_input gpEl, _inputElement_input tsEl]
 
     let initGasLimit = fromMaybe defaultTransactionGasLimit mGasLimit
     pbGasLimit <- case mGasLimit of
@@ -389,6 +393,9 @@ uiMetaData m mTTL mGasLimit = do
 
       showGasPrice :: GasPrice -> Text
       showGasPrice (GasPrice (ParsedDecimal i)) = tshow i
+
+      truncateGasPrice :: GasPrice -> Int
+      truncateGasPrice (GasPrice (ParsedDecimal i)) = floor i
 
       showTtl :: TTLSeconds -> Text
       showTtl (TTLSeconds (ParsedInteger i)) = tshow i
