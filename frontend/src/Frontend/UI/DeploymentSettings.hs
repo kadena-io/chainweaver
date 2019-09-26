@@ -338,7 +338,7 @@ uiMetaData m mTTL mGasLimit = do
           let gasPriceInputEl eTS conf = uiRealInputElement $ conf
                 & inputElementConfig_setValue .~ eTS
 
-          eTxnSpeed <- mkLabeledInputView (txnSpeedSliderEl eGasPrice) "Transation" dGasPrice
+          eTxnSpeed <- mkLabeledInputView (txnSpeedSliderEl eGasPrice) "Transation Speed" dGasPrice
           eGasPrice <- mkLabeledInputView (gasPriceInputEl eTxnSpeed) "Gas Price (KDA)" dGasPrice
 
           pure $ leftmost [eGasPrice, eTxnSpeed]
