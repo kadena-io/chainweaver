@@ -8,6 +8,7 @@
 {-# LANGUAGE LambdaCase             #-}
 {-# LANGUAGE MultiParamTypeClasses  #-}
 {-# LANGUAGE OverloadedStrings      #-}
+{-# LANGUAGE PatternGuards          #-}
 {-# LANGUAGE QuasiQuotes            #-}
 {-# LANGUAGE RecursiveDo            #-}
 {-# LANGUAGE ScopedTypeVariables    #-}
@@ -25,18 +26,27 @@
 module Frontend.UI.RightPanel where
 
 ------------------------------------------------------------------------------
+import           Control.Applicative         (liftA2)
 import           Control.Lens
 import           Control.Monad.State.Strict
+import           Data.Decimal                (Decimal)
+import           Data.Either                 (rights)
 import           Data.Foldable
 import qualified Data.Map                    as Map
 import           Data.Text                   (Text)
 import           GHCJS.DOM.Element
+import qualified Pact.Types.ChainId as Pact
+import qualified Pact.Types.Exp as Pact
+import qualified Pact.Types.PactValue as Pact
+import qualified Pact.Types.Term as Pact
 import           Reflex
 import           Reflex.Dom.Core
 ------------------------------------------------------------------------------
+import           Frontend.Crypto.Ed25519
 import           Frontend.Foundation
 import           Frontend.Ide
 import           Frontend.Messages
+import           Frontend.UI.DeploymentSettings (uiChainSelection)
 import           Frontend.UI.JsonData
 import           Frontend.JsonData
 import           Frontend.UI.Modal.Impl
@@ -46,6 +56,7 @@ import           Frontend.UI.TabBar
 import           Frontend.UI.Wallet
 import           Frontend.UI.Widgets
 import           Frontend.Wallet
+import           Frontend.Network
 import           Frontend.UI.ErrorList
 import           Frontend.Editor (HasEditorCfg, HasEditor)
 ------------------------------------------------------------------------------
@@ -106,7 +117,7 @@ envTab
      , Flattenable (ModalCfg mConf t) t
      , HasWalletCfg (ModalCfg mConf t) t, HasWalletCfg mConf t
      , HasJsonDataCfg mConf t, HasWallet model t, HasJsonData model t
-     , HasEditor model t
+     , HasNetwork model t, HasEditor model t
      )
   => model -> m mConf
 envTab m = do
@@ -125,8 +136,105 @@ envTab m = do
     accordionItem' True "segment" walletHeader $
       uiWallet w
 
-  pure $ jsonCfg <> keysCfg <> errCfg
+  accountCfg <- accordionItem True "segment" "Accounts" $ uiAccounts m
 
+  pure $ jsonCfg <> keysCfg <> errCfg <> accountCfg
+
+-- | Add an account on a particular chain. The return event is really a
+-- _request_ to add an account: the actual lookup must be done elsewhere.
+addAccountForm :: (MonadWidget t m, HasNetwork model t) => model -> m (Event t (ChainId, AccountName))
+addAccountForm model = divClass "new-by-name group__header" $ divClass "new-by-name_inputs" $ do
+  mChainId <- uiChainSelection ((^? to rights . _head) <$> model ^. network_selectedNodes) "select_no_border"
+  rec
+    nameText <- uiInputElement $ def
+      & initialAttributes .~ "class" =: "new-by-name__input" <> "placeholder" =: "Enter an account name"
+      & inputElementConfig_setValue .~ ("" <$ done)
+    let values = liftA2 combineFields (value nameText) mChainId
+    add <- flip uiButtonDyn (text "Add") $ btnCfgPrimary
+      & uiButtonCfg_class <>~ "new-by-name__button"
+      & uiButtonCfg_disabled .~ fmap isNothing values
+    let done = tagMaybe (current values) add
+  pure done
+  where
+    combineFields n (Just c)
+      | Right an <- mkAccountName n = Just (c, an)
+    combineFields _ _ = Nothing
+
+-- | Display the list of accounts we know about, and allow the user to add /
+-- delete them.
+uiAccounts
+  :: (MonadWidget t m, Monoid mConf, HasWalletCfg mConf t, HasNetwork model t, HasWallet model t)
+  => model
+  -> m mConf
+uiAccounts model = divClass "group" $ do
+  add <- addAccountForm model
+  let accountGuardReq acc = "(at \"guard\" (coin.account-info " <> tshow (unAccountName acc) <> "))"
+      mkReq pm (chainId, acc) = ((chainId, acc),) <$> mkSimpleReadReq (accountGuardReq acc) pm (ChainRef Nothing chainId)
+  networkRequest <- performEvent $ attachWith mkReq (current $ model ^. network_meta) add
+  response <- performLocalReadCustom (model ^. network) (pure . snd) networkRequest
+  let toKeyset (((chainId, acc), _req), [Right (Pact.PGuard g)]) = Just (chainId, acc, fromPactGuard g)
+      toKeyset _ = Nothing
+  elAttr "table" ("class" =: "table" <> "style" =: "table-layout: fixed; width: 100%;") $ do
+    refresh <- el "thead" $ do
+      elClass "th" "table__heading" $ text "Chain ID"
+      elClass "th" "table__heading" $ text "Account Name"
+      refresh <- elClass "th" "table__heading" $ do
+        text "Balance "
+        refreshButton "button_border_none"
+      elClass "th" "table__heading" $ text "Associated Keys"
+      elClass "th" "table__heading" $ blank
+      pure refresh
+    deleteChainAccounts <- el "tbody" $ do
+      let chainAccounts = model ^. wallet_accountGuards
+      dyn_ $ ffor chainAccounts $ \m -> if all Map.null m
+        then elClass "tr" "table__row" $ el "td" $ text "No accounts"
+        else blank
+      listWithKey chainAccounts $ \chain accounts -> do
+        deleteAccounts <- listWithKey accounts $ \account accountGuard -> elClass "tr" "table__row" $ do
+          el "td" $ text $ Pact._chainId chain
+          el "td" $ text $ unAccountName account
+          el "td" $ showBalance model refresh chain account
+          el "td" $ dyn_ $ ffor accountGuard $ \case
+            AccountGuard_Other g -> text $ pactGuardTypeText g
+            AccountGuard_KeySet ks -> for_ (Pact._ksKeys ks) $ \key -> do
+              divClass "wallet__key wallet__key_type_public" $ text $ keyToText $ fromPactPublicKey key
+          del <- elClass "td" "wallet__delete" $ deleteButton $ def
+            & uiButtonCfg_title .~ Just "Delete Account/Key Association"
+            & uiButtonCfg_class %~ (<> "wallet__add-delete-button")
+          pure $ account <$ del
+        pure $ switch $ leftmost . Map.elems <$> current deleteAccounts
+    let deleteAccount = switch $ leftmost . fmap (\(c, e) -> fmap (c,) e) . Map.toList <$> current deleteChainAccounts
+    pure $ mempty
+      & walletCfg_deleteAccount .~ deleteAccount
+      & walletCfg_addAccount .~ fmapMaybe toKeyset response
+
+-- | Get the balance of an account from the network. 'Nothing' indicates _some_
+-- failure, either a missing account or connectivity failure. We have no need to
+-- distinguish between the two at this point.
+getBalance :: (MonadWidget t m, HasNetwork model t) => model -> ChainId -> Event t AccountName -> m (Event t (Maybe Decimal))
+getBalance model chain account = do
+  networkRequest <- performEvent $ attachWith mkReq (current $ model ^. network_meta) account
+  response <- performLocalReadCustom (model ^. network) pure networkRequest
+  let toBalance (_, [Right (Pact.PLiteral (Pact.LDecimal d))]) = Just d
+      toBalance _ = Nothing
+  pure $ toBalance <$> response
+  where
+    accountBalanceReq acc = "(coin.account-balance " <> tshow (unAccountName acc) <> ")"
+    mkReq pm acc = mkSimpleReadReq (accountBalanceReq acc) pm (ChainRef Nothing chain)
+
+-- | Display the balance of an account after retrieving it from the network
+showBalance
+  :: (MonadWidget t m, HasNetwork model t)
+  => model -> Event t () -> ChainId -> AccountName -> m ()
+showBalance model refresh chain acc = do
+  -- This delay ensures we have the networks stuff set up by the time we do the
+  -- requests, thus avoiding immediate failure.
+  pb <- delay 2 =<< getPostBuild
+  bal <- getBalance model chain $ acc <$ (pb <> refresh)
+  _ <- runWithReplace (text "Loading...") $ ffor bal $ \case
+    Nothing -> text "Unknown"
+    Just b -> text $ tshow b
+  pure ()
 
 msgsWidget :: forall t m a. MonadWidget t m => Ide a t -> m (IdeCfg a t)
 msgsWidget ideL = do

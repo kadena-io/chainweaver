@@ -34,6 +34,9 @@ $select-padding: 14px;
   color: $tertiary-select-color;
 }
 
+.select_no_border {
+  border: none !important;
+}
 
 /* Select element that must have a valid selection, but does not have one right now.
 */

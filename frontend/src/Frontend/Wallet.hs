@@ -22,6 +22,11 @@ module Frontend.Wallet
   , IsWalletCfg
   , Wallet (..)
   , HasWallet (..)
+  , AccountName (unAccountName)
+  , mkAccountName
+  , AccountGuard (..)
+  , pactGuardTypeText
+  , fromPactGuard
   -- * Creation
   , emptyWallet
   , makeWallet
@@ -33,21 +38,27 @@ module Frontend.Wallet
   , checkKeyNameValidityStr
   ) where
 
-
 import           Control.Lens
 import           Control.Monad.Except (runExcept)
 import           Control.Monad.Fix
 import           Control.Newtype.Generics           (Newtype (..))
 import           Data.ByteString                    (ByteString)
 import           Data.Aeson
+import           Data.Default
 import           Data.Map                    (Map)
 import qualified Data.Map                    as Map
+import           Data.Set                    (Set)
+import qualified Data.Set                    as Set
 import           Data.Text                   (Text)
 import qualified Data.Text                   as T
 import           Generics.Deriving.Monoid    (mappenddefault, memptydefault)
 import           GHC.Generics                (Generic)
 import           Reflex
+import           Pact.Types.ChainId
+import qualified Pact.Types.Term             as Pact
+import qualified Pact.Types.Type             as Pact
 
+import           Common.Orphans              ()
 import           Frontend.Crypto.Ed25519
 import           Frontend.Foundation
 import           Frontend.Storage
@@ -69,12 +80,56 @@ makePactLenses ''KeyPair
 -- | `KeyName` to `Key` mapping
 type KeyPairs = Map KeyName KeyPair
 
+newtype AccountName = AccountName
+  { unAccountName :: Text
+  } deriving (Eq, Ord, Show, ToJSON, FromJSON, ToJSONKey, FromJSONKey)
+
+-- | Smart constructor for account names. The only restriction in the coin
+-- contract (as it stands) appears to be that accounts can't be an empty string
+mkAccountName :: Text -> Either Text AccountName
+mkAccountName n
+  | T.null n = Left "Account name must not be empty"
+  | otherwise = Right $ AccountName n
+
+-- | Account guards. We split this out here because we are only really
+-- interested in keyset guards right now. Someday we might end up replacing this
+-- with pact's representation for guards directly.
+data AccountGuard
+  = AccountGuard_KeySet Pact.KeySet
+  -- ^ Keyset guards
+  | AccountGuard_Other Pact.GuardType
+  -- ^ Other types of guard
+  deriving (Show, Generic)
+
+fromPactGuard :: Pact.Guard a -> AccountGuard
+fromPactGuard = \case
+  Pact.GKeySet ks -> AccountGuard_KeySet ks
+  g -> AccountGuard_Other $ Pact.guardTypeOf g
+
+pactGuardTypeText :: Pact.GuardType -> Text
+pactGuardTypeText = \case
+  Pact.GTyKeySet -> "Keyset"
+  Pact.GTyKeySetName -> "Keyset Name"
+  Pact.GTyPact -> "Pact"
+  Pact.GTyUser -> "User"
+  Pact.GTyModule -> "Module"
+
+instance FromJSON AccountGuard
+instance ToJSON AccountGuard
+
+type AccountGuards = Map ChainId (Map AccountName AccountGuard)
+
+-- We might need to track the chainID here too.
+type KeyAccounts = Map PublicKey (Set AccountName)
+
 data WalletCfg t = WalletCfg
   { _walletCfg_genKey     :: Event t KeyName
   -- ^ Request generation of a new key, that will be named as specified.
   , _walletCfg_importKey  :: Event t (KeyName, KeyPair)
   , _walletCfg_delKey     :: Event t KeyName
   -- ^ Delete a key from your wallet.
+  , _walletCfg_addAccount :: Event t (ChainId, AccountName, AccountGuard)
+  , _walletCfg_deleteAccount :: Event t (ChainId, AccountName)
   }
   deriving Generic
 
@@ -87,6 +142,10 @@ type IsWalletCfg cfg t = (HasWalletCfg cfg t, Monoid cfg, Flattenable cfg t)
 data Wallet t = Wallet
   { _wallet_keys        :: Dynamic t KeyPairs
     -- ^ Keys added and removed by the user and chainwebDefaultSenders which can't be removed.
+  , _wallet_keyAccounts :: Dynamic t KeyAccounts
+    -- ^ Accounts associated with the given public key
+  , _wallet_accountGuards :: Dynamic t AccountGuards
+    -- ^ Guards associated with the given account (and chain)
   }
   deriving Generic
 
@@ -94,6 +153,8 @@ makePactLenses ''Wallet
 
 -- | Pre-defined senders in chainweb. This is used for testnet, later on we
 -- will some kind of a real wallet in order to manage real senders.
+--
+-- TODO: remove these before release
 chainwebDefaultSenders :: KeyPairs
 chainwebDefaultSenders = Map.fromList
   [ ( "sender00"
@@ -171,7 +232,7 @@ isPredefinedKey = flip Map.member chainwebDefaultSenders
 
 -- | An empty wallet that will never contain any keys.
 emptyWallet :: Reflex t => Wallet t
-emptyWallet = Wallet $ pure mempty
+emptyWallet = Wallet (pure mempty) (pure mempty) (pure mempty)
 
 -- | Make a functional wallet that can contain actual keys.
 makeWallet
@@ -202,8 +263,41 @@ makeWallet conf = do
 
     performEvent_ $ storeKeys <$> updated keys
 
+    initialKeyAccounts <- fromMaybe Map.empty <$> getItemStorage localStorage StoreWallet_KeyAccounts
+    keyAccounts <- foldDyn ($) initialKeyAccounts $ leftmost
+      [ ffor (_walletCfg_addAccount conf) $ \(_chain, account, guard) -> case guard of
+        AccountGuard_Other _gt -> id
+        AccountGuard_KeySet ks -> Map.unionWith (<>) (Map.fromList $ fmap (\k -> (fromPactPublicKey k, Set.singleton account)) (Pact._ksKeys ks))
+      , ffor (_walletCfg_deleteAccount conf) $ \(_chain, account) -> Map.mapMaybe $ \s ->
+        let new = Set.delete account s
+         in if Set.null new then Nothing else Just new
+      ]
+    performEvent_ $ setItemStorage localStorage StoreWallet_KeyAccounts <$> updated keyAccounts
+
+    initialAccountKeys <- fromMaybe Map.empty <$> getItemStorage localStorage StoreWallet_AccountGuards
+    let mkGuard (KeyPair pk _) = AccountGuard_KeySet $ Pact.KeySet
+          { Pact._ksKeys = [toPactPublicKey pk]
+          , Pact._ksPredFun = Pact.Name "keys-all" def
+          }
+        -- The chainweb senders aren't really accounts. They don't actually
+        -- exist in the accounts table: they are just hardcoded on testnet to
+        -- have a large amount of funds.
+        testnetAccounts = Map.singleton "0" (Map.map mkGuard (Map.mapKeysMonotonic AccountName chainwebDefaultSenders))
+        ini = Map.unionWith (<>) initialAccountKeys testnetAccounts
+    accountGuards <- foldDyn ($) ini $ leftmost
+      [ ffor (_walletCfg_addAccount conf) $ \(chain, account, guard) -> flip Map.alter chain $ \case
+        Nothing -> Just $ Map.singleton account guard
+        Just as -> Just $ Map.insert account guard as
+      , ffor (_walletCfg_deleteAccount conf) $ \(chain, account) -> flip Map.alter chain $ \case
+        Nothing -> Nothing
+        Just as -> Just $ Map.delete account as
+      ]
+    performEvent_ $ setItemStorage localStorage StoreWallet_AccountGuards <$> updated accountGuards
+
     pure $ Wallet
       { _wallet_keys = keys
+      , _wallet_keyAccounts = keyAccounts
+      , _wallet_accountGuards = accountGuards
       }
   where
     createKey :: KeyName -> Performable m (KeyName, KeyPair)
@@ -215,9 +309,11 @@ makeWallet conf = do
 -- Storing data:
 
 -- | Storage keys for referencing data to be stored/retrieved.
-data StoreWallet a
-  = StoreWallet_Keys
-  deriving (Generic, Show)
+data StoreWallet a where
+  StoreWallet_Keys :: StoreWallet KeyPairs
+  StoreWallet_KeyAccounts :: StoreWallet KeyAccounts
+  StoreWallet_AccountGuards :: StoreWallet AccountGuards
+deriving instance Show (StoreWallet a)
 
 -- | Parse a private key with additional checks based on the given public key.
 --
@@ -234,7 +330,7 @@ parseWalletKeyPair errPubKey privKey = do
 checkKeyNameValidityStr
   :: (Reflex t, HasWallet w t)
   => w
-  -> Dynamic t (KeyName -> (Maybe Text))
+  -> Dynamic t (KeyName -> Maybe Text)
 checkKeyNameValidityStr w = getErr <$> w ^. wallet_keys
   where
     getErr keys k =
@@ -242,18 +338,13 @@ checkKeyNameValidityStr w = getErr <$> w ^. wallet_keys
          then Just $ T.pack "This key name is already in use"
          else Nothing
 
-
---  GADT did not work with `Generic` deriving last time I checked.
-storeWallet_Keys :: StoreWallet KeyPairs
-storeWallet_Keys = StoreWallet_Keys
-
 -- | Write key pairs to localstorage.
 storeKeys :: (HasStorage m, MonadJSM m) => KeyPairs -> m ()
-storeKeys ks = setItemStorage localStorage storeWallet_Keys (ks Map.\\ chainwebDefaultSenders)
+storeKeys ks = setItemStorage localStorage StoreWallet_Keys (ks Map.\\ chainwebDefaultSenders)
 
 -- | Load key pairs from localstorage.
 loadKeys :: (HasStorage m, MonadJSM m) => m (Maybe KeyPairs)
-loadKeys = getItemStorage localStorage storeWallet_Keys
+loadKeys = getItemStorage localStorage StoreWallet_Keys
 
 
 -- Utility functions:
@@ -270,10 +361,12 @@ instance Reflex t => Semigroup (WalletCfg t) where
       , _walletCfg_delKey = leftmost [ _walletCfg_delKey c1
                                      , _walletCfg_delKey c2
                                      ]
+      , _walletCfg_addAccount = leftmost [ _walletCfg_addAccount c1, _walletCfg_addAccount c2 ]
+      , _walletCfg_deleteAccount = leftmost [ _walletCfg_deleteAccount c1, _walletCfg_deleteAccount c2 ]
       }
 
 instance Reflex t => Monoid (WalletCfg t) where
-  mempty = WalletCfg never never never
+  mempty = WalletCfg never never never never never
   mappend = (<>)
 
 instance Flattenable (WalletCfg t) t where
@@ -282,6 +375,8 @@ instance Flattenable (WalletCfg t) t where
       <$> doSwitch never (_walletCfg_genKey <$> ev)
       <*> doSwitch never (_walletCfg_importKey <$> ev)
       <*> doSwitch never (_walletCfg_delKey <$> ev)
+      <*> doSwitch never (_walletCfg_addAccount <$> ev)
+      <*> doSwitch never (_walletCfg_deleteAccount <$> ev)
 
 instance Reflex t => Semigroup (Wallet t) where
   (<>) = mappenddefault
@@ -295,8 +390,3 @@ instance ToJSON KeyPair where
   toEncoding = genericToEncoding defaultOptions
 
 instance FromJSON KeyPair
-
-instance ToJSON (StoreWallet a) where
-  toEncoding = genericToEncoding defaultOptions
-
-instance FromJSON (StoreWallet a)

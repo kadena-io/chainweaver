@@ -9,6 +9,7 @@ import qualified Data.Aeson as Aeson
 import Pact.Types.ChainMeta (TTLSeconds(..))
 import Pact.Types.Runtime (GasLimit(..), ChainId)
 import Pact.Types.Command (Command)
+import Frontend.Wallet (AccountName)
 
 data SigningRequest = SigningRequest
   { _signingRequest_code :: Text
@@ -17,7 +18,7 @@ data SigningRequest = SigningRequest
   , _signingRequest_chainId :: Maybe ChainId
   , _signingRequest_gasLimit :: Maybe GasLimit
   , _signingRequest_ttl :: Maybe TTLSeconds
-  , _signingRequest_sender :: Maybe Text
+  , _signingRequest_sender :: Maybe AccountName
   } deriving (Show, Generic)
 
 instance Aeson.ToJSON SigningRequest where
