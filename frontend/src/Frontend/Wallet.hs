@@ -27,6 +27,7 @@ module Frontend.Wallet
   , AccountGuard (..)
   , pactGuardTypeText
   , fromPactGuard
+  , KeyAccounts
   -- * Creation
   , emptyWallet
   , makeWallet

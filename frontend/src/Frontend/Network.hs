@@ -550,7 +550,7 @@ mkSimpleReadReq
   :: (MonadIO m, MonadJSM m)
   => Text -> PublicMeta -> ChainRef -> m NetworkRequest
 mkSimpleReadReq code pm cRef = do
-  cmd <- buildCmd Nothing (pm { _pmChainId = _chainRef_chain cRef }) mempty mempty code mempty
+  cmd <- buildCmd Nothing (pm { _pmChainId = _chainRef_chain cRef }) [] code mempty
   pure $ NetworkRequest
     { _networkRequest_cmd = cmd
     , _networkRequest_chainRef = cRef
@@ -881,9 +881,8 @@ networkRequest baseUri endpoint cmd = do
 -- | Build a single cmd as expected in the `cmds` array of the /send payload.
 --
 -- As specified <https://pact-language.readthedocs.io/en/latest/pact-reference.html#send here>.
-buildCmd :: (MonadIO m, MonadJSM m) => Maybe Text -> PublicMeta -> KeyPairs -> Set KeyName -> Text -> Object -> m (Command Text)
-buildCmd mNonce meta keys signing code dat = do
-  let signingKeys = getSigningPairs signing keys
+buildCmd :: (MonadIO m, MonadJSM m) => Maybe Text -> PublicMeta -> [KeyPair] -> Text -> Object -> m (Command Text)
+buildCmd mNonce meta signingKeys code dat = do
   cmd <- encodeAsText . encode <$> buildExecPayload mNonce meta signingKeys code dat
   let
     cmdHashL = hash (T.encodeUtf8 cmd)

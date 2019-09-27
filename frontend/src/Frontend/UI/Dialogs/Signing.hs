@@ -67,7 +67,7 @@ uiSigning appCfg ideL signingRequest onCloseExternal = do
     , _deploymentSettingsConfig_ttl = _signingRequest_ttl signingRequest
     , _deploymentSettingsConfig_gasLimit = _signingRequest_gasLimit signingRequest
     }
-  let signed = ffor result $ \(_me, chain, cmd) -> SigningResponse
+  let signed = ffor result $ \(_keys, _acc, _me, chain, cmd) -> SigningResponse
         { _signingResponse_chainId = chain
         , _signingResponse_body = cmd
         }

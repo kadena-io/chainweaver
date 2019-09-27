@@ -34,6 +34,8 @@ module Frontend.UI.DeploymentSettings
   , uiSigningKeys
   , uiSenderFixed
   , uiSenderDropdown
+  , transactionInputSection
+  , transactionDisplayNetwork
     -- * Useful re-exports
   , Identity (runIdentity)
   ) where
@@ -139,7 +141,7 @@ uiDeploymentSettings
     )
   => model
   -> DeploymentSettingsConfig t m model a
-  -> m (mConf, Event t (Maybe Endpoint, ChainId, Pact.Command Text), Maybe a)
+  -> m (mConf, Event t ([KeyPair], AccountName, Maybe Endpoint, ChainId, Pact.Command Text), Maybe a)
 uiDeploymentSettings m settings = mdo
     let code = _deploymentSettingsConfig_code settings
     let initTab = fromMaybe DeploymentSettingsView_Cfg mUserTabName
@@ -209,9 +211,10 @@ uiDeploymentSettings m settings = mdo
         , prevView mUserTabName <$ back
         ]
 
-    let sign (Just chain, Just account, (endpoint, code', data', signingKeys, allKeys, pm)) () = Just $ do
-          cmd <- buildCmd (_deploymentSettingsConfig_nonce settings) (pm chain account) allKeys signingKeys code' data'
-          pure (endpoint, chain, cmd)
+    let sign (Just chain, Just account, (endpoint, code', data', signing, keys, pm)) () = Just $ do
+          let signingKeys = getSigningPairs signing keys
+          cmd <- buildCmd (_deploymentSettingsConfig_nonce settings) (pm chain account) signingKeys code' data'
+          pure (signingKeys, account, endpoint, chain, cmd)
         sign _ _ = Nothing
     command <- performEvent $ attachWithMaybe sign ((,,) <$> current chainId <*> current sender <*> x) done
     pure (conf, command, ma)
@@ -299,12 +302,12 @@ uiCfg code m wChainId ep mTTL mGasLimit = do
           uiMetaData m mTTL mGasLimit
         pure (cfg, cId, endpoint, ttl, gasLimit)
 
-  out <- mdo
+  rec
     let mkAccordionControlDyn initActive = foldDyn (const not) initActive
           $ leftmost [eGeneralClicked , eAdvancedClicked]
 
-    dGeneralActive <- mkAccordionControlDyn True 
-    dAdvancedActive <- mkAccordionControlDyn False 
+    dGeneralActive <- mkAccordionControlDyn True
+    dAdvancedActive <- mkAccordionControlDyn False
 
     (eGeneralClicked, pairA) <- controlledAccordionItem dGeneralActive mempty (text "General") mkGeneralSettings
     divClass "title" blank
@@ -313,9 +316,26 @@ uiCfg code m wChainId ep mTTL mGasLimit = do
       -- with the given elements and their dynamic
       divClass "title" $ text "Data"
       uiJsonDataSetFocus (\_ _ -> pure ()) (\_ _ -> pure ()) (m ^. wallet) (m ^. jsonData)
-    pure $ snd pairA & _1 <>~ snd pairB
+  pure $ snd pairA & _1 <>~ snd pairB
 
-  pure out
+transactionInputSection :: MonadWidget t m => Dynamic t Text -> m ()
+transactionInputSection code = do
+  divClass "title" $ text "Input"
+  divClass "group" $ do
+    _ <- mkLabeledInputView (\c -> uiInputElement $ c & initialAttributes %~ Map.insert "disabled" "") "Transaction Hash" $
+      hashToText . toUntypedHash . id @PactHash . hash . T.encodeUtf8 <$> code
+    pb <- getPostBuild
+    _ <- flip mkLabeledClsInput "Raw Command" $ \cls -> uiTextAreaElement $ def
+      & textAreaElementConfig_setValue .~ leftmost [updated code, tag (current code) pb]
+      & initialAttributes .~ "disabled" =: "" <> "style" =: "width: 100%" <> "class" =: renderClass cls
+    pure ()
+
+transactionDisplayNetwork :: (MonadWidget t m, HasNetwork model t) => model -> m ()
+transactionDisplayNetwork m = void $ flip mkLabeledClsInput "Network" $ \_ -> do
+  divClass "title" $ do
+    netStat <- queryNetworkStatus (m ^. network_networks) (m ^. network_selectedNetwork)
+    uiNetworkStatus "" netStat
+    dynText $ textNetworkName <$> m ^. network_selectedNetwork
 
 -- | UI for asking the user about endpoint (`Endpoint` & `ChainId`) for deployment.
 --
@@ -328,11 +348,7 @@ uiEndpoint
   -> Maybe Endpoint
   -> m (Maybe (Dynamic t Endpoint))
 uiEndpoint m ep = do
-    _ <- flip mkLabeledClsInput "Network" $ \_ -> do
-      divClass "title" $ do
-        netStat <- queryNetworkStatus (m ^. network_networks) (m ^. network_selectedNetwork)
-        uiNetworkStatus "" netStat
-        dynText $ textNetworkName <$> m ^. network_selectedNetwork
+    transactionDisplayNetwork m
     for ep $ \e -> do
       de <- mkLabeledClsInput (uiEndpointSelection e) "Access"
       divClass "detail" $ dynText $ ffor de $ \case
