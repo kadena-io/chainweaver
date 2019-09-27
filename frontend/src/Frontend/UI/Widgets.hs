@@ -313,15 +313,16 @@ validatedInputWithButton uCls check placeholder buttonText = do
             & inputElementConfig_setValue .~ (T.empty <$ onConfirmed)
             & initialAttributes .~ ("placeholder" =: placeholder <> "type" =: "text" <> "class" =: "new-by-name__input")
         let
+          dInputIsInvalid = liftA2 (||) nameEmpty checkFailed
           nameVal = T.strip <$> _inputElement_value name
-          onEnter = keypress Enter name
+          onEnter = gate (current (not <$> dInputIsInvalid)) $ keypress Enter name
           nameEmpty = (== "") <$> nameVal
 
           checkedL = check <*> nameVal
 
         let
           checkFailed = isJust <$> checkedL
-          btnCfg = def & uiButtonCfg_disabled .~ liftA2 (||) nameEmpty checkFailed
+          btnCfg = def & uiButtonCfg_disabled .~ dInputIsInvalid 
                        & uiButtonCfg_class .~ "button_type_primary" <> "new-by-name__button"
         clicked <- uiButtonDyn btnCfg $ text buttonText
 
