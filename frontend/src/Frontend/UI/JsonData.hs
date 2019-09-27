@@ -171,7 +171,7 @@ uiKeyset w (n, ks) = do
       onSetPred <- predDropdown onNewPred
 
       onDel <- divClass "keyset__delete" $
-        deleteButton $ def & uiButtonCfg_title .~ Just "Delete keyset permanentely"
+        deleteButton $ def & uiButtonCfg_title .~ Just "Delete keyset permanently"
       let
         setPred = (n, ) . notEmpty <$> onSetPred
         cfg1 = mempty
