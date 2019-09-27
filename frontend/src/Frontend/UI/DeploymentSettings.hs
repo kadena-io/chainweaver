@@ -61,6 +61,7 @@ import           Reflex
 import           Reflex.Dom
 import           Reflex.Dom.Contrib.CssClass (elKlass)
 import           Safe                        (readMay)
+import           Data.Decimal                (roundTo)
 ------------------------------------------------------------------------------
 import           Common.Network
 import           Frontend.Foundation
@@ -331,9 +332,27 @@ uiMetaData
      )
   => model -> Maybe TTLSeconds -> Maybe GasLimit -> m (mConf, Dynamic t TTLSeconds, Dynamic t GasLimit)
 uiMetaData m mTTL mGasLimit = do
+    eGasPrice <- tag (current $ _pmGasPrice <$> m ^. network_meta) <$> getPostBuild
 
-    onGasPriceTxt <- mkLabeledInputView uiRealInputElement "Gas Price (KDA)" $
-      fmap (showGasPrice . _pmGasPrice) $ m ^. network_meta
+    let txnSpeedSliderEl gpEl conf = uiSliderInputElement (text "Slow") (text "Fast") $ conf
+          & inputElementConfig_initialValue .~ (showGasPrice $ scaleGPtoTxnSpeed defaultTransactionGasPrice)
+          & initialAttributes .~ "min" =: "1" <> "max" =: "1001" <> "step" =: "1"
+          & inputElementConfig_setValue .~ leftmost
+            [ showGasPrice . scaleGPtoTxnSpeed <$> eGasPrice
+            , parseAndScaleWith scaleGPtoTxnSpeed gpEl
+            ]
+
+    let gasPriceInputEl tsEl conf = uiRealInputElement $ conf
+          & inputElementConfig_initialValue .~ showGasPrice defaultTransactionGasPrice
+          & inputElementConfig_setValue .~ leftmost
+            [ showGasPrice <$> eGasPrice
+            , parseAndScaleWith scaleTxnSpeedToGP tsEl
+            ]
+
+    onGasPriceTxt <- mdo
+      tsEl <- mkLabeledInput (txnSpeedSliderEl gpEl) "Transaction Speed" def
+      gpEl <- mkLabeledInput (gasPriceInputEl tsEl) "Gas Price (KDA)" def
+      pure $ leftmost [_inputElement_input gpEl, parseAndScaleWith scaleTxnSpeedToGP tsEl]
 
     let initGasLimit = fromMaybe defaultTransactionGasLimit mGasLimit
     pbGasLimit <- case mGasLimit of
@@ -369,7 +388,7 @@ uiMetaData m mTTL mGasLimit = do
 
     pure
       ( mempty
-        & networkCfg_setGasPrice .~ fmapMaybe (readPact (GasPrice . ParsedDecimal)) onGasPriceTxt
+        & networkCfg_setGasPrice .~ eParsedGasPrice onGasPriceTxt
         & networkCfg_setTTL .~ onTTL
       , ttl
       , gasLimit
@@ -377,11 +396,36 @@ uiMetaData m mTTL mGasLimit = do
 
   where
 
+      shiftGP :: GasPrice -> GasPrice -> GasPrice -> GasPrice -> GasPrice -> GasPrice
+      shiftGP oldMin oldMax newMin newMax x =
+        roundGasPrice $ (newMax-newMin)/(oldMax-oldMin)*(x-oldMin)+newMin
+
+      scaleTxnSpeedToGP :: GasPrice -> GasPrice
+      scaleTxnSpeedToGP = shiftGP 1 1001 (1e-12) (1e-8)
+
+      scaleGPtoTxnSpeed :: GasPrice -> GasPrice
+      scaleGPtoTxnSpeed = shiftGP (1e-12) (1e-8) 1 1001
+
+      parseAndScaleWith :: forall t (er :: EventTag -> *) d
+        . Reflex t
+        => (GasPrice -> GasPrice)
+        -> InputElement er d t
+        -> Event t Text
+      parseAndScaleWith f =
+        fmap (showGasPrice . f) . eParsedGasPrice . _inputElement_input
+
+      eParsedGasPrice :: Reflex t => Event t Text -> Event t GasPrice
+      eParsedGasPrice = fmapMaybe (readPact (GasPrice . ParsedDecimal))
+
       showGasLimit :: GasLimit -> Text
       showGasLimit (GasLimit (ParsedInteger i)) = tshow i
 
       showGasPrice :: GasPrice -> Text
       showGasPrice (GasPrice (ParsedDecimal i)) = tshow i
+
+      roundGasPrice :: GasPrice -> GasPrice
+      roundGasPrice (GasPrice (ParsedDecimal i)) =
+        GasPrice $ ParsedDecimal $ roundTo 12 i
 
       showTtl :: TTLSeconds -> Text
       showTtl (TTLSeconds (ParsedInteger i)) = tshow i
