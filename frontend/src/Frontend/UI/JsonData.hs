@@ -97,7 +97,8 @@ uiJsonData w d = divClass "tabset" $ mdo
       let
         onDupWarning = mkDupWarning <$> (updated $ d ^. jsonData_overlappingProps)
         onObjWarning = either mkObjError (const []) <$> updated (d ^. jsonData_data)
-        onAnno = mconcat [ onObjWarning, onDupWarning ]
+        onUpperCaseWarning = either mkObjError anyNameUpperCase <$> updated (d ^. jsonData_data)
+        onAnno = mconcat [ onObjWarning, onDupWarning, onUpperCaseWarning ]
 
       (e, onSetRawInput) <- elClass' "div" "wysiwyg wysiwyg_height_30" $ dataEditor onAnno "" onNewData
       setFocusOnSelected e ".ace_text-input" JsonDataView_Raw $ updated curSelection
@@ -108,6 +109,13 @@ uiJsonData w d = divClass "tabset" $ mdo
 
     pure $ mconcat [ keysetVCfg, rawVCfg ]
   where
+    anyNameUpperCase :: Aeson.Object -> [AceAnnotation]
+    anyNameUpperCase o =
+      if getAny . foldMap (Any . T.any Char.isUpper) $ H.keys o
+      then mkUpperCaseError
+      else []
+ 
+    mkUpperCaseError = mkAnnotation "error" "Keyset names must be all lowercase"
     mkObjError = mkAnnotation "error" . showJsonError
     mkDupWarning dups =
       if Set.null dups
