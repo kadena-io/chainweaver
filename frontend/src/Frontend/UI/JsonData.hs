@@ -43,6 +43,7 @@ import           Data.Maybe
 import qualified Data.Set                           as Set
 import           Data.Text                          (Text)
 import qualified Data.Text                          as T
+import qualified Data.Char                          as Char
 import           Reflex.Class.Extended
 import           Reflex.Dom
 import           Reflex.Dom.ACE.Extended
@@ -217,7 +218,9 @@ uiCreateKeyset jsonD =
               Left _  -> Map.member ks keysets
               Right j -> H.member ks j
         in
-          if dupe then Just "This keyset name is already in use" else Nothing
+          if dupe then Just "This keyset name is already in use"
+          else if T.any Char.isUpper ks then Just "Keyset name must be all lowercase"
+          else Nothing
 
 -- | Widget showing all avaialble keys for selecting keys
 --
