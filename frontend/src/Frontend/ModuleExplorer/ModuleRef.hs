@@ -240,7 +240,7 @@ textModuleRefSource isModule m =
 fetchModule
   :: forall m t model
   . ( MonadHold t m, PerformEvent t m, MonadJSM (Performable m)
-    , TriggerEvent t m
+    , TriggerEvent t m, MonadIO m
     , MonadSample t (Performable m)
     , HasNetwork model t
     )

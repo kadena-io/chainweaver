@@ -74,6 +74,7 @@ import qualified Data.Text                         as T
 import qualified Data.Text.Encoding                as T
 import qualified Data.Text.IO                      as T
 import           Data.Time.Clock                   (getCurrentTime)
+import           Data.Time.Clock.POSIX             (getPOSIXTime)
 import           Data.Traversable                  (for)
 import           Foreign.JavaScript.TH             (HasJSContext)
 import           Language.Javascript.JSaddle.Monad (JSM, liftJSM)
@@ -387,6 +388,7 @@ buildMeta
      )
   => NetworkCfg t -> m (Dynamic t PublicMeta)
 buildMeta cfg = do
+  time <- getCreationTime
   let defaultMeta =
         PublicMeta
           { _pmChainId = "1" -- Gets overridden always!
@@ -394,7 +396,7 @@ buildMeta cfg = do
           , _pmGasLimit = defaultTransactionGasLimit
           , _pmGasPrice = defaultTransactionGasPrice
           , _pmTTL = defaultTransactionTTL
-          , _pmCreationTime = TxCreationTime 0 -- offset from block
+          , _pmCreationTime = time
           }
   m <- fromMaybe defaultMeta <$>
     getItemStorage localStorage StoreNetwork_PublicMeta
@@ -551,7 +553,7 @@ mkSimpleReadReq code pm cRef = do
 loadModules
   :: forall t m
   . ( MonadHold t m, PerformEvent t m, MonadFix m
-    , MonadJSM (Performable m)
+    , MonadJSM (Performable m), MonadIO m
     , MonadSample t (Performable m)
     , TriggerEvent t m, PostBuild t m
     )
@@ -637,7 +639,7 @@ loadModules networkL onRefresh = do
 performLocalReadLatest
   :: forall t m
   . ( PerformEvent t m, MonadJSM (Performable m)
-    , TriggerEvent t m
+    , TriggerEvent t m, MonadIO m
     , MonadHold t m, MonadFix m
     , MonadSample t (Performable m)
     )
@@ -667,7 +669,7 @@ performLocalReadLatest networkL onReqs = do
 performLocalRead
   :: forall t m
   . ( PerformEvent t m, MonadJSM (Performable m)
-    , TriggerEvent t m
+    , TriggerEvent t m, MonadIO m
     , MonadSample t (Performable m)
     )
   => Network t
@@ -676,6 +678,8 @@ performLocalRead
 performLocalRead networkL onReqs =
   fmap (uncurry zip) <$> performLocalReadCustom networkL id onReqs
 
+getCreationTime :: MonadIO m => m TxCreationTime
+getCreationTime = TxCreationTime . round <$> liftIO getPOSIXTime
 
 -- | Perform a read or other non persisted request to the /local endpoint.
 --
@@ -688,14 +692,15 @@ performLocalRead networkL onReqs =
 performLocalReadCustom
   :: forall t m req
   . ( PerformEvent t m, MonadJSM (Performable m)
-    , TriggerEvent t m
+    , TriggerEvent t m, MonadIO m
     , MonadSample t (Performable m)
     )
   => Network t
   -> (req -> [NetworkRequest])
   -> Event t req
   -> m (Event t (req, [NetworkErrorResult]))
-performLocalReadCustom networkL unwrapUsr onReqs =
+performLocalReadCustom networkL unwrapUsr onReqs = do
+  time <- getCreationTime
   let
     unwrap = map (networkRequest_endpoint .~ Endpoint_Local) . unwrapUsr
     fakeNetwork = networkL
@@ -705,11 +710,10 @@ performLocalReadCustom networkL unwrapUsr onReqs =
           , _pmGasLimit = GasLimit 100000
           , _pmGasPrice = GasPrice 1.0
           , _pmTTL = TTLSeconds (8 * 60 * 60) -- 8 hours
-          , _pmCreationTime = TxCreationTime 0 -- offset from block
+          , _pmCreationTime = time
           }
       }
-  in
-    performNetworkRequestCustom fakeNetwork unwrap onReqs
+  performNetworkRequestCustom fakeNetwork unwrap onReqs
 
 
 -- | Send a transaction via the /send endpoint.
@@ -910,6 +914,7 @@ buildExecPayload
   :: MonadIO m
   => Maybe Text -> PublicMeta -> [KeyPair] -> Text -> Object -> m (Payload PublicMeta Text)
 buildExecPayload mNonce meta keys code dat = do
+    time <- getCreationTime
     nonce <- maybe getNonce pure mNonce
     let
       payload = ExecMsg
@@ -919,7 +924,7 @@ buildExecPayload mNonce meta keys code dat = do
     pure $ Payload
       { _pPayload = Exec payload
       , _pNonce = nonce
-      , _pMeta = meta
+      , _pMeta = meta { _pmCreationTime = time }
       , _pSigners = map mkSigner keys
       }
   where
