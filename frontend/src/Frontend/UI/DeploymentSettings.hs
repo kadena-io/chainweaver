@@ -330,15 +330,6 @@ uiMetaData
 uiMetaData m mTTL mGasLimit = do
     eGasPrice <- tag (current $ _pmGasPrice <$> m ^. network_meta) <$> getPostBuild
 
-    let shiftGP oldMin oldMax newMin newMax x =
-          roundGasPrice $ (newMax-newMin)/(oldMax-oldMin)*(x-oldMin)+newMin
-
-    let scaleTxnSpeedToGP = shiftGP 1 1001 (1e-12) (1e-8)
-    let scaleGPtoTxnSpeed = shiftGP (1e-12) (1e-8) 1 1001
-
-    let parseAndScaleWith f =
-          fmap (showGasPrice . f) . eParsedGasPrice . _inputElement_input
-
     let txnSpeedSliderEl gpEl conf = uiSliderInputElement (text "Slow") (text "Fast") $ conf
           & inputElementConfig_initialValue .~ (showGasPrice $ scaleGPtoTxnSpeed defaultTransactionGasPrice)
           & initialAttributes .~ "min" =: "1" <> "max" =: "1001" <> "step" =: "1"
@@ -400,6 +391,24 @@ uiMetaData m mTTL mGasLimit = do
       )
 
   where
+
+      shiftGP :: GasPrice -> GasPrice -> GasPrice -> GasPrice -> GasPrice -> GasPrice
+      shiftGP oldMin oldMax newMin newMax x =
+        roundGasPrice $ (newMax-newMin)/(oldMax-oldMin)*(x-oldMin)+newMin
+
+      scaleTxnSpeedToGP :: GasPrice -> GasPrice
+      scaleTxnSpeedToGP = shiftGP 1 1001 (1e-12) (1e-8)
+
+      scaleGPtoTxnSpeed :: GasPrice -> GasPrice
+      scaleGPtoTxnSpeed = shiftGP (1e-12) (1e-8) 1 1001
+
+      parseAndScaleWith :: forall t (er :: EventTag -> *) d
+        . Reflex t
+        => (GasPrice -> GasPrice)
+        -> InputElement er d t
+        -> Event t Text
+      parseAndScaleWith f =
+        fmap (showGasPrice . f) . eParsedGasPrice . _inputElement_input
 
       eParsedGasPrice :: Reflex t => Event t Text -> Event t GasPrice
       eParsedGasPrice = fmapMaybe (readPact (GasPrice . ParsedDecimal))
