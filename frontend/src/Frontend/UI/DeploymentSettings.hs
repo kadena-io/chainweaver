@@ -61,7 +61,6 @@ import           Reflex
 import           Reflex.Dom
 import           Reflex.Dom.Contrib.CssClass (elKlass)
 import           Safe                        (readMay)
-import           Data.Decimal                (roundTo)
 ------------------------------------------------------------------------------
 import           Common.Network
 import           Frontend.Foundation
@@ -423,10 +422,6 @@ uiMetaData m mTTL mGasLimit = do
 
       showGasPrice :: GasPrice -> Text
       showGasPrice (GasPrice (ParsedDecimal i)) = tshow i
-
-      roundGasPrice :: GasPrice -> GasPrice
-      roundGasPrice (GasPrice (ParsedDecimal i)) =
-        GasPrice $ ParsedDecimal $ roundTo maxCoinPricePrecision i
 
       showTtl :: TTLSeconds -> Text
       showTtl (TTLSeconds (ParsedInteger i)) = tshow i
