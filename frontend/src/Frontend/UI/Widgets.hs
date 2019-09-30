@@ -22,6 +22,7 @@ module Frontend.UI.Widgets
   , uiInputElement
   , uiTextAreaElement
   , uiRealInputElement
+  , uiRealWithPrecisionInputElement
   , uiIntInputElement
   , uiSliderInputElement
   , uiInputView
@@ -59,6 +60,10 @@ import qualified Data.Map.Strict as Map
 import           Data.String                 (IsString)
 import           Data.Text                   (Text)
 import qualified Data.Text                   as T
+import           GHC.Word                    (Word8)
+import           Data.Decimal                (Decimal)
+import qualified Data.Decimal                as D
+import           Safe                        (readMay)
 import           Language.Javascript.JSaddle (js0, pToJSVal)
 import           Obelisk.Generated.Static
 import           Reflex.Dom.Contrib.CssClass
@@ -157,6 +162,28 @@ uiRealInputElement
 uiRealInputElement cfg = do
     inputElement $ cfg & initialAttributes %~
         (<> ("type" =: "number")) . addInputElementCls . addNoAutofillAttrs
+
+-- | uiInputElement which should always provide a proper real number limited to the given precision
+--
+--   In particular it will always has a decimal point in it.
+uiRealWithPrecisionInputElement
+  :: DomBuilder t m
+  => Word8
+  -> InputElementConfig er t (DomBuilderSpace m)
+  -> m (InputElement er (DomBuilderSpace m) t)
+uiRealWithPrecisionInputElement prec cfg = do
+    r <- inputElement $ cfg
+      & initialAttributes %~ (<> ("type" =: "number")) . addInputElementCls . addNoAutofillAttrs
+      & inputElementConfig_setValue %~ fmap f
+
+    pure $ r
+      { _inputElement_value = f <$> _inputElement_value r
+      , _inputElement_input = f <$> _inputElement_input r
+      }
+  where
+    f t = maybe t ((tshow :: Decimal -> Text) . D.roundTo prec . realToFrac)
+      $ (readMay :: String -> Maybe Double)
+      $ T.unpack t
 
 uiIntInputElement
   :: DomBuilder t m

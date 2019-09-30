@@ -342,7 +342,7 @@ uiMetaData m mTTL mGasLimit = do
             , parseAndScaleWith scaleGPtoTxnSpeed gpEl
             ]
 
-    let gasPriceInputEl tsEl conf = uiRealInputElement $ conf
+    let gasPriceInputEl tsEl conf = uiRealWithPrecisionInputElement maxCoinPricePrecision $ conf
           & inputElementConfig_initialValue .~ showGasPrice defaultTransactionGasPrice
           & inputElementConfig_setValue .~ leftmost
             [ showGasPrice <$> eGasPrice
@@ -395,10 +395,11 @@ uiMetaData m mTTL mGasLimit = do
       )
 
   where
+      maxCoinPricePrecision = 12
 
       shiftGP :: GasPrice -> GasPrice -> GasPrice -> GasPrice -> GasPrice -> GasPrice
       shiftGP oldMin oldMax newMin newMax x =
-        roundGasPrice $ (newMax-newMin)/(oldMax-oldMin)*(x-oldMin)+newMin
+        (newMax-newMin)/(oldMax-oldMin)*(x-oldMin)+newMin
 
       scaleTxnSpeedToGP :: GasPrice -> GasPrice
       scaleTxnSpeedToGP = shiftGP 1 1001 (1e-12) (1e-8)
@@ -425,7 +426,7 @@ uiMetaData m mTTL mGasLimit = do
 
       roundGasPrice :: GasPrice -> GasPrice
       roundGasPrice (GasPrice (ParsedDecimal i)) =
-        GasPrice $ ParsedDecimal $ roundTo 12 i
+        GasPrice $ ParsedDecimal $ roundTo maxCoinPricePrecision i
 
       showTtl :: TTLSeconds -> Text
       showTtl (TTLSeconds (ParsedInteger i)) = tshow i
