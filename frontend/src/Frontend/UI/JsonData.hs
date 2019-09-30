@@ -43,6 +43,7 @@ import           Data.Maybe
 import qualified Data.Set                           as Set
 import           Data.Text                          (Text)
 import qualified Data.Text                          as T
+import qualified Data.Char                          as Char
 import           Reflex.Class.Extended
 import           Reflex.Dom
 import           Reflex.Dom.ACE.Extended
@@ -96,7 +97,8 @@ uiJsonData w d = divClass "tabset" $ mdo
       let
         onDupWarning = mkDupWarning <$> (updated $ d ^. jsonData_overlappingProps)
         onObjWarning = either mkObjError (const []) <$> updated (d ^. jsonData_data)
-        onAnno = mconcat [ onObjWarning, onDupWarning ]
+        onUpperCaseWarning = either mkObjError anyNameUpperCase <$> updated (d ^. jsonData_data)
+        onAnno = mconcat [ onObjWarning, onDupWarning, onUpperCaseWarning ]
 
       (e, onSetRawInput) <- elClass' "div" "wysiwyg wysiwyg_height_30" $ dataEditor onAnno "" onNewData
       setFocusOnSelected e ".ace_text-input" JsonDataView_Raw $ updated curSelection
@@ -107,6 +109,13 @@ uiJsonData w d = divClass "tabset" $ mdo
 
     pure $ mconcat [ keysetVCfg, rawVCfg ]
   where
+    anyNameUpperCase :: Aeson.Object -> [AceAnnotation]
+    anyNameUpperCase o =
+      if getAny . foldMap (Any . T.any Char.isUpper) $ H.keys o
+      then mkUpperCaseError
+      else []
+ 
+    mkUpperCaseError = mkAnnotation "error" "Keyset names must be all lowercase"
     mkObjError = mkAnnotation "error" . showJsonError
     mkDupWarning dups =
       if Set.null dups
@@ -217,7 +226,9 @@ uiCreateKeyset jsonD =
               Left _  -> Map.member ks keysets
               Right j -> H.member ks j
         in
-          if dupe then Just "This keyset name is already in use" else Nothing
+          if dupe then Just "This keyset name is already in use"
+          else if T.any Char.isUpper ks then Just "Keyset name must be all lowercase"
+          else Nothing
 
 -- | Widget showing all avaialble keys for selecting keys
 --
