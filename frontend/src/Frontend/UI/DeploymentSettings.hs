@@ -361,8 +361,6 @@ uiMetaData m mTTL mGasLimit = do
     onGasLimitTxt <- fmap _inputElement_input $ mkLabeledInput uiIntInputElement "Gas Limit (units)" $ def
       & inputElementConfig_initialValue .~ showGasLimit initGasLimit
       & inputElementConfig_setValue .~ fmap showGasLimit pbGasLimit
-      & initialAttributes .~ (Map.singleton "min" $ showGasLimit initGasLimit)
-      & modifyAttributes .~ (Map.singleton "min" . pure . showGasLimit <$> pbGasLimit)
     gasLimit <- holdDyn initGasLimit $ leftmost
       [ fmapMaybe (readPact (GasLimit . ParsedInteger)) onGasLimitTxt
       , pbGasLimit
