@@ -106,29 +106,25 @@ data DeploymentSettingsView
   = DeploymentSettingsView_Custom Text -- ^ An optional additonal tab.
   | DeploymentSettingsView_Cfg -- ^ Actual settings like gas price/limit, ...
   | DeploymentSettingsView_Keys -- ^ Select keys for signing the transaction.
-  | DeploymentSettingsView_Data -- ^ Keysets/data
   deriving (Eq,Ord)
 
 showSettingsTabName :: DeploymentSettingsView -> Text
 showSettingsTabName (DeploymentSettingsView_Custom n) = n
 showSettingsTabName DeploymentSettingsView_Keys       = "Sign"
 showSettingsTabName DeploymentSettingsView_Cfg        = "Configuration"
-showSettingsTabName DeploymentSettingsView_Data       = "Data"
 
 -- | Get the previous view, taking into account the custom user tab.
 prevView :: Maybe DeploymentSettingsView -> DeploymentSettingsView -> Maybe DeploymentSettingsView
 prevView custom = \case
   DeploymentSettingsView_Custom _ -> Nothing
   DeploymentSettingsView_Cfg -> custom
-  DeploymentSettingsView_Data -> Just DeploymentSettingsView_Cfg
-  DeploymentSettingsView_Keys -> Just DeploymentSettingsView_Data
+  DeploymentSettingsView_Keys -> Just DeploymentSettingsView_Cfg
 
 -- | Get the next view.
 nextView :: DeploymentSettingsView -> Maybe DeploymentSettingsView
 nextView = \case
   DeploymentSettingsView_Custom _ -> Just DeploymentSettingsView_Cfg
-  DeploymentSettingsView_Cfg -> Just DeploymentSettingsView_Data
-  DeploymentSettingsView_Data -> Just DeploymentSettingsView_Keys
+  DeploymentSettingsView_Cfg -> Just DeploymentSettingsView_Keys
   DeploymentSettingsView_Keys -> Nothing
 
 -- | Show settings related to deployments to the user.
@@ -172,20 +168,15 @@ uiDeploymentSettings m settings = mdo
           (_deploymentSettingsConfig_ttl settings)
           (_deploymentSettingsConfig_gasLimit settings)
 
-      jsonCfg <- tabPane mempty curSelection DeploymentSettingsView_Data $ do
-        case _deploymentSettingsConfig_data settings of
-          Nothing -> do
-            divClass "title" $ text "Keysets"
-            (_, conf') <- uiCreateKeysets (m ^. wallet) (m ^. jsonData)
-            divClass "title" $ text "Result"
-            divClass "group" $ uiJsonDataResult (m ^. jsonData . jsonData_data)
-            pure conf'
-          Just d -> do
-            divClass "group" $ uiJsonDataResult $ pure $ pure d
-            pure mempty
+      (sender, signingKeys) <- tabPane mempty curSelection DeploymentSettingsView_Keys $
+        uiSigningKeys m (_deploymentSettingsConfig_sender settings $ m)
 
-      (mSender, signingKeys) <- tabPane mempty curSelection DeploymentSettingsView_Keys $
-        uiSigningKeysSender m $ (_deploymentSettingsConfig_sender settings) m cChainId
+      jsonCfg <- do
+        divClass "title" blank
+        accordionItem False "segment" "Data" $ do
+          -- We don't want to change focus when keyset events occur, so consume and do
+          -- nothing with the given elements and their dynamic
+          uiJsonDataSetFocus (\_ _ -> pure ()) (\_ _ -> pure ()) (m ^. wallet) (m ^. jsonData)
 
       pure
         ( cfg <> jsonCfg
@@ -235,7 +226,7 @@ uiDeploymentSettings m settings = mdo
       mUserTabCfg  = first DeploymentSettingsView_Custom <$> _deploymentSettingsConfig_userTab settings
       mUserTabName = fmap fst mUserTabCfg
       userTabs = maybeToList mUserTabName
-      stdTabs = [DeploymentSettingsView_Cfg, DeploymentSettingsView_Data, DeploymentSettingsView_Keys]
+      stdTabs = [DeploymentSettingsView_Cfg, DeploymentSettingsView_Keys]
       availableTabs = userTabs <> stdTabs
 
 
