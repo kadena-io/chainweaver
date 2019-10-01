@@ -29,6 +29,7 @@ import           Data.Map.Strict             (Map)
 import           Data.Text                   (Text)
 import           Language.Javascript.JSaddle (PToJSVal, call, eval, js0, obj,
                                               pToJSVal)
+import qualified Web.KeyCode                 as Keys
 import           Reflex.Dom.Contrib.CssClass
 import           Reflex.Dom.Core
 ------------------------------------------------------------------------------
@@ -121,7 +122,10 @@ preventScrollWheelAndUpDownArrow =
       addEventSpecFlags (Proxy :: Proxy (DomBuilderSpace m)) Keydown
       (maybe mempty
         (\c ->
-            if unEventResult c == 38 {- Up arrow -} || unEventResult c == 40 {- Down arrow -}
+           let
+             kc = fromIntegral (unEventResult c)
+           in
+            if Keys.isKeyCode Keys.ArrowUp kc || Keys.isKeyCode Keys.ArrowDown kc
             then preventDefault
             else mempty
         ))

@@ -383,9 +383,7 @@ uiMetaData m mTTL mGasLimit = do
     let mkTransactionFee c = uiRealWithPrecisionInputElement maxCoinPricePrecision $ c
           & initialAttributes %~ Map.insert "disabled" ""
     _ <- mkLabeledInputView mkTransactionFee "Max Transaction Fee (KDA)" $
-      ffor (m ^. network_meta) $ \pm -> showGasPrice
-                                        -- $ roundGasPrice
-                                        $ fromIntegral (_pmGasLimit pm) * _pmGasPrice pm
+      ffor (m ^. network_meta) $ \pm -> showGasPrice $ fromIntegral (_pmGasLimit pm) * _pmGasPrice pm
 
     let ttlInput conf = mdo
           sliderEl <- uiSliderInputElement (text "1 second") (text "1 day") $ conf
@@ -414,6 +412,8 @@ uiMetaData m mTTL mGasLimit = do
       )
 
   where
+      -- This is the minimum precision allowed by the Pact language:
+      -- https://github.com/kadena-io/chainweb-node/commit/ee8a0db079869b39e23be1ef6737f0a7795eff87#diff-6c59a5fb9f1b0b8b470cb50e8bd643ebR54
       maxCoinPricePrecision = 12
   
       shiftGP :: GasPrice -> GasPrice -> GasPrice -> GasPrice -> GasPrice -> GasPrice
