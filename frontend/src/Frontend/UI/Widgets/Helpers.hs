@@ -18,11 +18,13 @@ module Frontend.UI.Widgets.Helpers
   , setFocus
   , setFocusOn
   , setFocusOnSelected
+  , preventScrollWheelAndUpDownArrow
   ) where
 
 ------------------------------------------------------------------------------
 import           Control.Lens
 import           Control.Monad
+import           Data.Proxy                  (Proxy (..))
 import           Data.Map.Strict             (Map)
 import           Data.Text                   (Text)
 import           Language.Javascript.JSaddle (PToJSVal, call, eval, js0, obj,
@@ -103,3 +105,23 @@ setFocusOnSelected
   -> Event t a -- ^ The triggering event.
   -> m ()
 setFocusOnSelected e cssSel p onPred = setFocusOn e cssSel $ ffilter (== p) onPred
+
+preventScrollWheelAndUpDownArrow
+  :: forall m
+     . DomSpace (DomBuilderSpace m)
+  => EventSpec (DomBuilderSpace m) EventResult
+  -> EventSpec (DomBuilderSpace m) EventResult
+preventScrollWheelAndUpDownArrow = 
+  preventMouseWheel . preventUpDownArrow
+  where
+    preventMouseWheel = 
+      addEventSpecFlags (Proxy :: Proxy (DomBuilderSpace m)) Mousewheel (const preventDefault)
+
+    preventUpDownArrow = 
+      addEventSpecFlags (Proxy :: Proxy (DomBuilderSpace m)) Keydown
+      (maybe mempty
+        (\c ->
+            if unEventResult c == 38 {- Up arrow -} || unEventResult c == 40 {- Down arrow -}
+            then preventDefault
+            else mempty
+        ))

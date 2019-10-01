@@ -167,23 +167,36 @@ uiRealInputElement cfg = do
 --
 --   In particular it will always has a decimal point in it.
 uiRealWithPrecisionInputElement
-  :: DomBuilder t m
+  :: forall t m er
+     . ( er ~ EventResult
+       , DomBuilder t m
+       )
   => Word8
   -> InputElementConfig er t (DomBuilderSpace m)
   -> m (InputElement er (DomBuilderSpace m) t)
 uiRealWithPrecisionInputElement prec cfg = do
     r <- inputElement $ cfg
-      & initialAttributes %~ (<> ("type" =: "number")) . addInputElementCls . addNoAutofillAttrs
-      & inputElementConfig_setValue %~ fmap f
+      & initialAttributes %~ addInputElementCls . addNoAutofillAttrs
+        . (<> ("type" =: "number" <> "step" =: stepSize <> "min" =: stepSize))
+      & inputElementConfig_setValue %~ fmapMaybe f 
 
     pure $ r
-      { _inputElement_value = f <$> _inputElement_value r
-      , _inputElement_input = f <$> _inputElement_input r
+      { _inputElement_value = (\t -> fromMaybe t (f t)) <$> _inputElement_value r
+      , _inputElement_input = fmapMaybe f (_inputElement_input r)
       }
   where
-    f t = maybe t ((tshow :: Decimal -> Text) . D.roundTo prec . realToFrac)
-      $ (readMay :: String -> Maybe Double)
-      $ T.unpack t
+    showDecimal :: Decimal -> Text
+    showDecimal = tshow
+
+    readDouble :: String -> Maybe Double
+    readDouble = readMay
+
+    parseDecimal :: Text -> Maybe Decimal
+    parseDecimal = fmap (D.roundTo prec . realToFrac) . readDouble . T.unpack
+
+    f = fmap showDecimal . parseDecimal
+
+    stepSize = "0." <> T.replicate (fromIntegral prec - 1) "0" <> "1" 
 
 uiIntInputElement
   :: DomBuilder t m
