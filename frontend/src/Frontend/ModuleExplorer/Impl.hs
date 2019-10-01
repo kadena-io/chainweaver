@@ -105,7 +105,7 @@ loadEditorFromLocalStorage = getItemStorage localStorage StoreModuleExplorer_Ses
 
 makeModuleExplorer
   :: forall t m cfg mConf model
-  . ( ReflexConstraints t m
+  . ( ReflexConstraints t m, MonadIO m
     , HasModuleExplorerCfg cfg t
     {- , HasModuleExplorerModel model t -}
     , HasModuleExplorerModelCfg mConf t
@@ -227,7 +227,7 @@ mkSelectionGrowth explr = do
 -- | Takes care of loading a file/module into the editor.
 loadToEditor
   :: forall m t mConf model
-  . ( ReflexConstraints t m
+  . ( ReflexConstraints t m, MonadIO m
     , HasModuleExplorerModelCfg  mConf t
     , HasModuleExplorerModel  model t
     , MonadSample t (Performable m)
@@ -350,7 +350,7 @@ pushPopModule
   :: forall m t mConf model
   . ( MonadHold t m, PerformEvent t m, MonadJSM (Performable m)
     , HasJSContext (Performable m), TriggerEvent t m, MonadFix m, PostBuild t m
-    , MonadSample t (Performable m)
+    , MonadSample t (Performable m), MonadIO m
     , HasMessagesCfg  mConf t, Monoid mConf
     , HasNetwork model t
     )
@@ -418,7 +418,7 @@ pushPopModule m explr onClear onPush onPop = mdo
 --   Loading errors will be reported to `Messages`.
 loadModule
   :: forall m t mConf model
-  . ( ReflexConstraints t m
+  . ( ReflexConstraints t m, MonadIO m
     , Monoid mConf, HasMessagesCfg mConf t
     , MonadSample t (Performable m)
     , HasNetwork model t
