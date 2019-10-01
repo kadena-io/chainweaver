@@ -22,6 +22,7 @@ module Frontend.UI.Widgets
   , uiInputElement
   , uiTextAreaElement
   , uiRealInputElement
+  , uiRealWithPrecisionInputElement
   , uiIntInputElement
   , uiSliderInputElement
   , uiInputView
@@ -59,6 +60,10 @@ import qualified Data.Map.Strict as Map
 import           Data.String                 (IsString)
 import           Data.Text                   (Text)
 import qualified Data.Text                   as T
+import           GHC.Word                    (Word8)
+import           Data.Decimal                (Decimal)
+import qualified Data.Decimal                as D
+import           Safe                        (readMay)
 import           Language.Javascript.JSaddle (js0, pToJSVal)
 import           Obelisk.Generated.Static
 import           Reflex.Dom.Contrib.CssClass
@@ -157,6 +162,41 @@ uiRealInputElement
 uiRealInputElement cfg = do
     inputElement $ cfg & initialAttributes %~
         (<> ("type" =: "number")) . addInputElementCls . addNoAutofillAttrs
+
+-- | uiInputElement which should always provide a proper real number limited to the given precision
+--
+--   In particular it will always has a decimal point in it.
+uiRealWithPrecisionInputElement
+  :: forall t m er
+     . ( er ~ EventResult
+       , DomBuilder t m
+       )
+  => Word8
+  -> InputElementConfig er t (DomBuilderSpace m)
+  -> m (InputElement er (DomBuilderSpace m) t)
+uiRealWithPrecisionInputElement prec cfg = do
+    r <- inputElement $ cfg
+      & initialAttributes %~ addInputElementCls . addNoAutofillAttrs
+        . (<> ("type" =: "number" <> "step" =: stepSize <> "min" =: stepSize))
+      & inputElementConfig_setValue %~ fmapMaybe f 
+
+    pure $ r
+      { _inputElement_value = (\t -> fromMaybe t (f t)) <$> _inputElement_value r
+      , _inputElement_input = fmapMaybe f (_inputElement_input r)
+      }
+  where
+    showDecimal :: Decimal -> Text
+    showDecimal = tshow
+
+    readDouble :: String -> Maybe Double
+    readDouble = readMay
+
+    parseDecimal :: Text -> Maybe Decimal
+    parseDecimal = fmap (D.roundTo prec . realToFrac) . readDouble . T.unpack
+
+    f = fmap showDecimal . parseDecimal
+
+    stepSize = "0." <> T.replicate (fromIntegral prec - 1) "0" <> "1" 
 
 uiIntInputElement
   :: DomBuilder t m
