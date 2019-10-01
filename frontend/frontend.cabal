@@ -42,6 +42,7 @@ library
                , http-client-tls
                , http-types
                , jsaddle
+               , keycode
                , lens
                , megaparsec
                , modern-uri
