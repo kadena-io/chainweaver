@@ -44,10 +44,8 @@ import           Control.Arrow               ((&&&))
 import           Control.Lens
 import           Control.Monad
 import qualified Data.Aeson as Aeson
-import           Data.Map                    (Map)
 import qualified Data.Map                    as Map
 import           Data.Set                    (Set)
-import qualified Data.Set                    as Set
 import           Data.Text                   (Text)
 import qualified Data.Text                   as T
 import qualified Data.Text.Encoding as T
@@ -476,10 +474,7 @@ uiSigningKeys model = do
     chosenKeys <- el "tbody" $ listWithKey keyMap $ \name key -> signingItem (name, key)
     dynText $ ffor keyMap $ \keys -> if Map.null keys then "No keys ..." else ""
     pure chosenKeys
-  return $ do -- The Dynamic monad
-    m :: Map KeyName (Dynamic t Bool) <- boxValues
-    ps <- traverse (\(k,v) -> (k,) <$> v) $ Map.toList m
-    return (Set.fromList $ map fst $ filter snd ps)
+  return $ Map.keysSet . Map.filter id <$> joinDynThroughMap boxValues
 
 ------------------------------------------------------------------------------
 -- | Display a key as list item together with it's name.

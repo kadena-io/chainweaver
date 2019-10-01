@@ -232,7 +232,7 @@ isPredefinedKey = flip Map.member chainwebDefaultSenders
 
 -- | An empty wallet that will never contain any keys.
 emptyWallet :: Reflex t => Wallet t
-emptyWallet = Wallet (pure mempty) (pure mempty) (pure mempty)
+emptyWallet = Wallet mempty mempty mempty
 
 -- | Make a functional wallet that can contain actual keys.
 makeWallet
@@ -290,7 +290,9 @@ makeWallet conf = do
         Just as -> Just $ Map.insert account guard as
       , ffor (_walletCfg_deleteAccount conf) $ \(chain, account) -> flip Map.alter chain $ \case
         Nothing -> Nothing
-        Just as -> Just $ Map.delete account as
+        Just as ->
+          let new = Map.delete account as
+          in if Map.null new then Nothing else Just new
       ]
     performEvent_ $ setItemStorage localStorage StoreWallet_AccountGuards <$> updated accountGuards
 
