@@ -28,6 +28,7 @@ module Frontend.UI.DeploymentSettings
   , predefinedChainIdSelect
   , predefinedChainIdDisplayed
   , userChainIdSelect
+  , uiChainSelection
     -- * Widgets
   , uiDeploymentSettings
   , uiSigningKeys
@@ -38,17 +39,14 @@ module Frontend.UI.DeploymentSettings
   ) where
 
 ------------------------------------------------------------------------------
-import           Control.Applicative         (liftA2)
 import           Control.Arrow               (first)
 import           Data.Either                 (rights)
 import           Control.Arrow               ((&&&))
 import           Control.Lens
 import           Control.Monad
 import qualified Data.Aeson as Aeson
-import           Data.Map                    (Map)
 import qualified Data.Map                    as Map
 import           Data.Set                    (Set)
-import qualified Data.Set                    as Set
 import           Data.Text                   (Text)
 import qualified Data.Text                   as T
 import qualified Data.Text.Encoding as T
@@ -86,7 +84,7 @@ data DeploymentSettingsConfig t m model a = DeploymentSettingsConfig
     --   widget at all, but having `uiDeploymentSettings` use the provided one.
     --
     --   Or you can use `userChainIdSelect` for having the user pick a chainid.
-  , _deploymentSettingsConfig_sender      :: model -> m (Dynamic t (Maybe Text))
+  , _deploymentSettingsConfig_sender      :: model -> Dynamic t (Maybe ChainId) -> m (Dynamic t (Maybe AccountName))
     -- ^ Sender selection widget. Use 'uiSenderFixed' or 'uiSenderDropdown'.
   , _deploymentSettingsConfig_data        :: Maybe Aeson.Object
     -- ^ Data selection. If 'Nothing', uses the users setting (and allows them
@@ -163,7 +161,7 @@ uiDeploymentSettings m settings = mdo
       , _tabBarCfg_classes = mempty
       , _tabBarCfg_type = TabBarType_Secondary
       }
-    (conf, chainId, x, ma) <- elClass "div" "modal__main transaction_details" $ do
+    (conf, chainId, sender, x, ma) <- elClass "div" "modal__main transaction_details" $ do
 
       mRes <- traverse (uncurry $ tabPane mempty curSelection) mUserTabCfg
 
@@ -186,23 +184,23 @@ uiDeploymentSettings m settings = mdo
             divClass "group" $ uiJsonDataResult $ pure $ pure d
             pure mempty
 
-      (sender, signingKeys) <- tabPane mempty curSelection DeploymentSettingsView_Keys $
-        uiSigningKeys m (_deploymentSettingsConfig_sender settings $ m)
+      (mSender, signingKeys) <- tabPane mempty curSelection DeploymentSettingsView_Keys $
+        uiSigningKeysSender m $ (_deploymentSettingsConfig_sender settings) m cChainId
 
       pure
         ( cfg <> jsonCfg
         , cChainId
+        , mSender
         , do
-          sender' <- current sender
           signingKeys' <- current signingKeys
           jsonData' <- either (const mempty) id <$> current (m ^. jsonData . jsonData_data)
           ttl' <- current ttl
           gasLimit' <- current gasLimit
           pm <- current $ m ^. network_meta
-          let publicMeta cid = pm
+          let publicMeta cid s = pm
                 { _pmChainId = cid
                 , _pmGasLimit = gasLimit'
-                , _pmSender = fromMaybe (_pmSender pm) sender'
+                , _pmSender = unAccountName s
                 , _pmTTL = ttl'
                 }
           code' <- current code
@@ -216,9 +214,9 @@ uiDeploymentSettings m settings = mdo
       let backConfig = def & uiButtonCfg_class .~ ffor curSelection
             (\s -> if s == fromMaybe DeploymentSettingsView_Cfg mUserTabName then "hidden" else "")
       back <- uiButtonDyn backConfig $ text "Back"
-      let isDisabled = liftA2 (&&)
-            ((== DeploymentSettingsView_Keys) <$> curSelection)
-            (isNothing <$> chainId)
+      let shouldBeDisabled tab chain account =
+            tab == DeploymentSettingsView_Keys && (isNothing account || isNothing chain)
+          isDisabled = shouldBeDisabled <$> curSelection <*> chainId <*> sender
       next <- uiButtonDyn (def & uiButtonCfg_class .~ "button_type_confirm" & uiButtonCfg_disabled .~ isDisabled) $ dynText $ ffor curSelection $ \case
         DeploymentSettingsView_Keys -> "Preview"
         _ -> "Next"
@@ -227,10 +225,11 @@ uiDeploymentSettings m settings = mdo
         , prevView mUserTabName <$ back
         ]
 
-    let sign (mChain, (endpoint, code', data', signingKeys, allKeys, pm)) () = ffor mChain $ \chain -> do
-          cmd <- buildCmd (_deploymentSettingsConfig_nonce settings) (pm chain) allKeys signingKeys code' data'
+    let sign (Just chain, Just account, (endpoint, code', data', signingKeys, allKeys, pm)) () = Just $ do
+          cmd <- buildCmd (_deploymentSettingsConfig_nonce settings) (pm chain account) allKeys signingKeys code' data'
           pure (endpoint, chain, cmd)
-    command <- performEvent $ attachWithMaybe sign (liftA2 (,) (current chainId) x) done
+        sign _ _ = Nothing
+    command <- performEvent $ attachWithMaybe sign ((,,) <$> current chainId <*> current sender <*> x) done
     pure (conf, command, ma)
     where
       mUserTabCfg  = first DeploymentSettingsView_Custom <$> _deploymentSettingsConfig_userTab settings
@@ -448,37 +447,35 @@ uiMetaData m mTTL mGasLimit = do
       readPact wrapper =  fmap wrapper . readMay . T.unpack
 
 -- | Set the sender to a fixed value
-uiSenderFixed :: DomBuilder t m => Text -> m (Dynamic t (Maybe Text))
+uiSenderFixed :: DomBuilder t m => AccountName -> m (Dynamic t (Maybe AccountName))
 uiSenderFixed sender = do
   _ <- mkLabeledInput uiInputElement "Sender" $ def
     & initialAttributes %~ Map.insert "disabled" ""
-    & inputElementConfig_initialValue .~ sender
+    & inputElementConfig_initialValue .~ unAccountName sender
   pure $ pure $ pure sender
 
 -- | Let the user pick a sender
 uiSenderDropdown
   :: ( Adjustable t m, PostBuild t m, DomBuilder t m
-     , TriggerEvent t m, PerformEvent t m
-     , MonadIO (Performable m)
-     , HasNetwork model t, HasWallet model t
+     , MonadHold t m, MonadFix m
+     , HasWallet model t
      )
-  => SelectElementConfig er t (DomBuilderSpace m)
+  => DropdownConfig t (Maybe AccountName)
   -> model
-  -> m (Dynamic t (Maybe Text))
-uiSenderDropdown uCfg m = do
-  let meta = m ^. network_meta
-      keys = m ^. wallet_keys
-      itemDom v = elAttr "option" ("value" =: v) $ text v
-  -- Delay necessary until we have mount hooks. (SelectElement won't accept
-  -- setting event until its children are properly rendered.)
-  onSet <- delay 0 <=< tagOnPostBuild $ _pmSender <$> meta
-  let
-    cfg = uCfg
-      & selectElementConfig_setValue .~ onSet
-  (se, ()) <- uiSelectElement cfg $ do
-    void $ networkView $
-      traverse_ itemDom . Map.keys <$> keys
-  pure $ Just <$> _selectElement_value se
+  -> Dynamic t (Maybe ChainId)
+  -> m (Dynamic t (Maybe AccountName))
+uiSenderDropdown uCfg m chainId = do
+  let mkTextAccounts mChain chains = case mChain of
+        Nothing -> Map.singleton Nothing "You must select a chain ID before choosing an account"
+        Just chain -> case Map.lookup chain chains of
+          Just accounts | not (Map.null accounts) ->
+            Map.insert Nothing "Choose an account" $ Map.mapKeysMonotonic Just $ Map.mapWithKey (\k _ -> unAccountName k) accounts
+          _ -> Map.singleton Nothing "No accounts on current chain"
+      textAccounts = mkTextAccounts <$> chainId <*> m ^. wallet_accountGuards
+  choice <- dropdown Nothing textAccounts $ uCfg
+    & dropdownConfig_setValue .~ (Nothing <$ updated chainId)
+    & dropdownConfig_attributes <>~ pure ("class" =: "labeled-input__input select select_mandatory_missing select_type_primary")
+  pure $ value choice
 
 -- | Widget (dropdown) for letting the user choose between /send and /local endpoint.
 --
@@ -513,29 +510,30 @@ uiChainSelection info cls = mdo
 
 
 -- | Widget for selection of sender and signing keys.
-uiSigningKeys
+uiSigningKeysSender
   :: forall t m model. (MonadWidget t m, HasWallet model t)
   => model
-  -> m (Dynamic t (Maybe Text))
-  -> m (Dynamic t (Maybe Text), Dynamic t (Set KeyName))
-uiSigningKeys model mkSender = do
+  -> m (Dynamic t (Maybe AccountName))
+  -> m (Dynamic t (Maybe AccountName), Dynamic t (Set KeyName))
+uiSigningKeysSender model mkSender = do
   divClass "title" $ text "Gas Payer"
 
   sender <- divClass "group" mkSender
 
   divClass "title" $ text "Transaction Signer"
+  keys <- divClass "group" $ uiSigningKeys model
+  return (sender, keys)
+
+uiSigningKeys :: (MonadWidget t m, HasWallet model t) => model -> m (Dynamic t (Set KeyName))
+uiSigningKeys model = do
   let keyMap = model ^. wallet_keys
       tableAttrs =
         "style" =: "table-layout: fixed; width: 100%" <> "class" =: "table"
-  boxValues <- divClass "group" $ elAttr "table" tableAttrs $ do
+  boxValues <- elAttr "table" tableAttrs $ do
     chosenKeys <- el "tbody" $ listWithKey keyMap $ \name key -> signingItem (name, key)
     dynText $ ffor keyMap $ \keys -> if Map.null keys then "No keys ..." else ""
     pure chosenKeys
-  return $ (,) sender $ do -- The Dynamic monad
-    m :: Map KeyName (Dynamic t Bool) <- boxValues
-    ps <- traverse (\(k,v) -> (k,) <$> v) $ Map.toList m
-    return (Set.fromList $ map fst $ filter snd ps)
-
+  return $ Map.keysSet . Map.filter id <$> joinDynThroughMap boxValues
 
 ------------------------------------------------------------------------------
 -- | Display a key as list item together with it's name.

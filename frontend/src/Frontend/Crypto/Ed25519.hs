@@ -35,6 +35,8 @@ module Frontend.Crypto.Ed25519
   , keyToTextFuture
   , textToKey
   , textToKeyFuture
+  , fromPactPublicKey
+  , toPactPublicKey
   )
   where
 
@@ -43,6 +45,7 @@ import           Control.Monad
 import           Control.Monad.Fail          (MonadFail)
 import           Control.Newtype.Generics    (Newtype (..))
 import           Data.Aeson                  hiding (Object)
+import           Data.Aeson.Types            (toJSONKeyText)
 import           Control.Monad.Except        (MonadError, throwError)
 import qualified Data.Text as T
 import qualified Data.ByteString.Base16 as Base16
@@ -54,13 +57,26 @@ import           GHC.Generics                (Generic)
 import           Language.Javascript.JSaddle (call, eval, fromJSValUnchecked,
                                               js, valNull)
 
+import qualified Pact.Types.Term             as Pact
 import           Pact.Types.Util             (encodeBase64UrlUnpadded, decodeBase64UrlUnpadded)
 
 import           Frontend.Foundation
 
 -- | PublicKey with a Pact compatible JSON representation.
 newtype PublicKey = PublicKey ByteString
-  deriving (Generic, Eq, Show)
+  deriving (Generic, Eq, Ord, Show)
+
+fromPactPublicKey :: Pact.PublicKey -> PublicKey
+fromPactPublicKey = PublicKey . fst . Base16.decode . Pact._pubKey
+
+toPactPublicKey :: PublicKey -> Pact.PublicKey
+toPactPublicKey (PublicKey pk) = Pact.PublicKey $ Base16.encode pk
+
+instance FromJSONKey PublicKey where
+  fromJSONKey = PublicKey . fst . Base16.decode . T.encodeUtf8 <$> fromJSONKey
+instance ToJSONKey PublicKey where
+  toJSONKey = toJSONKeyText keyToText
+
 --
 -- | PrivateKey with a Pact compatible JSON representation.
 newtype PrivateKey = PrivateKey ByteString
