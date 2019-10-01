@@ -679,7 +679,9 @@ performLocalRead networkL onReqs =
   fmap (uncurry zip) <$> performLocalReadCustom networkL id onReqs
 
 getCreationTime :: MonadIO m => m TxCreationTime
-getCreationTime = TxCreationTime . round <$> liftIO getPOSIXTime
+getCreationTime = mkCt <$> liftIO getPOSIXTime
+  where
+    mkCt x = TxCreationTime $ round (x - 15)
 
 -- | Perform a read or other non persisted request to the /local endpoint.
 --
