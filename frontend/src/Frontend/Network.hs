@@ -63,7 +63,6 @@ import           Control.Monad.Except
 import           GHC.Word                          (Word8)
 import           Data.Aeson                        (Object, Value (..), encode)
 import qualified Data.ByteString.Lazy              as BSL
-import qualified Data.Decimal                      as D
 import           Data.Either                       (lefts, rights)
 import qualified Data.IntMap                       as IntMap
 import qualified Data.List                         as L
@@ -87,7 +86,6 @@ import           System.IO                         (stderr)
 import           Text.URI                          (URI)
 import qualified Text.URI                          as URI
 
-import           Pact.Parse                        (ParsedDecimal (..))
 import           Pact.Server.ApiV1Client
 import           Pact.Types.API
 import           Pact.Types.Command
@@ -376,8 +374,7 @@ getSelectedNetworkInfos networkL = do
 -- This is the minimum precision allowed by the Pact language:
 -- https://github.com/kadena-io/chainweb-node/commit/ee8a0db079869b39e23be1ef6737f0a7795eff87#diff-6c59a5fb9f1b0b8b470cb50e8bd643ebR54
 defaultTransactionGasPrice :: GasPrice
-defaultTransactionGasPrice =
-  GasPrice $ ParsedDecimal $ D.realFracToDecimal maxCoinPricePrecision 1
+defaultTransactionGasPrice = GasPrice $ 10 ^^ negate (fromIntegral maxCoinPricePrecision :: Int)
 
 maxCoinPricePrecision :: Word8
 maxCoinPricePrecision = 12
