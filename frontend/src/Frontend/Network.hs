@@ -376,11 +376,11 @@ getSelectedNetworkInfos networkL = do
 -- This is the minimum precision allowed by the Pact language:
 -- https://github.com/kadena-io/chainweb-node/commit/ee8a0db079869b39e23be1ef6737f0a7795eff87#diff-6c59a5fb9f1b0b8b470cb50e8bd643ebR54
 defaultTransactionGasPrice :: GasPrice
-defaultTransactionGasPrice = GasPrice 1e-12
+defaultTransactionGasPrice =
+  GasPrice $ ParsedDecimal $ D.realFracToDecimal maxCoinPricePrecision 1
 
 maxCoinPricePrecision :: Word8
-maxCoinPricePrecision = case defaultTransactionGasPrice of
-  GasPrice (ParsedDecimal d) -> D.decimalPlaces d
+maxCoinPricePrecision = 12
 
 defaultTransactionTTL :: TTLSeconds
 defaultTransactionTTL = TTLSeconds (8 * 60 * 60) -- 8 hours
