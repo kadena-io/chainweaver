@@ -161,7 +161,7 @@ uiDeploymentSettings m settings = mdo
 
       mRes <- traverse (uncurry $ tabPane mempty curSelection) mUserTabCfg
 
-      (cfg, cChainId, cEndpoint, ttl, gasLimit) <- tabPane mempty curSelection DeploymentSettingsView_Cfg $
+      (cfg, cChainId, cEndpoint, ttl, gasLimit, jsonCfg) <- tabPane mempty curSelection DeploymentSettingsView_Cfg $
         uiCfg code m
           (_deploymentSettingsConfig_chainId settings $ m)
           (_deploymentSettingsConfig_defEndpoint settings)
@@ -170,13 +170,6 @@ uiDeploymentSettings m settings = mdo
 
       (sender, signingKeys) <- tabPane mempty curSelection DeploymentSettingsView_Keys $
         uiSigningKeys m (_deploymentSettingsConfig_sender settings $ m)
-
-      jsonCfg <- do
-        divClass "title" blank
-        accordionItem False "segment" "Data" $ do
-          -- We don't want to change focus when keyset events occur, so consume and do
-          -- nothing with the given elements and their dynamic
-          uiJsonDataSetFocus (\_ _ -> pure ()) (\_ _ -> pure ()) (m ^. wallet) (m ^. jsonData)
 
       pure
         ( cfg <> jsonCfg
@@ -264,7 +257,15 @@ userChainIdSelect m = mkLabeledClsInput (uiChainSelection mNodeInfo) "Chain ID"
 
 -- | UI for asking the user about data needed for deployments/function calling.
 uiCfg
-  :: ( MonadWidget t m, HasNetwork model t, HasNetworkCfg mConf t, Monoid mConf
+  :: ( MonadWidget t m
+     , HasNetwork model t
+     , HasNetworkCfg mConf t
+     , Monoid mConf
+     , Flattenable jConf t
+     , HasJsonDataCfg jConf t
+     , Monoid jConf
+     , HasWallet model t
+     , HasJsonData model t
      )
   => Dynamic t Text
   -> model
@@ -272,26 +273,51 @@ uiCfg
   -> Maybe Endpoint
   -> Maybe TTLSeconds
   -> Maybe GasLimit
-  -> m (mConf, Dynamic t (f Pact.ChainId), Maybe (Dynamic t Endpoint), Dynamic t TTLSeconds, Dynamic t GasLimit)
+  -> m ( mConf
+       , Dynamic t (f Pact.ChainId)
+       , Maybe (Dynamic t Endpoint)
+       , Dynamic t TTLSeconds
+       , Dynamic t GasLimit
+       , jConf
+       )
 uiCfg code m wChainId ep mTTL mGasLimit = do
-  divClass "title" $ text "Input"
-  divClass "group" $ do
-    _ <- mkLabeledInputView (\c -> uiInputElement $ c & initialAttributes %~ Map.insert "disabled" "") "Transaction Hash" $
-      hashToText . toUntypedHash . id @PactHash . hash . T.encodeUtf8 <$> code
-    pb <- getPostBuild
-    _ <- flip mkLabeledClsInput "Raw Command" $ \cls -> uiTextAreaElement $ def
-      & textAreaElementConfig_setValue .~ leftmost [updated code, tag (current code) pb]
-      & initialAttributes .~ "disabled" =: "" <> "style" =: "width: 100%" <> "class" =: renderClass cls
-    pure ()
-  divClass "title" $ text "Destination"
-  (cId, endpoint) <- elKlass "div" ("group segment") $ do
-    endpoint <- uiEndpoint m ep
-    chain <- wChainId
-    pure (chain, endpoint)
-  divClass "title" $ text "Settings"
-  (cfg, ttl, gasLimit) <- elKlass "div" ("group segment") $
-    uiMetaData m mTTL mGasLimit
-  pure (cfg, cId, endpoint, ttl, gasLimit)
+  -- General deployment configuration
+  let mkGeneralSettings = do
+        divClass "title" $ text "Input"
+        divClass "group" $ do
+          _ <- mkLabeledInputView (\c -> uiInputElement $ c & initialAttributes %~ Map.insert "disabled" "") "Transaction Hash" $ hashToText . toUntypedHash . id @PactHash . hash . T.encodeUtf8 <$> code
+          pb <- getPostBuild
+          _ <- flip mkLabeledClsInput "Raw Command" $ \cls -> uiTextAreaElement $ def
+            & textAreaElementConfig_setValue .~ leftmost [updated code, tag (current code) pb]
+            & initialAttributes .~ "disabled" =: "" <> "style" =: "width: 100%" <> "class" =: renderClass cls
+          pure ()
+        divClass "title" $ text "Destination"
+        (cId, endpoint) <- elKlass "div" ("group segment") $ do
+          endpoint <- uiEndpoint m ep
+          chain <- wChainId
+          pure (chain, endpoint)
+        divClass "title" $ text "Settings"
+        (cfg, ttl, gasLimit) <- elKlass "div" ("group segment") $
+          uiMetaData m mTTL mGasLimit
+        pure (cfg, cId, endpoint, ttl, gasLimit)
+
+  ((cfg, cId, endpoint, ttl, gasLimit), jsonCfg) <- mdo
+    let mkAccordionControlDyn initActive = foldDyn (const not) initActive
+          $ leftmost [eGeneralClicked , eAdvancedClicked]
+
+    dGeneralActive <- mkAccordionControlDyn True 
+    dAdvancedActive <- mkAccordionControlDyn False 
+
+    (eGeneralClicked, pairA) <- controlledAccordionItem dGeneralActive mempty (text "General") mkGeneralSettings
+    divClass "title" blank
+    (eAdvancedClicked, pairB) <- controlledAccordionItem dAdvancedActive mempty (text "Advanced") $ do
+      -- We don't want to change focus when keyset events occur, so consume and do nothing
+      -- with the given elements and their dynamic
+      divClass "title" $ text "Data"
+      uiJsonDataSetFocus (\_ _ -> pure ()) (\_ _ -> pure ()) (m ^. wallet) (m ^. jsonData)
+    pure (snd pairA, snd pairB)
+
+  pure (cfg, cId, endpoint, ttl, gasLimit, jsonCfg)
 
 -- | UI for asking the user about endpoint (`Endpoint` & `ChainId`) for deployment.
 --
