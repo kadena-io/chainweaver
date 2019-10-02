@@ -411,9 +411,6 @@ uiMetaData m mTTL mGasLimit = do
       )
 
   where
-      -- This is the minimum precision allowed by the Pact language:
-      -- https://github.com/kadena-io/chainweb-node/commit/ee8a0db079869b39e23be1ef6737f0a7795eff87#diff-6c59a5fb9f1b0b8b470cb50e8bd643ebR54
-      maxCoinPricePrecision = 12
   
       shiftGP :: GasPrice -> GasPrice -> GasPrice -> GasPrice -> GasPrice -> GasPrice
       shiftGP oldMin oldMax newMin newMax x =
