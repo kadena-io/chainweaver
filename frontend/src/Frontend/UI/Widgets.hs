@@ -432,10 +432,6 @@ accordionItemWithClick initActive contentClass title inner = mdo
     isActive <- foldDyn (const not) initActive onClick
     (onClick, pair) <- controlledAccordionItem isActive contentClass title inner
     return (onClick, pair)
-  where
-    activeClass = \case
-      False -> singleClass "accordion-collapsed"
-      True -> singleClass "accordion-revealed"
 
 accordionItem'
   :: MonadWidget t m

@@ -168,8 +168,8 @@ uiDeploymentSettings m settings = mdo
           (_deploymentSettingsConfig_ttl settings)
           (_deploymentSettingsConfig_gasLimit settings)
 
-      (sender, signingKeys) <- tabPane mempty curSelection DeploymentSettingsView_Keys $
-        uiSigningKeys m (_deploymentSettingsConfig_sender settings $ m)
+      (mSender, signingKeys) <- tabPane mempty curSelection DeploymentSettingsView_Keys $
+        uiSigningKeysSender m $ (_deploymentSettingsConfig_sender settings) m cChainId
 
       pure
         ( cfg <> jsonCfg
