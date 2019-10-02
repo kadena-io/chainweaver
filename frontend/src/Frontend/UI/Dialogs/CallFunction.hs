@@ -132,7 +132,7 @@ uiBuildDeployment m func moduleL = mdo
     , _deploymentSettingsConfig_nonce = Nothing
     , _deploymentSettingsConfig_gasLimit = Nothing
     }
-  pure $ (,) cfg $ ffor result $ \(_keys, _acc, me, c, cmd) -> [NetworkRequest cmd (ChainRef Nothing c) (fromMaybe Endpoint_Local me)]
+  pure $ (,) cfg $ ffor result $ \(_price, _keys, _acc, me, c, cmd) -> [NetworkRequest cmd (ChainRef Nothing c) (fromMaybe Endpoint_Local me)]
 
 
 -- | Tab showing edits for function parameters (if any):

@@ -91,7 +91,7 @@ import           Pact.Parse                        (ParsedDecimal (..))
 import           Pact.Server.ApiV1Client
 import           Pact.Types.API
 import           Pact.Types.Command
-import           Pact.Types.Runtime                (PactError (..), GasLimit (..), GasPrice (..))
+import           Pact.Types.Runtime                (PactError (..), GasLimit (..), GasPrice (..), Gas (..))
 import           Pact.Types.ChainMeta              (PublicMeta (..), TTLSeconds (..), TxCreationTime (..))
 
 import           Pact.Types.Exp                    (Literal (LString))
@@ -167,7 +167,7 @@ data NetworkError
   deriving Show
 
 -- | We either have a `NetworkError` or some `Term Name`.
-type NetworkErrorResult = Either NetworkError PactValue
+type NetworkErrorResult = Either NetworkError (Maybe Gas, PactValue)
 
 
 -- | Config for creating a `Network`.
@@ -413,6 +413,7 @@ buildMeta cfg = do
     [ (\u c -> c { _pmSender = u})   <$> cfg ^. networkCfg_setSender
     , (\u c -> c { _pmGasLimit = u}) <$> cfg ^. networkCfg_setGasLimit
     , (\u c -> c { _pmGasPrice = u}) <$> cfg ^. networkCfg_setGasPrice
+    , (\u c -> c { _pmTTL = u}) <$> cfg ^. networkCfg_setTTL
     ]
 
   onStore <- throttle 2 $ updated r
@@ -616,7 +617,7 @@ loadModules networkL onRefresh = do
       mkReq pm = mkSimpleReadReq "(list-modules)" pm . ChainRef Nothing
 
       byChainId :: (NetworkRequest, NetworkErrorResult) -> Either NetworkError (ChainId, PactValue)
-      byChainId = sequence . first (_chainRef_chain . _networkRequest_chainRef)
+      byChainId = sequence . bimap (_chainRef_chain . _networkRequest_chainRef) (fmap snd)
 
       renderErrs :: [NetworkError] -> Text
       renderErrs =
@@ -836,7 +837,7 @@ networkRequest baseUri endpoint cmd = do
         res <- runReq clientEnv $ send apiV1Client $ SubmitBatch . pure $ cmd
         key <- getRequestKey $ res
         -- TODO: If we no longer wait for /listen, we should change the type instead of wrapping that message in `PactValue`.
-        pure $ PLiteral . LString $
+        pure $ (Nothing,) $ PLiteral . LString $
           T.dropWhile (== '"') . T.dropWhileEnd (== '"') . tshow $ key
         {- key <- getRequestKey $ res -}
         {- v <- runReq clientEnv $ listen pactServerApiClient $ ListenerRequest key -}
@@ -864,10 +865,10 @@ networkRequest baseUri endpoint cmd = do
       S.ConnectionError t -> NetworkError_NetworkError t
       _ -> NetworkError_Decoding $ T.pack $ show e
 
-    fromCommandResult :: MonadError NetworkError m => CommandResult a -> m PactValue
+    fromCommandResult :: MonadError NetworkError m => CommandResult a -> m (Maybe Gas, PactValue)
     fromCommandResult r = case _crResult r of
       PactResult (Left e) -> throwError $ NetworkError_CommandFailure e
-      PactResult (Right v) -> pure v
+      PactResult (Right v) -> pure (Just $ _crGas r, v)
 
     getRequestKey :: MonadError NetworkError m => RequestKeys -> m RequestKey
     getRequestKey r =
@@ -972,7 +973,7 @@ prettyPrintNetworkError = ("ERROR: " <>) . \case
 prettyPrintNetworkErrorResult :: NetworkErrorResult -> Text
 prettyPrintNetworkErrorResult = \case
   Left e -> prettyPrintNetworkError e
-  Right r -> "Server result: " <> prettyTextPretty r
+  Right (_gas, r) -> "Server result: " <> prettyTextPretty r
 
 
 -- | Get unique nonce, based on current time.

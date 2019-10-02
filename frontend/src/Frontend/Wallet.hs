@@ -27,6 +27,7 @@ module Frontend.Wallet
   , AccountGuard (..)
   , pactGuardTypeText
   , fromPactGuard
+  , accountGuardKeys
   , KeyAccounts
   -- * Creation
   , emptyWallet
@@ -109,6 +110,11 @@ pactGuardTypeText = \case
   Pact.GTyPact -> "Pact"
   Pact.GTyUser -> "User"
   Pact.GTyModule -> "Module"
+
+accountGuardKeys :: AccountGuard -> [PublicKey]
+accountGuardKeys = \case
+  AccountGuard_KeySet ks -> fromPactPublicKey <$> Pact._ksKeys ks
+  _ -> []
 
 instance FromJSON AccountGuard
 instance ToJSON AccountGuard

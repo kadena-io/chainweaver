@@ -172,7 +172,7 @@ uiAccounts model = divClass "group" $ do
       mkReq pm (chainId, acc) = ((chainId, acc),) <$> mkSimpleReadReq (accountGuardReq acc) pm (ChainRef Nothing chainId)
   networkRequest <- performEvent $ attachWith mkReq (current $ model ^. network_meta) add
   response <- performLocalReadCustom (model ^. network) (pure . snd) networkRequest
-  let toKeyset (((chainId, acc), _req), [Right (Pact.PGuard g)]) = Just (chainId, acc, fromPactGuard g)
+  let toKeyset (((chainId, acc), _req), [Right (_, Pact.PGuard g)]) = Just (chainId, acc, fromPactGuard g)
       toKeyset _ = Nothing
   elAttr "table" ("class" =: "table" <> "style" =: "table-layout: fixed; width: 100%;") $ do
     refresh <- el "thead" $ do
@@ -215,7 +215,7 @@ getBalance :: (MonadWidget t m, HasNetwork model t) => model -> ChainId -> Event
 getBalance model chain account = do
   networkRequest <- performEvent $ attachWith mkReq (current $ model ^. network_meta) account
   response <- performLocalReadCustom (model ^. network) pure networkRequest
-  let toBalance (_, [Right (Pact.PLiteral (Pact.LDecimal d))]) = Just d
+  let toBalance (_, [Right (_, Pact.PLiteral (Pact.LDecimal d))]) = Just d
       toBalance _ = Nothing
   pure $ toBalance <$> response
   where

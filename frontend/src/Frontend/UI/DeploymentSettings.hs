@@ -141,7 +141,7 @@ uiDeploymentSettings
     )
   => model
   -> DeploymentSettingsConfig t m model a
-  -> m (mConf, Event t ([KeyPair], AccountName, Maybe Endpoint, ChainId, Pact.Command Text), Maybe a)
+  -> m (mConf, Event t (GasPrice, [KeyPair], AccountName, Maybe Endpoint, ChainId, Pact.Command Text), Maybe a)
 uiDeploymentSettings m settings = mdo
     let code = _deploymentSettingsConfig_code settings
     let initTab = fromMaybe DeploymentSettingsView_Cfg mUserTabName
@@ -213,11 +213,12 @@ uiDeploymentSettings m settings = mdo
 
     let sign (Just chain, Just account, (endpoint, code', data', signing, keys, pm)) () = Just $ do
           let signingKeys = getSigningPairs signing keys
-          cmd <- buildCmd (_deploymentSettingsConfig_nonce settings) (pm chain account) signingKeys code' data'
-          pure (signingKeys, account, endpoint, chain, cmd)
+              pm' = pm chain account
+          cmd <- buildCmd (_deploymentSettingsConfig_nonce settings) pm' signingKeys code' data'
+          pure (_pmGasPrice pm', signingKeys, account, endpoint, chain, cmd)
         sign _ _ = Nothing
     command <- performEvent $ attachWithMaybe sign ((,,) <$> current chainId <*> current sender <*> x) done
-    pure (conf, command, ma)
+    pure (conf & networkCfg_setSender .~ fmapMaybe (fmap unAccountName) (updated sender), command, ma)
     where
       mUserTabCfg  = first DeploymentSettingsView_Custom <$> _deploymentSettingsConfig_userTab settings
       mUserTabName = fmap fst mUserTabCfg
@@ -407,8 +408,9 @@ uiMetaData m mTTL mGasLimit = do
         & inputElementConfig_elementConfig . elementConfig_eventSpec %~ preventScrollWheelAndUpDownArrow @m
 
     onGasLimitTxt <- fmap _inputElement_input $ mkLabeledInput mkGasLimitInput "Gas Limit (units)" def
+    let onGasLimit = fmapMaybe (readPact (GasLimit . ParsedInteger)) onGasLimitTxt
 
-    gasLimit <- holdDyn initGasLimit $ leftmost [fmapMaybe (readPact (GasLimit . ParsedInteger)) onGasLimitTxt, pbGasLimit]
+    gasLimit <- holdDyn initGasLimit $ leftmost [onGasLimit, pbGasLimit]
 
     let mkTransactionFee c = uiRealWithPrecisionInputElement maxCoinPricePrecision $ c
           & initialAttributes %~ Map.insert "disabled" ""
@@ -436,6 +438,7 @@ uiMetaData m mTTL mGasLimit = do
     pure
       ( mempty
         & networkCfg_setGasPrice .~ eParsedGasPrice onGasPriceTxt
+        & networkCfg_setGasLimit .~ onGasLimit
         & networkCfg_setTTL .~ onTTL
       , ttl
       , gasLimit
