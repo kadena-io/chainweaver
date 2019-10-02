@@ -8,6 +8,7 @@
 {-# LANGUAGE LambdaCase            #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE OverloadedStrings     #-}
+{-# LANGUAGE PatternGuards         #-}
 {-# LANGUAGE QuasiQuotes           #-}
 {-# LANGUAGE RecursiveDo           #-}
 {-# LANGUAGE ScopedTypeVariables   #-}
@@ -49,6 +50,7 @@ import           Frontend.JsonData              (HasJsonData (..), JsonData, Has
 import           Frontend.ModuleExplorer
 import           Frontend.Network
 import           Frontend.UI.DeploymentSettings
+import           Frontend.UI.Dialogs.DeployConfirmation (fullDeployFlow)
 import           Frontend.UI.Modal
 import           Frontend.UI.Widgets
 import           Frontend.Wallet                (HasWallet (..))
@@ -71,35 +73,32 @@ uiCallFunction
   -> PactFunction
   -> Event t ()
   -> m (mConf, Event t ())
-uiCallFunction m mModule func _onClose = do
+uiCallFunction m mModule func _onClose
+  | functionIsCallable func, Just moduleRef <- mModule = do
+    let content = mdo
+          (cfg, result, mPactCall) <- uiDeploymentSettings m $ DeploymentSettingsConfig
+            { _deploymentSettingsConfig_userTab = parametersTab m func
+            , _deploymentSettingsConfig_chainId =
+                predefinedChainIdSelect $ _chainRef_chain . _moduleRef_source $ moduleRef
+            , _deploymentSettingsConfig_defEndpoint = Just Endpoint_Local
+            , _deploymentSettingsConfig_code = fromMaybe (pure $ buildCall func []) mPactCall
+            , _deploymentSettingsConfig_sender = uiSenderDropdown def
+            , _deploymentSettingsConfig_data = Nothing
+            , _deploymentSettingsConfig_ttl = Nothing
+            , _deploymentSettingsConfig_nonce = Nothing
+            , _deploymentSettingsConfig_gasLimit = Nothing
+            }
+          pure (cfg, result)
+    fullDeployFlow (headerTitle <> " " <> _pactFunction_name func) m (functionType >> content) _onClose
+  | otherwise = do
     onClose <- modalHeader $ do
       text headerTitle
       elClass "span" "heading_type_h1" $
         text $ _pactFunction_name func
-    uiSegment "padded" $ do
-      elClass "div" "segment segment_type_secondary code-font code-font_type_function-desc" $ do
-        renderSignature func
-        el "br" blank
-        el "br" blank
-        renderDescription func
-    mCfgInfo <- traverse (uiBuildDeployment m func) $
-      if functionIsCallable func
-          then mModule
-          else Nothing
-
-    case mCfgInfo of
-      Nothing -> do
-        modalMain blank -- to push the footer to the bottom
-        onAccept <- modalFooter $ confirmButton def "Ok"
-        pure (mempty, leftmost [onClose, onAccept])
-      Just (settingsCfg, req) -> do
-        let
-          cfg = mconcat
-            [ settingsCfg
-            , mempty & networkCfg_deployCode .~ req
-            ]
-        pure (cfg, onClose <> void req)
-
+    functionType
+    modalMain blank -- to push the footer to the bottom
+    onAccept <- modalFooter $ confirmButton def "Ok"
+    pure (mempty, leftmost [onClose, onAccept])
   where
     headerTitle =
       case _pactFunction_defType func of
@@ -107,32 +106,12 @@ uiCallFunction m mModule func _onClose = do
         Defpact -> "Pact: "
         Defcap  -> "Capability: "
 
-
-uiBuildDeployment
-  :: forall t m mConf model.
-     ( DomBuilder t m, Monoid mConf, HasNetwork model t, HasNetworkCfg mConf t
-     , HasJsonData model t
-     , MonadWidget t m, HasWallet model t
-     , HasJsonDataCfg mConf t, Flattenable mConf t
-     )
-  => model
-  -> PactFunction
-  -> DeployedModuleRef
-  -> m (mConf, Event t [NetworkRequest])
-uiBuildDeployment m func moduleL = mdo
-  (cfg, result, mPactCall) <- uiDeploymentSettings m $ DeploymentSettingsConfig
-    { _deploymentSettingsConfig_userTab = parametersTab m func
-    , _deploymentSettingsConfig_chainId =
-        predefinedChainIdSelect $ _chainRef_chain . _moduleRef_source $ moduleL
-    , _deploymentSettingsConfig_defEndpoint = Just Endpoint_Local
-    , _deploymentSettingsConfig_code = fromMaybe (pure $ buildCall func []) mPactCall
-    , _deploymentSettingsConfig_sender = uiSenderDropdown def
-    , _deploymentSettingsConfig_data = Nothing
-    , _deploymentSettingsConfig_ttl = Nothing
-    , _deploymentSettingsConfig_nonce = Nothing
-    , _deploymentSettingsConfig_gasLimit = Nothing
-    }
-  pure $ (,) cfg $ ffor result $ \(_price, _keys, _acc, me, c, cmd) -> [NetworkRequest cmd (ChainRef Nothing c) (fromMaybe Endpoint_Local me)]
+    functionType = uiSegment "padded" $ do
+      elClass "div" "segment segment_type_secondary code-font code-font_type_function-desc" $ do
+        renderSignature func
+        el "br" blank
+        el "br" blank
+        renderDescription func
 
 
 -- | Tab showing edits for function parameters (if any):

@@ -24,6 +24,7 @@
 module Frontend.UI.DeploymentSettings
   ( -- * Settings
     DeploymentSettingsConfig (..)
+  , DeploymentSettingsResult (..)
     -- * Values for _deploymentSettingsConfig_chainId:
   , predefinedChainIdSelect
   , predefinedChainIdDisplayed
@@ -129,6 +130,16 @@ nextView = \case
   DeploymentSettingsView_Cfg -> Just DeploymentSettingsView_Keys
   DeploymentSettingsView_Keys -> Nothing
 
+data DeploymentSettingsResult = DeploymentSettingsResult
+  { _deploymentSettingsResult_gasPrice :: GasPrice
+  , _deploymentSettingsResult_signingKeys :: [KeyPair]
+  , _deploymentSettingsResult_sender :: AccountName
+  , _deploymentSettingsResult_endpoint :: Maybe Endpoint
+  , _deploymentSettingsResult_chainId :: ChainId
+  , _deploymentSettingsResult_code :: Text
+  , _deploymentSettingsResult_command :: Pact.Command Text
+  }
+
 -- | Show settings related to deployments to the user.
 --
 --
@@ -141,7 +152,7 @@ uiDeploymentSettings
     )
   => model
   -> DeploymentSettingsConfig t m model a
-  -> m (mConf, Event t (GasPrice, [KeyPair], AccountName, Maybe Endpoint, ChainId, Pact.Command Text), Maybe a)
+  -> m (mConf, Event t DeploymentSettingsResult, Maybe a)
 uiDeploymentSettings m settings = mdo
     let code = _deploymentSettingsConfig_code settings
     let initTab = fromMaybe DeploymentSettingsView_Cfg mUserTabName
@@ -215,7 +226,15 @@ uiDeploymentSettings m settings = mdo
           let signingKeys = getSigningPairs signing keys
               pm' = pm chain account
           cmd <- buildCmd (_deploymentSettingsConfig_nonce settings) pm' signingKeys code' data'
-          pure (_pmGasPrice pm', signingKeys, account, endpoint, chain, cmd)
+          pure $ DeploymentSettingsResult
+            { _deploymentSettingsResult_gasPrice = _pmGasPrice pm'
+            , _deploymentSettingsResult_signingKeys = signingKeys
+            , _deploymentSettingsResult_sender = account
+            , _deploymentSettingsResult_endpoint = endpoint
+            , _deploymentSettingsResult_chainId = chain
+            , _deploymentSettingsResult_command = cmd
+            , _deploymentSettingsResult_code = code'
+            }
         sign _ _ = Nothing
     command <- performEvent $ attachWithMaybe sign ((,,) <$> current chainId <*> current sender <*> x) done
     pure (conf & networkCfg_setSender .~ fmapMaybe (fmap unAccountName) (updated sender), command, ma)

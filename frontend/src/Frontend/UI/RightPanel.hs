@@ -29,14 +29,12 @@ module Frontend.UI.RightPanel where
 import           Control.Applicative         (liftA2)
 import           Control.Lens
 import           Control.Monad.State.Strict
-import           Data.Decimal                (Decimal)
 import           Data.Either                 (rights)
 import           Data.Foldable
 import qualified Data.Map                    as Map
 import           Data.Text                   (Text)
 import           GHCJS.DOM.Element
 import qualified Pact.Types.ChainId as Pact
-import qualified Pact.Types.Exp as Pact
 import qualified Pact.Types.PactValue as Pact
 import qualified Pact.Types.Term as Pact
 import           Reflex
@@ -207,34 +205,6 @@ uiAccounts model = divClass "group" $ do
     pure $ mempty
       & walletCfg_deleteAccount .~ deleteAccount
       & walletCfg_addAccount .~ fmapMaybe toKeyset response
-
--- | Get the balance of an account from the network. 'Nothing' indicates _some_
--- failure, either a missing account or connectivity failure. We have no need to
--- distinguish between the two at this point.
-getBalance :: (MonadWidget t m, HasNetwork model t) => model -> ChainId -> Event t AccountName -> m (Event t (Maybe Decimal))
-getBalance model chain account = do
-  networkRequest <- performEvent $ attachWith mkReq (current $ model ^. network_meta) account
-  response <- performLocalReadCustom (model ^. network) pure networkRequest
-  let toBalance (_, [Right (_, Pact.PLiteral (Pact.LDecimal d))]) = Just d
-      toBalance _ = Nothing
-  pure $ toBalance <$> response
-  where
-    accountBalanceReq acc = "(coin.account-balance " <> tshow (unAccountName acc) <> ")"
-    mkReq pm acc = mkSimpleReadReq (accountBalanceReq acc) pm (ChainRef Nothing chain)
-
--- | Display the balance of an account after retrieving it from the network
-showBalance
-  :: (MonadWidget t m, HasNetwork model t)
-  => model -> Event t () -> ChainId -> AccountName -> m ()
-showBalance model refresh chain acc = do
-  -- This delay ensures we have the networks stuff set up by the time we do the
-  -- requests, thus avoiding immediate failure.
-  pb <- delay 2 =<< getPostBuild
-  bal <- getBalance model chain $ acc <$ (pb <> refresh)
-  _ <- runWithReplace (text "Loading...") $ ffor bal $ \case
-    Nothing -> text "Unknown"
-    Just b -> text $ tshow b
-  pure ()
 
 msgsWidget :: forall t m a. MonadWidget t m => Ide a t -> m (IdeCfg a t)
 msgsWidget ideL = do

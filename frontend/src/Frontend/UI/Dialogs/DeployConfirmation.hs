@@ -21,41 +21,38 @@
 -- License     :  BSD-style (see the file LICENSE)
 module Frontend.UI.Dialogs.DeployConfirmation
   ( uiDeployConfirmation
+  , fullDeployFlow
   ) where
 
+import Common.Foundation
 import Control.Applicative (liftA2)
 import Control.Lens
-import Control.Monad (void, (<=<))
+import Control.Monad (void)
+import Data.Decimal (Decimal)
 import Data.Either (isLeft)
+import Data.Map (Map)
 import Data.Maybe (fromMaybe)
+import Data.Set (Set)
 import Data.Text (Text)
-import Data.Void (Void)
-import Reflex
-import Reflex.Dom
-import Frontend.Ide
-import Frontend.Network
-import Frontend.Wallet
 import Frontend.Crypto.Ed25519
 import Frontend.JsonData
+import Frontend.Network
 import Frontend.UI.DeploymentSettings
-import Reflex.Network.Extended (Flattenable)
 import Frontend.UI.Modal
-import qualified Pact.Types.Command as Pact
-import Common.Foundation
-import Frontend.UI.RightPanel
+import Frontend.UI.Wallet
+import Frontend.UI.Widgets
+import Frontend.Wallet
+import Pact.Parse
+import Pact.Types.Gas
+import Reflex
+import Reflex.Dom
+import Reflex.Dom.Contrib.CssClass (renderClass)
+import Reflex.Extended (tagOnPostBuild)
+import Reflex.Network.Extended (Flattenable)
+import Reflex.Network.Extended (flatten)
 import qualified Data.Map as Map
 import qualified Data.Map.Merge.Lazy as Map
 import qualified Data.Set as Set
-import Data.Set (Set)
-import Data.Map (Map)
-import Data.Decimal (Decimal)
-import Data.Traversable (for)
-import Reflex.Extended (tagOnPostBuild)
-import Frontend.UI.Widgets
-import Reflex.Network.Extended (flatten)
-import Pact.Types.Gas
-import Pact.Parse
-import Reflex.Dom.Contrib.CssClass (renderClass)
 
 -- | Confirmation dialog for deployments.
 --
@@ -71,7 +68,32 @@ uiDeployConfirmation
   => Text
   -> model
   -> Event t () -> m (modelCfg, Event t ())
-uiDeployConfirmation code model _onClose = do
+uiDeployConfirmation code model = fullDeployFlow "Deployment Settings" model $ do
+  (settingsCfg, result, _) <- uiDeploymentSettings model $ DeploymentSettingsConfig
+    { _deploymentSettingsConfig_chainId = userChainIdSelect
+    , _deploymentSettingsConfig_defEndpoint = Just Endpoint_Send
+    , _deploymentSettingsConfig_userTab = Nothing
+    , _deploymentSettingsConfig_code = pure code
+    , _deploymentSettingsConfig_sender = uiSenderDropdown def
+    , _deploymentSettingsConfig_data = Nothing
+    , _deploymentSettingsConfig_ttl = Nothing
+    , _deploymentSettingsConfig_nonce = Nothing
+    , _deploymentSettingsConfig_gasLimit = Nothing
+    }
+  pure (settingsCfg, result)
+
+-- | Workflow taking the user through Config -> Preview -> Status (eventually)
+fullDeployFlow
+  :: forall t m model modelCfg.
+     ( MonadWidget t m, Monoid modelCfg, Flattenable modelCfg t
+     , HasNetwork model t, HasNetworkCfg modelCfg t
+     , HasWallet model t
+     )
+  => Text -- ^ Title of modal
+  -> model
+  -> m (modelCfg, Event t DeploymentSettingsResult)
+  -> Event t () -> m (modelCfg, Event t ())
+fullDeployFlow cfgTitle model runner _onClose = do
   rec
     onClose <- modalHeader $ dynText title
     result <- workflow deployConfig
@@ -81,38 +103,36 @@ uiDeployConfirmation code model _onClose = do
   pure (conf, onClose <> done)
   where
     deployConfig = Workflow $ do
-      (settingsCfg, result, _) <- uiDeploymentSettings model $ DeploymentSettingsConfig
-        { _deploymentSettingsConfig_chainId = userChainIdSelect
-        , _deploymentSettingsConfig_defEndpoint = Just Endpoint_Send
-        , _deploymentSettingsConfig_userTab = Nothing
-        , _deploymentSettingsConfig_code = pure code
-        , _deploymentSettingsConfig_sender = uiSenderDropdown def
-        , _deploymentSettingsConfig_data = Nothing
-        , _deploymentSettingsConfig_ttl = Nothing
-        , _deploymentSettingsConfig_nonce = Nothing
-        , _deploymentSettingsConfig_gasLimit = Nothing
-        }
-      pure (("Deployment Settings", (never, settingsCfg)), attachWith deployPreview (current $ model ^. wallet_keyAccounts) result)
-    deployPreview keyAccounts (gasPrice, pairs, sender, mEndpoint, chain, cmd) = Workflow $ elClass "div" "modal__main transaction_details" $ do
+      (settingsCfg, result) <- runner
+      pure ((cfgTitle, (never, settingsCfg)), attachWith deployPreview (current $ model ^. wallet_keyAccounts) result)
+    deployPreview keyAccounts result = Workflow $ elClass "div" "modal__main transaction_details" $ do
 
-      transactionInputSection $ pure code
+      let chain = _deploymentSettingsResult_chainId result
+          sender = _deploymentSettingsResult_sender result
+
+      transactionInputSection $ pure $ _deploymentSettingsResult_code result
       divClass "title" $ text "Destination"
       _ <- divClass "group segment" $ do
         transactionDisplayNetwork model
         predefinedChainIdDisplayed chain model
 
-      let accountsToTrack = Set.insert sender $ getAccounts keyAccounts pairs
+      let accountsToTrack = Set.insert sender $ getAccounts keyAccounts $ _deploymentSettingsResult_signingKeys result
       rec
         accountBalances <- trackBalancesFromPostBuild model chain accountsToTrack (void response)
         initialRequestsDone <- holdUniqDyn $ and <$> traverse (fmap isJust . view _2) accountBalances
         gotInitialBalances <- tagOnPostBuild initialRequestsDone
-        let localReq = [NetworkRequest cmd (ChainRef Nothing chain) Endpoint_Local]
+        let localReq = pure $ NetworkRequest
+              { _networkRequest_cmd = _deploymentSettingsResult_command result
+              , _networkRequest_chainRef = ChainRef Nothing chain
+              , _networkRequest_endpoint = Endpoint_Local
+              }
         response <- performLocalRead (model ^. network) $ localReq <$ gotInitialBalances
 
       divClass "title" $ text "Anticipated Transaction Impact"
       divClass "group segment" $ do
         void $ flip mkLabeledClsInput "Total Gas Cost" $ \c -> do
           let showGasPrice (GasPrice (ParsedDecimal i)) = tshow i
+              gasPrice = _deploymentSettingsResult_gasPrice result
           void $ uiInputElement $ def
             & initialAttributes .~ "disabled" =: "" <> "class" =: renderClass c
             & inputElementConfig_initialValue .~ "Loading..."
@@ -153,7 +173,11 @@ uiDeployConfirmation code model _onClose = do
         next <- uiButtonDyn (def & uiButtonCfg_class .~ "button_type_confirm" & uiButtonCfg_disabled .~ isDisabled) $ text "Create Transaction"
         pure (back, next)
 
-      let req = [NetworkRequest cmd (ChainRef Nothing chain) (fromMaybe Endpoint_Local mEndpoint)] <$ gate (current succeeded) next
+      let req = ffor (gate (current succeeded) next) $ \_ -> pure $ NetworkRequest
+            { _networkRequest_cmd = _deploymentSettingsResult_command result
+            , _networkRequest_chainRef = ChainRef Nothing chain
+            , _networkRequest_endpoint = fromMaybe Endpoint_Local $ _deploymentSettingsResult_endpoint result
+            }
           cfg = mempty & networkCfg_deployCode .~ req
 
       pure
