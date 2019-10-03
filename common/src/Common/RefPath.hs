@@ -83,15 +83,7 @@ instance IsRefPath Text where
 
 instance IsRefPath Pact.ChainId where
   renderRef = mkRefPath . Pact._chainId
-
-  parseRef = maybe (fail "parseRef ChainId: no parse") (pure . Pact.ChainId) . readMaybe . T.unpack =<< MP.satisfy isWord
-    where
-      isWord :: Text -> Bool
-      isWord = isJust . readWordMay . T.unpack
-
-      readWordMay :: String -> Maybe Word
-      readWordMay = readMaybe
-
+  parseRef = Pact.ChainId <$> anySingle
 
 -- | Try to parse a ref.
 --
