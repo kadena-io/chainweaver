@@ -1,0 +1,26 @@
+name: linux
+version: 0.1
+cabal-version: >= 1.8
+build-type: Simple
+
+executable linuxApp
+  main-is: main.hs
+  hs-source-dirs: src-bin
+  if !os(linux) || impl(ghcjs)
+    buildable: False
+  build-depends:
+      base
+    , desktop
+
+    , bytestring
+    , data-default
+    , jsaddle
+    , jsaddle-webkit2gtk
+  ghc-options:
+    -threaded -O -Wall
+
+  frameworks: WebKit
+
+  -- c-sources: cbits/linux.m
+  -- cpp-options: -DUSE_COCOA
+  -- cc-options: -Werror=objc-method-access
