@@ -9,6 +9,7 @@ let
   obApp = import ./obApp.nix args;
   pactServerModule = import ./pact-server/service.nix;
   macAppName = "Kadena Chainweaver Testnet";
+  linuxAppName = "kadena-chainweaver-testnet";
   macAppIcon =  ./mac/static/icons/pact.png;
   macPactDocumentIcon = ./mac/static/icons/pact-document.png;
   # ^ This can be created in Preview using the system document icon from
@@ -105,6 +106,39 @@ in obApp // rec {
     mkdir $out
     ${pkgs.sass}/bin/sass ${./backend/sass}/index.scss $out/sass.css
   '';
+  # Linux app static linking
+  linuxBackend = pkgs.haskell.lib.overrideCabal obApp.ghc.linux (drv: {
+    libraryFrameworkDepends =
+      [ pkgs.webkit
+        pkgs.glib-networking
+      ];
+
+    configureFlags = [
+      "--ghc-options=-optl=${(pkgs.openssl.override { static = true; }).out}/lib/libcrypto.a"
+      "--ghc-options=-optl=${(pkgs.openssl.override { static = true; }).out}/lib/libssl.a"
+      "--ghc-options=-optl=${pkgs.zlib.static}/lib/libz.a"
+      "--ghc-options=-optl=${pkgs.gmp6.override { withStatic = true; }}/lib/libgmp.a"
+      # "--ghc-options=-optl=/usr/lib/libSystem.B.dylib"
+      "--ghc-options=-optl=${pkgs.libffi.override {
+        stdenv = pkgs.stdenvAdapters.makeStaticLibraries pkgs.stdenv;
+        }}/lib/libffi.a"
+    ];
+  });
+  linux = pkgs.runCommand "linux" {} ''
+    mkdir -p "$out/resources"
+    mkdir -p "$out/bin"
+    set -eux
+    # Copy instead of symlink, so we can set the path to z3
+    cp "${linuxBackend}"/bin/linuxApp "$out/bin/${linuxAppName}"
+    ln -s "${pkgs.z3}"/bin/z3 "$out/bin/z3"
+    ln -s "${obApp.mkAssets obApp.passthru.staticFiles}" "$out/resources/static.assets"
+    ln -s "${obApp.passthru.staticFiles}" "$out/resources/static"
+    ${pkgs.libicns}/bin/png2icns "$out/resources/pact.icns" "${macAppIcon}"
+    ${pkgs.libicns}/bin/png2icns "$out/resources/pact-document.icns" "${macPactDocumentIcon}"
+    ln -s "${sass}/sass.css" "$out/resources/sass.css"
+    ln -s "${./linux/static/index.html}" "$out/bin/index.html"
+  '';
+
   # Mac app static linking
   macBackend = pkgs.haskell.lib.overrideCabal obApp.ghc.mac (drv: {
     preBuild = ''
