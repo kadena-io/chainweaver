@@ -161,7 +161,7 @@ uiDeploymentSettings m settings = mdo
 
       mRes <- traverse (uncurry $ tabPane mempty curSelection) mUserTabCfg
 
-      (cfg, cChainId, cEndpoint, ttl, gasLimit, jsonCfg) <- tabPane mempty curSelection DeploymentSettingsView_Cfg $
+      (cfg, cChainId, cEndpoint, ttl, gasLimit) <- tabPane mempty curSelection DeploymentSettingsView_Cfg $
         uiCfg code m
           (_deploymentSettingsConfig_chainId settings $ m)
           (_deploymentSettingsConfig_defEndpoint settings)
@@ -172,7 +172,7 @@ uiDeploymentSettings m settings = mdo
         uiSigningKeysSender m $ (_deploymentSettingsConfig_sender settings) m cChainId
 
       pure
-        ( cfg <> jsonCfg
+        ( cfg
         , cChainId
         , mSender
         , do
@@ -261,9 +261,8 @@ uiCfg
      , HasNetwork model t
      , HasNetworkCfg mConf t
      , Monoid mConf
-     , Flattenable jConf t
-     , HasJsonDataCfg jConf t
-     , Monoid jConf
+     , Flattenable mConf t
+     , HasJsonDataCfg mConf t
      , HasWallet model t
      , HasJsonData model t
      )
@@ -278,7 +277,6 @@ uiCfg
        , Maybe (Dynamic t Endpoint)
        , Dynamic t TTLSeconds
        , Dynamic t GasLimit
-       , jConf
        )
 uiCfg code m wChainId ep mTTL mGasLimit = do
   -- General deployment configuration
@@ -301,7 +299,7 @@ uiCfg code m wChainId ep mTTL mGasLimit = do
           uiMetaData m mTTL mGasLimit
         pure (cfg, cId, endpoint, ttl, gasLimit)
 
-  ((cfg, cId, endpoint, ttl, gasLimit), jsonCfg) <- mdo
+  out <- mdo
     let mkAccordionControlDyn initActive = foldDyn (const not) initActive
           $ leftmost [eGeneralClicked , eAdvancedClicked]
 
@@ -315,9 +313,9 @@ uiCfg code m wChainId ep mTTL mGasLimit = do
       -- with the given elements and their dynamic
       divClass "title" $ text "Data"
       uiJsonDataSetFocus (\_ _ -> pure ()) (\_ _ -> pure ()) (m ^. wallet) (m ^. jsonData)
-    pure (snd pairA, snd pairB)
+    pure $ snd pairA & _1 <>~ snd pairB
 
-  pure (cfg, cId, endpoint, ttl, gasLimit, jsonCfg)
+  pure out
 
 -- | UI for asking the user about endpoint (`Endpoint` & `ChainId`) for deployment.
 --
