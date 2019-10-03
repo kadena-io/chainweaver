@@ -187,8 +187,7 @@ uiKeyItem (n, k) = do
 
       onDel <- elClass "td" "wallet__delete" $
         deleteButton $
-          def & uiButtonCfg_disabled .~ isPredefinedKey n
-              & uiButtonCfg_title .~ Just "Delete key permanently"
+          def & uiButtonCfg_title .~ Just "Delete key permanently"
               & uiButtonCfg_class %~ (<> "wallet__add-delete-button")
 
       pure (const n <$> onDel)
