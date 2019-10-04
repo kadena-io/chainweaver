@@ -93,6 +93,7 @@ import           Pact.Types.API
 import           Pact.Types.Command
 import           Pact.Types.Runtime                (PactError (..), GasLimit (..), GasPrice (..), Gas (..))
 import           Pact.Types.ChainMeta              (PublicMeta (..), TTLSeconds (..), TxCreationTime (..))
+import qualified Pact.Types.ChainMeta              as Pact
 
 import           Pact.Types.Exp                    (Literal (LString))
 import           Pact.Types.Hash                   (hash, Hash (..), TypedHash (..), toUntypedHash)
@@ -410,10 +411,10 @@ buildMeta cfg = do
     getItemStorage localStorage StoreNetwork_PublicMeta
 
   r <- foldDyn id m $ leftmost
-    [ (\u c -> c { _pmSender = u})   <$> cfg ^. networkCfg_setSender
-    , (\u c -> c { _pmGasLimit = u}) <$> cfg ^. networkCfg_setGasLimit
-    , (\u c -> c { _pmGasPrice = u}) <$> cfg ^. networkCfg_setGasPrice
-    , (\u c -> c { _pmTTL = u}) <$> cfg ^. networkCfg_setTTL
+    [ set Pact.pmSender <$> cfg ^. networkCfg_setSender
+    , set Pact.pmGasLimit <$> cfg ^. networkCfg_setGasLimit
+    , set Pact.pmGasPrice <$> cfg ^. networkCfg_setGasPrice
+    , set Pact.pmTTL <$> cfg ^. networkCfg_setTTL
     ]
 
   onStore <- throttle 2 $ updated r
