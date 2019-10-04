@@ -249,9 +249,7 @@ fetchModule
   -> m (Event t (DeployedModuleRef, Either Text (ModuleDef (Term Name))))
 fetchModule networkL onReq = do
     onReq' :: Event t (DeployedModuleRef, NetworkRequest)
-      <- performEvent $ attachWith mkReq
-         ((,) <$> current (networkL ^. network_selectedNetwork) <*> current (networkL ^. network_meta))
-         onReq
+      <- performEvent $ attachWith mkReq (current $ getNetworkNameAndMeta networkL) onReq
     deployedResults :: Event t ((DeployedModuleRef, NetworkRequest), [NetworkErrorResult])
       <- performLocalReadCustom (networkL ^. network) (pure . snd) onReq'
     let
