@@ -28,7 +28,8 @@ module Frontend.UI.Wallet
   , uiAvailableKeys
     -- * Keys related helper widgets
 --  , uiSelectKey
-
+  , getBalance
+  , showBalance
     -- ** Filters for keys
   , hasPrivateKey
   ) where
@@ -36,9 +37,12 @@ module Frontend.UI.Wallet
 ------------------------------------------------------------------------------
 import           Control.Lens
 import           Control.Monad               (when, void)
+import           Data.Decimal                (Decimal)
 import qualified Data.Map                    as Map
 import           Data.Maybe
 import           Data.Text                   (Text)
+import qualified Pact.Types.PactValue as Pact
+import qualified Pact.Types.Exp as Pact
 import           Reflex
 import           Reflex.Dom
 ------------------------------------------------------------------------------
@@ -49,6 +53,7 @@ import           Frontend.Foundation
 import           Frontend.UI.Dialogs.KeyImport (uiKeyImport, HasUiKeyImportModelCfg)
 import           Frontend.UI.Dialogs.DeleteConfirmation (uiDeleteConfirmation)
 import           Frontend.UI.Modal
+import           Frontend.Network
 ------------------------------------------------------------------------------
 
 
@@ -219,3 +224,31 @@ keyCopyWidget t cls keyText = mdo
     elDynClass' "span" "key-content" $
       dynText (mkText <$> isShown <*> keyText)
   pure isShown
+
+-- | Get the balance of an account from the network. 'Nothing' indicates _some_
+-- failure, either a missing account or connectivity failure. We have no need to
+-- distinguish between the two at this point.
+getBalance :: (MonadWidget t m, HasNetwork model t) => model -> ChainId -> Event t AccountName -> m (Event t (Maybe Decimal))
+getBalance model chain account = do
+  networkRequest <- performEvent $ attachWith mkReq (current $ model ^. network_meta) account
+  response <- performLocalReadCustom (model ^. network) pure networkRequest
+  let toBalance (_, [Right (_, Pact.PLiteral (Pact.LDecimal d))]) = Just d
+      toBalance _ = Nothing
+  pure $ toBalance <$> response
+  where
+    accountBalanceReq acc = "(coin.account-balance " <> tshow (unAccountName acc) <> ")"
+    mkReq pm acc = mkSimpleReadReq (accountBalanceReq acc) pm (ChainRef Nothing chain)
+
+-- | Display the balance of an account after retrieving it from the network
+showBalance
+  :: (MonadWidget t m, HasNetwork model t)
+  => model -> Event t () -> ChainId -> AccountName -> m ()
+showBalance model refresh chain acc = do
+  -- This delay ensures we have the networks stuff set up by the time we do the
+  -- requests, thus avoiding immediate failure.
+  pb <- delay 2 =<< getPostBuild
+  bal <- getBalance model chain $ acc <$ (pb <> refresh)
+  _ <- runWithReplace (text "Loading...") $ ffor bal $ \case
+    Nothing -> text "Unknown"
+    Just b -> text $ tshow b
+  pure ()

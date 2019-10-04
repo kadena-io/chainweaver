@@ -67,9 +67,9 @@ uiSigning appCfg ideL signingRequest onCloseExternal = do
     , _deploymentSettingsConfig_ttl = _signingRequest_ttl signingRequest
     , _deploymentSettingsConfig_gasLimit = _signingRequest_gasLimit signingRequest
     }
-  let signed = ffor result $ \(_me, chain, cmd) -> SigningResponse
-        { _signingResponse_chainId = chain
-        , _signingResponse_body = cmd
+  let signed = ffor result $ \r -> SigningResponse
+        { _signingResponse_chainId = _deploymentSettingsResult_chainId r
+        , _signingResponse_body = _deploymentSettingsResult_command r
         }
       done = leftmost [Right <$> signed, Left "Cancelled" <$ (onClose <> onCloseExternal)]
   performEvent_ $ liftJSM . _appCfg_signingResponse appCfg <$> done

@@ -256,7 +256,7 @@ fetchModule networkL onReq = do
       deployedResultsZipped = first fst <$> deployedResults
 
     pure $ fmapMaybe listToMaybe . ffor deployedResultsZipped $ \(dmr, errs) ->
-      map ((dmr,) . (getModule <=< left prettyPrintNetworkError)) errs
+      map ((dmr,) . (getModule . snd <=< left prettyPrintNetworkError)) errs
 
   where
     mkReq pm mRef = (mRef,) <$> mkSimpleReadReq code pm (_moduleRef_source mRef)

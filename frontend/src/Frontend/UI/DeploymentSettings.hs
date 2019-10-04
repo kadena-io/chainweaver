@@ -24,6 +24,7 @@
 module Frontend.UI.DeploymentSettings
   ( -- * Settings
     DeploymentSettingsConfig (..)
+  , DeploymentSettingsResult (..)
     -- * Values for _deploymentSettingsConfig_chainId:
   , predefinedChainIdSelect
   , predefinedChainIdDisplayed
@@ -34,6 +35,8 @@ module Frontend.UI.DeploymentSettings
   , uiSigningKeys
   , uiSenderFixed
   , uiSenderDropdown
+  , transactionInputSection
+  , transactionDisplayNetwork
     -- * Useful re-exports
   , Identity (runIdentity)
   ) where
@@ -127,6 +130,16 @@ nextView = \case
   DeploymentSettingsView_Cfg -> Just DeploymentSettingsView_Keys
   DeploymentSettingsView_Keys -> Nothing
 
+data DeploymentSettingsResult = DeploymentSettingsResult
+  { _deploymentSettingsResult_gasPrice :: GasPrice
+  , _deploymentSettingsResult_signingKeys :: [KeyPair]
+  , _deploymentSettingsResult_sender :: AccountName
+  , _deploymentSettingsResult_endpoint :: Maybe Endpoint
+  , _deploymentSettingsResult_chainId :: ChainId
+  , _deploymentSettingsResult_code :: Text
+  , _deploymentSettingsResult_command :: Pact.Command Text
+  }
+
 -- | Show settings related to deployments to the user.
 --
 --
@@ -139,7 +152,7 @@ uiDeploymentSettings
     )
   => model
   -> DeploymentSettingsConfig t m model a
-  -> m (mConf, Event t (Maybe Endpoint, ChainId, Pact.Command Text), Maybe a)
+  -> m (mConf, Event t DeploymentSettingsResult, Maybe a)
 uiDeploymentSettings m settings = mdo
     let code = _deploymentSettingsConfig_code settings
     let initTab = fromMaybe DeploymentSettingsView_Cfg mUserTabName
@@ -209,12 +222,22 @@ uiDeploymentSettings m settings = mdo
         , prevView mUserTabName <$ back
         ]
 
-    let sign (Just chain, Just account, (endpoint, code', data', signingKeys, allKeys, pm)) () = Just $ do
-          cmd <- buildCmd (_deploymentSettingsConfig_nonce settings) (pm chain account) allKeys signingKeys code' data'
-          pure (endpoint, chain, cmd)
+    let sign (Just chain, Just account, (endpoint, code', data', signing, keys, pm)) () = Just $ do
+          let signingKeys = getSigningPairs signing keys
+              pm' = pm chain account
+          cmd <- buildCmd (_deploymentSettingsConfig_nonce settings) pm' signingKeys code' data'
+          pure $ DeploymentSettingsResult
+            { _deploymentSettingsResult_gasPrice = _pmGasPrice pm'
+            , _deploymentSettingsResult_signingKeys = signingKeys
+            , _deploymentSettingsResult_sender = account
+            , _deploymentSettingsResult_endpoint = endpoint
+            , _deploymentSettingsResult_chainId = chain
+            , _deploymentSettingsResult_command = cmd
+            , _deploymentSettingsResult_code = code'
+            }
         sign _ _ = Nothing
     command <- performEvent $ attachWithMaybe sign ((,,) <$> current chainId <*> current sender <*> x) done
-    pure (conf, command, ma)
+    pure (conf & networkCfg_setSender .~ fmapMaybe (fmap unAccountName) (updated sender), command, ma)
     where
       mUserTabCfg  = first DeploymentSettingsView_Custom <$> _deploymentSettingsConfig_userTab settings
       mUserTabName = fmap fst mUserTabCfg
@@ -299,12 +322,12 @@ uiCfg code m wChainId ep mTTL mGasLimit = do
           uiMetaData m mTTL mGasLimit
         pure (cfg, cId, endpoint, ttl, gasLimit)
 
-  out <- mdo
+  rec
     let mkAccordionControlDyn initActive = foldDyn (const not) initActive
           $ leftmost [eGeneralClicked , eAdvancedClicked]
 
-    dGeneralActive <- mkAccordionControlDyn True 
-    dAdvancedActive <- mkAccordionControlDyn False 
+    dGeneralActive <- mkAccordionControlDyn True
+    dAdvancedActive <- mkAccordionControlDyn False
 
     (eGeneralClicked, pairA) <- controlledAccordionItem dGeneralActive mempty (text "General") mkGeneralSettings
     divClass "title" blank
@@ -313,9 +336,26 @@ uiCfg code m wChainId ep mTTL mGasLimit = do
       -- with the given elements and their dynamic
       divClass "title" $ text "Data"
       uiJsonDataSetFocus (\_ _ -> pure ()) (\_ _ -> pure ()) (m ^. wallet) (m ^. jsonData)
-    pure $ snd pairA & _1 <>~ snd pairB
+  pure $ snd pairA & _1 <>~ snd pairB
 
-  pure out
+transactionInputSection :: MonadWidget t m => Dynamic t Text -> m ()
+transactionInputSection code = do
+  divClass "title" $ text "Input"
+  divClass "group" $ do
+    _ <- mkLabeledInputView (\c -> uiInputElement $ c & initialAttributes %~ Map.insert "disabled" "") "Transaction Hash" $
+      hashToText . toUntypedHash . id @PactHash . hash . T.encodeUtf8 <$> code
+    pb <- getPostBuild
+    _ <- flip mkLabeledClsInput "Raw Command" $ \cls -> uiTextAreaElement $ def
+      & textAreaElementConfig_setValue .~ leftmost [updated code, tag (current code) pb]
+      & initialAttributes .~ "disabled" =: "" <> "style" =: "width: 100%" <> "class" =: renderClass cls
+    pure ()
+
+transactionDisplayNetwork :: (MonadWidget t m, HasNetwork model t) => model -> m ()
+transactionDisplayNetwork m = void $ flip mkLabeledClsInput "Network" $ \_ -> do
+  divClass "title" $ do
+    netStat <- queryNetworkStatus (m ^. network_networks) (m ^. network_selectedNetwork)
+    uiNetworkStatus "" netStat
+    dynText $ textNetworkName <$> m ^. network_selectedNetwork
 
 -- | UI for asking the user about endpoint (`Endpoint` & `ChainId`) for deployment.
 --
@@ -328,11 +368,7 @@ uiEndpoint
   -> Maybe Endpoint
   -> m (Maybe (Dynamic t Endpoint))
 uiEndpoint m ep = do
-    _ <- flip mkLabeledClsInput "Network" $ \_ -> do
-      divClass "title" $ do
-        netStat <- queryNetworkStatus (m ^. network_networks) (m ^. network_selectedNetwork)
-        uiNetworkStatus "" netStat
-        dynText $ textNetworkName <$> m ^. network_selectedNetwork
+    transactionDisplayNetwork m
     for ep $ \e -> do
       de <- mkLabeledClsInput (uiEndpointSelection e) "Access"
       divClass "detail" $ dynText $ ffor de $ \case
@@ -391,8 +427,9 @@ uiMetaData m mTTL mGasLimit = do
         & inputElementConfig_elementConfig . elementConfig_eventSpec %~ preventScrollWheelAndUpDownArrow @m
 
     onGasLimitTxt <- fmap _inputElement_input $ mkLabeledInput mkGasLimitInput "Gas Limit (units)" def
+    let onGasLimit = fmapMaybe (readPact (GasLimit . ParsedInteger)) onGasLimitTxt
 
-    gasLimit <- holdDyn initGasLimit $ leftmost [fmapMaybe (readPact (GasLimit . ParsedInteger)) onGasLimitTxt, pbGasLimit]
+    gasLimit <- holdDyn initGasLimit $ leftmost [onGasLimit, pbGasLimit]
 
     let mkTransactionFee c = uiRealWithPrecisionInputElement maxCoinPricePrecision $ c
           & initialAttributes %~ Map.insert "disabled" ""
@@ -420,6 +457,7 @@ uiMetaData m mTTL mGasLimit = do
     pure
       ( mempty
         & networkCfg_setGasPrice .~ eParsedGasPrice onGasPriceTxt
+        & networkCfg_setGasLimit .~ onGasLimit
         & networkCfg_setTTL .~ onTTL
       , ttl
       , gasLimit
