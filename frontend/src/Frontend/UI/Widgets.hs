@@ -56,6 +56,7 @@ module Frontend.UI.Widgets
 import           Control.Applicative
 import           Control.Lens
 import           Control.Monad
+import           Data.Either (isLeft)
 import           Data.Map.Strict             (Map)
 import qualified Data.Map.Strict as Map
 import           Data.String                 (IsString)
@@ -341,11 +342,11 @@ noAutofillAttrs = Map.fromList
 validatedInputWithButton
   :: MonadWidget t m
   => CssClass
-  -> (Dynamic t (Text -> Maybe Text))
+  -> (Dynamic t (Text -> Either Text a))
   -- ^ Validation function returning `Just error message` on error.
   -> Text -- ^ Placeholder
   -> Text -- ^ Button text
-  -> m (Event t Text)
+  -> m (Event t a)
 validatedInputWithButton uCls check placeholder buttonText = do
     let cls = uCls <> "new-by-name"
     elKlass "div" cls $ do
@@ -362,7 +363,7 @@ validatedInputWithButton uCls check placeholder buttonText = do
           checkedL = check <*> nameVal
 
         let
-          checkFailed = isJust <$> checkedL
+          checkFailed = isLeft <$> checkedL
           btnCfg = def & uiButtonCfg_disabled .~ dInputIsInvalid 
                        & uiButtonCfg_class .~ "button_type_primary" <> "new-by-name__button"
         clicked <- uiButtonDyn btnCfg $ text buttonText
@@ -371,7 +372,7 @@ validatedInputWithButton uCls check placeholder buttonText = do
           filterValid = fmap (const ()) . ffilter not . tag (current checkFailed)
           onConfirmed = filterValid $ leftmost [ onEnter, clicked ]
         void $ performEvent (liftJSM (pToJSVal (_inputElement_raw name) ^.  js0 ("focus" :: String)) <$ onConfirmed)
-        pure $ (tag (current nameVal) onConfirmed, checkedL, nameVal)
+        pure $ (attachWithMaybe (\e _ -> either (const Nothing) Just e) (current checkedL) onConfirmed, checkedL, nameVal)
 
       elClass "div" "new-by-name_error" $ do
         confirmed <- holdUniqDyn <=< holdDyn False $
@@ -380,7 +381,7 @@ validatedInputWithButton uCls check placeholder buttonText = do
           -- Avoid error msg flickr on confirmation (e.g. duplicates):
           checkedMsg = do
             c <- confirmed
-            if c then pure "" else fromMaybe "" <$> checked
+            if c then pure "" else either id (const "") <$> checked
         elClass "span" "error_inline" $ dynText checkedMsg
 
       pure update

@@ -26,7 +26,6 @@ module Frontend.UI.Dialogs.KeyImport
 
 ------------------------------------------------------------------------------
 import           Control.Lens
-import           Control.Applicative ((<|>))
 import           Control.Monad.Except (runExcept, runExceptT, ExceptT(..))
 import           Data.Either (isLeft)
 import           Control.Arrow (left)
@@ -103,11 +102,11 @@ uiKeyImport m _onClose = do
       let
         nameParser = do
           mkNotValidMsg <- checkKeyNameValidityStr m
-          pure $ \v -> maybe (Right v) Left $ mkNotValidMsg v <|> mkEmptyNameMessage v
+          pure $ \v -> mkNotValidMsg v >> mkEmptyNameMessage v
       inputWithError uiInputElement nameParser cfg
 
     mkEmptyNameMessage v =
-      if (T.null . T.strip) v then Just "Key name must not be empty" else Nothing
+      if (T.null . T.strip) v then Left "Key name must not be empty" else Right v
 
     mkPubKeyInput =
       inputWithError uiTextAreaElement (pure $ runExcept . parsePublicKey)

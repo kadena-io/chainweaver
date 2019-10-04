@@ -246,13 +246,13 @@ parseWalletKeyPair errPubKey privKey = do
 checkKeyNameValidityStr
   :: (Reflex t, HasWallet w t)
   => w
-  -> Dynamic t (KeyName -> Maybe Text)
+  -> Dynamic t (KeyName -> Either Text KeyName)
 checkKeyNameValidityStr w = getErr <$> w ^. wallet_keys
   where
     getErr keys k =
       if Map.member k keys
-         then Just $ T.pack "This key name is already in use"
-         else Nothing
+         then Left $ T.pack "This key name is already in use"
+         else Right k
 
 -- | Write key pairs to localstorage.
 storeKeys :: (HasStorage m, MonadJSM m) => KeyPairs -> m ()

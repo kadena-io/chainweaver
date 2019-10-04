@@ -89,7 +89,7 @@ uiNetworkEdit m _onClose = do
           text "Edit Networks"
         onNewNet <- validatedInputWithButton "group__header" checkNetName "Create new network." "Create"
         editCfg <- uiNetworks m
-        let newCfg = updateNetworks m $ (\n -> Map.insert (NetworkName n) []) <$> onNewNet
+        let newCfg = updateNetworks m $ (\n -> Map.insert n []) <$> onNewNet
         pure $ mconcat [ newCfg, editCfg ]
 
       pure $ selCfg <> editCfg
@@ -109,9 +109,9 @@ uiNetworkEdit m _onClose = do
   where
     checkNetName = getErr <$> m ^. network_networks
     getErr nets k =
-      if Map.member (NetworkName k) nets
-         then Just "This network already exists."
-         else Nothing
+      if Map.member (uncheckedNetworkName k) nets
+         then Left "This network already exists."
+         else mkNetworkName k
 
 
 uiNetworkSelect
@@ -145,7 +145,7 @@ uiNetworkSelect m = do
 
   (s, ()) <- uiSelectElement cfg $
     void $ networkView $ traverse_ (itemDom . textNetworkName) <$> networkNames
-  pure $ mempty & networkCfg_selectNetwork .~ fmap NetworkName (_selectElement_change s)
+  pure $ mempty & networkCfg_selectNetwork .~ fmap uncheckedNetworkName (_selectElement_change s)
 
 
 uiNetworks
