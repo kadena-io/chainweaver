@@ -163,8 +163,9 @@ main' ffi mainBundleResourcePath runHTML = redirectPipes [stdout, stderr] $ do
             putMVar signingRequestMVar obj -- handoff to app
             bracket
               (do
+                  res <- _macFFI_global_requestUserAttention ffi
                   _macFFI_moveToForeground ffi
-                  _macFFI_global_requestUserAttention ffi
+                  pure res
               )
               (\r -> do
                   _macFFI_moveToBackground ffi
