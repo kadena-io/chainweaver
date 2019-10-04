@@ -27,6 +27,7 @@
 module Frontend.UI.JsonData
   ( -- * Key management widget
     uiJsonData
+  , uiJsonDataSetFocus
   , uiCreateKeysets
   , uiJsonDataResult
   ) where
@@ -70,13 +71,34 @@ showJsonTabName JsonDataView_Keysets = "Keysets"
 showJsonTabName JsonDataView_Raw     = "Raw"
 showJsonTabName JsonDataView_Result  = "Result"
 
+-- | Default UI for entering new keysets, returns focus to the right panel on the main
+-- input screen when new keysets are added either through the keyset field or the raw JSON
+-- input.
+--
 uiJsonData
   :: ( MonadWidget t m, HasJsonDataCfg mConf t, Monoid mConf, Flattenable mConf t
      )
   => Wallet t
   -> JsonData t
   -> m mConf
-uiJsonData w d = divClass "tabset" $ mdo
+uiJsonData = uiJsonDataSetFocus
+  (\e -> setFocusOnSelected e "input" JsonDataView_Keysets . updated)
+  (\e -> setFocusOnSelected e ".ace_text-input" JsonDataView_Raw . updated)
+
+-- | UI for creating and handling keyset information.
+--
+-- Takes two functions that are called when a new keyset is created or new json data is
+-- entered, respectively.
+--
+uiJsonDataSetFocus
+  :: ( MonadWidget t m, HasJsonDataCfg mConf t, Monoid mConf, Flattenable mConf t
+     )
+  => (Element EventResult GhcjsDomSpace t -> Dynamic t JsonDataView -> m ())
+  -> (Element EventResult GhcjsDomSpace t -> Dynamic t JsonDataView -> m ())
+  -> Wallet t
+  -> JsonData t
+  -> m mConf
+uiJsonDataSetFocus onKeysetCreate onRawInputCreate w d = divClass "tabset" $ mdo
     curSelection <- holdDyn JsonDataView_Keysets onTabClick
     (TabBar onTabClick) <- makeTabBar $ TabBarCfg
       { _tabBarCfg_tabs = [minBound .. maxBound]
@@ -88,7 +110,7 @@ uiJsonData w d = divClass "tabset" $ mdo
 
     keysetVCfg <- tabPane mempty curSelection JsonDataView_Keysets $ do
       (e, keysetCfgL) <- uiCreateKeysets w d
-      setFocusOnSelected e "input" JsonDataView_Keysets $ updated curSelection
+      onKeysetCreate e curSelection
       pure keysetCfgL
 
     rawVCfg <- tabPane mempty curSelection JsonDataView_Raw $ do
@@ -101,7 +123,7 @@ uiJsonData w d = divClass "tabset" $ mdo
         onAnno = mconcat [ onObjWarning, onDupWarning, onUpperCaseWarning ]
 
       (e, onSetRawInput) <- elClass' "div" "wysiwyg wysiwyg_height_30" $ dataEditor onAnno "" onNewData
-      setFocusOnSelected e ".ace_text-input" JsonDataView_Raw $ updated curSelection
+      onRawInputCreate e curSelection
       pure $ mempty & jsonDataCfg_setRawInput .~ onSetRawInput
 
     tabPane mempty curSelection JsonDataView_Result $ do

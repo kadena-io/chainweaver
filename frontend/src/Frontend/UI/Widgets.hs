@@ -44,6 +44,7 @@ module Frontend.UI.Widgets
   , makeClickable
   , accordionItem
   , accordionItem'
+  , controlledAccordionItem
   , setFocus
   , setFocusOn
   , setFocusOnSelected
@@ -397,17 +398,16 @@ showLoading i w = do
       text "Loading ..."
       pure mempty
 
-accordionItem'
+controlledAccordionItem
   :: MonadWidget t m
-  => Bool
+  => Dynamic t Bool
   -> CssClass
   -> m a
   -> m b
-  -> m (a,b)
-accordionItem' initActive contentClass title inner = mdo
-    isActive <- foldDyn (const not) initActive onClick
+  -> m (Event t (), (a,b))
+controlledAccordionItem dActive contentClass title inner = do
     let mkClass a = singleClass "accordion" <> contentClass <> activeClass a
-    (onClick, pair) <- elDynKlass "div" (mkClass <$> isActive) $ do
+    (onClick, pair) <- elDynKlass "div" (mkClass <$> dActive) $ do
       (onClickL,a1) <- elClass "h2" "accordion__header" $ do
         b <- uiButton (def & uiButtonCfg_class .~ "accordion__toggle-button button_type_secondary") $
           imgWithAlt (static @"img/arrow-down.svg") "Expand" blank
@@ -415,15 +415,37 @@ accordionItem' initActive contentClass title inner = mdo
         pure (b, r)
       b1 <- divClass "accordion__content" inner
       return (onClickL, (a1, b1))
-    return pair
+    return (onClick, pair)
   where
     activeClass = \case
       False -> singleClass "accordion-collapsed"
       True -> singleClass "accordion-revealed"
 
+accordionItemWithClick
+  :: MonadWidget t m
+  => Bool
+  -> CssClass
+  -> m a
+  -> m b
+  -> m (Event t (), (a,b))
+accordionItemWithClick initActive contentClass title inner = mdo
+    isActive <- foldDyn (const not) initActive onClick
+    (onClick, pair) <- controlledAccordionItem isActive contentClass title inner
+    return (onClick, pair)
+
+accordionItem'
+  :: MonadWidget t m
+  => Bool
+  -> CssClass
+  -> m a
+  -> m b
+  -> m (a,b)
+accordionItem' initActive contentClass title inner = 
+  snd <$> accordionItemWithClick initActive contentClass title inner 
+
 accordionItem :: MonadWidget t m => Bool -> CssClass -> Text -> m a -> m a
 accordionItem initActive contentClass title inner =
-  snd <$> accordionItem' initActive contentClass (text title) inner
+  snd . snd <$> accordionItemWithClick initActive contentClass (text title) inner
 
 ------------------------------------------------------------------------------
 
