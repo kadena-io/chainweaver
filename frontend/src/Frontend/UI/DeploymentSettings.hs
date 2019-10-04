@@ -36,6 +36,7 @@ module Frontend.UI.DeploymentSettings
   , uiSenderFixed
   , uiSenderDropdown
   , transactionInputSection
+  , transactionHashSection
   , transactionDisplayNetwork
     -- * Useful re-exports
   , Identity (runIdentity)
@@ -338,12 +339,16 @@ uiCfg code m wChainId ep mTTL mGasLimit = do
       uiJsonDataSetFocus (\_ _ -> pure ()) (\_ _ -> pure ()) (m ^. wallet) (m ^. jsonData)
   pure $ snd pairA & _1 <>~ snd pairB
 
+transactionHashSection :: MonadWidget t m => Dynamic t Text -> m ()
+transactionHashSection code = void $ do
+  mkLabeledInputView (\c -> uiInputElement $ c & initialAttributes %~ Map.insert "disabled" "") "Transaction Hash" $
+    hashToText . toUntypedHash . id @PactHash . hash . T.encodeUtf8 <$> code
+
 transactionInputSection :: MonadWidget t m => Dynamic t Text -> m ()
 transactionInputSection code = do
   divClass "title" $ text "Input"
   divClass "group" $ do
-    _ <- mkLabeledInputView (\c -> uiInputElement $ c & initialAttributes %~ Map.insert "disabled" "") "Transaction Hash" $
-      hashToText . toUntypedHash . id @PactHash . hash . T.encodeUtf8 <$> code
+    transactionHashSection code
     pb <- getPostBuild
     _ <- flip mkLabeledClsInput "Raw Command" $ \cls -> uiTextAreaElement $ def
       & textAreaElementConfig_setValue .~ leftmost [updated code, tag (current code) pb]
