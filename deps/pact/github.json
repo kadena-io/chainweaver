@@ -1,7 +1,7 @@
 {
   "owner": "kadena-io",
   "repo": "pact",
-  "branch": "reflex-platform-ghc86-upgrade",
-  "rev": "4aaf46ff50aca1ce6606b359cc5235e37b45e673",
-  "sha256": "0bb59fah18i26q2ap3ykfxh2kca6fj0m0n9bhsaw4nkm900ha0dn"
+  "branch": "master",
+  "rev": "179b28022cb791d6f329e98ffb369679d9195f4e", 
+  "sha256": "0w3a68mymkm0wqikzlvzb28h880w6d3mvijq56sylksmc8gafs45"
 }
