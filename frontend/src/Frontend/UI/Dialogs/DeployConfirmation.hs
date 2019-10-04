@@ -210,7 +210,6 @@ fullDeployFlow cfgTitle model runner _onClose = do
                 liftIO $ putStrLn $ "deploySubmit: Failed to parse chainUrl: " <> URI.renderStr chainUrl
                 pure Nothing
               Just baseUrl -> pure $ Just $ S.mkClientEnv baseUrl
-        liftIO $ print clientEnvs
         let doReqFailover [] _ = pure Nothing
             doReqFailover (c:cs) request = S.runClientM request c >>= \case
               Left e -> do
