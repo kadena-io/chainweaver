@@ -1,11 +1,10 @@
-pact-web-macos:
+chainweaver-macos:
   tags:
     - macos
   script:
-    - nix-build -A exe
     - nix-build -A mac
 
-pact-web-linux:
+chainweaver-linux:
   tags:
     - linux
   script:
