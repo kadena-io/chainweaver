@@ -564,7 +564,7 @@ mkSimpleReadReq
   :: (MonadIO m, MonadJSM m)
   => Text -> NetworkName -> PublicMeta -> ChainRef -> m NetworkRequest
 mkSimpleReadReq code networkName pm cRef = do
-  cmd <- buildCmd Nothing networkName (pm { _pmChainId = _chainRef_chain cRef }) mempty mempty code mempty
+  cmd <- buildCmd Nothing networkName (pm { _pmChainId = _chainRef_chain cRef }) [] code mempty
   pure $ NetworkRequest
     { _networkRequest_cmd = cmd
     , _networkRequest_chainRef = cRef
@@ -902,13 +902,11 @@ buildCmd
   => Maybe Text
   -> NetworkName
   -> PublicMeta
-  -> KeyPairs
-  -> Set KeyName
+  -> [KeyPair]
   -> Text
   -> Object
   -> m (Command Text)
-buildCmd mNonce networkName meta keys signing code dat = do
-  let signingKeys = getSigningPairs signing keys
+buildCmd mNonce networkName meta signingKeys code dat = do
   cmd <- encodeAsText . encode <$> buildExecPayload mNonce networkName meta signingKeys code dat
   let
     cmdHashL = hash (T.encodeUtf8 cmd)
