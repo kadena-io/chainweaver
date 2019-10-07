@@ -19,8 +19,6 @@ foreign import ccall moveToForeground :: IO ()
 foreign import ccall moveToBackground :: IO ()
 foreign import ccall resizeWindow :: IO ()
 foreign import ccall global_openFileDialog :: IO ()
-foreign import ccall global_requestUserAttention :: IO CInt
-foreign import ccall global_cancelUserAttentionRequest :: CInt -> IO ()
 foreign import ccall global_getHomeDirectory :: IO CString
 
 ffi :: MacFFI
@@ -32,8 +30,6 @@ ffi = MacFFI
   , _macFFI_moveToForeground = moveToForeground
   , _macFFI_resizeWindow = resizeWindow
   , _macFFI_global_openFileDialog = global_openFileDialog
-  , _macFFI_global_requestUserAttention = global_requestUserAttention
-  , _macFFI_global_cancelUserAttentionRequest = global_cancelUserAttentionRequest
   , _macFFI_global_getHomeDirectory = global_getHomeDirectory
   }
 
