@@ -54,6 +54,7 @@ import Frontend
 import Frontend.AppCfg
 import Frontend.ReplGhcjs (app)
 import Frontend.Storage
+import Pact.SigningApi
 
 foreign import ccall setupAppMenu :: StablePtr (CString -> IO ()) -> IO ()
 foreign import ccall activateWindow :: IO ()
@@ -105,9 +106,6 @@ backend = Backend
   , _backend_routeEncoder = backendRouteEncoder
   }
 
-type SigningApi = "v1" :> V1SigningApi
-type V1SigningApi = "sign" :> ReqBody '[JSON] SigningRequest :> Post '[JSON] SigningResponse
-
 main :: IO ()
 main = redirectPipes [stdout, stderr] $ do
   -- Set the path to z3. I tried using the plist key LSEnvironment, but it
@@ -138,6 +136,10 @@ main = redirectPipes [stdout, stderr] $ do
         backend
         (Frontend blank blank)
   fileOpenedMVar :: MVar T.Text <- liftIO newEmptyMVar
+
+  -- TODO: pass file location, write swagger file
+  _ <- swaggerDocs
+
   -- Run the backend in a forked thread, and run jsaddle-wkwebview on the main thread
   putStrLn $ "Starting backend on port: " <> show port
   Async.withAsync b $ \_ -> do

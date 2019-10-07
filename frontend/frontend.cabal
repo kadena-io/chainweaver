@@ -66,6 +66,7 @@ library
                , servant-client-core
                , servant-client-jsaddle
                , servant-github
+               , servant-swagger
                , split
                , string-qq
                , template-haskell
@@ -134,6 +135,7 @@ library
                  , Reflex.Extended
                  , Reflex.Network.Extended
                  , Pact.Server.ApiV1Client
+                 , Pact.SigningApi
 
   ghc-options: -Wall
   default-extensions: ScopedTypeVariables
@@ -166,6 +168,7 @@ executable frontend
                , obelisk-generated-static
                , obelisk-frontend
                , obelisk-route
+               , servant-swagger
                , text
                , frontend
 
