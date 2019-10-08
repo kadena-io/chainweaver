@@ -60,8 +60,6 @@ data MacFFI = MacFFI
   , _macFFI_moveToBackground :: IO ()
   , _macFFI_moveToForeground :: IO ()
   , _macFFI_global_openFileDialog :: IO ()
-  , _macFFI_global_requestUserAttention :: IO CInt
-  , _macFFI_global_cancelUserAttentionRequest :: CInt -> IO ()
   , _macFFI_global_getHomeDirectory :: IO CString
 }
 
@@ -162,14 +160,8 @@ main' ffi mainBundleResourcePath runHTML = redirectPipes [stdout, stderr] $ do
           resp <- liftIO $ bracket_ (putMVar signingLock ()) (takeMVar signingLock) $ do
             putMVar signingRequestMVar obj -- handoff to app
             bracket
-              (do
-                  _macFFI_moveToForeground ffi
-                  _macFFI_global_requestUserAttention ffi
-              )
-              (\r -> do
-                  _macFFI_moveToBackground ffi
-                  _macFFI_global_cancelUserAttentionRequest ffi r
-              )
+              (_macFFI_moveToForeground ffi)
+              (\() -> _macFFI_moveToBackground ffi)
               (\_ -> takeMVar signingResponseMVar)
           case resp of
             Left e -> throwError $ Servant.err409
