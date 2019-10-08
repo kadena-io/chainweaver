@@ -223,10 +223,10 @@ uiDeploymentSettings m settings = mdo
         , prevView mUserTabName <$ back
         ]
 
-    let sign (Just chain, Just account, (endpoint, code', data', signing, keys, pm)) () = Just $ do
+    let sign (networkName, Just chain, Just account, (endpoint, code', data', signing, keys, pm)) () = Just $ do
           let signingKeys = getSigningPairs signing keys
               pm' = pm chain account
-          cmd <- buildCmd (_deploymentSettingsConfig_nonce settings) pm' signingKeys code' data'
+          cmd <- buildCmd (_deploymentSettingsConfig_nonce settings) networkName pm' signingKeys code' data'
           pure $ DeploymentSettingsResult
             { _deploymentSettingsResult_gasPrice = _pmGasPrice pm'
             , _deploymentSettingsResult_signingKeys = signingKeys
@@ -237,7 +237,9 @@ uiDeploymentSettings m settings = mdo
             , _deploymentSettingsResult_code = code'
             }
         sign _ _ = Nothing
-    command <- performEvent $ attachWithMaybe sign ((,,) <$> current chainId <*> current sender <*> x) done
+    command <- performEvent $ attachWithMaybe sign
+      ((,,,) <$> current (m ^. network_selectedNetwork) <*> current chainId <*> current sender <*> x)
+      done
     pure (conf & networkCfg_setSender .~ fmapMaybe (fmap unAccountName) (updated sender), command, ma)
     where
       mUserTabCfg  = first DeploymentSettingsView_Custom <$> _deploymentSettingsConfig_userTab settings

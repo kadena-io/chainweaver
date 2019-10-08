@@ -167,8 +167,9 @@ uiAccounts
 uiAccounts model = divClass "group" $ do
   add <- addAccountForm model
   let accountGuardReq acc = "(at \"guard\" (coin.account-info " <> tshow (unAccountName acc) <> "))"
-      mkReq pm (chainId, acc) = ((chainId, acc),) <$> mkSimpleReadReq (accountGuardReq acc) pm (ChainRef Nothing chainId)
-  networkRequest <- performEvent $ attachWith mkReq (current $ model ^. network_meta) add
+      mkReq (networkName,pm) (chainId, acc) = ((chainId, acc),)
+        <$> mkSimpleReadReq (accountGuardReq acc) networkName pm (ChainRef Nothing chainId)
+  networkRequest <- performEvent $ attachWith mkReq (current $ getNetworkNameAndMeta model) add
   response <- performLocalReadCustom (model ^. network) (pure . snd) networkRequest
   let toKeyset (((chainId, acc), _req), [Right (_, Pact.PGuard g)]) = Just (chainId, acc, fromPactGuard g)
       toKeyset _ = Nothing

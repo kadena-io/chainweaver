@@ -230,14 +230,14 @@ keyCopyWidget t cls keyText = mdo
 -- distinguish between the two at this point.
 getBalance :: (MonadWidget t m, HasNetwork model t) => model -> ChainId -> Event t AccountName -> m (Event t (Maybe Decimal))
 getBalance model chain account = do
-  networkRequest <- performEvent $ attachWith mkReq (current $ model ^. network_meta) account
+  networkRequest <- performEvent $ attachWith mkReq (current $ getNetworkNameAndMeta model) account
   response <- performLocalReadCustom (model ^. network) pure networkRequest
   let toBalance (_, [Right (_, Pact.PLiteral (Pact.LDecimal d))]) = Just d
       toBalance _ = Nothing
   pure $ toBalance <$> response
   where
     accountBalanceReq acc = "(coin.account-balance " <> tshow (unAccountName acc) <> ")"
-    mkReq pm acc = mkSimpleReadReq (accountBalanceReq acc) pm (ChainRef Nothing chain)
+    mkReq (netName, pm) acc = mkSimpleReadReq (accountBalanceReq acc) netName pm (ChainRef Nothing chain)
 
 -- | Display the balance of an account after retrieving it from the network
 showBalance

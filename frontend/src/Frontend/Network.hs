@@ -50,6 +50,7 @@ module Frontend.Network
   , prettyPrintNetworkError
   , buildCmd
   , mkSimpleReadReq
+  , getNetworkNameAndMeta
     -- * Defaults
   , defaultTransactionGasLimit
   , defaultTransactionGasPrice
@@ -94,6 +95,7 @@ import           Pact.Types.Command
 import           Pact.Types.Runtime                (PactError (..), GasLimit (..), GasPrice (..), Gas (..))
 import           Pact.Types.ChainMeta              (PublicMeta (..), TTLSeconds (..), TxCreationTime (..))
 import qualified Pact.Types.ChainMeta              as Pact
+import           Pact.Types.ChainId                (NetworkId (..))
 
 import           Pact.Types.Exp                    (Literal (LString))
 import           Pact.Types.Hash                   (hash, Hash (..), TypedHash (..), toUntypedHash)
@@ -548,11 +550,21 @@ getConfigNetworks = do
       (NetworkName "pact", mempty, Just x)
     Right (x,y) -> (x,y, Nothing) -- Production mode
 
+getNetworkNameAndMeta
+  :: ( Reflex t
+     , HasNetwork model t
+     )
+  => model
+  -> Dynamic t (NetworkName, PublicMeta)
+getNetworkNameAndMeta model = (,)
+  <$> (model ^. network_selectedNetwork)
+  <*> (model ^. network_meta)
+
 mkSimpleReadReq
   :: (MonadIO m, MonadJSM m)
-  => Text -> PublicMeta -> ChainRef -> m NetworkRequest
-mkSimpleReadReq code pm cRef = do
-  cmd <- buildCmd Nothing (pm { _pmChainId = _chainRef_chain cRef }) [] code mempty
+  => Text -> NetworkName -> PublicMeta -> ChainRef -> m NetworkRequest
+mkSimpleReadReq code networkName pm cRef = do
+  cmd <- buildCmd Nothing networkName (pm { _pmChainId = _chainRef_chain cRef }) [] code mempty
   pure $ NetworkRequest
     { _networkRequest_cmd = cmd
     , _networkRequest_chainRef = cRef
@@ -578,8 +590,8 @@ loadModules networkL onRefresh = do
         let onNodeInfos = push (getInterestingInfos lastUsed) onNodeInfosAll
         lastUsed <- hold [] onNodeInfos
 
-      onReqs <- performEvent $ attachWith (\pm m -> traverse (mkReq pm) $ maybe [] getChains $ listToMaybe m)
-        (current $ networkL ^. network_meta)
+      onReqs <- performEvent $ attachWith (\f m -> traverse f $ maybe [] getChains $ listToMaybe m)
+        (current $ uncurry mkReq <$> getNetworkNameAndMeta networkL)
         (leftmost
           [ onNodeInfos
           , tag (current nodeInfos) onRefresh
@@ -615,7 +627,7 @@ loadModules networkL onRefresh = do
             (o:_, n:_) -> if o /= n then Just newInfos else Nothing
             _          -> Just newInfos
 
-      mkReq pm = mkSimpleReadReq "(list-modules)" pm . ChainRef Nothing
+      mkReq netName pm = mkSimpleReadReq "(list-modules)" netName pm . ChainRef Nothing
 
       byChainId :: (NetworkRequest, NetworkErrorResult) -> Either NetworkError (ChainId, PactValue)
       byChainId = sequence . bimap (_chainRef_chain . _networkRequest_chainRef) (fmap snd)
@@ -883,9 +895,19 @@ networkRequest baseUri endpoint cmd = do
 -- | Build a single cmd as expected in the `cmds` array of the /send payload.
 --
 -- As specified <https://pact-language.readthedocs.io/en/latest/pact-reference.html#send here>.
-buildCmd :: (MonadIO m, MonadJSM m) => Maybe Text -> PublicMeta -> [KeyPair] -> Text -> Object -> m (Command Text)
-buildCmd mNonce meta signingKeys code dat = do
-  cmd <- encodeAsText . encode <$> buildExecPayload mNonce meta signingKeys code dat
+buildCmd
+  :: ( MonadIO m
+     , MonadJSM m
+     )
+  => Maybe Text
+  -> NetworkName
+  -> PublicMeta
+  -> [KeyPair]
+  -> Text
+  -> Object
+  -> m (Command Text)
+buildCmd mNonce networkName meta signingKeys code dat = do
+  cmd <- encodeAsText . encode <$> buildExecPayload mNonce networkName meta signingKeys code dat
   let
     cmdHashL = hash (T.encodeUtf8 cmd)
   sigs <- buildSigs cmdHashL signingKeys
@@ -923,8 +945,14 @@ buildSigs cmdHashL signingPairs = do
 --   Use `encodedAsText` for passing it as the `cmd` payload.
 buildExecPayload
   :: MonadIO m
-  => Maybe Text -> PublicMeta -> [KeyPair] -> Text -> Object -> m (Payload PublicMeta Text)
-buildExecPayload mNonce meta keys code dat = do
+  => Maybe Text
+  -> NetworkName
+  -> PublicMeta
+  -> [KeyPair]
+  -> Text
+  -> Object
+  -> m (Payload PublicMeta Text)
+buildExecPayload mNonce networkName meta keys code dat = do
     time <- getCreationTime
     nonce <- maybe getNonce pure mNonce
     let
@@ -937,14 +965,15 @@ buildExecPayload mNonce meta keys code dat = do
       , _pNonce = nonce
       , _pMeta = meta { _pmCreationTime = time }
       , _pSigners = map mkSigner keys
+      , _pNetworkId = pure $ NetworkId $ unNetworkName networkName
       }
   where
     mkSigner (KeyPair pubKey _) = Signer
-      { _siScheme = ED25519
+      { _siScheme = pure ED25519
       , _siPubKey = keyToText pubKey
-      , _siAddress = keyToText pubKey
+      , _siAddress = pure $ keyToText pubKey
+      , _siCapList = mempty -- TODO ** Route these through
       }
-
 
 -- Response handling ...
 
