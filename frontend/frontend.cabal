@@ -69,6 +69,7 @@ library
                , servant-swagger
                , split
                , string-qq
+               , swagger2
                , template-haskell
                , text
                , time
@@ -169,6 +170,7 @@ executable frontend
                , obelisk-frontend
                , obelisk-route
                , servant-swagger
+               , swagger2
                , text
                , frontend
 

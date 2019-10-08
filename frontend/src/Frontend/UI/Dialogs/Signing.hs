@@ -48,6 +48,7 @@ import Frontend.UI.Modal.Impl
 import Frontend.UI.TabBar
 import Frontend.UI.Widgets
 import Frontend.Wallet
+import Pact.SigningApi
 
 type HasUISigningModelCfg mConf t =
   ( Monoid mConf, Flattenable mConf t , HasWalletCfg mConf t

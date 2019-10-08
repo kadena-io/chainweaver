@@ -53,6 +53,8 @@ import           Common.OAuth              (OAuthProvider (..),
 import           Common.Route
 import           Common.Network
 
+import           Pact.SigningApi
+
 data BackendCfg = BackendCfg
   { _backendCfg_oAuth                :: OAuthConfig OAuthProvider
   , _backendCfg_getOAuthClientSecret :: Maybe (OAuthProvider -> OAuthClientSecret)
@@ -151,6 +153,7 @@ checkDeployment = do
 backend :: Ob.Backend BackendRoute FrontendRoute
 backend = Ob.Backend
     { Ob._backend_run = \serve -> do
+        swaggerDocs
         cfg <- buildCfg
         networks <- getConfig networksPath
         let hasServerList = isJust networks
@@ -244,4 +247,3 @@ oAuthErrorToResponse err = do
 
   modifyResponse $ setResponseStatus status (T.encodeUtf8 $ textOAuthError err)
   writeLBS $ Aeson.encode $ (Left err :: Either OAuthError AccessToken)
-
