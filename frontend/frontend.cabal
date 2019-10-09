@@ -167,14 +167,10 @@ executable frontend
 
   build-depends: base
                , common
-               , extra
                , reflex-dom
                , obelisk-generated-static
                , obelisk-frontend
                , obelisk-route
-               , servant-swagger
-               , string-conv
-               , swagger2
                , text
                , frontend
 

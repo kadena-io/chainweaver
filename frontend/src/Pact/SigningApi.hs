@@ -19,12 +19,10 @@ module Pact.SigningApi
 
 import qualified Data.Aeson as Aeson
 import qualified Data.ByteString.Lazy as BSL
-import qualified Data.ByteString.Lazy.Char8 as BSL8
 import Data.String.Conv (toS)
 import Data.Proxy
 import Data.Swagger
 import Data.Text (Text)
-import qualified Data.Text as T
 import GHC.Generics
 import Servant.API
 import Servant.Swagger

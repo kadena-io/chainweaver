@@ -1,7 +1,6 @@
 -- | AppCfg is used to configure the app and pass things in and out of reflex
 module Frontend.AppCfg where
 
-import Common.Foundation as Common
 import Data.Text (Text)
 import Language.Javascript.JSaddle (JSM)
 import Reflex.Dom
