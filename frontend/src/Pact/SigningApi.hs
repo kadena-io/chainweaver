@@ -20,12 +20,16 @@ module Pact.SigningApi
 import qualified Data.Aeson as Aeson
 import qualified Data.ByteString.Lazy as BSL
 import qualified Data.ByteString.Lazy.Char8 as BSL8
+import Data.String.Conv (toS)
 import Data.Proxy
-import Data.Swagger.Internal.Schema
+import Data.Swagger
 import Data.Text (Text)
+import qualified Data.Text as T
 import GHC.Generics
 import Servant.API
 import Servant.Swagger
+import System.Directory
+import System.IO.Extra
 
 import Pact.Parse (ParsedInteger)
 import Pact.Types.ChainMeta (TTLSeconds(..))
@@ -38,6 +42,10 @@ import Common.Foundation (compactEncoding)
 
 type SigningApi = "v1" :> V1SigningApi
 type V1SigningApi = "sign" :> ReqBody '[JSON] SigningRequest :> Post '[JSON] SigningResponse
+
+swaggerPath, swaggerFile :: String
+swaggerPath = "backend/swagger/"
+swaggerFile = "swagger.txt"
 
 data SigningRequest = SigningRequest
   { _signingRequest_code :: Text
@@ -72,17 +80,15 @@ instance Aeson.ToJSON SigningResponse where
 instance Aeson.FromJSON SigningResponse where
   parseJSON = Aeson.genericParseJSON compactEncoding
 
-swaggerDocs :: IO BSL.ByteString
+swaggerDocs :: IO ()
 swaggerDocs = do
-  let bsl = Aeson.encode $ toSwagger (Proxy :: Proxy SigningApi)
-  BSL8.putStrLn bsl
-  error "before return from swaggerDocs"
-  return bsl
-  -- error $ BSL8.unpack bsl
+  let bsl = BSL.toStrict $ Aeson.encode $ toSwagger (Proxy :: Proxy SigningApi)
+  createDirectoryIfMissing True swaggerPath
+  writeFileUTF8 (swaggerPath ++ swaggerFile) $ toS bsl
 
 -- Move these to Pact...
 instance ToSchema (P.TypedHash 'P.Blake2b_256)  where
-  declareNamedSchema _ = return $ toNamedSchema (Proxy :: Proxy (P.TypedHash 'P.Blake2b_256))
+  declareNamedSchema _ = return $ NamedSchema (Just "TypedHash") $ byteSchema
 
 instance ToSchema P.UserSig
 instance ToSchema a => ToSchema (Command a)

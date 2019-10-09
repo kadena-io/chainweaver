@@ -34,6 +34,7 @@ library
                , dependent-sum
                , errors
                , exceptions
+               , extra
                , free
                , generic-deriving
                , ghcjs-dom
@@ -68,6 +69,7 @@ library
                , servant-github
                , servant-swagger
                , split
+               , string-conv
                , string-qq
                , swagger2
                , template-haskell
@@ -165,11 +167,13 @@ executable frontend
 
   build-depends: base
                , common
+               , extra
                , reflex-dom
                , obelisk-generated-static
                , obelisk-frontend
                , obelisk-route
                , servant-swagger
+               , string-conv
                , swagger2
                , text
                , frontend
