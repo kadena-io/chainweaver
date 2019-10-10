@@ -64,7 +64,6 @@ frontend = Frontend
       }
   }
 
-      
 -- | The 'JSM' action *must* be run from a user initiated event in order for the
 -- dialog to open
 openFileDialog :: MonadWidget t m => m (Event t Text, JSM ())

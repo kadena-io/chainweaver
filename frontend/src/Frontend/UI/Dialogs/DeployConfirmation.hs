@@ -361,7 +361,6 @@ deploySubmit chain result nodeInfos = Workflow $ do
         , never
         )
 
-
 -- | Fork a thread. Here because upstream 'forkJSM' doesn't give us the thread ID
 forkJSM' :: JSM () -> JSM ThreadId
 forkJSM' a = askJSM >>= \j -> liftIO $ forkIO $ runJSM a j
