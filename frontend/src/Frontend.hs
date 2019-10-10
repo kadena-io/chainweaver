@@ -5,6 +5,7 @@
 {-# LANGUAGE TemplateHaskell  #-}
 module Frontend where
 
+import Control.Lens ((^.))
 import           Control.Monad            (join, void)
 import           Control.Monad.IO.Class
 import           Data.Maybe               (listToMaybe)
@@ -20,6 +21,8 @@ import           Obelisk.Frontend
 import           Obelisk.Route.Frontend
 import           Obelisk.Generated.Static
 
+import Language.Javascript.JSaddle (jsg, js2)
+
 import           Common.Api
 import           Common.Route
 import           Frontend.AppCfg
@@ -27,7 +30,7 @@ import           Frontend.Foundation
 import           Frontend.ModuleExplorer.Impl (loadEditorFromLocalStorage)
 import           Frontend.ReplGhcjs
 import           Frontend.Storage
-
+import Frontend.Wallet (mkAccountName)
 frontend :: Frontend (R FrontendRoute)
 frontend = Frontend
   { _frontend_head = do
@@ -51,6 +54,16 @@ frontend = Frontend
 
   , _frontend_body = prerender_ loaderMarkup $ do
     (fileOpened, triggerOpen) <- openFileDialog
+
+    eSignRq <- (testSignReq <$) <$> button "Trigger Sign Request"
+
+    let handleSignResponse e = case e of
+          Left err -> logMsg "OH NO:" err
+          Right sr -> logMsg "OH YEAH:" (T.pack (show sr))
+          where
+            logMsg :: Text -> Text -> JSM ()
+            logMsg oh a = void $ jsg ("console"::Text) >>= (^. js2 ("log"::Text) oh a)
+
     let store = browserStorage
     flip runStorageT store $ app $ AppCfg
       { _appCfg_gistEnabled = True
@@ -58,12 +71,33 @@ frontend = Frontend
       , _appCfg_openFileDialog = liftJSM triggerOpen
       , _appCfg_loadEditor = loadEditorFromLocalStorage
       , _appCfg_editorReadOnly = False
-      , _appCfg_signingRequest = never
+      , _appCfg_signingRequest = eSignRq
       , _appCfg_signingResponse = \_ -> pure ()
       , _appCfg_forceResize = never
       }
   }
+  where
+    testSignReq =
+      let
+        Right accname = mkAccountName "doug"
+      in
+        SigningRequest
+        -- _signingRequest_code :: Text
+        "(hello-world.greet)"
+        -- _signingRequest_data :: Maybe Aeson.Object
+        Nothing
+        -- _signingRequest_nonce :: Maybe Text
+        (Just "2019-10-10 09:57:30.786580956 UTC")
+        -- _signingRequest_chainId :: Maybe ChainId
+        (Just "0")
+        -- _signingRequest_gasLimit :: Maybe GasLimit
+        (Just 2000)
+        -- _signingRequest_ttl :: Maybe TTLSeconds
+        (Just 34167)
+        -- _signingRequest_sender :: Maybe AccountName
+        (Just accname)
 
+      
 -- | The 'JSM' action *must* be run from a user initiated event in order for the
 -- dialog to open
 openFileDialog :: MonadWidget t m => m (Event t Text, JSM ())

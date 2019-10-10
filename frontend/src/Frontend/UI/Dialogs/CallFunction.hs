@@ -89,7 +89,7 @@ uiCallFunction m mModule func _onClose
             , _deploymentSettingsConfig_gasLimit = Nothing
             }
           pure (cfg, result)
-    fullDeployFlow (headerTitle <> " " <> _pactFunction_name func) m (functionType >> content) _onClose
+    fullDeployFlow (headerTitle <> " " <> _pactFunction_name func) "Preview" m (functionType >> content) _onClose
   | otherwise = do
     onClose <- modalHeader $ do
       text headerTitle

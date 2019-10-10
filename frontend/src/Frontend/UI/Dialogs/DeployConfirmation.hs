@@ -22,6 +22,7 @@
 module Frontend.UI.Dialogs.DeployConfirmation
   ( uiDeployConfirmation
   , fullDeployFlow
+  , fullDeployFlowWithSubmit
   ) where
 
 import Common.Foundation
@@ -78,7 +79,7 @@ uiDeployConfirmation
   => Text
   -> model
   -> Event t () -> m (modelCfg, Event t ())
-uiDeployConfirmation code model = fullDeployFlow "Transaction Details" model $ do
+uiDeployConfirmation code model = fullDeployFlow "Transaction Details" "Transaction Preview" model $ do
   (settingsCfg, result, _) <- uiDeploymentSettings model $ DeploymentSettingsConfig
     { _deploymentSettingsConfig_chainId = userChainIdSelect
     , _deploymentSettingsConfig_defEndpoint = Just Endpoint_Send
@@ -100,10 +101,28 @@ fullDeployFlow
      , HasWallet model t
      )
   => Text -- ^ Title of modal
+  -> Text
   -> model
   -> m (modelCfg, Event t DeploymentSettingsResult)
   -> Event t () -> m (modelCfg, Event t ())
-fullDeployFlow cfgTitle model runner _onClose = do
+fullDeployFlow cfgTitle previewTitle model runner onClose =
+  fullDeployFlowWithSubmit cfgTitle previewTitle "Create Transaction" model deploySubmit runner onClose
+
+-- | Workflow taking the user through Config -> Preview -> Status
+fullDeployFlowWithSubmit
+  :: forall t m model modelCfg.
+     ( MonadWidget t m, Monoid modelCfg, Flattenable modelCfg t
+     , HasNetwork model t
+     , HasWallet model t
+     )
+  => Text -- ^ Title of modal
+  -> Text
+  -> Text
+  -> model
+  -> (ChainId -> DeploymentSettingsResult -> Event t () -> [Either Text NodeInfo] -> Workflow t m (Text, (Event t (), modelCfg)))
+  -> m (modelCfg, Event t DeploymentSettingsResult)
+  -> Event t () -> m (modelCfg, Event t ())
+fullDeployFlowWithSubmit cfgTitle previewTitle confirmPreviewBtnLabel model f runner _onClose = do
   rec
     onClose <- modalHeader $ dynText title
     result <- workflow deployConfig
@@ -181,21 +200,38 @@ fullDeployFlow cfgTitle model runner _onClose = do
       (back, next) <- modalFooter $ do
         back <- uiButtonDyn def $ text "Back"
         let isDisabled = not <$> succeeded
-        next <- uiButtonDyn (def & uiButtonCfg_class .~ "button_type_confirm" & uiButtonCfg_disabled .~ isDisabled) $ text "Create Transaction"
+
+        next <- uiButtonDyn
+          (def & uiButtonCfg_class .~ "button_type_confirm" & uiButtonCfg_disabled .~ isDisabled)
+          $ text confirmPreviewBtnLabel
+
         pure (back, next)
 
       let done = gate (current succeeded) next
 
       pure
-        ( ("Transaction Preview", (never, mempty))
+        ( (previewTitle, (never, mempty))
         , leftmost
           [ deployConfig <$ back
-          , let f = deploySubmit chain (_deploymentSettingsResult_command result) (_deploymentSettingsResult_code result)
-             in attachWith (\n _ -> f n) (current $ model ^. network_selectedNodes) done
+          , attachWith (\n _ -> f chain result done n) (current $ model ^. network_selectedNodes) done
+          -- , let f = deploySubmit chain (_deploymentSettingsResult_command result) (_deploymentSettingsResult_code result)
+          --    in attachWith (\n _ -> f n) (current $ model ^. network_selectedNodes) done
           ]
         )
 
-    deploySubmit chain cmd code nodeInfos = Workflow $ do
+deploySubmit
+  :: forall t m a modelCfg.
+     ( MonadWidget t m
+     , Monoid modelCfg
+     )
+  => ChainId
+  -> DeploymentSettingsResult
+  -> Event t ()
+  -> [Either a NodeInfo]
+  -> Workflow t m (Text, (Event t (), modelCfg))
+deploySubmit chain result done nodeInfos = Workflow $ do
+      let cmd = _deploymentSettingsResult_command result
+          code = _deploymentSettingsResult_code result
       elClass "div" "modal__main transaction_details" $ do
         transactionHashSection $ pure code
 
@@ -290,6 +326,7 @@ fullDeployFlow cfgTitle model runner _onClose = do
         ( ("Transaction Submit", (done, mempty))
         , never
         )
+
 
 -- | Fork a thread. Here because upstream 'forkJSM' doesn't give us the thread ID
 forkJSM' :: JSM () -> JSM ThreadId
