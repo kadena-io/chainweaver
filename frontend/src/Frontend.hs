@@ -72,7 +72,7 @@ frontend = Frontend
       , _appCfg_loadEditor = loadEditorFromLocalStorage
       , _appCfg_editorReadOnly = False
       , _appCfg_signingRequest = eSignRq
-      , _appCfg_signingResponse = \_ -> pure ()
+      , _appCfg_signingResponse = handleSignResponse
       , _appCfg_forceResize = never
       }
   }

@@ -20,7 +20,9 @@
 -- Copyright   :  (C) 2018 Kadena
 -- License     :  BSD-style (see the file LICENSE)
 module Frontend.UI.Dialogs.DeployConfirmation
-  ( uiDeployConfirmation
+  ( DeployConfirmationConfig (..)
+  , HasDeployConfirmationConfig (..)
+  , uiDeployConfirmation
   , fullDeployFlow
   , fullDeployFlowWithSubmit
   ) where
@@ -31,6 +33,7 @@ import Control.Concurrent (newEmptyMVar, tryTakeMVar, putMVar, killThread, forkI
 import Control.Lens
 import Control.Monad (void)
 import Data.Decimal (Decimal)
+import Data.Default (Default (..))
 import Data.Either (isLeft, rights)
 import Data.List.NonEmpty (NonEmpty(..))
 import Data.Map (Map)
@@ -65,6 +68,18 @@ import qualified Pact.Types.Command as Pact
 import qualified Servant.Client.JSaddle as S
 import qualified Text.URI as URI
 
+data DeployConfirmationConfig t = DeployConfirmationConfig
+  { _deployConfirmationConfig_modalTitle :: Text
+  , _deployConfirmationConfig_previewTitle :: Text
+  , _deployConfirmationConfig_previewConfirmButtonLabel :: Text
+  , _deployConfirmationConfig_disregardSubmitResponse :: Bool -> Bool
+  }
+
+makeClassy ''DeployConfirmationConfig
+
+instance Reflex t => Default (DeployConfirmationConfig t) where
+  def = DeployConfirmationConfig "Transaction Details" "Transaction Preview" "Create Transaction" id
+
 -- | Confirmation dialog for deployments.
 --
 --   User can make sure to deploy to the right network, has the right keysets,
@@ -79,7 +94,7 @@ uiDeployConfirmation
   => Text
   -> model
   -> Event t () -> m (modelCfg, Event t ())
-uiDeployConfirmation code model = fullDeployFlow "Transaction Details" "Transaction Preview" model $ do
+uiDeployConfirmation code model = fullDeployFlow def model $ do
   (settingsCfg, result, _) <- uiDeploymentSettings model $ DeploymentSettingsConfig
     { _deploymentSettingsConfig_chainId = userChainIdSelect
     , _deploymentSettingsConfig_defEndpoint = Just Endpoint_Send
@@ -100,13 +115,15 @@ fullDeployFlow
      , HasNetwork model t
      , HasWallet model t
      )
-  => Text -- ^ Title of modal
-  -> Text
+  => DeployConfirmationConfig t
   -> model
   -> m (modelCfg, Event t DeploymentSettingsResult)
   -> Event t () -> m (modelCfg, Event t ())
-fullDeployFlow cfgTitle previewTitle model runner onClose =
-  fullDeployFlowWithSubmit cfgTitle previewTitle "Create Transaction" model deploySubmit runner onClose
+fullDeployFlow deployCfg model runner onClose =
+  fullDeployFlowWithSubmit deployCfg model showSubmitModal runner onClose
+  where
+    showSubmitModal chain result done _next nodes =
+      pure $ attachWith (\n _ -> deploySubmit chain result done n) nodes done
 
 -- | Workflow taking the user through Config -> Preview -> Status
 fullDeployFlowWithSubmit
@@ -115,14 +132,12 @@ fullDeployFlowWithSubmit
      , HasNetwork model t
      , HasWallet model t
      )
-  => Text -- ^ Title of modal
-  -> Text
-  -> Text
+  => DeployConfirmationConfig t
   -> model
-  -> (ChainId -> DeploymentSettingsResult -> Event t () -> [Either Text NodeInfo] -> Workflow t m (Text, (Event t (), modelCfg)))
+  -> (ChainId -> DeploymentSettingsResult -> Event t () -> Event t () -> Behavior t [Either Text NodeInfo] -> m (Event t (Workflow t m (Text, (Event t (), modelCfg)))))
   -> m (modelCfg, Event t DeploymentSettingsResult)
   -> Event t () -> m (modelCfg, Event t ())
-fullDeployFlowWithSubmit cfgTitle previewTitle confirmPreviewBtnLabel model f runner _onClose = do
+fullDeployFlowWithSubmit dcfg model f runner _onClose = do
   rec
     onClose <- modalHeader $ dynText title
     result <- workflow deployConfig
@@ -133,7 +148,11 @@ fullDeployFlowWithSubmit cfgTitle previewTitle confirmPreviewBtnLabel model f ru
   where
     deployConfig = Workflow $ do
       (settingsCfg, result) <- runner
-      pure ((cfgTitle, (never, settingsCfg)), attachWith deployPreview (current $ model ^. wallet_keyAccounts) result)
+      pure (( _deployConfirmationConfig_modalTitle dcfg
+            , (never, settingsCfg)
+            )
+           , attachWith deployPreview (current $ model ^. wallet_keyAccounts) result
+           )
     deployPreview keyAccounts result = Workflow $ do
 
       let chain = _deploymentSettingsResult_chainId result
@@ -146,7 +165,9 @@ fullDeployFlowWithSubmit cfgTitle previewTitle confirmPreviewBtnLabel model f ru
           transactionDisplayNetwork model
           predefinedChainIdDisplayed chain model
 
-        let accountsToTrack = Set.insert sender $ getAccounts keyAccounts $ _deploymentSettingsResult_signingKeys result
+        let accountsToTrack = Set.insert sender
+              $ getAccounts keyAccounts
+              $ _deploymentSettingsResult_signingKeys result
         rec
           accountBalances <- trackBalancesFromPostBuild model chain accountsToTrack (void response)
           initialRequestsDone <- holdUniqDyn $ and <$> traverse (fmap isJust . view _2) accountBalances
@@ -197,25 +218,27 @@ fullDeployFlowWithSubmit cfgTitle previewTitle confirmPreviewBtnLabel model f ru
           pure $ not $ any (isLeft . snd) rs || null rs
         holdDyn False txSuccess
 
+      let ignoreSuccessStatus = _deployConfirmationConfig_disregardSubmitResponse dcfg
+
       (back, next) <- modalFooter $ do
         back <- uiButtonDyn def $ text "Back"
-        let isDisabled = not <$> succeeded
+        let isDisabled = not . ignoreSuccessStatus <$> succeeded
 
         next <- uiButtonDyn
           (def & uiButtonCfg_class .~ "button_type_confirm" & uiButtonCfg_disabled .~ isDisabled)
-          $ text confirmPreviewBtnLabel
+          $ text (_deployConfirmationConfig_previewConfirmButtonLabel dcfg)
 
         pure (back, next)
 
-      let done = gate (current succeeded) next
+      let done = gate (current $ fmap ignoreSuccessStatus succeeded) next
+
+      toNextWorkflow <- f chain result done next (current $ model ^. network_selectedNodes)
 
       pure
-        ( (previewTitle, (never, mempty))
+        ( (_deployConfirmationConfig_previewTitle dcfg, (never, mempty))
         , leftmost
           [ deployConfig <$ back
-          , attachWith (\n _ -> f chain result done n) (current $ model ^. network_selectedNodes) done
-          -- , let f = deploySubmit chain (_deploymentSettingsResult_command result) (_deploymentSettingsResult_code result)
-          --    in attachWith (\n _ -> f n) (current $ model ^. network_selectedNodes) done
+          , toNextWorkflow
           ]
         )
 

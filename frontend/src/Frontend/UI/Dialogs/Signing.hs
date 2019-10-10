@@ -31,7 +31,8 @@ import Frontend.AppCfg
 import Frontend.Foundation hiding (Arg)
 import Frontend.Network
 import Frontend.UI.DeploymentSettings
-import Frontend.UI.Dialogs.DeployConfirmation (fullDeployFlowWithSubmit)
+import Frontend.UI.Dialogs.DeployConfirmation (DeployConfirmationConfig (..), fullDeployFlowWithSubmit)
+import Frontend.UI.Widgets
 import Frontend.UI.Modal
 import Frontend.UI.Modal.Impl
 import Frontend.Wallet
@@ -77,26 +78,23 @@ uiSigning appCfg ideL signingRequest onCloseExternal = do
         pure (mConf, result)
 
   fullDeployFlowWithSubmit
-    "Signing Request"
-    "Signing Preview"
-    "Confirm Signature"
+    (DeployConfirmationConfig "Signing Request" "Signing Preview" "Confirm Signature" disregardSuccessStatus)
     ideL
     signSubmit
     runner
     onCloseExternal
   where
-    signSubmit chain result done _ = Workflow $ do
+    disregardSuccessStatus = (|| True)
+
+    signSubmit _chain result done next _nodes = do
       let sign = SigningResponse
             { _signingResponse_chainId = _deploymentSettingsResult_chainId result
             , _signingResponse_body = _deploymentSettingsResult_command result
             }
 
       signed <- performEvent $ liftJSM . _appCfg_signingResponse appCfg <$> leftmost
-        [ Right sign <$ done
+        [ Right sign <$ next
         , Left "Cancelled" <$ onCloseExternal
         ]
 
-      pure
-        ( ("Sign", (signed, mempty))
-        , never
-        )
+      pure $ (Workflow $ pure ( ("Signed", (signed, mempty)), never)) <$ next
