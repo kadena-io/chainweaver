@@ -23,7 +23,6 @@ module Frontend.UI.Dialogs.Signing
   ( uiSigning
   ) where
 
-import Control.Monad (void)
 import Reflex
 import Reflex.Dom
 
@@ -32,8 +31,6 @@ import Frontend.Foundation hiding (Arg)
 import Frontend.Network
 import Frontend.UI.DeploymentSettings
 import Frontend.UI.Dialogs.DeployConfirmation (DeployConfirmationConfig (..), fullDeployFlowWithSubmit)
-import Frontend.UI.Widgets
-import Frontend.UI.Modal
 import Frontend.UI.Modal.Impl
 import Frontend.Wallet
 import Frontend.JsonData
@@ -84,17 +81,17 @@ uiSigning appCfg ideL signingRequest onCloseExternal = do
     runner
     onCloseExternal
   where
+    -- The confirm process should proceed regardless of the response from the network, the
+    -- failure of this is the responsibility of the dApp. This ensures the confirm button
+    -- is not disabled and that the network response is treated as a "success"
     disregardSuccessStatus = (|| True)
 
-    signSubmit _chain result done next _nodes = do
+    signSubmit _chain result _done next _nodes = do
       let sign = SigningResponse
             { _signingResponse_chainId = _deploymentSettingsResult_chainId result
             , _signingResponse_body = _deploymentSettingsResult_command result
             }
 
-      signed <- performEvent $ liftJSM . _appCfg_signingResponse appCfg <$> leftmost
-        [ Right sign <$ next
-        , Left "Cancelled" <$ onCloseExternal
-        ]
-
-      pure $ (Workflow $ pure ( ("Signed", (signed, mempty)), never)) <$ next
+      -- This is the end of our work flow, so return our done event on the completion of the signing.
+      -- Should some feedback be added to this to ensure that people don't spam the button?
+      fmap Left $ performEvent $ liftJSM . _appCfg_signingResponse appCfg <$> (pure sign <$ next)

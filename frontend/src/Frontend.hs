@@ -55,8 +55,8 @@ frontend = Frontend
   , _frontend_body = prerender_ loaderMarkup $ do
     (fileOpened, triggerOpen) <- openFileDialog
 
+    -- TODO: REMOVE! These have been added for testing purposes, remove before merge.
     eSignRq <- (testSignReq <$) <$> button "Trigger Sign Request"
-
     let handleSignResponse e = case e of
           Left err -> logMsg "OH NO:" err
           Right sr -> logMsg "OH YEAH:" (T.pack (show sr))
@@ -77,6 +77,7 @@ frontend = Frontend
       }
   }
   where
+    -- TODO: REMOVE! Added for testing purposes, remove before merge.
     testSignReq =
       let
         Right accname = mkAccountName "doug"

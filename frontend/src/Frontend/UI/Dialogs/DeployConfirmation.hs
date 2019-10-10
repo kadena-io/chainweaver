@@ -80,6 +80,17 @@ makeClassy ''DeployConfirmationConfig
 instance Reflex t => Default (DeployConfirmationConfig t) where
   def = DeployConfirmationConfig "Transaction Details" "Transaction Preview" "Create Transaction" id
 
+-- We may not need the Status part of the workflow, but we want to be able to reuse as
+-- much of this as we can so we have this function type that will give us the event of the
+-- next stage or the completion of the workflow.
+type DeployPostPreview t m modelCfg =
+     ChainId
+  -> DeploymentSettingsResult
+  -> Event t ()
+  -> Event t ()
+  -> Behavior t [Either Text NodeInfo]
+  -> m (Either (Event t ()) (Event t (Workflow t m (Text, (Event t (), modelCfg)))))
+
 -- | Confirmation dialog for deployments.
 --
 --   User can make sure to deploy to the right network, has the right keysets,
@@ -123,7 +134,7 @@ fullDeployFlow deployCfg model runner onClose =
   fullDeployFlowWithSubmit deployCfg model showSubmitModal runner onClose
   where
     showSubmitModal chain result done _next nodes =
-      pure $ attachWith (\n _ -> deploySubmit chain result done n) nodes done
+      pure . pure $ attachWith (const . deploySubmit chain result) nodes done
 
 -- | Workflow taking the user through Config -> Preview -> Status
 fullDeployFlowWithSubmit
@@ -134,10 +145,10 @@ fullDeployFlowWithSubmit
      )
   => DeployConfirmationConfig t
   -> model
-  -> (ChainId -> DeploymentSettingsResult -> Event t () -> Event t () -> Behavior t [Either Text NodeInfo] -> m (Event t (Workflow t m (Text, (Event t (), modelCfg)))))
+  -> DeployPostPreview t m modelCfg
   -> m (modelCfg, Event t DeploymentSettingsResult)
   -> Event t () -> m (modelCfg, Event t ())
-fullDeployFlowWithSubmit dcfg model f runner _onClose = do
+fullDeployFlowWithSubmit dcfg model onPreviewConfirm runner _onClose = do
   rec
     onClose <- modalHeader $ dynText title
     result <- workflow deployConfig
@@ -232,13 +243,14 @@ fullDeployFlowWithSubmit dcfg model f runner _onClose = do
 
       let done = gate (current $ fmap ignoreSuccessStatus succeeded) next
 
-      toNextWorkflow <- f chain result done next (current $ model ^. network_selectedNodes)
+      (eDoneAfterConfirm, eNextWorkflow) <- either (,never) (never,)
+        <$> onPreviewConfirm chain result done next (current $ model ^. network_selectedNodes)
 
       pure
-        ( (_deployConfirmationConfig_previewTitle dcfg, (never, mempty))
+        ( (_deployConfirmationConfig_previewTitle dcfg, (eDoneAfterConfirm, mempty))
         , leftmost
           [ deployConfig <$ back
-          , toNextWorkflow
+          , eNextWorkflow
           ]
         )
 
@@ -249,10 +261,9 @@ deploySubmit
      )
   => ChainId
   -> DeploymentSettingsResult
-  -> Event t ()
   -> [Either a NodeInfo]
   -> Workflow t m (Text, (Event t (), modelCfg))
-deploySubmit chain result done nodeInfos = Workflow $ do
+deploySubmit chain result nodeInfos = Workflow $ do
       let cmd = _deploymentSettingsResult_command result
           code = _deploymentSettingsResult_code result
       elClass "div" "modal__main transaction_details" $ do
