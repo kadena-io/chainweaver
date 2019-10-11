@@ -107,12 +107,7 @@ import qualified Servant.Client.JSaddle            as S
 import           Pact.Types.Crypto                 (PPKScheme (..))
 #endif
 
-import           Common.Network                    (ChainId, ChainRef (..), NetworkName (..),
-                                                    NodeRef, getNetworksConfig,
-                                                    getPactInstancePort,
-                                                    parseNetworks,
-                                                    numPactInstances,
-                                                    textNetworkName)
+import           Common.Network
 import           Frontend.Crypto.Ed25519
 import           Frontend.Foundation
 import           Frontend.Messages
@@ -538,8 +533,8 @@ getConfigNetworks = do
       . ("localhost:" <>)
       . getPactInstancePort
 
-    buildName = NetworkName . ("dev-" <>) . tshow
-    buildNetwork =  buildName &&& pure . buildNodeRef
+    buildName = uncheckedNetworkName . ("dev-" <>) . tshow
+    buildNetwork = buildName &&& pure . buildNodeRef
     devNetworks = Map.fromList $ map buildNetwork [1 .. numPactInstances]
 
   errProdCfg <- getNetworksConfig
@@ -547,7 +542,7 @@ getConfigNetworks = do
     Left (Left _) -> -- Development mode
       (buildName 1, devNetworks, Nothing)
     Left (Right x) -> -- Mac app remote list
-      (NetworkName "pact", mempty, Just x)
+      (uncheckedNetworkName "pact", mempty, Just x)
     Right (x,y) -> (x,y, Nothing) -- Production mode
 
 getNetworkNameAndMeta
@@ -965,7 +960,7 @@ buildExecPayload mNonce networkName meta keys code dat = do
       , _pNonce = nonce
       , _pMeta = meta { _pmCreationTime = time }
       , _pSigners = map mkSigner keys
-      , _pNetworkId = pure $ NetworkId $ unNetworkName networkName
+      , _pNetworkId = pure $ NetworkId $ textNetworkName networkName
       }
   where
     mkSigner (KeyPair pubKey _) = Signer

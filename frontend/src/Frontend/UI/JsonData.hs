@@ -248,9 +248,9 @@ uiCreateKeyset jsonD =
               Left _  -> Map.member ks keysets
               Right j -> H.member ks j
         in
-          if dupe then Just "This keyset name is already in use"
-          else if T.any Char.isUpper ks then Just "Keyset name must be all lowercase"
-          else Nothing
+          if dupe then Left "This keyset name is already in use"
+          else if T.any Char.isUpper ks then Left "Keyset name must be all lowercase"
+          else Right ks
 
 -- | Widget showing all avaialble keys for selecting keys
 --

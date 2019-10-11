@@ -4,14 +4,27 @@
 {-# LANGUAGE OverloadedStrings          #-}
 {-# LANGUAGE RankNTypes                 #-}
 {-# LANGUAGE ScopedTypeVariables        #-}
+{-# LANGUAGE TupleSections              #-}
+{-# LANGUAGE ViewPatterns               #-}
 
 module Common.Network
-  ( module Common.Network
+  ( NetworkName
+  , uncheckedNetworkName
+  , textNetworkName
+  , mkNetworkName
+  , networksPath
+  , ChainRef(..)
+  , NodeRef(..)
+  , renderNodeRef
+  , parseNodeRef
+  , numPactInstances
+  , getNetworksConfig
+  , getPactInstancePort
+  , parseNetworks
   , Pact.ChainId (..)
   ) where
 
 import           Control.Applicative      ((<|>))
-import           Control.Arrow            ((***))
 import           Control.Arrow            (left)
 import           Control.Error.Safe       (headErr)
 import           Control.Lens
@@ -21,6 +34,7 @@ import           Control.Monad.Trans
 import           Data.Aeson
 import qualified Data.Aeson               as A
 import           Data.Coerce              (coerce)
+import           Data.Either              (rights)
 import           Data.Map                 (Map)
 import qualified Data.Map                 as Map
 import           Data.Maybe               (fromMaybe)
@@ -42,9 +56,24 @@ import qualified Pact.Types.ChainId       as Pact
 -- | Name that uniquely describes a valid network.
 newtype NetworkName = NetworkName
   { unNetworkName :: Text
-  }
-  deriving (Generic, Eq, Ord, Show, Semigroup, Monoid, FromJSON, ToJSON, FromJSONKey, ToJSONKey)
+  } deriving (Eq, Ord, Show)
 
+instance FromJSON NetworkName where
+  parseJSON = either (fail . T.unpack) pure . mkNetworkName <=< parseJSON
+instance FromJSONKey NetworkName where
+instance ToJSON NetworkName where
+  toJSON = toJSON . unNetworkName
+instance ToJSONKey NetworkName where
+
+-- | Construct a 'NetworkName', and banish mainnet - for now.
+mkNetworkName :: Text -> Either Text NetworkName
+mkNetworkName (T.strip -> t)
+  | "mainnet" `T.isInfixOf` t = Left "This wallet does not support mainnet"
+  | otherwise = Right $ NetworkName t
+
+-- | Construct a 'NetworkName' but don't perform any checks
+uncheckedNetworkName :: Text -> NetworkName
+uncheckedNetworkName = NetworkName . T.strip
 
 -- | Render a network name as `Text`.
 textNetworkName :: NetworkName -> Text
@@ -149,7 +178,7 @@ parseNetworks raw = do
     rawNamesHosts = map (fmap (T.dropWhile (== ':')) . T.breakOn ":") . T.lines $ raw
 
     strippedSplitted :: [(NetworkName, [Text])]
-    strippedSplitted = map (NetworkName . T.strip *** T.words) rawNamesHosts
+    strippedSplitted = rights $ map (\(n, refs) -> (, T.words refs) <$> mkNetworkName n) rawNamesHosts
 
   --        outer list snd        host list
   parsed <- traverse (traverse (traverse parseNodeRef)) strippedSplitted
