@@ -72,6 +72,17 @@ data DeployConfirmationConfig t = DeployConfirmationConfig
   { _deployConfirmationConfig_modalTitle :: Text
   , _deployConfirmationConfig_previewTitle :: Text
   , _deployConfirmationConfig_previewConfirmButtonLabel :: Text
+    -- The confirmation button the preview screen will be disabled if the network returns
+    -- an error. Some processes like the signing API need to override this as the
+    -- responsibility for the transaction being signed lies with the creator, not the
+    -- person doing the signing. This function will be called twice, once with the bool
+    -- value of the status of the network call, and again with the setting for the
+    -- 'disabled' attribute on the preview confirm button.
+    --
+    -- A failed transaction would call this function twice like so:
+    -- 1) network failure: False
+    -- 2) button disabled: True
+    -- 
   , _deployConfirmationConfig_disregardSubmitResponse :: Bool -> Bool
   }
 
@@ -89,7 +100,7 @@ type DeployPostPreview t m modelCfg =
   -> Event t ()
   -> Event t ()
   -> Behavior t [Either Text NodeInfo]
-  -> m (Either (Event t ()) (Event t (Workflow t m (Text, (Event t (), modelCfg)))))
+  -> m (Event t (Either () (Workflow t m (Text, (Event t (), modelCfg)))))
 
 -- | Confirmation dialog for deployments.
 --
@@ -134,7 +145,7 @@ fullDeployFlow deployCfg model runner onClose =
   fullDeployFlowWithSubmit deployCfg model showSubmitModal runner onClose
   where
     showSubmitModal chain result done _next nodes =
-      pure . pure $ attachWith (const . deploySubmit chain result) nodes done
+      pure $ attachWith (\n _ -> Right $ deploySubmit chain result n) nodes done
 
 -- | Workflow taking the user through Config -> Preview -> Status
 fullDeployFlowWithSubmit
@@ -243,7 +254,7 @@ fullDeployFlowWithSubmit dcfg model onPreviewConfirm runner _onClose = do
 
       let done = gate (current $ fmap ignoreSuccessStatus succeeded) next
 
-      (eDoneAfterConfirm, eNextWorkflow) <- either (,never) (never,)
+      (eDoneAfterConfirm, eNextWorkflow) <- fanEither
         <$> onPreviewConfirm chain result done next (current $ model ^. network_selectedNodes)
 
       pure

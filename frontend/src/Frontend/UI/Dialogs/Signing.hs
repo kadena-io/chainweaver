@@ -94,4 +94,4 @@ uiSigning appCfg ideL signingRequest onCloseExternal = do
 
       -- This is the end of our work flow, so return our done event on the completion of the signing.
       -- Should some feedback be added to this to ensure that people don't spam the button?
-      fmap Left $ performEvent $ liftJSM . _appCfg_signingResponse appCfg <$> (pure sign <$ next)
+      performEvent $ fmap Left . liftJSM . _appCfg_signingResponse appCfg <$> (pure sign <$ next)
