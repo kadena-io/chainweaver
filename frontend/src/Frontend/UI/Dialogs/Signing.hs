@@ -26,6 +26,7 @@ module Frontend.UI.Dialogs.Signing
 import Reflex
 import Reflex.Dom
 
+import Control.Applicative (liftA2)
 import Frontend.AppCfg
 import Frontend.Foundation hiding (Arg)
 import Frontend.Network
@@ -92,6 +93,14 @@ uiSigning appCfg ideL signingRequest onCloseExternal = do
             , _signingResponse_body = _deploymentSettingsResult_command result
             }
 
+          onlyOneOnce a b e = gate (current $ liftA2 (&&) (isZero a) (isZero b)) e
+            where isZero = fmap (== (0 :: Int))
+
+      runOneOnce <- liftA2 onlyOneOnce (count next) (count onCloseExternal)
+
       -- This is the end of our work flow, so return our done event on the completion of the signing.
       -- Should some feedback be added to this to ensure that people don't spam the button?
-      performEvent $ fmap Left . liftJSM . _appCfg_signingResponse appCfg <$> (pure sign <$ next)
+      performEvent $ fmap Left . liftJSM . _appCfg_signingResponse appCfg <$> leftmost
+        [ pure sign <$ runOneOnce next
+        , Left "Cancelled" <$ runOneOnce onCloseExternal
+        ]
