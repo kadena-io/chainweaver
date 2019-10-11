@@ -6,6 +6,9 @@
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE PackageImports #-}
 
+-- For autoreloading sass
+{-# OPTIONS_GHC -fforce-recomp #-}
+
 module Backend where
 
 import           Control.Monad             (when, (<=<))
