@@ -125,11 +125,20 @@ in obApp // rec {
       "--ghc-options=-optl=${pkgs.darwin.libiconv.override { enableShared = false; enableStatic = true; }}/lib/libiconv.a"
       "--ghc-options=-optl=${pkgs.zlib.static}/lib/libz.a"
       "--ghc-options=-optl=${pkgs.gmp6.override { withStatic = true; }}/lib/libgmp.a"
-      "--ghc-options=-optl=/usr/lib/libSystem.B.dylib"
+      "--ghc-options=-optl=/usr/lib/libSystem.dylib"
       "--ghc-options=-optl=${pkgs.libffi.override {
         stdenv = pkgs.stdenvAdapters.makeStaticLibraries pkgs.stdenv;
         }}/lib/libffi.a"
     ];
+  });
+  # Use native mac libc++
+  fixedZ3 = pkgs.z3.overrideAttrs (oldAttrs: rec {
+    fixupPhase = ''
+      install_name_tool -change \
+        "${pkgs.libcxx}/lib/libc++.1.0.dylib" \
+        /usr/bin/libc++.dylib \
+        "$out/bin/z3"
+    '';
   });
   mac = pkgs.runCommand "mac" {} ''
     mkdir -p "$out/${macAppName}.app/Contents"
@@ -138,7 +147,7 @@ in obApp // rec {
     set -eux
     # Copy instead of symlink, so we can set the path to z3
     cp "${macBackend}"/bin/macApp "$out/${macAppName}.app/Contents/MacOS/${macAppName}"
-    ln -s "${pkgs.z3}"/bin/z3 "$out/${macAppName}.app/Contents/MacOS/z3"
+    ln -s "${fixedZ3}"/bin/z3 "$out/${macAppName}.app/Contents/MacOS/z3"
     ln -s "${obApp.mkAssets obApp.passthru.staticFiles}" "$out/${macAppName}.app/Contents/Resources/static.assets"
     ln -s "${obApp.passthru.staticFiles}" "$out/${macAppName}.app/Contents/Resources/static"
     ${pkgs.libicns}/bin/png2icns "$out/${macAppName}.app/Contents/Resources/pact.icns" "${macAppIcon}"
