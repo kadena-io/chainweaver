@@ -522,24 +522,24 @@ uiSenderDropdown
   -> model
   -> Dynamic t (Maybe ChainId)
   -> m (Dynamic t (Maybe AccountName))
-uiSenderDropdown uCfg m chainId = do
-  -- Unused temporarily for ALPHA testing phase
-  -- let mkTextAccounts mChain chains = case mChain of
-  --       Nothing -> Map.singleton Nothing "You must select a chain ID before choosing an account"
-  --       Just chain -> case Map.lookup chain chains of
-  --         Just accounts | not (Map.null accounts) ->
-  --           Map.insert Nothing "Choose an account" $ Map.mapKeysMonotonic Just $ Map.mapWithKey (\k _ -> unAccountName k) accounts
-  --         _ -> Map.singleton Nothing "No accounts on current chain"
-  --     textAccounts = mkTextAccounts <$> chainId <*> m ^. wallet_accountGuards
-  --
-  -- choice <- dropdown Nothing textAccounts $ uCfg
-  --   & dropdownConfig_setValue .~ (Nothing <$ updated chainId)
-  --   & dropdownConfig_attributes <>~ pure ("class" =: "labeled-input__input select select_mandatory_missing select_type_primary")
-  -- pure $ value choice
-
-  fmap (fmap (hush . mkAccountName) . value) $ uiInputElement $ def
-    & inputElementConfig_setValue .~ (mempty <$ updated chainId)
-    & inputElementConfig_elementConfig . elementConfig_initialAttributes .~
+uiSenderDropdown uCfg m chainId =
+  if False then do
+    let mkTextAccounts mChain chains = case mChain of
+          Nothing -> Map.singleton Nothing "You must select a chain ID before choosing an account"
+          Just chain -> case Map.lookup chain chains of
+            Just accounts | not (Map.null accounts) ->
+                            Map.insert Nothing "Choose an account" $ Map.mapKeysMonotonic Just $ Map.mapWithKey (\k _ -> unAccountName k) accounts
+            _ -> Map.singleton Nothing "No accounts on current chain"
+        textAccounts = mkTextAccounts <$> chainId <*> m ^. wallet_accountGuards
+  
+    choice <- dropdown Nothing textAccounts $ uCfg
+      & dropdownConfig_setValue .~ (Nothing <$ updated chainId)
+      & dropdownConfig_attributes <>~ pure ("class" =: "labeled-input__input select select_mandatory_missing select_type_primary")
+    pure $ value choice
+  else 
+    fmap (fmap (hush . mkAccountName) . value) $ uiInputElement $ def
+      & inputElementConfig_setValue .~ (mempty <$ updated chainId)
+      & inputElementConfig_elementConfig . elementConfig_initialAttributes .~
         ("placeholder" =: "Please enter the gas payer account name" <>
          "style" =: "width:100%"
         )
