@@ -72,8 +72,8 @@ data DeployConfirmationConfig t = DeployConfirmationConfig
   { _deployConfirmationConfig_modalTitle :: Text
   , _deployConfirmationConfig_previewTitle :: Text
   , _deployConfirmationConfig_previewConfirmButtonLabel :: Text
-    -- The confirmation button the preview screen will be disabled if the network returns
-    -- an error. Some processes like the signing API need to override this as the
+    -- The confirmation button in the preview screen will be disabled if the network
+    -- returns an error. Some processes like the signing API need to override this as the
     -- responsibility for the transaction being signed lies with the creator, not the
     -- person doing the signing. This function will be called twice, once with the bool
     -- value of the status of the network call, and again with the setting for the
@@ -145,7 +145,7 @@ fullDeployFlow deployCfg model runner onClose =
   fullDeployFlowWithSubmit deployCfg model showSubmitModal runner onClose
   where
     showSubmitModal chain result done _next nodes =
-      pure $ attachWith (\n _ -> Right $ deploySubmit chain result n) nodes done
+      pure $ Right . deploySubmit chain result <$> nodes <@ done
 
 -- | Workflow taking the user through Config -> Preview -> Status
 fullDeployFlowWithSubmit
