@@ -526,7 +526,7 @@ uiSenderDropdown
 uiSenderDropdown uCfg m chainId = do
   let textAccounts
         | AppCfg.isChainweaverAlpha = Map.insert Nothing "Choose an account"
-          . Map.mapKeysMonotonic (hush . mkAccountName)
+          . Map.mapKeys (hush . mkAccountName)
           . Map.mapWithKey const <$> (m ^. wallet_keys)
         | otherwise =
           let mkTextAccounts mChain chains = case mChain of
