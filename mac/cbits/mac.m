@@ -143,14 +143,14 @@ void setupAppMenu(HsStablePtr hs_handleOpenedFile) {
   [mainMenu setSubmenu:appMenu forItem:appMenuItem];
   // About menu
   NSMenuItem *about = [appMenu
-    addItemWithTitle:@"About Pact"
+    addItemWithTitle:@"About Chainweaver"
     action: @selector(orderFrontStandardAboutPanel:)
     keyEquivalent:@""
   ];
   [about setTarget:application];
   // Hide/show functionality
   [appMenu addItem:[NSMenuItem separatorItem]];
-  NSMenuItem *hide = [appMenu addItemWithTitle:@"Hide Pact" action: @selector(hide:) keyEquivalent:@"h" ];
+  NSMenuItem *hide = [appMenu addItemWithTitle:@"Hide Chainweaver" action: @selector(hide:) keyEquivalent:@"h" ];
   [hide setTarget:application];
   NSMenuItem *hideOthers = [appMenu
     addItemWithTitle:@"Hide Others"
@@ -164,7 +164,7 @@ void setupAppMenu(HsStablePtr hs_handleOpenedFile) {
   // Quit app
   [appMenu addItem:[NSMenuItem separatorItem]];
   NSMenuItem *quit = [appMenu
-    addItemWithTitle:@"Quit Pact"
+    addItemWithTitle:@"Quit Chainweaver"
     action: @selector(terminate:)
     keyEquivalent:@"q"
   ];
