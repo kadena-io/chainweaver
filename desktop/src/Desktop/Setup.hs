@@ -232,10 +232,10 @@ createNewWallet mMnemonic dPassword = Workflow $ do
   ePassword <- setPassword (fmap (fmap (\mn -> Crypto.sentenceToSeed mn Crypto.english "") . hush) mnemonic)
     >>= holdDyn Nothing . fmap pure
 
-  let nextGate = liftA2 (||) (fmap isNothing dPassword) (fmap not stored)
+  let nextDisabled = liftA2 (||) (fmap isNothing dPassword) (fmap not stored)
 
   cancel <- cancelButton def "Cancel"
-  next <- confirmButton (def & uiButtonCfg_disabled .~ nextGate) "Next"
+  next <- confirmButton (def & uiButtonCfg_disabled .~ nextDisabled) "Next"
 
   finishSetupWF $ leftmost
     [ splashScreen <$ cancel
@@ -281,7 +281,7 @@ confirmPhrase dPassword mnemonic = Workflow $ do
   next <- confirmButton (def & uiButtonCfg_disabled .~ fmap not done) "Next"
 
   pure
-    ( fmapMaybe id $ current dPassword <@ gate (current done) next <> skip
+    ( tagMaybe (current dPassword) $ gate (current done) next <> skip
     , createNewWallet (Just mnemonic) dPassword <$ back
     )
 
@@ -311,7 +311,7 @@ setPassword dSeed = form "" $ do
       Nothing -> pure ()
       Just e -> divClass "message-wrapper" $ divClass "message" $ text e
 
-    let (err, pass) = fanEither $ attachWith (\p _ -> uncurry checkPassword p) (liftA2 (,) p1 p2) eCheckPassword
+    let (err, pass) = fanEither $ checkPassword <$> p1 <*> p2 <@ eCheckPassword
 
     lastError <- holdDyn Nothing $ leftmost
       [ Just <$> err
