@@ -115,7 +115,7 @@ envTab
      , Flattenable (ModalCfg mConf t) t
      , HasWalletCfg (ModalCfg mConf t) t, HasWalletCfg mConf t
      , HasJsonDataCfg mConf t, HasWallet model t, HasJsonData model t
-     , HasNetwork model t, HasEditor model t
+     , HasEditor model t
      )
   => model -> m mConf
 envTab m = do
@@ -134,9 +134,7 @@ envTab m = do
     accordionItem' True "segment" walletHeader $
       uiWallet w
 
-  accountCfg <- accordionItem True "segment" "Accounts" $ uiAccounts m
-
-  pure $ jsonCfg <> keysCfg <> errCfg <> accountCfg
+  pure $ jsonCfg <> keysCfg <> errCfg
 
 -- | Add an account on a particular chain. The return event is really a
 -- _request_ to add an account: the actual lookup must be done elsewhere.
