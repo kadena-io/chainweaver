@@ -51,6 +51,14 @@ newtype WordKey = WordKey { _unWordKey :: Int }
 wordsToPhraseMap :: [Text] -> Map.Map WordKey Text
 wordsToPhraseMap = Map.fromList . zip [WordKey 1 ..]
 
+mkPhraseMapFromMnemonic
+  :: forall mw.
+     Crypto.ValidMnemonicSentence mw
+  => Crypto.MnemonicSentence mw
+  -> Map.Map WordKey Text
+mkPhraseMapFromMnemonic = wordsToPhraseMap . T.words . baToText
+  . Crypto.mnemonicSentenceToString @mw Crypto.english
+
 showWordKey :: WordKey -> Text
 showWordKey = T.pack . show . _unWordKey
 
@@ -94,7 +102,7 @@ splashScreen = Workflow $ do
   create <- confirmButton def "Setup a new wallet"
   recover <- uiButton btnCfgSecondary $ text "Recover an existing wallet"
   finishSetupWF $ leftmost
-    [ createNewWallet Nothing (pure Nothing) <$ create
+    [ createNewWallet Nothing <$ create
     , recoverWallet <$ recover
     ]
 
@@ -113,7 +121,7 @@ recoverWallet = Workflow $ do
 
   rec 
     phraseMap <- holdDyn (wordsToPhraseMap $ replicate passphraseLen T.empty)
-      $ Map.union <$> current phraseMap <@> onPhraseMapUpdate
+      $ flip Map.union <$> current phraseMap <@> onPhraseMapUpdate
 
     onPhraseMapUpdate <- passphraseWidget phraseMap (pure Recover)
 
@@ -210,9 +218,8 @@ createNewWallet
   :: MonadWidget t m
   => Maybe (Crypto.MnemonicSentence 12)
   -- ^ Initial mnemonic sentence. If missing, a new one will be generated.
-  -> Dynamic t (Maybe Crypto.XPrv)
   -> SetupWF t m
-createNewWallet mMnemonic dPassword = Workflow $ do
+createNewWallet mMnemonic = Workflow $ do
   el "h1" $ text "Wallet recovery phrase"
   el "p" $ text "Write down your recovery phrase on paper"
   initMnemonic <- maybe genMnemonic (pure . Right) mMnemonic
@@ -221,7 +228,7 @@ createNewWallet mMnemonic dPassword = Workflow $ do
     divClass "group" $ dyn $ ffor mnemonic $ \case
       Left e -> text e
       Right sentence -> void $ passphraseWidget
-        (pure . wordsToPhraseMap . T.words . baToText $ Crypto.mnemonicSentenceToString Crypto.english sentence)
+        (pure $ mkPhraseMapFromMnemonic sentence)
         (pure Setup)
         
     stored <- fmap value $ divClass "checkbox-wrapper" $ uiCheckbox def False def $ text "I have safely stored my recovery phrase."
@@ -229,7 +236,7 @@ createNewWallet mMnemonic dPassword = Workflow $ do
       elClass "i" "fa fa-lg fa-refresh" blank
       text " Regenerate"
 
-  ePassword <- setPassword (fmap (fmap (\mn -> Crypto.sentenceToSeed mn Crypto.english "") . hush) mnemonic)
+  dPassword <- setPassword (fmap (fmap (\mn -> Crypto.sentenceToSeed mn Crypto.english "") . hush) mnemonic)
     >>= holdDyn Nothing . fmap pure
 
   let nextDisabled = liftA2 (||) (fmap isNothing dPassword) (fmap not stored)
@@ -251,38 +258,27 @@ confirmPhrase
   -- ^ Mnemonic sentence to confirm
   -> SetupWF t m
 confirmPhrase dPassword mnemonic = Workflow $ do
-  let sentence = T.words $ baToText $ Crypto.mnemonicSentenceToString Crypto.english mnemonic
+
   el "h1" $ text "Confirm your recovery phrase"
-  el "p" $ text "Click the words in the correct order"
+
+  el "p" $ text "Enter the words in the correct order"
+
+  let actualMap = mkPhraseMapFromMnemonic mnemonic
+
   rec
-    let initialState = ([], S.fromList sentence)
-    -- Maintain an (ordered) list of staged words, and an alphabetical list of unstaged words
-    (staged, unstaged) <- fmap splitDynPure $ foldDyn ($) initialState $ mconcat
-      [ ffor unstage $ \w -> bimap (L.delete w) (S.insert w)
-      , ffor stage $ \w -> bimap (++ [w]) (S.delete w)
-      , ffor reset $ \() _ -> initialState
-      ]
-    let stageAttrs = "class" =: "group dark" <> "style" =: "min-height: 9.2rem"
-    (unstage, reset) <- elAttr "div" stageAttrs $ do
-      -- Display the staging area
-      unstage' <- switchList staged $ uiButton btnCfgPrimary . dynText
-      -- Button to reset the staging area, only shown when something is staged
-      let hiddenClass = ffor staged $ \s -> if null s then "button_hidden" else def
-      reset' <- uiButtonDyn (btnCfgPrimary & uiButtonCfg_class <>~ hiddenClass) $
-        elClass "i" "fa fa-lg fa-refresh" blank
-      pure (unstage', reset')
-    -- Unstaged words are displayed in ascending alphabetical order
-    let unstageAttrs = ffor unstaged $ \s -> if null s then mempty else "class" =: "group"
-    stage <- elDynAttr "div" unstageAttrs $ switchList (S.toAscList <$> unstaged) $
-      uiButton btnCfgTertiary . dynText
-  let done = (== sentence) <$> staged
+    onPhraseUpdate <- passphraseWidget dConfirmPhrase (pure Recover)
+    dConfirmPhrase <- holdDyn (wordsToPhraseMap $ replicate passphraseLen T.empty)
+      $ flip Map.union <$> current dConfirmPhrase <@> onPhraseUpdate
+
+  let done = (== actualMap) <$> dConfirmPhrase
+
   back <- cancelButton def "Back"
   skip <- uiButton btnCfgTertiary $ text "Skip"
   next <- confirmButton (def & uiButtonCfg_disabled .~ fmap not done) "Next"
 
   pure
     ( tagMaybe (current dPassword) $ gate (current done) next <> skip
-    , createNewWallet (Just mnemonic) dPassword <$ back
+    , createNewWallet (Just mnemonic) <$ back
     )
 
 setPassword
@@ -291,10 +287,15 @@ setPassword
   -> m (Event t Crypto.XPrv)
 setPassword dSeed = form "" $ do
   el "p" $ text "This password will protect your wallet. You'll need it when signing transactions."
-  p1elem <- uiInputElement $ def
-    & initialAttributes .~ "type" =: "password" <> "placeholder" =: "Enter password" <> "class" =: "passphrase"
-  p2elem <- uiInputElement $ def
-    & initialAttributes .~ "type" =: "password" <> "placeholder" =: "Confirm password" <> "class" =: "passphrase"
+
+  let uiPassword ph = uiInputElement $ def & initialAttributes .~
+                      ( "type" =: "password" <>
+                        "placeholder" =: ph <>
+                        "class" =: "passphrase"
+                      )
+
+  p1elem <- uiPassword "Enter password"
+  p2elem <- uiPassword "Confirm password" 
 
   let p1 = current $ value p1elem
       p2 = current $ value p2elem
@@ -322,9 +323,12 @@ setPassword dSeed = form "" $ do
   where
     minPasswordLength = 10
     checkPassword p1 p2
-      | T.length p1 < minPasswordLength = Left $ "Passwords must be at least " <> tshow minPasswordLength <> " characters long"
-      | p1 /= p2 = Left "Passwords must match"
-      | otherwise = Right p1
+      | T.length p1 < minPasswordLength =
+          Left $ "Passwords must be at least " <> tshow minPasswordLength <> " characters long"
+      | p1 /= p2 =
+          Left "Passwords must match"
+      | otherwise =
+          Right p1
 
 -- | Generate a 12 word mnemonic sentence, using cryptonite.
 --
