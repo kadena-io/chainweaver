@@ -57,3 +57,7 @@ data AppCfg t m = AppCfg
   , _appCfg_forceResize :: Event t ()
   -- ^ Force the ace widgets to recalculate size
   }
+
+-- Are we running the Kadena Chainweaver ALPHA edition
+isChainweaverAlpha :: Bool
+isChainweaverAlpha = True

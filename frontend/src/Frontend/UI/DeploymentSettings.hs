@@ -48,6 +48,7 @@ import           Data.Either                 (rights)
 import           Control.Arrow               ((&&&))
 import           Control.Lens
 import           Control.Monad
+import           Control.Error.Util (hush)
 import qualified Data.Aeson as Aeson
 import qualified Data.Map                    as Map
 import           Data.Set                    (Set)
@@ -76,6 +77,7 @@ import           Frontend.UI.TabBar
 import           Frontend.UI.Widgets
 import           Frontend.UI.Widgets.Helpers (preventScrollWheelAndUpDownArrow)
 import           Frontend.Wallet
+import qualified Frontend.AppCfg as AppCfg
 ------------------------------------------------------------------------------
 
 -- | Config for the deployment settings widget.
@@ -521,18 +523,27 @@ uiSenderDropdown
   -> model
   -> Dynamic t (Maybe ChainId)
   -> m (Dynamic t (Maybe AccountName))
-uiSenderDropdown uCfg m chainId = do
-  let mkTextAccounts mChain chains = case mChain of
-        Nothing -> Map.singleton Nothing "You must select a chain ID before choosing an account"
-        Just chain -> case Map.lookup chain chains of
-          Just accounts | not (Map.null accounts) ->
-            Map.insert Nothing "Choose an account" $ Map.mapKeysMonotonic Just $ Map.mapWithKey (\k _ -> unAccountName k) accounts
-          _ -> Map.singleton Nothing "No accounts on current chain"
-      textAccounts = mkTextAccounts <$> chainId <*> m ^. wallet_accountGuards
-  choice <- dropdown Nothing textAccounts $ uCfg
-    & dropdownConfig_setValue .~ (Nothing <$ updated chainId)
-    & dropdownConfig_attributes <>~ pure ("class" =: "labeled-input__input select select_mandatory_missing select_type_primary")
-  pure $ value choice
+uiSenderDropdown uCfg m chainId =
+  if AppCfg.isChainweaverAlpha then
+    fmap (fmap (hush . mkAccountName) . value) $ uiInputElement $ def
+      & inputElementConfig_setValue .~ (mempty <$ updated chainId)
+      & inputElementConfig_elementConfig . elementConfig_initialAttributes .~
+        ("placeholder" =: "Please enter the gas payer account name" <>
+         "style" =: "width:100%"
+        )
+  else do
+    let mkTextAccounts mChain chains = case mChain of
+          Nothing -> Map.singleton Nothing "You must select a chain ID before choosing an account"
+          Just chain -> case Map.lookup chain chains of
+            Just accounts | not (Map.null accounts) ->
+                            Map.insert Nothing "Choose an account" $ Map.mapKeysMonotonic Just $ Map.mapWithKey (\k _ -> unAccountName k) accounts
+            _ -> Map.singleton Nothing "No accounts on current chain"
+        textAccounts = mkTextAccounts <$> chainId <*> m ^. wallet_accountGuards
+  
+    choice <- dropdown Nothing textAccounts $ uCfg
+      & dropdownConfig_setValue .~ (Nothing <$ updated chainId)
+      & dropdownConfig_attributes <>~ pure ("class" =: "labeled-input__input select select_mandatory_missing select_type_primary")
+    pure $ value choice
 
 -- | Widget (dropdown) for letting the user choose between /send and /local endpoint.
 --
