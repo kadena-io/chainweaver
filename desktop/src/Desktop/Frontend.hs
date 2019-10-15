@@ -94,7 +94,7 @@ fileStorage dir = Storage
           path k = dir </> FilePath.makeValid (show k)
 
 -- | This is for development
--- > ob run --import desktop:Desktop --frontend Desktop.desktop
+-- > ob run --import desktop:Desktop.Frontend --frontend Desktop.Frontend.desktop
 desktop :: Frontend (R FrontendRoute)
 desktop = Frontend
   { _frontend_head = do
@@ -103,7 +103,6 @@ desktop = Frontend
       base <- getConfigRoute
       _ <- Frontend.newHead $ \r -> base <> renderBackendRoute backendEncoder r
       el "style" $ text desktopCss
-      pure ()
   , _frontend_body = prerender_ blank $ flip runStorageT browserStorage $ do
     (fileOpened, triggerOpen) <- Frontend.openFileDialog
     let appCfg = AppCfg

@@ -8,15 +8,18 @@
 -- | Wallet setup screens
 module Desktop.Setup (runSetup, form, kadenaWalletLogo) where
 
+import Control.Error (hush)
 import Control.Applicative (liftA2)
 import Control.Lens ((<>~), (?~))
 import Control.Monad (unless)
 import Control.Monad.Fix (MonadFix)
 import Control.Monad.IO.Class
+import Data.Maybe (isNothing)
 import Data.Bifunctor
 import Data.ByteArray (ByteArrayAccess)
 import Data.ByteString (ByteString)
 import Data.String (fromString)
+import Data.Functor ((<&>))
 import Data.Text (Text)
 import Reflex.Dom.Core
 import qualified Cardano.Crypto.Wallet as Crypto
@@ -67,7 +70,7 @@ splashScreen = Workflow $ do
   create <- confirmButton def "Setup a new wallet"
   recover <- uiButton btnCfgSecondary $ text "Recover an existing wallet"
   finishSetupWF $ leftmost
-    [ createNewWallet Nothing <$ create
+    [ createNewWallet Nothing (pure Nothing) <$ create
     , recoverWallet <$ recover
     ]
 
@@ -105,21 +108,27 @@ recoverWallet = Workflow $ do
     next <- uiButtonDyn (def & uiButtonCfg_class .~ fmap mkClass sentenceOrError) $ text "Next"
     let (err, sentence) = fanEither $ current sentenceOrError <@ next
     lastError <- holdDyn Nothing $ Just <$> err
+
   let toSeed :: Crypto.ValidMnemonicSentence mw => Text -> Crypto.MnemonicSentence mw -> Crypto.Seed
       toSeed p s = Crypto.sentenceToSeed s Crypto.english . fromString $ T.unpack p
-      seed = attachWith toSeed (current passphrase) sentence
-  finishSetupWF $ leftmost
-    [ splashScreen <$ cancel
-    , setPassword recoverWallet <$> seed
-    ]
+
+  dMSeed <- holdDyn Nothing $ pure <$> attachWith toSeed (current passphrase) sentence
+
+  ePassword <- setPassword dMSeed
+
+  pure
+    ( ePassword
+    , splashScreen <$ cancel
+    )
 
 -- | UI for generating and displaying a new mnemonic sentence.
 createNewWallet
   :: MonadWidget t m
   => Maybe (Crypto.MnemonicSentence 15)
   -- ^ Initial mnemonic sentence. If missing, a new one will be generated.
+  -> Dynamic t (Maybe Crypto.XPrv)
   -> SetupWF t m
-createNewWallet mMnemonic = Workflow $ do
+createNewWallet mMnemonic dPassword = Workflow $ do
   el "h1" $ text "Wallet recovery phrase"
   el "p" $ text "Write down your recovery phrase on paper"
   initMnemonic <- maybe genMnemonic (pure . Right) mMnemonic
@@ -133,21 +142,28 @@ createNewWallet mMnemonic = Workflow $ do
       elClass "i" "fa fa-lg fa-refresh" blank
       text " Regenerate"
 
+  ePassword <- setPassword (fmap (fmap (\mn -> Crypto.sentenceToSeed mn Crypto.english "") . hush) mnemonic)
+    >>= holdDyn Nothing . fmap pure
+
+  let nextGate = liftA2 (||) (fmap isNothing dPassword) (fmap not stored)
+
   cancel <- cancelButton def "Cancel"
-  next <- confirmButton (def & uiButtonCfg_disabled .~ fmap not stored) "Next"
+  next <- confirmButton (def & uiButtonCfg_disabled .~ nextGate) "Next"
+
   finishSetupWF $ leftmost
     [ splashScreen <$ cancel
-    , attachWithMaybe (\e () -> either (const Nothing) (Just . confirmPhrase) e) (current mnemonic) next
+    , attachWithMaybe (\e () -> confirmPhrase dPassword <$> hush e) (current mnemonic) next
     ]
 
 -- | UI for mnemonic sentence confirmation: scramble the phrase, make the user
 -- choose the words in the right order.
 confirmPhrase
   :: MonadWidget t m
-  => Crypto.MnemonicSentence 15
+  => Dynamic t (Maybe Crypto.XPrv)
+  -> Crypto.MnemonicSentence 15
   -- ^ Mnemonic sentence to confirm
   -> SetupWF t m
-confirmPhrase mnemonic = Workflow $ do
+confirmPhrase dPassword mnemonic = Workflow $ do
   let sentence = T.words $ baToText $ Crypto.mnemonicSentenceToString Crypto.english mnemonic
   el "h1" $ text "Confirm your recovery phrase"
   el "p" $ text "Click the words in the correct order"
@@ -176,36 +192,46 @@ confirmPhrase mnemonic = Workflow $ do
   back <- cancelButton def "Back"
   skip <- uiButton btnCfgTertiary $ text "Skip"
   next <- confirmButton (def & uiButtonCfg_disabled .~ fmap not done) "Next"
-  finishSetupWF $ leftmost
-    [ createNewWallet (Just mnemonic) <$ back
-    , setPassword (createNewWallet Nothing) (Crypto.sentenceToSeed mnemonic Crypto.english "")
-      <$ (gate (current done) next <> skip)
-    ]
+
+  pure
+    ( fmapMaybe id $ current dPassword <@ gate (current done) next <> skip
+    , createNewWallet (Just mnemonic) dPassword <$ back
+    )
 
 setPassword
   :: MonadWidget t m
-  => SetupWF t m
-  -> Crypto.Seed
-  -> SetupWF t m
-setPassword previous seed = Workflow $ form "" $ do
-  el "h1" $ text "Set a password"
+  => Dynamic t (Maybe Crypto.Seed)
+  -> m (Event t Crypto.XPrv)
+setPassword dSeed = form "" $ do
   el "p" $ text "This password will protect your wallet. You'll need it when signing transactions."
-  p1 <- fmap (current . value) $ uiInputElement $ def
+  p1elem <- uiInputElement $ def
     & initialAttributes .~ "type" =: "password" <> "placeholder" =: "Enter password" <> "class" =: "passphrase"
-  p2 <- fmap (current . value) $ uiInputElement $ def
+  p2elem <- uiInputElement $ def
     & initialAttributes .~ "type" =: "password" <> "placeholder" =: "Confirm password" <> "class" =: "passphrase"
+
+  let p1 = current $ value p1elem
+      p2 = current $ value p2elem
+
+      inputsNotEmpty = not <$> liftA2 (||) (T.null <$> p1) (T.null <$> p2)
+
+  eCheckPassword <- fmap (gate inputsNotEmpty) $ delay 0.4 $ leftmost
+    [ _inputElement_input p1elem
+    , _inputElement_input p2elem
+    ]
+
   rec
     dyn_ $ ffor lastError $ \case
       Nothing -> pure ()
       Just e -> divClass "message-wrapper" $ divClass "message" $ text e
-    back <- cancelButton (def & uiButtonCfg_type ?~ "button") "Back"
-    next <- confirmButton (def & uiButtonCfg_type ?~ "submit") "Next"
-    let (err, pass) = fanEither $ attachWith (\p _ -> uncurry checkPassword p) (liftA2 (,) p1 p2) next
-    lastError <- holdDyn Nothing $ Just <$> err
-  pure
-    ( Crypto.generate seed . T.encodeUtf8 <$> pass
-    , previous <$ back
-    )
+
+    let (err, pass) = fanEither $ attachWith (\p _ -> uncurry checkPassword p) (liftA2 (,) p1 p2) eCheckPassword
+
+    lastError <- holdDyn Nothing $ leftmost
+      [ Just <$> err
+      , Nothing <$ pass
+      ]
+
+  pure $ attachWithMaybe (\ms pw -> flip Crypto.generate pw <$> ms) (current dSeed) (T.encodeUtf8 <$> pass)
   where
     minPasswordLength = 10
     checkPassword p1 p2
