@@ -136,6 +136,7 @@ desktopCss = [QQ.r|
 .fullscreen .wrapper { max-width: 40rem; text-align: center; }
 .fullscreen .wrapper .logo { width: 20rem; margin: 0 auto; font-size: 30px; }
 .fullscreen textarea.wallet-recovery-phrase { display: block; width: 30rem; height: 6rem; font-size: 18px; margin: 2rem auto; }
+.passphrase-widget-wrapper { display: grid; grid-template-columns: repeat(4, 1fr); }
 .fullscreen .passphrase { display: block; margin: 1rem auto; width: 20rem; }
 .fullscreen .passphrase.hidden { display: none; }
 .fullscreen .message-wrapper { margin: 2rem auto; }

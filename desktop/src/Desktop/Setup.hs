@@ -10,15 +10,16 @@ module Desktop.Setup (runSetup, form, kadenaWalletLogo) where
 
 import Control.Error (hush)
 import Control.Applicative (liftA2)
-import Control.Lens ((<>~), (?~))
-import Control.Monad (unless)
+import Control.Lens ((<>~), (?~), (%~))
+import Control.Monad (unless,void)
 import Control.Monad.Fix (MonadFix)
 import Control.Monad.IO.Class
+import Data.Proxy (Proxy (..))
 import Data.Maybe (isNothing)
 import Data.Bifunctor
 import Data.ByteArray (ByteArrayAccess)
 import Data.ByteString (ByteString)
-import Data.String (fromString)
+import Data.String (IsString, fromString)
 import Data.Functor ((<&>))
 import Data.Text (Text)
 import Reflex.Dom.Core
@@ -29,6 +30,7 @@ import qualified Crypto.Random.Entropy
 import qualified Data.ByteArray as BA
 import qualified Data.List as L
 import qualified Data.Set as S
+import qualified Data.Map as Map
 import qualified Data.Text as T
 import qualified Data.Text.Encoding as T
 
@@ -36,9 +38,31 @@ import Frontend.UI.Button
 import Frontend.UI.Widgets
 import Obelisk.Generated.Static
 
+-- | Used for changing the settings in the passphrase widget.
+data PassphraseStage
+  = Setup
+  | Recover
+  deriving (Show, Eq)
+
+-- | Wrapper for the index of the word in the passphrase
+newtype WordKey = WordKey { _unWordKey :: Int }
+  deriving (Show, Eq, Ord, Enum)
+
+wordsToPhraseMap :: [Text] -> Map.Map WordKey Text
+wordsToPhraseMap = Map.fromList . zip [WordKey 1 ..]
+
+showWordKey :: WordKey -> Text
+showWordKey = T.pack . show . _unWordKey
+
 -- | Convenience function for unpacking byte array things into 'Text'
 baToText :: ByteArrayAccess b => b -> Text
 baToText = T.decodeUtf8 . BA.pack . BA.unpack
+
+textTo :: IsString a => Text -> a
+textTo = fromString . T.unpack
+
+tshow :: Show a => a -> Text
+tshow = T.pack . show
 
 -- | Form wrapper which will automatically handle submit on enter
 form :: DomBuilder t m => Text -> m a -> m a
@@ -79,19 +103,35 @@ data BIP39PhraseError
   | BIP39PhraseError_MnemonicWordsErr Crypto.MnemonicWordsError
   | BIP39PhraseError_InvalidPhrase
 
+passphraseLen :: Int
+passphraseLen = 12
+
 recoverWallet :: MonadWidget t m => SetupWF t m
 recoverWallet = Workflow $ do
   el "h1" $ text "Recover your wallet"
   el "p" $ text "Type in your recovery phrase"
-  rawPhrase :: Dynamic t Text <- fmap value $ uiTextAreaElement $ def & initialAttributes .~ "class" =: "wallet-recovery-phrase"
-  let sentenceOrError = ffor rawPhrase $ \t -> do
-        phrase <- first BIP39PhraseError_MnemonicWordsErr . Crypto.mnemonicPhrase @15 . fmap (fromString . T.unpack) $ T.words t
+
+  rec 
+    phraseMap <- holdDyn (wordsToPhraseMap $ replicate passphraseLen T.empty)
+      $ Map.union <$> current phraseMap <@> onPhraseMapUpdate
+
+    onPhraseMapUpdate <- passphraseWidget phraseMap (pure Recover)
+
+  let sentenceOrError = ffor phraseMap $ \pm -> do
+        phrase <- first BIP39PhraseError_MnemonicWordsErr
+          . Crypto.mnemonicPhrase @12
+          $ textTo <$> Map.elems pm
+
         unless (Crypto.checkMnemonicPhrase Crypto.english phrase) $ Left BIP39PhraseError_InvalidPhrase
         first BIP39PhraseError_Dictionary $ Crypto.mnemonicPhraseToMnemonicSentence Crypto.english phrase
+
   passphrase <- divClass "checkbox-wrapper" $ do
     usePassphrase <- fmap value $ uiCheckbox def False def $ text "Use a BIP39 passphrase"
     fmap value $ uiInputElement $ def
-      & initialAttributes .~ "type" =: "password" <> "placeholder" =: "BIP39 passphrase" <> "class" =: "hidden passphrase"
+      & initialAttributes .~
+        "type" =: "password" <>
+        "placeholder" =: "BIP39 passphrase" <>
+        "class" =: "hidden passphrase"
       & modifyAttributes .~ ffor (updated usePassphrase)
         (\u -> if u then "class" =: Just "input passphrase" else "class" =: Just "hidden passphrase")
   let mkClass = \case Left _ -> "button_type_secondary"; _ -> "button_type_confirm"
@@ -100,7 +140,7 @@ recoverWallet = Workflow $ do
       Nothing -> pure ()
       Just e -> divClass "message-wrapper" $ divClass "message" $ text $ case e of
         BIP39PhraseError_MnemonicWordsErr (Crypto.ErrWrongNumberOfWords actual expected)
-          -> "Wrong number of words: expected " <> T.pack (show expected) <> ", but got " <> T.pack (show actual)
+          -> "Wrong number of words: expected " <> tshow expected <> ", but got " <> tshow actual
         BIP39PhraseError_InvalidPhrase -> "Invalid phrase"
         BIP39PhraseError_Dictionary (Crypto.ErrInvalidDictionaryWord word)
           -> "Invalid word in phrase: " <> baToText word
@@ -110,7 +150,7 @@ recoverWallet = Workflow $ do
     lastError <- holdDyn Nothing $ Just <$> err
 
   let toSeed :: Crypto.ValidMnemonicSentence mw => Text -> Crypto.MnemonicSentence mw -> Crypto.Seed
-      toSeed p s = Crypto.sentenceToSeed s Crypto.english . fromString $ T.unpack p
+      toSeed p s = Crypto.sentenceToSeed s Crypto.english $ textTo p
 
   dMSeed <- holdDyn Nothing $ pure <$> attachWith toSeed (current passphrase) sentence
 
@@ -121,10 +161,54 @@ recoverWallet = Workflow $ do
     , splashScreen <$ cancel
     )
 
+passphraseWordElement
+  :: MonadWidget t m
+  => Dynamic t PassphraseStage
+  -> WordKey
+  -> Dynamic t Text
+  -> m (Event t Text)
+passphraseWordElement currentStage k wrd = divClass "passphrase-widget-elem-wrapper" $ do
+  pb <- getPostBuild
+
+  divClass "passphrase-widget-key-wrapper" $
+    text (showWordKey k)
+
+  rec
+    wordElem <- divClass "passphrase-widget-word-wrapper" . uiInputElement $ def
+      & inputElementConfig_setValue .~ (current wrd <@ pb)
+      & setInitialAttrs .~
+        ( "type" =: "password" <>
+          "size" =: "10" <>
+          "class" =: "passphrase-widget-word"
+        )
+      & modAttrs .~ mergeWith (<>)
+        [ ("type" =: Just "text") <$ domEvent Mouseover wordElem
+        , ("type" =: Just "password") <$ domEvent Mouseleave wordElem
+        , ("readonly" =:) . enableIfRecovery <$> current currentStage <@ pb
+        ]
+
+  pure $ _inputElement_input wordElem
+  where
+    enableIfRecovery Recover = Nothing
+    enableIfRecovery Setup = Just "true"
+
+    setInitialAttrs = inputElementConfig_elementConfig . elementConfig_initialAttributes
+    modAttrs = inputElementConfig_elementConfig . elementConfig_modifyAttributes
+
+passphraseWidget
+  :: MonadWidget t m
+  => Dynamic t (Map.Map WordKey Text)
+  -> Dynamic t PassphraseStage
+  -> m (Event t (Map.Map WordKey Text))
+passphraseWidget dWords dStage = do
+  divClass "passphrase-widget-wrapper" $
+    listViewWithKey dWords (passphraseWordElement dStage)
+
+
 -- | UI for generating and displaying a new mnemonic sentence.
 createNewWallet
   :: MonadWidget t m
-  => Maybe (Crypto.MnemonicSentence 15)
+  => Maybe (Crypto.MnemonicSentence 12)
   -- ^ Initial mnemonic sentence. If missing, a new one will be generated.
   -> Dynamic t (Maybe Crypto.XPrv)
   -> SetupWF t m
@@ -134,9 +218,12 @@ createNewWallet mMnemonic dPassword = Workflow $ do
   initMnemonic <- maybe genMnemonic (pure . Right) mMnemonic
   rec
     mnemonic <- holdDyn initMnemonic =<< performEvent (genMnemonic <$ regen)
-    divClass "group" $ dyn_ $ ffor mnemonic $ \case
+    divClass "group" $ dyn $ ffor mnemonic $ \case
       Left e -> text e
-      Right sentence -> text $ baToText $ Crypto.mnemonicSentenceToString Crypto.english sentence
+      Right sentence -> void $ passphraseWidget
+        (pure . wordsToPhraseMap . T.words . baToText $ Crypto.mnemonicSentenceToString Crypto.english sentence)
+        (pure Setup)
+        
     stored <- fmap value $ divClass "checkbox-wrapper" $ uiCheckbox def False def $ text "I have safely stored my recovery phrase."
     regen <- uiButton btnCfgTertiary $ do
       elClass "i" "fa fa-lg fa-refresh" blank
@@ -160,7 +247,7 @@ createNewWallet mMnemonic dPassword = Workflow $ do
 confirmPhrase
   :: MonadWidget t m
   => Dynamic t (Maybe Crypto.XPrv)
-  -> Crypto.MnemonicSentence 15
+  -> Crypto.MnemonicSentence 12
   -- ^ Mnemonic sentence to confirm
   -> SetupWF t m
 confirmPhrase dPassword mnemonic = Workflow $ do
@@ -235,12 +322,16 @@ setPassword dSeed = form "" $ do
   where
     minPasswordLength = 10
     checkPassword p1 p2
-      | T.length p1 < minPasswordLength = Left $ "Passwords must be at least " <> T.pack (show minPasswordLength) <> " characters long"
+      | T.length p1 < minPasswordLength = Left $ "Passwords must be at least " <> tshow minPasswordLength <> " characters long"
       | p1 /= p2 = Left "Passwords must match"
       | otherwise = Right p1
 
--- | Generate a 15 word mnemonic sentence, using cryptonite.
-genMnemonic :: MonadIO m => m (Either Text (Crypto.MnemonicSentence 15))
-genMnemonic = liftIO $ bimap (T.pack . show) Crypto.entropyToWords . Crypto.toEntropy @160
-  <$> Crypto.Random.Entropy.getEntropy @ByteString 20
+-- | Generate a 12 word mnemonic sentence, using cryptonite.
+--
+-- These values for entropy must be set according to a predefined table:
+-- https://github.com/kadena-io/cardano-crypto/blob/master/src/Crypto/Encoding/BIP39.hs#L208-L218
+genMnemonic :: MonadIO m => m (Either Text (Crypto.MnemonicSentence 12))
+genMnemonic = liftIO $ bimap tshow Crypto.entropyToWords . Crypto.toEntropy @128
+  -- This size must be a 1/8th the size of the 'toEntropy' size: 128 / 8 = 16
+  <$> Crypto.Random.Entropy.getEntropy @ByteString 16
 
