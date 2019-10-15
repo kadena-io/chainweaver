@@ -20,8 +20,11 @@
 -- Copyright   :  (C) 2018 Kadena
 -- License     :  BSD-style (see the file LICENSE)
 module Frontend.UI.Dialogs.DeployConfirmation
-  ( uiDeployConfirmation
+  ( DeployConfirmationConfig (..)
+  , HasDeployConfirmationConfig (..)
+  , uiDeployConfirmation
   , fullDeployFlow
+  , fullDeployFlowWithSubmit
   ) where
 
 import Common.Foundation
@@ -30,6 +33,7 @@ import Control.Concurrent (newEmptyMVar, tryTakeMVar, putMVar, killThread, forkI
 import Control.Lens
 import Control.Monad (void)
 import Data.Decimal (Decimal)
+import Data.Default (Default (..))
 import Data.Either (isLeft, rights)
 import Data.List.NonEmpty (NonEmpty(..))
 import Data.Map (Map)
@@ -64,6 +68,40 @@ import qualified Pact.Types.Command as Pact
 import qualified Servant.Client.JSaddle as S
 import qualified Text.URI as URI
 
+data DeployConfirmationConfig t = DeployConfirmationConfig
+  { _deployConfirmationConfig_modalTitle :: Text
+  , _deployConfirmationConfig_previewTitle :: Text
+  , _deployConfirmationConfig_previewConfirmButtonLabel :: Text
+    -- The confirmation button in the preview screen will be disabled if the network
+    -- returns an error. Some processes like the signing API need to override this as the
+    -- responsibility for the transaction being signed lies with the creator, not the
+    -- person doing the signing. This function will be called twice, once with the bool
+    -- value of the status of the network call, and again with the setting for the
+    -- 'disabled' attribute on the preview confirm button.
+    --
+    -- A failed transaction would call this function twice like so:
+    -- 1) network failure: False
+    -- 2) button disabled: True
+    -- 
+  , _deployConfirmationConfig_disregardSubmitResponse :: Bool -> Bool
+  }
+
+makeClassy ''DeployConfirmationConfig
+
+instance Reflex t => Default (DeployConfirmationConfig t) where
+  def = DeployConfirmationConfig "Transaction Details" "Transaction Preview" "Create Transaction" id
+
+-- We may not need the Status part of the workflow, but we want to be able to reuse as
+-- much of this as we can so we have this function type that will give us the event of the
+-- next stage or the completion of the workflow.
+type DeployPostPreview t m modelCfg =
+     ChainId
+  -> DeploymentSettingsResult
+  -> Event t ()
+  -> Event t ()
+  -> Behavior t [Either Text NodeInfo]
+  -> m (Event t (Either () (Workflow t m (Text, (Event t (), modelCfg)))))
+
 -- | Confirmation dialog for deployments.
 --
 --   User can make sure to deploy to the right network, has the right keysets,
@@ -78,7 +116,7 @@ uiDeployConfirmation
   => Text
   -> model
   -> Event t () -> m (modelCfg, Event t ())
-uiDeployConfirmation code model = fullDeployFlow "Transaction Details" model $ do
+uiDeployConfirmation code model = fullDeployFlow def model $ do
   (settingsCfg, result, _) <- uiDeploymentSettings model $ DeploymentSettingsConfig
     { _deploymentSettingsConfig_chainId = userChainIdSelect
     , _deploymentSettingsConfig_defEndpoint = Just Endpoint_Send
@@ -99,11 +137,29 @@ fullDeployFlow
      , HasNetwork model t
      , HasWallet model t
      )
-  => Text -- ^ Title of modal
+  => DeployConfirmationConfig t
   -> model
   -> m (modelCfg, Event t DeploymentSettingsResult)
   -> Event t () -> m (modelCfg, Event t ())
-fullDeployFlow cfgTitle model runner _onClose = do
+fullDeployFlow deployCfg model runner onClose =
+  fullDeployFlowWithSubmit deployCfg model showSubmitModal runner onClose
+  where
+    showSubmitModal chain result done _next nodes =
+      pure $ Right . deploySubmit chain result <$> nodes <@ done
+
+-- | Workflow taking the user through Config -> Preview -> Status
+fullDeployFlowWithSubmit
+  :: forall t m model modelCfg.
+     ( MonadWidget t m, Monoid modelCfg, Flattenable modelCfg t
+     , HasNetwork model t
+     , HasWallet model t
+     )
+  => DeployConfirmationConfig t
+  -> model
+  -> DeployPostPreview t m modelCfg
+  -> m (modelCfg, Event t DeploymentSettingsResult)
+  -> Event t () -> m (modelCfg, Event t ())
+fullDeployFlowWithSubmit dcfg model onPreviewConfirm runner _onClose = do
   rec
     onClose <- modalHeader $ dynText title
     result <- workflow deployConfig
@@ -114,7 +170,11 @@ fullDeployFlow cfgTitle model runner _onClose = do
   where
     deployConfig = Workflow $ do
       (settingsCfg, result) <- runner
-      pure ((cfgTitle, (never, settingsCfg)), attachWith deployPreview (current $ model ^. wallet_keyAccounts) result)
+      pure (( _deployConfirmationConfig_modalTitle dcfg
+            , (never, settingsCfg)
+            )
+           , attachWith deployPreview (current $ model ^. wallet_keyAccounts) result
+           )
     deployPreview keyAccounts result = Workflow $ do
 
       let chain = _deploymentSettingsResult_chainId result
@@ -127,7 +187,9 @@ fullDeployFlow cfgTitle model runner _onClose = do
           transactionDisplayNetwork model
           predefinedChainIdDisplayed chain model
 
-        let accountsToTrack = Set.insert sender $ getAccounts keyAccounts $ _deploymentSettingsResult_signingKeys result
+        let accountsToTrack = Set.insert sender
+              $ getAccounts keyAccounts
+              $ _deploymentSettingsResult_signingKeys result
         rec
           accountBalances <- trackBalancesFromPostBuild model chain accountsToTrack (void response)
           initialRequestsDone <- holdUniqDyn $ and <$> traverse (fmap isJust . view _2) accountBalances
@@ -178,24 +240,43 @@ fullDeployFlow cfgTitle model runner _onClose = do
           pure $ not $ any (isLeft . snd) rs || null rs
         holdDyn False txSuccess
 
+      let ignoreSuccessStatus = _deployConfirmationConfig_disregardSubmitResponse dcfg
+
       (back, next) <- modalFooter $ do
         back <- uiButtonDyn def $ text "Back"
-        let isDisabled = not <$> succeeded
-        next <- uiButtonDyn (def & uiButtonCfg_class .~ "button_type_confirm" & uiButtonCfg_disabled .~ isDisabled) $ text "Create Transaction"
+        let isDisabled = not . ignoreSuccessStatus <$> succeeded
+
+        next <- uiButtonDyn
+          (def & uiButtonCfg_class .~ "button_type_confirm" & uiButtonCfg_disabled .~ isDisabled)
+          $ text (_deployConfirmationConfig_previewConfirmButtonLabel dcfg)
+
         pure (back, next)
 
-      let done = gate (current succeeded) next
+      let done = gate (current $ fmap ignoreSuccessStatus succeeded) next
+
+      (eDoneAfterConfirm, eNextWorkflow) <- fanEither
+        <$> onPreviewConfirm chain result done next (current $ model ^. network_selectedNodes)
 
       pure
-        ( ("Transaction Preview", (never, mempty))
+        ( (_deployConfirmationConfig_previewTitle dcfg, (eDoneAfterConfirm, mempty))
         , leftmost
           [ deployConfig <$ back
-          , let f = deploySubmit chain (_deploymentSettingsResult_command result) (_deploymentSettingsResult_code result)
-             in attachWith (\n _ -> f n) (current $ model ^. network_selectedNodes) done
+          , eNextWorkflow
           ]
         )
 
-    deploySubmit chain cmd code nodeInfos = Workflow $ do
+deploySubmit
+  :: forall t m a modelCfg.
+     ( MonadWidget t m
+     , Monoid modelCfg
+     )
+  => ChainId
+  -> DeploymentSettingsResult
+  -> [Either a NodeInfo]
+  -> Workflow t m (Text, (Event t (), modelCfg))
+deploySubmit chain result nodeInfos = Workflow $ do
+      let cmd = _deploymentSettingsResult_command result
+          code = _deploymentSettingsResult_code result
       elClass "div" "modal__main transaction_details" $ do
         transactionHashSection $ pure code
 

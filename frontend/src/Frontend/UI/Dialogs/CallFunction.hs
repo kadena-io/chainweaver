@@ -50,7 +50,7 @@ import           Frontend.JsonData              (HasJsonData (..), JsonData, Has
 import           Frontend.ModuleExplorer
 import           Frontend.Network
 import           Frontend.UI.DeploymentSettings
-import           Frontend.UI.Dialogs.DeployConfirmation (fullDeployFlow)
+import           Frontend.UI.Dialogs.DeployConfirmation (fullDeployFlow, deployConfirmationConfig_modalTitle)
 import           Frontend.UI.Modal
 import           Frontend.UI.Widgets
 import           Frontend.Wallet                (HasWallet (..))
@@ -89,7 +89,10 @@ uiCallFunction m mModule func _onClose
             , _deploymentSettingsConfig_gasLimit = Nothing
             }
           pure (cfg, result)
-    fullDeployFlow (headerTitle <> " " <> _pactFunction_name func) m (functionType >> content) _onClose
+        deployConfirmCfg = def
+          & deployConfirmationConfig_modalTitle .~ (headerTitle <> " " <> _pactFunction_name func)
+
+    fullDeployFlow deployConfirmCfg m (functionType >> content) _onClose
   | otherwise = do
     onClose <- modalHeader $ do
       text headerTitle
