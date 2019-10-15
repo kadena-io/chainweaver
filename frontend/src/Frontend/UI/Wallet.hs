@@ -104,7 +104,7 @@ hasPrivateKey = isJust . _keyPair_privateKey . snd
 -- | Line input with "Create" button for creating a new key.
 uiCreateKey :: MonadWidget t m => Wallet t -> m (Event t KeyName)
 uiCreateKey w =
-  validatedInputWithButton "group__header" (checkKeyNameValidityStr w) "Enter key name" "Generate"
+  validatedInputWithButton "group__header" (checkKeyNameValidityStr w) "Enter account name" "Generate"
 
 
 -- | Widget listing all available keys.
@@ -142,7 +142,7 @@ uiKeyItems aWallet = do
       onAdd <- el "thead" $ el "tr" $ do
         let mkHeading = elClass "th" "table__heading" . text
         traverse_ mkHeading $
-          [ "Key Name"
+          [ "Account Name"
           , "Public Key"
           , ""
           , "Private Key"
@@ -155,7 +155,7 @@ uiKeyItems aWallet = do
         evs <- listWithKey keyMap $ \name key -> uiKeyItem (name, key)
         pure (evs, onAdd)
 
-    dyn_ $ ffor keyMap $ \keys -> when (Map.null keys) $ text "No keys ..."
+    dyn_ $ ffor keyMap $ \keys -> when (Map.null keys) $ text "No accounts ..."
     let onDelKey = switchDyn $ leftmost . Map.elems <$> events
     pure $ mempty
       & modalCfg_setModal .~ leftmost

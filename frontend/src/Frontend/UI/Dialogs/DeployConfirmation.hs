@@ -173,7 +173,7 @@ fullDeployFlowWithSubmit dcfg model onPreviewConfirm runner _onClose = do
       pure (( _deployConfirmationConfig_modalTitle dcfg
             , (never, settingsCfg)
             )
-           , attachWith deployPreview (current $ model ^. wallet_keyAccounts) result
+           , attachWith deployPreview (current $ model ^. wallet_keys) result
            )
     deployPreview keyAccounts result = Workflow $ do
 
@@ -417,5 +417,6 @@ trackBalancesFromPostBuild model chain accounts fire = getPostBuild >>= \pb -> s
   updatedBalance <- holdDyn Nothing . fmap Just =<< getBalance model chain (acc <$ fire)
   pure (publicKeys, initialBalance, updatedBalance)
 
-getAccounts :: KeyAccounts -> [KeyPair] -> Set AccountName
-getAccounts keyAccounts pairs = mconcat $ Map.elems $ Map.restrictKeys keyAccounts (Set.fromList $ fmap _keyPair_publicKey pairs)
+getAccounts :: KeyPairs -> [KeyPair] -> Set AccountName
+getAccounts keyPairs pairs = Set.fromList $ rights $ fmap mkAccountName $ Map.keys $ Map.filter (\p -> _keyPair_publicKey p `Set.member` publicKeys) keyPairs
+  where publicKeys = Set.fromList $ _keyPair_publicKey <$> pairs
