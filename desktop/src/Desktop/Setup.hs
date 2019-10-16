@@ -11,7 +11,7 @@ module Desktop.Setup (runSetup, form, kadenaWalletLogo) where
 import Control.Error (hush)
 import Control.Applicative (liftA2)
 import Control.Lens ((<>~), (?~), (%~))
-import Control.Monad (unless,void)
+import Control.Monad (unless,void,join)
 import Control.Monad.Fix (MonadFix)
 import Control.Monad.IO.Class
 import Data.Maybe (isNothing)
@@ -19,7 +19,7 @@ import Data.Bifunctor
 import Data.ByteArray (ByteArrayAccess)
 import Data.ByteString (ByteString)
 import Data.String (IsString, fromString)
-import Data.Functor ((<&>))
+import Data.Functor ((<&>), ($>))
 import Data.Text (Text)
 import Reflex.Dom.Core
 import qualified Cardano.Crypto.Wallet as Crypto
@@ -46,6 +46,15 @@ data PassphraseStage
 -- | Wrapper for the index of the word in the passphrase
 newtype WordKey = WordKey { _unWordKey :: Int }
   deriving (Show, Eq, Ord, Enum)
+
+-- | Setup stage
+data WalletScreen
+  = Password
+  | CreatePassphrase
+  | VerifyPassphrase
+  | RecoverPassphrase
+  | Done
+  deriving (Show, Eq, Ord)
 
 wordsToPhraseMap :: [Text] -> Map.Map WordKey Text
 wordsToPhraseMap = Map.fromList . zip [WordKey 1 ..]
@@ -92,10 +101,22 @@ type SetupWF t m = Workflow t m (Event t Crypto.XPrv)
 finishSetupWF :: (Reflex t, Applicative m) => a -> m (Event t x, a)
 finishSetupWF = pure . (,) never
 
-runSetup :: MonadWidget t m => m (Event t Crypto.XPrv)
+walletSetupRecoverHeader
+  :: MonadWidget t m
+  => WalletScreen
+  -> m (Event t ())
+walletSetupRecoverHeader currentScreen = do
+  eBack <- fmap (domEvent Click . fst) . walletDiv "back-link"
+    . el "span" . elClass' "i" "fa fa-3x fa-chevron-left" $ text "Back"
+
+  _ <- walletDiv "current-screen" $ text (tshow currentScreen)
+
+  pure eBack
+
+runSetup :: forall t m. MonadWidget t m => m (Event t Crypto.XPrv)
 runSetup = divClass "fullscreen" $ divClass "wrapper" $ do
   kadenaWalletLogo
-  fmap (switch . current) $ workflow splashScreen
+  switchDyn <$> workflow splashScreen
 
 splashScreen :: MonadWidget t m => SetupWF t m
 splashScreen = Workflow $ do
@@ -105,17 +126,14 @@ splashScreen = Workflow $ do
     text "I have read & agree to the "
     elAttr "a" ("href" =: "https://kadena.io/" <> "target" =: "_blank") (text "Terms of Service")
 
-  let wrapBtnClass t = walletClass "buttons-wrapper " <> if t
-        then T.empty else walletClass "no-agree-tnc-fade"
+  (create, recover) <- walletDiv "buttons-wrapper" $ liftA2 (,)
+    (confirmButton def "Setup a new wallet")
+    (uiButton btnCfgSecondary $ text "Recover an existing wallet")
 
-  elDynClass "div" (wrapBtnClass <$> agreed) $ do
-    create <- confirmButton def "Setup a new wallet"
-    recover <- uiButton btnCfgSecondary $ text "Recover an existing wallet"
-
-    finishSetupWF $ leftmost
-      [ createNewWallet Nothing <$ gate (current agreed) create
-      , recoverWallet <$ gate (current agreed) recover
-      ]
+  finishSetupWF $ leftmost
+    [ createNewWalletV2 <$ gate (current agreed) create
+    , recoverWallet <$ gate (current agreed) recover
+    ]
 
 data BIP39PhraseError
   = BIP39PhraseError_Dictionary Crypto.DictionaryError
@@ -127,6 +145,8 @@ passphraseLen = 12
 
 recoverWallet :: MonadWidget t m => SetupWF t m
 recoverWallet = Workflow $ do
+  eBack <- walletSetupRecoverHeader RecoverPassphrase
+
   el "h1" $ text "Recover your wallet"
   el "p" $ text "Type in your recovery phrase"
 
@@ -153,7 +173,9 @@ recoverWallet = Workflow $ do
         "class" =: "hidden passphrase"
       & modifyAttributes .~ ffor (updated usePassphrase)
         (\u -> if u then "class" =: Just "input passphrase" else "class" =: Just "hidden passphrase")
+
   let mkClass = \case Left _ -> "button_type_secondary"; _ -> "button_type_confirm"
+
   rec
     dyn_ $ ffor lastError $ \case
       Nothing -> pure ()
@@ -164,21 +186,24 @@ recoverWallet = Workflow $ do
         BIP39PhraseError_Dictionary (Crypto.ErrInvalidDictionaryWord word)
           -> "Invalid word in phrase: " <> baToText word
 
-    cancel <- cancelButton def "Cancel"
     next <- uiButtonDyn (def & uiButtonCfg_class .~ fmap mkClass sentenceOrError) $ text "Next"
+
     let (err, sentence) = fanEither $ current sentenceOrError <@ next
     lastError <- holdDyn Nothing $ Just <$> err
 
   let toSeed :: Crypto.ValidMnemonicSentence mw => Text -> Crypto.MnemonicSentence mw -> Crypto.Seed
       toSeed p s = Crypto.sentenceToSeed s Crypto.english $ textTo p
 
-  dMSeed <- holdDyn Nothing $ pure <$> attachWith toSeed (current passphrase) sentence
+      waitingForPhrase = do
+        text "waiting for the passphrase"
+        pure never
 
-  ePassword <- setPassword dMSeed
+  dSetPassword <- widgetHold waitingForPhrase $ 
+    setPassword . pure <$> attachWith toSeed (current passphrase) sentence
 
   pure
-    ( ePassword
-    , splashScreen <$ cancel
+    ( switchDyn dSetPassword
+    , splashScreen <$ eBack
     )
 
 passphraseWordElement
@@ -220,41 +245,106 @@ passphraseWidget dWords dStage = do
   divClass "passphrase-widget-wrapper" $
     listViewWithKey dWords (passphraseWordElement dStage)
 
--- | UI for generating and displaying a new mnemonic sentence.
-createNewWallet
+continueButton
   :: MonadWidget t m
-  => Maybe (Crypto.MnemonicSentence 12)
-  -- ^ Initial mnemonic sentence. If missing, a new one will be generated.
-  -> SetupWF t m
-createNewWallet mMnemonic = Workflow $ do
-  el "h1" $ text "Wallet recovery phrase"
-  el "p" $ text "Write down your recovery phrase on paper"
-  initMnemonic <- maybe genMnemonic (pure . Right) mMnemonic
-  rec
-    mnemonic <- holdDyn initMnemonic =<< performEvent (genMnemonic <$ regen)
-    divClass "group" $ dyn $ ffor mnemonic $ \case
-      Left e -> text e
-      Right sentence -> void $ passphraseWidget
-        (pure $ mkPhraseMapFromMnemonic sentence)
-        (pure Setup)
-        
-    stored <- fmap value $ divClass "checkbox-wrapper" $ uiCheckbox def False def $ text "I have safely stored my recovery phrase."
-    regen <- uiButton btnCfgTertiary $ do
-      elClass "i" "fa fa-lg fa-refresh" blank
-      text " Regenerate"
+  => Dynamic t Bool
+  -> m (Event t ())
+continueButton isDisabled = 
+  walletDiv "continue-button" $
+    confirmButton (def & uiButtonCfg_disabled .~ isDisabled) "Continue"
 
-  dPassword <- setPassword (fmap (fmap (\mn -> Crypto.sentenceToSeed mn Crypto.english "") . hush) mnemonic)
-    >>= holdDyn Nothing . fmap pure
+createNewWalletV2 :: forall t m. MonadWidget t m => SetupWF t m
+createNewWalletV2 = Workflow $ do
+  eBack <- walletSetupRecoverHeader Password
+  ePb <- getPostBuild
 
-  let nextDisabled = liftA2 (||) (fmap isNothing dPassword) (fmap not stored)
+  el "h1" $ text "Set a password"
+  el "p" $ text "Enter a strong and unique password to protect acces to your Chainweaver wallet"
 
-  cancel <- cancelButton def "Cancel"
-  next <- confirmButton (def & uiButtonCfg_disabled .~ nextDisabled) "Next"
+  (eGenError, eGenSuccess) <- fmap fanEither . performEvent $ genMnemonic <$ ePb
+
+  let
+    generating = do
+      dMsg <- holdDyn "Generating your mnemonic..." eGenError
+      dynText dMsg
+      pure never
+
+    proceed :: Crypto.MnemonicSentence 12 -> m (Event t (SetupWF t m))
+    proceed mnem = do
+      dPassword <- setPassword (pure $ Crypto.sentenceToSeed mnem Crypto.english "")
+        >>= holdDyn Nothing . fmap pure
+      continue <- continueButton (fmap isNothing dPassword) 
+      pure $ createNewPassphrase dPassword mnem <$ continue
+      
+  dContinue <- widgetHold generating (proceed <$> eGenSuccess)
 
   finishSetupWF $ leftmost
-    [ splashScreen <$ cancel
-    , attachWithMaybe (\e () -> confirmPhrase dPassword <$> hush e) (current mnemonic) next
+    [ splashScreen <$ eBack
+    , switchDyn dContinue
     ]
+
+
+-- | UI for generating and displaying a new mnemonic sentence.
+createNewPassphrase
+  :: MonadWidget t m
+  => Dynamic t (Maybe Crypto.XPrv)
+  -> Crypto.MnemonicSentence 12
+  -> SetupWF t m
+createNewPassphrase dPassword mnemonicSentence = Workflow $ do
+  eBack <- walletSetupRecoverHeader CreatePassphrase
+
+  el "h1" $ text "Wallet recovery phrase"
+  el "p" $ text "Write down your recovery phrase on paper"
+        
+  rec
+    dPassphrase <- passphraseWidget dPassphrase (pure Setup)
+      >>= holdDyn (mkPhraseMapFromMnemonic mnemonicSentence)
+
+  dIsStored <- fmap value $ walletDiv "checkbox-wrapper" $ uiCheckbox def False def
+    $ text "I have safely stored my recovery phrase."
+
+  eContinue <- continueButton (fmap not dIsStored)
+
+  finishSetupWF $ leftmost
+    [ createNewWalletV2 <$ eBack
+    , confirmPhrase dPassword mnemonicSentence <$ eContinue
+    ]
+  
+-- -- | UI for generating and displaying a new mnemonic sentence.
+-- createNewWallet
+--   :: MonadWidget t m
+--   => Maybe (Crypto.MnemonicSentence 12)
+--   -- ^ Initial mnemonic sentence. If missing, a new one will be generated.
+--   -> SetupWF t m
+-- createNewWallet mMnemonic = Workflow $ do
+--   el "h1" $ text "Wallet recovery phrase"
+--   el "p" $ text "Write down your recovery phrase on paper"
+--   initMnemonic <- maybe genMnemonic (pure . Right) mMnemonic
+--   rec
+--     mnemonic <- holdDyn initMnemonic =<< performEvent (genMnemonic <$ regen)
+--     divClass "group" $ dyn $ ffor mnemonic $ \case
+--       Left e -> text e
+--       Right sentence -> void $ passphraseWidget
+--         (pure $ mkPhraseMapFromMnemonic sentence)
+--         (pure Setup)
+        
+--     stored <- fmap value $ divClass "checkbox-wrapper" $ uiCheckbox def False def $ text "I have safely stored my recovery phrase."
+--     regen <- uiButton btnCfgTertiary $ do
+--       elClass "i" "fa fa-lg fa-refresh" blank
+--       text " Regenerate"
+
+--   dPassword <- setPassword (fmap (fmap (\mn -> Crypto.sentenceToSeed mn Crypto.english "") . hush) mnemonic)
+--     >>= holdDyn Nothing . fmap pure
+
+--   let nextDisabled = liftA2 (||) (fmap isNothing dPassword) (fmap not stored)
+
+--   cancel <- cancelButton def "Cancel"
+--   next <- confirmButton (def & uiButtonCfg_disabled .~ nextDisabled) "Next"
+
+--   finishSetupWF $ leftmost
+--     [ splashScreen <$ cancel
+--     , attachWithMaybe (\e () -> confirmPhrase dPassword <$> hush e) (current mnemonic) next
+--     ]
 
 -- | UI for mnemonic sentence confirmation: scramble the phrase, make the user
 -- choose the words in the right order.
@@ -264,37 +354,35 @@ confirmPhrase
   -> Crypto.MnemonicSentence 12
   -- ^ Mnemonic sentence to confirm
   -> SetupWF t m
-confirmPhrase dPassword mnemonic = Workflow $ do
+confirmPhrase dPassword mnemonicSentence = Workflow $ do
+  eBack <- walletSetupRecoverHeader VerifyPassphrase
 
   el "h1" $ text "Confirm your recovery phrase"
-
   el "p" $ text "Enter the words in the correct order"
 
-  let actualMap = mkPhraseMapFromMnemonic mnemonic
+  let actualMap = mkPhraseMapFromMnemonic mnemonicSentence
 
   rec
     onPhraseUpdate <- passphraseWidget dConfirmPhrase (pure Recover)
+
     dConfirmPhrase <- holdDyn (wordsToPhraseMap $ replicate passphraseLen T.empty)
       $ flip Map.union <$> current dConfirmPhrase <@> onPhraseUpdate
 
   let done = (== actualMap) <$> dConfirmPhrase
 
-  back <- cancelButton def "Back"
   skip <- uiButton btnCfgTertiary $ text "Skip"
   next <- confirmButton (def & uiButtonCfg_disabled .~ fmap not done) "Next"
 
   pure
-    ( tagMaybe (current dPassword) $ gate (current done) next <> skip
-    , createNewWallet (Just mnemonic) <$ back
+    ( tagMaybe (current dPassword) $ leftmost [gate (current done) next, skip]
+    , createNewWalletV2 <$ eBack
     )
 
 setPassword
   :: MonadWidget t m
-  => Dynamic t (Maybe Crypto.Seed)
+  => Dynamic t Crypto.Seed
   -> m (Event t Crypto.XPrv)
 setPassword dSeed = form "" $ do
-  el "p" $ text "This password will protect your wallet. You'll need it when signing transactions."
-
   let uiPassword ph = uiInputElement $ def & initialAttributes .~
                       ( "type" =: "password" <>
                         "placeholder" =: ph <>
@@ -326,7 +414,7 @@ setPassword dSeed = form "" $ do
       , Nothing <$ pass
       ]
 
-  pure $ attachWithMaybe (\ms pw -> flip Crypto.generate pw <$> ms) (current dSeed) (T.encodeUtf8 <$> pass)
+  pure $ Crypto.generate <$> current dSeed <@> (T.encodeUtf8 <$> pass)
   where
     minPasswordLength = 10
     checkPassword p1 p2
