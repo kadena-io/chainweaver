@@ -108,6 +108,7 @@ import           Pact.Types.Crypto                 (PPKScheme (..))
 #endif
 
 import           Common.Network
+import           Frontend.Crypto.Class
 import           Frontend.Crypto.Ed25519
 import           Frontend.Foundation
 import           Frontend.Messages
@@ -118,7 +119,6 @@ import           Frontend.Storage                  (getItemStorage,
                                                     removeItemStorage,
                                                     setItemStorage)
 import           Frontend.Wallet
-
 
 
 -- | What endpoint to use for a network request.
@@ -242,7 +242,7 @@ deriving instance Show (StoreNetwork a)
 
 
 makeNetwork
-  :: forall t m mConf
+  :: forall key t m mConf
   . ( MonadHold t m, PerformEvent t m, MonadFix m
     , MonadJSM (Performable m), MonadJSM m
     , TriggerEvent t m, PostBuild t m
@@ -252,6 +252,7 @@ makeNetwork
     , HasConfigs m
     , HasJSContext (Performable m)
     , HasStorage m, HasStorage (Performable m)
+    , HasCrypto key (Performable m)
     )
   => NetworkCfg t
   -> m (mConf, Network t)
@@ -556,7 +557,7 @@ getNetworkNameAndMeta model = (,)
   <*> (model ^. network_meta)
 
 mkSimpleReadReq
-  :: (MonadIO m, MonadJSM m)
+  :: (MonadIO m, MonadJSM m, HasCrypto key m)
   => Text -> NetworkName -> PublicMeta -> ChainRef -> m NetworkRequest
 mkSimpleReadReq code networkName pm cRef = do
   cmd <- buildCmd Nothing networkName (pm { _pmChainId = _chainRef_chain cRef }) [] code mempty
@@ -568,11 +569,12 @@ mkSimpleReadReq code networkName pm cRef = do
 
 -- | Load modules on startup and on every occurrence of the given event.
 loadModules
-  :: forall t m
+  :: forall key t m
   . ( MonadHold t m, PerformEvent t m, MonadFix m
     , MonadJSM (Performable m), MonadIO m
     , MonadSample t (Performable m)
     , TriggerEvent t m, PostBuild t m
+    , HasCrypto key (Performable m)
     )
   => Network t
   -> Event t ()
@@ -893,11 +895,12 @@ networkRequest baseUri endpoint cmd = do
 buildCmd
   :: ( MonadIO m
      , MonadJSM m
+     , HasCrypto key m
      )
   => Maybe Text
   -> NetworkName
   -> PublicMeta
-  -> [KeyPair]
+  -> [KeyPair key]
   -> Text
   -> Object
   -> m (Command Text)
@@ -912,7 +915,7 @@ buildCmd mNonce networkName meta signingKeys code dat = do
     , _cmdHash = cmdHashL
     }
 
-getSigningPairs :: Set KeyName -> KeyPairs -> [KeyPair]
+getSigningPairs :: Set KeyName -> KeyPairs key -> [KeyPair key]
 getSigningPairs signing = map snd . filter isForSigning . Map.assocs
   where
     -- isJust filter is necessary so indices are guaranteed stable even after
@@ -921,12 +924,12 @@ getSigningPairs signing = map snd . filter isForSigning . Map.assocs
 
 
 -- | Build signatures for a single `cmd`.
-buildSigs :: MonadJSM m => TypedHash h -> [KeyPair] -> m [UserSig]
+buildSigs :: (MonadJSM m, HasCrypto key m) => TypedHash h -> [KeyPair key] -> m [UserSig]
 buildSigs cmdHashL signingPairs = do
     let
       signingKeys = mapMaybe _keyPair_privateKey signingPairs
 
-    sigs <- traverse (mkSignature (unHash . toUntypedHash $ cmdHashL)) signingKeys
+    sigs <- traverse (cryptoSign (unHash . toUntypedHash $ cmdHashL)) signingKeys
 
     pure $ map toPactSig sigs
   where
@@ -943,7 +946,7 @@ buildExecPayload
   => Maybe Text
   -> NetworkName
   -> PublicMeta
-  -> [KeyPair]
+  -> [KeyPair key]
   -> Text
   -> Object
   -> m (Payload PublicMeta Text)

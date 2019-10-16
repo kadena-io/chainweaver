@@ -22,7 +22,7 @@ body {
   bottom: 0;
   right: 0;
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
   align-items: stretch;
   // min-width: $body-width;
 }
@@ -41,4 +41,23 @@ code {
 .description {
   font-family: WorkSans;
   font-size: 13px;
+}
+
+.page {
+  display: none;
+  flex-grow: 1;
+  margin: 2rem;
+}
+
+.page.visible {
+  display: block;
+}
+
+.page.contracts {
+  margin: 0;
+  flex-direction: column;
+}
+
+.page.contracts.visible {
+  display: flex;
 }

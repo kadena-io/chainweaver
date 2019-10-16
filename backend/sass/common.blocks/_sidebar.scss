@@ -1,0 +1,36 @@
+
+.sidebar {
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  width: 5rem;
+  background: #454444;
+
+  .logo {
+    background: #2D2D2F;
+    height: 5rem;
+    margin-bottom: 1.5rem;
+  }
+
+  .link {
+    display: block;
+    width: 100%;
+    padding: 1rem;
+    border-left: 4px solid transparent;
+    &:hover { background: #3D3D3E; }
+    &.selected {
+      background: #363637;
+      border-color: #57B5E1;
+      .highlighted { display: block; }
+      .normal { display: none; }
+    }
+    img {
+      margin: 0 auto;
+      width: 1.2rem;
+    }
+    .normal { display: block; }
+    .highlighted { display: none; }
+  }
+
+}
+

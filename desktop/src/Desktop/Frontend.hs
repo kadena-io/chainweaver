@@ -10,7 +10,7 @@
 {-# LANGUAGE StandaloneDeriving #-}
 {-# LANGUAGE TypeApplications #-}
 
-module Desktop.Frontend (desktop, desktopCss, runWallet, fileStorage) where
+module Desktop.Frontend (desktop, desktopCss, fileStorage) where
 
 import Control.Applicative (liftA2)
 import Control.Exception (try, catch)
@@ -29,6 +29,7 @@ import Language.Javascript.JSaddle (liftJSM)
 import Reflex.Dom.Core
 import System.FilePath ((</>))
 import qualified Cardano.Crypto.Wallet as Crypto
+import qualified Control.Newtype.Generics as Newtype
 import qualified Crypto.PubKey.Ed25519 as Ed25519
 import qualified Data.Aeson as Aeson
 import qualified Data.Bimap as Bimap
@@ -48,6 +49,7 @@ import qualified Text.RawString.QQ as QQ
 import Common.Api (getConfigRoute)
 import Common.Route
 import Frontend.AppCfg
+import Frontend.Crypto.Class
 import Frontend.ModuleExplorer.Impl (loadEditorFromLocalStorage)
 import Frontend.Storage
 import Frontend.UI.Button
@@ -93,6 +95,11 @@ fileStorage dir = Storage
     where path :: Show a => a -> FilePath
           path k = dir </> FilePath.makeValid (show k)
 
+bipCrypto :: Text -> Crypto Crypto.XPrv
+bipCrypto pass = Crypto
+  { _crypto_sign = \bs k -> pure $ Newtype.pack $ Crypto.unXSignature $ Crypto.sign (T.encodeUtf8 pass) k bs
+  }
+
 -- | This is for development
 -- > ob run --import desktop:Desktop --frontend Desktop.desktop
 desktop :: Frontend (R FrontendRoute)
@@ -105,18 +112,31 @@ desktop = Frontend
       el "style" $ text desktopCss
       pure ()
   , _frontend_body = prerender_ blank $ flip runStorageT browserStorage $ do
-    (fileOpened, triggerOpen) <- Frontend.openFileDialog
-    let appCfg = AppCfg
-          { _appCfg_gistEnabled = False
-          , _appCfg_externalFileOpened = fileOpened
-          , _appCfg_openFileDialog = liftJSM triggerOpen
-          , _appCfg_loadEditor = loadEditorFromLocalStorage
-          , _appCfg_editorReadOnly = False
-          , _appCfg_signingRequest = never
-          , _appCfg_signingResponse = \_ -> pure ()
-          , _appCfg_forceResize = never
-          }
-    runWallet appCfg
+    mRoot <- getItemStorage localStorage Wallet_RootKey
+    rec
+      root <- holdDyn mRoot upd
+      upd <- switchHold never <=< dyn $ ffor root $ \case
+        Nothing -> do
+          xprv <- runSetup
+          saved <- performEvent $ ffor xprv $ \x -> setItemStorage localStorage Wallet_RootKey x >> pure x
+          pure $ Just <$> xprv
+        Just xprv -> do
+          flip runCryptoT (bipCrypto "test") $ do
+            (fileOpened, triggerOpen) <- Frontend.openFileDialog
+            let appCfg = AppCfg
+                  { _appCfg_gistEnabled = False
+                  , _appCfg_externalFileOpened = fileOpened
+                  , _appCfg_openFileDialog = liftJSM triggerOpen
+                  , _appCfg_loadEditor = loadEditorFromLocalStorage
+                  , _appCfg_editorReadOnly = False
+                  , _appCfg_signingRequest = never
+                  , _appCfg_signingResponse = \_ -> pure ()
+                  , _appCfg_makeWallet = \walletCfg -> pure mempty
+                  , _appCfg_displayWallet = \_ -> text "Wallet" >> pure mempty
+                  }
+            Frontend.ReplGhcjs.app appCfg
+          pure never -- TODO delete wallet
+    pure ()
   }
 
 desktopCss :: Text
@@ -145,19 +165,6 @@ desktopCss = [QQ.r|
 .logo > img { width: 100%; }
 .logo > span { position: absolute; bottom: 0; right: 0; }
 body { display: flex; flex-direction: row; }
-.sidebar.closed { width: 0; }
-.sidebar { display: flex; flex-direction: column; width: 15rem; overflow: hidden; transition: width 0.2s; z-index: 1; }
-.sidebar { background: rgb(30,40,50); background: linear-gradient(90deg, rgb(40,50,60) 0%, rgb(34,40,53) 100%); }
-.sidebar .logo { width: 13rem; margin: 1rem; }
-.sidebar-control { font-size: 2rem; cursor: pointer; }
-.sidebar-control.opener { color: rgb(30,40,50); position: absolute; top: 4.8rem; left: 0.5rem; z-index: 1; }
-.sidebar-control.closer { display: block; color: white; margin: 1rem; margin-top: -1rem; text-align: right; }
-.sidebar > .sidebar-item { padding: 1rem; color: rgb(160,180,200); text-decoration: none; }
-.sidebar > .sidebar-item:hover, .sidebar > .sidebar-item:focus { background-color: rgba(0,0,0,0.1); }
-.sidebar > .sidebar-item.selected { font-weight: bold; background-color: rgba(0,0,0,0.2); }
-.sidebar > button { border-radius: 4px; border: 0px; padding: 1rem; margin: 1rem; font-size: 16px; cursor: pointer; }
-.sidebar > button { background-color: rgba(0,0,0,0.2); color: rgb(160,180,200); }
-.sidebar > button:hover, .sidebar > button:focus { background-color: rgba(0,0,0,0.1) }
 .page { display: none; flex-grow: 1; margin: 2rem; }
 .page h1 { font-size: 1.5rem; margin-top: 2rem; margin-bottom: 1rem; color: rgb(30,40,50); }
 .page h1:first-child { margin-top: 0; }
@@ -185,12 +192,6 @@ form .header { color: rgb(30,40,50); font-weight: bold; font-size: 18px; margin:
 form .header .detail { color: #666; font-weight: normal; font-size: 14px; }
 |]
 
-runWallet :: AppConstraints t m => AppCfg t m -> m ()
-runWallet appCfg = do
-  mRoot <- getItemStorage localStorage Wallet_RootKey
-  _ <- workflow $ maybe (runSetupWF appCfg) (walletMain appCfg) mRoot
-  pure ()
-
 type AppWF t m = Workflow t m ()
 
 finishAppWF :: Applicative m => a -> m ((), a)
@@ -200,32 +201,12 @@ type AppConstraints t m =
   ( HasConfigs m
   , HasStorage m
   , HasStorage (Performable m)
+  , HasCrypto Crypto.XPrv (Performable m)
   , MonadWidget t m
   , RouteToUrl (R FrontendRoute) m
   , Routed t (R FrontendRoute) m
   , SetRoute t (R FrontendRoute) m
   )
-
-walletMain
-  :: forall t m. AppConstraints t m
-  => AppCfg t m
-  -> Crypto.XPrv
-  -- ^ Root key
-  -> Workflow t m ()
-walletMain appCfg root = Workflow $ do
-  pb <- getPostBuild
-  page <- walletSidebar
-  let appCfg' = appCfg {  _appCfg_forceResize = void (updated page) <> pb }
-  let pageDemux = demux page
-      mkPage :: Page -> Text -> m a -> m a
-      mkPage p c = elDynAttr "div" (ffor (demuxed pageDemux p) $ \s -> "class" =: (c <> if s then " page visible" else " page"))
-  (_childKeys, _namedKeys, removed) <- mkPage Page_Wallet "wallet" $ walletPage root
-  mkPage Page_Contracts "contracts" $ do
-    -- TODO appCfg should probably be partially defined here instead of
-    -- completely in the executable.
-    _ <- Frontend.ReplGhcjs.app appCfg'
-    pure ()
-  finishAppWF $ runSetupWF appCfg' <$ removed
 
 data AddKeyError
   = AddKeyError_InvalidPassword
@@ -308,41 +289,6 @@ walletPage root = do
        in if S.null errs
           then (Just (M.insert n xprv xprvs, Bimap.insert name (Crypto.xPubGetPublicKey $ Crypto.toXPub xprv) names), Nothing)
           else (Nothing, Just errs)
-
-data Page
-  = Page_Wallet
-  | Page_Contracts
-  deriving (Eq, Ord, Enum, Bounded)
-
-pageText :: DomBuilder t m => Page -> m ()
-pageText = \case
-  Page_Wallet -> text "Wallet"
-  Page_Contracts -> text "Contracts"
-
-walletSidebar :: AppConstraints t m => m (Dynamic t Page)
-walletSidebar = do
-  rec
-    open <- holdUniqDyn <=< holdDyn True $ leftmost [False <$ closed, True <$ opened]
-    opened <- uiIcon "fa-caret-right sidebar-control opener" def
-    (closed, page) <- elDynAttr "div" (ffor open $ \o -> "class" =: ("sidebar" <> if o then "" else " closed")) $ do
-      kadenaWalletLogo
-      closed' <- uiIcon "fa-caret-left sidebar-control closer" def
-      rec
-        let sidebarLink p = do
-              let mkAttrs sel = "href" =: "#" <> "class" =: ("sidebar-item" <> if sel then " selected" else "")
-              (e, ()) <- elDynAttr' "a" (mkAttrs <$> demuxed pageDemux p) $ pageText p
-              pure $ p <$ domEvent Click e
-        page <- holdUniqDyn =<< holdDyn Page_Wallet . leftmost =<< traverse sidebarLink [minBound..maxBound]
-        let pageDemux = demux page
-      elAttr "div" ("style" =: "flex-grow: 1") blank
-      pure (closed', page)
-  pure page
-
-runSetupWF :: AppConstraints t m => AppCfg t m -> AppWF t m
-runSetupWF appCfg = Workflow $ do
-  xprv <- runSetup
-  saved <- performEvent $ ffor xprv $ \x -> setItemStorage localStorage Wallet_RootKey x >> pure x
-  finishAppWF $ walletMain appCfg <$> saved
 
 -- | Check the validity of the password by signing and verifying a message
 testKeyPassword :: Crypto.XPrv -> Text -> Bool

@@ -46,11 +46,11 @@ import           Frontend.UI.Widgets.Helpers (imgWithAltCls)
 
 
 type HasUiKeyImportModel model t =
-  (HasWallet model t)
+  (HasWallet model PrivateKey t)
 
 type HasUiKeyImportModelCfg mConf t =
   ( Monoid mConf, Flattenable mConf t
-  , HasWalletCfg mConf t
+  , HasWalletCfg mConf PrivateKey t
   )
 
 
@@ -64,7 +64,7 @@ uiKeyImport
   -> Event t () -> m (mConf, Event t ())
 uiKeyImport m _onClose = do
     onClose <- modalHeader $ text "Key Import"
-    (errName, errKeyPair) :: (Dynamic t (Either Text Text), Dynamic t (Either Text KeyPair))
+    (errName, errKeyPair) :: (Dynamic t (Either Text Text), Dynamic t (Either Text (KeyPair PrivateKey)))
       <- modalMain $ divClass "segment modal__filler" $ do
           divClass "modal__filler-horizontal-center-box" $
             imgWithAltCls "modal__filler-img" (static @"img/keys-scalable.svg") "Keys" blank

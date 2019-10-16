@@ -1,5 +1,6 @@
 {-# LANGUAGE CPP #-}
 {-# LANGUAGE DataKinds #-}
+{-# LANGUAGE DefaultSignatures #-}
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE UndecidableInstances #-}
 
@@ -108,12 +109,11 @@ sessionStorage = StoreType_Session
 
 class HasStorage m where
   askStorage :: m Storage
+  default askStorage :: (MonadTrans t, Monad n, HasStorage n, m ~ t n) => m Storage
+  askStorage = lift askStorage
 
 instance Monad m => HasStorage (StorageT m) where
   askStorage = StorageT ask
-
-instance Monad m => HasStorage (ReaderT Storage m) where
-  askStorage = ask
 
 newtype StorageT m a = StorageT
   { unStorageT :: ReaderT Storage m a
@@ -121,9 +121,18 @@ newtype StorageT m a = StorageT
     ( Functor, Applicative, Monad
     , MonadFix, MonadIO, MonadRef, MonadAtomicRef
     , DomBuilder t, NotReady t, MonadHold t, MonadSample t
-    , PerformEvent t, TriggerEvent t, PostBuild t, HasJS x
+    , TriggerEvent t, PostBuild t, HasJS x
     , MonadReflexCreateTrigger t, MonadQuery t q, Requester t
     )
+
+instance PerformEvent t m => PerformEvent t (StorageT m) where
+  type Performable (StorageT m) = StorageT (Performable m)
+  performEvent_ e = do
+    s <- askStorage
+    lift $ performEvent_ $ flip runStorageT s <$> e
+  performEvent e = do
+    s <- askStorage
+    lift $ performEvent $ flip runStorageT s <$> e
 
 instance PrimMonad m => PrimMonad (StorageT m) where
   type PrimState (StorageT m) = PrimState m

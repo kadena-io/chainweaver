@@ -176,8 +176,8 @@ predefinedPreds = ["keys-all", "keys-2", "keys-any"]
 
 -- | Build `JsonData` by means of the given `Wallet` and `JsonDataCfg`.
 makeJsonData
-  :: forall t m. (MonadHold t m, PerformEvent t m, MonadFix m)
-  => Wallet t
+  :: forall key t m. (MonadHold t m, PerformEvent t m, MonadFix m)
+  => Wallet key t
   -> JsonDataCfg t
   -> m (JsonData t)
 makeJsonData walletL rawCfg = mfix $ \json -> do
@@ -234,8 +234,8 @@ sanitizeCfg json cfg =
 
 -- | Make the keysets for `_jsonData_keysets`.
 makeKeysets
-  :: forall t m. (MonadHold t m, PerformEvent t m, MonadFix m)
-  => Wallet t
+  :: forall key t m. (MonadHold t m, PerformEvent t m, MonadFix m)
+  => Wallet key t
   -> JsonDataCfg t
   -> m (Dynamic t (DynKeysets t))
 makeKeysets walletL cfg =
