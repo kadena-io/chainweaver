@@ -14,7 +14,6 @@ import Control.Lens ((<>~), (?~), (%~))
 import Control.Monad (unless,void)
 import Control.Monad.Fix (MonadFix)
 import Control.Monad.IO.Class
-import Data.Proxy (Proxy (..))
 import Data.Maybe (isNothing)
 import Data.Bifunctor
 import Data.ByteArray (ByteArrayAccess)
@@ -51,6 +50,12 @@ newtype WordKey = WordKey { _unWordKey :: Int }
 wordsToPhraseMap :: [Text] -> Map.Map WordKey Text
 wordsToPhraseMap = Map.fromList . zip [WordKey 1 ..]
 
+walletClass :: Text -> Text
+walletClass = mappend "wallet__"
+
+walletDiv :: MonadWidget t m => Text -> m a -> m a
+walletDiv t = divClass (walletClass t)
+
 mkPhraseMapFromMnemonic
   :: forall mw.
      Crypto.ValidMnemonicSentence mw
@@ -82,10 +87,6 @@ kadenaWalletLogo = divClass "logo" $ do
   elAttr "img" ("src" =: static @"img/Klogo.png") blank
   --el "span" $ text "Wallet"
 
--- | Display a list of items, returning tagged events
-switchList :: (Adjustable t m, MonadHold t m, PostBuild t m, MonadFix m) => Dynamic t [a] -> (Dynamic t a -> m (Event t ())) -> m (Event t a)
-switchList l m = fmap (switchDyn . fmap leftmost) . simpleList l $ \a -> tag (current a) <$> m a
-
 type SetupWF t m = Workflow t m (Event t Crypto.XPrv)
 
 finishSetupWF :: (Reflex t, Applicative m) => a -> m (Event t x, a)
@@ -99,12 +100,22 @@ runSetup = divClass "fullscreen" $ divClass "wrapper" $ do
 splashScreen :: MonadWidget t m => SetupWF t m
 splashScreen = Workflow $ do
   el "h1" $ text "Welcome to the Kadena Wallet"
-  create <- confirmButton def "Setup a new wallet"
-  recover <- uiButton btnCfgSecondary $ text "Recover an existing wallet"
-  finishSetupWF $ leftmost
-    [ createNewWallet Nothing <$ create
-    , recoverWallet <$ recover
-    ]
+
+  agreed <- fmap value $ uiCheckbox def False def $ walletDiv "terms-conditions-checkbox" $ do
+    text "I have read & agree to the "
+    elAttr "a" ("href" =: "https://kadena.io/" <> "target" =: "_blank") (text "Terms of Service")
+
+  let wrapBtnClass t = walletClass "buttons-wrapper " <> if t
+        then T.empty else walletClass "no-agree-tnc-fade"
+
+  elDynClass "div" (wrapBtnClass <$> agreed) $ do
+    create <- confirmButton def "Setup a new wallet"
+    recover <- uiButton btnCfgSecondary $ text "Recover an existing wallet"
+
+    finishSetupWF $ leftmost
+      [ createNewWallet Nothing <$ gate (current agreed) create
+      , recoverWallet <$ gate (current agreed) recover
+      ]
 
 data BIP39PhraseError
   = BIP39PhraseError_Dictionary Crypto.DictionaryError
@@ -152,6 +163,7 @@ recoverWallet = Workflow $ do
         BIP39PhraseError_InvalidPhrase -> "Invalid phrase"
         BIP39PhraseError_Dictionary (Crypto.ErrInvalidDictionaryWord word)
           -> "Invalid word in phrase: " <> baToText word
+
     cancel <- cancelButton def "Cancel"
     next <- uiButtonDyn (def & uiButtonCfg_class .~ fmap mkClass sentenceOrError) $ text "Next"
     let (err, sentence) = fanEither $ current sentenceOrError <@ next
@@ -175,33 +187,47 @@ passphraseWordElement
   -> WordKey
   -> Dynamic t Text
   -> m (Event t Text)
-passphraseWordElement currentStage k wrd = divClass "passphrase-widget-elem-wrapper" $ do
+passphraseWordElement currentStage k wrd = elDynClass "div" (noHideOverlayOnRecover <$> currentStage) $ do
   pb <- getPostBuild
 
-  divClass "passphrase-widget-key-wrapper" $
+  walletDiv "passphrase-widget-key-wrapper" $
     text (showWordKey k)
+  
+  let
+    commonAttrs cls =
+      "type" =: "password" <>
+      "size" =: "10" <>
+      "class" =: walletClass cls
+
+    fakeInputElement Recover = blank
+    fakeInputElement Setup = void . uiInputElement $ def
+      & inputElementConfig_initialValue .~ "**********"
+      & initialAttributes .~ ("disabled" =: "true" <> commonAttrs "passphrase-widget-word-hider")
+
+  dyn_ (fakeInputElement <$> currentStage)
 
   rec
-    wordElem <- divClass "passphrase-widget-word-wrapper" . uiInputElement $ def
+    wordElem <- walletDiv "passphrase-widget-word-wrapper". uiInputElement $ def
       & inputElementConfig_setValue .~ (current wrd <@ pb)
-      & setInitialAttrs .~
-        ( "type" =: "password" <>
-          "size" =: "10" <>
-          "class" =: "passphrase-widget-word"
-        )
-      & modAttrs .~ mergeWith (<>)
-        [ ("type" =: Just "text") <$ domEvent Mouseover wordElem
-        , ("type" =: Just "password") <$ domEvent Mouseleave wordElem
-        , ("readonly" =:) . enableIfRecovery <$> current currentStage <@ pb
+      & initialAttributes .~ commonAttrs "passphrase-widget-word"
+      & modifyAttributes .~ mergeWith (<>)
+        [ ("type" =:) . setToTextOnSetup <$> current currentStage <@ pb
+        , ("readonly" =:) . canEditOnRecover <$> current currentStage <@ pb
         ]
 
   pure $ _inputElement_input wordElem
   where
-    enableIfRecovery Recover = Nothing
-    enableIfRecovery Setup = Just "true"
+    noHideOverlayOnRecover c =
+      mappend (walletClass "passphrase-widget-elem-wrapper ")
+      . walletClass $ case c of
+          Recover -> "passphrase-recover"
+          Setup -> "passphrase-setup"
 
-    setInitialAttrs = inputElementConfig_elementConfig . elementConfig_initialAttributes
-    modAttrs = inputElementConfig_elementConfig . elementConfig_modifyAttributes
+    setToTextOnSetup Recover = Just "password"
+    setToTextOnSetup Setup = Just "text"
+
+    canEditOnRecover Recover = Nothing
+    canEditOnRecover Setup = Just "true"
 
 passphraseWidget
   :: MonadWidget t m
@@ -211,7 +237,6 @@ passphraseWidget
 passphraseWidget dWords dStage = do
   divClass "passphrase-widget-wrapper" $
     listViewWithKey dWords (passphraseWordElement dStage)
-
 
 -- | UI for generating and displaying a new mnemonic sentence.
 createNewWallet

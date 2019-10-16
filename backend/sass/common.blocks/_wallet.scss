@@ -29,4 +29,21 @@
 .wallet__add-delete-button {
   width: 30px;
 }
+.wallet__passphrase-widget-word,
+.wallet__passphrase-widget-word-hider,
+.wallet__passphrase-widget-elem-wrapper {
+    text-align: center;
+}
 
+.wallet__passphrase-setup .wallet__passphrase-widget-word {
+    display:none;
+}
+
+.wallet__passphrase-widget-elem-wrapper.wallet__passphrase-setup {
+  &:hover .wallet__passphrase-widget-word {
+    display: initial;
+  }
+  &:hover .wallet__passphrase-widget-word-hider {
+    display: none;
+  }
+}

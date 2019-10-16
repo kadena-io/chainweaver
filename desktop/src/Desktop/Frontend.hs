@@ -101,8 +101,8 @@ desktop = Frontend
       let backendEncoder = either (error "frontend: Failed to check backendRouteEncoder") id $
             checkEncoder backendRouteEncoder
       base <- getConfigRoute
-      _ <- Frontend.newHead $ \r -> base <> renderBackendRoute backendEncoder r
       el "style" $ text desktopCss
+      void $ Frontend.newHead $ \r -> base <> renderBackendRoute backendEncoder r
   , _frontend_body = prerender_ blank $ flip runStorageT browserStorage $ do
     (fileOpened, triggerOpen) <- Frontend.openFileDialog
     let appCfg = AppCfg
