@@ -49,14 +49,14 @@ import           Frontend.Ide
 import           Frontend.UI.Modal
 ------------------------------------------------------------------------------
 
-type ModalImpl m t = Event t () -> m (IdeCfg Void t, Event t ())
+type ModalImpl m key t = Event t () -> m (IdeCfg Void key t, Event t ())
 
-type ModalIdeCfg m t = IdeCfg (ModalImpl m t) t
+type ModalIdeCfg m key t = IdeCfg (ModalImpl m key t) key t
 
-type ModalIde m t = Ide (ModalImpl m t) t
+type ModalIde m key t = Ide (ModalImpl m key t) key t
 
 -- | Show the current modal dialog as given in the model.
-showModal :: forall t m. MonadWidget t m => ModalIde m t -> m (ModalIdeCfg m t)
+showModal :: forall key t m. MonadWidget t m => ModalIde m key t -> m (ModalIdeCfg m key t)
 showModal ideL = do
     document <- DOM.currentDocumentUnchecked
 
@@ -84,7 +84,7 @@ showModal ideL = do
         ]
       let onBackdropClick = gate (fmap not isDown) $ domEvent Click backdropEl
       let
-        mCfg :: ModalIdeCfg m t
+        mCfg :: ModalIdeCfg m key t
         mCfg = mCfgVoid { _ideCfg_setModal = LeftmostEv never }
 
       let
@@ -99,8 +99,8 @@ showModal ideL = do
 
     mayMkModal
       :: Event t ()
-      -> Maybe (Event t () -> m (IdeCfg Void t, Event t ()))
-      -> m (Event t Bool, (IdeCfg Void t, Event t ()))
+      -> Maybe (Event t () -> m (IdeCfg Void key t, Event t ()))
+      -> m (Event t Bool, (IdeCfg Void key t, Event t ()))
     mayMkModal e = maybe (pure (never, (mempty, never))) (\f -> mkModal f e)
 
 

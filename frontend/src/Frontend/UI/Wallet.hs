@@ -32,6 +32,7 @@ module Frontend.UI.Wallet
   , showBalance
     -- ** Filters for keys
   , hasPrivateKey
+  , HasUiWalletModelCfg
   ) where
 
 ------------------------------------------------------------------------------
@@ -39,18 +40,18 @@ import           Control.Lens
 import           Control.Monad               (when, void)
 import           Data.Decimal                (Decimal)
 import qualified Data.Map                    as Map
-import           Data.Maybe
 import           Data.Text                   (Text)
 import qualified Pact.Types.PactValue as Pact
 import qualified Pact.Types.Exp as Pact
 import           Reflex
 import           Reflex.Dom
 ------------------------------------------------------------------------------
+import           Frontend.Crypto.Class
 import           Frontend.Crypto.Ed25519     (keyToText)
 import           Frontend.Wallet
 import           Frontend.UI.Widgets
 import           Frontend.Foundation
-import           Frontend.UI.Dialogs.KeyImport (uiKeyImport, HasUiKeyImportModelCfg)
+import           Frontend.UI.Dialogs.KeyImport
 import           Frontend.UI.Dialogs.DeleteConfirmation (uiDeleteConfirmation)
 import           Frontend.UI.Modal
 import           Frontend.Network
@@ -58,17 +59,19 @@ import           Frontend.Network
 
 
 -- | Constraints on the model config we have for implementing this widget.
-type HasUiWalletModelCfg mConf m t =
+type HasUiWalletModelCfg mConf key m t =
   ( Monoid mConf, Flattenable mConf t
   , HasModalCfg mConf (Modal mConf m t) t
-  , HasUiKeyImportModelCfg (ModalCfg mConf t) t
-  , IsWalletCfg mConf t
+  , IsWalletCfg mConf key t
+  , HasWalletCfg (ModalCfg mConf t) key t
+  , Flattenable (ModalCfg mConf t) t
+  , Monoid (ModalCfg mConf t)
   )
 
 -- | UI for managing the keys wallet.
 uiWallet
-  :: (MonadWidget t m, HasUiWalletModelCfg mConf m t)
-  => Wallet t
+  :: (MonadWidget t m, HasUiWalletModelCfg mConf PrivateKey m t)
+  => Wallet PrivateKey t
   -> m mConf
 uiWallet w = divClass "keys group" $ do
     onCreate <- uiCreateKey w
@@ -95,22 +98,22 @@ uiWallet w = divClass "keys group" $ do
 --  pure $ _dropdown_value d
 
 -- | Check whether a given key does contain a private key.
-hasPrivateKey :: (Text, KeyPair) -> Bool
+hasPrivateKey :: (Text, KeyPair PrivateKey) -> Bool
 hasPrivateKey = isJust . _keyPair_privateKey . snd
 
 ----------------------------------------------------------------------
 
 
 -- | Line input with "Create" button for creating a new key.
-uiCreateKey :: MonadWidget t m => Wallet t -> m (Event t KeyName)
+uiCreateKey :: MonadWidget t m => Wallet key t -> m (Event t KeyName)
 uiCreateKey w =
   validatedInputWithButton "group__header" (checkKeyNameValidityStr w) "Enter account name" "Generate"
 
 
 -- | Widget listing all available keys.
 uiAvailableKeys
-  :: (MonadWidget t m, HasUiWalletModelCfg mConf m t)
-  => Wallet t
+  :: (MonadWidget t m, HasUiWalletModelCfg mConf PrivateKey m t)
+  => Wallet PrivateKey t
   -> m mConf
 uiAvailableKeys aWallet = do
   divClass "keys-list" $ do
@@ -122,8 +125,8 @@ uiAvailableKeys aWallet = do
 -- Does not include the surrounding `div` tag. Use uiAvailableKeys for the
 -- complete `div`.
 uiKeyItems
-  :: (MonadWidget t m, HasUiWalletModelCfg mConf m t)
-  => Wallet t
+  :: (MonadWidget t m, HasUiWalletModelCfg mConf PrivateKey m t)
+  => Wallet PrivateKey t
   -> m mConf
 uiKeyItems aWallet = do
     let
@@ -173,7 +176,7 @@ uiKeyItems aWallet = do
 -- | Display a key as list item together with it's name.
 uiKeyItem
   :: MonadWidget t m
-  => (Text, Dynamic t KeyPair)
+  => (Text, Dynamic t (KeyPair PrivateKey))
   -> m (Event t KeyName)
 uiKeyItem (n, k) = do
     elClass "tr" "table__row" $ do
@@ -228,7 +231,9 @@ keyCopyWidget t cls keyText = mdo
 -- | Get the balance of an account from the network. 'Nothing' indicates _some_
 -- failure, either a missing account or connectivity failure. We have no need to
 -- distinguish between the two at this point.
-getBalance :: (MonadWidget t m, HasNetwork model t) => model -> ChainId -> Event t AccountName -> m (Event t (Maybe Decimal))
+getBalance
+  :: (MonadWidget t m, HasNetwork model t, HasCrypto key (Performable m))
+  => model -> ChainId -> Event t AccountName -> m (Event t (Maybe Decimal))
 getBalance model chain account = do
   networkRequest <- performEvent $ attachWith mkReq (current $ getNetworkNameAndMeta model) account
   response <- performLocalReadCustom (model ^. network) pure networkRequest
@@ -241,7 +246,7 @@ getBalance model chain account = do
 
 -- | Display the balance of an account after retrieving it from the network
 showBalance
-  :: (MonadWidget t m, HasNetwork model t)
+  :: (MonadWidget t m, HasNetwork model t, HasCrypto key (Performable m))
   => model -> Event t () -> ChainId -> AccountName -> m ()
 showBalance model refresh chain acc = do
   -- This delay ensures we have the networks stuff set up by the time we do the

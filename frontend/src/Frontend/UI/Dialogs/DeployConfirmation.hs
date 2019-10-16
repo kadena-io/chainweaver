@@ -41,6 +41,7 @@ import Data.Maybe (fromMaybe)
 import Data.Set (Set)
 import Data.Text (Text)
 import Data.Traversable (for)
+import Frontend.Crypto.Class
 import Frontend.Crypto.Ed25519
 import Frontend.JsonData
 import Frontend.Network
@@ -94,9 +95,9 @@ instance Reflex t => Default (DeployConfirmationConfig t) where
 -- We may not need the Status part of the workflow, but we want to be able to reuse as
 -- much of this as we can so we have this function type that will give us the event of the
 -- next stage or the completion of the workflow.
-type DeployPostPreview t m modelCfg =
+type DeployPostPreview key t m modelCfg =
      ChainId
-  -> DeploymentSettingsResult
+  -> DeploymentSettingsResult key
   -> Event t ()
   -> Event t ()
   -> Behavior t [Either Text NodeInfo]
@@ -107,11 +108,11 @@ type DeployPostPreview t m modelCfg =
 --   User can make sure to deploy to the right network, has the right keysets,
 --   the right keys, ...
 uiDeployConfirmation
-  :: forall t m model modelCfg.
+  :: forall key t m model modelCfg.
      ( MonadWidget t m, Monoid modelCfg, Flattenable modelCfg t
      , HasNetwork model t, HasNetworkCfg modelCfg t
      , HasJsonData model t, HasJsonDataCfg modelCfg t
-     , HasWallet model t
+     , HasWallet model key t, HasCrypto key (Performable m)
      )
   => Text
   -> model
@@ -132,14 +133,15 @@ uiDeployConfirmation code model = fullDeployFlow def model $ do
 
 -- | Workflow taking the user through Config -> Preview -> Status
 fullDeployFlow
-  :: forall t m model modelCfg.
+  :: forall key t m model modelCfg.
      ( MonadWidget t m, Monoid modelCfg, Flattenable modelCfg t
      , HasNetwork model t
-     , HasWallet model t
+     , HasWallet model key t
+     , HasCrypto key (Performable m)
      )
   => DeployConfirmationConfig t
   -> model
-  -> m (modelCfg, Event t DeploymentSettingsResult)
+  -> m (modelCfg, Event t (DeploymentSettingsResult key))
   -> Event t () -> m (modelCfg, Event t ())
 fullDeployFlow deployCfg model runner onClose =
   fullDeployFlowWithSubmit deployCfg model showSubmitModal runner onClose
@@ -149,15 +151,16 @@ fullDeployFlow deployCfg model runner onClose =
 
 -- | Workflow taking the user through Config -> Preview -> Status
 fullDeployFlowWithSubmit
-  :: forall t m model modelCfg.
+  :: forall key t m model modelCfg.
      ( MonadWidget t m, Monoid modelCfg, Flattenable modelCfg t
      , HasNetwork model t
-     , HasWallet model t
+     , HasWallet model key t
+     , HasCrypto key (Performable m)
      )
   => DeployConfirmationConfig t
   -> model
-  -> DeployPostPreview t m modelCfg
-  -> m (modelCfg, Event t DeploymentSettingsResult)
+  -> DeployPostPreview key t m modelCfg
+  -> m (modelCfg, Event t (DeploymentSettingsResult key))
   -> Event t () -> m (modelCfg, Event t ())
 fullDeployFlowWithSubmit dcfg model onPreviewConfirm runner _onClose = do
   rec
@@ -266,12 +269,12 @@ fullDeployFlowWithSubmit dcfg model onPreviewConfirm runner _onClose = do
         )
 
 deploySubmit
-  :: forall t m a modelCfg.
+  :: forall key t m a modelCfg.
      ( MonadWidget t m
      , Monoid modelCfg
      )
   => ChainId
-  -> DeploymentSettingsResult
+  -> DeploymentSettingsResult key
   -> [Either a NodeInfo]
   -> Workflow t m (Text, (Event t (), modelCfg))
 deploySubmit chain result nodeInfos = Workflow $ do
@@ -394,7 +397,7 @@ statusClass = \case
 --
 -- Return a tuple of (associated keys/names, initial balance, most recent balance).
 trackBalancesFromPostBuild
-  :: (MonadWidget t m, HasNetwork model t, HasWallet model t)
+  :: (MonadWidget t m, HasNetwork model t, HasWallet model key t, HasCrypto key (Performable m))
   => model -> ChainId -> Set AccountName -> Event t ()
   -> m
     ( Map AccountName (Dynamic t [(PublicKey, Maybe Text)]
@@ -417,6 +420,6 @@ trackBalancesFromPostBuild model chain accounts fire = getPostBuild >>= \pb -> s
   updatedBalance <- holdDyn Nothing . fmap Just =<< getBalance model chain (acc <$ fire)
   pure (publicKeys, initialBalance, updatedBalance)
 
-getAccounts :: KeyPairs -> [KeyPair] -> Set AccountName
+getAccounts :: KeyPairs key -> [KeyPair key] -> Set AccountName
 getAccounts keyPairs pairs = Set.fromList $ rights $ fmap mkAccountName $ Map.keys $ Map.filter (\p -> _keyPair_publicKey p `Set.member` publicKeys) keyPairs
   where publicKeys = Set.fromList $ _keyPair_publicKey <$> pairs

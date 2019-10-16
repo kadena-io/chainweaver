@@ -57,6 +57,9 @@ data FrontendRoute :: * -> * where
   FrontendRoute_Deployed :: FrontendRoute [Text] -- Route for loading a deployed module.
   FrontendRoute_New :: FrontendRoute ()          -- Route when editing a new file.
   FrontendRoute_OAuth :: FrontendRoute (R OAuthRoute) -- Route for auth handling
+  FrontendRoute_Wallet :: FrontendRoute ()
+  FrontendRoute_Resources :: FrontendRoute ()
+  FrontendRoute_Settings :: FrontendRoute ()
 
 backendRouteEncoder
   :: Encoder (Either Text) Identity (R (FullRoute BackendRoute FrontendRoute)) PageName
@@ -87,6 +90,9 @@ backendRouteEncoder = handleEncoder (const (FullRoute_Backend BackendRoute_Missi
       FrontendRoute_New
         -> PathSegment "new" $ unitEncoder mempty
       FrontendRoute_OAuth -> PathSegment "oauth" $ oAuthRouteEncoder
+      FrontendRoute_Wallet -> PathSegment "wallet" $ unitEncoder mempty
+      FrontendRoute_Settings -> PathSegment "settings" $ unitEncoder mempty
+      FrontendRoute_Resources -> PathSegment "resources" $ unitEncoder mempty
 
 -- | Stolen from Obelisk as it is not exported. (Probably for a reason, but it
 -- seems to do what we want right now.

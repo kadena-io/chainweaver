@@ -103,7 +103,7 @@ data Editor t = Editor
 makePactLenses ''Editor
 
 
-type HasEditorModel model t = (HasJsonData model t, HasWallet model t, HasNetwork model t)
+type HasEditorModel model key t = (HasJsonData model t, HasWallet model key t, HasNetwork model t)
 
 type HasEditorModelCfg mConf t = (HasJsonDataCfg mConf t, Monoid mConf)
 
@@ -114,9 +114,9 @@ type ReflexConstraints t m =
 
 -- | Create an `Editor` by providing a `Config`.
 makeEditor
-  :: forall t m cfg model mConf
+  :: forall key t m cfg model mConf
   . ( ReflexConstraints t m
-    , HasEditorCfg cfg t, HasEditorModel model t
+    , HasEditorCfg cfg t, HasEditorModel model key t
     , HasEditorModelCfg mConf t
     , HasConfigs m
     )
@@ -191,7 +191,7 @@ applyQuickFix rs t onQuickFix = do
 
 -- | Type check and verify code.
 typeCheckVerify
-  :: ( ReflexConstraints t m, HasEditorModel model t
+  :: ( ReflexConstraints t m, HasEditorModel model key t
      , HasConfigs m
      )
   => model -> Dynamic t Text -> m (Event t [Annotation])

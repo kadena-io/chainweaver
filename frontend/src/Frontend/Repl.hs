@@ -145,7 +145,7 @@ data Impl t = Impl
 
 -- Implementation:
 
-type HasReplModel m t = (HasNetwork m t, HasJsonData m t, HasWallet m t)
+type HasReplModel m key t = (HasNetwork m t, HasJsonData m t, HasWallet m key t)
 
 type HasReplModelCfg mConf t = (HasMessagesCfg mConf t, Monoid mConf)
 
@@ -155,8 +155,8 @@ type ReplMonad t m =
   )
 
 makeRepl
-  :: forall t m cfg model mConf
-  . ( ReplMonad t m, HasReplModel model t, HasReplModelCfg mConf t
+  :: forall key t m cfg model mConf
+  . ( ReplMonad t m, HasReplModel model key t, HasReplModelCfg mConf t
     , HasReplCfg cfg t, HasConfigs m
     )
   => model -> cfg -> m (mConf, WebRepl t)
@@ -257,8 +257,8 @@ makeRepl m cfg = build $ \ ~(_, impl) -> do
 
 -- | Create a brand new Repl state and set env-data.
 initRepl
-  :: forall t m model
-  . (HasReplModel model t, MonadIO m, Reflex t, MonadSample t m)
+  :: forall key t m model
+  . (HasReplModel model key t, MonadIO m, Reflex t, MonadSample t m)
   => Maybe Text
   -- ^ Verification server URL
   -> Impl t -> model -> m (ReplState)
@@ -296,7 +296,7 @@ setEnvData = pactEvalRepl' . ("(env-data " <>) . (<> ")") . mkCmd
     surroundWith o i = o <> i <> o
 
 -- | Set env-keys to the given keys
-setEnvKeys :: [KeyPair] -> PactRepl (Term Name)
+setEnvKeys :: [KeyPair key] -> PactRepl (Term Name)
 setEnvKeys =
   pactEvalRepl' . ("(env-keys [" <>) . (<> "])") . renderKeys
     where

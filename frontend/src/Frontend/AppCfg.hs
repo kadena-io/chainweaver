@@ -9,7 +9,8 @@ import qualified Data.Aeson as Aeson
 import Pact.Types.ChainMeta (TTLSeconds(..))
 import Pact.Types.Runtime (GasLimit(..), ChainId)
 import Pact.Types.Command (Command)
-import Frontend.Wallet (AccountName)
+import Frontend.Wallet (AccountName, Wallet, WalletCfg)
+import Frontend.UI.Wallet
 
 data SigningRequest = SigningRequest
   { _signingRequest_code :: Text
@@ -40,7 +41,7 @@ instance Aeson.ToJSON SigningResponse where
 instance Aeson.FromJSON SigningResponse where
   parseJSON = Aeson.genericParseJSON compactEncoding
 
-data AppCfg t m = AppCfg
+data AppCfg key t m = AppCfg
   { _appCfg_gistEnabled :: Bool
   , _appCfg_externalFileOpened :: Event t Text
   -- ^ File contents from file chosen in "open file" dialog
@@ -54,8 +55,10 @@ data AppCfg t m = AppCfg
   -- ^ Requests to sign this object
   , _appCfg_signingResponse :: Either Text SigningResponse -> JSM ()
   -- ^ Responses to signings
-  , _appCfg_forceResize :: Event t ()
-  -- ^ Force the ace widgets to recalculate size
+  , _appCfg_makeWallet :: WalletCfg key t -> m (Wallet key t)
+  -- ^ Wallet manager
+  , _appCfg_displayWallet :: forall mConf. (HasUiWalletModelCfg mConf key m t) => Wallet key t -> m mConf
+  -- ^ Wallet widget
   }
 
 -- Are we running the Kadena Chainweaver ALPHA edition

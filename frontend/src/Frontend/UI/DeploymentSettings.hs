@@ -67,6 +67,7 @@ import           Reflex.Dom.Contrib.CssClass (elKlass)
 import           Safe                        (readMay)
 ------------------------------------------------------------------------------
 import           Common.Network
+import           Frontend.Crypto.Class
 import           Frontend.Foundation
 import           Frontend.JsonData
 import           Frontend.Network
@@ -133,9 +134,9 @@ nextView = \case
   DeploymentSettingsView_Cfg -> Just DeploymentSettingsView_Keys
   DeploymentSettingsView_Keys -> Nothing
 
-data DeploymentSettingsResult = DeploymentSettingsResult
+data DeploymentSettingsResult key = DeploymentSettingsResult
   { _deploymentSettingsResult_gasPrice :: GasPrice
-  , _deploymentSettingsResult_signingKeys :: [KeyPair]
+  , _deploymentSettingsResult_signingKeys :: [KeyPair key]
   , _deploymentSettingsResult_sender :: AccountName
   , _deploymentSettingsResult_endpoint :: Maybe Endpoint
   , _deploymentSettingsResult_chainId :: ChainId
@@ -148,14 +149,15 @@ data DeploymentSettingsResult = DeploymentSettingsResult
 --
 --   the right keys, ...
 uiDeploymentSettings
-  :: forall t m model mConf a
-  . ( MonadWidget t m, HasNetwork model t, HasWallet model t
+  :: forall key t m model mConf a
+  . ( MonadWidget t m, HasNetwork model t, HasWallet model key t
     , Monoid mConf , HasNetworkCfg mConf t
     , HasJsonDataCfg mConf t, Flattenable mConf t, HasJsonData model t
+    , HasCrypto key (Performable m)
     )
   => model
   -> DeploymentSettingsConfig t m model a
-  -> m (mConf, Event t DeploymentSettingsResult, Maybe a)
+  -> m (mConf, Event t (DeploymentSettingsResult key), Maybe a)
 uiDeploymentSettings m settings = mdo
     let code = _deploymentSettingsConfig_code settings
     let initTab = fromMaybe DeploymentSettingsView_Cfg mUserTabName
@@ -291,7 +293,7 @@ uiCfg
      , Monoid mConf
      , Flattenable mConf t
      , HasJsonDataCfg mConf t
-     , HasWallet model t
+     , HasWallet model key t
      , HasJsonData model t
      )
   => Dynamic t Text
@@ -517,7 +519,7 @@ uiSenderFixed sender = do
 uiSenderDropdown
   :: ( Adjustable t m, PostBuild t m, DomBuilder t m
      , MonadHold t m, MonadFix m
-     , HasWallet model t
+     , HasWallet model key t
      )
   => DropdownConfig t (Maybe AccountName)
   -> model
@@ -575,7 +577,7 @@ uiChainSelection info cls = mdo
 
 -- | Widget for selection of sender and signing keys.
 uiSigningKeysSender
-  :: forall t m model. (MonadWidget t m, HasWallet model t)
+  :: (MonadWidget t m, HasWallet model key t)
   => model
   -> m (Dynamic t (Maybe AccountName))
   -> m (Dynamic t (Maybe AccountName), Dynamic t (Set KeyName))
@@ -588,7 +590,7 @@ uiSigningKeysSender model mkSender = do
   keys <- divClass "group" $ uiSigningKeys model
   return (sender, keys)
 
-uiSigningKeys :: (MonadWidget t m, HasWallet model t) => model -> m (Dynamic t (Set KeyName))
+uiSigningKeys :: (MonadWidget t m, HasWallet model key t) => model -> m (Dynamic t (Set KeyName))
 uiSigningKeys model = do
   let keyMap = model ^. wallet_keys
       tableAttrs =
@@ -603,7 +605,7 @@ uiSigningKeys model = do
 -- | Display a key as list item together with it's name.
 signingItem
   :: MonadWidget t m
-  => (KeyName, Dynamic t KeyPair)
+  => (KeyName, Dynamic t (KeyPair key))
   -> m (Dynamic t Bool)
 signingItem (n, _) = do
     elClass "tr" "table__row checkbox-container" $ do

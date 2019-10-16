@@ -37,8 +37,8 @@ import           Frontend.UI.Widgets.Helpers (imgWithAltCls)
 import           Frontend.Wallet             (KeyName, HasWalletCfg(..))
 ------------------------------------------------------------------------------
 
-type HasUIDeleteConfirmationModelCfg mConf t =
-  ( Monoid mConf, Flattenable mConf t , HasWalletCfg mConf t
+type HasUIDeleteConfirmationModelCfg mConf key t =
+  ( Monoid mConf, Flattenable mConf t , HasWalletCfg mConf key t
   )
 
 
@@ -48,8 +48,8 @@ type HasUIDeleteConfirmationModelCfg mConf t =
 -- configurable for now.
 --
 uiDeleteConfirmation
-  :: forall t m mConf
-  . (MonadWidget t m, HasUIDeleteConfirmationModelCfg mConf t)
+  :: forall key t m mConf
+  . (MonadWidget t m, HasUIDeleteConfirmationModelCfg mConf key t)
   => KeyName -> Event t () -> m (mConf, Event t ())
 uiDeleteConfirmation keyName _onClose = do
   onClose <- modalHeader $ text "Delete Confirmation"

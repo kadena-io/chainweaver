@@ -112,6 +112,9 @@ handleRoutes m = do
        FrontendRoute_Deployed :/ xs -> Just $ "deployed":xs
        FrontendRoute_New      :/ () -> Nothing
        FrontendRoute_OAuth    :/ _  -> Nothing
+       FrontendRoute_Wallet   :/ () -> Nothing
+       FrontendRoute_Resources :/ () -> Nothing
+       FrontendRoute_Settings :/ () -> Nothing
 
     runRefParser = MP.parse parseRef "URL" . RefPath
 

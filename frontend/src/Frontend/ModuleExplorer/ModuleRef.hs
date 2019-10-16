@@ -86,6 +86,7 @@ import           Frontend.Foundation
 import           Frontend.ModuleExplorer.Example
 import           Frontend.ModuleExplorer.File
 import           Frontend.Network
+import Frontend.Crypto.Class
 
 -- | A `Module` can come from a number of sources.
 --
@@ -238,11 +239,12 @@ textModuleRefSource isModule m =
 --
 --   Resulting Event is either an error msg or the loaded module.
 fetchModule
-  :: forall m t model
+  :: forall key m t model
   . ( MonadHold t m, PerformEvent t m, MonadJSM (Performable m)
     , TriggerEvent t m, MonadIO m
     , MonadSample t (Performable m)
     , HasNetwork model t
+    , HasCrypto key (Performable m)
     )
   => model
   -> Event t DeployedModuleRef

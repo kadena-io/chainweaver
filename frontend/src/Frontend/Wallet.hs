@@ -67,15 +67,15 @@ type KeyName = Text
 
 -- | A key consists of a public key and an optional private key.
 --
-data KeyPair = KeyPair
+data KeyPair key = KeyPair
   { _keyPair_publicKey  :: PublicKey
-  , _keyPair_privateKey :: Maybe PrivateKey
+  , _keyPair_privateKey :: Maybe key
   } deriving Generic
 
 makePactLenses ''KeyPair
 
 -- | `KeyName` to `Key` mapping
-type KeyPairs = Map KeyName KeyPair
+type KeyPairs key = Map KeyName (KeyPair key)
 
 newtype AccountName = AccountName
   { unAccountName :: Text
@@ -124,10 +124,10 @@ type AccountGuards = Map ChainId (Map AccountName AccountGuard)
 -- We might need to track the chainID here too.
 type KeyAccounts = Map PublicKey (Set AccountName)
 
-data WalletCfg t = WalletCfg
+data WalletCfg key t = WalletCfg
   { _walletCfg_genKey     :: Event t KeyName
   -- ^ Request generation of a new key, that will be named as specified.
-  , _walletCfg_importKey  :: Event t (KeyName, KeyPair)
+  , _walletCfg_importKey  :: Event t (KeyName, KeyPair key)
   , _walletCfg_delKey     :: Event t KeyName
   -- ^ Delete a key from your wallet.
   , _walletCfg_addAccount :: Event t (ChainId, AccountName, AccountGuard)
@@ -139,10 +139,10 @@ makePactLenses ''WalletCfg
 
 -- | HasWalletCfg with additional constraints to make it behave like a proper
 -- "Config".
-type IsWalletCfg cfg t = (HasWalletCfg cfg t, Monoid cfg, Flattenable cfg t)
+type IsWalletCfg cfg key t = (HasWalletCfg cfg key t, Monoid cfg, Flattenable cfg t)
 
-data Wallet t = Wallet
-  { _wallet_keys        :: Dynamic t KeyPairs
+data Wallet key t = Wallet
+  { _wallet_keys        :: Dynamic t (KeyPairs key)
     -- ^ Keys added and removed by the user 
   , _wallet_keyAccounts :: Dynamic t KeyAccounts
     -- ^ Accounts associated with the given public key
@@ -154,7 +154,7 @@ data Wallet t = Wallet
 makePactLenses ''Wallet
 
 -- | An empty wallet that will never contain any keys.
-emptyWallet :: Reflex t => Wallet t
+emptyWallet :: Reflex t => Wallet key t
 emptyWallet = Wallet mempty mempty mempty
 
 -- | Make a functional wallet that can contain actual keys.
@@ -165,8 +165,8 @@ makeWallet
     , MonadJSM m
     , HasStorage (Performable m), HasStorage m
     )
-  => WalletCfg t
-  -> m (Wallet t)
+  => WalletCfg PrivateKey t
+  -> m (Wallet PrivateKey t)
 makeWallet conf = do
     initialKeys <- fromMaybe Map.empty <$> loadKeys
     let
@@ -216,7 +216,7 @@ makeWallet conf = do
       , _wallet_accountGuards = accountGuards
       }
   where
-    createKey :: KeyName -> Performable m (KeyName, KeyPair)
+    createKey :: KeyName -> Performable m (KeyName, KeyPair PrivateKey)
     createKey n = do
       (privKey, pubKey) <- genKeyPair
       pure (n, KeyPair pubKey (Just privKey))
@@ -225,17 +225,17 @@ makeWallet conf = do
 -- Storing data:
 
 -- | Storage keys for referencing data to be stored/retrieved.
-data StoreWallet a where
-  StoreWallet_Keys :: StoreWallet KeyPairs
-  StoreWallet_KeyAccounts :: StoreWallet KeyAccounts
-  StoreWallet_AccountGuards :: StoreWallet AccountGuards
-deriving instance Show (StoreWallet a)
+data StoreWallet key a where
+  StoreWallet_Keys :: StoreWallet key (KeyPairs key)
+  StoreWallet_KeyAccounts :: StoreWallet key KeyAccounts
+  StoreWallet_AccountGuards :: StoreWallet key AccountGuards
+deriving instance Show (StoreWallet key a)
 
 -- | Parse a private key with additional checks based on the given public key.
 --
 --   In case a `Left` value is given instead of a valid public key, the
 --   corresponding value will be returned instead.
-parseWalletKeyPair :: Either Text PublicKey -> Text -> Either Text KeyPair
+parseWalletKeyPair :: Either Text PublicKey -> Text -> Either Text (KeyPair PrivateKey)
 parseWalletKeyPair errPubKey privKey = do
   pubKey <- errPubKey
   runExcept $ uncurry KeyPair <$> parseKeyPair pubKey privKey
@@ -244,7 +244,7 @@ parseWalletKeyPair errPubKey privKey = do
 --
 --   Returns `Just` error msg in case it is not valid.
 checkKeyNameValidityStr
-  :: (Reflex t, HasWallet w t)
+  :: (Reflex t, HasWallet w key t)
   => w
   -> Dynamic t (KeyName -> Either Text KeyName)
 checkKeyNameValidityStr w = getErr <$> w ^. wallet_keys
@@ -255,17 +255,17 @@ checkKeyNameValidityStr w = getErr <$> w ^. wallet_keys
          else Right k
 
 -- | Write key pairs to localstorage.
-storeKeys :: (HasStorage m, MonadJSM m) => KeyPairs -> m ()
+storeKeys :: (ToJSON key, HasStorage m, MonadJSM m) => KeyPairs key -> m ()
 storeKeys ks = setItemStorage localStorage StoreWallet_Keys ks
 
 -- | Load key pairs from localstorage.
-loadKeys :: (HasStorage m, MonadJSM m) => m (Maybe KeyPairs)
+loadKeys :: (FromJSON key, HasStorage m, MonadJSM m) => m (Maybe (KeyPairs key))
 loadKeys = getItemStorage localStorage StoreWallet_Keys
 
 
 -- Utility functions:
 
-instance Reflex t => Semigroup (WalletCfg t) where
+instance Reflex t => Semigroup (WalletCfg key t) where
   c1 <> c2 =
     WalletCfg
       { _walletCfg_genKey = leftmost [ _walletCfg_genKey c1
@@ -281,11 +281,11 @@ instance Reflex t => Semigroup (WalletCfg t) where
       , _walletCfg_deleteAccount = leftmost [ _walletCfg_deleteAccount c1, _walletCfg_deleteAccount c2 ]
       }
 
-instance Reflex t => Monoid (WalletCfg t) where
+instance Reflex t => Monoid (WalletCfg key t) where
   mempty = WalletCfg never never never never never
   mappend = (<>)
 
-instance Flattenable (WalletCfg t) t where
+instance Flattenable (WalletCfg key t) t where
   flattenWith doSwitch ev =
     WalletCfg
       <$> doSwitch never (_walletCfg_genKey <$> ev)
@@ -294,15 +294,15 @@ instance Flattenable (WalletCfg t) t where
       <*> doSwitch never (_walletCfg_addAccount <$> ev)
       <*> doSwitch never (_walletCfg_deleteAccount <$> ev)
 
-instance Reflex t => Semigroup (Wallet t) where
+instance Reflex t => Semigroup (Wallet key t) where
   (<>) = mappenddefault
 
-instance Reflex t => Monoid (Wallet t) where
+instance Reflex t => Monoid (Wallet key t) where
   mempty = memptydefault
   mappend = (<>)
 
-instance ToJSON KeyPair where
+instance ToJSON key => ToJSON (KeyPair key) where
   -- Yeah aeson serialization changes bit me too once. But I guess this is fine for a testnet?
   toEncoding = genericToEncoding defaultOptions
 
-instance FromJSON KeyPair
+instance FromJSON key => FromJSON (KeyPair key)

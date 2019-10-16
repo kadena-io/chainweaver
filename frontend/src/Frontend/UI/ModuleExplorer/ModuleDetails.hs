@@ -39,6 +39,7 @@ import           Reflex
 import           Reflex.Dom
 import           Reflex.Network.Extended
 ------------------------------------------------------------------------------
+import           Frontend.Crypto.Class
 import           Frontend.JsonData
 import           Frontend.ModuleExplorer
 import           Frontend.Network
@@ -49,8 +50,8 @@ import           Frontend.UI.ModuleExplorer.ModuleList
 ------------------------------------------------------------------------------
 
 -- | Constraints on the `Model` we have for our details screen.
-type HasUIModuleDetailsModel model t =
-  (HasModuleExplorer model t, HasNetwork model t, HasUICallFunctionModel model t)
+type HasUIModuleDetailsModel model key t =
+  (HasModuleExplorer model t, HasNetwork model t, HasUICallFunctionModel model key t)
 
 -- | Constraints on the model config we have for implementing this screen.
 type HasUIModuleDetailsModelCfg mConf m t =
@@ -66,10 +67,11 @@ type HasUIModuleDetailsModelCfg mConf m t =
 --   User can see and call the module's function and browse implemented
 --   interfaces and used modules.
 moduleDetails
-  :: forall t m model mConf
+  :: forall key t m model mConf
   . ( MonadWidget t m
-    , HasUIModuleDetailsModel model t
+    , HasUIModuleDetailsModel model key t
     , HasUIModuleDetailsModelCfg mConf m t
+    , HasCrypto key (Performable m)
     )
   => model
   -> (ModuleRef, ModuleDef (Term Name))
@@ -138,9 +140,10 @@ moduleDetails m (selectedRef, selected) = do
             pure $ mempty & moduleExplorerCfg_pushModule .~ onSel
 
 functionList
-  :: forall t m mConf model
+  :: forall key t m mConf model
   .  ( MonadWidget t m, HasUIModuleDetailsModelCfg mConf m t
-     , HasUIModuleDetailsModel model t
+     , HasUIModuleDetailsModel model key t
+     , HasCrypto key (Performable m)
      )
   => model -> Maybe DeployedModuleRef -> [PactFunction] -> m mConf
 functionList m mDeployed functions =
