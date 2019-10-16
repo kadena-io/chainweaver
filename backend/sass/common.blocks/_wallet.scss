@@ -35,11 +35,11 @@
     text-align: center;
 }
 
-.wallet__passphrase-setup .wallet__passphrase-widget-word {
+.wallet__passphrase-widget-word {
     display:none;
 }
 
-.wallet__passphrase-widget-elem-wrapper.wallet__passphrase-setup {
+.wallet__passphrase-widget-elem-wrapper {
   &:hover .wallet__passphrase-widget-word {
     display: initial;
   }

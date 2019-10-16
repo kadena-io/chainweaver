@@ -187,7 +187,7 @@ passphraseWordElement
   -> WordKey
   -> Dynamic t Text
   -> m (Event t Text)
-passphraseWordElement currentStage k wrd = elDynClass "div" (noHideOverlayOnRecover <$> currentStage) $ do
+passphraseWordElement currentStage k wrd = walletDiv "passphrase-widget-elem-wrapper" $ do
   pb <- getPostBuild
 
   walletDiv "passphrase-widget-key-wrapper" $
@@ -195,37 +195,19 @@ passphraseWordElement currentStage k wrd = elDynClass "div" (noHideOverlayOnReco
   
   let
     commonAttrs cls =
-      "type" =: "password" <>
+      "type" =: "text" <>
       "size" =: "10" <>
       "class" =: walletClass cls
 
-    fakeInputElement Recover = blank
-    fakeInputElement Setup = void . uiInputElement $ def
-      & inputElementConfig_initialValue .~ "**********"
-      & initialAttributes .~ ("disabled" =: "true" <> commonAttrs "passphrase-widget-word-hider")
+  void . uiInputElement $ def
+    & inputElementConfig_initialValue .~ "**********"
+    & initialAttributes .~ (commonAttrs "passphrase-widget-word-hider" <> "disabled" =: "true")
 
-  dyn_ (fakeInputElement <$> currentStage)
-
-  rec
-    wordElem <- walletDiv "passphrase-widget-word-wrapper". uiInputElement $ def
-      & inputElementConfig_setValue .~ (current wrd <@ pb)
-      & initialAttributes .~ commonAttrs "passphrase-widget-word"
-      & modifyAttributes .~ mergeWith (<>)
-        [ ("type" =:) . setToTextOnSetup <$> current currentStage <@ pb
-        , ("readonly" =:) . canEditOnRecover <$> current currentStage <@ pb
-        ]
-
-  pure $ _inputElement_input wordElem
+  fmap _inputElement_input $ walletDiv "passphrase-widget-word-wrapper". uiInputElement $ def
+    & inputElementConfig_setValue .~ (current wrd <@ pb)
+    & initialAttributes .~ commonAttrs "passphrase-widget-word"
+    & modifyAttributes .~ (("readonly" =:) . canEditOnRecover <$> current currentStage <@ pb)
   where
-    noHideOverlayOnRecover c =
-      mappend (walletClass "passphrase-widget-elem-wrapper ")
-      . walletClass $ case c of
-          Recover -> "passphrase-recover"
-          Setup -> "passphrase-setup"
-
-    setToTextOnSetup Recover = Just "password"
-    setToTextOnSetup Setup = Just "text"
-
     canEditOnRecover Recover = Nothing
     canEditOnRecover Setup = Just "true"
 
