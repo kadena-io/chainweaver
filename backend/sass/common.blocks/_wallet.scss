@@ -178,7 +178,12 @@ $wallet-top-btm-margin: 0.5rem 0 0.5rem 0;
   margin: 2rem auto;
 }
 
-.wallet__recovery-phrase-copy {
+.wallet__recovery-phrase-copy button.button {
+  width: 30%;
+  padding: 0.4rem;
+  margin-bottom: 0;
+  border: none;
+
   i.fa {
     color: $confirm-color;
     margin-right: 0.4rem;

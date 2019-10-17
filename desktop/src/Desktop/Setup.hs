@@ -369,9 +369,17 @@ createNewPassphrase dPassword mnemonicSentence = Workflow $ do
     dPassphrase <- passphraseWidget dPassphrase (pure Setup)
       >>= holdDyn (mkPhraseMapFromMnemonic mnemonicSentence)
 
-  walletDiv "recovery-phrase-copy" $ do
-    elClass "i" "fa fa-2x fa-copy" blank
-    elClass "span" (walletClass "recovery-phrase-copy-word") $ text "Copy"
+  eCopyClick <- elClass "div" (walletClass "recovery-phrase-copy") $ do
+    uiButton def $ elClass "span" (walletClass "recovery-phrase-copy-word") $ do
+      elClass "i" "fa fa-copy" blank
+      text "Copy"
+      
+    -- <a class="btn btn-default btn-sm" href="#">
+    --   <i class="fa fa-cog"></i> Settings</a>
+
+  eCopySuccess <- copyToClipboard $
+    T.unwords . Map.elems <$> current dPassphrase <@ eCopyClick 
+
 
   dIsStored <- fmap value $ walletDiv "checkbox-wrapper" $ uiCheckbox def False def
     $ text "I have safely stored my recovery phrase."
