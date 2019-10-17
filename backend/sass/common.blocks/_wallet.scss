@@ -4,6 +4,9 @@
 .wallet {
 }
 
+$fullscreen-wallet-grey: #f1f1f1;
+$wallet-top-btm-margin: 0.5rem 0 0.5rem 0;
+
  // background: url(static/img/Wallet_Graphic_1.png);
 
 .fullscreen .wrapper {
@@ -23,11 +26,10 @@
 
 .fullscreen .wallet__workflow-header {
 
-  .wallet__workflow-icon {
+  li.wallet__workflow-icon {
     margin: 0 1rem 0 1rem;
-    display: inline-grid;
+    display: inline-block;
     color: $confirm-color;
-
   }
 }
 
@@ -37,6 +39,9 @@
   height: 3em;
   border-radius: 2rem;
   display: table;
+
+  &.wallet__workflow-screen-password {margin-left: 0.85rem;}
+  &.wallet__workflow-screen-recovery {margin-left: 0.75rem;}
 
   .wallet__workflow-icon-inner {
     display: table-cell;
@@ -53,13 +58,23 @@
 
 .fullscreen .wallet__splash-terms-buttons {
   width: 30rem;
+}
 
+.wallet__new-wallet-password-text {
+  margin-bottom: 1rem;
+}
+
+.fullscreen {
 	.checkbox, .button {
-		margin: 0.5rem 0 0.5rem 0;
+		margin: $wallet-top-btm-margin; 
     font-weight: initial;
 	}
 
-  .button {
+  .wallet__password {
+    margin: $wallet-top-btm-margin;
+  }
+
+  .button, .wallet__password {
     height: initial;
     line-height: initial;
     padding: 1.3rem;
@@ -75,10 +90,17 @@
   }
 }
 
+.wallet__checkbox-wrapper {
+  margin: 1rem;
+  .checkbox {
+    color: $tertiary-color;
+  }
+}
+
 .wallet__terms-conditions-checkbox {
   color: $confirm-color;
-
 }
+
 .wallet__key {
   overflow-x: hidden;
   text-overflow: ellipsis;
@@ -104,10 +126,26 @@
   width: 30px;
 }
 
+.wallet__record-phrase-msg {
+  margin-bottom: 2em;
+}
+
+.wallet__passphrase-widget-wrapper {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  min-width: 615px;
+}
+
+.wallet__passphrase-widget-word-hider {
+  background-color: $fullscreen-wallet-grey;
+}
+
 .wallet__passphrase-widget-word,
 .wallet__passphrase-widget-word-hider,
 .wallet__passphrase-widget-elem-wrapper {
     text-align: center;
+    margin-bottom:0.5em;
+    font-size: 20px;
 }
 
 .wallet__passphrase-widget-word {
@@ -121,4 +159,40 @@
   &:hover .wallet__passphrase-widget-word-hider {
     display: none;
   }
+}
+
+.fullscreen .wallet__verify-phrase-msg {
+  margin-bottom: 1.5rem;
+}
+
+.fullscreen .wallet__message {
+  max-height: 0;
+  overflow-y: hidden;
+  transition: max-height 0.3s linear;
+
+  &.wallet__show-pw-error {
+    max-height: 2rem;
+  }
+}
+.fullscreen .wallet__message-wrapper {
+  margin: 2rem auto;
+}
+
+.wallet__recovery-phrase-copy {
+  i.fa {
+    color: $confirm-color;
+    margin-right: 0.4rem;
+  }
+
+  .wallet__recovery-phrase-copy-word {
+    color: $tertiary-color;
+    font-size: 25px;
+  }
+}
+
+.fullscreen .wallet__message-wrapper > .message {
+  background-color: rgba(0,0,0,0.4);
+  border-radius: 0.3rem;
+  padding: 0.5rem;
+  display: inline-block;
 }
