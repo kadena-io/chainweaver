@@ -1,4 +1,5 @@
 {-# LANGUAGE DataKinds #-}
+{-# LANGUAGE TupleSections #-}
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecursiveDo #-}
@@ -53,8 +54,12 @@ data WalletScreen
   | CreatePassphrase
   | VerifyPassphrase
   | RecoverPassphrase
+  | SplashScreen
   | Done
   deriving (Show, Eq, Ord)
+
+walletScreenClass :: WalletScreen -> Text
+walletScreenClass = walletClass . T.toLower . tshow
 
 wordsToPhraseMap :: [Text] -> Map.Map WordKey Text
 wordsToPhraseMap = Map.fromList . zip [WordKey 1 ..]
@@ -93,7 +98,7 @@ form c = elAttr "form" ("onsubmit" =: "return false;" <> "class" =: c)
 -- | Wallet logo
 kadenaWalletLogo :: DomBuilder t m => m ()
 kadenaWalletLogo = divClass "logo" $ do
-  elAttr "img" ("src" =: static @"img/Klogo.png") blank
+  elAttr "img" ("src" =: static @"img/Klogo.png" <> "class" =: walletClass "kadena-logo") blank
 
 type SetupWF t m = Workflow t m (Event t Crypto.XPrv)
 
@@ -104,33 +109,55 @@ walletSetupRecoverHeader
   :: MonadWidget t m
   => WalletScreen
   -> m (Event t ())
-walletSetupRecoverHeader currentScreen = do
+walletSetupRecoverHeader currentScreen = walletDiv "workflow-header" $ do
   eBack <- fmap (domEvent Click . fst) . walletDiv "back-link"
     . el "span" . elClass' "i" "fa fa-3x fa-chevron-left" $ text "Back"
 
-  _ <- walletDiv "current-screen" $ text (tshow currentScreen)
+  walletDiv "workflow-icons" $ do
+    faEl "1" "Password" Password
+    faEl "2" "Recovery" CreatePassphrase
+    faEl "3" "Verify" VerifyPassphrase
+    faEl "4" "Done" Done
 
   pure eBack
+  where
+    faEl n lbl sid = elClass "div" "wallet__workflow-icon" $ do
+      let isActive = currentScreen == sid
+      elClass "div" (walletClass "workflow-icon-circle " <> if isActive
+                      then walletClass "workflow-icon-circle-active"
+                      else T.empty
+                    ) $
+        walletDiv "workflow-icon-inner" $
+          if isActive then
+            elClass "i" ("fa fa-check fa-lg fa-inverse" <> walletClass "workflow-icon-active") blank
+          else
+            text n
+
+      text lbl
 
 runSetup :: forall t m. MonadWidget t m => m (Event t Crypto.XPrv)
-runSetup = divClass "fullscreen" $ divClass "wrapper" $ do
+runSetup = divClass "fullscreen" $ divClass "wrapper" $ 
   switchDyn <$> workflow splashScreen
 
 splashScreen :: MonadWidget t m => SetupWF t m
-splashScreen = Workflow $ do
+splashScreen = Workflow $ walletDiv "splash" $ do
+  elAttr "img" ("src" =: static @"img/Wallet_Graphic_1.png" <> "class" =: walletClass "splash-bg") blank
   kadenaWalletLogo
 
-  agreed <- fmap value $ uiCheckbox def False def $ walletDiv "terms-conditions-checkbox" $ do
-    text "I have read & agree to the "
-    elAttr "a" ("href" =: "https://kadena.io/" <> "target" =: "_blank") (text "Terms of Service")
+  (agreed, create, recover) <- walletDiv "splash-terms-buttons" $ do
+    agreed <- fmap value $ uiCheckbox def False def $ walletDiv "terms-conditions-checkbox" $ do
+      text "I have read & agree to the "
+      elAttr "a" ("href" =: "https://kadena.io/" <> "target" =: "_blank") (text "Terms of Service")
 
-  (create, recover) <- walletDiv "buttons-wrapper" $ liftA2 (,)
-    (confirmButton def "Setup a new wallet")
-    (uiButton btnCfgSecondary $ text "Recover an existing wallet")
+    create <- confirmButton def "Create a new wallet"
+    recover <- uiButton btnCfgSecondary $ text "Restore existing wallet"
+    pure (agreed, create, recover)
+
+  let hasAgreed = gate (current agreed)
 
   finishSetupWF $ leftmost
-    [ createNewWalletV2 <$ gate (current agreed) create
-    , recoverWallet <$ gate (current agreed) recover
+    [ createNewWalletV2 <$ hasAgreed create
+    , recoverWallet <$ hasAgreed recover
     ]
 
 data BIP39PhraseError
@@ -262,8 +289,7 @@ createNewWalletV2 = Workflow $ do
 
   let
     generating = do
-      dMsg <- holdDyn "Generating your mnemonic..." eGenError
-      dynText dMsg
+      dynText =<< holdDyn "Generating your mnemonic..." eGenError
       pure never
 
     proceed :: Crypto.MnemonicSentence 12 -> m (Event t (SetupWF t m))

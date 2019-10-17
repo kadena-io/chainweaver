@@ -4,7 +4,81 @@
 .wallet {
 }
 
+ // background: url(static/img/Wallet_Graphic_1.png);
 
+.fullscreen .wrapper {
+  max-width: 40rem;
+  text-align: center;
+  position: relative;
+
+  .logo {
+    width: 20rem;
+    margin: 0 auto;
+    font-size: 30px;
+    position: absolute;
+    top: 10rem;
+    left: 5rem;
+  }
+}
+
+.fullscreen .wallet__workflow-header {
+
+  .wallet__workflow-icon {
+    margin: 0 1rem 0 1rem;
+    display: inline-grid;
+    color: $confirm-color;
+
+  }
+}
+
+.wallet__workflow-icon-circle {
+  background-color: #fff;
+  width: 3em;
+  height: 3em;
+  border-radius: 2rem;
+  display: table;
+
+  .wallet__workflow-icon-inner {
+    display: table-cell;
+    vertical-align: middle;
+  }
+}
+
+.wallet__workflow-icon-value {
+  position: absolute;
+  top: 1.3rem;
+  left: 1.7rem;
+  font-size: 0.7em;
+}
+
+.fullscreen .wallet__splash-terms-buttons {
+  width: 30rem;
+
+	.checkbox, .button {
+		margin: 0.5rem 0 0.5rem 0;
+    font-weight: initial;
+	}
+
+  .button {
+    height: initial;
+    line-height: initial;
+    padding: 1.3rem;
+    width: 96%;
+    font-size: 25px;
+    font-weight: initial;
+
+    &.button_type_secondary {
+      border: initial;
+      font-size: 22px;
+      color: $tertiary-color;
+    }
+  }
+}
+
+.wallet__terms-conditions-checkbox {
+  color: $confirm-color;
+
+}
 .wallet__key {
   overflow-x: hidden;
   text-overflow: ellipsis;

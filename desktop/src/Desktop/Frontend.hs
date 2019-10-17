@@ -120,21 +120,20 @@ desktop = Frontend
 
 desktopCss :: Text
 desktopCss = [QQ.r|
-.fullscreen { width: 100vw; height: 100vh; display: flex; justify-content: center; align-items: center; color: #fff; }
-.fullscreen { background: rgb(30,40,50); background: radial-gradient(circle, rgba(40,50,60,1) 0%, rgba(27,30,46,1) 100%); }
+-- .fullscreen { width: 100vw; height: 100vh; display: flex; justify-content: center; align-items: center; color: #fff; }
+.fullscreen { width: 100vw; height: 100vh; display: flex; justify-content: center; align-items: center; }
+-- .fullscreen { background: rgb(30,40,50); background: radial-gradient(circle, rgba(40,50,60,1) 0%, rgba(27,30,46,1) 100%); }
 .fullscreen p { margin: 2rem auto; }
 .fullscreen .checkbox-wrapper { margin: 2rem auto; }
 .fullscreen .checkbox { font-size: 20px; color: #fff; text-align: left; display: inline-block; padding-left: 40px; }
 .fullscreen .checkbox .checkbox__checkmark { top: 2px; height: 20px; width: 20px; }
 .fullscreen .checkbox input:checked ~ .checkbox__checkmark { background-color: #ed098f; border-color: #ed098f }
 .fullscreen .checkbox .checkbox__checkmark_type_secondary:after { top: 2px; left: 6px; width: 3px; height: 10px; }
-.fullscreen button.button { background: #ddd; color: #333; }
+-- .fullscreen button.button { background: #ddd; color: #333; }
 .fullscreen .group { color: #222; margin: 2rem 0; }
 .fullscreen .group.dark { background-color: rgba(0,0,0,0.3); }
-.fullscreen button.button_type_confirm:not([disabled]) { border: none; background: #ed098f; }
-.fullscreen button.button_type_confirm:hover:not([disabled]) { background: #fd199f; }
-.fullscreen .wrapper { max-width: 40rem; text-align: center; }
-.fullscreen .wrapper .logo { width: 20rem; margin: 0 auto; font-size: 30px; }
+-- .fullscreen button.button_type_confirm:not([disabled]) { border: none; background: #ed098f; }
+-- .fullscreen button.button_type_confirm:hover:not([disabled]) { background: #fd199f; }
 .fullscreen textarea.wallet-recovery-phrase { display: block; width: 30rem; height: 6rem; font-size: 18px; margin: 2rem auto; }
 .passphrase-widget-wrapper { display: grid; grid-template-columns: repeat(4, 1fr); }
 .fullscreen .passphrase { display: block; margin: 1rem auto; width: 20rem; }
