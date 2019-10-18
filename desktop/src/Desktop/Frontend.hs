@@ -130,8 +130,6 @@ desktopCss = [QQ.r|
 .fullscreen .group { color: #222; margin: 2rem 0; }
 .fullscreen .group.dark { background-color: rgba(0,0,0,0.3); }
 .fullscreen textarea.wallet-recovery-phrase { display: block; width: 30rem; height: 6rem; font-size: 18px; margin: 2rem auto; }
-.fullscreen .passphrase { display: block; margin: 1rem auto; width: 20rem; }
-.fullscreen .passphrase.hidden { display: none; }
 body { display: flex; flex-direction: row; }
 .sidebar.closed { width: 0; }
 .sidebar { display: flex; flex-direction: column; width: 15rem; overflow: hidden; transition: width 0.2s; z-index: 1; }

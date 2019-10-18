@@ -15,6 +15,7 @@ import Control.Lens ((<>~), (?~), (%~))
 import Control.Monad (unless,void,join)
 import Control.Monad.Fix (MonadFix)
 import Control.Monad.IO.Class
+import Data.Bool (bool)
 import Data.Maybe (isNothing, fromMaybe)
 import Data.Bifunctor
 import Data.ByteArray (ByteArrayAccess)
@@ -190,6 +191,7 @@ data BIP39PhraseError
   = BIP39PhraseError_Dictionary Crypto.DictionaryError
   | BIP39PhraseError_MnemonicWordsErr Crypto.MnemonicWordsError
   | BIP39PhraseError_InvalidPhrase
+  | BIP39PhraseError_PhraseIncomplete
 
 passphraseLen :: Int
 passphraseLen = 12
@@ -197,31 +199,51 @@ passphraseLen = 12
 recoverWallet :: MonadWidget t m => Event t () -> SetupWF t m
 recoverWallet eBack = Workflow $ do
   el "h1" $ text "Recover your wallet"
-  el "p" $ text "Type in your recovery phrase"
+
+  walletDiv "recovery-text" $ do
+    el "div" $ text "Enter your 12 word recovery phrase"
+    el "div" $ text "to restore your wallet."
+
+  let hackPhrase = wordsToPhraseMap
+        $ T.words "afraid enter bind fork bean need text express peanut sister capable run"
+
+  eHack <- button "hack ze gibson"
 
   rec 
     phraseMap <- holdDyn (wordsToPhraseMap $ replicate passphraseLen T.empty)
-      $ flip Map.union <$> current phraseMap <@> onPhraseMapUpdate
-    onPhraseMapUpdate <- passphraseWidget phraseMap (pure Recover)
+      $ flip Map.union <$> current phraseMap <@> leftmost
+                 [ onPhraseMapUpdate
+                 , hackPhrase <$ eHack
+                 ]
 
-  let sentenceOrError = ffor phraseMap $ \pm -> do
+    onPhraseMapUpdate <- walletDiv "recover-widget-wrapper" $
+      passphraseWidget phraseMap (pure Recover)
+
+  let enoughWords = (== passphraseLen) . length . filter (not . T.null) . Map.elems
+
+  let sentenceOrError = ffor phraseMap $ \pm -> if enoughWords pm then do
         phrase <- first BIP39PhraseError_MnemonicWordsErr . Crypto.mnemonicPhrase @12 $ textTo <$> Map.elems pm
         unless (Crypto.checkMnemonicPhrase Crypto.english phrase) $ Left BIP39PhraseError_InvalidPhrase
         first BIP39PhraseError_Dictionary $ Crypto.mnemonicPhraseToMnemonicSentence Crypto.english phrase
+        else Left BIP39PhraseError_PhraseIncomplete
+                            
+  passphrase <- walletDiv "recovery-use-bip39-wrapper" $ do
+    useBIP <- walletDiv "checkbox-wrapper" $ uiCheckbox def False def $ text "Use a BIP39 passphrase"
 
-  passphrase <- divClass "checkbox-wrapper" $ do
-    usePassphrase <- fmap value $ uiCheckbox def False def $ text "Use a BIP39 passphrase"
+    let inputClasses = ffor (_checkbox_change useBIP) $ \c ->
+          ("class" =: Just (if c then "input passphrase" else "input hidden passphrase"))
+
     fmap value $ uiInputElement $ def
       & initialAttributes .~
         "type" =: "password" <>
         "placeholder" =: "BIP39 passphrase" <>
         "class" =: "hidden passphrase"
-      & modifyAttributes .~ ffor (updated usePassphrase)
-        (\u -> if u then "class" =: Just "input passphrase" else "class" =: Just "hidden passphrase")
+      & modifyAttributes .~ inputClasses
 
   dyn_ $ ffor sentenceOrError $ \case
     Right _ -> pure ()
-    Left e -> divClass "message-wrapper" $ divClass "message" $ text $ case e of
+    Left BIP39PhraseError_PhraseIncomplete -> pure ()
+    Left e -> walletDiv "phrase-error-message-wrapper" $ walletDiv "phrase-error-message" $ text $ case e of
       BIP39PhraseError_MnemonicWordsErr (Crypto.ErrWrongNumberOfWords actual expected)
         -> "Wrong number of words: expected " <> tshow expected <> ", but got " <> tshow actual
       BIP39PhraseError_InvalidPhrase
@@ -236,13 +258,14 @@ recoverWallet eBack = Workflow $ do
         (current passphrase)
         (updated sentenceOrError)
 
-      waitingForPhrase = do
-        text "waiting for the passphrase"
+      waitingForPhrase = walletDiv "waiting-passphrase" $ do
+        text "Waiting for a valid 12 word passphrase..."
         pure never
 
-      withSeedConfirmPassword seed = do
+      withSeedConfirmPassword seed = walletDiv "recover-enter-password" $ do
         dSetPw <- holdDyn Nothing =<< fmap pure <$> setPassword (pure seed)
-        continue <- continueButton (fmap isNothing dSetPw)
+        continue <- walletDiv "recover-restore-button" $
+          confirmButton (def & uiButtonCfg_disabled .~ (fmap isNothing dSetPw)) "Restore"
         pure $ tagMaybe (current dSetPw) continue
 
   dSetPassword <- widgetHold waitingForPhrase $
@@ -452,7 +475,7 @@ confirmPhrase eBack dPassword mnemonicSentence = Workflow $ do
   let actualMap = mkPhraseMapFromMnemonic mnemonicSentence
 
   rec
-    onPhraseUpdate <- walletDiv "verify-passphrase" $
+    onPhraseUpdate <- walletDiv "verify-widget-wrapper" $
       passphraseWidget dConfirmPhrase (pure Recover)
 
     dConfirmPhrase <- holdDyn (wordsToPhraseMap $ replicate passphraseLen T.empty)
