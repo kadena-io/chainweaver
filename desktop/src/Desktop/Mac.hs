@@ -19,6 +19,7 @@ import Foreign.C.String (CString, peekCString)
 import Foreign.C.Types (CInt(..))
 import Foreign.StablePtr (StablePtr)
 import GHC.IO.Handle
+import Kadena.SigningApi
 import Language.Javascript.JSaddle.Types (JSM)
 import Obelisk.Backend
 import Obelisk.Frontend
@@ -103,9 +104,6 @@ backend = Backend
     serve $ serveBackendRoute Nothing cfg'
   , _backend_routeEncoder = backendRouteEncoder
   }
-
-type SigningApi = "v1" :> V1SigningApi
-type V1SigningApi = "sign" :> ReqBody '[JSON] SigningRequest :> Post '[JSON] SigningResponse
 
 main'
   :: MacFFI
