@@ -170,7 +170,7 @@ main' ffi mainBundleResourcePath runHTML = redirectPipes [stdout, stderr] $ do
           { Wai.corsRequestHeaders = Wai.simpleHeaders }
         apiServer
           = Warp.runSettings s $ Wai.cors laxCors
-          $ Servant.serve (Proxy @SigningApi) runSign
+          $ Servant.serve signingAPI runSign
     _ <- Async.async $ apiServer
     runHTML "index.html" route putStrLn handleOpen $ do
       mInitFile <- liftIO $ tryTakeMVar fileOpenedMVar
