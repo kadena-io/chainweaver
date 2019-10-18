@@ -7,20 +7,34 @@
 $fullscreen-wallet-grey: #f1f1f1;
 $wallet-top-btm-margin: 0.5rem 0 0.5rem 0;
 
- // background: url(static/img/Wallet_Graphic_1.png);
-
 .fullscreen .wrapper {
   max-width: 40rem;
   text-align: center;
   position: relative;
 
   .logo {
-    width: 20rem;
+    // width: 10rem;
     margin: 0 auto;
     font-size: 30px;
     position: absolute;
-    top: 10rem;
-    left: 5rem;
+    top: 6.5rem;
+    left: 13rem;
+    background-color: $std-border-color;
+    padding: 1rem;
+
+    img.wallet__kadena-logo {
+      width: 6rem;
+    }
+
+    .chainweaver {
+      font-family: 'Haas Grot Disp 75';
+      color: initial;
+    }
+
+    .by-kadena {
+      font-size: 24px;
+      color: $tertiary-color;
+    }
   }
 }
 
@@ -31,6 +45,10 @@ $wallet-top-btm-margin: 0.5rem 0 0.5rem 0;
     display: inline-block;
     color: $confirm-color;
   }
+}
+
+.wallet__workflow-icon.active .wallet__workflow-icon-circle {
+  background-color: $confirm-color;
 }
 
 .wallet__workflow-icon-circle {
@@ -54,10 +72,6 @@ $wallet-top-btm-margin: 0.5rem 0 0.5rem 0;
   top: 1.3rem;
   left: 1.7rem;
   font-size: 0.7em;
-}
-
-.fullscreen .wallet__splash-terms-buttons {
-  width: 30rem;
 }
 
 .wallet__new-wallet-password-text {

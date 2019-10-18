@@ -98,38 +98,44 @@ form c = elAttr "form" ("onsubmit" =: "return false;" <> "class" =: c)
 -- | Wallet logo
 kadenaWalletLogo :: DomBuilder t m => m ()
 kadenaWalletLogo = divClass "logo" $ do
-  elAttr "img" ("src" =: static @"img/Klogo.png" <> "class" =: walletClass "kadena-logo") blank
+  elAttr "img" ("src" =: static @"img/kadena_blue_logo.png" <> "class" =: walletClass "kadena-logo") blank
+  elClass "div" "chainweaver" $ text "Chainweaver"
+  elClass "div" "by-kadena" $ text "By Kadena"
 
 type SetupWF t m = Workflow t m (Event t Crypto.XPrv)
 
 finishSetupWF :: (Reflex t, Applicative m) => a -> m (Event t x, a)
 finishSetupWF = pure . (,) never
 
+-- Make this take a list of the current progress instead so we can maintain
+-- the list of how much we have done so far.
+--
 walletSetupRecoverHeader
   :: MonadWidget t m
-  => WalletScreen
+  => [WalletScreen]
   -> m (Event t ())
-walletSetupRecoverHeader currentScreen = walletDiv "workflow-header" $ do
+walletSetupRecoverHeader doneScreens = walletDiv "workflow-header" $ do
   eBack <- fmap (domEvent Click . fst) . walletDiv "back-link"
     . el "span" . elClass' "i" "fa fa-3x fa-chevron-left" $ text "Back"
 
-  elClass "ol" (walletClass "workflow-icons") $ do
-    faEl "1" "Password" Password
-    faEl "2" "Recovery" CreatePassphrase
-    faEl "3" "Verify" VerifyPassphrase
-    faEl "4" "Done" Done
+  unless (L.null doneScreens) $
+    elClass "ol" (walletClass "workflow-icons") $ do
+      faEl "1" "Password" Password
+      faEl "2" "Recovery" CreatePassphrase
+      faEl "3" "Verify" VerifyPassphrase
+      faEl "4" "Done" Done
 
   pure eBack
   where
     faEl n lbl sid =
       let
-        isActive = currentScreen == sid
+        isActive = sid `elem` doneScreens
       in
         elClass "li" (walletClass "workflow-icon" <> if isActive then " active" else T.empty) $ do
           elClass "div" (walletClass "workflow-icon-circle" <> (" wallet__workflow-screen-" <> T.toLower lbl)) $
             walletDiv "workflow-icon-inner" $
             if isActive then
-              elClass "i" ("fa fa-check fa-lg fa-inverse" <> walletClass "workflow-icon-active") blank
+              elClass "i" ("fa fa-check fa-lg fa-inverse " <> walletClass "workflow-icon-active") blank
             else
               text n
           text lbl
@@ -169,7 +175,7 @@ passphraseLen = 12
 
 recoverWallet :: MonadWidget t m => SetupWF t m
 recoverWallet = Workflow $ do
-  eBack <- walletSetupRecoverHeader RecoverPassphrase
+  eBack <- walletSetupRecoverHeader []
 
   el "h1" $ text "Recover your wallet"
   el "p" $ text "Type in your recovery phrase"
@@ -277,8 +283,8 @@ continueButton isDisabled =
     confirmButton (def & uiButtonCfg_disabled .~ isDisabled) "Continue"
 
 createNewWallet :: forall t m. MonadWidget t m => SetupWF t m
-createNewWallet = Workflow $ do
-  eBack <- walletSetupRecoverHeader Password
+createNewWallet = Workflow $  do
+  eBack <- walletSetupRecoverHeader [Password]
   ePb <- getPostBuild
 
   el "h1" $ text "Set a password"
@@ -313,7 +319,7 @@ precreatePassphraseWarning
   -> Crypto.MnemonicSentence 12
   -> SetupWF t m
 precreatePassphraseWarning dPassword mnemonicSentence = Workflow $ do
-  eBack <- walletSetupRecoverHeader Password
+  eBack <- walletSetupRecoverHeader [Password]
   
   walletDiv "recovery-phrase-warning" $ do
     line "In the next step you will record your 12 word recovery phrase."
@@ -340,7 +346,17 @@ doneScreen
   => Crypto.XPrv
   -> SetupWF t m
 doneScreen passwd = Workflow $ do
-  eBack <- walletSetupRecoverHeader Done
+  eBack <- walletSetupRecoverHeader [Password, CreatePassphrase, VerifyPassphrase, Done]
+
+  elAttr "img" (
+    "src" =: static @"img/Wallet_Graphic_1.png" <>
+    "class" =: (walletClass "splash-bg" <> walletClass "done-splash-bg")
+    ) blank
+
+  elAttr "img" (
+    "src" =: static @"img/Wallet_Icon_Highlighted_Blue.png" <>
+    "class" =: walletClass "wallet-blue-icon"
+    ) blank
 
   el "h1" $ text "Wallet Created"
 
@@ -358,7 +374,7 @@ createNewPassphrase
   -> Crypto.MnemonicSentence 12
   -> SetupWF t m
 createNewPassphrase dPassword mnemonicSentence = Workflow $ do
-  eBack <- walletSetupRecoverHeader CreatePassphrase
+  eBack <- walletSetupRecoverHeader [Password, CreatePassphrase]
 
   el "h1" $ text "Record Recovery Phrase"
   walletDiv "record-phrase-msg" $ do
@@ -400,7 +416,7 @@ confirmPhrase
   -- ^ Mnemonic sentence to confirm
   -> SetupWF t m
 confirmPhrase dPassword mnemonicSentence = Workflow $ do
-  eBack <- walletSetupRecoverHeader VerifyPassphrase
+  eBack <- walletSetupRecoverHeader [Password,CreatePassphrase,VerifyPassphrase]
 
   el "h1" $ text "Verify Recovery Phrase"
   walletDiv "verify-phrase-msg" $ do
