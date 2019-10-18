@@ -23,19 +23,19 @@ module Frontend.UI.Dialogs.Signing
   ( uiSigning
   ) where
 
+import Control.Monad ((<=<))
+import Kadena.SigningApi
 import Reflex
 import Reflex.Dom
 
-import Control.Monad ((<=<))
-import Control.Applicative (liftA2)
 import Frontend.AppCfg
 import Frontend.Foundation hiding (Arg)
+import Frontend.JsonData
 import Frontend.Network
 import Frontend.UI.DeploymentSettings
 import Frontend.UI.Dialogs.DeployConfirmation (DeployConfirmationConfig (..), fullDeployFlowWithSubmit)
 import Frontend.UI.Modal.Impl
 import Frontend.Wallet
-import Frontend.JsonData
 
 type HasUISigningModelCfg mConf t =
   ( Monoid mConf, Flattenable mConf t, HasWalletCfg mConf t
@@ -73,6 +73,7 @@ uiSigning appCfg ideL signingRequest onCloseExternal = do
           , _deploymentSettingsConfig_nonce = _signingRequest_nonce signingRequest
           , _deploymentSettingsConfig_ttl = _signingRequest_ttl signingRequest
           , _deploymentSettingsConfig_gasLimit = _signingRequest_gasLimit signingRequest
+          , _deploymentSettingsConfig_caps = Just $ _signingRequest_caps signingRequest
           }
         pure (mConf, result)
 

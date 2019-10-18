@@ -91,6 +91,7 @@ import qualified Text.URI                          as URI
 import           Pact.Parse                        (ParsedDecimal (..))
 import           Pact.Server.ApiV1Client
 import           Pact.Types.API
+import           Pact.Types.Capability
 import           Pact.Types.Command
 import           Pact.Types.Runtime                (PactError (..), GasLimit (..), GasPrice (..), Gas (..))
 import           Pact.Types.ChainMeta              (PublicMeta (..), TTLSeconds (..), TxCreationTime (..))
@@ -559,7 +560,7 @@ mkSimpleReadReq
   :: (MonadIO m, MonadJSM m)
   => Text -> NetworkName -> PublicMeta -> ChainRef -> m NetworkRequest
 mkSimpleReadReq code networkName pm cRef = do
-  cmd <- buildCmd Nothing networkName (pm { _pmChainId = _chainRef_chain cRef }) [] code mempty
+  cmd <- buildCmd Nothing networkName (pm { _pmChainId = _chainRef_chain cRef }) [] code mempty mempty
   pure $ NetworkRequest
     { _networkRequest_cmd = cmd
     , _networkRequest_chainRef = cRef
@@ -900,9 +901,10 @@ buildCmd
   -> [KeyPair]
   -> Text
   -> Object
+  -> Map PublicKey [SigCapability]
   -> m (Command Text)
-buildCmd mNonce networkName meta signingKeys code dat = do
-  cmd <- encodeAsText . encode <$> buildExecPayload mNonce networkName meta signingKeys code dat
+buildCmd mNonce networkName meta signingKeys code dat caps = do
+  cmd <- encodeAsText . encode <$> buildExecPayload mNonce networkName meta signingKeys code dat caps
   let
     cmdHashL = hash (T.encodeUtf8 cmd)
   sigs <- buildSigs cmdHashL signingKeys
@@ -946,8 +948,9 @@ buildExecPayload
   -> [KeyPair]
   -> Text
   -> Object
+  -> Map PublicKey [SigCapability]
   -> m (Payload PublicMeta Text)
-buildExecPayload mNonce networkName meta keys code dat = do
+buildExecPayload mNonce networkName meta keys code dat caps = do
     time <- getCreationTime
     nonce <- maybe getNonce pure mNonce
     let
@@ -967,7 +970,7 @@ buildExecPayload mNonce networkName meta keys code dat = do
       { _siScheme = pure ED25519
       , _siPubKey = keyToText pubKey
       , _siAddress = pure $ keyToText pubKey
-      , _siCapList = mempty -- TODO ** Route these through
+      , _siCapList = Map.findWithDefault [] pubKey caps
       }
 
 -- Response handling ...

@@ -87,6 +87,7 @@ uiCallFunction m mModule func _onClose
             , _deploymentSettingsConfig_ttl = Nothing
             , _deploymentSettingsConfig_nonce = Nothing
             , _deploymentSettingsConfig_gasLimit = Nothing
+            , _deploymentSettingsConfig_caps = Nothing
             }
           pure (cfg, result)
         deployConfirmCfg = def

@@ -76,6 +76,7 @@ library
                , transformers
                , trifecta
                , unordered-containers
+               , kadena-signing-api
 
   exposed-modules: Frontend
                  , Frontend.AppCfg

@@ -127,6 +127,7 @@ uiDeployConfirmation code model = fullDeployFlow def model $ do
     , _deploymentSettingsConfig_ttl = Nothing
     , _deploymentSettingsConfig_nonce = Nothing
     , _deploymentSettingsConfig_gasLimit = Nothing
+    , _deploymentSettingsConfig_caps = Nothing
     }
   pure (settingsCfg, result)
 
@@ -181,7 +182,7 @@ fullDeployFlowWithSubmit dcfg model onPreviewConfirm runner _onClose = do
           sender = _deploymentSettingsResult_sender result
       succeeded <- elClass "div" "modal__main transaction_details" $ do
 
-        transactionInputSection $ pure $ _deploymentSettingsResult_code result
+        transactionInputSection (_deploymentSettingsResult_code result) (_deploymentSettingsResult_command result)
         divClass "title" $ text "Destination"
         _ <- divClass "group segment" $ do
           transactionDisplayNetwork model
@@ -278,7 +279,7 @@ deploySubmit chain result nodeInfos = Workflow $ do
       let cmd = _deploymentSettingsResult_command result
           code = _deploymentSettingsResult_code result
       elClass "div" "modal__main transaction_details" $ do
-        transactionHashSection $ pure code
+        transactionHashSection cmd
 
         -- Shove the node infos into servant client envs
         clientEnvs <- fmap catMaybes $ for (rights nodeInfos) $ \nodeInfo -> do
