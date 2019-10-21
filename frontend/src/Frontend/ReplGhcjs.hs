@@ -59,6 +59,7 @@ import           Frontend.Editor
 import           Frontend.Foundation
 import           Frontend.GistStore
 import           Frontend.Ide
+import           Frontend.Network
 import           Frontend.OAuth
 import           Frontend.Repl
 import           Frontend.Storage
@@ -69,6 +70,7 @@ import           Frontend.UI.Dialogs.DeployConfirmation (uiDeployConfirmation)
 import           Frontend.UI.Dialogs.LogoutConfirmation (uiLogoutConfirmation)
 import           Frontend.UI.Dialogs.NetworkEdit        (uiNetworkEdit)
 import           Frontend.UI.Dialogs.Signing            (uiSigning)
+import           Frontend.UI.Dialogs.NetworkEdit        (uiNetworkSelect, uiNetworkStatus, queryNetworkStatus)
 import           Frontend.UI.Modal
 import           Frontend.UI.Modal.Impl
 import           Frontend.UI.RightPanel
@@ -93,12 +95,13 @@ app appCfg = void . mfix $ \ cfg -> do
   walletCfg' <- mkPage (FrontendRoute_Wallet :/ ()) "wallet" $ do
     _appCfg_displayWallet appCfg (_ide_wallet ideL)
   updates <- mkPage (FrontendRoute_Main :/ ()) "contracts" $ do
+    netCfg <- networkBar ideL
     controlCfg <- controlBar appCfg ideL
     mainCfg <- elClass "main" "main page__main" $ do
       uiEditorCfg <- codePanel appCfg "main__left-pane" ideL
       envCfg <- rightTabBar "main__right-pane" ideL
       pure $ uiEditorCfg <> envCfg
-    pure $ controlCfg <> mainCfg
+    pure $ netCfg <> controlCfg <> mainCfg
 
   modalCfg <- showModal ideL
 
@@ -211,6 +214,17 @@ codeWidget appCfg anno iv sv = do
     ace <- resizableAceWidget resize mempty ac (AceDynConfig Nothing) anno iv sv
     return $ _extendedACE_onUserChange ace
 
+networkBar
+  :: MonadWidget t m
+  => ModalIde m key t
+  -> m (ModalIdeCfg m key t)
+networkBar m = divClass "main-header main-header__network-bar" $ do
+  -- Fetch and display the status of the currently selected network.
+  queryNetworkStatus (m ^. ide_network . network_networks) (m ^. ide_network . network_selectedNetwork)
+    >>= uiNetworkStatus (pure " page__network-bar-status")
+  -- Present the dropdown box for selecting one of the configured networks.
+  divClass "page__network-bar-select" $
+    uiNetworkSelect (m ^. ide_network)
 
 controlBar
   :: forall key t m. (MonadWidget t m, HasCrypto key (Performable m))
