@@ -22,6 +22,7 @@
 module Frontend.UI.Dialogs.NetworkEdit
   ( uiNetworkEdit
   , uiNetworkStatus
+  , uiNetworkSelect
   , queryNetworkStatus
   , NetworkStatus(..)
   ) where
