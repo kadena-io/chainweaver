@@ -525,9 +525,7 @@ setPassword dSeed = form "" $ do
   pure $ Crypto.generate <$> current dSeed <@> (T.encodeUtf8 <$> pass)
 
   where
-    -- TODO: CHANGE BACK TO 10 BEFORE MERGE.
-    -- makes workflow faster to move through
-    minPasswordLength = 1
+    minPasswordLength = 10
     checkPassword p1 p2
       | T.length p1 < minPasswordLength =
           Left $ "Passwords must be at least " <> tshow minPasswordLength <> " characters long"
