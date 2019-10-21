@@ -119,6 +119,26 @@ $kadena-orange: #F3AB3C;
     margin: $wallet-top-btm-margin;
   }
 
+  .wallet__password-wrapper {
+    position: relative;
+
+    &::before {
+      pointer-events: none;
+      font-family: FontAwesome;
+      font-size: 2em;
+      content: "\f023"; // Padlock
+      z-index: 1;
+      position: absolute;
+      left: 1rem;
+      top: -0.5rem;
+      color: lightgray;
+    }
+  }
+
+  input.wallet__password {
+    padding-left: 2em;
+  }
+
   .button, .wallet__password {
     height: initial;
     line-height: initial;
@@ -316,9 +336,12 @@ $kadena-orange: #F3AB3C;
   }
 }
 
+.wallet__recovery-text {
+  margin: 2rem;
+}
+
 .wallet__recover-restore-button .button.button_type_confirm {
   background-color: $kadena-orange;
   border-color: $kadena-orange;
   color: #fff;
 }
-

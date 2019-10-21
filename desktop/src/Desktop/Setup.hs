@@ -9,19 +9,16 @@
 -- | Wallet setup screens
 module Desktop.Setup (runSetup, form, kadenaWalletLogo) where
 
-import Control.Error (hush,isRight)
+import Control.Error (hush)
 import Control.Applicative (liftA2)
-import Control.Lens ((<>~), (?~), (%~))
-import Control.Monad (unless,void,join)
-import Control.Monad.Fix (MonadFix)
+import Control.Monad (unless,void)
 import Control.Monad.IO.Class
-import Data.Bool (bool)
 import Data.Maybe (isNothing, fromMaybe)
 import Data.Bifunctor
 import Data.ByteArray (ByteArrayAccess)
 import Data.ByteString (ByteString)
 import Data.String (IsString, fromString)
-import Data.Functor ((<&>), ($>))
+import Data.Functor ((<&>))
 import Data.Text (Text)
 import Reflex.Dom.Core
 import qualified Cardano.Crypto.Wallet as Crypto
@@ -29,8 +26,6 @@ import qualified Crypto.Encoding.BIP39 as Crypto
 import qualified Crypto.Encoding.BIP39.English as Crypto
 import qualified Crypto.Random.Entropy
 import qualified Data.ByteArray as BA
-import qualified Data.List as L
-import qualified Data.Set as S
 import qualified Data.Map as Map
 import qualified Data.Text as T
 import qualified Data.Text.Encoding as T
@@ -204,17 +199,9 @@ recoverWallet eBack = Workflow $ do
     el "div" $ text "Enter your 12 word recovery phrase"
     el "div" $ text "to restore your wallet."
 
-  let hackPhrase = wordsToPhraseMap
-        $ T.words "afraid enter bind fork bean need text express peanut sister capable run"
-
-  eHack <- button "hack ze gibson"
-
   rec 
     phraseMap <- holdDyn (wordsToPhraseMap $ replicate passphraseLen T.empty)
-      $ flip Map.union <$> current phraseMap <@> leftmost
-                 [ onPhraseMapUpdate
-                 , hackPhrase <$ eHack
-                 ]
+      $ flip Map.union <$> current phraseMap <@> onPhraseMapUpdate
 
     onPhraseMapUpdate <- walletDiv "recover-widget-wrapper" $
       passphraseWidget phraseMap (pure Recover)
@@ -250,6 +237,8 @@ recoverWallet eBack = Workflow $ do
         -> "Invalid phrase"
       BIP39PhraseError_Dictionary (Crypto.ErrInvalidDictionaryWord word)
         -> "Invalid word in phrase: " <> baToText word
+      BIP39PhraseError_PhraseIncomplete
+        -> mempty
 
   let toSeed :: Crypto.ValidMnemonicSentence mw => Text -> Crypto.MnemonicSentence mw -> Crypto.Seed
       toSeed p s = Crypto.sentenceToSeed s Crypto.english $ textTo p
@@ -444,7 +433,7 @@ createNewPassphrase eBack dPassword mnemonicSentence = Workflow $ do
       elClass "i" "fa fa-copy" blank
       text "Copy"
       
-  eCopySuccess <- copyToClipboard $
+  _ <- copyToClipboard $
     T.unwords . Map.elems <$> current dPassphrase <@ eCopyClick 
 
   dIsStored <- fmap value $ walletDiv "checkbox-wrapper" $ uiCheckbox def False def
@@ -498,11 +487,12 @@ setPassword
   => Dynamic t Crypto.Seed
   -> m (Event t Crypto.XPrv)
 setPassword dSeed = form "" $ do
-  let uiPassword ph = uiInputElement $ def & initialAttributes .~
-                      ( "type" =: "password" <>
-                        "placeholder" =: ph <>
-                        "class" =: walletClass "password"
-                      )
+  let uiPassword ph = elClass "span" (walletClass "password-wrapper") $
+        uiInputElement $ def & initialAttributes .~
+        ( "type" =: "password" <>
+          "placeholder" =: ph <>
+          "class" =: walletClass "password"
+        )
 
   p1elem <- uiPassword "Enter password"
   p2elem <- uiPassword "Confirm password" 
@@ -554,4 +544,3 @@ genMnemonic :: MonadIO m => m (Either Text (Crypto.MnemonicSentence 12))
 genMnemonic = liftIO $ bimap tshow Crypto.entropyToWords . Crypto.toEntropy @128
   -- This size must be a 1/8th the size of the 'toEntropy' size: 128 / 8 = 16
   <$> Crypto.Random.Entropy.getEntropy @ByteString 16
-

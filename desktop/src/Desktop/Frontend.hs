@@ -125,7 +125,6 @@ desktopCss = [QQ.r|
 .fullscreen .checkbox-wrapper { margin: 2rem auto; }
 .fullscreen .checkbox { font-size: 20px; color: #fff; text-align: left; display: inline-block; padding-left: 40px; }
 .fullscreen .checkbox .checkbox__checkmark { top: 2px; height: 20px; width: 20px; }
-.fullscreen .checkbox input:checked ~ .checkbox__checkmark { background-color: #ed098f; border-color: #ed098f }
 .fullscreen .checkbox .checkbox__checkmark_type_secondary:after { top: 2px; left: 6px; width: 3px; height: 10px; }
 .fullscreen .group { color: #222; margin: 2rem 0; }
 .fullscreen .group.dark { background-color: rgba(0,0,0,0.3); }
