@@ -56,6 +56,7 @@ import Frontend.UI.Button
 import Frontend.UI.Icon
 import Frontend.UI.Widgets
 import Obelisk.Configs
+import Obelisk.Generated.Static
 import Obelisk.Frontend
 import Obelisk.Route
 import Obelisk.Route.Frontend
@@ -120,22 +121,44 @@ desktop = Frontend
           xprv <- runSetup
           saved <- performEvent $ ffor xprv $ \x -> setItemStorage localStorage Wallet_RootKey x >> pure x
           pure $ Just <$> xprv
-        Just xprv -> do
-          flip runCryptoT (bipCrypto "test") $ do
-            (fileOpened, triggerOpen) <- Frontend.openFileDialog
-            let appCfg = AppCfg
-                  { _appCfg_gistEnabled = False
-                  , _appCfg_externalFileOpened = fileOpened
-                  , _appCfg_openFileDialog = liftJSM triggerOpen
-                  , _appCfg_loadEditor = loadEditorFromLocalStorage
-                  , _appCfg_editorReadOnly = False
-                  , _appCfg_signingRequest = never
-                  , _appCfg_signingResponse = \_ -> pure ()
-                  , _appCfg_makeWallet = \walletCfg -> pure mempty
-                  , _appCfg_displayWallet = \_ -> text "Wallet" >> pure mempty
-                  }
-            Frontend.ReplGhcjs.app appCfg
-          pure never -- TODO delete wallet
+        Just xprv -> mdo
+          pass <- holdUniqDyn =<< holdDyn Nothing passEvts
+          -- TODO expire password
+          passEvts <- switchHold never passEvts'
+          let (restore', passEvts') = splitE result
+          result <- dyn $ ffor pass $ \case
+            Nothing -> do
+              el "h1" $ text "Wallet locked"
+              kadenaWalletLogo
+              form "" $ do
+                pass <- uiInputElement $ def & initialAttributes .~ "type" =: "password" -- TODO padlock icon
+                e <- confirmButton (def & uiButtonCfg_type ?~ "submit") "Unlock"
+                help <- uiButton def $ text "Help" -- TODO where does this go?
+                restore <- uiButton def $ text "Restore"
+                let isValid = attachWith (\p _ -> p <$ guard (testKeyPassword xprv p)) (current $ value pass) e
+                pure (restore, isValid)
+            Just pass -> flip runCryptoT (bipCrypto pass) $ do
+              (fileOpened, triggerOpen) <- Frontend.openFileDialog
+              (logout, triggerLogout) <- newTriggerEvent
+              let appCfg = AppCfg
+                    { _appCfg_gistEnabled = False
+                    , _appCfg_externalFileOpened = fileOpened
+                    , _appCfg_openFileDialog = liftJSM triggerOpen
+                    , _appCfg_loadEditor = loadEditorFromLocalStorage
+                    , _appCfg_editorReadOnly = False
+                    , _appCfg_signingRequest = never
+                    , _appCfg_signingResponse = \_ -> pure ()
+                    , _appCfg_makeWallet = \walletCfg -> pure mempty
+                    , _appCfg_displayWallet = \_ -> text "Wallet" >> pure mempty
+                    , _appCfg_sidebarExtra = do
+                      (e, _) <- elAttr' "span" ("class" =: "link") $ do
+                        elAttr "img" ("class" =: "normal" <> "src" =: static @"img/menu/logout.png") blank
+                      performEvent_ $ liftIO . triggerLogout <$> domEvent Click e
+                    }
+              Frontend.ReplGhcjs.app appCfg
+              pure (never, Nothing <$ logout)
+          restore <- switchHold never restore'
+          pure $ Nothing <$ restore
     pure ()
   }
 

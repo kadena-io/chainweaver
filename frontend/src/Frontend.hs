@@ -66,6 +66,7 @@ frontend = Frontend
       , _appCfg_signingResponse = \_ -> pure ()
       , _appCfg_makeWallet = makeWallet
       , _appCfg_displayWallet = uiWallet
+      , _appCfg_sidebarExtra = pure ()
       }
   }
 

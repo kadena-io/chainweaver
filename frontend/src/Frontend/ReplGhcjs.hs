@@ -86,7 +86,7 @@ app
 app appCfg = void . mfix $ \ cfg -> do
   ideL <- makeIde appCfg cfg
 
-  walletSidebar
+  walletSidebar appCfg
   route <- demux <$> askRoute
   let mkPage :: R FrontendRoute -> Text -> m a -> m a
       mkPage r c = elDynAttr "div" (ffor (demuxed route r) $ \s -> "class" =: (c <> if s then " page visible" else " page"))
@@ -117,8 +117,10 @@ app appCfg = void . mfix $ \ cfg -> do
     , mempty & ideCfg_editor . editorCfg_loadCode .~ _appCfg_externalFileOpened appCfg
     ]
 
-walletSidebar :: (DomBuilder t m, PostBuild t m, Routed t (R FrontendRoute) m, SetRoute t (R FrontendRoute) m, RouteToUrl (R FrontendRoute) m) => m ()
-walletSidebar = elAttr "div" ("class" =: "sidebar") $ do
+walletSidebar
+  :: (DomBuilder t m, PostBuild t m, Routed t (R FrontendRoute) m, SetRoute t (R FrontendRoute) m, RouteToUrl (R FrontendRoute) m)
+  => AppCfg key t m -> m ()
+walletSidebar appCfg = elAttr "div" ("class" =: "sidebar") $ do
   divClass "logo" blank -- TODO missing logo image
   route <- demux <$> askRoute
   let sidebarLink r = routeLink r $ do
@@ -132,6 +134,7 @@ walletSidebar = elAttr "div" ("class" =: "sidebar") $ do
   elAttr "div" ("style" =: "flex-grow: 1") blank
   sidebarLink $ FrontendRoute_Resources :/ ()
   sidebarLink $ FrontendRoute_Settings :/ ()
+  _appCfg_sidebarExtra appCfg
   -- TODO logout link
 
 -- | Get the routes to the icon assets for each route

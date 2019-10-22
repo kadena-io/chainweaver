@@ -59,6 +59,8 @@ data AppCfg key t m = AppCfg
   -- ^ Wallet manager
   , _appCfg_displayWallet :: forall mConf. (HasUiWalletModelCfg mConf key m t) => Wallet key t -> m mConf
   -- ^ Wallet widget
+  , _appCfg_sidebarExtra :: m ()
+  -- ^ Extra widget to display at the bottom of the sidebar
   }
 
 -- Are we running the Kadena Chainweaver ALPHA edition
