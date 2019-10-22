@@ -218,7 +218,6 @@ fullDeployFlowWithSubmit dcfg model onPreviewConfirm runner _onClose = do
             el "thead" $ el "tr" $ do
               let th = elClass "th" "table__heading" . text
               th "Account Name"
-              th "Key Name"
               th "Public Key"
               th "Change in Balance"
             el "tbody" $ void $ flip Map.traverseWithKey accountBalances $ \acc (publicKeys, initialBalance, updatedBalance) -> el "tr" $ do
@@ -227,12 +226,9 @@ fullDeployFlowWithSubmit dcfg model onPreviewConfirm runner _onClose = do
                     Just Nothing -> "Error"
                     Just (Just b) -> tshow b <> " KDA"
               el "td" $ text $ unAccountName acc
-              el "td" $ void $ simpleList publicKeys $ \pks -> do
-                let name = fmap snd pks
-                el "div" . dynText $ fmap (fromMaybe "") name
-              el "td" $ void $ simpleList publicKeys $ \pks -> do
-                let key = fmap fst pks
-                divClass "wallet__key" . dynText $ fmap keyToText key
+              el "td" $ dyn_ $ ffor publicKeys $ \case
+                Nothing -> pure ()
+                Just key -> divClass "wallet__key" $ text $ keyToText key
               el "td" $ dynText $ displayBalance <$> (liftA2 . liftA2 . liftA2) subtract initialBalance updatedBalance
 
         divClass "title" $ text "Raw Response"
@@ -397,23 +393,13 @@ statusClass = \case
 trackBalancesFromPostBuild
   :: (MonadWidget t m, HasNetwork model t, HasWallet model t)
   => model -> ChainId -> Set AccountName -> Event t ()
-  -> m
-    ( Map AccountName (Dynamic t [(PublicKey, Maybe Text)]
+  -> m ( Map AccountName
+    ( Dynamic t (Maybe PublicKey)
     , Dynamic t (Maybe (Maybe Decimal))
-    , Dynamic t (Maybe (Maybe Decimal)))
-    )
+    , Dynamic t (Maybe (Maybe Decimal))
+    ))
 trackBalancesFromPostBuild model chain accounts fire = getPostBuild >>= \pb -> sequence $ flip Map.fromSet accounts $ \acc -> do
-  let publicKeys = getKeys <$> model ^. wallet_accountGuards <*> model ^. wallet_keys
-      getKeys chains namesToKeyPairs =
-        let keysOfAccount = Set.fromList $ maybe [] accountGuardKeys $ Map.lookup acc =<< Map.lookup chain chains
-            flipMap f = Map.fromList . fmap (\(k,v) -> (f v, k)) . Map.toList
-            keyNames = flipMap _keyPair_publicKey namesToKeyPairs
-         in Map.toList $ Map.merge
-              Map.dropMissing -- Drop any named keys which aren't associated with this account
-              (Map.mapMissing $ \_ () -> Nothing) -- Keep this accounts keys which are not named
-              (Map.zipWithMatched $ \_ n _ -> Just n) -- Keep this accounts keys which _are_ named
-              keyNames
-              (Map.fromSet (const ()) keysOfAccount)
+  let publicKeys = fmap _keyPair_publicKey . Map.lookup (unAccountName acc) <$> model ^. wallet_keys
   initialBalance <- holdDyn Nothing . fmap Just =<< getBalance model chain (acc <$ pb)
   updatedBalance <- holdDyn Nothing . fmap Just =<< getBalance model chain (acc <$ fire)
   pure (publicKeys, initialBalance, updatedBalance)
