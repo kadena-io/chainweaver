@@ -94,16 +94,15 @@ fileStorage dir = Storage
           path k = dir </> FilePath.makeValid (show k)
 
 -- | This is for development
--- > ob run --import desktop:Desktop --frontend Desktop.desktop
+-- > ob run --import desktop:Desktop.Frontend --frontend Desktop.Frontend.desktop
 desktop :: Frontend (R FrontendRoute)
 desktop = Frontend
   { _frontend_head = do
       let backendEncoder = either (error "frontend: Failed to check backendRouteEncoder") id $
             checkEncoder backendRouteEncoder
       base <- getConfigRoute
-      _ <- Frontend.newHead $ \r -> base <> renderBackendRoute backendEncoder r
       el "style" $ text desktopCss
-      pure ()
+      void $ Frontend.newHead $ \r -> base <> renderBackendRoute backendEncoder r
   , _frontend_body = prerender_ blank $ flip runStorageT browserStorage $ do
     (fileOpened, triggerOpen) <- Frontend.openFileDialog
     let appCfg = AppCfg
@@ -121,29 +120,15 @@ desktop = Frontend
 
 desktopCss :: Text
 desktopCss = [QQ.r|
-.fullscreen { width: 100vw; height: 100vh; display: flex; justify-content: center; align-items: center; color: #fff; }
-.fullscreen { background: rgb(30,40,50); background: radial-gradient(circle, rgba(40,50,60,1) 0%, rgba(27,30,46,1) 100%); }
+.fullscreen { width: 100vw; height: 100vh; display: flex; justify-content: center; align-items: center; }
 .fullscreen p { margin: 2rem auto; }
 .fullscreen .checkbox-wrapper { margin: 2rem auto; }
 .fullscreen .checkbox { font-size: 20px; color: #fff; text-align: left; display: inline-block; padding-left: 40px; }
 .fullscreen .checkbox .checkbox__checkmark { top: 2px; height: 20px; width: 20px; }
-.fullscreen .checkbox input:checked ~ .checkbox__checkmark { background-color: #ed098f; border-color: #ed098f }
 .fullscreen .checkbox .checkbox__checkmark_type_secondary:after { top: 2px; left: 6px; width: 3px; height: 10px; }
-.fullscreen button.button { background: #ddd; color: #333; }
 .fullscreen .group { color: #222; margin: 2rem 0; }
 .fullscreen .group.dark { background-color: rgba(0,0,0,0.3); }
-.fullscreen button.button_type_confirm:not([disabled]) { border: none; background: #ed098f; }
-.fullscreen button.button_type_confirm:hover:not([disabled]) { background: #fd199f; }
-.fullscreen .wrapper { max-width: 40rem; text-align: center; }
-.fullscreen .wrapper .logo { width: 20rem; margin: 0 auto; font-size: 30px; }
 .fullscreen textarea.wallet-recovery-phrase { display: block; width: 30rem; height: 6rem; font-size: 18px; margin: 2rem auto; }
-.fullscreen .passphrase { display: block; margin: 1rem auto; width: 20rem; }
-.fullscreen .passphrase.hidden { display: none; }
-.fullscreen .message-wrapper { margin: 2rem auto; }
-.fullscreen .message-wrapper > .message { background-color: rgba(0,0,0,0.4); border-radius: 0.3rem; padding: 0.5rem; display: inline-block; }
-.logo { position: relative; font-size: 20px; font-weight: bold; color: white; }
-.logo > img { width: 100%; }
-.logo > span { position: absolute; bottom: 0; right: 0; }
 body { display: flex; flex-direction: row; }
 .sidebar.closed { width: 0; }
 .sidebar { display: flex; flex-direction: column; width: 15rem; overflow: hidden; transition: width 0.2s; z-index: 1; }
