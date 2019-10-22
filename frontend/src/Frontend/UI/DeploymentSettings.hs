@@ -193,7 +193,11 @@ uiDeploymentSettings m settings = mdo
           (_deploymentSettingsConfig_gasLimit settings)
 
       (mSender, capabilities) <- tabPane mempty curSelection DeploymentSettingsView_Keys $
-        uiSenderCapabilities (_deploymentSettingsConfig_caps settings) $ (_deploymentSettingsConfig_sender settings) m cChainId
+        uiSenderCapabilities
+          m
+          cChainId
+          (_deploymentSettingsConfig_caps settings)
+          $ (_deploymentSettingsConfig_sender settings) m cChainId
 
       let result' = runMaybeT $ do
             networkName <- lift $ m ^. network_selectedNetwork
@@ -633,11 +637,13 @@ capabilityInputRows mkSender = do
 
 -- | Widget for selection of sender and signing keys.
 uiSenderCapabilities
-  :: forall t m. MonadWidget t m
-  => Maybe [DappCap]
+  :: forall t m model. (MonadWidget t m, HasWallet model t)
+  => model
+  -> Dynamic t (Maybe Pact.ChainId)
+  -> Maybe [DappCap]
   -> m (Dynamic t (Maybe AccountName))
   -> m (Dynamic t (Maybe AccountName), Dynamic t (Maybe (Map AccountName [SigCapability])))
-uiSenderCapabilities mCaps mkSender = do
+uiSenderCapabilities m cid mCaps mkSender = do
   divClass "title" $ text "Gas Payer"
   sender <- divClass "group" mkSender
 
@@ -656,7 +662,7 @@ uiSenderCapabilities mCaps mkSender = do
       el "tbody" $ fmap fixup $ for caps $ \cap -> elClass "tr" "table__row" $ do
         el "td" $ text $ _dappCap_role cap
         el "td" $ text $ renderCompactText $ _dappCap_cap cap
-        acc <- el "td" mkSender
+        acc <- el "td" $ uiSenderDropdown def m cid
         pure $ fmap (\s -> Map.singleton s [_dappCap_cap cap]) <$> acc
 
   return (sender, capabilities)
