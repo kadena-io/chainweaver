@@ -42,6 +42,7 @@ module Frontend.UI.Button
   , refreshButton
   , confirmButton
   , cancelButton
+  , copyToClipboard
   -- ** Images in buttons
   , btnTextIcon
   , btnIcon
