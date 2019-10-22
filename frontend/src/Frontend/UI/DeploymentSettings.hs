@@ -59,7 +59,7 @@ import Pact.Parse
 import Pact.Types.Capability
 import Pact.Types.ChainMeta (PublicMeta (..), TTLSeconds (..))
 import Pact.Types.Pretty
-import Pact.Types.Runtime (GasLimit (..), GasPrice (..), PactHash, hashToText, toUntypedHash, hash)
+import Pact.Types.Runtime (GasLimit (..), GasPrice (..), hashToText, toUntypedHash)
 import Reflex
 import Reflex.Dom
 import Reflex.Dom.Contrib.CssClass (elKlass)
@@ -69,7 +69,6 @@ import qualified Data.IntMap as IM
 import qualified Data.Map as Map
 import qualified Data.Set as Set
 import qualified Data.Text as T
-import qualified Data.Text.Encoding as T
 import qualified Pact.Types.ChainId as Pact
 import qualified Pact.Types.Command as Pact
 

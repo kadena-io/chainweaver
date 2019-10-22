@@ -59,7 +59,6 @@ import Reflex.Extended (tagOnPostBuild)
 import Reflex.Network.Extended (Flattenable)
 import Reflex.Network.Extended (flatten)
 import qualified Data.Map as Map
-import qualified Data.Map.Merge.Lazy as Map
 import qualified Data.Set as Set
 import qualified Data.Text as T
 import qualified Pact.Server.ApiV1Client as Api
@@ -274,7 +273,6 @@ deploySubmit
   -> Workflow t m (Text, (Event t (), modelCfg))
 deploySubmit chain result nodeInfos = Workflow $ do
       let cmd = _deploymentSettingsResult_command result
-          code = _deploymentSettingsResult_code result
       elClass "div" "modal__main transaction_details" $ do
         transactionHashSection cmd
 
@@ -323,7 +321,7 @@ deploySubmit chain result nodeInfos = Workflow $ do
                 Just (Api.ListenTimeout _i) -> listen Status_Failed
                 Just (Api.ListenResponse commandResult) -> case (Pact._crTxId commandResult, Pact._crResult commandResult) of
                   -- We should always have a txId when we have a result
-                  (Just txId, Pact.PactResult (Right a)) -> do
+                  (Just _txId, Pact.PactResult (Right a)) -> do
                     listen Status_Done
                     setMessage $ Just $ Right a
                     -- TODO wait for confirmation...

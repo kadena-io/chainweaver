@@ -23,7 +23,7 @@ module Frontend.UI.Dialogs.Signing
   ( uiSigning
   ) where
 
-import Control.Monad ((<=<), void)
+import Control.Monad ((<=<))
 import Kadena.SigningApi
 import Reflex
 import Reflex.Dom
