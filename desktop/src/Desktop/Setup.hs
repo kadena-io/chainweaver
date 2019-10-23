@@ -317,7 +317,7 @@ createNewWallet eBack = Workflow $  do
 
     proceed :: Crypto.MnemonicSentence 12 -> m (Event t (SetupWF t m))
     proceed mnem = do
-      dPassword <- setPassword (pure $ Crypto.sentenceToSeed mnem Crypto.english "")
+      dPassword <- setPassword (pure $ sentenceToSeed mnem)
         >>= holdDyn Nothing . fmap pure
       continue <- continueButton (fmap isNothing dPassword) 
       pure $ precreatePassphraseWarning eBack dPassword mnem <$ continue
