@@ -687,7 +687,7 @@ uiSenderCapabilities m cid mCaps mkSender = do
   return (firstGASPayer <$> capabilities, capabilities)
   where
     anyGASSigCap :: [SigCapability] -> Bool
-    anyGASSigCap = any (^. to PC._scName . to PN._qnName . to (== "GAS"))
+    anyGASSigCap = any (^. to PC._scName . to PN._qnName . to (== "FUND_TX"))
 
 uiSigningKeys :: (MonadWidget t m, HasWallet model t) => model -> m (Dynamic t (Set KeyName))
 uiSigningKeys model = do
@@ -724,7 +724,7 @@ toggleCheckbox :: Reflex t => Dynamic t Bool -> Event t a -> CheckboxConfig t
 toggleCheckbox val =
   (\v -> def { _checkboxConfig_setValue = v }) . fmap not . tag (current val)
 
--- parsed: "{\"role\": \"GAS\", \"description\": \"Pay the GAS required for this transaction\", \"cap\": {\"args\": [\"doug\",], \"name\": \"coin.GAS\"}}"
+-- parsed: "{\"role\": \"GAS\", \"description\": \"Pay the GAS required for this transaction\", \"cap\": {\"args\": [\"doug\",], \"name\": \"coin.FUND_TX\"}}"
 defaultGASCapability :: DappCap
 defaultGASCapability = DappCap
   { _dappCap_role = "GAS"
@@ -735,8 +735,8 @@ defaultGASCapability = DappCap
         { PN._mnName = "coin"
         , PN._mnNamespace = Nothing
         }
-      , PN._qnName = "GAS"
-      , PN._qnInfo = PI.mkInfo "coin.GAS"
+      , PN._qnName = "FUND_TX"
+      , PN._qnInfo = PI.mkInfo "coin.FUND_TX"
       }
     , PC._scArgs = []
     }
