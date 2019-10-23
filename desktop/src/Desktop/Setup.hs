@@ -9,11 +9,13 @@
 -- | Wallet setup screens
 module Desktop.Setup (runSetup, form, kadenaWalletLogo) where
 
+import Control.Lens ((<>~))
 import Control.Error (hush)
 import Control.Applicative (liftA2)
 import Control.Monad (unless,void)
 import Control.Monad.IO.Class
 import Data.Maybe (isNothing, fromMaybe)
+import Data.Bool (bool)
 import Data.Bifunctor
 import Data.ByteArray (ByteArrayAccess)
 import Data.ByteString (ByteString)
@@ -171,8 +173,10 @@ splashScreen eBack = Workflow $ walletDiv "splash" $ do
       text "I have read & agree to the "
       elAttr "a" ("href" =: "https://kadena.io/" <> "target" =: "_blank") (text "Terms of Service")
 
-    create <- confirmButton def "Create a new wallet"
-    recover <- uiButton btnCfgSecondary $ text "Restore existing wallet"
+    let dNeedAgree = fmap not agreed
+
+    create <- confirmButton (def & uiButtonCfg_disabled .~ dNeedAgree) "Create a new wallet"
+    recover <- uiButtonDyn (btnCfgSecondary & uiButtonCfg_disabled .~ dNeedAgree) $ text "Restore existing wallet"
     pure (agreed, create, recover)
 
   let hasAgreed = gate (current agreed)
