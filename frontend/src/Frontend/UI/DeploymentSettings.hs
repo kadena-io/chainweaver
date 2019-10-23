@@ -592,9 +592,9 @@ capabilityInputRow mkSender = elClass "tr" "table__row" $ do
       & modifyAttributes .~ ffor errors (\e -> "style" =: ("background-color: #fdd" <$ guard e))
     empty <- holdUniqDyn $ T.null <$> value cap
     let parsed = parseSigCapability <$> value cap
-        hasError = (\p e -> isLeft p && not e) <$> parsed <*> empty
+        showError = (\p e -> isLeft p && not e) <$> parsed <*> empty
         errors = leftmost
-          [ tag (current hasError) (domEvent Blur cap)
+          [ tag (current showError) (domEvent Blur cap)
           , False <$ _inputElement_input cap
           ]
     pure (empty, parsed)
