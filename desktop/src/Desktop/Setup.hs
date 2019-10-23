@@ -195,6 +195,9 @@ data BIP39PhraseError
 passphraseLen :: Int
 passphraseLen = 12
 
+sentenceToSeed :: Crypto.ValidMnemonicSentence mw => Crypto.MnemonicSentence mw -> Crypto.Seed
+sentenceToSeed s = Crypto.sentenceToSeed s Crypto.english ""
+
 recoverWallet :: MonadWidget t m => Event t () -> SetupWF t m
 recoverWallet eBack = Workflow $ do
   el "h1" $ text "Recover your wallet"
@@ -217,19 +220,6 @@ recoverWallet eBack = Workflow $ do
         unless (Crypto.checkMnemonicPhrase Crypto.english phrase) $ Left BIP39PhraseError_InvalidPhrase
         first BIP39PhraseError_Dictionary $ Crypto.mnemonicPhraseToMnemonicSentence Crypto.english phrase
         else Left BIP39PhraseError_PhraseIncomplete
-                            
-  passphrase <- walletDiv "recovery-use-bip39-wrapper" $ do
-    useBIP <- walletDiv "checkbox-wrapper" $ uiCheckbox def False def $ text "Use a BIP39 passphrase"
-
-    let inputClasses = ffor (_checkbox_change useBIP) $ \c ->
-          ("class" =: Just (if c then "input passphrase" else "input hidden passphrase"))
-
-    fmap value $ uiInputElement $ def
-      & initialAttributes .~
-        "type" =: "password" <>
-        "placeholder" =: "BIP39 passphrase" <>
-        "class" =: "hidden passphrase"
-      & modifyAttributes .~ inputClasses
 
   dyn_ $ ffor sentenceOrError $ \case
     Right _ -> pure ()
@@ -244,12 +234,7 @@ recoverWallet eBack = Workflow $ do
       BIP39PhraseError_PhraseIncomplete
         -> mempty
 
-  let toSeed :: Crypto.ValidMnemonicSentence mw => Text -> Crypto.MnemonicSentence mw -> Crypto.Seed
-      toSeed p s = Crypto.sentenceToSeed s Crypto.english $ textTo p
-
-      eSeedUpdated = attachWithMaybe (\p -> hush . fmap (toSeed p))
-        (current passphrase)
-        (updated sentenceOrError)
+  let eSeedUpdated = fmapMaybe (hush . fmap sentenceToSeed) (updated sentenceOrError)
 
       waitingForPhrase = walletDiv "waiting-passphrase" $ do
         text "Waiting for a valid 12 word passphrase..."
@@ -336,7 +321,7 @@ createNewWallet eBack = Workflow $  do
 
     proceed :: Crypto.MnemonicSentence 12 -> m (Event t (SetupWF t m))
     proceed mnem = do
-      dPassword <- setPassword (pure $ Crypto.sentenceToSeed mnem Crypto.english "")
+      dPassword <- setPassword (pure $ sentenceToSeed mnem)
         >>= holdDyn Nothing . fmap pure
       continue <- continueButton (fmap isNothing dPassword) 
       pure $ precreatePassphraseWarning eBack dPassword mnem <$ continue
