@@ -32,7 +32,6 @@ import Control.Applicative (liftA2)
 import Control.Concurrent (newEmptyMVar, tryTakeMVar, putMVar, killThread, forkIO, ThreadId)
 import Control.Lens
 import Control.Monad (void)
-import Data.Decimal (Decimal)
 import Data.Default (Default (..))
 import Data.Either (isLeft, rights)
 import Data.List.NonEmpty (NonEmpty(..))
@@ -227,7 +226,7 @@ fullDeployFlowWithSubmit dcfg model onPreviewConfirm runner _onClose = do
               let displayBalance = \case
                     Nothing -> "Loading..."
                     Just Nothing -> "Error"
-                    Just (Just b) -> tshow b <> " KDA"
+                    Just (Just b) -> tshow (unAccountBalance b) <> " KDA"
               el "td" $ text $ unAccountName acc
               el "td" $ void $ simpleList publicKeys $ \pks -> do
                 let name = fmap snd pks
@@ -401,8 +400,8 @@ trackBalancesFromPostBuild
   => model -> ChainId -> Set AccountName -> Event t ()
   -> m
     ( Map AccountName (Dynamic t [(PublicKey, Maybe Text)]
-    , Dynamic t (Maybe (Maybe Decimal))
-    , Dynamic t (Maybe (Maybe Decimal)))
+    , Dynamic t (Maybe (Maybe AccountBalance))
+    , Dynamic t (Maybe (Maybe AccountBalance)))
     )
 trackBalancesFromPostBuild model chain accounts fire = getPostBuild >>= \pb -> sequence $ flip Map.fromSet accounts $ \acc -> do
   let publicKeys = getKeys <$> model ^. wallet_accountGuards <*> model ^. wallet_keys

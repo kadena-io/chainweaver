@@ -121,11 +121,11 @@ desktop = Frontend
           saved <- performEvent $ ffor xprv $ \x -> setItemStorage localStorage Wallet_RootKey x >> pure x
           pure $ Just <$> xprv
         Just xprv -> mdo
-          pass <- holdUniqDyn =<< holdDyn Nothing passEvts
+          mPassword <- holdUniqDyn =<< holdDyn Nothing passEvts
           -- TODO expire password
           passEvts <- switchHold never passEvts'
           let (restore', passEvts') = splitE result
-          result <- dyn $ ffor pass $ \case
+          result <- dyn $ ffor mPassword $ \case
             Nothing -> do
               el "h1" $ text "Wallet locked"
               kadenaWalletLogo
@@ -199,11 +199,6 @@ form .messages > li { padding: 0.5rem; }
 form .header { color: rgb(30,40,50); font-weight: bold; font-size: 18px; margin: 1rem 0; }
 form .header .detail { color: #666; font-weight: normal; font-size: 14px; }
 |]
-
-type AppWF t m = Workflow t m ()
-
-finishAppWF :: Applicative m => a -> m ((), a)
-finishAppWF = pure . (,) ()
 
 type AppConstraints t m =
   ( HasConfigs m

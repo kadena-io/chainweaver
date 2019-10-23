@@ -1,14 +1,15 @@
+{-# LANGUAGE ConstraintKinds           #-}
 {-# LANGUAGE DeriveGeneric          #-}
 {-# LANGUAGE FlexibleContexts       #-}
 {-# LANGUAGE FlexibleInstances      #-}
 {-# LANGUAGE FunctionalDependencies #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE MultiParamTypeClasses  #-}
 {-# LANGUAGE OverloadedStrings      #-}
 {-# LANGUAGE RankNTypes             #-}
 {-# LANGUAGE ScopedTypeVariables    #-}
 {-# LANGUAGE TemplateHaskell        #-}
 {-# LANGUAGE TypeFamilies           #-}
-{-# LANGUAGE ConstraintKinds           #-}
 
 module Frontend.Wallet
   (  -- * Types & Classes
@@ -23,6 +24,7 @@ module Frontend.Wallet
   , Wallet (..)
   , HasWallet (..)
   , AccountName (unAccountName)
+  , AccountBalance (..)
   , mkAccountName
   , AccountGuard (..)
   , pactGuardTypeText
@@ -42,6 +44,7 @@ import           Control.Lens
 import           Control.Monad.Except (runExcept)
 import           Control.Monad.Fix
 import           Data.Aeson
+import           Data.Decimal                (Decimal)
 import           Data.Map                    (Map)
 import qualified Data.Map                    as Map
 import           Data.Set                    (Set)
@@ -59,6 +62,9 @@ import           Common.Orphans              ()
 import           Frontend.Crypto.Ed25519
 import           Frontend.Foundation
 import           Frontend.Storage
+
+-- | Account balance wrapper
+newtype AccountBalance = AccountBalance { unAccountBalance :: Decimal } deriving (Eq, Ord, Num)
 
 -- | Type of a `Key` name.
 --

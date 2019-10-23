@@ -38,7 +38,6 @@ module Frontend.UI.Wallet
 ------------------------------------------------------------------------------
 import           Control.Lens
 import           Control.Monad               (when, void)
-import           Data.Decimal                (Decimal)
 import qualified Data.Map                    as Map
 import           Data.Text                   (Text)
 import qualified Pact.Types.PactValue as Pact
@@ -233,11 +232,11 @@ keyCopyWidget t cls keyText = mdo
 -- distinguish between the two at this point.
 getBalance
   :: (MonadWidget t m, HasNetwork model t, HasCrypto key (Performable m))
-  => model -> ChainId -> Event t AccountName -> m (Event t (Maybe Decimal))
+  => model -> ChainId -> Event t AccountName -> m (Event t (Maybe AccountBalance))
 getBalance model chain account = do
   networkRequest <- performEvent $ attachWith mkReq (current $ getNetworkNameAndMeta model) account
   response <- performLocalReadCustom (model ^. network) pure networkRequest
-  let toBalance (_, [Right (_, Pact.PLiteral (Pact.LDecimal d))]) = Just d
+  let toBalance (_, [Right (_, Pact.PLiteral (Pact.LDecimal d))]) = Just $ AccountBalance d
       toBalance _ = Nothing
   pure $ toBalance <$> response
   where
@@ -255,5 +254,5 @@ showBalance model refresh chain acc = do
   bal <- getBalance model chain $ acc <$ (pb <> refresh)
   _ <- runWithReplace (text "Loading...") $ ffor bal $ \case
     Nothing -> text "Unknown"
-    Just b -> text $ tshow b
+    Just b -> text $ tshow $ unAccountBalance b
   pure ()
