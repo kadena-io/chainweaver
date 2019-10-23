@@ -77,12 +77,18 @@ uiSigning appCfg ideL signingRequest onCloseExternal = do
           }
         pure (mConf, result)
 
-  fullDeployFlowWithSubmit
+
+  (conf, done) <- fullDeployFlowWithSubmit
     (DeployConfirmationConfig "Signing Request" "Signing Preview" "Confirm Signature" disregardSuccessStatus)
     ideL
     signSubmit
     runner
     onCloseExternal
+
+  finished <- performEvent . fmap (liftJSM . _appCfg_signingResponse appCfg) <=< headE $
+    maybe (Left "Cancelled") Right <$> leftmost [done, Nothing <$ onCloseExternal]
+
+  pure (conf, finished)
   where
     -- The confirm process should proceed regardless of the response from the network, the
     -- failure of this is the responsibility of the dApp. This ensures the confirm button
@@ -94,11 +100,7 @@ uiSigning appCfg ideL signingRequest onCloseExternal = do
             { _signingResponse_chainId = _deploymentSettingsResult_chainId result
             , _signingResponse_body = _deploymentSettingsResult_command result
             }
-
       -- This is the end of our work flow, so return our done event on the completion of the signing.
       -- Should some feedback be added to this to ensure that people don't spam the button?
-      performEvent . fmap (fmap Left . liftJSM . _appCfg_signingResponse appCfg) <=< headE $ leftmost
-        [ pure sign <$ next
-        , Left "Cancelled" <$ onCloseExternal
-        ]
+      pure $ Left sign <$ next
 
