@@ -64,7 +64,7 @@ import Pact.Types.Capability
 import Pact.Types.ChainMeta (PublicMeta (..), TTLSeconds (..))
 import Pact.Types.PactValue (toPactValue)
 import Pact.Types.Pretty
-import Pact.Types.Runtime (App(..), GasLimit (..), GasPrice (..), PactHash, Name(..), Term(..), hashToText, toUntypedHash, hash)
+import Pact.Types.Runtime (App(..), GasLimit (..), GasPrice (..), Name(..), Term(..), hashToText, toUntypedHash)
 import Reflex
 import Reflex.Dom
 import Reflex.Dom.Contrib.CssClass (elKlass)
