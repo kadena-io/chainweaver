@@ -53,7 +53,6 @@ import Control.Monad.Trans.Class
 import Control.Monad.Trans.Maybe
 import Data.Either (rights, isLeft)
 import Data.IntMap (IntMap)
-import Data.Semigroup (First (..))
 import Data.Map (Map)
 import Data.Set (Set)
 import Data.Text (Text)
@@ -126,6 +125,13 @@ data DeploymentSettingsConfig t m model a = DeploymentSettingsConfig
   , _deploymentSettingsConfig_extraSigners :: [PublicKey]
     -- ^ Extra signers to be added to the command. The dApp should fill in the
     -- signatures as required upon receiving the response.
+  }
+
+data CapabilityInputRow t = CapabilityInputRow
+  { _capabilityInputRow_empty :: Dynamic t Bool
+  , _capabilityInputRow_value :: Dynamic t (Maybe (Map AccountName [SigCapability]))
+  , _capabilityInputRow_account :: Dynamic t (Maybe AccountName)
+  , _capabilityInputRow_cap :: Dynamic t (Either String SigCapability)
   }
 
 data DeploymentSettingsView
@@ -613,7 +619,7 @@ capabilityInputRow
   :: MonadWidget t m
   => Maybe DappCap
   -> m (Dynamic t (Maybe AccountName))
-  -> m (Dynamic t Bool, Dynamic t (Maybe (Map AccountName [SigCapability])))
+  -> m (CapabilityInputRow t)
 capabilityInputRow mCap mkSender = elClass "tr" "table__row" $ do
   (empty, parsed) <- el "td" $ mdo
     cap <- uiInputElement $ def
@@ -632,21 +638,22 @@ capabilityInputRow mCap mkSender = elClass "tr" "table__row" $ do
           ]
     pure (empty, parsed)
   account <- el "td" mkSender
-  pure
-    ( empty
-    , do
-      empty >>= \case
-        True -> pure $ Just mempty
-        False -> do
-          ma <- account
-          e <- parsed
-          pure $ ffor ma $ \a -> Map.singleton a (either (const []) pure e)
-    )
 
+  pure $ CapabilityInputRow
+    { _capabilityInputRow_empty = empty
+    , _capabilityInputRow_value = empty >>= \case
+      True -> pure $ Just mempty
+      False -> runMaybeT $ do
+        a <- MaybeT account
+        p <- MaybeT $ either (const Nothing) pure <$> parsed
+        pure $ Map.singleton a [p]
+    , _capabilityInputRow_account = account
+    , _capabilityInputRow_cap = parsed
+    }
 
 -- | Display a dynamic number of rows for the user to enter custom capabilities
 capabilityInputRows
-  :: MonadWidget t m
+  :: forall t m. MonadWidget t m
   => m (Dynamic t (Maybe AccountName))
   -> m (Dynamic t (Maybe (Map AccountName [SigCapability])))
 capabilityInputRows mkSender = do
@@ -657,13 +664,24 @@ capabilityInputRows mkSender = do
       -- Add a new row when all rows are used
       , attachWith (\i _ -> PatchIntMap (IM.singleton i (Just ()))) nextKeyToUse $ ffilter not $ updated anyEmpty
       ]
-    results :: Dynamic t (IntMap (Dynamic t Bool, Dynamic t (Maybe (Map AccountName [SigCapability]))))
+    results :: Dynamic t (IntMap (CapabilityInputRow t))
       <- foldDyn applyAlways im0 im'
     let nextKeyToUse = maybe 0 (succ . fst) . IM.lookupMax <$> current results
         canDelete = (> 1) . IM.size <$> current results
-        anyEmpty = fmap or $ traverse fst =<< results
-        deletions = switch . current $ IM.foldMapWithKey (\i -> (IM.singleton i Nothing <$) . ffilter id . updated . fst) <$> results
-  pure $ fmap (fmap (Map.unionsWith (<>) . IM.elems) . sequence) $ traverse snd =<< results
+
+        anyEmpty = fmap or $ traverse _capabilityInputRow_empty =<< results
+
+        decideDeletions :: Int -> CapabilityInputRow t -> Event t (IntMap (Maybe ()))
+        decideDeletions i row = IM.singleton i Nothing <$ leftmost
+          -- Deletions caused by rows becoming empty
+          [ void . ffilter id . updated $ _capabilityInputRow_empty row
+          -- Deletions caused by users entering FUND_TX
+          , void . ffilter (either (const False) isFundTX) . updated $ _capabilityInputRow_cap row
+          ]
+        deletions = switch . current $ IM.foldMapWithKey decideDeletions <$> results
+
+  pure $
+    fmap (fmap (Map.unionsWith (<>) . IM.elems) . sequence) $ traverse _capabilityInputRow_value =<< results
 
 -- | Widget for selection of sender and signing keys.
 uiSenderCapabilities
@@ -678,38 +696,40 @@ uiSenderCapabilities m cid mCaps mkSender = do
         el "td" $ text $ _dappCap_role cap
         el "td" $ text $ renderCompactText $ _dappCap_cap cap
         acc <- el "td" $ sender
-        pure $ (fmap . fmap) (\s -> Map.singleton s [_dappCap_cap cap]) acc
+        pure $ CapabilityInputRow
+          { _capabilityInputRow_empty = pure False
+          , _capabilityInputRow_value = (fmap . fmap) (\s -> Map.singleton s [_dappCap_cap cap]) acc
+          , _capabilityInputRow_account = acc
+          , _capabilityInputRow_cap = pure $ Right $ _dappCap_cap cap
+          }
 
-  let staticCapabilityRows caps = fmap (fmap (fmap (Map.unionsWith (<>)) . sequence) . sequence) $ for caps $ \cap ->
-        elClass "tr" "table__row" $ staticCapabilityRow (uiSenderDropdown def m cid) cap
+      staticCapabilityRows caps = fmap (fmap (fmap (Map.unionsWith (<>)) . sequence) . sequence) $ for caps $ \cap ->
+        elClass "tr" "table__row" $ _capabilityInputRow_value <$> staticCapabilityRow (uiSenderDropdown def m cid) cap
 
-  let combineWithRequiredGASPayer gasPayerRow otherCaps =
-        (liftA2 . liftA2) (\mmapA mmapB -> pure $ Map.unionWith (<>) (fold mmapA) (fold mmapB)) gasPayerRow otherCaps
+      -- Deliberately lift over the `Maybe` too, so we short circuit if anything
+      -- is missing.
+      combineMaps a b = (liftA2 . liftA2) (Map.unionWith (<>)) a b
 
   divClass "title" $ text "Roles"
 
   -- Capabilities
-  capabilities <- divClass "group" $ elAttr "table" ("class" =: "table" <> "style" =: "width: 100%") $ case mCaps of
-    Nothing -> el "tbody" $ combineWithRequiredGASPayer
-      (snd <$> capabilityInputRow (Just defaultGASCapability) mkSender)
-      (capabilityInputRows (uiSenderDropdown def m cid))
-
+  divClass "group" $ elAttr "table" ("class" =: "table" <> "style" =: "width: 100%") $ case mCaps of
+    Nothing -> el "tbody" $ do
+      gas <- capabilityInputRow (Just defaultGASCapability) mkSender
+      rest <- capabilityInputRows (uiSenderDropdown def m cid)
+      pure (_capabilityInputRow_account gas, combineMaps (_capabilityInputRow_value gas) rest)
     Just caps -> do
       el "thead" $ el "tr" $ do
         elClass "th" "table__heading" $ text "Role"
         elClass "th" "table__heading" $ text "Capability"
         elClass "th" "table__heading" $ text "Account"
-      el "tbody" $ combineWithRequiredGASPayer
-        (staticCapabilityRow mkSender defaultGASCapability)
-        (staticCapabilityRows caps)
+      el "tbody" $ do
+        gas <- staticCapabilityRow mkSender defaultGASCapability
+        rest <- staticCapabilityRows $ filter (not . isFundTX . _dappCap_cap) caps
+        pure (_capabilityInputRow_account gas, combineMaps (_capabilityInputRow_value gas) rest)
 
-  let firstGASPayer mmap = fmap getFirst $
-        mmap >>= Map.foldMapWithKey (\acc caps -> if anyGASSigCap caps then Just (First acc) else Nothing)
-
-  return (firstGASPayer <$> capabilities, capabilities)
-  where
-    anyGASSigCap :: [SigCapability] -> Bool
-    anyGASSigCap = any (^. to PC._scName . to PN._qnName . to (== "FUND_TX"))
+isFundTX :: SigCapability -> Bool
+isFundTX = (^. to PC._scName . to PN._qnName . to (== "FUND_TX"))
 
 uiSigningKeys :: (MonadWidget t m, HasWallet model t) => model -> m (Dynamic t (Set KeyName))
 uiSigningKeys model = do
