@@ -92,7 +92,7 @@ in
         pact = haskellLib.dontCheck super.pact; # tests can timeout...
       };
     in self: super: lib.foldr lib.composeExtensions (_: _: {}) [
-      (import (hackGet ./deps/pact + "/overrides.nix") pkgs)
+      (import (hackGet ./deps/pact + "/overrides.nix") pkgs hackGet)
       desktop-overlay
       common-overlay
       (optionalExtension (super.ghc.isGhcjs or false) guard-ghcjs-overlay)

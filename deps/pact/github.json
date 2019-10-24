@@ -1,7 +1,7 @@
 {
   "owner": "kadena-io",
   "repo": "pact",
-  "branch": "master",
-  "rev": "39485fe3271ed25bf30c75ea3a3a157ca4dc482e",
-  "sha256": "1dacarvdw2jivimnpnpz7rs2dgh05wx7nx5im0gys5n3hvgx2dkv"
+  "branch": "fix-ghcjs-build",
+  "rev": "70f9afb50d3b42d6e6815938336665330b8fa464",
+  "sha256": "1fzk6iq42c1rajm0jykv861sz8wylzpznfqrgyd98vpfkclfva40"
 }
