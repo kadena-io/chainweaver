@@ -865,13 +865,13 @@ networkRequest baseUri endpoint cmd = do
     runReq :: S.ClientEnv -> S.ClientM a -> ExceptT NetworkError JSM a
     runReq env = reThrowWith packHttpErr . flip S.runClientM env
 
-    packHttpErr :: S.ServantError -> NetworkError
+    packHttpErr :: S.ClientError -> NetworkError
     packHttpErr e = case e of
-      S.FailureResponse response ->
+      S.FailureResponse _ response ->
         if S.responseStatusCode response == HTTP.status413
            then NetworkError_ReqTooLarge
            else NetworkError_Status (S.responseStatusCode response) (T.pack $ show response)
-      S.ConnectionError t -> NetworkError_NetworkError t
+      S.ConnectionError t -> NetworkError_NetworkError (tshow t)
       _ -> NetworkError_Decoding $ T.pack $ show e
 
     fromCommandResult :: MonadError NetworkError m => CommandResult a -> m (Maybe Gas, PactValue)

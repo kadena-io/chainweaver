@@ -46,7 +46,7 @@ import           Network.GitHub.Types.Gist   as G
 import           Reflex
 import           Servant.API
 import           Servant.Client.Core         (BaseUrl (..), Scheme (Https),
-                                              ServantError (..))
+                                              ClientError (..))
 import           Servant.Client.JSaddle      (ClientEnv (..), ClientM, client,
                                               runClientM)
 ------------------------------------------------------------------------------
@@ -229,9 +229,9 @@ makeGistStore m cfg = mdo
 -- @
 getRetry
   :: (MonadHold t m, MonadFix m, PerformEvent t m)
-  => Event t (Either ServantError resp)
+  => Event t (Either ClientError resp)
   -> Event t req
-  -> m (Event t req, Event t ServantError)
+  -> m (Event t req, Event t ClientError)
 getRetry onErrResp onReq = mdo
   -- TODO: As usual, logic like this does not play well with multiple
   -- requests occurring while we are still waiting for a response. To do
@@ -246,7 +246,7 @@ getRetry onErrResp onReq = mdo
   let
     (onErr, onResp) = fanEither onErrResp
     (onPermErr, onRetry) = fanEither $ ffor onErr $ \case
-      FailureResponse _ -> Right () -- Retry on all failure responses (better
+      FailureResponse _ _ -> Right () -- Retry on all failure responses (better
         -- retry too often, than to little. Loops should not be possible, as we
         -- only retry on explict (user)requests.)
       err -> Left err
@@ -288,7 +288,7 @@ runGitHubClientM
   :: MonadJSM m
   => Maybe AccessToken
   -> ClientM a
-  -> m (Either ServantError a)
+  -> m (Either ClientError a)
 runGitHubClientM mToken action = liftJSM $
   runClientM action $ ClientEnv
     { baseUrl = BaseUrl Https "api.github.com" 443 ""

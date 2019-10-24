@@ -15,6 +15,7 @@
 {-# LANGUAGE TemplateHaskell       #-}
 {-# LANGUAGE TupleSections         #-}
 {-# LANGUAGE TypeApplications      #-}
+{-# LANGUAGE RecordWildCards       #-}
 
 -- | Little widget providing a UI for deployment related settings.
 --
@@ -44,6 +45,7 @@ module Frontend.UI.DeploymentSettings
 
 import Control.Applicative (liftA2)
 import Control.Arrow (first, (&&&))
+import Control.Error (fmapL)
 import Control.Error.Util (hush)
 import Control.Lens
 import Control.Monad
@@ -56,11 +58,13 @@ import Data.Set (Set)
 import Data.Text (Text)
 import Data.Traversable (for)
 import Kadena.SigningApi
+import Pact.Compile (compileExps, mkTextInfo)
 import Pact.Parse
 import Pact.Types.Capability
 import Pact.Types.ChainMeta (PublicMeta (..), TTLSeconds (..))
+import Pact.Types.PactValue (toPactValue)
 import Pact.Types.Pretty
-import Pact.Types.Runtime (GasLimit (..), GasPrice (..), hashToText, toUntypedHash)
+import Pact.Types.Runtime (App(..), GasLimit (..), GasPrice (..), Name(..), Term(..), hashToText, toUntypedHash)
 import Reflex
 import Reflex.Dom
 import Reflex.Dom.Contrib.CssClass (elKlass)
@@ -597,6 +601,17 @@ uiChainSelection info cls = mdo
 
     d <- _dropdown_value <$> dropdown Nothing (mkOptions <$> chains) cfg
     pure d
+
+parseSigCapability :: Text -> Either String SigCapability
+parseSigCapability txt = parsed >>= compiled >>= parseApp
+  where
+    parseApp ts = case ts of
+      [(TApp (App (TVar (QName q) _) as _) _)] -> SigCapability q <$> mapM toPV as
+      _ -> Left $ "Sig capability parse failed: Expected single qualified capability in form (qual.DEFCAP arg arg ...)"
+    compiled Pact.ParsedCode{..} = fmapL (("Sig capability parse failed: " ++) . show) $
+      compileExps (mkTextInfo _pcCode) _pcExps
+    parsed = parsePact txt
+    toPV a = fmapL (("Sig capability argument parse failed, expected simple pact value: " ++) . T.unpack) $ toPactValue a
 
 -- | Display a single row for the user to enter a custom capability and
 -- account to attach
