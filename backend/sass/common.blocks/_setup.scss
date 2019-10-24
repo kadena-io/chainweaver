@@ -111,6 +111,9 @@ $kadena-orange: #F3AB3C;
   border-radius: 2rem;
   display: table;
   margin-left: 3.5rem;
+  border: solid;
+  border-color: #f1f1f1;
+  border-width: 0.45rem;
 
   .setup__workflow-icon-inner {
     display: table-cell;
@@ -364,4 +367,19 @@ $kadena-orange: #F3AB3C;
   background-color: $kadena-orange;
   border-color: $kadena-orange;
   color: #fff;
+}
+
+
+.setup__header-line-wrapper {
+  position: relative;
+
+  .setup__header-line {
+    position: absolute;
+    background-color: #4499d9;
+    height: 0.5rem;
+    width: 50%;
+    margin-left: 15rem;
+    top: -3.8rem;
+    z-index: -1;
+  }
 }

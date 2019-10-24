@@ -113,12 +113,14 @@ walletSetupRecoverHeader
   => WalletScreen
   -> m ()
 walletSetupRecoverHeader currentScreen = setupDiv "workflow-header" $ do
-  unless (currentScreen `elem` [WalletScreen_RecoverPassphrase, WalletScreen_SplashScreen]) $
+  unless (currentScreen `elem` [WalletScreen_RecoverPassphrase, WalletScreen_SplashScreen]) $ do
     elClass "ol" (setupClass "workflow-icons") $ do
       faEl "1" "Password" WalletScreen_Password
       faEl "2" "Recovery" WalletScreen_CreatePassphrase
       faEl "3" "Verify" WalletScreen_VerifyPassphrase
       faEl "4" "Done" WalletScreen_Done
+    setupDiv "header-line-wrapper" $ setupDiv "header-line" blank
+    
   where
     progress WalletScreen_Password =
       [WalletScreen_Password]
