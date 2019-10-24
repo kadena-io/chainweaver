@@ -43,6 +43,7 @@ module Frontend.UI.DeploymentSettings
   , Identity (runIdentity)
   ) where
 
+import Control.Applicative (liftA2)
 import Control.Arrow (first, (&&&))
 import Control.Error (fmapL)
 import Control.Error.Util (hush)
@@ -52,6 +53,7 @@ import Control.Monad.Trans.Class
 import Control.Monad.Trans.Maybe
 import Data.Either (rights, isLeft)
 import Data.IntMap (IntMap)
+import Data.Semigroup (First (..))
 import Data.Map (Map)
 import Data.Set (Set)
 import Data.Text (Text)
@@ -73,7 +75,6 @@ import qualified Data.IntMap as IM
 import qualified Data.Map as Map
 import qualified Data.Set as Set
 import qualified Data.Text as T
-import qualified Data.Text.Encoding as T
 import qualified Pact.Types.ChainId as Pact
 import qualified Pact.Types.Command as Pact
 
@@ -90,6 +91,10 @@ import Frontend.UI.Widgets.Helpers (preventScrollWheelAndUpDownArrow)
 import Frontend.Wallet
 import qualified Frontend.AppCfg as AppCfg
 
+import qualified Pact.Types.Capability as PC
+import qualified Pact.Types.Names as PN
+import qualified Pact.Types.Info as PI
+
 -- | Config for the deployment settings widget.
 data DeploymentSettingsConfig t m model a = DeploymentSettingsConfig
   { _deploymentSettingsConfig_userTab     :: Maybe (Text, m a)
@@ -100,7 +105,7 @@ data DeploymentSettingsConfig t m model a = DeploymentSettingsConfig
     --   widget at all, but having `uiDeploymentSettings` use the provided one.
     --
     --   Or you can use `userChainIdSelect` for having the user pick a chainid.
-  , _deploymentSettingsConfig_sender      :: model -> Dynamic t (Maybe ChainId) -> m (Dynamic t (Maybe AccountName))
+  , _deploymentSettingsConfig_sender :: model -> Dynamic t (Maybe ChainId) -> m (Dynamic t (Maybe AccountName))
     -- ^ Sender selection widget. Use 'uiSenderFixed' or 'uiSenderDropdown'.
   , _deploymentSettingsConfig_data        :: Maybe Aeson.Object
     -- ^ Data selection. If 'Nothing', uses the users setting (and allows them
@@ -118,6 +123,9 @@ data DeploymentSettingsConfig t m model a = DeploymentSettingsConfig
     -- ^ Gas Limit. Overridable by the user.
   , _deploymentSettingsConfig_caps :: Maybe [DappCap]
     -- ^ Capabilities. When missing, lets the user enter arbitrary capabilities.
+  , _deploymentSettingsConfig_extraSigners :: [PublicKey]
+    -- ^ Extra signers to be added to the command. The dApp should fill in the
+    -- signatures as required upon receiving the response.
   }
 
 data DeploymentSettingsView
@@ -197,7 +205,8 @@ uiDeploymentSettings m settings = mdo
           (_deploymentSettingsConfig_gasLimit settings)
 
       (mSender, capabilities) <- tabPane mempty curSelection DeploymentSettingsView_Keys $
-        uiSenderCapabilities (_deploymentSettingsConfig_caps settings) $ (_deploymentSettingsConfig_sender settings) m cChainId
+        uiSenderCapabilities m cChainId (_deploymentSettingsConfig_caps settings)
+          $ (_deploymentSettingsConfig_sender settings) m cChainId
 
       let result' = runMaybeT $ do
             networkName <- lift $ m ^. network_selectedNetwork
@@ -224,7 +233,11 @@ uiDeploymentSettings m settings = mdo
                 pkCaps = Map.fromList $ fmapMaybe toPublicKey $ Map.toList caps
             pure $ do
               let signingPairs = getSigningPairs signing keys
-              cmd <- buildCmd (_deploymentSettingsConfig_nonce settings) networkName publicMeta signingPairs code' jsonData' pkCaps
+              cmd <- buildCmd
+                (_deploymentSettingsConfig_nonce settings)
+                networkName publicMeta signingPairs
+                (_deploymentSettingsConfig_extraSigners settings)
+                code' jsonData' pkCaps
               pure $ DeploymentSettingsResult
                 { _deploymentSettingsResult_gasPrice = _pmGasPrice publicMeta
                 , _deploymentSettingsResult_signingKeys = signingPairs
@@ -519,7 +532,7 @@ uiMetaData m mTTL mGasLimit = do
 -- | Set the sender to a fixed value
 uiSenderFixed :: DomBuilder t m => AccountName -> m (Dynamic t (Maybe AccountName))
 uiSenderFixed sender = do
-  _ <- mkLabeledInput uiInputElement "Sender" $ def
+  _ <- uiInputElement $ def
     & initialAttributes %~ Map.insert "disabled" ""
     & inputElementConfig_initialValue .~ unAccountName sender
   pure $ pure $ pure sender
@@ -598,18 +611,23 @@ parseSigCapability txt = parsed >>= compiled >>= parseApp
 -- account to attach
 capabilityInputRow
   :: MonadWidget t m
-  => m (Dynamic t (Maybe AccountName))
+  => Maybe DappCap
+  -> m (Dynamic t (Maybe AccountName))
   -> m (Dynamic t Bool, Dynamic t (Maybe (Map AccountName [SigCapability])))
-capabilityInputRow mkSender = elClass "tr" "table__row" $ do
+capabilityInputRow mCap mkSender = elClass "tr" "table__row" $ do
   (empty, parsed) <- el "td" $ mdo
     cap <- uiInputElement $ def
-      & initialAttributes .~ "placeholder" =: "(module.capability arg1 arg2)" <> "class" =: "input_width_full"
+      & inputElementConfig_initialValue .~ foldMap (renderCompactText . _dappCap_cap) mCap
+      & initialAttributes .~
+        "placeholder" =: "(module.capability arg1 arg2)" <>
+        "class" =: "input_width_full" <>
+        (maybe mempty (const $ "disabled" =: "true") mCap)
       & modifyAttributes .~ ffor errors (\e -> "style" =: ("background-color: #fdd" <$ guard e))
     empty <- holdUniqDyn $ T.null <$> value cap
     let parsed = parseSigCapability <$> value cap
-        hasError = (\p e -> isLeft p && not e) <$> parsed <*> empty
+        showError = (\p e -> isLeft p && not e) <$> parsed <*> empty
         errors = leftmost
-          [ tag (current hasError) (domEvent Blur cap)
+          [ tag (current showError) (domEvent Blur cap)
           , False <$ _inputElement_input cap
           ]
     pure (empty, parsed)
@@ -625,6 +643,7 @@ capabilityInputRow mkSender = elClass "tr" "table__row" $ do
           pure $ ffor ma $ \a -> Map.singleton a (either (const []) pure e)
     )
 
+
 -- | Display a dynamic number of rows for the user to enter custom capabilities
 capabilityInputRows
   :: MonadWidget t m
@@ -632,7 +651,7 @@ capabilityInputRows
   -> m (Dynamic t (Maybe (Map AccountName [SigCapability])))
 capabilityInputRows mkSender = do
   rec
-    (im0, im') <- traverseIntMapWithKeyWithAdjust (\_ _ -> capabilityInputRow mkSender) (IM.singleton 0 ()) $ leftmost
+    (im0, im') <- traverseIntMapWithKeyWithAdjust (\_ _ -> capabilityInputRow Nothing mkSender) (IM.singleton 0 ()) $ leftmost
       -- Delete rows, but ensure we don't delete them all
       [ PatchIntMap <$> gate canDelete deletions
       -- Add a new row when all rows are used
@@ -648,33 +667,49 @@ capabilityInputRows mkSender = do
 
 -- | Widget for selection of sender and signing keys.
 uiSenderCapabilities
-  :: forall t m. MonadWidget t m
-  => Maybe [DappCap]
+  :: forall t m model. (MonadWidget t m, HasWallet model t)
+  => model
+  -> Dynamic t (Maybe Pact.ChainId)
+  -> Maybe [DappCap]
   -> m (Dynamic t (Maybe AccountName))
   -> m (Dynamic t (Maybe AccountName), Dynamic t (Maybe (Map AccountName [SigCapability])))
-uiSenderCapabilities mCaps mkSender = do
-  divClass "title" $ text "Gas Payer"
-  sender <- divClass "group" mkSender
+uiSenderCapabilities m cid mCaps mkSender = do
+  let staticCapabilityRow sender cap = do
+        el "td" $ text $ _dappCap_role cap
+        el "td" $ text $ renderCompactText $ _dappCap_cap cap
+        acc <- el "td" $ sender
+        pure $ (fmap . fmap) (\s -> Map.singleton s [_dappCap_cap cap]) acc
+
+  let staticCapabilityRows caps = fmap (fmap (fmap (Map.unionsWith (<>)) . sequence) . sequence) $ for caps $ \cap ->
+        elClass "tr" "table__row" $ staticCapabilityRow (uiSenderDropdown def m cid) cap
+
+  let combineWithRequiredGASPayer gasPayerRow otherCaps =
+        (liftA2 . liftA2) (\mmapA mmapB -> pure $ Map.unionWith (<>) (fold mmapA) (fold mmapB)) gasPayerRow otherCaps
+
+  divClass "title" $ text "Roles"
 
   -- Capabilities
-  -- TODO consider hard coding a single "FUND_TX" / gas field instead of the
-  -- above gas payer input
-  divClass "title" $ text "Roles"
   capabilities <- divClass "group" $ elAttr "table" ("class" =: "table" <> "style" =: "width: 100%") $ case mCaps of
-    Nothing -> el "tbody" $ capabilityInputRows mkSender
+    Nothing -> el "tbody" $ combineWithRequiredGASPayer
+      (snd <$> capabilityInputRow (Just defaultGASCapability) mkSender)
+      (capabilityInputRows (uiSenderDropdown def m cid))
+
     Just caps -> do
       el "thead" $ el "tr" $ do
         elClass "th" "table__heading" $ text "Role"
         elClass "th" "table__heading" $ text "Capability"
         elClass "th" "table__heading" $ text "Account"
-      let fixup = fmap (fmap (Map.unionsWith (<>)) . sequence) . sequence
-      el "tbody" $ fmap fixup $ for caps $ \cap -> elClass "tr" "table__row" $ do
-        el "td" $ text $ _dappCap_role cap
-        el "td" $ text $ renderCompactText $ _dappCap_cap cap
-        acc <- el "td" mkSender
-        pure $ fmap (\s -> Map.singleton s [_dappCap_cap cap]) <$> acc
+      el "tbody" $ combineWithRequiredGASPayer
+        (staticCapabilityRow mkSender defaultGASCapability)
+        (staticCapabilityRows caps)
 
-  return (sender, capabilities)
+  let firstGASPayer mmap = fmap getFirst $
+        mmap >>= Map.foldMapWithKey (\acc caps -> if anyGASSigCap caps then Just (First acc) else Nothing)
+
+  return (firstGASPayer <$> capabilities, capabilities)
+  where
+    anyGASSigCap :: [SigCapability] -> Bool
+    anyGASSigCap = any (^. to PC._scName . to PN._qnName . to (== "FUND_TX"))
 
 uiSigningKeys :: (MonadWidget t m, HasWallet model t) => model -> m (Dynamic t (Set KeyName))
 uiSigningKeys model = do
@@ -710,3 +745,21 @@ signingItem (n, _) = do
 toggleCheckbox :: Reflex t => Dynamic t Bool -> Event t a -> CheckboxConfig t
 toggleCheckbox val =
   (\v -> def { _checkboxConfig_setValue = v }) . fmap not . tag (current val)
+
+-- parsed: "{\"role\": \"GAS\", \"description\": \"Pay the GAS required for this transaction\", \"cap\": {\"args\": [\"doug\",], \"name\": \"coin.FUND_TX\"}}"
+defaultGASCapability :: DappCap
+defaultGASCapability = DappCap
+  { _dappCap_role = "GAS"
+  , _dappCap_description = "Pay the GAS required for this transaction"
+  , _dappCap_cap = PC.SigCapability
+    { PC._scName = PN.QualifiedName
+      { PN._qnQual = PN.ModuleName
+        { PN._mnName = "coin"
+        , PN._mnNamespace = Nothing
+        }
+      , PN._qnName = "FUND_TX"
+      , PN._qnInfo = PI.mkInfo "coin.FUND_TX"
+      }
+    , PC._scArgs = []
+    }
+  }

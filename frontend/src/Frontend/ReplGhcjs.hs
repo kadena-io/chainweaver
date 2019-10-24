@@ -34,16 +34,13 @@ import GHCJS.DOM.EventM (on)
 import GHCJS.DOM.GlobalEventHandlers (keyPress)
 import GHCJS.DOM.KeyboardEvent (getCtrlKey, getKey, getKeyCode, getMetaKey)
 import GHCJS.DOM.Types (HTMLElement (..), unElement)
-import Kadena.SigningApi
 import Language.Javascript.JSaddle (liftJSM)
 import Obelisk.Generated.Static
 import Obelisk.Route (R)
 import Obelisk.Route.Frontend
 import Pact.Repl
 import Pact.Repl.Types
-import Pact.Types.Capability
 import Pact.Types.Lang
-import Pact.Types.PactValue
 import Reflex
 import Reflex.Dom.ACE.Extended hiding (Annotation (..))
 import Reflex.Dom.Core

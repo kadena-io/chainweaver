@@ -21,8 +21,8 @@ library
     , cryptonite
     , directory
     , filepath
-    , kadena-signing-api
     , jsaddle
+    , kadena-signing-api
     , lens
     , memory
     , mtl

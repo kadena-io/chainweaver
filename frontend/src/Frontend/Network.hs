@@ -560,7 +560,7 @@ mkSimpleReadReq
   :: (MonadIO m, MonadJSM m)
   => Text -> NetworkName -> PublicMeta -> ChainRef -> m NetworkRequest
 mkSimpleReadReq code networkName pm cRef = do
-  cmd <- buildCmd Nothing networkName (pm { _pmChainId = _chainRef_chain cRef }) [] code mempty mempty
+  cmd <- buildCmd Nothing networkName (pm { _pmChainId = _chainRef_chain cRef }) [] [] code mempty mempty
   pure $ NetworkRequest
     { _networkRequest_cmd = cmd
     , _networkRequest_chainRef = cRef
@@ -896,15 +896,24 @@ buildCmd
      , MonadJSM m
      )
   => Maybe Text
+  -- ^ Nonce. When missing, uses the current time.
   -> NetworkName
+  -- ^ The network that we are targeting
   -> PublicMeta
+  -- ^ Assorted information for the payload. The time is overridden.
   -> [KeyPair]
+  -- ^ Keys which we are signing with
+  -> [PublicKey]
+  -- ^ Keys which should be added to `signers`, but not used to sign
   -> Text
+  -- ^ Code
   -> Object
+  -- ^ Data object
   -> Map PublicKey [SigCapability]
+  -- ^ Capabilities for each public key
   -> m (Command Text)
-buildCmd mNonce networkName meta signingKeys code dat caps = do
-  cmd <- encodeAsText . encode <$> buildExecPayload mNonce networkName meta signingKeys code dat caps
+buildCmd mNonce networkName meta signingKeys extraKeys code dat caps = do
+  cmd <- encodeAsText . encode <$> buildExecPayload mNonce networkName meta signingKeys extraKeys code dat caps
   let
     cmdHashL = hash (T.encodeUtf8 cmd)
   sigs <- buildSigs cmdHashL signingKeys
@@ -943,14 +952,23 @@ buildSigs cmdHashL signingPairs = do
 buildExecPayload
   :: MonadIO m
   => Maybe Text
+  -- ^ Nonce. When missing, uses the current time.
   -> NetworkName
+  -- ^ The network that we are targeting
   -> PublicMeta
+  -- ^ Assorted information for the payload. The time is overridden.
   -> [KeyPair]
+  -- ^ Keys which we are signing with
+  -> [PublicKey]
+  -- ^ Keys which should be added to `signers`, but not used to sign
   -> Text
+  -- ^ Code
   -> Object
+  -- ^ Data object
   -> Map PublicKey [SigCapability]
+  -- ^ Capabilities for each public key
   -> m (Payload PublicMeta Text)
-buildExecPayload mNonce networkName meta keys code dat caps = do
+buildExecPayload mNonce networkName meta signingKeys extraKeys code dat caps = do
     time <- getCreationTime
     nonce <- maybe getNonce pure mNonce
     let
@@ -962,11 +980,11 @@ buildExecPayload mNonce networkName meta keys code dat caps = do
       { _pPayload = Exec payload
       , _pNonce = nonce
       , _pMeta = meta { _pmCreationTime = time }
-      , _pSigners = map mkSigner keys
+      , _pSigners = map mkSigner (map _keyPair_publicKey signingKeys ++ extraKeys)
       , _pNetworkId = pure $ NetworkId $ textNetworkName networkName
       }
   where
-    mkSigner (KeyPair pubKey _) = Signer
+    mkSigner pubKey = Signer
       { _siScheme = pure ED25519
       , _siPubKey = keyToText pubKey
       , _siAddress = pure $ keyToText pubKey
