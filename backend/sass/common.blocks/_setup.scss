@@ -39,6 +39,7 @@ $kadena-orange: #F3AB3C;
 .setup__fullscreen .wrapper {
   grid-area: wrapper;
   text-align: center;
+  justify-self: center;
   position: relative;
   padding: 2em 10em;
 
