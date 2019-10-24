@@ -120,15 +120,6 @@ desktop = Frontend
 
 desktopCss :: Text
 desktopCss = [QQ.r|
-.fullscreen { width: 100vw; height: 100vh; display: flex; justify-content: center; align-items: center; }
-.fullscreen p { margin: 2rem auto; }
-.fullscreen .checkbox-wrapper { margin: 2rem auto; }
-.fullscreen .checkbox { font-size: 20px; color: #fff; text-align: left; display: inline-block; padding-left: 40px; }
-.fullscreen .checkbox .checkbox__checkmark { top: 2px; height: 20px; width: 20px; }
-.fullscreen .checkbox .checkbox__checkmark_type_secondary:after { top: 2px; left: 6px; width: 3px; height: 10px; }
-.fullscreen .group { color: #222; margin: 2rem 0; }
-.fullscreen .group.dark { background-color: rgba(0,0,0,0.3); }
-.fullscreen textarea.wallet-recovery-phrase { display: block; width: 30rem; height: 6rem; font-size: 18px; margin: 2rem auto; }
 body { display: flex; flex-direction: row; }
 .sidebar.closed { width: 0; }
 .sidebar { display: flex; flex-direction: column; width: 15rem; overflow: hidden; transition: width 0.2s; z-index: 1; }

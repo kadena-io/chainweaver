@@ -1,21 +1,42 @@
 // The wallet ui:
 @import '../include/defs';
 
-.wallet {
-}
-
 $fullscreen-wallet-grey: #f1f1f1;
 $wallet-top-btm-margin: 0.5rem 0 0.5rem 0;
 $kadena-orange: #F3AB3C;
 
-.fullscreen {
+.setup__fullscreen {
   display: grid;
   grid-template-columns: 1fr 1fr 1fr 1fr;
   grid-template-rows: 0.2fr 1.6fr;
   grid-template-areas: "back header header ." ". wrapper wrapper .";
+
+  p {
+    margin: 2rem auto;
+  }
+
+  .checkbox {
+    font-size: 20px;
+    color: #fff;
+    text-align: left;
+    display: inline-block;
+    padding-left: 40px;
+
+    .checkbox__checkmark {
+      top: 2px;
+      height: 20px;
+      width: 20px;
+    }
+    .checkbox__checkmark_type_secondary:after {
+      top: 2px;
+      left: 6px;
+      width: 3px;
+      height: 10px;
+    }
+  }
 }
 
-.fullscreen .wrapper {
+.setup__fullscreen .wrapper {
   grid-area: wrapper;
   text-align: center;
   position: relative;
@@ -30,7 +51,7 @@ $kadena-orange: #F3AB3C;
     background-color: $std-border-color;
     padding: 1rem;
 
-    img.wallet__kadena-logo {
+    img.setup__kadena-logo {
       width: 6rem;
     }
 
@@ -47,7 +68,7 @@ $kadena-orange: #F3AB3C;
   }
 }
 
-.wallet__back {
+.setup__back {
   grid-area: back;
   align-self: stretch;
   padding-top: 2em;
@@ -60,30 +81,30 @@ $kadena-orange: #F3AB3C;
   }
 }
 
-.fullscreen .wallet__workflow-header {
+.setup__fullscreen .setup__workflow-header {
   grid-area: header;
   text-align: center;
   align-self: stretch;
 
-  li.wallet__workflow-icon {
+  li.setup__workflow-icon {
     display: inline-block;
     color: $confirm-color;
     min-width: 10rem;
   }
 }
 
-.wallet__workflow-icons {
+.setup__workflow-icons {
   display: inline-flex;
   justify-content: center;
   align-items: stretch;
   padding-inline-start: 0; // 40px is added by user agent stylesheet
 }
 
-.wallet__workflow-icon.active .wallet__workflow-icon-circle {
+.setup__workflow-icon.active .setup__workflow-icon-circle {
   background-color: $confirm-color;
 }
 
-.wallet__workflow-icon-circle {
+.setup__workflow-icon-circle {
   background-color: #fff;
   width: 3em;
   height: 3em;
@@ -91,34 +112,34 @@ $kadena-orange: #F3AB3C;
   display: table;
   margin-left: 3.5rem;
 
-  .wallet__workflow-icon-inner {
+  .setup__workflow-icon-inner {
     display: table-cell;
     vertical-align: middle;
   }
 }
 
-.wallet__workflow-icon-value {
+.setup__workflow-icon-value {
   position: absolute;
   top: 1.3rem;
   left: 1.7rem;
   font-size: 0.7em;
 }
 
-.wallet__new-wallet-password-text {
+.setup__new-wallet-password-text {
   margin-bottom: 1rem;
 }
 
-.fullscreen {
+.setup__fullscreen {
   .checkbox, .button {
     margin: $wallet-top-btm-margin; 
     font-weight: initial;
   }
 
-  .wallet__password {
+  .setup__password {
     margin: $wallet-top-btm-margin;
   }
 
-  .wallet__password-wrapper {
+  .setup__password-wrapper {
     position: relative;
 
     &::before {
@@ -134,11 +155,11 @@ $kadena-orange: #F3AB3C;
     }
   }
 
-  input.wallet__password {
+  input.setup__password {
     padding-left: 2em;
   }
 
-  .button, .wallet__password {
+  .button, .setup__password {
     height: initial;
     line-height: initial;
     padding: 1.3rem;
@@ -154,94 +175,94 @@ $kadena-orange: #F3AB3C;
   }
 }
 
-.wallet__checkbox-wrapper {
+.setup__checkbox-wrapper {
   margin: 1rem;
   .checkbox {
     color: $confirm-color;
   }
 }
 
-.wallet__terms-conditions-checkbox {
+.setup__terms-conditions-checkbox {
   color: $confirm-color;
 }
 
-.wallet__key {
+.setup__key {
   overflow-x: hidden;
   text-overflow: ellipsis;
 }
 
-.wallet__key_hidden {
+.setup__key_hidden {
   text-overflow: clip;
 }
 
-.wallet__key_type_private.wallet__key_hidden {
+.setup__key_type_private.setup__key_hidden {
   cursor: alias;
 }
 
-.wallet__delete {
+.setup__delete {
   text-align: right;
 }
 
-.wallet__add {
-  @extend .wallet__delete;
+.setup__add {
+  @extend .setup__delete;
 }
 
-.wallet__add-delete-button {
+.setup__add-delete-button {
   width: 30px;
 }
 
-.wallet__record-phrase-msg {
+.setup__record-phrase-msg {
   margin-bottom: 2em;
 }
 
-.wallet__passphrase-widget-wrapper {
+.setup__passphrase-widget-wrapper {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
 }
 
-.wallet__passphrase-widget-word-hider {
+.setup__passphrase-widget-word-hider {
   background-color: $fullscreen-wallet-grey;
 }
 
-.wallet__passphrase-widget-word,
-.wallet__passphrase-widget-word-hider,
-.wallet__passphrase-widget-elem-wrapper {
+.setup__passphrase-widget-word,
+.setup__passphrase-widget-word-hider,
+.setup__passphrase-widget-elem-wrapper {
   text-align: center;
   margin-bottom:0.5em;
   font-size: 20px;
 }
 
-.wallet__passphrase-widget-word {
+.setup__passphrase-widget-word {
   display:none;
 }
 
-.wallet__passphrase-widget-elem-wrapper {
-  &:hover .wallet__passphrase-widget-word {
+.setup__passphrase-widget-elem-wrapper {
+  &:hover .setup__passphrase-widget-word {
     display: initial;
   }
-  &:hover .wallet__passphrase-widget-word-hider {
+  &:hover .setup__passphrase-widget-word-hider {
     display: none;
   }
 }
 
-.fullscreen .wallet__verify-phrase-msg {
+.setup__fullscreen .setup__verify-phrase-msg {
   margin-bottom: 1.5rem;
 }
 
-.fullscreen .wallet__message {
+.setup__fullscreen .setup__message {
   max-height: 0;
   overflow-y: hidden;
   transition: max-height 0.3s linear;
 
-  &.wallet__show-pw-error {
+  &.setup__show-pw-error {
     max-height: 2rem;
   }
 }
-.fullscreen .wallet__message-wrapper {
+.setup__fullscreen .setup__message-wrapper {
   margin: 2rem auto;
 }
 
-.wallet__recovery-phrase-copy button.button {
+.setup__recovery-phrase-copy button.button {
   width: 30%;
   padding: 0.4rem;
   margin-bottom: 0;
@@ -252,45 +273,45 @@ $kadena-orange: #F3AB3C;
     margin-right: 0.4rem;
   }
 
-  .wallet__recovery-phrase-copy-word {
+  .setup__recovery-phrase-copy-word {
     color: $tertiary-color;
     font-size: 25px;
   }
 }
 
-.fullscreen .wallet__message-wrapper > .message {
+.setup__fullscreen .setup__message-wrapper > .message {
   background-color: rgba(0,0,0,0.4);
   border-radius: 0.3rem;
   padding: 0.5rem;
   display: inline-block;
 }
 
-.wallet__hide {
+.setup__hide {
   display: none;
 }
 
-.wallet__password-bg {
+.setup__password-bg {
   width: 70%;
 }
 
-.wallet__done-splash-bg {
+.setup__done-splash-bg {
   transform: rotateY(180deg);
 }
 
-.wallet__wallet-blue-icon {
+.setup__wallet-blue-icon {
   position: absolute;
   top: 7rem;
   left: 23.5rem;
   transform: scale(1.2);
 }
 
-.wallet__warning-checkbox {
+.setup__warning-checkbox {
   margin: 0.5rem;
   width: 140%;
   margin-left: -9rem;
 }
 
-.wallet__repeat-icon {
+.setup__repeat-icon {
   position: absolute;
   top: 5rem;
   left: 21rem;
@@ -302,24 +323,24 @@ $kadena-orange: #F3AB3C;
   }
 }
 
-.wallet__recover-widget-wrapper,
-.wallet__verify-widget-wrapper {
+.setup__recover-widget-wrapper,
+.setup__verify-widget-wrapper {
   background-color: #fff;
 }
 
-.wallet__waiting-passphrase {
+.setup__waiting-passphrase {
   min-height: 20em;
   padding-top: 3em;
 }
 
-.wallet__recover-enter-password {
+.setup__recover-enter-password {
   min-height: 20em;
 }
 
-.wallet__recovery-use-bip39-wrapper {
+.setup__recovery-use-bip39-wrapper {
   min-height: 3em;
 
-  .wallet__checkbox-wrapper .checkbox {
+  .setup__checkbox-wrapper .checkbox {
     color: $kadena-orange;
     float: left;
   }
@@ -335,11 +356,11 @@ $kadena-orange: #F3AB3C;
   }
 }
 
-.wallet__recovery-text {
+.setup__recovery-text {
   margin: 2rem;
 }
 
-.wallet__recover-restore-button .button.button_type_confirm {
+.setup__recover-restore-button .button.button_type_confirm {
   background-color: $kadena-orange;
   border-color: $kadena-orange;
   color: #fff;
