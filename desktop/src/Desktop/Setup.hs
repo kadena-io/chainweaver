@@ -283,8 +283,8 @@ passphraseWordElement currentStage k wrd = walletDiv "passphrase-widget-elem-wra
     commonAttrs cls =
       "type" =: "text" <>
       "size" =: "8" <>
-      "class" =: walletClass cls 
-      
+      "class" =: walletClass cls
+
   void . uiInputElement $ def
     & inputElementConfig_initialValue .~ "********"
     & initialAttributes .~ (commonAttrs "passphrase-widget-word-hider" <> "disabled" =: "true" <> "tabindex" =: "-1")
@@ -530,7 +530,7 @@ setPassword dSeed = form "" $ do
   pure $ Crypto.generate <$> current dSeed <@> (T.encodeUtf8 <$> pass)
 
   where
-    minPasswordLength = 1 -- TODO: Reset to realistic min
+    minPasswordLength = 10
     checkPassword p1 p2
       | T.length p1 < minPasswordLength =
           Left $ "Passwords must be at least " <> tshow minPasswordLength <> " characters long"
