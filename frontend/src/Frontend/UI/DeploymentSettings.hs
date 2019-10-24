@@ -694,9 +694,7 @@ uiSenderCapabilities m cid mCaps mkSender = do
   divClass "group" $ elAttr "table" ("class" =: "table" <> "style" =: "width: 100%") $ case mCaps of
     Nothing -> el "tbody" $ do
       gas <- capabilityInputRow (Just defaultGASCapability) mkSender
-      display $ _capabilityInputRow_value gas
       rest <- capabilityInputRows (uiSenderDropdown def m cid)
-      display rest
       pure (_capabilityInputRow_account gas, combineMaps (_capabilityInputRow_value gas) rest)
     Just caps -> do
       el "thead" $ el "tr" $ do
