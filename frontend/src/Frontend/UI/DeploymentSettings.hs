@@ -119,6 +119,9 @@ data DeploymentSettingsConfig t m model a = DeploymentSettingsConfig
     -- ^ Gas Limit. Overridable by the user.
   , _deploymentSettingsConfig_caps :: Maybe [DappCap]
     -- ^ Capabilities. When missing, lets the user enter arbitrary capabilities.
+  , _deploymentSettingsConfig_extraSigners :: [PublicKey]
+    -- ^ Extra signers to be added to the command. The dApp should fill in the
+    -- signatures as required upon receiving the response.
   }
 
 data DeploymentSettingsView
@@ -226,7 +229,11 @@ uiDeploymentSettings m settings = mdo
                 pkCaps = Map.fromList $ fmapMaybe toPublicKey $ Map.toList caps
             pure $ do
               let signingPairs = getSigningPairs signing keys
-              cmd <- buildCmd (_deploymentSettingsConfig_nonce settings) networkName publicMeta signingPairs code' jsonData' pkCaps
+              cmd <- buildCmd
+                (_deploymentSettingsConfig_nonce settings)
+                networkName publicMeta signingPairs
+                (_deploymentSettingsConfig_extraSigners settings)
+                code' jsonData' pkCaps
               pure $ DeploymentSettingsResult
                 { _deploymentSettingsResult_gasPrice = _pmGasPrice publicMeta
                 , _deploymentSettingsResult_signingKeys = signingPairs

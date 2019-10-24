@@ -127,6 +127,7 @@ uiDeployConfirmation code model = fullDeployFlow def model $ do
     , _deploymentSettingsConfig_nonce = Nothing
     , _deploymentSettingsConfig_gasLimit = Nothing
     , _deploymentSettingsConfig_caps = Nothing
+    , _deploymentSettingsConfig_extraSigners = []
     }
   pure (settingsCfg, result)
 

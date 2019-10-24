@@ -1,7 +1,7 @@
 {
   "owner": "kadena-io",
   "repo": "signing-api",
-  "branch": "fix-record-names",
-  "rev": "22093fce684a09df111f3d3ad9ca1618f22d32f7",
-  "sha256": "0xa9bwp0dyadcixvaayyq8y7b2brfc1bxnv7r73y8qxscpm5d3xj"
+  "branch": "ts-extra-signers",
+  "rev": "1d79b6e07f5275592d5a44f60c246a278658ddc3",
+  "sha256": "1q63ca5kqhx018s928wfq9l3h2d75g3fhk8f1bn1rxi54zcv1nvh"
 }

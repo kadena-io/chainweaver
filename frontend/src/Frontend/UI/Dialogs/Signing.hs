@@ -29,6 +29,7 @@ import Reflex
 import Reflex.Dom
 
 import Frontend.AppCfg
+import Frontend.Crypto.Ed25519 (fromPactPublicKey)
 import Frontend.Foundation hiding (Arg)
 import Frontend.JsonData
 import Frontend.Network
@@ -74,6 +75,7 @@ uiSigning appCfg ideL signingRequest onCloseExternal = do
           , _deploymentSettingsConfig_ttl = _signingRequest_ttl signingRequest
           , _deploymentSettingsConfig_gasLimit = _signingRequest_gasLimit signingRequest
           , _deploymentSettingsConfig_caps = Just $ _signingRequest_caps signingRequest
+          , _deploymentSettingsConfig_extraSigners = fromPactPublicKey <$> fromMaybe [] (_signingRequest_extraSigners signingRequest)
           }
         pure (mConf, result)
 
