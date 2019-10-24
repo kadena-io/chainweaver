@@ -9,10 +9,12 @@
 -- | Wallet setup screens
 module Desktop.Setup (runSetup, form, kadenaWalletLogo) where
 
+import Control.Lens ((<>~))
 import Control.Error (hush)
 import Control.Applicative (liftA2)
 import Control.Monad (unless,void)
 import Control.Monad.IO.Class
+import Data.Bool (bool)
 import Data.Maybe (isNothing, fromMaybe)
 import Data.Bifunctor
 import Data.ByteArray (ByteArrayAccess)
@@ -281,17 +283,16 @@ passphraseWordElement currentStage k wrd = walletDiv "passphrase-widget-elem-wra
     commonAttrs cls =
       "type" =: "text" <>
       "size" =: "8" <>
-      "class" =: walletClass cls
-
+      "class" =: walletClass cls 
+      
   void . uiInputElement $ def
     & inputElementConfig_initialValue .~ "********"
-    & initialAttributes .~ (commonAttrs "passphrase-widget-word-hider" <> "disabled" =: "true")
+    & initialAttributes .~ (commonAttrs "passphrase-widget-word-hider" <> "disabled" =: "true" <> "tabindex" =: "-1")
 
-  fmap _inputElement_input $ walletDiv "passphrase-widget-word-wrapper". uiInputElement $ def
+  fmap _inputElement_input <$> walletDiv "passphrase-widget-word-wrapper". uiInputElement $ def
     & inputElementConfig_setValue .~ (current wrd <@ pb)
     & initialAttributes .~ commonAttrs "passphrase-widget-word"
-    & modifyAttributes .~ (("readonly" =:) . canEditOnRecover <$> current currentStage <@ pb)
-
+    & modifyAttributes <>~ (("readonly" =:) . canEditOnRecover <$> current currentStage <@ pb)
   where
     canEditOnRecover Recover = Nothing
     canEditOnRecover Setup = Just "true"
@@ -428,13 +429,17 @@ createNewPassphrase eBack dPassword mnemonicSentence = Workflow $ do
     dPassphrase <- passphraseWidget dPassphrase (pure Setup)
       >>= holdDyn (mkPhraseMapFromMnemonic mnemonicSentence)
 
-  eCopyClick <- elClass "div" (walletClass "recovery-phrase-copy") $ do
-    uiButton def $ elClass "span" (walletClass "recovery-phrase-copy-word") $ do
-      elClass "i" "fa fa-copy" blank
-      text "Copy"
+    eCopyClick <- elClass "div" (walletClass "recovery-phrase-copy") $ do
+      uiButton def $ elClass "span" (walletClass "recovery-phrase-copy-word") $ do
+        elClass "i" "fa fa-copy" blank
+        text "Copy"
+        elDynClass "i" ("fa wallet__copy-status " <> dCopySuccess) blank
       
-  _ <- copyToClipboard $
-    T.unwords . Map.elems <$> current dPassphrase <@ eCopyClick 
+    eCopySuccess <- copyToClipboard $
+      T.unwords . Map.elems <$> current dPassphrase <@ eCopyClick 
+
+    dCopySuccess <- holdDyn T.empty $
+      (walletClass . bool "copy-fail fa-times" "copy-success fa-check") <$> eCopySuccess
 
   dIsStored <- fmap value $ walletDiv "checkbox-wrapper" $ uiCheckbox def False def
     $ text "I have safely stored my recovery phrase."
@@ -494,7 +499,7 @@ setPassword dSeed = form "" $ do
           "class" =: walletClass "password"
         )
 
-  p1elem <- uiPassword "Enter password"
+  p1elem <- uiPassword $ "Enter password (" <> tshow minPasswordLength <> " character min.)"
   p2elem <- uiPassword "Confirm password" 
 
   let p1 = current $ value p1elem
@@ -525,7 +530,7 @@ setPassword dSeed = form "" $ do
   pure $ Crypto.generate <$> current dSeed <@> (T.encodeUtf8 <$> pass)
 
   where
-    minPasswordLength = 10
+    minPasswordLength = 1 -- TODO: Reset to realistic min
     checkPassword p1 p2
       | T.length p1 < minPasswordLength =
           Left $ "Passwords must be at least " <> tshow minPasswordLength <> " characters long"
