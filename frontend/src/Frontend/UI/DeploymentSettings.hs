@@ -42,6 +42,7 @@ module Frontend.UI.DeploymentSettings
   , Identity (runIdentity)
   ) where
 
+import Debug.Trace (traceShowId)
 import Control.Applicative (liftA2)
 import Control.Arrow (first, (&&&))
 import Control.Error.Util (hush)
@@ -585,15 +586,27 @@ uiChainSelection info cls = mdo
     d <- _dropdown_value <$> dropdown Nothing (mkOptions <$> chains) cfg
     pure d
 
+data CapabilityInputRow t = CapabilityInputRow
+  { _capabilityInputRow_empty :: Dynamic t Bool
+  , _capabilityInputRow_value :: Dynamic t (Maybe (Map AccountName [SigCapability]))
+  , _capabilityInputRow_error :: Event t Bool
+  }
+
+data CapabilityInputRows t = CapabilityInputRows
+  { _capabilityInputRows_anyEmpty :: Dynamic t Bool
+  , _capabilityInputRows_anyError :: Event t Bool
+  , _capabilityInputRows_value :: Dynamic t (Maybe (Map AccountName [SigCapability]))
+  }
+
 -- | Display a single row for the user to enter a custom capability and
 -- account to attach
 capabilityInputRow
   :: MonadWidget t m
   => Maybe DappCap
   -> m (Dynamic t (Maybe AccountName))
-  -> m (Dynamic t Bool, Dynamic t (Maybe (Map AccountName [SigCapability])))
+  -> m (CapabilityInputRow t)
 capabilityInputRow mCap mkSender = elClass "tr" "table__row" $ do
-  (empty, parsed) <- el "td" $ mdo
+  (empty, parsed, errors) <- el "td" $ mdo
     cap <- uiInputElement $ def
       & inputElementConfig_initialValue .~ foldMap (renderCompactText . _dappCap_cap) mCap
       & initialAttributes .~
@@ -608,25 +621,23 @@ capabilityInputRow mCap mkSender = elClass "tr" "table__row" $ do
           [ tag (current showError) (domEvent Blur cap)
           , False <$ _inputElement_input cap
           ]
-    pure (empty, parsed)
+    pure (empty, parsed, errors)
   account <- el "td" mkSender
-  pure
-    ( empty
-    , do
-      empty >>= \case
+
+  let capValue = empty >>= \case
         True -> pure $ Just mempty
         False -> do
           ma <- account
           e <- parsed
           pure $ ffor ma $ \a -> Map.singleton a (either (const []) pure e)
-    )
 
+  pure $ CapabilityInputRow empty capValue errors
 
 -- | Display a dynamic number of rows for the user to enter custom capabilities
 capabilityInputRows
   :: MonadWidget t m
   => m (Dynamic t (Maybe AccountName))
-  -> m (Dynamic t (Maybe (Map AccountName [SigCapability])))
+  -> m (CapabilityInputRows t)
 capabilityInputRows mkSender = do
   rec
     (im0, im') <- traverseIntMapWithKeyWithAdjust (\_ _ -> capabilityInputRow Nothing mkSender) (IM.singleton 0 ()) $ leftmost
@@ -635,13 +646,20 @@ capabilityInputRows mkSender = do
       -- Add a new row when all rows are used
       , attachWith (\i _ -> PatchIntMap (IM.singleton i (Just ()))) nextKeyToUse $ ffilter not $ updated anyEmpty
       ]
-    results :: Dynamic t (IntMap (Dynamic t Bool, Dynamic t (Maybe (Map AccountName [SigCapability]))))
+    -- results :: Dynamic t (IntMap (Dynamic t Bool, Dynamic t (Maybe (Map AccountName [SigCapability]))))
+    results :: Dynamic t (IntMap (CapabilityInputRow t))
       <- foldDyn applyAlways im0 im'
     let nextKeyToUse = maybe 0 (succ . fst) . IM.lookupMax <$> current results
         canDelete = (> 1) . IM.size <$> current results
-        anyEmpty = fmap or $ traverse fst =<< results
-        deletions = switch . current $ IM.foldMapWithKey (\i -> (IM.singleton i Nothing <$) . ffilter id . updated . fst) <$> results
-  pure $ fmap (fmap (Map.unionsWith (<>) . IM.elems) . sequence) $ traverse snd =<< results
+        anyEmpty = fmap or $ traverse _capabilityInputRow_empty =<< results
+        anyError = switchDyn $ fmap (mergeWith (||) . IM.elems . fmap _capabilityInputRow_error) results
+
+        deletions = switch
+          . current
+          $ IM.foldMapWithKey (\i -> (IM.singleton i Nothing <$) . ffilter id . updated . _capabilityInputRow_empty) <$> results
+
+  pure $ CapabilityInputRows anyEmpty anyError $
+    fmap (fmap (Map.unionsWith (<>) . IM.elems) . sequence) $ traverse _capabilityInputRow_value =<< results
 
 -- | Widget for selection of sender and signing keys.
 uiSenderCapabilities
@@ -661,16 +679,32 @@ uiSenderCapabilities m cid mCaps mkSender = do
   let staticCapabilityRows caps = fmap (fmap (fmap (Map.unionsWith (<>)) . sequence) . sequence) $ for caps $ \cap ->
         elClass "tr" "table__row" $ staticCapabilityRow (uiSenderDropdown def m cid) cap
 
-  let combineWithRequiredGASPayer gasPayerRow otherCaps =
-        (liftA2 . liftA2) (\mmapA mmapB -> pure $ Map.unionWith (<>) (fold mmapA) (fold mmapB)) gasPayerRow otherCaps
+      combineMaps ma mb =
+        let mab = Map.unionWith (<>) (fold ma) (fold mb)
+        in if Map.null mab then Nothing else Just mab
+
+      combineWithRequiredGASPayer gasPayerRow otherCaps =
+        (liftA2 . liftA2) combineMaps gasPayerRow otherCaps
 
   divClass "title" $ text "Roles"
 
   -- Capabilities
   capabilities <- divClass "group" $ elAttr "table" ("class" =: "table" <> "style" =: "width: 100%") $ case mCaps of
-    Nothing -> el "tbody" $ combineWithRequiredGASPayer
-      (snd <$> capabilityInputRow (Just defaultGASCapability) mkSender)
-      (capabilityInputRows (uiSenderDropdown def m cid))
+    Nothing -> el "tbody" $ do
+      gprow <- capabilityInputRow (Just defaultGASCapability) mkSender
+      others <- capabilityInputRows (uiSenderDropdown def m cid)
+
+      dHasErrors <- holdDyn False $ mergeWith (||)
+        [ _capabilityInputRow_error gprow
+        , _capabilityInputRows_anyError others
+        ]
+
+      let dCaps = liftA2 combineMaps (_capabilityInputRow_value gprow) (_capabilityInputRows_value others)
+
+      holdDyn Nothing $ leftmost
+        [ Nothing <$ ffilter id (updated dHasErrors)
+        , gate (not <$> current dHasErrors) $ updated dCaps
+        ]
 
     Just caps -> do
       el "thead" $ el "tr" $ do
