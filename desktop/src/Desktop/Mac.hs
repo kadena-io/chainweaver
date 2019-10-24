@@ -19,7 +19,7 @@ import Foreign.C.String (CString, peekCString)
 import Foreign.C.Types (CInt(..))
 import Foreign.StablePtr (StablePtr)
 import GHC.IO.Handle
-import Kadena.SigningApi (SigningApi)
+import Kadena.SigningApi (SigningApi, signingAPI)
 import Language.Javascript.JSaddle.Types (JSM)
 import Obelisk.Backend
 import Obelisk.Frontend
