@@ -42,7 +42,6 @@ module Frontend.UI.DeploymentSettings
   , Identity (runIdentity)
   ) where
 
-import Debug.Trace (traceShowId)
 import Control.Applicative (liftA2)
 import Control.Arrow (first, (&&&))
 import Control.Error.Util (hush)
@@ -120,6 +119,18 @@ data DeploymentSettingsConfig t m model a = DeploymentSettingsConfig
     -- ^ Gas Limit. Overridable by the user.
   , _deploymentSettingsConfig_caps :: Maybe [DappCap]
     -- ^ Capabilities. When missing, lets the user enter arbitrary capabilities.
+  }
+
+data CapabilityInputRow t = CapabilityInputRow
+  { _capabilityInputRow_empty :: Dynamic t Bool
+  , _capabilityInputRow_value :: Dynamic t (Maybe (Map AccountName [SigCapability]))
+  , _capabilityInputRow_error :: Event t Bool
+  }
+
+data CapabilityInputRows t = CapabilityInputRows
+  { _capabilityInputRows_anyEmpty :: Dynamic t Bool
+  , _capabilityInputRows_anyError :: Event t Bool
+  , _capabilityInputRows_value :: Dynamic t (Maybe (Map AccountName [SigCapability]))
   }
 
 data DeploymentSettingsView
@@ -586,18 +597,6 @@ uiChainSelection info cls = mdo
     d <- _dropdown_value <$> dropdown Nothing (mkOptions <$> chains) cfg
     pure d
 
-data CapabilityInputRow t = CapabilityInputRow
-  { _capabilityInputRow_empty :: Dynamic t Bool
-  , _capabilityInputRow_value :: Dynamic t (Maybe (Map AccountName [SigCapability]))
-  , _capabilityInputRow_error :: Event t Bool
-  }
-
-data CapabilityInputRows t = CapabilityInputRows
-  { _capabilityInputRows_anyEmpty :: Dynamic t Bool
-  , _capabilityInputRows_anyError :: Event t Bool
-  , _capabilityInputRows_value :: Dynamic t (Maybe (Map AccountName [SigCapability]))
-  }
-
 -- | Display a single row for the user to enter a custom capability and
 -- account to attach
 capabilityInputRow
@@ -646,11 +645,11 @@ capabilityInputRows mkSender = do
       -- Add a new row when all rows are used
       , attachWith (\i _ -> PatchIntMap (IM.singleton i (Just ()))) nextKeyToUse $ ffilter not $ updated anyEmpty
       ]
-    -- results :: Dynamic t (IntMap (Dynamic t Bool, Dynamic t (Maybe (Map AccountName [SigCapability]))))
     results :: Dynamic t (IntMap (CapabilityInputRow t))
       <- foldDyn applyAlways im0 im'
     let nextKeyToUse = maybe 0 (succ . fst) . IM.lookupMax <$> current results
         canDelete = (> 1) . IM.size <$> current results
+
         anyEmpty = fmap or $ traverse _capabilityInputRow_empty =<< results
         anyError = switchDyn $ fmap (mergeWith (||) . IM.elems . fmap _capabilityInputRow_error) results
 
@@ -694,13 +693,17 @@ uiSenderCapabilities m cid mCaps mkSender = do
       gprow <- capabilityInputRow (Just defaultGASCapability) mkSender
       others <- capabilityInputRows (uiSenderDropdown def m cid)
 
+      -- Maintain knowledge of either widget containing any errors.
       dHasErrors <- holdDyn False $ mergeWith (||)
         [ _capabilityInputRow_error gprow
         , _capabilityInputRows_anyError others
         ]
 
+      -- Combine the two intmaps of capabilities.
       let dCaps = liftA2 combineMaps (_capabilityInputRow_value gprow) (_capabilityInputRows_value others)
 
+      -- This needs to be done at this level for the moment because I'm combining the
+      -- results of two separate widgets, otherwise the individual widget could handle things.
       holdDyn Nothing $ leftmost
         [ Nothing <$ ffilter id (updated dHasErrors)
         , gate (not <$> current dHasErrors) $ updated dCaps
