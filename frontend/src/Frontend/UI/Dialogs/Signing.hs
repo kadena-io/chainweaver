@@ -27,7 +27,6 @@ import Reflex
 import Reflex.Dom
 
 import Control.Monad ((<=<))
-import Control.Applicative (liftA2)
 import Frontend.AppCfg
 import Frontend.Crypto.Class
 import Frontend.Foundation hiding (Arg)

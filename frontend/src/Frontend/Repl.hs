@@ -49,6 +49,7 @@ import           Data.Aeson                 as Aeson (Object, encode)
 import qualified Data.ByteString.Lazy       as BSL
 import           Data.Either                (isRight)
 import qualified Data.HashMap.Strict        as HM
+import qualified Data.IntMap                as IntMap
 import           Data.Map                   (Map)
 import qualified Data.Map                   as Map
 import           Data.Sequence              (Seq, (|>))
@@ -173,7 +174,7 @@ makeRepl m cfg = build $ \ ~(_, impl) -> do
       ]
 
     let envData = either (const HM.empty) id <$> m ^. jsonData_data
-        keys = Map.elems <$> m ^. wallet_keys
+        keys = getAllKeys <$> m ^. wallet_accounts
 
     -- Those events can happen simultaneously - so make sure we don't lose any
     -- state:
@@ -250,6 +251,8 @@ makeRepl m cfg = build $ \ ~(_, impl) -> do
 
     performStateCmd impl = performEvent . fmap (withRepl impl)
 
+getAllKeys :: Accounts key -> [KeyPair key]
+getAllKeys accs = [ _account_key acc | SomeAccount_Account acc <- IntMap.elems accs ]
 
     -- In case we ever want to show more than the last output term:
     -- showStateTerms :: ReplState -> Text
@@ -266,7 +269,7 @@ initRepl verificationUri oldImpl m  = do
   r <- mkState verificationUri
   let initImpl = oldImpl { _impl_state = pure r } -- Const dyn so we can use `withRepl` for initialization - gets dropped afterwards.
   env  <- sample . current $ either (const HM.empty) id <$> m ^. jsonData_data
-  keys <- sample . current $ Map.elems <$> m ^. wallet_keys
+  keys <- sample . current $ getAllKeys <$> m ^. wallet_accounts
   fmap snd . withRepl initImpl $ do
     void $ setEnvData env
     setEnvKeys keys

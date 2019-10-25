@@ -62,7 +62,3 @@ data AppCfg key t m = AppCfg
   , _appCfg_sidebarExtra :: m ()
   -- ^ Extra widget to display at the bottom of the sidebar
   }
-
--- Are we running the Kadena Chainweaver ALPHA edition
-isChainweaverAlpha :: Bool
-isChainweaverAlpha = True

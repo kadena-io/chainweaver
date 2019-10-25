@@ -32,7 +32,6 @@ import           Control.Arrow (left)
 import           Data.Text (Text)
 import           Reflex
 import           Reflex.Dom
-import qualified Data.Text as T
 ------------------------------------------------------------------------------
 import           Obelisk.Generated.Static
 ------------------------------------------------------------------------------
@@ -64,7 +63,7 @@ uiKeyImport
   -> Event t () -> m (mConf, Event t ())
 uiKeyImport m _onClose = do
     onClose <- modalHeader $ text "Key Import"
-    (errName, errKeyPair) :: (Dynamic t (Either Text Text), Dynamic t (Either Text (KeyPair PrivateKey)))
+    (errName, errKeyPair) :: (Dynamic t (Either Text AccountName), Dynamic t (Either Text (KeyPair PrivateKey)))
       <- modalMain $ divClass "segment modal__filler" $ do
           divClass "modal__filler-horizontal-center-box" $
             imgWithAltCls "modal__filler-img" (static @"img/keys-scalable.svg") "Keys" blank
@@ -90,23 +89,17 @@ uiKeyImport m _onClose = do
 
       onConfirm <- confirmButton (def & uiButtonCfg_disabled .~ isDisabled) "Import"
 
-      let onConfirmKeyPair = fmapMaybe (^? _Right) $ tag (current namedKeyPair) onConfirm
+      let onConfirmKeyPair = fmap (\(n,k) -> Account n k "0" "Notes" {- TODO -}) $ fmapMaybe (^? _Right) $ tag (current namedKeyPair) onConfirm
 
       pure
-        ( mempty & walletCfg_importKey .~ onConfirmKeyPair
+        ( mempty & walletCfg_importAccount .~ onConfirmKeyPair
         , leftmost [onClose, onCancel, onConfirm]
         )
   where
 
     mkNameInput cfg = do
-      let
-        nameParser = do
-          mkNotValidMsg <- checkKeyNameValidityStr m
-          pure $ \v -> mkNotValidMsg v >> mkEmptyNameMessage v
+      let nameParser = checkAccountNameValidity m
       inputWithError uiInputElement nameParser cfg
-
-    mkEmptyNameMessage v =
-      if (T.null . T.strip) v then Left "Key name must not be empty" else Right v
 
     mkPubKeyInput =
       inputWithError uiTextAreaElement (pure $ runExcept . parsePublicKey)

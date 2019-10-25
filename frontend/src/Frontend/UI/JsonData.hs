@@ -40,6 +40,7 @@ import qualified Data.Aeson                         as Aeson
 import qualified Data.ByteString.Lazy               as BSL
 import qualified Data.HashMap.Strict                as H
 import qualified Data.Map                           as Map
+import qualified Data.IntMap                        as IntMap
 import           Data.Maybe
 import qualified Data.Set                           as Set
 import           Data.Text                          (Text)
@@ -209,7 +210,10 @@ uiKeyset w (n, ks) = do
           & jsonDataCfg_delKeyset .~ fmap (const n) onDel
       return cfg1
 
-    onKeyClick <- switchHold never <=< networkView $ uiKeysetKeys (_keyset_keys ks) . Map.keys <$> _wallet_keys w
+    onKeyClick <- switchHold never <=< networkView $ ffor (_wallet_accounts w) $ \im ->
+      uiKeysetKeys (_keyset_keys ks) $ IntMap.elems $ flip IntMap.mapMaybe im $ \case
+        SomeAccount_Account a -> Just $ unAccountName $ _account_name a
+        _ -> Nothing
     let
       onAddKey = fmap fst . ffilter snd $ onKeyClick
       onDelKey = fmap fst . ffilter (not . snd) $ onKeyClick

@@ -13,11 +13,10 @@
 
 module Frontend.Wallet
   (  -- * Types & Classes
-    KeyName
-  , PublicKey
+    PublicKey
   , PrivateKey
   , KeyPair (..)
-  , KeyPairs
+  , Accounts
   , WalletCfg (..)
   , HasWalletCfg (..)
   , IsWalletCfg
@@ -30,14 +29,20 @@ module Frontend.Wallet
   , pactGuardTypeText
   , fromPactGuard
   , accountGuardKeys
-  , KeyAccounts
+  , Account(..)
+  , SomeAccount(..)
+  , someAccount
   -- * Creation
   , emptyWallet
   , makeWallet
+  , loadKeys
+  , storeKeys
+  , StoreWallet(..)
   -- * Parsing
   , parseWalletKeyPair
   -- * Other helper functions
-  , checkKeyNameValidityStr
+  , checkAccountNameValidity
+  , snocIntMap
   ) where
 
 import           Control.Lens
@@ -45,10 +50,8 @@ import           Control.Monad.Except (runExcept)
 import           Control.Monad.Fix
 import           Data.Aeson
 import           Data.Decimal                (Decimal)
-import           Data.Map                    (Map)
-import qualified Data.Map                    as Map
-import           Data.Set                    (Set)
-import qualified Data.Set                    as Set
+import           Data.IntMap                 (IntMap)
+import qualified Data.IntMap                 as IntMap
 import           Data.Text                   (Text)
 import qualified Data.Text                   as T
 import           Generics.Deriving.Monoid    (mappenddefault, memptydefault)
@@ -66,11 +69,6 @@ import           Frontend.Storage
 -- | Account balance wrapper
 newtype AccountBalance = AccountBalance { unAccountBalance :: Decimal } deriving (Eq, Ord, Num)
 
--- | Type of a `Key` name.
---
---   All keys are accessible by a name of type `KeyName`
-type KeyName = Text
-
 -- | A key consists of a public key and an optional private key.
 --
 data KeyPair key = KeyPair
@@ -79,9 +77,6 @@ data KeyPair key = KeyPair
   } deriving Generic
 
 makePactLenses ''KeyPair
-
--- | `KeyName` to `Key` mapping
-type KeyPairs key = Map KeyName (KeyPair key)
 
 newtype AccountName = AccountName
   { unAccountName :: Text
@@ -125,16 +120,24 @@ accountGuardKeys = \case
 instance FromJSON AccountGuard
 instance ToJSON AccountGuard
 
-type AccountGuards = Map ChainId (Map AccountName AccountGuard)
+data Account key = Account
+  { _account_name :: AccountName
+  , _account_key :: KeyPair key
+  , _account_chainId :: ChainId
+  , _account_notes :: Text
+  } deriving Generic
 
--- We might need to track the chainID here too.
-type KeyAccounts = Map PublicKey (Set AccountName)
+-- TODO actually do this properly
+instance ToJSON key => ToJSON (Account key) where
+  toEncoding = genericToEncoding defaultOptions
+instance FromJSON key => FromJSON (Account key) where
+  parseJSON = genericParseJSON defaultOptions
 
 data WalletCfg key t = WalletCfg
-  { _walletCfg_genKey     :: Event t KeyName
+  { _walletCfg_genKey     :: Event t (AccountName, ChainId, Text)
   -- ^ Request generation of a new key, that will be named as specified.
-  , _walletCfg_importKey  :: Event t (KeyName, KeyPair key)
-  , _walletCfg_delKey     :: Event t KeyName
+  , _walletCfg_importAccount  :: Event t (Account key)
+  , _walletCfg_delKey     :: Event t IntMap.Key
   -- ^ Delete a key from your wallet.
   , _walletCfg_addAccount :: Event t (ChainId, AccountName, AccountGuard)
   , _walletCfg_deleteAccount :: Event t (ChainId, AccountName)
@@ -147,13 +150,27 @@ makePactLenses ''WalletCfg
 -- "Config".
 type IsWalletCfg cfg key t = (HasWalletCfg cfg key t, Monoid cfg, Flattenable cfg t)
 
+-- | We keep track of deletions at a given index so that we don't regenerate
+-- keys with BIP32.
+data SomeAccount key
+  = SomeAccount_Deleted
+  | SomeAccount_Account (Account key)
+  deriving Generic
+
+someAccount :: a -> (Account key -> a) -> SomeAccount key -> a
+someAccount a _ SomeAccount_Deleted = a
+someAccount _ f (SomeAccount_Account a) = f a
+
+instance ToJSON key => ToJSON (SomeAccount key) where
+  toEncoding = genericToEncoding defaultOptions
+instance FromJSON key => FromJSON (SomeAccount key) where
+  parseJSON = genericParseJSON defaultOptions
+
+type Accounts key = IntMap (SomeAccount key)
+
 data Wallet key t = Wallet
-  { _wallet_keys        :: Dynamic t (KeyPairs key)
-    -- ^ Keys added and removed by the user 
-  , _wallet_keyAccounts :: Dynamic t KeyAccounts
-    -- ^ Accounts associated with the given public key
-  , _wallet_accountGuards :: Dynamic t AccountGuards
-    -- ^ Guards associated with the given account (and chain)
+  { _wallet_accounts :: Dynamic t (Accounts key)
+    -- ^ Accounts added and removed by the user
   }
   deriving Generic
 
@@ -161,7 +178,10 @@ makePactLenses ''Wallet
 
 -- | An empty wallet that will never contain any keys.
 emptyWallet :: Reflex t => Wallet key t
-emptyWallet = Wallet mempty mempty mempty
+emptyWallet = Wallet mempty
+
+snocIntMap :: a -> IntMap a -> IntMap a
+snocIntMap a m = IntMap.insert (maybe 0 (succ . fst) $ IntMap.lookupMax m) a m
 
 -- | Make a functional wallet that can contain actual keys.
 makeWallet
@@ -174,67 +194,41 @@ makeWallet
   => WalletCfg PrivateKey t
   -> m (Wallet PrivateKey t)
 makeWallet conf = do
-    initialKeys <- fromMaybe Map.empty <$> loadKeys
+    initialKeys <- fromMaybe IntMap.empty <$> loadKeys
     let
-      onGenKey = T.strip <$> conf ^. walletCfg_genKey
+      onGenKey = _walletCfg_genKey conf
       onDelKey = _walletCfg_delKey conf
 
-    onNewKey <- performEvent $ createKey <$>
-      -- Filter out keys with empty names
-      ffilter (not . T.null) onGenKey
+    onNewKey <- performEvent $ createKey <$> onGenKey
 
-    keys <- foldDyn id initialKeys $
-      -- Filter out duplicate keys:
-      leftmost [ uncurry (Map.insertWith (flip const)) <$> onNewKey
-               , uncurry Map.insert <$> (conf ^. walletCfg_importKey)
-               , Map.delete <$> onDelKey
-               ]
+    keys <- foldDyn id initialKeys $ leftmost
+      [ ffor onNewKey $ snocIntMap . SomeAccount_Account
+      , ffor (_walletCfg_importAccount conf) $ snocIntMap . SomeAccount_Account
+      , ffor onDelKey $ \i -> IntMap.insert i SomeAccount_Deleted
+      ]
 
     performEvent_ $ storeKeys <$> updated keys
 
-    initialKeyAccounts <- fromMaybe Map.empty <$> getItemStorage localStorage StoreWallet_KeyAccounts
-    keyAccounts <- foldDyn ($) initialKeyAccounts $ leftmost
-      [ ffor (_walletCfg_addAccount conf) $ \(_chain, account, guard) -> case guard of
-        AccountGuard_Other _gt -> id
-        AccountGuard_KeySet ks -> Map.unionWith (<>) (Map.fromList $ fmap (\k -> (fromPactPublicKey k, Set.singleton account)) (Pact._ksKeys ks))
-      , ffor (_walletCfg_deleteAccount conf) $ \(_chain, account) -> Map.mapMaybe $ \s ->
-        let new = Set.delete account s
-         in if Set.null new then Nothing else Just new
-      ]
-    performEvent_ $ setItemStorage localStorage StoreWallet_KeyAccounts <$> updated keyAccounts
-
-    initialAccountKeys <- fromMaybe Map.empty <$> getItemStorage localStorage StoreWallet_AccountGuards
-    accountGuards <- foldDyn ($) initialAccountKeys $ leftmost
-      [ ffor (_walletCfg_addAccount conf) $ \(chain, account, guard) -> flip Map.alter chain $ \case
-        Nothing -> Just $ Map.singleton account guard
-        Just as -> Just $ Map.insert account guard as
-      , ffor (_walletCfg_deleteAccount conf) $ \(chain, account) -> flip Map.alter chain $ \case
-        Nothing -> Nothing
-        Just as ->
-          let new = Map.delete account as
-          in if Map.null new then Nothing else Just new
-      ]
-    performEvent_ $ setItemStorage localStorage StoreWallet_AccountGuards <$> updated accountGuards
-
     pure $ Wallet
-      { _wallet_keys = keys
-      , _wallet_keyAccounts = keyAccounts
-      , _wallet_accountGuards = accountGuards
+      { _wallet_accounts = keys
       }
   where
-    createKey :: KeyName -> Performable m (KeyName, KeyPair PrivateKey)
-    createKey n = do
+    createKey :: (AccountName, ChainId, Text) -> Performable m (Account PrivateKey)
+    createKey (n, c, t) = do
       (privKey, pubKey) <- genKeyPair
-      pure (n, KeyPair pubKey (Just privKey))
+      pure $ Account
+        { _account_name = n
+        , _account_key = KeyPair pubKey (Just privKey)
+        , _account_chainId = c
+        , _account_notes = t
+        }
 
 
 -- Storing data:
 
 -- | Storage keys for referencing data to be stored/retrieved.
 data StoreWallet key a where
-  StoreWallet_Keys :: StoreWallet key (KeyPairs key)
-  StoreWallet_KeyAccounts :: StoreWallet key KeyAccounts
-  StoreWallet_AccountGuards :: StoreWallet key AccountGuards
+  StoreWallet_Keys :: StoreWallet key (Accounts key)
 deriving instance Show (StoreWallet key a)
 
 -- | Parse a private key with additional checks based on the given public key.
@@ -246,26 +240,27 @@ parseWalletKeyPair errPubKey privKey = do
   pubKey <- errPubKey
   runExcept $ uncurry KeyPair <$> parseKeyPair pubKey privKey
 
--- | Check key name validity (uniqueness).
+-- | Check account name validity (uniqueness).
 --
---   Returns `Just` error msg in case it is not valid.
-checkKeyNameValidityStr
+--   Returns `Left` error msg in case it is not valid.
+checkAccountNameValidity
   :: (Reflex t, HasWallet w key t)
   => w
-  -> Dynamic t (KeyName -> Either Text KeyName)
-checkKeyNameValidityStr w = getErr <$> w ^. wallet_keys
+  -> Dynamic t (Text -> Either Text AccountName)
+checkAccountNameValidity w = getErr <$> (w ^. wallet_accounts)
   where
-    getErr keys k =
-      if Map.member k keys
+    getErr keys k = do
+      acc <- mkAccountName k
+      if any (\case SomeAccount_Account a -> _account_name a == acc; _ -> False) keys
          then Left $ T.pack "This key name is already in use"
-         else Right k
+         else Right acc
 
 -- | Write key pairs to localstorage.
-storeKeys :: (ToJSON key, HasStorage m, MonadJSM m) => KeyPairs key -> m ()
+storeKeys :: (ToJSON key, HasStorage m, MonadJSM m) => Accounts key -> m ()
 storeKeys ks = setItemStorage localStorage StoreWallet_Keys ks
 
 -- | Load key pairs from localstorage.
-loadKeys :: (FromJSON key, HasStorage m, MonadJSM m) => m (Maybe (KeyPairs key))
+loadKeys :: (FromJSON key, HasStorage m, MonadJSM m) => m (Maybe (Accounts key))
 loadKeys = getItemStorage localStorage StoreWallet_Keys
 
 
@@ -277,8 +272,8 @@ instance Reflex t => Semigroup (WalletCfg key t) where
       { _walletCfg_genKey = leftmost [ _walletCfg_genKey c1
                                      , _walletCfg_genKey c2
                                      ]
-      , _walletCfg_importKey = leftmost [ _walletCfg_importKey c1
-                                        , _walletCfg_importKey c2
+      , _walletCfg_importAccount = leftmost [ _walletCfg_importAccount c1
+                                        , _walletCfg_importAccount c2
                                         ]
       , _walletCfg_delKey = leftmost [ _walletCfg_delKey c1
                                      , _walletCfg_delKey c2
@@ -295,7 +290,7 @@ instance Flattenable (WalletCfg key t) t where
   flattenWith doSwitch ev =
     WalletCfg
       <$> doSwitch never (_walletCfg_genKey <$> ev)
-      <*> doSwitch never (_walletCfg_importKey <$> ev)
+      <*> doSwitch never (_walletCfg_importAccount <$> ev)
       <*> doSwitch never (_walletCfg_delKey <$> ev)
       <*> doSwitch never (_walletCfg_addAccount <$> ev)
       <*> doSwitch never (_walletCfg_deleteAccount <$> ev)

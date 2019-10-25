@@ -37,11 +37,13 @@ module Frontend.UI.Wallet
 
 ------------------------------------------------------------------------------
 import           Control.Lens
-import           Control.Monad               (when, void)
+import           Control.Monad               (when, (<=<))
+import qualified Data.IntMap                 as IntMap
 import qualified Data.Map                    as Map
 import           Data.Text                   (Text)
 import qualified Pact.Types.PactValue as Pact
 import qualified Pact.Types.Exp as Pact
+import qualified Pact.Types.ChainId as Pact
 import           Reflex
 import           Reflex.Dom
 ------------------------------------------------------------------------------
@@ -76,7 +78,7 @@ uiWallet w = divClass "keys group" $ do
     onCreate <- uiCreateKey w
     keysCfg <- uiAvailableKeys w
 
-    pure $ keysCfg & walletCfg_genKey .~ onCreate
+    pure $ keysCfg & walletCfg_genKey .~ fmap (\a -> (a, "0", "")) onCreate -- TODO let user pick chain/notes
 
 ----------------------------------------------------------------------
 -- Keys related helper widgets:
@@ -90,7 +92,7 @@ uiWallet w = divClass "keys group" $ do
 --  -> ((Text, KeyPair) -> Bool)
 --  -> m (Dynamic t (Maybe Text))
 --uiSelectKey w kFilter = do
---  let keyNames = map fst . filter kFilter . Map.toList <$> _wallet_keys w
+--  let keyNames = map fst . filter kFilter . Map.toList <$> _wallet_accounts w
 --      mkPlaceholder ks = if null ks then "No keys available" else "Select key"
 --      options = Map.fromList . (Nothing:"No keys") . (\a -> (Just a,a)) <$> keyNames
 --  d <- dropdown Nothing options def
@@ -104,9 +106,9 @@ hasPrivateKey = isJust . _keyPair_privateKey . snd
 
 
 -- | Line input with "Create" button for creating a new key.
-uiCreateKey :: MonadWidget t m => Wallet key t -> m (Event t KeyName)
+uiCreateKey :: MonadWidget t m => Wallet key t -> m (Event t AccountName)
 uiCreateKey w =
-  validatedInputWithButton "group__header" (checkKeyNameValidityStr w) "Enter account name" "Generate"
+  validatedInputWithButton "group__header" (checkAccountNameValidity w) "Enter account name" "Generate"
 
 
 -- | Widget listing all available keys.
@@ -129,7 +131,8 @@ uiKeyItems
   -> m mConf
 uiKeyItems aWallet = do
     let
-      keyMap = aWallet ^. wallet_keys
+      keyMap' = aWallet ^. wallet_accounts
+      keyMap = Map.fromAscList . IntMap.toAscList <$> keyMap'
       tableAttrs =
         "style" =: "table-layout: fixed; width: 100%"
         <> "class" =: "wallet table"
@@ -146,15 +149,16 @@ uiKeyItems aWallet = do
         traverse_ mkHeading $
           [ "Account Name"
           , "Public Key"
-          , ""
-          , "Private Key"
-          , ""
+          , "Chain ID"
+          , "Notes"
+          , "Balance"
           ]
         elClass "th" "table__heading wallet__add" $
           importButton
 
       el "tbody" $ do
-        evs <- listWithKey keyMap $ \name key -> uiKeyItem (name, key)
+        --evs <- uncurry (foldDyn applyAlways) =<< traverseIntMapWithKeyWithAdjust uiKeyItem mempty =<< tagOnPostBuild keyMap
+        evs <- listWithKey keyMap uiKeyItem
         pure (evs, onAdd)
 
     dyn_ $ ffor keyMap $ \keys -> when (Map.null keys) $ text "No accounts ..."
@@ -162,7 +166,7 @@ uiKeyItems aWallet = do
     pure $ mempty
       & modalCfg_setModal .~ leftmost
         [ Just (uiKeyImport aWallet) <$ onAdd
-        , Just . uiDeleteConfirmation <$> onDelKey
+        , Just . uncurry uiDeleteConfirmation <$> onDelKey
         ]
   where
     importButton =
@@ -170,62 +174,33 @@ uiKeyItems aWallet = do
         & uiButtonCfg_title .~ Just "Import existing key"
         & uiButtonCfg_class %~ (<> "wallet__add-delete-button")
 
-
 ------------------------------------------------------------------------------
 -- | Display a key as list item together with it's name.
 uiKeyItem
   :: MonadWidget t m
-  => (Text, Dynamic t (KeyPair PrivateKey))
-  -> m (Event t KeyName)
-uiKeyItem (n, k) = do
-    elClass "tr" "table__row" $ do
-      el "td" $ text n
+  => IntMap.Key
+  -> Dynamic t (SomeAccount key) -- (Text, Dynamic t (KeyPair PrivateKey))
+  -> m (Event t (IntMap.Key, AccountName))
+uiKeyItem i d = do
+  md <- maybeDyn $ someAccount Nothing Just <$> d
+  switchHold never <=< dyn $ ffor md $ \case
+    Nothing -> pure never
+    Just account -> elClass "tr" "table__row" $ do
+      el "td" $ dynText $ unAccountName . _account_name <$> account
 
-      let public = keyToText . _keyPair_publicKey <$> k
+      let public = keyToText . _keyPair_publicKey . _account_key <$> account
       elClass "td" "wallet__key wallet__key_type_public" $ dynText public
-      el "td" $
-        void $ copyButton copyBtnCfg $ current public
-
-      let private = maybe "No key" keyToText . _keyPair_privateKey <$> k
-      isShown <- keyCopyWidget "td" "wallet__key wallet__key_type_private" private
-      el "td" $ do
-        let cfg = copyBtnCfg & uiButtonCfg_disabled .~ fmap not isShown
-        void $ copyButton cfg $ current private
+      el "td" $ dynText $ Pact._chainId . _account_chainId <$> account
+      el "td" $ dynText $ _account_notes <$> account
+      -- TODO balance
+      el "td" $ text "Balance Placeholder"
 
       onDel <- elClass "td" "wallet__delete" $
         deleteButton $
           def & uiButtonCfg_title .~ Just "Delete key permanently"
               & uiButtonCfg_class %~ (<> "wallet__add-delete-button")
 
-      pure (const n <$> onDel)
-  where
-    copyBtnCfg =
-      btnCfgTertiary
-        & uiButtonCfg_class %~ (fmap (<> "button_size_tiny"))
-        & uiButtonCfg_title .~ pure (Just "Copy key to clipboard")
-
--- | Widget showing/hiding a private key.
---
---   The returned Dynamic tells whether the key is currently hidden or shown.
-keyCopyWidget
-  :: MonadWidget t m
-  => Text
-  -> Text
-  -> Dynamic t Text
-  -> m (Dynamic t Bool)
-keyCopyWidget t cls keyText = mdo
-  isShown <- foldDyn (const not) False (domEvent Click e)
-  let mkShownCls True = ""
-      mkShownCls False = " wallet__key_hidden"
-
-  (e, _) <- elDynClass t (pure cls <> fmap mkShownCls isShown) $ do
-    let
-      mkText True k = k
-      mkText False _ = "****************************"
-
-    elDynClass' "span" "key-content" $
-      dynText (mkText <$> isShown <*> keyText)
-  pure isShown
+      pure (attachWith (\a _ -> (i, _account_name a)) (current account) onDel)
 
 -- | Get the balance of an account from the network. 'Nothing' indicates _some_
 -- failure, either a missing account or connectivity failure. We have no need to

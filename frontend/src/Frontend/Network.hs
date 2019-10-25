@@ -9,6 +9,7 @@
 {-# LANGUAGE LambdaCase                 #-}
 {-# LANGUAGE MultiParamTypeClasses      #-}
 {-# LANGUAGE OverloadedStrings          #-}
+{-# LANGUAGE PatternGuards              #-}
 {-# LANGUAGE QuasiQuotes                #-}
 {-# LANGUAGE RankNTypes                 #-}
 {-# LANGUAGE RecursiveDo                #-}
@@ -915,12 +916,18 @@ buildCmd mNonce networkName meta signingKeys code dat = do
     , _cmdHash = cmdHashL
     }
 
-getSigningPairs :: Set KeyName -> KeyPairs key -> [KeyPair key]
-getSigningPairs signing = map snd . filter isForSigning . Map.assocs
+getSigningPairs :: Set AccountName -> Accounts key -> [KeyPair key]
+getSigningPairs signing = fmapMaybe isForSigning . IntMap.elems
   where
     -- isJust filter is necessary so indices are guaranteed stable even after
     -- the following `mapMaybe`:
-    isForSigning (name, (KeyPair _ priv)) = Set.member name signing && isJust priv
+    isForSigning = \case
+      SomeAccount_Account a
+        | kp <- _account_key a
+        , Just _ <- _keyPair_privateKey kp
+        , Set.member (_account_name a) signing
+        -> Just kp
+      _ -> Nothing
 
 
 -- | Build signatures for a single `cmd`.
