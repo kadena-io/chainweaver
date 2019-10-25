@@ -66,7 +66,7 @@ library
                , safe
                , servant
                , servant-client-core
-               , servant-client-jsaddle
+               , servant-jsaddle
                , servant-github
                , split
                , string-qq
@@ -76,6 +76,7 @@ library
                , transformers
                , trifecta
                , unordered-containers
+               , kadena-signing-api
 
   exposed-modules: Frontend
                  , Frontend.AppCfg
