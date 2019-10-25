@@ -16,7 +16,6 @@ import Control.Monad (unless,void)
 import Control.Monad.IO.Class
 import Data.Bool (bool)
 import Data.Maybe (isNothing, fromMaybe)
-import Data.Bool (bool)
 import Data.Bifunctor
 import Data.ByteArray (ByteArrayAccess)
 import Data.ByteString (ByteString)
