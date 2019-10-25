@@ -10,29 +10,27 @@ $kadena-orange: #F3AB3C;
   grid-template-columns: 1fr 1fr 1fr 1fr;
   grid-template-rows: 0.2fr 1.6fr;
   grid-template-areas: "back header header ." ". wrapper wrapper .";
+}
 
-  p {
-    margin: 2rem auto;
-  }
-
+.setup__checkbox {
   .checkbox {
     font-size: 20px;
-    color: #fff;
+    color: $confirm-color;
     text-align: left;
     display: inline-block;
     padding-left: 40px;
+  }
 
-    .checkbox__checkmark {
-      top: 2px;
-      height: 20px;
-      width: 20px;
-    }
-    .checkbox__checkmark_type_secondary:after {
-      top: 2px;
-      left: 6px;
-      width: 3px;
-      height: 10px;
-    }
+  .checkbox__checkmark {
+    top: 2px;
+    height: 20px;
+    width: 20px;
+  }
+  .checkbox__checkmark_type_secondary:after {
+    top: 2px;
+    left: 6px;
+    width: 3px;
+    height: 10px;
   }
 }
 
@@ -47,8 +45,8 @@ $kadena-orange: #F3AB3C;
     margin: 0 auto;
     font-size: 30px;
     position: absolute;
-    top: 9rem;
-    left: 23rem;
+    top: 8rem;
+    left: 21rem;
     background-color: $std-border-color;
     padding: 1rem;
 
@@ -131,7 +129,7 @@ $kadena-orange: #F3AB3C;
 }
 
 .setup__fullscreen {
-  .checkbox, .button {
+  .setup__checkbox, .button {
     margin: $wallet-top-btm-margin; 
     font-weight: initial;
   }
@@ -178,7 +176,7 @@ $kadena-orange: #F3AB3C;
 
 .setup__checkbox-wrapper {
   margin: 1rem;
-  .checkbox {
+  .setup__checkbox {
     color: $confirm-color;
   }
 }
@@ -250,7 +248,7 @@ $kadena-orange: #F3AB3C;
   margin-bottom: 1.5rem;
 }
 
-.setup__fullscreen .setup__message {
+.setup__password-message {
   max-height: 0;
   overflow-y: hidden;
   transition: max-height 0.3s linear;
@@ -258,9 +256,6 @@ $kadena-orange: #F3AB3C;
   &.setup__show-pw-error {
     max-height: 2rem;
   }
-}
-.setup__fullscreen .setup__message-wrapper {
-  margin: 2rem auto;
 }
 
 .setup__recovery-phrase-copy button.button {
@@ -280,7 +275,7 @@ $kadena-orange: #F3AB3C;
   }
 }
 
-.setup__fullscreen .setup__message-wrapper > .message {
+.setup__message-wrapper > .message {
   background-color: rgba(0,0,0,0.4);
   border-radius: 0.3rem;
   padding: 0.5rem;
@@ -341,7 +336,7 @@ $kadena-orange: #F3AB3C;
 .setup__recovery-use-bip39-wrapper {
   min-height: 3em;
 
-  .setup__checkbox-wrapper .checkbox {
+  .setup__checkbox-wrapper .setup__checkbox {
     color: $kadena-orange;
     float: left;
   }

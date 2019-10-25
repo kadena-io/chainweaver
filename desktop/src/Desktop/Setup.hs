@@ -9,13 +9,11 @@
 -- | Wallet setup screens
 module Desktop.Setup (runSetup, form, kadenaWalletLogo) where
 
-import Control.Lens ((<>~))
 import Control.Error (hush)
 import Control.Applicative (liftA2)
 import Control.Monad (unless,void)
 import Control.Monad.IO.Class
 import Data.Maybe (isNothing, fromMaybe)
-import Data.Bool (bool)
 import Data.Bifunctor
 import Data.ByteArray (ByteArrayAccess)
 import Data.ByteString (ByteString)
@@ -67,6 +65,15 @@ setupClass = mappend "setup__"
 
 setupDiv :: MonadWidget t m => Text -> m a -> m a
 setupDiv t = divClass (setupClass t)
+
+setupCheckbox
+  :: MonadWidget t m
+  => Bool
+  -> CheckboxConfig t
+  -> m ()
+  -> m (Checkbox t)
+setupCheckbox initialValue cfg inner = elClass "div" (setupClass "checkbox")
+  $ uiCheckbox def initialValue cfg inner
 
 mkPhraseMapFromMnemonic
   :: forall mw.
@@ -169,7 +176,7 @@ splashScreen eBack = Workflow $ setupDiv "splash" $ do
   kadenaWalletLogo
 
   (agreed, create, recover) <- setupDiv "splash-terms-buttons" $ do
-    agreed <- fmap value $ uiCheckbox def False def $ setupDiv "terms-conditions-checkbox" $ do
+    agreed <- fmap value $ setupCheckbox False def $ setupDiv "terms-conditions-checkbox" $ do
       text "I have read & agree to the "
       elAttr "a" ("href" =: "https://kadena.io/" <> "target" =: "_blank") (text "Terms of Service")
 
@@ -372,7 +379,7 @@ precreatePassphraseWarning eBack dPassword mnemonicSentence = Workflow $ do
     line "Kadena cannot access your recovery phrase if lost, please store it safely."
 
   let chkboxcls = setupClass "warning-checkbox " <> setupClass "checkbox-wrapper"
-  dUnderstand <- fmap value $ elClass "div" chkboxcls $ uiCheckbox def False def
+  dUnderstand <- fmap value $ elClass "div" chkboxcls $ setupCheckbox False def
     $ text "I understand that if I lose my recovery phrase, I will not be able to restore my wallet."
 
   eContinue <- continueButton (fmap not dUnderstand)
@@ -425,7 +432,7 @@ createNewPassphrase eBack dPassword mnemonicSentence = Workflow $ do
   _ <- copyToClipboard $
     T.unwords . Map.elems <$> current dPassphrase <@ eCopyClick 
 
-  dIsStored <- fmap value $ setupDiv "checkbox-wrapper" $ uiCheckbox def False def
+  dIsStored <- fmap value $ setupDiv "checkbox-wrapper" $ setupCheckbox False def
     $ text "I have safely stored my recovery phrase."
 
   eContinue <- continueButton (fmap not dIsStored)
@@ -504,7 +511,7 @@ setPassword dSeed = form "" $ do
     , Nothing <$ pass
     ]
 
-  let dMsgClass = lastError <&> \m -> setupClass "message " <> case m of
+  let dMsgClass = lastError <&> \m -> setupClass "password-message " <> case m of
         Nothing -> setupClass "hide-pw-error"
         Just _ -> setupClass "show-pw-error"
 
