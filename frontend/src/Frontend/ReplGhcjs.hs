@@ -28,6 +28,7 @@ module Frontend.ReplGhcjs where
 import           Control.Lens
 import           Control.Monad.Reader                   (ask)
 import           Control.Monad.State.Strict
+import Data.Aeson (ToJSON, FromJSON)
 import           Data.Default                           (Default (..))
 import qualified Data.Map                               as Map
 import           Data.String                            (IsString)
@@ -81,6 +82,7 @@ app
      , HasConfigs m
      , HasStorage m, HasStorage (Performable m)
      , HasCrypto key (Performable m)
+     , FromJSON key, ToJSON key
      )
   => AppCfg key t m -> m ()
 app appCfg = void . mfix $ \ cfg -> do

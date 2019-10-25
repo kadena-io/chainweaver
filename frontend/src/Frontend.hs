@@ -56,7 +56,7 @@ frontend = Frontend
   , _frontend_body = prerender_ loaderMarkup $ do
     (fileOpened, triggerOpen) <- openFileDialog
     let store = browserStorage
-    flip runStorageT store $ flip runCryptoT (Crypto mkSignature) $ app $ AppCfg
+    flip runStorageT store $ flip runCryptoT (Crypto mkSignature (const genKeyPair)) $ app $ AppCfg
       { _appCfg_gistEnabled = True
       , _appCfg_externalFileOpened = fileOpened
       , _appCfg_openFileDialog = liftJSM triggerOpen
@@ -64,7 +64,6 @@ frontend = Frontend
       , _appCfg_editorReadOnly = False
       , _appCfg_signingRequest = never
       , _appCfg_signingResponse = \_ -> pure ()
-      , _appCfg_makeWallet = makeWallet
       , _appCfg_displayWallet = uiWallet
       , _appCfg_sidebarExtra = pure ()
       }

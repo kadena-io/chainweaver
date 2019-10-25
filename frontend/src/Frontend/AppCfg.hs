@@ -55,8 +55,6 @@ data AppCfg key t m = AppCfg
   -- ^ Requests to sign this object
   , _appCfg_signingResponse :: Either Text SigningResponse -> JSM ()
   -- ^ Responses to signings
-  , _appCfg_makeWallet :: WalletCfg key t -> m (Wallet key t)
-  -- ^ Wallet manager
   , _appCfg_displayWallet :: forall mConf. (HasUiWalletModelCfg mConf key m t) => Wallet key t -> m mConf
   -- ^ Wallet widget
   , _appCfg_sidebarExtra :: m ()

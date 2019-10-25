@@ -25,7 +25,13 @@ instance (HasStorage m, Monad m) => HasStorage (CryptoT key m)
 
 data Crypto key = Crypto
   { _crypto_sign :: ByteString -> key -> JSM Signature
+  , _crypto_genKey :: Int -> JSM (key, PublicKey)
   }
+
+cryptoGenKey :: (MonadJSM m, HasCrypto key m) => Int -> m (key, PublicKey)
+cryptoGenKey i = do
+  crypto <- askCrypto
+  liftJSM $ _crypto_genKey crypto i
 
 cryptoSign :: (MonadJSM m, HasCrypto key m) => ByteString -> key -> m Signature
 cryptoSign bs key = do

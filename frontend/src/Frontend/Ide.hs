@@ -41,6 +41,7 @@ module Frontend.Ide
 
 ------------------------------------------------------------------------------
 import           Control.Lens
+import Data.Aeson (FromJSON, ToJSON)
 import           Data.Void                    (Void)
 import           Generics.Deriving.Monoid     (mappenddefault, memptydefault)
 import           GHC.Generics                 (Generic)
@@ -135,11 +136,12 @@ makeIde
     , HasConfigs m
     , HasStorage m, HasStorage (Performable m)
     , HasCrypto key (Performable m)
+    , FromJSON key, ToJSON key
     )
   => AppCfg key t m -> IdeCfg modal key t -> m (Ide modal key t)
 makeIde appCfg userCfg = build $ \ ~(cfg, ideL) -> do
 
-    walletL <- _appCfg_makeWallet appCfg $ _ideCfg_wallet cfg
+    walletL <- makeWallet $ _ideCfg_wallet cfg
     json <- makeJsonData walletL $ _ideCfg_jsonData cfg
     (networkCfgL, networkL) <- makeNetwork $ cfg ^. ideCfg_network
     (explrCfg, moduleExplr) <- makeModuleExplorer appCfg ideL cfg

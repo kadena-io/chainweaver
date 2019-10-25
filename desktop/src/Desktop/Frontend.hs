@@ -21,6 +21,7 @@ import Data.Bimap (Bimap)
 import Data.Bits ((.|.))
 import Data.ByteString (ByteString)
 import Data.Foldable (for_)
+import Data.IntMap (IntMap)
 import Data.Map (Map)
 import Data.Maybe (isNothing, fromMaybe, catMaybes)
 import Data.Set (Set)
@@ -36,12 +37,16 @@ import qualified Data.Bimap as Bimap
 import qualified Data.ByteString as BS
 import qualified Data.ByteString.Base16 as B16
 import qualified Data.ByteString.Lazy as LBS
+import qualified Data.IntMap as IntMap
 import qualified Data.Map as M
 import qualified Data.Set as S
 import qualified Data.Text as T
 import qualified Data.Text.Encoding as T
 import qualified Data.Text.Encoding.Error as T
 import qualified Data.Text.IO as T
+import qualified Pact.Types.ChainId as Pact
+import qualified Pact.Types.Term as Pact
+import qualified Pact.Types.Type as Pact
 import qualified System.Directory as Directory
 import qualified System.FilePath as FilePath
 import qualified Text.RawString.QQ as QQ
@@ -50,10 +55,10 @@ import Common.Api (getConfigRoute)
 import Common.Route
 import Frontend.AppCfg
 import Frontend.Crypto.Class
+import Frontend.Crypto.Ed25519
 import Frontend.ModuleExplorer.Impl (loadEditorFromLocalStorage)
 import Frontend.Storage
 import Frontend.UI.Button
-import Frontend.UI.Icon
 import Frontend.UI.Widgets
 import Obelisk.Configs
 import Obelisk.Generated.Static
@@ -62,6 +67,7 @@ import Obelisk.Route
 import Obelisk.Route.Frontend
 import qualified Frontend
 import qualified Frontend.ReplGhcjs
+import qualified Frontend.Wallet as Wallet
 
 import Desktop.Orphans ()
 import Desktop.Setup
@@ -96,10 +102,16 @@ fileStorage dir = Storage
     where path :: Show a => a -> FilePath
           path k = dir </> FilePath.makeValid (show k)
 
-bipCrypto :: Text -> Crypto Crypto.XPrv
-bipCrypto pass = Crypto
+bipCrypto :: Crypto.XPrv -> Text -> Crypto Crypto.XPrv
+bipCrypto root pass = Crypto
   { _crypto_sign = \bs k -> pure $ Newtype.pack $ Crypto.unXSignature $ Crypto.sign (T.encodeUtf8 pass) k bs
+  , _crypto_genKey = \i -> do
+    let xprv = Crypto.deriveXPrv scheme (T.encodeUtf8 pass) root (mkHardened $ fromIntegral i)
+    pure (xprv, unsafePublicKey $ B16.encode $ Crypto.xpubPublicKey $ Crypto.toXPub root)
   }
+  where
+    scheme = Crypto.DerivationScheme2
+    mkHardened = (0x80000000 .|.)
 
 -- | This is for development
 -- > ob run --import desktop:Desktop.Frontend --frontend Desktop.Frontend.desktop
@@ -136,7 +148,7 @@ desktop = Frontend
                 restore <- uiButton def $ text "Restore"
                 let isValid = attachWith (\p _ -> p <$ guard (testKeyPassword xprv p)) (current $ value pass) e
                 pure (restore, isValid)
-            Just pass -> flip runCryptoT (bipCrypto pass) $ do
+            Just pass -> flip runCryptoT (bipCrypto xprv pass) $ do
               (fileOpened, triggerOpen) <- Frontend.openFileDialog
               (logout, triggerLogout) <- newTriggerEvent
               let appCfg = AppCfg
@@ -147,7 +159,6 @@ desktop = Frontend
                     , _appCfg_editorReadOnly = False
                     , _appCfg_signingRequest = never
                     , _appCfg_signingResponse = \_ -> pure ()
-                    , _appCfg_makeWallet = \walletCfg -> pure mempty
                     , _appCfg_displayWallet = \_ -> text "Wallet" >> pure mempty
                     , _appCfg_sidebarExtra = do
                       (e, _) <- elAttr' "span" ("class" =: "link") $ do

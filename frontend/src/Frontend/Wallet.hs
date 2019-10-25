@@ -7,6 +7,7 @@
 {-# LANGUAGE MultiParamTypeClasses  #-}
 {-# LANGUAGE OverloadedStrings      #-}
 {-# LANGUAGE RankNTypes             #-}
+{-# LANGUAGE RecursiveDo #-}
 {-# LANGUAGE ScopedTypeVariables    #-}
 {-# LANGUAGE TemplateHaskell        #-}
 {-# LANGUAGE TypeFamilies           #-}
@@ -60,6 +61,7 @@ import           Reflex
 import           Pact.Types.ChainId
 import qualified Pact.Types.Term             as Pact
 import qualified Pact.Types.Type             as Pact
+import Frontend.Crypto.Class
 
 import           Common.Orphans              ()
 import           Frontend.Crypto.Ed25519
@@ -181,25 +183,31 @@ emptyWallet :: Reflex t => Wallet key t
 emptyWallet = Wallet mempty
 
 snocIntMap :: a -> IntMap a -> IntMap a
-snocIntMap a m = IntMap.insert (maybe 0 (succ . fst) $ IntMap.lookupMax m) a m
+snocIntMap a m = IntMap.insert (nextKey m) a m
+
+nextKey :: IntMap a -> Int
+nextKey = maybe 0 (succ . fst) . IntMap.lookupMax
 
 -- | Make a functional wallet that can contain actual keys.
 makeWallet
-  :: forall t m.
+  :: forall key t m.
     ( MonadHold t m, PerformEvent t m
     , MonadFix m, MonadJSM (Performable m)
     , MonadJSM m
     , HasStorage (Performable m), HasStorage m
+    , HasCrypto key (Performable m)
+    , FromJSON key, ToJSON key
     )
-  => WalletCfg PrivateKey t
-  -> m (Wallet PrivateKey t)
+  => WalletCfg key t
+  -> m (Wallet key t)
 makeWallet conf = do
-    initialKeys <- fromMaybe IntMap.empty <$> loadKeys
-    let
-      onGenKey = _walletCfg_genKey conf
-      onDelKey = _walletCfg_delKey conf
+  initialKeys <- fromMaybe IntMap.empty <$> loadKeys
+  let
+    onGenKey = _walletCfg_genKey conf
+    onDelKey = _walletCfg_delKey conf
 
-    onNewKey <- performEvent $ createKey <$> onGenKey
+  rec
+    onNewKey <- performEvent $ attachWith (createKey . nextKey) (current keys) onGenKey
 
     keys <- foldDyn id initialKeys $ leftmost
       [ ffor onNewKey $ snocIntMap . SomeAccount_Account
@@ -207,15 +215,15 @@ makeWallet conf = do
       , ffor onDelKey $ \i -> IntMap.insert i SomeAccount_Deleted
       ]
 
-    performEvent_ $ storeKeys <$> updated keys
+  performEvent_ $ storeKeys <$> updated keys
 
-    pure $ Wallet
-      { _wallet_accounts = keys
-      }
+  pure $ Wallet
+    { _wallet_accounts = keys
+    }
   where
-    createKey :: (AccountName, ChainId, Text) -> Performable m (Account PrivateKey)
-    createKey (n, c, t) = do
-      (privKey, pubKey) <- genKeyPair
+    createKey :: Int -> (AccountName, ChainId, Text) -> Performable m (Account key)
+    createKey i (n, c, t) = do
+      (privKey, pubKey) <- cryptoGenKey i
       pure $ Account
         { _account_name = n
         , _account_key = KeyPair pubKey (Just privKey)
