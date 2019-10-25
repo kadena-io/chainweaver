@@ -145,7 +145,7 @@ desktop = Frontend
                     , _appCfg_signingRequest = never
                     , _appCfg_signingResponse = \_ -> pure ()
                     , _appCfg_sidebarExtra = do
-                      (e, _) <- elAttr' "span" ("class" =: "link") $ do
+                      (e, _) <- elAttr' "span" ("class" =: "sidebar__link") $ do
                         elAttr "img" ("class" =: "normal" <> "src" =: static @"img/menu/logout.png") blank
                       performEvent_ $ liftIO . triggerLogout <$> domEvent Click e
                     }
@@ -167,18 +167,6 @@ desktopCss = [QQ.r|
 .fullscreen .group { color: #222; margin: 2rem 0; }
 .fullscreen .group.dark { background-color: rgba(0,0,0,0.3); }
 .fullscreen textarea.wallet-recovery-phrase { display: block; width: 30rem; height: 6rem; font-size: 18px; margin: 2rem auto; }
-body { display: flex; flex-direction: row; }
-.page { display: none; flex-grow: 1; margin: 2rem; }
-.page h1 { font-size: 1.5rem; margin-top: 2rem; margin-bottom: 1rem; color: rgb(30,40,50); }
-.page h1:first-child { margin-top: 0; }
-.page.visible { display: block; }
-.page.contracts { margin: 0; flex-direction: column; }
-.page.contracts.visible { display: flex; }
-.page.wallet .key { font-family: monospace; color: #444; font-size: 16px; }
-.page.wallet .key.root { padding: 1rem; background-color: white; border-radius: 4px; display: inline-block; }
-.page.wallet table { margin: 1rem 0; border-spacing: 1rem; }
-.page.wallet table th { text-align: left; }
-.page.wallet table .numeric { text-align: right; }
 .button_hidden { display: none; }
 .group.group_buttons { text-align: center; }
 .group button { margin: 0.2rem; }

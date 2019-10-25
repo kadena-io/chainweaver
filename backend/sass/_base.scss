@@ -42,25 +42,3 @@ code {
   font-family: WorkSans;
   font-size: 13px;
 }
-
-.page {
-  flex-grow: 1;
-}
-
-.page__content {
-  display: none;
-  margin: 2rem;
-}
-
-.page__content.visible {
-  display: block;
-}
-
-.page__content.contracts {
-  margin: 0;
-  flex-direction: column;
-}
-
-.page__content.contracts.visible {
-  display: flex;
-}

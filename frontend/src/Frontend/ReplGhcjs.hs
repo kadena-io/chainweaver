@@ -122,10 +122,10 @@ walletSidebar
   :: (DomBuilder t m, PostBuild t m, Routed t (R FrontendRoute) m, SetRoute t (R FrontendRoute) m, RouteToUrl (R FrontendRoute) m)
   => AppCfg key t m -> m ()
 walletSidebar appCfg = elAttr "div" ("class" =: "sidebar") $ do
-  divClass "logo" blank -- TODO missing logo image
+  divClass "sidebar__logo" blank -- TODO missing logo image
   route <- demux <$> askRoute
   let sidebarLink r = routeLink r $ do
-        let mkAttrs sel = "class" =: ("link" <> if sel then " selected" else "")
+        let mkAttrs sel = "class" =: ("sidebar__link" <> if sel then " selected" else "")
         elDynAttr "span" (mkAttrs <$> demuxed route r) $ do
           let (normal, highlighted) = routeIcon r
           elAttr "img" ("class" =: "highlighted" <> "src" =: highlighted) blank
@@ -136,7 +136,6 @@ walletSidebar appCfg = elAttr "div" ("class" =: "sidebar") $ do
   sidebarLink $ FrontendRoute_Resources :/ ()
   sidebarLink $ FrontendRoute_Settings :/ ()
   _appCfg_sidebarExtra appCfg
-  -- TODO logout link
 
 -- | Get the routes to the icon assets for each route
 routeIcon :: R FrontendRoute -> (Text, Text)
