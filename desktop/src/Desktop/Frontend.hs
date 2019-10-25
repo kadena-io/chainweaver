@@ -16,10 +16,8 @@ import Control.Exception (try, catch)
 import Control.Lens ((?~))
 import Control.Monad (when, (<=<), guard, void)
 import Control.Monad.IO.Class
-import Data.Bimap (Bimap)
 import Data.Bits ((.|.))
 import Data.ByteString (ByteString)
-import Data.Map (Map)
 import Data.Maybe (isNothing)
 import Data.Text (Text)
 import Language.Javascript.JSaddle (liftJSM)
@@ -27,7 +25,6 @@ import Reflex.Dom.Core
 import System.FilePath ((</>))
 import qualified Cardano.Crypto.Wallet as Crypto
 import qualified Control.Newtype.Generics as Newtype
-import qualified Crypto.PubKey.Ed25519 as Ed25519
 import qualified Data.Aeson as Aeson
 import qualified Data.ByteString as BS
 import qualified Data.ByteString.Lazy as LBS
@@ -56,11 +53,9 @@ import qualified Frontend.ReplGhcjs
 import Desktop.Orphans ()
 import Desktop.Setup
 
-data Wallet a where
-  Wallet_RootKey :: Wallet Crypto.XPrv
-  Wallet_ChildKeys :: Wallet (Map Crypto.DerivationIndex Crypto.XPrv)
-  Wallet_NamedKeys :: Wallet (Bimap Text Ed25519.PublicKey)
-deriving instance Show (Wallet a)
+data BIPStorage a where
+  BIPStorage_RootKey :: BIPStorage Crypto.XPrv
+deriving instance Show (BIPStorage a)
 
 -- | Store items as files in the given directory, using the key as the file name
 fileStorage :: FilePath -> Storage
@@ -109,13 +104,13 @@ desktop = Frontend
       el "style" $ text desktopCss
       void $ Frontend.newHead $ \r -> base <> renderBackendRoute backendEncoder r
   , _frontend_body = prerender_ blank $ flip runStorageT browserStorage $ do
-    mRoot <- getItemStorage localStorage Wallet_RootKey
+    mRoot <- getItemStorage localStorage BIPStorage_RootKey
     rec
       root <- holdDyn mRoot upd
       upd <- switchHold never <=< dyn $ ffor root $ \case
         Nothing -> do
           xprv <- runSetup
-          saved <- performEvent $ ffor xprv $ \x -> setItemStorage localStorage Wallet_RootKey x >> pure x
+          saved <- performEvent $ ffor xprv $ \x -> setItemStorage localStorage BIPStorage_RootKey x >> pure x
           pure $ Just <$> saved
         Just xprv -> mdo
           mPassword <- holdUniqDyn =<< holdDyn Nothing passEvts
