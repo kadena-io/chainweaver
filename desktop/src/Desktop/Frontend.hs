@@ -118,16 +118,7 @@ desktop = Frontend
           passEvts <- switchHold never passEvts'
           let (restore', passEvts') = splitE result
           result <- dyn $ ffor mPassword $ \case
-            Nothing -> do
-              el "h1" $ text "Wallet locked"
-              kadenaWalletLogo
-              form "" $ do
-                pass <- uiInputElement $ def & initialAttributes .~ "type" =: "password" -- TODO padlock icon
-                e <- confirmButton (def & uiButtonCfg_type ?~ "submit") "Unlock"
-                help <- uiButton def $ text "Help" -- TODO where does this go?
-                restore <- uiButton def $ text "Restore" -- TODO
-                let isValid = attachWith (\p _ -> p <$ guard (testKeyPassword xprv p)) (current $ value pass) e
-                pure (restore, isValid)
+            Nothing -> lockScreen xprv
             Just pass -> flip runCryptoT (bipCrypto xprv pass) $ do
               (fileOpened, triggerOpen) <- Frontend.openFileDialog
               (logout, triggerLogout) <- newTriggerEvent
@@ -150,6 +141,18 @@ desktop = Frontend
           pure $ Nothing <$ restore
     pure ()
   }
+
+lockScreen :: (DomBuilder t m, PostBuild t m) => Crypto.XPrv -> m (Event t (), Event t (Maybe Text))
+lockScreen xprv = divClass "fullscreen" $ divClass "wrapper" $ divClass "wallet__splash" $ do
+  elAttr "img" ("src" =: static @"img/Wallet_Graphic_1.png" <> "class" =: "wallet__splash-bg") blank
+  kadenaWalletLogo
+  divClass "splash-terms-buttons" $ form "" $ do
+    pass <- uiInputElement $ def & initialAttributes .~ "type" =: "password" -- TODO padlock icon
+    e <- confirmButton (def & uiButtonCfg_type ?~ "submit") "Unlock"
+    help <- uiButton def $ text "Help" -- TODO where does this go?
+    restore <- uiButton def $ text "Restore" -- TODO
+    let isValid = attachWith (\p _ -> p <$ guard (testKeyPassword xprv p)) (current $ value pass) e
+    pure (restore, isValid)
 
 desktopCss :: Text
 desktopCss = [QQ.r|
