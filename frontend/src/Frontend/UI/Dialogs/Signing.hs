@@ -23,19 +23,20 @@ module Frontend.UI.Dialogs.Signing
   ( uiSigning
   ) where
 
+import Control.Monad ((<=<))
+import Kadena.SigningApi
 import Reflex
 import Reflex.Dom
 
-import Control.Monad ((<=<))
-import Control.Applicative (liftA2)
 import Frontend.AppCfg
+import Frontend.Crypto.Ed25519 (fromPactPublicKey)
 import Frontend.Foundation hiding (Arg)
+import Frontend.JsonData
 import Frontend.Network
 import Frontend.UI.DeploymentSettings
 import Frontend.UI.Dialogs.DeployConfirmation (DeployConfirmationConfig (..), fullDeployFlowWithSubmit)
 import Frontend.UI.Modal.Impl
 import Frontend.Wallet
-import Frontend.JsonData
 
 type HasUISigningModelCfg mConf t =
   ( Monoid mConf, Flattenable mConf t, HasWalletCfg mConf t
@@ -73,15 +74,23 @@ uiSigning appCfg ideL signingRequest onCloseExternal = do
           , _deploymentSettingsConfig_nonce = _signingRequest_nonce signingRequest
           , _deploymentSettingsConfig_ttl = _signingRequest_ttl signingRequest
           , _deploymentSettingsConfig_gasLimit = _signingRequest_gasLimit signingRequest
+          , _deploymentSettingsConfig_caps = Just $ _signingRequest_caps signingRequest
+          , _deploymentSettingsConfig_extraSigners = fromPactPublicKey <$> fromMaybe [] (_signingRequest_extraSigners signingRequest)
           }
         pure (mConf, result)
 
-  fullDeployFlowWithSubmit
+
+  (conf, done) <- fullDeployFlowWithSubmit
     (DeployConfirmationConfig "Signing Request" "Signing Preview" "Confirm Signature" disregardSuccessStatus)
     ideL
     signSubmit
     runner
     onCloseExternal
+
+  finished <- performEvent . fmap (liftJSM . _appCfg_signingResponse appCfg) <=< headE $
+    maybe (Left "Cancelled") Right <$> leftmost [done, Nothing <$ onCloseExternal]
+
+  pure (conf, finished)
   where
     -- The confirm process should proceed regardless of the response from the network, the
     -- failure of this is the responsibility of the dApp. This ensures the confirm button
@@ -93,11 +102,7 @@ uiSigning appCfg ideL signingRequest onCloseExternal = do
             { _signingResponse_chainId = _deploymentSettingsResult_chainId result
             , _signingResponse_body = _deploymentSettingsResult_command result
             }
-
       -- This is the end of our work flow, so return our done event on the completion of the signing.
       -- Should some feedback be added to this to ensure that people don't spam the button?
-      performEvent . fmap (fmap Left . liftJSM . _appCfg_signingResponse appCfg) <=< headE $ leftmost
-        [ pure sign <$ next
-        , Left "Cancelled" <$ onCloseExternal
-        ]
+      pure $ Left sign <$ next
 

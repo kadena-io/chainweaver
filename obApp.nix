@@ -21,8 +21,9 @@ in
     __closureCompilerOptimizationLevel = "SIMPLE";
 
     shellToolOverrides = ghc: super: {
-         z3 = pkgs.z3;
-       };
+      z3 = pkgs.z3;
+      ghcid = pkgs.haskell.lib.justStaticExecutables super.ghcid; #https://github.com/reflex-frp/reflex-platform/pull/548
+     };
    packages =
      let
        servantSrc = hackGet ./deps/servant;
@@ -31,7 +32,7 @@ in
           pact = hackGet ./deps/pact;
           # servant-client-core = servantSrc + "/servant-client-core";
           # servant = servantSrc + "/servant";
-          servant-client-jsaddle = servantSrc + "/servant-client-jsaddle";
+          servant-jsaddle = servantSrc + "/servant-jsaddle";
           reflex-dom-ace = hackGet ./deps/reflex-dom-ace;
           reflex-dom-contrib = hackGet ./deps/reflex-dom-contrib;
           servant-github = hackGet ./deps/servant-github;
@@ -41,6 +42,7 @@ in
           # Needed for obelisk-oauth currently (ghcjs support mostly):
           entropy = hackGet ./deps/entropy;
           cardano-crypto = hackGet ./deps/cardano-crypto;
+          kadena-signing-api = hackGet ./deps/signing-api + /kadena-signing-api;
           desktop = ./desktop;
           mac = builtins.filterSource (path: type: !(builtins.elem (baseNameOf path) ["static"])) ./mac;
       };
@@ -71,14 +73,7 @@ in
         wai-app-static = haskellLib.dontCheck super.wai-app-static;
         servant-client = haskellLib.dontCheck super.servant-client;
 
-        # hw-hspec-hedgehog doesn't work
-        # pact = haskellLib.dontCheck super.pact;
-
         unliftio = haskellLib.dontCheck super.unliftio;
-        # prettyprinter-ansi-terminal = haskellLib.dontCheck (haskellLib.dontHaddock super.prettyprinter-ansi-terminal);
-        # prettyprinter-convert-ansi-wl-pprint = haskellLib.dontCheck (haskellLib.dontHaddock super.prettyprinter-convert-ansi-wl-pprint);
-
-        # servant-github = haskellLib.dontCheck super.servant-github;
       };
       common-overlay = self: super:
         let
@@ -89,23 +84,15 @@ in
                 inherit sha256;
               }) {};
         in {
-
-        # nixpkgs has a bad hash for this
-        # https://github.com/NixOS/nixpkgs/issues/65400
-        servant = callHackageDirect {
-          pkg = "servant";
-          ver = "0.15";
-          sha256 = "1d9bm5wgpk2czx240d7fd6k0mhhj52406gmj7vwpfcwrm7fg0w5v";
-        };
-
         ghc-lib-parser = haskellLib.overrideCabal super.ghc-lib-parser { postInstall = "sed -i 's/exposed: True/exposed: False/' $out/lib/ghc*/package.conf.d/*.conf"; };
-        pact = haskellLib.dontCheck super.pact; # TODO don't do this
+        reflex-dom-core = haskellLib.dontCheck super.reflex-dom-core; # webdriver fails to build
         modern-uri = haskellLib.dontCheck super.modern-uri;
-        servant-client-jsaddle = haskellLib.dontCheck (haskellLib.doJailbreak super.servant-client-jsaddle);
+        servant-jsaddle = haskellLib.dontCheck (haskellLib.doJailbreak super.servant-jsaddle);
         obelisk-oauth-frontend = haskellLib.doJailbreak super.obelisk-oauth-frontend;
+        pact = haskellLib.dontCheck super.pact; # tests can timeout...
       };
     in self: super: lib.foldr lib.composeExtensions (_: _: {}) [
-      (import (hackGet ./deps/pact + "/overrides.nix") pkgs)
+      (import (hackGet ./deps/pact + "/overrides.nix") pkgs hackGet)
       desktop-overlay
       common-overlay
       (optionalExtension (super.ghc.isGhcjs or false) guard-ghcjs-overlay)
