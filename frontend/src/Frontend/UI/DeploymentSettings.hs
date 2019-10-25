@@ -109,9 +109,6 @@ data DeploymentSettingsConfig t m model a = DeploymentSettingsConfig
   , _deploymentSettingsConfig_data        :: Maybe Aeson.Object
     -- ^ Data selection. If 'Nothing', uses the users setting (and allows them
     -- to alter it). Otherwise, it remains fixed.
-  , _deploymentSettingsConfig_defEndpoint :: Maybe Endpoint
-    -- ^ What `Endpoint` to select by default. If 'Nothing', the endpoint UI is
-    -- omitted entirely.
   , _deploymentSettingsConfig_code :: Dynamic t Text
     -- ^ Code that is being deployed
   , _deploymentSettingsConfig_nonce :: Maybe Text
@@ -163,7 +160,6 @@ data DeploymentSettingsResult = DeploymentSettingsResult
   { _deploymentSettingsResult_gasPrice :: GasPrice
   , _deploymentSettingsResult_signingKeys :: [KeyPair]
   , _deploymentSettingsResult_sender :: AccountName
-  , _deploymentSettingsResult_endpoint :: Maybe Endpoint
   , _deploymentSettingsResult_chainId :: ChainId
   , _deploymentSettingsResult_code :: Text
   , _deploymentSettingsResult_command :: Pact.Command Text
@@ -203,10 +199,9 @@ uiDeploymentSettings m settings = mdo
 
       mRes <- traverse (uncurry $ tabPane mempty curSelection) mUserTabCfg
 
-      (cfg, cChainId, cEndpoint, ttl, gasLimit) <- tabPane mempty curSelection DeploymentSettingsView_Cfg $
+      (cfg, cChainId, ttl, gasLimit) <- tabPane mempty curSelection DeploymentSettingsView_Cfg $
         uiCfg code m
           (_deploymentSettingsConfig_chainId settings $ m)
-          (_deploymentSettingsConfig_defEndpoint settings)
           (_deploymentSettingsConfig_ttl settings)
           (_deploymentSettingsConfig_gasLimit settings)
 
@@ -232,7 +227,6 @@ uiDeploymentSettings m settings = mdo
                   , _pmTTL = ttl'
                   }
             code' <- lift code
-            mEndpoint <- lift $ sequence cEndpoint
             keys <- lift $ m ^. wallet_keys
             let toPublicKey (AccountName acc, cs) = do
                   KeyPair pk _ <- Map.lookup acc keys
@@ -249,7 +243,6 @@ uiDeploymentSettings m settings = mdo
                 { _deploymentSettingsResult_gasPrice = _pmGasPrice publicMeta
                 , _deploymentSettingsResult_signingKeys = signingPairs
                 , _deploymentSettingsResult_sender = sender
-                , _deploymentSettingsResult_endpoint = mEndpoint
                 , _deploymentSettingsResult_chainId = chainId
                 , _deploymentSettingsResult_command = cmd
                 , _deploymentSettingsResult_code = code'
@@ -330,16 +323,14 @@ uiCfg
   => Dynamic t Text
   -> model
   -> m (Dynamic t (f Pact.ChainId))
-  -> Maybe Endpoint
   -> Maybe TTLSeconds
   -> Maybe GasLimit
   -> m ( mConf
        , Dynamic t (f Pact.ChainId)
-       , Maybe (Dynamic t Endpoint)
        , Dynamic t TTLSeconds
        , Dynamic t GasLimit
        )
-uiCfg code m wChainId ep mTTL mGasLimit = do
+uiCfg code m wChainId mTTL mGasLimit = do
   -- General deployment configuration
   let mkGeneralSettings = do
         divClass "title" $ text "Input"
@@ -350,14 +341,14 @@ uiCfg code m wChainId ep mTTL mGasLimit = do
             & initialAttributes .~ "disabled" =: "" <> "style" =: "width: 100%" <> "class" =: renderClass cls
           pure ()
         divClass "title" $ text "Destination"
-        (cId, endpoint) <- elKlass "div" ("group segment") $ do
-          endpoint <- uiEndpoint m ep
+        cId <- elKlass "div" ("group segment") $ do
+          transactionDisplayNetwork m
           chain <- wChainId
-          pure (chain, endpoint)
+          pure chain
         divClass "title" $ text "Settings"
         (cfg, ttl, gasLimit) <- elKlass "div" ("group segment") $
           uiMetaData m mTTL mGasLimit
-        pure (cfg, cId, endpoint, ttl, gasLimit)
+        pure (cfg, cId, ttl, gasLimit)
 
   rec
     let mkAccordionControlDyn initActive = foldDyn (const not) initActive
@@ -396,25 +387,6 @@ transactionDisplayNetwork m = void $ flip mkLabeledClsInput "Network" $ \_ -> do
     netStat <- queryNetworkStatus (m ^. network_networks) (m ^. network_selectedNetwork)
     uiNetworkStatus "" netStat
     dynText $ textNetworkName <$> m ^. network_selectedNetwork
-
--- | UI for asking the user about endpoint (`Endpoint` & `ChainId`) for deployment.
---
---   If a `ChainId` is passed in, the user will not be asked for one.
---
---   The given `EndPoint` will be the default in the dropdown.
-uiEndpoint
-  :: (MonadWidget t m, HasNetwork model t)
-  => model
-  -> Maybe Endpoint
-  -> m (Maybe (Dynamic t Endpoint))
-uiEndpoint m ep = do
-    transactionDisplayNetwork m
-    for ep $ \e -> do
-      de <- mkLabeledClsInput (uiEndpointSelection e) "Access"
-      divClass "detail" $ dynText $ ffor de $ \case
-        Endpoint_Local -> "Read some data from the blockchain. No gas fees required."
-        Endpoint_Send -> "Send a transaction to the blockchain. You'll need to pay gas fees for the transaction to be included."
-      pure de
 
 -- | ui for asking the user about meta data needed for the transaction.
 uiMetaData
@@ -569,19 +541,8 @@ uiSenderDropdown uCfg m chainId = do
            in mkTextAccounts <$> chainId <*> m ^. wallet_accountGuards
   choice <- dropdown Nothing textAccounts $ uCfg
     & dropdownConfig_setValue .~ (if AppCfg.isChainweaverAlpha then never else Nothing <$ updated chainId)
-    & dropdownConfig_attributes <>~ pure ("class" =: "labeled-input__input select select_mandatory_missing select_type_primary")
+    & dropdownConfig_attributes <>~ pure ("class" =: "labeled-input__input select select_mandatory_missing")
   pure $ value choice
-
--- | Widget (dropdown) for letting the user choose between /send and /local endpoint.
---
-uiEndpointSelection :: MonadWidget t m => Endpoint -> CssClass -> m (Dynamic t Endpoint)
-uiEndpointSelection initial cls = divClass (renderClass $ "button_group" <> cls) $ do
-  rec
-    selectedEndpoint <- holdDyn initial . leftmost <=< for [Endpoint_Local, Endpoint_Send] $ \endpoint -> do
-      let mkClass = ffor selectedEndpoint $ \e -> if endpoint == e then "chosen" else ""
-      e <- uiButtonDyn (def & uiButtonCfg_class .~ mkClass) $ text $ displayEndpoint endpoint
-      pure $ endpoint <$ e
-  pure selectedEndpoint
 
 uiChainSelection
   :: MonadWidget t m
@@ -594,7 +555,7 @@ uiChainSelection info cls = mdo
       mkPlaceHolder cChains = if null cChains then "No chains available" else "Select chain"
       mkOptions cs = Map.fromList $ (Nothing, mkPlaceHolder cs) : map (first Just) cs
 
-      staticCls = cls <> "select select_type_primary"
+      staticCls = cls <> "select"
       mkDynCls v = if isNothing v then "select_mandatory_missing" else mempty
       allCls = renderClass <$> fmap mkDynCls d <> pure staticCls
 
@@ -622,12 +583,12 @@ capabilityInputRow
   -> m (Dynamic t (Maybe AccountName))
   -> m (CapabilityInputRow t)
 capabilityInputRow mCap mkSender = elClass "tr" "table__row" $ do
-  (empty, parsed) <- el "td" $ mdo
+  (empty, parsed) <- elClass "td" "table__cell_padded" $ mdo
     cap <- uiInputElement $ def
       & inputElementConfig_initialValue .~ foldMap (renderCompactText . _dappCap_cap) mCap
       & initialAttributes .~
         "placeholder" =: "(module.capability arg1 arg2)" <>
-        "class" =: "input_width_full" <>
+        "class" =: (maybe id (const (<> " input_transparent")) mCap) "input_width_full" <>
         (maybe mempty (const $ "disabled" =: "true") mCap)
       & modifyAttributes .~ ffor errors (\e -> "style" =: ("background-color: #fdd" <$ guard e))
     empty <- holdUniqDyn $ T.null <$> value cap
@@ -638,7 +599,7 @@ capabilityInputRow mCap mkSender = elClass "tr" "table__row" $ do
           , False <$ _inputElement_input cap
           ]
     pure (empty, parsed)
-  account <- el "td" mkSender
+  account <- elClass "td" "table__cell_padded" mkSender
 
   pure $ CapabilityInputRow
     { _capabilityInputRow_empty = empty
@@ -714,7 +675,7 @@ uiSenderCapabilities m cid mCaps mkSender = do
   divClass "title" $ text "Roles"
 
   -- Capabilities
-  divClass "group" $ elAttr "table" ("class" =: "table" <> "style" =: "width: 100%") $ case mCaps of
+  divClass "group" $ elAttr "table" ("class" =: "table" <> "style" =: "width: 100%; table-layout: fixed;") $ case mCaps of
     Nothing -> el "tbody" $ do
       gas <- capabilityInputRow (Just defaultGASCapability) mkSender
       rest <- capabilityInputRows (uiSenderDropdown def m cid)
