@@ -176,9 +176,10 @@ $kadena-orange: #F3AB3C;
 
 .setup__checkbox-wrapper {
   margin: 1rem;
-  .setup__checkbox {
-    color: $confirm-color;
-  }
+}
+
+.setup__checkbox {
+  color: $confirm-color;
 }
 
 .setup__terms-conditions-checkbox {
@@ -275,13 +276,6 @@ $kadena-orange: #F3AB3C;
   }
 }
 
-.setup__message-wrapper > .message {
-  background-color: rgba(0,0,0,0.4);
-  border-radius: 0.3rem;
-  padding: 0.5rem;
-  display: inline-block;
-}
-
 .setup__hide {
   display: none;
 }
@@ -331,25 +325,6 @@ $kadena-orange: #F3AB3C;
 
 .setup__recover-enter-password {
   min-height: 20em;
-}
-
-.setup__recovery-use-bip39-wrapper {
-  min-height: 3em;
-
-  .setup__checkbox-wrapper .setup__checkbox {
-    color: $kadena-orange;
-    float: left;
-  }
-
-  .passphrase {
-    display: block;
-    margin: 1rem auto;
-    width: 20rem;
-
-    &.hidden {
-      display: none;
-    }
-  }
 }
 
 .setup__recovery-text {
