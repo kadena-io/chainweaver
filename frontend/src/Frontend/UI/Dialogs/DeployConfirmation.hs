@@ -93,13 +93,13 @@ instance Reflex t => Default (DeployConfirmationConfig t) where
 -- We may not need the Status part of the workflow, but we want to be able to reuse as
 -- much of this as we can so we have this function type that will give us the event of the
 -- next stage or the completion of the workflow.
-type DeployPostPreview key t m modelCfg =
+type DeployPostPreview key t m modelCfg a =
      ChainId
   -> DeploymentSettingsResult key
   -> Event t ()
   -> Event t ()
   -> Behavior t [Either Text NodeInfo]
-  -> m (Event t (Either () (Workflow t m (Text, (Event t (), modelCfg)))))
+  -> m (Event t (Either a (Workflow t m (Text, (Event t a, modelCfg)))))
 
 -- | Confirmation dialog for deployments.
 --
@@ -126,6 +126,8 @@ uiDeployConfirmation code model = fullDeployFlow def model $ do
     , _deploymentSettingsConfig_ttl = Nothing
     , _deploymentSettingsConfig_nonce = Nothing
     , _deploymentSettingsConfig_gasLimit = Nothing
+    , _deploymentSettingsConfig_caps = Nothing
+    , _deploymentSettingsConfig_extraSigners = []
     }
   pure (settingsCfg, result)
 
@@ -142,14 +144,14 @@ fullDeployFlow
   -> m (modelCfg, Event t (DeploymentSettingsResult key))
   -> Event t () -> m (modelCfg, Event t ())
 fullDeployFlow deployCfg model runner onClose =
-  fullDeployFlowWithSubmit deployCfg model showSubmitModal runner onClose
+  (fmap . fmap) (fromMaybe ()) <$> fullDeployFlowWithSubmit deployCfg model showSubmitModal runner onClose
   where
     showSubmitModal chain result done _next nodes =
       pure $ Right . deploySubmit chain result <$> nodes <@ done
 
 -- | Workflow taking the user through Config -> Preview -> Status
 fullDeployFlowWithSubmit
-  :: forall key t m model modelCfg.
+  :: forall key t m model modelCfg a.
      ( MonadWidget t m, Monoid modelCfg, Flattenable modelCfg t
      , HasNetwork model t
      , HasWallet model key t
@@ -157,9 +159,9 @@ fullDeployFlowWithSubmit
      )
   => DeployConfirmationConfig t
   -> model
-  -> DeployPostPreview key t m modelCfg
+  -> DeployPostPreview key t m modelCfg a
   -> m (modelCfg, Event t (DeploymentSettingsResult key))
-  -> Event t () -> m (modelCfg, Event t ())
+  -> Event t () -> m (modelCfg, Event t (Maybe a))
 fullDeployFlowWithSubmit dcfg model onPreviewConfirm runner _onClose = do
   rec
     onClose <- modalHeader $ dynText title
@@ -167,7 +169,7 @@ fullDeployFlowWithSubmit dcfg model onPreviewConfirm runner _onClose = do
     let (title, (done', conf')) = fmap splitDynPure $ splitDynPure result
   conf <- flatten =<< tagOnPostBuild conf'
   let done = switch $ current done'
-  pure (conf, onClose <> done)
+  pure (conf, leftmost [Just <$> done, Nothing <$ onClose])
   where
     deployConfig = Workflow $ do
       (settingsCfg, result) <- runner
@@ -182,7 +184,7 @@ fullDeployFlowWithSubmit dcfg model onPreviewConfirm runner _onClose = do
           sender = _deploymentSettingsResult_sender result
       succeeded <- elClass "div" "modal__main transaction_details" $ do
 
-        transactionInputSection $ pure $ _deploymentSettingsResult_code result
+        transactionInputSection (_deploymentSettingsResult_code result) (_deploymentSettingsResult_command result)
         divClass "title" $ text "Destination"
         _ <- divClass "group segment" $ do
           transactionDisplayNetwork model
@@ -270,9 +272,8 @@ deploySubmit
   -> Workflow t m (Text, (Event t (), modelCfg))
 deploySubmit chain result nodeInfos = Workflow $ do
       let cmd = _deploymentSettingsResult_command result
-          code = _deploymentSettingsResult_code result
       elClass "div" "modal__main transaction_details" $ do
-        transactionHashSection $ pure code
+        transactionHashSection cmd
 
         -- Shove the node infos into servant client envs
         clientEnvs <- fmap catMaybes $ for (rights nodeInfos) $ \nodeInfo -> do

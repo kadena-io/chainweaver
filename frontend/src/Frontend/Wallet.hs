@@ -46,27 +46,28 @@ module Frontend.Wallet
   , snocIntMap
   ) where
 
-import           Control.Lens
-import           Control.Monad.Except (runExcept)
-import           Control.Monad.Fix
-import           Data.Aeson
-import           Data.Decimal                (Decimal)
-import           Data.IntMap                 (IntMap)
-import qualified Data.IntMap                 as IntMap
-import           Data.Text                   (Text)
-import qualified Data.Text                   as T
-import           Generics.Deriving.Monoid    (mappenddefault, memptydefault)
-import           GHC.Generics                (Generic)
-import           Reflex
-import           Pact.Types.ChainId
-import qualified Pact.Types.Term             as Pact
-import qualified Pact.Types.Type             as Pact
-import Frontend.Crypto.Class
+import Control.Lens
+import Control.Monad.Except (runExcept)
+import Control.Monad.Fix
+import Data.Aeson
+import Data.Decimal
+import Data.IntMap (IntMap)
+import Data.Text (Text)
+import GHC.Generics (Generic)
+import Generics.Deriving.Monoid (mappenddefault, memptydefault)
+import Kadena.SigningApi (AccountName(..), mkAccountName)
+import Pact.Types.ChainId
+import Reflex
+import qualified Data.IntMap as IntMap
+import qualified Data.Text as T
+import qualified Pact.Types.Term as Pact
+import qualified Pact.Types.Type as Pact
 
-import           Common.Orphans              ()
-import           Frontend.Crypto.Ed25519
-import           Frontend.Foundation
-import           Frontend.Storage
+import Common.Orphans ()
+import Frontend.Crypto.Class
+import Frontend.Crypto.Ed25519
+import Frontend.Foundation
+import Frontend.Storage
 
 -- | Account balance wrapper
 newtype AccountBalance = AccountBalance { unAccountBalance :: Decimal } deriving (Eq, Ord, Num)
@@ -79,17 +80,6 @@ data KeyPair key = KeyPair
   } deriving Generic
 
 makePactLenses ''KeyPair
-
-newtype AccountName = AccountName
-  { unAccountName :: Text
-  } deriving (Eq, Ord, Show, ToJSON, FromJSON, ToJSONKey, FromJSONKey)
-
--- | Smart constructor for account names. The only restriction in the coin
--- contract (as it stands) appears to be that accounts can't be an empty string
-mkAccountName :: Text -> Either Text AccountName
-mkAccountName n
-  | T.null n = Left "Account name must not be empty"
-  | otherwise = Right $ AccountName n
 
 -- | Account guards. We split this out here because we are only really
 -- interested in keyset guards right now. Someday we might end up replacing this

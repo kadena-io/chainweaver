@@ -61,7 +61,7 @@ frontend = Frontend
       , _appCfg_loadEditor = loadEditorFromLocalStorage
       , _appCfg_editorReadOnly = False
       , _appCfg_signingRequest = never
-      , _appCfg_signingResponse = \_ -> pure ()
+      , _appCfg_signingResponse = liftIO . print
       , _appCfg_sidebarExtra = pure ()
       }
   }

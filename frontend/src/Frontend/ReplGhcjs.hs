@@ -24,57 +24,52 @@
 
 module Frontend.ReplGhcjs where
 
-------------------------------------------------------------------------------
-import           Control.Lens
-import           Control.Monad.Reader                   (ask)
-import           Control.Monad.State.Strict
-import Data.Aeson (ToJSON, FromJSON)
-import           Data.Default                           (Default (..))
-import qualified Data.Map                               as Map
-import           Data.String                            (IsString)
-import           Data.Text                              (Text)
-import qualified Data.Text                              as T
-import           GHCJS.DOM.EventM                       (on)
-import           GHCJS.DOM.GlobalEventHandlers          (keyPress)
-import           GHCJS.DOM.KeyboardEvent                (getCtrlKey, getKey,
-                                                         getKeyCode, getMetaKey)
-import           GHCJS.DOM.Types                        (HTMLElement (..),
-                                                         unElement)
-import           Language.Javascript.JSaddle            (liftJSM)
-import           Reflex
-import           Reflex.Dom.ACE.Extended                hiding (Annotation (..))
-import           Reflex.Dom.Core
-------------------------------------------------------------------------------
-import           Obelisk.Generated.Static
-import           Obelisk.Route                          (R)
-import           Obelisk.Route.Frontend
-import           Pact.Repl
-import           Pact.Repl.Types
-import           Pact.Types.Lang
-------------------------------------------------------------------------------
-import           Common.OAuth                           (OAuthProvider (OAuthProvider_GitHub))
-import           Common.Route
-import           Frontend.AppCfg
-import           Frontend.Crypto.Class
-import           Frontend.Editor
-import           Frontend.Foundation
-import           Frontend.GistStore
-import           Frontend.Ide
-import           Frontend.OAuth
-import           Frontend.Repl
-import           Frontend.Storage
-import           Frontend.UI.Button
-import           Frontend.UI.Dialogs.CreatedGist        (uiCreatedGist)
-import           Frontend.UI.Dialogs.CreateGist         (uiCreateGist)
-import           Frontend.UI.Dialogs.DeployConfirmation (uiDeployConfirmation)
-import           Frontend.UI.Dialogs.LogoutConfirmation (uiLogoutConfirmation)
-import           Frontend.UI.Dialogs.NetworkEdit        (uiNetworkEdit)
-import           Frontend.UI.Dialogs.Signing            (uiSigning)
-import           Frontend.UI.Modal
-import           Frontend.UI.Modal.Impl
-import           Frontend.UI.RightPanel
-import           Frontend.UI.Wallet
-------------------------------------------------------------------------------
+import Control.Lens
+import Control.Monad.Reader (ask)
+import Control.Monad.State.Strict
+import Data.Aeson (FromJSON, ToJSON)
+import Data.Default (Default (..))
+import Data.String (IsString)
+import Data.Text (Text)
+import GHCJS.DOM.EventM (on)
+import GHCJS.DOM.GlobalEventHandlers (keyPress)
+import GHCJS.DOM.KeyboardEvent (getCtrlKey, getKey, getKeyCode, getMetaKey)
+import GHCJS.DOM.Types (HTMLElement (..), unElement)
+import Language.Javascript.JSaddle (liftJSM)
+import Obelisk.Generated.Static
+import Obelisk.Route (R)
+import Obelisk.Route.Frontend
+import Pact.Repl
+import Pact.Repl.Types
+import Pact.Types.Lang
+import Reflex
+import Reflex.Dom.ACE.Extended hiding (Annotation (..))
+import Reflex.Dom.Core
+import qualified Data.Map as Map
+import qualified Data.Text as T
+
+import Common.OAuth (OAuthProvider (OAuthProvider_GitHub))
+import Common.Route
+import Frontend.AppCfg
+import Frontend.Crypto.Class
+import Frontend.Editor
+import Frontend.Foundation
+import Frontend.GistStore
+import Frontend.Ide
+import Frontend.OAuth
+import Frontend.Repl
+import Frontend.Storage
+import Frontend.UI.Button
+import Frontend.UI.Dialogs.CreateGist (uiCreateGist)
+import Frontend.UI.Dialogs.CreatedGist (uiCreatedGist)
+import Frontend.UI.Dialogs.DeployConfirmation (uiDeployConfirmation)
+import Frontend.UI.Dialogs.LogoutConfirmation (uiLogoutConfirmation)
+import Frontend.UI.Dialogs.NetworkEdit (uiNetworkEdit)
+import Frontend.UI.Dialogs.Signing (uiSigning)
+import Frontend.UI.Modal
+import Frontend.UI.Modal.Impl
+import Frontend.UI.RightPanel
+import Frontend.UI.Wallet
 
 app
   :: forall key t m.
