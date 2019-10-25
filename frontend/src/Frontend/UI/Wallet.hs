@@ -52,7 +52,6 @@ import           Frontend.Crypto.Ed25519     (keyToText)
 import           Frontend.Wallet
 import           Frontend.UI.Widgets
 import           Frontend.Foundation
-import           Frontend.UI.Dialogs.KeyImport
 import           Frontend.UI.Dialogs.DeleteConfirmation (uiDeleteConfirmation)
 import           Frontend.UI.Modal
 import           Frontend.Network
@@ -71,8 +70,8 @@ type HasUiWalletModelCfg mConf key m t =
 
 -- | UI for managing the keys wallet.
 uiWallet
-  :: (MonadWidget t m, HasUiWalletModelCfg mConf PrivateKey m t)
-  => Wallet PrivateKey t
+  :: (MonadWidget t m, HasUiWalletModelCfg mConf key m t)
+  => Wallet key t
   -> m mConf
 uiWallet w = divClass "keys group" $ do
     onCreate <- uiCreateKey w
@@ -113,8 +112,8 @@ uiCreateKey w =
 
 -- | Widget listing all available keys.
 uiAvailableKeys
-  :: (MonadWidget t m, HasUiWalletModelCfg mConf PrivateKey m t)
-  => Wallet PrivateKey t
+  :: (MonadWidget t m, HasUiWalletModelCfg mConf key m t)
+  => Wallet key t
   -> m mConf
 uiAvailableKeys aWallet = do
   divClass "keys-list" $ do
@@ -126,8 +125,8 @@ uiAvailableKeys aWallet = do
 -- Does not include the surrounding `div` tag. Use uiAvailableKeys for the
 -- complete `div`.
 uiKeyItems
-  :: (MonadWidget t m, HasUiWalletModelCfg mConf PrivateKey m t)
-  => Wallet PrivateKey t
+  :: (MonadWidget t m, HasUiWalletModelCfg mConf key m t)
+  => Wallet key t
   -> m mConf
 uiKeyItems aWallet = do
     let
@@ -136,7 +135,7 @@ uiKeyItems aWallet = do
       tableAttrs =
         "style" =: "table-layout: fixed; width: 100%"
         <> "class" =: "wallet table"
-    (events, onAdd) <- elAttr "table" tableAttrs $ do
+    events <- elAttr "table" tableAttrs $ do
       el "colgroup" $ do
         elAttr "col" ("style" =: "width: 20%") blank
         elAttr "col" ("style" =: "width: 35%") blank
@@ -144,7 +143,7 @@ uiKeyItems aWallet = do
         elAttr "col" ("style" =: "width: 35%") blank
         elAttr "col" ("style" =: "width: 15%") blank
         elAttr "col" ("style" =: "width: 10%") blank
-      onAdd <- el "thead" $ el "tr" $ do
+      el "thead" $ el "tr" $ do
         let mkHeading = elClass "th" "table__heading" . text
         traverse_ mkHeading $
           [ "Account Name"
@@ -153,26 +152,13 @@ uiKeyItems aWallet = do
           , "Notes"
           , "Balance"
           ]
-        elClass "th" "table__heading wallet__add" $
-          importButton
 
-      el "tbody" $ do
-        --evs <- uncurry (foldDyn applyAlways) =<< traverseIntMapWithKeyWithAdjust uiKeyItem mempty =<< tagOnPostBuild keyMap
-        evs <- listWithKey keyMap uiKeyItem
-        pure (evs, onAdd)
+      el "tbody" $ listWithKey keyMap uiKeyItem
 
     dyn_ $ ffor keyMap $ \keys -> when (Map.null keys) $ text "No accounts ..."
     let onDelKey = switchDyn $ leftmost . Map.elems <$> events
     pure $ mempty
-      & modalCfg_setModal .~ leftmost
-        [ Just (uiKeyImport aWallet) <$ onAdd
-        , Just . uncurry uiDeleteConfirmation <$> onDelKey
-        ]
-  where
-    importButton =
-      addButton $ def
-        & uiButtonCfg_title .~ Just "Import existing key"
-        & uiButtonCfg_class %~ (<> "wallet__add-delete-button")
+      & modalCfg_setModal .~ fmap (Just . uncurry uiDeleteConfirmation) onDelKey
 
 ------------------------------------------------------------------------------
 -- | Display a key as list item together with it's name.

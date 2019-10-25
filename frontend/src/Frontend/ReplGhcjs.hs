@@ -73,6 +73,7 @@ import           Frontend.UI.Dialogs.Signing            (uiSigning)
 import           Frontend.UI.Modal
 import           Frontend.UI.Modal.Impl
 import           Frontend.UI.RightPanel
+import           Frontend.UI.Wallet
 ------------------------------------------------------------------------------
 
 app
@@ -93,7 +94,7 @@ app appCfg = void . mfix $ \ cfg -> do
   let mkPage :: R FrontendRoute -> Text -> m a -> m a
       mkPage r c = elDynAttr "div" (ffor (demuxed route r) $ \s -> "class" =: (c <> if s then " page visible" else " page"))
   walletCfg' <- mkPage (FrontendRoute_Wallet :/ ()) "wallet" $ do
-    _appCfg_displayWallet appCfg (_ide_wallet ideL)
+    uiWallet (_ide_wallet ideL)
   updates <- mkPage (FrontendRoute_Main :/ ()) "contracts" $ do
     controlCfg <- controlBar appCfg ideL
     mainCfg <- elClass "main" "main page__main" $ do

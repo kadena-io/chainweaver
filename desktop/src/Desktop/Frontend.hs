@@ -12,7 +12,6 @@
 
 module Desktop.Frontend (desktop, desktopCss, fileStorage) where
 
-import Control.Applicative (liftA2)
 import Control.Exception (try, catch)
 import Control.Lens ((?~))
 import Control.Monad (when, (<=<), guard, void)
@@ -20,11 +19,8 @@ import Control.Monad.IO.Class
 import Data.Bimap (Bimap)
 import Data.Bits ((.|.))
 import Data.ByteString (ByteString)
-import Data.Foldable (for_)
-import Data.IntMap (IntMap)
 import Data.Map (Map)
-import Data.Maybe (isNothing, fromMaybe, catMaybes)
-import Data.Set (Set)
+import Data.Maybe (isNothing)
 import Data.Text (Text)
 import Language.Javascript.JSaddle (liftJSM)
 import Reflex.Dom.Core
@@ -33,20 +29,11 @@ import qualified Cardano.Crypto.Wallet as Crypto
 import qualified Control.Newtype.Generics as Newtype
 import qualified Crypto.PubKey.Ed25519 as Ed25519
 import qualified Data.Aeson as Aeson
-import qualified Data.Bimap as Bimap
 import qualified Data.ByteString as BS
-import qualified Data.ByteString.Base16 as B16
 import qualified Data.ByteString.Lazy as LBS
-import qualified Data.IntMap as IntMap
-import qualified Data.Map as M
-import qualified Data.Set as S
-import qualified Data.Text as T
 import qualified Data.Text.Encoding as T
 import qualified Data.Text.Encoding.Error as T
 import qualified Data.Text.IO as T
-import qualified Pact.Types.ChainId as Pact
-import qualified Pact.Types.Term as Pact
-import qualified Pact.Types.Type as Pact
 import qualified System.Directory as Directory
 import qualified System.FilePath as FilePath
 import qualified Text.RawString.QQ as QQ
@@ -60,14 +47,11 @@ import Frontend.ModuleExplorer.Impl (loadEditorFromLocalStorage)
 import Frontend.Storage
 import Frontend.UI.Button
 import Frontend.UI.Widgets
-import Obelisk.Configs
 import Obelisk.Generated.Static
 import Obelisk.Frontend
 import Obelisk.Route
-import Obelisk.Route.Frontend
 import qualified Frontend
 import qualified Frontend.ReplGhcjs
-import qualified Frontend.Wallet as Wallet
 
 import Desktop.Orphans ()
 import Desktop.Setup
@@ -106,8 +90,9 @@ bipCrypto :: Crypto.XPrv -> Text -> Crypto Crypto.XPrv
 bipCrypto root pass = Crypto
   { _crypto_sign = \bs k -> pure $ Newtype.pack $ Crypto.unXSignature $ Crypto.sign (T.encodeUtf8 pass) k bs
   , _crypto_genKey = \i -> do
+    liftIO $ putStrLn $ "Deriving key at index: " <> show i
     let xprv = Crypto.deriveXPrv scheme (T.encodeUtf8 pass) root (mkHardened $ fromIntegral i)
-    pure (xprv, unsafePublicKey $ B16.encode $ Crypto.xpubPublicKey $ Crypto.toXPub root)
+    pure (xprv, unsafePublicKey $ Crypto.xpubPublicKey $ Crypto.toXPub xprv)
   }
   where
     scheme = Crypto.DerivationScheme2
@@ -131,7 +116,7 @@ desktop = Frontend
         Nothing -> do
           xprv <- runSetup
           saved <- performEvent $ ffor xprv $ \x -> setItemStorage localStorage Wallet_RootKey x >> pure x
-          pure $ Just <$> xprv
+          pure $ Just <$> saved
         Just xprv -> mdo
           mPassword <- holdUniqDyn =<< holdDyn Nothing passEvts
           -- TODO expire password
@@ -145,7 +130,7 @@ desktop = Frontend
                 pass <- uiInputElement $ def & initialAttributes .~ "type" =: "password" -- TODO padlock icon
                 e <- confirmButton (def & uiButtonCfg_type ?~ "submit") "Unlock"
                 help <- uiButton def $ text "Help" -- TODO where does this go?
-                restore <- uiButton def $ text "Restore"
+                restore <- uiButton def $ text "Restore" -- TODO
                 let isValid = attachWith (\p _ -> p <$ guard (testKeyPassword xprv p)) (current $ value pass) e
                 pure (restore, isValid)
             Just pass -> flip runCryptoT (bipCrypto xprv pass) $ do
@@ -159,7 +144,6 @@ desktop = Frontend
                     , _appCfg_editorReadOnly = False
                     , _appCfg_signingRequest = never
                     , _appCfg_signingResponse = \_ -> pure ()
-                    , _appCfg_displayWallet = \_ -> text "Wallet" >> pure mempty
                     , _appCfg_sidebarExtra = do
                       (e, _) <- elAttr' "span" ("class" =: "link") $ do
                         elAttr "img" ("class" =: "normal" <> "src" =: static @"img/menu/logout.png") blank
@@ -210,99 +194,6 @@ form .messages > li { padding: 0.5rem; }
 form .header { color: rgb(30,40,50); font-weight: bold; font-size: 18px; margin: 1rem 0; }
 form .header .detail { color: #666; font-weight: normal; font-size: 14px; }
 |]
-
-type AppConstraints t m =
-  ( HasConfigs m
-  , HasStorage m
-  , HasStorage (Performable m)
-  , HasCrypto Crypto.XPrv (Performable m)
-  , MonadWidget t m
-  , RouteToUrl (R FrontendRoute) m
-  , Routed t (R FrontendRoute) m
-  , SetRoute t (R FrontendRoute) m
-  )
-
-data AddKeyError
-  = AddKeyError_InvalidPassword
-  | AddKeyError_NameTaken
-  | AddKeyError_NameRequired
-  deriving (Eq, Ord)
-
-addKeyErrorText :: AddKeyError -> Text
-addKeyErrorText = \case
-  AddKeyError_InvalidPassword -> "Invalid password"
-  AddKeyError_NameTaken -> "Key name is already in use"
-  AddKeyError_NameRequired -> "Enter a key name"
-
-walletPage
-  :: AppConstraints t m
-  => Crypto.XPrv
-  -> m (Dynamic t (Map Crypto.DerivationIndex Crypto.XPrv), Dynamic t (Bimap Text Ed25519.PublicKey), Event t ())
-walletPage root = do
-  el "h1" $ text "Root key"
-  divClass "root key" $ text $ T.decodeUtf8 $ B16.encode $ Crypto.xpubPublicKey $ Crypto.toXPub root
-  el "h1" $ text "Derived keys"
-  initChildKeys <- fromMaybe mempty <$> getItemStorage localStorage Wallet_ChildKeys
-  initNamedKeys <- fromMaybe Bimap.empty <$> getItemStorage localStorage Wallet_NamedKeys
-  rec
-    (keyStore, derivationErrors) <- mapAccumMaybeDyn (&) (initChildKeys, initNamedKeys) newDerived
-    let (childKeys, namedKeys) = splitDynPure keyStore
-    mKeyStore <- maybeDyn $ ffor keyStore $ \(c,n) -> if M.null c then Nothing else Just (c,n)
-    dyn_ $ ffor mKeyStore $ \case
-      Nothing -> el "p" $ text "You haven't generated any derived keys yet."
-      Just keyStore' -> el "table" $ do
-        el "thead" $ el "tr" $ do
-          elClass "th" "numeric" $ text "Index"
-          el "th" $ text "Name"
-          el "th" $ text "Public Key"
-        el "tbody" $ dyn_ $ ffor keyStore' $ \(im, names) -> flip M.traverseWithKey im $ \i xprv -> el "tr" $ do
-          elClass "td" "numeric" $ text $ T.pack $ show i
-          let name = Bimap.lookupR (Crypto.xPubGetPublicKey $ Crypto.toXPub xprv) names
-          el "td" $ text $ fromMaybe "No name" name
-          let pk = T.decodeUtf8 $ B16.encode $ Crypto.xpubPublicKey $ Crypto.toXPub xprv
-          elClass "td" "key" $ text pk
-          copyButton def (pure pk)
-    newDerived <- form "inline" $ do
-      divClass "header" $ do
-        text "Generate a new key"
-        divClass "detail" $ text "The key will be derived from the wallet root key"
-      name <- fmap (current . value) $ uiInputElement $ def
-        & initialAttributes .~ "placeholder" =: "Key name"
-        & inputElementConfig_setValue .~ ("" <$ updated childKeys)
-      pass <- fmap (current . value) $ uiInputElement $ def
-        & initialAttributes .~ "type" =: "password" <> "placeholder" =: "Enter password"
-        & inputElementConfig_setValue .~ ("" <$ updated childKeys)
-      add <- confirmButton (def & uiButtonCfg_type ?~ "submit")  "Generate key"
-      lastErrors <- holdDyn Nothing $ leftmost [Just <$> derivationErrors, Nothing <$ updated childKeys]
-      dyn_ $ ffor lastErrors $ \case
-        Nothing -> blank
-        Just es -> elClass "ul" "messages" $ for_ es $ el "li" . text . addKeyErrorText
-      pure $ attachWith (const . derive) (liftA2 (,) name pass) add
-  performEvent_ $ ffor (updated childKeys) $ setItemStorage localStorage Wallet_ChildKeys
-  performEvent_ $ ffor (updated namedKeys) $ setItemStorage localStorage Wallet_NamedKeys
-  delete <- el "div" $ uiButton def $ text "Delete wallet"
-  removed <- performEvent $ ffor delete $ \_ -> do
-    removeItemStorage localStorage Wallet_RootKey
-    removeItemStorage localStorage Wallet_ChildKeys
-  pure (childKeys, namedKeys, removed)
-  where
-    scheme = Crypto.DerivationScheme2
-    mkHardened = (0x80000000 .|.)
-    derive
-      :: (Text, Text)
-      -> (Map Crypto.DerivationIndex Crypto.XPrv, Bimap Text Ed25519.PublicKey)
-      -> (Maybe (Map Crypto.DerivationIndex Crypto.XPrv, Bimap Text Ed25519.PublicKey), Maybe (Set AddKeyError))
-    derive (name, pass) (xprvs, names) =
-      let errs = S.fromList $ catMaybes
-            [ AddKeyError_NameTaken <$ guard (Bimap.member name names)
-            , AddKeyError_NameRequired <$ guard (T.null name)
-            , AddKeyError_InvalidPassword <$ guard (not $ testKeyPassword root pass)
-            ]
-          n = maybe 0 (succ . fst) (M.lookupMax xprvs)
-          xprv = Crypto.deriveXPrv scheme (T.encodeUtf8 pass) root (mkHardened $ fromIntegral n)
-       in if S.null errs
-          then (Just (M.insert n xprv xprvs, Bimap.insert name (Crypto.xPubGetPublicKey $ Crypto.toXPub xprv) names), Nothing)
-          else (Nothing, Just errs)
 
 -- | Check the validity of the password by signing and verifying a message
 testKeyPassword :: Crypto.XPrv -> Text -> Bool

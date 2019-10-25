@@ -29,8 +29,6 @@ import           Frontend.Foundation
 import           Frontend.ModuleExplorer.Impl (loadEditorFromLocalStorage)
 import           Frontend.ReplGhcjs
 import           Frontend.Storage
-import           Frontend.Wallet
-import           Frontend.UI.Wallet
 
 frontend :: Frontend (R FrontendRoute)
 frontend = Frontend
@@ -64,7 +62,6 @@ frontend = Frontend
       , _appCfg_editorReadOnly = False
       , _appCfg_signingRequest = never
       , _appCfg_signingResponse = \_ -> pure ()
-      , _appCfg_displayWallet = uiWallet
       , _appCfg_sidebarExtra = pure ()
       }
   }

@@ -9,8 +9,7 @@ import qualified Data.Aeson as Aeson
 import Pact.Types.ChainMeta (TTLSeconds(..))
 import Pact.Types.Runtime (GasLimit(..), ChainId)
 import Pact.Types.Command (Command)
-import Frontend.Wallet (AccountName, Wallet, WalletCfg)
-import Frontend.UI.Wallet
+import Frontend.Wallet (AccountName)
 
 data SigningRequest = SigningRequest
   { _signingRequest_code :: Text
@@ -55,8 +54,6 @@ data AppCfg key t m = AppCfg
   -- ^ Requests to sign this object
   , _appCfg_signingResponse :: Either Text SigningResponse -> JSM ()
   -- ^ Responses to signings
-  , _appCfg_displayWallet :: forall mConf. (HasUiWalletModelCfg mConf key m t) => Wallet key t -> m mConf
-  -- ^ Wallet widget
   , _appCfg_sidebarExtra :: m ()
   -- ^ Extra widget to display at the bottom of the sidebar
   }
