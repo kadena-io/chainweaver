@@ -540,7 +540,7 @@ uiSenderDropdown uCfg m chainId = do
            in mkTextAccounts <$> chainId <*> m ^. wallet_accountGuards
   choice <- dropdown Nothing textAccounts $ uCfg
     & dropdownConfig_setValue .~ (if AppCfg.isChainweaverAlpha then never else Nothing <$ updated chainId)
-    & dropdownConfig_attributes <>~ pure ("class" =: "labeled-input__input select select_mandatory_missing select_type_primary")
+    & dropdownConfig_attributes <>~ pure ("class" =: "labeled-input__input select select_mandatory_missing")
   pure $ value choice
 
 uiChainSelection
@@ -554,7 +554,7 @@ uiChainSelection info cls = mdo
       mkPlaceHolder cChains = if null cChains then "No chains available" else "Select chain"
       mkOptions cs = Map.fromList $ (Nothing, mkPlaceHolder cs) : map (first Just) cs
 
-      staticCls = cls <> "select select_type_primary"
+      staticCls = cls <> "select"
       mkDynCls v = if isNothing v then "select_mandatory_missing" else mempty
       allCls = renderClass <$> fmap mkDynCls d <> pure staticCls
 
@@ -582,12 +582,12 @@ capabilityInputRow
   -> m (Dynamic t (Maybe AccountName))
   -> m (CapabilityInputRow t)
 capabilityInputRow mCap mkSender = elClass "tr" "table__row" $ do
-  (empty, parsed) <- el "td" $ mdo
+  (empty, parsed) <- elClass "td" "table__cell_padded" $ mdo
     cap <- uiInputElement $ def
       & inputElementConfig_initialValue .~ foldMap (renderCompactText . _dappCap_cap) mCap
       & initialAttributes .~
         "placeholder" =: "(module.capability arg1 arg2)" <>
-        "class" =: "input_width_full" <>
+        "class" =: (maybe id (const (<> " input_transparent")) mCap) "input_width_full" <>
         (maybe mempty (const $ "disabled" =: "true") mCap)
       & modifyAttributes .~ ffor errors (\e -> "style" =: ("background-color: #fdd" <$ guard e))
     empty <- holdUniqDyn $ T.null <$> value cap
@@ -598,7 +598,7 @@ capabilityInputRow mCap mkSender = elClass "tr" "table__row" $ do
           , False <$ _inputElement_input cap
           ]
     pure (empty, parsed)
-  account <- el "td" mkSender
+  account <- elClass "td" "table__cell_padded" mkSender
 
   pure $ CapabilityInputRow
     { _capabilityInputRow_empty = empty
@@ -674,7 +674,7 @@ uiSenderCapabilities m cid mCaps mkSender = do
   divClass "title" $ text "Roles"
 
   -- Capabilities
-  divClass "group" $ elAttr "table" ("class" =: "table" <> "style" =: "width: 100%") $ case mCaps of
+  divClass "group" $ elAttr "table" ("class" =: "table" <> "style" =: "width: 100%; table-layout: fixed;") $ case mCaps of
     Nothing -> el "tbody" $ do
       gas <- capabilityInputRow (Just defaultGASCapability) mkSender
       rest <- capabilityInputRows (uiSenderDropdown def m cid)
