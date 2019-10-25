@@ -88,8 +88,8 @@ app appCfg = void . mfix $ \ cfg -> do
   walletSidebar appCfg
   route <- demux <$> askRoute
   let mkPage :: R FrontendRoute -> Text -> m a -> m a
-      mkPage r c = elDynAttr "div" (ffor (demuxed route r) $ \s -> "class" =: (c <> if s then " page visible" else " page"))
-  updates <- divClass "page visible" $ do
+      mkPage r c = elDynAttr "div" (ffor (demuxed route r) $ \s -> "class" =: (c <> if s then " page__content visible" else " page__content"))
+  updates <- divClass "page" $ do
     netCfg <- networkBar ideL
     walletCfg' <- mkPage (FrontendRoute_Wallet :/ ()) "wallet" $ do
       uiWallet (_ide_wallet ideL)
