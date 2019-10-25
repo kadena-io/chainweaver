@@ -120,6 +120,10 @@ $table-cell-size-tiny: $table-cell-size-small / 2;
   width: auto;
 }
 
+.table__cell_padded {
+  padding: 0.5rem;
+}
+
 // Last cell in a row.
 .table__last-cell {
   display: flex;
