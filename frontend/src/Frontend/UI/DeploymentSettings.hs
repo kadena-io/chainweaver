@@ -626,7 +626,7 @@ capabilityInputRow mCap mkSender = elClass "tr" "table__row" $ do
       & inputElementConfig_initialValue .~ foldMap (renderCompactText . _dappCap_cap) mCap
       & initialAttributes .~
         "placeholder" =: "(module.capability arg1 arg2)" <>
-        "class" =: "input_width_full" <>
+        "class" =: (maybe id (const (<> " input_transparent")) mCap) "input_width_full" <>
         (maybe mempty (const $ "disabled" =: "true") mCap)
       & modifyAttributes .~ ffor errors (\e -> "style" =: ("background-color: #fdd" <$ guard e))
     empty <- holdUniqDyn $ T.null <$> value cap
