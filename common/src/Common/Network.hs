@@ -67,9 +67,9 @@ instance ToJSONKey NetworkName where
 
 -- | Construct a 'NetworkName', and banish mainnet - for now.
 mkNetworkName :: Text -> Either Text NetworkName
-mkNetworkName (T.strip -> t)
-  | "mainnet" `T.isInfixOf` t = Left "This wallet does not support mainnet"
-  | otherwise = Right $ NetworkName t
+mkNetworkName (T.strip -> t) = Right $ NetworkName t
+--  | "mainnet" `T.isInfixOf` t = Left "This wallet does not support mainnet"
+--  | otherwise = Right $ NetworkName t
 
 -- | Construct a 'NetworkName' but don't perform any checks
 uncheckedNetworkName :: Text -> NetworkName
