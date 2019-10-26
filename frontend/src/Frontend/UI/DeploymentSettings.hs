@@ -45,7 +45,7 @@ module Frontend.UI.DeploymentSettings
 
 import Control.Applicative (liftA2)
 import Control.Arrow (first, (&&&))
-import Control.Error (fmapL, hoistMaybe, headMay)
+import Control.Error (fmapL, hoistMaybe, headMay, runExceptT, noteT, hoistEither)
 import Control.Error.Util (hush)
 import Control.Lens
 import Control.Monad
@@ -209,25 +209,25 @@ uiDeploymentSettings m settings = mdo
         uiSenderCapabilities m cChainId (_deploymentSettingsConfig_caps settings)
           $ (_deploymentSettingsConfig_sender settings) m cChainId
 
-      let result' = runMaybeT $ do
-            selNodes <- lift $ m ^. network_selectedNodes
-            networkId <- hoistMaybe $ hush . mkNetworkName . nodeVersion =<< headMay (rights selNodes)
-            sender <- MaybeT mSender
-            chainId <- MaybeT cChainId
-            caps <- MaybeT capabilities
+      let result' = runExceptT $ do
+            selNodes <- noteT "No network selected" $ lift $ m ^. network_selectedNodes
+            networkId <- hoistEither $ mkNetworkName . nodeVersion =<< note "No selected node" (headMay (rights selNodes))
+            sender <- noteT "No sender defined" $ MaybeT mSender
+            chainId <- noteT "No chain ID defined" $ MaybeT cChainId
+            caps <- noteT "No roles defined" $ MaybeT capabilities
             let signing = Set.mapMonotonic unAccountName $ Set.insert sender $ Map.keysSet caps
-            jsonData' <- lift $ either (const mempty) id <$> m ^. jsonData . jsonData_data
-            ttl' <- lift ttl
-            limit <- lift gasLimit
-            lastPublicMeta <- lift $ m ^. network_meta
+            jsonData' <- noteT "Error in json data" $ lift $ either (const mempty) id <$> m ^. jsonData . jsonData_data
+            ttl' <- noteT "Must define TTL" $ lift ttl
+            limit <- noteT "Must define gas limit" $ lift gasLimit
+            lastPublicMeta <- noteT "Error in metadata" $ lift $ m ^. network_meta
             let publicMeta = lastPublicMeta
                   { _pmChainId = chainId
                   , _pmGasLimit = limit
                   , _pmSender = unAccountName sender
                   , _pmTTL = ttl'
                   }
-            code' <- lift code
-            keys <- lift $ m ^. wallet_keys
+            code' <- noteT "Error in code" $ lift code
+            keys <- noteT "Error in keys" $ lift $ m ^. wallet_keys
             let toPublicKey (AccountName acc, cs) = do
                   KeyPair pk _ <- Map.lookup acc keys
                   pure (pk, cs)
@@ -252,14 +252,15 @@ uiDeploymentSettings m settings = mdo
         , result'
         , mRes
         )
-    command <- performEvent $ tagMaybe (current result) done
+    command <- performEvent $ tagMaybe (hush <$> current result) done
 
     controls <- modalFooter $ do
+      el "p" $ dynText $ either ("Status: " <>) (const "All good.") <$> result
       let backConfig = def & uiButtonCfg_class .~ ffor curSelection
             (\s -> if s == fromMaybe DeploymentSettingsView_Cfg mUserTabName then "hidden" else "")
       back <- uiButtonDyn backConfig $ text "Back"
       let shouldBeDisabled tab res = tab == DeploymentSettingsView_Keys && isNothing res
-          isDisabled = shouldBeDisabled <$> curSelection <*> result
+          isDisabled = shouldBeDisabled <$> curSelection <*> fmap hush result
       next <- uiButtonDyn (def & uiButtonCfg_class .~ "button_type_confirm" & uiButtonCfg_disabled .~ isDisabled) $ dynText $ ffor curSelection $ \case
         DeploymentSettingsView_Keys -> "Preview"
         _ -> "Next"
