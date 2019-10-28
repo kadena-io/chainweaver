@@ -431,7 +431,7 @@ createNewPassphrase eBack dPassword mnemonicSentence = Workflow $ do
       uiButton def $ elClass "span" (setupClass "recovery-phrase-copy-word") $ do
         elClass "i" "fa fa-copy" blank
         text "Copy"
-        elDynClass "i" ("fa wallet__copy-status " <> dCopySuccess) blank
+        elDynClass "i" ("fa setup__copy-status " <> dCopySuccess) blank
       
     eCopySuccess <- copyToClipboard $
       T.unwords . Map.elems <$> current dPassphrase <@ eCopyClick 
