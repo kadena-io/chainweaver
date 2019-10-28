@@ -46,7 +46,6 @@ import Backend (serveBackendRoute)
 import Common.Route
 import Frontend
 import Frontend.AppCfg
-import Frontend.ReplGhcjs (app)
 import Frontend.Storage
 import Desktop.Frontend
 
@@ -205,7 +204,7 @@ main' ffi mainBundleResourcePath runHTML = redirectPipes [stdout, stderr] $ do
                 , _appCfg_signingResponse = liftIO . putMVar signingResponseMVar
                 }
           _ <- flip runStorageT store $ runWithReplace loaderMarkup $
-            (liftIO (_macFFI_activateWindow ffi) >> liftIO (_macFFI_resizeWindow ffi) >> app appCfg) <$ bowserLoad
+            (liftIO (_macFFI_activateWindow ffi) >> liftIO (_macFFI_resizeWindow ffi) >> bipWallet appCfg) <$ bowserLoad
           pure ()
         }
 

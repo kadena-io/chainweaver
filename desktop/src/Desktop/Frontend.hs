@@ -10,12 +10,13 @@
 {-# LANGUAGE StandaloneDeriving #-}
 {-# LANGUAGE TypeApplications #-}
 
-module Desktop.Frontend (desktop, desktopCss, fileStorage) where
+module Desktop.Frontend (desktop, bipWallet, fileStorage) where
 
 import Control.Exception (try, catch)
 import Control.Lens ((?~))
 import Control.Monad (when, (<=<), guard, void)
 import Control.Monad.IO.Class
+import Data.Bitraversable
 import Data.Bits ((.|.))
 import Data.ByteString (ByteString)
 import Data.Maybe (isNothing)
@@ -44,9 +45,11 @@ import Frontend.ModuleExplorer.Impl (loadEditorFromLocalStorage)
 import Frontend.Storage
 import Frontend.UI.Button
 import Frontend.UI.Widgets
+import Obelisk.Configs
 import Obelisk.Generated.Static
 import Obelisk.Frontend
 import Obelisk.Route
+import Obelisk.Route.Frontend
 import qualified Frontend
 import qualified Frontend.ReplGhcjs
 
@@ -104,43 +107,54 @@ desktop = Frontend
       el "style" $ text desktopCss
       void $ Frontend.newHead $ \r -> base <> renderBackendRoute backendEncoder r
   , _frontend_body = prerender_ blank $ flip runStorageT browserStorage $ do
-    mRoot <- getItemStorage localStorage BIPStorage_RootKey
-    rec
-      root <- holdDyn mRoot upd
-      upd <- switchHold never <=< dyn $ ffor root $ \case
-        Nothing -> do
-          xprv <- runSetup
-          saved <- performEvent $ ffor xprv $ \x -> setItemStorage localStorage BIPStorage_RootKey x >> pure x
-          pure $ Just <$> saved
-        Just xprv -> mdo
-          mPassword <- holdUniqDyn =<< holdDyn Nothing passEvts
-          -- TODO expire password
-          passEvts <- switchHold never passEvts'
-          let (restore', passEvts') = splitE result
-          result <- dyn $ ffor mPassword $ \case
-            Nothing -> lockScreen xprv
-            Just pass -> flip runCryptoT (bipCrypto xprv pass) $ do
-              (fileOpened, triggerOpen) <- Frontend.openFileDialog
-              (logout, triggerLogout) <- newTriggerEvent
-              let appCfg = AppCfg
-                    { _appCfg_gistEnabled = False
-                    , _appCfg_externalFileOpened = fileOpened
-                    , _appCfg_openFileDialog = liftJSM triggerOpen
-                    , _appCfg_loadEditor = loadEditorFromLocalStorage
-                    , _appCfg_editorReadOnly = False
-                    , _appCfg_signingRequest = never
-                    , _appCfg_signingResponse = \_ -> pure ()
-                    , _appCfg_sidebarExtra = do
-                      (e, _) <- elAttr' "span" ("class" =: "sidebar__link") $ do
-                        elAttr "img" ("class" =: "normal" <> "src" =: static @"img/menu/logout.png") blank
-                      performEvent_ $ liftIO . triggerLogout <$> domEvent Click e
-                    }
-              Frontend.ReplGhcjs.app appCfg
-              pure (never, Nothing <$ logout)
-          restore <- switchHold never restore'
-          pure $ Nothing <$ restore
-    pure ()
+    (fileOpened, triggerOpen) <- Frontend.openFileDialog
+    bipWallet AppCfg
+      { _appCfg_gistEnabled = False
+      , _appCfg_externalFileOpened = fileOpened
+      , _appCfg_openFileDialog = liftJSM triggerOpen
+      , _appCfg_loadEditor = loadEditorFromLocalStorage
+      , _appCfg_editorReadOnly = False
+      , _appCfg_signingRequest = never
+      , _appCfg_signingResponse = \_ -> pure ()
+      }
   }
+
+bipWallet
+  :: ( MonadWidget t m
+     , Routed t (R FrontendRoute) m, RouteToUrl (R FrontendRoute) m, SetRoute t (R FrontendRoute) m
+     , HasConfigs m
+     , HasStorage m, HasStorage (Performable m)
+     )
+  => AppCfg Crypto.XPrv t (CryptoT Crypto.XPrv m) -> m ()
+bipWallet appCfg = do
+  mRoot <- getItemStorage localStorage BIPStorage_RootKey
+  rec
+    root <- holdDyn mRoot upd
+    upd <- switchHold never <=< dyn $ ffor root $ \case
+      Nothing -> do
+        xprv <- runSetup
+        saved <- performEvent $ ffor xprv $ \x -> setItemStorage localStorage BIPStorage_RootKey x >> pure x
+        pure $ Just <$> saved
+      Just xprv -> mdo
+        mPassword <- holdUniqDyn =<< holdDyn Nothing passEvts
+        -- TODO expire password
+        (restore, passEvts) <- bitraverse (switchHold never) (switchHold never) $ splitE result
+        result <- dyn $ ffor mPassword $ \case
+          Nothing -> lockScreen xprv
+          Just pass -> flip runCryptoT (bipCrypto xprv pass) $ do
+            (logout, sidebarLogoutLink) <- mkSidebarLogoutLink
+            Frontend.ReplGhcjs.app sidebarLogoutLink appCfg
+            pure (never, Nothing <$ logout)
+        pure $ Nothing <$ restore
+  pure ()
+
+mkSidebarLogoutLink :: (TriggerEvent t m, PerformEvent t n, DomBuilder t n, MonadIO (Performable n)) => m (Event t (), n ())
+mkSidebarLogoutLink = do
+  (logout, triggerLogout) <- newTriggerEvent
+  pure $ (,) logout $ do
+    (e, _) <- elAttr' "span" ("class" =: "sidebar__link") $ do
+      elAttr "img" ("class" =: "normal" <> "src" =: static @"img/menu/logout.png") blank
+    performEvent_ $ liftIO . triggerLogout <$> domEvent Click e
 
 lockScreen :: (DomBuilder t m, PostBuild t m) => Crypto.XPrv -> m (Event t (), Event t (Maybe Text))
 lockScreen xprv = setupDiv "fullscreen" $ divClass "wrapper" $ setupDiv "splash" $ do

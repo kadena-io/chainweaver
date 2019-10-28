@@ -81,11 +81,13 @@ app
      , HasCrypto key (Performable m)
      , FromJSON key, ToJSON key
      )
-  => AppCfg key t m -> m ()
-app appCfg = void . mfix $ \ cfg -> do
+  => m ()
+  -- ^ Extra widget to display at the bottom of the sidebar
+  -> AppCfg key t m -> m ()
+app sidebarExtra appCfg = void . mfix $ \ cfg -> do
   ideL <- makeIde appCfg cfg
 
-  walletSidebar appCfg
+  walletSidebar sidebarExtra
   route <- demux <$> askRoute
   let mkPage :: R FrontendRoute -> Text -> m a -> m a
       mkPage r c = elDynAttr "div" (ffor (demuxed route r) $ \s -> "class" =: (c <> if s then " page__content visible" else " page__content"))
@@ -120,8 +122,8 @@ app appCfg = void . mfix $ \ cfg -> do
 
 walletSidebar
   :: (DomBuilder t m, PostBuild t m, Routed t (R FrontendRoute) m, SetRoute t (R FrontendRoute) m, RouteToUrl (R FrontendRoute) m)
-  => AppCfg key t m -> m ()
-walletSidebar appCfg = elAttr "div" ("class" =: "sidebar") $ do
+  => m () -> m ()
+walletSidebar sidebarExtra = elAttr "div" ("class" =: "sidebar") $ do
   divClass "sidebar__logo" blank -- TODO missing logo image
   route <- demux <$> askRoute
   let sidebarLink r = routeLink r $ do
@@ -135,7 +137,7 @@ walletSidebar appCfg = elAttr "div" ("class" =: "sidebar") $ do
   elAttr "div" ("style" =: "flex-grow: 1") blank
   sidebarLink $ FrontendRoute_Resources :/ ()
   sidebarLink $ FrontendRoute_Settings :/ ()
-  _appCfg_sidebarExtra appCfg
+  sidebarExtra
 
 -- | Get the routes to the icon assets for each route
 routeIcon :: R FrontendRoute -> (Text, Text)
