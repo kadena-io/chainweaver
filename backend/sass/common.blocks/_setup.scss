@@ -220,6 +220,15 @@ $kadena-orange: #F3AB3C;
   width: 30px;
 }
 
+.setup__button-horizontal-group {
+  width: 96%;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: row;
+  .button { margin-left: 0.5rem !important; }
+  .button:first-child { margin-left: 0 !important; }
+}
+
 .setup__record-phrase-msg {
   margin-bottom: 2em;
 }

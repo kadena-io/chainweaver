@@ -143,16 +143,21 @@ desktop = Frontend
   }
 
 lockScreen :: (DomBuilder t m, PostBuild t m) => Crypto.XPrv -> m (Event t (), Event t (Maybe Text))
-lockScreen xprv = divClass "fullscreen" $ divClass "wrapper" $ divClass "wallet__splash" $ do
-  elAttr "img" ("src" =: static @"img/Wallet_Graphic_1.png" <> "class" =: "wallet__splash-bg") blank
+lockScreen xprv = setupDiv "fullscreen" $ divClass "wrapper" $ setupDiv "splash" $ do
+  elAttr "img" ("src" =: static @"img/Wallet_Graphic_1.png" <> "class" =: setupClass "splash-bg") blank
   kadenaWalletLogo
-  divClass "splash-terms-buttons" $ form "" $ do
-    pass <- uiInputElement $ def & initialAttributes .~ "type" =: "password" -- TODO padlock icon
+  setupDiv "splash-terms-buttons" $ form "" $ do
+    pass <- elClass "span" (setupClass "password-wrapper") $ do
+      uiInputElement $ def & initialAttributes .~ "type" =: "password" <> "placeholder" =: "Password" <> "class" =: setupClass "password"
+
     e <- confirmButton (def & uiButtonCfg_type ?~ "submit") "Unlock"
-    help <- uiButton def $ text "Help" -- TODO where does this go?
-    restore <- uiButton def $ text "Restore" -- TODO
+    (help, restore) <- setupDiv "button-horizontal-group" $ do
+      help <- uiButton def $ text "Help" -- TODO where does this go?
+      restore <- uiButton def $ text "Restore"
+      pure (help, restore)
     let isValid = attachWith (\p _ -> p <$ guard (testKeyPassword xprv p)) (current $ value pass) e
     pure (restore, isValid)
+
 
 desktopCss :: Text
 desktopCss = [QQ.r|

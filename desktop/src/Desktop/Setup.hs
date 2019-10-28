@@ -7,7 +7,7 @@
 {-# LANGUAGE TypeApplications #-}
 
 -- | Wallet setup screens
-module Desktop.Setup (runSetup, form, kadenaWalletLogo) where
+module Desktop.Setup (runSetup, form, kadenaWalletLogo, setupDiv, setupClass) where
 
 import Control.Lens ((<>~))
 import Control.Error (hush)
@@ -65,7 +65,7 @@ wordsToPhraseMap = Map.fromList . zip [WordKey 1 ..]
 setupClass :: Text -> Text
 setupClass = mappend "setup__"
 
-setupDiv :: MonadWidget t m => Text -> m a -> m a
+setupDiv :: DomBuilder t m => Text -> m a -> m a
 setupDiv t = divClass (setupClass t)
 
 setupCheckbox
