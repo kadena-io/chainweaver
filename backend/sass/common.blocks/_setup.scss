@@ -240,26 +240,26 @@ $kadena-orange: #F3AB3C;
   font-size: 20px;
 }
 
-.wallet__passphrase-widget-word {
+.setup__passphrase-widget-word {
   opacity: 0;
 }
 
-.wallet__passphrase-widget-elem-wrapper {
+.setup__passphrase-widget-elem-wrapper {
   &:focus-within {
-    .wallet__passphrase-widget-word {
+    .setup__passphrase-widget-word {
       opacity: 1 !important;
     }
 
-    .wallet__passphrase-widget-word-hider {
+    .setup__passphrase-widget-word-hider {
       display: none !important;
     }
   }
   &:hover {
-    .wallet__passphrase-widget-word {
+    .setup__passphrase-widget-word {
       opacity: 1;
     }
 
-    .wallet__passphrase-widget-word-hider {
+    .setup__passphrase-widget-word-hider {
       display: none;
     }
   }
@@ -294,19 +294,19 @@ $kadena-orange: #F3AB3C;
     color: $tertiary-color;
     font-size: 25px;
 
-    .wallet__copy-status {
+    .setup__copy-status {
       opacity: 0;
       transform: rotateY(90deg);
       transition: opacity, transform 0.25s linear;
       padding-left: 1rem;
 
-      &.wallet__copy-success {
+      &.setup__copy-success {
         opacity: 1;
         transform: none;
         color: green;
       }
 
-      &.wallet__copy-fail {
+      &.setup__copy-fail {
         opacity: 1;
         transform: none;
         color: red;
