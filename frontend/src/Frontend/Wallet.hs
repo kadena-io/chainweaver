@@ -61,7 +61,7 @@ import Frontend.Crypto.Ed25519
 import Frontend.Foundation
 import Frontend.Storage
 
-import Frontend.KadenaAccount (KadenaAccount)
+import Frontend.KadenaAddress (KadenaAddress)
 
 -- | Type of a `Key` name.
 --
