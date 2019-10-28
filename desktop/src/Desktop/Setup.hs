@@ -9,7 +9,6 @@
 -- | Wallet setup screens
 module Desktop.Setup (runSetup, form, kadenaWalletLogo) where
 
-import Control.Lens ((<>~))
 import Control.Error (hush)
 import Control.Applicative (liftA2)
 import Control.Monad (unless,void)
@@ -56,17 +55,26 @@ data WalletScreen
   | WalletScreen_Done
   deriving (Show, Eq, Ord)
 
-walletScreenClass :: WalletScreen -> Text
-walletScreenClass = walletClass . T.toLower . tshow
+setupScreenClass :: WalletScreen -> Text
+setupScreenClass = setupClass . T.toLower . tshow
 
 wordsToPhraseMap :: [Text] -> Map.Map WordKey Text
 wordsToPhraseMap = Map.fromList . zip [WordKey 1 ..]
 
-walletClass :: Text -> Text
-walletClass = mappend "wallet__"
+setupClass :: Text -> Text
+setupClass = mappend "setup__"
 
-walletDiv :: MonadWidget t m => Text -> m a -> m a
-walletDiv t = divClass (walletClass t)
+setupDiv :: MonadWidget t m => Text -> m a -> m a
+setupDiv t = divClass (setupClass t)
+
+setupCheckbox
+  :: MonadWidget t m
+  => Bool
+  -> CheckboxConfig t
+  -> m ()
+  -> m (Checkbox t)
+setupCheckbox initialValue cfg inner = elClass "div" (setupClass "checkbox")
+  $ uiCheckbox def initialValue cfg inner
 
 mkPhraseMapFromMnemonic
   :: forall mw.
@@ -96,7 +104,7 @@ form c = elAttr "form" ("onsubmit" =: "return false;" <> "class" =: c)
 -- | Wallet logo
 kadenaWalletLogo :: DomBuilder t m => m ()
 kadenaWalletLogo = divClass "logo" $ do
-  elAttr "img" ("src" =: static @"img/kadena_blue_logo.png" <> "class" =: walletClass "kadena-logo") blank
+  elAttr "img" ("src" =: static @"img/kadena_blue_logo.png" <> "class" =: setupClass "kadena-logo") blank
   elClass "div" "chainweaver" $ text "Chainweaver"
   elClass "div" "by-kadena" $ text "by Kadena"
 
@@ -112,13 +120,15 @@ walletSetupRecoverHeader
   :: MonadWidget t m
   => WalletScreen
   -> m ()
-walletSetupRecoverHeader currentScreen = walletDiv "workflow-header" $ do
-  unless (currentScreen `elem` [WalletScreen_RecoverPassphrase, WalletScreen_SplashScreen]) $
-    elClass "ol" (walletClass "workflow-icons") $ do
+walletSetupRecoverHeader currentScreen = setupDiv "workflow-header" $ do
+  unless (currentScreen `elem` [WalletScreen_RecoverPassphrase, WalletScreen_SplashScreen]) $ do
+    elClass "ol" (setupClass "workflow-icons") $ do
       faEl "1" "Password" WalletScreen_Password
       faEl "2" "Recovery" WalletScreen_CreatePassphrase
       faEl "3" "Verify" WalletScreen_VerifyPassphrase
       faEl "4" "Done" WalletScreen_Done
+    setupDiv "header-line-wrapper" $ setupDiv "header-line" blank
+    
   where
     progress WalletScreen_Password =
       [WalletScreen_Password]
@@ -134,20 +144,20 @@ walletSetupRecoverHeader currentScreen = walletDiv "workflow-header" $ do
       let
         isActive = sid `elem` (progress currentScreen)
       in
-        elClass "li" (walletClass "workflow-icon" <> if isActive then " active" else T.empty) $ do
-          elClass "div" (walletClass "workflow-icon-circle" <> (" wallet__workflow-screen-" <> T.toLower lbl)) $
-            walletDiv "workflow-icon-inner" $
+        elClass "li" (setupClass "workflow-icon" <> if isActive then " active" else T.empty) $ do
+          elClass "div" (setupClass "workflow-icon-circle" <> " " <> setupClass ("workflow-screen-" <> T.toLower lbl)) $
+            setupDiv "workflow-icon-inner" $
             if isActive then
-              elClass "i" ("fa fa-check fa-lg fa-inverse " <> walletClass "workflow-icon-active") blank
+              elClass "i" ("fa fa-check fa-lg fa-inverse " <> setupClass "workflow-icon-active") blank
             else
               text n
           text lbl
 
 runSetup :: forall t m. MonadWidget t m => m (Event t Crypto.XPrv)
-runSetup = divClass "fullscreen" $ mdo
+runSetup = setupDiv "fullscreen" $ mdo
   let dCurrentScreen = fst <$> dwf
 
-  eBack <- fmap (domEvent Click . fst) $ elDynClass "div" ((walletClass "back " <>) . hideBack <$> dCurrentScreen) $
+  eBack <- fmap (domEvent Click . fst) $ elDynClass "div" ((setupClass "back " <>) . hideBack <$> dCurrentScreen) $
     el' "span" $ do
       elClass "i" "fa fa-fw fa-chevron-left" $ blank
       text "Back"
@@ -160,16 +170,16 @@ runSetup = divClass "fullscreen" $ mdo
   pure $ switchDyn $ snd <$> dwf
   where
     hideBack ws
-      | ws `elem` [WalletScreen_SplashScreen, WalletScreen_Done] = walletClass "hide"
-      | otherwise = walletScreenClass ws
+      | ws `elem` [WalletScreen_SplashScreen, WalletScreen_Done] = setupClass "hide"
+      | otherwise = setupScreenClass ws
 
 splashScreen :: MonadWidget t m => Event t () -> SetupWF t m
-splashScreen eBack = Workflow $ walletDiv "splash" $ do
-  elAttr "img" ("src" =: static @"img/Wallet_Graphic_1.png" <> "class" =: walletClass "splash-bg") blank
+splashScreen eBack = Workflow $ setupDiv "splash" $ do
+  elAttr "img" ("src" =: static @"img/Wallet_Graphic_1.png" <> "class" =: setupClass "splash-bg") blank
   kadenaWalletLogo
 
-  (agreed, create, recover) <- walletDiv "splash-terms-buttons" $ do
-    agreed <- fmap value $ uiCheckbox def False def $ walletDiv "terms-conditions-checkbox" $ do
+  (agreed, create, recover) <- setupDiv "splash-terms-buttons" $ do
+    agreed <- fmap value $ setupCheckbox False def $ setupDiv "terms-conditions-checkbox" $ do
       text "I have read & agree to the "
       elAttr "a" ("href" =: "https://kadena.io/" <> "target" =: "_blank") (text "Terms of Service")
 
@@ -202,7 +212,7 @@ recoverWallet :: MonadWidget t m => Event t () -> SetupWF t m
 recoverWallet eBack = Workflow $ do
   el "h1" $ text "Recover your wallet"
 
-  walletDiv "recovery-text" $ do
+  setupDiv "recovery-text" $ do
     el "div" $ text "Enter your 12 word recovery phrase"
     el "div" $ text "to restore your wallet."
 
@@ -210,7 +220,7 @@ recoverWallet eBack = Workflow $ do
     phraseMap <- holdDyn (wordsToPhraseMap $ replicate passphraseLen T.empty)
       $ flip Map.union <$> current phraseMap <@> onPhraseMapUpdate
 
-    onPhraseMapUpdate <- walletDiv "recover-widget-wrapper" $
+    onPhraseMapUpdate <- setupDiv "recover-widget-wrapper" $
       passphraseWidget phraseMap (pure Recover)
 
   let enoughWords = (== passphraseLen) . length . filter (not . T.null) . Map.elems
@@ -224,7 +234,7 @@ recoverWallet eBack = Workflow $ do
   dyn_ $ ffor sentenceOrError $ \case
     Right _ -> pure ()
     Left BIP39PhraseError_PhraseIncomplete -> pure ()
-    Left e -> walletDiv "phrase-error-message-wrapper" $ walletDiv "phrase-error-message" $ text $ case e of
+    Left e -> setupDiv "phrase-error-message-wrapper" $ setupDiv "phrase-error-message" $ text $ case e of
       BIP39PhraseError_MnemonicWordsErr (Crypto.ErrWrongNumberOfWords actual expected)
         -> "Wrong number of words: expected " <> tshow expected <> ", but got " <> tshow actual
       BIP39PhraseError_InvalidPhrase
@@ -236,13 +246,13 @@ recoverWallet eBack = Workflow $ do
 
   let eSeedUpdated = fmapMaybe (hush . fmap sentenceToSeed) (updated sentenceOrError)
 
-      waitingForPhrase = walletDiv "waiting-passphrase" $ do
+      waitingForPhrase = setupDiv "waiting-passphrase" $ do
         text "Waiting for a valid 12 word passphrase..."
         pure never
 
-      withSeedConfirmPassword seed = walletDiv "recover-enter-password" $ do
+      withSeedConfirmPassword seed = setupDiv "recover-enter-password" $ do
         dSetPw <- holdDyn Nothing =<< fmap pure <$> setPassword (pure seed)
-        continue <- walletDiv "recover-restore-button" $
+        continue <- setupDiv "recover-restore-button" $
           confirmButton (def & uiButtonCfg_disabled .~ (fmap isNothing dSetPw)) "Restore"
         pure $ tagMaybe (current dSetPw) continue
 
@@ -260,23 +270,23 @@ passphraseWordElement
   -> WordKey
   -> Dynamic t Text
   -> m (Event t Text)
-passphraseWordElement currentStage k wrd = walletDiv "passphrase-widget-elem-wrapper" $ do
+passphraseWordElement currentStage k wrd = setupDiv "passphrase-widget-elem-wrapper" $ do
   pb <- getPostBuild
 
-  walletDiv "passphrase-widget-key-wrapper" $
+  setupDiv "passphrase-widget-key-wrapper" $
     text (showWordKey k)
   
   let
     commonAttrs cls =
       "type" =: "text" <>
       "size" =: "8" <>
-      "class" =: walletClass cls
+      "class" =: setupClass cls
 
   void . uiInputElement $ def
     & inputElementConfig_initialValue .~ "********"
     & initialAttributes .~ (commonAttrs "passphrase-widget-word-hider" <> "disabled" =: "true" <> "tabindex" =: "-1")
 
-  fmap _inputElement_input <$> walletDiv "passphrase-widget-word-wrapper". uiInputElement $ def
+  fmap _inputElement_input $ setupDiv "passphrase-widget-word-wrapper". uiInputElement $ def
     & inputElementConfig_setValue .~ (current wrd <@ pb)
     & initialAttributes .~ commonAttrs "passphrase-widget-word"
     & modifyAttributes <>~ (("readonly" =:) . canEditOnRecover <$> current currentStage <@ pb)
@@ -290,7 +300,7 @@ passphraseWidget
   -> Dynamic t PassphraseStage
   -> m (Event t (Map.Map WordKey Text))
 passphraseWidget dWords dStage = do
-  walletDiv "passphrase-widget-wrapper" $
+  setupDiv "passphrase-widget-wrapper" $
     listViewWithKey dWords (passphraseWordElement dStage)
 
 continueButton
@@ -298,16 +308,16 @@ continueButton
   => Dynamic t Bool
   -> m (Event t ())
 continueButton isDisabled = 
-  walletDiv "continue-button" $
+  setupDiv "continue-button" $
     confirmButton (def & uiButtonCfg_disabled .~ isDisabled) "Continue"
 
 createNewWallet :: forall t m. MonadWidget t m => Event t () -> SetupWF t m
 createNewWallet eBack = Workflow $  do
   ePb <- getPostBuild
-  elAttr "img" ("src" =: static @"img/Wallet_Graphic_2.png" <> "class" =: walletClass "password-bg") blank
+  elAttr "img" ("src" =: static @"img/Wallet_Graphic_2.png" <> "class" =: setupClass "password-bg") blank
 
   el "h1" $ text "Set a password"
-  walletDiv "new-wallet-password-text" $ do
+  setupDiv "new-wallet-password-text" $ do
     el "div" $ text "Enter a strong and unique password"
     el "div" $ text "to protect acces to your Chainweaver wallet"
 
@@ -336,12 +346,12 @@ walletSplashWithIcon :: DomBuilder t m => m ()
 walletSplashWithIcon = do
   elAttr "img" (
     "src" =: static @"img/Wallet_Graphic_1.png" <>
-    "class" =: (walletClass "splash-bg " <> walletClass "done-splash-bg")
+    "class" =: (setupClass "splash-bg " <> setupClass "done-splash-bg")
     ) blank
 
   elAttr "img" (
     "src" =: static @"img/Wallet_Icon_Highlighted_Blue.png" <>
-    "class" =: walletClass "wallet-blue-icon"
+    "class" =: setupClass "wallet-blue-icon"
     ) blank
 
 stackFaIcon :: DomBuilder t m => Text -> m ()
@@ -356,22 +366,22 @@ precreatePassphraseWarning
   -> Crypto.MnemonicSentence 12
   -> SetupWF t m
 precreatePassphraseWarning eBack dPassword mnemonicSentence = Workflow $ do
-  walletDiv "warning-splash" $ do
-    walletDiv "repeat-icon" $ stackFaIcon "fa-repeat"
+  setupDiv "warning-splash" $ do
+    setupDiv "repeat-icon" $ stackFaIcon "fa-repeat"
     walletSplashWithIcon
 
   el "h1" $ text "Wallet Recovery Phrase"
 
-  walletDiv "recovery-phrase-warning" $ do
+  setupDiv "recovery-phrase-warning" $ do
     line "In the next step you will record your 12 word recovery phrase."
     line "Your recovery phrase makes it easy to restore your wallet on a new device."
     line "Anyone with this phrase can take control your wallet, keep this phrase private."
 
-  walletDiv "recovery-phrase-highlighted-warning" $
+  setupDiv "recovery-phrase-highlighted-warning" $
     line "Kadena cannot access your recovery phrase if lost, please store it safely."
 
-  let chkboxcls = walletClass "warning-checkbox " <> walletClass "checkbox-wrapper"
-  dUnderstand <- fmap value $ elClass "div" chkboxcls $ uiCheckbox def False def
+  let chkboxcls = setupClass "warning-checkbox " <> setupClass "checkbox-wrapper"
+  dUnderstand <- fmap value $ elClass "div" chkboxcls $ setupCheckbox False def
     $ text "I understand that if I lose my recovery phrase, I will not be able to restore my wallet."
 
   eContinue <- continueButton (fmap not dUnderstand)
@@ -392,7 +402,7 @@ doneScreen passwd = Workflow $ do
 
   el "h1" $ text "Wallet Created"
 
-  eContinue <- walletDiv "continue-button" $
+  eContinue <- setupDiv "continue-button" $
     confirmButton def "Complete"
 
   pure ( (WalletScreen_Done, passwd <$ eContinue)
@@ -408,7 +418,7 @@ createNewPassphrase
   -> SetupWF t m
 createNewPassphrase eBack dPassword mnemonicSentence = Workflow $ do
   el "h1" $ text "Record Recovery Phrase"
-  walletDiv "record-phrase-msg" $ do
+  setupDiv "record-phrase-msg" $ do
     el "div" $ text "Write down or copy these words in the correct order and store them safely."
     el "div" $ text "The recovery words are hidden for security. Mouseover the numbers to reveal."
         
@@ -428,7 +438,7 @@ createNewPassphrase eBack dPassword mnemonicSentence = Workflow $ do
     dCopySuccess <- holdDyn T.empty $
       (walletClass . bool "copy-fail fa-times" "copy-success fa-check") <$> eCopySuccess
 
-  dIsStored <- fmap value $ walletDiv "checkbox-wrapper" $ uiCheckbox def False def
+  dIsStored <- fmap value $ setupDiv "checkbox-wrapper" $ setupCheckbox False def
     $ text "I have safely stored my recovery phrase."
 
   eContinue <- continueButton (fmap not dIsStored)
@@ -449,14 +459,14 @@ confirmPhrase
   -> SetupWF t m
 confirmPhrase eBack dPassword mnemonicSentence = Workflow $ do
   el "h1" $ text "Verify Recovery Phrase"
-  walletDiv "verify-phrase-msg" $ do
+  setupDiv "verify-phrase-msg" $ do
     el "div" $ text "Please confirm your recovery phrase by"
     el "div" $ text "typing the words in the correct order."
 
   let actualMap = mkPhraseMapFromMnemonic mnemonicSentence
 
   rec
-    onPhraseUpdate <- walletDiv "verify-widget-wrapper" $
+    onPhraseUpdate <- setupDiv "verify-widget-wrapper" $
       passphraseWidget dConfirmPhrase (pure Recover)
 
     dConfirmPhrase <- holdDyn (wordsToPhraseMap $ replicate passphraseLen T.empty)
@@ -479,11 +489,11 @@ setPassword
   => Dynamic t Crypto.Seed
   -> m (Event t Crypto.XPrv)
 setPassword dSeed = form "" $ do
-  let uiPassword ph = elClass "span" (walletClass "password-wrapper") $
+  let uiPassword ph = elClass "span" (setupClass "password-wrapper") $
         uiInputElement $ def & initialAttributes .~
         ( "type" =: "password" <>
           "placeholder" =: ph <>
-          "class" =: walletClass "password"
+          "class" =: setupClass "password"
         )
 
   p1elem <- uiPassword $ "Enter password (" <> tshow minPasswordLength <> " character min.)"
@@ -507,9 +517,9 @@ setPassword dSeed = form "" $ do
     , Nothing <$ pass
     ]
 
-  let dMsgClass = lastError <&> \m -> walletClass "message " <> case m of
-        Nothing -> walletClass "hide-pw-error"
-        Just _ -> walletClass "show-pw-error"
+  let dMsgClass = lastError <&> \m -> setupClass "password-message " <> case m of
+        Nothing -> setupClass "hide-pw-error"
+        Just _ -> setupClass "show-pw-error"
 
   elDynClass "div" dMsgClass $
     dynText $ fromMaybe T.empty <$> lastError
