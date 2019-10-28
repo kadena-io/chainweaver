@@ -9,6 +9,7 @@
 -- | Wallet setup screens
 module Desktop.Setup (runSetup, form, kadenaWalletLogo) where
 
+import Control.Lens ((<>~))
 import Control.Error (hush)
 import Control.Applicative (liftA2)
 import Control.Monad (unless,void)
@@ -426,8 +427,8 @@ createNewPassphrase eBack dPassword mnemonicSentence = Workflow $ do
     dPassphrase <- passphraseWidget dPassphrase (pure Setup)
       >>= holdDyn (mkPhraseMapFromMnemonic mnemonicSentence)
 
-    eCopyClick <- elClass "div" (walletClass "recovery-phrase-copy") $ do
-      uiButton def $ elClass "span" (walletClass "recovery-phrase-copy-word") $ do
+    eCopyClick <- elClass "div" (setupClass "recovery-phrase-copy") $ do
+      uiButton def $ elClass "span" (setupClass "recovery-phrase-copy-word") $ do
         elClass "i" "fa fa-copy" blank
         text "Copy"
         elDynClass "i" ("fa wallet__copy-status " <> dCopySuccess) blank
@@ -436,7 +437,7 @@ createNewPassphrase eBack dPassword mnemonicSentence = Workflow $ do
       T.unwords . Map.elems <$> current dPassphrase <@ eCopyClick 
 
     dCopySuccess <- holdDyn T.empty $
-      (walletClass . bool "copy-fail fa-times" "copy-success fa-check") <$> eCopySuccess
+      (setupClass . bool "copy-fail fa-times" "copy-success fa-check") <$> eCopySuccess
 
   dIsStored <- fmap value $ setupDiv "checkbox-wrapper" $ setupCheckbox False def
     $ text "I have safely stored my recovery phrase."
