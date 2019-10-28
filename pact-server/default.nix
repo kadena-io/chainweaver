@@ -19,7 +19,7 @@ in
         (pactServerModule {
           pactPort = 7010;
           nginxPort = 443;
-          pactDataDir = "/var/lib/pact-web";
+          pactDataDir = "/var/lib/chainweaver";
           pactUser = "pact";
           inherit hostName obApp pkgs;
         })

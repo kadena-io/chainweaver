@@ -62,8 +62,8 @@ uiCreateGist _onClose = do
 
         elClass "h2" "heading heading_type_h2" $ text "What shall your Gist be called?"
         divClass "group" $ do
-          fileName <- labeledTextInputWithDefault "Filename" "pact-web-share.pact"
-          description <- labeledTextInputWithDefault "Description" "Pact shared with pact-web."
+          fileName <- labeledTextInputWithDefault "Filename" "chainweaver-share.pact"
+          description <- labeledTextInputWithDefault "Description" "Pact shared with chainweaver."
           pure (fileName, description)
 
   modalFooter $ do

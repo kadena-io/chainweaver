@@ -251,14 +251,14 @@ in obApp // rec {
             # The exposed port of the pact backend (proxied by nginx).
           #   nginxPort = 7011;
           #   pactPort = 7010;
-          #   pactDataDir = "/var/lib/pact-web";
+          #   pactDataDir = "/var/lib/chainweaver";
           #   pactUser = "pact";
           # })
         ];
         system.activationScripts = {
           setupBackendRuntime = {
             text = ''
-                mkdir -p /var/lib/pact-web/dyn-configs
+                mkdir -p /var/lib/chainweaver/dyn-configs
               '';
             deps = [];
           };

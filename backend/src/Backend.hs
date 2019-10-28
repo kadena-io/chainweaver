@@ -126,7 +126,7 @@ checkDeployment = do
       missingFiles = fmap fst . filter ((== False) . snd) $ filesChecked
 
     when (not . null $ missingFiles) $ liftIO $ do
-      putErrLn "\n\n========================= PACT-WEB ERROR =========================\n\n"
+      putErrLn "\n\n========================= CHAINWEAVER ERROR =========================\n\n"
       putErrLn "The deployment failed due to missing config files.\nPlease consult the project's README.md for details.\n"
       putErrLn "Missing files:\n"
       putErrLn $ T.unlines . map ("  " <>) $ missingFiles
@@ -144,7 +144,7 @@ checkDeployment = do
 
     reportInvalidNetworksCfg errMsg = liftIO $ do
       -- TODO: If we add more checks, abstract this:
-      putErrLn "\n\n========================= PACT-WEB ERROR =========================\n\n"
+      putErrLn "\n\n========================= CHAINWEAVER ERROR =========================\n\n"
       putErrLn "The deployment failed due to networks config being invalid:\n"
       putErrLn errMsg
       putErrLn "==================================================================\n\n"

@@ -18,7 +18,7 @@
 {-# LANGUAGE TypeApplications       #-}
 {-# LANGUAGE TypeFamilies           #-}
 
--- | Pact repl functionality as needed in pact-web.
+-- | Pact repl functionality as needed in chainweaver.
 -- Copyright   :  (C) 2018 Kadena
 -- License     :  BSD-style (see the file LICENSE)
 --
@@ -134,7 +134,7 @@ type ReplResult = Either String (Term Name)
 -- | Result of executing a transaction:
 type TransactionResult = Either String TransactionSuccess
 
--- | `Repl` as used in pact-web.
+-- | `Repl` as used in chainweaver.
 type PactRepl a = ExceptT String (StateT ReplState IO) a
 
 -- | Data used by internal functions of this module.

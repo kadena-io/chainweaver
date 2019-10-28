@@ -151,7 +151,7 @@ networksPath = "common/networks"
 -- | Retrieve the list of networks as specified in the static config.
 --
 --   Find and parse the networks configuration. If this file is not present,
---   pact-web will run in development mode.
+--   chainweaver will run in development mode.
 getNetworksConfig :: HasConfigs m => m (Either (Either Text Text) (NetworkName, Map NetworkName [NodeRef]))
 getNetworksConfig = runExceptT $ do
   raw <- note (Left "Networks configuration could not be found.") <=< lift $ getTextCfg networksPath
