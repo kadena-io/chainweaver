@@ -18,10 +18,10 @@ import Kadena.SigningApi (AccountName(..), mkAccountName)
 import Frontend.Foundation (makePactLenses)
 import Frontend.Crypto.Ed25519
 
-data KadenaAccount = KadenaAccount
+data KadenaAccount key = KadenaAccount
   { _kadenaAccount_chainId :: ChainId
   , _kadenaAccount_name :: AccountName 
-  , _kadenaAccount_publicKey :: PublicKey
+  , _kadenaAccount_key :: key
   , _kadenaAccount_checksum :: Digest MD5
   }
   deriving Generic
