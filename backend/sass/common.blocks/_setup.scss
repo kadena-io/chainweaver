@@ -1,3 +1,9 @@
+/*********************************************************************************
+   Ensure classes and structure are created in accordance with the BEM methodology.
+   For more info: https://en.bem.info/methodology/quick-start/
+
+*********************************************************************************/
+
 // The wallet ui:
 @import '../include/defs';
 
@@ -228,20 +234,31 @@ $kadena-orange: #F3AB3C;
 .setup__passphrase-widget-word-hider,
 .setup__passphrase-widget-elem-wrapper {
   text-align: center;
-  margin-bottom:0.5em;
   font-size: 20px;
 }
 
-.setup__passphrase-widget-word {
-  display:none;
+.wallet__passphrase-widget-word {
+  opacity: 0;
 }
 
-.setup__passphrase-widget-elem-wrapper {
-  &:hover .setup__passphrase-widget-word {
-    display: initial;
+.wallet__passphrase-widget-elem-wrapper {
+  &:focus-within {
+    .wallet__passphrase-widget-word {
+      opacity: 1 !important;
+    }
+
+    .wallet__passphrase-widget-word-hider {
+      display: none !important;
+    }
   }
-  &:hover .setup__passphrase-widget-word-hider {
-    display: none;
+  &:hover {
+    .wallet__passphrase-widget-word {
+      opacity: 1;
+    }
+
+    .wallet__passphrase-widget-word-hider {
+      display: none;
+    }
   }
 }
 
@@ -273,6 +290,25 @@ $kadena-orange: #F3AB3C;
   .setup__recovery-phrase-copy-word {
     color: $tertiary-color;
     font-size: 25px;
+
+    .wallet__copy-status {
+      opacity: 0;
+      transform: rotateY(90deg);
+      transition: opacity, transform 0.25s linear;
+      padding-left: 1rem;
+
+      &.wallet__copy-success {
+        opacity: 1;
+        transform: none;
+        color: green;
+      }
+
+      &.wallet__copy-fail {
+        opacity: 1;
+        transform: none;
+        color: red;
+      }
+    }
   }
 }
 

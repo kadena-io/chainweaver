@@ -38,27 +38,28 @@ module Frontend.Wallet
   , checkKeyNameValidityStr
   ) where
 
-import           Control.Lens
-import           Control.Monad.Except (runExcept)
-import           Control.Monad.Fix
-import           Data.Aeson
-import           Data.Map                    (Map)
-import qualified Data.Map                    as Map
-import           Data.Set                    (Set)
-import qualified Data.Set                    as Set
-import           Data.Text                   (Text)
-import qualified Data.Text                   as T
-import           Generics.Deriving.Monoid    (mappenddefault, memptydefault)
-import           GHC.Generics                (Generic)
-import           Reflex
-import           Pact.Types.ChainId
-import qualified Pact.Types.Term             as Pact
-import qualified Pact.Types.Type             as Pact
+import Control.Lens
+import Control.Monad.Except (runExcept)
+import Control.Monad.Fix
+import Data.Aeson
+import Data.Map (Map)
+import Data.Set (Set)
+import Data.Text (Text)
+import GHC.Generics (Generic)
+import Generics.Deriving.Monoid (mappenddefault, memptydefault)
+import Kadena.SigningApi (AccountName(..), mkAccountName)
+import Pact.Types.ChainId
+import Reflex
+import qualified Data.Map as Map
+import qualified Data.Set as Set
+import qualified Data.Text as T
+import qualified Pact.Types.Term as Pact
+import qualified Pact.Types.Type as Pact
 
-import           Common.Orphans              ()
-import           Frontend.Crypto.Ed25519
-import           Frontend.Foundation
-import           Frontend.Storage
+import Common.Orphans ()
+import Frontend.Crypto.Ed25519
+import Frontend.Foundation
+import Frontend.Storage
 
 -- | Type of a `Key` name.
 --
@@ -76,17 +77,6 @@ makePactLenses ''KeyPair
 
 -- | `KeyName` to `Key` mapping
 type KeyPairs = Map KeyName KeyPair
-
-newtype AccountName = AccountName
-  { unAccountName :: Text
-  } deriving (Eq, Ord, Show, ToJSON, FromJSON, ToJSONKey, FromJSONKey)
-
--- | Smart constructor for account names. The only restriction in the coin
--- contract (as it stands) appears to be that accounts can't be an empty string
-mkAccountName :: Text -> Either Text AccountName
-mkAccountName n
-  | T.null n = Left "Account name must not be empty"
-  | otherwise = Right $ AccountName n
 
 -- | Account guards. We split this out here because we are only really
 -- interested in keyset guards right now. Someday we might end up replacing this

@@ -1,7 +1,7 @@
 {
-  "owner": "eskimor",
+  "owner": "haskell-servant",
   "repo": "servant",
-  "branch": "use-ghcjs-dom",
-  "rev": "938405c70ba9a637e22c65fd3b8375d86024720c",
-  "sha256": "1h2s20x9d278ai05j6jkwzw1mq2fmp02skk15h2kzs9bx214lnfx"
+  "branch": "master",
+  "rev": "925d50d7526a9b95918b7a2d49e57afa10985302",
+  "sha256": "0zzchj9pc9y50acvj8zbm94bgbvbxzxz2b0xd2zbck90bribwm5b"
 }
