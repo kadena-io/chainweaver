@@ -32,7 +32,9 @@ without risking corruption. Does this need to be cryptographically secure??
 
 Known Fixed/maximum sizes for the different fields would be neat.
 
-Line breaks? Pipes?
+Need restrictions on what is allowed as account name, max size, [a-zA-Z0-9].
+
+Delimited? : Line breaks? Pipes?
 
 Thought:
 
