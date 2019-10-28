@@ -110,7 +110,7 @@ mkSignature msg (PrivateKey key) = liftJSM $ do
 -- `parsePublicKey` and `parsePrivateKey`.
 parseKeyPair :: MonadError Text m => PublicKey -> Text -> m (PublicKey, Maybe PrivateKey)
 parseKeyPair pubKey priv = do
-    privKey <- parsePrivateKey priv
+    privKey <- parsePrivateKey pubKey priv
     unless (sanityCheck pubKey privKey) $ do
       throwError $ T.pack "Private key is not compatible with public key"
     pure (pubKey, privKey)
@@ -125,8 +125,8 @@ parsePublicKey :: MonadError Text m => Text -> m PublicKey
 parsePublicKey = throwDecodingErr . textToKey <=< checkPub . T.strip
 
 -- | Parse a private key, with some basic sanity checking.
-parsePrivateKey :: MonadError Text m => Text -> m (Maybe PrivateKey)
-parsePrivateKey = throwDecodingErr . textToMayKey <=< throwWrongLengthPriv . T.strip
+parsePrivateKey :: MonadError Text m => PublicKey -> Text -> m (Maybe PrivateKey)
+parsePrivateKey pubKey = throwDecodingErr . textToMayKey <=< throwWrongLengthPriv pubKey . T.strip
 
 
 -- Utilities:
@@ -189,11 +189,14 @@ checkPub t = void (throwEmpty t) >> throwWrongLength 64 t
          else pure k
 
 -- | Throw in case of invalid length, but accept zero length.
-throwWrongLengthPriv :: MonadError Text m => Text -> m Text
-throwWrongLengthPriv t =
-  if T.null t
-     then pure t
-     else throwWrongLength 128 t
+throwWrongLengthPriv :: MonadError Text m => PublicKey -> Text -> m Text
+throwWrongLengthPriv pk t
+  | T.null t = pure t
+  | T.length t == 64 = do
+    when (t == keyToText pk) $ throwError $ T.pack "Private key is the same as public key"
+    pure $ t <> keyToText pk -- User entered a private key, append the public key
+  | T.length t == 128 = pure t -- User entered a private+public key
+  | otherwise = throwError $ T.pack "Key has unexpected length"
 
 -- | Check length of string key representation.
 throwWrongLength :: MonadError Text m => Int -> Text -> m Text

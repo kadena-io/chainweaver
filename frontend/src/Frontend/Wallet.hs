@@ -35,7 +35,7 @@ module Frontend.Wallet
   -- * Parsing
   , parseWalletKeyPair
   -- * Other helper functions
-  , checkKeyNameValidityStr
+  , checkAccountNameUniqueness
   ) where
 
 import Control.Lens
@@ -232,16 +232,16 @@ parseWalletKeyPair errPubKey privKey = do
 
 -- | Check key name validity (uniqueness).
 --
---   Returns `Just` error msg in case it is not valid.
-checkKeyNameValidityStr
+--   Returns `Left` error msg in case it is not valid.
+checkAccountNameUniqueness
   :: (Reflex t, HasWallet w t)
   => w
   -> Dynamic t (KeyName -> Either Text KeyName)
-checkKeyNameValidityStr w = getErr <$> w ^. wallet_keys
+checkAccountNameUniqueness w = getErr <$> w ^. wallet_keys
   where
     getErr keys k =
       if Map.member k keys
-         then Left $ T.pack "This key name is already in use"
+         then Left $ T.pack "This account name is already in use"
          else Right k
 
 -- | Write key pairs to localstorage.
