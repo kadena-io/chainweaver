@@ -9,6 +9,7 @@
 -- | Wallet setup screens
 module Desktop.Setup (runSetup, form, kadenaWalletLogo) where
 
+import Control.Lens ((<>~))
 import Control.Error (hush)
 import Control.Applicative (liftA2)
 import Control.Monad (unless,void)
@@ -319,7 +320,7 @@ createNewWallet eBack = Workflow $  do
   el "h1" $ text "Set a password"
   setupDiv "new-wallet-password-text" $ do
     el "div" $ text "Enter a strong and unique password"
-    el "div" $ text "to protect acces to your Chainweaver wallet"
+    el "div" $ text "to protect access to your Chainweaver wallet"
 
   (eGenError, eGenSuccess) <- fmap fanEither . performEvent $ genMnemonic <$ ePb
 
@@ -426,17 +427,17 @@ createNewPassphrase eBack dPassword mnemonicSentence = Workflow $ do
     dPassphrase <- passphraseWidget dPassphrase (pure Setup)
       >>= holdDyn (mkPhraseMapFromMnemonic mnemonicSentence)
 
-    eCopyClick <- elClass "div" (walletClass "recovery-phrase-copy") $ do
-      uiButton def $ elClass "span" (walletClass "recovery-phrase-copy-word") $ do
+    eCopyClick <- elClass "div" (setupClass "recovery-phrase-copy") $ do
+      uiButton def $ elClass "span" (setupClass "recovery-phrase-copy-word") $ do
         elClass "i" "fa fa-copy" blank
         text "Copy"
-        elDynClass "i" ("fa wallet__copy-status " <> dCopySuccess) blank
+        elDynClass "i" ("fa setup__copy-status " <> dCopySuccess) blank
       
     eCopySuccess <- copyToClipboard $
       T.unwords . Map.elems <$> current dPassphrase <@ eCopyClick 
 
     dCopySuccess <- holdDyn T.empty $
-      (walletClass . bool "copy-fail fa-times" "copy-success fa-check") <$> eCopySuccess
+      (setupClass . bool "copy-fail fa-times" "copy-success fa-check") <$> eCopySuccess
 
   dIsStored <- fmap value $ setupDiv "checkbox-wrapper" $ setupCheckbox False def
     $ text "I have safely stored my recovery phrase."
