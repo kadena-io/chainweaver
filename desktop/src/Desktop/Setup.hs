@@ -1,9 +1,10 @@
 {-# LANGUAGE DataKinds #-}
-{-# LANGUAGE TupleSections #-}
+{-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecursiveDo #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE TupleSections #-}
 {-# LANGUAGE TypeApplications #-}
 
 -- | Wallet setup screens
@@ -13,6 +14,7 @@ import Control.Lens ((<>~))
 import Control.Error (hush)
 import Control.Applicative (liftA2)
 import Control.Monad (unless,void)
+import Control.Monad.Fix (MonadFix)
 import Control.Monad.IO.Class
 import Data.Bool (bool)
 import Data.Maybe (isNothing, fromMaybe)
@@ -22,6 +24,7 @@ import Data.ByteString (ByteString)
 import Data.String (IsString, fromString)
 import Data.Functor ((<&>))
 import Data.Text (Text)
+import Language.Javascript.JSaddle (MonadJSM)
 import Reflex.Dom.Core
 import qualified Cardano.Crypto.Wallet as Crypto
 import qualified Crypto.Encoding.BIP39 as Crypto
@@ -65,11 +68,11 @@ wordsToPhraseMap = Map.fromList . zip [WordKey 1 ..]
 setupClass :: Text -> Text
 setupClass = mappend "setup__"
 
-setupDiv :: MonadWidget t m => Text -> m a -> m a
+setupDiv :: DomBuilder t m => Text -> m a -> m a
 setupDiv t = divClass (setupClass t)
 
 setupCheckbox
-  :: MonadWidget t m
+  :: (DomBuilder t m, PostBuild t m)
   => Bool
   -> CheckboxConfig t
   -> m ()
@@ -118,7 +121,7 @@ finishSetupWF ws = pure . (,) (ws, never)
 -- the list of how much we have done so far.
 --
 walletSetupRecoverHeader
-  :: MonadWidget t m
+  :: DomBuilder t m
   => WalletScreen
   -> m ()
 walletSetupRecoverHeader currentScreen = setupDiv "workflow-header" $ do
@@ -154,7 +157,9 @@ walletSetupRecoverHeader currentScreen = setupDiv "workflow-header" $ do
               text n
           text lbl
 
-runSetup :: forall t m. MonadWidget t m => m (Event t Crypto.XPrv)
+runSetup
+  :: forall t m. (DomBuilder t m, MonadFix m, MonadHold t m, MonadIO m, PerformEvent t m, PostBuild t m, MonadJSM (Performable m), TriggerEvent t m)
+  => m (Event t Crypto.XPrv)
 runSetup = setupDiv "fullscreen" $ mdo
   let dCurrentScreen = fst <$> dwf
 
@@ -174,7 +179,9 @@ runSetup = setupDiv "fullscreen" $ mdo
       | ws `elem` [WalletScreen_SplashScreen, WalletScreen_Done] = setupClass "hide"
       | otherwise = setupScreenClass ws
 
-splashScreen :: MonadWidget t m => Event t () -> SetupWF t m
+splashScreen
+  :: (DomBuilder t m, MonadFix m, MonadHold t m, MonadIO m, PerformEvent t m, PostBuild t m, MonadJSM (Performable m), TriggerEvent t m)
+  => Event t () -> SetupWF t m
 splashScreen eBack = Workflow $ setupDiv "splash" $ do
   elAttr "img" ("src" =: static @"img/Wallet_Graphic_1.png" <> "class" =: setupClass "splash-bg") blank
   kadenaWalletLogo
@@ -209,7 +216,9 @@ passphraseLen = 12
 sentenceToSeed :: Crypto.ValidMnemonicSentence mw => Crypto.MnemonicSentence mw -> Crypto.Seed
 sentenceToSeed s = Crypto.sentenceToSeed s Crypto.english ""
 
-recoverWallet :: MonadWidget t m => Event t () -> SetupWF t m
+recoverWallet
+  :: (DomBuilder t m, MonadFix m, MonadHold t m, MonadIO m, PerformEvent t m, PostBuild t m, MonadJSM (Performable m), TriggerEvent t m)
+  => Event t () -> SetupWF t m
 recoverWallet eBack = Workflow $ do
   el "h1" $ text "Recover your wallet"
 
@@ -266,7 +275,7 @@ recoverWallet eBack = Workflow $ do
     )
 
 passphraseWordElement
-  :: MonadWidget t m
+  :: (DomBuilder t m, PostBuild t m)
   => Dynamic t PassphraseStage
   -> WordKey
   -> Dynamic t Text
@@ -296,7 +305,7 @@ passphraseWordElement currentStage k wrd = setupDiv "passphrase-widget-elem-wrap
     canEditOnRecover Setup = Just "true"
 
 passphraseWidget
-  :: MonadWidget t m
+  :: (DomBuilder t m, MonadFix m, MonadHold t m, PostBuild t m)
   => Dynamic t (Map.Map WordKey Text)
   -> Dynamic t PassphraseStage
   -> m (Event t (Map.Map WordKey Text))
@@ -305,14 +314,16 @@ passphraseWidget dWords dStage = do
     listViewWithKey dWords (passphraseWordElement dStage)
 
 continueButton
-  :: MonadWidget t m
+  :: (DomBuilder t m, PostBuild t m)
   => Dynamic t Bool
   -> m (Event t ())
 continueButton isDisabled = 
   setupDiv "continue-button" $
     confirmButton (def & uiButtonCfg_disabled .~ isDisabled) "Continue"
 
-createNewWallet :: forall t m. MonadWidget t m => Event t () -> SetupWF t m
+createNewWallet
+  :: forall t m. (DomBuilder t m, MonadFix m, MonadHold t m, MonadIO m, PerformEvent t m, PostBuild t m, MonadJSM (Performable m), TriggerEvent t m)
+  => Event t () -> SetupWF t m
 createNewWallet eBack = Workflow $  do
   ePb <- getPostBuild
   elAttr "img" ("src" =: static @"img/Wallet_Graphic_2.png" <> "class" =: setupClass "password-bg") blank
@@ -361,7 +372,7 @@ stackFaIcon icon = elClass "span" "fa-stack fa-lg" $ do
   elClass "i" ("fa " <> icon <> " fa-stack-1x fa-inverse") blank
 
 precreatePassphraseWarning
-  :: MonadWidget t m
+  :: (DomBuilder t m, MonadFix m, MonadHold t m, MonadIO m, PerformEvent t m, PostBuild t m, MonadJSM (Performable m), TriggerEvent t m)
   => Event t ()
   -> Dynamic t (Maybe Crypto.XPrv)
   -> Crypto.MnemonicSentence 12
@@ -395,7 +406,7 @@ precreatePassphraseWarning eBack dPassword mnemonicSentence = Workflow $ do
     line = el "div" . text
 
 doneScreen
-  :: MonadWidget t m
+  :: (DomBuilder t m, PostBuild t m)
   => Crypto.XPrv
   -> SetupWF t m
 doneScreen passwd = Workflow $ do
@@ -412,7 +423,7 @@ doneScreen passwd = Workflow $ do
 
 -- | UI for generating and displaying a new mnemonic sentence.
 createNewPassphrase
-  :: MonadWidget t m
+  :: (DomBuilder t m, MonadFix m, MonadHold t m, MonadIO m, PerformEvent t m, PostBuild t m, MonadJSM (Performable m), TriggerEvent t m)
   => Event t ()
   -> Dynamic t (Maybe Crypto.XPrv)
   -> Crypto.MnemonicSentence 12
@@ -452,7 +463,7 @@ createNewPassphrase eBack dPassword mnemonicSentence = Workflow $ do
 -- | UI for mnemonic sentence confirmation: scramble the phrase, make the user
 -- choose the words in the right order.
 confirmPhrase
-  :: MonadWidget t m
+  :: (DomBuilder t m, MonadFix m, MonadHold t m, MonadIO m, PerformEvent t m, PostBuild t m, MonadJSM (Performable m), TriggerEvent t m)
   => Event t ()
   -> Dynamic t (Maybe Crypto.XPrv)
   -> Crypto.MnemonicSentence 12
@@ -486,7 +497,7 @@ confirmPhrase eBack dPassword mnemonicSentence = Workflow $ do
     ]
 
 setPassword
-  :: MonadWidget t m
+  :: (DomBuilder t m, MonadHold t m, PerformEvent t m, PostBuild t m, MonadJSM (Performable m), TriggerEvent t m)
   => Dynamic t Crypto.Seed
   -> m (Event t Crypto.XPrv)
 setPassword dSeed = form "" $ do
