@@ -131,8 +131,6 @@ data WalletCfg key t = WalletCfg
   , _walletCfg_importAccount  :: Event t (Account key)
   , _walletCfg_delKey     :: Event t IntMap.Key
   -- ^ Delete a key from your wallet.
-  , _walletCfg_addAccount :: Event t (ChainId, AccountName, AccountGuard)
-  , _walletCfg_deleteAccount :: Event t (ChainId, AccountName)
   }
   deriving Generic
 
@@ -276,12 +274,10 @@ instance Reflex t => Semigroup (WalletCfg key t) where
       , _walletCfg_delKey = leftmost [ _walletCfg_delKey c1
                                      , _walletCfg_delKey c2
                                      ]
-      , _walletCfg_addAccount = leftmost [ _walletCfg_addAccount c1, _walletCfg_addAccount c2 ]
-      , _walletCfg_deleteAccount = leftmost [ _walletCfg_deleteAccount c1, _walletCfg_deleteAccount c2 ]
       }
 
 instance Reflex t => Monoid (WalletCfg key t) where
-  mempty = WalletCfg never never never never never
+  mempty = WalletCfg never never never
   mappend = (<>)
 
 instance Flattenable (WalletCfg key t) t where
@@ -290,8 +286,6 @@ instance Flattenable (WalletCfg key t) t where
       <$> doSwitch never (_walletCfg_genKey <$> ev)
       <*> doSwitch never (_walletCfg_importAccount <$> ev)
       <*> doSwitch never (_walletCfg_delKey <$> ev)
-      <*> doSwitch never (_walletCfg_addAccount <$> ev)
-      <*> doSwitch never (_walletCfg_deleteAccount <$> ev)
 
 instance Reflex t => Semigroup (Wallet key t) where
   (<>) = mappenddefault
