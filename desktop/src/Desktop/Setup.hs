@@ -320,7 +320,7 @@ createNewWallet eBack = Workflow $  do
   el "h1" $ text "Set a password"
   setupDiv "new-wallet-password-text" $ do
     el "div" $ text "Enter a strong and unique password"
-    el "div" $ text "to protect acces to your Chainweaver wallet"
+    el "div" $ text "to protect access to your Chainweaver wallet"
 
   (eGenError, eGenSuccess) <- fmap fanEither . performEvent $ genMnemonic <$ ePb
 
