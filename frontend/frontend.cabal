@@ -130,6 +130,7 @@ library
                  , Frontend.UI.Wallet
                  , Frontend.UI.Widgets
                  , Frontend.UI.Widgets.Helpers
+                 , Frontend.KadenaAccount
                  , Frontend.Wallet
                  , Reflex.Class.Extended
                  , Reflex.Dom.ACE.Extended
