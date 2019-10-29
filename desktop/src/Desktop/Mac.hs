@@ -13,19 +13,16 @@ import Control.Monad (forever)
 import Control.Monad.Except (throwError)
 import Control.Monad.IO.Class
 import Data.Foldable (for_)
-import Data.Proxy (Proxy(..))
 import Data.String (IsString(..))
 import Foreign.C.String (CString, peekCString)
-import Foreign.C.Types (CInt(..))
 import Foreign.StablePtr (StablePtr)
 import GHC.IO.Handle
-import Kadena.SigningApi (SigningApi, signingAPI)
+import Kadena.SigningApi (signingAPI)
 import Language.Javascript.JSaddle.Types (JSM)
 import Obelisk.Backend
 import Obelisk.Frontend
 import Obelisk.Route.Frontend
 import Reflex.Dom
-import Servant.API
 import System.FilePath ((</>))
 import System.IO
 import qualified Control.Concurrent.Async as Async

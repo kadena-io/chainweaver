@@ -1,4 +1,5 @@
 {-# LANGUAGE DataKinds #-}
+{-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecursiveDo #-}
@@ -56,12 +57,12 @@ type SetupWF t m = Workflow t m (Event t Crypto.XPrv)
 finishSetupWF :: (Reflex t, Applicative m) => a -> m (Event t x, a)
 finishSetupWF = pure . (,) never
 
-runSetup :: MonadWidget t m => m (Event t Crypto.XPrv)
+runSetup :: (DomBuilder t m, MonadFix m, MonadHold t m, MonadIO m, MonadIO (Performable m), PerformEvent t m, PostBuild t m) => m (Event t Crypto.XPrv)
 runSetup = divClass "fullscreen" $ divClass "wrapper" $ do
   kadenaWalletLogo
   fmap (switch . current) $ workflow splashScreen
 
-splashScreen :: MonadWidget t m => SetupWF t m
+splashScreen :: (DomBuilder t m, MonadFix m, MonadHold t m, MonadIO m, MonadIO (Performable m), PerformEvent t m, PostBuild t m) => SetupWF t m
 splashScreen = Workflow $ do
   el "h1" $ text "Welcome to the Kadena Wallet"
   create <- confirmButton def "Setup a new wallet"
@@ -76,7 +77,7 @@ data BIP39PhraseError
   | BIP39PhraseError_MnemonicWordsErr Crypto.MnemonicWordsError
   | BIP39PhraseError_InvalidPhrase
 
-recoverWallet :: MonadWidget t m => SetupWF t m
+recoverWallet :: (DomBuilder t m, MonadFix m, MonadHold t m, MonadIO m, MonadIO (Performable m), PerformEvent t m, PostBuild t m) => SetupWF t m
 recoverWallet = Workflow $ do
   el "h1" $ text "Recover your wallet"
   el "p" $ text "Type in your recovery phrase"
@@ -115,7 +116,7 @@ recoverWallet = Workflow $ do
 
 -- | UI for generating and displaying a new mnemonic sentence.
 createNewWallet
-  :: MonadWidget t m
+  :: (DomBuilder t m, MonadFix m, MonadHold t m, MonadIO m, MonadIO (Performable m), PerformEvent t m, PostBuild t m)
   => Maybe (Crypto.MnemonicSentence 15)
   -- ^ Initial mnemonic sentence. If missing, a new one will be generated.
   -> SetupWF t m
@@ -143,7 +144,7 @@ createNewWallet mMnemonic = Workflow $ do
 -- | UI for mnemonic sentence confirmation: scramble the phrase, make the user
 -- choose the words in the right order.
 confirmPhrase
-  :: MonadWidget t m
+  :: (DomBuilder t m, MonadFix m, MonadHold t m, MonadIO m, MonadIO (Performable m), PerformEvent t m, PostBuild t m)
   => Crypto.MnemonicSentence 15
   -- ^ Mnemonic sentence to confirm
   -> SetupWF t m
@@ -183,7 +184,7 @@ confirmPhrase mnemonic = Workflow $ do
     ]
 
 setPassword
-  :: MonadWidget t m
+  :: (DomBuilder t m, MonadFix m, MonadHold t m, MonadIO m, MonadIO (Performable m), PerformEvent t m, PostBuild t m)
   => SetupWF t m
   -> Crypto.Seed
   -> SetupWF t m
@@ -217,4 +218,3 @@ setPassword previous seed = Workflow $ form "" $ do
 genMnemonic :: MonadIO m => m (Either Text (Crypto.MnemonicSentence 15))
 genMnemonic = liftIO $ bimap (T.pack . show) Crypto.entropyToWords . Crypto.toEntropy @160
   <$> Crypto.Random.Entropy.getEntropy @ByteString 20
-
