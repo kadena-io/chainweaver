@@ -72,8 +72,8 @@ rightTabBar cls ideL = elKlass "div" (cls <> "pane") $ do
     { _tabBarCfg_tabs = [minBound .. maxBound]
     , _tabBarCfg_mkLabel = const $ text . selectionToText
     , _tabBarCfg_selectedTab = Just <$> curSelection
-    , _tabBarCfg_classes = "pane__header"
-    , _tabBarCfg_type = TabBarType_Primary
+    , _tabBarCfg_classes = mempty
+    , _tabBarCfg_type = TabBarType_Secondary
     }
 
   let specificPaneClass = \case
