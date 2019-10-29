@@ -29,25 +29,6 @@ $main-header-btn-font-size: $secondary-font-size;
   position: relative;
 }
 
-.main-header__center-box {
-  position: absolute;
-  padding-top: $normal-padding;
-  padding-bottom: $normal-padding;
-  text-align: center;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  top: 0;
-  // Make sure we are in the background - otherwise links are not clickable!
-  z-index: -10;
-}
-
-.main-header__center {
-  position: relative;
-  margin: auto;
-  display: inline-block;
-}
-
 .main-header__img {
   display: inline-block;
   position: relative;
@@ -67,11 +48,6 @@ $main-header-btn-font-size: $secondary-font-size;
   @media (max-width: 1290px) {
       height: $main-header-std-height-small-screen;
   }
-}
-
-.main-header__kadena-logo {
-  @extend .main-header__logo-img;
-  vertical-align: bottom;
 }
 
 .main-header__pact-logo {
@@ -187,11 +163,3 @@ $main-header-btn-font-size: $secondary-font-size;
     display: none;
   }
 }
-
-@media (max-width: 820px) {
-  .main-header__kadena-logo {
-    display: none;
-  }
-}
-
-
