@@ -82,6 +82,7 @@ library
                  , Frontend.AppCfg
                  , Frontend.Network
                  , Frontend.Network.NodeInfo
+                 , Frontend.Crypto.Class
                  , Frontend.Crypto.Ed25519
                  , Frontend.Editor
                  , Frontend.Editor.Annotation
