@@ -12,9 +12,6 @@
 .pane {
   display: flex;
   flex-direction: column;
-
-  padding-top: $pane-padding-top;
-  padding-bottom: $pane-padding-bottom;
 }
 
 .pane__header {
@@ -43,8 +40,6 @@
 }
 
 .pane__body {
-  margin-left: $pane-padding-left;
-  margin-right: $pane-padding-right;
   height: auto;
 }
 

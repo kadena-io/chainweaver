@@ -30,9 +30,14 @@
   border-radius: $std-border-radius;
 }
 
+.ace_gutter {
+  padding-top: 13px;
+}
+
 /* More space to the left of the code, so we match design */
 .ace_scroller {
-  margin-left: 8px;
+  padding-top: 13px;
+  padding-left: 15px;
 }
 
 .ace_editor {
@@ -58,4 +63,3 @@
 .ace_scrollbar {
     display: none !important;
 }
-
