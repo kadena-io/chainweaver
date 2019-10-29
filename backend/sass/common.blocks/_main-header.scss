@@ -9,7 +9,7 @@
 $main-header-border-color: $primary-border-color;
 $main-header-color: $white;
 $main-header-font-size: $primary-font-size;
-$main-header-std-height: 28px;
+$main-header-std-height: 36px;
 $main-header-std-height-small-screen: 24px;
 $main-header-btn-font-size: $secondary-font-size;
 
@@ -22,57 +22,18 @@ $main-header-btn-font-size: $secondary-font-size;
 .main-header {
   display: flex;
   justify-content: space-between;
-  background: #2d2d2f;
+  background: $chainweaver-blue;
   color: $main-header-color;
   padding-top: $normal-padding;
   padding-bottom: $normal-padding;
   position: relative;
 }
 
-.main-header__img {
-  display: inline-block;
-  position: relative;
-}
-
-.main-header__logos-docs {
+.main-header__page-name {
   display: flex;
+  align-items: center;
+  font-size: 19px;
 
-  // Align with editor:
-  margin-right: $pane-padding-right;
-}
-
-.main-header__logo-img {
-  @extend .main-header__img;
-  height: $main-header-std-height;
-
-  @media (max-width: 1290px) {
-      height: $main-header-std-height-small-screen;
-  }
-}
-
-.main-header__pact-logo {
-  @extend .main-header__logo-img;
-  color: $main-header-color;
-  // line-height: 0;
-  vertical-align: bottom;
-  margin-right: $normal-margin;
-}
-
-
-.main-header__pact-logo-img {
-  @extend .main-header__logo-img;
-  // There seems to be some shadow in the logo which causes a weird offset:
-  // bottom: -1.5px;
-}
-
-.main-header__pact-version {
-  color: #727272;
-  font-size: 14px;
-}
-
-.main-header__docs {
-  flex: 1;
-  text-align: left;
 }
 
 .main-header__project-loader {
@@ -82,8 +43,8 @@ $main-header-btn-font-size: $secondary-font-size;
 
 .main-header__button {
   color: $white;
-  border-color: $primary-border-color;
-  background: transparent;
+  border-color: transparent;
+  background: $chainweaver-dark-blue;
   padding: 0 $normal-padding;
   margin-left: $medium-margin;
   font-size: $secondary-font-size;
@@ -92,6 +53,12 @@ $main-header-btn-font-size: $secondary-font-size;
   @media (max-width: 1290px) {
       height: $main-header-std-height-small-screen;
   }
+}
+
+.main-header__deploy-button {
+  @extend .main-header__button;
+  color: $black;
+  background: $white;
 }
 
 .main-header__text-icon-button {
@@ -105,24 +72,6 @@ $main-header-btn-font-size: $secondary-font-size;
 
 .main-header__button:hover {
   background: $black-hover;
-}
-
-
-.main-header__documents {
-  margin-left: $normal-margin;
-  color: $main-header-color;
-  text-decoration: none;
-  line-height: 0;
-}
-
-*:first-child.main-header__documents {
-    margin-left: 0;
-}
-
-.main-header__documents-img {
-  @extend .main-header__img;
-  margin-right: 7px;
-  bottom: -5px;
 }
 
 .main-header__controls-nav {
@@ -153,13 +102,4 @@ $main-header-btn-font-size: $secondary-font-size;
     display: none;
   }
 
-}
-
-@media (max-width: 880px) {
-  // .main-header {
-  //   padding-left: 0px;
-  // }
-  .main-header__pact-logo {
-    display: none;
-  }
 }

@@ -251,37 +251,8 @@ controlBar appCfg m = do
 
 controlBarLeft :: forall t m. MonadWidget t m => m ()
 controlBarLeft =
-  divClass "main-header__logos-docs" $ do
-    {- kadenaLogo -}
-    pactLogo
-    docs
-
-  where
-
-    pactLogo =
-      elClass "div" "main-header__pact-logo" $ do
-        elAttr "img"
-          ( "src" =: static @"img/pact-logo.svg"
-            <> "alt" =: "Kadena Pact Logo"
-            <> "class" =: "main-header__pact-logo-img"
-          ) blank
-        elClass "span" "main-header__pact-version" $ do
-          ver <- getPactVersion
-          text $ "v" <> ver
-
-    docs = divClass "main-header__docs" $ do
-      elAttr "a" ( "href" =: "https://pactlang.org"
-                <> "class" =: "main-header__documents" <> "target" =: "_blank"
-                 ) $ do
-        elAttr "img" ("src" =: static @"img/instruction.svg" <> "alt" =: "Documentation" <> "class" =: "main-header__documents-img" <> "style" =: "width: 28px;") blank
-        text "Tutorials"
-
-      elAttr "a" ( "href" =: "http://pact-language.readthedocs.io"
-                <> "class" =: "main-header__documents" <> "target" =: "_blank"
-                 ) $ do
-        elAttr "img" ("src" =: static @"img/document.svg" <> "class" =: "main-header__documents-img") blank
-        text "Docs"
-
+  divClass "main-header__page-name" $
+    text "Contracts" --TODO: extract from route
 
 getPactVersion :: MonadWidget t m => m Text
 getPactVersion = do
@@ -342,7 +313,7 @@ controlBarRight appCfg m = do
     signoutBtn = signoutButton $
       headerBtnCfg & uiButtonCfg_title .~ Just "Sign out from GitHub"
 
-    deployBtn = uiButton headerBtnCfg $
+    deployBtn = uiButton (headerBtnCfg & uiButtonCfg_class <>~ "main-header__deploy-button") $
       text $ "Deploy"
 
     loadReplBtn =
