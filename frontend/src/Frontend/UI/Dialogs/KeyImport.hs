@@ -71,7 +71,7 @@ uiKeyImport m _onClose = do
 
           elClass "h2" "heading heading_type_h2" $ text "Import Existing Key"
           elKlass "div" "group segment" $ do
-            (_, name) <- mkLabeledInput mkNameInput "Key Name" def
+            (_, name) <- mkLabeledInput mkNameInput "Account Name" def
             (_, errPub) <- mkLabeledInput mkPubKeyInput  "Public Key" def
             (_, parsedPair) <- mkLabeledInput (mkPrivKeyInput errPub) "Private Key" def
 
@@ -101,12 +101,9 @@ uiKeyImport m _onClose = do
     mkNameInput cfg = do
       let
         nameParser = do
-          mkNotValidMsg <- checkKeyNameValidityStr m
-          pure $ \v -> mkNotValidMsg v >> mkEmptyNameMessage v
+          mkNotValidMsg <- checkAccountNameUniqueness m
+          pure $ \v -> mkAccountName v >> mkNotValidMsg v
       inputWithError uiInputElement nameParser cfg
-
-    mkEmptyNameMessage v =
-      if (T.null . T.strip) v then Left "Key name must not be empty" else Right v
 
     mkPubKeyInput =
       inputWithError uiTextAreaElement (pure $ runExcept . parsePublicKey)

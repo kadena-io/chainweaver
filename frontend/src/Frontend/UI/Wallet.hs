@@ -104,7 +104,7 @@ hasPrivateKey = isJust . _keyPair_privateKey . snd
 -- | Line input with "Create" button for creating a new key.
 uiCreateKey :: MonadWidget t m => Wallet t -> m (Event t KeyName)
 uiCreateKey w =
-  validatedInputWithButton "group__header" (checkKeyNameValidityStr w) "Enter account name" "Generate"
+  validatedInputWithButton "group__header" (checkAccountNameUniqueness w) "Enter account name" "Generate"
 
 
 -- | Widget listing all available keys.
