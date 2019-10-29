@@ -21,6 +21,7 @@ import Data.Bits ((.|.))
 import Data.ByteString (ByteString)
 import Data.Maybe (isNothing)
 import Data.Text (Text)
+import Data.Time (NominalDiffTime, getCurrentTime, addUTCTime)
 import Language.Javascript.JSaddle (liftJSM)
 import Reflex.Dom.Core
 import System.FilePath ((</>))
@@ -32,6 +33,9 @@ import qualified Data.ByteString.Lazy as LBS
 import qualified Data.Text.Encoding as T
 import qualified Data.Text.Encoding.Error as T
 import qualified Data.Text.IO as T
+import qualified GHCJS.DOM as DOM
+import qualified GHCJS.DOM.EventM as EventM
+import qualified GHCJS.DOM.GlobalEventHandlers as GlobalEventHandlers
 import qualified System.Directory as Directory
 import qualified System.FilePath as FilePath
 import qualified Text.RawString.QQ as QQ
@@ -136,9 +140,10 @@ bipWallet appCfg = do
         saved <- performEvent $ ffor xprv $ \x -> setItemStorage localStorage BIPStorage_RootKey x >> pure x
         pure $ Just <$> saved
       Just xprv -> mdo
-        mPassword <- holdUniqDyn =<< holdDyn Nothing passEvts
-        -- TODO expire password
-        (restore, passEvts) <- bitraverse (switchHold never) (switchHold never) $ splitE result
+        -- Every 30 seconds, check if the user has been active in the last 15 minutes
+        userInactive <- watchInactivity 30 (60 * 5)
+        mPassword <- holdUniqDyn <=< holdDyn Nothing $ leftmost [userPassEvents, Nothing <$ userInactive]
+        (restore, userPassEvents) <- bitraverse (switchHold never) (switchHold never) $ splitE result
         result <- dyn $ ffor mPassword $ \case
           Nothing -> lockScreen xprv
           Just pass -> flip runCryptoT (bipCrypto xprv pass) $ do
@@ -147,6 +152,21 @@ bipWallet appCfg = do
             pure (never, Nothing <$ logout)
         pure $ Nothing <$ restore
   pure ()
+
+-- | Returns an event which fires at the given check interval when the user has
+-- been inactive for at least the given timeout.
+watchInactivity :: MonadWidget t m => NominalDiffTime -> NominalDiffTime -> m (Event t ())
+watchInactivity checkInterval timeout = do
+  t0 <- liftIO getCurrentTime
+  (activity, act) <- newTriggerEvent
+  liftJSM $ do
+    win <- DOM.currentWindowUnchecked
+    void $ EventM.on win GlobalEventHandlers.click $ liftIO $ act =<< getCurrentTime
+    void $ EventM.on win GlobalEventHandlers.keyDown $ liftIO $ act =<< getCurrentTime
+  lastActivity <- hold t0 activity
+  check <- tickLossyFromPostBuildTime checkInterval
+  let checkTime la ti = guard $ addUTCTime timeout la <= _tickInfo_lastUTC ti
+  pure $ attachWithMaybe checkTime lastActivity check
 
 mkSidebarLogoutLink :: (TriggerEvent t m, PerformEvent t n, DomBuilder t n, MonadIO (Performable n)) => m (Event t (), n ())
 mkSidebarLogoutLink = do
