@@ -128,12 +128,24 @@ walletSetupRecoverHeader currentScreen = setupDiv "workflow-header" $ do
   unless (currentScreen `elem` [WalletScreen_RecoverPassphrase, WalletScreen_SplashScreen]) $ do
     elClass "ol" (setupClass "workflow-icons") $ do
       faEl "1" "Password" WalletScreen_Password
+      line "pw-recovery" WalletScreen_CreatePassphrase
       faEl "2" "Recovery" WalletScreen_CreatePassphrase
+      line "recovery-verify" WalletScreen_VerifyPassphrase
       faEl "3" "Verify" WalletScreen_VerifyPassphrase
+      line "verify-done" WalletScreen_Done
       faEl "4" "Done" WalletScreen_Done
-    setupDiv "header-line-wrapper" $ setupDiv "header-line" blank
-    
+
   where
+    addActive sid =
+      if isActive sid then
+        ["active"]
+      else
+        []
+
+    line cls sid = 
+      elClass "div" (T.unwords $ setupClass "workflow-icon": setupClass "header-line" : cls : addActive sid) blank
+
+    isActive sid = sid `elem` (progress currentScreen)
     progress WalletScreen_Password =
       [WalletScreen_Password]
     progress WalletScreen_CreatePassphrase =
@@ -145,17 +157,14 @@ walletSetupRecoverHeader currentScreen = setupDiv "workflow-header" $ do
     progress _ = []
 
     faEl n lbl sid =
-      let
-        isActive = sid `elem` (progress currentScreen)
-      in
-        elClass "li" (setupClass "workflow-icon" <> if isActive then " active" else T.empty) $ do
-          elClass "div" (setupClass "workflow-icon-circle" <> " " <> setupClass ("workflow-screen-" <> T.toLower lbl)) $
-            setupDiv "workflow-icon-inner" $
-            if isActive then
-              elClass "i" ("fa fa-check fa-lg fa-inverse " <> setupClass "workflow-icon-active") blank
-            else
-              text n
-          text lbl
+      elClass "li" (setupClass "workflow-icon" <> if isActive sid then " active" else T.empty) $ do
+        elClass "div" (setupClass "workflow-icon-circle" <> " " <> setupClass ("workflow-screen-" <> T.toLower lbl)) $
+          setupDiv "workflow-icon-inner" $
+          if isActive sid then
+            elClass "i" ("fa fa-check fa-lg fa-inverse " <> setupClass "workflow-icon-active") blank
+          else
+            text n
+        text lbl
 
 runSetup
   :: forall t m. (DomBuilder t m, MonadFix m, MonadHold t m, MonadIO m, PerformEvent t m, PostBuild t m, MonadJSM (Performable m), TriggerEvent t m)

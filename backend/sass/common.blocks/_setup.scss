@@ -7,7 +7,6 @@
 // The wallet ui:
 @import '../include/defs';
 
-$fullscreen-wallet-grey: #f1f1f1;
 $wallet-top-btm-margin: 0.5rem 0 0.5rem 0;
 $kadena-orange: #F3AB3C;
 
@@ -21,7 +20,7 @@ $kadena-orange: #F3AB3C;
 .setup__checkbox {
   .checkbox {
     font-size: 20px;
-    color: $confirm-color;
+    color: $chainweaver-blue;
     text-align: left;
     display: inline-block;
     padding-left: 40px;
@@ -93,8 +92,27 @@ $kadena-orange: #F3AB3C;
 
   li.setup__workflow-icon {
     display: inline-block;
-    color: $confirm-color;
-    min-width: 10rem;
+    color: $chainweaver-blue;
+    min-width: 8rem;
+  }
+}
+
+.setup__header-line {
+  height: 3px;
+  width: 63px;
+  background-color: $white;
+  margin-top: 1.3rem;
+  position: absolute;
+
+  &.active {
+    background-color: $chainweaver-blue;
+  }
+
+  &.pw-recovery {
+    left: 6rem;
+  }
+  &.verify-done {
+    left: 22rem;
   }
 }
 
@@ -103,22 +121,24 @@ $kadena-orange: #F3AB3C;
   justify-content: center;
   align-items: stretch;
   padding-inline-start: 0; // 40px is added by user agent stylesheet
+  min-width: 75px;
+  position: relative;
 }
 
 .setup__workflow-icon.active .setup__workflow-icon-circle {
-  background-color: $confirm-color;
+  background-color: $chainweaver-blue;
 }
 
 .setup__workflow-icon-circle {
-  background-color: #fff;
+  background-color: $white;
   width: 3em;
   height: 3em;
   border-radius: 2rem;
   display: table;
-  margin-left: 3.5rem;
   border: solid;
-  border-color: #f1f1f1;
+  border-color: $body-background;
   border-width: 0.45rem;
+  margin-left: 2.5rem;
 
   .setup__workflow-icon-inner {
     display: table-cell;
@@ -188,11 +208,11 @@ $kadena-orange: #F3AB3C;
 }
 
 .setup__checkbox {
-  color: $confirm-color;
+  color: $chainweaver-blue;
 }
 
 .setup__terms-conditions-checkbox {
-  color: $confirm-color;
+  color: $chainweaver-blue;
 }
 
 .setup__key {
@@ -230,7 +250,7 @@ $kadena-orange: #F3AB3C;
 }
 
 .setup__passphrase-widget-word-hider {
-  background-color: $fullscreen-wallet-grey;
+  background-color: $body-background;
 }
 
 .setup__passphrase-widget-word,
@@ -286,7 +306,7 @@ $kadena-orange: #F3AB3C;
   border: none;
 
   i.fa {
-    color: $confirm-color;
+    color: $chainweaver-blue;
     margin-right: 0.4rem;
   }
 
@@ -354,7 +374,7 @@ $kadena-orange: #F3AB3C;
 
 .setup__recover-widget-wrapper,
 .setup__verify-widget-wrapper {
-  background-color: #fff;
+  background-color: $white;
 }
 
 .setup__waiting-passphrase {
@@ -373,20 +393,5 @@ $kadena-orange: #F3AB3C;
 .setup__recover-restore-button .button.button_type_confirm {
   background-color: $kadena-orange;
   border-color: $kadena-orange;
-  color: #fff;
-}
-
-
-.setup__header-line-wrapper {
-  position: relative;
-
-  .setup__header-line {
-    position: absolute;
-    background-color: #4499d9;
-    height: 0.5rem;
-    width: 50%;
-    margin-left: 15rem;
-    top: -3.8rem;
-    z-index: -1;
-  }
+  color: $white;
 }
