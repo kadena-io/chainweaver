@@ -23,38 +23,52 @@ newtype KadenaAddress = KadenaAddress { unKadenaAddress :: Text }
   deriving (Show, Eq)
 
 {-
-Encoder / Decoder probably should not be derived automatically, as package updates could
-silently change the format and break _lots_ of things. No need for JSON, simple
-parser/printer enough?
+Encoder / Decoder should not be derived automatically as package updates could silently
+change the format and break things. Keep to simple handrolled parser & printer that
+satisfies the round-trip property: (print . parse = id), hedgehog has 'tripping' for this.
 
-Final encoding uses base64 because it needs to be reliably cut'n'paste between platforms
-without risking corruption. Does this need to be cryptographically secure??
+Final encoding will be Base64 because it needs to be reliably cut'n'paste between
+platforms without risking corruption. (Does this need to be cryptographically secure?)
 
-Known Fixed/maximum sizes for the different fields would be neat.
+We probably should tighten the restrictions for some of the components of the address:
 
-Need restrictions on what is allowed as account name, max size, [a-zA-Z0-9].
+Account Name:
+Currently only requires that it not be empty. This should be changed to have a max
+character limit and limitations on the characters that can be entered. Limit to
+alpha-numeric only with '_' and '-' allowed?
 
-Delimited? : Line breaks? Pipes?
+ChainId:
+At the moment is a numeric identifier. How many chains can we expect to see? It's probably
+acceptable to leave this as is with some extra steps to ensure that this can't be a
+negative value, and can't contain decimal values.
 
-Thought:
+NetworkName(Id):
+This is a hostname, which according to the RFC can be up to 253 characters, including '.'
+separators. Do we expect to allow different ports in this configuration? There should be
+library support we can lean on to ensure that the network is RFC compliant and that should
+give us enough reliability.
 
-<network name, up to 253 (hostname RFC max length including '.')>\n
-<chain id, six digits, leading zeros 000001, how many chains can we expect?>\n
-<acc name, max length?, pad to size? names containing delimiters?>\n
-<pkey, known fixed size>\n
-<checksum, known fixed size>
+Public Key & Checksum:
+Both of these are by definition fixed size pieces of information with redefined structures.
 
-Example:
+Checksum will be MD5 hash of 'AccountName', 'ChainId', 'NetworkName', 'PublicKey'. This
+will be the last field as well so we can parse the initial fields, create the checksum,
+parse the checksum and compare, failing immediately if we don't have a match.
+
+Some ideas for layout:
+
+Newlines:
 
 us1.tn1.chainweb.com
-000001
+1
 doug
 1bfafb513a26979b48bafe3f9c0fba7703065066a84421f71ca41b54692de67d 
 71f920fa275127a7b60fa4d4d41432a3
 
-or:
+Or some other delimiter:
 
-us1.tn1.chainweb.com|000001|doug|1bfafb513a26979b48bafe3f9c0fba7703065066a84421f71ca41b54692de67d|71f920fa275127a7b60fa4d4d41432a3
+us1.tn1.chainweb.com%1%doug%1bfafb513a26979b48bafe3f9c0fba7703065066a84421f71ca41b54692de67d%71f920fa275127a7b60fa4d4d41432a3
+
 -}
 
 
