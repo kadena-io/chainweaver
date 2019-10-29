@@ -33,7 +33,6 @@ module Frontend.UI.DeploymentSettings
   , uiChainSelection
     -- * Widgets
   , uiDeploymentSettings
-  , uiSigningKeys
   , uiSenderFixed
   , uiSenderDropdown
   , transactionInputSection
@@ -46,7 +45,6 @@ module Frontend.UI.DeploymentSettings
 import Control.Applicative (liftA2)
 import Control.Arrow (first, (&&&))
 import Control.Error (fmapL)
-import Control.Error.Util (hush)
 import Control.Lens
 import Control.Monad
 import Control.Monad.Trans.Class
@@ -78,6 +76,7 @@ import qualified Pact.Types.ChainId as Pact
 import qualified Pact.Types.Command as Pact
 
 import Common.Network
+import Frontend.Crypto.Class
 import Frontend.Foundation
 import Frontend.JsonData
 import Frontend.Network
@@ -88,7 +87,6 @@ import Frontend.UI.TabBar
 import Frontend.UI.Widgets
 import Frontend.UI.Widgets.Helpers (preventScrollWheelAndUpDownArrow)
 import Frontend.Wallet
-import qualified Frontend.AppCfg as AppCfg
 
 import qualified Pact.Types.Capability as PC
 import qualified Pact.Types.Names as PN
@@ -156,9 +154,10 @@ nextView = \case
   DeploymentSettingsView_Cfg -> Just DeploymentSettingsView_Keys
   DeploymentSettingsView_Keys -> Nothing
 
-data DeploymentSettingsResult = DeploymentSettingsResult
+data DeploymentSettingsResult key = DeploymentSettingsResult
   { _deploymentSettingsResult_gasPrice :: GasPrice
-  , _deploymentSettingsResult_signingKeys :: [KeyPair]
+  , _deploymentSettingsResult_signingKeys :: [KeyPair key]
+  , _deploymentSettingsResult_signingAccounts :: Set AccountName
   , _deploymentSettingsResult_sender :: AccountName
   , _deploymentSettingsResult_chainId :: ChainId
   , _deploymentSettingsResult_code :: Text
@@ -170,14 +169,15 @@ data DeploymentSettingsResult = DeploymentSettingsResult
 --
 --   the right keys, ...
 uiDeploymentSettings
-  :: forall t m model mConf a
-  . ( MonadWidget t m, HasNetwork model t, HasWallet model t
+  :: forall key t m model mConf a
+  . ( MonadWidget t m, HasNetwork model t, HasWallet model key t
     , Monoid mConf , HasNetworkCfg mConf t
     , HasJsonDataCfg mConf t, Flattenable mConf t, HasJsonData model t
+    , HasCrypto key (Performable m)
     )
   => model
   -> DeploymentSettingsConfig t m model a
-  -> m (mConf, Event t DeploymentSettingsResult, Maybe a)
+  -> m (mConf, Event t (DeploymentSettingsResult key), Maybe a)
 uiDeploymentSettings m settings = mdo
     let code = _deploymentSettingsConfig_code settings
     let initTab = fromMaybe DeploymentSettingsView_Cfg mUserTabName
@@ -214,7 +214,7 @@ uiDeploymentSettings m settings = mdo
             sender <- MaybeT mSender
             chainId <- MaybeT cChainId
             caps <- MaybeT capabilities
-            let signing = Set.mapMonotonic unAccountName $ Set.insert sender $ Map.keysSet caps
+            let signing = Set.insert sender $ Map.keysSet caps
             jsonData' <- lift $ either (const mempty) id <$> m ^. jsonData . jsonData_data
             ttl' <- lift ttl
             limit <- lift gasLimit
@@ -226,13 +226,16 @@ uiDeploymentSettings m settings = mdo
                   , _pmTTL = ttl'
                   }
             code' <- lift code
-            keys <- lift $ m ^. wallet_keys
-            let toPublicKey (AccountName acc, cs) = do
-                  KeyPair pk _ <- Map.lookup acc keys
+            allAccounts <- lift $ m ^. wallet_accounts
+            let accountsToKey = flip IM.foldMapWithKey allAccounts $ \_ -> \case
+                  SomeAccount_Account a -> Map.singleton (_account_name a) (_account_key a)
+                  SomeAccount_Deleted -> Map.empty
+                toPublicKey (name, cs) = do
+                  KeyPair pk _ <- Map.lookup name accountsToKey
                   pure (pk, cs)
                 pkCaps = Map.fromList $ fmapMaybe toPublicKey $ Map.toList caps
             pure $ do
-              let signingPairs = getSigningPairs signing keys
+              let signingPairs = getSigningPairs signing allAccounts
               cmd <- buildCmd
                 (_deploymentSettingsConfig_nonce settings)
                 networkName publicMeta signingPairs
@@ -241,6 +244,7 @@ uiDeploymentSettings m settings = mdo
               pure $ DeploymentSettingsResult
                 { _deploymentSettingsResult_gasPrice = _pmGasPrice publicMeta
                 , _deploymentSettingsResult_signingKeys = signingPairs
+                , _deploymentSettingsResult_signingAccounts = signing
                 , _deploymentSettingsResult_sender = sender
                 , _deploymentSettingsResult_chainId = chainId
                 , _deploymentSettingsResult_command = cmd
@@ -316,7 +320,7 @@ uiCfg
      , Monoid mConf
      , Flattenable mConf t
      , HasJsonDataCfg mConf t
-     , HasWallet model t
+     , HasWallet model key t
      , HasJsonData model t
      )
   => Dynamic t Text
@@ -519,27 +523,23 @@ uiSenderFixed sender = do
 uiSenderDropdown
   :: ( Adjustable t m, PostBuild t m, DomBuilder t m
      , MonadHold t m, MonadFix m
-     , HasWallet model t
+     , HasWallet model key t
      )
   => DropdownConfig t (Maybe AccountName)
   -> model
   -> Dynamic t (Maybe ChainId)
   -> m (Dynamic t (Maybe AccountName))
 uiSenderDropdown uCfg m chainId = do
-  let textAccounts
-        | AppCfg.isChainweaverAlpha = Map.insert Nothing "Choose an account"
-          . Map.mapKeys (hush . mkAccountName)
-          . Map.mapWithKey const <$> (m ^. wallet_keys)
-        | otherwise =
-          let mkTextAccounts mChain chains = case mChain of
-                Nothing -> Map.singleton Nothing "You must select a chain ID before choosing an account"
-                Just chain -> case Map.lookup chain chains of
-                  Just accounts | not (Map.null accounts) ->
-                                  Map.insert Nothing "Choose an account" $ Map.mapKeysMonotonic Just $ Map.mapWithKey (\k _ -> unAccountName k) accounts
-                  _ -> Map.singleton Nothing "No accounts on current chain"
-           in mkTextAccounts <$> chainId <*> m ^. wallet_accountGuards
+  let textAccounts =
+        let mkTextAccounts mChain accounts = case mChain of
+              Nothing -> Map.singleton Nothing "You must select a chain ID before choosing an account"
+              Just chain -> case Map.fromList $ fmapMaybe (someAccount Nothing (\a -> (Just $ _account_name a, unAccountName $ _account_name a) <$ guard (_account_chainId a == chain))) $ IM.elems accounts of
+                accountsOnChain
+                  | not (Map.null accountsOnChain) -> Map.insert Nothing "Choose an account" accountsOnChain
+                  | otherwise -> Map.singleton Nothing "No accounts on current chain"
+          in mkTextAccounts <$> chainId <*> m ^. wallet_accounts
   choice <- dropdown Nothing textAccounts $ uCfg
-    & dropdownConfig_setValue .~ (if AppCfg.isChainweaverAlpha then never else Nothing <$ updated chainId)
+    & dropdownConfig_setValue .~ (Nothing <$ updated chainId)
     & dropdownConfig_attributes <>~ pure ("class" =: "labeled-input__input select select_mandatory_missing")
   pure $ value choice
 
@@ -646,7 +646,7 @@ capabilityInputRows mkSender = do
 
 -- | Widget for selection of sender and signing keys.
 uiSenderCapabilities
-  :: forall t m model. (MonadWidget t m, HasWallet model t)
+  :: forall key t m model. (MonadWidget t m, HasWallet model key t)
   => model
   -> Dynamic t (Maybe Pact.ChainId)
   -> Maybe [DappCap]
@@ -691,41 +691,6 @@ uiSenderCapabilities m cid mCaps mkSender = do
 
 isFundTX :: SigCapability -> Bool
 isFundTX = (^. to PC._scName . to PN._qnName . to (== "FUND_TX"))
-
-uiSigningKeys :: (MonadWidget t m, HasWallet model t) => model -> m (Dynamic t (Set KeyName))
-uiSigningKeys model = do
-  let keyMap = model ^. wallet_keys
-      tableAttrs =
-        "style" =: "table-layout: fixed; width: 100%" <> "class" =: "table"
-  boxValues <- elAttr "table" tableAttrs $ do
-    chosenKeys <- el "tbody" $ listWithKey keyMap $ \name key -> signingItem (name, key)
-    dynText $ ffor keyMap $ \keys -> if Map.null keys then "No keys ..." else ""
-    pure chosenKeys
-  return $ Map.keysSet . Map.filter id <$> joinDynThroughMap boxValues
-
-------------------------------------------------------------------------------
--- | Display a key as list item together with it's name.
-signingItem
-  :: MonadWidget t m
-  => (KeyName, Dynamic t KeyPair)
-  -> m (Dynamic t Bool)
-signingItem (n, _) = do
-    elClass "tr" "table__row checkbox-container" $ do
-      (e, ()) <- el' "td" $ text n
-      let onTextClick = domEvent Click e
-      elClass "td" "signing-selector__check-box-cell" $ mdo
-        let
-          val = _checkbox_value box
-          cfg = toggleCheckbox val onTextClick
-        box <- mkCheckbox cfg
-        pure val
-  where
-    mkCheckbox uCfg = do
-      uiCheckbox "signing-selector__check-box-label" False uCfg blank
-
-toggleCheckbox :: Reflex t => Dynamic t Bool -> Event t a -> CheckboxConfig t
-toggleCheckbox val =
-  (\v -> def { _checkboxConfig_setValue = v }) . fmap not . tag (current val)
 
 -- parsed: "{\"role\": \"GAS\", \"description\": \"Pay the GAS required for this transaction\", \"cap\": {\"args\": [\"doug\",], \"name\": \"coin.FUND_TX\"}}"
 defaultGASCapability :: DappCap

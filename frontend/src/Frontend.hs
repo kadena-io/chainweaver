@@ -23,6 +23,8 @@ import           Obelisk.Generated.Static
 import           Common.Api
 import           Common.Route
 import           Frontend.AppCfg
+import           Frontend.Crypto.Class
+import           Frontend.Crypto.Ed25519
 import           Frontend.Foundation
 import           Frontend.ModuleExplorer.Impl (loadEditorFromLocalStorage)
 import           Frontend.ReplGhcjs
@@ -52,7 +54,7 @@ frontend = Frontend
   , _frontend_body = prerender_ loaderMarkup $ do
     (fileOpened, triggerOpen) <- openFileDialog
     let store = browserStorage
-    flip runStorageT store $ app $ AppCfg
+    flip runStorageT store $ flip runCryptoT (Crypto mkSignature (const genKeyPair)) $ app blank $ AppCfg
       { _appCfg_gistEnabled = True
       , _appCfg_externalFileOpened = fileOpened
       , _appCfg_openFileDialog = liftJSM triggerOpen
@@ -60,7 +62,6 @@ frontend = Frontend
       , _appCfg_editorReadOnly = False
       , _appCfg_signingRequest = never
       , _appCfg_signingResponse = liftIO . print
-      , _appCfg_forceResize = never
       }
   }
 

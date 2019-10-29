@@ -153,6 +153,19 @@ $main-header-btn-font-size: $secondary-font-size;
   // min-width: 455px;
 }
 
+.main-header__network-bar {
+  justify-content: flex-start;
+  background-color: white;
+
+  .page__network-bar-status.signal {
+    margin-left: 3rem;
+    margin-right: 1rem;
+  }
+  .page__network-bar-select {
+    width: 15%;
+  }
+}
+
 @media (max-width: 1510px) {
   .main-header__button {
     padding: 0 12px;

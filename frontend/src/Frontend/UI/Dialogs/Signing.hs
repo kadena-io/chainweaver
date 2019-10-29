@@ -29,6 +29,7 @@ import Reflex
 import Reflex.Dom
 
 import Frontend.AppCfg
+import Frontend.Crypto.Class
 import Frontend.Crypto.Ed25519 (fromPactPublicKey)
 import Frontend.Foundation hiding (Arg)
 import Frontend.JsonData
@@ -38,8 +39,8 @@ import Frontend.UI.Dialogs.DeployConfirmation (DeployConfirmationConfig (..), fu
 import Frontend.UI.Modal.Impl
 import Frontend.Wallet
 
-type HasUISigningModelCfg mConf t =
-  ( Monoid mConf, Flattenable mConf t, HasWalletCfg mConf t
+type HasUISigningModelCfg mConf key t =
+  ( Monoid mConf, Flattenable mConf t, HasWalletCfg mConf key t
   , HasJsonDataCfg mConf t, HasNetworkCfg mConf t
   )
 
@@ -49,12 +50,13 @@ type HasUISigningModelCfg mConf t =
 -- configurable for now.
 --
 uiSigning
-  :: forall t m mConf
+  :: forall key t m mConf
   . ( MonadWidget t m
-    , HasUISigningModelCfg mConf t
+    , HasUISigningModelCfg mConf key t
+    , HasCrypto key (Performable m)
     )
-  => AppCfg t m
-  -> ModalIde m t
+  => AppCfg key t m
+  -> ModalIde m key t
   -> SigningRequest
   -> Event t ()
   -> m (mConf, Event t ())

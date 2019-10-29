@@ -49,6 +49,7 @@ import           Safe                      (tailSafe)
 import           Pact.Types.Lang
 ------------------------------------------------------------------------------
 import           Frontend.AppCfg
+import           Frontend.Crypto.Class
 import           Frontend.Editor
 import           Frontend.Foundation
 import           Frontend.GistStore
@@ -104,7 +105,7 @@ loadEditorFromLocalStorage = getItemStorage localStorage StoreModuleExplorer_Ses
 
 
 makeModuleExplorer
-  :: forall t m cfg mConf model
+  :: forall key t m cfg mConf model
   . ( ReflexConstraints t m, MonadIO m
     , HasModuleExplorerCfg cfg t
     {- , HasModuleExplorerModel model t -}
@@ -112,8 +113,9 @@ makeModuleExplorer
     , HasModuleExplorerModel model t
     , MonadSample t (Performable m)
     , HasStorage (Performable m)
+    , HasCrypto key (Performable m)
     )
-  => AppCfg t m
+  => AppCfg key t m
   -> model
   -> cfg
   -> m (mConf, ModuleExplorer t)
@@ -226,11 +228,12 @@ mkSelectionGrowth explr = do
 
 -- | Takes care of loading a file/module into the editor.
 loadToEditor
-  :: forall m t mConf model
+  :: forall key m t mConf model
   . ( ReflexConstraints t m, MonadIO m
     , HasModuleExplorerModelCfg  mConf t
     , HasModuleExplorerModel  model t
     , MonadSample t (Performable m)
+    , HasCrypto key (Performable m)
     )
   => model
   -> Event t FileRef
@@ -347,12 +350,13 @@ selectFile m onModRef onMayFileRef = mdo
 --   The deployed module on the top of the stack will always be kept up2date on
 --   `_network_deployed` fires.
 pushPopModule
-  :: forall m t mConf model
+  :: forall key m t mConf model
   . ( MonadHold t m, PerformEvent t m, MonadJSM (Performable m)
     , HasJSContext (Performable m), TriggerEvent t m, MonadFix m, PostBuild t m
     , MonadSample t (Performable m), MonadIO m
     , HasMessagesCfg  mConf t, Monoid mConf
     , HasNetwork model t
+    , HasCrypto key (Performable m)
     )
   => model
   -> ModuleExplorer t
@@ -417,11 +421,12 @@ pushPopModule m explr onClear onPush onPop = mdo
 --
 --   Loading errors will be reported to `Messages`.
 loadModule
-  :: forall m t mConf model
+  :: forall key m t mConf model
   . ( ReflexConstraints t m, MonadIO m
     , Monoid mConf, HasMessagesCfg mConf t
     , MonadSample t (Performable m)
     , HasNetwork model t
+    , HasCrypto key (Performable m)
     )
   => model
   -> Event t DeployedModuleRef

@@ -31,16 +31,12 @@ import           Control.Lens
 import           Control.Monad.State.Strict
 import           Data.Either                 (rights)
 import           Data.Foldable
-import qualified Data.Map                    as Map
 import           Data.Text                   (Text)
 import           GHCJS.DOM.Element
-import qualified Pact.Types.ChainId as Pact
-import qualified Pact.Types.PactValue as Pact
-import qualified Pact.Types.Term as Pact
 import           Reflex
 import           Reflex.Dom.Core
 ------------------------------------------------------------------------------
-import           Frontend.Crypto.Ed25519
+import           Frontend.Crypto.Class
 import           Frontend.Foundation
 import           Frontend.Ide
 import           Frontend.Messages
@@ -51,7 +47,6 @@ import           Frontend.UI.Modal.Impl
 import           Frontend.UI.ModuleExplorer
 import           Frontend.UI.Repl
 import           Frontend.UI.TabBar
-import           Frontend.UI.Wallet
 import           Frontend.UI.Widgets
 import           Frontend.Wallet
 import           Frontend.Network
@@ -67,10 +62,10 @@ selectionToText = \case
   EnvSelection_ModuleExplorer -> "Module Explorer"
 
 rightTabBar
-  :: forall t m. MonadWidget t m
+  :: forall key t m. (MonadWidget t m, HasCrypto key (Performable m))
   => CssClass
-  -> Ide (ModalImpl m t) t
-  -> m (IdeCfg (ModalImpl m t) t)
+  -> Ide (ModalImpl m key t) key t
+  -> m (IdeCfg (ModalImpl m key t) key t)
 rightTabBar cls ideL = elKlass "div" (cls <> "pane") $ do
   let curSelection = _ide_envSelection ideL
   (TabBar onTabClick) <- makeTabBar $ TabBarCfg
@@ -110,11 +105,8 @@ rightTabBar cls ideL = elKlass "div" (cls <> "pane") $ do
 envTab
   :: ( MonadWidget t m
      , Frontend.Editor.HasEditorCfg mConf t
-     , HasModalCfg mConf (Event t () -> m (ModalCfg mConf t, Event t ())) t
-     , Monoid mConf, Monoid (ModalCfg mConf t), Flattenable mConf t
-     , Flattenable (ModalCfg mConf t) t
-     , HasWalletCfg (ModalCfg mConf t) t, HasWalletCfg mConf t
-     , HasJsonDataCfg mConf t, HasWallet model t, HasJsonData model t
+     , Monoid mConf, Flattenable mConf t
+     , HasJsonDataCfg mConf t, HasWallet model key t, HasJsonData model t
      , HasEditor model t
      )
   => model -> m mConf
@@ -125,16 +117,7 @@ envTab m = do
   jsonCfg <- accordionItem True "segment" "Data" $
     uiJsonData (m ^. wallet) (m ^. jsonData)
 
-  let w = m ^. wallet
-      walletHeader = do
-        text "Wallet ("
-        display (Map.size <$> _wallet_keys w)
-        text " keys)"
-  (_,keysCfg) <-
-    accordionItem' True "segment" walletHeader $
-      uiWallet w
-
-  pure $ jsonCfg <> keysCfg <> errCfg
+  pure $ jsonCfg <> errCfg
 
 -- | Add an account on a particular chain. The return event is really a
 -- _request_ to add an account: the actual lookup must be done elsewhere.
@@ -158,54 +141,54 @@ addAccountForm model = divClass "new-by-name group__header" $ divClass "new-by-n
 
 -- | Display the list of accounts we know about, and allow the user to add /
 -- delete them.
-uiAccounts
-  :: (MonadWidget t m, Monoid mConf, HasWalletCfg mConf t, HasNetwork model t, HasWallet model t)
-  => model
-  -> m mConf
-uiAccounts model = divClass "group" $ do
-  add <- addAccountForm model
-  let accountGuardReq acc = "(at \"guard\" (coin.account-info " <> tshow (unAccountName acc) <> "))"
-      mkReq (networkName,pm) (chainId, acc) = ((chainId, acc),)
-        <$> mkSimpleReadReq (accountGuardReq acc) networkName pm (ChainRef Nothing chainId)
-  networkRequest <- performEvent $ attachWith mkReq (current $ getNetworkNameAndMeta model) add
-  response <- performLocalReadCustom (model ^. network) (pure . snd) networkRequest
-  let toKeyset (((chainId, acc), _req), [Right (_, Pact.PGuard g)]) = Just (chainId, acc, fromPactGuard g)
-      toKeyset _ = Nothing
-  elAttr "table" ("class" =: "table" <> "style" =: "table-layout: fixed; width: 100%;") $ do
-    refresh <- el "thead" $ do
-      elClass "th" "table__heading" $ text "Chain ID"
-      elClass "th" "table__heading" $ text "Account Name"
-      refresh <- elClass "th" "table__heading" $ do
-        text "Balance "
-        refreshButton "button_border_none"
-      elClass "th" "table__heading" $ text "Associated Keys"
-      elClass "th" "table__heading" $ blank
-      pure refresh
-    deleteChainAccounts <- el "tbody" $ do
-      let chainAccounts = model ^. wallet_accountGuards
-      dyn_ $ ffor chainAccounts $ \m -> if all Map.null m
-        then elClass "tr" "table__row" $ el "td" $ text "No accounts"
-        else blank
-      listWithKey chainAccounts $ \chain accounts -> do
-        deleteAccounts <- listWithKey accounts $ \account accountGuard -> elClass "tr" "table__row" $ do
-          el "td" $ text $ Pact._chainId chain
-          el "td" $ text $ unAccountName account
-          el "td" $ showBalance model refresh chain account
-          el "td" $ dyn_ $ ffor accountGuard $ \case
-            AccountGuard_Other g -> text $ pactGuardTypeText g
-            AccountGuard_KeySet ks -> for_ (Pact._ksKeys ks) $ \key -> do
-              divClass "wallet__key wallet__key_type_public" $ text $ keyToText $ fromPactPublicKey key
-          del <- elClass "td" "wallet__delete" $ deleteButton $ def
-            & uiButtonCfg_title .~ Just "Delete Account/Key Association"
-            & uiButtonCfg_class %~ (<> "wallet__add-delete-button")
-          pure $ account <$ del
-        pure $ switch $ leftmost . Map.elems <$> current deleteAccounts
-    let deleteAccount = switch $ leftmost . fmap (\(c, e) -> fmap (c,) e) . Map.toList <$> current deleteChainAccounts
-    pure $ mempty
-      & walletCfg_deleteAccount .~ deleteAccount
-      & walletCfg_addAccount .~ fmapMaybe toKeyset response
+--uiAccounts
+--  :: (MonadWidget t m, Monoid mConf, HasNetwork model t, HasWallet model key t, HasCrypto key (Performable m))
+--  => model
+--  -> m mConf
+--uiAccounts model = divClass "group" $ do
+--  add <- addAccountForm model
+--  let accountGuardReq acc = "(at \"guard\" (coin.account-info " <> tshow (unAccountName acc) <> "))"
+--      mkReq (networkName,pm) (chainId, acc) = ((chainId, acc),)
+--        <$> mkSimpleReadReq (accountGuardReq acc) networkName pm (ChainRef Nothing chainId)
+--  networkRequest <- performEvent $ attachWith mkReq (current $ getNetworkNameAndMeta model) add
+--  response <- performLocalReadCustom (model ^. network) (pure . snd) networkRequest
+--  let toKeyset (((chainId, acc), _req), [Right (_, Pact.PGuard g)]) = Just (chainId, acc, fromPactGuard g)
+--      toKeyset _ = Nothing
+--  elAttr "table" ("class" =: "table" <> "style" =: "table-layout: fixed; width: 100%;") $ do
+--    refresh <- el "thead" $ do
+--      elClass "th" "table__heading" $ text "Chain ID"
+--      elClass "th" "table__heading" $ text "Account Name"
+--      refresh <- elClass "th" "table__heading" $ do
+--        text "Balance "
+--        refreshButton "button_border_none"
+--      elClass "th" "table__heading" $ text "Associated Keys"
+--      elClass "th" "table__heading" $ blank
+--      pure refresh
+--    deleteChainAccounts <- el "tbody" $ do
+--      let chainAccounts = model ^. wallet_accountGuards
+--      dyn_ $ ffor chainAccounts $ \m -> if all Map.null m
+--        then elClass "tr" "table__row" $ el "td" $ text "No accounts"
+--        else blank
+--      listWithKey chainAccounts $ \chain accounts -> do
+--        deleteAccounts <- listWithKey accounts $ \account accountGuard -> elClass "tr" "table__row" $ do
+--          el "td" $ text $ Pact._chainId chain
+--          el "td" $ text $ unAccountName account
+--          el "td" $ showBalance model refresh chain account
+--          el "td" $ dyn_ $ ffor accountGuard $ \case
+--            AccountGuard_Other g -> text $ pactGuardTypeText g
+--            AccountGuard_KeySet ks -> for_ (Pact._ksKeys ks) $ \key -> do
+--              divClass "wallet__key wallet__key_type_public" $ text $ keyToText $ fromPactPublicKey key
+--          del <- elClass "td" "wallet__delete" $ deleteButton $ def
+--            & uiButtonCfg_title .~ Just "Delete Account/Key Association"
+--            & uiButtonCfg_class %~ (<> "wallet__add-delete-button")
+--          pure $ account <$ del
+--        pure $ switch $ leftmost . Map.elems <$> current deleteAccounts
+--    let deleteAccount = switch $ leftmost . fmap (\(c, e) -> fmap (c,) e) . Map.toList <$> current deleteChainAccounts
+--    pure $ mempty
+--      & walletCfg_deleteAccount .~ deleteAccount
+--      & walletCfg_addAccount .~ fmapMaybe toKeyset response
 
-msgsWidget :: forall t m a. MonadWidget t m => Ide a t -> m (IdeCfg a t)
+msgsWidget :: forall key t m a. MonadWidget t m => Ide a key t -> m (IdeCfg a key t)
 msgsWidget ideL = do
     -- This is really slow, but we usually only have a handful messages:
     let

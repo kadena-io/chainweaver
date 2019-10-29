@@ -49,6 +49,7 @@ import           Data.Aeson                 as Aeson (Object, encode)
 import qualified Data.ByteString.Lazy       as BSL
 import           Data.Either                (isRight)
 import qualified Data.HashMap.Strict        as HM
+import qualified Data.IntMap                as IntMap
 import           Data.Map                   (Map)
 import qualified Data.Map                   as Map
 import           Data.Sequence              (Seq, (|>))
@@ -145,7 +146,7 @@ data Impl t = Impl
 
 -- Implementation:
 
-type HasReplModel m t = (HasNetwork m t, HasJsonData m t, HasWallet m t)
+type HasReplModel m key t = (HasNetwork m t, HasJsonData m t, HasWallet m key t)
 
 type HasReplModelCfg mConf t = (HasMessagesCfg mConf t, Monoid mConf)
 
@@ -155,8 +156,8 @@ type ReplMonad t m =
   )
 
 makeRepl
-  :: forall t m cfg model mConf
-  . ( ReplMonad t m, HasReplModel model t, HasReplModelCfg mConf t
+  :: forall key t m cfg model mConf
+  . ( ReplMonad t m, HasReplModel model key t, HasReplModelCfg mConf t
     , HasReplCfg cfg t, HasConfigs m
     )
   => model -> cfg -> m (mConf, WebRepl t)
@@ -173,7 +174,7 @@ makeRepl m cfg = build $ \ ~(_, impl) -> do
       ]
 
     let envData = either (const HM.empty) id <$> m ^. jsonData_data
-        keys = Map.elems <$> m ^. wallet_keys
+        keys = getAllKeys <$> m ^. wallet_accounts
 
     -- Those events can happen simultaneously - so make sure we don't lose any
     -- state:
@@ -250,6 +251,8 @@ makeRepl m cfg = build $ \ ~(_, impl) -> do
 
     performStateCmd impl = performEvent . fmap (withRepl impl)
 
+getAllKeys :: Accounts key -> [KeyPair key]
+getAllKeys accs = [ _account_key acc | SomeAccount_Account acc <- IntMap.elems accs ]
 
     -- In case we ever want to show more than the last output term:
     -- showStateTerms :: ReplState -> Text
@@ -257,8 +260,8 @@ makeRepl m cfg = build $ \ ~(_, impl) -> do
 
 -- | Create a brand new Repl state and set env-data.
 initRepl
-  :: forall t m model
-  . (HasReplModel model t, MonadIO m, Reflex t, MonadSample t m)
+  :: forall key t m model
+  . (HasReplModel model key t, MonadIO m, Reflex t, MonadSample t m)
   => Maybe Text
   -- ^ Verification server URL
   -> Impl t -> model -> m (ReplState)
@@ -266,7 +269,7 @@ initRepl verificationUri oldImpl m  = do
   r <- mkState verificationUri
   let initImpl = oldImpl { _impl_state = pure r } -- Const dyn so we can use `withRepl` for initialization - gets dropped afterwards.
   env  <- sample . current $ either (const HM.empty) id <$> m ^. jsonData_data
-  keys <- sample . current $ Map.elems <$> m ^. wallet_keys
+  keys <- sample . current $ getAllKeys <$> m ^. wallet_accounts
   fmap snd . withRepl initImpl $ do
     void $ setEnvData env
     setEnvKeys keys
@@ -296,7 +299,7 @@ setEnvData = pactEvalRepl' . ("(env-data " <>) . (<> ")") . mkCmd
     surroundWith o i = o <> i <> o
 
 -- | Set env-keys to the given keys
-setEnvKeys :: [KeyPair] -> PactRepl (Term Name)
+setEnvKeys :: [KeyPair key] -> PactRepl (Term Name)
 setEnvKeys =
   pactEvalRepl' . ("(env-keys [" <>) . (<> "])") . renderKeys
     where

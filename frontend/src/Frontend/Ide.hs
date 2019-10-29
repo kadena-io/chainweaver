@@ -41,6 +41,7 @@ module Frontend.Ide
 
 ------------------------------------------------------------------------------
 import           Control.Lens
+import Data.Aeson (FromJSON, ToJSON)
 import           Data.Void                    (Void)
 import           Generics.Deriving.Monoid     (mappenddefault, memptydefault)
 import           GHC.Generics                 (Generic)
@@ -52,6 +53,7 @@ import           Obelisk.Route.Frontend       (R, RouteToUrl (..), Routed (..),
 ------------------------------------------------------------------------------
 import           Common.Route                 (FrontendRoute)
 import           Frontend.AppCfg
+import           Frontend.Crypto.Class
 import           Frontend.Network
 import           Frontend.Editor
 import           Frontend.Foundation
@@ -82,8 +84,8 @@ data EnvSelection
 -- | Configuration for sub-modules.
 --
 --   State is controlled via this configuration.
-data IdeCfg modal t = IdeCfg
-  { _ideCfg_wallet         :: WalletCfg t
+data IdeCfg modal key t = IdeCfg
+  { _ideCfg_wallet         :: WalletCfg key t
   , _ideCfg_jsonData       :: JsonDataCfg t
   , _ideCfg_network        :: NetworkCfg t
   , _ideCfg_moduleExplorer :: ModuleExplorerCfg t
@@ -103,11 +105,11 @@ data IdeCfg modal t = IdeCfg
 makePactLenses ''IdeCfg
 
 -- | Current IDE state.
-data Ide modal t = Ide
+data Ide modal key t = Ide
   { _ide_moduleExplorer :: ModuleExplorer t
   , _ide_editor         :: Editor t
   , _ide_messages       :: Messages t
-  , _ide_wallet         :: Wallet t
+  , _ide_wallet         :: Wallet key t
   , _ide_jsonData       :: JsonData t
   , _ide_network        :: Network t
   , _ide_repl           :: WebRepl t
@@ -123,7 +125,7 @@ data Ide modal t = Ide
 makePactLenses ''Ide
 
 makeIde
-  :: forall t m modal
+  :: forall key t m modal
   . ( MonadHold t m, PerformEvent t m, MonadFix m
     , MonadJSM (Performable m), MonadJSM m
     , HasJSContext (Performable m)
@@ -133,8 +135,10 @@ makeIde
     , SetRoute t (R FrontendRoute) m
     , HasConfigs m
     , HasStorage m, HasStorage (Performable m)
+    , HasCrypto key (Performable m)
+    , FromJSON key, ToJSON key
     )
-  => AppCfg t m -> IdeCfg modal t -> m (Ide modal t)
+  => AppCfg key t m -> IdeCfg modal key t -> m (Ide modal key t)
 makeIde appCfg userCfg = build $ \ ~(cfg, ideL) -> do
 
     walletL <- makeWallet $ _ideCfg_wallet cfg
@@ -178,12 +182,12 @@ makeIde appCfg userCfg = build $ \ ~(cfg, ideL) -> do
         }
       )
   where
-    build :: ((IdeCfg modal t, Ide modal t) -> m (IdeCfg modal t, Ide modal t)) -> m (Ide modal t)
+    build :: ((IdeCfg modal key t, Ide modal key t) -> m (IdeCfg modal key t, Ide modal key t)) -> m (Ide modal key t)
     build = fmap snd . mfix
 
 makeEnvSelection
-  :: forall t m modal. (MonadHold t m, Reflex t)
-  => Ide modal t
+  :: forall key t m modal. (MonadHold t m, Reflex t)
+  => Ide modal key t
   -> Event t EnvSelection
   -> m (Dynamic t EnvSelection)
 makeEnvSelection ideL onSelect = do
@@ -201,79 +205,79 @@ makeEnvSelection ideL onSelect = do
 
 -- Instances:
 
-instance Reflex t => Semigroup (IdeCfg modal t) where
+instance Reflex t => Semigroup (IdeCfg modal key t) where
   (<>) = mappenddefault
 
-instance Reflex t => Monoid (IdeCfg modal t) where
+instance Reflex t => Monoid (IdeCfg modal key t) where
   mempty = memptydefault
   mappend = (<>)
 
 instance Semigroup EnvSelection where
   sel1 <> _ = sel1
 
-instance HasWalletCfg (IdeCfg modal t) t where
+instance HasWalletCfg (IdeCfg modal key t) key t where
   walletCfg = ideCfg_wallet
 
-instance HasJsonDataCfg (IdeCfg modal t) t where
+instance HasJsonDataCfg (IdeCfg modal key t) t where
   jsonDataCfg = ideCfg_jsonData
 
-instance HasNetworkCfg (IdeCfg modal t) t where
+instance HasNetworkCfg (IdeCfg modal key t) t where
   networkCfg = ideCfg_network
 
-instance HasModuleExplorerCfg (IdeCfg modal t) t where
+instance HasModuleExplorerCfg (IdeCfg modal key t) t where
   moduleExplorerCfg = ideCfg_moduleExplorer
 
-instance HasEditorCfg (IdeCfg modal t) t where
+instance HasEditorCfg (IdeCfg modal key t) t where
   editorCfg = ideCfg_editor
 
-instance HasMessagesCfg (IdeCfg modal t) t where
+instance HasMessagesCfg (IdeCfg modal key t) t where
   messagesCfg = ideCfg_messages
 
-instance HasOAuthCfg (IdeCfg modal t) t where
+instance HasOAuthCfg (IdeCfg modal key t) t where
   oAuthCfg = ideCfg_oAuth
 
-instance HasGistStoreCfg (IdeCfg modal t) t where
+instance HasGistStoreCfg (IdeCfg modal key t) t where
   gistStoreCfg = ideCfg_gistStore
 
-instance HasModalCfg (IdeCfg modal t) modal t where
+instance HasModalCfg (IdeCfg modal key t) modal t where
   -- type ModalType (IdeCfg (Modal IdeCfg m t) t) m t = Modal IdeCfg m t
-  type ModalCfg (IdeCfg modal t) t = IdeCfg Void t
+  type ModalCfg (IdeCfg modal key t) t = IdeCfg Void key t
 
   modalCfg_setModal f configL =
     (\setModal -> configL { _ideCfg_setModal = LeftmostEv setModal })
       <$> f (unLeftmostEv . _ideCfg_setModal $ configL)
 
-instance HasReplCfg (IdeCfg modal t) t where
+instance HasReplCfg (IdeCfg modal key t) t where
   replCfg = ideCfg_repl
 
-instance HasWallet (Ide modal t) t where
+instance HasWallet (Ide modal key t) key t where
   wallet = ide_wallet
 
-instance HasJsonData (Ide modal t) t where
+instance HasJsonData (Ide modal key t) t where
   jsonData = ide_jsonData
 
-instance HasNetwork (Ide modal t) t where
+instance HasNetwork (Ide modal key t) t where
   network = ide_network
 
-instance HasModuleExplorer (Ide modal t) t where
+instance HasModuleExplorer (Ide modal key t) t where
   moduleExplorer = ide_moduleExplorer
 
-instance HasEditor (Ide modal t) t where
+instance HasEditor (Ide modal key t) t where
   editor = ide_editor
 
-instance HasWebRepl (Ide modal t) t where
+instance HasWebRepl (Ide modal key t) t where
   webRepl = ide_repl
 
-instance HasMessages (Ide modal t) t where
+instance HasMessages (Ide modal key t) t where
   messages = ide_messages
 
-instance HasOAuth (Ide modal t) t where
+instance HasOAuth (Ide modal key t) t where
   oAuth = ide_oAuth
 
-instance HasGistStore (Ide modal t) t where
+instance HasGistStore (Ide modal key t) t where
   gistStore = ide_gistStore
 
-instance Flattenable (IdeCfg modal t) t where
+instance Flattenable (IdeCfg modal key t) t where
   flattenWith doSwitch ev =
     IdeCfg
       <$> flattenWith doSwitch (_ideCfg_wallet <$> ev)

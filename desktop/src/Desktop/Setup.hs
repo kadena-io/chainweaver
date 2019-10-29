@@ -8,7 +8,7 @@
 {-# LANGUAGE TypeApplications #-}
 
 -- | Wallet setup screens
-module Desktop.Setup (runSetup, form, kadenaWalletLogo) where
+module Desktop.Setup (runSetup, form, kadenaWalletLogo, setupDiv, setupClass) where
 
 import Control.Lens ((<>~))
 import Control.Error (hush)

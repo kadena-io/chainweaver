@@ -9,6 +9,7 @@
 {-# LANGUAGE LambdaCase                 #-}
 {-# LANGUAGE MultiParamTypeClasses      #-}
 {-# LANGUAGE OverloadedStrings          #-}
+{-# LANGUAGE PatternGuards              #-}
 {-# LANGUAGE QuasiQuotes                #-}
 {-# LANGUAGE RankNTypes                 #-}
 {-# LANGUAGE RecursiveDo                #-}
@@ -109,6 +110,7 @@ import           Pact.Types.Crypto                 (PPKScheme (..))
 #endif
 
 import           Common.Network
+import           Frontend.Crypto.Class
 import           Frontend.Crypto.Ed25519
 import           Frontend.Foundation
 import           Frontend.Messages
@@ -119,7 +121,6 @@ import           Frontend.Storage                  (getItemStorage,
                                                     removeItemStorage,
                                                     setItemStorage)
 import           Frontend.Wallet
-
 
 
 -- | What endpoint to use for a network request.
@@ -243,7 +244,7 @@ deriving instance Show (StoreNetwork a)
 
 
 makeNetwork
-  :: forall t m mConf
+  :: forall key t m mConf
   . ( MonadHold t m, PerformEvent t m, MonadFix m
     , MonadJSM (Performable m), MonadJSM m
     , TriggerEvent t m, PostBuild t m
@@ -253,6 +254,7 @@ makeNetwork
     , HasConfigs m
     , HasJSContext (Performable m)
     , HasStorage m, HasStorage (Performable m)
+    , HasCrypto key (Performable m)
     )
   => NetworkCfg t
   -> m (mConf, Network t)
@@ -557,7 +559,7 @@ getNetworkNameAndMeta model = (,)
   <*> (model ^. network_meta)
 
 mkSimpleReadReq
-  :: (MonadIO m, MonadJSM m)
+  :: (MonadIO m, MonadJSM m, HasCrypto key m)
   => Text -> NetworkName -> PublicMeta -> ChainRef -> m NetworkRequest
 mkSimpleReadReq code networkName pm cRef = do
   cmd <- buildCmd Nothing networkName (pm { _pmChainId = _chainRef_chain cRef }) [] [] code mempty mempty
@@ -569,11 +571,12 @@ mkSimpleReadReq code networkName pm cRef = do
 
 -- | Load modules on startup and on every occurrence of the given event.
 loadModules
-  :: forall t m
+  :: forall key t m
   . ( MonadHold t m, PerformEvent t m, MonadFix m
     , MonadJSM (Performable m), MonadIO m
     , MonadSample t (Performable m)
     , TriggerEvent t m, PostBuild t m
+    , HasCrypto key (Performable m)
     )
   => Network t
   -> Event t ()
@@ -894,6 +897,7 @@ networkRequest baseUri endpoint cmd = do
 buildCmd
   :: ( MonadIO m
      , MonadJSM m
+     , HasCrypto key m
      )
   => Maybe Text
   -- ^ Nonce. When missing, uses the current time.
@@ -901,7 +905,7 @@ buildCmd
   -- ^ The network that we are targeting
   -> PublicMeta
   -- ^ Assorted information for the payload. The time is overridden.
-  -> [KeyPair]
+  -> [KeyPair key]
   -- ^ Keys which we are signing with
   -> [PublicKey]
   -- ^ Keys which should be added to `signers`, but not used to sign
@@ -923,21 +927,27 @@ buildCmd mNonce networkName meta signingKeys extraKeys code dat caps = do
     , _cmdHash = cmdHashL
     }
 
-getSigningPairs :: Set KeyName -> KeyPairs -> [KeyPair]
-getSigningPairs signing = map snd . filter isForSigning . Map.assocs
+getSigningPairs :: Set AccountName -> Accounts key -> [KeyPair key]
+getSigningPairs signing = fmapMaybe isForSigning . IntMap.elems
   where
     -- isJust filter is necessary so indices are guaranteed stable even after
     -- the following `mapMaybe`:
-    isForSigning (name, (KeyPair _ priv)) = Set.member name signing && isJust priv
+    isForSigning = \case
+      SomeAccount_Account a
+        | kp <- _account_key a
+        , Just _ <- _keyPair_privateKey kp
+        , Set.member (_account_name a) signing
+        -> Just kp
+      _ -> Nothing
 
 
 -- | Build signatures for a single `cmd`.
-buildSigs :: MonadJSM m => TypedHash h -> [KeyPair] -> m [UserSig]
+buildSigs :: (MonadJSM m, HasCrypto key m) => TypedHash h -> [KeyPair key] -> m [UserSig]
 buildSigs cmdHashL signingPairs = do
     let
       signingKeys = mapMaybe _keyPair_privateKey signingPairs
 
-    sigs <- traverse (mkSignature (unHash . toUntypedHash $ cmdHashL)) signingKeys
+    sigs <- traverse (cryptoSign (unHash . toUntypedHash $ cmdHashL)) signingKeys
 
     pure $ map toPactSig sigs
   where
@@ -957,7 +967,7 @@ buildExecPayload
   -- ^ The network that we are targeting
   -> PublicMeta
   -- ^ Assorted information for the payload. The time is overridden.
-  -> [KeyPair]
+  -> [KeyPair key]
   -- ^ Keys which we are signing with
   -> [PublicKey]
   -- ^ Keys which should be added to `signers`, but not used to sign
