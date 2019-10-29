@@ -320,12 +320,12 @@ makeKeysets walletL cfg =
         keys = do
           names <- keynames
           wAccounts <- walletL ^. wallet_accounts
-          -- This isn't great... should really come back to this
           let toKeyPairs = \case
                 SomeAccount_Account a
-                  | unAccountName (_account_name a) `Set.member` names -> Just (unAccountName (_account_name a), _keyPair_publicKey $ _account_key a)
-                _ -> Nothing
-          pure $ Map.fromList $ fmapMaybe toKeyPairs $ IntMap.elems wAccounts
+                  | unAccountName (_account_name a) `Set.member` names
+                  -> Map.insert (unAccountName $ _account_name a) (_keyPair_publicKey $ _account_key a)
+                _ -> id
+          pure $ IntMap.foldr toKeyPairs Map.empty wAccounts
 
       pure (n, Keyset keys pPred)
 

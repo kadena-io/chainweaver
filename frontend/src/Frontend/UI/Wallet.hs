@@ -165,7 +165,7 @@ uiKeyItems aWallet = do
 uiKeyItem
   :: MonadWidget t m
   => IntMap.Key
-  -> Dynamic t (SomeAccount key) -- (Text, Dynamic t (KeyPair PrivateKey))
+  -> Dynamic t (SomeAccount key)
   -> m (Event t (IntMap.Key, AccountName))
 uiKeyItem i d = do
   md <- maybeDyn $ someAccount Nothing Just <$> d
