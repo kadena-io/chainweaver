@@ -51,14 +51,32 @@ data DisplayedSnippet
   | OldOutputSnippet Text
   deriving (Eq,Ord,Show,Read)
 
-staticReplHeader :: Seq DisplayedSnippet
-staticReplHeader = S.fromList
-      [ OutputSnippet ";; Welcome to the Pact interactive repl"
-      , OutputSnippet ";; Use 'LOAD into REPL' button to execute editor text"
-      , OutputSnippet ";; then just type at the \"pact>\" prompt to interact!"
-      , OutputSnippet ";;"
-      , OutputSnippet ";; To reset the REPL type 'reset'!"
-      ]
+staticReplHeader :: DomBuilder t m => m ()
+staticReplHeader = divClass "repl__header" $ do
+  let
+    section = divClass "repl__header-section"
+    separator = divClass "repl__header-separator" $ el "hr" blank
+
+    code = divClass "repl__header-code" . text
+    plain = divClass "repl__header-plain" . text
+    quote = divClass "repl__header-quote" . text
+    bannerText = divClass "repl__header-banner repl__header-banner-text" . text
+    bannerDecoration = divClass "repl__header-banner repl__header-banner-decoration" . text
+
+  section $ do
+    bannerDecoration ".::"
+    bannerText " Welcome to the Pact interactive REPL "
+    bannerDecoration "::."
+  section $ do
+    plain "Use"
+    quote " 'LOAD into REPL' "
+    plain "button to execute editor text. Then just type at the "
+    code " \"pact>\" "
+    plain "prompt to interact!"
+  section $ do
+    plain "To reset the REPL type "
+    code "'reset'"
+  section separator
 
 snippetWidget' :: MonadWidget t m => DisplayedSnippet -> m (Element EventResult (DomBuilderSpace m) t)
 snippetWidget' = fmap fst . \case
@@ -85,7 +103,7 @@ replWidget
     -> m mConf
 replWidget m = do
   (e, onNewInput) <- elClass' "div" "repl" $ do
-    mapM_ snippetWidget staticReplHeader
+    staticReplHeader
     void $ simpleList (toList <$> m ^. repl_output) (dyn . fmap displayReplOutput)
     replInput m
 
