@@ -1,6 +1,5 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE OverloadedStrings #-}
---
 {-# LANGUAGE PatternGuards #-}
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE PackageImports #-}
@@ -25,8 +24,6 @@ module Frontend.KadenaAddress
   , textKadenaAddress
   , isValidKadenaAddress
   ) where
-
-import Debug.Trace (traceShowM, traceShowId)
 
 import Control.Lens
 import Control.Monad.Except (MonadError (..), liftEither)
@@ -206,7 +203,7 @@ decodeKadenaAddress inp = do
     throwError $ CRC32Mismatch crc (mkAddressCRC32 name cid net)
 
   let checkpiece og nm mbs
-        | Just bs <- mbs, bs /= (BS8.pack $ T.unpack og) = throwError (InvalidHumanReadablePiece nm)
+        | Just bs <- mbs, bs /= encodeToLatin1 og = throwError (InvalidHumanReadablePiece nm)
         | otherwise = pure ()
 
   -- If we have the human readable components, do an extra check that everything matches
@@ -219,9 +216,6 @@ decodeKadenaAddress inp = do
       [name, cid, pkg] -> Right (name, cid, pkg)
       _ -> Left inp
 
-failParse :: Either String a -> A.Parser a
-failParse = either fail pure
-
 parseKadenaAddressBlob :: A.Parser (AccountName, ChainId, NetworkName, Word32)
 parseKadenaAddressBlob = (,,,)
   <$> parseAccountName
@@ -229,6 +223,7 @@ parseKadenaAddressBlob = (,,,)
   <*> parseNetworkName
   <*> A.hexadecimal
   where
+    failParse = either fail pure
     mkParser p c = (c <$> p) >>= failParse
     latin1ToEOL = A.manyTill (A.satisfy C.isLatin1) A.endOfLine
 
