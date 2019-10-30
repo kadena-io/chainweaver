@@ -1,3 +1,6 @@
+{-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE OverloadedStrings #-}
+--
 {-# LANGUAGE PatternGuards #-}
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE PackageImports #-}
@@ -22,6 +25,8 @@ module Frontend.KadenaAddress
   , textKadenaAddress
   , isValidKadenaAddress
   ) where
+
+import Debug.Trace (traceShowM, traceShowId)
 
 import Control.Lens
 import Control.Monad.Except (MonadError (..), liftEither)
@@ -95,7 +100,7 @@ preventative measure.
 
 data KadenaAddressError
   = ParseError Text
-  | Crc32Error
+  | CRC32Mismatch Word32 Word32
   | Base64Error String
   | InvalidHumanReadablePiece Text
   deriving (Show, Eq)
@@ -118,7 +123,7 @@ textKadenaAddress :: KadenaAddress -> Text
 textKadenaAddress = TE.decodeUtf8With TE.lenientDecode . _kadenaAddress_encoded
 
 humanReadableDelimiter :: Word8
-humanReadableDelimiter = 47 -- forward slash '/'
+humanReadableDelimiter = 93 -- ']'
 
 delimiter :: ByteString
 delimiter = "\n"
@@ -132,14 +137,14 @@ showCRC32 = printf "%x"
 
 -- Convert the CRC32 to a bytestring
 bytestringCRC32 :: Word32 -> ByteString
-bytestringCRC32 = fromString . showCRC32
+bytestringCRC32 = BS8.pack . showCRC32
 
 -- Build the checksum for the given information
 mkAddressCRC32 :: AccountName -> ChainId -> NetworkName -> Word32
 mkAddressCRC32 acc cid net = Digest.crc32 $ name <> bsshow cid <> net0
   where
-    name = TE.encodeUtf8 (unAccountName acc)
-    net0 = TE.encodeUtf8 $ textNetworkName net
+    name = encodeToLatin1 $ unAccountName acc
+    net0 = encodeToLatin1 $ textNetworkName net
 
 isValidKadenaAddress :: KadenaAddress -> Bool
 isValidKadenaAddress ka =
@@ -152,6 +157,9 @@ isValidKadenaAddress ka =
   in
     _kadenaAddress_checksum ka == crc && Right ka == decoded
 
+encodeToLatin1 :: Text -> ByteString
+encodeToLatin1 = BS8.pack . T.unpack
+
 mkKadenaAddress
   :: NetworkName
   -> ChainId
@@ -159,9 +167,10 @@ mkKadenaAddress
   -> KadenaAddress
 mkKadenaAddress network cid acc =
   let
-    bcid = TE.encodeUtf8 (cid ^. chainId)
-    name = TE.encodeUtf8 $ unAccountName acc
-    net = TE.encodeUtf8 $ textNetworkName network
+    bcid = encodeToLatin1 $ cid ^. chainId
+    name = encodeToLatin1 $ unAccountName acc
+    net = encodeToLatin1 $ textNetworkName network
+
     checksum = mkAddressCRC32 acc cid network
 
     encoded = Base64.encode $ mconcat
@@ -193,10 +202,11 @@ decodeKadenaAddress inp = do
   (name, cid, net, crc) <- first (ParseError . T.pack) $ A.parseOnly parseKadenaAddressBlob blob
 
   -- Final validation steps
-  when (crc /= mkAddressCRC32 name cid net) $ throwError Crc32Error
+  when (crc /= mkAddressCRC32 name cid net) $ do
+    throwError $ CRC32Mismatch crc (mkAddressCRC32 name cid net)
 
   let checkpiece og nm mbs
-        | Just bs <- mbs, bs /= TE.encodeUtf8 og = throwError (InvalidHumanReadablePiece nm)
+        | Just bs <- mbs, bs /= (BS8.pack $ T.unpack og) = throwError (InvalidHumanReadablePiece nm)
         | otherwise = pure ()
 
   -- If we have the human readable components, do an extra check that everything matches

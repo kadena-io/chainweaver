@@ -80,6 +80,7 @@ library
                , digest
                , base64-bytestring
                , uri-bytestring
+               , attoparsec
 
   exposed-modules: Frontend
                  , Frontend.AppCfg
@@ -186,3 +187,16 @@ executable frontend
   -- improves page load times:
   -- if impl(ghcjs)
   --   ghcjs-options: -dedupe
+
+test-suite kadenaaddress
+  type: exitcode-stdio-1.0
+
+  main-is: KadenaAddressSpec.hs
+  hs-source-dirs: tests
+  build-depends: base
+               , frontend
+               , hedgehog
+               , kadena-signing-api
+               , errors
+               , text
+               , common
