@@ -106,7 +106,7 @@ uiJsonDataSetFocus onKeysetCreate onRawInputCreate w d = divClass "tabset" $ mdo
       , _tabBarCfg_mkLabel = const $ text . showJsonTabName
       , _tabBarCfg_selectedTab = Just <$> curSelection
       , _tabBarCfg_classes = mempty
-      , _tabBarCfg_type = TabBarType_Secondary
+      , _tabBarCfg_type = TabBarType_Primary
       }
 
     keysetVCfg <- tabPane mempty curSelection JsonDataView_Keysets $ do
@@ -137,7 +137,7 @@ uiJsonDataSetFocus onKeysetCreate onRawInputCreate w d = divClass "tabset" $ mdo
       if getAny . foldMap (Any . T.any Char.isUpper) $ H.keys o
       then mkUpperCaseError
       else []
- 
+
     mkUpperCaseError = mkAnnotation "error" "Keyset names must be all lowercase"
     mkObjError = mkAnnotation "error" . showJsonError
     mkDupWarning dups =

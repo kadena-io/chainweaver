@@ -38,7 +38,6 @@ import qualified GHCJS.DOM.EventM as EventM
 import qualified GHCJS.DOM.GlobalEventHandlers as GlobalEventHandlers
 import qualified System.Directory as Directory
 import qualified System.FilePath as FilePath
-import qualified Text.RawString.QQ as QQ
 
 import Common.Api (getConfigRoute)
 import Common.Route
@@ -108,7 +107,6 @@ desktop = Frontend
       let backendEncoder = either (error "frontend: Failed to check backendRouteEncoder") id $
             checkEncoder backendRouteEncoder
       base <- getConfigRoute
-      el "style" $ text desktopCss
       void $ Frontend.newHead $ \r -> base <> renderBackendRoute backendEncoder r
   , _frontend_body = prerender_ blank $ mapRoutedT (flip runStorageT browserStorage) $ do
     (fileOpened, triggerOpen) <- Frontend.openFileDialog
@@ -192,34 +190,6 @@ lockScreen xprv = setupDiv "fullscreen" $ divClass "wrapper" $ setupDiv "splash"
       pure (help, restore)
     let isValid = attachWith (\p _ -> p <$ guard (testKeyPassword xprv p)) (current $ value pass) e
     pure (restore, isValid)
-
-
-desktopCss :: Text
-desktopCss = [QQ.r|
-.fullscreen { width: 100vw; height: 100vh; display: flex; justify-content: center; align-items: center; }
-.fullscreen p { margin: 2rem auto; }
-.fullscreen .checkbox-wrapper { margin: 2rem auto; }
-.fullscreen .checkbox { font-size: 20px; color: #fff; text-align: left; display: inline-block; padding-left: 40px; }
-.fullscreen .checkbox .checkbox__checkmark { top: 2px; height: 20px; width: 20px; }
-.fullscreen .checkbox .checkbox__checkmark_type_secondary:after { top: 2px; left: 6px; width: 3px; height: 10px; }
-.fullscreen .group { color: #222; margin: 2rem 0; }
-.fullscreen .group.dark { background-color: rgba(0,0,0,0.3); }
-.fullscreen textarea.wallet-recovery-phrase { display: block; width: 30rem; height: 6rem; font-size: 18px; margin: 2rem auto; }
-.button_hidden { display: none; }
-.group.group_buttons { text-align: center; }
-.group button { margin: 0.2rem; }
-.page:not(.contracts) button.button_type_confirm { border: none; background-color: rgb(30,40,50); font-weight: normal; }
-.page:not(.contracts) button.button_type_confirm { background: linear-gradient(180deg, rgb(40,50,60) 0%, rgb(20,30,40) 100%); }
-.page:not(.contracts) button.button_type_confirm:hover:not([disabled]) { background: linear-gradient(180deg, rgb(60,70,80) 0%, rgb(40,50,60) 100%); }
-form.inline { margin: 1rem 0; border-radius: 4px; display: inline-block; }
-form.inline > input { width: 12rem; margin: 0; margin-right: 1rem; }
-form.inline > button { margin: 0; }
-form.inline > input { width: 12rem; }
-form .messages { background-color: rgba(30,40,50,0.2); border-radius: 4px; padding: 0.5rem; list-style-type: none; }
-form .messages > li { padding: 0.5rem; }
-form .header { color: rgb(30,40,50); font-weight: bold; font-size: 18px; margin: 1rem 0; }
-form .header .detail { color: #666; font-weight: normal; font-size: 14px; }
-|]
 
 -- | Check the validity of the password by signing and verifying a message
 testKeyPassword :: Crypto.XPrv -> Text -> Bool

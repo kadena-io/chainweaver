@@ -244,7 +244,6 @@ controlBar
 controlBar appCfg m = do
     mainHeader $ do
       controlBarLeft
-      controlBarCenter
       controlBarRight appCfg m
   where
     -- Main header with adjusted padding on MacOs (scrollbars take up no space there):
@@ -258,56 +257,10 @@ controlBar appCfg m = do
                  else baseCls
       divClass cls child
 
-controlBarCenter :: forall t m. MonadWidget t m => m ()
-controlBarCenter = divClass "main-header__center-box" $
-  divClass "main-header__center" $
-    kadenaLogo
-  where
-    kadenaLogo =
-      elAttr "a"
-        ( "href" =: "https://kadena.io"
-          <> "class" =: "main-header__kadena-logo" <> "target" =: "_blank"
-        ) $
-        elAttr "img"
-          ( "src" =: static @"img/Klogo.png"
-            <> "alt" =: "Kadena Logo"
-            <> "class" =: "main-header__logo-img"
-          ) blank
-
-
 controlBarLeft :: forall t m. MonadWidget t m => m ()
 controlBarLeft =
-  divClass "main-header__logos-docs" $ do
-    {- kadenaLogo -}
-    pactLogo
-    docs
-
-  where
-
-    pactLogo =
-      elClass "div" "main-header__pact-logo" $ do
-        elAttr "img"
-          ( "src" =: static @"img/pact-logo.svg"
-            <> "alt" =: "Kadena Pact Logo"
-            <> "class" =: "main-header__pact-logo-img"
-          ) blank
-        elClass "span" "main-header__pact-version" $ do
-          ver <- getPactVersion
-          text $ "v" <> ver
-
-    docs = divClass "main-header__docs" $ do
-      elAttr "a" ( "href" =: "https://pactlang.org"
-                <> "class" =: "main-header__documents" <> "target" =: "_blank"
-                 ) $ do
-        elAttr "img" ("src" =: static @"img/instruction.svg" <> "alt" =: "Documentation" <> "class" =: "main-header__documents-img" <> "style" =: "width: 28px;") blank
-        text "Tutorials"
-
-      elAttr "a" ( "href" =: "http://pact-language.readthedocs.io"
-                <> "class" =: "main-header__documents" <> "target" =: "_blank"
-                 ) $ do
-        elAttr "img" ("src" =: static @"img/document.svg" <> "class" =: "main-header__documents-img") blank
-        text "Docs"
-
+  divClass "main-header__page-name" $
+    text "Contracts" --TODO: extract from route
 
 getPactVersion :: MonadWidget t m => m Text
 getPactVersion = do
@@ -368,7 +321,7 @@ controlBarRight appCfg m = do
     signoutBtn = signoutButton $
       headerBtnCfg & uiButtonCfg_title .~ Just "Sign out from GitHub"
 
-    deployBtn = uiButton headerBtnCfg $
+    deployBtn = uiButton (headerBtnCfg & uiButtonCfg_class <>~ "main-header__deploy-button") $
       text $ "Deploy"
 
     loadReplBtn =
