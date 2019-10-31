@@ -17,7 +17,7 @@
 {-# LANGUAGE TypeApplications       #-}
 {-# LANGUAGE TypeFamilies           #-}
 
--- | Handling of route updates for pact-web.
+-- | Handling of route updates for chainweaver.
 --
 --   This module takes care of triggering actions on route updates and keeping
 --   routes and internal state in sync.

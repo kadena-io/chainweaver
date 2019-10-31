@@ -1,7 +1,7 @@
 {
-  "name": "pact-web-ui",
+  "name": "chainweaver-ui",
   "version": "1.0.0",
-  "description": "Pact Web UI Assets",
+  "description": "Chainweaver UI Assets",
   "main": "index.js",
   "scripts": {
     "start": "http-server",
@@ -9,14 +9,14 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/kadena-io/pact-web.git"
+    "url": "git+https://github.com/kadena-io/chainweaver.git"
   },
   "author": "",
   "license": "ISC",
   "bugs": {
-    "url": "https://github.com/kadena-io/pact-web/issues"
+    "url": "https://github.com/kadena-io/chainweaver/issues"
   },
-  "homepage": "https://github.com/kadena-io/pact-web#readme",
+  "homepage": "https://github.com/kadena-io/chainweaver#readme",
   "dependencies": {
     "http-server": "^0.11.1",
     "prettier": "^1.14.3"

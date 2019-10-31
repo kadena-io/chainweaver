@@ -201,7 +201,7 @@ getBalance model chain account = do
       toBalance _ = Nothing
   pure $ toBalance <$> response
   where
-    accountBalanceReq acc = "(coin.account-balance " <> tshow (unAccountName acc) <> ")"
+    accountBalanceReq acc = "(coin.get-balance " <> tshow (unAccountName acc) <> ")"
     mkReq (netName, pm) acc = mkSimpleReadReq (accountBalanceReq acc) netName pm (ChainRef Nothing chain)
 
 -- | Display the balance of an account after retrieving it from the network

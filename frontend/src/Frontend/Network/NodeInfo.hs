@@ -30,6 +30,7 @@ module Frontend.Network.NodeInfo
   ( -- * Types & Classes
     ChainId
   , NodeInfo (..)
+  , nodeVersion
   , nodeInfoRef
     -- * Discover
   , parseNodeRef
@@ -114,6 +115,11 @@ data NodeInfo = NodeInfo
   , _nodeInfo_type    :: NodeType
   }
   deriving (Eq, Ord, Show, Generic)
+
+nodeVersion :: NodeInfo -> Text
+nodeVersion ni = case _nodeInfo_type ni of
+                   NodeType_Pact v -> ""
+                   NodeType_Chainweb ci -> _chainwebInfo_networkVersion ci
 
 -- | Retrive the `NodeInfo` for a given host by quering its API.
 discoverNode :: forall m. (MonadJSM m, MonadUnliftIO m, HasJSContext m) => NodeRef -> m (Either Text NodeInfo)

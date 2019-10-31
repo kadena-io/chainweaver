@@ -17,7 +17,7 @@
 {-# LANGUAGE TypeApplications       #-}
 {-# LANGUAGE TypeFamilies           #-}
 
--- | Ide, IdeCfg: Model and ModelConfig for the pact-web application.
+-- | Ide, IdeCfg: Model and ModelConfig for the chainweaver application.
 --
 --   Ide contains all the state that is relevant to the application, IdeCfg
 --   provides the means to manipulate it, e.g. through user interactions.

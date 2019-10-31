@@ -70,7 +70,7 @@ uiKeyImport m _onClose = do
 
           elClass "h2" "heading heading_type_h2" $ text "Import Existing Key"
           elKlass "div" "group segment" $ do
-            (_, name) <- mkLabeledInput mkNameInput "Key Name" def
+            (_, name) <- mkLabeledInput mkNameInput "Account Name" def
             (_, errPub) <- mkLabeledInput mkPubKeyInput  "Public Key" def
             (_, parsedPair) <- mkLabeledInput (mkPrivKeyInput errPub) "Private Key" def
 
@@ -98,7 +98,14 @@ uiKeyImport m _onClose = do
   where
 
     mkNameInput cfg = do
+<<<<<<< HEAD
       let nameParser = checkAccountNameValidity m
+=======
+      let
+        nameParser = do
+          mkNotValidMsg <- checkAccountNameUniqueness m
+          pure $ \v -> mkAccountName v >> mkNotValidMsg v
+>>>>>>> origin/develop
       inputWithError uiInputElement nameParser cfg
 
     mkPubKeyInput =
