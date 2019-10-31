@@ -110,7 +110,7 @@ desktop = Frontend
       base <- getConfigRoute
       el "style" $ text desktopCss
       void $ Frontend.newHead $ \r -> base <> renderBackendRoute backendEncoder r
-  , _frontend_body = prerender_ blank $ flip runStorageT browserStorage $ do
+  , _frontend_body = prerender_ blank $ mapRoutedT (flip runStorageT browserStorage) $ do
     (fileOpened, triggerOpen) <- Frontend.openFileDialog
     bipWallet AppCfg
       { _appCfg_gistEnabled = False
@@ -125,11 +125,12 @@ desktop = Frontend
 
 bipWallet
   :: ( MonadWidget t m
-     , Routed t (R FrontendRoute) m, RouteToUrl (R FrontendRoute) m, SetRoute t (R FrontendRoute) m
+     , RouteToUrl (R FrontendRoute) m, SetRoute t (R FrontendRoute) m
      , HasConfigs m
      , HasStorage m, HasStorage (Performable m)
      )
-  => AppCfg Crypto.XPrv t (CryptoT Crypto.XPrv m) -> m ()
+  => AppCfg Crypto.XPrv t (RoutedT t (R FrontendRoute) (CryptoT Crypto.XPrv m))
+  -> RoutedT t (R FrontendRoute) m ()
 bipWallet appCfg = do
   mRoot <- getItemStorage localStorage BIPStorage_RootKey
   rec
@@ -146,7 +147,7 @@ bipWallet appCfg = do
         (restore, userPassEvents) <- bitraverse (switchHold never) (switchHold never) $ splitE result
         result <- dyn $ ffor mPassword $ \case
           Nothing -> lockScreen xprv
-          Just pass -> flip runCryptoT (bipCrypto xprv pass) $ do
+          Just pass -> mapRoutedT (flip runCryptoT $ bipCrypto xprv pass) $ do
             (logout, sidebarLogoutLink) <- mkSidebarLogoutLink
             Frontend.ReplGhcjs.app sidebarLogoutLink appCfg
             pure (never, Nothing <$ logout)
