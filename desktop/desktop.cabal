@@ -20,6 +20,7 @@ library
     , containers
     , cryptonite
     , directory
+    , errors
     , filepath
     , jsaddle
     , kadena-signing-api
