@@ -98,14 +98,7 @@ uiKeyImport m _onClose = do
   where
 
     mkNameInput cfg = do
-<<<<<<< HEAD
       let nameParser = checkAccountNameValidity m
-=======
-      let
-        nameParser = do
-          mkNotValidMsg <- checkAccountNameUniqueness m
-          pure $ \v -> mkAccountName v >> mkNotValidMsg v
->>>>>>> origin/develop
       inputWithError uiInputElement nameParser cfg
 
     mkPubKeyInput =
