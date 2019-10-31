@@ -150,11 +150,10 @@ walletSidebar sidebarExtra = elAttr "div" ("class" =: "sidebar") $ do
 -- | Get the routes to the icon assets for each route
 routeIcon :: R FrontendRoute -> (Text, Text)
 routeIcon = \case
-  FrontendRoute_Contracts :/ Nothing -> (static @"img/menu/contracts.png", static @"img/menu/contracts_highlighted.png")
-  FrontendRoute_Wallet :/ () -> (static @"img/menu/wallet.png", static @"img/menu/wallet_highlighted.png")
-  FrontendRoute_Resources :/ () -> (static @"img/menu/resources.png", static @"img/menu/resources_highlighted.png")
-  FrontendRoute_Settings :/ () -> (static @"img/menu/settings.png", static @"img/menu/settings_highlighted.png")
-  _ -> ("", "")
+  FrontendRoute_Contracts :/ _ -> (static @"img/menu/contracts.png", static @"img/menu/contracts_highlighted.png")
+  FrontendRoute_Wallet :/ _ -> (static @"img/menu/wallet.png", static @"img/menu/wallet_highlighted.png")
+  FrontendRoute_Resources :/ _ -> (static @"img/menu/resources.png", static @"img/menu/resources_highlighted.png")
+  FrontendRoute_Settings :/ _ -> (static @"img/menu/settings.png", static @"img/menu/settings_highlighted.png")
 
 -- | Code editing (left hand side currently)
 codePanel :: forall r key t m a. (MonadWidget t m, Routed t r m) => AppCfg key t m -> CssClass -> Ide a key t -> m (IdeCfg a key t)
