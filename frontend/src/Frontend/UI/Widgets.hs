@@ -180,7 +180,7 @@ uiRealWithPrecisionInputElement prec cfg = do
     r <- inputElement $ cfg
       & initialAttributes %~ addInputElementCls . addNoAutofillAttrs
         . (<> ("type" =: "number" <> "step" =: stepSize <> "min" =: stepSize))
-      & inputElementConfig_setValue %~ fmapMaybe f 
+      & inputElementConfig_setValue %~ fmapMaybe f
 
     pure $ r
       { _inputElement_value = (\t -> fromMaybe t (f t)) <$> _inputElement_value r
@@ -198,7 +198,7 @@ uiRealWithPrecisionInputElement prec cfg = do
 
     f = fmap showDecimal . parseDecimal
 
-    stepSize = "0." <> T.replicate (fromIntegral prec - 1) "0" <> "1" 
+    stepSize = "0." <> T.replicate (fromIntegral prec - 1) "0" <> "1"
 
 uiIntInputElement
   :: DomBuilder t m
@@ -364,7 +364,7 @@ validatedInputWithButton uCls check placeholder buttonText = do
 
         let
           checkFailed = isLeft <$> checkedL
-          btnCfg = def & uiButtonCfg_disabled .~ dInputIsInvalid 
+          btnCfg = def & uiButtonCfg_disabled .~ dInputIsInvalid
                        & uiButtonCfg_class .~ "button_type_primary" <> "new-by-name__button"
         clicked <- uiButtonDyn btnCfg $ text buttonText
 
@@ -441,8 +441,8 @@ accordionItem'
   -> m a
   -> m b
   -> m (a,b)
-accordionItem' initActive contentClass title inner = 
-  snd <$> accordionItemWithClick initActive contentClass title inner 
+accordionItem' initActive contentClass title inner =
+  snd <$> accordionItemWithClick initActive contentClass title inner
 
 accordionItem :: MonadWidget t m => Bool -> CssClass -> Text -> m a -> m a
 accordionItem initActive contentClass title inner =

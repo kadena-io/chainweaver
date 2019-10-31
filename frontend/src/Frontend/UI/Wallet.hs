@@ -53,10 +53,11 @@ import           Frontend.Wallet
 import           Frontend.UI.Widgets
 import           Frontend.Foundation
 import           Frontend.UI.Dialogs.DeleteConfirmation (uiDeleteConfirmation)
+import           Frontend.UI.Dialogs.AddAccount (uiCreateWalletOnlyAccount, uiWalletOnlyAccountCreated)
 import           Frontend.UI.Modal
+import           Frontend.UI.Modal.Impl (ModalImpl, ModalIde, ModalIdeCfg, showModal)
 import           Frontend.Network
 ------------------------------------------------------------------------------
-
 
 -- | Constraints on the model config we have for implementing this widget.
 type HasUiWalletModelCfg mConf key m t =
@@ -70,14 +71,25 @@ type HasUiWalletModelCfg mConf key m t =
 
 -- | UI for managing the keys wallet.
 uiWallet
-  :: (MonadWidget t m, HasUiWalletModelCfg mConf key m t)
+  :: forall m t key mConf
+     . ( MonadWidget t m
+       , HasUiWalletModelCfg mConf key m t
+       )
   => Wallet key t
-  -> m mConf
-uiWallet w = divClass "keys group" $ do
-    onCreate <- uiCreateKey w
-    keysCfg <- uiAvailableKeys w
+  -> ModalIde m key t
+  -> m (mConf, ModalIdeCfg m key t)
+uiWallet w m = divClass "keys group" $ do
+  eOpenAddAccount <- confirmButton def "+ Add Account"
 
-    pure $ keysCfg & walletCfg_genKey .~ fmap (\a -> (a, "0", "")) onCreate -- TODO let user pick chain/notes
+  onCreate <- uiCreateKey w
+  keysCfg <- uiAvailableKeys w
+
+  pure ( keysCfg & walletCfg_genKey .~ fmap (\a -> (a, "0", "")) onCreate -- TODO let user pick chain/notes
+       , mempty & modalCfg_setModal .~ leftmost
+         [ Just (uiCreateWalletOnlyAccount m) <$ eOpenAddAccount
+         , Just . uiWalletOnlyAccountCreated m <$> (w ^. wallet_walletOnlyAccountCreated)
+         ]
+       )
 
 ----------------------------------------------------------------------
 -- Keys related helper widgets:

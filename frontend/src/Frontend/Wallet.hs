@@ -131,6 +131,8 @@ data WalletCfg key t = WalletCfg
   , _walletCfg_importAccount  :: Event t (Account key)
   , _walletCfg_delKey     :: Event t IntMap.Key
   -- ^ Delete a key from your wallet.
+  , _walletCfg_createWalletOnlyAccount :: Event t (ChainId, Text)
+  -- ^ Create a wallet only account that uses the public key as the account name
   }
   deriving Generic
 
@@ -161,6 +163,8 @@ type Accounts key = IntMap (SomeAccount key)
 data Wallet key t = Wallet
   { _wallet_accounts :: Dynamic t (Accounts key)
     -- ^ Accounts added and removed by the user
+  , _wallet_walletOnlyAccountCreated :: Event t AccountName
+    -- ^ A new wallet only account has been created
   }
   deriving Generic
 
@@ -168,7 +172,7 @@ makePactLenses ''Wallet
 
 -- | An empty wallet that will never contain any keys.
 emptyWallet :: Reflex t => Wallet key t
-emptyWallet = Wallet mempty
+emptyWallet = Wallet mempty never
 
 snocIntMap :: a -> IntMap a -> IntMap a
 snocIntMap a m = IntMap.insert (nextKey m) a m
@@ -193,26 +197,37 @@ makeWallet conf = do
   let
     onGenKey = _walletCfg_genKey conf
     onDelKey = _walletCfg_delKey conf
+    onCreateWOAcc = _walletCfg_createWalletOnlyAccount conf
 
   rec
     onNewKey <- performEvent $ attachWith (createKey . nextKey) (current keys) onGenKey
+    onWOAccountCreate <- performEvent $ attachWith (createWalletOnlyAccount . nextKey) (current keys) onCreateWOAcc
 
     keys <- foldDyn id initialKeys $ leftmost
       [ ffor onNewKey $ snocIntMap . SomeAccount_Account
       , ffor (_walletCfg_importAccount conf) $ snocIntMap . SomeAccount_Account
       , ffor onDelKey $ \i -> IntMap.insert i SomeAccount_Deleted
+      , ffor onWOAccountCreate $ snocIntMap . SomeAccount_Account
       ]
 
   performEvent_ $ storeKeys <$> updated keys
 
   pure $ Wallet
     { _wallet_accounts = keys
+    , _wallet_walletOnlyAccountCreated = _account_name <$> onWOAccountCreate
     }
   where
+    createWalletOnlyAccount :: Int -> (ChainId, Text) -> Performable m (Account key)
+    createWalletOnlyAccount i (c, t) = do
+      (privKey, pubKey) <- cryptoGenKey i
+      pure $ buildAccount (AccountName $ keyToText pubKey) pubKey privKey c t
+
     createKey :: Int -> (AccountName, ChainId, Text) -> Performable m (Account key)
     createKey i (n, c, t) = do
       (privKey, pubKey) <- cryptoGenKey i
-      pure $ Account
+      pure $ buildAccount n pubKey privKey c t
+
+    buildAccount n pubKey privKey c t = Account
         { _account_name = n
         , _account_key = KeyPair pubKey (Just privKey)
         , _account_chainId = c
@@ -274,10 +289,13 @@ instance Reflex t => Semigroup (WalletCfg key t) where
       , _walletCfg_delKey = leftmost [ _walletCfg_delKey c1
                                      , _walletCfg_delKey c2
                                      ]
+      , _walletCfg_createWalletOnlyAccount = leftmost [ _walletCfg_createWalletOnlyAccount c1
+                                                      , _walletCfg_createWalletOnlyAccount c2
+                                                      ]
       }
 
 instance Reflex t => Monoid (WalletCfg key t) where
-  mempty = WalletCfg never never never
+  mempty = WalletCfg never never never never
   mappend = (<>)
 
 instance Flattenable (WalletCfg key t) t where
@@ -286,12 +304,19 @@ instance Flattenable (WalletCfg key t) t where
       <$> doSwitch never (_walletCfg_genKey <$> ev)
       <*> doSwitch never (_walletCfg_importAccount <$> ev)
       <*> doSwitch never (_walletCfg_delKey <$> ev)
+      <*> doSwitch never (_walletCfg_createWalletOnlyAccount <$> ev)
 
 instance Reflex t => Semigroup (Wallet key t) where
-  (<>) = mappenddefault
+  wa <> wb = Wallet
+    { _wallet_accounts = _wallet_accounts wa <> _wallet_accounts wb
+    , _wallet_walletOnlyAccountCreated = leftmost
+      [ _wallet_walletOnlyAccountCreated wa
+      , _wallet_walletOnlyAccountCreated wb
+      ]
+    }
 
 instance Reflex t => Monoid (Wallet key t) where
-  mempty = memptydefault
+  mempty = Wallet mempty never
   mappend = (<>)
 
 instance ToJSON key => ToJSON (KeyPair key) where

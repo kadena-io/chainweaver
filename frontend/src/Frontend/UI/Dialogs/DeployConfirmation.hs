@@ -81,7 +81,7 @@ data DeployConfirmationConfig t = DeployConfirmationConfig
     -- A failed transaction would call this function twice like so:
     -- 1) network failure: False
     -- 2) button disabled: True
-    -- 
+    --
   , _deployConfirmationConfig_disregardSubmitResponse :: Bool -> Bool
   }
 
