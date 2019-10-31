@@ -43,7 +43,7 @@ module Frontend.UI.DeploymentSettings
   , Identity (runIdentity)
   ) where
 
-import Control.Applicative (liftA2)
+import Control.Applicative (liftA2, liftA3)
 import Control.Arrow (first, (&&&))
 import Control.Error (fmapL, hoistMaybe, headMay)
 import Control.Error.Util (hush)
@@ -613,6 +613,12 @@ capabilityInputRow mCap mkSender = elClass "tr" "table__row" $ do
     , _capabilityInputRow_cap = parsed
     }
 
+-- | Display a single row for an empty capability
+emptyCapability :: DomBuilder t m => m a -> m a
+emptyCapability m = elClass "tr" "table__row" $ do
+  elClass "td" "table__cell_padded" $ text "Empty capability"
+  elClass "td" "table__cell_padded" m
+
 -- | Display a dynamic number of rows for the user to enter custom capabilities
 capabilityInputRows
   :: forall t m. MonadWidget t m
@@ -670,25 +676,29 @@ uiSenderCapabilities m cid mCaps mkSender = do
 
       -- Deliberately lift over the `Maybe` too, so we short circuit if anything
       -- is missing.
-      combineMaps a b = (liftA2 . liftA2) (Map.unionWith (<>)) a b
+      combineMaps = (liftA3 . liftA3) $ \a b c -> Map.unionsWith (<>) [a, b, c]
 
   divClass "title" $ text "Roles"
 
   -- Capabilities
   divClass "group" $ elAttr "table" ("class" =: "table" <> "style" =: "width: 100%; table-layout: fixed;") $ case mCaps of
     Nothing -> el "tbody" $ do
+      empty <- emptyCapability mkSender
+      let emptySig = Just . maybe Map.empty (\a -> Map.singleton a []) <$> empty
       gas <- capabilityInputRow (Just defaultGASCapability) mkSender
       rest <- capabilityInputRows (uiSenderDropdown def m cid)
-      pure (_capabilityInputRow_account gas, combineMaps (_capabilityInputRow_value gas) rest)
+      pure (_capabilityInputRow_account gas, combineMaps (_capabilityInputRow_value gas) rest emptySig)
     Just caps -> do
       el "thead" $ el "tr" $ do
         elClass "th" "table__heading" $ text "Role"
         elClass "th" "table__heading" $ text "Capability"
         elClass "th" "table__heading" $ text "Account"
       el "tbody" $ do
+        empty <- emptyCapability mkSender
+        let emptySig = Just . maybe Map.empty (\a -> Map.singleton a []) <$> empty
         gas <- staticCapabilityRow mkSender defaultGASCapability
         rest <- staticCapabilityRows $ filter (not . isGas . _dappCap_cap) caps
-        pure (_capabilityInputRow_account gas, combineMaps (_capabilityInputRow_value gas) rest)
+        pure (_capabilityInputRow_account gas, combineMaps (_capabilityInputRow_value gas) rest emptySig)
 
 isGas :: SigCapability -> Bool
 isGas = (^. to PC._scName . to PN._qnName . to (== "GAS"))
