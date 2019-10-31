@@ -102,7 +102,7 @@ newHead routeText = do
   ss "https://fonts.googleapis.com/css?family=Roboto"
   ss "https://fonts.googleapis.com/css?family=Work+Sans"
   ss (static @"css/font-awesome.min.css")
-  ss (static @"css/ace-theme-pact-web.css")
+  ss (static @"css/ace-theme-chainweaver.css")
   js "/static/js/ace/ace.js"
   prerender_ blank $ js "/static/js/ace/mode-pact.js"
   js (static @"js/nacl-fast.min-v1.0.0.js")

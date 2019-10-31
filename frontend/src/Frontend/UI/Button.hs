@@ -8,7 +8,7 @@
 {-# LANGUAGE TemplateHaskell       #-}
 {-# LANGUAGE TypeApplications      #-}
 
-{-| pact-web buttons.
+{-| chainweaver buttons.
 
 -}
 
