@@ -29,8 +29,6 @@ import           Control.Lens
 import           Control.Monad.State.Strict
 import qualified Data.List.Zipper            as Z
 import           Data.Maybe
-import           Data.Sequence               (Seq)
-import qualified Data.Sequence               as S
 import           Data.Text                   (Text)
 import           Language.Javascript.JSaddle hiding (Object)
 import           Reflex

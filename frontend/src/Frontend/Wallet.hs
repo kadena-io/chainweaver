@@ -54,7 +54,6 @@ import Data.Decimal
 import Data.IntMap (IntMap)
 import Data.Text (Text)
 import GHC.Generics (Generic)
-import Generics.Deriving.Monoid (mappenddefault, memptydefault)
 import Kadena.SigningApi (AccountName(..), mkAccountName)
 import Pact.Types.ChainId
 import Reflex

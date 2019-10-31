@@ -55,7 +55,7 @@ import           Frontend.Foundation
 import           Frontend.UI.Dialogs.DeleteConfirmation (uiDeleteConfirmation)
 import           Frontend.UI.Dialogs.AddAccount (uiCreateWalletOnlyAccount, uiWalletOnlyAccountCreated)
 import           Frontend.UI.Modal
-import           Frontend.UI.Modal.Impl (ModalImpl, ModalIde, ModalIdeCfg, showModal)
+import           Frontend.UI.Modal.Impl (ModalIde, ModalIdeCfg)
 import           Frontend.Network
 ------------------------------------------------------------------------------
 
@@ -87,7 +87,7 @@ uiWallet w m = divClass "keys group" $ do
   pure ( keysCfg & walletCfg_genKey .~ fmap (\a -> (a, "0", "")) onCreate -- TODO let user pick chain/notes
        , mempty & modalCfg_setModal .~ leftmost
          [ Just (uiCreateWalletOnlyAccount m) <$ eOpenAddAccount
-         , Just . uiWalletOnlyAccountCreated m <$> (w ^. wallet_walletOnlyAccountCreated)
+         , Just . uiWalletOnlyAccountCreated <$> (w ^. wallet_walletOnlyAccountCreated)
          ]
        )
 

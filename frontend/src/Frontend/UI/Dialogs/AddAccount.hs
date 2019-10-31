@@ -7,14 +7,12 @@ module Frontend.UI.Dialogs.AddAccount
   ) where
 
 import           Control.Lens
-import qualified Data.Text as T
 ------------------------------------------------------------------------------
 import           Reflex
 import           Reflex.Dom
 ------------------------------------------------------------------------------
 import           Frontend.Wallet
 import           Frontend.Network
-import           Frontend.Crypto.Class (HasCrypto, cryptoGenKey)
 import           Frontend.UI.DeploymentSettings (transactionDisplayNetwork, userChainIdSelect)
 
 import           Frontend.UI.Modal
@@ -74,15 +72,14 @@ uiCreateWalletOnlyAccount model _onClose = do
         )
 
 uiWalletOnlyAccountCreated
-  :: forall t m model key mConf
+  :: forall t m mConf
      . ( MonadWidget t m
        , Monoid mConf
        )
-  => model
-  -> AccountName
+  => AccountName
   -> Event t ()
   -> m (mConf, Event t ())
-uiWalletOnlyAccountCreated model newAccount _onClose = do
+uiWalletOnlyAccountCreated newAccount _onClose = do
   onClose <- modalHeader $ text "All Set!"
   _ <- modalMain $ divClass "segment modal__main wallet_only__account-created-modal" $ do
     elClass "h2" "heading heading_type_h2" $
