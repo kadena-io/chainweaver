@@ -56,18 +56,18 @@ data FrontendRoute :: * -> * where
   FrontendRoute_Settings :: FrontendRoute ()
 
 data ContractRoute a where
+  -- | Route for loading an example.
   ContractRoute_Example :: ContractRoute [Text]
-  -- ^ Route for loading an example.
+  -- | Route for loading a stored file/module.
   ContractRoute_Stored  :: ContractRoute [Text]
-  -- ^ Route for loading a stored file/module.
+  -- | Route for loading GitHub gists.
   ContractRoute_Gist  :: ContractRoute [Text]
-  -- ^ Route for loading GitHub gists.
+  -- | Route for loading a deployed module.
   ContractRoute_Deployed :: ContractRoute [Text]
-  -- ^ Route for loading a deployed module.
+  -- | Route when editing a new file.
   ContractRoute_New :: ContractRoute ()
-  -- ^ Route when editing a new file.
+  -- | Route for auth handling
   ContractRoute_OAuth :: ContractRoute (R OAuthRoute)
-  -- ^ Route for auth handling
 
 backendRouteEncoder
   :: Encoder (Either Text) Identity (R (FullRoute BackendRoute FrontendRoute)) PageName
