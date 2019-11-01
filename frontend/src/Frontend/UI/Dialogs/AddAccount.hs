@@ -1,3 +1,4 @@
+{-# LANGUAGE RecursiveDo #-}
 {-# LANGUAGE ConstraintKinds       #-}
 {-# LANGUAGE TupleSections #-}
 
@@ -7,19 +8,21 @@ module Frontend.UI.Dialogs.AddAccount
   ) where
 
 import           Control.Lens
+import           Data.Text (Text)
 ------------------------------------------------------------------------------
 import           Reflex
 import           Reflex.Dom
 ------------------------------------------------------------------------------
 import           Frontend.Wallet
-import           Frontend.Network
 import           Frontend.UI.DeploymentSettings (transactionDisplayNetwork, userChainIdSelect)
 
+import           Frontend.Ide (ide_wallet)
 import           Frontend.UI.Modal
+import           Frontend.UI.Modal.Impl (ModalIde)
 import           Frontend.UI.Widgets
 import           Frontend.Foundation
 
-type HasAddAccountModelCfg mConf key t =
+type HasAddAccountModelCfg model mConf key t =
   ( Monoid mConf, Flattenable mConf t
   , HasWalletCfg mConf key t
   )
@@ -27,14 +30,31 @@ type HasAddAccountModelCfg mConf key t =
 uiCreateWalletOnlyAccount
   :: forall t m model key mConf
      . ( MonadWidget t m
-       , HasAddAccountModelCfg mConf key t
-       , HasNetwork model t
+       , HasAddAccountModelCfg model mConf key t
        )
-  => model
+  => ModalIde m key t
   -> Event t ()
   -> m (mConf, Event t ())
-uiCreateWalletOnlyAccount model _onClose = do
-  onClose <- modalHeader $ text "Add Account"
+uiCreateWalletOnlyAccount model onClose = mdo
+  onClose <- modalHeader $ dynText title
+
+  dwf <- workflow (uiCreateWalletStepOne model onClose)
+
+  let (title, (conf, dEvent)) = fmap splitDynPure $ splitDynPure dwf
+
+  mConf <- flatten =<< tagOnPostBuild conf
+
+  return (mConf, leftmost [switch $ current dEvent, onClose])
+
+uiCreateWalletStepOne
+  :: forall t m model key mConf
+     . ( MonadWidget t m
+       , HasAddAccountModelCfg model mConf key t
+       )
+  => ModalIde m key t
+  -> Event t ()
+  -> Workflow t m (Text, (mConf, Event t ()))
+uiCreateWalletStepOne model onClose = Workflow $ do
   (dSelectedChain, dNotes) <- modalMain $ do
     divClass "segment modal__main transaction_details" $ do
       elClass "h2" "heading heading_type_h2" $ text "Destination"
@@ -53,16 +73,16 @@ uiCreateWalletOnlyAccount model _onClose = do
 
   modalFooter $ do
     onCancel <- cancelButton def "Cancel"
-    text " "
     let isDisabled = isNothing <$> dSelectedChain
 
     onConfirm <- confirmButton (def & uiButtonCfg_disabled .~ isDisabled) "Add New Account"
 
     let eAddAcc = attachWithMaybe (\n -> fmap (,n)) (current dNotes) (current dSelectedChain <@ onConfirm)
+        newConf = mempty & walletCfg_createWalletOnlyAccount .~ eAddAcc
 
     pure
-      ( mempty & walletCfg_createWalletOnlyAccount .~ eAddAcc
-      , leftmost [onClose, onCancel, onConfirm]
+      ( ("Add Account", (newConf, leftmost [onClose, onCancel]))
+      , uiWalletOnlyAccountCreated newConf onClose <$> (model ^. ide_wallet . wallet_walletOnlyAccountCreated)
       )
   where
     inpElem cls = uiInputElement $ def
@@ -72,15 +92,13 @@ uiCreateWalletOnlyAccount model _onClose = do
         )
 
 uiWalletOnlyAccountCreated
-  :: forall t m mConf
-     . ( MonadWidget t m
-       , Monoid mConf
-       )
-  => AccountName
+  :: forall t m mConf.
+     MonadWidget t m
+  => mConf
   -> Event t ()
-  -> m (mConf, Event t ())
-uiWalletOnlyAccountCreated newAccount _onClose = do
-  onClose <- modalHeader $ text "All Set!"
+  -> AccountName
+  -> Workflow t m (Text, (mConf, Event t ()))
+uiWalletOnlyAccountCreated newConf onClose newAccount = Workflow $ do
   _ <- modalMain $ divClass "segment modal__main wallet_only__account-created-modal" $ do
     elClass "h2" "heading heading_type_h2" $
       text "[WALLET IMAGE PLACEHOLDER]"
@@ -90,4 +108,4 @@ uiWalletOnlyAccountCreated newAccount _onClose = do
 
   modalFooter $ do
     onConfirm <- confirmButton def "Done"
-    pure $ (mempty, leftmost [onClose, onConfirm])
+    pure (("All Set!", (newConf, leftmost [onClose, onConfirm])), never)

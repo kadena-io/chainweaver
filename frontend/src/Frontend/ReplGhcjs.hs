@@ -93,8 +93,8 @@ app sidebarExtra appCfg = void . mfix $ \ cfg -> do
       mkPage r c = elDynAttr "div" (ffor (demuxed route r) $ \s -> "class" =: (c <> if s then " page__content visible" else " page__content"))
   updates <- divClass "page" $ do
     netCfg <- networkBar ideL
-    (walletCfg', mconf) <- mkPage (FrontendRoute_Wallet :/ ()) "wallet" $ do
-      uiWallet (_ide_wallet ideL) ideL
+    walletCfg <- mkPage (FrontendRoute_Wallet :/ ()) "wallet" $ do
+      uiWallet ideL
     updates <- mkPage (FrontendRoute_Main :/ ()) "contracts" $ do
       controlCfg <- controlBar appCfg ideL
       mainCfg <- elClass "main" "main page__main" $ do
@@ -102,7 +102,7 @@ app sidebarExtra appCfg = void . mfix $ \ cfg -> do
         envCfg <- rightTabBar "main__right-pane" ideL
         pure $ uiEditorCfg <> envCfg
       pure $ controlCfg <> mainCfg
-    pure $ netCfg <> walletCfg' <> updates <> mconf
+    pure $ netCfg <> walletCfg <> updates
 
   modalCfg <- showModal ideL
 

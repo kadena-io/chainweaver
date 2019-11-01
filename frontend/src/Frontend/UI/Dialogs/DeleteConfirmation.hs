@@ -75,7 +75,6 @@ uiDeleteConfirmation thisKey accountName _onClose = do
 
   modalFooter $ do
     onCancel <- cancelButton def "Cancel"
-    text " "
     onConfirm <- confirmButton def "Delete"
     let
       cfg = mempty & walletCfg_delKey .~ (thisKey <$ onConfirm)

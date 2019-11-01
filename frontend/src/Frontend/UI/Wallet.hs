@@ -47,15 +47,16 @@ import qualified Pact.Types.ChainId as Pact
 import           Reflex
 import           Reflex.Dom
 ------------------------------------------------------------------------------
+import           Frontend.Ide (_ide_wallet)
 import           Frontend.Crypto.Class
 import           Frontend.Crypto.Ed25519     (keyToText)
 import           Frontend.Wallet
 import           Frontend.UI.Widgets
 import           Frontend.Foundation
 import           Frontend.UI.Dialogs.DeleteConfirmation (uiDeleteConfirmation)
-import           Frontend.UI.Dialogs.AddAccount (uiCreateWalletOnlyAccount, uiWalletOnlyAccountCreated)
+import           Frontend.UI.Dialogs.AddAccount (uiCreateWalletOnlyAccount)
 import           Frontend.UI.Modal
-import           Frontend.UI.Modal.Impl (ModalIde, ModalIdeCfg)
+import           Frontend.UI.Modal.Impl (ModalIde)
 import           Frontend.Network
 ------------------------------------------------------------------------------
 
@@ -75,21 +76,19 @@ uiWallet
      . ( MonadWidget t m
        , HasUiWalletModelCfg mConf key m t
        )
-  => Wallet key t
-  -> ModalIde m key t
-  -> m (mConf, ModalIdeCfg m key t)
-uiWallet w m = divClass "keys group" $ do
+  => ModalIde m key t
+  -> m mConf
+uiWallet m = divClass "keys group" $ do
   eOpenAddAccount <- confirmButton def "+ Add Account"
+
+  let w = _ide_wallet m
 
   onCreate <- uiCreateKey w
   keysCfg <- uiAvailableKeys w
 
-  pure ( keysCfg & walletCfg_genKey .~ fmap (\a -> (a, "0", "")) onCreate -- TODO let user pick chain/notes
-       , mempty & modalCfg_setModal .~ leftmost
-         [ Just (uiCreateWalletOnlyAccount m) <$ eOpenAddAccount
-         , Just . uiWalletOnlyAccountCreated <$> (w ^. wallet_walletOnlyAccountCreated)
-         ]
-       )
+  pure $ keysCfg
+    & walletCfg_genKey .~ fmap (\a -> (a, "0", "")) onCreate -- TODO let user pick chain/notes
+    & modalCfg_setModal .~ (Just (uiCreateWalletOnlyAccount m) <$ eOpenAddAccount)
 
 ----------------------------------------------------------------------
 -- Keys related helper widgets:
