@@ -223,8 +223,9 @@ parseKadenaAddressBlob = (,,,)
   <*> parseNetworkName
   <*> A.hexadecimal
   where
-    failParse = either fail pure
-    mkParser p c = (c <$> p) >>= failParse
+    mkParser :: A.Parser a -> (a -> Either String c) -> A.Parser c
+    mkParser p c = (c <$> p) >>= either fail pure
+
     latin1ToEOL = A.manyTill (A.satisfy C.isLatin1) A.endOfLine
 
     parseAccountName = mkParser latin1ToEOL (first T.unpack . mkAccountName . T.pack)
