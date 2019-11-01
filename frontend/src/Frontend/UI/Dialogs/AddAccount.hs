@@ -1,10 +1,9 @@
 {-# LANGUAGE RecursiveDo #-}
-{-# LANGUAGE ConstraintKinds       #-}
+{-# LANGUAGE ConstraintKinds #-}
 {-# LANGUAGE TupleSections #-}
 
 module Frontend.UI.Dialogs.AddAccount
-  ( uiCreateWalletOnlyAccount
-  , uiWalletOnlyAccountCreated
+  ( uiAddWalletOnlyAccountDialogButton
   ) where
 
 import           Control.Lens
@@ -18,7 +17,7 @@ import           Frontend.UI.DeploymentSettings (transactionDisplayNetwork, user
 
 import           Frontend.Ide (ide_wallet)
 import           Frontend.UI.Modal
-import           Frontend.UI.Modal.Impl (ModalIde)
+import           Frontend.UI.Modal.Impl (ModalIde, ModalIdeCfg)
 import           Frontend.UI.Widgets
 import           Frontend.Foundation
 
@@ -26,6 +25,17 @@ type HasAddAccountModelCfg model mConf key t =
   ( Monoid mConf, Flattenable mConf t
   , HasWalletCfg mConf key t
   )
+
+uiAddWalletOnlyAccountDialogButton
+  :: forall t m model key mConf
+     . ( MonadWidget t m
+       , HasAddAccountModelCfg model mConf key t
+       )
+  => ModalIde m key t
+  -> m (ModalIdeCfg m key t)
+uiAddWalletOnlyAccountDialogButton m = do
+  eOpenAddAccount <- divClass "wallet__add-wallet-only-account-btn" $ confirmButton def "+ Add Account"
+  pure $ mempty & modalCfg_setModal .~ (Just (uiCreateWalletOnlyAccount m) <$ eOpenAddAccount)
 
 uiCreateWalletOnlyAccount
   :: forall t m model key mConf
@@ -35,7 +45,7 @@ uiCreateWalletOnlyAccount
   => ModalIde m key t
   -> Event t ()
   -> m (mConf, Event t ())
-uiCreateWalletOnlyAccount model onClose = mdo
+uiCreateWalletOnlyAccount model _onClose = mdo
   onClose <- modalHeader $ dynText title
 
   dwf <- workflow (uiCreateWalletStepOne model onClose)

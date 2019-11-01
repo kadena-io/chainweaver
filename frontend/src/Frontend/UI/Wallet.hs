@@ -54,7 +54,6 @@ import           Frontend.Wallet
 import           Frontend.UI.Widgets
 import           Frontend.Foundation
 import           Frontend.UI.Dialogs.DeleteConfirmation (uiDeleteConfirmation)
-import           Frontend.UI.Dialogs.AddAccount (uiCreateWalletOnlyAccount)
 import           Frontend.UI.Modal
 import           Frontend.UI.Modal.Impl (ModalIde)
 import           Frontend.Network
@@ -79,16 +78,12 @@ uiWallet
   => ModalIde m key t
   -> m mConf
 uiWallet m = divClass "keys group" $ do
-  eOpenAddAccount <- confirmButton def "+ Add Account"
-
   let w = _ide_wallet m
 
   onCreate <- uiCreateKey w
   keysCfg <- uiAvailableKeys w
 
-  pure $ keysCfg
-    & walletCfg_genKey .~ fmap (\a -> (a, "0", "")) onCreate -- TODO let user pick chain/notes
-    & modalCfg_setModal .~ (Just (uiCreateWalletOnlyAccount m) <$ eOpenAddAccount)
+  pure $ keysCfg & walletCfg_genKey .~ fmap (\a -> (a, "0", "")) onCreate -- TODO let user pick chain/notes
 
 ----------------------------------------------------------------------
 -- Keys related helper widgets:
