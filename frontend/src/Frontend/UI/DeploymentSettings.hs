@@ -97,6 +97,9 @@ import qualified Pact.Types.Info as PI
 data DeploymentSettingsConfig t m model a = DeploymentSettingsConfig
   { _deploymentSettingsConfig_userTab     :: Maybe (Text, m a)
     -- ^ Some optional extra tab. fst is the tab's name, snd is its content.
+  , _deploymentSettingsConfig_userSection :: Maybe (Text, m a)
+    -- ^ Some optional extra input, placed between chainId selection and transaction
+    -- settings. fst is the tab's name, snd is its content.
   , _deploymentSettingsConfig_chainId     :: model -> m (Dynamic t (Maybe Pact.ChainId))
     -- ^ ChainId selection widget.
     --   You can pick (predefinedChainIdSelect someId) - for not showing a
@@ -200,11 +203,12 @@ uiDeploymentSettings m settings = mdo
 
       mRes <- traverse (uncurry $ tabPane mempty curSelection) mUserTabCfg
 
-      (cfg, cChainId, ttl, gasLimit) <- tabPane mempty curSelection DeploymentSettingsView_Cfg $
+      (cfg, cChainId, ttl, gasLimit, mUserSection) <- tabPane mempty curSelection DeploymentSettingsView_Cfg $
         uiCfg code m
           (_deploymentSettingsConfig_chainId settings $ m)
           (_deploymentSettingsConfig_ttl settings)
           (_deploymentSettingsConfig_gasLimit settings)
+          (_deploymentSettingsConfig_userSection settings)
 
       (mSender, capabilities) <- tabPane mempty curSelection DeploymentSettingsView_Keys $
         uiSenderCapabilities m cChainId (_deploymentSettingsConfig_caps settings)
@@ -330,12 +334,14 @@ uiCfg
   -> m (Dynamic t (f Pact.ChainId))
   -> Maybe TTLSeconds
   -> Maybe GasLimit
+  -> Maybe (Text, m a)
   -> m ( mConf
        , Dynamic t (f Pact.ChainId)
        , Dynamic t TTLSeconds
        , Dynamic t GasLimit
+       , Maybe a
        )
-uiCfg code m wChainId mTTL mGasLimit = do
+uiCfg code m wChainId mTTL mGasLimit mUserSection = do
   -- General deployment configuration
   let mkGeneralSettings = do
         divClass "title" $ text "Input"
@@ -350,10 +356,16 @@ uiCfg code m wChainId mTTL mGasLimit = do
           transactionDisplayNetwork m
           chain <- wChainId
           pure chain
+
+        -- Customisable user provided UI section
+        ma <- forM mUserSection $ \(title, body) -> do
+          divClass "title" $ text title
+          elKlass "div" ("group segment") body
+
         divClass "title" $ text "Settings"
         (cfg, ttl, gasLimit) <- elKlass "div" ("group segment") $
           uiMetaData m mTTL mGasLimit
-        pure (cfg, cId, ttl, gasLimit)
+        pure (cfg, cId, ttl, gasLimit, ma)
 
   rec
     let mkAccordionControlDyn initActive = foldDyn (const not) initActive

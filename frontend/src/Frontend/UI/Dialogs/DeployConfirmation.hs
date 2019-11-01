@@ -119,6 +119,7 @@ uiDeployConfirmation code model = fullDeployFlow def model $ do
   (settingsCfg, result, _) <- uiDeploymentSettings model $ DeploymentSettingsConfig
     { _deploymentSettingsConfig_chainId = userChainIdSelect
     , _deploymentSettingsConfig_userTab = Nothing
+    , _deploymentSettingsConfig_userSection = Nothing
     , _deploymentSettingsConfig_code = pure code
     , _deploymentSettingsConfig_sender = uiSenderDropdown def
     , _deploymentSettingsConfig_data = Nothing
