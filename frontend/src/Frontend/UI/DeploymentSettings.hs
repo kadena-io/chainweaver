@@ -36,6 +36,14 @@ module Frontend.UI.DeploymentSettings
   , userChainIdSelect
   , uiChainSelection
 
+    -- * Tab Helpers
+  , DeploymentSettingsView (..)
+  , showSettingsTabName
+  , prevView
+  , nextView
+  , buildDeployTabFooterControls
+  , buildDeployTabs
+
     -- * Widgets
   , uiDeploymentSettings
   , uiDeployDestination
@@ -238,6 +246,62 @@ buildDeploymentSettingsResult m mSender cChainId capabilities ttl gasLimit code 
       , _deploymentSettingsResult_code = code'
       }
 
+buildDeployTabs
+  :: ( DomBuilder t m
+     , PostBuild t m
+     , MonadHold t m
+     , MonadFix m
+     )
+  => Maybe DeploymentSettingsView
+  -> Event t (DeploymentSettingsView -> Maybe DeploymentSettingsView)
+  -> m ( Dynamic t DeploymentSettingsView
+       , Event t ()
+       , Event t DeploymentSettingsView
+       )
+buildDeployTabs mUserTabName controls = mdo
+  let initTab = fromMaybe DeploymentSettingsView_Cfg mUserTabName
+      f thisView g = case g thisView of
+        Just view' -> (Just view', Nothing)
+        Nothing -> (Nothing, Just ())
+  (curSelection, done) <- mapAccumMaybeDyn f initTab $ leftmost
+    [ const . Just <$> onTabClick
+    , controls
+    ]
+  (TabBar onTabClick) <- makeTabBar $ TabBarCfg
+    { _tabBarCfg_tabs = availableTabs
+    , _tabBarCfg_mkLabel = const $ text . showSettingsTabName
+    , _tabBarCfg_selectedTab = Just <$> curSelection
+    , _tabBarCfg_classes = mempty
+    , _tabBarCfg_type = TabBarType_Secondary
+    }
+  pure (curSelection, done, onTabClick)
+  where
+    userTabs = maybeToList mUserTabName
+    stdTabs = [DeploymentSettingsView_Cfg, DeploymentSettingsView_Keys]
+    availableTabs = userTabs <> stdTabs
+
+buildDeployTabFooterControls
+  :: ( PostBuild t m
+     , DomBuilder t m
+     )
+  => Maybe DeploymentSettingsView
+  -> Dynamic t DeploymentSettingsView
+  -> Dynamic t Bool
+  -> m (Event t (DeploymentSettingsView -> Maybe DeploymentSettingsView))
+buildDeployTabFooterControls mUserTabName curSelection hasResult = do
+  let backConfig = def & uiButtonCfg_class .~ ffor curSelection
+        (\s -> if s == fromMaybe DeploymentSettingsView_Cfg mUserTabName then "hidden" else "")
+  back <- uiButtonDyn backConfig $ text "Back"
+  let shouldBeDisabled tab hasRes = tab == DeploymentSettingsView_Keys && hasRes
+      isDisabled = shouldBeDisabled <$> curSelection <*> hasResult
+  next <- uiButtonDyn (def & uiButtonCfg_class .~ "button_type_confirm" & uiButtonCfg_disabled .~ isDisabled) $ dynText $ ffor curSelection $ \case
+    DeploymentSettingsView_Keys -> "Preview"
+    _ -> "Next"
+  pure $ leftmost
+    [ nextView <$ next
+    , prevView mUserTabName <$ back
+    ]
+
 -- | Show settings related to deployments to the user.
 --
 --
@@ -254,21 +318,7 @@ uiDeploymentSettings
   -> m (mConf, Event t (DeploymentSettingsResult key), Maybe a)
 uiDeploymentSettings m settings = mdo
     let code = _deploymentSettingsConfig_code settings
-    let initTab = fromMaybe DeploymentSettingsView_Cfg mUserTabName
-        f thisView g = case g thisView of
-          Just view' -> (Just view', Nothing)
-          Nothing -> (Nothing, Just ())
-    (curSelection, done) <- mapAccumMaybeDyn f initTab $ leftmost
-      [ const . Just <$> onTabClick
-      , controls
-      ]
-    (TabBar onTabClick) <- makeTabBar $ TabBarCfg
-      { _tabBarCfg_tabs = availableTabs
-      , _tabBarCfg_mkLabel = const $ text . showSettingsTabName
-      , _tabBarCfg_selectedTab = Just <$> curSelection
-      , _tabBarCfg_classes = mempty
-      , _tabBarCfg_type = TabBarType_Secondary
-      }
+    (curSelection, done, onTabClick) <- buildDeployTabs mUserTabName controls
     (conf, result, ma) <- elClass "div" "modal__main transaction_details" $ do
 
       mRes <- traverse (uncurry $ tabPane mempty curSelection) mUserTabCfg
@@ -289,30 +339,14 @@ uiDeploymentSettings m settings = mdo
         , buildDeploymentSettingsResult m mSender cChainId capabilities ttl gasLimit code settings
         , mRes
         )
-    command <- performEvent $ tagMaybe (current result) done
 
-    controls <- modalFooter $ do
-      let backConfig = def & uiButtonCfg_class .~ ffor curSelection
-            (\s -> if s == fromMaybe DeploymentSettingsView_Cfg mUserTabName then "hidden" else "")
-      back <- uiButtonDyn backConfig $ text "Back"
-      let shouldBeDisabled tab res = tab == DeploymentSettingsView_Keys && isNothing res
-          isDisabled = shouldBeDisabled <$> curSelection <*> result
-      next <- uiButtonDyn (def & uiButtonCfg_class .~ "button_type_confirm" & uiButtonCfg_disabled .~ isDisabled) $ dynText $ ffor curSelection $ \case
-        DeploymentSettingsView_Keys -> "Preview"
-        _ -> "Next"
-      pure $ leftmost
-        [ nextView <$ next
-        , prevView mUserTabName <$ back
-        ]
+    command <- performEvent $ tagMaybe (current result) done
+    controls <- modalFooter $ buildDeployTabFooterControls mUserTabName curSelection (isNothing <$> result)
 
     pure (conf, command, ma)
     where
       mUserTabCfg  = first DeploymentSettingsView_Custom <$> _deploymentSettingsConfig_userTab settings
       mUserTabName = fmap fst mUserTabCfg
-      userTabs = maybeToList mUserTabName
-      stdTabs = [DeploymentSettingsView_Cfg, DeploymentSettingsView_Keys]
-      availableTabs = userTabs <> stdTabs
-
 
 -- | Use a predefined chain id, don't let the user pick one.
 predefinedChainIdSelect
