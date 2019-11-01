@@ -26,15 +26,25 @@ module Frontend.UI.DeploymentSettings
   ( -- * Settings
     DeploymentSettingsConfig (..)
   , DeploymentSettingsResult (..)
+
+    -- * Helpers
+  , buildDeploymentSettingsResult
+
     -- * Values for _deploymentSettingsConfig_chainId:
   , predefinedChainIdSelect
   , predefinedChainIdDisplayed
   , userChainIdSelect
   , uiChainSelection
+
     -- * Widgets
   , uiDeploymentSettings
+  , uiDeployDestination
+  , uiDeployMetaData
+  , uiDeployCode
+
   , uiSenderFixed
   , uiSenderDropdown
+
   , transactionInputSection
   , transactionHashSection
   , transactionDisplayNetwork
@@ -168,6 +178,66 @@ data DeploymentSettingsResult key = DeploymentSettingsResult
   , _deploymentSettingsResult_command :: Pact.Command Text
   }
 
+buildDeploymentSettingsResult
+  :: ( HasNetwork model t
+     , HasJsonData model t
+     , HasWallet model key t
+     , Monad (Dynamic t)
+     , Monad (Performable m)
+     , MonadJSM (Performable m)
+     , HasCrypto key (Performable m)
+     )
+  => model
+  -> Dynamic t (Maybe AccountName)
+  -> Dynamic t (Maybe ChainId)
+  -> Dynamic t (Maybe (Map AccountName [SigCapability]))
+  -> Dynamic t TTLSeconds
+  -> Dynamic t GasLimit
+  -> Dynamic t Text
+  -> DeploymentSettingsConfig t m model a
+  -> Dynamic t (Maybe (Performable m (DeploymentSettingsResult key)))
+buildDeploymentSettingsResult m mSender cChainId capabilities ttl gasLimit code settings = runMaybeT $ do
+  networkName <- lift $ m ^. network_selectedNetwork
+  sender <- MaybeT mSender
+  chainId <- MaybeT cChainId
+  caps <- MaybeT capabilities
+  let signing = Set.insert sender $ Map.keysSet caps
+  jsonData' <- lift $ either (const mempty) id <$> m ^. jsonData . jsonData_data
+  ttl' <- lift ttl
+  limit <- lift gasLimit
+  lastPublicMeta <- lift $ m ^. network_meta
+  let publicMeta = lastPublicMeta
+        { _pmChainId = chainId
+        , _pmGasLimit = limit
+        , _pmSender = unAccountName sender
+        , _pmTTL = ttl'
+        }
+  code' <- lift code
+  allAccounts <- lift $ m ^. wallet_accounts
+  let accountsToKey = flip IM.foldMapWithKey allAccounts $ \_ -> \case
+        SomeAccount_Account a -> Map.singleton (_account_name a) (_account_key a)
+        SomeAccount_Deleted -> Map.empty
+      toPublicKey (name, cs) = do
+        KeyPair pk _ <- Map.lookup name accountsToKey
+        pure (pk, cs)
+      pkCaps = Map.fromList $ fmapMaybe toPublicKey $ Map.toList caps
+  pure $ do
+    let signingPairs = getSigningPairs signing allAccounts
+    cmd <- buildCmd
+      (_deploymentSettingsConfig_nonce settings)
+      networkName publicMeta signingPairs
+      (_deploymentSettingsConfig_extraSigners settings)
+      code' jsonData' pkCaps
+    pure $ DeploymentSettingsResult
+      { _deploymentSettingsResult_gasPrice = _pmGasPrice publicMeta
+      , _deploymentSettingsResult_signingKeys = signingPairs
+      , _deploymentSettingsResult_signingAccounts = signing
+      , _deploymentSettingsResult_sender = sender
+      , _deploymentSettingsResult_chainId = chainId
+      , _deploymentSettingsResult_command = cmd
+      , _deploymentSettingsResult_code = code'
+      }
+
 -- | Show settings related to deployments to the user.
 --
 --
@@ -214,51 +284,9 @@ uiDeploymentSettings m settings = mdo
         uiSenderCapabilities m cChainId (_deploymentSettingsConfig_caps settings)
           $ (_deploymentSettingsConfig_sender settings) m cChainId
 
-      let result' = runMaybeT $ do
-            selNodes <- lift $ m ^. network_selectedNodes
-            networkId <- hoistMaybe $ hush . mkNetworkName . nodeVersion =<< headMay (rights selNodes)
-            sender <- MaybeT mSender
-            chainId <- MaybeT cChainId
-            caps <- MaybeT capabilities
-            let signing = Set.insert sender $ Map.keysSet caps
-            jsonData' <- lift $ either (const mempty) id <$> m ^. jsonData . jsonData_data
-            ttl' <- lift ttl
-            limit <- lift gasLimit
-            lastPublicMeta <- lift $ m ^. network_meta
-            let publicMeta = lastPublicMeta
-                  { _pmChainId = chainId
-                  , _pmGasLimit = limit
-                  , _pmSender = unAccountName sender
-                  , _pmTTL = ttl'
-                  }
-            code' <- lift code
-            allAccounts <- lift $ m ^. wallet_accounts
-            let accountsToKey = flip IM.foldMapWithKey allAccounts $ \_ -> \case
-                  SomeAccount_Account a -> Map.singleton (_account_name a) (_account_key a)
-                  SomeAccount_Deleted -> Map.empty
-                toPublicKey (name, cs) = do
-                  KeyPair pk _ <- Map.lookup name accountsToKey
-                  pure (pk, cs)
-                pkCaps = Map.fromList $ fmapMaybe toPublicKey $ Map.toList caps
-            pure $ do
-              let signingPairs = getSigningPairs signing allAccounts
-              cmd <- buildCmd
-                (_deploymentSettingsConfig_nonce settings)
-                networkId publicMeta signingPairs
-                (_deploymentSettingsConfig_extraSigners settings)
-                code' jsonData' pkCaps
-              pure $ DeploymentSettingsResult
-                { _deploymentSettingsResult_gasPrice = _pmGasPrice publicMeta
-                , _deploymentSettingsResult_signingKeys = signingPairs
-                , _deploymentSettingsResult_signingAccounts = signing
-                , _deploymentSettingsResult_sender = sender
-                , _deploymentSettingsResult_chainId = chainId
-                , _deploymentSettingsResult_command = cmd
-                , _deploymentSettingsResult_code = code'
-                }
       pure
         ( cfg & networkCfg_setSender .~ fmapMaybe (fmap unAccountName) (updated mSender)
-        , result'
+        , buildDeploymentSettingsResult m mSender cChainId capabilities ttl gasLimit code settings
         , mRes
         )
     command <- performEvent $ tagMaybe (current result) done
@@ -313,10 +341,47 @@ userChainIdSelect
   => model
   -> m (MDynamic t Pact.ChainId)
 userChainIdSelect m = mkLabeledClsInput (uiChainSelection mNodeInfo) "Chain ID"
-  where
-    mNodeInfo = (^? to rights . _head) <$> m ^. network_selectedNodes
+  where mNodeInfo = (^? to rights . _head) <$> m ^. network_selectedNodes
 
+uiDeployCode
+  :: MonadWidget t m
+  => Dynamic t Text
+  -> m ()
+uiDeployCode code = do
+  divClass "title" $ text "Input"
+  divClass "group" $ do
+    pb <- getPostBuild
+    _ <- flip mkLabeledClsInput "Raw Command" $ \cls -> uiTextAreaElement $ def
+      & textAreaElementConfig_setValue .~ leftmost [updated code, tag (current code) pb]
+      & initialAttributes .~ "disabled" =: "" <> "style" =: "width: 100%" <> "class" =: renderClass cls
+    pure ()
 
+uiDeployDestination
+  :: ( MonadWidget t m
+     , HasNetwork model t
+     )
+  => model
+  -> m (Dynamic t (f Pact.ChainId))
+  -> m (Dynamic t (f Pact.ChainId))
+uiDeployDestination m wChainId = do
+  divClass "title" $ text "Destination"
+  elKlass "div" ("group segment") $ do
+    transactionDisplayNetwork m
+    wChainId
+
+uiDeployMetaData
+  :: ( MonadWidget t m
+     , HasNetwork model t
+     , HasNetworkCfg mConf t
+     , Monoid mConf
+     )
+  => model
+  -> Maybe TTLSeconds
+  -> Maybe GasLimit
+  -> m (mConf, Dynamic t TTLSeconds, Dynamic t GasLimit)
+uiDeployMetaData m mTTL mGasLimit = do
+  divClass "title" $ text "Settings"
+  elKlass "div" ("group segment") $ uiMetaData m mTTL mGasLimit
 
 -- | UI for asking the user about data needed for deployments/function calling.
 uiCfg
@@ -344,27 +409,15 @@ uiCfg
 uiCfg code m wChainId mTTL mGasLimit mUserSection = do
   -- General deployment configuration
   let mkGeneralSettings = do
-        divClass "title" $ text "Input"
-        divClass "group" $ do
-          pb <- getPostBuild
-          _ <- flip mkLabeledClsInput "Raw Command" $ \cls -> uiTextAreaElement $ def
-            & textAreaElementConfig_setValue .~ leftmost [updated code, tag (current code) pb]
-            & initialAttributes .~ "disabled" =: "" <> "style" =: "width: 100%" <> "class" =: renderClass cls
-          pure ()
-        divClass "title" $ text "Destination"
-        cId <- elKlass "div" ("group segment") $ do
-          transactionDisplayNetwork m
-          chain <- wChainId
-          pure chain
+        uiDeployCode code
+        cId <- uiDeployDestination m wChainId
 
         -- Customisable user provided UI section
         ma <- forM mUserSection $ \(title, body) -> do
           divClass "title" $ text title
           elKlass "div" ("group segment") body
 
-        divClass "title" $ text "Settings"
-        (cfg, ttl, gasLimit) <- elKlass "div" ("group segment") $
-          uiMetaData m mTTL mGasLimit
+        (cfg, ttl, gasLimit) <- uiDeployMetaData m mTTL mGasLimit
         pure (cfg, cId, ttl, gasLimit, ma)
 
   rec

@@ -407,4 +407,3 @@ trackBalancesFromPostBuild model chain accounts fire = getPostBuild >>= \pb -> s
   initialBalance <- holdDyn Nothing . fmap Just =<< getBalance model chain (name <$ pb)
   updatedBalance <- holdDyn Nothing . fmap Just =<< getBalance model chain (name <$ fire)
   pure (publicKeys, initialBalance, updatedBalance)
-

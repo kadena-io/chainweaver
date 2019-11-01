@@ -39,6 +39,8 @@ import Frontend.UI.Dialogs.DeployConfirmation (DeployConfirmationConfig (..), fu
 import Frontend.UI.Modal.Impl
 import Frontend.Wallet
 
+import Frontend.UI.Dialogs.AddVanityAccount
+
 type HasUISigningModelCfg mConf key t =
   ( Monoid mConf, Flattenable mConf t, HasWalletCfg mConf key t
   , HasJsonDataCfg mConf t, HasNetworkCfg mConf t

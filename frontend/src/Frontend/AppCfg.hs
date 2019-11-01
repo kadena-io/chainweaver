@@ -20,4 +20,5 @@ data AppCfg key t m = AppCfg
   -- ^ Requests to sign this object
   , _appCfg_signingResponse :: Either Text SigningResponse -> JSM ()
   -- ^ Responses to signings
+  , _appCfg_addVanityAcc :: Event t ()
   }
