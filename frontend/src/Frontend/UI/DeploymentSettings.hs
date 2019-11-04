@@ -614,10 +614,11 @@ capabilityInputRow mCap mkSender = elClass "tr" "table__row" $ do
     }
 
 -- | Display a single row for an empty capability
-emptyCapability :: DomBuilder t m => m a -> m a
-emptyCapability m = elClass "tr" "table__row" $ do
-  elClass "td" "table__cell_padded" $ text "Empty capability"
-  elClass "td" "table__cell_padded" m
+emptyCapability :: DomBuilder t m => Text -> m () -> m a -> m a
+emptyCapability cls extra m = elClass "tr" "table__row" $ do
+  elClass "td" cls $ text "Empty capability"
+  extra
+  elClass "td" cls m
 
 -- | Display a dynamic number of rows for the user to enter custom capabilities
 capabilityInputRows
@@ -681,7 +682,7 @@ uiSenderCapabilities m cid mCaps mkSender = do
   -- Capabilities
   divClass "group" $ elAttr "table" ("class" =: "table" <> "style" =: "width: 100%; table-layout: fixed;") $ case mCaps of
     Nothing -> el "tbody" $ do
-      empty <- emptyCapability mkSender
+      empty <- emptyCapability "table__cell_padded" blank mkSender
       let emptySig = maybe Map.empty (\a -> Map.singleton a []) <$> empty
       gas <- capabilityInputRow (Just defaultGASCapability) mkSender
       rest <- capabilityInputRows (uiSenderDropdown def m cid)
@@ -692,7 +693,7 @@ uiSenderCapabilities m cid mCaps mkSender = do
         elClass "th" "table__heading" $ text "Capability"
         elClass "th" "table__heading" $ text "Account"
       el "tbody" $ do
-        empty <- emptyCapability mkSender
+        empty <- emptyCapability "" (el "td" blank) mkSender
         let emptySig = maybe Map.empty (\a -> Map.singleton a []) <$> empty
         gas <- staticCapabilityRow mkSender defaultGASCapability
         rest <- staticCapabilityRows $ filter (not . isGas . _dappCap_cap) caps
