@@ -6,9 +6,12 @@ module Frontend.UI.Dialogs.AddVanityAccount
   ) where
 
 import Control.Error (hush)
+import Control.Monad (join)
+import Control.Monad.Trans.Maybe (MaybeT (..), runMaybeT)
 import Control.Lens ((^.))
 import Control.Applicative (liftA2)
-import Data.Maybe (isNothing)
+import Data.Maybe (isNothing,maybe)
+import Data.Either (isLeft)
 import Data.Text (Text)
 
 import Reflex
@@ -21,14 +24,15 @@ import Reflex.Network.Extended (Flattenable, flatten)
 import Frontend.UI.Modal.Impl (ModalIde,modalFooter, modalHeader)
 import Frontend.UI.Widgets
 import Frontend.UI.DeploymentSettings
-import Frontend.UI.Dialogs.DeployConfirmation (deploySubmit)
+import Frontend.UI.Dialogs.DeployConfirmation (CanSubmitTransaction, TransactionSubmitFeedback (..), submitTransactionWithFeedback)
 
 import Frontend.AppCfg
-import Frontend.Crypto.Class (HasCrypto)
+import Frontend.Crypto.Class (HasCrypto, cryptoGenKey)
+import Frontend.Crypto.Ed25519 (keyToText)
 import Frontend.JsonData
 import Frontend.Ide (_ide_wallet)
-import Frontend.Network (HasNetworkCfg, defaultTransactionGasLimit, networkCfg_setSender, network_selectedNodes)
-import Frontend.Wallet (HasWalletCfg,unAccountName, checkAccountNameValidity)
+import Frontend.Network (HasNetworkCfg, ChainId, NodeInfo, defaultTransactionGasLimit, networkCfg_setSender, network_selectedNodes)
+import Frontend.Wallet (Account (..), KeyPair (..), HasWalletCfg (..),unAccountName, checkAccountNameValidity, findNextKey)
 
 -- Allow the user to create a 'vanity' account, which is an account with a custom name
 -- that lives on the chain. Requires GAS to create.
@@ -55,7 +59,7 @@ uiAddVanityAccount _appCfg ideL _onCloseExternal = do
     let (title, (done', conf')) = fmap splitDynPure $ splitDynPure result
   conf <- flatten =<< tagOnPostBuild conf'
   let done = switch $ current done'
-  pure (conf, leftmost [done, onClose])
+  pure (conf & walletCfg_importAccount .~ done, leftmost [() <$ done, onClose])
 
 uiAddVanityAccountSettings
   :: forall key t m mConf
@@ -64,32 +68,42 @@ uiAddVanityAccountSettings
     , HasCrypto key (Performable m)
     )
   => ModalIde m key t
-  -> Workflow t m (Text, (Event t (), mConf))
+  -> Workflow t m (Text, (Event t (Account key), mConf))
 uiAddVanityAccountSettings ideL = Workflow $ do
   let inputElem lbl wrapperCls = divClass wrapperCls $ flip mkLabeledClsInput lbl
         $ \cls -> uiInputElement $ def & initialAttributes .~ "class" =: (renderClass cls)
 
-      validateAccountName = checkAccountNameValidity $ _ide_wallet ideL
+      w = _ide_wallet ideL
+      dNextKey = findNextKey w
+
+      validateAccountName = checkAccountNameValidity w
 
       uiAccountNameInput = divClass "vanity-account-create__account-name" $ do
         dEitherAccName <- (validateAccountName <*>) . value <$>
           inputElem "Account Name" "vanity-account-create__account-name-input"
 
-        _ <- divClass "vanity-account-create__account-name-error" $
+        divClass "vanity-account-create__account-name-error" $
           dyn_ $ ffor dEitherAccName $ either text (const blank)
 
         pure $ hush <$> dEitherAccName
 
       uiAcc = Just $ ("Reference Data",) $ liftA2 (,)
         uiAccountNameInput
-        (inputElem "Notes" "vanity-account-create__notes")
+        (value <$> inputElem "Notes" "vanity-account-create__notes")
 
-      mkCode (dmAcc, _) = maybe "" (\acc -> "(coin.create-account " <> unAccountName acc <> " %guard)") <$> dmAcc
+      mkKeyPair (priv,pub) = KeyPair pub (Just priv)
+
+      mkCode (Just acc) (Just kp) =
+        "(coin.create-account " <> unAccountName acc <> " " <> keyToText (_keyPair_publicKey kp) <> ")"
+      mkCode _ _ = ""
+
+  eKeyPair <- performEvent $ updated $ cryptoGenKey <$> dNextKey
+  dKeyPair <- holdDyn Nothing (Just . mkKeyPair <$> eKeyPair)
 
   rec
     (curSelection, done, _) <- buildDeployTabs Nothing controls
 
-    (conf, result, accDetails) <- elClass "div" "modal__main transaction_details" $ do
+    (conf, result, dAccount) <- elClass "div" "modal__main transaction_details" $ do
       (cfg, cChainId, ttl, gasLimit, mAccountDetails) <- tabPane mempty curSelection DeploymentSettingsView_Cfg $
         -- Is passing around 'Maybe x' everywhere really a good way of doing this ?
         uiCfg Nothing ideL (userChainIdSelect ideL) Nothing (Just defaultTransactionGasLimit) uiAcc
@@ -97,8 +111,17 @@ uiAddVanityAccountSettings ideL = Workflow $ do
       (mSender, capabilities) <- tabPane mempty curSelection DeploymentSettingsView_Keys $
         uiSenderCapabilities ideL cChainId Nothing $ uiSenderDropdown def ideL cChainId
 
-      -- this seems, fragile
-      let code = maybe (constDyn "") mkCode mAccountDetails
+      let dAccountName = join <$> sequence (fst <$> mAccountDetails)
+          dNotes = sequence (snd <$> mAccountDetails)
+
+          code = mkCode <$> dAccountName <*> dKeyPair
+
+          dAccount = runMaybeT $ do
+            acc <- MaybeT dAccountName
+            kp <- MaybeT dKeyPair
+            cid <- MaybeT cChainId
+            notes <- MaybeT dNotes
+            pure $ Account acc kp cid notes
 
       let settings = DeploymentSettingsConfig
             { _deploymentSettingsConfig_chainId = userChainIdSelect
@@ -117,7 +140,7 @@ uiAddVanityAccountSettings ideL = Workflow $ do
       pure
         ( cfg & networkCfg_setSender .~ fmapMaybe (fmap unAccountName) (updated mSender)
         , buildDeploymentSettingsResult ideL mSender cChainId capabilities ttl gasLimit code settings
-        , mAccountDetails
+        , dAccount
         )
 
     command <- performEvent $ tagMaybe (current result) done
@@ -126,10 +149,36 @@ uiAddVanityAccountSettings ideL = Workflow $ do
   pure
     ( ("Add New Vanity Account", (never, conf))
     , attachWith
-        (\ns res -> deploySubmit (_deploymentSettingsResult_chainId res) res ns)
+        (\ns res -> vanityAccountCreateSubmit dAccount (_deploymentSettingsResult_chainId res) res ns)
         (current $ ideL ^. network_selectedNodes)
         command
     )
   where
     progressButtonLabalFn DeploymentSettingsView_Keys = "Create Vanity Account"
     progressButtonLabalFn _ = "Next"
+
+vanityAccountCreateSubmit
+  :: ( Monoid mConf
+     , CanSubmitTransaction t m
+     )
+  => Dynamic t (Maybe (Account key))
+  -> ChainId
+  -> DeploymentSettingsResult key
+  -> [Either a NodeInfo]
+  -> Workflow t m (Text, (Event t (Account key), mConf))
+vanityAccountCreateSubmit dAccount chainId result nodeInfos = Workflow $ do
+  let cmd = _deploymentSettingsResult_command result
+
+  txnSubFeedback <- elClass "div" "modal__main transaction_details" $
+    submitTransactionWithFeedback cmd chainId nodeInfos
+
+  let isDisabled = maybe True isLeft <$> _transactionSubmitFeedback_message txnSubFeedback
+
+  done <- modalFooter $ uiButtonDyn
+    (def & uiButtonCfg_class .~ "button_type_confirm" & uiButtonCfg_disabled .~ isDisabled)
+    (text "Done")
+
+  pure
+    ( ("Creating Vanity Account", (tagMaybe (current dAccount) done, mempty))
+    , never
+    )
