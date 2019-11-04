@@ -45,7 +45,7 @@ uiCreateWalletOnlyAccount
   => ModalIde m key t
   -> Event t ()
   -> m (mConf, Event t ())
-uiCreateWalletOnlyAccount model _onClose = mdo
+uiCreateWalletOnlyAccount model onCloseExternal = mdo
   onClose <- modalHeader $ dynText title
 
   dwf <- workflow (uiCreateWalletStepOne model onClose)
@@ -54,7 +54,7 @@ uiCreateWalletOnlyAccount model _onClose = mdo
 
   mConf <- flatten =<< tagOnPostBuild conf
 
-  return (mConf, leftmost [switch $ current dEvent, onClose])
+  return (mConf, leftmost [switch $ current dEvent, onClose, onCloseExternal])
 
 uiCreateWalletStepOne
   :: forall t m model key mConf
