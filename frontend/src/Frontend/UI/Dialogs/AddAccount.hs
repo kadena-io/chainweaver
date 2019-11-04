@@ -17,7 +17,7 @@ import           Frontend.UI.DeploymentSettings (transactionDisplayNetwork, user
 
 import           Frontend.Ide (ide_wallet)
 import           Frontend.UI.Modal
-import           Frontend.UI.Modal.Impl (ModalIde, ModalIdeCfg)
+import           Frontend.UI.Modal.Impl (ModalIde, ModalImpl)
 import           Frontend.UI.Widgets
 import           Frontend.Foundation
 
@@ -30,9 +30,10 @@ uiAddWalletOnlyAccountDialogButton
   :: forall t m model key mConf
      . ( MonadWidget t m
        , HasAddAccountModelCfg model mConf key t
+       , HasModalCfg mConf (ModalImpl m key t) t
        )
   => ModalIde m key t
-  -> m (ModalIdeCfg m key t)
+  -> m mConf
 uiAddWalletOnlyAccountDialogButton m = do
   eOpenAddAccount <- divClass "wallet__add-wallet-only-account-btn" $ confirmButton def "+ Add Account"
   pure $ mempty & modalCfg_setModal .~ (Just (uiCreateWalletOnlyAccount m) <$ eOpenAddAccount)
