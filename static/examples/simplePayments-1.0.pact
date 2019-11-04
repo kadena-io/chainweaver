@@ -2,6 +2,8 @@
 ;; Pact Example: "payments", a simple cash ledger.
 ;;
 
+(namespace "free")
+
 (module payments MODULE_ADMIN
 
   ; no-op module admin for example purposes.

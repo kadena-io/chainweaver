@@ -8,6 +8,8 @@
 ;; Check lines 21 and 34 to play with Formal Verification
 ;;
 
+(namespace "free")
+
 ;; Define the module.
 (module hello-world MODULE_ADMIN
   "A smart contract to greet the world."
