@@ -13,6 +13,11 @@ import Control.Applicative (liftA2)
 import Data.Maybe (isNothing,maybe)
 import Data.Either (isLeft)
 import Data.Text (Text)
+import qualified Data.Text as T
+
+import Data.Aeson (Object, Value (String,Array))
+import qualified Data.HashMap.Strict as HM
+import qualified Data.Vector as V
 
 import Reflex
 import Reflex.Dom.Core
@@ -61,6 +66,9 @@ uiAddVanityAccount _appCfg ideL _onCloseExternal = do
   let done = switch $ current done'
   pure (conf & walletCfg_importAccount .~ done, leftmost [() <$ done, onClose])
 
+mkPubkeyPactData :: KeyPair key -> Object
+mkPubkeyPactData = HM.singleton "pubkey" . Array . V.singleton . String . keyToText . _keyPair_publicKey
+
 uiAddVanityAccountSettings
   :: forall key t m mConf
   . ( MonadWidget t m
@@ -95,9 +103,8 @@ uiAddVanityAccountSettings ideL = Workflow $ do
 
       mkKeyPair (priv,pub) = KeyPair pub (Just priv)
 
-      mkCode (Just acc) (Just kp) =
-        "(coin.create-account " <> unAccountName acc <> " " <> keyToText (_keyPair_publicKey kp) <> ")"
-      mkCode _ _ = ""
+      mkCode (Just acc) = "(coin.create-account \"" <> unAccountName acc <> "\" (read-keyset \"pubkey\"))"
+      mkCode _ = ""
 
   eKeyPair <- performEvent $ cryptoGenKey <$> current dNextKey <@ pb
   dKeyPair <- holdDyn Nothing (Just . mkKeyPair <$> eKeyPair)
@@ -115,23 +122,22 @@ uiAddVanityAccountSettings ideL = Workflow $ do
 
       let dAccountName = join <$> sequence (fst <$> mAccountDetails)
           dNotes = sequence (snd <$> mAccountDetails)
+          dPayload = fmap mkPubkeyPactData <$> dKeyPair
+          code = mkCode <$> dAccountName
 
-          code = mkCode <$> dAccountName <*> dKeyPair
+          account = runMaybeT $ Account
+            <$> MaybeT dAccountName
+            <*> MaybeT dKeyPair
+            <*> MaybeT cChainId
+            <*> MaybeT dNotes
 
-          account = runMaybeT $ do
-            acc <- MaybeT dAccountName
-            kp <- MaybeT dKeyPair
-            cid <- MaybeT cChainId
-            notes <- MaybeT dNotes
-            pure $ Account acc kp cid notes
-
-      let settings = DeploymentSettingsConfig
+      let mkSettings payload = DeploymentSettingsConfig
             { _deploymentSettingsConfig_chainId = userChainIdSelect
             , _deploymentSettingsConfig_userTab = Nothing
             , _deploymentSettingsConfig_userSection = uiAcc
             , _deploymentSettingsConfig_code = code
             , _deploymentSettingsConfig_sender = uiSenderDropdown def
-            , _deploymentSettingsConfig_data = Nothing
+            , _deploymentSettingsConfig_data = payload
             , _deploymentSettingsConfig_nonce = Nothing
             , _deploymentSettingsConfig_ttl = Nothing
             , _deploymentSettingsConfig_gasLimit = Nothing
@@ -141,12 +147,14 @@ uiAddVanityAccountSettings ideL = Workflow $ do
 
       pure
         ( cfg & networkCfg_setSender .~ fmapMaybe (fmap unAccountName) (updated mSender)
-        , buildDeploymentSettingsResult ideL mSender cChainId capabilities ttl gasLimit code settings
+        , fmap mkSettings dPayload >>= buildDeploymentSettingsResult ideL mSender cChainId capabilities ttl gasLimit code
         , account
         )
 
+    let preventProgress = (\a r -> isNothing a || isNothing r) <$> dAccount <*> result
+
     command <- performEvent $ tagMaybe (current result) done
-    controls <- modalFooter $ buildDeployTabFooterControls Nothing curSelection progressButtonLabalFn (isNothing <$> dAccount)
+    controls <- modalFooter $ buildDeployTabFooterControls Nothing curSelection progressButtonLabalFn preventProgress
 
   pure
     ( ("Add New Vanity Account", (never, conf))
