@@ -126,7 +126,7 @@ data DeploymentSettingsConfig t m model a = DeploymentSettingsConfig
 
 data CapabilityInputRow t = CapabilityInputRow
   { _capabilityInputRow_empty :: Dynamic t Bool
-  , _capabilityInputRow_value :: Dynamic t (Maybe (Map AccountName [SigCapability]))
+  , _capabilityInputRow_value :: Dynamic t (Map AccountName [SigCapability])
   , _capabilityInputRow_account :: Dynamic t (Maybe AccountName)
   , _capabilityInputRow_cap :: Dynamic t (Either String SigCapability)
   }
@@ -214,8 +214,8 @@ uiDeploymentSettings m settings = mdo
             networkId <- hoistMaybe $ hush . mkNetworkName . nodeVersion =<< headMay (rights selNodes)
             sender <- MaybeT mSender
             chainId <- MaybeT cChainId
-            caps <- MaybeT capabilities
-            let signing = Set.mapMonotonic unAccountName $ Set.insert sender $ Map.keysSet caps
+            caps <- lift capabilities
+            let signing = Set.mapMonotonic unAccountName . Set.insert sender $ Map.keysSet caps
             jsonData' <- lift $ either (const mempty) id <$> m ^. jsonData . jsonData_data
             ttl' <- lift ttl
             limit <- lift gasLimit
@@ -231,7 +231,7 @@ uiDeploymentSettings m settings = mdo
             let toPublicKey (AccountName acc, cs) = do
                   KeyPair pk _ <- Map.lookup acc keys
                   pure (pk, cs)
-                pkCaps = Map.fromList $ fmapMaybe toPublicKey $ Map.toList caps
+                pkCaps = Map.fromList . fmapMaybe toPublicKey $ Map.toList caps
             pure $ do
               let signingPairs = getSigningPairs signing keys
               cmd <- buildCmd
@@ -604,8 +604,8 @@ capabilityInputRow mCap mkSender = elClass "tr" "table__row" $ do
   pure $ CapabilityInputRow
     { _capabilityInputRow_empty = empty
     , _capabilityInputRow_value = empty >>= \case
-      True -> pure $ Just mempty
-      False -> runMaybeT $ do
+      True -> pure mempty
+      False -> fmap (fromMaybe mempty) $ runMaybeT $ do
         a <- MaybeT account
         p <- MaybeT $ either (const Nothing) pure <$> parsed
         pure $ Map.singleton a [p]
@@ -623,7 +623,7 @@ emptyCapability m = elClass "tr" "table__row" $ do
 capabilityInputRows
   :: forall t m. MonadWidget t m
   => m (Dynamic t (Maybe AccountName))
-  -> m (Dynamic t (Maybe (Map AccountName [SigCapability])))
+  -> m (Dynamic t (Map AccountName [SigCapability]))
 capabilityInputRows mkSender = do
   rec
     (im0, im') <- traverseIntMapWithKeyWithAdjust (\_ _ -> capabilityInputRow Nothing mkSender) (IM.singleton 0 ()) $ leftmost
@@ -649,7 +649,7 @@ capabilityInputRows mkSender = do
         deletions = switch . current $ IM.foldMapWithKey decideDeletions <$> results
 
   pure $
-    fmap (fmap (Map.unionsWith (<>) . IM.elems) . sequence) $ traverse _capabilityInputRow_value =<< results
+    fmap (Map.unionsWith (<>) . IM.elems) $ traverse _capabilityInputRow_value =<< results
 
 -- | Widget for selection of sender and signing keys.
 uiSenderCapabilities
@@ -658,7 +658,7 @@ uiSenderCapabilities
   -> Dynamic t (Maybe Pact.ChainId)
   -> Maybe [DappCap]
   -> m (Dynamic t (Maybe AccountName))
-  -> m (Dynamic t (Maybe AccountName), Dynamic t (Maybe (Map AccountName [SigCapability])))
+  -> m (Dynamic t (Maybe AccountName), Dynamic t (Map AccountName [SigCapability]))
 uiSenderCapabilities m cid mCaps mkSender = do
   let staticCapabilityRow sender cap = do
         el "td" $ text $ _dappCap_role cap
@@ -666,17 +666,17 @@ uiSenderCapabilities m cid mCaps mkSender = do
         acc <- el "td" $ sender
         pure $ CapabilityInputRow
           { _capabilityInputRow_empty = pure False
-          , _capabilityInputRow_value = (fmap . fmap) (\s -> Map.singleton s [_dappCap_cap cap]) acc
+          , _capabilityInputRow_value = maybe mempty (\s -> Map.singleton s [_dappCap_cap cap]) <$> acc
           , _capabilityInputRow_account = acc
           , _capabilityInputRow_cap = pure $ Right $ _dappCap_cap cap
           }
 
-      staticCapabilityRows caps = fmap (fmap (fmap (Map.unionsWith (<>)) . sequence) . sequence) $ for caps $ \cap ->
+      staticCapabilityRows caps = fmap (fmap (Map.unionsWith (<>)) . sequence) $ for caps $ \cap ->
         elClass "tr" "table__row" $ _capabilityInputRow_value <$> staticCapabilityRow (uiSenderDropdown def m cid) cap
 
       -- Deliberately lift over the `Maybe` too, so we short circuit if anything
       -- is missing.
-      combineMaps = (liftA3 . liftA3) $ \a b c -> Map.unionsWith (<>) [a, b, c]
+      combineMaps = liftA3 $ \a b c -> Map.unionsWith (<>) [a, b, c]
 
   divClass "title" $ text "Roles"
 
@@ -684,7 +684,7 @@ uiSenderCapabilities m cid mCaps mkSender = do
   divClass "group" $ elAttr "table" ("class" =: "table" <> "style" =: "width: 100%; table-layout: fixed;") $ case mCaps of
     Nothing -> el "tbody" $ do
       empty <- emptyCapability mkSender
-      let emptySig = Just . maybe Map.empty (\a -> Map.singleton a []) <$> empty
+      let emptySig = maybe Map.empty (\a -> Map.singleton a []) <$> empty
       gas <- capabilityInputRow (Just defaultGASCapability) mkSender
       rest <- capabilityInputRows (uiSenderDropdown def m cid)
       pure (_capabilityInputRow_account gas, combineMaps (_capabilityInputRow_value gas) rest emptySig)
@@ -695,7 +695,7 @@ uiSenderCapabilities m cid mCaps mkSender = do
         elClass "th" "table__heading" $ text "Account"
       el "tbody" $ do
         empty <- emptyCapability mkSender
-        let emptySig = Just . maybe Map.empty (\a -> Map.singleton a []) <$> empty
+        let emptySig = maybe Map.empty (\a -> Map.singleton a []) <$> empty
         gas <- staticCapabilityRow mkSender defaultGASCapability
         rest <- staticCapabilityRows $ filter (not . isGas . _dappCap_cap) caps
         pure (_capabilityInputRow_account gas, combineMaps (_capabilityInputRow_value gas) rest emptySig)
