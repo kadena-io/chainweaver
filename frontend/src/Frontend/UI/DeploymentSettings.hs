@@ -674,8 +674,6 @@ uiSenderCapabilities m cid mCaps mkSender = do
       staticCapabilityRows caps = fmap (fmap (Map.unionsWith (<>)) . sequence) $ for caps $ \cap ->
         elClass "tr" "table__row" $ _capabilityInputRow_value <$> staticCapabilityRow (uiSenderDropdown def m cid) cap
 
-      -- Deliberately lift over the `Maybe` too, so we short circuit if anything
-      -- is missing.
       combineMaps = liftA3 $ \a b c -> Map.unionsWith (<>) [a, b, c]
 
   divClass "title" $ text "Roles"
