@@ -325,13 +325,13 @@ uiDeploymentSettings
   -> m (mConf, Event t (DeploymentSettingsResult key), Maybe a)
 uiDeploymentSettings m settings = mdo
     let code = _deploymentSettingsConfig_code settings
-    (curSelection, done, onTabClick) <- buildDeployTabs mUserTabName controls
+    (curSelection, done, _) <- buildDeployTabs mUserTabName controls
     (conf, result, ma) <- elClass "div" "modal__main transaction_details" $ do
 
       mRes <- traverse (uncurry $ tabPane mempty curSelection) mUserTabCfg
 
       (cfg, cChainId, ttl, gasLimit, mUserSection) <- tabPane mempty curSelection DeploymentSettingsView_Cfg $
-        uiCfg code m
+        uiCfg (Just code) m
           (_deploymentSettingsConfig_chainId settings $ m)
           (_deploymentSettingsConfig_ttl settings)
           (_deploymentSettingsConfig_gasLimit settings)
@@ -439,7 +439,7 @@ uiCfg
      , HasWallet model key t
      , HasJsonData model t
      )
-  => Dynamic t Text
+  => Maybe (Dynamic t Text)
   -> model
   -> m (Dynamic t (f Pact.ChainId))
   -> Maybe TTLSeconds
@@ -451,10 +451,10 @@ uiCfg
        , Dynamic t GasLimit
        , Maybe a
        )
-uiCfg code m wChainId mTTL mGasLimit mUserSection = do
+uiCfg mCode m wChainId mTTL mGasLimit mUserSection = do
   -- General deployment configuration
   let mkGeneralSettings = do
-        uiDeployCode code
+        _ <- traverse uiDeployCode mCode
         cId <- uiDeployDestination m wChainId
 
         -- Customisable user provided UI section

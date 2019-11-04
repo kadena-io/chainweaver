@@ -10,7 +10,6 @@ import Control.Lens ((^.))
 import Control.Applicative (liftA2)
 import Data.Maybe (isNothing)
 import Data.Text (Text)
-import Data.Functor (($>))
 
 import Reflex
 import Reflex.Dom.Core
@@ -22,12 +21,12 @@ import Reflex.Network.Extended (Flattenable, flatten)
 import Frontend.UI.Modal.Impl (ModalIde,modalFooter, modalHeader)
 import Frontend.UI.Widgets
 import Frontend.UI.DeploymentSettings
-import Frontend.UI.Dialogs.DeployConfirmation (DeployConfirmationConfig (..), fullDeployFlow, deploySubmit)
+import Frontend.UI.Dialogs.DeployConfirmation (deploySubmit)
 
 import Frontend.AppCfg
 import Frontend.Crypto.Class (HasCrypto)
 import Frontend.JsonData
-import Frontend.Ide (_ide_wallet, ide_wallet)
+import Frontend.Ide (_ide_wallet)
 import Frontend.Network (HasNetworkCfg, defaultTransactionGasLimit, networkCfg_setSender, network_selectedNodes)
 import Frontend.Wallet (HasWalletCfg,unAccountName, checkAccountNameValidity)
 
@@ -49,7 +48,7 @@ uiAddVanityAccount
   -> ModalIde m key t
   -> Event t ()
   -> m (mConf, Event t ())
-uiAddVanityAccount _appCfg ideL onCloseExternal = do
+uiAddVanityAccount _appCfg ideL _onCloseExternal = do
   rec
     onClose <- modalHeader $ dynText title
     result <- workflow $ uiAddVanityAccountSettings ideL
@@ -70,11 +69,9 @@ uiAddVanityAccountSettings ideL = Workflow $ do
   let inputElem lbl wrapperCls = divClass wrapperCls $ flip mkLabeledClsInput lbl
         $ \cls -> uiInputElement $ def & initialAttributes .~ "class" =: (renderClass cls)
 
-  let validateAccountName = checkAccountNameValidity $ _ide_wallet ideL
+      validateAccountName = checkAccountNameValidity $ _ide_wallet ideL
 
-  let code = constDyn "(coin.create-account %acc %guard)"
-
-  let uiAccountNameInput = divClass "vanity-account-create__account-name" $ do
+      uiAccountNameInput = divClass "vanity-account-create__account-name" $ do
         dEitherAccName <- (validateAccountName <*>) . value <$>
           inputElem "Account Name" "vanity-account-create__account-name-input"
 
@@ -83,55 +80,56 @@ uiAddVanityAccountSettings ideL = Workflow $ do
 
         pure $ hush <$> dEitherAccName
 
-  let accountDetails = Just $ ("Reference Data",) $
-        liftA2 (,) uiAccountNameInput (inputElem "Notes" "vanity-account-create__notes")
+      uiAcc = Just $ ("Reference Data",) $ liftA2 (,)
+        uiAccountNameInput
+        (inputElem "Notes" "vanity-account-create__notes")
 
-  let settings = DeploymentSettingsConfig
-        { _deploymentSettingsConfig_chainId = userChainIdSelect
-        , _deploymentSettingsConfig_userTab = Nothing
-        , _deploymentSettingsConfig_userSection = accountDetails
-        , _deploymentSettingsConfig_code = code
-        , _deploymentSettingsConfig_sender = uiSenderDropdown def
-        , _deploymentSettingsConfig_data = Nothing
-        , _deploymentSettingsConfig_nonce = Nothing
-        , _deploymentSettingsConfig_ttl = Nothing
-        , _deploymentSettingsConfig_gasLimit = Nothing
-        , _deploymentSettingsConfig_caps = Nothing
-        , _deploymentSettingsConfig_extraSigners = []
-        }
+      mkCode (dmAcc, _) = maybe "" (\acc -> "(coin.create-account " <> unAccountName acc <> " %guard)") <$> dmAcc
 
   rec
-    (curSelection, done, onTabClick) <- buildDeployTabs Nothing controls
+    (curSelection, done, _) <- buildDeployTabs Nothing controls
 
-    (conf, result, mChainId) <- elClass "div" "modal__main transaction_details" $ do
-      (cfg, cChainId, ttl, gasLimit, mUserSection) <- tabPane mempty curSelection DeploymentSettingsView_Cfg $
-        uiCfg code ideL (userChainIdSelect ideL) Nothing (Just defaultTransactionGasLimit) accountDetails
+    (conf, result, accDetails) <- elClass "div" "modal__main transaction_details" $ do
+      (cfg, cChainId, ttl, gasLimit, mAccountDetails) <- tabPane mempty curSelection DeploymentSettingsView_Cfg $
+        -- Is passing around 'Maybe x' everywhere really a good way of doing this ?
+        uiCfg Nothing ideL (userChainIdSelect ideL) Nothing (Just defaultTransactionGasLimit) uiAcc
 
       (mSender, capabilities) <- tabPane mempty curSelection DeploymentSettingsView_Keys $
         uiSenderCapabilities ideL cChainId Nothing $ uiSenderDropdown def ideL cChainId
 
+      -- this seems, fragile
+      let code = maybe (constDyn "") mkCode mAccountDetails
+
+      let settings = DeploymentSettingsConfig
+            { _deploymentSettingsConfig_chainId = userChainIdSelect
+            , _deploymentSettingsConfig_userTab = Nothing
+            , _deploymentSettingsConfig_userSection = uiAcc
+            , _deploymentSettingsConfig_code = code
+            , _deploymentSettingsConfig_sender = uiSenderDropdown def
+            , _deploymentSettingsConfig_data = Nothing
+            , _deploymentSettingsConfig_nonce = Nothing
+            , _deploymentSettingsConfig_ttl = Nothing
+            , _deploymentSettingsConfig_gasLimit = Nothing
+            , _deploymentSettingsConfig_caps = Nothing
+            , _deploymentSettingsConfig_extraSigners = []
+            }
+
       pure
         ( cfg & networkCfg_setSender .~ fmapMaybe (fmap unAccountName) (updated mSender)
         , buildDeploymentSettingsResult ideL mSender cChainId capabilities ttl gasLimit code settings
-        , cChainId
+        , mAccountDetails
         )
 
     command <- performEvent $ tagMaybe (current result) done
-    let nodes = current $ ideL ^. network_selectedNodes
-
-        createSubmit ns res =
-          deploySubmit (_deploymentSettingsResult_chainId res) res ns
-
-        progressButtonLabalFn DeploymentSettingsView_Keys = "Create Vanity Account"
-        progressButtonLabalFn _ = "Next"
-
-    controls <- modalFooter $ buildDeployTabFooterControls
-      Nothing
-      curSelection
-      progressButtonLabalFn
-      (isNothing <$> result)
+    controls <- modalFooter $ buildDeployTabFooterControls Nothing curSelection progressButtonLabalFn (isNothing <$> result)
 
   pure
     ( ("Add New Vanity Account", (never, conf))
-    , createSubmit <$> nodes <@> command
+    , attachWith
+        (\ns res -> deploySubmit (_deploymentSettingsResult_chainId res) res ns)
+        (current $ ideL ^. network_selectedNodes)
+        command
     )
+  where
+    progressButtonLabalFn DeploymentSettingsView_Keys = "Create Vanity Account"
+    progressButtonLabalFn _ = "Next"
