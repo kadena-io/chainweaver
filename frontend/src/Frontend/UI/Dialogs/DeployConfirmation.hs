@@ -25,6 +25,7 @@ module Frontend.UI.Dialogs.DeployConfirmation
   , uiDeployConfirmation
   , fullDeployFlow
   , fullDeployFlowWithSubmit
+  , deploySubmit
   ) where
 
 import Common.Foundation

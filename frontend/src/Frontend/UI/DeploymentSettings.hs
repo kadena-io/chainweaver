@@ -43,12 +43,15 @@ module Frontend.UI.DeploymentSettings
   , nextView
   , buildDeployTabFooterControls
   , buildDeployTabs
+  , defaulTabViewProgressButtonLabel
 
     -- * Widgets
   , uiDeploymentSettings
   , uiDeployDestination
   , uiDeployMetaData
   , uiDeployCode
+  , uiCfg
+  , uiSenderCapabilities
 
   , uiSenderFixed
   , uiSenderDropdown
@@ -280,23 +283,27 @@ buildDeployTabs mUserTabName controls = mdo
     stdTabs = [DeploymentSettingsView_Cfg, DeploymentSettingsView_Keys]
     availableTabs = userTabs <> stdTabs
 
+defaulTabViewProgressButtonLabel :: DeploymentSettingsView -> Text
+defaulTabViewProgressButtonLabel DeploymentSettingsView_Keys = "Preview"
+defaulTabViewProgressButtonLabel _ = "Next"
+
 buildDeployTabFooterControls
   :: ( PostBuild t m
      , DomBuilder t m
      )
   => Maybe DeploymentSettingsView
   -> Dynamic t DeploymentSettingsView
+  -> (DeploymentSettingsView -> Text)
   -> Dynamic t Bool
   -> m (Event t (DeploymentSettingsView -> Maybe DeploymentSettingsView))
-buildDeployTabFooterControls mUserTabName curSelection hasResult = do
+buildDeployTabFooterControls mUserTabName curSelection stepFn hasResult = do
   let backConfig = def & uiButtonCfg_class .~ ffor curSelection
         (\s -> if s == fromMaybe DeploymentSettingsView_Cfg mUserTabName then "hidden" else "")
   back <- uiButtonDyn backConfig $ text "Back"
   let shouldBeDisabled tab hasRes = tab == DeploymentSettingsView_Keys && hasRes
       isDisabled = shouldBeDisabled <$> curSelection <*> hasResult
-  next <- uiButtonDyn (def & uiButtonCfg_class .~ "button_type_confirm" & uiButtonCfg_disabled .~ isDisabled) $ dynText $ ffor curSelection $ \case
-    DeploymentSettingsView_Keys -> "Preview"
-    _ -> "Next"
+  next <- uiButtonDyn (def & uiButtonCfg_class .~ "button_type_confirm" & uiButtonCfg_disabled .~ isDisabled)
+    $ dynText (stepFn <$> curSelection)
   pure $ leftmost
     [ nextView <$ next
     , prevView mUserTabName <$ back
@@ -341,7 +348,11 @@ uiDeploymentSettings m settings = mdo
         )
 
     command <- performEvent $ tagMaybe (current result) done
-    controls <- modalFooter $ buildDeployTabFooterControls mUserTabName curSelection (isNothing <$> result)
+    controls <- modalFooter $ buildDeployTabFooterControls
+      mUserTabName
+      curSelection
+      defaulTabViewProgressButtonLabel
+      (isNothing <$> result)
 
     pure (conf, command, ma)
     where
