@@ -70,6 +70,8 @@ uiAddVanityAccountSettings
   => ModalIde m key t
   -> Workflow t m (Text, (Event t (Account key), mConf))
 uiAddVanityAccountSettings ideL = Workflow $ do
+  pb <- getPostBuild
+
   let inputElem lbl wrapperCls = divClass wrapperCls $ flip mkLabeledClsInput lbl
         $ \cls -> uiInputElement $ def & initialAttributes .~ "class" =: (renderClass cls)
 
@@ -97,7 +99,7 @@ uiAddVanityAccountSettings ideL = Workflow $ do
         "(coin.create-account " <> unAccountName acc <> " " <> keyToText (_keyPair_publicKey kp) <> ")"
       mkCode _ _ = ""
 
-  eKeyPair <- performEvent $ updated $ cryptoGenKey <$> dNextKey
+  eKeyPair <- performEvent $ cryptoGenKey <$> current dNextKey <@ pb
   dKeyPair <- holdDyn Nothing (Just . mkKeyPair <$> eKeyPair)
 
   rec
@@ -116,7 +118,7 @@ uiAddVanityAccountSettings ideL = Workflow $ do
 
           code = mkCode <$> dAccountName <*> dKeyPair
 
-          dAccount = runMaybeT $ do
+          account = runMaybeT $ do
             acc <- MaybeT dAccountName
             kp <- MaybeT dKeyPair
             cid <- MaybeT cChainId
@@ -140,11 +142,11 @@ uiAddVanityAccountSettings ideL = Workflow $ do
       pure
         ( cfg & networkCfg_setSender .~ fmapMaybe (fmap unAccountName) (updated mSender)
         , buildDeploymentSettingsResult ideL mSender cChainId capabilities ttl gasLimit code settings
-        , dAccount
+        , account
         )
 
     command <- performEvent $ tagMaybe (current result) done
-    controls <- modalFooter $ buildDeployTabFooterControls Nothing curSelection progressButtonLabalFn (isNothing <$> result)
+    controls <- modalFooter $ buildDeployTabFooterControls Nothing curSelection progressButtonLabalFn (isNothing <$> dAccount)
 
   pure
     ( ("Add New Vanity Account", (never, conf))
