@@ -143,7 +143,7 @@ walletSetupRecoverHeader currentScreen = setupDiv "workflow-header" $ do
       else
         []
 
-    line cls sid = 
+    line cls sid =
       elClass "div" (T.unwords $ setupClass "workflow-icon": setupClass "header-line" : cls : addActive sid) blank
 
     isActive sid = sid `elem` (progress currentScreen)
@@ -236,7 +236,7 @@ recoverWallet eBack = Workflow $ do
     el "div" $ text "Enter your 12 word recovery phrase"
     el "div" $ text "to restore your wallet."
 
-  rec 
+  rec
     phraseMap <- holdDyn (wordsToPhraseMap $ replicate passphraseLen T.empty)
       $ flip Map.union <$> current phraseMap <@> onPhraseMapUpdate
 
@@ -271,7 +271,7 @@ recoverWallet eBack = Workflow $ do
         pure never
 
       withSeedConfirmPassword seed = setupDiv "recover-enter-password" $ do
-        dSetPw <- holdDyn Nothing =<< fmap pure <$> setPassword (pure seed)
+        dSetPw <- holdDyn Nothing =<< setPassword (pure seed)
         continue <- setupDiv "recover-restore-button" $
           confirmButton (def & uiButtonCfg_disabled .~ (fmap isNothing dSetPw)) "Restore"
         pure $ tagMaybe (current dSetPw) continue
@@ -295,7 +295,7 @@ passphraseWordElement currentStage k wrd = setupDiv "passphrase-widget-elem-wrap
 
   setupDiv "passphrase-widget-key-wrapper" $
     text (showWordKey k)
-  
+
   let
     commonAttrs cls =
       "type" =: "text" <>
@@ -327,7 +327,7 @@ continueButton
   :: (DomBuilder t m, PostBuild t m)
   => Dynamic t Bool
   -> m (Event t ())
-continueButton isDisabled = 
+continueButton isDisabled =
   setupDiv "continue-button" $
     confirmButton (def & uiButtonCfg_disabled .~ isDisabled) "Continue"
 
@@ -352,11 +352,10 @@ createNewWallet eBack = Workflow $  do
 
     proceed :: Crypto.MnemonicSentence 12 -> m (Event t (SetupWF t m))
     proceed mnem = do
-      dPassword <- setPassword (pure $ sentenceToSeed mnem)
-        >>= holdDyn Nothing . fmap pure
-      continue <- continueButton (fmap isNothing dPassword) 
+      dPassword <- setPassword (pure $ sentenceToSeed mnem) >>= holdDyn Nothing
+      continue <- continueButton (fmap isNothing dPassword)
       pure $ precreatePassphraseWarning eBack dPassword mnem <$ continue
-      
+
   dContinue <- widgetHold generating (proceed <$> eGenSuccess)
 
   finishSetupWF WalletScreen_Password $ leftmost
@@ -443,7 +442,7 @@ createNewPassphrase eBack dPassword mnemonicSentence = Workflow $ do
   setupDiv "record-phrase-msg" $ do
     el "div" $ text "Write down or copy these words in the correct order and store them safely."
     el "div" $ text "The recovery words are hidden for security. Mouseover the numbers to reveal."
-        
+
   rec
     dPassphrase <- passphraseWidget dPassphrase (pure Setup)
       >>= holdDyn (mkPhraseMapFromMnemonic mnemonicSentence)
@@ -453,9 +452,9 @@ createNewPassphrase eBack dPassword mnemonicSentence = Workflow $ do
         elClass "i" "fa fa-copy" blank
         text "Copy"
         elDynClass "i" ("fa setup__copy-status " <> dCopySuccess) blank
-      
+
     eCopySuccess <- copyToClipboard $
-      T.unwords . Map.elems <$> current dPassphrase <@ eCopyClick 
+      T.unwords . Map.elems <$> current dPassphrase <@ eCopyClick
 
     dCopySuccess <- holdDyn T.empty $
       (setupClass . bool "copy-fail fa-times" "copy-success fa-check") <$> eCopySuccess
@@ -507,9 +506,9 @@ confirmPhrase eBack dPassword mnemonicSentence = Workflow $ do
     ]
 
 setPassword
-  :: (DomBuilder t m, MonadHold t m, PerformEvent t m, PostBuild t m, MonadJSM (Performable m), TriggerEvent t m)
+  :: (DomBuilder t m, MonadHold t m, MonadFix m, PerformEvent t m, PostBuild t m, MonadJSM (Performable m), TriggerEvent t m)
   => Dynamic t Crypto.Seed
-  -> m (Event t Crypto.XPrv)
+  -> m (Event t (Maybe Crypto.XPrv))
 setPassword dSeed = form "" $ do
   let uiPassword ph = elClass "span" (setupClass "password-wrapper") $
         uiInputElement $ def & initialAttributes .~
@@ -519,20 +518,20 @@ setPassword dSeed = form "" $ do
         )
 
   p1elem <- uiPassword $ "Enter password (" <> tshow minPasswordLength <> " character min.)"
-  p2elem <- uiPassword "Confirm password" 
+  p2elem <- uiPassword "Confirm password"
 
-  let p1 = current $ value p1elem
-      p2 = current $ value p2elem
+  p1Dirty <- holdUniqDyn =<< holdDyn False (True <$ _inputElement_input p1elem)
+  p2Dirty <- holdUniqDyn =<< holdDyn False (True <$ _inputElement_input p2elem)
 
-      inputsNotEmpty = not <$> liftA2 (||) (T.null <$> p1) (T.null <$> p2)
+  let inputsDirty = current $ liftA2 (&&) p1Dirty p2Dirty
 
-  eCheckPassword <- fmap (gate inputsNotEmpty) $ delay 0.4 $ leftmost
+  eCheckPassword <- fmap (gate inputsDirty) $ delay 0.2 $ leftmost
     [ _inputElement_input p1elem
     , _inputElement_input p2elem
     ]
 
   let (err, pass) = fanEither $
-        checkPassword <$> p1 <*> p2 <@ eCheckPassword
+        checkPassword <$> current (value p1elem) <*> current (value p2elem) <@ eCheckPassword
 
   lastError <- holdDyn Nothing $ leftmost
     [ Just <$> err
@@ -546,7 +545,10 @@ setPassword dSeed = form "" $ do
   elDynClass "div" dMsgClass $
     dynText $ fromMaybe T.empty <$> lastError
 
-  pure $ Crypto.generate <$> current dSeed <@> (T.encodeUtf8 <$> pass)
+  pure $ leftmost
+    [ Nothing <$ err
+    , (\s -> Just . Crypto.generate s) <$> current dSeed <@> (T.encodeUtf8 <$> pass)
+    ]
 
   where
     minPasswordLength = 10
