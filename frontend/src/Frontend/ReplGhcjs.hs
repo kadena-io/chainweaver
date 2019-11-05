@@ -99,7 +99,7 @@ app sidebarExtra appCfg = void . mfix $ \ cfg -> do
     routedCfg <- subRoute $ lift . flip runRoutedT route . \case
       FrontendRoute_Wallet -> mkPageContent "wallet" $ uiWallet ideL
       FrontendRoute_Contracts -> mkPageContent "contracts" $ do
-        controlCfg <- controlBar appCfg ideL
+        controlCfg <- controlBar "Contracts" (controlBarRight appCfg ideL)
         mainCfg <- elClass "main" "main page__main" $ do
           uiEditorCfg <- codePanel appCfg "main__left-pane" ideL
           envCfg <- rightTabBar "main__right-pane" ideL
@@ -236,14 +236,14 @@ networkBar m = divClass "main-header main-header__network-bar" $ do
     uiNetworkSelect (m ^. ide_network)
 
 controlBar
-  :: forall key t m. (MonadWidget t m, HasCrypto key (Performable m))
-  => AppCfg key t m
-  -> ModalIde m key t
-  ->  m (ModalIdeCfg m key t)
-controlBar appCfg m = do
+  :: MonadWidget t m
+  => Text
+  -> m a
+  -> m a
+controlBar pageTitle controls = do
     mainHeader $ do
-      controlBarLeft
-      controlBarRight appCfg m
+      divClass "main-header__page-name" $ text pageTitle
+      controls
   where
     -- Main header with adjusted padding on MacOs (scrollbars take up no space there):
     mainHeader child = do
@@ -252,14 +252,9 @@ controlBar appCfg m = do
       let
         baseCls = "main-header page__main-header "
         cls = if isMac
-                 then  baseCls <> "page__main-header_platform_mac"
+                 then baseCls <> "page__main-header_platform_mac"
                  else baseCls
       divClass cls child
-
-controlBarLeft :: forall t m. MonadWidget t m => m ()
-controlBarLeft =
-  divClass "main-header__page-name" $
-    text "Contracts" --TODO: extract from route
 
 getPactVersion :: MonadWidget t m => m Text
 getPactVersion = do
