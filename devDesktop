@@ -1,1 +1,1 @@
-ob run --import desktop:Desktop.Frontend --frontend Desktop.Frontend.desktop
+ob run --import desktop:Desktop --frontend Desktop.desktop
