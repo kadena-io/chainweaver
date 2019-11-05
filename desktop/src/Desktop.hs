@@ -1,3 +1,4 @@
-module Desktop (main', MacFFI(..)) where
+module Desktop (desktop, main', MacFFI(..)) where
 
+import Desktop.Frontend
 import Desktop.Mac
