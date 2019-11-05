@@ -130,20 +130,21 @@ uiKeyItems aWallet = do
         <> "class" =: "wallet table"
     events <- elAttr "table" tableAttrs $ do
       el "colgroup" $ do
+        elAttr "col" ("style" =: "width: 16%") blank
+        elAttr "col" ("style" =: "width: 16%") blank
+        elAttr "col" ("style" =: "width: 16%") blank
+        elAttr "col" ("style" =: "width: 16%") blank
+        elAttr "col" ("style" =: "width: 16%") blank
         elAttr "col" ("style" =: "width: 20%") blank
-        elAttr "col" ("style" =: "width: 35%") blank
-        elAttr "col" ("style" =: "width: 15%") blank
-        elAttr "col" ("style" =: "width: 35%") blank
-        elAttr "col" ("style" =: "width: 15%") blank
-        elAttr "col" ("style" =: "width: 10%") blank
       el "thead" $ el "tr" $ do
-        let mkHeading = elClass "th" "table__heading" . text
+        let mkHeading = elClass "th" "wallet__table-heading" . text
         traverse_ mkHeading $
           [ "Account Name"
           , "Public Key"
           , "Chain ID"
           , "Notes"
           , "Balance"
+          , ""
           ]
 
       el "tbody" $ listWithKey keyMap uiKeyItem
@@ -164,22 +165,28 @@ uiKeyItem i d = do
   md <- maybeDyn $ someAccount Nothing Just <$> d
   switchHold never <=< dyn $ ffor md $ \case
     Nothing -> pure never
-    Just account -> elClass "tr" "table__row" $ do
-      el "td" $ dynText $ unAccountName . _account_name <$> account
+    Just account -> elClass "tr" "wallet__table-row" $ do
+      let td = elClass "td" "wallet__table-cell"
 
-      let public = keyToText . _keyPair_publicKey . _account_key <$> account
-      elClass "td" "wallet__key wallet__key_type_public" $ dynText public
-      el "td" $ dynText $ Pact._chainId . _account_chainId <$> account
-      el "td" $ dynText $ _account_notes <$> account
+      td $ dynText $ unAccountName . _account_name <$> account
+      td $ dynText $ keyToText . _keyPair_publicKey . _account_key <$> account
+      td $ dynText $ Pact._chainId . _account_chainId <$> account
+      td $ dynText $ _account_notes <$> account
       -- TODO balance
-      el "td" $ text "Balance Placeholder"
+      td $ text "Balance Placeholder"
 
-      onDel <- elClass "td" "wallet__delete" $
-        deleteButton $
-          def & uiButtonCfg_title .~ Just "Delete key permanently"
-              & uiButtonCfg_class %~ (<> "wallet__add-delete-button")
+      td $ do
+        let cfg = def
+              & uiButtonCfg_class <>~ "wallet__table-button"
 
-      pure (attachWith (\a _ -> (i, _account_name a)) (current account) onDel)
+        receiveButton $ cfg & uiButtonCfg_disabled .~ True
+        sendButton $ cfg & uiButtonCfg_disabled .~ True
+
+        onDel <- do
+          deleteButton $
+            def & uiButtonCfg_title .~ Just "Delete key permanently"
+                & uiButtonCfg_class %~ (<> "wallet__add-delete-button")
+        pure (attachWith (\a _ -> (i, _account_name a)) (current account) onDel)
 
 -- | Get the balance of an account from the network. 'Nothing' indicates _some_
 -- failure, either a missing account or connectivity failure. We have no need to
