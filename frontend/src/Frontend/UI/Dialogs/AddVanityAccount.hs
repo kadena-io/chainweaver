@@ -37,7 +37,7 @@ import Frontend.Crypto.Ed25519 (keyToText)
 import Frontend.JsonData
 import Frontend.Ide (_ide_wallet)
 import Frontend.Network (HasNetworkCfg, ChainId, NodeInfo, defaultTransactionGasLimit, networkCfg_setSender, network_selectedNodes)
-import Frontend.Wallet (Account (..), KeyPair (..), HasWalletCfg (..),unAccountName, checkAccountNameValidity, findNextKey)
+import Frontend.Wallet (AccountName, Account (..), KeyPair (..), HasWalletCfg (..),unAccountName, checkAccountNameValidity, findNextKey)
 
 -- Allow the user to create a 'vanity' account, which is an account with a custom name
 -- that lives on the chain. Requires GAS to create.
@@ -61,13 +61,20 @@ uiAddVanityAccount _appCfg ideL _onCloseExternal = do
   rec
     onClose <- modalHeader $ dynText title
     result <- workflow $ uiAddVanityAccountSettings ideL
-    let (title, (done', conf')) = fmap splitDynPure $ splitDynPure result
-  conf <- flatten =<< tagOnPostBuild conf'
-  let done = switch $ current done'
-  pure (conf & walletCfg_importAccount .~ done, leftmost [() <$ done, onClose])
+    let (title, (eNewAccount0, conf0)) = fmap splitDynPure $ splitDynPure result
+
+  conf <- flatten =<< tagOnPostBuild conf0
+  let eNewAccount = switch $ current eNewAccount0
+  pure ( conf & walletCfg_importAccount .~ eNewAccount
+       , leftmost [() <$ eNewAccount, onClose]
+       )
 
 mkPubkeyPactData :: KeyPair key -> Object
 mkPubkeyPactData = HM.singleton "pubkey" . Array . V.singleton . String . keyToText . _keyPair_publicKey
+
+mkPactCode :: Maybe AccountName -> Text
+mkPactCode (Just acc) = "(coin.create-account \"" <> unAccountName acc <> "\" (read-keyset \"pubkey\"))"
+mkPactCode _ = ""
 
 uiAddVanityAccountSettings
   :: forall key t m mConf
@@ -92,25 +99,21 @@ uiAddVanityAccountSettings ideL = Workflow $ do
         dEitherAccName <- (validateAccountName <*>) . value <$>
           inputElem "Account Name" "vanity-account-create__account-name-input"
 
+        dAccNameDirty <- holdUniqDyn =<< holdDyn False (True <$ updated dEitherAccName)
+
         divClass "vanity-account-create__account-name-error" $
-          dyn_ $ ffor dEitherAccName $ either text (const blank)
+          dyn_ $ ffor2 dAccNameDirty dEitherAccName $ \d e -> if d then either text (const blank) e else blank
 
         pure $ hush <$> dEitherAccName
 
-      uiAcc = Just $ ("Reference Data",) $ liftA2 (,)
-        uiAccountNameInput
+      uiAcc = Just $ ("Reference Data",) $ liftA2 (,) uiAccountNameInput
         (value <$> inputElem "Notes" "vanity-account-create__notes")
 
-      mkKeyPair (priv,pub) = KeyPair pub (Just priv)
-
-      mkCode (Just acc) = "(coin.create-account \"" <> unAccountName acc <> "\" (read-keyset \"pubkey\"))"
-      mkCode _ = ""
-
   eKeyPair <- performEvent $ cryptoGenKey <$> current dNextKey <@ pb
-  dKeyPair <- holdDyn Nothing (Just . mkKeyPair <$> eKeyPair)
+  dKeyPair <- holdDyn Nothing (Just . (\(pr,pu) -> KeyPair pu (Just pr)) <$> eKeyPair)
 
   rec
-    (curSelection, done, _) <- buildDeployTabs Nothing controls
+    (curSelection, eNewAccount, _) <- buildDeployTabs Nothing controls
 
     (conf, result, dAccount) <- elClass "div" "modal__main transaction_details" $ do
       (cfg, cChainId, ttl, gasLimit, mAccountDetails) <- tabPane mempty curSelection DeploymentSettingsView_Cfg $
@@ -123,7 +126,7 @@ uiAddVanityAccountSettings ideL = Workflow $ do
       let dAccountName = join <$> sequence (fst <$> mAccountDetails)
           dNotes = sequence (snd <$> mAccountDetails)
           dPayload = fmap mkPubkeyPactData <$> dKeyPair
-          code = mkCode <$> dAccountName
+          code = mkPactCode <$> dAccountName
 
           account = runMaybeT $ Account
             <$> MaybeT dAccountName
@@ -153,7 +156,7 @@ uiAddVanityAccountSettings ideL = Workflow $ do
 
     let preventProgress = (\a r -> isNothing a || isNothing r) <$> dAccount <*> result
 
-    command <- performEvent $ tagMaybe (current result) done
+    command <- performEvent $ tagMaybe (current result) eNewAccount
     controls <- modalFooter $ buildDeployTabFooterControls Nothing curSelection progressButtonLabalFn preventProgress
 
   pure
@@ -182,13 +185,15 @@ vanityAccountCreateSubmit dAccount chainId result nodeInfos = Workflow $ do
   txnSubFeedback <- elClass "div" "modal__main transaction_details" $
     submitTransactionWithFeedback cmd chainId nodeInfos
 
+  -- If the message has no value yet, or it is an error then disable the 'done' button to
+  -- avoid incorrectly triggering the import of the new account.
   let isDisabled = maybe True isLeft <$> _transactionSubmitFeedback_message txnSubFeedback
 
-  done <- modalFooter $ uiButtonDyn
+  eNewAccount <- modalFooter $ uiButtonDyn
     (def & uiButtonCfg_class .~ "button_type_confirm" & uiButtonCfg_disabled .~ isDisabled)
     (text "Done")
 
   pure
-    ( ("Creating Vanity Account", (tagMaybe (current dAccount) done, mempty))
+    ( ("Creating Vanity Account", (tagMaybe (current dAccount) eNewAccount, mempty))
     , never
     )
