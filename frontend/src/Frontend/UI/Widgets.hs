@@ -196,7 +196,7 @@ uiRealWithPrecisionInputElement prec fromDecimal cfg = do
     parseAndRound :: Text -> Maybe Text
     parseAndRound t = showDecimal . fst <$> parseDecimal t
 
-    -- Returns the decimal and if it was rounded
+    -- Returns the decimal and whether or not it needed rounding to 'prec'
     parseDecimal :: Text -> Maybe (Decimal, Bool)
     parseDecimal t = ffor (readMay $ T.unpack t) $ \decimal ->
       (D.roundTo prec decimal, D.decimalPlaces decimal > prec)
