@@ -208,7 +208,8 @@ buildDeploymentSettingsResult
   -> DeploymentSettingsConfig t m model a
   -> Dynamic t (Maybe (Performable m (DeploymentSettingsResult key)))
 buildDeploymentSettingsResult m mSender cChainId capabilities ttl gasLimit code settings = runMaybeT $ do
-  networkName <- lift $ m ^. network_selectedNetwork
+  selNodes <- lift $ m ^. network_selectedNodes
+  networkId <- hoistMaybe $ hush . mkNetworkName . nodeVersion =<< headMay (rights selNodes)
   sender <- MaybeT mSender
   chainId <- MaybeT cChainId
   caps <- MaybeT capabilities
@@ -236,7 +237,7 @@ buildDeploymentSettingsResult m mSender cChainId capabilities ttl gasLimit code 
     let signingPairs = getSigningPairs signing allAccounts
     cmd <- buildCmd
       (_deploymentSettingsConfig_nonce settings)
-      networkName publicMeta signingPairs
+      networkId publicMeta signingPairs
       (_deploymentSettingsConfig_extraSigners settings)
       code' jsonData' pkCaps
     pure $ DeploymentSettingsResult
