@@ -115,6 +115,8 @@ class HasStorage m where
 instance Monad m => HasStorage (StorageT m) where
   askStorage = StorageT ask
 
+instance (HasStorage m, Monad m) => HasStorage (RoutedT t r m)
+
 newtype StorageT m a = StorageT
   { unStorageT :: ReaderT Storage m a
   } deriving

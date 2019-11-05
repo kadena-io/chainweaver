@@ -17,7 +17,7 @@
 {-# LANGUAGE TypeApplications       #-}
 {-# LANGUAGE TypeFamilies           #-}
 
--- | Tab bar widget for pact-web.
+-- | Tab bar widget for chainweaver.
 -- Copyright   :  (C) 2018 Kadena
 -- License     :  BSD-style (see the file LICENSE)
 --

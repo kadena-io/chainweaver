@@ -77,6 +77,10 @@ library
                , trifecta
                , unordered-containers
                , kadena-signing-api
+               , digest
+               , base64-bytestring
+               , uri-bytestring
+               , attoparsec
 
   exposed-modules: Frontend
                  , Frontend.AppCfg
@@ -131,6 +135,7 @@ library
                  , Frontend.UI.Wallet
                  , Frontend.UI.Widgets
                  , Frontend.UI.Widgets.Helpers
+                 , Frontend.KadenaAddress
                  , Frontend.Wallet
                  , Reflex.Class.Extended
                  , Reflex.Dom.ACE.Extended
@@ -183,3 +188,16 @@ executable frontend
   -- improves page load times:
   -- if impl(ghcjs)
   --   ghcjs-options: -dedupe
+
+test-suite kadenaaddress
+  type: exitcode-stdio-1.0
+
+  main-is: KadenaAddressSpec.hs
+  hs-source-dirs: tests
+  build-depends: base
+               , frontend
+               , hedgehog
+               , kadena-signing-api
+               , errors
+               , text
+               , common

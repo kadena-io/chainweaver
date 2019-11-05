@@ -70,7 +70,7 @@ uiKeyImport m _onClose = do
 
           elClass "h2" "heading heading_type_h2" $ text "Import Existing Key"
           elKlass "div" "group segment" $ do
-            (_, name) <- mkLabeledInput mkNameInput "Key Name" def
+            (_, name) <- mkLabeledInput mkNameInput "Account Name" def
             (_, errPub) <- mkLabeledInput mkPubKeyInput  "Public Key" def
             (_, parsedPair) <- mkLabeledInput (mkPrivKeyInput errPub) "Private Key" def
 

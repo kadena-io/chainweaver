@@ -87,7 +87,7 @@ buildOAuthConfig'
   :: Text -> OAuthClientId -> (R FrontendRoute -> Text) -> OAuthConfig OAuthProvider
 buildOAuthConfig' baseUri clientId renderRoute = OAuthConfig
     { _oAuthConfig_renderRedirectUri = Just $
-        \oAuthRoute -> (baseUri <>) . renderRoute $ FrontendRoute_OAuth :/ oAuthRoute
+        \oAuthRoute -> (baseUri <>) . renderRoute $ FrontendRoute_Contracts ?/ ContractRoute_OAuth :/ oAuthRoute
 
     , _oAuthConfig_providers =
         \case

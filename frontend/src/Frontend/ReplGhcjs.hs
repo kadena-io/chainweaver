@@ -29,6 +29,7 @@ import Control.Monad.Reader (ask)
 import Control.Monad.State.Strict
 import Data.Aeson (FromJSON, ToJSON)
 import Data.Default (Default (..))
+import Data.Some (Some(..))
 import Data.String (IsString)
 import Data.Text (Text)
 import GHCJS.DOM.EventM (on)
@@ -75,34 +76,41 @@ import Frontend.UI.Wallet
 app
   :: forall key t m.
      ( MonadWidget t m
-     , Routed t (R FrontendRoute) m, RouteToUrl (R FrontendRoute) m, SetRoute t (R FrontendRoute) m
+     , RouteToUrl (R FrontendRoute) m, SetRoute t (R FrontendRoute) m
      , HasConfigs m
      , HasStorage m, HasStorage (Performable m)
      , HasCrypto key (Performable m)
      , FromJSON key, ToJSON key
      )
-  => m ()
+  => RoutedT t (R FrontendRoute) m ()
   -- ^ Extra widget to display at the bottom of the sidebar
-  -> AppCfg key t m -> m ()
+  -> AppCfg key t (RoutedT t (R FrontendRoute) m) -> RoutedT t (R FrontendRoute) m ()
 app sidebarExtra appCfg = void . mfix $ \ cfg -> do
   ideL <- makeIde appCfg cfg
 
   walletSidebar sidebarExtra
-  route <- demux <$> askRoute
-  let mkPage :: R FrontendRoute -> Text -> m a -> m a
-      mkPage r c = elDynAttr "div" (ffor (demuxed route r) $ \s -> "class" =: (c <> if s then " page__content visible" else " page__content"))
   updates <- divClass "page" $ do
     netCfg <- networkBar ideL
-    walletCfg <- mkPage (FrontendRoute_Wallet :/ ()) "wallet" $ do
-      uiWallet ideL
-    updates <- mkPage (FrontendRoute_Main :/ ()) "contracts" $ do
-      controlCfg <- controlBar appCfg ideL
-      mainCfg <- elClass "main" "main page__main" $ do
-        uiEditorCfg <- codePanel appCfg "main__left-pane" ideL
-        envCfg <- rightTabBar "main__right-pane" ideL
-        pure $ uiEditorCfg <> envCfg
-      pure $ controlCfg <> mainCfg
-    pure $ netCfg <> walletCfg <> updates
+    let mkPageContent c = divClass (c <> " page__content visible")
+    -- This route overriding is awkward, but it gets around having to alter the
+    -- types of ideL and appCfg, and we don't actually need the true subroute
+    -- yet.
+    route <- askRoute
+    routedCfg <- subRoute $ lift . flip runRoutedT route . \case
+      FrontendRoute_Wallet -> mkPageContent "wallet" $ uiWallet ideL
+      FrontendRoute_Contracts -> mkPageContent "contracts" $ do
+        controlCfg <- controlBar appCfg ideL
+        mainCfg <- elClass "main" "main page__main" $ do
+          uiEditorCfg <- codePanel appCfg "main__left-pane" ideL
+          envCfg <- rightTabBar "main__right-pane" ideL
+          pure $ uiEditorCfg <> envCfg
+        pure $ controlCfg <> mainCfg
+      -- TODO resources page
+      FrontendRoute_Resources -> text "Resources" >> pure mempty
+      -- TODO settings page
+      FrontendRoute_Settings -> text "Settings" >> pure mempty
+    flattenedCfg <- flatten =<< tagOnPostBuild routedCfg
+    pure $ netCfg <> flattenedCfg
 
   modalCfg <- showModal ideL
 
@@ -125,15 +133,15 @@ walletSidebar
   => m () -> m ()
 walletSidebar sidebarExtra = elAttr "div" ("class" =: "sidebar") $ do
   divClass "sidebar__logo" blank -- TODO missing logo image
-  route <- demux <$> askRoute
-  let sidebarLink r = routeLink r $ do
+  route <- demux . fmap (\(r :/ _) -> Some r) <$> askRoute
+  let sidebarLink r@(r' :/ _) = routeLink r $ do
         let mkAttrs sel = "class" =: ("sidebar__link" <> if sel then " selected" else "")
-        elDynAttr "span" (mkAttrs <$> demuxed route r) $ do
+        elDynAttr "span" (mkAttrs <$> demuxed route (Some r')) $ do
           let (normal, highlighted) = routeIcon r
           elAttr "img" ("class" =: "highlighted" <> "src" =: highlighted) blank
           elAttr "img" ("class" =: "normal" <> "src" =: normal) blank
   sidebarLink $ FrontendRoute_Wallet :/ ()
-  sidebarLink $ FrontendRoute_Main :/ ()
+  sidebarLink $ FrontendRoute_Contracts :/ Nothing
   elAttr "div" ("style" =: "flex-grow: 1") blank
   sidebarLink $ FrontendRoute_Resources :/ ()
   sidebarLink $ FrontendRoute_Settings :/ ()
@@ -142,11 +150,10 @@ walletSidebar sidebarExtra = elAttr "div" ("class" =: "sidebar") $ do
 -- | Get the routes to the icon assets for each route
 routeIcon :: R FrontendRoute -> (Text, Text)
 routeIcon = \case
-  FrontendRoute_Main :/ () -> (static @"img/menu/contracts.png", static @"img/menu/contracts_highlighted.png")
-  FrontendRoute_Wallet :/ () -> (static @"img/menu/wallet.png", static @"img/menu/wallet_highlighted.png")
-  FrontendRoute_Resources :/ () -> (static @"img/menu/resources.png", static @"img/menu/resources_highlighted.png")
-  FrontendRoute_Settings :/ () -> (static @"img/menu/settings.png", static @"img/menu/settings_highlighted.png")
-  _ -> ("", "")
+  FrontendRoute_Contracts :/ _ -> (static @"img/menu/contracts.png", static @"img/menu/contracts_highlighted.png")
+  FrontendRoute_Wallet :/ _ -> (static @"img/menu/wallet.png", static @"img/menu/wallet_highlighted.png")
+  FrontendRoute_Resources :/ _ -> (static @"img/menu/resources.png", static @"img/menu/resources_highlighted.png")
+  FrontendRoute_Settings :/ _ -> (static @"img/menu/settings.png", static @"img/menu/settings_highlighted.png")
 
 -- | Code editing (left hand side currently)
 codePanel :: forall r key t m a. (MonadWidget t m, Routed t r m) => AppCfg key t m -> CssClass -> Ide a key t -> m (IdeCfg a key t)

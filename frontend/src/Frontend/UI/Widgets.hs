@@ -11,7 +11,7 @@
 -- | Widgets collection
 -- Was based on semui, but now transitioning to custom widgets
 module Frontend.UI.Widgets
-  ( -- * Standard widgets for pact-web
+  ( -- * Standard widgets for chainweaver
     -- ** Buttons
     module Frontend.UI.Button
   -- ** Other widgets
@@ -147,7 +147,7 @@ addNoAutofillAttrs :: (Ord attr, IsString attr) => Map attr Text -> Map attr Tex
 addNoAutofillAttrs = (noAutofillAttrs <>)
 
 
--- | reflex-dom `inputElement` with pact-web default styling:
+-- | reflex-dom `inputElement` with chainweaver default styling:
 uiInputElement
   :: DomBuilder t m
   => InputElementConfig er t (DomBuilderSpace m)

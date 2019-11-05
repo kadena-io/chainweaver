@@ -1,6 +1,6 @@
-# pact-web-ui
+# chainweaver-ui
 
-UI templates for Pact Web
+UI templates for Chainweaver
 
 # Installation
 

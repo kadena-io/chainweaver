@@ -179,7 +179,7 @@ fetchFile m onFileRef = do
     wrapExample = FileRef_Example *** Code . fst
     wrapGist = FileRef_Gist . gistId &&& Code . getGistFile
 
-    getGistFile = fromMaybe "Error loading gist: Gist was not a valid pact-web gist." .
+    getGistFile = fromMaybe "Error loading gist: Gist was not a valid chainweaver gist." .
       fmap fileContent . listToMaybe . HM.elems . HM.filterWithKey (\k _ -> T.isSuffixOf ".pact" k) . gistFiles
 
 -- | Fetch a `File`, with cache.

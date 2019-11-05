@@ -262,7 +262,7 @@ checkAccountNameValidity w = getErr <$> (w ^. wallet_accounts)
     getErr keys k = do
       acc <- mkAccountName k
       if any (\case SomeAccount_Account a -> _account_name a == acc; _ -> False) keys
-         then Left $ T.pack "This key name is already in use"
+         then Left $ T.pack "This account name is already in use"
          else Right acc
 
 -- | Write key pairs to localstorage.

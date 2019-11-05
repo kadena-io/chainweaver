@@ -44,7 +44,8 @@ module Frontend.UI.DeploymentSettings
 
 import Control.Applicative (liftA2)
 import Control.Arrow (first, (&&&))
-import Control.Error (fmapL)
+import Control.Error (fmapL, hoistMaybe, headMay)
+import Control.Error.Util (hush)
 import Control.Lens
 import Control.Monad
 import Control.Monad.Trans.Class
@@ -210,7 +211,8 @@ uiDeploymentSettings m settings = mdo
           $ (_deploymentSettingsConfig_sender settings) m cChainId
 
       let result' = runMaybeT $ do
-            networkName <- lift $ m ^. network_selectedNetwork
+            selNodes <- lift $ m ^. network_selectedNodes
+            networkId <- hoistMaybe $ hush . mkNetworkName . nodeVersion =<< headMay (rights selNodes)
             sender <- MaybeT mSender
             chainId <- MaybeT cChainId
             caps <- MaybeT capabilities
@@ -238,7 +240,7 @@ uiDeploymentSettings m settings = mdo
               let signingPairs = getSigningPairs signing allAccounts
               cmd <- buildCmd
                 (_deploymentSettingsConfig_nonce settings)
-                networkName publicMeta signingPairs
+                networkId publicMeta signingPairs
                 (_deploymentSettingsConfig_extraSigners settings)
                 code' jsonData' pkCaps
               pure $ DeploymentSettingsResult
@@ -636,8 +638,8 @@ capabilityInputRows mkSender = do
         decideDeletions i row = IM.singleton i Nothing <$ leftmost
           -- Deletions caused by rows becoming empty
           [ void . ffilter id . updated $ _capabilityInputRow_empty row
-          -- Deletions caused by users entering FUND_TX
-          , void . ffilter (either (const False) isFundTX) . updated $ _capabilityInputRow_cap row
+          -- Deletions caused by users entering GAS
+          , void . ffilter (either (const False) isGas) . updated $ _capabilityInputRow_cap row
           ]
         deletions = switch . current $ IM.foldMapWithKey decideDeletions <$> results
 
@@ -686,11 +688,11 @@ uiSenderCapabilities m cid mCaps mkSender = do
         elClass "th" "table__heading" $ text "Account"
       el "tbody" $ do
         gas <- staticCapabilityRow mkSender defaultGASCapability
-        rest <- staticCapabilityRows $ filter (not . isFundTX . _dappCap_cap) caps
+        rest <- staticCapabilityRows $ filter (not . isGas . _dappCap_cap) caps
         pure (_capabilityInputRow_account gas, combineMaps (_capabilityInputRow_value gas) rest)
 
-isFundTX :: SigCapability -> Bool
-isFundTX = (^. to PC._scName . to PN._qnName . to (== "FUND_TX"))
+isGas :: SigCapability -> Bool
+isGas = (^. to PC._scName . to PN._qnName . to (== "GAS"))
 
 -- parsed: "{\"role\": \"GAS\", \"description\": \"Pay the GAS required for this transaction\", \"cap\": {\"args\": [\"doug\",], \"name\": \"coin.FUND_TX\"}}"
 defaultGASCapability :: DappCap
@@ -703,8 +705,8 @@ defaultGASCapability = DappCap
         { PN._mnName = "coin"
         , PN._mnNamespace = Nothing
         }
-      , PN._qnName = "FUND_TX"
-      , PN._qnInfo = PI.mkInfo "coin.FUND_TX"
+      , PN._qnName = "GAS"
+      , PN._qnInfo = PI.mkInfo "coin.GAS"
       }
     , PC._scArgs = []
     }

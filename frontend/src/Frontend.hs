@@ -54,7 +54,8 @@ frontend = Frontend
   , _frontend_body = prerender_ loaderMarkup $ do
     (fileOpened, triggerOpen) <- openFileDialog
     let store = browserStorage
-    flip runStorageT store $ flip runCryptoT (Crypto mkSignature (const genKeyPair)) $ app blank $ AppCfg
+        crypto = Crypto mkSignature (const genKeyPair)
+    mapRoutedT (flip runStorageT store . flip runCryptoT crypto) $ app blank $ AppCfg
       { _appCfg_gistEnabled = True
       , _appCfg_externalFileOpened = fileOpened
       , _appCfg_openFileDialog = liftJSM triggerOpen
@@ -103,7 +104,7 @@ newHead routeText = do
   ss "https://fonts.googleapis.com/css?family=Roboto"
   ss "https://fonts.googleapis.com/css?family=Work+Sans"
   ss (static @"css/font-awesome.min.css")
-  ss (static @"css/ace-theme-pact-web.css")
+  ss (static @"css/ace-theme-chainweaver.css")
   js "/static/js/ace/ace.js"
   prerender_ blank $ js "/static/js/ace/mode-pact.js"
   js (static @"js/nacl-fast.min-v1.0.0.js")
