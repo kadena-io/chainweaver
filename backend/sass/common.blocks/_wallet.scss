@@ -29,8 +29,13 @@
   overflow: hidden;
 }
 
+.wallet__table-buttons {
+  display:flex;
+  align-items: center;
+}
+
 .wallet__table-button {
-  padding: 0 $medium-padding;
+  padding: 0 15px;
   margin-right: $medium-margin;
 
   text-overflow: ellipsis;

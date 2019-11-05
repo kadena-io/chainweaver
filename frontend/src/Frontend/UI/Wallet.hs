@@ -175,12 +175,13 @@ uiKeyItem i d = do
       -- TODO balance
       td $ text "Balance Placeholder"
 
-      td $ do
+      td $ divClass "wallet__table-buttons" $ do
         let cfg = def
               & uiButtonCfg_class <>~ "wallet__table-button"
 
         receiveButton $ cfg & uiButtonCfg_disabled .~ True
         sendButton $ cfg & uiButtonCfg_disabled .~ True
+        detailsButton $ cfg & uiButtonCfg_disabled .~ True
 
         onDel <- do
           deleteButton $

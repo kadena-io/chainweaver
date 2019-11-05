@@ -44,6 +44,7 @@ module Frontend.UI.Button
   , cancelButton
   , receiveButton
   , sendButton
+  , detailsButton
   , copyToClipboard
   -- ** Images in buttons
   , btnTextIcon
@@ -277,6 +278,11 @@ receiveButton :: StaticButtonConstraints t m => UiButtonCfg -> m (Event t ())
 receiveButton cfg =
   uiButton (cfg & uiButtonCfg_class <>~ "button_type_secondary" <> "button_type_secondary") $
     btnTextIcon (static @"img/receive.svg") "Receive" blank >> text "Receive"
+
+detailsButton :: StaticButtonConstraints t m => UiButtonCfg -> m (Event t ())
+detailsButton cfg =
+  uiButton (cfg & uiButtonCfg_class <>~ "button_type_secondary" <> "button_type_secondary") $
+    btnIcon (static @"img/ellipsis.svg") "Details" blank
 
 sendButton :: StaticButtonConstraints t m => UiButtonCfg -> m (Event t ())
 sendButton cfg =
