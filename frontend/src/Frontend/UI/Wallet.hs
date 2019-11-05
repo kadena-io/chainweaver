@@ -37,7 +37,7 @@ module Frontend.UI.Wallet
 
 ------------------------------------------------------------------------------
 import           Control.Lens
-import           Control.Monad               (when, (<=<))
+import           Control.Monad               (void, when, (<=<))
 import qualified Data.IntMap                 as IntMap
 import qualified Data.Map                    as Map
 import           Data.Text                   (Text)
@@ -179,9 +179,9 @@ uiKeyItem i d = do
         let cfg = def
               & uiButtonCfg_class <>~ "wallet__table-button"
 
-        receiveButton $ cfg & uiButtonCfg_disabled .~ True
-        sendButton $ cfg & uiButtonCfg_disabled .~ True
-        detailsButton $ cfg & uiButtonCfg_disabled .~ True
+        void $ receiveButton $ cfg & uiButtonCfg_disabled .~ True
+        void $ sendButton $ cfg & uiButtonCfg_disabled .~ True
+        void $ detailsButton $ cfg & uiButtonCfg_disabled .~ True
 
         onDel <- do
           deleteButton $
