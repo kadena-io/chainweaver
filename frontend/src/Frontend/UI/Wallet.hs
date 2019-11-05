@@ -77,13 +77,7 @@ uiWallet
        )
   => ModalIde m key t
   -> m mConf
-uiWallet m = divClass "keys group" $ do
-  let w = _ide_wallet m
-
-  onCreate <- uiCreateKey w
-  keysCfg <- uiAvailableKeys w
-
-  pure $ keysCfg & walletCfg_genKey .~ fmap (\a -> (a, "0", "")) onCreate -- TODO let user pick chain/notes
+uiWallet = uiAvailableKeys . _ide_wallet
 
 ----------------------------------------------------------------------
 -- Keys related helper widgets:
@@ -108,13 +102,6 @@ hasPrivateKey :: (Text, KeyPair PrivateKey) -> Bool
 hasPrivateKey = isJust . _keyPair_privateKey . snd
 
 ----------------------------------------------------------------------
-
-
--- | Line input with "Create" button for creating a new key.
-uiCreateKey :: MonadWidget t m => Wallet key t -> m (Event t AccountName)
-uiCreateKey w =
-  validatedInputWithButton "group__header" (checkAccountNameValidity w) "Enter account name" "Generate"
-
 
 -- | Widget listing all available keys.
 uiAvailableKeys

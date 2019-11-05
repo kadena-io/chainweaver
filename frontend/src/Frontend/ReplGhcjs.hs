@@ -62,6 +62,7 @@ import Frontend.OAuth
 import Frontend.Repl
 import Frontend.Storage
 import Frontend.UI.Button
+import Frontend.UI.Dialogs.AddAccount (uiAddWalletOnlyAccountDialogButton)
 import Frontend.UI.Dialogs.CreateGist (uiCreateGist)
 import Frontend.UI.Dialogs.CreatedGist (uiCreatedGist)
 import Frontend.UI.Dialogs.DeployConfirmation (uiDeployConfirmation)
@@ -97,7 +98,10 @@ app sidebarExtra appCfg = void . mfix $ \ cfg -> do
     -- yet.
     route <- askRoute
     routedCfg <- subRoute $ lift . flip runRoutedT route . \case
-      FrontendRoute_Wallet -> mkPageContent "wallet" $ uiWallet ideL
+      FrontendRoute_Wallet -> mkPageContent "wallet" $ do
+        addCfg <- controlBar "Wallet" $ uiAddWalletOnlyAccountDialogButton ideL
+        walletCfg <- uiWallet ideL
+        pure $ addCfg <> walletCfg
       FrontendRoute_Contracts -> mkPageContent "contracts" $ do
         controlCfg <- controlBar "Contracts" (controlBarRight appCfg ideL)
         mainCfg <- elClass "main" "main page__main" $ do
@@ -264,8 +268,7 @@ getPactVersion = do
       _ -> error "failed to get pact version"
     return ver
 
-controlBarRight
-  :: forall key t m. (MonadWidget t m, HasCrypto key (Performable m))
+controlBarRight  :: forall key t m. (MonadWidget t m, HasCrypto key (Performable m))
   => AppCfg key t m -> ModalIde m key t -> m (ModalIdeCfg m key t)
 controlBarRight appCfg m = do
     divClass "main-header__controls-nav" $ do
