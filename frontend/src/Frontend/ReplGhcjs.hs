@@ -97,7 +97,7 @@ app sidebarExtra appCfg = void . mfix $ \ cfg -> do
     -- yet.
     route <- askRoute
     routedCfg <- subRoute $ lift . flip runRoutedT route . \case
-      FrontendRoute_Wallet -> mkPageContent "wallet" $ uiWallet (_ide_wallet ideL)
+      FrontendRoute_Wallet -> mkPageContent "wallet" $ uiWallet ideL
       FrontendRoute_Contracts -> mkPageContent "contracts" $ do
         controlCfg <- controlBar appCfg ideL
         mainCfg <- elClass "main" "main page__main" $ do

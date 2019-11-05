@@ -78,7 +78,6 @@ uiKeyImport m _onClose = do
 
     modalFooter $ do
       onCancel <- cancelButton def "Cancel"
-      text " "
       let
         isInvalidName = isLeft <$> errName
         isInvalidKeys = either (const True) (const False) <$> errKeyPair

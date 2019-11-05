@@ -47,6 +47,7 @@ import qualified Pact.Types.ChainId as Pact
 import           Reflex
 import           Reflex.Dom
 ------------------------------------------------------------------------------
+import           Frontend.Ide (_ide_wallet)
 import           Frontend.Crypto.Class
 import           Frontend.Crypto.Ed25519     (keyToText)
 import           Frontend.Wallet
@@ -54,9 +55,9 @@ import           Frontend.UI.Widgets
 import           Frontend.Foundation
 import           Frontend.UI.Dialogs.DeleteConfirmation (uiDeleteConfirmation)
 import           Frontend.UI.Modal
+import           Frontend.UI.Modal.Impl (ModalIde)
 import           Frontend.Network
 ------------------------------------------------------------------------------
-
 
 -- | Constraints on the model config we have for implementing this widget.
 type HasUiWalletModelCfg mConf key m t =
@@ -70,14 +71,19 @@ type HasUiWalletModelCfg mConf key m t =
 
 -- | UI for managing the keys wallet.
 uiWallet
-  :: (MonadWidget t m, HasUiWalletModelCfg mConf key m t)
-  => Wallet key t
+  :: forall m t key mConf
+     . ( MonadWidget t m
+       , HasUiWalletModelCfg mConf key m t
+       )
+  => ModalIde m key t
   -> m mConf
-uiWallet w = divClass "keys group" $ do
-    onCreate <- uiCreateKey w
-    keysCfg <- uiAvailableKeys w
+uiWallet m = divClass "keys group" $ do
+  let w = _ide_wallet m
 
-    pure $ keysCfg & walletCfg_genKey .~ fmap (\a -> (a, "0", "")) onCreate -- TODO let user pick chain/notes
+  onCreate <- uiCreateKey w
+  keysCfg <- uiAvailableKeys w
+
+  pure $ keysCfg & walletCfg_genKey .~ fmap (\a -> (a, "0", "")) onCreate -- TODO let user pick chain/notes
 
 ----------------------------------------------------------------------
 -- Keys related helper widgets:
