@@ -21,13 +21,11 @@ import           Frontend.UI.Widgets
 import           Frontend.Foundation
 ------------------------------------------------------------------------------
 type HasUiAccountDetailsModel model key t =
-  ( HasWallet model key t
-  , HasNetwork model t
+  ( HasNetwork model t
   )
 
 type HasUiAccountDetailsModelCfg mConf key t =
   ( Monoid mConf, Flattenable mConf t
-  , HasWalletCfg mConf key t
   )
 
 uiAccountDetails
@@ -36,23 +34,10 @@ uiAccountDetails
      , MonadWidget t m
      )
   => model
-  -> SomeAccount key
+  -> Account key
   -> Event t ()
   -> m (mConf, Event t ())
-uiAccountDetails _m SomeAccount_Deleted _onCloseExternal = do
-  onClose <- modalHeader $ text "Deleted Account!"
-  modalMain $ divClass "segment modal__filler" $
-    divClass "modal__filler-horizontal-center-box" $ do
-      divClass "title" $ text "Oh dear..."
-      divClass "group segment" $ text "Well this is awkward, you've tried to view the details of an account that should be deleted! Please file a bug in Chainweaver."
-  modalFooter $ do
-    onDone <- confirmButton def "Done"
-    pure
-      ( mempty
-      , leftmost [onClose, onDone]
-      )
-
-uiAccountDetails m (SomeAccount_Account a) _onCloseExternal = do
+uiAccountDetails m a _onCloseExternal = do
   let dKAddr = (\n -> textKadenaAddress $ mkKadenaAddress n (_account_chainId a) (_account_name a)) <$> m ^. network_selectedNetwork
 
   let displayText lbl v cls =
@@ -76,7 +61,7 @@ uiAccountDetails m (SomeAccount_Account a) _onCloseExternal = do
       el "hr" blank
       -- Kadena Address
       _ <- displayText "Kadena Address" dKAddr "account-details__kadena-address"
-      -- -- copy
+      -- copy
       _ <- divClass "account-details__copy-btn-wrapper" $ copyButton (def
         & uiButtonCfg_class .~ constDyn "account-details__copy-btn button_type_confirm"
         & uiButtonCfg_title .~ constDyn (Just "Copy")
