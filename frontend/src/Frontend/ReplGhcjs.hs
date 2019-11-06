@@ -125,15 +125,11 @@ app sidebarExtra appCfg = void . mfix $ \ cfg -> do
     onSigningModal = Just . uiSigning appCfg ideL <$> _appCfg_signingRequest appCfg
     signingModalCfg = mempty & modalCfg_setModal .~ onSigningModal
 
-    onVanityModal = Just (uiAddVanityAccount appCfg ideL) <$ _appCfg_addVanityAcc appCfg
-    vanityModalCfg = mempty & modalCfg_setModal .~ onVanityModal
-
   pure $ mconcat
     [ updates
     , modalCfg
     , gistModalCfg
     , signingModalCfg
-    , vanityModalCfg
     , mempty & ideCfg_editor . editorCfg_loadCode .~ _appCfg_externalFileOpened appCfg
     ]
 
