@@ -299,6 +299,9 @@ controlBarRight appCfg m = do
           logoutConfirmation :: Event t (Maybe (ModalImpl m key t))
           logoutConfirmation = Just uiLogoutConfirmation <$ onLogoutClick
 
+          vanityAcc :: Event t (Maybe (ModalImpl m key t))
+          vanityAcc = Just (uiAddVanityAccount appCfg m) <$ (_appCfg_vanityDialog appCfg)
+
           gistCfg =  mempty & modalCfg_setModal .~  gistConfirmation
 
           deployCfg = mempty & modalCfg_setModal .~ reqConfirmation
@@ -307,7 +310,9 @@ controlBarRight appCfg m = do
 
           netCfg = mempty & modalCfg_setModal .~ networkEdit
 
-        pure $ deployCfg <> loadCfg <> gistCfg <> netCfg <> logoutCfg
+          vanityCfg = mempty & modalCfg_setModal .~ vanityAcc
+
+        pure $ deployCfg <> loadCfg <> gistCfg <> netCfg <> logoutCfg <> vanityCfg
   where
     maySignoutBtn = do
       let gitHubOnline = Map.member OAuthProvider_GitHub <$> m ^. oAuth_accessTokens
