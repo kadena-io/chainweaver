@@ -523,7 +523,7 @@ setPassword dSeed = form "" $ do
   p1Dirty <- holdUniqDyn =<< holdDyn False (True <$ _inputElement_input p1elem)
   p2Dirty <- holdUniqDyn =<< holdDyn False (True <$ _inputElement_input p2elem)
 
-  let inputsDirty = current $ liftA2 (&&) p1Dirty p2Dirty
+  let inputsDirty = current $ liftA2 (||) p1Dirty p2Dirty
 
   eCheckPassword <- fmap (gate inputsDirty) $ delay 0.2 $ leftmost
     [ _inputElement_input p1elem
