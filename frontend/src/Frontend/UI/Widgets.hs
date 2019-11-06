@@ -34,6 +34,7 @@ module Frontend.UI.Widgets
   , uiCheckbox
   , uiDropdown
   , uiSelectElement
+  , uiPassword
   , validatedInputWithButton
     -- ** Helper widgets
   , imgWithAlt
@@ -138,6 +139,14 @@ uiSelectElement
 uiSelectElement uCfg child = do
   let cfg = uCfg & initialAttributes %~ addToClassAttr "select"
   selectElement cfg child
+
+uiPassword :: DomBuilder t m => Text -> Text -> Text -> m (InputElement EventResult (DomBuilderSpace m) t)
+uiPassword wrapperCls inputCls ph = elClass "span" wrapperCls $ do
+  uiInputElement $ def & initialAttributes .~ mconcat
+    [ "type" =: "password"
+    , "placeholder" =: ph
+    , "class" =: inputCls
+    ]
 
 -- | Factored out input class modifier, so we can keep it in sync.
 addInputElementCls :: (Ord attr, IsString attr) => Map attr Text -> Map attr Text
