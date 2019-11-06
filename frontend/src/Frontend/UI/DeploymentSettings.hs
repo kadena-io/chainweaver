@@ -91,6 +91,7 @@ import Reflex.Dom.Contrib.CssClass (elKlass)
 import Safe (readMay)
 import qualified Data.Aeson as Aeson
 import qualified Data.IntMap as IM
+import qualified Data.HashMap.Strict as HM
 import qualified Data.Map as Map
 import qualified Data.Set as Set
 import qualified Data.Text as T
@@ -214,6 +215,7 @@ buildDeploymentSettingsResult m mSender cChainId capabilities ttl gasLimit code 
   chainId <- MaybeT cChainId
   caps <- MaybeT capabilities
   let signing = Set.insert sender $ Map.keysSet caps
+  deploySettingsJsonData <- hoistMaybe $ _deploymentSettingsConfig_data settings
   jsonData' <- lift $ either (const mempty) id <$> m ^. jsonData . jsonData_data
   ttl' <- lift ttl
   limit <- lift gasLimit
@@ -239,7 +241,7 @@ buildDeploymentSettingsResult m mSender cChainId capabilities ttl gasLimit code 
       (_deploymentSettingsConfig_nonce settings)
       networkId publicMeta signingPairs
       (_deploymentSettingsConfig_extraSigners settings)
-      code' jsonData' pkCaps
+      code' (HM.union jsonData' deploySettingsJsonData) pkCaps
     pure $ DeploymentSettingsResult
       { _deploymentSettingsResult_gasPrice = _pmGasPrice publicMeta
       , _deploymentSettingsResult_signingKeys = signingPairs

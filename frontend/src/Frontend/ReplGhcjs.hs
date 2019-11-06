@@ -73,7 +73,6 @@ import Frontend.UI.Modal
 import Frontend.UI.Modal.Impl
 import Frontend.UI.RightPanel
 import Frontend.UI.Wallet
-import Frontend.UI.Dialogs.AddVanityAccount (uiAddVanityAccount)
 
 app
   :: forall key t m.
@@ -299,9 +298,6 @@ controlBarRight appCfg m = do
           logoutConfirmation :: Event t (Maybe (ModalImpl m key t))
           logoutConfirmation = Just uiLogoutConfirmation <$ onLogoutClick
 
-          vanityAcc :: Event t (Maybe (ModalImpl m key t))
-          vanityAcc = Just (uiAddVanityAccount appCfg m) <$ (_appCfg_vanityDialog appCfg)
-
           gistCfg =  mempty & modalCfg_setModal .~  gistConfirmation
 
           deployCfg = mempty & modalCfg_setModal .~ reqConfirmation
@@ -310,9 +306,7 @@ controlBarRight appCfg m = do
 
           netCfg = mempty & modalCfg_setModal .~ networkEdit
 
-          vanityCfg = mempty & modalCfg_setModal .~ vanityAcc
-
-        pure $ deployCfg <> loadCfg <> gistCfg <> netCfg <> logoutCfg <> vanityCfg
+        pure $ deployCfg <> loadCfg <> gistCfg <> netCfg <> logoutCfg
   where
     maySignoutBtn = do
       let gitHubOnline = Map.member OAuthProvider_GitHub <$> m ^. oAuth_accessTokens

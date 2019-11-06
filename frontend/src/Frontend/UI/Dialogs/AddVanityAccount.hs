@@ -13,9 +13,9 @@ import Control.Applicative (liftA2)
 import Data.Maybe (isNothing,maybe)
 import Data.Either (isLeft)
 import Data.Text (Text)
-import qualified Data.Text as T
 
 import Data.Aeson (Object, Value (String,Array))
+import qualified Data.Aeson.Lens as AL
 import qualified Data.HashMap.Strict as HM
 import qualified Data.Vector as V
 
@@ -69,11 +69,14 @@ uiAddVanityAccount _appCfg ideL _onCloseExternal = do
        , leftmost [() <$ eNewAccount, onClose]
        )
 
+tempkeyset :: Text
+tempkeyset = "temp-vanity-keyset"
+
 mkPubkeyPactData :: KeyPair key -> Object
-mkPubkeyPactData = HM.singleton "pubkey" . Array . V.singleton . String . keyToText . _keyPair_publicKey
+mkPubkeyPactData  = HM.singleton tempkeyset . Array . V.singleton . String . keyToText . _keyPair_publicKey
 
 mkPactCode :: Maybe AccountName -> Text
-mkPactCode (Just acc) = "(coin.create-account \"" <> unAccountName acc <> "\" (read-keyset \"pubkey\"))"
+mkPactCode (Just acc) = "(coin.create-account \"" <> unAccountName acc <> "\" (read-keyset \"" <> tempkeyset <> "\"))"
 mkPactCode _ = ""
 
 uiAddVanityAccountSettings
@@ -123,8 +126,8 @@ uiAddVanityAccountSettings ideL = Workflow $ do
       (mSender, capabilities) <- tabPane mempty curSelection DeploymentSettingsView_Keys $
         uiSenderCapabilities ideL cChainId Nothing $ uiSenderDropdown def ideL cChainId
 
-      let dAccountName = join <$> sequence (fst <$> mAccountDetails)
-          dNotes = sequence (snd <$> mAccountDetails)
+      let dAccountName = join <$> sequenceA (fst <$> mAccountDetails)
+          dNotes = sequenceA (snd <$> mAccountDetails)
           dPayload = fmap mkPubkeyPactData <$> dKeyPair
           code = mkPactCode <$> dAccountName
 

@@ -53,7 +53,6 @@ frontend = Frontend
 
   , _frontend_body = prerender_ loaderMarkup $ do
     (fileOpened, triggerOpen) <- openFileDialog
-    eAddVanity <- button "add vanity acc"
     let store = browserStorage
         crypto = Crypto mkSignature (const genKeyPair)
     mapRoutedT (flip runStorageT store . flip runCryptoT crypto) $ app blank $ AppCfg
@@ -64,7 +63,6 @@ frontend = Frontend
       , _appCfg_editorReadOnly = False
       , _appCfg_signingRequest = never
       , _appCfg_signingResponse = liftIO . print
-      , _appCfg_vanityDialog = eAddVanity
       }
   }
 
