@@ -182,7 +182,7 @@ copyButton
   -> Behavior t Text
   -> m (Event t ())
 copyButton cfg t = do
-    onClick <- uiButtonDyn (cfg & uiButtonCfg_class %~ (<> "button_border_none")) $ do
+    onClick <- uiButtonDyn (cfg & uiButtonCfg_class <>~ "button_border_none") $ do
       elClass "i" "fa fa-lg fa-copy fa-fw" blank
       dyn_ $ ffor (cfg ^. uiButtonCfg_title) $ \case
         Nothing -> blank
