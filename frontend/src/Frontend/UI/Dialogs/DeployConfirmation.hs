@@ -194,8 +194,8 @@ fullDeployFlowWithSubmit dcfg model onPreviewConfirm runner _onClose = do
         rec
           accountBalances <- trackBalancesFromPostBuild model chain accountsToTrack (void response)
           initialRequestsDone <- holdUniqDyn $ and <$> traverse (fmap isJust . view _2) accountBalances
-          gotInitialBalances <- tagOnPostBuild initialRequestsDone
-          let localReq = pure $ NetworkRequest
+          let gotInitialBalances = ffilter id $ updated initialRequestsDone
+              localReq = pure $ NetworkRequest
                 { _networkRequest_cmd = _deploymentSettingsResult_command result
                 , _networkRequest_chainRef = ChainRef Nothing chain
                 , _networkRequest_endpoint = Endpoint_Local
