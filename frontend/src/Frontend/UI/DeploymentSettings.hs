@@ -491,7 +491,6 @@ uiMetaData m mTTL mGasLimit = do
       scaleGPtoTxnSpeed :: GasPrice -> GasPrice
       scaleGPtoTxnSpeed = shiftGP (1e-12) (1e-8) 1 1001
 
-      -- Parse the gas price, returning the price and if it was rounded
       parseGasPrice :: Text -> Maybe GasPrice
       parseGasPrice t = GasPrice . ParsedDecimal . roundTo maxCoinPricePrecision <$> readMay (T.unpack t)
 
