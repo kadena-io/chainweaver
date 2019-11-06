@@ -109,7 +109,7 @@ uiAvailableKeys
   => Wallet key t
   -> m mConf
 uiAvailableKeys aWallet = do
-  divClass "keys-list" $ do
+  divClass "wallet__keys-list" $ do
     uiKeyItems aWallet
 
 
