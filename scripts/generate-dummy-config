@@ -1,0 +1,4 @@
+mkdir -p config/common/oauth/github
+mkdir -p config/backend/oauth/github
+touch config/backend/oauth/github/client-secret
+touch config/common/oauth/github/client-id

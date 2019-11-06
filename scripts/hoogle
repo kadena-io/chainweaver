@@ -1,0 +1,1 @@
+nix-shell default.nix --arg withHoogle true -A shells.ghc --command "hoogle server -p 8080 --local"
