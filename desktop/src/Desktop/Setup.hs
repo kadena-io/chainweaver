@@ -449,7 +449,7 @@ createNewPassphrase eBack dPassword mnemonicSentence = Workflow $ do
 
     eCopyClick <- elClass "div" (setupClass "recovery-phrase-copy") $ do
       uiButton def $ elClass "span" (setupClass "recovery-phrase-copy-word") $ do
-        elClass "i" "fa fa-copy" blank
+        imgWithAlt (static @"img/copy.svg") "Copy" blank
         text "Copy"
         elDynClass "i" ("fa setup__copy-status " <> dCopySuccess) blank
 
