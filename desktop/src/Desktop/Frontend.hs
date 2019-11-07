@@ -184,7 +184,7 @@ lockScreen xprv = setupDiv "fullscreen" $ divClass "wrapper" $ setupDiv "splash"
       uiInputElement $ def & initialAttributes .~ "type" =: "password" <> "placeholder" =: "Password" <> "class" =: setupClass "password"
 
     e <- confirmButton (def & uiButtonCfg_type ?~ "submit") "Unlock"
-    (help, restore) <- setupDiv "button-horizontal-group" $ do
+    (_help, restore) <- setupDiv "button-horizontal-group" $ do
       help <- uiButton def $ text "Help" -- TODO where does this go?
       restore <- uiButton def $ text "Restore"
       pure (help, restore)
