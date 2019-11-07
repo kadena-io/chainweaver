@@ -61,7 +61,6 @@ import qualified Data.Aeson as A
 import qualified Data.Map as Map
 import qualified Data.Set as Set
 import qualified Data.Text as T
-import qualified Data.Vector as V
 import qualified Pact.Types.ChainId as Pact
 import qualified Text.Megaparsec as MP
 import qualified Text.URI as URI hiding (uriPath)
