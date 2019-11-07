@@ -52,30 +52,23 @@ uiDeleteConfirmation
   :: forall key t m mConf
   . (MonadWidget t m, HasUIDeleteConfirmationModelCfg mConf key t)
   => IntMap.Key -> AccountName -> Event t () -> m (mConf, Event t ())
-uiDeleteConfirmation thisKey accountName _onClose = do
-  onClose <- modalHeader $ text "Delete Confirmation"
+uiDeleteConfirmation thisKey _accountName _onClose = do
+  onClose <- modalHeader $ text "Remove Confirmation"
   modalMain $ do
       divClass "segment modal__filler" $ do
-        divClass "modal__filler-horizontal-center-box" $
-          imgWithAltCls "modal__filler-img" (static @"img/bin-scalable.svg") "Bin" blank
+        elClass "h2" "heading heading_type_h2" $ text "Warning"
 
-        elClass "h2" "heading heading_type_h2" $ do
-          text "Really delete account '"
-          text $ unAccountName accountName
-          text "'?"
+        divClass "group" $
+          text "You are about to remove this account from view in your wallet"
 
-        divClass "group" $ do
-          text "This will delete the account and key from the local wallet."
-
-        divClass "group" $ do
-          text "If this account is holding money, without having access to the key you will lose that money!"
-
-        divClass "group" $ do
-          text "Double and triple check that you want to delete this key and make sure you have backups!"
+        divClass "group" $
+          text "The only way to recover any balance in this account will be by restoring the complete wallet with your recovery phrase"
+        divClass "group" $
+          text "Ensure that you have a backup of account data before removing."
 
   modalFooter $ do
-    onCancel <- cancelButton def "Cancel"
-    onConfirm <- confirmButton def "Delete"
+    -- onCancel <- cancelButton def "Cancel"
+    onConfirm <- confirmButton (def & uiButtonCfg_class .~ "account-delete__confirm") "Permanently Remove Account"
     let
       cfg = mempty & walletCfg_delKey .~ (thisKey <$ onConfirm)
-    pure (cfg, leftmost [onClose, onConfirm, onCancel])
+    pure (cfg, leftmost [onClose, onConfirm])

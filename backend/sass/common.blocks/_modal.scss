@@ -169,6 +169,7 @@
     color: #2d2d2f;
   }
 }
+
 .account-details__copy-btn-wrapper {
   text-align: right;
 
@@ -183,4 +184,8 @@
 }
 .account-details__remove-account-btn {
   float: left;
+}
+
+.account-delete__confirm {
+  background-color: $danger-red;
 }
