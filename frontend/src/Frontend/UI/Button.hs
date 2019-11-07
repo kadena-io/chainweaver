@@ -42,6 +42,9 @@ module Frontend.UI.Button
   , refreshButton
   , confirmButton
   , cancelButton
+  , receiveButton
+  , sendButton
+  , detailsButton
   , copyToClipboard
   -- ** Images in buttons
   , btnTextIcon
@@ -271,6 +274,20 @@ cancelButton :: StaticButtonConstraints t m => UiButtonCfg -> Text -> m (Event t
 cancelButton cfg msg =
     uiButton (cfg & uiButtonCfg_class <>~ "button_type_tertiary") $ text msg
 
+receiveButton :: StaticButtonConstraints t m => UiButtonCfg -> m (Event t ())
+receiveButton cfg =
+  uiButton (cfg & uiButtonCfg_class <>~ "button_type_secondary" <> "button_type_secondary") $
+    btnTextIcon (static @"img/receive.svg") "Receive" blank >> text "Receive"
+
+detailsButton :: StaticButtonConstraints t m => UiButtonCfg -> m (Event t ())
+detailsButton cfg =
+  uiButton (cfg & uiButtonCfg_class <>~ "button_type_secondary" <> "button_type_secondary") $
+    btnIcon (static @"img/ellipsis.svg") "Details" blank
+
+sendButton :: StaticButtonConstraints t m => UiButtonCfg -> m (Event t ())
+sendButton cfg =
+  uiButton (cfg & uiButtonCfg_class <>~ "button_type_secondary" <> "button_type_secondary") $
+    btnTextIcon (static @"img/send.svg") "Send" blank >> text "Send"
 
 -- | Create HTML element attributes from config.
 toBtnAttrs :: UiButtonCfg -> Map Text Text

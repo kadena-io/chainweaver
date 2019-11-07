@@ -1,0 +1,44 @@
+/*********************************************************************************
+   Ensure classes and structure are created in accordance with the BEM methodology.
+   For more info: https://en.bem.info/methodology/quick-start/
+
+*********************************************************************************/
+
+@import '../include/defs';
+
+.wallet__keys-list {
+  margin-top: 20px;
+  margin-left: 22px;
+}
+
+.wallet__table-row {
+  border-style: $std-border-style;
+  border-color: $std-border-color;
+  border-width: $std-border-width;
+}
+
+.wallet__table-heading {
+  @extend .table__heading;
+  padding-left: $medium-padding;
+  padding-right: $medium-padding;
+}
+
+.wallet__table-cell {
+  padding: $medium-padding;
+  text-overflow: ellipsis;
+  overflow: hidden;
+}
+
+.wallet__table-buttons {
+  display:flex;
+  align-items: center;
+}
+
+.wallet__table-button {
+  color: $tertiary-color;
+  padding: 0 15px;
+  margin-right: $medium-margin;
+
+  text-overflow: ellipsis;
+  overflow: hidden;
+}
