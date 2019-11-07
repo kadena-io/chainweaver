@@ -1,6 +1,7 @@
 {-# LANGUAGE RecursiveDo #-}
 {-# LANGUAGE ConstraintKinds #-}
 {-# LANGUAGE TupleSections #-}
+{-# LANGUAGE DataKinds #-}
 
 module Frontend.UI.Dialogs.AddAccount
   ( uiAddWalletOnlyAccountDialogButton
@@ -20,6 +21,8 @@ import           Frontend.UI.Modal
 import           Frontend.UI.Modal.Impl (ModalIde, ModalImpl)
 import           Frontend.UI.Widgets
 import           Frontend.Foundation
+
+import Obelisk.Generated.Static
 
 type HasAddAccountModelCfg model mConf key t =
   ( Monoid mConf, Flattenable mConf t
@@ -111,8 +114,17 @@ uiWalletOnlyAccountCreated
   -> Workflow t m (Text, (mConf, Event t ()))
 uiWalletOnlyAccountCreated newConf onClose newAccount = Workflow $ do
   _ <- modalMain $ divClass "segment modal__main wallet_only__account-created-modal" $ do
-    elClass "h2" "heading heading_type_h2" $
-      text "[WALLET IMAGE PLACEHOLDER]"
+    elClass "h2" "heading heading_type_h2" $ do
+      elAttr "img" (
+        "src" =: static @"img/Wallet_Graphic_1.png" <>
+        "class" =: "wallet_only__account-created-splash-bg wallet_only__account-created-done-splash-bg"
+        ) blank
+
+      elAttr "img" (
+        "src" =: static @"img/Wallet_Icon_Highlighted_Blue.png" <>
+        "class" =: "wallet_only__account-created-wallet-blue-icon"
+        ) blank
+
     divClass "wallet-only__account-created-details" $ do
       divClass "wallet-only__account-heading" $ text "Account Created:"
       divClass "wallet-only__account-name" $ text (unAccountName newAccount)
