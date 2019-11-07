@@ -13,6 +13,9 @@ library
                , obelisk-oauth-common
                , obelisk-executable-config-lookup
                , obelisk-route
+               , data-default
+               , Decimal
+               , kadena-signing-api
                , text
                , lens
                , prettyprinter
