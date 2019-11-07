@@ -723,16 +723,7 @@ performLocalReadCustom networkL unwrapUsr onReqs = do
   time <- getCreationTime
   let
     unwrap = map (networkRequest_endpoint .~ Endpoint_Local) . unwrapUsr
-    fakeNetwork = networkL
-      { _network_meta = pure $ PublicMeta
-          { _pmChainId = "1"
-          , _pmSender  = "someSender"
-          , _pmGasLimit = GasLimit 100000
-          , _pmGasPrice = GasPrice 1.0
-          , _pmTTL = TTLSeconds (8 * 60 * 60) -- 8 hours
-          , _pmCreationTime = time
-          }
-      }
+    fakeNetwork = networkL & network_meta . mapped . Pact.pmCreationTime .~ time
   performNetworkRequestCustom fakeNetwork unwrap onReqs
 
 

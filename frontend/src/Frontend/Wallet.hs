@@ -22,7 +22,7 @@ module Frontend.Wallet
   , IsWalletCfg
   , Wallet (..)
   , HasWallet (..)
-  , AccountName (unAccountName)
+  , AccountName (..)
   , mkAccountName
   , AccountGuard (..)
   , pactGuardTypeText

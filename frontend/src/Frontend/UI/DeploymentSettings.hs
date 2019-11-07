@@ -43,7 +43,7 @@ module Frontend.UI.DeploymentSettings
   , Identity (runIdentity)
   ) where
 
-import Control.Applicative (liftA2, liftA3)
+import Control.Applicative (liftA3)
 import Control.Arrow (first, (&&&))
 import Control.Error (fmapL, hoistMaybe, headMay)
 import Control.Error.Util (hush)
@@ -75,8 +75,11 @@ import qualified Data.IntMap as IM
 import qualified Data.Map as Map
 import qualified Data.Set as Set
 import qualified Data.Text as T
+import qualified Pact.Types.Capability as PC
 import qualified Pact.Types.ChainId as Pact
 import qualified Pact.Types.Command as Pact
+import qualified Pact.Types.Info as PI
+import qualified Pact.Types.Names as PN
 
 import Common.Network
 import Frontend.Foundation
@@ -90,10 +93,6 @@ import Frontend.UI.Widgets
 import Frontend.UI.Widgets.Helpers (preventScrollWheelAndUpDownArrow)
 import Frontend.Wallet
 import qualified Frontend.AppCfg as AppCfg
-
-import qualified Pact.Types.Capability as PC
-import qualified Pact.Types.Names as PN
-import qualified Pact.Types.Info as PI
 
 -- | Config for the deployment settings widget.
 data DeploymentSettingsConfig t m model a = DeploymentSettingsConfig
@@ -164,6 +163,10 @@ data DeploymentSettingsResult = DeploymentSettingsResult
   , _deploymentSettingsResult_chainId :: ChainId
   , _deploymentSettingsResult_code :: Text
   , _deploymentSettingsResult_command :: Pact.Command Text
+  , _deploymentSettingsResult_wrappedCommand :: Either String (Pact.Command Text)
+  -- ^ This differs from 'command' because this wraps the code with balance
+  -- checks for a /local request. This should never be actually deployed.
+  , _deploymentSettingsResult_accountsToTrack :: Set AccountName
   }
 
 -- | Show settings related to deployments to the user.
@@ -216,7 +219,8 @@ uiDeploymentSettings m settings = mdo
             sender <- MaybeT mSender
             chainId <- MaybeT cChainId
             caps <- lift capabilities
-            let signing = Set.mapMonotonic unAccountName . Set.insert sender $ Map.keysSet caps
+            let accs = Set.insert sender $ Map.keysSet caps
+                signing = Set.mapMonotonic unAccountName accs
             jsonData' <- lift $ either (const mempty) id <$> m ^. jsonData . jsonData_data
             ttl' <- lift ttl
             limit <- lift gasLimit
@@ -240,11 +244,19 @@ uiDeploymentSettings m settings = mdo
                 networkId publicMeta signingPairs
                 (_deploymentSettingsConfig_extraSigners settings)
                 code' jsonData' pkCaps
+              wrappedCmd <- for (wrapWithBalanceChecks accs code') $ \wrappedCode -> do
+                buildCmd
+                  (_deploymentSettingsConfig_nonce settings)
+                  networkId publicMeta signingPairs
+                  (_deploymentSettingsConfig_extraSigners settings)
+                  wrappedCode jsonData' pkCaps
               pure $ DeploymentSettingsResult
                 { _deploymentSettingsResult_gasPrice = _pmGasPrice publicMeta
                 , _deploymentSettingsResult_signingKeys = signingPairs
                 , _deploymentSettingsResult_sender = sender
                 , _deploymentSettingsResult_chainId = chainId
+                , _deploymentSettingsResult_wrappedCommand = wrappedCmd
+                , _deploymentSettingsResult_accountsToTrack = accs
                 , _deploymentSettingsResult_command = cmd
                 , _deploymentSettingsResult_code = code'
                 }
