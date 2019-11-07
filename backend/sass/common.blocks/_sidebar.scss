@@ -31,6 +31,9 @@
     margin: 0 auto;
     width: 1.2rem;
   }
-  .normal { display: block; }
+  .normal {
+    display: block;
+    opacity: 0.5;
+  }
   .highlighted { display: none; }
 }
