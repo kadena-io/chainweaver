@@ -181,6 +181,25 @@
     }
   }
 }
+
+.account-details__txn-history-table {
+  width: 100%;
+}
+
+.account-details__txn-history-table-heading {
+  width: 33%;
+}
+
+.account-details__txn-history-cell-amount {
+  .amount-kda-label {
+    float: left;
+  }
+  .amount-amount {
+    float: right;
+    margin-right: 1rem;
+  }
+}
+
 .account-details__remove-account-btn {
   float: left;
 }

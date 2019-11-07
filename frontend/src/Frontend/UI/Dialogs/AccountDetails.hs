@@ -7,6 +7,8 @@ module Frontend.UI.Dialogs.AccountDetails
   ) where
 ------------------------------------------------------------------------------
 import           Control.Lens
+import           Control.Monad (void)
+import           Data.Text (Text)
 import qualified Data.Text as T
 import           Reflex
 import           Reflex.Dom
@@ -29,7 +31,8 @@ type HasUiAccountDetailsModelCfg mConf key t =
   )
 
 uiAccountDetails
-  :: ( HasUiAccountDetailsModel model key t
+  :: forall m t model mConf key.
+     ( HasUiAccountDetailsModel model key t
      , HasUiAccountDetailsModelCfg mConf key t
      , MonadWidget t m
      )
@@ -69,8 +72,42 @@ uiAccountDetails m a _onCloseExternal = do
 
       pure ()
 
+    let
+      txnHist :: Dynamic t [(Text, Double, Text)]
+      txnHist = constDyn
+          [ ("dateA", -10.22, "63b2eba4ed70d4612dc4" )
+          , ("dateB", 5.4333, "5ffc1f7fef7a44738625")
+          , ("dateC", -105.701, "c59d9840b0b6609083c7")
+          , ("dateD", 1023.00, "3hfc1f7fef7a44738636")
+          ]
+
     elClass "h2" "heading heading_type_h2" $ text "History"
-    divClass "group" $ text "Coming soon to a dialog near you!"
+    divClass "group" $ do
+      let tableAttrs = "class" =: "table account-details__txn-history-table"
+
+      void $ elAttr "table" tableAttrs $ do
+        el "thead" $ el "tr" $ do
+          let mkHeading = elClass "th" "table__heading account-details__txn-history-table-heading" . text
+          traverse_ mkHeading $
+            [ "Date"
+            , "Amount"
+            , "Transaction Hash"
+            ]
+
+        el "tbody" $ simpleList txnHist $ \txn -> do
+          elClass "tr" "table__row account-details__txn-history-row" $ do
+
+            let showAmount d = (if d > 0 then "+" else T.empty) <> tshow d
+                td = elClass "td" "tabel__cell_size_flex"
+
+                amountCell d = divClass "account-details__txn-history-cell-amount" $ do
+                  divClass "amount-kda-label" $ text "KDA"
+                  divClass "amount-amount" $ dynText (showAmount <$> d)
+
+            td $ dynText (view _1 <$> txn)
+            td $ amountCell (view _2 <$> txn)
+            td $ dynText (view _3 <$> txn)
+
 
   modalFooter $ do
     _ <- cancelButton (def & uiButtonCfg_class <>~ " account-details__remove-account-btn") "Remove Account"
