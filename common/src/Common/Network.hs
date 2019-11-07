@@ -261,7 +261,7 @@ parseAccountBalances = first ("parseAccountBalances: " <>) . \case
 -- | Get the last result, as we would under unwrapped deployment.
 parseResults :: PactValue -> Either Text PactValue
 parseResults = first ("parseResults: " <>) . \case
-  PList vec -> pure $ V.last vec
+  PList vec -> maybe (Left "No value returned") Right $ vec ^? _last
   v -> Left $ "Unexpected PactValue (expected list): " <> renderCompactText v
 
 -- | Wrap the code with a let binding to get the balances of the given accounts
