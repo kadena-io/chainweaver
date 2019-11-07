@@ -53,7 +53,6 @@ import           Frontend.Crypto.Ed25519     (keyToText)
 import           Frontend.Wallet
 import           Frontend.UI.Widgets
 import           Frontend.Foundation
-import           Frontend.UI.Dialogs.DeleteConfirmation (uiDeleteConfirmation)
 import           Frontend.UI.Dialogs.AccountDetails (uiAccountDetails)
 import           Frontend.UI.Modal
 import           Frontend.UI.Modal.Impl (ModalIde)
@@ -62,9 +61,10 @@ import           Frontend.Network
 
 -- | Constraints on the model config we have for implementing this widget.
 type HasUiWalletModelCfg mConf key m t =
-  ( Monoid mConf, Flattenable mConf t
-  , HasModalCfg mConf (Modal mConf m t) t
+  ( Monoid mConf
+  , Flattenable mConf t
   , IsWalletCfg mConf key t
+  , HasModalCfg mConf (Modal mConf m t) t
   , HasWalletCfg (ModalCfg mConf t) key t
   , Flattenable (ModalCfg mConf t) t
   , Monoid (ModalCfg mConf t)
@@ -73,7 +73,6 @@ type HasUiWalletModelCfg mConf key m t =
 -- | Possible actions from an account
 data AccountDialog
   = AccountDialog_Details
-  | AccountDialog_Delete
   deriving Eq
 
 -- | UI for managing the keys wallet.
@@ -124,7 +123,6 @@ uiAvailableKeys aWallet aNetwork = do
   divClass "wallet__keys-list" $ do
     uiKeyItems aWallet aNetwork
 
-
 -- | Render a list of key items.
 --
 -- Does not include the surrounding `div` tag. Use uiAvailableKeys for the
@@ -171,8 +169,8 @@ uiKeyItems aWallet aNetwork = do
     onAccountModal = switchDyn $ leftmost . Map.elems <$> events
 
     accModal (d,i,a) = Just $ case d of
-      AccountDialog_Delete -> uiDeleteConfirmation i (_account_name a)
-      AccountDialog_Details -> uiAccountDetails aNetwork a
+      -- AccountDialog_Delete -> uiDeleteConfirmation i (_account_name a)
+      AccountDialog_Details -> uiAccountDetails aNetwork i a
 
   pure $ mempty & modalCfg_setModal .~ (accModal <$> onAccountModal)
 
@@ -205,16 +203,10 @@ uiKeyItem i d = do
         void $ sendButton $ cfg & uiButtonCfg_disabled .~ True
         onDetails <- detailsButton cfg
 
-        onDel <- do
-          deleteButton $
-            def & uiButtonCfg_title .~ Just "Delete key permanently"
-                & uiButtonCfg_class %~ (<> "wallet__add-delete-button")
-
         let mkDialog dia onE = (\a -> (dia, i, a)) <$> current account <@ onE
 
         pure $ leftmost
-          [ mkDialog AccountDialog_Delete onDel
-          , mkDialog AccountDialog_Details onDetails
+          [ mkDialog AccountDialog_Details onDetails
           ]
 
 -- | Get the balance of an account from the network. 'Nothing' indicates _some_
