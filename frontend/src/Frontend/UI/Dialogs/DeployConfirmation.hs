@@ -47,12 +47,9 @@ import Frontend.UI.Modal
 import Frontend.UI.Widgets
 import Frontend.Wallet
 import Language.Javascript.JSaddle
-import Pact.Parse
-import Pact.Types.Gas
 import Pact.Types.Pretty
 import Reflex
 import Reflex.Dom
-import Reflex.Dom.Contrib.CssClass (renderClass)
 import Reflex.Extended (tagOnPostBuild)
 import Reflex.Network.Extended (Flattenable)
 import Reflex.Network.Extended (flatten)
@@ -196,28 +193,19 @@ fullDeployFlowWithSubmit dcfg model onPreviewConfirm runner _onClose = do
                 , _networkRequest_endpoint = Endpoint_Local
                 }
         responses <- performLocalRead (model ^. network) $ localReq <$ pb
-        (gas, (errors, resp)) <- fmap (fmap fanEither . splitE) $ performEvent $ ffor responses $ \case
-          [(_, Right (gas, pactValue))] -> fmap (gas,) $ case parseWrappedBalanceChecks pactValue of
+        (errors, resp) <- fmap fanEither $ performEvent $ ffor responses $ \case
+          [(_, Right (_gas, pactValue))] -> case parseWrappedBalanceChecks pactValue of
             Left e -> do
               liftIO $ T.putStrLn e
               pure $ Left "Error parsing the response"
             Right v -> pure $ Right v
-          [(_, Left e)] -> pure (Nothing, Left $ prettyPrintNetworkError e)
+          [(_, Left e)] -> pure $ Left $ prettyPrintNetworkError e
           n -> do
             liftIO $ T.putStrLn $ "Expected 1 response, but got " <> tshow (length n)
-            pure (Nothing, Left "Couldn't get a response from the node")
+            pure $ Left "Couldn't get a response from the node"
 
         divClass "title" $ text "Anticipated Transaction Impact"
         divClass "group segment" $ do
-          void $ flip mkLabeledClsInput "Total Gas Cost" $ \c -> do
-            let showGasPrice (GasPrice (ParsedDecimal i)) = tshow i
-                gasPrice = _deploymentSettingsResult_gasPrice result
-            void $ uiInputElement $ def
-              & initialAttributes .~ "disabled" =: "" <> "class" =: renderClass c
-              & inputElementConfig_initialValue .~ "Loading..."
-              & inputElementConfig_setValue .~ ffor gas (\case
-                  Just gasUnits -> showGasPrice (fromIntegral gasUnits * gasPrice) <> " KDA"
-                  Nothing -> "Error")
           let tableAttrs = "style" =: "table-layout: fixed; width: 100%" <> "class" =: "table"
           elAttr "table" tableAttrs $ do
             el "thead" $ el "tr" $ do
