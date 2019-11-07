@@ -101,6 +101,8 @@ newHead routeText = do
   meta ("name" =: "google" <> "content" =: "notranslate")
   meta ("http-equiv" =: "Content-Language" <> "content" =: "en_US")
   elAttr "link" ("href" =: routeText (BackendRoute_Css :/ ()) <> "rel" =: "stylesheet") blank
+  elAttr "style" ("type" =: "text/css") $ text haskellCss
+
   ss "https://fonts.googleapis.com/css?family=Roboto"
   ss "https://fonts.googleapis.com/css?family=Work+Sans"
   ss (static @"css/font-awesome.min.css")
@@ -117,3 +119,14 @@ newHead routeText = do
     js' url = elAttr' "script" ("type" =: "text/javascript" <> "src" =: url <> "charset" =: "utf-8") blank
     ss url = elAttr "link" ("href" =: url <> "rel" =: "stylesheet") blank
     meta attrs = elAttr "meta" attrs blank
+
+    -- Allows the use of `static` in CSS
+    haskellCss = T.unlines
+      [ alertImg ".icon_type_error"                $ static @"img/error.svg"
+      , alertImg ".icon_type_warning"              $ static @"img/warning.svg"
+      , alertImg "div.ace_gutter-cell.ace_error"   $ static @"img/error.svg"
+      , alertImg "div.ace_gutter-cell.ace_warning" $ static @"img/warning.svg"
+      ]
+      where
+        bgImg src = "background-image: url(" <> src <> "); background-position: left center"
+        alertImg sel src = sel <> " { " <> bgImg src <> " } ";
