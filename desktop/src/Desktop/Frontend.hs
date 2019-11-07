@@ -180,8 +180,7 @@ lockScreen xprv = setupDiv "fullscreen" $ divClass "wrapper" $ setupDiv "splash"
   elAttr "img" ("src" =: static @"img/Wallet_Graphic_1.png" <> "class" =: setupClass "splash-bg") blank
   kadenaWalletLogo
   setupDiv "splash-terms-buttons" $ form "" $ do
-    pass <- elClass "span" (setupClass "password-wrapper") $ do
-      uiInputElement $ def & initialAttributes .~ "type" =: "password" <> "placeholder" =: "Password" <> "class" =: setupClass "password"
+    pass <- uiPassword (setupClass "password-wrapper") (setupClass "password") "Password"
 
     e <- confirmButton (def & uiButtonCfg_type ?~ "submit") "Unlock"
     (_help, restore) <- setupDiv "button-horizontal-group" $ do

@@ -510,15 +510,10 @@ setPassword
   => Dynamic t Crypto.Seed
   -> m (Event t (Maybe Crypto.XPrv))
 setPassword dSeed = form "" $ do
-  let uiPassword ph = elClass "span" (setupClass "password-wrapper") $
-        uiInputElement $ def & initialAttributes .~
-        ( "type" =: "password" <>
-          "placeholder" =: ph <>
-          "class" =: setupClass "password"
-        )
+  let uiPassword' = uiPassword (setupClass "password-wrapper") (setupClass "password")
 
-  p1elem <- uiPassword $ "Enter password (" <> tshow minPasswordLength <> " character min.)"
-  p2elem <- uiPassword "Confirm password"
+  p1elem <- uiPassword' $ "Enter password (" <> tshow minPasswordLength <> " character min.)"
+  p2elem <- uiPassword' "Confirm password"
 
   p1Dirty <- holdUniqDyn =<< holdDyn False (True <$ _inputElement_input p1elem)
   p2Dirty <- holdUniqDyn =<< holdDyn False (True <$ _inputElement_input p2elem)
