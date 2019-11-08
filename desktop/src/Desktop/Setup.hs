@@ -424,7 +424,7 @@ doneScreen passwd = Workflow $ do
   el "h1" $ text "Wallet Created"
 
   eContinue <- setupDiv "continue-button" $
-    confirmButton def "Complete"
+    confirmButton def "Done"
 
   pure ( (WalletScreen_Done, passwd <$ eContinue)
        , never

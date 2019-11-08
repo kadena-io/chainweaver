@@ -168,6 +168,11 @@
     font-size: 14px;
     color: #2d2d2f;
   }
+  .wallet__key  {
+    text-overflow: ellipsis;
+    overflow: hidden;
+    margin: 0 1rem 0 0;
+  }
 }
 
 .account-details__copy-btn-wrapper {
