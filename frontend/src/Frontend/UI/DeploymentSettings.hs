@@ -457,7 +457,7 @@ uiCfg
 uiCfg mCode m wChainId mTTL mGasLimit mUserSection = do
   -- General deployment configuration
   let mkGeneralSettings = do
-        _ <- traverse uiDeployCode mCode
+        traverse_ uiDeployCode mCode
         cId <- uiDeployDestination m wChainId
 
         -- Customisable user provided UI section

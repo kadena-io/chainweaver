@@ -15,7 +15,6 @@ import Data.Either (isLeft)
 import Data.Text (Text)
 
 import Data.Aeson (Object, Value (String,Array))
-import qualified Data.Aeson.Lens as AL
 import qualified Data.HashMap.Strict as HM
 import qualified Data.Vector as V
 
@@ -105,7 +104,9 @@ uiAddVanityAccountSettings ideL = Workflow $ do
         dAccNameDirty <- holdUniqDyn =<< holdDyn False (True <$ updated dEitherAccName)
 
         divClass "vanity-account-create__account-name-error" $
-          dyn_ $ ffor2 dAccNameDirty dEitherAccName $ \d e -> if d then either text (const blank) e else blank
+          dyn_ $ ffor2 dAccNameDirty dEitherAccName $ curry $ \case
+            (True, Left e) -> text e
+            _ -> blank
 
         pure $ hush <$> dEitherAccName
 
@@ -113,7 +114,7 @@ uiAddVanityAccountSettings ideL = Workflow $ do
         (value <$> inputElem "Notes" "vanity-account-create__notes")
 
   eKeyPair <- performEvent $ cryptoGenKey <$> current dNextKey <@ pb
-  dKeyPair <- holdDyn Nothing (Just . (\(pr,pu) -> KeyPair pu (Just pr)) <$> eKeyPair)
+  dKeyPair <- holdDyn Nothing $ ffor eKeyPair $ \(pr,pu) -> Just $ KeyPair pu $ Just pr
 
   rec
     (curSelection, eNewAccount, _) <- buildDeployTabs Nothing controls
@@ -126,8 +127,8 @@ uiAddVanityAccountSettings ideL = Workflow $ do
       (mSender, capabilities) <- tabPane mempty curSelection DeploymentSettingsView_Keys $
         uiSenderCapabilities ideL cChainId Nothing $ uiSenderDropdown def ideL cChainId
 
-      let dAccountName = join <$> sequenceA (fst <$> mAccountDetails)
-          dNotes = sequenceA (snd <$> mAccountDetails)
+      let dAccountName = join <$> traverse fst mAccountDetails
+          dNotes = traverse snd mAccountDetails
           dPayload = fmap mkPubkeyPactData <$> dKeyPair
           code = mkPactCode <$> dAccountName
 
