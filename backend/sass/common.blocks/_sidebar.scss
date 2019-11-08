@@ -4,13 +4,13 @@
   flex-shrink: 0;
   display: flex;
   flex-direction: column;
-  width: 5rem;
+  width: $corner-logo-width;
   background: #454444;
 }
 
 .sidebar__logo {
   background: #2D2D2F;
-  height: 5rem;
+  height: $corner-logo-height;
   margin-bottom: 1.5rem;
 }
 
