@@ -22,9 +22,18 @@
 module Frontend.UI.Dialogs.DeployConfirmation
   ( DeployConfirmationConfig (..)
   , HasDeployConfirmationConfig (..)
+
+  , CanSubmitTransaction
+  , TransactionSubmitFeedback (..)
+  , Status (..)
+  , statusText
+
+  , submitTransactionWithFeedback
+
   , uiDeployConfirmation
   , fullDeployFlow
   , fullDeployFlowWithSubmit
+  , deploySubmit
   ) where
 
 import Common.Foundation
@@ -32,6 +41,8 @@ import Control.Applicative (liftA2)
 import Control.Concurrent (newEmptyMVar, tryTakeMVar, putMVar, killThread, forkIO, ThreadId)
 import Control.Lens
 import Control.Monad (void)
+import Control.Monad.Ref (MonadRef, Ref)
+import GHC.IORef (IORef)
 import Data.Default (Default (..))
 import Data.Either (isLeft, rights)
 import Data.List.NonEmpty (NonEmpty(..))
@@ -50,8 +61,11 @@ import Frontend.UI.Widgets
 import Frontend.Wallet
 import Language.Javascript.JSaddle
 import Pact.Parse
+import Pact.Types.PactError (PactError)
+import Pact.Types.PactValue (PactValue)
 import Pact.Types.Gas
 import Reflex
+import Reflex.Host.Class (MonadReflexCreateTrigger)
 import Reflex.Dom
 import Reflex.Dom.Contrib.CssClass (renderClass)
 import Reflex.Extended (tagOnPostBuild)
@@ -90,6 +104,27 @@ makeClassy ''DeployConfirmationConfig
 instance Reflex t => Default (DeployConfirmationConfig t) where
   def = DeployConfirmationConfig "Transaction Details" "Transaction Preview" "Create Transaction" id
 
+type CanSubmitTransaction t m =
+  ( DomBuilder t m
+  , MonadJSM (Performable m)
+  , MonadJSM m
+  , MonadRef (Performable m)
+  , MonadRef m
+  , HasDocument m
+  , HasJSContext (Performable m)
+  , HasJSContext m
+  , PostBuild t m
+  , TriggerEvent t m
+  , MonadReflexCreateTrigger t m
+  , PerformEvent t m
+  , MonadHold t m
+  , MonadFix m
+  , MonadSample t (Performable m)
+  , Ref (Performable m) ~ IORef
+  , DomBuilderSpace m ~ GhcjsDomSpace
+  , Control.Monad.Ref.Ref m ~ IORef
+  )
+
 -- We may not need the Status part of the workflow, but we want to be able to reuse as
 -- much of this as we can so we have this function type that will give us the event of the
 -- next stage or the completion of the workflow.
@@ -119,6 +154,7 @@ uiDeployConfirmation code model = fullDeployFlow def model $ do
   (settingsCfg, result, _) <- uiDeploymentSettings model $ DeploymentSettingsConfig
     { _deploymentSettingsConfig_chainId = userChainIdSelect
     , _deploymentSettingsConfig_userTab = Nothing
+    , _deploymentSettingsConfig_userSection = Nothing
     , _deploymentSettingsConfig_code = pure code
     , _deploymentSettingsConfig_sender = uiSenderDropdown def
     , _deploymentSettingsConfig_data = Nothing
@@ -270,101 +306,16 @@ deploySubmit
   -> [Either a NodeInfo]
   -> Workflow t m (Text, (Event t (), modelCfg))
 deploySubmit chain result nodeInfos = Workflow $ do
-      let cmd = _deploymentSettingsResult_command result
-      elClass "div" "modal__main transaction_details" $ do
-        transactionHashSection cmd
+  let cmd = _deploymentSettingsResult_command result
 
-        -- Shove the node infos into servant client envs
-        clientEnvs <- fmap catMaybes $ for (rights nodeInfos) $ \nodeInfo -> do
-          getChainRefBaseUrl (ChainRef Nothing chain) (Just nodeInfo) >>= \case
-            Left e -> do
-              liftIO $ putStrLn $ T.unpack $ "deploySubmit: Couldn't get chainUrl: " <> e
-              pure Nothing
-            Right chainUrl -> case S.parseBaseUrl $ URI.renderStr chainUrl of
-              Nothing -> do
-                liftIO $ putStrLn $ "deploySubmit: Failed to parse chainUrl: " <> URI.renderStr chainUrl
-                pure Nothing
-              Just baseUrl -> pure $ Just $ S.mkClientEnv baseUrl
-        let doReqFailover [] _ = pure Nothing
-            doReqFailover (c:cs) request = S.runClientM request c >>= \case
-              Left e -> do
-                liftIO $ putStrLn $ "doReqFailover: " <> show e
-                doReqFailover cs request
-              Right r -> pure $ Just r
-            newTriggerHold a = do
-              (e, t) <- newTriggerEvent
-              s <- holdDyn a e
-              pure (s, liftIO . t)
-        -- These maintain the UI state for each step and are updated as responses come in
-        (sendStatus, send) <- newTriggerHold Status_Waiting
-        (listenStatus, listen) <- newTriggerHold Status_Waiting
-        --(confirmedStatus, confirm) <- newTriggerHold Status_Waiting
-        (message, setMessage) <- newTriggerHold Nothing
+  _ <- elClass "div" "modal__main transaction_details" $
+    submitTransactionWithFeedback cmd chain nodeInfos
 
-        -- Only maintain one thread for getting the status
-        thread <- liftIO newEmptyMVar
-        let forkListen requestKey = do
-              -- Kill the currently running thread and start a new thread
-              liftIO (tryTakeMVar thread) >>= \case
-                Nothing -> liftIO . putMVar thread =<< forkJSM' (getStatus requestKey)
-                Just tid -> do
-                  liftIO $ killThread tid
-                  forkListen requestKey
-            getStatus requestKey = do
-              listen Status_Working
-              --confirm Status_Waiting
-              -- Wait for the result
-              doReqFailover clientEnvs (Api.listen Api.apiV1Client $ Api.ListenerRequest requestKey) >>= \case
-                Nothing -> listen Status_Failed
-                Just (Api.ListenTimeout _i) -> listen Status_Failed
-                Just (Api.ListenResponse commandResult) -> case (Pact._crTxId commandResult, Pact._crResult commandResult) of
-                  -- We should always have a txId when we have a result
-                  (Just _txId, Pact.PactResult (Right a)) -> do
-                    listen Status_Done
-                    setMessage $ Just $ Right a
-                    -- TODO wait for confirmation...
-                  (_, Pact.PactResult (Left err)) -> do
-                    listen Status_Failed
-                    setMessage $ Just $ Left err
-                  -- This case shouldn't happen
-                  _ -> listen Status_Failed
-
-        -- Send the transaction
-        pb <- getPostBuild
-        onRequestKey <- performEventAsync $ ffor pb $ \() cb -> liftJSM $ do
-          send Status_Working
-          doReqFailover clientEnvs (Api.send Api.apiV1Client $ Api.SubmitBatch $ pure cmd) >>= \case
-            Nothing -> send Status_Failed
-            Just (Api.RequestKeys (requestKey :| _)) -> do
-              send Status_Done
-              liftIO $ cb requestKey
-        performEvent_ $ liftJSM . forkListen <$> onRequestKey
-        requestKey <- holdDyn Nothing $ Just <$> onRequestKey
-
-        divClass "title" $ text "Transaction Status"
-        divClass "group" $ do
-          elClass "ol" "transaction_status" $ do
-            let item ds = elDynAttr "li" (ffor ds $ \s -> "class" =: statusClass s)
-            item sendStatus $ text "Transaction sent to mempool"
-            item listenStatus $ text "Transaction successfully mined in block"
-            --item confirmedStatus $ text "Transaction confirmed (Depth: >2 blocks)"
-          rec
-            reloading <- holdDyn False $ leftmost [False <$ canReload, True <$ reload]
-            reload <- confirmButton (def & uiButtonCfg_class .~ pure "extra-margin" & uiButtonCfg_disabled .~ reloading) "Reload Status"
-            canReload <- delay 2 reload
-          throttledReload <- throttle 2 reload
-          performEvent_ $ attachWithMaybe (\k _ -> liftJSM . forkListen <$> k) (current requestKey) throttledReload
-        divClass "title" $ text "Transaction Result"
-        divClass "group" $ el "pre" $ do
-          maybeDyn message >>= \md -> dyn_ $ ffor md $ \case
-            Nothing -> text "Waiting for response..."
-            Just a -> dynText $ prettyPrintNetworkErrorResult . bimap NetworkError_CommandFailure (Nothing,) <$> a
-
-      done <- modalFooter $ uiButtonDyn (def & uiButtonCfg_class .~ "button_type_confirm") $ text "Done"
-      pure
-        ( ("Transaction Submit", (done, mempty))
-        , never
-        )
+  done <- modalFooter $ uiButtonDyn (def & uiButtonCfg_class .~ "button_type_confirm") $ text "Done"
+  pure
+    ( ("Transaction Submit", (done, mempty))
+    , never
+    )
 
 -- | Fork a thread. Here because upstream 'forkJSM' doesn't give us the thread ID
 forkJSM' :: JSM () -> JSM ThreadId
@@ -375,9 +326,10 @@ data Status
   | Status_Working
   | Status_Failed
   | Status_Done
+  deriving Eq
 
-statusClass :: Status -> Text
-statusClass = \case
+statusText :: Status -> Text
+statusText = \case
   Status_Waiting -> "waiting"
   Status_Working -> "working"
   Status_Failed -> "failed"
@@ -407,3 +359,105 @@ trackBalancesFromPostBuild model chain accounts fire = getPostBuild >>= \pb -> s
   updatedBalance <- holdDyn Nothing . fmap Just =<< getBalance model chain (name <$ fire)
   pure (publicKeys, initialBalance, updatedBalance)
 
+data TransactionSubmitFeedback t = TransactionSubmitFeedback
+  { _transactionSubmitFeedback_sendStatus :: Dynamic t Status
+  , _transactionSubmitFeedback_listenStatus :: Dynamic t Status
+  , _transactionSubmitFeedback_message :: Dynamic t (Maybe (Either PactError PactValue))
+  }
+
+submitTransactionWithFeedback
+  :: CanSubmitTransaction t m
+  => Pact.Command Text
+  -> ChainId
+  -> [Either a NodeInfo]
+  -> m (TransactionSubmitFeedback t)
+submitTransactionWithFeedback cmd chain nodeInfos = do
+  transactionHashSection cmd
+  -- Shove the node infos into servant client envs
+  clientEnvs <- fmap catMaybes $ for (rights nodeInfos) $ \nodeInfo -> do
+    getChainRefBaseUrl (ChainRef Nothing chain) (Just nodeInfo) >>= \case
+      Left e -> do
+        liftIO $ putStrLn $ T.unpack $ "deploySubmit: Couldn't get chainUrl: " <> e
+        pure Nothing
+      Right chainUrl -> case S.parseBaseUrl $ URI.renderStr chainUrl of
+        Nothing -> do
+          liftIO $ putStrLn $ "deploySubmit: Failed to parse chainUrl: " <> URI.renderStr chainUrl
+          pure Nothing
+        Just baseUrl -> pure $ Just $ S.mkClientEnv baseUrl
+  let doReqFailover [] _ = pure Nothing
+      doReqFailover (c:cs) request = S.runClientM request c >>= \case
+        Left e -> do
+          liftIO $ putStrLn $ "doReqFailover: " <> show e
+          doReqFailover cs request
+        Right r -> pure $ Just r
+      newTriggerHold a = do
+        (e, t) <- newTriggerEvent
+        s <- holdDyn a e
+        pure (s, liftIO . t)
+  -- These maintain the UI state for each step and are updated as responses come in
+  (sendStatus, send) <- newTriggerHold Status_Waiting
+  (listenStatus, listen) <- newTriggerHold Status_Waiting
+  --(confirmedStatus, confirm) <- newTriggerHold Status_Waiting
+  (message, setMessage) <- newTriggerHold Nothing
+
+  -- Only maintain one thread for getting the status
+  thread <- liftIO newEmptyMVar
+  let forkListen requestKey = do
+        -- Kill the currently running thread and start a new thread
+        liftIO (tryTakeMVar thread) >>= \case
+          Nothing -> liftIO . putMVar thread =<< forkJSM' (getStatus requestKey)
+          Just tid -> do
+            liftIO $ killThread tid
+            forkListen requestKey
+
+      getStatus requestKey = do
+        listen Status_Working
+        --confirm Status_Waiting
+        -- Wait for the result
+        doReqFailover clientEnvs (Api.listen Api.apiV1Client $ Api.ListenerRequest requestKey) >>= \case
+          Nothing -> listen Status_Failed
+          Just (Api.ListenTimeout _i) -> listen Status_Failed
+          Just (Api.ListenResponse commandResult) -> case (Pact._crTxId commandResult, Pact._crResult commandResult) of
+            -- We should always have a txId when we have a result
+            (Just _txId, Pact.PactResult (Right a)) -> do
+              listen Status_Done
+              setMessage $ Just $ Right a
+              -- TODO wait for confirmation...
+            (_, Pact.PactResult (Left err)) -> do
+              listen Status_Failed
+              setMessage $ Just $ Left err
+            -- This case shouldn't happen
+            _ -> listen Status_Failed
+
+  -- Send the transaction
+  pb <- getPostBuild
+  onRequestKey <- performEventAsync $ ffor pb $ \() cb -> liftJSM $ do
+    send Status_Working
+    doReqFailover clientEnvs (Api.send Api.apiV1Client $ Api.SubmitBatch $ pure cmd) >>= \case
+      Nothing -> send Status_Failed
+      Just (Api.RequestKeys (requestKey :| _)) -> do
+        send Status_Done
+        liftIO $ cb requestKey
+  performEvent_ $ liftJSM . forkListen <$> onRequestKey
+  requestKey <- holdDyn Nothing $ Just <$> onRequestKey
+
+  divClass "title" $ text "Transaction Status"
+  divClass "group" $ do
+    elClass "ol" "transaction_status" $ do
+      let item ds = elDynAttr "li" (ffor ds $ \s -> "class" =: statusText s)
+      item sendStatus $ text "Transaction sent to mempool"
+      item listenStatus $ text "Transaction successfully mined in block"
+      --item confirmedStatus $ text "Transaction confirmed (Depth: >2 blocks)"
+    rec
+      reloading <- holdDyn False $ leftmost [False <$ canReload, True <$ reload]
+      reload <- confirmButton (def & uiButtonCfg_class .~ pure "extra-margin" & uiButtonCfg_disabled .~ reloading) "Reload Status"
+      canReload <- delay 2 reload
+    throttledReload <- throttle 2 reload
+    performEvent_ $ attachWithMaybe (\k _ -> liftJSM . forkListen <$> k) (current requestKey) throttledReload
+  divClass "title" $ text "Transaction Result"
+  divClass "group" $ el "pre" $ do
+    maybeDyn message >>= \md -> dyn_ $ ffor md $ \case
+      Nothing -> text "Waiting for response..."
+      Just a -> dynText $ prettyPrintNetworkErrorResult . bimap NetworkError_CommandFailure (Nothing,) <$> a
+
+  pure $ TransactionSubmitFeedback sendStatus listenStatus message

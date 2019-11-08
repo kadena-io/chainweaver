@@ -26,15 +26,37 @@ module Frontend.UI.DeploymentSettings
   ( -- * Settings
     DeploymentSettingsConfig (..)
   , DeploymentSettingsResult (..)
+
+    -- * Helpers
+  , buildDeploymentSettingsResult
+
     -- * Values for _deploymentSettingsConfig_chainId:
   , predefinedChainIdSelect
   , predefinedChainIdDisplayed
   , userChainIdSelect
+  , userChainIdSelectWithPreselect
   , uiChainSelection
+
+    -- * Tab Helpers
+  , DeploymentSettingsView (..)
+  , showSettingsTabName
+  , prevView
+  , nextView
+  , buildDeployTabFooterControls
+  , buildDeployTabs
+  , defaulTabViewProgressButtonLabel
+
     -- * Widgets
   , uiDeploymentSettings
+  , uiDeployDestination
+  , uiDeployMetaData
+  , uiDeployCode
+  , uiCfg
+  , uiSenderCapabilities
+
   , uiSenderFixed
   , uiSenderDropdown
+
   , transactionInputSection
   , transactionHashSection
   , transactionDisplayNetwork
@@ -70,6 +92,7 @@ import Reflex.Dom.Contrib.CssClass (elKlass)
 import Safe (readMay)
 import qualified Data.Aeson as Aeson
 import qualified Data.IntMap as IM
+import qualified Data.HashMap.Strict as HM
 import qualified Data.Map as Map
 import qualified Data.Set as Set
 import qualified Data.Text as T
@@ -97,6 +120,9 @@ import qualified Pact.Types.Info as PI
 data DeploymentSettingsConfig t m model a = DeploymentSettingsConfig
   { _deploymentSettingsConfig_userTab     :: Maybe (Text, m a)
     -- ^ Some optional extra tab. fst is the tab's name, snd is its content.
+  , _deploymentSettingsConfig_userSection :: Maybe (Text, m a)
+    -- ^ Some optional extra input, placed between chainId selection and transaction
+    -- settings. fst is the tab's name, snd is its content.
   , _deploymentSettingsConfig_chainId     :: model -> m (Dynamic t (Maybe Pact.ChainId))
     -- ^ ChainId selection widget.
     --   You can pick (predefinedChainIdSelect someId) - for not showing a
@@ -165,6 +191,128 @@ data DeploymentSettingsResult key = DeploymentSettingsResult
   , _deploymentSettingsResult_command :: Pact.Command Text
   }
 
+buildDeploymentSettingsResult
+  :: ( HasNetwork model t
+     , HasJsonData model t
+     , HasWallet model key t
+     , Monad (Dynamic t)
+     , Monad (Performable m)
+     , MonadJSM (Performable m)
+     , HasCrypto key (Performable m)
+     )
+  => model
+  -> Dynamic t (Maybe AccountName)
+  -> Dynamic t (Maybe ChainId)
+  -> Dynamic t (Maybe (Map AccountName [SigCapability]))
+  -> Dynamic t TTLSeconds
+  -> Dynamic t GasLimit
+  -> Dynamic t Text
+  -> DeploymentSettingsConfig t m model a
+  -> Dynamic t (Maybe (Performable m (DeploymentSettingsResult key)))
+buildDeploymentSettingsResult m mSender cChainId capabilities ttl gasLimit code settings = runMaybeT $ do
+  selNodes <- lift $ m ^. network_selectedNodes
+  networkId <- hoistMaybe $ hush . mkNetworkName . nodeVersion =<< headMay (rights selNodes)
+  sender <- MaybeT mSender
+  chainId <- MaybeT cChainId
+  caps <- MaybeT capabilities
+  let signing = Set.insert sender $ Map.keysSet caps
+  deploySettingsJsonData <- hoistMaybe $ _deploymentSettingsConfig_data settings
+  jsonData' <- lift $ either (const mempty) id <$> m ^. jsonData . jsonData_data
+  ttl' <- lift ttl
+  limit <- lift gasLimit
+  lastPublicMeta <- lift $ m ^. network_meta
+  let publicMeta = lastPublicMeta
+        { _pmChainId = chainId
+        , _pmGasLimit = limit
+        , _pmSender = unAccountName sender
+        , _pmTTL = ttl'
+        }
+  code' <- lift code
+  allAccounts <- lift $ m ^. wallet_accounts
+  let accountsToKey = flip IM.foldMapWithKey allAccounts $ \_ -> \case
+        SomeAccount_Account a -> Map.singleton (_account_name a) (_account_key a)
+        SomeAccount_Deleted -> Map.empty
+      toPublicKey (name, cs) = do
+        KeyPair pk _ <- Map.lookup name accountsToKey
+        pure (pk, cs)
+      pkCaps = Map.fromList $ fmapMaybe toPublicKey $ Map.toList caps
+  pure $ do
+    let signingPairs = getSigningPairs signing allAccounts
+    cmd <- buildCmd
+      (_deploymentSettingsConfig_nonce settings)
+      networkId publicMeta signingPairs
+      (_deploymentSettingsConfig_extraSigners settings)
+      code' (HM.union jsonData' deploySettingsJsonData) pkCaps
+    pure $ DeploymentSettingsResult
+      { _deploymentSettingsResult_gasPrice = _pmGasPrice publicMeta
+      , _deploymentSettingsResult_signingKeys = signingPairs
+      , _deploymentSettingsResult_signingAccounts = signing
+      , _deploymentSettingsResult_sender = sender
+      , _deploymentSettingsResult_chainId = chainId
+      , _deploymentSettingsResult_command = cmd
+      , _deploymentSettingsResult_code = code'
+      }
+
+buildDeployTabs
+  :: ( DomBuilder t m
+     , PostBuild t m
+     , MonadHold t m
+     , MonadFix m
+     )
+  => Maybe DeploymentSettingsView
+  -> Event t (DeploymentSettingsView -> Maybe DeploymentSettingsView)
+  -> m ( Dynamic t DeploymentSettingsView
+       , Event t ()
+       , Event t DeploymentSettingsView
+       )
+buildDeployTabs mUserTabName controls = mdo
+  let initTab = fromMaybe DeploymentSettingsView_Cfg mUserTabName
+      f thisView g = case g thisView of
+        Just view' -> (Just view', Nothing)
+        Nothing -> (Nothing, Just ())
+  (curSelection, done) <- mapAccumMaybeDyn f initTab $ leftmost
+    [ const . Just <$> onTabClick
+    , controls
+    ]
+  (TabBar onTabClick) <- makeTabBar $ TabBarCfg
+    { _tabBarCfg_tabs = availableTabs
+    , _tabBarCfg_mkLabel = const $ text . showSettingsTabName
+    , _tabBarCfg_selectedTab = Just <$> curSelection
+    , _tabBarCfg_classes = mempty
+    , _tabBarCfg_type = TabBarType_Secondary
+    }
+  pure (curSelection, done, onTabClick)
+  where
+    userTabs = maybeToList mUserTabName
+    stdTabs = [DeploymentSettingsView_Cfg, DeploymentSettingsView_Keys]
+    availableTabs = userTabs <> stdTabs
+
+defaulTabViewProgressButtonLabel :: DeploymentSettingsView -> Text
+defaulTabViewProgressButtonLabel DeploymentSettingsView_Keys = "Preview"
+defaulTabViewProgressButtonLabel _ = "Next"
+
+buildDeployTabFooterControls
+  :: ( PostBuild t m
+     , DomBuilder t m
+     )
+  => Maybe DeploymentSettingsView
+  -> Dynamic t DeploymentSettingsView
+  -> (DeploymentSettingsView -> Text)
+  -> Dynamic t Bool
+  -> m (Event t (DeploymentSettingsView -> Maybe DeploymentSettingsView))
+buildDeployTabFooterControls mUserTabName curSelection stepFn hasResult = do
+  let backConfig = def & uiButtonCfg_class .~ ffor curSelection
+        (\s -> if s == fromMaybe DeploymentSettingsView_Cfg mUserTabName then "hidden" else "")
+  back <- uiButtonDyn backConfig $ text "Back"
+  let shouldBeDisabled tab hasRes = tab == DeploymentSettingsView_Keys && hasRes
+      isDisabled = shouldBeDisabled <$> curSelection <*> hasResult
+  next <- uiButtonDyn (def & uiButtonCfg_class .~ "button_type_confirm" & uiButtonCfg_disabled .~ isDisabled)
+    $ dynText (stepFn <$> curSelection)
+  pure $ leftmost
+    [ nextView <$ next
+    , prevView mUserTabName <$ back
+    ]
+
 -- | Show settings related to deployments to the user.
 --
 --
@@ -181,106 +329,39 @@ uiDeploymentSettings
   -> m (mConf, Event t (DeploymentSettingsResult key), Maybe a)
 uiDeploymentSettings m settings = mdo
     let code = _deploymentSettingsConfig_code settings
-    let initTab = fromMaybe DeploymentSettingsView_Cfg mUserTabName
-        f thisView g = case g thisView of
-          Just view' -> (Just view', Nothing)
-          Nothing -> (Nothing, Just ())
-    (curSelection, done) <- mapAccumMaybeDyn f initTab $ leftmost
-      [ const . Just <$> onTabClick
-      , controls
-      ]
-    (TabBar onTabClick) <- makeTabBar $ TabBarCfg
-      { _tabBarCfg_tabs = availableTabs
-      , _tabBarCfg_mkLabel = const $ text . showSettingsTabName
-      , _tabBarCfg_selectedTab = Just <$> curSelection
-      , _tabBarCfg_classes = mempty
-      , _tabBarCfg_type = TabBarType_Secondary
-      }
+    (curSelection, done, _) <- buildDeployTabs mUserTabName controls
     (conf, result, ma) <- elClass "div" "modal__main transaction_details" $ do
 
       mRes <- traverse (uncurry $ tabPane mempty curSelection) mUserTabCfg
 
-      (cfg, cChainId, ttl, gasLimit) <- tabPane mempty curSelection DeploymentSettingsView_Cfg $
-        uiCfg code m
+      (cfg, cChainId, ttl, gasLimit, _) <- tabPane mempty curSelection DeploymentSettingsView_Cfg $
+        uiCfg (Just code) m
           (_deploymentSettingsConfig_chainId settings $ m)
           (_deploymentSettingsConfig_ttl settings)
           (_deploymentSettingsConfig_gasLimit settings)
+          (_deploymentSettingsConfig_userSection settings)
 
       (mSender, capabilities) <- tabPane mempty curSelection DeploymentSettingsView_Keys $
         uiSenderCapabilities m cChainId (_deploymentSettingsConfig_caps settings)
           $ (_deploymentSettingsConfig_sender settings) m cChainId
 
-      let result' = runMaybeT $ do
-            selNodes <- lift $ m ^. network_selectedNodes
-            networkId <- hoistMaybe $ hush . mkNetworkName . nodeVersion =<< headMay (rights selNodes)
-            sender <- MaybeT mSender
-            chainId <- MaybeT cChainId
-            caps <- MaybeT capabilities
-            let signing = Set.insert sender $ Map.keysSet caps
-            jsonData' <- lift $ either (const mempty) id <$> m ^. jsonData . jsonData_data
-            ttl' <- lift ttl
-            limit <- lift gasLimit
-            lastPublicMeta <- lift $ m ^. network_meta
-            let publicMeta = lastPublicMeta
-                  { _pmChainId = chainId
-                  , _pmGasLimit = limit
-                  , _pmSender = unAccountName sender
-                  , _pmTTL = ttl'
-                  }
-            code' <- lift code
-            allAccounts <- lift $ m ^. wallet_accounts
-            let accountsToKey = flip IM.foldMapWithKey allAccounts $ \_ -> \case
-                  SomeAccount_Account a -> Map.singleton (_account_name a) (_account_key a)
-                  SomeAccount_Deleted -> Map.empty
-                toPublicKey (name, cs) = do
-                  KeyPair pk _ <- Map.lookup name accountsToKey
-                  pure (pk, cs)
-                pkCaps = Map.fromList $ fmapMaybe toPublicKey $ Map.toList caps
-            pure $ do
-              let signingPairs = getSigningPairs signing allAccounts
-              cmd <- buildCmd
-                (_deploymentSettingsConfig_nonce settings)
-                networkId publicMeta signingPairs
-                (_deploymentSettingsConfig_extraSigners settings)
-                code' jsonData' pkCaps
-              pure $ DeploymentSettingsResult
-                { _deploymentSettingsResult_gasPrice = _pmGasPrice publicMeta
-                , _deploymentSettingsResult_signingKeys = signingPairs
-                , _deploymentSettingsResult_signingAccounts = signing
-                , _deploymentSettingsResult_sender = sender
-                , _deploymentSettingsResult_chainId = chainId
-                , _deploymentSettingsResult_command = cmd
-                , _deploymentSettingsResult_code = code'
-                }
       pure
         ( cfg & networkCfg_setSender .~ fmapMaybe (fmap unAccountName) (updated mSender)
-        , result'
+        , buildDeploymentSettingsResult m mSender cChainId capabilities ttl gasLimit code settings
         , mRes
         )
-    command <- performEvent $ tagMaybe (current result) done
 
-    controls <- modalFooter $ do
-      let backConfig = def & uiButtonCfg_class .~ ffor curSelection
-            (\s -> if s == fromMaybe DeploymentSettingsView_Cfg mUserTabName then "hidden" else "")
-      back <- uiButtonDyn backConfig $ text "Back"
-      let shouldBeDisabled tab res = tab == DeploymentSettingsView_Keys && isNothing res
-          isDisabled = shouldBeDisabled <$> curSelection <*> result
-      next <- uiButtonDyn (def & uiButtonCfg_class .~ "button_type_confirm" & uiButtonCfg_disabled .~ isDisabled) $ dynText $ ffor curSelection $ \case
-        DeploymentSettingsView_Keys -> "Preview"
-        _ -> "Next"
-      pure $ leftmost
-        [ nextView <$ next
-        , prevView mUserTabName <$ back
-        ]
+    command <- performEvent $ tagMaybe (current result) done
+    controls <- modalFooter $ buildDeployTabFooterControls
+      mUserTabName
+      curSelection
+      defaulTabViewProgressButtonLabel
+      (isNothing <$> result)
 
     pure (conf, command, ma)
     where
       mUserTabCfg  = first DeploymentSettingsView_Custom <$> _deploymentSettingsConfig_userTab settings
       mUserTabName = fmap fst mUserTabCfg
-      userTabs = maybeToList mUserTabName
-      stdTabs = [DeploymentSettingsView_Cfg, DeploymentSettingsView_Keys]
-      availableTabs = userTabs <> stdTabs
-
 
 -- | Use a predefined chain id, don't let the user pick one.
 predefinedChainIdSelect
@@ -308,11 +389,58 @@ userChainIdSelect
      )
   => model
   -> m (MDynamic t Pact.ChainId)
-userChainIdSelect m = mkLabeledClsInput (uiChainSelection mNodeInfo) "Chain ID"
-  where
-    mNodeInfo = (^? to rights . _head) <$> m ^. network_selectedNodes
+userChainIdSelect m =
+  userChainIdSelectWithPreselect m (constDyn Nothing)
 
+-- | Let the user pick a chain id but preselect a value
+userChainIdSelectWithPreselect
+  :: (MonadWidget t m, HasNetwork model t
+     )
+  => model
+  -> Dynamic t (Maybe Pact.ChainId)
+  -> m (MDynamic t Pact.ChainId)
+userChainIdSelectWithPreselect m mChainId = mkLabeledClsInput (uiChainSelection mNodeInfo mChainId) "Chain ID"
+  where mNodeInfo = (^? to rights . _head) <$> m ^. network_selectedNodes
 
+uiDeployCode
+  :: MonadWidget t m
+  => Dynamic t Text
+  -> m ()
+uiDeployCode code = do
+  divClass "title" $ text "Input"
+  divClass "group" $ do
+    pb <- getPostBuild
+    _ <- flip mkLabeledClsInput "Raw Command" $ \cls -> uiTextAreaElement $ def
+      & textAreaElementConfig_setValue .~ leftmost [updated code, tag (current code) pb]
+      & initialAttributes .~ "disabled" =: "" <> "style" =: "width: 100%" <> "class" =: renderClass cls
+    pure ()
+
+uiDeployDestination
+  :: ( MonadWidget t m
+     , HasNetwork model t
+     )
+  => model
+  -> m (Dynamic t (f Pact.ChainId))
+  -> m (Dynamic t (f Pact.ChainId))
+uiDeployDestination m wChainId = do
+  divClass "title" $ text "Destination"
+  elKlass "div" ("group segment") $ do
+    transactionDisplayNetwork m
+    wChainId
+
+uiDeployMetaData
+  :: ( MonadWidget t m
+     , HasNetwork model t
+     , HasNetworkCfg mConf t
+     , Monoid mConf
+     )
+  => model
+  -> Maybe TTLSeconds
+  -> Maybe GasLimit
+  -> m (mConf, Dynamic t TTLSeconds, Dynamic t GasLimit)
+uiDeployMetaData m mTTL mGasLimit = do
+  divClass "title" $ text "Settings"
+  elKlass "div" ("group segment") $ uiMetaData m mTTL mGasLimit
 
 -- | UI for asking the user about data needed for deployments/function calling.
 uiCfg
@@ -325,35 +453,31 @@ uiCfg
      , HasWallet model key t
      , HasJsonData model t
      )
-  => Dynamic t Text
+  => Maybe (Dynamic t Text)
   -> model
   -> m (Dynamic t (f Pact.ChainId))
   -> Maybe TTLSeconds
   -> Maybe GasLimit
+  -> Maybe (Text, m a)
   -> m ( mConf
        , Dynamic t (f Pact.ChainId)
        , Dynamic t TTLSeconds
        , Dynamic t GasLimit
+       , Maybe a
        )
-uiCfg code m wChainId mTTL mGasLimit = do
+uiCfg mCode m wChainId mTTL mGasLimit mUserSection = do
   -- General deployment configuration
   let mkGeneralSettings = do
-        divClass "title" $ text "Input"
-        divClass "group" $ do
-          pb <- getPostBuild
-          _ <- flip mkLabeledClsInput "Raw Command" $ \cls -> uiTextAreaElement $ def
-            & textAreaElementConfig_setValue .~ leftmost [updated code, tag (current code) pb]
-            & initialAttributes .~ "disabled" =: "" <> "style" =: "width: 100%" <> "class" =: renderClass cls
-          pure ()
-        divClass "title" $ text "Destination"
-        cId <- elKlass "div" ("group segment") $ do
-          transactionDisplayNetwork m
-          chain <- wChainId
-          pure chain
-        divClass "title" $ text "Settings"
-        (cfg, ttl, gasLimit) <- elKlass "div" ("group segment") $
-          uiMetaData m mTTL mGasLimit
-        pure (cfg, cId, ttl, gasLimit)
+        traverse_ uiDeployCode mCode
+        cId <- uiDeployDestination m wChainId
+
+        -- Customisable user provided UI section
+        ma <- forM mUserSection $ \(title, body) -> do
+          divClass "title" $ text title
+          elKlass "div" ("group segment") body
+
+        (cfg, ttl, gasLimit) <- uiDeployMetaData m mTTL mGasLimit
+        pure (cfg, cId, ttl, gasLimit, ma)
 
   rec
     let mkAccordionControlDyn initActive = foldDyn (const not) initActive
@@ -548,22 +672,28 @@ uiSenderDropdown uCfg m chainId = do
 uiChainSelection
   :: MonadWidget t m
   => Dynamic t (Maybe NodeInfo)
+  -> Dynamic t (Maybe Pact.ChainId)
   -> CssClass
   -> m (Dynamic t (Maybe Pact.ChainId))
-uiChainSelection info cls = mdo
-    let
-      chains = map (id &&& _chainId) . maybe [] getChains <$> info
-      mkPlaceHolder cChains = if null cChains then "No chains available" else "Select chain"
-      mkOptions cs = Map.fromList $ (Nothing, mkPlaceHolder cs) : map (first Just) cs
+uiChainSelection info mPreselected cls = do
+  pb <- getPostBuild
 
-      staticCls = cls <> "select"
-      mkDynCls v = if isNothing v then "select_mandatory_missing" else mempty
-      allCls = renderClass <$> fmap mkDynCls d <> pure staticCls
+  let
+    chains = map (id &&& _chainId) . maybe [] getChains <$> info
+    mkPlaceHolder cChains = if null cChains then "No chains available" else "Select chain"
+    mkOptions cs = Map.fromList $ (Nothing, mkPlaceHolder cs) : map (first Just) cs
 
-      cfg = def & dropdownConfig_attributes .~ (("class" =:) <$> allCls)
+    staticCls = cls <> "select"
+    mkDynCls v = if isNothing v then "select_mandatory_missing" else mempty
+
+  rec
+    let allCls = renderClass <$> fmap mkDynCls d <> pure staticCls
+        cfg = def
+          & dropdownConfig_attributes .~ (("class" =:) <$> allCls)
+          & dropdownConfig_setValue .~ (current mPreselected <@ pb)
 
     d <- _dropdown_value <$> dropdown Nothing (mkOptions <$> chains) cfg
-    pure d
+  pure d
 
 parseSigCapability :: Text -> Either String SigCapability
 parseSigCapability txt = parsed >>= compiled >>= parseApp

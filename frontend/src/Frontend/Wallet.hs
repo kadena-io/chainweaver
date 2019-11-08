@@ -44,6 +44,7 @@ module Frontend.Wallet
   -- * Other helper functions
   , checkAccountNameValidity
   , snocIntMap
+  , findNextKey
   ) where
 
 import Control.Lens
@@ -178,6 +179,9 @@ snocIntMap a m = IntMap.insert (nextKey m) a m
 
 nextKey :: IntMap a -> Int
 nextKey = maybe 0 (succ . fst) . IntMap.lookupMax
+
+findNextKey :: Reflex t => Wallet key t -> Dynamic t Int
+findNextKey = fmap nextKey . _wallet_accounts
 
 -- | Make a functional wallet that can contain actual keys.
 makeWallet
