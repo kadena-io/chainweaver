@@ -160,7 +160,7 @@ $kadena-orange: #F3AB3C;
 
 .setup__fullscreen {
   .setup__checkbox, .button {
-    margin: $wallet-top-btm-margin; 
+    margin: $wallet-top-btm-margin;
     font-weight: initial;
   }
 
@@ -316,12 +316,11 @@ $kadena-orange: #F3AB3C;
   border: none;
 
   img {
-    color: $chainweaver-blue;
     margin-right: 0.4rem;
   }
 
   .setup__recovery-phrase-copy-word {
-    color: $tertiary-color;
+    color: $chainweaver-blue;
     font-size: 25px;
 
     .setup__copy-status {
