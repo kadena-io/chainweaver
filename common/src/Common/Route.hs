@@ -71,7 +71,7 @@ data ContractRoute a where
 
 backendRouteEncoder
   :: Encoder (Either Text) Identity (R (FullRoute BackendRoute FrontendRoute)) PageName
-backendRouteEncoder = handleEncoder (\_e -> FullRoute_Frontend (ObeliskRoute_App FrontendRoute_Contracts) :/ Nothing) $
+backendRouteEncoder = handleEncoder (\_e -> FullRoute_Frontend (ObeliskRoute_App FrontendRoute_Wallet) :/ ()) $
   pathComponentEncoder $ \case
     FullRoute_Backend backendRoute -> case backendRoute of
       BackendRoute_Missing
@@ -112,4 +112,3 @@ concat <$> mapM deriveRouteComponent
   , ''FrontendRoute
   , ''ContractRoute
   ]
-
