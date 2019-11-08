@@ -120,7 +120,7 @@ textKadenaAddress :: KadenaAddress -> Text
 textKadenaAddress = TE.decodeUtf8With TE.lenientDecode . _kadenaAddress_encoded
 
 humanReadableDelimiter :: Word8
-humanReadableDelimiter = 124 -- '|'
+humanReadableDelimiter = fromIntegral $ C.ord '|'
 
 delimiter :: ByteString
 delimiter = "\n"
