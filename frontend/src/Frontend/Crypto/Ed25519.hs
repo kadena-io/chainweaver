@@ -37,6 +37,7 @@ module Frontend.Crypto.Ed25519
   , textToKeyFuture
   , fromPactPublicKey
   , toPactPublicKey
+  , unsafePublicKey
   )
   where
 
@@ -65,6 +66,10 @@ import           Frontend.Foundation
 -- | PublicKey with a Pact compatible JSON representation.
 newtype PublicKey = PublicKey ByteString
   deriving (Generic, Eq, Ord, Show)
+
+-- | Input must be base16
+unsafePublicKey :: ByteString -> PublicKey
+unsafePublicKey = PublicKey
 
 fromPactPublicKey :: Pact.PublicKey -> PublicKey
 fromPactPublicKey = PublicKey . fst . Base16.decode . Pact._pubKey

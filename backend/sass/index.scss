@@ -29,6 +29,7 @@
 @import 'common.blocks/label';
 @import 'common.blocks/checkbox';
 @import 'common.blocks/checkbox-container';
+@import 'common.blocks/sidebar';
 
 @import 'common.blocks/segment';
 @import 'common.blocks/pane';
@@ -53,7 +54,7 @@
 @import 'common.blocks/tab-set';
 @import 'common.blocks/wysiwyg';
 @import 'common.blocks/keyset';
-@import 'common.blocks/wallet';
+@import 'common.blocks/setup';
 
 @import 'common.blocks/repl';
 @import 'common.blocks/signing-selector';
@@ -62,4 +63,4 @@
 @import 'common.blocks/error-list';
 @import 'common.blocks/signal';
 @import 'common.blocks/transaction-status';
-
+@import 'common.blocks/wallet';

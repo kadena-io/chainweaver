@@ -26,6 +26,7 @@ module Frontend.JsonData
   , DynKeysets
   , Keysets
   , KeysetKeys
+  , KeyName
   , JsonError (..)
   , KeysetV (..)
   , Keyset
@@ -52,6 +53,8 @@ import           Data.Aeson          (FromJSON (..), Object, ToJSON (..),
                                       object, (.:))
 import           Data.Aeson.Types    (typeMismatch)
 import qualified Data.HashMap.Strict as H
+import qualified Data.IntMap         as IntMap
+import qualified Data.IntMap.Merge.Lazy as IntMap
 import           Data.Map            (Map)
 import qualified Data.Map            as Map
 import           Data.Set            (Set)
@@ -85,6 +88,8 @@ type DynKeysets t = Map KeysetName (DynKeyset t)
 --
 -- | Mapping of `KeysetName` to `Keyset`s.
 type Keysets = Map KeysetName Keyset
+
+type KeyName = Text
 
 -- | Keys in a `KeySet`.
 type KeysetKeys = Map KeyName PublicKey
@@ -176,8 +181,8 @@ predefinedPreds = ["keys-all", "keys-2", "keys-any"]
 
 -- | Build `JsonData` by means of the given `Wallet` and `JsonDataCfg`.
 makeJsonData
-  :: forall t m. (MonadHold t m, PerformEvent t m, MonadFix m)
-  => Wallet t
+  :: forall key t m. (MonadHold t m, PerformEvent t m, MonadFix m)
+  => Wallet key t
   -> JsonDataCfg t
   -> m (JsonData t)
 makeJsonData walletL rawCfg = mfix $ \json -> do
@@ -234,8 +239,8 @@ sanitizeCfg json cfg =
 
 -- | Make the keysets for `_jsonData_keysets`.
 makeKeysets
-  :: forall t m. (MonadHold t m, PerformEvent t m, MonadFix m)
-  => Wallet t
+  :: forall key t m. (MonadHold t m, PerformEvent t m, MonadFix m)
+  => Wallet key t
   -> JsonDataCfg t
   -> m (Dynamic t (DynKeysets t))
 makeKeysets walletL cfg =
@@ -269,8 +274,11 @@ makeKeysets walletL cfg =
     filterValid getName = push checkName
       where
         checkName v = do
-          cKeys <- sample . current $ walletL ^. wallet_keys
-          if Map.member (getName v) cKeys
+          cKeys <- sample . current $ walletL ^. wallet_accounts
+          -- This is a weird clash between the old named keys and the new
+          -- accounts. We are (temporarily) treating accounts like keys, so
+          -- pretend multisig doesn't exist here.
+          if any (\case SomeAccount_Account a -> unAccountName (_account_name a) == getName v; _ -> False) cKeys
              then pure $ Just v
              else pure Nothing
 
@@ -285,14 +293,18 @@ makeKeysets walletL cfg =
         onDelKey = select delSelectors (Const2 n)
 
         onRemovedKeys = push (\new -> do
-          old <- sample . current $ walletL ^. wallet_keys
-          let removed = Map.difference old new
-          if Map.null removed
+          old <- sample . current $ walletL ^. wallet_accounts
+          let f (SomeAccount_Account a) SomeAccount_Deleted = Just $ unAccountName $ _account_name a
+              f _ _ = Nothing
+              g (SomeAccount_Account a) = Just $ unAccountName $ _account_name a
+              g _ = Nothing
+              removed = IntMap.merge (IntMap.mapMaybeMissing $ \_ -> g) IntMap.dropMissing (IntMap.zipWithMaybeMatched $ \_ -> f) old new
+          if IntMap.null removed
              then pure Nothing
-             else pure $ Just . Set.fromList . Map.keys $ removed
+             else pure $ Just . Set.fromList . IntMap.elems $ removed
 
           )
-          (updated $ walletL ^. wallet_keys)
+          (updated $ walletL ^. wallet_accounts)
 
       -- Nothing would pick the default which is keys-all, but let's be explicit:
       pPred <- holdUniqDyn =<< holdDyn (Just "keys-all") onSetPred
@@ -306,11 +318,14 @@ makeKeysets walletL cfg =
       let
         keys :: Dynamic t (Map KeyName PublicKey)
         keys = do
-          names <- Set.toList <$> keynames
-          let namesMap = Map.fromList . map (,()) $ names
-          wKeys <- walletL ^. wallet_keys
-          let keyPairs = Map.intersection wKeys namesMap
-          pure $ _keyPair_publicKey <$> keyPairs
+          names <- keynames
+          wAccounts <- walletL ^. wallet_accounts
+          let toKeyPairs = \case
+                SomeAccount_Account a
+                  | unAccountName (_account_name a) `Set.member` names
+                  -> Map.insert (unAccountName $ _account_name a) (_keyPair_publicKey $ _account_key a)
+                _ -> id
+          pure $ IntMap.foldr toKeyPairs Map.empty wAccounts
 
       pure (n, Keyset keys pPred)
 

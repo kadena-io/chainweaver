@@ -35,10 +35,10 @@ import Data.Default (Default (..))
 import Data.Either (rights)
 import Data.List.NonEmpty (NonEmpty(..))
 import Data.Map (Map)
-import Data.Maybe (fromMaybe)
 import Data.Set (Set)
 import Data.Text (Text)
 import Data.Traversable (for)
+import Frontend.Crypto.Class
 import Frontend.Crypto.Ed25519
 import Frontend.JsonData
 import Frontend.Network
@@ -53,6 +53,7 @@ import Reflex.Dom
 import Reflex.Extended (tagOnPostBuild)
 import Reflex.Network.Extended (Flattenable)
 import Reflex.Network.Extended (flatten)
+import qualified Data.IntMap as IntMap
 import qualified Data.Map as Map
 import qualified Data.Text as T
 import qualified Data.Text.IO as T
@@ -76,7 +77,7 @@ data DeployConfirmationConfig t = DeployConfirmationConfig
     -- A failed transaction would call this function twice like so:
     -- 1) network failure: False
     -- 2) button disabled: True
-    -- 
+    --
   , _deployConfirmationConfig_disregardSubmitResponse :: Bool -> Bool
   }
 
@@ -88,9 +89,9 @@ instance Reflex t => Default (DeployConfirmationConfig t) where
 -- We may not need the Status part of the workflow, but we want to be able to reuse as
 -- much of this as we can so we have this function type that will give us the event of the
 -- next stage or the completion of the workflow.
-type DeployPostPreview t m modelCfg a =
+type DeployPostPreview key t m modelCfg a =
      ChainId
-  -> DeploymentSettingsResult
+  -> DeploymentSettingsResult key
   -> Event t ()
   -> Event t ()
   -> Behavior t [Either Text NodeInfo]
@@ -101,11 +102,11 @@ type DeployPostPreview t m modelCfg a =
 --   User can make sure to deploy to the right network, has the right keysets,
 --   the right keys, ...
 uiDeployConfirmation
-  :: forall t m model modelCfg.
+  :: forall key t m model modelCfg.
      ( MonadWidget t m, Monoid modelCfg, Flattenable modelCfg t
      , HasNetwork model t, HasNetworkCfg modelCfg t
      , HasJsonData model t, HasJsonDataCfg modelCfg t
-     , HasWallet model t
+     , HasWallet model key t, HasCrypto key (Performable m)
      )
   => Text
   -> model
@@ -127,14 +128,15 @@ uiDeployConfirmation code model = fullDeployFlow def model $ do
 
 -- | Workflow taking the user through Config -> Preview -> Status
 fullDeployFlow
-  :: forall t m model modelCfg.
+  :: forall key t m model modelCfg.
      ( MonadWidget t m, Monoid modelCfg, Flattenable modelCfg t
      , HasNetwork model t
-     , HasWallet model t
+     , HasWallet model key t
+     , HasCrypto key (Performable m)
      )
   => DeployConfirmationConfig t
   -> model
-  -> m (modelCfg, Event t DeploymentSettingsResult)
+  -> m (modelCfg, Event t (DeploymentSettingsResult key))
   -> Event t () -> m (modelCfg, Event t ())
 fullDeployFlow deployCfg model runner onClose =
   (fmap . fmap) (fromMaybe ()) <$> fullDeployFlowWithSubmit deployCfg model showSubmitModal runner onClose
@@ -144,15 +146,16 @@ fullDeployFlow deployCfg model runner onClose =
 
 -- | Workflow taking the user through Config -> Preview -> Status
 fullDeployFlowWithSubmit
-  :: forall t m model modelCfg a.
+  :: forall key t m model modelCfg a.
      ( MonadWidget t m, Monoid modelCfg, Flattenable modelCfg t
      , HasNetwork model t
-     , HasWallet model t
+     , HasWallet model key t
+     , HasCrypto key (Performable m)
      )
   => DeployConfirmationConfig t
   -> model
-  -> DeployPostPreview t m modelCfg a
-  -> m (modelCfg, Event t DeploymentSettingsResult)
+  -> DeployPostPreview key t m modelCfg a
+  -> m (modelCfg, Event t (DeploymentSettingsResult key))
   -> Event t () -> m (modelCfg, Event t (Maybe a))
 fullDeployFlowWithSubmit dcfg model onPreviewConfirm runner _onClose = do
   rec
@@ -168,10 +171,9 @@ fullDeployFlowWithSubmit dcfg model onPreviewConfirm runner _onClose = do
       pure (( _deployConfirmationConfig_modalTitle dcfg
             , (never, settingsCfg)
             )
-           , attachWith deployPreview (current $ model ^. wallet_keys) result
+           , deployPreview <$> result
            )
-    deployPreview :: KeyPairs -> DeploymentSettingsResult -> Workflow t m (Text, (Event t a, modelCfg))
-    deployPreview keyAccounts result = Workflow $ do
+    deployPreview result = Workflow $ do
 
       let chain = _deploymentSettingsResult_chainId result
       succeeded <- elClass "div" "modal__main transaction_details" $ do
@@ -220,7 +222,7 @@ fullDeployFlowWithSubmit dcfg model onPreviewConfirm runner _onClose = do
               let displayBalance = \case
                     Nothing -> "Loading..."
                     Just Nothing -> "Error"
-                    Just (Just b) -> tshow b <> " KDA"
+                    Just (Just b) -> tshow (unAccountBalance b) <> " KDA"
               el "td" $ text $ unAccountName acc
               el "td" $ divClass "wallet__key" $ text $ keyToText pk
               el "td" $ dynText $ displayBalance <$> balance
@@ -258,12 +260,12 @@ fullDeployFlowWithSubmit dcfg model onPreviewConfirm runner _onClose = do
         )
 
 deploySubmit
-  :: forall t m a modelCfg.
+  :: forall key t m a modelCfg.
      ( MonadWidget t m
      , Monoid modelCfg
      )
   => ChainId
-  -> DeploymentSettingsResult
+  -> DeploymentSettingsResult key
   -> [Either a NodeInfo]
   -> Workflow t m (Text, (Event t (), modelCfg))
 deploySubmit chain result nodeInfos = Workflow $ do
@@ -382,3 +384,28 @@ statusClass = \case
 
 getAccounts :: KeyPairs -> Set AccountName -> Map AccountName PublicKey
 getAccounts keyPairs accounts = fmap _keyPair_publicKey $ Map.restrictKeys (Map.mapKeysMonotonic AccountName keyPairs) accounts
+
+-- | Track the balances of the given accounts from post build time.
+-- Request updated balances on the occurance of the input event.
+--
+-- Return a tuple of (associated keys/names, initial balance, most recent balance).
+trackBalancesFromPostBuild
+  :: (MonadWidget t m, HasNetwork model t, HasWallet model key t, HasCrypto key (Performable m))
+  => model -> ChainId -> Set AccountName -> Event t ()
+  -> m (Map AccountName
+    ( Dynamic t [PublicKey]
+    , Dynamic t (Maybe (Maybe AccountBalance))
+    , Dynamic t (Maybe (Maybe AccountBalance))
+    ))
+trackBalancesFromPostBuild model chain accounts fire = getPostBuild >>= \pb -> sequence $ flip Map.fromSet accounts $ \name -> do
+  let publicKeys = getKeys <$> model ^. wallet_accounts
+      getKeys accs =
+        [ _keyPair_publicKey $ _account_key a
+        | SomeAccount_Account a <- IntMap.elems accs
+        , _account_name a == name
+        , _account_chainId a == chain
+        ]
+  initialBalance <- holdDyn Nothing . fmap Just =<< getBalance model chain (name <$ pb)
+  updatedBalance <- holdDyn Nothing . fmap Just =<< getBalance model chain (name <$ fire)
+  pure (publicKeys, initialBalance, updatedBalance)
+

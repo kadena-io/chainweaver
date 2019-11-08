@@ -20,13 +20,16 @@ library
     , containers
     , cryptonite
     , directory
+    , errors
     , filepath
     , jsaddle
+    , ghcjs-dom
     , kadena-signing-api
     , lens
     , memory
     , mtl
     , network
+    , newtype-generics
     , obelisk-executable-config-lookup
     , obelisk-backend
     , obelisk-frontend
@@ -40,6 +43,7 @@ library
     , servant-server
     , snap-server
     , text
+    , time
     , wai-cors
     , warp
   exposed-modules:

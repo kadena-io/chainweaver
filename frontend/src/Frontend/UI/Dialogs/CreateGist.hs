@@ -68,7 +68,6 @@ uiCreateGist _onClose = do
 
   modalFooter $ do
     onCancel <- cancelButton def "Cancel"
-    text " "
     let isDisabled = T.null . T.strip <$> name
     onConfirm <- confirmButton (def & uiButtonCfg_disabled .~ isDisabled) "Create"
 

@@ -45,6 +45,7 @@ import           Pact.Types.Lang                (Arg (..), FunType (..),
                                                  ModuleName (..), Name,
                                                  PrimType (..), Term, Type (..))
 ------------------------------------------------------------------------------
+import           Frontend.Crypto.Class
 import           Frontend.Foundation            hiding (Arg)
 import           Frontend.JsonData              (HasJsonData (..), JsonData, HasJsonDataCfg)
 import           Frontend.ModuleExplorer
@@ -56,8 +57,8 @@ import           Frontend.UI.Widgets
 import           Frontend.Wallet                (HasWallet (..))
 ------------------------------------------------------------------------------
 
-type HasUICallFunctionModel model t =
-  (HasModuleExplorer model t, HasNetwork model t, HasWallet model t, HasJsonData model t)
+type HasUICallFunctionModel model key t =
+  (HasModuleExplorer model t, HasNetwork model t, HasWallet model key t, HasJsonData model t)
 
 type HasUICallFunctionModelCfg mConf t =
   ( Monoid mConf, Flattenable mConf t, HasModuleExplorerCfg mConf t
@@ -66,8 +67,11 @@ type HasUICallFunctionModelCfg mConf t =
 
 -- | Modal dialog for calling a function.
 uiCallFunction
-  :: forall t m  mConf model
-  . (MonadWidget t m, HasUICallFunctionModelCfg mConf t, HasUICallFunctionModel model t, HasJsonDataCfg mConf t)
+  :: forall key t m mConf model
+  . ( MonadWidget t m, HasUICallFunctionModelCfg mConf t
+    , HasUICallFunctionModel model key t, HasJsonDataCfg mConf t
+    , HasCrypto key (Performable m)
+    )
   => model
   -> Maybe DeployedModuleRef
   -> PactFunction
@@ -179,7 +183,6 @@ argDelimiter = uiCodeFont "code-font_type_arg-delimiter" mempty
 renderArg :: MonadWidget t m => Arg (Term Name) -> m ()
 renderArg a = do
   uiCodeFont "code-font_type_pact-arg-name" $ (_aName a)
-  text " "
   uiCodeFont "code-font_type_pact-type" $ prettyTextCompact (_aType a)
 
 

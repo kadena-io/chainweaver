@@ -34,6 +34,7 @@ module Frontend.UI.Widgets
   , uiCheckbox
   , uiDropdown
   , uiSelectElement
+  , uiPassword
   , validatedInputWithButton
     -- ** Helper widgets
   , imgWithAlt
@@ -139,6 +140,14 @@ uiSelectElement uCfg child = do
   let cfg = uCfg & initialAttributes %~ addToClassAttr "select"
   selectElement cfg child
 
+uiPassword :: DomBuilder t m => Text -> Text -> Text -> m (InputElement EventResult (DomBuilderSpace m) t)
+uiPassword wrapperCls inputCls ph = elClass "span" wrapperCls $ do
+  uiInputElement $ def & initialAttributes .~ mconcat
+    [ "type" =: "password"
+    , "placeholder" =: ph
+    , "class" =: inputCls
+    ]
+
 -- | Factored out input class modifier, so we can keep it in sync.
 addInputElementCls :: (Ord attr, IsString attr) => Map attr Text -> Map attr Text
 addInputElementCls = addToClassAttr "input"
@@ -201,7 +210,7 @@ uiRealWithPrecisionInputElement prec fromDecimal cfg = do
     parseDecimal t = ffor (readMay $ T.unpack t) $ \decimal ->
       (D.roundTo prec decimal, D.decimalPlaces decimal > prec)
 
-    stepSize = "0." <> T.replicate (fromIntegral prec - 1) "0" <> "1" 
+    stepSize = "0." <> T.replicate (fromIntegral prec - 1) "0" <> "1"
 
 uiIntInputElement
   :: DomBuilder t m
@@ -367,7 +376,7 @@ validatedInputWithButton uCls check placeholder buttonText = do
 
         let
           checkFailed = isLeft <$> checkedL
-          btnCfg = def & uiButtonCfg_disabled .~ dInputIsInvalid 
+          btnCfg = def & uiButtonCfg_disabled .~ dInputIsInvalid
                        & uiButtonCfg_class .~ "button_type_primary" <> "new-by-name__button"
         clicked <- uiButtonDyn btnCfg $ text buttonText
 
@@ -444,8 +453,8 @@ accordionItem'
   -> m a
   -> m b
   -> m (a,b)
-accordionItem' initActive contentClass title inner = 
-  snd <$> accordionItemWithClick initActive contentClass title inner 
+accordionItem' initActive contentClass title inner =
+  snd <$> accordionItemWithClick initActive contentClass title inner
 
 accordionItem :: MonadWidget t m => Bool -> CssClass -> Text -> m a -> m a
 accordionItem initActive contentClass title inner =

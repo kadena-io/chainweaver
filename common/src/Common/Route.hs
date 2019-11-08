@@ -50,17 +50,28 @@ data BackendRoute :: * -> * where
 
 -- | This type is used to define frontend routes, i.e. ones for which the backend will serve the frontend.
 data FrontendRoute :: * -> * where
-  FrontendRoute_Main :: FrontendRoute ()
-  FrontendRoute_Example :: FrontendRoute [Text]  -- Route for loading an example.
-  FrontendRoute_Stored  :: FrontendRoute [Text]  -- Route for loading a stored file/module.
-  FrontendRoute_Gist  :: FrontendRoute [Text]  -- Route for loading GitHub gists.
-  FrontendRoute_Deployed :: FrontendRoute [Text] -- Route for loading a deployed module.
-  FrontendRoute_New :: FrontendRoute ()          -- Route when editing a new file.
-  FrontendRoute_OAuth :: FrontendRoute (R OAuthRoute) -- Route for auth handling
+  FrontendRoute_Contracts :: FrontendRoute (Maybe (R ContractRoute))
+  FrontendRoute_Wallet :: FrontendRoute ()
+  FrontendRoute_Resources :: FrontendRoute ()
+  FrontendRoute_Settings :: FrontendRoute ()
+
+data ContractRoute a where
+  -- | Route for loading an example.
+  ContractRoute_Example :: ContractRoute [Text]
+  -- | Route for loading a stored file/module.
+  ContractRoute_Stored  :: ContractRoute [Text]
+  -- | Route for loading GitHub gists.
+  ContractRoute_Gist  :: ContractRoute [Text]
+  -- | Route for loading a deployed module.
+  ContractRoute_Deployed :: ContractRoute [Text]
+  -- | Route when editing a new file.
+  ContractRoute_New :: ContractRoute ()
+  -- | Route for auth handling
+  ContractRoute_OAuth :: ContractRoute (R OAuthRoute)
 
 backendRouteEncoder
   :: Encoder (Either Text) Identity (R (FullRoute BackendRoute FrontendRoute)) PageName
-backendRouteEncoder = handleEncoder (const (FullRoute_Backend BackendRoute_Missing :/ ())) $
+backendRouteEncoder = handleEncoder (\_e -> FullRoute_Frontend (ObeliskRoute_App FrontendRoute_Contracts) :/ Nothing) $
   pathComponentEncoder $ \case
     FullRoute_Backend backendRoute -> case backendRoute of
       BackendRoute_Missing
@@ -74,19 +85,19 @@ backendRouteEncoder = handleEncoder (const (FullRoute_Backend BackendRoute_Missi
       BackendRoute_Css
         -> PathSegment "sass.css" $ unitEncoder mempty
     FullRoute_Frontend obeliskRoute -> obeliskRouteSegment obeliskRoute $ \case
-      FrontendRoute_Main
-        -> PathEnd $ unitEncoder mempty
-      FrontendRoute_Example
-        -> PathSegment "example" $ pathOnlyEncoderIgnoringQuery
-      FrontendRoute_Stored
-        -> PathSegment "stored" $ pathOnlyEncoderIgnoringQuery
-      FrontendRoute_Gist
-        -> PathSegment "gist" $ pathOnlyEncoderIgnoringQuery
-      FrontendRoute_Deployed
-        -> PathSegment "deployed" $ pathOnlyEncoderIgnoringQuery
-      FrontendRoute_New
-        -> PathSegment "new" $ unitEncoder mempty
-      FrontendRoute_OAuth -> PathSegment "oauth" $ oAuthRouteEncoder
+      FrontendRoute_Contracts -> PathSegment "contracts" $ maybeEncoder (unitEncoder mempty) contractRouteEncoder
+      FrontendRoute_Wallet -> PathSegment "wallet" $ unitEncoder mempty
+      FrontendRoute_Settings -> PathSegment "settings" $ unitEncoder mempty
+      FrontendRoute_Resources -> PathSegment "resources" $ unitEncoder mempty
+
+contractRouteEncoder :: (MonadError Text parse, MonadError Text check) => Encoder parse check (R ContractRoute) PageName
+contractRouteEncoder = pathComponentEncoder $ \case
+  ContractRoute_Example -> PathSegment "example" $ pathOnlyEncoderIgnoringQuery
+  ContractRoute_Stored -> PathSegment "stored" $ pathOnlyEncoderIgnoringQuery
+  ContractRoute_Gist -> PathSegment "gist" $ pathOnlyEncoderIgnoringQuery
+  ContractRoute_Deployed -> PathSegment "deployed" $ pathOnlyEncoderIgnoringQuery
+  ContractRoute_New -> PathSegment "new" $ unitEncoder mempty
+  ContractRoute_OAuth -> PathSegment "oauth" $ oAuthRouteEncoder
 
 -- | Stolen from Obelisk as it is not exported. (Probably for a reason, but it
 -- seems to do what we want right now.
@@ -99,5 +110,6 @@ pathOnlyEncoderIgnoringQuery = unsafeMkEncoder $ EncoderImpl
 concat <$> mapM deriveRouteComponent
   [ ''BackendRoute
   , ''FrontendRoute
+  , ''ContractRoute
   ]
 

@@ -6,12 +6,17 @@
 
 @import '../include/defs';
 
+.page {
+  flex-grow: 1;
+  display: flex;
+  flex-direction: column;
+}
+
 .page__main-header {
   position: relative;
   width: 100%;
-  z-index: 99998;
 
-  padding-left: $pane-padding-left;
+  padding-left: 37px;
   padding-right: $pane-padding-right + 16px; // 16px for scrollbar of body pane.
 }
 
@@ -24,4 +29,22 @@
   position: relative;
   width: 100%;
   flex: 1;
+}
+
+.page__content {
+  display: none;
+  flex-grow: 1;
+}
+
+.page__content.visible {
+  display: block;
+}
+
+.page__content.contracts {
+  margin: 0;
+  flex-direction: column;
+}
+
+.page__content.contracts.visible {
+  display: flex;
 }

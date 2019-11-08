@@ -4,35 +4,41 @@
 
 *********************************************************************************/
 
-// The wallet ui:
 @import '../include/defs';
 
-.wallet {
+.wallet__keys-list {
+  margin-top: 20px;
+  margin-left: 22px;
 }
 
+.wallet__table-row {
+  border-style: $std-border-style;
+  border-color: $std-border-color;
+  border-width: $std-border-width;
+}
 
-.wallet__key {
-  overflow-x: hidden;
+.wallet__table-heading {
+  @extend .table__heading;
+  padding-left: $medium-padding;
+  padding-right: $medium-padding;
+}
+
+.wallet__table-cell {
+  padding: $medium-padding;
   text-overflow: ellipsis;
+  overflow: hidden;
 }
 
-.wallet__key_hidden {
-  text-overflow: clip;
+.wallet__table-buttons {
+  display:flex;
+  align-items: center;
 }
 
-.wallet__key_type_private.wallet__key_hidden {
-  cursor: alias;
-}
+.wallet__table-button {
+  color: $tertiary-color;
+  padding: 0 15px;
+  margin-right: $medium-margin;
 
-.wallet__delete {
-  text-align: right;
+  text-overflow: ellipsis;
+  overflow: hidden;
 }
-
-.wallet__add {
-  @extend .wallet__delete;
-}
-
-.wallet__add-delete-button {
-  width: 30px;
-}
-

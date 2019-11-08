@@ -12,28 +12,6 @@
 .pane {
   display: flex;
   flex-direction: column;
-
-  padding-top: $pane-padding-top;
-  padding-bottom: $pane-padding-bottom;
-}
-
-.pane__header {
-  padding-left: $pane-padding-left;
-  padding-right: $pane-padding-right;
-  flex-grow: 0;
-}
-
-// TODO: this is really no pane__header specific:
-// Using display: flex somehow changes the height of the div!! - WTF?!
-.pane__header_align_right {
-  // display: flex;
-  // flex-direction: row;
-  // justify-content: flex-end;
-  // align-items: center;
-
-}
-.pane__header_align_right > * {
-  float: right;
 }
 
 // Wrapper for body so scrollbar appears outside the margin.
@@ -43,8 +21,6 @@
 }
 
 .pane__body {
-  margin-left: $pane-padding-left;
-  margin-right: $pane-padding-right;
   height: auto;
 }
 

@@ -22,6 +22,7 @@
 module Frontend.UI.Dialogs.NetworkEdit
   ( uiNetworkEdit
   , uiNetworkStatus
+  , uiNetworkSelect
   , queryNetworkStatus
   , NetworkStatus(..)
   ) where
@@ -97,7 +98,6 @@ uiNetworkEdit m _onClose = do
   modalFooter $ do
     -- TODO: Is this really a "Cancel" button?!
     onReset <- cancelButton def "Restore Defaults"
-    text " "
     onConfirm <- confirmButton def "Ok"
 
     pure

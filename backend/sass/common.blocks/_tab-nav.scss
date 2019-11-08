@@ -10,31 +10,43 @@ $tab-nav-background: $body-background;
 
 
 $tab-nav-secondary-border-color: #e1e2e1;
-$tab-nav-secondary-active-border-color: #fff;
+$tab-nav-secondary-active-border-color: $chainweaver-blue;
 
 .tab-nav {
-  border-bottom: $std-border-width $std-border-style $std-border-color;
   background: $tab-nav-background;
-  padding-bottom: $normal-padding;
 }
 
 .tab-nav__button {
   background: transparent;
   position: relative;
-  border: $std-border-width $std-border-style $std-border-color;
+  border-style: $std-border-style;
+  border-color: $std-border-color;
+  border-right-width: $std-border-width;
+  &.tab-nav__button:not(:first-child) {
+    border-top-left-radius: 0;
+    border-bottom-left-radius: 0;
+  };
+  &.tab-nav__button:not(:last-child) {
+    border-top-right-radius: 0;
+    border-bottom-right-radius: 0;
+    border-right-width: 0;
+  };
 
   color: $tertiary-color;
   font-size: $secondary-font-size;
-
-  margin-right: $medium-margin;
 }
 
 
+.tab-nav__button_type_primary {
+  height: 26px;
+  line-height: 1em;
+  font-size: 13px;
+}
+
 .tab-nav__button_type_primary.tab-nav__button:active,
 .tab-nav__button_type_primary.tab-nav__button_active {
-  color: $white;
-  background-color: $black;
-  border-color: $black;
+  font-weight: bold;
+  background-color: $group-bg;
 }
 
 .tab-nav__button_type_primary.tab-nav__button_active:hover {
@@ -48,18 +60,20 @@ $tab-nav-secondary-active-border-color: #fff;
 
 .tab-nav__button_type_secondary {
   position: relative;
-  bottom: -2px;
 
   background: transparent;
 
   border-radius: 0;
   border: none;
+  padding: 0;
+  margin-right: 50px;
 
+  text-transform: uppercase;
 }
 
 .tab-nav__button_type_secondary:active,
 .tab-nav__button_type_secondary.tab-nav__button_active {
-  border-bottom: 2px solid #000;
+  border-bottom: 2px solid $tab-nav-secondary-active-border-color;
   color: #000;
+  font-weight: bold;
 }
-

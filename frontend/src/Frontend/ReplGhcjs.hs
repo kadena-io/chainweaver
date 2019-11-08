@@ -27,7 +27,9 @@ module Frontend.ReplGhcjs where
 import Control.Lens
 import Control.Monad.Reader (ask)
 import Control.Monad.State.Strict
+import Data.Aeson (FromJSON, ToJSON)
 import Data.Default (Default (..))
+import Data.Some (Some(..))
 import Data.String (IsString)
 import Data.Text (Text)
 import GHCJS.DOM.EventM (on)
@@ -50,41 +52,69 @@ import qualified Data.Text as T
 import Common.OAuth (OAuthProvider (OAuthProvider_GitHub))
 import Common.Route
 import Frontend.AppCfg
+import Frontend.Crypto.Class
 import Frontend.Editor
 import Frontend.Foundation
 import Frontend.GistStore
 import Frontend.Ide
+import Frontend.Network
 import Frontend.OAuth
 import Frontend.Repl
 import Frontend.Storage
 import Frontend.UI.Button
+import Frontend.UI.Dialogs.AddAccount (uiAddWalletOnlyAccountDialogButton)
 import Frontend.UI.Dialogs.CreateGist (uiCreateGist)
 import Frontend.UI.Dialogs.CreatedGist (uiCreatedGist)
 import Frontend.UI.Dialogs.DeployConfirmation (uiDeployConfirmation)
 import Frontend.UI.Dialogs.LogoutConfirmation (uiLogoutConfirmation)
-import Frontend.UI.Dialogs.NetworkEdit (uiNetworkEdit)
+import Frontend.UI.Dialogs.NetworkEdit (uiNetworkEdit, uiNetworkSelect, uiNetworkStatus, queryNetworkStatus)
 import Frontend.UI.Dialogs.Signing (uiSigning)
 import Frontend.UI.Modal
 import Frontend.UI.Modal.Impl
 import Frontend.UI.RightPanel
-
+import Frontend.UI.Wallet
 
 app
-  :: ( MonadWidget t m
-     , Routed t (R FrontendRoute) m, RouteToUrl (R FrontendRoute) m, SetRoute t (R FrontendRoute) m
+  :: forall key t m.
+     ( MonadWidget t m
+     , RouteToUrl (R FrontendRoute) m, SetRoute t (R FrontendRoute) m
      , HasConfigs m
      , HasStorage m, HasStorage (Performable m)
+     , HasCrypto key (Performable m)
+     , FromJSON key, ToJSON key
      )
-  => AppCfg t m -> m ()
-app appCfg = void . mfix $ \ cfg -> do
-
+  => RoutedT t (R FrontendRoute) m ()
+  -- ^ Extra widget to display at the bottom of the sidebar
+  -> AppCfg key t (RoutedT t (R FrontendRoute) m) -> RoutedT t (R FrontendRoute) m ()
+app sidebarExtra appCfg = void . mfix $ \ cfg -> do
   ideL <- makeIde appCfg cfg
 
-  controlCfg <- controlBar appCfg ideL
-  mainCfg <- elClass "main" "main page__main" $ do
-    uiEditorCfg <- codePanel appCfg "main__left-pane" ideL
-    envCfg <- rightTabBar "main__right-pane" ideL
-    pure $ uiEditorCfg <> envCfg
+  walletSidebar sidebarExtra
+  updates <- divClass "page" $ do
+    netCfg <- networkBar ideL
+    let mkPageContent c = divClass (c <> " page__content visible")
+    -- This route overriding is awkward, but it gets around having to alter the
+    -- types of ideL and appCfg, and we don't actually need the true subroute
+    -- yet.
+    route <- askRoute
+    routedCfg <- subRoute $ lift . flip runRoutedT route . \case
+      FrontendRoute_Wallet -> mkPageContent "wallet" $ do
+        addCfg <- controlBar "Wallet" $ uiAddWalletOnlyAccountDialogButton ideL
+        walletCfg <- uiWallet ideL
+        pure $ addCfg <> walletCfg
+      FrontendRoute_Contracts -> mkPageContent "contracts" $ do
+        controlCfg <- controlBar "Contracts" (controlBarRight appCfg ideL)
+        mainCfg <- elClass "main" "main page__main" $ do
+          uiEditorCfg <- codePanel appCfg "main__left-pane" ideL
+          envCfg <- rightTabBar "main__right-pane" ideL
+          pure $ uiEditorCfg <> envCfg
+        pure $ controlCfg <> mainCfg
+      -- TODO resources page
+      FrontendRoute_Resources -> text "Resources" >> pure mempty
+      -- TODO settings page
+      FrontendRoute_Settings -> text "Settings" >> pure mempty
+    flattenedCfg <- flatten =<< tagOnPostBuild routedCfg
+    pure $ netCfg <> flattenedCfg
 
   modalCfg <- showModal ideL
 
@@ -95,16 +125,41 @@ app appCfg = void . mfix $ \ cfg -> do
     signingModalCfg = mempty & modalCfg_setModal .~ onSigningModal
 
   pure $ mconcat
-    [ controlCfg
-    , mainCfg
+    [ updates
     , modalCfg
     , gistModalCfg
     , signingModalCfg
     , mempty & ideCfg_editor . editorCfg_loadCode .~ _appCfg_externalFileOpened appCfg
     ]
 
+walletSidebar
+  :: (DomBuilder t m, PostBuild t m, Routed t (R FrontendRoute) m, SetRoute t (R FrontendRoute) m, RouteToUrl (R FrontendRoute) m)
+  => m () -> m ()
+walletSidebar sidebarExtra = elAttr "div" ("class" =: "sidebar") $ do
+  divClass "sidebar__logo" $ elAttr "img" ("src" =: static @"img/logo.png") blank
+  route <- demux . fmap (\(r :/ _) -> Some r) <$> askRoute
+  let sidebarLink r@(r' :/ _) = routeLink r $ do
+        let mkAttrs sel = "class" =: ("sidebar__link" <> if sel then " selected" else "")
+        elDynAttr "span" (mkAttrs <$> demuxed route (Some r')) $ do
+          elAttr "img" ("class" =: "highlighted" <> "src" =: routeIcon r) blank
+          elAttr "img" ("class" =: "normal" <> "src" =: routeIcon r) blank
+  sidebarLink $ FrontendRoute_Wallet :/ ()
+  sidebarLink $ FrontendRoute_Contracts :/ Nothing
+  elAttr "div" ("style" =: "flex-grow: 1") blank
+  sidebarLink $ FrontendRoute_Resources :/ ()
+  sidebarLink $ FrontendRoute_Settings :/ ()
+  sidebarExtra
+
+-- | Get the routes to the icon assets for each route
+routeIcon :: R FrontendRoute -> Text
+routeIcon = \case
+  FrontendRoute_Contracts :/ _ -> static @"img/menu/contracts.svg"
+  FrontendRoute_Wallet :/ _ -> static @"img/menu/wallet.svg"
+  FrontendRoute_Resources :/ _ -> static @"img/menu/resources.svg"
+  FrontendRoute_Settings :/ _ -> static @"img/menu/settings.svg"
+
 -- | Code editing (left hand side currently)
-codePanel :: forall t m a. MonadWidget t m => AppCfg t m -> CssClass -> Ide a t -> m (IdeCfg a t)
+codePanel :: forall r key t m a. (MonadWidget t m, Routed t r m) => AppCfg key t m -> CssClass -> Ide a key t -> m (IdeCfg a key t)
 codePanel appCfg cls m = elKlass "div" (cls <> "pane") $ do
     (e, eCfg) <- wysiwyg $ do
       onNewCode <- tagOnPostBuild $ m ^. editor_code
@@ -135,11 +190,11 @@ codePanel appCfg cls m = elKlass "div" (cls <> "pane") $ do
 
 -- | Load current editor code into REPL.
 loadCodeIntoRepl
-  :: forall t m model a
+  :: forall key t m model a
   . (MonadWidget t m, HasEditor model t)
    => model
    -> Event t ()
-   -> m (IdeCfg a t)
+   -> m (IdeCfg a key t)
 loadCodeIntoRepl m onReq = do
   let onLoad = tag (current $ m ^. editor_code) onReq
   pure $ mempty
@@ -154,8 +209,8 @@ toAceAnnotation anno = AceAnnotation
   }
 
 codeWidget
-  :: MonadWidget t m
-  => AppCfg t m
+  :: (MonadWidget t m, Routed t r m)
+  => AppCfg key t m
   -> Event t [AceAnnotation]
   -> Text
   -> Event t Text
@@ -165,20 +220,33 @@ codeWidget appCfg anno iv sv = do
                  , _aceConfigElemAttrs = "class" =: "ace-code ace-widget"
                  , _aceConfigReadOnly = _appCfg_editorReadOnly appCfg
                  }
-    ace <- resizableAceWidget (_appCfg_forceResize appCfg) mempty ac (AceDynConfig Nothing) anno iv sv
+    route <- askRoute
+    -- Without this delay, sometimes the resize doesn't take place.
+    resize <- delay 0.1 . (void (updated route) <>) =<< getPostBuild
+    ace <- resizableAceWidget resize mempty ac (AceDynConfig Nothing) anno iv sv
     return $ _extendedACE_onUserChange ace
 
+networkBar
+  :: MonadWidget t m
+  => ModalIde m key t
+  -> m (ModalIdeCfg m key t)
+networkBar m = divClass "main-header main-header__network-bar" $ do
+  -- Fetch and display the status of the currently selected network.
+  queryNetworkStatus (m ^. ide_network . network_networks) (m ^. ide_network . network_selectedNetwork)
+    >>= uiNetworkStatus (pure " page__network-bar-status")
+  -- Present the dropdown box for selecting one of the configured networks.
+  divClass "page__network-bar-select" $
+    uiNetworkSelect (m ^. ide_network)
 
 controlBar
-  :: forall t m. MonadWidget t m
-  => AppCfg t m
-  -> ModalIde m t
-  ->  m (ModalIdeCfg m t)
-controlBar appCfg m = do
+  :: MonadWidget t m
+  => Text
+  -> m a
+  -> m a
+controlBar pageTitle controls = do
     mainHeader $ do
-      controlBarLeft
-      controlBarCenter
-      controlBarRight appCfg m
+      divClass "main-header__page-name" $ text pageTitle
+      controls
   where
     -- Main header with adjusted padding on MacOs (scrollbars take up no space there):
     mainHeader child = do
@@ -187,60 +255,9 @@ controlBar appCfg m = do
       let
         baseCls = "main-header page__main-header "
         cls = if isMac
-                 then  baseCls <> "page__main-header_platform_mac"
+                 then baseCls <> "page__main-header_platform_mac"
                  else baseCls
       divClass cls child
-
-controlBarCenter :: forall t m. MonadWidget t m => m ()
-controlBarCenter = divClass "main-header__center-box" $
-  divClass "main-header__center" $
-    kadenaLogo
-  where
-    kadenaLogo =
-      elAttr "a"
-        ( "href" =: "https://kadena.io"
-          <> "class" =: "main-header__kadena-logo" <> "target" =: "_blank"
-        ) $
-        elAttr "img"
-          ( "src" =: static @"img/Klogo.png"
-            <> "alt" =: "Kadena Logo"
-            <> "class" =: "main-header__logo-img"
-          ) blank
-
-
-controlBarLeft :: forall t m. MonadWidget t m => m ()
-controlBarLeft =
-  divClass "main-header__logos-docs" $ do
-    {- kadenaLogo -}
-    pactLogo
-    docs
-
-  where
-
-    pactLogo =
-      elClass "div" "main-header__pact-logo" $ do
-        elAttr "img"
-          ( "src" =: static @"img/pact-logo.svg"
-            <> "alt" =: "Kadena Pact Logo"
-            <> "class" =: "main-header__pact-logo-img"
-          ) blank
-        elClass "span" "main-header__pact-version" $ do
-          ver <- getPactVersion
-          text $ "v" <> ver
-
-    docs = divClass "main-header__docs" $ do
-      elAttr "a" ( "href" =: "https://pactlang.org"
-                <> "class" =: "main-header__documents" <> "target" =: "_blank"
-                 ) $ do
-        elAttr "img" ("src" =: static @"img/instruction.svg" <> "alt" =: "Documentation" <> "class" =: "main-header__documents-img" <> "style" =: "width: 28px;") blank
-        text "Tutorials"
-
-      elAttr "a" ( "href" =: "http://pact-language.readthedocs.io"
-                <> "class" =: "main-header__documents" <> "target" =: "_blank"
-                 ) $ do
-        elAttr "img" ("src" =: static @"img/document.svg" <> "class" =: "main-header__documents-img") blank
-        text "Docs"
-
 
 getPactVersion :: MonadWidget t m => m Text
 getPactVersion = do
@@ -250,34 +267,36 @@ getPactVersion = do
       _ -> error "failed to get pact version"
     return ver
 
-controlBarRight :: forall t m. MonadWidget t m => AppCfg t m -> ModalIde m t -> m (ModalIdeCfg m t)
+controlBarRight  :: forall key t m. (MonadWidget t m, HasCrypto key (Performable m))
+  => AppCfg key t m -> ModalIde m key t -> m (ModalIdeCfg m key t)
 controlBarRight appCfg m = do
     divClass "main-header__controls-nav" $ do
       elClass "div" "main-header__project-loader" $ do
+
+        onNetClick <- cogButton headerBtnCfg
 
         _ <- openFileBtn
 
         onLoadClicked <- loadReplBtn
 
-        onDeployClick <- deployBtn
-
         onCreateGist <- if _appCfg_gistEnabled appCfg then gistBtn else pure never
 
-        onNetClick <- cogButton headerBtnCfg
         onLogoutClick <- if _appCfg_gistEnabled appCfg then maySignoutBtn else pure never
+
+        onDeployClick <- deployBtn
 
         loadCfg <- loadCodeIntoRepl m onLoadClicked
         let
-          reqConfirmation :: Event t (Maybe (ModalImpl m t))
+          reqConfirmation :: Event t (Maybe (ModalImpl m key t))
           reqConfirmation = attachWith (\c _ -> Just $ uiDeployConfirmation c m) (current $ m ^. editor_code) onDeployClick
 
-          gistConfirmation :: Event t (Maybe (ModalImpl m t))
+          gistConfirmation :: Event t (Maybe (ModalImpl m key t))
           gistConfirmation = Just uiCreateGist <$ onCreateGist
 
-          networkEdit :: Event t (Maybe (ModalImpl m t))
+          networkEdit :: Event t (Maybe (ModalImpl m key t))
           networkEdit = Just (uiNetworkEdit m) <$ onNetClick
 
-          logoutConfirmation :: Event t (Maybe (ModalImpl m t))
+          logoutConfirmation :: Event t (Maybe (ModalImpl m key t))
           logoutConfirmation = Just uiLogoutConfirmation <$ onLogoutClick
 
           gistCfg =  mempty & modalCfg_setModal .~  gistConfirmation
@@ -299,7 +318,7 @@ controlBarRight appCfg m = do
     signoutBtn = signoutButton $
       headerBtnCfg & uiButtonCfg_title .~ Just "Sign out from GitHub"
 
-    deployBtn = uiButton headerBtnCfg $
+    deployBtn = uiButton (headerBtnCfg & uiButtonCfg_class <>~ "main-header__deploy-button") $
       text $ "Deploy"
 
     loadReplBtn =

@@ -40,6 +40,7 @@ import qualified Data.Aeson                         as Aeson
 import qualified Data.ByteString.Lazy               as BSL
 import qualified Data.HashMap.Strict                as H
 import qualified Data.Map                           as Map
+import qualified Data.IntMap                        as IntMap
 import           Data.Maybe
 import qualified Data.Set                           as Set
 import           Data.Text                          (Text)
@@ -78,7 +79,7 @@ showJsonTabName JsonDataView_Result  = "Result"
 uiJsonData
   :: ( MonadWidget t m, HasJsonDataCfg mConf t, Monoid mConf, Flattenable mConf t
      )
-  => Wallet t
+  => Wallet key t
   -> JsonData t
   -> m mConf
 uiJsonData = uiJsonDataSetFocus
@@ -95,7 +96,7 @@ uiJsonDataSetFocus
      )
   => (Element EventResult GhcjsDomSpace t -> Dynamic t JsonDataView -> m ())
   -> (Element EventResult GhcjsDomSpace t -> Dynamic t JsonDataView -> m ())
-  -> Wallet t
+  -> Wallet key t
   -> JsonData t
   -> m mConf
 uiJsonDataSetFocus onKeysetCreate onRawInputCreate w d = divClass "tabset" $ mdo
@@ -105,7 +106,7 @@ uiJsonDataSetFocus onKeysetCreate onRawInputCreate w d = divClass "tabset" $ mdo
       , _tabBarCfg_mkLabel = const $ text . showJsonTabName
       , _tabBarCfg_selectedTab = Just <$> curSelection
       , _tabBarCfg_classes = mempty
-      , _tabBarCfg_type = TabBarType_Secondary
+      , _tabBarCfg_type = TabBarType_Primary
       }
 
     keysetVCfg <- tabPane mempty curSelection JsonDataView_Keysets $ do
@@ -136,7 +137,7 @@ uiJsonDataSetFocus onKeysetCreate onRawInputCreate w d = divClass "tabset" $ mdo
       if getAny . foldMap (Any . T.any Char.isUpper) $ H.keys o
       then mkUpperCaseError
       else []
- 
+
     mkUpperCaseError = mkAnnotation "error" "Keyset names must be all lowercase"
     mkObjError = mkAnnotation "error" . showJsonError
     mkDupWarning dups =
@@ -166,7 +167,7 @@ uiJsonDataResult = el "pre" . dynText . fmap showData
 
 uiCreateKeysets
   :: (MonadWidget t m, Monoid mConf, HasJsonDataCfg mConf t, Flattenable mConf t)
-  => Wallet t -> JsonData t -> m (Element EventResult (DomBuilderSpace m) t, mConf)
+  => Wallet key t -> JsonData t -> m (Element EventResult (DomBuilderSpace m) t, mConf)
 uiCreateKeysets w d = elClass' "div" "keysets group" $ do
   onCreateKeyset <- uiCreateKeyset d
   ksCfg <- elClass "div" "keyset-list" $
@@ -175,7 +176,7 @@ uiCreateKeysets w d = elClass' "div" "keysets group" $ do
 
 uiKeysets
   :: (MonadWidget t m, Monoid mConf, HasJsonDataCfg mConf t)
-  => Wallet t -> DynKeysets t -> m mConf
+  => Wallet key t -> DynKeysets t -> m mConf
 uiKeysets w ksM = do
     case Map.toList ksM of
       []   -> do
@@ -188,7 +189,7 @@ uiKeysets w ksM = do
 -- | Display a single keyset on the screen.
 uiKeyset
   :: (MonadWidget t m, Monoid mConf, HasJsonDataCfg mConf t)
-  => Wallet t
+  => Wallet key t
   -> (KeysetName, DynKeyset t)
   -> m mConf
 uiKeyset w (n, ks) = do
@@ -209,7 +210,10 @@ uiKeyset w (n, ks) = do
           & jsonDataCfg_delKeyset .~ fmap (const n) onDel
       return cfg1
 
-    onKeyClick <- switchHold never <=< networkView $ uiKeysetKeys (_keyset_keys ks) . Map.keys <$> _wallet_keys w
+    onKeyClick <- switchHold never <=< networkView $ ffor (_wallet_accounts w) $ \im ->
+      uiKeysetKeys (_keyset_keys ks) $ IntMap.elems $ flip IntMap.mapMaybe im $ \case
+        SomeAccount_Account a -> Just $ unAccountName $ _account_name a
+        _ -> Nothing
     let
       onAddKey = fmap fst . ffilter snd $ onKeyClick
       onDelKey = fmap fst . ffilter (not . snd) $ onKeyClick
