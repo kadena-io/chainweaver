@@ -103,7 +103,6 @@ uiCreateWalletStepOne model onClose = Workflow $ do
 
     pure
       ( ("Add Account", (newConf, leftmost [onClose, onCancel]))
-      -- , uiWalletOnlyAccountCreated newConf onClose <$> (model ^. ide_wallet . wallet_walletOnlyAccountCreated)
       , leftmost
         [ uiWalletOnlyAccountCreated newConf onClose <$> (model ^. ide_wallet . wallet_walletOnlyAccountCreated)
         , uiAddVanityAccountSettings model dSelectedChain dNotes <$ onAddVanityAcc

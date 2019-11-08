@@ -389,8 +389,8 @@ userChainIdSelect
      )
   => model
   -> m (MDynamic t Pact.ChainId)
-userChainIdSelect m = mkLabeledClsInput (uiChainSelection mNodeInfo (constDyn Nothing)) "Chain ID"
-  where mNodeInfo = (^? to rights . _head) <$> m ^. network_selectedNodes
+userChainIdSelect m =
+  userChainIdSelectWithPreselect m (constDyn Nothing)
 
 -- | Let the user pick a chain id but preselect a value
 userChainIdSelectWithPreselect
