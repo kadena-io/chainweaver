@@ -136,7 +136,7 @@ walletSidebar
   :: (DomBuilder t m, PostBuild t m, Routed t (R FrontendRoute) m, SetRoute t (R FrontendRoute) m, RouteToUrl (R FrontendRoute) m)
   => m () -> m ()
 walletSidebar sidebarExtra = elAttr "div" ("class" =: "sidebar") $ do
-  divClass "sidebar__logo" blank -- TODO missing logo image
+  divClass "sidebar__logo" $ elAttr "img" ("src" =: static @"img/logo.png") blank
   route <- demux . fmap (\(r :/ _) -> Some r) <$> askRoute
   let sidebarLink r@(r' :/ _) = routeLink r $ do
         let mkAttrs sel = "class" =: ("sidebar__link" <> if sel then " selected" else "")

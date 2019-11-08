@@ -12,6 +12,15 @@
   background: #2D2D2F;
   height: 5rem;
   margin-bottom: 1.5rem;
+
+  display: flex;
+  justify-content: center;
+  align-items: center;
+
+  img {
+     width: 32px;
+     height: 32px;
+  }
 }
 
 .sidebar__link {
