@@ -34,6 +34,7 @@ module Frontend.UI.DeploymentSettings
   , predefinedChainIdSelect
   , predefinedChainIdDisplayed
   , userChainIdSelect
+  , userChainIdSelectWithPreselect
   , uiChainSelection
 
     -- * Tab Helpers
@@ -388,7 +389,17 @@ userChainIdSelect
      )
   => model
   -> m (MDynamic t Pact.ChainId)
-userChainIdSelect m = mkLabeledClsInput (uiChainSelection mNodeInfo) "Chain ID"
+userChainIdSelect m = mkLabeledClsInput (uiChainSelection mNodeInfo (constDyn Nothing)) "Chain ID"
+  where mNodeInfo = (^? to rights . _head) <$> m ^. network_selectedNodes
+
+-- | Let the user pick a chain id but preselect a value
+userChainIdSelectWithPreselect
+  :: (MonadWidget t m, HasNetwork model t
+     )
+  => model
+  -> Dynamic t (Maybe Pact.ChainId)
+  -> m (MDynamic t Pact.ChainId)
+userChainIdSelectWithPreselect m mChainId = mkLabeledClsInput (uiChainSelection mNodeInfo mChainId) "Chain ID"
   where mNodeInfo = (^? to rights . _head) <$> m ^. network_selectedNodes
 
 uiDeployCode
@@ -661,22 +672,28 @@ uiSenderDropdown uCfg m chainId = do
 uiChainSelection
   :: MonadWidget t m
   => Dynamic t (Maybe NodeInfo)
+  -> Dynamic t (Maybe Pact.ChainId)
   -> CssClass
   -> m (Dynamic t (Maybe Pact.ChainId))
-uiChainSelection info cls = mdo
-    let
-      chains = map (id &&& _chainId) . maybe [] getChains <$> info
-      mkPlaceHolder cChains = if null cChains then "No chains available" else "Select chain"
-      mkOptions cs = Map.fromList $ (Nothing, mkPlaceHolder cs) : map (first Just) cs
+uiChainSelection info mPreselected cls = do
+  pb <- getPostBuild
 
-      staticCls = cls <> "select"
-      mkDynCls v = if isNothing v then "select_mandatory_missing" else mempty
-      allCls = renderClass <$> fmap mkDynCls d <> pure staticCls
+  let
+    chains = map (id &&& _chainId) . maybe [] getChains <$> info
+    mkPlaceHolder cChains = if null cChains then "No chains available" else "Select chain"
+    mkOptions cs = Map.fromList $ (Nothing, mkPlaceHolder cs) : map (first Just) cs
 
-      cfg = def & dropdownConfig_attributes .~ (("class" =:) <$> allCls)
+    staticCls = cls <> "select"
+    mkDynCls v = if isNothing v then "select_mandatory_missing" else mempty
+
+  rec
+    let allCls = renderClass <$> fmap mkDynCls d <> pure staticCls
+        cfg = def
+          & dropdownConfig_attributes .~ (("class" =:) <$> allCls)
+          & dropdownConfig_setValue .~ (current mPreselected <@ pb)
 
     d <- _dropdown_value <$> dropdown Nothing (mkOptions <$> chains) cfg
-    pure d
+  pure d
 
 parseSigCapability :: Text -> Either String SigCapability
 parseSigCapability txt = parsed >>= compiled >>= parseApp
