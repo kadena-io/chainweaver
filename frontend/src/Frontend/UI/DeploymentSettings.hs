@@ -219,8 +219,7 @@ buildDeploymentSettingsResult m mSender cChainId capabilities ttl gasLimit code 
   sender <- MaybeT mSender
   chainId <- MaybeT cChainId
   caps <- lift capabilities
-  let signing = Set.insert sender $ Map.keysSet caps
-      accs = Set.insert sender $ Map.keysSet caps
+  let accs = Set.insert sender $ Map.keysSet caps
   let deploySettingsJsonData = fromMaybe mempty $ _deploymentSettingsConfig_data settings
   jsonData' <- lift $ either (const mempty) id <$> m ^. jsonData . jsonData_data
   ttl' <- lift ttl
@@ -242,7 +241,7 @@ buildDeploymentSettingsResult m mSender cChainId capabilities ttl gasLimit code 
         pure (pk, cs)
       pkCaps = Map.fromList $ fmapMaybe toPublicKey $ Map.toList caps
   pure $ do
-    let signingPairs = getSigningPairs signing allAccounts
+    let signingPairs = getSigningPairs accs allAccounts
     cmd <- buildCmd
       (_deploymentSettingsConfig_nonce settings)
       networkId publicMeta signingPairs
@@ -257,7 +256,7 @@ buildDeploymentSettingsResult m mSender cChainId capabilities ttl gasLimit code 
     pure $ DeploymentSettingsResult
       { _deploymentSettingsResult_gasPrice = _pmGasPrice publicMeta
       , _deploymentSettingsResult_signingKeys = signingPairs
-      , _deploymentSettingsResult_signingAccounts = signing
+      , _deploymentSettingsResult_signingAccounts = accs
       , _deploymentSettingsResult_sender = sender
       , _deploymentSettingsResult_chainId = chainId
       , _deploymentSettingsResult_wrappedCommand = wrappedCmd
