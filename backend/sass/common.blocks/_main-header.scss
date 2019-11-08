@@ -81,6 +81,7 @@ $main-header-btn-font-size: $secondary-font-size;
 .main-header__network-bar {
   justify-content: flex-start;
   background-color: white;
+  height: $top-bar-height;
 
   .page__network-bar-status.signal {
     margin-left: 3rem;
