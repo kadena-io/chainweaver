@@ -53,7 +53,6 @@ import Reflex.Dom
 import Reflex.Extended (tagOnPostBuild)
 import Reflex.Network.Extended (Flattenable)
 import Reflex.Network.Extended (flatten)
-import qualified Data.IntMap as IntMap
 import qualified Data.Map as Map
 import qualified Data.Text as T
 import qualified Data.Text.IO as T
@@ -132,7 +131,6 @@ fullDeployFlow
      ( MonadWidget t m, Monoid modelCfg, Flattenable modelCfg t
      , HasNetwork model t
      , HasWallet model key t
-     , HasCrypto key (Performable m)
      )
   => DeployConfirmationConfig t
   -> model
@@ -150,7 +148,6 @@ fullDeployFlowWithSubmit
      ( MonadWidget t m, Monoid modelCfg, Flattenable modelCfg t
      , HasNetwork model t
      , HasWallet model key t
-     , HasCrypto key (Performable m)
      )
   => DeployConfirmationConfig t
   -> model
@@ -171,10 +168,11 @@ fullDeployFlowWithSubmit dcfg model onPreviewConfirm runner _onClose = do
       pure (( _deployConfirmationConfig_modalTitle dcfg
             , (never, settingsCfg)
             )
-           , deployPreview <$> result
+           , attachWith deployPreview (current $ model ^. wallet_accounts) result
            )
-    deployPreview result = Workflow $ do
 
+    deployPreview :: Accounts key -> DeploymentSettingsResult key -> Workflow t m (Text, (Event t a, modelCfg))
+    deployPreview keyAccounts result = Workflow $ do
       let chain = _deploymentSettingsResult_chainId result
       succeeded <- elClass "div" "modal__main transaction_details" $ do
 
@@ -184,8 +182,7 @@ fullDeployFlowWithSubmit dcfg model onPreviewConfirm runner _onClose = do
           transactionDisplayNetwork model
           predefinedChainIdDisplayed chain model
 
-        let accountsToTrack = getAccounts keyAccounts
-              $ _deploymentSettingsResult_accountsToTrack result
+        let accountsToTrack = getAccounts keyAccounts $ _deploymentSettingsResult_accountsToTrack result
         pb <- getPostBuild
         let localReq = case _deploymentSettingsResult_wrappedCommand result of
               Left _e -> []
@@ -200,7 +197,7 @@ fullDeployFlowWithSubmit dcfg model onPreviewConfirm runner _onClose = do
             Left e -> do
               liftIO $ T.putStrLn e
               pure $ Left "Error parsing the response"
-            Right v -> pure $ Right v
+            Right v -> pure $ Right (over (_1 . mapped) AccountBalance v)
           [(_, Left e)] -> pure $ Left $ prettyPrintNetworkError e
           n -> do
             liftIO $ T.putStrLn $ "Expected 1 response, but got " <> tshow (length n)
@@ -382,30 +379,8 @@ statusClass = \case
   Status_Failed -> "failed"
   Status_Done -> "done"
 
-getAccounts :: KeyPairs -> Set AccountName -> Map AccountName PublicKey
-getAccounts keyPairs accounts = fmap _keyPair_publicKey $ Map.restrictKeys (Map.mapKeysMonotonic AccountName keyPairs) accounts
-
--- | Track the balances of the given accounts from post build time.
--- Request updated balances on the occurance of the input event.
---
--- Return a tuple of (associated keys/names, initial balance, most recent balance).
-trackBalancesFromPostBuild
-  :: (MonadWidget t m, HasNetwork model t, HasWallet model key t, HasCrypto key (Performable m))
-  => model -> ChainId -> Set AccountName -> Event t ()
-  -> m (Map AccountName
-    ( Dynamic t [PublicKey]
-    , Dynamic t (Maybe (Maybe AccountBalance))
-    , Dynamic t (Maybe (Maybe AccountBalance))
-    ))
-trackBalancesFromPostBuild model chain accounts fire = getPostBuild >>= \pb -> sequence $ flip Map.fromSet accounts $ \name -> do
-  let publicKeys = getKeys <$> model ^. wallet_accounts
-      getKeys accs =
-        [ _keyPair_publicKey $ _account_key a
-        | SomeAccount_Account a <- IntMap.elems accs
-        , _account_name a == name
-        , _account_chainId a == chain
-        ]
-  initialBalance <- holdDyn Nothing . fmap Just =<< getBalance model chain (name <$ pb)
-  updatedBalance <- holdDyn Nothing . fmap Just =<< getBalance model chain (name <$ fire)
-  pure (publicKeys, initialBalance, updatedBalance)
-
+getAccounts :: Accounts key -> Set AccountName -> Map AccountName PublicKey
+getAccounts keyPairs accounts = fmap _keyPair_publicKey $ Map.restrictKeys (foldl' f Map.empty keyPairs) accounts
+  where
+    f acc SomeAccount_Deleted = acc
+    f acc (SomeAccount_Account a) = Map.insert (_account_name a) (_account_key a) acc

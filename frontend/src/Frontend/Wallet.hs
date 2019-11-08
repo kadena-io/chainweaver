@@ -17,6 +17,7 @@ module Frontend.Wallet
     PublicKey
   , PrivateKey
   , KeyPair (..)
+  , KeyPairs
   , Accounts
   , WalletCfg (..)
   , HasWalletCfg (..)
@@ -51,6 +52,7 @@ import Control.Monad.Except (runExcept)
 import Control.Monad.Fix
 import Data.Aeson
 import Data.Decimal
+import Data.Map (Map)
 import Data.IntMap (IntMap)
 import Data.Text (Text)
 import GHC.Generics (Generic)
@@ -68,6 +70,11 @@ import Frontend.Crypto.Ed25519
 import Frontend.Foundation
 import Frontend.Storage
 
+-- | Type of a `Key` name.
+--
+--   All keys are accessible by a name of type `KeyName`
+type KeyName = Text
+
 -- | Account balance wrapper
 newtype AccountBalance = AccountBalance { unAccountBalance :: Decimal } deriving (Eq, Ord, Num)
 
@@ -79,6 +86,9 @@ data KeyPair key = KeyPair
   } deriving Generic
 
 makePactLenses ''KeyPair
+
+-- | `KeyName` to `Key` mapping
+type KeyPairs key = Map KeyName (KeyPair key)
 
 -- | Account guards. We split this out here because we are only really
 -- interested in keyset guards right now. Someday we might end up replacing this

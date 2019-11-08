@@ -221,7 +221,7 @@ uiDeploymentSettings m settings = mdo
             chainId <- MaybeT cChainId
             caps <- lift capabilities
             let accs = Set.insert sender $ Map.keysSet caps
-                signing = Set.mapMonotonic unAccountName accs
+                signing = Set.insert sender $ Map.keysSet caps
             jsonData' <- lift $ either (const mempty) id <$> m ^. jsonData . jsonData_data
             ttl' <- lift ttl
             limit <- lift gasLimit
