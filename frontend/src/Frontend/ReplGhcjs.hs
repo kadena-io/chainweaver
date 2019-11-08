@@ -273,16 +273,17 @@ controlBarRight appCfg m = do
     divClass "main-header__controls-nav" $ do
       elClass "div" "main-header__project-loader" $ do
 
+        onNetClick <- cogButton headerBtnCfg
+
         _ <- openFileBtn
 
         onLoadClicked <- loadReplBtn
 
-        onDeployClick <- deployBtn
-
         onCreateGist <- if _appCfg_gistEnabled appCfg then gistBtn else pure never
 
-        onNetClick <- cogButton headerBtnCfg
         onLogoutClick <- if _appCfg_gistEnabled appCfg then maySignoutBtn else pure never
+
+        onDeployClick <- deployBtn
 
         loadCfg <- loadCodeIntoRepl m onLoadClicked
         let
