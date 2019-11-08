@@ -87,7 +87,7 @@ doug%1%us1.tn1.chainweb.com%1bfafb513a26979b48bafe3f9c0fba7703065066a84421f71ca4
 
 The final form includes a human readable component as well as machine readable components:
 
-<account name>][<chain id>][<base64 encoding of address>
+<account name>|<chain id>|<base64 encoding of address>
 
 The use of an address does not require the human readable component. Only the Base64
 encoded address is validated against the checksum. If the human readable prefix is
@@ -120,7 +120,7 @@ textKadenaAddress :: KadenaAddress -> Text
 textKadenaAddress = TE.decodeUtf8With TE.lenientDecode . _kadenaAddress_encoded
 
 humanReadableDelimiter :: Word8
-humanReadableDelimiter = 93 -- ']'
+humanReadableDelimiter = 124 -- '|'
 
 delimiter :: ByteString
 delimiter = "\n"
