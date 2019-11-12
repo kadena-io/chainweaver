@@ -54,6 +54,7 @@ import           Frontend.UI.Widgets
 import           Frontend.Foundation
 import           Frontend.JsonData (HasJsonData, HasJsonDataCfg)
 import           Frontend.UI.Dialogs.AccountDetails (uiAccountDetails)
+import           Frontend.UI.Dialogs.Receive (uiReceiveModal)
 import           Frontend.UI.Modal
 import           Frontend.Network
 ------------------------------------------------------------------------------
@@ -78,6 +79,7 @@ type HasUiWalletModelCfg model mConf key m t =
 -- | Possible actions from an account
 data AccountDialog
   = AccountDialog_Details
+  | AccountDialog_Receive
   deriving Eq
 
 -- | UI for managing the keys wallet.
@@ -159,6 +161,7 @@ uiKeyItems model = do
     accModal (d,i,a) = Just $ case d of
       -- AccountDialog_Delete -> uiDeleteConfirmation i (_account_name a)
       AccountDialog_Details -> uiAccountDetails i a
+      AccountDialog_Receive -> uiReceiveModal model a
 
   pure $ mempty & modalCfg_setModal .~ (accModal <$> onAccountModal)
 
@@ -193,7 +196,7 @@ uiKeyItem selectedNetwork i d = do
             let cfg = def
                   & uiButtonCfg_class <>~ "wallet__table-button"
 
-            void $ receiveButton $ cfg & uiButtonCfg_disabled .~ True
+            recv <- receiveButton cfg
             void $ sendButton $ cfg & uiButtonCfg_disabled .~ True
             onDetails <- detailsButton cfg
 
@@ -201,6 +204,7 @@ uiKeyItem selectedNetwork i d = do
 
             pure $ leftmost
               [ mkDialog AccountDialog_Details onDetails
+              , mkDialog AccountDialog_Receive recv
               ]
 
 -- | Get the balance of an account from the network. 'Nothing' indicates _some_
