@@ -3,6 +3,8 @@
 ;; verification and why it pays off.
 ;;
 
+(namespace "free")
+
 (module verification MODULE_ADMIN
   @doc "Little example to show off the usefulness of formal verification."
 

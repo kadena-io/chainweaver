@@ -23,7 +23,7 @@ module Frontend.Wallet
   , IsWalletCfg
   , Wallet (..)
   , HasWallet (..)
-  , AccountName (unAccountName)
+  , AccountName (..)
   , AccountBalance (..)
   , mkAccountName
   , AccountGuard (..)
@@ -50,7 +50,6 @@ import Control.Lens
 import Control.Monad.Except (runExcept)
 import Control.Monad.Fix
 import Data.Aeson
-import Data.Decimal
 import Data.IntMap (IntMap)
 import Data.Text (Text)
 import GHC.Generics (Generic)
@@ -62,14 +61,12 @@ import qualified Data.Text as T
 import qualified Pact.Types.Term as Pact
 import qualified Pact.Types.Type as Pact
 
+import Common.Network (AccountBalance(..))
 import Common.Orphans ()
 import Frontend.Crypto.Class
 import Frontend.Crypto.Ed25519
 import Frontend.Foundation
 import Frontend.Storage
-
--- | Account balance wrapper
-newtype AccountBalance = AccountBalance { unAccountBalance :: Decimal } deriving (Eq, Ord, Num)
 
 -- | A key consists of a public key and an optional private key.
 --
