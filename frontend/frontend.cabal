@@ -81,6 +81,7 @@ library
                , base64-bytestring
                , uri-bytestring
                , attoparsec
+               , vector
 
   exposed-modules: Frontend
                  , Frontend.AppCfg
