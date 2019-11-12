@@ -220,7 +220,7 @@ buildDeploymentSettingsResult m mSender cChainId capabilities ttl gasLimit code 
   chainId <- MaybeT cChainId
   caps <- lift capabilities
   let signing = Set.insert sender $ Map.keysSet caps
-  deploySettingsJsonData <- hoistMaybe $ _deploymentSettingsConfig_data settings
+      deploySettingsJsonData = fromMaybe mempty $ _deploymentSettingsConfig_data settings
   jsonData' <- lift $ either (const mempty) id <$> m ^. jsonData . jsonData_data
   ttl' <- lift ttl
   limit <- lift gasLimit
