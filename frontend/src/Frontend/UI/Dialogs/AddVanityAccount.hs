@@ -9,6 +9,7 @@ import           Control.Applicative                    (liftA2)
 import           Control.Error                          (hush)
 import           Control.Lens                           ((^.))
 import           Control.Monad                          (join)
+import           Control.Monad.Trans.Class              (lift)
 import           Control.Monad.Trans.Maybe              (MaybeT (..), runMaybeT)
 import           Data.Either                            (isLeft)
 import           Data.Maybe                             (isNothing, maybe)
@@ -40,6 +41,7 @@ import           Frontend.Network                       (ChainId, HasNetworkCfg,
                                                          NodeInfo,
                                                          defaultTransactionGasLimit,
                                                          networkCfg_setSender,
+                                                         network_selectedNetwork,
                                                          network_selectedNodes)
 import           Frontend.Wallet                        (Account (..),
                                                          AccountName,
@@ -134,6 +136,7 @@ uiAddVanityAccountSettings ideL mChainId initialNotes = Workflow $ do
             <$> MaybeT dAccountName
             <*> MaybeT dKeyPair
             <*> MaybeT cChainId
+            <*> lift (ideL ^. network_selectedNetwork)
             <*> MaybeT dNotes
 
       let mkSettings payload = DeploymentSettingsConfig

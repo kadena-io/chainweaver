@@ -62,7 +62,7 @@ import qualified Data.Text as T
 import qualified Pact.Types.Term as Pact
 import qualified Pact.Types.Type as Pact
 
-import Common.Network (AccountBalance(..))
+import Common.Network (AccountBalance(..), NetworkName)
 import Common.Orphans ()
 import Frontend.Crypto.Class
 import Frontend.Crypto.Ed25519
@@ -113,6 +113,7 @@ data Account key = Account
   { _account_name :: AccountName
   , _account_key :: KeyPair key
   , _account_chainId :: ChainId
+  , _account_network :: NetworkName
   , _account_notes :: Text
   } deriving Generic
 
@@ -123,12 +124,12 @@ instance FromJSON key => FromJSON (Account key) where
   parseJSON = genericParseJSON defaultOptions
 
 data WalletCfg key t = WalletCfg
-  { _walletCfg_genKey     :: Event t (AccountName, ChainId, Text)
+  { _walletCfg_genKey     :: Event t (AccountName, NetworkName, ChainId, Text)
   -- ^ Request generation of a new key, that will be named as specified.
   , _walletCfg_importAccount  :: Event t (Account key)
   , _walletCfg_delKey     :: Event t IntMap.Key
   -- ^ Delete a key from your wallet.
-  , _walletCfg_createWalletOnlyAccount :: Event t (ChainId, Text)
+  , _walletCfg_createWalletOnlyAccount :: Event t (NetworkName, ChainId, Text)
   -- ^ Create a wallet only account that uses the public key as the account name
   }
   deriving Generic
@@ -217,20 +218,21 @@ makeWallet conf = do
     , _wallet_walletOnlyAccountCreated = _account_name <$> onWOAccountCreate
     }
   where
-    createWalletOnlyAccount :: Int -> (ChainId, Text) -> Performable m (Account key)
-    createWalletOnlyAccount i (c, t) = do
+    createWalletOnlyAccount :: Int -> (NetworkName, ChainId, Text) -> Performable m (Account key)
+    createWalletOnlyAccount i (net, c, t) = do
       (privKey, pubKey) <- cryptoGenKey i
-      pure $ buildAccount (AccountName $ keyToText pubKey) pubKey privKey c t
+      pure $ buildAccount (AccountName $ keyToText pubKey) pubKey privKey net c t
 
-    createKey :: Int -> (AccountName, ChainId, Text) -> Performable m (Account key)
-    createKey i (n, c, t) = do
+    createKey :: Int -> (AccountName, NetworkName, ChainId, Text) -> Performable m (Account key)
+    createKey i (n, net, c, t) = do
       (privKey, pubKey) <- cryptoGenKey i
-      pure $ buildAccount n pubKey privKey c t
+      pure $ buildAccount n pubKey privKey net c t
 
-    buildAccount n pubKey privKey c t = Account
+    buildAccount n pubKey privKey net c t = Account
         { _account_name = n
         , _account_key = KeyPair pubKey (Just privKey)
         , _account_chainId = c
+        , _account_network = net
         , _account_notes = t
         }
 

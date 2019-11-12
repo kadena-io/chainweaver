@@ -8,13 +8,15 @@ module Frontend.UI.Dialogs.AddAccount
   ) where
 
 import           Control.Lens
+import           Control.Monad.Trans.Class
+import           Control.Monad.Trans.Maybe
 import           Data.Text (Text)
 ------------------------------------------------------------------------------
 import           Reflex
 import           Reflex.Dom
 ------------------------------------------------------------------------------
 import           Frontend.Wallet
-import           Frontend.Network (HasNetworkCfg)
+import           Frontend.Network (HasNetworkCfg, network_selectedNetwork)
 import           Frontend.JsonData (HasJsonDataCfg)
 import           Frontend.Crypto.Class (HasCrypto)
 import           Frontend.UI.DeploymentSettings (transactionDisplayNetwork, userChainIdSelect)
@@ -98,7 +100,11 @@ uiCreateWalletStepOne model onClose = Workflow $ do
 
     onConfirm <- confirmButton (def & uiButtonCfg_disabled .~ isDisabled) "Add New Account"
 
-    let eAddAcc = attachWithMaybe (\n -> fmap (,n)) (current dNotes) (current dSelectedChain <@ onConfirm)
+    let eAddAcc = flip push onConfirm $ \() -> runMaybeT $ do
+          chain <- MaybeT $ sample $ current dSelectedChain
+          net <- lift $ sample $ current $ model ^. network_selectedNetwork
+          notes <- lift $ sample $ current dNotes
+          pure (net, chain, notes)
         newConf = mempty & walletCfg_createWalletOnlyAccount .~ eAddAcc
 
     pure

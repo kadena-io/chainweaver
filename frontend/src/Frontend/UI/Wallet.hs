@@ -47,20 +47,19 @@ import qualified Pact.Types.ChainId as Pact
 import           Reflex
 import           Reflex.Dom
 ------------------------------------------------------------------------------
-import           Frontend.Ide (_ide_wallet, _ide_network)
 import           Frontend.Crypto.Class
 import           Frontend.Crypto.Ed25519     (keyToText)
 import           Frontend.Wallet
 import           Frontend.UI.Widgets
 import           Frontend.Foundation
+import           Frontend.JsonData (HasJsonData, HasJsonDataCfg)
 import           Frontend.UI.Dialogs.AccountDetails (uiAccountDetails)
 import           Frontend.UI.Modal
-import           Frontend.UI.Modal.Impl (ModalIde)
 import           Frontend.Network
 ------------------------------------------------------------------------------
 
 -- | Constraints on the model config we have for implementing this widget.
-type HasUiWalletModelCfg mConf key m t =
+type HasUiWalletModelCfg model mConf key m t =
   ( Monoid mConf
   , Flattenable mConf t
   , IsWalletCfg mConf key t
@@ -68,6 +67,12 @@ type HasUiWalletModelCfg mConf key m t =
   , HasWalletCfg (ModalCfg mConf t) key t
   , Flattenable (ModalCfg mConf t) t
   , Monoid (ModalCfg mConf t)
+  , HasNetwork model t
+  , HasWallet model key t
+  , HasCrypto key (Performable m)
+  , HasJsonData model t
+  , HasNetworkCfg (ModalCfg mConf t) t
+  , HasJsonDataCfg (ModalCfg mConf t) t
   )
 
 -- | Possible actions from an account
@@ -77,32 +82,17 @@ data AccountDialog
 
 -- | UI for managing the keys wallet.
 uiWallet
-  :: forall m t key mConf
+  :: forall m t key model mConf
      . ( MonadWidget t m
-       , HasUiWalletModelCfg mConf key m t
+       , HasUiWalletModelCfg model mConf key m t
        )
-  => ModalIde m key t
+  => model
   -> m mConf
-uiWallet ideL =
-  uiAvailableKeys (_ide_wallet ideL) (_ide_network ideL)
+uiWallet = uiAvailableKeys
 
 ----------------------------------------------------------------------
 -- Keys related helper widgets:
 ----------------------------------------------------------------------
-
--- | UI for letting the user select a particular key
--- from a filtered view of the available keys.
---uiSelectKey
---  :: MonadWidget t m
---  => Wallet t
---  -> ((Text, KeyPair) -> Bool)
---  -> m (Dynamic t (Maybe Text))
---uiSelectKey w kFilter = do
---  let keyNames = map fst . filter kFilter . Map.toList <$> _wallet_accounts w
---      mkPlaceholder ks = if null ks then "No keys available" else "Select key"
---      options = Map.fromList . (Nothing:"No keys") . (\a -> (Just a,a)) <$> keyNames
---  d <- dropdown Nothing options def
---  pure $ _dropdown_value d
 
 -- | Check whether a given key does contain a private key.
 hasPrivateKey :: (Text, KeyPair PrivateKey) -> Bool
@@ -112,32 +102,30 @@ hasPrivateKey = isJust . _keyPair_privateKey . snd
 
 -- | Widget listing all available keys.
 uiAvailableKeys
-  :: forall t m mConf key.
+  :: forall t m model mConf key.
      ( MonadWidget t m
-     , HasUiWalletModelCfg mConf key m t
+     , HasUiWalletModelCfg model mConf key m t
      )
-  => Wallet key t
-  -> Network t
+  => model
   -> m mConf
-uiAvailableKeys aWallet aNetwork = do
+uiAvailableKeys model = do
   divClass "wallet__keys-list" $ do
-    uiKeyItems aWallet aNetwork
+    uiKeyItems model
 
 -- | Render a list of key items.
 --
 -- Does not include the surrounding `div` tag. Use uiAvailableKeys for the
 -- complete `div`.
 uiKeyItems
-  :: forall t m mConf key.
+  :: forall t m model mConf key.
      ( MonadWidget t m
-     , HasUiWalletModelCfg mConf key m t
+     , HasUiWalletModelCfg model mConf key m t
      )
-  => Wallet key t
-  -> Network t
+  => model
   -> m mConf
-uiKeyItems aWallet aNetwork = do
+uiKeyItems model = do
   let
-    keyMap' = aWallet ^. wallet_accounts
+    keyMap' = model ^. wallet_accounts
     keyMap = Map.fromAscList . IntMap.toAscList <$> keyMap'
     tableAttrs =
       "style" =: "table-layout: fixed; width: 100%"
@@ -161,7 +149,7 @@ uiKeyItems aWallet aNetwork = do
         , ""
         ]
 
-    el "tbody" $ listWithKey keyMap uiKeyItem
+    el "tbody" $ listWithKey keyMap (uiKeyItem $ model ^. network_selectedNetwork)
 
   dyn_ $ ffor keyMap $ \keys -> when (Map.null keys) $ text "No accounts ..."
 
@@ -170,7 +158,7 @@ uiKeyItems aWallet aNetwork = do
 
     accModal (d,i,a) = Just $ case d of
       -- AccountDialog_Delete -> uiDeleteConfirmation i (_account_name a)
-      AccountDialog_Details -> uiAccountDetails aNetwork i a
+      AccountDialog_Details -> uiAccountDetails i a
 
   pure $ mempty & modalCfg_setModal .~ (accModal <$> onAccountModal)
 
@@ -178,36 +166,43 @@ uiKeyItems aWallet aNetwork = do
 -- | Display a key as list item together with it's name.
 uiKeyItem
   :: MonadWidget t m
-  => IntMap.Key
+  => Dynamic t NetworkName
+  -> IntMap.Key
   -> Dynamic t (SomeAccount key)
   -> m (Event t (AccountDialog, IntMap.Key, Account key))
-uiKeyItem i d = do
+uiKeyItem selectedNetwork i d = do
   md <- maybeDyn $ someAccount Nothing Just <$> d
   switchHold never <=< dyn $ ffor md $ \case
     Nothing -> pure never
-    Just account -> elClass "tr" "wallet__table-row" $ do
-      let td = elClass "td" "wallet__table-cell"
+    Just account -> do
+      onSelectedNetwork <- holdUniqDyn $ (==) . _account_network <$> account <*> selectedNetwork
+      switchHold never <=< dyn $ ffor onSelectedNetwork $ \case
+        False -> pure never
+        True -> do
+          elClass "tr" "wallet__table-row" $ do
+          let td = elClass "td" "wallet__table-cell"
 
-      td $ dynText $ unAccountName . _account_name <$> account
-      td $ dynText $ keyToText . _keyPair_publicKey . _account_key <$> account
-      td $ dynText $ Pact._chainId . _account_chainId <$> account
-      td $ dynText $ _account_notes <$> account
-      -- TODO balance
-      td $ text "Balance Placeholder"
+          td $ dynText $ unAccountName . _account_name <$> account
+          td $ dynText $ keyToText . _keyPair_publicKey . _account_key <$> account
+          td $ dynText $ Pact._chainId . _account_chainId <$> account
+          td $ dynText $ _account_notes <$> account
+          -- TODO balance
+          td $ text "Balance Placeholder"
 
-      td $ divClass "wallet__table-buttons" $ do
-        let cfg = def
-              & uiButtonCfg_class <>~ "wallet__table-button"
+          td $ divClass "wallet__table-buttons" $ do
+            let cfg = def
+                  & uiButtonCfg_class <>~ "wallet__table-button"
 
-        void $ receiveButton $ cfg & uiButtonCfg_disabled .~ True
-        void $ sendButton $ cfg & uiButtonCfg_disabled .~ True
-        onDetails <- detailsButton cfg
+            void $ receiveButton $ cfg & uiButtonCfg_disabled .~ True
+            void $ sendButton $ cfg & uiButtonCfg_disabled .~ True
+            onDetails <- detailsButton cfg
 
-        let mkDialog dia onE = (\a -> (dia, i, a)) <$> current account <@ onE
+            let mkDialog dia onE = (\a -> (dia, i, a)) <$> current account <@ onE
 
-        pure $ leftmost
-          [ mkDialog AccountDialog_Details onDetails
-          ]
+            pure $ leftmost
+              [ mkDialog AccountDialog_Details onDetails
+  --            , mkDialog AccountDialog_Details onDetails
+              ]
 
 -- | Get the balance of an account from the network. 'Nothing' indicates _some_
 -- failure, either a missing account or connectivity failure. We have no need to
