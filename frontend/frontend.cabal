@@ -81,6 +81,7 @@ library
                , base64-bytestring
                , uri-bytestring
                , attoparsec
+               , vector
 
   exposed-modules: Frontend
                  , Frontend.AppCfg
@@ -111,12 +112,12 @@ library
                  , Frontend.Storage
                  , Frontend.UI.Button
                  , Frontend.UI.DeploymentSettings
+                 , Frontend.UI.Dialogs.AddAccount
                  , Frontend.UI.Dialogs.CallFunction
                  , Frontend.UI.Dialogs.CreateGist
                  , Frontend.UI.Dialogs.CreatedGist
                  , Frontend.UI.Dialogs.DeployConfirmation
                  , Frontend.UI.Dialogs.NetworkEdit
-                 , Frontend.UI.Dialogs.KeyImport
                  , Frontend.UI.Dialogs.LogoutConfirmation
                  , Frontend.UI.Dialogs.Receive
                  , Frontend.UI.Dialogs.Signing
