@@ -174,38 +174,41 @@ uiRealInputElement cfg = do
     inputElement $ cfg & initialAttributes %~
         (<> ("type" =: "number")) . addInputElementCls . addNoAutofillAttrs
 
--- | uiInputElement which should always provide a proper real number limited to the given precision
---
---   In particular it will always has a decimal point in it.
+-- | Decimal input to the given precision. Returns the element, the value, and
+-- the user input events
 uiRealWithPrecisionInputElement
-  :: forall t m er
-     . ( er ~ EventResult
-       , DomBuilder t m
-       )
+  :: forall t m er a. (DomBuilder t m, MonadFix m)
   => Word8
+  -> (Decimal -> a)
   -> InputElementConfig er t (DomBuilderSpace m)
-  -> m (InputElement er (DomBuilderSpace m) t)
-uiRealWithPrecisionInputElement prec cfg = do
+  -> m (InputElement er (DomBuilderSpace m) t, (Dynamic t (Maybe a), Event t a))
+uiRealWithPrecisionInputElement prec fromDecimal cfg = do
+  rec
     r <- inputElement $ cfg
       & initialAttributes %~ addInputElementCls . addNoAutofillAttrs
         . (<> ("type" =: "number" <> "step" =: stepSize <> "min" =: stepSize))
-      & inputElementConfig_setValue %~ fmapMaybe f
-
-    pure $ r
-      { _inputElement_value = (\t -> fromMaybe t (f t)) <$> _inputElement_value r
-      , _inputElement_input = fmapMaybe f (_inputElement_input r)
-      }
+      & inputElementConfig_setValue %~ (\e -> leftmost [fmapMaybe parseAndRound e, rounded])
+    let parsedValue = fmap fst . parseDecimal <$> value r
+        parsedInput = fmapMaybe parseDecimal (_inputElement_input r)
+        -- Trim the users input if we had to round it
+        rounded = fmap (showDecimal . fst) $ ffilter snd parsedInput
+  pure
+    ( r
+    , (fmap fromDecimal <$> parsedValue
+      , fromDecimal . fst <$> parsedInput
+      )
+    )
   where
     showDecimal :: Decimal -> Text
     showDecimal = tshow
 
-    readDouble :: String -> Maybe Double
-    readDouble = readMay
+    parseAndRound :: Text -> Maybe Text
+    parseAndRound t = showDecimal . fst <$> parseDecimal t
 
-    parseDecimal :: Text -> Maybe Decimal
-    parseDecimal = fmap (D.roundTo prec . realToFrac) . readDouble . T.unpack
-
-    f = fmap showDecimal . parseDecimal
+    -- Returns the decimal and whether or not it needed rounding to 'prec'
+    parseDecimal :: Text -> Maybe (Decimal, Bool)
+    parseDecimal t = ffor (readMay $ T.unpack t) $ \decimal ->
+      (D.roundTo prec decimal, D.decimalPlaces decimal > prec)
 
     stepSize = "0." <> T.replicate (fromIntegral prec - 1) "0" <> "1"
 

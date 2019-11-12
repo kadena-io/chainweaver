@@ -64,7 +64,7 @@ module Frontend.UI.DeploymentSettings
   , Identity (runIdentity)
   ) where
 
-import Control.Applicative (liftA2)
+import Control.Applicative (liftA3)
 import Control.Arrow (first, (&&&))
 import Control.Error (fmapL, hoistMaybe, headMay)
 import Control.Error.Util (hush)
@@ -72,6 +72,7 @@ import Control.Lens
 import Control.Monad
 import Control.Monad.Trans.Class
 import Control.Monad.Trans.Maybe
+import Data.Decimal (roundTo)
 import Data.Either (rights, isLeft)
 import Data.IntMap (IntMap)
 import Data.Map (Map)
@@ -96,8 +97,11 @@ import qualified Data.HashMap.Strict as HM
 import qualified Data.Map as Map
 import qualified Data.Set as Set
 import qualified Data.Text as T
+import qualified Pact.Types.Capability as PC
 import qualified Pact.Types.ChainId as Pact
 import qualified Pact.Types.Command as Pact
+import qualified Pact.Types.Info as PI
+import qualified Pact.Types.Names as PN
 
 import Common.Network
 import Frontend.Crypto.Class
@@ -111,10 +115,6 @@ import Frontend.UI.TabBar
 import Frontend.UI.Widgets
 import Frontend.UI.Widgets.Helpers (preventScrollWheelAndUpDownArrow)
 import Frontend.Wallet
-
-import qualified Pact.Types.Capability as PC
-import qualified Pact.Types.Names as PN
-import qualified Pact.Types.Info as PI
 
 -- | Config for the deployment settings widget.
 data DeploymentSettingsConfig t m model a = DeploymentSettingsConfig
@@ -151,7 +151,7 @@ data DeploymentSettingsConfig t m model a = DeploymentSettingsConfig
 
 data CapabilityInputRow t = CapabilityInputRow
   { _capabilityInputRow_empty :: Dynamic t Bool
-  , _capabilityInputRow_value :: Dynamic t (Maybe (Map AccountName [SigCapability]))
+  , _capabilityInputRow_value :: Dynamic t (Map AccountName [SigCapability])
   , _capabilityInputRow_account :: Dynamic t (Maybe AccountName)
   , _capabilityInputRow_cap :: Dynamic t (Either String SigCapability)
   }
@@ -189,6 +189,10 @@ data DeploymentSettingsResult key = DeploymentSettingsResult
   , _deploymentSettingsResult_chainId :: ChainId
   , _deploymentSettingsResult_code :: Text
   , _deploymentSettingsResult_command :: Pact.Command Text
+  , _deploymentSettingsResult_wrappedCommand :: Either String (Pact.Command Text)
+  -- ^ This differs from 'command' because this wraps the code with balance
+  -- checks for a /local request. This should never be actually deployed.
+  , _deploymentSettingsResult_accountsToTrack :: Set AccountName
   }
 
 buildDeploymentSettingsResult
@@ -203,7 +207,7 @@ buildDeploymentSettingsResult
   => model
   -> Dynamic t (Maybe AccountName)
   -> Dynamic t (Maybe ChainId)
-  -> Dynamic t (Maybe (Map AccountName [SigCapability]))
+  -> Dynamic t (Map AccountName [SigCapability])
   -> Dynamic t TTLSeconds
   -> Dynamic t GasLimit
   -> Dynamic t Text
@@ -214,7 +218,7 @@ buildDeploymentSettingsResult m mSender cChainId capabilities ttl gasLimit code 
   networkId <- hoistMaybe $ hush . mkNetworkName . nodeVersion =<< headMay (rights selNodes)
   sender <- MaybeT mSender
   chainId <- MaybeT cChainId
-  caps <- MaybeT capabilities
+  caps <- lift capabilities
   let signing = Set.insert sender $ Map.keysSet caps
   deploySettingsJsonData <- hoistMaybe $ _deploymentSettingsConfig_data settings
   jsonData' <- lift $ either (const mempty) id <$> m ^. jsonData . jsonData_data
@@ -243,11 +247,19 @@ buildDeploymentSettingsResult m mSender cChainId capabilities ttl gasLimit code 
       networkId publicMeta signingPairs
       (_deploymentSettingsConfig_extraSigners settings)
       code' (HM.union jsonData' deploySettingsJsonData) pkCaps
+    wrappedCmd <- for (wrapWithBalanceChecks signing code') $ \wrappedCode -> do
+      buildCmd
+        (_deploymentSettingsConfig_nonce settings)
+        networkId publicMeta signingPairs
+        (_deploymentSettingsConfig_extraSigners settings)
+        wrappedCode (HM.union jsonData' deploySettingsJsonData) pkCaps
     pure $ DeploymentSettingsResult
       { _deploymentSettingsResult_gasPrice = _pmGasPrice publicMeta
       , _deploymentSettingsResult_signingKeys = signingPairs
       , _deploymentSettingsResult_signingAccounts = signing
       , _deploymentSettingsResult_sender = sender
+      , _deploymentSettingsResult_wrappedCommand = wrappedCmd
+      , _deploymentSettingsResult_accountsToTrack = signing
       , _deploymentSettingsResult_chainId = chainId
       , _deploymentSettingsResult_command = cmd
       , _deploymentSettingsResult_code = code'
@@ -525,33 +537,35 @@ uiMetaData
        )
   => model -> Maybe TTLSeconds -> Maybe GasLimit -> m (mConf, Dynamic t TTLSeconds, Dynamic t GasLimit)
 uiMetaData m mTTL mGasLimit = do
-    eGasPrice <- tag (current $ _pmGasPrice <$> m ^. network_meta) <$> getPostBuild
+    pbGasPrice <- tag (current $ _pmGasPrice <$> m ^. network_meta) <$> getPostBuild
 
     let
-      txnSpeedSliderEl gpEl conf = uiSliderInputElement (text "Slow") (text "Fast") $ conf
+      txnSpeedSliderEl setExternal conf = uiSliderInputElement (text "Slow") (text "Fast") $ conf
         & inputElementConfig_initialValue .~ (showGasPrice $ scaleGPtoTxnSpeed defaultTransactionGasPrice)
         & initialAttributes .~ "min" =: "1" <> "max" =: "1001" <> "step" =: "1"
         & inputElementConfig_setValue .~ leftmost
-          [ showGasPrice . scaleGPtoTxnSpeed <$> eGasPrice
-          , parseAndScaleWith scaleGPtoTxnSpeed gpEl
+          [ setExternal
+          , showGasPrice . scaleGPtoTxnSpeed <$> pbGasPrice -- Initial value (from storage)
           ]
 
-      gasPriceInputEl
-        :: InputElement EventResult (DomBuilderSpace m) t
+      gasPriceInputBox
+        :: Event t Text
         -> InputElementConfig EventResult t (DomBuilderSpace m)
-        -> m (InputElement EventResult (DomBuilderSpace m) t)
-      gasPriceInputEl tsEl conf = uiRealWithPrecisionInputElement maxCoinPricePrecision $ conf
+        -> m (Dynamic t (Maybe GasPrice), Event t GasPrice)
+      gasPriceInputBox setExternal conf = fmap snd $ uiRealWithPrecisionInputElement maxCoinPricePrecision (GasPrice . ParsedDecimal) $ conf
         & inputElementConfig_initialValue .~ showGasPrice defaultTransactionGasPrice
         & inputElementConfig_setValue .~ leftmost
-          [ showGasPrice <$> eGasPrice
-          , parseAndScaleWith scaleTxnSpeedToGP tsEl
+          [ setExternal
+          , showGasPrice <$> pbGasPrice -- Initial value (from storage)
           ]
         & inputElementConfig_elementConfig . elementConfig_eventSpec %~ preventScrollWheelAndUpDownArrow @m
 
-    onGasPriceTxt <- mdo
-      tsEl <- mkLabeledInput (txnSpeedSliderEl gpEl) "Transaction Speed" def
-      gpEl <- mkLabeledInput (gasPriceInputEl tsEl) "Gas Price (KDA)" def
-      pure $ leftmost [_inputElement_input gpEl, parseAndScaleWith scaleTxnSpeedToGP tsEl]
+    onGasPrice <- mdo
+      tsEl <- mkLabeledInput (txnSpeedSliderEl setPrice) "Transaction Speed" def
+      let setSpeed = fmapMaybe (fmap scaleTxnSpeedToGP . parseGasPrice) $ _inputElement_input tsEl
+      (_gpValue, gpInput) <- mkLabeledInput (gasPriceInputBox $ fmap showGasPrice setSpeed) "Gas Price (KDA)" def
+      let setPrice = fmap (showGasPrice . scaleGPtoTxnSpeed) gpInput
+      pure $ leftmost [gpInput, setSpeed]
 
     let initGasLimit = fromMaybe defaultTransactionGasLimit mGasLimit
     pbGasLimit <- case mGasLimit of
@@ -572,7 +586,7 @@ uiMetaData m mTTL mGasLimit = do
 
     gasLimit <- holdDyn initGasLimit $ leftmost [onGasLimit, pbGasLimit]
 
-    let mkTransactionFee c = uiRealWithPrecisionInputElement maxCoinPricePrecision $ c
+    let mkTransactionFee c = fmap fst $ uiRealWithPrecisionInputElement maxCoinPricePrecision id $ c
           & initialAttributes %~ Map.insert "disabled" ""
     _ <- mkLabeledInputView mkTransactionFee "Max Transaction Fee (KDA)" $
       ffor (m ^. network_meta) $ \pm -> showGasPrice $ fromIntegral (_pmGasLimit pm) * _pmGasPrice pm
@@ -597,7 +611,7 @@ uiMetaData m mTTL mGasLimit = do
 
     pure
       ( mempty
-        & networkCfg_setGasPrice .~ eParsedGasPrice onGasPriceTxt
+        & networkCfg_setGasPrice .~ onGasPrice
         & networkCfg_setGasLimit .~ onGasLimit
         & networkCfg_setTTL .~ onTTL
       , ttl
@@ -608,7 +622,8 @@ uiMetaData m mTTL mGasLimit = do
 
       shiftGP :: GasPrice -> GasPrice -> GasPrice -> GasPrice -> GasPrice -> GasPrice
       shiftGP oldMin oldMax newMin newMax x =
-        (newMax-newMin)/(oldMax-oldMin)*(x-oldMin)+newMin
+        let GasPrice (ParsedDecimal gp) = (newMax-newMin)/(oldMax-oldMin)*(x-oldMin)+newMin
+         in GasPrice $ ParsedDecimal $ roundTo maxCoinPricePrecision gp
 
       scaleTxnSpeedToGP :: GasPrice -> GasPrice
       scaleTxnSpeedToGP = shiftGP 1 1001 (1e-12) (1e-8)
@@ -616,15 +631,8 @@ uiMetaData m mTTL mGasLimit = do
       scaleGPtoTxnSpeed :: GasPrice -> GasPrice
       scaleGPtoTxnSpeed = shiftGP (1e-12) (1e-8) 1 1001
 
-      parseAndScaleWith
-        :: (GasPrice -> GasPrice)
-        -> InputElement er d t
-        -> Event t Text
-      parseAndScaleWith f =
-        fmap (showGasPrice . f) . eParsedGasPrice . _inputElement_input
-
-      eParsedGasPrice :: Event t Text -> Event t GasPrice
-      eParsedGasPrice = fmapMaybe (readPact (GasPrice . ParsedDecimal))
+      parseGasPrice :: Text -> Maybe GasPrice
+      parseGasPrice t = GasPrice . ParsedDecimal . roundTo maxCoinPricePrecision <$> readMay (T.unpack t)
 
       showGasLimit :: GasLimit -> Text
       showGasLimit (GasLimit (ParsedInteger i)) = tshow i
@@ -735,8 +743,8 @@ capabilityInputRow mCap mkSender = elClass "tr" "table__row" $ do
   pure $ CapabilityInputRow
     { _capabilityInputRow_empty = empty
     , _capabilityInputRow_value = empty >>= \case
-      True -> pure $ Just mempty
-      False -> runMaybeT $ do
+      True -> pure mempty
+      False -> fmap (fromMaybe mempty) $ runMaybeT $ do
         a <- MaybeT account
         p <- MaybeT $ either (const Nothing) pure <$> parsed
         pure $ Map.singleton a [p]
@@ -744,11 +752,18 @@ capabilityInputRow mCap mkSender = elClass "tr" "table__row" $ do
     , _capabilityInputRow_cap = parsed
     }
 
+-- | Display a single row for an empty capability
+emptyCapability :: DomBuilder t m => Text -> m () -> m a -> m a
+emptyCapability cls extra m = elClass "tr" "table__row" $ do
+  elClass "td" cls $ text "Empty capability"
+  extra
+  elClass "td" cls m
+
 -- | Display a dynamic number of rows for the user to enter custom capabilities
 capabilityInputRows
   :: forall t m. MonadWidget t m
   => m (Dynamic t (Maybe AccountName))
-  -> m (Dynamic t (Maybe (Map AccountName [SigCapability])))
+  -> m (Dynamic t (Map AccountName [SigCapability]))
 capabilityInputRows mkSender = do
   rec
     (im0, im') <- traverseIntMapWithKeyWithAdjust (\_ _ -> capabilityInputRow Nothing mkSender) (IM.singleton 0 ()) $ leftmost
@@ -774,7 +789,7 @@ capabilityInputRows mkSender = do
         deletions = switch . current $ IM.foldMapWithKey decideDeletions <$> results
 
   pure $
-    fmap (fmap (Map.unionsWith (<>) . IM.elems) . sequence) $ traverse _capabilityInputRow_value =<< results
+    fmap (Map.unionsWith (<>) . IM.elems) $ traverse _capabilityInputRow_value =<< results
 
 -- | Widget for selection of sender and signing keys.
 uiSenderCapabilities
@@ -783,7 +798,7 @@ uiSenderCapabilities
   -> Dynamic t (Maybe Pact.ChainId)
   -> Maybe [DappCap]
   -> m (Dynamic t (Maybe AccountName))
-  -> m (Dynamic t (Maybe AccountName), Dynamic t (Maybe (Map AccountName [SigCapability])))
+  -> m (Dynamic t (Maybe AccountName), Dynamic t (Map AccountName [SigCapability]))
 uiSenderCapabilities m cid mCaps mkSender = do
   let staticCapabilityRow sender cap = do
         el "td" $ text $ _dappCap_role cap
@@ -791,35 +806,37 @@ uiSenderCapabilities m cid mCaps mkSender = do
         acc <- el "td" $ sender
         pure $ CapabilityInputRow
           { _capabilityInputRow_empty = pure False
-          , _capabilityInputRow_value = (fmap . fmap) (\s -> Map.singleton s [_dappCap_cap cap]) acc
+          , _capabilityInputRow_value = maybe mempty (\s -> Map.singleton s [_dappCap_cap cap]) <$> acc
           , _capabilityInputRow_account = acc
           , _capabilityInputRow_cap = pure $ Right $ _dappCap_cap cap
           }
 
-      staticCapabilityRows caps = fmap (fmap (fmap (Map.unionsWith (<>)) . sequence) . sequence) $ for caps $ \cap ->
+      staticCapabilityRows caps = fmap (fmap (Map.unionsWith (<>)) . sequence) $ for caps $ \cap ->
         elClass "tr" "table__row" $ _capabilityInputRow_value <$> staticCapabilityRow (uiSenderDropdown def m cid) cap
 
-      -- Deliberately lift over the `Maybe` too, so we short circuit if anything
-      -- is missing.
-      combineMaps a b = (liftA2 . liftA2) (Map.unionWith (<>)) a b
+      combineMaps = liftA3 $ \a b c -> Map.unionsWith (<>) [a, b, c]
 
   divClass "title" $ text "Roles"
 
   -- Capabilities
   divClass "group" $ elAttr "table" ("class" =: "table" <> "style" =: "width: 100%; table-layout: fixed;") $ case mCaps of
     Nothing -> el "tbody" $ do
+      empty <- emptyCapability "table__cell_padded" blank mkSender
+      let emptySig = maybe Map.empty (\a -> Map.singleton a []) <$> empty
       gas <- capabilityInputRow (Just defaultGASCapability) mkSender
       rest <- capabilityInputRows (uiSenderDropdown def m cid)
-      pure (_capabilityInputRow_account gas, combineMaps (_capabilityInputRow_value gas) rest)
+      pure (_capabilityInputRow_account gas, combineMaps (_capabilityInputRow_value gas) rest emptySig)
     Just caps -> do
       el "thead" $ el "tr" $ do
         elClass "th" "table__heading" $ text "Role"
         elClass "th" "table__heading" $ text "Capability"
         elClass "th" "table__heading" $ text "Account"
       el "tbody" $ do
+        empty <- emptyCapability "" (el "td" blank) mkSender
+        let emptySig = maybe Map.empty (\a -> Map.singleton a []) <$> empty
         gas <- staticCapabilityRow mkSender defaultGASCapability
         rest <- staticCapabilityRows $ filter (not . isGas . _dappCap_cap) caps
-        pure (_capabilityInputRow_account gas, combineMaps (_capabilityInputRow_value gas) rest)
+        pure (_capabilityInputRow_account gas, combineMaps (_capabilityInputRow_value gas) rest emptySig)
 
 isGas :: SigCapability -> Bool
 isGas = (^. to PC._scName . to PN._qnName . to (== "GAS"))

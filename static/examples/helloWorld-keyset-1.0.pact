@@ -2,6 +2,8 @@
 ;; "Hello, world!" smart contract/module
 ;;
 
+(namespace "free")
+
 ;;---------------------------------
 ;;
 ;;  Create an 'admin-keyset' and add some key, for loading this contract!

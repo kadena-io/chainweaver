@@ -37,14 +37,13 @@ module Frontend.UI.Dialogs.DeployConfirmation
   ) where
 
 import Common.Foundation
-import Control.Applicative (liftA2)
 import Control.Concurrent (newEmptyMVar, tryTakeMVar, putMVar, killThread, forkIO, ThreadId)
 import Control.Lens
 import Control.Monad (void)
 import Control.Monad.Ref (MonadRef, Ref)
 import GHC.IORef (IORef)
 import Data.Default (Default (..))
-import Data.Either (isLeft, rights)
+import Data.Either (rights)
 import Data.List.NonEmpty (NonEmpty(..))
 import Data.Map (Map)
 import Data.Set (Set)
@@ -56,25 +55,22 @@ import Frontend.JsonData
 import Frontend.Network
 import Frontend.UI.DeploymentSettings
 import Frontend.UI.Modal
-import Frontend.UI.Wallet
 import Frontend.UI.Widgets
 import Frontend.Wallet
 import Language.Javascript.JSaddle
-import Pact.Parse
 import Pact.Types.PactError (PactError)
 import Pact.Types.PactValue (PactValue)
-import Pact.Types.Gas
+import Pact.Types.Pretty
 import Reflex
 import Reflex.Host.Class (MonadReflexCreateTrigger)
 import Reflex.Dom
-import Reflex.Dom.Contrib.CssClass (renderClass)
 import Reflex.Extended (tagOnPostBuild)
 import Reflex.Network.Extended (Flattenable)
 import Reflex.Network.Extended (flatten)
 import qualified Data.IntMap as IntMap
 import qualified Data.Map as Map
-import qualified Data.Set as Set
 import qualified Data.Text as T
+import qualified Data.Text.IO as T
 import qualified Pact.Server.ApiV1Client as Api
 import qualified Pact.Types.API as Api
 import qualified Pact.Types.Command as Pact
@@ -172,7 +168,6 @@ fullDeployFlow
      ( MonadWidget t m, Monoid modelCfg, Flattenable modelCfg t
      , HasNetwork model t
      , HasWallet model key t
-     , HasCrypto key (Performable m)
      )
   => DeployConfirmationConfig t
   -> model
@@ -190,7 +185,6 @@ fullDeployFlowWithSubmit
      ( MonadWidget t m, Monoid modelCfg, Flattenable modelCfg t
      , HasNetwork model t
      , HasWallet model key t
-     , HasCrypto key (Performable m)
      )
   => DeployConfirmationConfig t
   -> model
@@ -211,12 +205,11 @@ fullDeployFlowWithSubmit dcfg model onPreviewConfirm runner _onClose = do
       pure (( _deployConfirmationConfig_modalTitle dcfg
             , (never, settingsCfg)
             )
-           , deployPreview <$> result
+           , attachWith deployPreview (current $ model ^. wallet_accounts) result
            )
-    deployPreview result = Workflow $ do
+    deployPreview accounts result = Workflow $ do
 
       let chain = _deploymentSettingsResult_chainId result
-          sender = _deploymentSettingsResult_sender result
       succeeded <- elClass "div" "modal__main transaction_details" $ do
 
         transactionInputSection (_deploymentSettingsResult_code result) (_deploymentSettingsResult_command result)
@@ -225,29 +218,30 @@ fullDeployFlowWithSubmit dcfg model onPreviewConfirm runner _onClose = do
           transactionDisplayNetwork model
           predefinedChainIdDisplayed chain model
 
-        let accountsToTrack = Set.insert sender $ _deploymentSettingsResult_signingAccounts result
-        rec
-          accountBalances <- trackBalancesFromPostBuild model chain accountsToTrack (void response)
-          initialRequestsDone <- holdUniqDyn $ and <$> traverse (fmap isJust . view _2) accountBalances
-          gotInitialBalances <- tagOnPostBuild initialRequestsDone
-          let localReq = pure $ NetworkRequest
-                { _networkRequest_cmd = _deploymentSettingsResult_command result
+        let accountsToTrack = getAccounts accounts
+              $ _deploymentSettingsResult_accountsToTrack result
+        pb <- getPostBuild
+        let localReq = case _deploymentSettingsResult_wrappedCommand result of
+              Left _e -> []
+              Right cmd -> pure $ NetworkRequest
+                { _networkRequest_cmd = cmd
                 , _networkRequest_chainRef = ChainRef Nothing chain
                 , _networkRequest_endpoint = Endpoint_Local
                 }
-          response <- performLocalRead (model ^. network) $ localReq <$ gotInitialBalances
+        responses <- performLocalRead (model ^. network) $ localReq <$ pb
+        (errors, resp) <- fmap fanEither $ performEvent $ ffor responses $ \case
+          [(_, Right (_gas, pactValue))] -> case parseWrappedBalanceChecks pactValue of
+            Left e -> do
+              liftIO $ T.putStrLn e
+              pure $ Left "Error parsing the response"
+            Right v -> pure $ Right v
+          [(_, Left e)] -> pure $ Left $ prettyPrintNetworkError e
+          n -> do
+            liftIO $ T.putStrLn $ "Expected 1 response, but got " <> tshow (length n)
+            pure $ Left "Couldn't get a response from the node"
 
         divClass "title" $ text "Anticipated Transaction Impact"
         divClass "group segment" $ do
-          void $ flip mkLabeledClsInput "Total Gas Cost" $ \c -> do
-            let showGasPrice (GasPrice (ParsedDecimal i)) = tshow i
-                gasPrice = _deploymentSettingsResult_gasPrice result
-            void $ uiInputElement $ def
-              & initialAttributes .~ "disabled" =: "" <> "class" =: renderClass c
-              & inputElementConfig_initialValue .~ "Loading..."
-              & inputElementConfig_setValue .~ ffor response (\case
-                (_, Right (Just (Gas gasUnits), _)) : _ -> showGasPrice (fromIntegral gasUnits * gasPrice) <> " KDA"
-                _ -> "Error")
           let tableAttrs = "style" =: "table-layout: fixed; width: 100%" <> "class" =: "table"
           elAttr "table" tableAttrs $ do
             el "thead" $ el "tr" $ do
@@ -255,21 +249,24 @@ fullDeployFlowWithSubmit dcfg model onPreviewConfirm runner _onClose = do
               th "Account Name"
               th "Public Key"
               th "Change in Balance"
-            el "tbody" $ void $ flip Map.traverseWithKey accountBalances $ \acc (publicKeys, initialBalance, updatedBalance) -> el "tr" $ do
+            accountBalances <- flip Map.traverseWithKey accountsToTrack $ \acc pk -> do
+              bal <- holdDyn Nothing $ leftmost [Just Nothing <$ errors, Just . Map.lookup acc . fst <$> resp]
+              pure (pk, bal)
+            el "tbody" $ void $ flip Map.traverseWithKey accountBalances $ \acc (pk, balance) -> el "tr" $ do
               let displayBalance = \case
                     Nothing -> "Loading..."
                     Just Nothing -> "Error"
                     Just (Just b) -> tshow (unAccountBalance b) <> " KDA"
               el "td" $ text $ unAccountName acc
-              el "td" $ void $ simpleList publicKeys $ \key -> do
-                divClass "wallet__key" . dynText $ fmap keyToText key
-              el "td" $ dynText $ displayBalance <$> (liftA2 . liftA2 . liftA2) subtract initialBalance updatedBalance
+              el "td" $ divClass "wallet__key" $ text $ keyToText pk
+              el "td" $ dynText $ displayBalance <$> balance
 
         divClass "title" $ text "Raw Response"
-        (_, txSuccess) <- divClass "group segment" $ runWithReplace (text "Loading...") $ ffor response $ \rs -> do
-          traverse_ (text . prettyPrintNetworkErrorResult . snd) rs
-          pure $ not $ any (isLeft . snd) rs || null rs
-        holdDyn False txSuccess
+        _ <- divClass "group segment" $ runWithReplace (text "Loading...") $ leftmost
+          [ text . renderCompactText . snd <$> resp
+          , text <$> errors
+          ]
+        holdDyn False $ True <$ resp
 
       let ignoreSuccessStatus = _deployConfirmationConfig_disregardSubmitResponse dcfg
 
@@ -335,29 +332,11 @@ statusText = \case
   Status_Failed -> "failed"
   Status_Done -> "done"
 
--- | Track the balances of the given accounts from post build time.
--- Request updated balances on the occurance of the input event.
---
--- Return a tuple of (associated keys/names, initial balance, most recent balance).
-trackBalancesFromPostBuild
-  :: (MonadWidget t m, HasNetwork model t, HasWallet model key t, HasCrypto key (Performable m))
-  => model -> ChainId -> Set AccountName -> Event t ()
-  -> m (Map AccountName
-    ( Dynamic t [PublicKey]
-    , Dynamic t (Maybe (Maybe AccountBalance))
-    , Dynamic t (Maybe (Maybe AccountBalance))
-    ))
-trackBalancesFromPostBuild model chain accounts fire = getPostBuild >>= \pb -> sequence $ flip Map.fromSet accounts $ \name -> do
-  let publicKeys = getKeys <$> model ^. wallet_accounts
-      getKeys accs =
-        [ _keyPair_publicKey $ _account_key a
-        | SomeAccount_Account a <- IntMap.elems accs
-        , _account_name a == name
-        , _account_chainId a == chain
-        ]
-  initialBalance <- holdDyn Nothing . fmap Just =<< getBalance model chain (name <$ pb)
-  updatedBalance <- holdDyn Nothing . fmap Just =<< getBalance model chain (name <$ fire)
-  pure (publicKeys, initialBalance, updatedBalance)
+getAccounts :: Accounts key -> Set AccountName -> Map AccountName PublicKey
+getAccounts accounts = Map.restrictKeys (IntMap.foldr f Map.empty accounts)
+  where f = \case
+          SomeAccount_Deleted -> id
+          SomeAccount_Account a -> Map.insert (_account_name a) $ _keyPair_publicKey $ _account_key a
 
 data TransactionSubmitFeedback t = TransactionSubmitFeedback
   { _transactionSubmitFeedback_sendStatus :: Dynamic t Status
