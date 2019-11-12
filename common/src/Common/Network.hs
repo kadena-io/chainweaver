@@ -25,6 +25,7 @@ module Common.Network
   , Pact.ChainId (..)
   , wrapWithBalanceChecks
   , parseWrappedBalanceChecks
+  , AccountBalance(..)
   ) where
 
 import Control.Applicative ((<|>))
@@ -70,6 +71,9 @@ import Common.Api
 import Common.Orphans ()
 import Common.Foundation
 import Common.RefPath as MP
+
+-- | Account balance wrapper
+newtype AccountBalance = AccountBalance { unAccountBalance :: Decimal } deriving (Eq, Ord, Num)
 
 -- | Name that uniquely describes a valid network.
 newtype NetworkName = NetworkName
@@ -233,7 +237,7 @@ compileCode = first show . compileExps mkEmptyInfo <=< parseExprs
 
 -- | Parse the balance checking object into a map of account balance changes and
 -- the result from the inner code
-parseWrappedBalanceChecks :: PactValue -> Either Text (Map AccountName Decimal, PactValue)
+parseWrappedBalanceChecks :: PactValue -> Either Text (Map AccountName AccountBalance, PactValue)
 parseWrappedBalanceChecks = first ("parseWrappedBalanceChecks: " <>) . \case
   (PObject (ObjectMap obj)) -> do
     let lookupErr k = case Map.lookup (FieldKey k) obj of
@@ -246,7 +250,7 @@ parseWrappedBalanceChecks = first ("parseWrappedBalanceChecks: " <>) . \case
   v -> Left $ "Unexpected PactValue (expected object): " <> renderCompactText v
 
 -- | Turn the object of account->balance into a map
-parseAccountBalances :: PactValue -> Either Text (Map AccountName Decimal)
+parseAccountBalances :: PactValue -> Either Text (Map AccountName AccountBalance)
 parseAccountBalances = first ("parseAccountBalances: " <>) . \case
   (PObject (ObjectMap obj)) -> do
     m <- for (Map.toAscList obj) $ \(FieldKey accountText, pv) -> do
@@ -254,7 +258,7 @@ parseAccountBalances = first ("parseAccountBalances: " <>) . \case
         PLiteral (LDecimal d) -> pure d
         t -> Left $ "Unexpected PactValue (expected decimal): " <> renderCompactText t
       acc <- mkAccountName accountText
-      pure (acc, bal)
+      pure (acc, AccountBalance bal)
     pure $ Map.fromList m
   v -> Left $ "Unexpected PactValue (expected object): " <> renderCompactText v
 
