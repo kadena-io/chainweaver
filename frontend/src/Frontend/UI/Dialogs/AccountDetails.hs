@@ -9,8 +9,8 @@ module Frontend.UI.Dialogs.AccountDetails
 ------------------------------------------------------------------------------
 import           Control.Lens
 import           Data.Text (Text)
-import qualified Data.Text as T
 import qualified Data.IntMap as IntMap
+import qualified Pact.Types.ChainId as Pact
 import           Reflex
 import           Reflex.Dom
 ------------------------------------------------------------------------------
@@ -76,7 +76,7 @@ uiAccountDetailsDetails key a onClose = Workflow $ do
       -- Public key
       _ <- displayText "Public Key" (keyToText . _keyPair_publicKey $ _account_key a) "account-details__pubkey"
       -- Chain id
-      _ <- displayText "Chain ID" (T.pack . show $ _account_chainId a) "account-details__chain-id"
+      _ <- displayText "Chain ID" (Pact._chainId $ _account_chainId a) "account-details__chain-id"
       -- separator
       el "hr" blank
       -- Kadena Address
