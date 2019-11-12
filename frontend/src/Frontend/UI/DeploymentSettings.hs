@@ -755,7 +755,12 @@ capabilityInputRow mCap mkSender = elClass "tr" "table__row" $ do
 -- | Display a single row for an empty capability
 emptyCapability :: DomBuilder t m => Text -> m () -> m a -> m a
 emptyCapability cls extra m = elClass "tr" "table__row" $ do
-  elClass "td" cls $ text "Empty capability"
+  elClass "td" cls $ void $ uiInputElement $ def
+    & inputElementConfig_initialValue .~ "Empty capability"
+    & initialAttributes .~
+      ( "class" =: "input_width_full input_transparent" <>
+        "disabled" =: "true"
+      )
   extra
   elClass "td" cls m
 
