@@ -136,14 +136,13 @@ walletSidebar
   :: (DomBuilder t m, PostBuild t m, Routed t (R FrontendRoute) m, SetRoute t (R FrontendRoute) m, RouteToUrl (R FrontendRoute) m)
   => m () -> m ()
 walletSidebar sidebarExtra = elAttr "div" ("class" =: "sidebar") $ do
-  divClass "sidebar__logo" blank -- TODO missing logo image
+  divClass "sidebar__logo" $ elAttr "img" ("src" =: static @"img/logo.png") blank
   route <- demux . fmap (\(r :/ _) -> Some r) <$> askRoute
   let sidebarLink r@(r' :/ _) = routeLink r $ do
         let mkAttrs sel = "class" =: ("sidebar__link" <> if sel then " selected" else "")
         elDynAttr "span" (mkAttrs <$> demuxed route (Some r')) $ do
-          let (normal, highlighted) = routeIcon r
-          elAttr "img" ("class" =: "highlighted" <> "src" =: highlighted) blank
-          elAttr "img" ("class" =: "normal" <> "src" =: normal) blank
+          elAttr "img" ("class" =: "highlighted" <> "src" =: routeIcon r) blank
+          elAttr "img" ("class" =: "normal" <> "src" =: routeIcon r) blank
   sidebarLink $ FrontendRoute_Wallet :/ ()
   sidebarLink $ FrontendRoute_Contracts :/ Nothing
   elAttr "div" ("style" =: "flex-grow: 1") blank
@@ -152,12 +151,12 @@ walletSidebar sidebarExtra = elAttr "div" ("class" =: "sidebar") $ do
   sidebarExtra
 
 -- | Get the routes to the icon assets for each route
-routeIcon :: R FrontendRoute -> (Text, Text)
+routeIcon :: R FrontendRoute -> Text
 routeIcon = \case
-  FrontendRoute_Contracts :/ _ -> (static @"img/menu/contracts.png", static @"img/menu/contracts_highlighted.png")
-  FrontendRoute_Wallet :/ _ -> (static @"img/menu/wallet.png", static @"img/menu/wallet_highlighted.png")
-  FrontendRoute_Resources :/ _ -> (static @"img/menu/resources.png", static @"img/menu/resources_highlighted.png")
-  FrontendRoute_Settings :/ _ -> (static @"img/menu/settings.png", static @"img/menu/settings_highlighted.png")
+  FrontendRoute_Contracts :/ _ -> static @"img/menu/contracts.svg"
+  FrontendRoute_Wallet :/ _ -> static @"img/menu/wallet.svg"
+  FrontendRoute_Resources :/ _ -> static @"img/menu/resources.svg"
+  FrontendRoute_Settings :/ _ -> static @"img/menu/settings.svg"
 
 -- | Code editing (left hand side currently)
 codePanel :: forall r key t m a. (MonadWidget t m, Routed t r m) => AppCfg key t m -> CssClass -> Ide a key t -> m (IdeCfg a key t)
@@ -274,16 +273,17 @@ controlBarRight appCfg m = do
     divClass "main-header__controls-nav" $ do
       elClass "div" "main-header__project-loader" $ do
 
+        onNetClick <- cogButton headerBtnCfg
+
         _ <- openFileBtn
 
         onLoadClicked <- loadReplBtn
 
-        onDeployClick <- deployBtn
-
         onCreateGist <- if _appCfg_gistEnabled appCfg then gistBtn else pure never
 
-        onNetClick <- cogButton headerBtnCfg
         onLogoutClick <- if _appCfg_gistEnabled appCfg then maySignoutBtn else pure never
+
+        onDeployClick <- deployBtn
 
         loadCfg <- loadCodeIntoRepl m onLoadClicked
         let

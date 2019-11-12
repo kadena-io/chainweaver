@@ -168,4 +168,60 @@
     font-size: 14px;
     color: #2d2d2f;
   }
+  .wallet__key  {
+    text-overflow: ellipsis;
+    overflow: hidden;
+    margin: 0 1rem 0 0;
+  }
+}
+
+.account-details__copy-btn-wrapper {
+  text-align: right;
+
+  .account-details__copy-btn {
+    padding-left: 0.4rem;
+    padding-right: 0.4rem;
+
+    .fa.fa-fw {
+      margin-right: 0.2rem;
+    }
+  }
+}
+.account-details__remove-account-btn {
+  float: left;
+  background-color: $chainweaver-orange;
+  color: $white;
+}
+
+.account-delete__confirm {
+  background-color: $danger-red;
+}
+
+.modal__main.wallet_only__account-created-modal {
+  text-align: center;
+}
+
+.wallet-only__account-heading {
+  font-size: $tiny-font-size;
+  line-height: $tiny-line-height;
+  color: $tertiary-color;
+}
+
+.wallet-only__account-name {
+  font-family: WorkSans-Bold;
+}
+
+.wallet_only__account-created-done-splash-bg {
+  transform: rotateY(180deg);
+  margin-left: 22rem;
+  width: 180px;
+  height: 125px;
+}
+
+.wallet_only__account-created-wallet-blue-icon {
+  position: absolute;
+  top: 8rem;
+  left: 28rem;
+  width: 76px;
+  height: 72px;
 }

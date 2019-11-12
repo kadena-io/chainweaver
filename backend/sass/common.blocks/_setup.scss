@@ -156,11 +156,12 @@ $kadena-orange: #F3AB3C;
 
 .setup__new-wallet-password-text {
   margin-bottom: 1rem;
+  color: gray;
 }
 
 .setup__fullscreen {
   .setup__checkbox, .button {
-    margin: $wallet-top-btm-margin; 
+    margin: $wallet-top-btm-margin;
     font-weight: initial;
   }
 
@@ -315,13 +316,12 @@ $kadena-orange: #F3AB3C;
   margin-bottom: 0;
   border: none;
 
-  i.fa {
-    color: $chainweaver-blue;
+  img {
     margin-right: 0.4rem;
   }
 
   .setup__recovery-phrase-copy-word {
-    color: $tertiary-color;
+    color: $chainweaver-blue;
     font-size: 25px;
 
     .setup__copy-status {
@@ -350,7 +350,7 @@ $kadena-orange: #F3AB3C;
 }
 
 .setup__password-bg {
-  width: 70%;
+  width: 550px;
 }
 
 .setup__done-splash-bg {

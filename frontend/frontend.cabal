@@ -118,8 +118,9 @@ library
                  , Frontend.UI.Dialogs.NetworkEdit
                  , Frontend.UI.Dialogs.KeyImport
                  , Frontend.UI.Dialogs.LogoutConfirmation
-                 , Frontend.UI.Dialogs.DeleteConfirmation
                  , Frontend.UI.Dialogs.Signing
+                 , Frontend.UI.Dialogs.AccountDetails
+                 , Frontend.UI.Dialogs.AddVanityAccount
                  , Frontend.UI.ErrorList
                  , Frontend.UI.Icon
                  , Frontend.UI.JsonData
