@@ -201,7 +201,6 @@ uiKeyItem selectedNetwork i d = do
 
             pure $ leftmost
               [ mkDialog AccountDialog_Details onDetails
-  --            , mkDialog AccountDialog_Details onDetails
               ]
 
 -- | Get the balance of an account from the network. 'Nothing' indicates _some_
