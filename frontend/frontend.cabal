@@ -111,12 +111,12 @@ library
                  , Frontend.Storage
                  , Frontend.UI.Button
                  , Frontend.UI.DeploymentSettings
+                 , Frontend.UI.Dialogs.AddAccount
                  , Frontend.UI.Dialogs.CallFunction
                  , Frontend.UI.Dialogs.CreateGist
                  , Frontend.UI.Dialogs.CreatedGist
                  , Frontend.UI.Dialogs.DeployConfirmation
                  , Frontend.UI.Dialogs.NetworkEdit
-                 , Frontend.UI.Dialogs.KeyImport
                  , Frontend.UI.Dialogs.LogoutConfirmation
                  , Frontend.UI.Dialogs.Signing
                  , Frontend.UI.Dialogs.AccountDetails
