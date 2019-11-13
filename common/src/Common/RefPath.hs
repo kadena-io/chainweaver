@@ -45,7 +45,6 @@ module Common.RefPath
 
 ------------------------------------------------------------------------------
 import           Control.Arrow        (second, (***))
-import           Data.Maybe           (isJust)
 import qualified Data.List            as L
 import qualified Data.List.NonEmpty   as NE
 import           Data.String          (IsString (fromString))
@@ -54,7 +53,6 @@ import qualified Data.Text            as T
 import           Data.Void            (Void)
 import           Text.Megaparsec      as MP
 import qualified Pact.Types.ChainId   as Pact
-import           Text.Read            (readMaybe)
 ------------------------------------------------------------------------------
 
 -- | A path segment is just a piece of `Text`.

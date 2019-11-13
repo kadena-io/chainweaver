@@ -43,7 +43,7 @@ in
           cardano-crypto = hackGet ./deps/cardano-crypto;
           desktop = ./desktop;
           mac = builtins.filterSource (path: type: !(builtins.elem (baseNameOf path) ["static"])) ./mac;
-          linux = builtins.filterSource (path: type: !(builtins.elem (baseNameOf path) ["static"])) ./linux;
+          linux = ./linux;
       };
 
     overrides = let

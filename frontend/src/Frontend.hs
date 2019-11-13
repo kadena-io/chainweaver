@@ -5,13 +5,14 @@
 {-# LANGUAGE TemplateHaskell  #-}
 module Frontend where
 
-import           Control.Monad            (join, void)
+import           Control.Monad            (join, void, when)
 import           Control.Monad.IO.Class
 import           Data.Maybe               (listToMaybe)
 import           Data.Text                (Text)
 import qualified Data.Text                as T
 import qualified GHCJS.DOM.EventM         as EventM
 import qualified GHCJS.DOM.FileReader     as FileReader
+import qualified GHCJS.DOM.File           as File
 import qualified GHCJS.DOM.HTMLElement    as HTMLElement
 import qualified GHCJS.DOM.Types          as Types
 import           Reflex.Dom.Core
@@ -72,13 +73,15 @@ openFileDialog = do
   input <- inputElement $ def & initialAttributes .~ attrs
   let newFile = fmapMaybe listToMaybe $ updated $ _inputElement_files input
   mContents <- performEventAsync $ ffor newFile $ \file cb -> Types.liftJSM $ do
-    fileReader <- FileReader.newFileReader
-    FileReader.readAsText fileReader (Just file) (Nothing :: Maybe Text)
-    _ <- EventM.on fileReader FileReader.loadEnd $ Types.liftJSM $ do
-      mStringOrArrayBuffer <- FileReader.getResult fileReader
-      mText <- traverse (Types.fromJSVal . Types.unStringOrArrayBuffer) mStringOrArrayBuffer
-      liftIO $ cb $ join mText
-    pure ()
+    fname <- File.getName file
+    when (".pact" `T.isSuffixOf` fname) $ do
+      fileReader <- FileReader.newFileReader
+      FileReader.readAsText fileReader (Just file) (Nothing :: Maybe Text)
+      _ <- EventM.on fileReader FileReader.loadEnd $ Types.liftJSM $ do
+        mStringOrArrayBuffer <- FileReader.getResult fileReader
+        mText <- traverse (Types.fromJSVal . Types.unStringOrArrayBuffer) mStringOrArrayBuffer
+        liftIO $ cb $ join mText
+      pure ()
   let open = HTMLElement.click $ _inputElement_raw input
   pure (fmapMaybe id mContents, open)
 

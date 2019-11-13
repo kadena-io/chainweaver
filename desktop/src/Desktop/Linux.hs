@@ -7,12 +7,15 @@
 {-# LANGUAGE TypeOperators #-}
 module Desktop.Linux where
 
+import Debug.Trace (traceShowM,traceShowId)
 import Control.Concurrent
+import Control.Lens ((^.))
 import Control.Exception (bracket_, bracket, try)
-import Control.Monad (forever)
+import Control.Monad (forever,void)
 import Control.Monad.Except (throwError)
 import Control.Monad.IO.Class
-import Data.Foldable (for_)
+import Data.Maybe (isJust)
+import Data.Foldable (for_, traverse_)
 import Data.Proxy (Proxy(..))
 import Data.String (IsString(..))
 import Foreign.C.String (CString, peekCString)
@@ -20,6 +23,7 @@ import Foreign.C.Types (CInt(..))
 import Foreign.StablePtr (StablePtr)
 import GHC.IO.Handle
 import Language.Javascript.JSaddle.Types (JSM)
+import qualified Language.Javascript.JSaddle as JS
 import Obelisk.Backend
 import Obelisk.Frontend
 import Obelisk.Route.Frontend
@@ -59,14 +63,18 @@ data LinuxFFI = LinuxFFI
   , _linuxFFI_resizeWindow :: IO ()
   , _linuxFFI_moveToBackground :: IO ()
   , _linuxFFI_moveToForeground :: IO ()
-  , _linuxFFI_global_openFileDialog :: IO ()
+  , _linuxFFI_global_openFileDialog :: IO (Maybe String)
   , _linuxFFI_global_requestUserAttention :: IO CInt
   , _linuxFFI_global_cancelUserAttentionRequest :: CInt -> IO ()
-  , _linuxFFI_global_getHomeDirectory :: IO CString
+  , _linuxFFI_global_getHomeDirectory :: IO String
 }
 
-getUserLibraryPath :: MonadIO m => m FilePath
-getUserLibraryPath = liftIO $ Env.getEnv "LD_LIBRARY_PATH"
+getUserLibraryPath :: MonadIO m => LinuxFFI -> m FilePath
+getUserLibraryPath ffi = liftIO $ do
+  home <- _linuxFFI_global_getHomeDirectory ffi
+  let lib = home </> ".io.kadena.pact"
+  Directory.createDirectoryIfMissing True lib
+  pure lib
 
 -- | Redirect the given handles to Console.app
 redirectPipes :: [Handle] -> IO a -> IO a
@@ -110,13 +118,18 @@ main'
   -- -> IO (Maybe BS.ByteString)
   -> (BS.ByteString -> BS.ByteString -> (String -> IO ()) -> (FilePath -> IO Bool) -> JSM () -> IO ())
   -> IO ()
-main' ffi runHTML = redirectPipes [stdout, stderr] $ do
+-- main' ffi runHTML = redirectPipes [stdout, stderr] $ do
+main' ffi runHTML = do
   -- Set the path to z3. I tried using the plist key LSEnvironment, but it
   -- doesn't work with relative paths.
-  exePath <- L.dropWhileEnd (/= '/') <$> Env.getExecutablePath
+  exePath <- L.init . L.dropWhileEnd (/= '/') <$> Env.getExecutablePath
+
+  let basePath :: (IsString a, Semigroup a) => a
+      basePath = fromString exePath
+
   putStrLn $ "Executable path: " <> exePath
-  Env.setEnv "SBV_Z3" $ exePath <> "z3"
-  libPath <- getUserLibraryPath
+  Env.setEnv "SBV_Z3" $ exePath </> "z3"
+  libPath <- getUserLibraryPath ffi
   putStrLn $ "Library path: " <> libPath
   port <- getFreePort
   -- -- Get the app resources path
@@ -124,14 +137,17 @@ main' ffi runHTML = redirectPipes [stdout, stderr] $ do
   --   (error "No resources found")
   --   (T.unpack . T.decodeUtf8)
   --   <$> mainBundleResourcePath
+
   let staticAssets = StaticAssets
-        { _staticAssets_processed = "resources" </> "static.assets"
-        , _staticAssets_unprocessed = "resources" </> "static"
+        { _staticAssets_processed = basePath </> "static.assets"
+        , _staticAssets_unprocessed = basePath </> "static"
         }
       backendEncoder = either (error "frontend: Failed to check backendRouteEncoder") id $
         checkEncoder backendRouteEncoder
+
       route :: (IsString s, Semigroup s) => s
       route = "http://localhost:" <> fromString (show port) <> "/"
+
       -- We don't need to serve anything useful here under Frontend
       b = runBackendWith
         (runSnapWithConfig $ Snap.setPort (fromIntegral port) Snap.defaultConfig)
@@ -181,14 +197,14 @@ main' ffi runHTML = redirectPipes [stdout, stderr] $ do
     _ <- Async.async $ apiServer
     runHTML "index.html" route putStrLn handleOpen $ do
       mInitFile <- liftIO $ tryTakeMVar fileOpenedMVar
+
       let frontendMode = FrontendMode
             { _frontendMode_hydrate = False
             , _frontendMode_adjustRoute = True
             }
           configs = M.fromList -- TODO don't embed all of these into binary
             [ ("common/route", route)
-            --, ("common/networks", "remote-source:https://pact.kadena.io/networks")
-            , ("common/networks", "remote-source:https://pact-web.qa.obsidian.systems/networks")
+            , ("common/networks", "remote-source:https://pact.kadena.io/networks")
             , ("common/oauth/github/client-id", "") -- TODO remove
             ]
       liftIO $ putStrLn "Starting frontend"
@@ -197,28 +213,27 @@ main' ffi runHTML = redirectPipes [stdout, stderr] $ do
       runFrontendWithConfigsAndCurrentRoute frontendMode configs backendEncoder $ Frontend
         -- TODO we shouldn't have to use prerender since we aren't hydrating
         { _frontend_head = prerender_ blank $ do
-          bowserLoad <- newHead $ \r -> T.pack $ T.unpack route </> T.unpack (renderBackendRoute backendEncoder r)
-          performEvent_ $ liftIO . putMVar bowserMVar <$> bowserLoad
+            bowserLoad <- newHead $ \r ->
+              T.pack $ T.unpack route </> T.unpack (renderBackendRoute backendEncoder r)
+            performEvent_ $ liftIO . putMVar bowserMVar <$> bowserLoad
         , _frontend_body = prerender_ blank $ do
           bowserLoad <- mvarTriggerEvent bowserMVar
-          fileOpened <- mvarTriggerEvent fileOpenedMVar
+          -- fileOpened <- mvarTriggerEvent fileOpenedMVar
           signingRequest <- mvarTriggerEvent signingRequestMVar
-          let store = fileStorage libPath
-              appCfg = AppCfg
+          (fileOpened, triggerOpen) <- openFileDialog
+          let appCfg = AppCfg
                 { _appCfg_gistEnabled = False
                 , _appCfg_externalFileOpened = fileOpened
-                , _appCfg_openFileDialog = liftIO $ putStrLn "file dialog requested" -- _linuxFFI_global_openFileDialog ffi
+                , _appCfg_openFileDialog = JS.liftJSM triggerOpen
                 , _appCfg_loadEditor = pure mInitFile
-
                 -- DB 2019-08-07 Changing this back to False because it's just too convenient this way.
                 , _appCfg_editorReadOnly = False
                 , _appCfg_signingRequest = signingRequest
                 , _appCfg_signingResponse = liftIO . putMVar signingResponseMVar
                 , _appCfg_forceResize = never
                 }
-          _ <- flip runStorageT store $ runWithReplace loaderMarkup $
-            -- (liftIO (_linuxFFI_activateWindow ffi) >> liftIO (_macFFI_resizeWindow ffi) >> app appCfg) <$ bowserLoad
-            app appCfg <$ bowserLoad
+          -- Should I be making sure this can be saved on the machine itself, like the mac ?
+          _ <- flip runStorageT browserStorage $ runWithReplace loaderMarkup $ app appCfg <$ bowserLoad
           pure ()
         }
 
