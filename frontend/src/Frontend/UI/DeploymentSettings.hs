@@ -95,8 +95,10 @@ import qualified Data.Aeson as Aeson
 import qualified Data.IntMap as IM
 import qualified Data.HashMap.Strict as HM
 import qualified Data.Map as Map
+import qualified Data.IntMap as IntMap
 import qualified Data.Set as Set
 import qualified Data.Text as T
+import qualified Data.Text.IO as T
 import qualified Pact.Types.Capability as PC
 import qualified Pact.Types.ChainId as Pact
 import qualified Pact.Types.Command as Pact
@@ -105,6 +107,7 @@ import qualified Pact.Types.Names as PN
 
 import Common.Network
 import Frontend.Crypto.Class
+import Frontend.Crypto.Ed25519 (keyToText)
 import Frontend.Foundation
 import Frontend.JsonData
 import Frontend.Network
@@ -160,11 +163,13 @@ data DeploymentSettingsView
   = DeploymentSettingsView_Custom Text -- ^ An optional additonal tab.
   | DeploymentSettingsView_Cfg -- ^ Actual settings like gas price/limit, ...
   | DeploymentSettingsView_Keys -- ^ Select keys for signing the transaction.
+  | DeploymentSettingsView_Preview -- ^ Attempt to preview this deployments affect on the chain
   deriving (Eq,Ord)
 
 showSettingsTabName :: DeploymentSettingsView -> Text
 showSettingsTabName (DeploymentSettingsView_Custom n) = n
 showSettingsTabName DeploymentSettingsView_Keys       = "Sign"
+showSettingsTabName DeploymentSettingsView_Preview    = "Preview"
 showSettingsTabName DeploymentSettingsView_Cfg        = "Configuration"
 
 -- | Get the previous view, taking into account the custom user tab.
@@ -173,13 +178,15 @@ prevView custom = \case
   DeploymentSettingsView_Custom _ -> Nothing
   DeploymentSettingsView_Cfg -> custom
   DeploymentSettingsView_Keys -> Just DeploymentSettingsView_Cfg
+  DeploymentSettingsView_Preview -> Just DeploymentSettingsView_Keys
 
 -- | Get the next view.
 nextView :: DeploymentSettingsView -> Maybe DeploymentSettingsView
 nextView = \case
   DeploymentSettingsView_Custom _ -> Just DeploymentSettingsView_Cfg
   DeploymentSettingsView_Cfg -> Just DeploymentSettingsView_Keys
-  DeploymentSettingsView_Keys -> Nothing
+  DeploymentSettingsView_Keys -> Just DeploymentSettingsView_Preview
+  DeploymentSettingsView_Preview -> Nothing
 
 data DeploymentSettingsResult key = DeploymentSettingsResult
   { _deploymentSettingsResult_gasPrice :: GasPrice
@@ -194,6 +201,17 @@ data DeploymentSettingsResult key = DeploymentSettingsResult
   -- checks for a /local request. This should never be actually deployed.
   , _deploymentSettingsResult_accountsToTrack :: Set AccountName
   }
+
+publicKeysForAccounts :: IntMap (SomeAccount key) -> Map AccountName a -> Map PublicKey a
+publicKeysForAccounts allAccounts caps =
+  let accountsToKey = flip IM.foldMapWithKey allAccounts $ \_ -> \case
+        SomeAccount_Account a -> Map.singleton (_account_name a) (_account_key a)
+        SomeAccount_Deleted -> Map.empty
+      toPublicKey (name, cs) = do
+        KeyPair pk _ <- Map.lookup name accountsToKey
+        pure (pk, cs)
+  in
+    Map.fromList $ fmapMaybe toPublicKey $ Map.toList caps
 
 buildDeploymentSettingsResult
   :: ( HasNetwork model t
@@ -233,13 +251,7 @@ buildDeploymentSettingsResult m mSender cChainId capabilities ttl gasLimit code 
         }
   code' <- lift code
   allAccounts <- lift $ m ^. wallet_accounts
-  let accountsToKey = flip IM.foldMapWithKey allAccounts $ \_ -> \case
-        SomeAccount_Account a -> Map.singleton (_account_name a) (_account_key a)
-        SomeAccount_Deleted -> Map.empty
-      toPublicKey (name, cs) = do
-        KeyPair pk _ <- Map.lookup name accountsToKey
-        pure (pk, cs)
-      pkCaps = Map.fromList $ fmapMaybe toPublicKey $ Map.toList caps
+  let pkCaps = publicKeysForAccounts allAccounts caps
   pure $ do
     let signingPairs = getSigningPairs signing allAccounts
     cmd <- buildCmd
@@ -296,7 +308,7 @@ buildDeployTabs mUserTabName controls = mdo
   pure (curSelection, done, onTabClick)
   where
     userTabs = maybeToList mUserTabName
-    stdTabs = [DeploymentSettingsView_Cfg, DeploymentSettingsView_Keys]
+    stdTabs = [DeploymentSettingsView_Cfg, DeploymentSettingsView_Keys, DeploymentSettingsView_Preview]
     availableTabs = userTabs <> stdTabs
 
 defaulTabViewProgressButtonLabel :: DeploymentSettingsView -> Text
@@ -356,6 +368,20 @@ uiDeploymentSettings m settings = mdo
       (mSender, capabilities) <- tabPane mempty curSelection DeploymentSettingsView_Keys $
         uiSenderCapabilities m cChainId (_deploymentSettingsConfig_caps settings)
           $ (_deploymentSettingsConfig_sender settings) m cChainId
+
+      void $ tabPane mempty curSelection DeploymentSettingsView_Preview $ do
+        let mNetworkId = (hush . mkNetworkName . nodeVersion <=< headMay . rights) <$> (m ^. network_selectedNodes)
+        dyn_ $ uiDeployPreview m settings
+          <$> (m ^. wallet_accounts)
+          <*> gasLimit
+          <*> ttl
+          <*> code
+          <*> (m ^. network_meta)
+          <*> capabilities
+          <*> (m ^. jsonData . jsonData_data)
+          <*> mNetworkId
+          <*> cChainId
+          <*> mSender
 
       pure
         ( cfg & networkCfg_setSender .~ fmapMaybe (fmap unAccountName) (updated mSender)
@@ -863,3 +889,117 @@ defaultGASCapability = DappCap
     , PC._scArgs = []
     }
   }
+
+uiDeployPreview
+  :: ( MonadWidget t m
+     , HasNetwork model t
+     , HasCrypto key (Performable m)
+     )
+  => model
+  -> DeploymentSettingsConfig t m model a
+  -> Accounts key
+  -> GasLimit
+  -> TTLSeconds
+  -> Text
+  -> PublicMeta
+  -> Map AccountName [SigCapability]
+  -> Either JsonError Aeson.Object
+  -> Maybe NetworkName
+  -> Maybe ChainId
+  -> Maybe AccountName
+  -> m ()
+uiDeployPreview _ _ _ _ _ _ _ _ _ _ Nothing _ =
+  text "Please select a Chain."
+uiDeployPreview _ _ _ _ _ _ _ _ _ Nothing _ _ =
+  text "No network nodes configured."
+uiDeployPreview model settings accounts gasLimit ttl code lastPublicMeta capabilities jData (Just networkId) (Just chainId) mSender = do
+  pb <- getPostBuild
+  let deploySettingsJsonData = fromMaybe mempty $ _deploymentSettingsConfig_data settings
+      jsonData0 = either (const mempty) id jData
+      sender = fromMaybe (AccountName "doug") mSender
+      signing = Set.insert sender $ Map.keysSet capabilities
+      pkCaps = publicKeysForAccounts accounts capabilities
+      signingPairs = getSigningPairs signing accounts
+
+  let publicMeta = lastPublicMeta
+        { _pmChainId = chainId
+        , _pmGasLimit = gasLimit
+        , _pmSender = unAccountName sender
+        , _pmTTL = ttl
+        }
+
+      nonce = _deploymentSettingsConfig_nonce settings
+      extraSigners = _deploymentSettingsConfig_extraSigners settings
+      jsondata = HM.union jsonData0 deploySettingsJsonData
+
+  eCmds <- performEvent $ ffor pb $ \_ -> do
+    c <- buildCmd nonce networkId publicMeta signingPairs extraSigners code jsondata pkCaps
+    wc <- for (wrapWithBalanceChecks signing code) $ \wrappedCode -> do
+      buildCmd nonce networkId publicMeta signingPairs extraSigners wrappedCode jsondata pkCaps
+    pure (c, wc)
+
+  previewWidget <- holdDyn (text "Preparing transaction preview...")
+    $ haxx0r signing <$> eCmds
+
+  dyn_ previewWidget
+  where
+    haxx0r signing (cmd, wrappedCmd) = elClass "div" "modal__main transaction_details" $ do
+      pb <- getPostBuild
+      transactionInputSection code cmd
+      divClass "title" $ text "Destination"
+      _ <- divClass "group segment" $ do
+        transactionDisplayNetwork model
+        predefinedChainIdDisplayed chainId model
+
+      let accountsToTrack = getAccounts accounts signing
+          localReq = case wrappedCmd of
+            Left _e -> []
+            Right cmd0 -> pure $ NetworkRequest
+              { _networkRequest_cmd = cmd0
+              , _networkRequest_chainRef = ChainRef Nothing chainId
+              , _networkRequest_endpoint = Endpoint_Local
+              }
+      responses <- performLocalRead (model ^. network) $ localReq <$ pb
+      (errors, resp) <- fmap fanEither $ performEvent $ ffor responses $ \case
+        [(_, Right (_gas, pactValue))] -> case parseWrappedBalanceChecks pactValue of
+          Left e -> do
+            liftIO $ T.putStrLn e
+            pure $ Left "Error parsing the response"
+          Right v -> pure $ Right v
+        [(_, Left e)] -> pure $ Left $ prettyPrintNetworkError e
+        n -> do
+          liftIO $ T.putStrLn $ "Expected 1 response, but got " <> tshow (length n)
+          pure $ Left "Couldn't get a response from the node"
+
+      divClass "title" $ text "Anticipated Transaction Impact"
+      divClass "group segment" $ do
+        let tableAttrs = "style" =: "table-layout: fixed; width: 100%" <> "class" =: "table"
+        elAttr "table" tableAttrs $ do
+          el "thead" $ el "tr" $ do
+            let th = elClass "th" "table__heading" . text
+            th "Account Name"
+            th "Public Key"
+            th "Change in Balance"
+          accountBalances <- flip Map.traverseWithKey accountsToTrack $ \acc pk -> do
+            bal <- holdDyn Nothing $ leftmost [Just Nothing <$ errors, Just . Map.lookup acc . fst <$> resp]
+            pure (pk, bal)
+          el "tbody" $ void $ flip Map.traverseWithKey accountBalances $ \acc (pk, balance) -> el "tr" $ do
+            let displayBalance = \case
+                  Nothing -> "Loading..."
+                  Just Nothing -> "Error"
+                  Just (Just b) -> tshow (unAccountBalance b) <> " KDA"
+            el "td" $ text $ unAccountName acc
+            el "td" $ divClass "wallet__key" $ text $ keyToText pk
+            el "td" $ dynText $ displayBalance <$> balance
+
+      divClass "title" $ text "Raw Response"
+      void $ divClass "group segment" $ runWithReplace (text "Loading...") $ leftmost
+        [ text . renderCompactText . snd <$> resp
+        , text <$> errors
+        ]
+
+getAccounts :: Accounts key -> Set AccountName -> Map AccountName PublicKey
+getAccounts accounts = Map.restrictKeys (IntMap.foldr f Map.empty accounts)
+  where f = \case
+          SomeAccount_Deleted -> id
+          SomeAccount_Account a -> Map.insert (_account_name a) $ _keyPair_publicKey $ _account_key a
