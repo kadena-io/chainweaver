@@ -10,7 +10,6 @@
 - ignore: {name: "Use unless"}
 - ignore: {name: "Reduce duplication"}
 - ignore: {name: "Redundant $"}
-- ignore: {name: "Unused LANGUAGE pragma"}
 - ignore: {name: "Use const"}
 - ignore: {name: "Move brackets to avoid $"}
 - ignore: {name: "Use any"}
@@ -24,7 +23,6 @@
 - ignore: {name: "Use let"}
 - ignore: {name: "Use list comprehension"}
 - ignore: {name: "Redundant bracket"}
-- ignore: {name: "Use fewer LANGUAGE pragmas"}
 - ignore: {name: "Use span"}
 - ignore: {name: "Use ?~"}
 - ignore: {name: "Use <$>"}

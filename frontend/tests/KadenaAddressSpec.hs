@@ -1,5 +1,4 @@
 {-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE TemplateHaskell #-}
 
 import           Hedgehog
 import qualified Hedgehog.Gen as Gen
@@ -30,5 +29,3 @@ prop_parse_kadenaAddress_roundtrip = property $ do
 
 main :: IO Bool
 main = checkParallel $$(discover)
-
-
