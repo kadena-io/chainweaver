@@ -120,9 +120,9 @@ import Frontend.Wallet
 data DeploymentSettingsConfig t m model a = DeploymentSettingsConfig
   { _deploymentSettingsConfig_userTab     :: Maybe (Text, m a)
     -- ^ Some optional extra tab. fst is the tab's name, snd is its content.
-  , _deploymentSettingsConfig_userSection :: Maybe (Text, m a)
+  , _deploymentSettingsConfig_userSections :: [(Text, m a)]
     -- ^ Some optional extra input, placed between chainId selection and transaction
-    -- settings. fst is the tab's name, snd is its content.
+    -- settings. fst is the section's name, snd is its content.
   , _deploymentSettingsConfig_chainId     :: model -> m (Dynamic t (Maybe Pact.ChainId))
     -- ^ ChainId selection widget.
     --   You can pick (predefinedChainIdSelect someId) - for not showing a
@@ -351,7 +351,7 @@ uiDeploymentSettings m settings = mdo
           (_deploymentSettingsConfig_chainId settings $ m)
           (_deploymentSettingsConfig_ttl settings)
           (_deploymentSettingsConfig_gasLimit settings)
-          (_deploymentSettingsConfig_userSection settings)
+          (_deploymentSettingsConfig_userSections settings)
 
       (mSender, capabilities) <- tabPane mempty curSelection DeploymentSettingsView_Keys $
         uiSenderCapabilities m cChainId (_deploymentSettingsConfig_caps settings)
@@ -464,32 +464,33 @@ uiCfg
      , HasJsonDataCfg mConf t
      , HasWallet model key t
      , HasJsonData model t
+     , Traversable g
      )
   => Maybe (Dynamic t Text)
   -> model
   -> m (Dynamic t (f Pact.ChainId))
   -> Maybe TTLSeconds
   -> Maybe GasLimit
-  -> Maybe (Text, m a)
+  -> g (Text, m a)
   -> m ( mConf
        , Dynamic t (f Pact.ChainId)
        , Dynamic t TTLSeconds
        , Dynamic t GasLimit
-       , Maybe a
+       , g a
        )
-uiCfg mCode m wChainId mTTL mGasLimit mUserSection = do
+uiCfg mCode m wChainId mTTL mGasLimit userSections = do
   -- General deployment configuration
   let mkGeneralSettings = do
         traverse_ uiDeployCode mCode
         cId <- uiDeployDestination m wChainId
 
         -- Customisable user provided UI section
-        ma <- forM mUserSection $ \(title, body) -> do
+        fa <- for userSections $ \(title, body) -> do
           divClass "title" $ text title
           elKlass "div" ("group segment") body
 
         (cfg, ttl, gasLimit) <- uiDeployMetaData m mTTL mGasLimit
-        pure (cfg, cId, ttl, gasLimit, ma)
+        pure (cfg, cId, ttl, gasLimit, fa)
 
   rec
     let mkAccordionControlDyn initActive = foldDyn (const not) initActive
