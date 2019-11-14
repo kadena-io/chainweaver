@@ -45,6 +45,7 @@ module Frontend.Wallet
   , checkAccountNameValidity
   , snocIntMap
   , findNextKey
+  , findFirstVanityAccount
   ) where
 
 import Control.Lens
@@ -167,6 +168,12 @@ data Wallet key t = Wallet
   deriving Generic
 
 makePactLenses ''Wallet
+
+-- | Find the first vanity account in the wallet
+findFirstVanityAccount :: Accounts key -> Maybe (Account key)
+findFirstVanityAccount = fmap (\(SomeAccount_Account a) -> a) . find g
+  where g SomeAccount_Deleted = False
+        g (SomeAccount_Account a) = unAccountName (_account_name a) /= keyToText (_keyPair_publicKey $ _account_key a)
 
 -- | An empty wallet that will never contain any keys.
 emptyWallet :: Reflex t => Wallet key t
