@@ -1,14 +1,14 @@
-{-# LANGUAGE ConstraintKinds #-}
-{-# LANGUAGE DataKinds #-}
-{-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE GADTs #-}
-{-# LANGUAGE LambdaCase #-}
-{-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE QuasiQuotes #-}
-{-# LANGUAGE RecursiveDo #-}
+{-# LANGUAGE ConstraintKinds     #-}
+{-# LANGUAGE DataKinds           #-}
+{-# LANGUAGE FlexibleContexts    #-}
+{-# LANGUAGE GADTs               #-}
+{-# LANGUAGE LambdaCase          #-}
+{-# LANGUAGE OverloadedStrings   #-}
+{-# LANGUAGE QuasiQuotes         #-}
+{-# LANGUAGE RecursiveDo         #-}
 {-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE StandaloneDeriving #-}
-{-# LANGUAGE TypeApplications #-}
+{-# LANGUAGE StandaloneDeriving  #-}
+{-# LANGUAGE TypeApplications    #-}
 
 module Desktop.Frontend (desktop, bipWallet, fileStorage) where
 
@@ -184,7 +184,9 @@ lockScreen xprv = setupDiv "fullscreen" $ divClass "wrapper" $ setupDiv "splash"
 
     e <- confirmButton (def & uiButtonCfg_type ?~ "submit") "Unlock"
     (_help, restore) <- setupDiv "button-horizontal-group" $ do
-      help <- uiButton def $ text "Help" -- TODO where does this go?
+      help <- uiButton def $ do
+        elAttr "img" ("src" =: static @"img/launch_dark.svg" <> "class" =: "button__text-icon") blank
+        text "Help" -- TODO where does this go?
       restore <- uiButton def $ text "Restore"
       pure (help, restore)
     let isValid = attachWith (\p _ -> p <$ guard (testKeyPassword xprv p)) (current $ value pass) e
