@@ -1,0 +1,62 @@
+/*********************************************************************************
+   Ensure classes and structure are created in accordance with the BEM methodology.
+   For more info: https://en.bem.info/methodology/quick-start/
+
+*********************************************************************************/
+
+@import '../include/defs';
+
+.resources {
+  display: flex;
+}
+
+.resources__cell {
+  display: block;
+  text-decoration: none;
+  margin: $medium-margin;
+  width: 420px;
+  &:first-child {
+    margin-left: $double-margin;
+  }
+  &:visited {
+    color: $black;
+  }
+}
+
+
+.resources__cell-icon {
+  background-color: #454444;
+  border-radius: 50%;
+  width: 130px;
+  height: 130px;
+  background-position: 50% 50%;
+  background-repeat: no-repeat;
+  margin: $double-margin auto;
+}
+
+.resources__cell-header {
+  border-color: $std-border-color;
+  border-style: $std-border-style;
+  border-width: $std-border-width;
+  border-radius: $std-border-radius;
+  text-align: center;
+  padding: $bigger-padding;
+  font-size: 18px;
+}
+
+.resources__cell-launch {
+  position: relative;
+  top: 3px;
+  right: 5px;
+  height: 18px;
+}
+
+.resources__cell-title {
+}
+
+.resources__cell-desc {
+  text-align: center;
+  color: $tertiary-color;
+  padding: $normal-padding;
+  font-size: $small-font-size;
+}

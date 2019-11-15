@@ -109,8 +109,11 @@ app sidebarExtra appCfg = void . mfix $ \ cfg -> do
           envCfg <- rightTabBar "main__right-pane" ideL
           pure $ uiEditorCfg <> envCfg
         pure $ controlCfg <> mainCfg
-      -- TODO resources page
-      FrontendRoute_Resources -> text "Resources" >> pure mempty
+      FrontendRoute_Resources -> mkPageContent "resources" $ do
+        controlBar "Resources" blank
+        elClass "main" "main page__main" $ do
+          resourcesWidget
+        pure mempty
       -- TODO settings page
       FrontendRoute_Settings -> text "Settings" >> pure mempty
     flattenedCfg <- flatten =<< tagOnPostBuild routedCfg
@@ -348,3 +351,23 @@ headerBtnCfg
   :: (Default (UiButtonCfgRep f), IsString (ReflexValue f CssClass), Semigroup (ReflexValue f CssClass))
   => UiButtonCfgRep f
 headerBtnCfg = btnCfgPrimary & uiButtonCfg_class %~ (<> "main-header__button")
+
+resourcesWidget
+  :: (DomBuilder t m)
+  => m ()
+resourcesWidget = elClass "div" "resources" $ do
+  resourceCell "Support" (static @"img/resources/support.svg") "#"
+    "Explore Help Resources to learn about Chainweaver, solve problems and get in touch"
+  resourceCell "Documentation" (static @"img/resources/documentation.svg") "http://pact-language.readthedocs.io/"
+    "Complete technical resources for Chainweaver, Kadena blockchain and Pact language"
+  resourceCell "Tutorials" (static @"img/resources/tutorials.svg") "https://pactlang.org/"
+    "Read or watch tutorials for writing smart contracts using the Pact language"
+  where
+    resourceCell title iconUrl href desc =
+      elAttr "a" ("class" =: "resources__cell" <> "href" =: href <> "target" =: "_blank")  $ do
+        elAttr "div" ("class" =: "resources__cell-icon" <> "style" =: ("background-image: url(" <> iconUrl <>")")) $ blank
+        elClass "div" "resources__cell-header" $ do
+          elAttr "img" ("src" =: (static @"img/launch.svg") <> "class" =: "resources__cell-launch") blank
+          elClass "span" "resources__cell-title" $ text title
+        elClass "div" "resources__cell-desc" $ text desc
+
