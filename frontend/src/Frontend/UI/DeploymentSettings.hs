@@ -649,6 +649,7 @@ uiSenderDropdown
   :: ( Adjustable t m, PostBuild t m, DomBuilder t m
      , MonadHold t m, MonadFix m
      , HasWallet model key t
+     , HasNetwork model t
      )
   => DropdownConfig t (Maybe AccountName)
   -> model
@@ -656,13 +657,13 @@ uiSenderDropdown
   -> m (Dynamic t (Maybe AccountName))
 uiSenderDropdown uCfg m chainId = do
   let textAccounts =
-        let mkTextAccounts mChain accounts = case mChain of
+        let mkTextAccounts net mChain accounts = case mChain of
               Nothing -> Map.singleton Nothing "You must select a chain ID before choosing an account"
-              Just chain -> case Map.fromList $ fmapMaybe (someAccount Nothing (\a -> (Just $ _account_name a, unAccountName $ _account_name a) <$ guard (_account_chainId a == chain))) $ IM.elems accounts of
+              Just chain -> case Map.fromList $ fmapMaybe (someAccount Nothing (\a -> (Just $ _account_name a, unAccountName $ _account_name a) <$ guard (_account_chainId a == chain && _account_network a == net))) $ IM.elems accounts of
                 accountsOnChain
                   | not (Map.null accountsOnChain) -> Map.insert Nothing "Choose an account" accountsOnChain
                   | otherwise -> Map.singleton Nothing "No accounts on current chain"
-          in mkTextAccounts <$> chainId <*> m ^. wallet_accounts
+          in mkTextAccounts <$> m ^. network_selectedNetwork <*> chainId <*> m ^. wallet_accounts
   choice <- dropdown Nothing textAccounts $ uCfg
     & dropdownConfig_setValue .~ (Nothing <$ updated chainId)
     & dropdownConfig_attributes <>~ pure ("class" =: "labeled-input__input select select_mandatory_missing")
@@ -789,7 +790,7 @@ capabilityInputRows mkSender = do
 
 -- | Widget for selection of sender and signing keys.
 uiSenderCapabilities
-  :: forall key t m model. (MonadWidget t m, HasWallet model key t)
+  :: forall key t m model. (MonadWidget t m, HasWallet model key t, HasNetwork model t)
   => model
   -> Dynamic t (Maybe Pact.ChainId)
   -> Maybe [DappCap]
