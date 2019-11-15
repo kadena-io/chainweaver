@@ -389,7 +389,7 @@ predefinedChainIdDisplayed
   -> model
   -> m (Dynamic t (Maybe Pact.ChainId))
 predefinedChainIdDisplayed cid _ = do
-  _ <- mkLabeledInput uiInputElement "Chain ID" $ def
+  _ <- mkLabeledInput "Chain ID" uiInputElement $ def
     & initialAttributes %~ Map.insert "disabled" ""
     & inputElementConfig_initialValue .~ _chainId cid
   pure $ pure $ pure cid
@@ -410,7 +410,7 @@ userChainIdSelectWithPreselect
   => model
   -> Dynamic t (Maybe Pact.ChainId)
   -> m (MDynamic t Pact.ChainId)
-userChainIdSelectWithPreselect m mChainId = mkLabeledClsInput (uiChainSelection mNodeInfo mChainId) "Chain ID"
+userChainIdSelectWithPreselect m mChainId = mkLabeledClsInput "Chain ID" (uiChainSelection mNodeInfo mChainId)
   where mNodeInfo = (^? to rights . _head) <$> m ^. network_selectedNodes
 
 uiDeployDestination
@@ -496,7 +496,7 @@ uiCfg mCode m wChainId mTTL mGasLimit userSections = do
 
 transactionHashSection :: MonadWidget t m => Pact.Command Text -> m ()
 transactionHashSection cmd = void $ do
-  mkLabeledInput (\c -> uiInputElement $ c & initialAttributes %~ Map.insert "disabled" "") "Transaction Hash" $ def
+  mkLabeledInput "Transaction Hash" (\c -> uiInputElement $ c & initialAttributes %~ Map.insert "disabled" "") $ def
     & inputElementConfig_initialValue .~ hashToText (toUntypedHash $ Pact._cmdHash cmd)
 
 transactionInputSection
@@ -509,13 +509,13 @@ transactionInputSection code cmd = do
   divClass "group" $ do
     for_ cmd transactionHashSection
     pb <- getPostBuild
-    _ <- flip mkLabeledClsInput "Raw Command" $ \cls -> uiTextAreaElement $ def
+    _ <- mkLabeledClsInput "Raw Command" $ \cls -> uiTextAreaElement $ def
       & textAreaElementConfig_setValue .~ leftmost [updated code, tag (current code) pb]
       & initialAttributes .~ "disabled" =: "" <> "style" =: "width: 100%" <> "class" =: renderClass cls
     pure ()
 
 transactionDisplayNetwork :: (MonadWidget t m, HasNetwork model t) => model -> m ()
-transactionDisplayNetwork m = void $ flip mkLabeledClsInput "Network" $ \_ -> do
+transactionDisplayNetwork m = void $ mkLabeledClsInput "Network" $ \_ -> do
   divClass "title" $ do
     netStat <- queryNetworkStatus (m ^. network_networks) (m ^. network_selectedNetwork)
     uiNetworkStatus "" netStat
@@ -553,9 +553,9 @@ uiMetaData m mTTL mGasLimit = do
         & inputElementConfig_elementConfig . elementConfig_eventSpec %~ preventScrollWheelAndUpDownArrow @m
 
     onGasPrice <- mdo
-      tsEl <- mkLabeledInput (txnSpeedSliderEl setPrice) "Transaction Speed" def
+      tsEl <- mkLabeledInput "Transaction Speed" (txnSpeedSliderEl setPrice) def
       let setSpeed = fmapMaybe (fmap scaleTxnSpeedToGP . parseGasPrice) $ _inputElement_input tsEl
-      (_gpValue, gpInput) <- mkLabeledInput (gasPriceInputBox $ fmap showGasPrice setSpeed) "Gas Price (KDA)" def
+      (_gpValue, gpInput) <- mkLabeledInput "Gas Price (KDA)" (gasPriceInputBox $ fmap showGasPrice setSpeed) def
       let setPrice = fmap (showGasPrice . scaleGPtoTxnSpeed) gpInput
       pure $ leftmost [gpInput, setSpeed]
 
@@ -573,14 +573,14 @@ uiMetaData m mTTL mGasLimit = do
         & inputElementConfig_setValue .~ fmap showGasLimit pbGasLimit
         & inputElementConfig_elementConfig . elementConfig_eventSpec %~ preventScrollWheelAndUpDownArrow @m
 
-    onGasLimitTxt <- fmap _inputElement_input $ mkLabeledInput mkGasLimitInput "Gas Limit (units)" def
+    onGasLimitTxt <- fmap _inputElement_input $ mkLabeledInput "Gas Limit (units)" mkGasLimitInput def
     let onGasLimit = fmapMaybe (readPact (GasLimit . ParsedInteger)) onGasLimitTxt
 
     gasLimit <- holdDyn initGasLimit $ leftmost [onGasLimit, pbGasLimit]
 
     let mkTransactionFee c = fmap fst $ uiRealWithPrecisionInputElement maxCoinPricePrecision id $ c
           & initialAttributes %~ Map.insert "disabled" ""
-    _ <- mkLabeledInputView mkTransactionFee "Max Transaction Fee (KDA)" $
+    _ <- mkLabeledInputView "Max Transaction Fee (KDA)"  mkTransactionFee $
       ffor (m ^. network_meta) $ \pm -> showGasPrice $ fromIntegral (_pmGasLimit pm) * _pmGasPrice pm
 
     let ttlInput conf = mdo
@@ -594,7 +594,7 @@ uiMetaData m mTTL mGasLimit = do
       Nothing -> tag (current $ fmap _pmTTL $ m ^. network_meta) <$> getPostBuild
     let secondsInDay :: Int = 60 * 60 * 24
         initTTL = fromMaybe defaultTransactionTTL mTTL
-    onTtlTxt <- mkLabeledInput ttlInput "Request Expires (seconds)" $ def
+    onTtlTxt <- mkLabeledInput "Request Expires (seconds)" ttlInput $ def
       & initialAttributes .~ "min" =: "1" <> "max" =: T.pack (show secondsInDay) <> "step" =: "1"
       & inputElementConfig_setValue .~ fmap showTtl pbTTL
       & inputElementConfig_initialValue .~ showTtl initTTL

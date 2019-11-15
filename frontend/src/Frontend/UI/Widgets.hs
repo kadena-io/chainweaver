@@ -311,9 +311,11 @@ mkLabeledInputView
   :: (DomBuilder t m, er ~ EventResult, PostBuild t m, MonadFix m
      , MonadHold t m
      )
-  => (InputElementConfig er t (DomBuilderSpace m) -> m (InputElement er (DomBuilderSpace m) t))
-  -> Text -> Dynamic t Text -> m (Event t Text)
-mkLabeledInputView mkInput n v = elClass "div" "segment segment_type_tertiary labeled-input" $ do
+  => Text
+  -> (InputElementConfig er t (DomBuilderSpace m) -> m (InputElement er (DomBuilderSpace m) t))
+  -> Dynamic t Text
+  -> m (Event t Text)
+mkLabeledInputView n mkInput v = elClass "div" "segment segment_type_tertiary labeled-input" $ do
   divClass "label labeled-input__label" $ text n
   uiInputView mkInput (def & initialAttributes %~ addToClassAttr "labeled-input__input") v
 
@@ -321,12 +323,13 @@ mkLabeledInputView mkInput n v = elClass "div" "segment segment_type_tertiary la
 -- | Make labeled and segmented input.
 mkLabeledInput
   :: (DomBuilder t m , InitialAttributes cfg)
-  => (cfg -> m element)
-  -> Text -> cfg -> m element
-mkLabeledInput mkInput n cfg = elClass "div" "segment segment_type_tertiary labeled-input" $ do
+  => Text
+  -> (cfg -> m element)
+  -> cfg
+  -> m element
+mkLabeledInput n mkInput cfg = elClass "div" "segment segment_type_tertiary labeled-input" $ do
   divClass "label labeled-input__label" $ text n
   mkInput (cfg & initialAttributes %~ addToClassAttr "labeled-input__input")
-
 
 -- | Make some input a labeled input.
 --
@@ -334,9 +337,10 @@ mkLabeledInput mkInput n cfg = elClass "div" "segment segment_type_tertiary labe
 --   TODO: This function can probably replace `mkLabeledInput`.
 mkLabeledClsInput
   :: (DomBuilder t m, PostBuild t m)
-  => (CssClass -> m element)
-  -> Dynamic t Text -> m element
-mkLabeledClsInput mkInput name = elClass "div" "segment segment_type_tertiary labeled-input" $ do
+  => Dynamic t Text
+  -> (CssClass -> m element)
+  -> m element
+mkLabeledClsInput name mkInput = elClass "div" "segment segment_type_tertiary labeled-input" $ do
   divClass "label labeled-input__label" $ dynText name
   mkInput "labeled-input__input"
 

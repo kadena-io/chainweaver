@@ -31,13 +31,13 @@ uiReceiveModal model account _onClose = do
           attrFn cfg = uiInputElement $ cfg
             & initialAttributes <>~ ("disabled" =: "true" <> "class" =: (" " <> cls))
         in
-          mkLabeledInputView attrFn lbl $ pure v
+          mkLabeledInputView lbl attrFn $ pure v
 
   divClass "modal__main account-details" $ do
     elClass "h2" "heading heading_type_h2" $ text "Destination"
     divClass "group" $ do
       -- Network
-      void $ flip mkLabeledClsInput "Network" $ \_ -> do
+      void $ mkLabeledClsInput "Network" $ \_ -> do
         stat <- queryNetworkStatus (model ^. network_networks) $ pure $ _account_network account
         uiNetworkStatus "signal__left-floated" stat
         text $ textNetworkName $ _account_network account
@@ -60,4 +60,3 @@ uiReceiveModal model account _onClose = do
 
   done <- modalFooter $ confirmButton def "Done"
   pure (mempty, close <> done)
-

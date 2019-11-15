@@ -85,10 +85,10 @@ uiAddVanityAccountSettings
 uiAddVanityAccountSettings ideL mChainId initialNotes = Workflow $ do
   pb <- getPostBuild
 
-  let inputElem lbl wrapperCls = divClass wrapperCls $ flip mkLabeledClsInput lbl
+  let inputElem lbl wrapperCls = divClass wrapperCls $ mkLabeledClsInput lbl
         $ \cls -> uiInputElement $ def & initialAttributes .~ "class" =: (renderClass cls)
 
-      notesInput = divClass "vanity-account-create__notes" $ flip mkLabeledClsInput "Notes"
+      notesInput = divClass "vanity-account-create__notes" $ mkLabeledClsInput "Notes"
         $ \cls -> uiInputElement $ def
                   & initialAttributes .~ "class" =: (renderClass cls)
                   & inputElementConfig_setValue .~ (current initialNotes <@ pb)
