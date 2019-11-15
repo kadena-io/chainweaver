@@ -67,7 +67,7 @@ uiSigning appCfg ideL signingRequest onCloseExternal = do
               Just c -> predefinedChainIdDisplayed c
               Nothing -> userChainIdSelect
           , _deploymentSettingsConfig_userTab = Nothing
-          , _deploymentSettingsConfig_userSection = Nothing
+          , _deploymentSettingsConfig_userSections = []
           , _deploymentSettingsConfig_code = pure $ _signingRequest_code signingRequest
           , _deploymentSettingsConfig_sender = case _signingRequest_sender signingRequest of
               Just sender -> \_ _ -> uiSenderFixed sender
@@ -107,4 +107,3 @@ uiSigning appCfg ideL signingRequest onCloseExternal = do
       -- This is the end of our work flow, so return our done event on the completion of the signing.
       -- Should some feedback be added to this to ensure that people don't spam the button?
       pure $ Left sign <$ next
-
