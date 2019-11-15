@@ -15,9 +15,9 @@ module Frontend.KadenaAddress
     )
   , mkKadenaAddress
   , decodeKadenaAddress
-  , bytestringCRC32
-  , mkAddressCRC32
-  , showCRC32
+  , bytestringChecksum
+  , mkAddressChecksum
+  , showChecksum
   , parseKadenaAddressBlob
   , delimiter
   , humanReadableDelimiter
@@ -28,11 +28,11 @@ module Frontend.KadenaAddress
 import Control.Lens
 import Control.Monad.Except (MonadError (..), liftEither)
 import Control.Error (note)
-import Control.Monad ((<=<),when)
-
+import Control.Monad ((<=<))
+import Data.Functor (void)
+import Data.List (intersperse)
 import qualified Data.Char as C
-import Data.Word (Word8,Word32)
-import Text.Printf (printf)
+import Data.Word (Word8)
 import Data.String (fromString)
 import Data.Bifunctor (first)
 
@@ -49,7 +49,7 @@ import qualified Data.Attoparsec.ByteString.Char8 as A
 
 import qualified URI.ByteString as URI
 import qualified Data.ByteString.Base64 as Base64
-import qualified Data.Digest.CRC32 as Digest
+import "hashing" Crypto.Hash
 
 import Pact.Types.ChainId
 import Kadena.SigningApi (AccountName(..), mkAccountName)
@@ -70,7 +70,7 @@ AccountName: Compliant with the requirements contained in pact. In the case of w
 accounts that do not exist on the blockchain, the Public Key will be used.
 ChainId: Non-negative integer.
 Network: The network where the chain resides.
-Checksum: The checksum will be CRC32 of the 'AccountName/PublicKey', 'ChainId',
+Checksum: The checksum will be SHA256 of the 'AccountName/PublicKey', 'ChainId',
 ‘Network’. An invalid checksum will be a parse failure.
 
 Some examples of the encoding (delimiter yet to be determined):
@@ -97,7 +97,7 @@ preventative measure.
 
 data KadenaAddressError
   = ParseError Text
-  | CRC32Mismatch Word32 Word32
+  | ChecksumMismatch String String
   | Base64Error String
   | InvalidHumanReadablePiece Text
   deriving (Show, Eq)
@@ -111,10 +111,12 @@ data KadenaAddress = KadenaAddress
     -- ^ The chain where this account resides
   , _kadenaAddress_networkName :: NetworkName
     -- ^ The network where this chain resides
-  , _kadenaAddress_checksum :: Word32
-    -- ^ The CRC32 checksum of the AccountName, ChainId, and NetworkName
+  , _kadenaAddress_checksum :: Checksum
+    -- ^ The checksum of the AccountName, ChainId, and NetworkName
   }
   deriving (Show, Eq)
+
+type Checksum = SHA256
 
 textKadenaAddress :: KadenaAddress -> Text
 textKadenaAddress = TE.decodeUtf8With TE.lenientDecode . _kadenaAddress_encoded
@@ -128,31 +130,31 @@ delimiter = "\n"
 bsshow :: Show a => a -> ByteString
 bsshow = fromString . show
 
--- Show the CRC32 value as a hexadecimal string
-showCRC32 :: Word32 -> String
-showCRC32 = printf "%x"
+-- Show the checksum value as a hexadecimal string
+showChecksum :: Checksum -> String
+showChecksum = show
 
--- Convert the CRC32 to a bytestring
-bytestringCRC32 :: Word32 -> ByteString
-bytestringCRC32 = BS8.pack . showCRC32
+-- Convert the checksum to a bytestring
+bytestringChecksum :: Checksum -> ByteString
+bytestringChecksum = BS8.pack . showChecksum
 
 -- Build the checksum for the given information
-mkAddressCRC32 :: AccountName -> ChainId -> NetworkName -> Word32
-mkAddressCRC32 acc cid net = Digest.crc32 $ name <> bsshow cid <> net0
+mkAddressChecksum :: AccountName -> ChainId -> NetworkName -> Checksum
+mkAddressChecksum acc cid net = hash $ name <> bsshow cid <> net0
   where
     name = encodeToLatin1 $ unAccountName acc
     net0 = encodeToLatin1 $ textNetworkName net
 
 isValidKadenaAddress :: KadenaAddress -> Bool
 isValidKadenaAddress ka =
-  let crc = mkAddressCRC32
+  let checksum = mkAddressChecksum
         (_kadenaAddress_accountName ka)
         (_kadenaAddress_chainId ka)
         (_kadenaAddress_networkName ka)
 
       decoded = decodeKadenaAddress (_kadenaAddress_encoded ka)
   in
-    _kadenaAddress_checksum ka == crc && Right ka == decoded
+    _kadenaAddress_checksum ka == checksum && Right ka == decoded
 
 encodeToLatin1 :: Text -> ByteString
 encodeToLatin1 = BS8.pack . T.unpack
@@ -167,17 +169,13 @@ mkKadenaAddress network cid acc =
     bcid = encodeToLatin1 $ cid ^. chainId
     name = encodeToLatin1 $ unAccountName acc
     net = encodeToLatin1 $ textNetworkName network
+    checksum = mkAddressChecksum acc cid network
 
-    checksum = mkAddressCRC32 acc cid network
-
-    encoded = Base64.encode $ mconcat
+    encoded = Base64.encode $ mconcat $ intersperse delimiter
       [ name
-      , delimiter
       , bcid
-      , delimiter
       , net
-      , delimiter
-      , bytestringCRC32 checksum
+      , bytestringChecksum checksum
       ]
   in
     KadenaAddress (name <> cons humanReadableDelimiter bcid <> cons humanReadableDelimiter encoded)
@@ -196,11 +194,7 @@ decodeKadenaAddress inp = do
       pkg0 = either id (^. _3) hr
 
   blob <- liftEither $ first Base64Error $ Base64.decode pkg0
-  (name, cid, net, crc) <- first (ParseError . T.pack) $ A.parseOnly parseKadenaAddressBlob blob
-
-  -- Final validation steps
-  when (crc /= mkAddressCRC32 name cid net) $ do
-    throwError $ CRC32Mismatch crc (mkAddressCRC32 name cid net)
+  (name, cid, net, checksum) <- first (ParseError . T.pack) $ A.parseOnly parseKadenaAddressBlob blob
 
   let checkpiece og nm mbs
         | Just bs <- mbs, bs /= encodeToLatin1 og = throwError (InvalidHumanReadablePiece nm)
@@ -210,18 +204,20 @@ decodeKadenaAddress inp = do
   _ <- checkpiece (unAccountName name) "AccountName" mname
   _ <- checkpiece (cid ^. chainId) "Chain Id" mcid
 
-  pure (KadenaAddress inp name cid net crc)
+  pure (KadenaAddress inp name cid net checksum)
   where
     attemptHumanReadable = case BS.split humanReadableDelimiter inp of
       [name, cid, pkg] -> Right (name, cid, pkg)
       _ -> Left inp
 
-parseKadenaAddressBlob :: A.Parser (AccountName, ChainId, NetworkName, Word32)
-parseKadenaAddressBlob = (,,,)
-  <$> parseAccountName
-  <*> parseChainId
-  <*> parseNetworkName
-  <*> A.hexadecimal
+parseKadenaAddressBlob :: A.Parser (AccountName, ChainId, NetworkName, Checksum)
+parseKadenaAddressBlob = do
+  acc <- parseAccountName
+  cid <- parseChainId
+  net <- parseNetworkName
+  let chk = mkAddressChecksum acc cid net
+  void $ parseChecksum chk
+  pure (acc, cid, net, chk)
   where
     mkParser :: A.Parser a -> (a -> Either String c) -> A.Parser c
     mkParser p c = (c <$> p) >>= either fail pure
@@ -231,6 +227,8 @@ parseKadenaAddressBlob = (,,,)
     parseAccountName = mkParser latin1ToEOL (first T.unpack . mkAccountName . T.pack)
     parseNetworkName = mkParser latin1ToEOL (networkNameParser . BS8.pack)
     networkNameParser = first T.unpack . mkNetworkName <=< parseURIToText
+
+    parseChecksum expected = mkParser (A.string $ bytestringChecksum expected) pure
 
     parseURIToText bs = do
       uri <- first show $ URI.parseRelativeRef URI.strictURIParserOptions bs
