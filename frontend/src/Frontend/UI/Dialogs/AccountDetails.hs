@@ -66,7 +66,7 @@ uiAccountDetailsDetails key a onClose = Workflow $ do
           attrFn cfg = uiInputElement $ cfg
             & initialAttributes <>~ ("disabled" =: "true" <> "class" =: (" " <> cls))
         in
-          mkLabeledInputView lbl attrFn $ pure v
+          mkLabeledInputView False lbl attrFn $ pure v
 
   modalMain $ divClass "modal__main account-details" $ do
     elClass "h2" "heading heading_type_h2" $ text "Info"

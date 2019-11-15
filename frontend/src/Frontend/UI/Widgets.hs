@@ -311,11 +311,12 @@ mkLabeledInputView
   :: (DomBuilder t m, er ~ EventResult, PostBuild t m, MonadFix m
      , MonadHold t m
      )
-  => Text
+  => Bool
+  -> Text
   -> (InputElementConfig er t (DomBuilderSpace m) -> m (InputElement er (DomBuilderSpace m) t))
   -> Dynamic t Text
   -> m (Event t Text)
-mkLabeledInputView n mkInput v = elClass "div" "segment segment_type_tertiary labeled-input" $ do
+mkLabeledInputView inlineLabel n mkInput v = elClass "div" ("segment segment_type_tertiary labeled-input" <> bool "" "-inline" inlineLabel) $ do
   divClass "label labeled-input__label" $ text n
   uiInputView mkInput (def & initialAttributes %~ addToClassAttr "labeled-input__input") v
 
@@ -323,11 +324,12 @@ mkLabeledInputView n mkInput v = elClass "div" "segment segment_type_tertiary la
 -- | Make labeled and segmented input.
 mkLabeledInput
   :: (DomBuilder t m , InitialAttributes cfg)
-  => Text
+  => Bool
+  -> Text
   -> (cfg -> m element)
   -> cfg
   -> m element
-mkLabeledInput n mkInput cfg = elClass "div" "segment segment_type_tertiary labeled-input" $ do
+mkLabeledInput inlineLabel n mkInput cfg = elClass "div" ("segment segment_type_tertiary labeled-input" <> bool "" "-inline" inlineLabel) $ do
   divClass "label labeled-input__label" $ text n
   mkInput (cfg & initialAttributes %~ addToClassAttr "labeled-input__input")
 
@@ -337,10 +339,11 @@ mkLabeledInput n mkInput cfg = elClass "div" "segment segment_type_tertiary labe
 --   TODO: This function can probably replace `mkLabeledInput`.
 mkLabeledClsInput
   :: (DomBuilder t m, PostBuild t m)
-  => Dynamic t Text
+  => Bool
+  -> Dynamic t Text
   -> (CssClass -> m element)
   -> m element
-mkLabeledClsInput name mkInput = elClass "div" "segment segment_type_tertiary labeled-input" $ do
+mkLabeledClsInput inlineLabel name mkInput = elClass "div" ("segment segment_type_tertiary labeled-input" <> bool "" "-inline" inlineLabel) $ do
   divClass "label labeled-input__label" $ dynText name
   mkInput "labeled-input__input"
 

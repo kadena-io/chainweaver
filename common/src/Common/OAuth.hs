@@ -96,4 +96,3 @@ buildOAuthConfig' baseUri clientId renderRoute = OAuthConfig
             , _providerConfig_clientId = clientId
             }
     }
-

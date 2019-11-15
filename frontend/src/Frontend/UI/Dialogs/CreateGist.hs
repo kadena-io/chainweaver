@@ -84,5 +84,5 @@ labeledTextInputWithDefault
   -> Text
   -> m (Dynamic t Text)
 labeledTextInputWithDefault name defVal = mdo
-  v <- mkLabeledInput name uiInputElement $ def { _inputElementConfig_initialValue = defVal }
+  v <- mkLabeledInput True name uiInputElement $ def { _inputElementConfig_initialValue = defVal }
   pure $ _inputElement_value v

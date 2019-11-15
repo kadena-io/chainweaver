@@ -12,8 +12,15 @@
   color: $tertiary-color;
 }
 
+.labeled-input-inline {
+  font-size: 13px;
+  color: $tertiary-color;
+  display: flex;
+}
+
 .labeled-input__label {
   margin-bottom: $medium-margin;
+  min-width: 175px;
 }
 
 .labeled-input__input {
