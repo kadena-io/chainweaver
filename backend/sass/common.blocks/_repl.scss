@@ -66,6 +66,7 @@
 }
 
 .repl__prompt {
+    display: inline;
     padding-right: 5px;
     flex-grow: 0;
 }
@@ -73,7 +74,7 @@
 .repl__input {
     flex-grow: 1;
     border: none;
-    padding: 0 5px;
+    padding: 0;
     background: transparent;
 }
 
