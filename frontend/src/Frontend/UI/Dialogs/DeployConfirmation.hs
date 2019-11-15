@@ -213,7 +213,7 @@ fullDeployFlowWithSubmit dcfg model onPreviewConfirm runner _onClose = do
       succeeded <- elClass "div" "modal__main transaction_details" $ do
 
         transactionInputSection (pure $ _deploymentSettingsResult_code result) (pure $ _deploymentSettingsResult_command result)
-        uiDeployDestination model $ predefinedChainIdDisplayed chain model
+        void $ uiDeployDestination model $ predefinedChainIdDisplayed chain model
 
         let accountsToTrack = getAccounts accounts
               $ _deploymentSettingsResult_accountsToTrack result

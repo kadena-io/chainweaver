@@ -22,6 +22,8 @@
 .labeled-input__label {
   margin-bottom: $medium-margin;
   min-width: 175px;
+  color: #3a3a3a;
+  font-weight: bold;
 }
 
 .labeled-input__label-inline {
@@ -38,4 +40,12 @@
   &.input, &.select, &.textarea {
     background-color: white;
   }
+
+  input {
+    width: 100%;
+  }
+}
+
+.input_type_textarea.labeled-input__input {
+  min-height: 115px;
 }
