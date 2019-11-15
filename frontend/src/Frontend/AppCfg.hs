@@ -6,6 +6,10 @@ import Language.Javascript.JSaddle (JSM)
 import Reflex.Dom
 import Kadena.SigningApi
 
+data EnabledSettings = EnabledSettings
+  { _enabledSettings_network :: Bool
+  }
+
 data AppCfg key t m = AppCfg
   { _appCfg_gistEnabled :: Bool
   , _appCfg_externalFileOpened :: Event t Text
@@ -20,4 +24,5 @@ data AppCfg key t m = AppCfg
   -- ^ Requests to sign this object
   , _appCfg_signingResponse :: Either Text SigningResponse -> JSM ()
   -- ^ Responses to signings
+  , _appCfg_enabledSettings :: EnabledSettings
   }

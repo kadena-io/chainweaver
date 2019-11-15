@@ -85,18 +85,18 @@ data EnvSelection
 --
 --   State is controlled via this configuration.
 data IdeCfg modal key t = IdeCfg
-  { _ideCfg_wallet         :: WalletCfg key t
-  , _ideCfg_jsonData       :: JsonDataCfg t
-  , _ideCfg_network        :: NetworkCfg t
-  , _ideCfg_moduleExplorer :: ModuleExplorerCfg t
-  , _ideCfg_editor         :: EditorCfg t
-  , _ideCfg_repl           :: ReplCfg t
-  , _ideCfg_messages       :: MessagesCfg t
-  , _ideCfg_oAuth          :: OAuthCfg t
-  , _ideCfg_gistStore      :: GistStoreCfg t
-  , _ideCfg_selEnv         :: Event t EnvSelection
+  { _ideCfg_wallet          :: WalletCfg key t
+  , _ideCfg_jsonData        :: JsonDataCfg t
+  , _ideCfg_network         :: NetworkCfg t
+  , _ideCfg_moduleExplorer  :: ModuleExplorerCfg t
+  , _ideCfg_editor          :: EditorCfg t
+  , _ideCfg_repl            :: ReplCfg t
+  , _ideCfg_messages        :: MessagesCfg t
+  , _ideCfg_oAuth           :: OAuthCfg t
+  , _ideCfg_gistStore       :: GistStoreCfg t
+  , _ideCfg_selEnv          :: Event t EnvSelection
     -- ^ Switch tab of the right pane.
-  , _ideCfg_setModal       :: LeftmostEv t (Maybe modal)
+  , _ideCfg_setModal        :: LeftmostEv t (Maybe modal)
    -- ^ Request a modal dialog. Use `Nothing` to close an existing modal
    --   dialog.
   }

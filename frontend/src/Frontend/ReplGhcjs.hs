@@ -67,11 +67,12 @@ import Frontend.UI.Dialogs.CreateGist (uiCreateGist)
 import Frontend.UI.Dialogs.CreatedGist (uiCreatedGist)
 import Frontend.UI.Dialogs.DeployConfirmation (uiDeployConfirmation)
 import Frontend.UI.Dialogs.LogoutConfirmation (uiLogoutConfirmation)
-import Frontend.UI.Dialogs.NetworkEdit (uiNetworkEdit, uiNetworkSelect, uiNetworkStatus, queryNetworkStatus)
+import Frontend.UI.Dialogs.NetworkEdit (uiNetworkSelect, uiNetworkStatus, queryNetworkStatus)
 import Frontend.UI.Dialogs.Signing (uiSigning)
 import Frontend.UI.Modal
 import Frontend.UI.Modal.Impl
 import Frontend.UI.RightPanel
+import Frontend.UI.Settings
 import Frontend.UI.Wallet
 
 app
@@ -111,8 +112,12 @@ app sidebarExtra appCfg = void . mfix $ \ cfg -> do
         pure $ controlCfg <> mainCfg
       -- TODO resources page
       FrontendRoute_Resources -> text "Resources" >> pure mempty
-      -- TODO settings page
-      FrontendRoute_Settings -> text "Settings" >> pure mempty
+      FrontendRoute_Settings -> do
+        controlCfg <- controlBar "Settings" (mempty <$ blank)
+        mainCfg <- elClass "main" "main page__main" $ do
+          uiSettings (_appCfg_enabledSettings appCfg) ideL
+        pure $ controlCfg <> mainCfg
+
     flattenedCfg <- flatten =<< tagOnPostBuild routedCfg
     pure $ netCfg <> flattenedCfg
 
@@ -273,8 +278,6 @@ controlBarRight appCfg m = do
     divClass "main-header__controls-nav" $ do
       elClass "div" "main-header__project-loader" $ do
 
-        onNetClick <- cogButton headerBtnCfg
-
         _ <- openFileBtn
 
         onLoadClicked <- loadReplBtn
@@ -293,9 +296,6 @@ controlBarRight appCfg m = do
           gistConfirmation :: Event t (Maybe (ModalImpl m key t))
           gistConfirmation = Just uiCreateGist <$ onCreateGist
 
-          networkEdit :: Event t (Maybe (ModalImpl m key t))
-          networkEdit = Just (uiNetworkEdit m) <$ onNetClick
-
           logoutConfirmation :: Event t (Maybe (ModalImpl m key t))
           logoutConfirmation = Just uiLogoutConfirmation <$ onLogoutClick
 
@@ -305,9 +305,8 @@ controlBarRight appCfg m = do
 
           logoutCfg = mempty & modalCfg_setModal .~ logoutConfirmation
 
-          netCfg = mempty & modalCfg_setModal .~ networkEdit
 
-        pure $ deployCfg <> loadCfg <> gistCfg <> netCfg <> logoutCfg
+        pure $ deployCfg <> loadCfg <> gistCfg <> logoutCfg
   where
     maySignoutBtn = do
       let gitHubOnline = Map.member OAuthProvider_GitHub <$> m ^. oAuth_accessTokens

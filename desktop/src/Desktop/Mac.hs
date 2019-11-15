@@ -1,10 +1,10 @@
-{-# LANGUAGE DataKinds #-}
-{-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE LambdaCase #-}
-{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE DataKinds           #-}
+{-# LANGUAGE FlexibleContexts    #-}
+{-# LANGUAGE LambdaCase          #-}
+{-# LANGUAGE OverloadedStrings   #-}
 {-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE TypeApplications #-}
-{-# LANGUAGE TypeOperators #-}
+{-# LANGUAGE TypeApplications    #-}
+{-# LANGUAGE TypeOperators       #-}
 module Desktop.Mac where
 
 import Control.Concurrent
@@ -202,6 +202,9 @@ main' ffi mainBundleResourcePath runHTML = redirectPipes [stdout, stderr] $ do
                 , _appCfg_editorReadOnly = False
                 , _appCfg_signingRequest = signingRequest
                 , _appCfg_signingResponse = liftIO . putMVar signingResponseMVar
+                , _appCfg_enabledSettings = EnabledSettings
+                  { _enabledSettings_network = True
+                  }
                 }
           _ <- mapRoutedT (flip runStorageT store) $ runWithReplace loaderMarkup $
             (liftIO (_macFFI_activateWindow ffi) >> liftIO (_macFFI_resizeWindow ffi) >> bipWallet appCfg) <$ bowserLoad

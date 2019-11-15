@@ -1,0 +1,37 @@
+@import '../include/defs';
+
+.settings {
+  display: flex;
+}
+
+.settings__cell {
+  display: block;
+  text-decoration: none;
+  margin: $medium-margin;
+  width: 420px;
+  &:first-child {
+    margin-left: $double-margin;
+  }
+  cursor: pointer;
+}
+
+
+.settings__cell-icon {
+  background-color: #454444;
+  border-radius: 50%;
+  width: 130px;
+  height: 130px;
+  background-position: 50% 50%;
+  background-repeat: no-repeat;
+  margin: $double-margin auto;
+}
+
+.settings__cell-header {
+  border-color: $std-border-color;
+  border-style: $std-border-style;
+  border-width: $std-border-width;
+  border-radius: $std-border-radius;
+  text-align: center;
+  padding: $bigger-padding;
+  font-size: 18px;
+}
