@@ -50,7 +50,6 @@ module Frontend.UI.DeploymentSettings
   , uiDeploymentSettings
   , uiDeployDestination
   , uiDeployMetaData
-  , uiDeployCode
   , uiCfg
   , uiSenderCapabilities
 
@@ -414,19 +413,6 @@ userChainIdSelectWithPreselect
 userChainIdSelectWithPreselect m mChainId = mkLabeledClsInput (uiChainSelection mNodeInfo mChainId) "Chain ID"
   where mNodeInfo = (^? to rights . _head) <$> m ^. network_selectedNodes
 
-uiDeployCode
-  :: MonadWidget t m
-  => Dynamic t Text
-  -> m ()
-uiDeployCode code = do
-  divClass "title" $ text "Input"
-  divClass "group" $ do
-    pb <- getPostBuild
-    _ <- flip mkLabeledClsInput "Raw Command" $ \cls -> uiTextAreaElement $ def
-      & textAreaElementConfig_setValue .~ leftmost [updated code, tag (current code) pb]
-      & initialAttributes .~ "disabled" =: "" <> "style" =: "width: 100%" <> "class" =: renderClass cls
-    pure ()
-
 uiDeployDestination
   :: ( MonadWidget t m
      , HasNetwork model t
@@ -480,7 +466,7 @@ uiCfg
 uiCfg mCode m wChainId mTTL mGasLimit mUserSection = do
   -- General deployment configuration
   let mkGeneralSettings = do
-        traverse_ uiDeployCode mCode
+        traverse_ (\c -> transactionInputSection c Nothing) mCode
         cId <- uiDeployDestination m wChainId
 
         -- Customisable user provided UI section
@@ -512,13 +498,18 @@ transactionHashSection cmd = void $ do
   mkLabeledInput (\c -> uiInputElement $ c & initialAttributes %~ Map.insert "disabled" "") "Transaction Hash" $ def
     & inputElementConfig_initialValue .~ hashToText (toUntypedHash $ Pact._cmdHash cmd)
 
-transactionInputSection :: MonadWidget t m => Text -> Pact.Command Text -> m ()
+transactionInputSection
+  :: MonadWidget t m
+  => Dynamic t Text
+  -> Maybe (Pact.Command Text)
+  -> m ()
 transactionInputSection code cmd = do
   divClass "title" $ text "Input"
   divClass "group" $ do
-    transactionHashSection cmd
+    for_ cmd transactionHashSection
+    pb <- getPostBuild
     _ <- flip mkLabeledClsInput "Raw Command" $ \cls -> uiTextAreaElement $ def
-      & textAreaElementConfig_initialValue .~ code
+      & textAreaElementConfig_setValue .~ leftmost [updated code, tag (current code) pb]
       & initialAttributes .~ "disabled" =: "" <> "style" =: "width: 100%" <> "class" =: renderClass cls
     pure ()
 

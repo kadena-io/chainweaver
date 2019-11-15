@@ -212,7 +212,7 @@ fullDeployFlowWithSubmit dcfg model onPreviewConfirm runner _onClose = do
       let chain = _deploymentSettingsResult_chainId result
       succeeded <- elClass "div" "modal__main transaction_details" $ do
 
-        transactionInputSection (_deploymentSettingsResult_code result) (_deploymentSettingsResult_command result)
+        transactionInputSection (pure $ _deploymentSettingsResult_code result) (pure $ _deploymentSettingsResult_command result)
         divClass "title" $ text "Destination"
         _ <- divClass "group segment" $ do
           transactionDisplayNetwork model
