@@ -137,8 +137,12 @@
   margin-right: $small-margin;
 }
 
-.modal__foter > *:last-child {
-  margin-left: 0;
+.modal__footer > .button {
+  margin-right: $normal-margin;
+}
+
+.modal__footer > *:last-child {
+  margin-right: 0;
 }
 
 .detail {

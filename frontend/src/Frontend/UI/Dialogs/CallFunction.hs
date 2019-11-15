@@ -184,6 +184,7 @@ argDelimiter = uiCodeFont "code-font_type_arg-delimiter" mempty
 renderArg :: MonadWidget t m => Arg (Term Name) -> m ()
 renderArg a = do
   uiCodeFont "code-font_type_pact-arg-name" $ (_aName a)
+  argDelimiter
   uiCodeFont "code-font_type_pact-type" $ prettyTextCompact (_aType a)
 
 
