@@ -14,6 +14,7 @@
 {-# LANGUAGE StandaloneDeriving    #-}
 {-# LANGUAGE TemplateHaskell       #-}
 {-# LANGUAGE TupleSections         #-}
+{-# LANGUAGE TypeApplications      #-}
 
 -- | Confirmation dialog for creating a GIST allowing setting of name and description.
 -- Copyright   :  (C) 2018 Kadena
@@ -64,12 +65,12 @@ uiLogoutConfirmation _onClose = do
           text "If you want to switch to a different GitHub account, you will also have to "
           elAttr "a" ("href" =: "https://github.com/logout" <> "target" =: "_blank") $
             text "logout"
+          text " "
           el "em" $ text "yourself"
           text " from GitHub."
 
   modalFooter $ do
     onCancel <- cancelButton def "Cancel"
-    text " "
     onConfirm <- confirmButton def "Logout"
     let
       cfg = mempty & oAuthCfg_logout .~ (OAuthProvider_GitHub <$ onConfirm)
