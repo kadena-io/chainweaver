@@ -24,6 +24,7 @@ module Frontend.UI.Widgets
   , uiRealInputElement
   , uiRealWithPrecisionInputElement
   , uiIntInputElement
+  , uiSlider
   , uiSliderInputElement
   , uiInputView
   , mkLabeledInputView
@@ -226,19 +227,26 @@ uiIntInputElement cfg = do
   where
     fixNum = T.takeWhile (/='.')
 
-uiSliderInputElement
+uiSlider
   :: DomBuilder t m
-  => m ()
+  => CssClass
+  -> m ()
   -> m ()
   -> InputElementConfig er t (DomBuilderSpace m)
   -> m (InputElement er (DomBuilderSpace m) t)
-uiSliderInputElement minLabel maxLabel conf = divClass "slider" $ do
-  s <- inputElement $ conf
-    & initialAttributes %~ Map.insert "type" "range" . addToClassAttr "slider"
+uiSlider cls minLabel maxLabel conf = elKlass "div" ("slider" <> cls) $ do
+  s <- uiSliderInputElement conf
   divClass "slider_min" minLabel
   divClass "slider_max" maxLabel
   divClass "clear" $ pure ()
   pure s
+
+uiSliderInputElement
+  :: DomBuilder t m
+  => InputElementConfig er t (DomBuilderSpace m)
+  -> m (InputElement er (DomBuilderSpace m) t)
+uiSliderInputElement conf = inputElement $ conf
+    & initialAttributes %~ Map.insert "type" "range" . addToClassAttr "slider"
 
 -- | Take an `uiInputElement` like thing and make it a view with change events
 -- of your model. It also takes care of input validation.
@@ -316,10 +324,11 @@ mkLabeledInputView
   -> (InputElementConfig er t (DomBuilderSpace m) -> m (InputElement er (DomBuilderSpace m) t))
   -> Dynamic t Text
   -> m (Event t Text)
-mkLabeledInputView inlineLabel n mkInput v = elClass "div" ("segment segment_type_tertiary labeled-input" <> bool "" "-inline" inlineLabel) $ do
-  divClass "label labeled-input__label" $ text n
+mkLabeledInputView inlineLabel n mkInput v = elClass "div" ("segment segment_type_tertiary labeled-input" <> inlineState) $ do
+  divClass ("label labeled-input__label" <> inlineState) $ text n
   uiInputView mkInput (def & initialAttributes %~ addToClassAttr "labeled-input__input") v
-
+  where
+    inlineState = bool "" "-inline" inlineLabel
 
 -- | Make labeled and segmented input.
 mkLabeledInput
@@ -329,10 +338,11 @@ mkLabeledInput
   -> (cfg -> m element)
   -> cfg
   -> m element
-mkLabeledInput inlineLabel n mkInput cfg = elClass "div" ("segment segment_type_tertiary labeled-input" <> bool "" "-inline" inlineLabel) $ do
-  divClass "label labeled-input__label" $ text n
+mkLabeledInput inlineLabel n mkInput cfg = elClass "div" ("segment segment_type_tertiary labeled-input" <> inlineState) $ do
+  divClass ("label labeled-input__label" <> inlineState) $ text n
   mkInput (cfg & initialAttributes %~ addToClassAttr "labeled-input__input")
-
+  where
+    inlineState = bool "" "-inline" inlineLabel
 -- | Make some input a labeled input.
 --
 --   Any widget creating function that can be called with additional classes will do.
@@ -343,9 +353,11 @@ mkLabeledClsInput
   -> Dynamic t Text
   -> (CssClass -> m element)
   -> m element
-mkLabeledClsInput inlineLabel name mkInput = elClass "div" ("segment segment_type_tertiary labeled-input" <> bool "" "-inline" inlineLabel) $ do
-  divClass "label labeled-input__label" $ dynText name
+mkLabeledClsInput inlineLabel name mkInput = elClass "div" ("segment segment_type_tertiary labeled-input" <> inlineState) $ do
+  divClass ("label labeled-input__label" <> inlineState) $ dynText name
   mkInput "labeled-input__input"
+  where
+    inlineState = bool "" "-inline" inlineLabel
 
 -- | Attributes which will turn off all autocomplete/autofill/autocorrect
 -- functions, including the OS-level suggestions on macOS.

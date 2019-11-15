@@ -16,6 +16,7 @@
   font-size: 13px;
   color: $tertiary-color;
   display: flex;
+  align-items: center;
 }
 
 .labeled-input__label {
@@ -23,8 +24,18 @@
   min-width: 175px;
 }
 
+.labeled-input__label-inline {
+  @extend .labeled-input__label;
+  margin-bottom: 0px;
+}
+
 .labeled-input__input {
   @extend .input_type_secondary;
-  background-color: white;
   width: 100%;
+  flex-grow: 1;
+  background-color: transparent;
+
+  &.input, &.select, &.textarea {
+    background-color: white;
+  }
 }

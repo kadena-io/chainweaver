@@ -516,10 +516,9 @@ transactionInputSection code cmd = do
 
 transactionDisplayNetwork :: (MonadWidget t m, HasNetwork model t) => model -> m ()
 transactionDisplayNetwork m = void $ mkLabeledClsInput True "Network" $ \_ -> do
-  divClass "title" $ do
-    netStat <- queryNetworkStatus (m ^. network_networks) (m ^. network_selectedNetwork)
-    uiNetworkStatus "" netStat
-    dynText $ textNetworkName <$> m ^. network_selectedNetwork
+  netStat <- queryNetworkStatus (m ^. network_networks) (m ^. network_selectedNetwork)
+  uiNetworkStatus "" netStat
+  dynText $ textNetworkName <$> m ^. network_selectedNetwork
 
 -- | ui for asking the user about meta data needed for the transaction.
 uiMetaData
@@ -532,7 +531,7 @@ uiMetaData m mTTL mGasLimit = do
     pbGasPrice <- tag (current $ _pmGasPrice <$> m ^. network_meta) <$> getPostBuild
 
     let
-      txnSpeedSliderEl setExternal conf = uiSliderInputElement (text "Slow") (text "Fast") $ conf
+      txnSpeedSliderEl setExternal cls = uiSlider cls (text "Slow") (text "Fast") $ def
         & inputElementConfig_initialValue .~ (showGasPrice $ scaleGPtoTxnSpeed defaultTransactionGasPrice)
         & initialAttributes .~ "min" =: "1" <> "max" =: "1001" <> "step" =: "1"
         & inputElementConfig_setValue .~ leftmost
@@ -553,7 +552,7 @@ uiMetaData m mTTL mGasLimit = do
         & inputElementConfig_elementConfig . elementConfig_eventSpec %~ preventScrollWheelAndUpDownArrow @m
 
     onGasPrice <- mdo
-      tsEl <- mkLabeledInput True "Transaction Speed" (txnSpeedSliderEl setPrice) def
+      tsEl <- mkLabeledClsInput True "Transaction Speed" (txnSpeedSliderEl setPrice)
       let setSpeed = fmapMaybe (fmap scaleTxnSpeedToGP . parseGasPrice) $ _inputElement_input tsEl
       (_gpValue, gpInput) <- mkLabeledInput True "Gas Price (KDA)" (gasPriceInputBox $ fmap showGasPrice setSpeed) def
       let setPrice = fmap (showGasPrice . scaleGPtoTxnSpeed) gpInput
@@ -583,21 +582,22 @@ uiMetaData m mTTL mGasLimit = do
     _ <- mkLabeledInputView True "Max Transaction Fee (KDA)"  mkTransactionFee $
       ffor (m ^. network_meta) $ \pm -> showGasPrice $ fromIntegral (_pmGasLimit pm) * _pmGasPrice pm
 
-    let ttlInput conf = mdo
-          sliderEl <- uiSliderInputElement (text "1 second") (text "1 day") $ conf
-            & inputElementConfig_setValue .~ _inputElement_input inputEl
-          inputEl <- uiIntInputElement $ conf
-            & inputElementConfig_setValue .~ _inputElement_input sliderEl
-          pure $ leftmost [_inputElement_input inputEl, _inputElement_input sliderEl]
     pbTTL <- case mTTL of
       Just _ -> pure never
       Nothing -> tag (current $ fmap _pmTTL $ m ^. network_meta) <$> getPostBuild
     let secondsInDay :: Int = 60 * 60 * 24
         initTTL = fromMaybe defaultTransactionTTL mTTL
-    onTtlTxt <- mkLabeledInput True "Request Expires (seconds)" ttlInput $ def
-      & initialAttributes .~ "min" =: "1" <> "max" =: T.pack (show secondsInDay) <> "step" =: "1"
-      & inputElementConfig_setValue .~ fmap showTtl pbTTL
-      & inputElementConfig_initialValue .~ showTtl initTTL
+        ttlInput cls = elKlass "div" cls $ mdo
+          let conf = def
+                & initialAttributes .~ "min" =: "1" <> "max" =: T.pack (show secondsInDay) <> "step" =: "1"
+                & inputElementConfig_setValue .~ fmap showTtl pbTTL
+                & inputElementConfig_initialValue .~ showTtl initTTL
+          sliderEl <- uiSlider "" (text "1 second") (text "1 day") $ conf
+            & inputElementConfig_setValue .~ _inputElement_input inputEl
+          inputEl <- uiIntInputElement $ conf
+            & inputElementConfig_setValue .~ _inputElement_input sliderEl
+          pure $ leftmost [_inputElement_input inputEl, _inputElement_input sliderEl]
+    onTtlTxt <- mkLabeledClsInput True "Request Expires (seconds)" ttlInput
     let onTTL = fmapMaybe (readPact (TTLSeconds . ParsedInteger)) onTtlTxt
     ttl <- holdDyn initTTL $ leftmost [onTTL, pbTTL]
 
