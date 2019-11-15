@@ -538,7 +538,7 @@ uiMetaData m mTTL mGasLimit = do
         :: Event t Text
         -> InputElementConfig EventResult t (DomBuilderSpace m)
         -> m (Dynamic t (Maybe GasPrice), Event t GasPrice)
-      gasPriceInputBox setExternal conf = fmap snd $ dimensionalInputWrapper "KDA" $ uiRealWithPrecisionInputElement maxCoinPricePrecision (GasPrice . ParsedDecimal) $ conf
+      gasPriceInputBox setExternal conf = fmap snd $ dimensionalInputWrapper "KDA" $ uiRealWithPrecisionInputElement maxCoinPrecision (GasPrice . ParsedDecimal) $ conf
         & initialAttributes %~ addToClassAttr "input-units"
         & inputElementConfig_initialValue .~ showGasPrice defaultTransactionGasPrice
         & inputElementConfig_setValue .~ leftmost
@@ -573,7 +573,7 @@ uiMetaData m mTTL mGasLimit = do
 
     gasLimit <- holdDyn initGasLimit $ leftmost [onGasLimit, pbGasLimit]
 
-    let mkTransactionFee c = fmap fst $ dimensionalInputWrapper "KDA" $ uiRealWithPrecisionInputElement maxCoinPricePrecision id $ c
+    let mkTransactionFee c = fmap fst $ dimensionalInputWrapper "KDA" $ uiRealWithPrecisionInputElement maxCoinPrecision id $ c
           & initialAttributes %~ Map.insert "disabled" ""
     _ <- mkLabeledInputView True "Max Transaction Fee"  mkTransactionFee $
       ffor (m ^. network_meta) $ \pm -> showGasPrice $ fromIntegral (_pmGasLimit pm) * _pmGasPrice pm
@@ -614,7 +614,7 @@ uiMetaData m mTTL mGasLimit = do
       shiftGP :: GasPrice -> GasPrice -> GasPrice -> GasPrice -> GasPrice -> GasPrice
       shiftGP oldMin oldMax newMin newMax x =
         let GasPrice (ParsedDecimal gp) = (newMax-newMin)/(oldMax-oldMin)*(x-oldMin)+newMin
-         in GasPrice $ ParsedDecimal $ roundTo maxCoinPricePrecision gp
+         in GasPrice $ ParsedDecimal $ roundTo maxCoinPrecision gp
 
       scaleTxnSpeedToGP :: GasPrice -> GasPrice
       scaleTxnSpeedToGP = shiftGP 1 1001 (1e-12) (1e-8)
@@ -623,7 +623,7 @@ uiMetaData m mTTL mGasLimit = do
       scaleGPtoTxnSpeed = shiftGP (1e-12) (1e-8) 1 1001
 
       parseGasPrice :: Text -> Maybe GasPrice
-      parseGasPrice t = GasPrice . ParsedDecimal . roundTo maxCoinPricePrecision <$> readMay (T.unpack t)
+      parseGasPrice t = GasPrice . ParsedDecimal . roundTo maxCoinPrecision <$> readMay (T.unpack t)
 
       showGasLimit :: GasLimit -> Text
       showGasLimit (GasLimit (ParsedInteger i)) = tshow i
