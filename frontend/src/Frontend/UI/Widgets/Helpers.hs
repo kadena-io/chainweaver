@@ -1,12 +1,12 @@
-{-# LANGUAGE DataKinds             #-}
-{-# LANGUAGE FlexibleContexts      #-}
-{-# LANGUAGE LambdaCase            #-}
+{-# LANGUAGE DataKinds #-}
+{-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
-{-# LANGUAGE OverloadedStrings     #-}
-{-# LANGUAGE RecursiveDo           #-}
-{-# LANGUAGE ScopedTypeVariables   #-}
-{-# LANGUAGE TupleSections         #-}
-{-# LANGUAGE TypeApplications      #-}
+{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE RecursiveDo #-}
+{-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE TupleSections #-}
+{-# LANGUAGE TypeApplications #-}
 
 -- | Little helpers useful for implementing widgets.
 module Frontend.UI.Widgets.Helpers
@@ -112,13 +112,13 @@ preventScrollWheelAndUpDownArrow
      . DomSpace (DomBuilderSpace m)
   => EventSpec (DomBuilderSpace m) EventResult
   -> EventSpec (DomBuilderSpace m) EventResult
-preventScrollWheelAndUpDownArrow = 
+preventScrollWheelAndUpDownArrow =
   preventMouseWheel . preventUpDownArrow
   where
-    preventMouseWheel = 
+    preventMouseWheel =
       addEventSpecFlags (Proxy :: Proxy (DomBuilderSpace m)) Mousewheel (const preventDefault)
 
-    preventUpDownArrow = 
+    preventUpDownArrow =
       addEventSpecFlags (Proxy :: Proxy (DomBuilderSpace m)) Keydown
       (maybe mempty
         (\c ->

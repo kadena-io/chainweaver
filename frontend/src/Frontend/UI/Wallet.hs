@@ -1,21 +1,25 @@
-{-# LANGUAGE DataKinds             #-}
-{-# LANGUAGE DeriveGeneric         #-}
-{-# LANGUAGE ExtendedDefaultRules  #-}
-{-# LANGUAGE FlexibleContexts      #-}
-{-# LANGUAGE FlexibleInstances     #-}
-{-# LANGUAGE KindSignatures        #-}
-{-# LANGUAGE LambdaCase            #-}
+{-# LANGUAGE CPP #-}
+{-# LANGUAGE ConstraintKinds #-}
+{-# LANGUAGE DataKinds #-}
+{-# LANGUAGE DefaultSignatures #-}
+{-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE ExtendedDefaultRules #-}
+{-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE FunctionalDependencies #-}
+{-# LANGUAGE KindSignatures #-}
+{-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
-{-# LANGUAGE OverloadedStrings     #-}
-{-# LANGUAGE QuasiQuotes           #-}
-{-# LANGUAGE RecursiveDo           #-}
-{-# LANGUAGE ScopedTypeVariables   #-}
-{-# LANGUAGE StandaloneDeriving    #-}
-{-# LANGUAGE TemplateHaskell       #-}
-{-# LANGUAGE TupleSections         #-}
-{-# LANGUAGE TypeApplications      #-}
-{-# LANGUAGE TypeFamilies          #-}
-{-# LANGUAGE ConstraintKinds       #-}
+{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE QuasiQuotes #-}
+{-# LANGUAGE RecursiveDo #-}
+{-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE StandaloneDeriving #-}
+{-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE TupleSections #-}
+{-# LANGUAGE TypeApplications #-}
+{-# LANGUAGE TypeFamilies #-}
+{-# LANGUAGE UndecidableInstances #-}
 
 -- | Wallet management ui for handling private/public keys.
 -- Copyright   :  (C) 2018 Kadena
@@ -183,29 +187,29 @@ uiKeyItem selectedNetwork i d = do
         False -> pure never
         True -> do
           elClass "tr" "wallet__table-row" $ do
-          let td = elClass "td" "wallet__table-cell"
+            let td = elClass "td" "wallet__table-cell"
 
-          td $ dynText $ unAccountName . _account_name <$> account
-          td $ dynText $ keyToText . _keyPair_publicKey . _account_key <$> account
-          td $ dynText $ Pact._chainId . _account_chainId <$> account
-          td $ dynText $ _account_notes <$> account
-          -- TODO balance
-          td $ text "Balance Placeholder"
+            td $ dynText $ unAccountName . _account_name <$> account
+            td $ dynText $ keyToText . _keyPair_publicKey . _account_key <$> account
+            td $ dynText $ Pact._chainId . _account_chainId <$> account
+            td $ dynText $ _account_notes <$> account
+            -- TODO balance
+            td $ text "Balance Placeholder"
 
-          td $ divClass "wallet__table-buttons" $ do
-            let cfg = def
-                  & uiButtonCfg_class <>~ "wallet__table-button"
+            td $ divClass "wallet__table-buttons" $ do
+              let cfg = def
+                    & uiButtonCfg_class <>~ "wallet__table-button"
 
-            recv <- receiveButton cfg
-            void $ sendButton $ cfg & uiButtonCfg_disabled .~ True
-            onDetails <- detailsButton cfg
+              recv <- receiveButton cfg
+              void $ sendButton $ cfg & uiButtonCfg_disabled .~ True
+              onDetails <- detailsButton cfg
 
-            let mkDialog dia onE = (\a -> (dia, i, a)) <$> current account <@ onE
+              let mkDialog dia onE = (\a -> (dia, i, a)) <$> current account <@ onE
 
-            pure $ leftmost
-              [ mkDialog AccountDialog_Details onDetails
-              , mkDialog AccountDialog_Receive recv
-              ]
+              pure $ leftmost
+                [ mkDialog AccountDialog_Details onDetails
+                , mkDialog AccountDialog_Receive recv
+                ]
 
 -- | Get the balance of an account from the network. 'Nothing' indicates _some_
 -- failure, either a missing account or connectivity failure. We have no need to
