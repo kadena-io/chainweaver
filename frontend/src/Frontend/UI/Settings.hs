@@ -20,6 +20,7 @@ import Frontend.AppCfg (EnabledSettings(..))
 import Frontend.Foundation
 import Frontend.Network
 import Frontend.UI.Dialogs.NetworkEdit (uiNetworkEdit)
+import Frontend.UI.IconGrid (IconGridCellConfig(..), iconGridCell)
 import Frontend.UI.Modal
 
 type HasUiSettingModelCfg model mConf key m t =
@@ -35,7 +36,7 @@ uiSettings
   :: forall t m key model mConf
   . (MonadWidget t m, HasNetwork model t, HasUiSettingModelCfg model mConf key m t)
   => EnabledSettings -> model -> m mConf
-uiSettings enabledSettings model = elClass "div" "settings" $ do
+uiSettings enabledSettings model = elClass "div" "icon-grid" $ do
   configs <- sequence $ catMaybes $
     [ includeSetting _enabledSettings_network $ settingItem "Network" (static @"img/network.svg") (uiNetworkEdit model)
     ]
@@ -48,10 +49,12 @@ settingItem
   . (DomBuilder t m, Monoid mConf, HasModalCfg mConf (Modal mConf m t) t)
   => Text -> Text -> Modal mConf m t -> m mConf
 settingItem title iconUrl modal = do
-  (elt, _) <- elAttr' "div" ("class" =: "settings__cell") $ do
-    elAttr "div" ("class" =: "settings__cell-icon" <> "style" =: ("background-image: url(" <> iconUrl <>")")) $ blank
-    elClass "div" "settings__cell-header" $ text title
+  eClick <- iconGridCell $ IconGridCellConfig
+    { _iconGridCellConfig_title = title
+    , _iconGridCellConfig_iconUrl = iconUrl
+    , _iconGridCellConfig_desc = Nothing
+    }
   let
     eModal :: Event t (Maybe (Modal mConf m t))
-    eModal = Just modal <$ domEvent Click elt
+    eModal = Just modal <$ eClick
   pure $ mempty & modalCfg_setModal .~ eModal

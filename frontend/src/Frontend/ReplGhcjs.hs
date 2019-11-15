@@ -69,6 +69,7 @@ import Frontend.UI.Dialogs.DeployConfirmation (uiDeployConfirmation)
 import Frontend.UI.Dialogs.LogoutConfirmation (uiLogoutConfirmation)
 import Frontend.UI.Dialogs.NetworkEdit (uiNetworkSelect, uiNetworkStatus, queryNetworkStatus)
 import Frontend.UI.Dialogs.Signing (uiSigning)
+import Frontend.UI.IconGrid (IconGridCellConfig(..), iconGridLaunchLink)
 import Frontend.UI.Modal
 import Frontend.UI.Modal.Impl
 import Frontend.UI.RightPanel
@@ -353,7 +354,7 @@ headerBtnCfg = btnCfgPrimary & uiButtonCfg_class %~ (<> "main-header__button")
 resourcesWidget
   :: (DomBuilder t m)
   => m ()
-resourcesWidget = elClass "div" "resources" $ do
+resourcesWidget = elClass "div" "icon-grid" $ do
   resourceCell "Support" (static @"img/resources/support.svg") "#"
     "Explore Help Resources to learn about Chainweaver, solve problems and get in touch"
   resourceCell "Documentation" (static @"img/resources/documentation.svg") "http://pact-language.readthedocs.io/"
@@ -361,11 +362,8 @@ resourcesWidget = elClass "div" "resources" $ do
   resourceCell "Tutorials" (static @"img/resources/tutorials.svg") "https://pactlang.org/"
     "Read or watch tutorials for writing smart contracts using the Pact language"
   where
-    resourceCell title iconUrl href desc =
-      elAttr "a" ("class" =: "resources__cell" <> "href" =: href <> "target" =: "_blank")  $ do
-        elAttr "div" ("class" =: "resources__cell-icon" <> "style" =: ("background-image: url(" <> iconUrl <>")")) $ blank
-        elClass "div" "resources__cell-header" $ do
-          elAttr "img" ("src" =: (static @"img/launch.svg") <> "class" =: "resources__cell-launch") blank
-          elClass "span" "resources__cell-title" $ text title
-        elClass "div" "resources__cell-desc" $ text desc
-
+    resourceCell title iconUrl href desc = iconGridLaunchLink href $ IconGridCellConfig
+      { _iconGridCellConfig_title = title
+      , _iconGridCellConfig_iconUrl = iconUrl
+      , _iconGridCellConfig_desc = Just desc
+      }

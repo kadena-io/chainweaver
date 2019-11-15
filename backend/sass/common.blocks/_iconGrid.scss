@@ -6,11 +6,11 @@
 
 @import '../include/defs';
 
-.resources {
+.icon-grid {
   display: flex;
 }
 
-.resources__cell {
+.icon-grid__cell {
   display: block;
   text-decoration: none;
   margin: $medium-margin;
@@ -24,7 +24,7 @@
 }
 
 
-.resources__cell-icon {
+.icon-grid__cell-icon {
   background-color: #454444;
   border-radius: 50%;
   width: 130px;
@@ -34,7 +34,7 @@
   margin: $double-margin auto;
 }
 
-.resources__cell-header {
+.icon-grid__cell-header {
   border-color: $std-border-color;
   border-style: $std-border-style;
   border-width: $std-border-width;
@@ -44,17 +44,17 @@
   font-size: 18px;
 }
 
-.resources__cell-launch {
+.icon-grid__cell-launch {
   position: relative;
   top: 3px;
   right: 5px;
   height: 18px;
 }
 
-.resources__cell-title {
+.icon-grid__cell-title {
 }
 
-.resources__cell-desc {
+.icon-grid__cell-desc {
   text-align: center;
   color: $tertiary-color;
   padding: $normal-padding;
