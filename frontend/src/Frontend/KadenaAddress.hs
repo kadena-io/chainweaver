@@ -1,9 +1,6 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE PatternGuards #-}
-{-# LANGUAGE DeriveGeneric #-}
-{-# LANGUAGE PackageImports #-}
-{-# LANGUAGE TemplateHaskell #-}
 module Frontend.KadenaAddress
   ( KadenaAddressError (..)
   , KadenaAddress
