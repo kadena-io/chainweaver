@@ -35,7 +35,7 @@ uiSettings
   :: forall t m key model mConf
   . (MonadWidget t m, HasNetwork model t, HasUiSettingModelCfg model mConf key m t)
   => EnabledSettings -> model -> m mConf
-uiSettings enabledSettings model = do
+uiSettings enabledSettings model = elClass "div" "settings" $ do
   configs <- sequence $ catMaybes $
     [ includeSetting _enabledSettings_network $ settingItem "Network" (static @"img/network.svg") (uiNetworkEdit model)
     ]
