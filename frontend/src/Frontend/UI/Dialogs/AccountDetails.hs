@@ -14,7 +14,7 @@ import qualified Pact.Types.ChainId as Pact
 import           Reflex
 import           Reflex.Dom
 ------------------------------------------------------------------------------
-import           Frontend.KadenaAddress (mkKadenaAddress, textKadenaAddress)
+import           Frontend.KadenaAddress (textKadenaAddress)
 ------------------------------------------------------------------------------
 import           Frontend.UI.Modal
 import           Frontend.Wallet
@@ -59,7 +59,7 @@ uiAccountDetailsDetails
   -> Event t ()
   -> Workflow t m (Text, (mConf, Event t ()))
 uiAccountDetailsDetails key a onClose = Workflow $ do
-  let kAddr = textKadenaAddress $ mkKadenaAddress (_account_network a) (_account_chainId a) (_account_name a)
+  let kAddr = textKadenaAddress $ accountToKadenaAddress a
 
   let displayText lbl v cls =
         let

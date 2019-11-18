@@ -42,6 +42,7 @@ module Frontend.Wallet
   -- * Parsing
   , parseWalletKeyPair
   -- * Other helper functions
+  , accountToKadenaAddress
   , checkAccountNameValidity
   , snocIntMap
   , findNextKey
@@ -67,6 +68,7 @@ import Common.Orphans ()
 import Frontend.Crypto.Class
 import Frontend.Crypto.Ed25519
 import Frontend.Foundation
+import Frontend.KadenaAddress
 import Frontend.Storage
 
 -- | A key consists of a public key and an optional private key.
@@ -122,6 +124,9 @@ instance ToJSON key => ToJSON (Account key) where
   toEncoding = genericToEncoding defaultOptions
 instance FromJSON key => FromJSON (Account key) where
   parseJSON = genericParseJSON defaultOptions
+
+accountToKadenaAddress :: Account key -> KadenaAddress
+accountToKadenaAddress a = mkKadenaAddress (_account_network a) (_account_chainId a) (_account_name a)
 
 data WalletCfg key t = WalletCfg
   { _walletCfg_genKey     :: Event t (AccountName, NetworkName, ChainId, Text)

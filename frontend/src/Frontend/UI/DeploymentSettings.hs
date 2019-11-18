@@ -24,6 +24,7 @@ module Frontend.UI.DeploymentSettings
 
     -- * Helpers
   , buildDeploymentSettingsResult
+  , defaultGASCapability
 
     -- * Values for _deploymentSettingsConfig_chainId:
   , predefinedChainIdSelect
@@ -47,6 +48,7 @@ module Frontend.UI.DeploymentSettings
   , uiDeployMetaData
   , uiCfg
   , uiSenderCapabilities
+  , uiMetaData
 
   , uiSenderFixed
   , uiSenderDropdown
