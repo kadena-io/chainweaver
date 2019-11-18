@@ -1,7 +1,7 @@
-{-# LANGUAGE RecursiveDo #-}
 {-# LANGUAGE ConstraintKinds #-}
-{-# LANGUAGE TupleSections #-}
 {-# LANGUAGE DataKinds #-}
+{-# LANGUAGE RecursiveDo #-}
+{-# LANGUAGE TupleSections #-}
 
 module Frontend.UI.Dialogs.AddAccount
   ( uiAddWalletOnlyAccountDialogButton

@@ -1,6 +1,6 @@
 {-# LANGUAGE ConstraintKinds #-}
-{-# LANGUAGE TupleSections #-}
 {-# LANGUAGE RecursiveDo #-}
+{-# LANGUAGE TupleSections #-}
 module Frontend.UI.Dialogs.AddVanityAccount
   ( uiAddVanityAccountSettings
   ) where
