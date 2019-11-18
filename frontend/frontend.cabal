@@ -125,6 +125,7 @@ library
                  , Frontend.UI.Dialogs.AddVanityAccount
                  , Frontend.UI.ErrorList
                  , Frontend.UI.Icon
+                 , Frontend.UI.IconGrid
                  , Frontend.UI.JsonData
                  , Frontend.UI.Modal
                  , Frontend.UI.Modal.Impl
@@ -134,6 +135,7 @@ library
                  , Frontend.UI.ModuleExplorer.ModuleList
                  , Frontend.UI.Repl
                  , Frontend.UI.RightPanel
+                 , Frontend.UI.Settings
                  , Frontend.UI.TabBar
                  , Frontend.UI.Wallet
                  , Frontend.UI.Widgets
