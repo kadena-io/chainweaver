@@ -203,7 +203,7 @@ main' ffi mainBundleResourcePath runHTML = redirectPipes [stdout, stderr] $ do
                 , _appCfg_signingRequest = signingRequest
                 , _appCfg_signingResponse = liftIO . putMVar signingResponseMVar
                 , _appCfg_enabledSettings = EnabledSettings
-                  { _enabledSettings_network = True
+                  {
                   }
                 }
           _ <- mapRoutedT (flip runStorageT store) $ runWithReplace loaderMarkup $

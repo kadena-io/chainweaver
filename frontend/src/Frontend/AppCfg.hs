@@ -7,7 +7,9 @@ import Reflex.Dom
 import Kadena.SigningApi
 
 data EnabledSettings = EnabledSettings
-  { _enabledSettings_network :: Bool
+  { -- Eventually, our settings page will want different settings per app type
+    -- but right now we only have the network settings, and all apps want that
+    -- so this is empty for now but wired between the bits that need it
   }
 
 data AppCfg key t m = AppCfg

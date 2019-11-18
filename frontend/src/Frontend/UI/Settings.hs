@@ -1,8 +1,8 @@
-{-# LANGUAGE ConstraintKinds     #-}
-{-# LANGUAGE DataKinds           #-}
-{-# LANGUAGE FlexibleContexts    #-}
+{-# LANGUAGE ConstraintKinds #-}
+{-# LANGUAGE DataKinds #-}
+{-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE TypeApplications    #-}
+{-# LANGUAGE TypeApplications #-}
 -- |
 -- Copyright   :  (C) 2018 Kadena
 -- License     :  BSD-style (see the file LICENSE)
@@ -37,12 +37,13 @@ uiSettings
   . (MonadWidget t m, HasNetwork model t, HasUiSettingModelCfg model mConf key m t)
   => EnabledSettings -> model -> m mConf
 uiSettings enabledSettings model = elClass "div" "icon-grid" $ do
+  netCfg <- settingItem "Network" (static @"img/network.svg") (uiNetworkEdit model)
   configs <- sequence $ catMaybes $
-    [ includeSetting _enabledSettings_network $ settingItem "Network" (static @"img/network.svg") (uiNetworkEdit model)
+    [ -- For later: e.g: includeSetting _enabledSettings_password $ settingItem "Password" ...
     ]
-  pure $ fold configs
+  pure $ netCfg <> fold configs
   where
-    includeSetting f s = if (f enabledSettings) then Just s else Nothing
+    _includeSetting f s = if (f enabledSettings) then Just s else Nothing
 
 settingItem
   :: forall t m mConf
