@@ -501,7 +501,7 @@ confirmPhrase eBack dPassword mnemonicSentence = Workflow $ do
 
   finishSetupWF WalletScreen_VerifyPassphrase $ leftmost
     [ doneScreen <$> tagMaybe (current dPassword) (leftmost [continue, skip])
-    , createNewWallet eBack <$ eBack
+    , createNewPassphrase eBack dPassword mnemonicSentence <$ eBack
     ]
 
 setPassword
