@@ -181,25 +181,27 @@ mkSidebarLogoutLink = do
     performEvent_ $ liftIO . triggerLogout <$> domEvent Click e
 
 lockScreen :: (DomBuilder t m, PostBuild t m, MonadFix m, MonadHold t m) => Crypto.XPrv -> m (Event t (), Event t (Maybe Text))
-lockScreen xprv = setupDiv "fullscreen" $ divClass "wrapper" $ setupDiv "splash" $ do
+lockScreen xprv = setupDiv "fullscreen" $ divClass "wrapper" $ setupDiv "splash" $ mdo
   elAttr "img" ("src" =: static @"img/Wallet_Graphic_1.png" <> "class" =: setupClass "splash-bg") blank
   kadenaWalletLogo
-  setupDiv "splash-terms-buttons" $ form "" $ mdo
-    dValid <- holdDyn True . fmap isJust $ isValid
+  dValid <- holdDyn True . fmap isJust $ isValid
+  (eSubmit, (_, restore, pass)) <- setupDiv "splash-terms-buttons" $ form "" $ do
     elDynClass "div"
       (("lock-screen__invalid-password" <>) . bool " lock-screen__invalid-password--invalid" "" <$> dValid)
       (text "Invalid Password")
-    pass <- uiPassword (setupClass "password-wrapper") (setupClass "password") "Password"
+    pass' <- uiPassword (setupClass "password-wrapper") (setupClass "password") "Password"
 
-    e <- confirmButton (def & uiButtonCfg_type ?~ "submit") "Unlock"
-    (_help, restore) <- setupDiv "button-horizontal-group" $ do
-      help <- uiButton def $ do
+    -- Event handled by form onSubmit
+    void $ confirmButton (def & uiButtonCfg_type ?~ "submit") "Unlock"
+    setupDiv "button-horizontal-group" $ do
+      help' <- uiButton def $ do
         elAttr "img" ("src" =: static @"img/launch_dark.svg" <> "class" =: "button__text-icon") blank
         text "Help" -- TODO where does this go?
       restore' <- uiButton def $ text "Restore"
-      pure (help, restore')
-    let isValid = attachWith (\p _ -> p <$ guard (testKeyPassword xprv p)) (current $ value pass) e
-    pure (restore, isValid)
+      pure (help', restore', pass')
+
+  let isValid = attachWith (\p _ -> p <$ guard (testKeyPassword xprv p)) (current $ value pass) eSubmit
+  pure (restore, isValid)
 
 -- | Check the validity of the password by signing and verifying a message
 testKeyPassword :: Crypto.XPrv -> Text -> Bool
