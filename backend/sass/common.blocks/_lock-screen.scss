@@ -1,0 +1,8 @@
+.lock-screen__invalid-password {
+  color: $danger-red;
+  visibility: hidden;
+}
+
+.lock-screen__invalid-password--invalid {
+  visibility: visible;
+}

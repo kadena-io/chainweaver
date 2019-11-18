@@ -13,12 +13,14 @@ module Desktop.Frontend (desktop, bipWallet, fileStorage) where
 
 import Control.Exception (try, catch)
 import Control.Lens ((?~))
-import Control.Monad (when, (<=<), guard, void)
+import Control.Monad (when, (<=<), guard, void, unless)
+import Control.Monad.Fix (MonadFix)
 import Control.Monad.IO.Class
 import Data.Bitraversable
 import Data.Bits ((.|.))
+import Data.Bool (bool)
 import Data.ByteString (ByteString)
-import Data.Maybe (isNothing)
+import Data.Maybe (isNothing, isJust)
 import Data.Text (Text)
 import Data.Time (NominalDiffTime, getCurrentTime, addUTCTime)
 import Language.Javascript.JSaddle (liftJSM)
@@ -174,11 +176,15 @@ mkSidebarLogoutLink = do
       elAttr "img" ("class" =: "normal" <> "src" =: static @"img/menu/logout.svg") blank
     performEvent_ $ liftIO . triggerLogout <$> domEvent Click e
 
-lockScreen :: (DomBuilder t m, PostBuild t m) => Crypto.XPrv -> m (Event t (), Event t (Maybe Text))
+lockScreen :: (DomBuilder t m, PostBuild t m, MonadFix m, MonadHold t m) => Crypto.XPrv -> m (Event t (), Event t (Maybe Text))
 lockScreen xprv = setupDiv "fullscreen" $ divClass "wrapper" $ setupDiv "splash" $ do
   elAttr "img" ("src" =: static @"img/Wallet_Graphic_1.png" <> "class" =: setupClass "splash-bg") blank
   kadenaWalletLogo
-  setupDiv "splash-terms-buttons" $ form "" $ do
+  setupDiv "splash-terms-buttons" $ form "" $ mdo
+    dValid <- holdDyn True . fmap isJust $ isValid
+    elDynClass "div"
+      (("lock-screen__invalid-password" <>) . bool " lock-screen__invalid-password--invalid" "" <$> dValid)
+      (text "Invalid Password")
     pass <- uiPassword (setupClass "password-wrapper") (setupClass "password") "Password"
 
     e <- confirmButton (def & uiButtonCfg_type ?~ "submit") "Unlock"
