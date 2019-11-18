@@ -285,44 +285,46 @@ recoverWallet eBack = Workflow $ do
     )
 
 passphraseWordElement
-  :: (DomBuilder t m, PostBuild t m, MonadFix m, MonadHold t m)
+  :: (DomBuilder t m, PostBuild t m, MonadFix m)
   => Dynamic t PassphraseStage
   -> WordKey
   -> Dynamic t Text
   -> m (Event t Text)
-passphraseWordElement currentStage k wrd = mdo
-  let eFocused = leftmost
-        [ eInputFocused
-        , True <$ domEvent Mouseenter elt
-        , False <$ domEvent Mouseleave elt
-        ]
-  (elt, (eInputFocused, eInput)) <- elClass' "div" (setupClass "passphrase-widget-elem-wrapper") $ mdo
-    pb <- getPostBuild
+passphraseWordElement currentStage k wrd = do
+  rec
+    let eFocused = leftmost
+          [ eInputFocused
+          , True <$ domEvent Mouseenter elt
+          , True <$ domEvent Mousemove elt
+          , False <$ domEvent Mouseleave elt
+          ]
+    (elt, (eInputFocused, eInput)) <- elClass' "div" (setupClass "passphrase-widget-elem-wrapper") $ do
+      pb <- getPostBuild
 
-    setupDiv "passphrase-widget-key-wrapper" $
-      text (showWordKey k)
+      setupDiv "passphrase-widget-key-wrapper" $
+        text (showWordKey k)
 
-    let
-      commonClass cls focused = "input " <> (setupClass cls <> bool "" (" " <> setupClass cls <> "--focused")  focused)
-      commonAttrs cls focused =
-        "type" =: "text" <>
-        "size" =: "8" <>
-        "class" =: commonClass cls focused
+      let
+        commonClass cls focused = "input " <> (setupClass cls <> bool "" (" " <> setupClass cls <> "--focused")  focused)
+        commonAttrs cls focused =
+          "type" =: "text" <>
+          "size" =: "8" <>
+          "class" =: commonClass cls focused
 
-    hiderElt <- uiInputElement $ def
-      & inputElementConfig_initialValue .~ "********"
-      & initialAttributes .~ (commonAttrs "passphrase-widget-word-hider" False <> "disabled" =: "true" <> "tabindex" =: "-1")
-      & modifyAttributes <>~ (("class" =:) . Just . commonClass "passphrase-widget-word-hider" <$> eFocused)
+      void . uiInputElement $ def
+        & inputElementConfig_initialValue .~ "********"
+        & initialAttributes .~ (commonAttrs "passphrase-widget-word-hider" False <> "disabled" =: "true" <> "tabindex" =: "-1")
+        & modifyAttributes <>~ (("class" =:) . Just . commonClass "passphrase-widget-word-hider" <$> eFocused)
 
-    inputElt <- setupDiv "passphrase-widget-word-wrapper". uiInputElement $ def
-      & inputElementConfig_setValue .~ (current wrd <@ pb)
-      & initialAttributes .~ commonAttrs "passphrase-widget-word" False
-      & modifyAttributes <>~ fold
-        [ (("readonly" =:) . canEditOnRecover <$> current currentStage <@ pb)
-        , (("class" =:) . Just . commonClass "passphrase-widget-word" <$> eFocused)
-        ]
+      inputElt <- setupDiv "passphrase-widget-word-wrapper". uiInputElement $ def
+        & inputElementConfig_setValue .~ (current wrd <@ pb)
+        & initialAttributes .~ commonAttrs "passphrase-widget-word" False
+        & modifyAttributes <>~ fold
+          [ (("readonly" =:) . canEditOnRecover <$> current currentStage <@ pb)
+          , (("class" =:) . Just . commonClass "passphrase-widget-word" <$> eFocused)
+          ]
 
-    pure (updated $ _inputElement_hasFocus inputElt, _inputElement_input inputElt)
+      pure (updated $ _inputElement_hasFocus inputElt, _inputElement_input inputElt)
   pure eInput
   where
     canEditOnRecover Recover = Nothing
