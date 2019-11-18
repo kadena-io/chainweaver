@@ -543,7 +543,8 @@ uiMetaData m mTTL mGasLimit = do
         :: Event t Text
         -> InputElementConfig EventResult t (DomBuilderSpace m)
         -> m (Dynamic t (Maybe GasPrice), Event t GasPrice)
-      gasPriceInputBox setExternal conf = fmap snd $ uiRealWithPrecisionInputElement maxCoinPricePrecision (GasPrice . ParsedDecimal) $ conf
+      gasPriceInputBox setExternal conf = fmap snd $ dimensionalInputWrapper "KDA" $ uiRealWithPrecisionInputElement maxCoinPricePrecision (GasPrice . ParsedDecimal) $ conf
+        & initialAttributes %~ addToClassAttr "input-units"
         & inputElementConfig_initialValue .~ showGasPrice defaultTransactionGasPrice
         & inputElementConfig_setValue .~ leftmost
           [ setExternal
@@ -554,7 +555,7 @@ uiMetaData m mTTL mGasLimit = do
     onGasPrice <- mdo
       tsEl <- mkLabeledClsInput True "Transaction Speed" (txnSpeedSliderEl setPrice)
       let setSpeed = fmapMaybe (fmap scaleTxnSpeedToGP . parseGasPrice) $ _inputElement_input tsEl
-      (_gpValue, gpInput) <- mkLabeledInput True "Gas Price (KDA)" (gasPriceInputBox $ fmap showGasPrice setSpeed) def
+      (_gpValue, gpInput) <- mkLabeledInput True "Gas Price" (gasPriceInputBox $ fmap showGasPrice setSpeed) def
       let setPrice = fmap (showGasPrice . scaleGPtoTxnSpeed) gpInput
       pure $ leftmost [gpInput, setSpeed]
 
@@ -567,19 +568,19 @@ uiMetaData m mTTL mGasLimit = do
       mkGasLimitInput
         :: InputElementConfig EventResult t (DomBuilderSpace m)
         -> m (InputElement EventResult (DomBuilderSpace m) t)
-      mkGasLimitInput conf = uiIntInputElement $ conf
+      mkGasLimitInput conf = dimensionalInputWrapper "Units" $ uiIntInputElement $ conf
         & inputElementConfig_initialValue .~ showGasLimit initGasLimit
         & inputElementConfig_setValue .~ fmap showGasLimit pbGasLimit
         & inputElementConfig_elementConfig . elementConfig_eventSpec %~ preventScrollWheelAndUpDownArrow @m
 
-    onGasLimitTxt <- fmap _inputElement_input $ mkLabeledInput True "Gas Limit (units)" mkGasLimitInput def
+    onGasLimitTxt <- fmap _inputElement_input $ mkLabeledInput True "Gas Limit" mkGasLimitInput def
     let onGasLimit = fmapMaybe (readPact (GasLimit . ParsedInteger)) onGasLimitTxt
 
     gasLimit <- holdDyn initGasLimit $ leftmost [onGasLimit, pbGasLimit]
 
-    let mkTransactionFee c = fmap fst $ uiRealWithPrecisionInputElement maxCoinPricePrecision id $ c
+    let mkTransactionFee c = fmap fst $ dimensionalInputWrapper "KDA" $ uiRealWithPrecisionInputElement maxCoinPricePrecision id $ c
           & initialAttributes %~ Map.insert "disabled" ""
-    _ <- mkLabeledInputView True "Max Transaction Fee (KDA)"  mkTransactionFee $
+    _ <- mkLabeledInputView True "Max Transaction Fee"  mkTransactionFee $
       ffor (m ^. network_meta) $ \pm -> showGasPrice $ fromIntegral (_pmGasLimit pm) * _pmGasPrice pm
 
     pbTTL <- case mTTL of
@@ -594,13 +595,13 @@ uiMetaData m mTTL mGasLimit = do
                 & inputElementConfig_initialValue .~ showTtl initTTL
           sliderEl <- uiSlider "" (text "1 second") (text "1 day") $ conf
             & inputElementConfig_setValue .~ _inputElement_input inputEl
-          inputEl <- uiIntInputElement $ conf
+          inputEl <- dimensionalInputWrapper "Seconds" $ uiIntInputElement $ conf
             & inputElementConfig_setValue .~ _inputElement_input sliderEl
           pure $ leftmost [_inputElement_input inputEl, _inputElement_input sliderEl]
 
     horizontalDashedSeparator
 
-    onTtlTxt <- mkLabeledClsInput True "Request Expires (seconds)" ttlInput
+    onTtlTxt <- mkLabeledClsInput True "Request Expires" ttlInput
     let onTTL = fmapMaybe (readPact (TTLSeconds . ParsedInteger)) onTtlTxt
     ttl <- holdDyn initTTL $ leftmost [onTTL, pbTTL]
 

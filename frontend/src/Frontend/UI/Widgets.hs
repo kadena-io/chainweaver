@@ -53,6 +53,7 @@ module Frontend.UI.Widgets
   , noAutofillAttrs
   , addNoAutofillAttrs
   , horizontalDashedSeparator
+  , dimensionalInputWrapper
   ) where
 
 ------------------------------------------------------------------------------
@@ -518,3 +519,8 @@ paginationWidget cls currentPage totalPages = elKlass "div" (cls <> "pagination"
 
 horizontalDashedSeparator :: DomBuilder t m => m ()
 horizontalDashedSeparator = divClass "horizontal-dashed-separator" blank
+
+dimensionalInputWrapper :: DomBuilder t m => Text -> m a -> m a
+dimensionalInputWrapper units inp = divClass "dimensional-input-wrapper" $ do
+  divClass "dimensional-input-wrapper__units" $ text units
+  inp
