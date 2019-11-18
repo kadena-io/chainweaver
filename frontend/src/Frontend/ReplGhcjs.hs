@@ -1,21 +1,21 @@
-{-# LANGUAGE DataKinds              #-}
-{-# LANGUAGE DeriveGeneric          #-}
-{-# LANGUAGE ExtendedDefaultRules   #-}
-{-# LANGUAGE FlexibleContexts       #-}
-{-# LANGUAGE FlexibleInstances      #-}
+{-# LANGUAGE DataKinds #-}
+{-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE ExtendedDefaultRules #-}
+{-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE FunctionalDependencies #-}
-{-# LANGUAGE KindSignatures         #-}
-{-# LANGUAGE LambdaCase             #-}
-{-# LANGUAGE MultiParamTypeClasses  #-}
-{-# LANGUAGE OverloadedStrings      #-}
-{-# LANGUAGE QuasiQuotes            #-}
-{-# LANGUAGE RecursiveDo            #-}
-{-# LANGUAGE ScopedTypeVariables    #-}
-{-# LANGUAGE StandaloneDeriving     #-}
-{-# LANGUAGE TemplateHaskell        #-}
-{-# LANGUAGE TupleSections          #-}
-{-# LANGUAGE TypeApplications       #-}
-{-# LANGUAGE TypeFamilies           #-}
+{-# LANGUAGE KindSignatures #-}
+{-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE QuasiQuotes #-}
+{-# LANGUAGE RecursiveDo #-}
+{-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE StandaloneDeriving #-}
+{-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE TupleSections #-}
+{-# LANGUAGE TypeApplications #-}
+{-# LANGUAGE TypeFamilies #-}
 
 -- |
 -- Copyright   :  (C) 2018 Kadena
@@ -140,18 +140,22 @@ walletSidebar
   => m () -> m ()
 walletSidebar sidebarExtra = elAttr "div" ("class" =: "sidebar") $ do
   divClass "sidebar__logo" $ elAttr "img" ("src" =: static @"img/logo.png") blank
-  route <- demux . fmap (\(r :/ _) -> Some r) <$> askRoute
-  let sidebarLink r@(r' :/ _) = routeLink r $ do
-        let mkAttrs sel = "class" =: ("sidebar__link" <> if sel then " selected" else "")
-        elDynAttr "span" (mkAttrs <$> demuxed route (Some r')) $ do
-          elAttr "img" ("class" =: "highlighted" <> "src" =: routeIcon r) blank
-          elAttr "img" ("class" =: "normal" <> "src" =: routeIcon r) blank
-  sidebarLink $ FrontendRoute_Wallet :/ ()
-  sidebarLink $ FrontendRoute_Contracts :/ Nothing
-  elAttr "div" ("style" =: "flex-grow: 1") blank
-  sidebarLink $ FrontendRoute_Resources :/ ()
-  sidebarLink $ FrontendRoute_Settings :/ ()
-  sidebarExtra
+
+  elAttr "div" ("class" =: "sidebar__content") $ do
+    route <- demux . fmap (\(r :/ _) -> Some r) <$> askRoute
+
+    let sidebarLink r@(r' :/ _) label = routeLink r $ do
+          let mkAttrs sel = "class" =: ("sidebar__link" <> if sel then " selected" else "")
+          elDynAttr "div" (mkAttrs <$> demuxed route (Some r')) $ do
+            elAttr "img" ("class" =: "highlighted" <> "src" =: routeIcon r) blank
+            elAttr "img" ("class" =: "normal" <> "src" =: routeIcon r) blank
+            elAttr "span" ("class" =: "sidebar__link-label") $ text label
+    sidebarLink (FrontendRoute_Wallet :/ ()) "Wallets"
+    sidebarLink (FrontendRoute_Contracts :/ Nothing) "Contracts"
+    elAttr "div" ("style" =: "flex-grow: 1") blank
+    sidebarLink (FrontendRoute_Resources :/ ()) "Resources"
+    sidebarLink (FrontendRoute_Settings :/ ()) "Settings"
+    sidebarExtra
 
 -- | Get the routes to the icon assets for each route
 routeIcon :: R FrontendRoute -> Text
