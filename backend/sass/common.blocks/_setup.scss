@@ -275,25 +275,12 @@ $kadena-orange: #F3AB3C;
   opacity: 0;
 }
 
-.setup__passphrase-widget-elem-wrapper {
-  &:focus-within {
-    .setup__passphrase-widget-word {
-      opacity: 1 !important;
-    }
+.setup__passphrase-widget-word--focused {
+  opacity: 1;
+}
 
-    .setup__passphrase-widget-word-hider {
-      display: none !important;
-    }
-  }
-  &:hover {
-    .setup__passphrase-widget-word {
-      opacity: 1;
-    }
-
-    .setup__passphrase-widget-word-hider {
-      display: none;
-    }
-  }
+.setup__passphrase-widget-word-hider--focused {
+  display: none;
 }
 
 .setup__fullscreen .setup__verify-phrase-msg {
