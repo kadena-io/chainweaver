@@ -8,18 +8,17 @@
 @import '../include/defs';
 
 .labeled-input {
-  font-size: 13px;
   color: $tertiary-color;
 }
 
 .labeled-input-inline {
-  font-size: 13px;
   color: $tertiary-color;
   display: flex;
   align-items: center;
 }
 
 .labeled-input__label {
+  font-size: 15px;
   margin-bottom: $medium-margin;
   min-width: 175px;
   color: #3a3a3a;
@@ -48,6 +47,7 @@ input.labeled-input__input:disabled {
 
   input {
     width: 100%;
+    font-size: 15px;
   }
 }
 
