@@ -62,6 +62,9 @@ frontend = Frontend
       , _appCfg_editorReadOnly = False
       , _appCfg_signingRequest = never
       , _appCfg_signingResponse = liftIO . print
+      , _appCfg_enabledSettings = EnabledSettings
+        {
+        }
       }
   }
 

@@ -4,6 +4,7 @@
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE QuasiQuotes #-}
 {-# LANGUAGE RecursiveDo #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE StandaloneDeriving #-}
@@ -13,7 +14,7 @@ module Desktop.Frontend (desktop, bipWallet, fileStorage) where
 
 import Control.Exception (try, catch)
 import Control.Lens ((?~))
-import Control.Monad (when, (<=<), guard, void, unless)
+import Control.Monad (when, (<=<), guard, void)
 import Control.Monad.Fix (MonadFix)
 import Control.Monad.IO.Class
 import Data.Bitraversable
@@ -119,6 +120,9 @@ desktop = Frontend
       , _appCfg_editorReadOnly = False
       , _appCfg_signingRequest = never
       , _appCfg_signingResponse = \_ -> pure ()
+      , _appCfg_enabledSettings = EnabledSettings
+        {
+        }
       }
   }
 
@@ -192,8 +196,8 @@ lockScreen xprv = setupDiv "fullscreen" $ divClass "wrapper" $ setupDiv "splash"
       help <- uiButton def $ do
         elAttr "img" ("src" =: static @"img/launch_dark.svg" <> "class" =: "button__text-icon") blank
         text "Help" -- TODO where does this go?
-      restore <- uiButton def $ text "Restore"
-      pure (help, restore)
+      restore' <- uiButton def $ text "Restore"
+      pure (help, restore')
     let isValid = attachWith (\p _ -> p <$ guard (testKeyPassword xprv p)) (current $ value pass) e
     pure (restore, isValid)
 
