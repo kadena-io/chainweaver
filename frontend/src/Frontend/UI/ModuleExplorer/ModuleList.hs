@@ -1,21 +1,12 @@
 {-# LANGUAGE ConstraintKinds        #-}
 {-# LANGUAGE DataKinds              #-}
-{-# LANGUAGE DeriveGeneric          #-}
 {-# LANGUAGE ExtendedDefaultRules   #-}
 {-# LANGUAGE FlexibleContexts       #-}
 {-# LANGUAGE FlexibleInstances      #-}
-{-# LANGUAGE FunctionalDependencies #-}
-{-# LANGUAGE KindSignatures         #-}
-{-# LANGUAGE LambdaCase             #-}
 {-# LANGUAGE MultiParamTypeClasses  #-}
 {-# LANGUAGE OverloadedStrings      #-}
-{-# LANGUAGE QuasiQuotes            #-}
 {-# LANGUAGE RecursiveDo            #-}
 {-# LANGUAGE ScopedTypeVariables    #-}
-{-# LANGUAGE StandaloneDeriving     #-}
-{-# LANGUAGE TemplateHaskell        #-}
-{-# LANGUAGE TupleSections          #-}
-{-# LANGUAGE TypeApplications       #-}
 {-# LANGUAGE TypeFamilies           #-}
 
 -- | List of `Modules` UI component.
@@ -154,4 +145,3 @@ openModButton c = fmap (const c) <$> openButton "table__action-button table__lef
 
 viewModButton :: MonadWidget t m => a -> m (Event t a)
 viewModButton c = fmap (const c) <$> viewButton "table__action-button"
-

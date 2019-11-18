@@ -6,9 +6,7 @@
 {-# LANGUAGE FlexibleContexts       #-}
 {-# LANGUAGE FlexibleInstances      #-}
 {-# LANGUAGE FunctionalDependencies #-}
-{-# LANGUAGE KindSignatures         #-}
 {-# LANGUAGE LambdaCase             #-}
-{-# LANGUAGE MultiParamTypeClasses  #-}
 {-# LANGUAGE OverloadedStrings      #-}
 {-# LANGUAGE QuasiQuotes            #-}
 {-# LANGUAGE RecursiveDo            #-}
@@ -285,4 +283,3 @@ instance Flattenable (EditorCfg t) t where
       <*> doSwitch never (_editorCfg_loadCode <$> ev)
       <*> doSwitch never (_editorCfg_applyQuickFix <$> ev)
       <*> doSwitch never (_editorCfg_clearModified <$> ev)
-

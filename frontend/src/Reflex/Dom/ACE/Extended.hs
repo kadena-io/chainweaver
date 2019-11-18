@@ -3,7 +3,6 @@
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE OverloadedStrings     #-}
 {-# LANGUAGE RankNTypes            #-}
-{-# LANGUAGE RecursiveDo           #-}
 {-# LANGUAGE ScopedTypeVariables   #-}
 
 module Reflex.Dom.ACE.Extended ( module ACE
@@ -139,4 +138,3 @@ resizeEditor onResize ace =
     doResize (AceInstance ai) = liftJSM $ ai ^. js0 ("resize" :: Text)
   in
     performEvent_ $ traverse_ doResize <$> tag curAce onResize
-
