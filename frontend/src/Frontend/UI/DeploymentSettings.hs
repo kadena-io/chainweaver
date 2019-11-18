@@ -597,6 +597,9 @@ uiMetaData m mTTL mGasLimit = do
           inputEl <- uiIntInputElement $ conf
             & inputElementConfig_setValue .~ _inputElement_input sliderEl
           pure $ leftmost [_inputElement_input inputEl, _inputElement_input sliderEl]
+
+    horizontalDashedSeparator
+
     onTtlTxt <- mkLabeledClsInput True "Request Expires (seconds)" ttlInput
     let onTTL = fmapMaybe (readPact (TTLSeconds . ParsedInteger)) onTtlTxt
     ttl <- holdDyn initTTL $ leftmost [onTTL, pbTTL]

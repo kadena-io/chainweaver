@@ -52,6 +52,7 @@ module Frontend.UI.Widgets
   , setFocusOnSelected
   , noAutofillAttrs
   , addNoAutofillAttrs
+  , horizontalDashedSeparator
   ) where
 
 ------------------------------------------------------------------------------
@@ -514,3 +515,6 @@ paginationWidget cls currentPage totalPages = elKlass "div" (cls <> "pagination"
       , tag (current totalPages) lastL
       ]
 ----------------------------------------------------------------------------------
+
+horizontalDashedSeparator :: DomBuilder t m => m ()
+horizontalDashedSeparator = divClass "horizontal-dashed-separator" blank
