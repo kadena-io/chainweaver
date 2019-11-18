@@ -23,6 +23,7 @@ module Frontend.UI.Widgets
   , uiRealInputElement
   , uiRealWithPrecisionInputElement
   , uiIntInputElement
+  , uiSlider
   , uiSliderInputElement
   , uiInputView
   , mkLabeledInputView
@@ -50,6 +51,8 @@ module Frontend.UI.Widgets
   , setFocusOnSelected
   , noAutofillAttrs
   , addNoAutofillAttrs
+  , horizontalDashedSeparator
+  , dimensionalInputWrapper
   ) where
 
 ------------------------------------------------------------------------------
@@ -225,19 +228,26 @@ uiIntInputElement cfg = do
   where
     fixNum = T.takeWhile (/='.')
 
-uiSliderInputElement
+uiSlider
   :: DomBuilder t m
-  => m ()
+  => CssClass
+  -> m ()
   -> m ()
   -> InputElementConfig er t (DomBuilderSpace m)
   -> m (InputElement er (DomBuilderSpace m) t)
-uiSliderInputElement minLabel maxLabel conf = divClass "slider" $ do
-  s <- inputElement $ conf
-    & initialAttributes %~ Map.insert "type" "range" . addToClassAttr "slider"
+uiSlider cls minLabel maxLabel conf = elKlass "div" ("slider" <> cls) $ do
+  s <- uiSliderInputElement conf
   divClass "slider_min" minLabel
   divClass "slider_max" maxLabel
   divClass "clear" $ pure ()
   pure s
+
+uiSliderInputElement
+  :: DomBuilder t m
+  => InputElementConfig er t (DomBuilderSpace m)
+  -> m (InputElement er (DomBuilderSpace m) t)
+uiSliderInputElement conf = inputElement $ conf
+    & initialAttributes %~ Map.insert "type" "range" . addToClassAttr "slider"
 
 -- | Take an `uiInputElement` like thing and make it a view with change events
 -- of your model. It also takes care of input validation.
@@ -310,34 +320,45 @@ mkLabeledInputView
   :: (DomBuilder t m, er ~ EventResult, PostBuild t m, MonadFix m
      , MonadHold t m
      )
-  => (InputElementConfig er t (DomBuilderSpace m) -> m (InputElement er (DomBuilderSpace m) t))
-  -> Text -> Dynamic t Text -> m (Event t Text)
-mkLabeledInputView mkInput n v = elClass "div" "segment segment_type_tertiary labeled-input" $ do
-  divClass "label labeled-input__label" $ text n
+  => Bool
+  -> Text
+  -> (InputElementConfig er t (DomBuilderSpace m) -> m (InputElement er (DomBuilderSpace m) t))
+  -> Dynamic t Text
+  -> m (Event t Text)
+mkLabeledInputView inlineLabel n mkInput v = elClass "div" ("segment segment_type_tertiary labeled-input" <> inlineState) $ do
+  divClass ("label labeled-input__label" <> inlineState) $ text n
   uiInputView mkInput (def & initialAttributes %~ addToClassAttr "labeled-input__input") v
-
+  where
+    inlineState = bool "" "-inline" inlineLabel
 
 -- | Make labeled and segmented input.
 mkLabeledInput
   :: (DomBuilder t m , InitialAttributes cfg)
-  => (cfg -> m element)
-  -> Text -> cfg -> m element
-mkLabeledInput mkInput n cfg = elClass "div" "segment segment_type_tertiary labeled-input" $ do
-  divClass "label labeled-input__label" $ text n
+  => Bool
+  -> Text
+  -> (cfg -> m element)
+  -> cfg
+  -> m element
+mkLabeledInput inlineLabel n mkInput cfg = elClass "div" ("segment segment_type_tertiary labeled-input" <> inlineState) $ do
+  divClass ("label labeled-input__label" <> inlineState) $ text n
   mkInput (cfg & initialAttributes %~ addToClassAttr "labeled-input__input")
-
-
+  where
+    inlineState = bool "" "-inline" inlineLabel
 -- | Make some input a labeled input.
 --
 --   Any widget creating function that can be called with additional classes will do.
 --   TODO: This function can probably replace `mkLabeledInput`.
 mkLabeledClsInput
   :: (DomBuilder t m, PostBuild t m)
-  => (CssClass -> m element)
-  -> Dynamic t Text -> m element
-mkLabeledClsInput mkInput name = elClass "div" "segment segment_type_tertiary labeled-input" $ do
-  divClass "label labeled-input__label" $ dynText name
+  => Bool
+  -> Dynamic t Text
+  -> (CssClass -> m element)
+  -> m element
+mkLabeledClsInput inlineLabel name mkInput = elClass "div" ("segment segment_type_tertiary labeled-input" <> inlineState) $ do
+  divClass ("label labeled-input__label" <> inlineState) $ dynText name
   mkInput "labeled-input__input"
+  where
+    inlineState = bool "" "-inline" inlineLabel
 
 -- | Attributes which will turn off all autocomplete/autofill/autocorrect
 -- functions, including the OS-level suggestions on macOS.
@@ -494,3 +515,11 @@ paginationWidget cls currentPage totalPages = elKlass "div" (cls <> "pagination"
       , tag (current totalPages) lastL
       ]
 ----------------------------------------------------------------------------------
+
+horizontalDashedSeparator :: DomBuilder t m => m ()
+horizontalDashedSeparator = divClass "horizontal-dashed-separator" blank
+
+dimensionalInputWrapper :: DomBuilder t m => Text -> m a -> m a
+dimensionalInputWrapper units inp = divClass "dimensional-input-wrapper" $ do
+  divClass "dimensional-input-wrapper__units" $ text units
+  inp

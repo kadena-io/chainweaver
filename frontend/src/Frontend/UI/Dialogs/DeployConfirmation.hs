@@ -150,7 +150,7 @@ uiDeployConfirmation code model = fullDeployFlow def model $ do
   (settingsCfg, result, _) <- uiDeploymentSettings model $ DeploymentSettingsConfig
     { _deploymentSettingsConfig_chainId = userChainIdSelect
     , _deploymentSettingsConfig_userTab = Nothing
-    , _deploymentSettingsConfig_userSection = Nothing
+    , _deploymentSettingsConfig_userSections = []
     , _deploymentSettingsConfig_code = pure code
     , _deploymentSettingsConfig_sender = uiSenderDropdown def
     , _deploymentSettingsConfig_data = Nothing
@@ -212,11 +212,8 @@ fullDeployFlowWithSubmit dcfg model onPreviewConfirm runner _onClose = do
       let chain = _deploymentSettingsResult_chainId result
       succeeded <- elClass "div" "modal__main transaction_details" $ do
 
-        transactionInputSection (_deploymentSettingsResult_code result) (_deploymentSettingsResult_command result)
-        divClass "title" $ text "Destination"
-        _ <- divClass "group segment" $ do
-          transactionDisplayNetwork model
-          predefinedChainIdDisplayed chain model
+        transactionInputSection (pure $ _deploymentSettingsResult_code result) (pure $ _deploymentSettingsResult_command result)
+        void $ uiDeployDestination model $ predefinedChainIdDisplayed chain model
 
         let accountsToTrack = getAccounts accounts
               $ _deploymentSettingsResult_accountsToTrack result

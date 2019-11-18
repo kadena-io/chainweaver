@@ -45,7 +45,6 @@ module Frontend.UI.DeploymentSettings
   , uiDeploymentSettings
   , uiDeployDestination
   , uiDeployMetaData
-  , uiDeployCode
   , uiCfg
   , uiSenderCapabilities
 
@@ -115,9 +114,9 @@ import Frontend.Wallet
 data DeploymentSettingsConfig t m model a = DeploymentSettingsConfig
   { _deploymentSettingsConfig_userTab     :: Maybe (Text, m a)
     -- ^ Some optional extra tab. fst is the tab's name, snd is its content.
-  , _deploymentSettingsConfig_userSection :: Maybe (Text, m a)
+  , _deploymentSettingsConfig_userSections :: [(Text, m a)]
     -- ^ Some optional extra input, placed between chainId selection and transaction
-    -- settings. fst is the tab's name, snd is its content.
+    -- settings. fst is the section's name, snd is its content.
   , _deploymentSettingsConfig_chainId     :: model -> m (Dynamic t (Maybe Pact.ChainId))
     -- ^ ChainId selection widget.
     --   You can pick (predefinedChainIdSelect someId) - for not showing a
@@ -346,7 +345,7 @@ uiDeploymentSettings m settings = mdo
           (_deploymentSettingsConfig_chainId settings $ m)
           (_deploymentSettingsConfig_ttl settings)
           (_deploymentSettingsConfig_gasLimit settings)
-          (_deploymentSettingsConfig_userSection settings)
+          (_deploymentSettingsConfig_userSections settings)
 
       (mSender, capabilities) <- tabPane mempty curSelection DeploymentSettingsView_Keys $
         uiSenderCapabilities m cChainId (_deploymentSettingsConfig_caps settings)
@@ -385,7 +384,7 @@ predefinedChainIdDisplayed
   -> model
   -> m (Dynamic t (Maybe Pact.ChainId))
 predefinedChainIdDisplayed cid _ = do
-  _ <- mkLabeledInput uiInputElement "Chain ID" $ def
+  _ <- mkLabeledInput True "Chain ID" uiInputElement $ def
     & initialAttributes %~ Map.insert "disabled" ""
     & inputElementConfig_initialValue .~ _chainId cid
   pure $ pure $ pure cid
@@ -406,21 +405,8 @@ userChainIdSelectWithPreselect
   => model
   -> Dynamic t (Maybe Pact.ChainId)
   -> m (MDynamic t Pact.ChainId)
-userChainIdSelectWithPreselect m mChainId = mkLabeledClsInput (uiChainSelection mNodeInfo mChainId) "Chain ID"
+userChainIdSelectWithPreselect m mChainId = mkLabeledClsInput True "Chain ID" (uiChainSelection mNodeInfo mChainId)
   where mNodeInfo = (^? to rights . _head) <$> m ^. network_selectedNodes
-
-uiDeployCode
-  :: MonadWidget t m
-  => Dynamic t Text
-  -> m ()
-uiDeployCode code = do
-  divClass "title" $ text "Input"
-  divClass "group" $ do
-    pb <- getPostBuild
-    _ <- flip mkLabeledClsInput "Raw Command" $ \cls -> uiTextAreaElement $ def
-      & textAreaElementConfig_setValue .~ leftmost [updated code, tag (current code) pb]
-      & initialAttributes .~ "disabled" =: "" <> "style" =: "width: 100%" <> "class" =: renderClass cls
-    pure ()
 
 uiDeployDestination
   :: ( MonadWidget t m
@@ -459,32 +445,33 @@ uiCfg
      , HasJsonDataCfg mConf t
      , HasWallet model key t
      , HasJsonData model t
+     , Traversable g
      )
   => Maybe (Dynamic t Text)
   -> model
   -> m (Dynamic t (f Pact.ChainId))
   -> Maybe TTLSeconds
   -> Maybe GasLimit
-  -> Maybe (Text, m a)
+  -> g (Text, m a)
   -> m ( mConf
        , Dynamic t (f Pact.ChainId)
        , Dynamic t TTLSeconds
        , Dynamic t GasLimit
-       , Maybe a
+       , g a
        )
-uiCfg mCode m wChainId mTTL mGasLimit mUserSection = do
+uiCfg mCode m wChainId mTTL mGasLimit userSections = do
   -- General deployment configuration
   let mkGeneralSettings = do
-        traverse_ uiDeployCode mCode
+        traverse_ (\c -> transactionInputSection c Nothing) mCode
         cId <- uiDeployDestination m wChainId
 
         -- Customisable user provided UI section
-        ma <- forM mUserSection $ \(title, body) -> do
+        fa <- for userSections $ \(title, body) -> do
           divClass "title" $ text title
           elKlass "div" ("group segment") body
 
         (cfg, ttl, gasLimit) <- uiDeployMetaData m mTTL mGasLimit
-        pure (cfg, cId, ttl, gasLimit, ma)
+        pure (cfg, cId, ttl, gasLimit, fa)
 
   rec
     let mkAccordionControlDyn initActive = foldDyn (const not) initActive
@@ -504,25 +491,29 @@ uiCfg mCode m wChainId mTTL mGasLimit mUserSection = do
 
 transactionHashSection :: MonadWidget t m => Pact.Command Text -> m ()
 transactionHashSection cmd = void $ do
-  mkLabeledInput (\c -> uiInputElement $ c & initialAttributes %~ Map.insert "disabled" "") "Transaction Hash" $ def
+  mkLabeledInput True "Transaction Hash" (\c -> uiInputElement $ c & initialAttributes %~ Map.insert "disabled" "") $ def
     & inputElementConfig_initialValue .~ hashToText (toUntypedHash $ Pact._cmdHash cmd)
 
-transactionInputSection :: MonadWidget t m => Text -> Pact.Command Text -> m ()
+transactionInputSection
+  :: MonadWidget t m
+  => Dynamic t Text
+  -> Maybe (Pact.Command Text)
+  -> m ()
 transactionInputSection code cmd = do
   divClass "title" $ text "Input"
   divClass "group" $ do
-    transactionHashSection cmd
-    _ <- flip mkLabeledClsInput "Raw Command" $ \cls -> uiTextAreaElement $ def
-      & textAreaElementConfig_initialValue .~ code
+    for_ cmd transactionHashSection
+    pb <- getPostBuild
+    _ <- mkLabeledClsInput True "Raw Command" $ \cls -> uiTextAreaElement $ def
+      & textAreaElementConfig_setValue .~ leftmost [updated code, tag (current code) pb]
       & initialAttributes .~ "disabled" =: "" <> "style" =: "width: 100%" <> "class" =: renderClass cls
     pure ()
 
 transactionDisplayNetwork :: (MonadWidget t m, HasNetwork model t) => model -> m ()
-transactionDisplayNetwork m = void $ flip mkLabeledClsInput "Network" $ \_ -> do
-  divClass "title" $ do
-    netStat <- queryNetworkStatus (m ^. network_networks) (m ^. network_selectedNetwork)
-    uiNetworkStatus "" netStat
-    dynText $ textNetworkName <$> m ^. network_selectedNetwork
+transactionDisplayNetwork m = void $ mkLabeledClsInput True "Network" $ \_ -> do
+  netStat <- queryNetworkStatus (m ^. network_networks) (m ^. network_selectedNetwork)
+  uiNetworkStatus "" netStat
+  dynText $ textNetworkName <$> m ^. network_selectedNetwork
 
 -- | ui for asking the user about meta data needed for the transaction.
 uiMetaData
@@ -535,7 +526,7 @@ uiMetaData m mTTL mGasLimit = do
     pbGasPrice <- tag (current $ _pmGasPrice <$> m ^. network_meta) <$> getPostBuild
 
     let
-      txnSpeedSliderEl setExternal conf = uiSliderInputElement (text "Slow") (text "Fast") $ conf
+      txnSpeedSliderEl setExternal cls = uiSlider cls (text "Slow") (text "Fast") $ def
         & inputElementConfig_initialValue .~ (showGasPrice $ scaleGPtoTxnSpeed defaultTransactionGasPrice)
         & initialAttributes .~ "min" =: "1" <> "max" =: "1001" <> "step" =: "1"
         & inputElementConfig_setValue .~ leftmost
@@ -547,7 +538,8 @@ uiMetaData m mTTL mGasLimit = do
         :: Event t Text
         -> InputElementConfig EventResult t (DomBuilderSpace m)
         -> m (Dynamic t (Maybe GasPrice), Event t GasPrice)
-      gasPriceInputBox setExternal conf = fmap snd $ uiRealWithPrecisionInputElement maxCoinPricePrecision (GasPrice . ParsedDecimal) $ conf
+      gasPriceInputBox setExternal conf = fmap snd $ dimensionalInputWrapper "KDA" $ uiRealWithPrecisionInputElement maxCoinPricePrecision (GasPrice . ParsedDecimal) $ conf
+        & initialAttributes %~ addToClassAttr "input-units"
         & inputElementConfig_initialValue .~ showGasPrice defaultTransactionGasPrice
         & inputElementConfig_setValue .~ leftmost
           [ setExternal
@@ -556,9 +548,9 @@ uiMetaData m mTTL mGasLimit = do
         & inputElementConfig_elementConfig . elementConfig_eventSpec %~ preventScrollWheelAndUpDownArrow @m
 
     onGasPrice <- mdo
-      tsEl <- mkLabeledInput (txnSpeedSliderEl setPrice) "Transaction Speed" def
+      tsEl <- mkLabeledClsInput True "Transaction Speed" (txnSpeedSliderEl setPrice)
       let setSpeed = fmapMaybe (fmap scaleTxnSpeedToGP . parseGasPrice) $ _inputElement_input tsEl
-      (_gpValue, gpInput) <- mkLabeledInput (gasPriceInputBox $ fmap showGasPrice setSpeed) "Gas Price (KDA)" def
+      (_gpValue, gpInput) <- mkLabeledInput True "Gas Price" (gasPriceInputBox $ fmap showGasPrice setSpeed) def
       let setPrice = fmap (showGasPrice . scaleGPtoTxnSpeed) gpInput
       pure $ leftmost [gpInput, setSpeed]
 
@@ -571,36 +563,40 @@ uiMetaData m mTTL mGasLimit = do
       mkGasLimitInput
         :: InputElementConfig EventResult t (DomBuilderSpace m)
         -> m (InputElement EventResult (DomBuilderSpace m) t)
-      mkGasLimitInput conf = uiIntInputElement $ conf
+      mkGasLimitInput conf = dimensionalInputWrapper "Units" $ uiIntInputElement $ conf
         & inputElementConfig_initialValue .~ showGasLimit initGasLimit
         & inputElementConfig_setValue .~ fmap showGasLimit pbGasLimit
         & inputElementConfig_elementConfig . elementConfig_eventSpec %~ preventScrollWheelAndUpDownArrow @m
 
-    onGasLimitTxt <- fmap _inputElement_input $ mkLabeledInput mkGasLimitInput "Gas Limit (units)" def
+    onGasLimitTxt <- fmap _inputElement_input $ mkLabeledInput True "Gas Limit" mkGasLimitInput def
     let onGasLimit = fmapMaybe (readPact (GasLimit . ParsedInteger)) onGasLimitTxt
 
     gasLimit <- holdDyn initGasLimit $ leftmost [onGasLimit, pbGasLimit]
 
-    let mkTransactionFee c = fmap fst $ uiRealWithPrecisionInputElement maxCoinPricePrecision id $ c
+    let mkTransactionFee c = fmap fst $ dimensionalInputWrapper "KDA" $ uiRealWithPrecisionInputElement maxCoinPricePrecision id $ c
           & initialAttributes %~ Map.insert "disabled" ""
-    _ <- mkLabeledInputView mkTransactionFee "Max Transaction Fee (KDA)" $
+    _ <- mkLabeledInputView True "Max Transaction Fee"  mkTransactionFee $
       ffor (m ^. network_meta) $ \pm -> showGasPrice $ fromIntegral (_pmGasLimit pm) * _pmGasPrice pm
 
-    let ttlInput conf = mdo
-          sliderEl <- uiSliderInputElement (text "1 second") (text "1 day") $ conf
-            & inputElementConfig_setValue .~ _inputElement_input inputEl
-          inputEl <- uiIntInputElement $ conf
-            & inputElementConfig_setValue .~ _inputElement_input sliderEl
-          pure $ leftmost [_inputElement_input inputEl, _inputElement_input sliderEl]
     pbTTL <- case mTTL of
       Just _ -> pure never
       Nothing -> tag (current $ fmap _pmTTL $ m ^. network_meta) <$> getPostBuild
     let secondsInDay :: Int = 60 * 60 * 24
         initTTL = fromMaybe defaultTransactionTTL mTTL
-    onTtlTxt <- mkLabeledInput ttlInput "Request Expires (seconds)" $ def
-      & initialAttributes .~ "min" =: "1" <> "max" =: T.pack (show secondsInDay) <> "step" =: "1"
-      & inputElementConfig_setValue .~ fmap showTtl pbTTL
-      & inputElementConfig_initialValue .~ showTtl initTTL
+        ttlInput cls = elKlass "div" cls $ mdo
+          let conf = def
+                & initialAttributes .~ "min" =: "1" <> "max" =: T.pack (show secondsInDay) <> "step" =: "1"
+                & inputElementConfig_setValue .~ fmap showTtl pbTTL
+                & inputElementConfig_initialValue .~ showTtl initTTL
+          sliderEl <- uiSlider "" (text "1 second") (text "1 day") $ conf
+            & inputElementConfig_setValue .~ _inputElement_input inputEl
+          inputEl <- dimensionalInputWrapper "Seconds" $ uiIntInputElement $ conf
+            & inputElementConfig_setValue .~ _inputElement_input sliderEl
+          pure $ leftmost [_inputElement_input inputEl, _inputElement_input sliderEl]
+
+    horizontalDashedSeparator
+
+    onTtlTxt <- mkLabeledClsInput True "Request Expires" ttlInput
     let onTTL = fmapMaybe (readPact (TTLSeconds . ParsedInteger)) onTtlTxt
     ttl <- holdDyn initTTL $ leftmost [onTTL, pbTTL]
 

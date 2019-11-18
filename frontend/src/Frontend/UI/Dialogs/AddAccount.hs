@@ -87,7 +87,7 @@ uiCreateWalletStepOne model onClose = Workflow $ do
 
       elClass "h2" "heading heading_type_h2" $ text "Reference Data"
       dNotes <- divClass "group segment" $
-        value <$> mkLabeledClsInput inpElem "Notes"
+        value <$> mkLabeledClsInput True "Notes" inpElem
 
       onAddVanityAcc <- fmap snd $ accordionItem' False "add-account__advanced-content" (text "Advanced") $
         confirmButton def "Create Vanity Account"
