@@ -1,5 +1,5 @@
-{-# LANGUAGE RecursiveDo #-}
 {-# LANGUAGE ConstraintKinds #-}
+{-# LANGUAGE RecursiveDo #-}
 -- | Dialog for viewing the details of an account.
 -- Copyright   :  (C) 2018 Kadena
 -- License     :  BSD-style (see the file LICENSE)
