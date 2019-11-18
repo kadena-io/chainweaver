@@ -1,7 +1,6 @@
 {-# LANGUAGE DataKinds         #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TypeApplications  #-}
-{-# LANGUAGE TypeApplications  #-}
 {-# LANGUAGE TemplateHaskell  #-}
 module Frontend where
 

@@ -1,20 +1,12 @@
 {-# LANGUAGE DataKinds              #-}
-{-# LANGUAGE DeriveGeneric          #-}
 {-# LANGUAGE ExtendedDefaultRules   #-}
 {-# LANGUAGE FlexibleContexts       #-}
 {-# LANGUAGE FlexibleInstances      #-}
-{-# LANGUAGE FunctionalDependencies #-}
-{-# LANGUAGE KindSignatures         #-}
 {-# LANGUAGE LambdaCase             #-}
 {-# LANGUAGE MultiParamTypeClasses  #-}
 {-# LANGUAGE OverloadedStrings      #-}
-{-# LANGUAGE QuasiQuotes            #-}
 {-# LANGUAGE RecursiveDo            #-}
 {-# LANGUAGE ScopedTypeVariables    #-}
-{-# LANGUAGE StandaloneDeriving     #-}
-{-# LANGUAGE TemplateHaskell        #-}
-{-# LANGUAGE TupleSections          #-}
-{-# LANGUAGE TypeApplications       #-}
 {-# LANGUAGE TypeFamilies           #-}
 
 -- |
@@ -79,7 +71,7 @@ staticReplHeader = divClass "repl__header" $ do
 snippetWidget' :: MonadWidget t m => DisplayedSnippet -> m (Element EventResult (DomBuilderSpace m) t)
 snippetWidget' = fmap fst . \case
   InputSnippet t
-    -> elAttr' "code" ("class" =: "code-font code-font_block") $ text $ "pact> " <> t
+    -> elAttr' "code" ("class" =: "code-font code-font_block") $ replPrompt *> text t
   OutputSnippet t
     -> elAttr' "code" ("class" =: "code-font code-font_block") $ text t
   OldOutputSnippet t
@@ -121,11 +113,13 @@ replWidget m = do
     & replCfg_sendCmd .~ onCmd
     & replCfg_reset   .~ onReset
 
+replPrompt :: DomBuilder t m => m ()
+replPrompt = elClass "div" "repl__prompt" $ text "pact>"
 
 replInput :: (MonadWidget t m, HasWebRepl model t) => model -> m (Event t Text)
 replInput m = do
     divClass "repl__input-controls" $ mdo
-      elClass "div" "repl__prompt" $ text "pact>"
+      replPrompt
       let sv = leftmost
             [ mempty <$ enterPressed
             , fromMaybe "" . Z.safeCursor <$> tagPromptlyDyn commandHistory key

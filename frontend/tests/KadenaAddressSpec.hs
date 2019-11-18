@@ -30,5 +30,3 @@ prop_parse_kadenaAddress_roundtrip = property $ do
 
 main :: IO Bool
 main = checkParallel $$(discover)
-
-
