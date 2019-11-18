@@ -279,11 +279,12 @@ controlBarRight appCfg m = do
 
         _ <- openFileBtn
 
+        (onCreateGist, onLogoutClick) <- if _appCfg_gistEnabled appCfg
+                                         then (,) <$> gistBtn <*> maySignoutBtn
+                                         else pure (never, never)
+
         onLoadClicked <- loadReplBtn
 
-        onCreateGist <- if _appCfg_gistEnabled appCfg then gistBtn else pure never
-
-        onLogoutClick <- if _appCfg_gistEnabled appCfg then maySignoutBtn else pure never
 
         onDeployClick <- deployBtn
 
