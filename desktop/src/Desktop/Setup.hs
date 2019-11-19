@@ -574,9 +574,9 @@ setPassword dSeed = do
     dynText $ fromMaybe T.empty <$> lastError
 
   pure $ leftmost
-      [ Nothing <$ err
-      , (\s -> Just . Crypto.generate s) <$> current dSeed <@> (T.encodeUtf8 <$> pass)
-      ]
+    [ Nothing <$ err
+    , (\s -> Just . Crypto.generate s) <$> current dSeed <@> (T.encodeUtf8 <$> pass)
+    ]
 
   where
     minPasswordLength = 10
