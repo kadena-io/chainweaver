@@ -178,6 +178,7 @@ mkSidebarLogoutLink = do
   pure $ (,) logout $ do
     (e, _) <- elAttr' "span" ("class" =: "sidebar__link") $ do
       elAttr "img" ("class" =: "normal" <> "src" =: static @"img/menu/logout.svg") blank
+      elAttr "span" ("class" =: "sidebar__link-label") $ text "Logout"
     performEvent_ $ liftIO . triggerLogout <$> domEvent Click e
 
 lockScreen :: (DomBuilder t m, PostBuild t m, MonadFix m, MonadHold t m) => Crypto.XPrv -> m (Event t (), Event t (Maybe Text))
