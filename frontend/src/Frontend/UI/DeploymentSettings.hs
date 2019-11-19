@@ -24,6 +24,7 @@ module Frontend.UI.DeploymentSettings
 
     -- * Helpers
   , buildDeploymentSettingsResult
+  , defaultGASCapability
 
     -- * Values for _deploymentSettingsConfig_chainId:
   , predefinedChainIdSelect
@@ -47,6 +48,7 @@ module Frontend.UI.DeploymentSettings
   , uiDeployMetaData
   , uiCfg
   , uiSenderCapabilities
+  , uiMetaData
 
   , uiSenderFixed
   , uiSenderDropdown
@@ -538,7 +540,7 @@ uiMetaData m mTTL mGasLimit = do
         :: Event t Text
         -> InputElementConfig EventResult t (DomBuilderSpace m)
         -> m (Dynamic t (Maybe GasPrice), Event t GasPrice)
-      gasPriceInputBox setExternal conf = fmap snd $ dimensionalInputWrapper "KDA" $ uiRealWithPrecisionInputElement maxCoinPricePrecision (GasPrice . ParsedDecimal) $ conf
+      gasPriceInputBox setExternal conf = fmap snd $ dimensionalInputWrapper "KDA" $ uiRealWithPrecisionInputElement maxCoinPrecision (GasPrice . ParsedDecimal) $ conf
         & initialAttributes %~ addToClassAttr "input-units"
         & inputElementConfig_initialValue .~ showGasPrice defaultTransactionGasPrice
         & inputElementConfig_setValue .~ leftmost
@@ -573,7 +575,7 @@ uiMetaData m mTTL mGasLimit = do
 
     gasLimit <- holdDyn initGasLimit $ leftmost [onGasLimit, pbGasLimit]
 
-    let mkTransactionFee c = fmap fst $ dimensionalInputWrapper "KDA" $ uiRealWithPrecisionInputElement maxCoinPricePrecision id $ c
+    let mkTransactionFee c = fmap fst $ dimensionalInputWrapper "KDA" $ uiRealWithPrecisionInputElement maxCoinPrecision id $ c
           & initialAttributes %~ Map.insert "disabled" ""
     _ <- mkLabeledInputView True "Max Transaction Fee"  mkTransactionFee $
       ffor (m ^. network_meta) $ \pm -> showGasPrice $ fromIntegral (_pmGasLimit pm) * _pmGasPrice pm
@@ -614,7 +616,7 @@ uiMetaData m mTTL mGasLimit = do
       shiftGP :: GasPrice -> GasPrice -> GasPrice -> GasPrice -> GasPrice -> GasPrice
       shiftGP oldMin oldMax newMin newMax x =
         let GasPrice (ParsedDecimal gp) = (newMax-newMin)/(oldMax-oldMin)*(x-oldMin)+newMin
-         in GasPrice $ ParsedDecimal $ roundTo maxCoinPricePrecision gp
+         in GasPrice $ ParsedDecimal $ roundTo maxCoinPrecision gp
 
       scaleTxnSpeedToGP :: GasPrice -> GasPrice
       scaleTxnSpeedToGP = shiftGP 1 1001 (1e-12) (1e-8)
@@ -623,7 +625,7 @@ uiMetaData m mTTL mGasLimit = do
       scaleGPtoTxnSpeed = shiftGP (1e-12) (1e-8) 1 1001
 
       parseGasPrice :: Text -> Maybe GasPrice
-      parseGasPrice t = GasPrice . ParsedDecimal . roundTo maxCoinPricePrecision <$> readMay (T.unpack t)
+      parseGasPrice t = GasPrice . ParsedDecimal . roundTo maxCoinPrecision <$> readMay (T.unpack t)
 
       showGasLimit :: GasLimit -> Text
       showGasLimit (GasLimit (ParsedInteger i)) = tshow i
@@ -649,6 +651,7 @@ uiSenderDropdown
   :: ( Adjustable t m, PostBuild t m, DomBuilder t m
      , MonadHold t m, MonadFix m
      , HasWallet model key t
+     , HasNetwork model t
      )
   => DropdownConfig t (Maybe AccountName)
   -> model
@@ -656,13 +659,13 @@ uiSenderDropdown
   -> m (Dynamic t (Maybe AccountName))
 uiSenderDropdown uCfg m chainId = do
   let textAccounts =
-        let mkTextAccounts mChain accounts = case mChain of
+        let mkTextAccounts net mChain accounts = case mChain of
               Nothing -> Map.singleton Nothing "You must select a chain ID before choosing an account"
-              Just chain -> case Map.fromList $ fmapMaybe (someAccount Nothing (\a -> (Just $ _account_name a, unAccountName $ _account_name a) <$ guard (_account_chainId a == chain))) $ IM.elems accounts of
+              Just chain -> case Map.fromList $ fmapMaybe (someAccount Nothing (\a -> (Just $ _account_name a, unAccountName $ _account_name a) <$ guard (_account_chainId a == chain && _account_network a == net))) $ IM.elems accounts of
                 accountsOnChain
                   | not (Map.null accountsOnChain) -> Map.insert Nothing "Choose an account" accountsOnChain
                   | otherwise -> Map.singleton Nothing "No accounts on current chain"
-          in mkTextAccounts <$> chainId <*> m ^. wallet_accounts
+          in mkTextAccounts <$> m ^. network_selectedNetwork <*> chainId <*> m ^. wallet_accounts
   choice <- dropdown Nothing textAccounts $ uCfg
     & dropdownConfig_setValue .~ (Nothing <$ updated chainId)
     & dropdownConfig_attributes <>~ pure ("class" =: "labeled-input__input select select_mandatory_missing")
@@ -789,7 +792,7 @@ capabilityInputRows mkSender = do
 
 -- | Widget for selection of sender and signing keys.
 uiSenderCapabilities
-  :: forall key t m model. (MonadWidget t m, HasWallet model key t)
+  :: forall key t m model. (MonadWidget t m, HasWallet model key t, HasNetwork model t)
   => model
   -> Dynamic t (Maybe Pact.ChainId)
   -> Maybe [DappCap]

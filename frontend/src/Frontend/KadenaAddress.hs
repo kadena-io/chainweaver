@@ -13,6 +13,7 @@ module Frontend.KadenaAddress
     )
   , mkKadenaAddress
   , decodeKadenaAddress
+  , decodeKadenaAddressText
   , bytestringChecksum
   , mkAddressChecksum
   , showChecksum
@@ -181,6 +182,9 @@ mkKadenaAddress network cid acc =
       cid
       network
       checksum
+
+decodeKadenaAddressText :: Text -> Either KadenaAddressError KadenaAddress
+decodeKadenaAddressText = decodeKadenaAddress . TE.encodeUtf8
 
 decodeKadenaAddress
   :: ByteString

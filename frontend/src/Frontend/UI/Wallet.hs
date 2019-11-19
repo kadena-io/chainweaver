@@ -29,7 +29,7 @@ module Frontend.UI.Wallet
 
 ------------------------------------------------------------------------------
 import           Control.Lens
-import           Control.Monad               (void, when, (<=<))
+import           Control.Monad               (when, (<=<))
 import qualified Data.IntMap                 as IntMap
 import qualified Data.Map                    as Map
 import           Data.Text                   (Text)
@@ -47,6 +47,7 @@ import           Frontend.Foundation
 import           Frontend.JsonData (HasJsonData, HasJsonDataCfg)
 import           Frontend.UI.Dialogs.AccountDetails (uiAccountDetails)
 import           Frontend.UI.Dialogs.Receive (uiReceiveModal)
+import           Frontend.UI.Dialogs.Send (uiSendModal)
 import           Frontend.UI.Modal
 import           Frontend.Network
 ------------------------------------------------------------------------------
@@ -72,6 +73,7 @@ type HasUiWalletModelCfg model mConf key m t =
 data AccountDialog
   = AccountDialog_Details
   | AccountDialog_Receive
+  | AccountDialog_Send
   deriving Eq
 
 -- | UI for managing the keys wallet.
@@ -79,6 +81,7 @@ uiWallet
   :: forall m t key model mConf
      . ( MonadWidget t m
        , HasUiWalletModelCfg model mConf key m t
+       , HasCrypto key m
        )
   => model
   -> m mConf
@@ -99,6 +102,7 @@ uiAvailableKeys
   :: forall t m model mConf key.
      ( MonadWidget t m
      , HasUiWalletModelCfg model mConf key m t
+     , HasCrypto key m
      )
   => model
   -> m mConf
@@ -114,6 +118,7 @@ uiKeyItems
   :: forall t m model mConf key.
      ( MonadWidget t m
      , HasUiWalletModelCfg model mConf key m t
+     , HasCrypto key m
      )
   => model
   -> m mConf
@@ -154,6 +159,7 @@ uiKeyItems model = do
       -- AccountDialog_Delete -> uiDeleteConfirmation i (_account_name a)
       AccountDialog_Details -> uiAccountDetails i a
       AccountDialog_Receive -> uiReceiveModal model a
+      AccountDialog_Send -> uiSendModal model a
 
   pure $ mempty & modalCfg_setModal .~ (accModal <$> onAccountModal)
 
@@ -189,7 +195,7 @@ uiKeyItem selectedNetwork i d = do
                     & uiButtonCfg_class <>~ "wallet__table-button"
 
               recv <- receiveButton cfg
-              void $ sendButton $ cfg & uiButtonCfg_disabled .~ True
+              send <- sendButton cfg
               onDetails <- detailsButton cfg
 
               let mkDialog dia onE = (\a -> (dia, i, a)) <$> current account <@ onE
@@ -197,6 +203,7 @@ uiKeyItem selectedNetwork i d = do
               pure $ leftmost
                 [ mkDialog AccountDialog_Details onDetails
                 , mkDialog AccountDialog_Receive recv
+                , mkDialog AccountDialog_Send send
                 ]
 
 -- | Get the balance of an account from the network. 'Nothing' indicates _some_
