@@ -39,7 +39,13 @@
   padding: 0 10px;
   font-size: 0.8em;
   margin-right: $medium-margin;
+  line-height: 22px;
+  height: 26px;
 
   text-overflow: ellipsis;
   overflow: hidden;
+}
+
+.wallet__table-button--hamburger {
+  padding: 0 15px;
 }
