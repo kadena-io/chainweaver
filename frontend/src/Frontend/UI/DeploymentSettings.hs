@@ -952,7 +952,7 @@ uiDeployPreview model settings accounts gasLimit ttl code lastPublicMeta capabil
   where
     uiPreviewResponses signing (cmd, wrappedCmd) = elClass "div" "modal__main transaction_details" $ do
       pb <- getPostBuild
-      transactionInputSection code cmd
+      transactionInputSection (pure code) (pure cmd)
       divClass "title" $ text "Destination"
       _ <- divClass "group segment" $ do
         transactionDisplayNetwork model
