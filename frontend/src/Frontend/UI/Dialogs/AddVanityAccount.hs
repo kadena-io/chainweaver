@@ -1,6 +1,6 @@
 {-# LANGUAGE ConstraintKinds #-}
-{-# LANGUAGE TupleSections #-}
 {-# LANGUAGE RecursiveDo #-}
+{-# LANGUAGE TupleSections #-}
 module Frontend.UI.Dialogs.AddVanityAccount
   ( uiAddVanityAccountSettings
   ) where
@@ -8,10 +8,10 @@ module Frontend.UI.Dialogs.AddVanityAccount
 import           Control.Applicative                    (liftA2)
 import           Control.Error                          (hush)
 import           Control.Lens                           ((^.))
-import           Control.Monad                          (join)
 import           Control.Monad.Trans.Class              (lift)
 import           Control.Monad.Trans.Maybe              (MaybeT (..), runMaybeT)
 import           Data.Either                            (isLeft)
+import           Data.Functor.Identity                  (Identity(..))
 import           Data.Maybe                             (isNothing, maybe)
 import           Data.Text                              (Text)
 
@@ -85,10 +85,10 @@ uiAddVanityAccountSettings
 uiAddVanityAccountSettings ideL mChainId initialNotes = Workflow $ do
   pb <- getPostBuild
 
-  let inputElem lbl wrapperCls = divClass wrapperCls $ flip mkLabeledClsInput lbl
+  let inputElem lbl wrapperCls = divClass wrapperCls $ mkLabeledClsInput True lbl
         $ \cls -> uiInputElement $ def & initialAttributes .~ "class" =: (renderClass cls)
 
-      notesInput = divClass "vanity-account-create__notes" $ flip mkLabeledClsInput "Notes"
+      notesInput = divClass "vanity-account-create__notes" $ mkLabeledClsInput True "Notes"
         $ \cls -> uiInputElement $ def
                   & initialAttributes .~ "class" =: (renderClass cls)
                   & inputElementConfig_setValue .~ (current initialNotes <@ pb)
@@ -111,7 +111,8 @@ uiAddVanityAccountSettings ideL mChainId initialNotes = Workflow $ do
 
         pure $ hush <$> dEitherAccName
 
-      uiAcc = Just $ ("Reference Data",) $ liftA2 (,) uiAccountNameInput (value <$> notesInput)
+      uiAcc = liftA2 (,) uiAccountNameInput (value <$> notesInput)
+      uiAccSection = ("Reference Data", uiAcc)
 
   eKeyPair <- performEvent $ cryptoGenKey <$> current dNextKey <@ pb
   dKeyPair <- holdDyn Nothing $ ffor eKeyPair $ \(pr,pu) -> Just $ KeyPair pu $ Just pr
@@ -123,16 +124,14 @@ uiAddVanityAccountSettings ideL mChainId initialNotes = Workflow $ do
     (curSelection, eNewAccount, _) <- buildDeployTabs customConfigTab includePreviewTab controls
 
     (conf, result, dAccount) <- elClass "div" "modal__main transaction_details" $ do
-      (cfg, cChainId, ttl, gasLimit, mAccountDetails) <- tabPane mempty curSelection DeploymentSettingsView_Cfg $
+      (cfg, cChainId, ttl, gasLimit, Identity (dAccountName, dNotes)) <- tabPane mempty curSelection DeploymentSettingsView_Cfg $
         -- Is passing around 'Maybe x' everywhere really a good way of doing this ?
-        uiCfg Nothing ideL (userChainIdSelectWithPreselect ideL mChainId) Nothing (Just defaultTransactionGasLimit) uiAcc
+        uiCfg Nothing ideL (userChainIdSelectWithPreselect ideL mChainId) Nothing (Just defaultTransactionGasLimit) (Identity uiAccSection)
 
       (mSender, capabilities) <- tabPane mempty curSelection DeploymentSettingsView_Keys $
         uiSenderCapabilities ideL cChainId Nothing $ uiSenderDropdown def ideL cChainId
 
-      let dAccountName = join <$> traverse fst mAccountDetails
-          dNotes = traverse snd mAccountDetails
-          dPayload = fmap mkPubkeyPactData <$> dKeyPair
+      let dPayload = fmap mkPubkeyPactData <$> dKeyPair
           code = mkPactCode <$> dAccountName
 
           account = runMaybeT $ Account
@@ -140,12 +139,12 @@ uiAddVanityAccountSettings ideL mChainId initialNotes = Workflow $ do
             <*> MaybeT dKeyPair
             <*> MaybeT cChainId
             <*> lift (ideL ^. network_selectedNetwork)
-            <*> MaybeT dNotes
+            <*> lift dNotes
 
       let mkSettings payload = DeploymentSettingsConfig
             { _deploymentSettingsConfig_chainId = userChainIdSelect
             , _deploymentSettingsConfig_userTab = Nothing
-            , _deploymentSettingsConfig_userSection = uiAcc
+            , _deploymentSettingsConfig_userSections = [uiAccSection]
             , _deploymentSettingsConfig_code = code
             , _deploymentSettingsConfig_sender = uiSenderDropdown def
             , _deploymentSettingsConfig_data = payload

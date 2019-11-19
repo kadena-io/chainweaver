@@ -1,20 +1,13 @@
-{-# LANGUAGE DataKinds              #-}
-{-# LANGUAGE DeriveGeneric          #-}
-{-# LANGUAGE ExtendedDefaultRules   #-}
-{-# LANGUAGE FlexibleContexts       #-}
-{-# LANGUAGE FlexibleInstances      #-}
-{-# LANGUAGE FunctionalDependencies #-}
-{-# LANGUAGE KindSignatures         #-}
-{-# LANGUAGE LambdaCase             #-}
-{-# LANGUAGE MultiParamTypeClasses  #-}
-{-# LANGUAGE NoOverloadedStrings    #-}
-{-# LANGUAGE QuasiQuotes            #-}
-{-# LANGUAGE RecursiveDo            #-}
-{-# LANGUAGE ScopedTypeVariables    #-}
-{-# LANGUAGE StandaloneDeriving     #-}
-{-# LANGUAGE TemplateHaskell        #-}
-{-# LANGUAGE TypeApplications       #-}
-{-# LANGUAGE TypeFamilies           #-}
+{-# LANGUAGE DataKinds #-}
+{-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE ExtendedDefaultRules #-}
+{-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE NoOverloadedStrings #-}
+{-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE TypeFamilies #-}
 
 -- | Crypto and keys needed for signing transactions.
 module Frontend.Crypto.Ed25519
@@ -256,5 +249,3 @@ instance Newtype PublicKey
 instance Newtype PrivateKey
 
 instance Newtype Signature
-
-

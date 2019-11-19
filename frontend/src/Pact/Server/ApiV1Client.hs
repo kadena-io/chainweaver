@@ -1,9 +1,7 @@
 {-# LANGUAGE DataKinds #-}
-{-# LANGUAGE DeriveGeneric #-}
-{-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE NamedFieldPuns #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeOperators #-}
-{-# LANGUAGE OverloadedStrings #-}
 
 -- Limit API to the parts that are common to chainweb and `pact -s`.
 module Pact.Server.ApiV1Client

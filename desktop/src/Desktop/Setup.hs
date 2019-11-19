@@ -5,19 +5,20 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecursiveDo #-}
 {-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE TupleSections #-}
 {-# LANGUAGE TypeApplications #-}
 
 -- | Wallet setup screens
 module Desktop.Setup (runSetup, form, kadenaWalletLogo, setupDiv, setupClass) where
 
-import Control.Lens ((<>~))
+import Control.Lens ((<>~), (%~))
 import Control.Error (hush)
 import Control.Applicative (liftA2)
 import Control.Monad (unless,void)
 import Control.Monad.Fix (MonadFix)
 import Control.Monad.IO.Class
 import Data.Bool (bool)
+import Data.Proxy (Proxy(Proxy))
+import Data.Foldable (fold)
 import Data.Maybe (isNothing, fromMaybe)
 import Data.Bifunctor
 import Data.ByteArray (ByteArrayAccess)
@@ -102,9 +103,17 @@ textTo = fromString . T.unpack
 tshow :: Show a => a -> Text
 tshow = T.pack . show
 
--- | Form wrapper which will automatically handle submit on enter
-form :: DomBuilder t m => Text -> m a -> m a
-form c = elAttr "form" ("onsubmit" =: "return false;" <> "class" =: c)
+-- | Form wrapper which will automatically handle submit on enter so long as you have
+-- a submit button in the form. Please track this submit event instead of a button click
+-- as it is very easy to put the button outside of the form and break enter handling.
+-- This way, both will work or both will be broken (if there is no button in the form)
+form :: forall t m a. DomBuilder t m => Text -> m a -> m (Event t (), a)
+form c w = do
+  let cfg = (def :: ElementConfig EventResult t (DomBuilderSpace m))
+        & elementConfig_eventSpec %~ addEventSpecFlags (Proxy :: Proxy (DomBuilderSpace m)) Submit (\_ -> preventDefault)
+        & elementConfig_initialAttributes .~ ("class" =: c)
+  (elt, a) <- element "form" cfg w
+  pure (domEvent Submit elt, a)
 
 -- | Wallet logo
 kadenaWalletLogo :: DomBuilder t m => m ()
@@ -271,10 +280,14 @@ recoverWallet eBack = Workflow $ do
         pure never
 
       withSeedConfirmPassword seed = setupDiv "recover-enter-password" $ do
-        dSetPw <- holdDyn Nothing =<< setPassword (pure seed)
-        continue <- setupDiv "recover-restore-button" $
-          confirmButton (def & uiButtonCfg_disabled .~ (fmap isNothing dSetPw)) "Restore"
-        pure $ tagMaybe (current dSetPw) continue
+        (ePwSubmit, dSetPw) <- form "" $ do
+          eSetPw <- setPassword (pure seed)
+          dSetPw' <- holdDyn Nothing eSetPw
+          -- Event handled by form onSubmit
+          void $ setupDiv "recover-restore-button" $
+            confirmButton (def & uiButtonCfg_disabled .~ (fmap isNothing dSetPw')) "Restore"
+          pure dSetPw'
+        pure $ tagMaybe (current dSetPw) ePwSubmit
 
   dSetPassword <- widgetHold waitingForPhrase $
     withSeedConfirmPassword <$> eSeedUpdated
@@ -285,31 +298,47 @@ recoverWallet eBack = Workflow $ do
     )
 
 passphraseWordElement
-  :: (DomBuilder t m, PostBuild t m)
+  :: (DomBuilder t m, PostBuild t m, MonadFix m)
   => Dynamic t PassphraseStage
   -> WordKey
   -> Dynamic t Text
   -> m (Event t Text)
-passphraseWordElement currentStage k wrd = setupDiv "passphrase-widget-elem-wrapper" $ do
-  pb <- getPostBuild
+passphraseWordElement currentStage k wrd = do
+  rec
+    let eFocused = leftmost
+          [ eInputFocused
+          , True <$ domEvent Mouseenter elt
+          , True <$ domEvent Mousemove elt
+          , False <$ domEvent Mouseleave elt
+          ]
+    (elt, (eInputFocused, eInput)) <- elClass' "div" (setupClass "passphrase-widget-elem-wrapper") $ do
+      pb <- getPostBuild
 
-  setupDiv "passphrase-widget-key-wrapper" $
-    text (showWordKey k)
+      setupDiv "passphrase-widget-key-wrapper" $
+        text (showWordKey k)
 
-  let
-    commonAttrs cls =
-      "type" =: "text" <>
-      "size" =: "8" <>
-      "class" =: setupClass cls
+      let
+        commonClass cls focused = "input " <> (setupClass cls <> bool "" (" " <> setupClass cls <> "--focused")  focused)
+        commonAttrs cls focused =
+          "type" =: "text" <>
+          "size" =: "8" <>
+          "class" =: commonClass cls focused
 
-  void . uiInputElement $ def
-    & inputElementConfig_initialValue .~ "********"
-    & initialAttributes .~ (commonAttrs "passphrase-widget-word-hider" <> "disabled" =: "true" <> "tabindex" =: "-1")
+      void . uiInputElement $ def
+        & inputElementConfig_initialValue .~ "********"
+        & initialAttributes .~ (commonAttrs "passphrase-widget-word-hider" False <> "disabled" =: "true" <> "tabindex" =: "-1")
+        & modifyAttributes <>~ (("class" =:) . Just . commonClass "passphrase-widget-word-hider" <$> eFocused)
 
-  fmap _inputElement_input $ setupDiv "passphrase-widget-word-wrapper". uiInputElement $ def
-    & inputElementConfig_setValue .~ (current wrd <@ pb)
-    & initialAttributes .~ commonAttrs "passphrase-widget-word"
-    & modifyAttributes <>~ (("readonly" =:) . canEditOnRecover <$> current currentStage <@ pb)
+      inputElt <- setupDiv "passphrase-widget-word-wrapper". uiInputElement $ def
+        & inputElementConfig_setValue .~ (current wrd <@ pb)
+        & initialAttributes .~ commonAttrs "passphrase-widget-word" False
+        & modifyAttributes <>~ fold
+          [ (("readonly" =:) . canEditOnRecover <$> current currentStage <@ pb)
+          , (("class" =:) . Just . commonClass "passphrase-widget-word" <$> eFocused)
+          ]
+
+      pure (updated $ _inputElement_hasFocus inputElt, _inputElement_input inputElt)
+  pure eInput
   where
     canEditOnRecover Recover = Nothing
     canEditOnRecover Setup = Just "true"
@@ -352,9 +381,13 @@ createNewWallet eBack = Workflow $  do
 
     proceed :: Crypto.MnemonicSentence 12 -> m (Event t (SetupWF t m))
     proceed mnem = do
-      dPassword <- setPassword (pure $ sentenceToSeed mnem) >>= holdDyn Nothing
-      continue <- continueButton (fmap isNothing dPassword)
-      pure $ precreatePassphraseWarning eBack dPassword mnem <$ continue
+      (ePwSubmit, dPassword) <- form "" $ do
+        eSetPw' <- setPassword (pure $ sentenceToSeed mnem)
+        dPassword' <- holdDyn Nothing eSetPw'
+        -- Event handled by form onSubmit
+        void $ continueButton (fmap isNothing dPassword')
+        pure dPassword'
+      pure $ precreatePassphraseWarning eBack dPassword mnem <$ ePwSubmit
 
   dContinue <- widgetHold generating (proceed <$> eGenSuccess)
 
@@ -502,14 +535,14 @@ confirmPhrase eBack dPassword mnemonicSentence = Workflow $ do
 
   finishSetupWF WalletScreen_VerifyPassphrase $ leftmost
     [ doneScreen <$> tagMaybe (current dPassword) (leftmost [continue, skip])
-    , createNewWallet eBack <$ eBack
+    , createNewPassphrase eBack dPassword mnemonicSentence <$ eBack
     ]
 
 setPassword
   :: (DomBuilder t m, MonadHold t m, MonadFix m, PerformEvent t m, PostBuild t m, MonadJSM (Performable m), TriggerEvent t m)
   => Dynamic t Crypto.Seed
   -> m (Event t (Maybe Crypto.XPrv))
-setPassword dSeed = form "" $ do
+setPassword dSeed = do
   let uiPassword' = uiPassword (setupClass "password-wrapper") (setupClass "password")
 
   p1elem <- uiPassword' $ "Enter password (" <> tshow minPasswordLength <> " character min.)"

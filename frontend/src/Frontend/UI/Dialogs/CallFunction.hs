@@ -1,20 +1,16 @@
-{-# LANGUAGE ConstraintKinds       #-}
-{-# LANGUAGE DataKinds             #-}
-{-# LANGUAGE DeriveGeneric         #-}
-{-# LANGUAGE ExtendedDefaultRules  #-}
-{-# LANGUAGE FlexibleContexts      #-}
-{-# LANGUAGE FlexibleInstances     #-}
-{-# LANGUAGE KindSignatures        #-}
-{-# LANGUAGE LambdaCase            #-}
+{-# LANGUAGE ConstraintKinds #-}
+{-# LANGUAGE DataKinds #-}
+{-# LANGUAGE ExtendedDefaultRules #-}
+{-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE KindSignatures #-}
+{-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
-{-# LANGUAGE OverloadedStrings     #-}
-{-# LANGUAGE PatternGuards         #-}
-{-# LANGUAGE QuasiQuotes           #-}
-{-# LANGUAGE RecursiveDo           #-}
-{-# LANGUAGE ScopedTypeVariables   #-}
-{-# LANGUAGE StandaloneDeriving    #-}
-{-# LANGUAGE TemplateHaskell       #-}
-{-# LANGUAGE TupleSections         #-}
+{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE PatternGuards #-}
+{-# LANGUAGE RecursiveDo #-}
+{-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE TupleSections #-}
 
 -- | Confirmation dialog for deploying modules and calling functions on the
 -- network.
@@ -82,7 +78,7 @@ uiCallFunction m mModule func _onClose
     let content = mdo
           (cfg, result, mPactCall) <- uiDeploymentSettings m $ DeploymentSettingsConfig
             { _deploymentSettingsConfig_userTab = parametersTab m func
-            , _deploymentSettingsConfig_userSection = Nothing
+            , _deploymentSettingsConfig_userSections = []
             , _deploymentSettingsConfig_chainId =
                 predefinedChainIdSelect $ _chainRef_chain . _moduleRef_source $ moduleRef
             , _deploymentSettingsConfig_code = fromMaybe (pure $ buildCall func []) mPactCall
@@ -185,6 +181,7 @@ argDelimiter = uiCodeFont "code-font_type_arg-delimiter" mempty
 renderArg :: MonadWidget t m => Arg (Term Name) -> m ()
 renderArg a = do
   uiCodeFont "code-font_type_pact-arg-name" $ (_aName a)
+  argDelimiter
   uiCodeFont "code-font_type_pact-type" $ prettyTextCompact (_aType a)
 
 

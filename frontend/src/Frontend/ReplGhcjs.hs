@@ -1,21 +1,13 @@
-{-# LANGUAGE DataKinds              #-}
-{-# LANGUAGE DeriveGeneric          #-}
-{-# LANGUAGE ExtendedDefaultRules   #-}
-{-# LANGUAGE FlexibleContexts       #-}
-{-# LANGUAGE FlexibleInstances      #-}
-{-# LANGUAGE FunctionalDependencies #-}
-{-# LANGUAGE KindSignatures         #-}
-{-# LANGUAGE LambdaCase             #-}
-{-# LANGUAGE MultiParamTypeClasses  #-}
-{-# LANGUAGE OverloadedStrings      #-}
-{-# LANGUAGE QuasiQuotes            #-}
-{-# LANGUAGE RecursiveDo            #-}
-{-# LANGUAGE ScopedTypeVariables    #-}
-{-# LANGUAGE StandaloneDeriving     #-}
-{-# LANGUAGE TemplateHaskell        #-}
-{-# LANGUAGE TupleSections          #-}
-{-# LANGUAGE TypeApplications       #-}
-{-# LANGUAGE TypeFamilies           #-}
+{-# LANGUAGE DataKinds #-}
+{-# LANGUAGE ExtendedDefaultRules #-}
+{-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE TypeApplications #-}
+{-# LANGUAGE TypeFamilies #-}
 
 -- |
 -- Copyright   :  (C) 2018 Kadena
@@ -67,12 +59,15 @@ import Frontend.UI.Dialogs.CreateGist (uiCreateGist)
 import Frontend.UI.Dialogs.CreatedGist (uiCreatedGist)
 import Frontend.UI.Dialogs.DeployConfirmation (uiDeployConfirmation)
 import Frontend.UI.Dialogs.LogoutConfirmation (uiLogoutConfirmation)
-import Frontend.UI.Dialogs.NetworkEdit (uiNetworkEdit, uiNetworkSelect, uiNetworkStatus, queryNetworkStatus)
+import Frontend.UI.Dialogs.NetworkEdit (uiNetworkSelect, uiNetworkStatus, queryNetworkStatus)
 import Frontend.UI.Dialogs.Signing (uiSigning)
+import Frontend.UI.IconGrid (IconGridCellConfig(..), iconGridLaunchLink)
 import Frontend.UI.Modal
 import Frontend.UI.Modal.Impl
 import Frontend.UI.RightPanel
+import Frontend.UI.Settings
 import Frontend.UI.Wallet
+import Frontend.UI.Widgets
 
 app
   :: forall key t m.
@@ -81,6 +76,7 @@ app
      , HasConfigs m
      , HasStorage m, HasStorage (Performable m)
      , HasCrypto key (Performable m)
+     , HasCrypto key m
      , FromJSON key, ToJSON key
      )
   => RoutedT t (R FrontendRoute) m ()
@@ -109,10 +105,16 @@ app sidebarExtra appCfg = void . mfix $ \ cfg -> do
           envCfg <- rightTabBar "main__right-pane" ideL
           pure $ uiEditorCfg <> envCfg
         pure $ controlCfg <> mainCfg
-      -- TODO resources page
-      FrontendRoute_Resources -> text "Resources" >> pure mempty
-      -- TODO settings page
-      FrontendRoute_Settings -> text "Settings" >> pure mempty
+      FrontendRoute_Resources -> mkPageContent "resources" $ do
+        controlBar "Resources" blank
+        elClass "main" "main page__main" $ do
+          resourcesWidget
+        pure mempty
+      FrontendRoute_Settings -> do
+        controlCfg <- controlBar "Settings" (mempty <$ blank)
+        mainCfg <- elClass "main" "main page__main" $ do
+          uiSettings (_appCfg_enabledSettings appCfg) ideL
+        pure $ controlCfg <> mainCfg
     flattenedCfg <- flatten =<< tagOnPostBuild routedCfg
     pure $ netCfg <> flattenedCfg
 
@@ -137,18 +139,22 @@ walletSidebar
   => m () -> m ()
 walletSidebar sidebarExtra = elAttr "div" ("class" =: "sidebar") $ do
   divClass "sidebar__logo" $ elAttr "img" ("src" =: static @"img/logo.png") blank
-  route <- demux . fmap (\(r :/ _) -> Some r) <$> askRoute
-  let sidebarLink r@(r' :/ _) = routeLink r $ do
-        let mkAttrs sel = "class" =: ("sidebar__link" <> if sel then " selected" else "")
-        elDynAttr "span" (mkAttrs <$> demuxed route (Some r')) $ do
-          elAttr "img" ("class" =: "highlighted" <> "src" =: routeIcon r) blank
-          elAttr "img" ("class" =: "normal" <> "src" =: routeIcon r) blank
-  sidebarLink $ FrontendRoute_Wallet :/ ()
-  sidebarLink $ FrontendRoute_Contracts :/ Nothing
-  elAttr "div" ("style" =: "flex-grow: 1") blank
-  sidebarLink $ FrontendRoute_Resources :/ ()
-  sidebarLink $ FrontendRoute_Settings :/ ()
-  sidebarExtra
+
+  elAttr "div" ("class" =: "sidebar__content") $ do
+    route <- demux . fmap (\(r :/ _) -> Some r) <$> askRoute
+
+    let sidebarLink r@(r' :/ _) label = routeLink r $ do
+          let mkAttrs sel = "class" =: ("sidebar__link" <> if sel then " selected" else "")
+          elDynAttr "div" (mkAttrs <$> demuxed route (Some r')) $ do
+            elAttr "img" ("class" =: "highlighted" <> "src" =: routeIcon r) blank
+            elAttr "img" ("class" =: "normal" <> "src" =: routeIcon r) blank
+            elAttr "span" ("class" =: "sidebar__link-label") $ text label
+    sidebarLink (FrontendRoute_Wallet :/ ()) "Wallets"
+    sidebarLink (FrontendRoute_Contracts :/ Nothing) "Contracts"
+    elAttr "div" ("style" =: "flex-grow: 1") blank
+    sidebarLink (FrontendRoute_Resources :/ ()) "Resources"
+    sidebarLink (FrontendRoute_Settings :/ ()) "Settings"
+    sidebarExtra
 
 -- | Get the routes to the icon assets for each route
 routeIcon :: R FrontendRoute -> Text
@@ -166,6 +172,8 @@ codePanel appCfg cls m = elKlass "div" (cls <> "pane") $ do
       let annotations = map toAceAnnotation <$> m ^. editor_annotations
       onUserCode <- codeWidget appCfg annotations "" onNewCode
       pure $ mempty & editorCfg_setCode .~ onUserCode
+
+    setFocusOn e ".ace_text-input" =<< getPostBuild
 
     onCtrlEnter <- getCtrlEnterEvent e
     loadCfg <- loadCodeIntoRepl m onCtrlEnter
@@ -273,15 +281,14 @@ controlBarRight appCfg m = do
     divClass "main-header__controls-nav" $ do
       elClass "div" "main-header__project-loader" $ do
 
-        onNetClick <- cogButton headerBtnCfg
-
         _ <- openFileBtn
+
+        (onCreateGist, onLogoutClick) <- if _appCfg_gistEnabled appCfg
+                                         then (,) <$> gistBtn <*> maySignoutBtn
+                                         else pure (never, never)
 
         onLoadClicked <- loadReplBtn
 
-        onCreateGist <- if _appCfg_gistEnabled appCfg then gistBtn else pure never
-
-        onLogoutClick <- if _appCfg_gistEnabled appCfg then maySignoutBtn else pure never
 
         onDeployClick <- deployBtn
 
@@ -293,9 +300,6 @@ controlBarRight appCfg m = do
           gistConfirmation :: Event t (Maybe (ModalImpl m key t))
           gistConfirmation = Just uiCreateGist <$ onCreateGist
 
-          networkEdit :: Event t (Maybe (ModalImpl m key t))
-          networkEdit = Just (uiNetworkEdit m) <$ onNetClick
-
           logoutConfirmation :: Event t (Maybe (ModalImpl m key t))
           logoutConfirmation = Just uiLogoutConfirmation <$ onLogoutClick
 
@@ -305,9 +309,8 @@ controlBarRight appCfg m = do
 
           logoutCfg = mempty & modalCfg_setModal .~ logoutConfirmation
 
-          netCfg = mempty & modalCfg_setModal .~ networkEdit
 
-        pure $ deployCfg <> loadCfg <> gistCfg <> netCfg <> logoutCfg
+        pure $ deployCfg <> loadCfg <> gistCfg <> logoutCfg
   where
     maySignoutBtn = do
       let gitHubOnline = Map.member OAuthProvider_GitHub <$> m ^. oAuth_accessTokens
@@ -348,3 +351,20 @@ headerBtnCfg
   :: (Default (UiButtonCfgRep f), IsString (ReflexValue f CssClass), Semigroup (ReflexValue f CssClass))
   => UiButtonCfgRep f
 headerBtnCfg = btnCfgPrimary & uiButtonCfg_class %~ (<> "main-header__button")
+
+resourcesWidget
+  :: (DomBuilder t m)
+  => m ()
+resourcesWidget = elClass "div" "icon-grid" $ do
+  resourceCell "Support" (static @"img/resources/support.svg") "https://www.kadena.io/chainweaver-support"
+    "Explore Help Resources to learn about Chainweaver, solve problems and get in touch"
+  resourceCell "Documentation" (static @"img/resources/documentation.svg") "https://github.com/kadena-io/chainweaver"
+    "Complete technical resources for Chainweaver, Kadena blockchain and Pact language"
+  resourceCell "Tutorials" (static @"img/resources/tutorials.svg") "https://pactlang.org/"
+    "Read or watch tutorials for writing smart contracts using the Pact language"
+  where
+    resourceCell title iconUrl href desc = iconGridLaunchLink href $ IconGridCellConfig
+      { _iconGridCellConfig_title = title
+      , _iconGridCellConfig_iconUrl = iconUrl
+      , _iconGridCellConfig_desc = Just desc
+      }

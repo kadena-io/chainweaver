@@ -1,21 +1,12 @@
-{-# LANGUAGE CPP                    #-}
-{-# LANGUAGE DataKinds              #-}
-{-# LANGUAGE DeriveGeneric          #-}
-{-# LANGUAGE ExtendedDefaultRules   #-}
-{-# LANGUAGE FlexibleContexts       #-}
-{-# LANGUAGE FlexibleInstances      #-}
-{-# LANGUAGE FunctionalDependencies #-}
-{-# LANGUAGE KindSignatures         #-}
-{-# LANGUAGE LambdaCase             #-}
-{-# LANGUAGE MultiParamTypeClasses  #-}
-{-# LANGUAGE OverloadedStrings      #-}
-{-# LANGUAGE QuasiQuotes            #-}
-{-# LANGUAGE RecursiveDo            #-}
-{-# LANGUAGE ScopedTypeVariables    #-}
-{-# LANGUAGE StandaloneDeriving     #-}
-{-# LANGUAGE TemplateHaskell        #-}
-{-# LANGUAGE TypeApplications       #-}
-{-# LANGUAGE TypeFamilies           #-}
+{-# LANGUAGE CPP #-}
+{-# LANGUAGE DataKinds #-}
+{-# LANGUAGE ExtendedDefaultRules #-}
+{-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE TypeFamilies #-}
 
 -- | Definitions common to frontend and backend.
 --
@@ -31,6 +22,7 @@ module Common.Foundation
   , note
   , safeDecodeUtf8
     -- * Re-exports
+  , module Data.Bool
   , module Data.Maybe
   , module Data.Semigroup
   , module Data.Foldable
@@ -43,6 +35,7 @@ import           Control.Monad.Except                  (MonadError, throwError)
 import           Control.Monad.Fix
 import           Control.Monad.IO.Class
 import           Data.Aeson                            as A
+import           Data.Bool
 import           Data.ByteString                       (ByteString)
 import           Data.Foldable
 import qualified Data.List.Split                       as L

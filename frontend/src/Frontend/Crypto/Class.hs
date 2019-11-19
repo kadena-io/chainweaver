@@ -1,7 +1,6 @@
 {-# LANGUAGE CPP #-}
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE DefaultSignatures #-}
-{-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE UndecidableInstances #-}
 
 module Frontend.Crypto.Class where
@@ -42,6 +41,8 @@ class HasCrypto key m | m -> key where
   askCrypto :: m (Crypto key)
   default askCrypto :: (MonadTrans t, Monad n, HasCrypto key n, m ~ t n) => m (Crypto key)
   askCrypto = lift askCrypto
+
+instance (HasCrypto key m, Monad m) => HasCrypto key (RoutedT t r m)
 
 instance Monad m => HasCrypto key (CryptoT key m) where
   askCrypto = CryptoT ask

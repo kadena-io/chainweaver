@@ -1,23 +1,21 @@
-{-# LANGUAGE CPP                    #-}
-{-# LANGUAGE ConstraintKinds        #-}
-{-# LANGUAGE DataKinds              #-}
-{-# LANGUAGE DeriveGeneric          #-}
-{-# LANGUAGE ExtendedDefaultRules   #-}
-{-# LANGUAGE FlexibleContexts       #-}
-{-# LANGUAGE FlexibleInstances      #-}
+{-# LANGUAGE CPP #-}
+{-# LANGUAGE ConstraintKinds #-}
+{-# LANGUAGE DataKinds #-}
+{-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE ExtendedDefaultRules #-}
+{-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE FunctionalDependencies #-}
-{-# LANGUAGE KindSignatures         #-}
-{-# LANGUAGE LambdaCase             #-}
-{-# LANGUAGE MultiParamTypeClasses  #-}
-{-# LANGUAGE OverloadedStrings      #-}
-{-# LANGUAGE QuasiQuotes            #-}
-{-# LANGUAGE RecursiveDo            #-}
-{-# LANGUAGE ScopedTypeVariables    #-}
-{-# LANGUAGE StandaloneDeriving     #-}
-{-# LANGUAGE TemplateHaskell        #-}
-{-# LANGUAGE TupleSections          #-}
-{-# LANGUAGE TypeApplications       #-}
-{-# LANGUAGE TypeFamilies           #-}
+{-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE QuasiQuotes #-}
+{-# LANGUAGE RecursiveDo #-}
+{-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE StandaloneDeriving #-}
+{-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE TupleSections #-}
+{-# LANGUAGE TypeApplications #-}
+{-# LANGUAGE TypeFamilies #-}
 
 -- | The code editor, holds the currently edited code.
 --
@@ -209,7 +207,6 @@ typeCheckVerify m t = mdo
       , _replCfg_reset = () <$ onReplReset
       , _replCfg_verifyModules = Map.keysSet . _ts_modules <$> onTransSuccess
       }
-    let
 #ifdef  ghcjs_HOST_OS
     cModules <- holdDyn Map.empty $ _ts_modules <$> onTransSuccess
     let
@@ -218,6 +215,7 @@ typeCheckVerify m t = mdo
        , concatMap annoFallbackParser <$> replO ^. messagesCfg_send
        ]
 #else
+    let
       newAnnotations = mconcat
        [ parseVerifyOutput <$> _repl_modulesVerified replL
        , concatMap annoFallbackParser <$> replO ^. messagesCfg_send
@@ -285,4 +283,3 @@ instance Flattenable (EditorCfg t) t where
       <*> doSwitch never (_editorCfg_loadCode <$> ev)
       <*> doSwitch never (_editorCfg_applyQuickFix <$> ev)
       <*> doSwitch never (_editorCfg_clearModified <$> ev)
-

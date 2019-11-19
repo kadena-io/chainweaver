@@ -197,10 +197,20 @@ $kadena-orange: #F3AB3C;
     font-size: 25px;
     font-weight: initial;
 
+    .button__text-icon {
+      height: 25px;
+      bottom: -5px;
+    }
+
     &.button_type_secondary {
       border: initial;
       font-size: 22px;
       color: $tertiary-color;
+
+      .button__text-icon {
+        height: 22px;
+        bottom: -3px;
+      }
     }
   }
 }
@@ -275,25 +285,12 @@ $kadena-orange: #F3AB3C;
   opacity: 0;
 }
 
-.setup__passphrase-widget-elem-wrapper {
-  &:focus-within {
-    .setup__passphrase-widget-word {
-      opacity: 1 !important;
-    }
+.setup__passphrase-widget-word--focused {
+  opacity: 1;
+}
 
-    .setup__passphrase-widget-word-hider {
-      display: none !important;
-    }
-  }
-  &:hover {
-    .setup__passphrase-widget-word {
-      opacity: 1;
-    }
-
-    .setup__passphrase-widget-word-hider {
-      display: none;
-    }
-  }
+.setup__passphrase-widget-word-hider--focused {
+  display: none;
 }
 
 .setup__fullscreen .setup__verify-phrase-msg {

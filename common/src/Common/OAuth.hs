@@ -1,5 +1,5 @@
-{-# LANGUAGE DeriveGeneric     #-}
-{-# LANGUAGE LambdaCase        #-}
+{-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE OverloadedStrings #-}
 
 module Common.OAuth where
@@ -96,4 +96,3 @@ buildOAuthConfig' baseUri clientId renderRoute = OAuthConfig
             , _providerConfig_clientId = clientId
             }
     }
-

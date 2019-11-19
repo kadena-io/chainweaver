@@ -1,22 +1,21 @@
-{-# LANGUAGE CPP                        #-}
-{-# LANGUAGE ConstraintKinds            #-}
-{-# LANGUAGE DeriveGeneric              #-}
-{-# LANGUAGE FlexibleContexts           #-}
-{-# LANGUAGE FlexibleInstances          #-}
-{-# LANGUAGE FunctionalDependencies     #-}
-{-# LANGUAGE GADTs                      #-}
+{-# LANGUAGE CPP #-}
+{-# LANGUAGE ConstraintKinds #-}
+{-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE FunctionalDependencies #-}
+{-# LANGUAGE GADTs #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
-{-# LANGUAGE LambdaCase                 #-}
-{-# LANGUAGE MultiParamTypeClasses      #-}
-{-# LANGUAGE OverloadedStrings          #-}
-{-# LANGUAGE PatternGuards              #-}
-{-# LANGUAGE QuasiQuotes                #-}
-{-# LANGUAGE RankNTypes                 #-}
-{-# LANGUAGE RecursiveDo                #-}
-{-# LANGUAGE ScopedTypeVariables        #-}
-{-# LANGUAGE TemplateHaskell            #-}
-{-# LANGUAGE TupleSections              #-}
-{-# LANGUAGE TypeFamilies               #-}
+{-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE PatternGuards #-}
+{-# LANGUAGE QuasiQuotes #-}
+{-# LANGUAGE RankNTypes #-}
+{-# LANGUAGE RecursiveDo #-}
+{-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE TupleSections #-}
+{-# LANGUAGE TypeFamilies #-}
 
 -- | Interface for accessing Pact networks (pact -s, chainweb, kadena).
 --
@@ -55,7 +54,7 @@ module Frontend.Network
     -- * Defaults
   , defaultTransactionGasLimit
   , defaultTransactionGasPrice
-  , maxCoinPricePrecision
+  , maxCoinPrecision
   , defaultTransactionTTL
   ) where
 
@@ -377,10 +376,11 @@ getSelectedNetworkInfos networkL = do
 -- This is the minimum precision allowed by the Pact language:
 -- https://github.com/kadena-io/chainweb-node/commit/ee8a0db079869b39e23be1ef6737f0a7795eff87#diff-6c59a5fb9f1b0b8b470cb50e8bd643ebR54
 defaultTransactionGasPrice :: GasPrice
-defaultTransactionGasPrice = GasPrice $ ParsedDecimal $ Decimal maxCoinPricePrecision 1
+defaultTransactionGasPrice = GasPrice $ ParsedDecimal $ Decimal maxCoinPrecision 1
 
-maxCoinPricePrecision :: Word8
-maxCoinPricePrecision = 12
+-- | As defined in the coin contract
+maxCoinPrecision :: Word8
+maxCoinPrecision = 12
 
 defaultTransactionTTL :: TTLSeconds
 defaultTransactionTTL = TTLSeconds (8 * 60 * 60) -- 8 hours

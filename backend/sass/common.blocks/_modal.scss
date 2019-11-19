@@ -137,8 +137,12 @@
   margin-right: $small-margin;
 }
 
-.modal__foter > *:last-child {
-  margin-left: 0;
+.modal__footer > .button {
+  margin-right: $normal-margin;
+}
+
+.modal__footer > *:last-child {
+  margin-right: 0;
 }
 
 .detail {
@@ -212,16 +216,17 @@
 }
 
 .wallet_only__account-created-done-splash-bg {
+  background-size: cover;
   transform: rotateY(180deg);
-  margin-left: 22rem;
+  margin: 0 auto;
   width: 180px;
   height: 125px;
 }
 
 .wallet_only__account-created-wallet-blue-icon {
-  position: absolute;
-  top: 8rem;
-  left: 28rem;
+  transform: rotateY(180deg);
+  position: relative;
+  top: 20px;
   width: 76px;
   height: 72px;
 }

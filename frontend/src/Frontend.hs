@@ -1,8 +1,7 @@
-{-# LANGUAGE DataKinds         #-}
+{-# LANGUAGE DataKinds #-}
 {-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE TypeApplications  #-}
-{-# LANGUAGE TypeApplications  #-}
-{-# LANGUAGE TemplateHaskell  #-}
+{-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE TypeApplications #-}
 module Frontend where
 
 import           Control.Monad            (join, void)
@@ -63,6 +62,9 @@ frontend = Frontend
       , _appCfg_editorReadOnly = False
       , _appCfg_signingRequest = never
       , _appCfg_signingResponse = liftIO . print
+      , _appCfg_enabledSettings = EnabledSettings
+        {
+        }
       }
   }
 

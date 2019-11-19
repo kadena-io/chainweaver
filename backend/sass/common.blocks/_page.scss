@@ -18,6 +18,7 @@
 
   padding-left: 37px;
   padding-right: $pane-padding-right + 16px; // 16px for scrollbar of body pane.
+  min-height: 77px;
 }
 
 // Scrollbars on Mac take up no space:

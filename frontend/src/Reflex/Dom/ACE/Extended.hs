@@ -1,10 +1,9 @@
-{-# LANGUAGE FlexibleContexts      #-}
-{-# LANGUAGE GADTs                 #-}
+{-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE GADTs #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
-{-# LANGUAGE OverloadedStrings     #-}
-{-# LANGUAGE RankNTypes            #-}
-{-# LANGUAGE RecursiveDo           #-}
-{-# LANGUAGE ScopedTypeVariables   #-}
+{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE RankNTypes #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 
 module Reflex.Dom.ACE.Extended ( module ACE
                                , AceAnnotation (..)
@@ -139,4 +138,3 @@ resizeEditor onResize ace =
     doResize (AceInstance ai) = liftJSM $ ai ^. js0 ("resize" :: Text)
   in
     performEvent_ $ traverse_ doResize <$> tag curAce onResize
-

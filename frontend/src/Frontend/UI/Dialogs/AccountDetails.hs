@@ -1,5 +1,5 @@
-{-# LANGUAGE RecursiveDo #-}
 {-# LANGUAGE ConstraintKinds #-}
+{-# LANGUAGE RecursiveDo #-}
 -- | Dialog for viewing the details of an account.
 -- Copyright   :  (C) 2018 Kadena
 -- License     :  BSD-style (see the file LICENSE)
@@ -14,7 +14,7 @@ import qualified Pact.Types.ChainId as Pact
 import           Reflex
 import           Reflex.Dom
 ------------------------------------------------------------------------------
-import           Frontend.KadenaAddress (mkKadenaAddress, textKadenaAddress)
+import           Frontend.KadenaAddress (textKadenaAddress)
 ------------------------------------------------------------------------------
 import           Frontend.UI.Modal
 import           Frontend.Wallet
@@ -59,14 +59,14 @@ uiAccountDetailsDetails
   -> Event t ()
   -> Workflow t m (Text, (mConf, Event t ()))
 uiAccountDetailsDetails key a onClose = Workflow $ do
-  let kAddr = textKadenaAddress $ mkKadenaAddress (_account_network a) (_account_chainId a) (_account_name a)
+  let kAddr = textKadenaAddress $ accountToKadenaAddress a
 
   let displayText lbl v cls =
         let
           attrFn cfg = uiInputElement $ cfg
             & initialAttributes <>~ ("disabled" =: "true" <> "class" =: (" " <> cls))
         in
-          mkLabeledInputView attrFn lbl $ pure v
+          mkLabeledInputView False lbl attrFn $ pure v
 
   modalMain $ divClass "modal__main account-details" $ do
     elClass "h2" "heading heading_type_h2" $ text "Info"
