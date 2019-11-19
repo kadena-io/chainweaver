@@ -67,6 +67,7 @@ import Frontend.UI.Modal.Impl
 import Frontend.UI.RightPanel
 import Frontend.UI.Settings
 import Frontend.UI.Wallet
+import Frontend.UI.Widgets
 
 app
   :: forall key t m.
@@ -170,6 +171,8 @@ codePanel appCfg cls m = elKlass "div" (cls <> "pane") $ do
       let annotations = map toAceAnnotation <$> m ^. editor_annotations
       onUserCode <- codeWidget appCfg annotations "" onNewCode
       pure $ mempty & editorCfg_setCode .~ onUserCode
+
+    setFocusOn e ".ace_text-input" =<< getPostBuild
 
     onCtrlEnter <- getCtrlEnterEvent e
     loadCfg <- loadCodeIntoRepl m onCtrlEnter

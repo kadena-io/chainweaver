@@ -80,7 +80,7 @@ setFocus e =  void . liftJSM $ pToJSVal e ^. js0 ("focus" :: Text)
 setFocusOn
   :: MonadWidget t m
   => Element EventResult (DomBuilderSpace m) t -- ^ The root element.
-  -> Text -- ^ A css selector to select an ancestor.
+  -> Text -- ^ A css selector to select a descendent.
   -> Event t a -- ^ The triggering event.
   -> m ()
 setFocusOn e cssSel onEv = do
