@@ -30,7 +30,7 @@ import Control.Monad (join, void, (<=<))
 import Control.Monad.Trans.Except
 import Data.Bifunctor (first)
 import Data.Decimal (Decimal)
-import Data.Either (rights)
+import Data.Either (isLeft, rights)
 import Data.Text (Text)
 import Kadena.SigningApi
 import Pact.Types.Capability
@@ -161,7 +161,7 @@ sendConfig model sender = Workflow $ do
   rec
     (currentTab, done) <- makeTabs $ attachWithMaybe (const . void . hush) (current recipient) next
     (conf, mCaps, recipient) <- mainSection currentTab
-    (cancel, next) <- footerSection currentTab
+    (cancel, next) <- footerSection currentTab recipient mCaps
   let nextScreen = attachWithMaybe
         (\case (Just c, Right (r, a)) -> const $ Just $ sendPreview model sender c r a; _ -> const Nothing)
         ((,) <$> current mCaps <*> current recipient) done
@@ -198,11 +198,15 @@ sendConfig model sender = Workflow $ do
               let toAccount ma m = find ((ma ==) . Just . _account_name) $ fmapMaybe (\case SomeAccount_Account a -> Just a; _ -> Nothing) m
               pure $ toAccount <$> gasAcc <*> model ^. wallet_accounts
       pure (conf, mCaps, recipient)
-    footerSection currentTab = modalFooter $ do
+    footerSection currentTab recipient mCaps = modalFooter $ do
       cancel <- cancelButton def "Cancel"
-      next <- uiButton (def & uiButtonCfg_class <>~ "button_type_confirm") $ dynText $ ffor currentTab $ \case
-        SendModalTab_Configuration -> "Next"
-        SendModalTab_Sign -> "Preview"
+      let (name, disabled) = splitDynPure $ ffor currentTab $ \case
+            SendModalTab_Configuration -> ("Next", fmap isLeft recipient)
+            SendModalTab_Sign -> ("Preview", fmap isNothing mCaps)
+      let cfg = def
+            & uiButtonCfg_class <>~ "button_type_confirm"
+            & uiButtonCfg_disabled .~ join disabled
+      next <- uiButtonDyn cfg $ dynText name
       pure (cancel, next)
 
 data SendModalTab
