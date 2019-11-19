@@ -92,7 +92,7 @@ sendPreview model sender gasPayer recipient amount = Workflow $ do
       mkLabeledInput True "Amount" (dimensionalInputWrapper "KDA" . uiInputElement) $ def
         & initialAttributes .~ "disabled" =: "disabled"
         & inputElementConfig_initialValue .~ tshow amount
-      -- The designs show gas fees here, but we can't get that information yet.
+      -- TODO The designs show gas fees here, but we can't get that information yet.
   (back, next) <- modalFooter $ do
     back <- cancelButton def "Back"
     next <- confirmButton def "Create Transaction"
@@ -120,8 +120,8 @@ sendDeploy
 sendDeploy _model sender gasPayer recipient amount (nodeInfos, publicMeta, networkId) = Workflow $ do
   let code = T.unwords
         [ "(coin.transfer"
-        , T.pack . show $ unAccountName $ _account_name sender
-        , T.pack . show $ unAccountName $ _kadenaAddress_accountName recipient
+        , tshow $ unAccountName $ _account_name sender
+        , tshow $ unAccountName $ _kadenaAddress_accountName recipient
         , tshow amount
         , ")"
         ]
