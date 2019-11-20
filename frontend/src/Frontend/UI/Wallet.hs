@@ -127,7 +127,7 @@ uiKeyItems model = do
     keyMap' = model ^. wallet_accounts
     keyMap = Map.fromAscList . IntMap.toAscList <$> keyMap'
     tableAttrs =
-      "style" =: "table-layout: fixed; width: 100%"
+      "style" =: "table-layout: fixed; width: 98%"
       <> "class" =: "wallet table"
   events <- elAttr "table" tableAttrs $ do
     el "colgroup" $ do
