@@ -197,10 +197,10 @@ lockScreen xprv = setupDiv "fullscreen" $ divClass "wrapper" $ setupDiv "splash"
     -- Event handled by form onSubmit
     void $ confirmButton (def & uiButtonCfg_type ?~ "submit") "Unlock"
     setupDiv "button-horizontal-group" $ do
-      help' <- uiButton def $ do
+      help' <- uiButton btnCfgSecondary $ do
         elAttr "img" ("src" =: static @"img/launch_dark.svg" <> "class" =: "button__text-icon") blank
         text "Help" -- TODO where does this go?
-      restore' <- uiButton def $ text "Restore"
+      restore' <- uiButton btnCfgSecondary $ text "Restore"
       pure (help', restore', pass')
 
   let isValid = attachWith (\p _ -> p <$ guard (testKeyPassword xprv p)) (current $ value pass) eSubmit

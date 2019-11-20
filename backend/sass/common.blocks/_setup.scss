@@ -49,25 +49,29 @@ $kadena-orange: #F3AB3C;
 
   .logo {
     margin: 0 auto;
-    font-size: 30px;
+    font-size: 28px;
+    line-height: 31px;
     position: relative;
     top: 100px;
     background-color: $std-border-color;
-    padding: 20px;
+    padding: 27px 12px;
     width: 220px;
 
     img.setup__kadena-logo {
-      width: 100px;
+      width: 74px;
+      height: 81px;
     }
 
     .chainweaver {
+      margin-top: 5px;
       font-family: HaasGrotDisp75;
       color: initial;
     }
 
     .by-kadena {
       font-family: HaasGrotDisp45;
-      font-size: 24px;
+      font-size: 18px;
+      line-height: 24px;
       color: $tertiary-color;
     }
   }
@@ -189,13 +193,17 @@ $kadena-orange: #F3AB3C;
     padding-left: 2em;
   }
 
-  .button, .setup__password {
+  .button {
     height: initial;
     line-height: initial;
-    padding: 1.3rem;
-    width: 96%;
-    font-size: 25px;
-    font-weight: initial;
+
+    &.button_type_confirm {
+      width: 96%;
+      font-size: 18px;
+      padding: 15px;
+      height: initial;
+      line-height: initial;
+    }
 
     .button__text-icon {
       height: 25px;
@@ -203,15 +211,26 @@ $kadena-orange: #F3AB3C;
     }
 
     &.button_type_secondary {
-      border: initial;
-      font-size: 22px;
+      font-size: 16px;
+      padding: 10px;
       color: $tertiary-color;
+      width: 96%;
 
       .button__text-icon {
-        height: 22px;
-        bottom: -3px;
+        height: 15px;
+        bottom: -2px;
       }
     }
+  }
+
+  .setup__password {
+    height: initial;
+    line-height: initial;
+    padding: 1.3rem;
+    width: 96%;
+    font-size: 23px;
+    font-weight: initial;
+
   }
 }
 
@@ -225,6 +244,7 @@ $kadena-orange: #F3AB3C;
 
 .setup__terms-conditions-checkbox {
   color: $chainweaver-blue;
+  font-size: 18px;
 }
 
 .setup__key {
@@ -351,10 +371,15 @@ $kadena-orange: #F3AB3C;
 }
 
 .setup__splash-bg {
-  width: 600px;
+  width: 580px;
   height: 400px;
   margin: 0 auto;
   background-size: cover;
+}
+
+.setup__splash-terms-buttons {
+  width: 440px;
+  margin: 0 auto;
 }
 
 .setup__done-splash-bg {
