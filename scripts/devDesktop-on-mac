@@ -1,4 +1,4 @@
-# Run the Desktop locally while incrementally compiling all possible haskell code on a mac
+# Run the cross-platform parts of the desktop app while incrementally compiling all possible haskell code on a mac
 ob run --import desktop:Desktop --import mac:Mac --frontend Desktop.desktop
 
 # TODO: figure out if mac's main is supposed to be runnable from ghci or launching the weird zombie process is 'expected behavior'

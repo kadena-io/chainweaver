@@ -10,21 +10,28 @@ Since release 1.4 chainweaver has support for GitHub gist sharing so it needs cl
 
 The homepage URL will be http://localhost:8000, the authorization callback url will be http://localhost:8000/oauth/redirect/github .
 
-## Web app
-Run locally:
-```shell
-ob run
-```
 Image files are located in [static/img](./static/img). To test an updated image, replace the old file with the new one and refresh the browser.
 
+## Web app
+Running
+- on mac: do [`./scripts/devWeb-on-mac`](./scripts/devWeb-on-mac)
+- on linux: do [`./scripts/devWeb-on-linux`](./scripts/devWeb-on-linux)
+
+## Web app with desktop bits
+Running
+- on mac: do [`./scripts/devDesktop-on-mac`](./scripts/devDesktop-on-mac)
+- on linux: do [`./scripts/devDesktop-on-linux`](./scripts/devDesktop-on-linux)
+
 ## Mac app
-Build:
+To work on the objective-c code enter the project shell with
+```shell
+nix-shell -A shells.ghc
+```
+then (re-)enter `cabal new-repl` everytime you change the objective-c code.
+
+To actually run:
 ```shell
 nix-build -A mac
-```
-
-Run:
-```shell
 open result/*.app
 ```
 OS X specific assets are located in the [static](./mac/static) folder. To test an updated asset, replace the old file and build again. Use 1024x1024 *.png* files for Mac app [icons](./mac/static/icons).
