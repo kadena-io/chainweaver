@@ -27,7 +27,7 @@ To work on the objective-c code enter the project shell with
 ```shell
 nix-shell -A shells.ghc
 ```
-then (re-)enter `cabal new-repl` everytime you change the objective-c code.
+then (re-)enter `cabal new-repl mac` everytime you change the objective-c code.
 
 To actually run:
 ```shell
