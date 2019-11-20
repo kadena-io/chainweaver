@@ -1,2 +1,2 @@
-pact: pact01.kadena.io pact02.kadena.io
 testnet: eu1.testnet.chainweb.com eu2.testnet.chainweb.com us1.testnet.chainweb.com us2.testnet.chainweb.com ap1.testnet.chainweb.com ap2.testnet.chainweb.com
+pact: pact01.kadena.io pact02.kadena.io
