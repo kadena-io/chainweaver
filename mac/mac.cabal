@@ -3,9 +3,8 @@ version: 0.1
 cabal-version: >= 1.8
 build-type: Simple
 
-executable macApp
-  main-is: main.hs
-  hs-source-dirs: src-bin
+library
+  hs-source-dirs: src
   if !os(darwin) || impl(ghcjs)
     buildable: False
   build-depends:
@@ -16,11 +15,25 @@ executable macApp
     , data-default
     , jsaddle
     , jsaddle-wkwebview
+
   ghc-options:
-    -threaded -O -Wall
+    -O -Wall
+
+  exposed-modules:
+    Mac
 
   frameworks: Cocoa, Foundation, WebKit
-
   c-sources: cbits/mac.m
   cpp-options: -DUSE_COCOA
   cc-options: -Werror=objc-method-access
+
+executable macApp
+  main-is: main.hs
+  hs-source-dirs: src-bin
+  if !os(darwin) || impl(ghcjs)
+    buildable: False
+  build-depends:
+      base
+    , mac
+  ghc-options:
+    -threaded -O -Wall
