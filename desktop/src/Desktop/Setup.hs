@@ -533,13 +533,10 @@ confirmPhrase eBack dPassword mnemonicSentence = Workflow $ do
 
   let done = (== actualMap) <$> dConfirmPhrase
 
-  -- TODO: Remove me before release, I'm a dev hack
-  skip <- uiButton btnCfgTertiary $ text "Skip"
-
   continue <- continueButton (fmap not done)
 
   finishSetupWF WalletScreen_VerifyPassphrase $ leftmost
-    [ doneScreen <$> tagMaybe (current dPassword) (leftmost [continue, skip])
+    [ doneScreen <$> tagMaybe (current dPassword) (leftmost [continue])
     , createNewPassphrase eBack dPassword mnemonicSentence <$ eBack
     ]
 
