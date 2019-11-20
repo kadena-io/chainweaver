@@ -61,7 +61,7 @@ handleRoutes m = do
 
       onInvalidRoute = () <$ fmapMaybe (^? _Just . _Left) onParsedRoute
 
-      onOAuthRouteReset = (FrontendRoute_Contracts :/ Nothing) <$ m ^. oAuth_error
+      onOAuthRouteReset = landingPageRoute <$ m ^. oAuth_error
 
       onNewRoute = fmapMaybe id
         . attachWith buildRoute (current route)
@@ -87,7 +87,7 @@ handleRoutes m = do
     buildRoute :: R FrontendRoute -> Maybe LoadedRef -> Maybe (R FrontendRoute)
     buildRoute cRoute ref =
       let
-        newRoute = maybe (FrontendRoute_Contracts :/ Nothing) (renderRoute . renderRef) ref
+        newRoute = maybe landingPageRoute (renderRoute . renderRef) ref
       in
         if newRoute == cRoute
            then Nothing
@@ -115,5 +115,5 @@ handleRoutes m = do
       "stored"   -> FrontendRoute_Contracts ?/ ContractRoute_Stored   :/ ns
       "gist"     -> FrontendRoute_Contracts ?/ ContractRoute_Gist     :/ ns
       "deployed" -> FrontendRoute_Contracts ?/ ContractRoute_Deployed :/ ns
-      _          -> FrontendRoute_Contracts :/ Nothing
-    renderRoute _ = FrontendRoute_Contracts :/ Nothing
+      _          -> landingPageRoute
+    renderRoute _ = landingPageRoute
