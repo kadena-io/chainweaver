@@ -54,6 +54,7 @@ newtype WordKey = WordKey { _unWordKey :: Int }
 -- | Setup stage
 data WalletScreen
   = WalletScreen_Password
+  | WalletScreen_PrePassphrase
   | WalletScreen_CreatePassphrase
   | WalletScreen_VerifyPassphrase
   | WalletScreen_RecoverPassphrase
@@ -138,7 +139,7 @@ walletSetupRecoverHeader currentScreen = setupDiv "workflow-header" $ do
   unless (currentScreen `elem` [WalletScreen_RecoverPassphrase, WalletScreen_SplashScreen]) $ do
     elClass "ol" (setupClass "workflow-icons") $ do
       faEl "1" "Password" WalletScreen_Password
-      line "pw-recovery" WalletScreen_CreatePassphrase
+      line "pw-recovery" WalletScreen_PrePassphrase
       faEl "2" "Recovery" WalletScreen_CreatePassphrase
       line "recovery-verify" WalletScreen_VerifyPassphrase
       faEl "3" "Verify" WalletScreen_VerifyPassphrase
@@ -158,12 +159,14 @@ walletSetupRecoverHeader currentScreen = setupDiv "workflow-header" $ do
     isActive sid = sid `elem` (progress currentScreen)
     progress WalletScreen_Password =
       [WalletScreen_Password]
+    progress WalletScreen_PrePassphrase =
+      [WalletScreen_Password, WalletScreen_PrePassphrase]
     progress WalletScreen_CreatePassphrase =
-      [WalletScreen_Password, WalletScreen_CreatePassphrase]
+      [WalletScreen_Password, WalletScreen_PrePassphrase, WalletScreen_CreatePassphrase]
     progress WalletScreen_VerifyPassphrase =
-      [WalletScreen_Password, WalletScreen_CreatePassphrase, WalletScreen_VerifyPassphrase]
+      [WalletScreen_Password, WalletScreen_PrePassphrase, WalletScreen_CreatePassphrase, WalletScreen_VerifyPassphrase]
     progress WalletScreen_Done =
-      [WalletScreen_Password, WalletScreen_CreatePassphrase, WalletScreen_VerifyPassphrase, WalletScreen_Done]
+      [WalletScreen_Password, WalletScreen_PrePassphrase, WalletScreen_CreatePassphrase, WalletScreen_VerifyPassphrase, WalletScreen_Done]
     progress _ = []
 
     faEl n lbl sid =
@@ -442,7 +445,7 @@ precreatePassphraseWarning eBack dPassword mnemonicSentence = Workflow $ do
 
   eContinue <- continueButton (fmap not dUnderstand)
 
-  finishSetupWF WalletScreen_Password $ leftmost
+  finishSetupWF WalletScreen_PrePassphrase $ leftmost
     [ createNewWallet eBack <$ eBack
     , createNewPassphrase eBack dPassword mnemonicSentence <$ eContinue
     ]
