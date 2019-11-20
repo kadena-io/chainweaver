@@ -45,19 +45,19 @@ $kadena-orange: #F3AB3C;
   text-align: center;
   justify-self: center;
   position: relative;
-  padding: 2em 10em;
+  padding: 2em 2em;
 
   .logo {
     margin: 0 auto;
     font-size: 30px;
-    position: absolute;
-    top: 8rem;
-    left: 21rem;
+    position: relative;
+    top: 100px;
     background-color: $std-border-color;
-    padding: 1rem;
+    padding: 20px;
+    width: 220px;
 
     img.setup__kadena-logo {
-      width: 6rem;
+      width: 100px;
     }
 
     .chainweaver {
@@ -350,32 +350,43 @@ $kadena-orange: #F3AB3C;
   width: 550px;
 }
 
+.setup__splash-bg {
+  width: 600px;
+  height: 400px;
+  margin: 0 auto;
+  background-size: cover;
+}
+
 .setup__done-splash-bg {
   transform: rotateY(180deg);
 }
 
+.setup__done-splash-bg > * {
+  transform: rotateY(180deg);
+}
+
 .setup__wallet-blue-icon {
-  position: absolute;
-  top: 7rem;
-  left: 23.5rem;
-  transform: scale(1.2);
+  position: relative;
+  top: 60px;
+  margin: 0 auto;
+  height: 250px;
 }
 
 .setup__warning-checkbox {
-  margin: 0.5rem;
+  margin: 2rem 0.5rem;
   width: 140%;
   margin-left: -9rem;
 }
 
 .setup__repeat-icon {
   position: absolute;
-  top: 5rem;
-  left: 21rem;
+  color: #212121;
+  left: 350px;
   z-index: 10;
-  transform: scale(4);
 
   .fa-repeat {
-    font-size: 1.9rem;
+    font-size: 7rem;
+    top: 1px;
   }
 }
 

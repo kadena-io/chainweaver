@@ -202,8 +202,10 @@ splashScreen
   :: (DomBuilder t m, MonadFix m, MonadHold t m, MonadIO m, PerformEvent t m, PostBuild t m, MonadJSM (Performable m), TriggerEvent t m)
   => Event t () -> SetupWF t m
 splashScreen eBack = Workflow $ setupDiv "splash" $ do
-  elAttr "img" ("src" =: static @"img/Wallet_Graphic_1.png" <> "class" =: setupClass "splash-bg") blank
-  kadenaWalletLogo
+  elAttr "div"
+    (  "style" =: ("background-image: url(" <> static @"img/Wallet_Graphic_1.png" <> ")")
+    <> "class" =: setupClass "splash-bg"
+    ) kadenaWalletLogo
 
   (agreed, create, recover) <- setupDiv "splash-terms-buttons" $ do
     agreed <- fmap value $ setupCheckbox False def $ setupDiv "terms-conditions-checkbox" $ do
@@ -396,20 +398,20 @@ createNewWallet eBack = Workflow $  do
     , switchDyn dContinue
     ]
 
-walletSplashWithIcon :: DomBuilder t m => m ()
-walletSplashWithIcon = do
-  elAttr "img" (
-    "src" =: static @"img/Wallet_Graphic_1.png" <>
-    "class" =: (setupClass "splash-bg " <> setupClass "done-splash-bg")
-    ) blank
-
-  elAttr "img" (
-    "src" =: static @"img/Wallet_Icon_Highlighted_Blue.png" <>
-    "class" =: setupClass "wallet-blue-icon"
-    ) blank
+walletSplashWithIcon :: DomBuilder t m => m () -> m ()
+walletSplashWithIcon w = do
+  elAttr "div" (
+    "style" =: ("background-image: url(" <> (static @"img/Wallet_Graphic_1.png") <> ");")
+    <> "class" =: (setupClass "splash-bg " <> setupClass "done-splash-bg")
+    ) $ do
+      w
+      elAttr "img" (
+        "src" =: static @"img/Wallet_Icon_Highlighted_Blue.svg" <>
+        "class" =: setupClass "wallet-blue-icon"
+        ) blank
 
 stackFaIcon :: DomBuilder t m => Text -> m ()
-stackFaIcon icon = elClass "span" "fa-stack fa-lg" $ do
+stackFaIcon icon = elClass "span" "fa-stack fa-5x" $ do
   elClass "i" "fa fa-circle fa-stack-2x" blank
   elClass "i" ("fa " <> icon <> " fa-stack-1x fa-inverse") blank
 
@@ -421,8 +423,8 @@ precreatePassphraseWarning
   -> SetupWF t m
 precreatePassphraseWarning eBack dPassword mnemonicSentence = Workflow $ do
   setupDiv "warning-splash" $ do
-    setupDiv "repeat-icon" $ stackFaIcon "fa-repeat"
-    walletSplashWithIcon
+    walletSplashWithIcon $ do
+      setupDiv "repeat-icon" $ stackFaIcon "fa-repeat"
 
   el "h1" $ text "Wallet Recovery Phrase"
 
@@ -452,7 +454,7 @@ doneScreen
   => Crypto.XPrv
   -> SetupWF t m
 doneScreen passwd = Workflow $ do
-  walletSplashWithIcon
+  walletSplashWithIcon blank
 
   el "h1" $ text "Wallet Created"
 

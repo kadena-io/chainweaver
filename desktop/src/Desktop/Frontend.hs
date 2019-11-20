@@ -183,8 +183,10 @@ mkSidebarLogoutLink = do
 
 lockScreen :: (DomBuilder t m, PostBuild t m, MonadFix m, MonadHold t m) => Crypto.XPrv -> m (Event t (), Event t (Maybe Text))
 lockScreen xprv = setupDiv "fullscreen" $ divClass "wrapper" $ setupDiv "splash" $ mdo
-  elAttr "img" ("src" =: static @"img/Wallet_Graphic_1.png" <> "class" =: setupClass "splash-bg") blank
-  kadenaWalletLogo
+  elAttr "div"
+    (  "style" =: ("background-image: url(" <> (static @"img/Wallet_Graphic_1.png") <> ");")
+    <> "class" =: setupClass "splash-bg"
+    ) kadenaWalletLogo
   dValid <- holdDyn True . fmap isJust $ isValid
   (eSubmit, (_, restore, pass)) <- setupDiv "splash-terms-buttons" $ form "" $ do
     elDynClass "div"
