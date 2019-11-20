@@ -179,7 +179,7 @@ uiRealInputElement cfg = do
 -- | Decimal input to the given precision. Returns the element, the value, and
 -- the user input events
 uiRealWithPrecisionInputElement
-  :: forall t m er a. (DomBuilder t m, MonadFix m)
+  :: forall t m er a. (DomBuilder t m, MonadFix m, MonadHold t m)
   => Word8
   -> (Decimal -> a)
   -> InputElementConfig er t (DomBuilderSpace m)
@@ -190,10 +190,12 @@ uiRealWithPrecisionInputElement prec fromDecimal cfg = do
       & initialAttributes %~ addInputElementCls . addNoAutofillAttrs
         . (<> ("type" =: "number" <> "step" =: stepSize <> "min" =: stepSize))
       & inputElementConfig_setValue %~ (\e -> leftmost [fmapMaybe parseAndRound e, rounded])
+    widgetHold_ blank (bool blank (elClass "span" "real-input__rounded" (text $ "Rounded to " <> (tshow prec) <> " places")) <$> eHasRounded)
     let parsedValue = fmap fst . parseDecimal <$> value r
         parsedInput = fmapMaybe parseDecimal (_inputElement_input r)
         -- Trim the users input if we had to round it
         rounded = fmap (showDecimal . fst) $ ffilter snd parsedInput
+        eHasRounded = fmap snd parsedInput
   pure
     ( r
     , (fmap fromDecimal <$> parsedValue
