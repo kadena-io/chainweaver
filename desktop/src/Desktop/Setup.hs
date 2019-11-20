@@ -54,6 +54,7 @@ newtype WordKey = WordKey { _unWordKey :: Int }
 -- | Setup stage
 data WalletScreen
   = WalletScreen_Password
+  | WalletScreen_PrePassphrase
   | WalletScreen_CreatePassphrase
   | WalletScreen_VerifyPassphrase
   | WalletScreen_RecoverPassphrase
@@ -138,7 +139,7 @@ walletSetupRecoverHeader currentScreen = setupDiv "workflow-header" $ do
   unless (currentScreen `elem` [WalletScreen_RecoverPassphrase, WalletScreen_SplashScreen]) $ do
     elClass "ol" (setupClass "workflow-icons") $ do
       faEl "1" "Password" WalletScreen_Password
-      line "pw-recovery" WalletScreen_CreatePassphrase
+      line "pw-recovery" WalletScreen_PrePassphrase
       faEl "2" "Recovery" WalletScreen_CreatePassphrase
       line "recovery-verify" WalletScreen_VerifyPassphrase
       faEl "3" "Verify" WalletScreen_VerifyPassphrase
@@ -158,12 +159,14 @@ walletSetupRecoverHeader currentScreen = setupDiv "workflow-header" $ do
     isActive sid = sid `elem` (progress currentScreen)
     progress WalletScreen_Password =
       [WalletScreen_Password]
+    progress WalletScreen_PrePassphrase =
+      [WalletScreen_Password, WalletScreen_PrePassphrase]
     progress WalletScreen_CreatePassphrase =
-      [WalletScreen_Password, WalletScreen_CreatePassphrase]
+      [WalletScreen_Password, WalletScreen_PrePassphrase, WalletScreen_CreatePassphrase]
     progress WalletScreen_VerifyPassphrase =
-      [WalletScreen_Password, WalletScreen_CreatePassphrase, WalletScreen_VerifyPassphrase]
+      [WalletScreen_Password, WalletScreen_PrePassphrase, WalletScreen_CreatePassphrase, WalletScreen_VerifyPassphrase]
     progress WalletScreen_Done =
-      [WalletScreen_Password, WalletScreen_CreatePassphrase, WalletScreen_VerifyPassphrase, WalletScreen_Done]
+      [WalletScreen_Password, WalletScreen_PrePassphrase, WalletScreen_CreatePassphrase, WalletScreen_VerifyPassphrase, WalletScreen_Done]
     progress _ = []
 
     faEl n lbl sid =
@@ -202,8 +205,10 @@ splashScreen
   :: (DomBuilder t m, MonadFix m, MonadHold t m, MonadIO m, PerformEvent t m, PostBuild t m, MonadJSM (Performable m), TriggerEvent t m)
   => Event t () -> SetupWF t m
 splashScreen eBack = Workflow $ setupDiv "splash" $ do
-  elAttr "img" ("src" =: static @"img/Wallet_Graphic_1.png" <> "class" =: setupClass "splash-bg") blank
-  kadenaWalletLogo
+  elAttr "div"
+    (  "style" =: ("background-image: url(" <> static @"img/Wallet_Graphic_1.png" <> ")")
+    <> "class" =: setupClass "splash-bg"
+    ) kadenaWalletLogo
 
   (agreed, create, recover) <- setupDiv "splash-terms-buttons" $ do
     agreed <- fmap value $ setupCheckbox False def $ setupDiv "terms-conditions-checkbox" $ do
@@ -396,20 +401,20 @@ createNewWallet eBack = Workflow $  do
     , switchDyn dContinue
     ]
 
-walletSplashWithIcon :: DomBuilder t m => m ()
-walletSplashWithIcon = do
-  elAttr "img" (
-    "src" =: static @"img/Wallet_Graphic_1.png" <>
-    "class" =: (setupClass "splash-bg " <> setupClass "done-splash-bg")
-    ) blank
-
-  elAttr "img" (
-    "src" =: static @"img/Wallet_Icon_Highlighted_Blue.png" <>
-    "class" =: setupClass "wallet-blue-icon"
-    ) blank
+walletSplashWithIcon :: DomBuilder t m => m () -> m ()
+walletSplashWithIcon w = do
+  elAttr "div" (
+    "style" =: ("background-image: url(" <> (static @"img/Wallet_Graphic_1.png") <> ");")
+    <> "class" =: (setupClass "splash-bg " <> setupClass "done-splash-bg")
+    ) $ do
+      w
+      elAttr "img" (
+        "src" =: static @"img/Wallet_Icon_Highlighted_Blue.svg" <>
+        "class" =: setupClass "wallet-blue-icon"
+        ) blank
 
 stackFaIcon :: DomBuilder t m => Text -> m ()
-stackFaIcon icon = elClass "span" "fa-stack fa-lg" $ do
+stackFaIcon icon = elClass "span" "fa-stack fa-5x" $ do
   elClass "i" "fa fa-circle fa-stack-2x" blank
   elClass "i" ("fa " <> icon <> " fa-stack-1x fa-inverse") blank
 
@@ -421,8 +426,8 @@ precreatePassphraseWarning
   -> SetupWF t m
 precreatePassphraseWarning eBack dPassword mnemonicSentence = Workflow $ do
   setupDiv "warning-splash" $ do
-    setupDiv "repeat-icon" $ stackFaIcon "fa-repeat"
-    walletSplashWithIcon
+    walletSplashWithIcon $ do
+      setupDiv "repeat-icon" $ stackFaIcon "fa-repeat"
 
   el "h1" $ text "Wallet Recovery Phrase"
 
@@ -440,7 +445,7 @@ precreatePassphraseWarning eBack dPassword mnemonicSentence = Workflow $ do
 
   eContinue <- continueButton (fmap not dUnderstand)
 
-  finishSetupWF WalletScreen_Password $ leftmost
+  finishSetupWF WalletScreen_PrePassphrase $ leftmost
     [ createNewWallet eBack <$ eBack
     , createNewPassphrase eBack dPassword mnemonicSentence <$ eContinue
     ]
@@ -452,7 +457,7 @@ doneScreen
   => Crypto.XPrv
   -> SetupWF t m
 doneScreen passwd = Workflow $ do
-  walletSplashWithIcon
+  walletSplashWithIcon blank
 
   el "h1" $ text "Wallet Created"
 
@@ -528,13 +533,10 @@ confirmPhrase eBack dPassword mnemonicSentence = Workflow $ do
 
   let done = (== actualMap) <$> dConfirmPhrase
 
-  -- TODO: Remove me before release, I'm a dev hack
-  skip <- uiButton btnCfgTertiary $ text "Skip"
-
   continue <- continueButton (fmap not done)
 
   finishSetupWF WalletScreen_VerifyPassphrase $ leftmost
-    [ doneScreen <$> tagMaybe (current dPassword) (leftmost [continue, skip])
+    [ doneScreen <$> tagMaybe (current dPassword) continue
     , createNewPassphrase eBack dPassword mnemonicSentence <$ eBack
     ]
 

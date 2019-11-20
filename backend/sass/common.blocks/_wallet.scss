@@ -19,8 +19,8 @@
 
 .wallet__table-heading {
   @extend .table__heading;
-  padding-left: $medium-padding;
-  padding-right: $medium-padding;
+  padding: $medium-padding;
+  padding-bottom: $bigger-padding;
 }
 
 .wallet__table-cell {
@@ -32,13 +32,21 @@
 .wallet__table-buttons {
   display:flex;
   align-items: center;
+  justify-content: flex-end;
 }
 
 .wallet__table-button {
   color: $tertiary-color;
-  padding: 0 15px;
+  padding: 0 10px;
+  font-size: 0.8em;
   margin-right: $medium-margin;
+  line-height: 22px;
+  height: 26px;
 
   text-overflow: ellipsis;
   overflow: hidden;
+}
+
+.wallet__table-button--hamburger {
+  padding: 0 15px;
 }

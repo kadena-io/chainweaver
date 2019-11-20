@@ -47,7 +47,7 @@ uiAddWalletOnlyAccountDialogButton
   => ModalIde m key t
   -> m mConf
 uiAddWalletOnlyAccountDialogButton m = do
-  eOpenAddAccount <- divClass "wallet__add-wallet-only-account-btn" $ confirmButton def "+ Add Account"
+  eOpenAddAccount <- uiButton (def & uiButtonCfg_class <>~ " main-header__add-account-button")  (text "+ Add Account")
   pure $ mempty & modalCfg_setModal .~ (Just (uiCreateWalletOnlyAccount m) <$ eOpenAddAccount)
 
 uiCreateWalletOnlyAccount

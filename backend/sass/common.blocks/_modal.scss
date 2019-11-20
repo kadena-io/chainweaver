@@ -177,6 +177,12 @@
     overflow: hidden;
     margin: 0 1rem 0 0;
   }
+  .table td {
+    max-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
 }
 
 .account-details__copy-btn-wrapper {
