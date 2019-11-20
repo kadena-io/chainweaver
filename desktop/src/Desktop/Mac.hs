@@ -53,7 +53,7 @@ data MacFFI = MacFFI
   { _macFFI_setupAppMenu :: StablePtr (CString -> IO ()) -> IO ()
   , _macFFI_activateWindow :: IO ()
   , _macFFI_hideWindow :: IO ()
-  , _macFFI_resizeWindow :: IO ()
+  , _macFFI_resizeWindow :: (Int, Int) -> IO ()
   , _macFFI_moveToBackground :: IO ()
   , _macFFI_moveToForeground :: IO ()
   , _macFFI_global_openFileDialog :: IO ()
@@ -207,7 +207,7 @@ main' ffi mainBundleResourcePath runHTML = redirectPipes [stdout, stderr] $ do
                   }
                 }
           _ <- mapRoutedT (flip runStorageT store) $ runWithReplace loaderMarkup $
-            (liftIO (_macFFI_activateWindow ffi) >> liftIO (_macFFI_resizeWindow ffi) >> bipWallet appCfg) <$ bowserLoad
+            (liftIO (_macFFI_activateWindow ffi) >> liftIO (_macFFI_resizeWindow ffi minWindowSize) >> bipWallet appCfg) <$ bowserLoad
           pure ()
         }
 

@@ -122,9 +122,10 @@ newHead routeText = do
     ss url = elAttr "link" ("href" =: url <> "rel" =: "stylesheet") blank
     meta attrs = elAttr "meta" attrs blank
 
-    -- Allows the use of `static` in CSS
+    -- Allows the use of `static` in CSS and sharing parameters with desktop apps
     haskellCss = T.unlines
-      [ alertImg ".icon_type_error"                $ static @"img/error.svg"
+      [ "body { min-width: " <> tshow w <> "px; " <> "min-height: " <> tshow h <> "px; }"
+      , alertImg ".icon_type_error"                $ static @"img/error.svg"
       , alertImg ".icon_type_warning"              $ static @"img/warning.svg"
       , alertImg "div.ace_gutter-cell.ace_error"   $ static @"img/error.svg"
       , alertImg "div.ace_gutter-cell.ace_warning" $ static @"img/warning.svg"
@@ -132,3 +133,7 @@ newHead routeText = do
       where
         bgImg src = "background-image: url(" <> src <> "); background-position: left center"
         alertImg sel src = sel <> " { " <> bgImg src <> " } ";
+        (w,h) = minWindowSize
+
+minWindowSize :: (Int, Int)
+minWindowSize = (1400, 900)
