@@ -19,11 +19,18 @@
 
 .wallet__table-heading {
   @extend .table__heading;
-  padding: 15px 30px 30px 15px;
+  padding: 15px;
+  padding-bottom: 30px;
 }
 
 .wallet__table-cell {
-  padding: 15px 30px 15px 15px;
+  padding: 15px;
+  text-overflow: ellipsis;
+  overflow: hidden;
+}
+
+.wallet__table-wallet-address {
+  width: 15em;
   text-overflow: ellipsis;
   overflow: hidden;
 }

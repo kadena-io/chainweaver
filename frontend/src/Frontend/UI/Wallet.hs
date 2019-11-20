@@ -183,8 +183,8 @@ uiKeyItem selectedNetwork i d = do
           elClass "tr" "wallet__table-row" $ do
             let td = elClass "td" "wallet__table-cell"
 
-            td $ dynText $ unAccountName . _account_name <$> account
-            td $ dynText $ keyToText . _keyPair_publicKey . _account_key <$> account
+            td $ divClass "wallet__table-wallet-address" $ dynText $ unAccountName . _account_name <$> account
+            td $ divClass "wallet__table-wallet-address" $ dynText $ keyToText . _keyPair_publicKey . _account_key <$> account
             td $ dynText $ Pact._chainId . _account_chainId <$> account
             td $ dynText $ _account_notes <$> account
             -- TODO balance
