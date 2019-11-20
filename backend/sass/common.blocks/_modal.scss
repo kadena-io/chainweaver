@@ -236,3 +236,11 @@
   width: 76px;
   height: 72px;
 }
+
+.account-details__kadena-address-wrapper {
+  display: flex;
+  .input {
+    width: auto;
+    margin-right: 10px;
+  }
+}

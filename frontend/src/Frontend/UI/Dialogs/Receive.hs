@@ -48,14 +48,14 @@ uiReceiveModal model account _onClose = do
     elClass "h2" "heading heading_type_h2" $ text "Kadena Address"
     divClass "group" $ do
       -- Kadena Address
-      _ <- divClass "segment segment_type_tertiary labeled-input" $ uiInputElement $ def
-        & initialAttributes <>~ ("disabled" =: "true" <> "class" =: "account-details__kadena-address labeled-input__input")
-        & inputElementConfig_initialValue .~ address
-      -- copy
-      _ <- divClass "account-details__copy-btn-wrapper" $ copyButton (def
-        & uiButtonCfg_class .~ constDyn "account-details__copy-btn button_type_confirm"
-        & uiButtonCfg_title .~ constDyn (Just "Copy")
-        ) $ pure address
+      divClass "segment segment_type_tertiary labeled-input account-details__kadena-address-wrapper" $ do
+        void $ uiInputElement $ def
+          & initialAttributes <>~ ("disabled" =: "true" <> "class" =: "account-details__kadena-address labeled-input__input")
+          & inputElementConfig_initialValue .~ address
+        void $ copyButton (def
+          & uiButtonCfg_class .~ constDyn "account-details__copy-btn button_type_confirm"
+          & uiButtonCfg_title .~ constDyn (Just "Copy")
+          ) $ pure address
       pure ()
 
   done <- modalFooter $ confirmButton def "Done"
