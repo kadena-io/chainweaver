@@ -49,6 +49,36 @@ in
 
     overrides = let
       inherit (pkgs) lib;
+
+      mac-overlay = self: super: {
+        # Mac app static linking
+        mac = pkgs.haskell.lib.overrideCabal super.mac (drv: {
+          preBuild = ''
+            mkdir include
+            ln -s ${pkgs.darwin.cf-private}/Library/Frameworks/CoreFoundation.framework/Headers include/CoreFoundation
+            export NIX_CFLAGS_COMPILE="-I$PWD/include $NIX_CFLAGS_COMPILE"
+          '';
+
+          libraryFrameworkDepends =
+            (with pkgs.darwin; with apple_sdk.frameworks; [
+              Cocoa
+              WebKit
+            ]);
+
+          configureFlags = [
+            "--ghc-options=-optl=${(pkgs.openssl.override { static = true; }).out}/lib/libcrypto.a"
+            "--ghc-options=-optl=${(pkgs.openssl.override { static = true; }).out}/lib/libssl.a"
+            "--ghc-options=-optl=${pkgs.darwin.libiconv.override { enableShared = false; enableStatic = true; }}/lib/libiconv.a"
+            "--ghc-options=-optl=${pkgs.zlib.static}/lib/libz.a"
+            "--ghc-options=-optl=${pkgs.gmp6.override { withStatic = true; }}/lib/libgmp.a"
+            "--ghc-options=-optl=/usr/lib/libSystem.dylib"
+            "--ghc-options=-optl=${pkgs.libffi.override {
+              stdenv = pkgs.stdenvAdapters.makeStaticLibraries pkgs.stdenv;
+            }}/lib/libffi.a"
+          ];
+        });
+      };
+
       desktop-overlay = self: super: {
         ether = haskellLib.doJailbreak super.ether;
       };
@@ -93,6 +123,7 @@ in
       };
     in self: super: lib.foldr lib.composeExtensions (_: _: {}) [
       (import (hackGet ./deps/pact + "/overrides.nix") pkgs hackGet)
+      mac-overlay
       desktop-overlay
       common-overlay
       (optionalExtension (super.ghc.isGhcjs or false) guard-ghcjs-overlay)
