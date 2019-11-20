@@ -61,6 +61,12 @@ $main-header-btn-font-size: $secondary-font-size;
   background: $white;
 }
 
+.main-header__add-account-button {
+  @extend .main-header__button;
+  color: $black;
+  background: $white;
+}
+
 .main-header__text-icon-button {
 }
 

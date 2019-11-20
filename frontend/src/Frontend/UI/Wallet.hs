@@ -196,7 +196,7 @@ uiKeyItem selectedNetwork i d = do
 
               recv <- receiveButton cfg
               send <- sendButton cfg
-              onDetails <- detailsButton cfg
+              onDetails <- detailsButton (cfg & uiButtonCfg_class <>~ " wallet__table-button--hamburger")
 
               let mkDialog dia onE = (\a -> (dia, i, a)) <$> current account <@ onE
 
