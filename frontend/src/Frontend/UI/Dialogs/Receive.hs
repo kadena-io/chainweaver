@@ -23,7 +23,7 @@ uiReceiveModal
   :: (MonadWidget t m, Monoid mConf, HasNetwork model t)
   => model -> Account key -> Event t () -> m (mConf, Event t ())
 uiReceiveModal model account _onClose = do
-  let address = textKadenaAddress $ mkKadenaAddress (_account_network account) (_account_chainId account) (_account_name account)
+  let address = textKadenaAddress $ accountToKadenaAddress account
   close <- modalHeader $ text "Receive"
 
   let displayText lbl v cls =

@@ -76,6 +76,7 @@ app
      , HasConfigs m
      , HasStorage m, HasStorage (Performable m)
      , HasCrypto key (Performable m)
+     , HasCrypto key m
      , FromJSON key, ToJSON key
      )
   => RoutedT t (R FrontendRoute) m ()
