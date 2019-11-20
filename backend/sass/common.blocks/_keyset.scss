@@ -56,3 +56,9 @@
   padding: 0;
   column-count: 3;
 }
+
+.keyset__key-label {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
