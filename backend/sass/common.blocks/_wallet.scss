@@ -19,8 +19,8 @@
 
 .wallet__table-heading {
   @extend .table__heading;
-  padding-left: $medium-padding;
-  padding-right: $medium-padding;
+  padding: $medium-padding;
+  padding-bottom: $bigger-padding;
 }
 
 .wallet__table-cell {
@@ -32,6 +32,7 @@
 .wallet__table-buttons {
   display:flex;
   align-items: center;
+  justify-content: flex-end;
 }
 
 .wallet__table-button {
