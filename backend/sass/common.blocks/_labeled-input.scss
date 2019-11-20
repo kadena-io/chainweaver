@@ -30,11 +30,6 @@
   margin-bottom: 0px;
 }
 
-input.labeled-input__input:disabled {
-  background: transparent;
-  border: 0;
-}
-
 .labeled-input__input {
   @extend .input_type_secondary;
   width: 100%;
