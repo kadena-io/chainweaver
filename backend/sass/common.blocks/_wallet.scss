@@ -19,12 +19,11 @@
 
 .wallet__table-heading {
   @extend .table__heading;
-  padding: $medium-padding;
-  padding-bottom: $bigger-padding;
+  padding: 15px 30px 30px 15px;
 }
 
 .wallet__table-cell {
-  padding: $medium-padding;
+  padding: 15px 30px 15px 15px;
   text-overflow: ellipsis;
   overflow: hidden;
 }
