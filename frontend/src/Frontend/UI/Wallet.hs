@@ -127,16 +127,16 @@ uiKeyItems model = do
     keyMap' = model ^. wallet_accounts
     keyMap = Map.fromAscList . IntMap.toAscList <$> keyMap'
     tableAttrs =
-      "style" =: "table-layout: fixed; width: 100%"
+      "style" =: "table-layout: fixed; width: 98%"
       <> "class" =: "wallet table"
   events <- elAttr "table" tableAttrs $ do
     el "colgroup" $ do
+      elAttr "col" ("style" =: "width: 19%") blank
+      elAttr "col" ("style" =: "width: 19%") blank
+      elAttr "col" ("style" =: "width: 10%") blank
+      elAttr "col" ("style" =: "width: 19%") blank
       elAttr "col" ("style" =: "width: 16%") blank
-      elAttr "col" ("style" =: "width: 16%") blank
-      elAttr "col" ("style" =: "width: 16%") blank
-      elAttr "col" ("style" =: "width: 16%") blank
-      elAttr "col" ("style" =: "width: 16%") blank
-      elAttr "col" ("style" =: "width: 20%") blank
+      elAttr "col" ("style" =: "width: 19%") blank
     el "thead" $ el "tr" $ do
       let mkHeading = elClass "th" "wallet__table-heading" . text
       traverse_ mkHeading $
@@ -183,8 +183,8 @@ uiKeyItem selectedNetwork i d = do
           elClass "tr" "wallet__table-row" $ do
             let td = elClass "td" "wallet__table-cell"
 
-            td $ dynText $ unAccountName . _account_name <$> account
-            td $ dynText $ keyToText . _keyPair_publicKey . _account_key <$> account
+            td $ divClass "wallet__table-wallet-address" $ dynText $ unAccountName . _account_name <$> account
+            td $ divClass "wallet__table-wallet-address" $ dynText $ keyToText . _keyPair_publicKey . _account_key <$> account
             td $ dynText $ Pact._chainId . _account_chainId <$> account
             td $ dynText $ _account_notes <$> account
             -- TODO balance

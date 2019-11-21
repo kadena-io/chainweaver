@@ -278,7 +278,7 @@ uiKeysetKey
 uiKeysetKey ks n = el "li" $ do
     onSelected <- tagOnPostBuild $ Map.member n <$> ks
     let cfg = def & checkboxConfig_setValue .~ onSelected
-    cb <- uiCheckbox mempty False cfg $ text n
+    cb <- uiCheckbox "keyset__key-label" False cfg $ text n
     pure $ (n,) <$> _checkbox_change cb
 
 dataEditor

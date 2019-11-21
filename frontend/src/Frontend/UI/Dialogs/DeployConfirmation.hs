@@ -260,7 +260,7 @@ fullDeployFlowWithSubmit dcfg model onPreviewConfirm runner _onClose = do
               el "td" $ dynText $ displayBalance <$> balance
 
         divClass "title" $ text "Raw Response"
-        _ <- divClass "group segment" $ runWithReplace (text "Loading...") $ leftmost
+        _ <- divClass "group segment transaction_details__raw-response" $ runWithReplace (text "Loading...") $ leftmost
           [ text . renderCompactText . snd <$> resp
           , text <$> errors
           ]
