@@ -186,9 +186,12 @@ encodeKadenaAddress ka =
       , checksum
       ]
   in
-    case _kadenaAddress_accountCreated ka of
-      AccountCreated_Yes -> name <> cons humanReadableDelimiter cid <> cons humanReadableDelimiter encoded
-      AccountCreated_No -> name <> cons humanReadableDelimiter cid <> cons humanReadableDelimiter checksum
+    name
+    <> cons humanReadableDelimiter cid
+    <> cons humanReadableDelimiter (case _kadenaAddress_accountCreated ka of
+                                      AccountCreated_Yes -> encoded
+                                      AccountCreated_No -> checksum
+                                   )
 
 mkKadenaAddress
   :: AccountCreated
