@@ -153,7 +153,7 @@ uiAddVanityAccountSettings ideL mChainId initialNotes = Workflow $ do
             , _deploymentSettingsConfig_gasLimit = Nothing
             , _deploymentSettingsConfig_caps = Nothing
             , _deploymentSettingsConfig_extraSigners = []
-            , _deploymentSettingsConfig_includePreviewTab = False
+            , _deploymentSettingsConfig_includePreviewTab = includePreviewTab
             }
 
       pure
