@@ -326,9 +326,7 @@ controlBarRight appCfg m = do
 
     loadReplBtn =
       uiButton ( headerBtnCfg & uiButtonCfg_title .~ Just "Editor Shortcut: Ctrl+Enter") $ do
-        text "Load"
-        elClass "span" "main-header__minor-text" $
-          text " into REPL"
+        text "Load into REPL"
 
     gistBtn =
       uiButton
@@ -337,15 +335,12 @@ controlBarRight appCfg m = do
               {- & uiButtonCfg_class %~ (<> "main-header__text-icon-button") -}
           ) $ do
         {- btnTextIcon (static @"img/github-gist-dark.svg") "Make Gist" blank -}
-        elClass "span" "main-header__minor-text" $ text "Make "
-        text "Gist"
+        text "Make Gist"
 
     openFileBtn = do
       let cfg = headerBtnCfg & uiButtonCfg_title ?~ "Open a local contract"
       uiButtonWithOnClick (_appCfg_openFileDialog appCfg) cfg $ do
-        text "Open"
-        elClass "span" "main-header__minor-text" $ text " File"
-
+        text "Open File"
 
 headerBtnCfg
   :: (Default (UiButtonCfgRep f), IsString (ReflexValue f CssClass), Semigroup (ReflexValue f CssClass))
