@@ -76,20 +76,13 @@ void hideWindow() {
   }];
 }
 
-void resizeWindow() {
+void resizeWindow(int minWidth, int minHeight) {
   [[NSOperationQueue mainQueue] addOperationWithBlock:^(void) {
     NSApplication *application = [NSApplication sharedApplication];
     NSWindow *window = [application mainWindow];
-    NSRect screenRect = [[window screen] visibleFrame];
-    CGFloat width = MIN(NSWidth(screenRect), 1200);
-    CGFloat height = MIN(NSHeight(screenRect), 800);
-    NSRect centered = NSMakeRect
-      ( (NSWidth(screenRect) - width) / 2
-      , (NSHeight(screenRect) - height) / 2
-      , width
-      , height
-      );
-    [window setFrame:centered display:YES animate:YES];
+    [window setContentMinSize: NSMakeSize(minWidth, minHeight)]; //doesn't seem to change size per-se, only affects resizes
+    [window setContentSize: NSMakeSize(minWidth, minHeight)];
+    [window center];
   }];
 }
 

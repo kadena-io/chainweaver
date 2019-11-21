@@ -50,9 +50,6 @@ $main-header-btn-font-size: $secondary-font-size;
   font-size: $secondary-font-size;
   line-height: 0;
   height: $main-header-std-height;
-  @media (max-width: 1290px) {
-      height: $main-header-std-height-small-screen;
-  }
 }
 
 .main-header__deploy-button {
@@ -96,17 +93,4 @@ $main-header-btn-font-size: $secondary-font-size;
   .page__network-bar-select {
     width: 15%;
   }
-}
-
-@media (max-width: 1510px) {
-  .main-header__button {
-    padding: 0 12px;
-  }
-}
-
-@media (max-width: 1290px) {
-  .main-header__minor-text {
-    display: none;
-  }
-
 }
