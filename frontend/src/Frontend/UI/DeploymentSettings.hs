@@ -799,7 +799,8 @@ uiSenderCapabilities
   -> m (Dynamic t (Maybe AccountName))
   -> m (Dynamic t (Maybe AccountName), Dynamic t (Map AccountName [SigCapability]))
 uiSenderCapabilities m cid mCaps mkSender = do
-  let staticCapabilityRow sender cap = do
+  let senderDropdown = uiSenderDropdown def m cid
+      staticCapabilityRow sender cap = do
         el "td" $ text $ _dappCap_role cap
         el "td" $ text $ renderCompactText $ _dappCap_cap cap
         acc <- el "td" $ sender
@@ -820,10 +821,10 @@ uiSenderCapabilities m cid mCaps mkSender = do
   -- Capabilities
   divClass "group" $ elAttr "table" ("class" =: "table" <> "style" =: "width: 100%; table-layout: fixed;") $ case mCaps of
     Nothing -> el "tbody" $ do
-      empty <- emptyCapability "table__cell_padded" blank mkSender
+      empty <- emptyCapability "table__cell_padded" blank senderDropdown
       let emptySig = maybe Map.empty (\a -> Map.singleton a []) <$> empty
       gas <- capabilityInputRow (Just defaultGASCapability) mkSender
-      rest <- capabilityInputRows (uiSenderDropdown def m cid)
+      rest <- capabilityInputRows senderDropdown
       pure (_capabilityInputRow_account gas, combineMaps (_capabilityInputRow_value gas) rest emptySig)
     Just caps -> do
       el "thead" $ el "tr" $ do
@@ -831,7 +832,7 @@ uiSenderCapabilities m cid mCaps mkSender = do
         elClass "th" "table__heading" $ text "Capability"
         elClass "th" "table__heading" $ text "Account"
       el "tbody" $ do
-        empty <- emptyCapability "" (el "td" blank) mkSender
+        empty <- emptyCapability "" (el "td" blank) senderDropdown
         let emptySig = maybe Map.empty (\a -> Map.singleton a []) <$> empty
         gas <- staticCapabilityRow mkSender defaultGASCapability
         rest <- staticCapabilityRows $ filter (not . isGas . _dappCap_cap) caps
