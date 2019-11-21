@@ -148,7 +148,7 @@ uiKeyItems model = do
         , ""
         ]
 
-    el "tbody" $ listWithKey keyMap (uiKeyItem $ model ^. network_selectedNetwork)
+    el "tbody" $ listWithKey keyMap (uiKeyItem model)
 
   dyn_ $ ffor keyMap $ \keys -> when (Map.null keys) $ text "No accounts ..."
 
@@ -166,12 +166,13 @@ uiKeyItems model = do
 ------------------------------------------------------------------------------
 -- | Display a key as list item together with it's name.
 uiKeyItem
-  :: MonadWidget t m
-  => Dynamic t NetworkName
+  :: (MonadWidget t m, HasNetwork model t, HasCrypto key (Performable m))
+  => model
   -> IntMap.Key
   -> Dynamic t (SomeAccount key)
   -> m (Event t (AccountDialog, IntMap.Key, Account key))
-uiKeyItem selectedNetwork i d = do
+uiKeyItem model i d = do
+  let selectedNetwork = model ^. network_selectedNetwork
   md <- maybeDyn $ someAccount Nothing Just <$> d
   switchHold never <=< dyn $ ffor md $ \case
     Nothing -> pure never
@@ -187,8 +188,7 @@ uiKeyItem selectedNetwork i d = do
             td $ divClass "wallet__table-wallet-address" $ dynText $ keyToText . _keyPair_publicKey . _account_key <$> account
             td $ dynText $ Pact._chainId . _account_chainId <$> account
             td $ dynText $ _account_notes <$> account
-            -- TODO balance
-            td $ text "Balance Placeholder"
+            td $ dyn_ $ ffor2 (_account_chainId <$> account) (_account_name <$> account) (showBalance model never)
 
             td $ divClass "wallet__table-buttons" $ do
               let cfg = def
@@ -233,5 +233,5 @@ showBalance model refresh chain acc = do
   bal <- getBalance model chain $ acc <$ (pb <> refresh)
   _ <- runWithReplace (text "Loading...") $ ffor bal $ \case
     Nothing -> text "Unknown"
-    Just b -> text $ tshow $ unAccountBalance b
+    Just b -> text $ tshow (unAccountBalance b) <> " KDA"
   pure ()
