@@ -186,12 +186,13 @@ encodeKadenaAddress ka =
       , checksum
       ]
   in
-    name
-    <> cons humanReadableDelimiter cid
-    <> cons humanReadableDelimiter (case _kadenaAddress_accountCreated ka of
-                                      AccountCreated_Yes -> encoded
-                                      AccountCreated_No -> checksum
-                                   )
+    mconcat $ intersperse (BS.singleton humanReadableDelimiter)
+    [ name
+    , cid
+    , case _kadenaAddress_accountCreated ka of
+        AccountCreated_Yes -> encoded
+        AccountCreated_No -> checksum
+    ]
 
 mkKadenaAddress
   :: AccountCreated
