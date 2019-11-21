@@ -18,7 +18,7 @@ prop_parse_kadenaAddress_roundtrip :: Property
 prop_parse_kadenaAddress_roundtrip = property $ do
   ka <- forAll $ KA.mkKadenaAddress KA.KadenaAddressPrefix_Keep KA.KadenaAddress_AccountCreated_No <$> genChainId <*> genAccountName
 
-  tripping ka KA._kadenaAddress_encoded KA.decodeKadenaAddress
+  tripping ka KA.encodeKadenaAddress KA.decodeKadenaAddress
   where
     genAccountName = Gen.just $ hush . mkAccountName <$> Gen.text (Range.linear 3 256) printableLatin1
     genChainId = ChainId . T.singleton <$> Gen.digit

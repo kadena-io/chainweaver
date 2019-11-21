@@ -8,8 +8,7 @@ module Frontend.KadenaAddress
   , KadenaAddressPrefix (..)
   , KadenaAddress_AccountCreated (..)
   , KadenaAddress
-    ( _kadenaAddress_encoded
-    , _kadenaAddress_accountName
+    ( _kadenaAddress_accountName
     , _kadenaAddress_accountType
     , _kadenaAddress_chainId
     , _kadenaAddress_checksum
@@ -17,13 +16,14 @@ module Frontend.KadenaAddress
   , mkKadenaAddress
   , decodeKadenaAddress
   , decodeKadenaAddressText
+  , encodeKadenaAddress
+  , textKadenaAddress
   , bytestringChecksum
   , mkAddressChecksum
   , showChecksum
   , parseKadenaAddressBlob
   , delimiter
   , humanReadableDelimiter
-  , textKadenaAddress
   , isValidKadenaAddress
   ) where
 
@@ -113,8 +113,8 @@ data KadenaAddress_AccountCreated
   deriving (Show, Eq)
 
 data KadenaAddress = KadenaAddress
-  { _kadenaAddress_encoded :: ByteString
-    -- ^ The complete encoded version of this address
+  { _kadenaAddress_keepPrefix :: KadenaAddressPrefix
+    -- ^ Determines if the human readable prefix will be included
   , _kadenaAddress_accountType :: KadenaAddress_AccountCreated
     -- ^ Indicates the type of account, vanity or wallet only
   , _kadenaAddress_accountName :: AccountName
@@ -129,7 +129,7 @@ data KadenaAddress = KadenaAddress
 type Checksum = CRC32.CRC32
 
 textKadenaAddress :: KadenaAddress -> Text
-textKadenaAddress = TE.decodeUtf8With TE.lenientDecode . _kadenaAddress_encoded
+textKadenaAddress = TE.decodeUtf8With TE.lenientDecode . encodeKadenaAddress
 
 humanReadableDelimiter :: Word8
 humanReadableDelimiter = fromIntegral $ C.ord '|'
@@ -162,7 +162,7 @@ isValidKadenaAddress ka =
         (_kadenaAddress_accountName ka)
         (_kadenaAddress_chainId ka)
 
-      decoded = decodeKadenaAddress (_kadenaAddress_encoded ka)
+      decoded = decodeKadenaAddress (encodeKadenaAddress ka)
   in
     _kadenaAddress_checksum ka == checksum && Right ka == decoded
 
@@ -173,6 +173,14 @@ encodeAccountCreated :: KadenaAddress_AccountCreated -> ByteString
 encodeAccountCreated KadenaAddress_AccountCreated_No = "n"
 encodeAccountCreated KadenaAddress_AccountCreated_Yes = "y"
 
+encodeKadenaAddress :: KadenaAddress -> ByteString
+encodeKadenaAddress ka = Base64.encode $ mconcat $ intersperse delimiter
+  [ encodeAccountCreated $ _kadenaAddress_accountType ka
+  , encodeToLatin1 $ unAccountName $ _kadenaAddress_accountName ka
+  , encodeToLatin1 $ _kadenaAddress_chainId ka ^. chainId
+  , bytestringChecksum $ _kadenaAddress_checksum ka
+  ]
+
 mkKadenaAddress
   :: KadenaAddressPrefix
   -> KadenaAddress_AccountCreated
@@ -180,27 +188,7 @@ mkKadenaAddress
   -> AccountName
   -> KadenaAddress
 mkKadenaAddress addPrefix acctype cid acc =
-  let
-    bcid = encodeToLatin1 $ cid ^. chainId
-    name = encodeToLatin1 $ unAccountName acc
-    checksum = mkAddressChecksum acctype acc cid
-
-    encoded = Base64.encode $ mconcat $ intersperse delimiter
-      [ encodeAccountCreated acctype
-      , name
-      , bcid
-      , bytestringChecksum checksum
-      ]
-
-    prefix = if addPrefix == KadenaAddressPrefix_Keep
-      then name <> cons humanReadableDelimiter bcid <> cons humanReadableDelimiter encoded
-      else encoded
-  in
-    KadenaAddress prefix
-      acctype
-      acc
-      cid
-      checksum
+  KadenaAddress addPrefix acctype acc cid (mkAddressChecksum acctype acc cid)
 
 decodeKadenaAddressText :: Text -> Either KadenaAddressError KadenaAddress
 decodeKadenaAddressText = decodeKadenaAddress . TE.encodeUtf8
@@ -225,7 +213,7 @@ decodeKadenaAddress inp = do
   _ <- checkpiece (unAccountName name) "AccountName" mname
   _ <- checkpiece (cid ^. chainId) "Chain Id" mcid
 
-  pure (KadenaAddress inp acctype name cid checksum)
+  pure (KadenaAddress KadenaAddressPrefix_Keep acctype name cid checksum)
   where
     attemptHumanReadable = case BS.split humanReadableDelimiter inp of
       [name, cid, pkg] -> Right (name, cid, pkg)
