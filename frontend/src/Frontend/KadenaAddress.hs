@@ -70,21 +70,19 @@ The address will contain the following fields:
 AccountName: Compliant with the requirements contained in pact. In the case of wallet-only
 accounts that do not exist on the blockchain, the Public Key will be used.
 ChainId: Non-negative integer.
-Network: The network where the chain resides.
-Checksum: The checksum will be SHA256 of the 'AccountName/PublicKey', 'ChainId',
-‘Network’. An invalid checksum will be a parse failure.
+Checksum: The checksum will be CRC32 of the 'Created Status', 'AccountName/PublicKey', 'ChainId'.
+An invalid checksum will be a parse failure.
 
 Some examples of the encoding (delimiter yet to be determined):
 
 Using newlines:
+y
 doug
 1
-us1.tn1.chainweb.com
-1bfafb513a26979b48bafe3f9c0fba7703065066a84421f71ca41b54692de67d
 71f920fa275127a7b60fa4d4d41432a3
 
 Or some other delimiter:
-doug%1%us1.tn1.chainweb.com%1bfafb513a26979b48bafe3f9c0fba7703065066a84421f71ca41b54692de67d%71f920fa275127a7b60fa4d4d41432a3
+doug|1|71f920fa275127a7b60fa4d4d41432a3
 
 The final form includes a human readable component as well as machine readable components:
 
