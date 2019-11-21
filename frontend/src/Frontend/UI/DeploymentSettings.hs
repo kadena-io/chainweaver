@@ -60,7 +60,6 @@ module Frontend.UI.DeploymentSettings
   , Identity (runIdentity)
   ) where
 
-import Control.Applicative (liftA3)
 import Control.Arrow (first, (&&&))
 import Control.Error (fmapL, hoistMaybe, headMay)
 import Control.Error.Util (hush)
@@ -813,7 +812,7 @@ uiSenderCapabilities m cid mCaps mkSender = do
       staticCapabilityRows caps = fmap (fmap (Map.unionsWith (<>)) . sequence) $ for caps $ \cap ->
         elClass "tr" "table__row" $ _capabilityInputRow_value <$> staticCapabilityRow (uiSenderDropdown def m cid) cap
 
-      combineMaps = liftA3 $ \a b c -> Map.unionsWith (<>) [a, b, c]
+      combineMaps = fmap (Map.unionsWith (<>)) . sequence
 
   divClass "title" $ text "Roles"
 
@@ -824,18 +823,16 @@ uiSenderCapabilities m cid mCaps mkSender = do
       let emptySig = maybe Map.empty (\a -> Map.singleton a []) <$> empty
       gas <- capabilityInputRow (Just defaultGASCapability) mkSender
       rest <- capabilityInputRows (uiSenderDropdown def m cid)
-      pure (_capabilityInputRow_account gas, combineMaps (_capabilityInputRow_value gas) rest emptySig)
+      pure (_capabilityInputRow_account gas, combineMaps [_capabilityInputRow_value gas, rest, emptySig])
     Just caps -> do
       el "thead" $ el "tr" $ do
         elClass "th" "table__heading" $ text "Role"
         elClass "th" "table__heading" $ text "Capability"
         elClass "th" "table__heading" $ text "Account"
       el "tbody" $ do
-        empty <- emptyCapability "" (el "td" blank) mkSender
-        let emptySig = maybe Map.empty (\a -> Map.singleton a []) <$> empty
         gas <- staticCapabilityRow mkSender defaultGASCapability
         rest <- staticCapabilityRows $ filter (not . isGas . _dappCap_cap) caps
-        pure (_capabilityInputRow_account gas, combineMaps (_capabilityInputRow_value gas) rest emptySig)
+        pure (_capabilityInputRow_account gas, combineMaps [_capabilityInputRow_value gas, rest])
 
 isGas :: SigCapability -> Bool
 isGas = (^. to PC._scName . to PN._qnName . to (== "GAS"))
