@@ -40,8 +40,10 @@ import           Reflex
 import           Reflex.Dom.Core           (HasJSContext, MonadHold, PostBuild)
 import           Safe                      (tailSafe)
 ------------------------------------------------------------------------------
+import           Obelisk.Route.Frontend
 import           Pact.Types.Lang
 ------------------------------------------------------------------------------
+import           Common.Route
 import           Frontend.AppCfg
 import           Frontend.Crypto.Class
 import           Frontend.Editor
@@ -102,12 +104,12 @@ makeModuleExplorer
   :: forall key t m cfg mConf model
   . ( ReflexConstraints t m, MonadIO m
     , HasModuleExplorerCfg cfg t
-    {- , HasModuleExplorerModel model t -}
     , HasModuleExplorerModelCfg mConf t
     , HasModuleExplorerModel model t
     , MonadSample t (Performable m)
     , HasStorage (Performable m)
     , HasCrypto key (Performable m)
+    , Routed t (R FrontendRoute) m
     )
   => AppCfg key t m
   -> model
@@ -123,12 +125,17 @@ makeModuleExplorer appCfg m cfg = mfix $ \ ~(_, explr) -> do
         ]
       )
 
+    inContracts <- ffor askRoute $ fmap $ \case
+      FrontendRoute_Contracts :/ _ -> True
+      _ -> False
+    firstSeen <- headE $ ffilter id $ updated inContracts
+
     onPostBuild <- getPostBuild
     mInitFile <- _appCfg_loadEditor appCfg
     let
       onInitFile =
         if isNothing mInitFile
-           then (const $ FileRef_Example ExampleRef_HelloWorld) <$> onPostBuild
+           then FileRef_Example ExampleRef_HelloWorld <$ firstSeen
            else never
       editorInitCfg = mempty
         & editorCfg_loadCode .~ fmapMaybe (const mInitFile) onPostBuild
