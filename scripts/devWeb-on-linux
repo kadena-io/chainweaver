@@ -1,0 +1,2 @@
+# Run the web app while incrementally compiling all possible haskell code on a linux
+ob run --import desktop:Desktop

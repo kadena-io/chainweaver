@@ -68,6 +68,7 @@ frontend = Frontend
       }
   }
 
+
 -- | The 'JSM' action *must* be run from a user initiated event in order for the
 -- dialog to open
 openFileDialog :: MonadWidget t m => m (Event t Text, JSM ())
@@ -87,8 +88,8 @@ openFileDialog = do
   pure (fmapMaybe id mContents, open)
 
 loaderMarkup :: DomBuilder t m => m ()
-loaderMarkup = do
-  divClass "spinner" $ do
+loaderMarkup = divClass "spinner" $ do
+  divClass "spinner__cubes" $ do
     divClass "cube1" blank
     divClass "cube2" blank
   divClass "spinner__msg" $ text "Loading"
