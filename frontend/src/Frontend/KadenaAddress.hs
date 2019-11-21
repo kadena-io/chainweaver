@@ -6,10 +6,10 @@
 module Frontend.KadenaAddress
   ( KadenaAddressError (..)
   , KadenaAddressPrefix (..)
-  , KadenaAddress_AccountCreated (..)
+  , AccountCreated (..)
   , KadenaAddress
     ( _kadenaAddress_accountName
-    , _kadenaAddress_accountType
+    , _kadenaAddress_accountCreated
     , _kadenaAddress_chainId
     , _kadenaAddress_checksum
     )
@@ -29,7 +29,8 @@ module Frontend.KadenaAddress
 
 import Control.Lens
 import Control.Monad.Except (MonadError (..), liftEither)
-import Control.Error (note)
+import Control.Monad (guard)
+import Control.Error (note,hush)
 import Data.Functor (void)
 import Data.List (intersperse)
 import qualified Data.Char as C
@@ -107,15 +108,13 @@ data KadenaAddressPrefix
   | KadenaAddressPrefix_None
   deriving (Show, Eq)
 
-data KadenaAddress_AccountCreated
-  = KadenaAddress_AccountCreated_Yes
-  | KadenaAddress_AccountCreated_No
+data AccountCreated
+  = AccountCreated_Yes
+  | AccountCreated_No
   deriving (Show, Eq)
 
 data KadenaAddress = KadenaAddress
-  { _kadenaAddress_keepPrefix :: KadenaAddressPrefix
-    -- ^ Determines if the human readable prefix will be included
-  , _kadenaAddress_accountType :: KadenaAddress_AccountCreated
+  { _kadenaAddress_accountCreated :: AccountCreated
     -- ^ Indicates the type of account, vanity or wallet only
   , _kadenaAddress_accountName :: AccountName
     -- ^ The account name associated with this address
@@ -149,7 +148,7 @@ bytestringChecksum :: Checksum -> ByteString
 bytestringChecksum = BS8.pack . showChecksum
 
 -- Build the checksum for the given information
-mkAddressChecksum :: KadenaAddress_AccountCreated -> AccountName -> ChainId -> Checksum
+mkAddressChecksum :: AccountCreated -> AccountName -> ChainId -> Checksum
 mkAddressChecksum acctype acc cid = CRC32.digest $ acctype0 <> name <> bsshow cid
   where
     name = encodeToLatin1 $ unAccountName acc
@@ -158,7 +157,7 @@ mkAddressChecksum acctype acc cid = CRC32.digest $ acctype0 <> name <> bsshow ci
 isValidKadenaAddress :: KadenaAddress -> Bool
 isValidKadenaAddress ka =
   let checksum = mkAddressChecksum
-        (_kadenaAddress_accountType ka)
+        (_kadenaAddress_accountCreated ka)
         (_kadenaAddress_accountName ka)
         (_kadenaAddress_chainId ka)
 
@@ -169,26 +168,35 @@ isValidKadenaAddress ka =
 encodeToLatin1 :: Text -> ByteString
 encodeToLatin1 = BS8.pack . T.unpack
 
-encodeAccountCreated :: KadenaAddress_AccountCreated -> ByteString
-encodeAccountCreated KadenaAddress_AccountCreated_No = "n"
-encodeAccountCreated KadenaAddress_AccountCreated_Yes = "y"
+encodeAccountCreated :: AccountCreated -> ByteString
+encodeAccountCreated AccountCreated_No = "n"
+encodeAccountCreated AccountCreated_Yes = "y"
 
 encodeKadenaAddress :: KadenaAddress -> ByteString
-encodeKadenaAddress ka = Base64.encode $ mconcat $ intersperse delimiter
-  [ encodeAccountCreated $ _kadenaAddress_accountType ka
-  , encodeToLatin1 $ unAccountName $ _kadenaAddress_accountName ka
-  , encodeToLatin1 $ _kadenaAddress_chainId ka ^. chainId
-  , bytestringChecksum $ _kadenaAddress_checksum ka
-  ]
+encodeKadenaAddress ka =
+  let
+    cid = encodeToLatin1 $ _kadenaAddress_chainId ka ^. chainId
+    name = encodeToLatin1 $ unAccountName $ _kadenaAddress_accountName ka
+    checksum = bytestringChecksum $ _kadenaAddress_checksum ka
+
+    encoded = Base64.encode $ mconcat $ intersperse delimiter
+      [ encodeAccountCreated $ _kadenaAddress_accountCreated ka
+      , name
+      , cid
+      , checksum
+      ]
+  in
+    case _kadenaAddress_accountCreated ka of
+      AccountCreated_Yes -> name <> cons humanReadableDelimiter cid <> cons humanReadableDelimiter encoded
+      AccountCreated_No -> name <> cons humanReadableDelimiter cid <> cons humanReadableDelimiter checksum
 
 mkKadenaAddress
-  :: KadenaAddressPrefix
-  -> KadenaAddress_AccountCreated
+  :: AccountCreated
   -> ChainId
   -> AccountName
   -> KadenaAddress
-mkKadenaAddress addPrefix acctype cid acc =
-  KadenaAddress addPrefix acctype acc cid (mkAddressChecksum acctype acc cid)
+mkKadenaAddress acctype cid acc =
+  KadenaAddress acctype acc cid (mkAddressChecksum acctype acc cid)
 
 decodeKadenaAddressText :: Text -> Either KadenaAddressError KadenaAddress
 decodeKadenaAddressText = decodeKadenaAddress . TE.encodeUtf8
@@ -197,29 +205,40 @@ decodeKadenaAddress
   :: ByteString
   -> Either KadenaAddressError KadenaAddress
 decodeKadenaAddress inp = do
-  let hr = attemptHumanReadable
-      mname = hr ^? _Right . _1
-      mcid = hr ^? _Right . _2
-      pkg0 = either id (^. _3) hr
+  let
+    hr = attemptHumanReadable
+    mname = hr ^? _Right . _1
+    mcid = hr ^? _Right . _2
+    pkg0 = either id (^. _3) hr
 
-  blob <- liftEither $ first Base64Error $ Base64.decode pkg0
-  (acctype, name, cid, checksum) <- first (ParseError . T.pack) $ A.parseOnly parseKadenaAddressBlob blob
+    uncreatedAccount = do
+      n <- hush . mkAccountName . TE.decodeLatin1 =<< mname
+      c <- ChainId . TE.decodeLatin1 <$> mcid
+      let cksum = mkAddressChecksum AccountCreated_No n c
+      guard $ bytestringChecksum cksum == pkg0
+      pure $ KadenaAddress AccountCreated_No n c cksum
 
-  let checkpiece og nm mbs
-        | Just bs <- mbs, bs /= encodeToLatin1 og = throwError (InvalidHumanReadablePiece nm)
-        | otherwise = pure ()
+  case uncreatedAccount of
+    Just acc -> pure acc
+    Nothing -> do
+      blob <- liftEither $ first Base64Error $ Base64.decode pkg0
+      (acctype, name, cid, checksum) <- first (ParseError . T.pack) $ A.parseOnly parseKadenaAddressBlob blob
 
-  -- If we have the human readable components, do an extra check that everything matches
-  _ <- checkpiece (unAccountName name) "AccountName" mname
-  _ <- checkpiece (cid ^. chainId) "Chain Id" mcid
+      let checkpiece og nm mbs
+            | Just bs <- mbs, bs /= encodeToLatin1 og = throwError (InvalidHumanReadablePiece nm)
+            | otherwise = pure ()
 
-  pure (KadenaAddress KadenaAddressPrefix_Keep acctype name cid checksum)
+      -- If we have the human readable components, do an extra check that everything matches
+      _ <- checkpiece (unAccountName name) "AccountName" mname
+      _ <- checkpiece (cid ^. chainId) "Chain Id" mcid
+
+      pure (KadenaAddress acctype name cid checksum)
   where
     attemptHumanReadable = case BS.split humanReadableDelimiter inp of
       [name, cid, pkg] -> Right (name, cid, pkg)
       _ -> Left inp
 
-parseKadenaAddressBlob :: A.Parser (KadenaAddress_AccountCreated, AccountName, ChainId, Checksum)
+parseKadenaAddressBlob :: A.Parser (AccountCreated, AccountName, ChainId, Checksum)
 parseKadenaAddressBlob = do
   acctype <- parseAccountCreated
   acc <- parseAccountName
@@ -237,8 +256,8 @@ parseKadenaAddressBlob = do
     parseChecksum expected = mkParser (A.string $ bytestringChecksum expected) pure
 
     parseAccountCreated = mkParser (A.letter_ascii <* A.endOfLine) $ \case
-      'y' -> Right KadenaAddress_AccountCreated_Yes
-      'n' -> Right KadenaAddress_AccountCreated_No
+      'y' -> Right AccountCreated_Yes
+      'n' -> Right AccountCreated_No
       _ -> Left "Unknown Account Type"
 
     parseChainId = mkParser
