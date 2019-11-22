@@ -66,7 +66,6 @@ import Pact.Types.ChainId
 import Pact.Types.ChainMeta (PublicMeta)
 import Reflex
 import qualified Data.IntMap as IntMap
-import qualified Data.Map as Map
 import qualified Data.Set as Set
 import qualified Data.Text as T
 import qualified Pact.Types.Exp as Pact

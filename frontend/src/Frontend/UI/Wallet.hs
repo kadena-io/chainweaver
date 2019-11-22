@@ -29,14 +29,10 @@ import           Control.Monad               (when, (<=<))
 import qualified Data.IntMap                 as IntMap
 import qualified Data.Map                    as Map
 import           Data.Text                   (Text)
-import Obelisk.Route.Frontend
-import qualified Pact.Types.PactValue as Pact
-import qualified Pact.Types.Exp as Pact
 import qualified Pact.Types.ChainId as Pact
 import           Reflex
 import           Reflex.Dom
 ------------------------------------------------------------------------------
-import Common.Route
 import           Frontend.Crypto.Class
 import           Frontend.Crypto.Ed25519     (keyToText)
 import           Frontend.Wallet
@@ -80,7 +76,6 @@ uiWallet
      . ( MonadWidget t m
        , HasUiWalletModelCfg model mConf key m t
        , HasCrypto key m
-       , Routed t (R FrontendRoute) m
        )
   => model
   -> m mConf
@@ -102,7 +97,6 @@ uiAvailableKeys
      ( MonadWidget t m
      , HasUiWalletModelCfg model mConf key m t
      , HasCrypto key m
-     , Routed t (R FrontendRoute) m
      )
   => model
   -> m mConf
@@ -119,7 +113,6 @@ uiKeyItems
      ( MonadWidget t m
      , HasUiWalletModelCfg model mConf key m t
      , HasCrypto key m
-     , Routed t (R FrontendRoute) m
      )
   => model
   -> m mConf
@@ -162,8 +155,7 @@ uiKeyItems model = do
       AccountDialog_Receive -> uiReceiveModal model a
       AccountDialog_Send -> uiSendModal model a
 
-  -- TODO test if this works. Testnet is down at the time of writing.
-  refresh <- getPostBuild
+  refresh <- delay 1 =<< getPostBuild
 
   pure $ mempty
     & modalCfg_setModal .~ (accModal <$> onAccountModal)
@@ -172,7 +164,7 @@ uiKeyItems model = do
 ------------------------------------------------------------------------------
 -- | Display a key as list item together with it's name.
 uiKeyItem
-  :: (MonadWidget t m, HasNetwork model t, HasCrypto key (Performable m))
+  :: (MonadWidget t m, HasNetwork model t)
   => model
   -> IntMap.Key
   -> Dynamic t (SomeAccount key)
