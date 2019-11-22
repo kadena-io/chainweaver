@@ -67,7 +67,6 @@ import           GHC.Word                          (Word8)
 import           Data.Aeson                        (Object, Value (..), encode)
 import qualified Data.ByteString.Lazy              as BSL
 import           Data.Decimal                      (DecimalRaw (..))
-import qualified Data.DList                        as DList
 import           Data.Either                       (lefts, rights)
 import qualified Data.IntMap                       as IntMap
 import qualified Data.List                         as L
@@ -792,9 +791,9 @@ performNetworkRequestCustom networkL unwrap onReqs =
   where
     doReqFailover :: [NodeInfo] -> NetworkRequest -> JSM NetworkErrorResult
     doReqFailover nodeInfos req =
-      go DList.empty nodeInfos
+      go [] nodeInfos
         where
-          go :: (DList.DList NetworkError) -> [NodeInfo] -> JSM NetworkErrorResult
+          go :: [NetworkError] -> [NodeInfo] -> JSM NetworkErrorResult
           go errs = \case
             n:ns -> do
               errRes <- doReq (Just n) req
@@ -802,14 +801,14 @@ performNetworkRequestCustom networkL unwrap onReqs =
                 Left err -> do
                   liftIO $ putStrLn $ "Got err: " <> show err
                   if shouldFailOver err
-                               then go (errs <> DList.singleton err) ns
+                               then go (err : errs) ns
                                else pure $ mkResult errs (Left err)
                 Right res -> pure $ mkResult errs (Right res)
             [] -> mkResult errs <$> doReq Nothing req
-          mkResult errs (Left e) = This (NEL.fromList $ DList.toList (errs <> pure e))
-          mkResult errs (Right res) = maybe (That res) (flip These res) . nonEmpty . DList.toList $ errs
+          mkResult errs (Left e) = This (NEL.reverse $ e :| errs)
+          mkResult errs (Right res) = maybe (That res) (flip These res) . nonEmpty . reverse $ errs
 
-    doReq :: Maybe NodeInfo        -> NetworkRequest -> JSM (Either NetworkError (Maybe Gas, PactValue))
+    doReq :: Maybe NodeInfo -> NetworkRequest -> JSM (Either NetworkError (Maybe Gas, PactValue))
     doReq mNodeInfo req = runExceptT $ do
       chainUrl <- ExceptT $ getBaseUrlErr (req ^. networkRequest_chainRef) mNodeInfo
       ExceptT $ liftJSM $ networkRequest chainUrl (req ^. networkRequest_endpoint) (_networkRequest_cmd req)
