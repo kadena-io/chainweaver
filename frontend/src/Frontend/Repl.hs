@@ -67,7 +67,7 @@ import           Pact.Repl
 import           Pact.Repl.Types
 import           Pact.Types.Exp
 import           Pact.Types.Info
-import           Pact.Types.Term            (ModuleName (..), Name, NamespaceName (..), Term (..))
+import           Pact.Types.Term            (ModuleName (..), Name, NamespaceName (..), Term (..), mnNamespace)
 ------------------------------------------------------------------------------
 import           Frontend.Network
 import           Frontend.Foundation
@@ -371,24 +371,28 @@ runTransaction impl onCode =
       r <- ExceptT $ evalParsed code parsed
       void $ pactEvalRepl' "(commit-tx)"
 
-      let emns = fromMaybe Map.empty $ parsed ^? TF._Success . to editorModuleNames
-      rms <- replModules
-      pure $ TransactionSuccess r $ Map.intersectionWith const emns rms
+      -- TODO: Will mis-behave if same module name is used in different namespaces
+      rmns :: [ModuleName] <- (fmap . fmap) fst replModules
+      let emns :: Map ModuleName Int = fromMaybe Map.empty $ parsed ^? TF._Success . to editorUnqualifiedModuleNames
+          editorModules :: Map ModuleName Int = Map.fromList $ fforMaybe rmns $ \mn ->
+            fmap (mn,) $ Map.lookup (mn & mnNamespace .~ Nothing) emns
+
+      pure $ TransactionSuccess r editorModules
 
     -- TODO: can `replGetModules` actually change the state or is the type too coarse?
     replModules = do
       rs <- get
       liftIO (replGetModules rs) >>= \case
         Left err -> throwError $ show err
-        Right (oldModules, rs') -> put rs' *> pure (Map.fromList $ HM.toList oldModules)
+        Right (oldModules, rs') -> put rs' *> pure (HM.toList oldModules)
 
-    editorModuleNames :: [Exp Parsed] -> Map ModuleName Int
-    editorModuleNames = Map.fromList . mapMaybe toModule
+    -- TODO: Proper namespace support
+    editorUnqualifiedModuleNames :: [Exp Parsed] -> Map ModuleName Int
+    editorUnqualifiedModuleNames = Map.fromList . mapMaybe toModule
       where
         toModule :: Exp Parsed -> Maybe (ModuleName, Int)
         toModule = \case
           EList (ListExp (EAtom (AtomExp "module" _ _):EAtom (AtomExp m _ _):_) _ (Parsed (Delta.Lines l _ _ _) _))
-          -- TODO: Proper namespace support
             -> Just $ (ModuleName m Nothing, fromIntegral l)
           _ -> Nothing
 
