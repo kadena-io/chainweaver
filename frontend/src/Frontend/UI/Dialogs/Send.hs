@@ -8,6 +8,7 @@
 {-# LANGUAGE KindSignatures        #-}
 {-# LANGUAGE LambdaCase            #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE PatternGuards         #-}
 {-# LANGUAGE OverloadedStrings     #-}
 {-# LANGUAGE QuasiQuotes           #-}
 {-# LANGUAGE RecursiveDo           #-}
@@ -38,13 +39,17 @@ import Pact.Types.ChainMeta
 import Pact.Types.Exp
 import Pact.Types.Names
 import Pact.Types.PactValue
+import Pact.Types.Term
 import Reflex
 import Reflex.Dom
 import Safe (succMay, headMay)
+import qualified Data.Aeson as Aeson
+import qualified Data.HashMap.Lazy as HM
 import qualified Data.List as L
 import qualified Data.Map as Map
 import qualified Data.Text as T
 
+import Common.Wallet
 import Frontend.Crypto.Class (HasCrypto)
 import Frontend.Foundation hiding (Arg)
 import Frontend.KadenaAddress
@@ -118,12 +123,17 @@ sendDeploy
   -> ([Either Text NodeInfo], PublicMeta, NetworkName) -- ^ Misc network information
   -> Workflow t m (mConf, Event t ())
 sendDeploy _model sender gasPayer recipient amount (nodeInfos, publicMeta, networkId) = Workflow $ do
-  let code = T.unwords
-        [ "(coin.transfer"
-        , tshow $ unAccountName $ _account_name sender
-        , tshow $ unAccountName $ _kadenaAddress_accountName recipient
-        , tshow amount
-        , ")"
+  let code = T.unwords $ catMaybes
+        [ Just $ "(coin." <> case _kadenaAddress_accountCreated recipient of
+          AccountCreated_Yes -> "transfer"
+          AccountCreated_No -> "transfer-create"
+        , Just $ tshow $ unAccountName $ _account_name sender
+        , Just $ tshow $ unAccountName $ _kadenaAddress_accountName recipient
+        , case _kadenaAddress_accountCreated recipient of
+          AccountCreated_Yes -> Nothing
+          AccountCreated_No -> Just "(read-keyset 'key)"
+        , Just $ tshow amount
+        , Just $ ")"
         ]
       signingPairs = L.nubBy (\x y -> _keyPair_publicKey x == _keyPair_publicKey y) [_account_key sender, _account_key gasPayer]
       transferCap = SigCapability
@@ -138,13 +148,18 @@ sendDeploy _model sender gasPayer recipient amount (nodeInfos, publicMeta, netwo
           , PLiteral $ LDecimal amount
           ]
         }
+      dat = case _kadenaAddress_accountCreated recipient of
+        AccountCreated_No
+          | Right pk <- parsePublicKey (unAccountName $ _kadenaAddress_accountName recipient)
+          -> HM.singleton "key" $ Aeson.toJSON $ KeySet [toPactPublicKey pk] (Name $ BareName "keys-all" def)
+        _ -> mempty
       pkCaps = Map.unionsWith (<>)
         [ Map.singleton (_keyPair_publicKey $ _account_key gasPayer) [_dappCap_cap defaultGASCapability]
         , Map.singleton (_keyPair_publicKey $ _account_key sender) [transferCap]
         ]
       pm = publicMeta { _pmChainId = _account_chainId sender, _pmSender = unAccountName $ _account_name sender }
   close <- modalHeader $ text "Transaction Status"
-  cmd <- buildCmd Nothing networkId pm signingPairs [] code mempty pkCaps
+  cmd <- buildCmd Nothing networkId pm signingPairs [] code dat pkCaps
   _ <- elClass "div" "modal__main transaction_details" $
     submitTransactionWithFeedback cmd (_account_chainId sender) nodeInfos
   done <- modalFooter $ confirmButton def "Done"
