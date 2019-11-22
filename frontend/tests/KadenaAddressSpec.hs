@@ -11,22 +11,25 @@ import qualified Data.Text as T
 import qualified Data.Char as C
 import Kadena.SigningApi (mkAccountName)
 
-import Common.Network (ChainId (..), uncheckedNetworkName)
+import Common.Network (ChainId (..))
 import qualified Frontend.KadenaAddress as KA
 
-prop_parse_kadenaAddress_roundtrip :: Property
-prop_parse_kadenaAddress_roundtrip = property $ do
-  ka <- forAll $ KA.mkKadenaAddress <$>  genNetworkName <*> genChainId <*> genAccountName
-  tripping ka KA._kadenaAddress_encoded KA.decodeKadenaAddress
+prop_parse_kadenaAddress_roundtrip_Created_Yes :: Property
+prop_parse_kadenaAddress_roundtrip_Created_Yes = property $ do
+  ka <- forAll $ KA.mkKadenaAddress <$> genCreated <*> genChainId <*> genAccountName
+  tripping ka KA.encodeKadenaAddress KA.decodeKadenaAddress
   where
+    genCreated = Gen.element [KA.AccountCreated_Yes, KA.AccountCreated_No]
     genAccountName = Gen.just $ hush . mkAccountName <$> Gen.text (Range.linear 3 256) printableLatin1
-    genNetworkName = Gen.constant (uncheckedNetworkName "us1.tn1.chainweb.com") -- I don't want to write URL generator just yet
     genChainId = ChainId . T.singleton <$> Gen.digit
 
     printableLatin1 = Gen.filterT isPrintable Gen.latin1
 
-    isPrintable char =
-      not (C.isSpace char || C.isControl char || char == ']')
+    isPrintable char = not
+      ( C.isSpace char ||
+        C.isControl char ||
+        C.ord char == fromIntegral KA.humanReadableDelimiter
+      )
 
 main :: IO Bool
 main = checkParallel $$(discover)

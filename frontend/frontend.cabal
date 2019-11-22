@@ -38,7 +38,6 @@ library
                , free
                , generic-deriving
                , ghcjs-dom
-               , hashing
                , http-client
                , http-client-tls
                , http-types
@@ -81,7 +80,7 @@ library
                , unordered-containers
                , kadena-signing-api
                , base64-bytestring
-               , uri-bytestring
+               , crc
                , attoparsec
                , vector
 
