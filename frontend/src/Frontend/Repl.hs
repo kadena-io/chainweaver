@@ -388,6 +388,18 @@ runTransaction impl onCode =
         Left err -> throwError $ show err
         Right (oldModules, rs') -> put rs' *> pure (HM.keys oldModules)
 
+
+    -- | Get modules from a list of `Term`s.
+    _getModules :: [Exp Parsed] -> Map ModuleName Int
+    _getModules = Map.fromList . mapMaybe toModule
+      where
+        toModule :: Exp Parsed -> Maybe (ModuleName, Int)
+        toModule = \case
+          EList (ListExp (EAtom (AtomExp "module" _ _):EAtom (AtomExp m _ _):_) _ (Parsed (Delta.Lines l _ _ _) _))
+          -- TODO: Proper namespace support
+            -> Just $ (ModuleName m Nothing, fromIntegral l)
+          _ -> Nothing
+
     parsePact :: Text -> TF.Result [Exp Parsed]
     parsePact = TF.parseString exprsOnly mempty . T.unpack
 
@@ -404,19 +416,6 @@ runTransaction impl onCode =
 -- | Drop n elements from the end of a list.
 {- dropFromEnd :: Int -> [a] -> [a] -}
 {- dropFromEnd n xs = zipWith const xs (drop n xs) -}
-
--- | Get modules from a list of `Term`s.
-getModules :: [Exp Parsed] -> Map ModuleName Int
-getModules = Map.fromList . mapMaybe toModule
-  where
-    toModule :: Exp Parsed -> Maybe (ModuleName, Int)
-    toModule = \case
-      EList (ListExp (EAtom (AtomExp "module" _ _):EAtom (AtomExp m _ _):_) _ (Parsed (Delta.Lines l _ _ _) _))
-      -- TODO: Proper namespace support
-        -> Just $ (ModuleName m Nothing, fromIntegral l)
-      _ -> Nothing
-
-
 
 withRepl
   :: forall t m a
