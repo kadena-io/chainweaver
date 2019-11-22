@@ -123,17 +123,17 @@ sendDeploy
   -> ([Either Text NodeInfo], PublicMeta, NetworkName) -- ^ Misc network information
   -> Workflow t m (mConf, Event t ())
 sendDeploy _model sender gasPayer recipient amount (nodeInfos, publicMeta, networkId) = Workflow $ do
-  let code = T.unwords $ catMaybes
-        [ Just $ "(coin." <> case _kadenaAddress_accountCreated recipient of
+  let code = T.unwords $
+        [ "(coin." <> case _kadenaAddress_accountCreated recipient of
           AccountCreated_Yes -> "transfer"
           AccountCreated_No -> "transfer-create"
-        , Just $ tshow $ unAccountName $ _account_name sender
-        , Just $ tshow $ unAccountName $ _kadenaAddress_accountName recipient
+        , tshow $ unAccountName $ _account_name sender
+        , tshow $ unAccountName $ _kadenaAddress_accountName recipient
         , case _kadenaAddress_accountCreated recipient of
-          AccountCreated_Yes -> Nothing
-          AccountCreated_No -> Just "(read-keyset 'key)"
-        , Just $ tshow amount
-        , Just $ ")"
+          AccountCreated_Yes -> mempty
+          AccountCreated_No -> "(read-keyset 'key)"
+        , tshow amount
+        , ")"
         ]
       signingPairs = L.nubBy (\x y -> _keyPair_publicKey x == _keyPair_publicKey y) [_account_key sender, _account_key gasPayer]
       transferCap = SigCapability
