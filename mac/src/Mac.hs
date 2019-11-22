@@ -18,7 +18,7 @@ foreign import ccall activateWindow :: IO ()
 foreign import ccall hideWindow :: IO ()
 foreign import ccall moveToForeground :: IO ()
 foreign import ccall moveToBackground :: IO ()
-foreign import ccall resizeWindow :: IO ()
+foreign import ccall resizeWindow :: Int -> Int -> IO ()
 foreign import ccall global_openFileDialog :: IO ()
 foreign import ccall global_getHomeDirectory :: IO CString
 
@@ -29,7 +29,7 @@ ffi = MacFFI
   , _macFFI_hideWindow = hideWindow
   , _macFFI_moveToBackground = moveToBackground
   , _macFFI_moveToForeground = moveToForeground
-  , _macFFI_resizeWindow = resizeWindow
+  , _macFFI_resizeWindow = uncurry resizeWindow
   , _macFFI_global_openFileDialog = global_openFileDialog
   , _macFFI_global_getHomeDirectory = global_getHomeDirectory
   }

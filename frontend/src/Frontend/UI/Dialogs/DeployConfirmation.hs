@@ -37,6 +37,7 @@ module Frontend.UI.Dialogs.DeployConfirmation
   ) where
 
 import Common.Foundation
+import Common.Wallet
 import Control.Concurrent (newEmptyMVar, tryTakeMVar, putMVar, killThread, forkIO, ThreadId)
 import Control.Lens
 import Control.Monad (void)
@@ -50,7 +51,6 @@ import Data.Set (Set)
 import Data.Text (Text)
 import Data.Traversable (for)
 import Frontend.Crypto.Class
-import Frontend.Crypto.Ed25519
 import Frontend.JsonData
 import Frontend.Network
 import Frontend.UI.DeploymentSettings
@@ -159,6 +159,7 @@ uiDeployConfirmation code model = fullDeployFlow def model $ do
     , _deploymentSettingsConfig_gasLimit = Nothing
     , _deploymentSettingsConfig_caps = Nothing
     , _deploymentSettingsConfig_extraSigners = []
+    , _deploymentSettingsConfig_includePreviewTab = True
     }
   pure (settingsCfg, result)
 

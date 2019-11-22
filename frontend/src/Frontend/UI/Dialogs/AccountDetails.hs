@@ -89,9 +89,6 @@ uiAccountDetailsDetails key a onClose = Workflow $ do
 
       pure ()
 
-    elClass "h2" "heading heading_type_h2" $ text "History"
-    divClass "group" $ text "Coming soon to a dialog near you!"
-
   modalFooter $ do
     onRemove <- cancelButton (def & uiButtonCfg_class <>~ " account-details__remove-account-btn") "Remove Account"
     onDone <- confirmButton def "Done"

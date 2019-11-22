@@ -70,6 +70,7 @@ uiSigning appCfg ideL signingRequest onCloseExternal = do
           , _deploymentSettingsConfig_gasLimit = _signingRequest_gasLimit signingRequest
           , _deploymentSettingsConfig_caps = Just $ _signingRequest_caps signingRequest
           , _deploymentSettingsConfig_extraSigners = fromPactPublicKey <$> fromMaybe [] (_signingRequest_extraSigners signingRequest)
+          , _deploymentSettingsConfig_includePreviewTab = True
           }
         pure (mConf, result)
 

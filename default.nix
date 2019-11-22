@@ -15,7 +15,7 @@ let
   # /System/Library/CoreServices/CoreTypes.bundle/Contents/Resources/
   # and the pact logo
   macAppInstallerBackground = ./mac/static/installer-background.png;
-  bundleIdentifier = "io.kadena.chainweaver-alpha";
+  bundleIdentifier = "io.kadena.chainweaver";
   createDmg = pkgs.fetchFromGitHub {
     owner = "andreyvit";
     repo = "create-dmg";

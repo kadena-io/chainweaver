@@ -117,8 +117,11 @@ uiAddVanityAccountSettings ideL mChainId initialNotes = Workflow $ do
   eKeyPair <- performEvent $ cryptoGenKey <$> current dNextKey <@ pb
   dKeyPair <- holdDyn Nothing $ ffor eKeyPair $ \(pr,pu) -> Just $ KeyPair pu $ Just pr
 
+  let includePreviewTab = False
+      customConfigTab = Nothing
+
   rec
-    (curSelection, eNewAccount, _) <- buildDeployTabs Nothing controls
+    (curSelection, eNewAccount, _) <- buildDeployTabs customConfigTab includePreviewTab controls
 
     (conf, result, dAccount) <- elClass "div" "modal__main transaction_details" $ do
       (cfg, cChainId, ttl, gasLimit, Identity (dAccountName, dNotes)) <- tabPane mempty curSelection DeploymentSettingsView_Cfg $
@@ -137,6 +140,7 @@ uiAddVanityAccountSettings ideL mChainId initialNotes = Workflow $ do
             <*> MaybeT cChainId
             <*> lift (ideL ^. network_selectedNetwork)
             <*> lift dNotes
+            <*> pure Nothing
 
       let mkSettings payload = DeploymentSettingsConfig
             { _deploymentSettingsConfig_chainId = userChainIdSelect
@@ -150,6 +154,7 @@ uiAddVanityAccountSettings ideL mChainId initialNotes = Workflow $ do
             , _deploymentSettingsConfig_gasLimit = Nothing
             , _deploymentSettingsConfig_caps = Nothing
             , _deploymentSettingsConfig_extraSigners = []
+            , _deploymentSettingsConfig_includePreviewTab = includePreviewTab
             }
 
       pure
@@ -161,7 +166,12 @@ uiAddVanityAccountSettings ideL mChainId initialNotes = Workflow $ do
     let preventProgress = (\a r -> isNothing a || isNothing r) <$> dAccount <*> result
 
     command <- performEvent $ tagMaybe (current result) eNewAccount
-    controls <- modalFooter $ buildDeployTabFooterControls Nothing curSelection progressButtonLabalFn preventProgress
+    controls <- modalFooter $ buildDeployTabFooterControls
+      customConfigTab
+      includePreviewTab
+      curSelection
+      progressButtonLabalFn
+      preventProgress
 
   pure
     ( ("Add New Vanity Account", (conf, never))

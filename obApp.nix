@@ -41,6 +41,7 @@ in
           obelisk-oauth-backend = hackGet ./deps/obelisk-oauth + /backend;
           # Needed for obelisk-oauth currently (ghcjs support mostly):
           entropy = hackGet ./deps/entropy;
+          crc = hackGet ./deps/crc;
           cardano-crypto = hackGet ./deps/cardano-crypto;
           kadena-signing-api = hackGet ./deps/signing-api + /kadena-signing-api;
           desktop = ./desktop;
@@ -99,6 +100,8 @@ in
         servant-server = haskellLib.dontCheck super.servant-server;
 
         # failing
+        mono-traversable = haskellLib.dontCheck super.mono-traversable;
+        conduit = haskellLib.dontCheck super.conduit;
         wai-extra = haskellLib.dontCheck super.wai-extra;
         wai-app-static = haskellLib.dontCheck super.wai-app-static;
         servant-client = haskellLib.dontCheck super.servant-client;

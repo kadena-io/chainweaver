@@ -80,7 +80,7 @@ library
                , unordered-containers
                , kadena-signing-api
                , base64-bytestring
-               , uri-bytestring
+               , crc
                , attoparsec
                , vector
 
@@ -205,6 +205,9 @@ test-suite kadenaaddress
                , frontend
                , hedgehog
                , kadena-signing-api
+               , pact
                , errors
                , text
                , common
+               , lens
+               , bytestring

@@ -6,6 +6,7 @@
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE PatternGuards #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE RecursiveDo #-}
 {-# LANGUAGE ScopedTypeVariables #-}
@@ -46,87 +47,44 @@ module Frontend.Wallet
   , checkAccountNameValidity
   , snocIntMap
   , findNextKey
+  , findFirstVanityAccount
+  , getSigningPairs
   ) where
 
-import Control.Lens
+import Control.Applicative ((<|>))
+import Control.Lens hiding ((.=))
 import Control.Monad.Except (runExcept)
 import Control.Monad.Fix
 import Data.Aeson
 import Data.IntMap (IntMap)
+import Data.Set (Set)
 import Data.Text (Text)
+import Data.Traversable (for)
 import GHC.Generics (Generic)
 import Kadena.SigningApi (AccountName(..), mkAccountName)
 import Pact.Types.ChainId
+import Pact.Types.ChainMeta (PublicMeta)
 import Reflex
 import qualified Data.IntMap as IntMap
+import qualified Data.Set as Set
 import qualified Data.Text as T
-import qualified Pact.Types.Term as Pact
-import qualified Pact.Types.Type as Pact
+import qualified Pact.Types.Exp as Pact
+import qualified Pact.Types.PactValue as Pact
 
-import Common.Network (AccountBalance(..), NetworkName)
+import Common.Network (NetworkName)
+import Common.Wallet
 import Common.Orphans ()
 import Frontend.Crypto.Class
 import Frontend.Crypto.Ed25519
 import Frontend.Foundation
 import Frontend.KadenaAddress
 import Frontend.Storage
-
--- | A key consists of a public key and an optional private key.
---
-data KeyPair key = KeyPair
-  { _keyPair_publicKey  :: PublicKey
-  , _keyPair_privateKey :: Maybe key
-  } deriving Generic
-
-makePactLenses ''KeyPair
-
--- | Account guards. We split this out here because we are only really
--- interested in keyset guards right now. Someday we might end up replacing this
--- with pact's representation for guards directly.
-data AccountGuard
-  = AccountGuard_KeySet Pact.KeySet
-  -- ^ Keyset guards
-  | AccountGuard_Other Pact.GuardType
-  -- ^ Other types of guard
-  deriving (Show, Generic)
-
-fromPactGuard :: Pact.Guard a -> AccountGuard
-fromPactGuard = \case
-  Pact.GKeySet ks -> AccountGuard_KeySet ks
-  g -> AccountGuard_Other $ Pact.guardTypeOf g
-
-pactGuardTypeText :: Pact.GuardType -> Text
-pactGuardTypeText = \case
-  Pact.GTyKeySet -> "Keyset"
-  Pact.GTyKeySetName -> "Keyset Name"
-  Pact.GTyPact -> "Pact"
-  Pact.GTyUser -> "User"
-  Pact.GTyModule -> "Module"
-
-accountGuardKeys :: AccountGuard -> [PublicKey]
-accountGuardKeys = \case
-  AccountGuard_KeySet ks -> fromPactPublicKey <$> Pact._ksKeys ks
-  _ -> []
-
-instance FromJSON AccountGuard
-instance ToJSON AccountGuard
-
-data Account key = Account
-  { _account_name :: AccountName
-  , _account_key :: KeyPair key
-  , _account_chainId :: ChainId
-  , _account_network :: NetworkName
-  , _account_notes :: Text
-  } deriving Generic
-
--- TODO actually do this properly
-instance ToJSON key => ToJSON (Account key) where
-  toEncoding = genericToEncoding defaultOptions
-instance FromJSON key => FromJSON (Account key) where
-  parseJSON = genericParseJSON defaultOptions
+import Frontend.Network
 
 accountToKadenaAddress :: Account key -> KadenaAddress
-accountToKadenaAddress a = mkKadenaAddress (_account_network a) (_account_chainId a) (_account_name a)
+accountToKadenaAddress a = mkKadenaAddress isCreated (_account_chainId a) (_account_name a)
+  where
+    isCreated = maybe AccountCreated_No (const AccountCreated_Yes) $ _account_balance a
 
 data WalletCfg key t = WalletCfg
   { _walletCfg_genKey     :: Event t (AccountName, NetworkName, ChainId, Text)
@@ -136,6 +94,8 @@ data WalletCfg key t = WalletCfg
   -- ^ Delete a key from your wallet.
   , _walletCfg_createWalletOnlyAccount :: Event t (NetworkName, ChainId, Text)
   -- ^ Create a wallet only account that uses the public key as the account name
+  , _walletCfg_refreshBalances :: Event t ()
+  -- ^ Refresh balances in the wallet
   }
   deriving Generic
 
@@ -150,18 +110,35 @@ type IsWalletCfg cfg key t = (HasWalletCfg cfg key t, Monoid cfg, Flattenable cf
 data SomeAccount key
   = SomeAccount_Deleted
   | SomeAccount_Account (Account key)
-  deriving Generic
 
 someAccount :: a -> (Account key -> a) -> SomeAccount key -> a
 someAccount a _ SomeAccount_Deleted = a
 someAccount _ f (SomeAccount_Account a) = f a
 
 instance ToJSON key => ToJSON (SomeAccount key) where
-  toEncoding = genericToEncoding defaultOptions
+  toJSON = \case
+    SomeAccount_Deleted -> Null
+    SomeAccount_Account a -> toJSON a
+
 instance FromJSON key => FromJSON (SomeAccount key) where
-  parseJSON = genericParseJSON defaultOptions
+  parseJSON Null = pure SomeAccount_Deleted
+  parseJSON x = SomeAccount_Account <$> parseJSON x
 
 type Accounts key = IntMap (SomeAccount key)
+
+getSigningPairs :: Set AccountName -> Accounts key -> [KeyPair key]
+getSigningPairs signing = fmapMaybe isForSigning . IntMap.elems
+  where
+    -- isJust filter is necessary so indices are guaranteed stable even after
+    -- the following `mapMaybe`:
+    isForSigning = \case
+      SomeAccount_Account a
+        | kp <- _account_key a
+        , Just _ <- _keyPair_privateKey kp
+        , Set.member (_account_name a) signing
+        -> Just kp
+      _ -> Nothing
+
 
 data Wallet key t = Wallet
   { _wallet_accounts :: Dynamic t (Accounts key)
@@ -172,6 +149,12 @@ data Wallet key t = Wallet
   deriving Generic
 
 makePactLenses ''Wallet
+
+-- | Find the first vanity account in the wallet
+findFirstVanityAccount :: Accounts key -> Maybe (Account key)
+findFirstVanityAccount = fmap (\(SomeAccount_Account a) -> a) . find g
+  where g SomeAccount_Deleted = False
+        g (SomeAccount_Account a) = unAccountName (_account_name a) /= keyToText (_keyPair_publicKey $ _account_key a)
 
 -- | An empty wallet that will never contain any keys.
 emptyWallet :: Reflex t => Wallet key t
@@ -188,32 +171,40 @@ findNextKey = fmap nextKey . _wallet_accounts
 
 -- | Make a functional wallet that can contain actual keys.
 makeWallet
-  :: forall key t m.
+  :: forall model key t m.
     ( MonadHold t m, PerformEvent t m
     , MonadFix m, MonadJSM (Performable m)
+    , TriggerEvent t m, MonadSample t (Performable m)
     , MonadJSM m
     , HasStorage (Performable m), HasStorage m
     , HasCrypto key (Performable m)
     , FromJSON key, ToJSON key
+    , HasNetwork model t
     )
-  => WalletCfg key t
+  => model
+  -> WalletCfg key t
   -> m (Wallet key t)
-makeWallet conf = do
+makeWallet model conf = do
   initialKeys <- fromMaybe IntMap.empty <$> loadKeys
   let
     onGenKey = _walletCfg_genKey conf
     onDelKey = _walletCfg_delKey conf
     onCreateWOAcc = _walletCfg_createWalletOnlyAccount conf
+    refresh = _walletCfg_refreshBalances conf
+
+  performEvent_ $ liftIO (putStrLn "Refresh wallet balances") <$ refresh
 
   rec
     onNewKey <- performEvent $ attachWith (createKey . nextKey) (current keys) onGenKey
     onWOAccountCreate <- performEvent $ attachWith (createWalletOnlyAccount . nextKey) (current keys) onCreateWOAcc
+    newBalances <- getBalances model $ current keys <@ refresh
 
     keys <- foldDyn id initialKeys $ leftmost
       [ ffor onNewKey $ snocIntMap . SomeAccount_Account
       , ffor (_walletCfg_importAccount conf) $ snocIntMap . SomeAccount_Account
       , ffor onDelKey $ \i -> IntMap.insert i SomeAccount_Deleted
       , ffor onWOAccountCreate $ snocIntMap . SomeAccount_Account
+      , const <$> newBalances
       ]
 
   performEvent_ $ storeKeys <$> updated keys
@@ -239,7 +230,43 @@ makeWallet conf = do
         , _account_chainId = c
         , _account_network = net
         , _account_notes = t
+        , _account_balance = Nothing
         }
+
+-- | Get the balance of some accounts from the network.
+getBalances
+  :: forall model key t m.
+    ( PerformEvent t m, TriggerEvent t m
+    , MonadSample t (Performable m), MonadIO m
+    , MonadJSM (Performable m)
+    , HasNetwork model t, HasCrypto key (Performable m)
+    )
+  => model -> Event t (Accounts key) -> m (Event t (Accounts key))
+getBalances model accounts = do
+  reqs <- performEvent $ attachWith mkReqs (current $ getNetworkNameAndMeta model) accounts
+  response <- performLocalReadCustom (model ^. network) toReqList reqs
+  pure $ toBalances <$> response
+  where
+    toBalance (Right (_, Pact.PLiteral (Pact.LDecimal d))) = Just $ AccountBalance d
+    toBalance _ = Nothing
+    toBalances :: (IntMap (SomeAccount key, Maybe NetworkRequest), [NetworkErrorResult]) -> Accounts key
+    toBalances (m, results) = IntMap.fromList $ stepwise (IntMap.toList (fmap fst m)) (toBalance <$> results)
+    -- I don't like this, I'd rather just block in a forked thread manually than have to do this dodgy alignment. TODO
+    stepwise :: [(IntMap.Key, SomeAccount key)] -> [Maybe AccountBalance] -> [(IntMap.Key, SomeAccount key)]
+    stepwise ((i, sa):accs) (bal:bals) = case sa of
+      SomeAccount_Deleted -> (i, SomeAccount_Deleted) : stepwise accs (bal:bals)
+      SomeAccount_Account a ->
+        (i, SomeAccount_Account a { _account_balance = bal <|> _account_balance a })
+        : stepwise accs bals
+    stepwise as _ = as
+    toReqList :: Foldable f => f (SomeAccount key, Maybe NetworkRequest) -> [NetworkRequest]
+    toReqList = fmapMaybe snd . toList
+    accountBalanceReq acc = "(coin.get-balance " <> tshow (unAccountName acc) <> ")"
+    mkReqs :: (NetworkName, PublicMeta) -> Accounts key -> Performable m (IntMap (SomeAccount key, Maybe NetworkRequest))
+    mkReqs meta someaccs = for someaccs $ \sa -> (,) sa <$> case sa of
+      SomeAccount_Deleted -> pure Nothing
+      SomeAccount_Account a -> Just <$> mkReq meta a
+    mkReq (netName, pm) acc = mkSimpleReadReq (accountBalanceReq $ _account_name acc) netName pm (ChainRef Nothing $ _account_chainId acc)
 
 
 -- Storing data:
@@ -299,10 +326,14 @@ instance Reflex t => Semigroup (WalletCfg key t) where
       , _walletCfg_createWalletOnlyAccount = leftmost [ _walletCfg_createWalletOnlyAccount c1
                                                       , _walletCfg_createWalletOnlyAccount c2
                                                       ]
+      , _walletCfg_refreshBalances = leftmost
+        [ _walletCfg_refreshBalances c1
+        , _walletCfg_refreshBalances c2
+        ]
       }
 
 instance Reflex t => Monoid (WalletCfg key t) where
-  mempty = WalletCfg never never never never
+  mempty = WalletCfg never never never never never
   mappend = (<>)
 
 instance Flattenable (WalletCfg key t) t where
@@ -312,6 +343,7 @@ instance Flattenable (WalletCfg key t) t where
       <*> doSwitch never (_walletCfg_importAccount <$> ev)
       <*> doSwitch never (_walletCfg_delKey <$> ev)
       <*> doSwitch never (_walletCfg_createWalletOnlyAccount <$> ev)
+      <*> doSwitch never (_walletCfg_refreshBalances <$> ev)
 
 instance Reflex t => Semigroup (Wallet key t) where
   wa <> wb = Wallet
@@ -325,9 +357,3 @@ instance Reflex t => Semigroup (Wallet key t) where
 instance Reflex t => Monoid (Wallet key t) where
   mempty = Wallet mempty never
   mappend = (<>)
-
-instance ToJSON key => ToJSON (KeyPair key) where
-  -- Yeah aeson serialization changes bit me too once. But I guess this is fine for a testnet?
-  toEncoding = genericToEncoding defaultOptions
-
-instance FromJSON key => FromJSON (KeyPair key)

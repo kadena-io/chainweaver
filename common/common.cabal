@@ -6,6 +6,7 @@ build-type: Simple
 library
   hs-source-dirs: src
   build-depends: base
+               , base16-bytestring
                , aeson
                , containers
                , modern-uri
@@ -18,6 +19,7 @@ library
                , kadena-signing-api
                , text
                , lens
+               , newtype-generics
                , prettyprinter
                , pact
                , split
@@ -36,3 +38,4 @@ library
     Common.Orphans
     Common.RefPath
     Common.Foundation
+    Common.Wallet

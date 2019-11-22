@@ -60,7 +60,7 @@ module Frontend.UI.DeploymentSettings
   , Identity (runIdentity)
   ) where
 
-import Control.Applicative (liftA3)
+import Control.Applicative (liftA3, (<|>))
 import Control.Arrow (first, (&&&))
 import Control.Error (fmapL, hoistMaybe, headMay)
 import Control.Error.Util (hush)
@@ -91,8 +91,10 @@ import qualified Data.Aeson as Aeson
 import qualified Data.IntMap as IM
 import qualified Data.HashMap.Strict as HM
 import qualified Data.Map as Map
+import qualified Data.IntMap as IntMap
 import qualified Data.Set as Set
 import qualified Data.Text as T
+import qualified Data.Text.IO as T
 import qualified Pact.Types.Capability as PC
 import qualified Pact.Types.ChainId as Pact
 import qualified Pact.Types.Command as Pact
@@ -100,7 +102,9 @@ import qualified Pact.Types.Info as PI
 import qualified Pact.Types.Names as PN
 
 import Common.Network
+import Common.Wallet
 import Frontend.Crypto.Class
+import Frontend.Crypto.Ed25519 (keyToText)
 import Frontend.Foundation
 import Frontend.JsonData
 import Frontend.Network
@@ -143,6 +147,8 @@ data DeploymentSettingsConfig t m model a = DeploymentSettingsConfig
   , _deploymentSettingsConfig_extraSigners :: [PublicKey]
     -- ^ Extra signers to be added to the command. The dApp should fill in the
     -- signatures as required upon receiving the response.
+  , _deploymentSettingsConfig_includePreviewTab :: Bool
+    -- ^ Whether or not to show the preview tab on the deployment dialog.
   }
 
 data CapabilityInputRow t = CapabilityInputRow
@@ -156,11 +162,13 @@ data DeploymentSettingsView
   = DeploymentSettingsView_Custom Text -- ^ An optional additonal tab.
   | DeploymentSettingsView_Cfg -- ^ Actual settings like gas price/limit, ...
   | DeploymentSettingsView_Keys -- ^ Select keys for signing the transaction.
+  | DeploymentSettingsView_Preview -- ^ Attempt to preview this deployments affect on the chain
   deriving (Eq,Ord)
 
 showSettingsTabName :: DeploymentSettingsView -> Text
 showSettingsTabName (DeploymentSettingsView_Custom n) = n
 showSettingsTabName DeploymentSettingsView_Keys       = "Sign"
+showSettingsTabName DeploymentSettingsView_Preview    = "Preview"
 showSettingsTabName DeploymentSettingsView_Cfg        = "Configuration"
 
 -- | Get the previous view, taking into account the custom user tab.
@@ -169,13 +177,15 @@ prevView custom = \case
   DeploymentSettingsView_Custom _ -> Nothing
   DeploymentSettingsView_Cfg -> custom
   DeploymentSettingsView_Keys -> Just DeploymentSettingsView_Cfg
+  DeploymentSettingsView_Preview -> Just DeploymentSettingsView_Keys
 
 -- | Get the next view.
 nextView :: DeploymentSettingsView -> Maybe DeploymentSettingsView
 nextView = \case
   DeploymentSettingsView_Custom _ -> Just DeploymentSettingsView_Cfg
   DeploymentSettingsView_Cfg -> Just DeploymentSettingsView_Keys
-  DeploymentSettingsView_Keys -> Nothing
+  DeploymentSettingsView_Keys -> Just DeploymentSettingsView_Preview
+  DeploymentSettingsView_Preview -> Nothing
 
 data DeploymentSettingsResult key = DeploymentSettingsResult
   { _deploymentSettingsResult_gasPrice :: GasPrice
@@ -190,6 +200,17 @@ data DeploymentSettingsResult key = DeploymentSettingsResult
   -- checks for a /local request. This should never be actually deployed.
   , _deploymentSettingsResult_accountsToTrack :: Set AccountName
   }
+
+publicKeysForAccounts :: IntMap (SomeAccount key) -> Map AccountName a -> Map PublicKey a
+publicKeysForAccounts allAccounts caps =
+  let accountsToKey = flip IM.foldMapWithKey allAccounts $ \_ -> \case
+        SomeAccount_Account a -> Map.singleton (_account_name a) (_account_key a)
+        SomeAccount_Deleted -> Map.empty
+      toPublicKey (name, cs) = do
+        KeyPair pk _ <- Map.lookup name accountsToKey
+        pure (pk, cs)
+  in
+    Map.fromList $ fmapMaybe toPublicKey $ Map.toList caps
 
 buildDeploymentSettingsResult
   :: ( HasNetwork model t
@@ -229,13 +250,7 @@ buildDeploymentSettingsResult m mSender cChainId capabilities ttl gasLimit code 
         }
   code' <- lift code
   allAccounts <- lift $ m ^. wallet_accounts
-  let accountsToKey = flip IM.foldMapWithKey allAccounts $ \_ -> \case
-        SomeAccount_Account a -> Map.singleton (_account_name a) (_account_key a)
-        SomeAccount_Deleted -> Map.empty
-      toPublicKey (name, cs) = do
-        KeyPair pk _ <- Map.lookup name accountsToKey
-        pure (pk, cs)
-      pkCaps = Map.fromList $ fmapMaybe toPublicKey $ Map.toList caps
+  let pkCaps = publicKeysForAccounts allAccounts caps
   pure $ do
     let signingPairs = getSigningPairs signing allAccounts
     cmd <- buildCmd
@@ -268,12 +283,13 @@ buildDeployTabs
      , MonadFix m
      )
   => Maybe DeploymentSettingsView
+  -> Bool
   -> Event t (DeploymentSettingsView -> Maybe DeploymentSettingsView)
   -> m ( Dynamic t DeploymentSettingsView
        , Event t ()
        , Event t DeploymentSettingsView
        )
-buildDeployTabs mUserTabName controls = mdo
+buildDeployTabs mUserTabName includePreviewTab controls = mdo
   let initTab = fromMaybe DeploymentSettingsView_Cfg mUserTabName
       f thisView g = case g thisView of
         Just view' -> (Just view', Nothing)
@@ -293,10 +309,11 @@ buildDeployTabs mUserTabName controls = mdo
   where
     userTabs = maybeToList mUserTabName
     stdTabs = [DeploymentSettingsView_Cfg, DeploymentSettingsView_Keys]
-    availableTabs = userTabs <> stdTabs
+    withPreview = if includePreviewTab then [DeploymentSettingsView_Preview] else []
+    availableTabs = userTabs <> stdTabs <> withPreview
 
 defaulTabViewProgressButtonLabel :: DeploymentSettingsView -> Text
-defaulTabViewProgressButtonLabel DeploymentSettingsView_Keys = "Preview"
+defaulTabViewProgressButtonLabel DeploymentSettingsView_Preview = "Submit"
 defaulTabViewProgressButtonLabel _ = "Next"
 
 buildDeployTabFooterControls
@@ -304,15 +321,17 @@ buildDeployTabFooterControls
      , DomBuilder t m
      )
   => Maybe DeploymentSettingsView
+  -> Bool
   -> Dynamic t DeploymentSettingsView
   -> (DeploymentSettingsView -> Text)
   -> Dynamic t Bool
   -> m (Event t (DeploymentSettingsView -> Maybe DeploymentSettingsView))
-buildDeployTabFooterControls mUserTabName curSelection stepFn hasResult = do
+buildDeployTabFooterControls mUserTabName includePreviewTab curSelection stepFn hasResult = do
   let backConfig = def & uiButtonCfg_class .~ ffor curSelection
         (\s -> if s == fromMaybe DeploymentSettingsView_Cfg mUserTabName then "hidden" else "")
   back <- uiButtonDyn backConfig $ text "Back"
-  let shouldBeDisabled tab hasRes = tab == DeploymentSettingsView_Keys && hasRes
+  let tabToBeDisabled = if includePreviewTab then DeploymentSettingsView_Preview else DeploymentSettingsView_Keys
+      shouldBeDisabled tab hasRes = tab == tabToBeDisabled && hasRes
       isDisabled = shouldBeDisabled <$> curSelection <*> hasResult
   next <- uiButtonDyn (def & uiButtonCfg_class .~ "button_type_confirm" & uiButtonCfg_disabled .~ isDisabled)
     $ dynText (stepFn <$> curSelection)
@@ -320,6 +339,7 @@ buildDeployTabFooterControls mUserTabName curSelection stepFn hasResult = do
     [ nextView <$ next
     , prevView mUserTabName <$ back
     ]
+
 
 -- | Show settings related to deployments to the user.
 --
@@ -337,7 +357,7 @@ uiDeploymentSettings
   -> m (mConf, Event t (DeploymentSettingsResult key), Maybe a)
 uiDeploymentSettings m settings = mdo
     let code = _deploymentSettingsConfig_code settings
-    (curSelection, done, _) <- buildDeployTabs mUserTabName controls
+    (curSelection, done, _) <- buildDeployTabs mUserTabName (_deploymentSettingsConfig_includePreviewTab settings) controls
     (conf, result, ma) <- elClass "div" "modal__main transaction_details" $ do
 
       mRes <- traverse (uncurry $ tabPane mempty curSelection) mUserTabCfg
@@ -353,6 +373,29 @@ uiDeploymentSettings m settings = mdo
         uiSenderCapabilities m cChainId (_deploymentSettingsConfig_caps settings)
           $ (_deploymentSettingsConfig_sender settings) m cChainId
 
+      when (_deploymentSettingsConfig_includePreviewTab settings) $ tabPane mempty curSelection DeploymentSettingsView_Preview $ do
+        let currentNode = headMay . rights <$> (m ^. network_selectedNodes)
+
+            mNetworkId = (hush . mkNetworkName . nodeVersion =<<) <$> currentNode
+
+            mHeadAccount = fmap _account_name . findFirstVanityAccount <$> (m ^. wallet_accounts)
+            mHeadChain = (headMay =<<) . fmap getChains <$> currentNode
+
+            aSender = (<|>) <$> mSender <*> mHeadAccount
+            aChainId = (<|>) <$> cChainId <*> mHeadChain
+
+        dyn_ $ uiDeployPreview m settings
+          <$> (m ^. wallet_accounts)
+          <*> gasLimit
+          <*> ttl
+          <*> code
+          <*> (m ^. network_meta)
+          <*> capabilities
+          <*> (m ^. jsonData . jsonData_data)
+          <*> mNetworkId
+          <*> aChainId
+          <*> aSender
+
       pure
         ( cfg & networkCfg_setSender .~ fmapMaybe (fmap unAccountName) (updated mSender)
         , buildDeploymentSettingsResult m mSender cChainId capabilities ttl gasLimit code settings
@@ -362,6 +405,7 @@ uiDeploymentSettings m settings = mdo
     command <- performEvent $ tagMaybe (current result) done
     controls <- modalFooter $ buildDeployTabFooterControls
       mUserTabName
+      (_deploymentSettingsConfig_includePreviewTab settings)
       curSelection
       defaulTabViewProgressButtonLabel
       (isNothing <$> result)
@@ -799,7 +843,8 @@ uiSenderCapabilities
   -> m (Dynamic t (Maybe AccountName))
   -> m (Dynamic t (Maybe AccountName), Dynamic t (Map AccountName [SigCapability]))
 uiSenderCapabilities m cid mCaps mkSender = do
-  let staticCapabilityRow sender cap = do
+  let senderDropdown = uiSenderDropdown def m cid
+      staticCapabilityRow sender cap = do
         el "td" $ text $ _dappCap_role cap
         el "td" $ text $ renderCompactText $ _dappCap_cap cap
         acc <- el "td" $ sender
@@ -820,10 +865,10 @@ uiSenderCapabilities m cid mCaps mkSender = do
   -- Capabilities
   divClass "group" $ elAttr "table" ("class" =: "table" <> "style" =: "width: 100%; table-layout: fixed;") $ case mCaps of
     Nothing -> el "tbody" $ do
-      empty <- emptyCapability "table__cell_padded" blank mkSender
+      empty <- emptyCapability "table__cell_padded" blank senderDropdown
       let emptySig = maybe Map.empty (\a -> Map.singleton a []) <$> empty
       gas <- capabilityInputRow (Just defaultGASCapability) mkSender
-      rest <- capabilityInputRows (uiSenderDropdown def m cid)
+      rest <- capabilityInputRows senderDropdown
       pure (_capabilityInputRow_account gas, combineMaps (_capabilityInputRow_value gas) rest emptySig)
     Just caps -> do
       el "thead" $ el "tr" $ do
@@ -831,7 +876,7 @@ uiSenderCapabilities m cid mCaps mkSender = do
         elClass "th" "table__heading" $ text "Capability"
         elClass "th" "table__heading" $ text "Account"
       el "tbody" $ do
-        empty <- emptyCapability "" (el "td" blank) mkSender
+        empty <- emptyCapability "" (el "td" blank) senderDropdown
         let emptySig = maybe Map.empty (\a -> Map.singleton a []) <$> empty
         gas <- staticCapabilityRow mkSender defaultGASCapability
         rest <- staticCapabilityRows $ filter (not . isGas . _dappCap_cap) caps
@@ -857,3 +902,113 @@ defaultGASCapability = DappCap
     , PC._scArgs = []
     }
   }
+
+uiDeployPreview
+  :: ( MonadWidget t m
+     , HasNetwork model t
+     , HasCrypto key (Performable m)
+     )
+  => model
+  -> DeploymentSettingsConfig t m model a
+  -> Accounts key
+  -> GasLimit
+  -> TTLSeconds
+  -> Text
+  -> PublicMeta
+  -> Map AccountName [SigCapability]
+  -> Either JsonError Aeson.Object
+  -> Maybe NetworkName
+  -> Maybe ChainId
+  -> Maybe AccountName
+  -> m ()
+uiDeployPreview _ _ _ _ _ _ _ _ _ _ _ Nothing = text "No valid GAS payer accounts in Wallet."
+uiDeployPreview _ _ _ _ _ _ _ _ _ _ Nothing _ = text "Please select a Chain."
+uiDeployPreview _ _ _ _ _ _ _ _ _ Nothing _ _ = text "No network nodes configured."
+uiDeployPreview model settings accounts gasLimit ttl code lastPublicMeta capabilities jData (Just networkId) (Just chainId) (Just sender) = do
+  pb <- getPostBuild
+  let deploySettingsJsonData = fromMaybe mempty $ _deploymentSettingsConfig_data settings
+      jsonData0 = fromMaybe mempty $ hush jData
+      signing = Set.insert sender $ Map.keysSet capabilities
+      pkCaps = publicKeysForAccounts accounts capabilities
+      signingPairs = getSigningPairs signing accounts
+
+  let publicMeta = lastPublicMeta
+        { _pmChainId = chainId
+        , _pmGasLimit = gasLimit
+        , _pmSender = unAccountName sender
+        , _pmTTL = ttl
+        }
+
+      nonce = _deploymentSettingsConfig_nonce settings
+      extraSigners = _deploymentSettingsConfig_extraSigners settings
+      jsondata = HM.union jsonData0 deploySettingsJsonData
+
+  eCmds <- performEvent $ ffor pb $ \_ -> do
+    c <- buildCmd nonce networkId publicMeta signingPairs extraSigners code jsondata pkCaps
+    wc <- for (wrapWithBalanceChecks signing code) $ \wrappedCode -> do
+      buildCmd nonce networkId publicMeta signingPairs extraSigners wrappedCode jsondata pkCaps
+    pure (c, wc)
+
+  dyn_ =<< holdDyn (text "Preparing transaction preview...")
+    (uiPreviewResponses signing <$> eCmds)
+  where
+    uiPreviewResponses signing (cmd, wrappedCmd) = elClass "div" "modal__main transaction_details" $ do
+      pb <- getPostBuild
+      transactionInputSection (pure code) (pure cmd)
+      divClass "title" $ text "Destination"
+      _ <- divClass "group segment" $ do
+        transactionDisplayNetwork model
+        predefinedChainIdDisplayed chainId model
+
+      let accountsToTrack = getAccounts signing
+          localReq = case wrappedCmd of
+            Left _e -> []
+            Right cmd0 -> pure $ NetworkRequest
+              { _networkRequest_cmd = cmd0
+              , _networkRequest_chainRef = ChainRef Nothing chainId
+              , _networkRequest_endpoint = Endpoint_Local
+              }
+      responses <- performLocalRead (model ^. network) $ localReq <$ pb
+      (errors, resp) <- fmap fanEither $ performEvent $ ffor responses $ \case
+        [(_, Right (_gas, pactValue))] -> case parseWrappedBalanceChecks pactValue of
+          Left e -> do
+            liftIO $ T.putStrLn e
+            pure $ Left "Error parsing the response"
+          Right v -> pure $ Right v
+        [(_, Left e)] -> pure $ Left $ prettyPrintNetworkError e
+        n -> do
+          liftIO $ T.putStrLn $ "Expected 1 response, but got " <> tshow (length n)
+          pure $ Left "Couldn't get a response from the node"
+
+      divClass "title" $ text "Anticipated Transaction Impact"
+      divClass "group segment" $ do
+        let tableAttrs = "style" =: "table-layout: fixed; width: 100%" <> "class" =: "table"
+        elAttr "table" tableAttrs $ do
+          el "thead" $ el "tr" $ do
+            let th = elClass "th" "table__heading" . text
+            th "Account Name"
+            th "Public Key"
+            th "Change in Balance"
+          accountBalances <- flip Map.traverseWithKey accountsToTrack $ \acc pk -> do
+            bal <- holdDyn Nothing $ leftmost [Just Nothing <$ errors, Just . Map.lookup acc . fst <$> resp]
+            pure (pk, bal)
+          el "tbody" $ void $ flip Map.traverseWithKey accountBalances $ \acc (pk, balance) -> el "tr" $ do
+            let displayBalance = \case
+                  Nothing -> "Loading..."
+                  Just Nothing -> "Error"
+                  Just (Just b) -> tshow (unAccountBalance b) <> " KDA"
+            el "td" $ text $ unAccountName acc
+            el "td" $ divClass "wallet__key" $ text $ keyToText pk
+            el "td" $ dynText $ displayBalance <$> balance
+
+      divClass "title" $ text "Raw Response"
+      void $ divClass "group segment transaction_details__raw-response" $ runWithReplace (text "Loading...") $ leftmost
+        [ text . renderCompactText . snd <$> resp
+        , text <$> errors
+        ]
+
+    getAccounts :: Set AccountName -> Map AccountName PublicKey
+    getAccounts = Map.restrictKeys (IntMap.foldr f Map.empty accounts)
+      where f = \case
+              SomeAccount_Deleted -> id
+              SomeAccount_Account a -> Map.insert (_account_name a) $ _keyPair_publicKey $ _account_key a
