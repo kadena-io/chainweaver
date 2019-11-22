@@ -357,11 +357,8 @@ runTransaction
   => Impl t -> Event t Text -> m (Event t (TransactionResult, ReplState))
 runTransaction impl onCode =
   performEvent $ ffor onCode $ \code -> do
-    withRepl impl $ flip catchError cleanup $ do
-      (r, ems) <- runIt code
-      rms <- replModules
-
-      pure $ TransactionSuccess r $ Map.intersectionWith const ems rms
+    withRepl impl $
+      runIt code `catchError` cleanup
 
   where
     cleanup e = do
@@ -373,8 +370,10 @@ runTransaction impl onCode =
       let parsed = parsePact code
       r <- ExceptT $ evalParsed code parsed
       void $ pactEvalRepl' "(commit-tx)"
+
       let emns = fromMaybe Map.empty $ parsed ^? TF._Success . to editorModuleNames
-      pure (r, emns)
+      rms <- replModules
+      pure $ TransactionSuccess r $ Map.intersectionWith const emns rms
 
     -- TODO: can `replGetModules` actually change the state or is the type too coarse?
     replModules = do
