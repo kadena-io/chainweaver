@@ -29,7 +29,7 @@ module Frontend.KadenaAddress
 
 import Control.Lens
 import Control.Monad.Except (MonadError (..), liftEither)
-import Control.Monad (guard)
+import Control.Monad (guard,unless)
 import Control.Error (note,hush)
 import Data.Functor (void)
 import Data.List (intersperse)
@@ -99,6 +99,7 @@ data KadenaAddressError
   | ChecksumMismatch String String
   | Base64Error String
   | InvalidHumanReadablePiece Text
+  | InputNotLatin1 ByteString
   deriving (Show, Eq)
 
 data KadenaAddressPrefix
@@ -207,6 +208,7 @@ decodeKadenaAddress
   :: ByteString
   -> Either KadenaAddressError KadenaAddress
 decodeKadenaAddress inp = do
+  unless (BS8.all C.isLatin1 inp) $ throwError (InputNotLatin1 inp)
   let
     hr = attemptHumanReadable
     mname = hr ^? _Right . _1
@@ -215,7 +217,7 @@ decodeKadenaAddress inp = do
 
     uncreatedAccount = do
       n <- hush . mkAccountName . TE.decodeLatin1 =<< mname
-      c <- ChainId . TE.decodeLatin1 <$> mcid
+      c <- (\x -> if T.all C.isDigit x then Just (ChainId x) else Nothing) . TE.decodeLatin1 =<< mcid
       let cksum = mkAddressChecksum AccountCreated_No n c
       guard $ bytestringChecksum cksum == pkg0
       pure $ KadenaAddress AccountCreated_No n c cksum
