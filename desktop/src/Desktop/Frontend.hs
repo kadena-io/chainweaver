@@ -144,9 +144,7 @@ bipWallet appCfg = do
         saved <- performEvent $ ffor xprv $ \x -> setItemStorage localStorage BIPStorage_RootKey x >> pure x
         pure $ Just <$> saved
       Just xprv -> mdo
-        -- Every 30 seconds, check if the user has been active in the last 15 minutes
-        userInactive <- watchInactivity 30 (60 * 5)
-        mPassword <- holdUniqDyn <=< holdDyn Nothing $ leftmost [userPassEvents, Nothing <$ userInactive]
+        mPassword <- holdUniqDyn =<< holdDyn Nothing userPassEvents
         (restore, userPassEvents) <- bitraverse (switchHold never) (switchHold never) $ splitE result
         result <- dyn $ ffor mPassword $ \case
           Nothing -> lockScreen xprv
