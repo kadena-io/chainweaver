@@ -48,6 +48,7 @@ import Data.List.NonEmpty (NonEmpty(..))
 import Data.Map (Map)
 import Data.Set (Set)
 import Data.Text (Text)
+import Data.These (These(This, That))
 import Data.Traversable (for)
 import Frontend.Crypto.Class
 import Frontend.Crypto.Ed25519
@@ -227,16 +228,11 @@ fullDeployFlowWithSubmit dcfg model onPreviewConfirm runner _onClose = do
                 , _networkRequest_endpoint = Endpoint_Local
                 }
         responses <- performLocalRead (model ^. network) $ localReq <$ pb
-        (errors, resp) <- fmap fanEither $ performEvent $ ffor responses $ \case
-          [(_, Right (_gas, pactValue))] -> case parseWrappedBalanceChecks pactValue of
-            Left e -> do
-              liftIO $ T.putStrLn e
-              pure $ Left "Error parsing the response"
-            Right v -> pure $ Right v
-          [(_, Left e)] -> pure $ Left $ prettyPrintNetworkError e
+        (errors, resp) <- fmap fanThese $ performEvent $ ffor responses $ \case
+          [(_, errorResult)] -> parseNetworkErrorResult parseWrappedBalanceChecks errorResult
           n -> do
             liftIO $ T.putStrLn $ "Expected 1 response, but got " <> tshow (length n)
-            pure $ Left "Couldn't get a response from the node"
+            pure $ This "Couldn't get a response from the node"
 
         divClass "title" $ text "Anticipated Transaction Impact"
         divClass "group segment" $ do
@@ -435,6 +431,6 @@ submitTransactionWithFeedback cmd chain nodeInfos = do
   divClass "group" $ el "pre" $ do
     maybeDyn message >>= \md -> dyn_ $ ffor md $ \case
       Nothing -> text "Waiting for response..."
-      Just a -> dynText $ prettyPrintNetworkErrorResult . bimap NetworkError_CommandFailure (Nothing,) <$> a
+      Just a -> dynText $ prettyPrintNetworkErrorResult . either (This . pure . NetworkError_CommandFailure) (That . (Nothing,)) <$> a
 
   pure $ TransactionSubmitFeedback sendStatus listenStatus message

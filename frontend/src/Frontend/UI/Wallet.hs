@@ -217,7 +217,7 @@ getBalance model chain account = do
   response <- performLocalReadCustom (model ^. network) pure networkRequest
   let toBalance (_, [Right (_, Pact.PLiteral (Pact.LDecimal d))]) = Just $ AccountBalance d
       toBalance _ = Nothing
-  pure $ toBalance <$> response
+  pure $ toBalance . fmap (fmap networkErrorResultToEither) <$> response
   where
     accountBalanceReq acc = "(coin.get-balance " <> tshow (unAccountName acc) <> ")"
     mkReq (netName, pm) acc = mkSimpleReadReq (accountBalanceReq acc) netName pm (ChainRef Nothing chain)

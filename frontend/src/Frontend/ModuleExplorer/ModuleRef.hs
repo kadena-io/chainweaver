@@ -48,7 +48,6 @@ module Frontend.ModuleExplorer.ModuleRef
 
 ------------------------------------------------------------------------------
 import           Control.Applicative             ((<|>))
-import           Control.Arrow                   (left)
 import           Control.Lens
 import           Control.Monad
 import           Control.Monad.Except            (throwError)
@@ -59,6 +58,7 @@ import qualified Data.Map                        as Map
 import qualified Data.Set                        as Set
 import           Data.Text                       (Text)
 import qualified Data.Text                       as T
+import           Data.These                      (These(This,That))
 import           Reflex.Dom.Core                 (MonadHold)
 import qualified Text.Megaparsec                 as MP
 ------------------------------------------------------------------------------
@@ -246,7 +246,7 @@ fetchModule
     )
   => model
   -> Event t DeployedModuleRef
-  -> m (Event t (DeployedModuleRef, Either Text (ModuleDef (Term Name))))
+  -> m (Event t (DeployedModuleRef, These Text (ModuleDef (Term Name))))
 fetchModule networkL onReq = do
     onReq' :: Event t (DeployedModuleRef, NetworkRequest)
       <- performEvent $ attachWith mkReq (current $ getNetworkNameAndMeta networkL) onReq
@@ -256,7 +256,7 @@ fetchModule networkL onReq = do
       deployedResultsZipped = first fst <$> deployedResults
 
     pure $ fmapMaybe listToMaybe . ffor deployedResultsZipped $ \(dmr, errs) ->
-      map ((dmr,) . (getModule . snd <=< left prettyPrintNetworkError)) errs
+      map ((dmr,) . (either This That . getModule . snd <=< first prettyPrintNetworkErrors)) errs
 
   where
     mkReq (networkName, pm) mRef = (mRef,) <$> mkSimpleReadReq code networkName pm (_moduleRef_source mRef)

@@ -73,6 +73,8 @@ library
                , string-qq
                , template-haskell
                , text
+               , these
+               , these-lens
                , time
                , transformers
                , trifecta
