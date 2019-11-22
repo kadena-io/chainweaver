@@ -1001,7 +1001,7 @@ uiDeployPreview model settings accounts gasLimit ttl code lastPublicMeta capabil
             el "td" $ dynText $ displayBalance <$> balance
 
       divClass "title" $ text "Raw Response"
-      void $ divClass "group segment" $ runWithReplace (text "Loading...") $ leftmost
+      void $ divClass "group segment transaction_details__raw-response" $ runWithReplace (text "Loading...") $ leftmost
         [ text . renderCompactText . snd <$> resp
         , text <$> errors
         ]
