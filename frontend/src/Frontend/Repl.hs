@@ -358,16 +358,10 @@ runTransaction
 runTransaction impl onCode =
   performEvent $ ffor onCode $ \code -> do
     withRepl impl $ flip catchError cleanup $ do
-      r <- runIt code
-      ms <- replModules
-      let
-        --TODO: filtering out hardcoded namespace, should restrict to modules present in the editor instead via `getModules`
-        moduleNames = flip filter ms $ \mn -> _mnName mn /= "ns"
+      (r, ems) <- runIt code
+      rms <- replModules
 
-        --TODO: hook back into `getModules` below (see ghcjs line numbers note in Editor.hs)
-        modules = Map.fromList $ fmap (,0) $ toList moduleNames
-
-      pure $ TransactionSuccess r modules
+      pure $ TransactionSuccess r $ Map.intersectionWith const ems rms
 
   where
     cleanup e = do
@@ -379,19 +373,18 @@ runTransaction impl onCode =
       let parsed = parsePact code
       r <- ExceptT $ evalParsed code parsed
       void $ pactEvalRepl' "(commit-tx)"
-      pure r
+      let emns = fromMaybe Map.empty $ parsed ^? TF._Success . to editorModuleNames
+      pure (r, emns)
 
     -- TODO: can `replGetModules` actually change the state or is the type too coarse?
     replModules = do
       rs <- get
       liftIO (replGetModules rs) >>= \case
         Left err -> throwError $ show err
-        Right (oldModules, rs') -> put rs' *> pure (HM.keys oldModules)
+        Right (oldModules, rs') -> put rs' *> pure (Map.fromList $ HM.toList oldModules)
 
-
-    -- | Get modules from a list of `Term`s.
-    _getModules :: [Exp Parsed] -> Map ModuleName Int
-    _getModules = Map.fromList . mapMaybe toModule
+    editorModuleNames :: [Exp Parsed] -> Map ModuleName Int
+    editorModuleNames = Map.fromList . mapMaybe toModule
       where
         toModule :: Exp Parsed -> Maybe (ModuleName, Int)
         toModule = \case
