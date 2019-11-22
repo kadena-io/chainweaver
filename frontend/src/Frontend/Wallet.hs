@@ -127,7 +127,11 @@ instance FromJSON key => FromJSON (Account key) where
   parseJSON = genericParseJSON defaultOptions
 
 accountToKadenaAddress :: Account key -> KadenaAddress
-accountToKadenaAddress a = mkKadenaAddress (_account_network a) (_account_chainId a) (_account_name a)
+accountToKadenaAddress a = mkKadenaAddress isCreated (_account_chainId a) (_account_name a)
+  where
+    isCreated = if unAccountName (_account_name a) == keyToText (_keyPair_publicKey $ _account_key a)
+      then AccountCreated_No -- Wallet only account
+      else AccountCreated_Yes -- Vanity account
 
 data WalletCfg key t = WalletCfg
   { _walletCfg_genKey     :: Event t (AccountName, NetworkName, ChainId, Text)

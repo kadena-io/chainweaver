@@ -41,6 +41,7 @@ in
           obelisk-oauth-backend = hackGet ./deps/obelisk-oauth + /backend;
           # Needed for obelisk-oauth currently (ghcjs support mostly):
           entropy = hackGet ./deps/entropy;
+          crc = hackGet ./deps/crc;
           cardano-crypto = hackGet ./deps/cardano-crypto;
           kadena-signing-api = hackGet ./deps/signing-api + /kadena-signing-api;
           desktop = ./desktop;
