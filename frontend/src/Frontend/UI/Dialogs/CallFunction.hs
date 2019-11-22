@@ -140,19 +140,17 @@ parametersTab m func =
 
 
 -- | Build a function call
---
--- TODO: Proper namespace support
 buildCall
   :: PactFunction
   -> [Text] -- ^ Function arguments
   -> Text -- ^ Pact function call
 buildCall func args =
   let
-    (ModuleName m _) = _pactFunction_module func
-    n = _pactFunction_name func
+    ModuleName mn nn = _pactFunction_module func
+    namespacePrefix = maybe "" (\(NamespaceName nn') -> nn' <> ".") nn
     argsSeparator = if null args then "" else " "
   in
-    mconcat [ "(", coerce m, ".", n , argsSeparator, T.unwords args, ")" ]
+    mconcat [ "(", namespacePrefix, coerce mn, ".", _pactFunction_name func, argsSeparator, T.unwords args, ")" ]
 
 -- renderQualified :: PactFunction -> Text
 -- renderQualified func = (coerce . _pactFunction_module) func <> "." <> _pactFunction_name func

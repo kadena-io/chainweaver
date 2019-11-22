@@ -223,7 +223,7 @@ typeCheckVerify m t = mdo
 #endif
     pure newAnnotations
   where
--- Line numbers are off on ghcjs:
+-- Line numbers are off on ghcjs: https://github.com/kadena-io/pact/issues/344
 -- TODO: Fix this in pact.
 #ifdef  ghcjs_HOST_OS
     parseVerifyOutput :: Map ModuleName Int -> VerifyResult -> [Annotation]
