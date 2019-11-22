@@ -35,7 +35,6 @@ module Frontend.Network
   , HasNetwork (..)
     -- * Useful helpers
   , updateNetworks
-  , getSigningPairs
     -- * Definitions from Common
   , module Common.Network
     -- * NodeInfo
@@ -71,8 +70,6 @@ import qualified Data.List                         as L
 import           Data.List.NonEmpty                (NonEmpty (..))
 import qualified Data.Map                          as Map
 import           Data.Map.Strict                   (Map)
-import           Data.Set                          (Set)
-import qualified Data.Set                          as Set
 import           Data.Text                         (Text)
 import qualified Data.Text                         as T
 import qualified Data.Text.Encoding                as T
@@ -109,6 +106,7 @@ import           Pact.Types.Crypto                 (PPKScheme (..))
 #endif
 
 import           Common.Network
+import           Common.Wallet
 import           Frontend.Crypto.Class
 import           Frontend.Crypto.Ed25519
 import           Frontend.Foundation
@@ -119,7 +117,6 @@ import           Frontend.Storage                  (getItemStorage,
                                                     localStorage,
                                                     removeItemStorage,
                                                     setItemStorage)
-import           Frontend.Wallet
 
 
 -- | What endpoint to use for a network request.
@@ -917,19 +914,6 @@ buildCmd mNonce networkName meta signingKeys extraKeys code dat caps = do
     , _cmdSigs = sigs
     , _cmdHash = cmdHashL
     }
-
-getSigningPairs :: Set AccountName -> Accounts key -> [KeyPair key]
-getSigningPairs signing = fmapMaybe isForSigning . IntMap.elems
-  where
-    -- isJust filter is necessary so indices are guaranteed stable even after
-    -- the following `mapMaybe`:
-    isForSigning = \case
-      SomeAccount_Account a
-        | kp <- _account_key a
-        , Just _ <- _keyPair_privateKey kp
-        , Set.member (_account_name a) signing
-        -> Just kp
-      _ -> Nothing
 
 
 -- | Build signatures for a single `cmd`.

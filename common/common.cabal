@@ -36,3 +36,4 @@ library
     Common.Orphans
     Common.RefPath
     Common.Foundation
+    Common.Wallet
