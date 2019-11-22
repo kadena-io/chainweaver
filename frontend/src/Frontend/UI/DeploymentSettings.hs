@@ -103,6 +103,7 @@ import qualified Pact.Types.Info as PI
 import qualified Pact.Types.Names as PN
 
 import Common.Network
+import Common.Wallet
 import Frontend.Crypto.Class
 import Frontend.Crypto.Ed25519 (keyToText)
 import Frontend.Foundation
@@ -997,7 +998,7 @@ uiDeployPreview model settings accounts gasLimit ttl code lastPublicMeta capabil
             el "td" $ dynText $ displayBalance <$> balance
 
       divClass "title" $ text "Raw Response"
-      void $ divClass "group segment" $ runWithReplace (text "Loading...") $ leftmost
+      void $ divClass "group segment transaction_details__raw-response" $ runWithReplace (text "Loading...") $ leftmost
         [ text . renderCompactText . snd <$> resp
         , text <$> errors
         ]

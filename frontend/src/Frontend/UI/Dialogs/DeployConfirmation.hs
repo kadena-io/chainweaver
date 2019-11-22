@@ -37,6 +37,7 @@ module Frontend.UI.Dialogs.DeployConfirmation
   ) where
 
 import Common.Foundation
+import Common.Wallet
 import Control.Concurrent (newEmptyMVar, tryTakeMVar, putMVar, killThread, forkIO, ThreadId)
 import Control.Lens
 import Control.Monad (void)
@@ -51,7 +52,6 @@ import Data.Text (Text)
 import Data.These (These(This, That))
 import Data.Traversable (for)
 import Frontend.Crypto.Class
-import Frontend.Crypto.Ed25519
 import Frontend.JsonData
 import Frontend.Network
 import Frontend.UI.DeploymentSettings
