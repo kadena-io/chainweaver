@@ -39,6 +39,7 @@ library
                , generic-deriving
                , ghcjs-dom
                , hashing
+               , here
                , http-client
                , http-client-tls
                , http-types
