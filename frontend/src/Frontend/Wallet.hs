@@ -84,9 +84,9 @@ import Frontend.Network
 accountToKadenaAddress :: Account key -> KadenaAddress
 accountToKadenaAddress a = mkKadenaAddress isCreated (_account_chainId a) (_account_name a)
   where
-    isCreated = if unAccountName (_account_name a) == keyToText (_keyPair_publicKey $ _account_key a)
-      then AccountCreated_No -- Wallet only account
-      else AccountCreated_Yes -- Vanity account
+    isCreated = case _account_balance a of
+      Just _ -> AccountCreated_Yes
+      Nothing -> AccountCreated_No
 
 data WalletCfg key t = WalletCfg
   { _walletCfg_genKey     :: Event t (AccountName, NetworkName, ChainId, Text)
