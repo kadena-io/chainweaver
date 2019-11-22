@@ -102,6 +102,7 @@ import qualified Pact.Types.Info as PI
 import qualified Pact.Types.Names as PN
 
 import Common.Network
+import Common.Wallet
 import Frontend.Crypto.Class
 import Frontend.Crypto.Ed25519 (keyToText)
 import Frontend.Foundation

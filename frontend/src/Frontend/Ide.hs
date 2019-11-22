@@ -139,7 +139,7 @@ makeIde
   => AppCfg key t m -> IdeCfg modal key t -> m (Ide modal key t)
 makeIde appCfg userCfg = build $ \ ~(cfg, ideL) -> do
 
-    walletL <- makeWallet $ _ideCfg_wallet cfg
+    walletL <- makeWallet ideL $ _ideCfg_wallet cfg
     json <- makeJsonData walletL $ _ideCfg_jsonData cfg
     (networkCfgL, networkL) <- makeNetwork $ cfg ^. ideCfg_network
     (explrCfg, moduleExplr) <- makeModuleExplorer appCfg ideL cfg
