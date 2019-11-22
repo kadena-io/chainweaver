@@ -162,16 +162,12 @@ uiKeyItems model = do
       AccountDialog_Receive -> uiReceiveModal model a
       AccountDialog_Send -> uiSendModal model a
 
-  dr <- askRoute
-  let refresh = fforMaybe (updated dr) $ \case
-        FrontendRoute_Wallet :/ () -> Just ()
-        _ -> Nothing
-
-  rbtn <- button "refresh"
+  -- TODO test if this works. Testnet is down at the time of writing.
+  refresh <- getPostBuild
 
   pure $ mempty
     & modalCfg_setModal .~ (accModal <$> onAccountModal)
-    & walletCfg_refreshBalances .~ leftmost [refresh, rbtn]
+    & walletCfg_refreshBalances .~ refresh
 
 ------------------------------------------------------------------------------
 -- | Display a key as list item together with it's name.
