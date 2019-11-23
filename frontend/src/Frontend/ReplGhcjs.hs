@@ -240,8 +240,8 @@ networkBar
   -> m (ModalIdeCfg m key t)
 networkBar m = divClass "main-header main-header__network-bar" $ do
   -- Fetch and display the status of the currently selected network.
-  queryNetworkStatus (m ^. ide_network . network_networks) (m ^. ide_network . network_selectedNetwork)
-    >>= uiNetworkStatus (pure " page__network-bar-status")
+  --queryNetworkStatus (m ^. ide_network . network_networks) (m ^. ide_network . network_selectedNetwork)
+  --  >>= uiNetworkStatus (pure " page__network-bar-status")
   -- Present the dropdown box for selecting one of the configured networks.
   divClass "page__network-bar-select" $
     uiNetworkSelect (m ^. ide_network)
