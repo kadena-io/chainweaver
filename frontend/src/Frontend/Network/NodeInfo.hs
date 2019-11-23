@@ -120,17 +120,17 @@ nodeVersion ni = case _nodeInfo_type ni of
                    NodeType_Pact _v -> ""
                    NodeType_Chainweb ci -> _chainwebInfo_networkVersion ci
 
--- | Retrive the `NodeInfo` for a given host by quering its API.
+-- | Retrieve the `NodeInfo` for a given host by quering its API.
 discoverNode :: forall m. (MonadJSM m, MonadUnliftIO m, HasJSContext m) => NodeRef -> m (Either Text NodeInfo)
 discoverNode (NodeRef auth) = do
     httpsReqs <- async $ discoverChainwebOrPact httpsUri
-    httpReqs <- async $ discoverChainwebOrPact httpUri
+--    httpReqs <- pure never --async $ discoverChainwebOrPact httpUri
 
     -- For some http only servers waiting for a https response will take ages
     -- on the other hand we need to prefer chainweb detection over pact -s
     -- detection (as the former is more reliable). Therefore we group them by
     -- protocol and go with the first success result.
-    waitSuccess [httpsReqs, httpReqs]
+    waitSuccess [httpsReqs] --, httpReqs]
 
   where
     waitSuccess :: [Async (Either Text NodeInfo)] -> m (Either Text NodeInfo)
@@ -203,10 +203,12 @@ getChainBasePath (ChainId chainId) = buildPath . \case
 -- | Find out whether the given host and scheme are either a Pact or a Chainweb node.
 discoverChainwebOrPact :: (MonadJSM m, HasJSContext m, MonadUnliftIO m) => NodeUri -> m (Either Text NodeInfo)
 discoverChainwebOrPact uri = do
-  (chainwebResp, pactResp) <- discoverChainwebNode uri  `concurrently` discoverPactNode uri
+  liftIO $ print "BANANAS"
+  discoverChainwebNode uri
+--  (chainwebResp, pactResp) <- discoverChainwebNode uri  `concurrently` discoverPactNode uri
   -- pure $ chainwebResp <|> pactResp
   -- No `Error` instance for Text:
-  pure $ left T.pack $ left T.unpack chainwebResp <|> left T.unpack pactResp
+--  pure $ left T.pack $ left T.unpack chainwebResp <|> left T.unpack pactResp
 
 
 -- | Retrieve the `NodeInfo` for a given host by quering its API.

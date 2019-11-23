@@ -422,6 +422,3 @@ infoTitle info =
       <> "\nVersion: " <> _chainwebInfo_version cwInfo
       <> "\nNetwork version: " <> _chainwebInfo_networkVersion cwInfo
       <> "\nNumber of chains: " <> tshow (_chainwebInfo_numberOfChains cwInfo)
-
-
-

@@ -262,14 +262,15 @@ makeNetwork cfg = mfix $ \ ~(_, networkL) -> do
     onCName <- tagOnPostBuild cName
 
     let onRefresh = leftmost [ onDeployed, cfg ^. networkCfg_refreshModule ]
-    nodeInfos <-
+    nodeInfos <- pure $ constDyn []
+      {-
       getNetworkNodeInfosIncremental (current networks) (current cName) $ leftmost
         [ Just <$> onCName
           -- Refresh info on deployments and well on refresh (Refreshed node
           -- info triggers re-loading of modules too):
         , Nothing <$ onRefresh
         ]
-
+      -}
     performEvent_ $ traverse_ reportNodeInfoError . lefts <$> updated nodeInfos
 
     modules <- loadModules networkL onRefresh
