@@ -151,7 +151,7 @@ bipCrypto root pass = Crypto
     secBytes <- parseB16TextOnly sec
     somePactKey <- importKey scheme Nothing secBytes
     pure $ PactKey scheme
-      (unsafePublicKey $ T.encodeUtf8 $ toB16Text $ PactCrypto.getPublic somePactKey)
+      (unsafePublicKey $ PactCrypto.getPublic somePactKey)
       secBytes
   }
   where
