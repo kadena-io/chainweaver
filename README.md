@@ -13,14 +13,10 @@ The homepage URL will be http://localhost:8000, the authorization callback url w
 Image files are located in [static/img](./static/img). To test an updated image, replace the old file with the new one and refresh the browser.
 
 ## Web app
-Running
-- on mac: do [`./scripts/devWeb-on-mac`](./scripts/devWeb-on-mac)
-- on linux: do [`./scripts/devWeb-on-linux`](./scripts/devWeb-on-linux)
+Run [`./scripts/devWeb`](./scripts/devWeb)
 
-## Web app with desktop bits
-Running
-- on mac: do [`./scripts/devDesktop-on-mac`](./scripts/devDesktop-on-mac)
-- on linux: do [`./scripts/devDesktop-on-linux`](./scripts/devDesktop-on-linux)
+## Web app with desktop app bits
+Run [`./scripts/devDesktop`](./scripts/devDesktop)
 
 ## Mac app
 To work on the objective-c code enter the project shell with

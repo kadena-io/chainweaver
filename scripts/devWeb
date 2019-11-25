@@ -1,0 +1,9 @@
+# Run the web app while incrementally compiling all possible haskell code on your platform
+
+is_darwin() { [ "$(uname -s)" == 'Darwin' ]; }
+
+if is_darwin; then
+  ob run --import desktop:Desktop --import mac:Mac
+else
+  ob run --import desktop:Desktop
+fi
