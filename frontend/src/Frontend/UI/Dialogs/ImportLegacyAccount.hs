@@ -8,8 +8,8 @@ module Frontend.UI.Dialogs.ImportLegacyAccount
   ) where
 
 import Control.Error (hush, note)
-import Control.Monad.Except (ExceptT(ExceptT), runExceptT, lift, liftIO)
-import Control.Lens ((%~), (^.))
+import Control.Monad.Except (ExceptT(ExceptT), runExceptT, lift)
+import Control.Lens ((^.))
 import Data.Text (Text)
 import qualified Data.Text as T
 import Reflex
@@ -19,12 +19,11 @@ import Reflex.Network.Extended (Flattenable)
 import Pact.Types.Scheme (PPKScheme(ETH, ED25519))
 
 import Frontend.UI.Modal.Impl (ModalIde, modalFooter)
-import Frontend.Crypto.Class (HasCrypto, GenKeyArg(GenWalletIndex), cryptoGenKey, cryptoVerifyPactKey, _pactKey_publicKey)
+import Frontend.Crypto.Class (HasCrypto, cryptoVerifyPactKey, _pactKey_publicKey)
 import Frontend.JsonData
-import Frontend.Network (ChainId, HasNetworkCfg, NodeInfo)
+import Frontend.Network (ChainId, network_selectedNetwork)
 import Frontend.UI.Widgets
-import Frontend.Wallet (HasWalletCfg (..), AccountName, KeyPair (..), checkAccountNameValidity, findNextKey, unAccountName, wallet_pactAccountCreated)
-import Frontend.Network (network_selectedNetwork)
+import Frontend.Wallet (HasWalletCfg (..), AccountName, unAccountName, wallet_pactAccountCreated)
 import Frontend.UI.Modal
 import Common.Wallet (keyToText)
 import Obelisk.Generated.Static
@@ -50,7 +49,6 @@ uiImportLegacyAccountSettings
   -> Dynamic t Text
   -> Workflow t m (Text, (mConf, Event t ()))
 uiImportLegacyAccountSettings ideL mChainId initialNotes = Workflow $ do
-  pb <- getPostBuild
   (schemeInput, secretInput) <- elClass "div" "modal__main transaction_details" $ do
     (schemeInput,_) <- divClass "legacy-import-account__key-scheme"  $ mkLabeledClsInput True "Key Scheme" $ \cls ->
       uiSelectElement @t @m
@@ -85,18 +83,17 @@ uiImportLegacyAccountSettings ideL mChainId initialNotes = Workflow $ do
 
   let isDisabled = either (const True) (const False) <$> dCreateInput
 
-  eNewAccount <- modalFooter $ uiButtonDyn
-    (def & uiButtonCfg_class .~ "button_type_confirm" & uiButtonCfg_disabled .~ isDisabled)
-    (text "Import")
+  (eOnCancel, eOnImport) <- modalFooter $ do
+    onCancel <- cancelButton def "Cancel"
+    onImport <- confirmButton (def & uiButtonCfg_disabled .~ isDisabled) "Import"
+    pure (onCancel, onImport)
 
-  let eNewAccountOk = fmapMaybe hush $ current dCreateInput <@ eNewAccount
-
-  performEvent $ (liftIO $ putStrLn "BUTTS") <$ eNewAccountOk
+  let eNewAccountOk = fmapMaybe hush $ current dCreateInput <@ eOnImport
 
   pure
     ( ( "Import Legacy Account"
-      , (mempty & walletCfg_importPactKeypair %~ (\e -> leftmost [e, eNewAccountOk])
-        , never
+      , (mempty & walletCfg_importPactKeypair .~ eNewAccountOk
+        , eOnCancel
         )
       )
     , uiImportLegacyAccountCreated <$> (ideL ^. wallet_pactAccountCreated)
@@ -104,6 +101,7 @@ uiImportLegacyAccountSettings ideL mChainId initialNotes = Workflow $ do
   where
     schemeFromText "ED25519" = ED25519
     schemeFromText "ETH" = ETH
+    schemeFromText _ = ED25519
 
 
 -- TODO: Dedupe this from AddAccount

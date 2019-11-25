@@ -130,7 +130,10 @@ uiKeyItems model = do
     uiKeyTable model walletKeyMap
 
   let
-    onAccountModal = switchDyn $ leftmost . Map.elems <$> walletKeyEvents
+    onAccountModal = switchDyn $
+      (\wes nwes -> leftmost (wes ++ nwes))
+      <$> (Map.elems <$> walletKeyEvents)
+      <*> (Map.elems <$> nonWalletKeyEvents)
 
     accModal (d,i,a) = Just $ case d of
       -- AccountDialog_Delete -> uiDeleteConfirmation i (_account_name a)

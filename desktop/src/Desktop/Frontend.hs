@@ -17,7 +17,6 @@ import Control.Lens ((?~))
 import Control.Monad (when, (<=<), guard, void)
 import Control.Monad.Fix (MonadFix)
 import Control.Monad.IO.Class
-import qualified Crypto.PubKey.Ed25519 as Ed25519
 import Data.Bitraversable
 import Data.Bits ((.|.))
 import Data.Bool (bool)
@@ -45,7 +44,7 @@ import qualified System.Directory as Directory
 import qualified System.FilePath as FilePath
 import qualified Pact.Types.Crypto as PactCrypto
 import Pact.Types.Scheme (PPKScheme)
-import Pact.Types.Util (parseB16TextOnly, toB16Text)
+import Pact.Types.Util (parseB16TextOnly)
 import qualified Pact.Types.Hash as Pact
 
 import Common.Api (getConfigRoute)
@@ -127,9 +126,9 @@ bipCrypto root pass = Crypto
   { _crypto_sign = \bs -> \case
     DesktopKeyBip32 xprv ->
       pure $ Newtype.pack $ Crypto.unXSignature $ Crypto.sign (T.encodeUtf8 pass) xprv bs
-    DesktopKeyPact scheme pubKey encryptedSecret -> do
+    DesktopKeyPact pkScheme pubKey encryptedSecret -> do
       -- TODO TODO TODO : Still no PBKDF2 decryption from the secret key yet.
-      let someKpE = importKey scheme (Just $ Newtype.unpack pubKey) (unXPactSecret encryptedSecret)
+      let someKpE = importKey pkScheme (Just $ Newtype.unpack pubKey) (unXPactSecret encryptedSecret)
       case someKpE of
         -- TODO: Hash is supposed to be a Base64 encoded bytestring. This likely isn't right :)
         Right someKp -> liftIO $ Newtype.pack <$> PactCrypto.sign someKp (Pact.Hash bs)
@@ -147,16 +146,16 @@ bipCrypto root pass = Crypto
         encryptedSecret = XPactSecret (_pactKey_secret pactKey) --TODO TODO TODO Not encrypted yet!!
       pure (DesktopKeyPact (_pactKey_scheme pactKey) pubKey encryptedSecret, pubKey)
   -- This assumes that the secret is already base16 encoded (being pasted in, so makes sense)
-  , _crypto_verifyPactKey = \scheme sec -> pure $ do
+  , _crypto_verifyPactKey = \pkScheme sec -> pure $ do
     secBytes <- parseB16TextOnly sec
-    somePactKey <- importKey scheme Nothing secBytes
-    pure $ PactKey scheme
+    somePactKey <- importKey pkScheme Nothing secBytes
+    pure $ PactKey pkScheme
       (unsafePublicKey $ PactCrypto.getPublic somePactKey)
       secBytes
   }
   where
-    importKey scheme mPubBytes secBytes = PactCrypto.importKeyPair
-      (PactCrypto.toScheme scheme)
+    importKey pkScheme mPubBytes secBytes = PactCrypto.importKeyPair
+      (PactCrypto.toScheme pkScheme)
       (PactCrypto.PubBS <$> mPubBytes)
       (PactCrypto.PrivBS secBytes)
     scheme = Crypto.DerivationScheme2
