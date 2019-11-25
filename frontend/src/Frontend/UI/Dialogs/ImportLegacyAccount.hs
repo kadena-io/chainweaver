@@ -90,6 +90,8 @@ uiImportLegacyAccountSettings ideL mChainId initialNotes = Workflow $ do
 
   let eNewAccountOk = fmapMaybe hush $ current dCreateInput <@ eOnImport
 
+  performEvent $ liftIO . print <$> eNewAccountOk
+
   pure
     ( ( "Import Legacy Account"
       , (mempty & walletCfg_importPactKeypair .~ eNewAccountOk
