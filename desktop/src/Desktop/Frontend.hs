@@ -57,6 +57,7 @@ import Obelisk.Route
 import Obelisk.Route.Frontend
 import qualified Frontend
 import qualified Frontend.ReplGhcjs
+import Frontend.Wallet (StoreWallet(..))
 
 import Desktop.Orphans ()
 import Desktop.Setup
@@ -141,7 +142,10 @@ bipWallet appCfg = do
     upd <- switchHold never <=< dyn $ ffor root $ \case
       Nothing -> do
         xprv <- runSetup
-        saved <- performEvent $ ffor xprv $ \x -> setItemStorage localStorage BIPStorage_RootKey x >> pure x
+        saved <- performEvent $ ffor xprv $ \x -> do
+          setItemStorage localStorage BIPStorage_RootKey x
+          removeItemStorage localStorage StoreWallet_Keys
+          pure x
         pure $ Just <$> saved
       Just xprv -> mdo
         mPassword <- holdUniqDyn =<< holdDyn Nothing userPassEvents
