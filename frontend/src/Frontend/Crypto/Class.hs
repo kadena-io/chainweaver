@@ -10,11 +10,13 @@ import Control.Monad.Primitive (PrimMonad (PrimState, primitive))
 import Control.Monad.Reader
 import Control.Monad.Ref (MonadRef, MonadAtomicRef)
 import Data.Coerce (coerce)
+import Data.Text (Text)
 import Language.Javascript.JSaddle (JSM, MonadJSM, liftJSM)
 import Obelisk.Route.Frontend
 import Reflex.Dom hiding (fromJSString)
 import Reflex.Host.Class (MonadReflexCreateTrigger)
 import Data.ByteString (ByteString)
+import Pact.Types.Scheme (PPKScheme)
 
 import Frontend.Crypto.Ed25519
 import Frontend.Foundation
@@ -22,12 +24,24 @@ import Frontend.Storage
 
 instance (HasStorage m, Monad m) => HasStorage (CryptoT key m)
 
-data Crypto key = Crypto
-  { _crypto_sign :: ByteString -> key -> JSM Signature
-  , _crypto_genKey :: Int -> JSM (key, PublicKey)
+-- TODO : Hide the pact key constructor so the caller is forced to verify it
+data PactKey = PactKey
+  { _pactKey_scheme :: PPKScheme
+  , _pactKey_publicKey :: PublicKey
+  , _pactKey_secret :: ByteString
   }
 
-cryptoGenKey :: (MonadJSM m, HasCrypto key m) => Int -> m (key, PublicKey)
+data GenKeyArg
+  = GenWalletIndex Int
+  | GenFromPactKey PactKey
+
+data Crypto key = Crypto
+  { _crypto_sign :: ByteString -> key -> JSM Signature
+  , _crypto_genKey :: GenKeyArg -> JSM (key, PublicKey)
+  , _crypto_verifyPactKey :: PPKScheme -> Text -> Text -> JSM (Either String PactKey)
+  }
+
+cryptoGenKey :: (MonadJSM m, HasCrypto key m) => GenKeyArg -> m (key, PublicKey)
 cryptoGenKey i = do
   crypto <- askCrypto
   liftJSM $ _crypto_genKey crypto i
@@ -36,6 +50,16 @@ cryptoSign :: (MonadJSM m, HasCrypto key m) => ByteString -> key -> m Signature
 cryptoSign bs key = do
   crypto <- askCrypto
   liftJSM $ _crypto_sign crypto bs key
+
+cryptoVerifyPactKey
+  :: (MonadJSM m, HasCrypto key m)
+  => PPKScheme
+  -> Text
+  -> Text
+  -> m (Either String PactKey)
+cryptoVerifyPactKey scheme pk sec = do
+  crypto <- askCrypto
+  liftJSM $ _crypto_verifyPactKey crypto scheme pk sec
 
 class HasCrypto key m | m -> key where
   askCrypto :: m (Crypto key)

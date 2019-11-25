@@ -21,6 +21,7 @@ import           Frontend.JsonData (HasJsonDataCfg)
 import           Frontend.Crypto.Class (HasCrypto)
 import           Frontend.UI.DeploymentSettings (transactionDisplayNetwork, userChainIdSelect)
 import           Frontend.UI.Dialogs.AddVanityAccount (uiAddVanityAccountSettings)
+import           Frontend.UI.Dialogs.ImportLegacyAccount (uiImportLegacyAccountSettings)
 
 import           Frontend.Ide (ide_wallet)
 import           Frontend.UI.Modal
@@ -78,7 +79,7 @@ uiCreateWalletStepOne
   -> Event t ()
   -> Workflow t m (Text, (mConf, Event t ()))
 uiCreateWalletStepOne model onClose = Workflow $ do
-  (dSelectedChain, dNotes, onAddVanityAcc) <- modalMain $ do
+  (dSelectedChain, dNotes, onAddVanityAcc, onLegacyImport) <- modalMain $ do
     divClass "segment modal__main transaction_details" $ do
       elClass "h2" "heading heading_type_h2" $ text "Destination"
       dChainId <- divClass "group segment" $ do
@@ -89,10 +90,12 @@ uiCreateWalletStepOne model onClose = Workflow $ do
       dNotes <- divClass "group segment" $
         value <$> mkLabeledClsInput True "Notes" inpElem
 
-      onAddVanityAcc <- fmap snd $ accordionItem' False "add-account__advanced-content" (text "Advanced") $
-        confirmButton def "Create Vanity Account"
+      (onAddVanityAcc, onLegacyImport) <- fmap snd $ accordionItem' False "add-account__advanced-content" (text "Advanced") $ do
+        eVanity <- confirmButton def "Create Vanity Account"
+        eLegacy <- confirmButton def "Import From Legacy Keypair"
+        pure (eVanity, eLegacy)
 
-      pure (dChainId, dNotes, onAddVanityAcc)
+      pure (dChainId, dNotes, onAddVanityAcc, onLegacyImport)
 
   modalFooter $ do
     onCancel <- cancelButton def "Cancel"
@@ -112,6 +115,7 @@ uiCreateWalletStepOne model onClose = Workflow $ do
       , leftmost
         [ uiWalletOnlyAccountCreated newConf onClose <$> (model ^. ide_wallet . wallet_walletOnlyAccountCreated)
         , uiAddVanityAccountSettings model dSelectedChain dNotes <$ onAddVanityAcc
+        , uiImportLegacyAccountSettings model dSelectedChain dNotes <$ onLegacyImport
         ]
       )
   where

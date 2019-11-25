@@ -70,6 +70,7 @@ import qualified Data.Set as Set
 import qualified Data.Text as T
 import qualified Pact.Types.Exp as Pact
 import qualified Pact.Types.PactValue as Pact
+import Pact.Types.Scheme (PPKScheme)
 
 import Common.Network (NetworkName)
 import Common.Wallet
@@ -96,6 +97,8 @@ data WalletCfg key t = WalletCfg
   -- ^ Create a wallet only account that uses the public key as the account name
   , _walletCfg_refreshBalances :: Event t ()
   -- ^ Refresh balances in the wallet
+  , _walletCfg_importEd25519Keypair :: Event t (PactKey, NetworkName, ChainId, Text)
+  -- ^ Import a Ed25519Keypair to the crypto store
   }
   deriving Generic
 
@@ -190,6 +193,7 @@ makeWallet model conf = do
     onGenKey = _walletCfg_genKey conf
     onDelKey = _walletCfg_delKey conf
     onCreateWOAcc = _walletCfg_createWalletOnlyAccount conf
+    onImportEd25519 = _walletCfg_importEd25519Keypair conf
     refresh = _walletCfg_refreshBalances conf
 
   performEvent_ $ liftIO (putStrLn "Refresh wallet balances") <$ refresh
@@ -197,6 +201,7 @@ makeWallet model conf = do
   rec
     onNewKey <- performEvent $ attachWith (createKey . nextKey) (current keys) onGenKey
     onWOAccountCreate <- performEvent $ attachWith (createWalletOnlyAccount . nextKey) (current keys) onCreateWOAcc
+    onNewImportEd25519 <- performEvent $ createEd25519Account <$> onImportEd25519
     newBalances <- getBalances model $ current keys <@ refresh
 
     keys <- foldDyn id initialKeys $ leftmost
@@ -204,6 +209,11 @@ makeWallet model conf = do
       , ffor (_walletCfg_importAccount conf) $ snocIntMap . SomeAccount_Account
       , ffor onDelKey $ \i -> IntMap.insert i SomeAccount_Deleted
       , ffor onWOAccountCreate $ snocIntMap . SomeAccount_Account
+      -- TODO: This eats up indexes for non wallet keys, which could lead to some bad UX
+      -- making it even harder to recover a wallet. May be worth separating them in local
+      -- storage and zipping them together somehow. Does anything out of here rely on the
+      -- stability of the indexes?
+      , ffor onNewImportEd25519 $ snocIntMap . SomeAccount_Account
       , const <$> newBalances
       ]
 
@@ -214,23 +224,29 @@ makeWallet model conf = do
     , _wallet_walletOnlyAccountCreated = _account_name <$> onWOAccountCreate
     }
   where
+    createEd25519Account :: (PactKey, NetworkName, ChainId, Text) -> Performable m (Account key)
+    createEd25519Account (pk, net, c, t) = do
+      (privKey, pubKey) <- cryptoGenKey (GenFromPactKey pk)
+      pure $ buildAccount (AccountName $ keyToText pubKey) pubKey privKey net c t False
+
     createWalletOnlyAccount :: Int -> (NetworkName, ChainId, Text) -> Performable m (Account key)
     createWalletOnlyAccount i (net, c, t) = do
-      (privKey, pubKey) <- cryptoGenKey i
-      pure $ buildAccount (AccountName $ keyToText pubKey) pubKey privKey net c t
+      (privKey, pubKey) <- cryptoGenKey (GenWalletIndex i)
+      pure $ buildAccount (AccountName $ keyToText pubKey) pubKey privKey net c t True
 
     createKey :: Int -> (AccountName, NetworkName, ChainId, Text) -> Performable m (Account key)
     createKey i (n, net, c, t) = do
-      (privKey, pubKey) <- cryptoGenKey i
-      pure $ buildAccount n pubKey privKey net c t
+      (privKey, pubKey) <- cryptoGenKey (GenWalletIndex i)
+      pure $ buildAccount n pubKey privKey net c t True
 
-    buildAccount n pubKey privKey net c t = Account
+    buildAccount n pubKey privKey net c t isWalletAccount = Account
         { _account_name = n
         , _account_key = KeyPair pubKey (Just privKey)
         , _account_chainId = c
         , _account_network = net
         , _account_notes = t
         , _account_balance = Nothing
+        , _account_isWalletAccount = isWalletAccount
         }
 
 -- | Get the balance of some accounts from the network.
@@ -330,10 +346,14 @@ instance Reflex t => Semigroup (WalletCfg key t) where
         [ _walletCfg_refreshBalances c1
         , _walletCfg_refreshBalances c2
         ]
+      , _walletCfg_importEd25519Keypair = leftmost
+        [ _walletCfg_importEd25519Keypair c1
+        , _walletCfg_importEd25519Keypair c1
+        ]
       }
 
 instance Reflex t => Monoid (WalletCfg key t) where
-  mempty = WalletCfg never never never never never
+  mempty = WalletCfg never never never never never never
   mappend = (<>)
 
 instance Flattenable (WalletCfg key t) t where
@@ -344,6 +364,7 @@ instance Flattenable (WalletCfg key t) t where
       <*> doSwitch never (_walletCfg_delKey <$> ev)
       <*> doSwitch never (_walletCfg_createWalletOnlyAccount <$> ev)
       <*> doSwitch never (_walletCfg_refreshBalances <$> ev)
+      <*> doSwitch never (_walletCfg_importEd25519Keypair <$> ev)
 
 instance Reflex t => Semigroup (Wallet key t) where
   wa <> wb = Wallet

@@ -17,6 +17,7 @@ import Control.Lens ((?~))
 import Control.Monad (when, (<=<), guard, void)
 import Control.Monad.Fix (MonadFix)
 import Control.Monad.IO.Class
+import qualified Crypto.PubKey.Ed25519 as Ed25519
 import Data.Bitraversable
 import Data.Bits ((.|.))
 import Data.Bool (bool)
@@ -24,6 +25,7 @@ import Data.ByteString (ByteString)
 import Data.Maybe (isNothing, isJust)
 import Data.Text (Text)
 import Data.Time (NominalDiffTime, getCurrentTime, addUTCTime)
+import GHC.Generics (Generic)
 import Language.Javascript.JSaddle (liftJSM)
 import Reflex.Dom.Core
 import System.FilePath ((</>))
@@ -31,6 +33,7 @@ import qualified Cardano.Crypto.Wallet as Crypto
 import qualified Control.Newtype.Generics as Newtype
 import qualified Data.Aeson as Aeson
 import qualified Data.ByteString as BS
+import qualified Data.ByteString.Base16 as B16
 import qualified Data.ByteString.Lazy as LBS
 import qualified Data.Text.Encoding as T
 import qualified Data.Text.Encoding.Error as T
@@ -40,6 +43,9 @@ import qualified GHCJS.DOM.EventM as EventM
 import qualified GHCJS.DOM.GlobalEventHandlers as GlobalEventHandlers
 import qualified System.Directory as Directory
 import qualified System.FilePath as FilePath
+import qualified Pact.Types.Crypto as PactCrypto
+import Pact.Types.Scheme (PPKScheme)
+import Pact.Types.Util (parseB16TextOnly)
 
 import Common.Api (getConfigRoute)
 import Common.Route
@@ -89,13 +95,58 @@ fileStorage dir = Storage
     where path :: Show a => a -> FilePath
           path k = dir </> FilePath.makeValid (show k)
 
-bipCrypto :: Crypto.XPrv -> Text -> Crypto Crypto.XPrv
+newtype XPactSecret = XPactSecret { unXPactSecret :: BS.ByteString }
+
+instance Aeson.ToJSON XPactSecret where
+  toJSON = Aeson.toJSON . T.decodeUtf8 . B16.encode . unXPactSecret
+
+instance Aeson.FromJSON XPactSecret where
+  -- TODO: Should there be some verification of length like XPrv?
+  parseJSON = fmap (XPactSecret . fst . B16.decode . T.encodeUtf8) . Aeson.parseJSON
+
+data DesktopKey
+  = DesktopKeyBip32 Crypto.XPrv
+  | DesktopKeyPact PPKScheme XPactSecret
+  deriving (Generic)
+
+-- TODO: This is not backwards compatible. Do we care?
+instance Aeson.FromJSON DesktopKey
+instance Aeson.ToJSON DesktopKey
+
+-- TODO: We are going to have to use a PBKDF2 thing to encrypt the key in memory / storage
+-- and only unencrypt it when signing. Much like the cardano wallet does.
+-- This is the part that makes me most nervous in the time crunch. We have to make sure that we
+-- get this 100% right in very little time as it would be better to not support non BIP32 keys
+-- than it would be to leak the user's keys somehow.
+--
+-- The pact 3.0 blog said that pact supports ethereum ECDSA and ED25519 keys. We probably need
+-- to support both here. See https://medium.com/kadena-io/announcing-pact-3-0-4b0a8f35e6a0
+bipCrypto :: Crypto.XPrv -> Text -> Crypto DesktopKey
 bipCrypto root pass = Crypto
-  { _crypto_sign = \bs k -> pure $ Newtype.pack $ Crypto.unXSignature $ Crypto.sign (T.encodeUtf8 pass) k bs
-  , _crypto_genKey = \i -> do
-    liftIO $ putStrLn $ "Deriving key at index: " <> show i
-    let xprv = Crypto.deriveXPrv scheme (T.encodeUtf8 pass) root (mkHardened $ fromIntegral i)
-    pure (xprv, unsafePublicKey $ Crypto.xpubPublicKey $ Crypto.toXPub xprv)
+  { _crypto_sign = \bs -> \case
+    DesktopKeyBip32 xprv ->
+      pure $ Newtype.pack $ Crypto.unXSignature $ Crypto.sign (T.encodeUtf8 pass) xprv bs
+    DesktopKeyPact scheme encryptedSecret ->
+      undefined -- TODO
+  , _crypto_genKey = \case
+    GenWalletIndex i -> do
+      liftIO $ putStrLn $ "Deriving key at index: " <> show i
+      let xprv = Crypto.deriveXPrv scheme (T.encodeUtf8 pass) root (mkHardened $ fromIntegral i)
+      pure (DesktopKeyBip32 xprv, unsafePublicKey $ Crypto.xpubPublicKey $ Crypto.toXPub xprv)
+    -- This is a little bastardised now as we aren't really generating anything: we are just
+    -- encrypting the secret for serialisation.
+    GenFromPactKey pactKey -> do
+      let
+        encryptedSecret = XPactSecret (_pactKey_secret pactKey) --TODO TODO TODO Not encrypted yet!!
+      pure (DesktopKeyPact (_pactKey_scheme pactKey) encryptedSecret, _pactKey_publicKey pactKey)
+  -- This assumes that the bytstrings are already base16 encoded
+  , _crypto_verifyPactKey = \scheme pk sec -> pure $ do
+    pkBytes <- parseB16TextOnly pk
+    secBytes <- parseB16TextOnly sec
+    PactKey scheme (unsafePublicKey $ T.encodeUtf8 pk) (T.encodeUtf8 sec) <$ PactCrypto.importKeyPair
+      (PactCrypto.toScheme scheme)
+      (Just $ PactCrypto.PubBS $ pkBytes)
+      (PactCrypto.PrivBS secBytes)
   }
   where
     scheme = Crypto.DerivationScheme2
@@ -132,7 +183,7 @@ bipWallet
      , HasConfigs m
      , HasStorage m, HasStorage (Performable m)
      )
-  => AppCfg Crypto.XPrv t (RoutedT t (R FrontendRoute) (CryptoT Crypto.XPrv m))
+  => AppCfg DesktopKey t (RoutedT t (R FrontendRoute) (CryptoT DesktopKey m))
   -> RoutedT t (R FrontendRoute) m ()
 bipWallet appCfg = do
   mRoot <- getItemStorage localStorage BIPStorage_RootKey
@@ -157,8 +208,8 @@ bipWallet appCfg = do
 
 -- | Returns an event which fires at the given check interval when the user has
 -- been inactive for at least the given timeout.
-watchInactivity :: MonadWidget t m => NominalDiffTime -> NominalDiffTime -> m (Event t ())
-watchInactivity checkInterval timeout = do
+_watchInactivity :: MonadWidget t m => NominalDiffTime -> NominalDiffTime -> m (Event t ())
+_watchInactivity checkInterval timeout = do
   t0 <- liftIO getCurrentTime
   (activity, act) <- newTriggerEvent
   liftJSM $ do

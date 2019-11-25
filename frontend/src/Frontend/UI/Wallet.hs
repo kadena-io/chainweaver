@@ -119,11 +119,45 @@ uiKeyItems
 uiKeyItems model = do
   let
     keyMap' = model ^. wallet_accounts
-    keyMap = Map.fromAscList . IntMap.toAscList <$> keyMap'
+    walletKeys = IntMap.filter (someAccount False _account_isWalletAccount) <$> keyMap'
+    walletKeyMap = Map.fromAscList . IntMap.toAscList <$> walletKeys
+    nonWalletKeys = IntMap.filter (someAccount False (not . _account_isWalletAccount)) <$> keyMap'
+    nonWalletKeyMap = Map.fromAscList . IntMap.toAscList <$> nonWalletKeys
+  walletKeyEvents <- uiKeyTable model walletKeyMap
+  nonWalletKeyEvents <- elDynAttr "div" (bool mempty ("style" =: "display:none;") . Map.null <$> nonWalletKeyMap) $ do
+    el "h2" $ text "Imported Legacy Keys"
+    el "p" $ text "Warning: These keys are not backed up by your recovery phrase. You must ensure the files that you've imported are properly backed up outside the wallet."
+    uiKeyTable model walletKeyMap
+
+  let
+    onAccountModal = switchDyn $ leftmost . Map.elems <$> walletKeyEvents
+
+    accModal (d,i,a) = Just $ case d of
+      -- AccountDialog_Delete -> uiDeleteConfirmation i (_account_name a)
+      AccountDialog_Details -> uiAccountDetails i a
+      AccountDialog_Receive -> uiReceiveModal model a
+      AccountDialog_Send -> uiSendModal model a
+
+  refresh <- delay 1 =<< getPostBuild
+
+  pure $ mempty
+    & modalCfg_setModal .~ (accModal <$> onAccountModal)
+    & walletCfg_refreshBalances .~ refresh
+
+uiKeyTable
+  :: forall t m model key.
+     ( MonadWidget t m
+     , HasNetwork model t
+     )
+  => model
+  -> Dynamic t (Map.Map Int (SomeAccount key))
+  -> m (Dynamic t (Map.Map Int (Event t (AccountDialog, IntMap.Key, Account key))))
+uiKeyTable model keyMap = do
+  let
     tableAttrs =
       "style" =: "table-layout: fixed; width: 98%"
       <> "class" =: "wallet table"
-  events <- elAttr "table" tableAttrs $ do
+  elAttr "table" tableAttrs $ do
     el "colgroup" $ do
       elAttr "col" ("style" =: "width: 19%") blank
       elAttr "col" ("style" =: "width: 19%") blank
@@ -142,24 +176,13 @@ uiKeyItems model = do
         , ""
         ]
 
-    el "tbody" $ listWithKey keyMap (uiKeyItem model)
+    el "tbody" $ do
+      events <- listWithKey keyMap (uiKeyItem model)
+      dyn_ $ ffor keyMap $ \keys -> when (Map.null keys) $
+        elClass "tr" "wallet__table-row" $ elAttr "td" ("colspan" =: "6" <> "class" =: "wallet__table-cell") $
+          text "No accounts ..."
+      pure events
 
-  dyn_ $ ffor keyMap $ \keys -> when (Map.null keys) $ text "No accounts ..."
-
-  let
-    onAccountModal = switchDyn $ leftmost . Map.elems <$> events
-
-    accModal (d,i,a) = Just $ case d of
-      -- AccountDialog_Delete -> uiDeleteConfirmation i (_account_name a)
-      AccountDialog_Details -> uiAccountDetails i a
-      AccountDialog_Receive -> uiReceiveModal model a
-      AccountDialog_Send -> uiSendModal model a
-
-  refresh <- delay 1 =<< getPostBuild
-
-  pure $ mempty
-    & modalCfg_setModal .~ (accModal <$> onAccountModal)
-    & walletCfg_refreshBalances .~ refresh
 
 ------------------------------------------------------------------------------
 -- | Display a key as list item together with it's name.

@@ -227,6 +227,7 @@ data Account key = Account
   , _account_network :: NetworkName
   , _account_notes :: Text
   , _account_balance :: Maybe AccountBalance
+  , _account_isWalletAccount :: Bool
   -- ^ We also treat this as proof of the account's existence.
   }
 
@@ -238,6 +239,7 @@ instance ToJSON key => ToJSON (Account key) where
     , Just $ "network" .= _account_network a
     , Just $ "notes" .= _account_notes a
     , ("balance" .=) <$> _account_balance a
+    , Just $ "isWalletAccount" .= _account_isWalletAccount a
     ]
 
 instance FromJSON key => FromJSON (Account key) where
@@ -248,6 +250,7 @@ instance FromJSON key => FromJSON (Account key) where
     network <- o .: "network"
     notes <- o .: "notes"
     balance <- o .:? "balance"
+    isWalletAccount <- fromMaybe True <$> o .:? "isWalletAccount"
     pure $ Account
       { _account_name = name
       , _account_key = key
@@ -255,6 +258,7 @@ instance FromJSON key => FromJSON (Account key) where
       , _account_network = network
       , _account_notes = notes
       , _account_balance = balance
+      , _account_isWalletAccount = isWalletAccount
       }
 
 
