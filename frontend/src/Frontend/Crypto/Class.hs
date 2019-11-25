@@ -38,7 +38,7 @@ data GenKeyArg
 data Crypto key = Crypto
   { _crypto_sign :: ByteString -> key -> JSM Signature
   , _crypto_genKey :: GenKeyArg -> JSM (key, PublicKey)
-  , _crypto_verifyPactKey :: PPKScheme -> Text -> Text -> JSM (Either String PactKey)
+  , _crypto_verifyPactKey :: PPKScheme -> Text -> JSM (Either String PactKey)
   }
 
 cryptoGenKey :: (MonadJSM m, HasCrypto key m) => GenKeyArg -> m (key, PublicKey)
@@ -55,11 +55,10 @@ cryptoVerifyPactKey
   :: (MonadJSM m, HasCrypto key m)
   => PPKScheme
   -> Text
-  -> Text
   -> m (Either String PactKey)
-cryptoVerifyPactKey scheme pk sec = do
+cryptoVerifyPactKey scheme sec = do
   crypto <- askCrypto
-  liftJSM $ _crypto_verifyPactKey crypto scheme pk sec
+  liftJSM $ _crypto_verifyPactKey crypto scheme sec
 
 class HasCrypto key m | m -> key where
   askCrypto :: m (Crypto key)

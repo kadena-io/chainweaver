@@ -70,7 +70,6 @@ import qualified Data.Set as Set
 import qualified Data.Text as T
 import qualified Pact.Types.Exp as Pact
 import qualified Pact.Types.PactValue as Pact
-import Pact.Types.Scheme (PPKScheme)
 
 import Common.Network (NetworkName)
 import Common.Wallet

@@ -41,14 +41,19 @@ uiImportLegacyAccountSettings
 uiImportLegacyAccountSettings ideL mChainId initialNotes = Workflow $ do
   pb <- getPostBuild
   elClass "div" "modal__main transaction_details" $ do
-    pkInput <- divClass "legacy-import-account__public-key"  $ mkLabeledClsInput True "Public Key"
-        $ \cls -> uiInputElement $ def
+    schemeInput <- divClass "legacy-import-account__key-scheme"  $ mkLabeledClsInput True "Key Scheme"
+        $ \cls -> uiSelectElement (def
                   & initialAttributes .~ "class" =: (renderClass cls)
+                  & selectElementConfig_initialValue .~ "ED25519"
+                  ) $ do
+          elAttr "option" ("value" =: "ED25519") $ text "ED25519"
+          elAttr "option" ("value" =: "ETH") $ text "ETH"
+
     secretInput <- divClass "legacy-import-account__secret" $ mkLabeledClsInput True "Secret Key"
         $ \cls -> uiInputElement $ def
                   & initialAttributes .~ "class" =: (renderClass cls)
 
-    pure (pkInput, secretInput)
+    pure (schemeInput, secretInput)
 
   let isDisabled = constDyn False
 

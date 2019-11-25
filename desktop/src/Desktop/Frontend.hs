@@ -45,7 +45,8 @@ import qualified System.Directory as Directory
 import qualified System.FilePath as FilePath
 import qualified Pact.Types.Crypto as PactCrypto
 import Pact.Types.Scheme (PPKScheme)
-import Pact.Types.Util (parseB16TextOnly)
+import Pact.Types.Util (parseB16TextOnly, toB16Text)
+import qualified Pact.Types.Hash as Pact
 
 import Common.Api (getConfigRoute)
 import Common.Route
@@ -106,7 +107,7 @@ instance Aeson.FromJSON XPactSecret where
 
 data DesktopKey
   = DesktopKeyBip32 Crypto.XPrv
-  | DesktopKeyPact PPKScheme XPactSecret
+  | DesktopKeyPact PPKScheme PublicKey XPactSecret
   deriving (Generic)
 
 -- TODO: This is not backwards compatible. Do we care?
@@ -126,8 +127,13 @@ bipCrypto root pass = Crypto
   { _crypto_sign = \bs -> \case
     DesktopKeyBip32 xprv ->
       pure $ Newtype.pack $ Crypto.unXSignature $ Crypto.sign (T.encodeUtf8 pass) xprv bs
-    DesktopKeyPact scheme encryptedSecret ->
-      undefined -- TODO
+    DesktopKeyPact scheme pubKey encryptedSecret -> do
+      -- TODO TODO TODO : Still no PBKDF2 decryption from the secret key yet.
+      let someKpE = importKey scheme (Just $ Newtype.unpack pubKey) (unXPactSecret encryptedSecret)
+      case someKpE of
+        -- TODO: Hash is supposed to be a Base64 encoded bytestring. This likely isn't right :)
+        Right someKp -> liftIO $ Newtype.pack <$> PactCrypto.sign someKp (Pact.Hash bs)
+        Left e -> error $ "Error importing pact key from account: " <> e
   , _crypto_genKey = \case
     GenWalletIndex i -> do
       liftIO $ putStrLn $ "Deriving key at index: " <> show i
@@ -137,18 +143,22 @@ bipCrypto root pass = Crypto
     -- encrypting the secret for serialisation.
     GenFromPactKey pactKey -> do
       let
+        pubKey = _pactKey_publicKey pactKey
         encryptedSecret = XPactSecret (_pactKey_secret pactKey) --TODO TODO TODO Not encrypted yet!!
-      pure (DesktopKeyPact (_pactKey_scheme pactKey) encryptedSecret, _pactKey_publicKey pactKey)
-  -- This assumes that the bytstrings are already base16 encoded
-  , _crypto_verifyPactKey = \scheme pk sec -> pure $ do
-    pkBytes <- parseB16TextOnly pk
+      pure (DesktopKeyPact (_pactKey_scheme pactKey) pubKey encryptedSecret, pubKey)
+  -- This assumes that the secret is already base16 encoded (being pasted in, so makes sense)
+  , _crypto_verifyPactKey = \scheme sec -> pure $ do
     secBytes <- parseB16TextOnly sec
-    PactKey scheme (unsafePublicKey $ T.encodeUtf8 pk) (T.encodeUtf8 sec) <$ PactCrypto.importKeyPair
-      (PactCrypto.toScheme scheme)
-      (Just $ PactCrypto.PubBS $ pkBytes)
-      (PactCrypto.PrivBS secBytes)
+    somePactKey <- importKey scheme Nothing secBytes
+    pure $ PactKey scheme
+      (unsafePublicKey $ T.encodeUtf8 $ toB16Text $ PactCrypto.getPublic somePactKey)
+      secBytes
   }
   where
+    importKey scheme mPubBytes secBytes = PactCrypto.importKeyPair
+      (PactCrypto.toScheme scheme)
+      (PactCrypto.PubBS <$> mPubBytes)
+      (PactCrypto.PrivBS secBytes)
     scheme = Crypto.DerivationScheme2
     mkHardened = (0x80000000 .|.)
 
