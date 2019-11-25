@@ -1034,7 +1034,6 @@ prettyPrintNetworkErrorResult :: NetworkErrorResult -> Text
 prettyPrintNetworkErrorResult = \case
   This errs -> prettyPrintNetworkErrors errs
   That (_gas, r) -> "Successful Server result: " <> prettyTextPretty r
-  -- TODO: These need the NodeInfos there so that the error message doesn't suck
   (These errs (_gas, r)) -> "Successful Server result: " <> prettyTextPretty r <> "\n  These nodes failed: \n" <> prettyPrintNetworkErrors errs
 
 
