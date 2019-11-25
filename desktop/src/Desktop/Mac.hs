@@ -63,7 +63,8 @@ data MacFFI = MacFFI
 getUserLibraryPath :: MonadIO m => MacFFI -> m FilePath
 getUserLibraryPath ffi = liftIO $ do
   home <- peekCString =<< _macFFI_global_getHomeDirectory ffi
-  let lib = home </> "Library" </> "Application Support" </> "io.kadena.pact"
+  -- TODO use the bundle identifier directly, don't duplicate it
+  let lib = home </> "Library" </> "Application Support" </> "io.kadena.chainweaver"
   Directory.createDirectoryIfMissing True lib
   pure lib
 

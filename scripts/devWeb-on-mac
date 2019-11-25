@@ -1,2 +1,0 @@
-# Run the web app while incrementally compiling all possible haskell code on a mac
-ob run --import desktop:Desktop --import mac:Mac

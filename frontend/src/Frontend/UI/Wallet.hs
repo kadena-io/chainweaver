@@ -142,9 +142,13 @@ uiKeyItems model = do
         , ""
         ]
 
-    el "tbody" $ listWithKey keyMap (uiKeyItem model)
+    el "tbody" $ do
+      events <- listWithKey keyMap (uiKeyItem model)
+      dyn_ $ ffor keyMap $ \keys -> when (Map.null keys) $
+        elClass "tr" "wallet__table-row" $ elAttr "td" ("colspan" =: "6" <> "class" =: "wallet__table-cell") $
+          text "No accounts ..."
+      pure events
 
-  dyn_ $ ffor keyMap $ \keys -> when (Map.null keys) $ text "No accounts ..."
 
   let
     onAccountModal = switchDyn $ leftmost . Map.elems <$> events

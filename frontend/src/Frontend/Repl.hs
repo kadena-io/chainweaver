@@ -67,12 +67,13 @@ import           Pact.Repl
 import           Pact.Repl.Types
 import           Pact.Types.Exp
 import           Pact.Types.Info
-import           Pact.Types.Term            (ModuleName (..), Name, Term (..))
+import           Pact.Types.Term            (ModuleName (..), Name, NamespaceName (..), Term (..), mnNamespace)
 ------------------------------------------------------------------------------
 import           Frontend.Network
 import           Frontend.Foundation
 import           Frontend.JsonData
 import           Frontend.Messages
+import           Frontend.ModuleExplorer.Example (exampleNamespacesFile)
 import           Frontend.Wallet
 import Common.Api (getVerificationServerUrl)
 ------------------------------------------------------------------------------
@@ -270,8 +271,14 @@ initRepl verificationUri oldImpl m  = do
   keys <- sample . current $ getAllKeys <$> m ^. wallet_accounts
   fmap snd . withRepl initImpl $ do
     void $ setEnvData env
-    setEnvKeys keys
+    void $ setEnvKeys keys
+    setupNamespaces
 
+setupNamespaces :: PactRepl ()
+setupNamespaces = do
+  void $ pactEvalRepl' "(begin-tx)"
+  void $ pactEvalRepl' exampleNamespacesFile `catchError` error
+  void $ pactEvalRepl' "(commit-tx)"
 
 -- | Create a brand new Repl state:
 mkState
@@ -339,10 +346,9 @@ runVerify impl onMod =
       void $ pactEvalRepl' $ buildTypecheck m
       pactEvalRepl' $ buildVerify m
 
-    -- TODO: Proper namespace support
-    buildVerify (ModuleName n _) = "(verify '" <> n <> ")"
-    -- TODO: Proper namespace support
-    buildTypecheck (ModuleName n _) = "(typecheck '" <> n <> ")"
+    buildVerify m = "(verify " <> qualifiedName m <> ")"
+    buildTypecheck m = "(typecheck " <> qualifiedName m <> ")"
+    qualifiedName (ModuleName mn nn) = "\"" <> maybe mn (\(NamespaceName nn') -> nn' <> "." <> mn) nn <> "\""
 
 -- | Run code in a transaction on the REPL.
 runTransaction
@@ -350,8 +356,10 @@ runTransaction
   . ( ReplMonad t m )
   => Impl t -> Event t Text -> m (Event t (TransactionResult, ReplState))
 runTransaction impl onCode =
-    performEvent $ ffor onCode $ \code -> withRepl impl $
+  performEvent $ ffor onCode $ \code -> do
+    withRepl impl $
       runIt code `catchError` cleanup
+
   where
     cleanup e = do
       void $ pactEvalRepl' "(rollback-tx)"
@@ -362,8 +370,31 @@ runTransaction impl onCode =
       let parsed = parsePact code
       r <- ExceptT $ evalParsed code parsed
       void $ pactEvalRepl' "(commit-tx)"
-      let transModules = fromMaybe Map.empty $ parsed ^? TF._Success . to getModules
-      pure $ TransactionSuccess r transModules
+
+      -- TODO: Will mis-behave if same module name is used in different namespaces
+      rmns :: [ModuleName] <- (fmap . fmap) fst replModules
+      let emns :: Map ModuleName Int = fromMaybe Map.empty $ parsed ^? TF._Success . to editorUnqualifiedModuleNames
+          editorModules :: Map ModuleName Int = Map.fromList $ fforMaybe rmns $ \mn ->
+            fmap (mn,) $ Map.lookup (mn & mnNamespace .~ Nothing) emns
+
+      pure $ TransactionSuccess r editorModules
+
+    -- TODO: can `replGetModules` actually change the state or is the type too coarse?
+    replModules = do
+      rs <- get
+      liftIO (replGetModules rs) >>= \case
+        Left err -> throwError $ show err
+        Right (oldModules, rs') -> put rs' *> pure (HM.toList oldModules)
+
+    -- TODO: Proper namespace support
+    editorUnqualifiedModuleNames :: [Exp Parsed] -> Map ModuleName Int
+    editorUnqualifiedModuleNames = Map.fromList . mapMaybe toModule
+      where
+        toModule :: Exp Parsed -> Maybe (ModuleName, Int)
+        toModule = \case
+          EList (ListExp (EAtom (AtomExp "module" _ _):EAtom (AtomExp m _ _):_) _ (Parsed (Delta.Lines l _ _ _) _))
+            -> Just $ (ModuleName m Nothing, fromIntegral l)
+          _ -> Nothing
 
     parsePact :: Text -> TF.Result [Exp Parsed]
     parsePact = TF.parseString exprsOnly mempty . T.unpack
@@ -381,19 +412,6 @@ runTransaction impl onCode =
 -- | Drop n elements from the end of a list.
 {- dropFromEnd :: Int -> [a] -> [a] -}
 {- dropFromEnd n xs = zipWith const xs (drop n xs) -}
-
--- | Get modules from a list of `Term`s.
-getModules :: [Exp Parsed] -> Map ModuleName Int
-getModules = Map.fromList . mapMaybe toModule
-  where
-    toModule :: Exp Parsed -> Maybe (ModuleName, Int)
-    toModule = \case
-      EList (ListExp (EAtom (AtomExp "module" _ _):EAtom (AtomExp m _ _):_) _ (Parsed (Delta.Lines l _ _ _) _))
-      -- TODO: Proper namespace support
-        -> Just $ (ModuleName m Nothing, fromIntegral l)
-      _ -> Nothing
-
-
 
 withRepl
   :: forall t m a

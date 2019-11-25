@@ -100,6 +100,8 @@ in
         servant-server = haskellLib.dontCheck super.servant-server;
 
         # failing
+        mono-traversable = haskellLib.dontCheck super.mono-traversable;
+        conduit = haskellLib.dontCheck super.conduit;
         wai-extra = haskellLib.dontCheck super.wai-extra;
         wai-app-static = haskellLib.dontCheck super.wai-app-static;
         servant-client = haskellLib.dontCheck super.servant-client;

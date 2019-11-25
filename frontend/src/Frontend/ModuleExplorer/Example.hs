@@ -33,6 +33,7 @@ module Frontend.ModuleExplorer.Example
   , exampleName
   , exampleFileName
   , exampleDataName
+  , exampleNamespacesFile
    -- * Retrieve example code
   , fetchExample
   ) where
@@ -43,6 +44,7 @@ import           Control.Error.Safe              (justZ)
 import           Control.Monad                   (void)
 import qualified Data.Aeson                      as A
 import           Data.Default
+import           Data.String.Here.Uninterpolated (here)
 import           Data.Text                       (Text)
 import qualified Data.Text                       as T
 import           Reflex
@@ -157,3 +159,21 @@ fetchExample onExampleModule =
 codeFromResponse :: XhrResponse -> Text
 codeFromResponse =
     fromMaybe "error: could not connect to server" . _xhrResponse_responseText
+
+-- TODO: Using `file-embed` errors on cabal build, using `static` and `file-embed` yields TH error
+exampleNamespacesFile :: Text
+exampleNamespacesFile = [here|
+;; Stripped down version of https://github.com/kadena-io/chainweb-node/blob/8edd0e7d8d64173a548a3fbf4414d1491f2b7d3e/pact/namespaces/ns.pact
+(module ns MODULE_ADMIN
+  (defcap MODULE_ADMIN () true)
+
+  (defun success ()
+    true)
+  (defun failure ()
+    (enforce false "Disabled"))
+
+  (defconst GUARD_SUCCESS (create-user-guard (success)))
+  (defconst GUARD_FAILURE (create-user-guard (failure))))
+
+(define-namespace "free" GUARD_SUCCESS GUARD_FAILURE)
+|]

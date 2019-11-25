@@ -181,11 +181,12 @@ prevView custom = \case
   DeploymentSettingsView_Preview -> Just DeploymentSettingsView_Keys
 
 -- | Get the next view.
-nextView :: DeploymentSettingsView -> Maybe DeploymentSettingsView
-nextView = \case
+nextView :: Bool -> DeploymentSettingsView -> Maybe DeploymentSettingsView
+nextView includePreviewTab = \case
   DeploymentSettingsView_Custom _ -> Just DeploymentSettingsView_Cfg
   DeploymentSettingsView_Cfg -> Just DeploymentSettingsView_Keys
-  DeploymentSettingsView_Keys -> Just DeploymentSettingsView_Preview
+  DeploymentSettingsView_Keys | includePreviewTab -> Just DeploymentSettingsView_Preview
+                              | otherwise -> Nothing
   DeploymentSettingsView_Preview -> Nothing
 
 data DeploymentSettingsResult key = DeploymentSettingsResult
@@ -330,17 +331,23 @@ buildDeployTabFooterControls
 buildDeployTabFooterControls mUserTabName includePreviewTab curSelection stepFn hasResult = do
   let backConfig = def & uiButtonCfg_class .~ ffor curSelection
         (\s -> if s == fromMaybe DeploymentSettingsView_Cfg mUserTabName then "hidden" else "")
-  back <- uiButtonDyn backConfig $ text "Back"
-  let tabToBeDisabled = if includePreviewTab then DeploymentSettingsView_Preview else DeploymentSettingsView_Keys
+
+      tabToBeDisabled = if includePreviewTab
+        then DeploymentSettingsView_Preview
+        else DeploymentSettingsView_Keys
+
       shouldBeDisabled tab hasRes = tab == tabToBeDisabled && hasRes
       isDisabled = shouldBeDisabled <$> curSelection <*> hasResult
-  next <- uiButtonDyn (def & uiButtonCfg_class .~ "button_type_confirm" & uiButtonCfg_disabled .~ isDisabled)
+
+  back <- uiButtonDyn backConfig $ text "Back"
+  next <- uiButtonDyn
+    (def & uiButtonCfg_class .~ "button_type_confirm" & uiButtonCfg_disabled .~ isDisabled)
     $ dynText (stepFn <$> curSelection)
+
   pure $ leftmost
-    [ nextView <$ next
+    [ nextView includePreviewTab <$ next
     , prevView mUserTabName <$ back
     ]
-
 
 -- | Show settings related to deployments to the user.
 --
