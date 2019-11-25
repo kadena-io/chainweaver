@@ -65,6 +65,7 @@ import           Control.Lens                      hiding ((.=))
 import           Control.Monad.Except
 import           GHC.Word                          (Word8)
 import           Data.Aeson                        (Object, Value (..), encode)
+import qualified Data.Bifunctor                    as BiF
 import qualified Data.ByteString.Lazy              as BSL
 import           Data.Decimal                      (DecimalRaw (..))
 import           Data.Either                       (lefts, rights)
@@ -89,6 +90,7 @@ import           Reflex.Dom.Core                   (def, XhrRequest(..), XhrResp
 import           System.IO                         (stderr)
 import           Text.URI                          (URI)
 import qualified Text.URI                          as URI
+import qualified Text.URI.Lens                     as URIL
 
 import           Pact.Parse                        (ParsedDecimal (..))
 import           Pact.Server.ApiV1Client
@@ -169,11 +171,11 @@ data NetworkError
 
 -- | We either have a `NetworkError`, some `Term Name` or both if we failed
 -- over but eventually got to a successful result.
-type NetworkErrorResult = These (NonEmpty NetworkError) (Maybe Gas, PactValue)
+type NetworkErrorResult = These (NonEmpty (Maybe URI, NetworkError)) (Maybe Gas, PactValue)
 
 -- | Use this sparingly as it throws away the errors that could have happened in
 -- the failovers. There could be something important in there
-networkErrorResultToEither :: NetworkErrorResult -> Either (NonEmpty NetworkError) (Maybe Gas, PactValue)
+networkErrorResultToEither :: NetworkErrorResult -> Either (NonEmpty (Maybe URI, NetworkError)) (Maybe Gas, PactValue)
 networkErrorResultToEither = these Left Right (\_ -> Right)
 
 -- | Config for creating a `Network`.
@@ -636,7 +638,7 @@ loadModules networkL onRefresh = do
       mkReq netName pm = mkSimpleReadReq "(list-modules)" netName pm . ChainRef Nothing
 
       byChainId :: (NetworkRequest, NetworkErrorResult) -> Either (NonEmpty NetworkError) (ChainId, PactValue)
-      byChainId = sequence . bimap (_chainRef_chain . _networkRequest_chainRef) (fmap snd . networkErrorResultToEither)
+      byChainId = sequence . bimap (_chainRef_chain . _networkRequest_chainRef) (bimap (fmap snd) snd . networkErrorResultToEither)
 
       renderErrs :: [NetworkError] -> Text
       renderErrs =
@@ -793,27 +795,27 @@ performNetworkRequestCustom networkL unwrap onReqs =
     doReqFailover nodeInfos req =
       go [] nodeInfos
         where
-          go :: [NetworkError] -> [NodeInfo] -> JSM NetworkErrorResult
+          go :: [(Maybe URI,NetworkError)] -> [NodeInfo] -> JSM NetworkErrorResult
           go errs = \case
             n:ns -> do
               errRes <- doReq (Just n) req
               case errRes of
-                Left err -> do
+                Left (chainUrl,err) -> do
                   liftIO $ putStrLn $ "Got err: " <> show err
                   if shouldFailOver err
-                               then go (err : errs) ns
-                               else pure $ mkResult errs (Left err)
+                               then go ((chainUrl,err) : errs) ns
+                               else pure $ mkResult errs (Left (chainUrl,err))
                 Right res -> pure $ mkResult errs (Right res)
             [] -> mkResult errs <$> doReq Nothing req
           mkResult errs (Left e) = This (NEL.reverse $ e :| errs)
           mkResult errs (Right res) = maybe (That res) (flip These res) . nonEmpty . reverse $ errs
 
-    doReq :: Maybe NodeInfo -> NetworkRequest -> JSM (Either NetworkError (Maybe Gas, PactValue))
+    doReq :: Maybe NodeInfo -> NetworkRequest -> JSM (Either (Maybe URI,NetworkError) (Maybe Gas, PactValue))
     doReq mNodeInfo req = runExceptT $ do
       chainUrl <- ExceptT $ getBaseUrlErr (req ^. networkRequest_chainRef) mNodeInfo
-      ExceptT $ liftJSM $ networkRequest chainUrl (req ^. networkRequest_endpoint) (_networkRequest_cmd req)
+      ExceptT $ liftJSM $ fmap (BiF.first (Just chainUrl,)) $ networkRequest chainUrl (req ^. networkRequest_endpoint) (_networkRequest_cmd req)
 
-    getBaseUrlErr ref info = left NetworkError_Other <$> getChainRefBaseUrl ref info
+    getBaseUrlErr ref info = left ((Nothing,) . NetworkError_Other) <$> getChainRefBaseUrl ref info
 
 
 -- | Send a transaction via the /send endpoint.
@@ -1011,7 +1013,7 @@ shouldFailOver = \case
 
 -- | Pretty print a `NetworkError`.
 prettyPrintNetworkError :: NetworkError -> Text
-prettyPrintNetworkError = ("ERROR: " <>) . \case
+prettyPrintNetworkError = \case
   NetworkError_NetworkError msg -> "Network error: " <> msg
   NetworkError_Status c msg -> "Error HTTP response (" <> tshow c <> "):" <> msg
   NetworkError_Decoding msg -> "Decoding server response failed: " <> msg
@@ -1020,8 +1022,12 @@ prettyPrintNetworkError = ("ERROR: " <>) . \case
   NetworkError_NoNetwork t -> "An action requiring a network was about to be performed, but we don't (yet) have any selected network: '" <> t <> "'"
   NetworkError_Other m -> m
 
-prettyPrintNetworkErrors :: NonEmpty NetworkError -> Text
-prettyPrintNetworkErrors = T.intercalate "\n" . toList . fmap prettyPrintNetworkError
+prettyPrintNetworkErrors :: NonEmpty (Maybe URI, NetworkError) -> Text
+prettyPrintNetworkErrors = T.intercalate "\n" . toList . fmap (\(mu,e) ->
+  renderMaybeUri mu <> prettyPrintNetworkError e)
+  where
+    renderMaybeUri = maybe "" (\h -> ("Error from (" <> h <> "): ")) . (extractHost =<<)
+    extractHost = (^? URIL.uriAuthority . _Right . URIL.authHost . URIL.unRText)
 
 -- | Pretty print a `NetworkErrorResult`.
 prettyPrintNetworkErrorResult :: NetworkErrorResult -> Text

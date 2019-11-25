@@ -431,6 +431,6 @@ submitTransactionWithFeedback cmd chain nodeInfos = do
   divClass "group" $ el "pre" $ do
     maybeDyn message >>= \md -> dyn_ $ ffor md $ \case
       Nothing -> text "Waiting for response..."
-      Just a -> dynText $ prettyPrintNetworkErrorResult . either (This . pure . NetworkError_CommandFailure) (That . (Nothing,)) <$> a
+      Just a -> dynText $ prettyPrintNetworkErrorResult . either (This . pure . (Nothing,) .  NetworkError_CommandFailure) (That . (Nothing,)) <$> a
 
   pure $ TransactionSubmitFeedback sendStatus listenStatus message
