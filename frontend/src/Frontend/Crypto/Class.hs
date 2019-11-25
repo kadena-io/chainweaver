@@ -29,7 +29,7 @@ data PactKey = PactKey
   { _pactKey_scheme :: PPKScheme
   , _pactKey_publicKey :: PublicKey
   , _pactKey_secret :: ByteString
-  }
+  } deriving Show
 
 data GenKeyArg
   = GenWalletIndex Int
