@@ -6,7 +6,6 @@ module Frontend.UI.Dialogs.AddVanityAccount
   ) where
 
 import           Control.Applicative                    (liftA2)
-import           Control.Error                          (hush)
 import           Control.Lens                           ((^.))
 import           Control.Monad.Trans.Class              (lift)
 import           Control.Monad.Trans.Maybe              (MaybeT (..), runMaybeT)
@@ -47,8 +46,8 @@ import           Frontend.Wallet                        (Account (..),
                                                          AccountName,
                                                          HasWalletCfg (..),
                                                          KeyPair (..),
-                                                         checkAccountNameValidity,
                                                          findNextKey,
+                                                         uiAccountNameInput,
                                                          unAccountName)
 
 -- Allow the user to create a 'vanity' account, which is an account with a custom name
@@ -84,35 +83,17 @@ uiAddVanityAccountSettings
   -> Workflow t m (Text, (mConf, Event t ()))
 uiAddVanityAccountSettings ideL mChainId initialNotes = Workflow $ do
   pb <- getPostBuild
+  let
+    w = _ide_wallet ideL
+    dNextKey = findNextKey w
 
-  let inputElem lbl wrapperCls = divClass wrapperCls $ mkLabeledClsInput True lbl
-        $ \cls -> uiInputElement $ def & initialAttributes .~ "class" =: (renderClass cls)
+    notesInput = divClass "vanity-account-create__notes" $ mkLabeledClsInput True "Notes"
+      $ \cls -> uiInputElement $ def
+                & initialAttributes .~ "class" =: (renderClass cls)
+                & inputElementConfig_setValue .~ (current initialNotes <@ pb)
 
-      notesInput = divClass "vanity-account-create__notes" $ mkLabeledClsInput True "Notes"
-        $ \cls -> uiInputElement $ def
-                  & initialAttributes .~ "class" =: (renderClass cls)
-                  & inputElementConfig_setValue .~ (current initialNotes <@ pb)
-
-      w = _ide_wallet ideL
-      dNextKey = findNextKey w
-
-      validateAccountName = checkAccountNameValidity w
-
-      uiAccountNameInput = divClass "vanity-account-create__account-name" $ do
-        dEitherAccName <- (validateAccountName <*>) . value <$>
-          inputElem "Account Name" "vanity-account-create__account-name-input"
-
-        dAccNameDirty <- holdUniqDyn =<< holdDyn False (True <$ updated dEitherAccName)
-
-        divClass "vanity-account-create__account-name-error" $
-          dyn_ $ ffor2 dAccNameDirty dEitherAccName $ curry $ \case
-            (True, Left e) -> text e
-            _ -> blank
-
-        pure $ hush <$> dEitherAccName
-
-      uiAcc = liftA2 (,) uiAccountNameInput (value <$> notesInput)
-      uiAccSection = ("Reference Data", uiAcc)
+    uiAcc = liftA2 (,) (uiAccountNameInput w) (value <$> notesInput)
+    uiAccSection = ("Reference Data", uiAcc)
 
   eKeyPair <- performEvent $ cryptoGenKey <$> current dNextKey <@ pb
   dKeyPair <- holdDyn Nothing $ ffor eKeyPair $ \(pr,pu) -> Just $ KeyPair pu $ Just pr

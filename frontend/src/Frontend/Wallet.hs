@@ -51,8 +51,10 @@ module Frontend.Wallet
   , findNextKey
   , findFirstVanityAccount
   , getSigningPairs
+  , uiAccountNameInput
   ) where
 
+import Control.Error (hush)
 import Control.Applicative ((<|>))
 import Control.Lens hiding ((.=))
 import Control.Monad (guard)
@@ -69,6 +71,7 @@ import Kadena.SigningApi (AccountName(..), mkAccountName)
 import Pact.Types.ChainId
 import Pact.Types.ChainMeta (PublicMeta)
 import Reflex
+import Reflex.Dom
 import qualified Data.IntMap as IntMap
 import qualified Data.Set as Set
 import qualified Data.Text as T
@@ -84,6 +87,8 @@ import Frontend.Foundation
 import Frontend.KadenaAddress
 import Frontend.Storage
 import Frontend.Network
+
+import Frontend.UI.Widgets
 
 accountToKadenaAddress :: Account key -> KadenaAddress
 accountToKadenaAddress a = mkKadenaAddress isCreated (_account_chainId a) (_account_name a)
@@ -315,6 +320,33 @@ storeKeys ks = setItemStorage localStorage StoreWallet_Keys ks
 loadKeys :: (FromJSON key, HasStorage m, MonadJSM m) => m (Maybe (Accounts key))
 loadKeys = getItemStorage localStorage StoreWallet_Keys
 
+uiAccountNameInput
+  :: ( DomBuilder t m
+     , PostBuild t m
+     , MonadHold t m
+     , MonadFix m
+     )
+  => Wallet key t
+  -> m (Dynamic t (Maybe AccountName))
+uiAccountNameInput w = do
+  let
+    validateAccountName = checkAccountNameValidity w
+
+    inp lbl wrapperCls = divClass wrapperCls $ mkLabeledClsInput True lbl
+      $ \cls -> uiInputElement $ def & initialAttributes .~ "class" =: (renderClass cls)
+
+  divClass "vanity-account-create__account-name" $ do
+    dEitherAccName <- (validateAccountName <*>) . value <$>
+      inp "Account Name" "vanity-account-create__account-name-input"
+
+    dAccNameDirty <- holdUniqDyn =<< holdDyn False (True <$ updated dEitherAccName)
+
+    divClass "vanity-account-create__account-name-error" $
+      dyn_ $ ffor2 dAccNameDirty dEitherAccName $ curry $ \case
+        (True, Left e) -> text e
+        _ -> blank
+
+    pure $ hush <$> dEitherAccName
 
 -- Utility functions:
 

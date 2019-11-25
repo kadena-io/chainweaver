@@ -35,6 +35,7 @@ module Frontend.UI.Widgets
   , uiDropdown
   , uiSelectElement
   , uiPassword
+  , validatedInput
   , validatedInputWithButton
     -- ** Helper widgets
   , imgWithAlt
@@ -59,6 +60,7 @@ module Frontend.UI.Widgets
 import           Control.Applicative
 import           Control.Lens
 import           Control.Monad
+import           Control.Error (hush)
 import           Data.Either (isLeft)
 import           Data.Map.Strict             (Map)
 import qualified Data.Map.Strict as Map
@@ -371,6 +373,30 @@ noAutofillAttrs = Map.fromList
   , ("autocapitalize", "off")
   , ("spellcheck", "false")
   ]
+
+-- | Validated input
+validatedInput
+  :: ( DomBuilder t m
+     , MonadHold t m
+     , MonadFix m
+     , PostBuild t m
+     )
+  => CssClass
+  -> (Dynamic t (Text -> Either Text a))
+  -- ^ Validation function returning `Just error message` on error.
+  -> m (InputElement EventResult (DomBuilderSpace m) t)
+  -> m (Event t a)
+validatedInput uCls check input = divClass (renderClass uCls) $ do
+  divClass "validated-input__wrapper" $ do
+    dEitherInput <- (check <*>) . value <$> divClass "validated-input__input" input
+    dInputDirty <- holdUniqDyn =<< holdDyn False (True <$ updated dEitherInput)
+
+    divClass "validated-input__error" $
+      dyn_ $ ffor2 dInputDirty dEitherInput $ curry $ \case
+        (True, Left e) -> text e
+        _ -> blank
+
+    pure $ fmapMaybe hush $ updated dEitherInput
 
 -- | Validated input with button
 validatedInputWithButton
