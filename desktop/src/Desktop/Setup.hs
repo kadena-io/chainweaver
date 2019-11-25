@@ -343,7 +343,7 @@ passphraseWordElement currentStage k wrd = do
           ]
 
       pure (updated $ _inputElement_hasFocus inputElt, _inputElement_input inputElt)
-  pure eInput
+  pure (T.strip <$> eInput)
   where
     canEditOnRecover Recover = Nothing
     canEditOnRecover Setup = Just "true"
