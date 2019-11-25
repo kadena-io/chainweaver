@@ -20,7 +20,6 @@ import Pact.Types.Scheme (PPKScheme(ETH, ED25519))
 
 import Frontend.UI.Modal.Impl (ModalIde, modalFooter)
 import Frontend.Crypto.Class (HasCrypto, cryptoVerifyPactKey, _pactKey_publicKey)
-import Frontend.JsonData
 import Frontend.Network (ChainId, network_selectedNetwork)
 import Frontend.UI.Widgets
 import Frontend.Wallet (HasWalletCfg (..), AccountName, unAccountName, wallet_pactAccountCreated)
@@ -28,20 +27,16 @@ import Frontend.UI.Modal
 import Common.Wallet (keyToText)
 import Obelisk.Generated.Static
 
--- Allow the user to create a 'vanity' account, which is an account with a custom name
--- that lives on the chain. Requires GAS to create.
-
-type HasUISigningModelCfg mConf key t =
+type HasUIImportLegacyAccountCfg mConf key t =
   ( Monoid mConf
   , Flattenable mConf t
   , HasWalletCfg mConf key t
-  , HasJsonDataCfg mConf t
   )
 
 uiImportLegacyAccountSettings
   :: forall key t m mConf
   . ( MonadWidget t m
-    , HasUISigningModelCfg mConf key t
+    , HasUIImportLegacyAccountCfg mConf key t
     , HasCrypto key (Performable m)
     )
   => ModalIde m key t
@@ -89,8 +84,6 @@ uiImportLegacyAccountSettings ideL mChainId initialNotes = Workflow $ do
     pure (onCancel, onImport)
 
   let eNewAccountOk = fmapMaybe hush $ current dCreateInput <@ eOnImport
-
-  performEvent $ liftIO . print <$> eNewAccountOk
 
   pure
     ( ( "Import Legacy Account"

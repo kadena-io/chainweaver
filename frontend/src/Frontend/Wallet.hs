@@ -228,6 +228,7 @@ makeWallet model conf = do
   where
     createPactAccount :: (PactKey, NetworkName, ChainId, Text) -> Performable m (Account key)
     createPactAccount (pk, net, c, t) = do
+      liftIO $ print pk
       (privKey, pubKey) <- cryptoGenKey (GenFromPactKey pk)
       pure $ buildAccount (AccountName $ keyToText pubKey) pubKey privKey net c t False
 
