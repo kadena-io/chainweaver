@@ -121,6 +121,7 @@ in
         reflex-dom-core = haskellLib.dontCheck super.reflex-dom-core; # webdriver fails to build
         modern-uri = haskellLib.dontCheck super.modern-uri;
         servant-jsaddle = haskellLib.dontCheck (haskellLib.doJailbreak super.servant-jsaddle);
+        these-lens = haskellLib.doJailbreak (self.callHackage "these-lens" "1" {});
         obelisk-oauth-frontend = haskellLib.doJailbreak super.obelisk-oauth-frontend;
         pact = haskellLib.dontCheck super.pact; # tests can timeout...
       };

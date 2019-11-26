@@ -59,6 +59,7 @@ import Data.Aeson
 import Data.IntMap (IntMap)
 import Data.Set (Set)
 import Data.Text (Text)
+import Data.These.Lens (there)
 import Data.Traversable (for)
 import GHC.Generics (Generic)
 import Kadena.SigningApi (AccountName(..), mkAccountName)
@@ -247,8 +248,7 @@ getBalances model accounts = do
   response <- performLocalReadCustom (model ^. network) toReqList reqs
   pure $ toBalances <$> response
   where
-    toBalance (Right (_, Pact.PLiteral (Pact.LDecimal d))) = Just $ AccountBalance d
-    toBalance _ = Nothing
+    toBalance = (^? there . _2 . to (\case (Pact.PLiteral (Pact.LDecimal d)) -> Just $ AccountBalance d; _ -> Nothing) . _Just)
     toBalances :: (IntMap (SomeAccount key, Maybe NetworkRequest), [NetworkErrorResult]) -> Accounts key
     toBalances (m, results) = IntMap.fromList $ stepwise (IntMap.toList (fmap fst m)) (toBalance <$> results)
     -- I don't like this, I'd rather just block in a forked thread manually than have to do this dodgy alignment. TODO

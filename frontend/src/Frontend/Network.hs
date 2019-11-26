@@ -45,8 +45,11 @@ module Frontend.Network
   , performLocalReadCustom
   , performLocalRead
     -- * Utilities
+  , parseNetworkErrorResult
   , prettyPrintNetworkErrorResult
   , prettyPrintNetworkError
+  , prettyPrintNetworkErrors
+  , networkErrorResultToEither
   , buildCmd
   , mkSimpleReadReq
   , getNetworkNameAndMeta
@@ -62,18 +65,21 @@ import           Control.Lens                      hiding ((.=))
 import           Control.Monad.Except
 import           GHC.Word                          (Word8)
 import           Data.Aeson                        (Object, Value (..), encode)
+import qualified Data.Bifunctor                    as BiF
 import qualified Data.ByteString.Lazy              as BSL
 import           Data.Decimal                      (DecimalRaw (..))
 import           Data.Either                       (lefts, rights)
 import qualified Data.IntMap                       as IntMap
 import qualified Data.List                         as L
-import           Data.List.NonEmpty                (NonEmpty (..))
+import           Data.List.NonEmpty                (NonEmpty (..), nonEmpty)
+import qualified Data.List.NonEmpty                as NEL
 import qualified Data.Map                          as Map
 import           Data.Map.Strict                   (Map)
 import           Data.Text                         (Text)
 import qualified Data.Text                         as T
 import qualified Data.Text.Encoding                as T
 import qualified Data.Text.IO                      as T
+import           Data.These                        (These(..), these)
 import           Data.Time.Clock                   (getCurrentTime)
 import           Data.Time.Clock.POSIX             (getPOSIXTime)
 import           Data.Traversable                  (for)
@@ -84,6 +90,7 @@ import           Reflex.Dom.Core                   (def, XhrRequest(..), XhrResp
 import           System.IO                         (stderr)
 import           Text.URI                          (URI)
 import qualified Text.URI                          as URI
+import qualified Text.URI.Lens                     as URIL
 
 import           Pact.Parse                        (ParsedDecimal (..))
 import           Pact.Server.ApiV1Client
@@ -162,9 +169,14 @@ data NetworkError
   -- ^ Other errors that should really never happen.
   deriving Show
 
--- | We either have a `NetworkError` or some `Term Name`.
-type NetworkErrorResult = Either NetworkError (Maybe Gas, PactValue)
+-- | We either have a `NetworkError`, some `Term Name` or both if we failed
+-- over but eventually got to a successful result.
+type NetworkErrorResult = These (NonEmpty (Maybe URI, NetworkError)) (Maybe Gas, PactValue)
 
+-- | Use this sparingly as it throws away the errors that could have happened in
+-- the failovers. There could be something important in there
+networkErrorResultToEither :: NetworkErrorResult -> Either (NonEmpty (Maybe URI, NetworkError)) (Maybe Gas, PactValue)
+networkErrorResultToEither = these Left Right (\_ -> Right)
 
 -- | Config for creating a `Network`.
 data NetworkCfg t = NetworkCfg
@@ -435,7 +447,7 @@ deployCode
 deployCode networkL onReq = do
     reqRes <- performNetworkRequest networkL onReq
     pure $ ( mempty & messagesCfg_send .~ fmap (map renderReqRes) reqRes
-           , () <$ ffilter (or . map (either (const False) (const True) . snd)) reqRes
+           , () <$ ffilter (or . map (these (const False) (const True) (const . const $ True) . snd)) reqRes
            )
   where
     renderReqRes :: (NetworkRequest, NetworkErrorResult) -> Text
@@ -595,7 +607,7 @@ loadModules networkL onRefresh = do
       onErrResps <- performLocalReadLatest networkL onReqs
 
       let
-        onByChainId :: Event t [ Either NetworkError (ChainId, PactValue) ]
+        onByChainId :: Event t [ Either (NonEmpty NetworkError) (ChainId, PactValue) ]
         onByChainId = map byChainId <$> onErrResps
 
         onErrs = ffilter (not . null) $ fmap lefts onByChainId
@@ -604,7 +616,7 @@ loadModules networkL onRefresh = do
         onModules :: Event t [(ChainId, [Text])]
         onModules =  map (second getModuleList) <$> onResps
 
-      performEvent_ $ liftIO . T.hPutStrLn stderr . renderErrs <$> onErrs
+      performEvent_ $ liftIO . traverse_ (T.hPutStrLn stderr . renderErrs . toList) <$> onErrs
 
       holdUniqDyn <=< holdDyn mempty $ Map.fromList <$> onModules
 
@@ -625,8 +637,8 @@ loadModules networkL onRefresh = do
 
       mkReq netName pm = mkSimpleReadReq "(list-modules)" netName pm . ChainRef Nothing
 
-      byChainId :: (NetworkRequest, NetworkErrorResult) -> Either NetworkError (ChainId, PactValue)
-      byChainId = sequence . bimap (_chainRef_chain . _networkRequest_chainRef) (fmap snd)
+      byChainId :: (NetworkRequest, NetworkErrorResult) -> Either (NonEmpty NetworkError) (ChainId, PactValue)
+      byChainId = sequence . bimap (_chainRef_chain . _networkRequest_chainRef) (bimap (fmap snd) snd . networkErrorResultToEither)
 
       renderErrs :: [NetworkError] -> Text
       renderErrs =
@@ -644,6 +656,20 @@ loadModules networkL onRefresh = do
       getStringLit = \case
         PLiteral (LString v) -> Just v
         _         -> Nothing
+
+
+-- | Parse a NetworkErrorResult into something that the frontend can use
+parseNetworkErrorResult :: (MonadIO m) => (PactValue -> Either Text a) -> NetworkErrorResult -> m (These Text a)
+parseNetworkErrorResult parse = \case
+  That (_gas, pactValue) -> doParse pactValue That
+  This e -> pure $ This $ prettyPrintNetworkErrors e
+  These errs (_gas, pactValue) -> doParse pactValue (These (prettyPrintNetworkErrors errs))
+  where
+    doParse pactValue f = case parse pactValue of
+      Left e -> do
+        liftIO $ T.putStrLn e
+        pure $ This "Error parsing the response"
+      Right v -> pure $ f v
 
 
 -- | Perform a read or non persisted request to the /local endpoint.
@@ -759,40 +785,37 @@ performNetworkRequestCustom
   -> Event t req
   -> m (Event t (req, [NetworkErrorResult]))
 performNetworkRequestCustom networkL unwrap onReqs =
-    performEventAsync $ ffor onReqs $ \reqs cb ->
-      reportError cb reqs $ do
-        nodeInfos <- getSelectedNetworkInfos networkL
-        void $ liftJSM $ forkJSM $ do
-          r <- traverse (doReqFailover nodeInfos) $ unwrap reqs
-          liftIO $ cb (reqs, r)
+    performEventAsync $ ffor onReqs $ \reqs cb -> do
+      nodeInfos <- getSelectedNetworkInfos networkL
+      void $ liftJSM $ forkJSM $ do
+        r <- traverse (doReqFailover nodeInfos) $ unwrap reqs
+        liftIO $ cb (reqs, r)
   where
-
-    reportError cb reqs m = do
-      er <- runExceptT m
-      case er of
-        Left err -> liftIO $ cb $ (reqs, map (const $ Left err) $ unwrap reqs)
-        Right () -> pure ()
-
+    doReqFailover :: [NodeInfo] -> NetworkRequest -> JSM NetworkErrorResult
     doReqFailover nodeInfos req =
-      go nodeInfos
+      go [] nodeInfos
         where
-          go = \case
+          go :: [(Maybe URI,NetworkError)] -> [NodeInfo] -> JSM NetworkErrorResult
+          go errs = \case
             n:ns -> do
               errRes <- doReq (Just n) req
               case errRes of
-                Left err -> do
+                Left (chainUrl,err) -> do
                   liftIO $ putStrLn $ "Got err: " <> show err
                   if shouldFailOver err
-                               then go ns
-                               else pure errRes
-                Right _ -> pure errRes
-            [] -> doReq Nothing req
+                               then go ((chainUrl,err) : errs) ns
+                               else pure $ mkResult errs (Left (chainUrl,err))
+                Right res -> pure $ mkResult errs (Right res)
+            [] -> mkResult errs <$> doReq Nothing req
+          mkResult errs (Left e) = This (NEL.reverse $ e :| errs)
+          mkResult errs (Right res) = maybe (That res) (flip These res) . nonEmpty . reverse $ errs
 
+    doReq :: Maybe NodeInfo -> NetworkRequest -> JSM (Either (Maybe URI,NetworkError) (Maybe Gas, PactValue))
     doReq mNodeInfo req = runExceptT $ do
       chainUrl <- ExceptT $ getBaseUrlErr (req ^. networkRequest_chainRef) mNodeInfo
-      ExceptT $ liftJSM $ networkRequest chainUrl (req ^. networkRequest_endpoint) (_networkRequest_cmd req)
+      ExceptT $ liftJSM $ fmap (BiF.first (Just chainUrl,)) $ networkRequest chainUrl (req ^. networkRequest_endpoint) (_networkRequest_cmd req)
 
-    getBaseUrlErr ref info = left NetworkError_Other <$> getChainRefBaseUrl ref info
+    getBaseUrlErr ref info = left ((Nothing,) . NetworkError_Other) <$> getChainRefBaseUrl ref info
 
 
 -- | Send a transaction via the /send endpoint.
@@ -823,7 +846,7 @@ networkRequest
   :: URI
   -> Endpoint
   -> Command Text
-  -> JSM NetworkErrorResult
+  -> JSM (Either NetworkError (Maybe Gas, PactValue))
 networkRequest baseUri endpoint cmd = do
     baseUrl <- S.parseBaseUrl $ URI.renderStr baseUri
     let clientEnv = S.mkClientEnv baseUrl
@@ -990,7 +1013,7 @@ shouldFailOver = \case
 
 -- | Pretty print a `NetworkError`.
 prettyPrintNetworkError :: NetworkError -> Text
-prettyPrintNetworkError = ("ERROR: " <>) . \case
+prettyPrintNetworkError = \case
   NetworkError_NetworkError msg -> "Network error: " <> msg
   NetworkError_Status c msg -> "Error HTTP response (" <> tshow c <> "):" <> msg
   NetworkError_Decoding msg -> "Decoding server response failed: " <> msg
@@ -999,12 +1022,19 @@ prettyPrintNetworkError = ("ERROR: " <>) . \case
   NetworkError_NoNetwork t -> "An action requiring a network was about to be performed, but we don't (yet) have any selected network: '" <> t <> "'"
   NetworkError_Other m -> m
 
+prettyPrintNetworkErrors :: NonEmpty (Maybe URI, NetworkError) -> Text
+prettyPrintNetworkErrors = T.intercalate "\n" . toList . fmap (\(mu,e) ->
+  renderMaybeUri mu <> prettyPrintNetworkError e)
+  where
+    renderMaybeUri = maybe "" (\h -> ("Error from (" <> h <> "): ")) . (extractHost =<<)
+    extractHost = (^? URIL.uriAuthority . _Right . URIL.authHost . URIL.unRText)
 
 -- | Pretty print a `NetworkErrorResult`.
 prettyPrintNetworkErrorResult :: NetworkErrorResult -> Text
 prettyPrintNetworkErrorResult = \case
-  Left e -> prettyPrintNetworkError e
-  Right (_gas, r) -> "Server result: " <> prettyTextPretty r
+  This errs -> prettyPrintNetworkErrors errs
+  That (_gas, r) -> "Successful Server result: " <> prettyTextPretty r
+  (These errs (_gas, r)) -> "Successful Server result: " <> prettyTextPretty r <> "\n  These nodes failed: \n" <> prettyPrintNetworkErrors errs
 
 
 -- | Get unique nonce, based on current time.
