@@ -60,7 +60,7 @@ module Frontend.UI.DeploymentSettings
   , Identity (runIdentity)
   ) where
 
-import Control.Applicative (liftA3, (<|>))
+import Control.Applicative (liftA2, (<|>))
 import Control.Arrow (first, (&&&))
 import Control.Error (fmapL, hoistMaybe, headMay)
 import Control.Error.Util (hush)
@@ -773,7 +773,7 @@ capabilityInputRow mCap mkSender = elClass "tr" "table__row" $ do
       & inputElementConfig_initialValue .~ foldMap (renderCompactText . _dappCap_cap) mCap
       & initialAttributes .~
         "placeholder" =: "(module.capability arg1 arg2)" <>
-        "class" =: (maybe id (const (<> " input_transparent")) mCap) "input_width_full" <>
+        "class" =: (maybe id (const (<> " input_transparent grant-capabilities-static-input")) mCap) "input_width_full" <>
         (maybe mempty (const $ "disabled" =: "true") mCap)
       & modifyAttributes .~ ffor errors (\e -> "style" =: ("background-color: #fdd" <$ guard e))
     empty <- holdUniqDyn $ T.null <$> value cap
@@ -798,37 +798,23 @@ capabilityInputRow mCap mkSender = elClass "tr" "table__row" $ do
     , _capabilityInputRow_cap = parsed
     }
 
--- | Display a single row for an empty capability
-emptyCapability :: DomBuilder t m => Text -> m () -> m a -> m a
-emptyCapability cls extra m = elClass "tr" "table__row" $ do
-  elClass "td" cls $ void $ uiInputElement $ def
-    & inputElementConfig_initialValue .~ "Empty capability"
-    & initialAttributes .~
-      ( "class" =: "input_width_full input_transparent" <>
-        "disabled" =: "true"
-      )
-  extra
-  elClass "td" cls m
-
 -- | Display a dynamic number of rows for the user to enter custom capabilities
 capabilityInputRows
   :: forall t m. MonadWidget t m
-  => m (Dynamic t (Maybe AccountName))
+  => Event t ()  -- Add new row
+  -> m (Dynamic t (Maybe AccountName))
   -> m (Dynamic t (Map AccountName [SigCapability]))
-capabilityInputRows mkSender = do
+capabilityInputRows addNew mkSender = do
   rec
-    (im0, im') <- traverseIntMapWithKeyWithAdjust (\_ _ -> capabilityInputRow Nothing mkSender) (IM.singleton 0 ()) $ leftmost
+    (im0, im') <- traverseIntMapWithKeyWithAdjust (\_ _ -> capabilityInputRow Nothing mkSender) IM.empty $ leftmost
       -- Delete rows, but ensure we don't delete them all
-      [ PatchIntMap <$> gate canDelete deletions
+      [ PatchIntMap <$> deletions
       -- Add a new row when all rows are used
-      , attachWith (\i _ -> PatchIntMap (IM.singleton i (Just ()))) nextKeyToUse $ ffilter not $ updated anyEmpty
+      , attachWith (\i _ -> PatchIntMap (IM.singleton i (Just ()))) nextKeyToUse $ addNew
       ]
     results :: Dynamic t (IntMap (CapabilityInputRow t))
       <- foldDyn applyAlways im0 im'
     let nextKeyToUse = maybe 0 (succ . fst) . IM.lookupMax <$> current results
-        canDelete = (> 1) . IM.size <$> current results
-
-        anyEmpty = fmap or $ traverse _capabilityInputRow_empty =<< results
 
         decideDeletions :: Int -> CapabilityInputRow t -> Event t (IntMap (Maybe ()))
         decideDeletions i row = IM.singleton i Nothing <$ leftmost
@@ -866,29 +852,31 @@ uiSenderCapabilities m cid mCaps mkSender = do
       staticCapabilityRows caps = fmap (fmap (Map.unionsWith (<>)) . sequence) $ for caps $ \cap ->
         elClass "tr" "table__row" $ _capabilityInputRow_value <$> staticCapabilityRow (uiSenderDropdown def m cid) cap
 
-      combineMaps = liftA3 $ \a b c -> Map.unionsWith (<>) [a, b, c]
+      combineMaps = liftA2 $ Map.unionWith (<>)
 
-  divClass "title" $ text "Roles"
+  eAddCap <- divClass "grant-capabilities-title" $ do
+    divClass "title grant-capabilities-title__title" $ text "Grant Capabilities"
+    addButton (def & uiButtonCfg_class <>~ " grant-capabilities-title__add-button")
 
   -- Capabilities
   divClass "group" $ elAttr "table" ("class" =: "table" <> "style" =: "width: 100%; table-layout: fixed;") $ case mCaps of
-    Nothing -> el "tbody" $ do
-      empty <- emptyCapability "table__cell_padded" blank senderDropdown
-      let emptySig = maybe Map.empty (\a -> Map.singleton a []) <$> empty
-      gas <- capabilityInputRow (Just defaultGASCapability) mkSender
-      rest <- capabilityInputRows senderDropdown
-      pure (_capabilityInputRow_account gas, combineMaps (_capabilityInputRow_value gas) rest emptySig)
+    Nothing -> do
+      el "thead" $ el "tr" $ do
+        elClass "th" "table__heading table__cell_padded" $ text "Capability"
+        elClass "th" "table__heading table__cell_padded" $ text "Account"
+      el "tbody" $ do
+        gas <- capabilityInputRow (Just defaultGASCapability) mkSender
+        rest <- capabilityInputRows eAddCap senderDropdown
+        pure (_capabilityInputRow_account gas, combineMaps (_capabilityInputRow_value gas) rest)
     Just caps -> do
       el "thead" $ el "tr" $ do
         elClass "th" "table__heading" $ text "Role"
         elClass "th" "table__heading" $ text "Capability"
         elClass "th" "table__heading" $ text "Account"
       el "tbody" $ do
-        empty <- emptyCapability "" (el "td" blank) senderDropdown
-        let emptySig = maybe Map.empty (\a -> Map.singleton a []) <$> empty
         gas <- staticCapabilityRow mkSender defaultGASCapability
         rest <- staticCapabilityRows $ filter (not . isGas . _dappCap_cap) caps
-        pure (_capabilityInputRow_account gas, combineMaps (_capabilityInputRow_value gas) rest emptySig)
+        pure (_capabilityInputRow_account gas, combineMaps (_capabilityInputRow_value gas) rest)
 
 isGas :: SigCapability -> Bool
 isGas = (^. to PC._scName . to PN._qnName . to (== "GAS"))

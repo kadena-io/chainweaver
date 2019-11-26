@@ -246,3 +246,19 @@
     margin-right: 10px;
   }
 }
+
+.grant-capabilities-title {
+  display: flex;
+  align-items: center;
+
+  .grant-capabilities-title__title {
+    flex-grow: 2;
+  }
+  .grant-capabilities-title__add-button {
+    margin-right: 1em;
+  }
+}
+
+.grant-capabilities-static-input {
+  padding: 0;
+}
