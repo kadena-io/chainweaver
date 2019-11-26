@@ -18,6 +18,7 @@ module Frontend.UI.Wallet
   ( -- * Key management widget
     uiWallet
   , uiAvailableKeys
+  , uiWalletRefreshButton
     -- ** Filters for keys
   , hasPrivateKey
   , HasUiWalletModelCfg
@@ -25,7 +26,7 @@ module Frontend.UI.Wallet
 
 ------------------------------------------------------------------------------
 import           Control.Lens
-import           Control.Monad               (when, (<=<))
+import           Control.Monad               (unless, (<=<))
 import qualified Data.IntMap                 as IntMap
 import qualified Data.Map                    as Map
 import           Data.Text                   (Text)
@@ -69,6 +70,17 @@ data AccountDialog
   | AccountDialog_Receive
   | AccountDialog_Send
   deriving Eq
+
+uiWalletRefreshButton
+  :: forall m t key model mConf
+  . ( MonadWidget t m
+    , HasUiWalletModelCfg model mConf key m t
+    )
+  => model
+  -> m mConf
+uiWalletRefreshButton _model = do
+  eRefresh <- uiButton (def & uiButtonCfg_class <>~ " main-header__wallet-refresh-button")  (text "Refresh")
+  pure $ mempty & walletCfg_refreshBalances <>~ eRefresh
 
 -- | UI for managing the keys wallet.
 uiWallet
@@ -144,9 +156,11 @@ uiKeyItems model = do
 
     el "tbody" $ do
       events <- listWithKey keyMap (uiKeyItem model)
-      dyn_ $ ffor keyMap $ \keys -> when (Map.null keys) $
-        elClass "tr" "wallet__table-row" $ elAttr "td" ("colspan" =: "6" <> "class" =: "wallet__table-cell") $
-          text "No accounts ..."
+      let selectedNetwork = model ^. network_selectedNetwork
+      dyn_ $ ffor2 keyMap selectedNetwork $ \keys net ->
+        unless (any (isJust . activeAccountOnNetwork net) $ Map.elems keys) $
+          elClass "tr" "wallet__table-row" $ elAttr "td" ("colspan" =: "6" <> "class" =: "wallet__table-cell") $
+            text "No accounts ..."
       pure events
 
 

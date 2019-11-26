@@ -33,7 +33,7 @@ $main-header-btn-font-size: $secondary-font-size;
   display: flex;
   align-items: center;
   font-size: 19px;
-
+  flex-grow: 2;
 }
 
 .main-header__project-loader {
@@ -59,6 +59,12 @@ $main-header-btn-font-size: $secondary-font-size;
 }
 
 .main-header__add-account-button {
+  @extend .main-header__button;
+  color: $black;
+  background: $white;
+}
+
+.main-header__wallet-refresh-button {
   @extend .main-header__button;
   color: $black;
   background: $white;
