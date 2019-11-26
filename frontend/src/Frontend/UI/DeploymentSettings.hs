@@ -60,7 +60,7 @@ module Frontend.UI.DeploymentSettings
   , Identity (runIdentity)
   ) where
 
-import Control.Applicative (liftA2, (<|>))
+import Control.Applicative ((<|>))
 import Control.Arrow (first, (&&&))
 import Control.Error (fmapL, hoistMaybe, headMay)
 import Control.Error.Util (hush)
@@ -69,7 +69,6 @@ import Control.Monad
 import Control.Monad.Trans.Class
 import Control.Monad.Trans.Maybe
 import Control.Monad.Except
-import qualified Data.Monoid as Monoid
 import Data.Decimal (roundTo)
 import Data.Either (rights, isLeft)
 import Data.IntMap (IntMap)
@@ -77,7 +76,7 @@ import Data.Map (Map)
 import Data.Set (Set)
 import Data.Text (Text)
 import Data.These (These(This))
-import Data.Traversable (for)
+import Data.Traversable (for, sequence)
 import Kadena.SigningApi
 import Pact.Compile (compileExps, mkTextInfo)
 import Pact.Parse
@@ -712,7 +711,9 @@ mkChainTextAccounts
   -> Dynamic t (Either Text (Map AccountName Text))
 mkChainTextAccounts m mChainId = runExceptT $ do
   netId <- lift $ m ^. network_selectedNetwork
-  chainId <- ExceptT $ note "You must select a chain ID before choosing an account" <$> mChainId
+  -- I guess you don't actually need this anymore, but it's probably good to leave this
+  -- gate into things
+  _ <- ExceptT $ note "You must select a chain ID before choosing an account" <$> mChainId
   accounts <- lift $ m ^. wallet_accounts
   let accountsOnChain = Map.fromList $ fmapMaybe
         (someAccount
@@ -772,10 +773,10 @@ uiSignerList m chainId = do
       Right accts -> do
         cbs <- for (Map.toList accts) $ \(an, aTxt) -> do
           cb <- uiCheckbox "signing-ui-signers__signer" False def $ text aTxt
-          pure $ bool Nothing (Just an)  <$> _checkbox_value cb
+          pure $ bool Nothing (Just an) <$> _checkbox_value cb
         pure $ fmap (Set.fromList . catMaybes) $ sequence $ cbs
   signers <- join <$> holdDyn (constDyn Set.empty) eSwitchSigners
-  pure $ signers
+  pure signers
 
 uiChainSelection
   :: MonadWidget t m
@@ -826,9 +827,12 @@ capabilityInputRow mCap mkSender = elClass "tr" "table__row" $ do
     cap <- uiInputElement $ def
       & inputElementConfig_initialValue .~ foldMap (renderCompactText . _dappCap_cap) mCap
       & initialAttributes .~
-        "placeholder" =: "(module.capability arg1 arg2)" <>
-        "class" =: (maybe id (const (<> " input_transparent grant-capabilities-static-input")) mCap) "input_width_full" <>
-        (maybe mempty (const $ "disabled" =: "true") mCap)
+        (let (cls, dis) = maybe mempty (const (" input_transparent grant-capabilities-static-input", "disabled" =: "true")) mCap
+        in mconcat
+          [ "placeholder" =: "(module.capability arg1 arg2)"
+          , "class" =: ("input_width_full" <> cls)
+          , dis
+          ])
       & modifyAttributes .~ ffor errors (\e -> "style" =: ("background-color: #fdd" <$ guard e))
     empty <- holdUniqDyn $ T.null <$> value cap
     let parsed = parseSigCapability <$> value cap
@@ -864,7 +868,7 @@ capabilityInputRows addNew mkSender = do
       -- Delete rows, but ensure we don't delete them all
       [ PatchIntMap <$> deletions
       -- Add a new row when all rows are used
-      , attachWith (\i _ -> PatchIntMap (IM.singleton i (Just ()))) nextKeyToUse $ addNew
+      , attachWith (\i _ -> PatchIntMap (IM.singleton i (Just ()))) nextKeyToUse addNew
       ]
     results :: Dynamic t (IntMap (CapabilityInputRow t))
       <- foldDyn applyAlways im0 im'
@@ -873,7 +877,7 @@ capabilityInputRows addNew mkSender = do
         decideDeletions :: Int -> CapabilityInputRow t -> Event t (IntMap (Maybe ()))
         decideDeletions i row = IM.singleton i Nothing <$
           -- Deletions caused by users entering GAS
-          (void . ffilter (either (const False) isGas) . updated $ _capabilityInputRow_cap row)
+          (ffilter (either (const False) isGas) . updated $ _capabilityInputRow_cap row)
         deletions = switch . current $ IM.foldMapWithKey decideDeletions <$> results
 
   pure $
@@ -900,10 +904,11 @@ uiSenderCapabilities m cid mCaps mkSender = do
           , _capabilityInputRow_cap = pure $ Right $ _dappCap_cap cap
           }
 
-      staticCapabilityRows caps = fmap (fmap (Map.unionsWith (<>)) . sequence) $ for caps $ \cap ->
+      staticCapabilityRows caps = fmap combineMaps $ for caps $ \cap ->
         elClass "tr" "table__row" $ _capabilityInputRow_value <$> staticCapabilityRow (uiSenderDropdown def never m cid) cap
 
-      combineMaps = liftA2 $ Map.unionWith (<>)
+      combineMaps :: (Semigroup v, Ord k) => [Dynamic t (Map k v)] -> Dynamic t (Map k v)
+      combineMaps = fmap (Map.unionsWith (<>)) . sequence
 
   eAddCap <- divClass "grant-capabilities-title" $ do
     divClass "title grant-capabilities-title__title" $ text "Grant Capabilities"
@@ -919,7 +924,7 @@ uiSenderCapabilities m cid mCaps mkSender = do
         el "tbody" $ do
           gas <- capabilityInputRow (Just defaultGASCapability) mkSender
           rest <- capabilityInputRows eAddCap (senderDropdown (Just <$> eApplyToAll))
-          pure (_capabilityInputRow_account gas, combineMaps (_capabilityInputRow_value gas) rest)
+          pure (_capabilityInputRow_account gas, combineMaps [(_capabilityInputRow_value gas), rest])
       Just caps -> do
         el "thead" $ el "tr" $ do
           elClass "th" "table__heading" $ text "Role"
@@ -928,7 +933,7 @@ uiSenderCapabilities m cid mCaps mkSender = do
         el "tbody" $ do
           gas <- staticCapabilityRow mkSender defaultGASCapability
           rest <- staticCapabilityRows $ filter (not . isGas . _dappCap_cap) caps
-          pure (_capabilityInputRow_account gas, combineMaps (_capabilityInputRow_value gas) rest)
+          pure (_capabilityInputRow_account gas, combineMaps [(_capabilityInputRow_value gas),rest])
 
     -- If the gas capability is set, we enable the button that will set every other capability's sender from
     -- the gas account.
