@@ -128,7 +128,7 @@ uiAddVanityAccountSettings ideL mChainId initialNotes = Workflow $ do
         -- Is passing around 'Maybe x' everywhere really a good way of doing this ?
         uiCfg Nothing ideL (userChainIdSelectWithPreselect ideL mChainId) Nothing (Just defaultTransactionGasLimit) (Identity uiAccSection)
 
-      (mSender, capabilities) <- tabPane mempty curSelection DeploymentSettingsView_Keys $
+      (mSender, signers, capabilities) <- tabPane mempty curSelection DeploymentSettingsView_Keys $
         uiSenderCapabilities ideL cChainId Nothing $ uiSenderDropdown def ideL cChainId
 
       let dPayload = fmap mkPubkeyPactData <$> dKeyPair
@@ -159,7 +159,7 @@ uiAddVanityAccountSettings ideL mChainId initialNotes = Workflow $ do
 
       pure
         ( cfg & networkCfg_setSender .~ fmapMaybe (fmap unAccountName) (updated mSender)
-        , fmap mkSettings dPayload >>= buildDeploymentSettingsResult ideL mSender cChainId capabilities ttl gasLimit code
+        , fmap mkSettings dPayload >>= buildDeploymentSettingsResult ideL mSender signers cChainId capabilities ttl gasLimit code
         , account
         )
 

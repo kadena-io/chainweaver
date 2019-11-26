@@ -68,6 +68,7 @@ import Control.Lens
 import Control.Monad
 import Control.Monad.Trans.Class
 import Control.Monad.Trans.Maybe
+import Control.Monad.Except
 import Data.Decimal (roundTo)
 import Data.Either (rights, isLeft)
 import Data.IntMap (IntMap)
@@ -225,6 +226,7 @@ buildDeploymentSettingsResult
      )
   => model
   -> Dynamic t (Maybe AccountName)
+  -> Dynamic t (Set AccountName)
   -> Dynamic t (Maybe ChainId)
   -> Dynamic t (Map AccountName [SigCapability])
   -> Dynamic t TTLSeconds
@@ -232,13 +234,14 @@ buildDeploymentSettingsResult
   -> Dynamic t Text
   -> DeploymentSettingsConfig t m model a
   -> Dynamic t (Maybe (Performable m (DeploymentSettingsResult key)))
-buildDeploymentSettingsResult m mSender cChainId capabilities ttl gasLimit code settings = runMaybeT $ do
+buildDeploymentSettingsResult m mSender signers cChainId capabilities ttl gasLimit code settings = runMaybeT $ do
   selNodes <- lift $ m ^. network_selectedNodes
   networkId <- hoistMaybe $ hush . mkNetworkName . nodeVersion =<< headMay (rights selNodes)
   sender <- MaybeT mSender
   chainId <- MaybeT cChainId
   caps <- lift capabilities
-  let signing = Set.insert sender $ Map.keysSet caps
+  signs <- lift signers
+  let signing = signs <> (Set.insert sender $ Map.keysSet caps)
       deploySettingsJsonData = fromMaybe mempty $ _deploymentSettingsConfig_data settings
   jsonData' <- lift $ either (const mempty) id <$> m ^. jsonData . jsonData_data
   ttl' <- lift ttl
@@ -377,7 +380,7 @@ uiDeploymentSettings m settings = mdo
           (_deploymentSettingsConfig_gasLimit settings)
           (_deploymentSettingsConfig_userSections settings)
 
-      (mSender, capabilities) <- tabPane mempty curSelection DeploymentSettingsView_Keys $
+      (mSender, signers, capabilities) <- tabPane mempty curSelection DeploymentSettingsView_Keys $
         uiSenderCapabilities m cChainId (_deploymentSettingsConfig_caps settings)
           $ (_deploymentSettingsConfig_sender settings) m cChainId
 
@@ -406,7 +409,7 @@ uiDeploymentSettings m settings = mdo
 
       pure
         ( cfg & networkCfg_setSender .~ fmapMaybe (fmap unAccountName) (updated mSender)
-        , buildDeploymentSettingsResult m mSender cChainId capabilities ttl gasLimit code settings
+        , buildDeploymentSettingsResult m mSender signers cChainId capabilities ttl gasLimit code settings
         , mRes
         )
 
@@ -698,6 +701,26 @@ uiSenderFixed sender = do
     & inputElementConfig_initialValue .~ unAccountName sender
   pure $ pure $ pure sender
 
+mkChainTextAccounts
+  :: (Reflex t, HasWallet model key t, HasNetwork model t)
+  => model
+  -> Dynamic t (Maybe ChainId)
+  -> Dynamic t (Either Text (Map AccountName Text))
+mkChainTextAccounts m mChainId = runExceptT $ do
+  netId <- lift $ m ^. network_selectedNetwork
+  chainId <- ExceptT $ note "You must select a chain ID before choosing an account" <$> mChainId
+  accounts <- lift $ m ^. wallet_accounts
+  let accountsOnChain = Map.fromList $ fmapMaybe
+        (someAccount
+          Nothing -- If it is deleted, ignore it
+          (\a -> (_account_name a, unAccountName $ _account_name a)
+            <$ guard (_account_chainId a == chainId && _account_network a == netId)
+            )
+        )
+        (IM.elems accounts)
+  when (Map.null accountsOnChain) $ throwError "No accounts on current chain"
+  pure accountsOnChain
+
 -- | Let the user pick a sender
 uiSenderDropdown
   :: ( Adjustable t m, PostBuild t m, DomBuilder t m
@@ -710,18 +733,44 @@ uiSenderDropdown
   -> Dynamic t (Maybe ChainId)
   -> m (Dynamic t (Maybe AccountName))
 uiSenderDropdown uCfg m chainId = do
-  let textAccounts =
-        let mkTextAccounts net mChain accounts = case mChain of
-              Nothing -> Map.singleton Nothing "You must select a chain ID before choosing an account"
-              Just chain -> case Map.fromList $ fmapMaybe (someAccount Nothing (\a -> (Just $ _account_name a, unAccountName $ _account_name a) <$ guard (_account_chainId a == chain && _account_network a == net))) $ IM.elems accounts of
-                accountsOnChain
-                  | not (Map.null accountsOnChain) -> Map.insert Nothing "Choose an account" accountsOnChain
-                  | otherwise -> Map.singleton Nothing "No accounts on current chain"
-          in mkTextAccounts <$> m ^. network_selectedNetwork <*> chainId <*> m ^. wallet_accounts
-  choice <- dropdown Nothing textAccounts $ uCfg
+  let
+    textAccounts = mkChainTextAccounts m chainId
+    dropdownItems =
+      either
+          (Map.singleton Nothing)
+          (Map.insert Nothing "Choose an Account" . Map.mapKeys Just)
+      <$> textAccounts
+  choice <- dropdown Nothing dropdownItems $ uCfg
     & dropdownConfig_setValue .~ (Nothing <$ updated chainId)
     & dropdownConfig_attributes <>~ pure ("class" =: "labeled-input__input select select_mandatory_missing")
   pure $ value choice
+
+
+-- | Let the user pick signers
+uiSignerList
+  :: ( Adjustable t m, PostBuild t m, DomBuilder t m
+     , MonadHold t m
+     , HasWallet model key t
+     , HasNetwork model t
+     )
+  => model
+  -> Dynamic t (Maybe ChainId)
+  -> m (Dynamic t (Set AccountName))
+uiSignerList m chainId = do
+  let textAccounts = mkChainTextAccounts m chainId
+  divClass "title" $ text "Signing Accounts"
+  eSwitchSigners <- divClass "group signing-ui-signers" $
+    dyn $ ffor textAccounts $ \case
+      Left e -> do
+        text e
+        pure $ constDyn Set.empty
+      Right accts -> do
+        cbs <- for (Map.toList accts) $ \(an, aTxt) -> do
+          cb <- uiCheckbox "signing-ui-signers__signer" False def $ text aTxt
+          pure $ bool Nothing (Just an)  <$> _checkbox_value cb
+        pure $ fmap (Set.fromList . catMaybes) $ sequence $ cbs
+  signers <- join <$> holdDyn (constDyn Set.empty) eSwitchSigners
+  pure $ signers
 
 uiChainSelection
   :: MonadWidget t m
@@ -835,7 +884,7 @@ uiSenderCapabilities
   -> Dynamic t (Maybe Pact.ChainId)
   -> Maybe [DappCap]
   -> m (Dynamic t (Maybe AccountName))
-  -> m (Dynamic t (Maybe AccountName), Dynamic t (Map AccountName [SigCapability]))
+  -> m (Dynamic t (Maybe AccountName), Dynamic t (Set AccountName), Dynamic t (Map AccountName [SigCapability]))
 uiSenderCapabilities m cid mCaps mkSender = do
   let senderDropdown = uiSenderDropdown def m cid
       staticCapabilityRow sender cap = do
@@ -859,7 +908,7 @@ uiSenderCapabilities m cid mCaps mkSender = do
     addButton (def & uiButtonCfg_class <>~ " grant-capabilities-title__add-button")
 
   -- Capabilities
-  divClass "group" $ elAttr "table" ("class" =: "table" <> "style" =: "width: 100%; table-layout: fixed;") $ case mCaps of
+  (mGasAcct, capabilities) <- divClass "group" $ elAttr "table" ("class" =: "table" <> "style" =: "width: 100%; table-layout: fixed;") $ case mCaps of
     Nothing -> do
       el "thead" $ el "tr" $ do
         elClass "th" "table__heading table__cell_padded" $ text "Capability"
@@ -877,6 +926,10 @@ uiSenderCapabilities m cid mCaps mkSender = do
         gas <- staticCapabilityRow mkSender defaultGASCapability
         rest <- staticCapabilityRows $ filter (not . isGas . _dappCap_cap) caps
         pure (_capabilityInputRow_account gas, combineMaps (_capabilityInputRow_value gas) rest)
+
+  signers <- uiSignerList m cid
+
+  pure (mGasAcct, signers, capabilities)
 
 isGas :: SigCapability -> Bool
 isGas = (^. to PC._scName . to PN._qnName . to (== "GAS"))
