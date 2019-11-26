@@ -153,7 +153,7 @@ uiDeployConfirmation code model = fullDeployFlow def model $ do
     , _deploymentSettingsConfig_userTab = Nothing
     , _deploymentSettingsConfig_userSections = []
     , _deploymentSettingsConfig_code = pure code
-    , _deploymentSettingsConfig_sender = uiSenderDropdown def
+    , _deploymentSettingsConfig_sender = uiSenderDropdown def never
     , _deploymentSettingsConfig_data = Nothing
     , _deploymentSettingsConfig_ttl = Nothing
     , _deploymentSettingsConfig_nonce = Nothing
@@ -234,7 +234,7 @@ fullDeployFlowWithSubmit dcfg model onPreviewConfirm runner _onClose = do
             liftIO $ T.putStrLn $ "Expected 1 response, but got " <> tshow (length n)
             pure $ This "Couldn't get a response from the node"
 
-        divClass "title" $ text "Anticipated Transaction Impact"
+        divClass "title" $ text "Anticipated Transaction Impact (dis)"
         divClass "group segment" $ do
           let tableAttrs = "style" =: "table-layout: fixed; width: 100%" <> "class" =: "table"
           elAttr "table" tableAttrs $ do

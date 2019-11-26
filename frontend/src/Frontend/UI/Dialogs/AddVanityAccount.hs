@@ -129,7 +129,7 @@ uiAddVanityAccountSettings ideL mChainId initialNotes = Workflow $ do
         uiCfg Nothing ideL (userChainIdSelectWithPreselect ideL mChainId) Nothing (Just defaultTransactionGasLimit) (Identity uiAccSection)
 
       (mSender, signers, capabilities) <- tabPane mempty curSelection DeploymentSettingsView_Keys $
-        uiSenderCapabilities ideL cChainId Nothing $ uiSenderDropdown def ideL cChainId
+        uiSenderCapabilities ideL cChainId Nothing $ uiSenderDropdown def never ideL cChainId
 
       let dPayload = fmap mkPubkeyPactData <$> dKeyPair
           code = mkPactCode <$> dAccountName
@@ -147,7 +147,7 @@ uiAddVanityAccountSettings ideL mChainId initialNotes = Workflow $ do
             , _deploymentSettingsConfig_userTab = Nothing
             , _deploymentSettingsConfig_userSections = [uiAccSection]
             , _deploymentSettingsConfig_code = code
-            , _deploymentSettingsConfig_sender = uiSenderDropdown def
+            , _deploymentSettingsConfig_sender = uiSenderDropdown def never
             , _deploymentSettingsConfig_data = payload
             , _deploymentSettingsConfig_nonce = Nothing
             , _deploymentSettingsConfig_ttl = Nothing

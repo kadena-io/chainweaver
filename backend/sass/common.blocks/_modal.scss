@@ -262,6 +262,10 @@
 .grant-capabilities-static-input {
   padding: 0;
 }
+.grant-capabilities-apply-all-wrapper {
+  display: flex;
+  justify-content: flex-end;
+}
 
 .signing-ui-signers__signer {
   margin-top: $normal-margin;
