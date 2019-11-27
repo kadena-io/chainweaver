@@ -5,10 +5,13 @@
 module Frontend where
 
 import           Control.Monad            (join, void)
+import           Control.Error            (hush)
 import           Control.Monad.IO.Class
 import           Data.Maybe               (listToMaybe)
 import           Data.Text                (Text)
 import qualified Data.Text                as T
+import qualified Data.Text.Encoding          as T
+import qualified Data.Text.Encoding.Error    as T
 import qualified GHCJS.DOM.EventM         as EventM
 import qualified GHCJS.DOM.FileReader     as FileReader
 import qualified GHCJS.DOM.HTMLElement    as HTMLElement
@@ -21,7 +24,6 @@ import           Obelisk.Generated.Static
 
 import           Common.Api
 import           Common.Route
-import           Common.Wallet
 import           Frontend.AppCfg
 import           Frontend.Crypto.Class
 import           Frontend.Crypto.Ed25519
@@ -54,7 +56,7 @@ frontend = Frontend
   , _frontend_body = prerender_ loaderMarkup $ do
     (fileOpened, triggerOpen) <- openFileDialog
     let store = browserStorage
-        crypto = Crypto mkSignature (const genKeyPair) deriveKeyPairFromPrivateKey
+        crypto = Crypto mkSignature (const genKeyPair) (\_ _ -> pure $ Left "not supported")
     mapRoutedT (flip runStorageT store . flip runCryptoT crypto) $ app blank $ AppCfg
       { _appCfg_gistEnabled = True
       , _appCfg_externalFileOpened = fileOpened

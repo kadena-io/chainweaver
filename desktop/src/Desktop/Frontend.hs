@@ -17,6 +17,7 @@ import Control.Lens ((?~))
 import Control.Monad (when, (<=<), guard, void)
 import Control.Monad.Fix (MonadFix)
 import Control.Monad.IO.Class
+import GHC.Generics (Generic)
 import Data.Bitraversable
 import Data.Bits ((.|.))
 import Data.Bool (bool)
@@ -31,6 +32,7 @@ import qualified Cardano.Crypto.Wallet as Crypto
 import qualified Control.Newtype.Generics as Newtype
 import qualified Data.Aeson as Aeson
 import qualified Data.ByteString as BS
+import qualified Data.ByteString.Base16 as B16
 import qualified Data.ByteString.Lazy as LBS
 import qualified Data.Text.Encoding as T
 import qualified Data.Text.Encoding.Error as T
@@ -40,6 +42,11 @@ import qualified GHCJS.DOM.EventM as EventM
 import qualified GHCJS.DOM.GlobalEventHandlers as GlobalEventHandlers
 import qualified System.Directory as Directory
 import qualified System.FilePath as FilePath
+
+import qualified Pact.Types.Crypto as PactCrypto
+import Pact.Types.Scheme (PPKScheme)
+import Pact.Types.Util (parseB16TextOnly)
+import qualified Pact.Types.Hash as Pact
 
 import Common.Api (getConfigRoute)
 import Common.Route
@@ -92,15 +99,62 @@ fileStorage dir = Storage
     where path :: Show a => a -> FilePath
           path k = dir </> FilePath.makeValid (show k)
 
-bipCrypto :: Crypto.XPrv -> Text -> Crypto Crypto.XPrv
+newtype XPactSecret = XPactSecret { unXPactSecret :: BS.ByteString }
+
+instance Aeson.ToJSON XPactSecret where
+  toJSON = Aeson.toJSON . T.decodeUtf8 . B16.encode . unXPactSecret
+
+instance Aeson.FromJSON XPactSecret where
+  -- TODO: Should there be some verification of length like XPrv?
+  parseJSON = fmap (XPactSecret . fst . B16.decode . T.encodeUtf8) . Aeson.parseJSON
+
+data DesktopKey
+  = DesktopKeyBip32 Crypto.XPrv
+  | DesktopKeyPact PPKScheme PublicKey XPactSecret
+  deriving (Generic)
+
+-- TODO: This is not backwards compatible. Do we care?
+instance Aeson.FromJSON DesktopKey
+instance Aeson.ToJSON DesktopKey
+
+-- The pact 3.0 blog said that pact supports ethereum ECDSA and ED25519 keys. We probably need
+-- to support both here. See https://medium.com/kadena-io/announcing-pact-3-0-4b0a8f35e6a0
+bipCrypto :: Crypto.XPrv -> Text -> Crypto DesktopKey
 bipCrypto root pass = Crypto
-  { _crypto_sign = \bs k -> pure $ Newtype.pack $ Crypto.unXSignature $ Crypto.sign (T.encodeUtf8 pass) k bs
-  , _crypto_genKey = \i -> do
-    liftIO $ putStrLn $ "Deriving key at index: " <> show i
-    let xprv = Crypto.deriveXPrv scheme (T.encodeUtf8 pass) root (mkHardened $ fromIntegral i)
-    pure (xprv, unsafePublicKey $ Crypto.xpubPublicKey $ Crypto.toXPub xprv)
+  { _crypto_sign = \bs -> \case
+    DesktopKeyBip32 xprv ->
+      pure $ Newtype.pack $ Crypto.unXSignature $ Crypto.sign (T.encodeUtf8 pass) xprv bs
+    DesktopKeyPact pkScheme pubKey encryptedSecret -> do
+      -- TODO TODO TODO : Still no PBKDF2 decryption from the secret key yet.
+      let someKpE = importKey pkScheme (Just $ Newtype.unpack pubKey) (unXPactSecret encryptedSecret)
+      case someKpE of
+        -- TODO: Hash is supposed to be a Base64 encoded bytestring. This likely isn't right :)
+        Right someKp -> liftIO $ Newtype.pack <$> PactCrypto.sign someKp (Pact.Hash bs)
+        Left e -> error $ "Error importing pact key from account: " <> e
+  , _crypto_genKey = \case
+    GenWalletIndex i -> do
+      liftIO $ putStrLn $ "Deriving key at index: " <> show i
+      let xprv = Crypto.deriveXPrv scheme (T.encodeUtf8 pass) root (mkHardened $ fromIntegral i)
+      pure (DesktopKeyBip32 xprv, unsafePublicKey $ Crypto.xpubPublicKey $ Crypto.toXPub xprv)
+    -- This is a little bastardised now as we aren't really generating anything: we are just
+    -- encrypting the secret for serialisation.
+    GenFromPactKey pactKey -> do
+      let
+        pubKey = _pactKey_publicKey pactKey
+        encryptedSecret = XPactSecret (_pactKey_secret pactKey) --TODO TODO TODO Not encrypted yet!!
+      pure (DesktopKeyPact (_pactKey_scheme pactKey) pubKey encryptedSecret, pubKey)
+  -- This assumes that the secret is already base16 encoded (being pasted in, so makes sense)
+  , _crypto_verifyPactKey = \pkScheme sec -> pure $ do
+      secBytes <- parseB16TextOnly sec
+      somePactKey <- importKey pkScheme Nothing secBytes
+      pure $ PactKey pkScheme (unsafePublicKey $ PactCrypto.getPublic somePactKey) secBytes
   }
   where
+    importKey pkScheme mPubBytes secBytes = PactCrypto.importKeyPair
+      (PactCrypto.toScheme pkScheme)
+      (PactCrypto.PubBS <$> mPubBytes)
+      (PactCrypto.PrivBS secBytes)
+
     scheme = Crypto.DerivationScheme2
     mkHardened = (0x80000000 .|.)
 
@@ -140,7 +194,7 @@ bipWallet
      , HasConfigs m
      , HasStorage m, HasStorage (Performable m)
      )
-  => AppCfg Crypto.XPrv t (RoutedT t (R FrontendRoute) (CryptoT Crypto.XPrv m))
+  => AppCfg DesktopKey t (RoutedT t (R FrontendRoute) (CryptoT DesktopKey m))
   -> RoutedT t (R FrontendRoute) m ()
 bipWallet appCfg = do
   mRoot <- getItemStorage localStorage BIPStorage_RootKey

@@ -84,7 +84,6 @@ mkSignature msg (PrivateKey key) = liftJSM $ do
   Signature . BS.pack <$> fromJSValUnchecked jsSig
   {- pure $ Signature BS.empty -}
 
-
 -- | Parse a private key with additional checks given the corresponding public key.
 -- `parsePublicKey` and `parsePrivateKey`.
 parseKeyPair :: MonadError Text m => PublicKey -> Text -> m (PublicKey, Maybe PrivateKey)

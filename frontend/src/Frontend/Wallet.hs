@@ -238,12 +238,12 @@ makeWallet model conf = do
   where
     createWalletOnlyAccount :: Int -> (NetworkName, ChainId, Text) -> Performable m (Account key)
     createWalletOnlyAccount i (net, c, t) = do
-      (privKey, pubKey) <- cryptoGenKey i
+      (privKey, pubKey) <- cryptoGenKey (GenWalletIndex i)
       pure $ buildAccount (AccountName $ keyToText pubKey) pubKey privKey net c t
 
     createKey :: Int -> (AccountName, NetworkName, ChainId, Text) -> Performable m (Account key)
     createKey i (n, net, c, t) = do
-      (privKey, pubKey) <- cryptoGenKey i
+      (privKey, pubKey) <- cryptoGenKey (GenWalletIndex i)
       pure $ buildAccount n pubKey privKey net c t
 
     buildAccount n pubKey privKey net c t = Account

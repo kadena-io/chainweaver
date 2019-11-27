@@ -10,18 +10,17 @@ module Frontend.UI.Dialogs.Receive
   ) where
 
 import Debug.Trace (traceShowM)
-import Control.Applicative (liftA2,liftA3)
+import Control.Applicative (liftA2)
 import Control.Lens ((^.), (<>~), (^?), _1, _3)
 import Control.Monad (void, (<=<))
 import Control.Error (hush, headMay)
-import Control.Exception (displayException)
-import Control.Monad.Trans.Maybe (runMaybeT)
 
-import Data.Functor ((<&>))
+import qualified Control.Newtype.Generics as Newtype
+
+import Data.Bifunctor (first)
 import Data.Either (isLeft,rights)
 import Data.Text (Text)
 import qualified Data.Text as T
-import qualified Data.Text.Encoding as TE
 import Data.Decimal (Decimal)
 import Data.Map (Map)
 import qualified Data.Map as Map
@@ -39,17 +38,16 @@ import Pact.Types.PactValue (PactValue (..))
 import Pact.Types.Exp (Literal (LString, LDecimal))
 import Pact.Types.Command (Command)
 import Pact.Types.Runtime (GasLimit)
-
+import qualified Pact.Types.Scheme as PactScheme
 import Language.Javascript.JSaddle.Types (MonadJSM)
 
-import Frontend.Crypto.Class (HasCrypto, cryptoGenPubKeyFromPrivate)
+import Frontend.Crypto.Class (GenKeyArg (..), PactKey (..), HasCrypto, cryptoGenPubKeyFromPrivate, cryptoGenKey)
 import Frontend.Crypto.Ed25519 (keyToText)
-import Common.Wallet (parsePublicKey,toPactPublicKey, decodeBase16M)
+import Common.Wallet (parsePublicKey,toPactPublicKey)
 
 import Frontend.Foundation
 import Frontend.KadenaAddress
 import Frontend.Network
-import Frontend.JsonData
 import Frontend.UI.Dialogs.NetworkEdit
 
 import Frontend.UI.Dialogs.DeployConfirmation (CanSubmitTransaction,
@@ -63,13 +61,13 @@ import Frontend.UI.DeploymentSettings (DeploymentSettingsView (..),
                                        uiDeployPreview,
                                        buildDeployTabs,
                                        buildDeployTabFooterControls,
-                                       buildDeploymentSettingsResult,
                                        defaultTabViewProgressButtonLabel,
                                        userChainIdSelect,
                                        defaultGASCapability,
                                        predefinedChainIdSelect,
                                        uiSenderFixed
                                       )
+import Common.Wallet (decodeBase16M)
 import Frontend.UI.Modal
 import Frontend.UI.Widgets
 import Frontend.Wallet
@@ -114,57 +112,6 @@ uiDisplayAddress address = do
         ) $ pure address
       pure ()
 
--- uiReceiveModal
---   :: ( MonadWidget t m
---      , Monoid mConf
---      , HasNetwork model t
---      , HasWallet model key t
---      )
---   => model
---   -> Account key
---   -> Event t ()
---   -> m (mConf, Event t ())
--- uiReceiveModal model account _onClose = do
---   let address = textKadenaAddress $ accountToKadenaAddress account
---   close <- modalHeader $ text "Receive"
-
---   let displayText lbl v cls =
---         let
---           attrFn cfg = uiInputElement $ cfg
---             & initialAttributes <>~ ("disabled" =: "true" <> "class" =: (" " <> cls))
---         in
---           mkLabeledInputView True lbl attrFn $ pure v
-
---   divClass "modal__main account-details" $ do
---     elClass "h2" "heading heading_type_h2" $ text "Destination"
---     divClass "group" $ do
---       -- Network
---       void $ mkLabeledClsInput True "Network" $ \_ -> do
---         stat <- queryNetworkStatus (model ^. network_networks) $ pure $ _account_network account
---         uiNetworkStatus "signal__left-floated" stat
---         text $ textNetworkName $ _account_network account
---       -- Chain id
---       _ <- displayText "Chain ID" (_chainId $ _account_chainId account) "account-details__chain-id"
---       pure ()
-
---     rec
---       showingKadenaAddress <- holdDyn True $
---         not <$> current showingKadenaAddress <@ onAddrClick <> onReceiClick
-
---       (onAddrClick, _) <- controlledAccordionItem showingKadenaAddress mempty
---         (text "To this address")
---         $ uiDisplayAddress address
-
---       (onReceiClick, _) <- controlledAccordionItem (not <$> showingKadenaAddress) mempty
---         (text "From this key")
---         $ uiReceiveFromLegacyAccount model account
-
---     pure ()
-
---   done <- modalFooter $ confirmButton def "Close"
-
---   pure (mempty, close <> done)
-
 uiReceiveFromLegacyAccount
   :: ( MonadWidget t m
      , HasWallet model key t
@@ -202,19 +149,14 @@ uiReceiveFromLegacyAccount model = do
 
   where
     deriveKeyPair :: (HasCrypto key m, MonadJSM m) => Text -> m (Either Text (key, PublicKey))
-    deriveKeyPair inp = do
-      let x = decodeBase16M $ TE.encodeUtf8 inp
-      case x of
-        Nothing -> pure $ Left "Input is not base16 encoded"
-        Just i -> cryptoGenPubKeyFromPrivate i
+    deriveKeyPair inp = cryptoGenPubKeyFromPrivate PactScheme.ED25519 inp
+      >>= traverse (cryptoGenKey . GenFromPactKey) . first T.pack
 
 uiReceiveModal
   :: ( MonadWidget t m
      , Monoid mConf
      , HasNetwork model t
      , HasNetworkCfg mConf t
-     , HasJsonDataCfg mConf t
-     , HasJsonData model t
      , HasWallet model key t
      , Flattenable mConf t
      , HasCrypto key m
@@ -234,11 +176,8 @@ uiReceiveModal model account _onClose = do
 uiReceiveModal0
   :: ( MonadWidget t m
      , Monoid mConf
-     , Flattenable mConf t
      , HasNetwork model t
      , HasNetworkCfg mConf t
-     , HasJsonDataCfg mConf t
-     , HasJsonData model t
      , HasWallet model key t
      , HasCrypto key (Performable m)
      , HasCrypto key m
@@ -303,10 +242,7 @@ uiReceiveDeployLegacyTransfer
      , HasNetwork model t
      , HasNetworkCfg mConf t
      , HasWallet model key t
-     , HasJsonDataCfg mConf t
-     , Flattenable mConf t
      , Monoid mConf
-     , HasJsonData model t
      , HasCrypto key m
      , HasCrypto key (Performable m)
      )
@@ -335,8 +271,8 @@ uiReceiveDeployLegacyTransfer onClose model account = Workflow $ do
         elClass "h2" "heading heading_type_h2" $ text "Transfer Details"
         transferInfo <- divClass "group" $ uiReceiveFromLegacyAccount model
         elClass "h2" "heading heading_type_h2" $ text "Transaction Settings"
-        (conf, ttl, gaslim) <- divClass "group" $ uiMetaData model Nothing Nothing
-        pure (conf, ttl, gaslim, transferInfo)
+        (conf0, ttl, gaslim) <- divClass "group" $ uiMetaData model Nothing Nothing
+        pure (conf0, ttl, gaslim, transferInfo)
 
       _ <- tabPane mempty curSelection DeploymentSettingsView_Keys $
         text "erm..."
@@ -388,7 +324,7 @@ receiveFromLegacyPreview _ _ _ _ _ _ Nothing _ =
 receiveFromLegacyPreview _ _ _ _ _ _ _ Nothing =
   text "Insufficient information provided for Preview."
 receiveFromLegacyPreview model chainId account accounts ttl gasLimit (Just netInfo) (Just transferInfo) = do
-  cmdInfo <- receiveBuildCommand account chainId netInfo transferInfo
+  cmdInfo <- receiveBuildCommand account netInfo transferInfo
 
   let
     dat = _receiveBuildCommandInfo_payload cmdInfo
@@ -439,7 +375,7 @@ receiveFromLegacySubmit
   -> LegacyTransferInfo key
   -> Workflow t m (mConf, Event t ())
 receiveFromLegacySubmit account chainId netInfo transferInfo = Workflow $ do
-  recInfo <- receiveBuildCommand account chainId netInfo transferInfo
+  recInfo <- receiveBuildCommand account netInfo transferInfo
   txnSubFeedback <- elClass "div" "modal__main transaction_details" $
     submitTransactionWithFeedback (_receiveBuildCommandInfo_command recInfo) chainId (netInfo ^. _1)
 
@@ -455,19 +391,20 @@ receiveFromLegacySubmit account chainId netInfo transferInfo = Workflow $ do
     )
 
 receiveBuildCommand
-  :: ( MonadJSM m
+  :: forall m key a.
+     ( MonadJSM m
      , HasCrypto key m
      )
   => Account key
-  -> ChainId
   -> ([Either a NodeInfo], PublicMeta, NetworkName)
   -> LegacyTransferInfo key
   -> m (ReceiveBuildCommandInfo key)
-receiveBuildCommand account chainId (nodeInfos, publicMeta, networkId) transferInfo = do
+receiveBuildCommand account (_, publicMeta, networkId) transferInfo = do
   let
     chain = _legacyTransferInfo_chainId transferInfo
     sender = _legacyTransferInfo_account transferInfo
-    senderKeys = _legacyTransferInfo_keyPair transferInfo
+    senderPubKey = snd $ _legacyTransferInfo_keyPair transferInfo
+    senderKey = fst $ _legacyTransferInfo_keyPair transferInfo
     amount = _legacyTransferInfo_amount transferInfo
 
     code = T.unwords $
@@ -498,23 +435,17 @@ receiveBuildCommand account chainId (nodeInfos, publicMeta, networkId) transferI
       , _dappCap_cap = transferSigCap
       }
 
-    senderPubKey = toPactPublicKey $ snd senderKeys
     dat = case accountIsCreated account of
       AccountCreated_No
         | Right pk <- parsePublicKey (unAccountName $ _account_name account)
         -> HM.singleton "key" $ Aeson.toJSON $ KeySet [toPactPublicKey pk] (Name $ BareName "keys-all" def)
       _ -> mempty
 
-    signingPairs =
-      [ KeyPair (snd senderKeys) (Just $ fst senderKeys)
-      ]
+    signingPairs = [KeyPair senderPubKey (Just senderKey)]
 
     caps = [transferCapability, defaultGASCapability]
 
-    pkCaps = Map.unionsWith (<>)
-      [ Map.singleton (snd senderKeys) [_dappCap_cap defaultGASCapability]
-      , Map.singleton (snd senderKeys) [transferSigCap]
-      ]
+    pkCaps = Map.singleton senderPubKey [_dappCap_cap defaultGASCapability, transferSigCap]
 
     pm = publicMeta
       { _pmChainId = chain
@@ -522,6 +453,5 @@ receiveBuildCommand account chainId (nodeInfos, publicMeta, networkId) transferI
       }
 
   cmd <- buildCmd Nothing networkId pm signingPairs [] code dat pkCaps
-
-  traceShowM cmd
+  traceShowM $ Aeson.encode cmd
   pure $ ReceiveBuildCommandInfo code transferInfo cmd signingPairs pm caps pkCaps dat

@@ -5,13 +5,12 @@
 
 module Frontend.Crypto.Class where
 
-import Control.Exception (displayException)
 import Control.Monad.IO.Class (MonadIO)
 import Control.Monad.Primitive (PrimMonad (PrimState, primitive))
 import Control.Monad.Reader
 import Control.Monad.Ref (MonadRef, MonadAtomicRef)
 import Data.Coerce (coerce)
-import Language.Javascript.JSaddle (JSM, MonadJSM, JSException, liftJSM, catch)
+import Language.Javascript.JSaddle (JSM, MonadJSM, liftJSM)
 import Obelisk.Route.Frontend
 import Reflex.Dom hiding (fromJSString)
 import Reflex.Host.Class (MonadReflexCreateTrigger)
@@ -19,32 +18,42 @@ import Data.ByteString (ByteString)
 import Data.Text (Text)
 import qualified Data.Text as T
 
+import Pact.Types.Scheme (PPKScheme)
+
 import Frontend.Crypto.Ed25519
 import Frontend.Foundation
 import Frontend.Storage
 
 instance (HasStorage m, Monad m) => HasStorage (CryptoT key m)
+-- TODO : Hide the pact key constructor so the caller is forced to verify it
+data PactKey = PactKey
+  { _pactKey_scheme :: PPKScheme
+  , _pactKey_publicKey :: PublicKey
+  , _pactKey_secret :: ByteString
+  } deriving Show
+
+data GenKeyArg
+  = GenWalletIndex Int
+  | GenFromPactKey PactKey
 
 data Crypto key = Crypto
   { _crypto_sign :: ByteString -> key -> JSM Signature
-  , _crypto_genKey :: Int -> JSM (key, PublicKey)
-  , _crypto_genPairFromPrivate :: ByteString -> JSM (key, PublicKey)
+  , _crypto_genKey :: GenKeyArg -> JSM (key, PublicKey)
+  , _crypto_verifyPactKey :: PPKScheme -> Text -> JSM (Either String PactKey)
   }
 
 cryptoGenPubKeyFromPrivate
   :: ( MonadJSM m
      , HasCrypto key m
      )
-  => ByteString
-  -> m (Either Text (key, PublicKey))
-cryptoGenPubKeyFromPrivate k = do
+  => PPKScheme
+  -> Text
+  -> m (Either String PactKey)
+cryptoGenPubKeyFromPrivate scheme k = do
   crypto <- askCrypto
-  liftJSM $ catch (Right <$> _crypto_genPairFromPrivate crypto k) (pure . Left . handleJSErr)
-  where
-    handleJSErr :: JSException -> Text
-    handleJSErr = T.pack . displayException
+  liftJSM $ _crypto_verifyPactKey crypto scheme k
 
-cryptoGenKey :: (MonadJSM m, HasCrypto key m) => Int -> m (key, PublicKey)
+cryptoGenKey :: (MonadJSM m, HasCrypto key m) => GenKeyArg -> m (key, PublicKey)
 cryptoGenKey i = do
   crypto <- askCrypto
   liftJSM $ _crypto_genKey crypto i
