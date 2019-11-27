@@ -37,6 +37,7 @@ library
     , obelisk-route
     , process
     , raw-strings-qq
+    , reflex
     , reflex-dom
     , reflex-dom-core
     , servant

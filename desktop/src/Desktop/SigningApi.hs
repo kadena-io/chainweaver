@@ -1,3 +1,5 @@
+{-# LANGUAGE FlexibleContexts #-}
+
 module Desktop.SigningApi where
 
 import Control.Concurrent
