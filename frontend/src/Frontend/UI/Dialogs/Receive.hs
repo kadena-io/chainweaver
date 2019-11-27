@@ -175,16 +175,25 @@ uiReceiveModal0
   -> Event t ()
   -> Workflow t m (mConf, Event t ())
 uiReceiveModal0 model account onClose = Workflow $ do
-  let address = textKadenaAddress $ accountToKadenaAddress account
+  let
+    chain = _account_chainId account
 
-  let displayText lbl v cls =
-        let
-          attrFn cfg = uiInputElement $ cfg
-            & initialAttributes <>~ ("disabled" =: "true" <> "class" =: (" " <> cls))
-        in
-          mkLabeledInputView True lbl attrFn $ pure v
+    netInfo = do
+      nodes <- model ^. network_selectedNodes
+      meta <- model ^. network_meta
+      let networkId = hush . mkNetworkName . nodeVersion <=< headMay $ rights nodes
+      pure $ (nodes, meta, ) <$> networkId
 
-  (showingAddr, onTransferStart) <- divClass "modal__main account-details" $ do
+    address = textKadenaAddress $ accountToKadenaAddress account
+
+    displayText lbl v cls =
+      let
+        attrFn cfg = uiInputElement $ cfg
+          & initialAttributes <>~ ("disabled" =: "true" <> "class" =: (" " <> cls))
+      in
+        mkLabeledInputView True lbl attrFn $ pure v
+
+  (showingAddr, (conf, tfrInfo)) <- divClass "modal__main account-details" $ do
     rec
       showingKadenaAddress <- holdDyn True $
         not <$> current showingKadenaAddress <@ onAddrClick <> onReceiClick
@@ -197,76 +206,92 @@ uiReceiveModal0 model account onClose = Workflow $ do
           void $ mkLabeledClsInput True "Network" $ \_ -> do
             stat <- queryNetworkStatus (model ^. network_networks) $ pure $ _account_network account
             uiNetworkStatus "signal__left-floated" stat
-          text $ textNetworkName $ _account_network account
+            text $ textNetworkName $ _account_network account
           -- Chain id
           _ <- displayText "Chain ID" (_chainId $ _account_chainId account) "account-details__chain-id"
           pure ()
         uiDisplayAddress address
 
-      (onReceiClick, onStartTransfer) <- controlledAccordionItem (not <$> showingKadenaAddress) mempty
-        (text "From this key") $ button "Start Transfer"
+      (onReceiClick, cfgTfrInfo) <- controlledAccordionItem (not <$> showingKadenaAddress) mempty
+        (text "From this key") $ do
+        elClass "h2" "heading heading_type_h2" $ text "Transfer Details"
+        transferInfo <- divClass "group" $ uiReceiveFromLegacyAccount model
+        elClass "h2" "heading heading_type_h2" $ text "Transaction Settings"
+        (conf0, _, _) <- divClass "group" $ uiMetaData model Nothing Nothing
+        pure (conf0, transferInfo)
 
-    pure (showingKadenaAddress, snd onStartTransfer)
+    pure (showingKadenaAddress, snd cfgTfrInfo)
 
-  let isDisabled = (not <$> showingAddr)
+  let isDisabled = liftA2 (&&) (isNothing <$> tfrInfo) (not <$> showingAddr)
 
   doneNext <- modalFooter $ uiButtonDyn
     (def
      & uiButtonCfg_class <>~ "button_type_confirm"
      & uiButtonCfg_disabled .~ isDisabled
     )
-    $ dynText (bool "Next" "Close" <$> showingAddr)
+    $ dynText (bool "Submit Transfer" "Close" <$> showingAddr)
 
   let
     done = gate (current showingAddr) doneNext
+    deploy = gate (not <$> current showingAddr) doneNext
 
-  pure ( (mempty, onClose <> done)
-       , uiReceiveDeployLegacyTransfer onClose model account <$ onTransferStart
+  pure ( (conf, onClose <> done)
+       -- , uiReceiveDeployLegacyTransfer onClose model account <$ onTransferStart
+
+       , attachWithMaybe
+         (liftA2 $ receiveFromLegacySubmit account chain)
+         (current netInfo)
+         (current tfrInfo <@ deploy)
        )
 
-uiReceiveDeployLegacyTransfer
-  :: forall t m model mConf key.
-     ( MonadWidget t m
-     , HasNetwork model t
-     , HasNetworkCfg mConf t
-     , HasWallet model key t
-     , Monoid mConf
-     , HasCrypto key m
-     , HasCrypto key (Performable m)
-     )
-  => Event t ()
-  -> model
-  -> Account key
-  -> Workflow t m (mConf, Event t ())
-uiReceiveDeployLegacyTransfer onClose model account = Workflow $ do
-  let
-    chain = _account_chainId account
+-- uiReceiveDeployLegacyTransfer
+--   :: forall t m model mConf key.
+--      ( MonadWidget t m
+--      , HasNetwork model t
+--      , HasNetworkCfg mConf t
+--      , HasWallet model key t
+--      , Monoid mConf
+--      , HasCrypto key m
+--      , HasCrypto key (Performable m)
+--      )
+--   => Event t ()
+--   -> model
+--   -> Account key
+--   -> Workflow t m (mConf, Event t ())
+-- uiReceiveDeployLegacyTransfer onClose model account = Workflow $ do
+--   let
+--     chain = _account_chainId account
 
-    netInfo = do
-      nodes <- model ^. network_selectedNodes
-      meta <- model ^. network_meta
-      let networkId = hush . mkNetworkName . nodeVersion <=< headMay $ rights nodes
-      pure $ (nodes, meta, ) <$> networkId
+--     netInfo = do
+--       nodes <- model ^. network_selectedNodes
+--       meta <- model ^. network_meta
+--       let networkId = hush . mkNetworkName . nodeVersion <=< headMay $ rights nodes
+--       pure $ (nodes, meta, ) <$> networkId
 
-  (conf, mTransferInfo) <- elClass "div" "modal__main transaction_details" $ do
-    elClass "h2" "heading heading_type_h2" $ text "Transfer Details"
-    transferInfo <- divClass "group" $ uiReceiveFromLegacyAccount model
-    elClass "h2" "heading heading_type_h2" $ text "Transaction Settings"
-    (conf0, _, _) <- divClass "group" $ uiMetaData model Nothing Nothing
-    pure (conf0, transferInfo)
+--   (conf, mTransferInfo) <- elClass "div" "modal__main transaction_details" $ do
+--     elClass "h2" "heading heading_type_h2" $ text "Transfer Details"
+--     transferInfo <- divClass "group" $ uiReceiveFromLegacyAccount model
+--     elClass "h2" "heading heading_type_h2" $ text "Transaction Settings"
+--     (conf0, _, _) <- divClass "group" $ uiMetaData model Nothing Nothing
+--     pure (conf0, transferInfo)
 
-  let preventProgress = isNothing <$> mTransferInfo
+--   let preventProgress = isNothing <$> mTransferInfo
 
-  done <- modalFooter $
-    confirmButton (def & uiButtonCfg_disabled .~ preventProgress) "Submit"
+--   (done, back) <- modalFooter $ do
+--     back0 <- cancelButton def "Back"
+--     done0 <- confirmButton (def & uiButtonCfg_disabled .~ preventProgress) "Submit"
+--     pure (done0, back0)
 
-  pure
-    ( (conf, onClose)
-    , attachWithMaybe
-        (liftA2 $ receiveFromLegacySubmit account chain)
-        (current netInfo)
-        (current mTransferInfo <@ done)
-    )
+--   pure
+--     ( (conf, onClose)
+--     , leftmost
+--       [ attachWithMaybe
+--         (liftA2 $ receiveFromLegacySubmit account chain)
+--         (current netInfo)
+--         (current mTransferInfo <@ done)
+--       , uiReceiveModal0 model account onClose <$ back
+--       ]
+--     )
 
 -- receiveFromLegacyPreview
 --   :: ( MonadWidget t m
