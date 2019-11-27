@@ -197,7 +197,7 @@ lockScreen xprv = setupDiv "fullscreen" $ divClass "wrapper" $ setupDiv "splash"
     <> "class" =: setupClass "splash-bg"
     ) kadenaWalletLogo
   dValid <- holdDyn True . fmap isJust $ isValid
-  (eSubmit, (_, restore, pass)) <- setupDiv "splash-terms-buttons" $ form "" $ do
+  (eSubmit, (restore, pass)) <- setupDiv "splash-terms-buttons" $ form "" $ do
     elDynClass "div"
       (("lock-screen__invalid-password" <>) . bool " lock-screen__invalid-password--invalid" "" <$> dValid)
       (text "Invalid Password")
@@ -206,11 +206,11 @@ lockScreen xprv = setupDiv "fullscreen" $ divClass "wrapper" $ setupDiv "splash"
     -- Event handled by form onSubmit
     void $ confirmButton (def & uiButtonCfg_type ?~ "submit") "Unlock"
     setupDiv "button-horizontal-group" $ do
-      help' <- uiButton btnCfgSecondary $ do
+      elAttr "a" ("class" =: "button button_type_secondary" <> "href" =: "https://www.kadena.io/chainweaver-support") $ do
         elAttr "img" ("src" =: static @"img/launch_dark.svg" <> "class" =: "button__text-icon") blank
-        text "Help" -- TODO where does this go?
+        text "Help"
       restore' <- uiButton btnCfgSecondary $ text "Restore"
-      pure (help', restore', pass')
+      pure (restore', pass')
 
   let isValid = attachWith (\p _ -> p <$ guard (testKeyPassword xprv p)) (current $ value pass) eSubmit
   pure (restore, isValid)
