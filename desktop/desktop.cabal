@@ -52,4 +52,6 @@ library
     , Desktop.Mac
     , Desktop.Orphans
     , Desktop.Setup
+    , Desktop.SigningApi
+    , Desktop.Util
   ghc-options: -Wall

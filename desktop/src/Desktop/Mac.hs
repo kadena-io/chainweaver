@@ -17,7 +17,6 @@ import Data.String (IsString(..))
 import Foreign.C.String (CString, peekCString)
 import Foreign.StablePtr (StablePtr)
 import GHC.IO.Handle
-import Kadena.SigningApi (signingAPI)
 import Language.Javascript.JSaddle.Types (JSM)
 import Obelisk.Backend
 import Obelisk.Frontend
@@ -48,6 +47,8 @@ import Frontend
 import Frontend.AppCfg
 import Frontend.Storage
 import Desktop.Frontend
+import Desktop.SigningApi
+import Desktop.Util
 
 data MacFFI = MacFFI
   { _macFFI_setupAppMenu :: StablePtr (CString -> IO ()) -> IO ()
@@ -148,27 +149,9 @@ main' ffi mainBundleResourcePath runHTML = redirectPipes [stdout, stderr] $ do
             putStrLn $ "Opened file successfully: " <> f
             putMVar fileOpenedMVar c
             pure True
-    signingLock <- liftIO newEmptyMVar -- Only allow one signing request to be served at once
-    signingRequestMVar <- liftIO newEmptyMVar
-    signingResponseMVar <- liftIO newEmptyMVar
-    let runSign obj = do
-          resp <- liftIO $ bracket_ (putMVar signingLock ()) (takeMVar signingLock) $ do
-            putMVar signingRequestMVar obj -- handoff to app
-            bracket
-              (_macFFI_moveToForeground ffi)
-              (\() -> _macFFI_moveToBackground ffi)
-              (\_ -> takeMVar signingResponseMVar)
-          case resp of
-            Left e -> throwError $ Servant.err409
-              { Servant.errBody = LBS.fromStrict $ T.encodeUtf8 e }
-            Right v -> pure v
-        s = Warp.setPort 9467 Warp.defaultSettings
-        laxCors _ = Just $ Wai.simpleCorsResourcePolicy
-          { Wai.corsRequestHeaders = Wai.simpleHeaders }
-        apiServer
-          = Warp.runSettings s $ Wai.cors laxCors
-          $ Servant.serve signingAPI runSign
-    _ <- Async.async $ apiServer
+    (signingRequestMVar, signingResponseMVar) <- signingServer
+      (_macFFI_moveToForeground ffi)
+      (_macFFI_moveToBackground ffi)
     runHTML "index.html" route putStrLn handleOpen $ do
       mInitFile <- liftIO $ tryTakeMVar fileOpenedMVar
       let frontendMode = FrontendMode
@@ -202,7 +185,7 @@ main' ffi mainBundleResourcePath runHTML = redirectPipes [stdout, stderr] $ do
                 -- DB 2019-08-07 Changing this back to False because it's just too convenient this way.
                 , _appCfg_editorReadOnly = False
                 , _appCfg_signingRequest = signingRequest
-                , _appCfg_signingResponse = liftIO . putMVar signingResponseMVar
+                , _appCfg_signingResponse = signingResponseHandler signingResponseMVar
                 , _appCfg_enabledSettings = EnabledSettings
                   {
                   }
@@ -212,11 +195,3 @@ main' ffi mainBundleResourcePath runHTML = redirectPipes [stdout, stderr] $ do
           pure ()
         }
 
--- | Push writes to the given 'MVar' into an 'Event'.
-mvarTriggerEvent
-  :: (PerformEvent t m, TriggerEvent t m, MonadIO m)
-  => MVar a -> m (Event t a)
-mvarTriggerEvent mvar = do
-  (e, trigger) <- newTriggerEvent
-  _ <- liftIO $ forkIO $ forever $ trigger =<< takeMVar mvar
-  pure e
