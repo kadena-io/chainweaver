@@ -190,7 +190,8 @@ sendConfig model sender = Workflow $ do
         recipient <- divClass "group" $ do
           kad <- mkLabeledInput True "Address" uiInputElement def
           let decoded = decodeKadenaAddressText <$> value kad
-          (_, amount, _) <- mkLabeledInput True "Amount" (uiNonnegativeRealWithPrecisionInputElement maxCoinPrecision id) def
+          (_, amount, _) <- mkLabeledInput True "Amount"
+            (dimensionalInputWrapper "KDA" . uiNonnegativeRealWithPrecisionInputElement maxCoinPrecision id) def
           pure $ runExceptT $ do
             r <- ExceptT $ first (\_ -> "Invalid kadena address") <$> decoded
             a <- ExceptT $ maybe (Left "Invalid amount") Right <$> amount
