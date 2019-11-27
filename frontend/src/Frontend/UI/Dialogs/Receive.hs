@@ -31,10 +31,11 @@ import Kadena.SigningApi (DappCap (..))
 import Pact.Types.Capability (SigCapability (..))
 import Pact.Types.Term (QualifiedName (..), KeySet (..), Name (..), BareName (..))
 import Pact.Types.ChainId (ChainId(..))
-import Pact.Types.ChainMeta (PublicMeta (..))
+import Pact.Types.ChainMeta (PublicMeta (..), TTLSeconds)
 import Pact.Types.PactValue (PactValue (..))
 import Pact.Types.Exp (Literal (LString, LDecimal))
 import Pact.Types.Command (Command)
+import Pact.Types.Runtime (GasLimit)
 import qualified Pact.Types.Scheme as PactScheme
 import Language.Javascript.JSaddle.Types (MonadJSM)
 
@@ -46,18 +47,13 @@ import Frontend.KadenaAddress
 import Frontend.Network
 import Frontend.UI.Dialogs.NetworkEdit
 
-import Frontend.UI.Dialogs.DeployConfirmation (CanSubmitTransaction,
-                                               TransactionSubmitFeedback (..),
-                                               submitTransactionWithFeedback
-                                              )
+import Frontend.UI.Dialogs.DeployConfirmation (CanSubmitTransaction, TransactionSubmitFeedback (..), submitTransactionWithFeedback)
 
-import Frontend.UI.DeploymentSettings (uiMetaData,
-                                       userChainIdSelect,
-                                       defaultGASCapability
-                                      )
+import Frontend.UI.DeploymentSettings (uiMetaData, userChainIdSelect, defaultGASCapability)
 
 import Frontend.UI.Modal
 import Frontend.UI.Widgets
+import Frontend.UI.Widgets.AccountName (uiAccountNameInput)
 import Frontend.Wallet
 
 data LegacyTransferInfo key = LegacyTransferInfo
@@ -193,7 +189,7 @@ uiReceiveModal0 model account onClose = Workflow $ do
       in
         mkLabeledInputView True lbl attrFn $ pure v
 
-  (showingAddr, (conf, tfrInfo)) <- divClass "modal__main account-details" $ do
+  (showingAddr, (conf, ttl, gaslimit, transferInfo)) <- divClass "modal__main account-details" $ do
     rec
       showingKadenaAddress <- holdDyn True $
         not <$> current showingKadenaAddress <@ onAddrClick <> onReceiClick
@@ -212,17 +208,17 @@ uiReceiveModal0 model account onClose = Workflow $ do
           pure ()
         uiDisplayAddress address
 
-      (onReceiClick, cfgTfrInfo) <- controlledAccordionItem (not <$> showingKadenaAddress) mempty
+      (onReceiClick, results) <- controlledAccordionItem (not <$> showingKadenaAddress) mempty
         (text "From this key") $ do
-        elClass "h2" "heading heading_type_h2" $ text "Transfer Details"
-        transferInfo <- divClass "group" $ uiReceiveFromLegacyAccount model
+        elClass "h2" "heading heading_type_h2" $ text "Sender Details"
+        transferInfo0 <- divClass "group" $ uiReceiveFromLegacyAccount model
         elClass "h2" "heading heading_type_h2" $ text "Transaction Settings"
-        (conf0, _, _) <- divClass "group" $ uiMetaData model Nothing Nothing
-        pure (conf0, transferInfo)
+        (conf0, ttl0, gaslimit0) <- divClass "group" $ uiMetaData model Nothing Nothing
+        pure (conf0, ttl0, gaslimit0, transferInfo0)
 
-    pure (showingKadenaAddress, snd cfgTfrInfo)
+    pure (showingKadenaAddress, snd results)
 
-  let isDisabled = liftA2 (&&) (isNothing <$> tfrInfo) (not <$> showingAddr)
+  let isDisabled = liftA2 (&&) (isNothing <$> transferInfo) (not <$> showingAddr)
 
   doneNext <- modalFooter $ uiButtonDyn
     (def
@@ -235,13 +231,12 @@ uiReceiveModal0 model account onClose = Workflow $ do
     done = gate (current showingAddr) doneNext
     deploy = gate (not <$> current showingAddr) doneNext
 
-  pure ( (conf, onClose <> done)
-       -- , uiReceiveDeployLegacyTransfer onClose model account <$ onTransferStart
+    infos = (liftA2 . liftA2) (,) netInfo transferInfo
 
-       , attachWithMaybe
-         (liftA2 $ receiveFromLegacySubmit account chain)
-         (current netInfo)
-         (current tfrInfo <@ deploy)
+  pure ( (conf, onClose <> done)
+       , uncurry
+         <$> current (receiveFromLegacySubmit account chain <$> ttl <*> gaslimit)
+         <@> tagMaybe (current infos) deploy
        )
 
 -- uiReceiveDeployLegacyTransfer
@@ -360,11 +355,13 @@ receiveFromLegacySubmit
      )
   => Account key
   -> ChainId
+  -> TTLSeconds
+  -> GasLimit
   -> ([Either a NodeInfo], PublicMeta, NetworkName)
   -> LegacyTransferInfo key
   -> Workflow t m (mConf, Event t ())
-receiveFromLegacySubmit account chainId netInfo transferInfo = Workflow $ do
-  recInfo <- receiveBuildCommand account netInfo transferInfo
+receiveFromLegacySubmit account chainId ttl gasLimit netInfo transferInfo = Workflow $ do
+  recInfo <- receiveBuildCommand account netInfo ttl gasLimit transferInfo
   txnSubFeedback <- elClass "div" "modal__main transaction_details" $
     submitTransactionWithFeedback (_receiveBuildCommandInfo_command recInfo) chainId (netInfo ^. _1)
 
@@ -386,9 +383,11 @@ receiveBuildCommand
      )
   => Account key
   -> ([Either a NodeInfo], PublicMeta, NetworkName)
+  -> TTLSeconds
+  -> GasLimit
   -> LegacyTransferInfo key
   -> m (ReceiveBuildCommandInfo key)
-receiveBuildCommand account (_, publicMeta, networkId) transferInfo = do
+receiveBuildCommand account (_, publicMeta, networkId) ttl gasLimit transferInfo = do
   let
     chain = _legacyTransferInfo_chainId transferInfo
     sender = _legacyTransferInfo_account transferInfo
@@ -439,6 +438,8 @@ receiveBuildCommand account (_, publicMeta, networkId) transferInfo = do
     pm = publicMeta
       { _pmChainId = chain
       , _pmSender = unAccountName $ _account_name account
+      , _pmGasLimit = gasLimit
+      , _pmTTL = ttl
       }
 
   cmd <- buildCmd Nothing networkId pm signingPairs [] code dat pkCaps

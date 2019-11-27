@@ -142,6 +142,7 @@ library
                  , Frontend.UI.TabBar
                  , Frontend.UI.Wallet
                  , Frontend.UI.Widgets
+                 , Frontend.UI.Widgets.AccountName
                  , Frontend.UI.Widgets.Helpers
                  , Frontend.KadenaAddress
                  , Frontend.Wallet

@@ -30,6 +30,7 @@ import           Frontend.UI.Dialogs.DeployConfirmation (CanSubmitTransaction, T
                                                          submitTransactionWithFeedback)
 import           Frontend.UI.Modal.Impl                 (ModalIde, modalFooter)
 import           Frontend.UI.Widgets
+import           Frontend.UI.Widgets.AccountName (uiAccountNameInput)
 
 import           Frontend.Crypto.Class                  (HasCrypto,
                                                          GenKeyArg(GenWalletIndex),
@@ -48,7 +49,6 @@ import           Frontend.Wallet                        (Account (..),
                                                          HasWalletCfg (..),
                                                          KeyPair (..),
                                                          findNextKey,
-                                                         uiAccountNameInput,
                                                          unAccountName)
 
 -- Allow the user to create a 'vanity' account, which is an account with a custom name
