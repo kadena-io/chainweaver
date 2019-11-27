@@ -10,8 +10,6 @@ import           Control.Monad.IO.Class
 import           Data.Maybe               (listToMaybe)
 import           Data.Text                (Text)
 import qualified Data.Text                as T
-import qualified Data.Text.Encoding          as T
-import qualified Data.Text.Encoding.Error    as T
 import qualified GHCJS.DOM.EventM         as EventM
 import qualified GHCJS.DOM.FileReader     as FileReader
 import qualified GHCJS.DOM.HTMLElement    as HTMLElement
