@@ -9,9 +9,8 @@ module Frontend.UI.Dialogs.Receive
   ( uiReceiveModal
   ) where
 
-import Debug.Trace (traceShowM)
 import Control.Applicative (liftA2)
-import Control.Lens ((^.), (<>~), (^?), _1, _3)
+import Control.Lens ((^.), (<>~), _1)
 import Control.Monad (void, (<=<))
 import Control.Error (hush, headMay)
 
@@ -24,6 +23,7 @@ import Data.Map (Map)
 import qualified Data.Map as Map
 import qualified Data.Aeson as Aeson
 import qualified Data.HashMap.Lazy as HM
+
 import Reflex
 import Reflex.Dom
 
@@ -31,16 +31,14 @@ import Kadena.SigningApi (DappCap (..))
 import Pact.Types.Capability (SigCapability (..))
 import Pact.Types.Term (QualifiedName (..), KeySet (..), Name (..), BareName (..))
 import Pact.Types.ChainId (ChainId(..))
-import Pact.Types.ChainMeta (PublicMeta (..), TTLSeconds)
+import Pact.Types.ChainMeta (PublicMeta (..))
 import Pact.Types.PactValue (PactValue (..))
 import Pact.Types.Exp (Literal (LString, LDecimal))
 import Pact.Types.Command (Command)
-import Pact.Types.Runtime (GasLimit)
 import qualified Pact.Types.Scheme as PactScheme
 import Language.Javascript.JSaddle.Types (MonadJSM)
 
 import Frontend.Crypto.Class (GenKeyArg (..), HasCrypto, cryptoGenPubKeyFromPrivate, cryptoGenKey)
-import Frontend.Crypto.Ed25519 (keyToText)
 import Common.Wallet (parsePublicKey,toPactPublicKey)
 
 import Frontend.Foundation
@@ -53,17 +51,9 @@ import Frontend.UI.Dialogs.DeployConfirmation (CanSubmitTransaction,
                                                submitTransactionWithFeedback
                                               )
 
-import Frontend.UI.DeploymentSettings (DeploymentSettingsView (..),
-                                       DeploymentSettingsConfig (..),
-                                       uiMetaData,
-                                       uiDeployPreview,
-                                       buildDeployTabs,
-                                       buildDeployTabFooterControls,
-                                       defaultTabViewProgressButtonLabel,
+import Frontend.UI.DeploymentSettings (uiMetaData,
                                        userChainIdSelect,
-                                       defaultGASCapability,
-                                       predefinedChainIdSelect,
-                                       uiSenderFixed
+                                       defaultGASCapability
                                       )
 
 import Frontend.UI.Modal
@@ -195,23 +185,23 @@ uiReceiveModal0 model account onClose = Workflow $ do
           mkLabeledInputView True lbl attrFn $ pure v
 
   (showingAddr, onTransferStart) <- divClass "modal__main account-details" $ do
-    elClass "h2" "heading heading_type_h2" $ text "Destination"
-    divClass "group" $ do
-      -- Network
-      void $ mkLabeledClsInput True "Network" $ \_ -> do
-        stat <- queryNetworkStatus (model ^. network_networks) $ pure $ _account_network account
-        uiNetworkStatus "signal__left-floated" stat
-        text $ textNetworkName $ _account_network account
-      -- Chain id
-      _ <- displayText "Chain ID" (_chainId $ _account_chainId account) "account-details__chain-id"
-      pure ()
-
     rec
       showingKadenaAddress <- holdDyn True $
         not <$> current showingKadenaAddress <@ onAddrClick <> onReceiClick
 
-      (onAddrClick, _) <- controlledAccordionItem showingKadenaAddress mempty
-        (text "To this address") $ uiDisplayAddress address
+      (onAddrClick, _) <- controlledAccordionItem showingKadenaAddress mempty (text "To this address")
+        $ do
+        elClass "h2" "heading heading_type_h2" $ text "Destination"
+        divClass "group" $ do
+          -- Network
+          void $ mkLabeledClsInput True "Network" $ \_ -> do
+            stat <- queryNetworkStatus (model ^. network_networks) $ pure $ _account_network account
+            uiNetworkStatus "signal__left-floated" stat
+          text $ textNetworkName $ _account_network account
+          -- Chain id
+          _ <- displayText "Chain ID" (_chainId $ _account_chainId account) "account-details__chain-id"
+          pure ()
+        uiDisplayAddress address
 
       (onReceiClick, onStartTransfer) <- controlledAccordionItem (not <$> showingKadenaAddress) mempty
         (text "From this key") $ button "Start Transfer"
@@ -252,48 +242,23 @@ uiReceiveDeployLegacyTransfer onClose model account = Workflow $ do
   let
     chain = _account_chainId account
 
-    includePreviewTab = True
-    customConfigTab = Nothing
-
     netInfo = do
       nodes <- model ^. network_selectedNodes
       meta <- model ^. network_meta
       let networkId = hush . mkNetworkName . nodeVersion <=< headMay $ rights nodes
       pure $ (nodes, meta, ) <$> networkId
 
-  rec
-    (curSelection, done, _) <- buildDeployTabs customConfigTab includePreviewTab controls
+  (conf, mTransferInfo) <- elClass "div" "modal__main transaction_details" $ do
+    elClass "h2" "heading heading_type_h2" $ text "Transfer Details"
+    transferInfo <- divClass "group" $ uiReceiveFromLegacyAccount model
+    elClass "h2" "heading heading_type_h2" $ text "Transaction Settings"
+    (conf0, _, _) <- divClass "group" $ uiMetaData model Nothing Nothing
+    pure (conf0, transferInfo)
 
-    (conf, mTransferInfo) <- elClass "div" "modal__main transaction_details" $ do
-      (cfg, ttl, gaslim, mTfrInfo) <- tabPane mempty curSelection DeploymentSettingsView_Cfg $ do
-        elClass "h2" "heading heading_type_h2" $ text "Transfer Details"
-        transferInfo <- divClass "group" $ uiReceiveFromLegacyAccount model
-        elClass "h2" "heading heading_type_h2" $ text "Transaction Settings"
-        (conf0, ttl, gaslim) <- divClass "group" $ uiMetaData model Nothing Nothing
-        pure (conf0, ttl, gaslim, transferInfo)
+  let preventProgress = isNothing <$> mTransferInfo
 
-      _ <- tabPane mempty curSelection DeploymentSettingsView_Keys $
-        text "erm..."
-
-      _ <- tabPane mempty curSelection DeploymentSettingsView_Preview $ do
-
-        dyn_ $ receiveFromLegacyPreview model chain account
-          <$> (model ^. wallet_accounts)
-          <*> ttl
-          <*> gaslim
-          <*> netInfo
-          <*> mTransferInfo
-
-      pure (cfg, mTfrInfo)
-
-    let preventProgress = isNothing <$> mTransferInfo
-
-    controls <- modalFooter $ buildDeployTabFooterControls
-      customConfigTab
-      includePreviewTab
-      curSelection
-      defaultTabViewProgressButtonLabel
-      preventProgress
+  done <- modalFooter $
+    confirmButton (def & uiButtonCfg_disabled .~ preventProgress) "Submit"
 
   pure
     ( (conf, onClose)
@@ -302,65 +267,66 @@ uiReceiveDeployLegacyTransfer onClose model account = Workflow $ do
         (current netInfo)
         (current mTransferInfo <@ done)
     )
-receiveFromLegacyPreview
-  :: ( MonadWidget t m
-     , HasCrypto key m
-     , HasCrypto key (Performable m)
-     , HasNetwork model t
-     )
-  => model
-  -> ChainId
-  -> Account key
-  -> Accounts key
-  -> TTLSeconds
-  -> GasLimit
-  -> Maybe ([Either a NodeInfo], PublicMeta, NetworkName)
-  -> Maybe (LegacyTransferInfo key)
-  -> m ()
-receiveFromLegacyPreview _ _ _ _ _ _ Nothing _ =
-  text "Insufficient information provided for Preview."
-receiveFromLegacyPreview _ _ _ _ _ _ _ Nothing =
-  text "Insufficient information provided for Preview."
-receiveFromLegacyPreview model chainId account accounts ttl gasLimit (Just netInfo) (Just transferInfo) = do
-  cmdInfo <- receiveBuildCommand account netInfo transferInfo
 
-  let
-    dat = _receiveBuildCommandInfo_payload cmdInfo
-    code = _receiveBuildCommandInfo_code cmdInfo
-    caps = _receiveBuildCommandInfo_capabilities cmdInfo
-    pm = _receiveBuildCommandInfo_publicMeta cmdInfo
-    signers = _keyPair_publicKey <$> _receiveBuildCommandInfo_signingPairs cmdInfo
+-- receiveFromLegacyPreview
+--   :: ( MonadWidget t m
+--      , HasCrypto key m
+--      , HasCrypto key (Performable m)
+--      , HasNetwork model t
+--      )
+--   => model
+--   -> ChainId
+--   -> Account key
+--   -> Accounts key
+--   -> TTLSeconds
+--   -> GasLimit
+--   -> Maybe ([Either a NodeInfo], PublicMeta, NetworkName)
+--   -> Maybe (LegacyTransferInfo key)
+--   -> m ()
+-- receiveFromLegacyPreview _ _ _ _ _ _ Nothing _ =
+--   text "Insufficient information provided for Preview."
+-- receiveFromLegacyPreview _ _ _ _ _ _ _ Nothing =
+--   text "Insufficient information provided for Preview."
+-- receiveFromLegacyPreview model chainId account accounts ttl gasLimit (Just netInfo) (Just transferInfo) = do
+--   cmdInfo <- receiveBuildCommand account netInfo transferInfo
 
-    previewCaps = Map.mapKeys (AccountName . keyToText) $ _receiveBuildCommandInfo_assignedCaps cmdInfo
+--   let
+--     dat = _receiveBuildCommandInfo_payload cmdInfo
+--     code = _receiveBuildCommandInfo_code cmdInfo
+--     caps = _receiveBuildCommandInfo_capabilities cmdInfo
+--     pm = _receiveBuildCommandInfo_publicMeta cmdInfo
+--     signers = _keyPair_publicKey <$> _receiveBuildCommandInfo_signingPairs cmdInfo
 
-    settings = DeploymentSettingsConfig
-      { _deploymentSettingsConfig_userTab = Nothing
-      , _deploymentSettingsConfig_userSections = []
-      , _deploymentSettingsConfig_chainId = predefinedChainIdSelect chainId
-      , _deploymentSettingsConfig_sender = \_ _ -> uiSenderFixed (_account_name account)
-      , _deploymentSettingsConfig_data = Just dat
-      , _deploymentSettingsConfig_code = constDyn code
-      , _deploymentSettingsConfig_nonce = Nothing
-      , _deploymentSettingsConfig_ttl = Just ttl
-      , _deploymentSettingsConfig_gasLimit = Just gasLimit
-      , _deploymentSettingsConfig_caps = Just caps
-      , _deploymentSettingsConfig_extraSigners = signers
-      , _deploymentSettingsConfig_includePreviewTab = True
-      }
+--     previewCaps = Map.mapKeys (AccountName . keyToText) $ _receiveBuildCommandInfo_assignedCaps cmdInfo
 
-  uiDeployPreview
-    model
-    settings
-    accounts
-    gasLimit
-    ttl
-    code
-    pm
-    previewCaps
-    (Right dat)
-    (netInfo ^? _3)
-    (Just chainId)
-    (Just $ _account_name account)
+--     settings = DeploymentSettingsConfig
+--       { _deploymentSettingsConfig_userTab = Nothing
+--       , _deploymentSettingsConfig_userSections = []
+--       , _deploymentSettingsConfig_chainId = predefinedChainIdSelect chainId
+--       , _deploymentSettingsConfig_sender = \_ _ -> uiSenderFixed (_account_name account)
+--       , _deploymentSettingsConfig_data = Just dat
+--       , _deploymentSettingsConfig_code = constDyn code
+--       , _deploymentSettingsConfig_nonce = Nothing
+--       , _deploymentSettingsConfig_ttl = Just ttl
+--       , _deploymentSettingsConfig_gasLimit = Just gasLimit
+--       , _deploymentSettingsConfig_caps = Just caps
+--       , _deploymentSettingsConfig_extraSigners = signers
+--       , _deploymentSettingsConfig_includePreviewTab = True
+--       }
+
+--   uiDeployPreview
+--     model
+--     settings
+--     accounts
+--     gasLimit
+--     ttl
+--     code
+--     pm
+--     previewCaps
+--     (Right dat)
+--     (netInfo ^? _3)
+--     (Just chainId)
+--     (Just $ _account_name account)
 
 receiveFromLegacySubmit
   :: ( Monoid mConf
@@ -451,5 +417,4 @@ receiveBuildCommand account (_, publicMeta, networkId) transferInfo = do
       }
 
   cmd <- buildCmd Nothing networkId pm signingPairs [] code dat pkCaps
-  traceShowM $ Aeson.encode cmd
   pure $ ReceiveBuildCommandInfo code transferInfo cmd signingPairs pm caps pkCaps dat
