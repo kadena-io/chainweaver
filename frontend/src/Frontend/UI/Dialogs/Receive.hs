@@ -105,31 +105,30 @@ uiReceiveFromLegacyAccount
   => model
   -> m (Dynamic t (Maybe (LegacyTransferInfo key)))
 uiReceiveFromLegacyAccount model = do
-  divClass "group" $ do
-    mAccountName <- uiAccountNameInput (model ^. wallet)
+  mAccountName <- uiAccountNameInput (model ^. wallet)
 
-    onKeyPair <- divClass "account-details__private-key" $
-      _inputElement_input <$> mkLabeledInput True "Private Key" uiInputElement def
+  onKeyPair <- divClass "account-details__private-key" $
+    _inputElement_input <$> mkLabeledInput True "Private Key" uiInputElement def
 
-    (deriveErr, okPair) <- fmap fanEither . performEvent $ deriveKeyPair <$> onKeyPair
+  (deriveErr, okPair) <- fmap fanEither . performEvent $ deriveKeyPair <$> onKeyPair
 
-    _ <- widgetHold blank $ leftmost
-      [ text <$> deriveErr
-      , blank <$ okPair
-      ]
+  _ <- widgetHold blank $ leftmost
+    [ text <$> deriveErr
+    , blank <$ okPair
+    ]
 
-    keyPair <- holdDyn Nothing $ Just <$> okPair
+  keyPair <- holdDyn Nothing $ Just <$> okPair
 
-    chain <- divClass "account-details__receive-from-chain" $ userChainIdSelect model
+  chain <- divClass "account-details__receive-from-chain" $ userChainIdSelect model
 
-    amount <- fst . snd <$> mkLabeledInput True "Amount"
-      (uiRealWithPrecisionInputElement maxCoinPrecision id) def
+  amount <- fst . snd <$> mkLabeledInput True "Amount"
+    (uiRealWithPrecisionInputElement maxCoinPrecision id) def
 
-    pure $ (\macc mc mamnt mkeypair -> LegacyTransferInfo <$> macc <*> mc <*> mamnt <*> mkeypair)
-      <$> mAccountName
-      <*> chain
-      <*> amount
-      <*> keyPair
+  pure $ (\macc mc mamnt mkeypair -> LegacyTransferInfo <$> macc <*> mc <*> mamnt <*> mkeypair)
+    <$> mAccountName
+    <*> chain
+    <*> amount
+    <*> keyPair
 
   where
     deriveKeyPair :: (HasCrypto key m, MonadJSM m) => Text -> m (Either Text (key, PublicKey))
@@ -194,7 +193,7 @@ uiReceiveModal0 model account onClose = Workflow $ do
       showingKadenaAddress <- holdDyn True $
         not <$> current showingKadenaAddress <@ onAddrClick <> onReceiClick
 
-      (onAddrClick, _) <- controlledAccordionItem showingKadenaAddress mempty (text "To this address")
+      (onAddrClick, _) <- controlledAccordionItem showingKadenaAddress mempty (text "Via address")
         $ do
         elClass "h2" "heading heading_type_h2" $ text "Destination"
         divClass "group" $ do
@@ -209,7 +208,7 @@ uiReceiveModal0 model account onClose = Workflow $ do
         uiDisplayAddress address
 
       (onReceiClick, results) <- controlledAccordionItem (not <$> showingKadenaAddress) mempty
-        (text "From this key") $ do
+        (text "Via legacy (non-BIP32) sender") $ do
         elClass "h2" "heading heading_type_h2" $ text "Sender Details"
         transferInfo0 <- divClass "group" $ uiReceiveFromLegacyAccount model
         elClass "h2" "heading heading_type_h2" $ text "Transaction Settings"
@@ -238,115 +237,6 @@ uiReceiveModal0 model account onClose = Workflow $ do
          <$> current (receiveFromLegacySubmit account chain <$> ttl <*> gaslimit)
          <@> tagMaybe (current infos) deploy
        )
-
--- uiReceiveDeployLegacyTransfer
---   :: forall t m model mConf key.
---      ( MonadWidget t m
---      , HasNetwork model t
---      , HasNetworkCfg mConf t
---      , HasWallet model key t
---      , Monoid mConf
---      , HasCrypto key m
---      , HasCrypto key (Performable m)
---      )
---   => Event t ()
---   -> model
---   -> Account key
---   -> Workflow t m (mConf, Event t ())
--- uiReceiveDeployLegacyTransfer onClose model account = Workflow $ do
---   let
---     chain = _account_chainId account
-
---     netInfo = do
---       nodes <- model ^. network_selectedNodes
---       meta <- model ^. network_meta
---       let networkId = hush . mkNetworkName . nodeVersion <=< headMay $ rights nodes
---       pure $ (nodes, meta, ) <$> networkId
-
---   (conf, mTransferInfo) <- elClass "div" "modal__main transaction_details" $ do
---     elClass "h2" "heading heading_type_h2" $ text "Transfer Details"
---     transferInfo <- divClass "group" $ uiReceiveFromLegacyAccount model
---     elClass "h2" "heading heading_type_h2" $ text "Transaction Settings"
---     (conf0, _, _) <- divClass "group" $ uiMetaData model Nothing Nothing
---     pure (conf0, transferInfo)
-
---   let preventProgress = isNothing <$> mTransferInfo
-
---   (done, back) <- modalFooter $ do
---     back0 <- cancelButton def "Back"
---     done0 <- confirmButton (def & uiButtonCfg_disabled .~ preventProgress) "Submit"
---     pure (done0, back0)
-
---   pure
---     ( (conf, onClose)
---     , leftmost
---       [ attachWithMaybe
---         (liftA2 $ receiveFromLegacySubmit account chain)
---         (current netInfo)
---         (current mTransferInfo <@ done)
---       , uiReceiveModal0 model account onClose <$ back
---       ]
---     )
-
--- receiveFromLegacyPreview
---   :: ( MonadWidget t m
---      , HasCrypto key m
---      , HasCrypto key (Performable m)
---      , HasNetwork model t
---      )
---   => model
---   -> ChainId
---   -> Account key
---   -> Accounts key
---   -> TTLSeconds
---   -> GasLimit
---   -> Maybe ([Either a NodeInfo], PublicMeta, NetworkName)
---   -> Maybe (LegacyTransferInfo key)
---   -> m ()
--- receiveFromLegacyPreview _ _ _ _ _ _ Nothing _ =
---   text "Insufficient information provided for Preview."
--- receiveFromLegacyPreview _ _ _ _ _ _ _ Nothing =
---   text "Insufficient information provided for Preview."
--- receiveFromLegacyPreview model chainId account accounts ttl gasLimit (Just netInfo) (Just transferInfo) = do
---   cmdInfo <- receiveBuildCommand account netInfo transferInfo
-
---   let
---     dat = _receiveBuildCommandInfo_payload cmdInfo
---     code = _receiveBuildCommandInfo_code cmdInfo
---     caps = _receiveBuildCommandInfo_capabilities cmdInfo
---     pm = _receiveBuildCommandInfo_publicMeta cmdInfo
---     signers = _keyPair_publicKey <$> _receiveBuildCommandInfo_signingPairs cmdInfo
-
---     previewCaps = Map.mapKeys (AccountName . keyToText) $ _receiveBuildCommandInfo_assignedCaps cmdInfo
-
---     settings = DeploymentSettingsConfig
---       { _deploymentSettingsConfig_userTab = Nothing
---       , _deploymentSettingsConfig_userSections = []
---       , _deploymentSettingsConfig_chainId = predefinedChainIdSelect chainId
---       , _deploymentSettingsConfig_sender = \_ _ -> uiSenderFixed (_account_name account)
---       , _deploymentSettingsConfig_data = Just dat
---       , _deploymentSettingsConfig_code = constDyn code
---       , _deploymentSettingsConfig_nonce = Nothing
---       , _deploymentSettingsConfig_ttl = Just ttl
---       , _deploymentSettingsConfig_gasLimit = Just gasLimit
---       , _deploymentSettingsConfig_caps = Just caps
---       , _deploymentSettingsConfig_extraSigners = signers
---       , _deploymentSettingsConfig_includePreviewTab = True
---       }
-
---   uiDeployPreview
---     model
---     settings
---     accounts
---     gasLimit
---     ttl
---     code
---     pm
---     previewCaps
---     (Right dat)
---     (netInfo ^? _3)
---     (Just chainId)
---     (Just $ _account_name account)
 
 receiveFromLegacySubmit
   :: ( Monoid mConf
