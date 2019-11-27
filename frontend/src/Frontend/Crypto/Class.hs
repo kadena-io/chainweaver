@@ -15,6 +15,7 @@ import Obelisk.Route.Frontend
 import Reflex.Dom hiding (fromJSString)
 import Reflex.Host.Class (MonadReflexCreateTrigger)
 import Data.ByteString (ByteString)
+import Data.Text (Text)
 
 import Frontend.Crypto.Ed25519
 import Frontend.Foundation
@@ -25,7 +26,13 @@ instance (HasStorage m, Monad m) => HasStorage (CryptoT key m)
 data Crypto key = Crypto
   { _crypto_sign :: ByteString -> key -> JSM Signature
   , _crypto_genKey :: Int -> JSM (key, PublicKey)
+  , _crypto_genPairFromPrivate :: ByteString -> JSM (key, PublicKey)
   }
+
+cryptoGenPubKeyFromPrivate :: (MonadJSM m, HasCrypto key m) => ByteString -> m (key, PublicKey)
+cryptoGenPubKeyFromPrivate k = do
+  crypto <- askCrypto
+  liftJSM $ _crypto_genPairFromPrivate crypto k
 
 cryptoGenKey :: (MonadJSM m, HasCrypto key m) => Int -> m (key, PublicKey)
 cryptoGenKey i = do

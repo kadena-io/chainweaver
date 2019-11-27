@@ -17,6 +17,7 @@ module Frontend.Crypto.Ed25519
   , Signature
   -- * Creation
   , genKeyPair
+  , deriveKeyPairFromPrivateKey
   -- * Signing
   , mkSignature
   -- * Parsing
@@ -47,7 +48,7 @@ import           Data.Text                   (Text)
 import qualified Data.Text.Encoding          as T
 import           GHC.Generics                (Generic)
 import           Language.Javascript.JSaddle (call, eval, fromJSValUnchecked,
-                                              js, valNull)
+                                              js, valNull, MakeObject)
 
 import           Pact.Types.Util             (encodeBase64UrlUnpadded, decodeBase64UrlUnpadded)
 
@@ -63,16 +64,17 @@ newtype PrivateKey = PrivateKey ByteString
 newtype Signature = Signature ByteString
   deriving (Generic)
 
--- | Generate a `PublicKey`, `PrivateKey` keypair.
-genKeyPair :: MonadJSM m => m (PrivateKey, PublicKey)
-genKeyPair = liftJSM $ do
-  jsPair <- eval "nacl.sign.keyPair()"
+mkKeyPairFromJS :: MakeObject s => s -> JSM (PrivateKey, PublicKey)
+mkKeyPairFromJS jsPair = do
   privKey <- fromJSValUnchecked =<< jsPair ^. js "secretKey"
   pubKey <- fromJSValUnchecked =<< jsPair ^. js "publicKey"
   pure ( PrivateKey . BS.pack $ privKey
        , PublicKey . BS.pack $ pubKey
        )
 
+-- | Generate a `PublicKey`, `PrivateKey` keypair.
+genKeyPair :: MonadJSM m => m (PrivateKey, PublicKey)
+genKeyPair = liftJSM $ eval "nacl.sign.keyPair()" >>= mkKeyPairFromJS
 
 -- | Create a signature based on the given payload and `PrivateKey`.
 mkSignature :: MonadJSM m => ByteString -> PrivateKey -> m Signature
@@ -95,6 +97,12 @@ parseKeyPair pubKey priv = do
     sanityCheck (PublicKey pubRaw) = \case
       Nothing -> True
       Just (PrivateKey privRaw) -> BS.isSuffixOf pubRaw privRaw
+
+-- | Derive a keypair from the private key
+deriveKeyPairFromPrivateKey :: MonadJSM m => ByteString -> m (PrivateKey, PublicKey)
+deriveKeyPairFromPrivateKey privKeyBS = liftJSM $ do
+  jsFrom <- eval "(function(k) {return window.nacl.sign.keyPair.fromSecretKey(Uint8Array.from(k));})"
+  call jsFrom valNull [BS.unpack privKeyBS] >>= mkKeyPairFromJS
 
 -- | Parse a private key, with some basic sanity checking.
 parsePrivateKey :: MonadError Text m => PublicKey -> Text -> m (Maybe PrivateKey)

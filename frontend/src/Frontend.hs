@@ -21,6 +21,7 @@ import           Obelisk.Generated.Static
 
 import           Common.Api
 import           Common.Route
+import           Common.Wallet
 import           Frontend.AppCfg
 import           Frontend.Crypto.Class
 import           Frontend.Crypto.Ed25519
@@ -53,7 +54,7 @@ frontend = Frontend
   , _frontend_body = prerender_ loaderMarkup $ do
     (fileOpened, triggerOpen) <- openFileDialog
     let store = browserStorage
-        crypto = Crypto mkSignature (const genKeyPair)
+        crypto = Crypto mkSignature (const genKeyPair) deriveKeyPairFromPrivateKey
     mapRoutedT (flip runStorageT store . flip runCryptoT crypto) $ app blank $ AppCfg
       { _appCfg_gistEnabled = True
       , _appCfg_externalFileOpened = fileOpened

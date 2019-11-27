@@ -46,6 +46,8 @@ module Frontend.Wallet
   -- * Other helper functions
   , accountToKadenaAddress
   , activeAccountOnNetwork
+  , accountIsCreated
+  , accountCreatedYesNo
   , checkAccountNameValidity
   , snocIntMap
   , findNextKey
@@ -90,10 +92,16 @@ import Frontend.Network
 
 import Frontend.UI.Widgets
 
+accountIsCreated :: Account key -> AccountCreated
+accountIsCreated = maybe AccountCreated_No (const AccountCreated_Yes) . _account_balance
+
+accountCreatedYesNo :: Account key -> a -> a -> a
+accountCreatedYesNo a yes no = case accountIsCreated a of
+  AccountCreated_Yes -> yes
+  AccountCreated_No -> no
+
 accountToKadenaAddress :: Account key -> KadenaAddress
-accountToKadenaAddress a = mkKadenaAddress isCreated (_account_chainId a) (_account_name a)
-  where
-    isCreated = maybe AccountCreated_No (const AccountCreated_Yes) $ _account_balance a
+accountToKadenaAddress a = mkKadenaAddress (accountIsCreated a) (_account_chainId a) (_account_name a)
 
 data WalletCfg key t = WalletCfg
   { _walletCfg_genKey     :: Event t (AccountName, NetworkName, ChainId, Text)
