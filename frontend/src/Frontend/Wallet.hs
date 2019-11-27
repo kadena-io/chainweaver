@@ -47,7 +47,7 @@ module Frontend.Wallet
   , accountToKadenaAddress
   , activeAccountOnNetwork
   , accountIsCreated
-  , accountCreatedYesNo
+  , accountCreatedBool
   , checkAccountNameValidity
   , snocIntMap
   , findNextKey
@@ -90,8 +90,8 @@ import Frontend.Network
 accountIsCreated:: Account key -> AccountCreated
 accountIsCreated = maybe AccountCreated_No (const AccountCreated_Yes) . _account_balance
 
-accountCreatedYesNo :: Account key -> a -> a -> a
-accountCreatedYesNo a yes no = case accountIsCreated a of
+accountCreatedBool :: a -> a -> Account key -> a
+accountCreatedBool no yes a = case accountIsCreated a of
   AccountCreated_Yes -> yes
   AccountCreated_No -> no
 

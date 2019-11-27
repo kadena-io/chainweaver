@@ -190,8 +190,7 @@ uiReceiveModal0 model account onClose = Workflow $ do
 
   (showingAddr, (conf, ttl, gaslimit, transferInfo)) <- divClass "modal__main account-details" $ do
     rec
-      showingKadenaAddress <- holdDyn True $
-        not <$> current showingKadenaAddress <@ onAddrClick <> onReceiClick
+      showingKadenaAddress <- toggle True $ onAddrClick <> onReceiClick
 
       (onAddrClick, _) <- controlledAccordionItem showingKadenaAddress mempty (text "Via address")
         $ do
@@ -286,10 +285,10 @@ receiveBuildCommand account (_, publicMeta, networkId) ttl gasLimit transferInfo
     amount = _legacyTransferInfo_amount transferInfo
 
     code = T.unwords $
-      [ "(coin." <> accountCreatedYesNo account "transfer" "transfer-create"
+      [ "(coin." <> accountCreatedBool "transfer-create" "transfer" account
       , tshow $ unAccountName $ sender
       , tshow $ unAccountName $ _account_name account
-      , accountCreatedYesNo account mempty "(read-keyset 'key)"
+      , accountCreatedBool "(read-keyset 'key)" mempty account
       , tshow amount
       , ")"
       ]
