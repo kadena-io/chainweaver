@@ -8,9 +8,8 @@
 module Desktop.Mac where
 
 import Control.Concurrent
-import Control.Exception (bracket_, bracket, try)
+import Control.Exception (bracket, try)
 import Control.Monad (forever)
-import Control.Monad.Except (throwError)
 import Control.Monad.IO.Class
 import Data.Foldable (for_)
 import Data.String (IsString(..))
@@ -26,16 +25,12 @@ import System.FilePath ((</>))
 import System.IO
 import qualified Control.Concurrent.Async as Async
 import qualified Data.ByteString as BS
-import qualified Data.ByteString.Lazy as LBS
 import qualified Data.List as L
 import qualified Data.Map as M
 import qualified Data.Text as T
 import qualified Data.Text.Encoding as T
 import qualified Data.Text.IO as T
 import qualified Network.Socket as Socket
-import qualified Network.Wai.Handler.Warp as Warp
-import qualified Network.Wai.Middleware.Cors as Wai
-import qualified Servant.Server as Servant
 import qualified Snap.Http.Server as Snap
 import qualified System.Directory as Directory
 import qualified System.Environment as Env

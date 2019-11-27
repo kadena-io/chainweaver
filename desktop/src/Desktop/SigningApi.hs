@@ -13,9 +13,6 @@ import qualified Network.Wai.Handler.Warp as Warp
 import qualified Network.Wai.Middleware.Cors as Wai
 import qualified Servant.Server as Servant
 
-import Desktop.Util
-
-
 signingServer
   :: MonadIO m
   => IO ()
