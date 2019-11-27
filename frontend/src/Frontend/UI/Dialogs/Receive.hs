@@ -15,8 +15,6 @@ import Control.Lens ((^.), (<>~), (^?), _1, _3)
 import Control.Monad (void, (<=<))
 import Control.Error (hush, headMay)
 
-import qualified Control.Newtype.Generics as Newtype
-
 import Data.Bifunctor (first)
 import Data.Either (isLeft,rights)
 import Data.Text (Text)
@@ -41,7 +39,7 @@ import Pact.Types.Runtime (GasLimit)
 import qualified Pact.Types.Scheme as PactScheme
 import Language.Javascript.JSaddle.Types (MonadJSM)
 
-import Frontend.Crypto.Class (GenKeyArg (..), PactKey (..), HasCrypto, cryptoGenPubKeyFromPrivate, cryptoGenKey)
+import Frontend.Crypto.Class (GenKeyArg (..), HasCrypto, cryptoGenPubKeyFromPrivate, cryptoGenKey)
 import Frontend.Crypto.Ed25519 (keyToText)
 import Common.Wallet (parsePublicKey,toPactPublicKey)
 
@@ -67,7 +65,7 @@ import Frontend.UI.DeploymentSettings (DeploymentSettingsView (..),
                                        predefinedChainIdSelect,
                                        uiSenderFixed
                                       )
-import Common.Wallet (decodeBase16M)
+
 import Frontend.UI.Modal
 import Frontend.UI.Widgets
 import Frontend.Wallet

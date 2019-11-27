@@ -59,7 +59,6 @@ module Frontend.UI.Widgets
 import           Control.Applicative
 import           Control.Lens
 import           Control.Monad
-import           Control.Error (hush)
 import           Data.Either (isLeft)
 import           Data.Map.Strict             (Map)
 import qualified Data.Map.Strict as Map

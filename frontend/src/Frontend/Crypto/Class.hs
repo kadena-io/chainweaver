@@ -16,7 +16,6 @@ import Reflex.Dom hiding (fromJSString)
 import Reflex.Host.Class (MonadReflexCreateTrigger)
 import Data.ByteString (ByteString)
 import Data.Text (Text)
-import qualified Data.Text as T
 
 import Pact.Types.Scheme (PPKScheme)
 

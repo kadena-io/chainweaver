@@ -5,7 +5,6 @@
 module Frontend where
 
 import           Control.Monad            (join, void)
-import           Control.Error            (hush)
 import           Control.Monad.IO.Class
 import           Data.Maybe               (listToMaybe)
 import           Data.Text                (Text)
