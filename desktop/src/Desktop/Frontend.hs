@@ -168,8 +168,8 @@ bipWallet appCfg = do
 
 -- | Returns an event which fires at the given check interval when the user has
 -- been inactive for at least the given timeout.
-watchInactivity :: MonadWidget t m => NominalDiffTime -> NominalDiffTime -> m (Event t ())
-watchInactivity checkInterval timeout = do
+_watchInactivity :: MonadWidget t m => NominalDiffTime -> NominalDiffTime -> m (Event t ())
+_watchInactivity checkInterval timeout = do
   t0 <- liftIO getCurrentTime
   (activity, act) <- newTriggerEvent
   liftJSM $ do

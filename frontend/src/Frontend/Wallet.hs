@@ -11,6 +11,7 @@
 {-# LANGUAGE RecursiveDo #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE TupleSections #-}
 {-# LANGUAGE TypeFamilies #-}
 
 module Frontend.Wallet
@@ -44,6 +45,7 @@ module Frontend.Wallet
   , parseWalletKeyPair
   -- * Other helper functions
   , accountToKadenaAddress
+  , activeAccountOnNetwork
   , checkAccountNameValidity
   , snocIntMap
   , findNextKey
@@ -53,6 +55,7 @@ module Frontend.Wallet
 
 import Control.Applicative ((<|>))
 import Control.Lens hiding ((.=))
+import Control.Monad (guard)
 import Control.Monad.Except (runExcept)
 import Control.Monad.Fix
 import Data.Aeson
@@ -124,6 +127,11 @@ instance ToJSON key => ToJSON (SomeAccount key) where
 instance FromJSON key => FromJSON (SomeAccount key) where
   parseJSON Null = pure SomeAccount_Deleted
   parseJSON x = SomeAccount_Account <$> parseJSON x
+
+activeAccountOnNetwork :: NetworkName -> SomeAccount key -> Maybe (Account key)
+activeAccountOnNetwork net = someAccount
+  Nothing
+  (\a -> a <$ guard (_account_network a == net))
 
 type Accounts key = IntMap (SomeAccount key)
 
@@ -263,9 +271,8 @@ getBalances model accounts = do
     toReqList = fmapMaybe snd . toList
     accountBalanceReq acc = "(coin.get-balance " <> tshow (unAccountName acc) <> ")"
     mkReqs :: (NetworkName, PublicMeta) -> Accounts key -> Performable m (IntMap (SomeAccount key, Maybe NetworkRequest))
-    mkReqs meta someaccs = for someaccs $ \sa -> (,) sa <$> case sa of
-      SomeAccount_Deleted -> pure Nothing
-      SomeAccount_Account a -> Just <$> mkReq meta a
+    mkReqs meta someaccs = for someaccs $ \sa ->
+      fmap (sa,) . traverse (mkReq meta) $ activeAccountOnNetwork (fst meta) sa
     mkReq (netName, pm) acc = mkSimpleReadReq (accountBalanceReq $ _account_name acc) netName pm (ChainRef Nothing $ _account_chainId acc)
 
 
