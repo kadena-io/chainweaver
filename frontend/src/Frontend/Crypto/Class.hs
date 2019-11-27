@@ -5,17 +5,19 @@
 
 module Frontend.Crypto.Class where
 
+import Control.Exception (displayException)
 import Control.Monad.IO.Class (MonadIO)
 import Control.Monad.Primitive (PrimMonad (PrimState, primitive))
 import Control.Monad.Reader
 import Control.Monad.Ref (MonadRef, MonadAtomicRef)
 import Data.Coerce (coerce)
-import Language.Javascript.JSaddle (JSM, MonadJSM, liftJSM)
+import Language.Javascript.JSaddle (JSM, MonadJSM, JSException, liftJSM, catch)
 import Obelisk.Route.Frontend
 import Reflex.Dom hiding (fromJSString)
 import Reflex.Host.Class (MonadReflexCreateTrigger)
 import Data.ByteString (ByteString)
 import Data.Text (Text)
+import qualified Data.Text as T
 
 import Frontend.Crypto.Ed25519
 import Frontend.Foundation
@@ -29,10 +31,18 @@ data Crypto key = Crypto
   , _crypto_genPairFromPrivate :: ByteString -> JSM (key, PublicKey)
   }
 
-cryptoGenPubKeyFromPrivate :: (MonadJSM m, HasCrypto key m) => ByteString -> m (key, PublicKey)
+cryptoGenPubKeyFromPrivate
+  :: ( MonadJSM m
+     , HasCrypto key m
+     )
+  => ByteString
+  -> m (Either Text (key, PublicKey))
 cryptoGenPubKeyFromPrivate k = do
   crypto <- askCrypto
-  liftJSM $ _crypto_genPairFromPrivate crypto k
+  liftJSM $ catch (Right <$> _crypto_genPairFromPrivate crypto k) (pure . Left . handleJSErr)
+  where
+    handleJSErr :: JSException -> Text
+    handleJSErr = T.pack . displayException
 
 cryptoGenKey :: (MonadJSM m, HasCrypto key m) => Int -> m (key, PublicKey)
 cryptoGenKey i = do

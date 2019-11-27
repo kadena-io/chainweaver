@@ -14,13 +14,11 @@ import Control.Applicative (liftA2,liftA3)
 import Control.Lens ((^.), (<>~), (^?), _1, _3)
 import Control.Monad (void, (<=<))
 import Control.Error (hush, headMay)
-
+import Control.Exception (displayException)
 import Control.Monad.Trans.Maybe (runMaybeT)
 
 import Data.Functor ((<&>))
-import Data.Functor.Identity (Identity (..))
 import Data.Either (isLeft,rights)
-import Data.ByteString (ByteString)
 import Data.Text (Text)
 import qualified Data.Text as T
 import qualified Data.Text.Encoding as TE
@@ -45,7 +43,7 @@ import Pact.Types.Runtime (GasLimit)
 import Language.Javascript.JSaddle.Types (MonadJSM)
 
 import Frontend.Crypto.Class (HasCrypto, cryptoGenPubKeyFromPrivate)
-import Frontend.Crypto.Ed25519 (parsePrivateKey, keyToText)
+import Frontend.Crypto.Ed25519 (keyToText)
 import Common.Wallet (parsePublicKey,toPactPublicKey, decodeBase16M)
 
 import Frontend.Foundation
@@ -174,38 +172,41 @@ uiReceiveFromLegacyAccount
      , HasCrypto key (Performable m)
      )
   => model
-  -> Account key
   -> m (Dynamic t (Maybe (LegacyTransferInfo key)))
-uiReceiveFromLegacyAccount model account = do
+uiReceiveFromLegacyAccount model = do
   divClass "group" $ do
     mAccountName <- uiAccountNameInput (model ^. wallet)
 
-    rec
-      onKeyPair <- divClass "account-details__private-key" $
-        _inputElement_input <$> mkLabeledInput True "Private Key" uiInputElement def
+    onKeyPair <- divClass "account-details__private-key" $
+      _inputElement_input <$> mkLabeledInput True "Private Key" uiInputElement def
 
-      onDerivePair <- performEvent $ deriveKeyPair <$> onKeyPair
-      keyPair <- holdDyn Nothing onDerivePair
+    (deriveErr, okPair) <- fmap fanEither . performEvent $ deriveKeyPair <$> onKeyPair
+
+    _ <- widgetHold blank $ leftmost
+      [ text <$> deriveErr
+      , blank <$ okPair
+      ]
+
+    keyPair <- holdDyn Nothing $ Just <$> okPair
 
     chain <- divClass "account-details__receive-from-chain" $ userChainIdSelect model
 
     amount <- fst . snd <$> mkLabeledInput True "Amount"
       (uiRealWithPrecisionInputElement maxCoinPrecision id) def
 
-    pure $ (\macc mc mamnt mkeypair ->
-              LegacyTransferInfo <$> macc <*> mc <*> mamnt <*> mkeypair
-           )
+    pure $ (\macc mc mamnt mkeypair -> LegacyTransferInfo <$> macc <*> mc <*> mamnt <*> mkeypair)
       <$> mAccountName
       <*> chain
       <*> amount
       <*> keyPair
+
   where
-    deriveKeyPair :: (HasCrypto key m, MonadJSM m) => Text -> m (Maybe (key, PublicKey))
+    deriveKeyPair :: (HasCrypto key m, MonadJSM m) => Text -> m (Either Text (key, PublicKey))
     deriveKeyPair inp = do
       let x = decodeBase16M $ TE.encodeUtf8 inp
       case x of
-        Nothing -> pure Nothing
-        Just i -> Just <$> cryptoGenPubKeyFromPrivate i
+        Nothing -> pure $ Left "Input is not base16 encoded"
+        Just i -> cryptoGenPubKeyFromPrivate i
 
 uiReceiveModal
   :: ( MonadWidget t m
@@ -315,7 +316,6 @@ uiReceiveDeployLegacyTransfer
   -> Workflow t m (mConf, Event t ())
 uiReceiveDeployLegacyTransfer onClose model account = Workflow $ do
   let
-    accounts = model ^. wallet_accounts
     chain = _account_chainId account
 
     includePreviewTab = True
@@ -333,7 +333,7 @@ uiReceiveDeployLegacyTransfer onClose model account = Workflow $ do
     (conf, mTransferInfo) <- elClass "div" "modal__main transaction_details" $ do
       (cfg, ttl, gaslim, mTfrInfo) <- tabPane mempty curSelection DeploymentSettingsView_Cfg $ do
         elClass "h2" "heading heading_type_h2" $ text "Transfer Details"
-        transferInfo <- divClass "group" $ uiReceiveFromLegacyAccount model account
+        transferInfo <- divClass "group" $ uiReceiveFromLegacyAccount model
         elClass "h2" "heading heading_type_h2" $ text "Transaction Settings"
         (conf, ttl, gaslim) <- divClass "group" $ uiMetaData model Nothing Nothing
         pure (conf, ttl, gaslim, transferInfo)
@@ -428,7 +428,6 @@ receiveFromLegacyPreview model chainId account accounts ttl gasLimit (Just netIn
     (Just chainId)
     (Just $ _account_name account)
 
-
 receiveFromLegacySubmit
   :: ( Monoid mConf
      , CanSubmitTransaction t m
@@ -500,20 +499,26 @@ receiveBuildCommand account chainId (nodeInfos, publicMeta, networkId) transferI
       }
 
     senderPubKey = toPactPublicKey $ snd senderKeys
-    dat = HM.singleton "key" $ Aeson.toJSON $ KeySet [senderPubKey] (Name $ BareName "keys-all" def)
+    dat = case accountIsCreated account of
+      AccountCreated_No
+        | Right pk <- parsePublicKey (unAccountName $ _account_name account)
+        -> HM.singleton "key" $ Aeson.toJSON $ KeySet [toPactPublicKey pk] (Name $ BareName "keys-all" def)
+      _ -> mempty
 
     signingPairs =
       [ KeyPair (snd senderKeys) (Just $ fst senderKeys)
-      , _account_key account
       ]
 
     caps = [transferCapability, defaultGASCapability]
 
-    pkCaps = Map.singleton (snd senderKeys) [transferSigCap, _dappCap_cap defaultGASCapability]
+    pkCaps = Map.unionsWith (<>)
+      [ Map.singleton (snd senderKeys) [_dappCap_cap defaultGASCapability]
+      , Map.singleton (snd senderKeys) [transferSigCap]
+      ]
 
     pm = publicMeta
       { _pmChainId = chain
-      , _pmSender = unAccountName sender
+      , _pmSender = unAccountName $ _account_name account
       }
 
   cmd <- buildCmd Nothing networkId pm signingPairs [] code dat pkCaps
