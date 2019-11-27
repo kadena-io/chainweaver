@@ -213,7 +213,7 @@ splashScreen eBack = Workflow $ setupDiv "splash" $ do
   (agreed, create, recover) <- setupDiv "splash-terms-buttons" $ do
     agreed <- fmap value $ setupCheckbox False def $ setupDiv "terms-conditions-checkbox" $ do
       text "I have read & agree to the "
-      elAttr "a" ("href" =: "https://kadena.io/" <> "target" =: "_blank") (text "Terms of Service")
+      elAttr "a" ("href" =: "https://kadena.io/chainweaver-tos" <> "target" =: "_blank") (text "Terms of Service")
 
     let dNeedAgree = fmap not agreed
 
