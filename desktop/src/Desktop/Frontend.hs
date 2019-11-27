@@ -141,8 +141,8 @@ bipCrypto root pass = Crypto
     GenFromPactKey pactKey -> do
       let
         pubKey = _pactKey_publicKey pactKey
-        encryptedSecret = XPactSecret (_pactKey_secret pactKey) --TODO TODO TODO Not encrypted yet!!
-      pure (DesktopKeyPact (_pactKey_scheme pactKey) pubKey encryptedSecret, pubKey)
+        secret = XPactSecret (_pactKey_secret pactKey)
+      pure (DesktopKeyPact (_pactKey_scheme pactKey) pubKey secret, pubKey)
   -- This assumes that the secret is already base16 encoded (being pasted in, so makes sense)
   , _crypto_verifyPactKey = \pkScheme sec -> pure $ do
       secBytes <- parseB16TextOnly sec
