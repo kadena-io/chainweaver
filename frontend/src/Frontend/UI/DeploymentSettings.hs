@@ -904,15 +904,17 @@ uiSenderCapabilities m cid mCaps mkSender = do
           , _capabilityInputRow_cap = pure $ Right $ _dappCap_cap cap
           }
 
-      staticCapabilityRows caps = fmap combineMaps $ for caps $ \cap ->
-        elClass "tr" "table__row" $ _capabilityInputRow_value <$> staticCapabilityRow (uiSenderDropdown def never m cid) cap
+      staticCapabilityRows setSender caps = fmap combineMaps $ for caps $ \cap ->
+        elClass "tr" "table__row" $ _capabilityInputRow_value <$> staticCapabilityRow (uiSenderDropdown def setSender m cid) cap
 
       combineMaps :: (Semigroup v, Ord k) => [Dynamic t (Map k v)] -> Dynamic t (Map k v)
       combineMaps = fmap (Map.unionsWith (<>)) . sequence
 
   eAddCap <- divClass "grant-capabilities-title" $ do
     divClass "title grant-capabilities-title__title" $ text "Grant Capabilities"
-    addButton (def & uiButtonCfg_class <>~ " grant-capabilities-title__add-button")
+    case mCaps of
+      Nothing -> addButton (def & uiButtonCfg_class <>~ " grant-capabilities-title__add-button")
+      Just _  -> pure never
 
   -- Capabilities
   (mGasAcct, capabilities) <- divClass "group" $ mdo
@@ -932,7 +934,7 @@ uiSenderCapabilities m cid mCaps mkSender = do
           elClass "th" "table__heading" $ text "Account"
         el "tbody" $ do
           gas <- staticCapabilityRow mkSender defaultGASCapability
-          rest <- staticCapabilityRows $ filter (not . isGas . _dappCap_cap) caps
+          rest <- staticCapabilityRows (Just <$> eApplyToAll) $ filter (not . isGas . _dappCap_cap) caps
           pure (_capabilityInputRow_account gas, combineMaps [(_capabilityInputRow_value gas),rest])
 
     -- If the gas capability is set, we enable the button that will set every other capability's sender from
