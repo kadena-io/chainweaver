@@ -7,6 +7,7 @@
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE NumDecimals #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE PatternGuards #-}
 {-# LANGUAGE QuasiQuotes #-}
@@ -54,6 +55,7 @@ module Frontend.Network
   , mkSimpleReadReq
   , getNetworkNameAndMeta
     -- * Defaults
+  , chainwebGasLimit
   , defaultTransactionGasLimit
   , defaultTransactionGasPrice
   , maxCoinPrecision
@@ -394,9 +396,12 @@ maxCoinPrecision = 12
 defaultTransactionTTL :: TTLSeconds
 defaultTransactionTTL = TTLSeconds (8 * 60 * 60) -- 8 hours
 
--- | TODO: Better defaults!!!
+-- Taken from https://github.com/kadena-io/chainweb-node/blob/85688ea0182d1b1ab0d8d784a48b4851a950ec7a/src/Chainweb/Chainweb.hs#L344
+chainwebGasLimit :: Num a => a
+chainwebGasLimit = 1e5
+
 defaultTransactionGasLimit :: GasLimit
-defaultTransactionGasLimit = GasLimit 100000
+defaultTransactionGasLimit = GasLimit 1e5
 
 
 buildMeta
