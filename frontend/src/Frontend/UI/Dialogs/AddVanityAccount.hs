@@ -128,8 +128,8 @@ uiAddVanityAccountSettings ideL mChainId initialNotes = Workflow $ do
         -- Is passing around 'Maybe x' everywhere really a good way of doing this ?
         uiCfg Nothing ideL (userChainIdSelectWithPreselect ideL mChainId) Nothing (Just defaultTransactionGasLimit) (Identity uiAccSection)
 
-      (mSender, capabilities) <- tabPane mempty curSelection DeploymentSettingsView_Keys $
-        uiSenderCapabilities ideL cChainId Nothing $ uiSenderDropdown def ideL cChainId
+      (mSender, signers, capabilities) <- tabPane mempty curSelection DeploymentSettingsView_Keys $
+        uiSenderCapabilities ideL cChainId Nothing $ uiSenderDropdown def never ideL cChainId
 
       let dPayload = fmap mkPubkeyPactData <$> dKeyPair
           code = mkPactCode <$> dAccountName
@@ -147,7 +147,7 @@ uiAddVanityAccountSettings ideL mChainId initialNotes = Workflow $ do
             , _deploymentSettingsConfig_userTab = Nothing
             , _deploymentSettingsConfig_userSections = [uiAccSection]
             , _deploymentSettingsConfig_code = code
-            , _deploymentSettingsConfig_sender = uiSenderDropdown def
+            , _deploymentSettingsConfig_sender = uiSenderDropdown def never
             , _deploymentSettingsConfig_data = payload
             , _deploymentSettingsConfig_nonce = Nothing
             , _deploymentSettingsConfig_ttl = Nothing
@@ -159,7 +159,7 @@ uiAddVanityAccountSettings ideL mChainId initialNotes = Workflow $ do
 
       pure
         ( cfg & networkCfg_setSender .~ fmapMaybe (fmap unAccountName) (updated mSender)
-        , fmap mkSettings dPayload >>= buildDeploymentSettingsResult ideL mSender cChainId capabilities ttl gasLimit code
+        , fmap mkSettings dPayload >>= buildDeploymentSettingsResult ideL mSender signers cChainId capabilities ttl gasLimit code
         , account
         )
 

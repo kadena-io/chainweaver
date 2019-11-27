@@ -1,22 +1,22 @@
-{-# LANGUAGE ApplicativeDo         #-}
-{-# LANGUAGE ConstraintKinds       #-}
-{-# LANGUAGE DataKinds             #-}
-{-# LANGUAGE DeriveGeneric         #-}
-{-# LANGUAGE ExtendedDefaultRules  #-}
-{-# LANGUAGE FlexibleContexts      #-}
-{-# LANGUAGE FlexibleInstances     #-}
-{-# LANGUAGE KindSignatures        #-}
-{-# LANGUAGE LambdaCase            #-}
+{-# LANGUAGE ApplicativeDo #-}
+{-# LANGUAGE ConstraintKinds #-}
+{-# LANGUAGE DataKinds #-}
+{-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE ExtendedDefaultRules #-}
+{-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE KindSignatures #-}
+{-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
-{-# LANGUAGE PatternGuards         #-}
-{-# LANGUAGE OverloadedStrings     #-}
-{-# LANGUAGE QuasiQuotes           #-}
-{-# LANGUAGE RecursiveDo           #-}
-{-# LANGUAGE ScopedTypeVariables   #-}
-{-# LANGUAGE StandaloneDeriving    #-}
-{-# LANGUAGE TemplateHaskell       #-}
-{-# LANGUAGE TupleSections         #-}
-{-# LANGUAGE TypeApplications      #-}
+{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE PatternGuards #-}
+{-# LANGUAGE QuasiQuotes #-}
+{-# LANGUAGE RecursiveDo #-}
+{-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE StandaloneDeriving #-}
+{-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE TupleSections #-}
+{-# LANGUAGE TypeApplications #-}
 
 -- | Dialog for sending money between accounts
 -- Copyright   :  (C) 2019 Kadena
@@ -209,7 +209,7 @@ sendConfig model sender = Workflow $ do
               divClass "label labeled-input__label" $ text "Account Name"
               let cfg = def & dropdownConfig_attributes .~ pure ("class" =: "labeled-input__input")
                   chain = pure $ Just $ _account_chainId sender
-              gasAcc <- uiSenderDropdown cfg model chain
+              gasAcc <- uiSenderDropdown cfg never model chain
               let toAccount ma m = find ((ma ==) . Just . _account_name) $ fmapMaybe (\case SomeAccount_Account a -> Just a; _ -> Nothing) m
               pure $ toAccount <$> gasAcc <*> model ^. wallet_accounts
       pure (conf, mCaps, recipient)

@@ -61,6 +61,8 @@ import Frontend.Wallet (StoreWallet(..))
 
 import Desktop.Orphans ()
 import Desktop.Setup
+import Desktop.SigningApi
+import Desktop.Util
 
 data BIPStorage a where
   BIPStorage_RootKey :: BIPStorage Crypto.XPrv
@@ -111,20 +113,25 @@ desktop = Frontend
             checkEncoder backendRouteEncoder
       base <- getConfigRoute
       void $ Frontend.newHead $ \r -> base <> renderBackendRoute backendEncoder r
-  , _frontend_body = prerender_ blank $ mapRoutedT (flip runStorageT browserStorage) $ do
-    (fileOpened, triggerOpen) <- Frontend.openFileDialog
-    bipWallet AppCfg
-      { _appCfg_gistEnabled = False
-      , _appCfg_externalFileOpened = fileOpened
-      , _appCfg_openFileDialog = liftJSM triggerOpen
-      , _appCfg_loadEditor = loadEditorFromLocalStorage
-      , _appCfg_editorReadOnly = False
-      , _appCfg_signingRequest = never
-      , _appCfg_signingResponse = \_ -> pure ()
-      , _appCfg_enabledSettings = EnabledSettings
-        {
+  , _frontend_body = prerender_ blank $ do
+    (signingRequestMVar, signingResponseMVar) <- signingServer
+      (pure ()) -- Can't foreground or background things
+      (pure ())
+    mapRoutedT (flip runStorageT browserStorage) $ do
+      (fileOpened, triggerOpen) <- Frontend.openFileDialog
+      signingRequest <- mvarTriggerEvent signingRequestMVar
+      bipWallet AppCfg
+        { _appCfg_gistEnabled = False
+        , _appCfg_externalFileOpened = fileOpened
+        , _appCfg_openFileDialog = liftJSM triggerOpen
+        , _appCfg_loadEditor = loadEditorFromLocalStorage
+        , _appCfg_editorReadOnly = False
+        , _appCfg_signingRequest = signingRequest
+        , _appCfg_signingResponse = signingResponseHandler signingResponseMVar
+        , _appCfg_enabledSettings = EnabledSettings
+          {
+          }
         }
-      }
   }
 
 bipWallet

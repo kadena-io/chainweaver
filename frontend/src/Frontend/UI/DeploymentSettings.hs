@@ -60,7 +60,7 @@ module Frontend.UI.DeploymentSettings
   , Identity (runIdentity)
   ) where
 
-import Control.Applicative (liftA3, (<|>))
+import Control.Applicative ((<|>))
 import Control.Arrow (first, (&&&))
 import Control.Error (fmapL, hoistMaybe, headMay)
 import Control.Error.Util (hush)
@@ -68,6 +68,7 @@ import Control.Lens
 import Control.Monad
 import Control.Monad.Trans.Class
 import Control.Monad.Trans.Maybe
+import Control.Monad.Except
 import Data.Decimal (roundTo)
 import Data.Either (rights, isLeft)
 import Data.IntMap (IntMap)
@@ -75,7 +76,7 @@ import Data.Map (Map)
 import Data.Set (Set)
 import Data.Text (Text)
 import Data.These (These(This))
-import Data.Traversable (for)
+import Data.Traversable (for, sequence)
 import Kadena.SigningApi
 import Pact.Compile (compileExps, mkTextInfo)
 import Pact.Parse
@@ -130,8 +131,10 @@ data DeploymentSettingsConfig t m model a = DeploymentSettingsConfig
     --   widget at all, but having `uiDeploymentSettings` use the provided one.
     --
     --   Or you can use `userChainIdSelect` for having the user pick a chainid.
-  , _deploymentSettingsConfig_sender :: model -> Dynamic t (Maybe ChainId) -> m (Dynamic t (Maybe AccountName))
+  , _deploymentSettingsConfig_sender :: model -> Dynamic t (Maybe ChainId)  -> m (Dynamic t (Maybe AccountName))
     -- ^ Sender selection widget. Use 'uiSenderFixed' or 'uiSenderDropdown'.
+    -- Note that uiSenderDropdown has a setSender event, but because this UI only "Apply to All"s on the non-GAS capabilities
+    -- this event is not exposed here. Just pass in never to get a function compatible with here.
   , _deploymentSettingsConfig_data        :: Maybe Aeson.Object
     -- ^ Data selection. If 'Nothing', uses the users setting (and allows them
     -- to alter it). Otherwise, it remains fixed.
@@ -225,6 +228,7 @@ buildDeploymentSettingsResult
      )
   => model
   -> Dynamic t (Maybe AccountName)
+  -> Dynamic t (Set AccountName)
   -> Dynamic t (Maybe ChainId)
   -> Dynamic t (Map AccountName [SigCapability])
   -> Dynamic t TTLSeconds
@@ -232,13 +236,14 @@ buildDeploymentSettingsResult
   -> Dynamic t Text
   -> DeploymentSettingsConfig t m model a
   -> Dynamic t (Maybe (Performable m (DeploymentSettingsResult key)))
-buildDeploymentSettingsResult m mSender cChainId capabilities ttl gasLimit code settings = runMaybeT $ do
+buildDeploymentSettingsResult m mSender signers cChainId capabilities ttl gasLimit code settings = runMaybeT $ do
   selNodes <- lift $ m ^. network_selectedNodes
   networkId <- hoistMaybe $ hush . mkNetworkName . nodeVersion =<< headMay (rights selNodes)
   sender <- MaybeT mSender
   chainId <- MaybeT cChainId
   caps <- lift capabilities
-  let signing = Set.insert sender $ Map.keysSet caps
+  signs <- lift signers
+  let signing = signs <> (Set.insert sender $ Map.keysSet caps)
       deploySettingsJsonData = fromMaybe mempty $ _deploymentSettingsConfig_data settings
   jsonData' <- lift $ either (const mempty) id <$> m ^. jsonData . jsonData_data
   ttl' <- lift ttl
@@ -377,7 +382,7 @@ uiDeploymentSettings m settings = mdo
           (_deploymentSettingsConfig_gasLimit settings)
           (_deploymentSettingsConfig_userSections settings)
 
-      (mSender, capabilities) <- tabPane mempty curSelection DeploymentSettingsView_Keys $
+      (mSender, signers, capabilities) <- tabPane mempty curSelection DeploymentSettingsView_Keys $
         uiSenderCapabilities m cChainId (_deploymentSettingsConfig_caps settings)
           $ (_deploymentSettingsConfig_sender settings) m cChainId
 
@@ -394,6 +399,7 @@ uiDeploymentSettings m settings = mdo
 
         dyn_ $ uiDeployPreview m settings
           <$> (m ^. wallet_accounts)
+          <*> signers
           <*> gasLimit
           <*> ttl
           <*> code
@@ -406,7 +412,7 @@ uiDeploymentSettings m settings = mdo
 
       pure
         ( cfg & networkCfg_setSender .~ fmapMaybe (fmap unAccountName) (updated mSender)
-        , buildDeploymentSettingsResult m mSender cChainId capabilities ttl gasLimit code settings
+        , buildDeploymentSettingsResult m mSender signers cChainId capabilities ttl gasLimit code settings
         , mRes
         )
 
@@ -698,6 +704,28 @@ uiSenderFixed sender = do
     & inputElementConfig_initialValue .~ unAccountName sender
   pure $ pure $ pure sender
 
+mkChainTextAccounts
+  :: (Reflex t, HasWallet model key t, HasNetwork model t)
+  => model
+  -> Dynamic t (Maybe ChainId)
+  -> Dynamic t (Either Text (Map AccountName Text))
+mkChainTextAccounts m mChainId = runExceptT $ do
+  netId <- lift $ m ^. network_selectedNetwork
+  -- I guess you don't actually need this anymore, but it's probably good to leave this
+  -- gate into things
+  _ <- ExceptT $ note "You must select a chain ID before choosing an account" <$> mChainId
+  accounts <- lift $ m ^. wallet_accounts
+  let accountsOnChain = Map.fromList $ fmapMaybe
+        (someAccount
+          Nothing -- If it is deleted, ignore it
+          -- We explicitly allow accounts on different chains here because this gives the user maximum
+          -- flexibility (chainweavers 1-1 key to account view of the world doesn't always reflect reality)
+          (\a -> (_account_name a, unAccountName $ _account_name a) <$ guard (_account_network a == netId))
+        )
+        (IM.elems accounts)
+  when (Map.null accountsOnChain) $ throwError "No accounts on current chain"
+  pure accountsOnChain
+
 -- | Let the user pick a sender
 uiSenderDropdown
   :: ( Adjustable t m, PostBuild t m, DomBuilder t m
@@ -706,22 +734,49 @@ uiSenderDropdown
      , HasNetwork model t
      )
   => DropdownConfig t (Maybe AccountName)
+  -> Event t (Maybe AccountName)
   -> model
   -> Dynamic t (Maybe ChainId)
   -> m (Dynamic t (Maybe AccountName))
-uiSenderDropdown uCfg m chainId = do
-  let textAccounts =
-        let mkTextAccounts net mChain accounts = case mChain of
-              Nothing -> Map.singleton Nothing "You must select a chain ID before choosing an account"
-              Just chain -> case Map.fromList $ fmapMaybe (someAccount Nothing (\a -> (Just $ _account_name a, unAccountName $ _account_name a) <$ guard (_account_chainId a == chain && _account_network a == net))) $ IM.elems accounts of
-                accountsOnChain
-                  | not (Map.null accountsOnChain) -> Map.insert Nothing "Choose an account" accountsOnChain
-                  | otherwise -> Map.singleton Nothing "No accounts on current chain"
-          in mkTextAccounts <$> m ^. network_selectedNetwork <*> chainId <*> m ^. wallet_accounts
-  choice <- dropdown Nothing textAccounts $ uCfg
-    & dropdownConfig_setValue .~ (Nothing <$ updated chainId)
+uiSenderDropdown uCfg setSender m chainId = do
+  let
+    textAccounts = mkChainTextAccounts m chainId
+    dropdownItems =
+      either
+          (Map.singleton Nothing)
+          (Map.insert Nothing "Choose an Account" . Map.mapKeys Just)
+      <$> textAccounts
+  choice <- dropdown Nothing dropdownItems $ uCfg
+    & dropdownConfig_setValue .~ leftmost [Nothing <$ updated chainId, setSender]
     & dropdownConfig_attributes <>~ pure ("class" =: "labeled-input__input select select_mandatory_missing")
   pure $ value choice
+
+
+-- | Let the user pick signers
+uiSignerList
+  :: ( Adjustable t m, PostBuild t m, DomBuilder t m
+     , MonadHold t m
+     , HasWallet model key t
+     , HasNetwork model t
+     )
+  => model
+  -> Dynamic t (Maybe ChainId)
+  -> m (Dynamic t (Set AccountName))
+uiSignerList m chainId = do
+  let textAccounts = mkChainTextAccounts m chainId
+  divClass "title" $ text "Signing Accounts"
+  eSwitchSigners <- divClass "group signing-ui-signers" $
+    dyn $ ffor textAccounts $ \case
+      Left e -> do
+        text e
+        pure $ constDyn Set.empty
+      Right accts -> do
+        cbs <- for (Map.toList accts) $ \(an, aTxt) -> do
+          cb <- uiCheckbox "signing-ui-signers__signer" False def $ text aTxt
+          pure $ bool Nothing (Just an) <$> _checkbox_value cb
+        pure $ fmap (Set.fromList . catMaybes) $ sequence $ cbs
+  signers <- join <$> holdDyn (constDyn Set.empty) eSwitchSigners
+  pure signers
 
 uiChainSelection
   :: MonadWidget t m
@@ -772,9 +827,12 @@ capabilityInputRow mCap mkSender = elClass "tr" "table__row" $ do
     cap <- uiInputElement $ def
       & inputElementConfig_initialValue .~ foldMap (renderCompactText . _dappCap_cap) mCap
       & initialAttributes .~
-        "placeholder" =: "(module.capability arg1 arg2)" <>
-        "class" =: (maybe id (const (<> " input_transparent")) mCap) "input_width_full" <>
-        (maybe mempty (const $ "disabled" =: "true") mCap)
+        (let (cls, dis) = maybe mempty (const (" input_transparent grant-capabilities-static-input", "disabled" =: "true")) mCap
+        in mconcat
+          [ "placeholder" =: "(module.capability arg1 arg2)"
+          , "class" =: ("input_width_full" <> cls)
+          , dis
+          ])
       & modifyAttributes .~ ffor errors (\e -> "style" =: ("background-color: #fdd" <$ guard e))
     empty <- holdUniqDyn $ T.null <$> value cap
     let parsed = parseSigCapability <$> value cap
@@ -798,45 +856,28 @@ capabilityInputRow mCap mkSender = elClass "tr" "table__row" $ do
     , _capabilityInputRow_cap = parsed
     }
 
--- | Display a single row for an empty capability
-emptyCapability :: DomBuilder t m => Text -> m () -> m a -> m a
-emptyCapability cls extra m = elClass "tr" "table__row" $ do
-  elClass "td" cls $ void $ uiInputElement $ def
-    & inputElementConfig_initialValue .~ "Empty capability"
-    & initialAttributes .~
-      ( "class" =: "input_width_full input_transparent" <>
-        "disabled" =: "true"
-      )
-  extra
-  elClass "td" cls m
-
 -- | Display a dynamic number of rows for the user to enter custom capabilities
 capabilityInputRows
   :: forall t m. MonadWidget t m
-  => m (Dynamic t (Maybe AccountName))
+  => Event t ()  -- Add new row
+  -> m (Dynamic t (Maybe AccountName))
   -> m (Dynamic t (Map AccountName [SigCapability]))
-capabilityInputRows mkSender = do
+capabilityInputRows addNew mkSender = do
   rec
-    (im0, im') <- traverseIntMapWithKeyWithAdjust (\_ _ -> capabilityInputRow Nothing mkSender) (IM.singleton 0 ()) $ leftmost
+    (im0, im') <- traverseIntMapWithKeyWithAdjust (\_ _ -> capabilityInputRow Nothing mkSender) IM.empty $ leftmost
       -- Delete rows, but ensure we don't delete them all
-      [ PatchIntMap <$> gate canDelete deletions
+      [ PatchIntMap <$> deletions
       -- Add a new row when all rows are used
-      , attachWith (\i _ -> PatchIntMap (IM.singleton i (Just ()))) nextKeyToUse $ ffilter not $ updated anyEmpty
+      , attachWith (\i _ -> PatchIntMap (IM.singleton i (Just ()))) nextKeyToUse addNew
       ]
     results :: Dynamic t (IntMap (CapabilityInputRow t))
       <- foldDyn applyAlways im0 im'
     let nextKeyToUse = maybe 0 (succ . fst) . IM.lookupMax <$> current results
-        canDelete = (> 1) . IM.size <$> current results
-
-        anyEmpty = fmap or $ traverse _capabilityInputRow_empty =<< results
 
         decideDeletions :: Int -> CapabilityInputRow t -> Event t (IntMap (Maybe ()))
-        decideDeletions i row = IM.singleton i Nothing <$ leftmost
-          -- Deletions caused by rows becoming empty
-          [ void . ffilter id . updated $ _capabilityInputRow_empty row
+        decideDeletions i row = IM.singleton i Nothing <$
           -- Deletions caused by users entering GAS
-          , void . ffilter (either (const False) isGas) . updated $ _capabilityInputRow_cap row
-          ]
+          (ffilter (either (const False) isGas) . updated $ _capabilityInputRow_cap row)
         deletions = switch . current $ IM.foldMapWithKey decideDeletions <$> results
 
   pure $
@@ -849,9 +890,9 @@ uiSenderCapabilities
   -> Dynamic t (Maybe Pact.ChainId)
   -> Maybe [DappCap]
   -> m (Dynamic t (Maybe AccountName))
-  -> m (Dynamic t (Maybe AccountName), Dynamic t (Map AccountName [SigCapability]))
+  -> m (Dynamic t (Maybe AccountName), Dynamic t (Set AccountName), Dynamic t (Map AccountName [SigCapability]))
 uiSenderCapabilities m cid mCaps mkSender = do
-  let senderDropdown = uiSenderDropdown def m cid
+  let senderDropdown setSender = uiSenderDropdown def setSender m cid
       staticCapabilityRow sender cap = do
         el "td" $ text $ _dappCap_role cap
         el "td" $ text $ renderCompactText $ _dappCap_cap cap
@@ -863,32 +904,55 @@ uiSenderCapabilities m cid mCaps mkSender = do
           , _capabilityInputRow_cap = pure $ Right $ _dappCap_cap cap
           }
 
-      staticCapabilityRows caps = fmap (fmap (Map.unionsWith (<>)) . sequence) $ for caps $ \cap ->
-        elClass "tr" "table__row" $ _capabilityInputRow_value <$> staticCapabilityRow (uiSenderDropdown def m cid) cap
+      staticCapabilityRows setSender caps = fmap combineMaps $ for caps $ \cap ->
+        elClass "tr" "table__row" $ _capabilityInputRow_value <$> staticCapabilityRow (uiSenderDropdown def setSender m cid) cap
 
-      combineMaps = liftA3 $ \a b c -> Map.unionsWith (<>) [a, b, c]
+      combineMaps :: (Semigroup v, Ord k) => [Dynamic t (Map k v)] -> Dynamic t (Map k v)
+      combineMaps = fmap (Map.unionsWith (<>)) . sequence
 
-  divClass "title" $ text "Roles"
+  eAddCap <- divClass "grant-capabilities-title" $ do
+    divClass "title grant-capabilities-title__title" $ text "Grant Capabilities"
+    case mCaps of
+      Nothing -> addButton (def & uiButtonCfg_class <>~ " grant-capabilities-title__add-button")
+      Just _  -> pure never
 
   -- Capabilities
-  divClass "group" $ elAttr "table" ("class" =: "table" <> "style" =: "width: 100%; table-layout: fixed;") $ case mCaps of
-    Nothing -> el "tbody" $ do
-      empty <- emptyCapability "table__cell_padded" blank senderDropdown
-      let emptySig = maybe Map.empty (\a -> Map.singleton a []) <$> empty
-      gas <- capabilityInputRow (Just defaultGASCapability) mkSender
-      rest <- capabilityInputRows senderDropdown
-      pure (_capabilityInputRow_account gas, combineMaps (_capabilityInputRow_value gas) rest emptySig)
-    Just caps -> do
-      el "thead" $ el "tr" $ do
-        elClass "th" "table__heading" $ text "Role"
-        elClass "th" "table__heading" $ text "Capability"
-        elClass "th" "table__heading" $ text "Account"
-      el "tbody" $ do
-        empty <- emptyCapability "" (el "td" blank) senderDropdown
-        let emptySig = maybe Map.empty (\a -> Map.singleton a []) <$> empty
-        gas <- staticCapabilityRow mkSender defaultGASCapability
-        rest <- staticCapabilityRows $ filter (not . isGas . _dappCap_cap) caps
-        pure (_capabilityInputRow_account gas, combineMaps (_capabilityInputRow_value gas) rest emptySig)
+  (mGasAcct, capabilities) <- divClass "group" $ mdo
+    (mGasAcct', capabilities') <- elAttr "table" ("class" =: "table" <> "style" =: "width: 100%; table-layout: fixed;") $ case mCaps of
+      Nothing -> do
+        el "thead" $ el "tr" $ do
+          elClass "th" "table__heading table__cell_padded" $ text "Capability"
+          elClass "th" "table__heading table__cell_padded" $ text "Account"
+        el "tbody" $ do
+          gas <- capabilityInputRow (Just defaultGASCapability) mkSender
+          rest <- capabilityInputRows eAddCap (senderDropdown (Just <$> eApplyToAll))
+          pure (_capabilityInputRow_account gas, combineMaps [(_capabilityInputRow_value gas), rest])
+      Just caps -> do
+        el "thead" $ el "tr" $ do
+          elClass "th" "table__heading" $ text "Role"
+          elClass "th" "table__heading" $ text "Capability"
+          elClass "th" "table__heading" $ text "Account"
+        el "tbody" $ do
+          gas <- staticCapabilityRow mkSender defaultGASCapability
+          rest <- staticCapabilityRows (Just <$> eApplyToAll) $ filter (not . isGas . _dappCap_cap) caps
+          pure (_capabilityInputRow_account gas, combineMaps [(_capabilityInputRow_value gas),rest])
+
+    -- If the gas capability is set, we enable the button that will set every other capability's sender from
+    -- the gas account.
+    eClickApplyToAll <- divClass "grant-capabilities-apply-all-wrapper" $ uiButtonDyn
+      (btnCfgSecondary
+        & uiButtonCfg_disabled .~ (isNothing <$> mGasAcct')
+        & uiButtonCfg_class .~ (constDyn $ "grant-capabilities-apply-all")
+      )
+      (text "Apply to all")
+    let eApplyToAll = fmapMaybe id $ current mGasAcct' <@ eClickApplyToAll
+
+    pure (mGasAcct', capabilities')
+
+
+  signers <- uiSignerList m cid
+
+  pure (mGasAcct, signers, capabilities)
 
 isGas :: SigCapability -> Bool
 isGas = (^. to PC._scName . to PN._qnName . to (== "GAS"))
@@ -919,6 +983,7 @@ uiDeployPreview
   => model
   -> DeploymentSettingsConfig t m model a
   -> Accounts key
+  -> Set AccountName
   -> GasLimit
   -> TTLSeconds
   -> Text
@@ -929,14 +994,14 @@ uiDeployPreview
   -> Maybe ChainId
   -> Maybe AccountName
   -> m ()
-uiDeployPreview _ _ _ _ _ _ _ _ _ _ _ Nothing = text "No valid GAS payer accounts in Wallet."
-uiDeployPreview _ _ _ _ _ _ _ _ _ _ Nothing _ = text "Please select a Chain."
-uiDeployPreview _ _ _ _ _ _ _ _ _ Nothing _ _ = text "No network nodes configured."
-uiDeployPreview model settings accounts gasLimit ttl code lastPublicMeta capabilities jData (Just networkId) (Just chainId) (Just sender) = do
+uiDeployPreview _ _ _ _ _ _ _ _ _ _ _ _ Nothing = text "No valid GAS payer accounts in Wallet."
+uiDeployPreview _ _ _ _ _ _ _ _ _ _ _ Nothing _ = text "Please select a Chain."
+uiDeployPreview _ _ _ _ _ _ _ _ _ _ Nothing _ _ = text "No network nodes configured."
+uiDeployPreview model settings accounts signers gasLimit ttl code lastPublicMeta capabilities jData (Just networkId) (Just chainId) (Just sender) = do
   pb <- getPostBuild
   let deploySettingsJsonData = fromMaybe mempty $ _deploymentSettingsConfig_data settings
       jsonData0 = fromMaybe mempty $ hush jData
-      signing = Set.insert sender $ Map.keysSet capabilities
+      signing = signers <> (Set.insert sender $ Map.keysSet capabilities)
       pkCaps = publicKeysForAccounts accounts capabilities
       signingPairs = getSigningPairs signing accounts
 
