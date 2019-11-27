@@ -396,7 +396,7 @@ defaultTransactionTTL = TTLSeconds (8 * 60 * 60) -- 8 hours
 
 -- | TODO: Better defaults!!!
 defaultTransactionGasLimit :: GasLimit
-defaultTransactionGasLimit = GasLimit 1000
+defaultTransactionGasLimit = GasLimit 100000
 
 
 buildMeta
