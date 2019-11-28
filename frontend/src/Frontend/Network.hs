@@ -52,8 +52,11 @@ module Frontend.Network
   , prettyPrintNetworkErrors
   , networkErrorResultToEither
   , buildCmd
+  , buildContPayload
+  , buildCmdWithPayload
   , mkSimpleReadReq
   , getNetworkNameAndMeta
+  , getCreationTime
     -- * Defaults
   , defaultTransactionGasLimit
   , defaultTransactionGasPrice
@@ -102,7 +105,6 @@ import           Pact.Types.Runtime                (PactError (..), GasLimit (..
 import           Pact.Types.ChainMeta              (PublicMeta (..), TTLSeconds (..), TxCreationTime (..))
 import qualified Pact.Types.ChainMeta              as Pact
 import           Pact.Types.ChainId                (NetworkId (..))
-
 import           Pact.Types.Exp                    (Literal (LString))
 import           Pact.Types.Hash                   (hash, Hash (..), TypedHash (..), toUntypedHash)
 import           Pact.Types.RPC
@@ -751,7 +753,9 @@ performLocalReadCustom networkL unwrapUsr onReqs = do
   let
     unwrap = map (networkRequest_endpoint .~ Endpoint_Local) . unwrapUsr
     fakeNetwork = networkL & network_meta . mapped . Pact.pmCreationTime .~ time
-  performNetworkRequestCustom fakeNetwork unwrap onReqs
+  resp <- performNetworkRequestCustom fakeNetwork unwrap onReqs
+  performEvent_ $ ffor resp $ liftIO . print . snd
+  pure resp
 
 
 -- | Send a transaction via the /send endpoint.
@@ -929,9 +933,25 @@ buildCmd
   -- ^ Capabilities for each public key
   -> m (Command Text)
 buildCmd mNonce networkName meta signingKeys extraKeys code dat caps = do
-  cmd <- encodeAsText . encode <$> buildExecPayload mNonce networkName meta signingKeys extraKeys code dat caps
-  let
-    cmdHashL = hash (T.encodeUtf8 cmd)
+  payload <- buildExecPayload mNonce networkName meta signingKeys extraKeys code dat caps
+  buildCmdWithPayload payload signingKeys
+
+
+-- | Build a single cmd as expected in the `cmds` array of the /send payload.
+--
+-- As specified <https://pact-language.readthedocs.io/en/latest/pact-reference.html#send here>.
+buildCmdWithPayload
+  :: ( MonadIO m
+     , MonadJSM m
+     , HasCrypto key m
+     )
+  => Payload PublicMeta Text
+  -> [KeyPair key]
+  -- ^ Keys which we are signing with
+  -> m (Command Text)
+buildCmdWithPayload payload signingKeys = do
+  let cmd = encodeAsText $ encode payload
+  let cmdHashL = hash (T.encodeUtf8 cmd)
   sigs <- buildSigs cmdHashL signingKeys
   pure $ Command
     { _cmdPayload = cmd
@@ -952,6 +972,40 @@ buildSigs cmdHashL signingPairs = do
   where
     toPactSig :: Signature -> UserSig
     toPactSig sig = UserSig $ keyToText sig
+
+
+-- | Build cont `cmd` payload.
+--
+--   As specified <https://pact-language.readthedocs.io/en/latest/pact-reference.html#cmd-field-and-payloads here>.
+--   Use `encodedAsText` for passing it as the `cmd` payload.
+buildContPayload
+  :: MonadIO m
+  => NetworkName
+  -- ^ The network that we are targeting
+  -> PublicMeta
+  -- ^ Assorted information for the payload. The time is overridden.
+  -> [KeyPair key]
+  -- ^ Keys which we are signing with
+  -> ContMsg
+  -- ^ Continuation payload
+  -> m (Payload PublicMeta Text)
+buildContPayload networkName meta signingKeys payload = do
+    time <- getCreationTime
+    nonce <- getNonce
+    pure $ Payload
+      { _pPayload = Continuation payload
+      , _pNonce = nonce
+      , _pMeta = meta { _pmCreationTime = time }
+      , _pSigners = map mkSigner (map _keyPair_publicKey signingKeys)
+      , _pNetworkId = pure $ NetworkId $ textNetworkName networkName
+      }
+  where
+    mkSigner pubKey = Signer
+      { _siScheme = pure ED25519
+      , _siPubKey = keyToText pubKey
+      , _siAddress = pure $ keyToText pubKey
+      , _siCapList = []
+      }
 
 
 -- | Build exec `cmd` payload.

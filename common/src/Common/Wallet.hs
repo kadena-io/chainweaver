@@ -24,6 +24,7 @@ module Common.Wallet
   , AccountBalance(..)
   , Account(..)
   , AccountGuard(..)
+  , UnfinishedCrossChainTransfer(..)
   , pactGuardTypeText
   , fromPactGuard
   , accountGuardKeys
@@ -35,7 +36,6 @@ module Common.Wallet
   , parseWrappedBalanceChecks
   ) where
 
-import qualified Data.ByteString as BS
 import Control.Monad.Fail (MonadFail)
 import Control.Lens hiding ((.=))
 import Control.Monad
@@ -55,13 +55,18 @@ import GHC.Generics (Generic)
 import Kadena.SigningApi (AccountName(..), mkAccountName)
 import Pact.Compile (compileExps, mkEmptyInfo)
 import Pact.Parse
+import Pact.Types.Command (RequestKey)
 import Pact.Types.ChainId
 import Pact.Types.Exp
 import Pact.Types.PactValue
 import Pact.Types.Pretty
 import Pact.Types.Term hiding (PublicKey)
 import Pact.Types.Type
+import qualified Data.Aeson as Aeson
+import qualified Data.Aeson.Types as Aeson
+import qualified Data.ByteString as BS
 import qualified Data.ByteString.Base16 as Base16
+import qualified Data.HashMap.Lazy as HM
 import qualified Data.Map as Map
 import qualified Data.Set as Set
 import qualified Data.Text as T
@@ -220,6 +225,36 @@ instance ToJSON AccountBalance where
 instance FromJSON AccountBalance where
   parseJSON x = (\(ParsedDecimal d) -> AccountBalance d) <$> parseJSON x
 
+data UnfinishedCrossChainTransfer = UnfinishedCrossChainTransfer
+  { _unfinishedCrossChainTransfer_requestKey :: RequestKey
+  , _unfinishedCrossChainTransfer_recipientChain :: ChainId
+  , _unfinishedCrossChainTransfer_recipientAccount :: AccountName
+  -- ^ Informational only
+  , _unfinishedCrossChainTransfer_amount :: Decimal
+  -- ^ Informational only
+  } deriving (Eq, Show)
+
+instance ToJSON UnfinishedCrossChainTransfer where
+  toJSON ucct = object
+    [ "requestKey" .= _unfinishedCrossChainTransfer_requestKey ucct
+    , "recipientChain" .= _unfinishedCrossChainTransfer_recipientChain ucct
+    , "recipientAccount" .= _unfinishedCrossChainTransfer_recipientAccount ucct
+    , "amount" .= ParsedDecimal (_unfinishedCrossChainTransfer_amount ucct)
+    ]
+
+instance FromJSON UnfinishedCrossChainTransfer where
+  parseJSON = withObject "UnfinishedCrossChainTransfer" $ \o -> do
+    requestKey <- o .: "requestKey"
+    recipientChain <- o .: "recipientChain"
+    recipientAccount <- o .: "recipientAccount"
+    ParsedDecimal amount <- o .: "amount"
+    pure $ UnfinishedCrossChainTransfer
+      { _unfinishedCrossChainTransfer_requestKey = requestKey
+      , _unfinishedCrossChainTransfer_recipientChain = recipientChain
+      , _unfinishedCrossChainTransfer_recipientAccount = recipientAccount
+      , _unfinishedCrossChainTransfer_amount = amount
+      }
+
 data Account key = Account
   { _account_name :: AccountName
   , _account_key :: KeyPair key
@@ -228,6 +263,7 @@ data Account key = Account
   , _account_notes :: Text
   , _account_balance :: Maybe AccountBalance
   -- ^ We also treat this as proof of the account's existence.
+  , _account_unfinishedCrossChainTransfer :: Maybe UnfinishedCrossChainTransfer
   }
 
 instance ToJSON key => ToJSON (Account key) where
@@ -238,6 +274,7 @@ instance ToJSON key => ToJSON (Account key) where
     , Just $ "network" .= _account_network a
     , Just $ "notes" .= _account_notes a
     , ("balance" .=) <$> _account_balance a
+    , ("unfinishedCrossChainTransfer" .=) <$> _account_unfinishedCrossChainTransfer a
     ]
 
 instance FromJSON key => FromJSON (Account key) where
@@ -248,6 +285,7 @@ instance FromJSON key => FromJSON (Account key) where
     network <- o .: "network"
     notes <- o .: "notes"
     balance <- o .:? "balance"
+    unfinishedCrossChainTransfer <- lenientLookup o "unfinishedCrossChainTransfer"
     pure $ Account
       { _account_name = name
       , _account_key = key
@@ -255,7 +293,16 @@ instance FromJSON key => FromJSON (Account key) where
       , _account_network = network
       , _account_notes = notes
       , _account_balance = balance
+      , _account_unfinishedCrossChainTransfer = unfinishedCrossChainTransfer
       }
+
+-- | Like '.:?' but ignores values which don't parse
+lenientLookup :: FromJSON a => Aeson.Object -> Text -> Aeson.Parser (Maybe a)
+lenientLookup o t = pure $ case HM.lookup t o of
+  Nothing -> Nothing
+  Just v -> case fromJSON v of
+    Error _ -> Nothing
+    Success a -> Just a
 
 
 -- | Helper function for compiling pact code to a list of terms

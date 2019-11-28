@@ -141,6 +141,7 @@ uiAddVanityAccountSettings ideL mChainId initialNotes = Workflow $ do
             <*> lift (ideL ^. network_selectedNetwork)
             <*> lift dNotes
             <*> pure Nothing
+            <*> pure Nothing
 
       let mkSettings payload = DeploymentSettingsConfig
             { _deploymentSettingsConfig_chainId = userChainIdSelect

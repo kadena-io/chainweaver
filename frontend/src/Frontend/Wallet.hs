@@ -100,6 +100,10 @@ data WalletCfg key t = WalletCfg
   -- ^ Create a wallet only account that uses the public key as the account name
   , _walletCfg_refreshBalances :: Event t ()
   -- ^ Refresh balances in the wallet
+  , _walletCfg_setCrossChainTransfer :: Event t (IntMap.Key, Maybe UnfinishedCrossChainTransfer)
+  -- ^ Start a cross chain transfer on some account. This field allows us to
+  -- recover when something goes badly wrong in the middle, since it's
+  -- immediately stored with all info we need to retry.
   }
   deriving Generic
 
@@ -200,6 +204,7 @@ makeWallet model conf = do
     onDelKey = _walletCfg_delKey conf
     onCreateWOAcc = _walletCfg_createWalletOnlyAccount conf
     refresh = _walletCfg_refreshBalances conf
+    setCrossChain = _walletCfg_setCrossChainTransfer conf
 
   performEvent_ $ liftIO (putStrLn "Refresh wallet balances") <$ refresh
 
@@ -214,6 +219,8 @@ makeWallet model conf = do
       , ffor onDelKey $ \i -> IntMap.insert i SomeAccount_Deleted
       , ffor onWOAccountCreate $ snocIntMap . SomeAccount_Account
       , const <$> newBalances
+      , let f cc = someAccount SomeAccount_Deleted (\a -> SomeAccount_Account a { _account_unfinishedCrossChainTransfer = cc })
+         in ffor setCrossChain $ \(i, cc) -> IntMap.adjust (f cc) i
       ]
 
   performEvent_ $ storeKeys <$> updated keys
@@ -240,6 +247,7 @@ makeWallet model conf = do
         , _account_network = net
         , _account_notes = t
         , _account_balance = Nothing
+        , _account_unfinishedCrossChainTransfer = Nothing
         }
 
 -- | Get the balance of some accounts from the network.
@@ -337,10 +345,14 @@ instance Reflex t => Semigroup (WalletCfg key t) where
         [ _walletCfg_refreshBalances c1
         , _walletCfg_refreshBalances c2
         ]
+      , _walletCfg_setCrossChainTransfer = leftmost
+        [ _walletCfg_setCrossChainTransfer c1
+        , _walletCfg_setCrossChainTransfer c2
+        ]
       }
 
 instance Reflex t => Monoid (WalletCfg key t) where
-  mempty = WalletCfg never never never never never
+  mempty = WalletCfg never never never never never never
   mappend = (<>)
 
 instance Flattenable (WalletCfg key t) t where
@@ -351,6 +363,7 @@ instance Flattenable (WalletCfg key t) t where
       <*> doSwitch never (_walletCfg_delKey <$> ev)
       <*> doSwitch never (_walletCfg_createWalletOnlyAccount <$> ev)
       <*> doSwitch never (_walletCfg_refreshBalances <$> ev)
+      <*> doSwitch never (_walletCfg_setCrossChainTransfer <$> ev)
 
 instance Reflex t => Semigroup (Wallet key t) where
   wa <> wb = Wallet
