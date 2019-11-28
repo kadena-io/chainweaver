@@ -206,7 +206,7 @@ uiReceiveModal0 model account onClose = Workflow $ do
           pure ()
         uiDisplayAddress address
 
-      (onReceiClick, results) <- controlledAccordionItem (not <$> showingKadenaAddress) mempty
+      (onReceiClick, results) <- controlledAccordionItem (not <$> showingKadenaAddress) "account-details__legacy-send"
         (text "Via legacy (non-BIP32) sender") $ do
         elClass "h2" "heading heading_type_h2" $ text "Sender Details"
         transferInfo0 <- divClass "group" $ uiReceiveFromLegacyAccount model
@@ -328,7 +328,7 @@ receiveBuildCommand account (_, publicMeta, networkId) ttl gasLimit transferInfo
 
     pm = publicMeta
       { _pmChainId = chain
-      , _pmSender = unAccountName $ _account_name account
+      , _pmSender = unAccountName sender
       , _pmGasLimit = gasLimit
       , _pmTTL = ttl
       }
