@@ -1024,7 +1024,10 @@ prettyPrintNetworkError = \case
     S.FailureResponse _req res -> case T.decodeUtf8' (view strict $ S.responseBody res) of
       Left _err -> "Unknown error: decoding failed"
       Right txt -> txt
-    _ -> "Unexpected error"
+    S.DecodeFailure _ _ -> "Unknown error: decoding failed"
+    S.UnsupportedContentType mediaType _res -> "Response has unsupported content-type: " <> tshow mediaType
+    S.InvalidContentTypeHeader _res -> "Response has invalid content-type "
+    S.ConnectionError exception -> "No response. Error connecting: " <> tshow exception
   NetworkError_CommandFailure e -> tshow e
   NetworkError_NoNetwork t -> "An action requiring a network was about to be performed, but we don't (yet) have any selected network: '" <> t <> "'"
   NetworkError_Other m -> m
