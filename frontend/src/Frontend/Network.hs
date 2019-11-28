@@ -160,6 +160,8 @@ data NetworkError
   -- ^ Server responded with a 200 status code, but decoding the response failed.
   | NetworkError_ReqTooLarge
   -- ^ Request size exceeded the allowed limit.
+  | NetworkError_ClientError S.ClientError
+  -- ^ Error at servant layer
   | NetworkError_CommandFailure PactError
   -- ^ The status in the /listen result object was `failure`.
   | NetworkError_NoNetwork Text
@@ -1017,7 +1019,12 @@ prettyPrintNetworkError = \case
   NetworkError_NetworkError msg -> "Network error: " <> msg
   NetworkError_Status c msg -> "Error HTTP response (" <> tshow c <> "):" <> msg
   NetworkError_Decoding msg -> "Decoding server response failed: " <> msg
-  NetworkError_ReqTooLarge-> "Request exceeded the allowed maximum size!"
+  NetworkError_ReqTooLarge -> "Request exceeded the allowed maximum size!"
+  NetworkError_ClientError e -> case e of
+    S.FailureResponse _req res -> case T.decodeUtf8' (view strict $ S.responseBody res) of
+      Left _err -> "Unknown error: decoding failed"
+      Right txt -> txt
+    _ -> "Unexpected error"
   NetworkError_CommandFailure e -> tshow e
   NetworkError_NoNetwork t -> "An action requiring a network was about to be performed, but we don't (yet) have any selected network: '" <> t <> "'"
   NetworkError_Other m -> m
