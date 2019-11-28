@@ -238,6 +238,8 @@ uiNonnegativeRealWithPrecisionInputElement prec fromDecimal cfg = do
         <$ guard (decimal < 0)
       , (D.roundTo prec decimal, ("Rounded to " <> tshow prec <> " places"))
         <$ guard (D.decimalPlaces decimal > prec)
+      , (D.roundTo 1 decimal, "")
+        <$ guard (D.decimalPlaces decimal == 0) -- To avoid `: Failure: Type error: expected decimal, found integer`
       ]
 
 -- TODO: correct floating point decimals
