@@ -290,21 +290,21 @@ submitTransactionWithFeedback cmd chain nodeInfos = do
         doReqFailover clientEnvs (Api.listen Api.apiV1Client $ Api.ListenerRequest requestKey) >>= \case
           Nothing -> listen Status_Failed
           Just res -> case res of
-           Left errs -> do
-             listen Status_Failed
-             for_ (nonEmpty errs) $ setMessage . Just . Left . NetworkError_ClientError . NEL.last
-           Right (Api.ListenTimeout _i) -> listen Status_Failed
-           Right (Api.ListenResponse commandResult) -> case (Pact._crTxId commandResult, Pact._crResult commandResult) of
-            -- We should always have a txId when we have a result
-            (Just _txId, Pact.PactResult (Right a)) -> do
-              listen Status_Done
-              setMessage $ Just $ Right a
-              -- TODO wait for confirmation...
-            (_, Pact.PactResult (Left err)) -> do
+            Left errs -> do
               listen Status_Failed
-              setMessage $ Just $ Left $ NetworkError_CommandFailure err
-            -- This case shouldn't happen
-            _ -> listen Status_Failed
+              for_ (nonEmpty errs) $ setMessage . Just . Left . NetworkError_ClientError . NEL.last
+            Right (Api.ListenTimeout _i) -> listen Status_Failed
+            Right (Api.ListenResponse commandResult) -> case (Pact._crTxId commandResult, Pact._crResult commandResult) of
+              -- We should always have a txId when we have a result
+              (Just _txId, Pact.PactResult (Right a)) -> do
+                listen Status_Done
+                setMessage $ Just $ Right a
+                -- TODO wait for confirmation...
+              (_, Pact.PactResult (Left err)) -> do
+                listen Status_Failed
+                setMessage $ Just $ Left $ NetworkError_CommandFailure err
+              -- This case shouldn't happen
+              _ -> listen Status_Failed
 
   -- Send the transaction
   pb <- getPostBuild
