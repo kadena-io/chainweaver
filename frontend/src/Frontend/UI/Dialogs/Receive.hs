@@ -233,7 +233,7 @@ uiReceiveModal0 model account onClose = Workflow $ do
 
   pure ( (conf, onClose <> done)
        , uncurry
-         <$> current (receiveFromLegacySubmit account chain <$> ttl <*> gaslimit)
+         <$> current (receiveFromLegacySubmit onClose account chain <$> ttl <*> gaslimit)
          <@> tagMaybe (current infos) deploy
        )
 
@@ -242,14 +242,15 @@ receiveFromLegacySubmit
      , CanSubmitTransaction t m
      , HasCrypto key m
      )
-  => Account key
+  => Event t ()
+  -> Account key
   -> ChainId
   -> TTLSeconds
   -> GasLimit
   -> ([Either a NodeInfo], PublicMeta, NetworkName)
   -> LegacyTransferInfo key
   -> Workflow t m (mConf, Event t ())
-receiveFromLegacySubmit account chainId ttl gasLimit netInfo transferInfo = Workflow $ do
+receiveFromLegacySubmit onClose account chainId ttl gasLimit netInfo transferInfo = Workflow $ do
   recInfo <- receiveBuildCommand account netInfo ttl gasLimit transferInfo
   txnSubFeedback <- elClass "div" "modal__main transaction_details" $
     submitTransactionWithFeedback (_receiveBuildCommandInfo_command recInfo) chainId (netInfo ^. _1)
@@ -261,7 +262,7 @@ receiveFromLegacySubmit account chainId ttl gasLimit netInfo transferInfo = Work
     (text "Done")
 
   pure
-    ( (mempty, done)
+    ( (mempty, done <> onClose)
     , never
     )
 
