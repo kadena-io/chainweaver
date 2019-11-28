@@ -32,7 +32,7 @@ printableLatin1 = Gen.filterT isPrintable Gen.latin1
 genKadenaAddress :: Gen KA.KadenaAddress
 genKadenaAddress = KA.mkKadenaAddress <$> genCreated <*> genChainId <*> genAccountName
   where
-    genCreated = Gen.element [KA.AccountCreated_Yes, KA.AccountCreated_No]
+    genCreated = KA.AccountCreated <$> Gen.bool
     genAccountName = Gen.just $ hush . mkAccountName <$> Gen.text (Range.linear 3 256) printableLatin1
     genChainId = ChainId . T.singleton <$> Gen.digit
 
@@ -45,7 +45,7 @@ prop_parse_kadenaAddress_encoding :: Property
 prop_parse_kadenaAddress_encoding = property $ do
   ka <- forAll genKadenaAddress
   let
-    isCreated = KA._kadenaAddress_accountCreated ka == KA.AccountCreated_Yes
+    isCreated = case KA._kadenaAddress_accountCreated ka of { KA.AccountCreated b -> b }
     encoded = KA.encodeKadenaAddress ka
     [name, chain, chksumOrEncoding] = BS8.split (C.chr (fromIntegral KA.humanReadableDelimiter)) encoded
 

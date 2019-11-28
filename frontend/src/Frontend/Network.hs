@@ -60,6 +60,7 @@ module Frontend.Network
   , defaultTransactionTTL
   ) where
 
+import Debug.Trace (traceShowM)
 import           Control.Arrow                     (first, left, second, (&&&))
 import           Control.Lens                      hiding ((.=))
 import           Control.Monad.Except
@@ -858,6 +859,7 @@ networkRequest baseUri endpoint cmd = do
     performReq clientEnv = case endpoint of
       Endpoint_Send -> do
         res <- runReq clientEnv $ send apiV1Client $ SubmitBatch . pure $ cmd
+        traceShowM res
         key <- getRequestKey $ res
         -- TODO: If we no longer wait for /listen, we should change the type instead of wrapping that message in `PactValue`.
         pure $ (Nothing,) $ PLiteral . LString $

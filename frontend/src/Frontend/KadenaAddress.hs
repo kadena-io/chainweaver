@@ -25,6 +25,7 @@ module Frontend.KadenaAddress
   , delimiter
   , humanReadableDelimiter
   , isValidKadenaAddress
+  , accountCreatedBool
   ) where
 
 import Control.Lens
@@ -33,6 +34,7 @@ import Control.Monad (guard,unless)
 import Control.Error (note,hush)
 import Data.Functor (void)
 import Data.List (intersperse)
+import Data.Bool (bool)
 import qualified Data.Char as C
 import Data.Word (Word8)
 import Data.String (fromString)
@@ -107,10 +109,11 @@ data KadenaAddressPrefix
   | KadenaAddressPrefix_None
   deriving (Show, Eq)
 
-data AccountCreated
-  = AccountCreated_Yes
-  | AccountCreated_No
+newtype AccountCreated = AccountCreated Bool
   deriving (Show, Eq)
+
+accountCreatedBool :: a -> a -> AccountCreated -> a
+accountCreatedBool no yes (AccountCreated b) = bool no yes b
 
 data KadenaAddress = KadenaAddress
   { _kadenaAddress_accountCreated :: AccountCreated
@@ -168,8 +171,7 @@ encodeToLatin1 :: Text -> ByteString
 encodeToLatin1 = BS8.pack . T.unpack
 
 encodeAccountCreated :: AccountCreated -> ByteString
-encodeAccountCreated AccountCreated_No = "n"
-encodeAccountCreated AccountCreated_Yes = "y"
+encodeAccountCreated = accountCreatedBool "n" "y"
 
 encodeKadenaAddress :: KadenaAddress -> ByteString
 encodeKadenaAddress ka =
@@ -188,9 +190,7 @@ encodeKadenaAddress ka =
     mconcat $ intersperse (BS.singleton humanReadableDelimiter)
     [ name
     , cid
-    , case _kadenaAddress_accountCreated ka of
-        AccountCreated_Yes -> encoded
-        AccountCreated_No -> checksum
+    , accountCreatedBool checksum encoded $ _kadenaAddress_accountCreated ka
     ]
 
 mkKadenaAddress
@@ -218,9 +218,9 @@ decodeKadenaAddress inp = do
     uncreatedAccount = do
       n <- hush . mkAccountName . TE.decodeLatin1 =<< mname
       c <- (\x -> if T.all C.isDigit x then Just (ChainId x) else Nothing) . TE.decodeLatin1 =<< mcid
-      let cksum = mkAddressChecksum AccountCreated_No n c
+      let cksum = mkAddressChecksum (AccountCreated False) n c
       guard $ bytestringChecksum cksum == pkg0
-      pure $ KadenaAddress AccountCreated_No n c cksum
+      pure $ KadenaAddress (AccountCreated False) n c cksum
 
   case uncreatedAccount of
     Just acc -> pure acc
@@ -260,8 +260,8 @@ parseKadenaAddressBlob = do
     parseChecksum expected = mkParser (A.string $ bytestringChecksum expected) pure
 
     parseAccountCreated = mkParser (A.letter_ascii <* A.endOfLine) $ \case
-      'y' -> Right AccountCreated_Yes
-      'n' -> Right AccountCreated_No
+      'y' -> Right (AccountCreated True)
+      'n' -> Right (AccountCreated False)
       _ -> Left "Unknown Account Type"
 
     parseChainId = mkParser

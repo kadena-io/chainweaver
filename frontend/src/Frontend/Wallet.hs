@@ -88,12 +88,7 @@ import Frontend.Storage
 import Frontend.Network
 
 accountIsCreated:: Account key -> AccountCreated
-accountIsCreated = maybe AccountCreated_No (const AccountCreated_Yes) . _account_balance
-
-accountCreatedBool :: a -> a -> Account key -> a
-accountCreatedBool no yes a = case accountIsCreated a of
-  AccountCreated_Yes -> yes
-  AccountCreated_No -> no
+accountIsCreated = AccountCreated . isJust . _account_balance
 
 accountToKadenaAddress :: Account key -> KadenaAddress
 accountToKadenaAddress a = mkKadenaAddress (accountIsCreated a) (_account_chainId a) (_account_name a)

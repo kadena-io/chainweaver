@@ -283,12 +283,13 @@ receiveBuildCommand account (_, publicMeta, networkId) ttl gasLimit transferInfo
     senderPubKey = snd $ _legacyTransferInfo_keyPair transferInfo
     senderKey = fst $ _legacyTransferInfo_keyPair transferInfo
     amount = _legacyTransferInfo_amount transferInfo
+    accCreated = accountIsCreated account
 
     code = T.unwords $
-      [ "(coin." <> accountCreatedBool "transfer-create" "transfer" account
+      [ "(coin." <> accountCreatedBool "transfer-create" "transfer" accCreated
       , tshow $ unAccountName $ sender
       , tshow $ unAccountName $ _account_name account
-      , accountCreatedBool "(read-keyset 'key)" mempty account
+      , accountCreatedBool "(read-keyset 'key)" mempty accCreated
       , tshow amount
       , ")"
       ]
@@ -313,7 +314,7 @@ receiveBuildCommand account (_, publicMeta, networkId) ttl gasLimit transferInfo
       }
 
     dat = case accountIsCreated account of
-      AccountCreated_No
+      (AccountCreated False)
         | Right pk <- parsePublicKey (unAccountName $ _account_name account)
         -> HM.singleton "key" $ Aeson.toJSON $ KeySet [toPactPublicKey pk] (Name $ BareName "keys-all" def)
       _ -> mempty
