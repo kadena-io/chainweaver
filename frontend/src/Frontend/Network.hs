@@ -753,9 +753,7 @@ performLocalReadCustom networkL unwrapUsr onReqs = do
   let
     unwrap = map (networkRequest_endpoint .~ Endpoint_Local) . unwrapUsr
     fakeNetwork = networkL & network_meta . mapped . Pact.pmCreationTime .~ time
-  resp <- performNetworkRequestCustom fakeNetwork unwrap onReqs
-  performEvent_ $ ffor resp $ liftIO . print . snd
-  pure resp
+  performNetworkRequestCustom fakeNetwork unwrap onReqs
 
 
 -- | Send a transaction via the /send endpoint.
