@@ -103,6 +103,7 @@ hasPrivateKey = isJust . _keyPair_privateKey . snd
 
 ----------------------------------------------------------------------
 
+--     pure $ hush <$> dEitherAccName
 -- | Widget listing all available keys.
 uiAvailableKeys
   :: forall t m model mConf key.

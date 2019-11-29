@@ -15,17 +15,50 @@ import Obelisk.Route.Frontend
 import Reflex.Dom hiding (fromJSString)
 import Reflex.Host.Class (MonadReflexCreateTrigger)
 import Data.ByteString (ByteString)
+import Data.Text (Text)
+
+import Pact.Types.Scheme (PPKScheme)
 
 import Frontend.Crypto.Ed25519
 import Frontend.Foundation
 import Frontend.Storage
 
 instance (HasStorage m, Monad m) => HasStorage (CryptoT key m)
+-- TODO : Hide the pact key constructor so the caller is forced to verify it
+data PactKey = PactKey
+  { _pactKey_scheme :: PPKScheme
+  , _pactKey_publicKey :: PublicKey
+  , _pactKey_secret :: ByteString
+  } deriving Show
 
 data Crypto key = Crypto
   { _crypto_sign :: ByteString -> key -> JSM Signature
   , _crypto_genKey :: Int -> JSM (key, PublicKey)
+  , _crypto_verifyPactKey :: PPKScheme -> Text -> JSM (Either String PactKey)
+  , _crypto_signWithPactKey :: ByteString -> PactKey -> JSM Signature
   }
+
+cryptoSignWithPactKey
+  :: ( MonadJSM m
+     , HasCrypto key m
+     )
+  => ByteString
+  -> PactKey
+  -> m Signature
+cryptoSignWithPactKey bs key = do
+  crypto <- askCrypto
+  liftJSM $ _crypto_signWithPactKey crypto bs key
+
+cryptoGenPubKeyFromPrivate
+  :: ( MonadJSM m
+     , HasCrypto key m
+     )
+  => PPKScheme
+  -> Text
+  -> m (Either String PactKey)
+cryptoGenPubKeyFromPrivate scheme k = do
+  crypto <- askCrypto
+  liftJSM $ _crypto_verifyPactKey crypto scheme k
 
 cryptoGenKey :: (MonadJSM m, HasCrypto key m) => Int -> m (key, PublicKey)
 cryptoGenKey i = do

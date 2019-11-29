@@ -49,7 +49,6 @@ import Frontend.Editor
 import Frontend.Foundation
 import Frontend.GistStore
 import Frontend.Ide
-import Frontend.Network
 import Frontend.OAuth
 import Frontend.Repl
 import Frontend.Storage
@@ -59,7 +58,7 @@ import Frontend.UI.Dialogs.CreateGist (uiCreateGist)
 import Frontend.UI.Dialogs.CreatedGist (uiCreatedGist)
 import Frontend.UI.Dialogs.DeployConfirmation (uiDeployConfirmation)
 import Frontend.UI.Dialogs.LogoutConfirmation (uiLogoutConfirmation)
-import Frontend.UI.Dialogs.NetworkEdit (uiNetworkSelect, uiNetworkStatus, queryNetworkStatus)
+import Frontend.UI.Dialogs.NetworkEdit (uiNetworkSelect)
 import Frontend.UI.Dialogs.Signing (uiSigning)
 import Frontend.UI.IconGrid (IconGridCellConfig(..), iconGridLaunchLink)
 import Frontend.UI.Modal

@@ -5,6 +5,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecursiveDo #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE TupleSections #-}
 {-# LANGUAGE TypeApplications #-}
 
 -- | Widgets collection
@@ -20,8 +21,9 @@ module Frontend.UI.Widgets
   , uiCodeFont
   , uiInputElement
   , uiTextAreaElement
+  , uiCorrectingInputElement
   , uiRealInputElement
-  , uiRealWithPrecisionInputElement
+  , uiNonnegativeRealWithPrecisionInputElement
   , uiIntInputElement
   , uiSlider
   , uiSliderInputElement
@@ -68,7 +70,6 @@ import qualified Data.Text                   as T
 import           GHC.Word                    (Word8)
 import           Data.Decimal                (Decimal)
 import qualified Data.Decimal                as D
-import           Safe                        (readMay)
 import           Language.Javascript.JSaddle (js0, pToJSVal)
 import           Obelisk.Generated.Static
 import           Reflex.Dom.Contrib.CssClass
@@ -167,7 +168,7 @@ uiInputElement cfg = inputElement $ cfg & initialAttributes %~ (addInputElementC
 
 -- | uiInputElement which should always provide a proper real number.
 --
---   In particular it will always has a decimal point in it.
+--   In particular it will always have a decimal point in it.
 uiRealInputElement
   :: DomBuilder t m
   => InputElementConfig er t (DomBuilderSpace m)
@@ -176,59 +177,104 @@ uiRealInputElement cfg = do
     inputElement $ cfg & initialAttributes %~
         (<> ("type" =: "number")) . addInputElementCls . addNoAutofillAttrs
 
+uiCorrectingInputElement
+  :: forall t m a er explanation. DomBuilder t m
+  => MonadFix m
+  => (Text -> Maybe a)
+  -> (a -> Maybe (a, explanation))
+  -> (a -> Text)
+  -> InputElementConfig er t (DomBuilderSpace m)
+  -> m (InputElement er (DomBuilderSpace m) t, Dynamic t (Maybe a), Event t (a, Maybe explanation))
+uiCorrectingInputElement parse sanitize render cfg = mdo
+  ie <- inputElement $ cfg & inputElementConfig_setValue %~ (\e -> leftmost [attemptCorrection e, forceCorrection inp])
+  let
+    inp = _inputElement_input ie
+    val = value ie
+
+    sanitization :: Functor f => f Text -> f (Maybe (a, Maybe explanation))
+    sanitization = fmap $ \i -> ffor (parse i) $ \p ->
+      case sanitize p of
+        Nothing -> (p, Nothing)
+        Just (a, x) -> (a, Just x)
+
+    intercept :: ((a, Maybe explanation) -> Bool) -> (Event t Text -> Event t Text)
+    intercept p = fmap render . fmap fst . ffilter p . fmapMaybe id . sanitization
+
+    attemptCorrection :: Event t Text -> Event t Text
+    attemptCorrection = intercept (const True)
+
+    forceCorrection :: Event t Text -> Event t Text
+    forceCorrection = intercept (isJust . snd)
+
+    -- type inference goes crazy if we inline this - ghc bug?
+    inp' = fmapMaybe id $ sanitization inp
+
+  pure (ie, (fmap . fmap) fst $ sanitization val, inp')
+
 -- | Decimal input to the given precision. Returns the element, the value, and
 -- the user input events
-uiRealWithPrecisionInputElement
+uiNonnegativeRealWithPrecisionInputElement
   :: forall t m er a. (DomBuilder t m, MonadFix m, MonadHold t m)
   => Word8
   -> (Decimal -> a)
   -> InputElementConfig er t (DomBuilderSpace m)
-  -> m (InputElement er (DomBuilderSpace m) t, (Dynamic t (Maybe a), Event t a))
-uiRealWithPrecisionInputElement prec fromDecimal cfg = do
+  -> m (InputElement er (DomBuilderSpace m) t, Dynamic t (Maybe a), Event t a)
+uiNonnegativeRealWithPrecisionInputElement prec fromDecimal cfg = do
   rec
-    r <- inputElement $ cfg
+    (ie, val, input) <- uiCorrectingInputElement parse sanitize tshow $ cfg
       & initialAttributes %~ addInputElementCls . addNoAutofillAttrs
         . (<> ("type" =: "number" <> "step" =: stepSize <> "min" =: stepSize))
-      & inputElementConfig_setValue %~ (\e -> leftmost [fmapMaybe parseAndRound e, rounded])
-    widgetHold_ blank (bool blank (elClass "span" "real-input__rounded" (text $ "Rounded to " <> (tshow prec) <> " places")) <$> eHasRounded)
-    let parsedValue = fmap fst . parseDecimal <$> value r
-        parsedInput = fmapMaybe parseDecimal (_inputElement_input r)
-        -- Trim the users input if we had to round it
-        rounded = fmap (showDecimal . fst) $ ffilter snd parsedInput
-        eHasRounded = fmap snd parsedInput
-  pure
-    ( r
-    , (fmap fromDecimal <$> parsedValue
-      , fromDecimal . fst <$> parsedInput
-      )
-    )
+    widgetHold_ blank $ ffor (fmap snd input) $ traverse_ $
+      elClass "span" "real-input__rounded" . text
+  pure (ie, (fmap . fmap) fromDecimal val, fmap (fromDecimal . fst) input)
+
   where
-    showDecimal :: Decimal -> Text
-    showDecimal = tshow
-
-    parseAndRound :: Text -> Maybe Text
-    parseAndRound t = showDecimal . fst <$> parseDecimal t
-
-    -- Returns the decimal and whether or not it needed rounding to 'prec'
-    parseDecimal :: Text -> Maybe (Decimal, Bool)
-    parseDecimal t = ffor (readMay $ T.unpack t) $ \decimal ->
-      (D.roundTo prec decimal, D.decimalPlaces decimal > prec)
-
     stepSize = "0." <> T.replicate (fromIntegral prec - 1) "0" <> "1"
+    parse = tread
 
+    sanitize :: Decimal -> Maybe (Decimal, Text)
+    sanitize decimal = asum
+      [ (0, "Cannot be negative")
+        <$ guard (decimal < 0)
+      , (D.roundTo prec decimal, ("Rounded to " <> tshow prec <> " places"))
+        <$ guard (D.decimalPlaces decimal > prec)
+      , (D.roundTo 1 decimal, "")
+        <$ guard (D.decimalPlaces decimal == 0) -- To avoid `: Failure: Type error: expected decimal, found integer`
+      ]
+
+-- TODO: correct floating point decimals
 uiIntInputElement
   :: DomBuilder t m
-  => InputElementConfig er t (DomBuilderSpace m)
-  -> m (InputElement er (DomBuilderSpace m) t)
-uiIntInputElement cfg = do
-    r <- inputElement $ cfg & initialAttributes %~
-            (<> ("type" =: "number")) . addInputElementCls . addNoAutofillAttrs
-    pure $ r
-      { _inputElement_value = fmap fixNum $ _inputElement_value r
-      , _inputElement_input = fmap fixNum $ _inputElement_input r
-      }
+  => MonadFix m
+  => Maybe Integer
+  -> Maybe Integer
+  -> InputElementConfig er t (DomBuilderSpace m)
+  -> m (InputElement er (DomBuilderSpace m) t, Event t Integer)
+uiIntInputElement mmin mmax cfg = do
+    (r, _, input) <- uiCorrectingInputElement (tread . fixNum) sanitize tshow $ cfg & initialAttributes %~
+      ((<> numberAttrs) . addInputElementCls . addNoAutofillAttrs)
+
+    pure (r
+          { _inputElement_value = fmap fixNum $ _inputElement_value r
+          , _inputElement_input = fmap fixNum $ _inputElement_input r
+          }
+         , fst <$> input)
+
   where
     fixNum = T.takeWhile (/='.')
+    numberAttrs = mconcat $ fmapMaybe id
+      [ Just $ "type" =: "number"
+      , ffor mmin $ ("min" =:) . tshow
+      , ffor mmax $ ("max" =:) . tshow
+      ]
+    clamp = appEndo $ foldMap Endo $ fmapMaybe id
+      [ ffor mmin $ max
+      , ffor mmax $ min
+      ]
+
+    sanitize :: Integer -> Maybe (Integer, Maybe ())
+    sanitize num = let s = clamp num
+                   in guard (s /= num) *> Just (s, Just ())
 
 uiSlider
   :: DomBuilder t m

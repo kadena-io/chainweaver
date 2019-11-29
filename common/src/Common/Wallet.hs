@@ -131,7 +131,7 @@ decodeBase16M i =
   in
     if BS.null rest
        then pure r
-       else fail "Input was no valid Base16 encoding."
+       else fail "Input was not valid Base16 encoding."
 
 -- | Parse just a public key with some sanity checks applied.
 parsePublicKey :: MonadError Text m => Text -> m PublicKey

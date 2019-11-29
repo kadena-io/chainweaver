@@ -32,7 +32,7 @@ printableLatin1 = Gen.filterT isPrintable Gen.latin1
 genKadenaAddress :: Gen KA.KadenaAddress
 genKadenaAddress = KA.mkKadenaAddress <$> genCreated <*> genChainId <*> genAccountName
   where
-    genCreated = Gen.element [KA.AccountCreated_Yes, KA.AccountCreated_No]
+    genCreated = Gen.element [KA.AccountCreated_No, KA.AccountCreated_Yes]
     genAccountName = Gen.just $ hush . mkAccountName <$> Gen.text (Range.linear 3 256) printableLatin1
     genChainId = ChainId . T.singleton <$> Gen.digit
 

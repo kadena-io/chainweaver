@@ -193,13 +193,14 @@ sameChainTransfer
   -- ^ Amount to transfer
   -> Workflow t m (mConf, Event t ())
 sameChainTransfer netInfo fromAccount gasPayer toAccount amount = Workflow $ do
+  let recipientCreated = _kadenaAddress_accountCreated toAccount
   let code = T.unwords $
-        [ "(coin." <> case _kadenaAddress_accountCreated toAccount of
+        [ "(coin." <> case recipientCreated of
           AccountCreated_Yes -> "transfer"
           AccountCreated_No -> "transfer-create"
         , tshow $ unAccountName $ _account_name fromAccount
         , tshow $ unAccountName $ _kadenaAddress_accountName toAccount
-        , case _kadenaAddress_accountCreated toAccount of
+        , case recipientCreated of
           AccountCreated_Yes -> mempty
           AccountCreated_No -> "(read-keyset 'key)"
         , tshow amount
@@ -267,7 +268,8 @@ sendConfig model fromIndex fromAccount = Workflow $ do
         recipient <- divClass "group" $ do
           kad <- mkLabeledInput True "Address" uiInputElement def
           let decoded = decodeKadenaAddressText <$> value kad
-          (_, (amount, _)) <- mkLabeledInput True "Amount" (uiRealWithPrecisionInputElement maxCoinPrecision id) def
+          (_, amount, _) <- mkLabeledInput True "Amount"
+            (dimensionalInputWrapper "KDA" . uiNonnegativeRealWithPrecisionInputElement maxCoinPrecision id) def
           pure $ runExceptT $ do
             r <- ExceptT $ first (\_ -> "Invalid kadena address") <$> decoded
             a <- ExceptT $ maybe (Left "Invalid amount") Right <$> amount
