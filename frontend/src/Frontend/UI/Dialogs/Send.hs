@@ -66,6 +66,7 @@ import qualified Servant.Client.JSaddle as S
 import qualified Text.URI as URI
 
 import Common.Wallet
+import Obelisk.Generated.Static
 import Frontend.Crypto.Class (HasCrypto)
 import Frontend.Foundation hiding (Arg)
 import Frontend.KadenaAddress
@@ -402,30 +403,43 @@ runUnfinishedCrossChainTransfer netInfo fromChain toChain toGasPayer requestKey 
   item contStatus $ do
     el "p" $ text $ "Got continuation response"
     void $ runWithReplace blank $ ffor contResponse $ \case
-      Left e -> el "p" $ text e
+      Left e -> crossChainMessage e
       Right _ -> blank
   item spvStatus $ do
     el "p" $ text "SPV proof retrieved"
     void $ runWithReplace blank $ ffor spvResponse $ \case
-      Left e -> el "p" $ text e
+      Left e -> crossChainMessage e
       Right _ -> blank
   item continueStatus $ do
     el "p" $ text $ "Initiate claiming coin on chain " <> _chainId toChain
     void $ runWithReplace blank $ ffor continueResponse $ \case
-      Left e -> el "p" $ text e
+      Left e -> crossChainMessage e
       Right _ -> blank
   item resultStatus $ do
     el "p" $ text "Coins retrieved on target chain"
     void $ runWithReplace blank $ ffor resultResponse $ \case
-      Left e -> el "p" $ text e
+      Left e -> crossChainMessage e
       Right () -> blank
 
   anyError <- holdUniqDyn $ any (== Status_Failed) <$> sequence [contStatus, spvStatus, continueStatus, resultStatus]
   retry <- switchHold never <=< dyn $ ffor anyError $ \case
     False -> pure never
-    True -> uiButton btnCfgPrimary $ text "Retry"
+    True -> uiButton (btnCfgPrimary & uiButtonCfg_class .~ "cross-chain-transfer-retry")  $ text "Retry"
 
   pure resultOk
+
+crossChainMessage :: (DomBuilder t m, MonadFix m, MonadHold t m, PostBuild t m) => Text -> m ()
+crossChainMessage m = mdo
+  dExpanded <- foldDyn (const not) False (domEvent Click elt)
+  (elt, _) <- elDynClass' "p" (("cross-chain-transfer-msg"<>) . (bool "" " cross-chain-transfer-msg__expanded") <$> dExpanded) $ do
+    elDynAttr "img"
+      ((\expanded ->
+        ("class" =: ("cross-chain-transfer-msg__open"))
+        <> "height" =: "12px"
+        <> ("src" =: bool (static @"img/arrow-right.svg") (static @"img/arrow-down.svg") expanded)) <$> dExpanded)
+      blank
+    elClass "span" "cross-chain-transfer-msg__text" $ text m
+  pure ()
 
 -- | Configuration step before finishing a previously unfinished cross chain
 -- transfer.
@@ -529,7 +543,7 @@ finishCrossChainTransfer netInfo fromIndex fromAccount ucct toGasPayer = Workflo
         let item ds = elDynAttr "li" (ffor ds $ \s -> "class" =: statusText s)
         item (pure Status_Done) $ do
           el "p" $ text $ "Cross chain transfer initiated on chain " <> _chainId fromChain
-          el "p" $ text $ "Request key: " <> Pact.requestKeyToB16Text requestKey
+          el "p" $ crossChainMessage $ "Request key: " <> Pact.requestKeyToB16Text requestKey
         pb <- getPostBuild
         runUnfinishedCrossChainTransfer netInfo fromChain toChain toGasPayer $ requestKey <$ pb
   (abandon, done) <- modalFooter $ do
@@ -612,9 +626,9 @@ crossChainTransfer netInfo fromIndex fromAccount toAccount fromGasPayer crossCha
         let item ds = elDynAttr "li" (ffor ds $ \s -> "class" =: statusText s)
         item initiateStatus $ do
           el "p" $ text $ "Cross chain transfer initiated on chain " <> _chainId fromChain
-          void $ runWithReplace blank $ ffor initiated $ el "p" . \case
-            Left e -> text e
-            Right rk -> text $ "Request key: " <> Pact.requestKeyToB16Text rk
+          void $ runWithReplace blank $ ffor initiated $ crossChainMessage . \case
+            Left e -> e
+            Right rk -> "Request key: " <> Pact.requestKeyToB16Text rk
         let toGasPayer = _crossChainData_recipientChainGasPayer crossChainData
         runUnfinishedCrossChainTransfer netInfo fromChain toChain toGasPayer initiatedOk
   done <- modalFooter $ confirmButton def "Done"
