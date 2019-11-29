@@ -61,7 +61,7 @@ module Frontend.UI.DeploymentSettings
   , Identity (runIdentity)
   ) where
 
-import Control.Applicative ((<|>),liftA2)
+import Control.Applicative ((<|>))
 import Control.Arrow (first, (&&&))
 import Control.Error (fmapL, hoistMaybe, headMay)
 import Control.Error.Util (hush)
