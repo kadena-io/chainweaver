@@ -106,6 +106,10 @@ uiCheckbox cls b cfg c =
     c
     pure cb
 
+-- Copied from reflex-dom because CheckboxConfig doesn't expose ElementConfig, and without stopPropagation odd things happen
+-- Several modals which use uiCheckbox strangely trigger `domEvent Click` twice when we click the toggle
+-- and it looks like the second one is propagated all the way to the modal backdrop, dismissing it.
+--
 -- | Create an editable checkbox
 --   Note: if the "type" or "checked" attributes are provided as attributes, they will be ignored
 {-# INLINABLE checkbox' #-}
