@@ -65,6 +65,7 @@ import           Data.Either (isLeft)
 import           Data.Map.Strict             (Map)
 import qualified Data.Map.Strict as Map
 import           Data.String                 (IsString)
+import           Data.Proxy                  (Proxy(..))
 import           Data.Text                   (Text)
 import qualified Data.Text                   as T
 import           GHC.Word                    (Word8)
@@ -108,16 +109,17 @@ uiCheckbox cls b cfg c =
 -- | Create an editable checkbox
 --   Note: if the "type" or "checked" attributes are provided as attributes, they will be ignored
 {-# INLINABLE checkbox' #-}
-checkbox' :: (DomBuilder t m, PostBuild t m) => Bool -> CheckboxConfig t -> m (Checkbox t)
+checkbox' :: forall t m. (DomBuilder t m, PostBuild t m) => Bool -> CheckboxConfig t -> m (Checkbox t)
 checkbox' checked config = do
   let permanentAttrs = "type" =: "checkbox"
       dAttrs = Map.delete "checked" . Map.union permanentAttrs <$> _checkboxConfig_attributes config
   modifyAttrs <- dynamicAttributesToModifyAttributes dAttrs
-  i <- inputElement $ def
+  i <- inputElement $ (def :: InputElementConfig EventResult t (DomBuilderSpace m))
     & inputElementConfig_initialChecked .~ checked
     & inputElementConfig_setChecked .~ _checkboxConfig_setValue config
     & inputElementConfig_elementConfig . elementConfig_initialAttributes .~ Map.mapKeys (AttributeName Nothing) permanentAttrs
     & inputElementConfig_elementConfig . elementConfig_modifyAttributes .~ fmap mapKeysToAttributeName modifyAttrs
+    & inputElementConfig_elementConfig . elementConfig_eventSpec %~ addEventSpecFlags (Proxy :: Proxy (DomBuilderSpace m)) Click (const stopPropagation)
   return $ Checkbox
     { _checkbox_value = _inputElement_checked i
     , _checkbox_change = _inputElement_checkedChange i
