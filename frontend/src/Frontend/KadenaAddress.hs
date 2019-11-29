@@ -168,8 +168,9 @@ encodeToLatin1 :: Text -> ByteString
 encodeToLatin1 = BS8.pack . T.unpack
 
 encodeAccountCreated :: AccountCreated -> ByteString
-encodeAccountCreated AccountCreated_No = "n"
-encodeAccountCreated AccountCreated_Yes = "y"
+encodeAccountCreated = \case
+  AccountCreated_No -> "n"
+  AccountCreated_Yes -> "y"
 
 encodeKadenaAddress :: KadenaAddress -> ByteString
 encodeKadenaAddress ka =
@@ -218,9 +219,9 @@ decodeKadenaAddress inp = do
     uncreatedAccount = do
       n <- hush . mkAccountName . TE.decodeLatin1 =<< mname
       c <- (\x -> if T.all C.isDigit x then Just (ChainId x) else Nothing) . TE.decodeLatin1 =<< mcid
-      let cksum = mkAddressChecksum AccountCreated_No n c
+      let cksum = mkAddressChecksum (AccountCreated_No) n c
       guard $ bytestringChecksum cksum == pkg0
-      pure $ KadenaAddress AccountCreated_No n c cksum
+      pure $ KadenaAddress (AccountCreated_No) n c cksum
 
   case uncreatedAccount of
     Just acc -> pure acc
@@ -260,8 +261,8 @@ parseKadenaAddressBlob = do
     parseChecksum expected = mkParser (A.string $ bytestringChecksum expected) pure
 
     parseAccountCreated = mkParser (A.letter_ascii <* A.endOfLine) $ \case
-      'y' -> Right AccountCreated_Yes
-      'n' -> Right AccountCreated_No
+      'y' -> Right (AccountCreated_Yes)
+      'n' -> Right (AccountCreated_No)
       _ -> Left "Unknown Account Type"
 
     parseChainId = mkParser

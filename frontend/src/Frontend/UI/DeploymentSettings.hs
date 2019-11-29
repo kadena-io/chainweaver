@@ -40,7 +40,7 @@ module Frontend.UI.DeploymentSettings
   , nextView
   , buildDeployTabFooterControls
   , buildDeployTabs
-  , defaulTabViewProgressButtonLabel
+  , defaultTabViewProgressButtonLabel
 
     -- * Widgets
   , uiDeploymentSettings
@@ -49,6 +49,7 @@ module Frontend.UI.DeploymentSettings
   , uiCfg
   , uiSenderCapabilities
   , uiMetaData
+  , uiDeployPreview
 
   , uiSenderFixed
   , uiSenderDropdown
@@ -319,9 +320,9 @@ buildDeployTabs mUserTabName includePreviewTab controls = mdo
     withPreview = if includePreviewTab then [DeploymentSettingsView_Preview] else []
     availableTabs = userTabs <> stdTabs <> withPreview
 
-defaulTabViewProgressButtonLabel :: DeploymentSettingsView -> Text
-defaulTabViewProgressButtonLabel DeploymentSettingsView_Preview = "Submit"
-defaulTabViewProgressButtonLabel _ = "Next"
+defaultTabViewProgressButtonLabel :: DeploymentSettingsView -> Text
+defaultTabViewProgressButtonLabel DeploymentSettingsView_Preview = "Submit"
+defaultTabViewProgressButtonLabel _ = "Next"
 
 buildDeployTabFooterControls
   :: ( PostBuild t m
@@ -421,7 +422,7 @@ uiDeploymentSettings m settings = mdo
       mUserTabName
       (_deploymentSettingsConfig_includePreviewTab settings)
       curSelection
-      defaulTabViewProgressButtonLabel
+      defaultTabViewProgressButtonLabel
       (isNothing <$> result)
 
     pure (conf, command, ma)

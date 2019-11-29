@@ -41,6 +41,10 @@ import qualified GHCJS.DOM.GlobalEventHandlers as GlobalEventHandlers
 import qualified System.Directory as Directory
 import qualified System.FilePath as FilePath
 
+import qualified Pact.Types.Crypto as PactCrypto
+import Pact.Types.Util (parseB16TextOnly)
+import qualified Pact.Types.Hash as Pact
+
 import Common.Api (getConfigRoute)
 import Common.Route
 import Frontend.AppCfg
@@ -94,13 +98,36 @@ fileStorage dir = Storage
 
 bipCrypto :: Crypto.XPrv -> Text -> Crypto Crypto.XPrv
 bipCrypto root pass = Crypto
-  { _crypto_sign = \bs k -> pure $ Newtype.pack $ Crypto.unXSignature $ Crypto.sign (T.encodeUtf8 pass) k bs
+  { _crypto_sign = \bs xprv ->
+      pure $ Newtype.pack $ Crypto.unXSignature $ Crypto.sign (T.encodeUtf8 pass) xprv bs
+
   , _crypto_genKey = \i -> do
-    liftIO $ putStrLn $ "Deriving key at index: " <> show i
-    let xprv = Crypto.deriveXPrv scheme (T.encodeUtf8 pass) root (mkHardened $ fromIntegral i)
-    pure (xprv, unsafePublicKey $ Crypto.xpubPublicKey $ Crypto.toXPub xprv)
+      liftIO $ putStrLn $ "Deriving key at index: " <> show i
+      let xprv = Crypto.deriveXPrv scheme (T.encodeUtf8 pass) root (mkHardened $ fromIntegral i)
+      pure (xprv, unsafePublicKey $ Crypto.xpubPublicKey $ Crypto.toXPub xprv)
+
+  -- This assumes that the secret is already base16 encoded (being pasted in, so makes sense)
+  , _crypto_verifyPactKey = \pkScheme sec -> pure $ do
+      secBytes <- parseB16TextOnly sec
+      somePactKey <- importKey pkScheme Nothing secBytes
+      pure $ PactKey pkScheme (unsafePublicKey $ PactCrypto.getPublic somePactKey) secBytes
+
+  , _crypto_signWithPactKey = \bs pk -> do
+      let someKpE = importKey
+            (_pactKey_scheme pk)
+            (Just $ Newtype.unpack $ _pactKey_publicKey pk)
+            $ _pactKey_secret pk
+
+      case someKpE of
+        Right someKp -> liftIO $ Newtype.pack <$> PactCrypto.sign someKp (Pact.Hash bs)
+        Left e -> error $ "Error importing pact key from account: " <> e
   }
   where
+    importKey pkScheme mPubBytes secBytes = PactCrypto.importKeyPair
+      (PactCrypto.toScheme pkScheme)
+      (PactCrypto.PubBS <$> mPubBytes)
+      (PactCrypto.PrivBS secBytes)
+
     scheme = Crypto.DerivationScheme2
     mkHardened = (0x80000000 .|.)
 

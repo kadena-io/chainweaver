@@ -46,6 +46,7 @@ module Frontend.Wallet
   -- * Other helper functions
   , accountToKadenaAddress
   , activeAccountOnNetwork
+  , accountIsCreated
   , checkAccountNameValidity
   , snocIntMap
   , findNextKey
@@ -85,10 +86,11 @@ import Frontend.KadenaAddress
 import Frontend.Storage
 import Frontend.Network
 
+accountIsCreated:: Account key -> AccountCreated
+accountIsCreated = maybe AccountCreated_No (const AccountCreated_Yes) . _account_balance
+
 accountToKadenaAddress :: Account key -> KadenaAddress
-accountToKadenaAddress a = mkKadenaAddress isCreated (_account_chainId a) (_account_name a)
-  where
-    isCreated = maybe AccountCreated_No (const AccountCreated_Yes) $ _account_balance a
+accountToKadenaAddress a = mkKadenaAddress (accountIsCreated a) (_account_chainId a) (_account_name a)
 
 data WalletCfg key t = WalletCfg
   { _walletCfg_genKey     :: Event t (AccountName, NetworkName, ChainId, Text)
@@ -314,7 +316,6 @@ storeKeys ks = setItemStorage localStorage StoreWallet_Keys ks
 -- | Load key pairs from localstorage.
 loadKeys :: (FromJSON key, HasStorage m, MonadJSM m) => m (Maybe (Accounts key))
 loadKeys = getItemStorage localStorage StoreWallet_Keys
-
 
 -- Utility functions:
 
