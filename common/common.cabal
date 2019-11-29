@@ -29,6 +29,7 @@ library
                , safe
                , errors
                , unliftio
+               , unordered-containers
 
   exposed-modules:
     Common.Api
