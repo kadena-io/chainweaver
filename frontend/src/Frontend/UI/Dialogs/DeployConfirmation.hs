@@ -43,7 +43,8 @@ import Control.Monad.Ref (MonadRef, Ref)
 import GHC.IORef (IORef)
 import Data.Default (Default (..))
 import Data.Either (rights)
-import Data.List.NonEmpty (NonEmpty(..))
+import Data.List.NonEmpty (NonEmpty(..), nonEmpty)
+import qualified Data.List.NonEmpty as NEL
 import Data.Text (Text)
 import Data.These (These(This, That))
 import Data.Traversable (for)
@@ -55,7 +56,6 @@ import Frontend.UI.Modal
 import Frontend.UI.Widgets
 import Frontend.Wallet
 import Language.Javascript.JSaddle
-import Pact.Types.PactError (PactError)
 import Pact.Types.PactValue (PactValue)
 import Reflex
 import Reflex.Host.Class (MonadReflexCreateTrigger)
@@ -227,7 +227,7 @@ statusText = \case
 data TransactionSubmitFeedback t = TransactionSubmitFeedback
   { _transactionSubmitFeedback_sendStatus :: Dynamic t Status
   , _transactionSubmitFeedback_listenStatus :: Dynamic t Status
-  , _transactionSubmitFeedback_message :: Dynamic t (Maybe (Either PactError PactValue))
+  , _transactionSubmitFeedback_message :: Dynamic t (Maybe (Either NetworkError PactValue))
   }
 
 submitTransactionWithFeedback
@@ -249,16 +249,24 @@ submitTransactionWithFeedback cmd chain nodeInfos = do
           liftIO $ putStrLn $ "deploySubmit: Failed to parse chainUrl: " <> URI.renderStr chainUrl
           pure Nothing
         Just baseUrl -> pure $ Just $ S.mkClientEnv baseUrl
-  let doReqFailover [] _ = pure Nothing
-      doReqFailover (c:cs) request = S.runClientM request c >>= \case
-        Left e -> do
-          liftIO $ putStrLn $ "doReqFailover: " <> show e
-          doReqFailover cs request
-        Right r -> pure $ Just r
-      newTriggerHold a = do
-        (e, t) <- newTriggerEvent
-        s <- holdDyn a e
-        pure (s, liftIO . t)
+  let
+    newTriggerHold a = do
+      (e, t) <- newTriggerEvent
+      s <- holdDyn a e
+      pure (s, liftIO . t)
+
+    --TODO: Require `NonEmpty S.ClientEnv`
+    doReqFailover :: [S.ClientEnv] -> S.ClientM a -> JSM (Maybe (Either [S.ClientError] a))
+    doReqFailover cs' request = for (toList <$> nonEmpty cs') (go [])
+      where
+        go errs = \case
+          [] -> pure $ Left errs
+          (c:cs) -> S.runClientM request c >>= \case
+            Left e -> do
+              liftIO $ putStrLn $ "doReqFailover: " <> show e
+              go (e:errs) cs
+            Right r -> pure $ Right r
+
   -- These maintain the UI state for each step and are updated as responses come in
   (sendStatus, send) <- newTriggerHold Status_Waiting
   (listenStatus, listen) <- newTriggerHold Status_Waiting
@@ -281,18 +289,22 @@ submitTransactionWithFeedback cmd chain nodeInfos = do
         -- Wait for the result
         doReqFailover clientEnvs (Api.listen Api.apiV1Client $ Api.ListenerRequest requestKey) >>= \case
           Nothing -> listen Status_Failed
-          Just (Api.ListenTimeout _i) -> listen Status_Failed
-          Just (Api.ListenResponse commandResult) -> case (Pact._crTxId commandResult, Pact._crResult commandResult) of
-            -- We should always have a txId when we have a result
-            (Just _txId, Pact.PactResult (Right a)) -> do
-              listen Status_Done
-              setMessage $ Just $ Right a
-              -- TODO wait for confirmation...
-            (_, Pact.PactResult (Left err)) -> do
+          Just res -> case res of
+            Left errs -> do
               listen Status_Failed
-              setMessage $ Just $ Left err
-            -- This case shouldn't happen
-            _ -> listen Status_Failed
+              for_ (nonEmpty errs) $ setMessage . Just . Left . packHttpErr . NEL.last
+            Right (Api.ListenTimeout _i) -> listen Status_Failed
+            Right (Api.ListenResponse commandResult) -> case (Pact._crTxId commandResult, Pact._crResult commandResult) of
+              -- We should always have a txId when we have a result
+              (Just _txId, Pact.PactResult (Right a)) -> do
+                listen Status_Done
+                setMessage $ Just $ Right a
+                -- TODO wait for confirmation...
+              (_, Pact.PactResult (Left err)) -> do
+                listen Status_Failed
+                setMessage $ Just $ Left $ NetworkError_CommandFailure err
+              -- This case shouldn't happen
+              _ -> listen Status_Failed
 
   -- Send the transaction
   pb <- getPostBuild
@@ -300,9 +312,13 @@ submitTransactionWithFeedback cmd chain nodeInfos = do
     send Status_Working
     doReqFailover clientEnvs (Api.send Api.apiV1Client $ Api.SubmitBatch $ pure cmd) >>= \case
       Nothing -> send Status_Failed
-      Just (Api.RequestKeys (requestKey :| _)) -> do
-        send Status_Done
-        liftIO $ cb requestKey
+      Just res -> case res of
+        Left x -> do
+          send Status_Failed
+          for_ (nonEmpty x) $ setMessage . Just . Left . packHttpErr . NEL.last
+        Right (Api.RequestKeys (requestKey :| _)) -> do
+          send Status_Done
+          liftIO $ cb requestKey
   performEvent_ $ liftJSM . forkListen <$> onRequestKey
   requestKey <- holdDyn Nothing $ Just <$> onRequestKey
 
@@ -323,6 +339,6 @@ submitTransactionWithFeedback cmd chain nodeInfos = do
   divClass "group" $ do
     maybeDyn message >>= \md -> dyn_ $ ffor md $ \case
       Nothing -> text "Waiting for response..."
-      Just a -> dynText $ prettyPrintNetworkErrorResult . either (This . pure . (Nothing,) .  NetworkError_CommandFailure) (That . (Nothing,)) <$> a
+      Just a -> dynText $ prettyPrintNetworkErrorResult . either (This . pure . (Nothing,)) (That . (Nothing,)) <$> a
 
   pure $ TransactionSubmitFeedback sendStatus listenStatus message
