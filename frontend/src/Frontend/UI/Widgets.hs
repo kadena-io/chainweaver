@@ -99,10 +99,28 @@ uiCheckbox
   -> m (Checkbox t)
 uiCheckbox cls b cfg c =
   elKlass "label" (cls <> "label checkbox checkbox_type_secondary") $ do
-    cb <- checkbox b $ cfg
+    cb <- checkbox' b $ cfg
     elClass "span" "checkbox__checkmark checkbox__checkmark_type_secondary" blank
     c
     pure cb
+
+-- | Create an editable checkbox
+--   Note: if the "type" or "checked" attributes are provided as attributes, they will be ignored
+{-# INLINABLE checkbox' #-}
+checkbox' :: (DomBuilder t m, PostBuild t m) => Bool -> CheckboxConfig t -> m (Checkbox t)
+checkbox' checked config = do
+  let permanentAttrs = "type" =: "checkbox"
+      dAttrs = Map.delete "checked" . Map.union permanentAttrs <$> _checkboxConfig_attributes config
+  modifyAttrs <- dynamicAttributesToModifyAttributes dAttrs
+  i <- inputElement $ def
+    & inputElementConfig_initialChecked .~ checked
+    & inputElementConfig_setChecked .~ _checkboxConfig_setValue config
+    & inputElementConfig_elementConfig . elementConfig_initialAttributes .~ Map.mapKeys (AttributeName Nothing) permanentAttrs
+    & inputElementConfig_elementConfig . elementConfig_modifyAttributes .~ fmap mapKeysToAttributeName modifyAttrs
+  return $ Checkbox
+    { _checkbox_value = _inputElement_checked i
+    , _checkbox_change = _inputElement_checkedChange i
+    }
 
 -- | A segment.
 --
