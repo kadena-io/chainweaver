@@ -41,6 +41,7 @@ module Frontend.Network
   , module Frontend.Network.NodeInfo
     -- * Creation
   , makeNetwork
+  , packHttpErr
     -- * Perform requests
   , performLocalReadCustom
   , performLocalRead
@@ -160,8 +161,6 @@ data NetworkError
   -- ^ Server responded with a 200 status code, but decoding the response failed.
   | NetworkError_ReqTooLarge
   -- ^ Request size exceeded the allowed limit.
-  | NetworkError_ClientError S.ClientError
-  -- ^ Error at servant layer
   | NetworkError_CommandFailure PactError
   -- ^ The status in the /listen result object was `failure`.
   | NetworkError_NoNetwork Text
@@ -881,15 +880,6 @@ networkRequest baseUri endpoint cmd = do
     runReq :: S.ClientEnv -> S.ClientM a -> ExceptT NetworkError JSM a
     runReq env = reThrowWith packHttpErr . flip S.runClientM env
 
-    packHttpErr :: S.ClientError -> NetworkError
-    packHttpErr e = case e of
-      S.FailureResponse _ response ->
-        if S.responseStatusCode response == HTTP.status413
-           then NetworkError_ReqTooLarge
-           else NetworkError_Status (S.responseStatusCode response) (T.pack $ show response)
-      S.ConnectionError t -> NetworkError_NetworkError (tshow t)
-      _ -> NetworkError_Decoding $ T.pack $ show e
-
     fromCommandResult :: MonadError NetworkError m => CommandResult a -> m (Maybe Gas, PactValue)
     fromCommandResult r = case _crResult r of
       PactResult (Left e) -> throwError $ NetworkError_CommandFailure e
@@ -900,6 +890,15 @@ networkRequest baseUri endpoint cmd = do
       case _rkRequestKeys r of
         key :| [] -> pure key
         _         -> throwError $ NetworkError_Other "Response contained more than one RequestKey."
+
+packHttpErr :: S.ClientError -> NetworkError
+packHttpErr e = case e of
+  S.FailureResponse _ response ->
+    if S.responseStatusCode response == HTTP.status413
+       then NetworkError_ReqTooLarge
+       else NetworkError_Status (S.responseStatusCode response) (tshow $ S.responseBody response)
+  S.ConnectionError t -> NetworkError_NetworkError (tshow t)
+  _ -> NetworkError_Decoding $ T.pack $ show e
 
 
 -- Request building ....
@@ -1020,14 +1019,6 @@ prettyPrintNetworkError = \case
   NetworkError_Status c msg -> "Error HTTP response (" <> tshow c <> "):" <> msg
   NetworkError_Decoding msg -> "Decoding server response failed: " <> msg
   NetworkError_ReqTooLarge -> "Request exceeded the allowed maximum size!"
-  NetworkError_ClientError e -> case e of
-    S.FailureResponse _req res -> case T.decodeUtf8' (view strict $ S.responseBody res) of
-      Left _err -> "Unknown error: decoding failed"
-      Right txt -> txt
-    S.DecodeFailure _ _ -> "Unknown error: decoding failed"
-    S.UnsupportedContentType mediaType _res -> "Response has unsupported content-type: " <> tshow mediaType
-    S.InvalidContentTypeHeader _res -> "Response has invalid content-type "
-    S.ConnectionError exception -> "No response. Error connecting: " <> tshow exception
   NetworkError_CommandFailure e -> tshow e
   NetworkError_NoNetwork t -> "An action requiring a network was about to be performed, but we don't (yet) have any selected network: '" <> t <> "'"
   NetworkError_Other m -> m

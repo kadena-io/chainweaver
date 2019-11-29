@@ -292,7 +292,7 @@ submitTransactionWithFeedback cmd chain nodeInfos = do
           Just res -> case res of
             Left errs -> do
               listen Status_Failed
-              for_ (nonEmpty errs) $ setMessage . Just . Left . NetworkError_ClientError . NEL.last
+              for_ (nonEmpty errs) $ setMessage . Just . Left . packHttpErr . NEL.last
             Right (Api.ListenTimeout _i) -> listen Status_Failed
             Right (Api.ListenResponse commandResult) -> case (Pact._crTxId commandResult, Pact._crResult commandResult) of
               -- We should always have a txId when we have a result
@@ -315,7 +315,7 @@ submitTransactionWithFeedback cmd chain nodeInfos = do
       Just res -> case res of
         Left x -> do
           send Status_Failed
-          for_ (nonEmpty x) $ setMessage . Just . Left . NetworkError_ClientError . NEL.last
+          for_ (nonEmpty x) $ setMessage . Just . Left . packHttpErr . NEL.last
         Right (Api.RequestKeys (requestKey :| _)) -> do
           send Status_Done
           liftIO $ cb requestKey
