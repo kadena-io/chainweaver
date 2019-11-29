@@ -80,7 +80,6 @@ void resizeWindow(int minWidth, int minHeight) {
   [[NSOperationQueue mainQueue] addOperationWithBlock:^(void) {
     NSApplication *application = [NSApplication sharedApplication];
     NSWindow *window = [application mainWindow];
-    [window setContentMinSize: NSMakeSize(minWidth, minHeight)]; //doesn't seem to change size per-se, only affects resizes
     [window setContentSize: NSMakeSize(minWidth, minHeight)];
     [window center];
   }];
