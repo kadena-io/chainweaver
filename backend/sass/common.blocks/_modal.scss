@@ -275,3 +275,24 @@
   margin-top: $normal-margin;
   margin-bottom: $normal-margin;
 }
+
+.cross-chain-transfer-msg {
+  margin-top: -15px;
+  height: 1.5em;
+  overflow: hidden;
+  cursor: pointer;
+  padding: 0.4em;
+  border-radius: $std-border-radius;
+
+  &.cross-chain-transfer-msg__expanded {
+    position: absolute;
+    height: auto;
+    z-index: 10;
+    background-color: #FAFAFA;
+  }
+}
+
+
+.cross-chain-transfer-retry {
+  margin-top: 1em;
+}
