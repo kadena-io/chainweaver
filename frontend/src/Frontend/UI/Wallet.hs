@@ -172,7 +172,7 @@ uiKeyItems model = do
       -- AccountDialog_Delete -> uiDeleteConfirmation i (_account_name a)
       AccountDialog_Details -> uiAccountDetails i a
       AccountDialog_Receive -> uiReceiveModal model a
-      AccountDialog_Send -> uiSendModal model a
+      AccountDialog_Send -> uiSendModal model i a
 
   refresh <- delay 1 =<< getPostBuild
 
@@ -207,8 +207,7 @@ uiKeyItem model i d = do
             td $ dynText $ _account_notes <$> account
             td $ dynText $ ffor account $ \a -> case _account_balance a of
               Nothing -> "Unknown"
-              Just b -> tshow (unAccountBalance b) <> " KDA"
-
+              Just b -> tshow (unAccountBalance b) <> " KDA" <> maybe "" (const "*") (_account_unfinishedCrossChainTransfer a)
             td $ divClass "wallet__table-buttons" $ do
               let cfg = def
                     & uiButtonCfg_class <>~ "wallet__table-button"
