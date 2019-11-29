@@ -598,8 +598,9 @@ uiMetaData m mTTL mGasLimit = do
       gasPriceInputBox
         :: Event t Text
         -> InputElementConfig EventResult t (DomBuilderSpace m)
-        -> m (Dynamic t (Maybe GasPrice), Event t GasPrice)
-      gasPriceInputBox setExternal conf = fmap snd $ dimensionalInputWrapper "KDA" $ uiRealWithPrecisionInputElement maxCoinPrecision (GasPrice . ParsedDecimal) $ conf
+        -> m (Event t GasPrice)
+      gasPriceInputBox setExternal conf = fmap (view _3) $ dimensionalInputWrapper "KDA" $
+       uiNonnegativeRealWithPrecisionInputElement maxCoinPrecision (GasPrice . ParsedDecimal) $ conf
         & initialAttributes %~ addToClassAttr "input-units"
         & inputElementConfig_initialValue .~ showGasPrice defaultTransactionGasPrice
         & inputElementConfig_setValue .~ leftmost
@@ -611,7 +612,7 @@ uiMetaData m mTTL mGasLimit = do
     onGasPrice <- mdo
       tsEl <- mkLabeledClsInput True "Transaction Speed" (txnSpeedSliderEl setPrice)
       let setSpeed = fmapMaybe (fmap scaleTxnSpeedToGP . parseGasPrice) $ _inputElement_input tsEl
-      (_gpValue, gpInput) <- mkLabeledInput True "Gas Price" (gasPriceInputBox $ fmap showGasPrice setSpeed) def
+      gpInput <- mkLabeledInput True "Gas Price" (gasPriceInputBox $ fmap showGasPrice setSpeed) def
       let setPrice = fmap (showGasPrice . scaleGPtoTxnSpeed) gpInput
       pure $ leftmost [gpInput, setSpeed]
 
@@ -623,18 +624,17 @@ uiMetaData m mTTL mGasLimit = do
     let
       mkGasLimitInput
         :: InputElementConfig EventResult t (DomBuilderSpace m)
-        -> m (InputElement EventResult (DomBuilderSpace m) t)
-      mkGasLimitInput conf = dimensionalInputWrapper "Units" $ uiIntInputElement $ conf
+        -> m (Event t Integer)
+      mkGasLimitInput conf = dimensionalInputWrapper "Units" $ fmap snd $ uiIntInputElement (Just 0) (Just chainwebGasLimit) $ conf
         & inputElementConfig_initialValue .~ showGasLimit initGasLimit
         & inputElementConfig_setValue .~ fmap showGasLimit pbGasLimit
         & inputElementConfig_elementConfig . elementConfig_eventSpec %~ preventScrollWheelAndUpDownArrow @m
 
-    onGasLimitTxt <- fmap _inputElement_input $ mkLabeledInput True "Gas Limit" mkGasLimitInput def
-    let onGasLimit = fmapMaybe (readPact (GasLimit . ParsedInteger)) onGasLimitTxt
+    onGasLimit <- (fmap . fmap) (GasLimit . ParsedInteger) $ mkLabeledInput True "Gas Limit" mkGasLimitInput def
 
     gasLimit <- holdDyn initGasLimit $ leftmost [onGasLimit, pbGasLimit]
 
-    let mkTransactionFee c = fmap fst $ dimensionalInputWrapper "KDA" $ uiRealWithPrecisionInputElement maxCoinPrecision id $ c
+    let mkTransactionFee c = fmap (view _1) $ dimensionalInputWrapper "KDA" $ uiNonnegativeRealWithPrecisionInputElement maxCoinPrecision id $ c
           & initialAttributes %~ Map.insert "disabled" ""
     _ <- mkLabeledInputView True "Max Transaction Fee"  mkTransactionFee $
       ffor (m ^. network_meta) $ \pm -> showGasPrice $ fromIntegral (_pmGasLimit pm) * _pmGasPrice pm
@@ -642,7 +642,7 @@ uiMetaData m mTTL mGasLimit = do
     pbTTL <- case mTTL of
       Just _ -> pure never
       Nothing -> tag (current $ fmap _pmTTL $ m ^. network_meta) <$> getPostBuild
-    let secondsInDay :: Int = 60 * 60 * 24
+    let secondsInDay = 60 * 60 * 24
         initTTL = fromMaybe defaultTransactionTTL mTTL
         ttlInput cls = elKlass "div" cls $ mdo
           let conf = def
@@ -651,14 +651,16 @@ uiMetaData m mTTL mGasLimit = do
                 & inputElementConfig_initialValue .~ showTtl initTTL
           sliderEl <- uiSlider "" (text "1 second") (text "1 day") $ conf
             & inputElementConfig_setValue .~ _inputElement_input inputEl
-          inputEl <- dimensionalInputWrapper "Seconds" $ uiIntInputElement $ conf
+          (inputEl, inputEv) <- dimensionalInputWrapper "Seconds" $ uiIntInputElement (Just 0) (Just secondsInDay) $ conf
             & inputElementConfig_setValue .~ _inputElement_input sliderEl
-          pure $ leftmost [_inputElement_input inputEl, _inputElement_input sliderEl]
+          pure $ leftmost
+            [ TTLSeconds . ParsedInteger <$> inputEv
+            , fmapMaybe (readPact (TTLSeconds . ParsedInteger)) $ _inputElement_input sliderEl
+            ]
 
     horizontalDashedSeparator
 
-    onTtlTxt <- mkLabeledClsInput True "Request Expires" ttlInput
-    let onTTL = fmapMaybe (readPact (TTLSeconds . ParsedInteger)) onTtlTxt
+    onTTL <- mkLabeledClsInput True "Request Expires" ttlInput
     ttl <- holdDyn initTTL $ leftmost [onTTL, pbTTL]
 
     pure

@@ -22,6 +22,7 @@ module Common.Foundation
   , makePactPrisms
     -- * Helpers that should really not be here
   , tshow
+  , tread
   , prettyTextCompact
   , prettyTextPretty
   , note
@@ -60,6 +61,7 @@ import qualified Data.Text.Prettyprint.Doc             as Pretty (defaultLayoutO
                                                                   layoutPretty)
 import qualified Data.Text.Prettyprint.Doc.Render.Text as Pretty
 import qualified Pact.Types.Pretty                     as Pretty
+import           Text.Read                             as T
 
 
 -- | Aeson encoding options for compact encoding.
@@ -88,6 +90,9 @@ compactEncoding = defaultOptions
 
 tshow :: Show a => a -> Text
 tshow = T.pack . show
+
+tread :: Read a => Text -> Maybe a
+tread = T.readMaybe . T.unpack
 
 prettyTextCompact :: Pretty.Pretty a => a -> Text
 prettyTextCompact = Pretty.renderStrict . Pretty.layoutCompact . Pretty.pretty
@@ -137,4 +142,3 @@ makePactLensesNonClassy =
 --   Currently this is just standard `makePrisms`
 makePactPrisms :: Name -> DecsQ
 makePactPrisms = makePrisms
-
