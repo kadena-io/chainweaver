@@ -61,7 +61,7 @@ module Frontend.UI.DeploymentSettings
   , Identity (runIdentity)
   ) where
 
-import Control.Applicative ((<|>))
+import Control.Applicative ((<|>),liftA2)
 import Control.Arrow (first, (&&&))
 import Control.Error (fmapL, hoistMaybe, headMay)
 import Control.Error.Util (hush)
@@ -767,7 +767,7 @@ uiSignerList
   -> m (Dynamic t (Set AccountName))
 uiSignerList m chainId = do
   let textAccounts = mkChainTextAccounts m chainId
-  divClass "title" $ text "Signing Accounts"
+  divClass "title" $ text "Unrestricted Signing Accounts"
   eSwitchSigners <- divClass "group signing-ui-signers" $
     dyn $ ffor textAccounts $ \case
       Left e -> do
@@ -864,7 +864,7 @@ capabilityInputRows
   :: forall t m. MonadWidget t m
   => Event t ()  -- Add new row
   -> m (Dynamic t (Maybe AccountName))
-  -> m (Dynamic t (Map AccountName [SigCapability]))
+  -> m (Dynamic t (Map AccountName [SigCapability]), Dynamic t Int)
 capabilityInputRows addNew mkSender = do
   rec
     (im0, im') <- traverseIntMapWithKeyWithAdjust (\_ _ -> capabilityInputRow Nothing mkSender) IM.empty $ leftmost
@@ -883,8 +883,9 @@ capabilityInputRows addNew mkSender = do
           (ffilter (either (const False) isGas) . updated $ _capabilityInputRow_cap row)
         deletions = switch . current $ IM.foldMapWithKey decideDeletions <$> results
 
-  pure $
-    fmap (Map.unionsWith (<>) . IM.elems) $ traverse _capabilityInputRow_value =<< results
+  pure ( fmap (Map.unionsWith (<>) . IM.elems) $ traverse _capabilityInputRow_value =<< results
+       , fmap length results
+       )
 
 -- | Widget for selection of sender and signing keys.
 uiSenderCapabilities
@@ -921,15 +922,18 @@ uiSenderCapabilities m cid mCaps mkSender = do
 
   -- Capabilities
   (mGasAcct, capabilities) <- divClass "group" $ mdo
-    (mGasAcct', capabilities') <- elAttr "table" ("class" =: "table" <> "style" =: "width: 100%; table-layout: fixed;") $ case mCaps of
+    (mGasAcct', capabilities', rowCount) <- elAttr "table" ("class" =: "table" <> "style" =: "width: 100%; table-layout: fixed;") $ case mCaps of
       Nothing -> do
         el "thead" $ el "tr" $ do
           elClass "th" "table__heading table__cell_padded" $ text "Capability"
           elClass "th" "table__heading table__cell_padded" $ text "Account"
         el "tbody" $ do
-          gas <- capabilityInputRow (Just defaultGASCapability) mkSender
-          rest <- capabilityInputRows eAddCap (senderDropdown (Just <$> eApplyToAll))
-          pure (_capabilityInputRow_account gas, combineMaps [(_capabilityInputRow_value gas), rest])
+          gas<- capabilityInputRow (Just defaultGASCapability) mkSender
+          (rest, restCount) <- capabilityInputRows eAddCap (senderDropdown (Just <$> eApplyToAll))
+          pure ( _capabilityInputRow_account gas
+               , combineMaps [(_capabilityInputRow_value gas), rest]
+               , fmap (1+) restCount
+               )
       Just caps -> do
         el "thead" $ el "tr" $ do
           elClass "th" "table__heading" $ text "Role"
@@ -938,17 +942,24 @@ uiSenderCapabilities m cid mCaps mkSender = do
         el "tbody" $ do
           gas <- staticCapabilityRow mkSender defaultGASCapability
           rest <- staticCapabilityRows (Just <$> eApplyToAll) $ filter (not . isGas . _dappCap_cap) caps
-          pure (_capabilityInputRow_account gas, combineMaps [(_capabilityInputRow_value gas),rest])
+          pure ( _capabilityInputRow_account gas
+               , combineMaps [(_capabilityInputRow_value gas),rest]
+               , constDyn 0
+               )
 
-    -- If the gas capability is set, we enable the button that will set every other capability's sender from
-    -- the gas account.
-    eClickApplyToAll <- divClass "grant-capabilities-apply-all-wrapper" $ uiButtonDyn
-      (btnCfgSecondary
-        & uiButtonCfg_disabled .~ (isNothing <$> mGasAcct')
-        & uiButtonCfg_class .~ (constDyn $ "grant-capabilities-apply-all")
-      )
-      (text "Apply to all")
-    let eApplyToAll = fmapMaybe id $ current mGasAcct' <@ eClickApplyToAll
+    -- If the gas capability is set, we enable the button that will set every other
+    -- capability's sender from the gas account.
+    eApplyToAllClick <- (switchHold never =<<) $ dyn $ ffor rowCount $ \n ->
+      if n > 1 then divClass "grant-capabilities-apply-all-wrapper" $ uiButtonDyn
+        (btnCfgSecondary
+          & uiButtonCfg_disabled .~ (isNothing <$> mGasAcct')
+          & uiButtonCfg_class .~ (constDyn $ "grant-capabilities-apply-all")
+        )
+        (text "Apply gas payer to all")
+      else
+        pure never
+
+    let eApplyToAll = fmapMaybe id $ current mGasAcct' <@ eApplyToAllClick
 
     pure (mGasAcct', capabilities')
 
