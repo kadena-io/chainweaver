@@ -35,6 +35,7 @@ library
     , obelisk-frontend
     , obelisk-generated-static
     , obelisk-route
+    , pact
     , process
     , raw-strings-qq
     , reflex
