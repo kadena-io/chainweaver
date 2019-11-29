@@ -10,7 +10,7 @@ module Frontend.UI.Dialogs.Receive
   ) where
 
 import Control.Applicative (liftA2)
-import Control.Lens ((^.), (<>~), _1, _2, _3)
+import Control.Lens ((^.), (<>~), _1, _2, _3, view)
 import Control.Monad (void, (<=<))
 import Control.Error (hush, headMay)
 
@@ -108,8 +108,8 @@ uiReceiveFromLegacyAccount model = do
 
   chain <- divClass "account-details__receive-from-chain" $ userChainIdSelect model
 
-  amount <- fst . snd <$> mkLabeledInput True "Amount"
-    (uiRealWithPrecisionInputElement maxCoinPrecision id) def
+  amount <- view _2 <$> mkLabeledInput True "Amount"
+    (uiNonnegativeRealWithPrecisionInputElement maxCoinPrecision id) def
 
   pure $ (\macc mc mamnt mkeypair -> LegacyTransferInfo <$> macc <*> mc <*> mamnt <*> mkeypair)
     <$> mAccountName
