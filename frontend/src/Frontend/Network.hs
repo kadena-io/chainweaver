@@ -17,6 +17,8 @@
 {-# LANGUAGE TupleSections #-}
 {-# LANGUAGE TypeFamilies #-}
 
+{-# LANGUAGE DataKinds #-}
+
 -- | Interface for accessing Pact networks (pact -s, chainweb, kadena).
 --
 --   The module offers the possibility of selecting a particular network and
@@ -51,6 +53,7 @@ module Frontend.Network
   , prettyPrintNetworkErrors
   , networkErrorResultToEither
   , buildCmd
+  , buildCmdWithPactKey
   , mkSimpleReadReq
   , getNetworkNameAndMeta
     -- * Defaults
@@ -906,8 +909,7 @@ networkRequest baseUri endpoint cmd = do
 --
 -- As specified <https://pact-language.readthedocs.io/en/latest/pact-reference.html#send here>.
 buildCmd
-  :: ( MonadIO m
-     , MonadJSM m
+  :: ( MonadJSM m
      , HasCrypto key m
      )
   => Maybe Text
@@ -927,27 +929,98 @@ buildCmd
   -> Map PublicKey [SigCapability]
   -- ^ Capabilities for each public key
   -> m (Command Text)
-buildCmd mNonce networkName meta signingKeys extraKeys code dat caps = do
+buildCmd =
+  buildCmdWithSigs (buildSigs Nothing)
+
+buildCmdWithPactKey
+  :: ( MonadJSM m
+     , HasCrypto key m
+     )
+  => PactKey
+  -- ^ Extra signing key using legacy ED255219 pact key.
+  -> Maybe Text
+  -- ^ Nonce. When missing, uses the current time.
+  -> NetworkName
+  -- ^ The network that we are targeting
+  -> PublicMeta
+  -- ^ Assorted information for the payload. The time is overridden.
+  -> [KeyPair key]
+  -- ^ Keys which we are signing with
+  -> [PublicKey]
+  -- ^ Keys which should be added to `signers`, but not used to sign
+  -> Text
+  -- ^ Code
+  -> Object
+  -- ^ Data object
+  -> Map PublicKey [SigCapability]
+  -- ^ Capabilities for each public key
+  -> m (Command Text)
+buildCmdWithPactKey pactKey =
+  buildCmdWithSigs (buildSigsWithPactKey pactKey)
+
+-- | Build a single cmd as expected in the `cmds` array of the /send payload.
+--
+-- As specified <https://pact-language.readthedocs.io/en/latest/pact-reference.html#send here>.
+buildCmdWithSigs
+  :: ( MonadIO m
+     , MonadJSM m
+     , HasCrypto key m
+     )
+  => (forall h. HasCrypto key m => TypedHash h -> [KeyPair key] -> m [UserSig])
+  -- ^ Function for generating our signatures
+  -> Maybe Text
+  -- ^ Nonce. When missing, uses the current time.
+  -> NetworkName
+  -- ^ The network that we are targeting
+  -> PublicMeta
+  -- ^ Assorted information for the payload. The time is overridden.
+  -> [KeyPair key]
+  -- ^ Keys which we are signing with
+  -> [PublicKey]
+  -- ^ Keys which should be added to `signers`, but not used to sign
+  -> Text
+  -- ^ Code
+  -> Object
+  -- ^ Data object
+  -> Map PublicKey [SigCapability]
+  -- ^ Capabilities for each public key
+  -> m (Command Text)
+buildCmdWithSigs signingFn mNonce networkName meta signingKeys extraKeys code dat caps = do
   cmd <- encodeAsText . encode <$> buildExecPayload mNonce networkName meta signingKeys extraKeys code dat caps
   let
     cmdHashL = hash (T.encodeUtf8 cmd)
-  sigs <- buildSigs cmdHashL signingKeys
+  sigs <- signingFn cmdHashL signingKeys
   pure $ Command
     { _cmdPayload = cmd
     , _cmdSigs = sigs
     , _cmdHash = cmdHashL
     }
 
+buildSigsWithPactKey
+  :: ( MonadJSM m
+     , HasCrypto key m
+     )
+  => PactKey
+  -> TypedHash h
+  -> [KeyPair key]
+  -> m [UserSig]
+buildSigsWithPactKey pk cmdHashL signingPairs = do
+  pactKeySig <- cryptoSignWithPactKey (unHash . toUntypedHash $ cmdHashL) pk
+  buildSigs (Just pactKeySig) cmdHashL signingPairs
 
 -- | Build signatures for a single `cmd`.
-buildSigs :: (MonadJSM m, HasCrypto key m) => TypedHash h -> [KeyPair key] -> m [UserSig]
-buildSigs cmdHashL signingPairs = do
-    let
-      signingKeys = mapMaybe _keyPair_privateKey signingPairs
-
-    sigs <- traverse (cryptoSign (unHash . toUntypedHash $ cmdHashL)) signingKeys
-
-    pure $ map toPactSig sigs
+buildSigs
+  :: ( MonadJSM m
+     , HasCrypto key m
+     )
+  => Maybe Signature
+  -> TypedHash h
+  -> [KeyPair key]
+  -> m [UserSig]
+buildSigs mSig cmdHashL signingPairs = do
+  let signingKeys = mapMaybe _keyPair_privateKey signingPairs
+  sigs <- traverse (cryptoSign (unHash . toUntypedHash $ cmdHashL)) signingKeys
+  pure $ map toPactSig (maybe sigs (:sigs) mSig)
   where
     toPactSig :: Signature -> UserSig
     toPactSig sig = UserSig $ keyToText sig

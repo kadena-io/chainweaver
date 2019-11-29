@@ -33,7 +33,6 @@ import           Frontend.UI.Widgets
 import           Frontend.UI.Widgets.AccountName (uiAccountNameInput)
 
 import           Frontend.Crypto.Class                  (HasCrypto,
-                                                         GenKeyArg(GenWalletIndex),
                                                          cryptoGenKey)
 import           Frontend.Crypto.Ed25519                (keyToText)
 import           Frontend.Ide                           (_ide_wallet)
@@ -96,7 +95,7 @@ uiAddVanityAccountSettings ideL mChainId initialNotes = Workflow $ do
     uiAcc = liftA2 (,) (uiAccountNameInput w) (value <$> notesInput)
     uiAccSection = ("Reference Data", uiAcc)
 
-  eKeyPair <- performEvent $ cryptoGenKey . GenWalletIndex <$> current dNextKey <@ pb
+  eKeyPair <- performEvent $ cryptoGenKey <$> current dNextKey <@ pb
   dKeyPair <- holdDyn Nothing $ ffor eKeyPair $ \(pr,pu) -> Just $ KeyPair pu $ Just pr
 
   let includePreviewTab = False

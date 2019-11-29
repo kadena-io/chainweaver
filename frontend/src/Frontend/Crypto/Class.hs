@@ -31,15 +31,23 @@ data PactKey = PactKey
   , _pactKey_secret :: ByteString
   } deriving Show
 
-data GenKeyArg
-  = GenWalletIndex Int
-  | GenFromPactKey PactKey
-
 data Crypto key = Crypto
   { _crypto_sign :: ByteString -> key -> JSM Signature
-  , _crypto_genKey :: GenKeyArg -> JSM (key, PublicKey)
+  , _crypto_genKey :: Int -> JSM (key, PublicKey)
   , _crypto_verifyPactKey :: PPKScheme -> Text -> JSM (Either String PactKey)
+  , _crypto_signWithPactKey :: ByteString -> PactKey -> JSM Signature
   }
+
+cryptoSignWithPactKey
+  :: ( MonadJSM m
+     , HasCrypto key m
+     )
+  => ByteString
+  -> PactKey
+  -> m Signature
+cryptoSignWithPactKey bs key = do
+  crypto <- askCrypto
+  liftJSM $ _crypto_signWithPactKey crypto bs key
 
 cryptoGenPubKeyFromPrivate
   :: ( MonadJSM m
@@ -52,7 +60,7 @@ cryptoGenPubKeyFromPrivate scheme k = do
   crypto <- askCrypto
   liftJSM $ _crypto_verifyPactKey crypto scheme k
 
-cryptoGenKey :: (MonadJSM m, HasCrypto key m) => GenKeyArg -> m (key, PublicKey)
+cryptoGenKey :: (MonadJSM m, HasCrypto key m) => Int -> m (key, PublicKey)
 cryptoGenKey i = do
   crypto <- askCrypto
   liftJSM $ _crypto_genKey crypto i

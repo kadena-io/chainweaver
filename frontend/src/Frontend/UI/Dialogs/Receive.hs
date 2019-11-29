@@ -10,7 +10,7 @@ module Frontend.UI.Dialogs.Receive
   ) where
 
 import Control.Applicative (liftA2)
-import Control.Lens ((^.), (<>~), _1)
+import Control.Lens ((^.), (<>~), _1, _2, _3)
 import Control.Monad (void, (<=<))
 import Control.Error (hush, headMay)
 
@@ -19,7 +19,6 @@ import Data.Either (isLeft,rights)
 import Data.Text (Text)
 import qualified Data.Text as T
 import Data.Decimal (Decimal)
-import Data.Map (Map)
 import qualified Data.Map as Map
 import qualified Data.Aeson as Aeson
 import qualified Data.HashMap.Lazy as HM
@@ -34,12 +33,11 @@ import Pact.Types.ChainId (ChainId(..))
 import Pact.Types.ChainMeta (PublicMeta (..), TTLSeconds)
 import Pact.Types.PactValue (PactValue (..))
 import Pact.Types.Exp (Literal (LString, LDecimal))
-import Pact.Types.Command (Command)
 import Pact.Types.Runtime (GasLimit)
 import qualified Pact.Types.Scheme as PactScheme
 import Language.Javascript.JSaddle.Types (MonadJSM)
 
-import Frontend.Crypto.Class (GenKeyArg (..), HasCrypto, cryptoGenPubKeyFromPrivate, cryptoGenKey)
+import Frontend.Crypto.Class (PactKey (..), HasCrypto, cryptoGenPubKeyFromPrivate)
 import Common.Wallet (parsePublicKey,toPactPublicKey)
 
 import Frontend.Foundation
@@ -56,22 +54,11 @@ import Frontend.UI.Widgets
 import Frontend.UI.Widgets.AccountName (uiAccountNameInput)
 import Frontend.Wallet
 
-data LegacyTransferInfo key = LegacyTransferInfo
+data LegacyTransferInfo = LegacyTransferInfo
   { _legacyTransferInfo_account :: AccountName
   , _legacyTransferInfo_chainId :: ChainId
   , _legacyTransferInfo_amount :: Decimal
-  , _legacyTransferInfo_keyPair :: (key, PublicKey)
-  }
-
-data ReceiveBuildCommandInfo key = ReceiveBuildCommandInfo
-  { _receiveBuildCommandInfo_code :: Text
-  , _receiveBuildCommandInfo_transferInfo :: LegacyTransferInfo key
-  , _receiveBuildCommandInfo_command :: Command Text
-  , _receiveBuildCommandInfo_signingPairs :: [KeyPair key]
-  , _receiveBuildCommandInfo_publicMeta :: PublicMeta
-  , _receiveBuildCommandInfo_capabilities :: [DappCap]
-  , _receiveBuildCommandInfo_assignedCaps :: Map PublicKey [SigCapability]
-  , _receiveBuildCommandInfo_payload :: Aeson.Object
+  , _legacyTransferInfo_pactKey :: PactKey
   }
 
 uiDisplayAddress
@@ -103,7 +90,7 @@ uiReceiveFromLegacyAccount
      , HasCrypto key (Performable m)
      )
   => model
-  -> m (Dynamic t (Maybe (LegacyTransferInfo key)))
+  -> m (Dynamic t (Maybe LegacyTransferInfo))
 uiReceiveFromLegacyAccount model = do
   mAccountName <- uiAccountNameInput (model ^. wallet)
 
@@ -131,9 +118,8 @@ uiReceiveFromLegacyAccount model = do
     <*> keyPair
 
   where
-    deriveKeyPair :: (HasCrypto key m, MonadJSM m) => Text -> m (Either Text (key, PublicKey))
-    deriveKeyPair inp = cryptoGenPubKeyFromPrivate PactScheme.ED25519 inp
-      >>= traverse (cryptoGenKey . GenFromPactKey) . first T.pack
+    deriveKeyPair :: (HasCrypto key m, MonadJSM m) => Text -> m (Either Text PactKey)
+    deriveKeyPair = fmap (first T.pack) . cryptoGenPubKeyFromPrivate PactScheme.ED25519
 
 uiReceiveModal
   :: ( MonadWidget t m
@@ -248,49 +234,26 @@ receiveFromLegacySubmit
   -> TTLSeconds
   -> GasLimit
   -> ([Either a NodeInfo], PublicMeta, NetworkName)
-  -> LegacyTransferInfo key
+  -> LegacyTransferInfo
   -> Workflow t m (mConf, Event t ())
 receiveFromLegacySubmit onClose account chainId ttl gasLimit netInfo transferInfo = Workflow $ do
-  recInfo <- receiveBuildCommand account netInfo ttl gasLimit transferInfo
-  txnSubFeedback <- elClass "div" "modal__main transaction_details" $
-    submitTransactionWithFeedback (_receiveBuildCommandInfo_command recInfo) chainId (netInfo ^. _1)
-
-  let isDisabled = maybe True isLeft <$> _transactionSubmitFeedback_message txnSubFeedback
-
-  done <- modalFooter $ uiButtonDyn
-    (def & uiButtonCfg_class .~ "button_type_confirm" & uiButtonCfg_disabled .~ isDisabled)
-    (text "Done")
-
-  pure
-    ( (mempty, done <> onClose)
-    , never
-    )
-
-receiveBuildCommand
-  :: forall m key a.
-     ( MonadJSM m
-     , HasCrypto key m
-     )
-  => Account key
-  -> ([Either a NodeInfo], PublicMeta, NetworkName)
-  -> TTLSeconds
-  -> GasLimit
-  -> LegacyTransferInfo key
-  -> m (ReceiveBuildCommandInfo key)
-receiveBuildCommand account (_, publicMeta, networkId) ttl gasLimit transferInfo = do
   let
     chain = _legacyTransferInfo_chainId transferInfo
     sender = _legacyTransferInfo_account transferInfo
-    senderPubKey = snd $ _legacyTransferInfo_keyPair transferInfo
-    senderKey = fst $ _legacyTransferInfo_keyPair transferInfo
+    senderKey = _legacyTransferInfo_pactKey transferInfo
+    senderPubKey = _pactKey_publicKey senderKey
     amount = _legacyTransferInfo_amount transferInfo
     accCreated = accountIsCreated account
 
     code = T.unwords $
-      [ "(coin." <> accountCreatedBool "transfer-create" "transfer" accCreated
+      [ "(coin." <> case accCreated of
+          AccountCreated_No -> "transfer-create"
+          AccountCreated_Yes -> "transfer"
       , tshow $ unAccountName $ sender
       , tshow $ unAccountName $ _account_name account
-      , accountCreatedBool "(read-keyset 'key)" mempty accCreated
+      , case accCreated of
+          AccountCreated_No -> "(read-keyset 'key)"
+          AccountCreated_Yes -> mempty
       , tshow amount
       , ")"
       ]
@@ -308,30 +271,42 @@ receiveBuildCommand account (_, publicMeta, networkId) ttl gasLimit transferInfo
         ]
       }
 
-    transferCapability = DappCap
-      { _dappCap_role = "TRANFER"
-      , _dappCap_description = T.empty
-      , _dappCap_cap = transferSigCap
-      }
-
     dat = case accountIsCreated account of
-      (AccountCreated False)
+      AccountCreated_No
         | Right pk <- parsePublicKey (unAccountName $ _account_name account)
         -> HM.singleton "key" $ Aeson.toJSON $ KeySet [toPactPublicKey pk] (Name $ BareName "keys-all" def)
       _ -> mempty
 
-    signingPairs = [KeyPair senderPubKey (Just senderKey)]
-
-    caps = [transferCapability, defaultGASCapability]
-
     pkCaps = Map.singleton senderPubKey [_dappCap_cap defaultGASCapability, transferSigCap]
 
-    pm = publicMeta
+    pm = (netInfo ^. _2)
       { _pmChainId = chain
       , _pmSender = unAccountName sender
       , _pmGasLimit = gasLimit
       , _pmTTL = ttl
       }
 
-  cmd <- buildCmd Nothing networkId pm signingPairs [] code dat pkCaps
-  pure $ ReceiveBuildCommandInfo code transferInfo cmd signingPairs pm caps pkCaps dat
+  cmd <- buildCmdWithPactKey
+    senderKey
+    Nothing
+    (netInfo ^. _3)
+    pm
+    [KeyPair (_pactKey_publicKey senderKey) Nothing]
+    []
+    code
+    dat
+    pkCaps
+
+  txnSubFeedback <- elClass "div" "modal__main transaction_details" $
+    submitTransactionWithFeedback cmd chainId (netInfo ^. _1)
+
+  let isDisabled = maybe True isLeft <$> _transactionSubmitFeedback_message txnSubFeedback
+
+  done <- modalFooter $ uiButtonDyn
+    (def & uiButtonCfg_class .~ "button_type_confirm" & uiButtonCfg_disabled .~ isDisabled)
+    (text "Done")
+
+  pure
+    ( (mempty, done <> onClose)
+    , never
+    )

@@ -47,7 +47,6 @@ module Frontend.Wallet
   , accountToKadenaAddress
   , activeAccountOnNetwork
   , accountIsCreated
-  , accountCreatedBool
   , checkAccountNameValidity
   , snocIntMap
   , findNextKey
@@ -88,7 +87,7 @@ import Frontend.Storage
 import Frontend.Network
 
 accountIsCreated:: Account key -> AccountCreated
-accountIsCreated = AccountCreated . isJust . _account_balance
+accountIsCreated = maybe AccountCreated_No (const AccountCreated_Yes) . _account_balance
 
 accountToKadenaAddress :: Account key -> KadenaAddress
 accountToKadenaAddress a = mkKadenaAddress (accountIsCreated a) (_account_chainId a) (_account_name a)
@@ -228,12 +227,12 @@ makeWallet model conf = do
   where
     createWalletOnlyAccount :: Int -> (NetworkName, ChainId, Text) -> Performable m (Account key)
     createWalletOnlyAccount i (net, c, t) = do
-      (privKey, pubKey) <- cryptoGenKey (GenWalletIndex i)
+      (privKey, pubKey) <- cryptoGenKey i
       pure $ buildAccount (AccountName $ keyToText pubKey) pubKey privKey net c t
 
     createKey :: Int -> (AccountName, NetworkName, ChainId, Text) -> Performable m (Account key)
     createKey i (n, net, c, t) = do
-      (privKey, pubKey) <- cryptoGenKey (GenWalletIndex i)
+      (privKey, pubKey) <- cryptoGenKey i
       pure $ buildAccount n pubKey privKey net c t
 
     buildAccount n pubKey privKey net c t = Account

@@ -125,10 +125,14 @@ sendDeploy
 sendDeploy _model sender gasPayer recipient amount (nodeInfos, publicMeta, networkId) = Workflow $ do
   let recipientCreated = _kadenaAddress_accountCreated recipient
   let code = T.unwords $
-        [ "(coin." <> accountCreatedBool "transfer-create" "transfer" recipientCreated
+        [ "(coin." <> case recipientCreated of
+            AccountCreated_No -> "transfer-create"
+            AccountCreated_Yes -> "transfer"
         , tshow $ unAccountName $ _account_name sender
         , tshow $ unAccountName $ _kadenaAddress_accountName recipient
-        , accountCreatedBool "(read-keyset 'key)" mempty recipientCreated
+        , case recipientCreated of
+            AccountCreated_No -> "(read-keyset 'key)"
+            AccountCreated_Yes -> mempty
         , tshow amount
         , ")"
         ]
@@ -146,7 +150,7 @@ sendDeploy _model sender gasPayer recipient amount (nodeInfos, publicMeta, netwo
           ]
         }
       dat = case _kadenaAddress_accountCreated recipient of
-        (AccountCreated False)
+        AccountCreated_No
           | Right pk <- parsePublicKey (unAccountName $ _kadenaAddress_accountName recipient)
           -> HM.singleton "key" $ Aeson.toJSON $ KeySet [toPactPublicKey pk] (Name $ BareName "keys-all" def)
         _ -> mempty
