@@ -162,6 +162,7 @@ bipWallet appCfg = do
           Just pass -> mapRoutedT (flip runCryptoT $ bipCrypto xprv pass) $ do
             (logout, sidebarLogoutLink) <- mkSidebarLogoutLink
             Frontend.ReplGhcjs.app sidebarLogoutLink appCfg
+            setRoute $ landingPageRoute <$ logout
             pure (never, Nothing <$ logout)
         pure $ Nothing <$ restore
   pure ()
