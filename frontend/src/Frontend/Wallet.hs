@@ -282,7 +282,7 @@ getBalances model accounts = do
     accountBalanceReq acc = "(coin.get-balance " <> tshow (unAccountName acc) <> ")"
     mkReqs :: (NetworkName, PublicMeta) -> Accounts key -> Performable m (IntMap (SomeAccount key, Maybe NetworkRequest))
     mkReqs meta someaccs = for someaccs $ \sa ->
-      fmap (sa,) . traverse (mkReq meta) $ activeAccountOnNetwork (fst meta) sa
+      fmap (sa,) . traverse (mkReq meta) $ someAccount Nothing Just sa
     mkReq (netName, pm) acc = mkSimpleReadReq (accountBalanceReq $ _account_name acc) netName pm (ChainRef Nothing $ _account_chainId acc)
 
 

@@ -109,7 +109,7 @@ uiCheckbox cls b cfg c =
 -- Copied from reflex-dom because CheckboxConfig doesn't expose ElementConfig, and without stopPropagation odd things happen
 -- Several modals which use uiCheckbox strangely trigger `domEvent Click` twice when we click the toggle
 -- and it looks like the second one is propagated all the way to the modal backdrop, dismissing it.
-
+--
 -- | Create an editable checkbox
 --   Note: if the "type" or "checked" attributes are provided as attributes, they will be ignored
 {-# INLINABLE checkbox' #-}
@@ -202,27 +202,41 @@ uiRealInputElement cfg = do
         (<> ("type" =: "number")) . addInputElementCls . addNoAutofillAttrs
 
 uiCorrectingInputElement
-  :: forall t m a er explanation. DomBuilder t m
+  :: forall t m a explanation. DomBuilder t m
   => MonadFix m
   => (Text -> Maybe a)
   -> (a -> Maybe (a, explanation))
+  -> (a -> Maybe (a, explanation))
   -> (a -> Text)
-  -> InputElementConfig er t (DomBuilderSpace m)
-  -> m (InputElement er (DomBuilderSpace m) t, Dynamic t (Maybe a), Event t (a, Maybe explanation))
-uiCorrectingInputElement parse sanitize render cfg = mdo
-  ie <- inputElement $ cfg & inputElementConfig_setValue %~ (\e -> leftmost [attemptCorrection e, forceCorrection inp])
+  -> InputElementConfig EventResult t (DomBuilderSpace m)
+  -> m (InputElement EventResult (DomBuilderSpace m) t, Dynamic t (Maybe a), Event t (a, Maybe explanation))
+uiCorrectingInputElement parse inputSanitize blurSanitize render cfg = mdo
+  ie <- inputElement $ cfg & inputElementConfig_setValue %~ (\e -> leftmost
+      [ attemptCorrection e
+      , forceCorrection inp
+      , blurAttemptCorrection eBlurredVal
+      , blurForceCorrection eBlurredVal
+      ]
+    )
   let
     inp = _inputElement_input ie
     val = value ie
+    eBlurredVal = current val <@ domEvent Blur ie
 
-    sanitization :: Functor f => f Text -> f (Maybe (a, Maybe explanation))
-    sanitization = fmap $ \i -> ffor (parse i) $ \p ->
-      case sanitize p of
+    sanitization :: Functor f => (a -> Maybe (a, explanation)) -> f Text -> f (Maybe (a, Maybe explanation))
+    sanitization f = fmap $ \i -> ffor (parse i) $ \p ->
+      case f p of
         Nothing -> (p, Nothing)
         Just (a, x) -> (a, Just x)
 
+    inputSanitization :: Functor f => f Text -> f (Maybe (a, Maybe explanation))
+    inputSanitization = sanitization inputSanitize
+
+    blurSanitization :: Functor f => f Text -> f (Maybe (a, Maybe explanation))
+    blurSanitization = sanitization blurSanitize
+
     intercept :: ((a, Maybe explanation) -> Bool) -> (Event t Text -> Event t Text)
-    intercept p = fmap render . fmap fst . ffilter p . fmapMaybe id . sanitization
+    intercept p = fmap render . fmap fst . ffilter p . fmapMaybe id . inputSanitization
 
     attemptCorrection :: Event t Text -> Event t Text
     attemptCorrection = intercept (const True)
@@ -230,22 +244,31 @@ uiCorrectingInputElement parse sanitize render cfg = mdo
     forceCorrection :: Event t Text -> Event t Text
     forceCorrection = intercept (isJust . snd)
 
-    -- type inference goes crazy if we inline this - ghc bug?
-    inp' = fmapMaybe id $ sanitization inp
+    blurIntercept :: ((a, Maybe explanation) -> Bool) -> (Event t Text -> Event t Text)
+    blurIntercept p = fmap render . fmap fst . ffilter p . fmapMaybe id . blurSanitization
 
-  pure (ie, (fmap . fmap) fst $ sanitization val, inp')
+    blurAttemptCorrection :: Event t Text -> Event t Text
+    blurAttemptCorrection = blurIntercept (const True)
+
+    blurForceCorrection :: Event t Text -> Event t Text
+    blurForceCorrection = blurIntercept (isJust . snd)
+
+    -- type inference goes crazy if we inline this - ghc bug?
+    inp' = fmapMaybe id $ inputSanitization inp
+
+  pure (ie, (fmap . fmap) fst $ inputSanitization val, inp')
 
 -- | Decimal input to the given precision. Returns the element, the value, and
 -- the user input events
 uiNonnegativeRealWithPrecisionInputElement
-  :: forall t m er a. (DomBuilder t m, MonadFix m, MonadHold t m)
+  :: forall t m a. (DomBuilder t m, MonadFix m, MonadHold t m)
   => Word8
   -> (Decimal -> a)
-  -> InputElementConfig er t (DomBuilderSpace m)
-  -> m (InputElement er (DomBuilderSpace m) t, Dynamic t (Maybe a), Event t a)
+  -> InputElementConfig EventResult t (DomBuilderSpace m)
+  -> m (InputElement EventResult (DomBuilderSpace m) t, Dynamic t (Maybe a), Event t a)
 uiNonnegativeRealWithPrecisionInputElement prec fromDecimal cfg = do
   rec
-    (ie, val, input) <- uiCorrectingInputElement parse sanitize tshow $ cfg
+    (ie, val, input) <- uiCorrectingInputElement parse inputSanitize blurSanitize tshow $ cfg
       & initialAttributes %~ addInputElementCls . addNoAutofillAttrs
         . (<> ("type" =: "number" <> "step" =: stepSize <> "min" =: stepSize))
     widgetHold_ blank $ ffor (fmap snd input) $ traverse_ $
@@ -256,14 +279,18 @@ uiNonnegativeRealWithPrecisionInputElement prec fromDecimal cfg = do
     stepSize = "0." <> T.replicate (fromIntegral prec - 1) "0" <> "1"
     parse = tread
 
-    sanitize :: Decimal -> Maybe (Decimal, Text)
-    sanitize decimal = asum
+    blurSanitize :: Decimal -> Maybe (Decimal, Text)
+    blurSanitize decimal = asum
+      [ (D.roundTo 1 decimal, "")
+        <$ guard (D.decimalPlaces decimal == 0) -- To avoid `: Failure: Type error: expected decimal, found integer`
+      ]
+
+    inputSanitize :: Decimal -> Maybe (Decimal, Text)
+    inputSanitize decimal = asum
       [ (0, "Cannot be negative")
         <$ guard (decimal < 0)
       , (D.roundTo prec decimal, ("Rounded to " <> tshow prec <> " places"))
         <$ guard (D.decimalPlaces decimal > prec)
-      , (D.roundTo 1 decimal, "")
-        <$ guard (D.decimalPlaces decimal == 0) -- To avoid `: Failure: Type error: expected decimal, found integer`
       ]
 
 -- TODO: correct floating point decimals
@@ -272,10 +299,10 @@ uiIntInputElement
   => MonadFix m
   => Maybe Integer
   -> Maybe Integer
-  -> InputElementConfig er t (DomBuilderSpace m)
-  -> m (InputElement er (DomBuilderSpace m) t, Event t Integer)
+  -> InputElementConfig EventResult t (DomBuilderSpace m)
+  -> m (InputElement EventResult (DomBuilderSpace m) t, Event t Integer)
 uiIntInputElement mmin mmax cfg = do
-    (r, _, input) <- uiCorrectingInputElement (tread . fixNum) sanitize tshow $ cfg & initialAttributes %~
+    (r, _, input) <- uiCorrectingInputElement (tread . fixNum) sanitize (const Nothing) tshow $ cfg & initialAttributes %~
       ((<> numberAttrs) . addInputElementCls . addNoAutofillAttrs)
 
     pure (r
