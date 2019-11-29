@@ -320,7 +320,7 @@ submitTransactionWithFeedback cmd chain nodeInfos = do
     throttledReload <- throttle 2 reload
     performEvent_ $ attachWithMaybe (\k _ -> liftJSM . forkListen <$> k) (current requestKey) throttledReload
   divClass "title" $ text "Transaction Result"
-  divClass "group" $ el "pre" $ do
+  divClass "group" $ do
     maybeDyn message >>= \md -> dyn_ $ ffor md $ \case
       Nothing -> text "Waiting for response..."
       Just a -> dynText $ prettyPrintNetworkErrorResult . either (This . pure . (Nothing,) .  NetworkError_CommandFailure) (That . (Nothing,)) <$> a
