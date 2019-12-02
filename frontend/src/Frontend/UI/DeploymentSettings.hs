@@ -389,7 +389,6 @@ uiDeploymentSettings m settings = mdo
 
       when (_deploymentSettingsConfig_includePreviewTab settings) $ tabPane mempty curSelection DeploymentSettingsView_Preview $ do
         let currentNode = headMay . rights <$> (m ^. network_selectedNodes)
-
             mNetworkId = (hush . mkNetworkName . nodeVersion =<<) <$> currentNode
 
             mHeadAccount = fmap _account_name . findFirstVanityAccount <$> (m ^. wallet_accounts)
@@ -398,18 +397,22 @@ uiDeploymentSettings m settings = mdo
             aSender = (<|>) <$> mSender <*> mHeadAccount
             aChainId = (<|>) <$> cChainId <*> mHeadChain
 
-        dyn_ $ uiDeployPreview m settings
-          <$> (m ^. wallet_accounts)
-          <*> signers
-          <*> gasLimit
-          <*> ttl
-          <*> code
-          <*> (m ^. network_meta)
-          <*> capabilities
-          <*> (m ^. jsonData . jsonData_data)
-          <*> mNetworkId
-          <*> aChainId
-          <*> aSender
+            preVIEW = uiDeployPreview m settings
+              <$> (m ^. wallet_accounts)
+              <*> signers
+              <*> gasLimit
+              <*> ttl
+              <*> code
+              <*> (m ^. network_meta)
+              <*> capabilities
+              <*> (m ^. jsonData . jsonData_data)
+              <*> mNetworkId
+              <*> aChainId
+              <*> aSender
+
+        dyn_ $ join $ ffor curSelection $ \case
+          DeploymentSettingsView_Preview -> preVIEW
+          _ -> constDyn blank
 
       pure
         ( cfg & networkCfg_setSender .~ fmapMaybe (fmap unAccountName) (updated mSender)
@@ -1013,6 +1016,7 @@ uiDeployPreview _ _ _ _ _ _ _ _ _ _ _ Nothing _ = text "Please select a Chain."
 uiDeployPreview _ _ _ _ _ _ _ _ _ _ Nothing _ _ = text "No network nodes configured."
 uiDeployPreview model settings accounts signers gasLimit ttl code lastPublicMeta capabilities jData (Just networkId) (Just chainId) (Just sender) = do
   pb <- getPostBuild
+
   let deploySettingsJsonData = fromMaybe mempty $ _deploymentSettingsConfig_data settings
       jsonData0 = fromMaybe mempty $ hush jData
       signing = signers <> (Set.insert sender $ Map.keysSet capabilities)
@@ -1030,7 +1034,7 @@ uiDeployPreview model settings accounts signers gasLimit ttl code lastPublicMeta
       extraSigners = _deploymentSettingsConfig_extraSigners settings
       jsondata = HM.union jsonData0 deploySettingsJsonData
 
-  eCmds <- performEvent $ ffor pb $ \_ -> do
+  eCmds <- performEvent $ ffor (traceEvent "pb" pb) $ \_ -> do
     c <- buildCmd nonce networkId publicMeta signingPairs extraSigners code jsondata pkCaps
     wc <- for (wrapWithBalanceChecks signing code) $ \wrappedCode -> do
       buildCmd nonce networkId publicMeta signingPairs extraSigners wrappedCode jsondata pkCaps
