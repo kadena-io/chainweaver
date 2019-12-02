@@ -14,6 +14,8 @@ module Frontend.UI.Widgets
   ( -- * Standard widgets for chainweaver
     -- ** Buttons
     module Frontend.UI.Button
+  -- ** Single Purpose Widgets
+  , uiGasPriceInputField
   -- ** Other widgets
   , uiSegment
   , uiGroup
@@ -77,11 +79,16 @@ import           Reflex.Dom.Contrib.CssClass
 import           Reflex.Dom.Core
 import           Reflex.Extended             (tagOnPostBuild)
 ------------------------------------------------------------------------------
+import Pact.Types.Runtime (GasPrice (..))
+import Pact.Parse (ParsedDecimal (..))
+------------------------------------------------------------------------------
+import           Frontend.Network (maxCoinPrecision)
 import           Frontend.Foundation
 import           Frontend.UI.Button
 import           Frontend.UI.Widgets.Helpers (imgWithAlt, makeClickable,
                                               setFocus, setFocusOn,
                                               setFocusOnSelected, tabPane,
+                                              preventScrollWheelAndUpDownArrow,
                                               tabPane')
 ------------------------------------------------------------------------------
 
@@ -622,3 +629,19 @@ dimensionalInputWrapper :: DomBuilder t m => Text -> m a -> m a
 dimensionalInputWrapper units inp = divClass "dimensional-input-wrapper" $ do
   divClass "dimensional-input-wrapper__units" $ text units
   inp
+
+uiGasPriceInputField
+  :: forall m t.
+     ( DomBuilder t m
+     , MonadFix m
+     , MonadHold t m
+     )
+  => InputElementConfig EventResult t (DomBuilderSpace m)
+  -> m ( InputElement EventResult (DomBuilderSpace m) t
+       , Dynamic t (Maybe GasPrice)
+       , Event t GasPrice
+       )
+uiGasPriceInputField conf = dimensionalInputWrapper "KDA" $
+ uiNonnegativeRealWithPrecisionInputElement maxCoinPrecision (GasPrice . ParsedDecimal) $ conf
+  & initialAttributes %~ addToClassAttr "input-units"
+  & inputElementConfig_elementConfig . elementConfig_eventSpec %~ preventScrollWheelAndUpDownArrow @m

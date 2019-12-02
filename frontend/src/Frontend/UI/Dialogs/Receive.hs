@@ -18,7 +18,6 @@ import Data.Bifunctor (first)
 import Data.Either (isLeft,rights)
 import Data.Text (Text)
 import qualified Data.Text as T
-import Data.Decimal (Decimal)
 import qualified Data.Map as Map
 import qualified Data.Aeson as Aeson
 import qualified Data.HashMap.Lazy as HM
@@ -33,8 +32,10 @@ import Pact.Types.ChainId (ChainId(..))
 import Pact.Types.ChainMeta (PublicMeta (..), TTLSeconds)
 import Pact.Types.PactValue (PactValue (..))
 import Pact.Types.Exp (Literal (LString, LDecimal))
-import Pact.Types.Runtime (GasLimit)
+import Pact.Types.Runtime (GasLimit, GasPrice (..))
+import Pact.Parse (ParsedDecimal (..))
 import qualified Pact.Types.Scheme as PactScheme
+
 import Language.Javascript.JSaddle.Types (MonadJSM)
 
 import Frontend.Crypto.Class (PactKey (..), HasCrypto, cryptoGenPubKeyFromPrivate)
@@ -57,7 +58,7 @@ import Frontend.Wallet
 data LegacyTransferInfo = LegacyTransferInfo
   { _legacyTransferInfo_account :: AccountName
   , _legacyTransferInfo_chainId :: ChainId
-  , _legacyTransferInfo_amount :: Decimal
+  , _legacyTransferInfo_amount :: GasPrice
   , _legacyTransferInfo_pactKey :: PactKey
   }
 
@@ -108,8 +109,8 @@ uiReceiveFromLegacyAccount model = do
 
   chain <- divClass "account-details__receive-from-chain" $ userChainIdSelect model
 
-  amount <- view _2 <$> mkLabeledInput True "Amount"
-    (uiNonnegativeRealWithPrecisionInputElement maxCoinPrecision id) def
+  amount <- view _2 <$> mkLabeledInput True "Amount" uiGasPriceInputField def
+    -- (uiNonnegativeRealWithPrecisionInputElement maxCoinPrecision id) def
 
   pure $ (\macc mc mamnt mkeypair -> LegacyTransferInfo <$> macc <*> mc <*> mamnt <*> mkeypair)
     <$> mAccountName
@@ -245,6 +246,8 @@ receiveFromLegacySubmit onClose account chainId ttl gasLimit netInfo transferInf
     amount = _legacyTransferInfo_amount transferInfo
     accCreated = accountIsCreated account
 
+    unpackGasPrice (GasPrice (ParsedDecimal d)) = d
+
     code = T.unwords $
       [ "(coin." <> case accCreated of
           AccountCreated_No -> "transfer-create"
@@ -267,7 +270,7 @@ receiveFromLegacySubmit onClose account chainId ttl gasLimit netInfo transferInf
       , _scArgs =
         [ PLiteral $ LString $ unAccountName sender
         , PLiteral $ LString $ unAccountName $ _account_name account
-        , PLiteral $ LDecimal amount
+        , PLiteral $ LDecimal (unpackGasPrice amount)
         ]
       }
 

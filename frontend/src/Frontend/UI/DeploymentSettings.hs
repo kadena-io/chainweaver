@@ -599,15 +599,13 @@ uiMetaData m mTTL mGasLimit = do
         :: Event t Text
         -> InputElementConfig EventResult t (DomBuilderSpace m)
         -> m (Event t GasPrice)
-      gasPriceInputBox setExternal conf = fmap (view _3) $ dimensionalInputWrapper "KDA" $
-       uiNonnegativeRealWithPrecisionInputElement maxCoinPrecision (GasPrice . ParsedDecimal) $ conf
+      gasPriceInputBox setExternal conf = fmap (view _3) $ uiGasPriceInputField $ conf
         & initialAttributes %~ addToClassAttr "input-units"
         & inputElementConfig_initialValue .~ showGasPrice defaultTransactionGasPrice
         & inputElementConfig_setValue .~ leftmost
           [ setExternal
           , showGasPrice <$> pbGasPrice -- Initial value (from storage)
           ]
-        & inputElementConfig_elementConfig . elementConfig_eventSpec %~ preventScrollWheelAndUpDownArrow @m
 
     onGasPrice <- mdo
       tsEl <- mkLabeledClsInput True "Transaction Speed" (txnSpeedSliderEl setPrice)
