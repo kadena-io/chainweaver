@@ -234,7 +234,10 @@ lockScreen xprv = setupDiv "fullscreen" $ divClass "wrapper" $ setupDiv "splash"
     -- Event handled by form onSubmit
     void $ confirmButton (def & uiButtonCfg_type ?~ "submit") "Unlock"
     setupDiv "button-horizontal-group" $ do
-      elAttr "a" ("class" =: "button button_type_secondary" <> "href" =: "https://www.kadena.io/chainweaver-support") $ do
+      elAttr "a" ( "class" =: "button button_type_secondary" <>
+                   "href" =: "https://www.kadena.io/chainweaver-support" <>
+                   "target" =: "_blank"
+                 ) $ do
         elAttr "img" ("src" =: static @"img/launch_dark.svg" <> "class" =: "button__text-icon") blank
         text "Help"
       restore' <- uiButton btnCfgSecondary $ text "Restore"
