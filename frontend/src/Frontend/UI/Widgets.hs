@@ -284,7 +284,12 @@ uiNonnegativeRealWithPrecisionInputElement prec fromDecimal cfg = do
 
   where
     stepSize = "0." <> T.replicate (fromIntegral prec - 1) "0" <> "1"
-    parse = tread
+    -- parse = tread
+    parse t = tread $
+      if "." `T.isPrefixOf` t && not (T.any (== '.') $ T.tail t) then
+        T.cons '0' t
+      else
+        t
 
     blurSanitize :: Decimal -> Maybe (Decimal, Text)
     blurSanitize decimal = asum
