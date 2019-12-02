@@ -632,8 +632,9 @@ uiMetaData m mTTL mGasLimit = do
 
     gasLimit <- holdDyn initGasLimit $ leftmost [onGasLimit, pbGasLimit]
 
-    let mkTransactionFee c = fmap (view _1) $ dimensionalInputWrapper "KDA" $ uiNonnegativeRealWithPrecisionInputElement maxCoinPrecision id $ c
+    let mkTransactionFee c = fmap (view _1) $ uiGasPriceInputField $ c
           & initialAttributes %~ Map.insert "disabled" ""
+
     _ <- mkLabeledInputView True "Max Transaction Fee"  mkTransactionFee $
       ffor (m ^. network_meta) $ \pm -> showGasPrice $ fromIntegral (_pmGasLimit pm) * _pmGasPrice pm
 
