@@ -267,7 +267,7 @@ sendConfig model fromIndex fromAccount = Workflow $ do
         divClass "group" $ transactionDisplayNetwork model
         elClass "h2" "heading heading_type_h2" $ text "Recipient"
         recipient <- divClass "group" $ do
-          kad <- mkLabeledInput True "Address" uiInputElement def
+          kad <- mkLabeledInput True "Kadena Address" uiInputElement def
           let decoded = decodeKadenaAddressText <$> value kad
           (_, amount, _) <- mkLabeledInput True "Amount"
             (dimensionalInputWrapper "KDA" . uiNonnegativeRealWithPrecisionInputElement maxCoinPrecision id) def
