@@ -200,7 +200,7 @@ in obApp // rec {
 
     mv "$tmpdir/${macAppName}.dmg" .
     # Quarantine it (uncomment for testing app quarantining)
-    # xattr -w com.apple.quarantine "00a3;5d4331e1;Safari;1AE3D17F-B83D-4ADA-94EA-219A44467959" ${macAppName}.dmg
+    # xattr -w com.apple.quarantine "00a3;5d4331e1;Safari;1AE3D17F-B83D-4ADA-94EA-219A44467959" "${macAppName}.dmg"
   '';
 
   server = args@{ hostName, adminEmail, routeHost, enableHttps, version }:
