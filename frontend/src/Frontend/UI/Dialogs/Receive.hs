@@ -93,7 +93,7 @@ uiReceiveFromLegacyAccount
   => model
   -> m (Dynamic t (Maybe LegacyTransferInfo))
 uiReceiveFromLegacyAccount model = do
-  mAccountName <- uiAccountNameInput (model ^. wallet)
+  mAccountName <- uiAccountNameInput (model ^. wallet) (pure Nothing)
 
   onKeyPair <- divClass "account-details__private-key" $
     _inputElement_input <$> mkLabeledInput True "Private Key" uiInputElement def

@@ -92,8 +92,6 @@ uiAddVanityAccountSettings ideL mChainId initialNotes = Workflow $ do
                 & initialAttributes .~ "class" =: (renderClass cls)
                 & inputElementConfig_setValue .~ (current initialNotes <@ pb)
 
-    uiAcc = liftA2 (,) (uiAccountNameInput w) (value <$> notesInput)
-    uiAccSection = ("Reference Data", uiAcc)
 
   eKeyPair <- performEvent $ cryptoGenKey <$> current dNextKey <@ pb
   dKeyPair <- holdDyn Nothing $ ffor eKeyPair $ \(pr,pu) -> Just $ KeyPair pu $ Just pr
@@ -102,9 +100,12 @@ uiAddVanityAccountSettings ideL mChainId initialNotes = Workflow $ do
       customConfigTab = Nothing
 
   rec
+    let
+      uiAcc = liftA2 (,) (uiAccountNameInput w selChain) (value <$> notesInput)
+      uiAccSection = ("Reference Data", uiAcc)
     (curSelection, eNewAccount, _) <- buildDeployTabs customConfigTab includePreviewTab controls
 
-    (conf, result, dAccount) <- elClass "div" "modal__main transaction_details" $ do
+    (conf, result, dAccount, selChain) <- elClass "div" "modal__main transaction_details" $ do
       (cfg, cChainId, ttl, gasLimit, Identity (dAccountName, dNotes)) <- tabPane mempty curSelection DeploymentSettingsView_Cfg $
         -- Is passing around 'Maybe x' everywhere really a good way of doing this ?
         uiCfg Nothing ideL (userChainIdSelectWithPreselect ideL mChainId) Nothing (Just defaultTransactionGasLimit) (Identity uiAccSection)
@@ -143,6 +144,7 @@ uiAddVanityAccountSettings ideL mChainId initialNotes = Workflow $ do
         ( cfg & networkCfg_setSender .~ fmapMaybe (fmap unAccountName) (updated mSender)
         , fmap mkSettings dPayload >>= buildDeploymentSettingsResult ideL mSender signers cChainId capabilities ttl gasLimit code
         , account
+        , cChainId
         )
 
     let preventProgress = (\a r -> isNothing a || isNothing r) <$> dAccount <*> result
