@@ -49,29 +49,28 @@ $kadena-orange: #F3AB3C;
 
   .logo {
     margin: 0 auto;
-    font-size: 28px;
-    line-height: 31px;
+    font-size: 26px;
     position: relative;
     top: 100px;
     background-color: $std-border-color;
-    padding: 27px 12px;
-    width: 220px;
+    width: 181px;
+    height: 181px;
 
     img.setup__kadena-logo {
       width: 74px;
       height: 81px;
+      margin-top: 27px;
     }
 
     .chainweaver {
-      margin-top: 5px;
       font-family: HaasGrotDisp75;
       color: initial;
+      margin-top: 7px;
     }
 
     .by-kadena {
       font-family: HaasGrotDisp45;
-      font-size: 18px;
-      line-height: 24px;
+      font-size: 15px;
       color: $tertiary-color;
     }
   }
