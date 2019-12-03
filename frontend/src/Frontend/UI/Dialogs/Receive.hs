@@ -110,7 +110,6 @@ uiReceiveFromLegacyAccount model = do
   chain <- divClass "account-details__receive-from-chain" $ userChainIdSelect model
 
   amount <- view _2 <$> mkLabeledInput True "Amount" uiGasPriceInputField def
-    -- (uiNonnegativeRealWithPrecisionInputElement maxCoinPrecision id) def
 
   pure $ (\macc mc mamnt mkeypair -> LegacyTransferInfo <$> macc <*> mc <*> mamnt <*> mkeypair)
     <$> mAccountName
