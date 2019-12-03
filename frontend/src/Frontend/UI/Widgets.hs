@@ -79,7 +79,7 @@ import           Reflex.Extended             (tagOnPostBuild)
 ------------------------------------------------------------------------------
 import           Frontend.Foundation
 import           Frontend.UI.Button
-import           Frontend.UI.Widgets.Helpers (imgWithAlt, makeClickable,
+import           Frontend.UI.Widgets.Helpers (imgWithAlt, imgWithAltCls, makeClickable,
                                               setFocus, setFocusOn,
                                               setFocusOnSelected, tabPane,
                                               tabPane')
@@ -141,7 +141,7 @@ uiSegment cls = elKlass "div" (cls <> "segment")
 uiGroup :: DomBuilder t m => CssClass -> m a -> m a
 uiGroup cls = elKlass "div" (cls <> "group")
 
--- | The header element of a groupl
+-- | The header element of a group
 uiGroupHeader :: DomBuilder t m => CssClass -> m a -> m a
 uiGroupHeader cls = elKlass "div" (cls <> "group__header")
 
@@ -169,6 +169,7 @@ uiSelectElement uCfg child = do
 
 uiPassword :: DomBuilder t m => Text -> Text -> Text -> m (InputElement EventResult (DomBuilderSpace m) t)
 uiPassword wrapperCls inputCls ph = elClass "span" wrapperCls $ do
+  imgWithAltCls "setup__password-wrapper-lock" (static @"img/lock-dark.svg") "Password" blank
   uiInputElement $ def & initialAttributes .~ mconcat
     [ "type" =: "password"
     , "placeholder" =: ph
