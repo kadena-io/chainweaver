@@ -199,8 +199,9 @@ in obApp // rec {
     /usr/bin/codesign --sign "$signer" "$tmpdir/${macAppName}.dmg"
 
     mv "$tmpdir/${macAppName}.dmg" .
-    # Quarantine it (uncomment for testing app quarantining)
-    # xattr -w com.apple.quarantine "00a3;5d4331e1;Safari;1AE3D17F-B83D-4ADA-94EA-219A44467959" "${macAppName}.dmg"
+
+    # Quarantine it for reproducibility (otherwise can cause unexpected 'app is damaged' errors when automatically applied to downloaded .dmg files)
+    xattr -w com.apple.quarantine "00a3;5d4331e1;Safari;1AE3D17F-B83D-4ADA-94EA-219A44467959" "${macAppName}.dmg"
   '';
 
   server = args@{ hostName, adminEmail, routeHost, enableHttps, version }:
