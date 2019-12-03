@@ -10,7 +10,7 @@
 -- | Wallet setup screens
 module Desktop.Setup (runSetup, form, kadenaWalletLogo, setupDiv, setupClass) where
 
-import Control.Lens ((<>~), (%~))
+import Control.Lens ((<>~), (%~), (?~))
 import Control.Error (hush)
 import Control.Applicative (liftA2)
 import Control.Monad (unless,void)
@@ -476,7 +476,7 @@ createNewPassphrase eBack dPassword mnemonicSentence = Workflow $ mdo
         >>= holdDyn (mkPhraseMapFromMnemonic mnemonicSentence)
 
       eCopyClick <- elClass "div" (setupClass "recovery-phrase-copy") $ do
-        uiButton def $ elClass "span" (setupClass "recovery-phrase-copy-word") $ do
+        uiButton (def & uiButtonCfg_type ?~ "button") $ elClass "span" (setupClass "recovery-phrase-copy-word") $ do
           imgWithAlt (static @"img/copy.svg") "Copy" blank
           text "Copy"
           elDynClass "i" ("fa setup__copy-status " <> dCopySuccess) blank
