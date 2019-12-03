@@ -397,7 +397,7 @@ uiDeploymentSettings m settings = mdo
             aSender = (<|>) <$> mSender <*> mHeadAccount
             aChainId = (<|>) <$> cChainId <*> mHeadChain
 
-            preVIEW = uiDeployPreview m settings
+            uiPreviewPane = uiDeployPreview m settings
               <$> (m ^. wallet_accounts)
               <*> signers
               <*> gasLimit
@@ -410,8 +410,8 @@ uiDeploymentSettings m settings = mdo
               <*> aChainId
               <*> aSender
 
-        dyn_ $ join $ ffor curSelection $ \case
-          DeploymentSettingsView_Preview -> preVIEW
+        dyn_ $ curSelection >>= \case
+          DeploymentSettingsView_Preview -> uiPreviewPane
           _ -> constDyn blank
 
       pure
@@ -1034,7 +1034,7 @@ uiDeployPreview model settings accounts signers gasLimit ttl code lastPublicMeta
       extraSigners = _deploymentSettingsConfig_extraSigners settings
       jsondata = HM.union jsonData0 deploySettingsJsonData
 
-  eCmds <- performEvent $ ffor (traceEvent "pb" pb) $ \_ -> do
+  eCmds <- performEvent $ ffor pb $ \_ -> do
     c <- buildCmd nonce networkId publicMeta signingPairs extraSigners code jsondata pkCaps
     wc <- for (wrapWithBalanceChecks signing code) $ \wrappedCode -> do
       buildCmd nonce networkId publicMeta signingPairs extraSigners wrappedCode jsondata pkCaps
