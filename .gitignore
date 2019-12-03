@@ -12,3 +12,4 @@ pact-log
 /.ghc*
 /*/dist
 ui-styling/node_modules
+*.dmg
