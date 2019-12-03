@@ -961,7 +961,7 @@ uiSenderCapabilities m cid mCaps mkSender = do
           rest <- staticCapabilityRows (Just <$> eApplyToAll) $ filter (not . isGas . _dappCap_cap) caps
           pure ( _capabilityInputRow_account gas
                , combineMaps [(_capabilityInputRow_value gas),rest]
-               , constDyn 0
+               , constDyn (1 {- Gas payer -} + length caps)
                )
 
     -- If the gas capability is set, we enable the button that will set every other
