@@ -104,17 +104,22 @@ textTo = fromString . T.unpack
 tshow :: Show a => a -> Text
 tshow = T.pack . show
 
--- | Form wrapper which will automatically handle submit on enter so long as you have
--- a submit button in the form. Please track this submit event instead of a button click
--- as it is very easy to put the button outside of the form and break enter handling.
--- This way, both will work or both will be broken (if there is no button in the form)
-form :: forall t m a. DomBuilder t m => Text -> m a -> m (Event t (), a)
-form c w = do
+-- | Form wrapper which will automatically add a submit button to the form to handle submit on enter.
+form :: forall t m a. DomBuilder t m => m () -> m a -> m (Event t (), a)
+form btn fields = do
   let cfg = (def :: ElementConfig EventResult t (DomBuilderSpace m))
         & elementConfig_eventSpec %~ addEventSpecFlags (Proxy :: Proxy (DomBuilderSpace m)) Submit (\_ -> preventDefault)
-        & elementConfig_initialAttributes .~ ("class" =: c)
-  (elt, a) <- element "form" cfg w
+  (elt, a) <- element "form" cfg $ fields <* btn
   pure (domEvent Submit elt, a)
+
+setupForm :: forall t m a. (DomBuilder t m, PostBuild t m) => Text -> Text -> Dynamic t Bool -> m a -> m (Event t (), a)
+setupForm cls lbl disabled = form $ setupDiv cls $ void $ confirmButton (def & uiButtonCfg_disabled .~ disabled) lbl
+
+restoreForm :: (DomBuilder t m, PostBuild t m) => Dynamic t Bool -> m a -> m (Event t (), a)
+restoreForm = setupForm "recover-restore-button" "Restore"
+
+continueForm :: (DomBuilder t m, PostBuild t m) => Dynamic t Bool -> m a -> m (Event t (), a)
+continueForm = setupForm "continue-button" "Continue"
 
 -- | Wallet logo
 kadenaWalletLogo :: DomBuilder t m => m ()
@@ -284,14 +289,10 @@ recoverWallet eBack = Workflow $ do
         text "Waiting for a valid 12 word passphrase..."
         pure never
 
-      withSeedConfirmPassword seed = setupDiv "recover-enter-password" $ do
-        (ePwSubmit, dSetPw) <- form "" $ do
-          eSetPw <- setPassword (pure seed)
-          dSetPw' <- holdDyn Nothing eSetPw
-          -- Event handled by form onSubmit
-          void $ setupDiv "recover-restore-button" $
-            confirmButton (def & uiButtonCfg_disabled .~ (fmap isNothing dSetPw')) "Restore"
-          pure dSetPw'
+      withSeedConfirmPassword seed = setupDiv "recover-enter-password" $ mdo
+        (ePwSubmit, dSetPw) <- restoreForm (fmap isNothing dSetPw) $ do
+          holdDyn Nothing =<< setPassword (pure seed)
+
         pure $ tagMaybe (current dSetPw) ePwSubmit
 
   dSetPassword <- widgetHold waitingForPhrase $
@@ -357,14 +358,6 @@ passphraseWidget dWords dStage = do
   setupDiv "passphrase-widget-wrapper" $
     listViewWithKey dWords (passphraseWordElement dStage)
 
-continueButton
-  :: (DomBuilder t m, PostBuild t m)
-  => Dynamic t Bool
-  -> m (Event t ())
-continueButton isDisabled =
-  setupDiv "continue-button" $
-    confirmButton (def & uiButtonCfg_disabled .~ isDisabled) "Continue"
-
 createNewWallet
   :: forall t m. (DomBuilder t m, MonadFix m, MonadHold t m, MonadIO m, PerformEvent t m, PostBuild t m, MonadJSM (Performable m), TriggerEvent t m)
   => Event t () -> SetupWF t m
@@ -385,13 +378,9 @@ createNewWallet eBack = Workflow $  do
       pure never
 
     proceed :: Crypto.MnemonicSentence 12 -> m (Event t (SetupWF t m))
-    proceed mnem = do
-      (ePwSubmit, dPassword) <- form "" $ do
-        eSetPw' <- setPassword (pure $ sentenceToSeed mnem)
-        dPassword' <- holdDyn Nothing eSetPw'
-        -- Event handled by form onSubmit
-        void $ continueButton (fmap isNothing dPassword')
-        pure dPassword'
+    proceed mnem = mdo
+      (ePwSubmit, dPassword) <- continueForm (fmap isNothing dPassword) $ do
+        holdDyn Nothing =<< setPassword (pure $ sentenceToSeed mnem)
       pure $ precreatePassphraseWarning eBack dPassword mnem <$ ePwSubmit
 
   dContinue <- widgetHold generating (proceed <$> eGenSuccess)
@@ -424,26 +413,26 @@ precreatePassphraseWarning
   -> Dynamic t (Maybe Crypto.XPrv)
   -> Crypto.MnemonicSentence 12
   -> SetupWF t m
-precreatePassphraseWarning eBack dPassword mnemonicSentence = Workflow $ do
-  setupDiv "warning-splash" $ do
-    walletSplashWithIcon $ do
-      setupDiv "repeat-icon" $ stackFaIcon "fa-repeat"
+precreatePassphraseWarning eBack dPassword mnemonicSentence = Workflow $ mdo
+  (eContinue, dUnderstand) <- continueForm (fmap not dUnderstand) $ do
 
-  el "h1" $ text "Wallet Recovery Phrase"
+    setupDiv "warning-splash" $ do
+      walletSplashWithIcon $ do
+        setupDiv "repeat-icon" $ stackFaIcon "fa-repeat"
 
-  setupDiv "recovery-phrase-warning" $ do
-    line "In the next step you will record your 12 word recovery phrase."
-    line "Your recovery phrase makes it easy to restore your wallet on a new device."
-    line "Anyone with this phrase can take control your wallet, keep this phrase private."
+    el "h1" $ text "Wallet Recovery Phrase"
 
-  setupDiv "recovery-phrase-highlighted-warning" $
-    line "Kadena cannot access your recovery phrase if lost, please store it safely."
+    setupDiv "recovery-phrase-warning" $ do
+      line "In the next step you will record your 12 word recovery phrase."
+      line "Your recovery phrase makes it easy to restore your wallet on a new device."
+      line "Anyone with this phrase can take control your wallet, keep this phrase private."
 
-  let chkboxcls = setupClass "warning-checkbox " <> setupClass "checkbox-wrapper"
-  dUnderstand <- fmap value $ elClass "div" chkboxcls $ setupCheckbox False def
-    $ text "I understand that if I lose my recovery phrase, I will not be able to restore my wallet."
+    setupDiv "recovery-phrase-highlighted-warning" $
+      line "Kadena cannot access your recovery phrase if lost, please store it safely."
 
-  eContinue <- continueButton (fmap not dUnderstand)
+    let chkboxcls = setupClass "warning-checkbox " <> setupClass "checkbox-wrapper"
+    fmap value $ elClass "div" chkboxcls $ setupCheckbox False def
+      $ text "I understand that if I lose my recovery phrase, I will not be able to restore my wallet."
 
   finishSetupWF WalletScreen_PrePassphrase $ leftmost
     [ createNewWallet eBack <$ eBack
@@ -475,32 +464,31 @@ createNewPassphrase
   -> Dynamic t (Maybe Crypto.XPrv)
   -> Crypto.MnemonicSentence 12
   -> SetupWF t m
-createNewPassphrase eBack dPassword mnemonicSentence = Workflow $ do
-  el "h1" $ text "Record Recovery Phrase"
-  setupDiv "record-phrase-msg" $ do
-    el "div" $ text "Write down or copy these words in the correct order and store them safely."
-    el "div" $ text "The recovery words are hidden for security. Mouseover the numbers to reveal."
+createNewPassphrase eBack dPassword mnemonicSentence = Workflow $ mdo
+  (eContinue, dIsStored) <- continueForm (fmap not dIsStored) $ do
+    el "h1" $ text "Record Recovery Phrase"
+    setupDiv "record-phrase-msg" $ do
+      el "div" $ text "Write down or copy these words in the correct order and store them safely."
+      el "div" $ text "The recovery words are hidden for security. Mouseover the numbers to reveal."
 
-  rec
-    dPassphrase <- passphraseWidget dPassphrase (pure Setup)
-      >>= holdDyn (mkPhraseMapFromMnemonic mnemonicSentence)
+    rec
+      dPassphrase <- passphraseWidget dPassphrase (pure Setup)
+        >>= holdDyn (mkPhraseMapFromMnemonic mnemonicSentence)
 
-    eCopyClick <- elClass "div" (setupClass "recovery-phrase-copy") $ do
-      uiButton def $ elClass "span" (setupClass "recovery-phrase-copy-word") $ do
-        imgWithAlt (static @"img/copy.svg") "Copy" blank
-        text "Copy"
-        elDynClass "i" ("fa setup__copy-status " <> dCopySuccess) blank
+      eCopyClick <- elClass "div" (setupClass "recovery-phrase-copy") $ do
+        uiButton def $ elClass "span" (setupClass "recovery-phrase-copy-word") $ do
+          imgWithAlt (static @"img/copy.svg") "Copy" blank
+          text "Copy"
+          elDynClass "i" ("fa setup__copy-status " <> dCopySuccess) blank
 
-    eCopySuccess <- copyToClipboard $
-      T.unwords . Map.elems <$> current dPassphrase <@ eCopyClick
+      eCopySuccess <- copyToClipboard $
+        T.unwords . Map.elems <$> current dPassphrase <@ eCopyClick
 
-    dCopySuccess <- holdDyn T.empty $
-      (setupClass . bool "copy-fail fa-times" "copy-success fa-check") <$> eCopySuccess
+      dCopySuccess <- holdDyn T.empty $
+        (setupClass . bool "copy-fail fa-times" "copy-success fa-check") <$> eCopySuccess
 
-  dIsStored <- fmap value $ setupDiv "checkbox-wrapper" $ setupCheckbox False def
-    $ text "I have safely stored my recovery phrase."
-
-  eContinue <- continueButton (fmap not dIsStored)
+    fmap value $ setupDiv "checkbox-wrapper" $ setupCheckbox False def
+      $ text "I have safely stored my recovery phrase."
 
   finishSetupWF WalletScreen_CreatePassphrase $ leftmost
     [ createNewWallet eBack <$ eBack
@@ -516,24 +504,23 @@ confirmPhrase
   -> Crypto.MnemonicSentence 12
   -- ^ Mnemonic sentence to confirm
   -> SetupWF t m
-confirmPhrase eBack dPassword mnemonicSentence = Workflow $ do
-  el "h1" $ text "Verify Recovery Phrase"
-  setupDiv "verify-phrase-msg" $ do
-    el "div" $ text "Please confirm your recovery phrase by"
-    el "div" $ text "typing the words in the correct order."
+confirmPhrase eBack dPassword mnemonicSentence = Workflow $ mdo
+  (continue, done) <- continueForm (fmap not done) $ do
+    el "h1" $ text "Verify Recovery Phrase"
+    setupDiv "verify-phrase-msg" $ do
+      el "div" $ text "Please confirm your recovery phrase by"
+      el "div" $ text "typing the words in the correct order."
 
-  let actualMap = mkPhraseMapFromMnemonic mnemonicSentence
+    let actualMap = mkPhraseMapFromMnemonic mnemonicSentence
 
-  rec
-    onPhraseUpdate <- setupDiv "verify-widget-wrapper" $
-      passphraseWidget dConfirmPhrase (pure Recover)
+    rec
+      onPhraseUpdate <- setupDiv "verify-widget-wrapper" $
+        passphraseWidget dConfirmPhrase (pure Recover)
 
-    dConfirmPhrase <- holdDyn (wordsToPhraseMap $ replicate passphraseLen T.empty)
-      $ flip Map.union <$> current dConfirmPhrase <@> onPhraseUpdate
+      dConfirmPhrase <- holdDyn (wordsToPhraseMap $ replicate passphraseLen T.empty)
+        $ flip Map.union <$> current dConfirmPhrase <@> onPhraseUpdate
 
-  let done = (== actualMap) <$> dConfirmPhrase
-
-  continue <- continueButton (fmap not done)
+    pure $ (== actualMap) <$> dConfirmPhrase
 
   finishSetupWF WalletScreen_VerifyPassphrase $ leftmost
     [ doneScreen <$> tagMaybe (current dPassword) continue
