@@ -58,6 +58,7 @@ import qualified Data.IntMap as IntMap
 import qualified Data.List as L
 import qualified Data.Map as Map
 import qualified Data.Text as T
+import qualified Data.Text.IO as T
 import qualified Pact.Server.ApiV1Client as Api
 import qualified Pact.Types.API as Api
 import qualified Pact.Types.Command as Pact
@@ -68,7 +69,6 @@ import qualified Servant.Client.JSaddle as S
 import qualified Text.URI as URI
 
 import Common.Wallet
-import Obelisk.Generated.Static
 import Frontend.Crypto.Class (HasCrypto)
 import Frontend.Foundation hiding (Arg)
 import Frontend.KadenaAddress
@@ -358,7 +358,7 @@ runUnfinishedCrossChainTransfer
   -- ^ Gas payer on "To" chain
   -> Event t Pact.RequestKey
   -- ^ The request key to follow up on
-  -> m (Event t ())
+  -> m (Event t (), Event t Text, Event t ())
 runUnfinishedCrossChainTransfer netInfo fromChain toChain toGasPayer requestKey = mdo
   let nodeInfos = _sharedNetInfo_nodes netInfo
       networkName = _sharedNetInfo_network netInfo
@@ -404,47 +404,28 @@ runUnfinishedCrossChainTransfer netInfo fromChain toChain toGasPayer requestKey 
     , Status_Done <$ resultOk
     ]
 
-  let item ds = elDynAttr "li" (ffor ds $ \s -> "class" =: statusText s)
-  item contStatus $ do
-    el "p" $ text $ "Got continuation response"
-    void $ runWithReplace blank $ ffor contResponse $ \case
-      Left e -> crossChainMessage e
-      Right _ -> blank
-  item spvStatus $ do
-    el "p" $ text "SPV proof retrieved"
-    void $ runWithReplace blank $ ffor spvResponse $ \case
-      Left e -> crossChainMessage e
-      Right _ -> blank
-  item continueStatus $ do
-    el "p" $ text $ "Initiate claiming coin on chain " <> _chainId toChain
-    void $ runWithReplace blank $ ffor continueResponse $ \case
-      Left e -> crossChainMessage e
-      Right _ -> blank
-  item resultStatus $ do
-    el "p" $ text "Coins retrieved on target chain"
-    void $ runWithReplace blank $ ffor resultResponse $ \case
-      Left e -> crossChainMessage e
-      Right () -> blank
+  let item ds txt = elDynAttr "li" (ffor ds $ \s -> "class" =: statusText s) $ el "p" $ text txt
 
-  anyError <- holdUniqDyn $ any (== Status_Failed) <$> sequence [contStatus, spvStatus, continueStatus, resultStatus]
+  item contStatus "Got continuation response"
+  item spvStatus "SPV proof retrieved"
+  item continueStatus $ "Initiate claiming coin on chain " <> _chainId toChain
+  item resultStatus "Coins retrieved on target chain"
+
+  anyError <- holdUniqDyn $ any (== Status_Failed) <$> sequence
+    [ contStatus
+    , spvStatus
+    , continueStatus
+    , resultStatus
+    ]
+
   retry <- switchHold never <=< dyn $ ffor anyError $ \case
     False -> pure never
     True -> uiButton (btnCfgPrimary & uiButtonCfg_class .~ "cross-chain-transfer-retry")  $ text "Retry"
 
-  pure resultOk
-
-crossChainMessage :: (DomBuilder t m, MonadFix m, MonadHold t m, PostBuild t m) => Text -> m ()
-crossChainMessage m = mdo
-  dExpanded <- foldDyn (const not) False (domEvent Click elt)
-  (elt, _) <- elDynClass' "p" (("cross-chain-transfer-msg"<>) . (bool "" " cross-chain-transfer-msg__expanded") <$> dExpanded) $ do
-    elDynAttr "img"
-      ((\expanded ->
-        ("class" =: ("cross-chain-transfer-msg__open"))
-        <> "height" =: "12px"
-        <> ("src" =: bool (static @"img/arrow-right.svg") (static @"img/arrow-down.svg") expanded)) <$> dExpanded)
-      blank
-    elClass "span" "cross-chain-transfer-msg__text" $ text m
-  pure ()
+  pure ( resultOk
+       , leftmost [contError, spvError, continueError, resultError]
+       , retry
+       )
 
 -- | Configuration step before finishing a previously unfinished cross chain
 -- transfer.
@@ -471,7 +452,7 @@ finishCrossChainTransferConfig model fromIndex fromAccount ucct = Workflow $ do
   close <- modalHeader $ text "Cross chain transfer: finish"
   (sender, conf) <- divClass "modal__main" $ do
     el "p" $ text "It looks like you started a cross chain transfer which did not complete correctly."
-    divClass "title" $ text "Transaction Details"
+    elClass "h2" "heading heading_type_h2" $ text "Transaction Details"
     divClass "group" $ do
       mkLabeledInput True "Request Key" uiInputElement $ def
         & initialAttributes .~ "disabled" =: "disabled"
@@ -542,15 +523,28 @@ finishCrossChainTransfer netInfo fromIndex fromAccount ucct toGasPayer = Workflo
       toChain = _unfinishedCrossChainTransfer_recipientChain ucct
       requestKey = _unfinishedCrossChainTransfer_requestKey ucct
   resultOk <- divClass "modal__main" $ do
-    divClass "title" $ text "Transaction Status"
-    divClass "group" $ do
+    elClass "h2" "heading heading_type_h2" $ text "Transaction Status"
+
+    (resultOk0, errMsg, retry) <- divClass "group" $ do
       elClass "ol" "transaction_status" $ do
         let item ds = elDynAttr "li" (ffor ds $ \s -> "class" =: statusText s)
-        item (pure Status_Done) $ do
-          el "p" $ text $ "Cross chain transfer initiated on chain " <> _chainId fromChain
-          el "p" $ crossChainMessage $ "Request key: " <> Pact.requestKeyToB16Text requestKey
+        item (pure Status_Done) $ el "p" $
+          text $ "Cross chain transfer initiated on chain " <> _chainId fromChain
         pb <- getPostBuild
         runUnfinishedCrossChainTransfer netInfo fromChain toChain toGasPayer $ requestKey <$ pb
+
+    elClass "h2" "heading heading_type_h2" $ text "Request Key"
+    divClass "group" $ text $ Pact.requestKeyToB16Text requestKey
+
+    void $ runWithReplace blank $ ffor (leftmost [Just <$> errMsg, Nothing <$ retry]) $ \case
+      Just e -> do
+        elClass "h2" "heading heading_type_h2" $ text "Failure"
+        divClass "group" $ text e
+      Nothing ->
+        blank
+
+    pure resultOk0
+
   (abandon, done) <- modalFooter $ do
     abandon <- uiButton btnCfgSecondary $ text "Abandon Transfer"
     done <- confirmButton def "Done"
@@ -625,17 +619,30 @@ crossChainTransfer netInfo fromIndex fromAccount toAccount fromGasPayer crossCha
     , Status_Done <$ initiatedOk
     ]
   resultOk <- divClass "modal__main" $ do
-    divClass "title" $ text "Transaction Status"
-    divClass "group" $ do
+    elClass "h2" "heading heading_type_h2" $ text "Transaction Status"
+
+    (resultOk0, errMsg0, retry0) <- divClass "group" $ do
       elClass "ol" "transaction_status" $ do
         let item ds = elDynAttr "li" (ffor ds $ \s -> "class" =: statusText s)
-        item initiateStatus $ do
+        item initiateStatus $
           el "p" $ text $ "Cross chain transfer initiated on chain " <> _chainId fromChain
-          void $ runWithReplace blank $ ffor initiated $ crossChainMessage . \case
-            Left e -> e
-            Right rk -> "Request key: " <> Pact.requestKeyToB16Text rk
+
         let toGasPayer = _crossChainData_recipientChainGasPayer crossChainData
         runUnfinishedCrossChainTransfer netInfo fromChain toChain toGasPayer initiatedOk
+
+    elClass "h2" "heading heading_type_h2" $ text "Request Key"
+    divClass "group" $ void $ runWithReplace (text "Loading...") $ ffor initiatedOk $ \rk ->
+      text $ Pact.requestKeyToB16Text rk
+
+    let errMsg = leftmost [keySetError, initiatedError, errMsg0]
+    void $ runWithReplace blank $ ffor (leftmost [Just <$> errMsg, Nothing <$ retry0]) $ \case
+      Just e -> do
+        elClass "h2" "heading heading_type_h2" $ text "Failure"
+        divClass "group" $ text e
+      Nothing -> do
+        blank
+
+    pure resultOk0
   done <- modalFooter $ confirmButton def "Done"
   let mkUCCT requestKey = (fromIndex, Just UnfinishedCrossChainTransfer
         { _unfinishedCrossChainTransfer_requestKey = requestKey
@@ -687,7 +694,7 @@ continueCrossChainTransfer networkName envs publicMeta gasPayer spvOk = performE
   -- We can't do a /local with continuations :(
   liftJSM $ forkJSM $ do
     r <- doReqFailover envs (Api.send Api.apiV1Client $ Api.SubmitBatch $ pure cont) >>= \case
-      Left es -> pure $ Left $ tshow es
+      Left es -> packHttpErrors es
       Right (Api.RequestKeys (requestKey :| _)) -> pure $ Right (Pact._pePactId pe, requestKey)
     liftIO $ cb r
   pure ()
@@ -721,9 +728,7 @@ lookupKeySet networkName envs addr = do
   (result, trigger) <- newTriggerEvent
   liftJSM $ forkJSM $ do
     r <- doReqFailover envs (Api.local Api.apiV1Client cmd) >>= \case
-      Left es -> do
-        liftIO $ print es
-        pure $ Left $ tshow es
+      Left es -> packHttpErrors es
       Right cr -> case Pact._crResult cr of
         Pact.PactResult (Right (PObject (Pact.ObjectMap m)))
           | Just (PGuard (Pact.GKeySet keySet)) <- Map.lookup "guard" m
@@ -775,17 +780,13 @@ initiateCrossChainTransfer networkName envs publicMeta fromAccount fromGasPayer 
   cmd <- buildCmd Nothing networkName pm signingPairs [] code (mkDat rg) capabilities
   liftJSM $ forkJSM $ do
     r <- doReqFailover envs (Api.local Api.apiV1Client cmd) >>= \case
-      Left es -> do
-          liftIO $ print es
-          pure $ Left $ tshow es
+      Left es -> packHttpErrors es
       Right cr -> case Pact._crResult cr of
         Pact.PactResult (Left e) -> do
           liftIO $ print e
           pure $ Left $ tshow e
         Pact.PactResult (Right _) -> doReqFailover envs (Api.send Api.apiV1Client $ Api.SubmitBatch $ pure cmd) >>= \case
-          Left es -> do
-            liftIO $ print es
-            pure $ Left $ tshow es
+          Left es -> packHttpErrors es
           Right (Api.RequestKeys (requestKey :| _)) -> pure $ Right requestKey
     liftIO $ cb r
   where
@@ -821,14 +822,21 @@ listenForContinuation
   => [S.ClientEnv] -> Event t Pact.RequestKey -> m (Event t (Either Text (Pact.RequestKey, Pact.PactExec)))
 listenForContinuation envs requestKey = performEventAsync $ ffor requestKey $ \rk cb -> liftJSM $ forkJSM $ do
   r <- doReqFailover envs (Api.listen Api.apiV1Client $ Api.ListenerRequest rk) >>= \case
-    Left es -> do
-      liftIO $ print es
-      pure $ Left $ tshow es
+    Left es -> packHttpErrors es
     Right (Api.ListenResponse cr) -> case Pact._crContinuation cr of
-      Nothing -> pure $ Left "Result was not a continuation"
-      Just pe -> pure $ Right (Pact._crReqKey cr, pe)
+      Nothing ->
+        pure $ Left $ T.unlines ["Result was not a continuation", tshow (Pact._crResult cr)]
+      Just pe ->
+        pure $ Right (Pact._crReqKey cr, pe)
+
     Right (Api.ListenTimeout _) -> pure $ Left "Listen timeout"
   liftIO $ cb r
+
+packHttpErrors :: MonadIO m => [S.ClientError] -> m (Either Text a)
+packHttpErrors es = do
+  let prettyErr = T.unlines $ fmap (tshow . packHttpErr) es
+  liftIO $ T.putStrLn prettyErr
+  pure $ Left prettyErr
 
 -- | Listen to a request key for the second step (redeeming coin on the target
 -- chain).
@@ -839,9 +847,7 @@ listenForSuccess envs e = performEventAsync $ ffor e $ \(PactId pactId, requestK
   -- This string appears in the error if the pact was previously completed
   let completedMsg = "resumePact: pact completed: " <> pactId
   r <- doReqFailover envs (Api.listen Api.apiV1Client $ Api.ListenerRequest requestKey) >>= \case
-    Left es -> do
-      liftIO $ print es
-      pure $ Left $ tshow es
+    Left es -> packHttpErrors es
     Right (Api.ListenResponse cr) -> case Pact._crResult cr of
       Pact.PactResult (Left pe)
         -- There doesn't seem to be a nicer way to do this check
