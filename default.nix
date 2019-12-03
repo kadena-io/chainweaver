@@ -168,6 +168,7 @@ in obApp // rec {
 
     if [ -z "$signer" ]; then
       echo "Error: No Mac Developer certificate found for team id $TEAM_ID" >&2
+      echo "See https://github.com/kadena-io/chainweaver/blob/redesign/README.md#mac-developer-certificate >&2
       exit 1
     fi
 
