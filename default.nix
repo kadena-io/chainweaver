@@ -22,15 +22,13 @@ let
     rev = "395bc0de23cd3499e0c6d0d1bafdbf4b074d5516";
     sha256 = "046x566m352mgr9mh8p8iyhr6b71di10m8f36zibaiixa0ca3cr0";
   };
+
   xcent = builtins.toFile "xcent" (nixpkgs.lib.generators.toPlist {} {
-#    application-identifier = "<team-id/>.${bundleIdentifier}";
-#    "com.apple.developer.team-identifier" = "<team-id/>";
-#    get-task-allow = true;
-#    keychain-access-groups = [ "<team-id/>.${bundleIdentifier}" ];
     "com.apple.security.app-sandbox" = false; # TODO enable this
     "com.apple.security.network.client" = true;
     "com.apple.security.network.server" = true;
   });
+
   plist = pkgs.writeText "plist" ''
     <?xml version="1.0" encoding="UTF-8"?>
     <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
