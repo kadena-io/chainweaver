@@ -104,7 +104,7 @@ textTo = fromString . T.unpack
 tshow :: Show a => a -> Text
 tshow = T.pack . show
 
--- | Form wrapper which will automatically add a submit button to the form to handle submit on enter.
+-- | Produces a form wrapper given a suitable submit button so that the enter key is correctly handled
 form :: forall t m a. DomBuilder t m => m () -> m a -> m (Event t (), a)
 form btn fields = do
   let cfg = (def :: ElementConfig EventResult t (DomBuilderSpace m))
