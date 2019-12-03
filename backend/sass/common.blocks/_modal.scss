@@ -271,6 +271,13 @@
   justify-content: flex-end;
 }
 
+.grant-capabilities-static-row__wrapped-cell {
+  word-break: break-all;
+  overflow: visible !important;
+  text-overflow: unset !important;
+  white-space: pre-wrap !important;
+}
+
 .signing-ui-signers__signer {
   margin-top: $normal-margin;
   margin-bottom: $normal-margin;
