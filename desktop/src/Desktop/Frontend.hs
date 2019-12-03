@@ -219,32 +219,33 @@ mkSidebarLogoutLink = do
     performEvent_ $ liftIO . triggerLogout <$> domEvent Click e
 
 lockScreen :: (DomBuilder t m, PostBuild t m, MonadFix m, MonadHold t m) => Crypto.XPrv -> m (Event t (), Event t (Maybe Text))
-lockScreen xprv = setupDiv "fullscreen" $ divClass "wrapper" $ setupDiv "splash" $ mdo
+lockScreen xprv = setupDiv "fullscreen" $ divClass "wrapper" $ setupDiv "splash" $ do
   elAttr "div"
     (  "style" =: ("background-image: url(" <> (static @"img/Wallet_Graphic_1.png") <> ");")
     <> "class" =: setupClass "splash-bg"
     ) kadenaWalletLogo
-  dValid <- holdDyn True . fmap isJust $ isValid
-  (eSubmit, (restore, pass)) <- setupDiv "splash-terms-buttons" $ form "" $ do
-    elDynClass "div"
-      (("lock-screen__invalid-password" <>) . bool " lock-screen__invalid-password--invalid" "" <$> dValid)
-      (text "Invalid Password")
-    pass' <- uiPassword (setupClass "password-wrapper") (setupClass "password") "Password"
 
-    -- Event handled by form onSubmit
-    void $ confirmButton (def & uiButtonCfg_type ?~ "submit") "Unlock"
-    setupDiv "button-horizontal-group" $ do
+  setupDiv "splash-terms-buttons" $ mdo
+    dValid <- holdDyn True . fmap isJust $ isValid
+
+    let unlock = void $ confirmButton (def & uiButtonCfg_type ?~ "submit") "Unlock"
+    (eSubmit, pass) <- form unlock $ do
+      elDynClass "div"
+        (("lock-screen__invalid-password" <>) . bool " lock-screen__invalid-password--invalid" "" <$> dValid)
+        (text "Invalid Password")
+      uiPassword (setupClass "password-wrapper") (setupClass "password") "Password"
+
+    restore <- setupDiv "button-horizontal-group" $ do
       elAttr "a" ( "class" =: "button button_type_secondary" <>
                    "href" =: "https://www.kadena.io/chainweaver-support" <>
                    "target" =: "_blank"
                  ) $ do
         elAttr "img" ("src" =: static @"img/launch_dark.svg" <> "class" =: "button__text-icon") blank
         text "Help"
-      restore' <- uiButton btnCfgSecondary $ text "Restore"
-      pure (restore', pass')
+      uiButton btnCfgSecondary $ text "Restore"
 
-  let isValid = attachWith (\p _ -> p <$ guard (testKeyPassword xprv p)) (current $ value pass) eSubmit
-  pure (restore, isValid)
+    let isValid = attachWith (\p _ -> p <$ guard (testKeyPassword xprv p)) (current $ value pass) eSubmit
+    pure (restore, isValid)
 
 -- | Check the validity of the password by signing and verifying a message
 testKeyPassword :: Crypto.XPrv -> Text -> Bool
