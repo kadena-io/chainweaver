@@ -626,7 +626,7 @@ uiMetaData m mTTL mGasLimit = do
       mkGasLimitInput
         :: InputElementConfig EventResult t (DomBuilderSpace m)
         -> m (Event t Integer)
-      mkGasLimitInput conf = dimensionalInputWrapper "Units" $ fmap snd $ uiIntInputElement (Just 0) (Just chainwebGasLimit) $ conf
+      mkGasLimitInput conf = dimensionalInputWrapper "Units" $ fmap snd $ uiIntInputElement (Just 0) (Just chainwebGasLimitMaximum) $ conf
         & inputElementConfig_initialValue .~ showGasLimit initGasLimit
         & inputElementConfig_setValue .~ fmap showGasLimit pbGasLimit
         & inputElementConfig_elementConfig . elementConfig_eventSpec %~ preventScrollWheelAndUpDownArrow @m
@@ -682,10 +682,10 @@ uiMetaData m mTTL mGasLimit = do
          in GasPrice $ ParsedDecimal $ roundTo maxCoinPrecision gp
 
       scaleTxnSpeedToGP :: GasPrice -> GasPrice
-      scaleTxnSpeedToGP = shiftGP 1 1001 (1e-12) (1e-8)
+      scaleTxnSpeedToGP = shiftGP 1 1001 (1e-12) (1e-3)
 
       scaleGPtoTxnSpeed :: GasPrice -> GasPrice
-      scaleGPtoTxnSpeed = shiftGP (1e-12) (1e-8) 1 1001
+      scaleGPtoTxnSpeed = shiftGP (1e-12) (1e-3) 1 1001
 
       parseGasPrice :: Text -> Maybe GasPrice
       parseGasPrice t = GasPrice . ParsedDecimal . roundTo maxCoinPrecision <$> readMay (T.unpack t)

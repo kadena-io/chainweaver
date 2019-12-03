@@ -62,7 +62,7 @@ module Frontend.Network
   , getNetworkNameAndMeta
   , getCreationTime
     -- * Defaults
-  , chainwebGasLimit
+  , chainwebGasLimitMaximum
   , defaultTransactionGasLimit
   , defaultTransactionGasPrice
   , maxCoinPrecision
@@ -390,12 +390,11 @@ getSelectedNetworkInfos networkL = do
     errNets <- sample $ current $ networkL ^. network_selectedNodes
     pure $ rights errNets
 
--- This is the minimum precision allowed by the Pact language:
--- https://github.com/kadena-io/chainweb-node/commit/ee8a0db079869b39e23be1ef6737f0a7795eff87#diff-6c59a5fb9f1b0b8b470cb50e8bd643ebR54
 defaultTransactionGasPrice :: GasPrice
-defaultTransactionGasPrice = GasPrice $ ParsedDecimal $ Decimal maxCoinPrecision 1
+defaultTransactionGasPrice = GasPrice $ ParsedDecimal $ Decimal 5 1
 
--- | As defined in the coin contract
+-- | This is the minimum precision allowed by the Pact language, as defined in the coin contract:
+-- https://github.com/kadena-io/chainweb-node/commit/ee8a0db079869b39e23be1ef6737f0a7795eff87#diff-6c59a5fb9f1b0b8b470cb50e8bd643ebR54
 maxCoinPrecision :: Word8
 maxCoinPrecision = 12
 
@@ -403,11 +402,11 @@ defaultTransactionTTL :: TTLSeconds
 defaultTransactionTTL = TTLSeconds (8 * 60 * 60) -- 8 hours
 
 -- Taken from https://github.com/kadena-io/chainweb-node/blob/85688ea0182d1b1ab0d8d784a48b4851a950ec7a/src/Chainweb/Chainweb.hs#L344
-chainwebGasLimit :: Num a => a
-chainwebGasLimit = 1e5
+chainwebGasLimitMaximum :: Num a => a
+chainwebGasLimitMaximum = 1e5
 
 defaultTransactionGasLimit :: GasLimit
-defaultTransactionGasLimit = GasLimit 1e5
+defaultTransactionGasLimit = GasLimit 600
 
 
 buildMeta
