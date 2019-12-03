@@ -599,15 +599,13 @@ uiMetaData m mTTL mGasLimit = do
         :: Event t Text
         -> InputElementConfig EventResult t (DomBuilderSpace m)
         -> m (Event t GasPrice)
-      gasPriceInputBox setExternal conf = fmap (view _3) $ dimensionalInputWrapper "KDA" $
-       uiNonnegativeRealWithPrecisionInputElement maxCoinPrecision (GasPrice . ParsedDecimal) $ conf
+      gasPriceInputBox setExternal conf = fmap (view _3) $ uiGasPriceInputField $ conf
         & initialAttributes %~ addToClassAttr "input-units"
         & inputElementConfig_initialValue .~ showGasPrice defaultTransactionGasPrice
         & inputElementConfig_setValue .~ leftmost
           [ setExternal
           , showGasPrice <$> pbGasPrice -- Initial value (from storage)
           ]
-        & inputElementConfig_elementConfig . elementConfig_eventSpec %~ preventScrollWheelAndUpDownArrow @m
 
     onGasPrice <- mdo
       tsEl <- mkLabeledClsInput True "Transaction Speed" (txnSpeedSliderEl setPrice)
@@ -634,8 +632,9 @@ uiMetaData m mTTL mGasLimit = do
 
     gasLimit <- holdDyn initGasLimit $ leftmost [onGasLimit, pbGasLimit]
 
-    let mkTransactionFee c = fmap (view _1) $ dimensionalInputWrapper "KDA" $ uiNonnegativeRealWithPrecisionInputElement maxCoinPrecision id $ c
+    let mkTransactionFee c = fmap (view _1) $ uiGasPriceInputField $ c
           & initialAttributes %~ Map.insert "disabled" ""
+
     _ <- mkLabeledInputView True "Max Transaction Fee"  mkTransactionFee $
       ffor (m ^. network_meta) $ \pm -> showGasPrice $ fromIntegral (_pmGasLimit pm) * _pmGasPrice pm
 

@@ -45,6 +45,8 @@ import Pact.Types.Exp
 import Pact.Types.PactError
 import Pact.Types.Names
 import Pact.Types.PactValue
+import Pact.Types.Runtime (GasPrice (..))
+import Pact.Parse (ParsedDecimal (..))
 import Pact.Types.RPC
 import Pact.Types.Term
 import Reflex
@@ -113,7 +115,8 @@ data SharedNetInfo a = SharedNetInfo
 
 -- | Preview the transfer. Doesn't actually send any requests.
 previewTransfer
-  :: SendConstraints model mConf key t m
+  :: forall model mConf key t m.
+     SendConstraints model mConf key t m
   => model
   -> IntMap.Key
   -- ^ Key of the "from" account
@@ -154,7 +157,7 @@ previewTransfer model fromIndex fromAccount fromGasPayer toAddress crossChainDat
           & inputElementConfig_initialValue .~ unAccountName (_account_name $ _crossChainData_recipientChainGasPayer ccd)
     elClass "h2" "heading heading_type_h2" $ text "Transaction Details"
     divClass "group" $ do
-      void $ mkLabeledInput True "Amount" (dimensionalInputWrapper "KDA" . uiInputElement) $ def
+      void $ mkLabeledInput True "Amount" uiGasPriceInputField $ def
         & initialAttributes .~ "disabled" =: "disabled"
         & inputElementConfig_initialValue .~ tshow amount
       -- TODO The designs show gas fees here, but we can't get that information yet.
@@ -269,8 +272,10 @@ sendConfig model fromIndex fromAccount = Workflow $ do
         recipient <- divClass "group" $ do
           kad <- mkLabeledInput True "Address" uiInputElement def
           let decoded = decodeKadenaAddressText <$> value kad
-          (_, amount, _) <- mkLabeledInput True "Amount"
-            (dimensionalInputWrapper "KDA" . uiNonnegativeRealWithPrecisionInputElement maxCoinPrecision id) def
+          (_, amount, _) <- mkLabeledInput True "Amount" uiGasPriceInputField def
+            -- We're only interested in the decimal of the gas price
+            <&> over (_2 . mapped . mapped) (\(GasPrice (ParsedDecimal d)) -> d)
+
           pure $ runExceptT $ do
             r <- ExceptT $ first (\_ -> "Invalid kadena address") <$> decoded
             a <- ExceptT $ maybe (Left "Invalid amount") Right <$> amount
@@ -477,7 +482,7 @@ finishCrossChainTransferConfig model fromIndex fromAccount ucct = Workflow $ do
       mkLabeledInput True "Recipient Account" uiInputElement $ def
         & initialAttributes .~ "disabled" =: "disabled"
         & inputElementConfig_initialValue .~ unAccountName (_unfinishedCrossChainTransfer_recipientAccount ucct)
-      mkLabeledInput True "Amount" (dimensionalInputWrapper "KDA" . uiInputElement) $ def
+      mkLabeledInput True "Amount" uiGasPriceInputField $ def
         & initialAttributes .~ "disabled" =: "disabled"
         & inputElementConfig_initialValue .~ tshow (_unfinishedCrossChainTransfer_amount ucct)
     el "p" $ text "The coin has been debited from your account but hasn't been redeemed by the recipient."
