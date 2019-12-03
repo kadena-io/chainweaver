@@ -22,15 +22,13 @@ let
     rev = "395bc0de23cd3499e0c6d0d1bafdbf4b074d5516";
     sha256 = "046x566m352mgr9mh8p8iyhr6b71di10m8f36zibaiixa0ca3cr0";
   };
+
   xcent = builtins.toFile "xcent" (nixpkgs.lib.generators.toPlist {} {
-#    application-identifier = "<team-id/>.${bundleIdentifier}";
-#    "com.apple.developer.team-identifier" = "<team-id/>";
-#    get-task-allow = true;
-#    keychain-access-groups = [ "<team-id/>.${bundleIdentifier}" ];
     "com.apple.security.app-sandbox" = false; # TODO enable this
     "com.apple.security.network.client" = true;
     "com.apple.security.network.server" = true;
   });
+
   plist = pkgs.writeText "plist" ''
     <?xml version="1.0" encoding="UTF-8"?>
     <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -170,6 +168,7 @@ in obApp // rec {
 
     if [ -z "$signer" ]; then
       echo "Error: No Mac Developer certificate found for team id $TEAM_ID" >&2
+      echo "See https://github.com/kadena-io/chainweaver/blob/redesign/README.md#mac-developer-certificate >&2
       exit 1
     fi
 
@@ -199,8 +198,9 @@ in obApp // rec {
     /usr/bin/codesign --sign "$signer" "$tmpdir/${macAppName}.dmg"
 
     mv "$tmpdir/${macAppName}.dmg" .
-    # Quarantine it (uncomment for testing app quarantining)
-    # xattr -w com.apple.quarantine "00a3;5d4331e1;Safari;1AE3D17F-B83D-4ADA-94EA-219A44467959" ${macAppName}.dmg
+
+    # Quarantine it for reproducibility (otherwise can cause unexpected 'app is damaged' errors when automatically applied to downloaded .dmg files)
+    xattr -w com.apple.quarantine "00a3;5d4331e1;Safari;1AE3D17F-B83D-4ADA-94EA-219A44467959" "${macAppName}.dmg"
   '';
 
   server = args@{ hostName, adminEmail, routeHost, enableHttps, version }:
