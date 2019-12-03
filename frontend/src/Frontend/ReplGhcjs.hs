@@ -356,7 +356,7 @@ resourcesWidget = elClass "div" "icon-grid" $ do
   resourceCell "Support" (static @"img/resources/support.svg") "https://www.kadena.io/chainweaver-support"
     "Explore Help Resources to learn about Chainweaver, solve problems and get in touch"
   resourceCell "Documentation" (static @"img/resources/documentation.svg") "https://github.com/kadena-io/chainweaver"
-    "Complete technical resources for Chainweaver, Kadena blockchain and Pact language"
+    "Complete technical resources for Chainweaver"
   resourceCell "Tutorials" (static @"img/resources/tutorials.svg") "https://pactlang.org/"
     "Read or watch tutorials for writing smart contracts using the Pact language"
   where
