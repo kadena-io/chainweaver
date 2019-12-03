@@ -449,7 +449,7 @@ finishCrossChainTransferConfig
 finishCrossChainTransferConfig model fromIndex fromAccount ucct = Workflow $ do
   let requestKey = _unfinishedCrossChainTransfer_requestKey ucct
       toChain = _unfinishedCrossChainTransfer_recipientChain ucct
-  close <- modalHeader $ text "Cross chain transfer: finish"
+  close <- modalHeader $ text "Cross chain transfer: unfinished transfer"
   (sender, conf) <- divClass "modal__main" $ do
     el "p" $ text "It looks like you started a cross chain transfer which did not complete correctly."
     elClass "h2" "heading heading_type_h2" $ text "Transaction Details"
