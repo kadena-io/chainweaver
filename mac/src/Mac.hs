@@ -31,11 +31,24 @@ ffi = MacFFI
   , _macFFI_moveToForeground = moveToForeground
   , _macFFI_resizeWindow = uncurry resizeWindow
   , _macFFI_global_openFileDialog = global_openFileDialog
-  , _macFFI_global_getHomeDirectory = global_getHomeDirectory
+  , _macFFI_global_getHomeDirectory = global_getHomeDirectory >>= peekCString
   }
 
+-- | Redirect the given handles to Console.app
+redirectPipes :: [Handle] -> IO a -> IO a
+redirectPipes ps m = bracket setup hClose $ \r -> Async.withAsync (go r) $ \_ -> m
+  where
+    setup = do
+      (r, w) <- Process.createPipe
+      for_ ps $ \p -> hDuplicateTo w p <> hSetBuffering p LineBuffering
+      hClose w
+      pure r
+      -- TODO figure out how to get the logs to come from the Pact process instead of syslog
+    go r = forever $ hGetLine r >>= \l -> do
+      Process.callProcess "syslog" ["-s", "-k", "Level", "Notice", "Message", "Pact: " <> l]
+
 main :: IO ()
-main = main' ffi mainBundleResourcePath runMac
+main = redirectPipes [stderr, stdout] $ main' ffi mainBundleResourcePath redirectPipes runMac
 
 runMac
   :: ByteString

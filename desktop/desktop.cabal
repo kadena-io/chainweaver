@@ -51,7 +51,7 @@ library
   exposed-modules:
       Desktop
     , Desktop.Frontend
-    , Desktop.Mac
+    , Desktop.App
     , Desktop.Orphans
     , Desktop.Setup
     , Desktop.SigningApi
