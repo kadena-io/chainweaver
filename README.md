@@ -41,12 +41,12 @@ Find it in https://www.apple.com/certificateauthority/ under "Apple Intermediate
 
 ### Deploying
 
-<!-- TODO:  should we also accept "Apple Development" certificates? -->
-<!-- TODO: The script will give a helpful error message if no "Mac Developer" certificate is found for the given TEAM_ID. We should do the same for the other pre-requisites -->
+<!-- TODO: should we also accept "Apple Development" certificates? -->
+<!-- TODO: the deploy script will give a helpful error message if no "Mac Developer" certificate is found for the given TEAM_ID. We should do the same for the other pre-requisites -->
 
 ```shell
 nix-build -A deployMac
-./result <TEAM_ID>
+./result TEAM_ID
 ```
 where `TEAM_ID` can be found in the upper-right corner after the team name in https://developer.apple.com/account/resources/ .
 
