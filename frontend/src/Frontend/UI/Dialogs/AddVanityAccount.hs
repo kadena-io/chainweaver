@@ -21,7 +21,7 @@ import qualified Data.Vector                            as V
 
 import Pact.Types.PactValue
 import Pact.Types.Exp
-import Data.These.Combinators
+import Data.These
 
 import           Reflex
 import           Reflex.Dom.Contrib.CssClass            (renderClass)
@@ -199,10 +199,7 @@ vanityAccountCreateSubmit model dAccount chainId result nodeInfos = Workflow $ d
   pb <- getPostBuild
   resp <- performLocalRead (model ^. network) $ [req] <$ pb
   let localOk = fforMaybe resp $ \case
-        -- Generates a 'Pattern match has inaccessible right hand side' warning. Not sure why.
-        [(_, t)]
-          | Just (_, PLiteral (LString "Write succeeded")) <- justThat t
-          -> Just ()
+        [(_, That (_, PLiteral (LString "Write succeeded")))] -> Just ()
         _ -> Nothing
       conf = mempty & walletCfg_importAccount .~ tagMaybe (current dAccount) localOk
 
