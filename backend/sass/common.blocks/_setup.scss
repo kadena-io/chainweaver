@@ -174,19 +174,17 @@ $kadena-orange: #F3AB3C;
   }
 
   .setup__password-wrapper {
-    position: relative;
+      position: relative;
+      display: flex;
+      justify-content: space-around;
+      align-items: center;
+  }
 
-    &::before {
-      pointer-events: none;
-      font-family: FontAwesome;
-      font-size: 2em;
-      content: "\f023"; // Padlock
-      z-index: 1;
+  .setup__password-wrapper-lock {
       position: absolute;
-      left: 1rem;
-      top: -0.5rem;
-      color: lightgray;
-    }
+      left: 25px;
+      justify-content: space-around;
+      align-items: center;
   }
 
   input.setup__password {
