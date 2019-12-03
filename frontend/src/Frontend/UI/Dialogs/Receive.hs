@@ -1,7 +1,7 @@
-{-# LANGUAGE RecursiveDo #-}
-{-# LANGUAGE TupleSections #-}
 {-# LANGUAGE PatternGuards #-}
+{-# LANGUAGE RecursiveDo #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE TupleSections #-}
 -- | Dialog for displaying account information required for receiving transfers
 -- Copyright   :  (C) 2018 Kadena
 -- License     :  BSD-style (see the file LICENSE)
@@ -169,7 +169,7 @@ uiReceiveModal0 model account onClose = Workflow $ do
     rec
       showingKadenaAddress <- toggle True $ onAddrClick <> onReceiClick
 
-      (onAddrClick, _) <- controlledAccordionItem showingKadenaAddress mempty (text "Via address")
+      (onAddrClick, _) <- controlledAccordionItem showingKadenaAddress mempty (text "Option 1: Copy and share Kadena Address")
         $ do
         elClass "h2" "heading heading_type_h2" $ text "Destination"
         divClass "group" $ do
@@ -184,7 +184,7 @@ uiReceiveModal0 model account onClose = Workflow $ do
         uiDisplayAddress address
 
       (onReceiClick, results) <- controlledAccordionItem (not <$> showingKadenaAddress) "account-details__legacy-send"
-        (text "Via legacy (non-BIP32) sender") $ do
+        (text "Option 2: Transfer from non-Chainweaver Account") $ do
         elClass "h2" "heading heading_type_h2" $ text "Sender Details"
         transferInfo0 <- divClass "group" $ uiReceiveFromLegacyAccount model
         elClass "h2" "heading heading_type_h2" $ text "Transaction Settings"
