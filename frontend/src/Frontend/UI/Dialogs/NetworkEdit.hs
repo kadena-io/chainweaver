@@ -312,7 +312,7 @@ uiNode onVal = do
         t | T.null (T.strip t) -> Just Nothing
           | Right v <- parseNodeRefFull t -> Just (Just v)
           | otherwise -> Nothing
-      onEdit = fmapMaybe id $ updated val
+    onEdit <- debounce 0.5 $ fmapMaybe id $ updated val
     stat <- uiNodeStatus "table__cell table__cell_size_tiny" $ join <$> val
     pure (onEdit, stat)
 
@@ -346,7 +346,11 @@ queryNodeStatus
   -> m (Dynamic t (Maybe (Either Text NodeInfo)))
 queryNodeStatus nodeRef = do
   pb <- getPostBuild
-  mStatus <- throttle 2 $ leftmost [updated nodeRef, tag (current nodeRef) pb]
+  nodeUpdated <- debounce 0.5 $ updated nodeRef
+  mStatus <- throttle 2 $ leftmost
+    [ nodeUpdated
+    , tag (current nodeRef) pb
+    ]
   onErrInfo <- performEventAsync $ getInfoAsync <$> mStatus
   holdDyn Nothing onErrInfo
   where
