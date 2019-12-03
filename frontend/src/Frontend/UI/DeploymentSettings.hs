@@ -7,6 +7,7 @@
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE PatternGuards #-}
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE RecursiveDo #-}
 {-# LANGUAGE ScopedTypeVariables #-}
@@ -61,7 +62,7 @@ module Frontend.UI.DeploymentSettings
   , Identity (runIdentity)
   ) where
 
-import Control.Applicative ((<|>))
+import Control.Applicative ((<|>), empty)
 import Control.Arrow (first, (&&&))
 import Control.Error (fmapL, hoistMaybe, headMay)
 import Control.Error.Util (hush)
@@ -218,6 +219,12 @@ publicKeysForAccounts allAccounts caps =
   in
     Map.fromList $ fmapMaybe toPublicKey $ Map.toList caps
 
+lookupAccountByName :: ChainId -> AccountName -> Accounts key -> Maybe (Account key)
+lookupAccountByName c n = fmap getFirst . foldMap f
+  where f = \case
+          SomeAccount_Account a | _account_name a == n, _account_chainId a == c -> Just $ First a
+          _ -> Nothing
+
 buildDeploymentSettingsResult
   :: ( HasNetwork model t
      , HasJsonData model t
@@ -258,6 +265,14 @@ buildDeploymentSettingsResult m mSender signers cChainId capabilities ttl gasLim
         }
   code' <- lift code
   allAccounts <- lift $ m ^. wallet_accounts
+  -- Make an effort to ensure the sender account has enough balance to actually
+  -- pay the gas. This won't work if the user selects an account on a different
+  -- chain, but that's another issue.
+  for_ (lookupAccountByName chainId sender allAccounts) $ \senderAccount -> case _account_balance senderAccount of
+    Nothing -> empty
+    Just b -> let GasLimit lim = _pmGasLimit publicMeta
+                  GasPrice (ParsedDecimal price) = _pmGasPrice publicMeta
+               in guard $ unAccountBalance b > fromIntegral lim * price
   let pkCaps = publicKeysForAccounts allAccounts caps
   pure $ do
     let signingPairs = getSigningPairs signing allAccounts
@@ -828,7 +843,7 @@ capabilityInputRow
   -> m (Dynamic t (Maybe AccountName))
   -> m (CapabilityInputRow t)
 capabilityInputRow mCap mkSender = elClass "tr" "table__row" $ do
-  (empty, parsed) <- elClass "td" "table__cell_padded" $ mdo
+  (emptyCap, parsed) <- elClass "td" "table__cell_padded" $ mdo
     cap <- uiInputElement $ def
       & inputElementConfig_initialValue .~ foldMap (renderCompactText . _dappCap_cap) mCap
       & initialAttributes .~
@@ -839,19 +854,19 @@ capabilityInputRow mCap mkSender = elClass "tr" "table__row" $ do
           , dis
           ])
       & modifyAttributes .~ ffor errors (\e -> "style" =: ("background-color: #fdd" <$ guard e))
-    empty <- holdUniqDyn $ T.null <$> value cap
+    emptyCap <- holdUniqDyn $ T.null <$> value cap
     let parsed = parseSigCapability <$> value cap
-        showError = (\p e -> isLeft p && not e) <$> parsed <*> empty
+        showError = (\p e -> isLeft p && not e) <$> parsed <*> emptyCap
         errors = leftmost
           [ tag (current showError) (domEvent Blur cap)
           , False <$ _inputElement_input cap
           ]
-    pure (empty, parsed)
+    pure (emptyCap, parsed)
   account <- elClass "td" "table__cell_padded" mkSender
 
   pure $ CapabilityInputRow
-    { _capabilityInputRow_empty = empty
-    , _capabilityInputRow_value = empty >>= \case
+    { _capabilityInputRow_empty = emptyCap
+    , _capabilityInputRow_value = emptyCap >>= \case
       True -> pure mempty
       False -> fmap (fromMaybe mempty) $ runMaybeT $ do
         a <- MaybeT account
