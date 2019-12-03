@@ -62,7 +62,7 @@ module Frontend.Network
   , getNetworkNameAndMeta
   , getCreationTime
     -- * Defaults
-  , chainwebGasLimit
+  , chainwebGasLimitMaximum
   , defaultTransactionGasLimit
   , defaultTransactionGasPrice
   , maxCoinPrecision
@@ -402,11 +402,11 @@ defaultTransactionTTL :: TTLSeconds
 defaultTransactionTTL = TTLSeconds (8 * 60 * 60) -- 8 hours
 
 -- Taken from https://github.com/kadena-io/chainweb-node/blob/85688ea0182d1b1ab0d8d784a48b4851a950ec7a/src/Chainweb/Chainweb.hs#L344
-chainwebGasLimit :: Num a => a
-chainwebGasLimit = 600
+chainwebGasLimitMaximum :: Num a => a
+chainwebGasLimitMaximum = 1e5
 
 defaultTransactionGasLimit :: GasLimit
-defaultTransactionGasLimit = GasLimit chainwebGasLimit
+defaultTransactionGasLimit = GasLimit 600
 
 
 buildMeta
