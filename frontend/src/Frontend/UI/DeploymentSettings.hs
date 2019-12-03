@@ -915,8 +915,8 @@ uiSenderCapabilities
 uiSenderCapabilities m cid mCaps mkSender = do
   let senderDropdown setSender = uiSenderDropdown def setSender m cid
       staticCapabilityRow sender cap = do
-        el "td" $ text $ _dappCap_role cap
-        el "td" $ text $ renderCompactText $ _dappCap_cap cap
+        elClass "td" "grant-capabilities-static-row__wrapped-cell" $ text $ _dappCap_role cap
+        elClass "td" "grant-capabilities-static-row__wrapped-cell" $ text $ renderCompactText $ _dappCap_cap cap
         acc <- el "td" $ sender
         pure $ CapabilityInputRow
           { _capabilityInputRow_empty = pure False
@@ -953,9 +953,9 @@ uiSenderCapabilities m cid mCaps mkSender = do
                )
       Just caps -> do
         el "thead" $ el "tr" $ do
-          elClass "th" "table__heading" $ text "Role"
-          elClass "th" "table__heading" $ text "Capability"
-          elClass "th" "table__heading" $ text "Account"
+          elAttr "th" ("class" =: "table__heading" <> "width" =: "23%") $ text "Role"
+          elAttr "th" ("class" =: "table__heading") $ text "Capability"
+          elAttr "th" ("class" =: "table__heading" <> "width" =: "30%") $ text "Account"
         el "tbody" $ do
           gas <- staticCapabilityRow mkSender defaultGASCapability
           rest <- staticCapabilityRows (Just <$> eApplyToAll) $ filter (not . isGas . _dappCap_cap) caps
