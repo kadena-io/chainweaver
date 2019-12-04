@@ -29,7 +29,7 @@ module Frontend.UI.Dialogs.NetworkEdit
 
 ------------------------------------------------------------------------------
 import           Control.Lens
-import           Control.Monad       (join, void)
+import           Control.Monad       (join, void, (<=<))
 import           Data.IntMap         (IntMap)
 import qualified Data.IntMap         as IntMap
 import           Data.Map            (Map)
@@ -226,7 +226,7 @@ uiNodes
 uiNodes nodes = elClass "ol" "table table_type_primary" $ do
 
   let nodesWithBlank = Map.fromList . zip [0..] . (<> [Nothing]) . fmap Just <$> nodes
-  responses <- list nodesWithBlank uiNode
+  responses <- listWithKey nodesWithBlank $ uiNode $ fmapMaybe id <$> current nodesWithBlank
 
   let
     onAction = switchDyn $ leftmost . toFunctorList . fmap fst <$> responses
@@ -254,9 +254,11 @@ getNetworkStatus = \case
 -- | Render a line edit for a single node + `uiNodeStatus`.
 uiNode
   :: MonadWidget t m
-  => Dynamic t (Maybe NodeRef)
+  => Behavior t (Map Int NodeRef)
+  -> Int
+  -> Dynamic t (Maybe NodeRef)
   -> m (Event t (Maybe NodeRef), MDynamic t (Either Text NodeInfo))
-uiNode onVal = do
+uiNode nodes k onVal = do
   pb <- getPostBuild
 
   elClass "li" "table__row table__row_type_primary" $ do
@@ -273,7 +275,10 @@ uiNode onVal = do
         t | T.null (T.strip t) -> Just Nothing
           | Right v <- parseNodeRefFull t -> Just (Just v)
           | otherwise -> Nothing
-    onEdit <- debounce 0.5 $ fmapMaybe checkVal $ _inputElement_input nodeInput
+      checkDupes ns v
+        | v `elem` Map.delete k ns = Nothing
+        | otherwise = Just v
+    onEdit <- throttle 0.5 $ attachWithMaybe (\ns -> fmap (checkDupes ns =<<) . checkVal) nodes $ _inputElement_input nodeInput
     stat <- uiNodeStatus "table__cell table__cell_size_tiny" $ join . checkVal <$> value nodeInput
     pure (onEdit, stat)
 
