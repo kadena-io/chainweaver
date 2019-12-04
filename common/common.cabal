@@ -44,15 +44,17 @@ library
 test-suite golden-tests
   type: exitcode-stdio-1.0
 
+  other-modules: GoldenHelper
+
   main-is: GoldenTests.hs
   hs-source-dirs: tests
   build-depends: base
                , common
+               , frontend
                , tasty
                , tasty-golden
                , aeson
                , pact
                , errors
                , text
-               , lens
                , bytestring

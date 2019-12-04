@@ -57,3 +57,23 @@ library
     , Desktop.SigningApi
     , Desktop.Util
   ghc-options: -Wall
+
+test-suite golden-tests
+  type: exitcode-stdio-1.0
+
+  other-modules: GoldenHelper
+
+  main-is: GoldenTests.hs
+
+  ghc-options: -Wall
+
+  hs-source-dirs: tests
+  build-depends: base
+               , common
+               , tasty
+               , tasty-golden
+               , aeson
+               , pact
+               , errors
+               , text
+               , bytestring
