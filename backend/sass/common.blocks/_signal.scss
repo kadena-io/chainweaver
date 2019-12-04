@@ -14,11 +14,9 @@
 
 .signal__circle {
   border-radius: 50%;
-  border-color: $std-border-color;
-  border-style: solid;
-  border-width: 1px;
-  height: 14px;
-  width: 15px;
+  height: 11px;
+  width: 11px;
+  background-color: lightgrey;
 }
 
 .signal__circle_status_ok {

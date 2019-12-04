@@ -246,8 +246,7 @@ networkBar m = divClass "main-header main-header__network-bar" $ do
   queryNetworkStatus (m ^. ide_network . network_networks) (m ^. ide_network . network_selectedNetwork)
     >>= uiNetworkStatus (pure " page__network-bar-status")
   -- Present the dropdown box for selecting one of the configured networks.
-  divClass "page__network-bar-select" $
-    uiNetworkSelect (m ^. ide_network)
+  uiNetworkSelect "select_type_special" (m ^. ide_network)
 
 controlBar
   :: MonadWidget t m
