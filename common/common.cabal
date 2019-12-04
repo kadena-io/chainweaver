@@ -50,11 +50,11 @@ test-suite golden-tests
   hs-source-dirs: tests
   build-depends: base
                , common
-               , frontend
                , tasty
                , tasty-golden
                , aeson
                , pact
                , errors
                , text
+               , mtl
                , bytestring
