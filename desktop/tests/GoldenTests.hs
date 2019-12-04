@@ -10,8 +10,10 @@ import qualified Data.ByteString.Lazy as LBS
 import qualified Data.Aeson as Aeson
 
 import Common.Network (ChainId (..), uncheckedNetworkName)
+import Common.Wallet (UnfinishedCrossChainTransfer (..), Account (..), KeyPair (..),
+                      AccountBalance (..), AccountName (..))
 
-import Common.Wallet (UnfinishedCrossChainTransfer (..), Account (..), KeyPair (..), AccountBalance (..), AccountName (..))
+import Frontend.Wallet (SomeAccount (..))
 
 import qualified Cardano.Crypto.Wallet as Crypto
 import Pact.Types.Command (RequestKey (..))
@@ -53,28 +55,39 @@ goldenTests =
       , _account_unfinishedCrossChainTransfer = xchaintfr
       }
 
+    mkTag a b c =
+      let tagChar = maybe 'N' (const 'Y')
+      in printf "%c-%c-%c" (tagChar $ _keyPair_privateKey a) (tagChar b) (tagChar c)
+
     mkAccTest a b c =
-      let g = maybe 'N' (const 'Y')
-          tag = printf "[PrivKey_%c|Balance_%c|XChainTfr_%c]"
-            (g $ _keyPair_privateKey a)
-            (g b)
-            (g c)
-      in
-        mkGTest ("Account-" <> tag) ("account-" <> tag) $ accountW a b c
+      let tag = mkTag a b c
+      in mkGTest ("Account-" <> tag) ("account-" <> tag) $ accountW a b c
 
     -- Lazy persons smallcheck
-    someAccountPermutations =
-      [ mkAccTest a b c
+    accountPermutations
+      :: (KeyPair Crypto.XPrv -> Maybe AccountBalance -> Maybe UnfinishedCrossChainTransfer -> b)
+      -> [b]
+    accountPermutations f =
+      [ f a b c
       | a <- [keyPairJust, keyPairNothing],
         b <- [Nothing, justAccBalance],
         c <- [Nothing, justXchaintfr]
+      ]
+
+    someAccountPermutations =
+      [ mkGTest ("SomeAccount-" <> t) ("someaccount-" <> t) s
+      | (t, s) <-
+          ("deleted", SomeAccount_Deleted)
+          : accountPermutations (\k b x -> (mkTag k b x, SomeAccount_Account $ accountW k b x))
       ]
   in
       -- KeyPair
     [ mkGTest "KeyPair - Just" "keypair-just" keyPairJust
     , mkGTest "KeyPair - Nothing" "keypair-nothing" keyPairNothing
       -- Account
-    ] <> someAccountPermutations
+    ]
+    <> accountPermutations mkAccTest
+    <> someAccountPermutations
 
 main :: IO ()
-main = defaultMain $ testGroup "Golden Tests - Desktop" $ fmap toGoldenTest goldenTests
+main = defaultMain $ testGroup "Golden Tests - Desktop - [PrivateKey-Balance-XChainTfr]" $ fmap toGoldenTest goldenTests
