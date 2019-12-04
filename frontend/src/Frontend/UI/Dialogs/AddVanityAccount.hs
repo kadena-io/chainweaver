@@ -200,6 +200,7 @@ vanityAccountCreateSubmit model dAccount chainId result nodeInfos = Workflow $ d
   resp <- performLocalRead (model ^. network) $ [req] <$ pb
   let localOk = fforMaybe resp $ \case
         [(_, That (_, PLiteral (LString "Write succeeded")))] -> Just ()
+        [(_, These _ (_, PLiteral (LString "Write succeeded")))] -> Just ()
         _ -> Nothing
       conf = mempty & walletCfg_importAccount .~ tagMaybe (current dAccount) localOk
 
