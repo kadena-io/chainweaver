@@ -53,7 +53,7 @@ goldenTests =
       , _account_unfinishedCrossChainTransfer = xchaintfr
       }
 
-    mkAccTest (a, b, c) =
+    mkAccTest a b c =
       let g = maybe 'N' (const 'Y')
           tag = printf "[PrivKey_%c|Balance_%c|XChainTfr_%c]"
             (g $ _keyPair_privateKey a)
@@ -64,7 +64,7 @@ goldenTests =
 
     -- Lazy persons smallcheck
     someAccountPermutations =
-      [ (a,b,c)
+      [ mkAccTest a b c
       | a <- [keyPairJust, keyPairNothing],
         b <- [Nothing, justAccBalance],
         c <- [Nothing, justXchaintfr]
@@ -74,7 +74,7 @@ goldenTests =
     [ mkGTest "KeyPair - Just" "keypair-just" keyPairJust
     , mkGTest "KeyPair - Nothing" "keypair-nothing" keyPairNothing
       -- Account
-    ] <> fmap mkAccTest someAccountPermutations
+    ] <> someAccountPermutations
 
 main :: IO ()
 main = defaultMain $ testGroup "Golden Tests - Desktop" $ fmap toGoldenTest goldenTests
