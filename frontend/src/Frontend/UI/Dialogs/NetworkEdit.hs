@@ -83,7 +83,7 @@ uiNetworkEdit m _onClose = do
         uiGroupHeader mempty $ do
           elClass "h2" "heading heading_type_h2" $
             text "Select Network"
-        uiNetworkSelect m
+        uiNetworkSelect "select_type_primary select_width_full" m
 
       editCfg <- uiGroup "segment" $ do
         uiGroupHeader mempty $ elClass "h2" "heading heading_type_h2" $
@@ -118,8 +118,8 @@ uiNetworkSelect
   :: forall t m model mConf.
     (MonadWidget t m, HasUiNetworkEditModel model t, HasUiNetworkEditModelCfg mConf t
     )
-  => model -> m mConf
-uiNetworkSelect m = do
+  => Text -> model -> m mConf
+uiNetworkSelect cls m = do
   selected <- holdUniqDyn $ m ^. network_selectedNetwork
   onNetworkDirect <- tagOnPostBuild selected
   -- Delay necessary until we have mount hooks. (SelectElement won't accept
@@ -139,7 +139,7 @@ uiNetworkSelect m = do
 
   let
     cfg = SelectElementConfig "" (Just $ textNetworkName <$> onNetwork) $
-      def & initialAttributes .~ "class" =: "select_type_primary select_width_full"
+      def & initialAttributes .~ "class" =: cls
     itemDom v =
       elAttr "option" ("value" =: v) $ text v
 

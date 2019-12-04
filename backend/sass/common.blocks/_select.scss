@@ -12,7 +12,7 @@ $select-padding: 14px;
   @extend .input;
   -webkit-appearance: none;
 
-  background: url(/static/img/arrow-down.svg) no-repeat right $select-padding top 50%;
+  background: url(/static/img/arrow-both.svg) no-repeat right $select-padding top 50%;
   background-size: 10px;
   padding-right: 36px;
 
@@ -21,6 +21,15 @@ $select-padding: 14px;
 
 .select option {
   margin-left: $select-padding;
+}
+
+.select_type_special {
+  font-size: 15px;
+  background-image: url(/static/img/arrow-both.svg);
+  border: none;
+  width: auto;
+  height: 100%;
+  line-height: normal;
 }
 
 .select_type_primary {
