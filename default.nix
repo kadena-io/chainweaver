@@ -180,7 +180,7 @@ in obApp // rec {
     sed "s|<team-id/>|$TEAM_ID|" < "${xcent}" > "$tmpdir/xcent"
     cat "$tmpdir/xcent"
     plutil "$tmpdir/xcent"
-    /usr/bin/codesign --deep --force --sign "$signer" --options "runtime" --entitlements "$tmpdir/xcent" --timestamp=none "$tmpdir/${macAppName}.app"
+    /usr/bin/codesign --deep --force --sign "$signer" --options "runtime" --entitlements "$tmpdir/xcent" --timestamp "$tmpdir/${macAppName}.app"
 
     # Create the dmg
     ${createDmg}/create-dmg \
@@ -195,7 +195,7 @@ in obApp // rec {
       "$tmpdir/${macAppName}.app"
 
     # Sign the dmg
-    /usr/bin/codesign --sign "$signer" "$tmpdir/${macAppName}.dmg"
+    /usr/bin/codesign --sign "$signer" --timestamp "$tmpdir/${macAppName}.dmg"
 
     mv "$tmpdir/${macAppName}.dmg" .
 
