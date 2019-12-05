@@ -9,7 +9,7 @@ let
   obApp = import ./obApp.nix args;
   pactServerModule = import ./pact-server/service.nix;
   macAppName = "Kadena Chainweaver RC-2";
-  macAppIcon =  ./mac/static/icons/pact.png;
+  macAppIcon =  ./mac/static/icons/kadena.png;
   macPactDocumentIcon = ./mac/static/icons/pact-document.png;
   # ^ This can be created in Preview using 'GenericDocumentIcon.icns' from
   # /System/Library/CoreServices/CoreTypes.bundle/Contents/Resources/
