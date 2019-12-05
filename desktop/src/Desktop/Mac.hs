@@ -155,8 +155,12 @@ main' ffi mainBundleResourcePath runHTML = redirectPipes [stdout, stderr] $ do
             }
           configs = M.fromList -- TODO don't embed all of these into binary
             [ ("common/route", route)
-            , ("common/networks", "remote-source:https://pact.kadena.io/networks")
+            , ("common/networks", networks)
             , ("common/oauth/github/client-id", "") -- TODO remove
+            ]
+          networks = T.encodeUtf8 $ T.unlines
+            [ "Mainnet: us-e1.chainweb.com us-e2.chainweb.com us-w1.chainweb.com us-w2.chainweb.com jp1.chainweb.com jp2.chainweb.com fr1.chainweb.com fr2.chainweb.com"
+            , "Testnet: us1.testnet.chainweb.com us2.testnet.chainweb.com eu1.testnet.chainweb.com eu2.testnet.chainweb.com ap1.testnet.chainweb.com ap2.testnet.chainweb.com"
             ]
       liftIO $ putStrLn "Starting frontend"
       bowserMVar :: MVar () <- liftIO newEmptyMVar
@@ -189,4 +193,3 @@ main' ffi mainBundleResourcePath runHTML = redirectPipes [stdout, stderr] $ do
             (liftIO (_macFFI_activateWindow ffi) >> liftIO (_macFFI_resizeWindow ffi minWindowSize) >> bipWallet appCfg) <$ bowserLoad
           pure ()
         }
-
