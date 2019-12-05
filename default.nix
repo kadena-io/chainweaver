@@ -11,9 +11,9 @@ let
   macAppName = "Kadena Chainweaver RC-2";
   macAppIcon =  ./mac/static/icons/pact.png;
   macPactDocumentIcon = ./mac/static/icons/pact-document.png;
-  # ^ This can be created in Preview using the system document icon from
+  # ^ This can be created in Preview using 'GenericDocumentIcon.icns' from
   # /System/Library/CoreServices/CoreTypes.bundle/Contents/Resources/
-  # and the pact logo
+  # and the kadena logo
   macAppInstallerBackground = ./mac/static/installer-background.png;
   bundleIdentifier = "io.kadena.chainweaver";
   createDmg = pkgs.fetchFromGitHub {
