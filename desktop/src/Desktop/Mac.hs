@@ -54,13 +54,14 @@ data MacFFI = MacFFI
   , _macFFI_moveToForeground :: IO ()
   , _macFFI_global_openFileDialog :: IO ()
   , _macFFI_global_getHomeDirectory :: IO CString
-}
+  , _macFFI_global_getBundleIdentifier :: IO CString
+  }
 
 getUserLibraryPath :: MonadIO m => MacFFI -> m FilePath
 getUserLibraryPath ffi = liftIO $ do
   home <- peekCString =<< _macFFI_global_getHomeDirectory ffi
-  -- TODO use the bundle identifier directly, don't duplicate it
-  let lib = home </> "Library" </> "Application Support" </> "io.kadena.chainweaver"
+  bundleId <- peekCString =<< _macFFI_global_getBundleIdentifier ffi
+  let lib = home </> "Library" </> "Application Support" </> bundleId
   Directory.createDirectoryIfMissing True lib
   pure lib
 
