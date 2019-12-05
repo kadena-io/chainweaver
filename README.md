@@ -30,6 +30,32 @@ To actually run:
 nix-build -A mac
 open result/*.app
 ```
+
+## Apple Disk Image
+
+### Mac Developer Certificate
+Create and download a "Mac Developer" certificate in https://developer.apple.com/account/resources/certificates/list - opening the downloaded file should launch *Keychain Access* and display your new certificate.
+
+### Apple Worldwide Developer Relations (WWDR) Certificate
+Find it in https://www.apple.com/certificateauthority/ under "Apple Intermediate Certificates". Download and open to add it to *Keychain Access*.
+
+### Deploying
+
+<!-- TODO: should we also accept "Apple Development" certificates? -->
+<!-- TODO: the deploy script will give a helpful error message if no "Mac Developer" certificate is found for the given TEAM_ID. We should do the same for the other pre-requisites -->
+
+```shell
+nix-build -A deployMac
+./result TEAM_ID
+```
+where `TEAM_ID` can be found in the upper-right corner after the team name in https://developer.apple.com/account/resources/ .
+
+Wait for the script to end. Do not interact with the installer window that pops up as that might prevent the disk image from being unmounted.
+A .dmg should have been created in the current directory. To test it's working properly:
+- launch the installer window by opening the .dmg file
+- right click in the app icon and select "Open" (do not simply double-click at it does not allow you to proceed)
+- a dialog saying "the identity of the developer cannot be confirmed" should appear - click "Open"
+
 OS X specific assets are located in the [static](./mac/static) folder. To test an updated asset, replace the old file and build again. Use 1024x1024 *.png* files for Mac app [icons](./mac/static/icons).
 
 # Deployments

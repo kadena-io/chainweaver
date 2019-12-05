@@ -1,7 +1,7 @@
-{-# LANGUAGE RecursiveDo #-}
-{-# LANGUAGE TupleSections #-}
 {-# LANGUAGE PatternGuards #-}
+{-# LANGUAGE RecursiveDo #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE TupleSections #-}
 -- | Dialog for displaying account information required for receiving transfers
 -- Copyright   :  (C) 2018 Kadena
 -- License     :  BSD-style (see the file LICENSE)
@@ -9,7 +9,7 @@ module Frontend.UI.Dialogs.Receive
   ( uiReceiveModal
   ) where
 
-import Control.Applicative (liftA2)
+import Control.Applicative (liftA2, liftA3)
 import Control.Lens ((^.), (<>~), _1, _2, _3, view)
 import Control.Monad (void, (<=<))
 import Control.Error (hush, headMay)
@@ -18,7 +18,6 @@ import Data.Bifunctor (first)
 import Data.Either (isLeft,rights)
 import Data.Text (Text)
 import qualified Data.Text as T
-import Data.Decimal (Decimal)
 import qualified Data.Map as Map
 import qualified Data.Aeson as Aeson
 import qualified Data.HashMap.Lazy as HM
@@ -33,8 +32,10 @@ import Pact.Types.ChainId (ChainId(..))
 import Pact.Types.ChainMeta (PublicMeta (..), TTLSeconds)
 import Pact.Types.PactValue (PactValue (..))
 import Pact.Types.Exp (Literal (LString, LDecimal))
-import Pact.Types.Runtime (GasLimit)
+import Pact.Types.Runtime (GasLimit, GasPrice (..))
+import Pact.Parse (ParsedDecimal (..))
 import qualified Pact.Types.Scheme as PactScheme
+
 import Language.Javascript.JSaddle.Types (MonadJSM)
 
 import Frontend.Crypto.Class (PactKey (..), HasCrypto, cryptoGenPubKeyFromPrivate)
@@ -47,17 +48,16 @@ import Frontend.UI.Dialogs.NetworkEdit
 
 import Frontend.UI.Dialogs.DeployConfirmation (CanSubmitTransaction, TransactionSubmitFeedback (..), submitTransactionWithFeedback)
 
-import Frontend.UI.DeploymentSettings (uiMetaData, userChainIdSelect, defaultGASCapability)
+import Frontend.UI.DeploymentSettings (uiMetaData, defaultGASCapability)
 
 import Frontend.UI.Modal
 import Frontend.UI.Widgets
 import Frontend.UI.Widgets.AccountName (uiAccountNameInput)
 import Frontend.Wallet
 
-data LegacyTransferInfo = LegacyTransferInfo
+data NonBIP32TransferInfo = NonBIP32TransferInfo
   { _legacyTransferInfo_account :: AccountName
-  , _legacyTransferInfo_chainId :: ChainId
-  , _legacyTransferInfo_amount :: Decimal
+  , _legacyTransferInfo_amount :: GasPrice
   , _legacyTransferInfo_pactKey :: PactKey
   }
 
@@ -86,13 +86,12 @@ uiDisplayAddress address = do
 uiReceiveFromLegacyAccount
   :: ( MonadWidget t m
      , HasWallet model key t
-     , HasNetwork model t
      , HasCrypto key (Performable m)
      )
   => model
-  -> m (Dynamic t (Maybe LegacyTransferInfo))
+  -> m (Dynamic t (Maybe NonBIP32TransferInfo))
 uiReceiveFromLegacyAccount model = do
-  mAccountName <- uiAccountNameInput (model ^. wallet)
+  mAccountName <- uiAccountNameInput (model ^. wallet) (pure Nothing)
 
   onKeyPair <- divClass "account-details__private-key" $
     _inputElement_input <$> mkLabeledInput True "Private Key" uiInputElement def
@@ -106,17 +105,9 @@ uiReceiveFromLegacyAccount model = do
 
   keyPair <- holdDyn Nothing $ Just <$> okPair
 
-  chain <- divClass "account-details__receive-from-chain" $ userChainIdSelect model
+  amount <- view _2 <$> mkLabeledInput True "Amount" uiGasPriceInputField def
 
-  amount <- view _2 <$> mkLabeledInput True "Amount"
-    (uiNonnegativeRealWithPrecisionInputElement maxCoinPrecision id) def
-
-  pure $ (\macc mc mamnt mkeypair -> LegacyTransferInfo <$> macc <*> mc <*> mamnt <*> mkeypair)
-    <$> mAccountName
-    <*> chain
-    <*> amount
-    <*> keyPair
-
+  pure $ (liftA3 . liftA3) NonBIP32TransferInfo mAccountName amount keyPair
   where
     deriveKeyPair :: (HasCrypto key m, MonadJSM m) => Text -> m (Either Text PactKey)
     deriveKeyPair = fmap (first T.pack) . cryptoGenPubKeyFromPrivate PactScheme.ED25519
@@ -178,7 +169,7 @@ uiReceiveModal0 model account onClose = Workflow $ do
     rec
       showingKadenaAddress <- toggle True $ onAddrClick <> onReceiClick
 
-      (onAddrClick, _) <- controlledAccordionItem showingKadenaAddress mempty (text "Via address")
+      (onAddrClick, _) <- controlledAccordionItem showingKadenaAddress mempty (text "Option 1: Copy and share Kadena Address")
         $ do
         elClass "h2" "heading heading_type_h2" $ text "Destination"
         divClass "group" $ do
@@ -193,7 +184,7 @@ uiReceiveModal0 model account onClose = Workflow $ do
         uiDisplayAddress address
 
       (onReceiClick, results) <- controlledAccordionItem (not <$> showingKadenaAddress) "account-details__legacy-send"
-        (text "Via legacy (non-BIP32) sender") $ do
+        (text "Option 2: Transfer from non-Chainweaver Account") $ do
         elClass "h2" "heading heading_type_h2" $ text "Sender Details"
         transferInfo0 <- divClass "group" $ uiReceiveFromLegacyAccount model
         elClass "h2" "heading heading_type_h2" $ text "Transaction Settings"
@@ -234,16 +225,17 @@ receiveFromLegacySubmit
   -> TTLSeconds
   -> GasLimit
   -> ([Either a NodeInfo], PublicMeta, NetworkName)
-  -> LegacyTransferInfo
+  -> NonBIP32TransferInfo
   -> Workflow t m (mConf, Event t ())
-receiveFromLegacySubmit onClose account chainId ttl gasLimit netInfo transferInfo = Workflow $ do
+receiveFromLegacySubmit onClose account chain ttl gasLimit netInfo transferInfo = Workflow $ do
   let
-    chain = _legacyTransferInfo_chainId transferInfo
     sender = _legacyTransferInfo_account transferInfo
     senderKey = _legacyTransferInfo_pactKey transferInfo
     senderPubKey = _pactKey_publicKey senderKey
     amount = _legacyTransferInfo_amount transferInfo
     accCreated = accountIsCreated account
+
+    unpackGasPrice (GasPrice (ParsedDecimal d)) = d
 
     code = T.unwords $
       [ "(coin." <> case accCreated of
@@ -267,7 +259,7 @@ receiveFromLegacySubmit onClose account chainId ttl gasLimit netInfo transferInf
       , _scArgs =
         [ PLiteral $ LString $ unAccountName sender
         , PLiteral $ LString $ unAccountName $ _account_name account
-        , PLiteral $ LDecimal amount
+        , PLiteral $ LDecimal (unpackGasPrice amount)
         ]
       }
 
@@ -298,7 +290,7 @@ receiveFromLegacySubmit onClose account chainId ttl gasLimit netInfo transferInf
     pkCaps
 
   txnSubFeedback <- elClass "div" "modal__main transaction_details" $
-    submitTransactionWithFeedback cmd chainId (netInfo ^. _1)
+    submitTransactionWithFeedback cmd chain (netInfo ^. _1)
 
   let isDisabled = maybe True isLeft <$> _transactionSubmitFeedback_message txnSubFeedback
 

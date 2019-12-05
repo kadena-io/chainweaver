@@ -14,6 +14,8 @@ module Frontend.UI.Widgets
   ( -- * Standard widgets for chainweaver
     -- ** Buttons
     module Frontend.UI.Button
+  -- ** Single Purpose Widgets
+  , uiGasPriceInputField
   -- ** Other widgets
   , uiSegment
   , uiGroup
@@ -77,11 +79,16 @@ import           Reflex.Dom.Contrib.CssClass
 import           Reflex.Dom.Core
 import           Reflex.Extended             (tagOnPostBuild)
 ------------------------------------------------------------------------------
+import Pact.Types.Runtime (GasPrice (..))
+import Pact.Parse (ParsedDecimal (..))
+------------------------------------------------------------------------------
+import           Frontend.Network (maxCoinPrecision)
 import           Frontend.Foundation
 import           Frontend.UI.Button
-import           Frontend.UI.Widgets.Helpers (imgWithAlt, makeClickable,
+import           Frontend.UI.Widgets.Helpers (imgWithAlt, imgWithAltCls, makeClickable,
                                               setFocus, setFocusOn,
                                               setFocusOnSelected, tabPane,
+                                              preventScrollWheelAndUpDownArrow,
                                               tabPane')
 ------------------------------------------------------------------------------
 
@@ -141,7 +148,7 @@ uiSegment cls = elKlass "div" (cls <> "segment")
 uiGroup :: DomBuilder t m => CssClass -> m a -> m a
 uiGroup cls = elKlass "div" (cls <> "group")
 
--- | The header element of a groupl
+-- | The header element of a group
 uiGroupHeader :: DomBuilder t m => CssClass -> m a -> m a
 uiGroupHeader cls = elKlass "div" (cls <> "group__header")
 
@@ -169,6 +176,7 @@ uiSelectElement uCfg child = do
 
 uiPassword :: DomBuilder t m => Text -> Text -> Text -> m (InputElement EventResult (DomBuilderSpace m) t)
 uiPassword wrapperCls inputCls ph = elClass "span" wrapperCls $ do
+  imgWithAltCls "setup__password-wrapper-lock" (static @"img/lock-dark.svg") "Password" blank
   uiInputElement $ def & initialAttributes .~ mconcat
     [ "type" =: "password"
     , "placeholder" =: ph
@@ -277,7 +285,11 @@ uiNonnegativeRealWithPrecisionInputElement prec fromDecimal cfg = do
 
   where
     stepSize = "0." <> T.replicate (fromIntegral prec - 1) "0" <> "1"
-    parse = tread
+    parse t = tread $
+      if "." `T.isPrefixOf` t && not (T.any (== '.') $ T.tail t) then
+        T.cons '0' t
+      else
+        t
 
     blurSanitize :: Decimal -> Maybe (Decimal, Text)
     blurSanitize decimal = asum
@@ -622,3 +634,19 @@ dimensionalInputWrapper :: DomBuilder t m => Text -> m a -> m a
 dimensionalInputWrapper units inp = divClass "dimensional-input-wrapper" $ do
   divClass "dimensional-input-wrapper__units" $ text units
   inp
+
+uiGasPriceInputField
+  :: forall m t.
+     ( DomBuilder t m
+     , MonadFix m
+     , MonadHold t m
+     )
+  => InputElementConfig EventResult t (DomBuilderSpace m)
+  -> m ( InputElement EventResult (DomBuilderSpace m) t
+       , Dynamic t (Maybe GasPrice)
+       , Event t GasPrice
+       )
+uiGasPriceInputField conf = dimensionalInputWrapper "KDA" $
+ uiNonnegativeRealWithPrecisionInputElement maxCoinPrecision (GasPrice . ParsedDecimal) $ conf
+  & initialAttributes %~ addToClassAttr "input-units"
+  & inputElementConfig_elementConfig . elementConfig_eventSpec %~ preventScrollWheelAndUpDownArrow @m

@@ -308,12 +308,20 @@ parseWalletKeyPair errPubKey privKey = do
 checkAccountNameValidity
   :: (Reflex t, HasWallet w key t)
   => w
-  -> Dynamic t (Text -> Either Text AccountName)
+  -> Dynamic t (Maybe ChainId -> Text -> Either Text AccountName)
 checkAccountNameValidity w = getErr <$> (w ^. wallet_accounts)
   where
-    getErr keys k = do
+    getErr keys mChain k = do
       acc <- mkAccountName k
-      if any (\case SomeAccount_Account a -> _account_name a == acc; _ -> False) keys
+      let existsOnChain = \case
+            SomeAccount_Account a
+              -- If we don't have a chain, don't bother checking for duplicates.
+              | Just chain <- mChain -> and
+                [ _account_name a == acc
+                , _account_chainId a == chain
+                ]
+            _ -> False
+      if any existsOnChain keys
          then Left $ T.pack "This account name is already in use"
          else Right acc
 

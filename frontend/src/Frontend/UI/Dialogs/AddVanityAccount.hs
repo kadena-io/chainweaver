@@ -1,4 +1,5 @@
 {-# LANGUAGE ConstraintKinds #-}
+{-# LANGUAGE PatternGuards #-}
 {-# LANGUAGE RecursiveDo #-}
 {-# LANGUAGE TupleSections #-}
 module Frontend.UI.Dialogs.AddVanityAccount
@@ -9,15 +10,18 @@ import           Control.Applicative                    (liftA2)
 import           Control.Lens                           ((^.))
 import           Control.Monad.Trans.Class              (lift)
 import           Control.Monad.Trans.Maybe              (MaybeT (..), runMaybeT)
-import           Data.Either                            (isLeft)
 import           Data.Functor.Identity                  (Identity(..))
-import           Data.Maybe                             (isNothing, maybe)
+import           Data.Maybe                             (isNothing)
 import           Data.Text                              (Text)
 
 import           Data.Aeson                             (Object,
                                                          Value (Array, String))
 import qualified Data.HashMap.Strict                    as HM
 import qualified Data.Vector                            as V
+
+import Pact.Types.PactValue
+import Pact.Types.Exp
+import Data.These
 
 import           Reflex
 import           Reflex.Dom.Contrib.CssClass            (renderClass)
@@ -26,8 +30,7 @@ import           Reflex.Dom.Core
 import           Reflex.Network.Extended                (Flattenable)
 
 import           Frontend.UI.DeploymentSettings
-import           Frontend.UI.Dialogs.DeployConfirmation (CanSubmitTransaction, TransactionSubmitFeedback (..),
-                                                         submitTransactionWithFeedback)
+import           Frontend.UI.Dialogs.DeployConfirmation (CanSubmitTransaction, submitTransactionWithFeedback)
 import           Frontend.UI.Modal.Impl                 (ModalIde, modalFooter)
 import           Frontend.UI.Widgets
 import           Frontend.UI.Widgets.AccountName (uiAccountNameInput)
@@ -37,12 +40,7 @@ import           Frontend.Crypto.Class                  (HasCrypto,
 import           Frontend.Crypto.Ed25519                (keyToText)
 import           Frontend.Ide                           (_ide_wallet)
 import           Frontend.JsonData
-import           Frontend.Network                       (ChainId, HasNetworkCfg,
-                                                         NodeInfo,
-                                                         defaultTransactionGasLimit,
-                                                         networkCfg_setSender,
-                                                         network_selectedNetwork,
-                                                         network_selectedNodes)
+import           Frontend.Network
 import           Frontend.Wallet                        (Account (..),
                                                          AccountName,
                                                          HasWalletCfg (..),
@@ -92,8 +90,6 @@ uiAddVanityAccountSettings ideL mChainId initialNotes = Workflow $ do
                 & initialAttributes .~ "class" =: (renderClass cls)
                 & inputElementConfig_setValue .~ (current initialNotes <@ pb)
 
-    uiAcc = liftA2 (,) (uiAccountNameInput w) (value <$> notesInput)
-    uiAccSection = ("Reference Data", uiAcc)
 
   eKeyPair <- performEvent $ cryptoGenKey <$> current dNextKey <@ pb
   dKeyPair <- holdDyn Nothing $ ffor eKeyPair $ \(pr,pu) -> Just $ KeyPair pu $ Just pr
@@ -102,9 +98,12 @@ uiAddVanityAccountSettings ideL mChainId initialNotes = Workflow $ do
       customConfigTab = Nothing
 
   rec
+    let
+      uiAcc = liftA2 (,) (uiAccountNameInput w selChain) (value <$> notesInput)
+      uiAccSection = ("Reference Data", uiAcc)
     (curSelection, eNewAccount, _) <- buildDeployTabs customConfigTab includePreviewTab controls
 
-    (conf, result, dAccount) <- elClass "div" "modal__main transaction_details" $ do
+    (conf, result, dAccount, selChain) <- elClass "div" "modal__main transaction_details" $ do
       (cfg, cChainId, ttl, gasLimit, Identity (dAccountName, dNotes)) <- tabPane mempty curSelection DeploymentSettingsView_Cfg $
         -- Is passing around 'Maybe x' everywhere really a good way of doing this ?
         uiCfg Nothing ideL (userChainIdSelectWithPreselect ideL mChainId) Nothing (Just defaultTransactionGasLimit) (Identity uiAccSection)
@@ -143,6 +142,7 @@ uiAddVanityAccountSettings ideL mChainId initialNotes = Workflow $ do
         ( cfg & networkCfg_setSender .~ fmapMaybe (fmap unAccountName) (updated mSender)
         , fmap mkSettings dPayload >>= buildDeploymentSettingsResult ideL mSender signers cChainId capabilities ttl gasLimit code
         , account
+        , cChainId
         )
 
     let preventProgress = (\a r -> isNothing a || isNothing r) <$> dAccount <*> result
@@ -158,7 +158,7 @@ uiAddVanityAccountSettings ideL mChainId initialNotes = Workflow $ do
   pure
     ( ("Add New Vanity Account", (conf, never))
     , attachWith
-        (\ns res -> vanityAccountCreateSubmit dAccount (_deploymentSettingsResult_chainId res) res ns)
+        (\ns res -> vanityAccountCreateSubmit ideL dAccount (_deploymentSettingsResult_chainId res) res ns)
         (current $ ideL ^. network_selectedNodes)
         command
     )
@@ -169,30 +169,44 @@ uiAddVanityAccountSettings ideL mChainId initialNotes = Workflow $ do
 vanityAccountCreateSubmit
   :: ( Monoid mConf
      , CanSubmitTransaction t m
+     , HasNetwork model t
      , HasWalletCfg mConf key t
      )
-  => Dynamic t (Maybe (Account key))
+  => model
+  -> Dynamic t (Maybe (Account key))
   -> ChainId
   -> DeploymentSettingsResult key
   -> [Either a NodeInfo]
   -> Workflow t m (Text, (mConf, Event t ()))
-vanityAccountCreateSubmit dAccount chainId result nodeInfos = Workflow $ do
+vanityAccountCreateSubmit model dAccount chainId result nodeInfos = Workflow $ do
   let cmd = _deploymentSettingsResult_command result
 
-  txnSubFeedback <- elClass "div" "modal__main transaction_details" $
+  _txnSubFeedback <- elClass "div" "modal__main transaction_details" $
     submitTransactionWithFeedback cmd chainId nodeInfos
 
-  -- If the message has no value yet, or it is an error then disable the 'done' button to
-  -- avoid incorrectly triggering the import of the new account.
-  let isDisabled = maybe True isLeft <$> _transactionSubmitFeedback_message txnSubFeedback
+  -- Fire off a /local request and add the account if that is successful. This
+  -- is optimistic but reduces the likelyhood we create the account _without_
+  -- saving it, which is what would happen before if the user closed the dialog
+  -- without using the "Done" button. We don't check that the sender has enough
+  -- gas here, so it is possible to add non-existant accounts to the wallet.
+  -- That seems better than the alternative (spending gas to create an account
+  -- and not having access to it).
+  let req = NetworkRequest
+        { _networkRequest_cmd = cmd
+        , _networkRequest_chainRef = ChainRef Nothing chainId
+        , _networkRequest_endpoint = Endpoint_Local
+        }
+  pb <- getPostBuild
+  resp <- performLocalRead (model ^. network) $ [req] <$ pb
+  let localOk = fforMaybe resp $ \case
+        [(_, That (_, PLiteral (LString "Write succeeded")))] -> Just ()
+        [(_, These _ (_, PLiteral (LString "Write succeeded")))] -> Just ()
+        _ -> Nothing
+      conf = mempty & walletCfg_importAccount .~ tagMaybe (current dAccount) localOk
 
-  eNewAccount <- modalFooter $ uiButtonDyn
-    (def & uiButtonCfg_class .~ "button_type_confirm" & uiButtonCfg_disabled .~ isDisabled)
-    (text "Done")
-
-  let cfg  = mempty & walletCfg_importAccount .~ (tagMaybe (current dAccount) eNewAccount)
+  done <- modalFooter $ confirmButton def "Done"
 
   pure
-    ( ("Creating Vanity Account", (cfg, eNewAccount))
+    ( ("Creating Vanity Account", (conf, done))
     , never
     )

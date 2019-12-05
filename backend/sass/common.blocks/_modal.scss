@@ -271,27 +271,17 @@
   justify-content: flex-end;
 }
 
+.grant-capabilities-static-row__wrapped-cell {
+  word-break: break-all;
+  overflow: visible !important;
+  text-overflow: unset !important;
+  white-space: pre-wrap !important;
+}
+
 .signing-ui-signers__signer {
   margin-top: $normal-margin;
   margin-bottom: $normal-margin;
 }
-
-.cross-chain-transfer-msg {
-  margin-top: -15px;
-  height: 1.5em;
-  overflow: hidden;
-  cursor: pointer;
-  padding: 0.4em;
-  border-radius: $std-border-radius;
-
-  &.cross-chain-transfer-msg__expanded {
-    position: absolute;
-    height: auto;
-    z-index: 10;
-    background-color: #FAFAFA;
-  }
-}
-
 
 .cross-chain-transfer-retry {
   margin-top: 1em;

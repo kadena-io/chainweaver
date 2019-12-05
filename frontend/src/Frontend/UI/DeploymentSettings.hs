@@ -7,6 +7,7 @@
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE PatternGuards #-}
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE RecursiveDo #-}
 {-# LANGUAGE ScopedTypeVariables #-}
@@ -61,7 +62,7 @@ module Frontend.UI.DeploymentSettings
   , Identity (runIdentity)
   ) where
 
-import Control.Applicative ((<|>))
+import Control.Applicative ((<|>), empty)
 import Control.Arrow (first, (&&&))
 import Control.Error (fmapL, hoistMaybe, headMay)
 import Control.Error.Util (hush)
@@ -218,6 +219,12 @@ publicKeysForAccounts allAccounts caps =
   in
     Map.fromList $ fmapMaybe toPublicKey $ Map.toList caps
 
+lookupAccountByName :: ChainId -> AccountName -> Accounts key -> Maybe (Account key)
+lookupAccountByName c n = fmap getFirst . foldMap f
+  where f = \case
+          SomeAccount_Account a | _account_name a == n, _account_chainId a == c -> Just $ First a
+          _ -> Nothing
+
 buildDeploymentSettingsResult
   :: ( HasNetwork model t
      , HasJsonData model t
@@ -258,6 +265,14 @@ buildDeploymentSettingsResult m mSender signers cChainId capabilities ttl gasLim
         }
   code' <- lift code
   allAccounts <- lift $ m ^. wallet_accounts
+  -- Make an effort to ensure the sender account has enough balance to actually
+  -- pay the gas. This won't work if the user selects an account on a different
+  -- chain, but that's another issue.
+  for_ (lookupAccountByName chainId sender allAccounts) $ \senderAccount -> case _account_balance senderAccount of
+    Nothing -> empty
+    Just b -> let GasLimit lim = _pmGasLimit publicMeta
+                  GasPrice (ParsedDecimal price) = _pmGasPrice publicMeta
+               in guard $ unAccountBalance b > fromIntegral lim * price
   let pkCaps = publicKeysForAccounts allAccounts caps
   pure $ do
     let signingPairs = getSigningPairs signing allAccounts
@@ -389,7 +404,6 @@ uiDeploymentSettings m settings = mdo
 
       when (_deploymentSettingsConfig_includePreviewTab settings) $ tabPane mempty curSelection DeploymentSettingsView_Preview $ do
         let currentNode = headMay . rights <$> (m ^. network_selectedNodes)
-
             mNetworkId = (hush . mkNetworkName . nodeVersion =<<) <$> currentNode
 
             mHeadAccount = fmap _account_name . findFirstVanityAccount <$> (m ^. wallet_accounts)
@@ -398,18 +412,22 @@ uiDeploymentSettings m settings = mdo
             aSender = (<|>) <$> mSender <*> mHeadAccount
             aChainId = (<|>) <$> cChainId <*> mHeadChain
 
-        dyn_ $ uiDeployPreview m settings
-          <$> (m ^. wallet_accounts)
-          <*> signers
-          <*> gasLimit
-          <*> ttl
-          <*> code
-          <*> (m ^. network_meta)
-          <*> capabilities
-          <*> (m ^. jsonData . jsonData_data)
-          <*> mNetworkId
-          <*> aChainId
-          <*> aSender
+            uiPreviewPane = uiDeployPreview m settings
+              <$> (m ^. wallet_accounts)
+              <*> signers
+              <*> gasLimit
+              <*> ttl
+              <*> code
+              <*> (m ^. network_meta)
+              <*> capabilities
+              <*> (m ^. jsonData . jsonData_data)
+              <*> mNetworkId
+              <*> aChainId
+              <*> aSender
+
+        dyn_ $ curSelection >>= \case
+          DeploymentSettingsView_Preview -> uiPreviewPane
+          _ -> constDyn blank
 
       pure
         ( cfg & networkCfg_setSender .~ fmapMaybe (fmap unAccountName) (updated mSender)
@@ -599,15 +617,13 @@ uiMetaData m mTTL mGasLimit = do
         :: Event t Text
         -> InputElementConfig EventResult t (DomBuilderSpace m)
         -> m (Event t GasPrice)
-      gasPriceInputBox setExternal conf = fmap (view _3) $ dimensionalInputWrapper "KDA" $
-       uiNonnegativeRealWithPrecisionInputElement maxCoinPrecision (GasPrice . ParsedDecimal) $ conf
+      gasPriceInputBox setExternal conf = fmap (view _3) $ uiGasPriceInputField $ conf
         & initialAttributes %~ addToClassAttr "input-units"
         & inputElementConfig_initialValue .~ showGasPrice defaultTransactionGasPrice
         & inputElementConfig_setValue .~ leftmost
           [ setExternal
           , showGasPrice <$> pbGasPrice -- Initial value (from storage)
           ]
-        & inputElementConfig_elementConfig . elementConfig_eventSpec %~ preventScrollWheelAndUpDownArrow @m
 
     onGasPrice <- mdo
       tsEl <- mkLabeledClsInput True "Transaction Speed" (txnSpeedSliderEl setPrice)
@@ -625,7 +641,7 @@ uiMetaData m mTTL mGasLimit = do
       mkGasLimitInput
         :: InputElementConfig EventResult t (DomBuilderSpace m)
         -> m (Event t Integer)
-      mkGasLimitInput conf = dimensionalInputWrapper "Units" $ fmap snd $ uiIntInputElement (Just 0) (Just chainwebGasLimit) $ conf
+      mkGasLimitInput conf = dimensionalInputWrapper "Units" $ fmap snd $ uiIntInputElement (Just 0) (Just chainwebGasLimitMaximum) $ conf
         & inputElementConfig_initialValue .~ showGasLimit initGasLimit
         & inputElementConfig_setValue .~ fmap showGasLimit pbGasLimit
         & inputElementConfig_elementConfig . elementConfig_eventSpec %~ preventScrollWheelAndUpDownArrow @m
@@ -634,8 +650,9 @@ uiMetaData m mTTL mGasLimit = do
 
     gasLimit <- holdDyn initGasLimit $ leftmost [onGasLimit, pbGasLimit]
 
-    let mkTransactionFee c = fmap (view _1) $ dimensionalInputWrapper "KDA" $ uiNonnegativeRealWithPrecisionInputElement maxCoinPrecision id $ c
+    let mkTransactionFee c = fmap (view _1) $ uiGasPriceInputField $ c
           & initialAttributes %~ Map.insert "disabled" ""
+
     _ <- mkLabeledInputView True "Max Transaction Fee"  mkTransactionFee $
       ffor (m ^. network_meta) $ \pm -> showGasPrice $ fromIntegral (_pmGasLimit pm) * _pmGasPrice pm
 
@@ -680,10 +697,10 @@ uiMetaData m mTTL mGasLimit = do
          in GasPrice $ ParsedDecimal $ roundTo maxCoinPrecision gp
 
       scaleTxnSpeedToGP :: GasPrice -> GasPrice
-      scaleTxnSpeedToGP = shiftGP 1 1001 (1e-12) (1e-8)
+      scaleTxnSpeedToGP = shiftGP 1 1001 (1e-12) (1e-3)
 
       scaleGPtoTxnSpeed :: GasPrice -> GasPrice
-      scaleGPtoTxnSpeed = shiftGP (1e-12) (1e-8) 1 1001
+      scaleGPtoTxnSpeed = shiftGP (1e-12) (1e-3) 1 1001
 
       parseGasPrice :: Text -> Maybe GasPrice
       parseGasPrice t = GasPrice . ParsedDecimal . roundTo maxCoinPrecision <$> readMay (T.unpack t)
@@ -826,7 +843,7 @@ capabilityInputRow
   -> m (Dynamic t (Maybe AccountName))
   -> m (CapabilityInputRow t)
 capabilityInputRow mCap mkSender = elClass "tr" "table__row" $ do
-  (empty, parsed) <- elClass "td" "table__cell_padded" $ mdo
+  (emptyCap, parsed) <- elClass "td" "table__cell_padded" $ mdo
     cap <- uiInputElement $ def
       & inputElementConfig_initialValue .~ foldMap (renderCompactText . _dappCap_cap) mCap
       & initialAttributes .~
@@ -837,19 +854,19 @@ capabilityInputRow mCap mkSender = elClass "tr" "table__row" $ do
           , dis
           ])
       & modifyAttributes .~ ffor errors (\e -> "style" =: ("background-color: #fdd" <$ guard e))
-    empty <- holdUniqDyn $ T.null <$> value cap
+    emptyCap <- holdUniqDyn $ T.null <$> value cap
     let parsed = parseSigCapability <$> value cap
-        showError = (\p e -> isLeft p && not e) <$> parsed <*> empty
+        showError = (\p e -> isLeft p && not e) <$> parsed <*> emptyCap
         errors = leftmost
           [ tag (current showError) (domEvent Blur cap)
           , False <$ _inputElement_input cap
           ]
-    pure (empty, parsed)
+    pure (emptyCap, parsed)
   account <- elClass "td" "table__cell_padded" mkSender
 
   pure $ CapabilityInputRow
-    { _capabilityInputRow_empty = empty
-    , _capabilityInputRow_value = empty >>= \case
+    { _capabilityInputRow_empty = emptyCap
+    , _capabilityInputRow_value = emptyCap >>= \case
       True -> pure mempty
       False -> fmap (fromMaybe mempty) $ runMaybeT $ do
         a <- MaybeT account
@@ -898,8 +915,8 @@ uiSenderCapabilities
 uiSenderCapabilities m cid mCaps mkSender = do
   let senderDropdown setSender = uiSenderDropdown def setSender m cid
       staticCapabilityRow sender cap = do
-        el "td" $ text $ _dappCap_role cap
-        el "td" $ text $ renderCompactText $ _dappCap_cap cap
+        elClass "td" "grant-capabilities-static-row__wrapped-cell" $ text $ _dappCap_role cap
+        elClass "td" "grant-capabilities-static-row__wrapped-cell" $ text $ renderCompactText $ _dappCap_cap cap
         acc <- el "td" $ sender
         pure $ CapabilityInputRow
           { _capabilityInputRow_empty = pure False
@@ -936,15 +953,15 @@ uiSenderCapabilities m cid mCaps mkSender = do
                )
       Just caps -> do
         el "thead" $ el "tr" $ do
-          elClass "th" "table__heading" $ text "Role"
-          elClass "th" "table__heading" $ text "Capability"
-          elClass "th" "table__heading" $ text "Account"
+          elAttr "th" ("class" =: "table__heading" <> "width" =: "23%") $ text "Role"
+          elAttr "th" ("class" =: "table__heading") $ text "Capability"
+          elAttr "th" ("class" =: "table__heading" <> "width" =: "30%") $ text "Account"
         el "tbody" $ do
           gas <- staticCapabilityRow mkSender defaultGASCapability
           rest <- staticCapabilityRows (Just <$> eApplyToAll) $ filter (not . isGas . _dappCap_cap) caps
           pure ( _capabilityInputRow_account gas
                , combineMaps [(_capabilityInputRow_value gas),rest]
-               , constDyn 0
+               , constDyn (1 {- Gas payer -} + length caps)
                )
 
     -- If the gas capability is set, we enable the button that will set every other
@@ -1013,6 +1030,7 @@ uiDeployPreview _ _ _ _ _ _ _ _ _ _ _ Nothing _ = text "Please select a Chain."
 uiDeployPreview _ _ _ _ _ _ _ _ _ _ Nothing _ _ = text "No network nodes configured."
 uiDeployPreview model settings accounts signers gasLimit ttl code lastPublicMeta capabilities jData (Just networkId) (Just chainId) (Just sender) = do
   pb <- getPostBuild
+
   let deploySettingsJsonData = fromMaybe mempty $ _deploymentSettingsConfig_data settings
       jsonData0 = fromMaybe mempty $ hush jData
       signing = signers <> (Set.insert sender $ Map.keysSet capabilities)

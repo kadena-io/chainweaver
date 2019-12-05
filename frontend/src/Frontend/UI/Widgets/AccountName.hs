@@ -4,6 +4,7 @@ module Frontend.UI.Widgets.AccountName
 
 import Control.Error (hush)
 import Control.Monad.Fix (MonadFix)
+import Pact.Types.ChainId
 
 import Reflex
 import Reflex.Dom
@@ -19,10 +20,11 @@ uiAccountNameInput
      , MonadFix m
      )
   => Wallet key t
+  -> Dynamic t (Maybe ChainId)
   -> m (Dynamic t (Maybe AccountName))
-uiAccountNameInput w = do
+uiAccountNameInput w mChain = do
   let
-    validateAccountName = checkAccountNameValidity w
+    validateAccountName = ($) <$> checkAccountNameValidity w <*> mChain
 
     inp lbl wrapperCls = divClass wrapperCls $ mkLabeledClsInput True lbl
       $ \cls -> uiInputElement $ def & initialAttributes .~ "class" =: (renderClass cls)

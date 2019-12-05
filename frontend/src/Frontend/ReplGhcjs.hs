@@ -50,6 +50,7 @@ import Frontend.Foundation
 import Frontend.GistStore
 import Frontend.Ide
 import Frontend.OAuth
+import Frontend.Network
 import Frontend.Repl
 import Frontend.Storage
 import Frontend.UI.Button
@@ -58,7 +59,7 @@ import Frontend.UI.Dialogs.CreateGist (uiCreateGist)
 import Frontend.UI.Dialogs.CreatedGist (uiCreatedGist)
 import Frontend.UI.Dialogs.DeployConfirmation (uiDeployConfirmation)
 import Frontend.UI.Dialogs.LogoutConfirmation (uiLogoutConfirmation)
-import Frontend.UI.Dialogs.NetworkEdit (uiNetworkSelect)
+import Frontend.UI.Dialogs.NetworkEdit (queryNetworkStatus, uiNetworkSelect, uiNetworkStatus)
 import Frontend.UI.Dialogs.Signing (uiSigning)
 import Frontend.UI.IconGrid (IconGridCellConfig(..), iconGridLaunchLink)
 import Frontend.UI.Modal
@@ -242,11 +243,10 @@ networkBar
   -> m (ModalIdeCfg m key t)
 networkBar m = divClass "main-header main-header__network-bar" $ do
   -- Fetch and display the status of the currently selected network.
-  --queryNetworkStatus (m ^. ide_network . network_networks) (m ^. ide_network . network_selectedNetwork)
-  --  >>= uiNetworkStatus (pure " page__network-bar-status")
+  queryNetworkStatus (m ^. ide_network . network_networks) (m ^. ide_network . network_selectedNetwork)
+    >>= uiNetworkStatus (pure " page__network-bar-status")
   -- Present the dropdown box for selecting one of the configured networks.
-  divClass "page__network-bar-select" $
-    uiNetworkSelect (m ^. ide_network)
+  uiNetworkSelect "select_type_special" (m ^. ide_network)
 
 controlBar
   :: MonadWidget t m
@@ -356,7 +356,7 @@ resourcesWidget = elClass "div" "icon-grid" $ do
   resourceCell "Support" (static @"img/resources/support.svg") "https://www.kadena.io/chainweaver-support"
     "Explore Help Resources to learn about Chainweaver, solve problems and get in touch"
   resourceCell "Documentation" (static @"img/resources/documentation.svg") "https://github.com/kadena-io/chainweaver"
-    "Complete technical resources for Chainweaver, Kadena blockchain and Pact language"
+    "Complete technical resources for Chainweaver"
   resourceCell "Tutorials" (static @"img/resources/tutorials.svg") "https://pactlang.org/"
     "Read or watch tutorials for writing smart contracts using the Pact language"
   where
