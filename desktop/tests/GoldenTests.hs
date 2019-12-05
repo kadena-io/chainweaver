@@ -7,12 +7,14 @@ import Text.Printf (printf)
 import Data.Text (Text)
 import qualified Data.ByteString.Lazy as LBS
 
+import qualified Data.Map as Map
 import qualified Data.Aeson as Aeson
 
 import Common.Network (ChainId (..), uncheckedNetworkName)
 import Common.Wallet (UnfinishedCrossChainTransfer (..), Account (..), KeyPair (..),
-                      AccountBalance (..), AccountName (..))
+                      AccountBalance (..), AccountName (..), parsePublicKey)
 
+import Frontend.JsonData (Keyset, KeysetV (..))
 import Frontend.Wallet (SomeAccount (..))
 
 import qualified Cardano.Crypto.Wallet as Crypto
@@ -80,14 +82,45 @@ goldenTests =
           ("deleted", SomeAccount_Deleted)
           : accountPermutations (\k b x -> (mkTag k b x, SomeAccount_Account $ accountW k b x))
       ]
+
+    -- Example taken from Kadena Pact Reference
+    -- https://pact-language.readthedocs.io/en/latest/pact-reference.html#keysets-and-authorization
+    --
+    -- {
+    --   "fully-specified-with-native-pred":
+    --   { "keys": ["abc6bab9b88e08d","fe04ddd404feac2"], "pred": "keys-2" },
+    --   "fully-specified-with-qual-custom":
+    --   { "keys": ["abc6bab9b88e08d","fe04ddd404feac2"], "pred": "my-module.custom-pred" },
+    --   "keysonly":
+    --   { "keys": ["abc6bab9b88e08d","fe04ddd404feac2"] },
+    --   "keylist": ["abc6bab9b88e08d","fe04ddd404feac2"]
+    -- }
+
+    (Right pubkey1) = parsePublicKey "b7a3c12dc0c8c748ab07525b701122b88bd78f600c76342d27f25e5f92444cde"
+    keysetkeys = Map.fromList [("alice", pubkey1) , ("fred", pubkey1)]
+
+    fullySpecifiedWithNativePred,fullySpecifiedWithQualifiedCustomPred,keyList :: Keyset
+
+    fullySpecifiedWithNativePred =
+      Keyset keysetkeys $ Just "keys-2"
+
+    fullySpecifiedWithQualifiedCustomPred =
+      Keyset keysetkeys $ Just "my-module.custom-pred"
+
+    keyList =
+      Keyset keysetkeys Nothing
+
   in
-      -- KeyPair
     [ mkGTest "KeyPair - Just" "keypair-just" keyPairJust
     , mkGTest "KeyPair - Nothing" "keypair-nothing" keyPairNothing
-      -- Account
+    , mkGTest "Keyset - Native Predicate" "fullySpecifiedWithNativePred" fullySpecifiedWithNativePred
+    , mkGTest "Keyset - Qualified Custom Predicate" "fullySpecifiedWithQualifiedCustomPred" fullySpecifiedWithQualifiedCustomPred
+    , mkGTest "Keyset - Key list" "keylist" keyList
     ]
     <> accountPermutations mkAccTest
     <> someAccountPermutations
 
 main :: IO ()
-main = defaultMain $ testGroup "Golden Tests - Desktop - [PrivateKey-Balance-XChainTfr]" $ fmap toGoldenTest goldenTests
+main = defaultMain
+  $ testGroup "Golden Tests - Desktop - [PrivateKey-Balance-XChainTfr]"
+  $ fmap toGoldenTest goldenTests
