@@ -26,6 +26,11 @@ const char *global_getHomeDirectory() {
   return [dir UTF8String];
 }
 
+const char *global_getBundleIdentifier() {
+  NSString *bundleIdentifier = [[NSBundle mainBundle] bundleIdentifier];
+  return [bundleIdentifier UTF8String];
+}
+
 // For use from haskell land
 void global_openFileDialog() {
   // Add the operation to the queue to ensure it happens on main thread

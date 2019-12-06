@@ -21,6 +21,7 @@ foreign import ccall moveToBackground :: IO ()
 foreign import ccall resizeWindow :: Int -> Int -> IO ()
 foreign import ccall global_openFileDialog :: IO ()
 foreign import ccall global_getHomeDirectory :: IO CString
+foreign import ccall global_getBundleIdentifier :: IO CString
 
 ffi :: MacFFI
 ffi = MacFFI
@@ -32,6 +33,7 @@ ffi = MacFFI
   , _macFFI_resizeWindow = uncurry resizeWindow
   , _macFFI_global_openFileDialog = global_openFileDialog
   , _macFFI_global_getHomeDirectory = global_getHomeDirectory
+  , _macFFI_global_getBundleIdentifier = global_getBundleIdentifier
   }
 
 main :: IO ()
