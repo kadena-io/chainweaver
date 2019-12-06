@@ -23,6 +23,8 @@ import WebKitGTK
 
 {-- NOTES
 
+To run: `WEBKIT_DISABLE_COMPOSITING_MODE=1 $(nix-build -A linux)/bin/kadena-chainweaver-rc1` from the project root
+
 - Compositing issues with nvidia drivers: See https://bugs.freebsd.org/bugzilla/show_bug.cgi?id=229491
 - Must make sure that no GTK commands escape the UI thread. You'll get errors like these if you mess this up:
   - `Most likely this is a multi-threaded client and XInitThreads has not been called`
