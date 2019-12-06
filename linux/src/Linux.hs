@@ -37,6 +37,8 @@ To run: `WEBKIT_DISABLE_COMPOSITING_MODE=1 $(nix-build -A linux)/bin/kadena-chai
 - UI is really slow and gets stuck (maybe loading ace?)
 - Upgrading gtk stack is really hard because reflex-platform uses it, so you are kinda stuck with what we have
 unless we bump r-p
+- I get some errors when launching links with brave. They work, but the error is nasty.
+- Needs to log to syslog or something.
 --}
 
 -- We must ensure that we never actually do GTK things in these functions. Otherwise they'll likely be on
