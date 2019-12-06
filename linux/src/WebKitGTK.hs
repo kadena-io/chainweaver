@@ -130,7 +130,7 @@ customRun route main = do
   _ <- Gtk.init Nothing
   window <- windowNew WindowTypeToplevel
   _ <- timeoutAdd PRIORITY_HIGH 10 (yield >> return True)
-  windowSetDefaultSize window 900 600
+  windowSetDefaultSize window 1400 900
   windowSetPosition window WindowPositionCenter
   scrollWin <- scrolledWindowNew noAdjustment noAdjustment
   contentManager <- userContentManagerNew
@@ -157,7 +157,6 @@ customRun route main = do
       _ -> return ()
 
   webViewLoadUri webView route
-
   installQuitHandler webView
   Gtk.main
 

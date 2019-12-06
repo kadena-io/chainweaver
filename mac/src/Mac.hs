@@ -10,6 +10,7 @@ import Foreign.C.String (CString, peekCString)
 import Foreign.StablePtr (StablePtr, newStablePtr)
 import Language.Javascript.JSaddle.Types (JSM)
 import Language.Javascript.JSaddle.WKWebView (AppDelegateConfig(..), mainBundleResourcePath, runHTMLWithBaseURL)
+import System.FilePath ((</>))
 
 import Desktop (main', MacFFI(..))
 
@@ -26,13 +27,18 @@ ffi :: MacFFI
 ffi = MacFFI
   { _macFFI_setupAppMenu = setupAppMenu
   , _macFFI_activateWindow = activateWindow
-  , _macFFI_hideWindow = hideWindow
   , _macFFI_moveToBackground = moveToBackground
   , _macFFI_moveToForeground = moveToForeground
   , _macFFI_resizeWindow = uncurry resizeWindow
   , _macFFI_global_openFileDialog = global_openFileDialog
-  , _macFFI_global_getHomeDirectory = global_getHomeDirectory >>= peekCString
+  , _macFFI_global_getStorageDirectory = 
   }
+
+getStorageDirectory :: IO String
+getStorageDirectory = do
+  home <- global_getHomeDirectory >>= peekCString
+  -- TODO use the bundle identifier directly, don't duplicate it
+  pure $ home </> "Library" </> "Application Support" </> "io.kadena.chainweaver"
 
 -- | Redirect the given handles to Console.app
 redirectPipes :: [Handle] -> IO a -> IO a
@@ -63,7 +69,7 @@ runMac url allowing onUniversalLink handleOpen = runHTMLWithBaseURL url allowing
     (_macFFI_setupAppMenu ffi) <=< newStablePtr $ void . handleOpen <=< peekCString
   , _appDelegateConfig_didFinishLaunchingWithOptions = do
     putStrLn "did finish launching"
-    (_macFFI_hideWindow ffi)
+    hideWindow
   , _appDelegateConfig_applicationDidBecomeActive = putStrLn "did become active"
   , _appDelegateConfig_applicationWillResignActive = putStrLn "will resign active"
   , _appDelegateConfig_applicationDidEnterBackground = putStrLn "did enter background"

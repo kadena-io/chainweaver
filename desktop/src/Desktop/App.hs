@@ -11,16 +11,14 @@ import Control.Concurrent
 import Control.Exception (bracket, try)
 import Control.Monad.IO.Class
 import Data.String (IsString(..))
-import Foreign.C.String (CString, peekCString)
+import Foreign.C.String (CString)
 import Foreign.StablePtr (StablePtr)
-import GHC.IO.Handle
 import Language.Javascript.JSaddle.Types (JSM)
 import Obelisk.Backend
 import Obelisk.Frontend
 import Obelisk.Route.Frontend
 import Reflex.Dom
 import System.FilePath ((</>))
-import System.IO
 import qualified Control.Concurrent.Async as Async
 import qualified Data.ByteString as BS
 import qualified Data.List as L
@@ -43,21 +41,17 @@ import Desktop.SigningApi
 import Desktop.Util
 
 data AppFFI = AppFFI
-  { _appFFI_setupAppMenu :: StablePtr (CString -> IO ()) -> IO ()
-  , _appFFI_activateWindow :: IO ()
-  , _appFFI_hideWindow :: IO ()
+  { _appFFI_activateWindow :: IO ()
   , _appFFI_resizeWindow :: (Int, Int) -> IO ()
   , _appFFI_moveToBackground :: IO ()
   , _appFFI_moveToForeground :: IO ()
   , _appFFI_global_openFileDialog :: IO ()
-  , _appFFI_global_getHomeDirectory :: IO String
+  , _appFFI_global_getStorageDirectory :: IO String
 }
 
 getUserLibraryPath :: MonadIO m => AppFFI -> m FilePath
 getUserLibraryPath ffi = liftIO $ do
-  home <- _appFFI_global_getHomeDirectory ffi
-  -- TODO use the bundle identifier directly, don't duplicate it
-  let lib = home </> "Library" </> "Application Support" </> "io.kadena.chainweaver"
+  lib <- _appFFI_global_getStorageDirectory ffi
   Directory.createDirectoryIfMissing True lib
   pure lib
 
@@ -88,6 +82,15 @@ main'
   -> (BS.ByteString -> BS.ByteString -> (String -> IO ()) -> (FilePath -> IO Bool) -> JSM () -> IO ())
   -> IO ()
 main' ffi mainBundleResourcePath runHTML = do
+  fileOpenedMVar :: MVar T.Text <- liftIO newEmptyMVar
+  let handleOpen f = try (T.readFile f) >>= \case
+        Left (e :: IOError) -> do
+          putStrLn $ "Failed reading file " <> f <> ": " <> show e
+          pure False
+        Right c -> do
+          putStrLn $ "Opened file successfully: " <> f
+          putMVar fileOpenedMVar c
+          pure True
   -- Set the path to z3. I tried using the plist key LSEnvironment, but it
   -- doesn't work with relative paths.
   exePath <- L.dropWhileEnd (/= '/') <$> Env.getExecutablePath
@@ -115,19 +118,10 @@ main' ffi mainBundleResourcePath runHTML = do
         staticAssets
         backend
         (Frontend blank blank)
-  fileOpenedMVar :: MVar T.Text <- liftIO newEmptyMVar
   -- Run the backend in a forked thread, and run jsaddle-wkwebview on the main thread
   putStrLn $ "Starting backend on port: " <> show port
   Async.withAsync b $ \_ -> do
     liftIO $ putStrLn "Starting jsaddle"
-    let handleOpen f = try (T.readFile f) >>= \case
-          Left (e :: IOError) -> do
-            putStrLn $ "Failed reading file " <> f <> ": " <> show e
-            pure False
-          Right c -> do
-            putStrLn $ "Opened file successfully: " <> f
-            putMVar fileOpenedMVar c
-            pure True
     (signingRequestMVar, signingResponseMVar) <- signingServer
       (_appFFI_moveToForeground ffi)
       (_appFFI_moveToBackground ffi)

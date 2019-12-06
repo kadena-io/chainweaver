@@ -15,8 +15,10 @@ library
     , data-default
     , jsaddle
     , jsaddle-webkit2gtk
+    , filepath
     , process
-    , todo
+    , safe
+    , gi-gtk-hs
 
     -- These are here because of our webkit2gtk fork
     , unix
@@ -50,4 +52,4 @@ executable linuxApp
       base
     , linux
   ghc-options:
-    -threaded -O -Wall
+    -threaded -O2 -Wall

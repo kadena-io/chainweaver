@@ -15,6 +15,7 @@ library
     , data-default
     , jsaddle
     , jsaddle-wkwebview
+    , filepath
 
   ghc-options:
     -O -Wall

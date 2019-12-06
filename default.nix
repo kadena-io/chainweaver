@@ -10,6 +10,7 @@ let
   pactServerModule = import ./pact-server/service.nix;
   macAppName = "Kadena Chainweaver RC-2";
   macAppIcon =  ./mac/static/icons/kadena.png;
+  linuxAppName = "kadena-chainweaver-rc1";
   macPactDocumentIcon = ./mac/static/icons/pact-document.png;
   # ^ This can be created in Preview using 'GenericDocumentIcon.icns' from
   # /System/Library/CoreServices/CoreTypes.bundle/Contents/Resources/
@@ -103,7 +104,39 @@ in obApp // rec {
     mkdir $out
     ${pkgs.sass}/bin/sass ${./backend/sass}/index.scss $out/sass.css
   '';
+  # Linux app static linking
+  linuxBackend = pkgs.haskell.lib.overrideCabal obApp.ghc.linux (drv: {
+    libraryFrameworkDepends =
+      [ pkgs.webkit
+        pkgs.glib-networking
+      ];
 
+    configureFlags = [
+      "--ghc-options=-optl=${(pkgs.openssl.override { static = true; }).out}/lib/libcrypto.a"
+      "--ghc-options=-optl=${(pkgs.openssl.override { static = true; }).out}/lib/libssl.a"
+      "--ghc-options=-optl=${pkgs.zlib.static}/lib/libz.a"
+      "--ghc-options=-optl=${pkgs.gmp6.override { withStatic = true; }}/lib/libgmp.a"
+      "--ghc-options=-optl=${pkgs.libffi.override {
+        stdenv = pkgs.stdenvAdapters.makeStaticLibraries pkgs.stdenv;
+        }}/lib/libffi.a"
+    ];
+  });
+  linux = linuxBackend.overrideAttrs (old: {
+    # This wrapGAppsHook is necessary for nixos, but is probably counter productive for gnome systems
+    nativeBuildInputs = old.nativeBuildInputs ++ [
+      pkgs.wrapGAppsHook
+    ];
+    postInstall = ''
+      set -eux
+      mv $out/bin/linuxApp $out/bin/${linuxAppName}
+      ln -s "${pkgs.z3}"/bin/z3 "$out/bin/z3"
+      ln -s "${obApp.mkAssets obApp.passthru.staticFiles}" "$out/bin/static.assets"
+      ln -s "${obApp.passthru.staticFiles}" "$out/bin/static"
+      ln -s "${sass}/sass.css" "$out/bin/sass.css"
+      ${pkgs.libicns}/bin/png2icns "$out/bin/pact.icns" "${macAppIcon}"
+      ${pkgs.libicns}/bin/png2icns "$out/bin/pact-document.icns" "${macPactDocumentIcon}"
+    '';
+  });
   # Use native mac libc++
   fixedZ3 = pkgs.z3.overrideAttrs (oldAttrs: rec {
     fixupPhase = ''

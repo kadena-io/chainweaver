@@ -39,6 +39,7 @@ in
           obelisk-oauth-common = hackGet ./deps/obelisk-oauth + /common;
           obelisk-oauth-frontend = hackGet ./deps/obelisk-oauth + /frontend;
           obelisk-oauth-backend = hackGet ./deps/obelisk-oauth + /backend;
+
           # Needed for obelisk-oauth currently (ghcjs support mostly):
           entropy = hackGet ./deps/entropy;
           crc = hackGet ./deps/crc;
@@ -46,6 +47,7 @@ in
           kadena-signing-api = hackGet ./deps/signing-api + /kadena-signing-api;
           desktop = ./desktop;
           mac = builtins.filterSource (path: type: !(builtins.elem (baseNameOf path) ["static"])) ./mac;
+          linux = builtins.filterSource (path: type: !(builtins.elem (baseNameOf path) ["static"])) ./linux;
       };
 
     overrides = let
@@ -79,7 +81,17 @@ in
           ];
         });
       };
-
+      addGObjectIntrospection = hpackage: pkgs.haskell.lib.overrideCabal hpackage (current: {
+          libraryPkgconfigDepends =
+            current.libraryPkgconfigDepends ++ [ pkgs.gobject-introspection ];
+        });
+      linux-overlay = self: super: {
+        gi-gtk-hs = self.callHackageDirect {
+          pkg = "gi-gtk-hs";
+          ver =  "0.3.7.0";
+          sha256 = "0h5959ayjvipj54z0f350bz23fic90xw9z06xw4wcvxvwkrsi2br";
+        } { };
+      };
       desktop-overlay = self: super: {
         ether = haskellLib.doJailbreak super.ether;
       };
@@ -128,6 +140,7 @@ in
     in self: super: lib.foldr lib.composeExtensions (_: _: {}) [
       (import (hackGet ./deps/pact + "/overrides.nix") pkgs hackGet)
       mac-overlay
+      linux-overlay
       desktop-overlay
       common-overlay
       (optionalExtension (super.ghc.isGhcjs or false) guard-ghcjs-overlay)
