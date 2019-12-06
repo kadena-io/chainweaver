@@ -266,7 +266,6 @@ makeNetwork
     , TriggerEvent t m, PostBuild t m
     , MonadSample t (Performable m)
     , HasNetworkModelCfg mConf t
-    , HasNetworkCfg mConf t
     , HasConfigs m
     , HasJSContext (Performable m)
     , HasStorage m, HasStorage (Performable m)
@@ -297,7 +296,7 @@ makeNetwork cfg = mfix $ \ ~(_, networkL) -> do
     meta <- buildMeta cfg
 
     pure
-      ( mConf & networkCfg_refreshModule <>~ void (updated networks)
+      ( mConf
       , Network
           { _network_networks = networks
           , _network_selectedNetwork = cName

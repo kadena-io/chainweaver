@@ -46,7 +46,6 @@ import           Frontend.UI.Modal
 import           Frontend.UI.Widgets
 ------------------------------------------------------------------------------
 
-
 type HasUiNetworkEditModel model t =
   (HasNetwork model t)
 
@@ -59,7 +58,7 @@ type HasUiNetworkEditModelCfg mConf t =
 -- | Internal data type for manipulating networks, based on user edits.
 data NetworkAction
   = NetworkDelete NetworkName
-  | NetworkNode NetworkName (Int, Maybe NodeRef)
+  | NetworkNode NetworkName [NodeRef]
   -- ^ Deletion or update of a node
 
 makePrisms ''NetworkAction
@@ -162,7 +161,7 @@ uiNetworks m = do
           (uiNodes nodes)
       pure $ leftmost
         [ deletions
-        , NetworkNode networkName <$> nodeUpdates
+        , NetworkNode networkName <$> updated nodeUpdates
         ]
 
   let ev = switch $ fmap (leftmost . Map.elems) $ current evEv
@@ -176,15 +175,8 @@ uiNetworks m = do
 
   where
 
-    applyNodeUpdate (netName, (i, mRef)) nets =
-      nets & at netName . _Just %~ updateNodes i mRef
-
-    updateNodes :: Int -> Maybe NodeRef -> [NodeRef] -> [NodeRef]
-    updateNodes i mRef =
-      catMaybes
-      . imap (\ci old -> if ci == i then mRef else old)
-      . (<> [Nothing]) -- So any new row will be handled properly
-      . map Just
+    applyNodeUpdate (netName, ns) nets =
+      nets & at netName . _Just .~ ns
 
 
 -- | Overall `NetworkStatus` for a particular network.
@@ -222,65 +214,84 @@ uiNetworkHeading self mStat = do
 uiNodes
   :: forall t m. MonadWidget t m
   => Dynamic t [NodeRef]
-  -> m (Event t (Int, Maybe NodeRef), Dynamic t (Maybe NetworkStatus))
+  -> m (Dynamic t [NodeRef], Dynamic t (Maybe NetworkStatus))
 uiNodes nodes = elClass "ol" "table table_type_primary" $ do
+  pb <- getPostBuild
+  -- Build a patch which adds all the nodes, plus an extra empty node input
+  let mkInitialNodes = PatchIntMap . fmap Just . IntMap.fromList . zip [0..] . (<> [Nothing]) . fmap Just
+  rec
+    responses <- uncurry (foldDyn applyAlways) <=<
+      traverseIntMapWithKeyWithAdjust (const uiNode) IntMap.empty $ leftmost
+        [ switch $ actionToPatch . fmap (view _1) <$> current responses
+        , attachWith (const . mkInitialNodes) (current nodes) pb
+        ]
+  let updates = calculateUpdates $ fmap (view _2) <$> responses
+      netState = calculateNetworkStatusDyn $ fmap (view _3) <$> responses
 
-  let nodesWithBlank = Map.fromList . zip [0..] . (<> [Nothing]) . fmap Just <$> nodes
-  responses <- listWithKey nodesWithBlank $ uiNode $ fmapMaybe id <$> current nodesWithBlank
-
-  let
-    onAction = switchDyn $ leftmost . toFunctorList . fmap fst <$> responses
-    netState = calculateNetworkStatusDyn responses
-
-  pure (onAction, netState)
+  pure (updates, netState)
 
   where
     calculateNetworkStatusDyn
-      :: Dynamic t (Map Int (Event t (Maybe NodeRef), MDynamic t (Either Text NodeInfo)))
+      :: Dynamic t (IntMap (MDynamic t (Either Text NodeInfo)))
       -> Dynamic t (Maybe NetworkStatus)
     calculateNetworkStatusDyn responses =
       let stats :: Dynamic t [Maybe (Either Text NodeInfo)]
-          stats = join $ traverse snd . Map.elems <$> responses
+          stats = join $ sequenceA . IntMap.elems <$> responses
       in foldMap (fmap getNetworkStatus) <$> stats
 
-toFunctorList :: forall k f a. Functor f => Map k (f a) -> [f (k, a)]
-toFunctorList = map (uncurry $ fmap . (,)) . Map.toList
+    calculateUpdates :: Dynamic t (IntMap (Dynamic t (Maybe NodeRef))) -> Dynamic t [NodeRef]
+    calculateUpdates r = join $ fmap catMaybes . sequenceA . IntMap.elems <$> r
+
+    nextKey = maybe 0 (succ . fst) . IntMap.lookupMax
+
+    actionToPatch :: IntMap (Event t NodeAction) -> Event t (PatchIntMap (Maybe NodeRef))
+    actionToPatch m = mconcat $ fmap (handleNodeAction $ nextKey m) $ IntMap.toList m
+
+    handleNodeAction :: Int -> (Int, Event t NodeAction) -> Event t (PatchIntMap (Maybe NodeRef))
+    handleNodeAction s (i, e) = ffor e $ PatchIntMap . \case
+      NodeAction_Deleted -> IntMap.singleton i Nothing
+      NodeAction_Dirtied -> IntMap.singleton s $ Just Nothing
 
 getNetworkStatus :: Either Text NodeInfo -> NetworkStatus
 getNetworkStatus = \case
     Left _ -> NetworkStatus_Bad
     Right i -> NetworkStatus_Good $ infoTitle i
 
+-- | Individual nodes can be deleted, or can cause the creation of an extra node
+-- input.
+data NodeAction
+  = NodeAction_Deleted
+  | NodeAction_Dirtied
+  deriving Show
+
 -- | Render a line edit for a single node + `uiNodeStatus`.
 uiNode
   :: MonadWidget t m
-  => Behavior t (Map Int NodeRef)
-  -> Int
-  -> Dynamic t (Maybe NodeRef)
-  -> m (Event t (Maybe NodeRef), MDynamic t (Either Text NodeInfo))
-uiNode nodes k onVal = do
-  pb <- getPostBuild
-
+  => Maybe NodeRef
+  -> m (Event t NodeAction, Dynamic t (Maybe NodeRef), MDynamic t (Either Text NodeInfo))
+uiNode initVal = do
   elClass "li" "table__row table__row_type_primary" $ do
     divClass "table__row-counter" blank
     nodeInput <- divClass "table__cell table__cell_size_flex" $ uiInputElement $ def
-      & inputElementConfig_setValue .~
-        attachWith (\mv _ -> maybe "" renderNodeRef mv) (current onVal) pb
+      & inputElementConfig_initialValue .~ maybe "" renderNodeRef initVal
       & initialAttributes .~ mconcat
         [ "class" =: "input_width_full"
         , "placeholder" =: "Add node"
         ]
-    let
-      checkVal = \case
-        t | T.null (T.strip t) -> Just Nothing
-          | Right v <- parseNodeRefFull t -> Just (Just v)
-          | otherwise -> Nothing
-      checkDupes ns v
-        | v `elem` Map.delete k ns = Nothing
-        | otherwise = Just v
-    onEdit <- throttle 0.5 $ attachWithMaybe (\ns -> fmap (checkDupes ns =<<) . checkVal) nodes $ _inputElement_input nodeInput
-    stat <- uiNodeStatus "table__cell table__cell_size_tiny" $ join . checkVal <$> value nodeInput
-    pure (onEdit, stat)
+    let checkVal = \case
+          t | T.null (T.strip t) -> Just Nothing
+            | Right v <- parseNodeRefFull t -> Just (Just v)
+            | otherwise -> Nothing
+        checked = checkVal <$> value nodeInput
+    stat <- uiNodeStatus "table__cell table__cell_size_tiny" $ join <$> checked
+    -- Determine if we should take an action which deletes this node or adds a
+    -- new one
+    let mkAction isClean t
+          | T.null t = (Just False, Just NodeAction_Deleted)
+          | isClean = (Just False, Just NodeAction_Dirtied)
+          | otherwise = (Nothing, Nothing)
+    action <- mapAccumMaybe_ mkAction (isNothing initVal) $ _inputElement_input nodeInput
+    pure (action, join <$> checked, stat)
 
   where
     parseNodeRefFull r =
@@ -304,7 +315,7 @@ queryNetworkStatus networks self = do
     traverseIntMapWithKeyWithAdjust (\_ -> queryNodeStatus) initMap onUpdate
   responses :: Dynamic t (IntMap (MDynamic t (Either Text NodeInfo))) <-
       incrementalToDynamic <$> holdIncremental initialResp onRespUpdate
-  pure $ fmap (mconcat . map (fmap getNetworkStatus)) $ join $ fmap (sequence . IntMap.elems) responses
+  pure $ fmap (mconcat . map (fmap getNetworkStatus)) $ join $ fmap (sequenceA . IntMap.elems) responses
 
 queryNodeStatus
   :: MonadWidget t m
