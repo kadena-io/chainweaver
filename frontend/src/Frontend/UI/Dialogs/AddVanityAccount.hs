@@ -2,25 +2,38 @@
 {-# LANGUAGE PatternGuards #-}
 {-# LANGUAGE RecursiveDo #-}
 {-# LANGUAGE TupleSections #-}
+{-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE LambdaCase #-}
 module Frontend.UI.Dialogs.AddVanityAccount
   ( uiAddVanityAccountSettings
   ) where
 
+import GHC.Generics (Generic)
+import Control.Monad.IO.Class (liftIO)
 import           Control.Applicative                    (liftA2)
 import           Control.Lens                           ((^.))
 import           Control.Monad.Trans.Class              (lift)
 import           Control.Monad.Trans.Maybe              (MaybeT (..), runMaybeT)
 import           Data.Functor.Identity                  (Identity(..))
 import           Data.Maybe                             (isNothing)
+import           Data.ByteString                        (ByteString)
+import qualified Data.ByteString as BS
 import           Data.Text                              (Text)
+import qualified Data.Text as Text
+import qualified Data.Text.Encoding as Text
 
-import           Data.Aeson                             (Object,
+import           Data.Aeson                             (Object, ToJSON (..), FromJSON (..),
                                                          Value (Array, String))
+import qualified Data.Aeson as Aeson
 import qualified Data.HashMap.Strict                    as HM
 import qualified Data.Vector                            as V
 
+import qualified Data.Serialize as Serialize
+
+import Pact.Types.Hash (TypedHash)
 import Pact.Types.PactValue
 import Pact.Types.Exp
+import qualified Pact.Types.Command as PactCmd
 import Data.These
 
 import           Reflex
@@ -30,11 +43,12 @@ import           Reflex.Dom.Core
 import           Reflex.Network.Extended                (Flattenable)
 
 import           Frontend.UI.DeploymentSettings
-import           Frontend.UI.Dialogs.DeployConfirmation (CanSubmitTransaction, submitTransactionWithFeedback)
+import           Frontend.UI.Dialogs.DeployConfirmation (Status (..), TransactionSubmitFeedback (..), CanSubmitTransaction, submitTransactionWithFeedback)
 import           Frontend.UI.Modal.Impl                 (ModalIde, modalFooter)
 import           Frontend.UI.Widgets
 import           Frontend.UI.Widgets.AccountName (uiAccountNameInput)
 
+import Frontend.Storage (HasStorage, setItemStorage,localStorage, removeItemStorage)
 import           Frontend.Crypto.Class                  (HasCrypto,
                                                          cryptoGenKey)
 import           Frontend.Crypto.Ed25519                (keyToText)
@@ -60,6 +74,28 @@ type HasUISigningModelCfg mConf key t =
   , HasNetworkCfg mConf t
   )
 
+data InflightNewAccount h key = InflightNewAccount
+  { _inflightNewAccount_txnHash :: TypedHash h
+  , _inflightNewAccount_account :: Account key
+  }
+  deriving Generic
+
+instance ToJSON key => ToJSON (InflightNewAccount h key) where
+  toJSON (InflightNewAccount txn acc) = Aeson.object
+    [ "txn" Aeson..= BS.unpack (Serialize.encode txn)
+    , "account" Aeson..= acc
+    ]
+
+instance FromJSON key => FromJSON (InflightNewAccount h key) where
+  parseJSON = Aeson.withObject "InflightNewAccount" $ \o -> InflightNewAccount
+    <$> o Aeson..: "txn"
+    <*> o Aeson..: "account"
+
+-- | Storage keys for referencing data to be stored/retrieved.
+data StoreInflightVanityAcc h key a where
+  StoreInflightVanityAcc_Acc :: StoreInflightVanityAcc h key (InflightNewAccount h key)
+deriving instance Show (StoreInflightVanityAcc h key a)
+
 tempkeyset :: Text
 tempkeyset = "temp-vanity-keyset"
 
@@ -75,6 +111,8 @@ uiAddVanityAccountSettings
   . ( MonadWidget t m
     , HasUISigningModelCfg mConf key t
     , HasCrypto key (Performable m)
+    , ToJSON key
+    , HasStorage m
     )
   => ModalIde m key t
   -> Dynamic t (Maybe ChainId)
@@ -171,6 +209,8 @@ vanityAccountCreateSubmit
      , CanSubmitTransaction t m
      , HasNetwork model t
      , HasWalletCfg mConf key t
+     , ToJSON key
+     , HasStorage m
      )
   => model
   -> Dynamic t (Maybe (Account key))
@@ -181,8 +221,23 @@ vanityAccountCreateSubmit
 vanityAccountCreateSubmit model dAccount chainId result nodeInfos = Workflow $ do
   let cmd = _deploymentSettingsResult_command result
 
-  _txnSubFeedback <- elClass "div" "modal__main transaction_details" $
+  pb <- getPostBuild
+
+  _ <- dyn_ $ ffor dAccount $ \case
+    Nothing -> liftIO $ putStrLn $ "Unable to store inflight account for txn: " <> (show $ PactCmd._cmdHash cmd) -- TODO error / warning ?
+    Just acc -> setItemStorage localStorage StoreInflightVanityAcc_Acc $ InflightNewAccount
+      { _inflightNewAccount_txnHash = PactCmd._cmdHash cmd
+      , _inflightNewAccount_account = acc
+      }
+
+  txnSubFeedback <- elClass "div" "modal__main transaction_details" $
     submitTransactionWithFeedback cmd chainId nodeInfos
+
+  let txnListenStatus = _transactionSubmitFeedback_listenStatus txnSubFeedback
+
+  _ <- dyn_ $ ffor txnListenStatus $ \case
+    Status_Done -> removeItemStorage localStorage StoreInflightVanityAcc_Acc
+    _ -> pure ()
 
   -- Fire off a /local request and add the account if that is successful. This
   -- is optimistic but reduces the likelyhood we create the account _without_
@@ -196,7 +251,6 @@ vanityAccountCreateSubmit model dAccount chainId result nodeInfos = Workflow $ d
         , _networkRequest_chainRef = ChainRef Nothing chainId
         , _networkRequest_endpoint = Endpoint_Local
         }
-  pb <- getPostBuild
   resp <- performLocalRead (model ^. network) $ [req] <$ pb
   let localOk = fforMaybe resp $ \case
         [(_, That (_, PLiteral (LString "Write succeeded")))] -> Just ()

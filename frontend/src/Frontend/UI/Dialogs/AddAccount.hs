@@ -11,6 +11,7 @@ import           Control.Lens
 import           Control.Monad.Trans.Class
 import           Control.Monad.Trans.Maybe
 import           Data.Text (Text)
+import           Data.Aeson (ToJSON)
 ------------------------------------------------------------------------------
 import           Reflex
 import           Reflex.Dom
@@ -28,6 +29,7 @@ import           Frontend.UI.Modal.Impl (ModalIde, ModalImpl)
 import           Frontend.UI.Widgets
 import           Frontend.UI.Widgets.Helpers (dialogSectionHeading)
 import           Frontend.Foundation
+import           Frontend.Storage (HasStorage)
 
 import Obelisk.Generated.Static
 
@@ -37,6 +39,8 @@ type HasAddAccountModelCfg model mConf key m t =
   , HasCrypto key (Performable m)
   , HasNetworkCfg mConf t
   , HasJsonDataCfg mConf t
+  , ToJSON key
+  , HasStorage m
   )
 
 uiAddWalletOnlyAccountDialogButton
