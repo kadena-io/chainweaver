@@ -35,6 +35,8 @@ To run: `WEBKIT_DISABLE_COMPOSITING_MODE=1 $(nix-build -A linux)/bin/kadena-chai
 - Getting these warnings in the console. Looks bad:
   - http://localhost:48481/:247:76: CONSOLE WARN ArrayBuffer is deprecated in XMLHttpRequest.send(). Use ArrayBufferView instead.
 - UI is really slow and gets stuck (maybe loading ace?)
+- Upgrading gtk stack is really hard because reflex-platform uses it, so you are kinda stuck with what we have
+unless we bump r-p
 --}
 
 -- We must ensure that we never actually do GTK things in these functions. Otherwise they'll likely be on
