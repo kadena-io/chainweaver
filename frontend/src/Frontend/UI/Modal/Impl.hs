@@ -61,19 +61,9 @@ showModal ideL = do
     elDynKlass "div" (mkCls <$> isVisible) $ mdo
       (backdropEl, ev) <- elClass' "div" "modal__screen" $
         networkView (mayMkModal onClose <$> _ide_modal ideL)
-      onFinish <- switchHold never $ snd . snd <$> ev
-      mCfgVoid <- flatten $ fst . snd <$> ev
+      onFinish <- switchHold never $ snd <$> ev
+      mCfgVoid <- flatten $ fst <$> ev
 
-      -- Ignore clicks that started in the dialog. This is necessary because
-      -- when one selects text in a line edit with the mouse, he would easily
-      -- cause an unintended closing of the dialog:
-      onModalMousePressed <- switchHold never $ fst <$> ev
-      isDown <- hold False $ leftmost
-        [ onModalMousePressed
-          -- So we are not losing future clicks:
-        , False <$ domEvent Click backdropEl
-        ]
-      let onBackdropClick = gate (fmap not isDown) $ domEvent Click backdropEl
       let
         mCfg :: ModalIdeCfg m key t
         mCfg = mCfgVoid { _ideCfg_setModal = LeftmostEv never }
@@ -81,7 +71,7 @@ showModal ideL = do
       let
         onClose = leftmost [ onFinish
                            , onEsc
-                           , onBackdropClick
+                           , domEvent Click backdropEl
                            ]
         lConf = mempty & ideCfg_setModal .~ (LeftmostEv $ Nothing <$ onClose)
       pure $ lConf <> mCfg
@@ -91,8 +81,8 @@ showModal ideL = do
     mayMkModal
       :: Event t ()
       -> Maybe (Event t () -> m (IdeCfg Void key t, Event t ()))
-      -> m (Event t Bool, (IdeCfg Void key t, Event t ()))
-    mayMkModal e = maybe (pure (never, (mempty, never))) (\f -> mkModal f e)
+      -> m (IdeCfg Void key t, Event t ())
+    mayMkModal e = maybe (pure (mempty, never)) (\f -> mkModal f e)
 
 
 -- | Puts content in a .modal class container and stops event propagation
@@ -100,19 +90,9 @@ mkModal
   :: forall t m a. MonadWidget t m
   => (Event t () -> m (a, Event t ()))
   -- ^ The dialog
-  -> Event t () -> m (Event t Bool, (a, Event t ()))
+  -> Event t () -> m (a, Event t ())
   -- ^ Wrapped up dialog.
-mkModal e e' = do
-    (modalL, r) <- element "div" elCfg $ e e'
-    let
-      onDown = domEvent Mousedown modalL
-      onUp = domEvent Mouseup modalL
-    let
-      isDown = leftmost
-        [ True <$ onDown
-        , False <$ onUp
-        ]
-    pure (isDown, r)
+mkModal f = fmap snd . element "div" elCfg . f
   where
     elCfg =
        (def :: ElementConfig EventResult t (DomBuilderSpace m))
