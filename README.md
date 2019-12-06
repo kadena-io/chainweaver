@@ -121,7 +121,7 @@ Replace `YOUR-ORGANIZATION` with your organization's name.
 
 Press `Register an application` or `New application`, then give it a name of your liking and fill out the url, which should match the url where chainweaver will be running. For the Authorization callback URL use the following:
 
-https://HOST-WHERE-CHAINWEAVER-RUNS/oauth/redirect/github
+https://HOST-WHERE-CHAINWEAVER-RUNS/contracts/oauth/redirect/github
 
 
 Replace `HOST-WHERE-CHAINWEAVER-RUNS` with your actual host name and press `Register application`.
