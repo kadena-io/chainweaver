@@ -21,7 +21,7 @@ Run [`./scripts/devDesktop`](./scripts/devDesktop)
 ## Mac app
 To work on the objective-c code enter the project shell with
 ```shell
-nix-shell -A shells.ghc
+nix-shell default.nix -A shells.ghc
 ```
 then (re-)enter `cabal new-repl mac` everytime you change the objective-c code.
 
