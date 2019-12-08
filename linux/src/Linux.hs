@@ -25,64 +25,101 @@ import WebKitGTK
 
 To run: `WEBKIT_DISABLE_COMPOSITING_MODE=1 $(nix-build -A linux)/bin/kadena-chainweaver-rc1` from the project root
 
+It currently doesn't reference the static files from the nix store so it actually wont work atm if you
+try to run it from the directory that doesn't have static in it. :)
+
+TODO
+- Get path to static resources working ok
+- Get a tarball to test on ubuntu
+- Setting up app menu? What does the mac app do and what do we want in there?
+- What do we need to do with resizing the window? It seems to work alright
+
+BUGS
 - Compositing issues with nvidia drivers: See https://bugs.freebsd.org/bugzilla/show_bug.cgi?id=229491
+- Getting these warnings in the console. Looks bad:
+  - http://localhost:48481/:247:76: CONSOLE WARN ArrayBuffer is deprecated in XMLHttpRequest.send(). Use ArrayBufferView instead.
+- UI is really slow and gets stuck (maybe loading ace?)
+- I get some errors when launching links with brave. They work, but the error is nasty.
+- Needs to log to syslog or something.
+
+NOTES
 - Must make sure that no GTK commands escape the UI thread. You'll get errors like these if you mess this up:
   - `Most likely this is a multi-threaded client and XInitThreads has not been called`
   - Get commands into the gui thread withhttps://wiki.haskell.org/Gtk2Hs/Tutorials/ThreadedGUIs
 - On NixOS, it's hard for the app to find gnome settings stuff (icons, schema, etc).
   - We use wrapGAppsHook atm, but this wont be great for a non nixos distro because it sets up paths to the nix store! :)
   - See https://nixos.wiki/wiki/Packaging/Quirks_and_Caveats#GLib-GIO-Message:_Using_the_.27memory.27_GSettings_backend._Your_settings_will_not_be_saved_or_shared_with
-- Getting these warnings in the console. Looks bad:
-  - http://localhost:48481/:247:76: CONSOLE WARN ArrayBuffer is deprecated in XMLHttpRequest.send(). Use ArrayBufferView instead.
-- UI is really slow and gets stuck (maybe loading ace?)
 - Upgrading gtk stack is really hard because reflex-platform uses it, so you are kinda stuck with what we have
 unless we bump r-p
-- I get some errors when launching links with brave. They work, but the error is nasty.
-- Needs to log to syslog or something.
+- This is a really good article explaining the difference between GTK and GDK: https://stackoverflow.com/questions/27515062/difference-between-gtkwindow-and-gdkwindow
 --}
+
+data LinuxMVars = LinuxMVars
+  { _linuxMVars_openFileDialog :: MVar ()
+  , _linuxMVars_moveToForeground :: MVar ()
+  , _linuxMVars_moveToBackground :: MVar ()
+  , _linuxMVars_resizeWindow :: MVar (Int,Int)
+  , _linuxMVars_activateWindow :: MVar ()
+  }
 
 -- We must ensure that we never actually do GTK things in these functions. Otherwise they'll likely be on
 -- a thread other than the GUI thread and break!
-mkFfi :: IO (AppFFI, MVar ())
+mkFfi :: IO (AppFFI, LinuxMVars)
 mkFfi = do
-  -- We probably need a queue rather than an mvar. Or lots of mvars for each action. Think about this
-  mvar <- newEmptyMVar
+  activateMV <- newEmptyMVar
+  openFileDialogMV <- newEmptyMVar
+  moveToForegroundMV <- newEmptyMVar
+  moveToBackgroundMV <- newEmptyMVar
+  resizeMV <- newEmptyMVar
+
   let ffi = AppFFI
-        { _appFFI_activateWindow = pure ()
-        -- https://hackage.haskell.org/package/gi-gtk-4.0.1/docs/GI-Gtk-Objects-Window.html#v:windowIconify
-        , _appFFI_moveToBackground = pure ()
-        -- https://hackage.haskell.org/package/gi-gtk-4.0.1/docs/GI-Gtk-Objects-Window.html#v:windowPresentWithTime
-        , _appFFI_moveToForeground = pure ()
-        , _appFFI_resizeWindow = (const $ pure ())
-        , _appFFI_global_openFileDialog = putMVar mvar ()
-        , _appFFI_global_getStorageDirectory = (\hd -> hd </> ".cache" </> "chainweaver") <$> getHomeDirectory
+        { _appFFI_activateWindow = putMVar activateMV ()
+        , _appFFI_moveToBackground = putMVar moveToBackgroundMV ()
+        , _appFFI_moveToForeground = putMVar moveToForegroundMV ()
+        , _appFFI_resizeWindow = putMVar resizeMV
+        , _appFFI_global_openFileDialog = putMVar openFileDialogMV ()
+        , _appFFI_global_getStorageDirectory = (\hd -> hd </> ".local" </> "shared" </> "chainweaver") <$> getHomeDirectory
         }
-  pure (ffi, mvar)
+  pure (ffi, LinuxMVars
+    { _linuxMVars_openFileDialog = openFileDialogMV
+    , _linuxMVars_moveToForeground = moveToForegroundMV
+    , _linuxMVars_moveToBackground = moveToBackgroundMV
+    , _linuxMVars_resizeWindow = resizeMV
+    , _linuxMVars_activateWindow = activateMV
+    })
 
 -- TODO: Redirect stderr/out to a system logger
 main :: IO ()
 main = do
-  (ffi, mvar) <- mkFfi
-  main' ffi (pure $ Just ".") (runLinux mvar)
+  (ffi, mvars) <- mkFfi
+  main' ffi (pure $ Just ".") (runLinux mvars)
 
 runLinux
-  :: MVar ()
+  :: LinuxMVars
   -> ByteString
   -> ByteString
   -> (String -> IO ())
   -> (FilePath -> IO Bool)
   -> JSM ()
   -> IO ()
-runLinux mvar _url allowing _onUniversalLink _handleOpen jsm = do
-  void $ forkIO $ forever $ do
-    _ <- takeMVar mvar
-    postGUIASync $ openFileDialog (const $ pure True)
-  customRun (TE.decodeUtf8With TE.lenientDecode allowing) jsm
+runLinux mvars _url allowing _onUniversalLink handleOpen jsm = do
+  customRun (TE.decodeUtf8With TE.lenientDecode allowing) jsm $ \window -> do
+    mvarHandler (_linuxMVars_openFileDialog mvars) (const $ openFileDialog handleOpen)
+    mvarHandler (_linuxMVars_moveToForeground mvars) (const $ moveToForeground window)
+    mvarHandler (_linuxMVars_moveToBackground mvars) (const $ moveToBackground window)
+    mvarHandler (_linuxMVars_resizeWindow mvars) (resizeWindow window)
+    mvarHandler (_linuxMVars_activateWindow mvars) (const $ activateWindow window)
+
+  where
+    mvarHandler mvar f = void $ forkIO $ forever $ do
+      v <- takeMVar mvar
+      postGUIASync $ f v
 
 openFileDialog :: (FilePath -> IO Bool) -> IO ()
 openFileDialog handleOpen = do
   fileFilter <- Gtk.fileFilterNew
   Gtk.fileFilterAddPattern fileFilter (T.pack "*.pact")
+  Gtk.fileFilterSetName fileFilter (Just "Pact Files")
 
   chooser <- Gtk.fileChooserNativeNew
     (Just $ T.pack "Open Pact File")
@@ -98,6 +135,26 @@ openFileDialog handleOpen = do
   void $ case toEnum (fromIntegral res) of
     Gtk.ResponseTypeAccept ->  Gtk.fileChooserGetFilenames chooser >>= traverse_ handleOpen . headMay
     _ -> pure ()
+
+moveToForeground :: Gtk.Window -> IO ()
+moveToForeground w = do
+  putStrLn "MoveToForeground"
+  Gtk.windowPresent w
+
+moveToBackground :: Gtk.Window -> IO ()
+moveToBackground w = do
+  putStrLn "MoveToBackground"
+  Gtk.windowIconify w
+
+activateWindow :: Gtk.Window -> IO ()
+activateWindow _ = do
+  putStrLn "ActivateWindow"
+  pure ()
+
+resizeWindow :: Gtk.Window -> (Int,Int) -> IO ()
+resizeWindow _ _ = do
+  putStrLn "ResizeWindow"
+  pure ()
 
 getHomeDirectory :: IO String
 getHomeDirectory = PU.getLoginName >>= fmap PU.homeDirectory . PU.getUserEntryForName

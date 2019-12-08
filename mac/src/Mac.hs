@@ -12,7 +12,7 @@ import Language.Javascript.JSaddle.Types (JSM)
 import Language.Javascript.JSaddle.WKWebView (AppDelegateConfig(..), mainBundleResourcePath, runHTMLWithBaseURL)
 import System.FilePath ((</>))
 
-import Desktop (main', AppFFI(..))
+import Desktop (main', MacFFI(..))
 
 foreign import ccall setupAppMenu :: StablePtr (CString -> IO ()) -> IO ()
 foreign import ccall activateWindow :: IO ()
@@ -22,12 +22,10 @@ foreign import ccall moveToBackground :: IO ()
 foreign import ccall resizeWindow :: Int -> Int -> IO ()
 foreign import ccall global_openFileDialog :: IO ()
 foreign import ccall global_getHomeDirectory :: IO CString
-foreign import ccall global_getBundleIdentifier :: IO CString
 
 ffi :: AppFFI
 ffi = AppFFI
-  { _appFFI_setupAppMenu = setupAppMenu
-  , _appFFI_activateWindow = activateWindow
+  { _appFFI_activateWindow = activateWindow
   , _appFFI_moveToBackground = moveToBackground
   , _appFFI_moveToForeground = moveToForeground
   , _appFFI_resizeWindow = uncurry resizeWindow
@@ -38,8 +36,8 @@ ffi = AppFFI
 getStorageDirectory :: IO String
 getStorageDirectory = do
   home <- global_getHomeDirectory >>= peekCString
-  bundleId <- global_getBundleIdentifier
-  pure $ home </> "Library" </> "Application Support" </> bundleId
+  -- TODO use the bundle identifier directly, don't duplicate it
+  pure $ home </> "Library" </> "Application Support" </> "io.kadena.chainweaver"
 
 -- | Redirect the given handles to Console.app
 redirectPipes :: [Handle] -> IO a -> IO a
@@ -67,7 +65,7 @@ runMac
 runMac url allowing onUniversalLink handleOpen = runHTMLWithBaseURL url allowing $ AppDelegateConfig
   { _appDelegateConfig_willFinishLaunchingWithOptions = do
     putStrLn "will finish launching"
-    (_macFFI_setupAppMenu ffi) <=< newStablePtr $ void . handleOpen <=< peekCString
+    setupAppMenu <=< newStablePtr $ void . handleOpen <=< peekCString
   , _appDelegateConfig_didFinishLaunchingWithOptions = do
     putStrLn "did finish launching"
     hideWindow

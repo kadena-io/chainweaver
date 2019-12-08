@@ -54,7 +54,7 @@ import qualified GI.Gtk as Gtk (main, init)
 import GI.Gtk
        (windowSetPosition, windowSetDefaultSize, windowNew,
         scrolledWindowNew, noAdjustment, containerAdd,
-        WindowType(..), WindowPosition(..), widgetDestroy,
+        Window, WindowType(..), WindowPosition(..), widgetDestroy,
         widgetGetToplevel, widgetShowAll, onWidgetDestroy,
         mainQuit)
 import GI.Gio (noCancellable)
@@ -125,8 +125,8 @@ decidePolicyCallback pd pt = case pt of
           False <$ traceShowM t
 
 
-customRun :: T.Text -> JSM () -> IO ()
-customRun route main = do
+customRun :: T.Text -> JSM () -> (Window -> IO ()) -> IO ()
+customRun route main installWindowHandlers = do
   _ <- Gtk.init Nothing
   window <- windowNew WindowTypeToplevel
   _ <- timeoutAdd PRIORITY_HIGH 10 (yield >> return True)
@@ -158,6 +158,7 @@ customRun route main = do
 
   webViewLoadUri webView route
   installQuitHandler webView
+  installWindowHandlers window
   Gtk.main
 
 runInWebView :: JSM () -> WebView -> IO ()

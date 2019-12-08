@@ -11,8 +11,6 @@ import Control.Concurrent
 import Control.Exception (bracket, try)
 import Control.Monad.IO.Class
 import Data.String (IsString(..))
-import Foreign.C.String (CString)
-import Foreign.StablePtr (StablePtr)
 import Language.Javascript.JSaddle.Types (JSM)
 import Obelisk.Backend
 import Obelisk.Frontend
