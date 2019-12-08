@@ -14,7 +14,8 @@ import qualified Data.Text.Encoding as TE
 import qualified Data.Text.Encoding.Error as TE
 import qualified GI.Gtk as Gtk
 import Safe (headMay)
-import System.FilePath ((</>))
+import System.Environment (getExecutablePath)
+import System.FilePath ((</>), takeDirectory)
 import qualified System.Posix.User as PU
 
 
@@ -29,12 +30,12 @@ It currently doesn't reference the static files from the nix store so it actuall
 try to run it from the directory that doesn't have static in it. :)
 
 TODO
-- Get path to static resources working ok
 - Get a tarball to test on ubuntu
 - Setting up app menu? What does the mac app do and what do we want in there?
 - What do we need to do with resizing the window? It seems to work alright
 
 BUGS
+- Pact file not saved across running of chainweaver. That's a bug.
 - Compositing issues with nvidia drivers: See https://bugs.freebsd.org/bugzilla/show_bug.cgi?id=229491
 - Getting these warnings in the console. Looks bad:
   - http://localhost:48481/:247:76: CONSOLE WARN ArrayBuffer is deprecated in XMLHttpRequest.send(). Use ArrayBufferView instead.
@@ -92,7 +93,7 @@ mkFfi = do
 main :: IO ()
 main = do
   (ffi, mvars) <- mkFfi
-  main' ffi (pure $ Just ".") (runLinux mvars)
+  main' ffi (Just . TE.encodeUtf8 . T.pack . takeDirectory <$> getExecutablePath) (runLinux mvars)
 
 runLinux
   :: LinuxMVars
