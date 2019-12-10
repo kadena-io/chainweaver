@@ -118,6 +118,8 @@ data WalletCfg key t = WalletCfg
   -- ^ Store the details of a pending vanity acc creation. This allows us to store the
   -- keys in the event something in the application goes wrong.
   , _walletCfg_delInflightAccount :: Event t (Account key)
+  -- ^ Remove the inflight vanity account, in the event of an error from the creation
+  -- transaction we don't need to keep this information.
   }
   deriving Generic
 
@@ -278,8 +280,6 @@ makeWallet model conf = do
       else
         v
 
-    -- Avoid duplicating inflight accounts, this won't update accounts if the user
-    -- decides to change the account name of the inflight account but it still fails. TODO
     addInflightAccount :: Account key -> Accounts key -> Accounts key
     addInflightAccount a as = case find (matchInflight a) as of
       -- Blat the possibly new name, notes, and chainId over the existing inflight account as
@@ -311,15 +311,6 @@ makeWallet model conf = do
         , _account_balance = Nothing
         , _account_unfinishedCrossChainTransfer = Nothing
         }
-
-_PGuard :: Prism' Pact.PactValue (Pact.Guard Pact.PactValue)
-_PGuard = prism' Pact.PGuard (\case (Pact.PGuard g) -> Just g; _ -> Nothing)
-
-_GKeySet :: Prism' (Pact.Guard Pact.PactValue) Pact.KeySet
-_GKeySet = prism' Pact.GKeySet (\case (Pact.GKeySet ks) -> Just ks; _ -> Nothing)
-
-_PLit :: Prism' Pact.PactValue Pact.Literal
-_PLit = prism' Pact.PLiteral (\case (Pact.PLiteral l) -> Just l; _ -> Nothing)
 
 -- | Get the balance of some accounts from the network.
 getBalances

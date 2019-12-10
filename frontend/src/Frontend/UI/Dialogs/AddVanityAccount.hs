@@ -212,10 +212,10 @@ vanityAccountCreateSubmit model dAccount chainId result nodeInfos = Workflow $ d
   -- That seems better than the alternative (spending gas to create an account
   -- and not having access to it).
   let req = NetworkRequest
-            { _networkRequest_cmd = cmd
-            , _networkRequest_chainRef = ChainRef Nothing chainId
-            , _networkRequest_endpoint = Endpoint_Local
-            }
+        { _networkRequest_cmd = cmd
+        , _networkRequest_chainRef = ChainRef Nothing chainId
+        , _networkRequest_endpoint = Endpoint_Local
+        }
 
   resp <- performLocalRead (model ^. network) $ [req] <$ pb
 

@@ -31,8 +31,7 @@ uiAccountNameInput w mChain initval = do
     inp lbl wrapperCls = divClass wrapperCls $ mkLabeledClsInput True lbl
       $ \cls -> uiInputElement $ def
         & initialAttributes .~ "class" =: (renderClass cls)
-        & inputElementConfig_setValue .~
-            attachWithMaybe (const . fmap unAccountName) (current initval) pb
+        & inputElementConfig_setValue .~ tagMaybe (fmap unAccountName <$> current initval) pb
 
   divClass "vanity-account-create__account-name" $ do
     dEitherAccName <- (validateAccountName <*>) . value <$>
