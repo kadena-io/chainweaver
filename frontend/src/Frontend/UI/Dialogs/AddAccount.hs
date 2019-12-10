@@ -11,7 +11,7 @@ import           Control.Lens
 import           Control.Monad.Trans.Class
 import           Control.Monad.Trans.Maybe
 import           Data.Text (Text)
-import           Data.Aeson (ToJSON)
+import           Data.Aeson (ToJSON,FromJSON)
 ------------------------------------------------------------------------------
 import           Reflex
 import           Reflex.Dom
@@ -21,6 +21,7 @@ import           Frontend.Network (HasNetworkCfg, network_selectedNetwork)
 import           Frontend.JsonData (HasJsonDataCfg)
 import           Frontend.Crypto.Class (HasCrypto)
 import           Frontend.UI.DeploymentSettings (transactionDisplayNetwork)
+
 import           Frontend.UI.Dialogs.AddVanityAccount (uiAddVanityAccountSettings)
 
 import           Frontend.Ide (ide_wallet)
@@ -39,7 +40,7 @@ type HasAddAccountModelCfg model mConf key m t =
   , HasCrypto key (Performable m)
   , HasNetworkCfg mConf t
   , HasJsonDataCfg mConf t
-  , ToJSON key
+  , FromJSON key, ToJSON key
   , HasStorage m
   )
 
@@ -83,18 +84,22 @@ uiCreateWalletStepOne
   -> Event t ()
   -> Workflow t m (Text, (mConf, Event t ()))
 uiCreateWalletStepOne model onClose = Workflow $ do
+  let dInflightAcc = model ^. wallet_accounts . to (fmap findFirstInflightAccount)
+
   (dSelectedChain, dNotes, onAddVanityAcc) <- divClass "modal__main" $ do
     dialogSectionHeading mempty "Destination"
     dChainId <- divClass "group" $ do
       transactionDisplayNetwork model
-      userChainIdSelect model
+      userChainIdSelectWithPreselect model (fmap _account_chainId <$> dInflightAcc)
 
     dialogSectionHeading mempty "Reference Data"
-    dNotes <- divClass "group" $
-      value <$> mkLabeledClsInput True "Notes" inpElem
+    dNotes <- divClass "group" $ fmap value $ mkLabeledClsInput True "Notes" inpElem
 
-    onAddVanityAcc <- fmap snd $ accordionItem' False "add-account__advanced-content" (accordionHeaderBtn "Advanced") $
-      confirmButton def "Create Vanity Account"
+    onAddVanityAcc <- fmap snd $ accordionItem' False "add-account__advanced-content" (accordionHeaderBtn "Advanced") $ do
+      uiButtonDyn (btnCfgPrimary & uiButtonCfg_class <>~ "button_type_confirm") $ dynText $ maybe
+        "Create Vanity Account"
+        (const "Complete Vanity Account")
+        <$> dInflightAcc
 
     pure (dChainId, dNotes, onAddVanityAcc)
 
@@ -115,7 +120,7 @@ uiCreateWalletStepOne model onClose = Workflow $ do
       ( ("Add Account", (newConf, leftmost [onClose, onCancel]))
       , leftmost
         [ uiWalletOnlyAccountCreated newConf onClose <$> (model ^. ide_wallet . wallet_walletOnlyAccountCreated)
-        , uiAddVanityAccountSettings model dSelectedChain dNotes <$ onAddVanityAcc
+        , uiAddVanityAccountSettings model dInflightAcc dSelectedChain dNotes <$ onAddVanityAcc
         ]
       )
   where

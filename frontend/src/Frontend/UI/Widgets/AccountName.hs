@@ -11,7 +11,7 @@ import Reflex.Dom
 
 import Frontend.Foundation (renderClass)
 import Frontend.UI.Widgets (mkLabeledClsInput, uiInputElement)
-import Frontend.Wallet (AccountName, checkAccountNameValidity, Wallet (..))
+import Frontend.Wallet (AccountName (..), checkAccountNameValidity, Wallet (..))
 
 uiAccountNameInput
   :: ( DomBuilder t m
@@ -21,13 +21,18 @@ uiAccountNameInput
      )
   => Wallet key t
   -> Dynamic t (Maybe ChainId)
+  -> Dynamic t (Maybe AccountName)
   -> m (Dynamic t (Maybe AccountName))
-uiAccountNameInput w mChain = do
+uiAccountNameInput w mChain initval = do
+  pb <- getPostBuild
   let
     validateAccountName = ($) <$> checkAccountNameValidity w <*> mChain
 
     inp lbl wrapperCls = divClass wrapperCls $ mkLabeledClsInput True lbl
-      $ \cls -> uiInputElement $ def & initialAttributes .~ "class" =: (renderClass cls)
+      $ \cls -> uiInputElement $ def
+        & initialAttributes .~ "class" =: (renderClass cls)
+        & inputElementConfig_setValue .~
+            attachWithMaybe (const . fmap unAccountName) (current initval) pb
 
   divClass "vanity-account-create__account-name" $ do
     dEitherAccName <- (validateAccountName <*>) . value <$>

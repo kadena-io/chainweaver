@@ -4,36 +4,25 @@
 {-# LANGUAGE TupleSections #-}
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE TypeApplications #-}
 module Frontend.UI.Dialogs.AddVanityAccount
   ( uiAddVanityAccountSettings
   ) where
 
-import GHC.Generics (Generic)
-import Control.Monad.IO.Class (liftIO)
-import           Control.Applicative                    (liftA2)
-import           Control.Lens                           ((^.))
+import Control.Applicative (liftA2)
+import           Control.Lens                           ((^.),(<>~))
 import           Control.Monad.Trans.Class              (lift)
 import           Control.Monad.Trans.Maybe              (MaybeT (..), runMaybeT)
 import           Data.Functor.Identity                  (Identity(..))
 import           Data.Maybe                             (isNothing)
-import           Data.ByteString                        (ByteString)
-import qualified Data.ByteString as BS
 import           Data.Text                              (Text)
-import qualified Data.Text as Text
-import qualified Data.Text.Encoding as Text
 
-import           Data.Aeson                             (Object, ToJSON (..), FromJSON (..),
-                                                         Value (Array, String))
-import qualified Data.Aeson as Aeson
+import           Data.Aeson                             (Object, Value (Array, String))
 import qualified Data.HashMap.Strict                    as HM
 import qualified Data.Vector                            as V
 
-import qualified Data.Serialize as Serialize
-
-import Pact.Types.Hash (TypedHash)
 import Pact.Types.PactValue
 import Pact.Types.Exp
-import qualified Pact.Types.Command as PactCmd
 import Data.These
 
 import           Reflex
@@ -48,7 +37,6 @@ import           Frontend.UI.Modal.Impl                 (ModalIde, modalFooter)
 import           Frontend.UI.Widgets
 import           Frontend.UI.Widgets.AccountName (uiAccountNameInput)
 
-import Frontend.Storage (HasStorage, setItemStorage,localStorage, removeItemStorage)
 import           Frontend.Crypto.Class                  (HasCrypto,
                                                          cryptoGenKey)
 import           Frontend.Crypto.Ed25519                (keyToText)
@@ -61,6 +49,7 @@ import           Frontend.Wallet                        (Account (..),
                                                          KeyPair (..),
                                                          findNextKey,
                                                          mkAccountNotes,
+                                                         unAccountNotes,
                                                          unAccountName)
 
 -- Allow the user to create a 'vanity' account, which is an account with a custom name
@@ -73,28 +62,6 @@ type HasUISigningModelCfg mConf key t =
   , HasJsonDataCfg mConf t
   , HasNetworkCfg mConf t
   )
-
-data InflightNewAccount h key = InflightNewAccount
-  { _inflightNewAccount_txnHash :: TypedHash h
-  , _inflightNewAccount_account :: Account key
-  }
-  deriving Generic
-
-instance ToJSON key => ToJSON (InflightNewAccount h key) where
-  toJSON (InflightNewAccount txn acc) = Aeson.object
-    [ "txn" Aeson..= BS.unpack (Serialize.encode txn)
-    , "account" Aeson..= acc
-    ]
-
-instance FromJSON key => FromJSON (InflightNewAccount h key) where
-  parseJSON = Aeson.withObject "InflightNewAccount" $ \o -> InflightNewAccount
-    <$> o Aeson..: "txn"
-    <*> o Aeson..: "account"
-
--- | Storage keys for referencing data to be stored/retrieved.
-data StoreInflightVanityAcc h key a where
-  StoreInflightVanityAcc_Acc :: StoreInflightVanityAcc h key (InflightNewAccount h key)
-deriving instance Show (StoreInflightVanityAcc h key a)
 
 tempkeyset :: Text
 tempkeyset = "temp-vanity-keyset"
@@ -111,35 +78,44 @@ uiAddVanityAccountSettings
   . ( MonadWidget t m
     , HasUISigningModelCfg mConf key t
     , HasCrypto key (Performable m)
-    , ToJSON key
-    , HasStorage m
     )
   => ModalIde m key t
+  -> Dynamic t (Maybe (Account key))
   -> Dynamic t (Maybe ChainId)
   -> Dynamic t Text
   -> Workflow t m (Text, (mConf, Event t ()))
-uiAddVanityAccountSettings ideL mChainId initialNotes = Workflow $ do
+uiAddVanityAccountSettings ideL dInflightAcc mChainId initialNotes = Workflow $ do
   pb <- getPostBuild
   let
     w = _ide_wallet ideL
     dNextKey = findNextKey w
 
-    notesInput = divClass "vanity-account-create__notes" $ mkLabeledClsInput True "Notes"
-      $ \cls -> uiInputElement $ def
-                & initialAttributes .~ "class" =: (renderClass cls)
+    notesInput initCfg = divClass "vanity-account-create__notes" $ mkLabeledClsInput True "Notes"
+      $ \cls -> uiInputElement $ initCfg
+                & initialAttributes <>~ "class" =: (renderClass cls)
                 & inputElementConfig_setValue .~ (current initialNotes <@ pb)
 
+  eKeyPair <- performEvent $ cryptoGenKey
+    <$> current dNextKey <@ gate (current $ isNothing <$> dInflightAcc) pb
 
-  eKeyPair <- performEvent $ cryptoGenKey <$> current dNextKey <@ pb
-  dKeyPair <- holdDyn Nothing $ ffor eKeyPair $ \(pr,pu) -> Just $ KeyPair pu $ Just pr
+  dKeyPair <- holdDyn Nothing $ leftmost
+    [ fmap _account_key <$> current dInflightAcc <@ pb
+    , ffor eKeyPair $ \(pr,pu) -> Just $ KeyPair pu $ Just pr
+    ]
 
   let includePreviewTab = False
       customConfigTab = Nothing
 
   rec
     let
-      uiAcc = liftA2 (,) (uiAccountNameInput w selChain) (fmap mkAccountNotes . value <$> notesInput)
+
+      uiAcc = liftA2 (,)
+        (uiAccountNameInput w selChain $ fmap _account_name <$> dInflightAcc)
+        $ fmap (fmap mkAccountNotes . value) $ notesInput $ def & inputElementConfig_setValue
+          .~ fmap unAccountNotes (attachWithMaybe (const . fmap _account_notes) (current dInflightAcc) pb)
+        
       uiAccSection = ("Reference Data", uiAcc)
+
     (curSelection, eNewAccount, _) <- buildDeployTabs customConfigTab includePreviewTab controls
 
     (conf, result, dAccount, selChain) <- elClass "div" "modal__main transaction_details" $ do
@@ -193,8 +169,10 @@ uiAddVanityAccountSettings ideL mChainId initialNotes = Workflow $ do
       progressButtonLabalFn
       preventProgress
 
+  let conf0 = conf & walletCfg_addVanityAccountInflight .~ tagMaybe (current dAccount) command
+
   pure
-    ( ("Add New Vanity Account", (conf, never))
+    ( ("Add New Vanity Account", (conf0, never))
     , attachWith
         (\ns res -> vanityAccountCreateSubmit ideL dAccount (_deploymentSettingsResult_chainId res) res ns)
         (current $ ideL ^. network_selectedNodes)
@@ -209,8 +187,6 @@ vanityAccountCreateSubmit
      , CanSubmitTransaction t m
      , HasNetwork model t
      , HasWalletCfg mConf key t
-     , ToJSON key
-     , HasStorage m
      )
   => model
   -> Dynamic t (Maybe (Account key))
@@ -223,21 +199,10 @@ vanityAccountCreateSubmit model dAccount chainId result nodeInfos = Workflow $ d
 
   pb <- getPostBuild
 
-  _ <- dyn_ $ ffor dAccount $ \case
-    Nothing -> liftIO $ putStrLn $ "Unable to store inflight account for txn: " <> (show $ PactCmd._cmdHash cmd) -- TODO error / warning ?
-    Just acc -> setItemStorage localStorage StoreInflightVanityAcc_Acc $ InflightNewAccount
-      { _inflightNewAccount_txnHash = PactCmd._cmdHash cmd
-      , _inflightNewAccount_account = acc
-      }
-
   txnSubFeedback <- elClass "div" "modal__main transaction_details" $
     submitTransactionWithFeedback cmd chainId nodeInfos
 
   let txnListenStatus = _transactionSubmitFeedback_listenStatus txnSubFeedback
-
-  _ <- dyn_ $ ffor txnListenStatus $ \case
-    Status_Done -> removeItemStorage localStorage StoreInflightVanityAcc_Acc
-    _ -> pure ()
 
   -- Fire off a /local request and add the account if that is successful. This
   -- is optimistic but reduces the likelyhood we create the account _without_
@@ -246,17 +211,25 @@ vanityAccountCreateSubmit model dAccount chainId result nodeInfos = Workflow $ d
   -- gas here, so it is possible to add non-existant accounts to the wallet.
   -- That seems better than the alternative (spending gas to create an account
   -- and not having access to it).
-  let req = NetworkRequest
-        { _networkRequest_cmd = cmd
-        , _networkRequest_chainRef = ChainRef Nothing chainId
-        , _networkRequest_endpoint = Endpoint_Local
-        }
-  resp <- performLocalRead (model ^. network) $ [req] <$ pb
-  let localOk = fforMaybe resp $ \case
-        [(_, That (_, PLiteral (LString "Write succeeded")))] -> Just ()
-        [(_, These _ (_, PLiteral (LString "Write succeeded")))] -> Just ()
-        _ -> Nothing
-      conf = mempty & walletCfg_importAccount .~ tagMaybe (current dAccount) localOk
+--  let req = NetworkRequest
+--            { _networkRequest_cmd = cmd
+--            , _networkRequest_chainRef = ChainRef Nothing chainId
+--            , _networkRequest_endpoint = Endpoint_Local
+--            }
+--
+--  resp <- performLocalRead (model ^. network) $ [req] <$ pb
+--
+--  let localOk = fforMaybe resp $ \case
+--        [(_, That (_, PLiteral (LString "Write succeeded")))] -> Just ()
+--        [(_, These _ (_, PLiteral (LString "Write succeeded")))] -> Just ()
+--        _ -> Nothing
+
+  let localOk = ffilter (== Status_Done) $ updated txnListenStatus
+      onTxnFailed = ffilter (== Status_Failed) $ updated txnListenStatus
+
+      conf = mempty
+        & walletCfg_importAccount .~ tagMaybe (current dAccount) localOk
+        & walletCfg_delInflightAccount .~ tagMaybe (current dAccount) onTxnFailed
 
   done <- modalFooter $ confirmButton def "Done"
 
