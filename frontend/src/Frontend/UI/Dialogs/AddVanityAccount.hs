@@ -16,14 +16,14 @@ import           Control.Monad.Trans.Maybe              (MaybeT (..), runMaybeT)
 import           Data.Functor.Identity                  (Identity(..))
 import           Data.Maybe                             (isNothing)
 import           Data.Text                              (Text)
+import Data.These (These (..))
 
 import           Data.Aeson                             (Object, Value (Array, String))
 import qualified Data.HashMap.Strict                    as HM
 import qualified Data.Vector                            as V
 
-import Pact.Types.PactValue
-import Pact.Types.Exp
-import Data.These
+import Pact.Types.PactValue (PactValue (..))
+import Pact.Types.Exp (Literal (..))
 
 import           Reflex
 import           Reflex.Dom.Contrib.CssClass            (renderClass)
@@ -211,20 +211,19 @@ vanityAccountCreateSubmit model dAccount chainId result nodeInfos = Workflow $ d
   -- gas here, so it is possible to add non-existant accounts to the wallet.
   -- That seems better than the alternative (spending gas to create an account
   -- and not having access to it).
---  let req = NetworkRequest
---            { _networkRequest_cmd = cmd
---            , _networkRequest_chainRef = ChainRef Nothing chainId
---            , _networkRequest_endpoint = Endpoint_Local
---            }
---
---  resp <- performLocalRead (model ^. network) $ [req] <$ pb
---
---  let localOk = fforMaybe resp $ \case
---        [(_, That (_, PLiteral (LString "Write succeeded")))] -> Just ()
---        [(_, These _ (_, PLiteral (LString "Write succeeded")))] -> Just ()
---        _ -> Nothing
+  let req = NetworkRequest
+            { _networkRequest_cmd = cmd
+            , _networkRequest_chainRef = ChainRef Nothing chainId
+            , _networkRequest_endpoint = Endpoint_Local
+            }
 
-  let localOk = ffilter (== Status_Done) $ updated txnListenStatus
+  resp <- performLocalRead (model ^. network) $ [req] <$ pb
+
+  let localOk = fforMaybe resp $ \case
+        [(_, That (_, PLiteral (LString "Write succeeded")))] -> Just ()
+        [(_, These _ (_, PLiteral (LString "Write succeeded")))] -> Just ()
+        _ -> Nothing
+
       onTxnFailed = ffilter (== Status_Failed) $ updated txnListenStatus
 
       conf = mempty

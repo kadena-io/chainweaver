@@ -80,10 +80,12 @@ import qualified Data.Set as Set
 import qualified Data.Text as T
 import qualified Pact.Types.Exp as Pact
 import qualified Pact.Types.PactValue as Pact
+import qualified Pact.Types.Term as Pact
 
 import Common.Network (NetworkName)
 import Common.Wallet
 import Common.Orphans ()
+
 import Frontend.Crypto.Class
 import Frontend.Crypto.Ed25519
 import Frontend.Foundation
@@ -173,7 +175,6 @@ getSigningPairs signing = fmapMaybe isForSigning . IntMap.elems
         -> Just kp
       _ -> Nothing
 
-
 data Wallet key t = Wallet
   { _wallet_accounts :: Dynamic t (Accounts key)
     -- ^ Accounts added and removed by the user
@@ -185,12 +186,8 @@ data Wallet key t = Wallet
 makePactLenses ''Wallet
 
 findFirstInflightAccount :: Accounts key -> Maybe (Account key)
-findFirstInflightAccount = foldl' g Nothing
-  where
-    g r = \case
-      SomeAccount_Inflight a | isNothing r -> Just a
-                             | otherwise -> r
-      _ -> Nothing
+findFirstInflightAccount = fmap (\(SomeAccount_Inflight a) -> a) . find g
+  where g = \case SomeAccount_Inflight _ -> True; _ -> False
 
 -- | Find the first vanity account in the wallet
 findFirstVanityAccount :: Accounts key -> Maybe (Account key)
@@ -285,7 +282,11 @@ makeWallet model conf = do
     -- decides to change the account name of the inflight account but it still fails. TODO
     addInflightAccount :: Account key -> Accounts key -> Accounts key
     addInflightAccount a as = case find (matchInflight a) as of
-      Just _ -> as
+      -- Blat the possibly new name, notes, and chainId over the existing inflight account as
+      -- the keys have been preserved as part of the account creation process.
+      Just _ -> as <&> \sa -> case sa of
+        SomeAccount_Inflight _ -> SomeAccount_Inflight a
+        _ -> sa
       Nothing -> snocIntMap (SomeAccount_Inflight a) as
 
     delInflightAccount :: Account key -> Accounts key -> Accounts key
@@ -311,6 +312,15 @@ makeWallet model conf = do
         , _account_unfinishedCrossChainTransfer = Nothing
         }
 
+_PGuard :: Prism' Pact.PactValue (Pact.Guard Pact.PactValue)
+_PGuard = prism' Pact.PGuard (\case (Pact.PGuard g) -> Just g; _ -> Nothing)
+
+_GKeySet :: Prism' (Pact.Guard Pact.PactValue) Pact.KeySet
+_GKeySet = prism' Pact.GKeySet (\case (Pact.GKeySet ks) -> Just ks; _ -> Nothing)
+
+_PLit :: Prism' Pact.PactValue Pact.Literal
+_PLit = prism' Pact.PLiteral (\case (Pact.PLiteral l) -> Just l; _ -> Nothing)
+
 -- | Get the balance of some accounts from the network.
 getBalances
   :: forall model key t m.
@@ -325,43 +335,53 @@ getBalances model accounts = do
   response <- performLocalReadCustom (model ^. network) toReqList reqs
   pure $ toBalances <$> response
   where
-    toBalance =
-      (^? there . _2 . to (\case
-        (Pact.PLiteral (Pact.LDecimal d)) -> Just $ AccountBalance d
-        _ -> Nothing
-      ) . _Just)
+    toDetails nw = case nw  ^? there . _2 of
+      Just (Pact.PObject (Pact.ObjectMap om)) -> (,,)
+        <$> (om ^? at "account" . _Just . _PLit . Pact._LString . to AccountName)
+        <*> (om ^? at "balance" . _Just . _PLit . Pact._LDecimal . to AccountBalance)
+        <*> (om ^? at "guard" . _Just . _PGuard . _GKeySet . to Pact._ksKeys . to (fmap fromPactPublicKey))
+      _ -> Nothing
 
     toBalances
       :: (IntMap (SomeAccount key, Maybe NetworkRequest), [NetworkErrorResult])
       -> Accounts key
     toBalances (m, results) =
-      IntMap.fromList $ stepwise (IntMap.toList (fmap fst m)) (toBalance <$> results)
+      IntMap.fromList $ stepwise (IntMap.toList (fmap fst m)) (toDetails <$> results)
 
     -- I don't like this, I'd rather just block in a forked thread manually
     -- than have to do this dodgy alignment. TODO
     stepwise
       :: [(IntMap.Key, SomeAccount key)]
-      -> [Maybe AccountBalance]
+      -> [Maybe (AccountName, AccountBalance, [PublicKey])]
       -> [(IntMap.Key, SomeAccount key)]
-    stepwise ((i, sa):accs) (bal:bals) = case sa of
-      SomeAccount_Deleted -> (i, SomeAccount_Deleted) : stepwise accs (bal:bals)
+    stepwise ((i, sa):accs) (deet:deets) = case sa of
+      SomeAccount_Deleted -> (i, SomeAccount_Deleted) : stepwise accs (deet:deets)
+
       -- If we have a balance returned for an inflight account then it exists on the chain
-      SomeAccount_Inflight a ->
-        maybe (i,sa) (const (i, SomeAccount_Account a { _account_balance = bal })) bal
-        : stepwise accs bals
+      SomeAccount_Inflight a -> case deet of
+        Just (upname, upbal, upguard) | _account_name a == upname && (_keyPair_publicKey $ _account_key a) `elem` upguard ->
+          (i, SomeAccount_Account a { _account_balance = Just upbal } )
+        _ ->
+          (i, sa)
+        : stepwise accs deets
+
       SomeAccount_Account a ->
-        (i, SomeAccount_Account a { _account_balance = bal <|> _account_balance a })
-        : stepwise accs bals
+        (i, SomeAccount_Account a { _account_balance = (deet ^? _Just . _2) <|> _account_balance a })
+        : stepwise accs deets
+
     stepwise as _ = as
 
     toReqList :: Foldable f => f (SomeAccount key, Maybe NetworkRequest) -> [NetworkRequest]
     toReqList = fmapMaybe snd . toList
 
-    accountBalanceReq acc = "(coin.get-balance " <> tshow (unAccountName acc) <> ")"
+    accountBalanceReq acc = "(coin.details " <> tshow (unAccountName acc) <> ")"
 
-    mkReqs :: (NetworkName, PublicMeta) -> Accounts key -> Performable m (IntMap (SomeAccount key, Maybe NetworkRequest))
+    mkReqs
+      :: (NetworkName, PublicMeta)
+      -> Accounts key
+      -> Performable m (IntMap (SomeAccount key, Maybe NetworkRequest))
     mkReqs meta someaccs = for someaccs $ \sa ->
-      fmap (sa,) . traverse (mkReq meta) $ someAccount Nothing Just sa
+      fmap (sa,) . traverse (mkReq meta) $ someAccountWithInflight Nothing Just sa
 
     mkReq (netName, pm) acc = mkSimpleReadReq
       (accountBalanceReq $ _account_name acc)
@@ -405,7 +425,7 @@ checkAccountNameValidity w = getErr <$> (w ^. wallet_accounts)
             ]
           Nothing -> False
 
-      if any (someAccountWithInflight False onChain) keys
+      if any (someAccount False onChain) keys
          then Left $ T.pack "This account name is already in use"
          else Right acc
 

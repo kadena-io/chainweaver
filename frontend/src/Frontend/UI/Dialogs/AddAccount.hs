@@ -84,16 +84,25 @@ uiCreateWalletStepOne
   -> Event t ()
   -> Workflow t m (Text, (mConf, Event t ()))
 uiCreateWalletStepOne model onClose = Workflow $ do
+  pb <- getPostBuild
   let dInflightAcc = model ^. wallet_accounts . to (fmap findFirstInflightAccount)
 
   (dSelectedChain, dNotes, onAddVanityAcc) <- divClass "modal__main" $ do
+    dyn_ $ ffor dInflightAcc $ \case
+      Nothing -> blank
+      Just _ -> divClass "segment modal__main transaction_details" $ do
+        elClass "h2" "heading heading_type_h2" $ text "Notice"
+        divClass "group segment" $ el "p"
+          $ text "An incomplete vanity account was detected and we were unable to verify its existence on the chain. The details have been prepopulated for you."
+
     dialogSectionHeading mempty "Destination"
     dChainId <- divClass "group" $ do
       transactionDisplayNetwork model
       userChainIdSelectWithPreselect model (fmap _account_chainId <$> dInflightAcc)
 
     dialogSectionHeading mempty "Reference Data"
-    dNotes <- divClass "group" $ fmap value $ mkLabeledClsInput True "Notes" inpElem
+    dNotes <- divClass "group" $ fmap value $ mkLabeledClsInput True "Notes" $ inpElem $ def
+      & inputElementConfig_setValue .~ tagMaybe (fmap (unAccountNotes . _account_notes) <$> current dInflightAcc) pb
 
     onAddVanityAcc <- fmap snd $ accordionItem' False "add-account__advanced-content" (accordionHeaderBtn "Advanced") $ do
       uiButtonDyn (btnCfgPrimary & uiButtonCfg_class <>~ "button_type_confirm") $ dynText $ maybe
@@ -124,7 +133,7 @@ uiCreateWalletStepOne model onClose = Workflow $ do
         ]
       )
   where
-    inpElem cls = uiInputElement $ def
+    inpElem cfg cls = uiInputElement $ cfg
       & initialAttributes .~
         ( ("class" =: renderClass (cls <> "input")) <>
           ("placeholder" =: "Some personal notes")
