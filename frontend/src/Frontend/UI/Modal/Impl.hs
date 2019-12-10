@@ -24,21 +24,24 @@ module Frontend.UI.Modal.Impl
   , module Frontend.UI.Modal
   ) where
 
-------------------------------------------------------------------------------
-import           Control.Lens                  hiding (element)
-import qualified Data.Map                      as Map
-import           Data.Proxy
-import           Data.Void                     (Void)
-import qualified GHCJS.DOM                     as DOM
-import qualified GHCJS.DOM.EventM              as EventM
+
+import Control.Lens hiding (element)
+import Control.Monad (void)
+import Data.Text (Text)
+import Data.Void (Void)
+import Reflex
+import Reflex.Dom
+
+import qualified GHCJS.DOM as DOM
+import qualified GHCJS.DOM.EventM as EventM
 import qualified GHCJS.DOM.GlobalEventHandlers as Events
-import           Reflex
-import           Reflex.Dom
-------------------------------------------------------------------------------
-import           Frontend.Foundation
-import           Frontend.Ide
-import           Frontend.UI.Modal
-------------------------------------------------------------------------------
+import qualified GHCJS.DOM.Types as DOM
+import qualified Language.Javascript.JSaddle as JSaddle
+
+import Frontend.Foundation
+import Frontend.Ide
+import Frontend.UI.Modal
+
 
 type ModalImpl m key t = Event t () -> m (IdeCfg Void key t, Event t ())
 
@@ -60,63 +63,35 @@ showModal ideL = do
 
     elDynKlass "div" (mkCls <$> isVisible) $ mdo
       (backdropEl, ev) <- elClass' "div" "modal__screen" $
-        networkView (mayMkModal onClose <$> _ide_modal ideL)
-      onFinish <- switchHold never $ snd . snd <$> ev
-      mCfgVoid <- flatten $ fst . snd <$> ev
+        divClass "modal__dialog" $ networkView $ ffor (_ide_modal ideL) $ \case
+          Nothing -> pure (mempty, never) -- The modal is closed
+          Just f -> f onClose -- The modal is open
+      onFinish <- switchHold never $ snd <$> ev
+      mCfgVoid <- flatten $ fst <$> ev
 
-      -- Ignore clicks that started in the dialog. This is necessary because
-      -- when one selects text in a line edit with the mouse, he would easily
-      -- cause an unintended closing of the dialog:
-      onModalMousePressed <- switchHold never $ fst <$> ev
-      isDown <- hold False $ leftmost
-        [ onModalMousePressed
-          -- So we are not losing future clicks:
-        , False <$ domEvent Click backdropEl
-        ]
-      let onBackdropClick = gate (fmap not isDown) $ domEvent Click backdropEl
       let
         mCfg :: ModalIdeCfg m key t
         mCfg = mCfgVoid { _ideCfg_setModal = LeftmostEv never }
-
-      let
-        onClose = leftmost [ onFinish
-                           , onEsc
-                           , onBackdropClick
-                           ]
+        onClose = leftmost
+          [ onFinish
+          , onEsc
+          , domEvent Click backdropEl
+          ]
         lConf = mempty & ideCfg_setModal .~ (LeftmostEv $ Nothing <$ onClose)
+
+      -- We can't use jsaddle to set the stopPropagation handler: with
+      -- jsaddle-warp, there is a race condition that can cause the handler for
+      -- the outer div to run before the stopPropagation is processed, closing
+      -- the modal unexpectedly. This is particularly noticable under heavy
+      -- network load.
+      -- This hack just ensures this handler runs immediately and clicks can't
+      -- slip through the modal__dialog container.
+      -- We add the listener upon the first launch of the modal to ensure that
+      -- modal__dialog actually exists.
+      usedModal <- headE $ updated $ _ide_modal ideL
+      performEvent_ $ ffor usedModal $ \_ -> void $ DOM.liftJSM $ do
+        JSaddle.eval ("document.querySelector('.modal__dialog').addEventListener('click', function(e) { e.stopPropagation(); });" :: Text)
+
       pure $ lConf <> mCfg
   where
     isVisible = isJust <$> _ide_modal ideL
-
-    mayMkModal
-      :: Event t ()
-      -> Maybe (Event t () -> m (IdeCfg Void key t, Event t ()))
-      -> m (Event t Bool, (IdeCfg Void key t, Event t ()))
-    mayMkModal e = maybe (pure (never, (mempty, never))) (\f -> mkModal f e)
-
-
--- | Puts content in a .modal class container and stops event propagation
-mkModal
-  :: forall t m a. MonadWidget t m
-  => (Event t () -> m (a, Event t ()))
-  -- ^ The dialog
-  -> Event t () -> m (Event t Bool, (a, Event t ()))
-  -- ^ Wrapped up dialog.
-mkModal e e' = do
-    (modalL, r) <- element "div" elCfg $ e e'
-    let
-      onDown = domEvent Mousedown modalL
-      onUp = domEvent Mouseup modalL
-    let
-      isDown = leftmost
-        [ True <$ onDown
-        , False <$ onUp
-        ]
-    pure (isDown, r)
-  where
-    elCfg =
-       (def :: ElementConfig EventResult t (DomBuilderSpace m))
-       & initialAttributes .~ Map.mapKeys (AttributeName Nothing)
-         ("class" =: "modal__dialog")
-       & elementConfig_eventSpec %~ addEventSpecFlags
-         (Proxy :: Proxy (DomBuilderSpace m)) Click (const stopPropagation)
