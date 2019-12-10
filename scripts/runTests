@@ -1,0 +1,1 @@
+nix-shell obApp.nix -A shells.ghc --command 'cabal v2-test common desktop'

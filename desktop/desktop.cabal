@@ -70,6 +70,10 @@ test-suite golden-tests
   hs-source-dirs: tests
   build-depends: base
                , common
+               , frontend
+               , containers
+               , cardano-crypto
+               , desktop
                , tasty
                , tasty-golden
                , aeson
