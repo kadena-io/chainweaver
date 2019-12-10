@@ -93,7 +93,7 @@ uiCreateWalletStepOne model onClose = Workflow $ do
       Just _ -> divClass "segment modal__main transaction_details" $ do
         elClass "h2" "heading heading_type_h2" $ text "Notice"
         divClass "group segment" $ el "p"
-          $ text "An incomplete vanity account was detected and we were unable to verify its existence on the chain. The details have been prepopulated for you."
+          $ text "An incomplete vanity account was detected and we were unable to verify its existence on the chain. The known details have been pre-populated for you to complete vanity account creation"
 
     dialogSectionHeading mempty "Destination"
     dChainId <- divClass "group" $ do
