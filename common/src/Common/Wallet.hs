@@ -225,6 +225,7 @@ instance ToJSON AccountGuard
 -- | Account balance wrapper
 newtype AccountBalance = AccountBalance { unAccountBalance :: Decimal } deriving (Eq, Ord, Num)
 
+-- Via ParsedDecimal
 instance ToJSON AccountBalance where
   toJSON = toJSON . ParsedDecimal . unAccountBalance
 instance FromJSON AccountBalance where
