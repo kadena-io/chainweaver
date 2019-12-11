@@ -16,6 +16,12 @@ module Frontend.UI.Widgets
     module Frontend.UI.Button
   -- ** Single Purpose Widgets
   , uiGasPriceInputField
+    -- * Values for _deploymentSettingsConfig_chainId:
+  , predefinedChainIdSelect
+  , predefinedChainIdDisplayed
+  , userChainIdSelect
+  , userChainIdSelectWithPreselect
+  , uiChainSelection
   -- ** Other widgets
   , uiSegment
   , uiGroup
@@ -59,11 +65,13 @@ module Frontend.UI.Widgets
   , dimensionalInputWrapper
   ) where
 
+
 ------------------------------------------------------------------------------
 import           Control.Applicative
+import           Control.Arrow (first, (&&&))
 import           Control.Lens
 import           Control.Monad
-import           Data.Either (isLeft)
+import           Data.Either (isLeft, rights)
 import           Data.Map.Strict             (Map)
 import qualified Data.Map.Strict as Map
 import           Data.String                 (IsString)
@@ -79,10 +87,11 @@ import           Reflex.Dom.Contrib.CssClass
 import           Reflex.Dom.Core
 import           Reflex.Extended             (tagOnPostBuild)
 ------------------------------------------------------------------------------
+import Pact.Types.ChainId (ChainId (..))
 import Pact.Types.Runtime (GasPrice (..))
 import Pact.Parse (ParsedDecimal (..))
 ------------------------------------------------------------------------------
-import           Frontend.Network (maxCoinPrecision)
+import           Frontend.Network (HasNetwork(..), NodeInfo, getChains, maxCoinPrecision)
 import           Frontend.Foundation
 import           Frontend.UI.Button
 import           Frontend.UI.Widgets.Helpers (imgWithAlt, imgWithAltCls, makeClickable,
@@ -609,7 +618,7 @@ paginationWidget cls currentPage totalPages = elKlass "div" (cls <> "pagination"
         uiButtonDyn cfg $ elClass "i" ("fa " <> i) blank
 
       canGoFirst = (> 1) <$> currentPage
-    first <- pageButton canGoFirst "fa-angle-double-left"
+    first' <- pageButton canGoFirst "fa-angle-double-left"
     prev <-  pageButton canGoFirst "fa-angle-left"
     void $ elClass "div" "pagination__page-count" $
       elClass "span" "pagination__page-count-text" $ do
@@ -621,7 +630,7 @@ paginationWidget cls currentPage totalPages = elKlass "div" (cls <> "pagination"
     lastL <- pageButton canGoLast "fa-angle-double-right"
     pure $ leftmost
       [ attachWith (\x _ -> pred x) (current currentPage) prev
-      , 1 <$ first
+      , 1 <$ first'
       , attachWith (\x _ -> succ x) (current currentPage) nextL
       , tag (current totalPages) lastL
       ]
@@ -650,3 +659,69 @@ uiGasPriceInputField conf = dimensionalInputWrapper "KDA" $
  uiNonnegativeRealWithPrecisionInputElement maxCoinPrecision (GasPrice . ParsedDecimal) $ conf
   & initialAttributes %~ addToClassAttr "input-units"
   & inputElementConfig_elementConfig . elementConfig_eventSpec %~ preventScrollWheelAndUpDownArrow @m
+
+
+-- | Let the user pick a chain id.
+userChainIdSelect
+  :: (MonadWidget t m, HasNetwork model t
+     )
+  => model
+  -> m (MDynamic t ChainId)
+userChainIdSelect m =
+  userChainIdSelectWithPreselect m (constDyn Nothing)
+
+-- | Let the user pick a chain id but preselect a value
+userChainIdSelectWithPreselect
+  :: (MonadWidget t m, HasNetwork model t
+     )
+  => model
+  -> Dynamic t (Maybe ChainId)
+  -> m (MDynamic t ChainId)
+userChainIdSelectWithPreselect m mChainId = mkLabeledClsInput True "Chain ID" (uiChainSelection mNodeInfo mChainId)
+  where mNodeInfo = (^? to rights . _head) <$> m ^. network_selectedNodes
+
+uiChainSelection
+  :: MonadWidget t m
+  => Dynamic t (Maybe NodeInfo)
+  -> Dynamic t (Maybe ChainId)
+  -> CssClass
+  -> m (Dynamic t (Maybe ChainId))
+uiChainSelection info mPreselected cls = do
+  pb <- getPostBuild
+
+  let
+    chains = map (id &&& _chainId) . maybe [] getChains <$> info
+    mkPlaceHolder cChains = if null cChains then "No chains available" else "Select chain"
+    mkOptions cs = Map.fromList $ (Nothing, mkPlaceHolder cs) : map (first Just) cs
+
+    staticCls = cls <> "select"
+    mkDynCls v = if isNothing v then "select_mandatory_missing" else mempty
+
+  rec
+    let allCls = renderClass <$> fmap mkDynCls d <> pure staticCls
+        cfg = def
+          & dropdownConfig_attributes .~ (("class" =:) <$> allCls)
+          & dropdownConfig_setValue .~ (current mPreselected <@ pb)
+
+    d <- _dropdown_value <$> dropdown Nothing (mkOptions <$> chains) cfg
+  pure d
+
+-- | Use a predefined chain id, don't let the user pick one.
+predefinedChainIdSelect
+  :: (Reflex t, Monad m)
+  => ChainId
+  -> model
+  -> m (Dynamic t (Maybe ChainId))
+predefinedChainIdSelect chanId _ = pure . pure . pure $ chanId
+
+-- | Use a predefined immutable chain id, but display it too.
+predefinedChainIdDisplayed
+  :: DomBuilder t m
+  => ChainId
+  -> model
+  -> m (Dynamic t (Maybe ChainId))
+predefinedChainIdDisplayed cid _ = do
+  _ <- mkLabeledInput True "Chain ID" uiInputElement $ def
+    & initialAttributes %~ Map.insert "disabled" ""
+    & inputElementConfig_initialValue .~ _chainId cid
+  pure $ pure $ pure cid
