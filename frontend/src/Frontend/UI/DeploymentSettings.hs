@@ -105,7 +105,6 @@ import Frontend.Crypto.Ed25519 (keyToText)
 import Frontend.Foundation
 import Frontend.JsonData
 import Frontend.Network
-import Frontend.UI.Dialogs.NetworkEdit
 import Frontend.UI.JsonData
 import Frontend.UI.Modal
 import Frontend.UI.TabBar
@@ -559,8 +558,6 @@ transactionInputSection code cmd = do
 
 transactionDisplayNetwork :: (MonadWidget t m, HasNetwork model t) => model -> m ()
 transactionDisplayNetwork m = void $ mkLabeledClsInput True "Network" $ \_ -> do
-  netStat <- queryNetworkStatus (m ^. network_networks) (m ^. network_selectedNetwork)
-  uiNetworkStatus "" netStat
   dynText $ textNetworkName <$> m ^. network_selectedNetwork
 
 -- | ui for asking the user about meta data needed for the transaction.

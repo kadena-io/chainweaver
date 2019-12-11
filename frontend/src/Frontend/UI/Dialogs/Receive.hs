@@ -44,11 +44,10 @@ import Common.Wallet (parsePublicKey,toPactPublicKey)
 import Frontend.Foundation
 import Frontend.KadenaAddress
 import Frontend.Network
-import Frontend.UI.Dialogs.NetworkEdit
 
 import Frontend.UI.Dialogs.DeployConfirmation (CanSubmitTransaction, TransactionSubmitFeedback (..), submitTransactionWithFeedback)
 
-import Frontend.UI.DeploymentSettings (uiMetaData, defaultGASCapability)
+import Frontend.UI.DeploymentSettings (uiMetaData, defaultGASCapability, transactionDisplayNetwork)
 
 import Frontend.UI.Modal
 import Frontend.UI.Widgets
@@ -175,10 +174,7 @@ uiReceiveModal0 model account onClose = Workflow $ do
           dialogSectionHeading mempty "Destination"
           divClass "group" $ do
             -- Network
-            void $ mkLabeledClsInput True "Network" $ \_ -> do
-              stat <- queryNetworkStatus (model ^. network_networks) $ pure $ _account_network account
-              uiNetworkStatus "signal__left-floated" stat
-              text $ textNetworkName $ _account_network account
+            transactionDisplayNetwork model
             -- Chain id
             _ <- displayText "Chain ID" (_chainId $ _account_chainId account) "account-details__chain-id"
             pure ()
