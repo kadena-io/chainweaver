@@ -15,7 +15,7 @@ import Common.Wallet (UnfinishedCrossChainTransfer (..), Account (..), KeyPair (
                       AccountBalance (..), AccountName (..), parsePublicKey)
 
 import Frontend.JsonData (Keyset, KeysetV (..))
-import Frontend.Wallet (SomeAccount (..))
+import Frontend.Wallet (SomeAccount (..), mkAccountNotes)
 
 import qualified Cardano.Crypto.Wallet as Crypto
 import Pact.Types.Command (RequestKey (..))
@@ -52,7 +52,7 @@ goldenTests =
       , _account_chainId = chain
       , _account_key = kp
       , _account_network = uncheckedNetworkName "testnet"
-      , _account_notes = mempty
+      , _account_notes = mkAccountNotes mempty
       , _account_balance = bal
       , _account_unfinishedCrossChainTransfer = xchaintfr
       }

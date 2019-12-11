@@ -204,7 +204,7 @@ uiKeyItem model i d = do
             td $ divClass "wallet__table-wallet-address" $ dynText $ unAccountName . _account_name <$> account
             td $ divClass "wallet__table-wallet-address" $ dynText $ keyToText . _keyPair_publicKey . _account_key <$> account
             td $ dynText $ Pact._chainId . _account_chainId <$> account
-            td $ dynText $ _account_notes <$> account
+            td $ dynText $ unAccountNotes . _account_notes <$> account
             td $ dynText $ ffor account $ \a -> case _account_balance a of
               Nothing -> "Unknown"
               Just b -> tshow (unAccountBalance b) <> " KDA" <> maybe "" (const "*") (_account_unfinishedCrossChainTransfer a)

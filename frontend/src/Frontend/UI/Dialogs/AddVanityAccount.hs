@@ -46,6 +46,7 @@ import           Frontend.Wallet                        (Account (..),
                                                          HasWalletCfg (..),
                                                          KeyPair (..),
                                                          findNextKey,
+                                                         mkAccountNotes,
                                                          unAccountName)
 
 -- Allow the user to create a 'vanity' account, which is an account with a custom name
@@ -99,7 +100,7 @@ uiAddVanityAccountSettings ideL mChainId initialNotes = Workflow $ do
 
   rec
     let
-      uiAcc = liftA2 (,) (uiAccountNameInput w selChain) (value <$> notesInput)
+      uiAcc = liftA2 (,) (uiAccountNameInput w selChain) (fmap mkAccountNotes . value <$> notesInput)
       uiAccSection = ("Reference Data", uiAcc)
     (curSelection, eNewAccount, _) <- buildDeployTabs customConfigTab includePreviewTab controls
 
