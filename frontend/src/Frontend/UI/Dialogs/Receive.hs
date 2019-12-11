@@ -124,11 +124,12 @@ uiReceiveModal
      )
   => model
   -> Account key
+  -> Maybe ChainId
   -> Event t ()
   -> m (mConf, Event t ())
-uiReceiveModal model account _onClose = do
+uiReceiveModal model account mchain _onClose = do
   onClose <- modalHeader $ text "Receive"
-  (conf, closes) <- fmap splitDynPure $ workflow $ uiReceiveModal0 model account onClose
+  (conf, closes) <- fmap splitDynPure $ workflow $ uiReceiveModal0 model account mchain onClose
   mConf <- flatten =<< tagOnPostBuild conf
   let close = switch $ current closes
   pure (mConf, close)
@@ -144,12 +145,11 @@ uiReceiveModal0
      )
   => model
   -> Account key
+  -> Maybe ChainId
   -> Event t ()
   -> Workflow t m (mConf, Event t ())
-uiReceiveModal0 model account onClose = Workflow $ do
+uiReceiveModal0 model account mchain onClose = Workflow $ do
   let
-    chain = _account_chainId account
-
     netInfo = do
       nodes <- model ^. network_selectedNodes
       meta <- model ^. network_meta
@@ -165,23 +165,25 @@ uiReceiveModal0 model account onClose = Workflow $ do
       in
         mkLabeledInputView True lbl attrFn $ pure v
 
-  (showingAddr, (conf, ttl, gaslimit, transferInfo)) <- divClass "modal__main account-details" $ do
+  (showingAddr, chain, (conf, ttl, gaslimit, transferInfo)) <- divClass "modal__main account-details" $ do
     rec
       showingKadenaAddress <- toggle True $ onAddrClick <> onReceiClick
 
-      (onAddrClick, _) <- controlledAccordionItem showingKadenaAddress mempty (text "Option 1: Copy and share Kadena Address")
+      (onAddrClick, ((), chain)) <- controlledAccordionItem showingKadenaAddress mempty (text "Option 1: Copy and share Kadena Address")
         $ do
         elClass "h2" "heading heading_type_h2" $ text "Destination"
-        divClass "group" $ do
+        cid <- divClass "group" $ do
           -- Network
           void $ mkLabeledClsInput True "Network" $ \_ -> do
             stat <- queryNetworkStatus (model ^. network_networks) $ pure $ _account_network account
             uiNetworkStatus "signal__left-floated" stat
             text $ textNetworkName $ _account_network account
           -- Chain id
-          _ <- displayText "Chain ID" (_chainId $ _account_chainId account) "account-details__chain-id"
-          pure ()
+          case mchain of
+            Just cid -> (pure $ Just cid) <$ displayText "Chain ID" (_chainId cid) "account-details__chain-id"
+            Nothing -> userChainIdSelect model
         uiDisplayAddress address
+        pure cid
 
       (onReceiClick, results) <- controlledAccordionItem (not <$> showingKadenaAddress) "account-details__legacy-send"
         (text "Option 2: Transfer from non-Chainweaver Account") $ do
@@ -191,7 +193,7 @@ uiReceiveModal0 model account onClose = Workflow $ do
         (conf0, ttl0, gaslimit0) <- divClass "group" $ uiMetaData model Nothing Nothing
         pure (conf0, ttl0, gaslimit0, transferInfo0)
 
-    pure (showingKadenaAddress, snd results)
+    pure (showingKadenaAddress, chain, snd results)
 
   let isDisabled = liftA2 (&&) (isNothing <$> transferInfo) (not <$> showingAddr)
 
@@ -205,13 +207,18 @@ uiReceiveModal0 model account onClose = Workflow $ do
   let
     done = gate (current showingAddr) doneNext
     deploy = gate (not <$> current showingAddr) doneNext
-
-    infos = (liftA2 . liftA2) (,) netInfo transferInfo
+    ap2' = (liftA2 . liftA2) (&)
 
   pure ( (conf, onClose <> done)
-       , uncurry
-         <$> current (receiveFromLegacySubmit onClose account chain <$> ttl <*> gaslimit)
-         <@> tagMaybe (current infos) deploy
+       , receiveFromLegacySubmit onClose account
+         & (pure . Just)
+         & ap2' chain
+         & ap2' (fmap Just ttl)
+         & ap2' (fmap Just gaslimit)
+         & ap2' netInfo
+         & ap2' transferInfo
+         & current
+         & flip tagMaybe deploy
        )
 
 receiveFromLegacySubmit

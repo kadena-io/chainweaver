@@ -171,7 +171,7 @@ uiKeyItems model = do
     accModal (d,i,a) = Just $ case d of
       -- AccountDialog_Delete -> uiDeleteConfirmation i (_account_name a)
       AccountDialog_Details -> uiAccountDetails i a
-      AccountDialog_Receive -> uiReceiveModal model a
+      AccountDialog_Receive -> uiReceiveModal model a (Just $ _account_chainId a)
       AccountDialog_Send -> uiSendModal model i a
 
   refresh <- delay 1 =<< getPostBuild
