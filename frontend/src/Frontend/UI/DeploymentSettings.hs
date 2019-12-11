@@ -339,8 +339,8 @@ buildDeployTabFooterControls
   -> Dynamic t Bool
   -> m (Event t (DeploymentSettingsView -> Maybe DeploymentSettingsView))
 buildDeployTabFooterControls mUserTabName includePreviewTab curSelection stepFn hasResult = do
-  let backConfig = btnCfgTertiary & uiButtonCfg_class <>~ ffor curSelection
-        (\s -> if s == fromMaybe DeploymentSettingsView_Cfg mUserTabName then " hidden" else "")
+  let backConfig = btnCfgTertiary & uiButtonCfg_class .~ ffor curSelection
+        (\s -> if s == fromMaybe DeploymentSettingsView_Cfg mUserTabName then "hidden" else "")
 
       tabToBeDisabled = if includePreviewTab
         then DeploymentSettingsView_Preview
@@ -592,7 +592,8 @@ uiMetaData m mTTL mGasLimit = do
           ]
 
     onGasPrice <- mdo
-      tsEl <- mkLabeledClsInput True "Transaction Speed" (txnSpeedSliderEl setPrice)
+      tsEl <- divClass "deploy-meta-cfg__txn-speed" $
+        mkLabeledClsInput True "Transaction Speed" (txnSpeedSliderEl setPrice)
       let setSpeed = fmapMaybe (fmap scaleTxnSpeedToGP . parseGasPrice) $ _inputElement_input tsEl
       gpInput <- mkLabeledInput True "Gas Price" (gasPriceInputBox $ fmap showGasPrice setSpeed) def
       let setPrice = fmap (showGasPrice . scaleGPtoTxnSpeed) gpInput
@@ -643,7 +644,8 @@ uiMetaData m mTTL mGasLimit = do
 
     horizontalDashedSeparator
 
-    onTTL <- mkLabeledClsInput True "Request Expires" ttlInput
+    onTTL <- divClass "deploy-meta-cfg__request-expires"
+      $ mkLabeledClsInput True "Request Expires" ttlInput
     ttl <- holdDyn initTTL $ leftmost [onTTL, pbTTL]
 
     pure
