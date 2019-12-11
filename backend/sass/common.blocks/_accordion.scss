@@ -23,12 +23,7 @@ $accordion-header-font-size: 15px;
 
   width: 100%;
   display: grid;
-
-  grid-template-columns: 6% 70% 24%;
-
-  @media screen and (min-width: 1024px) {
-    grid-template-columns: 4% 70% 26%;
-  }
+  grid-template-columns: 1fr 25fr 1fr;
 }
 
 .accordion__header-btn-text {
