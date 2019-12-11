@@ -12,7 +12,7 @@ $main-header-font-size: $primary-font-size;
 $main-header-std-height: 36px;
 $main-header-std-height-small-screen: 24px;
 $main-header-btn-font-size: $secondary-font-size;
-
+$main-header-wallet-btn-bg: #ececec;
 
 // For simplicity this block does not fully adhere to BEM (we are using child
 // selectors), but this does seem to be very ok for the main header and
@@ -61,13 +61,13 @@ $main-header-btn-font-size: $secondary-font-size;
 .main-header__add-account-button {
   @extend .main-header__button;
   color: $black;
-  background: $white;
+  background: $main-header-wallet-btn-bg;
 }
 
 .main-header__wallet-refresh-button {
   @extend .main-header__button;
   color: $black;
-  background: $white;
+  background: $main-header-wallet-btn-bg;
 }
 
 .main-header__text-icon-button {

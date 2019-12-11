@@ -339,8 +339,8 @@ buildDeployTabFooterControls
   -> Dynamic t Bool
   -> m (Event t (DeploymentSettingsView -> Maybe DeploymentSettingsView))
 buildDeployTabFooterControls mUserTabName includePreviewTab curSelection stepFn hasResult = do
-  let backConfig = def & uiButtonCfg_class .~ ffor curSelection
-        (\s -> if s == fromMaybe DeploymentSettingsView_Cfg mUserTabName then "hidden" else "")
+  let backConfig = btnCfgTertiary & uiButtonCfg_class <>~ ffor curSelection
+        (\s -> if s == fromMaybe DeploymentSettingsView_Cfg mUserTabName then " hidden" else "")
 
       tabToBeDisabled = if includePreviewTab
         then DeploymentSettingsView_Preview
