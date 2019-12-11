@@ -81,16 +81,18 @@ in
           ];
         });
       };
-      addGObjectIntrospection = hpackage: pkgs.haskell.lib.overrideCabal hpackage (current: {
-          libraryPkgconfigDepends =
-            current.libraryPkgconfigDepends ++ [ pkgs.gobject-introspection ];
-        });
       linux-overlay = self: super: {
         gi-gtk-hs = self.callHackageDirect {
           pkg = "gi-gtk-hs";
           ver =  "0.3.7.0";
           sha256 = "0h5959ayjvipj54z0f350bz23fic90xw9z06xw4wcvxvwkrsi2br";
         } { };
+        linux = pkgs.haskell.lib.overrideCabal super.linux (drv: {
+          libraryFrameworkDepends =
+            [ pkgs.webkit
+              pkgs.glib-networking
+            ];
+        });
       };
       desktop-overlay = self: super: {
         ether = haskellLib.doJailbreak super.ether;

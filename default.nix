@@ -105,38 +105,91 @@ in obApp // rec {
     ${pkgs.sass}/bin/sass ${./backend/sass}/index.scss $out/sass.css
   '';
   # Linux app static linking
-  linuxBackend = pkgs.haskell.lib.overrideCabal obApp.ghc.linux (drv: {
+  linuxNixos = pkgs.haskell.lib.overrideCabal obApp.ghc.linux (drv: {
+    nativeBuildInputs = old.nativeBuildInputs ++ [ pkgs.wrapGAppsHook ];
     libraryFrameworkDepends =
       [ pkgs.webkit
         pkgs.glib-networking
       ];
-
-    configureFlags = [
-      "--ghc-options=-optl=${(pkgs.openssl.override { static = true; }).out}/lib/libcrypto.a"
-      "--ghc-options=-optl=${(pkgs.openssl.override { static = true; }).out}/lib/libssl.a"
-      "--ghc-options=-optl=${pkgs.zlib.static}/lib/libz.a"
-      "--ghc-options=-optl=${pkgs.gmp6.override { withStatic = true; }}/lib/libgmp.a"
-      "--ghc-options=-optl=${pkgs.libffi.override {
-        stdenv = pkgs.stdenvAdapters.makeStaticLibraries pkgs.stdenv;
-        }}/lib/libffi.a"
-    ];
   });
-  linux = linuxBackend.overrideAttrs (old: {
-    # This wrapGAppsHook is necessary for nixos, but is probably counter productive for gnome systems
-    nativeBuildInputs = old.nativeBuildInputs ++ [
-      pkgs.wrapGAppsHook
-    ];
-    postInstall = ''
+  linuxApp = pkgs.stdenv.mkDerivation {
+    name = "${linuxAppName}-usrlib";
+    outputs = ["out"];
+    
+    builder = pkgs.writeScript "builder.sh" ''
+      source $stdenv/setup
       set -eux
-      mv $out/bin/linuxApp $out/bin/${linuxAppName}
-      ln -s "${pkgs.z3}"/bin/z3 "$out/bin/z3"
-      ln -s "${obApp.mkAssets obApp.passthru.staticFiles}" "$out/bin/static.assets"
-      ln -s "${obApp.passthru.staticFiles}" "$out/bin/static"
-      ln -s "${sass}/sass.css" "$out/bin/sass.css"
-      ${pkgs.libicns}/bin/png2icns "$out/bin/pact.icns" "${macAppIcon}"
-      ${pkgs.libicns}/bin/png2icns "$out/bin/pact-document.icns" "${macPactDocumentIcon}"
+      mkdir $out
+      export DEBDIR=$TMPDIR/${linuxAppName}-1
+      export BINDIR=$DEBDIR/usr/libexec/chainweaver
+      export LIBDIR=$DEBDIR/usr/lib/chainweaver
+      export TMPEXE=$TMPDIR/${linuxAppName}
+
+      # make debian control file structure
+      mkdir -p $DEBDIR/DEBIAN
+      cp ${deb-control} $DEBDIR/DEBIAN/control
+      cp ${deb-copyright} $DEBDIR/DEBIAN/copyright
+      cp ${deb-changelog} $DEBDIR/DEBIAN/changelog
+
+      mkdir -p $BINDIR
+      mkdir -p $LIBDIR
+
+      cp ${obApp.ghc.linux}/bin/linuxApp $TMPEXE
+      chmod u+w $TMPEXE
+      patchelf --set-interpreter /lib64/ld-linux-x86-64.so.2 $TMPEXE
+      patchelf --set-rpath $LIBDIR $TMPEXE
+      cp $TMPEXE $BINDIR/${linuxAppName}
+
+      cp "${pkgs.z3}"/bin/z3 "$BINDIR/z3"
+      #TODO : This shouldn't be in libexec
+      cp -rL "${obApp.mkAssets obApp.passthru.staticFiles}" "$BINDIR/static.assets"
+      cp -rL "${obApp.passthru.staticFiles}" "$BINDIR/static"
+      cp -rL "${sass}/sass.css" "$BINDIR/sass.css"
+      ${pkgs.libicns}/bin/png2icns "$BINDIR/pact.icns" "${macAppIcon}"
+      ${pkgs.libicns}/bin/png2icns "$BINDIR/pact-document.icns" "${macPactDocumentIcon}"
+      cp $(ldd ${obApp.ghc.linux}/bin/linuxApp | awk '{ print $3; }') $LIBDIR/
+      chmod 0755 $BINDIR/*
+      ${pkgs.dpkg}/bin/dpkg-deb --build $DEBDIR $out
     '';
-  });
+  };
+  deb-changelog = pkgs.writeTextFile { name = "chainweaver-changelog"; text = ''
+    TODO
+  ''; };
+  deb-control = pkgs.writeTextFile { name = "control"; text = ''
+    Package: chainweaver
+    Version: 0.1.0
+    Architecture: amd64
+    Maintainer: "Kadena"
+    Description: "Chainweaver"
+  ''; };
+
+  deb-copyright = pkgs.writeTextFile { name = "chainweaver-deb-copyright"; text = ''
+    Format: https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
+    Upstream-Name: Chainweaver
+    Source: https://gitlab.com/kadena.io/chainweaver
+
+    Files: *
+    Copyright: 2019 kadena.io
+    License: MIT
+      Permission is hereby granted, free of charge, to any person obtaining a copy
+      of this software and associated documentation files (the "Software"), to deal
+      in the Software without restriction, including without limitation the rights
+      to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+      copies of the Software, and to permit persons to whom the Software is
+      furnished to do so, subject to the following conditions:
+
+      The above copyright notice and this permission notice shall be included in all
+      copies or substantial portions of the Software.
+
+      THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+      IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+      FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+      AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+      LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+      OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+      SOFTWARE.
+  ''; };
+
   # Use native mac libc++
   fixedZ3 = pkgs.z3.overrideAttrs (oldAttrs: rec {
     fixupPhase = ''
