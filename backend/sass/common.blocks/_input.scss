@@ -86,11 +86,10 @@ input[type=number] {
 .input_transparent {
   background: none;
   border: none;
-  color: $std-color !important;
 }
 
 .slider {
-  color: #757575;
+  color: $tertiary-color;
   font-size: 14px;
   margin: 0.5rem 0;
   .slider_min, .slider_max {

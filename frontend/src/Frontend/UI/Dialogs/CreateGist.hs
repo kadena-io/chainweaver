@@ -37,7 +37,7 @@ import           Frontend.ModuleExplorer        (HasModuleExplorerCfg (..),
                                                  GistMeta (..))
 import           Frontend.UI.Modal
 import           Frontend.UI.Widgets
-import           Frontend.UI.Widgets.Helpers (imgWithAltCls)
+import           Frontend.UI.Widgets.Helpers (imgWithAltCls, dialogSectionHeading)
 ------------------------------------------------------------------------------
 
 type HasUICreateGistModelCfg mConf t =
@@ -60,7 +60,7 @@ uiCreateGist _onClose = do
         divClass "modal__filler-horizontal-center-box" $
           imgWithAltCls "modal__filler-img" (static @"img/Octocat.jpg") "Github logo" blank
 
-        elClass "h2" "heading heading_type_h2" $ text "What shall your Gist be called?"
+        dialogSectionHeading mempty "What shall your Gist be called?"
         divClass "group" $ do
           fileName <- labeledTextInputWithDefault "Filename" "chainweaver-share.pact"
           description <- labeledTextInputWithDefault "Description" "Pact shared with chainweaver."

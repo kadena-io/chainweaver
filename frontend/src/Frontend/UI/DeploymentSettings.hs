@@ -110,7 +110,7 @@ import Frontend.UI.JsonData
 import Frontend.UI.Modal
 import Frontend.UI.TabBar
 import Frontend.UI.Widgets
-import Frontend.UI.Widgets.Helpers (preventScrollWheelAndUpDownArrow)
+import Frontend.UI.Widgets.Helpers (preventScrollWheelAndUpDownArrow,dialogSectionHeading)
 import Frontend.Wallet
 
 -- | Config for the deployment settings widget.
@@ -448,7 +448,7 @@ uiDeployDestination
   -> m (Dynamic t (f Pact.ChainId))
   -> m (Dynamic t (f Pact.ChainId))
 uiDeployDestination m wChainId = do
-  divClass "title" $ text "Destination"
+  dialogSectionHeading mempty "Destination"
   elKlass "div" ("group segment") $ do
     transactionDisplayNetwork m
     wChainId
@@ -464,7 +464,7 @@ uiDeployMetaData
   -> Maybe GasLimit
   -> m (mConf, Dynamic t TTLSeconds, Dynamic t GasLimit)
 uiDeployMetaData m mTTL mGasLimit = do
-  divClass "title" $ text "Settings"
+  dialogSectionHeading mempty "Settings"
   elKlass "div" ("group segment") $ uiMetaData m mTTL mGasLimit
 
 -- | UI for asking the user about data needed for deployments/function calling.
@@ -496,7 +496,7 @@ uiCfg mCode m wChainId mTTL mGasLimit userSections otherAccordion = do
 
         -- Customisable user provided UI section
         fa <- for userSections $ \(title, body) -> do
-          divClass "title" $ text title
+          dialogSectionHeading mempty title
           elKlass "div" ("group segment") body
 
         (cfg, ttl, gasLimit) <- uiDeployMetaData m mTTL mGasLimit
@@ -508,8 +508,10 @@ uiCfg mCode m wChainId mTTL mGasLimit userSections otherAccordion = do
 
     dGeneralActive <- mkAccordionControlDyn True
 
-    (eGeneralClicked, pairA) <- controlledAccordionItem dGeneralActive mempty (text "General") mkGeneralSettings
-    divClass "title" blank
+    (eGeneralClicked, pairA) <- controlledAccordionItem dGeneralActive "deploy-settings-accordion-header__general"
+      (accordionHeaderBtn "General")
+      mkGeneralSettings
+
     (otherClicked, transformCfg) <- case otherAccordion of
       Nothing -> pure (never, id)
       Just mk -> do
@@ -529,10 +531,10 @@ advancedAccordion
   -> Dynamic t Bool
   -> m (Event t (), ((), mConf))
 advancedAccordion m active = do
-  controlledAccordionItem active mempty (text "Advanced") $ do
+  controlledAccordionItem active mempty (accordionHeaderBtn "Advanced") $ do
     -- We don't want to change focus when keyset events occur, so consume and do nothing
     -- with the given elements and their dynamic
-    divClass "title" $ text "Data"
+    dialogSectionHeading mempty "Data"
     uiJsonDataSetFocus (\_ _ -> pure ()) (\_ _ -> pure ()) (m ^. wallet) (m ^. jsonData)
 
 transactionHashSection :: MonadWidget t m => Pact.Command Text -> m ()
@@ -546,7 +548,7 @@ transactionInputSection
   -> Maybe (Pact.Command Text)
   -> m ()
 transactionInputSection code cmd = do
-  divClass "title" $ text "Input"
+  dialogSectionHeading mempty "Input"
   divClass "group" $ do
     for_ cmd transactionHashSection
     pb <- getPostBuild
@@ -751,7 +753,7 @@ uiSignerList
   -> m (Dynamic t (Set AccountName))
 uiSignerList m chainId = do
   let textAccounts = mkChainTextAccounts m chainId
-  divClass "title" $ text "Unrestricted Signing Accounts"
+  dialogSectionHeading mempty "Unrestricted Signing Accounts"
   eSwitchSigners <- divClass "group signing-ui-signers" $
     dyn $ ffor textAccounts $ \case
       Left e -> do
@@ -873,7 +875,7 @@ uiSenderCapabilities m cid mCaps mkSender = do
       combineMaps = fmap (Map.unionsWith (<>)) . sequence
 
   eAddCap <- divClass "grant-capabilities-title" $ do
-    divClass "title grant-capabilities-title__title" $ text "Grant Capabilities"
+    dialogSectionHeading "grant-capabilities-title__title" "Grant Capabilities"
     case mCaps of
       Nothing -> addButton (def & uiButtonCfg_class <>~ " grant-capabilities-title__add-button")
       Just _  -> pure never
@@ -998,10 +1000,10 @@ uiDeployPreview model settings accounts signers gasLimit ttl code lastPublicMeta
   dyn_ =<< holdDyn (text "Preparing transaction preview...")
     (uiPreviewResponses signing <$> eCmds)
   where
-    uiPreviewResponses signing (cmd, wrappedCmd) = elClass "div" "modal__main transaction_details" $ do
+    uiPreviewResponses signing (cmd, wrappedCmd) = do
       pb <- getPostBuild
       transactionInputSection (pure code) (pure cmd)
-      divClass "title" $ text "Destination"
+      dialogSectionHeading mempty  "Destination"
       _ <- divClass "group segment" $ do
         transactionDisplayNetwork model
         predefinedChainIdDisplayed chainId model
@@ -1021,7 +1023,7 @@ uiDeployPreview model settings accounts signers gasLimit ttl code lastPublicMeta
           liftIO $ T.putStrLn $ "Expected 1 response, but got " <> tshow (length n)
           pure $ This "Couldn't get a response from the node"
 
-      divClass "title" $ text "Anticipated Transaction Impact"
+      dialogSectionHeading mempty "Anticipated Transaction Impact"
       divClass "group segment" $ do
         let tableAttrs = "style" =: "table-layout: fixed; width: 100%" <> "class" =: "table"
         elAttr "table" tableAttrs $ do
@@ -1042,7 +1044,7 @@ uiDeployPreview model settings accounts signers gasLimit ttl code lastPublicMeta
             el "td" $ divClass "wallet__key" $ text $ keyToText pk
             el "td" $ dynText $ displayBalance <$> balance
 
-      divClass "title" $ text "Raw Response"
+      dialogSectionHeading mempty "Raw Response"
       void $ divClass "group segment transaction_details__raw-response" $ runWithReplace (text "Loading...") $ leftmost
         [ text . renderCompactText . snd <$> resp
         , text <$> errors

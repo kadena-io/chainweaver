@@ -69,11 +69,14 @@ $tab-nav-secondary-active-border-color: $chainweaver-blue;
   margin-right: 50px;
 
   text-transform: uppercase;
+  color: $tertiary-color;
+  font-size: 15px;
+  font-family: WorkSans-Medium;
+  font-weight: 500;
 }
 
 .tab-nav__button_type_secondary:active,
 .tab-nav__button_type_secondary.tab-nav__button_active {
   border-bottom: 2px solid $tab-nav-secondary-active-border-color;
-  color: #000;
-  font-weight: bold;
+  color: $black-disabled-bg;
 }
