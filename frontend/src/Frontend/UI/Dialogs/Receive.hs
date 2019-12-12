@@ -168,7 +168,7 @@ uiReceiveModal0 model account mchain onClose = Workflow $ do
       showingKadenaAddress <- toggle True $ onAddrClick <> onReceiClick
 
       elClass "h2" "heading heading_type_h2" $ text "Destination"
-      cid <- divClass "group" $ do
+      chain <- divClass "group" $ do
         -- Network
         void $ mkLabeledClsInput True "Network" $ \_ -> do
           stat <- queryNetworkStatus (model ^. network_networks) $ pure $ _account_network account
@@ -179,12 +179,11 @@ uiReceiveModal0 model account mchain onClose = Workflow $ do
           Nothing -> userChainIdSelect model
           Just cid -> (pure $ Just cid) <$ displayText "Chain ID" (_chainId cid) "account-details__chain-id"
 
-      (onAddrClick, ((), chain)) <- controlledAccordionItem showingKadenaAddress mempty (text "Option 1: Copy and share Kadena Address")
+      (onAddrClick, ((), ())) <- controlledAccordionItem showingKadenaAddress mempty (text "Option 1: Copy and share Kadena Address")
         $ do
         dyn_ $ ffor chain $ uiDisplayAddress  . \case
           Nothing -> "Please select a chain"
           Just cid -> textKadenaAddress $ accountToKadenaAddress account cid
-        pure cid
 
       (onReceiClick, results) <- controlledAccordionItem (not <$> showingKadenaAddress) "account-details__legacy-send"
         (text "Option 2: Transfer from non-Chainweaver Account") $ do
