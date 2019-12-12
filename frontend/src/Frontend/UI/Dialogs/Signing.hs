@@ -60,7 +60,6 @@ uiSigning appCfg ideL signingRequest onCloseExternal = do
         Just c -> predefinedChainIdDisplayed c
         Nothing -> userChainIdSelect
     , _deploymentSettingsConfig_userTab = Nothing
-    , _deploymentSettingsConfig_userSections = []
     , _deploymentSettingsConfig_code = pure $ _signingRequest_code signingRequest
     , _deploymentSettingsConfig_sender = case _signingRequest_sender signingRequest of
         Just sender -> \_ _ -> uiSenderFixed sender

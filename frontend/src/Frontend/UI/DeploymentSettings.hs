@@ -117,9 +117,6 @@ import Frontend.Wallet
 data DeploymentSettingsConfig t m model a = DeploymentSettingsConfig
   { _deploymentSettingsConfig_userTab     :: Maybe (Text, m a)
     -- ^ Some optional extra tab. fst is the tab's name, snd is its content.
-  , _deploymentSettingsConfig_userSections :: [(Text, m a)]
-    -- ^ Some optional extra input, placed between chainId selection and transaction
-    -- settings. fst is the section's name, snd is its content.
   , _deploymentSettingsConfig_chainId     :: model -> m (Dynamic t (Maybe Pact.ChainId))
     -- ^ ChainId selection widget.
     --   You can pick (predefinedChainIdSelect someId) - for not showing a
@@ -389,7 +386,8 @@ uiDeploymentSettings m settings = mdo
           (_deploymentSettingsConfig_chainId settings $ m)
           (_deploymentSettingsConfig_ttl settings)
           (_deploymentSettingsConfig_gasLimit settings)
-          (_deploymentSettingsConfig_userSections settings)
+          Nothing
+          (Just advancedAccordion)
 
       (mSender, signers, capabilities) <- tabPane mempty curSelection DeploymentSettingsView_Keys $
         uiSenderCapabilities m cChainId (_deploymentSettingsConfig_caps settings)
@@ -475,10 +473,6 @@ uiCfg
      , HasNetwork model t
      , HasNetworkCfg mConf t
      , Monoid mConf
-     , Flattenable mConf t
-     , HasJsonDataCfg mConf t
-     , HasWallet model key t
-     , HasJsonData model t
      , Traversable g
      )
   => Maybe (Dynamic t Text)
@@ -487,13 +481,14 @@ uiCfg
   -> Maybe TTLSeconds
   -> Maybe GasLimit
   -> g (Text, m a)
+  -> Maybe (model -> Dynamic t Bool -> m (Event t (), ((), mConf)))
   -> m ( mConf
        , Dynamic t (f Pact.ChainId)
        , Dynamic t TTLSeconds
        , Dynamic t GasLimit
        , g a
        )
-uiCfg mCode m wChainId mTTL mGasLimit userSections = do
+uiCfg mCode m wChainId mTTL mGasLimit userSections otherAccordion = do
   -- General deployment configuration
   let mkGeneralSettings = do
         traverse_ (\c -> transactionInputSection c Nothing) mCode
@@ -509,19 +504,36 @@ uiCfg mCode m wChainId mTTL mGasLimit userSections = do
 
   rec
     let mkAccordionControlDyn initActive = foldDyn (const not) initActive
-          $ leftmost [eGeneralClicked , eAdvancedClicked]
+          $ leftmost [eGeneralClicked, otherClicked]
 
     dGeneralActive <- mkAccordionControlDyn True
-    dAdvancedActive <- mkAccordionControlDyn False
 
     (eGeneralClicked, pairA) <- controlledAccordionItem dGeneralActive mempty (text "General") mkGeneralSettings
     divClass "title" blank
-    (eAdvancedClicked, pairB) <- controlledAccordionItem dAdvancedActive mempty (text "Advanced") $ do
-      -- We don't want to change focus when keyset events occur, so consume and do nothing
-      -- with the given elements and their dynamic
-      divClass "title" $ text "Data"
-      uiJsonDataSetFocus (\_ _ -> pure ()) (\_ _ -> pure ()) (m ^. wallet) (m ^. jsonData)
-  pure $ snd pairA & _1 <>~ snd pairB
+    (otherClicked, transformCfg) <- case otherAccordion of
+      Nothing -> pure (never, id)
+      Just mk -> do
+        (clk, pairB) <- mk m =<< mkAccordionControlDyn False
+        pure (clk, (_1 <>~ snd pairB))
+
+  pure $ transformCfg $ snd pairA
+
+advancedAccordion
+  :: MonadWidget t m
+  => Flattenable mConf t
+  => HasWallet model key t
+  => HasJsonData model t
+  => HasJsonDataCfg mConf t
+  => Monoid mConf
+  => model
+  -> Dynamic t Bool
+  -> m (Event t (), ((), mConf))
+advancedAccordion m active = do
+  controlledAccordionItem active mempty (text "Advanced") $ do
+    -- We don't want to change focus when keyset events occur, so consume and do nothing
+    -- with the given elements and their dynamic
+    divClass "title" $ text "Data"
+    uiJsonDataSetFocus (\_ _ -> pure ()) (\_ _ -> pure ()) (m ^. wallet) (m ^. jsonData)
 
 transactionHashSection :: MonadWidget t m => Pact.Command Text -> m ()
 transactionHashSection cmd = void $ do

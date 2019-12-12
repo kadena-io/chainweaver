@@ -106,7 +106,7 @@ uiAddVanityAccountSettings ideL mChainId initialNotes = Workflow $ do
     (conf, result, dAccount, selChain) <- elClass "div" "modal__main transaction_details" $ do
       (cfg, cChainId, ttl, gasLimit, Identity (dAccountName, dNotes)) <- tabPane mempty curSelection DeploymentSettingsView_Cfg $
         -- Is passing around 'Maybe x' everywhere really a good way of doing this ?
-        uiCfg Nothing ideL (userChainIdSelectWithPreselect ideL mChainId) Nothing (Just defaultTransactionGasLimit) (Identity uiAccSection)
+        uiCfg Nothing ideL (userChainIdSelectWithPreselect ideL mChainId) Nothing (Just defaultTransactionGasLimit) (Identity uiAccSection) Nothing
 
       (mSender, signers, capabilities) <- tabPane mempty curSelection DeploymentSettingsView_Keys $
         uiSenderCapabilities ideL cChainId Nothing $ uiSenderDropdown def never ideL cChainId
@@ -125,8 +125,7 @@ uiAddVanityAccountSettings ideL mChainId initialNotes = Workflow $ do
 
       let mkSettings payload = DeploymentSettingsConfig
             { _deploymentSettingsConfig_chainId = userChainIdSelect
-            , _deploymentSettingsConfig_userTab = Nothing
-            , _deploymentSettingsConfig_userSections = [uiAccSection]
+            , _deploymentSettingsConfig_userTab = Nothing :: Maybe (Text, m ())
             , _deploymentSettingsConfig_code = code
             , _deploymentSettingsConfig_sender = uiSenderDropdown def never
             , _deploymentSettingsConfig_data = payload
