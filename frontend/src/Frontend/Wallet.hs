@@ -328,19 +328,11 @@ checkAccountNameValidity m = getErr <$> (m ^. network_selectedNetwork) <*> (m ^.
   where
     getErr net networks mChain k = do
       acc <- mkAccountName k
-      case Map.lookup net networks of
-        Nothing -> Right acc
-        Just accounts
-          | acc `elem` Map.keys (_accounts_vanity accounts) -> Left $ T.pack "This account name is already in use"
-          | otherwise -> Right acc
---      let existsOnChain = \case
---            SomeAccount_Account a
---              -- If we don't have a chain, don't bother checking for duplicates.
---              | Just chain <- mChain -> and
---                [ _account_name a == acc
---                , _account_chainId a == chain
---                ]
---            _ -> False
+      maybe (Right acc) (\_ -> Left "This account name is already in use") $ do
+        accounts <- Map.lookup net networks
+        chains <- Map.lookup acc $ _accounts_vanity accounts
+        chain <- mChain
+        Map.lookup chain chains
 
 -- | Write key pairs to localstorage.
 storeKeys :: (ToJSON key, HasStorage m, MonadJSM m) => KeyStorage key -> m ()
