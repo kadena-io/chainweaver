@@ -167,19 +167,20 @@ uiReceiveModal0 model account mchain onClose = Workflow $ do
     rec
       showingKadenaAddress <- toggle True $ onAddrClick <> onReceiClick
 
+      elClass "h2" "heading heading_type_h2" $ text "Destination"
+      cid <- divClass "group" $ do
+        -- Network
+        void $ mkLabeledClsInput True "Network" $ \_ -> do
+          stat <- queryNetworkStatus (model ^. network_networks) $ pure $ _account_network account
+          uiNetworkStatus "signal__left-floated" stat
+          text $ textNetworkName $ _account_network account
+        -- Chain id
+        case mchain of
+          Nothing -> userChainIdSelect model
+          Just cid -> (pure $ Just cid) <$ displayText "Chain ID" (_chainId cid) "account-details__chain-id"
+
       (onAddrClick, ((), chain)) <- controlledAccordionItem showingKadenaAddress mempty (text "Option 1: Copy and share Kadena Address")
         $ do
-        elClass "h2" "heading heading_type_h2" $ text "Destination"
-        cid <- divClass "group" $ do
-          -- Network
-          void $ mkLabeledClsInput True "Network" $ \_ -> do
-            stat <- queryNetworkStatus (model ^. network_networks) $ pure $ _account_network account
-            uiNetworkStatus "signal__left-floated" stat
-            text $ textNetworkName $ _account_network account
-          -- Chain id
-          case mchain of
-            Nothing -> userChainIdSelect model
-            Just cid -> (pure $ Just cid) <$ displayText "Chain ID" (_chainId cid) "account-details__chain-id"
         dyn_ $ ffor chain $ uiDisplayAddress  . \case
           Nothing -> "Please select a chain"
           Just cid -> textKadenaAddress $ accountToKadenaAddress account cid
