@@ -59,7 +59,7 @@ uiAccountDetailsDetails
   -> Event t ()
   -> Workflow t m (Text, (mConf, Event t ()))
 uiAccountDetailsDetails key a onClose = Workflow $ do
-  let kAddr = textKadenaAddress $ accountToKadenaAddress a
+  let kAddr = textKadenaAddress $ accountToKadenaAddress a (_account_chainId a)
 
   let displayText lbl v cls =
         let

@@ -180,7 +180,7 @@ previewTransfer model fromIndex fromAccount fromGasPayer toAddress crossChainDat
 lookupAccountByKadenaAddress :: KadenaAddress -> Accounts key -> Maybe (Account key)
 lookupAccountByKadenaAddress ka = fmap getFirst . foldMap f
   where f = \case
-          SomeAccount_Account a | accountToKadenaAddress a == ka -> Just $ First a
+          SomeAccount_Account a | accountToKadenaAddress a (_account_chainId a) == ka -> Just $ First a
           _ -> Nothing
 
 -- | Perform a same chain transfer or transfer-create
@@ -595,7 +595,7 @@ crossChainTransfer netInfo fromIndex fromAccount toAccount fromGasPayer crossCha
   pb <- getPostBuild
   let fromChain = _account_chainId fromAccount
       toChain = either _kadenaAddress_chainId _account_chainId toAccount
-      toAddress = either id accountToKadenaAddress toAccount
+      toAddress = either id (\a -> accountToKadenaAddress a (_account_chainId a)) toAccount
   -- Client envs for making requests to each chain
   let envFromChain = mkClientEnvs nodeInfos fromChain
   -- Lookup the guard if we don't already have it

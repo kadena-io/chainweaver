@@ -156,8 +156,6 @@ uiReceiveModal0 model account mchain onClose = Workflow $ do
       let networkId = hush . mkNetworkName . nodeVersion <=< headMay $ rights nodes
       pure $ (nodes, meta, ) <$> networkId
 
-    address = textKadenaAddress $ accountToKadenaAddress account
-
     displayText lbl v cls =
       let
         attrFn cfg = uiInputElement $ cfg
@@ -180,9 +178,11 @@ uiReceiveModal0 model account mchain onClose = Workflow $ do
             text $ textNetworkName $ _account_network account
           -- Chain id
           case mchain of
-            Just cid -> (pure $ Just cid) <$ displayText "Chain ID" (_chainId cid) "account-details__chain-id"
             Nothing -> userChainIdSelect model
-        uiDisplayAddress address
+            Just cid -> (pure $ Just cid) <$ displayText "Chain ID" (_chainId cid) "account-details__chain-id"
+        dyn_ $ ffor chain $ uiDisplayAddress  . \case
+          Nothing -> "Please select a chain"
+          Just cid -> textKadenaAddress $ accountToKadenaAddress account cid
         pure cid
 
       (onReceiClick, results) <- controlledAccordionItem (not <$> showingKadenaAddress) "account-details__legacy-send"
