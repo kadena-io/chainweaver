@@ -36,13 +36,21 @@ module Common.Wallet
   , accountInfo
   , accountChain
   , accountKey
-  , AccountStorage
+  , AccountStorage(..)
+  , _AccountStorage
   , Accounts(..)
+  , accounts_vanity
+  , accounts_nonVanity
   , Key(..)
   , filterKeyPairs
   , VanityAccount(..)
+  , vanityAccount_notes
+  , vanityAccount_info
+  , vanityAccount_key
   , NonVanityAccount(..)
+  , nonVanityAccount_info
   , AccountInfo(..)
+  , blankAccountInfo
   , pactGuardTypeText
   , fromPactGuard
   , accountGuardKeys
@@ -420,8 +428,8 @@ data Accounts = Accounts
 
 instance Semigroup Accounts where
   a1 <> a2 = Accounts
-    { _accounts_vanity = _accounts_vanity a1 <> _accounts_vanity a2
-    , _accounts_nonVanity = _accounts_nonVanity a1 <> _accounts_nonVanity a2
+    { _accounts_vanity = Map.unionWith (<>) (_accounts_vanity a1) (_accounts_vanity a2)
+    , _accounts_nonVanity = Map.unionWith (<>) (_accounts_nonVanity a1) (_accounts_nonVanity a2)
     }
 
 instance Monoid Accounts where
@@ -446,6 +454,13 @@ data AccountInfo = AccountInfo
   { _accountInfo_balance :: Maybe AccountBalance
   , _accountInfo_unfinishedCrossChainTransfer :: Maybe UnfinishedCrossChainTransfer
   , _accountInfo_hidden :: Bool
+  }
+
+blankAccountInfo :: AccountInfo
+blankAccountInfo = AccountInfo
+  { _accountInfo_balance = Nothing
+  , _accountInfo_unfinishedCrossChainTransfer = Nothing
+  , _accountInfo_hidden = False
   }
 
 instance ToJSON AccountInfo where
@@ -506,7 +521,19 @@ instance FromJSON NonVanityAccount where
       { _nonVanityAccount_info = info
       }
 
-type AccountStorage = Map NetworkName Accounts
+newtype AccountStorage = AccountStorage { unAccountStorage :: Map NetworkName Accounts }
+
+instance Semigroup AccountStorage where
+  AccountStorage a1 <> AccountStorage a2 = AccountStorage $ Map.unionWith (<>) a1 a2
+
+instance Monoid AccountStorage where
+  mempty = AccountStorage mempty
+
+instance ToJSON AccountStorage where
+  toJSON = toJSON . unAccountStorage
+
+instance FromJSON AccountStorage where
+  parseJSON = fmap AccountStorage . parseJSON
 
 -- | Like '.:?' but ignores values which don't parse
 lenientLookup :: FromJSON a => Aeson.Object -> Text -> Aeson.Parser (Maybe a)
@@ -597,3 +624,7 @@ wrapWithBalanceChecks accounts code = wrapped <$ compileCode code
 
 deriveGEq ''AccountRef
 deriveGCompare ''AccountRef
+makePactLenses ''VanityAccount
+makePactLenses ''NonVanityAccount
+makePactLenses ''Accounts
+makePactPrisms ''AccountStorage

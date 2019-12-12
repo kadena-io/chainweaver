@@ -89,7 +89,7 @@ data WalletCfg key t = WalletCfg
   , _walletCfg_delAccount :: Event t AccountName
   -- ^ Hide an account in the wallet.
   , _walletCfg_importAccount  :: Event t (NetworkName, AccountName, ChainId, VanityAccount)
-  , _walletCfg_createWalletOnlyAccount :: Event t (NetworkName, ChainId, AccountNotes)
+  , _walletCfg_createWalletOnlyAccount :: Event t (NetworkName, PublicKey, ChainId)
   -- ^ Create a wallet only account that uses the public key as the account name
   , _walletCfg_refreshBalances :: Event t ()
   -- ^ Refresh balances in the wallet
@@ -97,7 +97,7 @@ data WalletCfg key t = WalletCfg
   -- ^ Start a cross chain transfer on some account. This field allows us to
   -- recover when something goes badly wrong in the middle, since it's
   -- immediately stored with all info we need to retry.
-  , _walletCfg_updateAccountNotes :: Event t (AccountName, AccountNotes)
+  , _walletCfg_updateAccountNotes :: Event t (NetworkName, AccountName, ChainId, AccountNotes)
   }
   deriving Generic
 
@@ -106,30 +106,6 @@ makePactLenses ''WalletCfg
 -- | HasWalletCfg with additional constraints to make it behave like a proper
 -- "Config".
 type IsWalletCfg cfg key t = (HasWalletCfg cfg key t, Monoid cfg, Flattenable cfg t)
-
--- | We keep track of deletions at a given index so that we don't regenerate
--- keys with BIP32.
---data SomeAccount key
---  = SomeAccount_Deleted
---  | SomeAccount_Account (Account key)
-
---someAccount :: a -> (Account key -> a) -> SomeAccount key -> a
---someAccount a _ SomeAccount_Deleted = a
---someAccount _ f (SomeAccount_Account a) = f a
-
---instance ToJSON key => ToJSON (SomeAccount key) where
---  toJSON = \case
---    SomeAccount_Deleted -> Null
---    SomeAccount_Account a -> toJSON a
---
---instance FromJSON key => FromJSON (SomeAccount key) where
---  parseJSON Null = pure SomeAccount_Deleted
---  parseJSON x = SomeAccount_Account <$> parseJSON x
-
---activeAccountOnNetwork :: NetworkName -> SomeAccount key -> Maybe (Account key)
---activeAccountOnNetwork net = someAccount
---  Nothing
---  (\a -> a <$ guard (_account_network a == net))
 
 getSigningPairs :: KeyStorage key -> Accounts -> Set (Some AccountRef) -> [KeyPair key]
 getSigningPairs allKeys allAccounts signing = Map.elems $ Map.restrictKeys allKeysMap wantedKeys
@@ -150,8 +126,6 @@ data Wallet key t = Wallet
     -- ^ Accounts added and removed by the user
   , _wallet_accounts :: Dynamic t AccountStorage
     -- ^ Accounts added and removed by the user
-  , _wallet_walletOnlyAccountCreated :: Event t AccountName
-    -- ^ A new wallet only account has been created
   }
   deriving Generic
 
@@ -192,10 +166,9 @@ makeWallet
   -> m (Wallet key t)
 makeWallet model conf = do
   initialKeys <- fromMaybe IntMap.empty <$> loadKeys
-  initialAccounts <- fromMaybe Map.empty <$> loadAccounts
+  initialAccounts <- fromMaybe mempty <$> loadAccounts
   let
     onGenKey = _walletCfg_genKey conf
-    onDelKey = _walletCfg_delKey conf
     onCreateWOAcc = _walletCfg_createWalletOnlyAccount conf
     refresh = _walletCfg_refreshBalances conf
     setCrossChain = _walletCfg_setCrossChainTransfer conf
@@ -204,47 +177,34 @@ makeWallet model conf = do
 
   rec
     onNewKey <- performEvent $ attachWith (\a _ -> createKey $ nextKey a) (current keys) onGenKey
-    --onWOAccountCreate <- performEvent $ attachWith (createWalletOnlyAccount . nextKey) (current accounts) onCreateWOAcc
     --newBalances <- getBalances model $ current accounts <@ refresh
 
-     --foldDyn id initialKeys $ leftmost
-     -- [ ffor onNewKey $ snocIntMap . SomeAccount_Account
-     -- , ffor (_walletCfg_importAccount conf) $ snocIntMap . SomeAccount_Account
-     -- , ffor onDelKey $ \i -> IntMap.insert i SomeAccount_Deleted
-     -- , ffor onWOAccountCreate $ snocIntMap . SomeAccount_Account
-     -- , ffor (_walletCfg_updateAccountNotes conf) updateAccountNotes
+    keys <- foldDyn id initialKeys $ leftmost
+      [ snocIntMap <$> onNewKey
+      , ffor (_walletCfg_delKey conf) $ IntMap.adjust $ \k -> k { _key_hidden = True }
      -- , const <$> newBalances
      -- , let f cc = someAccount SomeAccount_Deleted (\a -> SomeAccount_Account a { _account_unfinishedCrossChainTransfer = cc })
      --    in ffor setCrossChain $ \(i, cc) -> IntMap.adjust (f cc) i
-     -- ]
+      ]
 
-    keys <- foldDyn id initialKeys never
-
-    accounts <- foldDyn id initialAccounts never
-    --  [ ffor onNewKey $ snocIntMap . SomeAccount_Account
-    --  , ffor (_walletCfg_importAccount conf) $ snocIntMap . SomeAccount_Account
-    --  , ffor onDelKey $ \i -> IntMap.insert i SomeAccount_Deleted
-    --  , ffor onWOAccountCreate $ snocIntMap . SomeAccount_Account
-    -- -- , const <$> newBalances
-    --  , let f cc = someAccount SomeAccount_Deleted (\a -> SomeAccount_Account a { _account_unfinishedCrossChainTransfer = cc })
-    --     in ffor setCrossChain $ \(i, cc) -> IntMap.adjust (f cc) i
-    --  ]
+    accounts <- foldDyn id initialAccounts $ leftmost
+      [ ffor (_walletCfg_importAccount conf) $ \(net, name, chain, acc) ->
+        ((<>) (AccountStorage $ Map.singleton net $ mempty { _accounts_vanity = Map.singleton name $ Map.singleton chain acc }))
+      , ffor (_walletCfg_createWalletOnlyAccount conf) $ \(net, pk, chain) ->
+        ((<>) (AccountStorage $ Map.singleton net $ mempty
+          { _accounts_nonVanity = Map.singleton pk $ Map.singleton chain $ NonVanityAccount blankAccountInfo }))
+      , ffor (_walletCfg_updateAccountNotes conf) updateAccountNotes
+      ]
 
   performEvent_ $ storeKeys <$> updated keys
 
   pure $ Wallet
     { _wallet_keys = keys
     , _wallet_accounts = accounts
-    , _wallet_walletOnlyAccountCreated = never -- _account_name <$> onWOAccountCreate
     }
   where
-    --updateAccountNotes :: (IntMap.Key, AccountNotes) -> Accounts key -> Accounts key
-    --updateAccountNotes (k, n) = at k . _Just . _SomeAccount_Account . account_notes .~ n
-
-    --createWalletOnlyAccount :: Int -> (NetworkName, ChainId, AccountNotes) -> Performable m (Account key)
-    --createWalletOnlyAccount i (net, c, t) = do
-    --  (privKey, pubKey) <- cryptoGenKey i
-    --  pure $ buildAccount (AccountName $ keyToText pubKey) pubKey privKey net c t
+    updateAccountNotes :: (NetworkName, AccountName, ChainId, AccountNotes) -> AccountStorage -> AccountStorage
+    updateAccountNotes (net, name, chain, notes) = _AccountStorage . at net . _Just . accounts_vanity . at name . _Just . at chain . _Just . vanityAccount_notes .~ notes
 
     createKey :: Int -> Performable m (Key key)
     createKey i = do
@@ -254,16 +214,6 @@ makeWallet model conf = do
         , _key_hidden = False
         , _key_notes = mkAccountNotes ""
         }
-
-    --buildAccount n pubKey privKey net c t = Account
-    --    { _account_name = n
-    --    , _account_key = KeyPair pubKey (Just privKey)
-    --    , _account_chainId = c
-    --    , _account_network = net
-    --    , _account_notes = t
-    --    , _account_balance = Nothing
-    --    , _account_unfinishedCrossChainTransfer = Nothing
-    --    }
 
 -- | Get the balance of some accounts from the network.
 getBalances
@@ -326,7 +276,7 @@ checkAccountNameValidity
   -> Dynamic t (Maybe ChainId -> Text -> Either Text AccountName)
 checkAccountNameValidity m = getErr <$> (m ^. network_selectedNetwork) <*> (m ^. wallet_accounts)
   where
-    getErr net networks mChain k = do
+    getErr net (AccountStorage networks) mChain k = do
       acc <- mkAccountName k
       maybe (Right acc) (\_ -> Left "This account name is already in use") $ do
         accounts <- Map.lookup net networks
@@ -408,12 +358,8 @@ instance Reflex t => Semigroup (Wallet key t) where
   wa <> wb = Wallet
     { _wallet_keys = _wallet_keys wa <> _wallet_keys wb
     , _wallet_accounts = _wallet_accounts wa <> _wallet_accounts wb
-    , _wallet_walletOnlyAccountCreated = leftmost
-      [ _wallet_walletOnlyAccountCreated wa
-      , _wallet_walletOnlyAccountCreated wb
-      ]
     }
 
 instance Reflex t => Monoid (Wallet key t) where
-  mempty = Wallet mempty mempty never
+  mempty = Wallet mempty mempty
   mappend = (<>)

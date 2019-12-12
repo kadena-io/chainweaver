@@ -18,6 +18,7 @@ import           Reflex.Dom
 ------------------------------------------------------------------------------
 import           Frontend.KadenaAddress (textKadenaAddress)
 ------------------------------------------------------------------------------
+import           Frontend.Network
 import           Frontend.UI.Modal
 import           Frontend.Wallet
 import           Frontend.Crypto.Ed25519 (keyToText)
@@ -36,14 +37,15 @@ uiAccountDetails
   :: ( HasUiAccountDetailsModelCfg mConf key t
      , MonadWidget t m
      )
-  => AccountName
+  => NetworkName
+  -> AccountName
   -> Account
   -> Event t ()
   -> m (mConf, Event t ())
-uiAccountDetails name a _onCloseExternal = mdo
+uiAccountDetails network name a _onCloseExternal = mdo
   onClose <- modalHeader $ dynText title
 
-  dwf <- workflow (uiAccountDetailsDetails name a onClose)
+  dwf <- workflow (uiAccountDetailsDetails network name a onClose)
 
   let (title, (conf, dEvent)) = fmap splitDynPure $ splitDynPure dwf
 
@@ -58,11 +60,12 @@ uiAccountDetailsDetails
      ( HasUiAccountDetailsModelCfg mConf key t
      , MonadWidget t m
      )
-  => AccountName
+  => NetworkName
+  -> AccountName
   -> Account
   -> Event t ()
   -> Workflow t m (Text, (mConf, Event t ()))
-uiAccountDetailsDetails name a onClose = Workflow $ do
+uiAccountDetailsDetails network name a onClose = Workflow $ do
   let kAddr = textKadenaAddress $ accountToKadenaAddress a
 
   let displayText lbl v cls =
@@ -105,9 +108,10 @@ uiAccountDetailsDetails name a onClose = Workflow $ do
     onDone <- confirmButton def "Done"
 
     let
+      chain = accountChain a
       onNotesUpdate = case notesEdit of
         Nothing -> never
-        Just notes -> (name,) . mkAccountNotes <$> current notes <@ onDone
+        Just notes -> (network, name, chain,) . mkAccountNotes <$> current notes <@ onDone
       conf = mempty & walletCfg_updateAccountNotes .~ onNotesUpdate
 
     pure ( ("Account Details", (conf, leftmost [onClose, onDone]))

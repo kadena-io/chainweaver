@@ -247,7 +247,7 @@ buildDeploymentSettingsResult m mSender signers cChainId capabilities ttl gasLim
         }
   code' <- lift code
   keys <- lift $ m ^. wallet_keys
-  allAccounts <- MaybeT $ Map.lookup networkId <$> m ^. wallet_accounts
+  allAccounts <- MaybeT $ Map.lookup networkId . unAccountStorage <$> m ^. wallet_accounts
   -- Make an effort to ensure the sender account has enough balance to actually
   -- pay the gas. This won't work if the user selects an account on a different
   -- chain, but that's another issue.
@@ -390,7 +390,7 @@ uiDeploymentSettings m settings = mdo
         let currentNode = headMay . rights <$> (m ^. network_selectedNodes)
             mNetworkId = (hush . mkNetworkName . nodeVersion =<<) <$> currentNode
 
-            accounts = liftA2 (Map.findWithDefault mempty) (m ^. network_selectedNetwork) (m ^. wallet_accounts)
+            accounts = liftA2 (\n -> Map.findWithDefault mempty n . unAccountStorage) (m ^. network_selectedNetwork) (m ^. wallet_accounts)
             mHeadAccount = fmap (\(n, c, _) -> Some $ AccountRef_Vanity n c) . findFirstVanityAccount <$> accounts
             mHeadChain = (headMay =<<) . fmap getChains <$> currentNode
 
@@ -696,7 +696,7 @@ mkChainTextAccounts
 mkChainTextAccounts m mChainId = runExceptT $ do
   netId <- lift $ m ^. network_selectedNetwork
   chain <- ExceptT $ note "You must select a chain ID before choosing an account" <$> mChainId
-  accountsOnNetwork <- ExceptT $ note "No accounts on current network" . Map.lookup netId <$> m ^. wallet_accounts
+  accountsOnNetwork <- ExceptT $ note "No accounts on current network" . Map.lookup netId . unAccountStorage <$> m ^. wallet_accounts
   let mkVanity n chainMap
         | Map.member chain chainMap = Map.singleton (Some $ AccountRef_Vanity n chain) (unAccountName n)
         | otherwise = mempty

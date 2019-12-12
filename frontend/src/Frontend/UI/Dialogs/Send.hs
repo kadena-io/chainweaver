@@ -172,7 +172,7 @@ previewTransfer model fromIndex fromAccount fromGasPayer toAddress crossChainDat
         , flip push next $ \() -> do
           mNetInfo <- sampleNetInfo model
           keys <- sample $ current $ model ^. wallet_keys
-          accounts <- sample $ current $ model ^. wallet_accounts
+          AccountStorage accounts <- sample $ current $ model ^. wallet_accounts
           let toAccount n = maybe (Left toAddress) Right $ lookupAccountByKadenaAddress toAddress =<< Map.lookup n accounts
           pure $ ffor mNetInfo $ \n -> case crossChainData of
             Nothing -> sameChainTransfer n keys fromAccount fromGasPayer toAddress amount
@@ -328,7 +328,7 @@ sendConfig model fromIndex fromAccount = Workflow $ do
                   chain = pure $ Just fromChain
               gasAcc <- uiSenderDropdown cfg never model chain
               pure $ ffor3 (model ^. wallet_accounts) (model ^. network_selectedNetwork) gasAcc $ \netToAccount net ma -> do
-                accounts <- Map.lookup net netToAccount
+                accounts <- Map.lookup net $ unAccountStorage netToAccount
                 a <- ma
                 lookupAccountRef a accounts
             toGasPayer <- if toChain == fromChain
@@ -344,7 +344,7 @@ sendConfig model fromIndex fromAccount = Workflow $ do
                       chain = pure $ Just toChain
                   gasAcc <- uiSenderDropdown cfg never model chain
                   pure $ fmap Just $ ffor3 (model ^. wallet_accounts) (model ^. network_selectedNetwork) gasAcc $ \netToAccount net ma -> do
-                    accounts <- Map.lookup net netToAccount
+                    accounts <- Map.lookup net $ unAccountStorage netToAccount
                     a <- ma
                     lookupAccountRef a accounts
             pure $ (liftA2 . liftA2) (,) fromGasPayer toGasPayer
@@ -497,7 +497,7 @@ finishCrossChainTransferConfig model fromIndex fromAccount ucct = Workflow $ do
           chain = pure $ Just toChain
       gasAcc <- uiSenderDropdown cfg never model chain
       pure $ ffor3 (model ^. wallet_accounts) (model ^. network_selectedNetwork) gasAcc $ \netToAccount net ma -> do
-        accounts <- Map.lookup net netToAccount
+        accounts <- Map.lookup net $ unAccountStorage netToAccount
         a <- ma
         lookupAccountRef a accounts
     pure (sender, conf)

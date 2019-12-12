@@ -100,19 +100,15 @@ uiCreateWalletStepOne model onClose = Workflow $ do
 
     onConfirm <- confirmButton (def & uiButtonCfg_disabled .~ isDisabled) "Add New Account"
 
-    let eAddAcc = flip push onConfirm $ \() -> runMaybeT $ do
-          chain <- MaybeT $ sample $ current dSelectedChain
-          net <- lift $ sample $ current $ model ^. network_selectedNetwork
-          notes <- lift $ sample $ current dNotes
-          pure (net, chain, mkAccountNotes notes)
-        newConf = mempty & walletCfg_createWalletOnlyAccount .~ eAddAcc
+    let --eAddAcc = flip push onConfirm $ \() -> runMaybeT $ do
+        --  chain <- MaybeT $ sample $ current dSelectedChain
+        --  net <- lift $ sample $ current $ model ^. network_selectedNetwork
+        --  pure (pk, net, chain)
+        newConf = mempty -- & walletCfg_createWalletOnlyAccount .~ eAddAcc
 
     pure
       ( ("Add Account", (newConf, leftmost [onClose, onCancel]))
-      , leftmost
-        [ uiWalletOnlyAccountCreated newConf onClose <$> (model ^. ide_wallet . wallet_walletOnlyAccountCreated)
-        , uiAddVanityAccountSettings model dSelectedChain dNotes <$ onAddVanityAcc
-        ]
+      , uiAddVanityAccountSettings model dSelectedChain dNotes <$ onAddVanityAcc
       )
   where
     inpElem cls = uiInputElement $ def
