@@ -12,7 +12,7 @@ import Reflex.Dom
 import Frontend.Foundation (renderClass)
 import Frontend.UI.Widgets (mkLabeledClsInput, uiInputElement)
 import Frontend.Network (HasNetwork)
-import Frontend.Wallet (AccountName, checkAccountNameValidity, Wallet (..), HasWallet)
+import Frontend.Wallet (AccountName, checkAccountNameValidity, HasWallet)
 
 uiAccountNameInput
   :: ( DomBuilder t m

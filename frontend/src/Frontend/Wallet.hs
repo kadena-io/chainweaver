@@ -16,10 +16,8 @@
 
 module Frontend.Wallet
   (  -- * Types & Classes
-    PublicKey
-  , PrivateKey
+    PrivateKey
   , KeyPair (..)
-  , Accounts
   , WalletCfg (..)
   , HasWalletCfg (..)
   , IsWalletCfg
@@ -31,9 +29,6 @@ module Frontend.Wallet
   , mkAccountNotes
   , mkAccountName
   , AccountGuard (..)
-  , pactGuardTypeText
-  , fromPactGuard
-  , accountGuardKeys
   -- * Creation
   , emptyWallet
   , makeWallet
@@ -53,31 +48,22 @@ module Frontend.Wallet
   , module Common.Wallet
   ) where
 
-import Control.Applicative ((<|>))
 import Control.Lens hiding ((.=))
-import Control.Monad (guard)
 import Control.Monad.Except (runExcept)
 import Control.Monad.Fix
 import Data.Aeson
 import Data.IntMap (IntMap)
-import Data.Map (Map)
 import Data.Set (Set)
-import Data.Some (Some)
+import Data.Some (Some(Some))
 import Data.Text (Text)
-import Data.These.Lens (there)
-import Data.Traversable (for)
 import GHC.Generics (Generic)
 import Kadena.SigningApi (AccountName(..), mkAccountName)
 import Pact.Types.ChainId
-import Pact.Types.ChainMeta (PublicMeta)
-import Pact.Types.Term (KeySet)
 import Reflex
 import qualified Data.Map as Map
-import qualified Data.IntMap as IntMap
 import qualified Data.Set as Set
+import qualified Data.IntMap as IntMap
 import qualified Data.Text as T
-import qualified Pact.Types.Exp as Pact
-import qualified Pact.Types.PactValue as Pact
 
 import Common.Network (NetworkName)
 import Common.Wallet
@@ -93,7 +79,7 @@ accountIsCreated:: Account -> AccountCreated
 accountIsCreated = maybe AccountCreated_No (const AccountCreated_Yes) . _accountInfo_balance . accountInfo
 
 accountToKadenaAddress :: Account -> KadenaAddress
-accountToKadenaAddress a = mkKadenaAddress (accountIsCreated a) (accountChain a) (accountName a)
+accountToKadenaAddress a = mkKadenaAddress (accountIsCreated a) (accountChain a) (accountToName a)
 
 data WalletCfg key t = WalletCfg
   { _walletCfg_genKey :: Event t ()
@@ -146,18 +132,17 @@ type IsWalletCfg cfg key t = (HasWalletCfg cfg key t, Monoid cfg, Flattenable cf
 --  (\a -> a <$ guard (_account_network a == net))
 
 getSigningPairs :: KeyStorage key -> Accounts -> Set (Some AccountRef) -> [KeyPair key]
-getSigningPairs allKeys signing = error "getSigningPairs" -- fmapMaybe isForSigning . IntMap.elems
---  where
---    -- isJust filter is necessary so indices are guaranteed stable even after
---    -- the following `mapMaybe`:
---    isForSigning = \case
---      SomeAccount_Account a
---        | kp <- _account_key a
---        , Just _ <- _keyPair_privateKey kp
---        , Set.member (_account_name a) signing
---        -> Just kp
---      _ -> Nothing
-
+getSigningPairs allKeys allAccounts signing = Map.elems $ Map.restrictKeys allKeysMap wantedKeys
+  where
+    allKeysMap = Map.fromList $ fmap (\k -> (_keyPair_publicKey $ _key_pair k, _key_pair k)) $ IntMap.elems allKeys
+    wantedKeys = Set.fromList $ Map.elems $ Map.restrictKeys accountRefs signing
+    accountRefs = vanityRefs <> nonVanityRefs
+    vanityRefs = Map.foldMapWithKey
+      (\n -> Map.foldMapWithKey $ \c v -> Map.singleton (Some $ AccountRef_Vanity n c) (_vanityAccount_key v))
+      (_accounts_vanity allAccounts)
+    nonVanityRefs = Map.foldMapWithKey
+      (\pk -> Map.foldMapWithKey $ \c _ -> Map.singleton (Some $ AccountRef_NonVanity pk c) pk)
+      (_accounts_nonVanity allAccounts)
 
 
 data Wallet key t = Wallet
@@ -197,12 +182,10 @@ makeWallet
   :: forall model key t m.
     ( MonadHold t m, PerformEvent t m
     , MonadFix m, MonadJSM (Performable m)
-    , TriggerEvent t m, MonadSample t (Performable m)
     , MonadJSM m
     , HasStorage (Performable m), HasStorage m
     , HasCrypto key (Performable m)
     , FromJSON key, ToJSON key
-    , HasNetwork model t
     )
   => model
   -> WalletCfg key t
@@ -269,6 +252,7 @@ makeWallet model conf = do
       pure $ Key
         { _key_pair = KeyPair pubKey (Just privKey)
         , _key_hidden = False
+        , _key_notes = mkAccountNotes ""
         }
 
     --buildAccount n pubKey privKey net c t = Account
@@ -342,9 +326,9 @@ checkAccountNameValidity
   -> Dynamic t (Maybe ChainId -> Text -> Either Text AccountName)
 checkAccountNameValidity m = getErr <$> (m ^. network_selectedNetwork) <*> (m ^. wallet_accounts)
   where
-    getErr network networks mChain k = do
+    getErr net networks mChain k = do
       acc <- mkAccountName k
-      case Map.lookup network networks of
+      case Map.lookup net networks of
         Nothing -> Right acc
         Just accounts
           | acc `elem` Map.keys (_accounts_vanity accounts) -> Left $ T.pack "This account name is already in use"

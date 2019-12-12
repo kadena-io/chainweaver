@@ -12,7 +12,6 @@ import Data.Dependent.Sum (DSum(..))
 ------------------------------------------------------------------------------
 import           Control.Lens
 import           Data.Text (Text)
-import qualified Data.IntMap as IntMap
 import qualified Pact.Types.ChainId as Pact
 import           Reflex
 import           Reflex.Dom

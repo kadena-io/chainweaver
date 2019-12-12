@@ -34,10 +34,9 @@ import Control.Monad (join, when, void, (<=<))
 import Control.Monad.Trans.Except
 import Data.Bifunctor (first)
 import Data.Decimal (Decimal)
-import Data.Dependent.Sum (DSum(..), (==>))
+import Data.Dependent.Sum ((==>))
 import Data.Either (isLeft, rights)
 import Data.List.NonEmpty (NonEmpty(..))
-import Data.Semigroup (First(..))
 import Data.Text (Text)
 import Kadena.SigningApi
 import Pact.Types.Capability
@@ -56,7 +55,6 @@ import Safe (succMay, headMay)
 import qualified Data.Aeson as Aeson
 import qualified Data.HashMap.Lazy as HM
 import qualified Data.IntMap as IntMap
-import qualified Data.List as L
 import qualified Data.Map as Map
 import qualified Data.Set as Set
 import qualified Data.Text as T
@@ -143,13 +141,13 @@ previewTransfer model fromIndex fromAccount fromGasPayer toAddress crossChainDat
     divClass "group" $ do
       mkLabeledInput True "Sender Account" uiInputElement $ def
         & initialAttributes .~ "disabled" =: "disabled"
-        & inputElementConfig_initialValue .~ unAccountName (accountName fromAccount)
+        & inputElementConfig_initialValue .~ unAccountName (accountToName fromAccount)
       let gasLabel = "Gas Payer" <> case crossChainData of
             Nothing -> ""
             Just _ -> " (Chain " <> _chainId (accountChain fromAccount) <> ")"
       mkLabeledInput True gasLabel uiInputElement $ def
         & initialAttributes .~ "disabled" =: "disabled"
-        & inputElementConfig_initialValue .~ unAccountName (accountName fromGasPayer)
+        & inputElementConfig_initialValue .~ unAccountName (accountToName fromGasPayer)
       mkLabeledInput True "Recipient Account" uiInputElement $ def
         & initialAttributes .~ "disabled" =: "disabled"
         & inputElementConfig_initialValue .~ unAccountName (_kadenaAddress_accountName toAddress)
@@ -157,8 +155,9 @@ previewTransfer model fromIndex fromAccount fromGasPayer toAddress crossChainDat
         let toChain = _kadenaAddress_chainId toAddress
         mkLabeledInput True ("Gas Payer (Chain " <> _chainId toChain <> ")") uiInputElement $ def
           & initialAttributes .~ "disabled" =: "disabled"
-          & inputElementConfig_initialValue .~ unAccountName (accountName $ _crossChainData_recipientChainGasPayer ccd)
+          & inputElementConfig_initialValue .~ unAccountName (accountToName $ _crossChainData_recipientChainGasPayer ccd)
     dialogSectionHeading mempty "Transaction Details"
+    elClass "h2" "heading heading_type_h2" $ text "Transaction Details"
     divClass "group" $ do
       void $ mkLabeledInput True "Amount" uiGasPriceInputField $ def
         & initialAttributes .~ "disabled" =: "disabled"
@@ -217,7 +216,7 @@ sameChainTransfer netInfo keys fromAccount gasPayer toAccount amount = Workflow 
         [ "(coin." <> case recipientCreated of
           AccountCreated_Yes -> "transfer"
           AccountCreated_No -> "transfer-create"
-        , tshow $ unAccountName $ accountName fromAccount
+        , tshow $ unAccountName $ accountToName fromAccount
         , tshow $ unAccountName $ _kadenaAddress_accountName toAccount
         , case recipientCreated of
           AccountCreated_Yes -> mempty
@@ -230,7 +229,7 @@ sameChainTransfer netInfo keys fromAccount gasPayer toAccount amount = Workflow 
       transferCap = SigCapability
         { _scName = QualifiedName { _qnQual = "coin", _qnName = "TRANSFER", _qnInfo = def }
         , _scArgs =
-          [ PLiteral $ LString $ unAccountName $ accountName fromAccount
+          [ PLiteral $ LString $ unAccountName $ accountToName fromAccount
           , PLiteral $ LString $ unAccountName $ _kadenaAddress_accountName toAccount
           , PLiteral $ LDecimal amount
           ]
@@ -248,7 +247,7 @@ sameChainTransfer netInfo keys fromAccount gasPayer toAccount amount = Workflow 
         ]
       pm = (_sharedNetInfo_meta netInfo)
         { _pmChainId = accountChain fromAccount
-        , _pmSender = unAccountName $ accountName gasPayer
+        , _pmSender = unAccountName $ accountToName gasPayer
         }
       nodeInfos = _sharedNetInfo_nodes netInfo
       networkName = _sharedNetInfo_network netInfo
@@ -708,7 +707,7 @@ continueCrossChainTransfer
 continueCrossChainTransfer networkName envs publicMeta keys gasPayer spvOk = performEventAsync $ ffor spvOk $ \(pe, proof) cb -> do
   let pm = publicMeta
         { _pmChainId = accountChain gasPayer
-        , _pmSender = unAccountName $ accountName gasPayer
+        , _pmSender = unAccountName $ accountToName gasPayer
         }
       signingSet = Set.singleton $ accountKey gasPayer
       signingPairs = filterKeyPairs signingSet keys
@@ -825,7 +824,7 @@ initiateCrossChainTransfer networkName envs publicMeta keys fromAccount fromGasP
     keysetName = "receiverKey"
     code = T.unwords
       [ "(coin.transfer-crosschain"
-      , tshow $ unAccountName $ accountName fromAccount
+      , tshow $ unAccountName $ accountToName fromAccount
       , tshow $ unAccountName $ _kadenaAddress_accountName toAccount
       , "(read-keyset '" <> keysetName <> ")"
       , tshow $ _chainId $ _kadenaAddress_chainId toAccount
@@ -838,7 +837,7 @@ initiateCrossChainTransfer networkName envs publicMeta keys fromAccount fromGasP
     -- This capability is required for `transfer-crosschain`.
     debitCap = SigCapability
       { _scName = QualifiedName { _qnQual = "coin", _qnName = "DEBIT", _qnInfo = def }
-      , _scArgs = [PLiteral $ LString $ unAccountName $ accountName fromAccount]
+      , _scArgs = [PLiteral $ LString $ unAccountName $ accountToName fromAccount]
       }
     capabilities = Map.unionsWith (<>)
       [ Map.singleton (accountKey fromGasPayer) [_dappCap_cap defaultGASCapability]
@@ -846,7 +845,7 @@ initiateCrossChainTransfer networkName envs publicMeta keys fromAccount fromGasP
       ]
     pm = publicMeta
       { _pmChainId = accountChain fromAccount
-      , _pmSender = unAccountName $ accountName fromGasPayer
+      , _pmSender = unAccountName $ accountToName fromGasPayer
       }
 
 -- | Listen to a request key for some continuation

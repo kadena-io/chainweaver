@@ -65,7 +65,6 @@ import Control.Monad.Trans.Class
 import Control.Monad.Trans.Maybe
 import Control.Monad.Except
 import Data.Decimal (roundTo)
-import Data.Dependent.Map (DMap)
 import Data.Either (rights, isLeft)
 import Data.IntMap (IntMap)
 import Data.Map (Map)
@@ -87,11 +86,9 @@ import Reflex.Dom
 import Reflex.Dom.Contrib.CssClass (elKlass)
 import Safe (readMay)
 import qualified Data.Aeson as Aeson
-import qualified Data.Dependent.Map as DMap
 import qualified Data.IntMap as IM
 import qualified Data.HashMap.Strict as HM
 import qualified Data.Map as Map
-import qualified Data.IntMap as IntMap
 import qualified Data.Set as Set
 import qualified Data.Text as T
 import qualified Data.Text.IO as T
@@ -1055,5 +1052,5 @@ uiDeployPreview model settings keys accounts signers gasLimit ttl code lastPubli
           Map.foldMapWithKey $ \c va ->
             Map.singleton (Some $ AccountRef_Vanity n c) (_vanityAccount_key va)
         nonVanityAccounts = flip Map.foldMapWithKey (_accounts_nonVanity accounts) $ \pk ->
-          Map.foldMapWithKey $ \c nva ->
+          Map.foldMapWithKey $ \c _ ->
             Map.singleton (Some $ AccountRef_NonVanity pk c) pk

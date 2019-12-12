@@ -23,7 +23,6 @@ import Pact.Types.PactValue
 import Pact.Types.Exp
 import Data.Some (Some(Some))
 import Data.These
-import Data.Dependent.Sum (DSum(..), (==>))
 
 import           Reflex
 import           Reflex.Dom.Contrib.CssClass            (renderClass)

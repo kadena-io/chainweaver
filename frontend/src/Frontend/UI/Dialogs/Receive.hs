@@ -28,7 +28,6 @@ import Reflex.Dom
 import Kadena.SigningApi (DappCap (..))
 import Pact.Types.Capability (SigCapability (..))
 import Pact.Types.Term (QualifiedName (..), KeySet (..), Name (..), BareName (..))
-import Pact.Types.ChainId (ChainId(..))
 import Pact.Types.ChainMeta (PublicMeta (..), TTLSeconds)
 import Pact.Types.PactValue (PactValue (..))
 import Pact.Types.Exp (Literal (LString, LDecimal))
@@ -240,7 +239,7 @@ receiveFromLegacySubmit onClose account chain ttl gasLimit netInfo transferInfo 
           AccountCreated_No -> "transfer-create"
           AccountCreated_Yes -> "transfer"
       , tshow $ unAccountName $ sender
-      , tshow $ unAccountName $ accountName account
+      , tshow $ unAccountName $ accountToName account
       , case accCreated of
           AccountCreated_No -> "(read-keyset 'key)"
           AccountCreated_Yes -> mempty
@@ -256,14 +255,14 @@ receiveFromLegacySubmit onClose account chain ttl gasLimit netInfo transferInfo 
         }
       , _scArgs =
         [ PLiteral $ LString $ unAccountName sender
-        , PLiteral $ LString $ unAccountName $ accountName account
+        , PLiteral $ LString $ unAccountName $ accountToName account
         , PLiteral $ LDecimal (unpackGasPrice amount)
         ]
       }
 
     dat = case accountIsCreated account of
       AccountCreated_No
-        | Right pk <- parsePublicKey (unAccountName $ accountName account)
+        | Right pk <- parsePublicKey (unAccountName $ accountToName account)
         -> HM.singleton "key" $ Aeson.toJSON $ KeySet [toPactPublicKey pk] (Name $ BareName "keys-all" def)
       _ -> mempty
 

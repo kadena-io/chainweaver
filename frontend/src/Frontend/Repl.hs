@@ -305,9 +305,9 @@ setEnvKeys :: [KeyPair key] -> PactRepl (Term Name)
 setEnvKeys =
   pactEvalRepl' . ("(env-keys [" <>) . (<> "])") . renderKeys
     where
-      renderKeys = T.unwords . map (keyToText . _keyPair_publicKey)
+      renderKeys = T.unwords . map (keyToText' . _keyPair_publicKey)
 
-      keyToText = safeDecodeUtf8 . BSL.toStrict . encode
+      keyToText' = safeDecodeUtf8 . BSL.toStrict . encode
 
 
 -- | Run an interactive command on the REPL.

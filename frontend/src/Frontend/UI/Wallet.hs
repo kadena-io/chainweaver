@@ -30,7 +30,6 @@ import           Control.Monad               (when, (<=<))
 import qualified Data.IntMap                 as IntMap
 import qualified Data.Map                    as Map
 import           Data.Text                   (Text)
-import qualified Pact.Types.ChainId as Pact
 import           Reflex
 import           Reflex.Dom hiding (Key)
 ------------------------------------------------------------------------------
@@ -125,7 +124,6 @@ uiKeyItems
   :: forall t m model mConf key.
      ( MonadWidget t m
      , HasUiWalletModelCfg model mConf key m t
-     , HasCrypto key m
      )
   => model
   -> m mConf
@@ -155,8 +153,7 @@ uiKeyItems model = do
 
     el "tbody" $ do
       events <- listWithKey keyMap (uiKeyItem model)
-      let selectedNetwork = model ^. network_selectedNetwork
-      dyn_ $ ffor2 keyMap selectedNetwork $ \keys net ->
+      dyn_ $ ffor keyMap $ \keys ->
         when (all _key_hidden $ Map.elems keys) $
           elClass "tr" "wallet__table-row" $ elAttr "td" ("colspan" =: "6" <> "class" =: "wallet__table-cell") $
             text "No accounts ..."

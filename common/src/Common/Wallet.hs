@@ -30,9 +30,9 @@ module Common.Wallet
   , AccountGuard(..)
   , UnfinishedCrossChainTransfer(..)
   , KeyStorage
-  , Account(..)
+  , Account
   , accountUnfinishedCrossChainTransfer
-  , accountName
+  , accountToName
   , accountInfo
   , accountChain
   , accountKey
@@ -398,8 +398,8 @@ accountUnfinishedCrossChainTransfer (r :=> Identity a) = _accountInfo_unfinished
   AccountRef_Vanity _ _ -> _vanityAccount_info a
   AccountRef_NonVanity _ _ -> _nonVanityAccount_info a
 
-accountName :: Account -> AccountName
-accountName (r :=> _) = case r of
+accountToName :: Account -> AccountName
+accountToName (r :=> _) = case r of
   AccountRef_Vanity n _ -> n
   AccountRef_NonVanity pk _ -> AccountName $ keyToText pk
 
