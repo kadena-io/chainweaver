@@ -285,10 +285,8 @@ data Account key = Account
   , _account_unfinishedCrossChainTransfer :: Maybe UnfinishedCrossChainTransfer
   }
 
--- We want to be able to use the variable 'account' so we suffix all of
--- these lenses with 'L' to differentiate them.
+-- We want to be able to use the variable 'account' so we suffix it with `L`..
 makeLensesWith (classyRules
-  -- & lensField .~ mappingNamer (\case ('_':xs) -> [xs <> "L"]; _ -> [])
   & lensClass .~ \name -> case nameBase name of
     n:ns -> Just (mkName $ "Has" ++ n:ns, mkName $ C.toLower n:ns <> "L")
     [] -> Nothing
