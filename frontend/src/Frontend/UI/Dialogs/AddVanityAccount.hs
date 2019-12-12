@@ -125,8 +125,7 @@ uiAddVanityAccountSettings ideL mChainId initialNotes = Workflow $ do
 
       let mkSettings payload = DeploymentSettingsConfig
             { _deploymentSettingsConfig_chainId = userChainIdSelect
-            , _deploymentSettingsConfig_userTab = Nothing
-            , _deploymentSettingsConfig_userSections = [uiAccSection]
+            , _deploymentSettingsConfig_userTab = Nothing :: Maybe (Text, m ())
             , _deploymentSettingsConfig_code = code
             , _deploymentSettingsConfig_sender = uiSenderDropdown def never
             , _deploymentSettingsConfig_data = payload

@@ -124,9 +124,6 @@ import Frontend.Wallet
 data DeploymentSettingsConfig t m model a = DeploymentSettingsConfig
   { _deploymentSettingsConfig_userTab     :: Maybe (Text, m a)
     -- ^ Some optional extra tab. fst is the tab's name, snd is its content.
-  , _deploymentSettingsConfig_userSections :: [(Text, m a)]
-    -- ^ Some optional extra input, placed between chainId selection and transaction
-    -- settings. fst is the section's name, snd is its content.
   , _deploymentSettingsConfig_chainId     :: model -> m (Dynamic t (Maybe Pact.ChainId))
     -- ^ ChainId selection widget.
     --   You can pick (predefinedChainIdSelect someId) - for not showing a
@@ -396,7 +393,7 @@ uiDeploymentSettings m settings = mdo
           (_deploymentSettingsConfig_chainId settings $ m)
           (_deploymentSettingsConfig_ttl settings)
           (_deploymentSettingsConfig_gasLimit settings)
-          (_deploymentSettingsConfig_userSections settings)
+          Nothing
           (Just advancedAccordion)
 
       (mSender, signers, capabilities) <- tabPane mempty curSelection DeploymentSettingsView_Keys $

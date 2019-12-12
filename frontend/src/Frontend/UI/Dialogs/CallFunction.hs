@@ -78,7 +78,6 @@ uiCallFunction m mModule func _onClose
     let content = mdo
           (cfg, result, mPactCall) <- uiDeploymentSettings m $ DeploymentSettingsConfig
             { _deploymentSettingsConfig_userTab = parametersTab m func
-            , _deploymentSettingsConfig_userSections = []
             , _deploymentSettingsConfig_chainId =
                 predefinedChainIdSelect $ _chainRef_chain . _moduleRef_source $ moduleRef
             , _deploymentSettingsConfig_code = fromMaybe (pure $ buildCall func []) mPactCall
