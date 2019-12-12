@@ -137,8 +137,12 @@
   margin-right: $small-margin;
 }
 
-.modal__foter > *:last-child {
-  margin-left: 0;
+.modal__footer > .button {
+  margin-right: $normal-margin;
+}
+
+.modal__footer > *:last-child {
+  margin-right: 0;
 }
 
 .detail {
@@ -153,9 +157,6 @@
       margin-bottom: -2px;
       display: inline-block;
     }
-    .signal__circle_status_ok {
-      background-color: #28CA41;
-    }
   }
   .title {
     font-weight: bold;
@@ -168,4 +169,120 @@
     font-size: 14px;
     color: #2d2d2f;
   }
+  .wallet__key  {
+    text-overflow: ellipsis;
+    overflow: hidden;
+    margin: 0 1rem 0 0;
+  }
+  .table td {
+    max-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+}
+
+.transaction_details__raw-response {
+  word-break: break-all;
+  white-space: pre-wrap;
+}
+
+.account-details__copy-btn-wrapper {
+  text-align: right;
+
+  .account-details__copy-btn {
+    padding-left: 0.4rem;
+    padding-right: 0.4rem;
+
+    .fa.fa-fw {
+      margin-right: 0.2rem;
+    }
+  }
+}
+.account-details__remove-account-btn {
+  float: left;
+  background-color: $chainweaver-orange;
+  color: $white;
+}
+
+.account-delete__confirm {
+  background-color: $danger-red;
+}
+
+.modal__main.wallet_only__account-created-modal {
+  text-align: center;
+}
+
+.wallet-only__account-heading {
+  font-size: $tiny-font-size;
+  line-height: $tiny-line-height;
+  color: $tertiary-color;
+}
+
+.wallet-only__account-name {
+  font-family: WorkSans-Bold;
+}
+
+.wallet_only__account-created-done-splash-bg {
+  background-size: cover;
+  transform: rotateY(180deg);
+  margin: 0 auto;
+  width: 180px;
+  height: 125px;
+}
+
+.wallet_only__account-created-wallet-blue-icon {
+  transform: rotateY(180deg);
+  position: relative;
+  top: 20px;
+  width: 76px;
+  height: 72px;
+}
+
+.account-details__kadena-address-wrapper {
+  display: flex;
+  .input {
+    width: auto;
+    margin-right: 10px;
+  }
+}
+
+.account-details__legacy-send {
+  margin-top: 1rem;
+}
+
+.grant-capabilities-title {
+  display: flex;
+  align-items: center;
+
+  .grant-capabilities-title__title {
+    flex-grow: 2;
+  }
+  .grant-capabilities-title__add-button {
+    margin-right: 1em;
+  }
+}
+
+.grant-capabilities-static-input {
+  padding: 0;
+}
+.grant-capabilities-apply-all-wrapper {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.grant-capabilities-static-row__wrapped-cell {
+  word-break: break-all;
+  overflow: visible !important;
+  text-overflow: unset !important;
+  white-space: pre-wrap !important;
+}
+
+.signing-ui-signers__signer {
+  margin-top: $normal-margin;
+  margin-bottom: $normal-margin;
+}
+
+.cross-chain-transfer-retry {
+  margin-top: 1em;
 }

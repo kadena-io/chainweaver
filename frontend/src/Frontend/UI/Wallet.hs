@@ -1,21 +1,13 @@
-{-# LANGUAGE DataKinds             #-}
-{-# LANGUAGE DeriveGeneric         #-}
-{-# LANGUAGE ExtendedDefaultRules  #-}
-{-# LANGUAGE FlexibleContexts      #-}
-{-# LANGUAGE FlexibleInstances     #-}
-{-# LANGUAGE KindSignatures        #-}
-{-# LANGUAGE LambdaCase            #-}
+{-# LANGUAGE ConstraintKinds #-}
+{-# LANGUAGE DataKinds #-}
+{-# LANGUAGE ExtendedDefaultRules #-}
+{-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
-{-# LANGUAGE OverloadedStrings     #-}
-{-# LANGUAGE QuasiQuotes           #-}
-{-# LANGUAGE RecursiveDo           #-}
-{-# LANGUAGE ScopedTypeVariables   #-}
-{-# LANGUAGE StandaloneDeriving    #-}
-{-# LANGUAGE TemplateHaskell       #-}
-{-# LANGUAGE TupleSections         #-}
-{-# LANGUAGE TypeApplications      #-}
-{-# LANGUAGE TypeFamilies          #-}
-{-# LANGUAGE ConstraintKinds       #-}
+{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE TypeFamilies #-}
 
 -- | Wallet management ui for handling private/public keys.
 -- Copyright   :  (C) 2018 Kadena
@@ -26,229 +18,208 @@ module Frontend.UI.Wallet
   ( -- * Key management widget
     uiWallet
   , uiAvailableKeys
-    -- * Keys related helper widgets
---  , uiSelectKey
-  , getBalance
-  , showBalance
+  , uiWalletRefreshButton
     -- ** Filters for keys
   , hasPrivateKey
+  , HasUiWalletModelCfg
   ) where
 
 ------------------------------------------------------------------------------
 import           Control.Lens
-import           Control.Monad               (when, void)
-import           Data.Decimal                (Decimal)
+import           Control.Monad               (unless, (<=<))
+import qualified Data.IntMap                 as IntMap
 import qualified Data.Map                    as Map
-import           Data.Maybe
 import           Data.Text                   (Text)
-import qualified Pact.Types.PactValue as Pact
-import qualified Pact.Types.Exp as Pact
+import qualified Pact.Types.ChainId as Pact
 import           Reflex
 import           Reflex.Dom
 ------------------------------------------------------------------------------
+import           Frontend.Crypto.Class
 import           Frontend.Crypto.Ed25519     (keyToText)
 import           Frontend.Wallet
 import           Frontend.UI.Widgets
 import           Frontend.Foundation
-import           Frontend.UI.Dialogs.KeyImport (uiKeyImport, HasUiKeyImportModelCfg)
-import           Frontend.UI.Dialogs.DeleteConfirmation (uiDeleteConfirmation)
+import           Frontend.JsonData (HasJsonData, HasJsonDataCfg)
+import           Frontend.UI.Dialogs.AccountDetails (uiAccountDetails)
+import           Frontend.UI.Dialogs.Receive (uiReceiveModal)
+import           Frontend.UI.Dialogs.Send (uiSendModal)
 import           Frontend.UI.Modal
 import           Frontend.Network
 ------------------------------------------------------------------------------
 
-
 -- | Constraints on the model config we have for implementing this widget.
-type HasUiWalletModelCfg mConf m t =
-  ( Monoid mConf, Flattenable mConf t
+type HasUiWalletModelCfg model mConf key m t =
+  ( Monoid mConf
+  , Flattenable mConf t
+  , IsWalletCfg mConf key t
   , HasModalCfg mConf (Modal mConf m t) t
-  , HasUiKeyImportModelCfg (ModalCfg mConf t) t
-  , IsWalletCfg mConf t
+  , HasWalletCfg (ModalCfg mConf t) key t
+  , Flattenable (ModalCfg mConf t) t
+  , Monoid (ModalCfg mConf t)
+  , HasNetwork model t
+  , HasWallet model key t
+  , HasCrypto key (Performable m)
+  , HasJsonData model t
+  , HasNetworkCfg (ModalCfg mConf t) t
+  , HasJsonDataCfg (ModalCfg mConf t) t
   )
+
+-- | Possible actions from an account
+data AccountDialog
+  = AccountDialog_Details
+  | AccountDialog_Receive
+  | AccountDialog_Send
+  deriving Eq
+
+uiWalletRefreshButton
+  :: forall m t key model mConf
+  . ( MonadWidget t m
+    , HasUiWalletModelCfg model mConf key m t
+    )
+  => model
+  -> m mConf
+uiWalletRefreshButton _model = do
+  eRefresh <- uiButton (def & uiButtonCfg_class <>~ " main-header__wallet-refresh-button")  (text "Refresh")
+  pure $ mempty & walletCfg_refreshBalances <>~ eRefresh
 
 -- | UI for managing the keys wallet.
 uiWallet
-  :: (MonadWidget t m, HasUiWalletModelCfg mConf m t)
-  => Wallet t
+  :: forall m t key model mConf
+     . ( MonadWidget t m
+       , HasUiWalletModelCfg model mConf key m t
+       , HasCrypto key m
+       )
+  => model
   -> m mConf
-uiWallet w = divClass "keys group" $ do
-    onCreate <- uiCreateKey w
-    keysCfg <- uiAvailableKeys w
-
-    pure $ keysCfg & walletCfg_genKey .~ onCreate
+uiWallet = uiAvailableKeys
 
 ----------------------------------------------------------------------
 -- Keys related helper widgets:
 ----------------------------------------------------------------------
 
--- | UI for letting the user select a particular key
--- from a filtered view of the available keys.
---uiSelectKey
---  :: MonadWidget t m
---  => Wallet t
---  -> ((Text, KeyPair) -> Bool)
---  -> m (Dynamic t (Maybe Text))
---uiSelectKey w kFilter = do
---  let keyNames = map fst . filter kFilter . Map.toList <$> _wallet_keys w
---      mkPlaceholder ks = if null ks then "No keys available" else "Select key"
---      options = Map.fromList . (Nothing:"No keys") . (\a -> (Just a,a)) <$> keyNames
---  d <- dropdown Nothing options def
---  pure $ _dropdown_value d
-
 -- | Check whether a given key does contain a private key.
-hasPrivateKey :: (Text, KeyPair) -> Bool
+hasPrivateKey :: (Text, KeyPair PrivateKey) -> Bool
 hasPrivateKey = isJust . _keyPair_privateKey . snd
 
 ----------------------------------------------------------------------
 
-
--- | Line input with "Create" button for creating a new key.
-uiCreateKey :: MonadWidget t m => Wallet t -> m (Event t KeyName)
-uiCreateKey w =
-  validatedInputWithButton "group__header" (checkAccountNameUniqueness w) "Enter account name" "Generate"
-
-
+--     pure $ hush <$> dEitherAccName
 -- | Widget listing all available keys.
 uiAvailableKeys
-  :: (MonadWidget t m, HasUiWalletModelCfg mConf m t)
-  => Wallet t
+  :: forall t m model mConf key.
+     ( MonadWidget t m
+     , HasUiWalletModelCfg model mConf key m t
+     , HasCrypto key m
+     )
+  => model
   -> m mConf
-uiAvailableKeys aWallet = do
-  divClass "keys-list" $ do
-    uiKeyItems aWallet
-
+uiAvailableKeys model = do
+  divClass "wallet__keys-list" $ do
+    uiKeyItems model
 
 -- | Render a list of key items.
 --
 -- Does not include the surrounding `div` tag. Use uiAvailableKeys for the
 -- complete `div`.
 uiKeyItems
-  :: (MonadWidget t m, HasUiWalletModelCfg mConf m t)
-  => Wallet t
+  :: forall t m model mConf key.
+     ( MonadWidget t m
+     , HasUiWalletModelCfg model mConf key m t
+     , HasCrypto key m
+     )
+  => model
   -> m mConf
-uiKeyItems aWallet = do
-    let
-      keyMap = aWallet ^. wallet_keys
-      tableAttrs =
-        "style" =: "table-layout: fixed; width: 100%"
-        <> "class" =: "wallet table"
-    (events, onAdd) <- elAttr "table" tableAttrs $ do
-      el "colgroup" $ do
-        elAttr "col" ("style" =: "width: 20%") blank
-        elAttr "col" ("style" =: "width: 35%") blank
-        elAttr "col" ("style" =: "width: 15%") blank
-        elAttr "col" ("style" =: "width: 35%") blank
-        elAttr "col" ("style" =: "width: 15%") blank
-        elAttr "col" ("style" =: "width: 10%") blank
-      onAdd <- el "thead" $ el "tr" $ do
-        let mkHeading = elClass "th" "table__heading" . text
-        traverse_ mkHeading $
-          [ "Account Name"
-          , "Public Key"
-          , ""
-          , "Private Key"
-          , ""
-          ]
-        elClass "th" "table__heading wallet__add" $
-          importButton
-
-      el "tbody" $ do
-        evs <- listWithKey keyMap $ \name key -> uiKeyItem (name, key)
-        pure (evs, onAdd)
-
-    dyn_ $ ffor keyMap $ \keys -> when (Map.null keys) $ text "No accounts ..."
-    let onDelKey = switchDyn $ leftmost . Map.elems <$> events
-    pure $ mempty
-      & modalCfg_setModal .~ leftmost
-        [ Just (uiKeyImport aWallet) <$ onAdd
-        , Just . uiDeleteConfirmation <$> onDelKey
+uiKeyItems model = do
+  let
+    keyMap' = model ^. wallet_accounts
+    keyMap = Map.fromAscList . IntMap.toAscList <$> keyMap'
+    tableAttrs =
+      "style" =: "table-layout: fixed; width: 98%"
+      <> "class" =: "wallet table"
+  events <- elAttr "table" tableAttrs $ do
+    el "colgroup" $ do
+      elAttr "col" ("style" =: "width: 19%") blank
+      elAttr "col" ("style" =: "width: 19%") blank
+      elAttr "col" ("style" =: "width: 10%") blank
+      elAttr "col" ("style" =: "width: 19%") blank
+      elAttr "col" ("style" =: "width: 15%") blank
+      elAttr "col" ("style" =: "width: 20%") blank
+    el "thead" $ el "tr" $ do
+      let mkHeading = elClass "th" "wallet__table-heading" . text
+      traverse_ mkHeading $
+        [ "Account Name"
+        , "Public Key"
+        , "Chain ID"
+        , "Notes"
+        , "Balance"
+        , ""
         ]
-  where
-    importButton =
-      addButton $ def
-        & uiButtonCfg_title .~ Just "Import existing key"
-        & uiButtonCfg_class %~ (<> "wallet__add-delete-button")
 
+    el "tbody" $ do
+      events <- listWithKey keyMap (uiKeyItem model)
+      let selectedNetwork = model ^. network_selectedNetwork
+      dyn_ $ ffor2 keyMap selectedNetwork $ \keys net ->
+        unless (any (isJust . activeAccountOnNetwork net) $ Map.elems keys) $
+          elClass "tr" "wallet__table-row" $ elAttr "td" ("colspan" =: "6" <> "class" =: "wallet__table-cell") $
+            text "No accounts ..."
+      pure events
+
+
+  let
+    onAccountModal = switchDyn $ leftmost . Map.elems <$> events
+
+    accModal (d,i,a) = Just $ case d of
+      -- AccountDialog_Delete -> uiDeleteConfirmation i (_account_name a)
+      AccountDialog_Details -> uiAccountDetails i a
+      AccountDialog_Receive -> uiReceiveModal model a
+      AccountDialog_Send -> uiSendModal model i a
+
+  refresh <- delay 1 =<< getPostBuild
+
+  pure $ mempty
+    & modalCfg_setModal .~ (accModal <$> onAccountModal)
+    & walletCfg_refreshBalances .~ refresh
 
 ------------------------------------------------------------------------------
 -- | Display a key as list item together with it's name.
 uiKeyItem
-  :: MonadWidget t m
-  => (Text, Dynamic t KeyPair)
-  -> m (Event t KeyName)
-uiKeyItem (n, k) = do
-    elClass "tr" "table__row" $ do
-      el "td" $ text n
-
-      let public = keyToText . _keyPair_publicKey <$> k
-      elClass "td" "wallet__key wallet__key_type_public" $ dynText public
-      el "td" $
-        void $ copyButton copyBtnCfg $ current public
-
-      let private = maybe "No key" keyToText . _keyPair_privateKey <$> k
-      isShown <- keyCopyWidget "td" "wallet__key wallet__key_type_private" private
-      el "td" $ do
-        let cfg = copyBtnCfg & uiButtonCfg_disabled .~ fmap not isShown
-        void $ copyButton cfg $ current private
-
-      onDel <- elClass "td" "wallet__delete" $
-        deleteButton $
-          def & uiButtonCfg_title .~ Just "Delete key permanently"
-              & uiButtonCfg_class %~ (<> "wallet__add-delete-button")
-
-      pure (const n <$> onDel)
-  where
-    copyBtnCfg =
-      btnCfgTertiary
-        & uiButtonCfg_class %~ (fmap (<> "button_size_tiny"))
-        & uiButtonCfg_title .~ pure (Just "Copy key to clipboard")
-
--- | Widget showing/hiding a private key.
---
---   The returned Dynamic tells whether the key is currently hidden or shown.
-keyCopyWidget
-  :: MonadWidget t m
-  => Text
-  -> Text
-  -> Dynamic t Text
-  -> m (Dynamic t Bool)
-keyCopyWidget t cls keyText = mdo
-  isShown <- foldDyn (const not) False (domEvent Click e)
-  let mkShownCls True = ""
-      mkShownCls False = " wallet__key_hidden"
-
-  (e, _) <- elDynClass t (pure cls <> fmap mkShownCls isShown) $ do
-    let
-      mkText True k = k
-      mkText False _ = "****************************"
-
-    elDynClass' "span" "key-content" $
-      dynText (mkText <$> isShown <*> keyText)
-  pure isShown
-
--- | Get the balance of an account from the network. 'Nothing' indicates _some_
--- failure, either a missing account or connectivity failure. We have no need to
--- distinguish between the two at this point.
-getBalance :: (MonadWidget t m, HasNetwork model t) => model -> ChainId -> Event t AccountName -> m (Event t (Maybe Decimal))
-getBalance model chain account = do
-  networkRequest <- performEvent $ attachWith mkReq (current $ getNetworkNameAndMeta model) account
-  response <- performLocalReadCustom (model ^. network) pure networkRequest
-  let toBalance (_, [Right (_, Pact.PLiteral (Pact.LDecimal d))]) = Just d
-      toBalance _ = Nothing
-  pure $ toBalance <$> response
-  where
-    accountBalanceReq acc = "(coin.get-balance " <> tshow (unAccountName acc) <> ")"
-    mkReq (netName, pm) acc = mkSimpleReadReq (accountBalanceReq acc) netName pm (ChainRef Nothing chain)
-
--- | Display the balance of an account after retrieving it from the network
-showBalance
   :: (MonadWidget t m, HasNetwork model t)
-  => model -> Event t () -> ChainId -> AccountName -> m ()
-showBalance model refresh chain acc = do
-  -- This delay ensures we have the networks stuff set up by the time we do the
-  -- requests, thus avoiding immediate failure.
-  pb <- delay 2 =<< getPostBuild
-  bal <- getBalance model chain $ acc <$ (pb <> refresh)
-  _ <- runWithReplace (text "Loading...") $ ffor bal $ \case
-    Nothing -> text "Unknown"
-    Just b -> text $ tshow b
-  pure ()
+  => model
+  -> IntMap.Key
+  -> Dynamic t (SomeAccount key)
+  -> m (Event t (AccountDialog, IntMap.Key, Account key))
+uiKeyItem model i d = do
+  let selectedNetwork = model ^. network_selectedNetwork
+  md <- maybeDyn $ someAccount Nothing Just <$> d
+  switchHold never <=< dyn $ ffor md $ \case
+    Nothing -> pure never
+    Just account -> do
+      onSelectedNetwork <- holdUniqDyn $ (==) . _account_network <$> account <*> selectedNetwork
+      switchHold never <=< dyn $ ffor onSelectedNetwork $ \case
+        False -> pure never
+        True -> do
+          elClass "tr" "wallet__table-row" $ do
+            let td = elClass "td" "wallet__table-cell"
+
+            td $ divClass "wallet__table-wallet-address" $ dynText $ unAccountName . _account_name <$> account
+            td $ divClass "wallet__table-wallet-address" $ dynText $ keyToText . _keyPair_publicKey . _account_key <$> account
+            td $ dynText $ Pact._chainId . _account_chainId <$> account
+            td $ dynText $ unAccountNotes . _account_notes <$> account
+            td $ dynText $ ffor account $ \a -> case _account_balance a of
+              Nothing -> "Unknown"
+              Just b -> tshow (unAccountBalance b) <> " KDA" <> maybe "" (const "*") (_account_unfinishedCrossChainTransfer a)
+            td $ divClass "wallet__table-buttons" $ do
+              let cfg = def
+                    & uiButtonCfg_class <>~ "wallet__table-button"
+
+              recv <- receiveButton cfg
+              send <- sendButton cfg
+              onDetails <- detailsButton (cfg & uiButtonCfg_class <>~ " wallet__table-button--hamburger")
+
+              let mkDialog dia onE = (\a -> (dia, i, a)) <$> current account <@ onE
+
+              pure $ leftmost
+                [ mkDialog AccountDialog_Details onDetails
+                , mkDialog AccountDialog_Receive recv
+                , mkDialog AccountDialog_Send send
+                ]

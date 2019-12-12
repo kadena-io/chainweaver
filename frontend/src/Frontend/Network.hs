@@ -1,21 +1,24 @@
-{-# LANGUAGE CPP                        #-}
-{-# LANGUAGE ConstraintKinds            #-}
-{-# LANGUAGE DeriveGeneric              #-}
-{-# LANGUAGE FlexibleContexts           #-}
-{-# LANGUAGE FlexibleInstances          #-}
-{-# LANGUAGE FunctionalDependencies     #-}
-{-# LANGUAGE GADTs                      #-}
+{-# LANGUAGE CPP #-}
+{-# LANGUAGE ConstraintKinds #-}
+{-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE FunctionalDependencies #-}
+{-# LANGUAGE GADTs #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
-{-# LANGUAGE LambdaCase                 #-}
-{-# LANGUAGE MultiParamTypeClasses      #-}
-{-# LANGUAGE OverloadedStrings          #-}
-{-# LANGUAGE QuasiQuotes                #-}
-{-# LANGUAGE RankNTypes                 #-}
-{-# LANGUAGE RecursiveDo                #-}
-{-# LANGUAGE ScopedTypeVariables        #-}
-{-# LANGUAGE TemplateHaskell            #-}
-{-# LANGUAGE TupleSections              #-}
-{-# LANGUAGE TypeFamilies               #-}
+{-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE NumDecimals #-}
+{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE PatternGuards #-}
+{-# LANGUAGE QuasiQuotes #-}
+{-# LANGUAGE RankNTypes #-}
+{-# LANGUAGE RecursiveDo #-}
+{-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE TupleSections #-}
+{-# LANGUAGE TypeFamilies #-}
+
+{-# LANGUAGE DataKinds #-}
 
 -- | Interface for accessing Pact networks (pact -s, chainweb, kadena).
 --
@@ -35,26 +38,34 @@ module Frontend.Network
   , HasNetwork (..)
     -- * Useful helpers
   , updateNetworks
-  , getSigningPairs
     -- * Definitions from Common
   , module Common.Network
     -- * NodeInfo
   , module Frontend.Network.NodeInfo
     -- * Creation
   , makeNetwork
+  , packHttpErr
     -- * Perform requests
   , performLocalReadCustom
   , performLocalRead
     -- * Utilities
+  , parseNetworkErrorResult
   , prettyPrintNetworkErrorResult
   , prettyPrintNetworkError
+  , prettyPrintNetworkErrors
+  , networkErrorResultToEither
   , buildCmd
+  , buildContPayload
+  , buildCmdWithPayload
+  , buildCmdWithPactKey
   , mkSimpleReadReq
   , getNetworkNameAndMeta
+  , getCreationTime
     -- * Defaults
+  , chainwebGasLimitMaximum
   , defaultTransactionGasLimit
   , defaultTransactionGasPrice
-  , maxCoinPricePrecision
+  , maxCoinPrecision
   , defaultTransactionTTL
   ) where
 
@@ -63,20 +74,21 @@ import           Control.Lens                      hiding ((.=))
 import           Control.Monad.Except
 import           GHC.Word                          (Word8)
 import           Data.Aeson                        (Object, Value (..), encode)
+import qualified Data.Bifunctor                    as BiF
 import qualified Data.ByteString.Lazy              as BSL
 import           Data.Decimal                      (DecimalRaw (..))
 import           Data.Either                       (lefts, rights)
 import qualified Data.IntMap                       as IntMap
 import qualified Data.List                         as L
-import           Data.List.NonEmpty                (NonEmpty (..))
+import           Data.List.NonEmpty                (NonEmpty (..), nonEmpty)
+import qualified Data.List.NonEmpty                as NEL
 import qualified Data.Map                          as Map
 import           Data.Map.Strict                   (Map)
-import           Data.Set                          (Set)
-import qualified Data.Set                          as Set
 import           Data.Text                         (Text)
 import qualified Data.Text                         as T
 import qualified Data.Text.Encoding                as T
 import qualified Data.Text.IO                      as T
+import           Data.These                        (These(..), these)
 import           Data.Time.Clock                   (getCurrentTime)
 import           Data.Time.Clock.POSIX             (getPOSIXTime)
 import           Data.Traversable                  (for)
@@ -87,6 +99,7 @@ import           Reflex.Dom.Core                   (def, XhrRequest(..), XhrResp
 import           System.IO                         (stderr)
 import           Text.URI                          (URI)
 import qualified Text.URI                          as URI
+import qualified Text.URI.Lens                     as URIL
 
 import           Pact.Parse                        (ParsedDecimal (..))
 import           Pact.Server.ApiV1Client
@@ -97,7 +110,6 @@ import           Pact.Types.Runtime                (PactError (..), GasLimit (..
 import           Pact.Types.ChainMeta              (PublicMeta (..), TTLSeconds (..), TxCreationTime (..))
 import qualified Pact.Types.ChainMeta              as Pact
 import           Pact.Types.ChainId                (NetworkId (..))
-
 import           Pact.Types.Exp                    (Literal (LString))
 import           Pact.Types.Hash                   (hash, Hash (..), TypedHash (..), toUntypedHash)
 import           Pact.Types.RPC
@@ -109,6 +121,8 @@ import           Pact.Types.Crypto                 (PPKScheme (..))
 #endif
 
 import           Common.Network
+import           Common.Wallet
+import           Frontend.Crypto.Class
 import           Frontend.Crypto.Ed25519
 import           Frontend.Foundation
 import           Frontend.Messages
@@ -118,8 +132,6 @@ import           Frontend.Storage                  (getItemStorage,
                                                     localStorage,
                                                     removeItemStorage,
                                                     setItemStorage)
-import           Frontend.Wallet
-
 
 
 -- | What endpoint to use for a network request.
@@ -165,9 +177,14 @@ data NetworkError
   -- ^ Other errors that should really never happen.
   deriving Show
 
--- | We either have a `NetworkError` or some `Term Name`.
-type NetworkErrorResult = Either NetworkError (Maybe Gas, PactValue)
+-- | We either have a `NetworkError`, some `Term Name` or both if we failed
+-- over but eventually got to a successful result.
+type NetworkErrorResult = These (NonEmpty (Maybe URI, NetworkError)) (Maybe Gas, PactValue)
 
+-- | Use this sparingly as it throws away the errors that could have happened in
+-- the failovers. There could be something important in there
+networkErrorResultToEither :: NetworkErrorResult -> Either (NonEmpty (Maybe URI, NetworkError)) (Maybe Gas, PactValue)
+networkErrorResultToEither = these Left Right (\_ -> Right)
 
 -- | Config for creating a `Network`.
 data NetworkCfg t = NetworkCfg
@@ -243,16 +260,16 @@ deriving instance Show (StoreNetwork a)
 
 
 makeNetwork
-  :: forall t m mConf
+  :: forall key t m mConf
   . ( MonadHold t m, PerformEvent t m, MonadFix m
     , MonadJSM (Performable m), MonadJSM m
     , TriggerEvent t m, PostBuild t m
     , MonadSample t (Performable m)
     , HasNetworkModelCfg mConf t
-    , HasNetworkCfg mConf t
     , HasConfigs m
     , HasJSContext (Performable m)
     , HasStorage m, HasStorage (Performable m)
+    , HasCrypto key (Performable m)
     )
   => NetworkCfg t
   -> m (mConf, Network t)
@@ -279,7 +296,7 @@ makeNetwork cfg = mfix $ \ ~(_, networkL) -> do
     meta <- buildMeta cfg
 
     pure
-      ( mConf & networkCfg_refreshModule <>~ void (updated networks)
+      ( mConf
       , Network
           { _network_networks = networks
           , _network_selectedNetwork = cName
@@ -372,20 +389,23 @@ getSelectedNetworkInfos networkL = do
     errNets <- sample $ current $ networkL ^. network_selectedNodes
     pure $ rights errNets
 
--- This is the minimum precision allowed by the Pact language:
--- https://github.com/kadena-io/chainweb-node/commit/ee8a0db079869b39e23be1ef6737f0a7795eff87#diff-6c59a5fb9f1b0b8b470cb50e8bd643ebR54
 defaultTransactionGasPrice :: GasPrice
-defaultTransactionGasPrice = GasPrice $ ParsedDecimal $ Decimal maxCoinPricePrecision 1
+defaultTransactionGasPrice = GasPrice $ ParsedDecimal $ Decimal 5 1
 
-maxCoinPricePrecision :: Word8
-maxCoinPricePrecision = 12
+-- | This is the minimum precision allowed by the Pact language, as defined in the coin contract:
+-- https://github.com/kadena-io/chainweb-node/commit/ee8a0db079869b39e23be1ef6737f0a7795eff87#diff-6c59a5fb9f1b0b8b470cb50e8bd643ebR54
+maxCoinPrecision :: Word8
+maxCoinPrecision = 12
 
 defaultTransactionTTL :: TTLSeconds
 defaultTransactionTTL = TTLSeconds (8 * 60 * 60) -- 8 hours
 
--- | TODO: Better defaults!!!
+-- Taken from https://github.com/kadena-io/chainweb-node/blob/85688ea0182d1b1ab0d8d784a48b4851a950ec7a/src/Chainweb/Chainweb.hs#L344
+chainwebGasLimitMaximum :: Num a => a
+chainwebGasLimitMaximum = 1e5
+
 defaultTransactionGasLimit :: GasLimit
-defaultTransactionGasLimit = GasLimit 1000
+defaultTransactionGasLimit = GasLimit 600
 
 
 buildMeta
@@ -436,7 +456,7 @@ deployCode
 deployCode networkL onReq = do
     reqRes <- performNetworkRequest networkL onReq
     pure $ ( mempty & messagesCfg_send .~ fmap (map renderReqRes) reqRes
-           , () <$ ffilter (or . map (either (const False) (const True) . snd)) reqRes
+           , () <$ ffilter (or . map (these (const False) (const True) (const . const $ True) . snd)) reqRes
            )
   where
     renderReqRes :: (NetworkRequest, NetworkErrorResult) -> Text
@@ -557,7 +577,7 @@ getNetworkNameAndMeta model = (,)
   <*> (model ^. network_meta)
 
 mkSimpleReadReq
-  :: (MonadIO m, MonadJSM m)
+  :: (MonadIO m, MonadJSM m, HasCrypto key m)
   => Text -> NetworkName -> PublicMeta -> ChainRef -> m NetworkRequest
 mkSimpleReadReq code networkName pm cRef = do
   cmd <- buildCmd Nothing networkName (pm { _pmChainId = _chainRef_chain cRef }) [] [] code mempty mempty
@@ -569,11 +589,12 @@ mkSimpleReadReq code networkName pm cRef = do
 
 -- | Load modules on startup and on every occurrence of the given event.
 loadModules
-  :: forall t m
+  :: forall key t m
   . ( MonadHold t m, PerformEvent t m, MonadFix m
     , MonadJSM (Performable m), MonadIO m
     , MonadSample t (Performable m)
     , TriggerEvent t m, PostBuild t m
+    , HasCrypto key (Performable m)
     )
   => Network t
   -> Event t ()
@@ -595,7 +616,7 @@ loadModules networkL onRefresh = do
       onErrResps <- performLocalReadLatest networkL onReqs
 
       let
-        onByChainId :: Event t [ Either NetworkError (ChainId, PactValue) ]
+        onByChainId :: Event t [ Either (NonEmpty NetworkError) (ChainId, PactValue) ]
         onByChainId = map byChainId <$> onErrResps
 
         onErrs = ffilter (not . null) $ fmap lefts onByChainId
@@ -604,7 +625,7 @@ loadModules networkL onRefresh = do
         onModules :: Event t [(ChainId, [Text])]
         onModules =  map (second getModuleList) <$> onResps
 
-      performEvent_ $ liftIO . T.hPutStrLn stderr . renderErrs <$> onErrs
+      performEvent_ $ liftIO . traverse_ (T.hPutStrLn stderr . renderErrs . toList) <$> onErrs
 
       holdUniqDyn <=< holdDyn mempty $ Map.fromList <$> onModules
 
@@ -625,8 +646,8 @@ loadModules networkL onRefresh = do
 
       mkReq netName pm = mkSimpleReadReq "(list-modules)" netName pm . ChainRef Nothing
 
-      byChainId :: (NetworkRequest, NetworkErrorResult) -> Either NetworkError (ChainId, PactValue)
-      byChainId = sequence . bimap (_chainRef_chain . _networkRequest_chainRef) (fmap snd)
+      byChainId :: (NetworkRequest, NetworkErrorResult) -> Either (NonEmpty NetworkError) (ChainId, PactValue)
+      byChainId = sequence . bimap (_chainRef_chain . _networkRequest_chainRef) (bimap (fmap snd) snd . networkErrorResultToEither)
 
       renderErrs :: [NetworkError] -> Text
       renderErrs =
@@ -644,6 +665,20 @@ loadModules networkL onRefresh = do
       getStringLit = \case
         PLiteral (LString v) -> Just v
         _         -> Nothing
+
+
+-- | Parse a NetworkErrorResult into something that the frontend can use
+parseNetworkErrorResult :: (MonadIO m) => (PactValue -> Either Text a) -> NetworkErrorResult -> m (These Text a)
+parseNetworkErrorResult parse = \case
+  That (_gas, pactValue) -> doParse pactValue That
+  This e -> pure $ This $ prettyPrintNetworkErrors e
+  These errs (_gas, pactValue) -> doParse pactValue (These (prettyPrintNetworkErrors errs))
+  where
+    doParse pactValue f = case parse pactValue of
+      Left e -> do
+        liftIO $ T.putStrLn e
+        pure $ This "Error parsing the response"
+      Right v -> pure $ f v
 
 
 -- | Perform a read or non persisted request to the /local endpoint.
@@ -759,40 +794,37 @@ performNetworkRequestCustom
   -> Event t req
   -> m (Event t (req, [NetworkErrorResult]))
 performNetworkRequestCustom networkL unwrap onReqs =
-    performEventAsync $ ffor onReqs $ \reqs cb ->
-      reportError cb reqs $ do
-        nodeInfos <- getSelectedNetworkInfos networkL
-        void $ liftJSM $ forkJSM $ do
-          r <- traverse (doReqFailover nodeInfos) $ unwrap reqs
-          liftIO $ cb (reqs, r)
+    performEventAsync $ ffor onReqs $ \reqs cb -> do
+      nodeInfos <- getSelectedNetworkInfos networkL
+      void $ liftJSM $ forkJSM $ do
+        r <- traverse (doReqFailover nodeInfos) $ unwrap reqs
+        liftIO $ cb (reqs, r)
   where
-
-    reportError cb reqs m = do
-      er <- runExceptT m
-      case er of
-        Left err -> liftIO $ cb $ (reqs, map (const $ Left err) $ unwrap reqs)
-        Right () -> pure ()
-
+    doReqFailover :: [NodeInfo] -> NetworkRequest -> JSM NetworkErrorResult
     doReqFailover nodeInfos req =
-      go nodeInfos
+      go [] nodeInfos
         where
-          go = \case
+          go :: [(Maybe URI,NetworkError)] -> [NodeInfo] -> JSM NetworkErrorResult
+          go errs = \case
             n:ns -> do
               errRes <- doReq (Just n) req
               case errRes of
-                Left err -> do
+                Left (chainUrl,err) -> do
                   liftIO $ putStrLn $ "Got err: " <> show err
                   if shouldFailOver err
-                               then go ns
-                               else pure errRes
-                Right _ -> pure errRes
-            [] -> doReq Nothing req
+                               then go ((chainUrl,err) : errs) ns
+                               else pure $ mkResult errs (Left (chainUrl,err))
+                Right res -> pure $ mkResult errs (Right res)
+            [] -> mkResult errs <$> doReq Nothing req
+          mkResult errs (Left e) = This (NEL.reverse $ e :| errs)
+          mkResult errs (Right res) = maybe (That res) (flip These res) . nonEmpty . reverse $ errs
 
+    doReq :: Maybe NodeInfo -> NetworkRequest -> JSM (Either (Maybe URI,NetworkError) (Maybe Gas, PactValue))
     doReq mNodeInfo req = runExceptT $ do
       chainUrl <- ExceptT $ getBaseUrlErr (req ^. networkRequest_chainRef) mNodeInfo
-      ExceptT $ liftJSM $ networkRequest chainUrl (req ^. networkRequest_endpoint) (_networkRequest_cmd req)
+      ExceptT $ liftJSM $ fmap (BiF.first (Just chainUrl,)) $ networkRequest chainUrl (req ^. networkRequest_endpoint) (_networkRequest_cmd req)
 
-    getBaseUrlErr ref info = left NetworkError_Other <$> getChainRefBaseUrl ref info
+    getBaseUrlErr ref info = left ((Nothing,) . NetworkError_Other) <$> getChainRefBaseUrl ref info
 
 
 -- | Send a transaction via the /send endpoint.
@@ -823,7 +855,7 @@ networkRequest
   :: URI
   -> Endpoint
   -> Command Text
-  -> JSM NetworkErrorResult
+  -> JSM (Either NetworkError (Maybe Gas, PactValue))
 networkRequest baseUri endpoint cmd = do
     baseUrl <- S.parseBaseUrl $ URI.renderStr baseUri
     let clientEnv = S.mkClientEnv baseUrl
@@ -856,15 +888,6 @@ networkRequest baseUri endpoint cmd = do
     runReq :: S.ClientEnv -> S.ClientM a -> ExceptT NetworkError JSM a
     runReq env = reThrowWith packHttpErr . flip S.runClientM env
 
-    packHttpErr :: S.ClientError -> NetworkError
-    packHttpErr e = case e of
-      S.FailureResponse _ response ->
-        if S.responseStatusCode response == HTTP.status413
-           then NetworkError_ReqTooLarge
-           else NetworkError_Status (S.responseStatusCode response) (T.pack $ show response)
-      S.ConnectionError t -> NetworkError_NetworkError (tshow t)
-      _ -> NetworkError_Decoding $ T.pack $ show e
-
     fromCommandResult :: MonadError NetworkError m => CommandResult a -> m (Maybe Gas, PactValue)
     fromCommandResult r = case _crResult r of
       PactResult (Left e) -> throwError $ NetworkError_CommandFailure e
@@ -876,6 +899,15 @@ networkRequest baseUri endpoint cmd = do
         key :| [] -> pure key
         _         -> throwError $ NetworkError_Other "Response contained more than one RequestKey."
 
+packHttpErr :: S.ClientError -> NetworkError
+packHttpErr e = case e of
+  S.FailureResponse _ response ->
+    if S.responseStatusCode response == HTTP.status413
+       then NetworkError_ReqTooLarge
+       else NetworkError_Status (S.responseStatusCode response) (tshow $ S.responseBody response)
+  S.ConnectionError t -> NetworkError_NetworkError (tshow t)
+  _ -> NetworkError_Decoding $ T.pack $ show e
+
 
 -- Request building ....
 
@@ -883,8 +915,8 @@ networkRequest baseUri endpoint cmd = do
 --
 -- As specified <https://pact-language.readthedocs.io/en/latest/pact-reference.html#send here>.
 buildCmd
-  :: ( MonadIO m
-     , MonadJSM m
+  :: ( MonadJSM m
+     , HasCrypto key m
      )
   => Maybe Text
   -- ^ Nonce. When missing, uses the current time.
@@ -892,7 +924,7 @@ buildCmd
   -- ^ The network that we are targeting
   -> PublicMeta
   -- ^ Assorted information for the payload. The time is overridden.
-  -> [KeyPair]
+  -> [KeyPair key]
   -- ^ Keys which we are signing with
   -> [PublicKey]
   -- ^ Keys which should be added to `signers`, but not used to sign
@@ -903,37 +935,157 @@ buildCmd
   -> Map PublicKey [SigCapability]
   -- ^ Capabilities for each public key
   -> m (Command Text)
-buildCmd mNonce networkName meta signingKeys extraKeys code dat caps = do
+buildCmd =
+  buildCmdWithSigs (buildSigs Nothing)
+
+buildCmdWithPactKey
+  :: ( MonadJSM m
+     , HasCrypto key m
+     )
+  => PactKey
+  -- ^ Extra signing key using legacy ED255219 pact key.
+  -> Maybe Text
+  -- ^ Nonce. When missing, uses the current time.
+  -> NetworkName
+  -- ^ The network that we are targeting
+  -> PublicMeta
+  -- ^ Assorted information for the payload. The time is overridden.
+  -> [KeyPair key]
+  -- ^ Keys which we are signing with
+  -> [PublicKey]
+  -- ^ Keys which should be added to `signers`, but not used to sign
+  -> Text
+  -- ^ Code
+  -> Object
+  -- ^ Data object
+  -> Map PublicKey [SigCapability]
+  -- ^ Capabilities for each public key
+  -> m (Command Text)
+buildCmdWithPactKey pactKey =
+  buildCmdWithSigs (buildSigsWithPactKey pactKey)
+
+-- | Build a single cmd as expected in the `cmds` array of the /send payload.
+--
+-- As specified <https://pact-language.readthedocs.io/en/latest/pact-reference.html#send here>.
+buildCmdWithSigs
+  :: ( MonadIO m
+     , MonadJSM m
+     , HasCrypto key m
+     )
+  => (forall h. HasCrypto key m => TypedHash h -> [KeyPair key] -> m [UserSig])
+  -- ^ Function for generating our signatures
+  -> Maybe Text
+  -- ^ Nonce. When missing, uses the current time.
+  -> NetworkName
+  -- ^ The network that we are targeting
+  -> PublicMeta
+  -- ^ Assorted information for the payload. The time is overridden.
+  -> [KeyPair key]
+  -- ^ Keys which we are signing with
+  -> [PublicKey]
+  -- ^ Keys which should be added to `signers`, but not used to sign
+  -> Text
+  -- ^ Code
+  -> Object
+  -- ^ Data object
+  -> Map PublicKey [SigCapability]
+  -- ^ Capabilities for each public key
+  -> m (Command Text)
+buildCmdWithSigs signingFn mNonce networkName meta signingKeys extraKeys code dat caps = do
   cmd <- encodeAsText . encode <$> buildExecPayload mNonce networkName meta signingKeys extraKeys code dat caps
   let
     cmdHashL = hash (T.encodeUtf8 cmd)
-  sigs <- buildSigs cmdHashL signingKeys
+  sigs <- signingFn cmdHashL signingKeys
   pure $ Command
     { _cmdPayload = cmd
     , _cmdSigs = sigs
     , _cmdHash = cmdHashL
     }
 
-getSigningPairs :: Set KeyName -> KeyPairs -> [KeyPair]
-getSigningPairs signing = map snd . filter isForSigning . Map.assocs
-  where
-    -- isJust filter is necessary so indices are guaranteed stable even after
-    -- the following `mapMaybe`:
-    isForSigning (name, (KeyPair _ priv)) = Set.member name signing && isJust priv
+-- | Build a single cmd as expected in the `cmds` array of the /send payload.
+--
+-- As specified <https://pact-language.readthedocs.io/en/latest/pact-reference.html#send here>.
+buildCmdWithPayload
+  :: ( MonadIO m
+     , MonadJSM m
+     , HasCrypto key m
+     )
+  => Payload PublicMeta Text
+  -> [KeyPair key]
+  -- ^ Keys which we are signing with
+  -> m (Command Text)
+buildCmdWithPayload payload signingKeys = do
+  let cmd = encodeAsText $ encode payload
+  let cmdHashL = hash (T.encodeUtf8 cmd)
+  sigs <- buildSigs Nothing cmdHashL signingKeys
+  pure $ Command
+    { _cmdPayload = cmd
+    , _cmdSigs = sigs
+    , _cmdHash = cmdHashL
+    }
 
+buildSigsWithPactKey
+  :: ( MonadJSM m
+     , HasCrypto key m
+     )
+  => PactKey
+  -> TypedHash h
+  -> [KeyPair key]
+  -> m [UserSig]
+buildSigsWithPactKey pk cmdHashL signingPairs = do
+  pactKeySig <- cryptoSignWithPactKey (unHash . toUntypedHash $ cmdHashL) pk
+  buildSigs (Just pactKeySig) cmdHashL signingPairs
 
 -- | Build signatures for a single `cmd`.
-buildSigs :: MonadJSM m => TypedHash h -> [KeyPair] -> m [UserSig]
-buildSigs cmdHashL signingPairs = do
-    let
-      signingKeys = mapMaybe _keyPair_privateKey signingPairs
-
-    sigs <- traverse (mkSignature (unHash . toUntypedHash $ cmdHashL)) signingKeys
-
-    pure $ map toPactSig sigs
+buildSigs
+  :: ( MonadJSM m
+     , HasCrypto key m
+     )
+  => Maybe Signature
+  -> TypedHash h
+  -> [KeyPair key]
+  -> m [UserSig]
+buildSigs mSig cmdHashL signingPairs = do
+  let signingKeys = mapMaybe _keyPair_privateKey signingPairs
+  sigs <- traverse (cryptoSign (unHash . toUntypedHash $ cmdHashL)) signingKeys
+  pure $ map toPactSig (maybe sigs (:sigs) mSig)
   where
     toPactSig :: Signature -> UserSig
     toPactSig sig = UserSig $ keyToText sig
+
+
+-- | Build cont `cmd` payload.
+--
+--   As specified <https://pact-language.readthedocs.io/en/latest/pact-reference.html#cmd-field-and-payloads here>.
+--   Use `encodedAsText` for passing it as the `cmd` payload.
+buildContPayload
+  :: MonadIO m
+  => NetworkName
+  -- ^ The network that we are targeting
+  -> PublicMeta
+  -- ^ Assorted information for the payload. The time is overridden.
+  -> [KeyPair key]
+  -- ^ Keys which we are signing with
+  -> ContMsg
+  -- ^ Continuation payload
+  -> m (Payload PublicMeta Text)
+buildContPayload networkName meta signingKeys payload = do
+    time <- getCreationTime
+    nonce <- getNonce
+    pure $ Payload
+      { _pPayload = Continuation payload
+      , _pNonce = nonce
+      , _pMeta = meta { _pmCreationTime = time }
+      , _pSigners = map mkSigner (map _keyPair_publicKey signingKeys)
+      , _pNetworkId = pure $ NetworkId $ textNetworkName networkName
+      }
+  where
+    mkSigner pubKey = Signer
+      { _siScheme = pure ED25519
+      , _siPubKey = keyToText pubKey
+      , _siAddress = pure $ keyToText pubKey
+      , _siCapList = []
+      }
 
 
 -- | Build exec `cmd` payload.
@@ -948,7 +1100,7 @@ buildExecPayload
   -- ^ The network that we are targeting
   -> PublicMeta
   -- ^ Assorted information for the payload. The time is overridden.
-  -> [KeyPair]
+  -> [KeyPair key]
   -- ^ Keys which we are signing with
   -> [PublicKey]
   -- ^ Keys which should be added to `signers`, but not used to sign
@@ -996,21 +1148,28 @@ shouldFailOver = \case
 
 -- | Pretty print a `NetworkError`.
 prettyPrintNetworkError :: NetworkError -> Text
-prettyPrintNetworkError = ("ERROR: " <>) . \case
+prettyPrintNetworkError = \case
   NetworkError_NetworkError msg -> "Network error: " <> msg
   NetworkError_Status c msg -> "Error HTTP response (" <> tshow c <> "):" <> msg
   NetworkError_Decoding msg -> "Decoding server response failed: " <> msg
-  NetworkError_ReqTooLarge-> "Request exceeded the allowed maximum size!"
+  NetworkError_ReqTooLarge -> "Request exceeded the allowed maximum size!"
   NetworkError_CommandFailure e -> tshow e
   NetworkError_NoNetwork t -> "An action requiring a network was about to be performed, but we don't (yet) have any selected network: '" <> t <> "'"
   NetworkError_Other m -> m
 
+prettyPrintNetworkErrors :: NonEmpty (Maybe URI, NetworkError) -> Text
+prettyPrintNetworkErrors = T.intercalate "\n" . toList . fmap (\(mu,e) ->
+  renderMaybeUri mu <> prettyPrintNetworkError e)
+  where
+    renderMaybeUri = maybe "" (\h -> ("Error from (" <> h <> "): ")) . (extractHost =<<)
+    extractHost = (^? URIL.uriAuthority . _Right . URIL.authHost . URIL.unRText)
 
 -- | Pretty print a `NetworkErrorResult`.
 prettyPrintNetworkErrorResult :: NetworkErrorResult -> Text
 prettyPrintNetworkErrorResult = \case
-  Left e -> prettyPrintNetworkError e
-  Right (_gas, r) -> "Server result: " <> prettyTextPretty r
+  This errs -> prettyPrintNetworkErrors errs
+  That (_gas, r) -> "Successful Server result: " <> prettyTextPretty r
+  (These errs (_gas, r)) -> "Successful Server result: " <> prettyTextPretty r <> "\n  These nodes failed: \n" <> prettyPrintNetworkErrors errs
 
 
 -- | Get unique nonce, based on current time.

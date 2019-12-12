@@ -1,12 +1,8 @@
-{-# LANGUAGE DataKinds             #-}
-{-# LANGUAGE FlexibleContexts      #-}
-{-# LANGUAGE LambdaCase            #-}
+{-# LANGUAGE DataKinds #-}
+{-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
-{-# LANGUAGE OverloadedStrings     #-}
-{-# LANGUAGE RecursiveDo           #-}
-{-# LANGUAGE ScopedTypeVariables   #-}
-{-# LANGUAGE TupleSections         #-}
-{-# LANGUAGE TypeApplications      #-}
+{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 
 -- | Little helpers useful for implementing widgets.
 module Frontend.UI.Widgets.Helpers
@@ -84,7 +80,7 @@ setFocus e =  void . liftJSM $ pToJSVal e ^. js0 ("focus" :: Text)
 setFocusOn
   :: MonadWidget t m
   => Element EventResult (DomBuilderSpace m) t -- ^ The root element.
-  -> Text -- ^ A css selector to select an ancestor.
+  -> Text -- ^ A css selector to select a descendent.
   -> Event t a -- ^ The triggering event.
   -> m ()
 setFocusOn e cssSel onEv = do
@@ -112,13 +108,13 @@ preventScrollWheelAndUpDownArrow
      . DomSpace (DomBuilderSpace m)
   => EventSpec (DomBuilderSpace m) EventResult
   -> EventSpec (DomBuilderSpace m) EventResult
-preventScrollWheelAndUpDownArrow = 
+preventScrollWheelAndUpDownArrow =
   preventMouseWheel . preventUpDownArrow
   where
-    preventMouseWheel = 
+    preventMouseWheel =
       addEventSpecFlags (Proxy :: Proxy (DomBuilderSpace m)) Mousewheel (const preventDefault)
 
-    preventUpDownArrow = 
+    preventUpDownArrow =
       addEventSpecFlags (Proxy :: Proxy (DomBuilderSpace m)) Keydown
       (maybe mempty
         (\c ->

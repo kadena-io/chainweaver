@@ -1,1 +1,17 @@
-ob run --import desktop:Desktop --frontend Desktop.desktop
+# Run the cross-platform parts of the desktop app while incrementally compiling all possible haskell code on your platform
+
+# TODO: figure out if mac's main is supposed to be runnable from ghci or launching the weird zombie process is 'expected behavior'
+# Possibly main thread restrictions - see https://github.com/reflex-frp/reflex-platform/issues/445#issuecomment-457320470
+# Using '-fno-ghci-sandbox' launches a blank window. '-dynamic', '-threaded', "-fobject-code" do not fix this.
+
+# TODO: figure out how to change the objective-c code without having to restart 'ob run'
+# linux apps can go even further and effectivelly embed the C code in haskell and thus 'ob run' via 'inline-c' package
+# see https://github.com/obsidiansystems/obelisk/compare/develop...alexfmpe:inline-c
+
+is_darwin() { [ "$(uname -s)" == 'Darwin' ]; }
+
+if is_darwin; then
+  ob run --import desktop:Desktop --import mac:Mac --frontend Desktop.desktop
+else
+  ob run --import desktop:Desktop --frontend Desktop.desktop
+fi

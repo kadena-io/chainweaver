@@ -8,6 +8,10 @@
 @import '../include/defs';
 
 .spinner {
+  width: 100%;
+}
+
+.spinner__cubes {
   margin: 100px auto;
   width: 60px;
   height: 40px;
@@ -17,6 +21,7 @@
 .spinner__msg {
     position: relative;
     margin: -60px auto;
+    width: 60px;
 }
 
 .cube1, .cube2 {

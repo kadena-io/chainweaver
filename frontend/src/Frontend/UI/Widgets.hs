@@ -1,12 +1,12 @@
-{-# LANGUAGE DataKinds             #-}
-{-# LANGUAGE FlexibleContexts      #-}
-{-# LANGUAGE LambdaCase            #-}
+{-# LANGUAGE DataKinds #-}
+{-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
-{-# LANGUAGE OverloadedStrings     #-}
-{-# LANGUAGE RecursiveDo           #-}
-{-# LANGUAGE ScopedTypeVariables   #-}
-{-# LANGUAGE TupleSections         #-}
-{-# LANGUAGE TypeApplications      #-}
+{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE RecursiveDo #-}
+{-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE TupleSections #-}
+{-# LANGUAGE TypeApplications #-}
 
 -- | Widgets collection
 -- Was based on semui, but now transitioning to custom widgets
@@ -14,6 +14,14 @@ module Frontend.UI.Widgets
   ( -- * Standard widgets for chainweaver
     -- ** Buttons
     module Frontend.UI.Button
+  -- ** Single Purpose Widgets
+  , uiGasPriceInputField
+    -- * Values for _deploymentSettingsConfig_chainId:
+  , predefinedChainIdSelect
+  , predefinedChainIdDisplayed
+  , userChainIdSelect
+  , userChainIdSelectWithPreselect
+  , uiChainSelection
   -- ** Other widgets
   , uiSegment
   , uiGroup
@@ -21,9 +29,11 @@ module Frontend.UI.Widgets
   , uiCodeFont
   , uiInputElement
   , uiTextAreaElement
+  , uiCorrectingInputElement
   , uiRealInputElement
-  , uiRealWithPrecisionInputElement
+  , uiNonnegativeRealWithPrecisionInputElement
   , uiIntInputElement
+  , uiSlider
   , uiSliderInputElement
   , uiInputView
   , mkLabeledInputView
@@ -34,6 +44,7 @@ module Frontend.UI.Widgets
   , uiCheckbox
   , uiDropdown
   , uiSelectElement
+  , uiPassword
   , validatedInputWithButton
     -- ** Helper widgets
   , imgWithAlt
@@ -50,33 +61,43 @@ module Frontend.UI.Widgets
   , setFocusOnSelected
   , noAutofillAttrs
   , addNoAutofillAttrs
+  , horizontalDashedSeparator
+  , dimensionalInputWrapper
   ) where
+
 
 ------------------------------------------------------------------------------
 import           Control.Applicative
+import           Control.Arrow (first, (&&&))
 import           Control.Lens
 import           Control.Monad
-import           Data.Either (isLeft)
+import           Data.Either (isLeft, rights)
 import           Data.Map.Strict             (Map)
 import qualified Data.Map.Strict as Map
 import           Data.String                 (IsString)
+import           Data.Proxy                  (Proxy(..))
 import           Data.Text                   (Text)
 import qualified Data.Text                   as T
 import           GHC.Word                    (Word8)
 import           Data.Decimal                (Decimal)
 import qualified Data.Decimal                as D
-import           Safe                        (readMay)
 import           Language.Javascript.JSaddle (js0, pToJSVal)
 import           Obelisk.Generated.Static
 import           Reflex.Dom.Contrib.CssClass
 import           Reflex.Dom.Core
 import           Reflex.Extended             (tagOnPostBuild)
 ------------------------------------------------------------------------------
+import Pact.Types.ChainId (ChainId (..))
+import Pact.Types.Runtime (GasPrice (..))
+import Pact.Parse (ParsedDecimal (..))
+------------------------------------------------------------------------------
+import           Frontend.Network (HasNetwork(..), NodeInfo, getChains, maxCoinPrecision)
 import           Frontend.Foundation
 import           Frontend.UI.Button
-import           Frontend.UI.Widgets.Helpers (imgWithAlt, makeClickable,
+import           Frontend.UI.Widgets.Helpers (imgWithAlt, imgWithAltCls, makeClickable,
                                               setFocus, setFocusOn,
                                               setFocusOnSelected, tabPane,
+                                              preventScrollWheelAndUpDownArrow,
                                               tabPane')
 ------------------------------------------------------------------------------
 
@@ -96,10 +117,33 @@ uiCheckbox
   -> m (Checkbox t)
 uiCheckbox cls b cfg c =
   elKlass "label" (cls <> "label checkbox checkbox_type_secondary") $ do
-    cb <- checkbox b $ cfg
+    cb <- checkbox' b $ cfg
     elClass "span" "checkbox__checkmark checkbox__checkmark_type_secondary" blank
     c
     pure cb
+
+-- Copied from reflex-dom because CheckboxConfig doesn't expose ElementConfig, and without stopPropagation odd things happen
+-- Several modals which use uiCheckbox strangely trigger `domEvent Click` twice when we click the toggle
+-- and it looks like the second one is propagated all the way to the modal backdrop, dismissing it.
+--
+-- | Create an editable checkbox
+--   Note: if the "type" or "checked" attributes are provided as attributes, they will be ignored
+{-# INLINABLE checkbox' #-}
+checkbox' :: forall t m. (DomBuilder t m, PostBuild t m) => Bool -> CheckboxConfig t -> m (Checkbox t)
+checkbox' checked config = do
+  let permanentAttrs = "type" =: "checkbox"
+      dAttrs = Map.delete "checked" . Map.union permanentAttrs <$> _checkboxConfig_attributes config
+  modifyAttrs <- dynamicAttributesToModifyAttributes dAttrs
+  i <- inputElement $ (def :: InputElementConfig EventResult t (DomBuilderSpace m))
+    & inputElementConfig_initialChecked .~ checked
+    & inputElementConfig_setChecked .~ _checkboxConfig_setValue config
+    & inputElementConfig_elementConfig . elementConfig_initialAttributes .~ Map.mapKeys (AttributeName Nothing) permanentAttrs
+    & inputElementConfig_elementConfig . elementConfig_modifyAttributes .~ fmap mapKeysToAttributeName modifyAttrs
+    & inputElementConfig_elementConfig . elementConfig_eventSpec %~ addEventSpecFlags (Proxy :: Proxy (DomBuilderSpace m)) Click (const stopPropagation)
+  return $ Checkbox
+    { _checkbox_value = _inputElement_checked i
+    , _checkbox_change = _inputElement_checkedChange i
+    }
 
 -- | A segment.
 --
@@ -113,7 +157,7 @@ uiSegment cls = elKlass "div" (cls <> "segment")
 uiGroup :: DomBuilder t m => CssClass -> m a -> m a
 uiGroup cls = elKlass "div" (cls <> "group")
 
--- | The header element of a groupl
+-- | The header element of a group
 uiGroupHeader :: DomBuilder t m => CssClass -> m a -> m a
 uiGroupHeader cls = elKlass "div" (cls <> "group__header")
 
@@ -139,6 +183,15 @@ uiSelectElement uCfg child = do
   let cfg = uCfg & initialAttributes %~ addToClassAttr "select"
   selectElement cfg child
 
+uiPassword :: DomBuilder t m => Text -> Text -> Text -> m (InputElement EventResult (DomBuilderSpace m) t)
+uiPassword wrapperCls inputCls ph = elClass "span" wrapperCls $ do
+  imgWithAltCls "setup__password-wrapper-lock" (static @"img/lock-dark.svg") "Password" blank
+  uiInputElement $ def & initialAttributes .~ mconcat
+    [ "type" =: "password"
+    , "placeholder" =: ph
+    , "class" =: inputCls
+    ]
+
 -- | Factored out input class modifier, so we can keep it in sync.
 addInputElementCls :: (Ord attr, IsString attr) => Map attr Text -> Map attr Text
 addInputElementCls = addToClassAttr "input"
@@ -156,7 +209,7 @@ uiInputElement cfg = inputElement $ cfg & initialAttributes %~ (addInputElementC
 
 -- | uiInputElement which should always provide a proper real number.
 --
---   In particular it will always has a decimal point in it.
+--   In particular it will always have a decimal point in it.
 uiRealInputElement
   :: DomBuilder t m
   => InputElementConfig er t (DomBuilderSpace m)
@@ -165,71 +218,156 @@ uiRealInputElement cfg = do
     inputElement $ cfg & initialAttributes %~
         (<> ("type" =: "number")) . addInputElementCls . addNoAutofillAttrs
 
+uiCorrectingInputElement
+  :: forall t m a explanation. DomBuilder t m
+  => MonadFix m
+  => (Text -> Maybe a)
+  -> (a -> Maybe (a, explanation))
+  -> (a -> Maybe (a, explanation))
+  -> (a -> Text)
+  -> InputElementConfig EventResult t (DomBuilderSpace m)
+  -> m (InputElement EventResult (DomBuilderSpace m) t, Dynamic t (Maybe a), Event t (a, Maybe explanation))
+uiCorrectingInputElement parse inputSanitize blurSanitize render cfg = mdo
+  ie <- inputElement $ cfg & inputElementConfig_setValue %~ (\e -> leftmost
+      [ attemptCorrection e
+      , forceCorrection inp
+      , blurAttemptCorrection eBlurredVal
+      , blurForceCorrection eBlurredVal
+      ]
+    )
+  let
+    inp = _inputElement_input ie
+    val = value ie
+    eBlurredVal = current val <@ domEvent Blur ie
+
+    sanitization :: Functor f => (a -> Maybe (a, explanation)) -> f Text -> f (Maybe (a, Maybe explanation))
+    sanitization f = fmap $ \i -> ffor (parse i) $ \p ->
+      case f p of
+        Nothing -> (p, Nothing)
+        Just (a, x) -> (a, Just x)
+
+    inputSanitization :: Functor f => f Text -> f (Maybe (a, Maybe explanation))
+    inputSanitization = sanitization inputSanitize
+
+    blurSanitization :: Functor f => f Text -> f (Maybe (a, Maybe explanation))
+    blurSanitization = sanitization blurSanitize
+
+    intercept :: ((a, Maybe explanation) -> Bool) -> (Event t Text -> Event t Text)
+    intercept p = fmap render . fmap fst . ffilter p . fmapMaybe id . inputSanitization
+
+    attemptCorrection :: Event t Text -> Event t Text
+    attemptCorrection = intercept (const True)
+
+    forceCorrection :: Event t Text -> Event t Text
+    forceCorrection = intercept (isJust . snd)
+
+    blurIntercept :: ((a, Maybe explanation) -> Bool) -> (Event t Text -> Event t Text)
+    blurIntercept p = fmap render . fmap fst . ffilter p . fmapMaybe id . blurSanitization
+
+    blurAttemptCorrection :: Event t Text -> Event t Text
+    blurAttemptCorrection = blurIntercept (const True)
+
+    blurForceCorrection :: Event t Text -> Event t Text
+    blurForceCorrection = blurIntercept (isJust . snd)
+
+    -- type inference goes crazy if we inline this - ghc bug?
+    inp' = fmapMaybe id $ inputSanitization inp
+
+  pure (ie, (fmap . fmap) fst $ inputSanitization val, inp')
+
 -- | Decimal input to the given precision. Returns the element, the value, and
 -- the user input events
-uiRealWithPrecisionInputElement
-  :: forall t m er a. (DomBuilder t m, MonadFix m)
+uiNonnegativeRealWithPrecisionInputElement
+  :: forall t m a. (DomBuilder t m, MonadFix m, MonadHold t m)
   => Word8
   -> (Decimal -> a)
-  -> InputElementConfig er t (DomBuilderSpace m)
-  -> m (InputElement er (DomBuilderSpace m) t, (Dynamic t (Maybe a), Event t a))
-uiRealWithPrecisionInputElement prec fromDecimal cfg = do
+  -> InputElementConfig EventResult t (DomBuilderSpace m)
+  -> m (InputElement EventResult (DomBuilderSpace m) t, Dynamic t (Maybe a), Event t a)
+uiNonnegativeRealWithPrecisionInputElement prec fromDecimal cfg = do
   rec
-    r <- inputElement $ cfg
+    (ie, val, input) <- uiCorrectingInputElement parse inputSanitize blurSanitize tshow $ cfg
       & initialAttributes %~ addInputElementCls . addNoAutofillAttrs
         . (<> ("type" =: "number" <> "step" =: stepSize <> "min" =: stepSize))
-      & inputElementConfig_setValue %~ (\e -> leftmost [fmapMaybe parseAndRound e, rounded])
-    let parsedValue = fmap fst . parseDecimal <$> value r
-        parsedInput = fmapMaybe parseDecimal (_inputElement_input r)
-        -- Trim the users input if we had to round it
-        rounded = fmap (showDecimal . fst) $ ffilter snd parsedInput
-  pure
-    ( r
-    , (fmap fromDecimal <$> parsedValue
-      , fromDecimal . fst <$> parsedInput
-      )
-    )
+    widgetHold_ blank $ ffor (fmap snd input) $ traverse_ $
+      elClass "span" "real-input__rounded" . text
+  pure (ie, (fmap . fmap) fromDecimal val, fmap (fromDecimal . fst) input)
+
   where
-    showDecimal :: Decimal -> Text
-    showDecimal = tshow
+    stepSize = "0." <> T.replicate (fromIntegral prec - 1) "0" <> "1"
+    parse t = tread $
+      if "." `T.isPrefixOf` t && not (T.any (== '.') $ T.tail t) then
+        T.cons '0' t
+      else
+        t
 
-    parseAndRound :: Text -> Maybe Text
-    parseAndRound t = showDecimal . fst <$> parseDecimal t
+    blurSanitize :: Decimal -> Maybe (Decimal, Text)
+    blurSanitize decimal = asum
+      [ (D.roundTo 1 decimal, "")
+        <$ guard (D.decimalPlaces decimal == 0) -- To avoid `: Failure: Type error: expected decimal, found integer`
+      ]
 
-    -- Returns the decimal and whether or not it needed rounding to 'prec'
-    parseDecimal :: Text -> Maybe (Decimal, Bool)
-    parseDecimal t = ffor (readMay $ T.unpack t) $ \decimal ->
-      (D.roundTo prec decimal, D.decimalPlaces decimal > prec)
+    inputSanitize :: Decimal -> Maybe (Decimal, Text)
+    inputSanitize decimal = asum
+      [ (0, "Cannot be negative")
+        <$ guard (decimal < 0)
+      , (D.roundTo prec decimal, ("Rounded to " <> tshow prec <> " places"))
+        <$ guard (D.decimalPlaces decimal > prec)
+      ]
 
-    stepSize = "0." <> T.replicate (fromIntegral prec - 1) "0" <> "1" 
-
+-- TODO: correct floating point decimals
 uiIntInputElement
   :: DomBuilder t m
-  => InputElementConfig er t (DomBuilderSpace m)
-  -> m (InputElement er (DomBuilderSpace m) t)
-uiIntInputElement cfg = do
-    r <- inputElement $ cfg & initialAttributes %~
-            (<> ("type" =: "number")) . addInputElementCls . addNoAutofillAttrs
-    pure $ r
-      { _inputElement_value = fmap fixNum $ _inputElement_value r
-      , _inputElement_input = fmap fixNum $ _inputElement_input r
-      }
+  => MonadFix m
+  => Maybe Integer
+  -> Maybe Integer
+  -> InputElementConfig EventResult t (DomBuilderSpace m)
+  -> m (InputElement EventResult (DomBuilderSpace m) t, Event t Integer)
+uiIntInputElement mmin mmax cfg = do
+    (r, _, input) <- uiCorrectingInputElement (tread . fixNum) sanitize (const Nothing) tshow $ cfg & initialAttributes %~
+      ((<> numberAttrs) . addInputElementCls . addNoAutofillAttrs)
+
+    pure (r
+          { _inputElement_value = fmap fixNum $ _inputElement_value r
+          , _inputElement_input = fmap fixNum $ _inputElement_input r
+          }
+         , fst <$> input)
+
   where
     fixNum = T.takeWhile (/='.')
+    numberAttrs = mconcat $ fmapMaybe id
+      [ Just $ "type" =: "number"
+      , ffor mmin $ ("min" =:) . tshow
+      , ffor mmax $ ("max" =:) . tshow
+      ]
+    clamp = appEndo $ foldMap Endo $ fmapMaybe id
+      [ ffor mmin $ max
+      , ffor mmax $ min
+      ]
 
-uiSliderInputElement
+    sanitize :: Integer -> Maybe (Integer, Maybe ())
+    sanitize num = let s = clamp num
+                   in guard (s /= num) *> Just (s, Just ())
+
+uiSlider
   :: DomBuilder t m
-  => m ()
+  => CssClass
+  -> m ()
   -> m ()
   -> InputElementConfig er t (DomBuilderSpace m)
   -> m (InputElement er (DomBuilderSpace m) t)
-uiSliderInputElement minLabel maxLabel conf = divClass "slider" $ do
-  s <- inputElement $ conf
-    & initialAttributes %~ Map.insert "type" "range" . addToClassAttr "slider"
+uiSlider cls minLabel maxLabel conf = elKlass "div" ("slider" <> cls) $ do
+  s <- uiSliderInputElement conf
   divClass "slider_min" minLabel
   divClass "slider_max" maxLabel
   divClass "clear" $ pure ()
   pure s
+
+uiSliderInputElement
+  :: DomBuilder t m
+  => InputElementConfig er t (DomBuilderSpace m)
+  -> m (InputElement er (DomBuilderSpace m) t)
+uiSliderInputElement conf = inputElement $ conf
+    & initialAttributes %~ Map.insert "type" "range" . addToClassAttr "slider"
 
 -- | Take an `uiInputElement` like thing and make it a view with change events
 -- of your model. It also takes care of input validation.
@@ -302,34 +440,45 @@ mkLabeledInputView
   :: (DomBuilder t m, er ~ EventResult, PostBuild t m, MonadFix m
      , MonadHold t m
      )
-  => (InputElementConfig er t (DomBuilderSpace m) -> m (InputElement er (DomBuilderSpace m) t))
-  -> Text -> Dynamic t Text -> m (Event t Text)
-mkLabeledInputView mkInput n v = elClass "div" "segment segment_type_tertiary labeled-input" $ do
-  divClass "label labeled-input__label" $ text n
+  => Bool
+  -> Text
+  -> (InputElementConfig er t (DomBuilderSpace m) -> m (InputElement er (DomBuilderSpace m) t))
+  -> Dynamic t Text
+  -> m (Event t Text)
+mkLabeledInputView inlineLabel n mkInput v = elClass "div" ("segment segment_type_tertiary labeled-input" <> inlineState) $ do
+  divClass ("label labeled-input__label" <> inlineState) $ text n
   uiInputView mkInput (def & initialAttributes %~ addToClassAttr "labeled-input__input") v
-
+  where
+    inlineState = bool "" "-inline" inlineLabel
 
 -- | Make labeled and segmented input.
 mkLabeledInput
   :: (DomBuilder t m , InitialAttributes cfg)
-  => (cfg -> m element)
-  -> Text -> cfg -> m element
-mkLabeledInput mkInput n cfg = elClass "div" "segment segment_type_tertiary labeled-input" $ do
-  divClass "label labeled-input__label" $ text n
+  => Bool
+  -> Text
+  -> (cfg -> m element)
+  -> cfg
+  -> m element
+mkLabeledInput inlineLabel n mkInput cfg = elClass "div" ("segment segment_type_tertiary labeled-input" <> inlineState) $ do
+  divClass ("label labeled-input__label" <> inlineState) $ text n
   mkInput (cfg & initialAttributes %~ addToClassAttr "labeled-input__input")
-
-
+  where
+    inlineState = bool "" "-inline" inlineLabel
 -- | Make some input a labeled input.
 --
 --   Any widget creating function that can be called with additional classes will do.
 --   TODO: This function can probably replace `mkLabeledInput`.
 mkLabeledClsInput
   :: (DomBuilder t m, PostBuild t m)
-  => (CssClass -> m element)
-  -> Dynamic t Text -> m element
-mkLabeledClsInput mkInput name = elClass "div" "segment segment_type_tertiary labeled-input" $ do
-  divClass "label labeled-input__label" $ dynText name
+  => Bool
+  -> Dynamic t Text
+  -> (CssClass -> m element)
+  -> m element
+mkLabeledClsInput inlineLabel name mkInput = elClass "div" ("segment segment_type_tertiary labeled-input" <> inlineState) $ do
+  divClass ("label labeled-input__label" <> inlineState) $ dynText name
   mkInput "labeled-input__input"
+  where
+    inlineState = bool "" "-inline" inlineLabel
 
 -- | Attributes which will turn off all autocomplete/autofill/autocorrect
 -- functions, including the OS-level suggestions on macOS.
@@ -367,7 +516,7 @@ validatedInputWithButton uCls check placeholder buttonText = do
 
         let
           checkFailed = isLeft <$> checkedL
-          btnCfg = def & uiButtonCfg_disabled .~ dInputIsInvalid 
+          btnCfg = def & uiButtonCfg_disabled .~ dInputIsInvalid
                        & uiButtonCfg_class .~ "button_type_primary" <> "new-by-name__button"
         clicked <- uiButtonDyn btnCfg $ text buttonText
 
@@ -444,8 +593,8 @@ accordionItem'
   -> m a
   -> m b
   -> m (a,b)
-accordionItem' initActive contentClass title inner = 
-  snd <$> accordionItemWithClick initActive contentClass title inner 
+accordionItem' initActive contentClass title inner =
+  snd <$> accordionItemWithClick initActive contentClass title inner
 
 accordionItem :: MonadWidget t m => Bool -> CssClass -> Text -> m a -> m a
 accordionItem initActive contentClass title inner =
@@ -469,7 +618,7 @@ paginationWidget cls currentPage totalPages = elKlass "div" (cls <> "pagination"
         uiButtonDyn cfg $ elClass "i" ("fa " <> i) blank
 
       canGoFirst = (> 1) <$> currentPage
-    first <- pageButton canGoFirst "fa-angle-double-left"
+    first' <- pageButton canGoFirst "fa-angle-double-left"
     prev <-  pageButton canGoFirst "fa-angle-left"
     void $ elClass "div" "pagination__page-count" $
       elClass "span" "pagination__page-count-text" $ do
@@ -481,8 +630,98 @@ paginationWidget cls currentPage totalPages = elKlass "div" (cls <> "pagination"
     lastL <- pageButton canGoLast "fa-angle-double-right"
     pure $ leftmost
       [ attachWith (\x _ -> pred x) (current currentPage) prev
-      , 1 <$ first
+      , 1 <$ first'
       , attachWith (\x _ -> succ x) (current currentPage) nextL
       , tag (current totalPages) lastL
       ]
 ----------------------------------------------------------------------------------
+
+horizontalDashedSeparator :: DomBuilder t m => m ()
+horizontalDashedSeparator = divClass "horizontal-dashed-separator" blank
+
+dimensionalInputWrapper :: DomBuilder t m => Text -> m a -> m a
+dimensionalInputWrapper units inp = divClass "dimensional-input-wrapper" $ do
+  divClass "dimensional-input-wrapper__units" $ text units
+  inp
+
+uiGasPriceInputField
+  :: forall m t.
+     ( DomBuilder t m
+     , MonadFix m
+     , MonadHold t m
+     )
+  => InputElementConfig EventResult t (DomBuilderSpace m)
+  -> m ( InputElement EventResult (DomBuilderSpace m) t
+       , Dynamic t (Maybe GasPrice)
+       , Event t GasPrice
+       )
+uiGasPriceInputField conf = dimensionalInputWrapper "KDA" $
+ uiNonnegativeRealWithPrecisionInputElement maxCoinPrecision (GasPrice . ParsedDecimal) $ conf
+  & initialAttributes %~ addToClassAttr "input-units"
+  & inputElementConfig_elementConfig . elementConfig_eventSpec %~ preventScrollWheelAndUpDownArrow @m
+
+
+-- | Let the user pick a chain id.
+userChainIdSelect
+  :: (MonadWidget t m, HasNetwork model t
+     )
+  => model
+  -> m (MDynamic t ChainId)
+userChainIdSelect m =
+  userChainIdSelectWithPreselect m (constDyn Nothing)
+
+-- | Let the user pick a chain id but preselect a value
+userChainIdSelectWithPreselect
+  :: (MonadWidget t m, HasNetwork model t
+     )
+  => model
+  -> Dynamic t (Maybe ChainId)
+  -> m (MDynamic t ChainId)
+userChainIdSelectWithPreselect m mChainId = mkLabeledClsInput True "Chain ID" (uiChainSelection mNodeInfo mChainId)
+  where mNodeInfo = (^? to rights . _head) <$> m ^. network_selectedNodes
+
+uiChainSelection
+  :: MonadWidget t m
+  => Dynamic t (Maybe NodeInfo)
+  -> Dynamic t (Maybe ChainId)
+  -> CssClass
+  -> m (Dynamic t (Maybe ChainId))
+uiChainSelection info mPreselected cls = do
+  pb <- getPostBuild
+
+  let
+    chains = map (id &&& _chainId) . maybe [] getChains <$> info
+    mkPlaceHolder cChains = if null cChains then "No chains available" else "Select chain"
+    mkOptions cs = Map.fromList $ (Nothing, mkPlaceHolder cs) : map (first Just) cs
+
+    staticCls = cls <> "select"
+    mkDynCls v = if isNothing v then "select_mandatory_missing" else mempty
+
+  rec
+    let allCls = renderClass <$> fmap mkDynCls d <> pure staticCls
+        cfg = def
+          & dropdownConfig_attributes .~ (("class" =:) <$> allCls)
+          & dropdownConfig_setValue .~ (current mPreselected <@ pb)
+
+    d <- _dropdown_value <$> dropdown Nothing (mkOptions <$> chains) cfg
+  pure d
+
+-- | Use a predefined chain id, don't let the user pick one.
+predefinedChainIdSelect
+  :: (Reflex t, Monad m)
+  => ChainId
+  -> model
+  -> m (Dynamic t (Maybe ChainId))
+predefinedChainIdSelect chanId _ = pure . pure . pure $ chanId
+
+-- | Use a predefined immutable chain id, but display it too.
+predefinedChainIdDisplayed
+  :: DomBuilder t m
+  => ChainId
+  -> model
+  -> m (Dynamic t (Maybe ChainId))
+predefinedChainIdDisplayed cid _ = do
+  _ <- mkLabeledInput True "Chain ID" uiInputElement $ def
+    & initialAttributes %~ Map.insert "disabled" ""
+    & inputElementConfig_initialValue .~ _chainId cid
+  pure $ pure $ pure cid

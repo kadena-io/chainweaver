@@ -28,9 +28,6 @@ $active-background: #2d2d2f;
 // Color used for line numbers in tables.
 $counter-color: #cbcbcb;
 
-// Width of body element obviously:
-$body-width: 1166px;
-
 $control-height: 36px;
 $control-line-height: 32px;
 $placeholder-color: #cdcdcd;
@@ -95,8 +92,10 @@ $input-padding: 0 $medium-padding;
 
 $confirm-color: #4499d9;
 $confirm-color-highlight: #3489c9;
-
-
+$chainweaver-blue: #57b5e1;
+$chainweaver-dark-blue: #4494ba;
+$chainweaver-orange: #f4b23e;
+$danger-red: #f43e3e;
 //checkbox:
 
 $checked-background: #4499d9;
@@ -106,6 +105,11 @@ $checked-background: #4499d9;
   font-family: 'RobotoMono', monospace; // Ace is pretty nasty with overriding.
   font-size: 15px;
 }
+
+// Pages
+$corner-logo-width: 70px;
+$corner-logo-height: $corner-logo-width;
+$top-bar-height: $corner-logo-height;
 
 // Panes:
 

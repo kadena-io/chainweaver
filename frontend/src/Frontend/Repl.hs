@@ -1,22 +1,20 @@
-{-# LANGUAGE ConstraintKinds        #-}
-{-# LANGUAGE DataKinds              #-}
-{-# LANGUAGE DeriveGeneric          #-}
-{-# LANGUAGE ExtendedDefaultRules   #-}
-{-# LANGUAGE FlexibleContexts       #-}
-{-# LANGUAGE FlexibleInstances      #-}
+{-# LANGUAGE ConstraintKinds #-}
+{-# LANGUAGE DataKinds #-}
+{-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE ExtendedDefaultRules #-}
+{-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE FunctionalDependencies #-}
-{-# LANGUAGE KindSignatures         #-}
-{-# LANGUAGE LambdaCase             #-}
-{-# LANGUAGE MultiParamTypeClasses  #-}
-{-# LANGUAGE OverloadedStrings      #-}
-{-# LANGUAGE QuasiQuotes            #-}
-{-# LANGUAGE RecursiveDo            #-}
-{-# LANGUAGE ScopedTypeVariables    #-}
-{-# LANGUAGE StandaloneDeriving     #-}
-{-# LANGUAGE TemplateHaskell        #-}
-{-# LANGUAGE TupleSections          #-}
-{-# LANGUAGE TypeApplications       #-}
-{-# LANGUAGE TypeFamilies           #-}
+{-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE QuasiQuotes #-}
+{-# LANGUAGE RecursiveDo #-}
+{-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE StandaloneDeriving #-}
+{-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE TupleSections #-}
+{-# LANGUAGE TypeApplications #-}
+{-# LANGUAGE TypeFamilies #-}
 
 -- | Pact repl functionality as needed in chainweaver.
 -- Copyright   :  (C) 2018 Kadena
@@ -49,6 +47,7 @@ import           Data.Aeson                 as Aeson (Object, encode)
 import qualified Data.ByteString.Lazy       as BSL
 import           Data.Either                (isRight)
 import qualified Data.HashMap.Strict        as HM
+import qualified Data.IntMap                as IntMap
 import           Data.Map                   (Map)
 import qualified Data.Map                   as Map
 import           Data.Sequence              (Seq, (|>))
@@ -68,12 +67,13 @@ import           Pact.Repl
 import           Pact.Repl.Types
 import           Pact.Types.Exp
 import           Pact.Types.Info
-import           Pact.Types.Term            (ModuleName (..), Name, Term (..))
+import           Pact.Types.Term            (ModuleName (..), Name, NamespaceName (..), Term (..), mnNamespace)
 ------------------------------------------------------------------------------
 import           Frontend.Network
 import           Frontend.Foundation
 import           Frontend.JsonData
 import           Frontend.Messages
+import           Frontend.ModuleExplorer.Example (exampleNamespacesFile)
 import           Frontend.Wallet
 import Common.Api (getVerificationServerUrl)
 ------------------------------------------------------------------------------
@@ -145,7 +145,7 @@ data Impl t = Impl
 
 -- Implementation:
 
-type HasReplModel m t = (HasNetwork m t, HasJsonData m t, HasWallet m t)
+type HasReplModel m key t = (HasNetwork m t, HasJsonData m t, HasWallet m key t)
 
 type HasReplModelCfg mConf t = (HasMessagesCfg mConf t, Monoid mConf)
 
@@ -155,8 +155,8 @@ type ReplMonad t m =
   )
 
 makeRepl
-  :: forall t m cfg model mConf
-  . ( ReplMonad t m, HasReplModel model t, HasReplModelCfg mConf t
+  :: forall key t m cfg model mConf
+  . ( ReplMonad t m, HasReplModel model key t, HasReplModelCfg mConf t
     , HasReplCfg cfg t, HasConfigs m
     )
   => model -> cfg -> m (mConf, WebRepl t)
@@ -173,7 +173,7 @@ makeRepl m cfg = build $ \ ~(_, impl) -> do
       ]
 
     let envData = either (const HM.empty) id <$> m ^. jsonData_data
-        keys = Map.elems <$> m ^. wallet_keys
+        keys = getAllKeys <$> m ^. wallet_accounts
 
     -- Those events can happen simultaneously - so make sure we don't lose any
     -- state:
@@ -250,6 +250,8 @@ makeRepl m cfg = build $ \ ~(_, impl) -> do
 
     performStateCmd impl = performEvent . fmap (withRepl impl)
 
+getAllKeys :: Accounts key -> [KeyPair key]
+getAllKeys accs = [ _account_key acc | SomeAccount_Account acc <- IntMap.elems accs ]
 
     -- In case we ever want to show more than the last output term:
     -- showStateTerms :: ReplState -> Text
@@ -257,8 +259,8 @@ makeRepl m cfg = build $ \ ~(_, impl) -> do
 
 -- | Create a brand new Repl state and set env-data.
 initRepl
-  :: forall t m model
-  . (HasReplModel model t, MonadIO m, Reflex t, MonadSample t m)
+  :: forall key t m model
+  . (HasReplModel model key t, MonadIO m, Reflex t, MonadSample t m)
   => Maybe Text
   -- ^ Verification server URL
   -> Impl t -> model -> m (ReplState)
@@ -266,11 +268,17 @@ initRepl verificationUri oldImpl m  = do
   r <- mkState verificationUri
   let initImpl = oldImpl { _impl_state = pure r } -- Const dyn so we can use `withRepl` for initialization - gets dropped afterwards.
   env  <- sample . current $ either (const HM.empty) id <$> m ^. jsonData_data
-  keys <- sample . current $ Map.elems <$> m ^. wallet_keys
+  keys <- sample . current $ getAllKeys <$> m ^. wallet_accounts
   fmap snd . withRepl initImpl $ do
     void $ setEnvData env
-    setEnvKeys keys
+    void $ setEnvKeys keys
+    setupNamespaces
 
+setupNamespaces :: PactRepl ()
+setupNamespaces = do
+  void $ pactEvalRepl' "(begin-tx)"
+  void $ pactEvalRepl' exampleNamespacesFile `catchError` error
+  void $ pactEvalRepl' "(commit-tx)"
 
 -- | Create a brand new Repl state:
 mkState
@@ -296,7 +304,7 @@ setEnvData = pactEvalRepl' . ("(env-data " <>) . (<> ")") . mkCmd
     surroundWith o i = o <> i <> o
 
 -- | Set env-keys to the given keys
-setEnvKeys :: [KeyPair] -> PactRepl (Term Name)
+setEnvKeys :: [KeyPair key] -> PactRepl (Term Name)
 setEnvKeys =
   pactEvalRepl' . ("(env-keys [" <>) . (<> "])") . renderKeys
     where
@@ -338,10 +346,9 @@ runVerify impl onMod =
       void $ pactEvalRepl' $ buildTypecheck m
       pactEvalRepl' $ buildVerify m
 
-    -- TODO: Proper namespace support
-    buildVerify (ModuleName n _) = "(verify '" <> n <> ")"
-    -- TODO: Proper namespace support
-    buildTypecheck (ModuleName n _) = "(typecheck '" <> n <> ")"
+    buildVerify m = "(verify " <> qualifiedName m <> ")"
+    buildTypecheck m = "(typecheck " <> qualifiedName m <> ")"
+    qualifiedName (ModuleName mn nn) = "\"" <> maybe mn (\(NamespaceName nn') -> nn' <> "." <> mn) nn <> "\""
 
 -- | Run code in a transaction on the REPL.
 runTransaction
@@ -349,8 +356,10 @@ runTransaction
   . ( ReplMonad t m )
   => Impl t -> Event t Text -> m (Event t (TransactionResult, ReplState))
 runTransaction impl onCode =
-    performEvent $ ffor onCode $ \code -> withRepl impl $
+  performEvent $ ffor onCode $ \code -> do
+    withRepl impl $
       runIt code `catchError` cleanup
+
   where
     cleanup e = do
       void $ pactEvalRepl' "(rollback-tx)"
@@ -361,8 +370,31 @@ runTransaction impl onCode =
       let parsed = parsePact code
       r <- ExceptT $ evalParsed code parsed
       void $ pactEvalRepl' "(commit-tx)"
-      let transModules = fromMaybe Map.empty $ parsed ^? TF._Success . to getModules
-      pure $ TransactionSuccess r transModules
+
+      -- TODO: Will mis-behave if same module name is used in different namespaces
+      rmns :: [ModuleName] <- (fmap . fmap) fst replModules
+      let emns :: Map ModuleName Int = fromMaybe Map.empty $ parsed ^? TF._Success . to editorUnqualifiedModuleNames
+          editorModules :: Map ModuleName Int = Map.fromList $ fforMaybe rmns $ \mn ->
+            fmap (mn,) $ Map.lookup (mn & mnNamespace .~ Nothing) emns
+
+      pure $ TransactionSuccess r editorModules
+
+    -- TODO: can `replGetModules` actually change the state or is the type too coarse?
+    replModules = do
+      rs <- get
+      liftIO (replGetModules rs) >>= \case
+        Left err -> throwError $ show err
+        Right (oldModules, rs') -> put rs' *> pure (HM.toList oldModules)
+
+    -- TODO: Proper namespace support
+    editorUnqualifiedModuleNames :: [Exp Parsed] -> Map ModuleName Int
+    editorUnqualifiedModuleNames = Map.fromList . mapMaybe toModule
+      where
+        toModule :: Exp Parsed -> Maybe (ModuleName, Int)
+        toModule = \case
+          EList (ListExp (EAtom (AtomExp "module" _ _):EAtom (AtomExp m _ _):_) _ (Parsed (Delta.Lines l _ _ _) _))
+            -> Just $ (ModuleName m Nothing, fromIntegral l)
+          _ -> Nothing
 
     parsePact :: Text -> TF.Result [Exp Parsed]
     parsePact = TF.parseString exprsOnly mempty . T.unpack
@@ -380,19 +412,6 @@ runTransaction impl onCode =
 -- | Drop n elements from the end of a list.
 {- dropFromEnd :: Int -> [a] -> [a] -}
 {- dropFromEnd n xs = zipWith const xs (drop n xs) -}
-
--- | Get modules from a list of `Term`s.
-getModules :: [Exp Parsed] -> Map ModuleName Int
-getModules = Map.fromList . mapMaybe toModule
-  where
-    toModule :: Exp Parsed -> Maybe (ModuleName, Int)
-    toModule = \case
-      EList (ListExp (EAtom (AtomExp "module" _ _):EAtom (AtomExp m _ _):_) _ (Parsed (Delta.Lines l _ _ _) _))
-      -- TODO: Proper namespace support
-        -> Just $ (ModuleName m Nothing, fromIntegral l)
-      _ -> Nothing
-
-
 
 withRepl
   :: forall t m a

@@ -1,22 +1,20 @@
 {-# OPTIONS_GHC -fno-warn-orphans #-}
-{-# LANGUAGE DataKinds              #-}
-{-# LANGUAGE DeriveGeneric          #-}
-{-# LANGUAGE ExtendedDefaultRules   #-}
-{-# LANGUAGE FlexibleContexts       #-}
-{-# LANGUAGE FlexibleInstances      #-}
+{-# LANGUAGE DataKinds #-}
+{-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE ExtendedDefaultRules #-}
+{-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE FunctionalDependencies #-}
-{-# LANGUAGE KindSignatures         #-}
-{-# LANGUAGE LambdaCase             #-}
-{-# LANGUAGE MultiParamTypeClasses  #-}
-{-# LANGUAGE OverloadedStrings      #-}
-{-# LANGUAGE QuasiQuotes            #-}
-{-# LANGUAGE RecursiveDo            #-}
-{-# LANGUAGE ScopedTypeVariables    #-}
-{-# LANGUAGE StandaloneDeriving     #-}
-{-# LANGUAGE TemplateHaskell        #-}
-{-# LANGUAGE TupleSections          #-}
-{-# LANGUAGE TypeApplications       #-}
-{-# LANGUAGE TypeFamilies           #-}
+{-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE QuasiQuotes #-}
+{-# LANGUAGE RecursiveDo #-}
+{-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE StandaloneDeriving #-}
+{-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE TupleSections #-}
+{-# LANGUAGE TypeApplications #-}
+{-# LANGUAGE TypeFamilies #-}
 
 -- | Refererencing `Module`s.
 --
@@ -50,7 +48,6 @@ module Frontend.ModuleExplorer.ModuleRef
 
 ------------------------------------------------------------------------------
 import           Control.Applicative             ((<|>))
-import           Control.Arrow                   (left)
 import           Control.Lens
 import           Control.Monad
 import           Control.Monad.Except            (throwError)
@@ -61,6 +58,7 @@ import qualified Data.Map                        as Map
 import qualified Data.Set                        as Set
 import           Data.Text                       (Text)
 import qualified Data.Text                       as T
+import           Data.These                      (These(This,That))
 import           Reflex.Dom.Core                 (MonadHold)
 import qualified Text.Megaparsec                 as MP
 ------------------------------------------------------------------------------
@@ -86,6 +84,7 @@ import           Frontend.Foundation
 import           Frontend.ModuleExplorer.Example
 import           Frontend.ModuleExplorer.File
 import           Frontend.Network
+import Frontend.Crypto.Class
 
 -- | A `Module` can come from a number of sources.
 --
@@ -238,15 +237,16 @@ textModuleRefSource isModule m =
 --
 --   Resulting Event is either an error msg or the loaded module.
 fetchModule
-  :: forall m t model
+  :: forall key m t model
   . ( MonadHold t m, PerformEvent t m, MonadJSM (Performable m)
     , TriggerEvent t m, MonadIO m
     , MonadSample t (Performable m)
     , HasNetwork model t
+    , HasCrypto key (Performable m)
     )
   => model
   -> Event t DeployedModuleRef
-  -> m (Event t (DeployedModuleRef, Either Text (ModuleDef (Term Name))))
+  -> m (Event t (DeployedModuleRef, These Text (ModuleDef (Term Name))))
 fetchModule networkL onReq = do
     onReq' :: Event t (DeployedModuleRef, NetworkRequest)
       <- performEvent $ attachWith mkReq (current $ getNetworkNameAndMeta networkL) onReq
@@ -256,7 +256,7 @@ fetchModule networkL onReq = do
       deployedResultsZipped = first fst <$> deployedResults
 
     pure $ fmapMaybe listToMaybe . ffor deployedResultsZipped $ \(dmr, errs) ->
-      map ((dmr,) . (getModule . snd <=< left prettyPrintNetworkError)) errs
+      map ((dmr,) . (either This That . getModule . snd <=< first prettyPrintNetworkErrors)) errs
 
   where
     mkReq (networkName, pm) mRef = (mRef,) <$> mkSimpleReadReq code networkName pm (_moduleRef_source mRef)

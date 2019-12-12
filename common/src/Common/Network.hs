@@ -1,12 +1,12 @@
-{-# LANGUAGE DeriveGeneric              #-}
-{-# LANGUAGE FlexibleContexts           #-}
+{-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
-{-# LANGUAGE LambdaCase                 #-}
-{-# LANGUAGE OverloadedStrings          #-}
-{-# LANGUAGE RankNTypes                 #-}
-{-# LANGUAGE ScopedTypeVariables        #-}
-{-# LANGUAGE TupleSections              #-}
-{-# LANGUAGE ViewPatterns               #-}
+{-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE RankNTypes #-}
+{-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE TupleSections #-}
+{-# LANGUAGE ViewPatterns #-}
 
 module Common.Network
   ( NetworkName
@@ -23,8 +23,6 @@ module Common.Network
   , getPactInstancePort
   , parseNetworks
   , Pact.ChainId (..)
-  , wrapWithBalanceChecks
-  , parseWrappedBalanceChecks
   ) where
 
 import Control.Applicative ((<|>))
@@ -35,32 +33,20 @@ import Control.Monad
 import Control.Monad.Except (MonadError, liftEither, runExceptT, throwError, withExceptT)
 import Control.Monad.Trans
 import Data.Aeson
-import Data.Bifunctor (first)
+import Data.CaseInsensitive (CI)
 import Data.Coerce (coerce)
-import Data.Decimal (Decimal)
-import Data.Default
 import Data.Either (rights)
 import Data.Map (Map)
 import Data.Maybe (fromMaybe)
-import Data.Set (Set)
 import Data.Text (Text)
-import Data.Traversable (for)
 import Data.Void (Void)
 import GHC.Generics (Generic)
-import Kadena.SigningApi (AccountName(..), mkAccountName)
 import Obelisk.Configs
-import Pact.Compile (compileExps, mkEmptyInfo)
-import Pact.Parse
-import Pact.Types.Exp
-import Pact.Types.PactValue
-import Pact.Types.Pretty
-import Pact.Types.Term hiding (PublicKey)
-import Pact.Types.Type
 import Text.URI.Lens
 
 import qualified Data.Aeson as A
+import qualified Data.CaseInsensitive as CI
 import qualified Data.Map as Map
-import qualified Data.Set as Set
 import qualified Data.Text as T
 import qualified Pact.Types.ChainId as Pact
 import qualified Text.Megaparsec as MP
@@ -73,29 +59,27 @@ import Common.RefPath as MP
 
 -- | Name that uniquely describes a valid network.
 newtype NetworkName = NetworkName
-  { unNetworkName :: Text
+  { unNetworkName :: CI Text
   } deriving (Eq, Ord, Show)
 
 instance FromJSON NetworkName where
   parseJSON = either (fail . T.unpack) pure . mkNetworkName <=< parseJSON
 instance FromJSONKey NetworkName where
 instance ToJSON NetworkName where
-  toJSON = toJSON . unNetworkName
+  toJSON = toJSON . CI.original . unNetworkName
 instance ToJSONKey NetworkName where
 
 -- | Construct a 'NetworkName', and banish mainnet - for now.
 mkNetworkName :: Text -> Either Text NetworkName
-mkNetworkName (T.strip -> t)
-  | "mainnet" `T.isInfixOf` t = Left "This wallet does not support mainnet"
-  | otherwise = Right $ NetworkName t
+mkNetworkName (T.strip -> t) = Right $ NetworkName $ CI.mk t
 
 -- | Construct a 'NetworkName' but don't perform any checks
 uncheckedNetworkName :: Text -> NetworkName
-uncheckedNetworkName = NetworkName . T.strip
+uncheckedNetworkName = NetworkName . CI.mk . T.strip
 
 -- | Render a network name as `Text`.
 textNetworkName :: NetworkName -> Text
-textNetworkName = coerce
+textNetworkName = CI.original . coerce
 
 -- | Reference for a node in a network.
 newtype NodeRef = NodeRef
@@ -226,82 +210,3 @@ renderNodeRef (NodeRef (URI.Authority mUser h mp)) =
     maybe "" ((<> "@") . renderUser) mUser <> URI.unRText h <> maybe "" ((":" <>) . tshow) mp
   where
     renderUser (URI.UserInfo name mPw) = URI.unRText name <> maybe "" ((":" <>) . URI.unRText) mPw
-
--- | Helper function for compiling pact code to a list of terms
-compileCode :: Text -> Either String [Term Name]
-compileCode = first show . compileExps mkEmptyInfo <=< parseExprs
-
--- | Parse the balance checking object into a map of account balance changes and
--- the result from the inner code
-parseWrappedBalanceChecks :: PactValue -> Either Text (Map AccountName Decimal, PactValue)
-parseWrappedBalanceChecks = first ("parseWrappedBalanceChecks: " <>) . \case
-  (PObject (ObjectMap obj)) -> do
-    let lookupErr k = case Map.lookup (FieldKey k) obj of
-          Nothing -> Left $ "Missing key '" <> k <> "' in map: " <> renderCompactText (ObjectMap obj)
-          Just v -> pure v
-    before <- parseAccountBalances =<< lookupErr "before"
-    result <- parseResults =<< lookupErr "results"
-    after <- parseAccountBalances =<< lookupErr "after"
-    pure (Map.unionWith subtract before after, result)
-  v -> Left $ "Unexpected PactValue (expected object): " <> renderCompactText v
-
--- | Turn the object of account->balance into a map
-parseAccountBalances :: PactValue -> Either Text (Map AccountName Decimal)
-parseAccountBalances = first ("parseAccountBalances: " <>) . \case
-  (PObject (ObjectMap obj)) -> do
-    m <- for (Map.toAscList obj) $ \(FieldKey accountText, pv) -> do
-      bal <- case pv of
-        PLiteral (LDecimal d) -> pure d
-        t -> Left $ "Unexpected PactValue (expected decimal): " <> renderCompactText t
-      acc <- mkAccountName accountText
-      pure (acc, bal)
-    pure $ Map.fromList m
-  v -> Left $ "Unexpected PactValue (expected object): " <> renderCompactText v
-
--- | Get the last result, as we would under unwrapped deployment.
-parseResults :: PactValue -> Either Text PactValue
-parseResults = first ("parseResults: " <>) . \case
-  PList vec -> maybe (Left "No value returned") Right $ vec ^? _last
-  v -> Left $ "Unexpected PactValue (expected list): " <> renderCompactText v
-
--- | Wrap the code with a let binding to get the balances of the given accounts
--- before and after executing the code.
-wrapWithBalanceChecks :: Set AccountName -> Text -> Either String Text
-wrapWithBalanceChecks accounts code = wrapped <$ compileCode code
-  where
-    getBalance :: AccountName -> (FieldKey, Term Name)
-    getBalance acc = (FieldKey (unAccountName acc), TApp
-      { _tApp = App
-        { _appFun = TVar (QName $ QualifiedName "coin" "get-balance" def) def
-        , _appArgs = [TLiteral (LString $ unAccountName acc) def]
-        , _appInfo = def
-        }
-      , _tInfo = def
-      })
-    -- Produce an object from account names to account balances
-    accountBalances = TObject
-      { _tObject = Pact.Types.Term.Object
-        { _oObject = ObjectMap $ Map.fromList $ map getBalance $ Set.toAscList accounts
-        , _oObjectType = TyPrim TyDecimal
-        , _oKeyOrder = Nothing
-        , _oInfo = def
-        }
-      , _tInfo = def
-      }
-    -- It would be nice to parse and compile the code and shove it into a
-    -- giant 'Term' so we can serialise it, but 'pretty' is not guaranteed to
-    -- produce valid pact code. It at least produces bad type sigs and let
-    -- bindings.
-    -- Thus we build this from a string and use 'pretty' where appropriate.
-    -- We do need to make sure the code compiles before splicing it in.
-    -- The order of execution is the same as the order of the bound variables.
-    wrapped = T.unlines
-      [ "(let"
-      , "  ((before " <> renderCompactText accountBalances <> ")"
-      , "   (results ["
-      , code
-      , "   ])"
-      , "   (after " <> renderCompactText accountBalances <> "))"
-      , "   {\"after\": after, \"results\": results, \"before\": before})"
-      ]
-

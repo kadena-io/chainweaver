@@ -1,21 +1,12 @@
-{-# LANGUAGE DataKinds              #-}
-{-# LANGUAGE DeriveGeneric          #-}
-{-# LANGUAGE ExtendedDefaultRules   #-}
-{-# LANGUAGE FlexibleContexts       #-}
-{-# LANGUAGE FlexibleInstances      #-}
-{-# LANGUAGE FunctionalDependencies #-}
-{-# LANGUAGE KindSignatures         #-}
-{-# LANGUAGE LambdaCase             #-}
-{-# LANGUAGE MultiParamTypeClasses  #-}
-{-# LANGUAGE OverloadedStrings      #-}
-{-# LANGUAGE QuasiQuotes            #-}
-{-# LANGUAGE RecursiveDo            #-}
-{-# LANGUAGE ScopedTypeVariables    #-}
-{-# LANGUAGE StandaloneDeriving     #-}
-{-# LANGUAGE TemplateHaskell        #-}
-{-# LANGUAGE TupleSections          #-}
-{-# LANGUAGE TypeApplications       #-}
-{-# LANGUAGE TypeFamilies           #-}
+{-# LANGUAGE DataKinds #-}
+{-# LANGUAGE ExtendedDefaultRules #-}
+{-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE TypeFamilies #-}
 
 -- | Handling of route updates for chainweaver.
 --
@@ -31,12 +22,11 @@ module Frontend.Routes where
 ------------------------------------------------------------------------------
 import           Control.Lens
 import           Control.Monad.State.Strict
-import           Data.Dependent.Sum              (DSum ((:=>)))
 import           Reflex
 import qualified Text.Megaparsec as MP
 import           Data.Void (Void)
 ------------------------------------------------------------------------------
-import           Obelisk.Route                   (R)
+import           Obelisk.Route                   (R, (?/))
 import           Obelisk.Route.Frontend
 ------------------------------------------------------------------------------
 import           Common.Route
@@ -71,7 +61,7 @@ handleRoutes m = do
 
       onInvalidRoute = () <$ fmapMaybe (^? _Just . _Left) onParsedRoute
 
-      onOAuthRouteReset = (FrontendRoute_Main :/ ()) <$ m ^. oAuth_error
+      onOAuthRouteReset = (FrontendRoute_Contracts :/ Nothing) <$ m ^. oAuth_error
 
       onNewRoute = fmapMaybe id
         . attachWith buildRoute (current route)
@@ -97,7 +87,7 @@ handleRoutes m = do
     buildRoute :: R FrontendRoute -> Maybe LoadedRef -> Maybe (R FrontendRoute)
     buildRoute cRoute ref =
       let
-        newRoute = maybe (FrontendRoute_New :=> Identity ()) (renderRoute . renderRef) ref
+        newRoute = maybe (FrontendRoute_Contracts :/ Nothing) (renderRoute . renderRef) ref
       in
         if newRoute == cRoute
            then Nothing
@@ -105,21 +95,25 @@ handleRoutes m = do
 
     parseRoute :: R FrontendRoute -> Maybe (Either (MP.ParseErrorBundle RefPath Void) LoadedRef)
     parseRoute = fmap runRefParser . \case
-       FrontendRoute_Main     :/ () -> Nothing
-       FrontendRoute_Example  :/ xs -> Just $ "example":xs
-       FrontendRoute_Stored   :/ xs -> Just $ "stored":xs
-       FrontendRoute_Gist     :/ xs -> Just $ "gist":xs
-       FrontendRoute_Deployed :/ xs -> Just $ "deployed":xs
-       FrontendRoute_New      :/ () -> Nothing
-       FrontendRoute_OAuth    :/ _  -> Nothing
+      FrontendRoute_Contracts :/ Nothing -> Nothing
+      FrontendRoute_Contracts :/ Just c -> case c of
+        ContractRoute_Example  :/ xs -> Just $ "example":xs
+        ContractRoute_Stored   :/ xs -> Just $ "stored":xs
+        ContractRoute_Gist     :/ xs -> Just $ "gist":xs
+        ContractRoute_Deployed :/ xs -> Just $ "deployed":xs
+        ContractRoute_New      :/ () -> Nothing
+        ContractRoute_OAuth    :/ _  -> Nothing
+      FrontendRoute_Wallet   :/ () -> Nothing
+      FrontendRoute_Resources :/ () -> Nothing
+      FrontendRoute_Settings :/ () -> Nothing
 
     runRefParser = MP.parse parseRef "URL" . RefPath
 
     renderRoute :: RefPath -> R FrontendRoute
     renderRoute (RefPath (n:ns)) = case n of
-      "example"  -> FrontendRoute_Example  :/ ns
-      "stored"   -> FrontendRoute_Stored   :/ ns
-      "gist"     -> FrontendRoute_Gist     :/ ns
-      "deployed" -> FrontendRoute_Deployed :/ ns
-      _          -> FrontendRoute_Main     :/ ()
-    renderRoute _ = FrontendRoute_Main     :/ ()
+      "example"  -> FrontendRoute_Contracts ?/ ContractRoute_Example  :/ ns
+      "stored"   -> FrontendRoute_Contracts ?/ ContractRoute_Stored   :/ ns
+      "gist"     -> FrontendRoute_Contracts ?/ ContractRoute_Gist     :/ ns
+      "deployed" -> FrontendRoute_Contracts ?/ ContractRoute_Deployed :/ ns
+      _          -> FrontendRoute_Contracts :/ Nothing
+    renderRoute _ = FrontendRoute_Contracts :/ Nothing

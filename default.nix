@@ -8,29 +8,27 @@ with obelisk;
 let
   obApp = import ./obApp.nix args;
   pactServerModule = import ./pact-server/service.nix;
-  macAppName = "Kadena Chainweaver Testnet Alpha";
-  macAppIcon =  ./mac/static/icons/pact.png;
+  macAppName = "Kadena Chainweaver Beta";
+  macAppIcon =  ./mac/static/icons/kadena.png;
   macPactDocumentIcon = ./mac/static/icons/pact-document.png;
-  # ^ This can be created in Preview using the system document icon from
+  # ^ This can be created in Preview using 'GenericDocumentIcon.icns' from
   # /System/Library/CoreServices/CoreTypes.bundle/Contents/Resources/
-  # and the pact logo
+  # and the kadena logo
   macAppInstallerBackground = ./mac/static/installer-background.png;
-  bundleIdentifier = "io.kadena.chainweaver-alpha";
+  bundleIdentifier = "io.kadena.chainweaver";
   createDmg = pkgs.fetchFromGitHub {
     owner = "andreyvit";
     repo = "create-dmg";
     rev = "395bc0de23cd3499e0c6d0d1bafdbf4b074d5516";
     sha256 = "046x566m352mgr9mh8p8iyhr6b71di10m8f36zibaiixa0ca3cr0";
   };
+
   xcent = builtins.toFile "xcent" (nixpkgs.lib.generators.toPlist {} {
-#    application-identifier = "<team-id/>.${bundleIdentifier}";
-#    "com.apple.developer.team-identifier" = "<team-id/>";
-#    get-task-allow = true;
-#    keychain-access-groups = [ "<team-id/>.${bundleIdentifier}" ];
     "com.apple.security.app-sandbox" = false; # TODO enable this
     "com.apple.security.network.client" = true;
     "com.apple.security.network.server" = true;
   });
+
   plist = pkgs.writeText "plist" ''
     <?xml version="1.0" encoding="UTF-8"?>
     <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -105,32 +103,7 @@ in obApp // rec {
     mkdir $out
     ${pkgs.sass}/bin/sass ${./backend/sass}/index.scss $out/sass.css
   '';
-  # Mac app static linking
-  macBackend = pkgs.haskell.lib.overrideCabal obApp.ghc.mac (drv: {
-    preBuild = ''
-      mkdir include
-      ln -s ${pkgs.darwin.cf-private}/Library/Frameworks/CoreFoundation.framework/Headers include/CoreFoundation
-      export NIX_CFLAGS_COMPILE="-I$PWD/include $NIX_CFLAGS_COMPILE"
-    '';
 
-    libraryFrameworkDepends =
-      (with pkgs.darwin; with apple_sdk.frameworks; [
-        Cocoa
-        WebKit
-      ]);
-
-    configureFlags = [
-      "--ghc-options=-optl=${(pkgs.openssl.override { static = true; }).out}/lib/libcrypto.a"
-      "--ghc-options=-optl=${(pkgs.openssl.override { static = true; }).out}/lib/libssl.a"
-      "--ghc-options=-optl=${pkgs.darwin.libiconv.override { enableShared = false; enableStatic = true; }}/lib/libiconv.a"
-      "--ghc-options=-optl=${pkgs.zlib.static}/lib/libz.a"
-      "--ghc-options=-optl=${pkgs.gmp6.override { withStatic = true; }}/lib/libgmp.a"
-      "--ghc-options=-optl=/usr/lib/libSystem.dylib"
-      "--ghc-options=-optl=${pkgs.libffi.override {
-        stdenv = pkgs.stdenvAdapters.makeStaticLibraries pkgs.stdenv;
-        }}/lib/libffi.a"
-    ];
-  });
   # Use native mac libc++
   fixedZ3 = pkgs.z3.overrideAttrs (oldAttrs: rec {
     fixupPhase = ''
@@ -146,7 +119,7 @@ in obApp // rec {
     mkdir -p "$out/${macAppName}.app/Contents/Resources"
     set -eux
     # Copy instead of symlink, so we can set the path to z3
-    cp "${macBackend}"/bin/macApp "$out/${macAppName}.app/Contents/MacOS/${macAppName}"
+    cp "${obApp.ghc.mac}"/bin/macApp "$out/${macAppName}.app/Contents/MacOS/${macAppName}"
     ln -s "${fixedZ3}"/bin/z3 "$out/${macAppName}.app/Contents/MacOS/z3"
     ln -s "${obApp.mkAssets obApp.passthru.staticFiles}" "$out/${macAppName}.app/Contents/Resources/static.assets"
     ln -s "${obApp.passthru.staticFiles}" "$out/${macAppName}.app/Contents/Resources/static"
@@ -195,6 +168,7 @@ in obApp // rec {
 
     if [ -z "$signer" ]; then
       echo "Error: No Mac Developer certificate found for team id $TEAM_ID" >&2
+      echo "See https://github.com/kadena-io/chainweaver/blob/redesign/README.md#mac-developer-certificate" >&2
       exit 1
     fi
 
@@ -224,8 +198,9 @@ in obApp // rec {
     /usr/bin/codesign --sign "$signer" "$tmpdir/${macAppName}.dmg"
 
     mv "$tmpdir/${macAppName}.dmg" .
-    # Quarantine it (uncomment for testing app quarantining)
-    # xattr -w com.apple.quarantine "00a3;5d4331e1;Safari;1AE3D17F-B83D-4ADA-94EA-219A44467959" ${macAppName}.dmg
+
+    # Quarantine it for reproducibility (otherwise can cause unexpected 'app is damaged' errors when automatically applied to downloaded .dmg files)
+    xattr -w com.apple.quarantine "00a3;5d4331e1;Safari;1AE3D17F-B83D-4ADA-94EA-219A44467959" "${macAppName}.dmg"
   '';
 
   server = args@{ hostName, adminEmail, routeHost, enableHttps, version }:

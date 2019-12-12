@@ -1,6 +1,6 @@
-# Pact Web
+# Chainweaver
 
-Web IDE for the [Pact](https://pact-language.readthedocs.io/en/latest/) language, including support for deployments to backends (blockchains, test servers).
+Kadena Chainweaver desktop wallet and web-based playground for the [Pact](https://pact-language.readthedocs.io/en/latest/) language, including support for deployments to backends (blockchains, test servers).
 
 # Hacking
 
@@ -10,23 +10,52 @@ Since release 1.4 chainweaver has support for GitHub gist sharing so it needs cl
 
 The homepage URL will be http://localhost:8000, the authorization callback url will be http://localhost:8000/oauth/redirect/github .
 
-## Web app
-Run locally:
-```shell
-ob run
-```
 Image files are located in [static/img](./static/img). To test an updated image, replace the old file with the new one and refresh the browser.
 
+## Web app
+Run [`./scripts/devWeb`](./scripts/devWeb)
+
+## Web app with desktop app bits
+Run [`./scripts/devDesktop`](./scripts/devDesktop)
+
 ## Mac app
-Build:
+To work on the objective-c code enter the project shell with
+```shell
+nix-shell default.nix -A shells.ghc
+```
+then (re-)enter `cabal new-repl mac` everytime you change the objective-c code.
+
+To actually run:
 ```shell
 nix-build -A mac
-```
-
-Run:
-```shell
 open result/*.app
 ```
+
+## Apple Disk Image
+
+### Mac Developer Certificate
+Create and download a "Mac Developer" certificate in https://developer.apple.com/account/resources/certificates/list - opening the downloaded file should launch *Keychain Access* and display your new certificate.
+
+### Apple Worldwide Developer Relations (WWDR) Certificate
+Find it in https://www.apple.com/certificateauthority/ under "Apple Intermediate Certificates". Download and open to add it to *Keychain Access*.
+
+### Deploying
+
+<!-- TODO: should we also accept "Apple Development" certificates? -->
+<!-- TODO: the deploy script will give a helpful error message if no "Mac Developer" certificate is found for the given TEAM_ID. We should do the same for the other pre-requisites -->
+
+```shell
+nix-build -A deployMac
+./result TEAM_ID
+```
+where `TEAM_ID` can be found in the upper-right corner after the team name in https://developer.apple.com/account/resources/ .
+
+Wait for the script to end. Do not interact with the installer window that pops up as that might prevent the disk image from being unmounted.
+A .dmg should have been created in the current directory. To test it's working properly:
+- launch the installer window by opening the .dmg file
+- right click in the app icon and select "Open" (do not simply double-click at it does not allow you to proceed)
+- a dialog saying "the identity of the developer cannot be confirmed" should appear - click "Open"
+
 OS X specific assets are located in the [static](./mac/static) folder. To test an updated asset, replace the old file and build again. Use 1024x1024 *.png* files for Mac app [icons](./mac/static/icons).
 
 # Deployments
@@ -92,7 +121,7 @@ Replace `YOUR-ORGANIZATION` with your organization's name.
 
 Press `Register an application` or `New application`, then give it a name of your liking and fill out the url, which should match the url where chainweaver will be running. For the Authorization callback URL use the following:
 
-https://HOST-WHERE-CHAINWEAVER-RUNS/oauth/redirect/github
+https://HOST-WHERE-CHAINWEAVER-RUNS/contracts/oauth/redirect/github
 
 
 Replace `HOST-WHERE-CHAINWEAVER-RUNS` with your actual host name and press `Register application`.

@@ -1,11 +1,12 @@
 name: common
 version:             1.5.1.2
-cabal-version: >= 1.2
+cabal-version: >= 1.8
 build-type: Simple
 
 library
   hs-source-dirs: src
   build-depends: base
+               , base16-bytestring
                , aeson
                , containers
                , modern-uri
@@ -18,6 +19,7 @@ library
                , kadena-signing-api
                , text
                , lens
+               , newtype-generics
                , prettyprinter
                , pact
                , split
@@ -27,6 +29,7 @@ library
                , safe
                , errors
                , unliftio
+               , unordered-containers
 
   exposed-modules:
     Common.Api
@@ -36,3 +39,22 @@ library
     Common.Orphans
     Common.RefPath
     Common.Foundation
+    Common.Wallet
+
+test-suite golden-tests
+  type: exitcode-stdio-1.0
+
+  other-modules: GoldenHelper
+
+  main-is: GoldenTests.hs
+  hs-source-dirs: tests
+  build-depends: base
+               , common
+               , tasty
+               , tasty-golden
+               , aeson
+               , pact
+               , errors
+               , text
+               , mtl
+               , bytestring

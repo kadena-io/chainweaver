@@ -1,22 +1,13 @@
-{-# LANGUAGE ConstraintKinds        #-}
-{-# LANGUAGE DataKinds              #-}
-{-# LANGUAGE DeriveGeneric          #-}
-{-# LANGUAGE ExtendedDefaultRules   #-}
-{-# LANGUAGE FlexibleContexts       #-}
-{-# LANGUAGE FlexibleInstances      #-}
-{-# LANGUAGE FunctionalDependencies #-}
-{-# LANGUAGE KindSignatures         #-}
-{-# LANGUAGE LambdaCase             #-}
-{-# LANGUAGE MultiParamTypeClasses  #-}
-{-# LANGUAGE OverloadedStrings      #-}
-{-# LANGUAGE QuasiQuotes            #-}
-{-# LANGUAGE RecursiveDo            #-}
-{-# LANGUAGE ScopedTypeVariables    #-}
-{-# LANGUAGE StandaloneDeriving     #-}
-{-# LANGUAGE TemplateHaskell        #-}
-{-# LANGUAGE TupleSections          #-}
-{-# LANGUAGE TypeApplications       #-}
-{-# LANGUAGE TypeFamilies           #-}
+{-# LANGUAGE ConstraintKinds #-}
+{-# LANGUAGE DataKinds #-}
+{-# LANGUAGE ExtendedDefaultRules #-}
+{-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE TypeFamilies #-}
 
 -- |
 -- Copyright   :  (C) 2018 Kadena
@@ -30,6 +21,7 @@ import           Control.Lens
 import           Reflex.Dom
 import           Reflex.Network.Extended
 ------------------------------------------------------------------------------
+import           Frontend.Crypto.Class
 import           Frontend.Network
 import           Frontend.ModuleExplorer
 import           Frontend.UI.Button
@@ -39,8 +31,8 @@ import           Frontend.UI.ModuleExplorer.ModuleList
 import           Frontend.UI.Widgets
 ------------------------------------------------------------------------------
 
-type HasUIModuleExplorerModel model t =
-  (HasModuleExplorer model t, HasNetwork model t, HasUIModuleDetailsModel model t)
+type HasUIModuleExplorerModel model key t =
+  (HasModuleExplorer model t, HasNetwork model t, HasUIModuleDetailsModel model key t)
 
 type HasUIModuleExplorerModelCfg mConf m t =
   ( Monoid mConf, Flattenable mConf t, HasModuleExplorerCfg mConf t, HasNetworkCfg mConf t
@@ -48,10 +40,11 @@ type HasUIModuleExplorerModelCfg mConf m t =
   )
 
 moduleExplorer
-  :: forall t m model mConf
+  :: forall key t m model mConf
   . ( MonadWidget t m
-    , HasUIModuleExplorerModel model t
+    , HasUIModuleExplorerModel model key t
     , HasUIModuleExplorerModelCfg mConf m t
+    , HasCrypto key (Performable m)
     )
   => model
   -> m mConf
@@ -103,9 +96,9 @@ browseExamples =
 --
 --   This includes the accordion and the refresh button at the top.
 browseDeployedTitle
-  :: forall t m model mConf
+  :: forall key t m model mConf
   . ( MonadWidget t m
-    , HasUIModuleExplorerModel model t
+    , HasUIModuleExplorerModel model key t
     , HasUIModuleExplorerModelCfg mConf m t
     )
   => model

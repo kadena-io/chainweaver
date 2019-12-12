@@ -38,6 +38,7 @@ library
                , free
                , generic-deriving
                , ghcjs-dom
+               , here
                , http-client
                , http-client-tls
                , http-types
@@ -72,16 +73,23 @@ library
                , string-qq
                , template-haskell
                , text
+               , these
+               , these-lens
                , time
                , transformers
                , trifecta
                , unordered-containers
                , kadena-signing-api
+               , base64-bytestring
+               , crc
+               , attoparsec
+               , vector
 
   exposed-modules: Frontend
                  , Frontend.AppCfg
                  , Frontend.Network
                  , Frontend.Network.NodeInfo
+                 , Frontend.Crypto.Class
                  , Frontend.Crypto.Ed25519
                  , Frontend.Editor
                  , Frontend.Editor.Annotation
@@ -106,17 +114,21 @@ library
                  , Frontend.Storage
                  , Frontend.UI.Button
                  , Frontend.UI.DeploymentSettings
+                 , Frontend.UI.Dialogs.AddAccount
                  , Frontend.UI.Dialogs.CallFunction
                  , Frontend.UI.Dialogs.CreateGist
                  , Frontend.UI.Dialogs.CreatedGist
                  , Frontend.UI.Dialogs.DeployConfirmation
                  , Frontend.UI.Dialogs.NetworkEdit
-                 , Frontend.UI.Dialogs.KeyImport
                  , Frontend.UI.Dialogs.LogoutConfirmation
-                 , Frontend.UI.Dialogs.DeleteConfirmation
+                 , Frontend.UI.Dialogs.Receive
+                 , Frontend.UI.Dialogs.Send
                  , Frontend.UI.Dialogs.Signing
+                 , Frontend.UI.Dialogs.AccountDetails
+                 , Frontend.UI.Dialogs.AddVanityAccount
                  , Frontend.UI.ErrorList
                  , Frontend.UI.Icon
+                 , Frontend.UI.IconGrid
                  , Frontend.UI.JsonData
                  , Frontend.UI.Modal
                  , Frontend.UI.Modal.Impl
@@ -126,10 +138,13 @@ library
                  , Frontend.UI.ModuleExplorer.ModuleList
                  , Frontend.UI.Repl
                  , Frontend.UI.RightPanel
+                 , Frontend.UI.Settings
                  , Frontend.UI.TabBar
                  , Frontend.UI.Wallet
                  , Frontend.UI.Widgets
+                 , Frontend.UI.Widgets.AccountName
                  , Frontend.UI.Widgets.Helpers
+                 , Frontend.KadenaAddress
                  , Frontend.Wallet
                  , Reflex.Class.Extended
                  , Reflex.Dom.ACE.Extended
@@ -182,3 +197,19 @@ executable frontend
   -- improves page load times:
   -- if impl(ghcjs)
   --   ghcjs-options: -dedupe
+
+test-suite kadenaaddress
+  type: exitcode-stdio-1.0
+
+  main-is: KadenaAddressSpec.hs
+  hs-source-dirs: tests
+  build-depends: base
+               , frontend
+               , hedgehog
+               , kadena-signing-api
+               , pact
+               , errors
+               , text
+               , common
+               , lens
+               , bytestring

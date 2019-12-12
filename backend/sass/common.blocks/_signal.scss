@@ -14,15 +14,13 @@
 
 .signal__circle {
   border-radius: 50%;
-  border-color: $std-border-color;
-  border-style: solid;
-  border-width: 1px;
-  height: 14px;
-  width: 15px;
+  height: 11px;
+  width: 11px;
+  background-color: lightgrey;
 }
 
 .signal__circle_status_ok {
-  background-color: #7FFF00;
+  background-color: $chainweaver-blue;
 }
 
 .signal__circle_status_problem {
@@ -31,4 +29,9 @@
 
 .signal__circle_status_warning {
   background-color: yellow;
+}
+
+.signal__left-floated {
+  float: left;
+  margin-right: 1rem;
 }

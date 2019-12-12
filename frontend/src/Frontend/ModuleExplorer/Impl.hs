@@ -1,22 +1,16 @@
-{-# LANGUAGE ConstraintKinds        #-}
-{-# LANGUAGE DataKinds              #-}
-{-# LANGUAGE DeriveGeneric          #-}
-{-# LANGUAGE ExtendedDefaultRules   #-}
-{-# LANGUAGE FlexibleContexts       #-}
-{-# LANGUAGE FlexibleInstances      #-}
-{-# LANGUAGE FunctionalDependencies #-}
-{-# LANGUAGE KindSignatures         #-}
-{-# LANGUAGE LambdaCase             #-}
-{-# LANGUAGE MultiParamTypeClasses  #-}
-{-# LANGUAGE OverloadedStrings      #-}
-{-# LANGUAGE QuasiQuotes            #-}
-{-# LANGUAGE RecursiveDo            #-}
-{-# LANGUAGE ScopedTypeVariables    #-}
-{-# LANGUAGE StandaloneDeriving     #-}
-{-# LANGUAGE TemplateHaskell        #-}
-{-# LANGUAGE TupleSections          #-}
-{-# LANGUAGE TypeApplications       #-}
-{-# LANGUAGE TypeFamilies           #-}
+{-# LANGUAGE ConstraintKinds #-}
+{-# LANGUAGE DataKinds #-}
+{-# LANGUAGE ExtendedDefaultRules #-}
+{-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE RecursiveDo #-}
+{-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE StandaloneDeriving #-}
+{-# LANGUAGE TupleSections #-}
+{-# LANGUAGE TypeFamilies #-}
 
 -- | Implementation of the Frontend.ModuleExplorer interface.
 --
@@ -41,14 +35,18 @@ import           Control.Monad.Trans.Maybe (MaybeT (..), runMaybeT)
 import           Data.Either               (rights)
 import qualified Data.Map                  as Map
 import           Data.Text                 (Text)
+import           Data.These.Lens           (_This, there)
 import           Data.Tuple                (swap)
 import           Reflex
 import           Reflex.Dom.Core           (HasJSContext, MonadHold, PostBuild)
 import           Safe                      (tailSafe)
 ------------------------------------------------------------------------------
+import           Obelisk.Route.Frontend
 import           Pact.Types.Lang
 ------------------------------------------------------------------------------
+import           Common.Route
 import           Frontend.AppCfg
+import           Frontend.Crypto.Class
 import           Frontend.Editor
 import           Frontend.Foundation
 import           Frontend.GistStore
@@ -104,16 +102,17 @@ loadEditorFromLocalStorage = getItemStorage localStorage StoreModuleExplorer_Ses
 
 
 makeModuleExplorer
-  :: forall t m cfg mConf model
+  :: forall key t m cfg mConf model
   . ( ReflexConstraints t m, MonadIO m
     , HasModuleExplorerCfg cfg t
-    {- , HasModuleExplorerModel model t -}
     , HasModuleExplorerModelCfg mConf t
     , HasModuleExplorerModel model t
     , MonadSample t (Performable m)
     , HasStorage (Performable m)
+    , HasCrypto key (Performable m)
+    , Routed t (R FrontendRoute) m
     )
-  => AppCfg t m
+  => AppCfg key t m
   -> model
   -> cfg
   -> m (mConf, ModuleExplorer t)
@@ -127,12 +126,17 @@ makeModuleExplorer appCfg m cfg = mfix $ \ ~(_, explr) -> do
         ]
       )
 
+    inContracts <- ffor askRoute $ fmap $ \case
+      FrontendRoute_Contracts :/ _ -> True
+      _ -> False
+    firstSeen <- headE $ ffilter id $ updated inContracts
+
     onPostBuild <- getPostBuild
     mInitFile <- _appCfg_loadEditor appCfg
     let
       onInitFile =
         if isNothing mInitFile
-           then (const $ FileRef_Example ExampleRef_HelloWorld) <$> onPostBuild
+           then FileRef_Example ExampleRef_HelloWorld <$ firstSeen
            else never
       editorInitCfg = mempty
         & editorCfg_loadCode .~ fmapMaybe (const mInitFile) onPostBuild
@@ -226,11 +230,12 @@ mkSelectionGrowth explr = do
 
 -- | Takes care of loading a file/module into the editor.
 loadToEditor
-  :: forall m t mConf model
+  :: forall key m t mConf model
   . ( ReflexConstraints t m, MonadIO m
     , HasModuleExplorerModelCfg  mConf t
     , HasModuleExplorerModel  model t
     , MonadSample t (Performable m)
+    , HasCrypto key (Performable m)
     )
   => model
   -> Event t FileRef
@@ -347,12 +352,13 @@ selectFile m onModRef onMayFileRef = mdo
 --   The deployed module on the top of the stack will always be kept up2date on
 --   `_network_deployed` fires.
 pushPopModule
-  :: forall m t mConf model
+  :: forall key m t mConf model
   . ( MonadHold t m, PerformEvent t m, MonadJSM (Performable m)
     , HasJSContext (Performable m), TriggerEvent t m, MonadFix m, PostBuild t m
     , MonadSample t (Performable m), MonadIO m
     , HasMessagesCfg  mConf t, Monoid mConf
     , HasNetwork model t
+    , HasCrypto key (Performable m)
     )
   => model
   -> ModuleExplorer t
@@ -417,11 +423,12 @@ pushPopModule m explr onClear onPush onPop = mdo
 --
 --   Loading errors will be reported to `Messages`.
 loadModule
-  :: forall m t mConf model
+  :: forall key m t mConf model
   . ( ReflexConstraints t m, MonadIO m
     , Monoid mConf, HasMessagesCfg mConf t
     , MonadSample t (Performable m)
     , HasNetwork model t
+    , HasCrypto key (Performable m)
     )
   => model
   -> Event t DeployedModuleRef
@@ -430,8 +437,8 @@ loadModule
 loadModule networkL onRef = do
   onErrModule <- fetchModule networkL onRef
   let
-    onErr = fmapMaybe (^? _2 . _Left) onErrModule
-    onModule = fmap (^? _Right) <$> onErrModule
+    onErr = fmapMaybe (^? _2 . _This) onErrModule
+    onModule = fmap (^? there) <$> onErrModule
   pure
     ( mempty & messagesCfg_send .~ fmap (pure . ("Module Explorer, loading of module failed: " <>)) onErr
     , onModule

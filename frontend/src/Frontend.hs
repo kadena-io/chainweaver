@@ -1,8 +1,7 @@
-{-# LANGUAGE DataKinds         #-}
+{-# LANGUAGE DataKinds #-}
 {-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE TypeApplications  #-}
-{-# LANGUAGE TypeApplications  #-}
-{-# LANGUAGE TemplateHaskell  #-}
+{-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE TypeApplications #-}
 module Frontend where
 
 import           Control.Monad            (join, void)
@@ -23,6 +22,8 @@ import           Obelisk.Generated.Static
 import           Common.Api
 import           Common.Route
 import           Frontend.AppCfg
+import           Frontend.Crypto.Class
+import           Frontend.Crypto.Ed25519
 import           Frontend.Foundation
 import           Frontend.ModuleExplorer.Impl (loadEditorFromLocalStorage)
 import           Frontend.ReplGhcjs
@@ -52,7 +53,13 @@ frontend = Frontend
   , _frontend_body = prerender_ loaderMarkup $ do
     (fileOpened, triggerOpen) <- openFileDialog
     let store = browserStorage
-    flip runStorageT store $ app $ AppCfg
+        crypto = Crypto
+          mkSignature
+          (const genKeyPair)
+          (\_ _ -> pure $ Left "Not supported on web")
+          (\_ _ -> error "Not supported on web")
+
+    mapRoutedT (flip runStorageT store . flip runCryptoT crypto) $ app blank $ AppCfg
       { _appCfg_gistEnabled = True
       , _appCfg_externalFileOpened = fileOpened
       , _appCfg_openFileDialog = liftJSM triggerOpen
@@ -60,9 +67,12 @@ frontend = Frontend
       , _appCfg_editorReadOnly = False
       , _appCfg_signingRequest = never
       , _appCfg_signingResponse = liftIO . print
-      , _appCfg_forceResize = never
+      , _appCfg_enabledSettings = EnabledSettings
+        {
+        }
       }
   }
+
 
 -- | The 'JSM' action *must* be run from a user initiated event in order for the
 -- dialog to open
@@ -83,8 +93,8 @@ openFileDialog = do
   pure (fmapMaybe id mContents, open)
 
 loaderMarkup :: DomBuilder t m => m ()
-loaderMarkup = do
-  divClass "spinner" $ do
+loaderMarkup = divClass "spinner" $ do
+  divClass "spinner__cubes" $ do
     divClass "cube1" blank
     divClass "cube2" blank
   divClass "spinner__msg" $ text "Loading"
@@ -99,6 +109,8 @@ newHead routeText = do
   meta ("name" =: "google" <> "content" =: "notranslate")
   meta ("http-equiv" =: "Content-Language" <> "content" =: "en_US")
   elAttr "link" ("href" =: routeText (BackendRoute_Css :/ ()) <> "rel" =: "stylesheet") blank
+  elAttr "style" ("type" =: "text/css") $ text haskellCss
+
   ss "https://fonts.googleapis.com/css?family=Roboto"
   ss "https://fonts.googleapis.com/css?family=Work+Sans"
   ss (static @"css/font-awesome.min.css")
@@ -115,3 +127,19 @@ newHead routeText = do
     js' url = elAttr' "script" ("type" =: "text/javascript" <> "src" =: url <> "charset" =: "utf-8") blank
     ss url = elAttr "link" ("href" =: url <> "rel" =: "stylesheet") blank
     meta attrs = elAttr "meta" attrs blank
+
+    -- Allows the use of `static` in CSS and sharing parameters with desktop apps
+    haskellCss = T.unlines
+      [ "body { min-width: " <> tshow w <> "px; " <> "min-height: " <> tshow h <> "px; }"
+      , alertImg ".icon_type_error"                $ static @"img/error.svg"
+      , alertImg ".icon_type_warning"              $ static @"img/warning.svg"
+      , alertImg "div.ace_gutter-cell.ace_error"   $ static @"img/error.svg"
+      , alertImg "div.ace_gutter-cell.ace_warning" $ static @"img/warning.svg"
+      ]
+      where
+        bgImg src = "background-image: url(" <> src <> "); background-position: left center"
+        alertImg sel src = sel <> " { " <> bgImg src <> " } ";
+        (w,h) = minWindowSize
+
+minWindowSize :: (Int, Int)
+minWindowSize = (1400, 900)

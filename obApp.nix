@@ -41,6 +41,7 @@ in
           obelisk-oauth-backend = hackGet ./deps/obelisk-oauth + /backend;
           # Needed for obelisk-oauth currently (ghcjs support mostly):
           entropy = hackGet ./deps/entropy;
+          crc = hackGet ./deps/crc;
           cardano-crypto = hackGet ./deps/cardano-crypto;
           kadena-signing-api = hackGet ./deps/signing-api + /kadena-signing-api;
           desktop = ./desktop;
@@ -49,6 +50,36 @@ in
 
     overrides = let
       inherit (pkgs) lib;
+
+      mac-overlay = self: super: {
+        # Mac app static linking
+        mac = pkgs.haskell.lib.overrideCabal super.mac (drv: {
+          preBuild = ''
+            mkdir include
+            ln -s ${pkgs.darwin.cf-private}/Library/Frameworks/CoreFoundation.framework/Headers include/CoreFoundation
+            export NIX_CFLAGS_COMPILE="-I$PWD/include $NIX_CFLAGS_COMPILE"
+          '';
+
+          libraryFrameworkDepends =
+            (with pkgs.darwin; with apple_sdk.frameworks; [
+              Cocoa
+              WebKit
+            ]);
+
+          configureFlags = [
+            "--ghc-options=-optl=${(pkgs.openssl.override { static = true; }).out}/lib/libcrypto.a"
+            "--ghc-options=-optl=${(pkgs.openssl.override { static = true; }).out}/lib/libssl.a"
+            "--ghc-options=-optl=${pkgs.darwin.libiconv.override { enableShared = false; enableStatic = true; }}/lib/libiconv.a"
+            "--ghc-options=-optl=${pkgs.zlib.static}/lib/libz.a"
+            "--ghc-options=-optl=${pkgs.gmp6.override { withStatic = true; }}/lib/libgmp.a"
+            "--ghc-options=-optl=/usr/lib/libSystem.dylib"
+            "--ghc-options=-optl=${pkgs.libffi.override {
+              stdenv = pkgs.stdenvAdapters.makeStaticLibraries pkgs.stdenv;
+            }}/lib/libffi.a"
+          ];
+        });
+      };
+
       desktop-overlay = self: super: {
         ether = haskellLib.doJailbreak super.ether;
       };
@@ -69,6 +100,8 @@ in
         servant-server = haskellLib.dontCheck super.servant-server;
 
         # failing
+        mono-traversable = haskellLib.dontCheck super.mono-traversable;
+        conduit = haskellLib.dontCheck super.conduit;
         wai-extra = haskellLib.dontCheck super.wai-extra;
         wai-app-static = haskellLib.dontCheck super.wai-app-static;
         servant-client = haskellLib.dontCheck super.servant-client;
@@ -88,11 +121,13 @@ in
         reflex-dom-core = haskellLib.dontCheck super.reflex-dom-core; # webdriver fails to build
         modern-uri = haskellLib.dontCheck super.modern-uri;
         servant-jsaddle = haskellLib.dontCheck (haskellLib.doJailbreak super.servant-jsaddle);
+        these-lens = haskellLib.doJailbreak (self.callHackage "these-lens" "1" {});
         obelisk-oauth-frontend = haskellLib.doJailbreak super.obelisk-oauth-frontend;
         pact = haskellLib.dontCheck super.pact; # tests can timeout...
       };
     in self: super: lib.foldr lib.composeExtensions (_: _: {}) [
       (import (hackGet ./deps/pact + "/overrides.nix") pkgs hackGet)
+      mac-overlay
       desktop-overlay
       common-overlay
       (optionalExtension (super.ghc.isGhcjs or false) guard-ghcjs-overlay)

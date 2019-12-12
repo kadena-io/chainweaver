@@ -34,18 +34,3 @@
   margin: 1px 0px; /* 0px left and right because of button's margin's */
   flex-grow: 1;
 }
-
-@media (min-width: 1200px) {
-  .filter-bar__pagination {
-    max-width: 250px;
-    margin: 0 7px;
-  }
-  .filter-bar {
-    margin-left: -8px;
-    margin-right: -7px;
-  }
-
-  .filter-bar > * {
-    margin: 0 8px;
-  }
-}

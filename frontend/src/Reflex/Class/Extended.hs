@@ -1,6 +1,6 @@
-{-# LANGUAGE TypeSynonymInstances #-}
-{-# LANGUAGE RankNTypes          #-}
+{-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE TypeSynonymInstances #-}
 {-|
 Module      : Reflex.Class.Extended
 Description : Some convenience functions missing from Reflex.

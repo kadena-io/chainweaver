@@ -125,3 +125,27 @@ input[type=number] {
     background: #ddd;
   }
 }
+
+.dimensional-input-wrapper {
+  display: flex;
+  position: relative;
+  align-items: center;
+  width: 100%;
+
+  input {
+    padding-left: 90px;
+  }
+}
+
+.dimensional-input-wrapper__units {
+  pointer-events: none;
+  position: absolute;
+  padding-left: 10px;
+  color: $tertiary-color;
+}
+
+.real-input__rounded {
+  position: absolute;
+  right: 10px;
+  color: $tertiary-color;
+}

@@ -1,20 +1,16 @@
-{-# LANGUAGE ConstraintKinds       #-}
-{-# LANGUAGE DataKinds             #-}
-{-# LANGUAGE DeriveGeneric         #-}
-{-# LANGUAGE ExtendedDefaultRules  #-}
-{-# LANGUAGE FlexibleContexts      #-}
-{-# LANGUAGE FlexibleInstances     #-}
-{-# LANGUAGE KindSignatures        #-}
-{-# LANGUAGE LambdaCase            #-}
+{-# LANGUAGE ConstraintKinds #-}
+{-# LANGUAGE DataKinds #-}
+{-# LANGUAGE ExtendedDefaultRules #-}
+{-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE KindSignatures #-}
+{-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
-{-# LANGUAGE OverloadedStrings     #-}
-{-# LANGUAGE PatternGuards         #-}
-{-# LANGUAGE QuasiQuotes           #-}
-{-# LANGUAGE RecursiveDo           #-}
-{-# LANGUAGE ScopedTypeVariables   #-}
-{-# LANGUAGE StandaloneDeriving    #-}
-{-# LANGUAGE TemplateHaskell       #-}
-{-# LANGUAGE TupleSections         #-}
+{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE PatternGuards #-}
+{-# LANGUAGE RecursiveDo #-}
+{-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE TupleSections #-}
 
 -- | Confirmation dialog for deploying modules and calling functions on the
 -- network.
@@ -45,6 +41,7 @@ import           Pact.Types.Lang                (Arg (..), FunType (..),
                                                  ModuleName (..), Name,
                                                  PrimType (..), Term, Type (..))
 ------------------------------------------------------------------------------
+import           Frontend.Crypto.Class
 import           Frontend.Foundation            hiding (Arg)
 import           Frontend.JsonData              (HasJsonData (..), JsonData, HasJsonDataCfg)
 import           Frontend.ModuleExplorer
@@ -56,8 +53,8 @@ import           Frontend.UI.Widgets
 import           Frontend.Wallet                (HasWallet (..))
 ------------------------------------------------------------------------------
 
-type HasUICallFunctionModel model t =
-  (HasModuleExplorer model t, HasNetwork model t, HasWallet model t, HasJsonData model t)
+type HasUICallFunctionModel model key t =
+  (HasModuleExplorer model t, HasNetwork model t, HasWallet model key t, HasJsonData model t)
 
 type HasUICallFunctionModelCfg mConf t =
   ( Monoid mConf, Flattenable mConf t, HasModuleExplorerCfg mConf t
@@ -66,8 +63,11 @@ type HasUICallFunctionModelCfg mConf t =
 
 -- | Modal dialog for calling a function.
 uiCallFunction
-  :: forall t m  mConf model
-  . (MonadWidget t m, HasUICallFunctionModelCfg mConf t, HasUICallFunctionModel model t, HasJsonDataCfg mConf t)
+  :: forall key t m mConf model
+  . ( MonadWidget t m, HasUICallFunctionModelCfg mConf t
+    , HasUICallFunctionModel model key t, HasJsonDataCfg mConf t
+    , HasCrypto key (Performable m)
+    )
   => model
   -> Maybe DeployedModuleRef
   -> PactFunction
@@ -81,13 +81,14 @@ uiCallFunction m mModule func _onClose
             , _deploymentSettingsConfig_chainId =
                 predefinedChainIdSelect $ _chainRef_chain . _moduleRef_source $ moduleRef
             , _deploymentSettingsConfig_code = fromMaybe (pure $ buildCall func []) mPactCall
-            , _deploymentSettingsConfig_sender = uiSenderDropdown def
+            , _deploymentSettingsConfig_sender = uiSenderDropdown def never
             , _deploymentSettingsConfig_data = Nothing
             , _deploymentSettingsConfig_ttl = Nothing
             , _deploymentSettingsConfig_nonce = Nothing
             , _deploymentSettingsConfig_gasLimit = Nothing
             , _deploymentSettingsConfig_caps = Nothing
             , _deploymentSettingsConfig_extraSigners = []
+            , _deploymentSettingsConfig_includePreviewTab = True
             }
           pure (cfg, result)
         deployConfirmCfg = def
@@ -138,19 +139,17 @@ parametersTab m func =
 
 
 -- | Build a function call
---
--- TODO: Proper namespace support
 buildCall
   :: PactFunction
   -> [Text] -- ^ Function arguments
   -> Text -- ^ Pact function call
 buildCall func args =
   let
-    (ModuleName m _) = _pactFunction_module func
-    n = _pactFunction_name func
+    ModuleName mn nn = _pactFunction_module func
+    namespacePrefix = maybe "" (\(NamespaceName nn') -> nn' <> ".") nn
     argsSeparator = if null args then "" else " "
   in
-    mconcat [ "(", coerce m, ".", n , argsSeparator, T.unwords args, ")" ]
+    mconcat [ "(", namespacePrefix, coerce mn, ".", _pactFunction_name func, argsSeparator, T.unwords args, ")" ]
 
 -- renderQualified :: PactFunction -> Text
 -- renderQualified func = (coerce . _pactFunction_module) func <> "." <> _pactFunction_name func
@@ -179,7 +178,7 @@ argDelimiter = uiCodeFont "code-font_type_arg-delimiter" mempty
 renderArg :: MonadWidget t m => Arg (Term Name) -> m ()
 renderArg a = do
   uiCodeFont "code-font_type_pact-arg-name" $ (_aName a)
-  text " "
+  argDelimiter
   uiCodeFont "code-font_type_pact-type" $ prettyTextCompact (_aType a)
 
 

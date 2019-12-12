@@ -1,0 +1,15 @@
+# https://github.com/kadena-io/chainweaver#oauth-github-configuration
+mkdir -p config/common/oauth/github
+mkdir -p config/backend/oauth/github
+touch config/backend/oauth/github/client-secret
+touch config/common/oauth/github/client-id
+
+# https://github.com/kadena-io/chainweaver#setting-up-production-mode-and-the-network-list
+if [ ! -f config/common/networks ]; then
+   echo "testnet: eu1.testnet.chainweb.com eu2.testnet.chainweb.com us1.testnet.chainweb.com us2.testnet.chainweb.com ap1.testnet.chainweb.com ap2.testnet.chainweb.com" > config/common/networks
+fi;
+
+# https://github.com/kadena-io/chainweaver#provide-remote-verification-server
+if [ ! -f config/common/verification-server ]; then
+   echo "https://pact01.kadena.io" > config/common/verification-server
+fi;

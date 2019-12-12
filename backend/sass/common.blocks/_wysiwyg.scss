@@ -26,13 +26,17 @@
   border-radius: $std-border-radius;
 }
 
-.wysiwyg .ace_editor,.ace_scroller {
+.wysiwyg .ace_editor {
   border-radius: $std-border-radius;
 }
 
-/* More space to the left of the code, so we match design */
+.ace_gutter {
+  padding-top: 13px;
+}
+
 .ace_scroller {
-  margin-left: 8px;
+  margin-top: 13px;  // don't use padding for this because it introduces an
+  margin-left: 15px; // offset on mouse clicks when calculating the line number
 }
 
 .ace_editor {
@@ -58,4 +62,3 @@
 .ace_scrollbar {
     display: none !important;
 }
-

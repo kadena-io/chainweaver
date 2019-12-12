@@ -20,26 +20,32 @@ library
     , containers
     , cryptonite
     , directory
+    , errors
     , filepath
     , jsaddle
+    , ghcjs-dom
     , kadena-signing-api
     , lens
     , memory
     , mtl
     , network
+    , newtype-generics
     , obelisk-executable-config-lookup
     , obelisk-backend
     , obelisk-frontend
     , obelisk-generated-static
     , obelisk-route
+    , pact
     , process
     , raw-strings-qq
+    , reflex
     , reflex-dom
     , reflex-dom-core
     , servant
     , servant-server
     , snap-server
     , text
+    , time
     , wai-cors
     , warp
   exposed-modules:
@@ -48,4 +54,30 @@ library
     , Desktop.Mac
     , Desktop.Orphans
     , Desktop.Setup
+    , Desktop.SigningApi
+    , Desktop.Util
   ghc-options: -Wall
+
+test-suite golden-tests
+  type: exitcode-stdio-1.0
+
+  other-modules: GoldenHelper
+
+  main-is: GoldenTests.hs
+
+  ghc-options: -Wall
+
+  hs-source-dirs: tests
+  build-depends: base
+               , common
+               , frontend
+               , containers
+               , cardano-crypto
+               , desktop
+               , tasty
+               , tasty-golden
+               , aeson
+               , pact
+               , errors
+               , text
+               , bytestring

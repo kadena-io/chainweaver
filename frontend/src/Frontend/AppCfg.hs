@@ -6,7 +6,13 @@ import Language.Javascript.JSaddle (JSM)
 import Reflex.Dom
 import Kadena.SigningApi
 
-data AppCfg t m = AppCfg
+data EnabledSettings = EnabledSettings
+  { -- Eventually, our settings page will want different settings per app type
+    -- but right now we only have the network settings, and all apps want that
+    -- so this is empty for now but wired between the bits that need it
+  }
+
+data AppCfg key t m = AppCfg
   { _appCfg_gistEnabled :: Bool
   , _appCfg_externalFileOpened :: Event t Text
   -- ^ File contents from file chosen in "open file" dialog
@@ -20,10 +26,5 @@ data AppCfg t m = AppCfg
   -- ^ Requests to sign this object
   , _appCfg_signingResponse :: Either Text SigningResponse -> JSM ()
   -- ^ Responses to signings
-  , _appCfg_forceResize :: Event t ()
-  -- ^ Force the ace widgets to recalculate size
+  , _appCfg_enabledSettings :: EnabledSettings
   }
-
--- Are we running the Kadena Chainweaver ALPHA edition
-isChainweaverAlpha :: Bool
-isChainweaverAlpha = True

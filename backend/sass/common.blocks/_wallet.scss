@@ -4,35 +4,58 @@
 
 *********************************************************************************/
 
-// The wallet ui:
 @import '../include/defs';
 
-.wallet {
+.wallet__keys-list {
+  margin-top: 20px;
+  margin-left: 22px;
 }
 
+.wallet__table-row {
+  border-style: $std-border-style;
+  border-color: $std-border-color;
+  border-width: $std-border-width;
+}
 
-.wallet__key {
-  overflow-x: hidden;
+.wallet__table-heading {
+  @extend .table__heading;
+  padding: 15px;
+  padding-bottom: 30px;
+}
+
+.wallet__table-cell {
+  padding: 15px;
   text-overflow: ellipsis;
+  overflow: hidden;
 }
 
-.wallet__key_hidden {
-  text-overflow: clip;
+.wallet__table-wallet-address {
+  width: 15em;
+  text-overflow: ellipsis;
+  overflow: hidden;
 }
 
-.wallet__key_type_private.wallet__key_hidden {
-  cursor: alias;
+.wallet__table-buttons {
+  display:flex;
+  align-items: center;
+  justify-content: flex-end;
 }
 
-.wallet__delete {
-  text-align: right;
+.wallet__table-button {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  color: $tertiary-color;
+  padding: 0 10px;
+  font-size: 0.8em;
+  margin-right: $medium-margin;
+  line-height: 22px;
+  height: 26px;
+
+  text-overflow: ellipsis;
+  overflow: hidden;
 }
 
-.wallet__add {
-  @extend .wallet__delete;
+.wallet__table-button--hamburger {
+  padding: 0 15px;
 }
-
-.wallet__add-delete-button {
-  width: 30px;
-}
-

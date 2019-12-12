@@ -8,16 +8,14 @@
 module Desktop.Mac where
 
 import Control.Concurrent
-import Control.Exception (bracket_, bracket, try)
+import Control.Exception (bracket, try)
 import Control.Monad (forever)
-import Control.Monad.Except (throwError)
 import Control.Monad.IO.Class
 import Data.Foldable (for_)
 import Data.String (IsString(..))
 import Foreign.C.String (CString, peekCString)
 import Foreign.StablePtr (StablePtr)
 import GHC.IO.Handle
-import Kadena.SigningApi (signingAPI)
 import Language.Javascript.JSaddle.Types (JSM)
 import Obelisk.Backend
 import Obelisk.Frontend
@@ -27,16 +25,12 @@ import System.FilePath ((</>))
 import System.IO
 import qualified Control.Concurrent.Async as Async
 import qualified Data.ByteString as BS
-import qualified Data.ByteString.Lazy as LBS
 import qualified Data.List as L
 import qualified Data.Map as M
 import qualified Data.Text as T
 import qualified Data.Text.Encoding as T
 import qualified Data.Text.IO as T
 import qualified Network.Socket as Socket
-import qualified Network.Wai.Handler.Warp as Warp
-import qualified Network.Wai.Middleware.Cors as Wai
-import qualified Servant.Server as Servant
 import qualified Snap.Http.Server as Snap
 import qualified System.Directory as Directory
 import qualified System.Environment as Env
@@ -46,25 +40,28 @@ import Backend (serveBackendRoute)
 import Common.Route
 import Frontend
 import Frontend.AppCfg
-import Frontend.ReplGhcjs (app)
 import Frontend.Storage
 import Desktop.Frontend
+import Desktop.SigningApi
+import Desktop.Util
 
 data MacFFI = MacFFI
   { _macFFI_setupAppMenu :: StablePtr (CString -> IO ()) -> IO ()
   , _macFFI_activateWindow :: IO ()
   , _macFFI_hideWindow :: IO ()
-  , _macFFI_resizeWindow :: IO ()
+  , _macFFI_resizeWindow :: (Int, Int) -> IO ()
   , _macFFI_moveToBackground :: IO ()
   , _macFFI_moveToForeground :: IO ()
   , _macFFI_global_openFileDialog :: IO ()
   , _macFFI_global_getHomeDirectory :: IO CString
-}
+  , _macFFI_global_getBundleIdentifier :: IO CString
+  }
 
 getUserLibraryPath :: MonadIO m => MacFFI -> m FilePath
 getUserLibraryPath ffi = liftIO $ do
   home <- peekCString =<< _macFFI_global_getHomeDirectory ffi
-  let lib = home </> "Library" </> "Application Support" </> "io.kadena.pact"
+  bundleId <- peekCString =<< _macFFI_global_getBundleIdentifier ffi
+  let lib = home </> "Library" </> "Application Support" </> bundleId
   Directory.createDirectoryIfMissing True lib
   pure lib
 
@@ -148,27 +145,9 @@ main' ffi mainBundleResourcePath runHTML = redirectPipes [stdout, stderr] $ do
             putStrLn $ "Opened file successfully: " <> f
             putMVar fileOpenedMVar c
             pure True
-    signingLock <- liftIO newEmptyMVar -- Only allow one signing request to be served at once
-    signingRequestMVar <- liftIO newEmptyMVar
-    signingResponseMVar <- liftIO newEmptyMVar
-    let runSign obj = do
-          resp <- liftIO $ bracket_ (putMVar signingLock ()) (takeMVar signingLock) $ do
-            putMVar signingRequestMVar obj -- handoff to app
-            bracket
-              (_macFFI_moveToForeground ffi)
-              (\() -> _macFFI_moveToBackground ffi)
-              (\_ -> takeMVar signingResponseMVar)
-          case resp of
-            Left e -> throwError $ Servant.err409
-              { Servant.errBody = LBS.fromStrict $ T.encodeUtf8 e }
-            Right v -> pure v
-        s = Warp.setPort 9467 Warp.defaultSettings
-        laxCors _ = Just $ Wai.simpleCorsResourcePolicy
-          { Wai.corsRequestHeaders = Wai.simpleHeaders }
-        apiServer
-          = Warp.runSettings s $ Wai.cors laxCors
-          $ Servant.serve signingAPI runSign
-    _ <- Async.async $ apiServer
+    (signingRequestMVar, signingResponseMVar) <- signingServer
+      (_macFFI_moveToForeground ffi)
+      (_macFFI_moveToBackground ffi)
     runHTML "index.html" route putStrLn handleOpen $ do
       mInitFile <- liftIO $ tryTakeMVar fileOpenedMVar
       let frontendMode = FrontendMode
@@ -177,8 +156,12 @@ main' ffi mainBundleResourcePath runHTML = redirectPipes [stdout, stderr] $ do
             }
           configs = M.fromList -- TODO don't embed all of these into binary
             [ ("common/route", route)
-            , ("common/networks", "remote-source:https://pact.kadena.io/networks")
+            , ("common/networks", networks)
             , ("common/oauth/github/client-id", "") -- TODO remove
+            ]
+          networks = T.encodeUtf8 $ T.unlines
+            [ "Mainnet: us-e1.chainweb.com us-e2.chainweb.com us-w1.chainweb.com us-w2.chainweb.com jp1.chainweb.com jp2.chainweb.com fr1.chainweb.com fr2.chainweb.com"
+            , "Testnet: us1.testnet.chainweb.com us2.testnet.chainweb.com eu1.testnet.chainweb.com eu2.testnet.chainweb.com ap1.testnet.chainweb.com ap2.testnet.chainweb.com"
             ]
       liftIO $ putStrLn "Starting frontend"
       bowserMVar :: MVar () <- liftIO newEmptyMVar
@@ -202,19 +185,12 @@ main' ffi mainBundleResourcePath runHTML = redirectPipes [stdout, stderr] $ do
                 -- DB 2019-08-07 Changing this back to False because it's just too convenient this way.
                 , _appCfg_editorReadOnly = False
                 , _appCfg_signingRequest = signingRequest
-                , _appCfg_signingResponse = liftIO . putMVar signingResponseMVar
-                , _appCfg_forceResize = never
+                , _appCfg_signingResponse = signingResponseHandler signingResponseMVar
+                , _appCfg_enabledSettings = EnabledSettings
+                  {
+                  }
                 }
-          _ <- flip runStorageT store $ runWithReplace loaderMarkup $
-            (liftIO (_macFFI_activateWindow ffi) >> liftIO (_macFFI_resizeWindow ffi) >> app appCfg) <$ bowserLoad
+          _ <- mapRoutedT (flip runStorageT store) $ runWithReplace loaderMarkup $
+            (liftIO (_macFFI_activateWindow ffi) >> liftIO (_macFFI_resizeWindow ffi minWindowSize) >> bipWallet appCfg) <$ bowserLoad
           pure ()
         }
-
--- | Push writes to the given 'MVar' into an 'Event'.
-mvarTriggerEvent
-  :: (PerformEvent t m, TriggerEvent t m, MonadIO m)
-  => MVar a -> m (Event t a)
-mvarTriggerEvent mvar = do
-  (e, trigger) <- newTriggerEvent
-  _ <- liftIO $ forkIO $ forever $ trigger =<< takeMVar mvar
-  pure e

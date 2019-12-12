@@ -1,23 +1,21 @@
-{-# LANGUAGE CPP                    #-}
-{-# LANGUAGE ConstraintKinds        #-}
-{-# LANGUAGE DataKinds              #-}
-{-# LANGUAGE DeriveGeneric          #-}
-{-# LANGUAGE ExtendedDefaultRules   #-}
-{-# LANGUAGE FlexibleContexts       #-}
-{-# LANGUAGE FlexibleInstances      #-}
+{-# LANGUAGE CPP #-}
+{-# LANGUAGE ConstraintKinds #-}
+{-# LANGUAGE DataKinds #-}
+{-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE ExtendedDefaultRules #-}
+{-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE FunctionalDependencies #-}
-{-# LANGUAGE KindSignatures         #-}
-{-# LANGUAGE LambdaCase             #-}
-{-# LANGUAGE MultiParamTypeClasses  #-}
-{-# LANGUAGE OverloadedStrings      #-}
-{-# LANGUAGE QuasiQuotes            #-}
-{-# LANGUAGE RecursiveDo            #-}
-{-# LANGUAGE ScopedTypeVariables    #-}
-{-# LANGUAGE StandaloneDeriving     #-}
-{-# LANGUAGE TemplateHaskell        #-}
-{-# LANGUAGE TupleSections          #-}
-{-# LANGUAGE TypeApplications       #-}
-{-# LANGUAGE TypeFamilies           #-}
+{-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE QuasiQuotes #-}
+{-# LANGUAGE RecursiveDo #-}
+{-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE StandaloneDeriving #-}
+{-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE TupleSections #-}
+{-# LANGUAGE TypeApplications #-}
+{-# LANGUAGE TypeFamilies #-}
 
 -- | The code editor, holds the currently edited code.
 --
@@ -103,7 +101,7 @@ data Editor t = Editor
 makePactLenses ''Editor
 
 
-type HasEditorModel model t = (HasJsonData model t, HasWallet model t, HasNetwork model t)
+type HasEditorModel model key t = (HasJsonData model t, HasWallet model key t, HasNetwork model t)
 
 type HasEditorModelCfg mConf t = (HasJsonDataCfg mConf t, Monoid mConf)
 
@@ -114,9 +112,9 @@ type ReflexConstraints t m =
 
 -- | Create an `Editor` by providing a `Config`.
 makeEditor
-  :: forall t m cfg model mConf
+  :: forall key t m cfg model mConf
   . ( ReflexConstraints t m
-    , HasEditorCfg cfg t, HasEditorModel model t
+    , HasEditorCfg cfg t, HasEditorModel model key t
     , HasEditorModelCfg mConf t
     , HasConfigs m
     )
@@ -191,7 +189,7 @@ applyQuickFix rs t onQuickFix = do
 
 -- | Type check and verify code.
 typeCheckVerify
-  :: ( ReflexConstraints t m, HasEditorModel model t
+  :: ( ReflexConstraints t m, HasEditorModel model key t
      , HasConfigs m
      )
   => model -> Dynamic t Text -> m (Event t [Annotation])
@@ -209,7 +207,6 @@ typeCheckVerify m t = mdo
       , _replCfg_reset = () <$ onReplReset
       , _replCfg_verifyModules = Map.keysSet . _ts_modules <$> onTransSuccess
       }
-    let
 #ifdef  ghcjs_HOST_OS
     cModules <- holdDyn Map.empty $ _ts_modules <$> onTransSuccess
     let
@@ -218,6 +215,7 @@ typeCheckVerify m t = mdo
        , concatMap annoFallbackParser <$> replO ^. messagesCfg_send
        ]
 #else
+    let
       newAnnotations = mconcat
        [ parseVerifyOutput <$> _repl_modulesVerified replL
        , concatMap annoFallbackParser <$> replO ^. messagesCfg_send
@@ -225,7 +223,7 @@ typeCheckVerify m t = mdo
 #endif
     pure newAnnotations
   where
--- Line numbers are off on ghcjs:
+-- Line numbers are off on ghcjs: https://github.com/kadena-io/pact/issues/344
 -- TODO: Fix this in pact.
 #ifdef  ghcjs_HOST_OS
     parseVerifyOutput :: Map ModuleName Int -> VerifyResult -> [Annotation]
@@ -285,4 +283,3 @@ instance Flattenable (EditorCfg t) t where
       <*> doSwitch never (_editorCfg_loadCode <$> ev)
       <*> doSwitch never (_editorCfg_applyQuickFix <$> ev)
       <*> doSwitch never (_editorCfg_clearModified <$> ev)
-

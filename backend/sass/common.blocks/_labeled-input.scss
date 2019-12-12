@@ -8,16 +8,49 @@
 @import '../include/defs';
 
 .labeled-input {
-  font-size: 13px;
   color: $tertiary-color;
 }
 
+.labeled-input-inline {
+  color: $tertiary-color;
+  display: flex;
+  align-items: center;
+}
+
 .labeled-input__label {
+  font-size: 15px;
   margin-bottom: $medium-margin;
+  min-width: 175px;
+  color: #3a3a3a;
+  font-weight: bold;
+}
+
+.labeled-input__label-inline {
+  @extend .labeled-input__label;
+  margin-bottom: 0px;
 }
 
 .labeled-input__input {
   @extend .input_type_secondary;
-  background-color: white;
   width: 100%;
+  flex-grow: 1;
+  background-color: transparent;
+
+  &.input, &.select, &.textarea {
+    background-color: white;
+  }
+
+  input {
+    width: 100%;
+    font-size: 15px;
+  }
+}
+
+.input_type_textarea.labeled-input__input {
+  min-height: 115px;
+}
+
+.horizontal-dashed-separator {
+  border: dashed 1px #979797;
+  margin: 0.5rem 0 0.5rem 0;
 }

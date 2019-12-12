@@ -1,19 +1,19 @@
-{-# LANGUAGE ConstraintKinds       #-}
-{-# LANGUAGE DataKinds             #-}
-{-# LANGUAGE DeriveGeneric         #-}
-{-# LANGUAGE ExtendedDefaultRules  #-}
-{-# LANGUAGE FlexibleContexts      #-}
-{-# LANGUAGE FlexibleInstances     #-}
-{-# LANGUAGE KindSignatures        #-}
-{-# LANGUAGE LambdaCase            #-}
+{-# LANGUAGE ConstraintKinds #-}
+{-# LANGUAGE DataKinds #-}
+{-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE ExtendedDefaultRules #-}
+{-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE KindSignatures #-}
+{-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
-{-# LANGUAGE OverloadedStrings     #-}
-{-# LANGUAGE QuasiQuotes           #-}
-{-# LANGUAGE RecursiveDo           #-}
-{-# LANGUAGE ScopedTypeVariables   #-}
-{-# LANGUAGE StandaloneDeriving    #-}
-{-# LANGUAGE TemplateHaskell       #-}
-{-# LANGUAGE TupleSections         #-}
+{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE QuasiQuotes #-}
+{-# LANGUAGE RecursiveDo #-}
+{-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE StandaloneDeriving #-}
+{-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE TupleSections #-}
 
 -- | Confirmation dialog for creating a GIST allowing setting of name and description.
 -- Copyright   :  (C) 2018 Kadena
@@ -68,7 +68,6 @@ uiCreateGist _onClose = do
 
   modalFooter $ do
     onCancel <- cancelButton def "Cancel"
-    text " "
     let isDisabled = T.null . T.strip <$> name
     onConfirm <- confirmButton (def & uiButtonCfg_disabled .~ isDisabled) "Create"
 
@@ -85,6 +84,5 @@ labeledTextInputWithDefault
   -> Text
   -> m (Dynamic t Text)
 labeledTextInputWithDefault name defVal = mdo
-  v <- mkLabeledInput uiInputElement name $ def { _inputElementConfig_initialValue = defVal }
+  v <- mkLabeledInput True name uiInputElement $ def { _inputElementConfig_initialValue = defVal }
   pure $ _inputElement_value v
-
