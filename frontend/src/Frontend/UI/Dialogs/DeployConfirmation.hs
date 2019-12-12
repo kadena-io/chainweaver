@@ -54,6 +54,7 @@ import Frontend.Network
 import Frontend.UI.DeploymentSettings
 import Frontend.UI.Modal
 import Frontend.UI.Widgets
+import Frontend.UI.Widgets.Helpers (dialogSectionHeading)
 import Frontend.Wallet
 import Language.Javascript.JSaddle
 import Pact.Types.PactValue (PactValue)
@@ -321,7 +322,7 @@ submitTransactionWithFeedback cmd chain nodeInfos = do
   performEvent_ $ liftJSM . forkListen <$> onRequestKey
   requestKey <- holdDyn Nothing $ Just <$> onRequestKey
 
-  divClass "title" $ text "Transaction Status"
+  dialogSectionHeading mempty "Transaction Status"
   divClass "group" $ do
     elClass "ol" "transaction_status" $ do
       let item ds = elDynAttr "li" (ffor ds $ \s -> "class" =: statusText s)
@@ -334,7 +335,7 @@ submitTransactionWithFeedback cmd chain nodeInfos = do
       canReload <- delay 2 reload
     throttledReload <- throttle 2 reload
     performEvent_ $ attachWithMaybe (\k _ -> liftJSM . forkListen <$> k) (current requestKey) throttledReload
-  divClass "title" $ text "Transaction Result"
+  dialogSectionHeading mempty "Transaction Result"
   divClass "group" $ do
     maybeDyn message >>= \md -> dyn_ $ ffor md $ \case
       Nothing -> text "Waiting for response..."

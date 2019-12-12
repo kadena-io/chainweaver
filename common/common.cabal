@@ -2,6 +2,7 @@ name: common
 version:             1.5.1.2
 cabal-version: >= 1.8
 build-type: Simple
+data-files: tests/golden-files/*.golden.json
 
 library
   hs-source-dirs: src
@@ -30,6 +31,7 @@ library
                , errors
                , unliftio
                , unordered-containers
+               , case-insensitive
 
   exposed-modules:
     Common.Api

@@ -170,14 +170,13 @@
   background-color: $confirm-color;
   border-color: $confirm-color;
   font-size: $secondary-font-size;
-  font-weight: bold;
+  font-family: WorkSans-Regular;
 }
 
 .button_type_confirm[disabled] { 
   background-color: transparent;
   color: $black-disabled-color;
   border-color: $std-border-color;
-  font-weight: normal;
 }
 
 .button_type_confirm:hover:not([disabled]) {

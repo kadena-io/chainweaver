@@ -26,6 +26,7 @@ import           Frontend.Ide (ide_wallet)
 import           Frontend.UI.Modal
 import           Frontend.UI.Modal.Impl (ModalIde, ModalImpl)
 import           Frontend.UI.Widgets
+import           Frontend.UI.Widgets.Helpers (dialogSectionHeading)
 import           Frontend.Foundation
 
 import Obelisk.Generated.Static
@@ -78,21 +79,20 @@ uiCreateWalletStepOne
   -> Event t ()
   -> Workflow t m (Text, (mConf, Event t ()))
 uiCreateWalletStepOne model onClose = Workflow $ do
-  (dSelectedChain, dNotes, onAddVanityAcc) <- modalMain $ do
-    divClass "segment modal__main transaction_details" $ do
-      elClass "h2" "heading heading_type_h2" $ text "Destination"
-      dChainId <- divClass "group segment" $ do
-        transactionDisplayNetwork model
-        userChainIdSelect model
+  (dSelectedChain, dNotes, onAddVanityAcc) <- divClass "modal__main" $ do
+    dialogSectionHeading mempty "Destination"
+    dChainId <- divClass "group" $ do
+      transactionDisplayNetwork model
+      userChainIdSelect model
 
-      elClass "h2" "heading heading_type_h2" $ text "Reference Data"
-      dNotes <- divClass "group segment" $
-        value <$> mkLabeledClsInput True "Notes" inpElem
+    dialogSectionHeading mempty "Reference Data"
+    dNotes <- divClass "group" $
+      value <$> mkLabeledClsInput True "Notes" inpElem
 
-      onAddVanityAcc <- fmap snd $ accordionItem' False "add-account__advanced-content" (text "Advanced") $
-        confirmButton def "Create Vanity Account"
+    onAddVanityAcc <- fmap snd $ accordionItem' False "add-account__advanced-content" (accordionHeaderBtn "Advanced") $
+      confirmButton def "Create Vanity Account"
 
-      pure (dChainId, dNotes, onAddVanityAcc)
+    pure (dChainId, dNotes, onAddVanityAcc)
 
   modalFooter $ do
     onCancel <- cancelButton def "Cancel"

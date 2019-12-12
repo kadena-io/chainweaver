@@ -21,6 +21,7 @@ import           Frontend.UI.Modal
 import           Frontend.Wallet
 import           Frontend.Crypto.Ed25519 (keyToText)
 import           Frontend.UI.Widgets
+import           Frontend.UI.Widgets.Helpers (dialogSectionHeading)
 import           Frontend.Foundation
 ------------------------------------------------------------------------------
 
@@ -69,8 +70,8 @@ uiAccountDetailsDetails key a onClose = Workflow $ do
         in
           mkLabeledInputView False lbl attrFn $ pure v
 
-  notesEdit <- modalMain $ divClass "modal__main account-details" $ do
-    elClass "h2" "heading heading_type_h2" $ text "Info"
+  notesEdit <- divClass "modal__main account-details" $ do
+    dialogSectionHeading mempty "Info"
     divClass "group" $ do
       -- Account name
       _ <- displayText "Account Name" (unAccountName (_account_name a)) "account-details__name"
@@ -119,7 +120,7 @@ uiDeleteConfirmation
 uiDeleteConfirmation thisKey onClose = Workflow $ do
   modalMain $ do
     divClass "segment modal__filler" $ do
-      elClass "h2" "heading heading_type_h2" $ text "Warning"
+      dialogSectionHeading mempty "Warning"
 
       divClass "group" $
         text "You are about to remove this account from view in your wallet"

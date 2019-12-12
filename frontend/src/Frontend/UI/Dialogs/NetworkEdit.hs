@@ -44,6 +44,7 @@ import           Frontend.Foundation
 import           Frontend.Network
 import           Frontend.UI.Modal
 import           Frontend.UI.Widgets
+import           Frontend.UI.Widgets.Helpers (dialogSectionHeading)
 ------------------------------------------------------------------------------
 
 type HasUiNetworkEditModel model t =
@@ -79,13 +80,11 @@ uiNetworkEdit m _onClose = do
   cfg <- modalMain $ do
       selCfg <- uiGroup "segment" $ do
         uiGroupHeader mempty $ do
-          elClass "h2" "heading heading_type_h2" $
-            text "Select Network"
+          dialogSectionHeading mempty "Select Network"
         uiNetworkSelect "select_type_primary select_width_full" m
 
       editCfg <- uiGroup "segment" $ do
-        uiGroupHeader mempty $ elClass "h2" "heading heading_type_h2" $
-          text "Edit Networks"
+        uiGroupHeader mempty $ dialogSectionHeading mempty "Edit Networks"
         onNewNet <- validatedInputWithButton "group__header" checkNetName "Create new network." "Create"
         editCfg <- uiNetworks m
         let newCfg = updateNetworks m $ (\n -> Map.insert n []) <$> onNewNet
@@ -201,7 +200,7 @@ instance Semigroup NetworkStatus where
 --   and a status circle showing the network health.
 uiNetworkHeading :: MonadWidget t m => NetworkName -> MDynamic t NetworkStatus -> m (Event t NetworkAction)
 uiNetworkHeading self mStat = do
-    text $ textNetworkName self
+    accordionHeaderBtn $ textNetworkName self
     uiNetworkStatus "accordion__collapsed-info table__row-right-aligned_type_primary" mStat
     fmap (const $ NetworkDelete self) <$> accordionDeleteBtn
   where

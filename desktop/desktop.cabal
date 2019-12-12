@@ -2,6 +2,7 @@ name: desktop
 version: 0.1
 cabal-version: >= 1.8
 build-type: Simple
+data-files: tests/golden-files/*.golden.json
 
 library
   hs-source-dirs: src
