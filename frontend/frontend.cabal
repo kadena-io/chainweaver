@@ -125,6 +125,7 @@ library
                  , Frontend.UI.Dialogs.Send
                  , Frontend.UI.Dialogs.Signing
                  , Frontend.UI.Dialogs.AccountDetails
+                 , Frontend.UI.Dialogs.KeyDetails
                  , Frontend.UI.Dialogs.AddVanityAccount
                  , Frontend.UI.ErrorList
                  , Frontend.UI.Icon

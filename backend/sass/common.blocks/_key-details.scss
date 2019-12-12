@@ -1,0 +1,50 @@
+/*********************************************************************************
+   Ensure classes and structure are created in accordance with the BEM methodology.
+   For more info: https://en.bem.info/methodology/quick-start/
+
+*********************************************************************************/
+
+@import '../include/defs';
+
+.key-details__table-row {
+  border-style: $std-border-style;
+  border-color: $std-border-color;
+  border-width: $std-border-width;
+}
+
+.key-details__table-heading {
+  @extend .table__heading;
+  padding-bottom: 5px;
+  padding-left: 15px;
+}
+
+.key-details__table-cell {
+  padding: 5px 15px 5px 15px;
+  text-overflow: ellipsis;
+  overflow: hidden;
+}
+
+.key-details__table-buttons {
+  display:flex;
+  align-items: center;
+  justify-content: flex-end;
+}
+
+.key-details__table-button {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  color: $tertiary-color;
+  padding: 0 10px;
+  font-size: 0.8em;
+  margin-right: $medium-margin;
+  line-height: 22px;
+  height: 26px;
+
+  text-overflow: ellipsis;
+  overflow: hidden;
+}
+
+.key-details__table-id {
+  padding: 5px 0px 5px 15px;
+}

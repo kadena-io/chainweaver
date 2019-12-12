@@ -49,6 +49,7 @@ import           Frontend.JsonData (HasJsonData, HasJsonDataCfg)
 import           Frontend.UI.Dialogs.AccountDetails (uiAccountDetails)
 import           Frontend.UI.Dialogs.Receive (uiReceiveModal)
 import           Frontend.UI.Dialogs.Send (uiSendModal)
+import           Frontend.UI.Dialogs.KeyDetails (uiKeyDetails)
 import           Frontend.UI.Modal
 import           Frontend.Network
 ------------------------------------------------------------------------------
@@ -86,9 +87,12 @@ uiWalletRefreshButton
     )
   => model
   -> m mConf
-uiWalletRefreshButton _model = do
+uiWalletRefreshButton model = do
+  eKeyDetailsStub <- uiButton (def & uiButtonCfg_class <>~ " main-header__wallet-refresh-button")  (text "Key Details Stub")
   eRefresh <- uiButton (def & uiButtonCfg_class <>~ " main-header__wallet-refresh-button")  (text "Refresh")
-  pure $ mempty & walletCfg_refreshBalances <>~ eRefresh
+  pure $ mempty
+    & walletCfg_refreshBalances <>~ eRefresh
+    & modalCfg_setModal .~ fmap Just (uiKeyDetails model <$ eKeyDetailsStub)
 
 -- | UI for managing the keys wallet.
 uiWallet
