@@ -28,6 +28,7 @@ import Frontend.JsonData
 import Frontend.Network
 import Frontend.UI.DeploymentSettings
 import Frontend.UI.Modal.Impl
+import Frontend.UI.Widgets (predefinedChainIdDisplayed, userChainIdSelect)
 import Frontend.Wallet
 
 type HasUISigningModelCfg mConf key t =

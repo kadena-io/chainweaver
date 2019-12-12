@@ -19,7 +19,7 @@ import           Frontend.Wallet
 import           Frontend.Network (HasNetworkCfg, network_selectedNetwork)
 import           Frontend.JsonData (HasJsonDataCfg)
 import           Frontend.Crypto.Class (HasCrypto)
-import           Frontend.UI.DeploymentSettings (transactionDisplayNetwork, userChainIdSelect)
+import           Frontend.UI.DeploymentSettings (transactionDisplayNetwork)
 import           Frontend.UI.Dialogs.AddVanityAccount (uiAddVanityAccountSettings)
 
 import           Frontend.Ide (ide_wallet)
