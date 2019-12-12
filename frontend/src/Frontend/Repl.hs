@@ -173,7 +173,7 @@ makeRepl m cfg = build $ \ ~(_, impl) -> do
       ]
 
     let envData = either (const HM.empty) id <$> m ^. jsonData_data
-        keys = getAllKeys <$> m ^. wallet_accounts
+        keys = IntMap.elems . fmap _key_pair <$> m ^. wallet_keys
 
     -- Those events can happen simultaneously - so make sure we don't lose any
     -- state:
@@ -250,9 +250,6 @@ makeRepl m cfg = build $ \ ~(_, impl) -> do
 
     performStateCmd impl = performEvent . fmap (withRepl impl)
 
-getAllKeys :: Accounts key -> [KeyPair key]
-getAllKeys accs = [ _account_key acc | SomeAccount_Account acc <- IntMap.elems accs ]
-
     -- In case we ever want to show more than the last output term:
     -- showStateTerms :: ReplState -> Text
     -- showStateTerms = T.unlines . map showTerm . reverse . _rTermOut
@@ -268,10 +265,10 @@ initRepl verificationUri oldImpl m  = do
   r <- mkState verificationUri
   let initImpl = oldImpl { _impl_state = pure r } -- Const dyn so we can use `withRepl` for initialization - gets dropped afterwards.
   env  <- sample . current $ either (const HM.empty) id <$> m ^. jsonData_data
-  keys <- sample . current $ getAllKeys <$> m ^. wallet_accounts
+  keys <- sample . current $ m ^. wallet_keys
   fmap snd . withRepl initImpl $ do
     void $ setEnvData env
-    void $ setEnvKeys keys
+    void $ setEnvKeys $ fmap _key_pair $ IntMap.elems keys
     setupNamespaces
 
 setupNamespaces :: PactRepl ()

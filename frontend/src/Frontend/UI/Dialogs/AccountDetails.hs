@@ -7,6 +7,8 @@
 module Frontend.UI.Dialogs.AccountDetails
   ( uiAccountDetails
   ) where
+
+import Data.Dependent.Sum (DSum(..))
 ------------------------------------------------------------------------------
 import           Control.Lens
 import           Data.Text (Text)
@@ -35,14 +37,14 @@ uiAccountDetails
   :: ( HasUiAccountDetailsModelCfg mConf key t
      , MonadWidget t m
      )
-  => IntMap.Key
-  -> Account key
+  => AccountName
+  -> Account
   -> Event t ()
   -> m (mConf, Event t ())
-uiAccountDetails key a _onCloseExternal = mdo
+uiAccountDetails name a _onCloseExternal = mdo
   onClose <- modalHeader $ dynText title
 
-  dwf <- workflow (uiAccountDetailsDetails key a onClose)
+  dwf <- workflow (uiAccountDetailsDetails name a onClose)
 
   let (title, (conf, dEvent)) = fmap splitDynPure $ splitDynPure dwf
 
@@ -53,14 +55,15 @@ uiAccountDetails key a _onCloseExternal = mdo
          )
 
 uiAccountDetailsDetails
-  :: ( HasUiAccountDetailsModelCfg mConf key t
+  :: forall mConf key t m.
+     ( HasUiAccountDetailsModelCfg mConf key t
      , MonadWidget t m
      )
-  => IntMap.Key
-  -> Account key
+  => AccountName
+  -> Account
   -> Event t ()
   -> Workflow t m (Text, (mConf, Event t ()))
-uiAccountDetailsDetails key a onClose = Workflow $ do
+uiAccountDetailsDetails name a onClose = Workflow $ do
   let kAddr = textKadenaAddress $ accountToKadenaAddress a
 
   let displayText lbl v cls =
@@ -74,17 +77,19 @@ uiAccountDetailsDetails key a onClose = Workflow $ do
     dialogSectionHeading mempty "Info"
     divClass "group" $ do
       -- Account name
-      _ <- displayText "Account Name" (unAccountName (_account_name a)) "account-details__name"
+      _ <- displayText "Account Name" (unAccountName name) "account-details__name"
       -- Public key
-      _ <- displayText "Public Key" (keyToText . _keyPair_publicKey $ _account_key a) "account-details__pubkey"
+      _ <- displayText "Public Key" (keyToText $ accountKey a) "account-details__pubkey"
       -- Chain id
-      _ <- displayText "Chain ID" (Pact._chainId $ _account_chainId a) "account-details__chain-id"
+      _ <- displayText "Chain ID" (Pact._chainId $ accountChain a) "account-details__chain-id"
       -- separator
       horizontalDashedSeparator
       -- Notes edit
-      notesEdit0 <- fmap value $ mkLabeledClsInput False "Notes" $ \cls -> uiInputElement $ def
-        & inputElementConfig_initialValue .~ unAccountNotes (_account_notes a)
-        & initialAttributes . at "class" %~ pure . maybe (renderClass cls) (mappend (" " <> renderClass cls))
+      notesEdit0 :: Maybe (Dynamic t Text) <- case a of
+        AccountRef_Vanity _ _ :=> Identity va -> fmap (Just . value) $ mkLabeledClsInput False "Notes" $ \cls -> uiInputElement $ def
+          & inputElementConfig_initialValue .~ unAccountNotes (_vanityAccount_notes va)
+          & initialAttributes . at "class" %~ pure . maybe (renderClass cls) (mappend (" " <> renderClass cls))
+        AccountRef_NonVanity _ _ :=> _ -> pure Nothing
       -- separator
       horizontalDashedSeparator
       -- Kadena Address
@@ -101,11 +106,13 @@ uiAccountDetailsDetails key a onClose = Workflow $ do
     onDone <- confirmButton def "Done"
 
     let
-      onNotesUpdate = (key,) . mkAccountNotes <$> current notesEdit <@ onDone
+      onNotesUpdate = case notesEdit of
+        Nothing -> never
+        Just notes -> (name,) . mkAccountNotes <$> current notes <@ onDone
       conf = mempty & walletCfg_updateAccountNotes .~ onNotesUpdate
 
     pure ( ("Account Details", (conf, leftmost [onClose, onDone]))
-         , uiDeleteConfirmation key onClose <$ onRemove
+         , uiDeleteConfirmation name onClose <$ onRemove
          )
 
 uiDeleteConfirmation
@@ -114,10 +121,10 @@ uiDeleteConfirmation
     , Monoid mConf
     , HasWalletCfg mConf key t
     )
-  => IntMap.Key
+  => AccountName
   -> Event t ()
   -> Workflow t m (Text, (mConf, Event t ()))
-uiDeleteConfirmation thisKey onClose = Workflow $ do
+uiDeleteConfirmation name onClose = Workflow $ do
   modalMain $ do
     divClass "segment modal__filler" $ do
       dialogSectionHeading mempty "Warning"
@@ -131,7 +138,7 @@ uiDeleteConfirmation thisKey onClose = Workflow $ do
 
   modalFooter $ do
     onConfirm <- confirmButton (def & uiButtonCfg_class .~ "account-delete__confirm") "Permanently Remove Account"
-    let cfg = mempty & walletCfg_delKey .~ (thisKey <$ onConfirm)
+    let cfg = mempty & walletCfg_delAccount .~ (name <$ onConfirm)
     pure ( ("Remove Confirmation", (cfg, leftmost [onClose, onConfirm]))
          , never
          )

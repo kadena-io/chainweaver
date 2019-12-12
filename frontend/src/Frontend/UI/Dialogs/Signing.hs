@@ -16,6 +16,7 @@ module Frontend.UI.Dialogs.Signing
   ) where
 
 import Control.Monad ((<=<))
+import Data.Some (Some(Some))
 import Kadena.SigningApi
 import Reflex
 import Reflex.Dom

@@ -86,12 +86,13 @@ uiDisplayAddress address = do
 uiReceiveFromLegacyAccount
   :: ( MonadWidget t m
      , HasWallet model key t
+     , HasNetwork model t
      , HasCrypto key (Performable m)
      )
   => model
   -> m (Dynamic t (Maybe NonBIP32TransferInfo))
 uiReceiveFromLegacyAccount model = do
-  mAccountName <- uiAccountNameInput (model ^. wallet) (pure Nothing)
+  mAccountName <- uiAccountNameInput model (pure Nothing)
 
   onKeyPair <- divClass "account-details__private-key" $
     _inputElement_input <$> mkLabeledInput True "Private Key" uiInputElement def
@@ -123,7 +124,7 @@ uiReceiveModal
      , HasCrypto key (Performable m)
      )
   => model
-  -> Account key
+  -> Account
   -> Event t ()
   -> m (mConf, Event t ())
 uiReceiveModal model account _onClose = do
@@ -143,12 +144,12 @@ uiReceiveModal0
      , HasCrypto key m
      )
   => model
-  -> Account key
+  -> Account
   -> Event t ()
   -> Workflow t m (mConf, Event t ())
 uiReceiveModal0 model account onClose = Workflow $ do
   let
-    chain = _account_chainId account
+    chain = accountChain account
 
     netInfo = do
       nodes <- model ^. network_selectedNodes
@@ -176,7 +177,7 @@ uiReceiveModal0 model account onClose = Workflow $ do
             -- Network
             transactionDisplayNetwork model
             -- Chain id
-            _ <- displayText "Chain ID" (_chainId $ _account_chainId account) "account-details__chain-id"
+            _ <- displayText "Chain ID" (_chainId $ accountChain account) "account-details__chain-id"
             pure ()
           uiDisplayAddress address
 
@@ -217,7 +218,7 @@ receiveFromLegacySubmit
      , HasCrypto key m
      )
   => Event t ()
-  -> Account key
+  -> Account
   -> ChainId
   -> TTLSeconds
   -> GasLimit
@@ -239,7 +240,7 @@ receiveFromLegacySubmit onClose account chain ttl gasLimit netInfo transferInfo 
           AccountCreated_No -> "transfer-create"
           AccountCreated_Yes -> "transfer"
       , tshow $ unAccountName $ sender
-      , tshow $ unAccountName $ _account_name account
+      , tshow $ unAccountName $ accountName account
       , case accCreated of
           AccountCreated_No -> "(read-keyset 'key)"
           AccountCreated_Yes -> mempty
@@ -255,14 +256,14 @@ receiveFromLegacySubmit onClose account chain ttl gasLimit netInfo transferInfo 
         }
       , _scArgs =
         [ PLiteral $ LString $ unAccountName sender
-        , PLiteral $ LString $ unAccountName $ _account_name account
+        , PLiteral $ LString $ unAccountName $ accountName account
         , PLiteral $ LDecimal (unpackGasPrice amount)
         ]
       }
 
     dat = case accountIsCreated account of
       AccountCreated_No
-        | Right pk <- parsePublicKey (unAccountName $ _account_name account)
+        | Right pk <- parsePublicKey (unAccountName $ accountName account)
         -> HM.singleton "key" $ Aeson.toJSON $ KeySet [toPactPublicKey pk] (Name $ BareName "keys-all" def)
       _ -> mempty
 

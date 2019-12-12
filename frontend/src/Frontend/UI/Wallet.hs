@@ -26,13 +26,13 @@ module Frontend.UI.Wallet
 
 ------------------------------------------------------------------------------
 import           Control.Lens
-import           Control.Monad               (unless, (<=<))
+import           Control.Monad               (when, (<=<))
 import qualified Data.IntMap                 as IntMap
 import qualified Data.Map                    as Map
 import           Data.Text                   (Text)
 import qualified Pact.Types.ChainId as Pact
 import           Reflex
-import           Reflex.Dom
+import           Reflex.Dom hiding (Key)
 ------------------------------------------------------------------------------
 import           Frontend.Crypto.Class
 import           Frontend.Crypto.Ed25519     (keyToText)
@@ -131,7 +131,7 @@ uiKeyItems
   -> m mConf
 uiKeyItems model = do
   let
-    keyMap' = model ^. wallet_accounts
+    keyMap' = model ^. wallet_keys
     keyMap = Map.fromAscList . IntMap.toAscList <$> keyMap'
     tableAttrs =
       "style" =: "table-layout: fixed; width: 98%"
@@ -147,9 +147,7 @@ uiKeyItems model = do
     el "thead" $ el "tr" $ do
       let mkHeading = elClass "th" "wallet__table-heading" . text
       traverse_ mkHeading $
-        [ "Account Name"
-        , "Public Key"
-        , "Chain ID"
+        [ "Public Key"
         , "Notes"
         , "Balance"
         , ""
@@ -159,7 +157,7 @@ uiKeyItems model = do
       events <- listWithKey keyMap (uiKeyItem model)
       let selectedNetwork = model ^. network_selectedNetwork
       dyn_ $ ffor2 keyMap selectedNetwork $ \keys net ->
-        unless (any (isJust . activeAccountOnNetwork net) $ Map.elems keys) $
+        when (all _key_hidden $ Map.elems keys) $
           elClass "tr" "wallet__table-row" $ elAttr "td" ("colspan" =: "6" <> "class" =: "wallet__table-cell") $
             text "No accounts ..."
       pure events
@@ -168,16 +166,17 @@ uiKeyItems model = do
   let
     onAccountModal = switchDyn $ leftmost . Map.elems <$> events
 
-    accModal (d,i,a) = Just $ case d of
-      -- AccountDialog_Delete -> uiDeleteConfirmation i (_account_name a)
-      AccountDialog_Details -> uiAccountDetails i a
-      AccountDialog_Receive -> uiReceiveModal model a
-      AccountDialog_Send -> uiSendModal model i a
+-- TODO
+--    accModal (d,i,a) = Just $ case d of
+--      -- AccountDialog_Delete -> uiDeleteConfirmation i (_account_name a)
+--      AccountDialog_Details -> uiAccountDetails i a
+--      AccountDialog_Receive -> uiReceiveModal model a
+--      AccountDialog_Send -> uiSendModal model i a
 
   refresh <- delay 1 =<< getPostBuild
 
   pure $ mempty
-    & modalCfg_setModal .~ (accModal <$> onAccountModal)
+-- TODO   & modalCfg_setModal .~ (accModal <$> onAccountModal)
     & walletCfg_refreshBalances .~ refresh
 
 ------------------------------------------------------------------------------
@@ -186,40 +185,35 @@ uiKeyItem
   :: (MonadWidget t m, HasNetwork model t)
   => model
   -> IntMap.Key
-  -> Dynamic t (SomeAccount key)
-  -> m (Event t (AccountDialog, IntMap.Key, Account key))
-uiKeyItem model i d = do
-  let selectedNetwork = model ^. network_selectedNetwork
-  md <- maybeDyn $ someAccount Nothing Just <$> d
-  switchHold never <=< dyn $ ffor md $ \case
-    Nothing -> pure never
-    Just account -> do
-      onSelectedNetwork <- holdUniqDyn $ (==) . _account_network <$> account <*> selectedNetwork
-      switchHold never <=< dyn $ ffor onSelectedNetwork $ \case
-        False -> pure never
-        True -> do
-          elClass "tr" "wallet__table-row" $ do
-            let td = elClass "td" "wallet__table-cell"
+  -> Dynamic t (Key key)
+  -> m (Event t (AccountDialog, IntMap.Key, Key key))
+uiKeyItem model i key = do
+  hidden <- holdUniqDyn $ _key_hidden <$> key
+  switchHold never <=< dyn $ ffor hidden $ \case
+    True -> pure never
+    False -> do
+      elClass "tr" "wallet__table-row" $ do
+        let td = elClass "td" "wallet__table-cell"
 
-            td $ divClass "wallet__table-wallet-address" $ dynText $ unAccountName . _account_name <$> account
-            td $ divClass "wallet__table-wallet-address" $ dynText $ keyToText . _keyPair_publicKey . _account_key <$> account
-            td $ dynText $ Pact._chainId . _account_chainId <$> account
-            td $ dynText $ unAccountNotes . _account_notes <$> account
-            td $ dynText $ ffor account $ \a -> case _account_balance a of
-              Nothing -> "Unknown"
-              Just b -> tshow (unAccountBalance b) <> " KDA" <> maybe "" (const "*") (_account_unfinishedCrossChainTransfer a)
-            td $ divClass "wallet__table-buttons" $ do
-              let cfg = def
-                    & uiButtonCfg_class <>~ "wallet__table-button"
+        td $ divClass "wallet__table-wallet-address" $ dynText $ keyToText . _keyPair_publicKey . _key_pair <$> key
+        td $ dynText $ unAccountNotes . _key_notes <$> key
+        td $ text "TODO"
+        --TODO
+        --dynText $ ffor key $ \a -> case _account_balance a of
+        --  Nothing -> "Unknown"
+        --  Just b -> tshow (unAccountBalance b) <> " KDA" <> maybe "" (const "*") (_account_unfinishedCrossChainTransfer a)
+        td $ divClass "wallet__table-buttons" $ do
+          let cfg = def
+                & uiButtonCfg_class <>~ "wallet__table-button"
 
-              recv <- receiveButton cfg
-              send <- sendButton cfg
-              onDetails <- detailsButton (cfg & uiButtonCfg_class <>~ " wallet__table-button--hamburger")
+          recv <- receiveButton cfg
+          send <- sendButton cfg
+          onDetails <- detailsButton (cfg & uiButtonCfg_class <>~ " wallet__table-button--hamburger")
 
-              let mkDialog dia onE = (\a -> (dia, i, a)) <$> current account <@ onE
+          let mkDialog dia onE = (\a -> (dia, i, a)) <$> current key <@ onE
 
-              pure $ leftmost
-                [ mkDialog AccountDialog_Details onDetails
-                , mkDialog AccountDialog_Receive recv
-                , mkDialog AccountDialog_Send send
-                ]
+          pure never {- TODO $ leftmost
+            [ mkDialog AccountDialog_Details onDetails
+            , mkDialog AccountDialog_Receive recv
+            , mkDialog AccountDialog_Send send
+            ] -}

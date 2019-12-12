@@ -26,7 +26,7 @@ module Frontend.UI.Dialogs.Send
   ) where
 
 import Control.Monad.Trans.Maybe
-import Control.Applicative (liftA2)
+import Control.Applicative (liftA2, (<|>))
 import Control.Concurrent
 import Control.Error.Util (hush)
 import Control.Lens hiding (failover)
@@ -34,6 +34,7 @@ import Control.Monad (join, when, void, (<=<))
 import Control.Monad.Trans.Except
 import Data.Bifunctor (first)
 import Data.Decimal (Decimal)
+import Data.Dependent.Sum (DSum(..), (==>))
 import Data.Either (isLeft, rights)
 import Data.List.NonEmpty (NonEmpty(..))
 import Data.Semigroup (First(..))
@@ -57,6 +58,7 @@ import qualified Data.HashMap.Lazy as HM
 import qualified Data.IntMap as IntMap
 import qualified Data.List as L
 import qualified Data.Map as Map
+import qualified Data.Set as Set
 import qualified Data.Text as T
 import qualified Data.Text.IO as T
 import qualified Pact.Server.ApiV1Client as Api
@@ -85,9 +87,9 @@ import Frontend.Wallet
 -- | A modal for handling sending coin
 uiSendModal
   :: (SendConstraints model mConf key t m, Flattenable mConf t)
-  => model -> IntMap.Key -> Account key -> Event t () -> m (mConf, Event t ())
+  => model -> IntMap.Key -> Account -> Event t () -> m (mConf, Event t ())
 uiSendModal model fromIndex sender _onCloseExternal = do
-  (conf, closes) <- fmap splitDynPure $ workflow $ case _account_unfinishedCrossChainTransfer sender of
+  (conf, closes) <- fmap splitDynPure $ workflow $ case accountUnfinishedCrossChainTransfer sender of
     Nothing -> sendConfig model fromIndex sender
     -- If we have unfinished business, force the user to finish it first
     Just ucct -> finishCrossChainTransferConfig model fromIndex sender ucct
@@ -103,7 +105,7 @@ type SendConstraints model mConf key t m
 
 -- | Data which is only required for cross chain transfers
 data CrossChainData key = CrossChainData
-  { _crossChainData_recipientChainGasPayer :: Account key
+  { _crossChainData_recipientChainGasPayer :: Account
   -- ^ The account which will be paying the gas on the recipient chain
   }
 
@@ -121,9 +123,9 @@ previewTransfer
   => model
   -> IntMap.Key
   -- ^ Key of the "from" account
-  -> Account key
+  -> Account
   -- ^ From account
-  -> Account key
+  -> Account
   -- ^ Gas payer on "from" chain
   -> KadenaAddress
   -- ^ To address
@@ -141,13 +143,13 @@ previewTransfer model fromIndex fromAccount fromGasPayer toAddress crossChainDat
     divClass "group" $ do
       mkLabeledInput True "Sender Account" uiInputElement $ def
         & initialAttributes .~ "disabled" =: "disabled"
-        & inputElementConfig_initialValue .~ unAccountName (_account_name fromAccount)
+        & inputElementConfig_initialValue .~ unAccountName (accountName fromAccount)
       let gasLabel = "Gas Payer" <> case crossChainData of
             Nothing -> ""
-            Just _ -> " (Chain " <> _chainId (_account_chainId fromAccount) <> ")"
+            Just _ -> " (Chain " <> _chainId (accountChain fromAccount) <> ")"
       mkLabeledInput True gasLabel uiInputElement $ def
         & initialAttributes .~ "disabled" =: "disabled"
-        & inputElementConfig_initialValue .~ unAccountName (_account_name fromGasPayer)
+        & inputElementConfig_initialValue .~ unAccountName (accountName fromGasPayer)
       mkLabeledInput True "Recipient Account" uiInputElement $ def
         & initialAttributes .~ "disabled" =: "disabled"
         & inputElementConfig_initialValue .~ unAccountName (_kadenaAddress_accountName toAddress)
@@ -155,7 +157,7 @@ previewTransfer model fromIndex fromAccount fromGasPayer toAddress crossChainDat
         let toChain = _kadenaAddress_chainId toAddress
         mkLabeledInput True ("Gas Payer (Chain " <> _chainId toChain <> ")") uiInputElement $ def
           & initialAttributes .~ "disabled" =: "disabled"
-          & inputElementConfig_initialValue .~ unAccountName (_account_name $ _crossChainData_recipientChainGasPayer ccd)
+          & inputElementConfig_initialValue .~ unAccountName (accountName $ _crossChainData_recipientChainGasPayer ccd)
     dialogSectionHeading mempty "Transaction Details"
     divClass "group" $ do
       void $ mkLabeledInput True "Amount" uiGasPriceInputField $ def
@@ -170,40 +172,52 @@ previewTransfer model fromIndex fromAccount fromGasPayer toAddress crossChainDat
         [ sendConfig model fromIndex fromAccount <$ back
         , flip push next $ \() -> do
           mNetInfo <- sampleNetInfo model
+          keys <- sample $ current $ model ^. wallet_keys
           accounts <- sample $ current $ model ^. wallet_accounts
-          let toAccount = maybe (Left toAddress) Right $ lookupAccountByKadenaAddress toAddress accounts
+          let toAccount n = maybe (Left toAddress) Right $ lookupAccountByKadenaAddress toAddress =<< Map.lookup n accounts
           pure $ ffor mNetInfo $ \n -> case crossChainData of
-            Nothing -> sameChainTransfer n fromAccount fromGasPayer toAddress amount
-            Just ccd -> crossChainTransfer n fromIndex fromAccount toAccount fromGasPayer ccd amount
+            Nothing -> sameChainTransfer n keys fromAccount fromGasPayer toAddress amount
+            Just ccd -> crossChainTransfer n keys fromIndex fromAccount (toAccount $ _sharedNetInfo_network n) fromGasPayer ccd amount
         ]
   pure ((mempty, close), nextScreen)
 
-lookupAccountByKadenaAddress :: KadenaAddress -> Accounts key -> Maybe (Account key)
-lookupAccountByKadenaAddress ka = fmap getFirst . foldMap f
-  where f = \case
-          SomeAccount_Account a | accountToKadenaAddress a == ka -> Just $ First a
-          _ -> Nothing
+lookupAccountByKadenaAddress :: KadenaAddress -> Accounts -> Maybe Account
+lookupAccountByKadenaAddress ka accounts = vanity <|> nonVanity
+  where
+    vanity = do
+      chainMap <- Map.lookup name (_accounts_vanity accounts)
+      v <- Map.lookup chain chainMap
+      pure $ AccountRef_Vanity name chain ==> v
+    nonVanity = do
+      key <- mKey
+      chainMap <- Map.lookup key (_accounts_nonVanity accounts)
+      nv <- Map.lookup chain chainMap
+      pure $ AccountRef_NonVanity key chain ==> nv
+    mKey = textToKey $ unAccountName name
+    name = _kadenaAddress_accountName ka
+    chain = _kadenaAddress_chainId ka
 
 -- | Perform a same chain transfer or transfer-create
 sameChainTransfer
   :: (MonadWidget t m, HasCrypto key m, Monoid mConf)
   => SharedNetInfo NodeInfo
-  -> Account key
+  -> KeyStorage key
+  -> Account
   -- ^ From account
-  -> Account key
+  -> Account
   -- ^ Gas payer
   -> KadenaAddress
   -- ^ Recipient account
   -> Decimal
   -- ^ Amount to transfer
   -> Workflow t m (mConf, Event t ())
-sameChainTransfer netInfo fromAccount gasPayer toAccount amount = Workflow $ do
+sameChainTransfer netInfo keys fromAccount gasPayer toAccount amount = Workflow $ do
   let recipientCreated = _kadenaAddress_accountCreated toAccount
   let code = T.unwords $
         [ "(coin." <> case recipientCreated of
           AccountCreated_Yes -> "transfer"
           AccountCreated_No -> "transfer-create"
-        , tshow $ unAccountName $ _account_name fromAccount
+        , tshow $ unAccountName $ accountName fromAccount
         , tshow $ unAccountName $ _kadenaAddress_accountName toAccount
         , case recipientCreated of
           AccountCreated_Yes -> mempty
@@ -211,11 +225,12 @@ sameChainTransfer netInfo fromAccount gasPayer toAccount amount = Workflow $ do
         , tshow amount
         , ")"
         ]
-      signingPairs = L.nubBy (\x y -> _keyPair_publicKey x == _keyPair_publicKey y) [_account_key fromAccount, _account_key gasPayer]
+      signingSet = Set.fromList [accountKey fromAccount, accountKey gasPayer]
+      signingPairs = filterKeyPairs signingSet keys
       transferCap = SigCapability
         { _scName = QualifiedName { _qnQual = "coin", _qnName = "TRANSFER", _qnInfo = def }
         , _scArgs =
-          [ PLiteral $ LString $ unAccountName $ _account_name fromAccount
+          [ PLiteral $ LString $ unAccountName $ accountName fromAccount
           , PLiteral $ LString $ unAccountName $ _kadenaAddress_accountName toAccount
           , PLiteral $ LDecimal amount
           ]
@@ -228,19 +243,19 @@ sameChainTransfer netInfo fromAccount gasPayer toAccount amount = Workflow $ do
           -> HM.singleton "key" $ Aeson.toJSON $ KeySet [toPactPublicKey pk] (Name $ BareName "keys-all" def)
         _ -> mempty
       pkCaps = Map.unionsWith (<>)
-        [ Map.singleton (_keyPair_publicKey $ _account_key gasPayer) [_dappCap_cap defaultGASCapability]
-        , Map.singleton (_keyPair_publicKey $ _account_key fromAccount) [transferCap]
+        [ Map.singleton (accountKey gasPayer) [_dappCap_cap defaultGASCapability]
+        , Map.singleton (accountKey fromAccount) [transferCap]
         ]
       pm = (_sharedNetInfo_meta netInfo)
-        { _pmChainId = _account_chainId fromAccount
-        , _pmSender = unAccountName $ _account_name gasPayer
+        { _pmChainId = accountChain fromAccount
+        , _pmSender = unAccountName $ accountName gasPayer
         }
       nodeInfos = _sharedNetInfo_nodes netInfo
       networkName = _sharedNetInfo_network netInfo
   close <- modalHeader $ text "Transaction Status"
   cmd <- buildCmd Nothing networkName pm signingPairs [] code dat pkCaps
   _ <- elClass "div" "modal__main transaction_details" $
-    submitTransactionWithFeedback cmd (_account_chainId fromAccount) (fmap Right nodeInfos)
+    submitTransactionWithFeedback cmd (accountChain fromAccount) (fmap Right nodeInfos)
   done <- modalFooter $ confirmButton def "Done"
   pure
     ( (mempty, close <> done)
@@ -250,7 +265,7 @@ sameChainTransfer netInfo fromAccount gasPayer toAccount amount = Workflow $ do
 -- | General transfer workflow. This is the initial configuration screen.
 sendConfig
   :: SendConstraints model mConf key t m
-  => model -> IntMap.Key -> Account key -> Workflow t m (mConf, Event t ())
+  => model -> IntMap.Key -> Account -> Workflow t m (mConf, Event t ())
 sendConfig model fromIndex fromAccount = Workflow $ do
   close <- modalHeader $ text "Send"
   rec
@@ -291,7 +306,7 @@ sendConfig model fromIndex fromAccount = Workflow $ do
             pure $ pure Nothing
           Right (ka, _amount) -> do
             let toChain = _kadenaAddress_chainId ka
-                fromChain = _account_chainId fromAccount
+                fromChain = accountChain fromAccount
             when (toChain /= fromChain) $ do
               elClass "h3" ("heading heading_type_h3") $ text "This is a cross chain transfer."
               el "p" $ text $ T.concat
@@ -313,8 +328,10 @@ sendConfig model fromIndex fromAccount = Workflow $ do
               let cfg = def & dropdownConfig_attributes .~ pure ("class" =: "labeled-input__input")
                   chain = pure $ Just fromChain
               gasAcc <- uiSenderDropdown cfg never model chain
-              let toAccount ma m = find ((ma ==) . Just . _account_name) $ fmapMaybe (\case SomeAccount_Account a -> Just a; _ -> Nothing) m
-              pure $ toAccount <$> gasAcc <*> model ^. wallet_accounts
+              pure $ ffor3 (model ^. wallet_accounts) (model ^. network_selectedNetwork) gasAcc $ \netToAccount net ma -> do
+                accounts <- Map.lookup net netToAccount
+                a <- ma
+                lookupAccountRef a accounts
             toGasPayer <- if toChain == fromChain
               then pure $ pure $ Just Nothing
               else do
@@ -327,8 +344,10 @@ sendConfig model fromIndex fromAccount = Workflow $ do
                   let cfg = def & dropdownConfig_attributes .~ pure ("class" =: "labeled-input__input")
                       chain = pure $ Just toChain
                   gasAcc <- uiSenderDropdown cfg never model chain
-                  let toAccount ma m = find ((ma ==) . Just . _account_name) $ fmapMaybe (\case SomeAccount_Account a -> Just a; _ -> Nothing) m
-                  pure $ fmap Just $ toAccount <$> gasAcc <*> model ^. wallet_accounts
+                  pure $ fmap Just $ ffor3 (model ^. wallet_accounts) (model ^. network_selectedNetwork) gasAcc $ \netToAccount net ma -> do
+                    accounts <- Map.lookup net netToAccount
+                    a <- ma
+                    lookupAccountRef a accounts
             pure $ (liftA2 . liftA2) (,) fromGasPayer toGasPayer
       pure (conf, mCaps, recipient)
     footerSection currentTab recipient mCaps = modalFooter $ do
@@ -351,16 +370,18 @@ runUnfinishedCrossChainTransfer
      )
   => SharedNetInfo NodeInfo
   -- ^ Network info
+  -> KeyStorage key
+  -- ^ Keys
   -> ChainId
   -- ^ From chain
   -> ChainId
   -- ^ To chain
-  -> Account key
+  -> Account
   -- ^ Gas payer on "To" chain
   -> Event t Pact.RequestKey
   -- ^ The request key to follow up on
   -> m (Event t (), Event t Text, Event t ())
-runUnfinishedCrossChainTransfer netInfo fromChain toChain toGasPayer requestKey = mdo
+runUnfinishedCrossChainTransfer netInfo keys fromChain toChain toGasPayer requestKey = mdo
   let nodeInfos = _sharedNetInfo_nodes netInfo
       networkName = _sharedNetInfo_network netInfo
       publicMeta = _sharedNetInfo_meta netInfo
@@ -376,7 +397,7 @@ runUnfinishedCrossChainTransfer netInfo fromChain toChain toGasPayer requestKey 
   spvResponse <- getSPVProof nodeInfos fromChain toChain contOk
   let (spvError, spvOk) = fanEither spvResponse
   -- Run continuation on target chain
-  continueResponse <- continueCrossChainTransfer networkName envToChain publicMeta toGasPayer spvOk
+  continueResponse <- continueCrossChainTransfer networkName envToChain publicMeta keys toGasPayer spvOk
   let (continueError, continueOk) = fanEither continueResponse
   -- Wait for result
   resultResponse <- listenForSuccess envToChain continueOk
@@ -442,7 +463,7 @@ finishCrossChainTransferConfig
   => model
   -> IntMap.Key
   -- ^ Key of the "from" account
-  -> Account key
+  -> Account
   -- ^ From account
   -> UnfinishedCrossChainTransfer
   -- ^ The unfinished transfer
@@ -476,14 +497,17 @@ finishCrossChainTransferConfig model fromIndex fromAccount ucct = Workflow $ do
       let cfg = def & dropdownConfig_attributes .~ pure ("class" =: "labeled-input__input")
           chain = pure $ Just toChain
       gasAcc <- uiSenderDropdown cfg never model chain
-      let toAccount ma m = find ((ma ==) . Just . _account_name) $ fmapMaybe (\case SomeAccount_Account a -> Just a; _ -> Nothing) m
-      pure $ toAccount <$> gasAcc <*> model ^. wallet_accounts
+      pure $ ffor3 (model ^. wallet_accounts) (model ^. network_selectedNetwork) gasAcc $ \netToAccount net ma -> do
+        accounts <- Map.lookup net netToAccount
+        a <- ma
+        lookupAccountRef a accounts
     pure (sender, conf)
   next <- modalFooter $ confirmButton def "Next"
   let nextScreen = flip push next $ \() -> do
         mNetInfo <- sampleNetInfo model
         mToGasPayer <- sample $ current sender
-        pure $ ffor2 mNetInfo mToGasPayer $ \ni gp -> finishCrossChainTransfer ni fromIndex fromAccount ucct gp
+        keys <- sample $ current $ model ^. wallet_keys
+        pure $ ffor2 mNetInfo mToGasPayer $ \ni gp -> finishCrossChainTransfer ni keys fromIndex fromAccount ucct gp
   pure ((conf, close), nextScreen)
 
 -- | Handy function for getting network / meta information in 'PushM'. Type
@@ -509,18 +533,19 @@ finishCrossChainTransfer
      , Monoid mConf, HasWalletCfg mConf key t
      )
   => SharedNetInfo NodeInfo
+  -> KeyStorage key
   -> IntMap.Key
   -- ^ Key for "from" account
-  -> Account key
+  -> Account
   -- ^ From account
   -> UnfinishedCrossChainTransfer
   -- ^ The unfinished transfer
-  -> Account key
+  -> Account
   -- ^ The account which pays the gas on the recipient chain
   -> Workflow t m (mConf, Event t ())
-finishCrossChainTransfer netInfo fromIndex fromAccount ucct toGasPayer = Workflow $ do
+finishCrossChainTransfer netInfo keys fromIndex fromAccount ucct toGasPayer = Workflow $ do
   close <- modalHeader $ text "Cross chain transfer"
-  let fromChain = _account_chainId fromAccount
+  let fromChain = accountChain fromAccount
       toChain = _unfinishedCrossChainTransfer_recipientChain ucct
       requestKey = _unfinishedCrossChainTransfer_requestKey ucct
   resultOk <- divClass "modal__main" $ do
@@ -532,7 +557,7 @@ finishCrossChainTransfer netInfo fromIndex fromAccount ucct toGasPayer = Workflo
         item (pure Status_Done) $ el "p" $
           text $ "Cross chain transfer initiated on chain " <> _chainId fromChain
         pb <- getPostBuild
-        runUnfinishedCrossChainTransfer netInfo fromChain toChain toGasPayer $ requestKey <$ pb
+        runUnfinishedCrossChainTransfer netInfo keys fromChain toChain toGasPayer $ requestKey <$ pb
 
     dialogSectionHeading mempty "Request Key"
     divClass "group" $ text $ Pact.requestKeyToB16Text requestKey
@@ -574,28 +599,29 @@ crossChainTransfer
      , Monoid mConf, HasWalletCfg mConf key t
      )
   => SharedNetInfo NodeInfo
+  -> KeyStorage key
   -> IntMap.Key
   -- ^ Key of "from" account
-  -> Account key
+  -> Account
   -- ^ From account
-  -> Either KadenaAddress (Account key)
+  -> Either KadenaAddress (Account)
   -- ^ To address/account. We pass in a full 'Account' if we have one, such that
   -- we can avoid looking up the keyset.
-  -> Account key
+  -> Account
   -- ^ Gas payer for 'from' chain
   -> CrossChainData key
   -- ^ Cross chain specific info
   -> Decimal
   -- ^ Amount to transfer
   -> Workflow t m (mConf, Event t ())
-crossChainTransfer netInfo fromIndex fromAccount toAccount fromGasPayer crossChainData amount = Workflow $ do
+crossChainTransfer netInfo keys fromIndex fromAccount toAccount fromGasPayer crossChainData amount = Workflow $ do
   let nodeInfos = _sharedNetInfo_nodes netInfo
       networkName = _sharedNetInfo_network netInfo
       publicMeta = _sharedNetInfo_meta netInfo
   close <- modalHeader $ text "Cross chain transfer"
   pb <- getPostBuild
-  let fromChain = _account_chainId fromAccount
-      toChain = either _kadenaAddress_chainId _account_chainId toAccount
+  let fromChain = accountChain fromAccount
+      toChain = either _kadenaAddress_chainId accountChain toAccount
       toAddress = either id accountToKadenaAddress toAccount
   -- Client envs for making requests to each chain
   let envFromChain = mkClientEnvs nodeInfos fromChain
@@ -609,10 +635,10 @@ crossChainTransfer netInfo fromIndex fromAccount toAccount fromGasPayer crossCha
       AccountCreated_No -> pure $ ffor pb $ \() -> case textToKey $ unAccountName $ _kadenaAddress_accountName ka of
         Nothing -> Left "Couldn't make public key from name"
         Just k -> Right $ toKS $ toPactPublicKey k
-    Right ours -> pure $ Right (toKS $ toPactPublicKey $ _keyPair_publicKey $ _account_key ours) <$ pb
+    Right ours -> pure $ Right (toKS $ toPactPublicKey $ accountKey ours) <$ pb
   let (keySetError, keySetOk) = fanEither keySetResponse
   -- Start the transfer
-  initiated <- initiateCrossChainTransfer networkName envFromChain publicMeta fromAccount fromGasPayer toAddress amount keySetOk
+  initiated <- initiateCrossChainTransfer networkName envFromChain publicMeta keys fromAccount fromGasPayer toAddress amount keySetOk
   let (initiatedError, initiatedOk) = fanEither initiated
   initiateStatus <- holdDyn Status_Waiting $ leftmost
     [ Status_Working <$ keySetOk
@@ -629,7 +655,7 @@ crossChainTransfer netInfo fromIndex fromAccount toAccount fromGasPayer crossCha
           el "p" $ text $ "Cross chain transfer initiated on chain " <> _chainId fromChain
 
         let toGasPayer = _crossChainData_recipientChainGasPayer crossChainData
-        runUnfinishedCrossChainTransfer netInfo fromChain toChain toGasPayer initiatedOk
+        runUnfinishedCrossChainTransfer netInfo keys fromChain toChain toGasPayer initiatedOk
 
     dialogSectionHeading mempty "Request Key"
     divClass "group" $ void $ runWithReplace (text "Loading...") $ ffor initiatedOk $ \rk ->
@@ -672,17 +698,20 @@ continueCrossChainTransfer
   -- ^ Envs pointing at the target chain
   -> PublicMeta
   -- ^ Meta info (gas settings)
-  -> Account key
+  -> KeyStorage key
+  -- ^ Keys
+  -> Account
   -- ^ Gas payer on target chain
   -> Event t (Pact.PactExec, Pact.ContProof)
   -- ^ The previous continuation step and associated proof
   -> m (Event t (Either Text (Pact.PactId, Pact.RequestKey)))
-continueCrossChainTransfer networkName envs publicMeta gasPayer spvOk = performEventAsync $ ffor spvOk $ \(pe, proof) cb -> do
+continueCrossChainTransfer networkName envs publicMeta keys gasPayer spvOk = performEventAsync $ ffor spvOk $ \(pe, proof) cb -> do
   let pm = publicMeta
-        { _pmChainId = _account_chainId gasPayer
-        , _pmSender = unAccountName $ _account_name gasPayer
+        { _pmChainId = accountChain gasPayer
+        , _pmSender = unAccountName $ accountName gasPayer
         }
-      signingPairs = [_account_key gasPayer]
+      signingSet = Set.singleton $ accountKey gasPayer
+      signingPairs = filterKeyPairs signingSet keys
   payload <- buildContPayload networkName pm signingPairs $ ContMsg
     { _cmPactId = Pact._pePactId pe
     , _cmStep = succ $ Pact._peStep pe
@@ -766,9 +795,11 @@ initiateCrossChainTransfer
   -- ^ Where to send requests
   -> PublicMeta
   -- ^ Meta info - really only interested in gas settings
-  -> Account key
+  -> KeyStorage key
+  -- ^ Keys
+  -> Account
   -- ^ From account
-  -> Account key
+  -> Account
   -- ^ Gas payer ("from" chain)
   -> KadenaAddress
   -- ^ Recipient address
@@ -777,7 +808,7 @@ initiateCrossChainTransfer
   -> Event t Pact.KeySet
   -- ^ Recipient keyset
   -> m (Event t (Either Text Pact.RequestKey))
-initiateCrossChainTransfer networkName envs publicMeta fromAccount fromGasPayer toAccount amount eks = performEventAsync $ ffor eks $ \rg cb -> do
+initiateCrossChainTransfer networkName envs publicMeta keys fromAccount fromGasPayer toAccount amount eks = performEventAsync $ ffor eks $ \rg cb -> do
   cmd <- buildCmd Nothing networkName pm signingPairs [] code (mkDat rg) capabilities
   liftJSM $ forkJSM $ do
     r <- doReqFailover envs (Api.local Api.apiV1Client cmd) >>= \case
@@ -794,7 +825,7 @@ initiateCrossChainTransfer networkName envs publicMeta fromAccount fromGasPayer 
     keysetName = "receiverKey"
     code = T.unwords
       [ "(coin.transfer-crosschain"
-      , tshow $ unAccountName $ _account_name fromAccount
+      , tshow $ unAccountName $ accountName fromAccount
       , tshow $ unAccountName $ _kadenaAddress_accountName toAccount
       , "(read-keyset '" <> keysetName <> ")"
       , tshow $ _chainId $ _kadenaAddress_chainId toAccount
@@ -802,19 +833,20 @@ initiateCrossChainTransfer networkName envs publicMeta fromAccount fromGasPayer 
       , ")"
       ]
     mkDat rg = HM.singleton keysetName $ Aeson.toJSON rg
-    signingPairs = L.nubBy (\x y -> _keyPair_publicKey x == _keyPair_publicKey y) [_account_key fromAccount, _account_key fromGasPayer]
+    signingSet = Set.fromList [accountKey fromAccount, accountKey fromGasPayer]
+    signingPairs = filterKeyPairs signingSet keys
     -- This capability is required for `transfer-crosschain`.
     debitCap = SigCapability
       { _scName = QualifiedName { _qnQual = "coin", _qnName = "DEBIT", _qnInfo = def }
-      , _scArgs = [PLiteral $ LString $ unAccountName $ _account_name fromAccount]
+      , _scArgs = [PLiteral $ LString $ unAccountName $ accountName fromAccount]
       }
     capabilities = Map.unionsWith (<>)
-      [ Map.singleton (_keyPair_publicKey $ _account_key fromGasPayer) [_dappCap_cap defaultGASCapability]
-      , Map.singleton (_keyPair_publicKey $ _account_key fromAccount) [debitCap]
+      [ Map.singleton (accountKey fromGasPayer) [_dappCap_cap defaultGASCapability]
+      , Map.singleton (accountKey fromAccount) [debitCap]
       ]
     pm = publicMeta
-      { _pmChainId = _account_chainId fromAccount
-      , _pmSender = unAccountName $ _account_name fromGasPayer
+      { _pmChainId = accountChain fromAccount
+      , _pmSender = unAccountName $ accountName fromGasPayer
       }
 
 -- | Listen to a request key for some continuation

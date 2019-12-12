@@ -25,7 +25,6 @@ module Frontend.JsonData
   , DynKeysets
   , Keysets
   , KeysetKeys
-  , KeyName
   , JsonError (..)
   , KeysetV (..)
   , Keyset
@@ -66,8 +65,8 @@ import           Reflex
 -- Needed for fanOut, module coming from reflex:
 import           Data.Functor.Misc   (Const2 (..))
 
-import           Frontend.Foundation
-import           Frontend.Wallet
+import Frontend.Foundation
+import Frontend.Wallet
 
 -- | Type of a `Keyset` name.
 --
@@ -88,15 +87,12 @@ type DynKeysets t = Map KeysetName (DynKeyset t)
 -- | Mapping of `KeysetName` to `Keyset`s.
 type Keysets = Map KeysetName Keyset
 
-type KeyName = Text
-
--- | Keys in a `KeySet`.
-type KeysetKeys = Map KeyName PublicKey
-
 -- | User entered `_jsonData_rawInput` was invalid.
 data JsonError =
   JsonError_NoObject -- ^ Input was no valid JSON object.
   deriving Show
+
+type KeysetKeys = Set PublicKey
 
 -- | A Keyset as defined [here](https://pact-language.readthedocs.io/en/latest/pact-reference.html#keysets).
 --
@@ -134,10 +130,10 @@ data JsonDataCfg t = JsonDataCfg
     -- ^ Create a new empty key set with the given name.
     -- The event will be ignored if a keyset with the given name already
     -- exists or is the empty string.
-  , _jsonDataCfg_addKey       :: Event t (KeysetName, KeyName)
+  , _jsonDataCfg_addKey       :: Event t (KeysetName, PublicKey)
     -- ^ Add a new key to a given keyset, both need to exist,
     -- otherwise, the event is ignored.
-  , _jsonDataCfg_delKey       :: Event t (KeysetName, KeyName)
+  , _jsonDataCfg_delKey       :: Event t (KeysetName, PublicKey)
     -- ^ Delete a given key from a `Keyset`. If either of those don't exist,
     -- the event is simply ignored.
   , _jsonDataCfg_delKeyset    :: Event t KeysetName
@@ -254,32 +250,19 @@ makeKeysets walletL cfg =
     onNewPreds = uncurry Map.singleton <$> cfg ^. jsonDataCfg_setPred
 
     onAddKeysetKey =
-      uncurry Map.singleton <$> filterValid snd (cfg ^. jsonDataCfg_addKey)
+      uncurry Map.singleton <$> (cfg ^. jsonDataCfg_addKey)
 
     onDelKeysetKey =
-      uncurry Map.singleton <$> filterValid snd (cfg ^. jsonDataCfg_delKey)
+      uncurry Map.singleton <$> (cfg ^. jsonDataCfg_delKey)
 
     predSelectors :: EventSelector t (Const2 KeysetName (Maybe KeysetPredicate))
     predSelectors = fanMap onNewPreds
 
-    addSelectors :: EventSelector t (Const2 KeysetName KeyName)
+    addSelectors :: EventSelector t (Const2 KeysetName PublicKey)
     addSelectors = fanMap onAddKeysetKey
 
-    delSelectors :: EventSelector t (Const2 KeysetName KeyName)
+    delSelectors :: EventSelector t (Const2 KeysetName PublicKey)
     delSelectors = fanMap onDelKeysetKey
-
-    -- | Filter events for valid key names:
-    filterValid :: (a -> KeyName) -> Event t a -> Event t a
-    filterValid getName = push checkName
-      where
-        checkName v = do
-          cKeys <- sample . current $ walletL ^. wallet_accounts
-          -- This is a weird clash between the old named keys and the new
-          -- accounts. We are (temporarily) treating accounts like keys, so
-          -- pretend multisig doesn't exist here.
-          if any (\case SomeAccount_Account a -> unAccountName (_account_name a) == getName v; _ -> False) cKeys
-             then pure $ Just v
-             else pure Nothing
 
     makeKeyset
       :: forall mh. (MonadHold t mh, MonadFix mh)
@@ -292,39 +275,26 @@ makeKeysets walletL cfg =
         onDelKey = select delSelectors (Const2 n)
 
         onRemovedKeys = push (\new -> do
-          old <- sample . current $ walletL ^. wallet_accounts
-          let f (SomeAccount_Account a) SomeAccount_Deleted = Just $ unAccountName $ _account_name a
+          old <- sample . current $ walletL ^. wallet_keys
+          let f k1 k2 | not (_key_hidden k1) && _key_hidden k2 = g k1
               f _ _ = Nothing
-              g (SomeAccount_Account a) = Just $ unAccountName $ _account_name a
-              g _ = Nothing
+              g = Just . _keyPair_publicKey . _key_pair
               removed = IntMap.merge (IntMap.mapMaybeMissing $ \_ -> g) IntMap.dropMissing (IntMap.zipWithMaybeMatched $ \_ -> f) old new
           if IntMap.null removed
              then pure Nothing
              else pure $ Just . Set.fromList . IntMap.elems $ removed
 
           )
-          (updated $ walletL ^. wallet_accounts)
+          (updated $ walletL ^. wallet_keys)
 
       -- Nothing would pick the default which is keys-all, but let's be explicit:
       pPred <- holdUniqDyn =<< holdDyn (Just "keys-all") onSetPred
 
-      keynames <- foldDyn id Set.empty
-        $ leftmost [ Set.insert <$> onNewKey
-                   , Set.delete <$> onDelKey
-                   , flip Set.difference <$> onRemovedKeys
-                   ]
-
-      let
-        keys :: Dynamic t (Map KeyName PublicKey)
-        keys = do
-          names <- keynames
-          wAccounts <- walletL ^. wallet_accounts
-          let toKeyPairs = \case
-                SomeAccount_Account a
-                  | unAccountName (_account_name a) `Set.member` names
-                  -> Map.insert (unAccountName $ _account_name a) (_keyPair_publicKey $ _account_key a)
-                _ -> id
-          pure $ IntMap.foldr toKeyPairs Map.empty wAccounts
+      keys <- foldDyn id Set.empty $ leftmost
+        [ Set.insert <$> onNewKey
+        , Set.delete <$> onDelKey
+        , flip Set.difference <$> onRemovedKeys
+        ]
 
       pure (n, Keyset keys pPred)
 
@@ -354,13 +324,9 @@ joinKeysets = joinDynThroughMap . fmap (fmap joinKeyset)
 -- Format of course according to the Pact reference:
 --   https://pact-language.readthedocs.io/en/latest/pact-reference.html#keysets
 instance ToJSON Keyset where
-  toJSON (Keyset keys mPred) =
-    let
-      kVals = Map.elems keys
-    in
-      case mPred of
-        Nothing -> toJSON kVals
-        Just p  -> object [ ("keys", toJSON kVals), ("pred", toJSON p)]
+  toJSON (Keyset keys mPred) = case mPred of
+    Nothing -> toJSON keys
+    Just p  -> object [ ("keys", toJSON keys), ("pred", toJSON p)]
 
 instance FromJSON Keyset where
   parseJSON = \case

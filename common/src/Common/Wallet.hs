@@ -20,14 +20,29 @@ module Common.Wallet
   , parsePublicKey
   , toPactPublicKey
   , KeyPair(..)
+  , AccountRef(..)
+  , accountRefToName
+  , lookupAccountRef
   , AccountName(..)
   , AccountBalance(..)
   , AccountNotes (unAccountNotes)
   , mkAccountNotes
-  , Account(..)
-  , HasAccount (..)
   , AccountGuard(..)
   , UnfinishedCrossChainTransfer(..)
+  , KeyStorage
+  , Account(..)
+  , accountUnfinishedCrossChainTransfer
+  , accountName
+  , accountInfo
+  , accountChain
+  , accountKey
+  , AccountStorage
+  , Accounts(..)
+  , Key(..)
+  , filterKeyPairs
+  , VanityAccount(..)
+  , NonVanityAccount(..)
+  , AccountInfo(..)
   , pactGuardTypeText
   , fromPactGuard
   , accountGuardKeys
@@ -50,8 +65,12 @@ import Data.Bifunctor (first)
 import Data.ByteString (ByteString)
 import Data.Decimal (Decimal)
 import Data.Default
+import Data.Dependent.Sum (DSum(..), (==>))
+import Data.IntMap (IntMap)
 import Data.Map (Map)
 import Data.Set (Set)
+import Data.Some (Some(..))
+import Data.GADT.Compare.TH
 import Data.Text (Text)
 import Data.Traversable (for)
 import GHC.Generics (Generic)
@@ -71,6 +90,7 @@ import qualified Data.Aeson.Types as Aeson
 import qualified Data.ByteString as BS
 import qualified Data.ByteString.Base16 as Base16
 import qualified Data.HashMap.Lazy as HM
+import qualified Data.IntMap as IntMap
 import qualified Data.Map as Map
 import qualified Data.Set as Set
 import qualified Data.Text as T
@@ -274,53 +294,219 @@ instance FromJSON UnfinishedCrossChainTransfer where
       , _unfinishedCrossChainTransfer_amount = amount
       }
 
-data Account key = Account
-  { _account_name :: AccountName
-  , _account_key :: KeyPair key
-  , _account_chainId :: ChainId
-  , _account_network :: NetworkName
-  , _account_notes :: AccountNotes
-  , _account_balance :: Maybe AccountBalance
-  -- ^ We also treat this as proof of the account's existence.
-  , _account_unfinishedCrossChainTransfer :: Maybe UnfinishedCrossChainTransfer
+--data Account key = Account
+--  { _account_name :: AccountName
+--  , _account_key :: KeyPair key
+--  , _account_chainId :: ChainId
+--  , _account_network :: NetworkName
+--  , _account_notes :: AccountNotes
+--  , _account_balance :: Maybe AccountBalance
+--  -- ^ We also treat this as proof of the account's existence.
+--  , _account_unfinishedCrossChainTransfer :: Maybe UnfinishedCrossChainTransfer
+--  }
+--
+--instance ToJSON key => ToJSON (Account key) where
+--  toJSON a = object $ catMaybes
+--    [ Just $ "name" .= _account_name a
+--    , Just $ "key" .= _account_key a
+--    , Just $ "chain" .= _account_chainId a
+--    , Just $ "network" .= _account_network a
+--    , Just $ "notes" .= _account_notes a
+--    , ("balance" .=) <$> _account_balance a
+--    , ("unfinishedCrossChainTransfer" .=) <$> _account_unfinishedCrossChainTransfer a
+--    ]
+--
+--instance FromJSON key => FromJSON (Account key) where
+--  parseJSON = withObject "Account" $ \o -> do
+--    name <- o .: "name"
+--    key <- o .: "key"
+--    chain <- o .: "chain"
+--    network <- o .: "network"
+--    notes <- o .: "notes"
+--    balance <- o .:? "balance"
+--    unfinishedCrossChainTransfer <- lenientLookup o "unfinishedCrossChainTransfer"
+--    pure $ Account
+--      { _account_name = name
+--      , _account_key = key
+--      , _account_chainId = chain
+--      , _account_network = network
+--      , _account_notes = notes
+--      , _account_balance = balance
+--      , _account_unfinishedCrossChainTransfer = unfinishedCrossChainTransfer
+--      }
+
+data Key key = Key
+  { _key_pair :: KeyPair key
+  , _key_hidden :: Bool
+  , _key_notes :: AccountNotes
   }
 
--- We want to be able to use the variable 'account' so we suffix it with `L`..
-makeLensesWith (classyRules
-  & lensClass .~ \name -> case nameBase name of
-    n:ns -> Just (mkName $ "Has" ++ n:ns, mkName $ C.toLower n:ns <> "L")
-    [] -> Nothing
-  ) ''Account
-
-instance ToJSON key => ToJSON (Account key) where
-  toJSON a = object $ catMaybes
-    [ Just $ "name" .= _account_name a
-    , Just $ "key" .= _account_key a
-    , Just $ "chain" .= _account_chainId a
-    , Just $ "network" .= _account_network a
-    , Just $ "notes" .= _account_notes a
-    , ("balance" .=) <$> _account_balance a
-    , ("unfinishedCrossChainTransfer" .=) <$> _account_unfinishedCrossChainTransfer a
+instance ToJSON key => ToJSON (Key key) where
+  toJSON k = object
+    [ "pair" .= toJSON (_key_pair k)
+    , "hidden" .= toJSON (_key_hidden k)
+    , "notes" .= toJSON (_key_notes k)
     ]
 
-instance FromJSON key => FromJSON (Account key) where
-  parseJSON = withObject "Account" $ \o -> do
-    name <- o .: "name"
-    key <- o .: "key"
-    chain <- o .: "chain"
-    network <- o .: "network"
-    notes <- o .: "notes"
-    balance <- o .:? "balance"
-    unfinishedCrossChainTransfer <- lenientLookup o "unfinishedCrossChainTransfer"
-    pure $ Account
-      { _account_name = name
-      , _account_key = key
-      , _account_chainId = chain
-      , _account_network = network
-      , _account_notes = notes
-      , _account_balance = balance
-      , _account_unfinishedCrossChainTransfer = unfinishedCrossChainTransfer
+instance FromJSON key => FromJSON (Key key) where
+  parseJSON = withObject "Key" $ \o -> do
+    pair <- o .: "pair"
+    hidden <- fromMaybe False <$> lenientLookup o "hidden"
+    notes <- fromMaybe (AccountNotes "") <$> lenientLookup o "notes"
+    pure $ Key
+      { _key_pair = pair
+      , _key_hidden = hidden
+      , _key_notes = notes
       }
+
+
+type KeyStorage key = IntMap (Key key)
+
+filterKeyPairs :: Set PublicKey -> IntMap (Key key) -> [KeyPair key]
+filterKeyPairs s m = Map.elems $ Map.restrictKeys (toMap m) s
+  where toMap = Map.fromList . fmap (\k -> (_keyPair_publicKey $ _key_pair k, _key_pair k)) . IntMap.elems
+
+data AccountRef a where
+  AccountRef_Vanity :: AccountName -> ChainId -> AccountRef VanityAccount
+  AccountRef_NonVanity :: PublicKey -> ChainId -> AccountRef NonVanityAccount
+
+accountRefToName :: AccountRef a -> Text
+accountRefToName = \case
+  AccountRef_Vanity an _ -> unAccountName an
+  AccountRef_NonVanity pk _ -> keyToText pk
+
+type Account = DSum AccountRef Identity
+
+accountInfo :: Account -> AccountInfo
+accountInfo (r :=> Identity a) = case r of
+  AccountRef_Vanity _ _ -> _vanityAccount_info a
+  AccountRef_NonVanity _ _ -> _nonVanityAccount_info a
+
+lookupAccountRef :: Some AccountRef -> Accounts -> Maybe Account
+lookupAccountRef (Some ref) accounts = case ref of
+  AccountRef_Vanity an c -> do
+    cs <- Map.lookup an $ _accounts_vanity accounts
+    v <- Map.lookup c cs
+    pure $ ref ==> v
+  AccountRef_NonVanity pk c -> do
+    cs <- Map.lookup pk $ _accounts_nonVanity accounts
+    nv <- Map.lookup c cs
+    pure $ ref ==> nv
+
+accountUnfinishedCrossChainTransfer :: Account -> Maybe UnfinishedCrossChainTransfer
+accountUnfinishedCrossChainTransfer (r :=> Identity a) = _accountInfo_unfinishedCrossChainTransfer $ case r of
+  AccountRef_Vanity _ _ -> _vanityAccount_info a
+  AccountRef_NonVanity _ _ -> _nonVanityAccount_info a
+
+accountName :: Account -> AccountName
+accountName (r :=> _) = case r of
+  AccountRef_Vanity n _ -> n
+  AccountRef_NonVanity pk _ -> AccountName $ keyToText pk
+
+accountChain :: Account -> ChainId
+accountChain (r :=> _) = case r of
+  AccountRef_Vanity _ c -> c
+  AccountRef_NonVanity _ c -> c
+
+accountKey :: Account -> PublicKey
+accountKey (r :=> Identity a) = case r of
+  AccountRef_Vanity _ _ -> _vanityAccount_key a
+  AccountRef_NonVanity pk _ -> pk
+
+data Accounts = Accounts
+  { _accounts_vanity :: Map AccountName (Map ChainId VanityAccount)
+  , _accounts_nonVanity :: Map PublicKey (Map ChainId NonVanityAccount)
+  }
+
+instance Semigroup Accounts where
+  a1 <> a2 = Accounts
+    { _accounts_vanity = _accounts_vanity a1 <> _accounts_vanity a2
+    , _accounts_nonVanity = _accounts_nonVanity a1 <> _accounts_nonVanity a2
+    }
+
+instance Monoid Accounts where
+  mempty = Accounts mempty mempty
+
+instance ToJSON Accounts where
+  toJSON as = object
+    [ "vanity" .= toJSON (_accounts_vanity as)
+    , "nonVanity" .= toJSON (_accounts_nonVanity as)
+    ]
+
+instance FromJSON Accounts where
+  parseJSON = withObject "Accounts" $ \o -> do
+    vanity <- o .: "vanity"
+    nonVanity <- o .: "nonVanity"
+    pure $ Accounts
+      { _accounts_vanity = vanity
+      , _accounts_nonVanity = nonVanity
+      }
+
+data AccountInfo = AccountInfo
+  { _accountInfo_balance :: Maybe AccountBalance
+  , _accountInfo_unfinishedCrossChainTransfer :: Maybe UnfinishedCrossChainTransfer
+  , _accountInfo_hidden :: Bool
+  }
+
+instance ToJSON AccountInfo where
+  toJSON a = object
+    [ "balance" .= toJSON (_accountInfo_balance a)
+    , "unfinishedCrossChainTransfer" .= toJSON (_accountInfo_unfinishedCrossChainTransfer a)
+    , "hidden" .= toJSON (_accountInfo_hidden a)
+    ]
+
+instance FromJSON AccountInfo where
+  parseJSON = withObject "AccountInfo" $ \o -> do
+    balance <- o .: "balance"
+    unfinishedCrossChainTransfer <- lenientLookup o "unfinishedCrossChainTransfer"
+    hidden <- o .: "hidden"
+    pure $ AccountInfo
+      { _accountInfo_balance = balance
+      , _accountInfo_unfinishedCrossChainTransfer = unfinishedCrossChainTransfer
+      , _accountInfo_hidden = hidden
+      }
+
+data VanityAccount = VanityAccount
+  { _vanityAccount_key :: PublicKey -- TODO should be KeySet, but that's a huge change.
+  , _vanityAccount_notes :: AccountNotes
+  , _vanityAccount_info :: AccountInfo
+  }
+
+instance ToJSON VanityAccount where
+  toJSON as = object
+    [ "key" .= toJSON (_vanityAccount_key as)
+    , "notes" .= toJSON (_vanityAccount_notes as)
+    , "info" .= toJSON (_vanityAccount_info as)
+    ]
+
+instance FromJSON VanityAccount where
+  parseJSON = withObject "VanityAccount" $ \o -> do
+    key <- o .: "key"
+    notes <- o .: "notes"
+    info <- o .: "info"
+    pure $ VanityAccount
+      { _vanityAccount_key = key
+      , _vanityAccount_notes = notes
+      , _vanityAccount_info = info
+      }
+
+data NonVanityAccount = NonVanityAccount
+  { _nonVanityAccount_info :: AccountInfo
+  }
+
+instance ToJSON NonVanityAccount where
+  toJSON as = object
+    [ "info" .= toJSON (_nonVanityAccount_info as)
+    ]
+
+instance FromJSON NonVanityAccount where
+  parseJSON = withObject "NonVanityAccount" $ \o -> do
+    info <- o .: "info"
+    pure $ NonVanityAccount
+      { _nonVanityAccount_info = info
+      }
+
+type AccountStorage = Map NetworkName Accounts
 
 -- | Like '.:?' but ignores values which don't parse
 lenientLookup :: FromJSON a => Aeson.Object -> Text -> Aeson.Parser (Maybe a)
@@ -370,14 +556,14 @@ parseResults = first ("parseResults: " <>) . \case
 
 -- | Wrap the code with a let binding to get the balances of the given accounts
 -- before and after executing the code.
-wrapWithBalanceChecks :: Set AccountName -> Text -> Either String Text
+wrapWithBalanceChecks :: Set (Some AccountRef) -> Text -> Either String Text
 wrapWithBalanceChecks accounts code = wrapped <$ compileCode code
   where
-    getBalance :: AccountName -> (FieldKey, Term Name)
-    getBalance acc = (FieldKey (unAccountName acc), TApp
+    getBalance :: Text -> (FieldKey, Term Name)
+    getBalance accountName = (FieldKey accountName, TApp
       { _tApp = App
         { _appFun = TVar (QName $ QualifiedName "coin" "get-balance" def) def
-        , _appArgs = [TLiteral (LString $ unAccountName acc) def]
+        , _appArgs = [TLiteral (LString accountName) def]
         , _appInfo = def
         }
       , _tInfo = def
@@ -385,7 +571,7 @@ wrapWithBalanceChecks accounts code = wrapped <$ compileCode code
     -- Produce an object from account names to account balances
     accountBalances = TObject
       { _tObject = Pact.Types.Term.Object
-        { _oObject = ObjectMap $ Map.fromList $ map getBalance $ Set.toAscList accounts
+        { _oObject = ObjectMap $ Map.fromList $ map getBalance $ fmap (\(Some x) -> accountRefToName x) $ Set.toAscList accounts
         , _oObjectType = TyPrim TyDecimal
         , _oKeyOrder = Nothing
         , _oInfo = def
@@ -409,3 +595,5 @@ wrapWithBalanceChecks accounts code = wrapped <$ compileCode code
       , "   {\"after\": after, \"results\": results, \"before\": before})"
       ]
 
+deriveGEq ''AccountRef
+deriveGCompare ''AccountRef

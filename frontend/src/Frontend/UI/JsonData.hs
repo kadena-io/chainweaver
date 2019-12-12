@@ -205,10 +205,7 @@ uiKeyset w (n, ks) = do
           & jsonDataCfg_delKeyset .~ fmap (const n) onDel
       return cfg1
 
-    onKeyClick <- switchHold never <=< networkView $ ffor (_wallet_accounts w) $ \im ->
-      uiKeysetKeys (_keyset_keys ks) $ IntMap.elems $ flip IntMap.mapMaybe im $ \case
-        SomeAccount_Account a -> Just $ unAccountName $ _account_name a
-        _ -> Nothing
+    onKeyClick <- uiKeysetKeys (_keyset_keys ks) (fmap (_keyPair_publicKey . _key_pair) . IntMap.elems <$> _wallet_keys w)
     let
       onAddKey = fmap fst . ffilter snd $ onKeyClick
       onDelKey = fmap fst . ffilter (not . snd) $ onKeyClick
@@ -257,28 +254,31 @@ uiCreateKeyset jsonD =
 uiKeysetKeys
   :: MonadWidget t m
   => Dynamic t KeysetKeys
-  -> [KeyName]
-  -> m (Event t (KeyName, Bool))
+  -> Dynamic t [PublicKey]
+  -> m (Event t (PublicKey, Bool))
 uiKeysetKeys ks allKeys =
   elClass "ul" "keyset__keys" $ do
-    case allKeys of
-      []   -> do
+    mKeys <- maybeDyn $ ffor allKeys $ \case
+      [] -> Nothing
+      xs -> Just $ Map.fromList $ (,()) <$> xs
+    switchHold never <=< dyn $ ffor mKeys $ \case
+      Nothing -> do
         el "li" $ text "No keys available ..."
         pure never
-      _ -> do
-        rs <- traverse (uiKeysetKey ks) allKeys
-        pure $ leftmost rs
+      Just keysMap -> do
+        rs <- listWithKey keysMap $ \pk _ -> uiKeysetKey ks pk
+        pure $ switch $ leftmost . Map.elems <$> current rs
 
 -- | Show a single Keyset key item.
 uiKeysetKey
   :: MonadWidget t m
   => Dynamic t KeysetKeys
-  -> KeyName
-  -> m (Event t (KeyName, Bool))
+  -> PublicKey
+  -> m (Event t (PublicKey, Bool))
 uiKeysetKey ks n = el "li" $ do
-    onSelected <- tagOnPostBuild $ Map.member n <$> ks
+    onSelected <- tagOnPostBuild $ Set.member n <$> ks
     let cfg = def & checkboxConfig_setValue .~ onSelected
-    cb <- uiCheckbox "keyset__key-label" False cfg $ text n
+    cb <- uiCheckbox "keyset__key-label" False cfg $ text $ keyToText n
     pure $ (n,) <$> _checkbox_change cb
 
 dataEditor

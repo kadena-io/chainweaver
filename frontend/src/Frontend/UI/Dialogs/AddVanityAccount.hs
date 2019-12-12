@@ -21,7 +21,9 @@ import qualified Data.Vector                            as V
 
 import Pact.Types.PactValue
 import Pact.Types.Exp
+import Data.Some (Some(Some))
 import Data.These
+import Data.Dependent.Sum (DSum(..), (==>))
 
 import           Reflex
 import           Reflex.Dom.Contrib.CssClass            (renderClass)
@@ -41,13 +43,7 @@ import           Frontend.Crypto.Ed25519                (keyToText)
 import           Frontend.Ide                           (_ide_wallet)
 import           Frontend.JsonData
 import           Frontend.Network
-import           Frontend.Wallet                        (Account (..),
-                                                         AccountName,
-                                                         HasWalletCfg (..),
-                                                         KeyPair (..),
-                                                         findNextKey,
-                                                         mkAccountNotes,
-                                                         unAccountName)
+import           Frontend.Wallet
 
 -- Allow the user to create a 'vanity' account, which is an account with a custom name
 -- that lives on the chain. Requires GAS to create.
@@ -100,7 +96,7 @@ uiAddVanityAccountSettings ideL mChainId initialNotes = Workflow $ do
 
   rec
     let
-      uiAcc = liftA2 (,) (uiAccountNameInput w selChain) (fmap mkAccountNotes . value <$> notesInput)
+      uiAcc = liftA2 (,) (uiAccountNameInput ideL selChain) (fmap mkAccountNotes . value <$> notesInput)
       uiAccSection = ("Reference Data", uiAcc)
     (curSelection, eNewAccount, _) <- buildDeployTabs customConfigTab includePreviewTab controls
 
@@ -115,14 +111,15 @@ uiAddVanityAccountSettings ideL mChainId initialNotes = Workflow $ do
       let dPayload = fmap mkPubkeyPactData <$> dKeyPair
           code = mkPactCode <$> dAccountName
 
-          account = runMaybeT $ Account
-            <$> MaybeT dAccountName
-            <*> MaybeT dKeyPair
+          account = runMaybeT $ (,,,)
+            <$> lift (ideL ^. network_selectedNetwork)
+            <*> MaybeT dAccountName
             <*> MaybeT cChainId
-            <*> lift (ideL ^. network_selectedNetwork)
+            <*> vanity
+          vanity = VanityAccount . _keyPair_publicKey
+            <$> MaybeT dKeyPair
             <*> lift dNotes
-            <*> pure Nothing
-            <*> pure Nothing
+            <*> pure (AccountInfo Nothing Nothing False)
 
       let mkSettings payload = DeploymentSettingsConfig
             { _deploymentSettingsConfig_chainId = userChainIdSelect
@@ -139,7 +136,7 @@ uiAddVanityAccountSettings ideL mChainId initialNotes = Workflow $ do
             }
 
       pure
-        ( cfg & networkCfg_setSender .~ fmapMaybe (fmap unAccountName) (updated mSender)
+        ( cfg & networkCfg_setSender .~ fmapMaybe (fmap (\(Some x) -> accountRefToName x)) (updated mSender)
         , fmap mkSettings dPayload >>= buildDeploymentSettingsResult ideL mSender signers cChainId capabilities ttl gasLimit code
         , account
         , cChainId
@@ -173,7 +170,7 @@ vanityAccountCreateSubmit
      , HasWalletCfg mConf key t
      )
   => model
-  -> Dynamic t (Maybe (Account key))
+  -> Dynamic t (Maybe (NetworkName, AccountName, ChainId, VanityAccount))
   -> ChainId
   -> DeploymentSettingsResult key
   -> [Either a NodeInfo]

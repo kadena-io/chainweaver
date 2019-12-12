@@ -11,15 +11,18 @@ import Reflex.Dom
 
 import Frontend.Foundation (renderClass)
 import Frontend.UI.Widgets (mkLabeledClsInput, uiInputElement)
-import Frontend.Wallet (AccountName, checkAccountNameValidity, Wallet (..))
+import Frontend.Network (HasNetwork)
+import Frontend.Wallet (AccountName, checkAccountNameValidity, Wallet (..), HasWallet)
 
 uiAccountNameInput
   :: ( DomBuilder t m
      , PostBuild t m
      , MonadHold t m
      , MonadFix m
+     , HasWallet model key t
+     , HasNetwork model t
      )
-  => Wallet key t
+  => model
   -> Dynamic t (Maybe ChainId)
   -> m (Dynamic t (Maybe AccountName))
 uiAccountNameInput w mChain = do
