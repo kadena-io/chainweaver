@@ -279,7 +279,7 @@ uiNode initVal = do
         ]
     let checkVal = \case
           t | T.null (T.strip t) -> Just Nothing
-            | Right v <- parseNodeRefFull t -> Just (Just v)
+            | Right v <- parseNodeRefFull (T.strip t) -> Just (Just v)
             | otherwise -> Nothing
         checked = checkVal <$> value nodeInput
     stat <- uiNodeStatus "table__cell table__cell_size_tiny" $ join <$> checked
@@ -402,6 +402,3 @@ infoTitle info =
       <> "\nVersion: " <> _chainwebInfo_version cwInfo
       <> "\nNetwork version: " <> _chainwebInfo_networkVersion cwInfo
       <> "\nNumber of chains: " <> tshow (_chainwebInfo_numberOfChains cwInfo)
-
-
-
