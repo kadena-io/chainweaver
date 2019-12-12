@@ -239,7 +239,7 @@ makeWallet model conf = do
     }
   where
     updateAccountNotes :: (IntMap.Key, AccountNotes) -> Accounts key -> Accounts key
-    updateAccountNotes (k, n) = at k . _Just . _SomeAccount_Account . account_notesL .~ n
+    updateAccountNotes (k, n) = at k . _Just . _SomeAccount_Account . account_notes .~ n
 
     createWalletOnlyAccount :: Int -> (NetworkName, ChainId, AccountNotes) -> Performable m (Account key)
     createWalletOnlyAccount i (net, c, t) = do

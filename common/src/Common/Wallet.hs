@@ -288,7 +288,7 @@ data Account key = Account
 -- We want to be able to use the variable 'account' so we suffix all of
 -- these lenses with 'L' to differentiate them.
 makeLensesWith (classyRules
-  & lensField .~ mappingNamer (\case ('_':xs) -> [xs <> "L"]; _ -> [])
+  -- & lensField .~ mappingNamer (\case ('_':xs) -> [xs <> "L"]; _ -> [])
   & lensClass .~ \name -> case nameBase name of
     n:ns -> Just (mkName $ "Has" ++ n:ns, mkName $ C.toLower n:ns <> "L")
     [] -> Nothing
