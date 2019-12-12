@@ -9,15 +9,13 @@ module Frontend.UI.Dialogs.AddVanityAccount
   ( uiAddVanityAccountSettings
   ) where
 
-import Control.Applicative (liftA2)
 import           Control.Lens                           ((^.),(<>~))
 import           Control.Monad.Trans.Class              (lift)
 import           Control.Monad.Trans.Maybe              (MaybeT (..), runMaybeT)
 import           Data.Functor.Identity                  (Identity(..))
-import           Data.Maybe                             (isNothing)
+import           Data.Maybe                             (isNothing,fromMaybe)
 import           Data.Text                              (Text)
 import Data.These (These (..))
-
 import           Data.Aeson                             (Object, Value (Array, String))
 import qualified Data.HashMap.Strict                    as HM
 import qualified Data.Vector                            as V
@@ -47,6 +45,7 @@ import           Frontend.Wallet                        (Account (..),
                                                          AccountName,
                                                          HasWalletCfg (..),
                                                          KeyPair (..),
+                                                         AccountNotes (..),
                                                          findNextKey,
                                                          mkAccountNotes,
                                                          unAccountNotes,
@@ -80,40 +79,38 @@ uiAddVanityAccountSettings
     , HasCrypto key (Performable m)
     )
   => ModalIde m key t
-  -> Dynamic t (Maybe (Account key))
-  -> Dynamic t (Maybe ChainId)
-  -> Dynamic t Text
+  -> Maybe (Account key)
+  -> Maybe ChainId
+  -> Text
   -> Workflow t m (Text, (mConf, Event t ()))
-uiAddVanityAccountSettings ideL dInflightAcc mChainId initialNotes = Workflow $ do
+uiAddVanityAccountSettings ideL mInflightAcc mChainId initialNotes = Workflow $ do
   pb <- getPostBuild
+
   let
+    getNotes = unAccountNotes . _account_notes
     w = _ide_wallet ideL
     dNextKey = findNextKey w
 
     notesInput initCfg = divClass "vanity-account-create__notes" $ mkLabeledClsInput True "Notes"
       $ \cls -> uiInputElement $ initCfg
-                & initialAttributes <>~ "class" =: (renderClass cls)
-                & inputElementConfig_setValue .~ (current initialNotes <@ pb)
-
-  eKeyPair <- performEvent $ cryptoGenKey
-    <$> current dNextKey <@ gate (current $ isNothing <$> dInflightAcc) pb
-
-  dKeyPair <- holdDyn Nothing $ leftmost
-    [ fmap _account_key <$> current dInflightAcc <@ pb
-    , ffor eKeyPair $ \(pr,pu) -> Just $ KeyPair pu $ Just pr
-    ]
+          & initialAttributes <>~ "class" =: (renderClass cls)
+          & inputElementConfig_initialValue .~ fromMaybe initialNotes (fmap getNotes mInflightAcc)
 
   let includePreviewTab = False
       customConfigTab = Nothing
 
-  rec
-    let
+  eKeyPair <- performEvent $ cryptoGenKey <$> current dNextKey <@ pb
 
-      uiAcc = liftA2 (,)
-        (uiAccountNameInput w selChain $ fmap _account_name <$> dInflightAcc)
-        $ fmap (fmap mkAccountNotes . value) $ notesInput $ def & inputElementConfig_setValue
-          .~ fmap unAccountNotes (attachWithMaybe (const . fmap _account_notes) (current dInflightAcc) pb)
-        
+  rec
+    dKeyPair <- holdDyn (fmap _account_key mInflightAcc) $ gate (isNothing <$> current dKeyPair)
+      $ ffor eKeyPair $ \(pr,pu) -> Just $ KeyPair pu $ Just pr
+
+    let
+      uiAcc = do
+        name <- uiAccountNameInput w selChain $ fmap _account_name mInflightAcc
+        notes <- notesInput def
+        pure (name, mkAccountNotes <$> value notes)
+
       uiAccSection = ("Reference Data", uiAcc)
 
     (curSelection, eNewAccount, _) <- buildDeployTabs customConfigTab includePreviewTab controls
@@ -121,7 +118,7 @@ uiAddVanityAccountSettings ideL dInflightAcc mChainId initialNotes = Workflow $ 
     (conf, result, dAccount, selChain) <- elClass "div" "modal__main transaction_details" $ do
       (cfg, cChainId, ttl, gasLimit, Identity (dAccountName, dNotes)) <- tabPane mempty curSelection DeploymentSettingsView_Cfg $
         -- Is passing around 'Maybe x' everywhere really a good way of doing this ?
-        uiCfg Nothing ideL (userChainIdSelectWithPreselect ideL mChainId) Nothing (Just defaultTransactionGasLimit) (Identity uiAccSection) Nothing
+        uiCfg Nothing ideL (userChainIdSelectWithPreselect ideL (constDyn mChainId)) Nothing (Just defaultTransactionGasLimit) (Identity uiAccSection) Nothing
 
       (mSender, signers, capabilities) <- tabPane mempty curSelection DeploymentSettingsView_Keys $
         uiSenderCapabilities ideL cChainId Nothing $ uiSenderDropdown def never ideL cChainId

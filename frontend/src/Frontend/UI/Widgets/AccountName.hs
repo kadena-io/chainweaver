@@ -5,7 +5,7 @@ module Frontend.UI.Widgets.AccountName
 import Control.Error (hush)
 import Control.Monad.Fix (MonadFix)
 import Pact.Types.ChainId
-
+import Data.Foldable (fold)
 import Reflex
 import Reflex.Dom
 
@@ -21,17 +21,16 @@ uiAccountNameInput
      )
   => Wallet key t
   -> Dynamic t (Maybe ChainId)
-  -> Dynamic t (Maybe AccountName)
+  -> Maybe AccountName
   -> m (Dynamic t (Maybe AccountName))
 uiAccountNameInput w mChain initval = do
-  pb <- getPostBuild
   let
     validateAccountName = ($) <$> checkAccountNameValidity w <*> mChain
 
     inp lbl wrapperCls = divClass wrapperCls $ mkLabeledClsInput True lbl
       $ \cls -> uiInputElement $ def
         & initialAttributes .~ "class" =: (renderClass cls)
-        & inputElementConfig_setValue .~ tagMaybe (fmap unAccountName <$> current initval) pb
+        & inputElementConfig_initialValue .~ fold (fmap unAccountName initval)
 
   divClass "vanity-account-create__account-name" $ do
     dEitherAccName <- (validateAccountName <*>) . value <$>

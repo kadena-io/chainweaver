@@ -129,7 +129,7 @@ uiCreateWalletStepOne model onClose = Workflow $ do
       ( ("Add Account", (newConf, leftmost [onClose, onCancel]))
       , leftmost
         [ uiWalletOnlyAccountCreated newConf onClose <$> (model ^. ide_wallet . wallet_walletOnlyAccountCreated)
-        , uiAddVanityAccountSettings model dInflightAcc dSelectedChain dNotes <$ onAddVanityAcc
+        , current (uiAddVanityAccountSettings model <$> dInflightAcc <*> dSelectedChain <*> dNotes) <@ onAddVanityAcc
         ]
       )
   where
