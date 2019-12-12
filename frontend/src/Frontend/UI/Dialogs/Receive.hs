@@ -181,7 +181,7 @@ uiReceiveModal0 model account mchain onClose = Workflow $ do
 
       (onAddrClick, ((), ())) <- controlledAccordionItem showingKadenaAddress "receive__accordion" (text "Option 1: Copy and share Kadena Address")
         $ do
-        dyn_ $ ffor chain $ uiDisplayAddress  . \case
+        dyn_ $ ffor chain $ uiDisplayAddress . \case
           Nothing -> "Please select a chain"
           Just cid -> textKadenaAddress $ accountToKadenaAddress account cid
 
@@ -195,7 +195,8 @@ uiReceiveModal0 model account mchain onClose = Workflow $ do
 
     pure (showingKadenaAddress, chain, snd results)
 
-  let isDisabled = liftA2 (&&) (isNothing <$> transferInfo) (not <$> showingAddr)
+  let needsSender = liftA2 (&&) (isNothing <$> transferInfo) (not <$> showingAddr)
+      isDisabled = liftA2 (||) (isNothing <$> chain) needsSender
 
   doneNext <- modalFooter $ uiButtonDyn
     (def
