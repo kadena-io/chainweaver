@@ -163,7 +163,7 @@ uiReceiveModal0 model account mchain onClose = Workflow $ do
       in
         mkLabeledInputView True lbl attrFn $ pure v
 
-  (showingAddr, chain, (conf, ttl, gaslimit, transferInfo)) <- divClass "modal__main account-details" $ do
+  (showingAddr, chain, (conf, ttl, gaslimit, transferInfo)) <- divClass "modal__main receive" $ do
     rec
       showingKadenaAddress <- toggle True $ onAddrClick <> onReceiClick
 
@@ -177,15 +177,15 @@ uiReceiveModal0 model account mchain onClose = Workflow $ do
         -- Chain id
         case mchain of
           Nothing -> userChainIdSelect model
-          Just cid -> (pure $ Just cid) <$ displayText "Chain ID" (_chainId cid) "account-details__chain-id"
+          Just cid -> (pure $ Just cid) <$ displayText "Chain ID" (_chainId cid) "receive__chain-id"
 
-      (onAddrClick, ((), ())) <- controlledAccordionItem showingKadenaAddress mempty (text "Option 1: Copy and share Kadena Address")
+      (onAddrClick, ((), ())) <- controlledAccordionItem showingKadenaAddress "receive__accordion" (text "Option 1: Copy and share Kadena Address")
         $ do
         dyn_ $ ffor chain $ uiDisplayAddress  . \case
           Nothing -> "Please select a chain"
           Just cid -> textKadenaAddress $ accountToKadenaAddress account cid
 
-      (onReceiClick, results) <- controlledAccordionItem (not <$> showingKadenaAddress) "account-details__legacy-send"
+      (onReceiClick, results) <- controlledAccordionItem (not <$> showingKadenaAddress) "receive__accordion"
         (text "Option 2: Transfer from non-Chainweaver Account") $ do
         elClass "h2" "heading heading_type_h2" $ text "Sender Details"
         transferInfo0 <- divClass "group" $ uiReceiveFromLegacyAccount model
