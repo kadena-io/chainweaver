@@ -21,8 +21,7 @@
   font-size: 15px;
   margin-bottom: $medium-margin;
   min-width: 175px;
-  color: #3a3a3a;
-  font-weight: bold;
+  color: $black-disabled-bg;
 }
 
 .labeled-input__label-inline {
@@ -52,4 +51,5 @@
 
 .horizontal-dashed-separator {
   border: dashed 1px #979797;
+  margin: 0.5rem 0 0.5rem 0;
 }

@@ -1,3 +1,4 @@
+{-# LANGUAGE TupleSections #-}
 {-# LANGUAGE ConstraintKinds #-}
 {-# LANGUAGE RecursiveDo #-}
 -- | Dialog for viewing the details of an account.
@@ -20,6 +21,7 @@ import           Frontend.UI.Modal
 import           Frontend.Wallet
 import           Frontend.Crypto.Ed25519 (keyToText)
 import           Frontend.UI.Widgets
+import           Frontend.UI.Widgets.Helpers (dialogSectionHeading)
 import           Frontend.Foundation
 ------------------------------------------------------------------------------
 
@@ -68,8 +70,8 @@ uiAccountDetailsDetails key a onClose = Workflow $ do
         in
           mkLabeledInputView False lbl attrFn $ pure v
 
-  modalMain $ divClass "modal__main account-details" $ do
-    elClass "h2" "heading heading_type_h2" $ text "Info"
+  notesEdit <- divClass "modal__main account-details" $ do
+    dialogSectionHeading mempty "Info"
     divClass "group" $ do
       -- Account name
       _ <- displayText "Account Name" (unAccountName (_account_name a)) "account-details__name"
@@ -78,7 +80,13 @@ uiAccountDetailsDetails key a onClose = Workflow $ do
       -- Chain id
       _ <- displayText "Chain ID" (Pact._chainId $ _account_chainId a) "account-details__chain-id"
       -- separator
-      el "hr" blank
+      horizontalDashedSeparator
+      -- Notes edit
+      notesEdit0 <- fmap value $ mkLabeledClsInput False "Notes" $ \cls -> uiInputElement $ def
+        & inputElementConfig_initialValue .~ unAccountNotes (_account_notes a)
+        & initialAttributes . at "class" %~ pure . maybe (renderClass cls) (mappend (" " <> renderClass cls))
+      -- separator
+      horizontalDashedSeparator
       -- Kadena Address
       _ <- displayText "Kadena Address" kAddr "account-details__kadena-address"
       -- copy
@@ -86,14 +94,17 @@ uiAccountDetailsDetails key a onClose = Workflow $ do
         & uiButtonCfg_class .~ constDyn "account-details__copy-btn button_type_confirm"
         & uiButtonCfg_title .~ constDyn (Just "Copy")
         ) $ pure kAddr
-
-      pure ()
+      pure notesEdit0
 
   modalFooter $ do
     onRemove <- cancelButton (def & uiButtonCfg_class <>~ " account-details__remove-account-btn") "Remove Account"
     onDone <- confirmButton def "Done"
 
-    pure ( ("Account Details", (mempty, leftmost [onClose, onDone]))
+    let
+      onNotesUpdate = (key,) . mkAccountNotes <$> current notesEdit <@ onDone
+      conf = mempty & walletCfg_updateAccountNotes .~ onNotesUpdate
+
+    pure ( ("Account Details", (conf, leftmost [onClose, onDone]))
          , uiDeleteConfirmation key onClose <$ onRemove
          )
 
@@ -109,7 +120,7 @@ uiDeleteConfirmation
 uiDeleteConfirmation thisKey onClose = Workflow $ do
   modalMain $ do
     divClass "segment modal__filler" $ do
-      elClass "h2" "heading heading_type_h2" $ text "Warning"
+      dialogSectionHeading mempty "Warning"
 
       divClass "group" $
         text "You are about to remove this account from view in your wallet"

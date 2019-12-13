@@ -22,7 +22,10 @@ module Common.Wallet
   , KeyPair(..)
   , AccountName(..)
   , AccountBalance(..)
+  , AccountNotes (unAccountNotes)
+  , mkAccountNotes
   , Account(..)
+  , HasAccount (..)
   , AccountGuard(..)
   , UnfinishedCrossChainTransfer(..)
   , pactGuardTypeText
@@ -62,6 +65,7 @@ import Pact.Types.PactValue
 import Pact.Types.Pretty
 import Pact.Types.Term hiding (PublicKey)
 import Pact.Types.Type
+import qualified Data.Char as C
 import qualified Data.Aeson as Aeson
 import qualified Data.Aeson.Types as Aeson
 import qualified Data.ByteString as BS
@@ -73,6 +77,8 @@ import qualified Data.Text as T
 import qualified Data.Text.Encoding as T
 import qualified Pact.Types.Term as Pact
 import qualified Pact.Types.Type as Pact
+
+import Language.Haskell.TH.Syntax (mkName,nameBase)
 
 import Common.Foundation
 import Common.Network (NetworkName)
@@ -225,6 +231,19 @@ instance ToJSON AccountBalance where
 instance FromJSON AccountBalance where
   parseJSON x = (\(ParsedDecimal d) -> AccountBalance d) <$> parseJSON x
 
+-- | Account notes wrapper
+newtype AccountNotes = AccountNotes { unAccountNotes :: Text } deriving (Eq, Show)
+
+-- | We currently don't have any validation for the notes on an account, but should we
+-- decide to add it then this will come in handy.
+mkAccountNotes :: Text -> AccountNotes
+mkAccountNotes = AccountNotes
+
+instance ToJSON AccountNotes where
+  toJSON = toJSON . unAccountNotes
+instance FromJSON AccountNotes where
+  parseJSON = fmap AccountNotes . parseJSON
+
 data UnfinishedCrossChainTransfer = UnfinishedCrossChainTransfer
   { _unfinishedCrossChainTransfer_requestKey :: RequestKey
   , _unfinishedCrossChainTransfer_recipientChain :: ChainId
@@ -260,11 +279,18 @@ data Account key = Account
   , _account_key :: KeyPair key
   , _account_chainId :: ChainId
   , _account_network :: NetworkName
-  , _account_notes :: Text
+  , _account_notes :: AccountNotes
   , _account_balance :: Maybe AccountBalance
   -- ^ We also treat this as proof of the account's existence.
   , _account_unfinishedCrossChainTransfer :: Maybe UnfinishedCrossChainTransfer
   }
+
+-- We want to be able to use the variable 'account' so we suffix it with `L`..
+makeLensesWith (classyRules
+  & lensClass .~ \name -> case nameBase name of
+    n:ns -> Just (mkName $ "Has" ++ n:ns, mkName $ C.toLower n:ns <> "L")
+    [] -> Nothing
+  ) ''Account
 
 instance ToJSON key => ToJSON (Account key) where
   toJSON a = object $ catMaybes

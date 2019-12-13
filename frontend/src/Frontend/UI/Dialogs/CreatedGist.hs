@@ -32,7 +32,7 @@ import           Frontend.Foundation         hiding (Arg)
 import           Frontend.GistStore          (GistRef)
 import           Frontend.UI.Modal
 import           Frontend.UI.Widgets
-import           Frontend.UI.Widgets.Helpers (imgWithAltCls)
+import           Frontend.UI.Widgets.Helpers (imgWithAltCls, dialogSectionHeading)
 ------------------------------------------------------------------------------
 
 type HasUICreatedGistModelCfg mConf t = (Monoid mConf)
@@ -60,7 +60,7 @@ uiCreatedGist gistRef _onClose = do
           divClass "modal__filler-horizontal-center-box" $
             imgWithAltCls "modal__filler-img" (static @"img/Octocat.jpg") "Github logo" blank
 
-          elClass "h2" "heading heading_type_h2" $ text "Find your link below:"
+          dialogSectionHeading mempty "Find your link below:"
           divClass "group" $ do
 
 

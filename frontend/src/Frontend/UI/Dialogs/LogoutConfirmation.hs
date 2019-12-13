@@ -35,7 +35,7 @@ import           Common.OAuth
 import           Frontend.Foundation            hiding (Arg)
 import           Frontend.UI.Modal
 import           Frontend.UI.Widgets
-import           Frontend.UI.Widgets.Helpers (imgWithAltCls)
+import           Frontend.UI.Widgets.Helpers (imgWithAltCls, dialogSectionHeading)
 ------------------------------------------------------------------------------
 
 type HasUILogoutConfirmationModelCfg mConf t =
@@ -56,7 +56,7 @@ uiLogoutConfirmation _onClose = do
         divClass "modal__filler-horizontal-center-box" $
           imgWithAltCls "modal__filler-img" (static @"img/Octocat.jpg") "GitHub logo" blank
 
-        elClass "h2" "heading heading_type_h2" $ text "Really log this IDE out from GitHub?"
+        dialogSectionHeading mempty "Really log this IDE out from GitHub?"
 
         divClass "group" $ do
           text "When creating a new Gist, you will be automatically logged in again."
