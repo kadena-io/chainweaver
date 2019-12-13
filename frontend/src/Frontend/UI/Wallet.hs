@@ -43,6 +43,7 @@ import           Frontend.JsonData (HasJsonData, HasJsonDataCfg)
 import           Frontend.UI.Dialogs.AccountDetails (uiAccountDetails)
 import           Frontend.UI.Dialogs.Receive (uiReceiveModal)
 import           Frontend.UI.Dialogs.Send (uiSendModal)
+import           Frontend.UI.Dialogs.NonVanityAccountDetails (uiNonVanityAccountDetails)
 import           Frontend.UI.Modal
 import           Frontend.Network
 ------------------------------------------------------------------------------
@@ -78,9 +79,12 @@ uiWalletRefreshButton
     )
   => model
   -> m mConf
-uiWalletRefreshButton _model = do
+uiWalletRefreshButton model = do
+  eNVAccDeets <- uiButton (def & uiButtonCfg_class <>~ " main-header__wallet-refresh-button")  (text "NV Account Deets")
   eRefresh <- uiButton (def & uiButtonCfg_class <>~ " main-header__wallet-refresh-button")  (text "Refresh")
-  pure $ mempty & walletCfg_refreshBalances <>~ eRefresh
+  pure $ mempty
+    & walletCfg_refreshBalances <>~ eRefresh
+    & modalCfg_setModal .~ (fmap Just $ uiNonVanityAccountDetails model <$ eNVAccDeets)
 
 -- | UI for managing the keys wallet.
 uiWallet
