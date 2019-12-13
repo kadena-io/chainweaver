@@ -1,4 +1,5 @@
 {-# LANGUAGE ConstraintKinds #-}
+{-# LANGUAGE TupleSections #-}
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE ExtendedDefaultRules #-}
 {-# LANGUAGE FlexibleContexts #-}
@@ -202,6 +203,7 @@ publicKeysForAccounts allAccounts caps =
   let accountsToKey = flip IM.foldMapWithKey allAccounts $ \_ -> \case
         SomeAccount_Account a -> Map.singleton (_account_name a) (_account_key a)
         SomeAccount_Deleted -> Map.empty
+        SomeAccount_Inflight _ -> Map.empty
       toPublicKey (name, cs) = do
         KeyPair pk _ <- Map.lookup name accountsToKey
         pure (pk, cs)
@@ -507,9 +509,11 @@ uiCfg mCode m wChainId mTTL mGasLimit userSections otherAccordion = do
 
     dGeneralActive <- mkAccordionControlDyn True
 
-    (eGeneralClicked, pairA) <- controlledAccordionItem dGeneralActive "deploy-settings-accordion-header__general"
-      (accordionHeaderBtn "General")
-      mkGeneralSettings
+    (eGeneralClicked, pairA) <- case otherAccordion of
+      Nothing -> (never,) . ((),) <$>  mkGeneralSettings
+      Just _ -> controlledAccordionItem dGeneralActive "deploy-settings-accordion-header__general"
+        (accordionHeaderBtn "General")
+        mkGeneralSettings
 
     (otherClicked, transformCfg) <- case otherAccordion of
       Nothing -> pure (never, id)
@@ -1052,5 +1056,6 @@ uiDeployPreview model settings accounts signers gasLimit ttl code lastPublicMeta
     getAccounts :: Set AccountName -> Map AccountName PublicKey
     getAccounts = Map.restrictKeys (IntMap.foldr f Map.empty accounts)
       where f = \case
+              SomeAccount_Inflight _ -> id
               SomeAccount_Deleted -> id
               SomeAccount_Account a -> Map.insert (_account_name a) $ _keyPair_publicKey $ _account_key a
