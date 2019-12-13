@@ -1,4 +1,5 @@
 {-# LANGUAGE ConstraintKinds #-}
+{-# LANGUAGE TupleSections #-}
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE ExtendedDefaultRules #-}
 {-# LANGUAGE FlexibleContexts #-}
@@ -508,9 +509,11 @@ uiCfg mCode m wChainId mTTL mGasLimit userSections otherAccordion = do
 
     dGeneralActive <- mkAccordionControlDyn True
 
-    (eGeneralClicked, pairA) <- controlledAccordionItem dGeneralActive "deploy-settings-accordion-header__general"
-      (accordionHeaderBtn "General")
-      mkGeneralSettings
+    (eGeneralClicked, pairA) <- case otherAccordion of
+      Nothing -> (never,) . ((),) <$>  mkGeneralSettings
+      Just _ -> controlledAccordionItem dGeneralActive "deploy-settings-accordion-header__general"
+        (accordionHeaderBtn "General")
+        mkGeneralSettings
 
     (otherClicked, transformCfg) <- case otherAccordion of
       Nothing -> pure (never, id)
