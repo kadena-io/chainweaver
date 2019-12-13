@@ -104,15 +104,15 @@ uiAddVanityAccountSettings ideL onInflightChange mInflightAcc mChainId initialNo
       keyPairGenOn e =
         (fmap . fmap) mkKP $ performEvent $ cryptoGenKey <$> current dNextKey <@ e
 
-  ePbKeyPair <- keyPairGenOn pb
+  ePbKeyPair <- keyPairGenOn $ ffilter (const $ isNothing mInflightAcc) pb
   eInflightFoundKeyPair <- keyPairGenOn onInflightChange
 
-  rec
-    dKeyPair <- holdDyn (fmap _account_key mInflightAcc) $ leftmost
-      [ gate (isNothing <$> current dKeyPair) ePbKeyPair
-      , eInflightFoundKeyPair
-      ]
+  dKeyPair <- holdDyn (fmap _account_key mInflightAcc) $ leftmost
+    [ ePbKeyPair
+    , eInflightFoundKeyPair
+    ]
 
+  rec
     let
       uiAcc = do
         name <- uiAccountNameInput w selChain $ fmap _account_name mInflightAcc
