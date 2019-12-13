@@ -12,8 +12,9 @@ module Frontend.UI.Dialogs.Receive
 import Control.Applicative (liftA2, liftA3)
 import Control.Lens ((^.), (<>~), _1, _2, _3, view)
 import Control.Monad (void, (<=<))
+import Control.Monad.Trans.Class (lift)
+import Control.Monad.Trans.Maybe (MaybeT(..))
 import Control.Error (hush, headMay)
-
 import Data.Bifunctor (first)
 import Data.Either (isLeft,rights)
 import Data.Text (Text)
@@ -205,18 +206,17 @@ uiReceiveModal0 model account mchain onClose = Workflow $ do
   let
     done = gate (current showingAddr) doneNext
     deploy = gate (not <$> current showingAddr) doneNext
-    ap2' = (liftA2 . liftA2) (&)
+
+    submit = flip push deploy $ \() -> runMaybeT $ do
+      c <- MaybeT $ sample $ current chain
+      t <- lift $ sample $ current ttl
+      g <- lift $ sample $ current gaslimit
+      ni <- MaybeT $ sample $ current netInfo
+      ti <- MaybeT $ sample $ current transferInfo
+      pure $ receiveFromLegacySubmit onClose account c t g ni ti
 
   pure ( (conf, onClose <> done)
-       , receiveFromLegacySubmit onClose account
-         & (pure . Just)
-         & ap2' chain
-         & ap2' (fmap Just ttl)
-         & ap2' (fmap Just gaslimit)
-         & ap2' netInfo
-         & ap2' transferInfo
-         & current
-         & flip tagMaybe deploy
+       , submit
        )
 
 receiveFromLegacySubmit
