@@ -79,11 +79,12 @@ uiAddVanityAccountSettings
     , HasCrypto key (Performable m)
     )
   => ModalIde m key t
+  -> Event t ()
   -> Maybe (Account key)
   -> Maybe ChainId
   -> Text
   -> Workflow t m (Text, (mConf, Event t ()))
-uiAddVanityAccountSettings ideL mInflightAcc mChainId initialNotes = Workflow $ do
+uiAddVanityAccountSettings ideL onInflightChange mInflightAcc mChainId initialNotes = Workflow $ do
   pb <- getPostBuild
 
   let
@@ -98,12 +99,19 @@ uiAddVanityAccountSettings ideL mInflightAcc mChainId initialNotes = Workflow $ 
 
   let includePreviewTab = False
       customConfigTab = Nothing
+      mkKP (pr,pu) = Just $ KeyPair pu $ Just pr
 
-  eKeyPair <- performEvent $ cryptoGenKey <$> current dNextKey <@ pb
+      keyPairGenOn e =
+        (fmap . fmap) mkKP $ performEvent $ cryptoGenKey <$> current dNextKey <@ e
+
+  ePbKeyPair <- keyPairGenOn pb
+  eInflightFoundKeyPair <- keyPairGenOn onInflightChange
 
   rec
-    dKeyPair <- holdDyn (fmap _account_key mInflightAcc) $ gate (isNothing <$> current dKeyPair)
-      $ ffor eKeyPair $ \(pr,pu) -> Just $ KeyPair pu $ Just pr
+    dKeyPair <- holdDyn (fmap _account_key mInflightAcc) $ leftmost
+      [ gate (isNothing <$> current dKeyPair) ePbKeyPair
+      , eInflightFoundKeyPair
+      ]
 
     let
       uiAcc = do

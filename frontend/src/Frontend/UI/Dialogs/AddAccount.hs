@@ -125,11 +125,17 @@ uiCreateWalletStepOne model onClose = Workflow $ do
           pure (net, chain, mkAccountNotes notes)
         newConf = mempty & walletCfg_createWalletOnlyAccount .~ eAddAcc
 
+        eInflightFound = () <$ ffilter isNothing (updated dInflightAcc)
+
+        uiAddVanity = uiAddVanityAccountSettings model eInflightFound
+          <$> dInflightAcc
+          <*> dSelectedChain
+          <*> dNotes
     pure
       ( ("Add Account", (newConf, leftmost [onClose, onCancel]))
       , leftmost
         [ uiWalletOnlyAccountCreated newConf onClose <$> (model ^. ide_wallet . wallet_walletOnlyAccountCreated)
-        , current (uiAddVanityAccountSettings model <$> dInflightAcc <*> dSelectedChain <*> dNotes) <@ onAddVanityAcc
+        , current uiAddVanity <@ onAddVanityAcc
         ]
       )
   where
