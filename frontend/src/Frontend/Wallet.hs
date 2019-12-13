@@ -96,8 +96,8 @@ import Frontend.Network
 accountIsCreated:: Account key -> AccountCreated
 accountIsCreated = maybe AccountCreated_No (const AccountCreated_Yes) . _account_balance
 
-accountToKadenaAddress :: Account key -> KadenaAddress
-accountToKadenaAddress a = mkKadenaAddress (accountIsCreated a) (_account_chainId a) (_account_name a)
+accountToKadenaAddress :: Account key -> ChainId -> KadenaAddress
+accountToKadenaAddress a c = mkKadenaAddress (accountIsCreated a) c (_account_name a)
 
 data WalletCfg key t = WalletCfg
   { _walletCfg_genKey     :: Event t (AccountName, NetworkName, ChainId, AccountNotes)
