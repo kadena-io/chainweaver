@@ -124,6 +124,9 @@ uiAddVanityAccountSettings ideL onInflightChange mInflightAcc mChainId initialNo
     (curSelection, eNewAccount, _) <- buildDeployTabs customConfigTab includePreviewTab controls
 
     (conf, result, dAccount, selChain) <- elClass "div" "modal__main transaction_details" $ do
+      _ <- widgetHold blank $ ffor onInflightChange $ \_ -> divClass "group" $
+        text "The incomplete vanity account has been verified on the chain and added to your wallet. You may continue to create a new vanity account or close this dialog and start using the new account."
+
       (cfg, cChainId, ttl, gasLimit, Identity (dAccountName, dNotes)) <- tabPane mempty curSelection DeploymentSettingsView_Cfg $
         -- Is passing around 'Maybe x' everywhere really a good way of doing this ?
         uiCfg Nothing ideL (userChainIdSelectWithPreselect ideL (constDyn mChainId)) Nothing (Just defaultTransactionGasLimit) (Identity uiAccSection) Nothing
