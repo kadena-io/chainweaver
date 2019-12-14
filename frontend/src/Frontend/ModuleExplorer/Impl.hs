@@ -35,7 +35,6 @@ import           Control.Monad.Trans.Maybe (MaybeT (..), runMaybeT)
 import           Data.Either               (rights)
 import qualified Data.Map                  as Map
 import           Data.Text                 (Text)
-import           Data.These.Lens           (_This, there)
 import           Data.Tuple                (swap)
 import           Reflex
 import           Reflex.Dom.Core           (HasJSContext, MonadHold, PostBuild)
@@ -437,8 +436,8 @@ loadModule
 loadModule networkL onRef = do
   onErrModule <- fetchModule networkL onRef
   let
-    onErr = fmapMaybe (^? _2 . _This) onErrModule
-    onModule = fmap (^? there) <$> onErrModule
+    onErr = fmapMaybe (^? _2 . _Left) onErrModule
+    onModule = fmap (^? _Right) <$> onErrModule
   pure
     ( mempty & messagesCfg_send .~ fmap (pure . ("Module Explorer, loading of module failed: " <>)) onErr
     , onModule

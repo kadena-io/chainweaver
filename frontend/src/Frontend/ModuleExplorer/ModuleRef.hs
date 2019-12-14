@@ -58,7 +58,6 @@ import qualified Data.Map                        as Map
 import qualified Data.Set                        as Set
 import           Data.Text                       (Text)
 import qualified Data.Text                       as T
-import           Data.These                      (These(This,That))
 import           Reflex.Dom.Core                 (MonadHold)
 import qualified Text.Megaparsec                 as MP
 ------------------------------------------------------------------------------
@@ -117,7 +116,7 @@ instance A.ToJSON ModuleSource where
 instance A.FromJSON ModuleSource where
   parseJSON = A.genericParseJSON compactEncoding
 
--- | A Module is uniquely idendified by its name and its origin.
+-- | A Module is uniquely identified by its name and its origin.
 data ModuleRefV s = ModuleRef
   { _moduleRef_source :: s -- ^ Where does the module come from.
   , _moduleRef_name   :: ModuleName   -- ^ Fully qualified name of the module.
@@ -246,7 +245,7 @@ fetchModule
     )
   => model
   -> Event t DeployedModuleRef
-  -> m (Event t (DeployedModuleRef, These Text (ModuleDef (Term Name))))
+  -> m (Event t (DeployedModuleRef, Either Text (ModuleDef (Term Name))))
 fetchModule networkL onReq = do
     onReq' :: Event t (DeployedModuleRef, NetworkRequest)
       <- performEvent $ attachWith mkReq (current $ getNetworkNameAndMeta networkL) onReq
@@ -256,7 +255,7 @@ fetchModule networkL onReq = do
       deployedResultsZipped = first fst <$> deployedResults
 
     pure $ fmapMaybe listToMaybe . ffor deployedResultsZipped $ \(dmr, errs) ->
-      map ((dmr,) . (either This That . getModule . snd <=< first prettyPrintNetworkErrors)) errs
+      map ((dmr,) . (getModule . snd <=< first prettyPrintNetworkErrors . networkErrorResultToEither)) errs
 
   where
     mkReq (networkName, pm) mRef = (mRef,) <$> mkSimpleReadReq code networkName pm (_moduleRef_source mRef)
@@ -275,7 +274,7 @@ fetchModule networkL onReq = do
           []   -> throwError "No module in response"
           m:[] -> pure m
           _    -> throwError "More than one module in response?"
-      _ -> throwError "Server response did not contain a  TObject module description."
+      _ -> throwError "Server response did not contain a TObject module description."
 
     getCode :: ObjectMap PactValue -> Either Text Code
     getCode (ObjectMap props) = do
