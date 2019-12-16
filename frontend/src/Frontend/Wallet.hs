@@ -27,12 +27,15 @@ module Frontend.Wallet
   , HasWallet (..)
   , AccountName (..)
   , AccountBalance (..)
+  , AccountNotes (..)
+  , mkAccountNotes
   , mkAccountName
   , AccountGuard (..)
   , pactGuardTypeText
   , fromPactGuard
   , accountGuardKeys
   , Account(..)
+  , HasAccount (..)
   , SomeAccount(..)
   , someAccount
   -- * Creation
@@ -93,12 +96,12 @@ accountToKadenaAddress :: Account key -> KadenaAddress
 accountToKadenaAddress a = mkKadenaAddress (accountIsCreated a) (_account_chainId a) (_account_name a)
 
 data WalletCfg key t = WalletCfg
-  { _walletCfg_genKey     :: Event t (AccountName, NetworkName, ChainId, Text)
+  { _walletCfg_genKey     :: Event t (AccountName, NetworkName, ChainId, AccountNotes)
   -- ^ Request generation of a new key, that will be named as specified.
   , _walletCfg_importAccount  :: Event t (Account key)
   , _walletCfg_delKey     :: Event t IntMap.Key
   -- ^ Delete a key from your wallet.
-  , _walletCfg_createWalletOnlyAccount :: Event t (NetworkName, ChainId, Text)
+  , _walletCfg_createWalletOnlyAccount :: Event t (NetworkName, ChainId, AccountNotes)
   -- ^ Create a wallet only account that uses the public key as the account name
   , _walletCfg_refreshBalances :: Event t ()
   -- ^ Refresh balances in the wallet
@@ -106,6 +109,7 @@ data WalletCfg key t = WalletCfg
   -- ^ Start a cross chain transfer on some account. This field allows us to
   -- recover when something goes badly wrong in the middle, since it's
   -- immediately stored with all info we need to retry.
+  , _walletCfg_updateAccountNotes :: Event t (IntMap.Key, AccountNotes)
   }
   deriving Generic
 
@@ -120,6 +124,7 @@ type IsWalletCfg cfg key t = (HasWalletCfg cfg key t, Monoid cfg, Flattenable cf
 data SomeAccount key
   = SomeAccount_Deleted
   | SomeAccount_Account (Account key)
+makePrisms ''SomeAccount
 
 someAccount :: a -> (Account key -> a) -> SomeAccount key -> a
 someAccount a _ SomeAccount_Deleted = a
@@ -220,6 +225,7 @@ makeWallet model conf = do
       , ffor (_walletCfg_importAccount conf) $ snocIntMap . SomeAccount_Account
       , ffor onDelKey $ \i -> IntMap.insert i SomeAccount_Deleted
       , ffor onWOAccountCreate $ snocIntMap . SomeAccount_Account
+      , ffor (_walletCfg_updateAccountNotes conf) updateAccountNotes
       , const <$> newBalances
       , let f cc = someAccount SomeAccount_Deleted (\a -> SomeAccount_Account a { _account_unfinishedCrossChainTransfer = cc })
          in ffor setCrossChain $ \(i, cc) -> IntMap.adjust (f cc) i
@@ -232,12 +238,15 @@ makeWallet model conf = do
     , _wallet_walletOnlyAccountCreated = _account_name <$> onWOAccountCreate
     }
   where
-    createWalletOnlyAccount :: Int -> (NetworkName, ChainId, Text) -> Performable m (Account key)
+    updateAccountNotes :: (IntMap.Key, AccountNotes) -> Accounts key -> Accounts key
+    updateAccountNotes (k, n) = at k . _Just . _SomeAccount_Account . account_notes .~ n
+
+    createWalletOnlyAccount :: Int -> (NetworkName, ChainId, AccountNotes) -> Performable m (Account key)
     createWalletOnlyAccount i (net, c, t) = do
       (privKey, pubKey) <- cryptoGenKey i
       pure $ buildAccount (AccountName $ keyToText pubKey) pubKey privKey net c t
 
-    createKey :: Int -> (AccountName, NetworkName, ChainId, Text) -> Performable m (Account key)
+    createKey :: Int -> (AccountName, NetworkName, ChainId, AccountNotes) -> Performable m (Account key)
     createKey i (n, net, c, t) = do
       (privKey, pubKey) <- cryptoGenKey i
       pure $ buildAccount n pubKey privKey net c t
@@ -358,10 +367,14 @@ instance Reflex t => Semigroup (WalletCfg key t) where
         [ _walletCfg_setCrossChainTransfer c1
         , _walletCfg_setCrossChainTransfer c2
         ]
+      , _walletCfg_updateAccountNotes = leftmost
+        [ _walletCfg_updateAccountNotes c1
+        , _walletCfg_updateAccountNotes c2
+        ]
       }
 
 instance Reflex t => Monoid (WalletCfg key t) where
-  mempty = WalletCfg never never never never never never
+  mempty = WalletCfg never never never never never never never
   mappend = (<>)
 
 instance Flattenable (WalletCfg key t) t where
@@ -373,6 +386,7 @@ instance Flattenable (WalletCfg key t) t where
       <*> doSwitch never (_walletCfg_createWalletOnlyAccount <$> ev)
       <*> doSwitch never (_walletCfg_refreshBalances <$> ev)
       <*> doSwitch never (_walletCfg_setCrossChainTransfer <$> ev)
+      <*> doSwitch never (_walletCfg_updateAccountNotes <$> ev)
 
 instance Reflex t => Semigroup (Wallet key t) where
   wa <> wb = Wallet

@@ -13,3 +13,4 @@ pact-log
 /*/dist
 ui-styling/node_modules
 *.dmg
+*/tests/golden-outputs

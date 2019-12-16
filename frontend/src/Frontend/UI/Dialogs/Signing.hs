@@ -28,6 +28,7 @@ import Frontend.JsonData
 import Frontend.Network
 import Frontend.UI.DeploymentSettings
 import Frontend.UI.Modal.Impl
+import Frontend.UI.Widgets (predefinedChainIdDisplayed, userChainIdSelect)
 import Frontend.Wallet
 
 type HasUISigningModelCfg mConf key t =
@@ -59,7 +60,6 @@ uiSigning appCfg ideL signingRequest onCloseExternal = do
         Just c -> predefinedChainIdDisplayed c
         Nothing -> userChainIdSelect
     , _deploymentSettingsConfig_userTab = Nothing
-    , _deploymentSettingsConfig_userSections = []
     , _deploymentSettingsConfig_code = pure $ _signingRequest_code signingRequest
     , _deploymentSettingsConfig_sender = case _signingRequest_sender signingRequest of
         Just sender -> \_ _ -> uiSenderFixed sender

@@ -32,7 +32,6 @@ import           Frontend.Crypto.Class
 import           Frontend.Foundation
 import           Frontend.Ide
 import           Frontend.Messages
-import           Frontend.UI.DeploymentSettings (uiChainSelection)
 import           Frontend.UI.JsonData
 import           Frontend.JsonData
 import           Frontend.UI.Modal.Impl

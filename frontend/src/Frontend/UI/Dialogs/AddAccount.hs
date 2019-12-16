@@ -19,7 +19,7 @@ import           Frontend.Wallet
 import           Frontend.Network (HasNetworkCfg, network_selectedNetwork)
 import           Frontend.JsonData (HasJsonDataCfg)
 import           Frontend.Crypto.Class (HasCrypto)
-import           Frontend.UI.DeploymentSettings (transactionDisplayNetwork, userChainIdSelect)
+import           Frontend.UI.DeploymentSettings (transactionDisplayNetwork)
 import           Frontend.UI.Dialogs.AddVanityAccount (uiAddVanityAccountSettings)
 
 import           Frontend.Ide (ide_wallet)
@@ -104,7 +104,7 @@ uiCreateWalletStepOne model onClose = Workflow $ do
           chain <- MaybeT $ sample $ current dSelectedChain
           net <- lift $ sample $ current $ model ^. network_selectedNetwork
           notes <- lift $ sample $ current dNotes
-          pure (net, chain, notes)
+          pure (net, chain, mkAccountNotes notes)
         newConf = mempty & walletCfg_createWalletOnlyAccount .~ eAddAcc
 
     pure

@@ -1,6 +1,6 @@
 name: common
 version:             1.5.1.2
-cabal-version: >= 1.2
+cabal-version: >= 1.8
 build-type: Simple
 
 library
@@ -40,3 +40,21 @@ library
     Common.RefPath
     Common.Foundation
     Common.Wallet
+
+test-suite golden-tests
+  type: exitcode-stdio-1.0
+
+  other-modules: GoldenHelper
+
+  main-is: GoldenTests.hs
+  hs-source-dirs: tests
+  build-depends: base
+               , common
+               , tasty
+               , tasty-golden
+               , aeson
+               , pact
+               , errors
+               , text
+               , mtl
+               , bytestring

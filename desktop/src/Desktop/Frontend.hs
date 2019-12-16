@@ -10,7 +10,7 @@
 {-# LANGUAGE StandaloneDeriving #-}
 {-# LANGUAGE TypeApplications #-}
 
-module Desktop.Frontend (desktop, bipWallet, fileStorage) where
+module Desktop.Frontend (desktop, bipWallet, bipCryptoGenPair, fileStorage) where
 
 import Control.Exception (try, catch)
 import Control.Lens ((?~))
@@ -96,6 +96,14 @@ fileStorage dir = Storage
     where path :: Show a => a -> FilePath
           path k = dir </> FilePath.makeValid (show k)
 
+bipCryptoGenPair :: Crypto.XPrv -> Text -> Int -> (Crypto.XPrv, PublicKey)
+bipCryptoGenPair root pass i =
+  let xprv = Crypto.deriveXPrv scheme (T.encodeUtf8 pass) root (mkHardened $ fromIntegral i)
+  in (xprv, unsafePublicKey $ Crypto.xpubPublicKey $ Crypto.toXPub xprv)
+  where
+    scheme = Crypto.DerivationScheme2
+    mkHardened = (0x80000000 .|.)
+
 bipCrypto :: Crypto.XPrv -> Text -> Crypto Crypto.XPrv
 bipCrypto root pass = Crypto
   { _crypto_sign = \bs xprv ->
@@ -103,8 +111,7 @@ bipCrypto root pass = Crypto
 
   , _crypto_genKey = \i -> do
       liftIO $ putStrLn $ "Deriving key at index: " <> show i
-      let xprv = Crypto.deriveXPrv scheme (T.encodeUtf8 pass) root (mkHardened $ fromIntegral i)
-      pure (xprv, unsafePublicKey $ Crypto.xpubPublicKey $ Crypto.toXPub xprv)
+      pure $ bipCryptoGenPair root pass i
 
   -- This assumes that the secret is already base16 encoded (being pasted in, so makes sense)
   , _crypto_verifyPactKey = \pkScheme sec -> pure $ do
@@ -127,9 +134,6 @@ bipCrypto root pass = Crypto
       (PactCrypto.toScheme pkScheme)
       (PactCrypto.PubBS <$> mPubBytes)
       (PactCrypto.PrivBS secBytes)
-
-    scheme = Crypto.DerivationScheme2
-    mkHardened = (0x80000000 .|.)
 
 -- | This is for development
 -- > ob run --import desktop:Desktop.Frontend --frontend Desktop.Frontend.desktop

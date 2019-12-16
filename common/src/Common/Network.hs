@@ -33,6 +33,7 @@ import Control.Monad
 import Control.Monad.Except (MonadError, liftEither, runExceptT, throwError, withExceptT)
 import Control.Monad.Trans
 import Data.Aeson
+import Data.CaseInsensitive (CI)
 import Data.Coerce (coerce)
 import Data.Either (rights)
 import Data.Map (Map)
@@ -44,6 +45,7 @@ import Obelisk.Configs
 import Text.URI.Lens
 
 import qualified Data.Aeson as A
+import qualified Data.CaseInsensitive as CI
 import qualified Data.Map as Map
 import qualified Data.Text as T
 import qualified Pact.Types.ChainId as Pact
@@ -57,27 +59,27 @@ import Common.RefPath as MP
 
 -- | Name that uniquely describes a valid network.
 newtype NetworkName = NetworkName
-  { unNetworkName :: Text
+  { unNetworkName :: CI Text
   } deriving (Eq, Ord, Show)
 
 instance FromJSON NetworkName where
   parseJSON = either (fail . T.unpack) pure . mkNetworkName <=< parseJSON
 instance FromJSONKey NetworkName where
 instance ToJSON NetworkName where
-  toJSON = toJSON . unNetworkName
+  toJSON = toJSON . CI.original . unNetworkName
 instance ToJSONKey NetworkName where
 
 -- | Construct a 'NetworkName', and banish mainnet - for now.
 mkNetworkName :: Text -> Either Text NetworkName
-mkNetworkName (T.strip -> t) = Right $ NetworkName t
+mkNetworkName (T.strip -> t) = Right $ NetworkName $ CI.mk t
 
 -- | Construct a 'NetworkName' but don't perform any checks
 uncheckedNetworkName :: Text -> NetworkName
-uncheckedNetworkName = NetworkName . T.strip
+uncheckedNetworkName = NetworkName . CI.mk . T.strip
 
 -- | Render a network name as `Text`.
 textNetworkName :: NetworkName -> Text
-textNetworkName = coerce
+textNetworkName = CI.original . coerce
 
 -- | Reference for a node in a network.
 newtype NodeRef = NodeRef

@@ -27,13 +27,6 @@ module Frontend.UI.DeploymentSettings
   , buildDeploymentSettingsResult
   , defaultGASCapability
 
-    -- * Values for _deploymentSettingsConfig_chainId:
-  , predefinedChainIdSelect
-  , predefinedChainIdDisplayed
-  , userChainIdSelect
-  , userChainIdSelectWithPreselect
-  , uiChainSelection
-
     -- * Tab Helpers
   , DeploymentSettingsView (..)
   , showSettingsTabName
@@ -63,7 +56,7 @@ module Frontend.UI.DeploymentSettings
   ) where
 
 import Control.Applicative ((<|>), empty)
-import Control.Arrow (first, (&&&))
+import Control.Arrow (first)
 import Control.Error (fmapL, hoistMaybe, headMay)
 import Control.Error.Util (hush)
 import Control.Lens
@@ -124,9 +117,6 @@ import Frontend.Wallet
 data DeploymentSettingsConfig t m model a = DeploymentSettingsConfig
   { _deploymentSettingsConfig_userTab     :: Maybe (Text, m a)
     -- ^ Some optional extra tab. fst is the tab's name, snd is its content.
-  , _deploymentSettingsConfig_userSections :: [(Text, m a)]
-    -- ^ Some optional extra input, placed between chainId selection and transaction
-    -- settings. fst is the section's name, snd is its content.
   , _deploymentSettingsConfig_chainId     :: model -> m (Dynamic t (Maybe Pact.ChainId))
     -- ^ ChainId selection widget.
     --   You can pick (predefinedChainIdSelect someId) - for not showing a
@@ -396,7 +386,8 @@ uiDeploymentSettings m settings = mdo
           (_deploymentSettingsConfig_chainId settings $ m)
           (_deploymentSettingsConfig_ttl settings)
           (_deploymentSettingsConfig_gasLimit settings)
-          (_deploymentSettingsConfig_userSections settings)
+          Nothing
+          (Just advancedAccordion)
 
       (mSender, signers, capabilities) <- tabPane mempty curSelection DeploymentSettingsView_Keys $
         uiSenderCapabilities m cChainId (_deploymentSettingsConfig_caps settings)
@@ -448,44 +439,6 @@ uiDeploymentSettings m settings = mdo
       mUserTabCfg  = first DeploymentSettingsView_Custom <$> _deploymentSettingsConfig_userTab settings
       mUserTabName = fmap fst mUserTabCfg
 
--- | Use a predefined chain id, don't let the user pick one.
-predefinedChainIdSelect
-  :: (Reflex t, Monad m)
-  => Pact.ChainId
-  -> model
-  -> m (Dynamic t (Maybe Pact.ChainId))
-predefinedChainIdSelect chanId _ = pure . pure . pure $ chanId
-
--- | Use a predefined immutable chain id, but display it too.
-predefinedChainIdDisplayed
-  :: DomBuilder t m
-  => Pact.ChainId
-  -> model
-  -> m (Dynamic t (Maybe Pact.ChainId))
-predefinedChainIdDisplayed cid _ = do
-  _ <- mkLabeledInput True "Chain ID" uiInputElement $ def
-    & initialAttributes %~ Map.insert "disabled" ""
-    & inputElementConfig_initialValue .~ _chainId cid
-  pure $ pure $ pure cid
-
--- | Let the user pick a chain id.
-userChainIdSelect
-  :: (MonadWidget t m, HasNetwork model t
-     )
-  => model
-  -> m (MDynamic t Pact.ChainId)
-userChainIdSelect m =
-  userChainIdSelectWithPreselect m (constDyn Nothing)
-
--- | Let the user pick a chain id but preselect a value
-userChainIdSelectWithPreselect
-  :: (MonadWidget t m, HasNetwork model t
-     )
-  => model
-  -> Dynamic t (Maybe Pact.ChainId)
-  -> m (MDynamic t Pact.ChainId)
-userChainIdSelectWithPreselect m mChainId = mkLabeledClsInput True "Chain ID" (uiChainSelection mNodeInfo mChainId)
-  where mNodeInfo = (^? to rights . _head) <$> m ^. network_selectedNodes
 
 uiDeployDestination
   :: ( MonadWidget t m
@@ -520,10 +473,6 @@ uiCfg
      , HasNetwork model t
      , HasNetworkCfg mConf t
      , Monoid mConf
-     , Flattenable mConf t
-     , HasJsonDataCfg mConf t
-     , HasWallet model key t
-     , HasJsonData model t
      , Traversable g
      )
   => Maybe (Dynamic t Text)
@@ -532,13 +481,14 @@ uiCfg
   -> Maybe TTLSeconds
   -> Maybe GasLimit
   -> g (Text, m a)
+  -> Maybe (model -> Dynamic t Bool -> m (Event t (), ((), mConf)))
   -> m ( mConf
        , Dynamic t (f Pact.ChainId)
        , Dynamic t TTLSeconds
        , Dynamic t GasLimit
        , g a
        )
-uiCfg mCode m wChainId mTTL mGasLimit userSections = do
+uiCfg mCode m wChainId mTTL mGasLimit userSections otherAccordion = do
   -- General deployment configuration
   let mkGeneralSettings = do
         traverse_ (\c -> transactionInputSection c Nothing) mCode
@@ -554,19 +504,36 @@ uiCfg mCode m wChainId mTTL mGasLimit userSections = do
 
   rec
     let mkAccordionControlDyn initActive = foldDyn (const not) initActive
-          $ leftmost [eGeneralClicked , eAdvancedClicked]
+          $ leftmost [eGeneralClicked, otherClicked]
 
     dGeneralActive <- mkAccordionControlDyn True
-    dAdvancedActive <- mkAccordionControlDyn False
 
     (eGeneralClicked, pairA) <- controlledAccordionItem dGeneralActive mempty (text "General") mkGeneralSettings
     divClass "title" blank
-    (eAdvancedClicked, pairB) <- controlledAccordionItem dAdvancedActive mempty (text "Advanced") $ do
-      -- We don't want to change focus when keyset events occur, so consume and do nothing
-      -- with the given elements and their dynamic
-      divClass "title" $ text "Data"
-      uiJsonDataSetFocus (\_ _ -> pure ()) (\_ _ -> pure ()) (m ^. wallet) (m ^. jsonData)
-  pure $ snd pairA & _1 <>~ snd pairB
+    (otherClicked, transformCfg) <- case otherAccordion of
+      Nothing -> pure (never, id)
+      Just mk -> do
+        (clk, pairB) <- mk m =<< mkAccordionControlDyn False
+        pure (clk, (_1 <>~ snd pairB))
+
+  pure $ transformCfg $ snd pairA
+
+advancedAccordion
+  :: MonadWidget t m
+  => Flattenable mConf t
+  => HasWallet model key t
+  => HasJsonData model t
+  => HasJsonDataCfg mConf t
+  => Monoid mConf
+  => model
+  -> Dynamic t Bool
+  -> m (Event t (), ((), mConf))
+advancedAccordion m active = do
+  controlledAccordionItem active mempty (text "Advanced") $ do
+    -- We don't want to change focus when keyset events occur, so consume and do nothing
+    -- with the given elements and their dynamic
+    divClass "title" $ text "Data"
+    uiJsonDataSetFocus (\_ _ -> pure ()) (\_ _ -> pure ()) (m ^. wallet) (m ^. jsonData)
 
 transactionHashSection :: MonadWidget t m => Pact.Command Text -> m ()
 transactionHashSection cmd = void $ do
@@ -797,32 +764,6 @@ uiSignerList m chainId = do
         pure $ fmap (Set.fromList . catMaybes) $ sequence $ cbs
   signers <- join <$> holdDyn (constDyn Set.empty) eSwitchSigners
   pure signers
-
-uiChainSelection
-  :: MonadWidget t m
-  => Dynamic t (Maybe NodeInfo)
-  -> Dynamic t (Maybe Pact.ChainId)
-  -> CssClass
-  -> m (Dynamic t (Maybe Pact.ChainId))
-uiChainSelection info mPreselected cls = do
-  pb <- getPostBuild
-
-  let
-    chains = map (id &&& _chainId) . maybe [] getChains <$> info
-    mkPlaceHolder cChains = if null cChains then "No chains available" else "Select chain"
-    mkOptions cs = Map.fromList $ (Nothing, mkPlaceHolder cs) : map (first Just) cs
-
-    staticCls = cls <> "select"
-    mkDynCls v = if isNothing v then "select_mandatory_missing" else mempty
-
-  rec
-    let allCls = renderClass <$> fmap mkDynCls d <> pure staticCls
-        cfg = def
-          & dropdownConfig_attributes .~ (("class" =:) <$> allCls)
-          & dropdownConfig_setValue .~ (current mPreselected <@ pb)
-
-    d <- _dropdown_value <$> dropdown Nothing (mkOptions <$> chains) cfg
-  pure d
 
 parseSigCapability :: Text -> Either String SigCapability
 parseSigCapability txt = parsed >>= compiled >>= parseApp
