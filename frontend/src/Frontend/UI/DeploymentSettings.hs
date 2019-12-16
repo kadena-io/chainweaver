@@ -390,7 +390,7 @@ uiDeploymentSettings m settings = mdo
         let currentNode = headMay . rights <$> (m ^. network_selectedNodes)
             mNetworkId = (hush . mkNetworkName . nodeVersion =<<) <$> currentNode
 
-            accounts = liftA2 (\n -> Map.findWithDefault mempty n . unAccountStorage) (m ^. network_selectedNetwork) (m ^. wallet_accounts)
+            accounts = liftA2 (Map.findWithDefault mempty) (m ^. network_selectedNetwork) (unAccountStorage <$> m ^. wallet_accounts)
             mHeadAccount = fmap (\(n, c, _) -> Some $ AccountRef_Vanity n c) . findFirstVanityAccount <$> accounts
             mHeadChain = (headMay =<<) . fmap getChains <$> currentNode
 
