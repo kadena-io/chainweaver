@@ -264,15 +264,6 @@ in obApp // rec {
 
     '';
   };
-  # This encodes the env vars that we need to wrap up to make the libexec exe happy
-  deb-wrapperscript = pkgs.writeTextFile (linuxAppName + "-wrapper") ''
-    export WEBKIT_DISABLE_COMPOSITING_MODE=1
-    export LD_LIBRARY_PATH=/usr/lib/chainweaver
-    # add ,interactive to get the gtk debugger up when you run this.
-    export GTK_DEBUG=modules
-    # Need to do stuff 
-    /usr/libexec/chainweaver/${linuxAppName}
-  '';
   deb-changelog = pkgs.writeTextFile { name = "chainweaver-changelog"; text = ''
     Nah
   ''; };
