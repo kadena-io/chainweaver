@@ -186,6 +186,7 @@ makeWallet model conf = do
       ]
 
   performEvent_ $ storeKeys <$> updated keys
+  performEvent_ $ storeAccounts <$> updated accounts
 
   pure $ Wallet
     { _wallet_keys = keys
