@@ -30,7 +30,6 @@ It currently doesn't reference the static files from the nix store so it actuall
 try to run it from the directory that doesn't have static in it. :)
 
 TODO
-- Get a tarball to test on ubuntu
 - Setting up app menu? What does the mac app do and what do we want in there?
 - What do we need to do with resizing the window? It seems to work alright
 
@@ -39,7 +38,6 @@ BUGS
 - Compositing issues with nvidia drivers: See https://bugs.freebsd.org/bugzilla/show_bug.cgi?id=229491
 - Getting these warnings in the console. Looks bad:
   - http://localhost:48481/:247:76: CONSOLE WARN ArrayBuffer is deprecated in XMLHttpRequest.send(). Use ArrayBufferView instead.
-- UI is really slow and gets stuck (maybe loading ace?)
 - I get some errors when launching links with brave. They work, but the error is nasty.
 - Needs to log to syslog or something.
 
