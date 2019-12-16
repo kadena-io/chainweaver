@@ -1149,6 +1149,7 @@ shouldFailOver = \case
 -- | Pretty print a `NetworkError`.
 prettyPrintNetworkError :: NetworkError -> Text
 prettyPrintNetworkError = \case
+  NetworkError_NetworkError "JSaddleConnectionError" -> "Network error: Node temporarily unreachable... retrying."
   NetworkError_NetworkError msg -> "Network error: " <> msg
   NetworkError_Status c msg -> "Error HTTP response (" <> tshow c <> "):" <> msg
   NetworkError_Decoding msg -> "Decoding server response failed: " <> msg
