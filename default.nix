@@ -104,26 +104,61 @@ in obApp // rec {
     mkdir $out
     ${pkgs.sass}/bin/sass ${./backend/sass}/index.scss $out/sass.css
   '';
-  # Linux app static linking
-  linuxNixos = pkgs.haskell.lib.overrideCabal obApp.ghc.linux (drv: {
+  # If we don't wrapGApps, none of the gnome schema stuff works in nixos
+  nixosExe = obApp.ghc.linux.overrideAttrs (old: {
     nativeBuildInputs = old.nativeBuildInputs ++ [ pkgs.wrapGAppsHook ];
-    libraryFrameworkDepends =
-      [ pkgs.webkit
-        pkgs.glib-networking
-      ];
+    libraryFrameworkDepends = [ pkgs.webkitgtk pkgs.glib-networking ];
+    postInstall = ''
+      set -eux
+      mv $out/bin/linuxApp $out/bin/${linuxAppName}
+      ln -s "${pkgs.z3}"/bin/z3 "$out/bin/z3"
+      ln -s "${obApp.mkAssets obApp.passthru.staticFiles}" "$out/bin/static.assets"
+      ln -s "${obApp.passthru.staticFiles}" "$out/bin/static"
+      ln -s "${sass}/sass.css" "$out/bin/sass.css"
+      ${pkgs.libicns}/bin/png2icns "$out/bin/pact.icns" "${macAppIcon}"
+      ${pkgs.libicns}/bin/png2icns "$out/bin/pact-document.icns" "${macPactDocumentIcon}"
+    '';
   });
-  linuxApp = pkgs.stdenv.mkDerivation {
+  addGObjectIntrospection = hpackage: pkgs.haskell.lib.overrideCabal hpackage (current: {
+    libraryPkgconfigDepends =
+      current.libraryPkgconfigDepends ++ [ pkgs.gobject-introspection ];
+  });
+  ubuntuHPkgs = obApp.ghc.override {
+    overrides = self: super: {
+      gi-javascriptcore = addGObjectIntrospection (self.callHackage "gi-javascriptcore" "4.0.20" { webkitgtk = ubuntuWebkitgtk; });
+      gi-webkit2 = addGObjectIntrospection (self.callHackage "gi-webkit2" "4.0.24" { webkitgtk = ubuntuWebkitgtk; });
+      webkitgtk3-javascriptcore = addGObjectIntrospection (self.callHackage "webkitgtk3-javascriptcore" "0.14.2.1" { webkitgtk = ubuntuWebkitgtk; });
+      linux = pkgs.haskell.lib.overrideCabal super.linux (old: {
+        executableSystemDepends = [ ubuntuWebkitgtk pkgs.glib-networking ];
+      });
+    };
+  };
+  ubuntuExe = pkgs.haskell.lib.justStaticExecutables ubuntuHPkgs.linux;
+  # Webkitgtk hard compiles the libexec path into the library, so we have to patch it if we
+  # want it to work not from the nix store.
+  ubuntuWebkitgtk = pkgs.webkitgtk.overrideAttrs (old: {
+    patches = old.patches ++ [./patches/ubuntu/webkitgtk/ubuntupaths.patch];
+  });
+  deb = pkgs.stdenv.mkDerivation {
     name = "${linuxAppName}-usrlib";
     outputs = ["out"];
-    
+    exportReferencesGraph = ["graph" ubuntuExe];
     builder = pkgs.writeScript "builder.sh" ''
       source $stdenv/setup
       set -eux
       mkdir $out
+      export LIBPATH=/usr/lib/chainweaver
+      export BINPATH=/usr/libexec/chainweaver
       export DEBDIR=$TMPDIR/${linuxAppName}-1
-      export BINDIR=$DEBDIR/usr/libexec/chainweaver
-      export LIBDIR=$DEBDIR/usr/lib/chainweaver
+      export BINDIR=$DEBDIR/$BINPATH
+      export LIBDIR=$DEBDIR/$LIBPATH
       export TMPEXE=$TMPDIR/${linuxAppName}
+
+      # We want to patch a bunch of stuff to use the ubuntu things
+      function chainweaver_patchelf () {
+        patchelf --set-interpreter /lib64/ld-linux-x86-64.so.2 $1
+        patchelf --set-rpath $LIBPATH $1
+      }
 
       # make debian control file structure
       mkdir -p $DEBDIR/DEBIAN
@@ -136,24 +171,70 @@ in obApp // rec {
 
       cp ${obApp.ghc.linux}/bin/linuxApp $TMPEXE
       chmod u+w $TMPEXE
-      patchelf --set-interpreter /lib64/ld-linux-x86-64.so.2 $TMPEXE
-      patchelf --set-rpath $LIBDIR $TMPEXE
+      
       cp $TMPEXE $BINDIR/${linuxAppName}
-
       cp "${pkgs.z3}"/bin/z3 "$BINDIR/z3"
+
       #TODO : This shouldn't be in libexec
       cp -rL "${obApp.mkAssets obApp.passthru.staticFiles}" "$BINDIR/static.assets"
       cp -rL "${obApp.passthru.staticFiles}" "$BINDIR/static"
       cp -rL "${sass}/sass.css" "$BINDIR/sass.css"
       ${pkgs.libicns}/bin/png2icns "$BINDIR/pact.icns" "${macAppIcon}"
       ${pkgs.libicns}/bin/png2icns "$BINDIR/pact-document.icns" "${macPactDocumentIcon}"
-      cp $(ldd ${obApp.ghc.linux}/bin/linuxApp | awk '{ print $3; }') $LIBDIR/
+
+      # This copies over too much. The old ldd way copied way less stuff. At least need to filter
+      # here. 
+      while read path; do
+        if [ -d "$path/bin" ]; then
+          for f in $(find $path/bin -type f); do
+            if [ ! -f "$BINDIR/$(basename $f)" ]; then
+              cp -L $f "$BINDIR"
+            fi
+          done;
+        fi
+        if [ -d "$path/libexec" ]; then
+          for f in $(find $path/libexec -type f); do
+            echo $f
+            if [ ! -f "$BINDIR/$(basename $f)" ]; then
+              cp -L $f "$BINDIR"
+            fi
+          done;
+        fi
+        if [ -d "$path/lib" ]; then
+          for f in $(find $path/lib -type f); do
+            if [ ! -f "$LIBDIR/$(basename $f)" ]; then
+               cp -L $f "$LIBDIR"
+               so_name=$(basename $f)
+ 
+               # If the so is a .so.MAJOR.MINOR.PATCH type file
+               if echo $f | egrep "(\.[[:digit:]]+){2,}$"; then
+                 trimmed_so=$LIBDIR/$(echo $so_name | sed -e 's/\(\.[[:digit:]]\+\)\(\.[[:digit:]]\+\)*$/\1/');
+                 if [ ! -e "$trimmed_so" ]; then
+                   ln -s "$LIBPATH/$so_name" $trimmed_so || true;
+                 fi;
+               fi;
+            fi
+          done;
+        fi;
+        read dummy
+        read nrRefs
+        for ((i = 0; i < nrRefs; i++)); do read ref; done
+      done < graph
+
+      # libopenjp has some symlinks from libopenjp2.so -> libopenjp2.7. And we need them so hack it in
+      ln -s $LIBPATH/libopenjp2.so.2.3.1 $LIBDIR/libopenjp2.so.7
       chmod 0755 $BINDIR/*
+      for f in $(find $BINDIR -executable -type f); do
+        if ${pkgs.file}/bin/file $f | egrep "ELF 64-bit LSB executable.+interpreter /nix/sto"; then
+          chainweaver_patchelf $f
+        fi
+      done;
       ${pkgs.dpkg}/bin/dpkg-deb --build $DEBDIR $out
+
     '';
   };
   deb-changelog = pkgs.writeTextFile { name = "chainweaver-changelog"; text = ''
-    TODO
+    Nah
   ''; };
   deb-control = pkgs.writeTextFile { name = "control"; text = ''
     Package: chainweaver
@@ -165,11 +246,11 @@ in obApp // rec {
 
   deb-copyright = pkgs.writeTextFile { name = "chainweaver-deb-copyright"; text = ''
     Format: https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
-    Upstream-Name: Chainweaver
-    Source: https://gitlab.com/kadena.io/chainweaver
+    Upstream-Name: Kiln
+    Source: https://gitlab.com/obsidian.systems/kiln
 
     Files: *
-    Copyright: 2019 kadena.io
+    Copyright: 2019 Kadena.io
     License: MIT
       Permission is hereby granted, free of charge, to any person obtaining a copy
       of this software and associated documentation files (the "Software"), to deal

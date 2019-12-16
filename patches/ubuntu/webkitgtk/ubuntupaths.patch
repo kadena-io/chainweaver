@@ -1,0 +1,13 @@
+diff --git a/Source/WebKit/Shared/glib/ProcessExecutablePathGLib.cpp b/Source/WebKit/Shared/glib/ProcessExecutablePathGLib.cpp
+index 4ff35d31..11c6aa01 100644
+--- a/Source/WebKit/Shared/glib/ProcessExecutablePathGLib.cpp
++++ b/Source/WebKit/Shared/glib/ProcessExecutablePathGLib.cpp
+@@ -61,7 +61,7 @@ static String findWebKitProcess(const char* processName)
+     }
+ #endif
+ 
+-    return FileSystem::pathByAppendingComponent(FileSystem::stringFromFileSystemRepresentation(PKGLIBEXECDIR), processName);
++    return FileSystem::pathByAppendingComponent(FileSystem::stringFromFileSystemRepresentation("/usr/libexec/chainweaver"), processName);
+ }
+ 
+ String executablePathOfWebProcess()
