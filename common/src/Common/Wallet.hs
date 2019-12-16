@@ -402,7 +402,7 @@ lookupAccountRef (Some ref) accounts = case ref of
     pure $ ref ==> nv
 
 accountUnfinishedCrossChainTransfer :: Account -> Maybe UnfinishedCrossChainTransfer
-accountUnfinishedCrossChainTransfer (r :=> Identity a) = _accountInfo_unfinishedCrossChainTransfer $ case r of
+accountUnfinishedCrossChainTransfer = _accountInfo_unfinishedCrossChainTransfer . accountInfo
   AccountRef_Vanity _ _ -> _vanityAccount_info a
   AccountRef_NonVanity _ _ -> _nonVanityAccount_info a
 
