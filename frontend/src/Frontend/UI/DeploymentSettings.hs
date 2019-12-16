@@ -65,6 +65,7 @@ import Control.Monad.Trans.Class
 import Control.Monad.Trans.Maybe
 import Control.Monad.Except
 import Data.Decimal (roundTo)
+import Data.Dependent.Sum (DSum(..))
 import Data.Either (rights, isLeft)
 import Data.IntMap (IntMap)
 import Data.Map (Map)
@@ -390,7 +391,7 @@ uiDeploymentSettings m settings = mdo
         let currentNode = headMay . rights <$> (m ^. network_selectedNodes)
             mNetworkId = (hush . mkNetworkName . nodeVersion =<<) <$> currentNode
 
-            accounts = liftA2 (\n -> Map.findWithDefault mempty n . unAccountStorage) (m ^. network_selectedNetwork) (m ^. wallet_accounts)
+            accounts = liftA2 (Map.findWithDefault mempty) (m ^. network_selectedNetwork) (unAccountStorage <$> m ^. wallet_accounts)
             mHeadAccount = fmap (\(n, c, _) -> Some $ AccountRef_Vanity n c) . findFirstVanityAccount <$> accounts
             mHeadChain = (headMay =<<) . fmap getChains <$> currentNode
 
@@ -1046,11 +1047,7 @@ uiDeployPreview model settings keys accounts signers gasLimit ttl code lastPubli
         ]
 
     getAccounts :: Set (Some AccountRef) -> Map AccountName PublicKey
-    getAccounts = Map.mapKeys (\(Some x) -> AccountName $ accountRefToName x) . Map.restrictKeys (vanityAccounts <> nonVanityAccounts)
+    getAccounts = Map.mapKeys (\(Some x) -> AccountName $ accountRefToName x) . Map.restrictKeys accs
       where
-        vanityAccounts = flip Map.foldMapWithKey (_accounts_vanity accounts) $ \n ->
-          Map.foldMapWithKey $ \c va ->
-            Map.singleton (Some $ AccountRef_Vanity n c) (_vanityAccount_key va)
-        nonVanityAccounts = flip Map.foldMapWithKey (_accounts_nonVanity accounts) $ \pk ->
-          Map.foldMapWithKey $ \c _ ->
-            Map.singleton (Some $ AccountRef_NonVanity pk c) pk
+        accs = flip foldAccounts accounts $ \case
+          a@(r :=> _) -> Map.singleton (Some r) $ accountKey a

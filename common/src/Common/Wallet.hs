@@ -41,6 +41,7 @@ module Common.Wallet
   , Accounts(..)
   , accounts_vanity
   , accounts_nonVanity
+  , foldAccounts
   , Key(..)
   , filterKeyPairs
   , VanityAccount(..)
@@ -402,9 +403,7 @@ lookupAccountRef (Some ref) accounts = case ref of
     pure $ ref ==> nv
 
 accountUnfinishedCrossChainTransfer :: Account -> Maybe UnfinishedCrossChainTransfer
-accountUnfinishedCrossChainTransfer (r :=> Identity a) = _accountInfo_unfinishedCrossChainTransfer $ case r of
-  AccountRef_Vanity _ _ -> _vanityAccount_info a
-  AccountRef_NonVanity _ _ -> _nonVanityAccount_info a
+accountUnfinishedCrossChainTransfer = _accountInfo_unfinishedCrossChainTransfer . accountInfo
 
 accountToName :: Account -> AccountName
 accountToName (r :=> _) = case r of
@@ -449,6 +448,12 @@ instance FromJSON Accounts where
       { _accounts_vanity = vanity
       , _accounts_nonVanity = nonVanity
       }
+
+foldAccounts :: Monoid m => (Account -> m) -> Accounts -> m
+foldAccounts f accounts = mconcat
+  [ flip Map.foldMapWithKey (_accounts_vanity accounts) $ \n -> Map.foldMapWithKey $ \c a -> f (AccountRef_Vanity n c ==> a)
+  , flip Map.foldMapWithKey (_accounts_nonVanity accounts) $ \pk -> Map.foldMapWithKey $ \c a -> f (AccountRef_NonVanity pk c ==> a)
+  ]
 
 data AccountInfo = AccountInfo
   { _accountInfo_balance :: Maybe AccountBalance

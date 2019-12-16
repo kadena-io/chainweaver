@@ -30,7 +30,6 @@ module Frontend.Wallet
   , mkAccountName
   , AccountGuard (..)
   -- * Creation
-  , emptyWallet
   , makeWallet
   , loadKeys
   , storeKeys
@@ -52,6 +51,7 @@ import Control.Lens hiding ((.=))
 import Control.Monad.Except (runExcept)
 import Control.Monad.Fix
 import Data.Aeson
+import Data.Dependent.Sum (DSum(..))
 import Data.IntMap (IntMap)
 import Data.Set (Set)
 import Data.Some (Some(Some))
@@ -108,17 +108,10 @@ makePactLenses ''WalletCfg
 type IsWalletCfg cfg key t = (HasWalletCfg cfg key t, Monoid cfg, Flattenable cfg t)
 
 getSigningPairs :: KeyStorage key -> Accounts -> Set (Some AccountRef) -> [KeyPair key]
-getSigningPairs allKeys allAccounts signing = Map.elems $ Map.restrictKeys allKeysMap wantedKeys
+getSigningPairs allKeys allAccounts signing = filterKeyPairs wantedKeys allKeys
   where
-    allKeysMap = Map.fromList $ fmap (\k -> (_keyPair_publicKey $ _key_pair k, _key_pair k)) $ IntMap.elems allKeys
     wantedKeys = Set.fromList $ Map.elems $ Map.restrictKeys accountRefs signing
-    accountRefs = vanityRefs <> nonVanityRefs
-    vanityRefs = Map.foldMapWithKey
-      (\n -> Map.foldMapWithKey $ \c v -> Map.singleton (Some $ AccountRef_Vanity n c) (_vanityAccount_key v))
-      (_accounts_vanity allAccounts)
-    nonVanityRefs = Map.foldMapWithKey
-      (\pk -> Map.foldMapWithKey $ \c _ -> Map.singleton (Some $ AccountRef_NonVanity pk c) pk)
-      (_accounts_nonVanity allAccounts)
+    accountRefs = flip foldAccounts allAccounts $ \a@(r :=> _) -> Map.singleton (Some r) $ accountKey a
 
 
 data Wallet key t = Wallet
@@ -137,10 +130,6 @@ findFirstVanityAccount as = do
   (n, cm) <- Map.lookupMin $ _accounts_vanity as
   (c, va) <- Map.lookupMin cm
   pure (n, c, va)
-
--- | An empty wallet that will never contain any keys.
-emptyWallet :: Reflex t => Wallet key t
-emptyWallet = mempty
 
 snocIntMap :: a -> IntMap a -> IntMap a
 snocIntMap a m = IntMap.insert (nextKey m) a m

@@ -67,6 +67,7 @@ uiAccountDetailsDetails
   -> Workflow t m (Text, (mConf, Event t ()))
 uiAccountDetailsDetails network name a onClose = Workflow $ do
   let kAddr = textKadenaAddress $ accountToKadenaAddress a
+      chain = accountChain a
 
   let displayText lbl v cls =
         let
@@ -83,7 +84,7 @@ uiAccountDetailsDetails network name a onClose = Workflow $ do
       -- Public key
       _ <- displayText "Public Key" (keyToText $ accountKey a) "account-details__pubkey"
       -- Chain id
-      _ <- displayText "Chain ID" (Pact._chainId $ accountChain a) "account-details__chain-id"
+      _ <- displayText "Chain ID" (Pact._chainId chain) "account-details__chain-id"
       -- separator
       horizontalDashedSeparator
       -- Notes edit
@@ -108,7 +109,6 @@ uiAccountDetailsDetails network name a onClose = Workflow $ do
     onDone <- confirmButton def "Done"
 
     let
-      chain = accountChain a
       onNotesUpdate = case notesEdit of
         Nothing -> never
         Just notes -> (network, name, chain,) . mkAccountNotes <$> current notes <@ onDone

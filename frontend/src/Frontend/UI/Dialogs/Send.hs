@@ -306,6 +306,10 @@ sendConfig model fromIndex fromAccount = Workflow $ do
           Right (ka, _amount) -> do
             let toChain = _kadenaAddress_chainId ka
                 fromChain = accountChain fromAccount
+                uiGasPayerDropdown gasAcc = ffor3 (model ^. wallet_accounts) (model ^. network_selectedNetwork) gasAcc $ \netToAccount net ma -> do
+                  accounts <- Map.lookup net $ unAccountStorage netToAccount
+                  a <- ma
+                  lookupAccountRef a accounts
             when (toChain /= fromChain) $ do
               elClass "h3" ("heading heading_type_h3") $ text "This is a cross chain transfer."
               el "p" $ text $ T.concat
@@ -327,10 +331,7 @@ sendConfig model fromIndex fromAccount = Workflow $ do
               let cfg = def & dropdownConfig_attributes .~ pure ("class" =: "labeled-input__input")
                   chain = pure $ Just fromChain
               gasAcc <- uiSenderDropdown cfg never model chain
-              pure $ ffor3 (model ^. wallet_accounts) (model ^. network_selectedNetwork) gasAcc $ \netToAccount net ma -> do
-                accounts <- Map.lookup net $ unAccountStorage netToAccount
-                a <- ma
-                lookupAccountRef a accounts
+              pure $ uiGasPayerDropdown gasAcc
             toGasPayer <- if toChain == fromChain
               then pure $ pure $ Just Nothing
               else do
@@ -343,10 +344,7 @@ sendConfig model fromIndex fromAccount = Workflow $ do
                   let cfg = def & dropdownConfig_attributes .~ pure ("class" =: "labeled-input__input")
                       chain = pure $ Just toChain
                   gasAcc <- uiSenderDropdown cfg never model chain
-                  pure $ fmap Just $ ffor3 (model ^. wallet_accounts) (model ^. network_selectedNetwork) gasAcc $ \netToAccount net ma -> do
-                    accounts <- Map.lookup net $ unAccountStorage netToAccount
-                    a <- ma
-                    lookupAccountRef a accounts
+                  pure $ fmap Just $ uiGasPayerDropdown gasAcc
             pure $ (liftA2 . liftA2) (,) fromGasPayer toGasPayer
       pure (conf, mCaps, recipient)
     footerSection currentTab recipient mCaps = modalFooter $ do

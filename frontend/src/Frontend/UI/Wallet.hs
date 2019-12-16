@@ -154,7 +154,7 @@ uiKeyItems model = do
     el "tbody" $ do
       events <- listWithKey keyMap (uiKeyItem model)
       dyn_ $ ffor keyMap $ \keys ->
-        when (all _key_hidden $ Map.elems keys) $
+        when (all _key_hidden keys) $
           elClass "tr" "wallet__table-row" $ elAttr "td" ("colspan" =: "6" <> "class" =: "wallet__table-cell") $
             text "No accounts ..."
       pure events

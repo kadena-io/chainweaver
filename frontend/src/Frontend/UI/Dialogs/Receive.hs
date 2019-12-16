@@ -176,7 +176,7 @@ uiReceiveModal0 model account onClose = Workflow $ do
             -- Network
             transactionDisplayNetwork model
             -- Chain id
-            _ <- displayText "Chain ID" (_chainId $ accountChain account) "account-details__chain-id"
+            _ <- displayText "Chain ID" (_chainId chain) "account-details__chain-id"
             pure ()
           uiDisplayAddress address
 
