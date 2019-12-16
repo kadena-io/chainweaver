@@ -16,11 +16,8 @@ import qualified Pact.Types.ChainId as Pact
 import           Reflex
 import           Reflex.Dom
 ------------------------------------------------------------------------------
-import           Frontend.KadenaAddress (textKadenaAddress)
-------------------------------------------------------------------------------
 import           Frontend.UI.Modal
 import           Frontend.Wallet
-import           Frontend.Crypto.Ed25519 (keyToText)
 import           Frontend.UI.Widgets
 import           Frontend.UI.Widgets.Helpers (dialogSectionHeading)
 import           Frontend.Foundation
@@ -67,19 +64,16 @@ uiNonVanityAccountDetailsDialog model onClose = Workflow $ do
         in
           mkLabeledInputView False lbl attrFn $ pure v
 
-  notesEdit <- divClass "modal__main account-details" $ do
+  divClass "modal__main account-details" $ do
     dialogSectionHeading mempty "Info"
     divClass "group" $ do
-      -- Account name
-      _ <- displayText "Account Name" "futz" "account-details__name"
       -- Public key
       _ <- displayText "Public Key" "keks" "account-details__pubkey"
       -- Chain id
       _ <- displayText "Chain ID" "watz" "account-details__chain-id"
       -- separator
       horizontalDashedSeparator
-      -- Notes edit
-      --
+
   modalFooter $ do
     onDone <- confirmButton def "Done"
 
