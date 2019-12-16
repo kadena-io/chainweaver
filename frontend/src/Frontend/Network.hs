@@ -69,6 +69,7 @@ module Frontend.Network
   , defaultTransactionTTL
   ) where
 
+import           Control.Exception                 (fromException)
 import           Control.Arrow                     (first, left, second, (&&&))
 import           Control.Lens                      hiding ((.=))
 import           Control.Monad.Except
@@ -115,6 +116,7 @@ import           Pact.Types.Hash                   (hash, Hash (..), TypedHash (
 import           Pact.Types.RPC
 import           Pact.Types.PactValue
 import qualified Servant.Client.JSaddle            as S
+import qualified Servant.Client.Internal.JSaddleXhrClient as S
 
 #if !defined (ghcjs_HOST_OS)
 import           Pact.Types.Crypto                 (PPKScheme (..))
@@ -905,9 +907,12 @@ packHttpErr e = case e of
     if S.responseStatusCode response == HTTP.status413
        then NetworkError_ReqTooLarge
        else NetworkError_Status (S.responseStatusCode response) (tshow $ S.responseBody response)
+  S.ConnectionError ex
+    -- This is a tad more robust than a text pattern match.
+    | Just S.JSaddleConnectionError <- fromException ex
+    -> NetworkError_NetworkError "Node unreachable"
   S.ConnectionError t -> NetworkError_NetworkError (tshow t)
   _ -> NetworkError_Decoding $ T.pack $ show e
-
 
 -- Request building ....
 
@@ -1149,7 +1154,6 @@ shouldFailOver = \case
 -- | Pretty print a `NetworkError`.
 prettyPrintNetworkError :: NetworkError -> Text
 prettyPrintNetworkError = \case
-  NetworkError_NetworkError "JSaddleConnectionError" -> "Network error: Node temporarily unreachable... retrying."
   NetworkError_NetworkError msg -> "Network error: " <> msg
   NetworkError_Status c msg -> "Error HTTP response (" <> tshow c <> "):" <> msg
   NetworkError_Decoding msg -> "Decoding server response failed: " <> msg
