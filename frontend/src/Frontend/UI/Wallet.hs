@@ -102,7 +102,6 @@ hasPrivateKey = isJust . _keyPair_privateKey . snd
 
 ----------------------------------------------------------------------
 
---     pure $ hush <$> dEitherAccName
 -- | Widget listing all available keys.
 uiAvailableKeys
   :: forall t m model mConf key.
@@ -167,7 +166,7 @@ uiKeyItems model = do
 --    accModal (d,i,a) = Just $ case d of
 --      -- AccountDialog_Delete -> uiDeleteConfirmation i (_account_name a)
 --      AccountDialog_Details -> uiAccountDetails i a
---      AccountDialog_Receive -> uiReceiveModal model a
+--      AccountDialog_Receive -> uiReceiveModal model a (Just $ _account_chainId a)
 --      AccountDialog_Send -> uiSendModal model i a
 
   refresh <- delay 1 =<< getPostBuild

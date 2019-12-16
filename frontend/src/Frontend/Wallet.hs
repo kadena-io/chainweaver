@@ -44,6 +44,7 @@ module Frontend.Wallet
   , findNextKey
   , findFirstVanityAccount
   , getSigningPairs
+  , findFirstInflightAccount
   , module Common.Wallet
   ) where
 
@@ -52,6 +53,7 @@ import Control.Monad.Except (runExcept)
 import Control.Monad.Fix
 import Data.Aeson
 import Data.Dependent.Sum (DSum(..))
+import Data.Function (on)
 import Data.IntMap (IntMap)
 import Data.Set (Set)
 import Data.Some (Some(Some))
@@ -64,10 +66,14 @@ import qualified Data.Map as Map
 import qualified Data.Set as Set
 import qualified Data.IntMap as IntMap
 import qualified Data.Text as T
+import qualified Pact.Types.Exp as Pact
+import qualified Pact.Types.PactValue as Pact
+import qualified Pact.Types.Term as Pact
 
 import Common.Network (NetworkName)
 import Common.Wallet
 import Common.Orphans ()
+
 import Frontend.Crypto.Class
 import Frontend.Crypto.Ed25519
 import Frontend.Foundation
@@ -86,7 +92,7 @@ data WalletCfg key t = WalletCfg
   -- ^ Request generation of a new key
   , _walletCfg_delKey :: Event t IntMap.Key
   -- ^ Hide a key in the wallet.
-  , _walletCfg_delAccount :: Event t AccountName
+  , _walletCfg_delAccount :: Event t (NetworkName, AccountName, ChainId)
   -- ^ Hide an account in the wallet.
   , _walletCfg_importAccount  :: Event t (NetworkName, AccountName, ChainId, VanityAccount)
   , _walletCfg_createWalletOnlyAccount :: Event t (NetworkName, PublicKey, ChainId)
@@ -113,7 +119,6 @@ getSigningPairs allKeys allAccounts signing = filterKeyPairs wantedKeys allKeys
     wantedKeys = Set.fromList $ Map.elems $ Map.restrictKeys accountRefs signing
     accountRefs = flip foldAccounts allAccounts $ \a@(r :=> _) -> Map.singleton (Some r) $ accountKey a
 
-
 data Wallet key t = Wallet
   { _wallet_keys :: Dynamic t (KeyStorage key)
     -- ^ Accounts added and removed by the user
@@ -123,6 +128,12 @@ data Wallet key t = Wallet
   deriving Generic
 
 makePactLenses ''Wallet
+
+findFirstInflightAccount :: Accounts -> Maybe (AccountName, ChainId, VanityAccount)
+findFirstInflightAccount as = do
+  (n, cm) <- Map.lookupMin $ _accounts_vanity as
+  (c, va) <- Map.lookupMin $ Map.filter _vanityAccount_inflight cm
+  pure (n, c, va)
 
 -- | Find the first vanity account in the wallet
 findFirstVanityAccount :: Accounts -> Maybe (AccountName, ChainId, VanityAccount)
@@ -238,7 +249,6 @@ getBalances model accounts = do
 --    mkReqs meta someaccs = for someaccs $ \sa ->
 --      fmap (sa,) . traverse (mkReq meta) $ someAccount Nothing Just sa
 --    mkReq (netName, pm) acc = mkSimpleReadReq (accountBalanceReq $ _account_name acc) netName pm (ChainRef Nothing $ _account_chainId acc)
-
 
 -- Storing data:
 

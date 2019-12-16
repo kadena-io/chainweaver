@@ -115,7 +115,7 @@ uiAccountDetailsDetails network name a onClose = Workflow $ do
       conf = mempty & walletCfg_updateAccountNotes .~ onNotesUpdate
 
     pure ( ("Account Details", (conf, leftmost [onClose, onDone]))
-         , uiDeleteConfirmation name onClose <$ onRemove
+         , uiDeleteConfirmation network name chain onClose <$ onRemove
          )
 
 uiDeleteConfirmation
@@ -124,10 +124,12 @@ uiDeleteConfirmation
     , Monoid mConf
     , HasWalletCfg mConf key t
     )
-  => AccountName
+  => NetworkName
+  -> AccountName
+  -> ChainId
   -> Event t ()
   -> Workflow t m (Text, (mConf, Event t ()))
-uiDeleteConfirmation name onClose = Workflow $ do
+uiDeleteConfirmation net name chain onClose = Workflow $ do
   modalMain $ do
     divClass "segment modal__filler" $ do
       dialogSectionHeading mempty "Warning"
@@ -141,7 +143,7 @@ uiDeleteConfirmation name onClose = Workflow $ do
 
   modalFooter $ do
     onConfirm <- confirmButton (def & uiButtonCfg_class .~ "account-delete__confirm") "Permanently Remove Account"
-    let cfg = mempty & walletCfg_delAccount .~ (name <$ onConfirm)
+    let cfg = mempty & walletCfg_delAccount .~ ((net, name, chain) <$ onConfirm)
     pure ( ("Remove Confirmation", (cfg, leftmost [onClose, onConfirm]))
          , never
          )

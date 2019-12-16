@@ -490,13 +490,17 @@ data VanityAccount = VanityAccount
   { _vanityAccount_key :: PublicKey -- TODO should be KeySet, but that's a huge change.
   , _vanityAccount_notes :: AccountNotes
   , _vanityAccount_info :: AccountInfo
+  , _vanityAccount_inflight :: Bool
   }
 
 instance ToJSON VanityAccount where
-  toJSON as = object
-    [ "key" .= toJSON (_vanityAccount_key as)
-    , "notes" .= toJSON (_vanityAccount_notes as)
-    , "info" .= toJSON (_vanityAccount_info as)
+  toJSON as = object $ catMaybes
+    [ Just $ "key" .= toJSON (_vanityAccount_key as)
+    , Just $ "notes" .= toJSON (_vanityAccount_notes as)
+    , Just $ "info" .= toJSON (_vanityAccount_info as)
+    , if _vanityAccount_inflight as
+      then Just $ "inflight" .= toJSON True
+      else Nothing
     ]
 
 instance FromJSON VanityAccount where
@@ -504,10 +508,12 @@ instance FromJSON VanityAccount where
     key <- o .: "key"
     notes <- o .: "notes"
     info <- o .: "info"
+    inflight <- lenientLookup o "inflight"
     pure $ VanityAccount
       { _vanityAccount_key = key
       , _vanityAccount_notes = notes
       , _vanityAccount_info = info
+      , _vanityAccount_inflight = fromMaybe False inflight
       }
 
 data NonVanityAccount = NonVanityAccount

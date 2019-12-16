@@ -10,7 +10,9 @@ module Frontend.UI.Dialogs.AddAccount
 import           Control.Lens
 import           Control.Monad.Trans.Class
 import           Control.Monad.Trans.Maybe
+import qualified Data.Map as Map
 import           Data.Text (Text)
+import           Data.Aeson (ToJSON,FromJSON)
 ------------------------------------------------------------------------------
 import           Reflex
 import           Reflex.Dom
@@ -20,6 +22,7 @@ import           Frontend.Network (HasNetworkCfg, network_selectedNetwork)
 import           Frontend.JsonData (HasJsonDataCfg)
 import           Frontend.Crypto.Class (HasCrypto)
 import           Frontend.UI.DeploymentSettings (transactionDisplayNetwork)
+
 import           Frontend.UI.Dialogs.AddVanityAccount (uiAddVanityAccountSettings)
 
 import           Frontend.Ide (ide_wallet)
@@ -28,6 +31,7 @@ import           Frontend.UI.Modal.Impl (ModalIde, ModalImpl)
 import           Frontend.UI.Widgets
 import           Frontend.UI.Widgets.Helpers (dialogSectionHeading)
 import           Frontend.Foundation
+import           Frontend.Storage (HasStorage)
 
 import Obelisk.Generated.Static
 
@@ -37,6 +41,8 @@ type HasAddAccountModelCfg model mConf key m t =
   , HasCrypto key (Performable m)
   , HasNetworkCfg mConf t
   , HasJsonDataCfg mConf t
+  , FromJSON key, ToJSON key
+  , HasStorage m
   )
 
 uiAddWalletOnlyAccountDialogButton
@@ -79,18 +85,32 @@ uiCreateWalletStepOne
   -> Event t ()
   -> Workflow t m (Text, (mConf, Event t ()))
 uiCreateWalletStepOne model onClose = Workflow $ do
+  pb <- getPostBuild
+  let dInflightAcc = ffor2 (model ^. network_selectedNetwork) (model ^. wallet_accounts) $ \net (AccountStorage as) ->
+        findFirstInflightAccount =<< Map.lookup net as
+
   (dSelectedChain, dNotes, onAddVanityAcc) <- divClass "modal__main" $ do
+    dyn_ $ ffor dInflightAcc $ \case
+      Nothing -> blank
+      Just _ -> divClass "segment modal__main transaction_details" $ do
+        elClass "h2" "heading heading_type_h2" $ text "Notice"
+        divClass "group segment" $ el "p"
+          $ text "An incomplete vanity account was detected and we were unable to verify its existence on the chain. The known details have been pre-populated for you to complete vanity account creation"
+
     dialogSectionHeading mempty "Destination"
     dChainId <- divClass "group" $ do
       transactionDisplayNetwork model
-      userChainIdSelect model
+      userChainIdSelectWithPreselect model (fmap (view _2) <$> dInflightAcc)
 
     dialogSectionHeading mempty "Reference Data"
-    dNotes <- divClass "group" $
-      value <$> mkLabeledClsInput True "Notes" inpElem
+    dNotes <- divClass "group" $ fmap value $ mkLabeledClsInput True "Notes" $ inpElem $ def
+      & inputElementConfig_setValue .~ tagMaybe (fmap (unAccountNotes . _vanityAccount_notes . view _3) <$> current dInflightAcc) pb
 
-    onAddVanityAcc <- fmap snd $ accordionItem' False "add-account__advanced-content" (accordionHeaderBtn "Advanced") $
-      confirmButton def "Create Vanity Account"
+    onAddVanityAcc <- fmap snd $ accordionItem' False "add-account__advanced-content" (accordionHeaderBtn "Advanced") $ do
+      uiButtonDyn (btnCfgPrimary & uiButtonCfg_class <>~ "button_type_confirm") $ dynText $ maybe
+        "Create Vanity Account"
+        (const "Complete Vanity Account")
+        <$> dInflightAcc
 
     pure (dChainId, dNotes, onAddVanityAcc)
 
@@ -106,12 +126,18 @@ uiCreateWalletStepOne model onClose = Workflow $ do
         --  pure (pk, net, chain)
         newConf = mempty -- & walletCfg_createWalletOnlyAccount .~ eAddAcc
 
+        eInflightFound = () <$ ffilter isNothing (updated dInflightAcc)
+
+        uiAddVanity = uiAddVanityAccountSettings model eInflightFound
+          <$> (fmap (\(n,_,a) -> (n,a)) <$> dInflightAcc)
+          <*> dSelectedChain
+          <*> dNotes
     pure
       ( ("Add Account", (newConf, leftmost [onClose, onCancel]))
-      , uiAddVanityAccountSettings model dSelectedChain dNotes <$ onAddVanityAcc
+      , current uiAddVanity <@ onAddVanityAcc
       )
   where
-    inpElem cls = uiInputElement $ def
+    inpElem cfg cls = uiInputElement $ cfg
       & initialAttributes .~
         ( ("class" =: renderClass (cls <> "input")) <>
           ("placeholder" =: "Some personal notes")

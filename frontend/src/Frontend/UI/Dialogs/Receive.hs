@@ -12,8 +12,9 @@ module Frontend.UI.Dialogs.Receive
 import Control.Applicative (liftA2, liftA3)
 import Control.Lens ((^.), (<>~), _1, _2, _3, view)
 import Control.Monad (void, (<=<))
+import Control.Monad.Trans.Class (lift)
+import Control.Monad.Trans.Maybe (MaybeT(..))
 import Control.Error (hush, headMay)
-
 import Data.Bifunctor (first)
 import Data.Either (isLeft,rights)
 import Data.Text (Text)
@@ -91,7 +92,7 @@ uiReceiveFromLegacyAccount
   => model
   -> m (Dynamic t (Maybe NonBIP32TransferInfo))
 uiReceiveFromLegacyAccount model = do
-  mAccountName <- uiAccountNameInput model (pure Nothing)
+  mAccountName <- uiAccountNameInput model (pure Nothing) Nothing
 
   onKeyPair <- divClass "account-details__private-key" $
     _inputElement_input <$> mkLabeledInput True "Private Key" uiInputElement def
@@ -124,11 +125,12 @@ uiReceiveModal
      )
   => model
   -> Account
+  -> Maybe ChainId
   -> Event t ()
   -> m (mConf, Event t ())
-uiReceiveModal model account _onClose = do
+uiReceiveModal model account mchain _onClose = do
   onClose <- modalHeader $ text "Receive"
-  (conf, closes) <- fmap splitDynPure $ workflow $ uiReceiveModal0 model account onClose
+  (conf, closes) <- fmap splitDynPure $ workflow $ uiReceiveModal0 model account mchain onClose
   mConf <- flatten =<< tagOnPostBuild conf
   let close = switch $ current closes
   pure (mConf, close)
@@ -144,9 +146,10 @@ uiReceiveModal0
      )
   => model
   -> Account
+  -> Maybe ChainId
   -> Event t ()
   -> Workflow t m (mConf, Event t ())
-uiReceiveModal0 model account onClose = Workflow $ do
+uiReceiveModal0 model account mchain onClose = Workflow $ do
   let
     chain = accountChain account
 
@@ -156,8 +159,6 @@ uiReceiveModal0 model account onClose = Workflow $ do
       let networkId = hush . mkNetworkName . nodeVersion <=< headMay $ rights nodes
       pure $ (nodes, meta, ) <$> networkId
 
-    address = textKadenaAddress $ accountToKadenaAddress account
-
     displayText lbl v cls =
       let
         attrFn cfg = uiInputElement $ cfg
@@ -165,20 +166,24 @@ uiReceiveModal0 model account onClose = Workflow $ do
       in
         mkLabeledInputView True lbl attrFn $ pure v
 
-  (showingAddr, (conf, ttl, gaslimit, transferInfo)) <- divClass "modal__main account-details" $ do
+  (showingAddr, chain, (conf, ttl, gaslimit, transferInfo)) <- divClass "modal__main receive" $ do
     rec
       showingKadenaAddress <- toggle True $ onAddrClick <> onReceiClick
 
-      (onAddrClick, _) <- controlledAccordionItem showingKadenaAddress mempty
+      dialogSectionHeading mempty "Destination"
+      chain <- divClass "group" $ do
+        -- Network
+        transactionDisplayNetwork model
+        -- Chain id
+        case mchain of
+          Nothing -> userChainIdSelect model
+          Just cid -> (pure $ Just cid) <$ displayText "Chain ID" (_chainId cid) mempty
+
+      (onAddrClick, ((), ())) <- controlledAccordionItem showingKadenaAddress mempty
         (accordionHeaderBtn "Option 1: Copy and share Kadena Address") $ do
-          dialogSectionHeading mempty "Destination"
-          divClass "group" $ do
-            -- Network
-            transactionDisplayNetwork model
-            -- Chain id
-            _ <- displayText "Chain ID" (_chainId chain) "account-details__chain-id"
-            pure ()
-          uiDisplayAddress address
+        dyn_ $ ffor chain $ uiDisplayAddress . \case
+          Nothing -> "Please select a chain"
+          Just cid -> textKadenaAddress $ accountToKadenaAddress account
 
       (onReceiClick, results) <- controlledAccordionItem (not <$> showingKadenaAddress) mempty
         (accordionHeaderBtn "Option 2: Transfer from non-Chainweaver Account") $ do
@@ -188,9 +193,10 @@ uiReceiveModal0 model account onClose = Workflow $ do
         (conf0, ttl0, gaslimit0) <- divClass "group" $ uiMetaData model Nothing Nothing
         pure (conf0, ttl0, gaslimit0, transferInfo0)
 
-    pure (showingKadenaAddress, snd results)
+    pure (showingKadenaAddress, chain, snd results)
 
-  let isDisabled = liftA2 (&&) (isNothing <$> transferInfo) (not <$> showingAddr)
+  let needsSender = liftA2 (&&) (isNothing <$> transferInfo) (not <$> showingAddr)
+      isDisabled = liftA2 (||) (isNothing <$> chain) needsSender
 
   doneNext <- modalFooter $ uiButtonDyn
     (def
@@ -203,12 +209,16 @@ uiReceiveModal0 model account onClose = Workflow $ do
     done = gate (current showingAddr) doneNext
     deploy = gate (not <$> current showingAddr) doneNext
 
-    infos = (liftA2 . liftA2) (,) netInfo transferInfo
+    submit = flip push deploy $ \() -> runMaybeT $ do
+      c <- MaybeT $ sample $ current chain
+      t <- lift $ sample $ current ttl
+      g <- lift $ sample $ current gaslimit
+      ni <- MaybeT $ sample $ current netInfo
+      ti <- MaybeT $ sample $ current transferInfo
+      pure $ receiveFromLegacySubmit onClose account c t g ni ti
 
   pure ( (conf, onClose <> done)
-       , uncurry
-         <$> current (receiveFromLegacySubmit onClose account chain <$> ttl <*> gaslimit)
-         <@> tagMaybe (current infos) deploy
+       , submit
        )
 
 receiveFromLegacySubmit
