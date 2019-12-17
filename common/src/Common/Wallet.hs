@@ -5,7 +5,6 @@
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE LambdaCase #-}
-{-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE PatternGuards #-}
 {-# LANGUAGE TemplateHaskell #-}
@@ -31,6 +30,9 @@ module Common.Wallet
   , UnfinishedCrossChainTransfer(..)
   , KeyStorage
   , Account
+    -- * Prisms for working directly with Account
+  , _VanityAccount
+  , _NonVanityAccount
   , accountUnfinishedCrossChainTransfer
   , accountToName
   , accountNotes
@@ -639,3 +641,17 @@ makePactLenses ''VanityAccount
 makePactLenses ''NonVanityAccount
 makePactLenses ''Accounts
 makePactPrisms ''AccountStorage
+
+_VanityAccount :: Prism' Account (AccountName, ChainId, VanityAccount)
+_VanityAccount = prism' (\(a,b,c) -> AccountRef_Vanity a b :=> Identity c)
+  (\case
+    AccountRef_Vanity a b :=> Identity c -> Just (a,b,c)
+    _ -> Nothing
+  )
+
+_NonVanityAccount :: Prism' Account (PublicKey, ChainId, NonVanityAccount)
+_NonVanityAccount = prism' (\(a,b,c) -> AccountRef_NonVanity a b :=> Identity c)
+  (\case
+    AccountRef_NonVanity a b :=> Identity c -> Just (a,b,c)
+    _ -> Nothing
+  )

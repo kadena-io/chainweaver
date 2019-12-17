@@ -157,7 +157,7 @@ uiAccountItems model = do
     onAccountModal = switchDyn $ leftmost . Map.elems <$> events
 
     accModal n (d,a) = Just $ case d of
-      AccountDialog_Details -> uiAccountDetails n (accountToName a) a
+      AccountDialog_Details -> uiAccountDetails n a
       AccountDialog_Receive -> uiReceiveModal model a (Just $ accountChain a)
       --TODO: AccountDialog_Send -> uiSendModal model i a
 
