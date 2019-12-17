@@ -7,6 +7,7 @@
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE TupleSections #-}
 {-# LANGUAGE TypeFamilies #-}
 
 -- | Wallet management ui for handling private/public keys.
@@ -17,6 +18,7 @@
 module Frontend.UI.Wallet
   ( -- * Key management widget
     uiWallet
+  , uiAccountsTable
   , uiAvailableKeys
   , uiWalletRefreshButton
     -- ** Filters for keys
@@ -25,11 +27,15 @@ module Frontend.UI.Wallet
   ) where
 
 ------------------------------------------------------------------------------
+import           Control.Applicative         (liftA2)
 import           Control.Lens
 import           Control.Monad               (when, (<=<))
+import           Data.Dependent.Sum          (DSum (..))
+import           Data.Some                   (Some(..))
 import qualified Data.IntMap                 as IntMap
 import qualified Data.Map                    as Map
 import           Data.Text                   (Text)
+import qualified Pact.Types.ChainId          as Pact
 import           Reflex
 import           Reflex.Dom hiding (Key)
 ------------------------------------------------------------------------------
@@ -57,6 +63,7 @@ type HasUiWalletModelCfg model mConf key m t =
   , Monoid (ModalCfg mConf t)
   , HasNetwork model t
   , HasWallet model key t
+  , HasCrypto key m
   , HasCrypto key (Performable m)
   , HasJsonData model t
   , HasNetworkCfg (ModalCfg mConf t) t
@@ -86,7 +93,6 @@ uiWallet
   :: forall m t key model mConf
      . ( MonadWidget t m
        , HasUiWalletModelCfg model mConf key m t
-       , HasCrypto key m
        )
   => model
   -> m mConf
@@ -102,12 +108,104 @@ hasPrivateKey = isJust . _keyPair_privateKey . snd
 
 ----------------------------------------------------------------------
 
+uiAccountsTable
+  :: forall t m model mConf key.
+  ( MonadWidget t m, HasUiWalletModelCfg model mConf key m t)
+  => model -> m mConf
+uiAccountsTable = divClass "wallet__keys-list" . uiAccountItems
+
+uiAccountItems
+  :: forall t m model mConf key.
+  ( MonadWidget t m, HasUiWalletModelCfg model mConf key m t)
+  => model -> m mConf
+uiAccountItems model = do
+  let net = model ^. network_selectedNetwork
+      accounts = liftA2 (Map.findWithDefault mempty) net (unAccountStorage <$> model ^. wallet_accounts)
+      accountsMap = ffor accounts $ foldAccounts $ \a@(r :=> _) -> Map.singleton (Some r) a
+      tableAttrs = mconcat
+        [ "style" =: "table-layout: fixed; width: 98%"
+        , "class" =: "wallet table"
+        ]
+
+  events <- elAttr "table" tableAttrs $ do
+    el "colgroup" $ do
+      elAttr "col" ("style" =: "width: 25%") blank
+      elAttr "col" ("style" =: "width: 10%") blank
+      elAttr "col" ("style" =: "width: 25%") blank
+      elAttr "col" ("style" =: "width: 15%") blank
+      elAttr "col" ("style" =: "width: 25%") blank
+
+    el "thead" $ el "tr" $ do
+      let mkHeading = elClass "th" "wallet__table-heading" . text
+      traverse_ mkHeading $
+        [ "Account Name"
+        , "Chain ID"
+        , "Notes"
+        , "Balance (KDA)"
+        , ""
+        ]
+
+    el "tbody" $ do
+      events <- listWithKey accountsMap (\_ -> uiAccountItem)
+      dyn_ $ ffor accountsMap $ \accs ->
+        when (null accs) $
+          elClass "tr" "wallet__table-row" $ elAttr "td" ("colspan" =: "5" <> "class" =: "wallet__table-cell") $
+            text "No accounts ..."
+      pure events
+
+  let
+    onAccountModal = switchDyn $ leftmost . Map.elems <$> events
+
+    accModal n (d,a) = Just $ case d of
+      AccountDialog_Details -> uiAccountDetails n (accountToName a) a
+      AccountDialog_Receive -> uiReceiveModal model a (Just $ accountChain a)
+      --TODO: AccountDialog_Send -> uiSendModal model i a
+
+  refresh <- delay 1 =<< getPostBuild
+
+  pure $ mempty
+    & modalCfg_setModal .~ (accModal <$> current net <@> onAccountModal)
+    & walletCfg_refreshBalances .~ refresh
+
+uiAccountItem
+  :: MonadWidget t m
+  => Dynamic t Account
+  -> m (Event t (AccountDialog, Account))
+uiAccountItem acc = do
+  elClass "tr" "wallet__table-row" $ do
+    let td = elClass "td" "wallet__table-cell"
+        info = accountInfo <$> acc
+        notes = accountNotes <$> acc
+
+    td $ divClass "wallet__table-wallet-address" $ dynText $ ffor acc $ unAccountName . accountToName
+    td $ dynText $ ffor acc $ Pact._chainId . accountChain
+    td $ dynText $ ffor acc $ maybe "" unAccountNotes . accountNotes
+    td $ dynText $ ffor info $ \i -> case _accountInfo_balance i of
+      Nothing -> "Unknown"
+      Just b -> tshow (unAccountBalance b) <> " KDA" <> maybe "" (const "*") (_accountInfo_unfinishedCrossChainTransfer i)
+
+    td $ divClass "wallet__table-buttons" $ do
+      let cfg = def
+            & uiButtonCfg_class <>~ "wallet__table-button"
+
+      recv <- receiveButton cfg
+      send <- sendButton cfg
+      onDetails <- detailsButton (cfg & uiButtonCfg_class <>~ " wallet__table-button--hamburger")
+
+      let mkDialog dia onE = (dia,) <$> current acc <@ onE
+
+      pure $ leftmost
+        [ mkDialog AccountDialog_Details onDetails
+        , mkDialog AccountDialog_Receive recv
+        , mkDialog AccountDialog_Send send
+        ]
+
+
 -- | Widget listing all available keys.
 uiAvailableKeys
   :: forall t m model mConf key.
      ( MonadWidget t m
      , HasUiWalletModelCfg model mConf key m t
-     , HasCrypto key m
      )
   => model
   -> m mConf
@@ -158,17 +256,6 @@ uiKeyItems model = do
             text "No accounts ..."
       pure events
 
-
-  let
-    onAccountModal = switchDyn $ leftmost . Map.elems <$> events
-
--- TODO
---    accModal (d,i,a) = Just $ case d of
---      -- AccountDialog_Delete -> uiDeleteConfirmation i (_account_name a)
---      AccountDialog_Details -> uiAccountDetails i a
---      AccountDialog_Receive -> uiReceiveModal model a (Just $ _account_chainId a)
---      AccountDialog_Send -> uiSendModal model i a
-
   refresh <- delay 1 =<< getPostBuild
 
   pure $ mempty
@@ -176,7 +263,7 @@ uiKeyItems model = do
     & walletCfg_refreshBalances .~ refresh
 
 ------------------------------------------------------------------------------
--- | Display a key as list item together with it's name.
+-- | Display a key as list item together with its name.
 uiKeyItem
   :: (MonadWidget t m, HasNetwork model t)
   => model

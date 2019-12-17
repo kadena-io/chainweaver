@@ -33,6 +33,7 @@ module Common.Wallet
   , Account
   , accountUnfinishedCrossChainTransfer
   , accountToName
+  , accountNotes
   , accountInfo
   , accountChain
   , accountKey
@@ -385,6 +386,11 @@ accountRefToName = \case
   AccountRef_NonVanity pk _ -> keyToText pk
 
 type Account = DSum AccountRef Identity
+
+accountNotes :: Account -> Maybe AccountNotes
+accountNotes = \case
+  AccountRef_NonVanity _ _ :=> _ -> Nothing
+  AccountRef_Vanity _ _ :=> Identity v -> Just $ _vanityAccount_notes v
 
 accountInfo :: Account -> AccountInfo
 accountInfo (r :=> Identity a) = case r of
