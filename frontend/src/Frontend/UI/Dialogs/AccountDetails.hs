@@ -66,6 +66,7 @@ uiAccountDetailsDetails
 uiAccountDetailsDetails netname a onClose = Workflow $ do
   let kAddr = textKadenaAddress $ accountToKadenaAddress a
       chain = accountChain a
+      vanityName = a ^? _VanityAccount . _1
       nameOrPubKey = accountToName a
 
       displayText lbl v cls =
@@ -79,7 +80,7 @@ uiAccountDetailsDetails netname a onClose = Workflow $ do
     dialogSectionHeading mempty "Info"
     divClass "group" $ do
       -- Account name, only shown on Vanity accounts, as NonVanity uses the public key.
-      forM_ (a ^? _VanityAccount . _1) $ \n ->
+      forM_ vanityName $ \n ->
         displayText "Account Name" (unAccountName n) "account-details__name"
       -- Public key
       _ <- displayText "Public Key" (keyToText $ accountKey a) "account-details__pubkey"
@@ -88,11 +89,12 @@ uiAccountDetailsDetails netname a onClose = Workflow $ do
       -- separator
       horizontalDashedSeparator
       -- Notes edit
-      notesEdit0 :: Maybe (Dynamic t Text) <- case a of
-        AccountRef_Vanity _ _ :=> Identity va -> fmap (Just . value) $ mkLabeledClsInput False "Notes" $ \cls -> uiInputElement $ def
-          & inputElementConfig_initialValue .~ unAccountNotes (_vanityAccount_notes va)
+      notesEdit0 :: Maybe (Dynamic t Text) <- case accountNotes a of
+        -- Only vanity accounts have notes.
+        Just va -> fmap (Just . value) $ mkLabeledClsInput False "Notes" $ \cls -> uiInputElement $ def
+          & inputElementConfig_initialValue .~ unAccountNotes va
           & initialAttributes . at "class" %~ pure . maybe (renderClass cls) (mappend (" " <> renderClass cls))
-        AccountRef_NonVanity _ _ :=> _ -> pure Nothing
+        _ -> pure Nothing
       -- separator
       horizontalDashedSeparator
       -- Kadena Address
