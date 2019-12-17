@@ -93,8 +93,10 @@ app sidebarExtra appCfg = void . mfix $ \ cfg -> do
     -- yet.
     route <- askRoute
     routedCfg <- subRoute $ lift . flip runRoutedT route . \case
-      FrontendRoute_Wallet -> mkPageContent "wallet" $ do
-        walletBarCfg <- controlBar "Wallet" $ do
+      FrontendRoute_Accounts -> mkPageContent "accounts" $ do
+        controlBar "Accounts" $ pure mempty
+      FrontendRoute_Keys -> mkPageContent "keys" $ do
+        walletBarCfg <- controlBar "Keys" $ do
           refreshCfg <- uiWalletRefreshButton ideL
           addCfg <- uiAddWalletOnlyAccountDialogButton ideL
           pure $ addCfg <> refreshCfg
@@ -151,7 +153,8 @@ walletSidebar sidebarExtra = elAttr "div" ("class" =: "sidebar") $ do
             elAttr "img" ("class" =: "highlighted" <> "src" =: routeIcon r) blank
             elAttr "img" ("class" =: "normal" <> "src" =: routeIcon r) blank
             elAttr "span" ("class" =: "sidebar__link-label") $ text label
-    sidebarLink (FrontendRoute_Wallet :/ ()) "Wallets"
+    sidebarLink (FrontendRoute_Accounts :/ ()) "Accounts"
+    sidebarLink (FrontendRoute_Keys :/ ()) "Keys"
     sidebarLink (FrontendRoute_Contracts :/ Nothing) "Contracts"
     elAttr "div" ("style" =: "flex-grow: 1") blank
     sidebarLink (FrontendRoute_Resources :/ ()) "Resources"
@@ -162,7 +165,8 @@ walletSidebar sidebarExtra = elAttr "div" ("class" =: "sidebar") $ do
 routeIcon :: R FrontendRoute -> Text
 routeIcon = \case
   FrontendRoute_Contracts :/ _ -> static @"img/menu/contracts.svg"
-  FrontendRoute_Wallet :/ _ -> static @"img/menu/wallet.svg"
+  FrontendRoute_Accounts :/ _ -> static @"img/menu/wallet.svg"
+  FrontendRoute_Keys :/ _ -> static @"img/keys.svg"
   FrontendRoute_Resources :/ _ -> static @"img/menu/resources.svg"
   FrontendRoute_Settings :/ _ -> static @"img/menu/settings.svg"
 
