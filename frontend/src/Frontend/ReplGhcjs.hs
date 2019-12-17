@@ -171,7 +171,7 @@ routeIcon :: R FrontendRoute -> Text
 routeIcon = \case
   FrontendRoute_Contracts :/ _ -> static @"img/menu/contracts.svg"
   FrontendRoute_Accounts :/ _ -> static @"img/menu/wallet.svg"
-  FrontendRoute_Keys :/ _ -> static @"img/keys.svg"
+  FrontendRoute_Keys :/ _ -> static @"img/menu/keys.svg"
   FrontendRoute_Resources :/ _ -> static @"img/menu/resources.svg"
   FrontendRoute_Settings :/ _ -> static @"img/menu/settings.svg"
 
