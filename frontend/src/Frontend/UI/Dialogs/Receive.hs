@@ -18,6 +18,7 @@ import Control.Error (hush, headMay)
 import Data.Bifunctor (first)
 import Data.Either (isLeft,rights)
 import Data.Text (Text)
+import qualified Data.Set as Set
 import qualified Data.Text as T
 import qualified Data.Map as Map
 import qualified Data.Aeson as Aeson
@@ -271,7 +272,7 @@ receiveFromLegacySubmit onClose account chain ttl gasLimit netInfo transferInfo 
     dat = case accountIsCreated account of
       AccountCreated_No
         | Right pk <- parsePublicKey (unAccountName $ _account_name account)
-        -> HM.singleton "key" $ Aeson.toJSON $ KeySet [toPactPublicKey pk] (Name $ BareName "keys-all" def)
+        -> HM.singleton "key" $ Aeson.toJSON $ KeySet (Set.singleton $ toPactPublicKey pk) (Name $ BareName "keys-all" def)
       _ -> mempty
 
     pkCaps = Map.singleton senderPubKey [_dappCap_cap defaultGASCapability, transferSigCap]

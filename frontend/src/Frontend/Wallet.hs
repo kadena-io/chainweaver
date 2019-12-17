@@ -33,7 +33,6 @@ module Frontend.Wallet
   , AccountGuard (..)
   , pactGuardTypeText
   , fromPactGuard
-  , accountGuardKeys
   , Account(..)
   , HasAccount (..)
   , SomeAccount(..)
@@ -330,7 +329,7 @@ getBalances model accounts = do
       Just (Pact.PObject (Pact.ObjectMap om)) -> (,,)
         <$> (om ^? at "account" . _Just . _PLit . Pact._LString . to AccountName)
         <*> (om ^? at "balance" . _Just . _PLit . Pact._LDecimal . to AccountBalance)
-        <*> (om ^? at "guard" . _Just . _PGuard . _GKeySet . to Pact._ksKeys . to (fmap fromPactPublicKey))
+        <*> (om ^? at "guard" . _Just . _PGuard . _GKeySet . to (Set.toList . Pact._ksKeys) . to (fmap fromPactPublicKey))
       _ -> Nothing
 
     toBalances
