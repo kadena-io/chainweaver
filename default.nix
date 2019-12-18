@@ -24,9 +24,10 @@ let
   };
 
   xcent = builtins.toFile "xcent" (nixpkgs.lib.generators.toPlist {} {
-    "com.apple.security.app-sandbox" = false; # TODO enable this
+    "com.apple.security.app-sandbox" = true;
     "com.apple.security.network.client" = true;
     "com.apple.security.network.server" = true;
+    "com.apple.security.files.user-selected.read-only" = true;
   });
 
   plist = pkgs.writeText "plist" ''
