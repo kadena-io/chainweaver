@@ -57,6 +57,7 @@ import qualified Data.HashMap.Lazy as HM
 import qualified Data.IntMap as IntMap
 import qualified Data.List as L
 import qualified Data.Map as Map
+import qualified Data.Set as Set
 import qualified Data.Text as T
 import qualified Data.Text.IO as T
 import qualified Pact.Server.ApiV1Client as Api
@@ -225,7 +226,7 @@ sameChainTransfer netInfo fromAccount gasPayer toAccount amount = Workflow $ do
           -- This makes the assumption that the only non-created accounts are
           -- non-vanity: that is, the name is the public key.
           | Right pk <- parsePublicKey (unAccountName $ _kadenaAddress_accountName toAccount)
-          -> HM.singleton "key" $ Aeson.toJSON $ KeySet [toPactPublicKey pk] (Name $ BareName "keys-all" def)
+          -> HM.singleton "key" $ Aeson.toJSON $ KeySet (Set.singleton $ toPactPublicKey pk) (Name $ BareName "keys-all" def)
         _ -> mempty
       pkCaps = Map.unionsWith (<>)
         [ Map.singleton (_keyPair_publicKey $ _account_key gasPayer) [_dappCap_cap defaultGASCapability]
@@ -659,7 +660,7 @@ crossChainTransfer netInfo fromIndex fromAccount toAccount fromGasPayer crossCha
   pure ((conf, close <> done), never)
   where
     toKS k = Pact.KeySet
-      { Pact._ksKeys = [k]
+      { Pact._ksKeys = Set.singleton k
       , Pact._ksPredFun = Pact.Name $ Pact.BareName "keys-all" def
       }
 
