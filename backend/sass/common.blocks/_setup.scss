@@ -20,7 +20,6 @@ $kadena-orange: #F3AB3C;
 
 .setup__checkbox {
   .checkbox {
-    font-size: 20px;
     color: $chainweaver-blue;
     text-align: left;
     display: inline-block;
@@ -28,7 +27,6 @@ $kadena-orange: #F3AB3C;
   }
 
   .checkbox__checkmark {
-    top: 2px;
     height: 20px;
     width: 20px;
   }
@@ -241,7 +239,7 @@ $kadena-orange: #F3AB3C;
 
 .setup__terms-conditions-checkbox {
   color: $chainweaver-blue;
-  font-size: 18px;
+  font-size: 15px;
 }
 
 .setup__key {
