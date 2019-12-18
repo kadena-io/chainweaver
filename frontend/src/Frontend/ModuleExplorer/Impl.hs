@@ -311,7 +311,7 @@ loadToEditor m onFileRef onModRef onClear = do
       Just r@(ModuleRef _ n) ->
         fmap ((r,) . view codeOfModule)
         . Map.lookup n
-        . fileModules
+        . fileModulesDiscardingErrors
         . snd
 
 
@@ -402,7 +402,7 @@ pushPopModule m explr onClear onPush onPop = mdo
           guard $ _moduleRef_source cReq == fst cFile
 
           let n = _moduleRef_name cReq
-          moduleL <- MaybeT . pure $ Map.lookup n $ fileModules (snd cFile)
+          moduleL <- MaybeT . pure $ Map.lookup n $ fileModulesDiscardingErrors (snd cFile)
           pure (cReq, moduleL)
       pure $ fmapMaybe id . updated $ retrievedModule
 

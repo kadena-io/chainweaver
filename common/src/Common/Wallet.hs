@@ -55,7 +55,6 @@ module Common.Wallet
   , blankAccountInfo
   , pactGuardTypeText
   , fromPactGuard
-  , accountGuardKeys
   -- * Util
   , throwDecodingErr
   , decodeBase16M
@@ -243,11 +242,6 @@ pactGuardTypeText = \case
   Pact.GTyPact -> "Pact"
   Pact.GTyUser -> "User"
   Pact.GTyModule -> "Module"
-
-accountGuardKeys :: AccountGuard -> [PublicKey]
-accountGuardKeys = \case
-  AccountGuard_KeySet ks -> fromPactPublicKey <$> Pact._ksKeys ks
-  _ -> []
 
 instance FromJSON AccountGuard
 instance ToJSON AccountGuard

@@ -38,6 +38,7 @@ module Frontend.ModuleExplorer.File
   {- , fetchFileCached -}
   -- * Retrieve contents:
   , fileModules
+  , fileModulesDiscardingErrors
   ) where
 
 ------------------------------------------------------------------------------
@@ -206,11 +207,15 @@ fetchFile m onFileRef = do
 {-          else pure $ Just req -}
 
 -- | Get the `Module`s contained in `PactFile`.
-fileModules :: PactFile -> Map ModuleName (ModuleDef (Term Name))
+fileModules :: PactFile -> Either Text (Map ModuleName (ModuleDef (Term Name)))
 fileModules (Code c) = case Pact.compileExps (Pact.mkTextInfo c) <$> Pact.parseExprs c of
-  Right (Right terms) -> Map.fromList $ mapMaybe getModule terms
-  _                   -> Map.empty
+  Left err -> Left $ "Parsing failed: " <> tshow err
+  Right (Left err) -> Left $ "Compilation failed: " <> tshow err
+  Right (Right terms) -> Right $ Map.fromList $ mapMaybe getModule terms
 
+-- TODO: remove, only used for compatibility with older code
+fileModulesDiscardingErrors :: PactFile -> Map ModuleName (ModuleDef (Term Name))
+fileModulesDiscardingErrors = fold . fileModules
 
 -- | Get module from a `Term`
 getModule :: MonadPlus m => Term Name -> m (ModuleName, ModuleDef (Term Name))
