@@ -285,7 +285,7 @@ receiveButton cfg =
 detailsButton :: StaticButtonConstraints t m => UiButtonCfg -> m (Event t ())
 detailsButton cfg =
   uiButton (cfg & uiButtonCfg_class <>~ "button_type_secondary" <> "button_type_secondary") $
-    btnIcon (static @"img/ellipsis.svg") "Details" blank
+    text "Details"
 
 sendButton :: StaticButtonConstraints t m => UiButtonCfg -> m (Event t ())
 sendButton cfg =
