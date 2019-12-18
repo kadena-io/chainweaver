@@ -45,6 +45,7 @@ module Frontend.UI.Button
   , receiveButton
   , sendButton
   , detailsButton
+  , accordionButton
   , copyToClipboard
   -- ** Images in buttons
   , btnTextIcon
@@ -76,7 +77,7 @@ import qualified GHCJS.DOM.Types                   as DOM
 import           Obelisk.Generated.Static
 ------------------------------------------------------------------------------
 import           Frontend.Foundation         (ReflexValue, makePactLenses)
-import           Frontend.UI.Widgets.Helpers (imgWithAltCls)
+import           Frontend.UI.Widgets.Helpers (imgWithAlt, imgWithAltCls)
 
 -- | Configuration for uiButton.
 data UiButtonCfgRep f = UiButtonCfg
@@ -291,6 +292,11 @@ sendButton :: StaticButtonConstraints t m => UiButtonCfg -> m (Event t ())
 sendButton cfg =
   uiButton (cfg & uiButtonCfg_class <>~ "button_type_secondary" <> "button_type_secondary") $
     btnTextIcon (static @"img/send.svg") "Send" blank >> text "Send"
+
+accordionButton :: StaticButtonConstraints t m => UiButtonCfg -> m (Event t ())
+accordionButton cfg =
+  uiButton (cfg & uiButtonCfg_class .~ "accordion__toggle-button button_type_secondary") $
+    imgWithAlt (static @"img/arrow-down.svg") "Expand" blank
 
 -- | Create HTML element attributes from config.
 toBtnAttrs :: UiButtonCfg -> Map Text Text

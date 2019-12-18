@@ -563,8 +563,7 @@ controlledAccordionItem dActive contentClass title inner = do
     let mkClass a = singleClass "accordion" <> contentClass <> activeClass a
     (onClick, pair) <- elDynKlass "div" (mkClass <$> dActive) $ do
       (onClickL,a1) <- elClass "h2" "accordion__header" $ do
-        b <- uiButton (def & uiButtonCfg_class .~ "accordion__toggle-button button_type_secondary") $
-          imgWithAlt (static @"img/arrow-down.svg") "Expand" blank
+        b <- accordionButton def
         r <- title
         pure (b, r)
       b1 <- divClass "accordion__content" inner
