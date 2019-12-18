@@ -233,11 +233,9 @@ uiKeyItems model = do
       <> "class" =: "wallet table"
   events <- elAttr "table" tableAttrs $ do
     el "colgroup" $ do
-      elAttr "col" ("style" =: "width: 19%") blank
-      elAttr "col" ("style" =: "width: 19%") blank
-      elAttr "col" ("style" =: "width: 10%") blank
-      elAttr "col" ("style" =: "width: 19%") blank
-      elAttr "col" ("style" =: "width: 15%") blank
+      elAttr "col" ("style" =: "width: 40%") blank
+      elAttr "col" ("style" =: "width: 20%") blank
+      elAttr "col" ("style" =: "width: 20%") blank
       elAttr "col" ("style" =: "width: 20%") blank
     el "thead" $ el "tr" $ do
       let mkHeading = elClass "th" "wallet__table-heading" . text
@@ -252,7 +250,7 @@ uiKeyItems model = do
       events <- listWithKey keyMap (uiKeyItem model)
       dyn_ $ ffor keyMap $ \keys ->
         when (all _key_hidden keys) $
-          elClass "tr" "wallet__table-row" $ elAttr "td" ("colspan" =: "6" <> "class" =: "wallet__table-cell") $
+          elClass "tr" "wallet__table-row" $ elAttr "td" ("colspan" =: "4" <> "class" =: "wallet__table-cell") $
             text "No accounts ..."
       pure events
 
