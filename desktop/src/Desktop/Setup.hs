@@ -105,15 +105,14 @@ tshow :: Show a => a -> Text
 tshow = T.pack . show
 
 -- | Produces a form wrapper given a suitable submit button so that the enter key is correctly handled
-form :: forall t m a. DomBuilder t m => m () -> m a -> m (Event t (), a)
-form btn fields = do
-  let cfg = (def :: ElementConfig EventResult t (DomBuilderSpace m))
-        & elementConfig_eventSpec %~ addEventSpecFlags (Proxy :: Proxy (DomBuilderSpace m)) Submit (\_ -> preventDefault)
-  (elt, a) <- element "form" cfg $ fields <* btn
+form :: forall t m a. DomBuilder t m => ElementConfig EventResult t (DomBuilderSpace m) -> m () -> m a -> m (Event t (), a)
+form cfg btn fields = do
+  let mkCfg = elementConfig_eventSpec %~ addEventSpecFlags (Proxy :: Proxy (DomBuilderSpace m)) Submit (\_ -> preventDefault)
+  (elt, a) <- element "form" (mkCfg cfg) $ fields <* btn
   pure (domEvent Submit elt, a)
 
 setupForm :: forall t m a. (DomBuilder t m, PostBuild t m) => Text -> Text -> Dynamic t Bool -> m a -> m (Event t (), a)
-setupForm cls lbl disabled = form $ setupDiv cls $ void $ confirmButton (def & uiButtonCfg_disabled .~ disabled) lbl
+setupForm cls lbl disabled = form def $ setupDiv cls $ void $ confirmButton (def & uiButtonCfg_disabled .~ disabled) lbl
 
 restoreForm :: (DomBuilder t m, PostBuild t m) => Dynamic t Bool -> m a -> m (Event t (), a)
 restoreForm = setupForm "recover-restore-button" "Restore"

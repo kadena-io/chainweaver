@@ -229,11 +229,12 @@ lockScreen xprv = setupDiv "fullscreen" $ divClass "wrapper" $ setupDiv "splash"
     <> "class" =: setupClass "splash-bg"
     ) kadenaWalletLogo
 
-  setupDiv "splash-terms-buttons" $ mdo
+  el "div" $ mdo
     dValid <- holdDyn True . fmap isJust $ isValid
 
     let unlock = void $ confirmButton (def & uiButtonCfg_type ?~ "submit") "Unlock"
-    (eSubmit, pass) <- form unlock $ do
+        cfg = def & elementConfig_initialAttributes .~ ("class" =: setupClass "splash-terms-buttons")
+    (eSubmit, pass) <- form cfg unlock $ do
       elDynClass "div"
         (("lock-screen__invalid-password" <>) . bool " lock-screen__invalid-password--invalid" "" <$> dValid)
         (text "Invalid Password")

@@ -182,6 +182,7 @@ $kadena-orange: #F3AB3C;
   }
 
   input.setup__password {
+    flex-grow: 1;
     padding-left: 2em;
   }
 
@@ -190,11 +191,9 @@ $kadena-orange: #F3AB3C;
     line-height: initial;
 
     &.button_type_confirm {
-      width: 96%;
       font-size: 18px;
-      padding: 15px;
-      height: initial;
-      line-height: initial;
+      height: 52px;
+      padding: 0;
     }
 
     .button__text-icon {
@@ -206,7 +205,7 @@ $kadena-orange: #F3AB3C;
       font-size: 16px;
       padding: 10px;
       color: $tertiary-color;
-      width: 96%;
+      flex-grow: 1;
 
       .button__text-icon {
         height: 15px;
@@ -219,7 +218,6 @@ $kadena-orange: #F3AB3C;
     height: initial;
     line-height: initial;
     padding: 1.3rem;
-    width: 96%;
     font-size: 23px;
     font-weight: initial;
 
@@ -270,8 +268,6 @@ $kadena-orange: #F3AB3C;
 }
 
 .setup__button-horizontal-group {
-  width: 96%;
-  margin: 0 auto;
   display: flex;
   flex-direction: row;
   .button { margin-left: 0.5rem !important; }
@@ -367,16 +363,22 @@ $kadena-orange: #F3AB3C;
   width: 550px;
 }
 
+.setup__splash {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
 .setup__splash-bg {
   width: 580px;
   height: 400px;
-  margin: 0 auto;
   background-size: cover;
 }
 
 .setup__splash-terms-buttons {
-  width: 440px;
-  margin: 0 auto;
+  width: 356px;
+  display: flex;
+  flex-direction: column;
 }
 
 .setup__done-splash-bg {
