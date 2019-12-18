@@ -242,6 +242,11 @@ $kadena-orange: #F3AB3C;
   font-size: 15px;
 }
 
+.setup__terms-conditions-link {
+  color: unset;
+  font-weight: bold;
+}
+
 .setup__key {
   overflow-x: hidden;
   text-overflow: ellipsis;

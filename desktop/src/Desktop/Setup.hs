@@ -10,7 +10,7 @@
 -- | Wallet setup screens
 module Desktop.Setup (runSetup, form, kadenaWalletLogo, setupDiv, setupClass) where
 
-import Control.Lens ((<>~), (%~), (?~))
+import Control.Lens ((<>~), (%~), (?~), (??))
 import Control.Error (hush)
 import Control.Applicative (liftA2)
 import Control.Monad (unless,void)
@@ -218,7 +218,11 @@ splashScreen eBack = Workflow $ setupDiv "splash" $ do
   (agreed, create, recover) <- setupDiv "splash-terms-buttons" $ do
     agreed <- fmap value $ setupCheckbox False def $ setupDiv "terms-conditions-checkbox" $ do
       text "I have read & agree to the "
-      elAttr "a" ("href" =: "https://kadena.io/chainweaver-tos" <> "target" =: "_blank") (text "Terms of Service")
+      elAttr "a" ?? (text "Terms of Service") $ mconcat
+        [ "href" =: "https://kadena.io/chainweaver-tos"
+        , "target" =: "_blank"
+        , "class" =: setupClass "terms-conditions-link"
+        ]
 
     let dNeedAgree = fmap not agreed
 
