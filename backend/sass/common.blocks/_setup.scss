@@ -432,6 +432,10 @@ $kadena-orange: #F3AB3C;
   margin: 2rem;
 }
 
+.setup__restore-existing-button {
+  border: 0;
+}
+
 .setup__recover-restore-button .button.button_type_confirm {
   background-color: $kadena-orange;
   border-color: $kadena-orange;

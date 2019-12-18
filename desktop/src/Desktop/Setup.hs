@@ -224,9 +224,11 @@ splashScreen eBack = Workflow $ setupDiv "splash" $ do
         ]
 
     let dNeedAgree = fmap not agreed
+        disabledCfg = uiButtonCfg_disabled .~ dNeedAgree
+        restoreCfg = uiButtonCfg_class <>~ "setup__restore-existing-button"
 
-    create <- confirmButton (def & uiButtonCfg_disabled .~ dNeedAgree) "Create a new wallet"
-    recover <- uiButtonDyn (btnCfgSecondary & uiButtonCfg_disabled .~ dNeedAgree) $ text "Restore existing wallet"
+    create <- confirmButton (def & disabledCfg ) "Create a new wallet"
+    recover <- uiButtonDyn (btnCfgSecondary & disabledCfg & restoreCfg) $ text "Restore existing wallet"
     pure (agreed, create, recover)
 
   let hasAgreed = gate (current agreed)
