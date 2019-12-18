@@ -22,7 +22,7 @@ import Pact.Types.Command (RequestKey (..))
 import qualified Pact.Types.Hash as Hash
 
 import Desktop.Frontend
-import GoldenHelper
+import Common.Tests.GoldenHelper
 
 testBIPRoot :: LBS.ByteString
 testBIPRoot = "\"020ce294062e88e49c9daa5b917384eba6175a50a229c115b5795b242b866d375b0cf1f9d477e3fdc5f277c47aa3f389ac4f13e6e58830c30e4113013eb7654de55fd721249c2c8e5188051756d9673e006d83d1e1344564efbdcbf3fcd64101188a32b7919161fb9c18650f483ee7efcd4bb684f31a5a3d9c8471f04efd0f0e\""
