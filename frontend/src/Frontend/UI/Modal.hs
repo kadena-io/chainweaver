@@ -63,10 +63,9 @@ modalHeader
   -> m ( Event t ())
   -- ^ Close event
 modalHeader header = divClass "modal__header" $ do
-  elClass "h2" "modal__heading" $ do
-    header
-    uiButton (def & uiButtonCfg_class .~ "modal__button-close") $
-      text "x"
+  header
+  uiButton (def & uiButtonCfg_class .~ "modal__button-close") $
+    elClass "div" "modal__button-close-x" $ text "x"
 
 -- | Body content. Footer should be added after this.
 modalMain :: DomBuilder t m => m a -> m a
