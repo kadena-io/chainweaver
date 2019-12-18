@@ -252,7 +252,7 @@ uiKeyItems model = do
       events <- listWithKey keyMap (uiKeyItem model)
       dyn_ $ ffor keyMap $ \keys ->
         when (all _key_hidden keys) $
-          elClass "tr" "wallet__table-row" $ elAttr "td" ("colspan" =: "4" <> "class" =: "wallet__table-cell") $
+          elClass "tr" "wallet__table-row" $ elAttr "td" ("colspan" =: "5" <> "class" =: "wallet__table-cell") $
             text "No accounts ..."
       pure events
 
