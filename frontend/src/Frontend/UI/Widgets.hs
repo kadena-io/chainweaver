@@ -46,6 +46,9 @@ module Frontend.UI.Widgets
   , uiSelectElement
   , uiPassword
   , validatedInputWithButton
+  , uiAccountBalance
+  , uiAccountChain
+  , uiAccountNotes
     -- ** Helper widgets
   , imgWithAlt
   , showLoading
@@ -92,6 +95,7 @@ import Pact.Types.ChainId (ChainId (..))
 import Pact.Types.Runtime (GasPrice (..))
 import Pact.Parse (ParsedDecimal (..))
 ------------------------------------------------------------------------------
+import           Common.Wallet (Account(..), AccountBalance(..), AccountNotes(..), AccountInfo(..), accountChain, accountInfo, accountNotes)
 import           Frontend.Network (HasNetwork(..), NodeInfo, getChains, maxCoinPrecision)
 import           Frontend.Foundation
 import           Frontend.UI.Button
@@ -539,6 +543,21 @@ validatedInputWithButton uCls check placeholder buttonText = do
 
       pure update
 
+uiAccountBalance :: Account -> Text
+uiAccountBalance acc = case _accountInfo_balance i of
+  Nothing -> "Unknown"
+  Just b -> mconcat
+    [ tshow $ unAccountBalance b
+    , " KDA"
+    , maybe "" (const "*") (_accountInfo_unfinishedCrossChainTransfer i)
+    ]
+  where i = accountInfo acc
+
+uiAccountChain :: Account -> Text
+uiAccountChain = _chainId . accountChain
+
+uiAccountNotes :: Account -> Text
+uiAccountNotes = maybe "" unAccountNotes . accountNotes
 
 showLoading
   :: (NotReady t m, Adjustable t m, PostBuild t m, DomBuilder t m, Monoid b)

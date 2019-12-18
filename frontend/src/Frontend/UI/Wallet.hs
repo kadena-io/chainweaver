@@ -233,14 +233,16 @@ uiKeyItems model = do
       <> "class" =: "wallet table"
   events <- elAttr "table" tableAttrs $ do
     el "colgroup" $ do
-      elAttr "col" ("style" =: "width: 40%") blank
+      elAttr "col" ("style" =: "width: 5%") blank
+      elAttr "col" ("style" =: "width: 35%") blank
       elAttr "col" ("style" =: "width: 20%") blank
       elAttr "col" ("style" =: "width: 20%") blank
       elAttr "col" ("style" =: "width: 20%") blank
     el "thead" $ el "tr" $ do
       let mkHeading = elClass "th" "wallet__table-heading" . text
       traverse_ mkHeading $
-        [ "Public Key"
+        [ ""
+        , "Public Key"
         , "Notes"
         , "Balance"
         , ""
@@ -273,9 +275,23 @@ uiKeyItem model i key = do
   switchHold never <=< dyn $ ffor hidden $ \case
     True -> pure never
     False -> do
-      elClass "tr" "wallet__table-row" $ do
-        let td = elClass "td" "wallet__table-cell"
+      clk <- keyRow
+      visible <- toggle False clk
+      --TODO listWithKey accs (\_ -> accountRow visible)
+      pure never
+     where
+      trKey = elClass "tr" "wallet__table-row wallet__table-row-key"
+      trAcc visible = elDynAttr "tr" $ ffor visible $ \v -> mconcat
+        [ "class" =: "wallet__table-row"
+        ,  bool mempty ("style" =: "display:none") v
+        ]
+      td = elClass "td" "wallet__table-cell"
+      buttons = divClass "wallet__table-buttons"
+      cfg = def
+        & uiButtonCfg_class <>~ "wallet__table-button"
 
+      keyRow = trKey $ do
+        clk <- td $ accordionButton def
         td $ divClass "wallet__table-wallet-address" $ dynText $ keyToText . _keyPair_publicKey . _key_pair <$> key
         td $ dynText $ unAccountNotes . _key_notes <$> key
         td $ text "TODO"
@@ -283,18 +299,27 @@ uiKeyItem model i key = do
         --dynText $ ffor key $ \a -> case _account_balance a of
         --  Nothing -> "Unknown"
         --  Just b -> tshow (unAccountBalance b) <> " KDA" <> maybe "" (const "*") (_account_unfinishedCrossChainTransfer a)
-        td $ divClass "wallet__table-buttons" $ do
-          let cfg = def
-                & uiButtonCfg_class <>~ "wallet__table-button"
-
+        td $ buttons $ do
           recv <- receiveButton cfg
-          send <- sendButton cfg
           onDetails <- detailsButton (cfg & uiButtonCfg_class <>~ " wallet__table-button--hamburger")
+          pure ()
 
+          {- TODO
           let mkDialog dia onE = (\a -> (dia, i, a)) <$> current key <@ onE
 
-          pure never {- TODO $ leftmost
+          pure $ leftmost
             [ mkDialog AccountDialog_Details onDetails
             , mkDialog AccountDialog_Receive recv
             , mkDialog AccountDialog_Send send
             ] -}
+        pure clk
+
+      accountRow visible acc = trAcc visible $ do
+        td blank
+        td $ dynText $ ffor acc $ uiAccountChain
+        td $ dynText $ ffor acc $ uiAccountNotes
+        td $ dynText $ ffor acc $ uiAccountBalance
+        td $ buttons $ do
+          send <- sendButton cfg
+          onDetails <- detailsButton (cfg & uiButtonCfg_class <>~ " wallet__table-button--hamburger")
+          pure ()

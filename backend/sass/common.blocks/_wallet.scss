@@ -17,6 +17,10 @@
   border-width: $std-border-width;
 }
 
+.wallet__table-row-key {
+  background-color: #d7d7d7;
+}
+
 .wallet__table-heading {
   @extend .table__heading;
   padding: 15px;
