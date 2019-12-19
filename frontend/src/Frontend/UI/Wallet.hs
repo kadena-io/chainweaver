@@ -6,6 +6,7 @@
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE RecursiveDo #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TupleSections #-}
 {-# LANGUAGE TypeFamilies #-}
@@ -29,8 +30,8 @@ module Frontend.UI.Wallet
 ------------------------------------------------------------------------------
 import           Control.Applicative         (liftA2)
 import           Control.Lens
-import           Control.Monad               (when, (<=<))
-import           Data.Dependent.Sum          (DSum (..))
+import           Control.Monad               (when, (<=<), join)
+import           Data.Dependent.Sum          (DSum (..), (==>))
 import           Data.Some                   (Some(..))
 import qualified Data.IntMap                 as IntMap
 import qualified Data.Map                    as Map
@@ -51,6 +52,7 @@ import           Frontend.UI.Dialogs.Send (uiSendModal)
 import           Frontend.UI.Modal
 import           Frontend.Network
 ------------------------------------------------------------------------------
+import Frontend.KadenaAddress
 
 -- | Constraints on the model config we have for implementing this widget.
 type HasUiWalletModelCfg model mConf key m t =
@@ -158,7 +160,7 @@ uiAccountItems model = do
 
     accModal n (d,a) = Just $ case d of
       AccountDialog_Details -> uiAccountDetails n (accountToName a) a
-      AccountDialog_Receive -> uiReceiveModal model a (Just $ accountChain a)
+      AccountDialog_Receive -> uiReceiveModal model (accountToName a) (accountIsCreated a) (Just $ accountChain a)
       --TODO: AccountDialog_Send -> uiSendModal model i a
 
   refresh <- delay 1 =<< getPostBuild
@@ -174,8 +176,7 @@ uiAccountItem
 uiAccountItem acc = do
   elClass "tr" "wallet__table-row" $ do
     let td = elClass "td" "wallet__table-cell"
-        info = accountInfo <$> acc
-        notes = accountNotes <$> acc
+        info = getAccountInfo <$> acc
 
     td $ divClass "wallet__table-wallet-address" $ dynText $ ffor acc $ unAccountName . accountToName
     td $ dynText $ ffor acc $ Pact._chainId . accountChain
@@ -258,68 +259,90 @@ uiKeyItems model = do
 
   refresh <- delay 1 =<< getPostBuild
 
+  let modalEvents = switch $ leftmost . Map.elems <$> current events
+
   pure $ mempty
--- TODO   & modalCfg_setModal .~ (accModal <$> onAccountModal)
+    & modalCfg_setModal .~ fmap keyModal modalEvents
     & walletCfg_refreshBalances .~ refresh
+  where
+    keyModal = Just . \case
+      KeyDialog_Receive name created -> uiReceiveModal model name created Nothing
+      KeyDialog_Send acc -> uiSendModal model acc
+
+-- | Dialogs which can be launched from keys.
+data KeyDialog
+  = KeyDialog_Receive AccountName AccountCreated
+  | KeyDialog_Send Account
 
 ------------------------------------------------------------------------------
 -- | Display a key as list item together with its name.
 uiKeyItem
-  :: (MonadWidget t m, HasNetwork model t)
+  :: forall model key t m. (MonadWidget t m, HasNetwork model t, HasWallet model key t)
   => model
   -> IntMap.Key
   -> Dynamic t (Key key)
-  -> m (Event t (AccountDialog, IntMap.Key, Key key))
-uiKeyItem model i key = do
+  -> m (Event t KeyDialog)
+uiKeyItem model _index key = do
   hidden <- holdUniqDyn $ _key_hidden <$> key
   switchHold never <=< dyn $ ffor hidden $ \case
     True -> pure never
-    False -> do
-      clk <- keyRow
-      visible <- toggle False clk
-      --TODO listWithKey accs (\_ -> accountRow visible)
-      pure never
+    False -> mdo
+      rec
+        (clk, dialog) <- keyRow visible $ sum . catMaybes <$> balances
+        visible <- toggle False clk
+      let mAccounts = ffor3 key (model ^. network_selectedNetwork) (model ^. wallet_accounts) $ \k net (AccountStorage as) -> fromMaybe mempty $ do
+            accounts <- Map.lookup net as
+            nva <- Map.lookup (_keyPair_publicKey $ _key_pair k) (_accounts_nonVanity accounts)
+            pure nva
+      results <- listWithKey mAccounts $ accountRow visible
+      let balances :: Dynamic t [Maybe AccountBalance]
+          balances = join $ traverse fst . Map.elems <$> results
+          dialogs = switch $ leftmost . fmap snd . Map.elems <$> current results
+      pure $ leftmost [dialog, dialogs]
      where
       trKey = elClass "tr" "wallet__table-row wallet__table-row-key"
       trAcc visible = elDynAttr "tr" $ ffor visible $ \v -> mconcat
         [ "class" =: "wallet__table-row"
-        ,  bool mempty ("style" =: "display:none") v
+        , if v then mempty else "style" =: "display:none"
         ]
       td = elClass "td" "wallet__table-cell"
       buttons = divClass "wallet__table-buttons"
       cfg = def
         & uiButtonCfg_class <>~ "wallet__table-button"
 
-      keyRow = trKey $ do
-        clk <- td $ accordionButton def
+      keyRow open balance = trKey $ do
+        let accordionCell o = "wallet__table-cell" <> if o then "" else " accordion-collapsed"
+        clk <- elDynClass "td" (accordionCell <$> open) $ accordionButton def
         td $ divClass "wallet__table-wallet-address" $ dynText $ keyToText . _keyPair_publicKey . _key_pair <$> key
         td $ dynText $ unAccountNotes . _key_notes <$> key
-        td $ text "TODO"
-        --TODO
-        --dynText $ ffor key $ \a -> case _account_balance a of
-        --  Nothing -> "Unknown"
-        --  Just b -> tshow (unAccountBalance b) <> " KDA" <> maybe "" (const "*") (_account_unfinishedCrossChainTransfer a)
-        td $ buttons $ do
+        td $ dynText $ uiAccountBalance . Just <$> balance
+        dialog <- td $ buttons $ do
           recv <- receiveButton cfg
           onDetails <- detailsButton (cfg & uiButtonCfg_class <>~ " wallet__table-button--hamburger")
-          pure ()
 
-          {- TODO
-          let mkDialog dia onE = (\a -> (dia, i, a)) <$> current key <@ onE
+          let pk = AccountName . keyToText . _keyPair_publicKey . _key_pair <$> current key
 
           pure $ leftmost
-            [ mkDialog AccountDialog_Details onDetails
-            , mkDialog AccountDialog_Receive recv
-            , mkDialog AccountDialog_Send send
-            ] -}
-        pure clk
+            [ -- TODO details dialog
+            -- TODO we need a way of adding these accounts when they already
+            -- exist too, e.g. for users who are recovering wallets. An
+            -- automatic account discovery thing would work well.
+              (\x -> KeyDialog_Receive x AccountCreated_No) <$> pk <@ recv
+            ]
+        pure (clk, dialog)
 
-      accountRow visible acc = trAcc visible $ do
-        td blank
-        td $ dynText $ ffor acc $ uiAccountChain
-        td $ dynText $ ffor acc $ uiAccountNotes
-        td $ dynText $ ffor acc $ uiAccountBalance
+      accountRow visible chain dAccount = trAcc visible $ do
+        td blank -- Arrow column
+        td $ text $ "Chain ID: " <> _chainId chain
+        td blank -- Notes column
+        td $ dynText $ uiAccountBalance' . _nonVanityAccount_info <$> dAccount
         td $ buttons $ do
           send <- sendButton cfg
           onDetails <- detailsButton (cfg & uiButtonCfg_class <>~ " wallet__table-button--hamburger")
-          pure ()
+          let mkSendDialog k acc = KeyDialog_Send $ AccountRef_NonVanity (_keyPair_publicKey $ _key_pair k) chain ==> acc
+          pure
+            ( _accountInfo_balance . _nonVanityAccount_info <$> dAccount
+            , leftmost
+              [ mkSendDialog <$> current key <*> current dAccount <@ send
+              ]
+            )

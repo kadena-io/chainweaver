@@ -5,11 +5,10 @@
 
 module Frontend.UI.Dialogs.AddAccount
   ( uiAddWalletOnlyAccountDialogButton
+  , uiGenerateKeyButton
   ) where
 
 import           Control.Lens
-import           Control.Monad.Trans.Class
-import           Control.Monad.Trans.Maybe
 import qualified Data.Map as Map
 import           Data.Text (Text)
 import           Data.Aeson (ToJSON,FromJSON)
@@ -25,7 +24,6 @@ import           Frontend.UI.DeploymentSettings (transactionDisplayNetwork)
 
 import           Frontend.UI.Dialogs.AddVanityAccount (uiAddVanityAccountSettings)
 
-import           Frontend.Ide (ide_wallet)
 import           Frontend.UI.Modal
 import           Frontend.UI.Modal.Impl (ModalIde, ModalImpl)
 import           Frontend.UI.Widgets
@@ -44,6 +42,13 @@ type HasAddAccountModelCfg model mConf key m t =
   , FromJSON key, ToJSON key
   , HasStorage m
   )
+
+uiGenerateKeyButton
+  :: (MonadWidget t m, Monoid mConf, HasWalletCfg mConf key t)
+  => m mConf
+uiGenerateKeyButton = do
+  e <- uiButton (def & uiButtonCfg_class <>~ " main-header__add-account-button")  (text "+ Generate Key")
+  pure $ mempty & walletCfg_genKey .~ e
 
 uiAddWalletOnlyAccountDialogButton
   :: forall t m model key mConf

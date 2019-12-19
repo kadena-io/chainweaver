@@ -57,7 +57,7 @@ module Frontend.UI.DeploymentSettings
   ) where
 
 import Control.Applicative ((<|>), empty, liftA2)
-import Control.Arrow (first, (&&&))
+import Control.Arrow (first)
 import Control.Error (fmapL, hoistMaybe, headMay)
 import Control.Error.Util (hush)
 import Control.Lens
@@ -207,7 +207,7 @@ publicKeysForAccounts allAccounts caps =
   in Map.fromList $ fmapMaybe toPublicKey $ Map.toList caps
 
 lookupAccountBalance :: Some AccountRef -> Accounts -> Maybe (Maybe AccountBalance)
-lookupAccountBalance ref = fmap (_accountInfo_balance . accountInfo) . lookupAccountRef ref
+lookupAccountBalance ref = fmap (_accountInfo_balance . getAccountInfo) . lookupAccountRef ref
 
 buildDeploymentSettingsResult
   :: ( HasNetwork model t
@@ -1032,7 +1032,7 @@ uiDeployPreview model settings keys accounts signers gasLimit ttl code lastPubli
             th "Public Key"
             th "Change in Balance"
           accountBalances <- flip Map.traverseWithKey accountsToTrack $ \acc pk -> do
-            bal <- holdDyn Nothing $ leftmost [Just Nothing <$ errors, Just . Map.lookup acc . fst <$> resp]
+            bal <- holdDyn Nothing $ leftmost [Just Nothing <$ errors, Just . join . Map.lookup acc . fst <$> resp]
             pure (pk, bal)
           el "tbody" $ void $ flip Map.traverseWithKey accountBalances $ \acc (pk, balance) -> el "tr" $ do
             let displayBalance = \case

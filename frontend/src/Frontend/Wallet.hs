@@ -26,7 +26,6 @@ module Frontend.Wallet
   , AccountName (..)
   , AccountBalance (..)
   , AccountNotes (..)
-  , mkAccountNotes
   , mkAccountName
   , AccountGuard (..)
   -- * Creation
@@ -49,11 +48,12 @@ module Frontend.Wallet
   ) where
 
 import Control.Lens hiding ((.=))
+import Control.Monad (void)
 import Control.Monad.Except (runExcept)
 import Control.Monad.Fix
 import Data.Aeson
 import Data.Dependent.Sum (DSum(..))
-import Data.Function (on)
+import Data.Either (rights)
 import Data.IntMap (IntMap)
 import Data.Set (Set)
 import Data.Some (Some(Some))
@@ -63,12 +63,14 @@ import Kadena.SigningApi (AccountName(..), mkAccountName)
 import Pact.Types.ChainId
 import Reflex
 import qualified Data.Map as Map
+import qualified Data.Map.Monoidal as MonoidalMap
 import qualified Data.Set as Set
 import qualified Data.IntMap as IntMap
 import qualified Data.Text as T
-import qualified Pact.Types.Exp as Pact
-import qualified Pact.Types.PactValue as Pact
-import qualified Pact.Types.Term as Pact
+import qualified Pact.Server.ApiV1Client as Api
+import qualified Pact.Types.Command as Pact
+import qualified Pact.Types.ChainMeta as Pact
+import Pact.Types.Pretty
 
 import Common.Network (NetworkName)
 import Common.Wallet
@@ -81,8 +83,8 @@ import Frontend.KadenaAddress
 import Frontend.Storage
 import Frontend.Network
 
-accountIsCreated:: Account -> AccountCreated
-accountIsCreated = maybe AccountCreated_No (const AccountCreated_Yes) . _accountInfo_balance . accountInfo
+accountIsCreated :: Account -> AccountCreated
+accountIsCreated = maybe AccountCreated_No (const AccountCreated_Yes) . _accountInfo_balance . getAccountInfo
 
 accountToKadenaAddress :: Account -> KadenaAddress
 accountToKadenaAddress a = mkKadenaAddress (accountIsCreated a) (accountChain a) (accountToName a)
@@ -99,7 +101,7 @@ data WalletCfg key t = WalletCfg
   -- ^ Create a wallet only account that uses the public key as the account name
   , _walletCfg_refreshBalances :: Event t ()
   -- ^ Refresh balances in the wallet
-  , _walletCfg_setCrossChainTransfer :: Event t (IntMap.Key, Maybe UnfinishedCrossChainTransfer)
+  , _walletCfg_setCrossChainTransfer :: Event t (NetworkName, Some AccountRef, Maybe UnfinishedCrossChainTransfer)
   -- ^ Start a cross chain transfer on some account. This field allows us to
   -- recover when something goes badly wrong in the middle, since it's
   -- immediately stored with all info we need to retry.
@@ -158,6 +160,8 @@ makeWallet
     , MonadFix m, MonadJSM (Performable m)
     , MonadJSM m
     , HasStorage (Performable m), HasStorage m
+    , HasNetwork model t
+    , TriggerEvent t m
     , HasCrypto key (Performable m)
     , FromJSON key, ToJSON key
     )
@@ -167,26 +171,16 @@ makeWallet
 makeWallet model conf = do
   initialKeys <- fromMaybe IntMap.empty <$> loadKeys
   initialAccounts <- fromMaybe mempty <$> loadAccounts
-  let
-    onGenKey = _walletCfg_genKey conf
-    onCreateWOAcc = _walletCfg_createWalletOnlyAccount conf
-    refresh = _walletCfg_refreshBalances conf
-    setCrossChain = _walletCfg_setCrossChainTransfer conf
-
-  performEvent_ $ liftIO (putStrLn "Refresh wallet balances") <$ refresh
 
   rec
-    onNewKey <- performEvent $ attachWith (\a _ -> createKey $ nextKey a) (current keys) onGenKey
-    --newBalances <- getBalances model $ current accounts <@ refresh
-
+    onNewKey <- performEvent $ createKey . nextKey <$> current keys <@ _walletCfg_genKey conf
     keys <- foldDyn id initialKeys $ leftmost
       [ snocIntMap <$> onNewKey
       , ffor (_walletCfg_delKey conf) $ IntMap.adjust $ \k -> k { _key_hidden = True }
-     -- , const <$> newBalances
-     -- , let f cc = someAccount SomeAccount_Deleted (\a -> SomeAccount_Account a { _account_unfinishedCrossChainTransfer = cc })
-     --    in ffor setCrossChain $ \(i, cc) -> IntMap.adjust (f cc) i
       ]
 
+  rec
+    newBalances <- getBalances model $ current accounts <@ _walletCfg_refreshBalances conf
     accounts <- foldDyn id initialAccounts $ leftmost
       [ ffor (_walletCfg_importAccount conf) $ \(net, name, chain, acc) ->
         ((<>) (AccountStorage $ Map.singleton net $ mempty { _accounts_vanity = Map.singleton name $ Map.singleton chain acc }))
@@ -194,6 +188,8 @@ makeWallet model conf = do
         ((<>) (AccountStorage $ Map.singleton net $ mempty
           { _accounts_nonVanity = Map.singleton pk $ Map.singleton chain $ NonVanityAccount blankAccountInfo }))
       , ffor (_walletCfg_updateAccountNotes conf) updateAccountNotes
+      , foldr (.) id . fmap updateAccountBalance <$> newBalances
+      , ffor (_walletCfg_setCrossChainTransfer conf) updateCrossChain
       ]
 
   performEvent_ $ storeKeys <$> updated keys
@@ -207,6 +203,12 @@ makeWallet model conf = do
     updateAccountNotes :: (NetworkName, AccountName, ChainId, AccountNotes) -> AccountStorage -> AccountStorage
     updateAccountNotes (net, name, chain, notes) = _AccountStorage . at net . _Just . accounts_vanity . at name . _Just . at chain . _Just . vanityAccount_notes .~ notes
 
+    updateCrossChain :: (NetworkName, Some AccountRef, Maybe UnfinishedCrossChainTransfer) -> AccountStorage -> AccountStorage
+    updateCrossChain (net, ref, cct) = storageAccountInfo net ref . accountInfo_unfinishedCrossChainTransfer .~ cct
+
+    updateAccountBalance :: (NetworkName, Some AccountRef, Maybe AccountBalance) -> AccountStorage -> AccountStorage
+    updateAccountBalance (net, ref, balance) = storageAccountInfo net ref . accountInfo_balance .~ balance
+
     createKey :: Int -> Performable m (Key key)
     createKey i = do
       (privKey, pubKey) <- cryptoGenKey i
@@ -216,39 +218,59 @@ makeWallet model conf = do
         , _key_notes = mkAccountNotes ""
         }
 
--- | Get the balance of some accounts from the network.
+-- | Get the balance of accounts from the network.
 getBalances
   :: forall model key t m.
     ( PerformEvent t m, TriggerEvent t m
-    , MonadSample t (Performable m), MonadIO m
     , MonadJSM (Performable m)
     , HasNetwork model t, HasCrypto key (Performable m)
     )
-  => model -> Event t Accounts -> m (Event t Accounts)
-getBalances model accounts = do
-  pure never
---  reqs <- performEvent $ attachWith mkReqs (current $ getNetworkNameAndMeta model) accounts
---  response <- performLocalReadCustom (model ^. network) toReqList reqs
---  pure $ toBalances <$> response
---  where
---    toBalance = (^? there . _2 . to (\case (Pact.PLiteral (Pact.LDecimal d)) -> Just $ AccountBalance d; _ -> Nothing) . _Just)
---    toBalances :: (IntMap (SomeAccount key, Maybe NetworkRequest), [NetworkErrorResult]) -> Accounts key
---    toBalances (m, results) = IntMap.fromList $ stepwise (IntMap.toList (fmap fst m)) (toBalance <$> results)
---    -- I don't like this, I'd rather just block in a forked thread manually than have to do this dodgy alignment. TODO
---    stepwise :: [(IntMap.Key, SomeAccount key)] -> [Maybe AccountBalance] -> [(IntMap.Key, SomeAccount key)]
---    stepwise ((i, sa):accs) (bal:bals) = case sa of
---      SomeAccount_Deleted -> (i, SomeAccount_Deleted) : stepwise accs (bal:bals)
---      SomeAccount_Account a ->
---        (i, SomeAccount_Account a { _account_balance = bal <|> _account_balance a })
---        : stepwise accs bals
---    stepwise as _ = as
---    toReqList :: Foldable f => f (SomeAccount key, Maybe NetworkRequest) -> [NetworkRequest]
---    toReqList = fmapMaybe snd . toList
---    accountBalanceReq acc = "(coin.get-balance " <> tshow (unAccountName acc) <> ")"
---    mkReqs :: (NetworkName, PublicMeta) -> Accounts key -> Performable m (IntMap (SomeAccount key, Maybe NetworkRequest))
---    mkReqs meta someaccs = for someaccs $ \sa ->
---      fmap (sa,) . traverse (mkReq meta) $ someAccount Nothing Just sa
---    mkReq (netName, pm) acc = mkSimpleReadReq (accountBalanceReq $ _account_name acc) netName pm (ChainRef Nothing $ _account_chainId acc)
+  => model -> Event t AccountStorage -> m (Event t [(NetworkName, Some AccountRef, Maybe AccountBalance)])
+getBalances model accStore = performEventAsync $ flip push accStore $ \networkAccounts -> do
+  nodes <- fmap rights $ sample $ current $ model ^. network_selectedNodes
+  net <- sample $ current $ model ^. network_selectedNetwork
+  pure $ mkRequests nodes net <$> Map.lookup net (unAccountStorage networkAccounts)
+  where
+    mkRequests nodes net accounts cb = do
+      -- Transform the vanity accounts structure into a map from chain ID to
+      -- set of account names
+      let chainsToAccounts = flip foldAccounts accounts $ \case
+            AccountRef_Vanity (AccountName name) chain :=> Identity acc
+              | _accountInfo_hidden $ _vanityAccount_info acc -> mempty
+              | otherwise -> MonoidalMap.singleton chain $ Set.singleton name
+            AccountRef_NonVanity pk chain :=> Identity acc
+              | _accountInfo_hidden $ _nonVanityAccount_info acc -> mempty
+              | otherwise -> MonoidalMap.singleton chain $ Set.singleton $ keyToText pk
+          code = renderCompactText . accountBalanceObject . Set.toList
+          pm chain = Pact.PublicMeta
+            { Pact._pmChainId = chain
+            , Pact._pmSender = "chainweaver"
+            , Pact._pmGasLimit = defaultTransactionGasLimit
+            , Pact._pmGasPrice = defaultTransactionGasPrice
+            , Pact._pmTTL = 3600
+            , Pact._pmCreationTime = 0
+            }
+      -- Build a request for each chain
+      requests <- flip MonoidalMap.traverseWithKey chainsToAccounts $ \chain as -> do
+        liftIO $ putStrLn $ "getBalances: Building request for get-balance on chain " <> T.unpack (_chainId chain)
+        cmd <- buildCmd Nothing net (pm chain) mempty [] (code as) mempty mempty
+        liftIO $ print cmd
+        let envs = mkClientEnvs nodes chain
+        pure $ doReqFailover envs (Api.local Api.apiV1Client cmd) >>= \case
+          Left es -> liftIO $ putStrLn $ "getBalances: request failure: " <> show es
+          Right cr -> case Pact._crResult cr of
+            Pact.PactResult (Right pv) -> case parseAccountBalances pv of
+              Left e -> liftIO $ putStrLn $ "getBalances: failed to parse balances:" <> show e
+              Right balances -> liftIO $ do
+                putStrLn "getBalances: success:"
+                print balances
+                -- Cheat slightly by checking if the account name is really a public key.
+                liftIO $ cb $ ffor (Map.toList balances) $ \(AccountName name, balance) -> case textToKey name of
+                  Nothing -> (net, Some $ AccountRef_Vanity (AccountName name) chain, balance)
+                  Just pk -> (net, Some $ AccountRef_NonVanity pk chain, balance)
+            Pact.PactResult (Left e) -> liftIO $ putStrLn $ "getBalances failed:" <> show e
+      -- Perform the requests on a forked thread
+      void $ liftJSM $ forkJSM $ void $ sequence requests
 
 -- Storing data:
 

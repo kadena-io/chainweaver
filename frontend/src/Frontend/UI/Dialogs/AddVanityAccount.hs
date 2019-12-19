@@ -9,14 +9,12 @@ module Frontend.UI.Dialogs.AddVanityAccount
   ( uiAddVanityAccountSettings
   ) where
 
-import Control.Applicative (liftA2)
 import           Control.Lens                           ((^.),(<>~))
 import           Control.Monad.Trans.Class              (lift)
 import           Control.Monad.Trans.Maybe              (MaybeT (..), runMaybeT)
 import           Data.Functor.Identity                  (Identity(..))
 import           Data.Maybe                             (isNothing,fromMaybe)
 import           Data.Text                              (Text)
-import Data.These (These (..))
 import           Data.Aeson                             (Object, Value (Array, String))
 import qualified Data.HashMap.Strict                    as HM
 import qualified Data.Vector                            as V
@@ -24,7 +22,7 @@ import qualified Data.Vector                            as V
 import Pact.Types.PactValue
 import Pact.Types.Exp
 import Data.Some (Some(Some))
-import Data.These
+import Data.These (These (..))
 
 import           Reflex
 import           Reflex.Dom.Contrib.CssClass            (renderClass)
@@ -38,10 +36,8 @@ import           Frontend.UI.Modal.Impl                 (ModalIde, modalFooter)
 import           Frontend.UI.Widgets
 import           Frontend.UI.Widgets.AccountName (uiAccountNameInput)
 
-import           Frontend.Crypto.Class                  (HasCrypto,
-                                                         cryptoGenKey)
+import           Frontend.Crypto.Class
 import           Frontend.Crypto.Ed25519                (keyToText)
-import           Frontend.Ide                           (_ide_wallet)
 import           Frontend.JsonData
 import           Frontend.Network
 import           Frontend.Wallet
@@ -80,12 +76,9 @@ uiAddVanityAccountSettings
   -> Text
   -> Workflow t m (Text, (mConf, Event t ()))
 uiAddVanityAccountSettings ideL onInflightChange mInflightAcc mChainId initialNotes = Workflow $ do
-  pb <- getPostBuild
 
   let
     getNotes = unAccountNotes . _vanityAccount_notes
-    w = _ide_wallet ideL
-    dNextKey = findNextKey w
 
     notesInput initCfg = divClass "vanity-account-create__notes" $ mkLabeledClsInput True "Notes"
       $ \cls -> uiInputElement $ initCfg
@@ -94,7 +87,6 @@ uiAddVanityAccountSettings ideL onInflightChange mInflightAcc mChainId initialNo
 
   let includePreviewTab = False
       customConfigTab = Nothing
-      mkKP (pr,pu) = Just $ KeyPair pu $ Just pr
 
   let dKeyPair = pure (fmap (_vanityAccount_key . snd) mInflightAcc) -- TODO check this is correct
 

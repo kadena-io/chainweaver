@@ -54,7 +54,6 @@ import Reflex.Dom
 import Safe (succMay, headMay)
 import qualified Data.Aeson as Aeson
 import qualified Data.HashMap.Lazy as HM
-import qualified Data.IntMap as IntMap
 import qualified Data.Map as Map
 import qualified Data.Set as Set
 import qualified Data.Text as T
@@ -85,12 +84,12 @@ import Frontend.Wallet
 -- | A modal for handling sending coin
 uiSendModal
   :: (SendConstraints model mConf key t m, Flattenable mConf t)
-  => model -> IntMap.Key -> Account -> Event t () -> m (mConf, Event t ())
-uiSendModal model fromIndex sender _onCloseExternal = do
+  => model -> Account -> Event t () -> m (mConf, Event t ())
+uiSendModal model sender _onCloseExternal = do
   (conf, closes) <- fmap splitDynPure $ workflow $ case accountUnfinishedCrossChainTransfer sender of
-    Nothing -> sendConfig model fromIndex sender
+    Nothing -> sendConfig model sender
     -- If we have unfinished business, force the user to finish it first
-    Just ucct -> finishCrossChainTransferConfig model fromIndex sender ucct
+    Just ucct -> finishCrossChainTransferConfig model sender ucct
   mConf <- flatten =<< tagOnPostBuild conf
   let close = switch $ current closes
   pure (mConf, close)
@@ -110,6 +109,9 @@ data CrossChainData key = CrossChainData
 -- | This stuff was being passed around so much it became a new type
 data SharedNetInfo a = SharedNetInfo
   { _sharedNetInfo_network :: NetworkName
+  -- ^ The actual network name as reported by the node
+  , _sharedNetInfo_selectedNetwork :: NetworkName
+  -- ^ The network name according to the user
   , _sharedNetInfo_meta :: PublicMeta
   , _sharedNetInfo_nodes :: [a]
   }
@@ -119,8 +121,6 @@ previewTransfer
   :: forall model mConf key t m.
      SendConstraints model mConf key t m
   => model
-  -> IntMap.Key
-  -- ^ Key of the "from" account
   -> Account
   -- ^ From account
   -> Account
@@ -132,7 +132,7 @@ previewTransfer
   -> Decimal
   -- ^ Amount to transfer
   -> Workflow t m (mConf, Event t ())
-previewTransfer model fromIndex fromAccount fromGasPayer toAddress crossChainData amount = Workflow $ do
+previewTransfer model fromAccount fromGasPayer toAddress crossChainData amount = Workflow $ do
   close <- modalHeader $ text "Transaction Preview"
   elClass "div" "modal__main" $ do
     dialogSectionHeading mempty "Destination"
@@ -168,7 +168,7 @@ previewTransfer model fromIndex fromAccount fromGasPayer toAddress crossChainDat
     next <- confirmButton def "Create Transaction"
     pure (back, next)
   let nextScreen = leftmost
-        [ sendConfig model fromIndex fromAccount <$ back
+        [ sendConfig model fromAccount <$ back
         , flip push next $ \() -> do
           mNetInfo <- sampleNetInfo model
           keys <- sample $ current $ model ^. wallet_keys
@@ -176,7 +176,7 @@ previewTransfer model fromIndex fromAccount fromGasPayer toAddress crossChainDat
           let toAccount n = maybe (Left toAddress) Right $ lookupAccountByKadenaAddress toAddress =<< Map.lookup n accounts
           pure $ ffor mNetInfo $ \n -> case crossChainData of
             Nothing -> sameChainTransfer n keys fromAccount fromGasPayer toAddress amount
-            Just ccd -> crossChainTransfer n keys fromIndex fromAccount (toAccount $ _sharedNetInfo_network n) fromGasPayer ccd amount
+            Just ccd -> crossChainTransfer n keys fromAccount (toAccount $ _sharedNetInfo_network n) fromGasPayer ccd amount
         ]
   pure ((mempty, close), nextScreen)
 
@@ -264,8 +264,8 @@ sameChainTransfer netInfo keys fromAccount gasPayer toAccount amount = Workflow 
 -- | General transfer workflow. This is the initial configuration screen.
 sendConfig
   :: SendConstraints model mConf key t m
-  => model -> IntMap.Key -> Account -> Workflow t m (mConf, Event t ())
-sendConfig model fromIndex fromAccount = Workflow $ do
+  => model -> Account -> Workflow t m (mConf, Event t ())
+sendConfig model fromAccount = Workflow $ do
   close <- modalHeader $ text "Send"
   rec
     (currentTab, _done) <- makeTabs $ attachWithMaybe (const . void . hush) (current recipient) next
@@ -276,7 +276,7 @@ sendConfig model fromIndex fromAccount = Workflow $ do
         (toAccount, amount) <- MaybeT $ fmap hush $ sample $ current recipient
         let mCrossChain = ffor mToGasPayer $ \a -> CrossChainData
               { _crossChainData_recipientChainGasPayer = a }
-        pure $ previewTransfer model fromIndex fromAccount fromGasPayer toAccount mCrossChain amount
+        pure $ previewTransfer model fromAccount fromGasPayer toAccount mCrossChain amount
   pure ((conf, close <> cancel), nextScreen)
   where
     mainSection currentTab = elClass "div" "modal__main" $ do
@@ -458,14 +458,12 @@ finishCrossChainTransferConfig
      , HasWallet model key t
      )
   => model
-  -> IntMap.Key
-  -- ^ Key of the "from" account
   -> Account
   -- ^ From account
   -> UnfinishedCrossChainTransfer
   -- ^ The unfinished transfer
   -> Workflow t m (mConf, Event t ())
-finishCrossChainTransferConfig model fromIndex fromAccount ucct = Workflow $ do
+finishCrossChainTransferConfig model fromAccount ucct = Workflow $ do
   let requestKey = _unfinishedCrossChainTransfer_requestKey ucct
       toChain = _unfinishedCrossChainTransfer_recipientChain ucct
   close <- modalHeader $ text "Cross chain transfer: unfinished transfer"
@@ -504,7 +502,7 @@ finishCrossChainTransferConfig model fromIndex fromAccount ucct = Workflow $ do
         mNetInfo <- sampleNetInfo model
         mToGasPayer <- sample $ current sender
         keys <- sample $ current $ model ^. wallet_keys
-        pure $ ffor2 mNetInfo mToGasPayer $ \ni gp -> finishCrossChainTransfer ni keys fromIndex fromAccount ucct gp
+        pure $ ffor2 mNetInfo mToGasPayer $ \ni gp -> finishCrossChainTransfer ni keys fromAccount ucct gp
   pure ((conf, close), nextScreen)
 
 -- | Handy function for getting network / meta information in 'PushM'. Type
@@ -513,6 +511,7 @@ sampleNetInfo
   :: (Reflex t, HasNetwork model t)
   => model -> PushM t (Maybe (SharedNetInfo NodeInfo))
 sampleNetInfo model = do
+  net <- sample $ current $ model ^. network_selectedNetwork
   nodes <- fmap rights $ sample $ current $ model ^. network_selectedNodes
   meta <- sample $ current $ model ^. network_meta
   let networkName = hush . mkNetworkName . nodeVersion =<< headMay nodes
@@ -520,6 +519,7 @@ sampleNetInfo model = do
     { _sharedNetInfo_network = name
     , _sharedNetInfo_nodes = nodes
     , _sharedNetInfo_meta = meta
+    , _sharedNetInfo_selectedNetwork = net
     }
 
 -- | Modal for finishing previously unfinished cross chain transfers
@@ -531,8 +531,6 @@ finishCrossChainTransfer
      )
   => SharedNetInfo NodeInfo
   -> KeyStorage key
-  -> IntMap.Key
-  -- ^ Key for "from" account
   -> Account
   -- ^ From account
   -> UnfinishedCrossChainTransfer
@@ -540,7 +538,7 @@ finishCrossChainTransfer
   -> Account
   -- ^ The account which pays the gas on the recipient chain
   -> Workflow t m (mConf, Event t ())
-finishCrossChainTransfer netInfo keys fromIndex fromAccount ucct toGasPayer = Workflow $ do
+finishCrossChainTransfer netInfo keys fromAccount ucct toGasPayer = Workflow $ do
   close <- modalHeader $ text "Cross chain transfer"
   let fromChain = accountChain fromAccount
       toChain = _unfinishedCrossChainTransfer_recipientChain ucct
@@ -572,7 +570,7 @@ finishCrossChainTransfer netInfo keys fromIndex fromAccount ucct toGasPayer = Wo
     abandon <- uiButton btnCfgSecondary $ text "Abandon Transfer"
     done <- confirmButton def "Done"
     pure (abandon, done)
-  let conf = mempty & walletCfg_setCrossChainTransfer .~ ((fromIndex, Nothing) <$ (resultOk <> abandon))
+  let conf = mempty & walletCfg_setCrossChainTransfer .~ ((_sharedNetInfo_selectedNetwork netInfo, someTag fromAccount, Nothing) <$ (resultOk <> abandon))
   pure ((conf, close <> done <> abandon), never)
 
 -- | Workflow for doing cross chain transfers from scratch. Steps are roughly:
@@ -597,8 +595,6 @@ crossChainTransfer
      )
   => SharedNetInfo NodeInfo
   -> KeyStorage key
-  -> IntMap.Key
-  -- ^ Key of "from" account
   -> Account
   -- ^ From account
   -> Either KadenaAddress (Account)
@@ -611,7 +607,7 @@ crossChainTransfer
   -> Decimal
   -- ^ Amount to transfer
   -> Workflow t m (mConf, Event t ())
-crossChainTransfer netInfo keys fromIndex fromAccount toAccount fromGasPayer crossChainData amount = Workflow $ do
+crossChainTransfer netInfo keys fromAccount toAccount fromGasPayer crossChainData amount = Workflow $ do
   let nodeInfos = _sharedNetInfo_nodes netInfo
       networkName = _sharedNetInfo_network netInfo
       publicMeta = _sharedNetInfo_meta netInfo
@@ -668,7 +664,7 @@ crossChainTransfer netInfo keys fromIndex fromAccount toAccount fromGasPayer cro
 
     pure resultOk0
   done <- modalFooter $ confirmButton def "Done"
-  let mkUCCT requestKey = (fromIndex, Just UnfinishedCrossChainTransfer
+  let mkUCCT requestKey = (_sharedNetInfo_selectedNetwork netInfo, someTag fromAccount, Just UnfinishedCrossChainTransfer
         { _unfinishedCrossChainTransfer_requestKey = requestKey
         , _unfinishedCrossChainTransfer_recipientChain = toChain
         , _unfinishedCrossChainTransfer_recipientAccount = _kadenaAddress_accountName toAddress
@@ -677,7 +673,7 @@ crossChainTransfer netInfo keys fromIndex fromAccount toAccount fromGasPayer cro
   let conf = mempty
         & walletCfg_setCrossChainTransfer .~ leftmost
           [ fmap mkUCCT initiatedOk
-          , (fromIndex, Nothing) <$ resultOk
+          , (_sharedNetInfo_selectedNetwork netInfo, someTag fromAccount, Nothing) <$ resultOk
           ]
   pure ((conf, close <> done), never)
   where
@@ -768,20 +764,6 @@ lookupKeySet networkName envs addr = do
           pure $ Left "Failed to retrieve the recipient's account guard"
     liftIO $ trigger r
   pure result
-
--- | Turn some node URLs into chain specific servant envs
-mkClientEnvs :: [NodeInfo] -> ChainId -> [S.ClientEnv]
-mkClientEnvs nodeInfos chain = fforMaybe nodeInfos $ \nodeInfo ->
-  let chainUrl = getChainBaseUrl chain nodeInfo
-  in S.mkClientEnv <$> S.parseBaseUrl (URI.renderStr chainUrl)
-
--- | Perform some servant request by stepping through the given envs
--- TODO a bunch of uses of this are pretty similar and should be factored out.
-doReqFailover :: MonadJSM m => [S.ClientEnv] -> S.ClientM a -> m (Either [S.ClientError] a)
-doReqFailover [] _ = pure $ Left []
-doReqFailover (c:cs) request = liftJSM $ S.runClientM request c >>= \case
-  Left e -> first (e:) <$> doReqFailover cs request
-  Right r -> pure $ Right r
 
 -- | Initiate a cross chain transfer on the sender chain.
 initiateCrossChainTransfer

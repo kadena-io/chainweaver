@@ -48,6 +48,8 @@ module Frontend.Network
     -- * Perform requests
   , performLocalReadCustom
   , performLocalRead
+  , doReqFailover
+  , mkClientEnvs
     -- * Utilities
   , parseNetworkErrorResult
   , prettyPrintNetworkErrorResult
@@ -780,6 +782,19 @@ performNetworkRequest
 performNetworkRequest networkL onReq =
   fmap (uncurry zip) <$> performNetworkRequestCustom networkL id onReq
 
+-- | Turn some node URLs into chain specific servant envs
+mkClientEnvs :: [NodeInfo] -> ChainId -> [S.ClientEnv]
+mkClientEnvs nodeInfos chain = fforMaybe nodeInfos $ \nodeInfo ->
+  let chainUrl = getChainBaseUrl chain nodeInfo
+  in S.mkClientEnv <$> S.parseBaseUrl (URI.renderStr chainUrl)
+
+-- | Perform some servant request by stepping through the given envs
+doReqFailover :: MonadJSM m => [S.ClientEnv] -> S.ClientM a -> m (Either [S.ClientError] a)
+doReqFailover [] _ = pure $ Left []
+doReqFailover (c:cs) request = liftJSM $ S.runClientM request c >>= \case
+  Left e -> BiF.first (e:) <$> doReqFailover cs request
+  Right r -> pure $ Right r
+
 
 -- | Send a transaction via the /send endpoint.
 --
@@ -799,11 +814,11 @@ performNetworkRequestCustom networkL unwrap onReqs =
     performEventAsync $ ffor onReqs $ \reqs cb -> do
       nodeInfos <- getSelectedNetworkInfos networkL
       void $ liftJSM $ forkJSM $ do
-        r <- traverse (doReqFailover nodeInfos) $ unwrap reqs
+        r <- traverse (doReqFailover' nodeInfos) $ unwrap reqs
         liftIO $ cb (reqs, r)
   where
-    doReqFailover :: [NodeInfo] -> NetworkRequest -> JSM NetworkErrorResult
-    doReqFailover nodeInfos req =
+    doReqFailover' :: [NodeInfo] -> NetworkRequest -> JSM NetworkErrorResult
+    doReqFailover' nodeInfos req =
       go [] nodeInfos
         where
           go :: [(Maybe URI,NetworkError)] -> [NodeInfo] -> JSM NetworkErrorResult

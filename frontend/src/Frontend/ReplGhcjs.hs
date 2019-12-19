@@ -53,7 +53,7 @@ import Frontend.OAuth
 import Frontend.Repl
 import Frontend.Storage
 import Frontend.UI.Button
-import Frontend.UI.Dialogs.AddAccount (uiAddWalletOnlyAccountDialogButton)
+import Frontend.UI.Dialogs.AddAccount (uiAddWalletOnlyAccountDialogButton, uiGenerateKeyButton)
 import Frontend.UI.Dialogs.CreateGist (uiCreateGist)
 import Frontend.UI.Dialogs.CreatedGist (uiCreatedGist)
 import Frontend.UI.Dialogs.DeployConfirmation (uiDeployConfirmation)
@@ -103,7 +103,7 @@ app sidebarExtra appCfg = void . mfix $ \ cfg -> do
       FrontendRoute_Keys -> mkPageContent "keys" $ do
         walletBarCfg <- controlBar "Keys" $ do
           refreshCfg <- uiWalletRefreshButton ideL
-          addCfg <- uiAddWalletOnlyAccountDialogButton ideL
+          addCfg <- uiGenerateKeyButton
           pure $ addCfg <> refreshCfg
         walletCfg <- uiWallet ideL
         pure $ walletBarCfg <> walletCfg
@@ -158,8 +158,8 @@ walletSidebar sidebarExtra = elAttr "div" ("class" =: "sidebar") $ do
             elAttr "img" ("class" =: "highlighted" <> "src" =: routeIcon r) blank
             elAttr "img" ("class" =: "normal" <> "src" =: routeIcon r) blank
             elAttr "span" ("class" =: "sidebar__link-label") $ text label
-    sidebarLink (FrontendRoute_Accounts :/ ()) "Accounts"
     sidebarLink (FrontendRoute_Keys :/ ()) "Keys"
+    sidebarLink (FrontendRoute_Accounts :/ ()) "Accounts"
     sidebarLink (FrontendRoute_Contracts :/ Nothing) "Contracts"
     elAttr "div" ("style" =: "flex-grow: 1") blank
     sidebarLink (FrontendRoute_Resources :/ ()) "Resources"

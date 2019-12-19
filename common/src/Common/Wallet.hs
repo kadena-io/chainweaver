@@ -34,11 +34,12 @@ module Common.Wallet
   , accountUnfinishedCrossChainTransfer
   , accountToName
   , accountNotes
-  , accountInfo
+  , getAccountInfo
   , accountChain
   , accountKey
   , AccountStorage(..)
   , _AccountStorage
+  , storageAccountInfo
   , Accounts(..)
   , accounts_vanity
   , accounts_nonVanity
@@ -52,6 +53,9 @@ module Common.Wallet
   , NonVanityAccount(..)
   , nonVanityAccount_info
   , AccountInfo(..)
+  , accountInfo_balance
+  , accountInfo_unfinishedCrossChainTransfer
+  , accountInfo_hidden
   , blankAccountInfo
   , pactGuardTypeText
   , fromPactGuard
@@ -61,8 +65,12 @@ module Common.Wallet
   -- * Balance checks
   , wrapWithBalanceChecks
   , parseWrappedBalanceChecks
+  , getBalanceCode
+  , accountBalanceObject
+  , parseAccountBalances
   ) where
 
+import Control.Applicative (liftA2)
 import Control.Monad.Fail (MonadFail)
 import Control.Lens hiding ((.=))
 import Control.Monad
@@ -80,6 +88,7 @@ import Data.Map (Map)
 import Data.Set (Set)
 import Data.Some (Some(..))
 import Data.GADT.Compare.TH
+import Data.GADT.Show.TH
 import Data.Text (Text)
 import Data.Traversable (for)
 import GHC.Generics (Generic)
@@ -93,7 +102,6 @@ import Pact.Types.PactValue
 import Pact.Types.Pretty
 import Pact.Types.Term hiding (PublicKey)
 import Pact.Types.Type
-import qualified Data.Char as C
 import qualified Data.Aeson as Aeson
 import qualified Data.Aeson.Types as Aeson
 import qualified Data.ByteString as BS
@@ -106,8 +114,6 @@ import qualified Data.Text as T
 import qualified Data.Text.Encoding as T
 import qualified Pact.Types.Term as Pact
 import qualified Pact.Types.Type as Pact
-
-import Language.Haskell.TH.Syntax (mkName,nameBase)
 
 import Common.Foundation
 import Common.Network (NetworkName)
@@ -247,7 +253,7 @@ instance FromJSON AccountGuard
 instance ToJSON AccountGuard
 
 -- | Account balance wrapper
-newtype AccountBalance = AccountBalance { unAccountBalance :: Decimal } deriving (Eq, Ord, Num)
+newtype AccountBalance = AccountBalance { unAccountBalance :: Decimal } deriving (Eq, Ord, Num, Show)
 
 -- Via ParsedDecimal
 instance ToJSON AccountBalance where
@@ -386,8 +392,8 @@ accountNotes = \case
   AccountRef_NonVanity _ _ :=> _ -> Nothing
   AccountRef_Vanity _ _ :=> Identity v -> Just $ _vanityAccount_notes v
 
-accountInfo :: Account -> AccountInfo
-accountInfo (r :=> Identity a) = case r of
+getAccountInfo :: Account -> AccountInfo
+getAccountInfo (r :=> Identity a) = case r of
   AccountRef_Vanity _ _ -> _vanityAccount_info a
   AccountRef_NonVanity _ _ -> _nonVanityAccount_info a
 
@@ -403,7 +409,7 @@ lookupAccountRef (Some ref) accounts = case ref of
     pure $ ref ==> nv
 
 accountUnfinishedCrossChainTransfer :: Account -> Maybe UnfinishedCrossChainTransfer
-accountUnfinishedCrossChainTransfer = _accountInfo_unfinishedCrossChainTransfer . accountInfo
+accountUnfinishedCrossChainTransfer = _accountInfo_unfinishedCrossChainTransfer . getAccountInfo
 
 accountToName :: Account -> AccountName
 accountToName (r :=> _) = case r of
@@ -469,10 +475,10 @@ blankAccountInfo = AccountInfo
   }
 
 instance ToJSON AccountInfo where
-  toJSON a = object
-    [ "balance" .= toJSON (_accountInfo_balance a)
-    , "unfinishedCrossChainTransfer" .= toJSON (_accountInfo_unfinishedCrossChainTransfer a)
-    , "hidden" .= toJSON (_accountInfo_hidden a)
+  toJSON a = object $ catMaybes
+    [ Just $ "balance" .= toJSON (_accountInfo_balance a)
+    , (("unfinishedCrossChainTransfer" .=) . toJSON) <$> _accountInfo_unfinishedCrossChainTransfer a
+    , Just $ "hidden" .= toJSON (_accountInfo_hidden a)
     ]
 
 instance FromJSON AccountInfo where
@@ -561,7 +567,7 @@ compileCode = first show . compileExps mkEmptyInfo <=< parseExprs
 
 -- | Parse the balance checking object into a map of account balance changes and
 -- the result from the inner code
-parseWrappedBalanceChecks :: PactValue -> Either Text (Map AccountName AccountBalance, PactValue)
+parseWrappedBalanceChecks :: PactValue -> Either Text (Map AccountName (Maybe AccountBalance), PactValue)
 parseWrappedBalanceChecks = first ("parseWrappedBalanceChecks: " <>) . \case
   (PObject (ObjectMap obj)) -> do
     let lookupErr k = case Map.lookup (FieldKey k) obj of
@@ -570,19 +576,20 @@ parseWrappedBalanceChecks = first ("parseWrappedBalanceChecks: " <>) . \case
     before <- parseAccountBalances =<< lookupErr "before"
     result <- parseResults =<< lookupErr "results"
     after <- parseAccountBalances =<< lookupErr "after"
-    pure (Map.unionWith subtract before after, result)
+    pure (Map.unionWith (liftA2 subtract) before after, result)
   v -> Left $ "Unexpected PactValue (expected object): " <> renderCompactText v
 
 -- | Turn the object of account->balance into a map
-parseAccountBalances :: PactValue -> Either Text (Map AccountName AccountBalance)
+parseAccountBalances :: PactValue -> Either Text (Map AccountName (Maybe AccountBalance))
 parseAccountBalances = first ("parseAccountBalances: " <>) . \case
   (PObject (ObjectMap obj)) -> do
     m <- for (Map.toAscList obj) $ \(FieldKey accountText, pv) -> do
       bal <- case pv of
-        PLiteral (LDecimal d) -> pure d
+        PLiteral (LDecimal d) -> pure $ Just $ AccountBalance d
+        PLiteral (LBool False) -> pure Nothing
         t -> Left $ "Unexpected PactValue (expected decimal): " <> renderCompactText t
       acc <- mkAccountName accountText
-      pure (acc, AccountBalance bal)
+      pure (acc, bal)
     pure $ Map.fromList m
   v -> Left $ "Unexpected PactValue (expected object): " <> renderCompactText v
 
@@ -592,30 +599,46 @@ parseResults = first ("parseResults: " <>) . \case
   PList vec -> maybe (Left "No value returned") Right $ vec ^? _last
   v -> Left $ "Unexpected PactValue (expected list): " <> renderCompactText v
 
+-- | Code to get the balance of the given account.
+-- Returns a key suitable for indexing on if you add this to an object.
+getBalanceCode :: Text -> (FieldKey, Term Name)
+getBalanceCode accountName = (FieldKey accountName, TApp
+  { _tApp = App
+    { _appFun = TVar (QName $ QualifiedName "coin" "get-balance" def) def
+    , _appArgs = [TLiteral (LString accountName) def]
+    , _appInfo = def
+    }
+  , _tInfo = def
+  })
+
+tryTerm :: Term Name -> Term Name -> Term Name
+tryTerm defaultTo expr = TApp
+  { _tApp = App
+    { _appFun = TVar (Name $ BareName "try" def) def
+    , _appArgs = [defaultTo, expr]
+    , _appInfo = def
+    }
+  , _tInfo = def
+  }
+
+-- | Produce an object from account names to account balance function calls
+accountBalanceObject :: [Text] -> Term Name
+accountBalanceObject accounts = TObject
+  { _tObject = Pact.Types.Term.Object
+    { _oObject = ObjectMap $ Map.fromList $ map (fmap (tryTerm (TLiteral (LBool False) def)) . getBalanceCode) accounts
+    , _oObjectType = TyPrim TyDecimal
+    , _oKeyOrder = Nothing
+    , _oInfo = def
+    }
+  , _tInfo = def
+  }
+
 -- | Wrap the code with a let binding to get the balances of the given accounts
 -- before and after executing the code.
 wrapWithBalanceChecks :: Set (Some AccountRef) -> Text -> Either String Text
 wrapWithBalanceChecks accounts code = wrapped <$ compileCode code
   where
-    getBalance :: Text -> (FieldKey, Term Name)
-    getBalance accountName = (FieldKey accountName, TApp
-      { _tApp = App
-        { _appFun = TVar (QName $ QualifiedName "coin" "get-balance" def) def
-        , _appArgs = [TLiteral (LString accountName) def]
-        , _appInfo = def
-        }
-      , _tInfo = def
-      })
-    -- Produce an object from account names to account balances
-    accountBalances = TObject
-      { _tObject = Pact.Types.Term.Object
-        { _oObject = ObjectMap $ Map.fromList $ map getBalance $ fmap (\(Some x) -> accountRefToName x) $ Set.toAscList accounts
-        , _oObjectType = TyPrim TyDecimal
-        , _oKeyOrder = Nothing
-        , _oInfo = def
-        }
-      , _tInfo = def
-      }
+    accountBalances = accountBalanceObject $ fmap (\(Some x) -> accountRefToName x) $ Set.toAscList accounts
     -- It would be nice to parse and compile the code and shove it into a
     -- giant 'Term' so we can serialise it, but 'pretty' is not guaranteed to
     -- produce valid pact code. It at least produces bad type sigs and let
@@ -635,7 +658,16 @@ wrapWithBalanceChecks accounts code = wrapped <$ compileCode code
 
 deriveGEq ''AccountRef
 deriveGCompare ''AccountRef
+deriveGShow ''AccountRef
+makePactLenses ''AccountInfo
 makePactLenses ''VanityAccount
 makePactLenses ''NonVanityAccount
 makePactLenses ''Accounts
 makePactPrisms ''AccountStorage
+
+storageAccountInfo :: NetworkName -> Some AccountRef -> Traversal' AccountStorage AccountInfo
+storageAccountInfo net (Some ref) = _AccountStorage . at net . _Just . case ref of
+  AccountRef_NonVanity pk chain ->
+    accounts_nonVanity . at pk . _Just . at chain . _Just . nonVanityAccount_info
+  AccountRef_Vanity name chain ->
+    accounts_vanity . at name . _Just . at chain . _Just . vanityAccount_info
