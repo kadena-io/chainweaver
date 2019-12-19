@@ -8,7 +8,6 @@ module Frontend.UI.Dialogs.AccountDetails
   ( uiAccountDetails
   ) where
 
-import Data.Dependent.Sum (DSum(..))
 ------------------------------------------------------------------------------
 import           Control.Lens
 import           Data.Text (Text)

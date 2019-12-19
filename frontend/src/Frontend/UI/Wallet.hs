@@ -82,13 +82,9 @@ data AccountDialog
   | AccountDialog_Send Account
 
 uiWalletRefreshButton
-  :: forall m t key model mConf
-  . ( MonadWidget t m
-    , HasUiWalletModelCfg model mConf key m t
-    )
-  => model
-  -> m mConf
-uiWalletRefreshButton model = do
+  :: (MonadWidget t m, Monoid mConf, HasWalletCfg mConf key t)
+  => m mConf
+uiWalletRefreshButton = do
   eRefresh <- uiButton (def & uiButtonCfg_class <>~ " main-header__wallet-refresh-button")  (text "Refresh")
   pure $ mempty & walletCfg_refreshBalances <>~ eRefresh
 
@@ -273,19 +269,21 @@ uiKeyItems model = do
   let modalEvents = switch $ leftmost . Map.elems <$> current events
 
   pure $ mempty
-    & modalCfg_setModal .~ fmap keyModal modalEvents
+    & modalCfg_setModal .~ attachWith keyModal (current $ model ^. network_selectedNetwork) modalEvents
     & walletCfg_refreshBalances .~ refresh
   where
-    keyModal = Just . \case
+    keyModal n = Just . \case
       KeyDialog_Receive name created -> uiReceiveModal model name created Nothing
       KeyDialog_Send acc -> uiSendModal model acc
       KeyDialog_Details key -> uiKeyDetails model key
+      KeyDialog_AccountDetails acc -> uiAccountDetails n acc
 
 -- | Dialogs which can be launched from keys.
 data KeyDialog key
   = KeyDialog_Receive AccountName AccountCreated
   | KeyDialog_Send Account
   | KeyDialog_Details (Key key)
+  | KeyDialog_AccountDetails Account
 
 ------------------------------------------------------------------------------
 -- | Display a key as list item together with its name.
@@ -352,11 +350,12 @@ uiKeyItem model _index key = do
         td $ buttons $ do
           send <- sendButton cfg
           onDetails <- detailsButton (cfg & uiButtonCfg_class <>~ " wallet__table-button--hamburger")
-          let mkSendDialog k acc = KeyDialog_Send $ AccountRef_NonVanity (_keyPair_publicKey $ _key_pair k) chain ==> acc
+          let pk = _keyPair_publicKey . _key_pair <$> current key
           pure
             ( _accountInfo_balance . _nonVanityAccount_info <$> dAccount
             , leftmost
-              [ mkSendDialog <$> current key <*> current dAccount <@ send
+              [ (\k -> KeyDialog_Send . (AccountRef_NonVanity k chain ==>)) <$> pk <*> current dAccount <@ send
+              , (\k -> KeyDialog_AccountDetails . (AccountRef_NonVanity k chain ==>)) <$> pk <*> current dAccount <@ onDetails
               ]
             )
 

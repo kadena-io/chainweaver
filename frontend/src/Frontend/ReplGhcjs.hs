@@ -95,14 +95,14 @@ app sidebarExtra appCfg = void . mfix $ \ cfg -> do
     routedCfg <- subRoute $ lift . flip runRoutedT route . \case
       FrontendRoute_Accounts -> mkPageContent "accounts" $ do
         barCfg <- controlBar "Accounts" $ do
-          refreshCfg <- uiWalletRefreshButton ideL
+          refreshCfg <- uiWalletRefreshButton
           addCfg <- uiAddVanityAccountButton ideL
           pure $ addCfg <> refreshCfg
         accountsCfg <- uiAccountsTable ideL
         pure $ barCfg <> accountsCfg
       FrontendRoute_Keys -> mkPageContent "keys" $ do
         walletBarCfg <- controlBar "Keys" $ do
-          refreshCfg <- uiWalletRefreshButton ideL
+          refreshCfg <- uiWalletRefreshButton
           addCfg <- uiGenerateKeyButton
           pure $ addCfg <> refreshCfg
         walletCfg <- uiWallet ideL
