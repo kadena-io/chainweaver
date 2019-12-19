@@ -12,11 +12,13 @@ module Frontend.UI.Dialogs.Receive
 import Control.Applicative (liftA2, liftA3)
 import Control.Lens ((^.), (<>~), _1, _2, _3, view)
 import Control.Monad (void, (<=<))
+import Control.Monad.Trans.Class (lift)
+import Control.Monad.Trans.Maybe (MaybeT(..))
 import Control.Error (hush, headMay)
-
 import Data.Bifunctor (first)
 import Data.Either (isLeft,rights)
 import Data.Text (Text)
+import qualified Data.Set as Set
 import qualified Data.Text as T
 import qualified Data.Map as Map
 import qualified Data.Aeson as Aeson
@@ -44,14 +46,14 @@ import Common.Wallet (parsePublicKey,toPactPublicKey)
 import Frontend.Foundation
 import Frontend.KadenaAddress
 import Frontend.Network
-import Frontend.UI.Dialogs.NetworkEdit
 
 import Frontend.UI.Dialogs.DeployConfirmation (CanSubmitTransaction, TransactionSubmitFeedback (..), submitTransactionWithFeedback)
 
-import Frontend.UI.DeploymentSettings (uiMetaData, defaultGASCapability)
+import Frontend.UI.DeploymentSettings (uiMetaData, defaultGASCapability, transactionDisplayNetwork)
 
 import Frontend.UI.Modal
 import Frontend.UI.Widgets
+import Frontend.UI.Widgets.Helpers (dialogSectionHeading)
 import Frontend.UI.Widgets.AccountName (uiAccountNameInput)
 import Frontend.Wallet
 
@@ -70,7 +72,7 @@ uiDisplayAddress
   => Text
   -> m ()
 uiDisplayAddress address = do
-  elClass "h2" "heading heading_type_h2" $ text "Kadena Address"
+  dialogSectionHeading mempty "Kadena Address"
   divClass "group" $ do
     -- Kadena Address
     divClass "segment segment_type_tertiary labeled-input account-details__kadena-address-wrapper" $ do
@@ -91,7 +93,7 @@ uiReceiveFromLegacyAccount
   => model
   -> m (Dynamic t (Maybe NonBIP32TransferInfo))
 uiReceiveFromLegacyAccount model = do
-  mAccountName <- uiAccountNameInput (model ^. wallet) (pure Nothing)
+  mAccountName <- uiAccountNameInput (model ^. wallet) (pure Nothing) Nothing
 
   onKeyPair <- divClass "account-details__private-key" $
     _inputElement_input <$> mkLabeledInput True "Private Key" uiInputElement def
@@ -124,11 +126,12 @@ uiReceiveModal
      )
   => model
   -> Account key
+  -> Maybe ChainId
   -> Event t ()
   -> m (mConf, Event t ())
-uiReceiveModal model account _onClose = do
+uiReceiveModal model account mchain _onClose = do
   onClose <- modalHeader $ text "Receive"
-  (conf, closes) <- fmap splitDynPure $ workflow $ uiReceiveModal0 model account onClose
+  (conf, closes) <- fmap splitDynPure $ workflow $ uiReceiveModal0 model account mchain onClose
   mConf <- flatten =<< tagOnPostBuild conf
   let close = switch $ current closes
   pure (mConf, close)
@@ -144,19 +147,16 @@ uiReceiveModal0
      )
   => model
   -> Account key
+  -> Maybe ChainId
   -> Event t ()
   -> Workflow t m (mConf, Event t ())
-uiReceiveModal0 model account onClose = Workflow $ do
+uiReceiveModal0 model account mchain onClose = Workflow $ do
   let
-    chain = _account_chainId account
-
     netInfo = do
       nodes <- model ^. network_selectedNodes
       meta <- model ^. network_meta
       let networkId = hush . mkNetworkName . nodeVersion <=< headMay $ rights nodes
       pure $ (nodes, meta, ) <$> networkId
-
-    address = textKadenaAddress $ accountToKadenaAddress account
 
     displayText lbl v cls =
       let
@@ -165,35 +165,37 @@ uiReceiveModal0 model account onClose = Workflow $ do
       in
         mkLabeledInputView True lbl attrFn $ pure v
 
-  (showingAddr, (conf, ttl, gaslimit, transferInfo)) <- divClass "modal__main account-details" $ do
+  (showingAddr, chain, (conf, ttl, gaslimit, transferInfo)) <- divClass "modal__main receive" $ do
     rec
       showingKadenaAddress <- toggle True $ onAddrClick <> onReceiClick
 
-      (onAddrClick, _) <- controlledAccordionItem showingKadenaAddress mempty (text "Option 1: Copy and share Kadena Address")
-        $ do
-        elClass "h2" "heading heading_type_h2" $ text "Destination"
-        divClass "group" $ do
-          -- Network
-          void $ mkLabeledClsInput True "Network" $ \_ -> do
-            stat <- queryNetworkStatus (model ^. network_networks) $ pure $ _account_network account
-            uiNetworkStatus "signal__left-floated" stat
-            text $ textNetworkName $ _account_network account
-          -- Chain id
-          _ <- displayText "Chain ID" (_chainId $ _account_chainId account) "account-details__chain-id"
-          pure ()
-        uiDisplayAddress address
+      dialogSectionHeading mempty "Destination"
+      chain <- divClass "group" $ do
+        -- Network
+        transactionDisplayNetwork model
+        -- Chain id
+        case mchain of
+          Nothing -> userChainIdSelect model
+          Just cid -> (pure $ Just cid) <$ displayText "Chain ID" (_chainId cid) mempty
 
-      (onReceiClick, results) <- controlledAccordionItem (not <$> showingKadenaAddress) "account-details__legacy-send"
-        (text "Option 2: Transfer from non-Chainweaver Account") $ do
-        elClass "h2" "heading heading_type_h2" $ text "Sender Details"
+      (onAddrClick, ((), ())) <- controlledAccordionItem showingKadenaAddress mempty
+        (accordionHeaderBtn "Option 1: Copy and share Kadena Address") $ do
+        dyn_ $ ffor chain $ uiDisplayAddress . \case
+          Nothing -> "Please select a chain"
+          Just cid -> textKadenaAddress $ accountToKadenaAddress account cid
+
+      (onReceiClick, results) <- controlledAccordionItem (not <$> showingKadenaAddress) mempty
+        (accordionHeaderBtn "Option 2: Transfer from non-Chainweaver Account") $ do
+        dialogSectionHeading mempty "Sender Details"
         transferInfo0 <- divClass "group" $ uiReceiveFromLegacyAccount model
-        elClass "h2" "heading heading_type_h2" $ text "Transaction Settings"
+        dialogSectionHeading mempty "Transaction Settings"
         (conf0, ttl0, gaslimit0) <- divClass "group" $ uiMetaData model Nothing Nothing
         pure (conf0, ttl0, gaslimit0, transferInfo0)
 
-    pure (showingKadenaAddress, snd results)
+    pure (showingKadenaAddress, chain, snd results)
 
-  let isDisabled = liftA2 (&&) (isNothing <$> transferInfo) (not <$> showingAddr)
+  let needsSender = liftA2 (&&) (isNothing <$> transferInfo) (not <$> showingAddr)
+      isDisabled = liftA2 (||) (isNothing <$> chain) needsSender
 
   doneNext <- modalFooter $ uiButtonDyn
     (def
@@ -206,12 +208,16 @@ uiReceiveModal0 model account onClose = Workflow $ do
     done = gate (current showingAddr) doneNext
     deploy = gate (not <$> current showingAddr) doneNext
 
-    infos = (liftA2 . liftA2) (,) netInfo transferInfo
+    submit = flip push deploy $ \() -> runMaybeT $ do
+      c <- MaybeT $ sample $ current chain
+      t <- lift $ sample $ current ttl
+      g <- lift $ sample $ current gaslimit
+      ni <- MaybeT $ sample $ current netInfo
+      ti <- MaybeT $ sample $ current transferInfo
+      pure $ receiveFromLegacySubmit onClose account c t g ni ti
 
   pure ( (conf, onClose <> done)
-       , uncurry
-         <$> current (receiveFromLegacySubmit onClose account chain <$> ttl <*> gaslimit)
-         <@> tagMaybe (current infos) deploy
+       , submit
        )
 
 receiveFromLegacySubmit
@@ -266,7 +272,7 @@ receiveFromLegacySubmit onClose account chain ttl gasLimit netInfo transferInfo 
     dat = case accountIsCreated account of
       AccountCreated_No
         | Right pk <- parsePublicKey (unAccountName $ _account_name account)
-        -> HM.singleton "key" $ Aeson.toJSON $ KeySet [toPactPublicKey pk] (Name $ BareName "keys-all" def)
+        -> HM.singleton "key" $ Aeson.toJSON $ KeySet (Set.singleton $ toPactPublicKey pk) (Name $ BareName "keys-all" def)
       _ -> mempty
 
     pkCaps = Map.singleton senderPubKey [_dappCap_cap defaultGASCapability, transferSigCap]

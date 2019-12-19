@@ -2,6 +2,7 @@ name: common
 version:             1.5.1.2
 cabal-version: >= 1.8
 build-type: Simple
+data-files: tests/golden-files/*.golden.json
 
 library
   hs-source-dirs: src
@@ -24,12 +25,15 @@ library
                , pact
                , split
                , bytestring
+               , tasty
+               , tasty-golden
                , template-haskell
                , megaparsec
                , safe
                , errors
                , unliftio
                , unordered-containers
+               , case-insensitive
 
   exposed-modules:
     Common.Api
@@ -41,10 +45,10 @@ library
     Common.Foundation
     Common.Wallet
 
+    Common.Tests.GoldenHelper
+
 test-suite golden-tests
   type: exitcode-stdio-1.0
-
-  other-modules: GoldenHelper
 
   main-is: GoldenTests.hs
   hs-source-dirs: tests

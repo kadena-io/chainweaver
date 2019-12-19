@@ -57,6 +57,7 @@ import qualified Data.HashMap.Lazy as HM
 import qualified Data.IntMap as IntMap
 import qualified Data.List as L
 import qualified Data.Map as Map
+import qualified Data.Set as Set
 import qualified Data.Text as T
 import qualified Data.Text.IO as T
 import qualified Pact.Server.ApiV1Client as Api
@@ -79,6 +80,7 @@ import Frontend.UI.Dialogs.DeployConfirmation (submitTransactionWithFeedback)
 import Frontend.UI.Modal
 import Frontend.UI.TabBar
 import Frontend.UI.Widgets
+import Frontend.UI.Widgets.Helpers (dialogSectionHeading)
 import Frontend.Wallet
 
 -- | A modal for handling sending coin
@@ -134,9 +136,9 @@ previewTransfer
 previewTransfer model fromIndex fromAccount fromGasPayer toAddress crossChainData amount = Workflow $ do
   close <- modalHeader $ text "Transaction Preview"
   elClass "div" "modal__main" $ do
-    elClass "h2" "heading heading_type_h2" $ text "Destination"
+    dialogSectionHeading mempty "Destination"
     divClass "group" $ transactionDisplayNetwork model
-    elClass "h2" "heading heading_type_h2" $ text "Participants"
+    dialogSectionHeading mempty "Participants"
     divClass "group" $ do
       mkLabeledInput True "Sender Account" uiInputElement $ def
         & initialAttributes .~ "disabled" =: "disabled"
@@ -155,7 +157,7 @@ previewTransfer model fromIndex fromAccount fromGasPayer toAddress crossChainDat
         mkLabeledInput True ("Gas Payer (Chain " <> _chainId toChain <> ")") uiInputElement $ def
           & initialAttributes .~ "disabled" =: "disabled"
           & inputElementConfig_initialValue .~ unAccountName (_account_name $ _crossChainData_recipientChainGasPayer ccd)
-    elClass "h2" "heading heading_type_h2" $ text "Transaction Details"
+    dialogSectionHeading mempty "Transaction Details"
     divClass "group" $ do
       void $ mkLabeledInput True "Amount" uiGasPriceInputField $ def
         & initialAttributes .~ "disabled" =: "disabled"
@@ -180,7 +182,7 @@ previewTransfer model fromIndex fromAccount fromGasPayer toAddress crossChainDat
 lookupAccountByKadenaAddress :: KadenaAddress -> Accounts key -> Maybe (Account key)
 lookupAccountByKadenaAddress ka = fmap getFirst . foldMap f
   where f = \case
-          SomeAccount_Account a | accountToKadenaAddress a == ka -> Just $ First a
+          SomeAccount_Account a | accountToKadenaAddress a (_account_chainId a) == ka -> Just $ First a
           _ -> Nothing
 
 -- | Perform a same chain transfer or transfer-create
@@ -224,7 +226,7 @@ sameChainTransfer netInfo fromAccount gasPayer toAccount amount = Workflow $ do
           -- This makes the assumption that the only non-created accounts are
           -- non-vanity: that is, the name is the public key.
           | Right pk <- parsePublicKey (unAccountName $ _kadenaAddress_accountName toAccount)
-          -> HM.singleton "key" $ Aeson.toJSON $ KeySet [toPactPublicKey pk] (Name $ BareName "keys-all" def)
+          -> HM.singleton "key" $ Aeson.toJSON $ KeySet (Set.singleton $ toPactPublicKey pk) (Name $ BareName "keys-all" def)
         _ -> mempty
       pkCaps = Map.unionsWith (<>)
         [ Map.singleton (_keyPair_publicKey $ _account_key gasPayer) [_dappCap_cap defaultGASCapability]
@@ -266,9 +268,9 @@ sendConfig model fromIndex fromAccount = Workflow $ do
   where
     mainSection currentTab = elClass "div" "modal__main" $ do
       (conf, recipient) <- tabPane mempty currentTab SendModalTab_Configuration $ do
-        elClass "h2" "heading heading_type_h2" $ text "Destination"
+        dialogSectionHeading mempty  "Destination"
         divClass "group" $ transactionDisplayNetwork model
-        elClass "h2" "heading heading_type_h2" $ text "Recipient"
+        dialogSectionHeading mempty  "Recipient"
         recipient <- divClass "group" $ do
           kad <- mkLabeledInput True "Kadena Address" uiInputElement def
           let decoded = decodeKadenaAddressText <$> value kad
@@ -280,7 +282,7 @@ sendConfig model fromIndex fromAccount = Workflow $ do
             r <- ExceptT $ first (\_ -> "Invalid kadena address") <$> decoded
             a <- ExceptT $ maybe (Left "Invalid amount") Right <$> amount
             pure (r, a)
-        elClass "h2" "heading heading_type_h2" $ text "Transaction Settings"
+        dialogSectionHeading mempty  "Transaction Settings"
         (conf, _, _) <- divClass "group" $ uiMetaData model Nothing Nothing
         pure (conf, recipient)
       mCaps <- tabPane mempty currentTab SendModalTab_Sign $ do
@@ -320,7 +322,7 @@ sendConfig model fromIndex fromAccount = Workflow $ do
                 -- TODO this bit should have an option with a generic input for Ed25519 keys
                 -- and perhaps be skippable entirely in favour of a blob the user
                 -- can send to someone else to continue the tx on the recipient chain
-                elClass "h2" "heading heading_type_h2" $ text $ "Gas Payer (Chain " <> _chainId toChain <> ")"
+                dialogSectionHeading mempty  $ "Gas Payer (Chain " <> _chainId toChain <> ")"
                 divClass "group" $ elClass "div" "segment segment_type_tertiary labeled-input" $ do
                   divClass "label labeled-input__label" $ text "Account Name"
                   let cfg = def & dropdownConfig_attributes .~ pure ("class" =: "labeled-input__input")
@@ -452,7 +454,7 @@ finishCrossChainTransferConfig model fromIndex fromAccount ucct = Workflow $ do
   close <- modalHeader $ text "Cross chain transfer: unfinished transfer"
   (sender, conf) <- divClass "modal__main" $ do
     el "p" $ text "It looks like you started a cross chain transfer which did not complete correctly."
-    elClass "h2" "heading heading_type_h2" $ text "Transaction Details"
+    dialogSectionHeading mempty  "Transaction Details"
     divClass "group" $ do
       mkLabeledInput True "Request Key" uiInputElement $ def
         & initialAttributes .~ "disabled" =: "disabled"
@@ -467,9 +469,9 @@ finishCrossChainTransferConfig model fromIndex fromAccount ucct = Workflow $ do
         & initialAttributes .~ "disabled" =: "disabled"
         & inputElementConfig_initialValue .~ tshow (_unfinishedCrossChainTransfer_amount ucct)
     el "p" $ text "The coin has been debited from your account but hasn't been redeemed by the recipient."
-    elClass "h2" "heading heading_type_h2" $ text "Transaction Settings"
+    dialogSectionHeading mempty "Transaction Settings"
     (conf, _, _) <- divClass "group" $ uiMetaData model Nothing Nothing
-    elClass "h2" "heading heading_type_h2" $ text "Gas Payer (recipient chain)"
+    dialogSectionHeading mempty "Gas Payer (recipient chain)"
     sender <- divClass "group" $ elClass "div" "segment segment_type_tertiary labeled-input" $ do
       divClass "label labeled-input__label" $ text "Account Name"
       let cfg = def & dropdownConfig_attributes .~ pure ("class" =: "labeled-input__input")
@@ -523,7 +525,7 @@ finishCrossChainTransfer netInfo fromIndex fromAccount ucct toGasPayer = Workflo
       toChain = _unfinishedCrossChainTransfer_recipientChain ucct
       requestKey = _unfinishedCrossChainTransfer_requestKey ucct
   resultOk <- divClass "modal__main" $ do
-    elClass "h2" "heading heading_type_h2" $ text "Transaction Status"
+    dialogSectionHeading mempty "Transaction Status"
 
     (resultOk0, errMsg, retry) <- divClass "group" $ do
       elClass "ol" "transaction_status" $ do
@@ -533,12 +535,12 @@ finishCrossChainTransfer netInfo fromIndex fromAccount ucct toGasPayer = Workflo
         pb <- getPostBuild
         runUnfinishedCrossChainTransfer netInfo fromChain toChain toGasPayer $ requestKey <$ pb
 
-    elClass "h2" "heading heading_type_h2" $ text "Request Key"
+    dialogSectionHeading mempty "Request Key"
     divClass "group" $ text $ Pact.requestKeyToB16Text requestKey
 
     void $ runWithReplace blank $ ffor (leftmost [Just <$> errMsg, Nothing <$ retry]) $ \case
       Just e -> do
-        elClass "h2" "heading heading_type_h2" $ text "Failure"
+        dialogSectionHeading mempty "Failure"
         divClass "group" $ text e
       Nothing ->
         blank
@@ -595,7 +597,7 @@ crossChainTransfer netInfo fromIndex fromAccount toAccount fromGasPayer crossCha
   pb <- getPostBuild
   let fromChain = _account_chainId fromAccount
       toChain = either _kadenaAddress_chainId _account_chainId toAccount
-      toAddress = either id accountToKadenaAddress toAccount
+      toAddress = either id (\a -> accountToKadenaAddress a (_account_chainId a)) toAccount
   -- Client envs for making requests to each chain
   let envFromChain = mkClientEnvs nodeInfos fromChain
   -- Lookup the guard if we don't already have it
@@ -619,7 +621,7 @@ crossChainTransfer netInfo fromIndex fromAccount toAccount fromGasPayer crossCha
     , Status_Done <$ initiatedOk
     ]
   resultOk <- divClass "modal__main" $ do
-    elClass "h2" "heading heading_type_h2" $ text "Transaction Status"
+    dialogSectionHeading mempty "Transaction Status"
 
     (resultOk0, errMsg0, retry0) <- divClass "group" $ do
       elClass "ol" "transaction_status" $ do
@@ -630,14 +632,14 @@ crossChainTransfer netInfo fromIndex fromAccount toAccount fromGasPayer crossCha
         let toGasPayer = _crossChainData_recipientChainGasPayer crossChainData
         runUnfinishedCrossChainTransfer netInfo fromChain toChain toGasPayer initiatedOk
 
-    elClass "h2" "heading heading_type_h2" $ text "Request Key"
+    dialogSectionHeading mempty "Request Key"
     divClass "group" $ void $ runWithReplace (text "Loading...") $ ffor initiatedOk $ \rk ->
       text $ Pact.requestKeyToB16Text rk
 
     let errMsg = leftmost [keySetError, initiatedError, errMsg0]
     void $ runWithReplace blank $ ffor (leftmost [Just <$> errMsg, Nothing <$ retry0]) $ \case
       Just e -> do
-        elClass "h2" "heading heading_type_h2" $ text "Failure"
+        dialogSectionHeading mempty "Failure"
         divClass "group" $ text e
       Nothing -> do
         blank
@@ -658,7 +660,7 @@ crossChainTransfer netInfo fromIndex fromAccount toAccount fromGasPayer crossCha
   pure ((conf, close <> done), never)
   where
     toKS k = Pact.KeySet
-      { Pact._ksKeys = [k]
+      { Pact._ksKeys = Set.singleton k
       , Pact._ksPredFun = Pact.Name $ Pact.BareName "keys-all" def
       }
 

@@ -56,6 +56,7 @@ module Frontend.UI.Widgets
   , accordionItem
   , accordionItem'
   , controlledAccordionItem
+  , accordionHeaderBtn
   , setFocus
   , setFocusOn
   , setFocusOnSelected
@@ -598,9 +599,12 @@ accordionItem' initActive contentClass title inner =
 
 accordionItem :: MonadWidget t m => Bool -> CssClass -> Text -> m a -> m a
 accordionItem initActive contentClass title inner =
-  snd . snd <$> accordionItemWithClick initActive contentClass (text title) inner
+  snd . snd <$> accordionItemWithClick initActive contentClass (divClass "accordion__header-btn-text" $ text title) inner
 
-------------------------------------------------------------------------------
+accordionHeaderBtn :: DomBuilder t m => Text -> m ()
+accordionHeaderBtn = divClass "accordion__header-btn-text" . text
+
+----------------------------------------------------------------------------------
 
 paginationWidget
   :: MonadWidget t m

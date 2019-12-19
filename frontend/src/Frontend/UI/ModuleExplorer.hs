@@ -30,7 +30,7 @@ import           Frontend.UI.ModuleExplorer.ModuleDetails
 import           Frontend.UI.ModuleExplorer.ModuleList
 import           Frontend.UI.Widgets
 ------------------------------------------------------------------------------
-
+--
 type HasUIModuleExplorerModel model key t =
   (HasModuleExplorer model t, HasNetwork model t, HasUIModuleDetailsModel model key t)
 
@@ -105,8 +105,8 @@ browseDeployedTitle
   -> m mConf
 browseDeployedTitle m = do
   let
-    title = el "span" $ do
-      el "span" $ text "Deployed Contracts"
+    title = do
+      accordionHeaderBtn "Deployed Contracts"
       refreshButton "accordion__title-button"
   (onRefrClick, (mListCfg, onSelected)) <-
     accordionItem' True "segment" title $

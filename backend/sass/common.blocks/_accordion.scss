@@ -6,7 +6,7 @@
 
 @import '../include/defs';
 
-$accordion-header-font-size: 14px;
+$accordion-header-font-size: 15px;
 
 // We break with BEM a bit here for simplicity: We use child selectors to
 // simplify the reflex code.
@@ -16,22 +16,30 @@ $accordion-header-font-size: 14px;
 // now.)
 
 .accordion__header {
+  font-family: Arial-BoldMT;
+  color: $black-disabled-bg;
   font-size: $accordion-header-font-size;
   margin-bottom: 16px;
-  margin-top: 0; 
+
+  width: 100%;
+  display: grid;
+  grid-template-columns: 1fr 25fr 1fr;
+}
+
+.accordion__header-btn-text {
+  padding-top: 0.2rem;
 }
 
 .accordion__toggle-button {
-  width: $control-height;
+  width: 24px;
+  height: 24px;
   padding: 0 0;
   margin-right: $medium-margin;
   
   img {
     transition: transform 0.1s;
-    transform: rotate(0deg);
+    transform: scale(0.4) rotate(0deg);
     transform-origin: center center;
-    width: 12px;
-    height: 12px;
   }
 }
 
@@ -40,6 +48,7 @@ $accordion-header-font-size: 14px;
 .accordion__title-button {
   float: right;
   height: $control-height;
+  justify-self: end;
 }
 
 // Info div that gets only shown when collapsed (instead of title button).
@@ -57,10 +66,13 @@ $accordion-header-font-size: 14px;
 }
 
 .accordion-collapsed  .accordion__toggle-button > img {
-  transform: rotate(-90deg);
+  transform: scale(0.4) rotate(-90deg);
 }
 
 .accordion-collapsed .accordion__content {
   display: none;
 }
 
+.deploy-settings-accordion-header__general {
+  margin-top: 0;
+}

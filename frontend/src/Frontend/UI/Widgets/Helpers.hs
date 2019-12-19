@@ -15,6 +15,7 @@ module Frontend.UI.Widgets.Helpers
   , setFocusOn
   , setFocusOnSelected
   , preventScrollWheelAndUpDownArrow
+  , dialogSectionHeading
   ) where
 
 ------------------------------------------------------------------------------
@@ -125,3 +126,6 @@ preventScrollWheelAndUpDownArrow =
             then preventDefault
             else mempty
         ))
+
+dialogSectionHeading :: DomBuilder t m => CssClass -> Text -> m ()
+dialogSectionHeading cls = elClass "h2" (renderClass $ "heading heading_type_h2" <> cls) . text

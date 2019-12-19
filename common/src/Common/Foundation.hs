@@ -3,6 +3,7 @@
 {-# LANGUAGE ExtendedDefaultRules #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE PackageImports #-}
@@ -20,6 +21,9 @@ module Common.Foundation
   , makePactLenses
   , makePactLensesNonClassy
   , makePactPrisms
+  , _PLit
+  , _PGuard
+  , _GKeySet
     -- * Helpers that should really not be here
   , tshow
   , tread
@@ -61,6 +65,9 @@ import qualified Data.Text.Prettyprint.Doc             as Pretty (defaultLayoutO
                                                                   layoutPretty)
 import qualified Data.Text.Prettyprint.Doc.Render.Text as Pretty
 import qualified Pact.Types.Pretty                     as Pretty
+import qualified Pact.Types.PactValue                  as Pact
+import qualified Pact.Types.Term                       as Pact
+import qualified Pact.Types.Exp                        as Pact
 import           Text.Read                             as T
 
 
@@ -142,3 +149,13 @@ makePactLensesNonClassy =
 --   Currently this is just standard `makePrisms`
 makePactPrisms :: Name -> DecsQ
 makePactPrisms = makePrisms
+
+_PGuard :: Prism' Pact.PactValue (Pact.Guard Pact.PactValue)
+_PGuard = prism' Pact.PGuard (\case (Pact.PGuard g) -> Just g; _ -> Nothing)
+
+_GKeySet :: Prism' (Pact.Guard Pact.PactValue) Pact.KeySet
+_GKeySet = prism' Pact.GKeySet (\case (Pact.GKeySet ks) -> Just ks; _ -> Nothing)
+
+_PLit :: Prism' Pact.PactValue Pact.Literal
+_PLit = prism' Pact.PLiteral (\case (Pact.PLiteral l) -> Just l; _ -> Nothing)
+

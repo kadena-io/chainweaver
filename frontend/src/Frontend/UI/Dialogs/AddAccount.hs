@@ -11,6 +11,7 @@ import           Control.Lens
 import           Control.Monad.Trans.Class
 import           Control.Monad.Trans.Maybe
 import           Data.Text (Text)
+import           Data.Aeson (ToJSON,FromJSON)
 ------------------------------------------------------------------------------
 import           Reflex
 import           Reflex.Dom
@@ -20,13 +21,16 @@ import           Frontend.Network (HasNetworkCfg, network_selectedNetwork)
 import           Frontend.JsonData (HasJsonDataCfg)
 import           Frontend.Crypto.Class (HasCrypto)
 import           Frontend.UI.DeploymentSettings (transactionDisplayNetwork)
+
 import           Frontend.UI.Dialogs.AddVanityAccount (uiAddVanityAccountSettings)
 
 import           Frontend.Ide (ide_wallet)
 import           Frontend.UI.Modal
 import           Frontend.UI.Modal.Impl (ModalIde, ModalImpl)
 import           Frontend.UI.Widgets
+import           Frontend.UI.Widgets.Helpers (dialogSectionHeading)
 import           Frontend.Foundation
+import           Frontend.Storage (HasStorage)
 
 import Obelisk.Generated.Static
 
@@ -36,6 +40,8 @@ type HasAddAccountModelCfg model mConf key m t =
   , HasCrypto key (Performable m)
   , HasNetworkCfg mConf t
   , HasJsonDataCfg mConf t
+  , FromJSON key, ToJSON key
+  , HasStorage m
   )
 
 uiAddWalletOnlyAccountDialogButton
@@ -78,21 +84,33 @@ uiCreateWalletStepOne
   -> Event t ()
   -> Workflow t m (Text, (mConf, Event t ()))
 uiCreateWalletStepOne model onClose = Workflow $ do
-  (dSelectedChain, dNotes, onAddVanityAcc) <- modalMain $ do
-    divClass "segment modal__main transaction_details" $ do
-      elClass "h2" "heading heading_type_h2" $ text "Destination"
-      dChainId <- divClass "group segment" $ do
-        transactionDisplayNetwork model
-        userChainIdSelect model
+  pb <- getPostBuild
+  let dInflightAcc = model ^. wallet_accounts . to (fmap findFirstInflightAccount)
 
-      elClass "h2" "heading heading_type_h2" $ text "Reference Data"
-      dNotes <- divClass "group segment" $
-        value <$> mkLabeledClsInput True "Notes" inpElem
+  (dSelectedChain, dNotes, onAddVanityAcc) <- divClass "modal__main" $ do
+    dyn_ $ ffor dInflightAcc $ \case
+      Nothing -> blank
+      Just _ -> divClass "segment modal__main transaction_details" $ do
+        elClass "h2" "heading heading_type_h2" $ text "Notice"
+        divClass "group segment" $ el "p"
+          $ text "An incomplete vanity account was detected and we were unable to verify its existence on the chain. The known details have been pre-populated for you to complete vanity account creation"
 
-      onAddVanityAcc <- fmap snd $ accordionItem' False "add-account__advanced-content" (text "Advanced") $
-        confirmButton def "Create Vanity Account"
+    dialogSectionHeading mempty "Destination"
+    dChainId <- divClass "group" $ do
+      transactionDisplayNetwork model
+      userChainIdSelectWithPreselect model (fmap _account_chainId <$> dInflightAcc)
 
-      pure (dChainId, dNotes, onAddVanityAcc)
+    dialogSectionHeading mempty "Reference Data"
+    dNotes <- divClass "group" $ fmap value $ mkLabeledClsInput True "Notes" $ inpElem $ def
+      & inputElementConfig_setValue .~ tagMaybe (fmap (unAccountNotes . _account_notes) <$> current dInflightAcc) pb
+
+    onAddVanityAcc <- fmap snd $ accordionItem' False "add-account__advanced-content" (accordionHeaderBtn "Advanced") $ do
+      uiButtonDyn (btnCfgPrimary & uiButtonCfg_class <>~ "button_type_confirm") $ dynText $ maybe
+        "Create Vanity Account"
+        (const "Complete Vanity Account")
+        <$> dInflightAcc
+
+    pure (dChainId, dNotes, onAddVanityAcc)
 
   modalFooter $ do
     onCancel <- cancelButton def "Cancel"
@@ -107,15 +125,21 @@ uiCreateWalletStepOne model onClose = Workflow $ do
           pure (net, chain, mkAccountNotes notes)
         newConf = mempty & walletCfg_createWalletOnlyAccount .~ eAddAcc
 
+        eInflightFound = () <$ ffilter isNothing (updated dInflightAcc)
+
+        uiAddVanity = uiAddVanityAccountSettings model eInflightFound
+          <$> dInflightAcc
+          <*> dSelectedChain
+          <*> dNotes
     pure
       ( ("Add Account", (newConf, leftmost [onClose, onCancel]))
       , leftmost
         [ uiWalletOnlyAccountCreated newConf onClose <$> (model ^. ide_wallet . wallet_walletOnlyAccountCreated)
-        , uiAddVanityAccountSettings model dSelectedChain dNotes <$ onAddVanityAcc
+        , current uiAddVanity <@ onAddVanityAcc
         ]
       )
   where
-    inpElem cls = uiInputElement $ def
+    inpElem cfg cls = uiInputElement $ cfg
       & initialAttributes .~
         ( ("class" =: renderClass (cls <> "input")) <>
           ("placeholder" =: "Some personal notes")

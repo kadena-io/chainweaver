@@ -270,12 +270,12 @@ fetchModule networkL onReq = do
     getModule :: PactValue -> Either Text (ModuleDef (Term Name))
     getModule  = \case
       PObject obj -> do
-        mods <- fmap fileModules $ getCode obj
+        mods <- fileModules =<< getCode obj
         case Map.elems mods of
           []   -> throwError "No module in response"
           m:[] -> pure m
           _    -> throwError "More than one module in response?"
-      _ -> throwError "Server response did not contain a  TObject module description."
+      _ -> throwError "Server response did not contain a PObject module description."
 
     getCode :: ObjectMap PactValue -> Either Text Code
     getCode (ObjectMap props) = do

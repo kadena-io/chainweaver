@@ -65,7 +65,7 @@ fileDetails (selectedRef, selected) = do
   where
     moduleRefs :: [ModuleRef]
     moduleRefs =
-      map (ModuleRef (ModuleSource_File selectedRef)) . Map.keys . fileModules $ selected
+      map (ModuleRef (ModuleSource_File selectedRef)) . Map.keys . fileModulesDiscardingErrors $ selected
 
     moduleTitle = elClass "h2" "heading heading_type_h2" $ do
       text $ fileRefName selectedRef

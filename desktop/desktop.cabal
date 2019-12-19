@@ -2,6 +2,7 @@ name: desktop
 version: 0.1
 cabal-version: >= 1.8
 build-type: Simple
+data-files: tests/golden-files/*.golden.json
 
 library
   hs-source-dirs: src
@@ -60,8 +61,6 @@ library
 
 test-suite golden-tests
   type: exitcode-stdio-1.0
-
-  other-modules: GoldenHelper
 
   main-is: GoldenTests.hs
 

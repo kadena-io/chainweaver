@@ -90,12 +90,13 @@ $input-padding: 0 $medium-padding;
 
 // Other colors:
 
-$confirm-color: #4499d9;
-$confirm-color-highlight: #3489c9;
 $chainweaver-blue: #57b5e1;
+$confirm-color: $chainweaver-blue;
+$confirm-color-highlight: #3489c9;
 $chainweaver-dark-blue: #4494ba;
 $chainweaver-orange: #f4b23e;
 $danger-red: #f43e3e;
+
 //checkbox:
 
 $checked-background: #4499d9;
