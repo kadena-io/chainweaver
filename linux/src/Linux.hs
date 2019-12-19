@@ -77,7 +77,7 @@ mkFfi = do
         , _appFFI_moveToForeground = putMVar moveToForegroundMV ()
         , _appFFI_resizeWindow = putMVar resizeMV
         , _appFFI_global_openFileDialog = putMVar openFileDialogMV ()
-        , _appFFI_global_getStorageDirectory = (\hd -> hd </> ".local" </> "shared" </> "chainweaver") <$> getHomeDirectory
+        , _appFFI_global_getStorageDirectory = (\hd -> hd </> ".local" </> "share" </> "chainweaver") <$> getHomeDirectory
         }
   pure (ffi, LinuxMVars
     { _linuxMVars_openFileDialog = openFileDialogMV

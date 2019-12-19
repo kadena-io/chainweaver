@@ -161,13 +161,17 @@ in obApp // rec {
       source $stdenv/setup
       set -ex
       mkdir $out
-      export LIBPATH=/usr/lib/chainweaver
-      export LIBEXECPATH=/usr/libexec/chainweaver
-      export BINPATH=/usr/bin
-      export DEBDIR=$TMPDIR/${linuxAppName}-1
+      export PREFIX=/usr
+      export LIBPATH=$PREFIX/lib/chainweaver
+      export LIBEXECPATH=$PREFIX/libexec/chainweaver
+      export BINPATH=$PREFIX/bin
+      export SHAREPATH=$PREFIX/share
+
+      export DEBDIR=$TMPDIR${linuxAppName}-1
       export BINDIR=$DEBDIR$BINPATH
       export LIBEXECDIR=$DEBDIR$LIBEXECPATH
       export LIBDIR=$DEBDIR$LIBPATH
+      export SHAREDIR=$DEBDIR$SHAREPATH
       export TMPEXE=$TMPDIR/${linuxAppName}
       export CHAINWEAVER_LIBEXEC_EXE=$LIBEXECDIR/${linuxAppName}
       export CHAINWEAVER_BIN_EXE=$BINDIR/${linuxAppName}
@@ -213,9 +217,23 @@ in obApp // rec {
         path=$1
         dep_name=$(basename $path | cut -f2- -d'-')
 
-        mkdir -p $LIBDIR/gio/$dep_name
-        cp -L $path/lib/gio/modules/* $LIBDIR/gio/$dep_name
-        wrapperArgs+="--prefix GIO_EXTRA_MODULES : $LIBPATH/gio/$dep_name "
+        if [ -d "$path/lib/gio/modules" ]; then
+          mkdir -p $LIBDIR/gio/$dep_name
+          cp -L $path/lib/gio/modules/* $LIBDIR/gio/$dep_name
+          wrapperArgs+="--prefix GIO_EXTRA_MODULES : $LIBPATH/gio/$dep_name "
+        fi
+      }
+
+      function copy_gtk_settings() {
+        path=$1
+        gsettings_path=$path/share/gsettings-schemas
+
+        if [ -d $gsettings_path ]; then
+          cp -r $gsettings_path $SHAREDIR/gsettings-schemas
+          for d in $(find $gsettings_path -maxdepth 1 -type d); do
+            wrapperArgs+="--prefix XDG_DATA_DIRS : $SHAREDIR/gsettings-schema/$(basename $d)"
+          done;
+        fi
       }
 
       # I can't get this in the graph for some silly reason
@@ -237,9 +255,8 @@ in obApp // rec {
                fi;
             fi
           done;
-          if [ -d "$path/lib/gio/modules" ]; then
-            copy_gio_modules $path
-          fi;
+          copy_gio_modules $path
+          copy_gtk_settings $path;
         fi;
         read dummy
         read nrRefs
