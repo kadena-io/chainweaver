@@ -47,6 +47,7 @@ library
                , lens
                , megaparsec
                , modern-uri
+               , monoidal-containers
                , mtl
                , newtype-generics
                , obelisk-executable-config-lookup
