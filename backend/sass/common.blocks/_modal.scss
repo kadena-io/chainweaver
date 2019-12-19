@@ -47,14 +47,14 @@
 }
 
 .modal__header {
+  display:flex;
+  justify-content: space-between;
+  align-items: center;
   background: $black-disabled-bg;
   color: $white;
   border-top-left-radius: $std-border-radius;
   border-top-right-radius: $std-border-radius;
   padding: $normal-padding;
-}
-
-.modal__heading {
   font-family: WorkSans-Medium;
   font-weight: 500;
   font-size: 20px;
@@ -62,16 +62,18 @@
 }
 
 .modal__button-close {
-  float: right;
   width: 22px;
   height: 22px;
   padding: 0;
-  margin: 3px 0 0 0;
-  line-height: 1px;
+  line-height: 1rem;
   font-size: $primary-font-size;
 
   color: $white;
   border-color: $primary-border-color;
+}
+
+.modal__button-close-x {
+  height: 18px;
 }
 
 .modal__main {
