@@ -84,7 +84,7 @@ import Frontend.Storage
 import Frontend.Network
 
 accountIsCreated :: Account -> AccountCreated
-accountIsCreated = maybe AccountCreated_No (const AccountCreated_Yes) . _accountInfo_balance . getAccountInfo
+accountIsCreated = maybe AccountCreated_No (const AccountCreated_Yes) . _accountInfo_balance . view accountInfo
 
 accountToKadenaAddress :: Account -> KadenaAddress
 accountToKadenaAddress a = mkKadenaAddress (accountIsCreated a) (accountChain a) (accountToName a)

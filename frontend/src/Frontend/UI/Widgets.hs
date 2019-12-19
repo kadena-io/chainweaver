@@ -544,14 +544,16 @@ validatedInputWithButton uCls check placeholder buttonText = do
 
       pure update
 
-uiAccountBalance' :: AccountInfo -> Text
-uiAccountBalance' i = case _accountInfo_balance i of
+
+uiAccountBalance' :: HasAccountInfo a => a -> Text
+uiAccountBalance' acc = case _accountInfo_balance i of
   Nothing -> "Unknown"
   Just b -> mconcat
     [ tshow $ unAccountBalance b
     , " KDA"
     , maybe "" (const "*") (_accountInfo_unfinishedCrossChainTransfer i)
     ]
+  where i = view accountInfo acc
 
 uiAccountBalance :: Maybe AccountBalance -> Text
 uiAccountBalance = \case

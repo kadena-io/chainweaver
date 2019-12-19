@@ -87,7 +87,7 @@ uiWalletRefreshButton
     )
   => model
   -> m mConf
-uiWalletRefreshButton _model = do
+uiWalletRefreshButton model = do
   eRefresh <- uiButton (def & uiButtonCfg_class <>~ " main-header__wallet-refresh-button")  (text "Refresh")
   pure $ mempty & walletCfg_refreshBalances <>~ eRefresh
 
@@ -181,7 +181,7 @@ uiAccountItem
 uiAccountItem (name, chain) acc = do
   elClass "tr" "wallet__table-row" $ do
     let td = elClass "td" "wallet__table-cell"
-        info = _vanityAccount_info <$> acc
+        info = view accountInfo <$> acc
 
     td $ divClass "wallet__table-wallet-address" $ text $ unAccountName name
     td $ text $ Pact._chainId chain
