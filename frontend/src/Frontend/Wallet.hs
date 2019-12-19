@@ -43,7 +43,6 @@ module Frontend.Wallet
   , findNextKey
   , findFirstVanityAccount
   , getSigningPairs
-  , findFirstInflightAccount
   , module Common.Wallet
   ) where
 
@@ -131,17 +130,11 @@ data Wallet key t = Wallet
 
 makePactLenses ''Wallet
 
-findFirstInflightAccount :: Accounts -> Maybe (AccountName, ChainId, VanityAccount)
-findFirstInflightAccount as = do
+-- | Find the first vanity account in the wallet which satisfies the predicate
+findFirstVanityAccount :: (VanityAccount -> Bool) -> Accounts -> Maybe (AccountName, ChainId, VanityAccount)
+findFirstVanityAccount predicate as = do
   (n, cm) <- Map.lookupMin $ _accounts_vanity as
-  (c, va) <- Map.lookupMin $ Map.filter _vanityAccount_inflight cm
-  pure (n, c, va)
-
--- | Find the first vanity account in the wallet
-findFirstVanityAccount :: Accounts -> Maybe (AccountName, ChainId, VanityAccount)
-findFirstVanityAccount as = do
-  (n, cm) <- Map.lookupMin $ _accounts_vanity as
-  (c, va) <- Map.lookupMin cm
+  (c, va) <- Map.lookupMin $ Map.filter predicate cm
   pure (n, c, va)
 
 snocIntMap :: a -> IntMap a -> IntMap a
