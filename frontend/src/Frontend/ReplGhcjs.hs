@@ -153,11 +153,8 @@ walletSidebar sidebarExtra = elAttr "div" ("class" =: "sidebar") $ do
     route <- demux . fmap (\(r :/ _) -> Some r) <$> askRoute
 
     let sidebarLink r@(r' :/ _) label = routeLink r $ do
-          let mkAttrs sel = "class" =: ("sidebar__link" <> if sel then " selected" else "")
-          elDynAttr "div" (mkAttrs <$> demuxed route (Some r')) $ do
-            elAttr "img" ("class" =: "highlighted" <> "src" =: routeIcon r) blank
-            elAttr "img" ("class" =: "normal" <> "src" =: routeIcon r) blank
-            elAttr "span" ("class" =: "sidebar__link-label") $ text label
+          let selected = demuxed route (Some r')
+          void $ uiSidebarIcon selected (routeIcon r) label
     sidebarLink (FrontendRoute_Keys :/ ()) "Keys"
     sidebarLink (FrontendRoute_Accounts :/ ()) "Accounts"
     sidebarLink (FrontendRoute_Contracts :/ Nothing) "Contracts"

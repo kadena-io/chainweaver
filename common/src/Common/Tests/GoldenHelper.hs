@@ -1,5 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
-module GoldenHelper where
+module Common.Tests.GoldenHelper where
 
 import Test.Tasty
 import Test.Tasty.Golden
