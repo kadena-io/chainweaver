@@ -411,6 +411,11 @@ lookupAccountRef (Some ref) accounts = case ref of
 accountUnfinishedCrossChainTransfer :: Account -> Maybe UnfinishedCrossChainTransfer
 accountUnfinishedCrossChainTransfer = _accountInfo_unfinishedCrossChainTransfer . getAccountInfo
 
+accountBalance :: Account -> Maybe AccountBalance
+accountBalance (r :=> Identity a) = _accountInfo_balance $ case r of
+  AccountRef_NonVanity _ _ ->  _nonVanityAccount_info a
+  AccountRef_Vanity _ _ -> _vanityAccount_info a
+
 accountToName :: Account -> AccountName
 accountToName (r :=> _) = case r of
   AccountRef_Vanity n _ -> n
