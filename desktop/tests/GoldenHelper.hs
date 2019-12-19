@@ -1,1 +1,0 @@
-../../common/tests/GoldenHelper.hs

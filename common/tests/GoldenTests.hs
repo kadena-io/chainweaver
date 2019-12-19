@@ -13,7 +13,7 @@ import Common.Wallet (AccountBalance (..), AccountName (..), UnfinishedCrossChai
 import Pact.Types.Command (RequestKey (..))
 import qualified Pact.Types.Hash as Hash
 
-import GoldenHelper
+import Common.Tests.GoldenHelper
 
 goldenTests :: [GTest]
 goldenTests =
@@ -41,4 +41,3 @@ goldenTests =
 main :: IO ()
 main = defaultMain
   $ testGroup "Golden Tests - Common" $ fmap toGoldenTest goldenTests
-

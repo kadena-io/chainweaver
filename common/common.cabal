@@ -25,6 +25,8 @@ library
                , pact
                , split
                , bytestring
+               , tasty
+               , tasty-golden
                , template-haskell
                , megaparsec
                , safe
@@ -43,10 +45,10 @@ library
     Common.Foundation
     Common.Wallet
 
+    Common.Tests.GoldenHelper
+
 test-suite golden-tests
   type: exitcode-stdio-1.0
-
-  other-modules: GoldenHelper
 
   main-is: GoldenTests.hs
   hs-source-dirs: tests
