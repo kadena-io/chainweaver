@@ -1,1 +1,1 @@
-(import ./. {}).mac
+import ./release.nix
