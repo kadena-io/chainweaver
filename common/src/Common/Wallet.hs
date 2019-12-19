@@ -5,7 +5,6 @@
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE LambdaCase #-}
-{-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE PatternGuards #-}
 {-# LANGUAGE TemplateHaskell #-}
@@ -31,6 +30,9 @@ module Common.Wallet
   , UnfinishedCrossChainTransfer(..)
   , KeyStorage
   , Account
+    -- * Prisms for working directly with Account
+  , _VanityAccount
+  , _NonVanityAccount
   , accountUnfinishedCrossChainTransfer
   , accountToName
   , accountNotes
@@ -681,3 +683,18 @@ storageAccountInfo net (Some ref) = _AccountStorage . at net . _Just . case ref 
     accounts_nonVanity . at pk . _Just . at chain . _Just . nonVanityAccount_info
   AccountRef_Vanity name chain ->
     accounts_vanity . at name . _Just . at chain . _Just . vanityAccount_info
+
+_VanityAccount :: Prism' Account (AccountName, ChainId, VanityAccount)
+_VanityAccount = prism' (\(a,b,c) -> AccountRef_Vanity a b :=> Identity c)
+  (\case
+    AccountRef_Vanity a b :=> Identity c -> Just (a,b,c)
+    _ -> Nothing
+  )
+
+_NonVanityAccount :: Prism' Account (PublicKey, ChainId, NonVanityAccount)
+_NonVanityAccount = prism' (\(a,b,c) -> AccountRef_NonVanity a b :=> Identity c)
+  (\case
+    AccountRef_NonVanity a b :=> Identity c -> Just (a,b,c)
+    _ -> Nothing
+  )
+

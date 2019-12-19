@@ -49,6 +49,7 @@ import           Frontend.UI.Widgets
 import           Frontend.Foundation
 import           Frontend.JsonData (HasJsonData, HasJsonDataCfg)
 import           Frontend.UI.Dialogs.AccountDetails (uiAccountDetails)
+import           Frontend.UI.Dialogs.KeyDetails (uiKeyDetails)
 import           Frontend.UI.Dialogs.Receive (uiReceiveModal)
 import           Frontend.UI.Dialogs.Send (uiSendModal)
 import           Frontend.UI.Modal
@@ -76,7 +77,7 @@ type HasUiWalletModelCfg model mConf key m t =
 
 -- | Possible actions from an account
 data AccountDialog
-  = AccountDialog_Details AccountName Account
+  = AccountDialog_Details Account
   | AccountDialog_Receive AccountName AccountCreated ChainId
   | AccountDialog_Send Account
 
@@ -163,7 +164,7 @@ uiAccountItems model = do
     onAccountModal = switchDyn $ leftmost . Map.elems <$> events
 
     accModal n = Just . \case
-      AccountDialog_Details name acc -> uiAccountDetails n name acc
+      AccountDialog_Details acc -> uiAccountDetails n acc
       AccountDialog_Receive name created chain -> uiReceiveModal model name created (Just chain)
       AccountDialog_Send acc -> uiSendModal model acc
 
@@ -199,7 +200,7 @@ uiAccountItem (name, chain) acc = do
       onDetails <- detailsButton (cfg & uiButtonCfg_class <>~ " wallet__table-button--hamburger")
 
       pure $ leftmost
-        [ AccountDialog_Details name . (AccountRef_Vanity name chain ==>) <$> current acc <@ onDetails
+        [ AccountDialog_Details . (AccountRef_Vanity name chain ==>) <$> current acc <@ onDetails
         , AccountDialog_Receive name AccountCreated_Yes chain <$ recv
         , AccountDialog_Send . (AccountRef_Vanity name chain ==>) <$> current acc <@ send
         ]
@@ -278,11 +279,13 @@ uiKeyItems model = do
     keyModal = Just . \case
       KeyDialog_Receive name created -> uiReceiveModal model name created Nothing
       KeyDialog_Send acc -> uiSendModal model acc
+      KeyDialog_Details key -> uiKeyDetails model key
 
 -- | Dialogs which can be launched from keys.
-data KeyDialog
+data KeyDialog key
   = KeyDialog_Receive AccountName AccountCreated
   | KeyDialog_Send Account
+  | KeyDialog_Details (Key key)
 
 ------------------------------------------------------------------------------
 -- | Display a key as list item together with its name.
@@ -291,7 +294,7 @@ uiKeyItem
   => model
   -> IntMap.Key
   -> Dynamic t (Key key)
-  -> m (Event t KeyDialog)
+  -> m (Event t (KeyDialog key))
 uiKeyItem model _index key = do
   hidden <- holdUniqDyn $ _key_hidden <$> key
   switchHold never <=< dyn $ ffor hidden $ \case
@@ -333,11 +336,11 @@ uiKeyItem model _index key = do
           let pk = AccountName . keyToText . _keyPair_publicKey . _key_pair <$> current key
 
           pure $ leftmost
-            [ -- TODO details dialog
+            [ KeyDialog_Details <$> current key <@ onDetails
             -- TODO we need a way of adding these accounts when they already
             -- exist too, e.g. for users who are recovering wallets. An
             -- automatic account discovery thing would work well.
-              (\x -> KeyDialog_Receive x AccountCreated_No) <$> pk <@ recv
+            , (\x -> KeyDialog_Receive x AccountCreated_No) <$> pk <@ recv
             ]
         pure (clk, dialog)
 

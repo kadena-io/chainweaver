@@ -11,6 +11,7 @@ module Frontend.UI.Dialogs.KeyDetails
 import           Control.Lens
 import           Data.Text (Text)
 import           Data.Map (Map)
+import qualified Data.Map as Map
 
 import Pact.Types.ChainId (ChainId)
 import qualified Pact.Types.ChainId as Pact
@@ -18,28 +19,34 @@ import qualified Pact.Types.ChainId as Pact
 import           Reflex
 import           Reflex.Dom hiding (Key)
 ------------------------------------------------------------------------------
+import           Frontend.Network
 import           Frontend.UI.Modal
 import           Frontend.Wallet
 import           Frontend.UI.Widgets
 import           Frontend.Foundation
 ------------------------------------------------------------------------------
 
-type HasUiKeyDetailsModelCfg mConf key t =
+type HasUiKeyDetailsModelCfg model mConf key t =
   ( Monoid mConf
   , Flattenable mConf t
   , HasWalletCfg mConf key t
+  , HasNetwork model t
+  , HasWallet model key t
   )
 
 uiKeyDetails
-  :: ( HasUiKeyDetailsModelCfg mConf key t
+  :: ( HasUiKeyDetailsModelCfg model mConf key t
      , MonadWidget t m
      )
   => model
   -> Key key
-  -> Dynamic t (Map ChainId NonVanityAccount)
   -> Event t ()
   -> m (mConf, Event t ())
-uiKeyDetails model key keyChainInfo _onCloseExternal = mdo
+uiKeyDetails model key _onCloseExternal = mdo
+  let keyChainInfo = ffor2 (model ^. network_selectedNetwork) (model ^. wallet_accounts) $ \net (AccountStorage storage) -> fromMaybe mempty $ do
+        accounts <- Map.lookup net storage
+        let pk = _keyPair_publicKey $ _key_pair key
+        Map.lookup pk $ _accounts_nonVanity accounts
   onClose <- modalHeader $ dynText title
   dwf <- workflow (uiKeyDetailsDetails model key keyChainInfo onClose)
   let (title, (conf, dEvent)) = fmap splitDynPure $ splitDynPure dwf
@@ -49,7 +56,7 @@ uiKeyDetails model key keyChainInfo _onCloseExternal = mdo
          )
 
 uiKeyDetailsDetails
-  :: ( HasUiKeyDetailsModelCfg mConf key t
+  :: ( HasUiKeyDetailsModelCfg model mConf key t
      , MonadWidget t m
      )
   => model

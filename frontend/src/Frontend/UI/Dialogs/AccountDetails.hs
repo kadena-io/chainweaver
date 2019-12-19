@@ -38,14 +38,13 @@ uiAccountDetails
      , MonadWidget t m
      )
   => NetworkName
-  -> AccountName
   -> Account
   -> Event t ()
   -> m (mConf, Event t ())
-uiAccountDetails network name a _onCloseExternal = mdo
+uiAccountDetails netname a _onCloseExternal = mdo
   onClose <- modalHeader $ dynText title
 
-  dwf <- workflow (uiAccountDetailsDetails network name a onClose)
+  dwf <- workflow (uiAccountDetailsDetails netname a onClose)
 
   let (title, (conf, dEvent)) = fmap splitDynPure $ splitDynPure dwf
 
@@ -61,15 +60,16 @@ uiAccountDetailsDetails
      , MonadWidget t m
      )
   => NetworkName
-  -> AccountName
   -> Account
   -> Event t ()
   -> Workflow t m (Text, (mConf, Event t ()))
-uiAccountDetailsDetails network name a onClose = Workflow $ do
+uiAccountDetailsDetails netname a onClose = Workflow $ do
   let kAddr = textKadenaAddress $ accountToKadenaAddress a
       chain = accountChain a
+      vanityName = a ^? _VanityAccount . _1
+      nameOrPubKey = accountToName a
 
-  let displayText lbl v cls =
+      displayText lbl v cls =
         let
           attrFn cfg = uiInputElement $ cfg
             & initialAttributes <>~ ("disabled" =: "true" <> "class" =: (" " <> cls))
@@ -79,8 +79,9 @@ uiAccountDetailsDetails network name a onClose = Workflow $ do
   notesEdit <- divClass "modal__main account-details" $ do
     dialogSectionHeading mempty "Info"
     divClass "group" $ do
-      -- Account name
-      _ <- displayText "Account Name" (unAccountName name) "account-details__name"
+      -- Account name, only shown on Vanity accounts, as NonVanity uses the public key.
+      forM_ vanityName $ \n ->
+        displayText "Account Name" (unAccountName n) "account-details__name"
       -- Public key
       _ <- displayText "Public Key" (keyToText $ accountKey a) "account-details__pubkey"
       -- Chain id
@@ -88,11 +89,12 @@ uiAccountDetailsDetails network name a onClose = Workflow $ do
       -- separator
       horizontalDashedSeparator
       -- Notes edit
-      notesEdit0 :: Maybe (Dynamic t Text) <- case a of
-        AccountRef_Vanity _ _ :=> Identity va -> fmap (Just . value) $ mkLabeledClsInput False "Notes" $ \cls -> uiInputElement $ def
-          & inputElementConfig_initialValue .~ unAccountNotes (_vanityAccount_notes va)
+      notesEdit0 :: Maybe (Dynamic t Text) <- case accountNotes a of
+        -- Only vanity accounts have notes.
+        Just va -> fmap (Just . value) $ mkLabeledClsInput False "Notes" $ \cls -> uiInputElement $ def
+          & inputElementConfig_initialValue .~ unAccountNotes va
           & initialAttributes . at "class" %~ pure . maybe (renderClass cls) (mappend (" " <> renderClass cls))
-        AccountRef_NonVanity _ _ :=> _ -> pure Nothing
+        _ -> pure Nothing
       -- separator
       horizontalDashedSeparator
       -- Kadena Address
@@ -111,11 +113,11 @@ uiAccountDetailsDetails network name a onClose = Workflow $ do
     let
       onNotesUpdate = case notesEdit of
         Nothing -> never
-        Just notes -> (network, name, chain,) . mkAccountNotes <$> current notes <@ onDone
+        Just notes -> (netname, nameOrPubKey, chain,) . mkAccountNotes <$> current notes <@ onDone
       conf = mempty & walletCfg_updateAccountNotes .~ onNotesUpdate
 
     pure ( ("Account Details", (conf, leftmost [onClose, onDone]))
-         , uiDeleteConfirmation network name chain onClose <$ onRemove
+         , uiDeleteConfirmation netname nameOrPubKey chain onClose <$ onRemove
          )
 
 uiDeleteConfirmation
