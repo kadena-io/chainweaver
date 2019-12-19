@@ -176,7 +176,8 @@ uiAccountItem
 uiAccountItem acc = do
   elClass "tr" "wallet__table-row" $ do
     let td = elClass "td" "wallet__table-cell"
-        info = getAccountInfo <$> acc
+        info = view accountInfo <$> acc
+        notes = accountNotes <$> acc
 
     td $ divClass "wallet__table-wallet-address" $ dynText $ ffor acc $ unAccountName . accountToName
     td $ dynText $ ffor acc $ Pact._chainId . accountChain

@@ -207,7 +207,7 @@ publicKeysForAccounts allAccounts caps =
   in Map.fromList $ fmapMaybe toPublicKey $ Map.toList caps
 
 lookupAccountBalance :: Some AccountRef -> Accounts -> Maybe (Maybe AccountBalance)
-lookupAccountBalance ref = fmap (_accountInfo_balance . getAccountInfo) . lookupAccountRef ref
+lookupAccountBalance ref = fmap accountBalance . lookupAccountRef ref
 
 buildDeploymentSettingsResult
   :: ( HasNetwork model t

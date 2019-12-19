@@ -102,7 +102,7 @@ uiChainTable model keyChainInfo = do
   _events <- elAttr "table" tableAttrs $ do
     el "colgroup" $ do
       elAttr "col" ("style" =: "width: 40%") blank
-      elAttr "col" ("style" =: "width: 50%") blank
+      elAttr "col" ("style" =: "width: 40%") blank
       elAttr "col" ("style" =: "width: 20%") blank
     el "thead" $ el "tr" $ do
       let mkHeading = elClass "th" "key-details__table-heading" . text
@@ -132,22 +132,17 @@ uiChainTableRow
   -> m (Event t ())
 uiChainTableRow _model chain dNonVanity = do
   let
-    keyDeetCls = mappend "key-details__"
-
-    showBal (Just b) = tshow b <> " KDA"
-    showBal Nothing = "Unknown"
+    keyDetCls = mappend "key-details__"
 
     burgerBtn = tableButton "TBC" $ def
       & uiButtonCfg_class .~ "key-details__table-button--hamburger"
 
-  elClass "tr" (keyDeetCls "table-row") $ do
+  elClass "tr" (keyDetCls "table-row") $ do
     let
       td :: DomBuilder t m => m a -> m a
-      td = elClass "td" (keyDeetCls "table-cell")
+      td = elClass "td" (keyDetCls "table-cell")
 
-    td $ divClass (keyDeetCls "table-id") $ text $ Pact._chainId chain
-    td $ divClass (keyDeetCls "table-balance") $ dynText
-      $ fmap (showBal .fmap unAccountBalance . _accountInfo_balance . _nonVanityAccount_info) dNonVanity
-
+    td $ divClass (keyDetCls "table-id") $ text $ Pact._chainId chain
+    td $ divClass (keyDetCls "table-balance") $ dynText $ fmap uiAccountBalance' dNonVanity
     -- TODO: Wire through enough info for 'uiSendModal'
-    td $ divClass (keyDeetCls "table-button") burgerBtn
+    td $ divClass (keyDetCls "table-button") burgerBtn

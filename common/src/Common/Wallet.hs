@@ -34,8 +34,8 @@ module Common.Wallet
   , accountUnfinishedCrossChainTransfer
   , accountToName
   , accountNotes
-  , getAccountInfo
   , accountChain
+  , accountBalance
   , accountKey
   , AccountStorage(..)
   , _AccountStorage
@@ -53,9 +53,7 @@ module Common.Wallet
   , NonVanityAccount(..)
   , nonVanityAccount_info
   , AccountInfo(..)
-  , accountInfo_balance
-  , accountInfo_unfinishedCrossChainTransfer
-  , accountInfo_hidden
+  , HasAccountInfo(..)
   , blankAccountInfo
   , pactGuardTypeText
   , fromPactGuard
@@ -392,11 +390,6 @@ accountNotes = \case
   AccountRef_NonVanity _ _ :=> _ -> Nothing
   AccountRef_Vanity _ _ :=> Identity v -> Just $ _vanityAccount_notes v
 
-getAccountInfo :: Account -> AccountInfo
-getAccountInfo (r :=> Identity a) = case r of
-  AccountRef_Vanity _ _ -> _vanityAccount_info a
-  AccountRef_NonVanity _ _ -> _nonVanityAccount_info a
-
 lookupAccountRef :: Some AccountRef -> Accounts -> Maybe Account
 lookupAccountRef (Some ref) accounts = case ref of
   AccountRef_Vanity an c -> do
@@ -407,14 +400,6 @@ lookupAccountRef (Some ref) accounts = case ref of
     cs <- Map.lookup pk $ _accounts_nonVanity accounts
     nv <- Map.lookup c cs
     pure $ ref ==> nv
-
-accountUnfinishedCrossChainTransfer :: Account -> Maybe UnfinishedCrossChainTransfer
-accountUnfinishedCrossChainTransfer = _accountInfo_unfinishedCrossChainTransfer . getAccountInfo
-
-accountBalance :: Account -> Maybe AccountBalance
-accountBalance (r :=> Identity a) = _accountInfo_balance $ case r of
-  AccountRef_NonVanity _ _ ->  _nonVanityAccount_info a
-  AccountRef_Vanity _ _ -> _vanityAccount_info a
 
 accountToName :: Account -> AccountName
 accountToName (r :=> _) = case r of
@@ -669,6 +654,26 @@ makePactLenses ''VanityAccount
 makePactLenses ''NonVanityAccount
 makePactLenses ''Accounts
 makePactPrisms ''AccountStorage
+
+instance HasAccountInfo NonVanityAccount where accountInfo = nonVanityAccount_info
+instance HasAccountInfo VanityAccount where accountInfo = vanityAccount_info
+
+instance HasAccountInfo (DSum AccountRef Identity) where
+  accountInfo = lens
+    (\(r :=> Identity a) -> case r of
+      AccountRef_NonVanity _ _ -> _nonVanityAccount_info a
+      AccountRef_Vanity _ _ -> _vanityAccount_info a
+    )
+    (\(r :=> Identity a) newInfo -> case r of
+      AccountRef_NonVanity pk c -> AccountRef_NonVanity pk c :=> Identity (NonVanityAccount newInfo)
+      AccountRef_Vanity an c -> AccountRef_Vanity an c :=> Identity (a & vanityAccount_info .~ newInfo)
+    )
+
+accountUnfinishedCrossChainTransfer :: Account -> Maybe UnfinishedCrossChainTransfer
+accountUnfinishedCrossChainTransfer = view (accountInfo . accountInfo_unfinishedCrossChainTransfer)
+
+accountBalance :: Account -> Maybe AccountBalance
+accountBalance = view (accountInfo . accountInfo_balance)
 
 storageAccountInfo :: NetworkName -> Some AccountRef -> Traversal' AccountStorage AccountInfo
 storageAccountInfo net (Some ref) = _AccountStorage . at net . _Just . case ref of
