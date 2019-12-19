@@ -16,7 +16,7 @@ import Pact.Types.ChainId (ChainId)
 import qualified Pact.Types.ChainId as Pact
 ------------------------------------------------------------------------------
 import           Reflex
-import           Reflex.Dom
+import           Reflex.Dom hiding (Key)
 ------------------------------------------------------------------------------
 import           Frontend.UI.Modal
 import           Frontend.Wallet
@@ -35,13 +35,13 @@ uiKeyDetails
      , MonadWidget t m
      )
   => model
-  -> PublicKey
+  -> Key key
   -> Dynamic t (Map ChainId NonVanityAccount)
   -> Event t ()
   -> m (mConf, Event t ())
-uiKeyDetails model pubKey keyChainInfo _onCloseExternal = mdo
+uiKeyDetails model key keyChainInfo _onCloseExternal = mdo
   onClose <- modalHeader $ dynText title
-  dwf <- workflow (uiKeyDetailsDetails model pubKey keyChainInfo onClose)
+  dwf <- workflow (uiKeyDetailsDetails model key keyChainInfo onClose)
   let (title, (conf, dEvent)) = fmap splitDynPure $ splitDynPure dwf
   mConf <- flatten =<< tagOnPostBuild conf
   return ( mConf
@@ -53,11 +53,11 @@ uiKeyDetailsDetails
      , MonadWidget t m
      )
   => model
-  -> PublicKey
+  -> Key key
   -> Dynamic t (Map ChainId NonVanityAccount)
   -> Event t ()
   -> Workflow t m (Text, (mConf, Event t ()))
-uiKeyDetailsDetails model pubKey keyChainInfo onClose = Workflow $ do
+uiKeyDetailsDetails model key keyChainInfo onClose = Workflow $ do
   let displayText lbl v cls =
         let
           attrFn cfg = uiInputElement $ cfg
@@ -68,7 +68,10 @@ uiKeyDetailsDetails model pubKey keyChainInfo onClose = Workflow $ do
   conf <- divClass "modal__main key-details" $ do
     _ <- divClass "group" $ do
       -- Public key
-      displayText "Public Key" (keyToText pubKey) "key-details__pubkey"
+      _ <- displayText "Public Key" (keyToText $ _keyPair_publicKey $ _key_pair key) "key-details__pubkey"
+      -- Notes
+      _ <- displayText "Notes" (unAccountNotes $ _key_notes key) "key-details__notes"
+      pure ()
 
     _ <- elClass "h2" "heading heading_type_h2" $ text "Chain Specific Info"
     divClass "group" $
