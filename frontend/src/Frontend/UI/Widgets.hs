@@ -64,6 +64,7 @@ module Frontend.UI.Widgets
   , addNoAutofillAttrs
   , horizontalDashedSeparator
   , dimensionalInputWrapper
+  , uiSidebarIcon
   ) where
 
 
@@ -729,3 +730,13 @@ predefinedChainIdDisplayed cid _ = do
     & initialAttributes %~ Map.insert "disabled" ""
     & inputElementConfig_initialValue .~ _chainId cid
   pure $ pure $ pure cid
+
+uiSidebarIcon :: (DomBuilder t m, PostBuild t m) => Dynamic t Bool -> Text -> Text -> m (Event t ())
+uiSidebarIcon selected src label = do
+  let preventTwitching = el "div" -- questionable hack - somehow prevents images from twitching when container is resized
+      cls = ffor selected $ bool "normal" "highlighted"
+      mkAttrs sel = "class" =: ("sidebar__link" <> if sel then " selected" else "")
+  (e, _) <- elDynAttr' "div" (mkAttrs <$> selected) $ do
+    preventTwitching $ elDynAttr "img" (ffor cls $ \c -> "class" =: c <> "src" =: src) blank
+    elAttr "span" ("class" =: "sidebar__link-label") $ text label
+  pure $ domEvent Click e

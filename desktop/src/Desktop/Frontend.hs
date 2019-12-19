@@ -213,14 +213,12 @@ _watchInactivity checkInterval timeout = do
   let checkTime la ti = guard $ addUTCTime timeout la <= _tickInfo_lastUTC ti
   pure $ attachWithMaybe checkTime lastActivity check
 
-mkSidebarLogoutLink :: (TriggerEvent t m, PerformEvent t n, DomBuilder t n, MonadIO (Performable n)) => m (Event t (), n ())
+mkSidebarLogoutLink :: (TriggerEvent t m, PerformEvent t n, PostBuild t n, DomBuilder t n, MonadIO (Performable n)) => m (Event t (), n ())
 mkSidebarLogoutLink = do
   (logout, triggerLogout) <- newTriggerEvent
   pure $ (,) logout $ do
-    (e, _) <- elAttr' "span" ("class" =: "sidebar__link") $ do
-      elAttr "img" ("class" =: "normal" <> "src" =: static @"img/menu/logout.svg") blank
-      elAttr "span" ("class" =: "sidebar__link-label") $ text "Logout"
-    performEvent_ $ liftIO . triggerLogout <$> domEvent Click e
+    clk <- uiSidebarIcon (pure False) (static @"img/menu/logout.svg") "Logout"
+    performEvent_ $ liftIO . triggerLogout <$> clk
 
 lockScreen :: (DomBuilder t m, PostBuild t m, MonadFix m, MonadHold t m) => Crypto.XPrv -> m (Event t (), Event t (Maybe Text))
 lockScreen xprv = setupDiv "fullscreen" $ divClass "wrapper" $ setupDiv "splash" $ do
