@@ -44,6 +44,7 @@ import Common.Wallet (parsePublicKey,toPactPublicKey)
 import Frontend.Foundation
 import Frontend.KadenaAddress
 import Frontend.Network
+import Frontend.UI.Dialogs.AccountDetails
 import Frontend.UI.Dialogs.NetworkEdit
 
 import Frontend.UI.Dialogs.DeployConfirmation (CanSubmitTransaction, TransactionSubmitFeedback (..), submitTransactionWithFeedback)
@@ -171,17 +172,7 @@ uiReceiveModal0 model account onClose = Workflow $ do
 
       (onAddrClick, _) <- controlledAccordionItem showingKadenaAddress mempty (text "Option 1: Copy and share Kadena Address")
         $ do
-        elClass "h2" "heading heading_type_h2" $ text "Destination"
-        divClass "group" $ do
-          -- Network
-          void $ mkLabeledClsInput True "Network" $ \_ -> do
-            stat <- queryNetworkStatus (model ^. network_networks) $ pure $ _account_network account
-            uiNetworkStatus "signal__left-floated" stat
-            text $ textNetworkName $ _account_network account
-          -- Chain id
-          _ <- displayText "Chain ID" (_chainId $ _account_chainId account) "account-details__chain-id"
-          pure ()
-        uiDisplayAddress address
+        uiAccountDetailsPublicInfo account
 
       (onReceiClick, results) <- controlledAccordionItem (not <$> showingKadenaAddress) "account-details__legacy-send"
         (text "Option 2: Transfer from non-Chainweaver Account") $ do

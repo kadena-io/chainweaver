@@ -5,6 +5,7 @@
 -- License     :  BSD-style (see the file LICENSE)
 module Frontend.UI.Dialogs.AccountDetails
   ( uiAccountDetails
+  , uiAccountDetailsPublicInfo
   ) where
 ------------------------------------------------------------------------------
 import           Control.Lens
@@ -59,35 +60,9 @@ uiAccountDetailsDetails
   -> Event t ()
   -> Workflow t m (Text, (mConf, Event t ()))
 uiAccountDetailsDetails key a onClose = Workflow $ do
-  let kAddr = textKadenaAddress $ accountToKadenaAddress a
-
-  let displayText lbl v cls =
-        let
-          attrFn cfg = uiInputElement $ cfg
-            & initialAttributes <>~ ("disabled" =: "true" <> "class" =: (" " <> cls))
-        in
-          mkLabeledInputView False lbl attrFn $ pure v
-
   modalMain $ divClass "modal__main account-details" $ do
     elClass "h2" "heading heading_type_h2" $ text "Info"
-    divClass "group" $ do
-      -- Account name
-      _ <- displayText "Account Name" (unAccountName (_account_name a)) "account-details__name"
-      -- Public key
-      _ <- displayText "Public Key" (keyToText . _keyPair_publicKey $ _account_key a) "account-details__pubkey"
-      -- Chain id
-      _ <- displayText "Chain ID" (Pact._chainId $ _account_chainId a) "account-details__chain-id"
-      -- separator
-      el "hr" blank
-      -- Kadena Address
-      _ <- displayText "Kadena Address" kAddr "account-details__kadena-address"
-      -- copy
-      _ <- divClass "account-details__copy-btn-wrapper" $ copyButton (def
-        & uiButtonCfg_class .~ constDyn "account-details__copy-btn button_type_confirm"
-        & uiButtonCfg_title .~ constDyn (Just "Copy")
-        ) $ pure kAddr
-
-      pure ()
+    uiAccountDetailsPublicInfo a
 
   modalFooter $ do
     onRemove <- cancelButton (def & uiButtonCfg_class <>~ " account-details__remove-account-btn") "Remove Account"
@@ -96,6 +71,46 @@ uiAccountDetailsDetails key a onClose = Workflow $ do
     pure ( ("Account Details", (mempty, leftmost [onClose, onDone]))
          , uiDeleteConfirmation key onClose <$ onRemove
          )
+
+uiAccountDetailsPublicInfo
+  :: ( MonadWidget t m
+     )
+  => Account key
+  -> m ()
+uiAccountDetailsPublicInfo a = do
+  let kAddr = textKadenaAddress $ accountToKadenaAddress a
+      key = keyToText . _keyPair_publicKey $ _account_key a
+      accountName = unAccountName (_account_name a)
+  let displayText lbl v cls =
+        let
+          attrFn cfg = uiInputElement $ cfg
+            & initialAttributes <>~ ("disabled" =: "true" <> "class" =: (" " <> cls))
+        in
+          mkLabeledInputView False lbl attrFn $ pure v
+
+  divClass "group" $ do
+    -- Chain id
+    _ <- displayText "Chain ID" (Pact._chainId $ _account_chainId a) "account-details__chain-id"
+    -- Account name
+    _ <- displayText "Account Name" accountName "account-details__name"
+    _ <- divClass "account-details__copy-btn-wrapper" $ copyButton (def
+      & uiButtonCfg_class .~ constDyn "account-details__copy-btn button_type_confirm"
+      & uiButtonCfg_title .~ constDyn (Just "Copy Account Name")
+      ) $ pure accountName
+    -- Public key
+    _ <- displayText "Public Key" key "account-details__pubkey"
+    _ <- divClass "account-details__copy-btn-wrapper" $ copyButton (def
+      & uiButtonCfg_class .~ constDyn "account-details__copy-btn button_type_confirm"
+      & uiButtonCfg_title .~ constDyn (Just "Copy Public Key")
+      ) $ pure key
+    -- Kadena Address
+    _ <- displayText "Kadena Address (for use with other Chainweaver wallets)" kAddr "account-details__kadena-address"
+    _ <- divClass "account-details__copy-btn-wrapper" $ copyButton (def
+      & uiButtonCfg_class .~ constDyn "account-details__copy-btn button_type_confirm"
+      & uiButtonCfg_title .~ constDyn (Just "Copy Kadena Address")
+      ) $ pure kAddr
+
+    pure ()
 
 uiDeleteConfirmation
   :: forall key t m mConf
