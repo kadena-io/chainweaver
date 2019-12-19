@@ -22,6 +22,8 @@ module Frontend.UI.Wallet
   , uiAccountsTable
   , uiAvailableKeys
   , uiWalletRefreshButton
+  , uiGenerateKeyButton
+  , uiPublicKeyDropdown
     -- ** Filters for keys
   , hasPrivateKey
   , HasUiWalletModelCfg
@@ -31,9 +33,9 @@ module Frontend.UI.Wallet
 import           Control.Applicative         (liftA2)
 import           Control.Lens
 import           Control.Monad               (when, (<=<), join)
-import           Data.Dependent.Sum          (DSum (..), (==>))
-import           Data.Some                   (Some(..))
+import           Data.Dependent.Sum          ((==>))
 import qualified Data.IntMap                 as IntMap
+import           Data.Map (Map)
 import qualified Data.Map                    as Map
 import           Data.Text                   (Text)
 import qualified Pact.Types.ChainId          as Pact
@@ -74,10 +76,9 @@ type HasUiWalletModelCfg model mConf key m t =
 
 -- | Possible actions from an account
 data AccountDialog
-  = AccountDialog_Details
-  | AccountDialog_Receive
-  | AccountDialog_Send
-  deriving Eq
+  = AccountDialog_Details AccountName Account
+  | AccountDialog_Receive AccountName AccountCreated ChainId
+  | AccountDialog_Send Account
 
 uiWalletRefreshButton
   :: forall m t key model mConf
@@ -116,6 +117,9 @@ uiAccountsTable
   => model -> m mConf
 uiAccountsTable = divClass "wallet__keys-list" . uiAccountItems
 
+flattenKeys :: (Ord k1, Ord k2) => Map k1 (Map k2 a) -> Map (k1, k2) a
+flattenKeys = Map.foldMapWithKey $ \k1 -> Map.foldMapWithKey $ \k2 -> Map.singleton (k1, k2)
+
 uiAccountItems
   :: forall t m model mConf key.
   ( MonadWidget t m, HasUiWalletModelCfg model mConf key m t)
@@ -123,7 +127,7 @@ uiAccountItems
 uiAccountItems model = do
   let net = model ^. network_selectedNetwork
       accounts = liftA2 (Map.findWithDefault mempty) net (unAccountStorage <$> model ^. wallet_accounts)
-      accountsMap = ffor accounts $ foldAccounts $ \a@(r :=> _) -> Map.singleton (Some r) a
+      accountsMap = flattenKeys . _accounts_vanity <$> accounts
       tableAttrs = mconcat
         [ "style" =: "table-layout: fixed; width: 98%"
         , "class" =: "wallet table"
@@ -148,7 +152,7 @@ uiAccountItems model = do
         ]
 
     el "tbody" $ do
-      events <- listWithKey accountsMap (\_ -> uiAccountItem)
+      events <- listWithKey accountsMap uiAccountItem
       dyn_ $ ffor accountsMap $ \accs ->
         when (null accs) $
           elClass "tr" "wallet__table-row" $ elAttr "td" ("colspan" =: "5" <> "class" =: "wallet__table-cell") $
@@ -158,29 +162,30 @@ uiAccountItems model = do
   let
     onAccountModal = switchDyn $ leftmost . Map.elems <$> events
 
-    accModal n (d,a) = Just $ case d of
-      AccountDialog_Details -> uiAccountDetails n (accountToName a) a
-      AccountDialog_Receive -> uiReceiveModal model (accountToName a) (accountIsCreated a) (Just $ accountChain a)
-      --TODO: AccountDialog_Send -> uiSendModal model i a
+    accModal n = Just . \case
+      AccountDialog_Details name acc -> uiAccountDetails n name acc
+      AccountDialog_Receive name created chain -> uiReceiveModal model name created (Just chain)
+      AccountDialog_Send acc -> uiSendModal model acc
 
   refresh <- delay 1 =<< getPostBuild
 
   pure $ mempty
-    & modalCfg_setModal .~ (accModal <$> current net <@> onAccountModal)
+    & modalCfg_setModal .~ attachWith accModal (current net) onAccountModal
     & walletCfg_refreshBalances .~ refresh
 
 uiAccountItem
   :: MonadWidget t m
-  => Dynamic t Account
-  -> m (Event t (AccountDialog, Account))
-uiAccountItem acc = do
+  => (AccountName, ChainId)
+  -> Dynamic t VanityAccount
+  -> m (Event t AccountDialog)
+uiAccountItem (name, chain) acc = do
   elClass "tr" "wallet__table-row" $ do
     let td = elClass "td" "wallet__table-cell"
-        info = getAccountInfo <$> acc
+        info = _vanityAccount_info <$> acc
 
-    td $ divClass "wallet__table-wallet-address" $ dynText $ ffor acc $ unAccountName . accountToName
-    td $ dynText $ ffor acc $ Pact._chainId . accountChain
-    td $ dynText $ ffor acc $ maybe "" unAccountNotes . accountNotes
+    td $ divClass "wallet__table-wallet-address" $ text $ unAccountName name
+    td $ text $ Pact._chainId chain
+    td $ dynText $ ffor acc $ unAccountNotes . _vanityAccount_notes
     td $ dynText $ ffor info $ \i -> case _accountInfo_balance i of
       Nothing -> "Unknown"
       Just b -> tshow (unAccountBalance b) <> " KDA" <> maybe "" (const "*") (_accountInfo_unfinishedCrossChainTransfer i)
@@ -193,14 +198,19 @@ uiAccountItem acc = do
       send <- sendButton cfg
       onDetails <- detailsButton (cfg & uiButtonCfg_class <>~ " wallet__table-button--hamburger")
 
-      let mkDialog dia onE = (dia,) <$> current acc <@ onE
-
       pure $ leftmost
-        [ mkDialog AccountDialog_Details onDetails
-        , mkDialog AccountDialog_Receive recv
-        , mkDialog AccountDialog_Send send
+        [ AccountDialog_Details name . (AccountRef_Vanity name chain ==>) <$> current acc <@ onDetails
+        , AccountDialog_Receive name AccountCreated_Yes chain <$ recv
+        , AccountDialog_Send . (AccountRef_Vanity name chain ==>) <$> current acc <@ send
         ]
 
+uiPublicKeyDropdown
+  :: (DomBuilder t m, MonadFix m, MonadHold t m, PostBuild t m, HasWallet model key t)
+  => model -> CssClass -> m (Dynamic t (Maybe PublicKey))
+uiPublicKeyDropdown model cls = do
+  let toPair k = let pk = _keyPair_publicKey $ _key_pair k in (Just pk, keyToText pk)
+      keys = ffor (model ^. wallet_keys) $ Map.fromList . fmap toPair . IntMap.elems
+  value <$> uiDropdown Nothing keys (def & dropdownConfig_attributes .~ pure ("class" =: renderClass cls))
 
 -- | Widget listing all available keys.
 uiAvailableKeys
@@ -346,3 +356,10 @@ uiKeyItem model _index key = do
               [ mkSendDialog <$> current key <*> current dAccount <@ send
               ]
             )
+
+uiGenerateKeyButton
+  :: (MonadWidget t m, Monoid mConf, HasWalletCfg mConf key t)
+  => m mConf
+uiGenerateKeyButton = do
+  e <- uiButton (def & uiButtonCfg_class <>~ " main-header__add-account-button")  (text "+ Generate Key")
+  pure $ mempty & walletCfg_genKey .~ e

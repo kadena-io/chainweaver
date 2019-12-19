@@ -465,7 +465,7 @@ data AccountInfo = AccountInfo
   { _accountInfo_balance :: Maybe AccountBalance
   , _accountInfo_unfinishedCrossChainTransfer :: Maybe UnfinishedCrossChainTransfer
   , _accountInfo_hidden :: Bool
-  }
+  } deriving Show
 
 blankAccountInfo :: AccountInfo
 blankAccountInfo = AccountInfo
@@ -497,7 +497,7 @@ data VanityAccount = VanityAccount
   , _vanityAccount_notes :: AccountNotes
   , _vanityAccount_info :: AccountInfo
   , _vanityAccount_inflight :: Bool
-  }
+  } deriving Show
 
 instance ToJSON VanityAccount where
   toJSON as = object $ catMaybes

@@ -53,7 +53,7 @@ import Frontend.OAuth
 import Frontend.Repl
 import Frontend.Storage
 import Frontend.UI.Button
-import Frontend.UI.Dialogs.AddAccount (uiAddWalletOnlyAccountDialogButton, uiGenerateKeyButton)
+import Frontend.UI.Dialogs.AddVanityAccount (uiAddVanityAccountButton)
 import Frontend.UI.Dialogs.CreateGist (uiCreateGist)
 import Frontend.UI.Dialogs.CreatedGist (uiCreatedGist)
 import Frontend.UI.Dialogs.DeployConfirmation (uiDeployConfirmation)
@@ -96,7 +96,7 @@ app sidebarExtra appCfg = void . mfix $ \ cfg -> do
       FrontendRoute_Accounts -> mkPageContent "accounts" $ do
         barCfg <- controlBar "Accounts" $ do
           refreshCfg <- uiWalletRefreshButton ideL
-          addCfg <- uiAddWalletOnlyAccountDialogButton ideL
+          addCfg <- uiAddVanityAccountButton ideL
           pure $ addCfg <> refreshCfg
         accountsCfg <- uiAccountsTable ideL
         pure $ barCfg <> accountsCfg

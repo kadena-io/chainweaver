@@ -230,6 +230,7 @@ buildDeploymentSettingsResult
   -> Dynamic t (Maybe (Performable m (DeploymentSettingsResult key)))
 buildDeploymentSettingsResult m mSender signers cChainId capabilities ttl gasLimit code settings = runMaybeT $ do
   selNodes <- lift $ m ^. network_selectedNodes
+  networkName <- lift $ m ^. network_selectedNetwork
   networkId <- hoistMaybe $ hush . mkNetworkName . nodeVersion =<< headMay (rights selNodes)
   sender <- MaybeT mSender
   chainId <- MaybeT cChainId
@@ -249,7 +250,7 @@ buildDeploymentSettingsResult m mSender signers cChainId capabilities ttl gasLim
         }
   code' <- lift code
   keys <- lift $ m ^. wallet_keys
-  allAccounts <- MaybeT $ Map.lookup networkId . unAccountStorage <$> m ^. wallet_accounts
+  allAccounts <- MaybeT $ Map.lookup networkName . unAccountStorage <$> m ^. wallet_accounts
   -- Make an effort to ensure the sender account has enough balance to actually
   -- pay the gas. This won't work if the user selects an account on a different
   -- chain, but that's another issue.

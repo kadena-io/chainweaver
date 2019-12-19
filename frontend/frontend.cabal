@@ -114,7 +114,6 @@ library
                  , Frontend.Storage
                  , Frontend.UI.Button
                  , Frontend.UI.DeploymentSettings
-                 , Frontend.UI.Dialogs.AddAccount
                  , Frontend.UI.Dialogs.CallFunction
                  , Frontend.UI.Dialogs.CreateGist
                  , Frontend.UI.Dialogs.CreatedGist
