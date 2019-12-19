@@ -230,6 +230,9 @@ $kadena-orange: #F3AB3C;
 
 .setup__checkbox {
   color: $chainweaver-blue;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
 }
 
 .setup__terms-conditions-checkbox {
@@ -443,5 +446,7 @@ $kadena-orange: #F3AB3C;
 }
 
 .setup__continue-button {
+  display: flex;
+  flex-direction: column;
   margin-top: $double-margin;
 }
