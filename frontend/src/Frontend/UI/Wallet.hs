@@ -297,18 +297,18 @@ uiKeyItem model _index key = do
   hidden <- holdUniqDyn $ _key_hidden <$> key
   switchHold never <=< dyn $ ffor hidden $ \case
     True -> pure never
-    False -> mdo
-      rec
-        (clk, dialog) <- keyRow visible $ sum . catMaybes <$> balances
-        visible <- toggle False clk
+    False -> do
       let mAccounts = ffor3 key (model ^. network_selectedNetwork) (model ^. wallet_accounts) $ \k net (AccountStorage as) -> fromMaybe mempty $ do
             accounts <- Map.lookup net as
             nva <- Map.lookup (_keyPair_publicKey $ _key_pair k) (_accounts_nonVanity accounts)
             pure nva
-      results <- listWithKey mAccounts $ accountRow visible
-      let balances :: Dynamic t [Maybe AccountBalance]
-          balances = join $ traverse fst . Map.elems <$> results
-          dialogs = switch $ leftmost . fmap snd . Map.elems <$> current results
+      rec
+        (clk, dialog) <- keyRow visible $ sum . catMaybes <$> balances
+        visible <- toggle False clk
+        results <- listWithKey mAccounts $ accountRow visible
+        let balances :: Dynamic t [Maybe AccountBalance]
+            balances = join $ traverse fst . Map.elems <$> results
+      let dialogs = switch $ leftmost . fmap snd . Map.elems <$> current results
       pure $ leftmost [dialog, dialogs]
      where
       trKey = elClass "tr" "wallet__table-row wallet__table-row-key"
