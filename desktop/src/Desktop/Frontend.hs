@@ -239,7 +239,7 @@ lockScreen xprv = setupDiv "fullscreen" $ divClass "wrapper" $ setupDiv "splash"
       uiPassword (setupClass "password-wrapper") (setupClass "password") "Password"
 
     restore <- setupDiv "button-horizontal-group" $ do
-      elAttr "a" ( "class" =: "button button_type_secondary" <>
+      elAttr "a" ( "class" =: "button button_type_secondary setup__help" <>
                    "href" =: "https://www.kadena.io/chainweaver-support" <>
                    "target" =: "_blank"
                  ) $ do
