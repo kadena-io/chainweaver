@@ -22,6 +22,7 @@
   color: $std-color;
 
   padding: 0 20px;
+  margin: 0; //webkit has default of margin: 0px 2px
   cursor: pointer;
   &.extra-margin { margin: 12px; }
 }
@@ -173,7 +174,7 @@
   font-family: WorkSans-Regular;
 }
 
-.button_type_confirm[disabled] { 
+.button_type_confirm[disabled] {
   background-color: transparent;
   color: $black-disabled-color;
   border-color: $std-border-color;
