@@ -8,9 +8,9 @@
 
 // This is the wrapping container around the checkbox and should usually be a label.
 .checkbox {
-  display: block;
+  display: flex;
+  align-items: center;
   position: relative;
-  padding-left: 30px;
   cursor: pointer;
   -webkit-user-select: none;
   -moz-user-select: none;
@@ -19,9 +19,9 @@
 }
 
 .checkbox__checkmark {
-  position: absolute;
-  left: 0;
-  top: 0;
+  display: block;
+  position: relative;
+  margin-right: 10px;
   border-color: $std-border-color;
   border-style: $std-border-style;
   border-width: $std-border-width;
@@ -46,8 +46,8 @@
 
 /* When the checkbox is checked, add a blue background */
 .checkbox input:checked ~ .checkbox__checkmark {
-  background-color: $checked-background;
-  border-color: $checked-background;
+  background-color: $chainweaver-blue;
+  border-color: $chainweaver-blue;
 }
 
 /* Create the checkmark/indicator (hidden when not checked) */
@@ -82,10 +82,6 @@
   cursor: pointer;
   height: 0;
   width: 0;
-}
-
-.checkbox_type_secondary {
-  padding-left: 25px;
 }
 
 .checkbox__checkmark_type_secondary {
