@@ -275,14 +275,14 @@ uiKeyItems model = do
     keyModal n = Just . \case
       KeyDialog_Receive name created -> uiReceiveModal model name created Nothing
       KeyDialog_Send acc -> uiSendModal model acc
-      KeyDialog_Details key -> uiKeyDetails model key
+      KeyDialog_Details i key -> uiKeyDetails model i key
       KeyDialog_AccountDetails acc -> uiAccountDetails n acc
 
 -- | Dialogs which can be launched from keys.
 data KeyDialog key
   = KeyDialog_Receive AccountName AccountCreated
   | KeyDialog_Send Account
-  | KeyDialog_Details (Key key)
+  | KeyDialog_Details IntMap.Key (Key key)
   | KeyDialog_AccountDetails Account
 
 ------------------------------------------------------------------------------
@@ -293,7 +293,7 @@ uiKeyItem
   -> IntMap.Key
   -> Dynamic t (Key key)
   -> m (Event t (KeyDialog key))
-uiKeyItem model _index key = do
+uiKeyItem model index key = do
   hidden <- holdUniqDyn $ _key_hidden <$> key
   switchHold never <=< dyn $ ffor hidden $ \case
     True -> pure never
@@ -334,7 +334,7 @@ uiKeyItem model _index key = do
           let pk = AccountName . keyToText . _keyPair_publicKey . _key_pair <$> current key
 
           pure $ leftmost
-            [ KeyDialog_Details <$> current key <@ onDetails
+            [ KeyDialog_Details index <$> current key <@ onDetails
             -- TODO we need a way of adding these accounts when they already
             -- exist too, e.g. for users who are recovering wallets. An
             -- automatic account discovery thing would work well.
