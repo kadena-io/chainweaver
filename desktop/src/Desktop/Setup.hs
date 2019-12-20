@@ -215,7 +215,7 @@ splashScreen eBack = Workflow $ setupDiv "splash" $ do
     ) kadenaWalletLogo
 
   (agreed, create, recover) <- setupDiv "splash-terms-buttons" $ do
-    agreed <- fmap value $ setupCheckbox False def $ setupDiv "terms-conditions-checkbox" $ do
+    agreed <- fmap value $ setupCheckbox False def $ el "div" $ do
       text "I have read & agree to the "
       elAttr "a" ?? (text "Terms of Service") $ mconcat
         [ "href" =: "https://kadena.io/chainweaver-tos"
@@ -264,8 +264,7 @@ recoverWallet eBack = Workflow $ do
     phraseMap <- holdDyn (wordsToPhraseMap $ replicate passphraseLen T.empty)
       $ flip Map.union <$> current phraseMap <@> onPhraseMapUpdate
 
-    onPhraseMapUpdate <- setupDiv "recover-widget-wrapper" $
-      passphraseWidget phraseMap (pure Recover)
+    onPhraseMapUpdate <- passphraseWidget phraseMap (pure Recover)
 
   let enoughWords = (== passphraseLen) . length . filter (not . T.null) . Map.elems
 
@@ -430,14 +429,15 @@ precreatePassphraseWarning eBack dPassword mnemonicSentence = Workflow $ mdo
     setupDiv "recovery-phrase-warning" $ do
       line "In the next step you will record your 12 word recovery phrase."
       line "Your recovery phrase makes it easy to restore your wallet on a new device."
-      line "Anyone with this phrase can take control your wallet, keep this phrase private."
+      line "Anyone with this phrase can take control of your wallet, keep this phrase private."
 
     setupDiv "recovery-phrase-highlighted-warning" $
       line "Kadena cannot access your recovery phrase if lost, please store it safely."
 
     let chkboxcls = setupClass "warning-checkbox " <> setupClass "checkbox-wrapper"
-    fmap value $ elClass "div" chkboxcls $ setupCheckbox False def
-      $ text "I understand that if I lose my recovery phrase, I will not be able to restore my wallet."
+    fmap value $ elClass "div" chkboxcls $ setupCheckbox False def $ el "div" $ do
+      line "I understand that if I lose my recovery phrase,"
+      line "I will not be able to restore my wallet."
 
   finishSetupWF WalletScreen_PrePassphrase $ leftmost
     [ createNewWallet eBack <$ eBack
@@ -472,7 +472,7 @@ createNewPassphrase
 createNewPassphrase eBack dPassword mnemonicSentence = Workflow $ mdo
   (eContinue, dIsStored) <- continueForm (fmap not dIsStored) $ do
     el "h1" $ text "Record Recovery Phrase"
-    setupDiv "record-phrase-msg" $ do
+    el "div" $ do
       el "div" $ text "Write down or copy these words in the correct order and store them safely."
       el "div" $ text "The recovery words are hidden for security. Mouseover the numbers to reveal."
 
@@ -512,15 +512,14 @@ confirmPhrase
 confirmPhrase eBack dPassword mnemonicSentence = Workflow $ mdo
   (continue, done) <- continueForm (fmap not done) $ do
     el "h1" $ text "Verify Recovery Phrase"
-    setupDiv "verify-phrase-msg" $ do
+    el "div" $ do
       el "div" $ text "Please confirm your recovery phrase by"
       el "div" $ text "typing the words in the correct order."
 
     let actualMap = mkPhraseMapFromMnemonic mnemonicSentence
 
     rec
-      onPhraseUpdate <- setupDiv "verify-widget-wrapper" $
-        passphraseWidget dConfirmPhrase (pure Recover)
+      onPhraseUpdate <- passphraseWidget dConfirmPhrase (pure Recover)
 
       dConfirmPhrase <- holdDyn (wordsToPhraseMap $ replicate passphraseLen T.empty)
         $ flip Map.union <$> current dConfirmPhrase <@> onPhraseUpdate

@@ -9,6 +9,9 @@
 
 $wallet-top-btm-margin: 0.5rem 0 0.5rem 0;
 $kadena-orange: #F3AB3C;
+$setup-progress-button-width: 500px;
+$setup-progress-button-height: 52px;
+$setup-progress-font-size: 18px;
 
 .setup__fullscreen {
   width: 100%;
@@ -165,6 +168,12 @@ $kadena-orange: #F3AB3C;
 
   .setup__password {
     margin: $wallet-top-btm-margin;
+    padding-left: 46px;
+    height: $setup-progress-button-height;
+    line-height: initial;
+    font-size: $setup-progress-font-size;
+    font-weight: initial;
+    flex-grow: 1;
   }
 
   .setup__password-wrapper {
@@ -172,18 +181,14 @@ $kadena-orange: #F3AB3C;
       display: flex;
       justify-content: space-around;
       align-items: center;
+      width: $setup-progress-button-width;
   }
 
   .setup__password-wrapper-lock {
       position: absolute;
-      left: 25px;
+      left: 15px;
       justify-content: space-around;
       align-items: center;
-  }
-
-  input.setup__password {
-    flex-grow: 1;
-    padding-left: 2em;
   }
 
   .button {
@@ -191,8 +196,9 @@ $kadena-orange: #F3AB3C;
     line-height: initial;
 
     &.button_type_confirm {
-      font-size: 18px;
-      height: 52px;
+      font-size: $setup-progress-font-size;
+      height: $setup-progress-button-height;
+      width: $setup-progress-button-width;
       padding: 0;
     }
 
@@ -213,19 +219,13 @@ $kadena-orange: #F3AB3C;
       }
     }
   }
-
-  .setup__password {
-    height: initial;
-    line-height: initial;
-    padding: 1.3rem;
-    font-size: 23px;
-    font-weight: initial;
-
-  }
 }
 
 .setup__checkbox-wrapper {
   margin: 1rem;
+  .label {
+    font-family: $std-fonts;
+  }
 }
 
 .setup__checkbox {
@@ -233,11 +233,6 @@ $kadena-orange: #F3AB3C;
   display: flex;
   flex-direction: column;
   align-items: center;
-}
-
-.setup__terms-conditions-checkbox {
-  color: $chainweaver-blue;
-  font-size: 15px;
 }
 
 .setup__terms-conditions-link {
@@ -258,16 +253,8 @@ $kadena-orange: #F3AB3C;
   cursor: alias;
 }
 
-.setup__delete {
-  text-align: right;
-}
-
-.setup__add {
-  @extend .setup__delete;
-}
-
-.setup__add-delete-button {
-  width: 30px;
+.setup__help {
+  text-decoration: none;
 }
 
 .setup__button-horizontal-group {
@@ -277,13 +264,11 @@ $kadena-orange: #F3AB3C;
   .button:first-child { margin-left: 0 !important; }
 }
 
-.setup__record-phrase-msg {
-  margin-bottom: 2em;
-}
-
 .setup__passphrase-widget-wrapper {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
+  width: 625px;
+  margin-top: 28px;
 }
 
 .setup__passphrase-widget-word-hider {
@@ -309,10 +294,6 @@ $kadena-orange: #F3AB3C;
   display: none;
 }
 
-.setup__fullscreen .setup__verify-phrase-msg {
-  margin-bottom: 1.5rem;
-}
-
 .setup__password-message {
   max-height: 0;
   overflow-y: hidden;
@@ -335,7 +316,11 @@ $kadena-orange: #F3AB3C;
 
   .setup__recovery-phrase-copy-word {
     color: $chainweaver-blue;
-    font-size: 25px;
+    font-size: 15px;
+    display: flex;
+    flex-direction: row;
+    justify-content: center;
+    align-items: center;
 
     .setup__copy-status {
       opacity: 0;
@@ -346,7 +331,7 @@ $kadena-orange: #F3AB3C;
       &.setup__copy-success {
         opacity: 1;
         transform: none;
-        color: green;
+        color: $chainweaver-blue;
       }
 
       &.setup__copy-fail {
@@ -363,7 +348,7 @@ $kadena-orange: #F3AB3C;
 }
 
 .setup__password-bg {
-  width: 550px;
+  width: 450px;
 }
 
 .setup__splash {
@@ -379,7 +364,7 @@ $kadena-orange: #F3AB3C;
 }
 
 .setup__splash-terms-buttons {
-  width: 356px;
+  width: $setup-progress-button-width;
   display: flex;
   flex-direction: column;
 }
@@ -417,11 +402,6 @@ $kadena-orange: #F3AB3C;
   }
 }
 
-.setup__recover-widget-wrapper,
-.setup__verify-widget-wrapper {
-  background-color: $white;
-}
-
 .setup__waiting-passphrase {
   min-height: 20em;
   padding-top: 3em;
@@ -447,6 +427,7 @@ $kadena-orange: #F3AB3C;
 
 .setup__continue-button {
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
+  justify-content: center;
   margin-top: $double-margin;
 }
