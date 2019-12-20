@@ -319,7 +319,11 @@ $setup-progress-font-size: 18px;
 
   .setup__recovery-phrase-copy-word {
     color: $chainweaver-blue;
-    font-size: 25px;
+    font-size: 15px;
+    display: flex;
+    flex-direction: row;
+    justify-content: center;
+    align-items: center;
 
     .setup__copy-status {
       opacity: 0;
