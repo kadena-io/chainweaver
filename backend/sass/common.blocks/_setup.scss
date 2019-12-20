@@ -220,6 +220,9 @@ $setup-progress-font-size: 18px;
 
 .setup__checkbox-wrapper {
   margin: 1rem;
+  .label {
+    font-family: $std-fonts;
+  }
 }
 
 .setup__checkbox {
