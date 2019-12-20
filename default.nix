@@ -10,7 +10,12 @@ let
   pactServerModule = import ./pact-server/service.nix;
   macAppName = "Kadena Chainweaver Beta";
   macAppIcon =  ./mac/static/icons/kadena.png;
+  linuxAppDesc= "Kadena Chainweaver Beta";
   linuxAppName = "kadena-chainweaver-rc1";
+  linuxPackageName="kadena-chainweaver";
+  linuxPackageVersion = "0.1.0";
+  # TODO: Commonise this icon
+  linuxAppIcon = ./mac/static/icons/pact-document.png;
   macPactDocumentIcon = ./mac/static/icons/pact-document.png;
   # ^ This can be created in Preview using 'GenericDocumentIcon.icns' from
   # /System/Library/CoreServices/CoreTypes.bundle/Contents/Resources/
@@ -166,13 +171,14 @@ in obApp // rec {
       export LIBPATH=$PREFIX/lib/chainweaver
       export LIBEXECPATH=$PREFIX/libexec/chainweaver
       export BINPATH=$PREFIX/bin
-      export SHAREPATH=$PREFIX/share
+      export SHAREPATH=$PREFIX/share/chainweaver
 
       export DEBDIR=$TMPDIR/${linuxAppName}-1
       export BINDIR=$DEBDIR$BINPATH
       export LIBEXECDIR=$DEBDIR$LIBEXECPATH
       export LIBDIR=$DEBDIR$LIBPATH
       export SHAREDIR=$DEBDIR$SHAREPATH
+      export APPLICATIONSDIR=$DEBDIR$PREFIX/share/applications
       export TMPEXE=$TMPDIR/${linuxAppName}
       export CHAINWEAVER_LIBEXEC_EXE=$LIBEXECDIR/${linuxAppName}
       export CHAINWEAVER_BIN_EXE=$BINDIR/${linuxAppName}
@@ -193,6 +199,7 @@ in obApp // rec {
       mkdir -p $LIBDIR
       mkdir -p $LIBEXECDIR
       mkdir -p $SHAREDIR
+      mkdir -p $APPLICATIONSDIR
 
       cp ${obApp.ghc.linux}/bin/linuxApp $TMPEXE
       chmod u+w $TMPEXE
@@ -204,6 +211,12 @@ in obApp // rec {
       cp -rL "${obApp.mkAssets obApp.passthru.staticFiles}" "$LIBEXECDIR/static.assets"
       cp -rL "${obApp.passthru.staticFiles}" "$LIBEXECDIR/static"
       cp -rL "${sass}/sass.css" "$LIBEXECDIR/sass.css"
+      cp -rL "${obApp.mkAssets obApp.passthru.staticFiles}" "$SHAREDIR/static.assets"
+      cp -rL "${obApp.passthru.staticFiles}" "$SHAREDIR/static"
+      cp -rL "${sass}/sass.css" "$SHAREDIR/sass.css"
+
+      cp ${linuxAppIcon} "$SHAREDIR/icon.png"
+      cp ${linuxDesktopItem}/share/applications/${linuxPackageName}.desktop $APPLICATIONSDIR
 
       # Copy the webgtk libexec over because we really want the webworker. 
       # This depends on our patch to ubuntuWebkitgtk for the lib to find the exec dir
@@ -302,20 +315,26 @@ in obApp // rec {
     '';
   };
   deb-changelog = pkgs.writeTextFile { name = "chainweaver-changelog"; text = ''
-    Nah
+    Nah not yet
   ''; };
+  linuxDesktopItem = pkgs.makeDesktopItem { 
+     name = linuxPackageName;
+     desktopName = linuxAppDesc; 
+     exec = "/usr/bin/${linuxAppName}";
+     icon= "/usr/share/chainweaver/icon.png";
+  };
   deb-control = pkgs.writeTextFile { name = "control"; text = ''
-    Package: chainweaver
-    Version: 0.1.0
+    Package: ${linuxPackageName}
+    Version: ${linuxPackageVersion}
     Architecture: amd64
-    Maintainer: "Kadena"
-    Description: "Chainweaver"
+    Maintainer: "Kadena.io"
+    Description: ${linuxAppDesc}
   ''; };
 
   deb-copyright = pkgs.writeTextFile { name = "chainweaver-deb-copyright"; text = ''
     Format: https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
-    Upstream-Name: Kiln
-    Source: https://gitlab.com/obsidian.systems/kiln
+    Upstream-Name: ${linuxAppDesc}
+    Source: https://github.com/kadena-io/chainweaver 
 
     Files: *
     Copyright: 2019 Kadena.io
