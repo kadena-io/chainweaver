@@ -9,6 +9,7 @@
 
 $wallet-top-btm-margin: 0.5rem 0 0.5rem 0;
 $kadena-orange: #F3AB3C;
+$setup-progress-button-width: 500px;
 $setup-progress-button-height: 52px;
 $setup-progress-font-size: 18px;
 
@@ -180,6 +181,7 @@ $setup-progress-font-size: 18px;
       display: flex;
       justify-content: space-around;
       align-items: center;
+      width: $setup-progress-button-width;
   }
 
   .setup__password-wrapper-lock {
@@ -196,6 +198,7 @@ $setup-progress-font-size: 18px;
     &.button_type_confirm {
       font-size: $setup-progress-font-size;
       height: $setup-progress-button-height;
+      width: $setup-progress-button-width;
       padding: 0;
     }
 
@@ -367,7 +370,7 @@ $setup-progress-font-size: 18px;
 }
 
 .setup__splash-terms-buttons {
-  width: 356px;
+  width: $setup-progress-button-width;
   display: flex;
   flex-direction: column;
 }
@@ -435,6 +438,7 @@ $setup-progress-font-size: 18px;
 
 .setup__continue-button {
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
+  justify-content: center;
   margin-top: $double-margin;
 }
