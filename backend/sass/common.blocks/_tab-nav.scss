@@ -49,10 +49,6 @@ $tab-nav-secondary-active-border-color: $chainweaver-blue;
   background-color: $group-bg;
 }
 
-.tab-nav__button_type_primary.tab-nav__button_active:hover {
-  background-color: $black-hover;
-}
-
 .tab-nav_type_secondary {
   border-bottom: 1px solid $tab-nav-secondary-border-color;
   padding-bottom: 0;
