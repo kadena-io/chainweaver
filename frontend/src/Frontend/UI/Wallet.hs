@@ -293,7 +293,7 @@ uiKeyItem
   -> IntMap.Key
   -> Dynamic t (Key key)
   -> m (Event t (KeyDialog key))
-uiKeyItem model index key = do
+uiKeyItem model keyIndex key = do
   hidden <- holdUniqDyn $ _key_hidden <$> key
   switchHold never <=< dyn $ ffor hidden $ \case
     True -> pure never
@@ -334,7 +334,7 @@ uiKeyItem model index key = do
           let pk = AccountName . keyToText . _keyPair_publicKey . _key_pair <$> current key
 
           pure $ leftmost
-            [ KeyDialog_Details index <$> current key <@ onDetails
+            [ KeyDialog_Details keyIndex <$> current key <@ onDetails
             -- TODO we need a way of adding these accounts when they already
             -- exist too, e.g. for users who are recovering wallets. An
             -- automatic account discovery thing would work well.

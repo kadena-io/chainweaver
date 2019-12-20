@@ -44,13 +44,13 @@ uiKeyDetails
   -> Key key
   -> Event t ()
   -> m (mConf, Event t ())
-uiKeyDetails model index key onCloseExternal = mdo
+uiKeyDetails model keyIndex key onCloseExternal = mdo
   let keyChainInfo = ffor2 (model ^. network_selectedNetwork) (model ^. wallet_accounts) $ \net (AccountStorage storage) -> fromMaybe mempty $ do
         accounts <- Map.lookup net storage
         let pk = _keyPair_publicKey $ _key_pair key
         Map.lookup pk $ _accounts_nonVanity accounts
   onClose <- modalHeader $ dynText title
-  dwf <- workflow (uiKeyDetailsDetails model index key keyChainInfo onClose onCloseExternal)
+  dwf <- workflow (uiKeyDetailsDetails model keyIndex key keyChainInfo onClose onCloseExternal)
   let (title, (conf, dEvent)) = fmap splitDynPure $ splitDynPure dwf
   mConf <- flatten =<< tagOnPostBuild conf
   return ( mConf
@@ -68,7 +68,7 @@ uiKeyDetailsDetails
   -> Event t ()
   -> Event t ()
   -> Workflow t m (Text, (mConf, Event t ()))
-uiKeyDetailsDetails model index key keyChainInfo onClose onCloseExternal = Workflow $ do
+uiKeyDetailsDetails model keyIndex key keyChainInfo onClose onCloseExternal = Workflow $ do
   let displayText lbl v cls =
         let
           attrFn cfg = uiInputElement $ cfg
@@ -95,7 +95,7 @@ uiKeyDetailsDetails model index key keyChainInfo onClose onCloseExternal = Workf
     onDone <- confirmButton def "Done"
 
     let done = leftmost [onClose, onDone]
-        conf' = conf & walletCfg_updateKeyNotes .~ attachWith (\t _ -> (index, mkAccountNotes t)) (current notesEdit) (done <> onCloseExternal)
+        conf' = conf & walletCfg_updateKeyNotes .~ attachWith (\t _ -> (keyIndex, mkAccountNotes t)) (current notesEdit) (done <> onCloseExternal)
 
     pure ( ("Key Details", (conf', done))
          , never
