@@ -10,7 +10,7 @@
 -- | Wallet setup screens
 module Desktop.Setup (runSetup, form, kadenaWalletLogo, setupDiv, setupClass) where
 
-import Control.Lens ((<>~), (%~), (?~))
+import Control.Lens ((<>~), (%~), (?~), (??))
 import Control.Error (hush)
 import Control.Applicative (liftA2)
 import Control.Monad (unless,void)
@@ -105,15 +105,14 @@ tshow :: Show a => a -> Text
 tshow = T.pack . show
 
 -- | Produces a form wrapper given a suitable submit button so that the enter key is correctly handled
-form :: forall t m a. DomBuilder t m => m () -> m a -> m (Event t (), a)
-form btn fields = do
-  let cfg = (def :: ElementConfig EventResult t (DomBuilderSpace m))
-        & elementConfig_eventSpec %~ addEventSpecFlags (Proxy :: Proxy (DomBuilderSpace m)) Submit (\_ -> preventDefault)
-  (elt, a) <- element "form" cfg $ fields <* btn
+form :: forall t m a. DomBuilder t m => ElementConfig EventResult t (DomBuilderSpace m) -> m () -> m a -> m (Event t (), a)
+form cfg btn fields = do
+  let mkCfg = elementConfig_eventSpec %~ addEventSpecFlags (Proxy :: Proxy (DomBuilderSpace m)) Submit (\_ -> preventDefault)
+  (elt, a) <- element "form" (mkCfg cfg) $ fields <* btn
   pure (domEvent Submit elt, a)
 
 setupForm :: forall t m a. (DomBuilder t m, PostBuild t m) => Text -> Text -> Dynamic t Bool -> m a -> m (Event t (), a)
-setupForm cls lbl disabled = form $ setupDiv cls $ void $ confirmButton (def & uiButtonCfg_disabled .~ disabled) lbl
+setupForm cls lbl disabled = form def $ setupDiv cls $ void $ confirmButton (def & uiButtonCfg_disabled .~ disabled) lbl
 
 restoreForm :: (DomBuilder t m, PostBuild t m) => Dynamic t Bool -> m a -> m (Event t (), a)
 restoreForm = setupForm "recover-restore-button" "Restore"
@@ -218,12 +217,18 @@ splashScreen eBack = Workflow $ setupDiv "splash" $ do
   (agreed, create, recover) <- setupDiv "splash-terms-buttons" $ do
     agreed <- fmap value $ setupCheckbox False def $ setupDiv "terms-conditions-checkbox" $ do
       text "I have read & agree to the "
-      elAttr "a" ("href" =: "https://kadena.io/chainweaver-tos" <> "target" =: "_blank") (text "Terms of Service")
+      elAttr "a" ?? (text "Terms of Service") $ mconcat
+        [ "href" =: "https://kadena.io/chainweaver-tos"
+        , "target" =: "_blank"
+        , "class" =: setupClass "terms-conditions-link"
+        ]
 
     let dNeedAgree = fmap not agreed
+        disabledCfg = uiButtonCfg_disabled .~ dNeedAgree
+        restoreCfg = uiButtonCfg_class <>~ "setup__restore-existing-button"
 
-    create <- confirmButton (def & uiButtonCfg_disabled .~ dNeedAgree) "Create a new wallet"
-    recover <- uiButtonDyn (btnCfgSecondary & uiButtonCfg_disabled .~ dNeedAgree) $ text "Restore existing wallet"
+    create <- confirmButton (def & disabledCfg ) "Create a new wallet"
+    recover <- uiButtonDyn (btnCfgSecondary & disabledCfg & restoreCfg) $ text "Restore existing wallet"
     pure (agreed, create, recover)
 
   let hasAgreed = gate (current agreed)
