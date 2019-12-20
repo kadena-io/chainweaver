@@ -11,8 +11,7 @@ let
   macAppName = "Kadena Chainweaver Beta";
   macAppIcon =  ./mac/static/icons/kadena.png;
   linuxAppDesc= "Kadena Chainweaver Beta";
-  linuxAppName = "kadena-chainweaver-rc1";
-  linuxPackageName="kadena-chainweaver";
+  linuxAppName = "kadena-chainweaver";
   linuxPackageVersion = "0.1.0";
   # TODO: Commonise this icon
   linuxAppIcon = ./mac/static/icons/pact-document.png;
@@ -126,8 +125,6 @@ in obApp // rec {
       ln -s "${obApp.mkAssets obApp.passthru.staticFiles}" "$out/bin/static.assets"
       ln -s "${obApp.passthru.staticFiles}" "$out/bin/static"
       ln -s "${sass}/sass.css" "$out/bin/sass.css"
-      ${pkgs.libicns}/bin/png2icns "$out/bin/pact.icns" "${macAppIcon}"
-      ${pkgs.libicns}/bin/png2icns "$out/bin/pact-document.icns" "${macPactDocumentIcon}"
     '';
   });
   addGObjectIntrospection = hpackage: pkgs.haskell.lib.overrideCabal hpackage (current: {
@@ -166,7 +163,6 @@ in obApp // rec {
       source $stdenv/setup
       set -ex
       mkdir $out
-      # TODO : Why isn't TMPDIR set in the builder anymore after the obelisk bump
       export PREFIX=/usr
       export LIBPATH=$PREFIX/lib/chainweaver
       export LIBEXECPATH=$PREFIX/libexec/chainweaver
@@ -216,7 +212,7 @@ in obApp // rec {
       cp -rL "${sass}/sass.css" "$SHAREDIR/sass.css"
 
       cp ${linuxAppIcon} "$SHAREDIR/icon.png"
-      cp ${linuxDesktopItem}/share/applications/${linuxPackageName}.desktop $APPLICATIONSDIR
+      cp ${linuxDesktopItem}/share/applications/${linuxAppName}.desktop $APPLICATIONSDIR
 
       # Copy the webgtk libexec over because we really want the webworker. 
       # This depends on our patch to ubuntuWebkitgtk for the lib to find the exec dir
@@ -318,13 +314,13 @@ in obApp // rec {
     Nah not yet
   ''; };
   linuxDesktopItem = pkgs.makeDesktopItem { 
-     name = linuxPackageName;
+     name = linuxAppName;
      desktopName = linuxAppDesc; 
      exec = "/usr/bin/${linuxAppName}";
      icon= "/usr/share/chainweaver/icon.png";
   };
   deb-control = pkgs.writeTextFile { name = "control"; text = ''
-    Package: ${linuxPackageName}
+    Package: ${linuxAppName}
     Version: ${linuxPackageVersion}
     Architecture: amd64
     Maintainer: "Kadena.io"
