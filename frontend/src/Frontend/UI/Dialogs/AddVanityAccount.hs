@@ -244,7 +244,9 @@ vanityAccountCreateSubmit model dAccount chainId result nodeInfos = Workflow $ d
 
       conf = mempty
         & walletCfg_importAccount .~ tagMaybe (current dAccount) localOk
-        & walletCfg_delAccount .~ attachWithMaybe (\m _ -> fmap (\(n,a,c,_) -> (n,a,c)) m) (current dAccount) onTxnFailed
+        & walletCfg_delAccount .~ attachWithMaybe
+          (\m _ -> fmap (\(n,a,c,_) -> (n, Some $ AccountRef_Vanity a c)) m)
+          (current dAccount) onTxnFailed
 
   done <- modalFooter $ confirmButton def "Done"
 

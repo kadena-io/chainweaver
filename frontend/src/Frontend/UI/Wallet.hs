@@ -124,7 +124,9 @@ uiAccountItems
 uiAccountItems model = do
   let net = model ^. network_selectedNetwork
       accounts = liftA2 (Map.findWithDefault mempty) net (unAccountStorage <$> model ^. wallet_accounts)
-      accountsMap = flattenKeys . _accounts_vanity <$> accounts
+      accountsMap
+        = Map.filter (not . _accountInfo_hidden . _vanityAccount_info)
+        . flattenKeys . _accounts_vanity <$> accounts
       tableAttrs = mconcat
         [ "style" =: "table-layout: fixed; width: 98%"
         , "class" =: "wallet table"
@@ -301,7 +303,7 @@ uiKeyItem model keyIndex key = do
       let mAccounts = ffor3 key (model ^. network_selectedNetwork) (model ^. wallet_accounts) $ \k net (AccountStorage as) -> fromMaybe mempty $ do
             accounts <- Map.lookup net as
             nva <- Map.lookup (_keyPair_publicKey $ _key_pair k) (_accounts_nonVanity accounts)
-            pure nva
+            pure $ Map.filter (not . _accountInfo_hidden . _nonVanityAccount_info) nva
       rec
         (clk, dialog) <- keyRow visible $ sum . catMaybes <$> balances
         visible <- toggle False clk

@@ -93,7 +93,7 @@ data WalletCfg key t = WalletCfg
   -- ^ Request generation of a new key
   , _walletCfg_delKey :: Event t IntMap.Key
   -- ^ Hide a key in the wallet.
-  , _walletCfg_delAccount :: Event t (NetworkName, AccountName, ChainId)
+  , _walletCfg_delAccount :: Event t (NetworkName, Some AccountRef)
   -- ^ Hide an account in the wallet.
   , _walletCfg_importAccount  :: Event t (NetworkName, AccountName, ChainId, VanityAccount)
   , _walletCfg_createWalletOnlyAccount :: Event t (NetworkName, PublicKey, ChainId)
@@ -185,6 +185,7 @@ makeWallet model conf = do
       , ffor (_walletCfg_updateAccountNotes conf) updateAccountNotes
       , foldr (.) id . fmap updateAccountBalance <$> newBalances
       , ffor (_walletCfg_setCrossChainTransfer conf) updateCrossChain
+      , ffor (_walletCfg_delAccount conf) hideAccount
       ]
 
   performEvent_ $ storeKeys <$> updated keys
@@ -197,6 +198,9 @@ makeWallet model conf = do
   where
     updateAccountNotes :: (NetworkName, AccountName, ChainId, AccountNotes) -> AccountStorage -> AccountStorage
     updateAccountNotes (net, name, chain, notes) = _AccountStorage . at net . _Just . accounts_vanity . at name . _Just . at chain . _Just . vanityAccount_notes .~ notes
+
+    hideAccount :: (NetworkName, Some AccountRef) -> AccountStorage -> AccountStorage
+    hideAccount (net, ref) = storageAccountInfo net ref . accountInfo_hidden .~ True
 
     updateCrossChain :: (NetworkName, Some AccountRef, Maybe UnfinishedCrossChainTransfer) -> AccountStorage -> AccountStorage
     updateCrossChain (net, ref, cct) = storageAccountInfo net ref . accountInfo_unfinishedCrossChainTransfer .~ cct
