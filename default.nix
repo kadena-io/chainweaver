@@ -155,19 +155,20 @@ in obApp // rec {
   deb = pkgs.stdenv.mkDerivation {
     name = "${linuxAppName}-usrlib";
     outputs = ["out"];
-    nativeBuildInputs = [ pkgs.makeWrapper ];
+    nativeBuildInputs = [ pkgs.makeWrapper pkgs.libcanberra ];
     exportReferencesGraph = ["graph" ubuntuExe];
     builder = pkgs.writeScript "builder.sh" ''
       source $stdenv/setup
       set -ex
       mkdir $out
+      # TODO : Why isn't TMPDIR set in the builder anymore after the obelisk bump
       export PREFIX=/usr
       export LIBPATH=$PREFIX/lib/chainweaver
       export LIBEXECPATH=$PREFIX/libexec/chainweaver
       export BINPATH=$PREFIX/bin
       export SHAREPATH=$PREFIX/share
 
-      export DEBDIR=$TMPDIR${linuxAppName}-1
+      export DEBDIR=$TMPDIR/${linuxAppName}-1
       export BINDIR=$DEBDIR$BINPATH
       export LIBEXECDIR=$DEBDIR$LIBEXECPATH
       export LIBDIR=$DEBDIR$LIBPATH
@@ -191,6 +192,7 @@ in obApp // rec {
       mkdir -p $BINDIR
       mkdir -p $LIBDIR
       mkdir -p $LIBEXECDIR
+      mkdir -p $SHAREDIR
 
       cp ${obApp.ghc.linux}/bin/linuxApp $TMPEXE
       chmod u+w $TMPEXE
@@ -231,7 +233,7 @@ in obApp // rec {
         if [ -d $gsettings_path ]; then
           cp -r $gsettings_path $SHAREDIR/gsettings-schemas
           for d in $(find $gsettings_path -maxdepth 1 -type d); do
-            wrapperArgs+="--prefix XDG_DATA_DIRS : $SHAREDIR/gsettings-schema/$(basename $d)"
+            wrapperArgs+="--prefix XDG_DATA_DIRS : $SHAREDIR/gsettings-schema/$(basename $d) "
           done;
         fi
       }
@@ -262,6 +264,24 @@ in obApp // rec {
         read nrRefs
         for ((i = 0; i < nrRefs; i++)); do read ref; done
       done < graph
+      
+      # The pixbuf api is critically important for rendering images to the low level gnome drawing tools. Because it links 
+      # back to glibc, it's very important to make sure it's the same libc and stack as we built gtk with.
+      pixbuf_path=${pkgs.gdk_pixbuf}
+      cp -r $pixbuf_path/lib/gdk-pixbuf-2.0 $LIBDIR/gdk-pixbuf-2.0 
+      pixbuf_nixcache=$(ls ${pkgs.gdk_pixbuf}/lib/gdk-pixbuf-2.0/*/loaders.cache)
+      pixbuf_filename=$(echo $pixbuf_nixcache | sed "s|$pixbuf_path/lib||") 
+    
+      # The pixbuf dir isn't writable by root, so temporarily make it so to replace the cache config 
+      # alternatively we could use sponge or copy the file somewhere else, but this is 
+      chmod u+w $LIBDIR/gdk-pixbuf-2.0/2.10.0
+      sed -i "s|$pixbuf_path/lib|$LIBPATH|g" $LIBDIR$pixbuf_filename
+      chmod u-w $LIBDIR/gdk-pixbuf-2.0/2.10.0
+      wrapperArgs+="--set GDK_PIXBUF_MODULE_FILE $LIBPATH$pixbuf_filename "
+
+      # Copy gio-launch-desktop across and setup glib to use it
+      cp ${pkgs.glib}/bin/gio-launch-desktop $LIBEXECDIR
+      wrapperArgs+="--set GIO_LAUNCH_DESKTOP $LIBEXECPATH/gio-launch-desktop "
 
       # libopenjp has some symlinks from libopenjp2.so -> libopenjp2.7. And we need them so hack it in
       ln -s $LIBPATH/libopenjp2.so.2.3.1 $LIBDIR/libopenjp2.so.7
