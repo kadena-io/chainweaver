@@ -215,7 +215,7 @@ splashScreen eBack = Workflow $ setupDiv "splash" $ do
     ) kadenaWalletLogo
 
   (agreed, create, recover) <- setupDiv "splash-terms-buttons" $ do
-    agreed <- fmap value $ setupCheckbox False def $ setupDiv "terms-conditions-checkbox" $ do
+    agreed <- fmap value $ setupCheckbox False def $ el "div" $ do
       text "I have read & agree to the "
       elAttr "a" ?? (text "Terms of Service") $ mconcat
         [ "href" =: "https://kadena.io/chainweaver-tos"
