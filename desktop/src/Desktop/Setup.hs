@@ -436,8 +436,9 @@ precreatePassphraseWarning eBack dPassword mnemonicSentence = Workflow $ mdo
       line "Kadena cannot access your recovery phrase if lost, please store it safely."
 
     let chkboxcls = setupClass "warning-checkbox " <> setupClass "checkbox-wrapper"
-    fmap value $ elClass "div" chkboxcls $ setupCheckbox False def
-      $ text "I understand that if I lose my recovery phrase, I will not be able to restore my wallet."
+    fmap value $ elClass "div" chkboxcls $ setupCheckbox False def $ el "div" $ do
+      line "I understand that if I lose my recovery phrase,"
+      line "I will not be able to restore my wallet."
 
   finishSetupWF WalletScreen_PrePassphrase $ leftmost
     [ createNewWallet eBack <$ eBack
