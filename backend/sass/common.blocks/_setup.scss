@@ -332,7 +332,7 @@ $setup-progress-font-size: 18px;
       &.setup__copy-success {
         opacity: 1;
         transform: none;
-        color: green;
+        color: $chainweaver-blue;
       }
 
       &.setup__copy-fail {
