@@ -9,6 +9,7 @@
 
 $wallet-top-btm-margin: 0.5rem 0 0.5rem 0;
 $kadena-orange: #F3AB3C;
+$setup-progress-button-height: 52px;
 
 .setup__fullscreen {
   width: 100%;
@@ -167,7 +168,7 @@ $kadena-orange: #F3AB3C;
     margin: $wallet-top-btm-margin;
     padding: 1.3rem;
     padding-left: 2em;
-    height: initial;
+    height: $setup-progress-button-height;
     line-height: initial;
     font-size: 23px;
     font-weight: initial;
@@ -194,7 +195,7 @@ $kadena-orange: #F3AB3C;
 
     &.button_type_confirm {
       font-size: 18px;
-      height: 52px;
+      height: $setup-progress-button-height;
       padding: 0;
     }
 
