@@ -258,18 +258,6 @@ $kadena-orange: #F3AB3C;
   cursor: alias;
 }
 
-.setup__delete {
-  text-align: right;
-}
-
-.setup__add {
-  @extend .setup__delete;
-}
-
-.setup__add-delete-button {
-  width: 30px;
-}
-
 .setup__button-horizontal-group {
   display: flex;
   flex-direction: row;
