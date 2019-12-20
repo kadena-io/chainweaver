@@ -264,13 +264,11 @@ $setup-progress-font-size: 18px;
   .button:first-child { margin-left: 0 !important; }
 }
 
-.setup__record-phrase-msg {
-  margin-bottom: 2em;
-}
-
 .setup__passphrase-widget-wrapper {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
+  width: 625px;
+  margin-top: 28px;
 }
 
 .setup__passphrase-widget-word-hider {
@@ -294,10 +292,6 @@ $setup-progress-font-size: 18px;
 
 .setup__passphrase-widget-word-hider--focused {
   display: none;
-}
-
-.setup__fullscreen .setup__verify-phrase-msg {
-  margin-bottom: 1.5rem;
 }
 
 .setup__password-message {
@@ -406,11 +400,6 @@ $setup-progress-font-size: 18px;
     font-size: 7rem;
     top: 1px;
   }
-}
-
-.setup__recover-widget-wrapper,
-.setup__verify-widget-wrapper {
-  background-color: $white;
 }
 
 .setup__waiting-passphrase {
