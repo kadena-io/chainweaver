@@ -430,7 +430,7 @@ precreatePassphraseWarning eBack dPassword mnemonicSentence = Workflow $ mdo
     setupDiv "recovery-phrase-warning" $ do
       line "In the next step you will record your 12 word recovery phrase."
       line "Your recovery phrase makes it easy to restore your wallet on a new device."
-      line "Anyone with this phrase can take control your wallet, keep this phrase private."
+      line "Anyone with this phrase can take control of your wallet, keep this phrase private."
 
     setupDiv "recovery-phrase-highlighted-warning" $
       line "Kadena cannot access your recovery phrase if lost, please store it safely."
