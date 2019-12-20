@@ -108,9 +108,9 @@
 }
 
 .button_type_primary {
-  border-color: $black;
+  border-color: $chainweaver-dark-blue;
   color: $white;
-  background: $black;
+  background: $chainweaver-dark-blue;
   font-size: $primary-font-size;
 }
 
@@ -123,9 +123,7 @@
 }
 
 .button_type_primary[disabled] {
-  background: $black-disabled-bg;
-  border-color: $black-disabled-border-color;
-  color: $black-disabled-color;
+  opacity: 0.5;
 }
 
 .button_type_secondary {
