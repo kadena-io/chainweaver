@@ -165,6 +165,13 @@ $kadena-orange: #F3AB3C;
 
   .setup__password {
     margin: $wallet-top-btm-margin;
+    padding: 1.3rem;
+    padding-left: 2em;
+    height: initial;
+    line-height: initial;
+    font-size: 23px;
+    font-weight: initial;
+    flex-grow: 1;
   }
 
   .setup__password-wrapper {
@@ -179,11 +186,6 @@ $kadena-orange: #F3AB3C;
       left: 25px;
       justify-content: space-around;
       align-items: center;
-  }
-
-  input.setup__password {
-    flex-grow: 1;
-    padding-left: 2em;
   }
 
   .button {
@@ -212,15 +214,6 @@ $kadena-orange: #F3AB3C;
         bottom: -2px;
       }
     }
-  }
-
-  .setup__password {
-    height: initial;
-    line-height: initial;
-    padding: 1.3rem;
-    font-size: 23px;
-    font-weight: initial;
-
   }
 }
 
