@@ -132,10 +132,10 @@ import           Frontend.Foundation
 import           Frontend.Messages
 import           Frontend.Network.NodeInfo
 import           Frontend.Storage                  (getItemStorage,
-                                                    HasStorage,
+                                                    HasStorage(StorageM),
                                                     localStorage,
                                                     removeItemStorage,
-                                                    setItemStorage)
+                                                    setItemStorage, runStorageJSM)
 
 
 -- | What endpoint to use for a network request.
@@ -273,6 +273,7 @@ makeNetwork
     , HasConfigs m
     , HasJSContext (Performable m)
     , HasStorage m, HasStorage (Performable m)
+    , StorageM m ~ JSM, StorageM (Performable m) ~ JSM
     , HasCrypto key (Performable m)
     )
   => NetworkCfg t
@@ -416,6 +417,7 @@ buildMeta
   :: ( MonadHold t m, MonadFix m, MonadJSM m
      , PerformEvent t m, MonadJSM (Performable m), TriggerEvent t m
      , HasStorage m, HasStorage (Performable m)
+     , StorageM m ~ JSM, StorageM (Performable m) ~ JSM
      )
   => NetworkCfg t -> m (Dynamic t PublicMeta)
 buildMeta cfg = do
@@ -430,7 +432,7 @@ buildMeta cfg = do
           , _pmCreationTime = time
           }
   m <- fromMaybe defaultMeta <$>
-    getItemStorage localStorage StoreNetwork_PublicMeta
+    runStorageJSM (getItemStorage localStorage StoreNetwork_PublicMeta)
 
   r <- foldDyn id m $ leftmost
     [ set Pact.pmSender <$> cfg ^. networkCfg_setSender
@@ -441,7 +443,7 @@ buildMeta cfg = do
 
   onStore <- throttle 2 $ updated r
   performEvent_ $
-    setItemStorage localStorage StoreNetwork_PublicMeta <$> onStore
+    (runStorageJSM . setItemStorage localStorage StoreNetwork_PublicMeta) <$> onStore
 
   pure r
 
@@ -492,14 +494,15 @@ getNetworks
      , HasNetworkCfg cfg t, HasConfigs m
      , PostBuild t m, HasJSContext (Performable m)
      , HasStorage m, HasStorage (Performable m)
+     , StorageM m ~ JSM, StorageM (Performable m) ~ JSM
      )
   => cfg -> m (Dynamic t NetworkName, Dynamic t (Map NetworkName [NodeRef]))
 getNetworks cfg = do
     (defName, defNets, mRemoteSource) <- getConfigNetworks
     initialNets <- fromMaybe defNets <$>
-      getItemStorage localStorage StoreNetwork_Networks
+      (runStorageJSM $ getItemStorage localStorage StoreNetwork_Networks)
     initialName <- fromMaybe defName <$>
-      getItemStorage localStorage StoreNetwork_SelectedNetwork
+      (runStorageJSM $ getItemStorage localStorage StoreNetwork_SelectedNetwork)
 
     -- Hit the remote-source for network configs, if applicable
     mRemoteUpdate <- for mRemoteSource $ \url -> do
@@ -528,11 +531,11 @@ getNetworks cfg = do
     onSelectedStore <- throttle 2 $ updated sName
 
     performEvent_ $
-      setItemStorage localStorage StoreNetwork_Networks <$> onNetworksStore
+      (runStorageJSM . setItemStorage localStorage StoreNetwork_Networks) <$> onNetworksStore
     performEvent_ $
-      removeItemStorage localStorage StoreNetwork_Networks <$ (cfg ^. networkCfg_resetNetworks)
+      (runStorageJSM $ removeItemStorage localStorage StoreNetwork_Networks) <$ (cfg ^. networkCfg_resetNetworks)
     performEvent_ $
-      setItemStorage localStorage StoreNetwork_SelectedNetwork <$> onSelectedStore
+      (runStorageJSM . setItemStorage localStorage StoreNetwork_SelectedNetwork) <$> onSelectedStore
 
     pure (sName, networks)
 

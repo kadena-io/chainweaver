@@ -93,12 +93,12 @@ data StoreModuleExplorer a where
 deriving instance Show (StoreModuleExplorer a)
 
 -- | Write text to localstorage.
-storeEditor :: (HasStorage m, MonadJSM m) => Text -> m ()
-storeEditor ks = setItemStorage localStorage StoreModuleExplorer_SessionFile ks
+storeEditor :: (HasStorage m, MonadJSM m, StorageM m ~ JSM) => Text -> m ()
+storeEditor ks = runStorageJSM $ setItemStorage localStorage StoreModuleExplorer_SessionFile ks
 
 -- | Load text from localstorage.
-loadEditorFromLocalStorage :: (HasStorage m, MonadJSM m) => m (Maybe Text)
-loadEditorFromLocalStorage = getItemStorage localStorage StoreModuleExplorer_SessionFile
+loadEditorFromLocalStorage :: (HasStorage m, MonadJSM m, StorageM m ~ JSM) => m (Maybe Text)
+loadEditorFromLocalStorage = runStorageJSM $ getItemStorage localStorage StoreModuleExplorer_SessionFile
 
 
 makeModuleExplorer
@@ -109,6 +109,7 @@ makeModuleExplorer
     , HasModuleExplorerModel model t
     , MonadSample t (Performable m)
     , HasStorage (Performable m)
+    , StorageM (Performable m) ~ JSM
     , HasCrypto key (Performable m)
     , Routed t (R FrontendRoute) m
     )

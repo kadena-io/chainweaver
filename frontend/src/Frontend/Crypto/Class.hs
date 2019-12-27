@@ -23,7 +23,10 @@ import Frontend.Crypto.Ed25519
 import Frontend.Foundation
 import Frontend.Storage
 
-instance (HasStorage m, Monad m) => HasStorage (CryptoT key m)
+instance (HasStorage m, Monad m) => HasStorage (CryptoT key m) where
+  type StorageM (CryptoT key m) = StorageM m
+  askStorageInterpreter = lift askStorageInterpreter
+
 -- TODO : Hide the pact key constructor so the caller is forced to verify it
 data PactKey = PactKey
   { _pactKey_scheme :: PPKScheme

@@ -52,14 +52,14 @@ frontend = Frontend
 
   , _frontend_body = prerender_ loaderMarkup $ do
     (fileOpened, triggerOpen) <- openFileDialog
-    let store = browserStorage
+    let interpreter = browserStorageIntepreter
         crypto = Crypto
           mkSignature
           (const genKeyPair)
           (\_ _ -> pure $ Left "Not supported on web")
           (\_ _ -> error "Not supported on web")
 
-    mapRoutedT (flip runStorageT store . flip runCryptoT crypto) $ app blank $ AppCfg
+    mapRoutedT (flip runStorageT interpreter . flip runCryptoT crypto) $ app blank $ AppCfg
       { _appCfg_gistEnabled = True
       , _appCfg_externalFileOpened = fileOpened
       , _appCfg_openFileDialog = liftJSM triggerOpen

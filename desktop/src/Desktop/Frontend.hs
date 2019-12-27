@@ -16,6 +16,7 @@ import Control.Exception (try, catch)
 import Control.Lens ((?~))
 import Control.Monad (when, (<=<), guard, void)
 import Control.Monad.Fix (MonadFix)
+import Control.Monad.Free (iterM)
 import Control.Monad.IO.Class
 import Data.Bitraversable
 import Data.Bits ((.|.))
@@ -24,7 +25,7 @@ import Data.ByteString (ByteString)
 import Data.Maybe (isNothing, isJust)
 import Data.Text (Text)
 import Data.Time (NominalDiffTime, getCurrentTime, addUTCTime)
-import Language.Javascript.JSaddle (liftJSM)
+import Language.Javascript.JSaddle (JSM, liftJSM)
 import Reflex.Dom.Core
 import System.FilePath ((</>))
 import qualified Cardano.Crypto.Wallet as Crypto
@@ -73,28 +74,34 @@ data BIPStorage a where
 deriving instance Show (BIPStorage a)
 
 -- | Store items as files in the given directory, using the key as the file name
-fileStorage :: FilePath -> Storage
-fileStorage dir = Storage
-  { _storage_get = \_ k -> liftIO $ do
-    try (BS.readFile $ path k) >>= \case
-      Left (e :: IOError) -> do
-        putStrLn $ "Error reading storage: " <> show e <> " : " <> path k
-        pure Nothing
-      Right v -> do
-        let result = Aeson.decodeStrict v
-        when (isNothing result) $ do
-          T.putStrLn $ "Error reading storage: can't decode contents: " <>
-            T.decodeUtf8With T.lenientDecode v
-        pure result
-  , _storage_set = \_ k a -> liftIO $
-    catch (LBS.writeFile (path k) (Aeson.encode a)) $ \(e :: IOError) -> do
-      putStrLn $ "Error writing storage: " <> show e <> " : " <> path k
-  , _storage_remove = \_ k -> liftIO $
-    catch (Directory.removeFile (path k)) $ \(e :: IOError) -> do
-      putStrLn $ "Error removing storage: " <> show e <> " : " <> path k
-  }
-    where path :: Show a => a -> FilePath
-          path k = dir </> FilePath.makeValid (show k)
+fileStorage :: FilePath -> StorageInterpreter JSM
+fileStorage dir = StorageInterpreter $ iterM go
+  where
+    go :: StorageF (JSM a) -> JSM a
+    go = \case
+      StorageF_Get _ k next -> do
+        res <- liftIO $ do
+          try (BS.readFile $ path k) >>= \case
+            Left (e :: IOError) -> do
+              putStrLn $ "Error reading storage: " <> show e <> " : " <> path k
+              pure Nothing
+            Right v -> do
+              let result = Aeson.decodeStrict v
+              when (isNothing result) $ do
+                T.putStrLn $ "Error reading storage: can't decode contents: " <>
+                  T.decodeUtf8With T.lenientDecode v
+              pure result
+        next res
+      StorageF_Set _ k a next -> do
+        liftIO $ catch (LBS.writeFile (path k) (Aeson.encode a)) $ \(e :: IOError) -> do
+          putStrLn $ "Error writing storage: " <> show e <> " : " <> path k
+        next
+      StorageF_Remove _ k next -> do
+        liftIO $ catch (Directory.removeFile (path k)) $ \(e :: IOError) -> do
+          putStrLn $ "Error removing storage: " <> show e <> " : " <> path k
+        next
+    path :: Show a => a -> FilePath
+    path k = dir </> FilePath.makeValid (show k)
 
 bipCryptoGenPair :: Crypto.XPrv -> Text -> Int -> (Crypto.XPrv, PublicKey)
 bipCryptoGenPair root pass i =
@@ -148,7 +155,7 @@ desktop = Frontend
     (signingRequestMVar, signingResponseMVar) <- signingServer
       (pure ()) -- Can't foreground or background things
       (pure ())
-    mapRoutedT (flip runStorageT browserStorage) $ do
+    mapRoutedT (flip runStorageT browserStorageIntepreter) $ do
       (fileOpened, triggerOpen) <- Frontend.openFileDialog
       signingRequest <- mvarTriggerEvent signingRequestMVar
       bipWallet AppCfg
@@ -170,19 +177,21 @@ bipWallet
      , RouteToUrl (R FrontendRoute) m, SetRoute t (R FrontendRoute) m
      , HasConfigs m
      , HasStorage m, HasStorage (Performable m)
+     , StorageM m ~ JSM, StorageM (Performable m) ~ JSM
      )
   => AppCfg Crypto.XPrv t (RoutedT t (R FrontendRoute) (CryptoT Crypto.XPrv m))
   -> RoutedT t (R FrontendRoute) m ()
 bipWallet appCfg = do
-  mRoot <- getItemStorage localStorage BIPStorage_RootKey
+  mRoot <- runStorageJSM $ getItemStorage localStorage BIPStorage_RootKey
   rec
     root <- holdDyn mRoot upd
     upd <- switchHold never <=< dyn $ ffor root $ \case
       Nothing -> do
         xprv <- runSetup
         saved <- performEvent $ ffor xprv $ \x -> do
-          setItemStorage localStorage BIPStorage_RootKey x
-          removeItemStorage localStorage StoreWallet_Keys
+          runStorageJSM $ do
+            setItemStorage localStorage BIPStorage_RootKey x
+            removeItemStorage localStorage StoreWallet_Keys
           pure x
         pure $ Just <$> saved
       Just xprv -> mdo

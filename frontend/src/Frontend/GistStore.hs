@@ -117,6 +117,7 @@ makeGistStore
     , HasGistStoreModel model t
     , HasGistStoreModelCfg mConf t
     , HasStorage m, HasStorage (Performable m)
+    , StorageM m ~ JSM, StorageM (Performable m) ~ JSM
     )
   => model
   -> cfg
@@ -130,15 +131,15 @@ makeGistStore m cfg = mdo
       , onRetry
       ]
 
-  mGistWasRequestedInit <- getItemStorage sessionStorage StoreGist_GistRequested
+  mGistWasRequestedInit <- runStorageJSM $ getItemStorage sessionStorage StoreGist_GistRequested
 
   mGistWasRequested <- holdDyn mGistWasRequestedInit $ leftmost
     [ Just <$> onUnAuthorizedCreate
     , Nothing <$ onClear
     ]
   onStoredReq <- performEvent $
-    setItemStorage sessionStorage StoreGist_GistRequested  <$> onUnAuthorizedCreate
-  performEvent_ $ removeItemStorage sessionStorage StoreGist_GistRequested <$ onClear
+    (runStorageJSM . setItemStorage sessionStorage StoreGist_GistRequested)  <$> onUnAuthorizedCreate
+  performEvent_ $ (runStorageJSM $ removeItemStorage sessionStorage StoreGist_GistRequested) <$ onClear
 
   onMayNewToken <- tagOnPostBuild mGitHubToken
   let

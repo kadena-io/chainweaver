@@ -79,6 +79,7 @@ library
                , time
                , transformers
                , trifecta
+               , universe
                , unordered-containers
                , kadena-signing-api
                , base64-bytestring
@@ -202,15 +203,24 @@ executable frontend
 test-suite kadenaaddress
   type: exitcode-stdio-1.0
 
-  main-is: KadenaAddressSpec.hs
+  main-is: main.hs
   hs-source-dirs: tests
   build-depends: base
                , frontend
+               , aeson
+               , containers
+               , dependent-map
                , hedgehog
                , kadena-signing-api
                , pact
                , errors
+               , free
+               , jsaddle
                , text
                , common
                , lens
                , bytestring
+               , tasty
+               , tasty-hunit
+               , tasty-hedgehog
+               , universe

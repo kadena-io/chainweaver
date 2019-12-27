@@ -88,7 +88,8 @@ makeOAuth
     , MonadJSM m, MonadJSM (Performable m), MonadFix m, TriggerEvent t m
     , Routed t (R FrontendRoute) m, RouteToUrl (R FrontendRoute) m
     , HasOAuthCfg cfg t, HasOAuthModelCfg mConf t, HasConfigs m
-    , HasStorage m, HasStorage (Performable m)
+    , HasStorage m, HasStorage (Performable m), StorageM (Performable m) ~ JSM
+    , StorageM m ~ JSM
     )
   => cfg -> m (mConf, OAuth t)
 makeOAuth cfg = mdo -- Required to get access to `tokens` for clearing any old tokens before requesting new ones.
@@ -104,7 +105,7 @@ makeOAuth cfg = mdo -- Required to get access to `tokens` for clearing any old t
   -- (Below performEvent on `updated tokens` will happen too late!)
   onAuthorizeStored <- performEvent $ ffor (cfg ^. oAuthCfg_authorize) $ \authReq -> do
     cTokens <- sample $ current tokens
-    setItemStorage localStorage StoreOAuth_Tokens $ Map.delete (_authorizationRequest_provider authReq) cTokens
+    runStorageJSM $ setItemStorage localStorage StoreOAuth_Tokens $ Map.delete (_authorizationRequest_provider authReq) cTokens
     pure authReq
 
   oAuthL <- runOAuthRequester $ makeOAuthFrontend sCfg $ OAuthFrontendConfig
@@ -115,7 +116,7 @@ makeOAuth cfg = mdo -- Required to get access to `tokens` for clearing any old t
   let
     (onErr, onToken) = fanEither $ _oAuthFrontend_authorized oAuthL
 
-  mInitTokens <- getItemStorage localStorage StoreOAuth_Tokens
+  mInitTokens <- runStorageJSM $ getItemStorage localStorage StoreOAuth_Tokens
 
   tokens <- foldDyn id (fromMaybe Map.empty mInitTokens) $ leftmost
     [ uncurry Map.insert <$> onToken
@@ -124,7 +125,7 @@ makeOAuth cfg = mdo -- Required to get access to `tokens` for clearing any old t
     , Map.delete <$> cfg ^. oAuthCfg_logout
     ]
 
-  performEvent_ $ setItemStorage localStorage StoreOAuth_Tokens <$> updated tokens
+  performEvent_ $ runStorageJSM . setItemStorage localStorage StoreOAuth_Tokens <$> updated tokens
 
   pure
     ( mempty & messagesCfg_send .~ fmap (pure . textOAuthError) onErr
@@ -137,7 +138,7 @@ makeOAuth cfg = mdo -- Required to get access to `tokens` for clearing any old t
 
 runOAuthRequester
   :: ( Monad m, MonadFix m, TriggerEvent t m, PerformEvent t m
-     , MonadJSM (Performable m), HasStorage m
+     , MonadJSM (Performable m), HasStorage m, StorageM m ~ JSM
      )
   => RequesterT t (Command OAuthProvider) Identity m a
   -> m a
@@ -152,9 +153,9 @@ runOAuthRequester requester = mdo
 
   (a, onRequest) <- runRequesterT requester onResponse
 
-  store <- askStorage
+  intepreter <- askStorageInterpreter
   onResponse <- performEventAsync $ ffor onRequest $ \req sendResponse -> void $ liftJSM $ forkJSM $ do
-    r <- traverseRequesterData (fmap Identity . flip runStorageT store . runOAuthCmds renderRoute) req
+    r <- traverseRequesterData (fmap Identity . flip runStorageT intepreter . runOAuthCmds renderRoute) req
     liftIO $ sendResponse r
 
   pure a
@@ -162,7 +163,7 @@ runOAuthRequester requester = mdo
 
 
 runOAuthCmds
-  :: (HasStorage m, MonadJSM m, HasJSContext m)
+  :: (HasStorage m, MonadJSM m, HasJSContext m, StorageM m ~ JSM)
   => (R BackendRoute -> Text)
   -> Command OAuthProvider a
   -> m a
@@ -170,11 +171,11 @@ runOAuthCmds renderRoute = go
   where
     go = \case
       Free (CommandF_StoreState prov state next) ->
-        setItemStorage sessionStorage (StoreOAuth_State prov) state >> go next
+        runStorageJSM (setItemStorage sessionStorage (StoreOAuth_State prov) state) >> go next
       Free (CommandF_LoadState prov getNext) ->
-        getItemStorage sessionStorage (StoreOAuth_State prov) >>= go . getNext
+        runStorageJSM (getItemStorage sessionStorage (StoreOAuth_State prov)) >>= go . getNext
       Free (CommandF_RemoveState prov next) ->
-        removeItemStorage sessionStorage (StoreOAuth_State prov) >> go next
+        runStorageJSM (removeItemStorage sessionStorage (StoreOAuth_State prov)) >> go next
       Free (CommandF_GetToken prov pars getNext) -> do
         let
           uri = renderRoute $ BackendRoute_OAuthGetToken :/ oAuthProviderId prov
