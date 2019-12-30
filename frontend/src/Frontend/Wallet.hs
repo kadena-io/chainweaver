@@ -32,7 +32,6 @@ module Frontend.Wallet
   , makeWallet
   , loadKeys
   , storeKeys
-  , StoreWallet(..)
   -- * Parsing
   , parseWalletKeyPair
   -- * Other helper functions
@@ -81,6 +80,7 @@ import Frontend.Foundation
 import Frontend.KadenaAddress
 import Frontend.Storage
 import Frontend.Network
+import Frontend.Store
 
 accountIsCreated :: Account -> AccountCreated
 accountIsCreated = maybe AccountCreated_No (const AccountCreated_Yes) . _accountInfo_balance . view accountInfo
@@ -266,14 +266,6 @@ getBalances model accStore = performEventAsync $ flip push accStore $ \networkAc
       -- Perform the requests on a forked thread
       void $ liftJSM $ forkJSM $ void $ sequence requests
 
--- Storing data:
-
--- | Storage keys for referencing data to be stored/retrieved.
-data StoreWallet key a where
-  StoreWallet_Keys :: StoreWallet key (KeyStorage key)
-  StoreWallet_Accounts :: StoreWallet key AccountStorage
-deriving instance Show (StoreWallet key a)
-
 -- | Parse a private key with additional checks based on the given public key.
 --
 --   In case a `Left` value is given instead of a valid public key, the
@@ -302,19 +294,19 @@ checkAccountNameValidity m = getErr <$> (m ^. network_selectedNetwork) <*> (m ^.
 
 -- | Write key pairs to localstorage.
 storeKeys :: (ToJSON key, HasStorage m, MonadJSM m, StorageM m ~ JSM) => KeyStorage key -> m ()
-storeKeys = runStorageJSM . setItemStorage localStorage StoreWallet_Keys
+storeKeys = runStorageJSM . setItemStorage localStorage StoreFrontend_Wallet_Keys
 
 -- | Load key pairs from localstorage.
 loadKeys :: (FromJSON key, HasStorage m, MonadJSM m, StorageM m ~ JSM) => m (Maybe (KeyStorage key))
-loadKeys = runStorageJSM $ getItemStorage localStorage StoreWallet_Keys
+loadKeys = runStorageJSM $ getItemStorage localStorage StoreFrontend_Wallet_Keys
 
 -- | Write key pairs to localstorage.
 storeAccounts :: (HasStorage m, MonadJSM m, StorageM m ~ JSM) => AccountStorage -> m ()
-storeAccounts = runStorageJSM . setItemStorage localStorage StoreWallet_Accounts
+storeAccounts = runStorageJSM . setItemStorage localStorage StoreFrontend_Wallet_Accounts
 
 -- | Load accounts from localstorage.
 loadAccounts :: (HasStorage m, MonadJSM m, StorageM m ~ JSM) => m (Maybe AccountStorage)
-loadAccounts = runStorageJSM $ getItemStorage localStorage StoreWallet_Accounts
+loadAccounts = runStorageJSM $ getItemStorage localStorage StoreFrontend_Wallet_Accounts
 
 -- Utility functions:
 

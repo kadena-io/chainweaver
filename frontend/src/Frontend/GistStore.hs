@@ -31,12 +31,10 @@ module Frontend.GistStore where
 import           Control.Applicative         (liftA2)
 import           Control.Arrow               (first)
 import           Control.Lens
-import           Data.Aeson                  (FromJSON, ToJSON)
 import qualified Data.Map                    as Map
 import           Data.Proxy                  (Proxy (..))
 import           Data.Text                   (Text)
 import qualified Data.Text                   as T
-import           Generics.Deriving.Monoid    (mappenddefault)
 import           GHC.Generics                (Generic)
 import           GHCJS.DOM.XMLHttpRequest    (setRequestHeader)
 import           Network.GitHub.API
@@ -51,26 +49,14 @@ import           Servant.Client.JSaddle      (ClientEnv (..), ClientM, client,
 import           Obelisk.OAuth.Common        (AccessToken (..))
 ------------------------------------------------------------------------------
 import           Common.OAuth
+import           Common.GistStore
 import           Frontend.Foundation
 import           Frontend.Messages
 import           Frontend.OAuth
 import           Frontend.Storage
+import           Frontend.Store
 
 type GistRef = GistId
-
--- | Meta data about a gist. (Like name and description)
-data GistMeta = GistMeta
-  { _gistMeta_fileName    :: Text
-    -- ^ What filename to use in the gist.
-  , _gistMeta_description :: Text
-    -- ^ The description of the gist to create.
-  }
-  deriving (Show, Generic)
-
-instance ToJSON GistMeta
-instance FromJSON GistMeta
-instance Semigroup GistMeta where
-  (<>) = mappenddefault
 
 -- | Create and manage gists.
 data GistStoreCfg t = GistStoreCfg
@@ -99,15 +85,6 @@ type HasGistStoreModel model t = (HasOAuth model t)
 -- | Model config needed by gistStore.
 type HasGistStoreModelCfg mConf t = (Monoid mConf, HasOAuthCfg mConf t, HasMessagesCfg mConf t)
 
--- Storing data:
-
--- | Storage keys for referencing data to be stored/retrieved.
-data StoreGist a where
-  -- | User wanted a new gist, but was not authorized: Create gist when coming back.
-  StoreGist_GistRequested :: StoreGist (GistMeta, Text)
-
-deriving instance Show (StoreGist a)
-
 -- | Make a `ModuleList` given a `ModuleListCfg`
 makeGistStore
   :: forall t m cfg model mConf
@@ -131,15 +108,15 @@ makeGistStore m cfg = mdo
       , onRetry
       ]
 
-  mGistWasRequestedInit <- runStorageJSM $ getItemStorage sessionStorage StoreGist_GistRequested
+  mGistWasRequestedInit <- runStorageJSM $ getItemStorage sessionStorage StoreFrontend_Gist_GistRequested
 
   mGistWasRequested <- holdDyn mGistWasRequestedInit $ leftmost
     [ Just <$> onUnAuthorizedCreate
     , Nothing <$ onClear
     ]
   onStoredReq <- performEvent $
-    (runStorageJSM . setItemStorage sessionStorage StoreGist_GistRequested)  <$> onUnAuthorizedCreate
-  performEvent_ $ (runStorageJSM $ removeItemStorage sessionStorage StoreGist_GistRequested) <$ onClear
+    (runStorageJSM . setItemStorage sessionStorage StoreFrontend_Gist_GistRequested)  <$> onUnAuthorizedCreate
+  performEvent_ $ (runStorageJSM $ removeItemStorage sessionStorage StoreFrontend_Gist_GistRequested) <$ onClear
 
   onMayNewToken <- tagOnPostBuild mGitHubToken
   let

@@ -53,6 +53,7 @@ import           Common.Route
 import           Frontend.Foundation
 import           Frontend.Messages
 import           Frontend.Storage
+import           Frontend.Store
 
 
 data OAuthCfg t = OAuthCfg
@@ -75,12 +76,6 @@ data OAuth t = OAuth
 makePactLenses ''OAuth
 
 type HasOAuthModelCfg mConf t = ( Monoid mConf, HasMessagesCfg mConf t)
-
-data StoreOAuth r where
-  StoreOAuth_Tokens :: StoreOAuth (Map OAuthProvider AccessToken)
-  StoreOAuth_State :: OAuthProvider -> StoreOAuth OAuthState
-
-deriving instance Show (StoreOAuth a)
 
 makeOAuth
   :: forall t m cfg mConf
@@ -105,7 +100,7 @@ makeOAuth cfg = mdo -- Required to get access to `tokens` for clearing any old t
   -- (Below performEvent on `updated tokens` will happen too late!)
   onAuthorizeStored <- performEvent $ ffor (cfg ^. oAuthCfg_authorize) $ \authReq -> do
     cTokens <- sample $ current tokens
-    runStorageJSM $ setItemStorage localStorage StoreOAuth_Tokens $ Map.delete (_authorizationRequest_provider authReq) cTokens
+    runStorageJSM $ setItemStorage localStorage StoreFrontend_OAuth_Tokens $ Map.delete (_authorizationRequest_provider authReq) cTokens
     pure authReq
 
   oAuthL <- runOAuthRequester $ makeOAuthFrontend sCfg $ OAuthFrontendConfig
@@ -116,7 +111,7 @@ makeOAuth cfg = mdo -- Required to get access to `tokens` for clearing any old t
   let
     (onErr, onToken) = fanEither $ _oAuthFrontend_authorized oAuthL
 
-  mInitTokens <- runStorageJSM $ getItemStorage localStorage StoreOAuth_Tokens
+  mInitTokens <- runStorageJSM $ getItemStorage localStorage StoreFrontend_OAuth_Tokens
 
   tokens <- foldDyn id (fromMaybe Map.empty mInitTokens) $ leftmost
     [ uncurry Map.insert <$> onToken
@@ -125,7 +120,7 @@ makeOAuth cfg = mdo -- Required to get access to `tokens` for clearing any old t
     , Map.delete <$> cfg ^. oAuthCfg_logout
     ]
 
-  performEvent_ $ runStorageJSM . setItemStorage localStorage StoreOAuth_Tokens <$> updated tokens
+  performEvent_ $ runStorageJSM . setItemStorage localStorage StoreFrontend_OAuth_Tokens <$> updated tokens
 
   pure
     ( mempty & messagesCfg_send .~ fmap (pure . textOAuthError) onErr
@@ -171,11 +166,11 @@ runOAuthCmds renderRoute = go
   where
     go = \case
       Free (CommandF_StoreState prov state next) ->
-        runStorageJSM (setItemStorage sessionStorage (StoreOAuth_State prov) state) >> go next
+        runStorageJSM (setItemStorage sessionStorage (StoreFrontend_OAuth_State prov) state) >> go next
       Free (CommandF_LoadState prov getNext) ->
-        runStorageJSM (getItemStorage sessionStorage (StoreOAuth_State prov)) >>= go . getNext
+        runStorageJSM (getItemStorage sessionStorage (StoreFrontend_OAuth_State prov)) >>= go . getNext
       Free (CommandF_RemoveState prov next) ->
-        runStorageJSM (removeItemStorage sessionStorage (StoreOAuth_State prov)) >> go next
+        runStorageJSM (removeItemStorage sessionStorage (StoreFrontend_OAuth_State prov)) >> go next
       Free (CommandF_GetToken prov pars getNext) -> do
         let
           uri = renderRoute $ BackendRoute_OAuthGetToken :/ oAuthProviderId prov

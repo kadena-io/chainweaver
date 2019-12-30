@@ -136,6 +136,7 @@ import           Frontend.Storage                  (getItemStorage,
                                                     localStorage,
                                                     removeItemStorage,
                                                     setItemStorage, runStorageJSM)
+import           Frontend.Store
 
 
 -- | What endpoint to use for a network request.
@@ -253,15 +254,6 @@ makePactLenses ''Network
 
 -- | Model config needed by Network.
 type HasNetworkModelCfg mConf t = (Monoid mConf, HasMessagesCfg mConf t)
-
--- | Things we want to store to local storage.
-data StoreNetwork a where
-  StoreNetwork_PublicMeta  :: StoreNetwork PublicMeta
-  StoreNetwork_Networks    :: StoreNetwork (Map NetworkName [NodeRef])
-  StoreNetwork_SelectedNetwork :: StoreNetwork NetworkName
-
-deriving instance Show (StoreNetwork a)
-
 
 makeNetwork
   :: forall key t m mConf
@@ -432,7 +424,7 @@ buildMeta cfg = do
           , _pmCreationTime = time
           }
   m <- fromMaybe defaultMeta <$>
-    runStorageJSM (getItemStorage localStorage StoreNetwork_PublicMeta)
+    runStorageJSM (getItemStorage localStorage StoreFrontend_Network_PublicMeta)
 
   r <- foldDyn id m $ leftmost
     [ set Pact.pmSender <$> cfg ^. networkCfg_setSender
@@ -443,7 +435,7 @@ buildMeta cfg = do
 
   onStore <- throttle 2 $ updated r
   performEvent_ $
-    (runStorageJSM . setItemStorage localStorage StoreNetwork_PublicMeta) <$> onStore
+    (runStorageJSM . setItemStorage localStorage StoreFrontend_Network_PublicMeta) <$> onStore
 
   pure r
 
@@ -500,9 +492,9 @@ getNetworks
 getNetworks cfg = do
     (defName, defNets, mRemoteSource) <- getConfigNetworks
     initialNets <- fromMaybe defNets <$>
-      (runStorageJSM $ getItemStorage localStorage StoreNetwork_Networks)
+      (runStorageJSM $ getItemStorage localStorage StoreFrontend_Network_Networks)
     initialName <- fromMaybe defName <$>
-      (runStorageJSM $ getItemStorage localStorage StoreNetwork_SelectedNetwork)
+      (runStorageJSM $ getItemStorage localStorage StoreFrontend_Network_SelectedNetwork)
 
     -- Hit the remote-source for network configs, if applicable
     mRemoteUpdate <- for mRemoteSource $ \url -> do
@@ -531,11 +523,11 @@ getNetworks cfg = do
     onSelectedStore <- throttle 2 $ updated sName
 
     performEvent_ $
-      (runStorageJSM . setItemStorage localStorage StoreNetwork_Networks) <$> onNetworksStore
+      (runStorageJSM . setItemStorage localStorage StoreFrontend_Network_Networks) <$> onNetworksStore
     performEvent_ $
-      (runStorageJSM $ removeItemStorage localStorage StoreNetwork_Networks) <$ (cfg ^. networkCfg_resetNetworks)
+      (runStorageJSM $ removeItemStorage localStorage StoreFrontend_Network_Networks) <$ (cfg ^. networkCfg_resetNetworks)
     performEvent_ $
-      (runStorageJSM . setItemStorage localStorage StoreNetwork_SelectedNetwork) <$> onSelectedStore
+      (runStorageJSM . setItemStorage localStorage StoreFrontend_Network_SelectedNetwork) <$> onSelectedStore
 
     pure (sName, networks)
 

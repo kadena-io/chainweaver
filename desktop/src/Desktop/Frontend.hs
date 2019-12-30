@@ -62,7 +62,7 @@ import Obelisk.Route
 import Obelisk.Route.Frontend
 import qualified Frontend
 import qualified Frontend.ReplGhcjs
-import Frontend.Wallet (StoreWallet(..))
+import Frontend.Store (StoreFrontend(..))
 
 import Desktop.Orphans ()
 import Desktop.Setup
@@ -191,7 +191,8 @@ bipWallet appCfg = do
         saved <- performEvent $ ffor xprv $ \x -> do
           runStorageJSM $ do
             setItemStorage localStorage BIPStorage_RootKey x
-            removeItemStorage localStorage StoreWallet_Keys
+            removeItemStorage localStorage StoreFrontend_Wallet_Keys
+            removeItemStorage localStorage StoreFrontend_Wallet_Accounts
           pure x
         pure $ Just <$> saved
       Just xprv -> mdo

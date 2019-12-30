@@ -2,7 +2,12 @@
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE DefaultSignatures #-}
 {-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE UndecidableInstances #-}
+
+-- TODO Remove this before PR
+{-# OPTIONS_GHC -fno-warn-unused-top-binds #-}
+{-# OPTIONS_GHC -fno-warn-unused-imports #-}
 
 module Frontend.Storage
   ( localStorage
@@ -10,6 +15,8 @@ module Frontend.Storage
   , getItemStorage
   , setItemStorage
   , removeItemStorage
+  , dumpLocalStorage
+  , backupLocalStorage
   , StoreType (..)
   , HasStorage(..)
   , StorageT(..)
@@ -18,23 +25,38 @@ module Frontend.Storage
   , runStorageJSM
   , runStorageIO
   , browserStorageIntepreter
-  , allEntries
+  -- Versioning Stuff
+  , StorageVersioner(..)
+  , StoreKeyMetaPrefix(..)
+  , VersioningError(..)
+  , StorageVersion
+  , StorageUniverse(..)
   -- Consider moving to a .Internal
   , Storage
   , StorageF(..)
   , StorageInterpreter(StorageInterpreter)
   ) where
 
+import Control.Monad.Free (MonadFree, Free, iterM, liftF)
 import Control.Monad.IO.Class (MonadIO)
 import Control.Monad.Primitive (PrimMonad (PrimState, primitive))
 import Control.Monad.Reader
 import Control.Monad.Ref (MonadRef, MonadAtomicRef)
+import Data.Aeson (FromJSON, ToJSON)
 import Data.Coerce (coerce)
-import Data.Functor.Identity (Identity)
+import Data.Constraint.Forall (ForallF)
+import Data.Constraint.Extras (Has, Has', has)
+import Data.Dependent.Map (DMap, DSum((:=>)))
+import Data.Dependent.Sum.Orphans ()
+import Data.Functor.Identity (Identity(Identity))
+import Data.GADT.Show (GShow)
+import Data.GADT.Compare (GCompare)
+import Data.GADT.Show (GShow,gshow)
+import qualified Data.Dependent.Map as DMap
 import Data.Proxy (Proxy(Proxy))
-import Control.Monad.Free (MonadFree, Free, iterM, liftF)
-import Data.Dependent.Map (DMap)
-import Data.Universe (Finite(..))
+import Data.Some (Some(Some))
+import Data.Universe.Some (UniverseSome, universeSome)
+import Numeric.Natural (Natural)
 import Frontend.Foundation
 import GHCJS.DOM.Types (fromJSString, toJSString)
 import Language.Javascript.JSaddle (JSM, MonadJSM, liftJSM)
@@ -42,6 +64,7 @@ import Obelisk.Route.Frontend
 import Reflex.Dom hiding (fromJSString)
 import Reflex.Host.Class (MonadReflexCreateTrigger)
 import qualified Data.Aeson as Aeson
+import qualified Data.ByteString as BS
 import qualified Data.ByteString.Lazy as BL
 import Data.Text (Text)
 import qualified Data.Text as T
@@ -73,6 +96,8 @@ data StoreType
   | StoreType_Session
   deriving (Eq, Show)
 
+newtype StoreKeyMetaPrefix = StoreKeyMetaPrefix Text
+
 data StorageF next
   = StorageF_Get StoreType Text (Maybe Text -> next)
   | StorageF_Set StoreType Text Text next
@@ -82,29 +107,131 @@ data StorageF next
 type Storage = Free StorageF
 
 getItemStorage
-  :: (MonadFree StorageF m, Show (k a), Aeson.FromJSON a)
+  :: (MonadFree StorageF m, GShow k, Aeson.FromJSON a)
   => StoreType -> k a -> m (Maybe a)
-getItemStorage s k = liftF (StorageF_Get s (keyToString k) (Aeson.decodeStrict . T.encodeUtf8 =<<))
+getItemStorage st k = getItemStorage' st (keyToText k)
+
+getItemStorage' :: (MonadFree StorageF m, Aeson.FromJSON a) => StoreType -> Text -> m (Maybe a)
+getItemStorage' st kt = liftF (StorageF_Get st kt (Aeson.decodeStrict . T.encodeUtf8 =<<))
 
 setItemStorage
-  :: (MonadFree StorageF m, Show (k a), Aeson.ToJSON a)
+  :: (MonadFree StorageF m, GShow k, Aeson.ToJSON a)
   => StoreType -> k a -> a -> m ()
-setItemStorage s k a = liftF (StorageF_Set s (keyToString k) (T.decodeUtf8 . BL.toStrict . Aeson.encode $ a) ())
+setItemStorage st k = setItemStorage' st (keyToText k)
+
+setItemStorage'
+  :: (MonadFree StorageF m, Aeson.ToJSON a)
+  => StoreType -> Text -> a -> m ()
+setItemStorage' st kt a = liftF (StorageF_Set st kt (T.decodeUtf8 . BL.toStrict . Aeson.encode $ a) ())
 
 removeItemStorage
-  :: (MonadFree StorageF m, Show (k a))
+  :: (MonadFree StorageF m, GShow k)
   => StoreType -> k a -> m ()
-removeItemStorage s k = liftF (StorageF_Remove s (keyToString k) ())
+removeItemStorage s k = liftF (StorageF_Remove s (keyToText k) ())
 
-allEntries
-  :: (MonadFree StorageF m, Show (k a), Finite (k a))
-  => StoreType
-  -> Proxy k
-  -> m (DMap k Identity)
-allEntries = undefined
+currentVersionKeyText :: StoreKeyMetaPrefix -> Text
+currentVersionKeyText (StoreKeyMetaPrefix p) = (p <> "_version")
 
-keyToString :: Show a => a -> Text
-keyToString = T.pack . show
+backupKeyPrefixText :: StoreKeyMetaPrefix -> Natural -> Text
+backupKeyPrefixText (StoreKeyMetaPrefix p) ver = (p <> "_backups_v" <> tshow ver)
+
+latestBackupSequenceKeyText :: StoreKeyMetaPrefix -> Natural -> Text
+latestBackupSequenceKeyText p ver = (backupKeyPrefixText p ver) <> "_latest"
+
+backupKeyText :: StoreKeyMetaPrefix -> Natural -> Natural -> Text
+backupKeyText p ver seqNo = (backupKeyPrefixText p ver) <> "_" <> tshow seqNo
+
+getCurrentVersion
+  :: (MonadFree StorageF m)
+  => StoreKeyMetaPrefix
+  -> m Natural
+getCurrentVersion p = fromMaybe 0 <$> getItemStorage' localStorage (currentVersionKeyText p)
+
+getLatestBackupSequence
+  :: (MonadFree StorageF m)
+  => StoreKeyMetaPrefix
+  -> Natural
+  -> m (Maybe Natural)
+getLatestBackupSequence p ver = getItemStorage' localStorage (latestBackupSequenceKeyText p ver)
+
+setLatestBackupSequence
+  :: (MonadFree StorageF m)
+  => StoreKeyMetaPrefix
+  -> Natural
+  -> Natural
+  -> m ()
+setLatestBackupSequence p ver = setItemStorage' localStorage (latestBackupSequenceKeyText p ver)
+
+setBackup
+  :: ( MonadFree StorageF m
+     , ForallF ToJSON storeKeys
+     , Has' ToJSON storeKeys f
+     )
+  => StoreKeyMetaPrefix
+  -> Natural
+  -> Natural
+  -> DMap storeKeys f
+  -> m ()
+setBackup p ver seqNo dump = setItemStorage' localStorage (backupKeyText p ver seqNo) dump
+
+backupLocalStorage
+  :: forall storeKeys m
+  . ( MonadFree StorageF m
+    , GCompare storeKeys
+    , UniverseSome storeKeys
+    , ForallF ToJSON storeKeys
+    , Has' ToJSON storeKeys Identity
+    , Has FromJSON storeKeys
+    , Has' FromJSON storeKeys Identity
+    , GShow storeKeys
+    )
+  => StoreKeyMetaPrefix
+  -> Proxy storeKeys
+  -> Natural  -- This version is the expectation set by the caller who has already chosen the key type
+  -> m Bool
+backupLocalStorage p _ expectedVer = do
+  actualVer <- getCurrentVersion p
+  if actualVer /= expectedVer
+    then pure False
+    else do
+      dump <- dumpLocalStorage @storeKeys
+      thisSeqNo <- maybe 0 (+1) <$> getLatestBackupSequence p expectedVer
+      setBackup p expectedVer thisSeqNo dump
+      setLatestBackupSequence p expectedVer thisSeqNo
+      pure True
+
+dumpLocalStorage
+  :: forall storeKeys m
+  . ( MonadFree StorageF m
+    , GCompare storeKeys
+    , UniverseSome storeKeys
+    , Has FromJSON storeKeys
+    , GShow storeKeys
+    )
+  => m (DMap storeKeys Identity)
+dumpLocalStorage = fmap (DMap.fromList . catMaybes)
+  . traverse (\(Some k) -> has @FromJSON k $
+    (fmap (\v -> k :=> Identity v)) <$> getItemStorage StoreType_Local k
+  )
+  $ universeSome @storeKeys
+
+keyToText :: (GShow k) => k a -> Text
+keyToText = T.pack . gshow
+
+type StorageVersion = Natural
+data VersioningError
+  = VersioningError_UnknownVersion StorageVersion
+
+
+data StorageVersioner ( k :: * -> * ) = StorageVersioner
+  { storageVersioner_upgrade :: StorageVersion -> Storage (Maybe VersioningError)
+  -- It's entirely possible that a simpler just "copy the directory" or copy "all the storage keys" is
+  -- a better way here, but lets explore this route and see what falls out for export / import
+  , storageVersioner_backupVersion :: StorageVersion -> Storage (Maybe VersioningError)
+  }
+
+class StorageUniverse k where
+  loadEntireDatabase :: Storage (DMap k Identity)
 
 -- | Uses the browser's local/session storage, as appropriate
 browserStorageIntepreter :: StorageInterpreter JSM
