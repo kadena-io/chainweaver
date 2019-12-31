@@ -11,11 +11,10 @@ import Data.Dependent.Sum.Orphans ()
 import Data.Proxy (Proxy(Proxy))
 
 import qualified Frontend.Store.V0 as V0
-import Frontend.Store.V1 as V1
+import qualified Frontend.Store.V1 as V1
+import Frontend.Store.V1 as Latest
 
-type Latest key = V1.StoreFrontend key
-
-versioner :: forall key. (ToJSON key, FromJSON key) => StorageVersioner (Latest key)
+versioner :: forall key. (ToJSON key, FromJSON key) => StorageVersioner (Latest.StoreFrontend key)
 versioner = StorageVersioner
   { storageVersioner_backupVersion = backup
   , storageVersioner_upgrade = upgrade

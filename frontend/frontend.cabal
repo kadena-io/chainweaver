@@ -124,6 +124,7 @@ library
                  , Frontend.Routes
                  , Frontend.Storage
                  , Frontend.Store
+                 , Frontend.Store.MigrationUtils
                  , Frontend.Store.TH
                  , Frontend.Store.V0
                  , Frontend.Store.V0.Wallet
