@@ -3,16 +3,39 @@
 module Frontend.Store
   ( module V1
   , versioner
+  , versionedUi
   ) where
 
 import Frontend.Storage
 import Data.Aeson (FromJSON, ToJSON)
 import Data.Dependent.Sum.Orphans ()
 import Data.Proxy (Proxy(Proxy))
+import Language.Javascript.JSaddle (MonadJSM, JSM)
+import Reflex
+import Reflex.Dom
 
 import qualified Frontend.Store.V0 as V0
 import qualified Frontend.Store.V1 as V1
 import Frontend.Store.V1 as Latest
+
+-- Doesn't execute the widget until we've checked the current version and upgraded if necessary
+-- TODO: This should have a better home.
+versionedUi
+  :: forall t m key
+   . ( DomBuilder t m, HasStorage (Performable m), PostBuild t m, MonadHold t m
+     , PerformEvent t m , MonadJSM (Performable m), StorageM (Performable m) ~ JSM
+     )
+  => StorageVersioner key
+  -> m ()
+  -> m ()
+versionedUi v widget = do
+  pbE <- getPostBuild
+  migratedE <- performEvent $ performUpdate <$ pbE
+  widgetHold_ blank $ widget <$ migratedE
+  where
+    performUpdate = do
+      _ <- runStorageJSM $ storageVersioner_upgrade v
+      pure ()
 
 versioner :: forall key. (ToJSON key, FromJSON key) => StorageVersioner (Latest.StoreFrontend key)
 versioner = StorageVersioner

@@ -109,7 +109,7 @@ upgradeFromV0 v0 =
         newAccountNotes = mkAccountNotes accountNotesText
         newAccountBalance = V0._account_balance a
         newUnfinishedXChain = V0._account_unfinishedCrossChainTransfer a
-        newAccountInfo = AccountInfo newAccountBalance newUnfinishedXChain inflight
+        newAccountInfo = AccountInfo newAccountBalance newUnfinishedXChain False
 
         accounts = if accountNameText /= pubKeyText
           then

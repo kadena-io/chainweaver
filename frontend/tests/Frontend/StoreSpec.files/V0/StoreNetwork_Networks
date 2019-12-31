@@ -1,1 +1,1 @@
-[["Mainnet",["us-e1.chainweb.com","us-e2.chainweb.com","us-w1.chainweb.com","us-w2.chainweb.com","jp1.chainweb.com","jp2.chainweb.com","fr1.chainweb.com","fr2.chainweb.com"]],["Testnet",["us1.testnet.chainweb.com","us2.testnet.chainweb.com","eu1.testnet.chainweb.com","eu2.testnet.chainweb.com","ap1.testnet.chainweb.com","ap2.testnet.chainweb.com"]]]
+[["devnet",["us1.tn1.chainweb.com"]],["testnet",["ap1.testnet.chainweb.com","ap2.testnet.chainweb.com","eu1.testnet.chainweb.com","eu2.testnet.chainweb.com","us1.testnet.chainweb.com","us2.testnet.chainweb.com"]]]

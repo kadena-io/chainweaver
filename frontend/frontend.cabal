@@ -248,6 +248,9 @@ test-suite tests
                , modern-uri
                , obelisk-oauth-common
                , pact
+               , pretty
+               , pretty-show
+               , Diff
                , text
                , tasty
                , tasty-hunit
