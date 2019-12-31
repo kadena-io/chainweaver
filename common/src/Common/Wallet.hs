@@ -208,7 +208,7 @@ throwWrongLength should k =
 data KeyPair key = KeyPair
   { _keyPair_publicKey  :: PublicKey
   , _keyPair_privateKey :: Maybe key
-  } deriving Generic
+  } deriving (Generic, Show, Eq)
 
 instance ToJSON key => ToJSON (KeyPair key) where
   toJSON p = object
@@ -350,7 +350,7 @@ data Key key = Key
   { _key_pair :: KeyPair key
   , _key_hidden :: Bool
   , _key_notes :: AccountNotes
-  }
+  } deriving (Eq, Show)
 
 instance ToJSON key => ToJSON (Key key) where
   toJSON k = object
@@ -422,7 +422,7 @@ accountKey (r :=> Identity a) = case r of
 data Accounts = Accounts
   { _accounts_vanity :: Map AccountName (Map ChainId VanityAccount)
   , _accounts_nonVanity :: Map PublicKey (Map ChainId NonVanityAccount)
-  }
+  } deriving (Eq, Show)
 
 instance Semigroup Accounts where
   a1 <> a2 = Accounts
@@ -458,7 +458,7 @@ data AccountInfo = AccountInfo
   { _accountInfo_balance :: Maybe AccountBalance
   , _accountInfo_unfinishedCrossChainTransfer :: Maybe UnfinishedCrossChainTransfer
   , _accountInfo_hidden :: Bool
-  } deriving Show
+  } deriving (Show, Eq)
 
 blankAccountInfo :: AccountInfo
 blankAccountInfo = AccountInfo
@@ -490,7 +490,7 @@ data VanityAccount = VanityAccount
   , _vanityAccount_notes :: AccountNotes
   , _vanityAccount_info :: AccountInfo
   , _vanityAccount_inflight :: Bool
-  } deriving Show
+  } deriving (Show, Eq)
 
 instance ToJSON VanityAccount where
   toJSON as = object $ catMaybes
@@ -517,7 +517,7 @@ instance FromJSON VanityAccount where
 
 data NonVanityAccount = NonVanityAccount
   { _nonVanityAccount_info :: AccountInfo
-  }
+  } deriving (Eq, Show)
 
 instance ToJSON NonVanityAccount where
   toJSON as = object
@@ -532,6 +532,7 @@ instance FromJSON NonVanityAccount where
       }
 
 newtype AccountStorage = AccountStorage { unAccountStorage :: Map NetworkName Accounts }
+  deriving (Eq, Show)
 
 instance Semigroup AccountStorage where
   AccountStorage a1 <> AccountStorage a2 = AccountStorage $ Map.unionWith (<>) a1 a2

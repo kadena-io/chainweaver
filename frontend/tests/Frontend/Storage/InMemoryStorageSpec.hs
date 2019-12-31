@@ -1,8 +1,11 @@
+{-# LANGUAGE TypeApplications #-}
 module Frontend.Storage.InMemoryStorageSpec where
 
 import Control.Monad.IO.Class (liftIO)
+import Data.Proxy (Proxy(Proxy))
 import Test.Tasty (TestTree, testGroup)
 import Test.Tasty.HUnit
+import System.FilePath ((</>))
 
 import Frontend.Storage
 import Frontend.StoreTestKey
@@ -26,8 +29,34 @@ test_inMemoryStorage = testCase "In Memory Storage" $ do
     mStr2 <- runStorageIO $ getItemStorage localStorage StoreString
     liftIO $ mStr2 @?= (Just "tester")
 
+test_inMemoryStorageFromTestData :: TestTree
+test_inMemoryStorageFromTestDataEmptyDir = testCase "In Memory storage from /var/empty" $ do
+  (s,_,_) <- inMemoryStorageFromTestData storeTestKeyMetaPrefix (Proxy @StoreTestKey) 0 "/var/empty/"
+  (mInt, mStr) <- flip runStorageT s $ runStorageIO $ do
+    mInt <- getItemStorage localStorage StoreInt
+    mStr <- getItemStorage localStorage StoreString
+    pure (mInt, mStr)
+
+  mStr @?= Nothing
+  mInt @?= Nothing
+
+test_inMemoryStorageFromTestData = testCase ("In Memory Storage from " <> testDataPath) $ do
+  (s,_,_) <- inMemoryStorageFromTestData storeTestKeyMetaPrefix (Proxy @StoreTestKey) 0 testDataPath
+  (mInt, mStr) <- flip runStorageT s $ runStorageIO $ do
+    mInt <- getItemStorage localStorage StoreInt
+    mStr <- getItemStorage localStorage StoreString
+    pure (mInt, mStr)
+
+  mStr @?= (Just "from a file")
+  mInt @?= (Just 21)
+  where
+    testDataPath = "tests" </> "Frontend" </> "Storage" </> "InMemoryStorage.files"
 
 tests :: TestTree
 tests = testGroup "InMemoryStorageSpec"
   [ test_inMemoryStorage
+  , testGroup "From Files" $
+    [ test_inMemoryStorageFromTestDataEmptyDir
+    , test_inMemoryStorageFromTestData
+    ]
   ]

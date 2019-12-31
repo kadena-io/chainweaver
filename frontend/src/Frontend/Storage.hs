@@ -11,6 +11,7 @@ module Frontend.Storage
   , getItemStorage
   , setItemStorage
   , removeItemStorage
+  , removeKeyUniverse
   , dumpLocalStorage
   , backupLocalStorage
   , restoreLocalStorage
@@ -127,13 +128,13 @@ removeItemStorage
 removeItemStorage s k = liftF (StorageF_Remove s (keyToText k) ())
 
 currentVersionKeyText :: StoreKeyMetaPrefix -> Text
-currentVersionKeyText (StoreKeyMetaPrefix p) = (p <> "_version")
+currentVersionKeyText (StoreKeyMetaPrefix p) = (p <> "_Version")
 
 backupKeyPrefixText :: StoreKeyMetaPrefix -> Natural -> Text
-backupKeyPrefixText (StoreKeyMetaPrefix p) ver = (p <> "_backups_v" <> tshow ver)
+backupKeyPrefixText (StoreKeyMetaPrefix p) ver = (p <> "_Backups_V" <> tshow ver)
 
 latestBackupSequenceKeyText :: StoreKeyMetaPrefix -> Natural -> Text
-latestBackupSequenceKeyText p ver = (backupKeyPrefixText p ver) <> "_latest"
+latestBackupSequenceKeyText p ver = (backupKeyPrefixText p ver) <> "_Latest"
 
 backupKeyText :: StoreKeyMetaPrefix -> Natural -> Natural -> Text
 backupKeyText p ver seqNo = (backupKeyPrefixText p ver) <> "_" <> tshow seqNo
@@ -143,6 +144,13 @@ getCurrentVersion
   => StoreKeyMetaPrefix
   -> m Natural
 getCurrentVersion p = fromMaybe 0 <$> getItemStorage' localStorage (currentVersionKeyText p)
+
+setCurrentVersion
+  :: (MonadFree StorageF m)
+  => StoreKeyMetaPrefix
+  -> Natural
+  -> m ()
+setCurrentVersion p = setItemStorage' localStorage (currentVersionKeyText p)
 
 getLatestBackupSequence
   :: (MonadFree StorageF m)
@@ -163,6 +171,7 @@ getBackup
   :: forall storeKeys m
   .  ( MonadFree StorageF m
      , FromJSON (Some storeKeys)
+
      , Has' FromJSON storeKeys Identity
      , GCompare storeKeys
      )
@@ -192,7 +201,6 @@ backupLocalStorage
     , ForallF ToJSON storeKeys
     , Has' ToJSON storeKeys Identity
     , Has FromJSON storeKeys
-    , Has' FromJSON storeKeys Identity
     , GShow storeKeys
     )
   => StoreKeyMetaPrefix
@@ -214,7 +222,6 @@ restoreLocalStorage
   :: forall storeKeys m
   . ( MonadFree StorageF m
     , GCompare storeKeys
-    , UniverseSome storeKeys
     , Has' FromJSON storeKeys Identity
     , Has ToJSON storeKeys
     , FromJSON (Some storeKeys)
@@ -229,7 +236,9 @@ restoreLocalStorage p _ ver seqNo = do
   mDump <- getBackup @storeKeys p ver seqNo
   case mDump of
     Nothing -> pure False
-    Just dump -> restoreLocalStorageDump dump *> pure True
+    Just dump -> do
+      restoreLocalStorageDump p dump ver
+      pure True
 
 dumpLocalStorage
   :: forall storeKeys m
@@ -249,17 +258,33 @@ dumpLocalStorage = fmap (DMap.fromList . catMaybes)
 restoreLocalStorageDump
   :: forall storeKeys m
   . ( MonadFree StorageF m
-    , GCompare storeKeys
     , Has ToJSON storeKeys
     , GShow storeKeys
     )
-  => DMap storeKeys Identity
+  => StoreKeyMetaPrefix
+  -> DMap storeKeys Identity
+  -> Natural
   -> m ()
-restoreLocalStorageDump dump = for_ (DMap.toList dump) setSum
+restoreLocalStorageDump p dump ver = do
+  for_ (DMap.toList dump) setSum
+  setCurrentVersion p ver
   where
     setSum :: DSum storeKeys Identity -> m ()
     setSum (k :=> ( Identity v )) =
       has @ToJSON k $ setItemStorage localStorage k v
+
+removeKeyUniverse
+  :: forall storeKeys m
+   . ( MonadFree StorageF m
+     , GShow storeKeys
+     , UniverseSome storeKeys
+     )
+  => Proxy storeKeys
+  -> StoreType
+  -> m ()
+removeKeyUniverse _ st =
+  traverse_ (\(Some k) -> removeItemStorage st k)
+  $ universeSome @storeKeys
 
 keyToText :: (GShow k) => k a -> Text
 keyToText = T.pack . gshow
@@ -270,7 +295,8 @@ data VersioningError
 
 
 data StorageVersioner ( k :: * -> * ) = StorageVersioner
-  { storageVersioner_upgrade :: Storage (Maybe VersioningError)
+  { storageVersion_metaPrefix :: StoreKeyMetaPrefix
+  , storageVersioner_upgrade :: Storage (Maybe VersioningError)
   -- It's entirely possible that a simpler just "copy the directory" or copy "all the storage keys" is
   -- a better way here, but lets explore this route and see what falls out for export / import
   , storageVersioner_backupVersion :: Storage (Maybe VersioningError)

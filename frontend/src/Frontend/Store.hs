@@ -16,7 +16,8 @@ import Frontend.Store.V1 as Latest
 
 versioner :: forall key. (ToJSON key, FromJSON key) => StorageVersioner (Latest.StoreFrontend key)
 versioner = StorageVersioner
-  { storageVersioner_backupVersion = backup
+  { storageVersion_metaPrefix = prefix
+  , storageVersioner_backupVersion = backup
   , storageVersioner_upgrade = upgrade
   }
   where
@@ -43,7 +44,10 @@ versioner = StorageVersioner
           case mDump of
             Nothing -> error "TODO Add a version error case for this"
             Just dump -> do
-              restoreLocalStorageDump (V1.upgradeFromV0 dump)
+              let v1Dump = (V1.upgradeFromV0 dump)
+              removeKeyUniverse (Proxy @(V0.StoreFrontend key)) localStorage
+              removeKeyUniverse (Proxy @(V0.StoreFrontend key)) sessionStorage
+              restoreLocalStorageDump prefix v1Dump 1
               pure Nothing
         1 -> pure Nothing
         v -> pure $ Just $ VersioningError_UnknownVersion v

@@ -8,6 +8,7 @@
 {-# LANGUAGE RecursiveDo #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE StandaloneDeriving #-}
+{-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE TypeApplications #-}
 
 module Desktop.Frontend (desktop, bipWallet, bipCryptoGenPair, fileStorage) where
@@ -18,13 +19,19 @@ import Control.Monad (when, (<=<), guard, void)
 import Control.Monad.Fix (MonadFix)
 import Control.Monad.Free (iterM)
 import Control.Monad.IO.Class
+import Data.Aeson (ToJSON(..), FromJSON(..))
+import Data.Aeson.GADT.TH
 import Data.Bitraversable
 import Data.Bits ((.|.))
 import Data.Bool (bool)
 import Data.ByteString (ByteString)
+import Data.Constraint.Extras.TH
+import Data.GADT.Show.TH
+import Data.GADT.Compare.TH
 import Data.Maybe (isNothing, isJust)
 import Data.Text (Text)
 import Data.Time (NominalDiffTime, getCurrentTime, addUTCTime)
+import Data.Universe.Some.TH
 import Language.Javascript.JSaddle (JSM, liftJSM)
 import Reflex.Dom.Core
 import System.FilePath ((</>))
@@ -72,6 +79,15 @@ import Desktop.Util
 data BIPStorage a where
   BIPStorage_RootKey :: BIPStorage Crypto.XPrv
 deriving instance Show (BIPStorage a)
+
+concat <$> traverse ($ ''BIPStorage)
+  [ deriveGShow
+  , deriveGEq
+  , deriveGCompare
+  , deriveUniverseSome
+  , deriveArgDict
+  , deriveJSONGADT
+  ]
 
 -- | Store items as files in the given directory, using the key as the file name
 fileStorage :: FilePath -> StorageInterpreter JSM

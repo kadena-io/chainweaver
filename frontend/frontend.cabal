@@ -215,31 +215,40 @@ executable frontend
   -- if impl(ghcjs)
   --   ghcjs-options: -dedupe
 
-test-suite kadenaaddress
+test-suite tests
   type: exitcode-stdio-1.0
 
   main-is: main.hs
   hs-source-dirs: tests
+  other-modules: KadenaAddressSpec
+               , Frontend.StorageSpec
+               , Frontend.Storage.InMemoryStorage
+               , Frontend.Storage.InMemoryStorageSpec
+               , Frontend.StoreTestKey
   build-depends: base
                , frontend
+               , common
                , aeson
                , aeson-gadt-th
+               , bytestring
                , containers
                , constraints
                , constraints-extras
                , dependent-map
                , dependent-sum
                , dependent-sum-template
+               , directory
+               , errors
+               , filepath
+               , free
                , hedgehog
                , kadena-signing-api
-               , pact
-               , errors
-               , free
                , jsaddle
-               , text
-               , common
                , lens
-               , bytestring
+               , modern-uri
+               , obelisk-oauth-common
+               , pact
+               , text
                , tasty
                , tasty-hunit
                , tasty-hedgehog
