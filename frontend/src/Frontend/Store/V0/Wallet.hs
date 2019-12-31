@@ -1,10 +1,12 @@
 module Frontend.Store.V0.Wallet where
 
-import Data.Aeson (ToJSON(..), FromJSON(..), Value(Null), object, (.=), (.:), withObject, (.:?))
+import Data.Aeson (ToJSON(..), FromJSON(..), Value(Null), object, (.=), (.:), withObject, (.:?), withText)
 import Control.Applicative ((<|>))
+import qualified Data.ByteString.Base16 as Base16
 import Data.Maybe (catMaybes)
 import Data.IntMap (IntMap)
 import Data.Text (Text)
+import qualified Data.Text.Encoding as T
 import GHC.Generics (Generic)
 
 -- WARNING: Be careful about changing stuff in here. Tests will catch snafus here and upstream though
@@ -16,7 +18,18 @@ import Common.Network (NetworkName)
 newtype AccountName = AccountName { unAccountName :: Text } deriving (Eq, Ord, Show, Generic, ToJSON, FromJSON)
 newtype ChainId = ChainId { unChainId :: Text } deriving (Eq, Ord, Show, Generic, ToJSON, FromJSON)
 newtype AccountNotes = AccountNotes { unAccountNotes :: Text } deriving (Eq, Ord, Show, Generic, ToJSON, FromJSON)
-newtype PublicKey = PublicKey { unPublicKey :: Text } deriving (Eq, Ord, Show, Generic, ToJSON, FromJSON)
+
+newtype PublicKey = PublicKey { unPublicKey :: Text } deriving (Eq, Ord, Show)
+
+instance ToJSON PublicKey where
+  toJSON = toJSON . unPublicKey
+
+-- Checks that the publickey is indeed base 16
+instance FromJSON PublicKey where
+  parseJSON = withText "PublicKey" $ \t ->
+    case (Base16.decode . T.encodeUtf8 $ t) of
+      (_, "") -> pure (PublicKey t)
+      _ -> fail "Was not a base16 string"
 
 type Accounts key = IntMap (SomeAccount key)
 

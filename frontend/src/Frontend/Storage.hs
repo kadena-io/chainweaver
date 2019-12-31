@@ -5,10 +5,6 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE UndecidableInstances #-}
 
--- TODO Remove this before PR
-{-# OPTIONS_GHC -fno-warn-unused-top-binds #-}
-{-# OPTIONS_GHC -fno-warn-unused-imports #-}
-
 module Frontend.Storage
   ( localStorage
   , sessionStorage
@@ -17,6 +13,9 @@ module Frontend.Storage
   , removeItemStorage
   , dumpLocalStorage
   , backupLocalStorage
+  , restoreLocalStorage
+  , restoreLocalStorageDump
+  , getCurrentVersion
   , StoreType (..)
   , HasStorage(..)
   , StorageT(..)
@@ -49,11 +48,10 @@ import Data.Constraint.Extras (Has, Has', has)
 import Data.Dependent.Map (DMap, DSum((:=>)))
 import Data.Dependent.Sum.Orphans ()
 import Data.Functor.Identity (Identity(Identity))
-import Data.GADT.Show (GShow)
 import Data.GADT.Compare (GCompare)
 import Data.GADT.Show (GShow,gshow)
 import qualified Data.Dependent.Map as DMap
-import Data.Proxy (Proxy(Proxy))
+import Data.Proxy (Proxy)
 import Data.Some (Some(Some))
 import Data.Universe.Some (UniverseSome, universeSome)
 import Numeric.Natural (Natural)
@@ -64,7 +62,6 @@ import Obelisk.Route.Frontend
 import Reflex.Dom hiding (fromJSString)
 import Reflex.Host.Class (MonadReflexCreateTrigger)
 import qualified Data.Aeson as Aeson
-import qualified Data.ByteString as BS
 import qualified Data.ByteString.Lazy as BL
 import Data.Text (Text)
 import qualified Data.Text as T
@@ -162,6 +159,19 @@ setLatestBackupSequence
   -> m ()
 setLatestBackupSequence p ver = setItemStorage' localStorage (latestBackupSequenceKeyText p ver)
 
+getBackup
+  :: forall storeKeys m
+  .  ( MonadFree StorageF m
+     , FromJSON (Some storeKeys)
+     , Has' FromJSON storeKeys Identity
+     , GCompare storeKeys
+     )
+  => StoreKeyMetaPrefix
+  -> Natural
+  -> Natural
+  -> m (Maybe (DMap storeKeys Identity))
+getBackup p ver seqNo = getItemStorage' localStorage (backupKeyText p ver seqNo)
+
 setBackup
   :: ( MonadFree StorageF m
      , ForallF ToJSON storeKeys
@@ -188,17 +198,38 @@ backupLocalStorage
   => StoreKeyMetaPrefix
   -> Proxy storeKeys
   -> Natural  -- This version is the expectation set by the caller who has already chosen the key type
-  -> m Bool
+  -> m (Maybe (DMap storeKeys Identity))
 backupLocalStorage p _ expectedVer = do
   actualVer <- getCurrentVersion p
   if actualVer /= expectedVer
-    then pure False
+    then pure Nothing
     else do
       dump <- dumpLocalStorage @storeKeys
       thisSeqNo <- maybe 0 (+1) <$> getLatestBackupSequence p expectedVer
       setBackup p expectedVer thisSeqNo dump
       setLatestBackupSequence p expectedVer thisSeqNo
-      pure True
+      pure (Just dump)
+
+restoreLocalStorage
+  :: forall storeKeys m
+  . ( MonadFree StorageF m
+    , GCompare storeKeys
+    , UniverseSome storeKeys
+    , Has' FromJSON storeKeys Identity
+    , Has ToJSON storeKeys
+    , FromJSON (Some storeKeys)
+    , GShow storeKeys
+    )
+  => StoreKeyMetaPrefix
+  -> Proxy storeKeys
+  -> Natural
+  -> Natural
+  -> m Bool
+restoreLocalStorage p _ ver seqNo = do
+  mDump <- getBackup @storeKeys p ver seqNo
+  case mDump of
+    Nothing -> pure False
+    Just dump -> restoreLocalStorageDump dump *> pure True
 
 dumpLocalStorage
   :: forall storeKeys m
@@ -215,6 +246,21 @@ dumpLocalStorage = fmap (DMap.fromList . catMaybes)
   )
   $ universeSome @storeKeys
 
+restoreLocalStorageDump
+  :: forall storeKeys m
+  . ( MonadFree StorageF m
+    , GCompare storeKeys
+    , Has ToJSON storeKeys
+    , GShow storeKeys
+    )
+  => DMap storeKeys Identity
+  -> m ()
+restoreLocalStorageDump dump = for_ (DMap.toList dump) setSum
+  where
+    setSum :: DSum storeKeys Identity -> m ()
+    setSum (k :=> ( Identity v )) =
+      has @ToJSON k $ setItemStorage localStorage k v
+
 keyToText :: (GShow k) => k a -> Text
 keyToText = T.pack . gshow
 
@@ -224,10 +270,10 @@ data VersioningError
 
 
 data StorageVersioner ( k :: * -> * ) = StorageVersioner
-  { storageVersioner_upgrade :: StorageVersion -> Storage (Maybe VersioningError)
+  { storageVersioner_upgrade :: Storage (Maybe VersioningError)
   -- It's entirely possible that a simpler just "copy the directory" or copy "all the storage keys" is
   -- a better way here, but lets explore this route and see what falls out for export / import
-  , storageVersioner_backupVersion :: StorageVersion -> Storage (Maybe VersioningError)
+  , storageVersioner_backupVersion :: Storage (Maybe VersioningError)
   }
 
 class StorageUniverse k where

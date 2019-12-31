@@ -17,6 +17,7 @@ import Data.ByteString.Lazy (ByteString)
 import Data.Constraint.Extras.TH
 import Data.Dependent.Map (DSum((:=>)))
 import qualified Data.Dependent.Map as DMap
+import Data.Functor (void)
 import Data.Functor.Identity (Identity(Identity))
 import Data.Map (Map)
 import Data.GADT.Show.TH
@@ -34,6 +35,15 @@ import Test.Tasty.HUnit
 
 import Frontend.Storage
 
+lookupRef :: IORef (Map Text Text) -> Text -> IO (Maybe Text)
+lookupRef ref k = Map.lookup k <$> readIORef ref
+
+insertRef :: IORef (Map Text Text) -> Text -> Text -> IO ()
+insertRef ref k v = void $ modifyIORef ref (Map.insert k v)
+
+removeRef :: IORef (Map Text Text) -> Text -> IO ()
+removeRef ref k = void $ modifyIORef ref (Map.delete k)
+
 inMemoryStorage :: IO (StorageInterpreter IO, IORef (Map Text Text), IORef (Map Text Text))
 inMemoryStorage = do
   localRef <- newIORef (Map.empty :: Map Text Text)
@@ -45,20 +55,17 @@ inMemoryStorage = do
     storage_get :: StoreType -> Text -> IO (Maybe Text)
     storage_get st k = do
       let ref = chooseRef st
-      mp <- readIORef ref
-      pure $ Map.lookup k mp
+      lookupRef ref k
 
     storage_set :: StoreType -> Text -> Text -> IO ()
     storage_set st k v = do
       let ref = chooseRef st
-      _ <- modifyIORef ref (Map.insert k v)
-      pure ()
+      insertRef ref k v
 
     storage_remove :: StoreType -> Text -> IO ()
     storage_remove st k = do
       let ref = chooseRef st
-      _ <- liftIO $ modifyIORef ref (Map.delete k)
-      pure ()
+      removeRef ref k
 
     interpreter = iterM $ \case
       StorageF_Get storeType key next -> do
@@ -122,11 +129,9 @@ storeKeyPrefixText = "StorageTestMeta"
 storeKeyPrefix :: StoreKeyMetaPrefix
 storeKeyPrefix = StoreKeyMetaPrefix storeKeyPrefixText
 
-lookupRef :: IORef (Map Text Text) -> Text -> IO (Maybe Text)
-lookupRef ref k = Map.lookup k <$> readIORef ref
 
 test_backupLocalStorage :: TestTree
-test_backupLocalStorage = testCase "Backup Storage from V0" $ do
+test_backupLocalStorage = testCase "Backup Storage" $ do
   (s,localRef,_) <- inMemoryStorage
   r1 <- flip runStorageT s $ runStorageIO $ do
     setItemStorage localStorage StorageInt 42
@@ -147,10 +152,39 @@ test_backupLocalStorage = testCase "Backup Storage from V0" $ do
   mBackupText2 @?= Just "[[[\"StorageString\",[]],\"Less String\"],[[\"StorageInt\",[]],42]]"
   pure ()
 
+test_restoreLocalStorage :: TestTree
+test_restoreLocalStorage = testCase "Restore Storage" $ do
+  let backupText = "[[[\"StorageString\",[]],\"Restored\"],[[\"StorageInt\",[]],1337]]"
+  (s,localRef,_) <- inMemoryStorage
+  insertRef localRef (storeKeyPrefixText <> "_backups_v0_0") backupText
+  (s,i) <- flip runStorageT s $ runStorageIO $ do
+    restoreLocalStorage storeKeyPrefix (Proxy @StorageTestKey) 0 0
+    s <- getItemStorage localStorage StorageString
+    i <- getItemStorage localStorage StorageInt
+    pure (s,i)
+  s @?= Just "Restored"
+  i @?= Just 1337
+
+test_getVersion :: TestTree
+test_getVersion = testGroup "Get Version"
+  [ testCase "No Version" $ do
+    (s,_,_) <- inMemoryStorage
+    v <- flip runStorageT s $ runStorageIO $ do
+      getCurrentVersion storeKeyPrefix
+    v @?= 0
+  , testCase "Existing Version" $ do
+    (s,localRef,_) <- inMemoryStorage
+    insertRef localRef (storeKeyPrefixText <> "_version") "1"
+    v <- flip runStorageT s $ runStorageIO $ do
+      getCurrentVersion storeKeyPrefix
+    v @?= 1
+  ]
 
 tests :: TestTree
 tests = testGroup "StorageSpec"
   [ test_inMemoryStorage
   , test_dumpStorage
   , test_backupLocalStorage
+  , test_restoreLocalStorage
+  , test_getVersion
   ]
