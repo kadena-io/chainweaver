@@ -4,6 +4,7 @@ module Frontend.Store.V1 where
 
 import Data.Aeson
 import Data.Aeson.GADT.TH
+import qualified Data.ByteString.Base16 as Base16
 import Data.Constraint (Dict(Dict))
 import Data.Constraint.Extras
 import Data.Dependent.Map (DMap, DSum(..))
@@ -101,8 +102,9 @@ upgradeFromV0 v0 =
     oldAccountToNewStorage a inflight =
       let
         accountNameText = V0.unAccountName . V0._account_name $ a
-        pubKeyText = V0.unPublicKey . V0._keyPair_publicKey . V0._account_key $ a
-        newPubKey = unsafePublicKey $ T.encodeUtf8 pubKeyText
+        oldPubKey = V0._keyPair_publicKey . V0._account_key $ a
+        pubKeyText = T.decodeUtf8 . Base16.encode . V0.unPublicKey $ oldPubKey
+        newPubKey = upgradePublicKey oldPubKey
         chainIdText = V0.unChainId . V0._account_chainId $ a
         newChainId = ChainId chainIdText
         accountNotesText = V0.unAccountNotes . V0._account_notes $ a
@@ -124,6 +126,8 @@ upgradeFromV0 v0 =
 
       in AccountStorage $ Map.singleton (V0._account_network a) accounts
 
+    upgradePublicKey = PublicKey . V0.unPublicKey
+
     upgradeAccountNotes a = mkAccountNotes (V0.unAccountNotes . V0._account_notes $ a)
     --This is a bit unfortunate
     fakeKeyPair = KeyPair
@@ -132,7 +136,7 @@ upgradeFromV0 v0 =
       }
     extractKey (V0.Account { V0._account_key = kp } ) = KeyPair
       -- This relies on the V0.Wallet.PublicKey FromJSON checking that it is Base16!
-      { _keyPair_publicKey = unsafePublicKey (T.encodeUtf8 (V0.unPublicKey $ V0._keyPair_publicKey kp))
+      { _keyPair_publicKey = upgradePublicKey $ V0._keyPair_publicKey kp
       , _keyPair_privateKey = V0._keyPair_privateKey kp
       }
     newKeys = IntMap.fromList newKeysList

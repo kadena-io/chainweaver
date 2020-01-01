@@ -2,6 +2,7 @@ module Frontend.Store.V0.Wallet where
 
 import Data.Aeson (ToJSON(..), FromJSON(..), Value(Null), object, (.=), (.:), withObject, (.:?), withText)
 import Control.Applicative ((<|>))
+import Data.ByteString (ByteString)
 import qualified Data.ByteString.Base16 as Base16
 import Data.Maybe (catMaybes)
 import Data.IntMap (IntMap)
@@ -19,16 +20,16 @@ newtype AccountName = AccountName { unAccountName :: Text } deriving (Eq, Ord, S
 newtype ChainId = ChainId { unChainId :: Text } deriving (Eq, Ord, Show, Generic, ToJSON, FromJSON)
 newtype AccountNotes = AccountNotes { unAccountNotes :: Text } deriving (Eq, Ord, Show, Generic, ToJSON, FromJSON)
 
-newtype PublicKey = PublicKey { unPublicKey :: Text } deriving (Eq, Ord, Show)
+newtype PublicKey = PublicKey { unPublicKey :: ByteString } deriving (Eq, Ord, Show)
 
 instance ToJSON PublicKey where
-  toJSON = toJSON . unPublicKey
+  toJSON = toJSON . T.decodeUtf8 . Base16.encode . unPublicKey
 
 -- Checks that the publickey is indeed base 16
 instance FromJSON PublicKey where
   parseJSON = withText "PublicKey" $ \t ->
     case (Base16.decode . T.encodeUtf8 $ t) of
-      (_, "") -> pure (PublicKey t)
+      (bs, "") -> pure (PublicKey bs)
       _ -> fail "Was not a base16 string"
 
 type Accounts key = IntMap (SomeAccount key)
