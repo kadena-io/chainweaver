@@ -13,26 +13,30 @@ library
     , frontend
 
     , aeson
+    , aeson-gadt-th
     , async
     , base16-bytestring
     , bimap
     , bytestring
     , cardano-crypto
+    , constraints-extras
     , containers
     , cryptonite
+    , dependent-sum-template
     , directory
     , errors
     , filepath
-    , jsaddle
+    , free
     , ghcjs-dom
+    , jsaddle
     , kadena-signing-api
     , lens
     , memory
     , mtl
     , network
     , newtype-generics
-    , obelisk-executable-config-lookup
     , obelisk-backend
+    , obelisk-executable-config-lookup
     , obelisk-frontend
     , obelisk-generated-static
     , obelisk-route
@@ -47,6 +51,7 @@ library
     , snap-server
     , text
     , time
+    , universe-dependent-sum
     , wai-cors
     , warp
   exposed-modules:
