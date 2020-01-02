@@ -174,7 +174,7 @@ makeWallet model conf = do
       ]
 
   rec
-    newBalances <- getBalances model $ traceEventWith (const "REFRESH") $ (,) <$> current keys <*> current accounts <@ _walletCfg_refreshBalances conf
+    newBalances <- getBalances model $ (,) <$> current keys <*> current accounts <@ _walletCfg_refreshBalances conf
     accounts <- foldDyn id initialAccounts $ leftmost
       [ ffor (_walletCfg_importAccount conf) $ \(net, name, chain, acc) ->
         ((<>) (AccountStorage $ Map.singleton net $ mempty { _accounts_vanity = Map.singleton name $ Map.singleton chain acc }))
