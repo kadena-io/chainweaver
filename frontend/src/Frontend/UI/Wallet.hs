@@ -183,9 +183,7 @@ uiAccountItem (name, chain) acc = do
     td $ divClass "wallet__table-wallet-address" $ text $ unAccountName name
     td $ text $ Pact._chainId chain
     td $ dynText $ ffor acc $ unAccountNotes . _vanityAccount_notes
-    td $ dynText $ ffor info $ \i -> case _accountInfo_balance i of
-      Nothing -> "Unknown"
-      Just b -> tshow (unAccountBalance b) <> " KDA" <> maybe "" (const "*") (_accountInfo_unfinishedCrossChainTransfer i)
+    td $ dynText $ ffor info uiAccountBalance'
 
     td $ divClass "wallet__table-buttons" $ do
       let cfg = def
