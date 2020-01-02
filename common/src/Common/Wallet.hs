@@ -642,8 +642,8 @@ accountBalance = view (accountInfo . accountInfo_balance)
 
 upsertNonVanityBalance :: NetworkName -> PublicKey -> ChainId -> Maybe AccountBalance -> AccountStorage -> AccountStorage
 upsertNonVanityBalance net pk chain balance store = store
-  & (_AccountStorage . at net %~ (Just . maybe mempty id))
-  & (_AccountStorage . ix net . accounts_nonVanity . at pk %~ (Just . maybe mempty id))
+  & (_AccountStorage . at net %~ (Just . fold))
+  & (_AccountStorage . ix net . accounts_nonVanity . at pk %~ (Just . fold))
   & (_AccountStorage . ix net . accounts_nonVanity . ix pk . at chain
     %~ (Just . maybe (NonVanityAccount defaultAccountInfo) id)
   )
