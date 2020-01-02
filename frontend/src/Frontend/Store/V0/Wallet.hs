@@ -1,7 +1,6 @@
 module Frontend.Store.V0.Wallet where
 
 import Data.Aeson (ToJSON(..), FromJSON(..), Value(Null), object, (.=), (.:), withObject, (.:?), withText)
-import Control.Applicative ((<|>))
 import Data.ByteString (ByteString)
 import qualified Data.ByteString.Base16 as Base16
 import Data.Maybe (catMaybes)
@@ -11,7 +10,7 @@ import qualified Data.Text.Encoding as T
 import GHC.Generics (Generic)
 
 -- WARNING: Be careful about changing stuff in here. Tests will catch snafus here and upstream though
-import Common.Wallet (UnfinishedCrossChainTransfer, AccountBalance)
+import Common.Wallet (lenientLookup, UnfinishedCrossChainTransfer, AccountBalance)
 import Common.Network (NetworkName)
 
 -- This is lifted from the wallet code prior to V1
@@ -64,7 +63,7 @@ instance FromJSON key => FromJSON (Account key) where
     network <- o .: "network"
     notes <- o .: "notes"
     balance <- o .:? "balance"
-    unfinishedCrossChainTransfer <- o .:? "unfinishedCrossChainTransfer"
+    unfinishedCrossChainTransfer <- lenientLookup o "unfinishedCrossChainTransfer"
     pure $ Account
       { _account_name = name
       , _account_key = key
@@ -99,26 +98,18 @@ instance FromJSON key => FromJSON (KeyPair key) where
 -- keys with BIP32.
 data SomeAccount key
   = SomeAccount_Deleted
-  | SomeAccount_Inflight (Account key)
   | SomeAccount_Account (Account key)
 
 someAccount :: a -> (Account key -> a) -> SomeAccount key -> a
 someAccount a _ SomeAccount_Deleted = a
-someAccount a _ (SomeAccount_Inflight _) = a
 someAccount _ f (SomeAccount_Account a) = f a
-
-someAccountWithInflight :: a -> (Account key -> a) -> SomeAccount key -> a
-someAccountWithInflight _ f (SomeAccount_Inflight a) = f a
-someAccountWithInflight a f sa = someAccount a f sa
 
 instance ToJSON key => ToJSON (SomeAccount key) where
   toJSON = \case
     SomeAccount_Deleted -> Null
-    SomeAccount_Inflight a -> object ["inflight" .= toJSON a]
     SomeAccount_Account a -> toJSON a
 
 instance FromJSON key => FromJSON (SomeAccount key) where
   parseJSON Null = pure SomeAccount_Deleted
-  parseJSON x = (SomeAccount_Inflight <$> (withObject "Inflight Acc" (.: "inflight") x))
-    <|> SomeAccount_Account <$> parseJSON x
+  parseJSON x = SomeAccount_Account <$> parseJSON x
 

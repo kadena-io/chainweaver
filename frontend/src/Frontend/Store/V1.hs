@@ -89,10 +89,6 @@ upgradeFromV0 v0 =
     -- TODO: Fiddle with this so we don't need to fake out the key
     splitOldKey (keyIdx, V0.SomeAccount_Deleted) = ([(keyIdx, Key fakeKeyPair True (mkAccountNotes ""))], mempty)
 
-    splitOldKey (keyIdx, V0.SomeAccount_Inflight a) =
-      ([(keyIdx, Key (extractKey a) False (upgradeAccountNotes a))]
-      , oldAccountToNewStorage a True
-      )
     splitOldKey (keyIdx, V0.SomeAccount_Account a) =
       ([(keyIdx, Key (extractKey a) False (upgradeAccountNotes a))]
       , oldAccountToNewStorage a False

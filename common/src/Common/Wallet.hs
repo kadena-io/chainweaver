@@ -64,6 +64,7 @@ module Common.Wallet
   -- * Util
   , throwDecodingErr
   , decodeBase16M
+  , lenientLookup
   -- * Balance checks
   , wrapWithBalanceChecks
   , parseWrappedBalanceChecks
@@ -305,47 +306,6 @@ instance FromJSON UnfinishedCrossChainTransfer where
       , _unfinishedCrossChainTransfer_recipientAccount = recipientAccount
       , _unfinishedCrossChainTransfer_amount = amount
       }
-
---data Account key = Account
---  { _account_name :: AccountName
---  , _account_key :: KeyPair key
---  , _account_chainId :: ChainId
---  , _account_network :: NetworkName
---  , _account_notes :: AccountNotes
---  , _account_balance :: Maybe AccountBalance
---  -- ^ We also treat this as proof of the account's existence.
---  , _account_unfinishedCrossChainTransfer :: Maybe UnfinishedCrossChainTransfer
---  }
---
---instance ToJSON key => ToJSON (Account key) where
---  toJSON a = object $ catMaybes
---    [ Just $ "name" .= _account_name a
---    , Just $ "key" .= _account_key a
---    , Just $ "chain" .= _account_chainId a
---    , Just $ "network" .= _account_network a
---    , Just $ "notes" .= _account_notes a
---    , ("balance" .=) <$> _account_balance a
---    , ("unfinishedCrossChainTransfer" .=) <$> _account_unfinishedCrossChainTransfer a
---    ]
---
---instance FromJSON key => FromJSON (Account key) where
---  parseJSON = withObject "Account" $ \o -> do
---    name <- o .: "name"
---    key <- o .: "key"
---    chain <- o .: "chain"
---    network <- o .: "network"
---    notes <- o .: "notes"
---    balance <- o .:? "balance"
---    unfinishedCrossChainTransfer <- lenientLookup o "unfinishedCrossChainTransfer"
---    pure $ Account
---      { _account_name = name
---      , _account_key = key
---      , _account_chainId = chain
---      , _account_network = network
---      , _account_notes = notes
---      , _account_balance = balance
---      , _account_unfinishedCrossChainTransfer = unfinishedCrossChainTransfer
---      }
 
 data Key key = Key
   { _key_pair :: KeyPair key
