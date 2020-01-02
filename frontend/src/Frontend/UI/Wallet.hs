@@ -325,8 +325,9 @@ uiKeyItem model _index key = do
         td $ divClass "wallet__table-wallet-address" $ dynText $ keyToText . _keyPair_publicKey . _key_pair <$> key
         td $ dynText $ unAccountNotes . _key_notes <$> key
         td $ dynText $ uiAccountBalance . Just <$> balance
-        dialog <- td $ buttons $ tag (KeyDialog_Details <$> current key) <$>
-          detailsButton (cfg & uiButtonCfg_class <>~ " wallet__table-button--hamburger")
+        dialog <- td $ buttons $ do
+          onDetails <- detailsButton (cfg & uiButtonCfg_class <>~ " wallet__table-button--hamburger")
+          pure $ KeyDialog_Details <$> current key <@ onDetails
         pure (clk, dialog)
 
       accountRow visible chain dAccount = trAcc visible $ do
