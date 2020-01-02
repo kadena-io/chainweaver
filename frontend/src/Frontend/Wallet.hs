@@ -174,7 +174,7 @@ makeWallet model conf = do
       ]
 
   rec
-    newBalances <- getBalances model $ current accounts <@ _walletCfg_refreshBalances conf
+    newBalances <- getBalances model $ traceEventWith (const "REFRESH") $ (,) <$> current keys <*> current accounts <@ _walletCfg_refreshBalances conf
     accounts <- foldDyn id initialAccounts $ leftmost
       [ ffor (_walletCfg_importAccount conf) $ \(net, name, chain, acc) ->
         ((<>) (AccountStorage $ Map.singleton net $ mempty { _accounts_vanity = Map.singleton name $ Map.singleton chain acc }))
@@ -201,7 +201,9 @@ makeWallet model conf = do
     updateCrossChain (net, ref, cct) = storageAccountInfo net ref . accountInfo_unfinishedCrossChainTransfer .~ cct
 
     updateAccountBalance :: (NetworkName, Some AccountRef, Maybe AccountBalance) -> AccountStorage -> AccountStorage
-    updateAccountBalance (net, ref, balance) = storageAccountInfo net ref . accountInfo_balance .~ balance
+    updateAccountBalance (net, (Some ref), balance) = case ref of
+      (AccountRef_NonVanity pk chain) -> upsertNonVanityBalance net pk chain balance
+      (AccountRef_Vanity _ _) -> storageAccountInfo net (Some ref) . accountInfo_balance .~ balance
 
     createKey :: Int -> Performable m (Key key)
     createKey i = do
@@ -219,31 +221,49 @@ getBalances
     , MonadJSM (Performable m)
     , HasNetwork model t, HasCrypto key (Performable m)
     )
-  => model -> Event t AccountStorage -> m (Event t [(NetworkName, Some AccountRef, Maybe AccountBalance)])
-getBalances model accStore = performEventAsync $ flip push accStore $ \networkAccounts -> do
+  => model -> Event t (KeyStorage key, AccountStorage) -> m (Event t [(NetworkName, Some AccountRef, Maybe AccountBalance)])
+getBalances model accStore = performEventAsync $ flip push accStore $ \(keys, networkAccounts) -> do
   nodes <- fmap rights $ sample $ current $ model ^. network_selectedNodes
   net <- sample $ current $ model ^. network_selectedNetwork
-  pure $ mkRequests nodes net <$> Map.lookup net (unAccountStorage networkAccounts)
+  pure . Just $ mkRequests nodes net keys (Map.lookup net (unAccountStorage networkAccounts))
   where
-    mkRequests nodes net accounts cb = do
+    allChains = ChainId . tshow <$> ([0..9] :: [Int])
+    allChainsLen = length allChains
+    onAllChains = MonoidalMap.fromList . zip allChains . replicate allChainsLen
+
+    mkRequests nodes net keys mAccounts cb = do
       -- Transform the vanity accounts structure into a map from chain ID to
-      -- set of account names
-      let chainsToAccounts = flip foldAccounts accounts $ \case
-            AccountRef_Vanity (AccountName name) chain :=> Identity acc
-              | _accountInfo_hidden $ _vanityAccount_info acc -> mempty
-              | otherwise -> MonoidalMap.singleton chain $ Set.singleton name
-            AccountRef_NonVanity pk chain :=> Identity acc
-              | _accountInfo_hidden $ _nonVanityAccount_info acc -> mempty
-              | otherwise -> MonoidalMap.singleton chain $ Set.singleton $ keyToText pk
-          code = renderCompactText . accountBalanceObject . Set.toList
-          pm chain = Pact.PublicMeta
-            { Pact._pmChainId = chain
-            , Pact._pmSender = "chainweaver"
-            , Pact._pmGasLimit = defaultTransactionGasLimit
-            , Pact._pmGasPrice = defaultTransactionGasPrice
-            , Pact._pmTTL = 3600
-            , Pact._pmCreationTime = 0
-            }
+      -- set of account names. We grab balances even for keys on all chains, but
+      -- stick to only the chains that we know for vanity accounts otherwise we
+      -- could easily prevent the user from being able to create accounts that
+      -- they may wish to create (not to mention spamming extra vanity accounts
+      -- makes the accounts page look ugly).
+      --
+      -- We spam extra balance requests here for keys rather than just adding the
+      -- accounts on generateKey because if we just did it on create then we'd
+      -- get the user stuck if they ever added in a new network.
+      let
+        chainsToAccounts = fold
+            [ foldMap
+              (\(an, m) ->
+                foldMap (\cId ->
+                  MonoidalMap.singleton cId (Set.singleton (unAccountName an)))
+                (Map.keys m))
+              (mAccounts ^.. _Just . accounts_vanity . to Map.toList . traverse)
+            , onAllChains $ Set.fromList
+              (keys ^.. to toList . traverse . to _key_pair . to _keyPair_publicKey . to keyToText)
+            ]
+
+        code = renderCompactText . accountBalanceObject . Set.toList
+        pm chain = Pact.PublicMeta
+          { Pact._pmChainId = chain
+          , Pact._pmSender = "chainweaver"
+          , Pact._pmGasLimit = defaultTransactionGasLimit
+          , Pact._pmGasPrice = defaultTransactionGasPrice
+          , Pact._pmTTL = 3600
+          , Pact._pmCreationTime = 0
+          }
+
       -- Build a request for each chain
       requests <- flip MonoidalMap.traverseWithKey chainsToAccounts $ \chain as -> do
         liftIO $ putStrLn $ "getBalances: Building request for get-balance on chain " <> T.unpack (_chainId chain)

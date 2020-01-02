@@ -31,6 +31,7 @@ module Common.Wallet
   , UnfinishedCrossChainTransfer(..)
   , KeyStorage
   , Account
+  , upsertNonVanityBalance
     -- * Prisms for working directly with Account
   , _VanityAccount
   , _NonVanityAccount
@@ -678,6 +679,17 @@ accountUnfinishedCrossChainTransfer = view (accountInfo . accountInfo_unfinished
 
 accountBalance :: Account -> Maybe AccountBalance
 accountBalance = view (accountInfo . accountInfo_balance)
+
+upsertNonVanityBalance :: NetworkName -> PublicKey -> ChainId -> Maybe AccountBalance -> AccountStorage -> AccountStorage
+upsertNonVanityBalance net pk chain balance store = store
+  & (_AccountStorage . at net %~ (Just . maybe mempty id))
+  & (_AccountStorage . ix net . accounts_nonVanity . at pk %~ (Just . maybe mempty id))
+  & (_AccountStorage . ix net . accounts_nonVanity . ix pk . at chain
+    %~ (Just . maybe (NonVanityAccount defaultAccountInfo) id)
+  )
+  & (storageAccountInfo net (Some (AccountRef_NonVanity pk chain)) . accountInfo_balance .~ balance)
+  where
+    defaultAccountInfo = AccountInfo Nothing Nothing False
 
 storageAccountInfo :: NetworkName -> Some AccountRef -> Traversal' AccountStorage AccountInfo
 storageAccountInfo net (Some ref) = _AccountStorage . at net . _Just . case ref of
