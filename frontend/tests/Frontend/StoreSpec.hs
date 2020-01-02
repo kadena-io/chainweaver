@@ -217,12 +217,12 @@ testVersioner = versioner
 test_v0ToV1Upgrade :: TestTree
 test_v0ToV1Upgrade = testCase "V0 to V1 Upgrade" $ do
   (i,localRef,sessionRef) <- inMemoryStorageFromTestData
-    (storageVersion_metaPrefix testVersioner)
+    (_storageVersioner_metaPrefix testVersioner)
     (Proxy @(V0.StoreFrontend TestPrv))
     0
     path
   (sn, pm, ns, sf, ks, as) <- flip runStorageT i $ runStorageIO $ do
-    storageVersioner_upgrade testVersioner
+    _storageVersioner_upgrade testVersioner
     sn <- getItemStorage localStorage V1.StoreFrontend_Network_SelectedNetwork
     pm <- getItemStorage localStorage V1.StoreFrontend_Network_PublicMeta
     ns <- getItemStorage localStorage V1.StoreFrontend_Network_Networks

@@ -34,14 +34,14 @@ versionedUi v widget = do
   widgetHold_ blank $ widget <$ migratedE
   where
     performUpdate = do
-      _ <- runStorageJSM $ storageVersioner_upgrade v
+      _ <- runStorageJSM $ _storageVersioner_upgrade v
       pure ()
 
 versioner :: forall key. (ToJSON key, FromJSON key) => StorageVersioner (Latest.StoreFrontend key)
 versioner = StorageVersioner
-  { storageVersion_metaPrefix = prefix
-  , storageVersioner_backupVersion = backup
-  , storageVersioner_upgrade = upgrade
+  { _storageVersioner_metaPrefix = prefix
+  , _storageVersioner_backupVersion = backup
+  , _storageVersioner_upgrade = upgrade
   }
   where
     prefix :: StoreKeyMetaPrefix

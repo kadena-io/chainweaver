@@ -295,11 +295,11 @@ data VersioningError
 
 
 data StorageVersioner ( k :: * -> * ) = StorageVersioner
-  { storageVersion_metaPrefix :: StoreKeyMetaPrefix
-  , storageVersioner_upgrade :: Storage (Maybe VersioningError)
+  { _storageVersioner_metaPrefix :: StoreKeyMetaPrefix
+  , _storageVersioner_upgrade :: Storage (Maybe VersioningError)
   -- It's entirely possible that a simpler just "copy the directory" or copy "all the storage keys" is
   -- a better way here, but lets explore this route and see what falls out for export / import
-  , storageVersioner_backupVersion :: Storage (Maybe VersioningError)
+  , _storageVersioner_backupVersion :: Storage (Maybe VersioningError)
   }
 
 class StorageUniverse k where
