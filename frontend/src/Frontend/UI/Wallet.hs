@@ -272,14 +272,14 @@ uiKeyItems model = do
     & walletCfg_refreshBalances .~ refresh
   where
     keyModal n = Just . \case
-      KeyDialog_Receive created chain name -> uiReceiveModal model name created (Just chain)
+      KeyDialog_Receive chain name created -> uiReceiveModal model name created (Just chain)
       KeyDialog_Send acc -> uiSendModal model acc
       KeyDialog_Details key -> uiKeyDetails model key
       KeyDialog_AccountDetails acc -> uiAccountDetails n acc
 
 -- | Dialogs which can be launched from keys.
 data KeyDialog key
-  = KeyDialog_Receive AccountCreated ChainId AccountName
+  = KeyDialog_Receive ChainId AccountName AccountCreated
   | KeyDialog_Send Account
   | KeyDialog_Details (Key key)
   | KeyDialog_AccountDetails Account
@@ -350,10 +350,10 @@ uiKeyItem model _index key = do
               -- TODO we need a way of adding these accounts when they already
               -- exist too, e.g. for users who are recovering wallets. An
               -- automatic account discovery thing would work well.
-              , attachWith
-                  (\n c -> KeyDialog_Receive c chain n)
-                  (AccountName . keyToText <$> pk)
-                  (current created <@ recv)
+              , KeyDialog_Receive chain
+                  <$> (AccountName . keyToText <$> pk)
+                  <*> current created
+                  <@ recv
               ]
             )
 
