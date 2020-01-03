@@ -29,12 +29,14 @@ import Control.Monad.Primitive (PrimMonad (PrimState, primitive))
 import Control.Monad.Reader
 import Control.Monad.Ref (MonadRef, MonadAtomicRef)
 import Data.Coerce (coerce)
+import Data.Text (Text)
 import Language.Javascript.JSaddle (MonadJSM)
 import Obelisk.Configs
 import Obelisk.Route.Frontend
 import Reflex.Dom.Core
 import Reflex.Host.Class (MonadReflexCreateTrigger)
 import System.FilePath ((</>))
+import qualified Data.Text as T
 import qualified Data.Text.IO as T
 import qualified System.Directory as Directory
 import qualified System.FilePath as FilePath
@@ -59,8 +61,8 @@ instance MonadJSM m => HasStorage (FileStorageT m) where
     liftIO $ catch (Directory.removeFile (path dir k)) $ \(e :: IOError) -> do
       putStrLn $ "Error removing storage: " <> show e <> " : " <> path dir k
 
-path :: Show a => FilePath -> a -> FilePath
-path dir k = dir </> FilePath.makeValid (show k)
+path :: FilePath -> Text -> FilePath
+path dir k = dir </> FilePath.makeValid (T.unpack k)
 
 newtype FileStorageT m a = FileStorageT
   { unFileStorageT :: ReaderT FilePath m a
