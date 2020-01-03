@@ -155,9 +155,10 @@ expectedAccounts = AccountStorage . Map.fromList $
             [ ("0" , VanityAccount (publicKeyYolo "496df4caddbb907e8ff1c76e4979a176ab1b12bd30e7d3136a8e566b50e07b52") (mkAccountNotes "I bet you think this account is about you") (AccountInfo Nothing Nothing False) False )
             ]
           )
+        -- This isn't actually in flight
         , ( AccountName "inflight"
           , Map.fromList
-            [ ("3" , VanityAccount (publicKeyYolo "c7fb88b67dee06b1f610411e48da6b87328fa4aea80c533a0ca96f64d3eb0632") (mkAccountNotes "") (AccountInfo Nothing Nothing False) True)
+            [ ("3" , VanityAccount (publicKeyYolo "c7fb88b67dee06b1f610411e48da6b87328fa4aea80c533a0ca96f64d3eb0632") (mkAccountNotes "") (AccountInfo Nothing Nothing False) False)
             ]
           )
         ])
