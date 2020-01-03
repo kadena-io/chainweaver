@@ -2,7 +2,6 @@ name: desktop
 version: 0.1
 cabal-version: >= 1.8
 build-type: Simple
-data-files: tests/golden-files/*.golden.json
 
 library
   hs-source-dirs: src
@@ -67,25 +66,3 @@ library
     , Desktop.Storage.File
     , Desktop.Util
   ghc-options: -Wall
-
-test-suite golden-tests
-  type: exitcode-stdio-1.0
-
-  main-is: GoldenTests.hs
-
-  ghc-options: -Wall
-
-  hs-source-dirs: tests
-  build-depends: base
-               , common
-               , frontend
-               , containers
-               , cardano-crypto
-               , desktop
-               , tasty
-               , tasty-golden
-               , aeson
-               , pact
-               , errors
-               , text
-               , bytestring
