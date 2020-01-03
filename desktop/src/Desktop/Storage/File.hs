@@ -23,25 +23,18 @@ module Desktop.Storage.File
   ) where
 
 import Control.Exception (try, catch)
-import Control.Monad (when)
 import Control.Monad.Fix (MonadFix)
 import Control.Monad.IO.Class
 import Control.Monad.Primitive (PrimMonad (PrimState, primitive))
 import Control.Monad.Reader
 import Control.Monad.Ref (MonadRef, MonadAtomicRef)
 import Data.Coerce (coerce)
-import Data.Maybe (isNothing)
 import Language.Javascript.JSaddle (MonadJSM)
 import Obelisk.Configs
 import Obelisk.Route.Frontend
 import Reflex.Dom.Core
 import Reflex.Host.Class (MonadReflexCreateTrigger)
 import System.FilePath ((</>))
-import qualified Data.Aeson as Aeson
-import qualified Data.ByteString as BS
-import qualified Data.ByteString.Lazy as LBS
-import qualified Data.Text.Encoding as T
-import qualified Data.Text.Encoding.Error as T
 import qualified Data.Text.IO as T
 import qualified System.Directory as Directory
 import qualified System.FilePath as FilePath
@@ -52,19 +45,14 @@ import Frontend.Storage.Class
 instance MonadJSM m => HasStorage (FileStorageT m) where
   getItemStorage' _ k = FileStorageT $ do
     dir <- ask
-    liftIO $ try (BS.readFile $ path dir k) >>= \case
+    liftIO $ try (T.readFile $ path dir k) >>= \case
       Left (e :: IOError) -> do
         putStrLn $ "Error reading storage: " <> show e <> " : " <> path dir k
         pure Nothing
-      Right v -> do
-        let result = Aeson.decodeStrict v
-        when (isNothing result) $ do
-          T.putStrLn $ "Error reading storage: can't decode contents: " <>
-            T.decodeUtf8With T.lenientDecode v
-        pure result
+      Right v -> pure $ Just v
   setItemStorage' _ k a = FileStorageT $ do
     dir <- ask
-    liftIO $ catch (LBS.writeFile (path dir k) (Aeson.encode a)) $ \(e :: IOError) -> do
+    liftIO $ catch (T.writeFile (path dir k) a) $ \(e :: IOError) -> do
       putStrLn $ "Error writing storage: " <> show e <> " : " <> path dir k
   removeItemStorage' _ k = FileStorageT $ do
     dir <- ask

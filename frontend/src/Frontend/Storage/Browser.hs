@@ -23,9 +23,6 @@ import Obelisk.Route.Frontend
 import Reflex.Dom hiding (fromJSString)
 import Reflex.Host.Class (MonadReflexCreateTrigger)
 
-import qualified Data.Aeson as Aeson
-import qualified Data.ByteString.Lazy as BL
-import qualified Data.Text.Encoding as T
 import qualified GHCJS.DOM as DOM
 import qualified GHCJS.DOM.Storage as GHCJS
 import qualified GHCJS.DOM.Window as Window
@@ -34,10 +31,10 @@ import qualified GHCJS.DOM.Window as Window
 instance MonadJSM m => HasStorage (BrowserStorageT m) where
   getItemStorage' storeType key = liftJSM $ do
     storage <- getStorageJSM storeType
-    (Aeson.decodeStrict . T.encodeUtf8 <=< fmap fromJSString) <$> GHCJS.getItem storage (toJSString key)
+    fmap fromJSString <$> GHCJS.getItem storage (toJSString key)
   setItemStorage' storeType key data' = liftJSM $ do
     storage <- getStorageJSM storeType
-    GHCJS.setItem storage (toJSString key) (toJSString $ T.decodeUtf8 $ BL.toStrict $ Aeson.encode data')
+    GHCJS.setItem storage (toJSString key) (toJSString data')
   removeItemStorage' storeType key = liftJSM $ do
     storage <- getStorageJSM storeType
     GHCJS.removeItem storage (toJSString key)
