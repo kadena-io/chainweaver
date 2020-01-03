@@ -56,11 +56,13 @@ library
     , warp
   exposed-modules:
       Desktop
+    , Desktop.Crypto.BIP
     , Desktop.Frontend
     , Desktop.Mac
     , Desktop.Orphans
     , Desktop.Setup
     , Desktop.SigningApi
+    , Desktop.Storage.File
     , Desktop.Util
   ghc-options: -Wall
 

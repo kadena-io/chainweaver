@@ -84,12 +84,12 @@ type ReflexConstraints t m =
   )
 
 -- | Write text to localstorage.
-storeEditor :: (HasStorage m, MonadJSM m, StorageM m ~ JSM) => Text -> m ()
-storeEditor ks = runStorageJSM $ setItemStorage localStorage StoreFrontend_ModuleExplorer_SessionFile ks
+storeEditor :: HasStorage m => Text -> m ()
+storeEditor ks = setItemStorage localStorage StoreFrontend_ModuleExplorer_SessionFile ks
 
 -- | Load text from localstorage.
-loadEditorFromLocalStorage :: (HasStorage m, MonadJSM m, StorageM m ~ JSM) => m (Maybe Text)
-loadEditorFromLocalStorage = runStorageJSM $ getItemStorage localStorage StoreFrontend_ModuleExplorer_SessionFile
+loadEditorFromLocalStorage :: (HasStorage m, Functor m) => m (Maybe Text)
+loadEditorFromLocalStorage = getItemStorage localStorage StoreFrontend_ModuleExplorer_SessionFile
 
 
 makeModuleExplorer
@@ -100,7 +100,6 @@ makeModuleExplorer
     , HasModuleExplorerModel model t
     , MonadSample t (Performable m)
     , HasStorage (Performable m)
-    , StorageM (Performable m) ~ JSM
     , HasCrypto key (Performable m)
     , Routed t (R FrontendRoute) m
     )

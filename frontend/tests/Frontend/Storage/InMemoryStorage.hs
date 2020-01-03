@@ -1,10 +1,12 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE TypeApplications #-}
 module Frontend.Storage.InMemoryStorage where
 
 import Control.Monad.Free (iterM)
+import Control.Monad.Reader
 import Data.Aeson (FromJSON, ToJSON, eitherDecode)
 import Data.Bool (bool)
 import qualified Data.ByteString.Lazy as LBS
@@ -40,41 +42,39 @@ removeRef ref k = void $ modifyIORef ref (Map.delete k)
 keysRef :: IORef (Map Text Text) -> IO [Text]
 keysRef ref = Map.keys <$> readIORef ref
 
-inMemoryStorage :: IO (StorageInterpreter IO, IORef (Map Text Text), IORef (Map Text Text))
-inMemoryStorage = do
+type IMS = (IORef (Map Text Text), IORef (Map Text Text))
+newtype InMemoryStorage a = InMemoryStorage
+  { unInMemoryStorage :: ReaderT IMS IO a
+  } deriving (Functor, Applicative, Monad, MonadIO)
+
+chooseRef :: StoreType -> InMemoryStorage (IORef (Map Text Text))
+chooseRef st = do
+  (localRef, sessionRef) <- InMemoryStorage ask
+  pure $ case st of
+    StoreType_Local -> localRef
+    StoreType_Session -> sessionRef
+
+instance HasStorage InMemoryStorage where
+  getItemStorage' st k = do
+    ref <- chooseRef st
+    InMemoryStorage $ lift $ lookupRef ref k
+
+  setItemStorage' st k v = do
+    ref <- chooseRef st
+    InMemoryStorage $ lift $ insertRef ref k v
+
+  removeItemStorage' st k = do
+    ref <- chooseRef st
+    InMemoryStorage $ lift $ removeRef ref k
+
+runInMemoryStorage :: InMemoryStorage a -> IMS -> IO a
+runInMemoryStorage (InMemoryStorage r) = runReaderT r
+
+newInMemoryStorage :: IO IMS
+newInMemoryStorage = do
   localRef <- newIORef (Map.empty :: Map Text Text)
   sessionRef <- newIORef (Map.empty :: Map Text Text)
-  let
-    chooseRef StoreType_Local = localRef
-    chooseRef StoreType_Session = sessionRef
-
-    storage_get :: StoreType -> Text -> IO (Maybe Text)
-    storage_get st k = do
-      let ref = chooseRef st
-      lookupRef ref k
-
-    storage_set :: StoreType -> Text -> Text -> IO ()
-    storage_set st k v = do
-      let ref = chooseRef st
-      insertRef ref k v
-
-    storage_remove :: StoreType -> Text -> IO ()
-    storage_remove st k = do
-      let ref = chooseRef st
-      removeRef ref k
-
-    interpreter = iterM $ \case
-      StorageF_Get storeType key next -> do
-        res <- storage_get storeType key
-        next res
-      StorageF_Set storeType key data' next -> do
-        storage_set storeType key data'
-        next
-      StorageF_Remove storeType key next -> do
-        storage_remove storeType key
-        next
-
-  pure $ (StorageInterpreter interpreter, localRef, sessionRef)
+  pure (localRef, sessionRef)
 
 -- This function *should* be cool because it ought to allow us to drop in a desktop storage directory
 -- into the folder for a given version and then source those files into the inmem store for the tests
@@ -95,12 +95,12 @@ inMemoryStorageFromTestData
   -> Proxy k
   -> Natural
   -> FilePath
-  -> IO (StorageInterpreter IO, IORef (Map Text Text), IORef (Map Text Text))
+  -> IO IMS
 inMemoryStorageFromTestData p _ ver dirPath = do
-  (interpreter, localRef, sessionRef) <- inMemoryStorage
   dmap <- keyUniverseToFilesDMap
-  flip runStorageT interpreter $ runStorageIO $ restoreLocalStorageDump p dmap ver
-  pure (interpreter, localRef, sessionRef)
+  ims <- newInMemoryStorage
+  _ <- runInMemoryStorage (restoreLocalStorageDump p dmap ver) ims
+  pure ims
   where
     keyToPath :: k a -> FilePath
     keyToPath k = dirPath </> gshow k

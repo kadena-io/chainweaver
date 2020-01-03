@@ -6,11 +6,10 @@ module Frontend.Store
   , versionedUi
   ) where
 
-import Frontend.Storage
+import Frontend.Storage.Class
 import Data.Aeson (FromJSON, ToJSON)
 import Data.Dependent.Sum.Orphans ()
 import Data.Proxy (Proxy(Proxy))
-import Language.Javascript.JSaddle (MonadJSM, JSM)
 import Reflex
 import Reflex.Dom
 
@@ -22,10 +21,9 @@ import Frontend.Store.V1 as Latest
 -- TODO: This should have a better home.
 versionedUi
   :: forall t m key
-   . ( DomBuilder t m, HasStorage (Performable m), PostBuild t m, MonadHold t m
-     , PerformEvent t m , MonadJSM (Performable m), StorageM (Performable m) ~ JSM
+   . ( DomBuilder t m, PostBuild t m, MonadHold t m, PerformEvent t m
      )
-  => StorageVersioner key
+  => StorageVersioner (Performable m) key
   -> m ()
   -> m ()
 versionedUi v widget = do
@@ -34,10 +32,10 @@ versionedUi v widget = do
   widgetHold_ blank $ widget <$ migratedE
   where
     performUpdate = do
-      _ <- runStorageJSM $ _storageVersioner_upgrade v
+      _ <- _storageVersioner_upgrade v
       pure ()
 
-versioner :: forall key. (ToJSON key, FromJSON key) => StorageVersioner (Latest.StoreFrontend key)
+versioner :: forall key m. (ToJSON key, FromJSON key, Monad m, HasStorage m) => StorageVersioner m (Latest.StoreFrontend key)
 versioner = StorageVersioner
   { _storageVersioner_metaPrefix = prefix
   , _storageVersioner_backupVersion = backup
@@ -46,7 +44,7 @@ versioner = StorageVersioner
   where
     prefix :: StoreKeyMetaPrefix
     prefix = StoreKeyMetaPrefix "StoreFrontend_Meta"
-    backup :: Storage (Maybe VersioningError)
+    backup :: m (Maybe VersioningError)
     backup = do
       ver <- getCurrentVersion prefix
       case ver of
@@ -58,7 +56,7 @@ versioner = StorageVersioner
           pure Nothing
         v -> pure $ Just $ VersioningError_UnknownVersion v
 
-    upgrade :: Storage (Maybe VersioningError)
+    upgrade :: m (Maybe VersioningError)
     upgrade = do
       ver <- getCurrentVersion prefix
       case ver of
@@ -67,7 +65,7 @@ versioner = StorageVersioner
           case mDump of
             Nothing -> error "TODO Add a version error case for this"
             Just dump -> do
-              let v1Dump = (V1.upgradeFromV0 dump)
+              let v1Dump = V1.upgradeFromV0 dump
               removeKeyUniverse (Proxy @(V0.StoreFrontend key)) localStorage
               removeKeyUniverse (Proxy @(V0.StoreFrontend key)) sessionStorage
               restoreLocalStorageDump prefix v1Dump 1

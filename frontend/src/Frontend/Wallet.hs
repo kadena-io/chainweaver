@@ -151,9 +151,7 @@ makeWallet
   :: forall model key t m.
     ( MonadHold t m, PerformEvent t m
     , MonadFix m, MonadJSM (Performable m)
-    , MonadJSM m
     , HasStorage (Performable m), HasStorage m
-    , StorageM (Performable m) ~ JSM, StorageM m ~ JSM
     , HasNetwork model t
     , TriggerEvent t m
     , HasCrypto key (Performable m)
@@ -313,20 +311,20 @@ checkAccountNameValidity m = getErr <$> (m ^. network_selectedNetwork) <*> (m ^.
         Map.lookup chain chains
 
 -- | Write key pairs to localstorage.
-storeKeys :: (ToJSON key, HasStorage m, MonadJSM m, StorageM m ~ JSM) => KeyStorage key -> m ()
-storeKeys = runStorageJSM . setItemStorage localStorage StoreFrontend_Wallet_Keys
+storeKeys :: (ToJSON key, HasStorage m) => KeyStorage key -> m ()
+storeKeys = setItemStorage localStorage StoreFrontend_Wallet_Keys
 
 -- | Load key pairs from localstorage.
-loadKeys :: (FromJSON key, HasStorage m, MonadJSM m, StorageM m ~ JSM) => m (Maybe (KeyStorage key))
-loadKeys = runStorageJSM $ getItemStorage localStorage StoreFrontend_Wallet_Keys
+loadKeys :: (FromJSON key, HasStorage m, Functor m) => m (Maybe (KeyStorage key))
+loadKeys = getItemStorage localStorage StoreFrontend_Wallet_Keys
 
 -- | Write key pairs to localstorage.
-storeAccounts :: (HasStorage m, MonadJSM m, StorageM m ~ JSM) => AccountStorage -> m ()
-storeAccounts = runStorageJSM . setItemStorage localStorage StoreFrontend_Wallet_Accounts
+storeAccounts :: HasStorage m => AccountStorage -> m ()
+storeAccounts = setItemStorage localStorage StoreFrontend_Wallet_Accounts
 
 -- | Load accounts from localstorage.
-loadAccounts :: (HasStorage m, MonadJSM m, StorageM m ~ JSM) => m (Maybe AccountStorage)
-loadAccounts = runStorageJSM $ getItemStorage localStorage StoreFrontend_Wallet_Accounts
+loadAccounts :: (HasStorage m, Functor m) => m (Maybe AccountStorage)
+loadAccounts = getItemStorage localStorage StoreFrontend_Wallet_Accounts
 
 -- Utility functions:
 

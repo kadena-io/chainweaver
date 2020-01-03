@@ -212,18 +212,19 @@ expectedAccounts = AccountStorage . Map.fromList $
      )
   ]
 
-testVersioner :: StorageVersioner (V1.StoreFrontend TestPrv)
+testVersioner :: (HasStorage m, Monad m) => StorageVersioner m (V1.StoreFrontend TestPrv)
 testVersioner = versioner
 
 test_v0ToV1Upgrade :: TestTree
 test_v0ToV1Upgrade = testCase "V0 to V1 Upgrade" $ do
-  (i,localRef,sessionRef) <- inMemoryStorageFromTestData
-    (_storageVersioner_metaPrefix testVersioner)
+  let v = testVersioner
+  ims@(localRef, sessionRef) <- inMemoryStorageFromTestData
+    (_storageVersioner_metaPrefix v)
     (Proxy @(V0.StoreFrontend TestPrv))
     0
     path
-  (sn, pm, ns, sf, ks, as) <- flip runStorageT i $ runStorageIO $ do
-    _storageVersioner_upgrade testVersioner
+  (sn, pm, ns, sf, ks, as) <- flip runInMemoryStorage ims $ do
+    _storageVersioner_upgrade v
     sn <- getItemStorage localStorage V1.StoreFrontend_Network_SelectedNetwork
     pm <- getItemStorage localStorage V1.StoreFrontend_Network_PublicMeta
     ns <- getItemStorage localStorage V1.StoreFrontend_Network_Networks
