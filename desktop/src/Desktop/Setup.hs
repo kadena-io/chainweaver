@@ -8,7 +8,7 @@
 {-# LANGUAGE TypeApplications #-}
 
 -- | Wallet setup screens
-module Desktop.Setup (runSetup, form, kadenaWalletLogo, setupDiv, setupClass) where
+module Desktop.Setup (runSetup, form, splashLogo, setupDiv, setupClass) where
 
 import Control.Lens ((<>~), (%~), (?~), (??))
 import Control.Error (hush)
@@ -206,14 +206,18 @@ runSetup = setupDiv "fullscreen" $ mdo
       | ws `elem` [WalletScreen_SplashScreen, WalletScreen_Done] = setupClass "hide"
       | otherwise = setupScreenClass ws
 
+splashLogo :: DomBuilder t m => m ()
+splashLogo = do
+  elAttr "div"
+    (  "style" =: ("background-image: url(" <> (static @"img/Wallet_Graphic_1.png") <> ");")
+    <> "class" =: setupClass "splash-bg"
+    ) kadenaWalletLogo
+
 splashScreen
   :: (DomBuilder t m, MonadFix m, MonadHold t m, MonadIO m, PerformEvent t m, PostBuild t m, MonadJSM (Performable m), TriggerEvent t m)
   => Event t () -> SetupWF t m
 splashScreen eBack = Workflow $ setupDiv "splash" $ do
-  elAttr "div"
-    (  "style" =: ("background-image: url(" <> static @"img/Wallet_Graphic_1.png" <> ")")
-    <> "class" =: setupClass "splash-bg"
-    ) kadenaWalletLogo
+  splashLogo
 
   (agreed, create, recover) <- setupDiv "splash-terms-buttons" $ do
     agreed <- fmap value $ setupCheckbox False def $ el "div" $ do
