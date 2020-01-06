@@ -31,6 +31,7 @@ module Common.Wallet
   , UnfinishedCrossChainTransfer(..)
   , KeyStorage
   , Account
+  , upsertNonVanityBalance
     -- * Prisms for working directly with Account
   , _VanityAccount
   , _NonVanityAccount
@@ -63,6 +64,7 @@ module Common.Wallet
   -- * Util
   , throwDecodingErr
   , decodeBase16M
+  , lenientLookup
   -- * Balance checks
   , wrapWithBalanceChecks
   , parseWrappedBalanceChecks
@@ -208,7 +210,7 @@ throwWrongLength should k =
 data KeyPair key = KeyPair
   { _keyPair_publicKey  :: PublicKey
   , _keyPair_privateKey :: Maybe key
-  } deriving Generic
+  } deriving (Generic, Show, Eq)
 
 instance ToJSON key => ToJSON (KeyPair key) where
   toJSON p = object
@@ -305,52 +307,11 @@ instance FromJSON UnfinishedCrossChainTransfer where
       , _unfinishedCrossChainTransfer_amount = amount
       }
 
---data Account key = Account
---  { _account_name :: AccountName
---  , _account_key :: KeyPair key
---  , _account_chainId :: ChainId
---  , _account_network :: NetworkName
---  , _account_notes :: AccountNotes
---  , _account_balance :: Maybe AccountBalance
---  -- ^ We also treat this as proof of the account's existence.
---  , _account_unfinishedCrossChainTransfer :: Maybe UnfinishedCrossChainTransfer
---  }
---
---instance ToJSON key => ToJSON (Account key) where
---  toJSON a = object $ catMaybes
---    [ Just $ "name" .= _account_name a
---    , Just $ "key" .= _account_key a
---    , Just $ "chain" .= _account_chainId a
---    , Just $ "network" .= _account_network a
---    , Just $ "notes" .= _account_notes a
---    , ("balance" .=) <$> _account_balance a
---    , ("unfinishedCrossChainTransfer" .=) <$> _account_unfinishedCrossChainTransfer a
---    ]
---
---instance FromJSON key => FromJSON (Account key) where
---  parseJSON = withObject "Account" $ \o -> do
---    name <- o .: "name"
---    key <- o .: "key"
---    chain <- o .: "chain"
---    network <- o .: "network"
---    notes <- o .: "notes"
---    balance <- o .:? "balance"
---    unfinishedCrossChainTransfer <- lenientLookup o "unfinishedCrossChainTransfer"
---    pure $ Account
---      { _account_name = name
---      , _account_key = key
---      , _account_chainId = chain
---      , _account_network = network
---      , _account_notes = notes
---      , _account_balance = balance
---      , _account_unfinishedCrossChainTransfer = unfinishedCrossChainTransfer
---      }
-
 data Key key = Key
   { _key_pair :: KeyPair key
   , _key_hidden :: Bool
   , _key_notes :: AccountNotes
-  }
+  } deriving (Eq, Show)
 
 instance ToJSON key => ToJSON (Key key) where
   toJSON k = object
@@ -422,7 +383,7 @@ accountKey (r :=> Identity a) = case r of
 data Accounts = Accounts
   { _accounts_vanity :: Map AccountName (Map ChainId VanityAccount)
   , _accounts_nonVanity :: Map PublicKey (Map ChainId NonVanityAccount)
-  }
+  } deriving (Eq, Show)
 
 instance Semigroup Accounts where
   a1 <> a2 = Accounts
@@ -458,7 +419,7 @@ data AccountInfo = AccountInfo
   { _accountInfo_balance :: Maybe AccountBalance
   , _accountInfo_unfinishedCrossChainTransfer :: Maybe UnfinishedCrossChainTransfer
   , _accountInfo_hidden :: Bool
-  } deriving Show
+  } deriving (Show, Eq)
 
 blankAccountInfo :: AccountInfo
 blankAccountInfo = AccountInfo
@@ -490,7 +451,7 @@ data VanityAccount = VanityAccount
   , _vanityAccount_notes :: AccountNotes
   , _vanityAccount_info :: AccountInfo
   , _vanityAccount_inflight :: Bool
-  } deriving Show
+  } deriving (Show, Eq)
 
 instance ToJSON VanityAccount where
   toJSON as = object $ catMaybes
@@ -517,7 +478,7 @@ instance FromJSON VanityAccount where
 
 data NonVanityAccount = NonVanityAccount
   { _nonVanityAccount_info :: AccountInfo
-  }
+  } deriving (Eq, Show)
 
 instance ToJSON NonVanityAccount where
   toJSON as = object
@@ -532,6 +493,7 @@ instance FromJSON NonVanityAccount where
       }
 
 newtype AccountStorage = AccountStorage { unAccountStorage :: Map NetworkName Accounts }
+  deriving (Eq, Show)
 
 instance Semigroup AccountStorage where
   AccountStorage a1 <> AccountStorage a2 = AccountStorage $ Map.unionWith (<>) a1 a2
@@ -677,6 +639,17 @@ accountUnfinishedCrossChainTransfer = view (accountInfo . accountInfo_unfinished
 
 accountBalance :: Account -> Maybe AccountBalance
 accountBalance = view (accountInfo . accountInfo_balance)
+
+upsertNonVanityBalance :: NetworkName -> PublicKey -> ChainId -> Maybe AccountBalance -> AccountStorage -> AccountStorage
+upsertNonVanityBalance net pk chain balance store = store
+  & (_AccountStorage . at net %~ (Just . fold))
+  & (_AccountStorage . ix net . accounts_nonVanity . at pk %~ (Just . fold))
+  & (_AccountStorage . ix net . accounts_nonVanity . ix pk . at chain
+    %~ (Just . maybe (NonVanityAccount defaultAccountInfo) id)
+  )
+  & (storageAccountInfo net (Some (AccountRef_NonVanity pk chain)) . accountInfo_balance .~ balance)
+  where
+    defaultAccountInfo = AccountInfo Nothing Nothing False
 
 storageAccountInfo :: NetworkName -> Some AccountRef -> Traversal' AccountStorage AccountInfo
 storageAccountInfo net (Some ref) = _AccountStorage . at net . _Just . case ref of

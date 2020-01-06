@@ -53,6 +53,7 @@ import           Common.Route
 import           Frontend.Foundation
 import           Frontend.Messages
 import           Frontend.Storage
+import           Frontend.Store
 
 
 data OAuthCfg t = OAuthCfg
@@ -76,12 +77,6 @@ makePactLenses ''OAuth
 
 type HasOAuthModelCfg mConf t = ( Monoid mConf, HasMessagesCfg mConf t)
 
-data StoreOAuth r where
-  StoreOAuth_Tokens :: StoreOAuth (Map OAuthProvider AccessToken)
-  StoreOAuth_State :: OAuthProvider -> StoreOAuth OAuthState
-
-deriving instance Show (StoreOAuth a)
-
 makeOAuth
   :: forall t m cfg mConf
   . ( Reflex t, MonadHold t m, PostBuild t m, PerformEvent t m, MonadSample t (Performable m)
@@ -104,7 +99,7 @@ makeOAuth cfg = mdo -- Required to get access to `tokens` for clearing any old t
   -- (Below performEvent on `updated tokens` will happen too late!)
   onAuthorizeStored <- performEvent $ ffor (cfg ^. oAuthCfg_authorize) $ \authReq -> do
     cTokens <- sample $ current tokens
-    setItemStorage localStorage StoreOAuth_Tokens $ Map.delete (_authorizationRequest_provider authReq) cTokens
+    setItemStorage localStorage StoreFrontend_OAuth_Tokens $ Map.delete (_authorizationRequest_provider authReq) cTokens
     pure authReq
 
   oAuthL <- runOAuthRequester $ makeOAuthFrontend sCfg $ OAuthFrontendConfig
@@ -115,7 +110,7 @@ makeOAuth cfg = mdo -- Required to get access to `tokens` for clearing any old t
   let
     (onErr, onToken) = fanEither $ _oAuthFrontend_authorized oAuthL
 
-  mInitTokens <- getItemStorage localStorage StoreOAuth_Tokens
+  mInitTokens <- getItemStorage localStorage StoreFrontend_OAuth_Tokens
 
   tokens <- foldDyn id (fromMaybe Map.empty mInitTokens) $ leftmost
     [ uncurry Map.insert <$> onToken
@@ -124,7 +119,7 @@ makeOAuth cfg = mdo -- Required to get access to `tokens` for clearing any old t
     , Map.delete <$> cfg ^. oAuthCfg_logout
     ]
 
-  performEvent_ $ setItemStorage localStorage StoreOAuth_Tokens <$> updated tokens
+  performEvent_ $ setItemStorage localStorage StoreFrontend_OAuth_Tokens <$> updated tokens
 
   pure
     ( mempty & messagesCfg_send .~ fmap (pure . textOAuthError) onErr
@@ -137,7 +132,7 @@ makeOAuth cfg = mdo -- Required to get access to `tokens` for clearing any old t
 
 runOAuthRequester
   :: ( Monad m, MonadFix m, TriggerEvent t m, PerformEvent t m
-     , MonadJSM (Performable m), HasStorage m
+     , MonadJSM (Performable m)
      )
   => RequesterT t (Command OAuthProvider) Identity m a
   -> m a
@@ -152,9 +147,10 @@ runOAuthRequester requester = mdo
 
   (a, onRequest) <- runRequesterT requester onResponse
 
-  store <- askStorage
   onResponse <- performEventAsync $ ffor onRequest $ \req sendResponse -> void $ liftJSM $ forkJSM $ do
-    r <- traverseRequesterData (fmap Identity . flip runStorageT store . runOAuthCmds renderRoute) req
+    -- We can runBrowserStorageT here because OAuth functionality is only
+    -- available in the browser
+    r <- traverseRequesterData (fmap Identity . runBrowserStorageT . runOAuthCmds renderRoute) req
     liftIO $ sendResponse r
 
   pure a
@@ -170,11 +166,11 @@ runOAuthCmds renderRoute = go
   where
     go = \case
       Free (CommandF_StoreState prov state next) ->
-        setItemStorage sessionStorage (StoreOAuth_State prov) state >> go next
+        (setItemStorage sessionStorage (StoreFrontend_OAuth_State prov) state) >> go next
       Free (CommandF_LoadState prov getNext) ->
-        getItemStorage sessionStorage (StoreOAuth_State prov) >>= go . getNext
+        (getItemStorage sessionStorage (StoreFrontend_OAuth_State prov)) >>= go . getNext
       Free (CommandF_RemoveState prov next) ->
-        removeItemStorage sessionStorage (StoreOAuth_State prov) >> go next
+        (removeItemStorage sessionStorage (StoreFrontend_OAuth_State prov)) >> go next
       Free (CommandF_GetToken prov pars getNext) -> do
         let
           uri = renderRoute $ BackendRoute_OAuthGetToken :/ oAuthProviderId prov

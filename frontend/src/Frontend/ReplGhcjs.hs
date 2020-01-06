@@ -52,6 +52,7 @@ import Frontend.Ide
 import Frontend.OAuth
 import Frontend.Repl
 import Frontend.Storage
+import qualified Frontend.Store as Store
 import Frontend.UI.Button
 import Frontend.UI.Dialogs.AddVanityAccount (uiAddVanityAccountButton)
 import Frontend.UI.Dialogs.CreateGist (uiCreateGist)
@@ -81,7 +82,7 @@ app
   => RoutedT t (R FrontendRoute) m ()
   -- ^ Extra widget to display at the bottom of the sidebar
   -> AppCfg key t (RoutedT t (R FrontendRoute) m) -> RoutedT t (R FrontendRoute) m ()
-app sidebarExtra appCfg = void . mfix $ \ cfg -> do
+app sidebarExtra appCfg = Store.versionedUi (Store.versioner @key) $ void . mfix $ \ cfg -> do
   ideL <- makeIde appCfg cfg
 
   walletSidebar sidebarExtra
