@@ -274,7 +274,7 @@ uiKeyItems model = do
     keyModal n = Just . \case
       KeyDialog_Receive chain name created -> uiReceiveModal model name created (Just chain)
       KeyDialog_Send acc -> uiSendModal model acc
-      KeyDialog_Details i key -> uiKeyDetails model i key
+      KeyDialog_Details i key -> uiKeyDetails i key
       KeyDialog_AccountDetails acc -> uiAccountDetails n acc
 
 -- | Dialogs which can be launched from keys.
