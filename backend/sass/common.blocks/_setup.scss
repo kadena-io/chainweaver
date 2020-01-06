@@ -9,7 +9,7 @@
 
 $wallet-top-btm-margin: 0.5rem 0 0.5rem 0;
 $kadena-orange: #F3AB3C;
-$setup-progress-button-width: 500px;
+$setup-progress-button-width: 350px;
 $setup-progress-button-height: 52px;
 $setup-progress-font-size: 18px;
 
@@ -171,7 +171,7 @@ $setup-progress-font-size: 18px;
     padding-left: 46px;
     height: $setup-progress-button-height;
     line-height: initial;
-    font-size: $setup-progress-font-size;
+    font-size: 16px;
     font-weight: initial;
     flex-grow: 1;
   }
@@ -348,7 +348,7 @@ $setup-progress-font-size: 18px;
 }
 
 .setup__password-bg {
-  width: 450px;
+  width: 325px;
 }
 
 .setup__splash {
@@ -358,8 +358,8 @@ $setup-progress-font-size: 18px;
 }
 
 .setup__splash-bg {
-  width: 580px;
-  height: 400px;
+  width: 522px;
+  height: 360px;
   background-size: cover;
 }
 
@@ -382,12 +382,6 @@ $setup-progress-font-size: 18px;
   top: 60px;
   margin: 0 auto;
   height: 250px;
-}
-
-.setup__warning-checkbox {
-  margin: 2rem 0.5rem;
-  width: 140%;
-  margin-left: -9rem;
 }
 
 .setup__repeat-icon {
@@ -429,5 +423,10 @@ $setup-progress-font-size: 18px;
   display: flex;
   flex-direction: row;
   justify-content: center;
-  margin-top: $double-margin;
+}
+
+.setup__form {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
 }
