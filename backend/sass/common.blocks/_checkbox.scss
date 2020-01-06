@@ -29,6 +29,7 @@
   height: 20px;
   width: 20px;
   background-color: $white;
+  flex: none;
 }
 
 .checkbox:hover input ~ .checkbox__checkmark {
