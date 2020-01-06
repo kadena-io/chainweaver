@@ -8,7 +8,6 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecursiveDo #-}
 {-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE TupleSections #-}
 {-# LANGUAGE TypeFamilies #-}
 
 -- | Wallet management ui for handling private/public keys.
@@ -273,14 +272,14 @@ uiKeyItems model = do
     & walletCfg_refreshBalances .~ refresh
   where
     keyModal n = Just . \case
-      KeyDialog_Receive name created -> uiReceiveModal model name created Nothing
+      KeyDialog_Receive chain name created -> uiReceiveModal model name created (Just chain)
       KeyDialog_Send acc -> uiSendModal model acc
       KeyDialog_Details i key -> uiKeyDetails model i key
       KeyDialog_AccountDetails acc -> uiAccountDetails n acc
 
 -- | Dialogs which can be launched from keys.
 data KeyDialog key
-  = KeyDialog_Receive AccountName AccountCreated
+  = KeyDialog_Receive ChainId AccountName AccountCreated
   | KeyDialog_Send Account
   | KeyDialog_Details IntMap.Key (Key key)
   | KeyDialog_AccountDetails Account
@@ -328,34 +327,34 @@ uiKeyItem model keyIndex key = do
         td $ dynText $ unAccountNotes . _key_notes <$> key
         td $ dynText $ uiAccountBalance . Just <$> balance
         dialog <- td $ buttons $ do
-          recv <- receiveButton cfg
           onDetails <- detailsButton (cfg & uiButtonCfg_class <>~ " wallet__table-button--hamburger")
-
-          let pk = AccountName . keyToText . _keyPair_publicKey . _key_pair <$> current key
-
-          pure $ leftmost
-            [ KeyDialog_Details keyIndex <$> current key <@ onDetails
-            -- TODO we need a way of adding these accounts when they already
-            -- exist too, e.g. for users who are recovering wallets. An
-            -- automatic account discovery thing would work well.
-            , (\x -> KeyDialog_Receive x AccountCreated_No) <$> pk <@ recv
-            ]
+          pure $ KeyDialog_Details keyIndex <$> current key <@ onDetails
         pure (clk, dialog)
 
       accountRow visible chain dAccount = trAcc visible $ do
         td blank -- Arrow column
         td $ text $ "Chain ID: " <> _chainId chain
         td blank -- Notes column
-        td $ dynText $ uiAccountBalance' . _nonVanityAccount_info <$> dAccount
+        td $ dynText $ fmap uiAccountBalance' dAccount
         td $ buttons $ do
+          recv <- receiveButton cfg
           send <- sendButton cfg
           onDetails <- detailsButton (cfg & uiButtonCfg_class <>~ " wallet__table-button--hamburger")
           let pk = _keyPair_publicKey . _key_pair <$> current key
+              balance = _accountInfo_balance . _nonVanityAccount_info <$> dAccount
+              created = maybe AccountCreated_No (const AccountCreated_Yes) <$> balance
           pure
-            ( _accountInfo_balance . _nonVanityAccount_info <$> dAccount
+            ( balance
             , leftmost
               [ (\k -> KeyDialog_Send . (AccountRef_NonVanity k chain ==>)) <$> pk <*> current dAccount <@ send
               , (\k -> KeyDialog_AccountDetails . (AccountRef_NonVanity k chain ==>)) <$> pk <*> current dAccount <@ onDetails
+              -- TODO we need a way of adding these accounts when they already
+              -- exist too, e.g. for users who are recovering wallets. An
+              -- automatic account discovery thing would work well.
+              , KeyDialog_Receive chain
+                  <$> (AccountName . keyToText <$> pk)
+                  <*> current created
+                  <@ recv
               ]
             )
 
