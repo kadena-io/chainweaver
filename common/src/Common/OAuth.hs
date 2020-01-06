@@ -1,6 +1,7 @@
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE TemplateHaskell #-}
 
 module Common.OAuth where
 
@@ -9,6 +10,7 @@ import           Data.Aeson             (FromJSON (..), FromJSONKey (..),
                                          FromJSONKeyFunction (..), ToJSON (..),
                                          ToJSONKey (..), ToJSONKeyFunction (..))
 import           Data.Text              (Text)
+import           Data.Universe          (Universe(..))
 import           GHC.Generics           (Generic)
 
 import           Obelisk.Configs
@@ -22,6 +24,9 @@ import           Common.Route
 -- | All the oauth providers we support right now.
 data OAuthProvider = OAuthProvider_GitHub
   deriving (Show, Read, Eq, Ord, Generic, Bounded, Enum)
+
+instance Universe OAuthProvider where
+  universe = [OAuthProvider_GitHub]
 
 instance FromJSON OAuthProvider where
   parseJSON = maybe (fail "Invalid provider id") pure <=< fmap oAuthProviderFromId . parseJSON

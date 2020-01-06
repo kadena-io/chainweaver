@@ -22,8 +22,7 @@ import           Obelisk.Generated.Static
 import           Common.Api
 import           Common.Route
 import           Frontend.AppCfg
-import           Frontend.Crypto.Class
-import           Frontend.Crypto.Ed25519
+import           Frontend.Crypto.Browser
 import           Frontend.Foundation
 import           Frontend.ModuleExplorer.Impl (loadEditorFromLocalStorage)
 import           Frontend.ReplGhcjs
@@ -52,14 +51,7 @@ frontend = Frontend
 
   , _frontend_body = prerender_ loaderMarkup $ do
     (fileOpened, triggerOpen) <- openFileDialog
-    let store = browserStorage
-        crypto = Crypto
-          mkSignature
-          (const genKeyPair)
-          (\_ _ -> pure $ Left "Not supported on web")
-          (\_ _ -> error "Not supported on web")
-
-    mapRoutedT (flip runStorageT store . flip runCryptoT crypto) $ app blank $ AppCfg
+    mapRoutedT (runBrowserStorageT . runBrowserCryptoT) $ app blank $ AppCfg
       { _appCfg_gistEnabled = True
       , _appCfg_externalFileOpened = fileOpened
       , _appCfg_openFileDialog = liftJSM triggerOpen

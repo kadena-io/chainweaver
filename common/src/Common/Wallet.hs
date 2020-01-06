@@ -5,9 +5,9 @@
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE LambdaCase #-}
-{-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE PatternGuards #-}
+{-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE TemplateHaskell #-}
 
 module Common.Wallet
@@ -20,24 +20,60 @@ module Common.Wallet
   , parsePublicKey
   , toPactPublicKey
   , KeyPair(..)
+  , AccountRef(..)
+  , accountRefToName
+  , lookupAccountRef
   , AccountName(..)
   , AccountBalance(..)
   , AccountNotes (unAccountNotes)
   , mkAccountNotes
-  , Account(..)
-  , HasAccount (..)
   , AccountGuard(..)
   , UnfinishedCrossChainTransfer(..)
+  , KeyStorage
+  , Account
+  , upsertNonVanityBalance
+    -- * Prisms for working directly with Account
+  , _VanityAccount
+  , _NonVanityAccount
+  , accountUnfinishedCrossChainTransfer
+  , accountToName
+  , accountNotes
+  , accountChain
+  , accountBalance
+  , accountKey
+  , AccountStorage(..)
+  , _AccountStorage
+  , storageAccountInfo
+  , Accounts(..)
+  , accounts_vanity
+  , accounts_nonVanity
+  , foldAccounts
+  , Key(..)
+  , filterKeyPairs
+  , VanityAccount(..)
+  , vanityAccount_notes
+  , vanityAccount_info
+  , vanityAccount_key
+  , NonVanityAccount(..)
+  , nonVanityAccount_info
+  , AccountInfo(..)
+  , HasAccountInfo(..)
+  , blankAccountInfo
   , pactGuardTypeText
   , fromPactGuard
   -- * Util
   , throwDecodingErr
   , decodeBase16M
+  , lenientLookup
   -- * Balance checks
   , wrapWithBalanceChecks
   , parseWrappedBalanceChecks
+  , getBalanceCode
+  , accountBalanceObject
+  , parseAccountBalances
   ) where
 
+import Control.Applicative (liftA2)
 import Control.Monad.Fail (MonadFail)
 import Control.Lens hiding ((.=))
 import Control.Monad
@@ -49,8 +85,13 @@ import Data.Bifunctor (first)
 import Data.ByteString (ByteString)
 import Data.Decimal (Decimal)
 import Data.Default
+import Data.Dependent.Sum (DSum(..), (==>))
+import Data.IntMap (IntMap)
 import Data.Map (Map)
 import Data.Set (Set)
+import Data.Some (Some(..))
+import Data.GADT.Compare.TH
+import Data.GADT.Show.TH
 import Data.Text (Text)
 import Data.Traversable (for)
 import GHC.Generics (Generic)
@@ -64,20 +105,18 @@ import Pact.Types.PactValue
 import Pact.Types.Pretty
 import Pact.Types.Term hiding (PublicKey)
 import Pact.Types.Type
-import qualified Data.Char as C
 import qualified Data.Aeson as Aeson
 import qualified Data.Aeson.Types as Aeson
 import qualified Data.ByteString as BS
 import qualified Data.ByteString.Base16 as Base16
 import qualified Data.HashMap.Lazy as HM
+import qualified Data.IntMap as IntMap
 import qualified Data.Map as Map
 import qualified Data.Set as Set
 import qualified Data.Text as T
 import qualified Data.Text.Encoding as T
 import qualified Pact.Types.Term as Pact
 import qualified Pact.Types.Type as Pact
-
-import Language.Haskell.TH.Syntax (mkName,nameBase)
 
 import Common.Foundation
 import Common.Network (NetworkName)
@@ -171,7 +210,7 @@ throwWrongLength should k =
 data KeyPair key = KeyPair
   { _keyPair_publicKey  :: PublicKey
   , _keyPair_privateKey :: Maybe key
-  } deriving Generic
+  } deriving (Generic, Show, Eq)
 
 instance ToJSON key => ToJSON (KeyPair key) where
   toJSON p = object
@@ -217,7 +256,7 @@ instance FromJSON AccountGuard
 instance ToJSON AccountGuard
 
 -- | Account balance wrapper
-newtype AccountBalance = AccountBalance { unAccountBalance :: Decimal } deriving (Eq, Ord, Num)
+newtype AccountBalance = AccountBalance { unAccountBalance :: Decimal } deriving (Eq, Ord, Num, Show)
 
 -- Via ParsedDecimal
 instance ToJSON AccountBalance where
@@ -268,53 +307,205 @@ instance FromJSON UnfinishedCrossChainTransfer where
       , _unfinishedCrossChainTransfer_amount = amount
       }
 
-data Account key = Account
-  { _account_name :: AccountName
-  , _account_key :: KeyPair key
-  , _account_chainId :: ChainId
-  , _account_network :: NetworkName
-  , _account_notes :: AccountNotes
-  , _account_balance :: Maybe AccountBalance
-  -- ^ We also treat this as proof of the account's existence.
-  , _account_unfinishedCrossChainTransfer :: Maybe UnfinishedCrossChainTransfer
-  }
+data Key key = Key
+  { _key_pair :: KeyPair key
+  , _key_hidden :: Bool
+  , _key_notes :: AccountNotes
+  } deriving (Eq, Show)
 
--- We want to be able to use the variable 'account' so we suffix it with `L`..
-makeLensesWith (classyRules
-  & lensClass .~ \name -> case nameBase name of
-    n:ns -> Just (mkName $ "Has" ++ n:ns, mkName $ C.toLower n:ns <> "L")
-    [] -> Nothing
-  ) ''Account
-
-instance ToJSON key => ToJSON (Account key) where
-  toJSON a = object $ catMaybes
-    [ Just $ "name" .= _account_name a
-    , Just $ "key" .= _account_key a
-    , Just $ "chain" .= _account_chainId a
-    , Just $ "network" .= _account_network a
-    , Just $ "notes" .= _account_notes a
-    , ("balance" .=) <$> _account_balance a
-    , ("unfinishedCrossChainTransfer" .=) <$> _account_unfinishedCrossChainTransfer a
+instance ToJSON key => ToJSON (Key key) where
+  toJSON k = object
+    [ "pair" .= toJSON (_key_pair k)
+    , "hidden" .= toJSON (_key_hidden k)
+    , "notes" .= toJSON (_key_notes k)
     ]
 
-instance FromJSON key => FromJSON (Account key) where
-  parseJSON = withObject "Account" $ \o -> do
-    name <- o .: "name"
-    key <- o .: "key"
-    chain <- o .: "chain"
-    network <- o .: "network"
-    notes <- o .: "notes"
-    balance <- o .:? "balance"
-    unfinishedCrossChainTransfer <- lenientLookup o "unfinishedCrossChainTransfer"
-    pure $ Account
-      { _account_name = name
-      , _account_key = key
-      , _account_chainId = chain
-      , _account_network = network
-      , _account_notes = notes
-      , _account_balance = balance
-      , _account_unfinishedCrossChainTransfer = unfinishedCrossChainTransfer
+instance FromJSON key => FromJSON (Key key) where
+  parseJSON = withObject "Key" $ \o -> do
+    pair <- o .: "pair"
+    hidden <- fromMaybe False <$> lenientLookup o "hidden"
+    notes <- fromMaybe (AccountNotes "") <$> lenientLookup o "notes"
+    pure $ Key
+      { _key_pair = pair
+      , _key_hidden = hidden
+      , _key_notes = notes
       }
+
+
+type KeyStorage key = IntMap (Key key)
+
+filterKeyPairs :: Set PublicKey -> IntMap (Key key) -> [KeyPair key]
+filterKeyPairs s m = Map.elems $ Map.restrictKeys (toMap m) s
+  where toMap = Map.fromList . fmap (\k -> (_keyPair_publicKey $ _key_pair k, _key_pair k)) . IntMap.elems
+
+data AccountRef a where
+  AccountRef_Vanity :: AccountName -> ChainId -> AccountRef VanityAccount
+  AccountRef_NonVanity :: PublicKey -> ChainId -> AccountRef NonVanityAccount
+
+accountRefToName :: AccountRef a -> Text
+accountRefToName = \case
+  AccountRef_Vanity an _ -> unAccountName an
+  AccountRef_NonVanity pk _ -> keyToText pk
+
+type Account = DSum AccountRef Identity
+
+accountNotes :: Account -> Maybe AccountNotes
+accountNotes = \case
+  AccountRef_NonVanity _ _ :=> _ -> Nothing
+  AccountRef_Vanity _ _ :=> Identity v -> Just $ _vanityAccount_notes v
+
+lookupAccountRef :: Some AccountRef -> Accounts -> Maybe Account
+lookupAccountRef (Some ref) accounts = case ref of
+  AccountRef_Vanity an c -> do
+    cs <- Map.lookup an $ _accounts_vanity accounts
+    v <- Map.lookup c cs
+    pure $ ref ==> v
+  AccountRef_NonVanity pk c -> do
+    cs <- Map.lookup pk $ _accounts_nonVanity accounts
+    nv <- Map.lookup c cs
+    pure $ ref ==> nv
+
+accountToName :: Account -> AccountName
+accountToName (r :=> _) = case r of
+  AccountRef_Vanity n _ -> n
+  AccountRef_NonVanity pk _ -> AccountName $ keyToText pk
+
+accountChain :: Account -> ChainId
+accountChain (r :=> _) = case r of
+  AccountRef_Vanity _ c -> c
+  AccountRef_NonVanity _ c -> c
+
+accountKey :: Account -> PublicKey
+accountKey (r :=> Identity a) = case r of
+  AccountRef_Vanity _ _ -> _vanityAccount_key a
+  AccountRef_NonVanity pk _ -> pk
+
+data Accounts = Accounts
+  { _accounts_vanity :: Map AccountName (Map ChainId VanityAccount)
+  , _accounts_nonVanity :: Map PublicKey (Map ChainId NonVanityAccount)
+  } deriving (Eq, Show)
+
+instance Semigroup Accounts where
+  a1 <> a2 = Accounts
+    { _accounts_vanity = Map.unionWith (<>) (_accounts_vanity a1) (_accounts_vanity a2)
+    , _accounts_nonVanity = Map.unionWith (<>) (_accounts_nonVanity a1) (_accounts_nonVanity a2)
+    }
+
+instance Monoid Accounts where
+  mempty = Accounts mempty mempty
+
+instance ToJSON Accounts where
+  toJSON as = object
+    [ "vanity" .= toJSON (_accounts_vanity as)
+    , "nonVanity" .= toJSON (_accounts_nonVanity as)
+    ]
+
+instance FromJSON Accounts where
+  parseJSON = withObject "Accounts" $ \o -> do
+    vanity <- o .: "vanity"
+    nonVanity <- o .: "nonVanity"
+    pure $ Accounts
+      { _accounts_vanity = vanity
+      , _accounts_nonVanity = nonVanity
+      }
+
+foldAccounts :: Monoid m => (Account -> m) -> Accounts -> m
+foldAccounts f accounts = mconcat
+  [ flip Map.foldMapWithKey (_accounts_vanity accounts) $ \n -> Map.foldMapWithKey $ \c a -> f (AccountRef_Vanity n c ==> a)
+  , flip Map.foldMapWithKey (_accounts_nonVanity accounts) $ \pk -> Map.foldMapWithKey $ \c a -> f (AccountRef_NonVanity pk c ==> a)
+  ]
+
+data AccountInfo = AccountInfo
+  { _accountInfo_balance :: Maybe AccountBalance
+  , _accountInfo_unfinishedCrossChainTransfer :: Maybe UnfinishedCrossChainTransfer
+  , _accountInfo_hidden :: Bool
+  } deriving (Show, Eq)
+
+blankAccountInfo :: AccountInfo
+blankAccountInfo = AccountInfo
+  { _accountInfo_balance = Nothing
+  , _accountInfo_unfinishedCrossChainTransfer = Nothing
+  , _accountInfo_hidden = False
+  }
+
+instance ToJSON AccountInfo where
+  toJSON a = object $ catMaybes
+    [ Just $ "balance" .= toJSON (_accountInfo_balance a)
+    , (("unfinishedCrossChainTransfer" .=) . toJSON) <$> _accountInfo_unfinishedCrossChainTransfer a
+    , Just $ "hidden" .= toJSON (_accountInfo_hidden a)
+    ]
+
+instance FromJSON AccountInfo where
+  parseJSON = withObject "AccountInfo" $ \o -> do
+    balance <- o .: "balance"
+    unfinishedCrossChainTransfer <- lenientLookup o "unfinishedCrossChainTransfer"
+    hidden <- o .: "hidden"
+    pure $ AccountInfo
+      { _accountInfo_balance = balance
+      , _accountInfo_unfinishedCrossChainTransfer = unfinishedCrossChainTransfer
+      , _accountInfo_hidden = hidden
+      }
+
+data VanityAccount = VanityAccount
+  { _vanityAccount_key :: PublicKey -- TODO should be KeySet, but that's a huge change.
+  , _vanityAccount_notes :: AccountNotes
+  , _vanityAccount_info :: AccountInfo
+  , _vanityAccount_inflight :: Bool
+  } deriving (Show, Eq)
+
+instance ToJSON VanityAccount where
+  toJSON as = object $ catMaybes
+    [ Just $ "key" .= toJSON (_vanityAccount_key as)
+    , Just $ "notes" .= toJSON (_vanityAccount_notes as)
+    , Just $ "info" .= toJSON (_vanityAccount_info as)
+    , if _vanityAccount_inflight as
+      then Just $ "inflight" .= toJSON True
+      else Nothing
+    ]
+
+instance FromJSON VanityAccount where
+  parseJSON = withObject "VanityAccount" $ \o -> do
+    key <- o .: "key"
+    notes <- o .: "notes"
+    info <- o .: "info"
+    inflight <- lenientLookup o "inflight"
+    pure $ VanityAccount
+      { _vanityAccount_key = key
+      , _vanityAccount_notes = notes
+      , _vanityAccount_info = info
+      , _vanityAccount_inflight = fromMaybe False inflight
+      }
+
+data NonVanityAccount = NonVanityAccount
+  { _nonVanityAccount_info :: AccountInfo
+  } deriving (Eq, Show)
+
+instance ToJSON NonVanityAccount where
+  toJSON as = object
+    [ "info" .= toJSON (_nonVanityAccount_info as)
+    ]
+
+instance FromJSON NonVanityAccount where
+  parseJSON = withObject "NonVanityAccount" $ \o -> do
+    info <- o .: "info"
+    pure $ NonVanityAccount
+      { _nonVanityAccount_info = info
+      }
+
+newtype AccountStorage = AccountStorage { unAccountStorage :: Map NetworkName Accounts }
+  deriving (Eq, Show)
+
+instance Semigroup AccountStorage where
+  AccountStorage a1 <> AccountStorage a2 = AccountStorage $ Map.unionWith (<>) a1 a2
+
+instance Monoid AccountStorage where
+  mempty = AccountStorage mempty
+
+instance ToJSON AccountStorage where
+  toJSON = toJSON . unAccountStorage
+
+instance FromJSON AccountStorage where
+  parseJSON = fmap AccountStorage . parseJSON
 
 -- | Like '.:?' but ignores values which don't parse
 lenientLookup :: FromJSON a => Aeson.Object -> Text -> Aeson.Parser (Maybe a)
@@ -331,7 +522,7 @@ compileCode = first show . compileExps mkEmptyInfo <=< parseExprs
 
 -- | Parse the balance checking object into a map of account balance changes and
 -- the result from the inner code
-parseWrappedBalanceChecks :: PactValue -> Either Text (Map AccountName AccountBalance, PactValue)
+parseWrappedBalanceChecks :: PactValue -> Either Text (Map AccountName (Maybe AccountBalance), PactValue)
 parseWrappedBalanceChecks = first ("parseWrappedBalanceChecks: " <>) . \case
   (PObject (ObjectMap obj)) -> do
     let lookupErr k = case Map.lookup (FieldKey k) obj of
@@ -340,19 +531,20 @@ parseWrappedBalanceChecks = first ("parseWrappedBalanceChecks: " <>) . \case
     before <- parseAccountBalances =<< lookupErr "before"
     result <- parseResults =<< lookupErr "results"
     after <- parseAccountBalances =<< lookupErr "after"
-    pure (Map.unionWith subtract before after, result)
+    pure (Map.unionWith (liftA2 subtract) before after, result)
   v -> Left $ "Unexpected PactValue (expected object): " <> renderCompactText v
 
 -- | Turn the object of account->balance into a map
-parseAccountBalances :: PactValue -> Either Text (Map AccountName AccountBalance)
+parseAccountBalances :: PactValue -> Either Text (Map AccountName (Maybe AccountBalance))
 parseAccountBalances = first ("parseAccountBalances: " <>) . \case
   (PObject (ObjectMap obj)) -> do
     m <- for (Map.toAscList obj) $ \(FieldKey accountText, pv) -> do
       bal <- case pv of
-        PLiteral (LDecimal d) -> pure d
+        PLiteral (LDecimal d) -> pure $ Just $ AccountBalance d
+        PLiteral (LBool False) -> pure Nothing
         t -> Left $ "Unexpected PactValue (expected decimal): " <> renderCompactText t
       acc <- mkAccountName accountText
-      pure (acc, AccountBalance bal)
+      pure (acc, bal)
     pure $ Map.fromList m
   v -> Left $ "Unexpected PactValue (expected object): " <> renderCompactText v
 
@@ -362,30 +554,46 @@ parseResults = first ("parseResults: " <>) . \case
   PList vec -> maybe (Left "No value returned") Right $ vec ^? _last
   v -> Left $ "Unexpected PactValue (expected list): " <> renderCompactText v
 
+-- | Code to get the balance of the given account.
+-- Returns a key suitable for indexing on if you add this to an object.
+getBalanceCode :: Text -> (FieldKey, Term Name)
+getBalanceCode accountName = (FieldKey accountName, TApp
+  { _tApp = App
+    { _appFun = TVar (QName $ QualifiedName "coin" "get-balance" def) def
+    , _appArgs = [TLiteral (LString accountName) def]
+    , _appInfo = def
+    }
+  , _tInfo = def
+  })
+
+tryTerm :: Term Name -> Term Name -> Term Name
+tryTerm defaultTo expr = TApp
+  { _tApp = App
+    { _appFun = TVar (Name $ BareName "try" def) def
+    , _appArgs = [defaultTo, expr]
+    , _appInfo = def
+    }
+  , _tInfo = def
+  }
+
+-- | Produce an object from account names to account balance function calls
+accountBalanceObject :: [Text] -> Term Name
+accountBalanceObject accounts = TObject
+  { _tObject = Pact.Types.Term.Object
+    { _oObject = ObjectMap $ Map.fromList $ map (fmap (tryTerm (TLiteral (LBool False) def)) . getBalanceCode) accounts
+    , _oObjectType = TyPrim TyDecimal
+    , _oKeyOrder = Nothing
+    , _oInfo = def
+    }
+  , _tInfo = def
+  }
+
 -- | Wrap the code with a let binding to get the balances of the given accounts
 -- before and after executing the code.
-wrapWithBalanceChecks :: Set AccountName -> Text -> Either String Text
+wrapWithBalanceChecks :: Set (Some AccountRef) -> Text -> Either String Text
 wrapWithBalanceChecks accounts code = wrapped <$ compileCode code
   where
-    getBalance :: AccountName -> (FieldKey, Term Name)
-    getBalance acc = (FieldKey (unAccountName acc), TApp
-      { _tApp = App
-        { _appFun = TVar (QName $ QualifiedName "coin" "get-balance" def) def
-        , _appArgs = [TLiteral (LString $ unAccountName acc) def]
-        , _appInfo = def
-        }
-      , _tInfo = def
-      })
-    -- Produce an object from account names to account balances
-    accountBalances = TObject
-      { _tObject = Pact.Types.Term.Object
-        { _oObject = ObjectMap $ Map.fromList $ map getBalance $ Set.toAscList accounts
-        , _oObjectType = TyPrim TyDecimal
-        , _oKeyOrder = Nothing
-        , _oInfo = def
-        }
-      , _tInfo = def
-      }
+    accountBalances = accountBalanceObject $ fmap (\(Some x) -> accountRefToName x) $ Set.toAscList accounts
     -- It would be nice to parse and compile the code and shove it into a
     -- giant 'Term' so we can serialise it, but 'pretty' is not guaranteed to
     -- produce valid pact code. It at least produces bad type sigs and let
@@ -402,4 +610,65 @@ wrapWithBalanceChecks accounts code = wrapped <$ compileCode code
       , "   (after " <> renderCompactText accountBalances <> "))"
       , "   {\"after\": after, \"results\": results, \"before\": before})"
       ]
+
+deriveGEq ''AccountRef
+deriveGCompare ''AccountRef
+deriveGShow ''AccountRef
+makePactLenses ''AccountInfo
+makePactLenses ''VanityAccount
+makePactLenses ''NonVanityAccount
+makePactLenses ''Accounts
+makePactPrisms ''AccountStorage
+
+instance HasAccountInfo NonVanityAccount where accountInfo = nonVanityAccount_info
+instance HasAccountInfo VanityAccount where accountInfo = vanityAccount_info
+
+instance HasAccountInfo (DSum AccountRef Identity) where
+  accountInfo = lens
+    (\(r :=> Identity a) -> case r of
+      AccountRef_NonVanity _ _ -> _nonVanityAccount_info a
+      AccountRef_Vanity _ _ -> _vanityAccount_info a
+    )
+    (\(r :=> Identity a) newInfo -> case r of
+      AccountRef_NonVanity pk c -> AccountRef_NonVanity pk c :=> Identity (NonVanityAccount newInfo)
+      AccountRef_Vanity an c -> AccountRef_Vanity an c :=> Identity (a & vanityAccount_info .~ newInfo)
+    )
+
+accountUnfinishedCrossChainTransfer :: Account -> Maybe UnfinishedCrossChainTransfer
+accountUnfinishedCrossChainTransfer = view (accountInfo . accountInfo_unfinishedCrossChainTransfer)
+
+accountBalance :: Account -> Maybe AccountBalance
+accountBalance = view (accountInfo . accountInfo_balance)
+
+upsertNonVanityBalance :: NetworkName -> PublicKey -> ChainId -> Maybe AccountBalance -> AccountStorage -> AccountStorage
+upsertNonVanityBalance net pk chain balance store = store
+  & (_AccountStorage . at net %~ (Just . fold))
+  & (_AccountStorage . ix net . accounts_nonVanity . at pk %~ (Just . fold))
+  & (_AccountStorage . ix net . accounts_nonVanity . ix pk . at chain
+    %~ (Just . maybe (NonVanityAccount defaultAccountInfo) id)
+  )
+  & (storageAccountInfo net (Some (AccountRef_NonVanity pk chain)) . accountInfo_balance .~ balance)
+  where
+    defaultAccountInfo = AccountInfo Nothing Nothing False
+
+storageAccountInfo :: NetworkName -> Some AccountRef -> Traversal' AccountStorage AccountInfo
+storageAccountInfo net (Some ref) = _AccountStorage . at net . _Just . case ref of
+  AccountRef_NonVanity pk chain ->
+    accounts_nonVanity . at pk . _Just . at chain . _Just . nonVanityAccount_info
+  AccountRef_Vanity name chain ->
+    accounts_vanity . at name . _Just . at chain . _Just . vanityAccount_info
+
+_VanityAccount :: Prism' Account (AccountName, ChainId, VanityAccount)
+_VanityAccount = prism' (\(a,b,c) -> AccountRef_Vanity a b :=> Identity c)
+  (\case
+    AccountRef_Vanity a b :=> Identity c -> Just (a,b,c)
+    _ -> Nothing
+  )
+
+_NonVanityAccount :: Prism' Account (PublicKey, ChainId, NonVanityAccount)
+_NonVanityAccount = prism' (\(a,b,c) -> AccountRef_NonVanity a b :=> Identity c)
+  (\case
+    AccountRef_NonVanity a b :=> Identity c -> Just (a,b,c)
+    _ -> Nothing
+  )
 

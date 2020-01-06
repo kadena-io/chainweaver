@@ -18,6 +18,8 @@ library
 
   build-depends: base
                , async
+               , aeson-gadt-th
+               , constraints
                , unliftio
                , unliftio-core
                , ListZipper
@@ -28,11 +30,14 @@ library
                , bound
                , bytestring
                , common
+               , constraints-extras
                , containers
                , data-default
                , Decimal
                , dependent-map
                , dependent-sum
+               , dependent-sum-aeson-orphans
+               , dependent-sum-template
                , errors
                , exceptions
                , free
@@ -47,6 +52,7 @@ library
                , lens
                , megaparsec
                , modern-uri
+               , monoidal-containers
                , mtl
                , newtype-generics
                , obelisk-executable-config-lookup
@@ -76,19 +82,25 @@ library
                , these
                , these-lens
                , time
+               , th-extras
                , transformers
                , trifecta
+               , universe
                , unordered-containers
                , kadena-signing-api
                , base64-bytestring
                , crc
                , attoparsec
+               , universe-base
+               , universe-dependent-sum
                , vector
+
 
   exposed-modules: Frontend
                  , Frontend.AppCfg
                  , Frontend.Network
                  , Frontend.Network.NodeInfo
+                 , Frontend.Crypto.Browser
                  , Frontend.Crypto.Class
                  , Frontend.Crypto.Ed25519
                  , Frontend.Editor
@@ -112,9 +124,16 @@ library
                  , Frontend.ReplGhcjs
                  , Frontend.Routes
                  , Frontend.Storage
+                 , Frontend.Storage.Class
+                 , Frontend.Storage.Browser
+                 , Frontend.Store
+                 , Frontend.Store.MigrationUtils
+                 , Frontend.Store.TH
+                 , Frontend.Store.V0
+                 , Frontend.Store.V0.Wallet
+                 , Frontend.Store.V1
                  , Frontend.UI.Button
                  , Frontend.UI.DeploymentSettings
-                 , Frontend.UI.Dialogs.AddAccount
                  , Frontend.UI.Dialogs.CallFunction
                  , Frontend.UI.Dialogs.CreateGist
                  , Frontend.UI.Dialogs.CreatedGist
@@ -125,6 +144,7 @@ library
                  , Frontend.UI.Dialogs.Send
                  , Frontend.UI.Dialogs.Signing
                  , Frontend.UI.Dialogs.AccountDetails
+                 , Frontend.UI.Dialogs.KeyDetails
                  , Frontend.UI.Dialogs.AddVanityAccount
                  , Frontend.UI.ErrorList
                  , Frontend.UI.Icon
@@ -198,18 +218,48 @@ executable frontend
   -- if impl(ghcjs)
   --   ghcjs-options: -dedupe
 
-test-suite kadenaaddress
+test-suite tests
   type: exitcode-stdio-1.0
 
-  main-is: KadenaAddressSpec.hs
+  main-is: main.hs
   hs-source-dirs: tests
+  other-modules: KadenaAddressSpec
+               , Frontend.StorageSpec
+               , Frontend.Storage.InMemoryStorage
+               , Frontend.Storage.InMemoryStorageSpec
+               , Frontend.StoreSpec
+               , Frontend.StoreTestKey
+               , TestUtils
   build-depends: base
                , frontend
+               , common
+               , aeson
+               , aeson-gadt-th
+               , bytestring
+               , containers
+               , constraints
+               , constraints-extras
+               , dependent-map
+               , dependent-sum
+               , dependent-sum-template
+               , directory
+               , errors
+               , filepath
+               , free
                , hedgehog
                , kadena-signing-api
-               , pact
-               , errors
-               , text
-               , common
+               , jsaddle
                , lens
-               , bytestring
+               , modern-uri
+               , mtl
+               , obelisk-oauth-common
+               , pact
+               , pretty
+               , pretty-show
+               , Diff
+               , text
+               , tasty
+               , tasty-hunit
+               , tasty-hedgehog
+               , universe
+               , universe-dependent-sum

@@ -48,6 +48,8 @@ module Frontend.Network
     -- * Perform requests
   , performLocalReadCustom
   , performLocalRead
+  , doReqFailover
+  , mkClientEnvs
     -- * Utilities
   , parseNetworkErrorResult
   , prettyPrintNetworkErrorResult
@@ -129,11 +131,8 @@ import           Frontend.Crypto.Ed25519
 import           Frontend.Foundation
 import           Frontend.Messages
 import           Frontend.Network.NodeInfo
-import           Frontend.Storage                  (getItemStorage,
-                                                    HasStorage,
-                                                    localStorage,
-                                                    removeItemStorage,
-                                                    setItemStorage)
+import           Frontend.Storage
+import           Frontend.Store
 
 
 -- | What endpoint to use for a network request.
@@ -251,15 +250,6 @@ makePactLenses ''Network
 
 -- | Model config needed by Network.
 type HasNetworkModelCfg mConf t = (Monoid mConf, HasMessagesCfg mConf t)
-
--- | Things we want to store to local storage.
-data StoreNetwork a where
-  StoreNetwork_PublicMeta  :: StoreNetwork PublicMeta
-  StoreNetwork_Networks    :: StoreNetwork (Map NetworkName [NodeRef])
-  StoreNetwork_SelectedNetwork :: StoreNetwork NetworkName
-
-deriving instance Show (StoreNetwork a)
-
 
 makeNetwork
   :: forall key t m mConf
@@ -428,7 +418,7 @@ buildMeta cfg = do
           , _pmCreationTime = time
           }
   m <- fromMaybe defaultMeta <$>
-    getItemStorage localStorage StoreNetwork_PublicMeta
+    getItemStorage localStorage StoreFrontend_Network_PublicMeta
 
   r <- foldDyn id m $ leftmost
     [ set Pact.pmSender <$> cfg ^. networkCfg_setSender
@@ -439,7 +429,7 @@ buildMeta cfg = do
 
   onStore <- throttle 2 $ updated r
   performEvent_ $
-    setItemStorage localStorage StoreNetwork_PublicMeta <$> onStore
+    setItemStorage localStorage StoreFrontend_Network_PublicMeta <$> onStore
 
   pure r
 
@@ -486,7 +476,7 @@ deployCode networkL onReq = do
 getNetworks
   :: forall t m cfg. ( MonadJSM (Performable m)
      , PerformEvent t m, TriggerEvent t m
-     , MonadHold t m, MonadJSM m, MonadFix m
+     , MonadHold t m, MonadFix m
      , HasNetworkCfg cfg t, HasConfigs m
      , PostBuild t m, HasJSContext (Performable m)
      , HasStorage m, HasStorage (Performable m)
@@ -495,9 +485,9 @@ getNetworks
 getNetworks cfg = do
     (defName, defNets, mRemoteSource) <- getConfigNetworks
     initialNets <- fromMaybe defNets <$>
-      getItemStorage localStorage StoreNetwork_Networks
+      getItemStorage localStorage StoreFrontend_Network_Networks
     initialName <- fromMaybe defName <$>
-      getItemStorage localStorage StoreNetwork_SelectedNetwork
+      getItemStorage localStorage StoreFrontend_Network_SelectedNetwork
 
     -- Hit the remote-source for network configs, if applicable
     mRemoteUpdate <- for mRemoteSource $ \url -> do
@@ -526,11 +516,11 @@ getNetworks cfg = do
     onSelectedStore <- throttle 2 $ updated sName
 
     performEvent_ $
-      setItemStorage localStorage StoreNetwork_Networks <$> onNetworksStore
+      setItemStorage localStorage StoreFrontend_Network_Networks <$> onNetworksStore
     performEvent_ $
-      removeItemStorage localStorage StoreNetwork_Networks <$ (cfg ^. networkCfg_resetNetworks)
+      removeItemStorage localStorage StoreFrontend_Network_Networks <$ (cfg ^. networkCfg_resetNetworks)
     performEvent_ $
-      setItemStorage localStorage StoreNetwork_SelectedNetwork <$> onSelectedStore
+      setItemStorage localStorage StoreFrontend_Network_SelectedNetwork <$> onSelectedStore
 
     pure (sName, networks)
 
@@ -780,6 +770,19 @@ performNetworkRequest
 performNetworkRequest networkL onReq =
   fmap (uncurry zip) <$> performNetworkRequestCustom networkL id onReq
 
+-- | Turn some node URLs into chain specific servant envs
+mkClientEnvs :: [NodeInfo] -> ChainId -> [S.ClientEnv]
+mkClientEnvs nodeInfos chain = fforMaybe nodeInfos $ \nodeInfo ->
+  let chainUrl = getChainBaseUrl chain nodeInfo
+  in S.mkClientEnv <$> S.parseBaseUrl (URI.renderStr chainUrl)
+
+-- | Perform some servant request by stepping through the given envs
+doReqFailover :: MonadJSM m => [S.ClientEnv] -> S.ClientM a -> m (Either [S.ClientError] a)
+doReqFailover [] _ = pure $ Left []
+doReqFailover (c:cs) request = liftJSM $ S.runClientM request c >>= \case
+  Left e -> BiF.first (e:) <$> doReqFailover cs request
+  Right r -> pure $ Right r
+
 
 -- | Send a transaction via the /send endpoint.
 --
@@ -799,11 +802,11 @@ performNetworkRequestCustom networkL unwrap onReqs =
     performEventAsync $ ffor onReqs $ \reqs cb -> do
       nodeInfos <- getSelectedNetworkInfos networkL
       void $ liftJSM $ forkJSM $ do
-        r <- traverse (doReqFailover nodeInfos) $ unwrap reqs
+        r <- traverse (doReqFailover' nodeInfos) $ unwrap reqs
         liftIO $ cb (reqs, r)
   where
-    doReqFailover :: [NodeInfo] -> NetworkRequest -> JSM NetworkErrorResult
-    doReqFailover nodeInfos req =
+    doReqFailover' :: [NodeInfo] -> NetworkRequest -> JSM NetworkErrorResult
+    doReqFailover' nodeInfos req =
       go [] nodeInfos
         where
           go :: [(Maybe URI,NetworkError)] -> [NodeInfo] -> JSM NetworkErrorResult

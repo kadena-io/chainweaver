@@ -35,6 +35,7 @@ in
           servant-jsaddle = servantSrc + "/servant-jsaddle";
           reflex-dom-ace = hackGet ./deps/reflex-dom-ace;
           reflex-dom-contrib = hackGet ./deps/reflex-dom-contrib;
+          dependent-sum-aeson-orphans = hackGet ./deps/dependent-sum-aeson-orphans;
           servant-github = hackGet ./deps/servant-github;
           obelisk-oauth-common = hackGet ./deps/obelisk-oauth + /common;
           obelisk-oauth-frontend = hackGet ./deps/obelisk-oauth + /frontend;

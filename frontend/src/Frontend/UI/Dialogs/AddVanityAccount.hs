@@ -6,7 +6,8 @@
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE TypeApplications #-}
 module Frontend.UI.Dialogs.AddVanityAccount
-  ( uiAddVanityAccountSettings
+  ( --uiAddVanityAccountSettings
+    uiAddVanityAccountButton
   ) where
 
 import           Control.Lens                           ((^.),(<>~))
@@ -15,41 +16,34 @@ import           Control.Monad.Trans.Maybe              (MaybeT (..), runMaybeT)
 import           Data.Functor.Identity                  (Identity(..))
 import           Data.Maybe                             (isNothing,fromMaybe)
 import           Data.Text                              (Text)
-import Data.These (These (..))
 import           Data.Aeson                             (Object, Value (Array, String))
 import qualified Data.HashMap.Strict                    as HM
 import qualified Data.Vector                            as V
 
-import Pact.Types.PactValue (PactValue (..))
-import Pact.Types.Exp (Literal (..))
+import Pact.Types.PactValue
+import Pact.Types.Exp
+import Data.Some (Some(Some))
+import Data.These (These (..))
 
 import           Reflex
 import           Reflex.Dom.Contrib.CssClass            (renderClass)
 import           Reflex.Dom.Core
 
-import           Reflex.Network.Extended                (Flattenable)
+import           Reflex.Network.Extended
 
 import           Frontend.UI.DeploymentSettings
 import           Frontend.UI.Dialogs.DeployConfirmation (Status (..), TransactionSubmitFeedback (..), CanSubmitTransaction, submitTransactionWithFeedback)
-import           Frontend.UI.Modal.Impl                 (ModalIde, modalFooter)
+import           Frontend.UI.Modal.Impl
 import           Frontend.UI.Widgets
+import           Frontend.UI.Wallet
 import           Frontend.UI.Widgets.AccountName (uiAccountNameInput)
 
-import           Frontend.Crypto.Class                  (HasCrypto,
-                                                         cryptoGenKey)
+import           Frontend.Crypto.Class
 import           Frontend.Crypto.Ed25519                (keyToText)
-import           Frontend.Ide                           (_ide_wallet)
 import           Frontend.JsonData
 import           Frontend.Network
-import           Frontend.Wallet                        (Account (..),
-                                                         AccountName,
-                                                         HasWalletCfg (..),
-                                                         KeyPair (..),
-                                                         AccountNotes (..),
-                                                         findNextKey,
-                                                         mkAccountNotes,
-                                                         unAccountNotes,
-                                                         unAccountName)
+import           Frontend.Wallet
+import Reflex.Extended
 
 -- Allow the user to create a 'vanity' account, which is an account with a custom name
 -- that lives on the chain. Requires GAS to create.
@@ -65,12 +59,39 @@ type HasUISigningModelCfg mConf key t =
 tempkeyset :: Text
 tempkeyset = "temp-vanity-keyset"
 
-mkPubkeyPactData :: KeyPair key -> Object
-mkPubkeyPactData  = HM.singleton tempkeyset . Array . V.singleton . String . keyToText . _keyPair_publicKey
+mkPubkeyPactData :: PublicKey -> Object
+mkPubkeyPactData = HM.singleton tempkeyset . Array . V.singleton . String . keyToText
 
 mkPactCode :: Maybe AccountName -> Text
 mkPactCode (Just acc) = "(coin.create-account \"" <> unAccountName acc <> "\" (read-keyset \"" <> tempkeyset <> "\"))"
 mkPactCode _ = ""
+
+uiAddVanityAccountButton
+  :: forall t m key mConf
+     . ( MonadWidget t m, Monoid mConf
+       , HasCrypto key (Performable m)
+       , HasModalCfg mConf (ModalImpl m key t) t
+       )
+  => ModalIde m key t
+  -> m mConf
+uiAddVanityAccountButton m = do
+  eOpenAddAccount <- uiButton (def & uiButtonCfg_class <>~ " main-header__add-account-button")  (text "+ Add Account")
+  pure $ mempty & modalCfg_setModal .~ (Just (uiAddVanityAccountDialog m) <$ eOpenAddAccount)
+
+uiAddVanityAccountDialog
+  :: ( MonadWidget t m, Monoid mConf, Flattenable mConf t
+     , HasWalletCfg mConf key t, HasJsonDataCfg mConf t, HasNetworkCfg mConf t
+     , HasCrypto key (Performable m)
+     )
+  => ModalIde m key t
+  -> Event t ()
+  -> m (mConf, Event t ())
+uiAddVanityAccountDialog model _onCloseExternal = mdo
+  onClose <- modalHeader $ dynText title
+  dwf <- workflow (uiAddVanityAccountSettings model never Nothing Nothing "")
+  let (title, (conf, dEvent)) = fmap splitDynPure $ splitDynPure dwf
+  mConf <- flatten =<< tagOnPostBuild conf
+  return (mConf, leftmost [switch $ current dEvent, onClose])
 
 uiAddVanityAccountSettings
   :: forall key t m mConf
@@ -80,45 +101,30 @@ uiAddVanityAccountSettings
     )
   => ModalIde m key t
   -> Event t ()
-  -> Maybe (Account key)
+  -> Maybe (AccountName, VanityAccount)
   -> Maybe ChainId
   -> Text
   -> Workflow t m (Text, (mConf, Event t ()))
 uiAddVanityAccountSettings ideL onInflightChange mInflightAcc mChainId initialNotes = Workflow $ do
-  pb <- getPostBuild
 
   let
-    getNotes = unAccountNotes . _account_notes
-    w = _ide_wallet ideL
-    dNextKey = findNextKey w
+    getNotes = unAccountNotes . _vanityAccount_notes
 
     notesInput initCfg = divClass "vanity-account-create__notes" $ mkLabeledClsInput True "Notes"
       $ \cls -> uiInputElement $ initCfg
           & initialAttributes <>~ "class" =: (renderClass cls)
-          & inputElementConfig_initialValue .~ fromMaybe initialNotes (fmap getNotes mInflightAcc)
+          & inputElementConfig_initialValue .~ fromMaybe initialNotes (fmap (getNotes . snd) mInflightAcc)
 
   let includePreviewTab = False
       customConfigTab = Nothing
-      mkKP (pr,pu) = Just $ KeyPair pu $ Just pr
-
-      keyPairGenOn e =
-        (fmap . fmap) mkKP $ performEvent $ cryptoGenKey <$> current dNextKey <@ e
-
-  ePbKeyPair <- keyPairGenOn $ ffilter (const $ isNothing mInflightAcc) pb
-  eInflightFoundKeyPair <- keyPairGenOn onInflightChange
-
-  dKeyPair <- holdDyn (fmap _account_key mInflightAcc) $ leftmost
-    [ ePbKeyPair
-    , eInflightFoundKeyPair
-    ]
 
   rec
     let
       uiAcc = do
-        name <- uiAccountNameInput w selChain $ fmap _account_name mInflightAcc
+        name <- uiAccountNameInput ideL selChain $ fmap fst mInflightAcc
+        pk <- mkLabeledClsInput True "Public Key" (uiPublicKeyDropdown ideL)
         notes <- notesInput def
-        pure (name, mkAccountNotes <$> value notes)
-
+        pure (name, pk, mkAccountNotes <$> value notes)
       uiAccSection = ("Reference Data", uiAcc)
 
     (curSelection, eNewAccount, _) <- buildDeployTabs customConfigTab includePreviewTab controls
@@ -127,24 +133,26 @@ uiAddVanityAccountSettings ideL onInflightChange mInflightAcc mChainId initialNo
       _ <- widgetHold blank $ ffor onInflightChange $ \_ -> divClass "group" $
         text "The incomplete vanity account has been verified on the chain and added to your wallet. You may continue to create a new vanity account or close this dialog and start using the new account."
 
-      (cfg, cChainId, ttl, gasLimit, Identity (dAccountName, dNotes)) <- tabPane mempty curSelection DeploymentSettingsView_Cfg $
+      (cfg, cChainId, ttl, gasLimit, Identity (dAccountName, dPublicKey, dNotes)) <- tabPane mempty curSelection DeploymentSettingsView_Cfg $
         -- Is passing around 'Maybe x' everywhere really a good way of doing this ?
         uiCfg Nothing ideL (userChainIdSelectWithPreselect ideL (constDyn mChainId)) Nothing (Just defaultTransactionGasLimit) (Identity uiAccSection) Nothing
 
       (mSender, signers, capabilities) <- tabPane mempty curSelection DeploymentSettingsView_Keys $
         uiSenderCapabilities ideL cChainId Nothing $ uiSenderDropdown def never ideL cChainId
 
-      let dPayload = fmap mkPubkeyPactData <$> dKeyPair
+      let dPayload = fmap mkPubkeyPactData <$> dPublicKey
           code = mkPactCode <$> dAccountName
 
-          account = runMaybeT $ Account
-            <$> MaybeT dAccountName
-            <*> MaybeT dKeyPair
+          account = runMaybeT $ (,,,)
+            <$> lift (ideL ^. network_selectedNetwork)
+            <*> MaybeT dAccountName
             <*> MaybeT cChainId
-            <*> lift (ideL ^. network_selectedNetwork)
+            <*> vanity
+          vanity = VanityAccount
+            <$> MaybeT dPublicKey
             <*> lift dNotes
-            <*> pure Nothing
-            <*> pure Nothing
+            <*> pure (AccountInfo Nothing Nothing False)
+            <*> pure True
 
       let mkSettings payload = DeploymentSettingsConfig
             { _deploymentSettingsConfig_chainId = userChainIdSelect
@@ -161,7 +169,7 @@ uiAddVanityAccountSettings ideL onInflightChange mInflightAcc mChainId initialNo
             }
 
       pure
-        ( cfg & networkCfg_setSender .~ fmapMaybe (fmap unAccountName) (updated mSender)
+        ( cfg & networkCfg_setSender .~ fmapMaybe (fmap (\(Some x) -> accountRefToName x)) (updated mSender)
         , fmap mkSettings dPayload >>= buildDeploymentSettingsResult ideL mSender signers cChainId capabilities ttl gasLimit code
         , account
         , cChainId
@@ -177,7 +185,7 @@ uiAddVanityAccountSettings ideL onInflightChange mInflightAcc mChainId initialNo
       progressButtonLabalFn
       preventProgress
 
-  let conf0 = conf & walletCfg_addVanityAccountInflight .~ tagMaybe (current dAccount) command
+  let conf0 = conf & walletCfg_importAccount .~ tagMaybe (current dAccount) command
 
   pure
     ( ("Add New Vanity Account", (conf0, never))
@@ -197,7 +205,7 @@ vanityAccountCreateSubmit
      , HasWalletCfg mConf key t
      )
   => model
-  -> Dynamic t (Maybe (Account key))
+  -> Dynamic t (Maybe (NetworkName, AccountName, ChainId, VanityAccount))
   -> ChainId
   -> DeploymentSettingsResult key
   -> [Either a NodeInfo]
@@ -236,7 +244,9 @@ vanityAccountCreateSubmit model dAccount chainId result nodeInfos = Workflow $ d
 
       conf = mempty
         & walletCfg_importAccount .~ tagMaybe (current dAccount) localOk
-        & walletCfg_delInflightAccount .~ tagMaybe (current dAccount) onTxnFailed
+        & walletCfg_delAccount .~ attachWithMaybe
+          (\m _ -> fmap (\(n,a,c,_) -> (n, Some $ AccountRef_Vanity a c)) m)
+          (current dAccount) onTxnFailed
 
   done <- modalFooter $ confirmButton def "Done"
 

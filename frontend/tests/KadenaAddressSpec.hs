@@ -1,5 +1,6 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TemplateHaskell #-}
+module KadenaAddressSpec where
 
 import           Hedgehog
 import qualified Hedgehog.Gen as Gen
@@ -14,6 +15,8 @@ import qualified Data.Text as T
 import qualified Data.Text.Encoding as TE
 import qualified Data.Char as C
 import qualified Data.ByteString.Char8 as BS8
+import Test.Tasty (TestTree, testGroup)
+import Test.Tasty.Hedgehog (testProperty)
 
 import Kadena.SigningApi (mkAccountName,unAccountName)
 
@@ -56,5 +59,8 @@ prop_parse_kadenaAddress_encoding = property $ do
     then KA.decodeKadenaAddress chksumOrEncoding === Right ka
     else chksumOrEncoding === KA.bytestringChecksum (KA._kadenaAddress_checksum ka)
 
-main :: IO Bool
-main = checkParallel $$(discover)
+tests :: TestTree
+tests = testGroup "Kadena Address Spec"
+  [ testProperty "Encoding" prop_parse_kadenaAddress_encoding
+  , testProperty "Round Trip" prop_parse_kadenaAddress_roundtrip_Created_Yes
+  ]
