@@ -185,9 +185,7 @@ uiAccountItem (name, chain) acc = do
     td $ divClass "wallet__table-wallet-address" $ text $ unAccountName name
     td $ text $ Pact._chainId chain
     td $ dynText $ ffor acc $ unAccountNotes . _vanityAccount_notes
-    td $ dynText $ ffor info $ \i -> case _accountInfo_balance i of
-      Nothing -> "Unknown"
-      Just b -> tshow (unAccountBalance b) <> " KDA" <> maybe "" (const "*") (_accountInfo_unfinishedCrossChainTransfer i)
+    td $ dynText $ ffor info uiAccountBalance'
 
     td $ divClass "wallet__table-buttons" $ do
       let cfg = def
@@ -326,7 +324,7 @@ uiKeyItem model keyIndex key = do
       keyRow open balance = trKey $ do
         let accordionCell o = "wallet__table-cell" <> if o then "" else " accordion-collapsed"
         clk <- elDynClass "td" (accordionCell <$> open) $ accordionButton def
-        td $ divClass "wallet__table-wallet-address" $ dynText $ keyToText . _keyPair_publicKey . _key_pair <$> key
+        td $ dynText $ keyToText . _keyPair_publicKey . _key_pair <$> key
         td $ dynText $ unAccountNotes . _key_notes <$> key
         td $ dynText $ uiAccountBalance . Just <$> balance
         dialog <- td $ buttons $ do
