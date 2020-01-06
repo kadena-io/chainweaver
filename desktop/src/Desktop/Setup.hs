@@ -10,7 +10,7 @@
 -- | Wallet setup screens
 module Desktop.Setup (runSetup, form, kadenaWalletLogo, setupDiv, setupClass) where
 
-import Control.Lens ((<>~), (%~), (?~))
+import Control.Lens ((<>~), (%~), (?~), (??))
 import Control.Error (hush)
 import Control.Applicative (liftA2)
 import Control.Monad (unless,void)
@@ -105,15 +105,14 @@ tshow :: Show a => a -> Text
 tshow = T.pack . show
 
 -- | Produces a form wrapper given a suitable submit button so that the enter key is correctly handled
-form :: forall t m a. DomBuilder t m => m () -> m a -> m (Event t (), a)
-form btn fields = do
-  let cfg = (def :: ElementConfig EventResult t (DomBuilderSpace m))
-        & elementConfig_eventSpec %~ addEventSpecFlags (Proxy :: Proxy (DomBuilderSpace m)) Submit (\_ -> preventDefault)
-  (elt, a) <- element "form" cfg $ fields <* btn
+form :: forall t m a. DomBuilder t m => ElementConfig EventResult t (DomBuilderSpace m) -> m () -> m a -> m (Event t (), a)
+form cfg btn fields = do
+  let mkCfg = elementConfig_eventSpec %~ addEventSpecFlags (Proxy :: Proxy (DomBuilderSpace m)) Submit (\_ -> preventDefault)
+  (elt, a) <- element "form" (mkCfg cfg) $ fields <* btn
   pure (domEvent Submit elt, a)
 
 setupForm :: forall t m a. (DomBuilder t m, PostBuild t m) => Text -> Text -> Dynamic t Bool -> m a -> m (Event t (), a)
-setupForm cls lbl disabled = form $ setupDiv cls $ void $ confirmButton (def & uiButtonCfg_disabled .~ disabled) lbl
+setupForm cls lbl disabled = form def $ setupDiv cls $ void $ confirmButton (def & uiButtonCfg_disabled .~ disabled) lbl
 
 restoreForm :: (DomBuilder t m, PostBuild t m) => Dynamic t Bool -> m a -> m (Event t (), a)
 restoreForm = setupForm "recover-restore-button" "Restore"
@@ -216,14 +215,20 @@ splashScreen eBack = Workflow $ setupDiv "splash" $ do
     ) kadenaWalletLogo
 
   (agreed, create, recover) <- setupDiv "splash-terms-buttons" $ do
-    agreed <- fmap value $ setupCheckbox False def $ setupDiv "terms-conditions-checkbox" $ do
+    agreed <- fmap value $ setupCheckbox False def $ el "div" $ do
       text "I have read & agree to the "
-      elAttr "a" ("href" =: "https://kadena.io/chainweaver-tos" <> "target" =: "_blank") (text "Terms of Service")
+      elAttr "a" ?? (text "Terms of Service") $ mconcat
+        [ "href" =: "https://kadena.io/chainweaver-tos"
+        , "target" =: "_blank"
+        , "class" =: setupClass "terms-conditions-link"
+        ]
 
     let dNeedAgree = fmap not agreed
+        disabledCfg = uiButtonCfg_disabled .~ dNeedAgree
+        restoreCfg = uiButtonCfg_class <>~ "setup__restore-existing-button"
 
-    create <- confirmButton (def & uiButtonCfg_disabled .~ dNeedAgree) "Create a new wallet"
-    recover <- uiButtonDyn (btnCfgSecondary & uiButtonCfg_disabled .~ dNeedAgree) $ text "Restore existing wallet"
+    create <- confirmButton (def & disabledCfg ) "Create a new wallet"
+    recover <- uiButtonDyn (btnCfgSecondary & disabledCfg & restoreCfg) $ text "Restore existing wallet"
     pure (agreed, create, recover)
 
   let hasAgreed = gate (current agreed)
@@ -259,8 +264,7 @@ recoverWallet eBack = Workflow $ do
     phraseMap <- holdDyn (wordsToPhraseMap $ replicate passphraseLen T.empty)
       $ flip Map.union <$> current phraseMap <@> onPhraseMapUpdate
 
-    onPhraseMapUpdate <- setupDiv "recover-widget-wrapper" $
-      passphraseWidget phraseMap (pure Recover)
+    onPhraseMapUpdate <- passphraseWidget phraseMap (pure Recover)
 
   let enoughWords = (== passphraseLen) . length . filter (not . T.null) . Map.elems
 
@@ -425,14 +429,15 @@ precreatePassphraseWarning eBack dPassword mnemonicSentence = Workflow $ mdo
     setupDiv "recovery-phrase-warning" $ do
       line "In the next step you will record your 12 word recovery phrase."
       line "Your recovery phrase makes it easy to restore your wallet on a new device."
-      line "Anyone with this phrase can take control your wallet, keep this phrase private."
+      line "Anyone with this phrase can take control of your wallet, keep this phrase private."
 
     setupDiv "recovery-phrase-highlighted-warning" $
       line "Kadena cannot access your recovery phrase if lost, please store it safely."
 
     let chkboxcls = setupClass "warning-checkbox " <> setupClass "checkbox-wrapper"
-    fmap value $ elClass "div" chkboxcls $ setupCheckbox False def
-      $ text "I understand that if I lose my recovery phrase, I will not be able to restore my wallet."
+    fmap value $ elClass "div" chkboxcls $ setupCheckbox False def $ el "div" $ do
+      line "I understand that if I lose my recovery phrase,"
+      line "I will not be able to restore my wallet."
 
   finishSetupWF WalletScreen_PrePassphrase $ leftmost
     [ createNewWallet eBack <$ eBack
@@ -467,7 +472,7 @@ createNewPassphrase
 createNewPassphrase eBack dPassword mnemonicSentence = Workflow $ mdo
   (eContinue, dIsStored) <- continueForm (fmap not dIsStored) $ do
     el "h1" $ text "Record Recovery Phrase"
-    setupDiv "record-phrase-msg" $ do
+    el "div" $ do
       el "div" $ text "Write down or copy these words in the correct order and store them safely."
       el "div" $ text "The recovery words are hidden for security. Mouseover the numbers to reveal."
 
@@ -507,15 +512,14 @@ confirmPhrase
 confirmPhrase eBack dPassword mnemonicSentence = Workflow $ mdo
   (continue, done) <- continueForm (fmap not done) $ do
     el "h1" $ text "Verify Recovery Phrase"
-    setupDiv "verify-phrase-msg" $ do
+    el "div" $ do
       el "div" $ text "Please confirm your recovery phrase by"
       el "div" $ text "typing the words in the correct order."
 
     let actualMap = mkPhraseMapFromMnemonic mnemonicSentence
 
     rec
-      onPhraseUpdate <- setupDiv "verify-widget-wrapper" $
-        passphraseWidget dConfirmPhrase (pure Recover)
+      onPhraseUpdate <- passphraseWidget dConfirmPhrase (pure Recover)
 
       dConfirmPhrase <- holdDyn (wordsToPhraseMap $ replicate passphraseLen T.empty)
         $ flip Map.union <$> current dConfirmPhrase <@> onPhraseUpdate

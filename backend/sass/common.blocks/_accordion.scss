@@ -10,24 +10,32 @@ $accordion-header-font-size: 15px;
 
 // We break with BEM a bit here for simplicity: We use child selectors to
 // simplify the reflex code.
-// 
+//
 // In comparison to the tab bar we consider an accordion a single block,
 // instead of having the whole accordion and just its header. (At least for
 // now.)
+
+.accordion:not(:first-child) {
+  margin-top: 20px;
+}
 
 .accordion__header {
   font-family: Arial-BoldMT;
   color: $black-disabled-bg;
   font-size: $accordion-header-font-size;
-  margin-bottom: 16px;
-
   width: 100%;
   display: grid;
   grid-template-columns: 1fr 25fr 1fr;
+  margin: 0;
 }
 
 .accordion__header-btn-text {
   padding-top: 0.2rem;
+}
+
+
+.accordion__content {
+  margin-top: 15px;
 }
 
 .accordion__toggle-button {
@@ -35,7 +43,7 @@ $accordion-header-font-size: 15px;
   height: 24px;
   padding: 0 0;
   margin-right: $medium-margin;
-  
+
   img {
     transition: transform 0.1s;
     transform: scale(0.4) rotate(0deg);

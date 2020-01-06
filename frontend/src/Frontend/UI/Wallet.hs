@@ -124,7 +124,9 @@ uiAccountItems
 uiAccountItems model = do
   let net = model ^. network_selectedNetwork
       accounts = liftA2 (Map.findWithDefault mempty) net (unAccountStorage <$> model ^. wallet_accounts)
-      accountsMap = flattenKeys . _accounts_vanity <$> accounts
+      accountsMap
+        = Map.filter (not . _accountInfo_hidden . _vanityAccount_info)
+        . flattenKeys . _accounts_vanity <$> accounts
       tableAttrs = mconcat
         [ "style" =: "table-layout: fixed; width: 98%"
         , "class" =: "wallet table"
@@ -183,9 +185,7 @@ uiAccountItem (name, chain) acc = do
     td $ divClass "wallet__table-wallet-address" $ text $ unAccountName name
     td $ text $ Pact._chainId chain
     td $ dynText $ ffor acc $ unAccountNotes . _vanityAccount_notes
-    td $ dynText $ ffor info $ \i -> case _accountInfo_balance i of
-      Nothing -> "Unknown"
-      Just b -> tshow (unAccountBalance b) <> " KDA" <> maybe "" (const "*") (_accountInfo_unfinishedCrossChainTransfer i)
+    td $ dynText $ ffor info uiAccountBalance'
 
     td $ divClass "wallet__table-buttons" $ do
       let cfg = def
@@ -275,14 +275,14 @@ uiKeyItems model = do
     keyModal n = Just . \case
       KeyDialog_Receive name created -> uiReceiveModal model name created Nothing
       KeyDialog_Send acc -> uiSendModal model acc
-      KeyDialog_Details key -> uiKeyDetails key
+      KeyDialog_Details i key -> uiKeyDetails i key
       KeyDialog_AccountDetails acc -> uiAccountDetails n acc
 
 -- | Dialogs which can be launched from keys.
 data KeyDialog key
   = KeyDialog_Receive AccountName AccountCreated
   | KeyDialog_Send Account
-  | KeyDialog_Details (Key key)
+  | KeyDialog_Details IntMap.Key (Key key)
   | KeyDialog_AccountDetails Account
 
 ------------------------------------------------------------------------------
@@ -293,22 +293,22 @@ uiKeyItem
   -> IntMap.Key
   -> Dynamic t (Key key)
   -> m (Event t (KeyDialog key))
-uiKeyItem model _index key = do
+uiKeyItem model keyIndex key = do
   hidden <- holdUniqDyn $ _key_hidden <$> key
   switchHold never <=< dyn $ ffor hidden $ \case
     True -> pure never
-    False -> mdo
-      rec
-        (clk, dialog) <- keyRow visible $ sum . catMaybes <$> balances
-        visible <- toggle False clk
+    False -> do
       let mAccounts = ffor3 key (model ^. network_selectedNetwork) (model ^. wallet_accounts) $ \k net (AccountStorage as) -> fromMaybe mempty $ do
             accounts <- Map.lookup net as
             nva <- Map.lookup (_keyPair_publicKey $ _key_pair k) (_accounts_nonVanity accounts)
-            pure nva
-      results <- listWithKey mAccounts $ accountRow visible
-      let balances :: Dynamic t [Maybe AccountBalance]
-          balances = join $ traverse fst . Map.elems <$> results
-          dialogs = switch $ leftmost . fmap snd . Map.elems <$> current results
+            pure $ Map.filter (not . _accountInfo_hidden . _nonVanityAccount_info) nva
+      rec
+        (clk, dialog) <- keyRow visible $ sum . catMaybes <$> balances
+        visible <- toggle False clk
+        results <- listWithKey mAccounts $ accountRow visible
+        let balances :: Dynamic t [Maybe AccountBalance]
+            balances = join $ traverse fst . Map.elems <$> results
+      let dialogs = switch $ leftmost . fmap snd . Map.elems <$> current results
       pure $ leftmost [dialog, dialogs]
      where
       trKey = elClass "tr" "wallet__table-row wallet__table-row-key"
@@ -324,7 +324,7 @@ uiKeyItem model _index key = do
       keyRow open balance = trKey $ do
         let accordionCell o = "wallet__table-cell" <> if o then "" else " accordion-collapsed"
         clk <- elDynClass "td" (accordionCell <$> open) $ accordionButton def
-        td $ divClass "wallet__table-wallet-address" $ dynText $ keyToText . _keyPair_publicKey . _key_pair <$> key
+        td $ dynText $ keyToText . _keyPair_publicKey . _key_pair <$> key
         td $ dynText $ unAccountNotes . _key_notes <$> key
         td $ dynText $ uiAccountBalance . Just <$> balance
         dialog <- td $ buttons $ do
@@ -334,7 +334,7 @@ uiKeyItem model _index key = do
           let pk = AccountName . keyToText . _keyPair_publicKey . _key_pair <$> current key
 
           pure $ leftmost
-            [ KeyDialog_Details <$> current key <@ onDetails
+            [ KeyDialog_Details keyIndex <$> current key <@ onDetails
             -- TODO we need a way of adding these accounts when they already
             -- exist too, e.g. for users who are recovering wallets. An
             -- automatic account discovery thing would work well.

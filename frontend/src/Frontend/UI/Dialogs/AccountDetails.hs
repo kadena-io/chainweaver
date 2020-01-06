@@ -10,6 +10,7 @@ module Frontend.UI.Dialogs.AccountDetails
 
 ------------------------------------------------------------------------------
 import           Control.Lens
+import Data.Some (Some)
 import           Data.Text (Text)
 import qualified Pact.Types.ChainId as Pact
 import           Reflex
@@ -118,7 +119,7 @@ uiAccountDetailsDetails netname a onClose = Workflow $ do
       conf = mempty & walletCfg_updateAccountNotes .~ onNotesUpdate
 
     pure ( ("Account Details", (conf, leftmost [onClose, onDone]))
-         , uiDeleteConfirmation netname nameOrPubKey chain onClose <$ onRemove
+         , uiDeleteConfirmation netname (someTag a) onClose <$ onRemove
          )
 
 uiDeleteConfirmation
@@ -128,11 +129,10 @@ uiDeleteConfirmation
     , HasWalletCfg mConf key t
     )
   => NetworkName
-  -> AccountName
-  -> ChainId
+  -> Some AccountRef
   -> Event t ()
   -> Workflow t m (Text, (mConf, Event t ()))
-uiDeleteConfirmation net name chain onClose = Workflow $ do
+uiDeleteConfirmation net account onClose = Workflow $ do
   modalMain $ do
     divClass "segment modal__filler" $ do
       dialogSectionHeading mempty "Warning"
@@ -146,7 +146,7 @@ uiDeleteConfirmation net name chain onClose = Workflow $ do
 
   modalFooter $ do
     onConfirm <- confirmButton (def & uiButtonCfg_class .~ "account-delete__confirm") "Permanently Remove Account"
-    let cfg = mempty & walletCfg_delAccount .~ ((net, name, chain) <$ onConfirm)
+    let cfg = mempty & walletCfg_delAccount .~ ((net, account) <$ onConfirm)
     pure ( ("Remove Confirmation", (cfg, leftmost [onClose, onConfirm]))
          , never
          )

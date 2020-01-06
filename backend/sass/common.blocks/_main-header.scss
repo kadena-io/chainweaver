@@ -44,18 +44,20 @@ $main-header-wallet-btn-bg: #ececec;
 .main-header__button {
   color: $white;
   border-color: transparent;
-  background: $chainweaver-dark-blue;
   padding: 0 $normal-padding;
   margin-left: $medium-margin;
   font-size: $secondary-font-size;
   line-height: 0;
   height: $main-header-std-height;
-}
 
-.main-header__deploy-button {
-  @extend .main-header__button;
-  color: $black;
-  background: $white;
+  &.main-header__deploy-button {
+    @extend .main-header__button;
+    color: $black;
+    background: $white;
+    &:hover {
+      background: $white-hover;
+    }
+  }
 }
 
 .main-header__add-account-button {

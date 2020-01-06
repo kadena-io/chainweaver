@@ -10,6 +10,8 @@ module Frontend.UI.Dialogs.KeyDetails
 ------------------------------------------------------------------------------
 import           Control.Lens
 import           Data.Text (Text)
+import qualified Data.IntMap as IntMap
+
 ------------------------------------------------------------------------------
 import           Reflex
 import           Reflex.Dom hiding (Key)
@@ -30,12 +32,13 @@ uiKeyDetails
   :: ( HasUiKeyDetailsModelCfg mConf key t
      , MonadWidget t m
      )
-  => Key key
+  => IntMap.Key
+  -> Key key
   -> Event t ()
   -> m (mConf, Event t ())
-uiKeyDetails key _onCloseExternal = mdo
+uiKeyDetails keyIndex key onCloseExternal = mdo
   onClose <- modalHeader $ dynText title
-  dwf <- workflow (uiKeyDetailsDetails key onClose)
+  dwf <- workflow (uiKeyDetailsDetails keyIndex key onClose onCloseExternal)
   let (title, (conf, dEvent)) = fmap splitDynPure $ splitDynPure dwf
   mConf <- flatten =<< tagOnPostBuild conf
   return ( mConf
@@ -46,10 +49,12 @@ uiKeyDetailsDetails
   :: ( HasUiKeyDetailsModelCfg mConf key t
      , MonadWidget t m
      )
-  => Key key
+  => IntMap.Key
+  -> Key key
+  -> Event t ()
   -> Event t ()
   -> Workflow t m (Text, (mConf, Event t ()))
-uiKeyDetailsDetails key onClose = Workflow $ do
+uiKeyDetailsDetails keyIndex key onClose onCloseExternal = Workflow $ do
   let displayText lbl v cls =
         let
           attrFn cfg = uiInputElement $ cfg
@@ -57,18 +62,22 @@ uiKeyDetailsDetails key onClose = Workflow $ do
         in
           mkLabeledInputView False lbl attrFn $ pure v
 
-  divClass "modal__main key-details" $ do
+  notesEdit <- divClass "modal__main key-details" $ do
     divClass "group" $ do
       -- Public key
       _ <- displayText "Public Key" (keyToText $ _keyPair_publicKey $ _key_pair key) "key-details__pubkey"
-      -- Notes
-      _ <- displayText "Notes" (unAccountNotes $ _key_notes key) "key-details__notes"
-      pure ()
+      -- Notes edit
+      fmap value $ mkLabeledClsInput False "Notes" $ \cls -> uiInputElement $ def
+        & inputElementConfig_initialValue .~ unAccountNotes (_key_notes key)
+        & initialAttributes . at "class" %~ pure . maybe (renderClass cls) (mappend (" " <> renderClass cls))
 
   modalFooter $ do
     onDone <- confirmButton def "Done"
 
-    pure ( ("Key Details", (mempty, leftmost [onClose, onDone]))
+    let done = leftmost [onClose, onDone]
+        conf = mempty & walletCfg_updateKeyNotes .~ attachWith (\t _ -> (keyIndex, mkAccountNotes t)) (current notesEdit) (done <> onCloseExternal)
+
+    pure ( ("Key Details", (conf, done))
          , never
          )
 
