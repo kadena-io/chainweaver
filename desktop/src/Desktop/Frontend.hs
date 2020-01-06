@@ -1,8 +1,11 @@
 {-# LANGUAGE ConstraintKinds #-}
+{-# LANGUAGE CPP #-}
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE QuasiQuotes #-}
 {-# LANGUAGE RecursiveDo #-}
@@ -10,54 +13,39 @@
 {-# LANGUAGE StandaloneDeriving #-}
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE TypeApplications #-}
+{-# LANGUAGE TypeFamilies #-}
+{-# LANGUAGE UndecidableInstances #-}
 
-module Desktop.Frontend (desktop, bipWallet, bipCryptoGenPair, fileStorage) where
+module Desktop.Frontend (desktop, bipWallet, bipCryptoGenPair, runFileStorageT) where
 
-import Control.Exception (try, catch)
 import Control.Lens ((?~))
-import Control.Monad (when, (<=<), guard, void)
+import Control.Monad ((<=<), guard, void)
 import Control.Monad.Fix (MonadFix)
-import Control.Monad.Free (iterM)
 import Control.Monad.IO.Class
 import Data.Aeson (ToJSON(..), FromJSON(..))
 import Data.Aeson.GADT.TH
 import Data.Bitraversable
-import Data.Bits ((.|.))
 import Data.Bool (bool)
 import Data.ByteString (ByteString)
 import Data.Constraint.Extras.TH
 import Data.GADT.Show.TH
 import Data.GADT.Compare.TH
-import Data.Maybe (isNothing, isJust)
+import Data.Maybe (isJust)
 import Data.Text (Text)
 import Data.Time (NominalDiffTime, getCurrentTime, addUTCTime)
 import Data.Universe.Some.TH
-import Language.Javascript.JSaddle (JSM, liftJSM)
+import Language.Javascript.JSaddle (liftJSM)
 import Reflex.Dom.Core
-import System.FilePath ((</>))
 import qualified Cardano.Crypto.Wallet as Crypto
-import qualified Control.Newtype.Generics as Newtype
-import qualified Data.Aeson as Aeson
-import qualified Data.ByteString as BS
-import qualified Data.ByteString.Lazy as LBS
 import qualified Data.Text.Encoding as T
-import qualified Data.Text.Encoding.Error as T
-import qualified Data.Text.IO as T
 import qualified GHCJS.DOM as DOM
 import qualified GHCJS.DOM.EventM as EventM
 import qualified GHCJS.DOM.GlobalEventHandlers as GlobalEventHandlers
-import qualified System.Directory as Directory
-import qualified System.FilePath as FilePath
-
-import qualified Pact.Types.Crypto as PactCrypto
-import Pact.Types.Util (parseB16TextOnly)
-import qualified Pact.Types.Hash as Pact
 
 import Common.Api (getConfigRoute)
 import Common.Route
 import Frontend.AppCfg
-import Frontend.Crypto.Class
-import Frontend.Crypto.Ed25519
+import Desktop.Crypto.BIP
 import Frontend.ModuleExplorer.Impl (loadEditorFromLocalStorage)
 import Frontend.Storage
 import Frontend.UI.Button
@@ -70,11 +58,13 @@ import Obelisk.Route.Frontend
 import qualified Frontend
 import qualified Frontend.ReplGhcjs
 import Frontend.Store (StoreFrontend(..))
+import Frontend.Storage (runBrowserStorageT)
 
 import Desktop.Orphans ()
 import Desktop.Setup
 import Desktop.SigningApi
 import Desktop.Util
+import Desktop.Storage.File
 
 data BIPStorage a where
   BIPStorage_RootKey :: BIPStorage Crypto.XPrv
@@ -89,75 +79,6 @@ concat <$> traverse ($ ''BIPStorage)
   , deriveJSONGADT
   ]
 
--- | Store items as files in the given directory, using the key as the file name
-fileStorage :: FilePath -> StorageInterpreter JSM
-fileStorage dir = StorageInterpreter $ iterM go
-  where
-    go :: StorageF (JSM a) -> JSM a
-    go = \case
-      StorageF_Get _ k next -> do
-        res <- liftIO $ do
-          try (BS.readFile $ path k) >>= \case
-            Left (e :: IOError) -> do
-              putStrLn $ "Error reading storage: " <> show e <> " : " <> path k
-              pure Nothing
-            Right v -> do
-              let result = Aeson.decodeStrict v
-              when (isNothing result) $ do
-                T.putStrLn $ "Error reading storage: can't decode contents: " <>
-                  T.decodeUtf8With T.lenientDecode v
-              pure result
-        next res
-      StorageF_Set _ k a next -> do
-        liftIO $ catch (LBS.writeFile (path k) (Aeson.encode a)) $ \(e :: IOError) -> do
-          putStrLn $ "Error writing storage: " <> show e <> " : " <> path k
-        next
-      StorageF_Remove _ k next -> do
-        liftIO $ catch (Directory.removeFile (path k)) $ \(e :: IOError) -> do
-          putStrLn $ "Error removing storage: " <> show e <> " : " <> path k
-        next
-    path :: Show a => a -> FilePath
-    path k = dir </> FilePath.makeValid (show k)
-
-bipCryptoGenPair :: Crypto.XPrv -> Text -> Int -> (Crypto.XPrv, PublicKey)
-bipCryptoGenPair root pass i =
-  let xprv = Crypto.deriveXPrv scheme (T.encodeUtf8 pass) root (mkHardened $ fromIntegral i)
-  in (xprv, unsafePublicKey $ Crypto.xpubPublicKey $ Crypto.toXPub xprv)
-  where
-    scheme = Crypto.DerivationScheme2
-    mkHardened = (0x80000000 .|.)
-
-bipCrypto :: Crypto.XPrv -> Text -> Crypto Crypto.XPrv
-bipCrypto root pass = Crypto
-  { _crypto_sign = \bs xprv ->
-      pure $ Newtype.pack $ Crypto.unXSignature $ Crypto.sign (T.encodeUtf8 pass) xprv bs
-
-  , _crypto_genKey = \i -> do
-      liftIO $ putStrLn $ "Deriving key at index: " <> show i
-      pure $ bipCryptoGenPair root pass i
-
-  -- This assumes that the secret is already base16 encoded (being pasted in, so makes sense)
-  , _crypto_verifyPactKey = \pkScheme sec -> pure $ do
-      secBytes <- parseB16TextOnly sec
-      somePactKey <- importKey pkScheme Nothing secBytes
-      pure $ PactKey pkScheme (unsafePublicKey $ PactCrypto.getPublic somePactKey) secBytes
-
-  , _crypto_signWithPactKey = \bs pk -> do
-      let someKpE = importKey
-            (_pactKey_scheme pk)
-            (Just $ Newtype.unpack $ _pactKey_publicKey pk)
-            $ _pactKey_secret pk
-
-      case someKpE of
-        Right someKp -> liftIO $ Newtype.pack <$> PactCrypto.sign someKp (Pact.Hash bs)
-        Left e -> error $ "Error importing pact key from account: " <> e
-  }
-  where
-    importKey pkScheme mPubBytes secBytes = PactCrypto.importKeyPair
-      (PactCrypto.toScheme pkScheme)
-      (PactCrypto.PubBS <$> mPubBytes)
-      (PactCrypto.PrivBS secBytes)
-
 -- | This is for development
 -- > ob run --import desktop:Desktop.Frontend --frontend Desktop.Frontend.desktop
 desktop :: Frontend (R FrontendRoute)
@@ -171,7 +92,7 @@ desktop = Frontend
     (signingRequestMVar, signingResponseMVar) <- signingServer
       (pure ()) -- Can't foreground or background things
       (pure ())
-    mapRoutedT (flip runStorageT browserStorageIntepreter) $ do
+    mapRoutedT runBrowserStorageT $ do
       (fileOpened, triggerOpen) <- Frontend.openFileDialog
       signingRequest <- mvarTriggerEvent signingRequestMVar
       bipWallet AppCfg
@@ -193,22 +114,20 @@ bipWallet
      , RouteToUrl (R FrontendRoute) m, SetRoute t (R FrontendRoute) m
      , HasConfigs m
      , HasStorage m, HasStorage (Performable m)
-     , StorageM m ~ JSM, StorageM (Performable m) ~ JSM
      )
-  => AppCfg Crypto.XPrv t (RoutedT t (R FrontendRoute) (CryptoT Crypto.XPrv m))
+  => AppCfg Crypto.XPrv t (RoutedT t (R FrontendRoute) (BIPCryptoT m))
   -> RoutedT t (R FrontendRoute) m ()
 bipWallet appCfg = do
-  mRoot <- runStorageJSM $ getItemStorage localStorage BIPStorage_RootKey
+  mRoot <- getItemStorage localStorage BIPStorage_RootKey
   rec
     root <- holdDyn mRoot upd
     upd <- switchHold never <=< dyn $ ffor root $ \case
       Nothing -> do
         xprv <- runSetup
         saved <- performEvent $ ffor xprv $ \x -> do
-          runStorageJSM $ do
-            setItemStorage localStorage BIPStorage_RootKey x
-            removeItemStorage localStorage StoreFrontend_Wallet_Keys
-            removeItemStorage localStorage StoreFrontend_Wallet_Accounts
+          setItemStorage localStorage BIPStorage_RootKey x
+          removeItemStorage localStorage StoreFrontend_Wallet_Keys
+          removeItemStorage localStorage StoreFrontend_Wallet_Accounts
           pure x
         pure $ Just <$> saved
       Just xprv -> mdo
@@ -216,7 +135,7 @@ bipWallet appCfg = do
         (restore, userPassEvents) <- bitraverse (switchHold never) (switchHold never) $ splitE result
         result <- dyn $ ffor mPassword $ \case
           Nothing -> lockScreen xprv
-          Just pass -> mapRoutedT (flip runCryptoT $ bipCrypto xprv pass) $ do
+          Just pass -> mapRoutedT (runBIPCryptoT xprv pass) $ do
             (logout, sidebarLogoutLink) <- mkSidebarLogoutLink
             Frontend.ReplGhcjs.app sidebarLogoutLink appCfg
             setRoute $ landingPageRoute <$ logout
@@ -253,18 +172,19 @@ lockScreen xprv = setupDiv "fullscreen" $ divClass "wrapper" $ setupDiv "splash"
     <> "class" =: setupClass "splash-bg"
     ) kadenaWalletLogo
 
-  setupDiv "splash-terms-buttons" $ mdo
+  el "div" $ mdo
     dValid <- holdDyn True . fmap isJust $ isValid
 
     let unlock = void $ confirmButton (def & uiButtonCfg_type ?~ "submit") "Unlock"
-    (eSubmit, pass) <- form unlock $ do
+        cfg = def & elementConfig_initialAttributes .~ ("class" =: setupClass "splash-terms-buttons")
+    (eSubmit, pass) <- form cfg unlock $ do
       elDynClass "div"
         (("lock-screen__invalid-password" <>) . bool " lock-screen__invalid-password--invalid" "" <$> dValid)
         (text "Invalid Password")
       uiPassword (setupClass "password-wrapper") (setupClass "password") "Password"
 
     restore <- setupDiv "button-horizontal-group" $ do
-      elAttr "a" ( "class" =: "button button_type_secondary" <>
+      elAttr "a" ( "class" =: "button button_type_secondary setup__help" <>
                    "href" =: "https://www.kadena.io/chainweaver-support" <>
                    "target" =: "_blank"
                  ) $ do

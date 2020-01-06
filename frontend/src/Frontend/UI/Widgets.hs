@@ -548,7 +548,7 @@ validatedInputWithButton uCls check placeholder buttonText = do
 
 uiAccountBalance' :: HasAccountInfo a => a -> Text
 uiAccountBalance' acc = case _accountInfo_balance i of
-  Nothing -> "Unknown"
+  Nothing -> "Account not present"
   Just b -> mconcat
     [ tshow $ unAccountBalance b
     , " KDA"
@@ -558,7 +558,7 @@ uiAccountBalance' acc = case _accountInfo_balance i of
 
 uiAccountBalance :: Maybe AccountBalance -> Text
 uiAccountBalance = \case
-  Nothing -> "Unknown"
+  Nothing -> "Account not present"
   Just b -> mconcat
     [ tshow $ unAccountBalance b
     , " KDA"

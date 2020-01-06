@@ -37,6 +37,7 @@ $secondary-placeholder-color: #b4b2b2;
 $black: #000;
 $white: #fff;
 $black-hover: #403f3f;
+$white-hover: #e1e1e1;
 $black-disabled-bg: #2d2d2f;
 $black-disabled-border-color: $black-disabled-bg;
 $black-disabled-color: #7e7e7e;
@@ -96,10 +97,6 @@ $confirm-color-highlight: #3489c9;
 $chainweaver-dark-blue: #4494ba;
 $chainweaver-orange: #f4b23e;
 $danger-red: #f43e3e;
-
-//checkbox:
-
-$checked-background: #4499d9;
 
 // Font used for code.
 @mixin code-font {

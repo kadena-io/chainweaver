@@ -133,7 +133,6 @@ makeIde
     , SetRoute t (R FrontendRoute) m
     , HasConfigs m
     , HasStorage m, HasStorage (Performable m)
-    , StorageM m ~ JSM, StorageM (Performable m) ~ JSM
     , HasCrypto key (Performable m)
     , FromJSON key, ToJSON key
     )

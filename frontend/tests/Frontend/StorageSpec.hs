@@ -31,8 +31,8 @@ import Frontend.StoreTestKey
 
 test_dumpStorage :: TestTree
 test_dumpStorage = testCase "Dump Storage" $ do
-  (s,_,_) <- inMemoryStorage
-  localRes <- flip runStorageT s $ runStorageIO $ do
+  ims <- newInMemoryStorage
+  localRes <- flip runInMemoryStorage ims $ do
     setItemStorage localStorage StoreInt 42
     setItemStorage localStorage StoreString "This is a string"
     dumpLocalStorage @StoreTestKey
@@ -41,15 +41,15 @@ test_dumpStorage = testCase "Dump Storage" $ do
 
 test_backupLocalStorage :: TestTree
 test_backupLocalStorage = testCase "Backup Storage" $ do
-  (s,localRef,_) <- inMemoryStorage
-  r1 <- flip runStorageT s $ runStorageIO $ do
+  ims@(localRef,_) <- newInMemoryStorage
+  r1 <- flip runInMemoryStorage ims $ do
     setItemStorage localStorage StoreInt 42
     setItemStorage localStorage StoreString "This is a string"
     backupLocalStorage storeTestKeyMetaPrefix (Proxy @StoreTestKey) 0
   mSeq1 <- lookupRef localRef (storeTestKeyMetaPrefixText <> "_Backups_V0_Latest")
   isJust r1 @?= True
   mSeq1 @?= Just "0"
-  r2 <- flip runStorageT s $ runStorageIO $ do
+  r2 <- flip runInMemoryStorage ims $ do
     setItemStorage localStorage StoreString "Less String"
     backupLocalStorage storeTestKeyMetaPrefix (Proxy @StoreTestKey) 0
   mSeq2 <- lookupRef localRef (storeTestKeyMetaPrefixText <> "_Backups_V0_Latest")
@@ -63,9 +63,9 @@ test_backupLocalStorage = testCase "Backup Storage" $ do
 test_restoreLocalStorage :: TestTree
 test_restoreLocalStorage = testCase "Restore Storage" $ do
   let backupText = "[[[\"StoreString\",[]],\"Restored\"],[[\"StoreInt\",[]],1337]]"
-  (s,localRef,_) <- inMemoryStorage
+  ims@(localRef,_) <- newInMemoryStorage
   insertRef localRef (storeTestKeyMetaPrefixText <> "_Backups_V0_0") backupText
-  (s,i) <- flip runStorageT s $ runStorageIO $ do
+  (s,i) <- flip runInMemoryStorage ims $ do
     restoreLocalStorage storeTestKeyMetaPrefix (Proxy @StoreTestKey) 0 0
     s <- getItemStorage localStorage StoreString
     i <- getItemStorage localStorage StoreInt
@@ -76,14 +76,14 @@ test_restoreLocalStorage = testCase "Restore Storage" $ do
 test_getVersion :: TestTree
 test_getVersion = testGroup "Get Version"
   [ testCase "No Version" $ do
-    (s,_,_) <- inMemoryStorage
-    v <- flip runStorageT s $ runStorageIO $ do
+    ims <- newInMemoryStorage
+    v <- flip runInMemoryStorage ims $ do
       getCurrentVersion storeTestKeyMetaPrefix
     v @?= 0
   , testCase "Existing Version" $ do
-    (s,localRef,_) <- inMemoryStorage
+    ims@(localRef,_) <- newInMemoryStorage
     insertRef localRef (storeTestKeyMetaPrefixText <> "_Version") "1"
-    v <- flip runStorageT s $ runStorageIO $ do
+    v <- flip runInMemoryStorage ims $ do
       getCurrentVersion storeTestKeyMetaPrefix
     v @?= 1
   ]

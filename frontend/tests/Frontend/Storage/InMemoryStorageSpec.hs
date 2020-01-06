@@ -13,26 +13,26 @@ import Frontend.Storage.InMemoryStorage
 
 test_inMemoryStorage :: TestTree
 test_inMemoryStorage = testCase "In Memory Storage" $ do
-  (s,_,_) <- inMemoryStorage
-  flip runStorageT s $ do
-    mInt1 <- runStorageIO $ getItemStorage localStorage StoreInt
+  ims <- newInMemoryStorage
+  flip runInMemoryStorage ims $ do
+    mInt1 <- getItemStorage localStorage StoreInt
     liftIO $ mInt1 @?= Nothing
-    runStorageIO $ setItemStorage localStorage StoreInt 2
-    mInt2 <- runStorageIO $ getItemStorage localStorage StoreInt
+    setItemStorage localStorage StoreInt 2
+    mInt2 <- getItemStorage localStorage StoreInt
     liftIO $ mInt2 @?= (Just 2)
-    runStorageIO $ setItemStorage localStorage StoreString "tester"
-    mStr1 <- runStorageIO $ getItemStorage localStorage StoreString
+    setItemStorage localStorage StoreString "tester"
+    mStr1 <- getItemStorage localStorage StoreString
     liftIO $ mStr1 @?= (Just "tester")
-    runStorageIO $ removeItemStorage localStorage StoreInt
-    mInt3 <- runStorageIO $ getItemStorage localStorage StoreInt
+    removeItemStorage localStorage StoreInt
+    mInt3 <- getItemStorage localStorage StoreInt
     liftIO $ mInt3 @?= Nothing
-    mStr2 <- runStorageIO $ getItemStorage localStorage StoreString
+    mStr2 <- getItemStorage localStorage StoreString
     liftIO $ mStr2 @?= (Just "tester")
 
 test_inMemoryStorageFromTestData :: TestTree
 test_inMemoryStorageFromTestDataEmptyDir = testCase "In Memory storage from /var/empty" $ do
-  (s,_,_) <- inMemoryStorageFromTestData storeTestKeyMetaPrefix (Proxy @StoreTestKey) 0 "/var/empty/"
-  (mInt, mStr) <- flip runStorageT s $ runStorageIO $ do
+  ims <- inMemoryStorageFromTestData storeTestKeyMetaPrefix (Proxy @StoreTestKey) 0 "/var/empty/"
+  (mInt, mStr) <- flip runInMemoryStorage ims $ do
     mInt <- getItemStorage localStorage StoreInt
     mStr <- getItemStorage localStorage StoreString
     pure (mInt, mStr)
@@ -41,8 +41,8 @@ test_inMemoryStorageFromTestDataEmptyDir = testCase "In Memory storage from /var
   mInt @?= Nothing
 
 test_inMemoryStorageFromTestData = testCase ("In Memory Storage from " <> testDataPath) $ do
-  (s,_,_) <- inMemoryStorageFromTestData storeTestKeyMetaPrefix (Proxy @StoreTestKey) 0 testDataPath
-  (mInt, mStr) <- flip runStorageT s $ runStorageIO $ do
+  ims <- inMemoryStorageFromTestData storeTestKeyMetaPrefix (Proxy @StoreTestKey) 0 testDataPath
+  (mInt, mStr) <- flip runInMemoryStorage ims $ do
     mInt <- getItemStorage localStorage StoreInt
     mStr <- getItemStorage localStorage StoreString
     pure (mInt, mStr)

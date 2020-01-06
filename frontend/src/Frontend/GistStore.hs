@@ -88,13 +88,12 @@ type HasGistStoreModelCfg mConf t = (Monoid mConf, HasOAuthCfg mConf t, HasMessa
 -- | Make a `ModuleList` given a `ModuleListCfg`
 makeGistStore
   :: forall t m cfg model mConf
-  . ( MonadHold t m, MonadFix m, Reflex t, MonadJSM m, PostBuild t m
+  . ( MonadHold t m, MonadFix m, Reflex t, PostBuild t m
     , PerformEvent t m, MonadJSM (Performable m)
     , HasGistStoreCfg cfg t
     , HasGistStoreModel model t
     , HasGistStoreModelCfg mConf t
     , HasStorage m, HasStorage (Performable m)
-    , StorageM m ~ JSM, StorageM (Performable m) ~ JSM
     )
   => model
   -> cfg
@@ -108,15 +107,15 @@ makeGistStore m cfg = mdo
       , onRetry
       ]
 
-  mGistWasRequestedInit <- runStorageJSM $ getItemStorage sessionStorage StoreFrontend_Gist_GistRequested
+  mGistWasRequestedInit <- getItemStorage sessionStorage StoreFrontend_Gist_GistRequested
 
   mGistWasRequested <- holdDyn mGistWasRequestedInit $ leftmost
     [ Just <$> onUnAuthorizedCreate
     , Nothing <$ onClear
     ]
   onStoredReq <- performEvent $
-    (runStorageJSM . setItemStorage sessionStorage StoreFrontend_Gist_GistRequested)  <$> onUnAuthorizedCreate
-  performEvent_ $ (runStorageJSM $ removeItemStorage sessionStorage StoreFrontend_Gist_GistRequested) <$ onClear
+    setItemStorage sessionStorage StoreFrontend_Gist_GistRequested  <$> onUnAuthorizedCreate
+  performEvent_ $ removeItemStorage sessionStorage StoreFrontend_Gist_GistRequested <$ onClear
 
   onMayNewToken <- tagOnPostBuild mGitHubToken
   let

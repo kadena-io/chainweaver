@@ -12,6 +12,7 @@ import           Control.Lens
 import           Data.Text (Text)
 import           Data.Map (Map)
 import qualified Data.Map as Map
+import qualified Data.IntMap as IntMap
 
 import Pact.Types.ChainId (ChainId)
 import qualified Pact.Types.ChainId as Pact
@@ -39,16 +40,17 @@ uiKeyDetails
      , MonadWidget t m
      )
   => model
+  -> IntMap.Key
   -> Key key
   -> Event t ()
   -> m (mConf, Event t ())
-uiKeyDetails model key _onCloseExternal = mdo
+uiKeyDetails model keyIndex key onCloseExternal = mdo
   let keyChainInfo = ffor2 (model ^. network_selectedNetwork) (model ^. wallet_accounts) $ \net (AccountStorage storage) -> fromMaybe mempty $ do
         accounts <- Map.lookup net storage
         let pk = _keyPair_publicKey $ _key_pair key
         Map.lookup pk $ _accounts_nonVanity accounts
   onClose <- modalHeader $ dynText title
-  dwf <- workflow (uiKeyDetailsDetails model key keyChainInfo onClose)
+  dwf <- workflow (uiKeyDetailsDetails model keyIndex key keyChainInfo onClose onCloseExternal)
   let (title, (conf, dEvent)) = fmap splitDynPure $ splitDynPure dwf
   mConf <- flatten =<< tagOnPostBuild conf
   return ( mConf
@@ -60,11 +62,13 @@ uiKeyDetailsDetails
      , MonadWidget t m
      )
   => model
+  -> IntMap.Key
   -> Key key
   -> Dynamic t (Map ChainId NonVanityAccount)
   -> Event t ()
+  -> Event t ()
   -> Workflow t m (Text, (mConf, Event t ()))
-uiKeyDetailsDetails model key keyChainInfo onClose = Workflow $ do
+uiKeyDetailsDetails model keyIndex key keyChainInfo onClose onCloseExternal = Workflow $ do
   let displayText lbl v cls =
         let
           attrFn cfg = uiInputElement $ cfg
@@ -72,22 +76,28 @@ uiKeyDetailsDetails model key keyChainInfo onClose = Workflow $ do
         in
           mkLabeledInputView False lbl attrFn $ pure v
 
-  conf <- divClass "modal__main key-details" $ do
-    _ <- divClass "group" $ do
+  (conf, notesEdit) <- divClass "modal__main key-details" $ do
+    notesEdit <- divClass "group" $ do
       -- Public key
       _ <- displayText "Public Key" (keyToText $ _keyPair_publicKey $ _key_pair key) "key-details__pubkey"
-      -- Notes
-      _ <- displayText "Notes" (unAccountNotes $ _key_notes key) "key-details__notes"
-      pure ()
+      -- Notes edit
+      fmap value $ mkLabeledClsInput False "Notes" $ \cls -> uiInputElement $ def
+        & inputElementConfig_initialValue .~ unAccountNotes (_key_notes key)
+        & initialAttributes . at "class" %~ pure . maybe (renderClass cls) (mappend (" " <> renderClass cls))
 
     _ <- elClass "h2" "heading heading_type_h2" $ text "Chain Specific Info"
-    divClass "group" $
+    conf <- divClass "group" $
       uiChainTable model keyChainInfo
- 
+
+    pure (conf, notesEdit)
+
   modalFooter $ do
     onDone <- confirmButton def "Done"
 
-    pure ( ("Key Details", (conf, leftmost [onClose, onDone]))
+    let done = leftmost [onClose, onDone]
+        conf' = conf & walletCfg_updateKeyNotes .~ attachWith (\t _ -> (keyIndex, mkAccountNotes t)) (current notesEdit) (done <> onCloseExternal)
+
+    pure ( ("Key Details", (conf', done))
          , never
          )
 

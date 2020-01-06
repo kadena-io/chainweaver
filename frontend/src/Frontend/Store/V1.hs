@@ -84,15 +84,15 @@ upgradeFromV0 v0 =
   where
     oldKeysList = maybe [] (IntMap.toList . runIdentity) (DMap.lookup V0.StoreWallet_Keys v0)
     (newKeysList, newAccountStorage) = foldMap splitOldKey oldKeysList
+    newKeys = IntMap.fromList newKeysList
 
     -- It's unfortunate that we don't have the key around or access to crypto here to recreate the keys.
     -- TODO: Fiddle with this so we don't need to fake out the key
+    -- I don't think we should run crypto derivation functions here. The web
+    -- version would generate a new key! Perhaps we should punt this to be fixed
+    -- upon key restoration by the user.
     splitOldKey (keyIdx, V0.SomeAccount_Deleted) = ([(keyIdx, Key fakeKeyPair True (mkAccountNotes ""))], mempty)
 
-    splitOldKey (keyIdx, V0.SomeAccount_Inflight a) =
-      ([(keyIdx, Key (extractKey a) False (upgradeAccountNotes a))]
-      , oldAccountToNewStorage a True
-      )
     splitOldKey (keyIdx, V0.SomeAccount_Account a) =
       ([(keyIdx, Key (extractKey a) False (upgradeAccountNotes a))]
       , oldAccountToNewStorage a False
@@ -139,7 +139,6 @@ upgradeFromV0 v0 =
       { _keyPair_publicKey = upgradePublicKey $ V0._keyPair_publicKey kp
       , _keyPair_privateKey = V0._keyPair_privateKey kp
       }
-    newKeys = IntMap.fromList newKeysList
 
 -- The TH doesn't deal with the key type param well because the key in each constructor is actually a
 -- different type variable to the one in the data decl.

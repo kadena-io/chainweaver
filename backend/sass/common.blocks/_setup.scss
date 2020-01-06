@@ -9,6 +9,9 @@
 
 $wallet-top-btm-margin: 0.5rem 0 0.5rem 0;
 $kadena-orange: #F3AB3C;
+$setup-progress-button-width: 500px;
+$setup-progress-button-height: 52px;
+$setup-progress-font-size: 18px;
 
 .setup__fullscreen {
   width: 100%;
@@ -20,15 +23,10 @@ $kadena-orange: #F3AB3C;
 
 .setup__checkbox {
   .checkbox {
-    font-size: 20px;
     color: $chainweaver-blue;
-    text-align: left;
-    display: inline-block;
-    padding-left: 40px;
   }
 
   .checkbox__checkmark {
-    top: 2px;
     height: 20px;
     width: 20px;
   }
@@ -170,6 +168,12 @@ $kadena-orange: #F3AB3C;
 
   .setup__password {
     margin: $wallet-top-btm-margin;
+    padding-left: 46px;
+    height: $setup-progress-button-height;
+    line-height: initial;
+    font-size: $setup-progress-font-size;
+    font-weight: initial;
+    flex-grow: 1;
   }
 
   .setup__password-wrapper {
@@ -177,17 +181,14 @@ $kadena-orange: #F3AB3C;
       display: flex;
       justify-content: space-around;
       align-items: center;
+      width: $setup-progress-button-width;
   }
 
   .setup__password-wrapper-lock {
       position: absolute;
-      left: 25px;
+      left: 15px;
       justify-content: space-around;
       align-items: center;
-  }
-
-  input.setup__password {
-    padding-left: 2em;
   }
 
   .button {
@@ -195,11 +196,10 @@ $kadena-orange: #F3AB3C;
     line-height: initial;
 
     &.button_type_confirm {
-      width: 96%;
-      font-size: 18px;
-      padding: 15px;
-      height: initial;
-      line-height: initial;
+      font-size: $setup-progress-font-size;
+      height: $setup-progress-button-height;
+      width: $setup-progress-button-width;
+      padding: 0;
     }
 
     .button__text-icon {
@@ -211,7 +211,7 @@ $kadena-orange: #F3AB3C;
       font-size: 16px;
       padding: 10px;
       color: $tertiary-color;
-      width: 96%;
+      flex-grow: 1;
 
       .button__text-icon {
         height: 15px;
@@ -219,29 +219,25 @@ $kadena-orange: #F3AB3C;
       }
     }
   }
-
-  .setup__password {
-    height: initial;
-    line-height: initial;
-    padding: 1.3rem;
-    width: 96%;
-    font-size: 23px;
-    font-weight: initial;
-
-  }
 }
 
 .setup__checkbox-wrapper {
   margin: 1rem;
+  .label {
+    font-family: $std-fonts;
+  }
 }
 
 .setup__checkbox {
   color: $chainweaver-blue;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
 }
 
-.setup__terms-conditions-checkbox {
-  color: $chainweaver-blue;
-  font-size: 18px;
+.setup__terms-conditions-link {
+  color: unset;
+  font-weight: bold;
 }
 
 .setup__key {
@@ -257,34 +253,22 @@ $kadena-orange: #F3AB3C;
   cursor: alias;
 }
 
-.setup__delete {
-  text-align: right;
-}
-
-.setup__add {
-  @extend .setup__delete;
-}
-
-.setup__add-delete-button {
-  width: 30px;
+.setup__help {
+  text-decoration: none;
 }
 
 .setup__button-horizontal-group {
-  width: 96%;
-  margin: 0 auto;
   display: flex;
   flex-direction: row;
   .button { margin-left: 0.5rem !important; }
   .button:first-child { margin-left: 0 !important; }
 }
 
-.setup__record-phrase-msg {
-  margin-bottom: 2em;
-}
-
 .setup__passphrase-widget-wrapper {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
+  width: 625px;
+  margin-top: 28px;
 }
 
 .setup__passphrase-widget-word-hider {
@@ -310,10 +294,6 @@ $kadena-orange: #F3AB3C;
   display: none;
 }
 
-.setup__fullscreen .setup__verify-phrase-msg {
-  margin-bottom: 1.5rem;
-}
-
 .setup__password-message {
   max-height: 0;
   overflow-y: hidden;
@@ -336,7 +316,11 @@ $kadena-orange: #F3AB3C;
 
   .setup__recovery-phrase-copy-word {
     color: $chainweaver-blue;
-    font-size: 25px;
+    font-size: 15px;
+    display: flex;
+    flex-direction: row;
+    justify-content: center;
+    align-items: center;
 
     .setup__copy-status {
       opacity: 0;
@@ -347,7 +331,7 @@ $kadena-orange: #F3AB3C;
       &.setup__copy-success {
         opacity: 1;
         transform: none;
-        color: green;
+        color: $chainweaver-blue;
       }
 
       &.setup__copy-fail {
@@ -364,19 +348,25 @@ $kadena-orange: #F3AB3C;
 }
 
 .setup__password-bg {
-  width: 550px;
+  width: 450px;
+}
+
+.setup__splash {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
 }
 
 .setup__splash-bg {
   width: 580px;
   height: 400px;
-  margin: 0 auto;
   background-size: cover;
 }
 
 .setup__splash-terms-buttons {
-  width: 440px;
-  margin: 0 auto;
+  width: $setup-progress-button-width;
+  display: flex;
+  flex-direction: column;
 }
 
 .setup__done-splash-bg {
@@ -412,11 +402,6 @@ $kadena-orange: #F3AB3C;
   }
 }
 
-.setup__recover-widget-wrapper,
-.setup__verify-widget-wrapper {
-  background-color: $white;
-}
-
 .setup__waiting-passphrase {
   min-height: 20em;
   padding-top: 3em;
@@ -430,6 +415,10 @@ $kadena-orange: #F3AB3C;
   margin: 2rem;
 }
 
+.setup__restore-existing-button {
+  border: 0;
+}
+
 .setup__recover-restore-button .button.button_type_confirm {
   background-color: $kadena-orange;
   border-color: $kadena-orange;
@@ -437,5 +426,8 @@ $kadena-orange: #F3AB3C;
 }
 
 .setup__continue-button {
+  display: flex;
+  flex-direction: row;
+  justify-content: center;
   margin-top: $double-margin;
 }

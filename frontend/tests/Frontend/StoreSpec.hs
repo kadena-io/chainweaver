@@ -155,9 +155,10 @@ expectedAccounts = AccountStorage . Map.fromList $
             [ ("0" , VanityAccount (publicKeyYolo "496df4caddbb907e8ff1c76e4979a176ab1b12bd30e7d3136a8e566b50e07b52") (mkAccountNotes "I bet you think this account is about you") (AccountInfo Nothing Nothing False) False )
             ]
           )
+        -- This isn't actually in flight
         , ( AccountName "inflight"
           , Map.fromList
-            [ ("3" , VanityAccount (publicKeyYolo "c7fb88b67dee06b1f610411e48da6b87328fa4aea80c533a0ca96f64d3eb0632") (mkAccountNotes "") (AccountInfo Nothing Nothing False) True)
+            [ ("3" , VanityAccount (publicKeyYolo "c7fb88b67dee06b1f610411e48da6b87328fa4aea80c533a0ca96f64d3eb0632") (mkAccountNotes "") (AccountInfo Nothing Nothing False) False)
             ]
           )
         ])
@@ -211,18 +212,19 @@ expectedAccounts = AccountStorage . Map.fromList $
      )
   ]
 
-testVersioner :: StorageVersioner (V1.StoreFrontend TestPrv)
+testVersioner :: (HasStorage m, Monad m) => StorageVersioner m (V1.StoreFrontend TestPrv)
 testVersioner = versioner
 
 test_v0ToV1Upgrade :: TestTree
 test_v0ToV1Upgrade = testCase "V0 to V1 Upgrade" $ do
-  (i,localRef,sessionRef) <- inMemoryStorageFromTestData
-    (storageVersion_metaPrefix testVersioner)
+  let v = testVersioner
+  ims@(localRef, sessionRef) <- inMemoryStorageFromTestData
+    (_storageVersioner_metaPrefix v)
     (Proxy @(V0.StoreFrontend TestPrv))
     0
     path
-  (sn, pm, ns, sf, ks, as) <- flip runStorageT i $ runStorageIO $ do
-    storageVersioner_upgrade testVersioner
+  (sn, pm, ns, sf, ks, as) <- flip runInMemoryStorage ims $ do
+    _storageVersioner_upgrade v
     sn <- getItemStorage localStorage V1.StoreFrontend_Network_SelectedNetwork
     pm <- getItemStorage localStorage V1.StoreFrontend_Network_PublicMeta
     ns <- getItemStorage localStorage V1.StoreFrontend_Network_Networks
