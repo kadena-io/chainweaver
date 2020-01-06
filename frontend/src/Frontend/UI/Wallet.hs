@@ -184,7 +184,7 @@ uiAccountItem (name, chain) acc = do
     td $ divClass "wallet__table-wallet-address" $ text $ unAccountName name
     td $ text $ Pact._chainId chain
     td $ dynText $ ffor acc $ unAccountNotes . _vanityAccount_notes
-    td $ dynText $ ffor info uiAccountBalance'
+    td $ dynText $ ffor info $ uiAccountBalance' False
 
     td $ divClass "wallet__table-buttons" $ do
       let cfg = def
@@ -251,7 +251,7 @@ uiKeyItems model = do
         [ ""
         , "Public Key"
         , "Notes"
-        , "Balance"
+        , "Balance (KDA)"
         , ""
         ]
 
@@ -325,7 +325,7 @@ uiKeyItem model keyIndex key = do
         clk <- elDynClass "td" (accordionCell <$> open) $ accordionButton def
         td $ dynText $ keyToText . _keyPair_publicKey . _key_pair <$> key
         td $ dynText $ unAccountNotes . _key_notes <$> key
-        td $ dynText $ uiAccountBalance . Just <$> balance
+        td $ dynText $ uiAccountBalance False . Just <$> balance
         dialog <- td $ buttons $ do
           onDetails <- detailsButton (cfg & uiButtonCfg_class <>~ " wallet__table-button--hamburger")
           pure $ KeyDialog_Details keyIndex <$> current key <@ onDetails
@@ -335,7 +335,7 @@ uiKeyItem model keyIndex key = do
         td blank -- Arrow column
         td $ text $ "Chain ID: " <> _chainId chain
         td blank -- Notes column
-        td $ dynText $ fmap uiAccountBalance' dAccount
+        td $ dynText $ fmap (uiAccountBalance' False) dAccount
         td $ buttons $ do
           recv <- receiveButton cfg
           send <- sendButton cfg
