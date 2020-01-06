@@ -112,7 +112,8 @@ form cfg btn fields = do
   pure (domEvent Submit elt, a)
 
 setupForm :: forall t m a. (DomBuilder t m, PostBuild t m) => Text -> Text -> Dynamic t Bool -> m a -> m (Event t (), a)
-setupForm cls lbl disabled = form def $ setupDiv cls $ void $ confirmButton (def & uiButtonCfg_disabled .~ disabled) lbl
+setupForm cls lbl disabled = form cfg $ setupDiv cls $ void $ confirmButton (def & uiButtonCfg_disabled .~ disabled) lbl
+  where cfg = def & elementConfig_initialAttributes .~ ("class" =: setupClass "form")
 
 restoreForm :: (DomBuilder t m, PostBuild t m) => Dynamic t Bool -> m a -> m (Event t (), a)
 restoreForm = setupForm "recover-restore-button" "Restore"
@@ -434,7 +435,7 @@ precreatePassphraseWarning eBack dPassword mnemonicSentence = Workflow $ mdo
     setupDiv "recovery-phrase-highlighted-warning" $
       line "Kadena cannot access your recovery phrase if lost, please store it safely."
 
-    let chkboxcls = setupClass "warning-checkbox " <> setupClass "checkbox-wrapper"
+    let chkboxcls = setupClass "checkbox-wrapper"
     fmap value $ elClass "div" chkboxcls $ setupCheckbox False def $ el "div" $ do
       line "I understand that if I lose my recovery phrase,"
       line "I will not be able to restore my wallet."
