@@ -93,7 +93,7 @@ data WalletCfg key t = WalletCfg
   -- ^ Request generation of a new key
   , _walletCfg_delKey :: Event t IntMap.Key
   -- ^ Hide a key in the wallet.
-  , _walletCfg_delAccount :: Event t (NetworkName, AccountName, ChainId)
+  , _walletCfg_delAccount :: Event t (NetworkName, Some AccountRef)
   -- ^ Hide an account in the wallet.
   , _walletCfg_importAccount  :: Event t (NetworkName, AccountName, ChainId, VanityAccount)
   , _walletCfg_createWalletOnlyAccount :: Event t (NetworkName, PublicKey, ChainId)
@@ -105,6 +105,7 @@ data WalletCfg key t = WalletCfg
   -- recover when something goes badly wrong in the middle, since it's
   -- immediately stored with all info we need to retry.
   , _walletCfg_updateAccountNotes :: Event t (NetworkName, AccountName, ChainId, AccountNotes)
+  , _walletCfg_updateKeyNotes :: Event t (IntMap.Key, AccountNotes)
   }
   deriving Generic
 
@@ -169,6 +170,7 @@ makeWallet model conf = do
     keys <- foldDyn id initialKeys $ leftmost
       [ snocIntMap <$> onNewKey
       , ffor (_walletCfg_delKey conf) $ IntMap.adjust $ \k -> k { _key_hidden = True }
+      , ffor (_walletCfg_updateKeyNotes conf) $ \(i, notes) -> IntMap.adjust (\k -> k { _key_notes = notes }) i
       ]
 
   rec
@@ -182,6 +184,7 @@ makeWallet model conf = do
       , ffor (_walletCfg_updateAccountNotes conf) updateAccountNotes
       , foldr (.) id . fmap updateAccountBalance <$> newBalances
       , ffor (_walletCfg_setCrossChainTransfer conf) updateCrossChain
+      , ffor (_walletCfg_delAccount conf) hideAccount
       ]
 
   performEvent_ $ storeKeys <$> updated keys
@@ -194,6 +197,9 @@ makeWallet model conf = do
   where
     updateAccountNotes :: (NetworkName, AccountName, ChainId, AccountNotes) -> AccountStorage -> AccountStorage
     updateAccountNotes (net, name, chain, notes) = _AccountStorage . at net . _Just . accounts_vanity . at name . _Just . at chain . _Just . vanityAccount_notes .~ notes
+
+    hideAccount :: (NetworkName, Some AccountRef) -> AccountStorage -> AccountStorage
+    hideAccount (net, ref) = storageAccountInfo net ref . accountInfo_hidden .~ True
 
     updateCrossChain :: (NetworkName, Some AccountRef, Maybe UnfinishedCrossChainTransfer) -> AccountStorage -> AccountStorage
     updateCrossChain (net, ref, cct) = storageAccountInfo net ref . accountInfo_unfinishedCrossChainTransfer .~ cct
@@ -362,10 +368,14 @@ instance Reflex t => Semigroup (WalletCfg key t) where
       [ _walletCfg_updateAccountNotes c1
       , _walletCfg_updateAccountNotes c2
       ]
+    , _walletCfg_updateKeyNotes = leftmost
+      [ _walletCfg_updateKeyNotes c1
+      , _walletCfg_updateKeyNotes c2
+      ]
     }
 
 instance Reflex t => Monoid (WalletCfg key t) where
-  mempty = WalletCfg never never never never never never never never
+  mempty = WalletCfg never never never never never never never never never
   mappend = (<>)
 
 instance Flattenable (WalletCfg key t) t where
@@ -379,6 +389,7 @@ instance Flattenable (WalletCfg key t) t where
       <*> doSwitch never (_walletCfg_refreshBalances <$> ev)
       <*> doSwitch never (_walletCfg_setCrossChainTransfer <$> ev)
       <*> doSwitch never (_walletCfg_updateAccountNotes <$> ev)
+      <*> doSwitch never (_walletCfg_updateKeyNotes <$> ev)
 
 instance Reflex t => Semigroup (Wallet key t) where
   wa <> wb = Wallet
