@@ -227,7 +227,9 @@ test-suite tests
                , Frontend.StorageSpec
                , Frontend.Storage.InMemoryStorage
                , Frontend.Storage.InMemoryStorageSpec
+               , Frontend.StoreSpec
                , Frontend.StoreTestKey
+               , TestUtils
   build-depends: base
                , frontend
                , common
