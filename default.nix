@@ -240,4 +240,14 @@ in obApp // rec {
         };
       };
     };
+
+  ci = {
+    mac   = { inherit mac; };
+    linux = { };
+    cross = {
+      inherit (obApp) exe;
+      inherit (obApp.ghc) desktop;
+      shell = obApp.shells.ghc;
+    };
+  };
 }
