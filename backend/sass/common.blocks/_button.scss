@@ -22,6 +22,7 @@
   color: $std-color;
 
   padding: 0 20px;
+  margin: 0; //webkit has default of margin: 0px 2px
   cursor: pointer;
   &.extra-margin { margin: 12px; }
 }
@@ -107,9 +108,9 @@
 }
 
 .button_type_primary {
-  border-color: $black;
+  border-color: $chainweaver-dark-blue;
   color: $white;
-  background: $black;
+  background: $chainweaver-dark-blue;
   font-size: $primary-font-size;
 }
 
@@ -122,9 +123,7 @@
 }
 
 .button_type_primary[disabled] {
-  background: $black-disabled-bg;
-  border-color: $black-disabled-border-color;
-  color: $black-disabled-color;
+  opacity: 0.5;
 }
 
 .button_type_secondary {
@@ -173,7 +172,7 @@
   font-family: WorkSans-Regular;
 }
 
-.button_type_confirm[disabled] { 
+.button_type_confirm[disabled] {
   background-color: transparent;
   color: $black-disabled-color;
   border-color: $std-border-color;

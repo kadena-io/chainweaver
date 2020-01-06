@@ -56,6 +56,7 @@ import           Frontend.ModuleExplorer   as API
 import           Frontend.Network
 import           Frontend.Repl
 import           Frontend.Storage
+import           Frontend.Store
 
 type HasModuleExplorerModelCfg mConf t =
   ( Monoid mConf
@@ -82,23 +83,13 @@ type ReflexConstraints t m =
   , PostBuild t m, MonadFix m
   )
 
--- Storing data:
-
--- | Storage keys for referencing data to be stored/retrieved.
-data StoreModuleExplorer a where
-  StoreModuleExplorer_SessionFile  :: StoreModuleExplorer Text -- Current editor contents
-  -- TODO: Store `moduleExplorer_loaded` too with this key:
-  {- StoreModuleExplorer_SessionFileRef :: StoreModuleExplorer ModuleSource -}
-
-deriving instance Show (StoreModuleExplorer a)
-
 -- | Write text to localstorage.
-storeEditor :: (HasStorage m, MonadJSM m) => Text -> m ()
-storeEditor ks = setItemStorage localStorage StoreModuleExplorer_SessionFile ks
+storeEditor :: HasStorage m => Text -> m ()
+storeEditor ks = setItemStorage localStorage StoreFrontend_ModuleExplorer_SessionFile ks
 
 -- | Load text from localstorage.
-loadEditorFromLocalStorage :: (HasStorage m, MonadJSM m) => m (Maybe Text)
-loadEditorFromLocalStorage = getItemStorage localStorage StoreModuleExplorer_SessionFile
+loadEditorFromLocalStorage :: (HasStorage m, Functor m) => m (Maybe Text)
+loadEditorFromLocalStorage = getItemStorage localStorage StoreFrontend_ModuleExplorer_SessionFile
 
 
 makeModuleExplorer

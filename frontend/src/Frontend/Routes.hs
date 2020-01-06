@@ -103,7 +103,8 @@ handleRoutes m = do
         ContractRoute_Deployed :/ xs -> Just $ "deployed":xs
         ContractRoute_New      :/ () -> Nothing
         ContractRoute_OAuth    :/ _  -> Nothing
-      FrontendRoute_Wallet   :/ () -> Nothing
+      FrontendRoute_Accounts :/ () -> Nothing
+      FrontendRoute_Keys :/ () -> Nothing
       FrontendRoute_Resources :/ () -> Nothing
       FrontendRoute_Settings :/ () -> Nothing
 

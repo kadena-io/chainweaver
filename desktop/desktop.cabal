@@ -2,7 +2,6 @@ name: desktop
 version: 0.1
 cabal-version: >= 1.8
 build-type: Simple
-data-files: tests/golden-files/*.golden.json
 
 library
   hs-source-dirs: src
@@ -13,70 +12,57 @@ library
     , frontend
 
     , aeson
+    , aeson-gadt-th
     , async
     , base16-bytestring
     , bimap
     , bytestring
     , cardano-crypto
+    , constraints-extras
     , containers
     , cryptonite
+    , dependent-sum-template
     , directory
     , errors
     , filepath
-    , jsaddle
+    , free
     , ghcjs-dom
+    , jsaddle
     , kadena-signing-api
     , lens
     , memory
     , mtl
     , network
     , newtype-generics
-    , obelisk-executable-config-lookup
     , obelisk-backend
+    , obelisk-executable-config-lookup
     , obelisk-frontend
     , obelisk-generated-static
     , obelisk-route
     , pact
+    , primitive
     , process
     , raw-strings-qq
     , reflex
     , reflex-dom
     , reflex-dom-core
+    , ref-tf
     , servant
     , servant-server
     , snap-server
     , text
     , time
+    , universe-dependent-sum
     , wai-cors
     , warp
   exposed-modules:
       Desktop
+    , Desktop.Crypto.BIP
     , Desktop.Frontend
     , Desktop.App
     , Desktop.Orphans
     , Desktop.Setup
     , Desktop.SigningApi
+    , Desktop.Storage.File
     , Desktop.Util
   ghc-options: -Wall
-
-test-suite golden-tests
-  type: exitcode-stdio-1.0
-
-  main-is: GoldenTests.hs
-
-  ghc-options: -Wall
-
-  hs-source-dirs: tests
-  build-depends: base
-               , common
-               , frontend
-               , containers
-               , cardano-crypto
-               , desktop
-               , tasty
-               , tasty-golden
-               , aeson
-               , pact
-               , errors
-               , text
-               , bytestring

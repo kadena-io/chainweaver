@@ -10,6 +10,9 @@ library
                , base16-bytestring
                , aeson
                , containers
+               , dependent-sum
+               , dependent-sum-template
+               , generic-deriving
                , modern-uri
                , mtl
                , obelisk-oauth-common
@@ -32,11 +35,13 @@ library
                , safe
                , errors
                , unliftio
+               , universe
                , unordered-containers
                , case-insensitive
 
   exposed-modules:
     Common.Api
+    Common.GistStore
     Common.Route
     Common.OAuth
     Common.Network

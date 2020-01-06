@@ -16,10 +16,8 @@
 
 module Frontend.Wallet
   (  -- * Types & Classes
-    PublicKey
-  , PrivateKey
+    PrivateKey
   , KeyPair (..)
-  , Accounts
   , WalletCfg (..)
   , HasWalletCfg (..)
   , IsWalletCfg
@@ -28,58 +26,49 @@ module Frontend.Wallet
   , AccountName (..)
   , AccountBalance (..)
   , AccountNotes (..)
-  , mkAccountNotes
   , mkAccountName
   , AccountGuard (..)
-  , pactGuardTypeText
-  , fromPactGuard
-  , Account(..)
-  , HasAccount (..)
-  , SomeAccount(..)
-  , someAccount
   -- * Creation
-  , emptyWallet
   , makeWallet
   , loadKeys
   , storeKeys
-  , StoreWallet(..)
   -- * Parsing
   , parseWalletKeyPair
   -- * Other helper functions
-  , accountToKadenaAddress
-  , activeAccountOnNetwork
   , accountIsCreated
+  , accountToKadenaAddress
   , checkAccountNameValidity
   , snocIntMap
   , findNextKey
   , findFirstVanityAccount
   , getSigningPairs
-  , findFirstInflightAccount
+  , module Common.Wallet
   ) where
 
-import Control.Applicative ((<|>))
 import Control.Lens hiding ((.=))
-import Control.Monad (guard)
+import Control.Monad (void)
 import Control.Monad.Except (runExcept)
 import Control.Monad.Fix
 import Data.Aeson
-import Data.Function (on)
+import Data.Dependent.Sum (DSum(..))
+import Data.Either (rights)
 import Data.IntMap (IntMap)
 import Data.Set (Set)
+import Data.Some (Some(Some))
 import Data.Text (Text)
-import Data.These.Lens (there)
-import Data.Traversable (for)
 import GHC.Generics (Generic)
 import Kadena.SigningApi (AccountName(..), mkAccountName)
 import Pact.Types.ChainId
-import Pact.Types.ChainMeta (PublicMeta)
 import Reflex
-import qualified Data.IntMap as IntMap
+import qualified Data.Map as Map
+import qualified Data.Map.Monoidal as MonoidalMap
 import qualified Data.Set as Set
+import qualified Data.IntMap as IntMap
 import qualified Data.Text as T
-import qualified Pact.Types.Exp as Pact
-import qualified Pact.Types.PactValue as Pact
-import qualified Pact.Types.Term as Pact
+import qualified Pact.Server.ApiV1Client as Api
+import qualified Pact.Types.Command as Pact
+import qualified Pact.Types.ChainMeta as Pact
+import Pact.Types.Pretty
 
 import Common.Network (NetworkName)
 import Common.Wallet
@@ -91,34 +80,32 @@ import Frontend.Foundation
 import Frontend.KadenaAddress
 import Frontend.Storage
 import Frontend.Network
+import Frontend.Store
 
-accountIsCreated:: Account key -> AccountCreated
-accountIsCreated = maybe AccountCreated_No (const AccountCreated_Yes) . _account_balance
+accountIsCreated :: Account -> AccountCreated
+accountIsCreated = maybe AccountCreated_No (const AccountCreated_Yes) . _accountInfo_balance . view accountInfo
 
-accountToKadenaAddress :: Account key -> ChainId -> KadenaAddress
-accountToKadenaAddress a c = mkKadenaAddress (accountIsCreated a) c (_account_name a)
+accountToKadenaAddress :: Account -> KadenaAddress
+accountToKadenaAddress a = mkKadenaAddress (accountIsCreated a) (accountChain a) (accountToName a)
 
 data WalletCfg key t = WalletCfg
-  { _walletCfg_genKey     :: Event t (AccountName, NetworkName, ChainId, AccountNotes)
-  -- ^ Request generation of a new key, that will be named as specified.
-  , _walletCfg_importAccount  :: Event t (Account key)
-  , _walletCfg_delKey     :: Event t IntMap.Key
-  -- ^ Delete a key from your wallet.
-  , _walletCfg_createWalletOnlyAccount :: Event t (NetworkName, ChainId, AccountNotes)
+  { _walletCfg_genKey :: Event t ()
+  -- ^ Request generation of a new key
+  , _walletCfg_delKey :: Event t IntMap.Key
+  -- ^ Hide a key in the wallet.
+  , _walletCfg_delAccount :: Event t (NetworkName, Some AccountRef)
+  -- ^ Hide an account in the wallet.
+  , _walletCfg_importAccount  :: Event t (NetworkName, AccountName, ChainId, VanityAccount)
+  , _walletCfg_createWalletOnlyAccount :: Event t (NetworkName, PublicKey, ChainId)
   -- ^ Create a wallet only account that uses the public key as the account name
   , _walletCfg_refreshBalances :: Event t ()
   -- ^ Refresh balances in the wallet
-  , _walletCfg_setCrossChainTransfer :: Event t (IntMap.Key, Maybe UnfinishedCrossChainTransfer)
+  , _walletCfg_setCrossChainTransfer :: Event t (NetworkName, Some AccountRef, Maybe UnfinishedCrossChainTransfer)
   -- ^ Start a cross chain transfer on some account. This field allows us to
   -- recover when something goes badly wrong in the middle, since it's
   -- immediately stored with all info we need to retry.
-  , _walletCfg_updateAccountNotes :: Event t (IntMap.Key, AccountNotes)
-  , _walletCfg_addVanityAccountInflight :: Event t (Account key)
-  -- ^ Store the details of a pending vanity acc creation. This allows us to store the
-  -- keys in the event something in the application goes wrong.
-  , _walletCfg_delInflightAccount :: Event t (Account key)
-  -- ^ Remove the inflight vanity account, in the event of an error from the creation
-  -- transaction we don't need to keep this information.
+  , _walletCfg_updateAccountNotes :: Event t (NetworkName, AccountName, ChainId, AccountNotes)
+  , _walletCfg_updateKeyNotes :: Event t (IntMap.Key, AccountNotes)
   }
   deriving Generic
 
@@ -128,78 +115,28 @@ makePactLenses ''WalletCfg
 -- "Config".
 type IsWalletCfg cfg key t = (HasWalletCfg cfg key t, Monoid cfg, Flattenable cfg t)
 
--- | We keep track of deletions at a given index so that we don't regenerate
--- keys with BIP32.
-data SomeAccount key
-  = SomeAccount_Deleted
-  | SomeAccount_Inflight (Account key)
-  | SomeAccount_Account (Account key)
-makePrisms ''SomeAccount
-
-someAccount :: a -> (Account key -> a) -> SomeAccount key -> a
-someAccount a _ SomeAccount_Deleted = a
-someAccount a _ (SomeAccount_Inflight _) = a
-someAccount _ f (SomeAccount_Account a) = f a
-
-someAccountWithInflight :: a -> (Account key -> a) -> SomeAccount key -> a
-someAccountWithInflight _ f (SomeAccount_Inflight a) = f a
-someAccountWithInflight a f sa = someAccount a f sa
-
-instance ToJSON key => ToJSON (SomeAccount key) where
-  toJSON = \case
-    SomeAccount_Deleted -> Null
-    SomeAccount_Inflight a -> object ["inflight" .= toJSON a]
-    SomeAccount_Account a -> toJSON a
-
-instance FromJSON key => FromJSON (SomeAccount key) where
-  parseJSON Null = pure SomeAccount_Deleted
-  parseJSON x = (SomeAccount_Inflight <$> (withObject "Inflight Acc" (.: "inflight") x))
-    <|> SomeAccount_Account <$> parseJSON x
-
-activeAccountOnNetwork :: NetworkName -> SomeAccount key -> Maybe (Account key)
-activeAccountOnNetwork net = someAccount
-  Nothing
-  (\a -> a <$ guard (_account_network a == net))
-
-type Accounts key = IntMap (SomeAccount key)
-
-getSigningPairs :: Set AccountName -> Accounts key -> [KeyPair key]
-getSigningPairs signing = fmapMaybe isForSigning . IntMap.elems
+getSigningPairs :: KeyStorage key -> Accounts -> Set (Some AccountRef) -> [KeyPair key]
+getSigningPairs allKeys allAccounts signing = filterKeyPairs wantedKeys allKeys
   where
-    -- isJust filter is necessary so indices are guaranteed stable even after
-    -- the following `mapMaybe`:
-    isForSigning = \case
-      SomeAccount_Account a
-        | kp <- _account_key a
-        , Just _ <- _keyPair_privateKey kp
-        , Set.member (_account_name a) signing
-        -> Just kp
-      _ -> Nothing
+    wantedKeys = Set.fromList $ Map.elems $ Map.restrictKeys accountRefs signing
+    accountRefs = flip foldAccounts allAccounts $ \a@(r :=> _) -> Map.singleton (Some r) $ accountKey a
 
 data Wallet key t = Wallet
-  { _wallet_accounts :: Dynamic t (Accounts key)
+  { _wallet_keys :: Dynamic t (KeyStorage key)
     -- ^ Accounts added and removed by the user
-  , _wallet_walletOnlyAccountCreated :: Event t AccountName
-    -- ^ A new wallet only account has been created
+  , _wallet_accounts :: Dynamic t AccountStorage
+    -- ^ Accounts added and removed by the user
   }
   deriving Generic
 
 makePactLenses ''Wallet
 
-findFirstInflightAccount :: Accounts key -> Maybe (Account key)
-findFirstInflightAccount = fmap (\(SomeAccount_Inflight a) -> a) . find g
-  where g = \case SomeAccount_Inflight _ -> True; _ -> False
-
--- | Find the first vanity account in the wallet
-findFirstVanityAccount :: Accounts key -> Maybe (Account key)
-findFirstVanityAccount = fmap (\(SomeAccount_Account a) -> a) . find g
-  where g SomeAccount_Deleted = False
-        g (SomeAccount_Inflight _) = False
-        g (SomeAccount_Account a) = unAccountName (_account_name a) /= keyToText (_keyPair_publicKey $ _account_key a)
-
--- | An empty wallet that will never contain any keys.
-emptyWallet :: Reflex t => Wallet key t
-emptyWallet = Wallet mempty never
+-- | Find the first vanity account in the wallet which satisfies the predicate
+findFirstVanityAccount :: (VanityAccount -> Bool) -> Accounts -> Maybe (AccountName, ChainId, VanityAccount)
+findFirstVanityAccount predicate as = do
+  (n, cm) <- Map.lookupMin $ _accounts_vanity as
+  (c, va) <- Map.lookupMin $ Map.filter predicate cm
+  pure (n, c, va)
 
 snocIntMap :: a -> IntMap a -> IntMap a
 snocIntMap a m = IntMap.insert (nextKey m) a m
@@ -208,183 +145,150 @@ nextKey :: IntMap a -> Int
 nextKey = maybe 0 (succ . fst) . IntMap.lookupMax
 
 findNextKey :: Reflex t => Wallet key t -> Dynamic t Int
-findNextKey = fmap nextKey . _wallet_accounts
+findNextKey = fmap nextKey . _wallet_keys
 
 -- | Make a functional wallet that can contain actual keys.
 makeWallet
   :: forall model key t m.
     ( MonadHold t m, PerformEvent t m
     , MonadFix m, MonadJSM (Performable m)
-    , TriggerEvent t m, MonadSample t (Performable m)
-    , MonadJSM m
     , HasStorage (Performable m), HasStorage m
+    , HasNetwork model t
+    , TriggerEvent t m
     , HasCrypto key (Performable m)
     , FromJSON key, ToJSON key
-    , HasNetwork model t
     )
   => model
   -> WalletCfg key t
   -> m (Wallet key t)
 makeWallet model conf = do
   initialKeys <- fromMaybe IntMap.empty <$> loadKeys
-  let
-    onGenKey = _walletCfg_genKey conf
-    onDelKey = _walletCfg_delKey conf
-    onCreateWOAcc = _walletCfg_createWalletOnlyAccount conf
-    refresh = _walletCfg_refreshBalances conf
-    setCrossChain = _walletCfg_setCrossChainTransfer conf
-
-  performEvent_ $ liftIO (putStrLn "Refresh wallet balances") <$ refresh
+  initialAccounts <- fromMaybe mempty <$> loadAccounts
 
   rec
-    onNewKey <- performEvent $ attachWith (createKey . nextKey) (current keys) onGenKey
-    onWOAccountCreate <- performEvent $ attachWith (createWalletOnlyAccount . nextKey) (current keys) onCreateWOAcc
-    newBalances <- getBalances model $ current keys <@ refresh
-
+    onNewKey <- performEvent $ createKey . nextKey <$> current keys <@ _walletCfg_genKey conf
     keys <- foldDyn id initialKeys $ leftmost
-      [ ffor onNewKey $ snocIntMap . SomeAccount_Account
-      , ffor (_walletCfg_importAccount conf) importAccount
-      , ffor onDelKey $ \i -> IntMap.insert i SomeAccount_Deleted
-      , ffor onWOAccountCreate $ snocIntMap . SomeAccount_Account
+      [ snocIntMap <$> onNewKey
+      , ffor (_walletCfg_delKey conf) $ IntMap.adjust $ \k -> k { _key_hidden = True }
+      , ffor (_walletCfg_updateKeyNotes conf) $ \(i, notes) -> IntMap.adjust (\k -> k { _key_notes = notes }) i
+      ]
+
+  rec
+    newBalances <- getBalances model $ (,) <$> current keys <*> current accounts <@ _walletCfg_refreshBalances conf
+    accounts <- foldDyn id initialAccounts $ leftmost
+      [ ffor (_walletCfg_importAccount conf) $ \(net, name, chain, acc) ->
+        ((<>) (AccountStorage $ Map.singleton net $ mempty { _accounts_vanity = Map.singleton name $ Map.singleton chain acc }))
+      , ffor (_walletCfg_createWalletOnlyAccount conf) $ \(net, pk, chain) ->
+        ((<>) (AccountStorage $ Map.singleton net $ mempty
+          { _accounts_nonVanity = Map.singleton pk $ Map.singleton chain $ NonVanityAccount blankAccountInfo }))
       , ffor (_walletCfg_updateAccountNotes conf) updateAccountNotes
-      , ffor (_walletCfg_addVanityAccountInflight conf) addInflightAccount
-      , ffor (_walletCfg_delInflightAccount conf) delInflightAccount
-      , const <$> newBalances
-      , let f cc = someAccount SomeAccount_Deleted (\a -> SomeAccount_Account a { _account_unfinishedCrossChainTransfer = cc })
-         in ffor setCrossChain $ \(i, cc) -> IntMap.adjust (f cc) i
+      , foldr (.) id . fmap updateAccountBalance <$> newBalances
+      , ffor (_walletCfg_setCrossChainTransfer conf) updateCrossChain
+      , ffor (_walletCfg_delAccount conf) hideAccount
       ]
 
   performEvent_ $ storeKeys <$> updated keys
+  performEvent_ $ storeAccounts <$> updated accounts
 
   pure $ Wallet
-    { _wallet_accounts = keys
-    , _wallet_walletOnlyAccountCreated = _account_name <$> onWOAccountCreate
+    { _wallet_keys = keys
+    , _wallet_accounts = accounts
     }
   where
-    updateAccountNotes :: (IntMap.Key, AccountNotes) -> Accounts key -> Accounts key
-    updateAccountNotes (k, n) = at k . _Just . _SomeAccount_Account . account_notes .~ n
+    updateAccountNotes :: (NetworkName, AccountName, ChainId, AccountNotes) -> AccountStorage -> AccountStorage
+    updateAccountNotes (net, name, chain, notes) = _AccountStorage . at net . _Just . accounts_vanity . at name . _Just . at chain . _Just . vanityAccount_notes .~ notes
 
-    matchInflight a b = case b of
-      SomeAccount_Inflight b0 -> ((==) `on` (_keyPair_publicKey . _account_key)) a b0
-      _ -> False
+    hideAccount :: (NetworkName, Some AccountRef) -> AccountStorage -> AccountStorage
+    hideAccount (net, ref) = storageAccountInfo net ref . accountInfo_hidden .~ True
 
-    importAccount a as = case find (matchInflight a) as of
-      Just _ -> confirmInflightAcc a as
-      Nothing -> snocIntMap (SomeAccount_Account a) as
+    updateCrossChain :: (NetworkName, Some AccountRef, Maybe UnfinishedCrossChainTransfer) -> AccountStorage -> AccountStorage
+    updateCrossChain (net, ref, cct) = storageAccountInfo net ref . accountInfo_unfinishedCrossChainTransfer .~ cct
 
-    confirmInflightAcc :: Account key -> Accounts key -> Accounts key
-    confirmInflightAcc a as = as <&> \v ->
-      if a `matchInflight` v then
-        SomeAccount_Account a
-      else
-        v
+    updateAccountBalance :: (NetworkName, Some AccountRef, Maybe AccountBalance) -> AccountStorage -> AccountStorage
+    updateAccountBalance (net, (Some ref), balance) = case ref of
+      (AccountRef_NonVanity pk chain) -> upsertNonVanityBalance net pk chain balance
+      (AccountRef_Vanity _ _) -> storageAccountInfo net (Some ref) . accountInfo_balance .~ balance
 
-    addInflightAccount :: Account key -> Accounts key -> Accounts key
-    addInflightAccount a as = case find (matchInflight a) as of
-      -- Blat the possibly new name, notes, and chainId over the existing inflight account as
-      -- the keys have been preserved as part of the account creation process.
-      Just _ -> as <&> \sa -> case sa of
-        SomeAccount_Inflight _ -> SomeAccount_Inflight a
-        _ -> sa
-      Nothing -> snocIntMap (SomeAccount_Inflight a) as
-
-    delInflightAccount :: Account key -> Accounts key -> Accounts key
-    delInflightAccount a = IntMap.filter (not . matchInflight a)
-
-    createWalletOnlyAccount :: Int -> (NetworkName, ChainId, AccountNotes) -> Performable m (Account key)
-    createWalletOnlyAccount i (net, c, t) = do
+    createKey :: Int -> Performable m (Key key)
+    createKey i = do
       (privKey, pubKey) <- cryptoGenKey i
-      pure $ buildAccount (AccountName $ keyToText pubKey) pubKey privKey net c t
-
-    createKey :: Int -> (AccountName, NetworkName, ChainId, AccountNotes) -> Performable m (Account key)
-    createKey i (n, net, c, t) = do
-      (privKey, pubKey) <- cryptoGenKey i
-      pure $ buildAccount n pubKey privKey net c t
-
-    buildAccount n pubKey privKey net c t = Account
-        { _account_name = n
-        , _account_key = KeyPair pubKey (Just privKey)
-        , _account_chainId = c
-        , _account_network = net
-        , _account_notes = t
-        , _account_balance = Nothing
-        , _account_unfinishedCrossChainTransfer = Nothing
+      pure $ Key
+        { _key_pair = KeyPair pubKey (Just privKey)
+        , _key_hidden = False
+        , _key_notes = mkAccountNotes ""
         }
 
--- | Get the balance of some accounts from the network.
+-- | Get the balance of accounts from the network.
 getBalances
   :: forall model key t m.
     ( PerformEvent t m, TriggerEvent t m
-    , MonadSample t (Performable m), MonadIO m
     , MonadJSM (Performable m)
     , HasNetwork model t, HasCrypto key (Performable m)
     )
-  => model -> Event t (Accounts key) -> m (Event t (Accounts key))
-getBalances model accounts = do
-  reqs <- performEvent $ attachWith mkReqs (current $ getNetworkNameAndMeta model) accounts
-  response <- performLocalReadCustom (model ^. network) toReqList reqs
-  pure $ toBalances <$> response
+  => model -> Event t (KeyStorage key, AccountStorage) -> m (Event t [(NetworkName, Some AccountRef, Maybe AccountBalance)])
+getBalances model accStore = performEventAsync $ flip push accStore $ \(keys, networkAccounts) -> do
+  nodes <- fmap rights $ sample $ current $ model ^. network_selectedNodes
+  net <- sample $ current $ model ^. network_selectedNetwork
+  pure . Just $ mkRequests nodes net keys (Map.lookup net (unAccountStorage networkAccounts))
   where
-    toDetails nw = case nw  ^? there . _2 of
-      Just (Pact.PObject (Pact.ObjectMap om)) -> (,,)
-        <$> (om ^? at "account" . _Just . _PLit . Pact._LString . to AccountName)
-        <*> (om ^? at "balance" . _Just . _PLit . Pact._LDecimal . to AccountBalance)
-        <*> (om ^? at "guard" . _Just . _PGuard . _GKeySet . to (Set.toList . Pact._ksKeys) . to (fmap fromPactPublicKey))
-      _ -> Nothing
+    allChains = ChainId . tshow <$> ([0..9] :: [Int])
+    allChainsLen = length allChains
+    onAllChains = MonoidalMap.fromList . zip allChains . replicate allChainsLen
 
-    toBalances
-      :: (IntMap (SomeAccount key, Maybe NetworkRequest), [NetworkErrorResult])
-      -> Accounts key
-    toBalances (m, results) =
-      IntMap.fromList $ stepwise (IntMap.toList (fmap fst m)) (toDetails <$> results)
+    mkRequests nodes net keys mAccounts cb = do
+      -- Transform the vanity accounts structure into a map from chain ID to
+      -- set of account names. We grab balances even for keys on all chains, but
+      -- stick to only the chains that we know for vanity accounts otherwise we
+      -- could easily prevent the user from being able to create accounts that
+      -- they may wish to create (not to mention spamming extra vanity accounts
+      -- makes the accounts page look ugly).
+      --
+      -- We spam extra balance requests here for keys rather than just adding the
+      -- accounts on generateKey because if we just did it on create then we'd
+      -- get the user stuck if they ever added in a new network.
+      let
+        chainsToAccounts = fold
+            [ foldMap
+              (\(an, m) ->
+                foldMap (\cId ->
+                  MonoidalMap.singleton cId (Set.singleton (unAccountName an)))
+                (Map.keys m))
+              (mAccounts ^.. _Just . accounts_vanity . to Map.toList . traverse)
+            , onAllChains $ Set.fromList
+              (keys ^.. to toList . traverse . to _key_pair . to _keyPair_publicKey . to keyToText)
+            ]
 
-    -- I don't like this, I'd rather just block in a forked thread manually
-    -- than have to do this dodgy alignment. TODO
-    stepwise
-      :: [(IntMap.Key, SomeAccount key)]
-      -> [Maybe (AccountName, AccountBalance, [PublicKey])]
-      -> [(IntMap.Key, SomeAccount key)]
-    stepwise ((i, sa):accs) (deet:deets) = case sa of
-      SomeAccount_Deleted -> (i, SomeAccount_Deleted) : stepwise accs (deet:deets)
+        code = renderCompactText . accountBalanceObject . Set.toList
+        pm chain = Pact.PublicMeta
+          { Pact._pmChainId = chain
+          , Pact._pmSender = "chainweaver"
+          , Pact._pmGasLimit = defaultTransactionGasLimit
+          , Pact._pmGasPrice = defaultTransactionGasPrice
+          , Pact._pmTTL = 3600
+          , Pact._pmCreationTime = 0
+          }
 
-      -- If we have a balance returned for an inflight account then it exists on the chain
-      SomeAccount_Inflight a -> case deet of
-        Just (upname, upbal, upguard) | _account_name a == upname && (_keyPair_publicKey $ _account_key a) `elem` upguard ->
-          (i, SomeAccount_Account a { _account_balance = Just upbal } )
-        _ ->
-          (i, sa)
-        : stepwise accs deets
-
-      SomeAccount_Account a ->
-        (i, SomeAccount_Account a { _account_balance = (deet ^? _Just . _2) <|> _account_balance a })
-        : stepwise accs deets
-
-    stepwise as _ = as
-
-    toReqList :: Foldable f => f (SomeAccount key, Maybe NetworkRequest) -> [NetworkRequest]
-    toReqList = fmapMaybe snd . toList
-
-    accountBalanceReq acc = "(coin.details " <> tshow (unAccountName acc) <> ")"
-
-    mkReqs
-      :: (NetworkName, PublicMeta)
-      -> Accounts key
-      -> Performable m (IntMap (SomeAccount key, Maybe NetworkRequest))
-    mkReqs meta someaccs = for someaccs $ \sa ->
-      fmap (sa,) . traverse (mkReq meta) $ someAccountWithInflight Nothing Just sa
-
-    mkReq (netName, pm) acc = mkSimpleReadReq
-      (accountBalanceReq $ _account_name acc)
-      netName
-      pm
-      (ChainRef Nothing $ _account_chainId acc)
-
--- Storing data:
-
--- | Storage keys for referencing data to be stored/retrieved.
-data StoreWallet key a where
-  StoreWallet_Keys :: StoreWallet key (Accounts key)
-deriving instance Show (StoreWallet key a)
+      -- Build a request for each chain
+      requests <- flip MonoidalMap.traverseWithKey chainsToAccounts $ \chain as -> do
+        liftIO $ putStrLn $ "getBalances: Building request for get-balance on chain " <> T.unpack (_chainId chain)
+        cmd <- buildCmd Nothing net (pm chain) mempty [] (code as) mempty mempty
+        liftIO $ print cmd
+        let envs = mkClientEnvs nodes chain
+        pure $ doReqFailover envs (Api.local Api.apiV1Client cmd) >>= \case
+          Left es -> liftIO $ putStrLn $ "getBalances: request failure: " <> show es
+          Right cr -> case Pact._crResult cr of
+            Pact.PactResult (Right pv) -> case parseAccountBalances pv of
+              Left e -> liftIO $ putStrLn $ "getBalances: failed to parse balances:" <> show e
+              Right balances -> liftIO $ do
+                putStrLn "getBalances: success:"
+                print balances
+                -- Cheat slightly by checking if the account name is really a public key.
+                liftIO $ cb $ ffor (Map.toList balances) $ \(AccountName name, balance) -> case textToKey name of
+                  Nothing -> (net, Some $ AccountRef_Vanity (AccountName name) chain, balance)
+                  Just pk -> (net, Some $ AccountRef_NonVanity pk chain, balance)
+            Pact.PactResult (Left e) -> liftIO $ putStrLn $ "getBalances failed:" <> show e
+      -- Perform the requests on a forked thread
+      void $ liftJSM $ forkJSM $ void $ sequence requests
 
 -- | Parse a private key with additional checks based on the given public key.
 --
@@ -399,72 +303,76 @@ parseWalletKeyPair errPubKey privKey = do
 --
 --   Returns `Left` error msg in case it is not valid.
 checkAccountNameValidity
-  :: (Reflex t, HasWallet w key t)
-  => w
+  :: (Reflex t, HasNetwork m t, HasWallet m key t)
+  => m
   -> Dynamic t (Maybe ChainId -> Text -> Either Text AccountName)
-checkAccountNameValidity w = getErr <$> (w ^. wallet_accounts)
+checkAccountNameValidity m = getErr <$> (m ^. network_selectedNetwork) <*> (m ^. wallet_accounts)
   where
-    getErr keys mChain k = do
+    getErr net (AccountStorage networks) mChain k = do
       acc <- mkAccountName k
-      let
-        onChain a = case mChain of
-          -- If we don't have a chain, don't bother checking for duplicates.
-          Just chain -> and
-            [ _account_name a == acc
-            , _account_chainId a == chain
-            ]
-          Nothing -> False
-
-      if any (someAccount False onChain) keys
-         then Left $ T.pack "This account name is already in use"
-         else Right acc
+      maybe (Right acc) (\_ -> Left "This account name is already in use") $ do
+        accounts <- Map.lookup net networks
+        chains <- Map.lookup acc $ _accounts_vanity accounts
+        chain <- mChain
+        Map.lookup chain chains
 
 -- | Write key pairs to localstorage.
-storeKeys :: (ToJSON key, HasStorage m, MonadJSM m) => Accounts key -> m ()
-storeKeys ks = setItemStorage localStorage StoreWallet_Keys ks
+storeKeys :: (ToJSON key, HasStorage m) => KeyStorage key -> m ()
+storeKeys = setItemStorage localStorage StoreFrontend_Wallet_Keys
 
 -- | Load key pairs from localstorage.
-loadKeys :: (FromJSON key, HasStorage m, MonadJSM m) => m (Maybe (Accounts key))
-loadKeys = getItemStorage localStorage StoreWallet_Keys
+loadKeys :: (FromJSON key, HasStorage m, Functor m) => m (Maybe (KeyStorage key))
+loadKeys = getItemStorage localStorage StoreFrontend_Wallet_Keys
+
+-- | Write key pairs to localstorage.
+storeAccounts :: HasStorage m => AccountStorage -> m ()
+storeAccounts = setItemStorage localStorage StoreFrontend_Wallet_Accounts
+
+-- | Load accounts from localstorage.
+loadAccounts :: (HasStorage m, Functor m) => m (Maybe AccountStorage)
+loadAccounts = getItemStorage localStorage StoreFrontend_Wallet_Accounts
 
 -- Utility functions:
 
 instance Reflex t => Semigroup (WalletCfg key t) where
-  c1 <> c2 =
-    WalletCfg
-      { _walletCfg_genKey = leftmost [ _walletCfg_genKey c1
-                                     , _walletCfg_genKey c2
-                                     ]
-      , _walletCfg_importAccount = leftmost [ _walletCfg_importAccount c1
-                                        , _walletCfg_importAccount c2
-                                        ]
-      , _walletCfg_delKey = leftmost [ _walletCfg_delKey c1
-                                     , _walletCfg_delKey c2
-                                     ]
-      , _walletCfg_createWalletOnlyAccount = leftmost [ _walletCfg_createWalletOnlyAccount c1
-                                                      , _walletCfg_createWalletOnlyAccount c2
-                                                      ]
-      , _walletCfg_refreshBalances = leftmost
-        [ _walletCfg_refreshBalances c1
-        , _walletCfg_refreshBalances c2
-        ]
-      , _walletCfg_setCrossChainTransfer = leftmost
-        [ _walletCfg_setCrossChainTransfer c1
-        , _walletCfg_setCrossChainTransfer c2
-        ]
-      , _walletCfg_updateAccountNotes = leftmost
-        [ _walletCfg_updateAccountNotes c1
-        , _walletCfg_updateAccountNotes c2
-        ]
-      , _walletCfg_addVanityAccountInflight = leftmost
-        [ _walletCfg_addVanityAccountInflight c1
-        , _walletCfg_addVanityAccountInflight c2
-        ]
-      , _walletCfg_delInflightAccount = leftmost
-        [ _walletCfg_delInflightAccount c1
-        , _walletCfg_delInflightAccount c2
-        ]
-      }
+  c1 <> c2 = WalletCfg
+    { _walletCfg_genKey = leftmost
+      [ _walletCfg_genKey c1
+      , _walletCfg_genKey c2
+      ]
+    , _walletCfg_importAccount = leftmost
+      [ _walletCfg_importAccount c1
+      , _walletCfg_importAccount c2
+      ]
+    , _walletCfg_delKey = leftmost
+      [ _walletCfg_delKey c1
+      , _walletCfg_delKey c2
+      ]
+    , _walletCfg_delAccount = leftmost
+      [ _walletCfg_delAccount c1
+      , _walletCfg_delAccount c2
+      ]
+    , _walletCfg_createWalletOnlyAccount = leftmost
+      [ _walletCfg_createWalletOnlyAccount c1
+      , _walletCfg_createWalletOnlyAccount c2
+      ]
+    , _walletCfg_refreshBalances = leftmost
+      [ _walletCfg_refreshBalances c1
+      , _walletCfg_refreshBalances c2
+      ]
+    , _walletCfg_setCrossChainTransfer = leftmost
+      [ _walletCfg_setCrossChainTransfer c1
+      , _walletCfg_setCrossChainTransfer c2
+      ]
+    , _walletCfg_updateAccountNotes = leftmost
+      [ _walletCfg_updateAccountNotes c1
+      , _walletCfg_updateAccountNotes c2
+      ]
+    , _walletCfg_updateKeyNotes = leftmost
+      [ _walletCfg_updateKeyNotes c1
+      , _walletCfg_updateKeyNotes c2
+      ]
+    }
 
 instance Reflex t => Monoid (WalletCfg key t) where
   mempty = WalletCfg never never never never never never never never never
@@ -474,24 +382,21 @@ instance Flattenable (WalletCfg key t) t where
   flattenWith doSwitch ev =
     WalletCfg
       <$> doSwitch never (_walletCfg_genKey <$> ev)
-      <*> doSwitch never (_walletCfg_importAccount <$> ev)
       <*> doSwitch never (_walletCfg_delKey <$> ev)
+      <*> doSwitch never (_walletCfg_delAccount <$> ev)
+      <*> doSwitch never (_walletCfg_importAccount <$> ev)
       <*> doSwitch never (_walletCfg_createWalletOnlyAccount <$> ev)
       <*> doSwitch never (_walletCfg_refreshBalances <$> ev)
       <*> doSwitch never (_walletCfg_setCrossChainTransfer <$> ev)
       <*> doSwitch never (_walletCfg_updateAccountNotes <$> ev)
-      <*> doSwitch never (_walletCfg_addVanityAccountInflight <$> ev)
-      <*> doSwitch never (_walletCfg_delInflightAccount <$> ev)
+      <*> doSwitch never (_walletCfg_updateKeyNotes <$> ev)
 
 instance Reflex t => Semigroup (Wallet key t) where
   wa <> wb = Wallet
-    { _wallet_accounts = _wallet_accounts wa <> _wallet_accounts wb
-    , _wallet_walletOnlyAccountCreated = leftmost
-      [ _wallet_walletOnlyAccountCreated wa
-      , _wallet_walletOnlyAccountCreated wb
-      ]
+    { _wallet_keys = _wallet_keys wa <> _wallet_keys wb
+    , _wallet_accounts = _wallet_accounts wa <> _wallet_accounts wb
     }
 
 instance Reflex t => Monoid (Wallet key t) where
-  mempty = Wallet mempty never
+  mempty = Wallet mempty mempty
   mappend = (<>)

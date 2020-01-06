@@ -46,6 +46,10 @@ module Frontend.UI.Widgets
   , uiSelectElement
   , uiPassword
   , validatedInputWithButton
+  , uiAccountBalance
+  , uiAccountBalance'
+  , uiAccountChain
+  , uiAccountNotes
     -- ** Helper widgets
   , imgWithAlt
   , showLoading
@@ -93,6 +97,7 @@ import Pact.Types.ChainId (ChainId (..))
 import Pact.Types.Runtime (GasPrice (..))
 import Pact.Parse (ParsedDecimal (..))
 ------------------------------------------------------------------------------
+import           Common.Wallet
 import           Frontend.Network (HasNetwork(..), NodeInfo, getChains, maxCoinPrecision)
 import           Frontend.Foundation
 import           Frontend.UI.Button
@@ -541,6 +546,30 @@ validatedInputWithButton uCls check placeholder buttonText = do
       pure update
 
 
+uiAccountBalance' :: HasAccountInfo a => a -> Text
+uiAccountBalance' acc = case _accountInfo_balance i of
+  Nothing -> "Unknown"
+  Just b -> mconcat
+    [ tshow $ unAccountBalance b
+    , " KDA"
+    , maybe "" (const "*") (_accountInfo_unfinishedCrossChainTransfer i)
+    ]
+  where i = view accountInfo acc
+
+uiAccountBalance :: Maybe AccountBalance -> Text
+uiAccountBalance = \case
+  Nothing -> "Unknown"
+  Just b -> mconcat
+    [ tshow $ unAccountBalance b
+    , " KDA"
+    ]
+
+uiAccountChain :: Account -> Text
+uiAccountChain = _chainId . accountChain
+
+uiAccountNotes :: Account -> Text
+uiAccountNotes = maybe "" unAccountNotes . accountNotes
+
 showLoading
   :: (NotReady t m, Adjustable t m, PostBuild t m, DomBuilder t m, Monoid b)
   => Dynamic t (Maybe a)
@@ -564,8 +593,7 @@ controlledAccordionItem dActive contentClass title inner = do
     let mkClass a = singleClass "accordion" <> contentClass <> activeClass a
     (onClick, pair) <- elDynKlass "div" (mkClass <$> dActive) $ do
       (onClickL,a1) <- elClass "h2" "accordion__header" $ do
-        b <- uiButton (def & uiButtonCfg_class .~ "accordion__toggle-button button_type_secondary") $
-          imgWithAlt (static @"img/arrow-down.svg") "Expand" blank
+        b <- accordionButton def
         r <- title
         pure (b, r)
       b1 <- divClass "accordion__content" inner

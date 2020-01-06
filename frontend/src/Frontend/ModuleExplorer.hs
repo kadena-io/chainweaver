@@ -51,8 +51,8 @@ import           Reflex
 ------------------------------------------------------------------------------
 import           Pact.Types.Lang                    (ModuleName)
 ------------------------------------------------------------------------------
+import           Common.GistStore                  (GistMeta (..))
 import           Frontend.Foundation
-import           Frontend.GistStore (GistMeta (..))
 import           Frontend.ModuleExplorer.Example    as Example
 import           Frontend.ModuleExplorer.File       as File
 import           Frontend.ModuleExplorer.LoadedRef  as Module

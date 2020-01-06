@@ -52,8 +52,9 @@ import Frontend.Ide
 import Frontend.OAuth
 import Frontend.Repl
 import Frontend.Storage
+import qualified Frontend.Store as Store
 import Frontend.UI.Button
-import Frontend.UI.Dialogs.AddAccount (uiAddWalletOnlyAccountDialogButton)
+import Frontend.UI.Dialogs.AddVanityAccount (uiAddVanityAccountButton)
 import Frontend.UI.Dialogs.CreateGist (uiCreateGist)
 import Frontend.UI.Dialogs.CreatedGist (uiCreatedGist)
 import Frontend.UI.Dialogs.DeployConfirmation (uiDeployConfirmation)
@@ -81,7 +82,7 @@ app
   => RoutedT t (R FrontendRoute) m ()
   -- ^ Extra widget to display at the bottom of the sidebar
   -> AppCfg key t (RoutedT t (R FrontendRoute) m) -> RoutedT t (R FrontendRoute) m ()
-app sidebarExtra appCfg = void . mfix $ \ cfg -> do
+app sidebarExtra appCfg = Store.versionedUi (Store.versioner @key) $ void . mfix $ \ cfg -> do
   ideL <- makeIde appCfg cfg
 
   walletSidebar sidebarExtra
@@ -93,10 +94,17 @@ app sidebarExtra appCfg = void . mfix $ \ cfg -> do
     -- yet.
     route <- askRoute
     routedCfg <- subRoute $ lift . flip runRoutedT route . \case
-      FrontendRoute_Wallet -> mkPageContent "wallet" $ do
-        walletBarCfg <- controlBar "Wallet" $ do
-          refreshCfg <- uiWalletRefreshButton ideL
-          addCfg <- uiAddWalletOnlyAccountDialogButton ideL
+      FrontendRoute_Accounts -> mkPageContent "accounts" $ do
+        barCfg <- controlBar "Accounts" $ do
+          refreshCfg <- uiWalletRefreshButton
+          addCfg <- uiAddVanityAccountButton ideL
+          pure $ addCfg <> refreshCfg
+        accountsCfg <- uiAccountsTable ideL
+        pure $ barCfg <> accountsCfg
+      FrontendRoute_Keys -> mkPageContent "keys" $ do
+        walletBarCfg <- controlBar "Keys" $ do
+          refreshCfg <- uiWalletRefreshButton
+          addCfg <- uiGenerateKeyButton
           pure $ addCfg <> refreshCfg
         walletCfg <- uiWallet ideL
         pure $ walletBarCfg <> walletCfg
@@ -148,8 +156,8 @@ walletSidebar sidebarExtra = elAttr "div" ("class" =: "sidebar") $ do
     let sidebarLink r@(r' :/ _) label = routeLink r $ do
           let selected = demuxed route (Some r')
           void $ uiSidebarIcon selected (routeIcon r) label
-
-    sidebarLink (FrontendRoute_Wallet :/ ()) "Wallets"
+    sidebarLink (FrontendRoute_Keys :/ ()) "Keys"
+    sidebarLink (FrontendRoute_Accounts :/ ()) "Accounts"
     sidebarLink (FrontendRoute_Contracts :/ Nothing) "Contracts"
     elAttr "div" ("style" =: "flex-grow: 1") blank
     sidebarLink (FrontendRoute_Resources :/ ()) "Resources"
@@ -160,7 +168,8 @@ walletSidebar sidebarExtra = elAttr "div" ("class" =: "sidebar") $ do
 routeIcon :: R FrontendRoute -> Text
 routeIcon = \case
   FrontendRoute_Contracts :/ _ -> static @"img/menu/contracts.svg"
-  FrontendRoute_Wallet :/ _ -> static @"img/menu/wallet.svg"
+  FrontendRoute_Accounts :/ _ -> static @"img/menu/wallet.svg"
+  FrontendRoute_Keys :/ _ -> static @"img/menu/keys.svg"
   FrontendRoute_Resources :/ _ -> static @"img/menu/resources.svg"
   FrontendRoute_Settings :/ _ -> static @"img/menu/settings.svg"
 

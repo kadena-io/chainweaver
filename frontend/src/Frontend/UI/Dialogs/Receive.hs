@@ -30,7 +30,6 @@ import Reflex.Dom
 import Kadena.SigningApi (DappCap (..))
 import Pact.Types.Capability (SigCapability (..))
 import Pact.Types.Term (QualifiedName (..), KeySet (..), Name (..), BareName (..))
-import Pact.Types.ChainId (ChainId(..))
 import Pact.Types.ChainMeta (PublicMeta (..), TTLSeconds)
 import Pact.Types.PactValue (PactValue (..))
 import Pact.Types.Exp (Literal (LString, LDecimal))
@@ -88,12 +87,13 @@ uiDisplayAddress address = do
 uiReceiveFromLegacyAccount
   :: ( MonadWidget t m
      , HasWallet model key t
+     , HasNetwork model t
      , HasCrypto key (Performable m)
      )
   => model
   -> m (Dynamic t (Maybe NonBIP32TransferInfo))
 uiReceiveFromLegacyAccount model = do
-  mAccountName <- uiAccountNameInput (model ^. wallet) (pure Nothing) Nothing
+  mAccountName <- uiAccountNameInput model (pure Nothing) Nothing
 
   onKeyPair <- divClass "account-details__private-key" $
     _inputElement_input <$> mkLabeledInput True "Private Key" uiInputElement def
@@ -125,13 +125,14 @@ uiReceiveModal
      , HasCrypto key (Performable m)
      )
   => model
-  -> Account key
+  -> AccountName
+  -> AccountCreated
   -> Maybe ChainId
   -> Event t ()
   -> m (mConf, Event t ())
-uiReceiveModal model account mchain _onClose = do
+uiReceiveModal model account accCreated mchain _onClose = do
   onClose <- modalHeader $ text "Receive"
-  (conf, closes) <- fmap splitDynPure $ workflow $ uiReceiveModal0 model account mchain onClose
+  (conf, closes) <- fmap splitDynPure $ workflow $ uiReceiveModal0 model account accCreated mchain onClose
   mConf <- flatten =<< tagOnPostBuild conf
   let close = switch $ current closes
   pure (mConf, close)
@@ -146,12 +147,14 @@ uiReceiveModal0
      , HasCrypto key m
      )
   => model
-  -> Account key
+  -> AccountName
+  -> AccountCreated
   -> Maybe ChainId
   -> Event t ()
   -> Workflow t m (mConf, Event t ())
-uiReceiveModal0 model account mchain onClose = Workflow $ do
+uiReceiveModal0 model account accCreated mchain onClose = Workflow $ do
   let
+
     netInfo = do
       nodes <- model ^. network_selectedNodes
       meta <- model ^. network_meta
@@ -182,7 +185,7 @@ uiReceiveModal0 model account mchain onClose = Workflow $ do
         (accordionHeaderBtn "Option 1: Copy and share Kadena Address") $ do
         dyn_ $ ffor chain $ uiDisplayAddress . \case
           Nothing -> "Please select a chain"
-          Just cid -> textKadenaAddress $ accountToKadenaAddress account cid
+          Just cid -> textKadenaAddress $ mkKadenaAddress accCreated cid account
 
       (onReceiClick, results) <- controlledAccordionItem (not <$> showingKadenaAddress) mempty
         (accordionHeaderBtn "Option 2: Transfer from non-Chainweaver Account") $ do
@@ -214,7 +217,7 @@ uiReceiveModal0 model account mchain onClose = Workflow $ do
       g <- lift $ sample $ current gaslimit
       ni <- MaybeT $ sample $ current netInfo
       ti <- MaybeT $ sample $ current transferInfo
-      pure $ receiveFromLegacySubmit onClose account c t g ni ti
+      pure $ receiveFromLegacySubmit onClose account accCreated c t g ni ti
 
   pure ( (conf, onClose <> done)
        , submit
@@ -226,20 +229,20 @@ receiveFromLegacySubmit
      , HasCrypto key m
      )
   => Event t ()
-  -> Account key
+  -> AccountName
+  -> AccountCreated
   -> ChainId
   -> TTLSeconds
   -> GasLimit
   -> ([Either a NodeInfo], PublicMeta, NetworkName)
   -> NonBIP32TransferInfo
   -> Workflow t m (mConf, Event t ())
-receiveFromLegacySubmit onClose account chain ttl gasLimit netInfo transferInfo = Workflow $ do
+receiveFromLegacySubmit onClose account accCreated chain ttl gasLimit netInfo transferInfo = Workflow $ do
   let
     sender = _legacyTransferInfo_account transferInfo
     senderKey = _legacyTransferInfo_pactKey transferInfo
     senderPubKey = _pactKey_publicKey senderKey
     amount = _legacyTransferInfo_amount transferInfo
-    accCreated = accountIsCreated account
 
     unpackGasPrice (GasPrice (ParsedDecimal d)) = d
 
@@ -248,7 +251,7 @@ receiveFromLegacySubmit onClose account chain ttl gasLimit netInfo transferInfo 
           AccountCreated_No -> "transfer-create"
           AccountCreated_Yes -> "transfer"
       , tshow $ unAccountName $ sender
-      , tshow $ unAccountName $ _account_name account
+      , tshow $ unAccountName account
       , case accCreated of
           AccountCreated_No -> "(read-keyset 'key)"
           AccountCreated_Yes -> mempty
@@ -264,14 +267,14 @@ receiveFromLegacySubmit onClose account chain ttl gasLimit netInfo transferInfo 
         }
       , _scArgs =
         [ PLiteral $ LString $ unAccountName sender
-        , PLiteral $ LString $ unAccountName $ _account_name account
+        , PLiteral $ LString $ unAccountName account
         , PLiteral $ LDecimal (unpackGasPrice amount)
         ]
       }
 
-    dat = case accountIsCreated account of
+    dat = case accCreated of
       AccountCreated_No
-        | Right pk <- parsePublicKey (unAccountName $ _account_name account)
+        | Right pk <- parsePublicKey (unAccountName account)
         -> HM.singleton "key" $ Aeson.toJSON $ KeySet (Set.singleton $ toPactPublicKey pk) (Name $ BareName "keys-all" def)
       _ -> mempty
 

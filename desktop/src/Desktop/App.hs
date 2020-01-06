@@ -33,7 +33,6 @@ import Backend (serveBackendRoute)
 import Common.Route
 import Frontend
 import Frontend.AppCfg
-import Frontend.Storage
 import Desktop.Frontend
 import Desktop.SigningApi
 import Desktop.Util
@@ -150,8 +149,7 @@ main' ffi mainBundleResourcePath runHTML = do
           bowserLoad <- mvarTriggerEvent bowserMVar
           fileOpened <- mvarTriggerEvent fileOpenedMVar
           signingRequest <- mvarTriggerEvent signingRequestMVar
-          let store = fileStorage libPath
-              appCfg = AppCfg
+          let appCfg = AppCfg
                 { _appCfg_gistEnabled = False
                 , _appCfg_externalFileOpened = fileOpened
                 , _appCfg_openFileDialog = liftIO $ _appFFI_global_openFileDialog ffi
@@ -165,7 +163,7 @@ main' ffi mainBundleResourcePath runHTML = do
                   {
                   }
                 }
-          _ <- mapRoutedT (flip runStorageT store) $ runWithReplace loaderMarkup $
+          _ <- mapRoutedT (runFileStorageT libPath) $ runWithReplace loaderMarkup $
             (liftIO (_appFFI_activateWindow ffi) >> liftIO (_appFFI_resizeWindow ffi minWindowSize) >> bipWallet appCfg) <$ bowserLoad
           pure ()
         }
