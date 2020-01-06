@@ -34,6 +34,7 @@ import Common.Route
 import Frontend
 import Frontend.AppCfg
 import Frontend.ModuleExplorer.Impl (loadEditorFromLocalStorage)
+import Frontend.Log (defaultLogger)
 import Desktop.Frontend
 import Desktop.SigningApi
 import Desktop.Util
@@ -162,6 +163,7 @@ main' ffi mainBundleResourcePath runHTML = do
                 , _appCfg_enabledSettings = EnabledSettings
                   {
                   }
+                , _appCfg_logMessage = defaultLogger
                 }
           _ <- mapRoutedT (runFileStorageT libPath) $ runWithReplace loaderMarkup $
             (liftIO (_appFFI_activateWindow ffi) >> liftIO (_macFFI_resizeWindow ffi defaultWindowSize) >> bipWallet appCfg) <$ bowserLoad

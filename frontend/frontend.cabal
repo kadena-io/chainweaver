@@ -94,10 +94,12 @@ library
                , universe-base
                , universe-dependent-sum
                , vector
+               , monad-logger
 
 
   exposed-modules: Frontend
                  , Frontend.AppCfg
+                 , Frontend.Log
                  , Frontend.Network
                  , Frontend.Network.NodeInfo
                  , Frontend.Crypto.Browser

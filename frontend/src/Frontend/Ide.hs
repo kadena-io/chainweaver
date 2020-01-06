@@ -39,7 +39,7 @@ module Frontend.Ide
 
 ------------------------------------------------------------------------------
 import           Control.Lens
-import Data.Aeson (FromJSON, ToJSON)
+import           Data.Aeson                   (FromJSON, ToJSON)
 import           Data.Void                    (Void)
 import           Generics.Deriving.Monoid     (mappenddefault, memptydefault)
 import           GHC.Generics                 (Generic)
@@ -51,6 +51,7 @@ import           Obelisk.Route.Frontend       (R, RouteToUrl (..), Routed (..),
 ------------------------------------------------------------------------------
 import           Common.Route                 (FrontendRoute)
 import           Frontend.AppCfg
+import           Frontend.Log
 import           Frontend.Crypto.Class
 import           Frontend.Network
 import           Frontend.Editor
@@ -97,6 +98,8 @@ data IdeCfg modal key t = IdeCfg
   , _ideCfg_setModal        :: LeftmostEv t (Maybe modal)
    -- ^ Request a modal dialog. Use `Nothing` to close an existing modal
    --   dialog.
+  , _ideCfg_logger          :: LogCfg t
+  -- ^ Log a message to the application level logs
   }
   deriving Generic
 
@@ -117,6 +120,7 @@ data Ide modal key t = Ide
   -- ^ Currently selected tab in the right pane.
   , _ide_modal          :: Dynamic t (Maybe modal)
   -- ^ The modal dialog that currently gets displayed.
+  , _ide_logger         :: Logger t
   }
   deriving Generic
 
@@ -154,6 +158,9 @@ makeIde appCfg userCfg = build $ \ ~(cfg, ideL) -> do
 
     modal <- holdDyn Nothing $ unLeftmostEv (_ideCfg_setModal cfg)
 
+    _ <- performEvent_ $ liftIO . _appCfg_logMessage appCfg . uncurry formatLogMessage
+      <$> _logCfg_logMessage (_ideCfg_logger cfg)
+
     pure
       ( mconcat
           [ userCfg
@@ -177,11 +184,18 @@ makeIde appCfg userCfg = build $ \ ~(cfg, ideL) -> do
         , _ide_modal = modal
         , _ide_oAuth = oAuthL
         , _ide_gistStore = gistStoreL
+        , _ide_logger = ideLogger
         }
       )
   where
     build :: ((IdeCfg modal key t, Ide modal key t) -> m (IdeCfg modal key t, Ide modal key t)) -> m (Ide modal key t)
     build = fmap snd . mfix
+
+    ideLogger = Logger
+      { _log_formatMessage = formatLogMessage
+      , _log_logPromptly = \lvl -> _appCfg_logMessage appCfg . formatLogMessage lvl
+      , _log_logStr = _appCfg_logMessage appCfg
+      } 
 
 makeEnvSelection
   :: forall key t m modal. (MonadHold t m, Reflex t)
@@ -248,6 +262,9 @@ instance HasModalCfg (IdeCfg modal key t) modal t where
 instance HasReplCfg (IdeCfg modal key t) t where
   replCfg = ideCfg_repl
 
+instance HasLogCfg (IdeCfg modal key t) t where
+  logCfg = ideCfg_logger
+
 instance HasWallet (Ide modal key t) key t where
   wallet = ide_wallet
 
@@ -275,6 +292,9 @@ instance HasOAuth (Ide modal key t) t where
 instance HasGistStore (Ide modal key t) t where
   gistStore = ide_gistStore
 
+instance HasLogger (Ide model key t) t where
+  logger = ide_logger
+
 instance Flattenable (IdeCfg modal key t) t where
   flattenWith doSwitch ev =
     IdeCfg
@@ -289,3 +309,4 @@ instance Flattenable (IdeCfg modal key t) t where
       <*> flattenWith doSwitch (_ideCfg_gistStore <$> ev)
       <*> doSwitch never (_ideCfg_selEnv <$> ev)
       <*> fmap LeftmostEv (doSwitch never (unLeftmostEv . _ideCfg_setModal <$> ev))
+      <*> flattenWith doSwitch (_ideCfg_logger <$> ev)

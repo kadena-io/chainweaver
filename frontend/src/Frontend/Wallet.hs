@@ -64,7 +64,6 @@ import qualified Data.Map as Map
 import qualified Data.Map.Monoidal as MonoidalMap
 import qualified Data.Set as Set
 import qualified Data.IntMap as IntMap
-import qualified Data.Text as T
 import qualified Pact.Server.ApiV1Client as Api
 import qualified Pact.Types.Command as Pact
 import qualified Pact.Types.ChainMeta as Pact
@@ -81,6 +80,7 @@ import Frontend.KadenaAddress
 import Frontend.Storage
 import Frontend.Network
 import Frontend.Store
+import Frontend.Log
 
 accountIsCreated :: Account -> AccountCreated
 accountIsCreated = maybe AccountCreated_No (const AccountCreated_Yes) . _accountInfo_balance . view accountInfo
@@ -154,6 +154,7 @@ makeWallet
     , MonadFix m, MonadJSM (Performable m)
     , HasStorage (Performable m), HasStorage m
     , HasNetwork model t
+    , HasLogger model t
     , TriggerEvent t m
     , HasCrypto key (Performable m)
     , FromJSON key, ToJSON key
@@ -223,6 +224,7 @@ getBalances
   :: forall model key t m.
     ( PerformEvent t m, TriggerEvent t m
     , MonadJSM (Performable m)
+    , HasLogger model t
     , HasNetwork model t, HasCrypto key (Performable m)
     )
   => model -> Event t (KeyStorage key, AccountStorage) -> m (Event t [(NetworkName, Some AccountRef, Maybe AccountBalance)])
@@ -270,23 +272,24 @@ getBalances model accStore = performEventAsync $ flip push accStore $ \(keys, ne
 
       -- Build a request for each chain
       requests <- flip MonoidalMap.traverseWithKey chainsToAccounts $ \chain as -> do
-        liftIO $ putStrLn $ "getBalances: Building request for get-balance on chain " <> T.unpack (_chainId chain)
+        logStrPromptly model . $(fmtLogTH LevelInfo) $ "getBalances: Building request for get-balance on chain " <> _chainId chain
+        -- liftIO $ putStrLn $ "getBalances: Building request for get-balance on chain " <> T.unpack (_chainId chain)
         cmd <- buildCmd Nothing net (pm chain) mempty [] (code as) mempty mempty
         liftIO $ print cmd
         let envs = mkClientEnvs nodes chain
         pure $ doReqFailover envs (Api.local Api.apiV1Client cmd) >>= \case
-          Left es -> liftIO $ putStrLn $ "getBalances: request failure: " <> show es
+          Left es -> $(logDefTH LevelInfo) $ "getBalances: request failure: " <> tshow es
           Right cr -> case Pact._crResult cr of
             Pact.PactResult (Right pv) -> case parseAccountBalances pv of
-              Left e -> liftIO $ putStrLn $ "getBalances: failed to parse balances:" <> show e
+              Left e -> $(logDefTH LevelInfo) $ "getBalances: failed to parse balances:" <> tshow e
               Right balances -> liftIO $ do
-                putStrLn "getBalances: success:"
-                print balances
+                $(logDefTH LevelInfo) $ "getBalances: success:"
+                $(logDefTH LevelInfo) $ tshow balances
                 -- Cheat slightly by checking if the account name is really a public key.
                 liftIO $ cb $ ffor (Map.toList balances) $ \(AccountName name, balance) -> case textToKey name of
                   Nothing -> (net, Some $ AccountRef_Vanity (AccountName name) chain, balance)
                   Just pk -> (net, Some $ AccountRef_NonVanity pk chain, balance)
-            Pact.PactResult (Left e) -> liftIO $ putStrLn $ "getBalances failed:" <> show e
+            Pact.PactResult (Left e) -> $(logDefTH LevelInfo) $ "getBalances failed:" <> tshow e
       -- Perform the requests on a forked thread
       void $ liftJSM $ forkJSM $ void $ sequence requests
 
