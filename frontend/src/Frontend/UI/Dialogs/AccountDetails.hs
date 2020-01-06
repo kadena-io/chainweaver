@@ -94,10 +94,10 @@ uiAccountDetailsDetails netname a onClose = Workflow $ do
           notes0 <- fmap (Just . value) $ mkLabeledClsInput False "Notes" $ \cls -> uiInputElement $ def
             & inputElementConfig_initialValue .~ unAccountNotes va
             & initialAttributes . at "class" %~ pure . maybe (renderClass cls) (mappend (" " <> renderClass cls))
+          -- separator
           horizontalDashedSeparator
           pure notes0
         _ -> pure Nothing
-        -- separator
       -- Kadena Address
       _ <- displayText "Kadena Address" kAddr "account-details__kadena-address"
       -- copy
