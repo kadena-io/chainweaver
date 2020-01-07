@@ -95,7 +95,7 @@ library
                , universe-dependent-sum
                , vector
                , monad-logger
-
+               , hsyslog
 
   exposed-modules: Frontend
                  , Frontend.AppCfg
