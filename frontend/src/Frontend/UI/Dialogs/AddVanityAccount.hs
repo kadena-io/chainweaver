@@ -178,7 +178,7 @@ uiAddVanityAccountSettings ideL onInflightChange mInflightAcc mChainId initialNo
 
       pure
         ( cfg & networkCfg_setSender .~ fmapMaybe (fmap (\(Some x) -> accountRefToName x)) (updated mSender)
-        , fmap mkSettings dPayload >>= buildDeploymentSettingsResult ideL mSender signers cChainId capabilities ttl gasLimit code
+        , fmap mkSettings dPayload >>= buildDeploymentSettingsResult ideL mSender mGasPayer signers cChainId capabilities ttl gasLimit code
         , account
         , cChainId
         )

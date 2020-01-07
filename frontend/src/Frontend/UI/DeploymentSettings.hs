@@ -220,6 +220,7 @@ buildDeploymentSettingsResult
      )
   => model
   -> Dynamic t (Maybe (Some AccountRef))
+  -> Dynamic t (Maybe (Some AccountRef))
   -> Dynamic t (Set (Some AccountRef))
   -> Dynamic t (Maybe ChainId)
   -> Dynamic t (Map (Some AccountRef) [SigCapability])
@@ -228,7 +229,7 @@ buildDeploymentSettingsResult
   -> Dynamic t Text
   -> DeploymentSettingsConfig t m model a
   -> Dynamic t (Maybe (Performable m (DeploymentSettingsResult key)))
-buildDeploymentSettingsResult m mSender signers cChainId capabilities ttl gasLimit code settings = runMaybeT $ do
+buildDeploymentSettingsResult m mSender mGasPayer signers cChainId capabilities ttl gasLimit code settings = runMaybeT $ do
   selNodes <- lift $ m ^. network_selectedNodes
   networkName <- lift $ m ^. network_selectedNetwork
   networkId <- hoistMaybe $ hush . mkNetworkName . nodeVersion =<< headMay (rights selNodes)
@@ -251,14 +252,19 @@ buildDeploymentSettingsResult m mSender signers cChainId capabilities ttl gasLim
   code' <- lift code
   keys <- lift $ m ^. wallet_keys
   allAccounts <- MaybeT $ Map.lookup networkName . unAccountStorage <$> m ^. wallet_accounts
-  -- Make an effort to ensure the sender account has enough balance to actually
+
+  -- Make an effort to ensure the gas payer (if there is one) account has enough balance to actually
   -- pay the gas. This won't work if the user selects an account on a different
   -- chain, but that's another issue.
-  -- for_ (lookupAccountBalance sender allAccounts) $ \case
-  --   Nothing -> empty
-  --   Just b -> let GasLimit lim = _pmGasLimit publicMeta
-  --                 GasPrice (ParsedDecimal price) = _pmGasPrice publicMeta
-  --              in guard $ unAccountBalance b > fromIntegral lim * price
+  gasPayer <- lift mGasPayer
+  case gasPayer of
+    Nothing -> pure () -- No gas payer selected, move along
+    Just gp ->  for_ (lookupAccountBalance gp allAccounts) $ \case
+      Nothing -> empty -- Gas Payer selected but they're not an account?!
+      Just b -> let GasLimit lim = _pmGasLimit publicMeta
+                    GasPrice (ParsedDecimal price) = _pmGasPrice publicMeta
+                 in guard $ unAccountBalance b > fromIntegral lim * price
+
   let pkCaps = publicKeysForAccounts allAccounts caps
   pure $ do
     let signingPairs = getSigningPairs keys allAccounts signingAccounts
@@ -421,7 +427,7 @@ uiDeploymentSettings m settings = mdo
 
       pure
         ( cfg & networkCfg_setSender .~ fmapMaybe (fmap (\(Some x) -> accountRefToName x)) (updated mSender)
-        , buildDeploymentSettingsResult m mSender signers cChainId capabilities ttl gasLimit code settings
+        , buildDeploymentSettingsResult m mSender mGasPayer signers cChainId capabilities ttl gasLimit code settings
         , mRes
         )
 
@@ -494,7 +500,10 @@ uiCfg mCode m wChainId mTTL mGasLimit userSections otherAccordion mSenderSelect 
   let mkGeneralSettings = do
         traverse_ (\c -> transactionInputSection c Nothing) mCode
         cId <- uiDeployDestination m wChainId
-        mSender <- mSenderSelect m cId
+
+        dialogSectionHeading mempty "Transaction Sender"
+        mSender <- elKlass "div" ("group segment") $ mkLabeledClsInput True "Account" $ \_ -> do
+          mSenderSelect m cId
 
         -- Customisable user provided UI section
         fa <- for userSections $ \(title, body) -> do
@@ -1019,11 +1028,21 @@ uiDeployPreview model settings keys accounts signers gasLimit ttl code lastPubli
   where
     uiPreviewResponses signing (cmd, wrappedCmd) = do
       pb <- getPostBuild
+
+      unless (getAny $ foldMap (Any . any isGas) capabilities) $ do
+        dialogSectionHeading mempty "Notice"
+        divClass "group segment" $ mkLabeledView True mempty
+          $ text "A 'Gas Payer' has not been selected for this transaction. Are you sure this is correct?"
+
       transactionInputSection (pure code) (pure cmd)
       dialogSectionHeading mempty  "Destination"
       _ <- divClass "group segment" $ do
         transactionDisplayNetwork model
         predefinedChainIdDisplayed chainId model
+
+      dialogSectionHeading mempty  "Transaction Sender"
+      _ <- divClass "group segment" $ mkLabeledClsInput True "Account" $ \_ -> do
+        uiSenderFixed $ AccountName $ withSome sender accountRefToName
 
       let accountsToTrack = getAccounts signing
           localReq = case wrappedCmd of
