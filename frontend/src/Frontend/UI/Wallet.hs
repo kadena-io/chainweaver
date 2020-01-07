@@ -327,7 +327,7 @@ uiKeyItem model keyIndex key = do
         td $ dynText $ unAccountNotes . _key_notes <$> key
         td $ dynText $ uiAccountBalance False . Just <$> balance
         dialog <- td $ buttons $ do
-          onDetails <- detailsButton (cfg & uiButtonCfg_class <>~ " wallet__table-button--hamburger")
+          onDetails <- detailsButton (cfg & uiButtonCfg_class <>~ "wallet__table-button--hamburger" <> "wallet__table-button-key")
           pure $ KeyDialog_Details keyIndex <$> current key <@ onDetails
         pure (clk, dialog)
 
