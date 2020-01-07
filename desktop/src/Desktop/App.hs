@@ -33,6 +33,7 @@ import Backend (serveBackendRoute)
 import Common.Route
 import Frontend
 import Frontend.AppCfg
+import Frontend.ModuleExplorer.Impl (loadEditorFromLocalStorage)
 import Desktop.Frontend
 import Desktop.SigningApi
 import Desktop.Util
@@ -123,7 +124,6 @@ main' ffi mainBundleResourcePath runHTML = do
       (_appFFI_moveToForeground ffi)
       (_appFFI_moveToBackground ffi)
     runHTML "index.html" route putStrLn handleOpen $ do
-      mInitFile <- liftIO $ tryTakeMVar fileOpenedMVar
       let frontendMode = FrontendMode
             { _frontendMode_hydrate = False
             , _frontendMode_adjustRoute = True
@@ -153,7 +153,7 @@ main' ffi mainBundleResourcePath runHTML = do
                 { _appCfg_gistEnabled = False
                 , _appCfg_externalFileOpened = fileOpened
                 , _appCfg_openFileDialog = liftIO $ _appFFI_global_openFileDialog ffi
-                , _appCfg_loadEditor = pure mInitFile
+                , _appCfg_loadEditor = loadEditorFromLocalStorage
 
                 -- DB 2019-08-07 Changing this back to False because it's just too convenient this way.
                 , _appCfg_editorReadOnly = False
