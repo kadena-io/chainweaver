@@ -12,7 +12,7 @@ import Language.Javascript.JSaddle.Types (JSM)
 import Language.Javascript.JSaddle.WKWebView (AppDelegateConfig(..), mainBundleResourcePath, runHTMLWithBaseURL)
 import System.FilePath ((</>))
 
-import Desktop (main', MacFFI(..))
+import Desktop (main', AppFFI(..))
 
 foreign import ccall setupAppMenu :: StablePtr (CString -> IO ()) -> IO ()
 foreign import ccall activateWindow :: IO ()
