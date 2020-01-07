@@ -61,6 +61,10 @@
   overflow: hidden;
 }
 
+.button.wallet__table-button-key:hover {
+  background-color: $black-hover;
+}
+
 .wallet__table-button--hamburger {
   padding: 0 15px;
 }
