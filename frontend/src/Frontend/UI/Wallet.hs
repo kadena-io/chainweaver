@@ -192,7 +192,7 @@ uiAccountItem (name, chain) acc = do
 
       recv <- receiveButton cfg
       send <- sendButton cfg
-      onDetails <- detailsButton (cfg & uiButtonCfg_class <>~ " wallet__table-button--hamburger")
+      onDetails <- detailsIconButton cfg
 
       pure $ leftmost
         [ AccountDialog_Details . (AccountRef_Vanity name chain ==>) <$> current acc <@ onDetails
@@ -236,7 +236,7 @@ uiKeyItems model = do
     keyMap' = model ^. wallet_keys
     keyMap = Map.fromAscList . IntMap.toAscList <$> keyMap'
     tableAttrs =
-      "style" =: "table-layout: fixed; width: 98%"
+      "style" =: "table-layout: fixed; width: calc(100% - 22px);"
       <> "class" =: "wallet table"
   events <- elAttr "table" tableAttrs $ do
     el "colgroup" $ do
@@ -339,7 +339,7 @@ uiKeyItem model keyIndex key = do
         td $ buttons $ do
           recv <- receiveButton cfg
           send <- sendButton cfg
-          onDetails <- detailsButton (cfg & uiButtonCfg_class <>~ " wallet__table-button--hamburger")
+          onDetails <- detailsIconButton cfg
           let pk = _keyPair_publicKey . _key_pair <$> current key
               balance = _accountInfo_balance . _nonVanityAccount_info <$> dAccount
               created = maybe AccountCreated_No (const AccountCreated_Yes) <$> balance

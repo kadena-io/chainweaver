@@ -25,6 +25,7 @@
   @extend .table__heading;
   padding: 15px;
   padding-bottom: 30px;
+  white-space: nowrap;
 }
 
 .wallet__table-cell {
@@ -59,6 +60,20 @@
 
   text-overflow: ellipsis;
   overflow: hidden;
+
+  @media (max-width: 1550px) {
+    padding: 0 10px;
+    margin-right: 0;
+    &:not(:first-child) {
+      border-left: none;
+      border-bottom-left-radius: 0;
+      border-top-left-radius: 0;
+    }
+    &:not(:last-child) {
+      border-bottom-right-radius: 0;
+      border-top-right-radius: 0;
+    }
+  }
 }
 
 .wallet__table-button--hamburger {
