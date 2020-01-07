@@ -102,9 +102,6 @@
       cp "${pkgs.z3}"/bin/z3 "$LIBEXECDIR/z3"
 
       #TODO : This shouldn't be in libexec
-      cp -rL "${obApp.mkAssets obApp.passthru.staticFiles}" "$LIBEXECDIR/static.assets"
-      cp -rL "${obApp.passthru.staticFiles}" "$LIBEXECDIR/static"
-      cp -rL "${sass}/sass.css" "$LIBEXECDIR/sass.css"
       cp -rL "${obApp.mkAssets obApp.passthru.staticFiles}" "$SHAREDIR/static.assets"
       cp -rL "${obApp.passthru.staticFiles}" "$SHAREDIR/static"
       cp -rL "${sass}/sass.css" "$SHAREDIR/sass.css"
@@ -121,6 +118,7 @@
       wrapperArgs=""
       wrapperArgs+="--set WEBKIT_DISABLE_COMPOSITING_MODE 1 "
       wrapperArgs+="--set LD_LIBRARY_PATH $LIBPATH "
+      wrapperArgs+="--set CHAINWEAVER_STATIC_PATH $SHAREPATH "
 
       function copy_gio_modules() {
         path=$1
