@@ -174,7 +174,11 @@ makeWallet model conf = do
       ]
 
   rec
-    newBalances <- getBalances model $ (,) <$> current keys <*> current accounts <@ _walletCfg_refreshBalances conf
+    newBalances <- getBalances model $ leftmost
+      [ (,) . IntMap.elems <$> current keys <*> current accounts <@ _walletCfg_refreshBalances conf
+      -- Also refresh balances after we generate a new key
+      , ffor onNewKey $ \k -> ([k], mempty)
+      ]
     accounts <- foldDyn id initialAccounts $ leftmost
       [ ffor (_walletCfg_importAccount conf) $ \(net, name, chain, acc) ->
         ((<>) (AccountStorage $ Map.singleton net $ mempty { _accounts_vanity = Map.singleton name $ Map.singleton chain acc }))
@@ -225,7 +229,7 @@ getBalances
     , MonadJSM (Performable m)
     , HasNetwork model t, HasCrypto key (Performable m)
     )
-  => model -> Event t (KeyStorage key, AccountStorage) -> m (Event t [(NetworkName, Some AccountRef, Maybe AccountBalance)])
+  => model -> Event t ([Key key], AccountStorage) -> m (Event t [(NetworkName, Some AccountRef, Maybe AccountBalance)])
 getBalances model accStore = performEventAsync $ flip push accStore $ \(keys, networkAccounts) -> do
   nodes <- fmap rights $ sample $ current $ model ^. network_selectedNodes
   net <- sample $ current $ model ^. network_selectedNetwork
