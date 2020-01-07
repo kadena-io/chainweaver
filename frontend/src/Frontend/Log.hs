@@ -9,10 +9,7 @@ module Frontend.Log
   , defaultLogger
   , logOn
   , logPromptly
-  , logStrPromptly
   , fmtLogTH
-  , logDefTH
-  , defLogDebug
   ) where
 
 import Control.Lens (view,(.~))
@@ -40,7 +37,6 @@ makePactLenses ''LogCfg
 data Logger t = Logger
   { _log_formatMessage :: LogLevel -> Text -> LogStr
   , _log_logPromptly :: LogLevel -> Text -> IO ()
-  , _log_logStr :: LogStr -> IO ()
   }
 
 makePactLenses ''Logger
@@ -63,21 +59,9 @@ defaultLogger = liftIO . hPut stdout . fromLogStr
 logPromptly :: (HasLogger model t, MonadIO m) => model -> LogLevel -> Text -> m ()
 logPromptly model lvl msg = liftIO $ view (logger . log_logPromptly) model lvl msg
 
-logStrPromptly :: (HasLogger model t, MonadIO m) => model -> LogStr -> m ()
-logStrPromptly model = liftIO . view (logger . log_logStr) model
-
 logOn :: (HasLogCfg mConf t, Monoid mConf, Reflex t) => LogLevel -> Text -> Event t a -> mConf
 logOn lvl msg go = mempty & logCfg_logMessage .~ ((lvl,msg) <$ go)
 
 fmtLogTH :: LogLevel -> Q Exp
 fmtLogTH lvl = [| defaultLogStr $(qLocation >>= liftLoc) "Chainweaver" lvl . (toLogStr :: Text -> LogStr) |]
 
-logDefTH :: LogLevel -> Q Exp
-logDefTH lvl =
-  [| defaultLogger
-  . defaultLogStr $(qLocation >>= liftLoc) "Chainweaver" lvl
-  . (toLogStr :: Text -> LogStr)
-  |]
-
-defLogDebug :: Q Exp
-defLogDebug = logDefTH LevelDebug

@@ -145,7 +145,7 @@ makeIde appCfg userCfg = build $ \ ~(cfg, ideL) -> do
 
     walletL <- makeWallet ideL $ _ideCfg_wallet cfg
     json <- makeJsonData walletL $ _ideCfg_jsonData cfg
-    (networkCfgL, networkL) <- makeNetwork $ cfg ^. ideCfg_network
+    (networkCfgL, networkL) <- makeNetwork ideL $ cfg ^. ideCfg_network
     (explrCfg, moduleExplr) <- makeModuleExplorer appCfg ideL cfg
     (editorCfgL, editorL) <- makeEditor ideL cfg
     (oAuthCfgL, oAuthL) <- makeOAuth cfg
@@ -194,7 +194,6 @@ makeIde appCfg userCfg = build $ \ ~(cfg, ideL) -> do
     ideLogger = Logger
       { _log_formatMessage = formatLogMessage
       , _log_logPromptly = \lvl -> _appCfg_logMessage appCfg . formatLogMessage lvl
-      , _log_logStr = _appCfg_logMessage appCfg
       } 
 
 makeEnvSelection

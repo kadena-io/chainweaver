@@ -1,7 +1,6 @@
 {-# LANGUAGE ApplicativeDo #-}
 {-# LANGUAGE ConstraintKinds #-}
 {-# LANGUAGE DataKinds #-}
-{-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE ExtendedDefaultRules #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
@@ -10,13 +9,8 @@
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE PatternGuards #-}
-{-# LANGUAGE QuasiQuotes #-}
 {-# LANGUAGE RecursiveDo #-}
 {-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE StandaloneDeriving #-}
-{-# LANGUAGE TemplateHaskell #-}
-{-# LANGUAGE TupleSections #-}
-{-# LANGUAGE TypeApplications #-}
 
 -- | Dialogs for sending money between accounts
 -- Copyright   :  (C) 2019 Kadena
@@ -57,7 +51,6 @@ import qualified Data.HashMap.Lazy as HM
 import qualified Data.Map as Map
 import qualified Data.Set as Set
 import qualified Data.Text as T
-import qualified Data.Text.IO as T
 import qualified Pact.Server.ApiV1Client as Api
 import qualified Pact.Types.API as Api
 import qualified Pact.Types.Command as Pact
@@ -72,6 +65,7 @@ import Frontend.Crypto.Class (HasCrypto)
 import Frontend.Foundation hiding (Arg)
 import Frontend.KadenaAddress
 import Frontend.Network
+import Frontend.Log
 import Frontend.UI.DeploymentSettings
 import Frontend.UI.Dialogs.DeployConfirmation (statusText, Status(..))
 import Frontend.UI.Dialogs.DeployConfirmation (submitTransactionWithFeedback)
@@ -83,7 +77,9 @@ import Frontend.Wallet
 
 -- | A modal for handling sending coin
 uiSendModal
-  :: (SendConstraints model mConf key t m, Flattenable mConf t)
+  :: ( SendConstraints model mConf key t m
+     , Flattenable mConf t
+     )
   => model -> Account -> Event t () -> m (mConf, Event t ())
 uiSendModal model sender _onCloseExternal = do
   (conf, closes) <- fmap splitDynPure $ workflow $ case accountUnfinishedCrossChainTransfer sender of
@@ -98,6 +94,7 @@ type SendConstraints model mConf key t m
   = ( Monoid mConf, HasNetwork model t, HasNetworkCfg mConf t, HasWallet model key t, HasWalletCfg mConf key t
     , MonadWidget t m, PostBuild t m, HasCrypto key m
     , HasCrypto key (Performable m)
+    , HasLogger model t
     )
 
 -- | Data which is only required for cross chain transfers
@@ -175,8 +172,8 @@ previewTransfer model fromAccount fromGasPayer toAddress crossChainData amount =
           AccountStorage accounts <- sample $ current $ model ^. wallet_accounts
           let toAccount n = maybe (Left toAddress) Right $ lookupAccountByKadenaAddress toAddress =<< Map.lookup n accounts
           pure $ ffor mNetInfo $ \n -> case crossChainData of
-            Nothing -> sameChainTransfer n keys fromAccount fromGasPayer toAddress amount
-            Just ccd -> crossChainTransfer n keys fromAccount (toAccount $ _sharedNetInfo_network n) fromGasPayer ccd amount
+            Nothing -> sameChainTransfer model n keys fromAccount fromGasPayer toAddress amount
+            Just ccd -> crossChainTransfer model n keys fromAccount (toAccount $ _sharedNetInfo_network n) fromGasPayer ccd amount
         ]
   pure ((mempty, close), nextScreen)
 
@@ -198,8 +195,9 @@ lookupAccountByKadenaAddress ka accounts = vanity <|> nonVanity
 
 -- | Perform a same chain transfer or transfer-create
 sameChainTransfer
-  :: (MonadWidget t m, HasCrypto key m, Monoid mConf)
-  => SharedNetInfo NodeInfo
+  :: (MonadWidget t m, HasCrypto key m, Monoid mConf, HasLogger model t)
+  => model
+  -> SharedNetInfo NodeInfo
   -> KeyStorage key
   -> Account
   -- ^ From account
@@ -210,7 +208,7 @@ sameChainTransfer
   -> Decimal
   -- ^ Amount to transfer
   -> Workflow t m (mConf, Event t ())
-sameChainTransfer netInfo keys fromAccount gasPayer toAccount amount = Workflow $ do
+sameChainTransfer model netInfo keys fromAccount gasPayer toAccount amount = Workflow $ do
   let recipientCreated = _kadenaAddress_accountCreated toAccount
   let code = T.unwords $
         [ "(coin." <> case recipientCreated of
@@ -254,7 +252,7 @@ sameChainTransfer netInfo keys fromAccount gasPayer toAccount amount = Workflow 
   close <- modalHeader $ text "Transaction Status"
   cmd <- buildCmd Nothing networkName pm signingPairs [] code dat pkCaps
   _ <- elClass "div" "modal__main transaction_details" $
-    submitTransactionWithFeedback cmd (accountChain fromAccount) (fmap Right nodeInfos)
+    submitTransactionWithFeedback model cmd (accountChain fromAccount) (fmap Right nodeInfos)
   done <- modalFooter $ confirmButton def "Done"
   pure
     ( (mempty, close <> done)
@@ -364,8 +362,10 @@ runUnfinishedCrossChainTransfer
   :: ( PerformEvent t m, PostBuild t m, TriggerEvent t m, MonadHold t m, DomBuilder t m
      , MonadJSM (Performable m), MonadFix m
      , HasCrypto key (Performable m)
+     , HasLogger model t
      )
-  => SharedNetInfo NodeInfo
+  => model
+  -> SharedNetInfo NodeInfo
   -- ^ Network info
   -> KeyStorage key
   -- ^ Keys
@@ -378,7 +378,7 @@ runUnfinishedCrossChainTransfer
   -> Event t Pact.RequestKey
   -- ^ The request key to follow up on
   -> m (Event t (), Event t Text, Event t ())
-runUnfinishedCrossChainTransfer netInfo keys fromChain toChain toGasPayer requestKey = mdo
+runUnfinishedCrossChainTransfer model netInfo keys fromChain toChain toGasPayer requestKey = mdo
   let nodeInfos = _sharedNetInfo_nodes netInfo
       networkName = _sharedNetInfo_network netInfo
       publicMeta = _sharedNetInfo_meta netInfo
@@ -388,16 +388,16 @@ runUnfinishedCrossChainTransfer netInfo keys fromChain toChain toGasPayer reques
   -- Wait for result
   mRequestKey <- hold Nothing $ Just <$> requestKey
   let initCont = leftmost [requestKey, tagMaybe mRequestKey retry]
-  contResponse <- listenForContinuation envFromChain initCont
+  contResponse <- listenForContinuation model envFromChain initCont
   let (contError, contOk) = fanEither contResponse
   -- Get the proof
-  spvResponse <- getSPVProof nodeInfos fromChain toChain contOk
+  spvResponse <- getSPVProof model nodeInfos fromChain toChain contOk
   let (spvError, spvOk) = fanEither spvResponse
   -- Run continuation on target chain
-  continueResponse <- continueCrossChainTransfer networkName envToChain publicMeta keys toGasPayer spvOk
+  continueResponse <- continueCrossChainTransfer model networkName envToChain publicMeta keys toGasPayer spvOk
   let (continueError, continueOk) = fanEither continueResponse
   -- Wait for result
-  resultResponse <- listenForSuccess envToChain continueOk
+  resultResponse <- listenForSuccess model envToChain continueOk
   let (resultError, resultOk) = fanEither resultResponse
 
   contStatus <- holdDyn Status_Waiting $ leftmost
@@ -456,6 +456,7 @@ finishCrossChainTransferConfig
      , HasNetworkCfg mConf t
      , HasNetwork model t
      , HasWallet model key t
+     , HasLogger model t
      )
   => model
   -> Account
@@ -502,7 +503,7 @@ finishCrossChainTransferConfig model fromAccount ucct = Workflow $ do
         mNetInfo <- sampleNetInfo model
         mToGasPayer <- sample $ current sender
         keys <- sample $ current $ model ^. wallet_keys
-        pure $ ffor2 mNetInfo mToGasPayer $ \ni gp -> finishCrossChainTransfer ni keys fromAccount ucct gp
+        pure $ ffor2 mNetInfo mToGasPayer $ \ni gp -> finishCrossChainTransfer model ni keys fromAccount ucct gp
   pure ((conf, close), nextScreen)
 
 -- | Handy function for getting network / meta information in 'PushM'. Type
@@ -528,8 +529,10 @@ finishCrossChainTransfer
      , MonadJSM (Performable m), MonadFix m
      , HasCrypto key (Performable m)
      , Monoid mConf, HasWalletCfg mConf key t
+     , HasLogger model t
      )
-  => SharedNetInfo NodeInfo
+  => model
+  -> SharedNetInfo NodeInfo
   -> KeyStorage key
   -> Account
   -- ^ From account
@@ -538,7 +541,7 @@ finishCrossChainTransfer
   -> Account
   -- ^ The account which pays the gas on the recipient chain
   -> Workflow t m (mConf, Event t ())
-finishCrossChainTransfer netInfo keys fromAccount ucct toGasPayer = Workflow $ do
+finishCrossChainTransfer model netInfo keys fromAccount ucct toGasPayer = Workflow $ do
   close <- modalHeader $ text "Cross chain transfer"
   let fromChain = accountChain fromAccount
       toChain = _unfinishedCrossChainTransfer_recipientChain ucct
@@ -552,7 +555,7 @@ finishCrossChainTransfer netInfo keys fromAccount ucct toGasPayer = Workflow $ d
         item (pure Status_Done) $ el "p" $
           text $ "Cross chain transfer initiated on chain " <> _chainId fromChain
         pb <- getPostBuild
-        runUnfinishedCrossChainTransfer netInfo keys fromChain toChain toGasPayer $ requestKey <$ pb
+        runUnfinishedCrossChainTransfer model netInfo keys fromChain toChain toGasPayer $ requestKey <$ pb
 
     dialogSectionHeading mempty "Request Key"
     divClass "group" $ text $ Pact.requestKeyToB16Text requestKey
@@ -592,8 +595,10 @@ crossChainTransfer
      , MonadJSM (Performable m), MonadJSM m, MonadFix m
      , HasCrypto key m, HasCrypto key (Performable m)
      , Monoid mConf, HasWalletCfg mConf key t
+     , HasLogger model t
      )
-  => SharedNetInfo NodeInfo
+  => model
+  -> SharedNetInfo NodeInfo
   -> KeyStorage key
   -> Account
   -- ^ From account
@@ -607,7 +612,7 @@ crossChainTransfer
   -> Decimal
   -- ^ Amount to transfer
   -> Workflow t m (mConf, Event t ())
-crossChainTransfer netInfo keys fromAccount toAccount fromGasPayer crossChainData amount = Workflow $ do
+crossChainTransfer model netInfo keys fromAccount toAccount fromGasPayer crossChainData amount = Workflow $ do
   let nodeInfos = _sharedNetInfo_nodes netInfo
       networkName = _sharedNetInfo_network netInfo
       publicMeta = _sharedNetInfo_meta netInfo
@@ -621,7 +626,8 @@ crossChainTransfer netInfo keys fromAccount toAccount fromGasPayer crossChainDat
   -- Lookup the guard if we don't already have it
   keySetResponse <- case toAccount of
     Left ka -> case _kadenaAddress_accountCreated ka of
-      AccountCreated_Yes -> lookupKeySet networkName envFromChain ka
+      AccountCreated_Yes -> lookupKeySet (logPromptly model) networkName envFromChain ka
+      
       -- If the account hasn't been created, don't try to lookup the guard. Just
       -- assume the account name _is_ the public key (since it must be a
       -- non-vanity account).
@@ -631,7 +637,7 @@ crossChainTransfer netInfo keys fromAccount toAccount fromGasPayer crossChainDat
     Right ours -> pure $ Right (toKS $ toPactPublicKey $ accountKey ours) <$ pb
   let (keySetError, keySetOk) = fanEither keySetResponse
   -- Start the transfer
-  initiated <- initiateCrossChainTransfer networkName envFromChain publicMeta keys fromAccount fromGasPayer toAddress amount keySetOk
+  initiated <- initiateCrossChainTransfer model networkName envFromChain publicMeta keys fromAccount fromGasPayer toAddress amount keySetOk
   let (initiatedError, initiatedOk) = fanEither initiated
   initiateStatus <- holdDyn Status_Waiting $ leftmost
     [ Status_Working <$ keySetOk
@@ -648,7 +654,7 @@ crossChainTransfer netInfo keys fromAccount toAccount fromGasPayer crossChainDat
           el "p" $ text $ "Cross chain transfer initiated on chain " <> _chainId fromChain
 
         let toGasPayer = _crossChainData_recipientChainGasPayer crossChainData
-        runUnfinishedCrossChainTransfer netInfo keys fromChain toChain toGasPayer initiatedOk
+        runUnfinishedCrossChainTransfer model netInfo keys fromChain toChain toGasPayer initiatedOk
 
     dialogSectionHeading mempty "Request Key"
     divClass "group" $ void $ runWithReplace (text "Loading...") $ ffor initiatedOk $ \rk ->
@@ -684,8 +690,14 @@ crossChainTransfer netInfo keys fromAccount toAccount fromGasPayer crossChainDat
 
 -- | Continue the transfer on the target chain
 continueCrossChainTransfer
-  :: (TriggerEvent t m, PerformEvent t m, MonadJSM (Performable m), HasCrypto key (Performable m))
-  => NetworkName
+  :: ( TriggerEvent t m
+     , PerformEvent t m
+     , MonadJSM (Performable m)
+     , HasCrypto key (Performable m)
+     , HasLogger model t
+     )
+  => model
+  -> NetworkName
   -- ^ Which network we are on
   -> [S.ClientEnv]
   -- ^ Envs pointing at the target chain
@@ -698,7 +710,7 @@ continueCrossChainTransfer
   -> Event t (Pact.PactExec, Pact.ContProof)
   -- ^ The previous continuation step and associated proof
   -> m (Event t (Either Text (Pact.PactId, Pact.RequestKey)))
-continueCrossChainTransfer networkName envs publicMeta keys gasPayer spvOk = performEventAsync $ ffor spvOk $ \(pe, proof) cb -> do
+continueCrossChainTransfer model networkName envs publicMeta keys gasPayer spvOk = performEventAsync $ ffor spvOk $ \(pe, proof) cb -> do
   let pm = publicMeta
         { _pmChainId = accountChain gasPayer
         , _pmSender = unAccountName $ accountToName gasPayer
@@ -713,11 +725,11 @@ continueCrossChainTransfer networkName envs publicMeta keys gasPayer spvOk = per
     , _cmProof = Just proof
     }
   cont <- buildCmdWithPayload payload signingPairs
-  liftIO $ putStrLn "transfer-crosschain: running continuation on target chain"
+  logPromptly model LevelWarn "transfer-crosschain: running continuation on target chain"
   -- We can't do a /local with continuations :(
   liftJSM $ forkJSM $ do
     r <- doReqFailover envs (Api.send Api.apiV1Client $ Api.SubmitBatch $ pure cont) >>= \case
-      Left es -> packHttpErrors es
+      Left es -> packHttpErrors (logPromptly model)  es
       Right (Api.RequestKeys (requestKey :| _)) -> pure $ Right (Pact._pePactId pe, requestKey)
     liftIO $ cb r
   pure ()
@@ -725,14 +737,15 @@ continueCrossChainTransfer networkName envs publicMeta keys gasPayer spvOk = per
 -- | Lookup the keyset of an account
 lookupKeySet
   :: (HasCrypto key m, TriggerEvent t m, MonadJSM m)
-  => NetworkName
+  => (LogLevel -> Text -> JSM ())
+  -> NetworkName
   -- ^ Which network we are on
   -> [S.ClientEnv]
   -- ^ Envs which point to the appropriate chain
   -> KadenaAddress
   -- ^ Account on said chain to find
   -> m (Event t (Either Text Pact.KeySet))
-lookupKeySet networkName envs addr = do
+lookupKeySet logFn networkName envs addr = do
   now <- getCreationTime
   let code = T.unwords
         [ "(coin.details"
@@ -751,24 +764,30 @@ lookupKeySet networkName envs addr = do
   (result, trigger) <- newTriggerEvent
   liftJSM $ forkJSM $ do
     r <- doReqFailover envs (Api.local Api.apiV1Client cmd) >>= \case
-      Left es -> packHttpErrors es
+      Left es -> packHttpErrors logFn es
       Right cr -> case Pact._crResult cr of
         Pact.PactResult (Right (PObject (Pact.ObjectMap m)))
           | Just (PGuard (Pact.GKeySet keySet)) <- Map.lookup "guard" m
           -> pure $ Right keySet
         Pact.PactResult (Right v) -> do
-          liftIO $ putStrLn $ "lookupKeySet: Failed to retrieve the recipient's account guard: " <> show v
+          logFn LevelWarn $ "lookupKeySet: Failed to retrieve the recipient's account guard: " <> tshow v
           pure $ Left "Failed to retrieve the recipient's account guard"
         Pact.PactResult (Left e) -> do
-          liftIO $ putStrLn $ "Received error for details: " <> show e
+          logFn LevelWarn $ "Received error for details: " <> tshow e
           pure $ Left "Failed to retrieve the recipient's account guard"
     liftIO $ trigger r
   pure result
 
 -- | Initiate a cross chain transfer on the sender chain.
 initiateCrossChainTransfer
-  :: (MonadJSM (Performable m), TriggerEvent t m, PerformEvent t m, HasCrypto key (Performable m))
-  => NetworkName
+  :: ( MonadJSM (Performable m)
+     , TriggerEvent t m
+     , PerformEvent t m
+     , HasCrypto key (Performable m)
+     , HasLogger model t
+     )
+  => model
+  -> NetworkName
   -- ^ Network name
   -> [S.ClientEnv]
   -- ^ Where to send requests
@@ -787,17 +806,17 @@ initiateCrossChainTransfer
   -> Event t Pact.KeySet
   -- ^ Recipient keyset
   -> m (Event t (Either Text Pact.RequestKey))
-initiateCrossChainTransfer networkName envs publicMeta keys fromAccount fromGasPayer toAccount amount eks = performEventAsync $ ffor eks $ \rg cb -> do
+initiateCrossChainTransfer model networkName envs publicMeta keys fromAccount fromGasPayer toAccount amount eks = performEventAsync $ ffor eks $ \rg cb -> do
   cmd <- buildCmd Nothing networkName pm signingPairs [] code (mkDat rg) capabilities
   liftJSM $ forkJSM $ do
     r <- doReqFailover envs (Api.local Api.apiV1Client cmd) >>= \case
-      Left es -> packHttpErrors es
+      Left es -> packHttpErrors (logPromptly model) es
       Right cr -> case Pact._crResult cr of
         Pact.PactResult (Left e) -> do
           liftIO $ print e
           pure $ Left $ tshow e
         Pact.PactResult (Right _) -> doReqFailover envs (Api.send Api.apiV1Client $ Api.SubmitBatch $ pure cmd) >>= \case
-          Left es -> packHttpErrors es
+          Left es -> packHttpErrors (logPromptly model) es
           Right (Api.RequestKeys (requestKey :| _)) -> pure $ Right requestKey
     liftIO $ cb r
   where
@@ -830,11 +849,18 @@ initiateCrossChainTransfer networkName envs publicMeta keys fromAccount fromGasP
 
 -- | Listen to a request key for some continuation
 listenForContinuation
-  :: (TriggerEvent t m, PerformEvent t m, MonadJSM (Performable m))
-  => [S.ClientEnv] -> Event t Pact.RequestKey -> m (Event t (Either Text (Pact.RequestKey, Pact.PactExec)))
-listenForContinuation envs requestKey = performEventAsync $ ffor requestKey $ \rk cb -> liftJSM $ forkJSM $ do
+  :: ( TriggerEvent t m
+     , PerformEvent t m
+     , MonadJSM (Performable m)
+     , HasLogger model t
+     )
+  => model
+  -> [S.ClientEnv]
+  -> Event t Pact.RequestKey
+  -> m (Event t (Either Text (Pact.RequestKey, Pact.PactExec)))
+listenForContinuation model envs requestKey = performEventAsync $ ffor requestKey $ \rk cb -> liftJSM $ forkJSM $ do
   r <- doReqFailover envs (Api.listen Api.apiV1Client $ Api.ListenerRequest rk) >>= \case
-    Left es -> packHttpErrors es
+    Left es -> packHttpErrors (logPromptly model) es
     Right (Api.ListenResponse cr) -> case Pact._crContinuation cr of
       Nothing ->
         pure $ Left $ T.unlines ["Result was not a continuation", tshow (Pact._crResult cr)]
@@ -844,22 +870,29 @@ listenForContinuation envs requestKey = performEventAsync $ ffor requestKey $ \r
     Right (Api.ListenTimeout _) -> pure $ Left "Listen timeout"
   liftIO $ cb r
 
-packHttpErrors :: MonadIO m => [S.ClientError] -> m (Either Text a)
-packHttpErrors es = do
+packHttpErrors :: MonadIO m => (LogLevel -> Text -> m ()) -> [S.ClientError] -> m (Either Text a)
+packHttpErrors logFn es = do
   let prettyErr = T.unlines $ fmap (tshow . packHttpErr) es
-  liftIO $ T.putStrLn prettyErr
+  logFn LevelWarn prettyErr
   pure $ Left prettyErr
 
 -- | Listen to a request key for the second step (redeeming coin on the target
 -- chain).
 listenForSuccess
-  :: (TriggerEvent t m, PerformEvent t m, MonadJSM (Performable m))
-  => [S.ClientEnv] -> Event t (Pact.PactId, Pact.RequestKey) -> m (Event t (Either Text ()))
-listenForSuccess envs e = performEventAsync $ ffor e $ \(PactId pactId, requestKey) cb -> liftJSM $ forkJSM $ do
+  :: ( TriggerEvent t m
+     , PerformEvent t m
+     , MonadJSM (Performable m)
+     , HasLogger model t
+     )
+  => model
+  -> [S.ClientEnv]
+  -> Event t (Pact.PactId, Pact.RequestKey)
+  -> m (Event t (Either Text ()))
+listenForSuccess model envs e = performEventAsync $ ffor e $ \(PactId pactId, requestKey) cb -> liftJSM $ forkJSM $ do
   -- This string appears in the error if the pact was previously completed
   let completedMsg = "resumePact: pact completed: " <> pactId
   r <- doReqFailover envs (Api.listen Api.apiV1Client $ Api.ListenerRequest requestKey) >>= \case
-    Left es -> packHttpErrors es
+    Left es -> packHttpErrors (logPromptly model) es
     Right (Api.ListenResponse cr) -> case Pact._crResult cr of
       Pact.PactResult (Left pe)
         -- There doesn't seem to be a nicer way to do this check
@@ -873,8 +906,13 @@ listenForSuccess envs e = performEventAsync $ ffor e $ \(PactId pactId, requestK
 -- the request key. Polls every X seconds for the proof, repeatedly going
 -- through the nodes until we get a response.
 getSPVProof
-  :: (TriggerEvent t m, PerformEvent t m, MonadJSM (Performable m))
-  => [NodeInfo]
+  :: ( TriggerEvent t m
+     , PerformEvent t m
+     , MonadJSM (Performable m)
+     , HasLogger model t
+     )
+  => model
+  -> [NodeInfo]
   -- ^ Nodes to try
   -> ChainId
   -- ^ This chain
@@ -883,7 +921,7 @@ getSPVProof
   -> Event t (Pact.RequestKey, Pact.PactExec)
   -- ^ Request key of continuation. 'PactExec' is passed through.
   -> m (Event t (Either Text (Pact.PactExec, Pact.ContProof)))
-getSPVProof nodeInfos thisChain targetChain e = performEventAsync $ ffor e $ \(requestKey, pe) cb -> do
+getSPVProof model nodeInfos thisChain targetChain e = performEventAsync $ ffor e $ \(requestKey, pe) cb -> do
   liftJSM $ forkJSM $ do
     proof <- failover $ spvRequests requestKey
     liftIO . cb $ (,) pe <$> proof
@@ -897,15 +935,15 @@ getSPVProof nodeInfos thisChain targetChain e = performEventAsync $ ffor e $ \(r
       , "targetChainId" Aeson..= targetChain
       ]
     failover [] = do
-      liftIO $ putStrLn $ "Ran out of nodes to try for SPV proof"
+      logPromptly model LevelWarn "Ran out of nodes to try for SPV proof"
       pure $ Left "Failed to get SPV proof"
     failover (req : rs) = do
-      liftIO $ putStrLn $ "Sending SPV Request: " <> show req
+      logPromptly model LevelWarn $ "Sending SPV Request: " <> tshow req
       m <- liftIO newEmptyMVar
       void $ newXMLHttpRequest req (liftIO . putMVar m)
       resp <- liftIO $ takeMVar m
       let s = _xhrResponse_status resp
-      liftIO $ putStrLn $ "Got SPV Response " <> show s <> ": " <> show (_xhrResponse_responseText resp)
+      logPromptly model LevelWarn $ "Got SPV Response " <> tshow s <> ": " <> tshow (_xhrResponse_responseText resp)
       case s of
         200 -> pure $ maybe (Left "Couldn't decode response") Right $ decodeXhrResponse resp
         _ -> do

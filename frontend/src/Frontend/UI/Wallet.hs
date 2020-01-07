@@ -28,7 +28,6 @@ module Frontend.UI.Wallet
   , HasUiWalletModelCfg
   ) where
 
-import Control.Monad.Logger (LogLevel (..))
 ------------------------------------------------------------------------------
 import           Control.Applicative         (liftA2)
 import           Control.Lens
@@ -42,7 +41,7 @@ import qualified Pact.Types.ChainId          as Pact
 import           Reflex
 import           Reflex.Dom hiding (Key)
 ------------------------------------------------------------------------------
-import           Frontend.Log (HasLogCfg, logCfg_logMessage)
+import           Frontend.Log (HasLogger, HasLogCfg)
 import           Frontend.Crypto.Class
 import           Frontend.Crypto.Ed25519     (keyToText)
 import           Frontend.Wallet
@@ -74,6 +73,7 @@ type HasUiWalletModelCfg model mConf key m t =
   , HasJsonData model t
   , HasNetworkCfg (ModalCfg mConf t) t
   , HasJsonDataCfg (ModalCfg mConf t) t
+  , HasLogger model t
   , HasLogCfg mConf t
   )
 
@@ -173,7 +173,6 @@ uiAccountItems model = do
   pure $ mempty
     & modalCfg_setModal .~ attachWith accModal (current net) onAccountModal
     & walletCfg_refreshBalances .~ refresh
-    & logCfg_logMessage .~ ((LevelDebug, "account modal opened") <$ onAccountModal)
 
 uiAccountItem
   :: MonadWidget t m

@@ -55,6 +55,7 @@ import           Frontend.Messages
 import           Frontend.ModuleExplorer   as API
 import           Frontend.Network
 import           Frontend.Repl
+import           Frontend.Log
 import           Frontend.Storage
 import           Frontend.Store
 
@@ -102,6 +103,7 @@ makeModuleExplorer
     , HasStorage (Performable m)
     , HasCrypto key (Performable m)
     , Routed t (R FrontendRoute) m
+    , HasLogger model t
     )
   => AppCfg key t m
   -> model
@@ -227,6 +229,7 @@ loadToEditor
     , HasModuleExplorerModel  model t
     , MonadSample t (Performable m)
     , HasCrypto key (Performable m)
+    , HasLogger model t
     )
   => model
   -> Event t FileRef
@@ -349,6 +352,7 @@ pushPopModule
     , MonadSample t (Performable m), MonadIO m
     , HasMessagesCfg  mConf t, Monoid mConf
     , HasNetwork model t
+    , HasLogger model t
     , HasCrypto key (Performable m)
     )
   => model
@@ -419,14 +423,15 @@ loadModule
     , Monoid mConf, HasMessagesCfg mConf t
     , MonadSample t (Performable m)
     , HasNetwork model t
+    , HasLogger model t
     , HasCrypto key (Performable m)
     )
   => model
   -> Event t DeployedModuleRef
   -> m (mConf, Event t (DeployedModuleRef, Maybe (ModuleDef (Term Name))))
      -- ^ Nothing in case of error, the actual error will be logged to `Messages`.
-loadModule networkL onRef = do
-  onErrModule <- fetchModule networkL onRef
+loadModule model onRef = do
+  onErrModule <- fetchModule model onRef
   let
     onErr = fmapMaybe (^? _2 . _This) onErrModule
     onModule = fmap (^? there) <$> onErrModule
