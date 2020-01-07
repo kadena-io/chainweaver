@@ -23,7 +23,7 @@ let
 in obApp // rec {
   inherit sass;
   inherit (macApp) mac deployMac;
-  inherit (linuxApp) nixosExe exe;
+  inherit (linuxApp) nixosExe deb;
 
   server = args@{ hostName, adminEmail, routeHost, enableHttps, version }:
     let
