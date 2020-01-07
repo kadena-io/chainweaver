@@ -133,12 +133,20 @@ uiAddVanityAccountSettings ideL onInflightChange mInflightAcc mChainId initialNo
       _ <- widgetHold blank $ ffor onInflightChange $ \_ -> divClass "group" $
         text "The incomplete vanity account has been verified on the chain and added to your wallet. You may continue to create a new vanity account or close this dialog and start using the new account."
 
-      (cfg, cChainId, ttl, gasLimit, Identity (dAccountName, dPublicKey, dNotes)) <- tabPane mempty curSelection DeploymentSettingsView_Cfg $
+      (cfg, cChainId, mSender, ttl, gasLimit, Identity (dAccountName, dPublicKey, dNotes)) <- tabPane mempty curSelection DeploymentSettingsView_Cfg $
         -- Is passing around 'Maybe x' everywhere really a good way of doing this ?
-        uiCfg Nothing ideL (userChainIdSelectWithPreselect ideL (constDyn mChainId)) Nothing (Just defaultTransactionGasLimit) (Identity uiAccSection) Nothing
+        uiCfg
+          Nothing
+          ideL
+          (userChainIdSelectWithPreselect ideL (constDyn mChainId))
+          Nothing
+          (Just defaultTransactionGasLimit)
+          (Identity uiAccSection)
+          Nothing
+          $ uiSenderDropdown def never
 
-      (mSender, signers, capabilities) <- tabPane mempty curSelection DeploymentSettingsView_Keys $
-        uiSenderCapabilities ideL cChainId Nothing $ uiSenderDropdown def never ideL cChainId
+      (mGasPayer, signers, capabilities) <- tabPane mempty curSelection DeploymentSettingsView_Keys $
+        uiSenderCapabilities ideL cChainId Nothing mSender $ uiSenderDropdown def never ideL cChainId
 
       let dPayload = fmap mkPubkeyPactData <$> dPublicKey
           code = mkPactCode <$> dAccountName
