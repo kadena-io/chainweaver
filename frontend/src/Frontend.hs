@@ -134,4 +134,7 @@ newHead routeText = do
         (w,h) = minWindowSize
 
 minWindowSize :: (Int, Int)
-minWindowSize = (1400, 900)
+minWindowSize = (800, 600)
+
+defaultWindowSize :: (Int, Int)
+defaultWindowSize = (1400, 900)

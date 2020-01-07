@@ -164,6 +164,6 @@ main' ffi mainBundleResourcePath runHTML = do
                   }
                 }
           _ <- mapRoutedT (runFileStorageT libPath) $ runWithReplace loaderMarkup $
-            (liftIO (_appFFI_activateWindow ffi) >> liftIO (_appFFI_resizeWindow ffi minWindowSize) >> bipWallet appCfg) <$ bowserLoad
+            (liftIO (_appFFI_activateWindow ffi) >> liftIO (_macFFI_resizeWindow ffi defaultWindowSize) >> bipWallet appCfg) <$ bowserLoad
           pure ()
         }

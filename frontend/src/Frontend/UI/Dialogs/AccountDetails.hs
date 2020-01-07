@@ -91,12 +91,14 @@ uiAccountDetailsDetails netname a onClose = Workflow $ do
       -- Notes edit
       notesEdit0 :: Maybe (Dynamic t Text) <- case accountNotes a of
         -- Only vanity accounts have notes.
-        Just va -> fmap (Just . value) $ mkLabeledClsInput False "Notes" $ \cls -> uiInputElement $ def
-          & inputElementConfig_initialValue .~ unAccountNotes va
-          & initialAttributes . at "class" %~ pure . maybe (renderClass cls) (mappend (" " <> renderClass cls))
+        Just va -> do
+          notes0 <- fmap (Just . value) $ mkLabeledClsInput False "Notes" $ \cls -> uiInputElement $ def
+            & inputElementConfig_initialValue .~ unAccountNotes va
+            & initialAttributes . at "class" %~ pure . maybe (renderClass cls) (mappend (" " <> renderClass cls))
+          -- separator
+          horizontalDashedSeparator
+          pure notes0
         _ -> pure Nothing
-      -- separator
-      horizontalDashedSeparator
       -- Kadena Address
       _ <- displayText "Kadena Address" kAddr "account-details__kadena-address"
       -- copy
