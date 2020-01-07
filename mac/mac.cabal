@@ -11,11 +11,13 @@ library
       base
     , desktop
 
+    , async
     , bytestring
     , data-default
     , jsaddle
     , jsaddle-wkwebview
     , filepath
+    , process
 
   ghc-options:
     -O -Wall

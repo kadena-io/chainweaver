@@ -3,16 +3,19 @@
 module Mac where
 
 import qualified Control.Concurrent.Async as Async
-import Control.Monad ((<=<))
+import Control.Exception (bracket)
+import Control.Monad ((<=<), forever)
 import Data.ByteString (ByteString)
 import Data.Default (Default(..))
 import Data.Functor (void)
+import Data.Foldable (for_)
+import GHC.IO.Handle (hDuplicateTo, BufferMode(LineBuffering))
 import Foreign.C.String (CString, peekCString)
 import Foreign.StablePtr (StablePtr, newStablePtr)
 import Language.Javascript.JSaddle.Types (JSM)
 import Language.Javascript.JSaddle.WKWebView (AppDelegateConfig(..), mainBundleResourcePath, runHTMLWithBaseURL)
 import System.FilePath ((</>))
-import System.IO (Handle)
+import System.IO (Handle, stderr, stdout, hGetLine, hClose, hSetBuffering)
 import qualified System.Process as Process
 
 import Desktop (main', AppFFI(..))
@@ -56,7 +59,7 @@ redirectPipes ps m = bracket setup hClose $ \r -> Async.withAsync (go r) $ \_ ->
       Process.callProcess "syslog" ["-s", "-k", "Level", "Notice", "Message", "Pact: " <> l]
 
 main :: IO ()
-main = redirectPipes [stderr, stdout] $ main' ffi mainBundleResourcePath redirectPipes runMac
+main = redirectPipes [stderr, stdout] $ main' ffi mainBundleResourcePath runMac
 
 runMac
   :: ByteString
