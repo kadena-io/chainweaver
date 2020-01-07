@@ -53,8 +53,8 @@ instance Reflex t => Monoid (LogCfg t) where
 formatLogMessage :: LogLevel -> Text -> LogStr
 formatLogMessage lvl = defaultLogStr defaultLoc "Chainweaver" lvl . toLogStr
 
-defaultLogger :: MonadIO m => LogStr -> m ()
-defaultLogger = liftIO . hPut stdout . fromLogStr
+defaultLogger :: MonadIO m => LogLevel -> LogStr -> m ()
+defaultLogger _ = liftIO . hPut stdout . fromLogStr
 
 putLog :: (HasLogger model t, MonadIO m) => model -> LogLevel -> Text -> m ()
 putLog model lvl msg = liftIO $ view (logger . log_putLog) model lvl msg

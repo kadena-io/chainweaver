@@ -1,10 +1,9 @@
-{-# LANGUAGE TemplateHaskell #-}
 -- | AppCfg is used to configure the app and pass things in and out of reflex
 module Frontend.AppCfg where
 
 import Data.Text (Text)
 
-import Control.Monad.Logger (LogStr)
+import Control.Monad.Logger (LogLevel, LogStr)
 import Language.Javascript.JSaddle (JSM)
 
 import Reflex.Dom
@@ -33,7 +32,7 @@ data AppCfg key t m = AppCfg
   -- ^ Responses to signings
   , _appCfg_enabledSettings :: EnabledSettings
   -- ^ Logging Function
-  , _appCfg_logMessage :: LogStr -> IO ()
+  , _appCfg_logMessage :: LogLevel -> LogStr -> IO ()
   }
 
 

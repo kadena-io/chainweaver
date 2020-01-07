@@ -4,7 +4,10 @@ module Linux where
 -- import Control.Lens (_head, preview)
 import Control.Concurrent (MVar, newEmptyMVar, putMVar, takeMVar, forkIO)
 import Control.Monad (forever)
+import Control.Monad.Logger (LogLevel (..), LogStr)
+import System.Log.FastLogger (fromLogStr)
 import Data.ByteString (ByteString)
+import qualified Data.ByteString.Char8 as BS8
 import Data.Functor (void)
 import Data.Foldable (traverse_)
 import Data.GI.Gtk.Threading (postGUIASync)
@@ -16,8 +19,9 @@ import qualified GI.Gtk as Gtk
 import Safe (headMay)
 import System.Environment (getExecutablePath)
 import System.FilePath ((</>), takeDirectory)
+import System.Posix.Syslog (Priority (..), Option (..), Facility (User), withSyslog, syslog)
 import qualified System.Posix.User as PU
-
+import Foreign.C.String (withCStringLen)
 
 import Desktop (main', AppFFI(..))
 import WebKitGTK
@@ -78,6 +82,7 @@ mkFfi = do
         , _appFFI_resizeWindow = putMVar resizeMV
         , _appFFI_global_openFileDialog = putMVar openFileDialogMV ()
         , _appFFI_global_getStorageDirectory = (\hd -> hd </> ".local" </> "share" </> "chainweaver") <$> getHomeDirectory
+        , _appFFI_global_logFunction = logToSyslog
         }
   pure (ffi, LinuxMVars
     { _linuxMVars_openFileDialog = openFileDialogMV
@@ -89,7 +94,7 @@ mkFfi = do
 
 -- TODO: Redirect stderr/out to a system logger
 main :: IO ()
-main = do
+main = withSyslog "Chainweaver" [LogPID, Console] User $ do
   (ffi, mvars) <- mkFfi
   main' ffi (Just . TE.encodeUtf8 . T.pack . takeDirectory <$> getExecutablePath) (runLinux mvars)
 
@@ -157,3 +162,21 @@ resizeWindow _ _ = do
 
 getHomeDirectory :: IO String
 getHomeDirectory = PU.getLoginName >>= fmap PU.homeDirectory . PU.getUserEntryForName
+
+logToSyslog :: LogLevel -> LogStr -> IO ()
+logToSyslog lvl msg =
+  withCStringLen (BS8.unpack $ fromLogStr msg) $ \cstr ->
+    syslog Nothing priorityFromLogLevel cstr
+  where
+    priorityFromLogLevel = case lvl of
+      LevelDebug -> Debug
+      LevelInfo  -> Info
+      LevelWarn  -> Warning
+      LevelError -> Error
+      (LevelOther level) -> case level of
+        "Emergency" -> Emergency
+        "Alert"     -> Alert
+        "Critical"  -> Critical
+        "Notice"    -> Notice
+        _           -> error $ "unknown log level: " ++ T.unpack level
+

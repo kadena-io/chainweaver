@@ -158,8 +158,8 @@ makeIde appCfg userCfg = build $ \ ~(cfg, ideL) -> do
 
     modal <- holdDyn Nothing $ unLeftmostEv (_ideCfg_setModal cfg)
 
-    _ <- performEvent_ $ liftIO . _appCfg_logMessage appCfg . uncurry formatLogMessage
-      <$> _logCfg_logMessage (_ideCfg_logger cfg)
+    _ <- performEvent_ $ ffor (_logCfg_logMessage (_ideCfg_logger cfg)) $ \(lvl, msg) ->
+      liftIO $ _appCfg_logMessage appCfg lvl $ formatLogMessage lvl msg
 
     pure
       ( mconcat
@@ -193,7 +193,7 @@ makeIde appCfg userCfg = build $ \ ~(cfg, ideL) -> do
 
     ideLogger = Logger
       { _log_formatMessage = formatLogMessage
-      , _log_putLog = \lvl -> _appCfg_logMessage appCfg . formatLogMessage lvl
+      , _log_putLog = \lvl -> _appCfg_logMessage appCfg lvl . formatLogMessage lvl
       } 
 
 makeEnvSelection

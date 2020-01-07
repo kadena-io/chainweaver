@@ -16,6 +16,9 @@ library
     , jsaddle
     , jsaddle-wkwebview
     , filepath
+    , hsyslog
+    , monad-logger
+    , fast-logger
 
   ghc-options:
     -O -Wall

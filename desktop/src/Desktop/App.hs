@@ -3,10 +3,10 @@
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE TypeOperators #-}
 module Desktop.App where
 
+import Control.Monad.Logger (LogStr,LogLevel)
 import Control.Concurrent
 import Control.Exception (bracket, try)
 import Control.Monad.IO.Class
@@ -34,7 +34,6 @@ import Common.Route
 import Frontend
 import Frontend.AppCfg
 import Frontend.ModuleExplorer.Impl (loadEditorFromLocalStorage)
-import Frontend.Log (defaultLogger)
 import Desktop.Frontend
 import Desktop.SigningApi
 import Desktop.Util
@@ -46,7 +45,8 @@ data AppFFI = AppFFI
   , _appFFI_moveToForeground :: IO ()
   , _appFFI_global_openFileDialog :: IO ()
   , _appFFI_global_getStorageDirectory :: IO String
-}
+  , _appFFI_global_logFunction :: LogLevel -> LogStr -> IO ()
+  }
 
 getUserLibraryPath :: MonadIO m => AppFFI -> m FilePath
 getUserLibraryPath ffi = liftIO $ do
@@ -163,9 +163,9 @@ main' ffi mainBundleResourcePath runHTML = do
                 , _appCfg_enabledSettings = EnabledSettings
                   {
                   }
-                , _appCfg_logMessage = defaultLogger
+                , _appCfg_logMessage = _appFFI_global_logFunction ffi
                 }
           _ <- mapRoutedT (runFileStorageT libPath) $ runWithReplace loaderMarkup $
-            (liftIO (_appFFI_activateWindow ffi) >> liftIO (_macFFI_resizeWindow ffi defaultWindowSize) >> bipWallet appCfg) <$ bowserLoad
+            (liftIO (_appFFI_activateWindow ffi) >> liftIO (_appFFI_resizeWindow ffi defaultWindowSize) >> bipWallet appCfg) <$ bowserLoad
           pure ()
         }
