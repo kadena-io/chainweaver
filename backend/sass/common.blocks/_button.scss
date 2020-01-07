@@ -75,6 +75,23 @@
   bottom: -1.5px;
   width: 18px;
   height: 11.1px;
+  @media (max-width: 1550px) {
+    margin-right: 0;
+  }
+}
+
+// Icon which only shows for small screens
+.button__text-icon-exclusive {
+  @media (min-width: 1550px + 1px) {
+    display: none;
+  }
+}
+
+// Text which turns into an icon on small screens
+.button__text-exclusive {
+  @media (max-width: 1550px) {
+    display: none;
+  }
 }
 
 // Standalone icon in a button

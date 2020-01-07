@@ -45,6 +45,7 @@ module Frontend.UI.Button
   , receiveButton
   , sendButton
   , detailsButton
+  , detailsIconButton
   , accordionButton
   , copyToClipboard
   -- ** Images in buttons
@@ -280,18 +281,26 @@ cancelButton cfg msg =
 
 receiveButton :: StaticButtonConstraints t m => UiButtonCfg -> m (Event t ())
 receiveButton cfg =
-  uiButton (cfg & uiButtonCfg_class <>~ "button_type_secondary" <> "button_type_secondary") $
-    btnTextIcon (static @"img/receive.svg") "Receive" blank >> text "Receive"
+  uiButton (cfg & uiButtonCfg_class <>~ "button_type_secondary" <> "button_type_secondary") $ do
+    imgWithAltCls "button__text-icon" (static @"img/receive.svg") "Receive" blank
+    elClass "span" "button__text button__text-exclusive" $ text "Receive"
 
 detailsButton :: StaticButtonConstraints t m => UiButtonCfg -> m (Event t ())
 detailsButton cfg =
   uiButton (cfg & uiButtonCfg_class <>~ "button_type_secondary" <> "button_type_secondary") $
     text "Details"
 
+detailsIconButton :: StaticButtonConstraints t m => UiButtonCfg -> m (Event t ())
+detailsIconButton cfg =
+  uiButton (cfg & uiButtonCfg_class <>~ "button_type_secondary" <> "button_type_secondary") $ do
+    imgWithAltCls "button__text-icon button__text-icon-exclusive" (static @"img/ellipsis.svg") "Details" blank
+    elClass "span" "button__text button__text-exclusive" $ text "Details"
+
 sendButton :: StaticButtonConstraints t m => UiButtonCfg -> m (Event t ())
 sendButton cfg =
-  uiButton (cfg & uiButtonCfg_class <>~ "button_type_secondary" <> "button_type_secondary") $
-    btnTextIcon (static @"img/send.svg") "Send" blank >> text "Send"
+  uiButton (cfg & uiButtonCfg_class <>~ "button_type_secondary" <> "button_type_secondary") $ do
+    imgWithAltCls "button__text-icon" (static @"img/send.svg") "Send" blank
+    elClass "span" "button__text button__text-exclusive" $ text "Send"
 
 accordionButton :: StaticButtonConstraints t m => UiButtonCfg -> m (Event t ())
 accordionButton cfg =
