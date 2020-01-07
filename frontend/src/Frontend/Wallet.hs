@@ -271,23 +271,23 @@ getBalances model accStore = performEventAsync $ flip push accStore $ \(keys, ne
 
       -- Build a request for each chain
       requests <- flip MonoidalMap.traverseWithKey chainsToAccounts $ \chain as -> do
-        logPromptly model LevelInfo $ "getBalances: Building request for get-balance on chain " <> _chainId chain
+        putLog model LevelInfo $ "getBalances: Building request for get-balance on chain " <> _chainId chain
         cmd <- buildCmd Nothing net (pm chain) mempty [] (code as) mempty mempty
         liftIO $ print cmd
         let envs = mkClientEnvs nodes chain
         pure $ doReqFailover envs (Api.local Api.apiV1Client cmd) >>= \case
-          Left es -> logPromptly model LevelInfo $ "getBalances: request failure: " <> tshow es
+          Left es -> putLog model LevelInfo $ "getBalances: request failure: " <> tshow es
           Right cr -> case Pact._crResult cr of
             Pact.PactResult (Right pv) -> case parseAccountBalances pv of
-              Left e -> logPromptly model LevelInfo $ "getBalances: failed to parse balances:" <> tshow e
+              Left e -> putLog model LevelInfo $ "getBalances: failed to parse balances:" <> tshow e
               Right balances -> liftIO $ do
-                logPromptly model LevelInfo $ "getBalances: success:"
-                logPromptly model LevelInfo $ tshow balances
+                putLog model LevelInfo $ "getBalances: success:"
+                putLog model LevelInfo $ tshow balances
                 -- Cheat slightly by checking if the account name is really a public key.
                 liftIO $ cb $ ffor (Map.toList balances) $ \(AccountName name, balance) -> case textToKey name of
                   Nothing -> (net, Some $ AccountRef_Vanity (AccountName name) chain, balance)
                   Just pk -> (net, Some $ AccountRef_NonVanity pk chain, balance)
-            Pact.PactResult (Left e) -> logPromptly model LevelInfo $ "getBalances failed:" <> tshow e
+            Pact.PactResult (Left e) -> putLog model LevelInfo $ "getBalances failed:" <> tshow e
       -- Perform the requests on a forked thread
       void $ liftJSM $ forkJSM $ void $ sequence requests
 

@@ -1022,7 +1022,7 @@ uiDeployPreview model settings keys accounts signers gasLimit ttl code lastPubli
       (errors, resp) <- fmap fanThese $ performEvent $ ffor responses $ \case
         [(_, errorResult)] -> parseNetworkErrorResult (model ^. logger) parseWrappedBalanceChecks errorResult
         n -> do
-          logPromptly model LevelWarn $ "Expected 1 response, but got " <> tshow (length n)
+          putLog model LevelWarn $ "Expected 1 response, but got " <> tshow (length n)
           pure $ This "Couldn't get a response from the node"
 
       dialogSectionHeading mempty "Anticipated Transaction Impact"

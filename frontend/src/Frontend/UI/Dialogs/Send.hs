@@ -721,7 +721,7 @@ continueCrossChainTransfer logL networkName envs publicMeta keys gasPayer spvOk 
     , _cmProof = Just proof
     }
   cont <- buildCmdWithPayload payload signingPairs
-  logPromptly logL LevelWarn "transfer-crosschain: running continuation on target chain"
+  putLog logL LevelWarn "transfer-crosschain: running continuation on target chain"
   -- We can't do a /local with continuations :(
   liftJSM $ forkJSM $ do
     r <- doReqFailover envs (Api.send Api.apiV1Client $ Api.SubmitBatch $ pure cont) >>= \case
@@ -766,10 +766,10 @@ lookupKeySet logL networkName envs addr = do
           | Just (PGuard (Pact.GKeySet keySet)) <- Map.lookup "guard" m
           -> pure $ Right keySet
         Pact.PactResult (Right v) -> do
-          logPromptly logL LevelWarn $ "lookupKeySet: Failed to retrieve the recipient's account guard: " <> tshow v
+          putLog logL LevelWarn $ "lookupKeySet: Failed to retrieve the recipient's account guard: " <> tshow v
           pure $ Left "Failed to retrieve the recipient's account guard"
         Pact.PactResult (Left e) -> do
-          logPromptly logL LevelWarn $ "Received error for details: " <> tshow e
+          putLog logL LevelWarn $ "Received error for details: " <> tshow e
           pure $ Left "Failed to retrieve the recipient's account guard"
     liftIO $ trigger r
   pure result
@@ -869,7 +869,7 @@ listenForContinuation model envs requestKey = performEventAsync $ ffor requestKe
 packHttpErrors :: MonadIO m => Logger t -> [S.ClientError] -> m (Either Text a)
 packHttpErrors logL es = do
   let prettyErr = T.unlines $ fmap (tshow . packHttpErr) es
-  logPromptly logL LevelWarn prettyErr
+  putLog logL LevelWarn prettyErr
   pure $ Left prettyErr
 
 -- | Listen to a request key for the second step (redeeming coin on the target
@@ -931,15 +931,15 @@ getSPVProof model nodeInfos thisChain targetChain e = performEventAsync $ ffor e
       , "targetChainId" Aeson..= targetChain
       ]
     failover [] = do
-      logPromptly model LevelWarn "Ran out of nodes to try for SPV proof"
+      putLog model LevelWarn "Ran out of nodes to try for SPV proof"
       pure $ Left "Failed to get SPV proof"
     failover (req : rs) = do
-      logPromptly model LevelWarn $ "Sending SPV Request: " <> tshow req
+      putLog model LevelWarn $ "Sending SPV Request: " <> tshow req
       m <- liftIO newEmptyMVar
       void $ newXMLHttpRequest req (liftIO . putMVar m)
       resp <- liftIO $ takeMVar m
       let s = _xhrResponse_status resp
-      logPromptly model LevelWarn $ "Got SPV Response " <> tshow s <> ": " <> tshow (_xhrResponse_responseText resp)
+      putLog model LevelWarn $ "Got SPV Response " <> tshow s <> ": " <> tshow (_xhrResponse_responseText resp)
       case s of
         200 -> pure $ maybe (Left "Couldn't decode response") Right $ decodeXhrResponse resp
         _ -> do

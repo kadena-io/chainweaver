@@ -302,7 +302,7 @@ makeNetwork model cfg = mfix $ \ ~(_, networkL) -> do
       )
   where
     reportNodeInfoError err =
-      logPromptly model LevelWarn $ "Fetching node info failed: " <> err
+      putLog model LevelWarn $ "Fetching node info failed: " <> err
 
 
 -- | Update networks, given an updating event.
@@ -621,7 +621,7 @@ loadModules logL networkL onRefresh = do
         onModules :: Event t [(ChainId, [Text])]
         onModules =  map (second getModuleList) <$> onResps
 
-      performEvent_ $ traverse_ (logPromptly logL LevelWarn . renderErrs . toList) <$> onErrs
+      performEvent_ $ traverse_ (putLog logL LevelWarn . renderErrs . toList) <$> onErrs
 
       holdUniqDyn <=< holdDyn mempty $ Map.fromList <$> onModules
 
@@ -676,7 +676,7 @@ parseNetworkErrorResult logL parse = \case
   These errs (_gas, pactValue) -> doParse pactValue (These (prettyPrintNetworkErrors errs))
   where
     doParse pactValue f = case parse pactValue of
-      Left e -> logPromptly logL LevelWarn e $> This "Error parsing the response"
+      Left e -> putLog logL LevelWarn e $> This "Error parsing the response"
       Right v -> pure $ f v
 
 -- | Perform a read or non persisted request to the /local endpoint.
@@ -826,7 +826,7 @@ performNetworkRequestCustom logL networkL unwrap onReqs =
               errRes <- doReq (Just n) req
               case errRes of
                 Left (chainUrl,err) -> do
-                  logPromptly logL LevelWarn $ "Got err: " <> tshow err
+                  putLog logL LevelWarn $ "Got err: " <> tshow err
                   if shouldFailOver err
                                then go ((chainUrl,err) : errs) ns
                                else pure $ mkResult errs (Left (chainUrl,err))

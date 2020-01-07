@@ -8,7 +8,7 @@ module Frontend.Log
   , formatLogMessage
   , defaultLogger
   , logOn
-  , logPromptly
+  , putLog
   , fmtLogTH
   ) where
 
@@ -36,7 +36,7 @@ makePactLenses ''LogCfg
 
 data Logger t = Logger
   { _log_formatMessage :: LogLevel -> Text -> LogStr
-  , _log_logPromptly :: LogLevel -> Text -> IO ()
+  , _log_putLog :: LogLevel -> Text -> IO ()
   }
 
 makePactLenses ''Logger
@@ -56,8 +56,8 @@ formatLogMessage lvl = defaultLogStr defaultLoc "Chainweaver" lvl . toLogStr
 defaultLogger :: MonadIO m => LogStr -> m ()
 defaultLogger = liftIO . hPut stdout . fromLogStr
 
-logPromptly :: (HasLogger model t, MonadIO m) => model -> LogLevel -> Text -> m ()
-logPromptly model lvl msg = liftIO $ view (logger . log_logPromptly) model lvl msg
+putLog :: (HasLogger model t, MonadIO m) => model -> LogLevel -> Text -> m ()
+putLog model lvl msg = liftIO $ view (logger . log_putLog) model lvl msg
 
 logOn :: (HasLogCfg mConf t, Monoid mConf, Reflex t) => LogLevel -> Text -> Event t a -> mConf
 logOn lvl msg go = mempty & logCfg_logMessage .~ ((lvl,msg) <$ go)

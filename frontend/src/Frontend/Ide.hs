@@ -193,7 +193,7 @@ makeIde appCfg userCfg = build $ \ ~(cfg, ideL) -> do
 
     ideLogger = Logger
       { _log_formatMessage = formatLogMessage
-      , _log_logPromptly = \lvl -> _appCfg_logMessage appCfg . formatLogMessage lvl
+      , _log_putLog = \lvl -> _appCfg_logMessage appCfg . formatLogMessage lvl
       } 
 
 makeEnvSelection

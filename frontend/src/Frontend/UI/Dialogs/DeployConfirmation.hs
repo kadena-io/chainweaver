@@ -251,11 +251,11 @@ submitTransactionWithFeedback model cmd chain nodeInfos = do
   clientEnvs <- fmap catMaybes $ for (rights nodeInfos) $ \nodeInfo -> do
     getChainRefBaseUrl (ChainRef Nothing chain) (Just nodeInfo) >>= \case
       Left e -> do
-        logPromptly model LevelWarn $ "deploySubmit: Couldn't get chainUrl: " <> e
+        putLog model LevelWarn $ "deploySubmit: Couldn't get chainUrl: " <> e
         pure Nothing
       Right chainUrl -> case S.parseBaseUrl $ URI.renderStr chainUrl of
         Nothing -> do
-          logPromptly model LevelWarn $ T.pack $ "deploySubmit: Failed to parse chainUrl: " <> URI.renderStr chainUrl
+          putLog model LevelWarn $ T.pack $ "deploySubmit: Failed to parse chainUrl: " <> URI.renderStr chainUrl
           pure Nothing
 
         Just baseUrl -> pure $ Just $ S.mkClientEnv baseUrl
