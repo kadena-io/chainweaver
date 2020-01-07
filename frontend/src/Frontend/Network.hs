@@ -448,8 +448,8 @@ deployCode
   -> Network t
   -> Event t [NetworkRequest]
   -> m (mConf, Event t ())
-deployCode logFn networkL onReq = do
-    reqRes <- performNetworkRequest logFn networkL onReq
+deployCode logL networkL onReq = do
+    reqRes <- performNetworkRequest logL networkL onReq
     pure $ ( mempty & messagesCfg_send .~ fmap (map renderReqRes) reqRes
            , () <$ ffilter (or . map (these (const False) (const True) (const . const $ True) . snd)) reqRes
            )
@@ -698,12 +698,12 @@ performLocalReadLatest
   -> Network t
   -> Event t [NetworkRequest]
   -> m (Event t [(NetworkRequest, NetworkErrorResult)])
-performLocalReadLatest logFn networkL onReqs = do
+performLocalReadLatest logL networkL onReqs = do
     counterDyn <- foldDyn (const (+1)) (0 :: Int) onReqs
     let
       counter = current counterDyn
       onCounted = attach counter onReqs
-    onResp <- performLocalReadCustom logFn networkL snd onCounted
+    onResp <- performLocalReadCustom logL networkL snd onCounted
     -- TODO: If we are not interested in earlier responses, we could cancel the
     -- corresponding requests ...
     pure $ uncurry zip <$> getLatest counter onResp
@@ -728,8 +728,8 @@ performLocalRead
   -> Network t
   -> Event t [NetworkRequest]
   -> m (Event t [(NetworkRequest, NetworkErrorResult)])
-performLocalRead logFn networkL onReqs =
-  fmap (uncurry zip) <$> performLocalReadCustom logFn networkL id onReqs
+performLocalRead logL networkL onReqs =
+  fmap (uncurry zip) <$> performLocalReadCustom logL networkL id onReqs
 
 getCreationTime :: MonadIO m => m TxCreationTime
 getCreationTime = mkCt <$> liftIO getPOSIXTime
@@ -755,12 +755,12 @@ performLocalReadCustom
   -> (req -> [NetworkRequest])
   -> Event t req
   -> m (Event t (req, [NetworkErrorResult]))
-performLocalReadCustom logFn networkL unwrapUsr onReqs = do
+performLocalReadCustom logL networkL unwrapUsr onReqs = do
   time <- getCreationTime
   let
     unwrap = map (networkRequest_endpoint .~ Endpoint_Local) . unwrapUsr
     fakeNetwork = networkL & network_meta . mapped . Pact.pmCreationTime .~ time
-  performNetworkRequestCustom logFn fakeNetwork unwrap onReqs
+  performNetworkRequestCustom logL fakeNetwork unwrap onReqs
 
 
 -- | Send a transaction via the /send endpoint.
@@ -777,8 +777,8 @@ performNetworkRequest
   -> Network t
   -> Event t [NetworkRequest]
   -> m (Event t [(NetworkRequest, NetworkErrorResult)])
-performNetworkRequest logFn networkL onReq =
-  fmap (uncurry zip) <$> performNetworkRequestCustom logFn networkL id onReq
+performNetworkRequest logL networkL onReq =
+  fmap (uncurry zip) <$> performNetworkRequestCustom logL networkL id onReq
 
 -- | Turn some node URLs into chain specific servant envs
 mkClientEnvs :: [NodeInfo] -> ChainId -> [S.ClientEnv]
