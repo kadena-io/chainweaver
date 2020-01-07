@@ -8,6 +8,8 @@
 
 .icon-grid {
   display: flex;
+  flex-wrap: wrap;
+  margin-left: $double-margin;
 }
 
 .icon-grid__cell {
@@ -16,17 +18,20 @@
   margin: $medium-margin;
   width: 420px;
   cursor: pointer;
-  &:first-child {
-    margin-left: $double-margin;
-  }
   color: $black;
   &:visited {
     color: $black;
+  }
+  @media (max-height: 800px) and (max-width: 1450px) {
+    padding-top: $bigger-padding;
   }
 }
 
 
 .icon-grid__cell-icon {
+  @media (max-height: 800px) and (max-width: 1450px) {
+    display: none;
+  }
   background-color: #454444;
   border-radius: 50%;
   width: 130px;

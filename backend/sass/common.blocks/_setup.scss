@@ -71,6 +71,24 @@ $setup-progress-font-size: 18px;
       font-size: 15px;
       color: $tertiary-color;
     }
+
+    @media (max-height: 700px) {
+      top: 75px;
+      width: 135px;
+      height: 135px;
+      font-size: 20px;
+      img.setup__kadena-logo {
+        margin-top: 16px;
+        width: 56px;
+        height: 61px;
+      }
+      .chainweaver {
+        margin-top: 7px;
+      }
+      .by-kadena {
+        font-size: 12px;
+      }
+    }
   }
 }
 
@@ -284,10 +302,12 @@ $setup-progress-font-size: 18px;
 
 .setup__passphrase-widget-word {
   opacity: 0;
+  height: 0;
 }
 
 .setup__passphrase-widget-word--focused {
   opacity: 1;
+  height: auto;
 }
 
 .setup__passphrase-widget-word-hider--focused {
@@ -349,6 +369,9 @@ $setup-progress-font-size: 18px;
 
 .setup__password-bg {
   width: 325px;
+  @media (max-height: 700px) {
+    display: none;
+  }
 }
 
 .setup__splash {
@@ -360,6 +383,10 @@ $setup-progress-font-size: 18px;
 .setup__splash-bg {
   width: 522px;
   height: 360px;
+  @media (max-height: 700px) {
+    width: 392px;
+    height: 270px;
+  }
   background-size: cover;
 }
 
@@ -371,6 +398,9 @@ $setup-progress-font-size: 18px;
 
 .setup__done-splash-bg {
   transform: rotateY(180deg);
+  @media (max-height: 700px) {
+    display: none;
+  }
 }
 
 .setup__done-splash-bg > * {
