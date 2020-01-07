@@ -2,6 +2,7 @@
 
 module Mac where
 
+import qualified Control.Concurrent.Async as Async
 import Control.Monad ((<=<))
 import Data.ByteString (ByteString)
 import Data.Default (Default(..))
@@ -11,6 +12,8 @@ import Foreign.StablePtr (StablePtr, newStablePtr)
 import Language.Javascript.JSaddle.Types (JSM)
 import Language.Javascript.JSaddle.WKWebView (AppDelegateConfig(..), mainBundleResourcePath, runHTMLWithBaseURL)
 import System.FilePath ((</>))
+import System.IO (Handle)
+import qualified System.Process as Process
 
 import Desktop (main', MacFFI(..))
 
