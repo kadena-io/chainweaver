@@ -110,8 +110,10 @@ uiAccountDetailsDetails netname a onClose = Workflow $ do
       pure notesEdit0
 
   modalFooter $ do
-    let removeLbl = "Remove " <> accountOrKey
-    onRemove <- cancelButton (def & uiButtonCfg_class <>~ " account-details__remove-account-btn") removeLbl
+    onRemove <- cancelButton
+      (def & uiButtonCfg_class <>~ " account-details__remove-account-btn")
+      ("Remove " <> accountOrKey)
+
     onDone <- confirmButton def "Done"
 
     let
