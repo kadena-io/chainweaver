@@ -3,7 +3,7 @@
 , appName
 , sass
 , linuxAppName ? "kadena-chainweaver"
-, linuxPackageVersion ? "0.1.0"
+, linuxPackageVersion ? "0.1.0-1"
 , linuxAppIcon ? ./linux/static/icons/pact-document.png
 }: rec {
   # If we don't wrapGApps, none of the gnome schema stuff works in nixos
@@ -207,7 +207,11 @@
     '';
   };
   deb-changelog = pkgs.writeTextFile { name = "chainweaver-changelog"; text = ''
-    Nah not yet
+    kadena-chainweaver (0.1.0-1) unstable; urgency=medium
+
+    * Initial release
+
+    -- Obsidian Systems Thu, 9 Jan 2020 02:09:09 +1000
   ''; };
   linuxDesktopItem = pkgs.makeDesktopItem { 
      name = linuxAppName;
