@@ -329,16 +329,16 @@ $setup-progress-font-size: 18px;
   margin-bottom: 0;
   border: none;
 
-  img {
-    margin-right: 0.4rem;
-  }
-
   color: $chainweaver-blue;
   font-size: 15px;
   display: flex;
   flex-direction: row;
   justify-content: center;
   align-items: center;
+
+  img {
+    margin-right: 0.4rem;
+  }
 
   .copy-status {
     opacity: 0;
