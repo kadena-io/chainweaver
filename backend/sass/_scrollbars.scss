@@ -3,6 +3,7 @@ $scrollbarBG: $white;
 
 body::-webkit-scrollbar {
   width: 18px;
+  height: 18px;
 }
 body {
   scrollbar-width: thin;

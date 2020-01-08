@@ -9,15 +9,17 @@ import System.Log.FastLogger (fromLogStr)
 import Data.ByteString (ByteString)
 import qualified Data.ByteString.Char8 as BS8
 import Data.Functor (void)
+import Data.List (lookup)
 import Data.Foldable (traverse_)
 import Data.GI.Gtk.Threading (postGUIASync)
+import Data.Maybe (fromMaybe)
 import Language.Javascript.JSaddle.Types (JSM)
 import qualified Data.Text as T
 import qualified Data.Text.Encoding as TE
 import qualified Data.Text.Encoding.Error as TE
 import qualified GI.Gtk as Gtk
 import Safe (headMay)
-import System.Environment (getExecutablePath)
+import System.Environment (getEnvironment, getExecutablePath)
 import System.FilePath ((</>), takeDirectory)
 import System.Posix.Syslog (Priority (..), Option (..), Facility (User), withSyslog, syslog)
 import qualified System.Posix.User as PU
@@ -30,15 +32,10 @@ import WebKitGTK
 
 To run: `WEBKIT_DISABLE_COMPOSITING_MODE=1 $(nix-build -A linux)/bin/kadena-chainweaver-rc1` from the project root
 
-It currently doesn't reference the static files from the nix store so it actually wont work atm if you
-try to run it from the directory that doesn't have static in it. :)
-
 TODO
 - Setting up app menu? What does the mac app do and what do we want in there?
-- What do we need to do with resizing the window? It seems to work alright
 
 BUGS
-- Pact file not saved across running of chainweaver. That's a bug.
 - Compositing issues with nvidia drivers: See https://bugs.freebsd.org/bugzilla/show_bug.cgi?id=229491
 - Getting these warnings in the console. Looks bad:
   - http://localhost:48481/:247:76: CONSOLE WARN ArrayBuffer is deprecated in XMLHttpRequest.send(). Use ArrayBufferView instead.
@@ -96,7 +93,11 @@ mkFfi = do
 main :: IO ()
 main = withSyslog "Chainweaver" [LogPID, Console] User $ do
   (ffi, mvars) <- mkFfi
-  main' ffi (Just . TE.encodeUtf8 . T.pack . takeDirectory <$> getExecutablePath) (runLinux mvars)
+  let getStaticPath = do
+        mPath <- lookup "CHAINWEAVER_STATIC_PATH" <$> getEnvironment
+        exeDir <- takeDirectory <$> getExecutablePath
+        pure . Just . TE.encodeUtf8 . T.pack $ fromMaybe exeDir mPath
+  main' ffi getStaticPath (runLinux mvars)
 
 runLinux
   :: LinuxMVars

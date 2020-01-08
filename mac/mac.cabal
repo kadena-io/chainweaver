@@ -11,6 +11,7 @@ library
       base
     , desktop
 
+    , async
     , bytestring
     , data-default
     , jsaddle
@@ -19,6 +20,7 @@ library
     , hsyslog
     , monad-logger
     , fast-logger
+    , process
 
   ghc-options:
     -O -Wall

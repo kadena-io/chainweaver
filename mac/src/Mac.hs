@@ -9,6 +9,8 @@ import Data.ByteString (ByteString)
 import qualified Data.ByteString.Char8 as BS8
 import Data.Default (Default(..))
 import Data.Functor (void)
+import Data.Foldable (for_)
+import GHC.IO.Handle (hDuplicateTo, BufferMode(LineBuffering))
 import Foreign.C.String (CString, peekCString)
 import Foreign.StablePtr (StablePtr, newStablePtr)
 import Language.Javascript.JSaddle.Types (JSM)
@@ -20,7 +22,7 @@ import System.Posix.Syslog (Priority (..), Option (..), Facility (User), withSys
 import qualified System.Process as Process
 import Foreign.C.String (withCStringLen)
 
-import Desktop (main', MacFFI(..))
+import Desktop (main', AppFFI(..))
 
 foreign import ccall setupAppMenu :: StablePtr (CString -> IO ()) -> IO ()
 foreign import ccall activateWindow :: IO ()
