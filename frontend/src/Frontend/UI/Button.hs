@@ -196,12 +196,13 @@ copyButton cfg t = do
     _ <- copyToClipboard $ tag t onClick
     pure onClick
 
-copyButtonStatus :: (DomBuilder t m, MonadFix m, MonadHold t m, MonadJSM (Performable m), PerformEvent t m, PostBuild t m)
-                 => UiButtonCfg
-                 -> Bool
-                 -> Event t ()
-                 -> (Event t () -> Event t Text)
-                 -> m ()
+copyButtonStatus
+  :: (DomBuilder t m, MonadFix m, MonadHold t m, MonadJSM (Performable m), PerformEvent t m, PostBuild t m)
+  => UiButtonCfg
+  -> Bool
+  -> Event t ()
+  -> (Event t () -> Event t Text)
+  -> m ()
 copyButtonStatus cfg hasIcon reset tag' = mdo
   copy <- uiButton (cfg & uiButtonCfg_type ?~ "button") $ do
     when hasIcon $ imgWithAlt (static @"img/copy.svg") "Copy" blank

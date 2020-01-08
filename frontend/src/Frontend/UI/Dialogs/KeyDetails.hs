@@ -86,11 +86,9 @@ uiKeyDetailsDetails keyIndex key onClose onCloseExternal = Workflow $ do
         txt <- fmap value $ mkLabeledClsInput False "Text to sign" $ \cls -> uiTextAreaElement $ def
           & initialAttributes .~ "class" =: renderClass cls
 
-        sigEv <- do
-          ((), sig) <- runWithReplace blank $ ffor (updated txt) $ \case
-            "" -> pure Nothing
-            b -> Just . keyToText <$> cryptoSign (Base64.encode $ T.encodeUtf8 b) pk
-          pure sig
+        ((), sigEv) <- runWithReplace blank $ ffor (updated txt) $ \case
+          "" -> pure Nothing
+          b -> Just . keyToText <$> cryptoSign (Base64.encode $ T.encodeUtf8 b) pk
 
         sig <- maybeDyn =<< holdDyn Nothing sigEv
 
