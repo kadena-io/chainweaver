@@ -333,30 +333,30 @@ $setup-progress-font-size: 18px;
     margin-right: 0.4rem;
   }
 
-    color: $chainweaver-blue;
-    font-size: 15px;
-    display: flex;
-    flex-direction: row;
-    justify-content: center;
-    align-items: center;
+  color: $chainweaver-blue;
+  font-size: 15px;
+  display: flex;
+  flex-direction: row;
+  justify-content: center;
+  align-items: center;
 
-    .copy-status {
-      opacity: 0;
-      transform: rotateY(90deg);
-      transition: opacity, transform 0.25s linear;
-      padding-left: 1rem;
+  .copy-status {
+    opacity: 0;
+    transform: rotateY(90deg);
+    transition: opacity, transform 0.25s linear;
+    padding-left: 1rem;
 
-      &.copy-success {
-        opacity: 1;
-        transform: none;
-        color: $chainweaver-blue;
-      }
+    &.copy-success {
+      opacity: 1;
+      transform: none;
+      color: $chainweaver-blue;
+    }
 
-      &.copy-fail {
-        opacity: 1;
-        transform: none;
-        color: red;
-      }
+    &.copy-fail {
+      opacity: 1;
+      transform: none;
+      color: red;
+    }
   }
 }
 
