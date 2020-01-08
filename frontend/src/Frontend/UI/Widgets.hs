@@ -588,7 +588,7 @@ uiAccountNotes :: Account -> Text
 uiAccountNotes = maybe "" unAccountNotes . accountNotes
 
 uiPublicKeyShrunk :: PublicKey -> Text
-uiPublicKeyShrunk pk = (T.take 6 ktxt) <> "..." <> (T.drop (T.length ktxt - 6) ktxt)
+uiPublicKeyShrunk pk = (T.take 6 ktxt) <> "..." <> (T.takeEnd 6 ktxt)
   where
     ktxt = keyToText pk
 
