@@ -7,10 +7,12 @@ module Frontend.UI.Dialogs.AddVanityAccount
   ) where
 
 import           Control.Lens                           ((^.),(<>~))
+import           Control.Error                          (hush)
 import           Control.Monad.Trans.Class              (lift)
 import           Control.Monad.Trans.Maybe              (MaybeT (..), runMaybeT)
 import           Data.Functor.Identity                  (Identity(..))
 import           Data.Maybe                             (isNothing,fromMaybe)
+import           Data.Either                            (isLeft)
 import           Data.Text                              (Text)
 import           Data.Aeson                             (Object, Value (Array, String))
 import qualified Data.HashMap.Strict                    as HM
@@ -130,12 +132,20 @@ uiAddVanityAccountSettings ideL onInflightChange mInflightAcc mChainId initialNo
       _ <- widgetHold blank $ ffor onInflightChange $ \_ -> divClass "group" $
         text "The incomplete vanity account has been verified on the chain and added to your wallet. You may continue to create a new vanity account or close this dialog and start using the new account."
 
-      (cfg, cChainId, ttl, gasLimit, Identity (dAccountName, dPublicKey, dNotes)) <- tabPane mempty curSelection DeploymentSettingsView_Cfg $
+      (cfg, cChainId, mSender, ttl, gasLimit, Identity (dAccountName, dPublicKey, dNotes)) <- tabPane mempty curSelection DeploymentSettingsView_Cfg $
         -- Is passing around 'Maybe x' everywhere really a good way of doing this ?
-        uiCfg Nothing ideL (userChainIdSelectWithPreselect ideL (constDyn mChainId)) Nothing (Just defaultTransactionGasLimit) (Identity uiAccSection) Nothing
+        uiCfg
+          Nothing
+          ideL
+          (userChainIdSelectWithPreselect ideL (constDyn mChainId))
+          Nothing
+          (Just defaultTransactionGasLimit)
+          (Identity uiAccSection)
+          Nothing
+          $ uiSenderDropdown def never
 
-      (mSender, signers, capabilities) <- tabPane mempty curSelection DeploymentSettingsView_Keys $
-        uiSenderCapabilities ideL cChainId Nothing $ uiSenderDropdown def never ideL cChainId
+      (mGasPayer, signers, capabilities) <- tabPane mempty curSelection DeploymentSettingsView_Keys $
+        uiSenderCapabilities ideL cChainId Nothing mSender $ uiSenderDropdown def never ideL cChainId
 
       let dPayload = fmap mkPubkeyPactData <$> dPublicKey
           code = mkPactCode <$> dAccountName
@@ -167,14 +177,14 @@ uiAddVanityAccountSettings ideL onInflightChange mInflightAcc mChainId initialNo
 
       pure
         ( cfg & networkCfg_setSender .~ fmapMaybe (fmap (\(Some x) -> accountRefToName x)) (updated mSender)
-        , fmap mkSettings dPayload >>= buildDeploymentSettingsResult ideL mSender signers cChainId capabilities ttl gasLimit code
+        , fmap mkSettings dPayload >>= buildDeploymentSettingsResult ideL mSender mGasPayer signers cChainId capabilities ttl gasLimit code
         , account
         , cChainId
         )
 
-    let preventProgress = (\a r -> isNothing a || isNothing r) <$> dAccount <*> result
+    let preventProgress = (\a r -> isNothing a || isLeft r) <$> dAccount <*> result
 
-    command <- performEvent $ tagMaybe (current result) eNewAccount
+    command <- performEvent $ tagMaybe (current $ fmap hush result) eNewAccount
     controls <- modalFooter $ buildDeployTabFooterControls
       customConfigTab
       includePreviewTab

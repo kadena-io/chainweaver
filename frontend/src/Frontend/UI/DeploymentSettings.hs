@@ -1,5 +1,4 @@
 {-# LANGUAGE ConstraintKinds #-}
-{-# LANGUAGE TupleSections #-}
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE ExtendedDefaultRules #-}
 {-# LANGUAGE FlexibleContexts #-}
@@ -8,10 +7,10 @@
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE PatternGuards #-}
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE RecursiveDo #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE TupleSections #-}
 {-# LANGUAGE TypeApplications #-}
 
 -- | Little widget providing a UI for deployment related settings.
@@ -56,9 +55,9 @@ module Frontend.UI.DeploymentSettings
   , Identity (runIdentity)
   ) where
 
-import Control.Applicative ((<|>), empty, liftA2)
+import Control.Applicative ((<|>), liftA2)
 import Control.Arrow (first)
-import Control.Error (fmapL, hoistMaybe, headMay)
+import Control.Error (fmapL, headMay, (!?), failWith, failWithM)
 import Control.Error.Util (hush)
 import Control.Lens
 import Control.Monad
@@ -155,6 +154,7 @@ data CapabilityInputRow t = CapabilityInputRow
   , _capabilityInputRow_cap :: Dynamic t (Either String SigCapability)
   }
 
+
 data DeploymentSettingsView
   = DeploymentSettingsView_Custom Text -- ^ An optional additonal tab.
   | DeploymentSettingsView_Cfg -- ^ Actual settings like gas price/limit, ...
@@ -209,6 +209,17 @@ publicKeysForAccounts allAccounts caps =
 lookupAccountBalance :: Some AccountRef -> Accounts -> Maybe (Maybe AccountBalance)
 lookupAccountBalance ref = fmap accountBalance . lookupAccountRef ref
 
+data DeploymentSettingsResultError
+  = DeploymentSettingsResultError_GasPayerIsNotValid (Some AccountRef)
+  | DeploymentSettingsResultError_InvalidNetworkName Text
+  | DeploymentSettingsResultError_NoSenderSelected
+  | DeploymentSettingsResultError_NoChainIdSelected
+  | DeploymentSettingsResultError_NoNodesAvailable
+  | DeploymentSettingsResultError_InvalidJsonData JsonError
+  | DeploymentSettingsResultError_NoAccountsOnNetwork NetworkName
+  | DeploymentSettingsResultError_InsufficientFundsOnGasPayer
+  deriving Eq
+
 buildDeploymentSettingsResult
   :: ( HasNetwork model t
      , HasJsonData model t
@@ -220,6 +231,7 @@ buildDeploymentSettingsResult
      )
   => model
   -> Dynamic t (Maybe (Some AccountRef))
+  -> Dynamic t (Maybe (Some AccountRef))
   -> Dynamic t (Set (Some AccountRef))
   -> Dynamic t (Maybe ChainId)
   -> Dynamic t (Map (Some AccountRef) [SigCapability])
@@ -227,18 +239,22 @@ buildDeploymentSettingsResult
   -> Dynamic t GasLimit
   -> Dynamic t Text
   -> DeploymentSettingsConfig t m model a
-  -> Dynamic t (Maybe (Performable m (DeploymentSettingsResult key)))
-buildDeploymentSettingsResult m mSender signers cChainId capabilities ttl gasLimit code settings = runMaybeT $ do
+  -> Dynamic t (Either DeploymentSettingsResultError (Performable m (DeploymentSettingsResult key)))
+buildDeploymentSettingsResult m mSender mGasPayer signers cChainId capabilities ttl gasLimit code settings = runExceptT $ do
   selNodes <- lift $ m ^. network_selectedNodes
   networkName <- lift $ m ^. network_selectedNetwork
-  networkId <- hoistMaybe $ hush . mkNetworkName . nodeVersion =<< headMay (rights selNodes)
-  sender <- MaybeT mSender
-  chainId <- MaybeT cChainId
+  networkId <- liftEither
+    . over _Left DeploymentSettingsResultError_InvalidNetworkName . mkNetworkName . nodeVersion
+    =<< failWith DeploymentSettingsResultError_NoNodesAvailable (headMay $ rights selNodes)
+
+  sender <- mSender !? DeploymentSettingsResultError_NoSenderSelected
+  chainId <- cChainId !? DeploymentSettingsResultError_NoChainIdSelected
+
   caps <- lift capabilities
   signs <- lift signers
   let signingAccounts = signs <> (Set.insert sender $ Map.keysSet caps)
       deploySettingsJsonData = fromMaybe mempty $ _deploymentSettingsConfig_data settings
-  jsonData' <- lift $ either (const mempty) id <$> m ^. jsonData . jsonData_data
+  jsonData' <- ExceptT $ over (mapped . _Left) DeploymentSettingsResultError_InvalidJsonData $ m ^. jsonData . jsonData_data
   ttl' <- lift ttl
   limit <- lift gasLimit
   lastPublicMeta <- lift $ m ^. network_meta
@@ -250,15 +266,23 @@ buildDeploymentSettingsResult m mSender signers cChainId capabilities ttl gasLim
         }
   code' <- lift code
   keys <- lift $ m ^. wallet_keys
-  allAccounts <- MaybeT $ Map.lookup networkName . unAccountStorage <$> m ^. wallet_accounts
-  -- Make an effort to ensure the sender account has enough balance to actually
+  allAccounts <- failWithM (DeploymentSettingsResultError_NoAccountsOnNetwork networkName)
+    $ Map.lookup networkName . unAccountStorage <$> m ^. wallet_accounts
+
+  -- Make an effort to ensure the gas payer (if there is one) account has enough balance to actually
   -- pay the gas. This won't work if the user selects an account on a different
   -- chain, but that's another issue.
-  for_ (lookupAccountBalance sender allAccounts) $ \case
-    Nothing -> empty
-    Just b -> let GasLimit lim = _pmGasLimit publicMeta
-                  GasPrice (ParsedDecimal price) = _pmGasPrice publicMeta
-               in guard $ unAccountBalance b > fromIntegral lim * price
+  gasPayer <- lift mGasPayer
+  case gasPayer of
+    Nothing -> pure () -- No gas payer selected, move along
+    Just gp ->  for_ (lookupAccountBalance gp allAccounts) $ \case
+      -- Gas Payer selected but they're not an account?!
+      Nothing -> throwError $ DeploymentSettingsResultError_GasPayerIsNotValid gp
+      Just b -> let GasLimit lim = _pmGasLimit publicMeta
+                    GasPrice (ParsedDecimal price) = _pmGasPrice publicMeta
+                 in unless (unAccountBalance b > fromIntegral lim * price) $
+                     throwError DeploymentSettingsResultError_InsufficientFundsOnGasPayer
+
   let pkCaps = publicKeysForAccounts allAccounts caps
   pure $ do
     let signingPairs = getSigningPairs keys allAccounts signingAccounts
@@ -378,16 +402,23 @@ uiDeploymentSettings m settings = mdo
 
       mRes <- traverse (uncurry $ tabPane mempty curSelection) mUserTabCfg
 
-      (cfg, cChainId, ttl, gasLimit, _) <- tabPane mempty curSelection DeploymentSettingsView_Cfg $
+      (cfg, cChainId, mSender, ttl, gasLimit, _) <- tabPane mempty curSelection DeploymentSettingsView_Cfg $
         uiCfg (Just code) m
           (_deploymentSettingsConfig_chainId settings $ m)
           (_deploymentSettingsConfig_ttl settings)
           (_deploymentSettingsConfig_gasLimit settings)
           Nothing
           (Just advancedAccordion)
+          (_deploymentSettingsConfig_sender settings)
 
-      (mSender, signers, capabilities) <- tabPane mempty curSelection DeploymentSettingsView_Keys $
-        uiSenderCapabilities m cChainId (_deploymentSettingsConfig_caps settings)
+      (mGasPayer, signers, capabilities) <- tabPane mempty curSelection DeploymentSettingsView_Keys $ do
+        dyn_ $ ffor result $ \case
+          Left (DeploymentSettingsResultError_GasPayerIsNotValid _) -> divClass "group segment" $
+            text "Selected account for 'coin.GAS' capability does not exist on this chain."
+          _ ->
+            blank
+
+        uiSenderCapabilities m cChainId (_deploymentSettingsConfig_caps settings) mSender
           $ (_deploymentSettingsConfig_sender settings) m cChainId
 
       when (_deploymentSettingsConfig_includePreviewTab settings) $ tabPane mempty curSelection DeploymentSettingsView_Preview $ do
@@ -421,17 +452,17 @@ uiDeploymentSettings m settings = mdo
 
       pure
         ( cfg & networkCfg_setSender .~ fmapMaybe (fmap (\(Some x) -> accountRefToName x)) (updated mSender)
-        , buildDeploymentSettingsResult m mSender signers cChainId capabilities ttl gasLimit code settings
+        , buildDeploymentSettingsResult m mSender mGasPayer signers cChainId capabilities ttl gasLimit code settings
         , mRes
         )
 
-    command <- performEvent $ tagMaybe (current result) done
+    command <- performEvent $ tagMaybe (current $ fmap hush result) done
     controls <- modalFooter $ buildDeployTabFooterControls
       mUserTabName
       (_deploymentSettingsConfig_includePreviewTab settings)
       curSelection
       defaultTabViewProgressButtonLabel
-      (isNothing <$> result)
+      (isLeft <$> result)
 
     pure (conf, command, ma)
     where
@@ -476,22 +507,28 @@ uiCfg
      )
   => Maybe (Dynamic t Text)
   -> model
-  -> m (Dynamic t (f Pact.ChainId))
+  -> m (Dynamic t (Maybe Pact.ChainId))
   -> Maybe TTLSeconds
   -> Maybe GasLimit
   -> g (Text, m a)
   -> Maybe (model -> Dynamic t Bool -> m (Event t (), ((), mConf)))
+  -> (model -> Dynamic t (Maybe ChainId) -> m (Dynamic t (Maybe (Some AccountRef))))
   -> m ( mConf
-       , Dynamic t (f Pact.ChainId)
+       , Dynamic t (Maybe Pact.ChainId)
+       , Dynamic t (Maybe (Some AccountRef))
        , Dynamic t TTLSeconds
        , Dynamic t GasLimit
        , g a
        )
-uiCfg mCode m wChainId mTTL mGasLimit userSections otherAccordion = do
+uiCfg mCode m wChainId mTTL mGasLimit userSections otherAccordion mSenderSelect = do
   -- General deployment configuration
   let mkGeneralSettings = do
         traverse_ (\c -> transactionInputSection c Nothing) mCode
         cId <- uiDeployDestination m wChainId
+
+        dialogSectionHeading mempty "Transaction Sender"
+        mSender <- elKlass "div" ("group segment") $ mkLabeledClsInput True "Account" $ \_ -> do
+          mSenderSelect m cId
 
         -- Customisable user provided UI section
         fa <- for userSections $ \(title, body) -> do
@@ -499,7 +536,7 @@ uiCfg mCode m wChainId mTTL mGasLimit userSections otherAccordion = do
           elKlass "div" ("group segment") body
 
         (cfg, ttl, gasLimit) <- uiDeployMetaData m mTTL mGasLimit
-        pure (cfg, cId, ttl, gasLimit, fa)
+        pure (cfg, cId, mSender, ttl, gasLimit, fa)
 
   rec
     let mkAccordionControlDyn initActive = foldDyn (const not) initActive
@@ -853,10 +890,11 @@ uiSenderCapabilities
   => model
   -> Dynamic t (Maybe Pact.ChainId)
   -> Maybe [DappCap]
+  -> Dynamic t (Maybe (Some AccountRef))
   -> m (Dynamic t (Maybe (Some AccountRef)))
   -> m (Dynamic t (Maybe (Some AccountRef)), Dynamic t (Set (Some AccountRef)), Dynamic t (Map (Some AccountRef) [SigCapability]))
-uiSenderCapabilities m cid mCaps mkSender = do
-  let senderDropdown setSender = uiSenderDropdown def setSender m cid
+uiSenderCapabilities m cid mCaps mSender mkGasPayer = do
+  let senderDropdown setGasPayer = uiSenderDropdown def setGasPayer m cid
       staticCapabilityRow sender cap = do
         elClass "td" "grant-capabilities-static-row__wrapped-cell" $ text $ _dappCap_role cap
         elClass "td" "grant-capabilities-static-row__wrapped-cell" $ text $ renderCompactText $ _dappCap_cap cap
@@ -868,8 +906,8 @@ uiSenderCapabilities m cid mCaps mkSender = do
           , _capabilityInputRow_cap = pure $ Right $ _dappCap_cap cap
           }
 
-      staticCapabilityRows setSender caps = fmap combineMaps $ for caps $ \cap ->
-        elClass "tr" "table__row" $ _capabilityInputRow_value <$> staticCapabilityRow (uiSenderDropdown def setSender m cid) cap
+      staticCapabilityRows setGasPayer caps = fmap combineMaps $ for caps $ \cap ->
+        elClass "tr" "table__row" $ _capabilityInputRow_value <$> staticCapabilityRow (uiSenderDropdown def setGasPayer m cid) cap
 
       combineMaps :: (Semigroup v, Ord k) => [Dynamic t (Map k v)] -> Dynamic t (Map k v)
       combineMaps = fmap (Map.unionsWith (<>)) . sequence
@@ -888,7 +926,7 @@ uiSenderCapabilities m cid mCaps mkSender = do
           elClass "th" "table__heading table__cell_padded" $ text "Capability"
           elClass "th" "table__heading table__cell_padded" $ text "Account"
         el "tbody" $ do
-          gas<- capabilityInputRow (Just defaultGASCapability) mkSender
+          gas <- capabilityInputRow (Just defaultGASCapability) mkGasPayer
           (rest, restCount) <- capabilityInputRows eAddCap (senderDropdown (Just <$> eApplyToAll))
           pure ( _capabilityInputRow_account gas
                , combineMaps [(_capabilityInputRow_value gas), rest]
@@ -900,7 +938,7 @@ uiSenderCapabilities m cid mCaps mkSender = do
           elAttr "th" ("class" =: "table__heading") $ text "Capability"
           elAttr "th" ("class" =: "table__heading" <> "width" =: "30%") $ text "Account"
         el "tbody" $ do
-          gas <- staticCapabilityRow mkSender defaultGASCapability
+          gas <- staticCapabilityRow mkGasPayer defaultGASCapability
           rest <- staticCapabilityRows (Just <$> eApplyToAll) $ filter (not . isGas . _dappCap_cap) caps
           pure ( _capabilityInputRow_account gas
                , combineMaps [(_capabilityInputRow_value gas),rest]
@@ -910,19 +948,31 @@ uiSenderCapabilities m cid mCaps mkSender = do
     -- If the gas capability is set, we enable the button that will set every other
     -- capability's sender from the gas account.
     eApplyToAllClick <- (switchHold never =<<) $ dyn $ ffor rowCount $ \n ->
-      if n > 1 then divClass "grant-capabilities-apply-all-wrapper" $ uiButtonDyn
-        (btnCfgSecondary
-          & uiButtonCfg_disabled .~ (isNothing <$> mGasAcct')
-          & uiButtonCfg_class .~ (constDyn $ "grant-capabilities-apply-all")
-        )
-        (text "Apply gas payer to all")
+      if n > 1 then do
+        eAllSender <- divClass "grant-capabilities-apply-all-wrapper" $ uiButtonDyn
+          (btnCfgSecondary
+            & uiButtonCfg_disabled .~ (isNothing <$> mSender)
+            & uiButtonCfg_class .~ (constDyn $ "grant-capabilities-apply-all")
+          )
+          (text "Apply sender to all")
+
+        eAllGasPayer <- divClass "grant-capabilities-apply-all-wrapper" $ uiButtonDyn
+          (btnCfgSecondary
+            & uiButtonCfg_disabled .~ (isNothing <$> mGasAcct')
+            & uiButtonCfg_class .~ (constDyn $ "grant-capabilities-apply-all")
+          )
+          (text "Apply to all")
+
+        pure $ leftmost
+          [ current mSender <@ eAllSender
+          , current mGasAcct' <@ eAllGasPayer
+          ]
       else
         pure never
 
-    let eApplyToAll = fmapMaybe id $ current mGasAcct' <@ eApplyToAllClick
+    let eApplyToAll = fmapMaybe id eApplyToAllClick
 
     pure (mGasAcct', capabilities')
-
 
   signers <- uiSignerList m cid
 
@@ -1004,11 +1054,21 @@ uiDeployPreview model settings keys accounts signers gasLimit ttl code lastPubli
   where
     uiPreviewResponses signing (cmd, wrappedCmd) = do
       pb <- getPostBuild
+
+      unless (any (any isGas) capabilities) $ do
+        dialogSectionHeading mempty "Notice"
+        divClass "group segment" $ mkLabeledView True mempty
+          $ text "A 'Gas Payer' has not been selected for this transaction. Are you sure this is correct?"
+
       transactionInputSection (pure code) (pure cmd)
       dialogSectionHeading mempty  "Destination"
       _ <- divClass "group segment" $ do
         transactionDisplayNetwork model
         predefinedChainIdDisplayed chainId model
+
+      dialogSectionHeading mempty  "Transaction Sender"
+      _ <- divClass "group segment" $ mkLabeledClsInput True "Account" $ \_ -> do
+        uiSenderFixed $ AccountName $ withSome sender accountRefToName
 
       let accountsToTrack = getAccounts signing
           localReq = case wrappedCmd of

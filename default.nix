@@ -13,7 +13,7 @@ let
     mkdir $out
     ${pkgs.sass}/bin/sass ${./backend/sass}/index.scss $out/sass.css
   '';
-  appName = "Kadena Chainweaver Beta";
+  appName = "Kadena Chainweaver Beta 2";
   macApp = (import ./mac.nix) {
     inherit obApp pkgs appName sass;
   };

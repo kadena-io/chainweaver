@@ -155,7 +155,6 @@ previewTransfer model fromAccount fromGasPayer toAddress crossChainData amount =
           & initialAttributes .~ "disabled" =: "disabled"
           & inputElementConfig_initialValue .~ unAccountName (accountToName $ _crossChainData_recipientChainGasPayer ccd)
     dialogSectionHeading mempty "Transaction Details"
-    elClass "h2" "heading heading_type_h2" $ text "Transaction Details"
     divClass "group" $ do
       void $ mkLabeledInput True "Amount" uiGasPriceInputField $ def
         & initialAttributes .~ "disabled" =: "disabled"
@@ -624,8 +623,7 @@ crossChainTransfer logL netInfo keys fromAccount toAccount fromGasPayer crossCha
   -- Lookup the guard if we don't already have it
   keySetResponse <- case toAccount of
     Left ka -> case _kadenaAddress_accountCreated ka of
-      AccountCreated_Yes -> lookupKeySet logL networkName envFromChain ka
-
+      AccountCreated_Yes -> lookupKeySet logL networkName envFromChain publicMeta ka
       -- If the account hasn't been created, don't try to lookup the guard. Just
       -- assume the account name _is_ the public key (since it must be a
       -- non-vanity account).
@@ -739,21 +737,22 @@ lookupKeySet
   -- ^ Which network we are on
   -> [S.ClientEnv]
   -- ^ Envs which point to the appropriate chain
+  -> PublicMeta
+  -- ^ Public meta to steal values from TODO this can be removed when pact
+  -- allows /local requests without running gas
   -> KadenaAddress
   -- ^ Account on said chain to find
   -> m (Event t (Either Text Pact.KeySet))
-lookupKeySet logL networkName envs addr = do
+lookupKeySet logL networkName envs publicMeta addr = do
   now <- getCreationTime
   let code = T.unwords
         [ "(coin.details"
         , tshow $ unAccountName $ _kadenaAddress_accountName addr
         , ")"
         ]
-      pm = PublicMeta
+      pm = publicMeta
         { _pmChainId = _kadenaAddress_chainId addr
         , _pmSender = "chainweaver"
-        , _pmGasLimit = 0
-        , _pmGasPrice = 0
         , _pmTTL = 60
         , _pmCreationTime = now
         }
