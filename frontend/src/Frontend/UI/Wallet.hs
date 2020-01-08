@@ -241,8 +241,8 @@ uiKeyItems model = do
   events <- elAttr "table" tableAttrs $ do
     el "colgroup" $ do
       elAttr "col" ("style" =: "width: 5%") blank
-      elAttr "col" ("style" =: "width: 35%") blank
       elAttr "col" ("style" =: "width: 20%") blank
+      elAttr "col" ("style" =: "width: 35%") blank
       elAttr "col" ("style" =: "width: 20%") blank
       elAttr "col" ("style" =: "width: 20%") blank
     el "thead" $ el "tr" $ do
@@ -323,7 +323,7 @@ uiKeyItem model keyIndex key = do
       keyRow open balance = trKey $ do
         let accordionCell o = "wallet__table-cell" <> if o then "" else " accordion-collapsed"
         clk <- elDynClass "td" (accordionCell <$> open) $ accordionButton def
-        td $ dynText $ keyToText . _keyPair_publicKey . _key_pair <$> key
+        td $ dynText $ uiPublicKeyShrunk . _keyPair_publicKey . _key_pair <$> key
         td $ dynText $ unAccountNotes . _key_notes <$> key
         td $ dynText $ uiAccountBalance False . Just <$> balance
         dialog <- td $ buttons $ do

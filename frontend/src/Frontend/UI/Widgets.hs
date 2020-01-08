@@ -38,6 +38,7 @@ module Frontend.UI.Widgets
   , uiInputView
   , mkLabeledInputView
   , mkLabeledInput
+  , mkLabeledView
   , uiLabeledRadioView
   , uiRadioElementView
   , mkLabeledClsInput
@@ -50,6 +51,7 @@ module Frontend.UI.Widgets
   , uiAccountBalance'
   , uiAccountChain
   , uiAccountNotes
+  , uiPublicKeyShrunk
     -- ** Helper widgets
   , imgWithAlt
   , showLoading
@@ -472,6 +474,21 @@ mkLabeledInput inlineLabel n mkInput cfg = elClass "div" ("segment segment_type_
   mkInput (cfg & initialAttributes %~ addToClassAttr "labeled-input__input")
   where
     inlineState = bool "" "-inline" inlineLabel
+
+-- | Make labeled and segmented display for some element
+--
+mkLabeledView
+  :: DomBuilder t m
+  => Bool
+  -> Text
+  -> m a
+  -> m a
+mkLabeledView inlineLabel n body = elClass "div" ("segment segment_type_tertiary labeled-input" <> inlineState) $ do
+  divClass ("label labeled-input__label" <> inlineState) $ text n
+  divClass "labeled-input__input" body
+  where
+    inlineState = bool "" "-inline" inlineLabel
+
 -- | Make some input a labeled input.
 --
 --   Any widget creating function that can be called with additional classes will do.
@@ -570,6 +587,11 @@ uiAccountChain = _chainId . accountChain
 
 uiAccountNotes :: Account -> Text
 uiAccountNotes = maybe "" unAccountNotes . accountNotes
+
+uiPublicKeyShrunk :: PublicKey -> Text
+uiPublicKeyShrunk pk = (T.take 6 ktxt) <> "..." <> (T.takeEnd 6 ktxt)
+  where
+    ktxt = keyToText pk
 
 showLoading
   :: (NotReady t m, Adjustable t m, PostBuild t m, DomBuilder t m, Monoid b)

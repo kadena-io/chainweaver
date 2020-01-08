@@ -8,13 +8,14 @@
 @import '../include/defs';
 
 .labeled-input {
-  color: $tertiary-color;
+  color: $black-disabled-bg;
 }
 
 .labeled-input-inline {
-  color: $tertiary-color;
   display: flex;
   align-items: center;
+  color: $black-disabled-bg;
+  font-family: WorkSans-Medium;
 }
 
 .labeled-input__label {
