@@ -1,5 +1,4 @@
 {-# LANGUAGE ConstraintKinds #-}
-{-# LANGUAGE TupleSections #-}
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE ExtendedDefaultRules #-}
 {-# LANGUAGE FlexibleContexts #-}
@@ -11,6 +10,7 @@
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE RecursiveDo #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE TupleSections #-}
 {-# LANGUAGE TypeApplications #-}
 
 -- | Little widget providing a UI for deployment related settings.
@@ -246,7 +246,7 @@ buildDeploymentSettingsResult m mSender mGasPayer signers cChainId capabilities 
   networkId <- liftEither
     . over _Left DeploymentSettingsResultError_InvalidNetworkName . mkNetworkName . nodeVersion
     =<< failWith DeploymentSettingsResultError_NoNodesAvailable (headMay $ rights selNodes)
-    
+
   sender <- mSender !? DeploymentSettingsResultError_NoSenderSelected
   chainId <- cChainId !? DeploymentSettingsResultError_NoChainIdSelected
 
@@ -960,7 +960,7 @@ uiSenderCapabilities m cid mCaps mSender mkGasPayer = do
             & uiButtonCfg_disabled .~ (isNothing <$> mGasAcct')
             & uiButtonCfg_class .~ (constDyn $ "grant-capabilities-apply-all")
           )
-          (text "Apply gas payer to all")
+          (text "Apply to all")
 
         pure $ leftmost
           [ current mSender <@ eAllSender
