@@ -51,6 +51,7 @@ module Frontend.UI.Widgets
   , uiAccountBalance'
   , uiAccountChain
   , uiAccountNotes
+  , uiPublicKeyShrunk
     -- ** Helper widgets
   , imgWithAlt
   , showLoading
@@ -585,6 +586,11 @@ uiAccountChain = _chainId . accountChain
 
 uiAccountNotes :: Account -> Text
 uiAccountNotes = maybe "" unAccountNotes . accountNotes
+
+uiPublicKeyShrunk :: PublicKey -> Text
+uiPublicKeyShrunk pk = (T.take 6 ktxt) <> "..." <> (T.drop (T.length ktxt - 6) ktxt)
+  where
+    ktxt = keyToText pk
 
 showLoading
   :: (NotReady t m, Adjustable t m, PostBuild t m, DomBuilder t m, Monoid b)
