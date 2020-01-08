@@ -1,3 +1,4 @@
+{-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE ExtendedDefaultRules #-}
 {-# LANGUAGE FlexibleContexts #-}
@@ -29,6 +30,7 @@ import Control.Lens hiding (element)
 import Control.Monad (void)
 import Data.Text (Text)
 import Data.Void (Void)
+import Data.Proxy (Proxy (..))
 import Reflex
 import Reflex.Dom
 
@@ -41,7 +43,7 @@ import qualified Language.Javascript.JSaddle as JSaddle
 import Frontend.Foundation
 import Frontend.Ide
 import Frontend.UI.Modal
-
+import Frontend.UI.Widgets.Helpers (preventMouseWheel)
 
 type ModalImpl m key t = Event t () -> m (IdeCfg Void key t, Event t ())
 
@@ -49,8 +51,29 @@ type ModalIdeCfg m key t = IdeCfg (ModalImpl m key t) key t
 
 type ModalIde m key t = Ide (ModalImpl m key t) key t
 
+backdropConfig :: forall m t. (DomBuilder t m, DomSpace m, Reflex t) => ElementConfig EventResult t (DomBuilderSpace m)
+backdropConfig = def
+  & elementConfig_initialAttributes .~ ("class" =: "modal__screen")
+  & elementConfig_eventSpec .~ eSpec
+  where
+    eSpec :: EventSpec m EventResult
+    eSpec = addEventSpecFlags (Proxy :: Proxy m)  Mousewheel (const preventDefault) def
+
 -- | Show the current modal dialog as given in the model.
-showModal :: forall key t m. MonadWidget t m => ModalIde m key t -> m (ModalIdeCfg m key t)
+-- showModal :: forall key t m. MonadWidget t m => ModalIde m key t -> m (ModalIdeCfg m key t)
+showModal
+  :: forall key t m.
+     ( MonadJSM m
+     , MonadJSM (Performable m)
+     , TriggerEvent t m
+     , DomBuilder t m
+     , PostBuild t m
+     , MonadFix m
+     , MonadHold t m
+     , PerformEvent t m
+     )
+  => ModalIde m key t
+  -> m (ModalIdeCfg m key t)
 showModal ideL = do
     document <- DOM.currentDocumentUnchecked
 
@@ -61,8 +84,9 @@ showModal ideL = do
     let mkCls vis = "modal" <>
           if vis then "modal_open" else mempty
 
+
     elDynKlass "div" (mkCls <$> isVisible) $ mdo
-      (backdropEl, ev) <- elClass' "div" "modal__screen" $
+      (backdropEl, ev) <- element "div" backdropConfig $
         divClass "modal__dialog" $ networkView $ ffor (_ide_modal ideL) $ \case
           Nothing -> pure (mempty, never) -- The modal is closed
           Just f -> f onClose -- The modal is open
