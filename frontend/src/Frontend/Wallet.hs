@@ -46,13 +46,14 @@ module Frontend.Wallet
   ) where
 
 import Control.Lens hiding ((.=))
-import Control.Monad (void)
+import Control.Monad (void, mfilter)
 import Control.Monad.Except (runExcept)
 import Control.Monad.Fix
 import Data.Aeson
 import Data.Dependent.Sum (DSum(..))
 import Data.Either (rights)
 import Data.IntMap (IntMap)
+import Data.Maybe (fromMaybe)
 import Data.Set (Set)
 import Data.Some (Some(Some))
 import Data.Text (Text)
@@ -172,10 +173,11 @@ makeWallet model conf = do
       , ffor (_walletCfg_delKey conf) $ IntMap.adjust $ \k -> k { _key_hidden = True }
       , ffor (_walletCfg_updateKeyNotes conf) $ \(i, notes) -> IntMap.adjust (\k -> k { _key_notes = notes }) i
       ]
+    let visibleKeys = IntMap.filter (not . _key_hidden) <$> keys
 
   rec
     newBalances <- getBalances model $ leftmost
-      [ (,) . IntMap.elems <$> current keys <*> current accounts <@ _walletCfg_refreshBalances conf
+      [ (,) . IntMap.elems <$> current visibleKeys <*> current visibleAccounts <@ _walletCfg_refreshBalances conf
       -- Also refresh balances after we generate a new key
       , ffor onNewKey $ \k -> ([k], mempty)
       ]
@@ -190,15 +192,35 @@ makeWallet model conf = do
       , ffor (_walletCfg_setCrossChainTransfer conf) updateCrossChain
       , ffor (_walletCfg_delAccount conf) hideAccount
       ]
+    let visibleAccounts = filterVisibleAccountStorage <$> accounts
 
   performEvent_ $ storeKeys <$> updated keys
   performEvent_ $ storeAccounts <$> updated accounts
 
+
   pure $ Wallet
-    { _wallet_keys = keys
-    , _wallet_accounts = accounts
+    { _wallet_keys = visibleKeys
+    , _wallet_accounts = visibleAccounts
     }
   where
+    filterVisibleAccountStorage :: AccountStorage -> AccountStorage
+    filterVisibleAccountStorage (AccountStorage as) = AccountStorage $ fromMaybe mempty $ mapMapMaybe filterVisibleAccounts as
+
+    filterVisibleAccounts :: Accounts -> Maybe Accounts
+    filterVisibleAccounts as =
+      let
+        mva = mapMapMaybe filterVisibleChainAccounts $ as ^. accounts_vanity
+        mnva = mapMapMaybe filterVisibleChainAccounts $ as ^. accounts_nonVanity
+      in case (mva, mnva) of
+        (Nothing, Nothing) -> Nothing
+        (_,_) -> Just $ Accounts (fold mva) (fold mnva)
+
+    filterVisibleChainAccounts :: HasAccountInfo a => Map.Map ChainId a -> Maybe (Map.Map ChainId a)
+    filterVisibleChainAccounts = mapMapMaybe (mfilter (^. accountInfo . accountInfo_hidden . to not) . Just)
+
+    mapMapMaybe :: Ord k => (a -> Maybe a) -> Map.Map k a -> Maybe (Map.Map k a)
+    mapMapMaybe f oldM = mfilter (not . Map.null) . Just . foldl (\m k -> Map.update f k m) oldM $ (Map.keys oldM)
+
     updateAccountNotes :: (NetworkName, AccountName, ChainId, AccountNotes) -> AccountStorage -> AccountStorage
     updateAccountNotes (net, name, chain, notes) = _AccountStorage . at net . _Just . accounts_vanity . at name . _Just . at chain . _Just . vanityAccount_notes .~ notes
 

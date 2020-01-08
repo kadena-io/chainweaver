@@ -97,7 +97,7 @@ expectedKeys = IntMap.fromList
   , ( 2
     , Key
       (KeyPair
-        (unsafePublicKey $ "0000000000000000000000000000000000000000000000000000000000000000")
+        (publicKeyYolo $ "0000000000000000000000000000000000000000000000000000000000000000")
         Nothing)
       True
       (mkAccountNotes ""))

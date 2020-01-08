@@ -12,6 +12,7 @@ import qualified Data.Dependent.Map as DMap
 import Data.Functor.Identity (Identity(Identity), runIdentity)
 import qualified Data.IntMap as IntMap
 import Data.Map (Map)
+import Data.Maybe (fromJust)
 import qualified Data.Map as Map
 import Data.Maybe (catMaybes)
 import Data.Text (Text)
@@ -131,7 +132,7 @@ upgradeFromV0 v0 =
     upgradeAccountNotes a = mkAccountNotes (V0.unAccountNotes . V0._account_notes $ a)
     --This is a bit unfortunate
     fakeKeyPair = KeyPair
-      { _keyPair_publicKey = unsafePublicKey (T.encodeUtf8 . T.replicate 64 $ "0")
+      { _keyPair_publicKey = fromJust . textToKey . T.replicate 64 $ "0"
       , _keyPair_privateKey = Nothing
       }
     extractKey (V0.Account { V0._account_key = kp } ) = KeyPair
