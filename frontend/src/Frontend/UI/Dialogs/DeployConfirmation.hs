@@ -56,6 +56,7 @@ import Frontend.UI.Modal
 import Frontend.UI.Widgets
 import Frontend.UI.Widgets.Helpers (dialogSectionHeading)
 import Frontend.Wallet
+import Frontend.Log
 import Language.Javascript.JSaddle
 import Pact.Types.PactValue (PactValue)
 import Reflex
@@ -123,6 +124,7 @@ uiDeployConfirmation
      , HasNetwork model t, HasNetworkCfg modelCfg t
      , HasJsonData model t, HasJsonDataCfg modelCfg t
      , HasWallet model key t, HasCrypto key (Performable m)
+     , HasLogger model t
      )
   => Text
   -> model
@@ -153,6 +155,7 @@ fullDeployFlow
   :: forall key t m model modelCfg.
      ( MonadWidget t m, Monoid modelCfg, Flattenable modelCfg t
      , HasNetwork model t
+     , HasLogger model t
      )
   => DeployConfirmationConfig t
   -> model
@@ -181,24 +184,27 @@ fullDeployFlow dcfg model runner _onCloseExternal = do
            )
 
     showSubmit nodes result = deploySubmit
+      model
       (_deploymentSettingsResult_chainId result)
       result
       nodes
 
 deploySubmit
-  :: forall key t m a modelCfg.
+  :: forall key t m a model modelCfg.
      ( MonadWidget t m
      , Monoid modelCfg
+     , HasLogger model t
      )
-  => ChainId
+  => model
+  -> ChainId
   -> DeploymentSettingsResult key
   -> [Either a NodeInfo]
   -> Workflow t m (Text, (Event t (), modelCfg))
-deploySubmit chain result nodeInfos = Workflow $ do
+deploySubmit model chain result nodeInfos = Workflow $ do
   let cmd = _deploymentSettingsResult_command result
 
   _ <- elClass "div" "modal__main transaction_details" $
-    submitTransactionWithFeedback cmd chain nodeInfos
+    submitTransactionWithFeedback model cmd chain nodeInfos
 
   done <- modalFooter $ uiButtonDyn (def & uiButtonCfg_class .~ "button_type_confirm") $ text "Done"
   pure
@@ -231,23 +237,27 @@ data TransactionSubmitFeedback t = TransactionSubmitFeedback
   }
 
 submitTransactionWithFeedback
-  :: CanSubmitTransaction t m
-  => Pact.Command Text
+  :: ( CanSubmitTransaction t m
+     , HasLogger model t
+     )
+  => model
+  -> Pact.Command Text
   -> ChainId
   -> [Either a NodeInfo]
   -> m (TransactionSubmitFeedback t)
-submitTransactionWithFeedback cmd chain nodeInfos = do
+submitTransactionWithFeedback model cmd chain nodeInfos = do
   transactionHashSection cmd
   -- Shove the node infos into servant client envs
   clientEnvs <- fmap catMaybes $ for (rights nodeInfos) $ \nodeInfo -> do
     getChainRefBaseUrl (ChainRef Nothing chain) (Just nodeInfo) >>= \case
       Left e -> do
-        liftIO $ putStrLn $ T.unpack $ "deploySubmit: Couldn't get chainUrl: " <> e
+        putLog model LevelWarn $ "deploySubmit: Couldn't get chainUrl: " <> e
         pure Nothing
       Right chainUrl -> case S.parseBaseUrl $ URI.renderStr chainUrl of
         Nothing -> do
-          liftIO $ putStrLn $ "deploySubmit: Failed to parse chainUrl: " <> URI.renderStr chainUrl
+          putLog model LevelWarn $ T.pack $ "deploySubmit: Failed to parse chainUrl: " <> URI.renderStr chainUrl
           pure Nothing
+
         Just baseUrl -> pure $ Just $ S.mkClientEnv baseUrl
   let
     newTriggerHold a = do

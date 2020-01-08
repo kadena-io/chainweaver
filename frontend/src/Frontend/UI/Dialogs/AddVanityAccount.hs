@@ -1,10 +1,6 @@
 {-# LANGUAGE ConstraintKinds #-}
-{-# LANGUAGE PatternGuards #-}
 {-# LANGUAGE RecursiveDo #-}
-{-# LANGUAGE TupleSections #-}
-{-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE LambdaCase #-}
-{-# LANGUAGE TypeApplications #-}
 module Frontend.UI.Dialogs.AddVanityAccount
   ( --uiAddVanityAccountSettings
     uiAddVanityAccountButton
@@ -43,6 +39,7 @@ import           Frontend.Crypto.Ed25519                (keyToText)
 import           Frontend.JsonData
 import           Frontend.Network
 import           Frontend.Wallet
+import           Frontend.Log
 import Reflex.Extended
 
 -- Allow the user to create a 'vanity' account, which is an account with a custom name
@@ -203,6 +200,7 @@ vanityAccountCreateSubmit
      , CanSubmitTransaction t m
      , HasNetwork model t
      , HasWalletCfg mConf key t
+     , HasLogger model t
      )
   => model
   -> Dynamic t (Maybe (NetworkName, AccountName, ChainId, VanityAccount))
@@ -216,7 +214,7 @@ vanityAccountCreateSubmit model dAccount chainId result nodeInfos = Workflow $ d
   pb <- getPostBuild
 
   txnSubFeedback <- elClass "div" "modal__main transaction_details" $
-    submitTransactionWithFeedback cmd chainId nodeInfos
+    submitTransactionWithFeedback model cmd chainId nodeInfos
 
   let txnListenStatus = _transactionSubmitFeedback_listenStatus txnSubFeedback
 
@@ -233,7 +231,7 @@ vanityAccountCreateSubmit model dAccount chainId result nodeInfos = Workflow $ d
         , _networkRequest_endpoint = Endpoint_Local
         }
 
-  resp <- performLocalRead (model ^. network) $ [req] <$ pb
+  resp <- performLocalRead (model ^. logger) (model ^. network) $ [req] <$ pb
 
   let localOk = fforMaybe resp $ \case
         [(_, That (_, PLiteral (LString "Write succeeded")))] -> Just ()

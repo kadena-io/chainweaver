@@ -3,9 +3,10 @@
 module Mac where
 
 import qualified Control.Concurrent.Async as Async
-import Control.Exception (bracket)
-import Control.Monad ((<=<), forever)
+import Control.Monad ((<=<))
+import Control.Monad.Logger (LogLevel (..), LogStr)
 import Data.ByteString (ByteString)
+import qualified Data.ByteString.Char8 as BS8
 import Data.Default (Default(..))
 import Data.Functor (void)
 import Data.Foldable (for_)
@@ -14,9 +15,12 @@ import Foreign.C.String (CString, peekCString)
 import Foreign.StablePtr (StablePtr, newStablePtr)
 import Language.Javascript.JSaddle.Types (JSM)
 import Language.Javascript.JSaddle.WKWebView (AppDelegateConfig(..), mainBundleResourcePath, runHTMLWithBaseURL)
+import System.Log.FastLogger (fromLogStr)
 import System.FilePath ((</>))
-import System.IO (Handle, stderr, stdout, hGetLine, hClose, hSetBuffering)
+import System.IO (Handle)
+import System.Posix.Syslog (Priority (..), Option (..), Facility (User), withSyslog, syslog)
 import qualified System.Process as Process
+import Foreign.C.String (withCStringLen)
 
 import Desktop (main', AppFFI(..))
 
@@ -37,7 +41,25 @@ ffi = AppFFI
   , _appFFI_resizeWindow = uncurry resizeWindow
   , _appFFI_global_openFileDialog = global_openFileDialog
   , _appFFI_global_getStorageDirectory = getStorageDirectory
+  , _appFFI_global_logFunction = logToSyslog
   }
+
+logToSyslog :: LogLevel -> LogStr -> IO ()
+logToSyslog lvl msg =
+  withCStringLen (BS8.unpack $ fromLogStr msg) $ \cstr ->
+    syslog Nothing priorityFromLogLevel cstr
+  where
+    priorityFromLogLevel = case lvl of
+      LevelDebug -> Debug
+      LevelInfo  -> Info
+      LevelWarn  -> Warning
+      LevelError -> Error
+      (LevelOther level) -> case level of
+        "Emergency" -> Emergency
+        "Alert"     -> Alert
+        "Critical"  -> Critical
+        "Notice"    -> Notice
+        _           -> error $ "unknown log level: " <> T.unpack level
 
 getStorageDirectory :: IO String
 getStorageDirectory = do
@@ -59,7 +81,8 @@ redirectPipes ps m = bracket setup hClose $ \r -> Async.withAsync (go r) $ \_ ->
       Process.callProcess "syslog" ["-s", "-k", "Level", "Notice", "Message", "Pact: " <> l]
 
 main :: IO ()
-main = redirectPipes [stderr, stdout] $ main' ffi mainBundleResourcePath runMac
+main = withSyslog "Chainweaver" [LogPID, Console] $
+  main' ffi mainBundleResourcePath redirectPipes runMac
 
 runMac
   :: ByteString

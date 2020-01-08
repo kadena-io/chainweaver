@@ -45,6 +45,7 @@ import Common.Wallet (parsePublicKey,toPactPublicKey)
 import Frontend.Foundation
 import Frontend.KadenaAddress
 import Frontend.Network
+import Frontend.Log
 
 import Frontend.UI.Dialogs.DeployConfirmation (CanSubmitTransaction, TransactionSubmitFeedback (..), submitTransactionWithFeedback)
 
@@ -123,6 +124,7 @@ uiReceiveModal
      , Flattenable mConf t
      , HasCrypto key m
      , HasCrypto key (Performable m)
+     , HasLogger model t
      )
   => model
   -> AccountName
@@ -145,6 +147,7 @@ uiReceiveModal0
      , HasWallet model key t
      , HasCrypto key (Performable m)
      , HasCrypto key m
+     , HasLogger model t
      )
   => model
   -> AccountName
@@ -217,7 +220,7 @@ uiReceiveModal0 model account accCreated mchain onClose = Workflow $ do
       g <- lift $ sample $ current gaslimit
       ni <- MaybeT $ sample $ current netInfo
       ti <- MaybeT $ sample $ current transferInfo
-      pure $ receiveFromLegacySubmit onClose account accCreated c t g ni ti
+      pure $ receiveFromLegacySubmit model onClose account accCreated c t g ni ti
 
   pure ( (conf, onClose <> done)
        , submit
@@ -227,8 +230,10 @@ receiveFromLegacySubmit
   :: ( Monoid mConf
      , CanSubmitTransaction t m
      , HasCrypto key m
+     , HasLogger model t
      )
-  => Event t ()
+  => model
+  -> Event t ()
   -> AccountName
   -> AccountCreated
   -> ChainId
@@ -237,7 +242,7 @@ receiveFromLegacySubmit
   -> ([Either a NodeInfo], PublicMeta, NetworkName)
   -> NonBIP32TransferInfo
   -> Workflow t m (mConf, Event t ())
-receiveFromLegacySubmit onClose account accCreated chain ttl gasLimit netInfo transferInfo = Workflow $ do
+receiveFromLegacySubmit model onClose account accCreated chain ttl gasLimit netInfo transferInfo = Workflow $ do
   let
     sender = _legacyTransferInfo_account transferInfo
     senderKey = _legacyTransferInfo_pactKey transferInfo
@@ -299,7 +304,7 @@ receiveFromLegacySubmit onClose account accCreated chain ttl gasLimit netInfo tr
     pkCaps
 
   txnSubFeedback <- elClass "div" "modal__main transaction_details" $
-    submitTransactionWithFeedback cmd chain (netInfo ^. _1)
+    submitTransactionWithFeedback model cmd chain (netInfo ^. _1)
 
   let isDisabled = maybe True isLeft <$> _transactionSubmitFeedback_message txnSubFeedback
 

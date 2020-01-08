@@ -19,6 +19,9 @@ library
     , process
     , safe
     , gi-gtk-hs
+    , hsyslog
+    , monad-logger
+    , fast-logger
 
     -- These are here because of our webkit2gtk fork
     , unix

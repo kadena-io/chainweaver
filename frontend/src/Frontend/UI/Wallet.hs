@@ -41,6 +41,7 @@ import qualified Pact.Types.ChainId          as Pact
 import           Reflex
 import           Reflex.Dom hiding (Key)
 ------------------------------------------------------------------------------
+import           Frontend.Log (HasLogger, HasLogCfg)
 import           Frontend.Crypto.Class
 import           Frontend.Crypto.Ed25519     (keyToText)
 import           Frontend.Wallet
@@ -72,6 +73,8 @@ type HasUiWalletModelCfg model mConf key m t =
   , HasJsonData model t
   , HasNetworkCfg (ModalCfg mConf t) t
   , HasJsonDataCfg (ModalCfg mConf t) t
+  , HasLogger model t
+  , HasLogCfg mConf t
   )
 
 -- | Possible actions from an account

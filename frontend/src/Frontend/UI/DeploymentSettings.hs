@@ -93,7 +93,6 @@ import qualified Data.HashMap.Strict as HM
 import qualified Data.Map as Map
 import qualified Data.Set as Set
 import qualified Data.Text as T
-import qualified Data.Text.IO as T
 import qualified Pact.Types.Capability as PC
 import qualified Pact.Types.ChainId as Pact
 import qualified Pact.Types.Command as Pact
@@ -107,6 +106,7 @@ import Frontend.Crypto.Ed25519 (keyToText)
 import Frontend.Foundation
 import Frontend.JsonData
 import Frontend.Network
+import Frontend.Log
 import Frontend.UI.JsonData
 import Frontend.UI.Modal
 import Frontend.UI.TabBar
@@ -366,6 +366,7 @@ uiDeploymentSettings
     , Monoid mConf , HasNetworkCfg mConf t
     , HasJsonDataCfg mConf t, Flattenable mConf t, HasJsonData model t
     , HasCrypto key (Performable m)
+    , HasLogger model t
     )
   => model
   -> DeploymentSettingsConfig t m model a
@@ -951,6 +952,7 @@ defaultGASCapability = DappCap
 uiDeployPreview
   :: ( MonadWidget t m
      , HasNetwork model t
+     , HasLogger model t
      , HasCrypto key (Performable m)
      )
   => model
@@ -1016,11 +1018,11 @@ uiDeployPreview model settings keys accounts signers gasLimit ttl code lastPubli
               , _networkRequest_chainRef = ChainRef Nothing chainId
               , _networkRequest_endpoint = Endpoint_Local
               }
-      responses <- performLocalRead (model ^. network) $ localReq <$ pb
+      responses <- performLocalRead (model ^. logger) (model ^. network) $ localReq <$ pb
       (errors, resp) <- fmap fanThese $ performEvent $ ffor responses $ \case
-        [(_, errorResult)] -> parseNetworkErrorResult parseWrappedBalanceChecks errorResult
+        [(_, errorResult)] -> parseNetworkErrorResult (model ^. logger) parseWrappedBalanceChecks errorResult
         n -> do
-          liftIO $ T.putStrLn $ "Expected 1 response, but got " <> tshow (length n)
+          putLog model LevelWarn $ "Expected 1 response, but got " <> tshow (length n)
           pure $ This "Couldn't get a response from the node"
 
       dialogSectionHeading mempty "Anticipated Transaction Impact"

@@ -55,6 +55,7 @@ library
     , universe-dependent-sum
     , wai-cors
     , warp
+    , monad-logger
   exposed-modules:
       Desktop
     , Desktop.Crypto.BIP

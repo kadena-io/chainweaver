@@ -84,7 +84,8 @@ import           Frontend.Foundation
 import           Frontend.ModuleExplorer.Example
 import           Frontend.ModuleExplorer.File
 import           Frontend.Network
-import Frontend.Crypto.Class
+import           Frontend.Log
+import           Frontend.Crypto.Class
 
 -- | A `Module` can come from a number of sources.
 --
@@ -242,16 +243,17 @@ fetchModule
     , TriggerEvent t m, MonadIO m
     , MonadSample t (Performable m)
     , HasNetwork model t
+    , HasLogger model t
     , HasCrypto key (Performable m)
     )
   => model
   -> Event t DeployedModuleRef
   -> m (Event t (DeployedModuleRef, These Text (ModuleDef (Term Name))))
-fetchModule networkL onReq = do
+fetchModule model onReq = do
     onReq' :: Event t (DeployedModuleRef, NetworkRequest)
-      <- performEvent $ attachWith mkReq (current $ getNetworkNameAndMeta networkL) onReq
+      <- performEvent $ attachWith mkReq (current $ getNetworkNameAndMeta model) onReq
     deployedResults :: Event t ((DeployedModuleRef, NetworkRequest), [NetworkErrorResult])
-      <- performLocalReadCustom (networkL ^. network) (pure . snd) onReq'
+      <- performLocalReadCustom (model ^. logger) (model ^. network) (pure . snd) onReq'
     let
       deployedResultsZipped = first fst <$> deployedResults
 

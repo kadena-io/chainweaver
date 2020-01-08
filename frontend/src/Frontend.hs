@@ -22,6 +22,7 @@ import           Obelisk.Generated.Static
 import           Common.Api
 import           Common.Route
 import           Frontend.AppCfg
+import           Frontend.Log (defaultLogger)
 import           Frontend.Crypto.Browser
 import           Frontend.Foundation
 import           Frontend.ModuleExplorer.Impl (loadEditorFromLocalStorage)
@@ -62,6 +63,7 @@ frontend = Frontend
       , _appCfg_enabledSettings = EnabledSettings
         {
         }
+      , _appCfg_logMessage = defaultLogger
       }
   }
 
