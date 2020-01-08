@@ -413,7 +413,7 @@ uiDeploymentSettings m settings = mdo
       (mGasPayer, signers, capabilities) <- tabPane mempty curSelection DeploymentSettingsView_Keys $ do
         dyn_ $ ffor result $ \case
           Left (DeploymentSettingsResultError_GasPayerIsNotValid _) -> divClass "group segment" $
-            text "Selected account for 'coin.GAS' capability does not exist on this network."
+            text "Selected account for 'coin.GAS' capability does not exist on this chain."
           _ ->
             blank
 
