@@ -95,15 +95,15 @@
 
   .copy-status {
     transition: opacity, transform 0.25s linear;
-  }
 
-  .copy-success {
-    margin-left: 10px;
-    color: green;
-  }
+    &.copy-success {
+      margin-left: 10px;
+      color: green;
+    }
 
-  .copy-fail {
-    margin-left: 10px;
-    color: red;
+    &.copy-fail {
+      margin-left: 10px;
+      color: red;
+    }
   }
 }
