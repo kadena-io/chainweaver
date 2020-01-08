@@ -25,6 +25,7 @@ import Control.Concurrent
 import Control.Error.Util (hush)
 import Control.Lens hiding (failover)
 import Control.Monad (join, when, void, (<=<))
+import Control.Monad.Logger (LogLevel(..))
 import Control.Monad.Trans.Except
 import Data.Bifunctor (first)
 import Data.Decimal (Decimal)
@@ -624,7 +625,7 @@ crossChainTransfer logL netInfo keys fromAccount toAccount fromGasPayer crossCha
   keySetResponse <- case toAccount of
     Left ka -> case _kadenaAddress_accountCreated ka of
       AccountCreated_Yes -> lookupKeySet logL networkName envFromChain ka
-      
+
       -- If the account hasn't been created, don't try to lookup the guard. Just
       -- assume the account name _is_ the public key (since it must be a
       -- non-vanity account).
@@ -809,7 +810,7 @@ initiateCrossChainTransfer model networkName envs publicMeta keys fromAccount fr
       Left es -> packHttpErrors (model ^. logger) es
       Right cr -> case Pact._crResult cr of
         Pact.PactResult (Left e) -> do
-          liftIO $ print e
+          putLog model LevelError (tshow e)
           pure $ Left $ tshow e
         Pact.PactResult (Right _) -> doReqFailover envs (Api.send Api.apiV1Client $ Api.SubmitBatch $ pure cmd) >>= \case
           Left es -> packHttpErrors (model ^. logger) es

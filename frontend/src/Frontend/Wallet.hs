@@ -273,7 +273,6 @@ getBalances model accStore = performEventAsync $ flip push accStore $ \(keys, ne
       requests <- flip MonoidalMap.traverseWithKey chainsToAccounts $ \chain as -> do
         putLog model LevelInfo $ "getBalances: Building request for get-balance on chain " <> _chainId chain
         cmd <- buildCmd Nothing net (pm chain) mempty [] (code as) mempty mempty
-        liftIO $ print cmd
         let envs = mkClientEnvs nodes chain
         pure $ doReqFailover envs (Api.local Api.apiV1Client cmd) >>= \case
           Left es -> putLog model LevelInfo $ "getBalances: request failure: " <> tshow es
