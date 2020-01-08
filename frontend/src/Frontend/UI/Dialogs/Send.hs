@@ -157,7 +157,6 @@ previewTransfer model fromAccount fromGasPayer toAddress crossChainData amount =
           & initialAttributes .~ "disabled" =: "disabled"
           & inputElementConfig_initialValue .~ unAccountName (accountToName $ _crossChainData_recipientChainGasPayer ccd)
     dialogSectionHeading mempty "Transaction Details"
-    elClass "h2" "heading heading_type_h2" $ text "Transaction Details"
     divClass "group" $ do
       void $ mkLabeledInput True "Amount" uiGasPriceInputField $ def
         & initialAttributes .~ "disabled" =: "disabled"
