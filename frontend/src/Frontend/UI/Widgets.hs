@@ -38,6 +38,7 @@ module Frontend.UI.Widgets
   , uiInputView
   , mkLabeledInputView
   , mkLabeledInput
+  , mkLabeledView
   , uiLabeledRadioView
   , uiRadioElementView
   , mkLabeledClsInput
@@ -471,6 +472,21 @@ mkLabeledInput inlineLabel n mkInput cfg = elClass "div" ("segment segment_type_
   mkInput (cfg & initialAttributes %~ addToClassAttr "labeled-input__input")
   where
     inlineState = bool "" "-inline" inlineLabel
+
+-- | Make labeled and segmented display for some element
+--
+mkLabeledView
+  :: DomBuilder t m
+  => Bool
+  -> Text
+  -> m a
+  -> m a
+mkLabeledView inlineLabel n body = elClass "div" ("segment segment_type_tertiary labeled-input" <> inlineState) $ do
+  divClass ("label labeled-input__label" <> inlineState) $ text n
+  divClass "labeled-input__input" body
+  where
+    inlineState = bool "" "-inline" inlineLabel
+
 -- | Make some input a labeled input.
 --
 --   Any widget creating function that can be called with additional classes will do.

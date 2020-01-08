@@ -90,7 +90,7 @@ type Keysets = Map KeysetName Keyset
 -- | User entered `_jsonData_rawInput` was invalid.
 data JsonError =
   JsonError_NoObject -- ^ Input was no valid JSON object.
-  deriving Show
+  deriving (Eq, Show)
 
 type KeysetKeys = Set PublicKey
 
