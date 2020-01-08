@@ -324,41 +324,38 @@ $setup-progress-font-size: 18px;
   }
 }
 
-.setup__recovery-phrase-copy button.button {
-  width: 30%;
+.setup__recovery-phrase-copy.button {
   padding: 0.4rem;
   margin-bottom: 0;
   border: none;
+
+  color: $chainweaver-blue;
+  font-size: 15px;
+  display: flex;
+  flex-direction: row;
+  justify-content: center;
+  align-items: center;
 
   img {
     margin-right: 0.4rem;
   }
 
-  .setup__recovery-phrase-copy-word {
-    color: $chainweaver-blue;
-    font-size: 15px;
-    display: flex;
-    flex-direction: row;
-    justify-content: center;
-    align-items: center;
+  .copy-status {
+    opacity: 0;
+    transform: rotateY(90deg);
+    transition: opacity, transform 0.25s linear;
+    padding-left: 1rem;
 
-    .setup__copy-status {
-      opacity: 0;
-      transform: rotateY(90deg);
-      transition: opacity, transform 0.25s linear;
-      padding-left: 1rem;
+    &.copy-success {
+      opacity: 1;
+      transform: none;
+      color: $chainweaver-blue;
+    }
 
-      &.setup__copy-success {
-        opacity: 1;
-        transform: none;
-        color: $chainweaver-blue;
-      }
-
-      &.setup__copy-fail {
-        opacity: 1;
-        transform: none;
-        color: red;
-      }
+    &.copy-fail {
+      opacity: 1;
+      transform: none;
+      color: red;
     }
   }
 }
