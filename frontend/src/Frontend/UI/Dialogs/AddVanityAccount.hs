@@ -1,20 +1,18 @@
 {-# LANGUAGE ConstraintKinds #-}
-{-# LANGUAGE PatternGuards #-}
 {-# LANGUAGE RecursiveDo #-}
-{-# LANGUAGE TupleSections #-}
-{-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE LambdaCase #-}
-{-# LANGUAGE TypeApplications #-}
 module Frontend.UI.Dialogs.AddVanityAccount
   ( --uiAddVanityAccountSettings
     uiAddVanityAccountButton
   ) where
 
 import           Control.Lens                           ((^.),(<>~))
+import           Control.Error                          (hush)
 import           Control.Monad.Trans.Class              (lift)
 import           Control.Monad.Trans.Maybe              (MaybeT (..), runMaybeT)
 import           Data.Functor.Identity                  (Identity(..))
 import           Data.Maybe                             (isNothing,fromMaybe)
+import           Data.Either                            (isLeft)
 import           Data.Text                              (Text)
 import           Data.Aeson                             (Object, Value (Array, String))
 import qualified Data.HashMap.Strict                    as HM
@@ -183,9 +181,9 @@ uiAddVanityAccountSettings ideL onInflightChange mInflightAcc mChainId initialNo
         , cChainId
         )
 
-    let preventProgress = (\a r -> isNothing a || isNothing r) <$> dAccount <*> result
+    let preventProgress = (\a r -> isNothing a || isLeft r) <$> dAccount <*> result
 
-    command <- performEvent $ tagMaybe (current result) eNewAccount
+    command <- performEvent $ tagMaybe (current $ fmap hush result) eNewAccount
     controls <- modalFooter $ buildDeployTabFooterControls
       customConfigTab
       includePreviewTab

@@ -8,7 +8,6 @@
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE PatternGuards #-}
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE RecursiveDo #-}
 {-# LANGUAGE ScopedTypeVariables #-}
@@ -56,9 +55,9 @@ module Frontend.UI.DeploymentSettings
   , Identity (runIdentity)
   ) where
 
-import Control.Applicative ((<|>), empty, liftA2)
+import Control.Applicative ((<|>), liftA2)
 import Control.Arrow (first)
-import Control.Error (fmapL, hoistMaybe, headMay)
+import Control.Error (fmapL, headMay, (!?), failWith, failWithM)
 import Control.Error.Util (hush)
 import Control.Lens
 import Control.Monad
@@ -155,6 +154,7 @@ data CapabilityInputRow t = CapabilityInputRow
   , _capabilityInputRow_cap :: Dynamic t (Either String SigCapability)
   }
 
+
 data DeploymentSettingsView
   = DeploymentSettingsView_Custom Text -- ^ An optional additonal tab.
   | DeploymentSettingsView_Cfg -- ^ Actual settings like gas price/limit, ...
@@ -209,6 +209,17 @@ publicKeysForAccounts allAccounts caps =
 lookupAccountBalance :: Some AccountRef -> Accounts -> Maybe (Maybe AccountBalance)
 lookupAccountBalance ref = fmap accountBalance . lookupAccountRef ref
 
+data DeploymentSettingsResultError
+  = DeploymentSettingsResultError_GasPayerIsNotValid (Some AccountRef)
+  | DeploymentSettingsResultError_InvalidNetworkName Text
+  | DeploymentSettingsResultError_NoSenderSelected
+  | DeploymentSettingsResultError_NoChainIdSelected
+  | DeploymentSettingsResultError_NoNodesAvailable
+  | DeploymentSettingsResultError_InvalidJsonData JsonError
+  | DeploymentSettingsResultError_NoAccountsOnNetwork NetworkName
+  | DeploymentSettingsResultError_InsufficientFundsOnGasPayer
+  deriving Eq
+
 buildDeploymentSettingsResult
   :: ( HasNetwork model t
      , HasJsonData model t
@@ -228,18 +239,22 @@ buildDeploymentSettingsResult
   -> Dynamic t GasLimit
   -> Dynamic t Text
   -> DeploymentSettingsConfig t m model a
-  -> Dynamic t (Maybe (Performable m (DeploymentSettingsResult key)))
-buildDeploymentSettingsResult m mSender mGasPayer signers cChainId capabilities ttl gasLimit code settings = runMaybeT $ do
+  -> Dynamic t (Either DeploymentSettingsResultError (Performable m (DeploymentSettingsResult key)))
+buildDeploymentSettingsResult m mSender mGasPayer signers cChainId capabilities ttl gasLimit code settings = runExceptT $ do
   selNodes <- lift $ m ^. network_selectedNodes
   networkName <- lift $ m ^. network_selectedNetwork
-  networkId <- hoistMaybe $ hush . mkNetworkName . nodeVersion =<< headMay (rights selNodes)
-  sender <- MaybeT mSender
-  chainId <- MaybeT cChainId
+  networkId <- liftEither
+    . over _Left DeploymentSettingsResultError_InvalidNetworkName . mkNetworkName . nodeVersion
+    =<< failWith DeploymentSettingsResultError_NoNodesAvailable (headMay $ rights selNodes)
+    
+  sender <- mSender !? DeploymentSettingsResultError_NoSenderSelected
+  chainId <- cChainId !? DeploymentSettingsResultError_NoChainIdSelected
+
   caps <- lift capabilities
   signs <- lift signers
   let signingAccounts = signs <> (Set.insert sender $ Map.keysSet caps)
       deploySettingsJsonData = fromMaybe mempty $ _deploymentSettingsConfig_data settings
-  jsonData' <- lift $ either (const mempty) id <$> m ^. jsonData . jsonData_data
+  jsonData' <- ExceptT $ over (mapped . _Left) DeploymentSettingsResultError_InvalidJsonData $ m ^. jsonData . jsonData_data
   ttl' <- lift ttl
   limit <- lift gasLimit
   lastPublicMeta <- lift $ m ^. network_meta
@@ -251,7 +266,8 @@ buildDeploymentSettingsResult m mSender mGasPayer signers cChainId capabilities 
         }
   code' <- lift code
   keys <- lift $ m ^. wallet_keys
-  allAccounts <- MaybeT $ Map.lookup networkName . unAccountStorage <$> m ^. wallet_accounts
+  allAccounts <- failWithM (DeploymentSettingsResultError_NoAccountsOnNetwork networkName)
+    $ Map.lookup networkName . unAccountStorage <$> m ^. wallet_accounts
 
   -- Make an effort to ensure the gas payer (if there is one) account has enough balance to actually
   -- pay the gas. This won't work if the user selects an account on a different
@@ -260,10 +276,12 @@ buildDeploymentSettingsResult m mSender mGasPayer signers cChainId capabilities 
   case gasPayer of
     Nothing -> pure () -- No gas payer selected, move along
     Just gp ->  for_ (lookupAccountBalance gp allAccounts) $ \case
-      Nothing -> empty -- Gas Payer selected but they're not an account?!
+      -- Gas Payer selected but they're not an account?!
+      Nothing -> throwError $ DeploymentSettingsResultError_GasPayerIsNotValid gp
       Just b -> let GasLimit lim = _pmGasLimit publicMeta
                     GasPrice (ParsedDecimal price) = _pmGasPrice publicMeta
-                 in guard $ unAccountBalance b > fromIntegral lim * price
+                 in unless (unAccountBalance b > fromIntegral lim * price) $
+                     throwError DeploymentSettingsResultError_InsufficientFundsOnGasPayer
 
   let pkCaps = publicKeysForAccounts allAccounts caps
   pure $ do
@@ -392,7 +410,13 @@ uiDeploymentSettings m settings = mdo
           (Just advancedAccordion)
           (_deploymentSettingsConfig_sender settings)
 
-      (mGasPayer, signers, capabilities) <- tabPane mempty curSelection DeploymentSettingsView_Keys $
+      (mGasPayer, signers, capabilities) <- tabPane mempty curSelection DeploymentSettingsView_Keys $ do
+        dyn_ $ ffor result $ \case
+          Left (DeploymentSettingsResultError_GasPayerIsNotValid _) -> divClass "group segment" $
+            text "Selected account for 'coin.GAS' capability does not exist on this network."
+          _ ->
+            blank
+
         uiSenderCapabilities m cChainId (_deploymentSettingsConfig_caps settings) mSender
           $ (_deploymentSettingsConfig_sender settings) m cChainId
 
@@ -431,13 +455,13 @@ uiDeploymentSettings m settings = mdo
         , mRes
         )
 
-    command <- performEvent $ tagMaybe (current result) done
+    command <- performEvent $ tagMaybe (current $ fmap hush result) done
     controls <- modalFooter $ buildDeployTabFooterControls
       mUserTabName
       (_deploymentSettingsConfig_includePreviewTab settings)
       curSelection
       defaultTabViewProgressButtonLabel
-      (isNothing <$> result)
+      (isLeft <$> result)
 
     pure (conf, command, ma)
     where
@@ -1029,7 +1053,7 @@ uiDeployPreview model settings keys accounts signers gasLimit ttl code lastPubli
     uiPreviewResponses signing (cmd, wrappedCmd) = do
       pb <- getPostBuild
 
-      unless (getAny $ foldMap (Any . any isGas) capabilities) $ do
+      unless (any (any isGas) capabilities) $ do
         dialogSectionHeading mempty "Notice"
         divClass "group segment" $ mkLabeledView True mempty
           $ text "A 'Gas Payer' has not been selected for this transaction. Are you sure this is correct?"
