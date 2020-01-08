@@ -83,27 +83,3 @@
 .wallet__table-button--hamburger {
   padding: 0 15px;
 }
-
-.button.wallet__copy-signed {
-  display: flex;
-  flex-direction: row;
-  align-items: center;
-  justify-content: space-between;
-
-  background: $chainweaver-blue;
-  color: white;
-
-  .copy-status {
-    transition: opacity, transform 0.25s linear;
-
-    &.copy-success {
-      margin-left: 10px;
-      color: green;
-    }
-
-    &.copy-fail {
-      margin-left: 10px;
-      color: red;
-    }
-  }
-}
