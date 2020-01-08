@@ -31,6 +31,7 @@ module Frontend.UI.Button
   , homeButton
   , backButton
   , copyButton
+  , copyButtonStatus
   , deleteButton
   , addButton
   , signoutButton
@@ -54,11 +55,14 @@ module Frontend.UI.Button
   ) where
 
 ------------------------------------------------------------------------------
+import           Control.Applicative         ((<|>))
+import           Control.Monad               (when)
+import           Control.Monad.Fix
 import           Control.Monad.Trans         (lift)
 import           Control.Lens
 import           Data.Default
 import           Data.Default                (def)
-import           Control.Applicative         ((<|>))
+import           Data.Bool                   (bool)
 import           Data.Map                    (Map)
 import           Data.String                 (IsString)
 import           Data.Text                   (Text)
@@ -191,6 +195,27 @@ copyButton cfg t = do
         Just title -> text title
     _ <- copyToClipboard $ tag t onClick
     pure onClick
+
+copyButtonStatus :: (DomBuilder t m, MonadFix m, MonadHold t m, MonadJSM (Performable m), PerformEvent t m, PostBuild t m)
+                 => UiButtonCfg
+                 -> Bool
+                 -> Event t ()
+                 -> (Event t () -> Event t Text)
+                 -> m ()
+copyButtonStatus cfg hasIcon reset tag' = mdo
+  copy <- uiButton (cfg & uiButtonCfg_type ?~ "button") $ do
+    when hasIcon $ imgWithAlt (static @"img/copy.svg") "Copy" blank
+    text "Copy"
+    elDynClass "i" ("fa copy-status " <> status) blank
+
+  success <- copyToClipboard $ tag' copy
+  status <- holdDyn "" $ leftmost
+    [ "" <$ reset
+    , ffor success $ bool "copy-fail fa-times" "copy-success fa-check"
+    ]
+
+  pure ()
+
 
 -- | Copy the given text to the clipboard
 copyToClipboard

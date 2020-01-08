@@ -324,8 +324,7 @@ $setup-progress-font-size: 18px;
   }
 }
 
-.setup__recovery-phrase-copy button.button {
-  width: 30%;
+.setup__recovery-phrase-copy.button {
   padding: 0.4rem;
   margin-bottom: 0;
   border: none;
@@ -334,7 +333,6 @@ $setup-progress-font-size: 18px;
     margin-right: 0.4rem;
   }
 
-  .setup__recovery-phrase-copy-word {
     color: $chainweaver-blue;
     font-size: 15px;
     display: flex;
@@ -342,24 +340,23 @@ $setup-progress-font-size: 18px;
     justify-content: center;
     align-items: center;
 
-    .setup__copy-status {
+    .copy-status {
       opacity: 0;
       transform: rotateY(90deg);
       transition: opacity, transform 0.25s linear;
       padding-left: 1rem;
 
-      &.setup__copy-success {
+      &.copy-success {
         opacity: 1;
         transform: none;
         color: $chainweaver-blue;
       }
 
-      &.setup__copy-fail {
+      &.copy-fail {
         opacity: 1;
         transform: none;
         color: red;
       }
-    }
   }
 }
 

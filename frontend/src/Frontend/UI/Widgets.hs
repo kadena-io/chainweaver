@@ -59,6 +59,7 @@ module Frontend.UI.Widgets
   , makeClickable
   , accordionItem
   , accordionItem'
+  , accordionItemWithClick
   , controlledAccordionItem
   , accordionHeaderBtn
   , setFocus
