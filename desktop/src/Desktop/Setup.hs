@@ -10,7 +10,7 @@
 -- | Wallet setup screens
 module Desktop.Setup (runSetup, form, splashLogo, setupDiv, setupClass) where
 
-import Control.Lens ((<>~), (%~), (?~), (??))
+import Control.Lens ((<>~), (%~), (??))
 import Control.Error (hush)
 import Control.Applicative (liftA2)
 import Control.Monad (unless,void)
@@ -485,17 +485,8 @@ createNewPassphrase eBack dPassword mnemonicSentence = Workflow $ mdo
       dPassphrase <- passphraseWidget dPassphrase (pure Setup)
         >>= holdDyn (mkPhraseMapFromMnemonic mnemonicSentence)
 
-      eCopyClick <- elClass "div" (setupClass "recovery-phrase-copy") $ do
-        uiButton (def & uiButtonCfg_type ?~ "button") $ elClass "span" (setupClass "recovery-phrase-copy-word") $ do
-          imgWithAlt (static @"img/copy.svg") "Copy" blank
-          text "Copy"
-          elDynClass "i" ("fa setup__copy-status " <> dCopySuccess) blank
-
-      eCopySuccess <- copyToClipboard $
-        T.unwords . Map.elems <$> current dPassphrase <@ eCopyClick
-
-      dCopySuccess <- holdDyn T.empty $
-        (setupClass . bool "copy-fail fa-times" "copy-success fa-check") <$> eCopySuccess
+      copyButtonStatus (def & uiButtonCfg_class .~ "setup__recovery-phrase-copy") True never $
+        \clk -> T.unwords . Map.elems <$> current dPassphrase <@ clk
 
     fmap value $ setupDiv "checkbox-wrapper" $ setupCheckbox False def
       $ text "I have safely stored my recovery phrase."
