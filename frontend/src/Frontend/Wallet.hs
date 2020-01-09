@@ -46,7 +46,7 @@ module Frontend.Wallet
   ) where
 
 import Control.Lens hiding ((.=))
-import Control.Monad (void, mfilter)
+import Control.Monad (void)
 import Control.Monad.Except (runExcept)
 import Control.Monad.Fix
 import Data.Aeson
@@ -61,6 +61,7 @@ import GHC.Generics (Generic)
 import Kadena.SigningApi (AccountName(..), mkAccountName)
 import Pact.Types.ChainId
 import Reflex
+import Reflex.Dom ((=:))
 import qualified Data.Map as Map
 import qualified Data.Map.Monoidal as MonoidalMap
 import qualified Data.Set as Set
@@ -174,6 +175,7 @@ makeWallet model conf = do
       , ffor (_walletCfg_updateKeyNotes conf) $ \(i, notes) -> IntMap.adjust (\k -> k { _key_notes = notes }) i
       ]
     let visibleKeys = IntMap.filter (not . _key_hidden) <$> keys
+    let pubKeysDeleted = fmapMaybe id (flip IntMap.lookup <$> current keys <@> (_walletCfg_delKey conf))
 
   rec
     newBalances <- getBalances model $ leftmost
@@ -191,6 +193,7 @@ makeWallet model conf = do
       , foldr (.) id . fmap updateAccountBalance <$> newBalances
       , ffor (_walletCfg_setCrossChainTransfer conf) updateCrossChain
       , ffor (_walletCfg_delAccount conf) hideAccount
+      , ffor pubKeysDeleted hideAccountsOfKey
       ]
     let visibleAccounts = filterVisibleAccountStorage <$> accounts
 
@@ -203,23 +206,32 @@ makeWallet model conf = do
     , _wallet_accounts = visibleAccounts
     }
   where
+    hideAccountsOfKey :: Key key -> AccountStorage -> AccountStorage
+    hideAccountsOfKey key = _AccountStorage . mapped %~ (foldAccounts (hideAccountOfKey key))
+
+    hideAccountOfKey :: Key key -> Account -> Accounts
+    hideAccountOfKey key ((AccountRef_Vanity an cid) :=> Identity va)
+      | va ^. vanityAccount_key /= (_keyPair_publicKey . _key_pair $ key )
+      = mempty { _accounts_vanity = an =: cid =: va }
+    hideAccountOfKey _ ((AccountRef_Vanity an cid) :=> Identity va)
+      = mempty { _accounts_vanity = an =: cid =: (va & accountInfo . accountInfo_hidden .~ True)  }
+    hideAccountOfKey key ((AccountRef_NonVanity pk cid) :=> Identity nva)
+      | pk /= (_keyPair_publicKey . _key_pair $ key)
+      = mempty { _accounts_nonVanity = pk =: cid =: nva }
+    hideAccountOfKey _ ((AccountRef_NonVanity pk cid) :=> Identity nva)
+      = mempty { _accounts_nonVanity = pk =: cid =: (nva & accountInfo . accountInfo_hidden .~ True)  }
+
     filterVisibleAccountStorage :: AccountStorage -> AccountStorage
-    filterVisibleAccountStorage (AccountStorage as) = AccountStorage $ fromMaybe mempty $ mapMapMaybe filterVisibleAccounts as
+    filterVisibleAccountStorage = _AccountStorage . mapped %~ (foldAccounts filterVisibleAccount)
 
-    filterVisibleAccounts :: Accounts -> Maybe Accounts
-    filterVisibleAccounts as =
-      let
-        mva = mapMapMaybe filterVisibleChainAccounts $ as ^. accounts_vanity
-        mnva = mapMapMaybe filterVisibleChainAccounts $ as ^. accounts_nonVanity
-      in case (mva, mnva) of
-        (Nothing, Nothing) -> Nothing
-        (_,_) -> Just $ Accounts (fold mva) (fold mnva)
-
-    filterVisibleChainAccounts :: HasAccountInfo a => Map.Map ChainId a -> Maybe (Map.Map ChainId a)
-    filterVisibleChainAccounts = mapMapMaybe (mfilter (^. accountInfo . accountInfo_hidden . to not) . Just)
-
-    mapMapMaybe :: Ord k => (a -> Maybe a) -> Map.Map k a -> Maybe (Map.Map k a)
-    mapMapMaybe f oldM = mfilter (not . Map.null) . Just . foldl (\m k -> Map.update f k m) oldM $ (Map.keys oldM)
+    filterVisibleAccount :: Account -> Accounts
+    filterVisibleAccount ((AccountRef_Vanity an cid) :=> Identity va)
+      | va ^. accountInfo . accountInfo_hidden . to not
+      = mempty { _accounts_vanity = an =: cid =: va }
+    filterVisibleAccount ((AccountRef_NonVanity pk cid) :=> Identity nva)
+      | nva ^. accountInfo . accountInfo_hidden . to not
+      = mempty { _accounts_nonVanity = pk =: cid =: nva }
+    filterVisibleAccount _ = mempty
 
     updateAccountNotes :: (NetworkName, AccountName, ChainId, AccountNotes) -> AccountStorage -> AccountStorage
     updateAccountNotes (net, name, chain, notes) = _AccountStorage . at net . _Just . accounts_vanity . at name . _Just . at chain . _Just . vanityAccount_notes .~ notes
