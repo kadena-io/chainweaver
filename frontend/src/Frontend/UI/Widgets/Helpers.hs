@@ -112,8 +112,8 @@ preventScrollWheelAndUpDownArrow
 preventScrollWheelAndUpDownArrow =
   preventMouseWheel . preventUpDownArrow
   where
-    preventMouseWheel = addEventSpecFlags
-      (Proxy :: Proxy (DomBuilderSpace m)) Mousewheel (const preventDefault)
+    preventMouseWheel =
+      addEventSpecFlags (Proxy :: Proxy (DomBuilderSpace m)) Mousewheel (const preventDefault)
 
     preventUpDownArrow =
       addEventSpecFlags (Proxy :: Proxy (DomBuilderSpace m)) Keydown

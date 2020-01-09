@@ -1,4 +1,3 @@
-{-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE ExtendedDefaultRules #-}
 {-# LANGUAGE FlexibleContexts #-}
@@ -38,7 +37,7 @@ import qualified GHCJS.DOM as DOM
 import qualified GHCJS.DOM.EventM as EventM
 import qualified GHCJS.DOM.GlobalEventHandlers as Events
 import qualified GHCJS.DOM.Types as DOM
-import Language.Javascript.JSaddle ((#), (!))
+import Language.Javascript.JSaddle (JSVal, (#), (!))
 import qualified Language.Javascript.JSaddle as JSaddle
 
 import Frontend.Foundation
@@ -50,6 +49,9 @@ type ModalImpl m key t = Event t () -> m (IdeCfg Void key t, Event t ())
 type ModalIdeCfg m key t = IdeCfg (ModalImpl m key t) key t
 
 type ModalIde m key t = Ide (ModalImpl m key t) key t
+
+withBody :: MonadJSM m => (JSVal -> JSM a) -> m a
+withBody f = liftJSM $ JSaddle.jsg ("document" :: Text) ! ("body" :: Text) >>= f
 
 -- | Show the current modal dialog as given in the model.
 showModal :: forall key t m. MonadWidget t m => ModalIde m key t -> m (ModalIdeCfg m key t)
@@ -63,14 +65,13 @@ showModal ideL = do
     let mkCls vis = "modal" <>
           if vis then "modal_open" else mempty
 
-        bodyP = "body" :: Text
         modalBodyAttr = "data-modal-open" :: Text
 
-        addPreventScrollClass = DOM.liftJSM $ do
-          document ! bodyP >>= \b -> b # ("setAttribute"::Text) $ [modalBodyAttr, "true"]
+        addPreventScrollClass = withBody $ \b ->
+          b # ("setAttribute"::Text) $ [modalBodyAttr, "true"]
 
-        removePreventScrollClass = DOM.liftJSM $ do
-          document ! bodyP >>= \b -> b # ("removeAttribute"::Text) $ [modalBodyAttr]
+        removePreventScrollClass = withBody $ \b ->
+          b # ("removeAttribute"::Text) $ [modalBodyAttr]
 
     elDynKlass "div" (mkCls <$> isVisible) $ mdo
       (backdropEl, ev) <- elClass' "div" "modal__screen" $
