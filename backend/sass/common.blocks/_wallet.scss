@@ -30,8 +30,16 @@
 
 .wallet__table-cell {
   padding: 15px;
-  text-overflow: ellipsis;
   overflow: hidden;
+}
+
+.wallet__public-key {
+  display: flex;
+  flex-direction: row;
+  .wallet__public-key__prefix {
+    text-overflow: ellipsis;
+    overflow: hidden;
+  }
 }
 
 .wallet__table-wallet-address {
