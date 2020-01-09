@@ -4,9 +4,7 @@ module Mac where
 
 import qualified Control.Concurrent.Async as Async
 import Control.Monad ((<=<))
-import Control.Monad.Logger (LogLevel (..), LogStr)
 import Data.ByteString (ByteString)
-import qualified Data.ByteString.Char8 as BS8
 import Data.Default (Default(..))
 import Data.Functor (void)
 import Data.Foldable (for_)
@@ -15,14 +13,12 @@ import Foreign.C.String (CString, peekCString)
 import Foreign.StablePtr (StablePtr, newStablePtr)
 import Language.Javascript.JSaddle.Types (JSM)
 import Language.Javascript.JSaddle.WKWebView (AppDelegateConfig(..), mainBundleResourcePath, runHTMLWithBaseURL)
-import System.Log.FastLogger (fromLogStr)
 import System.FilePath ((</>))
 import System.IO (Handle)
-import System.Posix.Syslog (Priority (..), Option (..), Facility (User), withSyslog, syslog)
 import qualified System.Process as Process
-import Foreign.C.String (withCStringLen)
 
 import Desktop (main', AppFFI(..))
+import Desktop.Syslog (sysloggedMain, logToSyslog)
 
 foreign import ccall setupAppMenu :: StablePtr (CString -> IO ()) -> IO ()
 foreign import ccall activateWindow :: IO ()
@@ -44,23 +40,6 @@ ffi = AppFFI
   , _appFFI_global_logFunction = logToSyslog
   }
 
-logToSyslog :: LogLevel -> LogStr -> IO ()
-logToSyslog lvl msg =
-  withCStringLen (BS8.unpack $ fromLogStr msg) $ \cstr ->
-    syslog Nothing priorityFromLogLevel cstr
-  where
-    priorityFromLogLevel = case lvl of
-      LevelDebug -> Debug
-      LevelInfo  -> Info
-      LevelWarn  -> Warning
-      LevelError -> Error
-      (LevelOther level) -> case level of
-        "Emergency" -> Emergency
-        "Alert"     -> Alert
-        "Critical"  -> Critical
-        "Notice"    -> Notice
-        _           -> error $ "unknown log level: " <> T.unpack level
-
 getStorageDirectory :: IO String
 getStorageDirectory = do
   home <- global_getHomeDirectory >>= peekCString
@@ -77,12 +56,11 @@ redirectPipes ps m = bracket setup hClose $ \r -> Async.withAsync (go r) $ \_ ->
       hClose w
       pure r
       -- TODO figure out how to get the logs to come from the Pact process instead of syslog
-    go r = forever $ hGetLine r >>= \l -> do
-      Process.callProcess "syslog" ["-s", "-k", "Level", "Notice", "Message", "Pact: " <> l]
+    go r = forever $ hGetLine r >>= logToSyslog
 
 main :: IO ()
-main = withSyslog "Chainweaver" [LogPID, Console] $
-  main' ffi mainBundleResourcePath redirectPipes runMac
+main = sysloggedMain "Kadena Chainweaver" . redirectPipes [stderr, stdout] $
+  main' ffi mainBundleResourcePath runMac
 
 runMac
   :: ByteString
