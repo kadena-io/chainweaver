@@ -15,7 +15,6 @@ module Frontend.UI.Widgets.Helpers
   , setFocusOn
   , setFocusOnSelected
   , preventScrollWheelAndUpDownArrow
-  , preventMouseWheel
   , dialogSectionHeading
   ) where
 
@@ -105,24 +104,17 @@ setFocusOnSelected
   -> m ()
 setFocusOnSelected e cssSel p onPred = setFocusOn e cssSel $ ffilter (== p) onPred
 
-preventMouseWheel
-  :: forall m
-     . DomSpace (DomBuilderSpace m)
-  => EventSpec (DomBuilderSpace m) EventResult
-  -> EventSpec (DomBuilderSpace m) EventResult
-preventMouseWheel = addEventSpecFlags
-  (Proxy :: Proxy (DomBuilderSpace m))
-  Mousewheel
-  (const preventDefault)
-
 preventScrollWheelAndUpDownArrow
   :: forall m
      . DomSpace (DomBuilderSpace m)
   => EventSpec (DomBuilderSpace m) EventResult
   -> EventSpec (DomBuilderSpace m) EventResult
 preventScrollWheelAndUpDownArrow =
-  preventMouseWheel @m . preventUpDownArrow
+  preventMouseWheel . preventUpDownArrow
   where
+    preventMouseWheel = addEventSpecFlags
+      (Proxy :: Proxy (DomBuilderSpace m)) Mousewheel (const preventDefault)
+
     preventUpDownArrow =
       addEventSpecFlags (Proxy :: Proxy (DomBuilderSpace m)) Keydown
       (maybe mempty

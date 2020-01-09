@@ -52,20 +52,7 @@ type ModalIdeCfg m key t = IdeCfg (ModalImpl m key t) key t
 type ModalIde m key t = Ide (ModalImpl m key t) key t
 
 -- | Show the current modal dialog as given in the model.
--- showModal :: forall key t m. MonadWidget t m => ModalIde m key t -> m (ModalIdeCfg m key t)
-showModal
-  :: forall key t m.
-     ( MonadJSM m
-     , MonadJSM (Performable m)
-     , TriggerEvent t m
-     , DomBuilder t m
-     , PostBuild t m
-     , MonadFix m
-     , MonadHold t m
-     , PerformEvent t m
-     )
-  => ModalIde m key t
-  -> m (ModalIdeCfg m key t)
+showModal :: forall key t m. MonadWidget t m => ModalIde m key t -> m (ModalIdeCfg m key t)
 showModal ideL = do
     document <- DOM.currentDocumentUnchecked
 
