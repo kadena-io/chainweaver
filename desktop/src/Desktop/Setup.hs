@@ -343,20 +343,21 @@ passphraseWordElement currentStage exposeEmpty k wrd = do
           "size" =: "8" <>
           "class" =: commonClass cls exposed
 
-      void . uiInputElement $ def
-        & inputElementConfig_initialValue .~ "********"
-        & initialAttributes .~ (commonAttrs "passphrase-widget-word-hider" exposeEmpty <> "disabled" =: "true" <> "tabindex" =: "-1")
-        & modifyAttributes <>~ (("class" =:) . Just . commonClass "passphrase-widget-word-hider" <$> eExposed)
+      setupDiv "passphrase-widget-word-wrapper" $ do
+        void . uiInputElement $ def
+          & inputElementConfig_initialValue .~ "********"
+          & initialAttributes .~ (commonAttrs "passphrase-widget-word-hider" exposeEmpty <> "disabled" =: "true" <> "tabindex" =: "-1")
+          & modifyAttributes <>~ (("class" =:) . Just . commonClass "passphrase-widget-word-hider" <$> eExposed)
 
-      inputElt <- setupDiv "passphrase-widget-word-wrapper". uiInputElement $ def
-        & inputElementConfig_setValue .~ (current wrd <@ pb)
-        & initialAttributes .~ commonAttrs "passphrase-widget-word" exposeEmpty
-        & modifyAttributes <>~ fold
-          [ (("readonly" =:) . canEditOnRecover <$> current currentStage <@ pb)
-          , (("class" =:) . Just . commonClass "passphrase-widget-word" <$> eExposed)
-          ]
+        inputElt <- uiInputElement $ def
+          & inputElementConfig_setValue .~ (current wrd <@ pb)
+          & initialAttributes .~ commonAttrs "passphrase-widget-word" exposeEmpty
+          & modifyAttributes <>~ fold
+            [ (("readonly" =:) . canEditOnRecover <$> current currentStage <@ pb)
+            , (("class" =:) . Just . commonClass "passphrase-widget-word" <$> eExposed)
+            ]
 
-      pure (_inputElement_value inputElt, updated $ _inputElement_hasFocus inputElt, _inputElement_input inputElt)
+        pure (_inputElement_value inputElt, updated $ _inputElement_hasFocus inputElt, _inputElement_input inputElt)
   pure (T.strip <$> eInput)
   where
     canEditOnRecover Recover = Nothing
