@@ -1,13 +1,9 @@
 {-# LANGUAGE OverloadedStrings #-}
 module Linux where
 
--- import Control.Lens (_head, preview)
 import Control.Concurrent (MVar, newEmptyMVar, putMVar, takeMVar, forkIO)
 import Control.Monad (forever)
-import Control.Monad.Logger (LogLevel (..), LogStr)
-import System.Log.FastLogger (fromLogStr)
 import Data.ByteString (ByteString)
-import qualified Data.ByteString.Char8 as BS8
 import Data.Functor (void)
 import Data.List (lookup)
 import Data.Foldable (traverse_)
@@ -21,19 +17,15 @@ import qualified GI.Gtk as Gtk
 import Safe (headMay)
 import System.Environment (getEnvironment, getExecutablePath)
 import System.FilePath ((</>), takeDirectory)
-import System.Posix.Syslog (Priority (..), Option (..), Facility (User), withSyslog, syslog)
 import qualified System.Posix.User as PU
-import Foreign.C.String (withCStringLen)
 
 import Desktop (main', AppFFI(..))
+import Desktop.Syslog (logToSyslog, sysloggedMain)
 import WebKitGTK
 
 {-- NOTES
 
 To run: `WEBKIT_DISABLE_COMPOSITING_MODE=1 $(nix-build -A linux)/bin/kadena-chainweaver-rc1` from the project root
-
-TODO
-- Setting up app menu? What does the mac app do and what do we want in there?
 
 BUGS
 - Compositing issues with nvidia drivers: See https://bugs.freebsd.org/bugzilla/show_bug.cgi?id=229491
@@ -89,9 +81,8 @@ mkFfi = do
     , _linuxMVars_activateWindow = activateMV
     })
 
--- TODO: Redirect stderr/out to a system logger
 main :: IO ()
-main = withSyslog "Chainweaver" [LogPID, Console] User $ do
+main = sysloggedMain "kadena-chainweaver" $ do
   (ffi, mvars) <- mkFfi
   let getStaticPath = do
         mPath <- lookup "CHAINWEAVER_STATIC_PATH" <$> getEnvironment
@@ -143,41 +134,19 @@ openFileDialog handleOpen = do
 
 moveToForeground :: Gtk.Window -> IO ()
 moveToForeground w = do
-  putStrLn "MoveToForeground"
   Gtk.windowPresent w
 
 moveToBackground :: Gtk.Window -> IO ()
 moveToBackground w = do
-  putStrLn "MoveToBackground"
   Gtk.windowIconify w
 
 activateWindow :: Gtk.Window -> IO ()
 activateWindow _ = do
-  putStrLn "ActivateWindow"
   pure ()
 
 resizeWindow :: Gtk.Window -> (Int,Int) -> IO ()
 resizeWindow _ _ = do
-  putStrLn "ResizeWindow"
   pure ()
 
 getHomeDirectory :: IO String
 getHomeDirectory = PU.getLoginName >>= fmap PU.homeDirectory . PU.getUserEntryForName
-
-logToSyslog :: LogLevel -> LogStr -> IO ()
-logToSyslog lvl msg =
-  withCStringLen (BS8.unpack $ fromLogStr msg) $ \cstr ->
-    syslog Nothing priorityFromLogLevel cstr
-  where
-    priorityFromLogLevel = case lvl of
-      LevelDebug -> Debug
-      LevelInfo  -> Info
-      LevelWarn  -> Warning
-      LevelError -> Error
-      (LevelOther level) -> case level of
-        "Emergency" -> Emergency
-        "Alert"     -> Alert
-        "Critical"  -> Critical
-        "Notice"    -> Notice
-        _           -> error $ "unknown log level: " ++ T.unpack level
-
