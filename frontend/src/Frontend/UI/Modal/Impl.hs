@@ -7,6 +7,7 @@
 {-# LANGUAGE RecursiveDo #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeFamilies #-}
+{-# LANGUAGE NoImplicitPrelude #-}
 
 -- |
 -- Copyright   :  (C) 2018 Kadena
@@ -24,7 +25,7 @@ module Frontend.UI.Modal.Impl
   , module Frontend.UI.Modal
   ) where
 
-
+import Prelude hiding ((!!))
 import Control.Lens hiding (element,(#))
 import Data.Functor (($>))
 import Control.Monad (void)
@@ -37,7 +38,7 @@ import qualified GHCJS.DOM as DOM
 import qualified GHCJS.DOM.EventM as EventM
 import qualified GHCJS.DOM.GlobalEventHandlers as Events
 import qualified GHCJS.DOM.Types as DOM
-import Language.Javascript.JSaddle (JSVal, (#), (!))
+import Language.Javascript.JSaddle (JSVal, (#), (!), (!!), (<#))
 import qualified Language.Javascript.JSaddle as JSaddle
 
 import Frontend.Foundation
@@ -50,8 +51,20 @@ type ModalIdeCfg m key t = IdeCfg (ModalImpl m key t) key t
 
 type ModalIde m key t = Ide (ModalImpl m key t) key t
 
+documentP, bodyP, windowP, styleP, modalBodyAttr :: Text
+documentP = "document"
+bodyP = "body"
+windowP = "window"
+styleP = "style"
+modalBodyAttr = "data-modal-open"
+
 withBody :: MonadJSM m => (JSVal -> JSM a) -> m a
-withBody f = liftJSM $ JSaddle.jsg ("document" :: Text) ! ("body" :: Text) >>= f
+withBody f = liftJSM $ JSaddle.jsg documentP ! bodyP >>= f
+
+setBodyStyle :: MonadJSM m => Text -> JSVal -> m ()
+setBodyStyle s v = liftJSM $ JSaddle.jsg documentP ! bodyP
+  >>= (! styleP)
+  >>= \o -> (o <# s $ v)
 
 -- | Show the current modal dialog as given in the model.
 showModal :: forall key t m. MonadWidget t m => ModalIde m key t -> m (ModalIdeCfg m key t)
@@ -65,12 +78,24 @@ showModal ideL = do
     let mkCls vis = "modal" <>
           if vis then "modal_open" else mempty
 
-        modalBodyAttr = "data-modal-open" :: Text
+        -- (window.innerWidth - document.getElementsByTagName('html')[0].clientWidth)
+        getScrollBarWidth = liftJSM $ do
+          innerW <- JSaddle.jsg windowP ! ("innerWidth" :: Text) >>= JSaddle.valToNumber
+          clientWidth <- (JSaddle.jsg documentP # ("getElementsByTagName" :: Text) $ ["html" :: Text])
+            >>= (!! 0)
+            >>= (! ("clientWidth" :: Text))
+            >>= JSaddle.valToNumber
+          pure (innerW - clientWidth)
 
-        addPreventScrollClass = withBody $ \b ->
-          b # ("setAttribute"::Text) $ [modalBodyAttr, "true"]
+        addPreventScrollClass = withBody $ \b -> do
+          w <- getScrollBarWidth
+          _ <- b # ("setAttribute"::Text) $ [modalBodyAttr, "true"]
+          -- Account for the differing widths of scroll bars.
+          JSaddle.toJSVal (tshow w <> "px") >>= setBodyStyle "paddingRight"
 
-        removePreventScrollClass = withBody $ \b ->
+        removePreventScrollClass = withBody $ \b -> do
+          -- Reset the padding back now that the scrollbar might be back.
+          JSaddle.toJSVal (0 :: Double) >>= setBodyStyle "paddingRight"
           b # ("removeAttribute"::Text) $ [modalBodyAttr]
 
     elDynKlass "div" (mkCls <$> isVisible) $ mdo
