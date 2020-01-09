@@ -305,12 +305,12 @@ $setup-progress-font-size: 18px;
   height: 0;
 }
 
-.setup__passphrase-widget-word--focused {
+.setup__passphrase-widget-word--exposed {
   opacity: 1;
   height: auto;
 }
 
-.setup__passphrase-widget-word-hider--focused {
+.setup__passphrase-widget-word-hider--exposed {
   display: none;
 }
 

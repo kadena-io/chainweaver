@@ -269,7 +269,7 @@ recoverWallet eBack = Workflow $ do
     phraseMap <- holdDyn (wordsToPhraseMap $ replicate passphraseLen T.empty)
       $ flip Map.union <$> current phraseMap <@> onPhraseMapUpdate
 
-    onPhraseMapUpdate <- passphraseWidget phraseMap (pure Recover)
+    onPhraseMapUpdate <- passphraseWidget phraseMap (pure Recover) True
 
   let enoughWords = (== passphraseLen) . length . filter (not . T.null) . Map.elems
 
@@ -315,10 +315,11 @@ recoverWallet eBack = Workflow $ do
 passphraseWordElement
   :: (DomBuilder t m, PostBuild t m, MonadFix m)
   => Dynamic t PassphraseStage
+  -> Bool
   -> WordKey
   -> Dynamic t Text
   -> m (Event t Text)
-passphraseWordElement currentStage k wrd = do
+passphraseWordElement currentStage exposeEmpty k wrd = do
   rec
     let eFocused = leftmost
           [ eInputFocused
@@ -326,33 +327,36 @@ passphraseWordElement currentStage k wrd = do
           , True <$ domEvent Mousemove elt
           , False <$ domEvent Mouseleave elt
           ]
-    (elt, (eInputFocused, eInput)) <- elClass' "div" (setupClass "passphrase-widget-elem-wrapper") $ do
+
+    (elt, (val, eInputFocused, eInput)) <- elClass' "div" (setupClass "passphrase-widget-elem-wrapper") $ do
       pb <- getPostBuild
 
       setupDiv "passphrase-widget-key-wrapper" $
         text (showWordKey k)
 
       let
-        commonClass cls focused = "input " <> (setupClass cls <> bool "" (" " <> setupClass cls <> "--focused")  focused)
-        commonAttrs cls focused =
+        eExposed = attachWith (\v f -> T.null v || f) (current val) eFocused
+
+        commonClass cls exposed = "input " <> (setupClass cls <> bool "" (" " <> setupClass cls <> "--exposed") exposed)
+        commonAttrs cls exposed =
           "type" =: "text" <>
           "size" =: "8" <>
-          "class" =: commonClass cls focused
+          "class" =: commonClass cls exposed
 
       void . uiInputElement $ def
         & inputElementConfig_initialValue .~ "********"
-        & initialAttributes .~ (commonAttrs "passphrase-widget-word-hider" False <> "disabled" =: "true" <> "tabindex" =: "-1")
-        & modifyAttributes <>~ (("class" =:) . Just . commonClass "passphrase-widget-word-hider" <$> eFocused)
+        & initialAttributes .~ (commonAttrs "passphrase-widget-word-hider" exposeEmpty <> "disabled" =: "true" <> "tabindex" =: "-1")
+        & modifyAttributes <>~ (("class" =:) . Just . commonClass "passphrase-widget-word-hider" <$> eExposed)
 
       inputElt <- setupDiv "passphrase-widget-word-wrapper". uiInputElement $ def
         & inputElementConfig_setValue .~ (current wrd <@ pb)
-        & initialAttributes .~ commonAttrs "passphrase-widget-word" False
+        & initialAttributes .~ commonAttrs "passphrase-widget-word" exposeEmpty
         & modifyAttributes <>~ fold
           [ (("readonly" =:) . canEditOnRecover <$> current currentStage <@ pb)
-          , (("class" =:) . Just . commonClass "passphrase-widget-word" <$> eFocused)
+          , (("class" =:) . Just . commonClass "passphrase-widget-word" <$> eExposed)
           ]
 
-      pure (updated $ _inputElement_hasFocus inputElt, _inputElement_input inputElt)
+      pure (_inputElement_value inputElt, updated $ _inputElement_hasFocus inputElt, _inputElement_input inputElt)
   pure (T.strip <$> eInput)
   where
     canEditOnRecover Recover = Nothing
@@ -362,10 +366,11 @@ passphraseWidget
   :: (DomBuilder t m, MonadFix m, MonadHold t m, PostBuild t m)
   => Dynamic t (Map.Map WordKey Text)
   -> Dynamic t PassphraseStage
+  -> Bool
   -> m (Event t (Map.Map WordKey Text))
-passphraseWidget dWords dStage = do
+passphraseWidget dWords dStage exposeEmpty = do
   setupDiv "passphrase-widget-wrapper" $
-    listViewWithKey dWords (passphraseWordElement dStage)
+    listViewWithKey dWords (passphraseWordElement dStage exposeEmpty)
 
 createNewWallet
   :: forall t m. (DomBuilder t m, MonadFix m, MonadHold t m, MonadIO m, PerformEvent t m, PostBuild t m, MonadJSM (Performable m), TriggerEvent t m)
@@ -482,7 +487,7 @@ createNewPassphrase eBack dPassword mnemonicSentence = Workflow $ mdo
       el "div" $ text "The recovery words are hidden for security. Mouseover the numbers to reveal."
 
     rec
-      dPassphrase <- passphraseWidget dPassphrase (pure Setup)
+      dPassphrase <- passphraseWidget dPassphrase (pure Setup) False
         >>= holdDyn (mkPhraseMapFromMnemonic mnemonicSentence)
 
       copyButtonStatus (def & uiButtonCfg_class .~ "setup__recovery-phrase-copy") True never $
@@ -515,7 +520,7 @@ confirmPhrase eBack dPassword mnemonicSentence = Workflow $ mdo
     let actualMap = mkPhraseMapFromMnemonic mnemonicSentence
 
     rec
-      onPhraseUpdate <- passphraseWidget dConfirmPhrase (pure Recover)
+      onPhraseUpdate <- passphraseWidget dConfirmPhrase (pure Recover) True
 
       dConfirmPhrase <- holdDyn (wordsToPhraseMap $ replicate passphraseLen T.empty)
         $ flip Map.union <$> current dConfirmPhrase <@> onPhraseUpdate
