@@ -47,6 +47,8 @@
 }
 
 .modal__header {
+  @include webkit-rendering-bug-workaround;
+
   display:flex;
   justify-content: space-between;
   align-items: center;
