@@ -418,7 +418,8 @@ runUnfinishedCrossChainTransfer logL netInfo keys fromChain toChain toGasPayer r
     , Status_Done <$ resultOk
     ]
 
-  let item ds txt = elDynAttr "li" (ffor ds $ \s -> "class" =: statusText s) $ el "p" $ text txt
+  let item ds txt = elDynAttr "li" (ffor ds $ \s -> "class" =: statusText s)
+                      $ el "p" $ text txt
 
   item contStatus "Got continuation response"
   item spvStatus "SPV proof retrieved"
