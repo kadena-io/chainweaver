@@ -40,6 +40,7 @@ module Frontend.Wallet
   , snocIntMap
   , findNextKey
   , findFirstVanityAccount
+  , lookupAccountFromRef
   , getSigningPairs
   , module Common.Wallet
   ) where
@@ -147,6 +148,23 @@ nextKey = maybe 0 (succ . fst) . IntMap.lookupMax
 
 findNextKey :: Reflex t => Wallet key t -> Dynamic t Int
 findNextKey = fmap nextKey . _wallet_keys
+
+lookupAccountFromRef
+  :: ( HasWallet model key t
+     , HasNetwork model t
+     , Applicative (Dynamic t)
+     )
+  => model
+  -> Dynamic t (Maybe (Some AccountRef))
+  -> Dynamic t (Maybe Account)
+lookupAccountFromRef model mAccRef = ffor3
+  (model ^. wallet_accounts)
+  (model ^. network_selectedNetwork)
+  mAccRef
+  $ \netToAccount net ma -> do
+      accounts <- Map.lookup net $ unAccountStorage netToAccount
+      a <- ma
+      lookupAccountRef a accounts
 
 -- | Make a functional wallet that can contain actual keys.
 makeWallet
