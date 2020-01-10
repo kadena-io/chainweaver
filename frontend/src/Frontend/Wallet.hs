@@ -52,6 +52,7 @@ import Data.Aeson
 import Data.Dependent.Sum (DSum(..))
 import Data.Either (rights)
 import Data.IntMap (IntMap)
+import Data.Maybe (fromMaybe)
 import Data.Set (Set)
 import Data.Some (Some(Some))
 import Data.Text (Text)
@@ -59,6 +60,7 @@ import GHC.Generics (Generic)
 import Kadena.SigningApi (AccountName(..), mkAccountName)
 import Pact.Types.ChainId
 import Reflex
+import Reflex.Dom ((=:))
 import qualified Data.Map as Map
 import qualified Data.Map.Monoidal as MonoidalMap
 import qualified Data.Set as Set
@@ -172,10 +174,12 @@ makeWallet model conf = do
       , ffor (_walletCfg_delKey conf) $ IntMap.adjust $ \k -> k { _key_hidden = True }
       , ffor (_walletCfg_updateKeyNotes conf) $ \(i, notes) -> IntMap.adjust (\k -> k { _key_notes = notes }) i
       ]
+    let visibleKeys = IntMap.filter (not . _key_hidden) <$> keys
+    let pubKeysDeleted = fmapMaybe id (flip IntMap.lookup <$> current keys <@> (_walletCfg_delKey conf))
 
   rec
     newBalances <- getBalances model $ leftmost
-      [ (,) . IntMap.elems <$> current keys <*> current accounts <@ _walletCfg_refreshBalances conf
+      [ (,) . IntMap.elems <$> current visibleKeys <*> current visibleAccounts <@ _walletCfg_refreshBalances conf
       -- Also refresh balances after we generate a new key
       , ffor onNewKey $ \k -> ([k], mempty)
       ]
@@ -189,16 +193,46 @@ makeWallet model conf = do
       , foldr (.) id . fmap updateAccountBalance <$> newBalances
       , ffor (_walletCfg_setCrossChainTransfer conf) updateCrossChain
       , ffor (_walletCfg_delAccount conf) hideAccount
+      , ffor pubKeysDeleted hideAccountsOfKey
       ]
+    let visibleAccounts = filterVisibleAccountStorage <$> accounts
 
   performEvent_ $ storeKeys <$> updated keys
   performEvent_ $ storeAccounts <$> updated accounts
 
+
   pure $ Wallet
-    { _wallet_keys = keys
-    , _wallet_accounts = accounts
+    { _wallet_keys = visibleKeys
+    , _wallet_accounts = visibleAccounts
     }
   where
+    hideAccountsOfKey :: Key key -> AccountStorage -> AccountStorage
+    hideAccountsOfKey key = _AccountStorage . mapped %~ (foldAccounts (hideAccountOfKey key))
+
+    hideAccountOfKey :: Key key -> Account -> Accounts
+    hideAccountOfKey key ((AccountRef_Vanity an cid) :=> Identity va)
+      | va ^. vanityAccount_key /= (_keyPair_publicKey . _key_pair $ key )
+      = mempty { _accounts_vanity = an =: cid =: va }
+    hideAccountOfKey _ ((AccountRef_Vanity an cid) :=> Identity va)
+      = mempty { _accounts_vanity = an =: cid =: (va & accountInfo . accountInfo_hidden .~ True)  }
+    hideAccountOfKey key ((AccountRef_NonVanity pk cid) :=> Identity nva)
+      | pk /= (_keyPair_publicKey . _key_pair $ key)
+      = mempty { _accounts_nonVanity = pk =: cid =: nva }
+    hideAccountOfKey _ ((AccountRef_NonVanity pk cid) :=> Identity nva)
+      = mempty { _accounts_nonVanity = pk =: cid =: (nva & accountInfo . accountInfo_hidden .~ True)  }
+
+    filterVisibleAccountStorage :: AccountStorage -> AccountStorage
+    filterVisibleAccountStorage = _AccountStorage . mapped %~ (foldAccounts filterVisibleAccount)
+
+    filterVisibleAccount :: Account -> Accounts
+    filterVisibleAccount ((AccountRef_Vanity an cid) :=> Identity va)
+      | va ^. accountInfo . accountInfo_hidden . to not
+      = mempty { _accounts_vanity = an =: cid =: va }
+    filterVisibleAccount ((AccountRef_NonVanity pk cid) :=> Identity nva)
+      | nva ^. accountInfo . accountInfo_hidden . to not
+      = mempty { _accounts_nonVanity = pk =: cid =: nva }
+    filterVisibleAccount _ = mempty
+
     updateAccountNotes :: (NetworkName, AccountName, ChainId, AccountNotes) -> AccountStorage -> AccountStorage
     updateAccountNotes (net, name, chain, notes) = _AccountStorage . at net . _Just . accounts_vanity . at name . _Just . at chain . _Just . vanityAccount_notes .~ notes
 
