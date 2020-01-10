@@ -949,13 +949,6 @@ uiSenderCapabilities m cid mCaps mSender mkGasPayer = do
     -- capability's sender from the gas account.
     eApplyToAllClick <- (switchHold never =<<) $ dyn $ ffor rowCount $ \n ->
       if n > 1 then do
-        eAllSender <- divClass "grant-capabilities-apply-all-wrapper" $ uiButtonDyn
-          (btnCfgSecondary
-            & uiButtonCfg_disabled .~ (isNothing <$> mSender)
-            & uiButtonCfg_class .~ (constDyn $ "grant-capabilities-apply-all")
-          )
-          (text "Apply sender to all")
-
         eAllGasPayer <- divClass "grant-capabilities-apply-all-wrapper" $ uiButtonDyn
           (btnCfgSecondary
             & uiButtonCfg_disabled .~ (isNothing <$> mGasAcct')
@@ -963,10 +956,7 @@ uiSenderCapabilities m cid mCaps mSender mkGasPayer = do
           )
           (text "Apply to all")
 
-        pure $ leftmost
-          [ current mSender <@ eAllSender
-          , current mGasAcct' <@ eAllGasPayer
-          ]
+        pure $ current mGasAcct' <@ eAllGasPayer
       else
         pure never
 
