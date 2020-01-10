@@ -127,7 +127,7 @@ uiAddVanityAccountSettings ideL onInflightChange mInflightAcc mChainId initialNo
 
     (curSelection, eNewAccount, _) <- buildDeployTabs customConfigTab includePreviewTab controls
 
-    (conf, result, dAccount, selChain) <- elClass "div" "modal__main transaction_details" $ do
+    (conf, result, dAccount, selChain, gasPayer) <- elClass "div" "modal__main transaction_details" $ do
       _ <- widgetHold blank $ ffor onInflightChange $ \_ -> divClass "group" $
         text "The incomplete vanity account has been verified on the chain and added to your wallet. You may continue to create a new vanity account or close this dialog and start using the new account."
 
@@ -144,7 +144,8 @@ uiAddVanityAccountSettings ideL onInflightChange mInflightAcc mChainId initialNo
           $ uiSenderDropdown def never
 
       (mGasPayer, signers, capabilities) <- tabPane mempty curSelection DeploymentSettingsView_Keys $
-        uiSenderCapabilities ideL cChainId Nothing mSender $ uiSenderDropdown def never ideL cChainId
+        uiSenderCapabilities ideL cChainId Nothing mSender
+          $ uiSenderDropdown def (gate (current $ isNothing <$> gasPayer) $ updated mSender) ideL cChainId
 
       let dPayload = fmap mkPubkeyPactData <$> dPublicKey
           code = mkPactCode <$> dAccountName
@@ -179,9 +180,13 @@ uiAddVanityAccountSettings ideL onInflightChange mInflightAcc mChainId initialNo
         , fmap mkSettings dPayload >>= buildDeploymentSettingsResult ideL mSender mGasPayer signers cChainId capabilities ttl gasLimit code
         , account
         , cChainId
+        , mGasPayer
         )
 
-    let preventProgress = (\a r -> isNothing a || isLeft r) <$> dAccount <*> result
+    let preventProgress = (\a r gp -> isNothing a || isLeft r || isNothing gp)
+          <$> dAccount
+          <*> result
+          <*> gasPayer
 
     command <- performEvent $ tagMaybe (current $ fmap hush result) eNewAccount
     controls <- modalFooter $ buildDeployTabFooterControls
