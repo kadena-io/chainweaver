@@ -65,7 +65,7 @@ in obApp // rec {
 
   ci = {
     mac   = { inherit mac; };
-    linux = { };
+    linux = { inherit (linuxApp) nixosExe deb; };
     cross = {
       inherit (obApp) exe;
       inherit (obApp.ghc) desktop;
