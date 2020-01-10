@@ -92,7 +92,6 @@ import qualified Data.HashMap.Strict as HM
 import qualified Data.Map as Map
 import qualified Data.Set as Set
 import qualified Data.Text as T
-import qualified Data.Text.IO as T
 import qualified Pact.Types.Capability as PC
 import qualified Pact.Types.ChainId as Pact
 import qualified Pact.Types.Command as Pact
