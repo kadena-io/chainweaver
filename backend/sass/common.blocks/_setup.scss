@@ -403,6 +403,7 @@ $setup-progress-font-size: 18px;
   width: $setup-progress-button-width;
   display: flex;
   flex-direction: column;
+  margin-bottom: 0px; //mac app has a user agent stylesheet default margin-bottom in <form>
 }
 
 .setup__done-splash-bg {
