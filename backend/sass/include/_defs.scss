@@ -115,3 +115,25 @@ $pane-padding-top: $normal-padding;
 $pane-padding-bottom: $pane-padding-top;
 $pane-padding-right: $normal-padding;
 $pane-padding-left: $pane-padding-right;
+
+// Browser bug workarounds;
+
+/*
+ In webkit browsers, we've ran into strange artifacts where multiple
+ rectangle-shaped sections of an element aren't rendered properly.
+
+ Manually resizing the window seems to fix a particular instance.
+
+ Presumably some bug regarding stacking-contexts:
+ https://philipwalton.com/articles/what-no-one-told-you-about-z-index/
+*/
+@mixin webkit-rendering-bug-workaround {
+  z-index: 0;
+
+  /*
+   These prevent the rectangle artifacts but apparently
+   also introduce a slight offset on the element itself
+  */
+  // opacity: 0.9999;
+  //-webkit-transform: translateZ(0);
+}
