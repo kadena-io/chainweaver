@@ -3,7 +3,9 @@
 module Mac where
 
 import qualified Control.Concurrent.Async as Async
-import Control.Monad ((<=<))
+import Control.Monad ((<=<), forever)
+import Control.Monad.Logger (LogLevel(LevelInfo), toLogStr)
+import Control.Exception (bracket)
 import Data.ByteString (ByteString)
 import Data.Default (Default(..))
 import Data.Functor (void)
@@ -14,7 +16,7 @@ import Foreign.StablePtr (StablePtr, newStablePtr)
 import Language.Javascript.JSaddle.Types (JSM)
 import Language.Javascript.JSaddle.WKWebView (AppDelegateConfig(..), mainBundleResourcePath, runHTMLWithBaseURL)
 import System.FilePath ((</>))
-import System.IO (Handle)
+import System.IO
 import qualified System.Process as Process
 
 import Desktop (main', AppFFI(..))
@@ -56,7 +58,7 @@ redirectPipes ps m = bracket setup hClose $ \r -> Async.withAsync (go r) $ \_ ->
       hClose w
       pure r
       -- TODO figure out how to get the logs to come from the Pact process instead of syslog
-    go r = forever $ hGetLine r >>= logToSyslog
+    go r = forever $ hGetLine r >>= logToSyslog LevelInfo . toLogStr
 
 main :: IO ()
 main = sysloggedMain "Kadena Chainweaver" . redirectPipes [stderr, stdout] $
