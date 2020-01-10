@@ -620,10 +620,11 @@ crossChainTransfer logL netInfo keys fromAccount toAccount fromGasPayer crossCha
       toAddress = either id accountToKadenaAddress toAccount
   -- Client envs for making requests to each chain
   let envFromChain = mkClientEnvs nodeInfos fromChain
+      envToChain = mkClientEnvs nodeInfos toChain
   -- Lookup the guard if we don't already have it
   keySetResponse <- case toAccount of
     Left ka -> case _kadenaAddress_accountCreated ka of
-      AccountCreated_Yes -> lookupKeySet logL networkName envFromChain publicMeta ka
+      AccountCreated_Yes -> lookupKeySet logL networkName envToChain publicMeta ka
       -- If the account hasn't been created, don't try to lookup the guard. Just
       -- assume the account name _is_ the public key (since it must be a
       -- non-vanity account).
