@@ -360,7 +360,7 @@ resourcesWidget
   :: (DomBuilder t m)
   => m ()
 resourcesWidget = elClass "div" "icon-grid" $ do
-  resourceCell "Support" (static @"img/resources/support.svg") "https://www.kadena.io/chainweaver-support"
+  resourceCell "Support" (static @"img/resources/support.svg") "https://www.kadena.io/chainweaver"
     "Explore Help Resources to learn about Chainweaver, solve problems and get in touch"
   resourceCell "Documentation" (static @"img/resources/documentation.svg") "https://github.com/kadena-io/chainweaver"
     "Complete technical resources for Chainweaver"
