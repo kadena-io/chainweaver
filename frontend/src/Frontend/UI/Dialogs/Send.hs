@@ -324,7 +324,7 @@ sendConfig model fromAccount = Workflow $ do
               divClass "label labeled-input__label" $ text "Account Name"
               let cfg = def & dropdownConfig_attributes .~ pure ("class" =: "labeled-input__input")
                   chain = pure $ Just fromChain
-              gasAcc <- uiSenderDropdown cfg never model chain
+              gasAcc <- uiSenderDropdown cfg model chain never
               pure $ lookupAccountFromRef model gasAcc
             toGasPayer <- if toChain == fromChain
               then pure $ pure $ Just Nothing
@@ -337,7 +337,7 @@ sendConfig model fromAccount = Workflow $ do
                   divClass "label labeled-input__label" $ text "Account Name"
                   let cfg = def & dropdownConfig_attributes .~ pure ("class" =: "labeled-input__input")
                       chain = pure $ Just toChain
-                  gasAcc <- uiSenderDropdown cfg never model chain
+                  gasAcc <- uiSenderDropdown cfg model chain never
                   pure $ Just <$> lookupAccountFromRef model gasAcc
             pure $ (liftA2 . liftA2) (,) fromGasPayer toGasPayer
       pure (conf, mCaps, recipient)
@@ -487,7 +487,7 @@ finishCrossChainTransferConfig model fromAccount ucct = Workflow $ do
       divClass "label labeled-input__label" $ text "Account Name"
       let cfg = def & dropdownConfig_attributes .~ pure ("class" =: "labeled-input__input")
           chain = pure $ Just toChain
-      gasAcc <- uiSenderDropdown cfg never model chain
+      gasAcc <- uiSenderDropdown cfg model chain never
       pure $ ffor3 (model ^. wallet_accounts) (model ^. network_selectedNetwork) gasAcc $ \netToAccount net ma -> do
         accounts <- Map.lookup net $ unAccountStorage netToAccount
         a <- ma
