@@ -145,7 +145,7 @@ uiAddVanityAccountSettings ideL onInflightChange mInflightAcc mChainId initialNo
 
       (mGasPayer, signers, capabilities) <- tabPane mempty curSelection DeploymentSettingsView_Keys $
         uiSenderCapabilities ideL cChainId Nothing mSender
-          $ uiSenderDropdown def (updated mSender) ideL cChainId
+          $ uiSenderDropdown def (gate (current $ isNothing <$> gasPayer) $ updated mSender) ideL cChainId
 
       let dPayload = fmap mkPubkeyPactData <$> dPublicKey
           code = mkPactCode <$> dAccountName
