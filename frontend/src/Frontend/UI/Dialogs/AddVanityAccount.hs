@@ -6,7 +6,7 @@ module Frontend.UI.Dialogs.AddVanityAccount
     uiAddVanityAccountButton
   ) where
 
-import           Control.Lens                           ((^.),(<>~))
+import           Control.Lens                           ((^.),(<>~), (<&>))
 import           Control.Error                          (hush)
 import           Control.Monad.Trans.Class              (lift)
 import           Control.Monad.Trans.Maybe              (MaybeT (..), runMaybeT)
@@ -18,6 +18,7 @@ import           Data.Aeson                             (Object, Value (Array, S
 import qualified Data.HashMap.Strict                    as HM
 import qualified Data.Vector                            as V
 
+import Kadena.SigningApi
 import Pact.Types.PactValue
 import Pact.Types.Exp
 import Data.Some (Some(Some))
@@ -33,6 +34,7 @@ import           Frontend.UI.DeploymentSettings
 import           Frontend.UI.Dialogs.DeployConfirmation (Status (..), TransactionSubmitFeedback (..), CanSubmitTransaction, submitTransactionWithFeedback)
 import           Frontend.UI.Modal.Impl
 import           Frontend.UI.Widgets
+import           Frontend.UI.Widgets.Helpers (dialogSectionHeading)
 import           Frontend.UI.Wallet
 import           Frontend.UI.Widgets.AccountName (uiAccountNameInput)
 
@@ -144,9 +146,14 @@ uiAddVanityAccountSettings ideL onInflightChange mInflightAcc mChainId initialNo
           Nothing
           $ uiSenderDropdown def never
 
-      (mGasPayer, signers, capabilities) <- tabPane mempty curSelection DeploymentSettingsView_Keys $
-        uiSenderCapabilities ideL cChainId Nothing mSender
-          $ uiSenderDropdown def (gate (current $ isNothing <$> gasPayer) $ updated mSender) ideL cChainId
+      mGasPayer <- tabPane mempty curSelection DeploymentSettingsView_Keys $ do
+        let onSenderUpdate = gate (current $ isNothing <$> gasPayer) $ updated mSender
+
+        dialogSectionHeading mempty "Gas Payer"
+        divClass "group" $ elClass "div" "segment segment_type_tertiary labeled-input" $ do
+          divClass "label labeled-input__label" $ text "Account Name"
+          let ddCfg = def & dropdownConfig_attributes .~ pure ("class" =: "labeled-input__input")
+          uiSenderDropdown ddCfg onSenderUpdate ideL cChainId
 
       let dPayload = fmap mkPubkeyPactData <$> dPublicKey
           code = mkPactCode <$> dAccountName
@@ -156,6 +163,7 @@ uiAddVanityAccountSettings ideL onInflightChange mInflightAcc mChainId initialNo
             <*> MaybeT dAccountName
             <*> MaybeT cChainId
             <*> vanity
+
           vanity = VanityAccount
             <$> MaybeT dPublicKey
             <*> lift dNotes
@@ -176,9 +184,21 @@ uiAddVanityAccountSettings ideL onInflightChange mInflightAcc mChainId initialNo
             , _deploymentSettingsConfig_includePreviewTab = includePreviewTab
             }
 
+          capabilities = mGasPayer <&>
+            maybe mempty (=: [_dappCap_cap defaultGASCapability])
+
       pure
         ( cfg & networkCfg_setSender .~ fmapMaybe (fmap (\(Some x) -> accountRefToName x)) (updated mSender)
-        , fmap mkSettings dPayload >>= buildDeploymentSettingsResult ideL mSender mGasPayer signers cChainId capabilities ttl gasLimit code
+        , fmap mkSettings dPayload >>= buildDeploymentSettingsResult
+            ideL
+            mSender
+            mGasPayer
+            (constDyn mempty)
+            cChainId
+            capabilities
+            ttl
+            gasLimit
+            code
         , account
         , cChainId
         , mGasPayer
