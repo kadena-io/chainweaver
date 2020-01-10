@@ -12,7 +12,6 @@ module Frontend.UI.Dialogs.KeyDetails
 ------------------------------------------------------------------------------
 import           Control.Error
 import           Control.Lens
-import qualified Data.ByteString.Base64 as Base64
 import           Data.Functor (void)
 import           Data.Text (Text)
 import qualified Data.Text.Encoding as T
