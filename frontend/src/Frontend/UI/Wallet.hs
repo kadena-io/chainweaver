@@ -323,7 +323,7 @@ uiKeyItem model keyIndex key = do
       keyRow open balance = trKey $ do
         let accordionCell o = "wallet__table-cell" <> if o then "" else " accordion-collapsed"
         clk <- elDynClass "td" (accordionCell <$> open) $ accordionButton def
-        td $ dynText $ uiPublicKeyShrunk . _keyPair_publicKey . _key_pair <$> key
+        td $ uiPublicKeyShrunk $ _keyPair_publicKey . _key_pair <$> key
         td $ dynText $ unAccountNotes . _key_notes <$> key
         td $ dynText $ uiAccountBalance False . Just <$> balance
         dialog <- td $ buttons $ do

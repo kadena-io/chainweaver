@@ -588,10 +588,13 @@ uiAccountChain = _chainId . accountChain
 uiAccountNotes :: Account -> Text
 uiAccountNotes = maybe "" unAccountNotes . accountNotes
 
-uiPublicKeyShrunk :: PublicKey -> Text
-uiPublicKeyShrunk pk = (T.take 6 ktxt) <> "..." <> (T.takeEnd 6 ktxt)
+uiPublicKeyShrunk :: (DomBuilder t m, PostBuild t m) => Dynamic t PublicKey -> m ()
+uiPublicKeyShrunk pk = do
+  divClass "wallet__public-key" $ do
+    elClass "span" "wallet__public-key__prefix" $ dynText $ T.dropEnd 6 <$> ktxt
+    elClass "span" "wallet__public-key__suffix" $ dynText $ T.takeEnd 6 <$> ktxt
   where
-    ktxt = keyToText pk
+    ktxt = keyToText <$> pk
 
 showLoading
   :: (NotReady t m, Adjustable t m, PostBuild t m, DomBuilder t m, Monoid b)
