@@ -68,7 +68,6 @@ uiAccountDetailsDetails netname a onClose = Workflow $ do
       chain = accountChain a
       vanityName = a ^? _VanityAccount . _1
       nameOrPubKey = accountToName a
-      accountOrKey = if isJust vanityName then "Account" else "Key"
 
       displayText lbl v cls =
         let
@@ -112,7 +111,7 @@ uiAccountDetailsDetails netname a onClose = Workflow $ do
   modalFooter $ do
     onRemove <- cancelButton
       (def & uiButtonCfg_class <>~ " account-details__remove-account-btn")
-      ("Remove " <> accountOrKey)
+      ("Remove Account")
 
     onDone <- confirmButton def "Done"
 
@@ -122,7 +121,7 @@ uiAccountDetailsDetails netname a onClose = Workflow $ do
         Just notes -> (netname, nameOrPubKey, chain,) . mkAccountNotes <$> current notes <@ onDone
       conf = mempty & walletCfg_updateAccountNotes .~ onNotesUpdate
 
-    pure ( (accountOrKey <> " Details", (conf, leftmost [onClose, onDone]))
+    pure ( ("Account Details", (conf, leftmost [onClose, onDone]))
          , uiDeleteConfirmation netname (someTag a) onClose <$ onRemove
          )
 
