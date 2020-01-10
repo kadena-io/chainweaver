@@ -195,14 +195,14 @@ uiAddVanityAccountSettings ideL onInflightChange mInflightAcc mChainId initialNo
   let conf0 = conf & walletCfg_importAccount .~ tagMaybe (current dAccount) command
 
   pure
-    ( ("Add New Vanity Account", (conf0, never))
+    ( ("Add New Account", (conf0, never))
     , attachWith
         (\ns res -> vanityAccountCreateSubmit ideL dAccount (_deploymentSettingsResult_chainId res) res ns)
         (current $ ideL ^. network_selectedNodes)
         command
     )
   where
-    progressButtonLabalFn DeploymentSettingsView_Keys = "Create Vanity Account"
+    progressButtonLabalFn DeploymentSettingsView_Keys = "Create Account"
     progressButtonLabalFn _ = "Next"
 
 vanityAccountCreateSubmit
@@ -259,6 +259,6 @@ vanityAccountCreateSubmit model dAccount chainId result nodeInfos = Workflow $ d
   done <- modalFooter $ confirmButton def "Done"
 
   pure
-    ( ("Creating Vanity Account", (conf, done))
+    ( ("Creating Account", (conf, done))
     , never
     )

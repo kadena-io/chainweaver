@@ -10,12 +10,14 @@ module Frontend.UI.Dialogs.KeyDetails
   ) where
 
 ------------------------------------------------------------------------------
+import           Control.Error
 import           Control.Lens
 import qualified Data.ByteString.Base64 as Base64
 import           Data.Functor (void)
 import           Data.Text (Text)
 import qualified Data.Text.Encoding as T
 import qualified Data.IntMap as IntMap
+import           Pact.Types.Util             (decodeBase64UrlUnpadded)
 ------------------------------------------------------------------------------
 import           Reflex
 import           Reflex.Dom hiding (Key)
@@ -84,12 +86,12 @@ uiKeyDetailsDetails keyIndex key onClose onCloseExternal = Workflow $ do
         & initialAttributes . at "class" %~ pure . maybe (renderClass cls) (mappend (" " <> renderClass cls))
 
       void $ accordionItemWithClick False mempty (accordionHeaderBtn "Advanced") $ withSecretKey $ \pk -> do
-        txt <- fmap value $ mkLabeledClsInput False "Text to sign" $ \cls -> uiTextAreaElement $ def
+        txt <- fmap value $ mkLabeledClsInput False "Data to sign (Base64Url Unpadded)" $ \cls -> uiTextAreaElement $ def
           & initialAttributes .~ "class" =: renderClass cls
 
-        ((), sigEv) <- runWithReplace blank $ ffor (updated txt) $ \case
+        ((), sigEv) <- runWithReplace blank $ ffor (fmapMaybe (hush . decodeBase64UrlUnpadded . T.encodeUtf8) $ updated txt) $ \case
           "" -> pure Nothing
-          b -> Just . keyToText <$> cryptoSign (Base64.encode $ T.encodeUtf8 b) pk
+          b -> Just . keyToText <$> cryptoSign b pk
 
         sig <- maybeDyn =<< holdDyn Nothing sigEv
 
