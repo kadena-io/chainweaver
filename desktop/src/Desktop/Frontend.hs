@@ -184,7 +184,7 @@ lockScreen xprv = setupDiv "fullscreen" $ divClass "wrapper" $ setupDiv "splash"
 
     restore <- setupDiv "button-horizontal-group" $ do
       elAttr "a" ( "class" =: "button button_type_secondary setup__help" <>
-                   "href" =: "https://www.kadena.io/chainweaver-support" <>
+                   "href" =: "https://www.kadena.io/chainweaver" <>
                    "target" =: "_blank"
                  ) $ do
         elAttr "img" ("src" =: static @"img/launch_dark.svg" <> "class" =: "button__text-icon") blank
