@@ -521,7 +521,8 @@ confirmPhrase eBack dPassword mnemonicSentence = Workflow $ mdo
     let actualMap = mkPhraseMapFromMnemonic mnemonicSentence
 
     rec
-      onPhraseUpdate <- passphraseWidget dConfirmPhrase (pure Recover) True
+      onPhraseUpdate <- divClass "setup__verify-passphrase-wrapper" $
+        passphraseWidget dConfirmPhrase (pure Recover) True
 
       dConfirmPhrase <- holdDyn (wordsToPhraseMap $ replicate passphraseLen T.empty)
         $ flip Map.union <$> current dConfirmPhrase <@> onPhraseUpdate
