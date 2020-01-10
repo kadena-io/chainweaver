@@ -3,26 +3,20 @@
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE TypeOperators #-}
-module Desktop.Mac where
+module Desktop.App where
 
+import Control.Monad.Logger (LogStr,LogLevel)
 import Control.Concurrent
 import Control.Exception (bracket, try)
-import Control.Monad (forever)
 import Control.Monad.IO.Class
-import Data.Foldable (for_)
 import Data.String (IsString(..))
-import Foreign.C.String (CString, peekCString)
-import Foreign.StablePtr (StablePtr)
-import GHC.IO.Handle
 import Language.Javascript.JSaddle.Types (JSM)
 import Obelisk.Backend
 import Obelisk.Frontend
 import Obelisk.Route.Frontend
 import Reflex.Dom
 import System.FilePath ((</>))
-import System.IO
 import qualified Control.Concurrent.Async as Async
 import qualified Data.ByteString as BS
 import qualified Data.List as L
@@ -34,48 +28,31 @@ import qualified Network.Socket as Socket
 import qualified Snap.Http.Server as Snap
 import qualified System.Directory as Directory
 import qualified System.Environment as Env
-import qualified System.Process as Process
 
 import Backend (serveBackendRoute)
 import Common.Route
 import Frontend
 import Frontend.AppCfg
+import Frontend.ModuleExplorer.Impl (loadEditorFromLocalStorage)
 import Desktop.Frontend
 import Desktop.SigningApi
 import Desktop.Util
 
-data MacFFI = MacFFI
-  { _macFFI_setupAppMenu :: StablePtr (CString -> IO ()) -> IO ()
-  , _macFFI_activateWindow :: IO ()
-  , _macFFI_hideWindow :: IO ()
-  , _macFFI_resizeWindow :: (Int, Int) -> IO ()
-  , _macFFI_moveToBackground :: IO ()
-  , _macFFI_moveToForeground :: IO ()
-  , _macFFI_global_openFileDialog :: IO ()
-  , _macFFI_global_getHomeDirectory :: IO CString
-  , _macFFI_global_getBundleIdentifier :: IO CString
+data AppFFI = AppFFI
+  { _appFFI_activateWindow :: IO ()
+  , _appFFI_resizeWindow :: (Int, Int) -> IO ()
+  , _appFFI_moveToBackground :: IO ()
+  , _appFFI_moveToForeground :: IO ()
+  , _appFFI_global_openFileDialog :: IO ()
+  , _appFFI_global_getStorageDirectory :: IO String
+  , _appFFI_global_logFunction :: LogLevel -> LogStr -> IO ()
   }
 
-getUserLibraryPath :: MonadIO m => MacFFI -> m FilePath
+getUserLibraryPath :: MonadIO m => AppFFI -> m FilePath
 getUserLibraryPath ffi = liftIO $ do
-  home <- peekCString =<< _macFFI_global_getHomeDirectory ffi
-  bundleId <- peekCString =<< _macFFI_global_getBundleIdentifier ffi
-  let lib = home </> "Library" </> "Application Support" </> bundleId
+  lib <- _appFFI_global_getStorageDirectory ffi
   Directory.createDirectoryIfMissing True lib
   pure lib
-
--- | Redirect the given handles to Console.app
-redirectPipes :: [Handle] -> IO a -> IO a
-redirectPipes ps m = bracket setup hClose $ \r -> Async.withAsync (go r) $ \_ -> m
-  where
-    setup = do
-      (r, w) <- Process.createPipe
-      for_ ps $ \p -> hDuplicateTo w p <> hSetBuffering p LineBuffering
-      hClose w
-      pure r
-      -- TODO figure out how to get the logs to come from the Pact process instead of syslog
-    go r = forever $ hGetLine r >>= \l -> do
-      Process.callProcess "syslog" ["-s", "-k", "Level", "Notice", "Message", "Pact: " <> l]
 
 -- | Get a random free port. This isn't quite safe: it is possible for the port
 -- to be grabbed by something else between the use of this function and the
@@ -99,11 +76,20 @@ backend = Backend
   }
 
 main'
-  :: MacFFI
+  :: AppFFI
   -> IO (Maybe BS.ByteString)
   -> (BS.ByteString -> BS.ByteString -> (String -> IO ()) -> (FilePath -> IO Bool) -> JSM () -> IO ())
   -> IO ()
-main' ffi mainBundleResourcePath runHTML = redirectPipes [stdout, stderr] $ do
+main' ffi mainBundleResourcePath runHTML = do
+  fileOpenedMVar :: MVar T.Text <- liftIO newEmptyMVar
+  let handleOpen f = try (T.readFile f) >>= \case
+        Left (e :: IOError) -> do
+          putStrLn $ "Failed reading file " <> f <> ": " <> show e
+          pure False
+        Right c -> do
+          putStrLn $ "Opened file successfully: " <> f
+          putMVar fileOpenedMVar c
+          pure True
   -- Set the path to z3. I tried using the plist key LSEnvironment, but it
   -- doesn't work with relative paths.
   exePath <- L.dropWhileEnd (/= '/') <$> Env.getExecutablePath
@@ -131,24 +117,14 @@ main' ffi mainBundleResourcePath runHTML = redirectPipes [stdout, stderr] $ do
         staticAssets
         backend
         (Frontend blank blank)
-  fileOpenedMVar :: MVar T.Text <- liftIO newEmptyMVar
   -- Run the backend in a forked thread, and run jsaddle-wkwebview on the main thread
   putStrLn $ "Starting backend on port: " <> show port
   Async.withAsync b $ \_ -> do
     liftIO $ putStrLn "Starting jsaddle"
-    let handleOpen f = try (T.readFile f) >>= \case
-          Left (e :: IOError) -> do
-            putStrLn $ "Failed reading file " <> f <> ": " <> show e
-            pure False
-          Right c -> do
-            putStrLn $ "Opened file successfully: " <> f
-            putMVar fileOpenedMVar c
-            pure True
     (signingRequestMVar, signingResponseMVar) <- signingServer
-      (_macFFI_moveToForeground ffi)
-      (_macFFI_moveToBackground ffi)
+      (_appFFI_moveToForeground ffi)
+      (_appFFI_moveToBackground ffi)
     runHTML "index.html" route putStrLn handleOpen $ do
-      mInitFile <- liftIO $ tryTakeMVar fileOpenedMVar
       let frontendMode = FrontendMode
             { _frontendMode_hydrate = False
             , _frontendMode_adjustRoute = True
@@ -177,8 +153,8 @@ main' ffi mainBundleResourcePath runHTML = redirectPipes [stdout, stderr] $ do
           let appCfg = AppCfg
                 { _appCfg_gistEnabled = False
                 , _appCfg_externalFileOpened = fileOpened
-                , _appCfg_openFileDialog = liftIO $ _macFFI_global_openFileDialog ffi
-                , _appCfg_loadEditor = pure mInitFile
+                , _appCfg_openFileDialog = liftIO $ _appFFI_global_openFileDialog ffi
+                , _appCfg_loadEditor = loadEditorFromLocalStorage
 
                 -- DB 2019-08-07 Changing this back to False because it's just too convenient this way.
                 , _appCfg_editorReadOnly = False
@@ -187,8 +163,9 @@ main' ffi mainBundleResourcePath runHTML = redirectPipes [stdout, stderr] $ do
                 , _appCfg_enabledSettings = EnabledSettings
                   {
                   }
+                , _appCfg_logMessage = _appFFI_global_logFunction ffi
                 }
           _ <- mapRoutedT (runFileStorageT libPath) $ runWithReplace loaderMarkup $
-            (liftIO (_macFFI_activateWindow ffi) >> liftIO (_macFFI_resizeWindow ffi defaultWindowSize) >> bipWallet appCfg) <$ bowserLoad
+            (liftIO (_appFFI_activateWindow ffi) >> liftIO (_appFFI_resizeWindow ffi defaultWindowSize) >> bipWallet appCfg) <$ bowserLoad
           pure ()
         }

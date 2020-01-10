@@ -78,6 +78,7 @@ import           Control.Monad.Except
 import           GHC.Word                          (Word8)
 import           Data.Aeson                        (Object, Value (..), encode)
 import qualified Data.Bifunctor                    as BiF
+import           Data.Functor                      (($>))
 import qualified Data.ByteString.Lazy              as BSL
 import           Data.Decimal                      (DecimalRaw (..))
 import           Data.Either                       (lefts, rights)
@@ -90,7 +91,6 @@ import           Data.Map.Strict                   (Map)
 import           Data.Text                         (Text)
 import qualified Data.Text                         as T
 import qualified Data.Text.Encoding                as T
-import qualified Data.Text.IO                      as T
 import           Data.These                        (These(..), these)
 import           Data.Time.Clock                   (getCurrentTime)
 import           Data.Time.Clock.POSIX             (getPOSIXTime)
@@ -99,7 +99,6 @@ import           Foreign.JavaScript.TH             (HasJSContext)
 import           Language.Javascript.JSaddle.Monad (JSM, liftJSM)
 import qualified Network.HTTP.Types                as HTTP
 import           Reflex.Dom.Core                   (def, XhrRequest(..), XhrResponse(..), performRequestAsync)
-import           System.IO                         (stderr)
 import           Text.URI                          (URI)
 import qualified Text.URI                          as URI
 import qualified Text.URI.Lens                     as URIL
@@ -133,6 +132,7 @@ import           Frontend.Messages
 import           Frontend.Network.NodeInfo
 import           Frontend.Storage
 import           Frontend.Store
+import           Frontend.Log
 
 
 -- | What endpoint to use for a network request.
@@ -252,7 +252,7 @@ makePactLenses ''Network
 type HasNetworkModelCfg mConf t = (Monoid mConf, HasMessagesCfg mConf t)
 
 makeNetwork
-  :: forall key t m mConf
+  :: forall key t m mConf model
   . ( MonadHold t m, PerformEvent t m, MonadFix m
     , MonadJSM (Performable m), MonadJSM m
     , TriggerEvent t m, PostBuild t m
@@ -262,12 +262,14 @@ makeNetwork
     , HasJSContext (Performable m)
     , HasStorage m, HasStorage (Performable m)
     , HasCrypto key (Performable m)
+    , HasLogger model t
     )
-  => NetworkCfg t
+  => model
+  -> NetworkCfg t
   -> m (mConf, Network t)
-makeNetwork cfg = mfix $ \ ~(_, networkL) -> do
+makeNetwork model cfg = mfix $ \ ~(_, networkL) -> do
 
-    (mConf, onDeployed) <- deployCode networkL $ cfg ^. networkCfg_deployCode
+    (mConf, onDeployed) <- deployCode (model ^. logger) networkL $ cfg ^. networkCfg_deployCode
 
     (cName, networks) <- getNetworks cfg
     onCName <- tagOnPostBuild cName
@@ -283,7 +285,7 @@ makeNetwork cfg = mfix $ \ ~(_, networkL) -> do
 
     performEvent_ $ traverse_ reportNodeInfoError . lefts <$> updated nodeInfos
 
-    modules <- loadModules networkL onRefresh
+    modules <- loadModules (model ^. logger) networkL onRefresh
 
     meta <- buildMeta cfg
 
@@ -300,7 +302,7 @@ makeNetwork cfg = mfix $ \ ~(_, networkL) -> do
       )
   where
     reportNodeInfoError err =
-      liftIO $ T.putStrLn $ "Fetching node info failed: " <> err
+      putLog model LevelWarn $ "Fetching node info failed: " <> err
 
 
 -- | Update networks, given an updating event.
@@ -442,11 +444,12 @@ deployCode
     , MonadSample t (Performable m)
     , HasNetworkModelCfg mConf t
     )
-  => Network t
+  => Logger t
+  -> Network t
   -> Event t [NetworkRequest]
   -> m (mConf, Event t ())
-deployCode networkL onReq = do
-    reqRes <- performNetworkRequest networkL onReq
+deployCode logL networkL onReq = do
+    reqRes <- performNetworkRequest logL networkL onReq
     pure $ ( mempty & messagesCfg_send .~ fmap (map renderReqRes) reqRes
            , () <$ ffilter (or . map (these (const False) (const True) (const . const $ True) . snd)) reqRes
            )
@@ -588,10 +591,11 @@ loadModules
     , TriggerEvent t m, PostBuild t m
     , HasCrypto key (Performable m)
     )
-  => Network t
+  => Logger t
+  -> Network t
   -> Event t ()
   -> m (Dynamic t (Map ChainId [Text]))
-loadModules networkL onRefresh = do
+loadModules logL networkL onRefresh = do
 
       let nodeInfos = rights <$> (networkL ^. network_selectedNodes)
       rec
@@ -605,7 +609,7 @@ loadModules networkL onRefresh = do
           [ onNodeInfos
           , tag (current nodeInfos) onRefresh
           ])
-      onErrResps <- performLocalReadLatest networkL onReqs
+      onErrResps <- performLocalReadLatest logL networkL onReqs
 
       let
         onByChainId :: Event t [ Either (NonEmpty NetworkError) (ChainId, PactValue) ]
@@ -617,7 +621,7 @@ loadModules networkL onRefresh = do
         onModules :: Event t [(ChainId, [Text])]
         onModules =  map (second getModuleList) <$> onResps
 
-      performEvent_ $ liftIO . traverse_ (T.hPutStrLn stderr . renderErrs . toList) <$> onErrs
+      performEvent_ $ traverse_ (putLog logL LevelWarn . renderErrs . toList) <$> onErrs
 
       holdUniqDyn <=< holdDyn mempty $ Map.fromList <$> onModules
 
@@ -660,18 +664,20 @@ loadModules networkL onRefresh = do
 
 
 -- | Parse a NetworkErrorResult into something that the frontend can use
-parseNetworkErrorResult :: (MonadIO m) => (PactValue -> Either Text a) -> NetworkErrorResult -> m (These Text a)
-parseNetworkErrorResult parse = \case
+parseNetworkErrorResult
+  :: MonadIO m
+  => Logger t
+  -> (PactValue -> Either Text a)
+  -> NetworkErrorResult
+  -> m (These Text a)
+parseNetworkErrorResult logL parse = \case
   That (_gas, pactValue) -> doParse pactValue That
   This e -> pure $ This $ prettyPrintNetworkErrors e
   These errs (_gas, pactValue) -> doParse pactValue (These (prettyPrintNetworkErrors errs))
   where
     doParse pactValue f = case parse pactValue of
-      Left e -> do
-        liftIO $ T.putStrLn e
-        pure $ This "Error parsing the response"
+      Left e -> putLog logL LevelWarn e $> This "Error parsing the response"
       Right v -> pure $ f v
-
 
 -- | Perform a read or non persisted request to the /local endpoint.
 --
@@ -688,15 +694,16 @@ performLocalReadLatest
     , MonadHold t m, MonadFix m
     , MonadSample t (Performable m)
     )
-  => Network t
+  => Logger t
+  -> Network t
   -> Event t [NetworkRequest]
   -> m (Event t [(NetworkRequest, NetworkErrorResult)])
-performLocalReadLatest networkL onReqs = do
+performLocalReadLatest logL networkL onReqs = do
     counterDyn <- foldDyn (const (+1)) (0 :: Int) onReqs
     let
       counter = current counterDyn
       onCounted = attach counter onReqs
-    onResp <- performLocalReadCustom networkL snd onCounted
+    onResp <- performLocalReadCustom logL networkL snd onCounted
     -- TODO: If we are not interested in earlier responses, we could cancel the
     -- corresponding requests ...
     pure $ uncurry zip <$> getLatest counter onResp
@@ -717,11 +724,12 @@ performLocalRead
     , TriggerEvent t m, MonadIO m
     , MonadSample t (Performable m)
     )
-  => Network t
+  => Logger t
+  -> Network t
   -> Event t [NetworkRequest]
   -> m (Event t [(NetworkRequest, NetworkErrorResult)])
-performLocalRead networkL onReqs =
-  fmap (uncurry zip) <$> performLocalReadCustom networkL id onReqs
+performLocalRead logL networkL onReqs =
+  fmap (uncurry zip) <$> performLocalReadCustom logL networkL id onReqs
 
 getCreationTime :: MonadIO m => m TxCreationTime
 getCreationTime = mkCt <$> liftIO getPOSIXTime
@@ -742,16 +750,17 @@ performLocalReadCustom
     , TriggerEvent t m, MonadIO m
     , MonadSample t (Performable m)
     )
-  => Network t
+  => Logger t
+  -> Network t
   -> (req -> [NetworkRequest])
   -> Event t req
   -> m (Event t (req, [NetworkErrorResult]))
-performLocalReadCustom networkL unwrapUsr onReqs = do
+performLocalReadCustom logL networkL unwrapUsr onReqs = do
   time <- getCreationTime
   let
     unwrap = map (networkRequest_endpoint .~ Endpoint_Local) . unwrapUsr
     fakeNetwork = networkL & network_meta . mapped . Pact.pmCreationTime .~ time
-  performNetworkRequestCustom fakeNetwork unwrap onReqs
+  performNetworkRequestCustom logL fakeNetwork unwrap onReqs
 
 
 -- | Send a transaction via the /send endpoint.
@@ -764,11 +773,12 @@ performNetworkRequest
     , TriggerEvent t m
     , MonadSample t (Performable m)
     )
-  => Network t
+  => Logger t
+  -> Network t
   -> Event t [NetworkRequest]
   -> m (Event t [(NetworkRequest, NetworkErrorResult)])
-performNetworkRequest networkL onReq =
-  fmap (uncurry zip) <$> performNetworkRequestCustom networkL id onReq
+performNetworkRequest logL networkL onReq =
+  fmap (uncurry zip) <$> performNetworkRequestCustom logL networkL id onReq
 
 -- | Turn some node URLs into chain specific servant envs
 mkClientEnvs :: [NodeInfo] -> ChainId -> [S.ClientEnv]
@@ -794,11 +804,12 @@ performNetworkRequestCustom
     , TriggerEvent t m
     , MonadSample t (Performable m)
     )
-  => Network t
+  => Logger t
+  -> Network t
   -> (req -> [NetworkRequest])
   -> Event t req
   -> m (Event t (req, [NetworkErrorResult]))
-performNetworkRequestCustom networkL unwrap onReqs =
+performNetworkRequestCustom logL networkL unwrap onReqs =
     performEventAsync $ ffor onReqs $ \reqs cb -> do
       nodeInfos <- getSelectedNetworkInfos networkL
       void $ liftJSM $ forkJSM $ do
@@ -815,7 +826,7 @@ performNetworkRequestCustom networkL unwrap onReqs =
               errRes <- doReq (Just n) req
               case errRes of
                 Left (chainUrl,err) -> do
-                  liftIO $ putStrLn $ "Got err: " <> show err
+                  putLog logL LevelWarn $ "Got err: " <> tshow err
                   if shouldFailOver err
                                then go ((chainUrl,err) : errs) ns
                                else pure $ mkResult errs (Left (chainUrl,err))

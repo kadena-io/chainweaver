@@ -11,10 +11,16 @@ library
       base
     , desktop
 
+    , async
     , bytestring
     , data-default
     , jsaddle
     , jsaddle-wkwebview
+    , filepath
+    , hsyslog
+    , monad-logger
+    , fast-logger
+    , process
 
   ghc-options:
     -O -Wall

@@ -35,6 +35,7 @@ import           Frontend.Crypto.Class
 import           Frontend.JsonData
 import           Frontend.ModuleExplorer
 import           Frontend.Network
+import           Frontend.Log
 import           Frontend.UI.Button
 import           Frontend.UI.Dialogs.CallFunction
 import           Frontend.UI.Modal
@@ -43,7 +44,11 @@ import           Frontend.UI.ModuleExplorer.ModuleList
 
 -- | Constraints on the `Model` we have for our details screen.
 type HasUIModuleDetailsModel model key t =
-  (HasModuleExplorer model t, HasNetwork model t, HasUICallFunctionModel model key t)
+  ( HasModuleExplorer model t
+  , HasNetwork model t
+  , HasUICallFunctionModel model key t
+  , HasLogger model t
+  )
 
 -- | Constraints on the model config we have for implementing this screen.
 type HasUIModuleDetailsModelCfg mConf m t =

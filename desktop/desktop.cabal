@@ -27,10 +27,13 @@ library
     , filepath
     , free
     , ghcjs-dom
+    , hsyslog
     , jsaddle
     , kadena-signing-api
     , lens
     , memory
+    , monad-logger
+    , fast-logger
     , mtl
     , network
     , newtype-generics
@@ -55,14 +58,16 @@ library
     , universe-dependent-sum
     , wai-cors
     , warp
+    , monad-logger
   exposed-modules:
       Desktop
     , Desktop.Crypto.BIP
     , Desktop.Frontend
-    , Desktop.Mac
+    , Desktop.App
     , Desktop.Orphans
     , Desktop.Setup
     , Desktop.SigningApi
     , Desktop.Storage.File
+    , Desktop.Syslog
     , Desktop.Util
   ghc-options: -Wall

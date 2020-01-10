@@ -47,6 +47,7 @@ import Common.Route
 import Frontend.AppCfg
 import Desktop.Crypto.BIP
 import Frontend.ModuleExplorer.Impl (loadEditorFromLocalStorage)
+import Frontend.Log (defaultLogger)
 import Frontend.Storage
 import Frontend.UI.Button
 import Frontend.UI.Widgets
@@ -106,6 +107,7 @@ desktop = Frontend
         , _appCfg_enabledSettings = EnabledSettings
           {
           }
+        , _appCfg_logMessage = defaultLogger
         }
   }
 

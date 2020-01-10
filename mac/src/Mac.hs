@@ -2,16 +2,25 @@
 
 module Mac where
 
-import Control.Monad ((<=<))
+import qualified Control.Concurrent.Async as Async
+import Control.Monad ((<=<), forever)
+import Control.Monad.Logger (LogLevel(LevelInfo), toLogStr)
+import Control.Exception (bracket)
 import Data.ByteString (ByteString)
 import Data.Default (Default(..))
 import Data.Functor (void)
+import Data.Foldable (for_)
+import GHC.IO.Handle (hDuplicateTo, BufferMode(LineBuffering))
 import Foreign.C.String (CString, peekCString)
 import Foreign.StablePtr (StablePtr, newStablePtr)
 import Language.Javascript.JSaddle.Types (JSM)
 import Language.Javascript.JSaddle.WKWebView (AppDelegateConfig(..), mainBundleResourcePath, runHTMLWithBaseURL)
+import System.FilePath ((</>))
+import System.IO
+import qualified System.Process as Process
 
-import Desktop (main', MacFFI(..))
+import Desktop (main', AppFFI(..))
+import Desktop.Syslog (sysloggedMain, logToSyslog)
 
 foreign import ccall setupAppMenu :: StablePtr (CString -> IO ()) -> IO ()
 foreign import ccall activateWindow :: IO ()
@@ -21,23 +30,39 @@ foreign import ccall moveToBackground :: IO ()
 foreign import ccall resizeWindow :: Int -> Int -> IO ()
 foreign import ccall global_openFileDialog :: IO ()
 foreign import ccall global_getHomeDirectory :: IO CString
-foreign import ccall global_getBundleIdentifier :: IO CString
 
-ffi :: MacFFI
-ffi = MacFFI
-  { _macFFI_setupAppMenu = setupAppMenu
-  , _macFFI_activateWindow = activateWindow
-  , _macFFI_hideWindow = hideWindow
-  , _macFFI_moveToBackground = moveToBackground
-  , _macFFI_moveToForeground = moveToForeground
-  , _macFFI_resizeWindow = uncurry resizeWindow
-  , _macFFI_global_openFileDialog = global_openFileDialog
-  , _macFFI_global_getHomeDirectory = global_getHomeDirectory
-  , _macFFI_global_getBundleIdentifier = global_getBundleIdentifier
+ffi :: AppFFI
+ffi = AppFFI
+  { _appFFI_activateWindow = activateWindow
+  , _appFFI_moveToBackground = moveToBackground
+  , _appFFI_moveToForeground = moveToForeground
+  , _appFFI_resizeWindow = uncurry resizeWindow
+  , _appFFI_global_openFileDialog = global_openFileDialog
+  , _appFFI_global_getStorageDirectory = getStorageDirectory
+  , _appFFI_global_logFunction = logToSyslog
   }
 
+getStorageDirectory :: IO String
+getStorageDirectory = do
+  home <- global_getHomeDirectory >>= peekCString
+  -- TODO use the bundle identifier directly, don't duplicate it
+  pure $ home </> "Library" </> "Application Support" </> "io.kadena.chainweaver"
+
+-- | Redirect the given handles to Console.app
+redirectPipes :: [Handle] -> IO a -> IO a
+redirectPipes ps m = bracket setup hClose $ \r -> Async.withAsync (go r) $ \_ -> m
+  where
+    setup = do
+      (r, w) <- Process.createPipe
+      for_ ps $ \p -> hDuplicateTo w p <> hSetBuffering p LineBuffering
+      hClose w
+      pure r
+      -- TODO figure out how to get the logs to come from the Pact process instead of syslog
+    go r = forever $ hGetLine r >>= logToSyslog LevelInfo . toLogStr
+
 main :: IO ()
-main = main' ffi mainBundleResourcePath runMac
+main = sysloggedMain "Kadena Chainweaver" . redirectPipes [stderr, stdout] $
+  main' ffi mainBundleResourcePath runMac
 
 runMac
   :: ByteString
@@ -49,10 +74,10 @@ runMac
 runMac url allowing onUniversalLink handleOpen = runHTMLWithBaseURL url allowing $ AppDelegateConfig
   { _appDelegateConfig_willFinishLaunchingWithOptions = do
     putStrLn "will finish launching"
-    (_macFFI_setupAppMenu ffi) <=< newStablePtr $ void . handleOpen <=< peekCString
+    setupAppMenu <=< newStablePtr $ void . handleOpen <=< peekCString
   , _appDelegateConfig_didFinishLaunchingWithOptions = do
     putStrLn "did finish launching"
-    (_macFFI_hideWindow ffi)
+    hideWindow
   , _appDelegateConfig_applicationDidBecomeActive = putStrLn "did become active"
   , _appDelegateConfig_applicationWillResignActive = putStrLn "will resign active"
   , _appDelegateConfig_applicationDidEnterBackground = putStrLn "did enter background"

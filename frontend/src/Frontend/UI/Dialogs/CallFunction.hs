@@ -46,6 +46,7 @@ import           Frontend.Foundation            hiding (Arg)
 import           Frontend.JsonData              (HasJsonData (..), JsonData, HasJsonDataCfg)
 import           Frontend.ModuleExplorer
 import           Frontend.Network
+import           Frontend.Log
 import           Frontend.UI.DeploymentSettings
 import           Frontend.UI.Dialogs.DeployConfirmation (fullDeployFlow, deployConfirmationConfig_modalTitle)
 import           Frontend.UI.Modal
@@ -67,6 +68,7 @@ uiCallFunction
   . ( MonadWidget t m, HasUICallFunctionModelCfg mConf t
     , HasUICallFunctionModel model key t, HasJsonDataCfg mConf t
     , HasCrypto key (Performable m)
+    , HasLogger model t
     )
   => model
   -> Maybe DeployedModuleRef

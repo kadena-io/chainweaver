@@ -2,8 +2,12 @@
 module Frontend.AppCfg where
 
 import Data.Text (Text)
+
+import Control.Monad.Logger (LogLevel, LogStr)
 import Language.Javascript.JSaddle (JSM)
+
 import Reflex.Dom
+
 import Kadena.SigningApi
 
 data EnabledSettings = EnabledSettings
@@ -27,4 +31,8 @@ data AppCfg key t m = AppCfg
   , _appCfg_signingResponse :: Either Text SigningResponse -> JSM ()
   -- ^ Responses to signings
   , _appCfg_enabledSettings :: EnabledSettings
+  -- ^ Logging Function
+  , _appCfg_logMessage :: LogLevel -> LogStr -> IO ()
   }
+
+

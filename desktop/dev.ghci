@@ -1,0 +1,22 @@
+:set -XScopedTypeVariables
+:set -XFlexibleContexts
+:set -XFlexibleInstances
+:set -XFunctionalDependencies
+:set -XGADTs
+:set -XLambdaCase
+:set -XDeriveDataTypeable
+:set -XDeriveFoldable
+:set -XDeriveFunctor
+:set -XDeriveGeneric
+:set -XDeriveTraversable
+:set -XGeneralizedNewtypeDeriving
+:set -XMultiParamTypeClasses
+:set -XRankNTypes
+:set -XStandaloneDeriving
+:set -XTypeFamilies
+:set -XTypeApplications
+:set -XAllowAmbiguousTypes
+:set -XOverloadedStrings
+:set -fwarn-unused-binds -fwarn-unused-imports
+:set -i../common/src:../frontend/src:src:tests
+:load tests/GoldenTests.hs

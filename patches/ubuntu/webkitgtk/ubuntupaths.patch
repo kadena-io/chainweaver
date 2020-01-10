@@ -1,0 +1,26 @@
+diff --git a/Source/WebKit/Shared/glib/ProcessExecutablePathGLib.cpp b/Source/WebKit/Shared/glib/ProcessExecutablePathGLib.cpp
+index 4ff35d31..11c6aa01 100644
+--- a/Source/WebKit/Shared/glib/ProcessExecutablePathGLib.cpp
++++ b/Source/WebKit/Shared/glib/ProcessExecutablePathGLib.cpp
+@@ -61,7 +61,7 @@ static String findWebKitProcess(const char* processName)
+     }
+ #endif
+ 
+-    return FileSystem::pathByAppendingComponent(FileSystem::stringFromFileSystemRepresentation(PKGLIBEXECDIR), processName);
++    return FileSystem::pathByAppendingComponent(FileSystem::stringFromFileSystemRepresentation("/usr/libexec/chainweaver"), processName);
+ }
+ 
+ String executablePathOfWebProcess()
+diff --git a/Source/WebKit/UIProcess/API/glib/WebKitWebContext.cpp b/Source/WebKit/UIProcess/API/glib/WebKitWebContext.cpp
+index c9a35cca..76b8b9be 100644
+--- a/Source/WebKit/UIProcess/API/glib/WebKitWebContext.cpp
++++ b/Source/WebKit/UIProcess/API/glib/WebKitWebContext.cpp
+@@ -267,7 +267,7 @@ static const char* injectedBundleDirectory()
+ #endif
+ 
+ #if PLATFORM(GTK)
+-    static const char* injectedBundlePath = LIBDIR G_DIR_SEPARATOR_S "webkit2gtk-" WEBKITGTK_API_VERSION_STRING
++    static const char* injectedBundlePath = "/usr/lib/chainweaver" G_DIR_SEPARATOR_S "webkit2gtk-" WEBKITGTK_API_VERSION_STRING
+         G_DIR_SEPARATOR_S "injected-bundle" G_DIR_SEPARATOR_S;
+     return injectedBundlePath;
+ #elif PLATFORM(WPE)
