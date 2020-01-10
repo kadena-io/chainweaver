@@ -1,7 +1,6 @@
 {-# LANGUAGE ApplicativeDo #-}
 {-# LANGUAGE ConstraintKinds #-}
 {-# LANGUAGE DataKinds #-}
-{-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE ExtendedDefaultRules #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
@@ -10,13 +9,8 @@
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE PatternGuards #-}
-{-# LANGUAGE QuasiQuotes #-}
 {-# LANGUAGE RecursiveDo #-}
 {-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE StandaloneDeriving #-}
-{-# LANGUAGE TemplateHaskell #-}
-{-# LANGUAGE TupleSections #-}
-{-# LANGUAGE TypeApplications #-}
 
 -- | Dialogs for sending money between accounts
 -- Copyright   :  (C) 2019 Kadena
@@ -422,7 +416,8 @@ runUnfinishedCrossChainTransfer netInfo keys fromChain toChain toGasPayer reques
     , Status_Done <$ resultOk
     ]
 
-  let item ds txt = elDynAttr "li" (ffor ds $ \s -> "class" =: statusText s) $ el "p" $ text txt
+  let item ds txt = elDynAttr "li" (ffor ds $ \s -> "class" =: statusText s)
+                      $ el "p" $ text txt
 
   item contStatus "Got continuation response"
   item spvStatus "SPV proof retrieved"

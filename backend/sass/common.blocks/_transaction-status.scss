@@ -4,6 +4,8 @@
 
 *********************************************************************************/
 
+@import '../include/defs';
+
 ol.transaction_status {
   // For the fake list item numbering
   counter-reset: li;
@@ -41,7 +43,7 @@ ol.transaction_status {
     }
 
     &.done::before, &.done::after {
-      background-color: #4499d9;
+      background-color: $chainweaver_blue; // #4499d9;
     }
 
     &.done::before {
