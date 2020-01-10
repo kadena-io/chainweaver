@@ -13,5 +13,5 @@ is_darwin() { [ "$(uname -s)" == 'Darwin' ]; }
 if is_darwin; then
   ob run --import desktop:Desktop --import mac:Mac --frontend Desktop.desktop
 else
-  ob run --import desktop:Desktop --frontend Desktop.desktop
+  ob run --import desktop:Desktop --import linux:Linux --frontend Desktop.desktop
 fi
