@@ -104,8 +104,8 @@ import Frontend.Crypto.Class
 import Frontend.Crypto.Ed25519 (keyToText)
 import Frontend.Foundation
 import Frontend.JsonData
-import Frontend.Network
 import Frontend.Log
+import Frontend.Network
 import Frontend.UI.JsonData
 import Frontend.UI.Modal
 import Frontend.UI.TabBar
@@ -123,7 +123,11 @@ data DeploymentSettingsConfig t m model a = DeploymentSettingsConfig
     --   widget at all, but having `uiDeploymentSettings` use the provided one.
     --
     --   Or you can use `userChainIdSelect` for having the user pick a chainid.
-  , _deploymentSettingsConfig_sender :: model -> Dynamic t (Maybe ChainId)  -> m (Dynamic t (Maybe (Some AccountRef)))
+  , _deploymentSettingsConfig_sender
+    :: model
+    -> Dynamic t (Maybe ChainId)
+    -> Event t (Maybe (Some AccountRef))
+    -> m (Dynamic t (Maybe (Some AccountRef)))
     -- ^ Sender selection widget. Use 'uiSenderFixed' or 'uiSenderDropdown'.
     -- Note that uiSenderDropdown has a setSender event, but because this UI only "Apply to All"s on the non-GAS capabilities
     -- this event is not exposed here. Just pass in never to get a function compatible with here.
@@ -389,8 +393,7 @@ uiDeploymentSettings
   . ( MonadWidget t m, HasNetwork model t, HasWallet model key t
     , Monoid mConf , HasNetworkCfg mConf t
     , HasJsonDataCfg mConf t, Flattenable mConf t, HasJsonData model t
-    , HasCrypto key (Performable m)
-    , HasLogger model t
+    , HasCrypto key (Performable m), HasLogger model t
     )
   => model
   -> DeploymentSettingsConfig t m model a
@@ -512,7 +515,7 @@ uiCfg
   -> Maybe GasLimit
   -> g (Text, m a)
   -> Maybe (model -> Dynamic t Bool -> m (Event t (), ((), mConf)))
-  -> (model -> Dynamic t (Maybe ChainId) -> m (Dynamic t (Maybe (Some AccountRef))))
+  -> (model -> Dynamic t (Maybe ChainId) -> Event t (Maybe (Some AccountRef)) -> m (Dynamic t (Maybe (Some AccountRef))))
   -> m ( mConf
        , Dynamic t (Maybe Pact.ChainId)
        , Dynamic t (Maybe (Some AccountRef))
@@ -528,7 +531,7 @@ uiCfg mCode m wChainId mTTL mGasLimit userSections otherAccordion mSenderSelect 
 
         dialogSectionHeading mempty "Transaction Sender"
         mSender <- elKlass "div" ("group segment") $ mkLabeledClsInput True "Account" $ \_ -> do
-          mSenderSelect m cId
+          mSenderSelect m cId never
 
         -- Customisable user provided UI section
         fa <- for userSections $ \(title, body) -> do
@@ -760,11 +763,11 @@ uiSenderDropdown
      , HasNetwork model t
      )
   => DropdownConfig t (Maybe (Some AccountRef))
-  -> Event t (Maybe (Some AccountRef))
   -> model
   -> Dynamic t (Maybe ChainId)
+  -> Event t (Maybe (Some AccountRef))
   -> m (Dynamic t (Maybe (Some AccountRef)))
-uiSenderDropdown uCfg setSender m chainId = do
+uiSenderDropdown uCfg m chainId setSender = do
   let
     textAccounts = mkChainTextAccounts m chainId
     dropdownItems =
@@ -891,10 +894,10 @@ uiSenderCapabilities
   -> Dynamic t (Maybe Pact.ChainId)
   -> Maybe [DappCap]
   -> Dynamic t (Maybe (Some AccountRef))
-  -> m (Dynamic t (Maybe (Some AccountRef)))
+  -> (Event t (Maybe (Some AccountRef)) -> m (Dynamic t (Maybe (Some AccountRef))))
   -> m (Dynamic t (Maybe (Some AccountRef)), Dynamic t (Set (Some AccountRef)), Dynamic t (Map (Some AccountRef) [SigCapability]))
 uiSenderCapabilities m cid mCaps mSender mkGasPayer = do
-  let senderDropdown setGasPayer = uiSenderDropdown def setGasPayer m cid
+  let senderDropdown setGasPayer = uiSenderDropdown def m cid setGasPayer
       staticCapabilityRow sender cap = do
         elClass "td" "grant-capabilities-static-row__wrapped-cell" $ text $ _dappCap_role cap
         elClass "td" "grant-capabilities-static-row__wrapped-cell" $ text $ renderCompactText $ _dappCap_cap cap
@@ -907,7 +910,7 @@ uiSenderCapabilities m cid mCaps mSender mkGasPayer = do
           }
 
       staticCapabilityRows setGasPayer caps = fmap combineMaps $ for caps $ \cap ->
-        elClass "tr" "table__row" $ _capabilityInputRow_value <$> staticCapabilityRow (uiSenderDropdown def setGasPayer m cid) cap
+        elClass "tr" "table__row" $ _capabilityInputRow_value <$> staticCapabilityRow (uiSenderDropdown def m cid setGasPayer) cap
 
       combineMaps :: (Semigroup v, Ord k) => [Dynamic t (Map k v)] -> Dynamic t (Map k v)
       combineMaps = fmap (Map.unionsWith (<>)) . sequence
@@ -920,13 +923,14 @@ uiSenderCapabilities m cid mCaps mSender mkGasPayer = do
 
   -- Capabilities
   (mGasAcct, capabilities) <- divClass "group" $ mdo
+    let eDefaultGasPayerToSender = gate (current $ isNothing <$> mGasAcct') $ updated mSender
     (mGasAcct', capabilities', rowCount) <- elAttr "table" ("class" =: "table" <> "style" =: "width: 100%; table-layout: fixed;") $ case mCaps of
       Nothing -> do
         el "thead" $ el "tr" $ do
           elClass "th" "table__heading table__cell_padded" $ text "Capability"
           elClass "th" "table__heading table__cell_padded" $ text "Account"
         el "tbody" $ do
-          gas <- capabilityInputRow (Just defaultGASCapability) mkGasPayer
+          gas <- capabilityInputRow (Just defaultGASCapability) (mkGasPayer eDefaultGasPayerToSender)
           (rest, restCount) <- capabilityInputRows eAddCap (senderDropdown (Just <$> eApplyToAll))
           pure ( _capabilityInputRow_account gas
                , combineMaps [(_capabilityInputRow_value gas), rest]
@@ -938,7 +942,7 @@ uiSenderCapabilities m cid mCaps mSender mkGasPayer = do
           elAttr "th" ("class" =: "table__heading") $ text "Capability"
           elAttr "th" ("class" =: "table__heading" <> "width" =: "30%") $ text "Account"
         el "tbody" $ do
-          gas <- staticCapabilityRow mkGasPayer defaultGASCapability
+          gas <- staticCapabilityRow (mkGasPayer eDefaultGasPayerToSender) defaultGASCapability
           rest <- staticCapabilityRows (Just <$> eApplyToAll) $ filter (not . isGas . _dappCap_cap) caps
           pure ( _capabilityInputRow_account gas
                , combineMaps [(_capabilityInputRow_value gas),rest]
@@ -949,13 +953,6 @@ uiSenderCapabilities m cid mCaps mSender mkGasPayer = do
     -- capability's sender from the gas account.
     eApplyToAllClick <- (switchHold never =<<) $ dyn $ ffor rowCount $ \n ->
       if n > 1 then do
-        eAllSender <- divClass "grant-capabilities-apply-all-wrapper" $ uiButtonDyn
-          (btnCfgSecondary
-            & uiButtonCfg_disabled .~ (isNothing <$> mSender)
-            & uiButtonCfg_class .~ (constDyn $ "grant-capabilities-apply-all")
-          )
-          (text "Apply sender to all")
-
         eAllGasPayer <- divClass "grant-capabilities-apply-all-wrapper" $ uiButtonDyn
           (btnCfgSecondary
             & uiButtonCfg_disabled .~ (isNothing <$> mGasAcct')
@@ -963,10 +960,7 @@ uiSenderCapabilities m cid mCaps mSender mkGasPayer = do
           )
           (text "Apply to all")
 
-        pure $ leftmost
-          [ current mSender <@ eAllSender
-          , current mGasAcct' <@ eAllGasPayer
-          ]
+        pure $ current mGasAcct' <@ eAllGasPayer
       else
         pure never
 

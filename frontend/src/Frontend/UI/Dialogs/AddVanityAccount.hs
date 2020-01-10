@@ -1,6 +1,6 @@
 {-# LANGUAGE ConstraintKinds #-}
-{-# LANGUAGE RecursiveDo #-}
 {-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE RecursiveDo #-}
 module Frontend.UI.Dialogs.AddVanityAccount
   ( --uiAddVanityAccountSettings
     uiAddVanityAccountButton
@@ -144,7 +144,7 @@ uiAddVanityAccountSettings ideL onInflightChange mInflightAcc mChainId initialNo
           (Just defaultTransactionGasLimit)
           (Identity uiAccSection)
           Nothing
-          $ uiSenderDropdown def never
+          $ uiSenderDropdown def
 
       mGasPayer <- tabPane mempty curSelection DeploymentSettingsView_Keys $ do
         let onSenderUpdate = gate (current $ isNothing <$> gasPayer) $ updated mSender
@@ -153,7 +153,7 @@ uiAddVanityAccountSettings ideL onInflightChange mInflightAcc mChainId initialNo
         divClass "group" $ elClass "div" "segment segment_type_tertiary labeled-input" $ do
           divClass "label labeled-input__label" $ text "Account Name"
           let ddCfg = def & dropdownConfig_attributes .~ pure ("class" =: "labeled-input__input")
-          uiSenderDropdown ddCfg onSenderUpdate ideL cChainId
+          uiSenderDropdown ddCfg ideL cChainId onSenderUpdate
 
       let dPayload = fmap mkPubkeyPactData <$> dPublicKey
           code = mkPactCode <$> dAccountName
@@ -174,7 +174,7 @@ uiAddVanityAccountSettings ideL onInflightChange mInflightAcc mChainId initialNo
             { _deploymentSettingsConfig_chainId = userChainIdSelect
             , _deploymentSettingsConfig_userTab = Nothing :: Maybe (Text, m ())
             , _deploymentSettingsConfig_code = code
-            , _deploymentSettingsConfig_sender = uiSenderDropdown def never
+            , _deploymentSettingsConfig_sender = uiSenderDropdown def
             , _deploymentSettingsConfig_data = payload
             , _deploymentSettingsConfig_nonce = Nothing
             , _deploymentSettingsConfig_ttl = Nothing
