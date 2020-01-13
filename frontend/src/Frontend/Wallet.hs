@@ -40,6 +40,7 @@ module Frontend.Wallet
   , snocIntMap
   , findNextKey
   , findFirstVanityAccount
+  , findAccountByName
   , lookupAccountFromRef
   , getSigningPairs
   , module Common.Wallet
@@ -139,6 +140,21 @@ findFirstVanityAccount predicate as = do
   (n, cm) <- Map.lookupMin $ _accounts_vanity as
   (c, va) <- Map.lookupMin $ Map.filter predicate cm
   pure (n, c, va)
+
+findAccountByName
+  :: Reflex t
+  => Wallet key t
+  -> NetworkName
+  -> ChainId
+  -> AccountName
+  -> Dynamic t (Maybe (Some AccountRef))
+findAccountByName w netname cid n = ffor (_wallet_accounts w) $ \accStorage ->
+  Map.lookup netname (unAccountStorage accStorage) >>=
+    fmap getFirst . getOption . foldAccounts g
+  where
+    g acc@(aref :=> _) = if accountToName acc == n && accountChain acc == cid
+      then Option . Just . First $ Some aref
+      else Option Nothing
 
 snocIntMap :: a -> IntMap a -> IntMap a
 snocIntMap a m = IntMap.insert (nextKey m) a m
