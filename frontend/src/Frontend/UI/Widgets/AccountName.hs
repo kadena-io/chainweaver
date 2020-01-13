@@ -4,13 +4,14 @@ module Frontend.UI.Widgets.AccountName
 
 import Control.Error (hush)
 import Control.Monad.Fix (MonadFix)
+import qualified Data.Text as Text
 import Pact.Types.ChainId
 import Data.Foldable (fold)
 import Reflex
 import Reflex.Dom
 
 import Frontend.Foundation (renderClass)
-import Frontend.UI.Widgets (mkLabeledClsInput, uiInputElement)
+import Frontend.UI.Widgets (mkLabeledClsInput, uiInputElement, mkLabeledView)
 import Frontend.Network (HasNetwork)
 import Frontend.Wallet (AccountName(..), checkAccountNameValidity, HasWallet)
 
@@ -36,12 +37,13 @@ uiAccountNameInput w mChain initval = do
         & inputElementConfig_initialValue .~ fold (fmap unAccountName initval)
 
   divClass "vanity-account-create__account-name" $ do
-    dEitherAccName <- (validateAccountName <*>) . value <$>
-      inp "Account Name" "vanity-account-create__account-name-input"
+    dValue <- value <$> inp "Account Name" "vanity-account-create__account-name-input"
 
-    dAccNameDirty <- holdUniqDyn =<< holdDyn False (True <$ updated dEitherAccName)
+    let dEitherAccName = validateAccountName <*> dValue
 
-    divClass "vanity-account-create__account-name-error" $
+    dAccNameDirty <- holdUniqDyn $ not . Text.null <$> dValue
+
+    divClass "vanity-account-create__account-name-error" $ mkLabeledView True Text.empty $
       dyn_ $ ffor2 dAccNameDirty dEitherAccName $ curry $ \case
         (True, Left e) -> text e
         _ -> blank
