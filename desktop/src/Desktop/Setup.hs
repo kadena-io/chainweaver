@@ -396,7 +396,9 @@ createNewWallet eBack = Workflow $  do
     proceed mnem = mdo
       (ePwSubmit, dPassword) <- continueForm (fmap isNothing dPassword) $ do
         holdDyn Nothing =<< setPassword (pure $ sentenceToSeed mnem)
-      pure $ precreatePassphraseWarning eBack dPassword mnem <$ ePwSubmit
+
+      fmap snd $ runWithReplace blank $ ffor (tagMaybe (current dPassword) ePwSubmit) $ \p ->
+        pure $ precreatePassphraseWarning eBack p mnem
 
   dContinue <- widgetHold generating (proceed <$> eGenSuccess)
 
@@ -425,10 +427,10 @@ stackFaIcon icon = elClass "span" "fa-stack fa-5x" $ do
 precreatePassphraseWarning
   :: (DomBuilder t m, MonadFix m, MonadHold t m, MonadIO m, PerformEvent t m, PostBuild t m, MonadJSM (Performable m), TriggerEvent t m)
   => Event t ()
-  -> Dynamic t (Maybe Crypto.XPrv)
+  -> Crypto.XPrv
   -> Crypto.MnemonicSentence 12
   -> SetupWF t m
-precreatePassphraseWarning eBack dPassword mnemonicSentence = Workflow $ mdo
+precreatePassphraseWarning eBack rootKey mnemonicSentence = Workflow $ mdo
   (eContinue, dUnderstand) <- continueForm (fmap not dUnderstand) $ do
 
     setupDiv "warning-splash" $ do
@@ -452,7 +454,7 @@ precreatePassphraseWarning eBack dPassword mnemonicSentence = Workflow $ mdo
 
   finishSetupWF WalletScreen_PrePassphrase $ leftmost
     [ createNewWallet eBack <$ eBack
-    , createNewPassphrase eBack dPassword mnemonicSentence <$ eContinue
+    , createNewPassphrase eBack rootKey mnemonicSentence <$ eContinue
     ]
   where
     line = el "div" . text
@@ -477,10 +479,10 @@ doneScreen passwd = Workflow $ do
 createNewPassphrase
   :: (DomBuilder t m, MonadFix m, MonadHold t m, MonadIO m, PerformEvent t m, PostBuild t m, MonadJSM (Performable m), TriggerEvent t m)
   => Event t ()
-  -> Dynamic t (Maybe Crypto.XPrv)
+  -> Crypto.XPrv
   -> Crypto.MnemonicSentence 12
   -> SetupWF t m
-createNewPassphrase eBack dPassword mnemonicSentence = Workflow $ mdo
+createNewPassphrase eBack rootKey mnemonicSentence = Workflow $ mdo
   (eContinue, dIsStored) <- continueForm (fmap not dIsStored) $ do
     el "h1" $ text "Record Recovery Phrase"
     el "div" $ do
@@ -499,7 +501,7 @@ createNewPassphrase eBack dPassword mnemonicSentence = Workflow $ mdo
 
   finishSetupWF WalletScreen_CreatePassphrase $ leftmost
     [ createNewWallet eBack <$ eBack
-    , confirmPhrase eBack dPassword mnemonicSentence <$ eContinue
+    , confirmPhrase eBack rootKey mnemonicSentence <$ eContinue
     ]
 
 -- | UI for mnemonic sentence confirmation: scramble the phrase, make the user
@@ -507,11 +509,11 @@ createNewPassphrase eBack dPassword mnemonicSentence = Workflow $ mdo
 confirmPhrase
   :: (DomBuilder t m, MonadFix m, MonadHold t m, MonadIO m, PerformEvent t m, PostBuild t m, MonadJSM (Performable m), TriggerEvent t m)
   => Event t ()
-  -> Dynamic t (Maybe Crypto.XPrv)
+  -> Crypto.XPrv
   -> Crypto.MnemonicSentence 12
   -- ^ Mnemonic sentence to confirm
   -> SetupWF t m
-confirmPhrase eBack dPassword mnemonicSentence = Workflow $ mdo
+confirmPhrase eBack rootKey mnemonicSentence = Workflow $ mdo
   (continue, done) <- continueForm (fmap not done) $ do
     el "h1" $ text "Verify Recovery Phrase"
     el "div" $ do
@@ -530,8 +532,8 @@ confirmPhrase eBack dPassword mnemonicSentence = Workflow $ mdo
     pure $ (== actualMap) <$> dConfirmPhrase
 
   finishSetupWF WalletScreen_VerifyPassphrase $ leftmost
-    [ doneScreen <$> tagMaybe (current dPassword) continue
-    , createNewPassphrase eBack dPassword mnemonicSentence <$ eBack
+    [ doneScreen rootKey <$ continue
+    , createNewPassphrase eBack rootKey mnemonicSentence <$ eBack
     ]
 
 setPassword
