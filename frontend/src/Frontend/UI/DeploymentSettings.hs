@@ -23,6 +23,9 @@ module Frontend.UI.DeploymentSettings
     DeploymentSettingsConfig (..)
   , DeploymentSettingsResult (..)
 
+    -- * Errors
+  , DeploymentSettingsResultError (..)
+
     -- * Helpers
   , buildDeploymentSettingsResult
   , defaultGASCapability
