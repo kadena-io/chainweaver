@@ -16,6 +16,7 @@ module Frontend.UI.Widgets
     module Frontend.UI.Button
   -- ** Single Purpose Widgets
   , uiGasPriceInputField
+  , uiDisplayKadenaAddressWithCopy
     -- * Values for _deploymentSettingsConfig_chainId:
   , predefinedChainIdSelect
   , predefinedChainIdDisplayed
@@ -109,6 +110,7 @@ import           Frontend.UI.Widgets.Helpers (imgWithAlt, imgWithAltCls, makeCli
                                               setFocusOnSelected, tabPane,
                                               preventScrollWheelAndUpDownArrow,
                                               tabPane')
+import           Frontend.KadenaAddress (textKadenaAddress, KadenaAddress)
 ------------------------------------------------------------------------------
 
 -- | A styled checkbox.
@@ -702,6 +704,31 @@ dimensionalInputWrapper :: DomBuilder t m => Text -> m a -> m a
 dimensionalInputWrapper units inp = divClass "dimensional-input-wrapper" $ do
   divClass "dimensional-input-wrapper__units" $ text units
   inp
+
+uiDisplayKadenaAddressWithCopy
+  :: ( MonadJSM (Performable m)
+     , DomBuilder t m
+     , MonadHold t m
+     , MonadFix m
+     , PostBuild t m
+     , PerformEvent t m
+     )
+  => KadenaAddress
+  -> m ()
+uiDisplayKadenaAddressWithCopy address = void $ do
+  let txtAddr = textKadenaAddress address
+  -- Kadena Address
+  _ <- mkLabeledInputView False "Kadena Address" (\cfg -> uiInputElement $ cfg
+        & initialAttributes <>~ (
+          "disabled" =: "true" <>
+          "class" =: (" " <> "account-details__kadena-address")
+        )
+      ) $ pure txtAddr
+  -- copy
+  divClass "account-details__copy-btn-wrapper" $ copyButton (def
+    & uiButtonCfg_class .~ constDyn "account-details__copy-btn button_type_confirm"
+    & uiButtonCfg_title .~ constDyn (Just "Copy")
+    ) $ pure txtAddr
 
 uiGasPriceInputField
   :: forall m t.

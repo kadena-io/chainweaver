@@ -11,7 +11,7 @@ module Frontend.UI.Dialogs.Receive
 
 import Control.Applicative (liftA2, liftA3)
 import Control.Lens ((^.), (<>~), _1, _2, _3, view)
-import Control.Monad (void, (<=<))
+import Control.Monad ((<=<))
 import Control.Monad.Trans.Class (lift)
 import Control.Monad.Trans.Maybe (MaybeT(..))
 import Control.Error (hush, headMay)
@@ -62,28 +62,6 @@ data NonBIP32TransferInfo = NonBIP32TransferInfo
   , _legacyTransferInfo_amount :: GasPrice
   , _legacyTransferInfo_pactKey :: PactKey
   }
-
-uiDisplayAddress
-  :: ( MonadJSM (Performable m)
-     , DomBuilder t m
-     , PostBuild t m
-     , PerformEvent t m
-     )
-  => Text
-  -> m ()
-uiDisplayAddress address = do
-  dialogSectionHeading mempty "Kadena Address"
-  divClass "group" $ do
-    -- Kadena Address
-    divClass "segment segment_type_tertiary labeled-input account-details__kadena-address-wrapper" $ do
-      void $ uiInputElement $ def
-        & initialAttributes <>~ ("disabled" =: "true" <> "class" =: "account-details__kadena-address labeled-input__input")
-        & inputElementConfig_initialValue .~ address
-      void $ copyButton (def
-        & uiButtonCfg_class .~ constDyn "account-details__copy-btn button_type_confirm"
-        & uiButtonCfg_title .~ constDyn (Just "Copy")
-        ) $ pure address
-      pure ()
 
 uiReceiveFromLegacyAccount
   :: ( MonadWidget t m
@@ -157,7 +135,6 @@ uiReceiveModal0
   -> Workflow t m (mConf, Event t ())
 uiReceiveModal0 model account accCreated mchain onClose = Workflow $ do
   let
-
     netInfo = do
       nodes <- model ^. network_selectedNodes
       meta <- model ^. network_meta
@@ -186,9 +163,9 @@ uiReceiveModal0 model account accCreated mchain onClose = Workflow $ do
 
       (onAddrClick, ((), ())) <- controlledAccordionItem showingKadenaAddress mempty
         (accordionHeaderBtn "Option 1: Copy and share Kadena Address") $ do
-        dyn_ $ ffor chain $ uiDisplayAddress . \case
-          Nothing -> "Please select a chain"
-          Just cid -> textKadenaAddress $ mkKadenaAddress accCreated cid account
+        dyn_ $ ffor chain $ divClass "group" . \case
+          Nothing -> text "Please select a chain"
+          Just cid -> uiDisplayKadenaAddressWithCopy $ mkKadenaAddress accCreated cid account
 
       (onReceiClick, results) <- controlledAccordionItem (not <$> showingKadenaAddress) mempty
         (accordionHeaderBtn "Option 2: Transfer from non-Chainweaver Account") $ do
