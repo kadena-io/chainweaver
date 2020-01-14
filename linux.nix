@@ -7,12 +7,12 @@
 , linuxAppIcon ? ./linux/static/icons/pact-document.png
 }: rec {
   # If we don't wrapGApps, none of the gnome schema stuff works in nixos
-  nixosLinuxApp = pkgs.haskell.lib.overrideCabal obApp.ghc.linux (drv: {
+  nixosLinuxApp = pkgs.haskell.lib.justStaticExecutables (pkgs.haskell.lib.overrideCabal obApp.ghc.linux (drv: {
     libraryPkgconfigDepends =
       [ pkgs.webkitgtk
         pkgs.glib-networking
       ];
-  });
+  }));
   nixosExe = nixosLinuxApp.overrideAttrs (old: {
     nativeBuildInputs = old.nativeBuildInputs ++ [ pkgs.wrapGAppsHook ];
     libraryFrameworkDepends = [ pkgs.webkitgtk pkgs.glib-networking ];
@@ -25,6 +25,7 @@
       ln -s "${sass}/sass.css" "$out/bin/sass.css"
     '';
   });
+  ova = import ./ova.nix { inherit pkgs nixosExe; };
   addGObjectIntrospection = hpackage: pkgs.haskell.lib.overrideCabal hpackage (current: {
     libraryPkgconfigDepends =
       current.libraryPkgconfigDepends ++ [ pkgs.gobject-introspection ];
