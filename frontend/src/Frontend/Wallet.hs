@@ -53,6 +53,7 @@ import Control.Monad.Fix
 import Data.Aeson
 import Data.Dependent.Sum (DSum(..))
 import Data.Either (rights)
+import Data.Monoid (Alt (..))
 import Data.IntMap (IntMap)
 import Data.Maybe (fromMaybe)
 import Data.Set (Set)
@@ -150,11 +151,11 @@ findAccountByName
   -> Dynamic t (Maybe (Some AccountRef))
 findAccountByName w netname cid n = ffor (_wallet_accounts w) $ \accStorage ->
   Map.lookup netname (unAccountStorage accStorage) >>=
-    fmap getFirst . getOption . foldAccounts g
+    getAlt . foldAccounts g
   where
     g acc@(aref :=> _) = if accountToName acc == n && accountChain acc == cid
-      then Option . Just . First $ Some aref
-      else Option Nothing
+      then Alt $ Just $ Some aref
+      else Alt Nothing
 
 snocIntMap :: a -> IntMap a -> IntMap a
 snocIntMap a m = IntMap.insert (nextKey m) a m

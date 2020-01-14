@@ -746,9 +746,9 @@ uiSenderFixed model chainId sender = do
   _ <- uiInputElement $ def
     & initialAttributes %~ Map.insert "disabled" ""
     & inputElementConfig_initialValue .~ unAccountName sender
-    & inputElementConfig_setValue .~ ffor (updated mAccRef) (\case
-        Nothing -> "Account name not found!"
-        Just (Some a) -> accountRefToName a
+    & inputElementConfig_setValue .~ ffor (updated mAccRef) (maybe
+        "Account name not found!"
+        (const $ unAccountName sender)
       )
 
   pure mAccRef
@@ -794,8 +794,8 @@ uiSenderDropdown uCfg m chainId setSender = do
           (Map.singleton Nothing)
           (Map.insert Nothing "Choose an Account" . Map.mapKeys Just)
       <$> textAccounts
-  choice <- dropdown Nothing (traceDyn "dropdownItems" dropdownItems) $ uCfg
-    & dropdownConfig_setValue .~ leftmost [Nothing <$ updated chainId, traceEvent "setSender" setSender]
+  choice <- dropdown Nothing dropdownItems $ uCfg
+    & dropdownConfig_setValue .~ leftmost [Nothing <$ updated chainId, setSender]
     & dropdownConfig_attributes <>~ pure ("class" =: "labeled-input__input select select_mandatory_missing")
   pure $ value choice
 
