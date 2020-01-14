@@ -163,15 +163,15 @@ walletSetupRecoverHeader currentScreen = setupDiv "workflow-header" $ do
 
     isActive sid = sid `elem` (progress currentScreen)
     progress WalletScreen_Password =
-      [WalletScreen_Password]
+      []
     progress WalletScreen_PrePassphrase =
-      [WalletScreen_Password, WalletScreen_PrePassphrase]
+      [WalletScreen_Password]
     progress WalletScreen_CreatePassphrase =
-      [WalletScreen_Password, WalletScreen_PrePassphrase, WalletScreen_CreatePassphrase]
+      [WalletScreen_Password, WalletScreen_PrePassphrase]
     progress WalletScreen_VerifyPassphrase =
-      [WalletScreen_Password, WalletScreen_PrePassphrase, WalletScreen_CreatePassphrase, WalletScreen_VerifyPassphrase]
+      [WalletScreen_Password, WalletScreen_PrePassphrase, WalletScreen_CreatePassphrase]
     progress WalletScreen_Done =
-      [WalletScreen_Password, WalletScreen_PrePassphrase, WalletScreen_CreatePassphrase, WalletScreen_VerifyPassphrase, WalletScreen_Done]
+      [WalletScreen_Password, WalletScreen_PrePassphrase, WalletScreen_CreatePassphrase, WalletScreen_VerifyPassphrase]
     progress _ = []
 
     faEl n lbl sid =
