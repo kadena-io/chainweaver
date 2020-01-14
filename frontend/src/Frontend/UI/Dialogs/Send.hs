@@ -19,14 +19,15 @@ module Frontend.UI.Dialogs.Send
   ( uiSendModal
   ) where
 
-import Control.Monad.Trans.Maybe
 import Control.Applicative (liftA2, (<|>))
 import Control.Concurrent
 import Control.Error.Util (hush)
 import Control.Lens hiding (failover)
 import Control.Monad (join, when, void, (<=<))
+import Control.Monad.Error (throwError)
 import Control.Monad.Logger (LogLevel(..))
 import Control.Monad.Trans.Except
+import Control.Monad.Trans.Maybe
 import Data.Bifunctor (first)
 import Data.Decimal (Decimal)
 import Data.Dependent.Sum ((==>))
@@ -292,6 +293,8 @@ sendConfig model fromAccount = Workflow $ do
           pure $ runExceptT $ do
             r <- ExceptT $ first (\_ -> "Invalid kadena address") <$> decoded
             a <- ExceptT $ maybe (Left "Invalid amount") Right <$> amount
+            when (r == accountToKadenaAddress fromAccount) $
+              throwError "Sender cannot be the receiver of a transfer"
             pure (r, a)
         dialogSectionHeading mempty  "Transaction Settings"
         (conf, _, _) <- divClass "group" $ uiMetaData model Nothing Nothing
