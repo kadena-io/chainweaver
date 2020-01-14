@@ -203,3 +203,12 @@
   filter: none;
   background-color: $black;
 }
+
+.button_type_copy {
+  display:flex;
+  flex-direction: row;
+  align-items: center;
+  img {
+    margin-right: 0.4rem;
+  }
+}

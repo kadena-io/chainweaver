@@ -16,6 +16,7 @@ module Frontend.UI.Widgets
     module Frontend.UI.Button
   -- ** Single Purpose Widgets
   , uiGasPriceInputField
+  , uiDetailsCopyButton
   , uiDisplayKadenaAddressWithCopy
     -- * Values for _deploymentSettingsConfig_chainId:
   , predefinedChainIdSelect
@@ -705,6 +706,15 @@ dimensionalInputWrapper units inp = divClass "dimensional-input-wrapper" $ do
   divClass "dimensional-input-wrapper__units" $ text units
   inp
 
+uiDetailsCopyButton
+  :: (DomBuilder t m, MonadFix m, MonadHold t m, MonadJSM (Performable m), PerformEvent t m, PostBuild t m)
+  => Behavior t Text -> m ()
+uiDetailsCopyButton txt = do
+  let cfg = def
+        & uiButtonCfg_class .~ constDyn "button_type_confirm"
+        & uiButtonCfg_title .~ constDyn (Just "Copy")
+  divClass "details__copy-btn-wrapper" $ copyButton cfg False txt
+
 uiDisplayKadenaAddressWithCopy
   :: ( MonadJSM (Performable m)
      , DomBuilder t m
@@ -724,11 +734,7 @@ uiDisplayKadenaAddressWithCopy address = void $ do
           "class" =: (" " <> "account-details__kadena-address")
         )
       ) $ pure txtAddr
-  -- copy
-  divClass "account-details__copy-btn-wrapper" $ copyButton (def
-    & uiButtonCfg_class .~ constDyn "account-details__copy-btn button_type_confirm"
-    & uiButtonCfg_title .~ constDyn (Just "Copy")
-    ) $ pure txtAddr
+  uiDetailsCopyButton $ pure txtAddr
 
 uiGasPriceInputField
   :: forall m t.
