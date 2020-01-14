@@ -301,9 +301,9 @@ confirmButton :: DynamicButtonConstraints t m => UiButtonDynCfg t -> Text -> m (
 confirmButton cfg msg =
     uiButtonDyn (cfg & uiButtonCfg_class <>~ "button_type_confirm") $ text msg
 
-cancelButton :: StaticButtonConstraints t m => UiButtonCfg -> Text -> m (Event t ())
+cancelButton :: DynamicButtonConstraints t m => UiButtonDynCfg t -> Text -> m (Event t ())
 cancelButton cfg msg =
-    uiButton (cfg & uiButtonCfg_class <>~ "button_type_tertiary") $ text msg
+    uiButtonDyn (cfg & uiButtonCfg_class <>~ "button_type_tertiary") $ text msg
 
 receiveButton :: StaticButtonConstraints t m => UiButtonCfg -> m (Event t ())
 receiveButton cfg =
