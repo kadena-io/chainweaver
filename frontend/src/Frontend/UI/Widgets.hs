@@ -25,6 +25,7 @@ module Frontend.UI.Widgets
   , userChainIdSelectWithPreselect
   , uiChainSelection
   -- ** Other widgets
+  , uiInputWithInlineFeedback
   , uiSegment
   , uiGroup
   , uiGroupHeader
@@ -72,7 +73,7 @@ module Frontend.UI.Widgets
   , noAutofillAttrs
   , addNoAutofillAttrs
   , horizontalDashedSeparator
-  , dimensionalInputWrapper
+  , inlineInputFeedbackWrapper
   , uiSidebarIcon
   ) where
 
@@ -288,6 +289,33 @@ uiCorrectingInputElement parse inputSanitize blurSanitize render cfg = mdo
 
   pure (ie, (fmap . fmap) fst $ inputSanitization val, inp')
 
+uiInputWithInlineFeedback
+  :: ( DomBuilder t m
+     , PostBuild t m
+     , MonadHold t m
+     , MonadFix m 
+     )
+  => (a -> Dynamic t (Either e b))
+  -> (a -> Dynamic t Bool)
+  -> (e -> Text)
+  -> Maybe Text
+  -> (InputElementConfig EventResult t (DomBuilderSpace m) -> m a)
+  -> InputElementConfig EventResult t (DomBuilderSpace m)
+  -> m (a, Dynamic t (Either e b))
+uiInputWithInlineFeedback parse isEmpty renderFeedback mUnits mkInp cfg =
+  inlineInputFeedbackWrapper mUnits $ do
+    inp <- mkInp cfg
+
+    let parsed = parse inp
+
+    dFieldDirty <- holdUniqDyn $ isEmpty inp
+
+    dyn_ $ ffor2 parsed dFieldDirty $ curry $ \case
+      (Left e, True) ->  elClass "span" "dimensional-input__feedback" $ text $ renderFeedback e
+      _ -> blank
+
+    pure (inp, parsed)
+  
 -- | Decimal input to the given precision. Returns the element, the value, and
 -- the user input events
 uiNonnegativeRealWithPrecisionInputElement
@@ -302,7 +330,8 @@ uiNonnegativeRealWithPrecisionInputElement prec fromDecimal cfg = do
       & initialAttributes %~ addInputElementCls . addNoAutofillAttrs
         . (<> ("type" =: "number" <> "step" =: stepSize <> "min" =: stepSize))
     widgetHold_ blank $ ffor (fmap snd input) $ traverse_ $
-      elClass "span" "real-input__rounded" . text
+      elClass "span" "dimensional-input__feedback" . text
+
   pure (ie, (fmap . fmap) fromDecimal val, fmap (fromDecimal . fst) input)
 
   where
@@ -701,9 +730,9 @@ paginationWidget cls currentPage totalPages = elKlass "div" (cls <> "pagination"
 horizontalDashedSeparator :: DomBuilder t m => m ()
 horizontalDashedSeparator = divClass "horizontal-dashed-separator" blank
 
-dimensionalInputWrapper :: DomBuilder t m => Text -> m a -> m a
-dimensionalInputWrapper units inp = divClass "dimensional-input-wrapper" $ do
-  divClass "dimensional-input-wrapper__units" $ text units
+inlineInputFeedbackWrapper ::  DomBuilder t m => Maybe Text -> m a -> m a
+inlineInputFeedbackWrapper units inp = divClass "dimensional-input-wrapper" $ do
+  traverse_ (divClass "dimensional-input-wrapper__units" . text) units
   inp
 
 uiDetailsCopyButton
@@ -747,7 +776,7 @@ uiGasPriceInputField
        , Dynamic t (Maybe GasPrice)
        , Event t GasPrice
        )
-uiGasPriceInputField conf = dimensionalInputWrapper "KDA" $
+uiGasPriceInputField conf = inlineInputFeedbackWrapper (Just "KDA") $
  uiNonnegativeRealWithPrecisionInputElement maxCoinPrecision (GasPrice . ParsedDecimal) $ conf
   & initialAttributes %~ addToClassAttr "input-units"
   & inputElementConfig_elementConfig . elementConfig_eventSpec %~ preventScrollWheelAndUpDownArrow @m

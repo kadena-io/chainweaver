@@ -278,14 +278,29 @@ sendConfig model fromAccount = Workflow $ do
         pure $ previewTransfer model fromAccount fromGasPayer toAccount mCrossChain amount
   pure ((conf, close <> cancel), nextScreen)
   where
+    prettyKadenaAddrErrors e = case e of
+      ParseError _ -> "Address format invalid"
+      ChecksumMismatch _ _ -> "Checksum invalid"
+      Base64Error _ -> "Not valid Base64"
+      InvalidHumanReadablePiece _ -> "Prefix invalid"
+      InputNotLatin1 _ -> "Input not Latin1"
+
     mainSection currentTab = elClass "div" "modal__main" $ do
       (conf, recipient) <- tabPane mempty currentTab SendModalTab_Configuration $ do
         dialogSectionHeading mempty  "Destination"
         divClass "group" $ transactionDisplayNetwork model
         dialogSectionHeading mempty  "Recipient"
         recipient <- divClass "group" $ do
-          kad <- mkLabeledInput True "Kadena Address" uiInputElement def
-          let decoded = decodeKadenaAddressText <$> value kad
+
+          decoded <- fmap snd $ mkLabeledInput True "Kadena Address" (uiInputWithInlineFeedback
+            (fmap decodeKadenaAddressText . value)
+            (fmap (not . T.null) . value)
+            prettyKadenaAddrErrors
+            Nothing
+            uiInputElement
+            )
+            def
+
           (_, amount, _) <- mkLabeledInput True "Amount" uiGasPriceInputField def
             -- We're only interested in the decimal of the gas price
             <&> over (_2 . mapped . mapped) (\(GasPrice (ParsedDecimal d)) -> d)
