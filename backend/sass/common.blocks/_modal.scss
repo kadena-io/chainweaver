@@ -29,6 +29,10 @@
   display: block;
 }
 
+body[data-modal-open='true'] {
+  overflow: hidden;
+}
+
 .modal__dialog {
   position: absolute;
   left: 50%;
