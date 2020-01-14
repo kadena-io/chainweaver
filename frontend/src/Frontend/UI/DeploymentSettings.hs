@@ -672,15 +672,20 @@ uiMetaData m mTTL mGasLimit = do
       Just _ -> pure never
       Nothing -> tag (current $ fmap _pmTTL $ m ^. network_meta) <$> getPostBuild
     let secondsInDay = 60 * 60 * 24
+        minTTL = 60
+        prettyTTL s = tshow s <> case s of
+          1 -> " second"
+          _ -> " seconds"
+
         initTTL = fromMaybe defaultTransactionTTL mTTL
         ttlInput cls = elKlass "div" cls $ mdo
           let conf = def
-                & initialAttributes .~ "min" =: "1" <> "max" =: T.pack (show secondsInDay) <> "step" =: "1"
+                & initialAttributes .~ "min" =: prettyTTL minTTL <> "max" =: T.pack (show secondsInDay) <> "step" =: "1"
                 & inputElementConfig_setValue .~ fmap showTtl pbTTL
                 & inputElementConfig_initialValue .~ showTtl initTTL
-          sliderEl <- uiSlider "" (text "1 second") (text "1 day") $ conf
+          sliderEl <- uiSlider "" (text $ prettyTTL minTTL) (text "1 day") $ conf
             & inputElementConfig_setValue .~ _inputElement_input inputEl
-          (inputEl, inputEv) <- dimensionalInputWrapper "Seconds" $ uiIntInputElement (Just 0) (Just secondsInDay) $ conf
+          (inputEl, inputEv) <- dimensionalInputWrapper "Seconds" $ uiIntInputElement (Just minTTL) (Just secondsInDay) $ conf
             & inputElementConfig_setValue .~ _inputElement_input sliderEl
           pure $ leftmost
             [ TTLSeconds . ParsedInteger <$> inputEv
