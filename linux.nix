@@ -3,7 +3,7 @@
 , appName
 , sass
 , linuxAppName ? "kadena-chainweaver"
-, linuxPackageVersion ? "0.1.0-1"
+, linuxPackageVersion ? "0.1.0-2"
 , linuxAppIcon ? ./linux/static/icons/pact-document.png
 }: rec {
   # If we don't wrapGApps, none of the gnome schema stuff works in nixos
