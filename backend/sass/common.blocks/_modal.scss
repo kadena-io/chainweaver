@@ -278,6 +278,13 @@ body[data-modal-open='true'] {
 .grant-capabilities-apply-all-wrapper {
   display: flex;
   justify-content: flex-end;
+  padding-right: 0.5em;
+}
+
+.grant-capabilities-apply-all {
+  background: #f1f1f1;
+  color: #757575;
+  font-size: 15px;
 }
 
 .grant-capabilities-static-row__wrapped-cell {
