@@ -196,18 +196,12 @@ body[data-modal-open='true'] {
   white-space: pre-wrap;
 }
 
-.account-details__copy-btn-wrapper {
-  text-align: right;
-
-  .account-details__copy-btn {
-    padding-left: 0.4rem;
-    padding-right: 0.4rem;
-
-    .fa.fa-fw {
-      margin-right: 0.2rem;
-    }
-  }
+.details__copy-btn-wrapper {
+  display: flex;
+  flex-direction: row;
+  justify-content: flex-end;
 }
+
 .account-details__remove-account-btn {
   float: left;
   background-color: $chainweaver-orange;

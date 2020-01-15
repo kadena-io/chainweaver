@@ -103,13 +103,9 @@ uiKeyDetailsDetails keyIndex key onClose onCloseExternal = Workflow $ do
             ]
           & textAreaElementConfig_setValue .~ ffor sigEv fold
 
-        let cfg = def
-              & uiButtonCfg_class .~ constDyn "account-details__copy-btn button_type_confirm"
-              & uiButtonCfg_title .~ constDyn (Just "Copy")
-
         dyn_ $ ffor sig $ \case
           Nothing -> blank
-          Just sig' -> void $ copyButton cfg $ current sig'
+          Just sig' -> uiDetailsCopyButton $ current sig'
 
       pure notes
 

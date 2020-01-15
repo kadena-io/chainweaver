@@ -493,8 +493,11 @@ createNewPassphrase eBack rootKey mnemonicSentence = Workflow $ mdo
       dPassphrase <- passphraseWidget dPassphrase (pure Setup) False
         >>= holdDyn (mkPhraseMapFromMnemonic mnemonicSentence)
 
-      copyButtonStatus (def & uiButtonCfg_class .~ "setup__recovery-phrase-copy") True never $
-        \clk -> T.unwords . Map.elems <$> current dPassphrase <@ clk
+      let cfg = def
+            & uiButtonCfg_class .~ "setup__recovery-phrase-copy"
+            & uiButtonCfg_title .~ pure (Just "Copy")
+      copyButton cfg True $
+        T.unwords . Map.elems <$> current dPassphrase
 
     fmap value $ setupDiv "checkbox-wrapper" $ setupCheckbox False def
       $ text "I have safely stored my recovery phrase."
