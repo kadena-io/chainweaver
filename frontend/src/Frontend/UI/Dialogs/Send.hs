@@ -289,8 +289,15 @@ sendConfig model fromAccount = Workflow $ do
       (conf, recipient) <- tabPane mempty currentTab SendModalTab_Configuration $ do
         dialogSectionHeading mempty  "Destination"
         divClass "group" $ transactionDisplayNetwork model
+
         dialogSectionHeading mempty  "Recipient"
         recipient <- divClass "group" $ do
+
+          let displayImmediateFeedback e feedbackMsg showMsg = widgetHold_ blank $ ffor e $ \x ->
+                when (showMsg x) $ mkLabeledView True mempty $ text feedbackMsg
+
+              insufficientFundsMsg = "Sender has insufficient funds."
+              cannotBeReceiverMsg = "Sender cannot be the receiver of a transfer"
 
           decoded <- fmap snd $ mkLabeledInput True "Kadena Address" (uiInputWithInlineFeedback
             (fmap decodeKadenaAddressText . value)
@@ -301,23 +308,37 @@ sendConfig model fromAccount = Workflow $ do
             )
             def
 
+          displayImmediateFeedback (updated decoded) cannotBeReceiverMsg
+            $ either (const False) (== accountToKadenaAddress fromAccount)
+
           (_, amount, _) <- mkLabeledInput True "Amount" uiGasPriceInputField def
             -- We're only interested in the decimal of the gas price
             <&> over (_2 . mapped . mapped) (\(GasPrice (ParsedDecimal d)) -> d)
 
+          displayImmediateFeedback (updated amount) insufficientFundsMsg $ \ma ->
+            case (ma, unAccountBalance <$> accountBalance fromAccount) of
+              (Nothing, _) -> False
+              (Just a, Just senderBal) -> a > senderBal
+
           pure $ runExceptT $ do
             r <- ExceptT $ first (\_ -> "Invalid kadena address") <$> decoded
             a <- ExceptT $ maybe (Left "Invalid amount") Right <$> amount
+
+            when (maybe True (a >) $ fmap unAccountBalance $ accountBalance fromAccount) $
+              throwError insufficientFundsMsg
+
             when (r == accountToKadenaAddress fromAccount) $
-              throwError "Sender cannot be the receiver of a transfer"
+              throwError cannotBeReceiverMsg
+
             pure (r, a)
+
         dialogSectionHeading mempty  "Transaction Settings"
         (conf, _, _) <- divClass "group" $ uiMetaData model Nothing Nothing
         pure (conf, recipient)
       mCaps <- tabPane mempty currentTab SendModalTab_Sign $ do
         fmap join . holdDyn (pure Nothing) <=< dyn $ ffor recipient $ \case
           Left e -> do
-            divClass "group" $ text $ e <> ": please go back and check the recipient."
+            divClass "group" $ text $ e <> ": please go back and check the configuration."
             pure $ pure Nothing
           Right (ka, _amount) -> do
             let toChain = _kadenaAddress_chainId ka
