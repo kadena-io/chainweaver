@@ -8,7 +8,6 @@ module Frontend.Store
 
 import Frontend.Storage.Class
 import Data.Aeson (FromJSON, ToJSON)
-import Data.Dependent.Sum.Orphans ()
 import Data.Proxy (Proxy(Proxy))
 import Reflex
 import Reflex.Dom

@@ -54,7 +54,7 @@ import Frontend.Repl
 import Frontend.Storage
 import qualified Frontend.Store as Store
 import Frontend.UI.Button
-import Frontend.UI.Dialogs.AddVanityAccount (uiAddVanityAccountButton)
+import Frontend.UI.Dialogs.AddVanityAccount (uiAddAccountButton)
 import Frontend.UI.Dialogs.CreateGist (uiCreateGist)
 import Frontend.UI.Dialogs.CreatedGist (uiCreatedGist)
 import Frontend.UI.Dialogs.DeployConfirmation (uiDeployConfirmation)
@@ -97,15 +97,12 @@ app sidebarExtra appCfg = Store.versionedUi (Store.versioner @key) $ void . mfix
       FrontendRoute_Accounts -> mkPageContent "accounts" $ do
         barCfg <- controlBar "Accounts" $ do
           refreshCfg <- uiWalletRefreshButton
-          addCfg <- uiAddVanityAccountButton ideL
+          addCfg <- uiAddAccountButton ideL
           pure $ addCfg <> refreshCfg
         accountsCfg <- uiAccountsTable ideL
         pure $ barCfg <> accountsCfg
       FrontendRoute_Keys -> mkPageContent "keys" $ do
-        walletBarCfg <- controlBar "Keys" $ do
-          refreshCfg <- uiWalletRefreshButton
-          addCfg <- uiGenerateKeyButton
-          pure $ addCfg <> refreshCfg
+        walletBarCfg <- controlBar "Keys" uiGenerateKeyButton
         walletCfg <- uiWallet ideL
         pure $ walletBarCfg <> walletCfg
       FrontendRoute_Contracts -> mkPageContent "contracts" $ do

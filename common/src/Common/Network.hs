@@ -45,6 +45,7 @@ import Obelisk.Configs
 import Text.URI.Lens
 
 import qualified Data.Aeson as A
+import qualified Data.Aeson.Types as A
 import qualified Data.CaseInsensitive as CI
 import qualified Data.Map as Map
 import qualified Data.Text as T
@@ -65,9 +66,11 @@ newtype NetworkName = NetworkName
 instance FromJSON NetworkName where
   parseJSON = either (fail . T.unpack) pure . mkNetworkName <=< parseJSON
 instance FromJSONKey NetworkName where
+  fromJSONKey = FromJSONKeyTextParser $ either (fail . T.unpack) pure . mkNetworkName
 instance ToJSON NetworkName where
   toJSON = toJSON . CI.original . unNetworkName
 instance ToJSONKey NetworkName where
+  toJSONKey = A.toJSONKeyText (CI.original . unNetworkName)
 
 -- | Construct a 'NetworkName', and banish mainnet - for now.
 mkNetworkName :: Text -> Either Text NetworkName

@@ -9,38 +9,18 @@ import Control.Monad
 import Data.Aeson
 import Data.ByteString (ByteString)
 import qualified Data.ByteString.Base16 as B16
+import qualified Data.HashMap.Lazy as HM
 import Data.Maybe
 import Data.Set (Set)
+import qualified Data.Set as Set
 import Data.Text (Text)
 import qualified Data.Text.Encoding as TE
 import Pact.Types.ChainId
+import qualified Pact.Types.Term as Pact
 import Kadena.SigningApi (AccountName(..))
+import Data.Default (def)
 
-newtype AddressPubKey = AddressPubKey { _addressPubKey_bytes :: ByteString }
-  deriving (Eq,Ord,Show)
-
--- Encode as base-16
-instance ToJSON AddressPubKey where
-  toJSON = toJSON . TE.decodeUtf8 . B16.encode . _addressPubKey_bytes
-
-instance FromJSON AddressPubKey where
-  parseJSON = return . AddressPubKey . fst . B16.decode . TE.encodeUtf8 <=< parseJSON
-
-data AddressKeyset = AddressKeyset
-  { _addressKeyset_keys :: Set AddressPubKey
-  , _addressKeyset_pred :: Text
-  } deriving (Eq,Ord,Show)
-
-instance ToJSON AddressKeyset where
-  toJSON o = object
-      [ "keys" .= _addressKeyset_keys o
-      , "pred" .= _addressKeyset_pred o
-      ]
-
-instance FromJSON AddressKeyset where
-  parseJSON = withObject "AddressKeyset" $ \o -> AddressKeyset
-    <$> o .: "keys"
-    <*> o .: "pred"
+import Common.Wallet
 
 data KadenaAddress = KadenaAddress
   { _kadenaAddress_accountName :: AccountName

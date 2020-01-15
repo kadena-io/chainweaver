@@ -92,15 +92,16 @@ upgradeFromV0 v0 =
     -- I don't think we should run crypto derivation functions here. The web
     -- version would generate a new key! Perhaps we should punt this to be fixed
     -- upon key restoration by the user.
-    splitOldKey (keyIdx, V0.SomeAccount_Deleted) = ([(keyIdx, Key fakeKeyPair True (mkAccountNotes ""))], mempty)
+    -- TODO this needs attention if we can't hide anymore
+    splitOldKey (keyIdx, V0.SomeAccount_Deleted) = ([(keyIdx, Key fakeKeyPair)], mempty)
 
     splitOldKey (keyIdx, V0.SomeAccount_Account a) =
-      ([(keyIdx, Key (extractKey a) False (upgradeAccountNotes a))]
-      , oldAccountToNewStorage a False
+      ([(keyIdx, Key (extractKey a))]
+      , oldAccountToNewStorage a
       )
 
-    oldAccountToNewStorage :: V0.Account key -> Bool -> AccountStorage
-    oldAccountToNewStorage a inflight =
+    oldAccountToNewStorage :: V0.Account key -> AccountStorage
+    oldAccountToNewStorage a =
       let
         accountNameText = V0.unAccountName . V0._account_name $ a
         oldPubKey = V0._keyPair_publicKey . V0._account_key $ a
@@ -112,18 +113,13 @@ upgradeFromV0 v0 =
         newAccountNotes = mkAccountNotes accountNotesText
         newAccountBalance = V0._account_balance a
         newUnfinishedXChain = V0._account_unfinishedCrossChainTransfer a
-        newAccountInfo = AccountInfo newAccountBalance newUnfinishedXChain False
 
         accounts = if accountNameText /= pubKeyText
           then
-            let
-              newVanityAccount = VanityAccount newPubKey newAccountNotes newAccountInfo inflight
-            in Accounts
-              (Map.singleton (AccountName accountNameText) (Map.singleton newChainId newVanityAccount))
-              mempty
-          else Accounts
-            mempty
-            (Map.singleton newPubKey (Map.singleton newChainId (NonVanityAccount newAccountInfo)))
+            let newVanityAccount = VanityAccount newAccountNotes newUnfinishedXChain
+                newAccountInfo = AccountInfo Nothing $ Map.singleton newChainId newVanityAccount
+            in Map.singleton (AccountName accountNameText) newAccountInfo
+          else mempty
 
       in AccountStorage $ Map.singleton (V0._account_network a) accounts
 

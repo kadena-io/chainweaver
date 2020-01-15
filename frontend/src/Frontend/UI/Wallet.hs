@@ -8,6 +8,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecursiveDo #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE TupleSections #-}
 {-# LANGUAGE TypeFamilies #-}
 
 -- | Wallet management ui for handling private/public keys.
@@ -32,10 +33,11 @@ module Frontend.UI.Wallet
 import           Control.Applicative         (liftA2)
 import           Control.Lens
 import           Control.Monad               (when, (<=<), join)
-import           Data.Dependent.Sum          ((==>))
 import qualified Data.IntMap                 as IntMap
 import           Data.Map (Map)
 import qualified Data.Map                    as Map
+import           Data.Set (Set)
+import qualified Data.Set                    as Set
 import           Data.Text                   (Text)
 import qualified Pact.Types.ChainId          as Pact
 import           Reflex
@@ -48,7 +50,8 @@ import           Frontend.Wallet
 import           Frontend.UI.Widgets
 import           Frontend.Foundation
 import           Frontend.JsonData (HasJsonData, HasJsonDataCfg)
-import           Frontend.UI.Dialogs.AccountDetails (uiAccountDetails)
+import           Frontend.UI.Dialogs.AccountDetails
+import           Frontend.UI.Dialogs.AddVanityAccount (uiCreateAccountButton, uiCreateAccountDialog)
 import           Frontend.UI.Dialogs.KeyDetails (uiKeyDetails)
 import           Frontend.UI.Dialogs.Receive (uiReceiveModal)
 import           Frontend.UI.Dialogs.Send (uiSendModal)
@@ -79,9 +82,11 @@ type HasUiWalletModelCfg model mConf key m t =
 
 -- | Possible actions from an account
 data AccountDialog
-  = AccountDialog_Details Account
-  | AccountDialog_Receive AccountName AccountCreated ChainId
-  | AccountDialog_Send Account
+  = AccountDialog_DetailsChain (AccountName, ChainId, Account)
+  | AccountDialog_Details AccountName (Maybe AccountNotes)
+  | AccountDialog_Receive AccountName ChainId
+  | AccountDialog_Send (AccountName, ChainId, Account)
+  | AccountDialog_Create AccountName ChainId
 
 uiWalletRefreshButton
   :: (MonadWidget t m, Monoid mConf, HasWalletCfg mConf key t)
@@ -125,10 +130,7 @@ uiAccountItems
   => model -> m mConf
 uiAccountItems model = do
   let net = model ^. network_selectedNetwork
-      accounts = liftA2 (Map.findWithDefault mempty) net (unAccountStorage <$> model ^. wallet_accounts)
-      accountsMap
-        = Map.filter (not . _accountInfo_hidden . _vanityAccount_info)
-        . flattenKeys . _accounts_vanity <$> accounts
+      accountsMap = liftA2 (Map.findWithDefault mempty) net (unAccountData <$> model ^. wallet_accounts)
       tableAttrs = mconcat
         [ "style" =: "table-layout: fixed; width: 98%"
         , "class" =: "wallet table"
@@ -136,24 +138,25 @@ uiAccountItems model = do
 
   events <- elAttr "table" tableAttrs $ do
     el "colgroup" $ do
-      elAttr "col" ("style" =: "width: 25%") blank
-      elAttr "col" ("style" =: "width: 10%") blank
-      elAttr "col" ("style" =: "width: 25%") blank
-      elAttr "col" ("style" =: "width: 15%") blank
-      elAttr "col" ("style" =: "width: 25%") blank
+      elAttr "col" ("style" =: "width: 5%") blank
+      elAttr "col" ("style" =: "width: 20%") blank
+      elAttr "col" ("style" =: "width: 35%") blank
+      elAttr "col" ("style" =: "width: 20%") blank
+      elAttr "col" ("style" =: "width: 20%") blank
 
     el "thead" $ el "tr" $ do
       let mkHeading = elClass "th" "wallet__table-heading" . text
       traverse_ mkHeading $
-        [ "Account Name"
-        , "Chain ID"
+        [ ""
+        , "Account Name"
         , "Notes"
         , "Balance (KDA)"
         , ""
         ]
 
     el "tbody" $ do
-      events <- listWithKey accountsMap uiAccountItem
+      let keys = Set.fromList . fmap (_keyPair_publicKey . _key_pair) . IntMap.elems <$> model ^. wallet_keys
+      events <- listWithKey accountsMap $ uiAccountItem keys
       dyn_ $ ffor accountsMap $ \accs ->
         when (null accs) $
           elClass "tr" "wallet__table-row" $ elAttr "td" ("colspan" =: "5" <> "class" =: "wallet__table-cell") $
@@ -164,9 +167,11 @@ uiAccountItems model = do
     onAccountModal = switchDyn $ leftmost . Map.elems <$> events
 
     accModal n = Just . \case
-      AccountDialog_Details acc -> uiAccountDetails n acc
-      AccountDialog_Receive name created chain -> uiReceiveModal model name created (Just chain)
+      AccountDialog_Details acc notes -> uiAccountDetails n acc notes
+      AccountDialog_DetailsChain acc -> uiAccountDetailsOnChain n acc
+      AccountDialog_Receive name chain -> uiReceiveModal model name (Just chain)
       AccountDialog_Send acc -> uiSendModal model acc
+      AccountDialog_Create name chain -> uiCreateAccountDialog model name chain
 
   refresh <- delay 1 =<< getPostBuild
 
@@ -175,33 +180,78 @@ uiAccountItems model = do
     & walletCfg_refreshBalances .~ refresh
 
 uiAccountItem
-  :: MonadWidget t m
-  => (AccountName, ChainId)
-  -> Dynamic t VanityAccount
+  :: forall t m. MonadWidget t m
+  => Dynamic t (Set PublicKey)
+  -> AccountName
+  -> Dynamic t (AccountInfo Account)
   -> m (Event t AccountDialog)
-uiAccountItem (name, chain) acc = do
-  elClass "tr" "wallet__table-row" $ do
-    let td = elClass "td" "wallet__table-cell"
-        info = view accountInfo <$> acc
+uiAccountItem keys name accountInfo = do
+  let chainMap = _accountInfo_chains <$> accountInfo
+      notes = _accountInfo_notes <$> accountInfo
+  rec
+    (clk, dialog) <- keyRow visible notes $ sum . catMaybes <$> balances
+    visible <- toggle False clk
+    results <- listWithKey chainMap $ accountRow visible
+    let balances :: Dynamic t [Maybe AccountBalance]
+        balances = join $ traverse fst . Map.elems <$> results
+  let dialogs = switch $ leftmost . fmap snd . Map.elems <$> current results
+  pure $ leftmost [dialog, dialogs]
+  where
+  trKey = elClass "tr" "wallet__table-row wallet__table-row-account"
+  trAcc visible = elDynAttr "tr" $ ffor visible $ \v -> mconcat
+    [ "class" =: "wallet__table-row"
+    , if v then mempty else "style" =: "display:none"
+    ]
+  td = elClass "td" "wallet__table-cell"
+  buttons = divClass "wallet__table-buttons"
+  cfg = def
+    & uiButtonCfg_class <>~ "wallet__table-button"
 
-    td $ divClass "wallet__table-wallet-address" $ text $ unAccountName name
-    td $ text $ Pact._chainId chain
-    td $ dynText $ ffor acc $ unAccountNotes . _vanityAccount_notes
-    td $ dynText $ ffor info $ uiAccountBalance' False
+  keyRow open notes balance = trKey $ do
+    let accordionCell o = "wallet__table-cell" <> if o then "" else " accordion-collapsed"
+    clk <- elDynClass "td" (accordionCell <$> open) $ accordionButton def
+    td $ text $ unAccountName name
+    td $ dynText $ maybe "" unAccountNotes <$> notes
+    td $ dynText $ uiAccountBalance False . Just <$> balance
+    onDetails <- td $ buttons $ detailsIconButton cfg
+    pure (clk, AccountDialog_Details name <$> current notes <@ onDetails)
 
-    td $ divClass "wallet__table-buttons" $ do
-      let cfg = def
-            & uiButtonCfg_class <>~ "wallet__table-button"
+  accountRow visible chain dAccount = trAcc visible $ do
+    td blank -- Arrow column
+    td $ text $ "Chain ID: " <> _chainId chain
+    td $ dynText $ maybe "" unAccountNotes . _vanityAccount_notes . _account_storage <$> dAccount
+    td $ dynText $ fmap (uiAccountBalance' False) dAccount
+    td $ buttons $ do
+      accStatus <- holdUniqDyn $ _account_status <$> dAccount
+      action <- switchHold never <=< dyn $ ffor accStatus $ \case
+        AccountStatus_Unknown -> pure never
+        AccountStatus_DoesNotExist -> do
+          create <- uiCreateAccountButton cfg
+          -- TODO this needs a special case for non-vanity accounts. the keyset
+          -- should be pre specified
+          pure $ AccountDialog_Create name chain <$ create
+        AccountStatus_Exists d -> do
+          owned <- holdUniqDyn $ (_addressKeyset_keys (_accountDetails_keyset d) `Set.isSubsetOf`) <$> keys
+          switchHold never <=< dyn $ ffor owned $ \case
+            True -> do
+              recv <- receiveButton cfg
+              send <- sendButton cfg
+              onDetails <- detailsIconButton cfg
+              pure $ leftmost
+                [ AccountDialog_Receive name chain <$ recv
+                , AccountDialog_Send . (name, chain, ) <$> current dAccount <@ send
+                , AccountDialog_DetailsChain . (name, chain, ) <$> current dAccount <@ onDetails
+                ]
+            False -> do
+              transferTo <- transferToButton cfg
+              onDetails <- detailsIconButton cfg
+              pure $ leftmost
+                [ AccountDialog_Receive name chain <$ transferTo
+                , AccountDialog_DetailsChain . (name, chain, ) <$> current dAccount <@ onDetails
+                ]
+      let balance = (^? account_status . _AccountStatus_Exists . accountDetails_balance) <$> dAccount
+      pure (balance, action)
 
-      recv <- receiveButton cfg
-      send <- sendButton cfg
-      onDetails <- detailsIconButton cfg
-
-      pure $ leftmost
-        [ AccountDialog_Details . (AccountRef_Vanity name chain ==>) <$> current acc <@ onDetails
-        , AccountDialog_Receive name AccountCreated_Yes chain <$ recv
-        , AccountDialog_Send . (AccountRef_Vanity name chain ==>) <$> current acc <@ send
-        ]
 
 uiPublicKeyDropdown
   :: (DomBuilder t m, MonadFix m, MonadHold t m, PostBuild t m, HasWallet model key t)
@@ -243,123 +293,54 @@ uiKeyItems model = do
       <> "class" =: "wallet table"
   events <- elAttr "table" tableAttrs $ do
     el "colgroup" $ do
-      elAttr "col" ("style" =: "width: 5%") blank
-      elAttr "col" ("style" =: "width: 20%") blank
-      elAttr "col" ("style" =: "width: 35%") blank
-      elAttr "col" ("style" =: "width: 20%") blank
-      elAttr "col" ("style" =: "width: 20%") blank
+      elAttr "col" ("style" =: "width: 70%") blank
+      elAttr "col" ("style" =: "width: 30%") blank
     el "thead" $ el "tr" $ do
       let mkHeading = elClass "th" "wallet__table-heading" . text
       traverse_ mkHeading $
-        [ ""
-        , "Public Key"
-        , "Notes"
-        , "Balance (KDA)"
+        [ "Public Key"
         , ""
         ]
 
     el "tbody" $ do
       events <- listWithKey keyMap (uiKeyItem model)
       dyn_ $ ffor keyMap $ \keys ->
-        when (all _key_hidden keys) $
+        when (null keys) $
           elClass "tr" "wallet__table-row" $ elAttr "td" ("colspan" =: "5" <> "class" =: "wallet__table-cell") $
             text "No keys ..."
       pure events
-
-  refresh <- delay 1 =<< getPostBuild
 
   let modalEvents = switch $ leftmost . Map.elems <$> current events
 
   pure $ mempty
     & modalCfg_setModal .~ attachWith keyModal (current $ model ^. network_selectedNetwork) modalEvents
-    & walletCfg_refreshBalances .~ refresh
   where
     keyModal n = Just . \case
-      KeyDialog_Receive chain name created -> uiReceiveModal model name created (Just chain)
-      KeyDialog_Send acc -> uiSendModal model acc
       KeyDialog_Details i key -> uiKeyDetails i key
-      KeyDialog_AccountDetails acc -> uiAccountDetails n acc
 
 -- | Dialogs which can be launched from keys.
 data KeyDialog key
-  = KeyDialog_Receive ChainId AccountName AccountCreated
-  | KeyDialog_Send Account
-  | KeyDialog_Details IntMap.Key (Key key)
-  | KeyDialog_AccountDetails Account
+  = KeyDialog_Details IntMap.Key (Key key)
 
 ------------------------------------------------------------------------------
 -- | Display a key as list item together with its name.
 uiKeyItem
-  :: forall model key t m. (MonadWidget t m, HasNetwork model t, HasWallet model key t)
+  :: forall model key t m. MonadWidget t m
   => model
   -> IntMap.Key
   -> Dynamic t (Key key)
   -> m (Event t (KeyDialog key))
-uiKeyItem model keyIndex key = do
-  hidden <- holdUniqDyn $ _key_hidden <$> key
-  switchHold never <=< dyn $ ffor hidden $ \case
-    True -> pure never
-    False -> do
-      let mAccounts = ffor3 key (model ^. network_selectedNetwork) (model ^. wallet_accounts) $ \k net (AccountStorage as) -> fromMaybe mempty $ do
-            accounts <- Map.lookup net as
-            nva <- Map.lookup (_keyPair_publicKey $ _key_pair k) (_accounts_nonVanity accounts)
-            pure $ Map.filter (not . _accountInfo_hidden . _nonVanityAccount_info) nva
-      rec
-        (clk, dialog) <- keyRow visible $ sum . catMaybes <$> balances
-        visible <- toggle False clk
-        results <- listWithKey mAccounts $ accountRow visible
-        let balances :: Dynamic t [Maybe AccountBalance]
-            balances = join $ traverse fst . Map.elems <$> results
-      let dialogs = switch $ leftmost . fmap snd . Map.elems <$> current results
-      pure $ leftmost [dialog, dialogs]
-     where
-      trKey = elClass "tr" "wallet__table-row wallet__table-row-key"
-      trAcc visible = elDynAttr "tr" $ ffor visible $ \v -> mconcat
-        [ "class" =: "wallet__table-row"
-        , if v then mempty else "style" =: "display:none"
-        ]
-      td = elClass "td" "wallet__table-cell"
-      buttons = divClass "wallet__table-buttons"
-      cfg = def
-        & uiButtonCfg_class <>~ "wallet__table-button"
-
-      keyRow open balance = trKey $ do
-        let accordionCell o = "wallet__table-cell" <> if o then "" else " accordion-collapsed"
-        clk <- elDynClass "td" (accordionCell <$> open) $ accordionButton def
-        td $ uiPublicKeyShrunk $ _keyPair_publicKey . _key_pair <$> key
-        td $ dynText $ unAccountNotes . _key_notes <$> key
-        td $ dynText $ uiAccountBalance False . Just <$> balance
-        dialog <- td $ buttons $ do
-          onDetails <- detailsButton (cfg & uiButtonCfg_class <>~ "wallet__table-button--hamburger" <> "wallet__table-button-key")
-          pure $ KeyDialog_Details keyIndex <$> current key <@ onDetails
-        pure (clk, dialog)
-
-      accountRow visible chain dAccount = trAcc visible $ do
-        td blank -- Arrow column
-        td $ text $ "Chain ID: " <> _chainId chain
-        td blank -- Notes column
-        td $ dynText $ fmap (uiAccountBalance' False) dAccount
-        td $ buttons $ do
-          recv <- receiveButton cfg
-          send <- sendButton cfg
-          onDetails <- detailsIconButton cfg
-          let pk = _keyPair_publicKey . _key_pair <$> current key
-              balance = _accountInfo_balance . _nonVanityAccount_info <$> dAccount
-              created = maybe AccountCreated_No (const AccountCreated_Yes) <$> balance
-          pure
-            ( balance
-            , leftmost
-              [ (\k -> KeyDialog_Send . (AccountRef_NonVanity k chain ==>)) <$> pk <*> current dAccount <@ send
-              , (\k -> KeyDialog_AccountDetails . (AccountRef_NonVanity k chain ==>)) <$> pk <*> current dAccount <@ onDetails
-              -- TODO we need a way of adding these accounts when they already
-              -- exist too, e.g. for users who are recovering wallets. An
-              -- automatic account discovery thing would work well.
-              , KeyDialog_Receive chain
-                  <$> (AccountName . keyToText <$> pk)
-                  <*> current created
-                  <@ recv
-              ]
-            )
+uiKeyItem model keyIndex key = trKey $ do
+  td $ uiPublicKeyShrunk $ _keyPair_publicKey . _key_pair <$> key
+  td $ buttons $ do
+    onDetails <- detailsButton (cfg & uiButtonCfg_class <>~ "wallet__table-button--hamburger" <> "wallet__table-button-key")
+    pure $ KeyDialog_Details keyIndex <$> current key <@ onDetails
+  where
+    trKey = elClass "tr" "wallet__table-row wallet__table-row-key"
+    td = elClass "td" "wallet__table-cell"
+    buttons = divClass "wallet__table-buttons"
+    cfg = def
+      & uiButtonCfg_class <>~ "wallet__table-button"
 
 uiGenerateKeyButton
   :: (MonadWidget t m, Monoid mConf, HasWalletCfg mConf key t)

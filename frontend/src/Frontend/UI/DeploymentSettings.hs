@@ -68,12 +68,10 @@ import Control.Monad.Trans.Class
 import Control.Monad.Trans.Maybe
 import Control.Monad.Except
 import Data.Decimal (roundTo)
-import Data.Dependent.Sum (DSum(..))
 import Data.Either (rights, isLeft)
 import Data.IntMap (IntMap)
 import Data.Map (Map)
 import Data.Set (Set)
-import Data.Some (Some(Some), withSome)
 import Data.Text (Text)
 import Data.These (These(This))
 import Data.Traversable (for, sequence)
@@ -129,8 +127,8 @@ data DeploymentSettingsConfig t m model a = DeploymentSettingsConfig
   , _deploymentSettingsConfig_sender
     :: model
     -> Dynamic t (Maybe ChainId)
-    -> Event t (Maybe (Some AccountRef))
-    -> m (Dynamic t (Maybe (Some AccountRef)))
+    -> Event t (Maybe AccountName)
+    -> m (Dynamic t (Maybe (AccountName, Account)))
     -- ^ Sender selection widget. Use 'uiSenderFixed' or 'uiSenderDropdown'.
     -- Note that uiSenderDropdown has a setSender event, but because this UI only "Apply to All"s on the non-GAS capabilities
     -- this event is not exposed here. Just pass in never to get a function compatible with here.
@@ -156,8 +154,8 @@ data DeploymentSettingsConfig t m model a = DeploymentSettingsConfig
 
 data CapabilityInputRow t = CapabilityInputRow
   { _capabilityInputRow_empty :: Dynamic t Bool
-  , _capabilityInputRow_value :: Dynamic t (Map (Some AccountRef) [SigCapability])
-  , _capabilityInputRow_account :: Dynamic t (Maybe (Some AccountRef))
+  , _capabilityInputRow_value :: Dynamic t (Map AccountName [SigCapability])
+  , _capabilityInputRow_account :: Dynamic t (Maybe AccountName)
   , _capabilityInputRow_cap :: Dynamic t (Either String SigCapability)
   }
 
@@ -195,29 +193,30 @@ nextView includePreviewTab = \case
 data DeploymentSettingsResult key = DeploymentSettingsResult
   { _deploymentSettingsResult_gasPrice :: GasPrice
   , _deploymentSettingsResult_signingKeys :: [KeyPair key]
-  , _deploymentSettingsResult_signingAccounts :: Set (Some AccountRef)
-  , _deploymentSettingsResult_sender :: Some AccountRef
+  , _deploymentSettingsResult_signingAccounts :: Set AccountName
+  , _deploymentSettingsResult_sender :: AccountName
   , _deploymentSettingsResult_chainId :: ChainId
   , _deploymentSettingsResult_code :: Text
   , _deploymentSettingsResult_command :: Pact.Command Text
   , _deploymentSettingsResult_wrappedCommand :: Either String (Pact.Command Text)
   -- ^ This differs from 'command' because this wraps the code with balance
   -- checks for a /local request. This should never be actually deployed.
-  , _deploymentSettingsResult_accountsToTrack :: Set (Some AccountRef)
+  , _deploymentSettingsResult_accountsToTrack :: Set AccountName
   }
 
-publicKeysForAccounts :: Accounts -> Map (Some AccountRef) a -> Map PublicKey a
-publicKeysForAccounts allAccounts caps =
-  let toPublicKey (ref, cs) = do
-        pk <- accountKey <$> lookupAccountRef ref allAccounts
-        pure (pk, cs)
-  in Map.fromList $ fmapMaybe toPublicKey $ Map.toList caps
+-- TODO this function doesn't make sense with multisig. We shouldn't just throw all
+-- the signatures in.
+publicKeysForAccounts :: Semigroup a => ChainId -> Map AccountName (AccountInfo Account) -> Map AccountName a -> Map PublicKey a
+publicKeysForAccounts chain allAccounts caps =
+  let toKeyset :: AccountName -> Set PublicKey
+      toKeyset name = allAccounts ^. ix name . accountInfo_chains . ix chain . account_status . _AccountStatus_Exists . accountDetails_keyset . addressKeyset_keys
+  in Map.fromListWith (<>) $ concatMap (\(k, a) -> (, a) <$> Set.toList (toKeyset k)) $ Map.toList caps
 
-lookupAccountBalance :: Some AccountRef -> Accounts -> Maybe (Maybe AccountBalance)
-lookupAccountBalance ref = fmap accountBalance . lookupAccountRef ref
+lookupAccountBalance :: AccountName -> ChainId -> Map AccountName (AccountInfo Account) -> Maybe (AccountStatus AccountBalance)
+lookupAccountBalance name chain m = fmap _accountDetails_balance <$> m ^? ix name . accountInfo_chains . ix chain . account_status
 
 data DeploymentSettingsResultError
-  = DeploymentSettingsResultError_GasPayerIsNotValid (Some AccountRef)
+  = DeploymentSettingsResultError_GasPayerIsNotValid AccountName
   | DeploymentSettingsResultError_InvalidNetworkName Text
   | DeploymentSettingsResultError_NoSenderSelected
   | DeploymentSettingsResultError_NoChainIdSelected
@@ -237,11 +236,11 @@ buildDeploymentSettingsResult
      , HasCrypto key (Performable m)
      )
   => model
-  -> Dynamic t (Maybe (Some AccountRef))
-  -> Dynamic t (Maybe (Some AccountRef))
-  -> Dynamic t (Set (Some AccountRef))
+  -> Dynamic t (Maybe AccountName)
+  -> Dynamic t (Maybe AccountName)
+  -> Dynamic t (Set AccountName)
   -> Dynamic t (Maybe ChainId)
-  -> Dynamic t (Map (Some AccountRef) [SigCapability])
+  -> Dynamic t (Map AccountName [SigCapability])
   -> Dynamic t TTLSeconds
   -> Dynamic t GasLimit
   -> Dynamic t Text
@@ -268,13 +267,12 @@ buildDeploymentSettingsResult m mSender mGasPayer signers cChainId capabilities 
   let publicMeta = lastPublicMeta
         { _pmChainId = chainId
         , _pmGasLimit = limit
-        , _pmSender = withSome sender accountRefToName
-        , _pmTTL = ttl'
-        }
+        , _pmSender = unAccountName sender
+        , _pmTTL = ttl' }
   code' <- lift code
   keys <- lift $ m ^. wallet_keys
   allAccounts <- failWithM (DeploymentSettingsResultError_NoAccountsOnNetwork networkName)
-    $ Map.lookup networkName . unAccountStorage <$> m ^. wallet_accounts
+    $ Map.lookup networkName . unAccountData <$> m ^. wallet_accounts
 
   -- Make an effort to ensure the gas payer (if there is one) account has enough balance to actually
   -- pay the gas. This won't work if the user selects an account on a different
@@ -282,17 +280,18 @@ buildDeploymentSettingsResult m mSender mGasPayer signers cChainId capabilities 
   gasPayer <- lift mGasPayer
   case gasPayer of
     Nothing -> pure () -- No gas payer selected, move along
-    Just gp ->  for_ (lookupAccountBalance gp allAccounts) $ \case
+    Just gp ->  for_ (lookupAccountBalance gp chainId allAccounts) $ \case
       -- Gas Payer selected but they're not an account?!
-      Nothing -> throwError $ DeploymentSettingsResultError_GasPayerIsNotValid gp
-      Just b -> let GasLimit lim = _pmGasLimit publicMeta
-                    GasPrice (ParsedDecimal price) = _pmGasPrice publicMeta
-                 in unless (unAccountBalance b > fromIntegral lim * price) $
-                     throwError DeploymentSettingsResultError_InsufficientFundsOnGasPayer
+      AccountStatus_Unknown -> throwError $ DeploymentSettingsResultError_GasPayerIsNotValid gp
+      AccountStatus_DoesNotExist -> throwError $ DeploymentSettingsResultError_GasPayerIsNotValid gp
+      AccountStatus_Exists b ->
+        let GasLimit lim = _pmGasLimit publicMeta
+            GasPrice (ParsedDecimal price) = _pmGasPrice publicMeta
+        in unless (unAccountBalance b > fromIntegral lim * price) $ throwError DeploymentSettingsResultError_InsufficientFundsOnGasPayer
 
-  let pkCaps = publicKeysForAccounts allAccounts caps
+  let pkCaps = publicKeysForAccounts chainId allAccounts caps
   pure $ do
-    let signingPairs = getSigningPairs keys allAccounts signingAccounts
+    let signingPairs = getSigningPairs chainId keys allAccounts signingAccounts
     cmd <- buildCmd
       (_deploymentSettingsConfig_nonce settings)
       networkId publicMeta signingPairs
@@ -431,8 +430,8 @@ uiDeploymentSettings m settings = mdo
         let currentNode = headMay . rights <$> (m ^. network_selectedNodes)
             mNetworkId = (hush . mkNetworkName . nodeVersion =<<) <$> currentNode
 
-            accounts = liftA2 (Map.findWithDefault mempty) (m ^. network_selectedNetwork) (unAccountStorage <$> m ^. wallet_accounts)
-            mHeadAccount = fmap (\(n, c, _) -> Some $ AccountRef_Vanity n c) . findFirstVanityAccount (const True) <$> accounts
+            accounts = liftA2 (Map.findWithDefault mempty) (m ^. network_selectedNetwork) (unAccountData <$> m ^. wallet_accounts)
+            mHeadAccount = fmap (\(n, c, _) -> n) . findFirstVanityAccount (const True) <$> accounts
             mHeadChain = (headMay =<<) . fmap getChains <$> currentNode
 
             aSender = (<|>) <$> mSender <*> mHeadAccount
@@ -457,7 +456,7 @@ uiDeploymentSettings m settings = mdo
           _ -> constDyn blank
 
       pure
-        ( cfg & networkCfg_setSender .~ fmapMaybe (fmap (\(Some x) -> accountRefToName x)) (updated mSender)
+        ( cfg & networkCfg_setSender .~ fmapMaybe (fmap unAccountName) (updated mSender)
         , buildDeploymentSettingsResult m mSender mGasPayer signers cChainId capabilities ttl gasLimit code settings
         , mRes
         )
@@ -518,10 +517,10 @@ uiCfg
   -> Maybe GasLimit
   -> g (Text, m a)
   -> Maybe (model -> Dynamic t Bool -> m (Event t (), ((), mConf)))
-  -> (model -> Dynamic t (Maybe ChainId) -> Event t (Maybe (Some AccountRef)) -> m (Dynamic t (Maybe (Some AccountRef))))
+  -> (model -> Dynamic t (Maybe ChainId) -> Event t (Maybe AccountName) -> m (Dynamic t (Maybe (AccountName, Account))))
   -> m ( mConf
        , Dynamic t (Maybe Pact.ChainId)
-       , Dynamic t (Maybe (Some AccountRef))
+       , Dynamic t (Maybe AccountName)
        , Dynamic t TTLSeconds
        , Dynamic t GasLimit
        , g a
@@ -534,7 +533,7 @@ uiCfg mCode m wChainId mTTL mGasLimit userSections otherAccordion mSenderSelect 
 
         dialogSectionHeading mempty "Transaction Sender"
         mSender <- elKlass "div" ("group segment") $ mkLabeledClsInput True "Account" $ \_ -> do
-          mSenderSelect m cId never
+          (fmap . fmap) fst <$> mSenderSelect m cId never
 
         -- Customisable user provided UI section
         fa <- for userSections $ \(title, body) -> do
@@ -743,42 +742,27 @@ uiSenderFixed
   => model
   -> Dynamic t (Maybe ChainId)
   -> AccountName
-  -> m (Dynamic t (Maybe (Some AccountRef)))
+  -> m (Dynamic t (Maybe (AccountName, Account)))
 uiSenderFixed model chainId sender = do
-  -- Look up the account by name for the current network & chain
-  let mAccRef = runMaybeT $ do
-        n <- lift $ model ^. network_selectedNetwork
-        c <- MaybeT chainId
-        MaybeT $ findAccountByName (model ^. wallet) n c sender
-
   _ <- uiInputElement $ def
     & initialAttributes %~ Map.insert "disabled" ""
     & inputElementConfig_initialValue .~ unAccountName sender
-    & inputElementConfig_setValue .~ ffor (updated mAccRef) (maybe
-        "Account name not found!"
-        (const $ unAccountName sender)
-      )
-
-  pure mAccRef
+  pure $ pure $ pure (sender, Account AccountStatus_Unknown blankVanityAccount)
 
 mkChainTextAccounts
   :: (Reflex t, HasWallet model key t, HasNetwork model t)
   => model
   -> Dynamic t (Maybe ChainId)
-  -> Dynamic t (Either Text (Map (Some AccountRef) Text))
+  -> Dynamic t (Either Text (Map AccountName Text))
 mkChainTextAccounts m mChainId = runExceptT $ do
   netId <- lift $ m ^. network_selectedNetwork
   chain <- ExceptT $ note "You must select a chain ID before choosing an account" <$> mChainId
-  accountsOnNetwork <- ExceptT $ note "No accounts on current network" . Map.lookup netId . unAccountStorage <$> m ^. wallet_accounts
-  let mkVanity n chainMap
-        | Map.member chain chainMap = Map.singleton (Some $ AccountRef_Vanity n chain) (unAccountName n)
+  accountsOnNetwork <- ExceptT $ note "No accounts on current network" . Map.lookup netId . unAccountData <$> m ^. wallet_accounts
+  let mkVanity n (AccountInfo _ chainMap)
+        | Map.member chain chainMap = Map.singleton n (unAccountName n)
         | otherwise = mempty
-      vanityAccounts = Map.foldMapWithKey mkVanity $ _accounts_vanity accountsOnNetwork
-      mkNonVanity pk chainMap
-        | Map.member chain chainMap = Map.singleton (Some $ AccountRef_NonVanity pk chain) (keyToText pk)
-        | otherwise = mempty
-      nonVanityAccounts = Map.foldMapWithKey mkNonVanity $ _accounts_nonVanity accountsOnNetwork
-      accountsOnChain = vanityAccounts <> nonVanityAccounts
+      vanityAccounts = Map.foldMapWithKey mkVanity accountsOnNetwork
+      accountsOnChain = vanityAccounts
   when (Map.null accountsOnChain) $ throwError "No accounts on current chain"
   pure accountsOnChain
 
@@ -789,11 +773,11 @@ uiSenderDropdown
      , HasWallet model key t
      , HasNetwork model t
      )
-  => DropdownConfig t (Maybe (Some AccountRef))
+  => DropdownConfig t (Maybe AccountName)
   -> model
   -> Dynamic t (Maybe ChainId)
-  -> Event t (Maybe (Some AccountRef))
-  -> m (Dynamic t (Maybe (Some AccountRef)))
+  -> Event t (Maybe AccountName)
+  -> m (Dynamic t (Maybe (AccountName, Account)))
 uiSenderDropdown uCfg m chainId setSender = do
   let
     textAccounts = mkChainTextAccounts m chainId
@@ -805,7 +789,14 @@ uiSenderDropdown uCfg m chainId setSender = do
   choice <- dropdown Nothing dropdownItems $ uCfg
     & dropdownConfig_setValue .~ leftmost [Nothing <$ updated chainId, setSender]
     & dropdownConfig_attributes <>~ pure ("class" =: "labeled-input__input select select_mandatory_missing")
-  pure $ value choice
+  let result = runMaybeT $ do
+        net <- lift $ m ^. network_selectedNetwork
+        accs <- lift $ m ^. wallet_accounts
+        chain <- MaybeT chainId
+        name <- MaybeT $ value choice
+        acc <- MaybeT $ pure $ accs ^? _AccountData . ix net . ix name . accountInfo_chains . ix chain
+        pure (name, acc)
+  pure result
 
 
 -- | Let the user pick signers
@@ -817,7 +808,7 @@ uiSignerList
      )
   => model
   -> Dynamic t (Maybe ChainId)
-  -> m (Dynamic t (Set (Some AccountRef)))
+  -> m (Dynamic t (Set AccountName))
 uiSignerList m chainId = do
   let textAccounts = mkChainTextAccounts m chainId
   dialogSectionHeading mempty "Unrestricted Signing Accounts"
@@ -849,7 +840,7 @@ parseSigCapability txt = parsed >>= compiled >>= parseApp
 capabilityInputRow
   :: MonadWidget t m
   => Maybe DappCap
-  -> m (Dynamic t (Maybe (Some AccountRef)))
+  -> m (Dynamic t (Maybe (AccountName, Account)))
   -> m (CapabilityInputRow t)
 capabilityInputRow mCap mkSender = elClass "tr" "table__row" $ do
   (emptyCap, parsed) <- elClass "td" "table__cell_padded" $ mdo
@@ -878,10 +869,10 @@ capabilityInputRow mCap mkSender = elClass "tr" "table__row" $ do
     , _capabilityInputRow_value = emptyCap >>= \case
       True -> pure mempty
       False -> fmap (fromMaybe mempty) $ runMaybeT $ do
-        a <- MaybeT account
+        (a, _) <- MaybeT account
         p <- MaybeT $ either (const Nothing) pure <$> parsed
         pure $ Map.singleton a [p]
-    , _capabilityInputRow_account = account
+    , _capabilityInputRow_account = fmap fst <$> account
     , _capabilityInputRow_cap = parsed
     }
 
@@ -889,8 +880,8 @@ capabilityInputRow mCap mkSender = elClass "tr" "table__row" $ do
 capabilityInputRows
   :: forall t m. MonadWidget t m
   => Event t ()  -- Add new row
-  -> m (Dynamic t (Maybe (Some AccountRef)))
-  -> m (Dynamic t (Map (Some AccountRef) [SigCapability]), Dynamic t Int)
+  -> m (Dynamic t (Maybe (AccountName, Account)))
+  -> m (Dynamic t (Map AccountName [SigCapability]), Dynamic t Int)
 capabilityInputRows addNew mkSender = do
   rec
     (im0, im') <- traverseIntMapWithKeyWithAdjust (\_ _ -> capabilityInputRow Nothing mkSender) IM.empty $ leftmost
@@ -919,9 +910,9 @@ uiSenderCapabilities
   => model
   -> Dynamic t (Maybe Pact.ChainId)
   -> Maybe [DappCap]
-  -> Dynamic t (Maybe (Some AccountRef))
-  -> (Event t (Maybe (Some AccountRef)) -> m (Dynamic t (Maybe (Some AccountRef))))
-  -> m (Dynamic t (Maybe (Some AccountRef)), Dynamic t (Set (Some AccountRef)), Dynamic t (Map (Some AccountRef) [SigCapability]))
+  -> Dynamic t (Maybe AccountName)
+  -> (Event t (Maybe AccountName) -> m (Dynamic t (Maybe (AccountName, Account))))
+  -> m (Dynamic t (Maybe AccountName), Dynamic t (Set AccountName), Dynamic t (Map AccountName [SigCapability]))
 uiSenderCapabilities m cid mCaps mSender mkGasPayer = do
   let senderDropdown setGasPayer = uiSenderDropdown def m cid setGasPayer
       staticCapabilityRow sender cap = do
@@ -930,8 +921,8 @@ uiSenderCapabilities m cid mCaps mSender mkGasPayer = do
         acc <- el "td" $ sender
         pure $ CapabilityInputRow
           { _capabilityInputRow_empty = pure False
-          , _capabilityInputRow_value = maybe mempty (\s -> Map.singleton s [_dappCap_cap cap]) <$> acc
-          , _capabilityInputRow_account = acc
+          , _capabilityInputRow_value = maybe mempty (\s -> Map.singleton (fst s) [_dappCap_cap cap]) <$> acc
+          , _capabilityInputRow_account = fmap fst <$> acc
           , _capabilityInputRow_cap = pure $ Right $ _dappCap_cap cap
           }
 
@@ -1035,17 +1026,17 @@ uiDeployPreview
   => model
   -> DeploymentSettingsConfig t m model a
   -> KeyStorage key
-  -> Accounts
-  -> Set (Some AccountRef)
+  -> Map AccountName (AccountInfo Account)
+  -> Set AccountName
   -> GasLimit
   -> TTLSeconds
   -> Text
   -> PublicMeta
-  -> Map (Some AccountRef) [SigCapability]
+  -> Map AccountName [SigCapability]
   -> Either JsonError Aeson.Object
   -> Maybe NetworkName
   -> Maybe ChainId
-  -> Maybe (Some AccountRef)
+  -> Maybe AccountName
   -> m ()
 uiDeployPreview _ _ _ _ _ _ _ _ _ _ _ _ _ Nothing = text "No valid GAS payer accounts in Wallet."
 uiDeployPreview _ _ _ _ _ _ _ _ _ _ _ _ Nothing _ = text "Please select a Chain."
@@ -1056,13 +1047,13 @@ uiDeployPreview model settings keys accounts signers gasLimit ttl code lastPubli
   let deploySettingsJsonData = fromMaybe mempty $ _deploymentSettingsConfig_data settings
       jsonData0 = fromMaybe mempty $ hush jData
       signing = signers <> (Set.insert sender $ Map.keysSet capabilities)
-      pkCaps = publicKeysForAccounts accounts capabilities
-      signingPairs = getSigningPairs keys accounts signing
+      pkCaps = publicKeysForAccounts chainId accounts capabilities
+      signingPairs = getSigningPairs chainId keys accounts signing
 
   let publicMeta = lastPublicMeta
         { _pmChainId = chainId
         , _pmGasLimit = gasLimit
-        , _pmSender = withSome sender accountRefToName
+        , _pmSender = unAccountName sender
         , _pmTTL = ttl
         }
 
@@ -1095,7 +1086,7 @@ uiDeployPreview model settings keys accounts signers gasLimit ttl code lastPubli
 
       dialogSectionHeading mempty  "Transaction Sender"
       _ <- divClass "group segment" $ mkLabeledClsInput True "Account" $ \_ -> do
-        uiSenderFixed model (constDyn $ pure chainId) $ AccountName $ withSome sender accountRefToName
+        uiSenderFixed model (constDyn $ pure chainId) sender
 
       let accountsToTrack = getAccounts signing
           localReq = case wrappedCmd of
@@ -1139,8 +1130,9 @@ uiDeployPreview model settings keys accounts signers gasLimit ttl code lastPubli
         , text <$> errors
         ]
 
-    getAccounts :: Set (Some AccountRef) -> Map AccountName PublicKey
-    getAccounts = Map.mapKeys (\(Some x) -> AccountName $ accountRefToName x) . Map.restrictKeys accs
-      where
-        accs = flip foldAccounts accounts $ \case
-          a@(r :=> _) -> Map.singleton (Some r) $ accountKey a
+    getAccounts :: Set AccountName -> Map AccountName PublicKey
+    getAccounts = error "getAccounts" -- Map.mapKeys (\(Some x) -> AccountName $ accountRefToName x) . Map.restrictKeys accs
+      --where
+      --  accs = flip foldAccounts' accounts $ \name chain acc -> case _account_status acc of
+      --    AccountStatus_Exists pk _ -> Map.singleton name pk
+      --    _ -> Map.empty

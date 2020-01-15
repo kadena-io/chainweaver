@@ -4,8 +4,9 @@ module Frontend.UI.Widgets.AccountName
 
 import Control.Error (hush)
 import Control.Monad.Fix (MonadFix)
-import Pact.Types.ChainId
 import Data.Foldable (fold)
+import Kadena.SigningApi (mkAccountName)
+import Pact.Types.ChainId
 import Reflex
 import Reflex.Dom
 
@@ -23,14 +24,11 @@ uiAccountNameInput
      , HasNetwork model t
      )
   => model
-  -> Dynamic t (Maybe ChainId)
   -> Maybe AccountName
   -> m (Dynamic t (Maybe AccountName))
-uiAccountNameInput w mChain initval = do
+uiAccountNameInput w initval = do
   let
-    validateAccountName v = checkAccountNameValidity w
-      <*> mChain
-      <*> value v
+    validateAccountName v = checkAccountNameValidity w <*> value v
 
     inputWithFeedback = uiInputWithInlineFeedback
       validateAccountName

@@ -52,8 +52,6 @@ module Frontend.UI.Widgets
   , validatedInputWithButton
   , uiAccountBalance
   , uiAccountBalance'
-  , uiAccountChain
-  , uiAccountNotes
   , uiPublicKeyShrunk
     -- ** Helper widgets
   , imgWithAlt
@@ -83,6 +81,7 @@ import           Control.Applicative
 import           Control.Arrow (first, (&&&))
 import           Control.Lens
 import           Control.Monad
+import qualified Data.Aeson.Text as Aeson
 import           Data.Either (isLeft, rights)
 import           Data.Map.Strict             (Map)
 import qualified Data.Map.Strict as Map
@@ -90,6 +89,7 @@ import           Data.String                 (IsString)
 import           Data.Proxy                  (Proxy(..))
 import           Data.Text                   (Text)
 import qualified Data.Text                   as T
+import qualified Data.Text.Lazy as LT
 import           GHC.Word                    (Word8)
 import           Data.Decimal                (Decimal)
 import qualified Data.Decimal                as D
@@ -107,12 +107,13 @@ import           Common.Wallet
 import           Frontend.Network (HasNetwork(..), NodeInfo, getChains, maxCoinPrecision)
 import           Frontend.Foundation
 import           Frontend.UI.Button
+import           Frontend.Wallet
 import           Frontend.UI.Widgets.Helpers (imgWithAlt, imgWithAltCls, makeClickable,
                                               setFocus, setFocusOn,
                                               setFocusOnSelected, tabPane,
                                               preventScrollWheelAndUpDownArrow,
                                               tabPane')
-import           Frontend.KadenaAddress (textKadenaAddress, KadenaAddress)
+import           Frontend.KadenaAddress (KadenaAddress)
 ------------------------------------------------------------------------------
 
 -- | A styled checkbox.
@@ -595,15 +596,15 @@ validatedInputWithButton uCls check placeholder buttonText = do
       pure update
 
 
-uiAccountBalance' :: HasAccountInfo a => Bool -> a -> Text
-uiAccountBalance' showUnits acc = case _accountInfo_balance i of
-  Nothing -> "Account not present"
-  Just b -> mconcat $ catMaybes
-    [ Just $ tshow $ unAccountBalance b
+uiAccountBalance' :: Bool -> Account -> Text
+uiAccountBalance' showUnits acc = case _account_status acc of
+  AccountStatus_Unknown -> "Unknown"
+  AccountStatus_DoesNotExist -> "Account not present"
+  AccountStatus_Exists d -> mconcat $ catMaybes
+    [ Just $ tshow $ unAccountBalance $ _accountDetails_balance d
     , " KDA" <$ guard showUnits
-    ,  "*" <$ _accountInfo_unfinishedCrossChainTransfer i
+    ,  "*" <$ _vanityAccount_unfinishedCrossChainTransfer (_account_storage acc)
     ]
-  where i = view accountInfo acc
 
 uiAccountBalance :: Bool -> Maybe AccountBalance -> Text
 uiAccountBalance showUnits = \case
@@ -612,12 +613,6 @@ uiAccountBalance showUnits = \case
     [ Just $ tshow $ unAccountBalance b
     , " KDA" <$ guard showUnits
     ]
-
-uiAccountChain :: Account -> Text
-uiAccountChain = _chainId . accountChain
-
-uiAccountNotes :: Account -> Text
-uiAccountNotes = maybe "" unAccountNotes . accountNotes
 
 uiPublicKeyShrunk :: (DomBuilder t m, PostBuild t m) => Dynamic t PublicKey -> m ()
 uiPublicKeyShrunk pk = do
@@ -754,7 +749,7 @@ uiDisplayKadenaAddressWithCopy
   => KadenaAddress
   -> m ()
 uiDisplayKadenaAddressWithCopy address = void $ do
-  let txtAddr = textKadenaAddress address
+  let txtAddr = LT.toStrict $ Aeson.encodeToLazyText address
   -- Kadena Address
   _ <- mkLabeledInputView False "Kadena Address" (\cfg -> uiInputElement $ cfg
         & initialAttributes <>~ (

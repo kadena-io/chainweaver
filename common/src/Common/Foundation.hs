@@ -32,6 +32,7 @@ module Common.Foundation
   , note
   , safeDecodeUtf8
   , someTag
+  , upsert
     -- * Re-exports
   , module Data.Bool
   , module Data.Maybe
@@ -165,3 +166,6 @@ _GKeySet = prism' Pact.GKeySet (\case (Pact.GKeySet ks) -> Just ks; _ -> Nothing
 _PLit :: Prism' Pact.PactValue Pact.Literal
 _PLit = prism' Pact.PLiteral (\case (Pact.PLiteral l) -> Just l; _ -> Nothing)
 
+-- | Upsert a value using the given default
+upsert :: At x => Index x -> IxValue x -> Lens' x (IxValue x)
+upsert ix x = at ix . iso (fromMaybe x) Just
