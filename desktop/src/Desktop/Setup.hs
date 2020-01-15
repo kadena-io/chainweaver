@@ -8,7 +8,7 @@
 {-# LANGUAGE TypeApplications #-}
 
 -- | Wallet setup screens
-module Desktop.Setup (runSetup, form, splashLogo, setupDiv, setupClass) where
+module Desktop.Setup (Password(..), runSetup, form, splashLogo, setupDiv, setupClass) where
 
 import Control.Lens ((<>~), (%~), (??))
 import Control.Error (hush)
@@ -128,7 +128,9 @@ kadenaWalletLogo = divClass "logo" $ do
   elClass "div" "chainweaver" $ text "Chainweaver"
   elClass "div" "by-kadena" $ text "by Kadena"
 
-type SetupWF t m = Workflow t m (WalletScreen, Event t (Crypto.XPrv, Text))
+newtype Password = Password { unPassword :: Text }
+
+type SetupWF t m = Workflow t m (WalletScreen, Event t (Crypto.XPrv, Password))
 
 finishSetupWF :: (Reflex t, Applicative m) => WalletScreen -> a -> m ((WalletScreen, Event t x), a)
 finishSetupWF ws = pure . (,) (ws, never)
@@ -186,7 +188,7 @@ walletSetupRecoverHeader currentScreen = setupDiv "workflow-header" $ do
 
 runSetup
   :: forall t m. (DomBuilder t m, MonadFix m, MonadHold t m, MonadIO m, PerformEvent t m, PostBuild t m, MonadJSM (Performable m), TriggerEvent t m)
-  => m (Event t (Crypto.XPrv, Text))
+  => m (Event t (Crypto.XPrv, Password))
 runSetup = setupDiv "fullscreen" $ mdo
   let dCurrentScreen = fst <$> dwf
 
@@ -427,7 +429,7 @@ stackFaIcon icon = elClass "span" "fa-stack fa-5x" $ do
 precreatePassphraseWarning
   :: (DomBuilder t m, MonadFix m, MonadHold t m, MonadIO m, PerformEvent t m, PostBuild t m, MonadJSM (Performable m), TriggerEvent t m)
   => Event t ()
-  -> (Crypto.XPrv, Text)
+  -> (Crypto.XPrv, Password)
   -> Crypto.MnemonicSentence 12
   -> SetupWF t m
 precreatePassphraseWarning eBack (rootKey, password) mnemonicSentence = Workflow $ mdo
@@ -461,7 +463,7 @@ precreatePassphraseWarning eBack (rootKey, password) mnemonicSentence = Workflow
 
 doneScreen
   :: (DomBuilder t m, PostBuild t m)
-  => (Crypto.XPrv, Text)
+  => (Crypto.XPrv, Password)
   -> SetupWF t m
 doneScreen (rootKey, passwd) = Workflow $ do
   walletSplashWithIcon blank
@@ -479,7 +481,7 @@ doneScreen (rootKey, passwd) = Workflow $ do
 createNewPassphrase
   :: (DomBuilder t m, MonadFix m, MonadHold t m, MonadIO m, PerformEvent t m, PostBuild t m, MonadJSM (Performable m), TriggerEvent t m)
   => Event t ()
-  -> (Crypto.XPrv, Text)
+  -> (Crypto.XPrv, Password)
   -> Crypto.MnemonicSentence 12
   -> SetupWF t m
 createNewPassphrase eBack (rootKey, password) mnemonicSentence = Workflow $ mdo
@@ -509,7 +511,7 @@ createNewPassphrase eBack (rootKey, password) mnemonicSentence = Workflow $ mdo
 confirmPhrase
   :: (DomBuilder t m, MonadFix m, MonadHold t m, MonadIO m, PerformEvent t m, PostBuild t m, MonadJSM (Performable m), TriggerEvent t m)
   => Event t ()
-  -> (Crypto.XPrv, Text)
+  -> (Crypto.XPrv, Password)
   -> Crypto.MnemonicSentence 12
   -- ^ Mnemonic sentence to confirm
   -> SetupWF t m
@@ -539,7 +541,7 @@ confirmPhrase eBack (rootKey, password) mnemonicSentence = Workflow $ mdo
 setPassword
   :: (DomBuilder t m, MonadHold t m, MonadFix m, PerformEvent t m, PostBuild t m, MonadJSM (Performable m), TriggerEvent t m)
   => Dynamic t Crypto.Seed
-  -> m (Event t (Maybe (Crypto.XPrv, Text)))
+  -> m (Event t (Maybe (Crypto.XPrv, Password)))
 setPassword dSeed = do
   let uiPassword' = uiPassword (setupClass "password-wrapper") (setupClass "password")
 
@@ -573,7 +575,7 @@ setPassword dSeed = do
 
   pure $ leftmost
     [ Nothing <$ err
-    , (\s p -> Just (Crypto.generate s (T.encodeUtf8 p), p)) <$> current dSeed <@> pass
+    , (\s p -> Just (Crypto.generate s (T.encodeUtf8 p), Password p)) <$> current dSeed <@> pass
     ]
 
   where

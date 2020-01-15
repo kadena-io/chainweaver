@@ -126,7 +126,7 @@ bipWallet appCfg = do
     upd <- switchHold never <=< dyn $ ffor root $ \case
       (Nothing, _) -> do
         keyAndPass <- runSetup
-        performEvent $ ffor keyAndPass $ \(x, p) -> do
+        performEvent $ ffor keyAndPass $ \(x, Password p) -> do
           setItemStorage localStorage BIPStorage_RootKey x
           removeItemStorage localStorage StoreFrontend_Wallet_Keys
           removeItemStorage localStorage StoreFrontend_Wallet_Accounts
