@@ -377,7 +377,7 @@ buildDeployTabFooterControls mUserTabName includePreviewTab curSelection stepFn 
       shouldBeDisabled tab hasRes = tab == tabToBeDisabled && hasRes
       isDisabled = shouldBeDisabled <$> curSelection <*> hasResult
 
-  back <- uiButtonDyn backConfig $ text "Back"
+  back <- cancelButton backConfig "Back"
   next <- uiButtonDyn
     (def & uiButtonCfg_class .~ "button_type_confirm" & uiButtonCfg_disabled .~ isDisabled)
     $ dynText (stepFn <$> curSelection)
