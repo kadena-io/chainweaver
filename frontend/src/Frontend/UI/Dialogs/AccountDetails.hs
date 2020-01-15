@@ -93,6 +93,7 @@ uiAccountDetailsDetails netname a onClose = Workflow $ do
           notes0 <- fmap (Just . value) $ mkLabeledClsInput False "Notes" $ \cls -> uiInputElement $ def
             & inputElementConfig_initialValue .~ unAccountNotes va
             & initialAttributes . at "class" %~ pure . maybe (renderClass cls) (mappend (" " <> renderClass cls))
+            & initialAttributes <>~ "maxlength" =: "70"
           -- separator
           horizontalDashedSeparator
           pure notes0
