@@ -3,268 +3,66 @@
 {-# LANGUAGE PackageImports #-}
 {-# LANGUAGE PatternGuards #-}
 {-# LANGUAGE LambdaCase #-}
-module Frontend.KadenaAddress
-  ( KadenaAddressError (..)
-  , KadenaAddressPrefix (..)
-  , AccountCreated (..)
-  , KadenaAddress
-    ( _kadenaAddress_accountName
-    , _kadenaAddress_accountCreated
-    , _kadenaAddress_chainId
-    , _kadenaAddress_checksum
-    )
-  , mkKadenaAddress
-  , decodeKadenaAddress
-  , decodeKadenaAddressText
-  , encodeKadenaAddress
-  , textKadenaAddress
-  , bytestringChecksum
-  , mkAddressChecksum
-  , showChecksum
-  , parseKadenaAddressBlob
-  , delimiter
-  , humanReadableDelimiter
-  , isValidKadenaAddress
-  ) where
+module Frontend.KadenaAddress where
 
-import Control.Lens
-import Control.Monad.Except (MonadError (..), liftEither)
-import Control.Monad (guard,unless)
-import Control.Error (note,hush)
-import Data.Functor (void)
-import Data.List (intersperse)
-import qualified Data.Char as C
-import Data.Word (Word8)
-import Data.String (fromString)
-import Data.Bifunctor (first)
-import Text.Printf (printf)
-
+import Control.Monad
+import Data.Aeson
 import Data.ByteString (ByteString)
-import qualified Data.ByteString.Char8 as BS8
-import qualified Data.ByteString as BS
-
+import qualified Data.ByteString.Base16 as B16
+import Data.Maybe
+import Data.Set (Set)
 import Data.Text (Text)
-import qualified Data.Text as T
 import qualified Data.Text.Encoding as TE
-import qualified Data.Text.Encoding.Error as TE
-
-import qualified Data.Attoparsec.ByteString.Char8 as A
-
-import qualified Data.ByteString.Base64 as Base64
-
-import qualified Data.Digest.CRC32 as CRC32
-
 import Pact.Types.ChainId
-import Kadena.SigningApi (AccountName(..), mkAccountName)
+import Kadena.SigningApi (AccountName(..))
 
-{-
-Encoder / Decoder should not be derived automatically as package updates could silently
-change the format and break things. Keep to simple hand-rolled parser & printer that
-satisfies the round-trip property: (print . parse = id), hedgehog has 'tripping' for this.
+newtype AddressPubKey = AddressPubKey { _addressPubKey_bytes :: ByteString }
+  deriving (Eq,Ord,Show)
 
-Final encoding will be Base64 because it needs to be reliably cut'n'paste between
-platforms without risking corruption.
+-- Encode as base-16
+instance ToJSON AddressPubKey where
+  toJSON = toJSON . TE.decodeUtf8 . B16.encode . _addressPubKey_bytes
 
-The address will contain the following fields:
+instance FromJSON AddressPubKey where
+  parseJSON = return . AddressPubKey . fst . B16.decode . TE.encodeUtf8 <=< parseJSON
 
-AccountName: Compliant with the requirements contained in pact. In the case of wallet-only
-accounts that do not exist on the blockchain, the Public Key will be used.
-ChainId: Non-negative integer.
-Checksum: The checksum will be CRC32 of the 'Created Status', 'AccountName/PublicKey', 'ChainId'.
-An invalid checksum will be a parse failure.
+data AddressKeyset = AddressKeyset
+  { _addressKeyset_keys :: Set AddressPubKey
+  , _addressKeyset_pred :: Text
+  } deriving (Eq,Ord,Show)
 
-Some examples of the encoding (delimiter yet to be determined):
+instance ToJSON AddressKeyset where
+  toJSON o = object
+      [ "keys" .= _addressKeyset_keys o
+      , "pred" .= _addressKeyset_pred o
+      ]
 
-Using newlines:
-y
-doug
-1
-71f920fa275127a7b60fa4d4d41432a3
-
-Or some other delimiter:
-doug|1|71f920fa275127a7b60fa4d4d41432a3
-
-The final form includes a human readable component as well as machine readable components:
-
-<account name>|<chain id>|<base64 encoding of address>
-
-The use of an address does not require the human readable component. Only the Base64
-encoded address is validated against the checksum. If the human readable prefix is
-included then it will be checked against the values decoded in the address as an extra
-preventative measure.
--}
-
-data KadenaAddressError
-  = ParseError Text
-  | ChecksumMismatch String String
-  | Base64Error String
-  | InvalidHumanReadablePiece Text
-  | InputNotLatin1 ByteString
-  deriving (Show, Eq)
-
-data KadenaAddressPrefix
-  = KadenaAddressPrefix_Keep
-  | KadenaAddressPrefix_None
-  deriving (Show, Eq)
-
-data AccountCreated
-  = AccountCreated_Yes
-  | AccountCreated_No
-  deriving (Show, Eq)
+instance FromJSON AddressKeyset where
+  parseJSON = withObject "AddressKeyset" $ \o -> AddressKeyset
+    <$> o .: "keys"
+    <*> o .: "pred"
 
 data KadenaAddress = KadenaAddress
-  { _kadenaAddress_accountCreated :: AccountCreated
-    -- ^ Indicates the type of account, vanity or wallet only
-  , _kadenaAddress_accountName :: AccountName
+  { _kadenaAddress_accountName :: AccountName
     -- ^ The account name associated with this address
   , _kadenaAddress_chainId :: ChainId
     -- ^ The chain where this account resides
-  , _kadenaAddress_checksum :: Checksum
-    -- ^ The checksum of the AccountName, ChainId, and NetworkName
+  , _kadenaAddress_keyset :: Maybe AddressKeyset
+    -- ^ Presence or absence of a keyset may be used to determine transfer vs
+    -- transfer-create. If the keyset is present and the account already exists
+    -- you could choose to do either a transfer or a transfer-create.
   }
   deriving (Show, Eq)
 
-type Checksum = CRC32.CRC32
-
-textKadenaAddress :: KadenaAddress -> Text
-textKadenaAddress = TE.decodeUtf8With TE.lenientDecode . encodeKadenaAddress
-
-humanReadableDelimiter :: Word8
-humanReadableDelimiter = fromIntegral $ C.ord '|'
-
-delimiter :: ByteString
-delimiter = "\n"
-
-bsshow :: Show a => a -> ByteString
-bsshow = fromString . show
-
--- Show the checksum value as a hexadecimal string
-showChecksum :: Checksum -> String
-showChecksum = printf "%x" . CRC32.crc32
-
--- Convert the checksum to a bytestring
-bytestringChecksum :: Checksum -> ByteString
-bytestringChecksum = BS8.pack . showChecksum
-
--- Build the checksum for the given information
-mkAddressChecksum :: AccountCreated -> AccountName -> ChainId -> Checksum
-mkAddressChecksum acctype acc cid = CRC32.digest $ acctype0 <> name <> bsshow cid
-  where
-    name = encodeToLatin1 $ unAccountName acc
-    acctype0 = encodeAccountCreated acctype
-
-isValidKadenaAddress :: KadenaAddress -> Bool
-isValidKadenaAddress ka =
-  let checksum = mkAddressChecksum
-        (_kadenaAddress_accountCreated ka)
-        (_kadenaAddress_accountName ka)
-        (_kadenaAddress_chainId ka)
-
-      decoded = decodeKadenaAddress (encodeKadenaAddress ka)
-  in
-    _kadenaAddress_checksum ka == checksum && Right ka == decoded
-
-encodeToLatin1 :: Text -> ByteString
-encodeToLatin1 = BS8.pack . T.unpack
-
-encodeAccountCreated :: AccountCreated -> ByteString
-encodeAccountCreated = \case
-  AccountCreated_No -> "n"
-  AccountCreated_Yes -> "y"
-
-encodeKadenaAddress :: KadenaAddress -> ByteString
-encodeKadenaAddress ka =
-  let
-    cid = encodeToLatin1 $ _kadenaAddress_chainId ka ^. chainId
-    name = encodeToLatin1 $ unAccountName $ _kadenaAddress_accountName ka
-    checksum = bytestringChecksum $ _kadenaAddress_checksum ka
-
-    encoded = Base64.encode $ mconcat $ intersperse delimiter
-      [ encodeAccountCreated $ _kadenaAddress_accountCreated ka
-      , name
-      , cid
-      , checksum
+instance ToJSON KadenaAddress where
+  toJSON o = object $ catMaybes
+      [ Just $ "account" .= _kadenaAddress_accountName o
+      , Just $ "chain" .= _kadenaAddress_chainId o
+      , ("keyset" .=) <$> _kadenaAddress_keyset o
       ]
-  in
-    mconcat $ intersperse (BS.singleton humanReadableDelimiter)
-    [ name
-    , cid
-    , case _kadenaAddress_accountCreated ka of
-        AccountCreated_Yes -> encoded
-        AccountCreated_No -> checksum
-    ]
 
-mkKadenaAddress
-  :: AccountCreated
-  -> ChainId
-  -> AccountName
-  -> KadenaAddress
-mkKadenaAddress acctype cid acc =
-  KadenaAddress acctype acc cid (mkAddressChecksum acctype acc cid)
-
-decodeKadenaAddressText :: Text -> Either KadenaAddressError KadenaAddress
-decodeKadenaAddressText = decodeKadenaAddress . TE.encodeUtf8
-
-decodeKadenaAddress
-  :: ByteString
-  -> Either KadenaAddressError KadenaAddress
-decodeKadenaAddress inp = do
-  unless (BS8.all C.isLatin1 inp) $ throwError (InputNotLatin1 inp)
-  let
-    hr = attemptHumanReadable
-    mname = hr ^? _Right . _1
-    mcid = hr ^? _Right . _2
-    pkg0 = either id (^. _3) hr
-
-    uncreatedAccount = do
-      n <- hush . mkAccountName . TE.decodeLatin1 =<< mname
-      c <- (\x -> if T.all C.isDigit x then Just (ChainId x) else Nothing) . TE.decodeLatin1 =<< mcid
-      let cksum = mkAddressChecksum (AccountCreated_No) n c
-      guard $ bytestringChecksum cksum == pkg0
-      pure $ KadenaAddress (AccountCreated_No) n c cksum
-
-  case uncreatedAccount of
-    Just acc -> pure acc
-    Nothing -> do
-      blob <- liftEither $ first Base64Error $ Base64.decode pkg0
-      (acctype, name, cid, checksum) <- first (ParseError . T.pack) $ A.parseOnly parseKadenaAddressBlob blob
-
-      let checkpiece og nm mbs
-            | Just bs <- mbs, bs /= encodeToLatin1 og = throwError (InvalidHumanReadablePiece nm)
-            | otherwise = pure ()
-
-      -- If we have the human readable components, do an extra check that everything matches
-      _ <- checkpiece (unAccountName name) "AccountName" mname
-      _ <- checkpiece (cid ^. chainId) "Chain Id" mcid
-
-      pure (KadenaAddress acctype name cid checksum)
-  where
-    attemptHumanReadable = case BS.split humanReadableDelimiter inp of
-      [name, cid, pkg] -> Right (name, cid, pkg)
-      _ -> Left inp
-
-parseKadenaAddressBlob :: A.Parser (AccountCreated, AccountName, ChainId, Checksum)
-parseKadenaAddressBlob = do
-  acctype <- parseAccountCreated
-  acc <- parseAccountName
-  cid <- parseChainId
-  let chk = mkAddressChecksum acctype acc cid
-  void $ parseChecksum chk
-  pure (acctype, acc, cid, chk)
-  where
-    mkParser :: A.Parser a -> (a -> Either String c) -> A.Parser c
-    mkParser p c = (c <$> p) >>= either fail pure
-
-    latin1ToEOL = A.manyTill (A.satisfy C.isLatin1) A.endOfLine
-
-    parseAccountName = mkParser latin1ToEOL (first T.unpack . mkAccountName . T.pack)
-    parseChecksum expected = mkParser (A.string $ bytestringChecksum expected) pure
-
-    parseAccountCreated = mkParser (A.letter_ascii <* A.endOfLine) $ \case
-      'y' -> Right (AccountCreated_Yes)
-      'n' -> Right (AccountCreated_No)
-      _ -> Left "Unknown Account Type"
-
-    parseChainId = mkParser
-      (A.manyTill A.digit A.endOfLine)
-      (note "Invalid ChainId" . pure . ChainId . T.pack)
+instance FromJSON KadenaAddress where
+  parseJSON = withObject "KadenaAddress" $ \o -> KadenaAddress
+    <$> o .: "account"
+    <*> o .: "chain"
+    <*> o .:? "keyset"
