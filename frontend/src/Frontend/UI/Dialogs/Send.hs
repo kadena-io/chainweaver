@@ -74,7 +74,7 @@ import Frontend.UI.Dialogs.DeployConfirmation (submitTransactionWithFeedback)
 import Frontend.UI.Modal
 import Frontend.UI.TabBar
 import Frontend.UI.Widgets
-import Frontend.UI.Widgets.Helpers (dialogSectionHeading)
+import Frontend.UI.Widgets.Helpers (inputIsDirty, dialogSectionHeading)
 import Frontend.Wallet
 
 -- | A modal for handling sending coin
@@ -294,7 +294,7 @@ sendConfig model fromAccount = Workflow $ do
 
           decoded <- fmap snd $ mkLabeledInput True "Kadena Address" (uiInputWithInlineFeedback
             (fmap decodeKadenaAddressText . value)
-            (fmap (not . T.null) . value)
+            inputIsDirty
             prettyKadenaAddrErrors
             Nothing
             uiInputElement

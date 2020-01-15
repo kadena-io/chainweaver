@@ -73,7 +73,7 @@ module Frontend.UI.Widgets
   , noAutofillAttrs
   , addNoAutofillAttrs
   , horizontalDashedSeparator
-  , inlineInputFeedbackWrapper
+  , dimensionalInputFeedbackWrapper
   , uiSidebarIcon
   ) where
 
@@ -291,9 +291,9 @@ uiCorrectingInputElement parse inputSanitize blurSanitize render cfg = mdo
 
 uiInputWithInlineFeedback
   :: ( DomBuilder t m
-     , PostBuild t m
      , MonadHold t m
-     , MonadFix m 
+     , MonadFix m
+     , PostBuild t m
      )
   => (a -> Dynamic t (Either e b))
   -> (a -> Dynamic t Bool)
@@ -302,20 +302,19 @@ uiInputWithInlineFeedback
   -> (InputElementConfig EventResult t (DomBuilderSpace m) -> m a)
   -> InputElementConfig EventResult t (DomBuilderSpace m)
   -> m (a, Dynamic t (Either e b))
-uiInputWithInlineFeedback parse isEmpty renderFeedback mUnits mkInp cfg =
-  inlineInputFeedbackWrapper mUnits $ do
+uiInputWithInlineFeedback parse isDirty renderFeedback mUnits mkInp cfg =
+  dimensionalInputFeedbackWrapper mUnits $ do
     inp <- mkInp cfg
 
-    let parsed = parse inp
+    let dParsed = parse inp
+    dIsDirty <- holdUniqDyn $ isDirty inp
 
-    dFieldDirty <- holdUniqDyn $ isEmpty inp
-
-    dyn_ $ ffor2 parsed dFieldDirty $ curry $ \case
-      (Left e, True) ->  elClass "span" "dimensional-input__feedback" $ text $ renderFeedback e
+    dyn_ $ ffor2 dParsed dIsDirty $ curry $ \case
+      (Left e, True) -> elClass "span" "dimensional-input__feedback" $ text $ renderFeedback e
       _ -> blank
 
-    pure (inp, parsed)
-  
+    pure (inp, dParsed)
+
 -- | Decimal input to the given precision. Returns the element, the value, and
 -- the user input events
 uiNonnegativeRealWithPrecisionInputElement
@@ -730,8 +729,8 @@ paginationWidget cls currentPage totalPages = elKlass "div" (cls <> "pagination"
 horizontalDashedSeparator :: DomBuilder t m => m ()
 horizontalDashedSeparator = divClass "horizontal-dashed-separator" blank
 
-inlineInputFeedbackWrapper ::  DomBuilder t m => Maybe Text -> m a -> m a
-inlineInputFeedbackWrapper units inp = divClass "dimensional-input-wrapper" $ do
+dimensionalInputFeedbackWrapper :: DomBuilder t m => Maybe Text -> m a -> m a
+dimensionalInputFeedbackWrapper units inp = divClass "dimensional-input-wrapper" $ do
   traverse_ (divClass "dimensional-input-wrapper__units" . text) units
   inp
 
@@ -776,7 +775,7 @@ uiGasPriceInputField
        , Dynamic t (Maybe GasPrice)
        , Event t GasPrice
        )
-uiGasPriceInputField conf = inlineInputFeedbackWrapper (Just "KDA") $
+uiGasPriceInputField conf = dimensionalInputFeedbackWrapper (Just "KDA") $
  uiNonnegativeRealWithPrecisionInputElement maxCoinPrecision (GasPrice . ParsedDecimal) $ conf
   & initialAttributes %~ addToClassAttr "input-units"
   & inputElementConfig_elementConfig . elementConfig_eventSpec %~ preventScrollWheelAndUpDownArrow @m

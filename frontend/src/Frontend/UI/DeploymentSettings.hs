@@ -653,7 +653,7 @@ uiMetaData m mTTL mGasLimit = do
       mkGasLimitInput
         :: InputElementConfig EventResult t (DomBuilderSpace m)
         -> m (Event t Integer)
-      mkGasLimitInput conf = inlineInputFeedbackWrapper (Just "Units") $ fmap snd $ uiIntInputElement (Just 0) (Just chainwebGasLimitMaximum) $ conf
+      mkGasLimitInput conf = dimensionalInputFeedbackWrapper (Just "Units") $ fmap snd $ uiIntInputElement (Just 0) (Just chainwebGasLimitMaximum) $ conf
         & inputElementConfig_initialValue .~ showGasLimit initGasLimit
         & inputElementConfig_setValue .~ fmap showGasLimit pbGasLimit
         & inputElementConfig_elementConfig . elementConfig_eventSpec %~ preventScrollWheelAndUpDownArrow @m
@@ -685,7 +685,7 @@ uiMetaData m mTTL mGasLimit = do
                 & inputElementConfig_initialValue .~ showTtl initTTL
           sliderEl <- uiSlider "" (text $ prettyTTL minTTL) (text "1 day") $ conf
             & inputElementConfig_setValue .~ _inputElement_input inputEl
-          (inputEl, inputEv) <- inlineInputFeedbackWrapper (Just "Seconds") $ uiIntInputElement (Just minTTL) (Just secondsInDay) $ conf
+          (inputEl, inputEv) <- dimensionalInputFeedbackWrapper (Just "Seconds") $ uiIntInputElement (Just minTTL) (Just secondsInDay) $ conf
             & inputElementConfig_setValue .~ _inputElement_input sliderEl
           pure $ leftmost
             [ TTLSeconds . ParsedInteger <$> inputEv

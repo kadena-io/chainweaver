@@ -4,20 +4,20 @@ module Frontend.UI.Widgets.AccountName
 
 import Control.Error (hush)
 import Control.Monad.Fix (MonadFix)
-import qualified Data.Text as Text
 import Pact.Types.ChainId
 import Data.Foldable (fold)
 import Reflex
 import Reflex.Dom
 
 import Frontend.UI.Widgets (mkLabeledInput, uiInputElement, uiInputWithInlineFeedback)
+import Frontend.UI.Widgets.Helpers (inputIsDirty)
 import Frontend.Network (HasNetwork)
 import Frontend.Wallet (AccountName(..), checkAccountNameValidity, HasWallet)
 
 uiAccountNameInput
   :: ( DomBuilder t m
-     , PostBuild t m
      , MonadHold t m
+     , PostBuild t m
      , MonadFix m
      , HasWallet model key t
      , HasNetwork model t
@@ -34,7 +34,7 @@ uiAccountNameInput w mChain initval = do
 
     inputWithFeedback = uiInputWithInlineFeedback
       validateAccountName
-      (fmap (not . Text.null) . value)
+      inputIsDirty
       id
       Nothing
       uiInputElement
