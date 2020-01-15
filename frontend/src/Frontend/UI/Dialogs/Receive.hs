@@ -74,8 +74,7 @@ uiReceiveFromLegacyAccount
 uiReceiveFromLegacyAccount model = do
   mAccountName <- uiAccountNameInput model (pure Nothing) Nothing
 
-  onKeyPair <- divClass "account-details__private-key" $
-    _inputElement_input <$> mkLabeledInput True "Private Key" uiInputElement def
+  onKeyPair <-  _inputElement_input <$> mkLabeledInput True "Private Key" uiInputElement def
 
   (deriveErr, okPair) <- fmap fanEither . performEvent $ deriveKeyPair <$> onKeyPair
 

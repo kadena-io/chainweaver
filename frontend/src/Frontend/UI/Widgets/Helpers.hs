@@ -16,6 +16,7 @@ module Frontend.UI.Widgets.Helpers
   , setFocusOnSelected
   , preventScrollWheelAndUpDownArrow
   , dialogSectionHeading
+  , inputIsDirty
   ) where
 
 ------------------------------------------------------------------------------
@@ -24,6 +25,7 @@ import           Control.Monad
 import           Data.Proxy                  (Proxy (..))
 import           Data.Map.Strict             (Map)
 import           Data.Text                   (Text)
+import qualified Data.Text                   as Text
 import           Language.Javascript.JSaddle (PToJSVal, call, eval, js0, obj,
                                               pToJSVal)
 import qualified Web.KeyCode                 as Keys
@@ -33,6 +35,8 @@ import           Reflex.Dom.Core
 import           Frontend.Foundation
 ------------------------------------------------------------------------------
 
+inputIsDirty :: Reflex t => InputElement er d t -> Dynamic t Bool
+inputIsDirty = fmap (not . Text.null) . value
 
 imgWithAlt :: DomBuilder t m => Text -> Text -> m a -> m a
 imgWithAlt = imgWithAltCls mempty
