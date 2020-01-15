@@ -24,7 +24,7 @@ import Control.Concurrent
 import Control.Error.Util (hush)
 import Control.Lens hiding (failover)
 import Control.Monad (join, when, void, (<=<))
-import Control.Monad.Error (throwError)
+import Control.Monad.Except (throwError)
 import Control.Monad.Logger (LogLevel(..))
 import Control.Monad.Trans.Except
 import Control.Monad.Trans.Maybe
