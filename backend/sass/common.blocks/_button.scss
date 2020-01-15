@@ -211,4 +211,9 @@
   img {
     margin-right: 0.4rem;
   }
+  &.button_type_confirm {
+    img {
+      filter: brightness(0) invert(1);
+    }
+  }
 }
