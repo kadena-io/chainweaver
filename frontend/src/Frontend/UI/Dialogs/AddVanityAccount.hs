@@ -113,7 +113,10 @@ uiAddVanityAccountSettings ideL onInflightChange mInflightAcc mChainId initialNo
 
     notesInput initCfg = divClass "vanity-account-create__notes" $ mkLabeledClsInput True "Notes"
       $ \cls -> uiInputElement $ initCfg
-          & initialAttributes <>~ "class" =: (renderClass cls)
+          & initialAttributes <>~ (
+            "class" =: (renderClass cls) <>
+            "maxlength" =: "70"
+          )
           & inputElementConfig_initialValue .~ fromMaybe initialNotes (fmap (getNotes . snd) mInflightAcc)
 
   let includePreviewTab = False

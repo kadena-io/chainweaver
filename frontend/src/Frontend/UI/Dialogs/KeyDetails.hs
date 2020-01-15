@@ -83,6 +83,7 @@ uiKeyDetailsDetails keyIndex key onClose onCloseExternal = Workflow $ do
       notes <- fmap value $ mkLabeledClsInput False "Notes" $ \cls -> uiInputElement $ def
         & inputElementConfig_initialValue .~ unAccountNotes (_key_notes key)
         & initialAttributes . at "class" %~ pure . maybe (renderClass cls) (mappend (" " <> renderClass cls))
+        & initialAttributes <>~ "maxlength" =: "70"
 
       void $ accordionItemWithClick False mempty (accordionHeaderBtn "Advanced") $ withSecretKey $ \pk -> do
         txt <- fmap value $ mkLabeledClsInput False "Data to sign (Base64Url Unpadded)" $ \cls -> uiTextAreaElement $ def
