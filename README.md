@@ -89,7 +89,7 @@ Where `deploydir` is the same as above.
 In the `deploydir` directory, create a file at `config/common/networks`, it must contain a list of networks. With each network consisting of at least one host. A network can either be some chainweb deployment or also some pact -s server. chainweaver will auto detect what it actually is:
 
 ```
-    testnet: us1.chainweb.com us2.chainweb.com eu1.chainweb.com eu2.chainweb.com ap1.chainweb.com ap2.chainweb.com
+    testnet: us1.testnet.chainweb.com us2.testnet.chainweb.com eu1.testnet.chainweb.com eu2.testnet.chainweb.com ap1.testnet.chainweb.com ap2.testnet.chainweb.com
     pact: pact01.kadena.io pact02.kadena.io
 ```
 
