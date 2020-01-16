@@ -52,7 +52,6 @@ import           Data.Aeson          (FromJSON (..), Object, ToJSON (..),
 import           Data.Aeson.Types    (typeMismatch)
 import qualified Data.HashMap.Strict as H
 import qualified Data.IntMap         as IntMap
-import qualified Data.IntMap.Merge.Lazy as IntMap
 import           Data.Map            (Map)
 import qualified Data.Map            as Map
 import           Data.Set            (Set)

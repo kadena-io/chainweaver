@@ -13,7 +13,6 @@ module Frontend.UI.Dialogs.KeyDetails
 import           Control.Error
 import           Control.Lens
 import           Data.Functor (void)
-import           Data.Text (Text)
 import qualified Data.Text.Encoding as T
 import qualified Data.IntMap as IntMap
 import           Pact.Types.Util             (decodeBase64UrlUnpadded)
@@ -26,7 +25,6 @@ import           Frontend.Foundation
 import           Frontend.UI.Modal
 import           Frontend.UI.Widgets
 import           Frontend.Wallet
-import           Frontend.UI.Widgets.Helpers (dialogSectionHeading)
 ------------------------------------------------------------------------------
 
 uiKeyDetails
@@ -38,24 +36,8 @@ uiKeyDetails
   -> Key key
   -> Event t ()
   -> m (mConf, Event t ())
-uiKeyDetails keyIndex key onCloseExternal = mdo
-  onClose <- modalHeader $ dynText title
-  dwf <- workflow (uiKeyDetailsDetails keyIndex key onClose onCloseExternal)
-  let (title, dEvent) = splitDynPure dwf
-  return ( mempty
-         , leftmost [switch $ current dEvent, onClose]
-         )
-
-uiKeyDetailsDetails
-  :: ( HasCrypto key m
-     , MonadWidget t m
-     )
-  => IntMap.Key
-  -> Key key
-  -> Event t ()
-  -> Event t ()
-  -> Workflow t m (Text, Event t ())
-uiKeyDetailsDetails keyIndex key onClose onCloseExternal = Workflow $ do
+uiKeyDetails _keyIndex key _onCloseExternal = mdo
+  onClose <- modalHeader $ text "Key Details"
   let displayText lbl v cls =
         let
           attrFn cfg = uiInputElement $ cfg
@@ -96,36 +78,8 @@ uiKeyDetailsDetails keyIndex key onClose onCloseExternal = Workflow $ do
           Just sig' -> uiDetailsCopyButton $ current sig'
 
   modalFooter $ do
-    onRemove <- cancelButton (def & uiButtonCfg_class <>~ " account-details__remove-account-btn") "Remove Key"
     onDone <- confirmButton def "Done"
 
     let done = leftmost [onClose, onDone]
 
-    pure ( ("Key Details", done)
-         , uiDeleteConfirmation keyIndex onClose <$ onRemove
-         )
-
-uiDeleteConfirmation
-  :: forall key t m
-  . ( MonadWidget t m
-    )
-  => IntMap.Key
-  -> Event t ()
-  -> Workflow t m (Text, Event t ())
-uiDeleteConfirmation key onClose = Workflow $ do
-  modalMain $ do
-    divClass "segment modal__filler" $ do
-      dialogSectionHeading mempty "Warning"
-
-      divClass "group" $
-        text "You are about to remove this key from view in your wallet"
-      divClass "group" $
-        text "The only way to recover any balance in this key will be by restoring the complete wallet with your recovery phrase"
-      divClass "group" $
-       text "Ensure that you have a backup of wallet data before removing."
-
-  modalFooter $ do
-    onConfirm <- confirmButton (def & uiButtonCfg_class .~ "account-delete__confirm") "Permanently Remove Key"
-    pure ( ("Remove Confirmation", leftmost [onClose, onConfirm])
-         , never
-         )
+    pure (mempty, done)

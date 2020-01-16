@@ -43,8 +43,6 @@ module Frontend.Wallet
   , checkAccountNameValidity
   , snocIntMap
   , findNextKey
-  , findFirstVanityAccount
-  , findAccountByName
   , getSigningPairs
   , module Common.Wallet
   ) where
@@ -55,26 +53,25 @@ import Control.Monad.Except (runExcept)
 import Control.Monad.Fix
 import Data.Aeson
 import Data.Either (rights)
-import Data.Monoid (Alt (..))
 import Data.IntMap (IntMap)
-import Data.Maybe (fromMaybe)
 import Data.Map (Map)
+import Data.Maybe (fromMaybe)
 import Data.Set (Set)
 import Data.Text (Text)
 import GHC.Generics (Generic)
 import Kadena.SigningApi (AccountName(..), mkAccountName)
 import Pact.Types.ChainId
+import Pact.Types.Pretty
 import Reflex
-import Reflex.Dom ((=:))
+import Reflex.Dom.Core ((=:))
+
+import qualified Data.IntMap as IntMap
 import qualified Data.Map as Map
 import qualified Data.Map.Monoidal as MonoidalMap
 import qualified Data.Set as Set
-import qualified Data.IntMap as IntMap
 import qualified Pact.Server.ApiV1Client as Api
-import qualified Pact.Types.Command as Pact
 import qualified Pact.Types.ChainMeta as Pact
-import Pact.Types.Pretty
-import Reflex.Dom.Core ((=:))
+import qualified Pact.Types.Command as Pact
 
 import Common.Network (NetworkName)
 import Common.Wallet
@@ -83,7 +80,6 @@ import Common.Orphans ()
 import Frontend.Crypto.Class
 import Frontend.Crypto.Ed25519
 import Frontend.Foundation
-import Frontend.KadenaAddress
 import Frontend.Storage
 import Frontend.Network
 import Frontend.Store
@@ -157,28 +153,6 @@ getSigningPairs chain allKeys allAccounts signing = filterKeyPairs (Set.unions w
 -- TODO replace this at the use sites with proper multisig
 accountKeys :: Account -> Set.Set PublicKey
 accountKeys a = a ^. account_status . _AccountStatus_Exists . accountDetails_keyset . addressKeyset_keys
-
--- | Find the first vanity account in the wallet which satisfies the predicate
-findFirstVanityAccount :: (VanityAccount -> Bool) -> accounts -> Maybe (AccountName, ChainId, VanityAccount)
-findFirstVanityAccount predicate as = error "findFirstVanityAccount" -- do
---  (n, cm) <- Map.lookupMin $ _accounts_vanity as
---  (c, va) <- Map.lookupMin $ Map.filter predicate cm
---  pure (n, c, va)
-
-findAccountByName
-  :: Reflex t
-  => Wallet key t
-  -> NetworkName
-  -> ChainId
-  -> AccountName
-  -> Dynamic t (Maybe (AccountName, ChainId))
-findAccountByName w netname cid n = error "findAccountByName" -- ffor (_wallet_accounts w) $ \accStorage ->
---  Map.lookup netname (unAccountStorage accStorage) >>=
---    getAlt . foldAccounts g
---  where
---    g acc@(aref :=> _) = if accountToName acc == n && accountChain acc == cid
---      then Alt $ Just $ Some aref
---      else Alt Nothing
 
 snocIntMap :: a -> IntMap a -> IntMap a
 snocIntMap a m = IntMap.insert (nextKey m) a m

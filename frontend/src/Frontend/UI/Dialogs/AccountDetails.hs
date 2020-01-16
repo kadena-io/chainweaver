@@ -9,21 +9,13 @@ module Frontend.UI.Dialogs.AccountDetails
   , uiAccountDetails
   ) where
 
-import Control.Error
 import Control.Lens
-import Control.Monad (void)
-import Data.Some (Some)
 import Data.Text (Text)
-import Pact.Types.Util (decodeBase64UrlUnpadded)
 import Reflex
 import Reflex.Dom.Core hiding (Key)
 
-import qualified Data.IntMap as IntMap
-import qualified Data.Text as T
-import qualified Data.Text.Encoding as T
 import qualified Pact.Types.ChainId as Pact
 
-import Frontend.Crypto.Class
 import Frontend.Crypto.Ed25519 (keyToText)
 import Frontend.Foundation
 import Frontend.KadenaAddress

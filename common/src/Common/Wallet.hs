@@ -85,8 +85,6 @@ import Data.Default
 import Data.IntMap (IntMap)
 import Data.Map (Map)
 import Data.Set (Set)
-import Data.GADT.Compare.TH
-import Data.GADT.Show.TH
 import Data.Text (Text)
 import Data.Traversable (for)
 import GHC.Generics (Generic)
@@ -214,11 +212,11 @@ data AddressKeyset = AddressKeyset
   } deriving (Eq,Ord,Show)
 
 mkAddressKeyset :: Set PublicKey -> Text -> Maybe AddressKeyset
-mkAddressKeyset keys pred
+mkAddressKeyset keys predicate
   | Set.null keys = Nothing
   | otherwise = Just $ AddressKeyset
     { _addressKeyset_keys = keys
-    , _addressKeyset_pred = pred
+    , _addressKeyset_pred = predicate
     }
 
 addressKeysetObject :: AddressKeyset -> Aeson.Object
@@ -406,14 +404,13 @@ instance FromJSON Accounts where
       { _accounts_vanity = vanity
       }
 
--- TODO rename to AccountChains
 data AccountInfo a = AccountInfo
   { _accountInfo_notes :: Maybe AccountNotes
   , _accountInfo_chains :: Map ChainId a
   } deriving (Functor, Eq, Show)
 
 instance Semigroup (AccountInfo a) where
-  AccountInfo notes chains <> AccountInfo notes' chains' = AccountInfo
+  AccountInfo notes chains <> AccountInfo _notes chains' = AccountInfo
     { _accountInfo_notes = notes
     , _accountInfo_chains = Map.union chains chains'
     }

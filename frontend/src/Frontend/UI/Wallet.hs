@@ -34,12 +34,10 @@ import           Control.Applicative         (liftA2)
 import           Control.Lens
 import           Control.Monad               (when, (<=<), join)
 import qualified Data.IntMap                 as IntMap
-import           Data.Map (Map)
 import qualified Data.Map                    as Map
 import           Data.Set (Set)
 import qualified Data.Set                    as Set
 import           Data.Text                   (Text)
-import qualified Pact.Types.ChainId          as Pact
 import           Reflex
 import           Reflex.Dom hiding (Key)
 ------------------------------------------------------------------------------
@@ -58,7 +56,6 @@ import           Frontend.UI.Dialogs.Send (uiSendModal)
 import           Frontend.UI.Modal
 import           Frontend.Network
 ------------------------------------------------------------------------------
-import Frontend.KadenaAddress
 
 -- | Constraints on the model config we have for implementing this widget.
 type HasUiWalletModelCfg model mConf key m t =
@@ -120,9 +117,6 @@ uiAccountsTable
   ( MonadWidget t m, HasUiWalletModelCfg model mConf key m t)
   => model -> m mConf
 uiAccountsTable = divClass "wallet__keys-list" . uiAccountItems
-
-flattenKeys :: (Ord k1, Ord k2) => Map k1 (Map k2 a) -> Map (k1, k2) a
-flattenKeys = Map.foldMapWithKey $ \k1 -> Map.foldMapWithKey $ \k2 -> Map.singleton (k1, k2)
 
 uiAccountItems
   :: forall t m model mConf key.
@@ -303,7 +297,7 @@ uiKeyItems model = do
         ]
 
     el "tbody" $ do
-      events <- listWithKey keyMap (uiKeyItem model)
+      events <- listWithKey keyMap uiKeyItem
       dyn_ $ ffor keyMap $ \keys ->
         when (null keys) $
           elClass "tr" "wallet__table-row" $ elAttr "td" ("colspan" =: "5" <> "class" =: "wallet__table-cell") $
@@ -313,9 +307,9 @@ uiKeyItems model = do
   let modalEvents = switch $ leftmost . Map.elems <$> current events
 
   pure $ mempty
-    & modalCfg_setModal .~ attachWith keyModal (current $ model ^. network_selectedNetwork) modalEvents
+    & modalCfg_setModal .~ fmap keyModal modalEvents
   where
-    keyModal n = Just . \case
+    keyModal = Just . \case
       KeyDialog_Details i key -> uiKeyDetails i key
 
 -- | Dialogs which can be launched from keys.
@@ -325,12 +319,11 @@ data KeyDialog key
 ------------------------------------------------------------------------------
 -- | Display a key as list item together with its name.
 uiKeyItem
-  :: forall model key t m. MonadWidget t m
-  => model
-  -> IntMap.Key
+  :: forall key t m. MonadWidget t m
+  => IntMap.Key
   -> Dynamic t (Key key)
   -> m (Event t (KeyDialog key))
-uiKeyItem model keyIndex key = trKey $ do
+uiKeyItem keyIndex key = trKey $ do
   td $ uiPublicKeyShrunk $ _keyPair_publicKey . _key_pair <$> key
   td $ buttons $ do
     onDetails <- detailsButton (cfg & uiButtonCfg_class <>~ "wallet__table-button--hamburger" <> "wallet__table-button-key")

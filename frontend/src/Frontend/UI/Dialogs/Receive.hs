@@ -18,18 +18,15 @@ import Control.Error (hush, headMay)
 import Data.Bifunctor (first)
 import Data.Either (isLeft,rights)
 import Data.Text (Text)
-import qualified Data.Set as Set
 import qualified Data.Text as T
 import qualified Data.Map as Map
-import qualified Data.Aeson as Aeson
-import qualified Data.HashMap.Lazy as HM
 
 import Reflex
 import Reflex.Dom
 
 import Kadena.SigningApi (DappCap (..))
 import Pact.Types.Capability (SigCapability (..))
-import Pact.Types.Term (QualifiedName (..), KeySet (..), Name (..), BareName (..))
+import Pact.Types.Term (QualifiedName (..))
 import Pact.Types.ChainMeta (PublicMeta (..), TTLSeconds)
 import Pact.Types.PactValue (PactValue (..))
 import Pact.Types.Exp (Literal (LString, LDecimal))
@@ -40,7 +37,6 @@ import qualified Pact.Types.Scheme as PactScheme
 import Language.Javascript.JSaddle.Types (MonadJSM)
 
 import Frontend.Crypto.Class (PactKey (..), HasCrypto, cryptoGenPubKeyFromPrivate)
-import Common.Wallet (parsePublicKey,toPactPublicKey)
 
 import Frontend.Foundation
 import Frontend.KadenaAddress

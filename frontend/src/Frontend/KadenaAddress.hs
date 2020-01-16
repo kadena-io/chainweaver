@@ -5,20 +5,10 @@
 {-# LANGUAGE LambdaCase #-}
 module Frontend.KadenaAddress where
 
-import Control.Monad
 import Data.Aeson
-import Data.ByteString (ByteString)
-import qualified Data.ByteString.Base16 as B16
-import qualified Data.HashMap.Lazy as HM
 import Data.Maybe
-import Data.Set (Set)
-import qualified Data.Set as Set
-import Data.Text (Text)
-import qualified Data.Text.Encoding as TE
 import Pact.Types.ChainId
-import qualified Pact.Types.Term as Pact
 import Kadena.SigningApi (AccountName(..))
-import Data.Default (def)
 
 import Common.Wallet
 

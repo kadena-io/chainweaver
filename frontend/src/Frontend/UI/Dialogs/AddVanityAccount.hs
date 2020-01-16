@@ -8,54 +8,40 @@ module Frontend.UI.Dialogs.AddVanityAccount
   , uiCreateAccountDialog
   ) where
 
+import Data.Aeson (toJSON)
 import           Control.Lens                           ((^.),(<>~), (<&>))
 import           Control.Error                          (hush)
 import           Control.Monad.Trans.Class              (lift)
 import           Control.Monad.Trans.Maybe              (MaybeT (..), runMaybeT)
-import           Data.Functor.Identity                  (Identity(..))
-import           Data.Maybe                             (isNothing, fromMaybe)
+import           Data.Maybe                             (isNothing)
 import           Data.Either                            (isLeft)
-import           Data.Set                               (Set)
 import           Data.Text                              (Text)
-import           Data.Aeson                             (Object, Value (Array, String))
-import qualified Data.Aeson as Aeson
-import qualified Data.HashMap.Strict                    as HM
+import qualified Data.HashMap.Lazy as HM
 import qualified Data.IntMap as IntMap
 import qualified Data.Set as Set
 import qualified Data.Text as T
-import qualified Data.Vector as V
 
 import Kadena.SigningApi
-import Pact.Types.PactValue
-import Pact.Types.Exp
-import Data.Some (Some(Some))
-import Data.These (These (..))
 
 import           Reflex
-import           Reflex.Dom.Contrib.CssClass            (renderClass)
 import           Reflex.Dom.Core
 
 import           Reflex.Network.Extended
 
-import Frontend.KadenaAddress
 import           Frontend.UI.DeploymentSettings
-import           Frontend.UI.Dialogs.DeployConfirmation (Status (..), TransactionSubmitFeedback (..), CanSubmitTransaction, submitTransactionWithFeedback)
+import           Frontend.UI.Dialogs.DeployConfirmation (CanSubmitTransaction, submitTransactionWithFeedback)
 import           Frontend.UI.Modal.Impl
 import           Frontend.UI.Widgets
 import           Frontend.UI.Widgets.Helpers (dialogSectionHeading)
-import           Frontend.UI.Button
 import           Frontend.UI.Widgets.AccountName (uiAccountNameInput)
-import           Frontend.UI.Widgets.Helpers (dialogSectionHeading)
 
 import           Frontend.Crypto.Class
-import           Frontend.Crypto.Ed25519                (keyToText)
 import           Frontend.JsonData
 import           Frontend.Network
 import           Frontend.Wallet
 import           Frontend.Log
 import Reflex.Extended
 import Frontend.UI.JsonData (uiKeysetKeys, predDropdown)
-import qualified Pact.Types.Term as Pact
 
 -- Allow the user to create a 'vanity' account, which is an account with a custom name
 -- that lives on the chain. Requires GAS to create.
@@ -77,7 +63,6 @@ mkPactCode acc = "(coin.create-account \"" <> unAccountName acc <> "\" (read-key
 uiAddAccountButton
   :: forall t m key mConf
      . ( MonadWidget t m, Monoid mConf
-       , HasCrypto key (Performable m)
        , HasModalCfg mConf (ModalImpl m key t) t
        )
   => ModalIde m key t
@@ -87,9 +72,8 @@ uiAddAccountButton m = do
   pure $ mempty & modalCfg_setModal .~ (Just (uiAddAccountDialog m) <$ eOpenAddAccount)
 
 uiAddAccountDialog
-  :: ( MonadWidget t m, Monoid mConf, Flattenable mConf t
-     , HasWalletCfg mConf key t, HasJsonDataCfg mConf t, HasNetworkCfg mConf t
-     , HasCrypto key (Performable m)
+  :: ( MonadWidget t m, Monoid mConf
+     , HasWalletCfg mConf key t
      )
   => ModalIde m key t
   -> Event t ()
@@ -101,8 +85,7 @@ uiAddAccountDialog model _onCloseExternal = mdo
       uiAccountNameInput model Nothing
   add <- modalFooter $ do
     confirmButton def "Add Account"
-  let net = model ^. network_selectedNetwork
-      val = runMaybeT $ do
+  let val = runMaybeT $ do
         net <- lift $ current $ model ^. network_selectedNetwork
         n <- MaybeT $ current name
         pure (net, n)
@@ -122,7 +105,7 @@ uiCreateAccountDialog
      , HasJsonDataCfg mConf t, HasNetworkCfg mConf t, HasWalletCfg mConf key t
      )
   => model -> AccountName -> ChainId -> Event t () -> m (mConf, Event t ())
-uiCreateAccountDialog model name chain onCloseExternal = do
+uiCreateAccountDialog model name chain _onCloseExternal = do
   rec
     onClose <- modalHeader $ dynText title
     (title, (conf, closes)) <- fmap (fmap splitDynPure . splitDynPure) $ workflow $ createAccountSplash model name chain
@@ -153,16 +136,16 @@ createAccountSplash model name chain = Workflow $ do
     notGasPayer <- confirmButton cfg "I am not the Gas Payer"
     gasPayer <- confirmButton cfg "I am the Gas Payer"
     let next = leftmost
-          [ tagMaybe (fmap (createAccountNotGasPayer model) <$> current keyset) notGasPayer
+          [ tagMaybe (fmap createAccountNotGasPayer <$> current keyset) notGasPayer
           , tagMaybe (fmap (createAccountConfig model name chain) <$> current keyset) gasPayer
           ]
     pure (cancel, next)
   return (("Create Account", (mempty, cancel)), next)
 
 createAccountNotGasPayer
-  :: (Monoid mConf, MonadWidget t m, HasNetwork model t, HasWallet model key t)
-  => model -> AddressKeyset -> Workflow t m (Text, (mConf, Event t ()))
-createAccountNotGasPayer model keyset = Workflow $ do
+  :: (Monoid mConf, MonadWidget t m)
+  => AddressKeyset -> Workflow t m (Text, (mConf, Event t ()))
+createAccountNotGasPayer keyset = Workflow $ do
   modalMain $ do
     text "Kadena address goes here"
     divClass "group" $ text $ T.pack $ show keyset
@@ -180,8 +163,8 @@ defineKeyset model = do
     chooseKey <- uiKeysetKeys selectedKeys allKeys
   -- TODO external keys
   -- TODO validate this
-  pred <- holdDyn "" =<< predDropdown never
-  pure $ mkAddressKeyset <$> selectedKeys <*> pred
+  predicate <- holdDyn "" =<< predDropdown never
+  pure $ mkAddressKeyset <$> selectedKeys <*> predicate
 
 
 createAccountConfig
@@ -204,7 +187,7 @@ createAccountConfig ideL name chainId keyset = Workflow $ do
   rec
     (curSelection, eNewAccount, _) <- buildDeployTabs customConfigTab includePreviewTab controls
 
-    (conf, result, selChain, gasPayer) <- elClass "div" "modal__main transaction_details" $ do
+    (conf, result, gasPayer) <- elClass "div" "modal__main transaction_details" $ do
       (cfg, cChainId, mSender, ttl, gasLimit, _) <- tabPane mempty curSelection DeploymentSettingsView_Cfg $
         -- Is passing around 'Maybe x' everywhere really a good way of doing this ?
         uiCfg
@@ -213,7 +196,7 @@ createAccountConfig ideL name chainId keyset = Workflow $ do
           (predefinedChainIdDisplayed chainId ideL)
           Nothing
           (Just defaultTransactionGasLimit)
-          [] -- (Identity uiAccSection)
+          []
           Nothing
           $ uiSenderDropdown def
 
@@ -226,7 +209,7 @@ createAccountConfig ideL name chainId keyset = Workflow $ do
           let ddCfg = def & dropdownConfig_attributes .~ pure ("class" =: "labeled-input__input")
           uiSenderDropdown ddCfg ideL cChainId onSenderUpdate
 
-      let payload = addressKeysetObject keyset
+      let payload = HM.singleton tempkeyset $ toJSON keyset
           code = mkPactCode name
           deployConfig = DeploymentSettingsConfig
             { _deploymentSettingsConfig_chainId = userChainIdSelect
@@ -248,7 +231,6 @@ createAccountConfig ideL name chainId keyset = Workflow $ do
       pure
         ( cfg & networkCfg_setSender .~ fmapMaybe (fmap unAccountName) (updated mSender)
         , buildDeploymentSettingsResult ideL mSender (fmap fst <$> mGasPayer) (pure mempty) cChainId capabilities ttl gasLimit (pure code) deployConfig
-        , cChainId
         , mGasPayer
         )
 
@@ -278,8 +260,6 @@ createAccountConfig ideL name chainId keyset = Workflow $ do
 createAccountSubmit
   :: ( Monoid mConf
      , CanSubmitTransaction t m
-     , HasNetwork model t
-     , HasWalletCfg mConf key t
      , HasLogger model t
      )
   => model
@@ -290,34 +270,8 @@ createAccountSubmit
 createAccountSubmit model chainId result nodeInfos = Workflow $ do
   let cmd = _deploymentSettingsResult_command result
 
-  pb <- getPostBuild
-
-  txnSubFeedback <- elClass "div" "modal__main transaction_details" $
+  _ <- elClass "div" "modal__main transaction_details" $
     submitTransactionWithFeedback model cmd chainId nodeInfos
-
-  let txnListenStatus = _transactionSubmitFeedback_listenStatus txnSubFeedback
-
-  -- Fire off a /local request and add the account if that is successful. This
-  -- is optimistic but reduces the likelyhood we create the account _without_
-  -- saving it, which is what would happen before if the user closed the dialog
-  -- without using the "Done" button. We don't check that the sender has enough
-  -- gas here, so it is possible to add non-existant accounts to the wallet.
-  -- That seems better than the alternative (spending gas to create an account
-  -- and not having access to it).
-  let req = NetworkRequest
-        { _networkRequest_cmd = cmd
-        , _networkRequest_chainRef = ChainRef Nothing chainId
-        , _networkRequest_endpoint = Endpoint_Local
-        }
-
-  resp <- performLocalRead (model ^. logger) (model ^. network) $ [req] <$ pb
-
-  let localOk = fforMaybe resp $ \case
-        [(_, That (_, PLiteral (LString "Write succeeded")))] -> Just ()
-        [(_, These _ (_, PLiteral (LString "Write succeeded")))] -> Just ()
-        _ -> Nothing
-
-      onTxnFailed = ffilter (== Status_Failed) $ updated txnListenStatus
 
   done <- modalFooter $ confirmButton def "Done"
 

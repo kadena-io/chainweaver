@@ -431,7 +431,7 @@ uiDeploymentSettings m settings = mdo
             mNetworkId = (hush . mkNetworkName . nodeVersion =<<) <$> currentNode
 
             accounts = liftA2 (Map.findWithDefault mempty) (m ^. network_selectedNetwork) (unAccountData <$> m ^. wallet_accounts)
-            mHeadAccount = fmap (\(n, c, _) -> n) . findFirstVanityAccount (const True) <$> accounts
+            mHeadAccount = fmap fst . Map.lookupMin <$> accounts
             mHeadChain = (headMay =<<) . fmap getChains <$> currentNode
 
             aSender = (<|>) <$> mSender <*> mHeadAccount
@@ -735,15 +735,10 @@ uiMetaData m mTTL mGasLimit = do
 
 -- | Set the sender to a fixed value
 uiSenderFixed
-  :: ( DomBuilder t m
-     , HasWallet model key t
-     , HasNetwork model t
-     )
-  => model
-  -> Dynamic t (Maybe ChainId)
-  -> AccountName
+  :: DomBuilder t m
+  => AccountName
   -> m (Dynamic t (Maybe (AccountName, Account)))
-uiSenderFixed model chainId sender = do
+uiSenderFixed sender = do
   _ <- uiInputElement $ def
     & initialAttributes %~ Map.insert "disabled" ""
     & inputElementConfig_initialValue .~ unAccountName sender
@@ -1019,7 +1014,6 @@ defaultGASCapability = DappCap
 uiDeployPreview
   :: ( MonadWidget t m
      , HasNetwork model t
-     , HasWallet model key t
      , HasLogger model t
      , HasCrypto key (Performable m)
      )
@@ -1086,7 +1080,7 @@ uiDeployPreview model settings keys accounts signers gasLimit ttl code lastPubli
 
       dialogSectionHeading mempty  "Transaction Sender"
       _ <- divClass "group segment" $ mkLabeledClsInput True "Account" $ \_ -> do
-        uiSenderFixed model (constDyn $ pure chainId) sender
+        uiSenderFixed sender
 
       let accountsToTrack = getAccounts signing
           localReq = case wrappedCmd of

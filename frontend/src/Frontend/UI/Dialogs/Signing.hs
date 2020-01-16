@@ -55,8 +55,6 @@ uiSigning
 uiSigning appCfg ideL signingRequest onCloseExternal = do
   onClose <- modalHeader $ text "Signing Request"
 
-  let dChainId = constDyn $ _signingRequest_chainId signingRequest
-
   (mConf, result, _) <- uiDeploymentSettings ideL $ DeploymentSettingsConfig
     { _deploymentSettingsConfig_chainId = case _signingRequest_chainId signingRequest of
         Just c -> predefinedChainIdDisplayed c
@@ -64,7 +62,7 @@ uiSigning appCfg ideL signingRequest onCloseExternal = do
     , _deploymentSettingsConfig_userTab = Nothing
     , _deploymentSettingsConfig_code = pure $ _signingRequest_code signingRequest
     , _deploymentSettingsConfig_sender = case _signingRequest_sender signingRequest of
-        Just sender -> \_ _ _ -> uiSenderFixed ideL dChainId sender
+        Just sender -> \_ _ _ -> uiSenderFixed sender
         Nothing -> uiSenderDropdown def
     , _deploymentSettingsConfig_data = _signingRequest_data signingRequest
     , _deploymentSettingsConfig_nonce = _signingRequest_nonce signingRequest

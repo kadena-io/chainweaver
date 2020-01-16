@@ -106,12 +106,10 @@ upgradeFromV0 v0 =
         accountNameText = V0.unAccountName . V0._account_name $ a
         oldPubKey = V0._keyPair_publicKey . V0._account_key $ a
         pubKeyText = T.decodeUtf8 . Base16.encode . V0.unPublicKey $ oldPubKey
-        newPubKey = upgradePublicKey oldPubKey
         chainIdText = V0.unChainId . V0._account_chainId $ a
         newChainId = ChainId chainIdText
         accountNotesText = V0.unAccountNotes . V0._account_notes $ a
         newAccountNotes = mkAccountNotes accountNotesText
-        newAccountBalance = V0._account_balance a
         newUnfinishedXChain = V0._account_unfinishedCrossChainTransfer a
 
         accounts = if accountNameText /= pubKeyText
@@ -125,7 +123,6 @@ upgradeFromV0 v0 =
 
     upgradePublicKey = PublicKey . V0.unPublicKey
 
-    upgradeAccountNotes a = mkAccountNotes (V0.unAccountNotes . V0._account_notes $ a)
     --This is a bit unfortunate
     fakeKeyPair = KeyPair
       { _keyPair_publicKey = fromJust . textToKey . T.replicate 64 $ "0"

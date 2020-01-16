@@ -5,8 +5,6 @@ module Frontend.UI.Widgets.AccountName
 import Control.Error (hush)
 import Control.Monad.Fix (MonadFix)
 import Data.Foldable (fold)
-import Kadena.SigningApi (mkAccountName)
-import Pact.Types.ChainId
 import Reflex
 import Reflex.Dom
 

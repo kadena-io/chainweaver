@@ -168,4 +168,4 @@ _PLit = prism' Pact.PLiteral (\case (Pact.PLiteral l) -> Just l; _ -> Nothing)
 
 -- | Upsert a value using the given default
 upsert :: At x => Index x -> IxValue x -> Lens' x (IxValue x)
-upsert ix x = at ix . iso (fromMaybe x) Just
+upsert idx x = at idx . iso (fromMaybe x) Just
