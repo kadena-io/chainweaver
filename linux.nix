@@ -33,6 +33,8 @@
      icon= linuxAppIcon;
   };
   ova = import ./ova.nix { inherit pkgs nixosExe linuxAppName nixosDesktopItem homeManagerModule; };
+  inherit (ova) chainweaverVM chainweaverVMSystem;
+  
   addGObjectIntrospection = hpackage: pkgs.haskell.lib.overrideCabal hpackage (current: {
     libraryPkgconfigDepends =
       current.libraryPkgconfigDepends ++ [ pkgs.gobject-introspection ];
