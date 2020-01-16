@@ -318,7 +318,6 @@ controlBarRight appCfg m = do
 
           logoutCfg = mempty & modalCfg_setModal .~ logoutConfirmation
 
-
         pure $ deployCfg <> loadCfg <> gistCfg <> logoutCfg
   where
     maySignoutBtn = do

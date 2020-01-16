@@ -35,7 +35,6 @@ import           Frontend.OAuth
 import           Common.OAuth
 import           Frontend.Foundation            hiding (Arg)
 import           Frontend.UI.Modal
-import           Frontend.Ide (HasLogoutCfg, logoutCfg_confirmed)
 import           Frontend.UI.Widgets
 import           Frontend.UI.Widgets.Helpers (imgWithAltCls, dialogSectionHeading)
 ------------------------------------------------------------------------------
@@ -79,19 +78,16 @@ uiLogoutConfirmation _onClose = do
     pure (cfg, leftmost [onClose, onConfirm, onCancel])
 
 uiIdeLogoutConfirmation
-  :: forall t m mConf
-  . ( MonadWidget t m
-    , Monoid mConf
-    , HasLogoutCfg mConf t
-    )
+  :: MonadWidget t m
   => Event t ()
-  -> m (mConf, Event t ())
+  -> m (Event t (), Event t ())
 uiIdeLogoutConfirmation _onClose = do
   onClose <- modalHeader $ text "Logout?"
   modalMain $ do
-    onCancel <- cancelButton def "Cancel"
-    onConfirm <- confirmButton def "Yes, logout"
-
-    pure ( mempty & logoutCfg_confirmed .~ onConfirm
-         , leftmost [onClose, onCancel, onConfirm]
-         )
+    divClass "segment modal__filler logout-confirm__modal-filler" $
+      divClass "modal__filler-horizontal-center-box" $ do
+        onCancel <- cancelButton btnCfg "Cancel"
+        onConfirm <- confirmButton btnCfg "Yes, logout"
+        pure (onConfirm, leftmost [onClose, onCancel])
+  where
+    btnCfg = def & uiButtonCfg_class <>~ "logout-confirm-modal__button"

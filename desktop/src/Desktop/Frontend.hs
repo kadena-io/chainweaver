@@ -18,9 +18,9 @@
 
 module Desktop.Frontend (desktop, bipWallet, bipCryptoGenPair, runFileStorageT) where
 
-import Control.Lens ((?~), view)
+import Control.Lens ((?~))
 import Control.Monad ((<=<), guard, void)
-import Control.Monad.Fix (MonadFix,mfix)
+import Control.Monad.Fix (MonadFix)
 import Control.Monad.IO.Class
 import Data.Aeson (ToJSON(..), FromJSON(..))
 import Data.Aeson.GADT.TH
@@ -61,9 +61,8 @@ import qualified Frontend.ReplGhcjs
 import Frontend.Store (StoreFrontend(..))
 import Frontend.Storage (runBrowserStorageT)
 
-import Frontend.UI.Modal.Impl (ModalIdeCfg, showModal, modalCfg_setModal)
+import Frontend.UI.Modal.Impl (showModalBrutal)
 import Frontend.UI.Dialogs.LogoutConfirmation (uiIdeLogoutConfirmation)
-import Frontend.Ide (makeIde, logoutCfg, logoutCfg_confirmed)
 
 import Desktop.Orphans ()
 import Desktop.Setup
@@ -143,7 +142,8 @@ bipWallet appCfg = do
           Just pass -> mapRoutedT (runBIPCryptoT xprv pass) $ do
             (onLogout, sidebarLogoutLink) <- mkSidebarLogoutLink
 
-            onLogoutConfirm <- view (logoutCfg . logoutCfg_confirmed) <$> handleLogoutConfirm appCfg onLogout
+            onLogoutConfirm <- fmap switchDyn $ widgetHold (pure never)
+              $ showModalBrutal "logout-confirm-modal" uiIdeLogoutConfirmation <$ onLogout
 
             Frontend.ReplGhcjs.app sidebarLogoutLink appCfg
 
@@ -151,23 +151,6 @@ bipWallet appCfg = do
             pure (never, Nothing <$ onLogoutConfirm)
         pure $ (Nothing, Nothing) <$ restore
   pure ()
-  where
-    handleLogoutConfirm
-      :: ( MonadWidget t m
-         , HasStorage m, HasStorage (Performable m)
-         , RouteToUrl (R FrontendRoute) m
-         , SetRoute t (R FrontendRoute) m
-         , HasConfigs m
-         )
-      => AppCfg Crypto.XPrv t (RoutedT t (R FrontendRoute) (BIPCryptoT m))
-      -> Event t ()
-      -> RoutedT t
-         (R FrontendRoute)
-         (BIPCryptoT m)
-         (ModalIdeCfg (RoutedT t (R FrontendRoute) (BIPCryptoT m)) Crypto.XPrv t)
-    handleLogoutConfirm appCfg0 onLogout = mfix $ \cfg -> do
-      ideL <- makeIde appCfg0 (cfg & modalCfg_setModal .~ ((Just uiIdeLogoutConfirmation) <$ onLogout))
-      showModal ideL
 
 -- | Returns an event which fires at the given check interval when the user has
 -- been inactive for at least the given timeout.
