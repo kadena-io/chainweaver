@@ -30,7 +30,7 @@
      name = linuxAppName;
      desktopName = appName;
      exec = "${nixosExe}/bin/${linuxAppName}";
-     icon= linuxAppIcon;
+     icon = linuxAppIcon;
   };
   ova = import ./ova.nix { inherit pkgs nixosExe linuxAppName nixosDesktopItem homeManagerModule; };
   inherit (ova) chainweaverVM chainweaverVMSystem;
