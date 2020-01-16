@@ -87,7 +87,6 @@ moduleDetails m (selectedRef, selected) = do
           onBack <- backButton
           pure (onHome, onBack)
 
-          -- (,) <$> homeButton "heading__left-double-button" <*> backButton
         (hb,) <$> openButton mempty
 
       moduleTitle
