@@ -74,10 +74,20 @@ moduleDetails
   -> (ModuleRef, ModuleDef (Term Name))
   -> m mConf
 moduleDetails m (selectedRef, selected) = do
+    currentStackSize <- fmap length $ sample $ current $ m ^. moduleExplorer_moduleStack
+
     headerCfg <- elClass "div" "segment" $ do
       ((onHome, onBack), onLoad) <- elClass "h2" "heading heading_type_h2" $ do
-        hb <- el "div" $
-          (,) <$> homeButton "heading__left-double-button" <*> backButton
+        hb <- el "div" $ do
+          onHome <- if currentStackSize <= 1 then
+              pure never
+            else
+              homeButton "heading__left-double-button"
+
+          onBack <- backButton
+          pure (onHome, onBack)
+
+          -- (,) <$> homeButton "heading__left-double-button" <*> backButton
         (hb,) <$> openButton mempty
 
       moduleTitle
