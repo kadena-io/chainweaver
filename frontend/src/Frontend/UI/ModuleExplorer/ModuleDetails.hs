@@ -22,6 +22,7 @@
 module Frontend.UI.ModuleExplorer.ModuleDetails where
 
 ------------------------------------------------------------------------------
+import           Control.Monad                         ((<=<))
 import           Control.Lens
 import           Data.Bool                             (bool)
 import           Data.Maybe
@@ -76,8 +77,16 @@ moduleDetails
 moduleDetails m (selectedRef, selected) = do
     headerCfg <- elClass "div" "segment" $ do
       ((onHome, onBack), onLoad) <- elClass "h2" "heading heading_type_h2" $ do
-        hb <- el "div" $
-          (,) <$> homeButton "heading__left-double-button" <*> backButton
+        hb <- el "div" $ do
+          onHome <- switchHold never <=< dyn $ ffor (m ^. moduleExplorer_moduleStack) $ \ms ->
+            if length ms <= 1 then
+              pure never
+            else
+              homeButton "heading__left-double-button"
+
+          onBack <- backButton
+          pure (onHome, onBack)
+
         (hb,) <$> openButton mempty
 
       moduleTitle
