@@ -22,6 +22,7 @@
 module Frontend.UI.ModuleExplorer.ModuleDetails where
 
 ------------------------------------------------------------------------------
+import           Control.Monad                         ((<=<))
 import           Control.Lens
 import           Data.Bool                             (bool)
 import           Data.Maybe
@@ -74,12 +75,11 @@ moduleDetails
   -> (ModuleRef, ModuleDef (Term Name))
   -> m mConf
 moduleDetails m (selectedRef, selected) = do
-    currentStackSize <- fmap length $ sample $ current $ m ^. moduleExplorer_moduleStack
-
     headerCfg <- elClass "div" "segment" $ do
       ((onHome, onBack), onLoad) <- elClass "h2" "heading heading_type_h2" $ do
         hb <- el "div" $ do
-          onHome <- if currentStackSize <= 1 then
+          onHome <- switchHold never <=< dyn $ ffor (m ^. moduleExplorer_moduleStack) $ \ms ->
+            if length ms <= 1 then
               pure never
             else
               homeButton "heading__left-double-button"
