@@ -14,7 +14,6 @@
 {-# LANGUAGE TupleSections #-}
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE TypeFamilies #-}
-{-# LANGUAGE DerivingVia #-}
 
 -- | Ide, IdeCfg: Model and ModelConfig for the chainweaver application.
 --
@@ -79,6 +78,7 @@ data EnvSelection
   | EnvSelection_Msgs -- ^ Compiler errors and other messages to be shown.
   | EnvSelection_ModuleExplorer -- ^ The module explorer
   deriving (Eq, Ord, Show, Enum, Bounded)
+
 
 -- | Configuration for sub-modules.
 --
