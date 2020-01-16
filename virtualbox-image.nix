@@ -2,8 +2,8 @@
 
 # This is copied from nixpkgs just with the following changes:
 # - an added port forward
-# - removed usbehci because even the windows vbox installer doesn't install everything that is necessary
-#   for USB > 1 support.
+# - removed usbehci
+# - added bidirectional clipboard
 with lib;
 
 let
@@ -79,7 +79,8 @@ in {
             --audiocontroller ac97 --audio alsa --audioout on \
             --rtcuseutc on \
             --usb on --mouse usbtablet \
-            --natpf1 "signingapi,tcp,,9467,,9467"
+            --natpf1 "signingapi,tcp,,9467,,9467" \
+            --clipboard bidirectional
           VBoxManage storagectl "$vmName" --name SATA --add sata --portcount 4 --bootable on --hostiocache on
           VBoxManage storageattach "$vmName" --storagectl SATA --port 0 --device 0 --type hdd \
             --medium disk.vmdk
