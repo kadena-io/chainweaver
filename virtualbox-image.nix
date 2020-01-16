@@ -1,6 +1,9 @@
 { config, lib, pkgs, ... }:
 
-# This is copied from nixpkgs just with an added port forward
+# This is copied from nixpkgs just with the following changes:
+# - an added port forward
+# - removed usbehci because even the windows vbox installer doesn't install everything that is necessary
+#   for USB > 1 support.
 with lib;
 
 let
@@ -75,8 +78,8 @@ in {
             --nictype1 virtio --nic1 nat \
             --audiocontroller ac97 --audio alsa --audioout on \
             --rtcuseutc on \
-            --usb on --usbehci on --mouse usbtablet \
-            --natpf1 "app,tcp,,9467,,9467"
+            --usb on --mouse usbtablet \
+            --natpf1 "signingapi,tcp,,9467,,9467"
           VBoxManage storagectl "$vmName" --name SATA --add sata --portcount 4 --bootable on --hostiocache on
           VBoxManage storageattach "$vmName" --storagectl SATA --port 0 --device 0 --type hdd \
             --medium disk.vmdk

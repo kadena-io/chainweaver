@@ -17,8 +17,9 @@ let
   macApp = (import ./mac.nix) {
     inherit obApp pkgs appName sass;
   };
+  homeManagerModule = obelisk.reflex-platform.hackGet ./deps/home-manager + /nixos;
   linuxApp = (import ./linux.nix) {
-    inherit obApp pkgs appName sass;
+    inherit obApp pkgs appName sass homeManagerModule;
   };
 in obApp // rec {
   inherit sass;

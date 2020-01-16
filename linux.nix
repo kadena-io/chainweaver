@@ -2,6 +2,7 @@
 , pkgs
 , appName
 , sass
+, homeManagerModule
 , linuxAppName ? "kadena-chainweaver"
 , linuxPackageVersion ? "0.1.0-1"
 , linuxAppIcon ? ./linux/static/icons/pact-document.png
@@ -25,7 +26,13 @@
       ln -s "${sass}/sass.css" "$out/bin/sass.css"
     '';
   });
-  ova = import ./ova.nix { inherit pkgs nixosExe; };
+  nixosDesktopItem = pkgs.makeDesktopItem {
+     name = linuxAppName;
+     desktopName = appName;
+     exec = "${nixosExe}/bin/${linuxAppName}";
+     icon= linuxAppIcon;
+  };
+  ova = import ./ova.nix { inherit pkgs nixosExe linuxAppName nixosDesktopItem homeManagerModule; };
   addGObjectIntrospection = hpackage: pkgs.haskell.lib.overrideCabal hpackage (current: {
     libraryPkgconfigDepends =
       current.libraryPkgconfigDepends ++ [ pkgs.gobject-introspection ];
