@@ -125,17 +125,6 @@ input[type=number] {
   }
 }
 
-.dimensional-input-wrapper {
-  display: flex;
-  position: relative;
-  align-items: center;
-  width: 100%;
-
-  input {
-    padding-left: 90px;
-  }
-}
-
 .dimensional-input-wrapper__units {
   pointer-events: none;
   position: absolute;
@@ -143,8 +132,21 @@ input[type=number] {
   color: $tertiary-color;
 }
 
-.real-input__rounded {
+.dimensional-input-wrapper {
+  display: flex;
+  position: relative;
+  align-items: center;
+  width: 100%;
+
+  .dimensional-input-wrapper__units + input {
+    padding-left: 90px;
+  }
+}
+
+.dimensional-input__feedback {
   position: absolute;
   right: 10px;
   color: $tertiary-color;
+  background: white;
+  padding-left: 0.5rem;
 }

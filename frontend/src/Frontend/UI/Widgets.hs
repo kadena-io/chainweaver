@@ -16,6 +16,8 @@ module Frontend.UI.Widgets
     module Frontend.UI.Button
   -- ** Single Purpose Widgets
   , uiGasPriceInputField
+  , uiDetailsCopyButton
+  , uiDisplayKadenaAddressWithCopy
     -- * Values for _deploymentSettingsConfig_chainId:
   , predefinedChainIdSelect
   , predefinedChainIdDisplayed
@@ -23,6 +25,7 @@ module Frontend.UI.Widgets
   , userChainIdSelectWithPreselect
   , uiChainSelection
   -- ** Other widgets
+  , uiInputWithInlineFeedback
   , uiSegment
   , uiGroup
   , uiGroupHeader
@@ -70,7 +73,7 @@ module Frontend.UI.Widgets
   , noAutofillAttrs
   , addNoAutofillAttrs
   , horizontalDashedSeparator
-  , dimensionalInputWrapper
+  , dimensionalInputFeedbackWrapper
   , uiSidebarIcon
   ) where
 
@@ -109,6 +112,7 @@ import           Frontend.UI.Widgets.Helpers (imgWithAlt, imgWithAltCls, makeCli
                                               setFocusOnSelected, tabPane,
                                               preventScrollWheelAndUpDownArrow,
                                               tabPane')
+import           Frontend.KadenaAddress (textKadenaAddress, KadenaAddress)
 ------------------------------------------------------------------------------
 
 -- | A styled checkbox.
@@ -285,6 +289,32 @@ uiCorrectingInputElement parse inputSanitize blurSanitize render cfg = mdo
 
   pure (ie, (fmap . fmap) fst $ inputSanitization val, inp')
 
+uiInputWithInlineFeedback
+  :: ( DomBuilder t m
+     , MonadHold t m
+     , MonadFix m
+     , PostBuild t m
+     )
+  => (a -> Dynamic t (Either e b))
+  -> (a -> Dynamic t Bool)
+  -> (e -> Text)
+  -> Maybe Text
+  -> (InputElementConfig EventResult t (DomBuilderSpace m) -> m a)
+  -> InputElementConfig EventResult t (DomBuilderSpace m)
+  -> m (a, Dynamic t (Either e b))
+uiInputWithInlineFeedback parse isDirty renderFeedback mUnits mkInp cfg =
+  dimensionalInputFeedbackWrapper mUnits $ do
+    inp <- mkInp cfg
+
+    let dParsed = parse inp
+    dIsDirty <- holdUniqDyn $ isDirty inp
+
+    dyn_ $ ffor2 dParsed dIsDirty $ curry $ \case
+      (Left e, True) -> elClass "span" "dimensional-input__feedback" $ text $ renderFeedback e
+      _ -> blank
+
+    pure (inp, dParsed)
+
 -- | Decimal input to the given precision. Returns the element, the value, and
 -- the user input events
 uiNonnegativeRealWithPrecisionInputElement
@@ -299,7 +329,8 @@ uiNonnegativeRealWithPrecisionInputElement prec fromDecimal cfg = do
       & initialAttributes %~ addInputElementCls . addNoAutofillAttrs
         . (<> ("type" =: "number" <> "step" =: stepSize <> "min" =: stepSize))
     widgetHold_ blank $ ffor (fmap snd input) $ traverse_ $
-      elClass "span" "real-input__rounded" . text
+      elClass "span" "dimensional-input__feedback" . text
+
   pure (ie, (fmap . fmap) fromDecimal val, fmap (fromDecimal . fst) input)
 
   where
@@ -698,10 +729,40 @@ paginationWidget cls currentPage totalPages = elKlass "div" (cls <> "pagination"
 horizontalDashedSeparator :: DomBuilder t m => m ()
 horizontalDashedSeparator = divClass "horizontal-dashed-separator" blank
 
-dimensionalInputWrapper :: DomBuilder t m => Text -> m a -> m a
-dimensionalInputWrapper units inp = divClass "dimensional-input-wrapper" $ do
-  divClass "dimensional-input-wrapper__units" $ text units
+dimensionalInputFeedbackWrapper :: DomBuilder t m => Maybe Text -> m a -> m a
+dimensionalInputFeedbackWrapper units inp = divClass "dimensional-input-wrapper" $ do
+  traverse_ (divClass "dimensional-input-wrapper__units" . text) units
   inp
+
+uiDetailsCopyButton
+  :: (DomBuilder t m, MonadFix m, MonadHold t m, MonadJSM (Performable m), PerformEvent t m, PostBuild t m)
+  => Behavior t Text -> m ()
+uiDetailsCopyButton txt = do
+  let cfg = def
+        & uiButtonCfg_class .~ constDyn "button_type_confirm"
+        & uiButtonCfg_title .~ constDyn (Just "Copy")
+  divClass "details__copy-btn-wrapper" $ copyButton cfg False txt
+
+uiDisplayKadenaAddressWithCopy
+  :: ( MonadJSM (Performable m)
+     , DomBuilder t m
+     , MonadHold t m
+     , MonadFix m
+     , PostBuild t m
+     , PerformEvent t m
+     )
+  => KadenaAddress
+  -> m ()
+uiDisplayKadenaAddressWithCopy address = void $ do
+  let txtAddr = textKadenaAddress address
+  -- Kadena Address
+  _ <- mkLabeledInputView False "Kadena Address" (\cfg -> uiInputElement $ cfg
+        & initialAttributes <>~ (
+          "disabled" =: "true" <>
+          "class" =: (" " <> "account-details__kadena-address")
+        )
+      ) $ pure txtAddr
+  uiDetailsCopyButton $ pure txtAddr
 
 uiGasPriceInputField
   :: forall m t.
@@ -714,7 +775,7 @@ uiGasPriceInputField
        , Dynamic t (Maybe GasPrice)
        , Event t GasPrice
        )
-uiGasPriceInputField conf = dimensionalInputWrapper "KDA" $
+uiGasPriceInputField conf = dimensionalInputFeedbackWrapper (Just "KDA") $
  uiNonnegativeRealWithPrecisionInputElement maxCoinPrecision (GasPrice . ParsedDecimal) $ conf
   & initialAttributes %~ addToClassAttr "input-units"
   & inputElementConfig_elementConfig . elementConfig_eventSpec %~ preventScrollWheelAndUpDownArrow @m

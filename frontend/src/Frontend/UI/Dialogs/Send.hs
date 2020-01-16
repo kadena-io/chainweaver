@@ -19,14 +19,15 @@ module Frontend.UI.Dialogs.Send
   ( uiSendModal
   ) where
 
-import Control.Monad.Trans.Maybe
 import Control.Applicative (liftA2, (<|>))
 import Control.Concurrent
 import Control.Error.Util (hush)
 import Control.Lens hiding (failover)
 import Control.Monad (join, when, void, (<=<))
+import Control.Monad.Except (throwError)
 import Control.Monad.Logger (LogLevel(..))
 import Control.Monad.Trans.Except
+import Control.Monad.Trans.Maybe
 import Data.Bifunctor (first)
 import Data.Decimal (Decimal)
 import Data.Dependent.Sum ((==>))
@@ -73,7 +74,7 @@ import Frontend.UI.Dialogs.DeployConfirmation (submitTransactionWithFeedback)
 import Frontend.UI.Modal
 import Frontend.UI.TabBar
 import Frontend.UI.Widgets
-import Frontend.UI.Widgets.Helpers (dialogSectionHeading)
+import Frontend.UI.Widgets.Helpers (inputIsDirty, dialogSectionHeading)
 import Frontend.Wallet
 
 -- | A modal for handling sending coin
@@ -277,29 +278,67 @@ sendConfig model fromAccount = Workflow $ do
         pure $ previewTransfer model fromAccount fromGasPayer toAccount mCrossChain amount
   pure ((conf, close <> cancel), nextScreen)
   where
+    prettyKadenaAddrErrors e = case e of
+      ParseError _ -> "Address format invalid"
+      ChecksumMismatch _ _ -> "Checksum invalid"
+      Base64Error _ -> "Not valid Base64"
+      InvalidHumanReadablePiece _ -> "Prefix invalid"
+      InputNotLatin1 _ -> "Input not Latin1"
+
     mainSection currentTab = elClass "div" "modal__main" $ do
       (conf, recipient) <- tabPane mempty currentTab SendModalTab_Configuration $ do
         dialogSectionHeading mempty  "Destination"
         divClass "group" $ transactionDisplayNetwork model
+
         dialogSectionHeading mempty  "Recipient"
         recipient <- divClass "group" $ do
-          kad <- mkLabeledInput True "Kadena Address" uiInputElement def
-          let decoded = decodeKadenaAddressText <$> value kad
+
+          let displayImmediateFeedback e feedbackMsg showMsg = widgetHold_ blank $ ffor e $ \x ->
+                when (showMsg x) $ mkLabeledView True mempty $ text feedbackMsg
+
+              insufficientFundsMsg = "Sender has insufficient funds."
+              cannotBeReceiverMsg = "Sender cannot be the receiver of a transfer"
+
+          decoded <- fmap snd $ mkLabeledInput True "Kadena Address" (uiInputWithInlineFeedback
+            (fmap decodeKadenaAddressText . value)
+            inputIsDirty
+            prettyKadenaAddrErrors
+            Nothing
+            uiInputElement
+            )
+            def
+
+          displayImmediateFeedback (updated decoded) cannotBeReceiverMsg
+            $ either (const False) (== accountToKadenaAddress fromAccount)
+
           (_, amount, _) <- mkLabeledInput True "Amount" uiGasPriceInputField def
             -- We're only interested in the decimal of the gas price
             <&> over (_2 . mapped . mapped) (\(GasPrice (ParsedDecimal d)) -> d)
 
+          displayImmediateFeedback (updated amount) insufficientFundsMsg $ \ma ->
+            case (ma, unAccountBalance <$> accountBalance fromAccount) of
+              (Nothing, _) -> False
+              (Just a, Just senderBal) -> a > senderBal
+
           pure $ runExceptT $ do
             r <- ExceptT $ first (\_ -> "Invalid kadena address") <$> decoded
             a <- ExceptT $ maybe (Left "Invalid amount") Right <$> amount
+
+            when (maybe True (a >) $ fmap unAccountBalance $ accountBalance fromAccount) $
+              throwError insufficientFundsMsg
+
+            when (r == accountToKadenaAddress fromAccount) $
+              throwError cannotBeReceiverMsg
+
             pure (r, a)
+
         dialogSectionHeading mempty  "Transaction Settings"
         (conf, _, _) <- divClass "group" $ uiMetaData model Nothing Nothing
         pure (conf, recipient)
       mCaps <- tabPane mempty currentTab SendModalTab_Sign $ do
         fmap join . holdDyn (pure Nothing) <=< dyn $ ffor recipient $ \case
           Left e -> do
-            divClass "group" $ text $ e <> ": please go back and check the recipient."
+            divClass "group" $ text $ e <> ": please go back and check the configuration."
             pure $ pure Nothing
           Right (ka, _amount) -> do
             let toChain = _kadenaAddress_chainId ka

@@ -23,6 +23,9 @@ module Frontend.UI.DeploymentSettings
     DeploymentSettingsConfig (..)
   , DeploymentSettingsResult (..)
 
+    -- * Errors
+  , DeploymentSettingsResultError (..)
+
     -- * Helpers
   , buildDeploymentSettingsResult
   , defaultGASCapability
@@ -374,7 +377,7 @@ buildDeployTabFooterControls mUserTabName includePreviewTab curSelection stepFn 
       shouldBeDisabled tab hasRes = tab == tabToBeDisabled && hasRes
       isDisabled = shouldBeDisabled <$> curSelection <*> hasResult
 
-  back <- uiButtonDyn backConfig $ text "Back"
+  back <- cancelButton backConfig "Back"
   next <- uiButtonDyn
     (def & uiButtonCfg_class .~ "button_type_confirm" & uiButtonCfg_disabled .~ isDisabled)
     $ dynText (stepFn <$> curSelection)
@@ -650,7 +653,7 @@ uiMetaData m mTTL mGasLimit = do
       mkGasLimitInput
         :: InputElementConfig EventResult t (DomBuilderSpace m)
         -> m (Event t Integer)
-      mkGasLimitInput conf = dimensionalInputWrapper "Units" $ fmap snd $ uiIntInputElement (Just 0) (Just chainwebGasLimitMaximum) $ conf
+      mkGasLimitInput conf = dimensionalInputFeedbackWrapper (Just "Units") $ fmap snd $ uiIntInputElement (Just 0) (Just chainwebGasLimitMaximum) $ conf
         & inputElementConfig_initialValue .~ showGasLimit initGasLimit
         & inputElementConfig_setValue .~ fmap showGasLimit pbGasLimit
         & inputElementConfig_elementConfig . elementConfig_eventSpec %~ preventScrollWheelAndUpDownArrow @m
@@ -669,15 +672,20 @@ uiMetaData m mTTL mGasLimit = do
       Just _ -> pure never
       Nothing -> tag (current $ fmap _pmTTL $ m ^. network_meta) <$> getPostBuild
     let secondsInDay = 60 * 60 * 24
+        minTTL = 60
+        prettyTTL s = tshow s <> case s of
+          1 -> " second"
+          _ -> " seconds"
+
         initTTL = fromMaybe defaultTransactionTTL mTTL
         ttlInput cls = elKlass "div" cls $ mdo
           let conf = def
-                & initialAttributes .~ "min" =: "1" <> "max" =: T.pack (show secondsInDay) <> "step" =: "1"
+                & initialAttributes .~ "min" =: prettyTTL minTTL <> "max" =: T.pack (show secondsInDay) <> "step" =: "1"
                 & inputElementConfig_setValue .~ fmap showTtl pbTTL
                 & inputElementConfig_initialValue .~ showTtl initTTL
-          sliderEl <- uiSlider "" (text "1 second") (text "1 day") $ conf
+          sliderEl <- uiSlider "" (text $ prettyTTL minTTL) (text "1 day") $ conf
             & inputElementConfig_setValue .~ _inputElement_input inputEl
-          (inputEl, inputEv) <- dimensionalInputWrapper "Seconds" $ uiIntInputElement (Just 0) (Just secondsInDay) $ conf
+          (inputEl, inputEv) <- dimensionalInputFeedbackWrapper (Just "Seconds") $ uiIntInputElement (Just minTTL) (Just secondsInDay) $ conf
             & inputElementConfig_setValue .~ _inputElement_input sliderEl
           pure $ leftmost
             [ TTLSeconds . ParsedInteger <$> inputEv
@@ -727,12 +735,31 @@ uiMetaData m mTTL mGasLimit = do
       readPact wrapper =  fmap wrapper . readMay . T.unpack
 
 -- | Set the sender to a fixed value
-uiSenderFixed :: DomBuilder t m => AccountName -> m (Dynamic t (Maybe (Some AccountRef)))
-uiSenderFixed sender = do
+uiSenderFixed
+  :: ( DomBuilder t m
+     , HasWallet model key t
+     , HasNetwork model t
+     )
+  => model
+  -> Dynamic t (Maybe ChainId)
+  -> AccountName
+  -> m (Dynamic t (Maybe (Some AccountRef)))
+uiSenderFixed model chainId sender = do
+  -- Look up the account by name for the current network & chain
+  let mAccRef = runMaybeT $ do
+        n <- lift $ model ^. network_selectedNetwork
+        c <- MaybeT chainId
+        MaybeT $ findAccountByName (model ^. wallet) n c sender
+
   _ <- uiInputElement $ def
     & initialAttributes %~ Map.insert "disabled" ""
     & inputElementConfig_initialValue .~ unAccountName sender
-  pure $ pure $ pure $ Some $ AccountRef_Vanity sender "chain" -- TODO check the chain
+    & inputElementConfig_setValue .~ ffor (updated mAccRef) (maybe
+        "Account name not found!"
+        (const $ unAccountName sender)
+      )
+
+  pure mAccRef
 
 mkChainTextAccounts
   :: (Reflex t, HasWallet model key t, HasNetwork model t)
@@ -804,8 +831,7 @@ uiSignerList m chainId = do
           cb <- uiCheckbox "signing-ui-signers__signer" False def $ text aTxt
           pure $ bool Nothing (Just an) <$> _checkbox_value cb
         pure $ fmap (Set.fromList . catMaybes) $ sequence $ cbs
-  signers <- join <$> holdDyn (constDyn Set.empty) eSwitchSigners
-  pure signers
+  join <$> holdDyn (constDyn Set.empty) eSwitchSigners
 
 parseSigCapability :: Text -> Either String SigCapability
 parseSigCapability txt = parsed >>= compiled >>= parseApp
@@ -910,10 +936,13 @@ uiSenderCapabilities m cid mCaps mSender mkGasPayer = do
           }
 
       staticCapabilityRows setGasPayer caps = fmap combineMaps $ for caps $ \cap ->
-        elClass "tr" "table__row" $ _capabilityInputRow_value <$> staticCapabilityRow (uiSenderDropdown def m cid setGasPayer) cap
+        elClass "tr" "table__row" $ _capabilityInputRow_value
+          <$> staticCapabilityRow (senderDropdown setGasPayer) cap
 
       combineMaps :: (Semigroup v, Ord k) => [Dynamic t (Map k v)] -> Dynamic t (Map k v)
       combineMaps = fmap (Map.unionsWith (<>)) . sequence
+
+  pb <- getPostBuild
 
   eAddCap <- divClass "grant-capabilities-title" $ do
     dialogSectionHeading "grant-capabilities-title__title" "Grant Capabilities"
@@ -923,7 +952,10 @@ uiSenderCapabilities m cid mCaps mSender mkGasPayer = do
 
   -- Capabilities
   (mGasAcct, capabilities) <- divClass "group" $ mdo
-    let eDefaultGasPayerToSender = gate (current $ isNothing <$> mGasAcct') $ updated mSender
+    let eDefaultGasPayerToSender = gate (current $ isNothing <$> mGasAcct') $ leftmost
+          [ updated mSender
+          , current mSender <@ pb
+          ]
     (mGasAcct', capabilities', rowCount) <- elAttr "table" ("class" =: "table" <> "style" =: "width: 100%; table-layout: fixed;") $ case mCaps of
       Nothing -> do
         el "thead" $ el "tr" $ do
@@ -960,7 +992,7 @@ uiSenderCapabilities m cid mCaps mSender mkGasPayer = do
           )
           (text "Apply to all")
 
-        pure $ current mGasAcct' <@ eAllGasPayer
+        pure $ current ( (<|>) <$> mGasAcct' <*> mSender ) <@ eAllGasPayer
       else
         pure never
 
@@ -996,6 +1028,7 @@ defaultGASCapability = DappCap
 uiDeployPreview
   :: ( MonadWidget t m
      , HasNetwork model t
+     , HasWallet model key t
      , HasLogger model t
      , HasCrypto key (Performable m)
      )
@@ -1062,7 +1095,7 @@ uiDeployPreview model settings keys accounts signers gasLimit ttl code lastPubli
 
       dialogSectionHeading mempty  "Transaction Sender"
       _ <- divClass "group segment" $ mkLabeledClsInput True "Account" $ \_ -> do
-        uiSenderFixed $ AccountName $ withSome sender accountRefToName
+        uiSenderFixed model (constDyn $ pure chainId) $ AccountName $ withSome sender accountRefToName
 
       let accountsToTrack = getAccounts signing
           localReq = case wrappedCmd of

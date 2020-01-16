@@ -113,7 +113,10 @@ uiAddVanityAccountSettings ideL onInflightChange mInflightAcc mChainId initialNo
 
     notesInput initCfg = divClass "vanity-account-create__notes" $ mkLabeledClsInput True "Notes"
       $ \cls -> uiInputElement $ initCfg
-          & initialAttributes <>~ "class" =: (renderClass cls)
+          & initialAttributes <>~ (
+            "class" =: (renderClass cls) <>
+            "maxlength" =: "70"
+          )
           & inputElementConfig_initialValue .~ fromMaybe initialNotes (fmap (getNotes . snd) mInflightAcc)
 
   let includePreviewTab = False
@@ -147,6 +150,12 @@ uiAddVanityAccountSettings ideL onInflightChange mInflightAcc mChainId initialNo
           $ uiSenderDropdown def
 
       mGasPayer <- tabPane mempty curSelection DeploymentSettingsView_Keys $ do
+        _ <- dyn_ $ ffor2 dAccountName dPublicKey $ \an pk -> maybe blank (divClass "group segment")
+          $ case (an, pk) of
+            (Nothing, _) -> Just $ text "Name for new account is missing or invalid."
+            (_, Nothing) -> Just $ text "No Public Key selected for new account."
+            _ -> Nothing
+
         let onSenderUpdate = gate (current $ isNothing <$> gasPayer) $ updated mSender
 
         dialogSectionHeading mempty "Gas Payer"

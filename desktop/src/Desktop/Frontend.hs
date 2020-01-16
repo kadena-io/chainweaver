@@ -122,18 +122,17 @@ bipWallet
 bipWallet appCfg = do
   mRoot <- getItemStorage localStorage BIPStorage_RootKey
   rec
-    root <- holdDyn mRoot upd
+    root <- holdDyn (mRoot, Nothing) upd
     upd <- switchHold never <=< dyn $ ffor root $ \case
-      Nothing -> do
-        xprv <- runSetup
-        saved <- performEvent $ ffor xprv $ \x -> do
+      (Nothing, _) -> do
+        keyAndPass <- runSetup
+        performEvent $ ffor keyAndPass $ \(x, Password p) -> do
           setItemStorage localStorage BIPStorage_RootKey x
           removeItemStorage localStorage StoreFrontend_Wallet_Keys
           removeItemStorage localStorage StoreFrontend_Wallet_Accounts
-          pure x
-        pure $ Just <$> saved
-      Just xprv -> mdo
-        mPassword <- holdUniqDyn =<< holdDyn Nothing userPassEvents
+          pure (Just x, Just p)
+      (Just xprv, mpass) -> mdo
+        mPassword <- holdUniqDyn =<< holdDyn mpass userPassEvents
         (restore, userPassEvents) <- bitraverse (switchHold never) (switchHold never) $ splitE result
         result <- dyn $ ffor mPassword $ \case
           Nothing -> lockScreen xprv
@@ -142,7 +141,7 @@ bipWallet appCfg = do
             Frontend.ReplGhcjs.app sidebarLogoutLink appCfg
             setRoute $ landingPageRoute <$ logout
             pure (never, Nothing <$ logout)
-        pure $ Nothing <$ restore
+        pure $ (Nothing, Nothing) <$ restore
   pure ()
 
 -- | Returns an event which fires at the given check interval when the user has

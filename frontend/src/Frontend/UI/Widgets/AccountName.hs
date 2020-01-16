@@ -9,15 +9,15 @@ import Data.Foldable (fold)
 import Reflex
 import Reflex.Dom
 
-import Frontend.Foundation (renderClass)
-import Frontend.UI.Widgets (mkLabeledClsInput, uiInputElement)
+import Frontend.UI.Widgets (mkLabeledInput, uiInputElement, uiInputWithInlineFeedback)
+import Frontend.UI.Widgets.Helpers (inputIsDirty)
 import Frontend.Network (HasNetwork)
 import Frontend.Wallet (AccountName(..), checkAccountNameValidity, HasWallet)
 
 uiAccountNameInput
   :: ( DomBuilder t m
-     , PostBuild t m
      , MonadHold t m
+     , PostBuild t m
      , MonadFix m
      , HasWallet model key t
      , HasNetwork model t
@@ -28,22 +28,18 @@ uiAccountNameInput
   -> m (Dynamic t (Maybe AccountName))
 uiAccountNameInput w mChain initval = do
   let
-    validateAccountName = ($) <$> checkAccountNameValidity w <*> mChain
+    validateAccountName v = checkAccountNameValidity w
+      <*> mChain
+      <*> value v
 
-    inp lbl wrapperCls = divClass wrapperCls $ mkLabeledClsInput True lbl
-      $ \cls -> uiInputElement $ def
-        & initialAttributes .~ "class" =: (renderClass cls)
-        & inputElementConfig_initialValue .~ fold (fmap unAccountName initval)
+    inputWithFeedback = uiInputWithInlineFeedback
+      validateAccountName
+      inputIsDirty
+      id
+      Nothing
+      uiInputElement
 
-  divClass "vanity-account-create__account-name" $ do
-    dEitherAccName <- (validateAccountName <*>) . value <$>
-      inp "Account Name" "vanity-account-create__account-name-input"
+  (_, dEitherAccName) <- mkLabeledInput True "Account Name" inputWithFeedback $ def
+    & inputElementConfig_initialValue .~ fold (fmap unAccountName initval)
 
-    dAccNameDirty <- holdUniqDyn =<< holdDyn False (True <$ updated dEitherAccName)
-
-    divClass "vanity-account-create__account-name-error" $
-      dyn_ $ ffor2 dAccNameDirty dEitherAccName $ curry $ \case
-        (True, Left e) -> text e
-        _ -> blank
-
-    pure $ hush <$> dEitherAccName
+  pure $ hush <$> dEitherAccName

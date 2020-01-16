@@ -29,6 +29,10 @@
   display: block;
 }
 
+body[data-modal-open='true'] {
+  overflow: hidden;
+}
+
 .modal__dialog {
   position: absolute;
   left: 50%;
@@ -192,18 +196,12 @@
   white-space: pre-wrap;
 }
 
-.account-details__copy-btn-wrapper {
-  text-align: right;
-
-  .account-details__copy-btn {
-    padding-left: 0.4rem;
-    padding-right: 0.4rem;
-
-    .fa.fa-fw {
-      margin-right: 0.2rem;
-    }
-  }
+.details__copy-btn-wrapper {
+  display: flex;
+  flex-direction: row;
+  justify-content: flex-end;
 }
+
 .account-details__remove-account-btn {
   float: left;
   background-color: $chainweaver-orange;
@@ -274,6 +272,13 @@
 .grant-capabilities-apply-all-wrapper {
   display: flex;
   justify-content: flex-end;
+  padding-right: 0.5em;
+}
+
+.grant-capabilities-apply-all {
+  background: #f1f1f1;
+  color: #757575;
+  font-size: 15px;
 }
 
 .grant-capabilities-static-row__wrapped-cell {
@@ -299,3 +304,4 @@
 .deploy-meta-cfg__request-expires .labeled-input__label-inline {
   margin-bottom: 50px;
 }
+

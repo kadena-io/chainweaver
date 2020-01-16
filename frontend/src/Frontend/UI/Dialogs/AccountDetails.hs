@@ -16,8 +16,6 @@ import qualified Pact.Types.ChainId as Pact
 import           Reflex
 import           Reflex.Dom
 ------------------------------------------------------------------------------
-import           Frontend.KadenaAddress (textKadenaAddress)
-------------------------------------------------------------------------------
 import           Frontend.Network
 import           Frontend.UI.Modal
 import           Frontend.Wallet
@@ -64,8 +62,7 @@ uiAccountDetailsDetails
   -> Event t ()
   -> Workflow t m (Text, (mConf, Event t ()))
 uiAccountDetailsDetails netname a onClose = Workflow $ do
-  let kAddr = textKadenaAddress $ accountToKadenaAddress a
-      chain = accountChain a
+  let chain = accountChain a
       vanityName = a ^? _VanityAccount . _1
       nameOrPubKey = accountToName a
       accountOrKey = if isJust vanityName then "Account" else "Key"
@@ -96,17 +93,13 @@ uiAccountDetailsDetails netname a onClose = Workflow $ do
           notes0 <- fmap (Just . value) $ mkLabeledClsInput False "Notes" $ \cls -> uiInputElement $ def
             & inputElementConfig_initialValue .~ unAccountNotes va
             & initialAttributes . at "class" %~ pure . maybe (renderClass cls) (mappend (" " <> renderClass cls))
+            & initialAttributes <>~ "maxlength" =: "70"
           -- separator
           horizontalDashedSeparator
           pure notes0
         _ -> pure Nothing
       -- Kadena Address
-      _ <- displayText "Kadena Address" kAddr "account-details__kadena-address"
-      -- copy
-      _ <- divClass "account-details__copy-btn-wrapper" $ copyButton (def
-        & uiButtonCfg_class .~ constDyn "account-details__copy-btn button_type_confirm"
-        & uiButtonCfg_title .~ constDyn (Just "Copy")
-        ) $ pure kAddr
+      _ <- uiDisplayKadenaAddressWithCopy $ accountToKadenaAddress a
       pure notesEdit0
 
   modalFooter $ do

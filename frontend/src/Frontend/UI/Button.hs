@@ -31,7 +31,6 @@ module Frontend.UI.Button
   , homeButton
   , backButton
   , copyButton
-  , copyButtonStatus
   , deleteButton
   , addButton
   , signoutButton
@@ -57,12 +56,13 @@ module Frontend.UI.Button
 ------------------------------------------------------------------------------
 import           Control.Applicative         ((<|>))
 import           Control.Monad               (when)
-import           Control.Monad.Fix
+import           Control.Monad.Fix           (MonadFix)
 import           Control.Monad.Trans         (lift)
 import           Control.Lens
+import           Data.Bool                   (bool)
 import           Data.Default
 import           Data.Default                (def)
-import           Data.Bool                   (bool)
+import           Data.Foldable               (fold)
 import           Data.Map                    (Map)
 import           Data.String                 (IsString)
 import           Data.Text                   (Text)
@@ -183,40 +183,23 @@ homeButton cls = -- uiIcon "fas fa-chevron-left" $ def & iconConfig_size .~ Just
 --   Probably won't work for input elements.
 copyButton
   :: forall t m
-  . (DynamicButtonConstraints t m, MonadJSM (Performable m), PerformEvent t m)
+  . (DynamicButtonConstraints t m, MonadFix m, MonadHold t m, MonadJSM (Performable m), PerformEvent t m)
   => UiButtonDynCfg t
-  -> Behavior t Text
-  -> m (Event t ())
-copyButton cfg t = do
-    onClick <- uiButtonDyn (cfg & uiButtonCfg_class <>~ "button_border_none") $ do
-      elClass "i" "fa fa-lg fa-copy fa-fw" blank
-      dyn_ $ ffor (cfg ^. uiButtonCfg_title) $ \case
-        Nothing -> blank
-        Just title -> text title
-    _ <- copyToClipboard $ tag t onClick
-    pure onClick
-
-copyButtonStatus
-  :: (DomBuilder t m, MonadFix m, MonadHold t m, MonadJSM (Performable m), PerformEvent t m, PostBuild t m)
-  => UiButtonCfg
   -> Bool
-  -> Event t ()
-  -> (Event t () -> Event t Text)
+  -> Behavior t Text
   -> m ()
-copyButtonStatus cfg hasIcon reset tag' = mdo
-  copy <- uiButton (cfg & uiButtonCfg_type ?~ "button") $ do
-    when hasIcon $ imgWithAlt (static @"img/copy.svg") "Copy" blank
-    text "Copy"
-    elDynClass "i" ("fa copy-status " <> status) blank
-
-  success <- copyToClipboard $ tag' copy
-  status <- holdDyn "" $ leftmost
-    [ "" <$ reset
-    , ffor success $ bool "copy-fail fa-times" "copy-success fa-check"
-    ]
-
+copyButton cfg showStatus t = mdo
+  let cfg' = cfg
+        & uiButtonCfg_class <>~ "button_type_copy" <> "button_border_none"
+        & uiButtonCfg_type ?~ "button"
+        & uiButtonCfg_title .~ pure (Just "Copy")
+  status <- holdDyn "" $ ffor copy $ bool "copy-fail fa-times" "copy-success fa-check"
+  copy <- copyToClipboard $ tag t onClick
+  onClick <- uiButtonDyn cfg' $ do
+    imgWithAlt (static @"img/copy.svg") "Copy" blank
+    dynText $ ffor (cfg ^. uiButtonCfg_title) fold
+    when showStatus $ elDynClass "i" ("fa copy-status " <> status) blank
   pure ()
-
 
 -- | Copy the given text to the clipboard
 copyToClipboard
@@ -301,9 +284,9 @@ confirmButton :: DynamicButtonConstraints t m => UiButtonDynCfg t -> Text -> m (
 confirmButton cfg msg =
     uiButtonDyn (cfg & uiButtonCfg_class <>~ "button_type_confirm") $ text msg
 
-cancelButton :: StaticButtonConstraints t m => UiButtonCfg -> Text -> m (Event t ())
+cancelButton :: DynamicButtonConstraints t m => UiButtonDynCfg t -> Text -> m (Event t ())
 cancelButton cfg msg =
-    uiButton (cfg & uiButtonCfg_class <>~ "button_type_tertiary") $ text msg
+    uiButtonDyn (cfg & uiButtonCfg_class <>~ "button_type_tertiary") $ text msg
 
 receiveButton :: StaticButtonConstraints t m => UiButtonCfg -> m (Event t ())
 receiveButton cfg =

@@ -44,7 +44,8 @@ type HasUICreatedGistModelCfg mConf t = (Monoid mConf)
 uiCreatedGist
   :: forall t m mConf
   . ( HasUICreatedGistModelCfg mConf t, RouteToUrl (R FrontendRoute) m
-    , Monad m
+    , MonadFix m
+    , MonadHold t m
     , DomBuilder t m
     , PerformEvent t m
     , MonadJSM (Performable m)
@@ -76,7 +77,7 @@ uiCreatedGist gistRef _onClose = do
                   text $ baseUrlText <> route
 
                 void $ elClass "td" "table__last-cell table__cell_size_flex" $
-                  copyButton copyBtnCfg $ pure $ baseUrlText <> route
+                  copyButton copyBtnCfg False $ pure $ baseUrlText <> route
 
     modalFooter $ do
       onConfirm <- confirmButton def "Ok"
