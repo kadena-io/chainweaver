@@ -18,6 +18,13 @@ Run [`./scripts/devWeb`](./scripts/devWeb)
 ## Web app with desktop app bits
 Run [`./scripts/devDesktop`](./scripts/devDesktop)
 
+## Linux Based Chainweaver
+A linux webkitgtk version of chainweaver can be built and run in a number of different ways:
+- Run `nix-build -A deb default.nix` to build a debian package of chainweaver.
+  - This can be installed with `dpkg -i <deb file>` on ubuntu 18.04
+- Run `nix-build -A chainweaverVM default.nix` to build a virtualbox ova file that runs chainweaver
+- Run `WEBKIT_DISABLE_COMPOSITING_MODE=1 $(nix-build -A nixosExe)/bin/kadena-chainweaver` to run the linux app in nixos.
+
 ## Mac app
 To work on the objective-c code enter the project shell with
 ```shell
