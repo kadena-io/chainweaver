@@ -32,7 +32,7 @@ The OVA includes an upgrade script inside the VM that allows the user to upgrade
 
 This is powered by the http://nixcache.kadena.io binary cache and a file in s3 that contains the latest nixos system store path. See https://chainweaver-builds.s3.amazonaws.com/vm/master-store-path
 
-To release a new version, be sure that CI is pushing to that binary cache, and when the build passes QA overwrite the contents of master-store-path with the output of `nix-build -A chainweaverVMSystem default.nix`.
+To release a new version, be sure that CI is pushing to that binary cache, and when the build passes QA overwrite the contents of master-store-path with the output of `nix-build -A chainweaverVMSystem default.nix` by running `scripts/update-vm-master-store`. This requires permission to write to the chainweaver-builds bucket and to have credentials in ~/.aws/credentials already.
 
 At this point, users ought to be able to run `update-chainweaver` from a terminal to switch to the new system config.
 
