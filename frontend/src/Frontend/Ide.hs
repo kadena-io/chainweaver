@@ -14,6 +14,7 @@
 {-# LANGUAGE TupleSections #-}
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE TypeFamilies #-}
+{-# LANGUAGE DerivingVia #-}
 
 -- | Ide, IdeCfg: Model and ModelConfig for the chainweaver application.
 --
@@ -35,6 +36,8 @@ module Frontend.Ide
   , makeIde
   -- ** Auxiliary Types
   , EnvSelection (..)
+  , LogoutCfg (..)
+  , HasLogoutCfg (..)
   ) where
 
 ------------------------------------------------------------------------------
@@ -79,6 +82,19 @@ data EnvSelection
   | EnvSelection_ModuleExplorer -- ^ The module explorer
   deriving (Eq, Ord, Show, Enum, Bounded)
 
+newtype LogoutCfg t = LogoutCfg
+  { _logoutCfg_confirmed :: Event t ()
+  }
+makePactLenses ''LogoutCfg
+
+instance Flattenable (LogoutCfg t) t where
+  flattenWith doSwitch ev = LogoutCfg <$> doSwitch never (_logoutCfg_confirmed <$> ev)
+
+instance Reflex t => Semigroup (LogoutCfg t) where
+    (<>) (LogoutCfg a) (LogoutCfg b) = LogoutCfg $ leftmost [a,b]
+
+instance Reflex t => Monoid (LogoutCfg t) where
+  mempty = LogoutCfg never
 
 -- | Configuration for sub-modules.
 --
@@ -100,6 +116,7 @@ data IdeCfg modal key t = IdeCfg
    --   dialog.
   , _ideCfg_logger          :: LogCfg t
   -- ^ Log a message to the application level logs
+  , _ideCfg_logoutConfirm :: LogoutCfg t
   }
   deriving Generic
 
@@ -226,6 +243,9 @@ instance Reflex t => Monoid (IdeCfg modal key t) where
 instance Semigroup EnvSelection where
   sel1 <> _ = sel1
 
+instance HasLogoutCfg (IdeCfg modal key t) t where
+  logoutCfg = ideCfg_logoutConfirm
+
 instance HasWalletCfg (IdeCfg modal key t) key t where
   walletCfg = ideCfg_wallet
 
@@ -309,3 +329,4 @@ instance Flattenable (IdeCfg modal key t) t where
       <*> doSwitch never (_ideCfg_selEnv <$> ev)
       <*> fmap LeftmostEv (doSwitch never (unLeftmostEv . _ideCfg_setModal <$> ev))
       <*> flattenWith doSwitch (_ideCfg_logger <$> ev)
+      <*> flattenWith doSwitch (_ideCfg_logoutConfirm <$> ev)
