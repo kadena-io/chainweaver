@@ -22,8 +22,19 @@ Run [`./scripts/devDesktop`](./scripts/devDesktop)
 A linux webkitgtk version of chainweaver can be built and run in a number of different ways:
 - Run `nix-build -A deb default.nix` to build a debian package of chainweaver.
   - This can be installed with `dpkg -i <deb file>` on ubuntu 18.04
+  - Chainweaver should be accessible in the applications menu.
 - Run `nix-build -A chainweaverVM default.nix` to build a virtualbox ova file that runs chainweaver
 - Run `WEBKIT_DISABLE_COMPOSITING_MODE=1 $(nix-build -A nixosExe)/bin/kadena-chainweaver` to run the linux app in nixos.
+
+### OVA Release
+
+The OVA includes an upgrade script inside the VM that allows the user to upgrade the nixos configuration without redownloading the whole OVA.
+
+This is powered by the http://nixcache.kadena.io binary cache and a file in s3 that contains the latest nixos system store path. See https://chainweaver-builds.s3.amazonaws.com/vm/master-store-path
+
+To release a new version, be sure that CI is pushing to that binary cache, and when the build passes QA overwrite the contents of master-store-path with the output of `nix-build -A chainweaverVMSystem default.nix`.
+
+At this point, users ought to be able to run `update-chainweaver` from a terminal to switch to the new system config.
 
 ## Mac app
 To work on the objective-c code enter the project shell with
