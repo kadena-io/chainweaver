@@ -151,7 +151,7 @@ in rec {
           security find-certificate -c "$c" -p \
             | openssl x509 -subject -noout; \
         done \
-      | grep "OU=$TEAM_ID/" \
+      | grep "OU[[:space:]]\?=[[:space:]]\?$TEAM_ID" \
       | sed 's|subject= /UID=[^/]*/CN=\([^/]*\).*|\1|' \
       | head -n 1)
 
