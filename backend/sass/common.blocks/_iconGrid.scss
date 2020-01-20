@@ -27,7 +27,6 @@
   }
 }
 
-
 .icon-grid__cell-icon {
   @media (max-height: 800px) and (max-width: 1450px) {
     display: none;
@@ -41,16 +40,6 @@
   margin: $double-margin auto;
 }
 
-.icon-grid__cell-header {
-  border-color: $std-border-color;
-  border-style: $std-border-style;
-  border-width: $std-border-width;
-  border-radius: $std-border-radius;
-  text-align: center;
-  padding: $bigger-padding;
-  font-size: 18px;
-}
-
 .icon-grid__cell-launch {
   position: relative;
   top: 3px;
@@ -58,7 +47,24 @@
   height: 18px;
 }
 
+.icon-grid__cell-header {
+  border-color: $std-border-color;
+  border-style: $std-border-style;
+  border-width: $std-border-width;
+  border-radius: $std-border-radius;
+  text-align: center;
+  font-size: 18px;
+  width: 100%;
+  height: 84px;
+  background-color: $body-background;
+
+  &:hover .icon-grid__cell-launch {
+    filter: brightness(0) invert(1);
+  }
+}
+
 .icon-grid__cell-title {
+  color: #454444;
 }
 
 .icon-grid__cell-desc {
