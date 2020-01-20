@@ -316,9 +316,10 @@ sendConfig model fromAccount = Workflow $ do
             <&> over (_2 . mapped . mapped) (\(GasPrice (ParsedDecimal d)) -> d)
 
           displayImmediateFeedback (updated amount) insufficientFundsMsg $ \ma ->
-            case (ma, unAccountBalance <$> accountBalance fromAccount) of
-              (Nothing, _) -> False
-              (Just a, Just senderBal) -> a > senderBal
+            case (ma, accountBalance fromAccount) of
+              (Just a, Just senderBal) -> a > unAccountBalance senderBal
+              (_, _) -> False
+
 
           pure $ runExceptT $ do
             r <- ExceptT $ first (\_ -> "Invalid kadena address") <$> decoded
