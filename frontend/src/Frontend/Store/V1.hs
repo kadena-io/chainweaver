@@ -20,7 +20,7 @@ import qualified Data.Text as T
 import qualified Data.Text.Encoding as T
 
 import Common.Wallet
-import Common.Network (NetworkName, NodeRef)
+import Common.Network (NetworkName, uncheckedNetworkName, NodeRef)
 import Common.OAuth (OAuthProvider(..))
 import Common.GistStore (GistMeta)
 
@@ -69,8 +69,8 @@ upgradeFromV0 :: DMap (V0.StoreFrontend key) Identity -> DMap (StoreFrontend key
 upgradeFromV0 v0 =
   DMap.fromList . catMaybes $
     [ copyKeyDSum V0.StoreNetwork_PublicMeta StoreFrontend_Network_PublicMeta v0
-    , copyKeyDSum V0.StoreNetwork_Networks StoreFrontend_Network_Networks v0
-    , copyKeyDSum V0.StoreNetwork_SelectedNetwork StoreFrontend_Network_SelectedNetwork v0
+    -- , copyKeyDSum V0.StoreNetwork_Networks StoreFrontend_Network_Networks v0
+    -- , copyKeyDSum V0.StoreNetwork_SelectedNetwork StoreFrontend_Network_SelectedNetwork v0
     -- Technically these are session only and shouldn't be here given the backup restore only works on
     -- local storage, but desktop ignores the session vs local distinction so migrating them probably
     -- does some good and certainly doesn't hurt.
@@ -81,12 +81,20 @@ upgradeFromV0 v0 =
     , copyKeyDSum V0.StoreModuleExplorer_SessionFile StoreFrontend_ModuleExplorer_SessionFile v0
     , Just (StoreFrontend_Wallet_Keys :=> Identity newKeys)
     , Just (StoreFrontend_Wallet_Accounts :=> Identity newAccountStorage)
+    , Just (StoreFrontend_Network_Networks :=> Identity newNetworks)
+    , Just (StoreFrontend_Network_SelectedNetwork :=> Identity newSelectedNetwork)
     ]
   where
     oldKeysList = maybe [] (IntMap.toList . runIdentity) (DMap.lookup V0.StoreWallet_Keys v0)
     (newKeysList, newAccountStorage) = foldMap splitOldKey oldKeysList
     newKeys = IntMap.fromList newKeysList
 
+    newSelectedNetwork = maybe (uncheckedNetworkName "testnet") (uncheckedNetworkName . V0.unNetworkName . runIdentity)
+      $ DMap.lookup V0.StoreNetwork_SelectedNetwork v0
+
+    newNetworks = maybe mempty
+      (Map.mapKeys (uncheckedNetworkName . V0.unNetworkName) . runIdentity)
+      $ DMap.lookup V0.StoreNetwork_Networks v0
     -- It's unfortunate that we don't have the key around or access to crypto here to recreate the keys.
     -- TODO: Fiddle with this so we don't need to fake out the key
     -- I don't think we should run crypto derivation functions here. The web
@@ -119,7 +127,7 @@ upgradeFromV0 v0 =
             in Map.singleton (AccountName accountNameText) newAccountInfo
           else mempty
 
-      in AccountStorage $ Map.singleton (V0._account_network a) accounts
+      in AccountStorage $ Map.singleton (uncheckedNetworkName $ V0.unNetworkName $ V0._account_network a) accounts
 
     upgradePublicKey = PublicKey . V0.unPublicKey
 

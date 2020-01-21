@@ -11,10 +11,11 @@ import GHC.Generics (Generic)
 
 -- WARNING: Be careful about changing stuff in here. Tests will catch snafus here and upstream though
 import Common.Wallet (lenientLookup, UnfinishedCrossChainTransfer, AccountBalance)
-import Common.Network (NetworkName)
 
 -- This is lifted from the wallet code prior to V1
 
+-- The use of the 'To/FromJSONKey' breaks the aeson decoding for V0 encoded Maps.
+newtype NetworkName = NetworkName { unNetworkName :: Text } deriving (Eq, Ord, Show, Generic, ToJSON, FromJSON)
 newtype AccountName = AccountName { unAccountName :: Text } deriving (Eq, Ord, Show, Generic, ToJSON, FromJSON)
 newtype ChainId = ChainId { unChainId :: Text } deriving (Eq, Ord, Show, Generic, ToJSON, FromJSON)
 newtype AccountNotes = AccountNotes { unAccountNotes :: Text } deriving (Eq, Ord, Show, Generic, ToJSON, FromJSON)

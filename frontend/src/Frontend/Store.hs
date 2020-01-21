@@ -9,6 +9,8 @@ module Frontend.Store
 import Frontend.Storage.Class
 import Data.Aeson (FromJSON, ToJSON)
 import Data.Proxy (Proxy(Proxy))
+import Data.Dependent.Map (DMap)
+import Data.Functor.Identity (Identity)
 import Reflex
 import Reflex.Dom
 
@@ -34,7 +36,14 @@ versionedUi v widget = do
       _ <- _storageVersioner_upgrade v
       pure ()
 
-versioner :: forall key m. (ToJSON key, FromJSON key, Monad m, HasStorage m) => StorageVersioner m (Latest.StoreFrontend key)
+versioner
+  :: forall key m.
+     ( ToJSON key
+     , FromJSON key
+     , Monad m
+     , HasStorage m
+     )
+  => StorageVersioner m (Latest.StoreFrontend key)
 versioner = StorageVersioner
   { _storageVersioner_metaPrefix = prefix
   , _storageVersioner_backupVersion = backup
@@ -51,7 +60,7 @@ versioner = StorageVersioner
           _ok <- backupLocalStorage prefix (Proxy @(V0.StoreFrontend key)) 0
           pure Nothing
         1 -> do
-          _ok <- backupLocalStorage prefix (Proxy @(V1.StoreFrontend key)) 0
+          _ok <- backupLocalStorage prefix (Proxy @(V1.StoreFrontend key)) 1
           pure Nothing
         v -> pure $ Just $ VersioningError_UnknownVersion v
 

@@ -15,7 +15,7 @@ import Frontend.Store.TH
 import Frontend.Store.V0.Wallet
 
 -- WARNING: Be careful about changing stuff in here. Tests will catch snafus here and upstream though
-import Common.Network (NetworkName, NodeRef)
+import Common.Network (NodeRef)
 import Common.OAuth (OAuthProvider)
 import Common.GistStore (GistMeta)
 
@@ -23,7 +23,6 @@ import Common.GistStore (GistMeta)
 -- May be worth storing this in upstream independent datatypes.
 import Pact.Types.ChainMeta (PublicMeta (..))
 import Obelisk.OAuth.Common (AccessToken, OAuthState)
-
 
 data StoreFrontend key a where
   StoreWallet_Keys :: StoreFrontend key (Accounts key)
