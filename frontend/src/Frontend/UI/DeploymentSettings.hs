@@ -7,6 +7,7 @@
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE PatternGuards #-}
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE RecursiveDo #-}
 {-# LANGUAGE ScopedTypeVariables #-}
@@ -1016,6 +1017,7 @@ uiDeployPreview
      , HasNetwork model t
      , HasLogger model t
      , HasCrypto key (Performable m)
+     , HasWallet model key t
      )
   => model
   -> DeploymentSettingsConfig t m model a
@@ -1061,10 +1063,11 @@ uiDeployPreview model settings keys accounts signers gasLimit ttl code lastPubli
       buildCmd nonce networkId publicMeta signingPairs extraSigners wrappedCode jsondata pkCaps
     pure (c, wc)
 
-  dyn_ =<< holdDyn (text "Preparing transaction preview...")
-    (uiPreviewResponses signing <$> eCmds)
+  void $ runWithReplace
+    (text "Preparing transaction preview...")
+    (attachWith (uiPreviewResponses signing) ((,) <$> (current $ model ^. network_selectedNetwork) <*> (current $ model ^. wallet_accounts)) eCmds)
   where
-    uiPreviewResponses signing (cmd, wrappedCmd) = do
+    uiPreviewResponses signing (networkName, accountData) (cmd, wrappedCmd) = do
       pb <- getPostBuild
 
       unless (any (any isGas) capabilities) $ do
@@ -1082,7 +1085,7 @@ uiDeployPreview model settings keys accounts signers gasLimit ttl code lastPubli
       _ <- divClass "group segment" $ mkLabeledClsInput True "Account" $ \_ -> do
         uiSenderFixed sender
 
-      let accountsToTrack = getAccounts signing
+      let accountsToTrack = getAccounts networkName accountData signing
           localReq = case wrappedCmd of
             Left _e -> []
             Right cmd0 -> pure $ NetworkRequest
@@ -1106,16 +1109,16 @@ uiDeployPreview model settings keys accounts signers gasLimit ttl code lastPubli
             th "Account Name"
             th "Public Key"
             th "Change in Balance"
-          accountBalances <- flip Map.traverseWithKey accountsToTrack $ \acc pk -> do
+          accountBalances <- flip Map.traverseWithKey accountsToTrack $ \acc pks -> do
             bal <- holdDyn Nothing $ leftmost [Just Nothing <$ errors, Just . join . Map.lookup acc . fst <$> resp]
-            pure (pk, bal)
-          el "tbody" $ void $ flip Map.traverseWithKey accountBalances $ \acc (pk, balance) -> el "tr" $ do
+            pure (pks, bal)
+          el "tbody" $ void $ flip Map.traverseWithKey accountBalances $ \acc (pks, balance) -> el "tr" $ do
             let displayBalance = \case
                   Nothing -> "Loading..."
                   Just Nothing -> "Error"
                   Just (Just b) -> tshow (unAccountBalance b) <> " KDA"
             el "td" $ text $ unAccountName acc
-            el "td" $ divClass "wallet__key" $ text $ keyToText pk
+            el "td" $ for_ pks $ \pk -> divClass "wallet__key" $ text $ keyToText pk
             el "td" $ dynText $ displayBalance <$> balance
 
       dialogSectionHeading mempty "Raw Response"
@@ -1124,9 +1127,11 @@ uiDeployPreview model settings keys accounts signers gasLimit ttl code lastPubli
         , text <$> errors
         ]
 
-    getAccounts :: Set AccountName -> Map AccountName PublicKey
-    getAccounts = error "getAccounts" -- Map.mapKeys (\(Some x) -> AccountName $ accountRefToName x) . Map.restrictKeys accs
-      --where
-      --  accs = flip foldAccounts' accounts $ \name chain acc -> case _account_status acc of
-      --    AccountStatus_Exists pk _ -> Map.singleton name pk
-      --    _ -> Map.empty
+    getAccounts :: NetworkName -> AccountData -> Set AccountName -> Map AccountName (Set PublicKey)
+    getAccounts net (AccountData m) signing = fromMaybe mempty $ do
+      allAccounts <- Map.lookup net m
+      let accs = Map.restrictKeys allAccounts signing
+      pure $ ffor accs $ \info -> case Map.lookup chainId $ _accountInfo_chains info of
+        Just status | AccountStatus_Exists details <- _account_status status
+          -> _addressKeyset_keys $ _accountDetails_keyset details
+        _ -> mempty
