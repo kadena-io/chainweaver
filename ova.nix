@@ -36,6 +36,9 @@ let
         home.file.".config" = { source = ./ova/home/chainweaver/config; recursive = true; };
         home.file."desktop.png".source = ./ova/home/chainweaver/desktop.png;
         home.file."Desktop/${linuxAppName}.desktop".source = "${nixosDesktopItem}/share/applications/${linuxAppName}.desktop";
+        home.sessionVariables = {
+          WEBKIT_DISABLE_COMPOSITING_MODE = 1;
+        };
       };
       services.xserver = {
         enable = true;
