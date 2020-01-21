@@ -22,7 +22,6 @@ in
 
     shellToolOverrides = ghc: super: {
       z3 = pkgs.z3;
-      ghcid = pkgs.haskell.lib.justStaticExecutables super.ghcid; #https://github.com/reflex-frp/reflex-platform/pull/548
      };
    packages =
      let
