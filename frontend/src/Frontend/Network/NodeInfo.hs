@@ -41,10 +41,11 @@ module Frontend.Network.NodeInfo
     -- * More details
   , NodeType (..)
   , ChainwebInfo (..)
+  , sortChainIds
   ) where
 
 import           Control.Applicative         ((<|>))
-import           Control.Arrow               (right, left, (&&&))
+import           Control.Arrow               (right, left)
 import           Control.Lens
 import           Control.Monad
 import           Control.Monad               (void)
@@ -54,14 +55,16 @@ import           Control.Monad.IO.Unlift
 import           Data.Aeson                  (Value)
 import qualified Data.Aeson                  as Aeson
 import qualified Data.Aeson.Lens             as AL
+import           Data.Char                   (isDigit)
 import           Data.Default
+import           Data.List                   (sortOn)
 import           Data.Text                   (Text)
 import qualified Data.Text                   as T
 import qualified Data.Text.Encoding          as T
 import           Language.Javascript.JSaddle (JSM, MonadJSM, liftJSM)
 import           Reflex.Dom.Class            (HasJSContext (..))
 import           Reflex.Dom.Xhr
-import           Safe                        (fromJustNote)
+import           Safe                        (fromJustNote, maximumMay)
 import           Text.URI                    (URI (URI))
 import qualified Text.URI                    as URI hiding (uriPath)
 import           Text.URI.Lens               as URI
@@ -81,8 +84,8 @@ data ChainwebInfo = ChainwebInfo
     -- ^ What chainweb version is running on the node.
   , _chainwebInfo_networkVersion :: Text
     -- ^ What version of the network is running.
-  , _chainwebInfo_numberOfChains :: Word
-    -- ^ How many chains do we have.
+  , _chainwebInfo_chainIds :: [ChainId]
+    -- ^ What chainIds are on this network.
   }
   deriving (Eq, Ord, Show)
 
@@ -175,10 +178,10 @@ getChainBaseUrl chainId (NodeInfo base nType) =
 -- | Get a list of available chains.
 --
 getChains :: NodeInfo -> [Pact.ChainId]
-getChains (NodeInfo _ nType) = Pact.ChainId . tshow <$>
+getChains (NodeInfo _ nType) =
   case nType of
-    NodeType_Pact _ -> [ 0 ]
-    NodeType_Chainweb info -> [ 0 .. (_chainwebInfo_numberOfChains info -1)]
+    NodeType_Pact _ -> [ Pact.ChainId "0" ]
+    NodeType_Chainweb info -> _chainwebInfo_chainIds info
 
 
 -- | Get the path for a given chain id.
@@ -244,19 +247,30 @@ discoverPactNode baseUri = runExceptT $ do
 {- parseChainwebInfo :: forall m. MonadPlus m => Value -> m ChainwebInfo -}
 parseChainwebInfo :: forall m. (MonadError Text m) => Value -> m ChainwebInfo
 parseChainwebInfo v = do
-    numberOfChainsNum <- note "Found no numberOfChains" $ v ^? AL.key "nodeNumberOfChains" . AL._Number
-    numberOfChains <- note "Number of chains wasn't > 0 and < 255"
-      . fmap (fromInteger . round)
-      . mfilter (uncurry (&&) . ((> 0) &&& (< 255)))
-      $ Just numberOfChainsNum
+    chainIdVals <- note "Found no nodeChains" $ v ^? AL.key "nodeChains" . AL._Array
+    chainIds <- note "nodeChains were not strings" . fmap sortChainIds . traverse (^? AL._String . to Pact.ChainId) . toList $ chainIdVals
     chainwebVersion <- note "Found no nodeApiVersion" $ v ^? AL.key "nodeApiVersion" . AL._String
     networkVersion <- note "Found no nodeVersion " $ v ^? AL.key "nodeVersion" . AL._String
 
     pure $ ChainwebInfo
       { _chainwebInfo_version = chainwebVersion
       , _chainwebInfo_networkVersion = networkVersion
-      , _chainwebInfo_numberOfChains = numberOfChains
+      , _chainwebInfo_chainIds = chainIds
       }
+
+-- Note, from us-e1.chainweb.com, the chain ids come back not sorted. It comes back as
+-- "nodeChains":["8","9","4","5","6","7","0","1","2","3"]
+-- But sorting these is a little tricky. If we just sort the strings, things will get messy with
+-- 10, 11, 12, etc but can we actually assume that these are always numbers and sort them as such?
+-- The chainSortIndex function goes a little over the top to make sure numbers are sorted at the top
+-- and if we get any non number chain ids they are alphanumerically sorted down below
+sortChainIds :: [Pact.ChainId] -> [Pact.ChainId]
+sortChainIds ids = sortOn chainIdIndex ids
+  where
+   -- Always pad numbers with zero so they appear before words like "2 words"
+   chainIdIndex (Pact.ChainId t) = if (isDigitText t) then T.justifyRight (maxDigitWidth + 1) '0' t else t
+   maxDigitWidth = fromMaybe 0 . maximumMay . map T.length . filter isDigitText . map Pact._chainId $ ids
+   isDigitText = T.all isDigit
 
 runReq
   :: (HasJSContext m, MonadJSM m, MonadUnliftIO m, IsXhrPayload a)

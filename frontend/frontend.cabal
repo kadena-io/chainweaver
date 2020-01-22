@@ -226,6 +226,7 @@ test-suite tests
   main-is: main.hs
   hs-source-dirs: tests
   other-modules: KadenaAddressSpec
+               , Frontend.Network.NodeInfoSpec
                , Frontend.StorageSpec
                , Frontend.Storage.InMemoryStorage
                , Frontend.Storage.InMemoryStorageSpec
