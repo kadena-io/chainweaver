@@ -2,17 +2,18 @@
 , pkgs
 , appName
 , sass
+, homeManagerModule
 , linuxAppName ? "kadena-chainweaver"
 , linuxPackageVersion ? "0.1.0-3"
 , linuxAppIcon ? ./linux/static/icons/pact-document.png
 }: rec {
   # If we don't wrapGApps, none of the gnome schema stuff works in nixos
-  nixosLinuxApp = pkgs.haskell.lib.overrideCabal obApp.ghc.linux (drv: {
+  nixosLinuxApp = pkgs.haskell.lib.justStaticExecutables (pkgs.haskell.lib.overrideCabal obApp.ghc.linux (drv: {
     libraryPkgconfigDepends =
       [ pkgs.webkitgtk
         pkgs.glib-networking
       ];
-  });
+  }));
   nixosExe = nixosLinuxApp.overrideAttrs (old: {
     nativeBuildInputs = old.nativeBuildInputs ++ [ pkgs.wrapGAppsHook ];
     libraryFrameworkDepends = [ pkgs.webkitgtk pkgs.glib-networking ];
@@ -25,6 +26,15 @@
       ln -s "${sass}/sass.css" "$out/bin/sass.css"
     '';
   });
+  nixosDesktopItem = pkgs.makeDesktopItem {
+     name = linuxAppName;
+     desktopName = appName;
+     exec = "${nixosExe}/bin/${linuxAppName}";
+     icon = linuxAppIcon;
+  };
+  ova = import ./ova.nix { inherit pkgs nixosExe linuxAppName nixosDesktopItem homeManagerModule; };
+  inherit (ova) chainweaverVM chainweaverVMSystem;
+  
   addGObjectIntrospection = hpackage: pkgs.haskell.lib.overrideCabal hpackage (current: {
     libraryPkgconfigDepends =
       current.libraryPkgconfigDepends ++ [ pkgs.gobject-introspection ];
