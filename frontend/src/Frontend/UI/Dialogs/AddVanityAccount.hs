@@ -2,8 +2,7 @@
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE RecursiveDo #-}
 module Frontend.UI.Dialogs.AddVanityAccount
-  ( --uiAddVanityAccountSettings
-    uiAddAccountButton
+  ( uiAddAccountButton
   , uiCreateAccountButton
   , uiCreateAccountDialog
   ) where
@@ -19,7 +18,6 @@ import           Data.Text                              (Text)
 import qualified Data.HashMap.Lazy as HM
 import qualified Data.IntMap as IntMap
 import qualified Data.Set as Set
-import qualified Data.Text as T
 
 import Kadena.SigningApi
 
@@ -41,6 +39,7 @@ import           Frontend.Network
 import           Frontend.Wallet
 import           Frontend.Log
 import Reflex.Extended
+import Frontend.KadenaAddress
 import Frontend.UI.JsonData (uiKeysetKeys, predDropdown)
 
 -- Allow the user to create a 'vanity' account, which is an account with a custom name
@@ -79,8 +78,11 @@ uiAddAccountDialog
   -> Event t ()
   -> m (mConf, Event t ())
 uiAddAccountDialog model _onCloseExternal = mdo
-  onClose <- modalHeader $ text "Add New Account"
+  onClose <- modalHeader $ text "Add Account"
   name <- modalMain $ do
+    dialogSectionHeading mempty "Notice"
+    divClass "group" $ text "Add an Account here to display its status. If the Account does not yet exist, then you will be able to create and control the Account on the blockchain."
+    dialogSectionHeading mempty "Add Account"
     divClass "group" $ do
       uiAccountNameInput model Nothing
   add <- modalFooter $ do
@@ -104,11 +106,11 @@ uiCreateAccountDialog
      , HasCrypto key (Performable m)
      , HasJsonDataCfg mConf t, HasNetworkCfg mConf t, HasWalletCfg mConf key t
      )
-  => model -> AccountName -> ChainId -> Event t () -> m (mConf, Event t ())
-uiCreateAccountDialog model name chain _onCloseExternal = do
+  => model -> AccountName -> ChainId -> Maybe PublicKey -> Event t () -> m (mConf, Event t ())
+uiCreateAccountDialog model name chain mPublicKey _onCloseExternal = do
   rec
     onClose <- modalHeader $ dynText title
-    (title, (conf, closes)) <- fmap (fmap splitDynPure . splitDynPure) $ workflow $ createAccountSplash model name chain
+    (title, (conf, closes)) <- fmap (fmap splitDynPure . splitDynPure) $ workflow $ createAccountSplash model name chain mPublicKey
   mConf <- flatten =<< tagOnPostBuild conf
   let close = switch $ current closes
   pure (mConf, onClose <> close)
@@ -120,23 +122,34 @@ createAccountSplash
      , HasCrypto key (Performable m)
      , HasJsonDataCfg mConf t, HasNetworkCfg mConf t, HasWalletCfg mConf key t
      )
-  => model -> AccountName -> ChainId -> Workflow t m (Text, (mConf, Event t ()))
-createAccountSplash model name chain = Workflow $ do
+  => model -> AccountName -> ChainId -> Maybe PublicKey -> Workflow t m (Text, (mConf, Event t ()))
+createAccountSplash model name chain mPublicKey = Workflow $ do
   keyset <- modalMain $ do
     dialogSectionHeading mempty "Notice"
     -- Placeholder text
     divClass "group" $ text "In order to receive funds to an Account, the unique Account must be recorded on the blockchain. First configure the Account by defining which keys are required to sign transactions. Then create the Account by recording it on the blockchain."
     dialogSectionHeading mempty "Destination"
     divClass "group" $ transactionDisplayNetwork model
-    dialogSectionHeading mempty "Define Account Keyset"
-    divClass "group" $ defineKeyset model
+    case mPublicKey of
+      Nothing -> do
+        dialogSectionHeading mempty "Define Account Keyset"
+        divClass "group" $ defineKeyset model
+      Just key -> do
+        dialogSectionHeading mempty "Account Key"
+        _ <- divClass "group" $ uiInputElement $ def
+          & inputElementConfig_initialValue .~ keyToText key
+          & initialAttributes <>~ ("disabled" =: "true" <> "class" =: " key-details__pubkey input labeled-input__input")
+        pure $ pure $ Just $ AddressKeyset
+          { _addressKeyset_keys = Set.singleton key
+          , _addressKeyset_pred = "keys-all"
+          }
   (cancel, next) <- modalFooter $ do
     cancel <- cancelButton def "Cancel"
     let cfg = def & uiButtonCfg_disabled .~ fmap isNothing keyset
     notGasPayer <- confirmButton cfg "I am not the Gas Payer"
     gasPayer <- confirmButton cfg "I am the Gas Payer"
     let next = leftmost
-          [ tagMaybe (fmap createAccountNotGasPayer <$> current keyset) notGasPayer
+          [ tagMaybe (fmap (createAccountNotGasPayer name chain) <$> current keyset) notGasPayer
           , tagMaybe (fmap (createAccountConfig model name chain) <$> current keyset) gasPayer
           ]
     pure (cancel, next)
@@ -144,11 +157,19 @@ createAccountSplash model name chain = Workflow $ do
 
 createAccountNotGasPayer
   :: (Monoid mConf, MonadWidget t m)
-  => AddressKeyset -> Workflow t m (Text, (mConf, Event t ()))
-createAccountNotGasPayer keyset = Workflow $ do
+  => AccountName -> ChainId -> AddressKeyset -> Workflow t m (Text, (mConf, Event t ()))
+createAccountNotGasPayer name chain keyset = Workflow $ do
   modalMain $ do
-    text "Kadena address goes here"
-    divClass "group" $ text $ T.pack $ show keyset
+    dialogSectionHeading mempty "Notice"
+    divClass "group" $ text "The text below contains all of the Account info you have just configured. Share this [Kadena Address] with someone else to pay the gas for the transaction to create the Account."
+    dialogSectionHeading mempty "[Kadena Address]"
+    divClass "group" $ do
+      _ <- uiDisplayKadenaAddressWithCopy False $ KadenaAddress
+        { _kadenaAddress_accountName = name
+        , _kadenaAddress_chainId = chain
+        , _kadenaAddress_keyset = Just keyset
+        }
+      pure ()
   done <- modalFooter $ confirmButton def "Done"
   pure (("Create Account", (mempty, done)), never)
 

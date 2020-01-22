@@ -10,6 +10,7 @@ module Frontend.UI.Dialogs.AccountDetails
   ) where
 
 import Control.Lens
+import qualified Data.Map as Map
 import Data.Text (Text)
 import Reflex
 import Reflex.Dom.Core hiding (Key)
@@ -52,6 +53,15 @@ uiAccountDetailsOnChain netname a onCloseExternal = mdo
          , leftmost [switch $ current dEvent, onClose]
          )
 
+notesEditor :: MonadWidget t m => Maybe AccountNotes -> m (Dynamic t (Maybe AccountNotes))
+notesEditor mNotes = do
+  fmap (fmap mkAccountNotes . value) $ mkLabeledClsInput False "Notes" $ \cls -> uiInputElement $ def
+    & inputElementConfig_initialValue .~ case mNotes of
+      Nothing -> ""
+      Just n -> unAccountNotes n
+    & initialAttributes . at "class" %~ pure . maybe (renderClass cls) (mappend (" " <> renderClass cls))
+    & initialAttributes <>~ "maxlength" =: "70"
+
 uiAccountDetailsOnChainImpl
   :: forall mConf key t m.
      ( HasUiAccountDetailsModelCfg mConf key t
@@ -72,44 +82,41 @@ uiAccountDetailsOnChainImpl netname (name, chain, account) onClose = Workflow $ 
           mkLabeledInputView False lbl attrFn $ pure v
 
   notesEdit <- divClass "modal__main account-details" $ do
-    dialogSectionHeading mempty "Info"
-    divClass "group" $ do
+    dialogSectionHeading mempty "Basic Info"
+    notesEdit <- divClass "group" $ do
       -- Account name
       _ <- displayText "Account Name" (unAccountName name) "account-details__name"
+      -- Chain id
+      _ <- displayText "Chain ID" (Pact._chainId chain) "account-details__chain-id"
+      -- Notes edit
+      notesEdit <- notesEditor $ _vanityAccount_notes $ _account_storage account
+      -- separator
+      horizontalDashedSeparator
+      -- Kadena Address
+      _ <- uiDisplayKadenaAddressWithCopy True kAddr
+      pure notesEdit
+
+    dialogSectionHeading mempty "Keyset Info"
+    divClass "group" $ do
       -- Public key
       case _account_status account of
         AccountStatus_Unknown -> text "Unknown"
         AccountStatus_DoesNotExist -> text "Does not exist"
         AccountStatus_Exists d -> do
-          for_ (_addressKeyset_keys $ _accountDetails_keyset d) $ \key -> do
-            _ <- displayText "Public Key" (keyToText key) "account-details__pubkey"
-            pure ()
-      -- Chain id
-      _ <- displayText "Chain ID" (Pact._chainId chain) "account-details__chain-id"
-      -- separator
-      horizontalDashedSeparator
-      -- Notes edit
-      notesEdit0 :: Maybe (Dynamic t Text) <- do
-        notes0 <- fmap (Just . value) $ mkLabeledClsInput False "Notes" $ \cls -> uiInputElement $ def
-          & inputElementConfig_initialValue .~ case _vanityAccount_notes $ _account_storage account of
-            Nothing -> ""
-            Just n -> unAccountNotes n
-          & initialAttributes . at "class" %~ pure . maybe (renderClass cls) (mappend (" " <> renderClass cls))
-          & initialAttributes <>~ "maxlength" =: "70"
-        -- separator
-        horizontalDashedSeparator
-        pure notes0
-      -- Kadena Address
-      _ <- uiDisplayKadenaAddressWithCopy kAddr
-      pure notesEdit0
+          _ <- displayText "Predicate" (_addressKeyset_pred $ _accountDetails_keyset d) ""
+          elClass "div" "segment segment_type_tertiary labeled-input" $ do
+            divClass "label labeled-input__label" $ text "Public Keys Associated to Account"
+            for_ (_addressKeyset_keys $ _accountDetails_keyset d) $ \key -> uiInputElement $ def
+              & initialAttributes %~ Map.insert "disabled" "disabled" . addToClassAttr "labeled-input__input labeled-input__multiple"
+              & inputElementConfig_initialValue .~ keyToText key
+
+    pure notesEdit
 
   modalFooter $ do
     onDone <- confirmButton def "Done"
 
     let
-      onNotesUpdate = case notesEdit of
-        Nothing -> never
-        Just notes -> (netname, name, Just chain,) . mkAccountNotes <$> current notes <@ (onDone <> onClose)
+      onNotesUpdate = (netname, name, Just chain,) <$> current notesEdit <@ (onDone <> onClose)
       conf = mempty & walletCfg_updateAccountNotes .~ onNotesUpdate
 
     pure ( ("Account Details", (conf, onDone))
@@ -126,9 +133,9 @@ uiAccountDetails
   -> Maybe AccountNotes
   -> Event t ()
   -> m (mConf, Event t ())
-uiAccountDetails net account notes _onCloseExternal = mdo
+uiAccountDetails net account notes onCloseExternal = mdo
   onClose <- modalHeader $ dynText title
-  dwf <- workflow (uiAccountDetailsImpl net account notes onClose)
+  dwf <- workflow (uiAccountDetailsImpl net account notes (onClose <> onCloseExternal))
   let (title, (dConf, dEvent)) = fmap splitDynPure $ splitDynPure dwf
   conf <- flatten =<< tagOnPostBuild dConf
   return ( conf
@@ -153,19 +160,20 @@ uiAccountDetailsImpl net account notes onClose = Workflow $ do
         in
           mkLabeledInputView False lbl attrFn $ pure v
 
-  divClass "modal__main key-details" $ do
+  notesEdit <- divClass "modal__main key-details" $ do
+    dialogSectionHeading mempty "Basic Info"
     divClass "group" $ do
       _ <- displayText "Account Name" (unAccountName account) "account-details__name"
-      _ <- displayText "Notes" (maybe "" unAccountNotes notes) "account-details__notes"
-      pure ()
+      notesEditor notes
 
   modalFooter $ do
     onRemove <- cancelButton (def & uiButtonCfg_class <>~ " account-details__remove-account-btn") "Remove Account"
     onDone <- confirmButton def "Done"
 
-    let done = leftmost [onClose, onDone]
+    let onNotesUpdate = (net, account, Nothing,) <$> current notesEdit <@ (onDone <> onClose)
+        conf = mempty & walletCfg_updateAccountNotes .~ onNotesUpdate
 
-    pure ( ("Key Details", (mempty, done))
+    pure ( ("Key Details", (conf, onDone))
          , uiDeleteConfirmation net account onClose <$ onRemove
          )
 
@@ -188,6 +196,6 @@ uiDeleteConfirmation net name onClose = Workflow $ do
   modalFooter $ do
     onConfirm <- confirmButton (def & uiButtonCfg_class .~ "account-delete__confirm") "Remove Account"
     let cfg = mempty & walletCfg_delAccount .~ ((net, name) <$ onConfirm)
-    pure ( ("Remove Confirmation", (cfg, leftmost [onClose, onConfirm]))
+    pure ( ("Remove Confirmation", (cfg, onConfirm))
          , never
          )
