@@ -44,32 +44,24 @@ module Frontend.Network.NodeInfo
   ) where
 
 import           Control.Applicative         ((<|>))
-import           Control.Arrow               (right)
-import           Control.Arrow               (left)
-import           Control.Error.Safe          (headErr, maximumErr)
+import           Control.Arrow               (right, left, (&&&))
 import           Control.Lens
 import           Control.Monad
 import           Control.Monad               (void)
 import           Control.Monad.Except        (ExceptT (..), MonadError,
-                                              liftEither, runExceptT,
-                                              throwError)
+                                              runExceptT, throwError)
 import           Control.Monad.IO.Unlift
 import           Data.Aeson                  (Value)
 import qualified Data.Aeson                  as Aeson
 import qualified Data.Aeson.Lens             as AL
 import           Data.Default
-import qualified Data.HashMap.Lazy           as HM
 import           Data.Text                   (Text)
 import qualified Data.Text                   as T
 import qualified Data.Text.Encoding          as T
-import           Data.Void                   (Void)
 import           Language.Javascript.JSaddle (JSM, MonadJSM, liftJSM)
 import           Reflex.Dom.Class            (HasJSContext (..))
 import           Reflex.Dom.Xhr
 import           Safe                        (fromJustNote)
-import qualified Text.Megaparsec             as MP
-import qualified Text.Megaparsec.Char        as MP
-import           Text.Read                   (readMaybe)
 import           Text.URI                    (URI (URI))
 import qualified Text.URI                    as URI hiding (uriPath)
 import           Text.URI.Lens               as URI
@@ -215,16 +207,16 @@ discoverChainwebOrPact uri = do
 discoverChainwebNode :: (MonadJSM m, HasJSContext m, MonadUnliftIO m) => NodeUri -> m (Either Text NodeInfo)
 discoverChainwebNode baseUri = runExceptT $ do
 
-    let req = mkSwaggerReq $ nodeToBaseUri baseUri
+    let req = mkInfoReq $ nodeToBaseUri baseUri
     resp <- ExceptT . fmap (left tshow) $ runReq req
 
     when (_xhrResponse_status resp /= 200) $
       throwError $ "Received non 200 status: " <> tshow (_xhrResponse_status resp)
 
-    swaggerI <- note "Parsing swagger.json failed" $
+    infoI <- note "Parsing /info json value failed" $
       Aeson.decodeStrict . T.encodeUtf8 <=< _xhrResponse_responseText $ resp
 
-    info <- parseChainwebInfo swaggerI
+    info <- parseChainwebInfo infoI
     pure $ NodeInfo
       { _nodeInfo_baseUri = baseUri
       , _nodeInfo_type = NodeType_Chainweb info
@@ -248,58 +240,23 @@ discoverPactNode baseUri = runExceptT $ do
       }
 
 
--- | Parse `ChainwebInfo` given a `Value` representing /swagger.json.
+-- | Parse `ChainwebInfo` given a `Value` representing /info .
 {- parseChainwebInfo :: forall m. MonadPlus m => Value -> m ChainwebInfo -}
 parseChainwebInfo :: forall m. (MonadError Text m) => Value -> m ChainwebInfo
 parseChainwebInfo v = do
-
-    allPaths <- note "Found no paths object" $ v ^? AL.key "paths" . AL._Object . to HM.keys
-
-    let
-      chainFilter = (&&) <$> T.isPrefixOf "/chainweb/" <*> T.isInfixOf "/chain/"
-      sendFilter = (&&) <$> T.isSuffixOf "/send" <*> chainFilter
-      sendPaths = filter sendFilter allPaths
-
-    examplePath <- liftEither $ headErr "No send paths found." sendPaths
-    (chainwebVersion, networkVersion) <- getVersions examplePath
-
-    chainIds <- traverse getChainId sendPaths
-    numberOfChains <- fmap (+1) . liftEither $ maximumErr "No chainids found." chainIds
+    numberOfChainsNum <- note "Found no numberOfChains" $ v ^? AL.key "nodeNumberOfChains" . AL._Number
+    numberOfChains <- note "Number of chains wasn't > 0 and < 255"
+      . fmap (fromInteger . round)
+      . mfilter (uncurry (&&) . ((> 0) &&& (< 255)))
+      $ Just numberOfChainsNum
+    chainwebVersion <- note "Found no nodeApiVersion" $ v ^? AL.key "nodeApiVersion" . AL._String
+    networkVersion <- note "Found no nodeVersion " $ v ^? AL.key "nodeVersion" . AL._String
 
     pure $ ChainwebInfo
       { _chainwebInfo_version = chainwebVersion
       , _chainwebInfo_networkVersion = networkVersion
       , _chainwebInfo_numberOfChains = numberOfChains
       }
-
-  where
-    -- Get chainweb and network version from path:
-    getVersions :: forall mp. MonadError Text mp => Text -> mp (Text, Text)
-    getVersions = parseLifted versionsP
-
-    versionsP :: MP.Parsec Void Text (Text, Text)
-    versionsP = do
-      void $ MP.string "/chainweb/"
-      chainwebVersion <- MP.takeWhile1P (Just "chainweb version") (/= '/')
-      void $ MP.char '/'
-      networkVersion <- MP.takeWhile1P (Just "network version") (/= '/')
-      pure (chainwebVersion, networkVersion)
-
-    getChainId :: forall mp. MonadError Text mp => Text -> mp Word
-    getChainId = parseLifted chainIdP
-
-    chainIdP :: MP.Parsec Void Text Word
-    chainIdP = do
-      void versionsP
-      void $ MP.string "/chain/"
-      digitsP
-
-    digitsP :: MP.Parsec Void Text Word
-    digitsP = maybe (fail "parseChainwebInfo: digitsP: no parse") pure . readMaybe =<< MP.some MP.digitChar
-
-    parseLifted :: forall a mp. MonadError Text mp => MP.Parsec Void Text a -> Text -> mp a
-    parseLifted p s = liftEither . left (T.pack . show) $ MP.runParser p "swagger.json" s
-
 
 runReq
   :: (HasJSContext m, MonadJSM m, MonadUnliftIO m, IsXhrPayload a)
@@ -332,13 +289,13 @@ newXMLHttpRequestWithErrorSane req cb =
     handleException e = liftJSM $ cb $ Left e
 
 
--- | Get requests for retrieving the swagger.json from a given node.
-mkSwaggerReq :: URI -> XhrRequest ()
-mkSwaggerReq uri =
+-- | Get requests for retrieving the /info from a node
+mkInfoReq :: URI -> XhrRequest ()
+mkInfoReq uri =
   let
-    swaggerURI = uri & URI.uriPath .~ [ [URI.pathPiece|swagger.json|] ]
+    infoURI = uri & URI.uriPath .~ [ [URI.pathPiece|info|] ]
   in
-    xhrRequest "GET" (URI.render swaggerURI) def
+    xhrRequest "GET" (URI.render infoURI) def
 
 
 -- | Get requests for retrieving /version from a given pact -s node.
