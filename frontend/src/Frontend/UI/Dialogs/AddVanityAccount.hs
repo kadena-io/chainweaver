@@ -2,8 +2,7 @@
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE RecursiveDo #-}
 module Frontend.UI.Dialogs.AddVanityAccount
-  ( --uiAddVanityAccountSettings
-    uiAddAccountButton
+  ( uiAddAccountButton
   , uiCreateAccountButton
   , uiCreateAccountDialog
   ) where
@@ -79,8 +78,11 @@ uiAddAccountDialog
   -> Event t ()
   -> m (mConf, Event t ())
 uiAddAccountDialog model _onCloseExternal = mdo
-  onClose <- modalHeader $ text "Add New Account"
+  onClose <- modalHeader $ text "Add Account"
   name <- modalMain $ do
+    dialogSectionHeading mempty "Notice"
+    divClass "group" $ text "Add an Account here to display its status. If the Account does not yet exist, then you will be able to create and control the Account on the blockchain."
+    dialogSectionHeading mempty "Add Account"
     divClass "group" $ do
       uiAccountNameInput model Nothing
   add <- modalFooter $ do
