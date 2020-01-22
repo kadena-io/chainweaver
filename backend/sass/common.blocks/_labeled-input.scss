@@ -46,8 +46,16 @@
   }
 }
 
+.labeled-input__multiple {
+  margin-bottom: 10px;
+}
+
 .input_type_textarea.labeled-input__input {
   min-height: 115px;
+}
+
+.input_type_textarea.labeled-input__input.labeled-input__kadena-address {
+  min-height: 64px;
 }
 
 .horizontal-dashed-separator {

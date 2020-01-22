@@ -10,6 +10,7 @@ module Frontend.UI.Dialogs.AccountDetails
   ) where
 
 import Control.Lens
+import qualified Data.Map as Map
 import Data.Text (Text)
 import Reflex
 import Reflex.Dom.Core hiding (Key)
@@ -72,36 +73,41 @@ uiAccountDetailsOnChainImpl netname (name, chain, account) onClose = Workflow $ 
           mkLabeledInputView False lbl attrFn $ pure v
 
   notesEdit <- divClass "modal__main account-details" $ do
-    dialogSectionHeading mempty "Info"
-    divClass "group" $ do
+    dialogSectionHeading mempty "Basic Info"
+    notesEdit <- divClass "group" $ do
       -- Account name
       _ <- displayText "Account Name" (unAccountName name) "account-details__name"
-      -- Public key
-      case _account_status account of
-        AccountStatus_Unknown -> text "Unknown"
-        AccountStatus_DoesNotExist -> text "Does not exist"
-        AccountStatus_Exists d -> do
-          for_ (_addressKeyset_keys $ _accountDetails_keyset d) $ \key -> do
-            _ <- displayText "Public Key" (keyToText key) "account-details__pubkey"
-            pure ()
       -- Chain id
       _ <- displayText "Chain ID" (Pact._chainId chain) "account-details__chain-id"
-      -- separator
-      horizontalDashedSeparator
       -- Notes edit
-      notesEdit0 :: Maybe (Dynamic t Text) <- do
-        notes0 <- fmap (Just . value) $ mkLabeledClsInput False "Notes" $ \cls -> uiInputElement $ def
+      notesEdit :: Maybe (Dynamic t Text) <- do
+        fmap (Just . value) $ mkLabeledClsInput False "Notes" $ \cls -> uiInputElement $ def
           & inputElementConfig_initialValue .~ case _vanityAccount_notes $ _account_storage account of
             Nothing -> ""
             Just n -> unAccountNotes n
           & initialAttributes . at "class" %~ pure . maybe (renderClass cls) (mappend (" " <> renderClass cls))
           & initialAttributes <>~ "maxlength" =: "70"
-        -- separator
-        horizontalDashedSeparator
-        pure notes0
+      -- separator
+      horizontalDashedSeparator
       -- Kadena Address
       _ <- uiDisplayKadenaAddressWithCopy kAddr
-      pure notesEdit0
+      pure notesEdit
+
+    dialogSectionHeading mempty "Keyset Info"
+    divClass "group" $ do
+      -- Public key
+      case _account_status account of
+        AccountStatus_Unknown -> text "Unknown"
+        AccountStatus_DoesNotExist -> text "Does not exist"
+        AccountStatus_Exists d -> do
+          _ <- displayText "Predicate" (_addressKeyset_pred $ _accountDetails_keyset d) ""
+          elClass "div" "segment segment_type_tertiary labeled-input" $ do
+            divClass "label labeled-input__label" $ text "Public Keys Associated to Account"
+            for_ (_addressKeyset_keys $ _accountDetails_keyset d) $ \key -> uiInputElement $ def
+              & initialAttributes %~ Map.insert "disabled" "disabled" . addToClassAttr "labeled-input__input labeled-input__multiple"
+              & inputElementConfig_initialValue .~ keyToText key
+
+    pure notesEdit
 
   modalFooter $ do
     onDone <- confirmButton def "Done"

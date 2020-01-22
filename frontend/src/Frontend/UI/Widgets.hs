@@ -81,7 +81,7 @@ import           Control.Applicative
 import           Control.Arrow (first, (&&&))
 import           Control.Lens
 import           Control.Monad
-import qualified Data.Aeson.Text as Aeson
+import qualified Data.Aeson.Encode.Pretty as AesonPretty
 import           Data.Either (isLeft, rights)
 import           Data.Map.Strict             (Map)
 import qualified Data.Map.Strict as Map
@@ -90,6 +90,7 @@ import           Data.Proxy                  (Proxy(..))
 import           Data.Text                   (Text)
 import qualified Data.Text                   as T
 import qualified Data.Text.Lazy as LT
+import qualified Data.Text.Lazy.Builder as LTB
 import           GHC.Word                    (Word8)
 import           Data.Decimal                (Decimal)
 import qualified Data.Decimal                as D
@@ -749,14 +750,13 @@ uiDisplayKadenaAddressWithCopy
   => KadenaAddress
   -> m ()
 uiDisplayKadenaAddressWithCopy address = void $ do
-  let txtAddr = LT.toStrict $ Aeson.encodeToLazyText address
+  let txtAddr = LT.toStrict $ LTB.toLazyText $ AesonPretty.encodePrettyToTextBuilder address
   -- Kadena Address
-  _ <- mkLabeledInputView False "Kadena Address" (\cfg -> uiInputElement $ cfg
-        & initialAttributes <>~ (
-          "disabled" =: "true" <>
-          "class" =: (" " <> "account-details__kadena-address")
-        )
-      ) $ pure txtAddr
+  elClass "div" "segment segment_type_tertiary labeled-input" $ do
+    divClass "label labeled-input__label" $ text "[Kadena Address]"
+    void $ uiTextAreaElement $ def
+      & initialAttributes <>~ ("disabled" =: "true" <> "class" =: " labeled-input__input labeled-input__kadena-address")
+      & textAreaElementConfig_initialValue .~ txtAddr
   uiDetailsCopyButton $ pure txtAddr
 
 uiGasPriceInputField
