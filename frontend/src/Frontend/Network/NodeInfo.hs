@@ -262,7 +262,7 @@ parseChainwebInfo v = do
 -- "nodeChains":["8","9","4","5","6","7","0","1","2","3"]
 -- But sorting these is a little tricky. If we just sort the strings, things will get messy with
 -- 10, 11, 12, etc but can we actually assume that these are always numbers and sort them as such?
--- The chainSortIndex function goes a little over the top to make sure numbers are sorted at the top
+-- Thisj function goes a little over the top to make sure numbers are sorted at the top
 -- and if we get any non number chain ids they are alphanumerically sorted down below
 sortChainIds :: [Pact.ChainId] -> [Pact.ChainId]
 sortChainIds ids = sortOn chainIdIndex ids
