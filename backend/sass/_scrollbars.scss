@@ -1,18 +1,18 @@
 $thumbBG: $chainweaver-blue;
 $scrollbarBG: $white;
 
-body::-webkit-scrollbar {
-  width: 18px;
-  height: 18px;
-}
-body {
+* {
   scrollbar-width: thin;
   scrollbar-color: $thumbBG $scrollbarBG;
 }
-body::-webkit-scrollbar-track {
+*::-webkit-scrollbar {
+  width: 18px;
+  height: 18px;
+}
+*::-webkit-scrollbar-track {
   background: $scrollbarBG;
 }
-body::-webkit-scrollbar-thumb {
+*::-webkit-scrollbar-thumb {
   background-color: $thumbBG;
   border-radius: 6px;
   border: 3px solid $scrollbarBG;

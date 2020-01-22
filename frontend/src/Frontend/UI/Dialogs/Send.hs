@@ -303,8 +303,8 @@ sendConfig model fromAccount@(fromName, fromChain, fromAcc) = Workflow $ do
 
           displayImmediateFeedback (updated amount) insufficientFundsMsg $ \ma ->
             case (ma, _account_status fromAcc) of
-              (Nothing, _) -> False
               (Just a, AccountStatus_Exists d) -> a > unAccountBalance (_accountDetails_balance d)
+              (_, _) -> False
 
           pure $ runExceptT $ do
             r <- ExceptT $ first (\_ -> "Invalid kadena address") <$> decoded

@@ -17,13 +17,14 @@ let
   macApp = (import ./mac.nix) {
     inherit obApp pkgs appName sass;
   };
+  homeManagerModule = obelisk.reflex-platform.hackGet ./deps/home-manager + /nixos;
   linuxApp = (import ./linux.nix) {
-    inherit obApp pkgs appName sass;
+    inherit obApp pkgs appName sass homeManagerModule;
   };
 in obApp // rec {
   inherit sass;
   inherit (macApp) mac deployMac;
-  inherit (linuxApp) nixosExe deb;
+  inherit (linuxApp) nixosExe deb chainweaverVM chainweaverVMSystem;
 
   server = args@{ hostName, adminEmail, routeHost, enableHttps, version }:
     let
@@ -65,7 +66,7 @@ in obApp // rec {
 
   ci = {
     mac   = { inherit mac; };
-    linux = { inherit (linuxApp) nixosExe deb; };
+    linux = { inherit (linuxApp) nixosExe deb chainweaverVM chainweaverVMSystem; };
     cross = {
       inherit (obApp) exe;
       inherit (obApp.ghc) desktop;

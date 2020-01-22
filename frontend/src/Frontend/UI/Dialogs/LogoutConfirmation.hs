@@ -21,6 +21,7 @@
 -- License     :  BSD-style (see the file LICENSE)
 module Frontend.UI.Dialogs.LogoutConfirmation
   ( uiLogoutConfirmation
+  , uiIdeLogoutConfirmation
   ) where
 
 ------------------------------------------------------------------------------
@@ -75,3 +76,18 @@ uiLogoutConfirmation _onClose = do
     let
       cfg = mempty & oAuthCfg_logout .~ (OAuthProvider_GitHub <$ onConfirm)
     pure (cfg, leftmost [onClose, onConfirm, onCancel])
+
+uiIdeLogoutConfirmation
+  :: MonadWidget t m
+  => Event t ()
+  -> m (Event t (), Event t ())
+uiIdeLogoutConfirmation _onClose = do
+  onClose <- modalHeader $ text "Logout?"
+  modalMain $ do
+    divClass "segment modal__filler logout-confirm__modal-filler" $
+      divClass "modal__filler-horizontal-center-box" $ do
+        onCancel <- cancelButton btnCfg "Cancel"
+        onConfirm <- confirmButton btnCfg "Yes, logout"
+        pure (onConfirm, leftmost [onClose, onCancel])
+  where
+    btnCfg = def & uiButtonCfg_class <>~ "logout-confirm-modal__button"

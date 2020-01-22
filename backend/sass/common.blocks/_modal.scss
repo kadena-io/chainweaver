@@ -305,3 +305,14 @@ body[data-modal-open='true'] {
   margin-bottom: 50px;
 }
 
+// Reset some of the size settings for a tighter fit.
+.modal__dialog.logout-confirm-modal {
+  height: auto;
+  width: auto;
+  min-width: auto;
+
+}
+
+button.button.button_type_tertiary.logout-confirm-modal__button {
+  margin-right: 2em;
+}

@@ -61,6 +61,9 @@ import qualified Frontend.ReplGhcjs
 import Frontend.Store (StoreFrontend(..))
 import Frontend.Storage (runBrowserStorageT)
 
+import Frontend.UI.Modal.Impl (showModalBrutal)
+import Frontend.UI.Dialogs.LogoutConfirmation (uiIdeLogoutConfirmation)
+
 import Desktop.Orphans ()
 import Desktop.Setup
 import Desktop.SigningApi
@@ -137,10 +140,15 @@ bipWallet appCfg = do
         result <- dyn $ ffor mPassword $ \case
           Nothing -> lockScreen xprv
           Just pass -> mapRoutedT (runBIPCryptoT xprv pass) $ do
-            (logout, sidebarLogoutLink) <- mkSidebarLogoutLink
+            (onLogout, sidebarLogoutLink) <- mkSidebarLogoutLink
+
+            onLogoutConfirm <- fmap switchDyn $ widgetHold (pure never)
+              $ showModalBrutal "logout-confirm-modal" uiIdeLogoutConfirmation <$ onLogout
+
             Frontend.ReplGhcjs.app sidebarLogoutLink appCfg
-            setRoute $ landingPageRoute <$ logout
-            pure (never, Nothing <$ logout)
+
+            setRoute $ landingPageRoute <$ onLogoutConfirm
+            pure (never, Nothing <$ onLogoutConfirm)
         pure $ (Nothing, Nothing) <$ restore
   pure ()
 
