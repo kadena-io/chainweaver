@@ -90,7 +90,7 @@ uiAccountDetailsOnChainImpl netname (name, chain, account) onClose = Workflow $ 
       -- separator
       horizontalDashedSeparator
       -- Kadena Address
-      _ <- uiDisplayKadenaAddressWithCopy kAddr
+      _ <- uiDisplayKadenaAddressWithCopy True kAddr
       pure notesEdit
 
     dialogSectionHeading mempty "Keyset Info"

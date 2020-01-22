@@ -158,7 +158,7 @@ uiReceiveModal0 model account mchain onClose = Workflow $ do
         (accordionHeaderBtn "Option 1: Copy and share Kadena Address") $ do
         dyn_ $ ffor chain $ divClass "group" . \case
           Nothing -> text "Please select a chain"
-          Just cid -> uiDisplayKadenaAddressWithCopy $ KadenaAddress account cid Nothing
+          Just cid -> uiDisplayKadenaAddressWithCopy True $ KadenaAddress account cid Nothing
 
       (onReceiClick, results) <- controlledAccordionItem (not <$> showingKadenaAddress) mempty
         (accordionHeaderBtn "Option 2: Transfer from non-Chainweaver Account") $ do

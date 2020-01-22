@@ -747,13 +747,14 @@ uiDisplayKadenaAddressWithCopy
      , PostBuild t m
      , PerformEvent t m
      )
-  => KadenaAddress
+  => Bool
+  -> KadenaAddress
   -> m ()
-uiDisplayKadenaAddressWithCopy address = void $ do
+uiDisplayKadenaAddressWithCopy withLabel address = void $ do
   let txtAddr = LT.toStrict $ LTB.toLazyText $ AesonPretty.encodePrettyToTextBuilder address
   -- Kadena Address
   elClass "div" "segment segment_type_tertiary labeled-input" $ do
-    divClass "label labeled-input__label" $ text "[Kadena Address]"
+    when withLabel $ divClass "label labeled-input__label" $ text "[Kadena Address]"
     void $ uiTextAreaElement $ def
       & initialAttributes <>~ ("disabled" =: "true" <> "class" =: " labeled-input__input labeled-input__kadena-address")
       & textAreaElementConfig_initialValue .~ txtAddr

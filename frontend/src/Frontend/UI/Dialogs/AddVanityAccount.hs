@@ -18,7 +18,6 @@ import           Data.Text                              (Text)
 import qualified Data.HashMap.Lazy as HM
 import qualified Data.IntMap as IntMap
 import qualified Data.Set as Set
-import qualified Data.Text as T
 
 import Kadena.SigningApi
 
@@ -40,6 +39,7 @@ import           Frontend.Network
 import           Frontend.Wallet
 import           Frontend.Log
 import Reflex.Extended
+import Frontend.KadenaAddress
 import Frontend.UI.JsonData (uiKeysetKeys, predDropdown)
 
 -- Allow the user to create a 'vanity' account, which is an account with a custom name
@@ -149,7 +149,7 @@ createAccountSplash model name chain mPublicKey = Workflow $ do
     notGasPayer <- confirmButton cfg "I am not the Gas Payer"
     gasPayer <- confirmButton cfg "I am the Gas Payer"
     let next = leftmost
-          [ tagMaybe (fmap createAccountNotGasPayer <$> current keyset) notGasPayer
+          [ tagMaybe (fmap (createAccountNotGasPayer name chain) <$> current keyset) notGasPayer
           , tagMaybe (fmap (createAccountConfig model name chain) <$> current keyset) gasPayer
           ]
     pure (cancel, next)
@@ -157,11 +157,19 @@ createAccountSplash model name chain mPublicKey = Workflow $ do
 
 createAccountNotGasPayer
   :: (Monoid mConf, MonadWidget t m)
-  => AddressKeyset -> Workflow t m (Text, (mConf, Event t ()))
-createAccountNotGasPayer keyset = Workflow $ do
+  => AccountName -> ChainId -> AddressKeyset -> Workflow t m (Text, (mConf, Event t ()))
+createAccountNotGasPayer name chain keyset = Workflow $ do
   modalMain $ do
-    text "Kadena address goes here"
-    divClass "group" $ text $ T.pack $ show keyset
+    dialogSectionHeading mempty "Notice"
+    divClass "group" $ text "The text below contains all of the Account info you have just configured. Share this [Kadena Address] with someone else to pay the gas for the transaction to create the Account."
+    dialogSectionHeading mempty "[Kadena Address]"
+    divClass "group" $ do
+      _ <- uiDisplayKadenaAddressWithCopy False $ KadenaAddress
+        { _kadenaAddress_accountName = name
+        , _kadenaAddress_chainId = chain
+        , _kadenaAddress_keyset = Just keyset
+        }
+      pure ()
   done <- modalFooter $ confirmButton def "Done"
   pure (("Create Account", (mempty, done)), never)
 
