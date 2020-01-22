@@ -83,7 +83,7 @@ data AccountDialog
   | AccountDialog_Details AccountName (Maybe AccountNotes)
   | AccountDialog_Receive AccountName ChainId
   | AccountDialog_Send (AccountName, ChainId, Account)
-  | AccountDialog_Create AccountName ChainId
+  | AccountDialog_Create AccountName ChainId (Maybe PublicKey)
 
 uiWalletRefreshButton
   :: (MonadWidget t m, Monoid mConf, HasWalletCfg mConf key t)
@@ -165,7 +165,7 @@ uiAccountItems model = do
       AccountDialog_DetailsChain acc -> uiAccountDetailsOnChain n acc
       AccountDialog_Receive name chain -> uiReceiveModal model name (Just chain)
       AccountDialog_Send acc -> uiSendModal model acc
-      AccountDialog_Create name chain -> uiCreateAccountDialog model name chain
+      AccountDialog_Create name chain mKey -> uiCreateAccountDialog model name chain mKey
 
   refresh <- delay 1 =<< getPostBuild
 
@@ -221,9 +221,8 @@ uiAccountItem keys name accountInfo = do
         AccountStatus_Unknown -> pure never
         AccountStatus_DoesNotExist -> do
           create <- uiCreateAccountButton cfg
-          -- TODO this needs a special case for non-vanity accounts. the keyset
-          -- should be pre specified
-          pure $ AccountDialog_Create name chain <$ create
+          let keyFromName = textToKey $ unAccountName name
+          pure $ AccountDialog_Create name chain keyFromName <$ create
         AccountStatus_Exists d -> do
           owned <- holdUniqDyn $ (_addressKeyset_keys (_accountDetails_keyset d) `Set.isSubsetOf`) <$> keys
           switchHold never <=< dyn $ ffor owned $ \case
