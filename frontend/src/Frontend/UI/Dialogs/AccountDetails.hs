@@ -174,7 +174,7 @@ uiAccountDetailsImpl net account notes onClose = Workflow $ do
         conf = mempty & walletCfg_updateAccountNotes .~ onNotesUpdate
 
     pure ( ("Key Details", (conf, onDone))
-         , uiDeleteConfirmation net account onClose <$ onRemove
+         , uiDeleteConfirmation net account <$ onRemove
          )
 
 uiDeleteConfirmation
@@ -185,9 +185,8 @@ uiDeleteConfirmation
     )
   => NetworkName
   -> AccountName
-  -> Event t ()
   -> Workflow t m (Text, (mConf, Event t ()))
-uiDeleteConfirmation net name onClose = Workflow $ do
+uiDeleteConfirmation net name = Workflow $ do
   modalMain $ do
     divClass "segment modal__filler" $ do
       dialogSectionHeading mempty "Warning"
