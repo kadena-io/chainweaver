@@ -310,7 +310,7 @@ makeKeysets walletL cfg =
 -- | Show a descriptive error message.
 showJsonError :: JsonError -> Text
 showJsonError = \case
-  JsonError_NoObject -> "ERROR: Data must be a valid JSON object!"
+  JsonError_NoObject -> "Data must be a valid JSON object!"
 
 -- | Translate `Keysets` to a JSON `Object`.
 keysetsToObject :: Keysets -> Object

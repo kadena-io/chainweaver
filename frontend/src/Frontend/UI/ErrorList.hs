@@ -58,8 +58,11 @@ errorList annotations =
         elClass "div"  "error-list segment segment_type_small-primary" $ do
           elClass "div" "error-list__msg" $ do
               renderIcon $ _annotation_type a
-              elClass "div" "error-list__line-number" $
-                text $ tshow (_annotation_line a) <> ":" <> tshow (_annotation_column a) <> " "
+              for_ (_annotation_pos a) $ \(r,c) ->
+                elClass "div" "error-list__line-number" $ text $ tshow r <> ":" <> tshow c
+              case _annotation_source a of
+                AnnotationSource_Json -> text "[JSON] "
+                AnnotationSource_Pact -> blank
               text $ _annotation_msg a
           renderQuickFix $ makeQuickFix a
   where

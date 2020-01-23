@@ -20,9 +20,11 @@ module Frontend.Editor.Annotation
   ( -- * Types and Classes
     AnnoType (..)
   , Annotation (..)
+  , AnnotationSource (..)
     -- * Parsers
   , annoParser
   , annoFallbackParser
+  , annoJsonParser
   ) where
 
 ------------------------------------------------------------------------------
@@ -40,6 +42,9 @@ import qualified Text.Megaparsec.Char as MP
 data AnnoType = AnnoType_Warning | AnnoType_Error
   deriving (Eq, Ord)
 
+data AnnotationSource = AnnotationSource_Pact | AnnotationSource_Json
+  deriving (Eq, Ord, Show)
+
 instance Show AnnoType where
   show = \case
     AnnoType_Warning -> "warning"
@@ -49,15 +54,15 @@ instance Show AnnoType where
 data Annotation = Annotation
   { _annotation_type   :: AnnoType -- ^ Is it a warning or an error?
   , _annotation_msg    :: Text -- ^ The message to report.
-  , _annotation_line   :: Int -- ^ What line to put the annotation to.
-  , _annotation_column :: Int -- ^ What column.
+  , _annotation_source :: AnnotationSource
+  , _annotation_pos    :: Maybe (Int, Int) -- row, column
   }
   deriving (Show, Eq, Ord)
 
 annoParser :: Text -> Maybe [Annotation]
 annoParser = MP.parseMaybe pactErrorParser
 
--- | Some errors have no line number for some reason: fallback with dummy line number.
+-- | Some errors have no line number for some reason: fallback with Nothing.
 annoFallbackParser :: Text -> [Annotation]
 annoFallbackParser msg =
   case annoParser msg of
@@ -65,11 +70,21 @@ annoFallbackParser msg =
       [ Annotation
         { _annotation_type = AnnoType_Error
         , _annotation_msg = msg
-        , _annotation_line = 1
-        , _annotation_column = 0
+        , _annotation_source = AnnotationSource_Pact
+        , _annotation_pos = Nothing
         }
       ]
     Just a -> a
+
+--TODO: fix line numbers
+--TODO: collapse with json warnings
+annoJsonParser :: Text -> Annotation
+annoJsonParser msg = Annotation
+  { _annotation_type = AnnoType_Error
+  , _annotation_msg = msg
+  , _annotation_source = AnnotationSource_Json
+  , _annotation_pos = Nothing
+  }
 
 pactErrorParser :: MP.Parsec Void Text [Annotation]
 pactErrorParser = MP.many $ do
@@ -90,8 +105,8 @@ pactErrorParser = MP.many $ do
     pure $ Annotation
       { _annotation_type = annoType
       , _annotation_msg = msg
-      , _annotation_line = max line 1 -- Some errors have linenumber 0 which is invalid.
-      , _annotation_column = max column 1
+      , _annotation_source = AnnotationSource_Pact
+      , _annotation_pos = Just (max line 1, max column 1) -- Some errors have linenumber 0 which is invalid.
       }
   where
     digitsP :: MP.Parsec Void Text Int

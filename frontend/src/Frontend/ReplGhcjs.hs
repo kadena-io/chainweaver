@@ -178,7 +178,7 @@ codePanel :: forall r key t m a. (MonadWidget t m, Routed t r m) => AppCfg key t
 codePanel appCfg cls m = elKlass "div" (cls <> "pane") $ do
     (e, eCfg) <- wysiwyg $ do
       onNewCode <- tagOnPostBuild $ m ^. editor_code
-      let annotations = map toAceAnnotation <$> m ^. editor_annotations
+      let annotations = mapMaybe mkCodeAceAnnotation <$> m ^. editor_annotations
       onUserCode <- codeWidget appCfg (updated annotations) "" onNewCode
       pure $ mempty & editorCfg_setCode .~ onUserCode
 
@@ -217,13 +217,18 @@ loadCodeIntoRepl m onReq = do
   pure $ mempty
     & replCfg_sendTransaction .~ onLoad
 
-toAceAnnotation :: Annotation -> AceAnnotation
-toAceAnnotation anno = AceAnnotation
-  { _aceAnnotation_row = _annotation_line anno -1 -- Ace starts at 0.
-  , _aceAnnotation_column = _annotation_column anno
+mkCodeAceAnnotation :: Annotation -> Maybe AceAnnotation
+mkCodeAceAnnotation anno = ffor rowcol $ \(r,c) -> AceAnnotation
+  { _aceAnnotation_row = r
+  , _aceAnnotation_column = c
   , _aceAnnotation_text = _annotation_msg anno
   , _aceAnnotation_type = T.pack . show $ _annotation_type anno
   }
+  where
+    rowcol = case (_annotation_source anno, _annotation_pos anno) of
+      (AnnotationSource_Json, _) -> Nothing
+      (AnnotationSource_Pact, Just (r, c)) -> Just (r - 1, c) -- Ace starts at 0.
+      (AnnotationSource_Pact, Nothing) -> Just (0,0)
 
 codeWidget
   :: (MonadWidget t m, Routed t r m)
