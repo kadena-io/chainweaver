@@ -630,30 +630,34 @@ uiAdditiveInput
   :: forall t m out particular
      . ( MonadWidget t m
        )
-  => (IntMap.Key -> m out)
+  => (IntMap.Key -> particular -> m out)
   -> (out -> Event t particular)
   -> (particular -> Bool)
   -> (particular -> Bool)
+  -> particular
+  -> Event t (IntMap.IntMap (Maybe particular))
   -> m (Dynamic t (IntMap.IntMap out))
-uiAdditiveInput mkIndividualInput getParticular allowNewRow allowDeleteRow = do
+uiAdditiveInput mkIndividualInput getParticular allowNewRow allowDeleteRow initialSelection onExternal = do
   let
     minRowIx = 0
 
-    decideAddNewRow :: (IntMap.Key, out) -> Event t (IntMap.IntMap (Maybe ()))
-    decideAddNewRow (i, out) = IntMap.singleton (succ i) (Just ()) <$
+    decideAddNewRow :: (IntMap.Key, out) -> Event t (IntMap.IntMap (Maybe particular))
+    decideAddNewRow (i, out) = IntMap.singleton (succ i) (Just initialSelection) <$
       ffilter allowNewRow (getParticular out)
 
-    decideDeletion :: IntMap.Key -> out -> Event t (IntMap.IntMap (Maybe ()))
+    decideDeletion :: IntMap.Key -> out -> Event t (IntMap.IntMap (Maybe particular))
     decideDeletion i out = IntMap.singleton i Nothing <$
       ffilter allowDeleteRow (getParticular out)
 
   rec
-    (keys, newSelection) <-
-      traverseIntMapWithKeyWithAdjust (\k _ -> mkIndividualInput k) (IntMap.singleton minRowIx ()) $ leftmost
+    (keys, newSelection) <- traverseIntMapWithKeyWithAdjust mkIndividualInput (IntMap.singleton minRowIx initialSelection) $
+      leftmost
       [ -- Delete rows when 'select' is chosen
         fmap PatchIntMap $ switchDyn $ IntMap.foldMapWithKey decideDeletion <$> dInputKeys
         -- Add a new row when all rows have a selection and there are more keys to choose from
       , fmap PatchIntMap $ switchDyn $ maybe never decideAddNewRow . IntMap.lookupMax <$> dInputKeys
+        -- Set the values of the rows from an external event.
+      , PatchIntMap <$> onExternal
       ]
     dInputKeys <- foldDyn applyAlways keys newSelection
 

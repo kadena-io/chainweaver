@@ -28,6 +28,8 @@ module Frontend.UI.DeploymentSettings
   , DeploymentSettingsResultError (..)
 
     -- * Helpers
+  , TxnSenderTitle (..)
+  , getTxnSenderTitle
   , buildDeploymentSettingsResult
   , defaultGASCapability
 
@@ -414,6 +416,7 @@ uiDeploymentSettings m settings = mdo
           (_deploymentSettingsConfig_ttl settings)
           (_deploymentSettingsConfig_gasLimit settings)
           Nothing
+          TxnSenderTitle_Default
           (Just advancedAccordion)
           (_deploymentSettingsConfig_sender settings)
 
@@ -503,6 +506,17 @@ uiDeployMetaData m mTTL mGasLimit = do
   dialogSectionHeading mempty "Settings"
   elKlass "div" ("group segment") $ uiMetaData m mTTL mGasLimit
 
+data TxnSenderTitle
+  = TxnSenderTitle_Default
+  | TxnSenderTitle_GasPayer
+  | TxnSenderTitle_Other Text
+
+getTxnSenderTitle :: TxnSenderTitle -> Text
+getTxnSenderTitle = \case
+  TxnSenderTitle_Default -> "Transaction Sender"
+  TxnSenderTitle_GasPayer -> "Gas Payer"
+  TxnSenderTitle_Other t -> t
+
 -- | UI for asking the user about data needed for deployments/function calling.
 uiCfg
   :: ( MonadWidget t m
@@ -517,6 +531,7 @@ uiCfg
   -> Maybe TTLSeconds
   -> Maybe GasLimit
   -> g (Text, m a)
+  -> TxnSenderTitle
   -> Maybe (model -> Dynamic t Bool -> m (Event t (), ((), mConf)))
   -> (model -> Dynamic t (Maybe ChainId) -> Event t (Maybe AccountName) -> m (Dynamic t (Maybe (AccountName, Account))))
   -> m ( mConf
@@ -526,13 +541,13 @@ uiCfg
        , Dynamic t GasLimit
        , g a
        )
-uiCfg mCode m wChainId mTTL mGasLimit userSections otherAccordion mSenderSelect = do
+uiCfg mCode m wChainId mTTL mGasLimit userSections txnSenderTitle otherAccordion mSenderSelect = do
   -- General deployment configuration
   let mkGeneralSettings = do
         traverse_ (\c -> transactionInputSection c Nothing) mCode
         cId <- uiDeployDestination m wChainId
 
-        dialogSectionHeading mempty "Transaction Sender"
+        dialogSectionHeading mempty $ getTxnSenderTitle txnSenderTitle
         mSender <- elKlass "div" ("group segment") $ mkLabeledClsInput True "Account" $ \_ -> do
           (fmap . fmap) fst <$> mSenderSelect m cId never
 
