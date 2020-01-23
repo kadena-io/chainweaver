@@ -120,23 +120,23 @@ makeEditor
     )
   => model -> cfg -> m (mConf, Editor t)
 makeEditor m cfg = mdo
-    t <-  holdDyn "" $ leftmost
+    t <- holdDyn "" $ leftmost
       [ cfg ^. editorCfg_setCode
       , cfg ^. editorCfg_loadCode
-      , onFix
+      , onCodeFix
       ]
 
     modified <- holdDyn False $ leftmost
       [ False <$ cfg ^. editorCfg_loadCode
-      , True <$  cfg ^. editorCfg_setCode
-      , True <$  onFix
+      , True  <$ cfg ^. editorCfg_setCode
+      , True  <$ onCodeFix
       , False <$ cfg ^. editorCfg_clearModified
       ]
 
     annotations <- typeCheckVerify m t
     quickFixes  <- holdDyn [] $ makeQuickFixes <$> annotations
     gen <- liftIO newStdGen
-    (quickFixCfg, onFix) <- applyQuickFix (randoms gen) t $ cfg ^. editorCfg_applyQuickFix
+    (quickFixCfg, onCodeFix) <- applyQuickFix (randoms gen) t $ cfg ^. editorCfg_applyQuickFix
     pure
       ( quickFixCfg
       , Editor
@@ -156,14 +156,14 @@ applyQuickFix
   => [Word32] -> Dynamic t Text -> Event t QuickFix -> m (mConf, Event t Text)
 applyQuickFix rs t onQuickFix = do
   let
-    onNewDefKeyset = fmapMaybe (^? _QuickFix_MissingKeyset) onQuickFix
+    onNewDefKeyset = fmapMaybe (^? _QuickFix_UndefinedKeyset) onQuickFix
     mkName r n = (n, n <> "-" <> tshow r)
   onNewRandKeyset <- zipListWithEvent mkName rs onNewDefKeyset
 
   let
 
     onNewKeyset = leftmost
-     [ fmapMaybe (^? _QuickFix_MissingEnvKeyset) onQuickFix
+     [ fmapMaybe (^? _QuickFix_UnreadableKeyset) onQuickFix
      , snd <$> onNewRandKeyset
      ]
 

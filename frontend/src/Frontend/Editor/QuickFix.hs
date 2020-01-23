@@ -26,8 +26,8 @@
 
 module Frontend.Editor.QuickFix
   ( QuickFix (..)
-  , _QuickFix_MissingEnvKeyset
-  , _QuickFix_MissingKeyset
+  , _QuickFix_UnreadableKeyset
+  , _QuickFix_UndefinedKeyset
   , makeQuickFixes
   , makeQuickFix
   ) where
@@ -47,9 +47,9 @@ import           Frontend.Foundation
 
 -- | Errors that can be quickly fixed by the user by pressing a button.
 data QuickFix
-  = QuickFix_MissingEnvKeyset Text
+  = QuickFix_UnreadableKeyset Text
     -- ^ Keyset was not available in message - add it.
-  | QuickFix_MissingKeyset Text
+  | QuickFix_UndefinedKeyset Text
     -- ^ Keyset was used without being defined
   deriving (Generic, Show, Read, Eq, Ord)
 
@@ -62,20 +62,20 @@ makeQuickFixes = mapMaybe makeQuickFix
 -- | Make a quick fix from an annotation, if possible.
 makeQuickFix :: Annotation -> Maybe QuickFix
 makeQuickFix =
-  MP.parseMaybe (MP.try missingEnvKeysetParser <|> missingKeysetParser)
+  MP.parseMaybe (MP.try unreadableKeysetParser <|> undefinedKeysetParser)
   . _annotation_msg
 
--- | Parser for `QuickFix_MissingEnvKeyset`.
-missingEnvKeysetParser :: MP.Parsec Void Text QuickFix
-missingEnvKeysetParser = do
+-- | Parser for `QuickFix_UnreadableKeyset`.
+unreadableKeysetParser :: MP.Parsec Void Text QuickFix
+unreadableKeysetParser = do
     void $ MP.string "No such key in message: "
-    QuickFix_MissingEnvKeyset <$> parseString
+    QuickFix_UnreadableKeyset <$> parseString
 
--- | Parser for `QuickFix_MissingEnvKeyset`.
-missingKeysetParser :: MP.Parsec Void Text QuickFix
-missingKeysetParser = do
+-- | Parser for `QuickFix_UndefinedKeyset`.
+undefinedKeysetParser :: MP.Parsec Void Text QuickFix
+undefinedKeysetParser = do
     void $ MP.string "No such keyset: "
-    QuickFix_MissingKeyset <$> parseString
+    QuickFix_UndefinedKeyset <$> parseString
 
 
 

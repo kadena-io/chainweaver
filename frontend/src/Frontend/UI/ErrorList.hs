@@ -74,8 +74,8 @@ errorList annotations =
       pure $ qf <$ onClick
 
     renderQuickFixTitle = \case
-      QuickFix_MissingEnvKeyset ks -> "Adds keyset '" <> ks <> "' to Env."
-      QuickFix_MissingKeyset ks -> "Adds (define-keyset '" <> ks <> " ...) and also adds an empty keyset to Env."
+      QuickFix_UnreadableKeyset ks -> "Adds keyset '" <> ks <> "' to Env."
+      QuickFix_UndefinedKeyset ks -> "Adds (define-keyset '" <> ks <> " ...) and also adds an empty keyset to Env."
 
     renderIcon t = elClass "div" ("icon error-list__icon " <> annoCls t) blank
 
