@@ -220,20 +220,19 @@ $setup-progress-font-size: 18px;
       padding: 0;
     }
 
-    .button__text-icon {
-      height: 25px;
-      bottom: -5px;
-    }
-
     &.button_type_secondary {
-      font-size: 16px;
-      padding: 10px;
+      font-size: 15px;
+      height: 36px;
       color: $tertiary-color;
       flex-grow: 1;
-
+      display: flex;
+      justify-content: center;
+      align-items: center;
       .button__text-icon {
-        height: 15px;
-        bottom: -2px;
+        height: 19px;
+        opacity: 0.4;
+        margin-right: 10px;
+        bottom: 0px;
       }
     }
   }
