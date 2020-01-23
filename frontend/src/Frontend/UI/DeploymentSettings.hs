@@ -112,7 +112,7 @@ import Frontend.UI.JsonData
 import Frontend.UI.Modal
 import Frontend.UI.TabBar
 import Frontend.UI.Widgets
-import Frontend.UI.Widgets.Helpers (preventScrollWheelAndUpDownArrow,dialogSectionHeading)
+import Frontend.UI.Widgets.Helpers (preventUpAndDownArrow, preventScrollWheel, dialogSectionHeading)
 import Frontend.Wallet
 
 -- | Config for the deployment settings widget.
@@ -610,6 +610,7 @@ uiMetaData
   :: forall t m model mConf
      . ( DomBuilder t m, MonadHold t m, MonadFix m, PostBuild t m
        , HasNetwork model t, HasNetworkCfg mConf t, Monoid mConf
+       , GhcjsDomSpace ~ DomBuilderSpace m, MonadJSM m
        )
   => model -> Maybe TTLSeconds -> Maybe GasLimit -> m (mConf, Dynamic t TTLSeconds, Dynamic t GasLimit)
 uiMetaData m mTTL mGasLimit = do
@@ -653,10 +654,13 @@ uiMetaData m mTTL mGasLimit = do
       mkGasLimitInput
         :: InputElementConfig EventResult t (DomBuilderSpace m)
         -> m (Event t Integer)
-      mkGasLimitInput conf = dimensionalInputFeedbackWrapper (Just "Units") $ fmap snd $ uiIntInputElement (Just 0) (Just chainwebGasLimitMaximum) $ conf
-        & inputElementConfig_initialValue .~ showGasLimit initGasLimit
-        & inputElementConfig_setValue .~ fmap showGasLimit pbGasLimit
-        & inputElementConfig_elementConfig . elementConfig_eventSpec %~ preventScrollWheelAndUpDownArrow @m
+      mkGasLimitInput conf = dimensionalInputFeedbackWrapper (Just "Units") $ do
+        (i, e) <- uiIntInputElement (Just 0) (Just chainwebGasLimitMaximum) $ conf
+          & inputElementConfig_initialValue .~ showGasLimit initGasLimit
+          & inputElementConfig_setValue .~ fmap showGasLimit pbGasLimit
+          & inputElementConfig_elementConfig . elementConfig_eventSpec %~ preventUpAndDownArrow @m
+        preventScrollWheel $ _inputElement_raw i
+        pure e
 
     onGasLimit <- (fmap . fmap) (GasLimit . ParsedInteger) $ mkLabeledInput True "Gas Limit" mkGasLimitInput def
 

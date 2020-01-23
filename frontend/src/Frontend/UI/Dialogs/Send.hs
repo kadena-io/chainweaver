@@ -468,6 +468,7 @@ runUnfinishedCrossChainTransfer logL netInfo keys fromChain toChain toGasPayer r
 -- transfer.
 finishCrossChainTransferConfig
   :: ( PerformEvent t m, PostBuild t m, TriggerEvent t m, MonadHold t m, DomBuilder t m
+     , GhcjsDomSpace ~ DomBuilderSpace m, MonadJSM m
      , MonadJSM (Performable m), MonadFix m
      , HasCrypto key (Performable m)
      , Monoid mConf, HasWalletCfg mConf key t
