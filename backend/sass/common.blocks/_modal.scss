@@ -86,6 +86,7 @@ body[data-modal-open='true'] {
   flex-grow: 1;
   padding: $normal-padding $normal-padding;
   min-height: 6em;
+  overflow-x: hidden;
   overflow-y: auto;
 }
 
