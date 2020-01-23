@@ -1,3 +1,4 @@
+{-# LANGUAGE TupleSections #-}
 {-# LANGUAGE ConstraintKinds #-}
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE RecursiveDo #-}
@@ -14,12 +15,17 @@ import           Control.Monad.Trans.Class              (lift)
 import           Control.Monad.Trans.Maybe              (MaybeT (..), runMaybeT)
 import           Data.Maybe                             (isNothing)
 import           Data.Either                            (isLeft)
+import           Data.Witherable                        (wither)
 import           Data.Text                              (Text)
+import qualified Data.Text as T
 import qualified Data.HashMap.Lazy as HM
+import qualified Data.IntSet as IntSet
 import qualified Data.IntMap as IntMap
+import qualified Data.Map as Map
+import           Data.Set                               (Set)
 import qualified Data.Set as Set
 
-import Kadena.SigningApi
+import           Kadena.SigningApi
 
 import           Reflex
 import           Reflex.Dom.Core
@@ -37,10 +43,9 @@ import           Frontend.Crypto.Class
 import           Frontend.JsonData
 import           Frontend.Network
 import           Frontend.Wallet
+import           Frontend.Foundation
 import           Frontend.Log
-import Reflex.Extended
-import Frontend.KadenaAddress
-import Frontend.UI.JsonData (uiKeysetKeys, predDropdown)
+import           Frontend.KadenaAddress
 
 -- Allow the user to create a 'vanity' account, which is an account with a custom name
 -- that lives on the chain. Requires GAS to create.
@@ -173,20 +178,103 @@ createAccountNotGasPayer name chain keyset = Workflow $ do
   done <- modalFooter $ confirmButton def "Done"
   pure (("Create Account", (mempty, done)), never)
 
+data ExternalKeyInput t = ExternalKeyInput
+  { _externalKeyInput_input :: Event t Text
+  , _externalKeyInput_value :: Dynamic t (Maybe PublicKey)
+  }
+
+uiExternalKeyInput :: forall t m. MonadWidget t m => m (Dynamic t (Set PublicKey))
+uiExternalKeyInput = do
+  let
+    uiPubkeyInput = do
+      (inp, dE) <- uiInputWithInlineFeedback
+        (fmap parsePublicKey . value)
+        (fmap (not . T.null) . value)
+        id
+        Nothing
+        uiInputElement
+        $ def
+        & initialAttributes .~ (
+          "placeholder" =: "External public key" <>
+          "class" =: "labeled-input__input"
+          )
+
+      pure $ ExternalKeyInput
+        { _externalKeyInput_input = _inputElement_input inp
+        , _externalKeyInput_value = hush <$> dE
+        }
+
+    toSet :: IntMap.IntMap (ExternalKeyInput t) -> Dynamic t (Set PublicKey)
+    toSet = fmap (Set.fromList . IntMap.elems) . wither _externalKeyInput_value
+
+  uiAdditiveInput (const uiPubkeyInput) _externalKeyInput_input (not . T.null) T.null
+    <&> (>>= toSet)
+
+uiDefineKeyset
+  :: forall t m key model
+     . ( MonadWidget t m
+       , HasWallet model key t
+       )
+  => model
+  -> m (Dynamic t (Set PublicKey))
+uiDefineKeyset model = do
+  let
+    selectMsgKey = 0
+    selectMsgMap = IntMap.singleton selectMsgKey "Select"
+
+    dAllKeys = mappend selectMsgMap
+      . IntMap.mapKeys succ     -- Prepare for inserting the "Select" key at 0
+      . fmap (keyToText . _keyPair_publicKey . _key_pair)
+      <$> model ^. wallet_keys
+
+    uiSelectKey = mkLabeledClsInput False (constDyn T.empty) $ const
+      $ uiDropdown 0 ((Map.fromList . IntMap.toAscList) <$> dAllKeys) $ def
+      & dropdownConfig_attributes .~ constDyn ("class" =: "labeled-input__input")
+
+    toIntSet :: IntMap.IntMap (Dropdown t IntMap.Key) -> Dynamic t (IntSet.IntSet)
+    toIntSet = foldMap (fmap adjustForSelectKey . value)
+      where
+        adjustForSelectKey k =
+          if k /= selectMsgKey then
+            -- Remove the adjustment for having a placeholder "Select" key
+            IntSet.singleton (k - 1)
+          else
+            IntSet.empty
+
+  dSelectedKeys <- uiAdditiveInput (const uiSelectKey) _dropdown_change (/= selectMsgKey) (== selectMsgKey)
+
+  -- TODO make this less awful
+  pure $ ffor2 (model ^. wallet_keys) (dSelectedKeys >>= toIntSet) $ \wKeys ->
+    Set.fromDistinctAscList . IntMap.elems . fmap (_keyPair_publicKey . _key_pair) . IntMap.restrictKeys wKeys
+
 -- TODO make this look like the new design
-defineKeyset :: (MonadWidget t m, HasWallet model key t) => model -> m (Dynamic t (Maybe AddressKeyset))
+defineKeyset
+  :: ( MonadWidget t m
+     , HasWallet model key t
+     , HasJsonData model t
+     )
+  => model
+  -> m (Dynamic t (Maybe AddressKeyset))
 defineKeyset model = do
-  let allKeys = fmap (_keyPair_publicKey . _key_pair) . IntMap.elems <$> model ^. wallet_keys
+  let
+    allPreds = model ^. jsonData_keysets >>= fmap catMaybes . sequenceA . fmap _keyset_pred . Map.elems
+
+    allPredSelectMap = ffor allPreds $ \ps ->
+      Map.fromList . fmap (\x -> (x,x)) $ ps <> predefinedPreds
   rec
-    selectedKeys <- foldDyn ($) Set.empty $ ffor chooseKey $ \(key, selected) -> case selected of
-      False -> Set.delete key
-      True -> Set.insert key
-    chooseKey <- uiKeysetKeys selectedKeys allKeys
+    selectedKeys <- mkLabeledClsInput False "Chainweaver Keys" $ const
+      $ uiDefineKeyset model
+
+    externalKeys <- mkLabeledClsInput False "External Keys" $ const
+      $ uiExternalKeyInput
+
+    predicate <- mkLabeledClsInput False "Predicate (Keys Required to Sign for Account)" $ const
+      $ fmap value $ uiDropdown mempty allPredSelectMap $ def
+      & dropdownConfig_attributes .~ constDyn ("class" =: "labeled-input__input")
+
   -- TODO external keys
   -- TODO validate this
-  predicate <- holdDyn "" =<< predDropdown never
-  pure $ mkAddressKeyset <$> selectedKeys <*> predicate
-
+  pure $ mkAddressKeyset <$> (selectedKeys <> externalKeys) <*> predicate
 
 createAccountConfig
   :: forall key t m mConf model

@@ -53,6 +53,7 @@ module Frontend.UI.Widgets
   , uiAccountBalance
   , uiAccountBalance'
   , uiPublicKeyShrunk
+  , uiAdditiveInput
     -- ** Helper widgets
   , imgWithAlt
   , showLoading
@@ -85,6 +86,7 @@ import qualified Data.Aeson.Encode.Pretty as AesonPretty
 import           Data.Either (isLeft, rights)
 import           Data.Map.Strict             (Map)
 import qualified Data.Map.Strict as Map
+import qualified Data.IntMap as IntMap
 import           Data.String                 (IsString)
 import           Data.Proxy                  (Proxy(..))
 import           Data.Text                   (Text)
@@ -623,6 +625,39 @@ uiPublicKeyShrunk pk = do
     elClass "span" "wallet__public-key__suffix" $ dynText $ T.takeEnd 6 <$> ktxt
   where
     ktxt = keyToText <$> pk
+
+uiAdditiveInput
+  :: forall t m out particular
+     . ( MonadWidget t m
+       )
+  => (IntMap.Key -> m out)
+  -> (out -> Event t particular)
+  -> (particular -> Bool)
+  -> (particular -> Bool)
+  -> m (Dynamic t (IntMap.IntMap out))
+uiAdditiveInput mkIndividualInput getParticular allowNewRow allowDeleteRow = do
+  let
+    minRowIx = 0
+
+    decideAddNewRow :: (IntMap.Key, out) -> Event t (IntMap.IntMap (Maybe ()))
+    decideAddNewRow (i, out) = IntMap.singleton (succ i) (Just ()) <$
+      ffilter allowNewRow (getParticular out)
+
+    decideDeletion :: IntMap.Key -> out -> Event t (IntMap.IntMap (Maybe ()))
+    decideDeletion i out = IntMap.singleton i Nothing <$
+      ffilter allowDeleteRow (getParticular out)
+
+  rec
+    (keys, newSelection) <-
+      traverseIntMapWithKeyWithAdjust (\k _ -> mkIndividualInput k) (IntMap.singleton minRowIx ()) $ leftmost
+      [ -- Delete rows when 'select' is chosen
+        fmap PatchIntMap $ switchDyn $ IntMap.foldMapWithKey decideDeletion <$> dInputKeys
+        -- Add a new row when all rows have a selection and there are more keys to choose from
+      , fmap PatchIntMap $ switchDyn $ maybe never decideAddNewRow . IntMap.lookupMax <$> dInputKeys
+      ]
+    dInputKeys <- foldDyn applyAlways keys newSelection
+
+  pure dInputKeys
 
 showLoading
   :: (NotReady t m, Adjustable t m, PostBuild t m, DomBuilder t m, Monoid b)
