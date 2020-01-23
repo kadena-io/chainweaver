@@ -39,32 +39,32 @@ uiErrorList
   => model
   -> m mConf
 uiErrorList m = do
-    annotations <- holdUniqDyn $ m ^. editor_annotations
-    dmd <- maybeDyn $ nonEmpty <$> annotations
-    onQuickFix <- switchHold never <=< dyn $ ffor dmd $ \case
-      Nothing -> pure never
-      Just d -> accordionItem True "segment" "Errors" $ do
-        elClass "div" "group" $ do
-          quickFixes <- simpleList (toList <$> d) errorItem
-          pure $ switchDyn $ fmap leftmost quickFixes
-    pure $ mempty & editorCfg_applyQuickFix .~ onQuickFix
+  annotations <- holdUniqDyn $ m ^. editor_annotations
+  dmd <- maybeDyn $ nonEmpty <$> annotations
+  onQuickFix <- switchHold never <=< dyn $ ffor dmd $ \case
+    Nothing -> pure never
+    Just d -> accordionItem True "segment" "Errors" $ do
+      elClass "div" "group" $ do
+        quickFixes <- simpleList (toList <$> d) errorItem
+        pure $ switchDyn $ fmap leftmost quickFixes
+  pure $ mempty & editorCfg_applyQuickFix .~ onQuickFix
 
 errorItem
   :: forall t m
   .  (MonadWidget t m)
   => Dynamic t Annotation -> m (Event t QuickFix)
 errorItem da =
-      switchHold never <=< dyn $ ffor da $ \a -> do
-        elClass "div"  "error-list segment segment_type_small-primary" $ do
-          elClass "div" "error-list__msg" $ do
-              renderIcon $ _annotation_type a
-              for_ (_annotation_pos a) $ \(r,c) ->
-                elClass "div" "error-list__line-number" $ text $ tshow r <> ":" <> tshow c
-              case _annotation_source a of
-                AnnotationSource_Json -> text "[JSON] "
-                AnnotationSource_Pact -> blank
-              text $ _annotation_msg a
-          renderQuickFix $ makeQuickFix a
+  switchHold never <=< dyn $ ffor da $ \a -> do
+    elClass "div"  "error-list segment segment_type_small-primary" $ do
+      elClass "div" "error-list__msg" $ do
+          renderIcon $ _annotation_type a
+          for_ (_annotation_pos a) $ \(r,c) ->
+            elClass "div" "error-list__line-number" $ text $ tshow r <> ":" <> tshow c
+          case _annotation_source a of
+            AnnotationSource_Json -> text "[JSON] "
+            AnnotationSource_Pact -> blank
+          text $ _annotation_msg a
+      renderQuickFix $ makeQuickFix a
   where
     renderQuickFix = maybe (pure never) $ \qf -> do
       let btnCls = ""
