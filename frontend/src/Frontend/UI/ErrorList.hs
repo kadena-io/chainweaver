@@ -20,7 +20,8 @@ module Frontend.UI.ErrorList
 
 ------------------------------------------------------------------------------
 import           Control.Lens
-import           Data.Traversable        (for)
+import           Control.Monad           ((<=<))
+import           Data.List.NonEmpty      (nonEmpty)
 import           Reflex
 import           Reflex.Dom
 ------------------------------------------------------------------------------
@@ -33,28 +34,27 @@ import           Frontend.UI.Widgets
 -- | UI for live showing of errors and offering of quick fixes.
 uiErrorList
   :: ( MonadWidget t m, HasEditorCfg mConf t, Monoid mConf
-     , Flattenable mConf t , HasEditor model t
+     , HasEditor model t
      )
   => model
   -> m mConf
 uiErrorList m = do
-    networkViewFlatten $ ffor (m ^. editor_annotations) $ handleEmpty $ \anns -> do
-      accordionItem True "segment" "Errors" $ do
-        onQuickFix <- errorList anns
-        pure $ mempty & editorCfg_applyQuickFix .~ onQuickFix
-  where
-    handleEmpty x = \case
-      [] -> pure mempty
-      anns -> x anns
+    annotations <- holdUniqDyn $ m ^. editor_annotations
+    dmd <- maybeDyn $ nonEmpty <$> annotations
+    onQuickFix <- switchHold never <=< dyn $ ffor dmd $ \case
+      Nothing -> pure never
+      Just d -> accordionItem True "segment" "Errors" $ do
+        elClass "div" "group" $ do
+          quickFixes <- simpleList (toList <$> d) errorItem
+          pure $ switchDyn $ fmap leftmost quickFixes
+    pure $ mempty & editorCfg_applyQuickFix .~ onQuickFix
 
-
-errorList
+errorItem
   :: forall t m
   .  (MonadWidget t m)
-  => [Annotation] -> m (Event t QuickFix)
-errorList annotations =
-    elClass "div" "group" $ do
-      fmap leftmost . for annotations $ \a ->
+  => Dynamic t Annotation -> m (Event t QuickFix)
+errorItem da =
+      switchHold never <=< dyn $ ffor da $ \a -> do
         elClass "div"  "error-list segment segment_type_small-primary" $ do
           elClass "div" "error-list__msg" $ do
               renderIcon $ _annotation_type a
