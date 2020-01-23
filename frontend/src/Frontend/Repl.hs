@@ -172,7 +172,7 @@ makeRepl m cfg = build $ \ ~(_, impl) -> do
       , onPostBuild
       ]
 
-    let envData = either (const HM.empty) id <$> m ^. jsonData_data
+    let envData = m ^. jsonData ^. to getJsonDataObjectLax
         keys = IntMap.elems . fmap _key_pair <$> m ^. wallet_keys
 
     -- Those events can happen simultaneously - so make sure we don't lose any
@@ -259,7 +259,7 @@ initRepl
 initRepl verificationUri oldImpl m  = do
   r <- mkState verificationUri
   let initImpl = oldImpl { _impl_state = pure r } -- Const dyn so we can use `withRepl` for initialization - gets dropped afterwards.
-  env  <- sample . current $ either (const HM.empty) id <$> m ^. jsonData_data
+  env  <- sample . current $ m ^. jsonData . to getJsonDataObjectLax
   keys <- sample . current $ m ^. wallet_keys
   fmap snd . withRepl initImpl $ do
     void $ setEnvData env
