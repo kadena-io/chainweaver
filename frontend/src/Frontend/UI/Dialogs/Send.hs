@@ -346,7 +346,7 @@ sendConfig model fromAccount@(fromName, fromChain, fromAcc) = Workflow $ do
               when (toChain /= fromChain) $ text $ " (Chain " <> _chainId fromChain <> ")"
             fromGasPayer <- divClass "group" $ elClass "div" "segment segment_type_tertiary labeled-input" $ do
               divClass "label labeled-input__label" $ text "Account Name"
-              let cfg = def & dropdownConfig_attributes .~ pure ("class" =: "labeled-input__input")
+              let cfg = def & dropdownConfig_attributes .~ pure ("class" =: "labeled-input__input select select_mandatory_missing")
                   chain = pure $ Just fromChain
               uiSenderDropdown cfg model chain never
             toGasPayer <- if toChain == fromChain
@@ -358,7 +358,7 @@ sendConfig model fromAccount@(fromName, fromChain, fromAcc) = Workflow $ do
                 dialogSectionHeading mempty  $ "Gas Payer (Chain " <> _chainId toChain <> ")"
                 divClass "group" $ elClass "div" "segment segment_type_tertiary labeled-input" $ do
                   divClass "label labeled-input__label" $ text "Account Name"
-                  let cfg = def & dropdownConfig_attributes .~ pure ("class" =: "labeled-input__input")
+                  let cfg = def & dropdownConfig_attributes .~ pure ("class" =: "labeled-input__input select select_mandatory_missing")
                       chain = pure $ Just toChain
                   (fmap . fmap) Just <$> uiSenderDropdown cfg model chain never
             pure $ (liftA2 . liftA2) (,) fromGasPayer toGasPayer
@@ -509,7 +509,7 @@ finishCrossChainTransferConfig model fromAccount ucct = Workflow $ do
     dialogSectionHeading mempty "Gas Payer (recipient chain)"
     sender <- divClass "group" $ elClass "div" "segment segment_type_tertiary labeled-input" $ do
       divClass "label labeled-input__label" $ text "Account Name"
-      let cfg = def & dropdownConfig_attributes .~ pure ("class" =: "labeled-input__input")
+      let cfg = def & dropdownConfig_attributes .~ pure ("class" =: "labeled-input__input select select_mandatory_missing")
           chain = pure $ Just toChain
       gasAcc <- uiSenderDropdown cfg model chain never
       pure $ ffor3 (model ^. wallet_accounts) (model ^. network_selectedNetwork) gasAcc $ \netToAccount net ma -> do
