@@ -173,14 +173,14 @@ applyQuickFix rs t onQuickFix = do
         isPreamble = (\x -> T.isPrefixOf ";" x || T.null x) . T.strip
         splitLeadingComments = L.break (not . isPreamble . T.strip) . T.lines
         (preamble, remCode) = splitLeadingComments code
-      T.unlines
-        ( preamble
-          <> [ "\n;; For more information about keysets checkout:"
-             , ";; https://pact-language.readthedocs.io/en/latest/pact-reference.html#keysets-and-authorization"
-             , "(define-keyset '" <> ks <> " (read-keyset \"" <> ksn <> "\"))\n"
-             ]
-          <> remCode
-        )
+      T.unlines $ L.intercalate ["\n"]
+        [ preamble
+        , [ ";; For more information about keysets checkout:"
+          , ";; https://pact-language.readthedocs.io/en/latest/pact-reference.html#keysets-and-authorization"
+          , "(define-keyset '" <> ks <> " (read-keyset \"" <> ksn <> "\"))"
+          ]
+        , remCode
+        ]
 
   pure
     ( mempty & jsonDataCfg_createKeyset .~ onNewKeyset
