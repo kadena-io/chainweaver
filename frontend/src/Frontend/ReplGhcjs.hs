@@ -179,7 +179,7 @@ codePanel appCfg cls m = elKlass "div" (cls <> "pane") $ do
     (e, eCfg) <- wysiwyg $ do
       onNewCode <- tagOnPostBuild $ m ^. editor_code
       let annotations = map toAceAnnotation <$> m ^. editor_annotations
-      onUserCode <- codeWidget appCfg annotations "" onNewCode
+      onUserCode <- codeWidget appCfg (updated annotations) "" onNewCode
       pure $ mempty & editorCfg_setCode .~ onUserCode
 
     setFocusOn e ".ace_text-input" =<< getPostBuild

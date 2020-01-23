@@ -38,8 +38,7 @@ uiErrorList
   => model
   -> m mConf
 uiErrorList m = do
-    annotations <- holdDyn [] $ m ^. editor_annotations
-    networkViewFlatten $ ffor annotations $ handleEmpty $ \anns -> do
+    networkViewFlatten $ ffor (m ^. editor_annotations) $ handleEmpty $ \anns -> do
       accordionItem True "segment" "Errors" $ do
         onQuickFix <- errorList anns
         pure $ mempty & editorCfg_applyQuickFix .~ onQuickFix

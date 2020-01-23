@@ -193,11 +193,6 @@ makeRepl m cfg = build $ \ ~(_, impl) -> do
     onVerifyR <- runVerify impl $ cfg ^. replCfg_verifyModules
 
     let
-      onLoad = leftmost [ cfg ^. replCfg_sendTransaction, cfg ^. replCfg_sendCmd ]
-
-      mJsonError = (^? _Left . to showJsonError) <$> m ^. jsonData_data
-      onEnvDataErr = fmapMaybe id . tag (current mJsonError) $ onLoad
-
       onNewTransResult :: Event t TransactionResult
       onNewTransResult = fmap fst onNewTransR
 
@@ -232,7 +227,7 @@ makeRepl m cfg = build $ \ ~(_, impl) -> do
     pure
       ( mempty
           & messagesCfg_send .~ (mconcat . map (fmap pure))
-              [ onFailedTrans, onEnvDataErr
+              [ onFailedTrans
               , onNewEnvKeysErr
               ]
       , Impl

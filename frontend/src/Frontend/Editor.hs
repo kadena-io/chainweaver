@@ -39,6 +39,7 @@ module Frontend.Editor
   ) where
 
 ------------------------------------------------------------------------------
+import           Control.Applicative        (liftA2)
 import           Control.Lens
 import qualified Data.List                  as L
 import qualified Data.Map                   as Map
@@ -89,7 +90,7 @@ makePactLenses ''EditorCfg
 data Editor t = Editor
   { _editor_code        :: Dynamic t Text
     -- ^ Currently loaded/edited PACT code.
-  , _editor_annotations :: Event t [Annotation]
+  , _editor_annotations :: Dynamic t [Annotation]
     -- ^ Annotations for the editor.
   , _editor_quickFixes  :: Dynamic t [QuickFix]
     -- ^ Available quick fixes.
@@ -133,16 +134,18 @@ makeEditor m cfg = mdo
       , False <$ cfg ^. editorCfg_clearModified
       ]
 
-    annotations <- typeCheckVerify m t
-    quickFixes  <- holdDyn [] $ makeQuickFixes <$> annotations
     gen <- liftIO newStdGen
     (quickFixCfg, onCodeFix) <- applyQuickFix (randoms gen) t $ cfg ^. editorCfg_applyQuickFix
+    codeAnnotations <- holdDyn [] =<< typeCheckVerify m t
+    let
+      jsonErrors = fmap (preview _Left) $ m ^. jsonData_data
+      dataAnnotations = ffor jsonErrors $ foldMap $ annoFallbackParser . showJsonError
     pure
       ( quickFixCfg
       , Editor
         { _editor_code = t
-        , _editor_annotations = annotations
-        , _editor_quickFixes = quickFixes
+        , _editor_annotations = liftA2 (<>) codeAnnotations dataAnnotations
+        , _editor_quickFixes = makeQuickFixes <$> codeAnnotations
         , _editor_modified = modified
         }
       )
