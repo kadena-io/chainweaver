@@ -18,7 +18,7 @@ $setup-progress-font-size: 18px;
   display: grid;
   grid-template-columns: 1fr 1fr 1fr 1fr;
   grid-template-rows: 0.2fr 1.6fr;
-  grid-template-areas: "back header header ." ". wrapper wrapper .";
+  grid-template-areas: "back header header ." "wrapper wrapper wrapper wrapper";
 }
 
 .setup__checkbox {
