@@ -167,13 +167,13 @@ applyQuickFix rs t onQuickFix = do
      , snd <$> onNewRandKeyset
      ]
 
-    fixCode :: Dynamic t ((Text, Text) -> Text)
-    fixCode = do
+    fixCode :: Text -> (Text, Text) -> Text
+    fixCode code (ks, ksn) = do
       let
         isPreamble = (\x -> T.isPrefixOf ";" x || T.null x) . T.strip
         splitLeadingComments = L.break (not . isPreamble . T.strip) . T.lines
-      (preamble, remCode) <- splitLeadingComments <$> t
-      pure $ \(ks, ksn) -> T.unlines
+        (preamble, remCode) = splitLeadingComments code
+      T.unlines
         ( preamble
           <> [ "\n;; For more information about keysets checkout:"
              , ";; https://pact-language.readthedocs.io/en/latest/pact-reference.html#keysets-and-authorization"
@@ -184,7 +184,7 @@ applyQuickFix rs t onQuickFix = do
 
   pure
     ( mempty & jsonDataCfg_createKeyset .~ onNewKeyset
-    , attachWith id (current fixCode) onNewRandKeyset
+    , attachWith fixCode (current t) onNewRandKeyset
     )
 
 -- | Type check and verify code.
