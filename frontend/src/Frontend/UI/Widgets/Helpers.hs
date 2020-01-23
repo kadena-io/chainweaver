@@ -14,7 +14,8 @@ module Frontend.UI.Widgets.Helpers
   , setFocus
   , setFocusOn
   , setFocusOnSelected
-  , preventScrollWheelAndUpDownArrow
+  , preventScrollWheel
+  , preventUpAndDownArrow
   , dialogSectionHeading
   , inputIsDirty
   ) where
@@ -26,8 +27,14 @@ import           Data.Proxy                  (Proxy (..))
 import           Data.Map.Strict             (Map)
 import           Data.Text                   (Text)
 import qualified Data.Text                   as Text
+import qualified GHCJS.DOM as DOM
+import qualified GHCJS.DOM.DocumentOrShadowRoot as Document
+import qualified GHCJS.DOM.EventM as EventM
+import qualified GHCJS.DOM.GlobalEventHandlers as GlobalEventHandlers
+import qualified GHCJS.DOM.Types as DOM
 import           Language.Javascript.JSaddle (PToJSVal, call, eval, js0, obj,
                                               pToJSVal)
+import qualified Language.Javascript.JSaddle as JSaddle
 import qualified Web.KeyCode                 as Keys
 import           Reflex.Dom.Contrib.CssClass
 import           Reflex.Dom.Core
@@ -108,28 +115,31 @@ setFocusOnSelected
   -> m ()
 setFocusOnSelected e cssSel p onPred = setFocusOn e cssSel $ ffilter (== p) onPred
 
-preventScrollWheelAndUpDownArrow
+preventUpAndDownArrow
   :: forall m
      . DomSpace (DomBuilderSpace m)
   => EventSpec (DomBuilderSpace m) EventResult
   -> EventSpec (DomBuilderSpace m) EventResult
-preventScrollWheelAndUpDownArrow =
-  preventMouseWheel . preventUpDownArrow
-  where
-    preventMouseWheel =
-      addEventSpecFlags (Proxy :: Proxy (DomBuilderSpace m)) Mousewheel (const preventDefault)
+preventUpAndDownArrow = addEventSpecFlags (Proxy :: Proxy (DomBuilderSpace m)) Keydown $ \case
+  Nothing -> mempty
+  Just c ->
+    let
+      kc = fromIntegral (unEventResult c)
+    in
+    if Keys.isKeyCode Keys.ArrowUp kc || Keys.isKeyCode Keys.ArrowDown kc
+    then preventDefault
+    else mempty
 
-    preventUpDownArrow =
-      addEventSpecFlags (Proxy :: Proxy (DomBuilderSpace m)) Keydown
-      (maybe mempty
-        (\c ->
-           let
-             kc = fromIntegral (unEventResult c)
-           in
-            if Keys.isKeyCode Keys.ArrowUp kc || Keys.isKeyCode Keys.ArrowDown kc
-            then preventDefault
-            else mempty
-        ))
+preventScrollWheel :: (MonadJSM m, DOM.IsGObject obj) => obj -> m ()
+preventScrollWheel raw = liftJSM $ do
+  htmlElement <- DOM.unsafeCastTo DOM.HTMLElement raw
+  void $ htmlElement `EventM.on` GlobalEventHandlers.scroll $ do
+    doc <- DOM.currentDocumentUnchecked
+    Document.getActiveElement doc >>= \case
+      Just activeElement -> do
+        focused <- liftJSM $ JSaddle.strictEqual activeElement htmlElement
+        when focused EventM.preventDefault
+      Nothing -> pure ()
 
 dialogSectionHeading :: DomBuilder t m => CssClass -> Text -> m ()
 dialogSectionHeading cls = elClass "h2" (renderClass $ "heading heading_type_h2" <> cls) . text

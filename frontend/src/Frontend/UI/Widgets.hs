@@ -110,7 +110,8 @@ import           Frontend.UI.Button
 import           Frontend.UI.Widgets.Helpers (imgWithAlt, imgWithAltCls, makeClickable,
                                               setFocus, setFocusOn,
                                               setFocusOnSelected, tabPane,
-                                              preventScrollWheelAndUpDownArrow,
+                                              preventUpAndDownArrow,
+                                              preventScrollWheel,
                                               tabPane')
 import           Frontend.KadenaAddress (textKadenaAddress, KadenaAddress)
 ------------------------------------------------------------------------------
@@ -769,16 +770,20 @@ uiGasPriceInputField
      ( DomBuilder t m
      , MonadFix m
      , MonadHold t m
+     , GhcjsDomSpace ~ DomBuilderSpace m
+     , MonadJSM m
      )
   => InputElementConfig EventResult t (DomBuilderSpace m)
   -> m ( InputElement EventResult (DomBuilderSpace m) t
        , Dynamic t (Maybe GasPrice)
        , Event t GasPrice
        )
-uiGasPriceInputField conf = dimensionalInputFeedbackWrapper (Just "KDA") $
- uiNonnegativeRealWithPrecisionInputElement maxCoinPrecision (GasPrice . ParsedDecimal) $ conf
-  & initialAttributes %~ addToClassAttr "input-units"
-  & inputElementConfig_elementConfig . elementConfig_eventSpec %~ preventScrollWheelAndUpDownArrow @m
+uiGasPriceInputField conf = dimensionalInputFeedbackWrapper (Just "KDA") $ do
+  (i, d, e) <- uiNonnegativeRealWithPrecisionInputElement maxCoinPrecision (GasPrice . ParsedDecimal) $ conf
+    & initialAttributes %~ addToClassAttr "input-units"
+    & inputElementConfig_elementConfig . elementConfig_eventSpec %~ preventUpAndDownArrow @m
+  preventScrollWheel $ _inputElement_raw i
+  pure (i, d, e)
 
 
 -- | Let the user pick a chain id.
