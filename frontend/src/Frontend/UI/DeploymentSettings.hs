@@ -285,12 +285,14 @@ buildDeploymentSettingsResult m mSender mGasPayer signers cChainId capabilities 
     Nothing -> pure () -- No gas payer selected, move along
     Just gp ->  for_ (lookupAccountBalance gp chainId allAccounts) $ \case
       -- Gas Payer selected but they're not an account?!
+      -- TODO: More precise error types for better (any) user feedback on config tab ?
       AccountStatus_Unknown -> throwError $ DeploymentSettingsResultError_GasPayerIsNotValid gp
       AccountStatus_DoesNotExist -> throwError $ DeploymentSettingsResultError_GasPayerIsNotValid gp
       AccountStatus_Exists b ->
         let GasLimit lim = _pmGasLimit publicMeta
             GasPrice (ParsedDecimal price) = _pmGasPrice publicMeta
-        in unless (unAccountBalance b > fromIntegral lim * price) $ throwError DeploymentSettingsResultError_InsufficientFundsOnGasPayer
+        in unless (unAccountBalance b > fromIntegral lim * price) $
+             throwError DeploymentSettingsResultError_InsufficientFundsOnGasPayer
 
   let pkCaps = publicKeysForAccounts chainId allAccounts caps
   pure $ do

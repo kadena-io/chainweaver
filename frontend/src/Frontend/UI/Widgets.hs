@@ -796,7 +796,11 @@ uiDisplayKadenaAddressWithCopy withLabel address = void $ do
   elClass "div" "segment segment_type_tertiary labeled-input" $ do
     when withLabel $ divClass "label labeled-input__label" $ text "[Kadena Address]"
     void $ uiTextAreaElement $ def
-      & initialAttributes <>~ ("disabled" =: "true" <> "class" =: " labeled-input__input labeled-input__kadena-address")
+      & initialAttributes <>~ (
+        "disabled" =: "true" <>
+        "rows" =: tshow (max 13 {- for good luck -} $ length $ T.lines txtAddr) <>
+        "class" =: " labeled-input__input labeled-input__kadena-address"
+        )
       & textAreaElementConfig_initialValue .~ txtAddr
   uiDetailsCopyButton $ pure txtAddr
 
