@@ -50,6 +50,7 @@ module Frontend.UI.DeploymentSettings
 
   , uiSenderFixed
   , uiSenderDropdown
+  , uiSenderDropdown'
 
   , transactionInputSection
   , transactionHashSection
@@ -783,8 +784,33 @@ mkChainTextAccounts m mChainId = runExceptT $ do
   pure accountsOnChain
 
 -- | Let the user pick a sender
-uiSenderDropdown
+uiSenderDropdown'
   :: ( Adjustable t m, PostBuild t m, DomBuilder t m
+     , MonadHold t m, MonadFix m
+     , HasWallet model key t
+     , HasNetwork model t
+     )
+  => DropdownConfig t (Maybe (Some AccountRef))
+  -> model
+  -> Dynamic t (Maybe ChainId)
+  -> Maybe (Some AccountRef)
+  -> Event t (Maybe (Some AccountRef))
+  -> m (Dynamic t (Maybe (Some AccountRef)))
+uiSenderDropdown' uCfg m chainId initV setSender = do
+  let
+    textAccounts = mkChainTextAccounts m chainId
+    dropdownItems =
+      either
+          (Map.singleton Nothing)
+          (Map.insert Nothing "Choose an Account" . Map.mapKeys Just)
+      <$> textAccounts
+  choice <- dropdown initV dropdownItems $ uCfg
+    & dropdownConfig_setValue .~ leftmost [Nothing <$ updated chainId, setSender]
+    & dropdownConfig_attributes <>~ pure ("class" =: "labeled-input__input select select_mandatory_missing")
+  pure $ value choice
+
+uiSenderDropdown
+  :: ( PostBuild t m, DomBuilder t m
      , MonadHold t m, MonadFix m
      , HasWallet model key t
      , HasNetwork model t
@@ -794,19 +820,7 @@ uiSenderDropdown
   -> Dynamic t (Maybe ChainId)
   -> Event t (Maybe (Some AccountRef))
   -> m (Dynamic t (Maybe (Some AccountRef)))
-uiSenderDropdown uCfg m chainId setSender = do
-  let
-    textAccounts = mkChainTextAccounts m chainId
-    dropdownItems =
-      either
-          (Map.singleton Nothing)
-          (Map.insert Nothing "Choose an Account" . Map.mapKeys Just)
-      <$> textAccounts
-  choice <- dropdown Nothing dropdownItems $ uCfg
-    & dropdownConfig_setValue .~ leftmost [Nothing <$ updated chainId, setSender]
-    & dropdownConfig_attributes <>~ pure ("class" =: "labeled-input__input select select_mandatory_missing")
-  pure $ value choice
-
+uiSenderDropdown uCfg model chainId = uiSenderDropdown' uCfg model chainId Nothing
 
 -- | Let the user pick signers
 uiSignerList

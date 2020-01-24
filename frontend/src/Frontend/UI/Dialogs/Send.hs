@@ -26,11 +26,13 @@ import Control.Lens hiding (failover)
 import Control.Monad (join, when, void, (<=<))
 import Control.Monad.Except (throwError)
 import Control.Monad.Logger (LogLevel(..))
+import Control.Monad.Trans (lift)
 import Control.Monad.Trans.Except
 import Control.Monad.Trans.Maybe
 import Data.Bifunctor (first)
 import Data.Decimal (Decimal)
-import Data.Dependent.Sum ((==>))
+import Data.Dependent.Sum ((==>),DSum((:=>)))
+import Data.Dependent.Map(Some(Some))
 import Data.Either (isLeft, rights)
 import Data.List.NonEmpty (NonEmpty(..))
 import Data.Text (Text)
@@ -85,7 +87,7 @@ uiSendModal
   => model -> Account -> Event t () -> m (mConf, Event t ())
 uiSendModal model sender _onCloseExternal = do
   (conf, closes) <- fmap splitDynPure $ workflow $ case accountUnfinishedCrossChainTransfer sender of
-    Nothing -> sendConfig model sender
+    Nothing -> sendConfig model (InitialTransferData_Account sender)
     -- If we have unfinished business, force the user to finish it first
     Just ucct -> finishCrossChainTransferConfig model sender ucct
   mConf <- flatten =<< tagOnPostBuild conf
@@ -115,23 +117,29 @@ data SharedNetInfo a = SharedNetInfo
   , _sharedNetInfo_nodes :: [a]
   }
 
+data TransferData key = TransferData
+  { _transferData_fromAccount :: Account
+  , _transferData_fromGasPayer :: Account
+  , _transferData_toAddress :: KadenaAddress
+  , _transferData_crossChainData :: Maybe (CrossChainData key)
+  , _transferData_amount :: Decimal
+  }
+
 -- | Preview the transfer. Doesn't actually send any requests.
 previewTransfer
   :: forall model mConf key t m.
      SendConstraints model mConf key t m
   => model
-  -> Account
-  -- ^ From account
-  -> Account
-  -- ^ Gas payer on "from" chain
-  -> KadenaAddress
-  -- ^ To address
-  -> Maybe (CrossChainData key)
-  -- ^ Cross chain data, if applicable
-  -> Decimal
-  -- ^ Amount to transfer
+  -> TransferData key
   -> Workflow t m (mConf, Event t ())
-previewTransfer model fromAccount fromGasPayer toAddress crossChainData amount = Workflow $ do
+previewTransfer model transfer = Workflow $ do
+  let
+    toAddress = _transferData_toAddress transfer
+    fromAccount = _transferData_fromAccount transfer
+    fromGasPayer = _transferData_fromGasPayer transfer
+    crossChainData = _transferData_crossChainData transfer
+    amount = _transferData_amount transfer
+
   close <- modalHeader $ text "Transaction Preview"
   elClass "div" "modal__main" $ do
     dialogSectionHeading mempty "Destination"
@@ -166,7 +174,7 @@ previewTransfer model fromAccount fromGasPayer toAddress crossChainData amount =
     next <- confirmButton def "Create Transaction"
     pure (back, next)
   let nextScreen = leftmost
-        [ sendConfig model fromAccount <$ back
+        [ sendConfig model (InitialTransferData_Transfer transfer) <$ back
         , flip push next $ \() -> do
           mNetInfo <- sampleNetInfo model
           keys <- sample $ current $ model ^. wallet_keys
@@ -260,24 +268,57 @@ sameChainTransfer model netInfo keys fromAccount gasPayer toAccount amount = Wor
     , never
     )
 
+data InitialTransferData key
+  = InitialTransferData_Account Account
+  | InitialTransferData_Transfer (TransferData key)
+
+initialTransferDataCata :: (Account -> b) -> (TransferData key -> b) -> InitialTransferData key -> b
+initialTransferDataCata fa _ (InitialTransferData_Account a) = fa a
+initialTransferDataCata _ ft (InitialTransferData_Transfer t) = ft t
+
+-- should probably make lenses, but we'd have to move the data types out to another file because this
+-- file can't deal with the mutually recursive functions if TH was on. So lets just avoid the lenses
+
+withInitialTransfer :: (TransferData key -> a) -> InitialTransferData key -> Maybe a
+withInitialTransfer f (InitialTransferData_Transfer t)  = Just $ f t
+withInitialTransfer _ (InitialTransferData_Account _)  = Nothing
+
 -- | General transfer workflow. This is the initial configuration screen.
 sendConfig
   :: SendConstraints model mConf key t m
-  => model -> Account -> Workflow t m (mConf, Event t ())
-sendConfig model fromAccount = Workflow $ do
+  => model -> InitialTransferData key -> Workflow t m (mConf, Event t ())
+sendConfig model initData = Workflow $ do
   close <- modalHeader $ text "Send"
   rec
-    (currentTab, _done) <- makeTabs $ attachWithMaybe (const . void . hush) (current recipient) next
+    (currentTab, _done) <- makeTabs initData $ attachWithMaybe (const . void . hush) (current recipient) next
     (conf, mCaps, recipient) <- mainSection currentTab
     (cancel, next) <- footerSection currentTab recipient mCaps
   let nextScreen = flip push next $ \() -> runMaybeT $ do
-        (fromGasPayer, mToGasPayer) <- MaybeT $ sample $ current mCaps
-        (toAccount, amount) <- MaybeT $ fmap hush $ sample $ current recipient
-        let mCrossChain = ffor mToGasPayer $ \a -> CrossChainData
-              { _crossChainData_recipientChainGasPayer = a }
-        pure $ previewTransfer model fromAccount fromGasPayer toAccount mCrossChain amount
+        currTab <- lift $ sample $ current currentTab
+        if (currTab /= SendModalTab_Sign)
+          then MaybeT $ pure Nothing
+          else do
+            (fromGasPayer, mToGasPayer) <- MaybeT $ sample $ current mCaps
+            (toAccount, amount) <- MaybeT $ fmap hush $ sample $ current recipient
+            let mCrossChain = ffor mToGasPayer $ \a -> CrossChainData
+                  { _crossChainData_recipientChainGasPayer = a }
+            let transfer = TransferData
+                  { _transferData_amount = amount
+                  , _transferData_crossChainData = mCrossChain
+                  , _transferData_fromAccount = fromAccount
+                  , _transferData_fromGasPayer = fromGasPayer
+                  , _transferData_toAddress = toAccount
+                  }
+
+            pure $ previewTransfer model transfer
   pure ((conf, close <> cancel), nextScreen)
   where
+    dSumKey (k :=> _) = Some k
+    fromAccount = initialTransferDataCata id _transferData_fromAccount initData
+    mInitToAddress = withInitialTransfer _transferData_toAddress initData
+    mInitFromGasPayer = withInitialTransfer (dSumKey . _transferData_fromGasPayer) initData
+    mInitCrossChainGasPayer = join $ withInitialTransfer (fmap (dSumKey . _crossChainData_recipientChainGasPayer) . _transferData_crossChainData) initData
+    mInitAmount = withInitialTransfer _transferData_amount initData
     prettyKadenaAddrErrors e = case e of
       ParseError _ -> "Address format invalid"
       ChecksumMismatch _ _ -> "Checksum invalid"
@@ -306,12 +347,13 @@ sendConfig model fromAccount = Workflow $ do
             Nothing
             uiInputElement
             )
-            def
+            (def & inputElementConfig_initialValue .~ (maybe "" textKadenaAddress mInitToAddress))
 
           displayImmediateFeedback (updated decoded) cannotBeReceiverMsg
             $ either (const False) (== accountToKadenaAddress fromAccount)
 
-          (_, amount, _) <- mkLabeledInput True "Amount" uiGasPriceInputField def
+          (_, amount, _) <- mkLabeledInput True "Amount" uiGasPriceInputField
+            (def & inputElementConfig_initialValue .~ (maybe "" tshow mInitAmount))
             -- We're only interested in the decimal of the gas price
             <&> over (_2 . mapped . mapped) (\(GasPrice (ParsedDecimal d)) -> d)
 
@@ -364,7 +406,7 @@ sendConfig model fromAccount = Workflow $ do
               divClass "label labeled-input__label" $ text "Account Name"
               let cfg = def & dropdownConfig_attributes .~ pure ("class" =: "labeled-input__input")
                   chain = pure $ Just fromChain
-              gasAcc <- uiSenderDropdown cfg model chain never
+              gasAcc <- uiSenderDropdown' cfg model chain mInitFromGasPayer never
               pure $ lookupAccountFromRef model gasAcc
             toGasPayer <- if toChain == fromChain
               then pure $ pure $ Just Nothing
@@ -377,7 +419,7 @@ sendConfig model fromAccount = Workflow $ do
                   divClass "label labeled-input__label" $ text "Account Name"
                   let cfg = def & dropdownConfig_attributes .~ pure ("class" =: "labeled-input__input")
                       chain = pure $ Just toChain
-                  gasAcc <- uiSenderDropdown cfg model chain never
+                  gasAcc <- uiSenderDropdown' cfg model chain mInitCrossChainGasPayer never
                   pure $ Just <$> lookupAccountFromRef model gasAcc
             pure $ (liftA2 . liftA2) (,) fromGasPayer toGasPayer
       pure (conf, mCaps, recipient)
@@ -1002,10 +1044,13 @@ displaySendModalTab = text . \case
 
 makeTabs
   :: (DomBuilder t m, PostBuild t m, MonadHold t m, MonadFix m)
-  => Event t () -> m (Dynamic t SendModalTab, Event t ())
-makeTabs next = do
-  let initTab = SendModalTab_Configuration
-      f t0 g = case g t0 of
+  => InitialTransferData key -> Event t () -> m (Dynamic t SendModalTab, Event t ())
+makeTabs initData next = do
+  let
+    initTab = case initData of
+        (InitialTransferData_Account _) -> SendModalTab_Configuration
+        (InitialTransferData_Transfer _) -> SendModalTab_Sign
+    f t0 g = case g t0 of
         Nothing -> (Just t0, Just ())
         Just t -> (Just t, Nothing)
   rec
