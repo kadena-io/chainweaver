@@ -28,7 +28,7 @@ data StoreFrontend key a where
   StoreWallet_Keys :: StoreFrontend key (Accounts key)
 
   StoreNetwork_PublicMeta :: StoreFrontend key PublicMeta
-  -- StoreNetwork_Networks :: StoreFrontend key (Map NetworkName [NodeRef])
+
   StoreNetwork_Networks :: StoreFrontend key NetworkMap
   StoreNetwork_SelectedNetwork :: StoreFrontend key NetworkName
 

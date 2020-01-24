@@ -5,7 +5,6 @@
 {-# LANGUAGE TypeApplications #-}
 module Frontend.Storage.InMemoryStorage where
 
-import Debug.Trace
 import Control.Monad.Free (iterM)
 import Control.Monad.Reader
 import Data.Aeson (FromJSON, ToJSON, eitherDecode)
@@ -114,7 +113,7 @@ inMemoryStorageFromTestData p _ ver dirPath = do
 
     keyToFileDSum :: forall a. k a -> IO (Maybe (DSum k Identity))
     keyToFileDSum k = do
-      mbs <- traceShowId <$> keyToByteString k
+      mbs <- keyToByteString k
       pure $ has @FromJSON k $ do
         let decRes = traverse (eitherDecode @a) mbs
         either error (fmap (\v -> (k :=> Identity v))) decRes

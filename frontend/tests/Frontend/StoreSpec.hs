@@ -25,7 +25,7 @@ import System.FilePath ((</>))
 import TestUtils ((@?~))
 
 import Common.Wallet
-import Common.Network (NetworkName, uncheckedNetworkName, NodeRef(NodeRef))
+import Common.Network (ChainId (..), NetworkName, uncheckedNetworkName, NodeRef(NodeRef))
 import Common.OAuth (OAuthProvider)
 import Common.GistStore (GistMeta)
 
@@ -59,6 +59,9 @@ expectedNetworks :: Map NetworkName [NodeRef]
 expectedNetworks = Map.fromList
   [ (uncheckedNetworkName "devnet",
     [ mkNodeRef [host|us1.tn1.chainweb.com|]
+    , mkNodeRef [host|us2.tn1.chainweb.com|]
+    , mkNodeRef [host|eu1.tn1.chainweb.com|]
+    , mkNodeRef [host|eu2.tn1.chainweb.com|]
     ])
   , (uncheckedNetworkName "testnet",
     [ mkNodeRef [host|ap1.testnet.chainweb.com|]
@@ -127,84 +130,78 @@ expectedKeys =
     )
   ]
 
+mkChains :: ChainId -> Maybe AccountNotes -> Maybe UnfinishedCrossChainTransfer -> Map ChainId VanityAccount
+mkChains cId notes unfin = Map.fromList [(cId, VanityAccount notes unfin)]
+
 expectedAccounts :: AccountStorage
 expectedAccounts =
   let
     -- Map AccountName (AccountInfo VanityAccount)
     devnetmap = Map.fromList
-      [
+      [ ( AccountName "benkolera"
+       , AccountInfo
+         { _accountInfo_notes = Nothing
+         , _accountInfo_chains = mkChains "0" (mkAccountNotes "I bet you think this account is about you") Nothing
+         }
+       )
+      , ( AccountName "inflight"
+        , AccountInfo
+          { _accountInfo_notes = Nothing
+          , _accountInfo_chains = mkChains "3" Nothing Nothing
+          }
+        )
+      , ( AccountName "b7d6d1e3f20df081b5bbd3159406d9593ac2973e3297cfc13b962513bd537630"
+        , AccountInfo
+          { _accountInfo_notes = Nothing
+          , _accountInfo_chains = mkChains "0" Nothing Nothing
+            }
+        )
+      , ( AccountName "b92a5ffed43abe09d3679a6c1ce084a87916dfc3bbb0e1cb10d2b5c5152117fd"
+        , AccountInfo
+          { _accountInfo_notes = Nothing
+          , _accountInfo_chains = mkChains "1" Nothing $ Just $ UnfinishedCrossChainTransfer
+            { _unfinishedCrossChainTransfer_requestKey = RequestKey
+              $ fromTextYolo "pddhO9LkJdh3r71kahDZktTOIf7Pwu3T8VqjJdDKssA"
+            , _unfinishedCrossChainTransfer_recipientChain = "2"
+            , _unfinishedCrossChainTransfer_recipientAccount =
+              AccountName "c5535652d34724d3489d82a1b9217617eaa1ba607b8c123ecd4b393ea5ee293f"
+            , _unfinishedCrossChainTransfer_amount = 2
+            }
+          }
+        )
+      , ( AccountName "c5535652d34724d3489d82a1b9217617eaa1ba607b8c123ecd4b393ea5ee293f"
+        , AccountInfo
+          { _accountInfo_notes = Nothing
+          , _accountInfo_chains = mkChains "2" Nothing Nothing
+          }
+        )
+      ]
+
+    testnetmap = Map.fromList
+      [ ( AccountName "4e6756f17642c430795e2780d7a1193449ece6e5d9b0ab8d9c01d6a3b8a4d1a1"
+        , AccountInfo
+          { _accountInfo_notes = Nothing
+          , _accountInfo_chains = mkChains "1" Nothing Nothing
+          }
+        )
+      , ( AccountName "c9bf2214b6c134fe387798c4994f44606b61ed05c98191c0e00ab79e75b54c2e"
+        , AccountInfo
+          { _accountInfo_notes = Nothing
+          , _accountInfo_chains = mkChains "5" Nothing Nothing
+          }
+        )
+      , ( AccountName "d40aada7036bfe72e7ff0aaa16e1f4446b7dea9f26a6c0d0824cd69c42dc1118"
+        , AccountInfo
+          { _accountInfo_notes = Nothing
+          , _accountInfo_chains = mkChains "0" Nothing Nothing
+          }
+        )
       ]
   in
     AccountStorage $ Map.fromList
     [ (uncheckedNetworkName "devnet", devnetmap)
+    , (uncheckedNetworkName "testnet", testnetmap)
     ]
-
--- expectedAccounts :: AccountStorage
--- expectedAccounts = AccountStorage . Map.fromList $
---   [ ( uncheckedNetworkName "devnet"
---     , Accounts
---       (Map.fromList
---         [ ( AccountName "benkolera"
---           , Map.fromList
---             [ ("0" , VanityAccount (publicKeyYolo "496df4caddbb907e8ff1c76e4979a176ab1b12bd30e7d3136a8e566b50e07b52") (mkAccountNotes "I bet you think this account is about you") (AccountInfo Nothing Nothing False) False )
---             ]
---           )
---         -- This isn't actually in flight
---         , ( AccountName "inflight"
---           , Map.fromList
---             [ ("3" , VanityAccount (publicKeyYolo "c7fb88b67dee06b1f610411e48da6b87328fa4aea80c533a0ca96f64d3eb0632") (mkAccountNotes "") (AccountInfo Nothing Nothing False) False)
---             ]
---           )
---         ])
---       (Map.fromList
---         [ ( publicKeyYolo "b7d6d1e3f20df081b5bbd3159406d9593ac2973e3297cfc13b962513bd537630"
---           , Map.fromList
---             [ ( "0"
---               , NonVanityAccount (AccountInfo (Just (AccountBalance 10)) Nothing False)
---               )
---             ])
---         , ( publicKeyYolo "b92a5ffed43abe09d3679a6c1ce084a87916dfc3bbb0e1cb10d2b5c5152117fd"
---           , Map.fromList
---             [ ( "1"
---               , NonVanityAccount (AccountInfo (Just (AccountBalance 7.99605)) (Just (UnfinishedCrossChainTransfer (RequestKey (fromTextYolo "pddhO9LkJdh3r71kahDZktTOIf7Pwu3T8VqjJdDKssA")) "2" (AccountName "c5535652d34724d3489d82a1b9217617eaa1ba607b8c123ecd4b393ea5ee293f") 2)) False)
---               )
---             ])
---         , ( publicKeyYolo "c5535652d34724d3489d82a1b9217617eaa1ba607b8c123ecd4b393ea5ee293f"
---           , Map.fromList
---             [ ( "2"
---               , NonVanityAccount (AccountInfo Nothing Nothing False)
---               )
---             ])
---         ])
---     )
---   , ( uncheckedNetworkName "testnet"
---     , Accounts
---       Map.empty
---       (Map.fromList
---         [ ( publicKeyYolo  "4e6756f17642c430795e2780d7a1193449ece6e5d9b0ab8d9c01d6a3b8a4d1a1"
---           , Map.fromList
---             [ ( "1"
---               , NonVanityAccount (AccountInfo Nothing Nothing False)
---               )
---             ]
---           )
---         , ( publicKeyYolo  "c9bf2214b6c134fe387798c4994f44606b61ed05c98191c0e00ab79e75b54c2e"
---           , Map.fromList
---             [ ( "5"
---               , NonVanityAccount (AccountInfo Nothing Nothing False)
---               )
---             ]
---           )
---         , ( publicKeyYolo  "d40aada7036bfe72e7ff0aaa16e1f4446b7dea9f26a6c0d0824cd69c42dc1118"
---           , Map.fromList
---             [ ( "0"
---               , NonVanityAccount (AccountInfo (Just (AccountBalance 10)) Nothing False)
---               )
---             ]
---           )
---         ])
---      )
---   ]
 
 testVersioner :: (HasStorage m, Monad m) => StorageVersioner m (V1.StoreFrontend TestPrv)
 testVersioner = versioner

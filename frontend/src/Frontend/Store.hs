@@ -9,8 +9,6 @@ module Frontend.Store
 import Frontend.Storage.Class
 import Data.Aeson (FromJSON, ToJSON)
 import Data.Proxy (Proxy(Proxy))
-import Data.Dependent.Map (DMap)
-import Data.Functor.Identity (Identity)
 import Reflex
 import Reflex.Dom
 
