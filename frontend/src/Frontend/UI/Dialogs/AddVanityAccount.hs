@@ -106,7 +106,12 @@ uiCreateAccountDialog
      , HasCrypto key (Performable m)
      , HasJsonDataCfg mConf t, HasNetworkCfg mConf t, HasWalletCfg mConf key t
      )
-  => model -> AccountName -> ChainId -> Maybe PublicKey -> Event t () -> m (mConf, Event t ())
+  => model
+  -> AccountName
+  -> ChainId
+  -> Maybe PublicKey
+  -> Event t ()
+  -> m (mConf, Event t ())
 uiCreateAccountDialog model name chain mPublicKey _onCloseExternal = do
   rec
     onClose <- modalHeader $ dynText title
@@ -159,16 +164,29 @@ createAccountSplash model name chain mPublicKey keysetPresets = Workflow $ do
     notGasPayer <- confirmButton cfg "I am not the Gas Payer"
     gasPayer <- confirmButton cfg "I am the Gas Payer"
     let next = leftmost
-          [ tagMaybe (fmap (createAccountNotGasPayer name chain) <$> current keyset) notGasPayer
+          [ tagMaybe (fmap (createAccountNotGasPayer model name chain keysetSelections) <$> current keyset) notGasPayer
           , tagMaybe (fmap (createAccountConfig model name chain keysetSelections) <$> current keyset) gasPayer
           ]
     pure (cancel, next)
   return (("Create Account", (mempty, cancel)), next)
 
 createAccountNotGasPayer
-  :: (Monoid mConf, MonadWidget t m)
-  => AccountName -> ChainId -> AddressKeyset -> Workflow t m (Text, (mConf, Event t ()))
-createAccountNotGasPayer name chain keyset = Workflow $ do
+  :: ( Monoid mConf
+     , Flattenable mConf t
+     , HasJsonData model t, HasJsonDataCfg mConf t
+     , HasLogger model t
+     , HasNetwork model t, HasNetworkCfg mConf t
+     , HasWallet model key t, HasWalletCfg mConf key t
+     , HasCrypto key (Performable m)
+     , MonadWidget t m
+     )
+  => model
+  -> AccountName
+  -> ChainId
+  -> DefinedKeyset t
+  -> AddressKeyset
+  -> Workflow t m (Text, (mConf, Event t ()))
+createAccountNotGasPayer ideL name chain selectedKeyset keyset = Workflow $ do
   modalMain $ do
     dialogSectionHeading mempty "Notice"
     divClass "group" $ text "The text below contains all of the Account info you have just configured. Share this [Kadena Address] with someone else to pay the gas for the transaction to create the Account."
@@ -180,8 +198,13 @@ createAccountNotGasPayer name chain keyset = Workflow $ do
         , _kadenaAddress_keyset = Just keyset
         }
       pure ()
-  done <- modalFooter $ confirmButton def "Done"
-  pure (("Create Account", (mempty, done)), never)
+  modalFooter $ do
+    back <- cancelButton def "Back"
+    done <- confirmButton def "Done"
+
+    pure ( ("Create Account", (mempty, done))
+        , createAccountSplash ideL name chain Nothing selectedKeyset <$ back
+        )
 
 createAccountConfig
   :: forall key t m mConf model
