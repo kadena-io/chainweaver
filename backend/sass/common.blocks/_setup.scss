@@ -111,9 +111,10 @@ $setup-progress-font-size: 18px;
   align-self: stretch;
 
   li.setup__workflow-icon {
-    display: inline-block;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
     color: $chainweaver-blue;
-    min-width: 8rem;
   }
 }
 
@@ -122,18 +123,14 @@ $setup-progress-font-size: 18px;
   width: 63px;
   background-color: $white;
   margin-top: 1.3rem;
-  position: absolute;
+  margin-left: 10px;
+  margin-right: 10px;
+  position: relative;
 
   &.active {
     background-color: $chainweaver-blue;
   }
 
-  &.pw-recovery {
-    left: 6rem;
-  }
-  &.verify-done {
-    left: 22rem;
-  }
 }
 
 .setup__workflow-icons {
@@ -141,7 +138,6 @@ $setup-progress-font-size: 18px;
   justify-content: center;
   align-items: stretch;
   padding-inline-start: 0; // 40px is added by user agent stylesheet
-  min-width: 75px;
   position: relative;
 }
 
@@ -158,11 +154,18 @@ $setup-progress-font-size: 18px;
   border: solid;
   border-color: $body-background;
   border-width: 0.45rem;
-  margin-left: 2.5rem;
 
-  .setup__workflow-icon-inner {
+  .setup__workflow-icon-symbol {
     display: table-cell;
+    position: relative;
     vertical-align: middle;
+  }
+
+  .setup__workflow-icon-label {
+    position: absolute;
+    top: 40px;
+    left: 50%;
+    transform: translate(-50%, 0);
   }
 }
 
