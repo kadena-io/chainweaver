@@ -503,7 +503,7 @@ createNewPassphrase eBack (rootKey, password) mnemonicSentence = Workflow $ mdo
       $ text "I have safely stored my recovery phrase."
 
   finishSetupWF WalletScreen_CreatePassphrase $ leftmost
-    [ createNewWallet eBack <$ eBack
+    [ precreatePassphraseWarning eBack (rootKey, password) mnemonicSentence <$ eBack
     , confirmPhrase eBack (rootKey, password) mnemonicSentence <$ eContinue
     ]
 
