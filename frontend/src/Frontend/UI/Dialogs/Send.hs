@@ -272,7 +272,7 @@ sendConfig model fromAccount@(fromName, fromChain, fromAcc) = Workflow $ do
   where
 
     mainSection currentTab = elClass "div" "modal__main" $ do
-      (conf, recipient) <- tabPane mempty currentTab SendModalTab_Configuration $ do
+      (conf, recipient) <- tabPane mempty currentTab SendModalTab_Configuration $ mdo
         dialogSectionHeading mempty  "Destination"
         divClass "group" $ transactionDisplayNetwork model
 
@@ -299,10 +299,12 @@ sendConfig model fromAccount@(fromName, fromChain, fromAcc) = Workflow $ do
 
           let
             balance = _account_status fromAcc ^? _AccountStatus_Exists . accountDetails_balance . to unAccountBalance
+            maxTransfer = ffor balance $ \b -> ffor2 gasLimit gasPrice $ \l p ->
+              GasPrice (ParsedDecimal b) - fromIntegral l * p
 
             gasInputWithMaxButton cfg = mdo
               g <- uiGasPriceInputField $ cfg
-                & inputElementConfig_setValue .~ maybe never (<$ clk) (fmap tshow balance)
+                & inputElementConfig_setValue .~ maybe never (<@ clk) (fmap tshow . current <$> maxTransfer)
               clk <- confirmButton ?? "Max" $ def
                 & uiButtonCfg_class <>~ "input-max-button"
               pure g
@@ -311,10 +313,10 @@ sendConfig model fromAccount@(fromName, fromChain, fromAcc) = Workflow $ do
             -- We're only interested in the decimal of the gas price
             <&> over (_2 . mapped . mapped) (\(GasPrice (ParsedDecimal d)) -> d)
 
-          displayImmediateFeedback (updated amount) insufficientFundsMsg $ \ma ->
-            case (ma, balance) of
-              (Just a, Just b) -> a > b
-              (_, _) -> False
+          let insufficientFunds = ffor2 amount (sequence maxTransfer) $ curry $ \case
+                (Just a, Just mt) -> GasPrice (ParsedDecimal a) > mt
+                _ -> False
+          displayImmediateFeedback (updated insufficientFunds) insufficientFundsMsg id
 
           pure $ runExceptT $ do
             r <- ExceptT $ first (\_ -> "Invalid kadena address") <$> decoded
@@ -329,7 +331,7 @@ sendConfig model fromAccount@(fromName, fromChain, fromAcc) = Workflow $ do
             pure (r, a)
 
         dialogSectionHeading mempty  "Transaction Settings"
-        (conf, _, _) <- divClass "group" $ uiMetaData model Nothing Nothing
+        (conf, _, gasLimit, gasPrice) <- divClass "group" $ uiMetaData model Nothing Nothing
         pure (conf, recipient)
       mCaps <- tabPane mempty currentTab SendModalTab_Sign $ do
         fmap join . holdDyn (pure Nothing) <=< dyn $ ffor recipient $ \case
