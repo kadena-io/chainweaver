@@ -560,7 +560,7 @@ finishCrossChainTransferConfig model fromAccount ucct = Workflow $ do
         & inputElementConfig_initialValue .~ tshow (_unfinishedCrossChainTransfer_amount ucct)
     el "p" $ text "The coin has been debited from your account but hasn't been redeemed by the recipient."
     dialogSectionHeading mempty "Transaction Settings"
-    (conf, _, _) <- divClass "group" $ uiMetaData model Nothing Nothing
+    (conf, _, _, _) <- divClass "group" $ uiMetaData model Nothing Nothing
     dialogSectionHeading mempty "Gas Payer (recipient chain)"
     sender <- divClass "group" $ elClass "div" "segment segment_type_tertiary labeled-input" $ do
       divClass "label labeled-input__label" $ text "Account Name"

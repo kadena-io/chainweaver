@@ -230,32 +230,55 @@ createAccountConfig
 createAccountConfig ideL name chainId mPublicKey selectedKeyset keyset = Workflow $ do
   let includePreviewTab = False
 
-  (cfg, cChainId, mGasPayer, ttl, gasLimit, _) <- divClass "modal__main transaction_details" $ uiCfg
-    Nothing
-    ideL
-    (predefinedChainIdDisplayed chainId ideL)
-    Nothing
-    (Just defaultTransactionGasLimit)
-    []
-    TxnSenderTitle_GasPayer
-    Nothing
-    $ uiAccountDropdown def True
+  rec
+    (curSelection, eNewAccount, _) <- buildDeployTabs customConfigTab includePreviewTab controls
 
-  let payload = HM.singleton tempkeyset $ toJSON keyset
-      code = mkPactCode name
-      deployConfig = DeploymentSettingsConfig
-        { _deploymentSettingsConfig_chainId = userChainIdSelect
-        , _deploymentSettingsConfig_userTab = Nothing :: Maybe (Text, m ())
-        , _deploymentSettingsConfig_code = pure code
-        , _deploymentSettingsConfig_sender = uiAccountDropdown def False
-        , _deploymentSettingsConfig_data = Just payload
-        , _deploymentSettingsConfig_nonce = Nothing
-        , _deploymentSettingsConfig_ttl = Nothing
-        , _deploymentSettingsConfig_gasLimit = Nothing
-        , _deploymentSettingsConfig_caps = Nothing
-        , _deploymentSettingsConfig_extraSigners = []
-        , _deploymentSettingsConfig_includePreviewTab = includePreviewTab
-        }
+    (conf, result, gasPayer) <- elClass "div" "modal__main transaction_details" $ do
+      (cfg, cChainId, mSender, ttl, gasLimit, _, _) <- tabPane mempty curSelection DeploymentSettingsView_Cfg $
+        -- Is passing around 'Maybe x' everywhere really a good way of doing this ?
+        uiCfg
+          Nothing
+          ideL
+          (predefinedChainIdDisplayed chainId ideL)
+          Nothing
+          (Just defaultTransactionGasLimit)
+          []
+          Nothing
+          $ uiSenderDropdown def
+
+      mGasPayer <- tabPane mempty curSelection DeploymentSettingsView_Keys $ do
+        let onSenderUpdate = gate (current $ isNothing <$> gasPayer) $ updated mSender
+
+        dialogSectionHeading mempty "Gas Payer"
+        divClass "group" $ elClass "div" "segment segment_type_tertiary labeled-input" $ do
+          divClass "label labeled-input__label" $ text "Account Name"
+          let ddCfg = def & dropdownConfig_attributes .~ pure ("class" =: "labeled-input__input")
+          uiSenderDropdown ddCfg ideL cChainId onSenderUpdate
+
+      let payload = HM.singleton tempkeyset $ toJSON keyset
+          code = mkPactCode name
+          deployConfig = DeploymentSettingsConfig
+            { _deploymentSettingsConfig_chainId = userChainIdSelect
+            , _deploymentSettingsConfig_userTab = Nothing :: Maybe (Text, m ())
+            , _deploymentSettingsConfig_code = pure code
+            , _deploymentSettingsConfig_sender = uiSenderDropdown def
+            , _deploymentSettingsConfig_data = Just payload
+            , _deploymentSettingsConfig_nonce = Nothing
+            , _deploymentSettingsConfig_ttl = Nothing
+            , _deploymentSettingsConfig_gasLimit = Nothing
+            , _deploymentSettingsConfig_caps = Nothing
+            , _deploymentSettingsConfig_extraSigners = []
+            , _deploymentSettingsConfig_includePreviewTab = includePreviewTab
+            }
+
+          capabilities = mGasPayer <&>
+            maybe mempty (\a -> fst a =: [_dappCap_cap defaultGASCapability])
+
+      pure
+        ( cfg & networkCfg_setSender .~ fmapMaybe (fmap unAccountName) (updated mSender)
+        , buildDeploymentSettingsResult ideL mSender (fmap fst <$> mGasPayer) (pure mempty) cChainId capabilities ttl gasLimit (pure code) deployConfig
+        , mGasPayer
+        )
 
       networkAccounts = ffor2 (ideL ^. wallet_accounts) (ideL ^. network_selectedNetwork) $ \ad n ->
         fromMaybe mempty $ Map.lookup n (unAccountData ad)
