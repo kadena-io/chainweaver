@@ -141,7 +141,7 @@ uiReceiveModal0 model account mchain onClose = Workflow $ do
       in
         mkLabeledInputView True lbl attrFn $ pure v
 
-  (showingAddr, chain, (conf, ttl, gaslimit, transferInfo)) <- divClass "modal__main receive" $ do
+  (showingAddr, chain, (conf, ttl, gaslimit, _, transferInfo)) <- divClass "modal__main receive" $ do
     rec
       showingKadenaAddress <- toggle True $ onAddrClick <> onReceiClick
 
@@ -165,8 +165,8 @@ uiReceiveModal0 model account mchain onClose = Workflow $ do
         dialogSectionHeading mempty "Sender Details"
         transferInfo0 <- divClass "group" $ uiReceiveFromLegacyAccount model
         dialogSectionHeading mempty "Transaction Settings"
-        (conf0, ttl0, gaslimit0) <- divClass "group" $ uiMetaData model Nothing Nothing
-        pure (conf0, ttl0, gaslimit0, transferInfo0)
+        (conf0, ttl0, gaslimit0, gasPrice) <- divClass "group" $ uiMetaData model Nothing Nothing
+        pure (conf0, ttl0, gaslimit0, gasPrice, transferInfo0)
 
     pure (showingKadenaAddress, chain, snd results)
 
