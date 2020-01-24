@@ -335,14 +335,23 @@ sendConfig model initData = Workflow $ do
           displayImmediateFeedback (updated decoded) cannotBeReceiverMsg
             $ either (const False) (\ka -> _txBuilder_accountName ka == fromName && _txBuilder_chainId ka == fromChain)
 
-          (_, amount, _) <- mkLabeledInput True "Amount" uiGasPriceInputField
-            (def & inputElementConfig_initialValue .~ (maybe "" tshow mInitAmount))
+          let
+            balance = _account_status fromAcc ^? _AccountStatus_Exists . accountDetails_balance . to unAccountBalance
+
+            gasInputWithMaxButton cfg = mdo
+              g <- uiGasPriceInputField $ cfg
+                & inputElementConfig_setValue .~ maybe never (<$ clk) (fmap tshow balance)
+              clk <- confirmButton ?? "Max" $ def
+                & uiButtonCfg_class <>~ "input-max-button"
+              pure g
+
+          (_, amount, _) <- mkLabeledInput True "Amount" gasInputWithMaxButton def
             -- We're only interested in the decimal of the gas price
             <&> over (_2 . mapped . mapped) (\(GasPrice (ParsedDecimal d)) -> d)
 
           displayImmediateFeedback (updated amount) insufficientFundsMsg $ \ma ->
-            case (ma, _account_status fromAcc) of
-              (Just a, AccountStatus_Exists d) -> a > unAccountBalance (_accountDetails_balance d)
+            case (ma, balance) of
+              (Just a, Just b) -> a > b
               (_, _) -> False
 
           pure $ runExceptT $ do
