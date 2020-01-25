@@ -254,7 +254,7 @@ sendConfig
   :: SendConstraints model mConf key t m
   => model -> (AccountName, ChainId, Account) -> Workflow t m (mConf, Event t ())
 sendConfig model fromAccount@(fromName, fromChain, fromAcc) = Workflow $ do
-  close <- modalHeader $ text "Send"
+  close <- modalHeader $ text "Withdraw"
   rec
     (currentTab, _done) <- makeTabs $ attachWithMaybe (const . void . hush) (current recipient) next
     (conf, mCaps, recipient) <- mainSection currentTab

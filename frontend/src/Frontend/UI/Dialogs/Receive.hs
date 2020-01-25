@@ -105,7 +105,7 @@ uiReceiveModal
   -> Event t ()
   -> m (mConf, Event t ())
 uiReceiveModal model account mchain _onClose = do
-  onClose <- modalHeader $ text "Receive"
+  onClose <- modalHeader $ text "Deposit"
   (conf, closes) <- fmap splitDynPure $ workflow $ uiReceiveModal0 model account mchain onClose
   mConf <- flatten =<< tagOnPostBuild conf
   let close = switch $ current closes
