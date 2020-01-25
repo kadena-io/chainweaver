@@ -153,12 +153,4 @@ input[type=number] {
   max-width: 60%;
   height: 1.1em;
   overflow: hidden;
-  z-index: 2;
-  &:hover {
-    height: auto;
-    border: $std-border-width $std-border-style $std-border-color;
-    border-radius: $std-border-radius;
-    padding: 0.2em;
-    box-shadow: 0 0 5px 2px rgba(0, 0, 0, 0.4);
-  }
 }
