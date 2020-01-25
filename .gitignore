@@ -1,8 +1,6 @@
 dist-newstyle
 result
-result-android
-result-ios
-result-exe
+result-*
 .attr-cache
 ghcid-output.txt
 taskell.md
