@@ -190,7 +190,7 @@ uiAccountItem keys name accountInfo = do
     visible <- toggle False clk
     results <- listWithKey chainMap $ accountRow visible
     let balances :: Dynamic t [Maybe AccountBalance]
-        balances = join $ traverse fst . Map.elems <$> results
+        balances = fmap Map.elems $ joinDynThroughMap $ (fmap . fmap) fst results
   let dialogs = switch $ leftmost . fmap snd . Map.elems <$> current results
   pure $ leftmost [dialog, dialogs]
   where
