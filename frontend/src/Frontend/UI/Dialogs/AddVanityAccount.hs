@@ -8,7 +8,7 @@ module Frontend.UI.Dialogs.AddVanityAccount
   ) where
 
 import Data.Aeson (toJSON)
-import           Control.Lens                           ((^.),(<>~), (<&>))
+import           Control.Lens                           ((^.),(<>~), (<&>), (^?), to)
 import           Control.Error                          (hush)
 import           Control.Monad.Trans.Class              (lift)
 import           Control.Monad.Trans.Maybe              (MaybeT (..), runMaybeT)
@@ -27,7 +27,7 @@ import           Reflex.Dom.Core
 import           Reflex.Network.Extended
 
 import           Frontend.UI.DeploymentSettings
-import           Frontend.UI.Dialogs.DeployConfirmation (CanSubmitTransaction, submitTransactionWithFeedback)
+import           Frontend.UI.Dialogs.DeployConfirmation (CanSubmitTransaction, submitTransactionWithFeedback, _Status_Done, transactionSubmitFeedback_listenStatus)
 import           Frontend.UI.Modal.Impl
 import           Frontend.UI.Widgets
 import           Frontend.UI.Widgets.Helpers (dialogSectionHeading)
@@ -279,7 +279,9 @@ createAccountConfig ideL name chainId keyset = Workflow $ do
     progressButtonLabalFn _ = "Next"
 
 createAccountSubmit
-  :: ( Monoid mConf
+  :: forall mConf model key t m a
+  .  ( Monoid mConf
+     , HasWalletCfg mConf key t
      , CanSubmitTransaction t m
      , HasLogger model t
      )
@@ -291,12 +293,17 @@ createAccountSubmit
 createAccountSubmit model chainId result nodeInfos = Workflow $ do
   let cmd = _deploymentSettingsResult_command result
 
-  _ <- elClass "div" "modal__main transaction_details" $
+  submitFeedback <- elClass "div" "modal__main transaction_details" $
     submitTransactionWithFeedback model cmd chainId nodeInfos
+
+  let succeeded = fmapMaybe (^? _Status_Done) (submitFeedback ^. transactionSubmitFeedback_listenStatus . to updated)
 
   done <- modalFooter $ confirmButton def "Done"
 
   pure
-    ( ("Creating Account", (mempty, done))
+    ( ("Creating Account",
+      ( mempty & walletCfg_refreshBalances <>~ succeeded
+      , done
+      ))
     , never
     )
