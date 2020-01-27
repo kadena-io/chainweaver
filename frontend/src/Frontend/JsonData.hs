@@ -55,7 +55,6 @@ import           Data.Aeson          (FromJSON (..), Object, ToJSON (..),
 import           Data.Aeson.Types    (typeMismatch)
 import qualified Data.HashMap.Strict as H
 import qualified Data.IntMap         as IntMap
-import qualified Data.IntMap.Merge.Lazy as IntMap
 import           Data.Map            (Map)
 import qualified Data.Map            as Map
 import           Data.Set            (Set)
@@ -283,13 +282,10 @@ makeKeysets walletL cfg =
 
         onRemovedKeys = push (\new -> do
           old <- sample . current $ walletL ^. wallet_keys
-          let f k1 k2 | not (_key_hidden k1) && _key_hidden k2 = g k1
-              f _ _ = Nothing
-              g = Just . _keyPair_publicKey . _key_pair
-              removed = IntMap.merge (IntMap.mapMaybeMissing $ \_ -> g) IntMap.dropMissing (IntMap.zipWithMaybeMatched $ \_ -> f) old new
+          let removed = IntMap.difference old new
           if IntMap.null removed
              then pure Nothing
-             else pure $ Just . Set.fromList . IntMap.elems $ removed
+             else pure $ Just . Set.fromList . fmap (_keyPair_publicKey . _key_pair) . IntMap.elems $ removed
 
           )
           (updated $ walletL ^. wallet_keys)

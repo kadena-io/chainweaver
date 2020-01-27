@@ -25,7 +25,14 @@ module Frontend.UI.Dialogs.DeployConfirmation
 
   , CanSubmitTransaction
   , TransactionSubmitFeedback (..)
+  , transactionSubmitFeedback_sendStatus
+  , transactionSubmitFeedback_listenStatus
+  , transactionSubmitFeedback_message
   , Status (..)
+  , _Status_Working
+  , _Status_Waiting
+  , _Status_Done
+  , _Status_Failed
   , statusText
 
   , submitTransactionWithFeedback
@@ -114,104 +121,6 @@ type CanSubmitTransaction t m =
   , Control.Monad.Ref.Ref m ~ IORef
   )
 
--- | Confirmation dialog for deployments.
---
---   User can make sure to deploy to the right network, has the right keysets,
---   the right keys, ...
-uiDeployConfirmation
-  :: forall key t m model modelCfg.
-     ( MonadWidget t m, Monoid modelCfg, Flattenable modelCfg t
-     , HasNetwork model t, HasNetworkCfg modelCfg t
-     , HasJsonData model t, HasJsonDataCfg modelCfg t
-     , HasWallet model key t, HasCrypto key (Performable m)
-     , HasLogger model t
-     )
-  => Text
-  -> model
-  -> Event t () -> m (modelCfg, Event t ())
-uiDeployConfirmation code model = fullDeployFlow def model $ do
-  (settingsCfg, result, _) <- uiDeploymentSettings model $ DeploymentSettingsConfig
-    { _deploymentSettingsConfig_chainId = userChainIdSelect
-    , _deploymentSettingsConfig_userTab = Nothing
-    , _deploymentSettingsConfig_code = pure code
-    , _deploymentSettingsConfig_sender = uiSenderDropdown def
-    , _deploymentSettingsConfig_data = Nothing
-    , _deploymentSettingsConfig_ttl = Nothing
-    , _deploymentSettingsConfig_nonce = Nothing
-    , _deploymentSettingsConfig_gasLimit = Nothing
-    , _deploymentSettingsConfig_caps = Nothing
-    , _deploymentSettingsConfig_extraSigners = []
-    , _deploymentSettingsConfig_includePreviewTab = True
-    }
-  pure (settingsCfg, result)
-
--- | Workflow taking the user through Config -> Status
--- It's the responsibility of the runner to do any previewing of the
--- deployment before exiting to this workflow. Thankfully, uiDeploymentSettings
--- has a preview tab.
--- If you don't want the deployment and just need a DeploymentSettingsResult, just
--- use uiDeploymentSettings. :)
-fullDeployFlow
-  :: forall key t m model modelCfg.
-     ( MonadWidget t m, Monoid modelCfg, Flattenable modelCfg t
-     , HasNetwork model t
-     , HasLogger model t
-     )
-  => DeployConfirmationConfig t
-  -> model
-  -> m (modelCfg, Event t (DeploymentSettingsResult key))
-  -> Event t () -> m (modelCfg, Event t ())
-fullDeployFlow dcfg model runner _onCloseExternal = do
-  rec
-    onClose <- modalHeader $ dynText title
-    result <- workflow deployWorkflow
-    let (title, (done', conf')) = fmap splitDynPure $ splitDynPure result
-  conf <- flatten =<< tagOnPostBuild conf'
-  let done = switch $ current done'
-  pure (conf, fold [void done, onClose])
-
-  where
-    deployWorkflow = Workflow $ do
-      (settingsCfg, result) <- runner
-      let bNodes = current $ model ^. network_selectedNodes
-
-      let eGotoSubmit = showSubmit <$> bNodes <@> result
-
-      pure (( _deployConfirmationConfig_modalTitle dcfg
-            , (never, settingsCfg)
-            )
-           , eGotoSubmit
-           )
-
-    showSubmit nodes result = deploySubmit
-      model
-      (_deploymentSettingsResult_chainId result)
-      result
-      nodes
-
-deploySubmit
-  :: forall key t m a model modelCfg.
-     ( MonadWidget t m
-     , Monoid modelCfg
-     , HasLogger model t
-     )
-  => model
-  -> ChainId
-  -> DeploymentSettingsResult key
-  -> [Either a NodeInfo]
-  -> Workflow t m (Text, (Event t (), modelCfg))
-deploySubmit model chain result nodeInfos = Workflow $ do
-  let cmd = _deploymentSettingsResult_command result
-
-  _ <- elClass "div" "modal__main transaction_details" $
-    submitTransactionWithFeedback model cmd chain nodeInfos
-
-  done <- modalFooter $ uiButtonDyn (def & uiButtonCfg_class .~ "button_type_confirm") $ text "Done"
-  pure
-    ( ("Transaction Submit", (done, mempty))
-    , never
-    )
-
 -- | Fork a thread. Here because upstream 'forkJSM' doesn't give us the thread ID
 forkJSM' :: JSM () -> JSM ThreadId
 forkJSM' a = askJSM >>= \j -> liftIO $ forkIO $ runJSM a j
@@ -222,6 +131,7 @@ data Status
   | Status_Failed
   | Status_Done
   deriving Eq
+makePrisms ''Status
 
 statusText :: Status -> Text
 statusText = \case
@@ -235,10 +145,12 @@ data TransactionSubmitFeedback t = TransactionSubmitFeedback
   , _transactionSubmitFeedback_listenStatus :: Dynamic t Status
   , _transactionSubmitFeedback_message :: Dynamic t (Maybe (Either NetworkError PactValue))
   }
+makeLenses ''TransactionSubmitFeedback
 
 submitTransactionWithFeedback
   :: ( CanSubmitTransaction t m
      , HasLogger model t
+     , HasTransactionLogger m
      )
   => model
   -> Pact.Command Text
@@ -304,9 +216,10 @@ submitTransactionWithFeedback model cmd chain nodeInfos = do
 
   -- Send the transaction
   pb <- getPostBuild
+  transactionLogger <- askTransactionLogger
   onRequestKey <- performEventAsync $ ffor pb $ \() cb -> liftJSM $ do
     send Status_Working
-    doReqFailover clientEnvs (Api.send Api.apiV1Client $ Api.SubmitBatch $ pure cmd) >>= \case
+    doReqFailover clientEnvs (Api.send Api.apiV1Client transactionLogger $ Api.SubmitBatch $ pure cmd) >>= \case
       Left errs -> do
         send Status_Failed
         for_ (nonEmpty errs) $ setMessage . Just . Left . packHttpErr . NEL.last
@@ -336,3 +249,104 @@ submitTransactionWithFeedback model cmd chain nodeInfos = do
       Just a -> dynText $ prettyPrintNetworkErrorResult . either (This . pure . (Nothing,)) (That . (Nothing,)) <$> a
 
   pure $ TransactionSubmitFeedback sendStatus listenStatus message
+
+deploySubmit
+  :: forall key t m a model modelCfg.
+     ( MonadWidget t m
+     , Monoid modelCfg
+     , HasLogger model t
+     , HasTransactionLogger m
+     )
+  => model
+  -> ChainId
+  -> DeploymentSettingsResult key
+  -> [Either a NodeInfo]
+  -> Workflow t m (Text, (Event t (), modelCfg))
+deploySubmit model chain result nodeInfos = Workflow $ do
+  let cmd = _deploymentSettingsResult_command result
+
+  _ <- elClass "div" "modal__main transaction_details" $
+    submitTransactionWithFeedback model cmd chain nodeInfos
+
+  done <- modalFooter $ uiButtonDyn (def & uiButtonCfg_class .~ "button_type_confirm") $ text "Done"
+  pure
+    ( ("Transaction Submit", (done, mempty))
+    , never
+    )
+
+-- | Workflow taking the user through Config -> Status
+-- It's the responsibility of the runner to do any previewing of the
+-- deployment before exiting to this workflow. Thankfully, uiDeploymentSettings
+-- has a preview tab.
+-- If you don't want the deployment and just need a DeploymentSettingsResult, just
+-- use uiDeploymentSettings. :)
+fullDeployFlow
+  :: forall key t m model modelCfg.
+     ( MonadWidget t m, Monoid modelCfg, Flattenable modelCfg t
+     , HasNetwork model t
+     , HasLogger model t
+     , HasTransactionLogger m
+     )
+  => DeployConfirmationConfig t
+  -> model
+  -> m (modelCfg, Event t (DeploymentSettingsResult key))
+  -> Event t () -> m (modelCfg, Event t ())
+fullDeployFlow dcfg model runner _onCloseExternal = do
+  rec
+    onClose <- modalHeader $ dynText title
+    result <- workflow deployWorkflow
+    let (title, (done', conf')) = fmap splitDynPure $ splitDynPure result
+  conf <- flatten =<< tagOnPostBuild conf'
+  let done = switch $ current done'
+  pure (conf, fold [void done, onClose])
+
+  where
+    deployWorkflow = Workflow $ do
+      (settingsCfg, result) <- runner
+      let bNodes = current $ model ^. network_selectedNodes
+
+      let eGotoSubmit = showSubmit <$> bNodes <@> result
+
+      pure (( _deployConfirmationConfig_modalTitle dcfg
+            , (never, settingsCfg)
+            )
+           , eGotoSubmit
+           )
+
+    showSubmit nodes result = deploySubmit
+      model
+      (_deploymentSettingsResult_chainId result)
+      result
+      nodes
+
+-- | Confirmation dialog for deployments.
+--
+--   User can make sure to deploy to the right network, has the right keysets,
+--   the right keys, ...
+uiDeployConfirmation
+  :: forall key t m model modelCfg.
+     ( MonadWidget t m, Monoid modelCfg, Flattenable modelCfg t
+     , HasNetwork model t, HasNetworkCfg modelCfg t
+     , HasJsonData model t, HasJsonDataCfg modelCfg t
+     , HasWallet model key t, HasCrypto key (Performable m)
+     , HasLogger model t
+     , HasTransactionLogger m
+     )
+  => Text
+  -> model
+  -> Event t () -> m (modelCfg, Event t ())
+uiDeployConfirmation code model = fullDeployFlow def model $ do
+  (settingsCfg, result, _) <- uiDeploymentSettings model $ DeploymentSettingsConfig
+    { _deploymentSettingsConfig_chainId = userChainIdSelect
+    , _deploymentSettingsConfig_userTab = Nothing
+    , _deploymentSettingsConfig_code = pure code
+    , _deploymentSettingsConfig_sender = uiSenderDropdown def
+    , _deploymentSettingsConfig_data = Nothing
+    , _deploymentSettingsConfig_ttl = Nothing
+    , _deploymentSettingsConfig_nonce = Nothing
+    , _deploymentSettingsConfig_gasLimit = Nothing
+    , _deploymentSettingsConfig_caps = Nothing
+    , _deploymentSettingsConfig_extraSigners = []
+    , _deploymentSettingsConfig_includePreviewTab = True
+    }
+  pure (settingsCfg, result)

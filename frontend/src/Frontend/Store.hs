@@ -8,7 +8,6 @@ module Frontend.Store
 
 import Frontend.Storage.Class
 import Data.Aeson (FromJSON, ToJSON)
-import Data.Dependent.Sum.Orphans ()
 import Data.Proxy (Proxy(Proxy))
 import Reflex
 import Reflex.Dom
@@ -16,6 +15,7 @@ import Reflex.Dom
 import qualified Frontend.Store.V0 as V0
 import qualified Frontend.Store.V1 as V1
 import Frontend.Store.V1 as Latest
+import Frontend.Crypto.Class
 
 -- Doesn't execute the widget until we've checked the current version and upgraded if necessary
 -- TODO: This should have a better home.
@@ -35,7 +35,15 @@ versionedUi v widget = do
       _ <- _storageVersioner_upgrade v
       pure ()
 
-versioner :: forall key m. (ToJSON key, FromJSON key, Monad m, HasStorage m) => StorageVersioner m (Latest.StoreFrontend key)
+versioner
+  :: forall key m.
+     ( ToJSON key
+     , FromJSON key
+     , Monad m
+     , HasStorage m
+     , HasCrypto key m
+     )
+  => StorageVersioner m (Latest.StoreFrontend key)
 versioner = StorageVersioner
   { _storageVersioner_metaPrefix = prefix
   , _storageVersioner_backupVersion = backup
@@ -52,7 +60,7 @@ versioner = StorageVersioner
           _ok <- backupLocalStorage prefix (Proxy @(V0.StoreFrontend key)) 0
           pure Nothing
         1 -> do
-          _ok <- backupLocalStorage prefix (Proxy @(V1.StoreFrontend key)) 0
+          _ok <- backupLocalStorage prefix (Proxy @(V1.StoreFrontend key)) 1
           pure Nothing
         v -> pure $ Just $ VersioningError_UnknownVersion v
 
@@ -65,7 +73,7 @@ versioner = StorageVersioner
           case mDump of
             Nothing -> error "TODO Add a version error case for this"
             Just dump -> do
-              let v1Dump = V1.upgradeFromV0 dump
+              v1Dump <- V1.upgradeFromV0 dump
               removeKeyUniverse (Proxy @(V0.StoreFrontend key)) localStorage
               removeKeyUniverse (Proxy @(V0.StoreFrontend key)) sessionStorage
               restoreLocalStorageDump prefix v1Dump 1

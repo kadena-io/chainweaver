@@ -34,6 +34,7 @@ import Obelisk.Route (R)
 import Obelisk.Route.Frontend
 import Pact.Repl
 import Pact.Repl.Types
+import Pact.Server.ApiV1Client (HasTransactionLogger)
 import Pact.Types.Lang
 import Reflex
 import Reflex.Dom.ACE.Extended hiding (Annotation (..))
@@ -54,7 +55,7 @@ import Frontend.Repl
 import Frontend.Storage
 import qualified Frontend.Store as Store
 import Frontend.UI.Button
-import Frontend.UI.Dialogs.AddVanityAccount (uiAddVanityAccountButton)
+import Frontend.UI.Dialogs.AddVanityAccount (uiAddAccountButton)
 import Frontend.UI.Dialogs.CreateGist (uiCreateGist)
 import Frontend.UI.Dialogs.CreatedGist (uiCreatedGist)
 import Frontend.UI.Dialogs.DeployConfirmation (uiDeployConfirmation)
@@ -78,6 +79,7 @@ app
      , HasCrypto key (Performable m)
      , HasCrypto key m
      , FromJSON key, ToJSON key
+     , HasTransactionLogger m
      )
   => RoutedT t (R FrontendRoute) m ()
   -- ^ Extra widget to display at the bottom of the sidebar
@@ -97,15 +99,12 @@ app sidebarExtra appCfg = Store.versionedUi (Store.versioner @key) $ void . mfix
       FrontendRoute_Accounts -> mkPageContent "accounts" $ do
         barCfg <- controlBar "Accounts" $ do
           refreshCfg <- uiWalletRefreshButton
-          addCfg <- uiAddVanityAccountButton ideL
+          addCfg <- uiAddAccountButton ideL
           pure $ addCfg <> refreshCfg
         accountsCfg <- uiAccountsTable ideL
         pure $ barCfg <> accountsCfg
       FrontendRoute_Keys -> mkPageContent "keys" $ do
-        walletBarCfg <- controlBar "Keys" $ do
-          refreshCfg <- uiWalletRefreshButton
-          addCfg <- uiGenerateKeyButton
-          pure $ addCfg <> refreshCfg
+        walletBarCfg <- controlBar "Keys" uiGenerateKeyButton
         walletCfg <- uiWallet ideL
         pure $ walletBarCfg <> walletCfg
       FrontendRoute_Contracts -> mkPageContent "contracts" $ do
@@ -289,7 +288,7 @@ getPactVersion = do
       _ -> error "failed to get pact version"
     return ver
 
-controlBarRight  :: forall key t m. (MonadWidget t m, HasCrypto key (Performable m))
+controlBarRight  :: forall key t m. (MonadWidget t m, HasCrypto key (Performable m), HasTransactionLogger m)
   => AppCfg key t m -> ModalIde m key t -> m (ModalIdeCfg m key t)
 controlBarRight appCfg m = do
     divClass "main-header__controls-nav" $ do

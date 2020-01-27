@@ -53,7 +53,7 @@ selectionToText = \case
   EnvSelection_ModuleExplorer -> "Module Explorer"
 
 rightTabBar
-  :: forall key t m. (MonadWidget t m, HasCrypto key (Performable m))
+  :: forall key t m. (MonadWidget t m, HasCrypto key (Performable m), HasTransactionLogger m)
   => CssClass
   -> Ide (ModalImpl m key t) key t
   -> m (IdeCfg (ModalImpl m key t) key t)

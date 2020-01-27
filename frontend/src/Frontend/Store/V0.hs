@@ -15,7 +15,7 @@ import Frontend.Store.TH
 import Frontend.Store.V0.Wallet
 
 -- WARNING: Be careful about changing stuff in here. Tests will catch snafus here and upstream though
-import Common.Network (NetworkName, NodeRef)
+import Common.Network (NetworkName)
 import Common.OAuth (OAuthProvider)
 import Common.GistStore (GistMeta)
 
@@ -24,12 +24,12 @@ import Common.GistStore (GistMeta)
 import Pact.Types.ChainMeta (PublicMeta (..))
 import Obelisk.OAuth.Common (AccessToken, OAuthState)
 
-
 data StoreFrontend key a where
   StoreWallet_Keys :: StoreFrontend key (Accounts key)
 
   StoreNetwork_PublicMeta :: StoreFrontend key PublicMeta
-  StoreNetwork_Networks :: StoreFrontend key (Map NetworkName [NodeRef])
+
+  StoreNetwork_Networks :: StoreFrontend key NetworkMap
   StoreNetwork_SelectedNetwork :: StoreFrontend key NetworkName
 
   StoreOAuth_Tokens :: StoreFrontend key (Map OAuthProvider AccessToken)
@@ -54,7 +54,7 @@ instance ArgDict c (StoreFrontend key) where
   type ConstraintsFor (StoreFrontend key) c
     = ( c (Accounts key)
       , c PublicMeta
-      , c (Map NetworkName [NodeRef])
+      , c NetworkMap
       , c NetworkName
       , c (Map OAuthProvider AccessToken)
       , c OAuthState

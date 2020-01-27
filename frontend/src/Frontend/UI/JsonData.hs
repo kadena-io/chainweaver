@@ -25,6 +25,9 @@ module Frontend.UI.JsonData
   , uiJsonDataSetFocus
   , uiCreateKeysets
   , uiJsonDataResult
+  -- * Useful bits
+  , uiKeysetKeys
+  , predDropdown
   ) where
 
 ------------------------------------------------------------------------------

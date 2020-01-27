@@ -52,9 +52,8 @@ module Frontend.UI.Widgets
   , validatedInputWithButton
   , uiAccountBalance
   , uiAccountBalance'
-  , uiAccountChain
-  , uiAccountNotes
   , uiPublicKeyShrunk
+  , uiAdditiveInput
     -- ** Helper widgets
   , imgWithAlt
   , showLoading
@@ -83,13 +82,17 @@ import           Control.Applicative
 import           Control.Arrow (first, (&&&))
 import           Control.Lens
 import           Control.Monad
+import qualified Data.Aeson.Encode.Pretty as AesonPretty
 import           Data.Either (isLeft, rights)
 import           Data.Map.Strict             (Map)
 import qualified Data.Map.Strict as Map
+import qualified Data.IntMap as IntMap
 import           Data.String                 (IsString)
 import           Data.Proxy                  (Proxy(..))
 import           Data.Text                   (Text)
 import qualified Data.Text                   as T
+import qualified Data.Text.Lazy as LT
+import qualified Data.Text.Lazy.Builder as LTB
 import           GHC.Word                    (Word8)
 import           Data.Decimal                (Decimal)
 import qualified Data.Decimal                as D
@@ -107,13 +110,14 @@ import           Common.Wallet
 import           Frontend.Network (HasNetwork(..), NodeInfo, getChains, maxCoinPrecision)
 import           Frontend.Foundation
 import           Frontend.UI.Button
+import           Frontend.Wallet
 import           Frontend.UI.Widgets.Helpers (imgWithAlt, imgWithAltCls, makeClickable,
                                               setFocus, setFocusOn,
                                               setFocusOnSelected, tabPane,
                                               preventUpAndDownArrow,
                                               preventScrollWheel,
                                               tabPane')
-import           Frontend.KadenaAddress (textKadenaAddress, KadenaAddress)
+import           Frontend.KadenaAddress (KadenaAddress)
 ------------------------------------------------------------------------------
 
 -- | A styled checkbox.
@@ -596,15 +600,15 @@ validatedInputWithButton uCls check placeholder buttonText = do
       pure update
 
 
-uiAccountBalance' :: HasAccountInfo a => Bool -> a -> Text
-uiAccountBalance' showUnits acc = case _accountInfo_balance i of
-  Nothing -> "Account not present"
-  Just b -> mconcat $ catMaybes
-    [ Just $ tshow $ unAccountBalance b
+uiAccountBalance' :: Bool -> Account -> Text
+uiAccountBalance' showUnits acc = case _account_status acc of
+  AccountStatus_Unknown -> "Unknown"
+  AccountStatus_DoesNotExist -> "Account not present"
+  AccountStatus_Exists d -> mconcat $ catMaybes
+    [ Just $ tshow $ unAccountBalance $ _accountDetails_balance d
     , " KDA" <$ guard showUnits
-    ,  "*" <$ _accountInfo_unfinishedCrossChainTransfer i
+    ,  "*" <$ _vanityAccount_unfinishedCrossChainTransfer (_account_storage acc)
     ]
-  where i = view accountInfo acc
 
 uiAccountBalance :: Bool -> Maybe AccountBalance -> Text
 uiAccountBalance showUnits = \case
@@ -614,12 +618,6 @@ uiAccountBalance showUnits = \case
     , " KDA" <$ guard showUnits
     ]
 
-uiAccountChain :: Account -> Text
-uiAccountChain = _chainId . accountChain
-
-uiAccountNotes :: Account -> Text
-uiAccountNotes = maybe "" unAccountNotes . accountNotes
-
 uiPublicKeyShrunk :: (DomBuilder t m, PostBuild t m) => Dynamic t PublicKey -> m ()
 uiPublicKeyShrunk pk = do
   divClass "wallet__public-key" $ do
@@ -627,6 +625,43 @@ uiPublicKeyShrunk pk = do
     elClass "span" "wallet__public-key__suffix" $ dynText $ T.takeEnd 6 <$> ktxt
   where
     ktxt = keyToText <$> pk
+
+uiAdditiveInput
+  :: forall t m out particular
+     . ( MonadWidget t m
+       )
+  => (IntMap.Key -> particular -> m out)
+  -> (out -> Event t particular)
+  -> (particular -> Bool)
+  -> (particular -> Bool)
+  -> particular
+  -> Event t (IntMap.IntMap (Maybe particular))
+  -> m (Dynamic t (IntMap.IntMap out))
+uiAdditiveInput mkIndividualInput getParticular allowNewRow allowDeleteRow initialSelection onExternal = do
+  let
+    minRowIx = 0
+
+    decideAddNewRow :: (IntMap.Key, out) -> Event t (IntMap.IntMap (Maybe particular))
+    decideAddNewRow (i, out) = IntMap.singleton (succ i) (Just initialSelection) <$
+      ffilter allowNewRow (getParticular out)
+
+    decideDeletion :: IntMap.Key -> out -> Event t (IntMap.IntMap (Maybe particular))
+    decideDeletion i out = IntMap.singleton i Nothing <$
+      ffilter allowDeleteRow (getParticular out)
+
+  rec
+    (keys, newSelection) <- traverseIntMapWithKeyWithAdjust mkIndividualInput (IntMap.singleton minRowIx initialSelection) $
+      leftmost
+      [ -- Delete rows when 'select' is chosen
+        fmap PatchIntMap $ switchDyn $ IntMap.foldMapWithKey decideDeletion <$> dInputKeys
+        -- Add a new row when all rows have a selection and there are more keys to choose from
+      , fmap PatchIntMap $ switchDyn $ maybe never decideAddNewRow . IntMap.lookupMax <$> dInputKeys
+        -- Set the values of the rows from an external event.
+      , PatchIntMap <$> onExternal
+      ]
+    dInputKeys <- foldDyn applyAlways keys newSelection
+
+  pure dInputKeys
 
 showLoading
   :: (NotReady t m, Adjustable t m, PostBuild t m, DomBuilder t m, Monoid b)
@@ -752,17 +787,21 @@ uiDisplayKadenaAddressWithCopy
      , PostBuild t m
      , PerformEvent t m
      )
-  => KadenaAddress
+  => Bool
+  -> KadenaAddress
   -> m ()
-uiDisplayKadenaAddressWithCopy address = void $ do
-  let txtAddr = textKadenaAddress address
+uiDisplayKadenaAddressWithCopy withLabel address = void $ do
+  let txtAddr = LT.toStrict $ LTB.toLazyText $ AesonPretty.encodePrettyToTextBuilder address
   -- Kadena Address
-  _ <- mkLabeledInputView False "Kadena Address" (\cfg -> uiInputElement $ cfg
-        & initialAttributes <>~ (
-          "disabled" =: "true" <>
-          "class" =: (" " <> "account-details__kadena-address")
+  elClass "div" "segment segment_type_tertiary labeled-input" $ do
+    when withLabel $ divClass "label labeled-input__label" $ text "[Kadena Address]"
+    void $ uiTextAreaElement $ def
+      & initialAttributes <>~ (
+        "disabled" =: "true" <>
+        "rows" =: tshow (max 13 {- for good luck -} $ length $ T.lines txtAddr) <>
+        "class" =: " labeled-input__input labeled-input__kadena-address"
         )
-      ) $ pure txtAddr
+      & textAreaElementConfig_initialValue .~ txtAddr
   uiDetailsCopyButton $ pure txtAddr
 
 uiGasPriceInputField

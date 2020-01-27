@@ -28,6 +28,7 @@ import Numeric.Natural (Natural)
 import System.Directory (doesFileExist)
 import System.FilePath ((</>))
 
+import Frontend.Crypto.Class
 import Frontend.Storage
 
 lookupRef :: IORef (Map Text Text) -> Text -> IO (Maybe Text)

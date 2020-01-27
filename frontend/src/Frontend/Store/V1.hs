@@ -4,7 +4,6 @@ module Frontend.Store.V1 where
 
 import Data.Aeson
 import Data.Aeson.GADT.TH
-import qualified Data.ByteString.Base16 as Base16
 import Data.Constraint (Dict(Dict))
 import Data.Constraint.Extras
 import Data.Dependent.Map (DMap, DSum(..))
@@ -12,13 +11,11 @@ import qualified Data.Dependent.Map as DMap
 import Data.Functor.Identity (Identity(Identity), runIdentity)
 import qualified Data.IntMap as IntMap
 import Data.Map (Map)
-import Data.Maybe (fromJust)
 import qualified Data.Map as Map
 import Data.Maybe (catMaybes)
 import Data.Text (Text)
-import qualified Data.Text as T
-import qualified Data.Text.Encoding as T
 
+import Common.Foundation
 import Common.Wallet
 import Common.Network (NetworkName, NodeRef)
 import Common.OAuth (OAuthProvider(..))
@@ -28,6 +25,7 @@ import Frontend.Store.TH
 import qualified Frontend.Store.V0 as V0
 import qualified Frontend.Store.V0.Wallet as V0
 import Frontend.Store.MigrationUtils
+import Frontend.Crypto.Class
 
 -- WARNING: Upstream deps. Check this when we bump pact and obelisk!
 -- May be worth storing this in upstream independent datatypes.
@@ -65,11 +63,12 @@ deriving instance Show (StoreFrontend key a)
 --
 -- Also note that key can't change here, so its JSON instances need to be backwards compatible
 -- forever.
-upgradeFromV0 :: DMap (V0.StoreFrontend key) Identity -> DMap (StoreFrontend key) Identity
-upgradeFromV0 v0 =
-  DMap.fromList . catMaybes $
+upgradeFromV0 :: (Monad m, HasCrypto key m) => DMap (V0.StoreFrontend key) Identity -> m (DMap (StoreFrontend key) Identity)
+upgradeFromV0 v0 = do
+  (newKeysList, newAccountStorage) <- foldMapM splitOldKey oldKeysList
+  let newKeys = IntMap.fromList newKeysList
+  pure $ DMap.fromList . catMaybes $
     [ copyKeyDSum V0.StoreNetwork_PublicMeta StoreFrontend_Network_PublicMeta v0
-    , copyKeyDSum V0.StoreNetwork_Networks StoreFrontend_Network_Networks v0
     , copyKeyDSum V0.StoreNetwork_SelectedNetwork StoreFrontend_Network_SelectedNetwork v0
     -- Technically these are session only and shouldn't be here given the backup restore only works on
     -- local storage, but desktop ignores the session vs local distinction so migrating them probably
@@ -79,62 +78,53 @@ upgradeFromV0 v0 =
     , copyKeyDSum (V0.StoreOAuth_State OAuthProvider_GitHub) (StoreFrontend_OAuth_State OAuthProvider_GitHub) v0
 
     , copyKeyDSum V0.StoreModuleExplorer_SessionFile StoreFrontend_ModuleExplorer_SessionFile v0
+
     , Just (StoreFrontend_Wallet_Keys :=> Identity newKeys)
     , Just (StoreFrontend_Wallet_Accounts :=> Identity newAccountStorage)
+    , newNetworks
     ]
   where
     oldKeysList = maybe [] (IntMap.toList . runIdentity) (DMap.lookup V0.StoreWallet_Keys v0)
-    (newKeysList, newAccountStorage) = foldMap splitOldKey oldKeysList
-    newKeys = IntMap.fromList newKeysList
+
+    -- We have to walk through the slightly different encoding of the Network information.
+    -- Also if the storage contains _no_ network configuration then we shouldn't break the new version
+    -- by storing an empty object.
+    newNetworks = (\nets -> StoreFrontend_Network_Networks :=> Identity (V0.unNetworkMap $ runIdentity nets))
+      <$> DMap.lookup V0.StoreNetwork_Networks v0
 
     -- It's unfortunate that we don't have the key around or access to crypto here to recreate the keys.
-    -- TODO: Fiddle with this so we don't need to fake out the key
-    -- I don't think we should run crypto derivation functions here. The web
-    -- version would generate a new key! Perhaps we should punt this to be fixed
-    -- upon key restoration by the user.
-    splitOldKey (keyIdx, V0.SomeAccount_Deleted) = ([(keyIdx, Key fakeKeyPair True (mkAccountNotes ""))], mempty)
+    -- This will regenerate the missing key. Desktop will recover the key with
+    -- BIP, but the web version will generate a new key!
+    splitOldKey (keyIdx, V0.SomeAccount_Deleted) = do
+      (private, public) <- cryptoGenKey keyIdx
+      let regenerated = KeyPair
+            { _keyPair_publicKey = public
+            , _keyPair_privateKey = Just private
+            }
+      pure ([(keyIdx, Key regenerated)], mempty)
 
-    splitOldKey (keyIdx, V0.SomeAccount_Account a) =
-      ([(keyIdx, Key (extractKey a) False (upgradeAccountNotes a))]
-      , oldAccountToNewStorage a False
+    splitOldKey (keyIdx, V0.SomeAccount_Account a) = pure
+      ([(keyIdx, Key (extractKey a))]
+      , oldAccountToNewStorage a
       )
 
-    oldAccountToNewStorage :: V0.Account key -> Bool -> AccountStorage
-    oldAccountToNewStorage a inflight =
+    oldAccountToNewStorage :: V0.Account key -> AccountStorage
+    oldAccountToNewStorage a =
       let
         accountNameText = V0.unAccountName . V0._account_name $ a
-        oldPubKey = V0._keyPair_publicKey . V0._account_key $ a
-        pubKeyText = T.decodeUtf8 . Base16.encode . V0.unPublicKey $ oldPubKey
-        newPubKey = upgradePublicKey oldPubKey
         chainIdText = V0.unChainId . V0._account_chainId $ a
         newChainId = ChainId chainIdText
         accountNotesText = V0.unAccountNotes . V0._account_notes $ a
         newAccountNotes = mkAccountNotes accountNotesText
-        newAccountBalance = V0._account_balance a
         newUnfinishedXChain = V0._account_unfinishedCrossChainTransfer a
-        newAccountInfo = AccountInfo newAccountBalance newUnfinishedXChain False
 
-        accounts = if accountNameText /= pubKeyText
-          then
-            let
-              newVanityAccount = VanityAccount newPubKey newAccountNotes newAccountInfo inflight
-            in Accounts
-              (Map.singleton (AccountName accountNameText) (Map.singleton newChainId newVanityAccount))
-              mempty
-          else Accounts
-            mempty
-            (Map.singleton newPubKey (Map.singleton newChainId (NonVanityAccount newAccountInfo)))
+        accounts = Map.singleton (AccountName accountNameText) $ AccountInfo Nothing
+          $ Map.singleton newChainId $ VanityAccount newAccountNotes newUnfinishedXChain
 
       in AccountStorage $ Map.singleton (V0._account_network a) accounts
 
     upgradePublicKey = PublicKey . V0.unPublicKey
 
-    upgradeAccountNotes a = mkAccountNotes (V0.unAccountNotes . V0._account_notes $ a)
-    --This is a bit unfortunate
-    fakeKeyPair = KeyPair
-      { _keyPair_publicKey = fromJust . textToKey . T.replicate 64 $ "0"
-      , _keyPair_privateKey = Nothing
-      }
     extractKey (V0.Account { V0._account_key = kp } ) = KeyPair
       -- This relies on the V0.Wallet.PublicKey FromJSON checking that it is Base16!
       { _keyPair_publicKey = upgradePublicKey $ V0._keyPair_publicKey kp

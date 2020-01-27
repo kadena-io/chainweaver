@@ -1,4 +1,5 @@
 {-# LANGUAGE CPP #-}
+{-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE ExtendedDefaultRules #-}
 {-# LANGUAGE FlexibleContexts #-}
@@ -7,6 +8,7 @@
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE PackageImports #-}
+{-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeFamilies #-}
 
@@ -32,6 +34,8 @@ module Common.Foundation
   , note
   , safeDecodeUtf8
   , someTag
+  , upsert
+  , foldMapM
     -- * Re-exports
   , module Data.Bool
   , module Data.Maybe
@@ -165,3 +169,19 @@ _GKeySet = prism' Pact.GKeySet (\case (Pact.GKeySet ks) -> Just ks; _ -> Nothing
 _PLit :: Prism' Pact.PactValue Pact.Literal
 _PLit = prism' Pact.PLiteral (\case (Pact.PLiteral l) -> Just l; _ -> Nothing)
 
+-- | Upsert a value using the given default
+upsert :: At x => Index x -> IxValue x -> Lens' x (IxValue x)
+upsert idx x = at idx . iso (fromMaybe x) Just
+
+-- | Extend 'foldMap' to allow side effects.
+-- Implementation taken from rio: https://hackage.haskell.org/package/rio-0.1.13.0/docs/RIO-Prelude.html#v:foldMapM
+foldMapM
+  :: (Monad m, Monoid w, Foldable t)
+  => (a -> m w)
+  -> t a
+  -> m w
+foldMapM f = foldlM
+  (\acc a -> do
+    w <- f a
+    return $! mappend acc w)
+  mempty

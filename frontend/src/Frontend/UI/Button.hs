@@ -43,6 +43,7 @@ module Frontend.UI.Button
   , confirmButton
   , cancelButton
   , receiveButton
+  , transferToButton
   , sendButton
   , detailsButton
   , detailsIconButton
@@ -291,8 +292,14 @@ cancelButton cfg msg =
 receiveButton :: StaticButtonConstraints t m => UiButtonCfg -> m (Event t ())
 receiveButton cfg =
   uiButton (cfg & uiButtonCfg_class <>~ "button_type_secondary" <> "button_type_secondary") $ do
-    imgWithAltCls "button__text-icon" (static @"img/receive.svg") "Receive" blank
-    elClass "span" "button__text button__text-exclusive" $ text "Receive"
+    imgWithAltCls "button__text-icon" (static @"img/receive.svg") "Deposit" blank
+    elClass "span" "button__text button__text-exclusive" $ text "Deposit"
+
+transferToButton :: StaticButtonConstraints t m => UiButtonCfg -> m (Event t ())
+transferToButton cfg =
+  uiButton (cfg & uiButtonCfg_class <>~ "button_type_secondary" <> "button_type_secondary") $ do
+    imgWithAltCls "button__text-icon" (static @"img/transfer-to.svg") "Transfer to" blank
+    elClass "span" "button__text button__text-exclusive" $ text "Transfer to"
 
 detailsButton :: StaticButtonConstraints t m => UiButtonCfg -> m (Event t ())
 detailsButton cfg =
@@ -308,8 +315,8 @@ detailsIconButton cfg =
 sendButton :: StaticButtonConstraints t m => UiButtonCfg -> m (Event t ())
 sendButton cfg =
   uiButton (cfg & uiButtonCfg_class <>~ "button_type_secondary" <> "button_type_secondary") $ do
-    imgWithAltCls "button__text-icon" (static @"img/send.svg") "Send" blank
-    elClass "span" "button__text button__text-exclusive" $ text "Send"
+    imgWithAltCls "button__text-icon" (static @"img/send.svg") "Withdraw" blank
+    elClass "span" "button__text button__text-exclusive" $ text "Withdraw"
 
 accordionButton :: StaticButtonConstraints t m => UiButtonCfg -> m (Event t ())
 accordionButton cfg =

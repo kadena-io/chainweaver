@@ -184,9 +184,19 @@ walletSetupRecoverHeader currentScreen = setupDiv "workflow-header" $ do
             setupDiv "workflow-icon-label" $ text lbl
 
 runSetup
-  :: forall t m. (DomBuilder t m, MonadFix m, MonadHold t m, MonadIO m, PerformEvent t m, PostBuild t m, MonadJSM (Performable m), TriggerEvent t m)
-  => m (Event t (Crypto.XPrv, Password))
-runSetup = setupDiv "fullscreen" $ mdo
+  :: forall t m
+  . ( DomBuilder t m
+    , MonadFix m
+    , MonadHold t m
+    , MonadIO m
+    , PerformEvent t m
+    , PostBuild t m
+    , MonadJSM (Performable m)
+    , TriggerEvent t m
+    )
+  => Bool
+  -> m (Event t (Either () (Crypto.XPrv, Password)))
+runSetup showBackOverride = setupDiv "fullscreen" $ mdo
   let dCurrentScreen = fst <$> dwf
 
   eBack <- fmap (domEvent Click . fst) $ elDynClass "div" ((setupClass "back " <>) . hideBack <$> dCurrentScreen) $
@@ -199,11 +209,16 @@ runSetup = setupDiv "fullscreen" $ mdo
   dwf <- divClass "wrapper" $
     workflow (splashScreen eBack)
 
-  pure $ switchDyn $ snd <$> dwf
+  pure $ leftmost
+    [ fmap Right $ switchDyn $ snd <$> dwf
+    , Left <$> eBack
+    ]
   where
-    hideBack ws
-      | ws `elem` [WalletScreen_SplashScreen, WalletScreen_Done] = setupClass "hide"
-      | otherwise = setupScreenClass ws
+    hideBack ws =
+      if not showBackOverride && (ws `elem` [WalletScreen_SplashScreen, WalletScreen_Done]) then
+        setupClass "hide"
+      else
+        setupScreenClass ws
 
 splashLogo :: DomBuilder t m => m ()
 splashLogo = do
@@ -442,8 +457,6 @@ precreatePassphraseWarning eBack (rootKey, password) mnemonicSentence = Workflow
       line "In the next step you will record your 12 word recovery phrase."
       line "Your recovery phrase makes it easy to restore your wallet on a new device."
       line "Anyone with this phrase can take control of your wallet, keep this phrase private."
-
-    setupDiv "recovery-phrase-highlighted-warning" $
       line "Kadena cannot access your recovery phrase if lost, please store it safely."
 
     let chkboxcls = setupClass "checkbox-wrapper"

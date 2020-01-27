@@ -8,12 +8,20 @@ import Data.IntMap (IntMap)
 import Data.Text (Text)
 import qualified Data.Text.Encoding as T
 import GHC.Generics (Generic)
+import Data.Map (Map)
+import qualified Data.Map as Map
 
 -- WARNING: Be careful about changing stuff in here. Tests will catch snafus here and upstream though
 import Common.Wallet (lenientLookup, UnfinishedCrossChainTransfer, AccountBalance)
-import Common.Network (NetworkName)
-
+import Common.Network (NetworkName, NodeRef)
 -- This is lifted from the wallet code prior to V1
+
+-- The use of the 'To/FromJSONKey' breaks the aeson decoding for V0 encoded Maps. So wrap
+-- it up so we can use the list of tuple style of map encoding.
+newtype NetworkMap = NetworkMap { unNetworkMap :: Map NetworkName [NodeRef] }
+
+instance ToJSON NetworkMap where toJSON = toJSON . Map.toList . unNetworkMap
+instance FromJSON NetworkMap where parseJSON = fmap (NetworkMap . Map.fromList) . parseJSON
 
 newtype AccountName = AccountName { unAccountName :: Text } deriving (Eq, Ord, Show, Generic, ToJSON, FromJSON)
 newtype ChainId = ChainId { unChainId :: Text } deriving (Eq, Ord, Show, Generic, ToJSON, FromJSON)
