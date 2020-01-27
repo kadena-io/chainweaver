@@ -9,7 +9,7 @@ module Frontend.UI.Dialogs.AddVanityAccount
   ) where
 
 import Data.Aeson (toJSON)
-import           Control.Lens                           ((^.),(<>~), (<&>), (^?), to)
+import           Control.Lens                           ((^.),(<>~), (^?), to)
 import           Control.Error                          (hush)
 import           Control.Monad.Trans.Class              (lift)
 import           Control.Monad.Trans.Maybe              (MaybeT (..), runMaybeT)

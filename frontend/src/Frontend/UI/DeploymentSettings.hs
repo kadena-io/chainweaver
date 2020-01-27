@@ -8,7 +8,6 @@
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE PatternGuards #-}
-{-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE RecursiveDo #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TupleSections #-}
@@ -847,8 +846,8 @@ parseSigCapability txt = parsed >>= compiled >>= parseApp
     parseApp ts = case ts of
       [(TApp (App (TVar (QName q) _) as _) _)] -> SigCapability q <$> mapM toPV as
       _ -> Left $ "Sig capability parse failed: Expected single qualified capability in form (qual.DEFCAP arg arg ...)"
-    compiled Pact.ParsedCode{..} = fmapL (("Sig capability parse failed: " ++) . show) $
-      compileExps (mkTextInfo _pcCode) _pcExps
+    compiled parsedPactCode = fmapL (("Sig capability parse failed: " ++) . show) $
+      compileExps (mkTextInfo $ Pact._pcCode parsedPactCode) (Pact._pcExps parsedPactCode)
     parsed = parsePact txt
     toPV a = fmapL (("Sig capability argument parse failed, expected simple pact value: " ++) . T.unpack) $ toPactValue a
 

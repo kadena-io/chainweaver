@@ -7,7 +7,6 @@
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE QuasiQuotes #-}
-{-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE RecursiveDo #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE StandaloneDeriving #-}
@@ -89,11 +88,11 @@ importNamesOfModule :: Lens' (ModuleDef g) [ ModuleName ]
 importNamesOfModule f modL = setImports <$> f imports
   where
     setImports c = case modL of
-      MDInterface (m@Interface {..}) -> MDInterface $ m { _interfaceImports = zipWith setName _interfaceImports c }
-      MDModule (m@Module {..})    -> MDModule $ m { _mImports = zipWith setName _mImports c }
+      MDInterface m -> MDInterface $ m { _interfaceImports = zipWith setName (_interfaceImports m) c }
+      MDModule m -> MDModule $ m { _mImports = zipWith setName (_mImports m) c }
     imports = map _uModuleName $ case modL of
-      MDInterface (Interface {..}) -> _interfaceImports
-      MDModule (Module {..})    -> _mImports
+      MDInterface i -> _interfaceImports i
+      MDModule m -> _mImports m
     setName u n = u { _uModuleName = n }
 
 -- | Get the `ModuleName` of a `Module`.
@@ -101,8 +100,8 @@ interfacesOfModule :: Functor f => ([ModuleName] -> f b) -> ModuleDef a -> f (Mo
 interfacesOfModule f modL = modL <$ f interfaces
   where
     interfaces = case modL of
-      MDInterface (Interface {..}) -> []
-      MDModule (Module {..})    -> _mInterfaces
+      MDInterface Interface{} -> []
+      MDModule m -> _mInterfaces m
 
 -- | Module is really a `Module` as opposed to an interface?
 isModule :: (ModuleDef g) -> Bool

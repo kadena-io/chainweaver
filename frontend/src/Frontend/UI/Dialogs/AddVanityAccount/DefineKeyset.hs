@@ -1,5 +1,4 @@
 {-# LANGUAGE RecursiveDo #-}
-{-# LANGUAGE RecordWildCards #-}
 module Frontend.UI.Dialogs.AddVanityAccount.DefineKeyset
   ( DefinedKeyset
   , uiDefineKeyset
