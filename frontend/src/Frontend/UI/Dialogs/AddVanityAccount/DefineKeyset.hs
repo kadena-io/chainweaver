@@ -32,21 +32,17 @@ data KeysetInputs t i a = KeysetInputs
   }
 
 data DefinedKeyset t = DefinedKeyset
-  { _definedKeyset_internalKeys :: KeysetInputs t (Dropdown t IntMap.Key) PublicKey
+  { _definedKeyset_internalKeys :: KeysetInputs t (Dropdown t (Maybe Int)) PublicKey
   , _definedKeyset_externalKeys :: KeysetInputs t (ExternalKeyInput t) PublicKey
   , _definedKeyset_predicate :: Dynamic t Text
   }
 
 emptyKeysetPresets :: forall t. Reflex t => DefinedKeyset t
 emptyKeysetPresets = DefinedKeyset
-  { _definedKeyset_internalKeys = KeysetInputs memptyDyn memptyDyn
-  , _definedKeyset_externalKeys = KeysetInputs memptyDyn memptyDyn
-  , _definedKeyset_predicate = memptyDyn
+  { _definedKeyset_internalKeys = KeysetInputs mempty mempty
+  , _definedKeyset_externalKeys = KeysetInputs mempty mempty
+  , _definedKeyset_predicate = mempty
   }
-  where
-    memptyDyn :: Monoid m => Dynamic t m
-    memptyDyn = constDyn mempty
-
 
 data ExternalKeyInput t = ExternalKeyInput
   { _externalKeyInput_input :: Event t Text
@@ -102,36 +98,28 @@ defineKeyset
        , HasWallet model key t
        )
   => model
-  -> Dynamic t (IntMap (Dropdown t IntMap.Key))
-  -> m (KeysetInputs t (Dropdown t IntMap.Key) PublicKey)
-defineKeyset model onPreselect = do
+  -> Dynamic t (IntMap (Dropdown t (Maybe Int)))
+  -> m (KeysetInputs t (Dropdown t (Maybe Int)) PublicKey)
+defineKeyset model preselections0 = do
   let
-    selectMsgKey = 0
-    selectMsgMap = IntMap.singleton selectMsgKey "Select"
+    selectMsgKey = Nothing
+    selectMsgMap = Map.singleton selectMsgKey "Select"
 
-    dAllKeys = mappend selectMsgMap
-      . IntMap.mapKeys succ     -- Prepare for inserting the "Select" key at 0
-      . fmap (keyToText . _keyPair_publicKey . _key_pair)
-      <$> model ^. wallet_keys
+    keyElem k v = Map.singleton (Just k) $ keyToText $ _keyPair_publicKey $ _key_pair v
+
+    dAllKeys = mappend selectMsgMap . IntMap.foldMapWithKey keyElem <$> model ^. wallet_keys
 
     uiSelectKey k = mkLabeledClsInput False (constDyn T.empty) $ const
-      $ uiDropdown k ((Map.fromList . IntMap.toAscList) <$> dAllKeys) $ def
+      $ uiDropdown k dAllKeys $ def
       & dropdownConfig_attributes .~ constDyn ("class" =: "labeled-input__input")
 
-    toIntSet :: IntMap.IntMap (Dropdown t IntMap.Key) -> Dynamic t (IntSet.IntSet)
-    toIntSet = foldMap (fmap adjustForSelectKey . value)
-      where
-        adjustForSelectKey k =
-          if k /= selectMsgKey then
-            -- Remove the adjustment for having a placeholder "Select" key
-            IntSet.singleton (k - 1)
-          else
-            IntSet.empty
+    toIntSet :: IntMap.IntMap (Dropdown t (Maybe Int)) -> Dynamic t IntSet.IntSet
+    toIntSet = fmap (IntSet.fromList . IntMap.elems) . wither value
+
+    preselections = preselections0 >>= IntMap.foldMapWithKey
+      (\k dd -> IntMap.singleton k . Just <$> _dropdown_value dd)
 
   pb <- getPostBuild
-
-  let preselections = onPreselect >>= IntMap.foldMapWithKey
-        (\k dd -> IntMap.singleton k . Just <$> _dropdown_value dd)
 
   dSelectedKeys <- uiAdditiveInput
     (const uiSelectKey)
@@ -142,10 +130,8 @@ defineKeyset model onPreselect = do
     (current preselections <@ pb)
 
   pure $ KeysetInputs dSelectedKeys $ ffor2 (model ^. wallet_keys) (dSelectedKeys >>= toIntSet) $ \wKeys ->
-    -- TODO make this less awful
     Set.fromDistinctAscList . IntMap.elems . fmap (_keyPair_publicKey . _key_pair) . IntMap.restrictKeys wKeys
 
--- TODO make this look like the new design
 uiDefineKeyset
   :: ( MonadWidget t m
      , HasWallet model key t
@@ -157,7 +143,10 @@ uiDefineKeyset
 uiDefineKeyset model presets = do
   pb <- getPostBuild
   let
-    allPreds = model ^. jsonData_keysets >>= fmap catMaybes . sequenceA . fmap _keyset_pred . Map.elems
+    allPreds = fmap (catMaybes . Map.elems)
+      $ joinDynThroughMap
+      $ fmap _keyset_pred
+      <$> model ^. jsonData_keysets
 
     allPredSelectMap = ffor allPreds $ \ps ->
       Map.fromList . fmap (\x -> (x,x)) $ ps <> predefinedPreds
