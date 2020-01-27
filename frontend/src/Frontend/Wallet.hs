@@ -48,7 +48,7 @@ module Frontend.Wallet
   ) where
 
 import Control.Lens hiding ((.=))
-import Control.Monad (void)
+import Control.Monad (guard, void)
 import Control.Monad.Except (runExcept)
 import Control.Monad.Fix
 import Data.Aeson
@@ -123,10 +123,7 @@ data Account = Account
 
 emptyAccount :: Account
 emptyAccount = Account
-  { _account_storage = VanityAccount
-    { _vanityAccount_notes = mkAccountNotes ""
-    , _vanityAccount_unfinishedCrossChainTransfer = Nothing
-    }
+  { _account_storage = blankVanityAccount
   , _account_status = AccountStatus_Unknown
   }
 
@@ -207,8 +204,6 @@ makeWallet model conf = do
       , ffor (_walletCfg_setCrossChainTransfer conf) updateCrossChain
       , ffor (_walletCfg_delAccount conf) removeAccount
       ]
-
-  performEvent_ $ liftIO . print <$> updated accounts
 
   performEvent_ $ storeKeys <$> updated keys
   store <- holdUniqDyn $ toStorage <$> accounts
@@ -337,7 +332,7 @@ checkAccountNameValidity m = getErr <$> (m ^. network_selectedNetwork) <*> (m ^.
       acc <- mkAccountName k
       maybe (Right acc) (\_ -> Left "This account name is already in use") $ do
         accounts <- Map.lookup net networks
-        _ <- Map.lookup acc accounts
+        guard $ Map.member acc accounts
         pure acc
 
 -- | Write key pairs to localstorage.
