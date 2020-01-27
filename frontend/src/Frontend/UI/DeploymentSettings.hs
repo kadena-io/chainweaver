@@ -52,6 +52,7 @@ module Frontend.UI.DeploymentSettings
 
   , uiSenderFixed
   , uiSenderDropdown
+  , uiSenderDropdown'
 
   , transactionInputSection
   , transactionHashSection
@@ -784,18 +785,19 @@ mkChainTextAccounts m mChainId = runExceptT $ do
   pure accountsOnChain
 
 -- | Let the user pick a sender
-uiSenderDropdown
-  :: ( Adjustable t m, PostBuild t m, DomBuilder t m
+uiSenderDropdown'
+  :: ( PostBuild t m, DomBuilder t m
      , MonadHold t m, MonadFix m
      , HasWallet model key t
      , HasNetwork model t
      )
   => DropdownConfig t (Maybe AccountName)
   -> model
+  -> Maybe AccountName
   -> Dynamic t (Maybe ChainId)
   -> Event t (Maybe AccountName)
   -> m (Dynamic t (Maybe (AccountName, Account)))
-uiSenderDropdown uCfg m chainId setSender = do
+uiSenderDropdown' uCfg m initVal chainId setSender = do
   let
     textAccounts = mkChainTextAccounts m chainId
     dropdownItems =
@@ -803,7 +805,7 @@ uiSenderDropdown uCfg m chainId setSender = do
           (Map.singleton Nothing)
           (Map.insert Nothing "Choose an Account" . Map.mapKeys Just)
       <$> textAccounts
-  choice <- dropdown Nothing dropdownItems $ uCfg
+  choice <- dropdown initVal dropdownItems $ uCfg
     & dropdownConfig_setValue .~ leftmost [Nothing <$ updated chainId, setSender]
     & dropdownConfig_attributes <>~ pure ("class" =: "labeled-input__input select select_mandatory_missing")
   let result = runMaybeT $ do
@@ -815,6 +817,19 @@ uiSenderDropdown uCfg m chainId setSender = do
         pure (name, acc)
   pure result
 
+-- | Let the user pick a sender
+uiSenderDropdown
+  :: ( PostBuild t m, DomBuilder t m
+     , MonadHold t m, MonadFix m
+     , HasWallet model key t
+     , HasNetwork model t
+     )
+  => DropdownConfig t (Maybe AccountName)
+  -> model
+  -> Dynamic t (Maybe ChainId)
+  -> Event t (Maybe AccountName)
+  -> m (Dynamic t (Maybe (AccountName, Account)))
+uiSenderDropdown uCfg m = uiSenderDropdown' uCfg m Nothing
 
 -- | Let the user pick signers
 uiSignerList
