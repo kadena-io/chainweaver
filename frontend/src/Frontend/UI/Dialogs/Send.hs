@@ -24,7 +24,7 @@ import Control.Applicative (liftA2)
 import Control.Concurrent
 import Control.Error.Util (hush)
 import Control.Lens hiding (failover)
-import Control.Monad (join, when, void, (<=<))
+import Control.Monad (guard, join, when, void, (<=<))
 import Control.Monad.Except (throwError)
 import Control.Monad.Logger (LogLevel(..))
 import Control.Monad.Trans.Except
@@ -561,7 +561,7 @@ finishCrossChainTransferConfig model fromAccount ucct = Workflow $ do
         accounts <- Map.lookup net $ unAccountData netToAccount
         n <- ma
         AccountInfo _ chains <- Map.lookup (fst n) accounts
-        _acc <- Map.lookup fromChain chains
+        guard $ Map.member fromChain chains
         pure n
     pure (sender, conf)
   next <- modalFooter $ confirmButton def "Next"
