@@ -95,13 +95,25 @@ $setup-progress-font-size: 18px;
 .setup__back {
   grid-area: back;
   align-self: stretch;
-  padding-top: 2em;
+  padding-top: 16px;
+  padding-left: 12px;
+  display: flex;
+  flex-direction: row;
+  align-items: flex-start;
   color: $tertiary-color;
 
   >span {
-    font-size: 1.5em;
-    padding: 2em;
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    font-size: 16px;
     cursor: pointer;
+    >i {
+      width: 16px;
+      height: 16px;
+      opacity: 0.5;
+      margin-right: 5px;
+    }
   }
 }
 

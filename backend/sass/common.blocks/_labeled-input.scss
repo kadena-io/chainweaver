@@ -55,6 +55,10 @@
 }
 
 .input_type_textarea.labeled-input__input.labeled-input__kadena-address {
+  // Allow the "rows" attr to resize the box appropriately
+  height: auto;
+  // Don't let the user resize the textarea horizontally as it makes the modal look janky.
+  resize: vertical;
   min-height: 64px;
 }
 

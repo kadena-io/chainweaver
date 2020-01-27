@@ -1,5 +1,6 @@
 { pkgs, nixosExe, linuxAppName, nixosDesktopItem, homeManagerModule }:
 let
+  desktopItemPath = "${nixosDesktopItem}/share/applications/${linuxAppName}.desktop";
   upgradeVM = let
     resultStorePathFile = "https://chainweaver-builds.s3.amazonaws.com/vm/master-store-path";
   in pkgs.writeScriptBin "upgrade-chainweaver" ''
@@ -34,8 +35,9 @@ let
       };
       home-manager.users.chainweaver = { ... }: {
         home.file.".config" = { source = ./ova/home/chainweaver/config; recursive = true; };
+        home.file.".config/autostart/${linuxAppName}.desktop".source = desktopItemPath;
         home.file."desktop.png".source = ./ova/home/chainweaver/desktop.png;
-        home.file."Desktop/${linuxAppName}.desktop".source = "${nixosDesktopItem}/share/applications/${linuxAppName}.desktop";
+        home.file."Desktop/${linuxAppName}.desktop".source = desktopItemPath;
         home.sessionVariables = {
           WEBKIT_DISABLE_COMPOSITING_MODE = 1;
         };

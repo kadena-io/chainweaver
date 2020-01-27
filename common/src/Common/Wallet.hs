@@ -1,4 +1,6 @@
+{-# LANGUAGE DeriveFunctor #-}
 {-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE DeriveFunctor #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE FunctionalDependencies #-}
@@ -457,7 +459,8 @@ instance FromJSON VanityAccount where
       , _vanityAccount_unfinishedCrossChainTransfer = unfinishedCrossChainTransfer
       }
 
-newtype AccountStorage = AccountStorage { unAccountStorage :: Map NetworkName (Map AccountName (AccountInfo VanityAccount)) }
+newtype AccountStorage = AccountStorage
+  { unAccountStorage :: Map NetworkName (Map AccountName (AccountInfo VanityAccount)) }
   deriving (Eq, Show)
 
 instance Semigroup AccountStorage where

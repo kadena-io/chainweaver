@@ -8,7 +8,6 @@
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE PatternGuards #-}
-{-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE RecursiveDo #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TupleSections #-}
@@ -28,6 +27,8 @@ module Frontend.UI.DeploymentSettings
   , DeploymentSettingsResultError (..)
 
     -- * Helpers
+  , TxnSenderTitle (..)
+  , getTxnSenderTitle
   , buildDeploymentSettingsResult
   , defaultGASCapability
 
@@ -51,6 +52,7 @@ module Frontend.UI.DeploymentSettings
 
   , uiSenderFixed
   , uiSenderDropdown
+  , uiSenderDropdown'
 
   , transactionInputSection
   , transactionHashSection
@@ -283,12 +285,14 @@ buildDeploymentSettingsResult m mSender mGasPayer signers cChainId capabilities 
     Nothing -> pure () -- No gas payer selected, move along
     Just gp ->  for_ (lookupAccountBalance gp chainId allAccounts) $ \case
       -- Gas Payer selected but they're not an account?!
+      -- TODO: More precise error types for better (any) user feedback on config tab ?
       AccountStatus_Unknown -> throwError $ DeploymentSettingsResultError_GasPayerIsNotValid gp
       AccountStatus_DoesNotExist -> throwError $ DeploymentSettingsResultError_GasPayerIsNotValid gp
       AccountStatus_Exists b ->
         let GasLimit lim = _pmGasLimit publicMeta
             GasPrice (ParsedDecimal price) = _pmGasPrice publicMeta
-        in unless (unAccountBalance b > fromIntegral lim * price) $ throwError DeploymentSettingsResultError_InsufficientFundsOnGasPayer
+        in unless (unAccountBalance b > fromIntegral lim * price) $
+             throwError DeploymentSettingsResultError_InsufficientFundsOnGasPayer
 
   let pkCaps = publicKeysForAccounts chainId allAccounts caps
   pure $ do
@@ -397,6 +401,7 @@ uiDeploymentSettings
     , Monoid mConf , HasNetworkCfg mConf t
     , HasJsonDataCfg mConf t, Flattenable mConf t, HasJsonData model t
     , HasCrypto key (Performable m), HasLogger model t
+    , HasTransactionLogger m
     )
   => model
   -> DeploymentSettingsConfig t m model a
@@ -414,6 +419,7 @@ uiDeploymentSettings m settings = mdo
           (_deploymentSettingsConfig_ttl settings)
           (_deploymentSettingsConfig_gasLimit settings)
           Nothing
+          TxnSenderTitle_Default
           (Just advancedAccordion)
           (_deploymentSettingsConfig_sender settings)
 
@@ -503,6 +509,17 @@ uiDeployMetaData m mTTL mGasLimit = do
   dialogSectionHeading mempty "Settings"
   elKlass "div" ("group segment") $ uiMetaData m mTTL mGasLimit
 
+data TxnSenderTitle
+  = TxnSenderTitle_Default
+  | TxnSenderTitle_GasPayer
+  | TxnSenderTitle_Other Text
+
+getTxnSenderTitle :: TxnSenderTitle -> Text
+getTxnSenderTitle = \case
+  TxnSenderTitle_Default -> "Transaction Sender"
+  TxnSenderTitle_GasPayer -> "Gas Payer"
+  TxnSenderTitle_Other t -> t
+
 -- | UI for asking the user about data needed for deployments/function calling.
 uiCfg
   :: ( MonadWidget t m
@@ -517,6 +534,7 @@ uiCfg
   -> Maybe TTLSeconds
   -> Maybe GasLimit
   -> g (Text, m a)
+  -> TxnSenderTitle
   -> Maybe (model -> Dynamic t Bool -> m (Event t (), ((), mConf)))
   -> (model -> Dynamic t (Maybe ChainId) -> Event t (Maybe AccountName) -> m (Dynamic t (Maybe (AccountName, Account))))
   -> m ( mConf
@@ -527,13 +545,13 @@ uiCfg
        , Dynamic t GasPrice
        , g a
        )
-uiCfg mCode m wChainId mTTL mGasLimit userSections otherAccordion mSenderSelect = do
+uiCfg mCode m wChainId mTTL mGasLimit userSections txnSenderTitle otherAccordion mSenderSelect = do
   -- General deployment configuration
   let mkGeneralSettings = do
         traverse_ (\c -> transactionInputSection c Nothing) mCode
         cId <- uiDeployDestination m wChainId
 
-        dialogSectionHeading mempty "Transaction Sender"
+        dialogSectionHeading mempty $ getTxnSenderTitle txnSenderTitle
         mSender <- elKlass "div" ("group segment") $ mkLabeledClsInput True "Account" $ \_ -> do
           (fmap . fmap) fst <$> mSenderSelect m cId never
 
@@ -770,18 +788,19 @@ mkChainTextAccounts m mChainId = runExceptT $ do
   pure accountsOnChain
 
 -- | Let the user pick a sender
-uiSenderDropdown
-  :: ( Adjustable t m, PostBuild t m, DomBuilder t m
+uiSenderDropdown'
+  :: ( PostBuild t m, DomBuilder t m
      , MonadHold t m, MonadFix m
      , HasWallet model key t
      , HasNetwork model t
      )
   => DropdownConfig t (Maybe AccountName)
   -> model
+  -> Maybe AccountName
   -> Dynamic t (Maybe ChainId)
   -> Event t (Maybe AccountName)
   -> m (Dynamic t (Maybe (AccountName, Account)))
-uiSenderDropdown uCfg m chainId setSender = do
+uiSenderDropdown' uCfg m initVal chainId setSender = do
   let
     textAccounts = mkChainTextAccounts m chainId
     dropdownItems =
@@ -789,7 +808,7 @@ uiSenderDropdown uCfg m chainId setSender = do
           (Map.singleton Nothing)
           (Map.insert Nothing "Choose an Account" . Map.mapKeys Just)
       <$> textAccounts
-  choice <- dropdown Nothing dropdownItems $ uCfg
+  choice <- dropdown initVal dropdownItems $ uCfg
     & dropdownConfig_setValue .~ leftmost [Nothing <$ updated chainId, setSender]
     & dropdownConfig_attributes <>~ pure ("class" =: "labeled-input__input select select_mandatory_missing")
   let result = runMaybeT $ do
@@ -801,6 +820,19 @@ uiSenderDropdown uCfg m chainId setSender = do
         pure (name, acc)
   pure result
 
+-- | Let the user pick a sender
+uiSenderDropdown
+  :: ( PostBuild t m, DomBuilder t m
+     , MonadHold t m, MonadFix m
+     , HasWallet model key t
+     , HasNetwork model t
+     )
+  => DropdownConfig t (Maybe AccountName)
+  -> model
+  -> Dynamic t (Maybe ChainId)
+  -> Event t (Maybe AccountName)
+  -> m (Dynamic t (Maybe (AccountName, Account)))
+uiSenderDropdown uCfg m = uiSenderDropdown' uCfg m Nothing
 
 -- | Let the user pick signers
 uiSignerList
@@ -833,8 +865,8 @@ parseSigCapability txt = parsed >>= compiled >>= parseApp
     parseApp ts = case ts of
       [(TApp (App (TVar (QName q) _) as _) _)] -> SigCapability q <$> mapM toPV as
       _ -> Left $ "Sig capability parse failed: Expected single qualified capability in form (qual.DEFCAP arg arg ...)"
-    compiled Pact.ParsedCode{..} = fmapL (("Sig capability parse failed: " ++) . show) $
-      compileExps (mkTextInfo _pcCode) _pcExps
+    compiled parsedPactCode = fmapL (("Sig capability parse failed: " ++) . show) $
+      compileExps (mkTextInfo $ Pact._pcCode parsedPactCode) (Pact._pcExps parsedPactCode)
     parsed = parsePact txt
     toPV a = fmapL (("Sig capability argument parse failed, expected simple pact value: " ++) . T.unpack) $ toPactValue a
 
@@ -1025,6 +1057,7 @@ uiDeployPreview
      , HasLogger model t
      , HasCrypto key (Performable m)
      , HasWallet model key t
+     , HasTransactionLogger m
      )
   => model
   -> DeploymentSettingsConfig t m model a

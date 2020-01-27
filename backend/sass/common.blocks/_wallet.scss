@@ -34,6 +34,11 @@
   overflow: hidden;
 }
 
+.wallet__table-cell-keyset {
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
 .wallet__public-key {
   display: flex;
   flex-direction: row;

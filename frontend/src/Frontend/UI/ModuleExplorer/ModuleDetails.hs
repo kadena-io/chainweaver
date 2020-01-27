@@ -70,6 +70,7 @@ moduleDetails
     , HasUIModuleDetailsModel model key t
     , HasUIModuleDetailsModelCfg mConf m t
     , HasCrypto key (Performable m)
+    , HasTransactionLogger m
     )
   => model
   -> (ModuleRef, ModuleDef (Term Name))
@@ -150,6 +151,7 @@ functionList
   .  ( MonadWidget t m, HasUIModuleDetailsModelCfg mConf m t
      , HasUIModuleDetailsModel model key t
      , HasCrypto key (Performable m)
+     , HasTransactionLogger m
      )
   => model -> Maybe DeployedModuleRef -> [PactFunction] -> m mConf
 functionList m mDeployed functions =

@@ -30,6 +30,7 @@ import Control.Monad.Logger (LogLevel(..))
 import Control.Monad.Trans.Except
 import Control.Monad.Trans.Maybe
 import Data.Bifunctor (first)
+import qualified Data.ByteString.Lazy as LBS
 import Data.Decimal (Decimal)
 import Data.Either (isLeft, rights)
 import Data.List.NonEmpty (NonEmpty(..))
@@ -83,11 +84,12 @@ import Frontend.Wallet
 uiSendModal
   :: ( SendConstraints model mConf key t m
      , Flattenable mConf t
+     , HasTransactionLogger m
      )
   => model -> (AccountName, ChainId, Account) -> Event t () -> m (mConf, Event t ())
 uiSendModal model (name, chain, acc) _onCloseExternal = do
   (conf, closes) <- fmap splitDynPure $ workflow $ case _vanityAccount_unfinishedCrossChainTransfer $ _account_storage acc of
-    Nothing -> sendConfig model (name, chain, acc)
+    Nothing -> sendConfig model (InitialTransferData_Account (name, chain, acc))
     -- If we have unfinished business, force the user to finish it first
     Just ucct -> finishCrossChainTransferConfig model (name, chain) ucct
   mConf <- flatten =<< tagOnPostBuild conf
@@ -117,23 +119,45 @@ data SharedNetInfo a = SharedNetInfo
   , _sharedNetInfo_nodes :: [a]
   }
 
+data TransferData = TransferData
+  { _transferData_fromAccount :: (AccountName, ChainId, Account)
+  , _transferData_fromGasPayer :: (AccountName, Account)
+  , _transferData_toAddress :: KadenaAddress
+  , _transferData_crossChainData :: Maybe CrossChainData
+  , _transferData_amount :: Decimal
+  }
+
+data InitialTransferData
+  = InitialTransferData_Account (AccountName, ChainId, Account)
+  | InitialTransferData_Transfer TransferData
+
+initialTransferDataCata :: ((AccountName, ChainId, Account) -> b) -> (TransferData -> b) -> InitialTransferData -> b
+initialTransferDataCata fa _ (InitialTransferData_Account a) = fa a
+initialTransferDataCata _ ft (InitialTransferData_Transfer t) = ft t
+
+-- should probably make lenses, but we'd have to move the data types out to another file because this
+-- file can't deal with the mutually recursive functions if TH was on. So lets just avoid the lenses
+
+withInitialTransfer :: (TransferData -> a) -> InitialTransferData -> Maybe a
+withInitialTransfer f (InitialTransferData_Transfer t)  = Just $ f t
+withInitialTransfer _ (InitialTransferData_Account _)  = Nothing
+
 -- | Preview the transfer. Doesn't actually send any requests.
 previewTransfer
   :: forall model mConf key t m.
-     SendConstraints model mConf key t m
+    ( SendConstraints model mConf key t m
+    , HasTransactionLogger m
+    )
   => model
-  -> (AccountName, ChainId, Account)
-  -- ^ From account
-  -> (AccountName, Account)
-  -- ^ Gas payer on "from" chain
-  -> KadenaAddress
-  -- ^ To address
-  -> Maybe CrossChainData
-  -- ^ Cross chain data, if applicable
-  -> Decimal
-  -- ^ Amount to transfer
+  -> TransferData
   -> Workflow t m (mConf, Event t ())
-previewTransfer model fromAccount@(fromName, fromChain, _acc) fromGasPayer toAddress crossChainData amount = Workflow $ do
+previewTransfer model transfer = Workflow $ do
+  let
+    toAddress = _transferData_toAddress transfer
+    fromAccount@(fromName,fromChain,_) = _transferData_fromAccount transfer
+    fromGasPayer = _transferData_fromGasPayer transfer
+    crossChainData = _transferData_crossChainData transfer
+    amount = _transferData_amount transfer
   close <- modalHeader $ text "Transaction Preview"
   elClass "div" "modal__main" $ do
     dialogSectionHeading mempty "Destination"
@@ -168,7 +192,7 @@ previewTransfer model fromAccount@(fromName, fromChain, _acc) fromGasPayer toAdd
     next <- confirmButton def "Create Transaction"
     pure (back, next)
   let nextScreen = leftmost
-        [ sendConfig model fromAccount <$ back
+        [ sendConfig model (InitialTransferData_Transfer transfer) <$ back
         , flip push next $ \() -> do
           mNetInfo <- sampleNetInfo model
           keys <- sample $ current $ model ^. wallet_keys
@@ -188,7 +212,7 @@ lookupAccountByKadenaAddress ka accounts = (name, chain,) <$> accounts ^? ix nam
 
 -- | Perform a same chain transfer or transfer-create
 sameChainTransfer
-  :: (MonadWidget t m, HasCrypto key m, Monoid mConf, HasLogger model t)
+  :: (MonadWidget t m, HasCrypto key m, Monoid mConf, HasLogger model t, HasTransactionLogger m)
   => model
   -> SharedNetInfo NodeInfo
   -> KeyStorage key
@@ -251,26 +275,39 @@ sameChainTransfer model netInfo keys (fromName, fromChain, fromAcc) (gasPayer, g
 
 -- | General transfer workflow. This is the initial configuration screen.
 sendConfig
-  :: SendConstraints model mConf key t m
-  => model -> (AccountName, ChainId, Account) -> Workflow t m (mConf, Event t ())
-sendConfig model fromAccount@(fromName, fromChain, fromAcc) = Workflow $ do
-  close <- modalHeader $ text "Send"
+  :: (SendConstraints model mConf key t m, HasTransactionLogger m)
+  => model -> InitialTransferData -> Workflow t m (mConf, Event t ())
+sendConfig model initData = Workflow $ do
+  close <- modalHeader $ text "Withdraw"
   rec
-    (currentTab, _done) <- makeTabs $ attachWithMaybe (const . void . hush) (current recipient) next
+    (currentTab, _done) <- makeTabs initData $ attachWithMaybe (const . void . hush) (current recipient) nextTab
     (conf, mCaps, recipient) <- mainSection currentTab
-    (cancel, next) <- footerSection currentTab recipient mCaps
-  let nextScreen = flip push next $ \() -> runMaybeT $ do
-        (fromGasPayer, mToGasPayer) <- MaybeT $ sample $ current mCaps
-        (toAccount, amount) <- MaybeT $ fmap hush $ sample $ current recipient
-        let mCCD = case mToGasPayer of
-              Just toGasPayer | toGasPayer /= fromGasPayer -> Just $ CrossChainData
-                { _crossChainData_recipientChainGasPayer = toGasPayer
+    (cancel, nextTab) <- footerSection currentTab recipient mCaps
+  let nextScreen = flip push nextTab $ \case
+        Just _ -> pure Nothing
+        Nothing -> runMaybeT $ do
+          (fromGasPayer, mToGasPayer) <- MaybeT $ sample $ current mCaps
+          (toAccount, amount) <- MaybeT $ fmap hush $ sample $ current recipient
+          let mCCD = case mToGasPayer of
+                Just toGasPayer | toGasPayer /= fromGasPayer -> Just $ CrossChainData
+                  { _crossChainData_recipientChainGasPayer = toGasPayer
+                  }
+                _ -> Nothing
+          let transfer = TransferData
+                { _transferData_amount = amount
+                , _transferData_crossChainData = mCCD
+                , _transferData_fromAccount = fromAccount
+                , _transferData_fromGasPayer = fromGasPayer
+                , _transferData_toAddress = toAccount
                 }
-              _ -> Nothing
-        pure $ previewTransfer model fromAccount fromGasPayer toAccount mCCD amount
+          pure $ previewTransfer model transfer
   pure ((conf, close <> cancel), nextScreen)
   where
-
+    fromAccount@(fromName, fromChain, fromAcc) = initialTransferDataCata id _transferData_fromAccount initData
+    mInitToAddress = withInitialTransfer _transferData_toAddress initData
+    mInitFromGasPayer = withInitialTransfer (_transferData_fromGasPayer) initData
+    mInitCrossChainGasPayer = join $ withInitialTransfer (fmap (_crossChainData_recipientChainGasPayer) . _transferData_crossChainData) initData
+    mInitAmount = withInitialTransfer _transferData_amount initData
     mainSection currentTab = elClass "div" "modal__main" $ do
       (conf, recipient) <- tabPane mempty currentTab SendModalTab_Configuration $ mdo
         dialogSectionHeading mempty  "Destination"
@@ -286,13 +323,13 @@ sendConfig model fromAccount@(fromName, fromChain, fromAcc) = Workflow $ do
               cannotBeReceiverMsg = "Sender cannot be the receiver of a transfer"
 
           decoded <- fmap snd $ mkLabeledInput True "Kadena Address" (uiInputWithInlineFeedback
-            (fmap (Aeson.eitherDecodeStrict . T.encodeUtf8) . value)
+            (fmap (first (const "Invalid Kadena Address") . Aeson.eitherDecodeStrict . T.encodeUtf8) . value)
             inputIsDirty
             T.pack
             Nothing
             uiInputElement
             )
-            def
+            (def & inputElementConfig_initialValue .~ (maybe "" (T.decodeUtf8 . LBS.toStrict . Aeson.encode) mInitToAddress))
 
           displayImmediateFeedback (updated decoded) cannotBeReceiverMsg
             $ either (const False) (== KadenaAddress fromName fromChain Nothing) -- TODO the keyset part makes this odd
@@ -309,7 +346,8 @@ sendConfig model fromAccount@(fromName, fromChain, fromAcc) = Workflow $ do
                 & uiButtonCfg_class <>~ "input-max-button"
               pure g
 
-          (_, amount, _) <- mkLabeledInput True "Amount" gasInputWithMaxButton def
+          (_, amount, _) <- mkLabeledInput True "Amount" gasInputWithMaxButton
+            (def & inputElementConfig_initialValue .~ (maybe "" tshow mInitAmount))
             -- We're only interested in the decimal of the gas price
             <&> over (_2 . mapped . mapped) (\(GasPrice (ParsedDecimal d)) -> d)
 
@@ -360,7 +398,7 @@ sendConfig model fromAccount@(fromName, fromChain, fromAcc) = Workflow $ do
               divClass "label labeled-input__label" $ text "Account Name"
               let cfg = def & dropdownConfig_attributes .~ pure ("class" =: "labeled-input__input select select_mandatory_missing")
                   chain = pure $ Just fromChain
-              uiSenderDropdown cfg model chain never
+              uiSenderDropdown' cfg model (mInitFromGasPayer ^? _Just . _1) chain never
             toGasPayer <- if toChain == fromChain
               then pure $ pure $ Just Nothing
               else do
@@ -372,7 +410,7 @@ sendConfig model fromAccount@(fromName, fromChain, fromAcc) = Workflow $ do
                   divClass "label labeled-input__label" $ text "Account Name"
                   let cfg = def & dropdownConfig_attributes .~ pure ("class" =: "labeled-input__input select select_mandatory_missing")
                       chain = pure $ Just toChain
-                  (fmap . fmap) Just <$> uiSenderDropdown cfg model chain never
+                  (fmap . fmap) Just <$> uiSenderDropdown' cfg model (mInitCrossChainGasPayer ^? _Just . _1) chain never
             pure $ (liftA2 . liftA2) (,) fromGasPayer toGasPayer
       pure (conf, mCaps, recipient)
     footerSection currentTab recipient mCaps = modalFooter $ do
@@ -384,7 +422,10 @@ sendConfig model fromAccount@(fromName, fromChain, fromAcc) = Workflow $ do
             & uiButtonCfg_class <>~ "button_type_confirm"
             & uiButtonCfg_disabled .~ join disabled
       next <- uiButtonDyn cfg $ dynText name
-      pure (cancel, next)
+      let nextTab = ffor (current currentTab <@ next) $ \case
+            SendModalTab_Configuration -> Just SendModalTab_Sign
+            SendModalTab_Sign -> Nothing
+      pure (cancel, nextTab)
 
 -- | This function finishes cross chain transfers. The return event signals that
 -- the transfer is complete.
@@ -392,6 +433,7 @@ runUnfinishedCrossChainTransfer
   :: ( PerformEvent t m, PostBuild t m, TriggerEvent t m, MonadHold t m, DomBuilder t m
      , MonadJSM (Performable m), MonadFix m
      , HasCrypto key (Performable m)
+     , HasTransactionLogger m
      )
   => Logger t
   -> SharedNetInfo NodeInfo
@@ -488,6 +530,7 @@ finishCrossChainTransferConfig
      , HasNetwork model t
      , HasWallet model key t
      , HasLogger model t
+     , HasTransactionLogger m
      )
   => model
   -> (AccountName, ChainId)
@@ -563,6 +606,7 @@ finishCrossChainTransfer
      , MonadJSM (Performable m), MonadFix m
      , HasCrypto key (Performable m)
      , Monoid mConf, HasWalletCfg mConf key t
+     , HasTransactionLogger m
      )
   => Logger t
   -> SharedNetInfo NodeInfo
@@ -627,6 +671,7 @@ crossChainTransfer
      , MonadJSM (Performable m), MonadJSM m, MonadFix m
      , HasCrypto key m, HasCrypto key (Performable m)
      , Monoid mConf, HasWalletCfg mConf key t
+     , HasTransactionLogger m
      )
   => Logger t
   -> SharedNetInfo NodeInfo
@@ -722,6 +767,7 @@ continueCrossChainTransfer
      , PerformEvent t m
      , MonadJSM (Performable m)
      , HasCrypto key (Performable m)
+     , HasTransactionLogger m
      )
   => Logger t
   -> NetworkName
@@ -739,29 +785,31 @@ continueCrossChainTransfer
   -> Event t (Pact.PactExec, Pact.ContProof)
   -- ^ The previous continuation step and associated proof
   -> m (Event t (Either Text (Pact.PactId, Pact.RequestKey)))
-continueCrossChainTransfer logL networkName envs publicMeta keys toChain gasPayer spvOk = performEventAsync $ ffor spvOk $ \(pe, proof) cb -> do
-  let pm = publicMeta
-        { _pmChainId = toChain
-        , _pmSender = unAccountName $ fst gasPayer
-        }
-      signingSet = accountKeys $ snd gasPayer
-      signingPairs = filterKeyPairs signingSet keys
-  payload <- buildContPayload networkName pm signingPairs $ ContMsg
-    { _cmPactId = Pact._pePactId pe
-    , _cmStep = succ $ Pact._peStep pe
-    , _cmRollback = False
-    , _cmData = Aeson.Object mempty
-    , _cmProof = Just proof
-    }
-  cont <- buildCmdWithPayload payload signingPairs
-  putLog logL LevelWarn "transfer-crosschain: running continuation on target chain"
-  -- We can't do a /local with continuations :(
-  liftJSM $ forkJSM $ do
-    r <- doReqFailover envs (Api.send Api.apiV1Client $ Api.SubmitBatch $ pure cont) >>= \case
-      Left es -> packHttpErrors logL es
-      Right (Api.RequestKeys (requestKey :| _)) -> pure $ Right (Pact._pePactId pe, requestKey)
-    liftIO $ cb r
-  pure ()
+continueCrossChainTransfer logL networkName envs publicMeta keys toChain gasPayer spvOk = do
+  transactionLogger <- askTransactionLogger
+  performEventAsync $ ffor spvOk $ \(pe, proof) cb -> do
+    let pm = publicMeta
+          { _pmChainId = toChain
+          , _pmSender = unAccountName $ fst gasPayer
+          }
+        signingSet = accountKeys $ snd gasPayer
+        signingPairs = filterKeyPairs signingSet keys
+    payload <- buildContPayload networkName pm signingPairs $ ContMsg
+      { _cmPactId = Pact._pePactId pe
+      , _cmStep = succ $ Pact._peStep pe
+      , _cmRollback = False
+      , _cmData = Aeson.Object mempty
+      , _cmProof = Just proof
+      }
+    cont <- buildCmdWithPayload payload signingPairs
+    putLog logL LevelWarn "transfer-crosschain: running continuation on target chain"
+    -- We can't do a /local with continuations :(
+    liftJSM $ forkJSM $ do
+      r <- doReqFailover envs (Api.send Api.apiV1Client transactionLogger $ Api.SubmitBatch $ pure cont) >>= \case
+        Left es -> packHttpErrors logL es
+        Right (Api.RequestKeys (requestKey :| _)) -> pure $ Right (Pact._pePactId pe, requestKey)
+      liftIO $ cb r
+    pure ()
 
 -- | Lookup the keyset of an account
 lookupKeySet
@@ -815,6 +863,7 @@ initiateCrossChainTransfer
      , PerformEvent t m
      , HasCrypto key (Performable m)
      , HasLogger model t
+     , HasTransactionLogger m
      )
   => model
   -> NetworkName
@@ -836,19 +885,21 @@ initiateCrossChainTransfer
   -> Event t Pact.KeySet
   -- ^ Recipient keyset
   -> m (Event t (Either Text Pact.RequestKey))
-initiateCrossChainTransfer model networkName envs publicMeta keys fromAccount fromGasPayer toAccount amount eks = performEventAsync $ ffor eks $ \rg cb -> do
-  cmd <- buildCmd Nothing networkName pm signingPairs [] code (mkDat rg) capabilities
-  liftJSM $ forkJSM $ do
-    r <- doReqFailover envs (Api.local Api.apiV1Client cmd) >>= \case
-      Left es -> packHttpErrors (model ^. logger) es
-      Right cr -> case Pact._crResult cr of
-        Pact.PactResult (Left e) -> do
-          putLog model LevelError (tshow e)
-          pure $ Left $ tshow e
-        Pact.PactResult (Right _) -> doReqFailover envs (Api.send Api.apiV1Client $ Api.SubmitBatch $ pure cmd) >>= \case
-          Left es -> packHttpErrors (model ^. logger) es
-          Right (Api.RequestKeys (requestKey :| _)) -> pure $ Right requestKey
-    liftIO $ cb r
+initiateCrossChainTransfer model networkName envs publicMeta keys fromAccount fromGasPayer toAccount amount eks = do
+  transactionLogger <- askTransactionLogger
+  performEventAsync $ ffor eks $ \rg cb -> do
+    cmd <- buildCmd Nothing networkName pm signingPairs [] code (mkDat rg) capabilities
+    liftJSM $ forkJSM $ do
+      r <- doReqFailover envs (Api.local Api.apiV1Client cmd) >>= \case
+        Left es -> packHttpErrors (model ^. logger) es
+        Right cr -> case Pact._crResult cr of
+          Pact.PactResult (Left e) -> do
+            putLog model LevelError (tshow e)
+            pure $ Left $ tshow e
+          Pact.PactResult (Right _) -> doReqFailover envs (Api.send Api.apiV1Client transactionLogger $ Api.SubmitBatch $ pure cmd) >>= \case
+            Left es -> packHttpErrors (model ^. logger) es
+            Right (Api.RequestKeys (requestKey :| _)) -> pure $ Right requestKey
+      liftIO $ cb r
   where
     keysetName = "receiverKey"
     code = T.unwords
@@ -998,9 +1049,10 @@ displaySendModalTab = text . \case
 
 makeTabs
   :: (DomBuilder t m, PostBuild t m, MonadHold t m, MonadFix m)
-  => Event t () -> m (Dynamic t SendModalTab, Event t ())
-makeTabs next = do
-  let initTab = SendModalTab_Configuration
+  => InitialTransferData -> Event t () -> m (Dynamic t SendModalTab, Event t ())
+makeTabs initData next = do
+  -- We assume that if there is a full transfer that we should head to the sign tab
+  let initTab = initialTransferDataCata (const SendModalTab_Configuration) (const SendModalTab_Sign) initData
       f t0 g = case g t0 of
         Nothing -> (Just t0, Just ())
         Just t -> (Just t, Nothing)

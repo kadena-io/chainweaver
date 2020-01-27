@@ -34,6 +34,7 @@ import Obelisk.Route (R)
 import Obelisk.Route.Frontend
 import Pact.Repl
 import Pact.Repl.Types
+import Pact.Server.ApiV1Client (HasTransactionLogger)
 import Pact.Types.Lang
 import Reflex
 import Reflex.Dom.ACE.Extended hiding (Annotation (..))
@@ -78,6 +79,7 @@ app
      , HasCrypto key (Performable m)
      , HasCrypto key m
      , FromJSON key, ToJSON key
+     , HasTransactionLogger m
      )
   => RoutedT t (R FrontendRoute) m ()
   -- ^ Extra widget to display at the bottom of the sidebar
@@ -281,7 +283,7 @@ getPactVersion = do
       _ -> error "failed to get pact version"
     return ver
 
-controlBarRight  :: forall key t m. (MonadWidget t m, HasCrypto key (Performable m))
+controlBarRight  :: forall key t m. (MonadWidget t m, HasCrypto key (Performable m), HasTransactionLogger m)
   => AppCfg key t m -> ModalIde m key t -> m (ModalIdeCfg m key t)
 controlBarRight appCfg m = do
     divClass "main-header__controls-nav" $ do

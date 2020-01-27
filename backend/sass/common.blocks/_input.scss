@@ -145,10 +145,14 @@ input[type=number] {
 
 .dimensional-input__feedback {
   position: absolute;
-  right: 10px;
+  right: 0.5em;
+  padding-left: 0.5em;
+  text-align: right;
   color: $tertiary-color;
   background: white;
-  padding-left: 0.5rem;
+  max-width: 60%;
+  height: 1.1em;
+  overflow: hidden;
 }
 
 .input-max-button {

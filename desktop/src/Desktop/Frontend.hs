@@ -35,6 +35,7 @@ import Data.Text (Text)
 import Data.Time (NominalDiffTime, getCurrentTime, addUTCTime)
 import Data.Universe.Some.TH
 import Language.Javascript.JSaddle (liftJSM)
+import Pact.Server.ApiV1Client (HasTransactionLogger, runTransactionLoggerT, logTransactionStdout)
 import Reflex.Dom.Core
 import qualified Cardano.Crypto.Wallet as Crypto
 import qualified Data.Text.Encoding as T
@@ -96,7 +97,7 @@ desktop = Frontend
     (signingRequestMVar, signingResponseMVar) <- signingServer
       (pure ()) -- Can't foreground or background things
       (pure ())
-    mapRoutedT runBrowserStorageT $ do
+    mapRoutedT (flip runTransactionLoggerT logTransactionStdout . runBrowserStorageT) $ do
       (fileOpened, triggerOpen) <- Frontend.openFileDialog
       signingRequest <- mvarTriggerEvent signingRequestMVar
       bipWallet AppCfg
@@ -114,27 +115,43 @@ desktop = Frontend
         }
   }
 
+data LockScreen
+  = LockScreen_Restore Crypto.XPrv
+  | LockScreen_RunSetup
+  | LockScreen_Locked (Maybe Text) Crypto.XPrv
+
 bipWallet
   :: ( MonadWidget t m
      , RouteToUrl (R FrontendRoute) m, SetRoute t (R FrontendRoute) m
      , HasConfigs m
      , HasStorage m, HasStorage (Performable m)
+     , HasTransactionLogger m
      )
   => AppCfg Crypto.XPrv t (RoutedT t (R FrontendRoute) (BIPCryptoT m))
   -> RoutedT t (R FrontendRoute) m ()
 bipWallet appCfg = do
-  mRoot <- getItemStorage localStorage BIPStorage_RootKey
-  rec
-    root <- holdDyn (mRoot, Nothing) upd
-    upd <- switchHold never <=< dyn $ ffor root $ \case
-      (Nothing, _) -> do
-        keyAndPass <- runSetup
-        performEvent $ ffor keyAndPass $ \(x, Password p) -> do
+  let
+    runSetup0 r fromLockScreen = do
+      keyAndPass <- runSetup fromLockScreen
+      performEvent $ ffor keyAndPass $ \case
+        Right (x, Password p) -> do
           setItemStorage localStorage BIPStorage_RootKey x
           removeItemStorage localStorage StoreFrontend_Wallet_Keys
           removeItemStorage localStorage StoreFrontend_Wallet_Accounts
-          pure (Just x, Just p)
-      (Just xprv, mpass) -> mdo
+          pure $ LockScreen_Locked (Just p) x
+        Left _ ->
+          pure r
+
+  mRoot <- getItemStorage localStorage BIPStorage_RootKey
+  rec
+    root <- holdDyn (maybe LockScreen_RunSetup (LockScreen_Locked Nothing) mRoot) upd
+    upd <- switchHold never <=< dyn $ ffor root $ \case
+      -- Run the restore process or return to the lock screen
+      LockScreen_Restore xprv -> runSetup0 (LockScreen_Locked Nothing xprv) True
+      -- We have no wallet so run the creation/setup process
+      LockScreen_RunSetup -> runSetup0 LockScreen_RunSetup False
+      -- Wallet exists but the lock screen is active
+      LockScreen_Locked mpass xprv -> mdo
         mPassword <- holdUniqDyn =<< holdDyn mpass userPassEvents
         (restore, userPassEvents) <- bitraverse (switchHold never) (switchHold never) $ splitE result
         result <- dyn $ ffor mPassword $ \case
@@ -149,7 +166,8 @@ bipWallet appCfg = do
 
             setRoute $ landingPageRoute <$ onLogoutConfirm
             pure (never, Nothing <$ onLogoutConfirm)
-        pure $ (Nothing, Nothing) <$ restore
+
+        pure $ LockScreen_Restore xprv <$ restore
   pure ()
 
 -- | Returns an event which fires at the given check interval when the user has

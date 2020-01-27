@@ -98,6 +98,7 @@ uiReceiveModal
      , HasCrypto key m
      , HasCrypto key (Performable m)
      , HasLogger model t
+     , HasTransactionLogger m
      )
   => model
   -> AccountName
@@ -105,7 +106,7 @@ uiReceiveModal
   -> Event t ()
   -> m (mConf, Event t ())
 uiReceiveModal model account mchain _onClose = do
-  onClose <- modalHeader $ text "Receive"
+  onClose <- modalHeader $ text "Deposit"
   (conf, closes) <- fmap splitDynPure $ workflow $ uiReceiveModal0 model account mchain onClose
   mConf <- flatten =<< tagOnPostBuild conf
   let close = switch $ current closes
@@ -120,6 +121,7 @@ uiReceiveModal0
      , HasCrypto key (Performable m)
      , HasCrypto key m
      , HasLogger model t
+     , HasTransactionLogger m
      )
   => model
   -> AccountName
@@ -201,6 +203,7 @@ receiveFromLegacySubmit
      , CanSubmitTransaction t m
      , HasCrypto key m
      , HasLogger model t
+     , HasTransactionLogger m
      )
   => model
   -> Event t ()
