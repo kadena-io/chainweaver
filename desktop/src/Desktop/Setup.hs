@@ -198,7 +198,6 @@ runSetup
     , TriggerEvent t m
     )
   => Bool
-  -- -> m (Event t (Crypto.XPrv, Password))
   -> m (Event t (Either () (Crypto.XPrv, Password)))
 runSetup showBackOverride = setupDiv "fullscreen" $ mdo
   let dCurrentScreen = fst <$> dwf
@@ -219,9 +218,7 @@ runSetup showBackOverride = setupDiv "fullscreen" $ mdo
     ]
   where
     hideBack ws =
-      if showBackOverride then
-        setupScreenClass ws
-      else if ws `elem` [WalletScreen_SplashScreen, WalletScreen_Done] then
+      if not showBackOverride && (ws `elem` [WalletScreen_SplashScreen, WalletScreen_Done]) then
         setupClass "hide"
       else
         setupScreenClass ws
