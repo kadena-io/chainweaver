@@ -181,6 +181,7 @@ createAccountNotGasPayer
      , HasWallet model key t, HasWalletCfg mConf key t
      , HasCrypto key (Performable m)
      , MonadWidget t m
+     , HasTransactionLogger m
      )
   => model
   -> AccountName
