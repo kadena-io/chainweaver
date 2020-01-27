@@ -29,7 +29,6 @@ import Control.Monad.Except (throwError)
 import Control.Monad.Logger (LogLevel(..))
 import Control.Monad.Trans.Except
 import Control.Monad.Trans.Maybe
-import Control.Monad.Trans (lift)
 import Data.Bifunctor (first)
 import qualified Data.ByteString.Lazy as LBS
 import Data.Decimal (Decimal)
@@ -278,29 +277,27 @@ sendConfig
 sendConfig model initData = Workflow $ do
   close <- modalHeader $ text "Send"
   rec
-    (currentTab, _done) <- makeTabs initData $ attachWithMaybe (const . void . hush) (current recipient) next
+    (currentTab, _done) <- makeTabs initData $ attachWithMaybe (const . void . hush) (current recipient) nextTab
     (conf, mCaps, recipient) <- mainSection currentTab
-    (cancel, next) <- footerSection currentTab recipient mCaps
-  let nextScreen = flip push next $ \() -> runMaybeT $ do
-        currTab <- lift $ sample $ current currentTab
-        if (currTab /= SendModalTab_Sign)
-          then MaybeT $ pure Nothing
-          else do
-            (fromGasPayer, mToGasPayer) <- MaybeT $ sample $ current mCaps
-            (toAccount, amount) <- MaybeT $ fmap hush $ sample $ current recipient
-            let mCCD = case mToGasPayer of
-                  Just toGasPayer | toGasPayer /= fromGasPayer -> Just $ CrossChainData
-                    { _crossChainData_recipientChainGasPayer = toGasPayer
-                    }
-                  _ -> Nothing
-            let transfer = TransferData
-                  { _transferData_amount = amount
-                  , _transferData_crossChainData = mCCD
-                  , _transferData_fromAccount = fromAccount
-                  , _transferData_fromGasPayer = fromGasPayer
-                  , _transferData_toAddress = toAccount
+    (cancel, nextTab) <- footerSection currentTab recipient mCaps
+  let nextScreen = flip push nextTab $ \case
+        Just _ -> pure Nothing
+        Nothing -> runMaybeT $ do
+          (fromGasPayer, mToGasPayer) <- MaybeT $ sample $ current mCaps
+          (toAccount, amount) <- MaybeT $ fmap hush $ sample $ current recipient
+          let mCCD = case mToGasPayer of
+                Just toGasPayer | toGasPayer /= fromGasPayer -> Just $ CrossChainData
+                  { _crossChainData_recipientChainGasPayer = toGasPayer
                   }
-            pure $ previewTransfer model transfer
+                _ -> Nothing
+          let transfer = TransferData
+                { _transferData_amount = amount
+                , _transferData_crossChainData = mCCD
+                , _transferData_fromAccount = fromAccount
+                , _transferData_fromGasPayer = fromGasPayer
+                , _transferData_toAddress = toAccount
+                }
+          pure $ previewTransfer model transfer
   pure ((conf, close <> cancel), nextScreen)
   where
     fromAccount@(fromName, fromChain, fromAcc) = initialTransferDataCata id _transferData_fromAccount initData
@@ -410,7 +407,10 @@ sendConfig model initData = Workflow $ do
             & uiButtonCfg_class <>~ "button_type_confirm"
             & uiButtonCfg_disabled .~ join disabled
       next <- uiButtonDyn cfg $ dynText name
-      pure (cancel, next)
+      let nextTab = ffor (current currentTab <@ next) $ \case
+            SendModalTab_Configuration -> Just SendModalTab_Sign
+            SendModalTab_Sign -> Nothing
+      pure (cancel, nextTab)
 
 -- | This function finishes cross chain transfers. The return event signals that
 -- the transfer is complete.
