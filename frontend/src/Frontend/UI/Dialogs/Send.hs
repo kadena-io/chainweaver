@@ -286,7 +286,7 @@ sendConfig model fromAccount@(fromName, fromChain, fromAcc) = Workflow $ do
               cannotBeReceiverMsg = "Sender cannot be the receiver of a transfer"
 
           decoded <- fmap snd $ mkLabeledInput True "Kadena Address" (uiInputWithInlineFeedback
-            (fmap (Aeson.eitherDecodeStrict . T.encodeUtf8) . value)
+            (fmap (first (const "Invalid Kadena Address") . Aeson.eitherDecodeStrict . T.encodeUtf8) . value)
             inputIsDirty
             T.pack
             Nothing
