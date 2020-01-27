@@ -5,7 +5,7 @@ module Frontend.UI.Dialogs.AddVanityAccount.DefineKeyset
   , emptyKeysetPresets
   ) where
 
-import           Control.Lens                           ((^.))
+import           Control.Lens                           ((^.),ifoldMap)
 import           Control.Error                          (hush)
 import           Data.Witherable                        (wither)
 import           Data.Text                              (Text)
@@ -32,8 +32,8 @@ data KeysetInputs t i a = KeysetInputs
   }
 
 data DefinedKeyset t = DefinedKeyset
-  { _definedKeyset_internalKeys :: KeysetInputs t (Dropdown t (Maybe Int)) PublicKey
-  , _definedKeyset_externalKeys :: KeysetInputs t (ExternalKeyInput t) PublicKey
+  { _definedKeyset_internalKeys :: KeysetInputs t (Maybe (Maybe Int)) PublicKey
+  , _definedKeyset_externalKeys :: KeysetInputs t (Maybe (Maybe PublicKey)) PublicKey
   , _definedKeyset_predicate :: Dynamic t Text
   }
 
@@ -45,16 +45,17 @@ emptyKeysetPresets = DefinedKeyset
   }
 
 data ExternalKeyInput t = ExternalKeyInput
-  { _externalKeyInput_input :: Event t Text
+  { _externalKeyInput_input :: Event t (Maybe PublicKey)
   , _externalKeyInput_value :: Dynamic t (Maybe PublicKey)
   }
 
 uiExternalKeyInput
   :: forall t m. MonadWidget t m
-  => Dynamic t (IntMap (ExternalKeyInput t))
-  -> m (KeysetInputs t (ExternalKeyInput t) PublicKey)
-uiExternalKeyInput onPreselect = do
+  => Event t (IntMap (Maybe (Maybe PublicKey)))
+  -> m (KeysetInputs t (Maybe (Maybe PublicKey)) PublicKey)
+uiExternalKeyInput onPreselection = do
   let
+    uiPubkeyInput :: Maybe PublicKey -> m (ExternalKeyInput t)
     uiPubkeyInput iv = do
       (inp, dE) <- uiInputWithInlineFeedback
         (fmap parsePublicKey . value)
@@ -67,30 +68,29 @@ uiExternalKeyInput onPreselect = do
           "placeholder" =: "External public key" <>
           "class" =: "labeled-input__input"
           )
-        & inputElementConfig_initialValue .~ iv
+        & inputElementConfig_initialValue .~ maybe T.empty keyToText iv
 
       pure $ ExternalKeyInput
-        { _externalKeyInput_input = _inputElement_input inp
+        { _externalKeyInput_input = (hush . parsePublicKey) <$> _inputElement_input inp
         , _externalKeyInput_value = hush <$> dE
         }
 
     toSet :: IntMap.IntMap (ExternalKeyInput t) -> Dynamic t (Set PublicKey)
     toSet = fmap (Set.fromList . IntMap.elems) . wither _externalKeyInput_value
 
-  pb <- getPostBuild
-
-  let preselections = onPreselect >>= IntMap.foldMapWithKey
-        (\k t -> IntMap.singleton k . fmap keyToText <$> _externalKeyInput_value t)
-
-  v <- uiAdditiveInput
+  dExternalKeyInput <- uiAdditiveInput
     (const uiPubkeyInput)
     _externalKeyInput_input
-    (not . T.null)
-    T.null
-    T.empty
-    (current preselections <@ pb)
+    isJust
+    isNothing
+    Nothing
+    onPreselection
 
-  pure $ KeysetInputs v (v >>= toSet)
+  let dFormState :: Dynamic t (IntMap.IntMap (Maybe (Maybe PublicKey)))
+      dFormState = dExternalKeyInput >>= IntMap.foldMapWithKey
+        (\k t -> IntMap.singleton k . Just <$> _externalKeyInput_value t)
+
+  pure $ KeysetInputs dFormState (dExternalKeyInput >>= toSet)
 
 defineKeyset
   :: forall t m key model
@@ -98,9 +98,9 @@ defineKeyset
        , HasWallet model key t
        )
   => model
-  -> Dynamic t (IntMap (Dropdown t (Maybe Int)))
-  -> m (KeysetInputs t (Dropdown t (Maybe Int)) PublicKey)
-defineKeyset model preselections0 = do
+  -> Event t (IntMap (Maybe (Maybe Int)))
+  -> m (KeysetInputs t (Maybe (Maybe Int)) PublicKey)
+defineKeyset model onPreselection = do
   let
     selectMsgKey = Nothing
     selectMsgMap = Map.singleton selectMsgKey "Select"
@@ -116,20 +116,20 @@ defineKeyset model preselections0 = do
     toIntSet :: IntMap.IntMap (Dropdown t (Maybe Int)) -> Dynamic t IntSet.IntSet
     toIntSet = fmap (IntSet.fromList . IntMap.elems) . wither value
 
-    preselections = preselections0 >>= IntMap.foldMapWithKey
-      (\k dd -> IntMap.singleton k . Just <$> _dropdown_value dd)
-
-  pb <- getPostBuild
-
   dSelectedKeys <- uiAdditiveInput
     (const uiSelectKey)
     _dropdown_change
     (/= selectMsgKey)
     (== selectMsgKey)
     selectMsgKey
-    (current preselections <@ pb)
+    onPreselection
 
-  pure $ KeysetInputs dSelectedKeys $ ffor2 (model ^. wallet_keys) (dSelectedKeys >>= toIntSet) $ \wKeys ->
+  let dFormState :: Dynamic t (IntMap.IntMap (Maybe (Maybe Int)))
+      dFormState = fmap (ifoldMap (\k v -> IntMap.singleton k $ Just v))
+        $ joinDynThroughMap
+        $ fmap (Map.fromList . IntMap.assocs . fmap value) dSelectedKeys
+
+  pure $ KeysetInputs dFormState $ ffor2 (model ^. wallet_keys) (dSelectedKeys >>= toIntSet) $ \wKeys ->
     Set.fromDistinctAscList . IntMap.elems . fmap (_keyPair_publicKey . _key_pair) . IntMap.restrictKeys wKeys
 
 uiDefineKeyset
@@ -153,17 +153,16 @@ uiDefineKeyset model presets = do
 
   rec
     selectedKeys <- mkLabeledClsInput False "Chainweaver Keys" $ const
-      $ defineKeyset model $ _keysetInputs_value $ _definedKeyset_internalKeys presets
+      $ defineKeyset model $ current (_keysetInputs_value $ _definedKeyset_internalKeys presets) <@ pb
 
     externalKeys <- mkLabeledClsInput False "External Keys" $ const
-      $ uiExternalKeyInput $ _keysetInputs_value $ _definedKeyset_externalKeys presets
+      $ uiExternalKeyInput $ current (_keysetInputs_value $ _definedKeyset_externalKeys presets) <@ pb
 
     predicate <- mkLabeledClsInput False "Predicate (Keys Required to Sign for Account)" $ const
       $ fmap value $ uiDropdown mempty allPredSelectMap $ def
       & dropdownConfig_attributes .~ constDyn ("class" =: "labeled-input__input")
       & dropdownConfig_setValue .~ (current (_definedKeyset_predicate presets) <@ pb)
 
-  -- TODO validate this (?? validation ??)
   let
     ipks = _keysetInputs_set selectedKeys
     epks = _keysetInputs_set externalKeys
