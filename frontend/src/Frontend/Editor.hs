@@ -39,6 +39,7 @@ module Frontend.Editor
   ) where
 
 ------------------------------------------------------------------------------
+import           Control.Applicative        (liftA2)
 import           Control.Lens
 import qualified Data.List                  as L
 import qualified Data.Map                   as Map
@@ -89,7 +90,7 @@ makePactLenses ''EditorCfg
 data Editor t = Editor
   { _editor_code        :: Dynamic t Text
     -- ^ Currently loaded/edited PACT code.
-  , _editor_annotations :: Event t [Annotation]
+  , _editor_annotations :: Dynamic t [Annotation]
     -- ^ Annotations for the editor.
   , _editor_quickFixes  :: Dynamic t [QuickFix]
     -- ^ Available quick fixes.
@@ -120,29 +121,29 @@ makeEditor
     )
   => model -> cfg -> m (mConf, Editor t)
 makeEditor m cfg = mdo
-    t <-  holdDyn "" $ leftmost
+    t <- holdDyn "" $ leftmost
       [ cfg ^. editorCfg_setCode
       , cfg ^. editorCfg_loadCode
-      , onFix
+      , onCodeFix
       ]
 
     modified <- holdDyn False $ leftmost
       [ False <$ cfg ^. editorCfg_loadCode
-      , True <$  cfg ^. editorCfg_setCode
-      , True <$  onFix
+      , True  <$ cfg ^. editorCfg_setCode
+      , True  <$ onCodeFix
       , False <$ cfg ^. editorCfg_clearModified
       ]
 
-    annotations <- typeCheckVerify m t
-    quickFixes  <- holdDyn [] $ makeQuickFixes <$> annotations
     gen <- liftIO newStdGen
-    (quickFixCfg, onFix) <- applyQuickFix (randoms gen) t $ cfg ^. editorCfg_applyQuickFix
+    (quickFixCfg, onCodeFix) <- applyQuickFix (randoms gen) t $ cfg ^. editorCfg_applyQuickFix
+    codeAnnotations <- holdDyn [] =<< typeCheckVerify m t
+    let dataAnnotations = ffor (m ^. jsonData . to getJsonDataError) $ foldMap $ (: []) . annoJsonParser . showJsonError
     pure
       ( quickFixCfg
       , Editor
         { _editor_code = t
-        , _editor_annotations = annotations
-        , _editor_quickFixes = quickFixes
+        , _editor_annotations = liftA2 (<>) codeAnnotations dataAnnotations
+        , _editor_quickFixes = makeQuickFixes <$> codeAnnotations
         , _editor_modified = modified
         }
       )
@@ -156,35 +157,35 @@ applyQuickFix
   => [Word32] -> Dynamic t Text -> Event t QuickFix -> m (mConf, Event t Text)
 applyQuickFix rs t onQuickFix = do
   let
-    onNewDefKeyset = fmapMaybe (^? _QuickFix_MissingKeyset) onQuickFix
+    onNewDefKeyset = fmapMaybe (^? _QuickFix_UndefinedKeyset) onQuickFix
     mkName r n = (n, n <> "-" <> tshow r)
   onNewRandKeyset <- zipListWithEvent mkName rs onNewDefKeyset
 
   let
 
     onNewKeyset = leftmost
-     [ fmapMaybe (^? _QuickFix_MissingEnvKeyset) onQuickFix
+     [ fmapMaybe (^? _QuickFix_UnreadableKeyset) onQuickFix
      , snd <$> onNewRandKeyset
      ]
 
-    fixCode :: Dynamic t ((Text, Text) -> Text)
-    fixCode = do
+    fixCode :: Text -> (Text, Text) -> Text
+    fixCode code (ks, ksn) = do
       let
         isPreamble = (\x -> T.isPrefixOf ";" x || T.null x) . T.strip
         splitLeadingComments = L.break (not . isPreamble . T.strip) . T.lines
-      (preamble, remCode) <- splitLeadingComments <$> t
-      pure $ \(ks, ksn) -> T.unlines
-        ( preamble
-          <> [ "\n;; For more information about keysets checkout:"
-             , ";; https://pact-language.readthedocs.io/en/latest/pact-reference.html#keysets-and-authorization"
-             , "(define-keyset '" <> ks <> " (read-keyset \"" <> ksn <> "\"))\n"
-             ]
-          <> remCode
-        )
+        (preamble, remCode) = splitLeadingComments code
+      T.unlines $ L.intercalate ["\n"]
+        [ preamble
+        , [ ";; For more information about keysets checkout:"
+          , ";; https://pact-language.readthedocs.io/en/latest/pact-reference.html#keysets-and-authorization"
+          , "(define-keyset '" <> ks <> " (read-keyset \"" <> ksn <> "\"))"
+          ]
+        , remCode
+        ]
 
   pure
     ( mempty & jsonDataCfg_createKeyset .~ onNewKeyset
-    , attachWith id (current fixCode) onNewRandKeyset
+    , attachWith fixCode (current t) onNewRandKeyset
     )
 
 -- | Type check and verify code.

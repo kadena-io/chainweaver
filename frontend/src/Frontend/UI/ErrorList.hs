@@ -20,7 +20,8 @@ module Frontend.UI.ErrorList
 
 ------------------------------------------------------------------------------
 import           Control.Lens
-import           Data.Traversable        (for)
+import           Control.Monad           ((<=<))
+import           Data.List.NonEmpty      (nonEmpty)
 import           Reflex
 import           Reflex.Dom
 ------------------------------------------------------------------------------
@@ -33,36 +34,37 @@ import           Frontend.UI.Widgets
 -- | UI for live showing of errors and offering of quick fixes.
 uiErrorList
   :: ( MonadWidget t m, HasEditorCfg mConf t, Monoid mConf
-     , Flattenable mConf t , HasEditor model t
+     , HasEditor model t
      )
   => model
   -> m mConf
 uiErrorList m = do
-    annotations <- holdDyn [] $ m ^. editor_annotations
-    networkViewFlatten $ ffor annotations $ handleEmpty $ \anns -> do
-      accordionItem True "segment" "Errors" $ do
-        onQuickFix <- errorList anns
-        pure $ mempty & editorCfg_applyQuickFix .~ onQuickFix
-  where
-    handleEmpty x = \case
-      [] -> pure mempty
-      anns -> x anns
+  annotations <- holdUniqDyn $ m ^. editor_annotations
+  dmd <- maybeDyn $ nonEmpty <$> annotations
+  onQuickFix <- switchHold never <=< dyn $ ffor dmd $ \case
+    Nothing -> pure never
+    Just d -> accordionItem True "segment" "Errors" $ do
+      elClass "div" "group" $ do
+        quickFixes <- simpleList (toList <$> d) errorItem
+        pure $ switchDyn $ fmap leftmost quickFixes
+  pure $ mempty & editorCfg_applyQuickFix .~ onQuickFix
 
-
-errorList
+errorItem
   :: forall t m
   .  (MonadWidget t m)
-  => [Annotation] -> m (Event t QuickFix)
-errorList annotations =
-    elClass "div" "group" $ do
-      fmap leftmost . for annotations $ \a ->
-        elClass "div"  "error-list segment segment_type_small-primary" $ do
-          elClass "div" "error-list__msg" $ do
-              renderIcon $ _annotation_type a
-              elClass "div" "error-list__line-number" $
-                text $ tshow (_annotation_line a) <> ":" <> tshow (_annotation_column a) <> " "
-              text $ _annotation_msg a
-          renderQuickFix $ makeQuickFix a
+  => Dynamic t Annotation -> m (Event t QuickFix)
+errorItem da =
+  switchHold never <=< dyn $ ffor da $ \a -> do
+    elClass "div"  "error-list segment segment_type_small-primary" $ do
+      elClass "div" "error-list__msg" $ do
+          renderIcon $ _annotation_type a
+          for_ (_annotation_pos a) $ \(r,c) ->
+            elClass "div" "error-list__line-number" $ text $ tshow r <> ":" <> tshow c
+          case _annotation_source a of
+            AnnotationSource_Json -> text "[JSON] "
+            AnnotationSource_Pact -> blank
+          text $ _annotation_msg a
+      renderQuickFix $ makeQuickFix a
   where
     renderQuickFix = maybe (pure never) $ \qf -> do
       let btnCls = ""
@@ -74,8 +76,8 @@ errorList annotations =
       pure $ qf <$ onClick
 
     renderQuickFixTitle = \case
-      QuickFix_MissingEnvKeyset ks -> "Adds keyset '" <> ks <> "' to Env."
-      QuickFix_MissingKeyset ks -> "Adds (define-keyset '" <> ks <> " ...) and also adds an empty keyset to Env."
+      QuickFix_UnreadableKeyset ks -> "Adds keyset '" <> ks <> "' to Env."
+      QuickFix_UndefinedKeyset ks -> "Adds (define-keyset '" <> ks <> " ...) and also adds an empty keyset to Env."
 
     renderIcon t = elClass "div" ("icon error-list__icon " <> annoCls t) blank
 
