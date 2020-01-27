@@ -98,6 +98,7 @@ uiReceiveModal
      , HasCrypto key m
      , HasCrypto key (Performable m)
      , HasLogger model t
+     , HasTransactionLogger m
      )
   => model
   -> AccountName
@@ -120,6 +121,7 @@ uiReceiveModal0
      , HasCrypto key (Performable m)
      , HasCrypto key m
      , HasLogger model t
+     , HasTransactionLogger m
      )
   => model
   -> AccountName
@@ -201,6 +203,7 @@ receiveFromLegacySubmit
      , CanSubmitTransaction t m
      , HasCrypto key m
      , HasLogger model t
+     , HasTransactionLogger m
      )
   => model
   -> Event t ()

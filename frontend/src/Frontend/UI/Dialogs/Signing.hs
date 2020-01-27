@@ -46,6 +46,7 @@ uiSigning
   . ( MonadWidget t m
     , HasUISigningModelCfg mConf key t
     , HasCrypto key (Performable m)
+    , HasTransactionLogger m
     )
   => AppCfg key t m
   -> ModalIde m key t

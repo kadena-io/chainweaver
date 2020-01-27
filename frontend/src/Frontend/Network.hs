@@ -69,6 +69,8 @@ module Frontend.Network
   , defaultTransactionGasPrice
   , maxCoinPrecision
   , defaultTransactionTTL
+    -- * Re-export
+  , HasTransactionLogger(..)
   ) where
 
 import           Control.Exception                 (fromException)
@@ -263,6 +265,7 @@ makeNetwork
     , HasStorage m, HasStorage (Performable m)
     , HasCrypto key (Performable m)
     , HasLogger model t
+    , HasTransactionLogger m
     )
   => model
   -> NetworkCfg t
@@ -443,6 +446,7 @@ deployCode
     , TriggerEvent t m
     , MonadSample t (Performable m)
     , HasNetworkModelCfg mConf t
+    , HasTransactionLogger m
     )
   => Logger t
   -> Network t
@@ -590,6 +594,7 @@ loadModules
     , MonadSample t (Performable m)
     , TriggerEvent t m, PostBuild t m
     , HasCrypto key (Performable m)
+    , HasTransactionLogger m
     )
   => Logger t
   -> Network t
@@ -693,6 +698,7 @@ performLocalReadLatest
     , TriggerEvent t m, MonadIO m
     , MonadHold t m, MonadFix m
     , MonadSample t (Performable m)
+    , HasTransactionLogger m
     )
   => Logger t
   -> Network t
@@ -723,6 +729,7 @@ performLocalRead
   . ( PerformEvent t m, MonadJSM (Performable m)
     , TriggerEvent t m, MonadIO m
     , MonadSample t (Performable m)
+    , HasTransactionLogger m
     )
   => Logger t
   -> Network t
@@ -749,6 +756,7 @@ performLocalReadCustom
   . ( PerformEvent t m, MonadJSM (Performable m)
     , TriggerEvent t m, MonadIO m
     , MonadSample t (Performable m)
+    , HasTransactionLogger m
     )
   => Logger t
   -> Network t
@@ -772,6 +780,7 @@ performNetworkRequest
   . ( PerformEvent t m, MonadJSM (Performable m)
     , TriggerEvent t m
     , MonadSample t (Performable m)
+    , HasTransactionLogger m
     )
   => Logger t
   -> Network t
@@ -803,24 +812,26 @@ performNetworkRequestCustom
   . ( PerformEvent t m, MonadJSM (Performable m)
     , TriggerEvent t m
     , MonadSample t (Performable m)
+    , HasTransactionLogger m
     )
   => Logger t
   -> Network t
   -> (req -> [NetworkRequest])
   -> Event t req
   -> m (Event t (req, [NetworkErrorResult]))
-performNetworkRequestCustom logL networkL unwrap onReqs =
-    performEventAsync $ ffor onReqs $ \reqs cb -> do
-      nodeInfos <- getSelectedNetworkInfos networkL
-      void $ liftJSM $ forkJSM $ do
-        r <- traverse (doReqFailover' nodeInfos) $ unwrap reqs
-        liftIO $ cb (reqs, r)
+performNetworkRequestCustom logL networkL unwrap onReqs = do
+  transactionLog <- askTransactionLogger
+  performEventAsync $ ffor onReqs $ \reqs cb -> do
+    nodeInfos <- getSelectedNetworkInfos networkL
+    void $ liftJSM $ forkJSM $ flip runTransactionLoggerT transactionLog $ do
+      r <- traverse (doReqFailover' nodeInfos) $ unwrap reqs
+      liftIO $ cb (reqs, r)
   where
-    doReqFailover' :: [NodeInfo] -> NetworkRequest -> JSM NetworkErrorResult
+    doReqFailover' :: [NodeInfo] -> NetworkRequest -> TransactionLoggerT JSM NetworkErrorResult
     doReqFailover' nodeInfos req =
       go [] nodeInfos
         where
-          go :: [(Maybe URI,NetworkError)] -> [NodeInfo] -> JSM NetworkErrorResult
+          go :: [(Maybe URI,NetworkError)] -> [NodeInfo] -> TransactionLoggerT JSM NetworkErrorResult
           go errs = \case
             n:ns -> do
               errRes <- doReq (Just n) req
@@ -835,10 +846,10 @@ performNetworkRequestCustom logL networkL unwrap onReqs =
           mkResult errs (Left e) = This (NEL.reverse $ e :| errs)
           mkResult errs (Right res) = maybe (That res) (flip These res) . nonEmpty . reverse $ errs
 
-    doReq :: Maybe NodeInfo -> NetworkRequest -> JSM (Either (Maybe URI,NetworkError) (Maybe Gas, PactValue))
+    doReq :: Maybe NodeInfo -> NetworkRequest -> TransactionLoggerT JSM (Either (Maybe URI,NetworkError) (Maybe Gas, PactValue))
     doReq mNodeInfo req = runExceptT $ do
       chainUrl <- ExceptT $ getBaseUrlErr (req ^. networkRequest_chainRef) mNodeInfo
-      ExceptT $ liftJSM $ fmap (BiF.first (Just chainUrl,)) $ networkRequest chainUrl (req ^. networkRequest_endpoint) (_networkRequest_cmd req)
+      ExceptT $ fmap (BiF.first (Just chainUrl,)) $ networkRequest chainUrl (req ^. networkRequest_endpoint) (_networkRequest_cmd req)
 
     getBaseUrlErr ref info = left ((Nothing,) . NetworkError_Other) <$> getChainRefBaseUrl ref info
 
@@ -868,41 +879,34 @@ performNetworkRequestCustom logL networkL unwrap onReqs =
 --
 -- @
 networkRequest
-  :: URI
+  :: (HasTransactionLogger m, MonadJSM m)
+  => URI
   -> Endpoint
   -> Command Text
-  -> JSM (Either NetworkError (Maybe Gas, PactValue))
-networkRequest baseUri endpoint cmd = do
-    baseUrl <- S.parseBaseUrl $ URI.renderStr baseUri
-    let clientEnv = S.mkClientEnv baseUrl
-
-    liftJSM . runExceptT $ do
-      performReq clientEnv
-
+  -> m (Either NetworkError (Maybe Gas, PactValue))
+networkRequest baseUri endpoint cmd = case S.parseBaseUrl $ URI.renderStr baseUri of
+  Nothing -> pure $ Left $ NetworkError_NetworkError $ T.pack $ "Invalid url: " <> URI.renderStr baseUri
+  Just baseUrl -> runExceptT $ performReq $ S.mkClientEnv baseUrl
   where
     performReq clientEnv = case endpoint of
       Endpoint_Send -> do
-        res <- runReq clientEnv $ send apiV1Client $ SubmitBatch . pure $ cmd
+        transactionLogger <- lift askTransactionLogger
+        res <- runReq clientEnv $ send apiV1Client transactionLogger $ SubmitBatch . pure $ cmd
         key <- getRequestKey $ res
         -- TODO: If we no longer wait for /listen, we should change the type instead of wrapping that message in `PactValue`.
         pure $ (Nothing,) $ PLiteral . LString $
           T.dropWhile (== '"') . T.dropWhileEnd (== '"') . tshow $ key
-        {- key <- getRequestKey $ res -}
-        {- v <- runReq clientEnv $ listen pactServerApiClient $ ListenerRequest key -}
-        {- case preview (Aeson.key "result" . Aeson.key "hlCommandResult" . _JSON) v of -}
-        {-   Just cr -> pure cr -}
-        {-   Nothing -> case fromJSON v of -}
-        {-     Error str -> throwError $ NetworkError_ParseError $ T.pack str -}
-        {-     Success ar -> pure $ _arResult ar -}
       Endpoint_Local ->
-         fromCommandResult <=< runReq clientEnv  $ local apiV1Client cmd
+        fromCommandResult <=< runReq clientEnv $ local apiV1Client cmd
 
     -- | Rethrow an error value by wrapping it with f.
-    reThrowWith :: (e -> NetworkError) -> JSM (Either e a) -> ExceptT NetworkError JSM a
+    reThrowWith :: Functor m => (e -> NetworkError) -> m (Either e a) -> ExceptT NetworkError m a
     reThrowWith f = ExceptT . fmap (left f)
 
-    runReq :: S.ClientEnv -> S.ClientM a -> ExceptT NetworkError JSM a
-    runReq env = reThrowWith packHttpErr . flip S.runClientM env
+    runReq :: (MonadJSM m, HasTransactionLogger m) => S.ClientEnv -> TransactionLoggerT S.ClientM a -> ExceptT NetworkError m a
+    runReq env t = do
+      transactionLog <- lift askTransactionLogger
+      reThrowWith packHttpErr . liftJSM . flip S.runClientM env $ runTransactionLoggerT t transactionLog
 
     fromCommandResult :: MonadError NetworkError m => CommandResult a -> m (Maybe Gas, PactValue)
     fromCommandResult r = case _crResult r of

@@ -104,6 +104,7 @@ makeModuleExplorer
     , HasCrypto key (Performable m)
     , Routed t (R FrontendRoute) m
     , HasLogger model t
+    , HasTransactionLogger m
     )
   => AppCfg key t m
   -> model
@@ -230,6 +231,7 @@ loadToEditor
     , MonadSample t (Performable m)
     , HasCrypto key (Performable m)
     , HasLogger model t
+    , HasTransactionLogger m
     )
   => model
   -> Event t FileRef
@@ -354,6 +356,7 @@ pushPopModule
     , HasNetwork model t
     , HasLogger model t
     , HasCrypto key (Performable m)
+    , HasTransactionLogger m
     )
   => model
   -> ModuleExplorer t
@@ -425,6 +428,7 @@ loadModule
     , HasNetwork model t
     , HasLogger model t
     , HasCrypto key (Performable m)
+    , HasTransactionLogger m
     )
   => model
   -> Event t DeployedModuleRef

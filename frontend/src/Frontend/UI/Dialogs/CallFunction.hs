@@ -69,6 +69,7 @@ uiCallFunction
     , HasUICallFunctionModel model key t, HasJsonDataCfg mConf t
     , HasCrypto key (Performable m)
     , HasLogger model t
+    , HasTransactionLogger m
     )
   => model
   -> Maybe DeployedModuleRef

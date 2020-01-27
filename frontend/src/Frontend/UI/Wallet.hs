@@ -114,13 +114,13 @@ hasPrivateKey = isJust . _keyPair_privateKey . snd
 
 uiAccountsTable
   :: forall t m model mConf key.
-  ( MonadWidget t m, HasUiWalletModelCfg model mConf key m t)
+  (MonadWidget t m, HasUiWalletModelCfg model mConf key m t, HasTransactionLogger m)
   => model -> m mConf
 uiAccountsTable = divClass "wallet__keys-list" . uiAccountItems
 
 uiAccountItems
   :: forall t m model mConf key.
-  ( MonadWidget t m, HasUiWalletModelCfg model mConf key m t)
+  (MonadWidget t m, HasUiWalletModelCfg model mConf key m t, HasTransactionLogger m)
   => model -> m mConf
 uiAccountItems model = do
   let net = model ^. network_selectedNetwork

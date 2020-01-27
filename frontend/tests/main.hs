@@ -2,6 +2,7 @@ module Main where
 
 import Test.Tasty (TestTree, defaultMain, testGroup)
 
+import qualified Frontend.CommandLogSpec as CommandLog
 import qualified Frontend.StorageSpec as Storage
 import qualified Frontend.StoreSpec as Store
 import qualified Frontend.Network.NodeInfoSpec as NodeInfoSpec
@@ -14,4 +15,5 @@ tests = testGroup "Frontend Tests"
   [ Storage.tests
   , Store.tests
   , NodeInfoSpec.tests
+  , CommandLog.tests
   ]

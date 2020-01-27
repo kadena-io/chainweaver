@@ -139,6 +139,7 @@ makeIde
     , HasStorage m, HasStorage (Performable m)
     , HasCrypto key (Performable m)
     , FromJSON key, ToJSON key
+    , HasTransactionLogger m
     )
   => AppCfg key t m -> IdeCfg modal key t -> m (Ide modal key t)
 makeIde appCfg userCfg = build $ \ ~(cfg, ideL) -> do
