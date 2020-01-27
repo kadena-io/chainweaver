@@ -397,6 +397,7 @@ uiDeploymentSettings
     , Monoid mConf , HasNetworkCfg mConf t
     , HasJsonDataCfg mConf t, Flattenable mConf t, HasJsonData model t
     , HasCrypto key (Performable m), HasLogger model t
+    , HasTransactionLogger m
     )
   => model
   -> DeploymentSettingsConfig t m model a
@@ -1022,6 +1023,7 @@ uiDeployPreview
      , HasLogger model t
      , HasCrypto key (Performable m)
      , HasWallet model key t
+     , HasTransactionLogger m
      )
   => model
   -> DeploymentSettingsConfig t m model a

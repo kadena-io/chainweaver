@@ -105,6 +105,7 @@ uiCreateAccountDialog
      , HasJsonData model t, HasLogger model t, HasNetwork model t, HasWallet model key t
      , HasCrypto key (Performable m)
      , HasJsonDataCfg mConf t, HasNetworkCfg mConf t, HasWalletCfg mConf key t
+     , HasTransactionLogger m
      )
   => model -> AccountName -> ChainId -> Maybe PublicKey -> Event t () -> m (mConf, Event t ())
 uiCreateAccountDialog model name chain mPublicKey _onCloseExternal = do
@@ -121,6 +122,7 @@ createAccountSplash
      , HasJsonData model t, HasLogger model t, HasNetwork model t, HasWallet model key t
      , HasCrypto key (Performable m)
      , HasJsonDataCfg mConf t, HasNetworkCfg mConf t, HasWalletCfg mConf key t
+     , HasTransactionLogger m
      )
   => model -> AccountName -> ChainId -> Maybe PublicKey -> Workflow t m (Text, (mConf, Event t ()))
 createAccountSplash model name chain mPublicKey = Workflow $ do
@@ -194,6 +196,7 @@ createAccountConfig
     , HasUISigningModelCfg mConf key t
     , HasCrypto key (Performable m)
     , HasJsonData model t, HasLogger model t, HasNetwork model t, HasWallet model key t
+    , HasTransactionLogger m
     )
   => model
   -> AccountName
@@ -284,6 +287,7 @@ createAccountSubmit
      , HasWalletCfg mConf key t
      , CanSubmitTransaction t m
      , HasLogger model t
+     , HasTransactionLogger m
      )
   => model
   -> ChainId

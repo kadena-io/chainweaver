@@ -35,6 +35,7 @@ import Data.Text (Text)
 import Data.Time (NominalDiffTime, getCurrentTime, addUTCTime)
 import Data.Universe.Some.TH
 import Language.Javascript.JSaddle (liftJSM)
+import Pact.Server.ApiV1Client (HasTransactionLogger, runTransactionLoggerT, logTransactionStdout)
 import Reflex.Dom.Core
 import qualified Cardano.Crypto.Wallet as Crypto
 import qualified Data.Text.Encoding as T
@@ -96,7 +97,7 @@ desktop = Frontend
     (signingRequestMVar, signingResponseMVar) <- signingServer
       (pure ()) -- Can't foreground or background things
       (pure ())
-    mapRoutedT runBrowserStorageT $ do
+    mapRoutedT (flip runTransactionLoggerT logTransactionStdout . runBrowserStorageT) $ do
       (fileOpened, triggerOpen) <- Frontend.openFileDialog
       signingRequest <- mvarTriggerEvent signingRequestMVar
       bipWallet AppCfg
@@ -119,6 +120,7 @@ bipWallet
      , RouteToUrl (R FrontendRoute) m, SetRoute t (R FrontendRoute) m
      , HasConfigs m
      , HasStorage m, HasStorage (Performable m)
+     , HasTransactionLogger m
      )
   => AppCfg Crypto.XPrv t (RoutedT t (R FrontendRoute) (BIPCryptoT m))
   -> RoutedT t (R FrontendRoute) m ()

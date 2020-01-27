@@ -121,7 +121,6 @@ type CanSubmitTransaction t m =
   , Control.Monad.Ref.Ref m ~ IORef
   )
 
-
 -- | Fork a thread. Here because upstream 'forkJSM' doesn't give us the thread ID
 forkJSM' :: JSM () -> JSM ThreadId
 forkJSM' a = askJSM >>= \j -> liftIO $ forkIO $ runJSM a j
@@ -151,6 +150,7 @@ makeLenses ''TransactionSubmitFeedback
 submitTransactionWithFeedback
   :: ( CanSubmitTransaction t m
      , HasLogger model t
+     , HasTransactionLogger m
      )
   => model
   -> Pact.Command Text
@@ -216,9 +216,10 @@ submitTransactionWithFeedback model cmd chain nodeInfos = do
 
   -- Send the transaction
   pb <- getPostBuild
+  transactionLogger <- askTransactionLogger
   onRequestKey <- performEventAsync $ ffor pb $ \() cb -> liftJSM $ do
     send Status_Working
-    doReqFailover clientEnvs (Api.send Api.apiV1Client $ Api.SubmitBatch $ pure cmd) >>= \case
+    doReqFailover clientEnvs (Api.send Api.apiV1Client transactionLogger $ Api.SubmitBatch $ pure cmd) >>= \case
       Left errs -> do
         send Status_Failed
         for_ (nonEmpty errs) $ setMessage . Just . Left . packHttpErr . NEL.last
@@ -254,6 +255,7 @@ deploySubmit
      ( MonadWidget t m
      , Monoid modelCfg
      , HasLogger model t
+     , HasTransactionLogger m
      )
   => model
   -> ChainId
@@ -283,6 +285,7 @@ fullDeployFlow
      ( MonadWidget t m, Monoid modelCfg, Flattenable modelCfg t
      , HasNetwork model t
      , HasLogger model t
+     , HasTransactionLogger m
      )
   => DeployConfirmationConfig t
   -> model
@@ -327,6 +330,7 @@ uiDeployConfirmation
      , HasJsonData model t, HasJsonDataCfg modelCfg t
      , HasWallet model key t, HasCrypto key (Performable m)
      , HasLogger model t
+     , HasTransactionLogger m
      )
   => Text
   -> model

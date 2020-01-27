@@ -263,6 +263,7 @@ test-suite tests
                , pretty-show
                , Diff
                , text
+               , time
                , tasty
                , tasty-hunit
                , tasty-hedgehog

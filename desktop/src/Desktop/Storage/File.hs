@@ -33,6 +33,7 @@ import Data.Text (Text)
 import Language.Javascript.JSaddle (MonadJSM)
 import Obelisk.Configs
 import Obelisk.Route.Frontend
+import Pact.Server.ApiV1Client (HasTransactionLogger)
 import Reflex.Dom.Core
 import Reflex.Host.Class (MonadReflexCreateTrigger)
 import System.FilePath ((</>))
@@ -72,6 +73,7 @@ newtype FileStorageT m a = FileStorageT
     , DomBuilder t, NotReady t, MonadHold t, MonadSample t
     , TriggerEvent t, PostBuild t, HasJS x
     , MonadReflexCreateTrigger t, MonadQuery t q, Requester t
+    , HasTransactionLogger
     )
 
 instance PerformEvent t m => PerformEvent t (FileStorageT m) where
