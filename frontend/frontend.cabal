@@ -97,6 +97,7 @@ library
                , vector
                , monad-logger
                , fast-logger
+               , witherable
 
   exposed-modules: Frontend
                  , Frontend.AppCfg
