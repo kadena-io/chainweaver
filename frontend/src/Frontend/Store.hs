@@ -15,6 +15,7 @@ import Reflex.Dom
 import qualified Frontend.Store.V0 as V0
 import qualified Frontend.Store.V1 as V1
 import Frontend.Store.V1 as Latest
+import Frontend.Crypto.Class
 
 -- Doesn't execute the widget until we've checked the current version and upgraded if necessary
 -- TODO: This should have a better home.
@@ -40,6 +41,7 @@ versioner
      , FromJSON key
      , Monad m
      , HasStorage m
+     , HasCrypto key m
      )
   => StorageVersioner m (Latest.StoreFrontend key)
 versioner = StorageVersioner
@@ -71,7 +73,7 @@ versioner = StorageVersioner
           case mDump of
             Nothing -> error "TODO Add a version error case for this"
             Just dump -> do
-              let v1Dump = V1.upgradeFromV0 dump
+              v1Dump <- V1.upgradeFromV0 dump
               removeKeyUniverse (Proxy @(V0.StoreFrontend key)) localStorage
               removeKeyUniverse (Proxy @(V0.StoreFrontend key)) sessionStorage
               restoreLocalStorageDump prefix v1Dump 1
