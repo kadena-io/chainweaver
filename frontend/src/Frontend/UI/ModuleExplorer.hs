@@ -45,6 +45,7 @@ moduleExplorer
     , HasUIModuleExplorerModel model key t
     , HasUIModuleExplorerModelCfg mConf m t
     , HasCrypto key (Performable m)
+    , HasTransactionLogger m
     )
   => model
   -> m mConf

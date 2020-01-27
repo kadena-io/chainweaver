@@ -19,6 +19,7 @@ import Data.Coerce (coerce)
 import Data.Text (Text)
 import Language.Javascript.JSaddle (MonadJSM)
 import Obelisk.Route.Frontend
+import Pact.Server.ApiV1Client (HasTransactionLogger)
 import Pact.Types.Util (parseB16TextOnly)
 import Reflex.Dom hiding (fromJSString)
 import Reflex.Host.Class (MonadReflexCreateTrigger)
@@ -45,7 +46,7 @@ newtype BIPCryptoT m a = BIPCryptoT
     , HasStorage, HasDocument
     , Routed t r, RouteToUrl r, SetRoute t r, EventWriter t w
     , DomRenderHook t
-    , HasConfigs
+    , HasConfigs, HasTransactionLogger
     )
 
 bipCryptoGenPair :: Crypto.XPrv -> Text -> Int -> (Crypto.XPrv, PublicKey)

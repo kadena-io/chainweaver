@@ -1,6 +1,6 @@
+cabal-version: >= 1.10
 name: frontend
 version:             1.5.1.2
-cabal-version: >= 1.8
 build-type: Simple
 synopsis:            Frontend to the Pact smart contract language library
 description:
@@ -13,6 +13,7 @@ bug-reports:         https://github.com/kadena-io/pact/issues
 -- license-file:        LICENSE
 
 library
+  default-language: Haskell2010
   ghc-options: -O
   hs-source-dirs: src
 
@@ -199,6 +200,7 @@ library
 executable frontend
   main-is: main.hs
   hs-source-dirs: src-bin
+  default-language: Haskell2010
 
   build-depends: base
                , common
@@ -222,12 +224,12 @@ executable frontend
 
 test-suite tests
   type: exitcode-stdio-1.0
+  default-language: Haskell2010
 
   main-is: main.hs
   hs-source-dirs: tests
-  other-modules: KadenaAddressSpec
+  other-modules: Frontend.StorageSpec
                , Frontend.Network.NodeInfoSpec
-               , Frontend.StorageSpec
                , Frontend.Storage.InMemoryStorage
                , Frontend.Storage.InMemoryStorageSpec
                , Frontend.StoreSpec
@@ -261,6 +263,7 @@ test-suite tests
                , pretty-show
                , Diff
                , text
+               , time
                , tasty
                , tasty-hunit
                , tasty-hedgehog

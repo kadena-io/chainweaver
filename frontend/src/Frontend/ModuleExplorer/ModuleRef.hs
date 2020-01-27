@@ -245,6 +245,7 @@ fetchModule
     , HasNetwork model t
     , HasLogger model t
     , HasCrypto key (Performable m)
+    , HasTransactionLogger m
     )
   => model
   -> Event t DeployedModuleRef

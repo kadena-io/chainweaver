@@ -38,6 +38,7 @@ import qualified Data.Map                    as Map
 import           Data.Set (Set)
 import qualified Data.Set                    as Set
 import           Data.Text                   (Text)
+import qualified Data.Text                   as T
 import           Reflex
 import           Reflex.Dom hiding (Key)
 ------------------------------------------------------------------------------
@@ -114,13 +115,13 @@ hasPrivateKey = isJust . _keyPair_privateKey . snd
 
 uiAccountsTable
   :: forall t m model mConf key.
-  ( MonadWidget t m, HasUiWalletModelCfg model mConf key m t)
+  (MonadWidget t m, HasUiWalletModelCfg model mConf key m t, HasTransactionLogger m)
   => model -> m mConf
 uiAccountsTable = divClass "wallet__keys-list" . uiAccountItems
 
 uiAccountItems
   :: forall t m model mConf key.
-  ( MonadWidget t m, HasUiWalletModelCfg model mConf key m t)
+  (MonadWidget t m, HasUiWalletModelCfg model mConf key m t, HasTransactionLogger m)
   => model -> m mConf
 uiAccountItems model = do
   let net = model ^. network_selectedNetwork
@@ -133,16 +134,18 @@ uiAccountItems model = do
   events <- elAttr "table" tableAttrs $ do
     el "colgroup" $ do
       elAttr "col" ("style" =: "width: 5%") blank
-      elAttr "col" ("style" =: "width: 20%") blank
-      elAttr "col" ("style" =: "width: 35%") blank
-      elAttr "col" ("style" =: "width: 20%") blank
-      elAttr "col" ("style" =: "width: 20%") blank
+      elAttr "col" ("style" =: "width: 22.5%") blank
+      elAttr "col" ("style" =: "width: 22.5%") blank
+      elAttr "col" ("style" =: "width: 15%") blank
+      elAttr "col" ("style" =: "width: 10%") blank
+      elAttr "col" ("style" =: "width: 25%") blank
 
     el "thead" $ el "tr" $ do
       let mkHeading = elClass "th" "wallet__table-heading" . text
       traverse_ mkHeading $
         [ ""
         , "Account Name"
+        , "Keyset Info"
         , "Notes"
         , "Balance (KDA)"
         , ""
@@ -205,6 +208,7 @@ uiAccountItem keys name accountInfo = do
     let accordionCell o = "wallet__table-cell" <> if o then "" else " accordion-collapsed"
     clk <- elDynClass "td" (accordionCell <$> open) $ accordionButton def
     td $ text $ unAccountName name
+    td blank -- Keyset info column
     td $ dynText $ maybe "" unAccountNotes <$> notes
     td $ dynText $ uiAccountBalance False . Just <$> balance
     onDetails <- td $ buttons $ detailsIconButton cfg
@@ -213,10 +217,14 @@ uiAccountItem keys name accountInfo = do
   accountRow visible chain dAccount = trAcc visible $ do
     td blank -- Arrow column
     td $ text $ "Chain ID: " <> _chainId chain
+    accStatus <- holdUniqDyn $ _account_status <$> dAccount
+    elClass "td" "wallet__table-cell wallet__table-cell-keyset" $ dynText $ ffor accStatus $ \case
+      AccountStatus_Unknown -> "Unknown"
+      AccountStatus_DoesNotExist -> "Does not exist"
+      AccountStatus_Exists d -> keysetSummary $ _accountDetails_keyset d
     td $ dynText $ maybe "" unAccountNotes . _vanityAccount_notes . _account_storage <$> dAccount
     td $ dynText $ fmap (uiAccountBalance' False) dAccount
     td $ buttons $ do
-      accStatus <- holdUniqDyn $ _account_status <$> dAccount
       action <- switchHold never <=< dyn $ ffor accStatus $ \case
         AccountStatus_Unknown -> pure never
         AccountStatus_DoesNotExist -> do
@@ -245,6 +253,13 @@ uiAccountItem keys name accountInfo = do
       let balance = (^? account_status . _AccountStatus_Exists . accountDetails_balance) <$> dAccount
       pure (balance, action)
 
+keysetSummary :: AddressKeyset -> Text
+keysetSummary ks = T.intercalate ", "
+  [ tshow numKeys <> if numKeys == 1 then " key" else " keys"
+  , _addressKeyset_pred ks
+  , "[" <> T.intercalate ", " (fmap keyToText . Set.toList $ _addressKeyset_keys ks) <> "]"
+  ]
+    where numKeys = Set.size $ _addressKeyset_keys ks
 
 uiPublicKeyDropdown
   :: (DomBuilder t m, MonadFix m, MonadHold t m, PostBuild t m, HasWallet model key t)

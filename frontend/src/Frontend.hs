@@ -14,6 +14,7 @@ import qualified GHCJS.DOM.FileReader     as FileReader
 import qualified GHCJS.DOM.HTMLElement    as HTMLElement
 import qualified GHCJS.DOM.Types          as Types
 import           Reflex.Dom.Core
+import Pact.Server.ApiV1Client (runTransactionLoggerT, logTransactionStdout)
 
 import           Obelisk.Frontend
 import           Obelisk.Route.Frontend
@@ -52,7 +53,7 @@ frontend = Frontend
 
   , _frontend_body = prerender_ loaderMarkup $ do
     (fileOpened, triggerOpen) <- openFileDialog
-    mapRoutedT (runBrowserStorageT . runBrowserCryptoT) $ app blank $ AppCfg
+    mapRoutedT (flip runTransactionLoggerT logTransactionStdout . runBrowserStorageT . runBrowserCryptoT) $ app blank $ AppCfg
       { _appCfg_gistEnabled = True
       , _appCfg_externalFileOpened = fileOpened
       , _appCfg_openFileDialog = liftJSM triggerOpen

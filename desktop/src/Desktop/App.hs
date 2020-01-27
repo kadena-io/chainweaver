@@ -28,6 +28,7 @@ import qualified Network.Socket as Socket
 import qualified Snap.Http.Server as Snap
 import qualified System.Directory as Directory
 import qualified System.Environment as Env
+import Pact.Server.ApiV1Client (runTransactionLoggerT, logTransactionFile)
 
 import Backend (serveBackendRoute)
 import Common.Route
@@ -165,7 +166,7 @@ main' ffi mainBundleResourcePath runHTML = do
                   }
                 , _appCfg_logMessage = _appFFI_global_logFunction ffi
                 }
-          _ <- mapRoutedT (runFileStorageT libPath) $ runWithReplace loaderMarkup $
+          _ <- mapRoutedT (flip runTransactionLoggerT (logTransactionFile $ libPath </> "transaction_log") . runFileStorageT libPath) $ runWithReplace loaderMarkup $
             (liftIO (_appFFI_activateWindow ffi) >> liftIO (_appFFI_resizeWindow ffi defaultWindowSize) >> bipWallet appCfg) <$ bowserLoad
           pure ()
         }

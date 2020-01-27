@@ -84,6 +84,7 @@ import Frontend.Wallet
 uiSendModal
   :: ( SendConstraints model mConf key t m
      , Flattenable mConf t
+     , HasTransactionLogger m
      )
   => model -> (AccountName, ChainId, Account) -> Event t () -> m (mConf, Event t ())
 uiSendModal model (name, chain, acc) _onCloseExternal = do
@@ -144,7 +145,9 @@ withInitialTransfer _ (InitialTransferData_Account _)  = Nothing
 -- | Preview the transfer. Doesn't actually send any requests.
 previewTransfer
   :: forall model mConf key t m.
-     SendConstraints model mConf key t m
+    ( SendConstraints model mConf key t m
+    , HasTransactionLogger m
+    )
   => model
   -> TransferData
   -> Workflow t m (mConf, Event t ())
@@ -209,7 +212,7 @@ lookupAccountByKadenaAddress ka accounts = (name, chain,) <$> accounts ^? ix nam
 
 -- | Perform a same chain transfer or transfer-create
 sameChainTransfer
-  :: (MonadWidget t m, HasCrypto key m, Monoid mConf, HasLogger model t)
+  :: (MonadWidget t m, HasCrypto key m, Monoid mConf, HasLogger model t, HasTransactionLogger m)
   => model
   -> SharedNetInfo NodeInfo
   -> KeyStorage key
@@ -272,10 +275,10 @@ sameChainTransfer model netInfo keys (fromName, fromChain, fromAcc) (gasPayer, g
 
 -- | General transfer workflow. This is the initial configuration screen.
 sendConfig
-  :: SendConstraints model mConf key t m
+  :: (SendConstraints model mConf key t m, HasTransactionLogger m)
   => model -> InitialTransferData -> Workflow t m (mConf, Event t ())
 sendConfig model initData = Workflow $ do
-  close <- modalHeader $ text "Send"
+  close <- modalHeader $ text "Withdraw"
   rec
     (currentTab, _done) <- makeTabs initData $ attachWithMaybe (const . void . hush) (current recipient) nextTab
     (conf, mCaps, recipient) <- mainSection currentTab
@@ -320,7 +323,7 @@ sendConfig model initData = Workflow $ do
               cannotBeReceiverMsg = "Sender cannot be the receiver of a transfer"
 
           decoded <- fmap snd $ mkLabeledInput True "Kadena Address" (uiInputWithInlineFeedback
-            (fmap (Aeson.eitherDecodeStrict . T.encodeUtf8) . value)
+            (fmap (first (const "Invalid Kadena Address") . Aeson.eitherDecodeStrict . T.encodeUtf8) . value)
             inputIsDirty
             T.pack
             Nothing
@@ -418,6 +421,7 @@ runUnfinishedCrossChainTransfer
   :: ( PerformEvent t m, PostBuild t m, TriggerEvent t m, MonadHold t m, DomBuilder t m
      , MonadJSM (Performable m), MonadFix m
      , HasCrypto key (Performable m)
+     , HasTransactionLogger m
      )
   => Logger t
   -> SharedNetInfo NodeInfo
@@ -514,6 +518,7 @@ finishCrossChainTransferConfig
      , HasNetwork model t
      , HasWallet model key t
      , HasLogger model t
+     , HasTransactionLogger m
      )
   => model
   -> (AccountName, ChainId)
@@ -589,6 +594,7 @@ finishCrossChainTransfer
      , MonadJSM (Performable m), MonadFix m
      , HasCrypto key (Performable m)
      , Monoid mConf, HasWalletCfg mConf key t
+     , HasTransactionLogger m
      )
   => Logger t
   -> SharedNetInfo NodeInfo
@@ -653,6 +659,7 @@ crossChainTransfer
      , MonadJSM (Performable m), MonadJSM m, MonadFix m
      , HasCrypto key m, HasCrypto key (Performable m)
      , Monoid mConf, HasWalletCfg mConf key t
+     , HasTransactionLogger m
      )
   => Logger t
   -> SharedNetInfo NodeInfo
@@ -748,6 +755,7 @@ continueCrossChainTransfer
      , PerformEvent t m
      , MonadJSM (Performable m)
      , HasCrypto key (Performable m)
+     , HasTransactionLogger m
      )
   => Logger t
   -> NetworkName
@@ -765,29 +773,31 @@ continueCrossChainTransfer
   -> Event t (Pact.PactExec, Pact.ContProof)
   -- ^ The previous continuation step and associated proof
   -> m (Event t (Either Text (Pact.PactId, Pact.RequestKey)))
-continueCrossChainTransfer logL networkName envs publicMeta keys toChain gasPayer spvOk = performEventAsync $ ffor spvOk $ \(pe, proof) cb -> do
-  let pm = publicMeta
-        { _pmChainId = toChain
-        , _pmSender = unAccountName $ fst gasPayer
-        }
-      signingSet = accountKeys $ snd gasPayer
-      signingPairs = filterKeyPairs signingSet keys
-  payload <- buildContPayload networkName pm signingPairs $ ContMsg
-    { _cmPactId = Pact._pePactId pe
-    , _cmStep = succ $ Pact._peStep pe
-    , _cmRollback = False
-    , _cmData = Aeson.Object mempty
-    , _cmProof = Just proof
-    }
-  cont <- buildCmdWithPayload payload signingPairs
-  putLog logL LevelWarn "transfer-crosschain: running continuation on target chain"
-  -- We can't do a /local with continuations :(
-  liftJSM $ forkJSM $ do
-    r <- doReqFailover envs (Api.send Api.apiV1Client $ Api.SubmitBatch $ pure cont) >>= \case
-      Left es -> packHttpErrors logL es
-      Right (Api.RequestKeys (requestKey :| _)) -> pure $ Right (Pact._pePactId pe, requestKey)
-    liftIO $ cb r
-  pure ()
+continueCrossChainTransfer logL networkName envs publicMeta keys toChain gasPayer spvOk = do
+  transactionLogger <- askTransactionLogger
+  performEventAsync $ ffor spvOk $ \(pe, proof) cb -> do
+    let pm = publicMeta
+          { _pmChainId = toChain
+          , _pmSender = unAccountName $ fst gasPayer
+          }
+        signingSet = accountKeys $ snd gasPayer
+        signingPairs = filterKeyPairs signingSet keys
+    payload <- buildContPayload networkName pm signingPairs $ ContMsg
+      { _cmPactId = Pact._pePactId pe
+      , _cmStep = succ $ Pact._peStep pe
+      , _cmRollback = False
+      , _cmData = Aeson.Object mempty
+      , _cmProof = Just proof
+      }
+    cont <- buildCmdWithPayload payload signingPairs
+    putLog logL LevelWarn "transfer-crosschain: running continuation on target chain"
+    -- We can't do a /local with continuations :(
+    liftJSM $ forkJSM $ do
+      r <- doReqFailover envs (Api.send Api.apiV1Client transactionLogger $ Api.SubmitBatch $ pure cont) >>= \case
+        Left es -> packHttpErrors logL es
+        Right (Api.RequestKeys (requestKey :| _)) -> pure $ Right (Pact._pePactId pe, requestKey)
+      liftIO $ cb r
+    pure ()
 
 -- | Lookup the keyset of an account
 lookupKeySet
@@ -841,6 +851,7 @@ initiateCrossChainTransfer
      , PerformEvent t m
      , HasCrypto key (Performable m)
      , HasLogger model t
+     , HasTransactionLogger m
      )
   => model
   -> NetworkName
@@ -862,19 +873,21 @@ initiateCrossChainTransfer
   -> Event t Pact.KeySet
   -- ^ Recipient keyset
   -> m (Event t (Either Text Pact.RequestKey))
-initiateCrossChainTransfer model networkName envs publicMeta keys fromAccount fromGasPayer toAccount amount eks = performEventAsync $ ffor eks $ \rg cb -> do
-  cmd <- buildCmd Nothing networkName pm signingPairs [] code (mkDat rg) capabilities
-  liftJSM $ forkJSM $ do
-    r <- doReqFailover envs (Api.local Api.apiV1Client cmd) >>= \case
-      Left es -> packHttpErrors (model ^. logger) es
-      Right cr -> case Pact._crResult cr of
-        Pact.PactResult (Left e) -> do
-          putLog model LevelError (tshow e)
-          pure $ Left $ tshow e
-        Pact.PactResult (Right _) -> doReqFailover envs (Api.send Api.apiV1Client $ Api.SubmitBatch $ pure cmd) >>= \case
-          Left es -> packHttpErrors (model ^. logger) es
-          Right (Api.RequestKeys (requestKey :| _)) -> pure $ Right requestKey
-    liftIO $ cb r
+initiateCrossChainTransfer model networkName envs publicMeta keys fromAccount fromGasPayer toAccount amount eks = do
+  transactionLogger <- askTransactionLogger
+  performEventAsync $ ffor eks $ \rg cb -> do
+    cmd <- buildCmd Nothing networkName pm signingPairs [] code (mkDat rg) capabilities
+    liftJSM $ forkJSM $ do
+      r <- doReqFailover envs (Api.local Api.apiV1Client cmd) >>= \case
+        Left es -> packHttpErrors (model ^. logger) es
+        Right cr -> case Pact._crResult cr of
+          Pact.PactResult (Left e) -> do
+            putLog model LevelError (tshow e)
+            pure $ Left $ tshow e
+          Pact.PactResult (Right _) -> doReqFailover envs (Api.send Api.apiV1Client transactionLogger $ Api.SubmitBatch $ pure cmd) >>= \case
+            Left es -> packHttpErrors (model ^. logger) es
+            Right (Api.RequestKeys (requestKey :| _)) -> pure $ Right requestKey
+      liftIO $ cb r
   where
     keysetName = "receiverKey"
     code = T.unwords

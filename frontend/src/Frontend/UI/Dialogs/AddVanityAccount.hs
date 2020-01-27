@@ -8,7 +8,7 @@ module Frontend.UI.Dialogs.AddVanityAccount
   ) where
 
 import Data.Aeson (toJSON)
-import           Control.Lens                           ((^.),(<>~), (<&>))
+import           Control.Lens                           ((^.),(<>~), (<&>), (^?), to)
 import           Control.Error                          (hush)
 import           Control.Monad.Trans.Class              (lift)
 import           Control.Monad.Trans.Maybe              (MaybeT (..), runMaybeT)
@@ -27,7 +27,7 @@ import           Reflex.Dom.Core
 import           Reflex.Network.Extended
 
 import           Frontend.UI.DeploymentSettings
-import           Frontend.UI.Dialogs.DeployConfirmation (CanSubmitTransaction, submitTransactionWithFeedback)
+import           Frontend.UI.Dialogs.DeployConfirmation (CanSubmitTransaction, submitTransactionWithFeedback, _Status_Done, transactionSubmitFeedback_listenStatus)
 import           Frontend.UI.Modal.Impl
 import           Frontend.UI.Widgets
 import           Frontend.UI.Widgets.Helpers (dialogSectionHeading)
@@ -105,6 +105,7 @@ uiCreateAccountDialog
      , HasJsonData model t, HasLogger model t, HasNetwork model t, HasWallet model key t
      , HasCrypto key (Performable m)
      , HasJsonDataCfg mConf t, HasNetworkCfg mConf t, HasWalletCfg mConf key t
+     , HasTransactionLogger m
      )
   => model -> AccountName -> ChainId -> Maybe PublicKey -> Event t () -> m (mConf, Event t ())
 uiCreateAccountDialog model name chain mPublicKey _onCloseExternal = do
@@ -121,6 +122,7 @@ createAccountSplash
      , HasJsonData model t, HasLogger model t, HasNetwork model t, HasWallet model key t
      , HasCrypto key (Performable m)
      , HasJsonDataCfg mConf t, HasNetworkCfg mConf t, HasWalletCfg mConf key t
+     , HasTransactionLogger m
      )
   => model -> AccountName -> ChainId -> Maybe PublicKey -> Workflow t m (Text, (mConf, Event t ()))
 createAccountSplash model name chain mPublicKey = Workflow $ do
@@ -194,6 +196,7 @@ createAccountConfig
     , HasUISigningModelCfg mConf key t
     , HasCrypto key (Performable m)
     , HasJsonData model t, HasLogger model t, HasNetwork model t, HasWallet model key t
+    , HasTransactionLogger m
     )
   => model
   -> AccountName
@@ -279,9 +282,12 @@ createAccountConfig ideL name chainId keyset = Workflow $ do
     progressButtonLabalFn _ = "Next"
 
 createAccountSubmit
-  :: ( Monoid mConf
+  :: forall mConf model key t m a
+  .  ( Monoid mConf
+     , HasWalletCfg mConf key t
      , CanSubmitTransaction t m
      , HasLogger model t
+     , HasTransactionLogger m
      )
   => model
   -> ChainId
@@ -291,12 +297,17 @@ createAccountSubmit
 createAccountSubmit model chainId result nodeInfos = Workflow $ do
   let cmd = _deploymentSettingsResult_command result
 
-  _ <- elClass "div" "modal__main transaction_details" $
+  submitFeedback <- elClass "div" "modal__main transaction_details" $
     submitTransactionWithFeedback model cmd chainId nodeInfos
+
+  let succeeded = fmapMaybe (^? _Status_Done) (submitFeedback ^. transactionSubmitFeedback_listenStatus . to updated)
 
   done <- modalFooter $ confirmButton def "Done"
 
   pure
-    ( ("Creating Account", (mempty, done))
+    ( ("Creating Account",
+      ( mempty & walletCfg_refreshBalances <>~ succeeded
+      , done
+      ))
     , never
     )

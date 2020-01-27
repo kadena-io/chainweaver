@@ -31,8 +31,8 @@ data AppCfg key t m = AppCfg
   , _appCfg_signingResponse :: Either Text SigningResponse -> JSM ()
   -- ^ Responses to signings
   , _appCfg_enabledSettings :: EnabledSettings
-  -- ^ Logging Function
   , _appCfg_logMessage :: LogLevel -> LogStr -> IO ()
+  -- ^ Logging Function
   }
 
 
