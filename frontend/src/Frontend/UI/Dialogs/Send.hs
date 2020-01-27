@@ -250,7 +250,8 @@ sameChainTransfer model netInfo keys (fromName, fromChain, fromAcc) (gasPayer, g
           ]
         }
       dat = case mKeyset of
-        -- TODO check against chain
+        -- TODO check against chain (this data may be outdated unless refreshed
+        -- recently)
         Just keyset -> HM.singleton "key" $ Aeson.toJSON keyset
         _ -> mempty
       pkCaps = Map.unionsWith (<>)
@@ -332,7 +333,7 @@ sendConfig model initData = Workflow $ do
             (def & inputElementConfig_initialValue .~ (maybe "" (T.decodeUtf8 . LBS.toStrict . Aeson.encode) mInitToAddress))
 
           displayImmediateFeedback (updated decoded) cannotBeReceiverMsg
-            $ either (const False) (== KadenaAddress fromName fromChain Nothing) -- TODO the keyset part makes this odd
+            $ either (const False) (\ka -> _kadenaAddress_accountName ka == fromName && _kadenaAddress_chainId ka == fromChain)
 
           (_, amount, _) <- mkLabeledInput True "Amount" uiGasPriceInputField
             (def & inputElementConfig_initialValue .~ (maybe "" tshow mInitAmount))
