@@ -1,6 +1,9 @@
+{-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE QuasiQuotes #-}
 {-# LANGUAGE TypeApplications #-}
+{-# LANGUAGE TypeSynonymInstances #-}
 module Frontend.StoreSpec where
 
 import Control.Monad.IO.Class (liftIO)
@@ -10,7 +13,7 @@ import Data.IORef (readIORef)
 import Data.List (sort)
 import Data.Map (Map)
 import qualified Data.Map as Map
-import Data.Maybe (fromJust)
+import Data.Maybe (fromJust, fromMaybe)
 import Data.Proxy (Proxy(Proxy))
 import Data.Text (Text)
 import Pact.Types.Util (ParseText, fromText')
@@ -29,6 +32,7 @@ import Common.Network (ChainId (..), NetworkName, uncheckedNetworkName, NodeRef(
 import Common.OAuth (OAuthProvider)
 import Common.GistStore (GistMeta)
 
+import Frontend.Crypto.Class
 import Frontend.Storage
 import Frontend.Storage.InMemoryStorage
 
@@ -96,7 +100,7 @@ expectedKeys =
     , mkKey "4e6756f17642c430795e2780d7a1193449ece6e5d9b0ab8d9c01d6a3b8a4d1a1" "bab9fdfcc2e61269539a280dc735de1284f156c5b38b34b7f7bc3d6c2d650636c0031b438d1f3307d7fbe52a802ebe43a9e6b2840f7213fdcdaca3c5ea396c554e6756f17642c430795e2780d7a1193449ece6e5d9b0ab8d9c01d6a3b8a4d1a1307df71c95e281131c15d116c8385f08d389a0d8acf76ee9e14d5591956214e2"
     )
   , ( 2
-    , Key $ KeyPair (publicKeyYolo "0000000000000000000000000000000000000000000000000000000000000000") Nothing
+    , mkKey "0000000000000000000000000000000000000000000000000000000000000000" "0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
     )
   , ( 3
     , mkKey
@@ -203,8 +207,18 @@ expectedAccounts =
     , (uncheckedNetworkName "testnet", testnetmap)
     ]
 
-testVersioner :: (HasStorage m, Monad m) => StorageVersioner m (V1.StoreFrontend TestPrv)
+testVersioner :: (HasCrypto TestPrv m, HasStorage m, Monad m) => StorageVersioner m (V1.StoreFrontend TestPrv)
 testVersioner = versioner
+
+instance HasCrypto TestPrv InMemoryStorage where
+  cryptoGenKey n = do
+    let key = fromMaybe (error "cryptoSign InMemoryStorage: key not found") $ IntMap.lookup n expectedKeys
+        pair = _key_pair key
+        priv = fromMaybe (error "cryptoSign InMemoryStorage: no private key") $ _keyPair_privateKey pair
+    pure (priv, _keyPair_publicKey pair)
+  cryptoSign = error "cryptoSign for InMemoryStorage: not implemented"
+  cryptoSignWithPactKey = error "cryptoSignWithPactKey for InMemoryStorage: not implemented"
+  cryptoGenPubKeyFromPrivate = error "cryptoGenPubKeyFromPrivate for InMemoryStorage: not implemented"
 
 test_v0ToV1Upgrade :: TestTree
 test_v0ToV1Upgrade = testCaseSteps "V0 to V1 Upgrade" $ \step -> do
