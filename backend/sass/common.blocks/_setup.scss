@@ -388,6 +388,7 @@ $setup-progress-font-size: 18px;
 
 .setup__password-bg {
   width: 325px;
+  margin-top: 5rem;
   @media (max-height: 700px) {
     display: none;
   }
