@@ -230,10 +230,11 @@ test-suite tests
 
   main-is: main.hs
   hs-source-dirs: tests
-  other-modules: Frontend.StorageSpec
+  other-modules: Frontend.CommandLogSpec
                , Frontend.Network.NodeInfoSpec
                , Frontend.Storage.InMemoryStorage
                , Frontend.Storage.InMemoryStorageSpec
+               , Frontend.StorageSpec
                , Frontend.StoreSpec
                , Frontend.StoreTestKey
                , TestUtils
