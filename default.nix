@@ -14,12 +14,13 @@ let
     ${pkgs.sass}/bin/sass ${./backend/sass}/index.scss $out/sass.css
   '';
   appName = "Kadena Chainweaver Beta 2";
+  version = "2020.01.28";
   macApp = (import ./mac.nix) {
     inherit obApp pkgs appName sass;
   };
   homeManagerModule = obelisk.reflex-platform.hackGet ./deps/home-manager + /nixos;
   linuxApp = (import ./linux.nix) {
-    inherit obApp pkgs appName sass homeManagerModule;
+    inherit obApp pkgs appName sass homeManagerModule version;
   };
 in obApp // rec {
   inherit sass;
