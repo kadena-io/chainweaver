@@ -8,6 +8,7 @@
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE TypeFamilies #-}
 
 -- | Annotations for our `Editor`.
@@ -20,6 +21,10 @@ module Frontend.Editor.Annotation
   ( -- * Types and Classes
     AnnoType (..)
   , Annotation (..)
+  , annotation_type
+  , annotation_msg
+  , annotation_source
+  , annotation_pos
   , AnnotationSource (..)
     -- * Parsers
   , annoParser
@@ -37,6 +42,7 @@ import           Text.Read            (readMaybe)
 import qualified Text.Megaparsec      as MP
 import qualified Text.Megaparsec.Char as MP
 ------------------------------------------------------------------------------
+import Common.Foundation (makePactLenses)
 
 -- | Annotation type.
 data AnnoType = AnnoType_Warning | AnnoType_Error
@@ -58,6 +64,8 @@ data Annotation = Annotation
   , _annotation_pos    :: Maybe (Int, Int) -- row, column
   }
   deriving (Show, Eq, Ord)
+
+makePactLenses ''Annotation
 
 annoParser :: Text -> Maybe [Annotation]
 annoParser = MP.parseMaybe pactErrorParser
