@@ -37,9 +37,7 @@ let
       <key>CFBundleIdentifier</key>
       <string>${bundleIdentifier}</string>
       <key>CFBundleVersion</key>
-      <string>${obApp.ghc.frontend.version}</string>
-      <key>CFBundleShortVersionString</key>
-      <string>${obApp.ghc.frontend.version}</string>
+      <string><placeholder-version/></string>
       <key>CFBundlePackageType</key>
       <string>APPL</string>
       <key>CFBundleExecutable</key>
@@ -167,6 +165,7 @@ in rec {
     chmod -R +w "$tmpdir/${appName}.app"
     strip "$tmpdir/${appName}.app/Contents/MacOS/${appName}"
     sed "s|<team-id/>|$TEAM_ID|" < "${xcent}" > "$tmpdir/xcent"
+    sed -i "" "s|<placeholder-version/>|$(git rev-parse HEAD)|" "$tmpdir/${appName}.app/Contents/Info.plist"
     cat "$tmpdir/xcent"
     plutil "$tmpdir/xcent"
     /usr/bin/codesign --deep --force --sign "$signer" --entitlements "$tmpdir/xcent" --timestamp=none "$tmpdir/${appName}.app"
