@@ -635,7 +635,7 @@ uiAdditiveInput
   -> (particular -> Bool)
   -> (particular -> Bool)
   -> particular
-  -> Event t (IntMap.IntMap (Maybe particular))
+  -> Event t (PatchIntMap particular)
   -> m (Dynamic t (IntMap.IntMap out))
 uiAdditiveInput mkIndividualInput getParticular allowNewRow allowDeleteRow initialSelection onExternal = do
   let
@@ -657,7 +657,7 @@ uiAdditiveInput mkIndividualInput getParticular allowNewRow allowDeleteRow initi
         -- Add a new row when all rows have a selection and there are more keys to choose from
       , fmap PatchIntMap $ switchDyn $ maybe never decideAddNewRow . IntMap.lookupMax <$> dInputKeys
         -- Set the values of the rows from an external event.
-      , PatchIntMap <$> onExternal
+      , onExternal
       ]
     dInputKeys <- foldDyn applyAlways keys newSelection
 
