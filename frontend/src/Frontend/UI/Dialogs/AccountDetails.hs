@@ -19,7 +19,7 @@ import qualified Pact.Types.ChainId as Pact
 
 import Frontend.Crypto.Ed25519 (keyToText)
 import Frontend.Foundation
-import Frontend.KadenaAddress
+import Frontend.TxBuilder
 import Frontend.Network
 import Frontend.UI.Modal
 import Frontend.UI.Widgets
@@ -72,7 +72,7 @@ uiAccountDetailsOnChainImpl
   -> Event t ()
   -> Workflow t m (Text, (mConf, Event t ()))
 uiAccountDetailsOnChainImpl netname (name, chain, account) onClose = Workflow $ do
-  let kAddr = KadenaAddress name chain Nothing
+  let kAddr = TxBuilder name chain Nothing
 
       displayText lbl v cls =
         let
@@ -92,8 +92,8 @@ uiAccountDetailsOnChainImpl netname (name, chain, account) onClose = Workflow $ 
       notesEdit <- notesEditor $ _vanityAccount_notes $ _account_storage account
       -- separator
       horizontalDashedSeparator
-      -- Kadena Address
-      _ <- uiDisplayKadenaAddressWithCopy True kAddr
+      -- Tx Builder
+      _ <- uiDisplayTxBuilderWithCopy True kAddr
       pure notesEdit
 
     dialogSectionHeading mempty "Keyset Info"

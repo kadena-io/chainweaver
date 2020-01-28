@@ -237,7 +237,7 @@ typeCheckVerify m t = mdo
         parsedRs = Map.fromList $ mapMaybe (traverse $ join bitraverse annoParser) msgsRs
 
         fixLineNumber :: Int -> Annotation -> Annotation
-        fixLineNumber n a = a { _annotation_line = _annotation_line a + n }
+        fixLineNumber n a = a & annotation_pos . _Just . _1 +~ n
 
         fixLineNumbers :: Int -> [Annotation] -> [Annotation]
         fixLineNumbers n = map (fixLineNumber n)
