@@ -11,7 +11,6 @@ import           Data.Witherable                        (wither)
 import           Data.Text                              (Text)
 import qualified Data.Text as T
 import qualified Data.IntSet as IntSet
-import           Data.IntMap (IntMap)
 import qualified Data.IntMap as IntMap
 import qualified Data.Map as Map
 import           Data.Set                               (Set)
@@ -27,13 +26,13 @@ import           Frontend.Wallet
 import           Frontend.Foundation
 
 data KeysetInputs t i a = KeysetInputs
-  { _keysetInputs_value :: Dynamic t (IntMap i)
+  { _keysetInputs_value :: Dynamic t (PatchIntMap i)
   , _keysetInputs_set :: Dynamic t (Set a)
   }
 
 data DefinedKeyset t = DefinedKeyset
-  { _definedKeyset_internalKeys :: KeysetInputs t (Maybe (Maybe Int)) PublicKey
-  , _definedKeyset_externalKeys :: KeysetInputs t (Maybe (Maybe PublicKey)) PublicKey
+  { _definedKeyset_internalKeys :: KeysetInputs t (Maybe Int) PublicKey
+  , _definedKeyset_externalKeys :: KeysetInputs t (Maybe PublicKey) PublicKey
   , _definedKeyset_predicate :: Dynamic t Text
   }
 
@@ -51,8 +50,8 @@ data ExternalKeyInput t = ExternalKeyInput
 
 uiExternalKeyInput
   :: forall t m. MonadWidget t m
-  => Event t (IntMap (Maybe (Maybe PublicKey)))
-  -> m (KeysetInputs t (Maybe (Maybe PublicKey)) PublicKey)
+  => Event t (PatchIntMap (Maybe PublicKey))
+  -> m (KeysetInputs t (Maybe PublicKey) PublicKey)
 uiExternalKeyInput onPreselection = do
   let
     uiPubkeyInput :: Maybe PublicKey -> m (ExternalKeyInput t)
@@ -86,9 +85,9 @@ uiExternalKeyInput onPreselection = do
     Nothing
     onPreselection
 
-  let dFormState :: Dynamic t (IntMap.IntMap (Maybe (Maybe PublicKey)))
-      dFormState = dExternalKeyInput >>= IntMap.foldMapWithKey
-        (\k t -> IntMap.singleton k . Just <$> _externalKeyInput_value t)
+  let dFormState :: Dynamic t (PatchIntMap (Maybe PublicKey))
+      dFormState = dExternalKeyInput >>= fmap PatchIntMap
+        . IntMap.foldMapWithKey (\k t -> IntMap.singleton k . Just <$> _externalKeyInput_value t)
 
   pure $ KeysetInputs dFormState (dExternalKeyInput >>= toSet)
 
@@ -98,8 +97,8 @@ defineKeyset
        , HasWallet model key t
        )
   => model
-  -> Event t (IntMap (Maybe (Maybe Int)))
-  -> m (KeysetInputs t (Maybe (Maybe Int)) PublicKey)
+  -> Event t (PatchIntMap (Maybe Int))
+  -> m (KeysetInputs t (Maybe Int) PublicKey)
 defineKeyset model onPreselection = do
   let
     selectMsgKey = Nothing
@@ -124,8 +123,9 @@ defineKeyset model onPreselection = do
     selectMsgKey
     onPreselection
 
-  let dFormState :: Dynamic t (IntMap.IntMap (Maybe (Maybe Int)))
-      dFormState = fmap (ifoldMap (\k v -> IntMap.singleton k $ Just v))
+  let dFormState :: Dynamic t (PatchIntMap (Maybe Int))
+      dFormState = fmap PatchIntMap
+        $ fmap (ifoldMap (\k v -> IntMap.singleton k $ Just v))
         $ joinDynThroughMap
         $ fmap (Map.fromList . IntMap.assocs . fmap value) dSelectedKeys
 

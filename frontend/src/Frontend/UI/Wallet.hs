@@ -32,7 +32,7 @@ module Frontend.UI.Wallet
 ------------------------------------------------------------------------------
 import           Control.Applicative         (liftA2)
 import           Control.Lens
-import           Control.Monad               (when, (<=<), join)
+import           Control.Monad               (when, (<=<))
 import qualified Data.IntMap                 as IntMap
 import qualified Data.Map                    as Map
 import           Data.Set (Set)
