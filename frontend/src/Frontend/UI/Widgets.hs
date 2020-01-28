@@ -794,7 +794,7 @@ uiDisplayTxBuilderWithCopy withLabel address = void $ do
   let txtAddr = LT.toStrict $ LTB.toLazyText $ AesonPretty.encodePrettyToTextBuilder address
   -- Tx Builder
   elClass "div" "segment segment_type_tertiary labeled-input" $ do
-    when withLabel $ divClass "label labeled-input__label" $ text "[Tx Builder]"
+    when withLabel $ divClass "label labeled-input__label" $ text "Tx Builder"
     void $ uiTextAreaElement $ def
       & initialAttributes <>~ (
         "disabled" =: "true" <>

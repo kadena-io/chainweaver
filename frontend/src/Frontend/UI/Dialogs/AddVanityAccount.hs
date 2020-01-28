@@ -192,8 +192,8 @@ createAccountNotGasPayer
 createAccountNotGasPayer ideL name chain selectedKeyset keyset = Workflow $ do
   modalMain $ do
     dialogSectionHeading mempty "Notice"
-    divClass "group" $ text "The text below contains all of the Account info you have just configured. Share this [Tx Builder] with someone else to pay the gas for the transaction to create the Account."
-    dialogSectionHeading mempty "[Tx Builder]"
+    divClass "group" $ text "The text below contains all of the Account info you have just configured. Share this Tx Builder with someone else to pay the gas for the transaction to create the Account."
+    dialogSectionHeading mempty "Tx Builder"
     divClass "group" $ do
       _ <- uiDisplayTxBuilderWithCopy False $ TxBuilder
         { _txBuilder_accountName = name
