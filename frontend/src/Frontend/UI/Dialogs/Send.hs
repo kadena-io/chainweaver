@@ -122,7 +122,7 @@ data SharedNetInfo a = SharedNetInfo
 data TransferData = TransferData
   { _transferData_fromAccount :: (AccountName, ChainId, Account)
   , _transferData_fromGasPayer :: (AccountName, Account)
-  , _transferData_toAddress :: TxBuilder
+  , _transferData_toTxBuilder :: TxBuilder
   , _transferData_crossChainData :: Maybe CrossChainData
   , _transferData_amount :: Decimal
   }
@@ -153,7 +153,7 @@ previewTransfer
   -> Workflow t m (mConf, Event t ())
 previewTransfer model transfer = Workflow $ do
   let
-    toAddress = _transferData_toAddress transfer
+    toTxBuilder = _transferData_toTxBuilder transfer
     fromAccount@(fromName,fromChain,_) = _transferData_fromAccount transfer
     fromGasPayer = _transferData_fromGasPayer transfer
     crossChainData = _transferData_crossChainData transfer
@@ -175,9 +175,9 @@ previewTransfer model transfer = Workflow $ do
         & inputElementConfig_initialValue .~ unAccountName (fst fromGasPayer)
       mkLabeledInput True "Recipient Account" uiInputElement $ def
         & initialAttributes .~ "disabled" =: "disabled"
-        & inputElementConfig_initialValue .~ unAccountName (_txBuilder_accountName toAddress)
+        & inputElementConfig_initialValue .~ unAccountName (_txBuilder_accountName toTxBuilder)
       for_ crossChainData $ \ccd -> do
-        let toChain = _txBuilder_chainId toAddress
+        let toChain = _txBuilder_chainId toTxBuilder
         mkLabeledInput True ("Gas Payer (Chain " <> _chainId toChain <> ")") uiInputElement $ def
           & initialAttributes .~ "disabled" =: "disabled"
           & inputElementConfig_initialValue .~ unAccountName (fst $ _crossChainData_recipientChainGasPayer ccd)
@@ -197,9 +197,9 @@ previewTransfer model transfer = Workflow $ do
           mNetInfo <- sampleNetInfo model
           keys <- sample $ current $ model ^. wallet_keys
           AccountData accounts <- sample $ current $ model ^. wallet_accounts
-          let toAccount n = maybe (Left toAddress) Right $ lookupAccountByTxBuilder toAddress =<< Map.lookup n accounts
+          let toAccount n = maybe (Left toTxBuilder) Right $ lookupAccountByTxBuilder toTxBuilder =<< Map.lookup n accounts
           pure $ ffor mNetInfo $ \n -> case crossChainData of
-            Nothing -> sameChainTransfer (model ^. logger) n keys fromAccount fromGasPayer toAddress amount
+            Nothing -> sameChainTransfer (model ^. logger) n keys fromAccount fromGasPayer toTxBuilder amount
             Just ccd -> crossChainTransfer (model ^. logger) n keys fromAccount (toAccount $ _sharedNetInfo_network n) fromGasPayer ccd amount
         ]
   pure ((mempty, close), nextScreen)
@@ -299,13 +299,13 @@ sendConfig model initData = Workflow $ do
                 , _transferData_crossChainData = mCCD
                 , _transferData_fromAccount = fromAccount
                 , _transferData_fromGasPayer = fromGasPayer
-                , _transferData_toAddress = toAccount
+                , _transferData_toTxBuilder = toAccount
                 }
           pure $ previewTransfer model transfer
   pure ((conf, close <> cancel), nextScreen)
   where
     fromAccount@(fromName, fromChain, fromAcc) = initialTransferDataCata id _transferData_fromAccount initData
-    mInitToAddress = withInitialTransfer _transferData_toAddress initData
+    mInitToAddress = withInitialTransfer _transferData_toTxBuilder initData
     mInitFromGasPayer = withInitialTransfer (_transferData_fromGasPayer) initData
     mInitCrossChainGasPayer = join $ withInitialTransfer (fmap (_crossChainData_recipientChainGasPayer) . _transferData_crossChainData) initData
     mInitAmount = withInitialTransfer _transferData_amount initData
@@ -685,7 +685,7 @@ crossChainTransfer logL netInfo keys fromAccount toAccount fromGasPayer crossCha
   pb <- getPostBuild
   let (fromName, fromChain, _) = fromAccount
       toChain = either _txBuilder_chainId (view _2) toAccount
-      toAddress = either id (\(n, c, _) -> TxBuilder n c Nothing) toAccount
+      toTxBuilder = either id (\(n, c, _) -> TxBuilder n c Nothing) toAccount
   -- Client envs for making requests to each chain
   let envFromChain = mkClientEnvs nodeInfos fromChain
       envToChain = mkClientEnvs nodeInfos toChain
@@ -695,7 +695,7 @@ crossChainTransfer logL netInfo keys fromAccount toAccount fromGasPayer crossCha
     Right (_name, _chain, acc)
       | Just ks <- acc ^? account_status . _AccountStatus_Exists . accountDetails_keyset
       -> pure $ Right (toPactKeyset ks) <$ pb
-      | otherwise -> lookupKeySet logL networkName envToChain publicMeta toAddress
+      | otherwise -> lookupKeySet logL networkName envToChain publicMeta toTxBuilder
     Left ka -> case _txBuilder_keyset ka of
       Nothing -> lookupKeySet logL networkName envToChain publicMeta ka
       -- If the account hasn't been created, don't try to lookup the guard. Just
@@ -704,7 +704,7 @@ crossChainTransfer logL netInfo keys fromAccount toAccount fromGasPayer crossCha
       Just ks -> pure $ Right (toPactKeyset ks) <$ pb -- TODO verify against chain
   let (keySetError, keySetOk) = fanEither keySetResponse
   -- Start the transfer
-  initiated <- initiateCrossChainTransfer logL networkName envFromChain publicMeta keys fromAccount fromGasPayer toAddress amount keySetOk
+  initiated <- initiateCrossChainTransfer logL networkName envFromChain publicMeta keys fromAccount fromGasPayer toTxBuilder amount keySetOk
   let (initiatedError, initiatedOk) = fanEither initiated
   initiateStatus <- holdDyn Status_Waiting $ leftmost
     [ Status_Working <$ keySetOk
@@ -740,7 +740,7 @@ crossChainTransfer logL netInfo keys fromAccount toAccount fromGasPayer crossCha
   let mkUCCT requestKey = (_sharedNetInfo_selectedNetwork netInfo, fromName, fromChain, Just UnfinishedCrossChainTransfer
         { _unfinishedCrossChainTransfer_requestKey = requestKey
         , _unfinishedCrossChainTransfer_recipientChain = toChain
-        , _unfinishedCrossChainTransfer_recipientAccount = _txBuilder_accountName toAddress
+        , _unfinishedCrossChainTransfer_recipientAccount = _txBuilder_accountName toTxBuilder
         , _unfinishedCrossChainTransfer_amount = amount
         })
   let conf = mempty
