@@ -16,7 +16,7 @@ let
   appName = "Kadena Chainweaver Beta 2";
   version = "2020.01.28";
   macApp = (import ./mac.nix) {
-    inherit obApp pkgs appName sass;
+    inherit obApp pkgs appName sass version;
   };
   homeManagerModule = obelisk.reflex-platform.hackGet ./deps/home-manager + /nixos;
   linuxApp = (import ./linux.nix) {

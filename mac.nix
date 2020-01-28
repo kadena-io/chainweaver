@@ -1,6 +1,7 @@
 { obApp
 , pkgs
 , appName
+, version
 , sass
 , macAppIcon ? ./mac/static/icons/kadena.png
 , macPactDocumentIcon ? ./mac/static/icons/pact-document.png
@@ -180,15 +181,15 @@ in rec {
       --icon-size 100 \
       --icon "${appName}.app" 200 190 \
       --app-drop-link 600 185 \
-      "$tmpdir/${appName}.dmg" \
+      "$tmpdir/${appName}.${version}.dmg" \
       "$tmpdir/${appName}.app"
 
     # Sign the dmg
-    /usr/bin/codesign --sign "$signer" "$tmpdir/${appName}.dmg"
+    /usr/bin/codesign --sign "$signer" "$tmpdir/${appName}.${version}.dmg"
 
-    mv "$tmpdir/${appName}.dmg" .
+    mv "$tmpdir/${appName}.${version}.dmg" .
 
     # Quarantine it for reproducibility (otherwise can cause unexpected 'app is damaged' errors when automatically applied to downloaded .dmg files)
-    xattr -w com.apple.quarantine "00a3;5d4331e1;Safari;1AE3D17F-B83D-4ADA-94EA-219A44467959" "${appName}.dmg"
+    xattr -w com.apple.quarantine "00a3;5d4331e1;Safari;1AE3D17F-B83D-4ADA-94EA-219A44467959" "${appName}.${version}.dmg"
   '';
 }
