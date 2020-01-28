@@ -169,7 +169,7 @@ library
                  , Frontend.UI.Widgets
                  , Frontend.UI.Widgets.AccountName
                  , Frontend.UI.Widgets.Helpers
-                 , Frontend.KadenaAddress
+                 , Frontend.TxBuilder
                  , Frontend.Wallet
                  , Reflex.Class.Extended
                  , Reflex.Dom.ACE.Extended

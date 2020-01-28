@@ -40,7 +40,7 @@ import           Frontend.Network
 import           Frontend.Wallet
 import           Frontend.Foundation
 import           Frontend.Log
-import           Frontend.KadenaAddress
+import           Frontend.TxBuilder
 
 -- Allow the user to create a 'vanity' account, which is an account with a custom name
 -- that lives on the chain. Requires GAS to create.
@@ -192,13 +192,13 @@ createAccountNotGasPayer
 createAccountNotGasPayer ideL name chain selectedKeyset keyset = Workflow $ do
   modalMain $ do
     dialogSectionHeading mempty "Notice"
-    divClass "group" $ text "The text below contains all of the Account info you have just configured. Share this [Kadena Address] with someone else to pay the gas for the transaction to create the Account."
-    dialogSectionHeading mempty "[Kadena Address]"
+    divClass "group" $ text "The text below contains all of the Account info you have just configured. Share this [Tx Builder] with someone else to pay the gas for the transaction to create the Account."
+    dialogSectionHeading mempty "[Tx Builder]"
     divClass "group" $ do
-      _ <- uiDisplayKadenaAddressWithCopy False $ KadenaAddress
-        { _kadenaAddress_accountName = name
-        , _kadenaAddress_chainId = chain
-        , _kadenaAddress_keyset = Just keyset
+      _ <- uiDisplayTxBuilderWithCopy False $ TxBuilder
+        { _txBuilder_accountName = name
+        , _txBuilder_chainId = chain
+        , _txBuilder_keyset = Just keyset
         }
       pure ()
   modalFooter $ do
