@@ -32,7 +32,7 @@ module Frontend.UI.Wallet
 ------------------------------------------------------------------------------
 import           Control.Applicative         (liftA2)
 import           Control.Lens
-import           Control.Monad               (when, (<=<), join)
+import           Control.Monad               (when, (<=<))
 import qualified Data.IntMap                 as IntMap
 import qualified Data.Map                    as Map
 import           Data.Set (Set)
@@ -190,7 +190,7 @@ uiAccountItem keys name accountInfo = do
     visible <- toggle False clk
     results <- listWithKey chainMap $ accountRow visible
     let balances :: Dynamic t [Maybe AccountBalance]
-        balances = join $ traverse fst . Map.elems <$> results
+        balances = fmap Map.elems $ joinDynThroughMap $ (fmap . fmap) fst results
   let dialogs = switch $ leftmost . fmap snd . Map.elems <$> current results
   pure $ leftmost [dialog, dialogs]
   where

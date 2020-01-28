@@ -41,6 +41,9 @@ module Frontend.JsonData
   , makeJsonData
   -- * Utility function
   , showJsonError
+  , getJsonDataError
+  , getJsonDataObjectLax
+  , getJsonDataObjectStrict
   ) where
 
 
@@ -157,8 +160,8 @@ data JsonData t = JsonData
     -- to be sent in the next transaction.
   , _jsonData_rawInput         :: Dynamic t Text
     -- ^ Raw input entered by the user, which should be a valid JSON object.
-  , _jsonData_data             :: Dynamic t (Either JsonError Object)
-   -- ^ The result of combining keysets with raw input from the user. Will be
+  , _jsonData_data             :: Dynamic t (Object, Either JsonError Object)
+   -- ^ The result of combining keysets with raw input from the user. Will have
    -- a `Left` value if `_jsonData_rawInput` does not hold a valid JSON object.
   , _jsonData_overlappingProps :: Dynamic t (Set Text)
    -- ^ json object properties of the `_jsonData_rawInput` that overlap with keyset names.
@@ -166,6 +169,15 @@ data JsonData t = JsonData
   deriving Generic
 
 makePactLenses ''JsonData
+
+getJsonDataError :: Reflex t => JsonData t -> Dynamic t (Maybe JsonError)
+getJsonDataError jd = ffor (_jsonData_data jd) $ preview _Left . snd
+
+getJsonDataObjectLax :: Reflex t => JsonData t -> Dynamic t Object
+getJsonDataObjectLax jd = ffor (_jsonData_data jd) $ \(keysetsObj, rawParse) -> keysetsObj <> fold rawParse
+
+getJsonDataObjectStrict :: Reflex t => JsonData t -> Dynamic t (Either JsonError Object)
+getJsonDataObjectStrict jd = ffor (_jsonData_data jd) $ \(keysetsObj, rawParse) -> (keysetsObj <>) <$> rawParse
 
 -- | Predefined predicates in Pact.
 --
@@ -190,11 +202,6 @@ makeJsonData walletL rawCfg = mfix $ \json -> do
       keySetsObj = fmap keysetsToObject . joinKeysets $ keysets
       rawInputObj = parseObjectOrEmpty <$> rawInput
 
-      combinedObj = do
-        fromSets <- keySetsObj
-        fromRaw <- rawInputObj
-        pure $ mappend fromSets <$> fromRaw
-
     duplicates <- holdUniqDyn $ do
       let getKeys = Set.fromList . H.keys
       fromSets <- getKeys <$> keySetsObj
@@ -204,7 +211,7 @@ makeJsonData walletL rawCfg = mfix $ \json -> do
     pure $ JsonData
       { _jsonData_keysets = keysets
       , _jsonData_rawInput = rawInput
-      , _jsonData_data = combinedObj
+      , _jsonData_data = zipDyn keySetsObj rawInputObj
       , _jsonData_overlappingProps = duplicates
       }
   where
@@ -299,7 +306,7 @@ makeKeysets walletL cfg =
 -- | Show a descriptive error message.
 showJsonError :: JsonError -> Text
 showJsonError = \case
-  JsonError_NoObject -> "ERROR: Data must be a valid JSON object!"
+  JsonError_NoObject -> "Data must be a valid JSON object!"
 
 -- | Translate `Keysets` to a JSON `Object`.
 keysetsToObject :: Keysets -> Object

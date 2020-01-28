@@ -146,12 +146,10 @@ walletSetupRecoverHeader currentScreen = setupDiv "workflow-header" $ do
   unless (currentScreen `elem` [WalletScreen_RecoverPassphrase, WalletScreen_SplashScreen]) $ do
     elClass "ol" (setupClass "workflow-icons") $ do
       faEl "1" "Password" WalletScreen_Password
-      line "pw-recovery" WalletScreen_PrePassphrase
+      line WalletScreen_PrePassphrase
       faEl "2" "Recovery" WalletScreen_CreatePassphrase
-      line "recovery-verify" WalletScreen_VerifyPassphrase
+      line WalletScreen_VerifyPassphrase
       faEl "3" "Verify" WalletScreen_VerifyPassphrase
-      line "verify-done" WalletScreen_Done
-      faEl "4" "Done" WalletScreen_Done
 
   where
     addActive sid =
@@ -160,8 +158,8 @@ walletSetupRecoverHeader currentScreen = setupDiv "workflow-header" $ do
       else
         []
 
-    line cls sid =
-      elClass "div" (T.unwords $ setupClass "workflow-icon": setupClass "header-line" : cls : addActive sid) blank
+    line sid =
+      elClass "div" (T.unwords $ setupClass "workflow-icon": setupClass "header-line" : addActive sid) blank
 
     isActive sid = sid `elem` (progress currentScreen)
     progress WalletScreen_Password =
@@ -179,12 +177,11 @@ walletSetupRecoverHeader currentScreen = setupDiv "workflow-header" $ do
     faEl n lbl sid =
       elClass "li" (setupClass "workflow-icon" <> if isActive sid then " active" else T.empty) $ do
         elClass "div" (setupClass "workflow-icon-circle" <> " " <> setupClass ("workflow-screen-" <> T.toLower lbl)) $
-          setupDiv "workflow-icon-inner" $
-          if isActive sid then
-            elClass "i" ("fa fa-check fa-lg fa-inverse " <> setupClass "workflow-icon-active") blank
-          else
-            text n
-        text lbl
+          setupDiv "workflow-icon-symbol" $ do
+            if isActive sid
+              then elClass "i" ("fa fa-check fa-lg fa-inverse " <> setupClass "workflow-icon-active") blank
+              else text n
+            setupDiv "workflow-icon-label" $ text lbl
 
 runSetup
   :: forall t m

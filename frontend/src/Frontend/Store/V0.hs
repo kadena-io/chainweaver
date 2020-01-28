@@ -54,7 +54,6 @@ instance ArgDict c (StoreFrontend key) where
   type ConstraintsFor (StoreFrontend key) c
     = ( c (Accounts key)
       , c PublicMeta
-      -- , c (Map NetworkName [NodeRef])
       , c NetworkMap
       , c NetworkName
       , c (Map OAuthProvider AccessToken)

@@ -39,7 +39,7 @@ import Language.Javascript.JSaddle.Types (MonadJSM)
 import Frontend.Crypto.Class (PactKey (..), HasCrypto, cryptoGenPubKeyFromPrivate)
 
 import Frontend.Foundation
-import Frontend.KadenaAddress
+import Frontend.TxBuilder
 import Frontend.Network
 import Frontend.Log
 
@@ -145,7 +145,7 @@ uiReceiveModal0 model account mchain onClose = Workflow $ do
 
   (showingAddr, chain, (conf, ttl, gaslimit, _, transferInfo)) <- divClass "modal__main receive" $ do
     rec
-      showingKadenaAddress <- toggle True $ onAddrClick <> onReceiClick
+      showingTxBuilder <- toggle True $ onAddrClick <> onReceiClick
 
       dialogSectionHeading mempty "Destination"
       chain <- divClass "group" $ do
@@ -156,13 +156,13 @@ uiReceiveModal0 model account mchain onClose = Workflow $ do
           Nothing -> userChainIdSelect model
           Just cid -> (pure $ Just cid) <$ displayText "Chain ID" (_chainId cid) mempty
 
-      (onAddrClick, ((), ())) <- controlledAccordionItem showingKadenaAddress mempty
-        (accordionHeaderBtn "Option 1: Copy and share Kadena Address") $ do
+      (onAddrClick, ((), ())) <- controlledAccordionItem showingTxBuilder mempty
+        (accordionHeaderBtn "Option 1: Copy and share Tx Builder") $ do
         dyn_ $ ffor chain $ divClass "group" . \case
           Nothing -> text "Please select a chain"
-          Just cid -> uiDisplayKadenaAddressWithCopy True $ KadenaAddress account cid Nothing
+          Just cid -> uiDisplayTxBuilderWithCopy True $ TxBuilder account cid Nothing
 
-      (onReceiClick, results) <- controlledAccordionItem (not <$> showingKadenaAddress) mempty
+      (onReceiClick, results) <- controlledAccordionItem (not <$> showingTxBuilder) mempty
         (accordionHeaderBtn "Option 2: Transfer from non-Chainweaver Account") $ do
         dialogSectionHeading mempty "Sender Details"
         transferInfo0 <- divClass "group" $ uiReceiveFromLegacyAccount model
@@ -170,7 +170,7 @@ uiReceiveModal0 model account mchain onClose = Workflow $ do
         (conf0, ttl0, gaslimit0, gasPrice) <- divClass "group" $ uiMetaData model Nothing Nothing
         pure (conf0, ttl0, gaslimit0, gasPrice, transferInfo0)
 
-    pure (showingKadenaAddress, chain, snd results)
+    pure (showingTxBuilder, chain, snd results)
 
   let needsSender = liftA2 (&&) (isNothing <$> transferInfo) (not <$> showingAddr)
       isDisabled = liftA2 (||) (isNothing <$> chain) needsSender

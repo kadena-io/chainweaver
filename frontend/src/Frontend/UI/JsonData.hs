@@ -117,8 +117,8 @@ uiJsonDataSetFocus onKeysetCreate onRawInputCreate w d = divClass "tabset" $ mdo
 
       let
         onDupWarning = mkDupWarning <$> (updated $ d ^. jsonData_overlappingProps)
-        onObjWarning = either mkObjError (const []) <$> updated (d ^. jsonData_data)
-        onUpperCaseWarning = either mkObjError anyNameUpperCase <$> updated (d ^. jsonData_data)
+        onObjWarning = either mkObjError (const []) <$> updated (d ^. jsonData . to getJsonDataObjectStrict)
+        onUpperCaseWarning = either mkObjError anyNameUpperCase <$> updated (d ^. jsonData . to getJsonDataObjectStrict)
         onAnno = mconcat [ onObjWarning, onDupWarning, onUpperCaseWarning ]
 
       (e, onSetRawInput) <- elClass' "div" "wysiwyg wysiwyg_height_30" $ dataEditor onAnno "" onNewData
@@ -126,7 +126,7 @@ uiJsonDataSetFocus onKeysetCreate onRawInputCreate w d = divClass "tabset" $ mdo
       pure $ mempty & jsonDataCfg_setRawInput .~ onSetRawInput
 
     tabPane mempty curSelection JsonDataView_Result $ do
-      uiJsonDataResult $ d ^. jsonData_data
+      uiJsonDataResult $ getJsonDataObjectLax d
 
     pure $ mconcat [ keysetVCfg, rawVCfg ]
   where
@@ -159,9 +159,8 @@ uiJsonDataSetFocus onKeysetCreate onRawInputCreate w d = divClass "tabset" $ mdo
          }
        ]
 
-uiJsonDataResult :: (DomBuilder t m, PostBuild t m) => Dynamic t (Either JsonError Aeson.Object) -> m ()
-uiJsonDataResult = el "pre" . dynText . fmap showData
-  where showData = either showJsonError (safeDecodeUtf8 . BSL.toStrict . encodePretty)
+uiJsonDataResult :: (DomBuilder t m, PostBuild t m) => Dynamic t Aeson.Object -> m ()
+uiJsonDataResult = el "pre" . dynText . fmap (safeDecodeUtf8 . BSL.toStrict . encodePretty)
 
 uiCreateKeysets
   :: (MonadWidget t m, Monoid mConf, HasJsonDataCfg mConf t, Flattenable mConf t)
@@ -240,12 +239,10 @@ uiCreateKeyset jsonD =
     where
       -- Check combined data and not only keyset names for duplicates:
       check =
-        mkCheck <$> _jsonData_data jsonD <*> _jsonData_keysets jsonD
+        mkCheck <$> _jsonData_data jsonD
 
-      mkCheck json keysets ks =
-        let dupe = case json of
-              Left _  -> Map.member ks keysets
-              Right j -> H.member ks j
+      mkCheck (keysetsObj, rawParse) ks =
+        let dupe = H.member ks $ keysetsObj <> fold rawParse
         in
           if dupe then Left "This keyset name is already in use"
           else if T.any Char.isUpper ks then Left "Keyset name must be all lowercase"

@@ -233,7 +233,7 @@ buildDeploymentSettingsResult
   :: ( HasNetwork model t
      , HasJsonData model t
      , HasWallet model key t
-     , Monad (Dynamic t)
+     , Reflex t
      , Monad (Performable m)
      , MonadJSM (Performable m)
      , HasCrypto key (Performable m)
@@ -263,7 +263,7 @@ buildDeploymentSettingsResult m mSender mGasPayer signers cChainId capabilities 
   signs <- lift signers
   let signingAccounts = signs <> (Set.insert sender $ Map.keysSet caps)
       deploySettingsJsonData = fromMaybe mempty $ _deploymentSettingsConfig_data settings
-  jsonData' <- ExceptT $ over (mapped . _Left) DeploymentSettingsResultError_InvalidJsonData $ m ^. jsonData . jsonData_data
+  jsonData' <- ExceptT $ over (mapped . _Left) DeploymentSettingsResultError_InvalidJsonData $ m ^. jsonData . to getJsonDataObjectStrict
   ttl' <- lift ttl
   limit <- lift gasLimit
   lastPublicMeta <- lift $ m ^. network_meta
@@ -453,7 +453,7 @@ uiDeploymentSettings m settings = mdo
               <*> code
               <*> (m ^. network_meta)
               <*> capabilities
-              <*> (m ^. jsonData . jsonData_data)
+              <*> (m ^. jsonData . to getJsonDataObjectStrict)
               <*> mNetworkId
               <*> aChainId
               <*> aSender

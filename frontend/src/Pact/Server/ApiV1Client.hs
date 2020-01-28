@@ -62,14 +62,14 @@ data ApiV1Client m = ApiV1Client
 apiV1Client :: forall m. (MonadIO m, MonadReader ClientEnv m, RunClient m) => ApiV1Client m
 apiV1Client = ApiV1Client
   { send = \appendLog batch@(SubmitBatch commands) -> do
-    url <- asks baseUrl
-    timestamp <- liftIO getCurrentTime
-    for_ commands $ \command -> liftIO $ appendLog $ CommandLog
-      { _commandLog_command = command
-      , _commandLog_timestamp = timestamp
-      , _commandLog_url = T.pack $ showBaseUrl url
-      }
-    sendF batch
+      url <- asks baseUrl
+      timestamp <- liftIO getCurrentTime
+      for_ commands $ \command -> liftIO $ appendLog $ CommandLog
+        { _commandLog_command = command
+        , _commandLog_timestamp = timestamp
+        , _commandLog_url = T.pack $ showBaseUrl url
+        }
+      sendF batch
   , poll = pollF
   , listen = listenF
   , local = localF

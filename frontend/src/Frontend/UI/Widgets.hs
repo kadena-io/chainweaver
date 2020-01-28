@@ -17,7 +17,7 @@ module Frontend.UI.Widgets
   -- ** Single Purpose Widgets
   , uiGasPriceInputField
   , uiDetailsCopyButton
-  , uiDisplayKadenaAddressWithCopy
+  , uiDisplayTxBuilderWithCopy
     -- * Values for _deploymentSettingsConfig_chainId:
   , predefinedChainIdSelect
   , predefinedChainIdDisplayed
@@ -117,7 +117,7 @@ import           Frontend.UI.Widgets.Helpers (imgWithAlt, imgWithAltCls, makeCli
                                               preventUpAndDownArrow,
                                               preventScrollWheel,
                                               tabPane')
-import           Frontend.KadenaAddress (KadenaAddress)
+import           Frontend.TxBuilder (TxBuilder)
 ------------------------------------------------------------------------------
 
 -- | A styled checkbox.
@@ -635,7 +635,7 @@ uiAdditiveInput
   -> (particular -> Bool)
   -> (particular -> Bool)
   -> particular
-  -> Event t (IntMap.IntMap (Maybe particular))
+  -> Event t (PatchIntMap particular)
   -> m (Dynamic t (IntMap.IntMap out))
 uiAdditiveInput mkIndividualInput getParticular allowNewRow allowDeleteRow initialSelection onExternal = do
   let
@@ -657,7 +657,7 @@ uiAdditiveInput mkIndividualInput getParticular allowNewRow allowDeleteRow initi
         -- Add a new row when all rows have a selection and there are more keys to choose from
       , fmap PatchIntMap $ switchDyn $ maybe never decideAddNewRow . IntMap.lookupMax <$> dInputKeys
         -- Set the values of the rows from an external event.
-      , PatchIntMap <$> onExternal
+      , onExternal
       ]
     dInputKeys <- foldDyn applyAlways keys newSelection
 
@@ -779,7 +779,7 @@ uiDetailsCopyButton txt = do
         & uiButtonCfg_title .~ constDyn (Just "Copy")
   divClass "details__copy-btn-wrapper" $ copyButton cfg False txt
 
-uiDisplayKadenaAddressWithCopy
+uiDisplayTxBuilderWithCopy
   :: ( MonadJSM (Performable m)
      , DomBuilder t m
      , MonadHold t m
@@ -788,18 +788,18 @@ uiDisplayKadenaAddressWithCopy
      , PerformEvent t m
      )
   => Bool
-  -> KadenaAddress
+  -> TxBuilder
   -> m ()
-uiDisplayKadenaAddressWithCopy withLabel address = void $ do
+uiDisplayTxBuilderWithCopy withLabel address = void $ do
   let txtAddr = LT.toStrict $ LTB.toLazyText $ AesonPretty.encodePrettyToTextBuilder address
-  -- Kadena Address
+  -- Tx Builder
   elClass "div" "segment segment_type_tertiary labeled-input" $ do
-    when withLabel $ divClass "label labeled-input__label" $ text "[Kadena Address]"
+    when withLabel $ divClass "label labeled-input__label" $ text "Tx Builder"
     void $ uiTextAreaElement $ def
       & initialAttributes <>~ (
         "disabled" =: "true" <>
         "rows" =: tshow (max 13 {- for good luck -} $ length $ T.lines txtAddr) <>
-        "class" =: " labeled-input__input labeled-input__kadena-address"
+        "class" =: " labeled-input__input labeled-input__tx-builder"
         )
       & textAreaElementConfig_initialValue .~ txtAddr
   uiDetailsCopyButton $ pure txtAddr

@@ -29,7 +29,7 @@ module Frontend.UI.Dialogs.NetworkEdit
 
 ------------------------------------------------------------------------------
 import           Control.Lens
-import           Control.Monad       (join, void, (<=<))
+import           Control.Monad       (join, void, (<=<), guard)
 import           Data.IntMap         (IntMap)
 import qualified Data.IntMap         as IntMap
 import           Data.Map            (Map)
@@ -77,20 +77,32 @@ uiNetworkEdit
   -> Event t () -> m (mConf, Event t ())
 uiNetworkEdit m _onClose = do
   onClose <- modalHeader $ text "Network Settings"
-  cfg <- modalMain $ do
+  (dNew, cfg) <- modalMain $ do
       selCfg <- uiGroup "segment" $ do
         uiGroupHeader mempty $ do
           dialogSectionHeading mempty "Select Network"
         uiNetworkSelect "select_type_primary select_width_full" m
 
-      editCfg <- uiGroup "segment" $ do
+      (dNew, editCfg) <- uiGroup "segment" $ do
         uiGroupHeader mempty $ dialogSectionHeading mempty "Edit Networks"
         onNewNet <- validatedInputWithButton "group__header" checkNetName "Create new network." "Create"
+        dSelectNewNet <- holdDyn Nothing $ Just <$> onNewNet
         editCfg <- uiNetworks m
         let newCfg = updateNetworks m $ (\n -> Map.insert n []) <$> onNewNet
-        pure $ mconcat [ newCfg, editCfg ]
 
-      pure $ selCfg <> editCfg
+        pure $ (dSelectNewNet, mconcat [ newCfg, editCfg ])
+
+      pure $ (dNew, selCfg <> editCfg)
+
+  let
+    dSelectNewest = (\nets mnet -> do
+        net <- mnet
+        nodes <- Map.lookup net nets
+        guard $ not $ null nodes
+        pure net
+      )
+      <$> (m ^. network_networks)
+      <*> dNew
 
   modalFooter $ do
     -- TODO: Is this really a "Cancel" button?!
@@ -101,6 +113,7 @@ uiNetworkEdit m _onClose = do
       ( cfg
           & networkCfg_resetNetworks .~ onReset
           & networkCfg_refreshModule .~ onConfirm
+          & networkCfg_selectNetwork .~ tagMaybe (current dSelectNewest) onConfirm
       , leftmost [onConfirm, onClose]
       )
   where

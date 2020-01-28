@@ -97,6 +97,7 @@ library
                , vector
                , monad-logger
                , fast-logger
+               , witherable
 
   exposed-modules: Frontend
                  , Frontend.AppCfg
@@ -168,7 +169,7 @@ library
                  , Frontend.UI.Widgets
                  , Frontend.UI.Widgets.AccountName
                  , Frontend.UI.Widgets.Helpers
-                 , Frontend.KadenaAddress
+                 , Frontend.TxBuilder
                  , Frontend.Wallet
                  , Reflex.Class.Extended
                  , Reflex.Dom.ACE.Extended
@@ -229,10 +230,11 @@ test-suite tests
 
   main-is: main.hs
   hs-source-dirs: tests
-  other-modules: Frontend.StorageSpec
+  other-modules: Frontend.CommandLogSpec
                , Frontend.Network.NodeInfoSpec
                , Frontend.Storage.InMemoryStorage
                , Frontend.Storage.InMemoryStorageSpec
+               , Frontend.StorageSpec
                , Frontend.StoreSpec
                , Frontend.StoreTestKey
                , TestUtils

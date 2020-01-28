@@ -24,7 +24,7 @@ import Control.Applicative (liftA2)
 import Control.Concurrent
 import Control.Error.Util (hush)
 import Control.Lens hiding (failover)
-import Control.Monad (join, when, void, (<=<))
+import Control.Monad (guard, join, when, void, (<=<))
 import Control.Monad.Except (throwError)
 import Control.Monad.Logger (LogLevel(..))
 import Control.Monad.Trans.Except
@@ -68,7 +68,7 @@ import qualified Text.URI as URI
 import Common.Wallet
 import Frontend.Crypto.Class (HasCrypto)
 import Frontend.Foundation hiding (Arg)
-import Frontend.KadenaAddress
+import Frontend.TxBuilder
 import Frontend.Network
 import Frontend.Log
 import Frontend.UI.DeploymentSettings
@@ -122,7 +122,7 @@ data SharedNetInfo a = SharedNetInfo
 data TransferData = TransferData
   { _transferData_fromAccount :: (AccountName, ChainId, Account)
   , _transferData_fromGasPayer :: (AccountName, Account)
-  , _transferData_toAddress :: KadenaAddress
+  , _transferData_toTxBuilder :: TxBuilder
   , _transferData_crossChainData :: Maybe CrossChainData
   , _transferData_amount :: Decimal
   }
@@ -153,7 +153,7 @@ previewTransfer
   -> Workflow t m (mConf, Event t ())
 previewTransfer model transfer = Workflow $ do
   let
-    toAddress = _transferData_toAddress transfer
+    toTxBuilder = _transferData_toTxBuilder transfer
     fromAccount@(fromName,fromChain,_) = _transferData_fromAccount transfer
     fromGasPayer = _transferData_fromGasPayer transfer
     crossChainData = _transferData_crossChainData transfer
@@ -175,9 +175,9 @@ previewTransfer model transfer = Workflow $ do
         & inputElementConfig_initialValue .~ unAccountName (fst fromGasPayer)
       mkLabeledInput True "Recipient Account" uiInputElement $ def
         & initialAttributes .~ "disabled" =: "disabled"
-        & inputElementConfig_initialValue .~ unAccountName (_kadenaAddress_accountName toAddress)
+        & inputElementConfig_initialValue .~ unAccountName (_txBuilder_accountName toTxBuilder)
       for_ crossChainData $ \ccd -> do
-        let toChain = _kadenaAddress_chainId toAddress
+        let toChain = _txBuilder_chainId toTxBuilder
         mkLabeledInput True ("Gas Payer (Chain " <> _chainId toChain <> ")") uiInputElement $ def
           & initialAttributes .~ "disabled" =: "disabled"
           & inputElementConfig_initialValue .~ unAccountName (fst $ _crossChainData_recipientChainGasPayer ccd)
@@ -197,18 +197,18 @@ previewTransfer model transfer = Workflow $ do
           mNetInfo <- sampleNetInfo model
           keys <- sample $ current $ model ^. wallet_keys
           AccountData accounts <- sample $ current $ model ^. wallet_accounts
-          let toAccount n = maybe (Left toAddress) Right $ lookupAccountByKadenaAddress toAddress =<< Map.lookup n accounts
+          let toAccount n = maybe (Left toTxBuilder) Right $ lookupAccountByTxBuilder toTxBuilder =<< Map.lookup n accounts
           pure $ ffor mNetInfo $ \n -> case crossChainData of
-            Nothing -> sameChainTransfer (model ^. logger) n keys fromAccount fromGasPayer toAddress amount
+            Nothing -> sameChainTransfer (model ^. logger) n keys fromAccount fromGasPayer toTxBuilder amount
             Just ccd -> crossChainTransfer (model ^. logger) n keys fromAccount (toAccount $ _sharedNetInfo_network n) fromGasPayer ccd amount
         ]
   pure ((mempty, close), nextScreen)
 
-lookupAccountByKadenaAddress :: KadenaAddress -> Map AccountName (AccountInfo Account) -> Maybe (AccountName, ChainId, Account)
-lookupAccountByKadenaAddress ka accounts = (name, chain,) <$> accounts ^? ix name . accountInfo_chains . ix chain
+lookupAccountByTxBuilder :: TxBuilder -> Map AccountName (AccountInfo Account) -> Maybe (AccountName, ChainId, Account)
+lookupAccountByTxBuilder ka accounts = (name, chain,) <$> accounts ^? ix name . accountInfo_chains . ix chain
   where
-    name = _kadenaAddress_accountName ka
-    chain = _kadenaAddress_chainId ka
+    name = _txBuilder_accountName ka
+    chain = _txBuilder_chainId ka
 
 -- | Perform a same chain transfer or transfer-create
 sameChainTransfer
@@ -220,19 +220,19 @@ sameChainTransfer
   -- ^ From account
   -> (AccountName, Account)
   -- ^ Gas payer
-  -> KadenaAddress
+  -> TxBuilder
   -- ^ Recipient account
   -> Decimal
   -- ^ Amount to transfer
   -> Workflow t m (mConf, Event t ())
 sameChainTransfer model netInfo keys (fromName, fromChain, fromAcc) (gasPayer, gasPayerAcc) toAccount amount = Workflow $ do
-  let mKeyset = _kadenaAddress_keyset toAccount
+  let mKeyset = _txBuilder_keyset toAccount
   let code = T.unwords $
         [ "(coin." <> case mKeyset of
           Nothing -> "transfer"
           Just _ -> "transfer-create"
         , tshow $ unAccountName fromName
-        , tshow $ unAccountName $ _kadenaAddress_accountName toAccount
+        , tshow $ unAccountName $ _txBuilder_accountName toAccount
         , case mKeyset of
           Nothing -> mempty
           Just _ -> "(read-keyset 'key)"
@@ -245,12 +245,13 @@ sameChainTransfer model netInfo keys (fromName, fromChain, fromAcc) (gasPayer, g
         { _scName = QualifiedName { _qnQual = "coin", _qnName = "TRANSFER", _qnInfo = def }
         , _scArgs =
           [ PLiteral $ LString $ unAccountName fromName
-          , PLiteral $ LString $ unAccountName $ _kadenaAddress_accountName toAccount
+          , PLiteral $ LString $ unAccountName $ _txBuilder_accountName toAccount
           , PLiteral $ LDecimal amount
           ]
         }
       dat = case mKeyset of
-        -- TODO check against chain
+        -- TODO check against chain (this data may be outdated unless refreshed
+        -- recently)
         Just keyset -> HM.singleton "key" $ Aeson.toJSON keyset
         _ -> mempty
       pkCaps = Map.unionsWith (<>)
@@ -298,13 +299,13 @@ sendConfig model initData = Workflow $ do
                 , _transferData_crossChainData = mCCD
                 , _transferData_fromAccount = fromAccount
                 , _transferData_fromGasPayer = fromGasPayer
-                , _transferData_toAddress = toAccount
+                , _transferData_toTxBuilder = toAccount
                 }
           pure $ previewTransfer model transfer
   pure ((conf, close <> cancel), nextScreen)
   where
     fromAccount@(fromName, fromChain, fromAcc) = initialTransferDataCata id _transferData_fromAccount initData
-    mInitToAddress = withInitialTransfer _transferData_toAddress initData
+    mInitToAddress = withInitialTransfer _transferData_toTxBuilder initData
     mInitFromGasPayer = withInitialTransfer (_transferData_fromGasPayer) initData
     mInitCrossChainGasPayer = join $ withInitialTransfer (fmap (_crossChainData_recipientChainGasPayer) . _transferData_crossChainData) initData
     mInitAmount = withInitialTransfer _transferData_amount initData
@@ -322,8 +323,8 @@ sendConfig model initData = Workflow $ do
               insufficientFundsMsg = "Sender has insufficient funds."
               cannotBeReceiverMsg = "Sender cannot be the receiver of a transfer"
 
-          decoded <- fmap snd $ mkLabeledInput True "Kadena Address" (uiInputWithInlineFeedback
-            (fmap (first (const "Invalid Kadena Address") . Aeson.eitherDecodeStrict . T.encodeUtf8) . value)
+          decoded <- fmap snd $ mkLabeledInput True "Tx Builder" (uiInputWithInlineFeedback
+            (fmap (first (const "Invalid Tx Builder") . Aeson.eitherDecodeStrict . T.encodeUtf8) . value)
             inputIsDirty
             T.pack
             Nothing
@@ -332,7 +333,7 @@ sendConfig model initData = Workflow $ do
             (def & inputElementConfig_initialValue .~ (maybe "" (T.decodeUtf8 . LBS.toStrict . Aeson.encode) mInitToAddress))
 
           displayImmediateFeedback (updated decoded) cannotBeReceiverMsg
-            $ either (const False) (== KadenaAddress fromName fromChain Nothing) -- TODO the keyset part makes this odd
+            $ either (const False) (\ka -> _txBuilder_accountName ka == fromName && _txBuilder_chainId ka == fromChain)
 
           let
             balance = _account_status fromAcc ^? _AccountStatus_Exists . accountDetails_balance . to unAccountBalance
@@ -357,13 +358,13 @@ sendConfig model initData = Workflow $ do
           displayImmediateFeedback (updated insufficientFunds) insufficientFundsMsg id
 
           pure $ runExceptT $ do
-            r <- ExceptT $ first (\_ -> "Invalid kadena address") <$> decoded
+            r <- ExceptT $ first (\_ -> "Invalid Tx Builder") <$> decoded
             a <- ExceptT $ maybe (Left "Invalid amount") Right <$> amount
 
             when (maybe True (a >) $ fromAcc ^? account_status . _AccountStatus_Exists . accountDetails_balance . _AccountBalance) $
               throwError insufficientFundsMsg
 
-            when (r == KadenaAddress fromName fromChain Nothing) $
+            when (r == TxBuilder fromName fromChain Nothing) $
               throwError cannotBeReceiverMsg
 
             pure (r, a)
@@ -377,7 +378,7 @@ sendConfig model initData = Workflow $ do
             divClass "group" $ text $ e <> ": please go back and check the configuration."
             pure $ pure Nothing
           Right (ka, _amount) -> do
-            let toChain = _kadenaAddress_chainId ka
+            let toChain = _txBuilder_chainId ka
             when (toChain /= fromChain) $ do
               elClass "h3" ("heading heading_type_h3") $ text "This is a cross chain transfer."
               el "p" $ text $ T.concat
@@ -572,7 +573,7 @@ finishCrossChainTransferConfig model fromAccount ucct = Workflow $ do
         accounts <- Map.lookup net $ unAccountData netToAccount
         n <- ma
         AccountInfo _ chains <- Map.lookup (fst n) accounts
-        _acc <- Map.lookup fromChain chains
+        guard $ Map.member fromChain chains
         pure n
     pure (sender, conf)
   next <- modalFooter $ confirmButton def "Next"
@@ -678,7 +679,7 @@ crossChainTransfer
   -> KeyStorage key
   -> (AccountName, ChainId, Account)
   -- ^ From account
-  -> Either KadenaAddress (AccountName, ChainId, Account)
+  -> Either TxBuilder (AccountName, ChainId, Account)
   -- ^ To address/account. We pass in a full 'Account' if we have one, such that
   -- we can avoid looking up the keyset.
   -> (AccountName, Account)
@@ -695,8 +696,8 @@ crossChainTransfer logL netInfo keys fromAccount toAccount fromGasPayer crossCha
   close <- modalHeader $ text "Cross chain transfer"
   pb <- getPostBuild
   let (fromName, fromChain, _) = fromAccount
-      toChain = either _kadenaAddress_chainId (view _2) toAccount
-      toAddress = either id (\(n, c, _) -> KadenaAddress n c Nothing) toAccount
+      toChain = either _txBuilder_chainId (view _2) toAccount
+      toTxBuilder = either id (\(n, c, _) -> TxBuilder n c Nothing) toAccount
   -- Client envs for making requests to each chain
   let envFromChain = mkClientEnvs nodeInfos fromChain
       envToChain = mkClientEnvs nodeInfos toChain
@@ -706,8 +707,8 @@ crossChainTransfer logL netInfo keys fromAccount toAccount fromGasPayer crossCha
     Right (_name, _chain, acc)
       | Just ks <- acc ^? account_status . _AccountStatus_Exists . accountDetails_keyset
       -> pure $ Right (toPactKeyset ks) <$ pb
-      | otherwise -> lookupKeySet logL networkName envToChain publicMeta toAddress
-    Left ka -> case _kadenaAddress_keyset ka of
+      | otherwise -> lookupKeySet logL networkName envToChain publicMeta toTxBuilder
+    Left ka -> case _txBuilder_keyset ka of
       Nothing -> lookupKeySet logL networkName envToChain publicMeta ka
       -- If the account hasn't been created, don't try to lookup the guard. Just
       -- assume the account name _is_ the public key (since it must be a
@@ -715,7 +716,7 @@ crossChainTransfer logL netInfo keys fromAccount toAccount fromGasPayer crossCha
       Just ks -> pure $ Right (toPactKeyset ks) <$ pb -- TODO verify against chain
   let (keySetError, keySetOk) = fanEither keySetResponse
   -- Start the transfer
-  initiated <- initiateCrossChainTransfer logL networkName envFromChain publicMeta keys fromAccount fromGasPayer toAddress amount keySetOk
+  initiated <- initiateCrossChainTransfer logL networkName envFromChain publicMeta keys fromAccount fromGasPayer toTxBuilder amount keySetOk
   let (initiatedError, initiatedOk) = fanEither initiated
   initiateStatus <- holdDyn Status_Waiting $ leftmost
     [ Status_Working <$ keySetOk
@@ -751,7 +752,7 @@ crossChainTransfer logL netInfo keys fromAccount toAccount fromGasPayer crossCha
   let mkUCCT requestKey = (_sharedNetInfo_selectedNetwork netInfo, fromName, fromChain, Just UnfinishedCrossChainTransfer
         { _unfinishedCrossChainTransfer_requestKey = requestKey
         , _unfinishedCrossChainTransfer_recipientChain = toChain
-        , _unfinishedCrossChainTransfer_recipientAccount = _kadenaAddress_accountName toAddress
+        , _unfinishedCrossChainTransfer_recipientAccount = _txBuilder_accountName toTxBuilder
         , _unfinishedCrossChainTransfer_amount = amount
         })
   let conf = mempty
@@ -822,18 +823,18 @@ lookupKeySet
   -> PublicMeta
   -- ^ Public meta to steal values from TODO this can be removed when pact
   -- allows /local requests without running gas
-  -> KadenaAddress
+  -> TxBuilder
   -- ^ Account on said chain to find
   -> m (Event t (Either Text Pact.KeySet))
 lookupKeySet logL networkName envs publicMeta addr = do
   now <- getCreationTime
   let code = T.unwords
         [ "(coin.details"
-        , tshow $ unAccountName $ _kadenaAddress_accountName addr
+        , tshow $ unAccountName $ _txBuilder_accountName addr
         , ")"
         ]
       pm = publicMeta
-        { _pmChainId = _kadenaAddress_chainId addr
+        { _pmChainId = _txBuilder_chainId addr
         , _pmSender = "chainweaver"
         , _pmTTL = 60
         , _pmCreationTime = now
@@ -878,7 +879,7 @@ initiateCrossChainTransfer
   -- ^ From account
   -> (AccountName, Account)
   -- ^ Gas payer ("from" chain)
-  -> KadenaAddress
+  -> TxBuilder
   -- ^ Recipient address
   -> Decimal
   -- ^ Amount to transfer
@@ -905,9 +906,9 @@ initiateCrossChainTransfer model networkName envs publicMeta keys fromAccount fr
     code = T.unwords
       [ "(coin.transfer-crosschain"
       , tshow $ unAccountName $ view _1 fromAccount
-      , tshow $ unAccountName $ _kadenaAddress_accountName toAccount
+      , tshow $ unAccountName $ _txBuilder_accountName toAccount
       , "(read-keyset '" <> keysetName <> ")"
-      , tshow $ _chainId $ _kadenaAddress_chainId toAccount
+      , tshow $ _chainId $ _txBuilder_chainId toAccount
       , tshow amount
       , ")"
       ]

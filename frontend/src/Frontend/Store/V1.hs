@@ -11,12 +11,11 @@ import qualified Data.Dependent.Map as DMap
 import Data.Functor.Identity (Identity(Identity), runIdentity)
 import qualified Data.IntMap as IntMap
 import Data.Map (Map)
-import Data.Maybe (fromJust)
 import qualified Data.Map as Map
 import Data.Maybe (catMaybes)
 import Data.Text (Text)
-import qualified Data.Text as T
 
+import Common.Foundation
 import Common.Wallet
 import Common.Network (NetworkName, NodeRef)
 import Common.OAuth (OAuthProvider(..))
@@ -26,6 +25,7 @@ import Frontend.Store.TH
 import qualified Frontend.Store.V0 as V0
 import qualified Frontend.Store.V0.Wallet as V0
 import Frontend.Store.MigrationUtils
+import Frontend.Crypto.Class
 
 -- WARNING: Upstream deps. Check this when we bump pact and obelisk!
 -- May be worth storing this in upstream independent datatypes.
@@ -63,9 +63,11 @@ deriving instance Show (StoreFrontend key a)
 --
 -- Also note that key can't change here, so its JSON instances need to be backwards compatible
 -- forever.
-upgradeFromV0 :: DMap (V0.StoreFrontend key) Identity -> DMap (StoreFrontend key) Identity
-upgradeFromV0 v0 =
-  DMap.fromList . catMaybes $
+upgradeFromV0 :: (Monad m, HasCrypto key m) => DMap (V0.StoreFrontend key) Identity -> m (DMap (StoreFrontend key) Identity)
+upgradeFromV0 v0 = do
+  (newKeysList, newAccountStorage) <- foldMapM splitOldKey oldKeysList
+  let newKeys = IntMap.fromList newKeysList
+  pure $ DMap.fromList . catMaybes $
     [ copyKeyDSum V0.StoreNetwork_PublicMeta StoreFrontend_Network_PublicMeta v0
     , copyKeyDSum V0.StoreNetwork_SelectedNetwork StoreFrontend_Network_SelectedNetwork v0
     -- Technically these are session only and shouldn't be here given the backup restore only works on
@@ -83,8 +85,6 @@ upgradeFromV0 v0 =
     ]
   where
     oldKeysList = maybe [] (IntMap.toList . runIdentity) (DMap.lookup V0.StoreWallet_Keys v0)
-    (newKeysList, newAccountStorage) = foldMap splitOldKey oldKeysList
-    newKeys = IntMap.fromList newKeysList
 
     -- We have to walk through the slightly different encoding of the Network information.
     -- Also if the storage contains _no_ network configuration then we shouldn't break the new version
@@ -93,14 +93,17 @@ upgradeFromV0 v0 =
       <$> DMap.lookup V0.StoreNetwork_Networks v0
 
     -- It's unfortunate that we don't have the key around or access to crypto here to recreate the keys.
-    -- TODO: Fiddle with this so we don't need to fake out the key
-    -- I don't think we should run crypto derivation functions here. The web
-    -- version would generate a new key! Perhaps we should punt this to be fixed
-    -- upon key restoration by the user.
-    -- TODO this needs attention if we can't hide anymore
-    splitOldKey (keyIdx, V0.SomeAccount_Deleted) = ([(keyIdx, Key fakeKeyPair)], mempty)
+    -- This will regenerate the missing key. Desktop will recover the key with
+    -- BIP, but the web version will generate a new key!
+    splitOldKey (keyIdx, V0.SomeAccount_Deleted) = do
+      (private, public) <- cryptoGenKey keyIdx
+      let regenerated = KeyPair
+            { _keyPair_publicKey = public
+            , _keyPair_privateKey = Just private
+            }
+      pure ([(keyIdx, Key regenerated)], mempty)
 
-    splitOldKey (keyIdx, V0.SomeAccount_Account a) =
+    splitOldKey (keyIdx, V0.SomeAccount_Account a) = pure
       ([(keyIdx, Key (extractKey a))]
       , oldAccountToNewStorage a
       )
@@ -122,11 +125,6 @@ upgradeFromV0 v0 =
 
     upgradePublicKey = PublicKey . V0.unPublicKey
 
-    --This is a bit unfortunate
-    fakeKeyPair = KeyPair
-      { _keyPair_publicKey = fromJust . textToKey . T.replicate 64 $ "0"
-      , _keyPair_privateKey = Nothing
-      }
     extractKey (V0.Account { V0._account_key = kp } ) = KeyPair
       -- This relies on the V0.Wallet.PublicKey FromJSON checking that it is Base16!
       { _keyPair_publicKey = upgradePublicKey $ V0._keyPair_publicKey kp
