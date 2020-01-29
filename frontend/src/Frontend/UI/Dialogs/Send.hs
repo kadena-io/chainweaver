@@ -380,9 +380,7 @@ sendConfig model initData = Workflow $ do
                 [ "This is a multi step operation."
                 , "The coin will leave the sender account immediately, and gas must be paid on the recipient chain in order to redeem the coin."
                 ]
-            elClass "h2" "heading heading_type_h2" $ do
-              text "Gas Payer"
-              when (toChain /= fromChain) $ text $ " (Chain " <> _chainId fromChain <> ")"
+            dialogSectionHeading mempty $ "Gas Payer" <> if toChain == fromChain then "" else " (Chain " <> _chainId fromChain <> ")"
             fromGasPayer <- divClass "group" $ elClass "div" "segment segment_type_tertiary labeled-input" $ do
               divClass "label labeled-input__label" $ text "Account Name"
               let cfg = def & dropdownConfig_attributes .~ pure ("class" =: "labeled-input__input select select_mandatory_missing")
@@ -390,7 +388,7 @@ sendConfig model initData = Workflow $ do
               uiSenderDropdown' cfg model (mInitFromGasPayer ^? _Just . _1) chain never
             toGasPayer <- if toChain == fromChain
               then pure $ pure $ Just Nothing
-              else do
+              else (fmap . fmap . fmap) Just $ do
                 -- TODO this bit should have an option with a generic input for Ed25519 keys
                 -- and perhaps be skippable entirely in favour of a blob the user
                 -- can send to someone else to continue the tx on the recipient chain
@@ -399,7 +397,7 @@ sendConfig model initData = Workflow $ do
                   divClass "label labeled-input__label" $ text "Account Name"
                   let cfg = def & dropdownConfig_attributes .~ pure ("class" =: "labeled-input__input select select_mandatory_missing")
                       chain = pure $ Just toChain
-                  (fmap . fmap) Just <$> uiSenderDropdown' cfg model (mInitCrossChainGasPayer ^? _Just . _1) chain never
+                  uiSenderDropdown' cfg model (mInitCrossChainGasPayer ^? _Just . _1) chain never
             pure $ (liftA2 . liftA2) (,) fromGasPayer toGasPayer
       pure (conf, mCaps, recipient)
     footerSection currentTab recipient mCaps = modalFooter $ do
