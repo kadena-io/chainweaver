@@ -272,8 +272,8 @@ createAccountConfig ideL name chainId selectedKeyset keyset = Workflow $ do
   let preventProgress = (\r gp -> isLeft r || isNothing gp) <$> result <*> mGasPayer
 
   modalFooter $ do
-    onNewAccount <- confirmButton (def & uiButtonCfg_disabled .~ preventProgress) "Create Account"
     onBack <- cancelButton def "Back"
+    onNewAccount <- confirmButton (def & uiButtonCfg_disabled .~ preventProgress) "Create Account"
 
     command <- performEvent $ tagMaybe (current $ fmap hush result) onNewAccount
 
