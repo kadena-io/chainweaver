@@ -138,10 +138,13 @@ moveToForeground w = do
 
 moveToBackground :: Gtk.Window -> IO ()
 moveToBackground w = do
-  Gtk.windowIconify w
+  --Gtk.windowIconify w
+  -- This is pretty ugly, so lets stop doing it.
+  pure ()
 
 activateWindow :: Gtk.Window -> IO ()
-activateWindow _ = do
+activateWindow w = do
+  Gtk.windowMaximize w
   pure ()
 
 resizeWindow :: Gtk.Window -> (Int,Int) -> IO ()
