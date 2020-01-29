@@ -72,10 +72,12 @@ import Frontend.UI.Settings
 import Frontend.UI.Wallet
 import Frontend.UI.Widgets
 
+import Data.ByteString (ByteString)
 import qualified Data.Text.Encoding as T
 import Frontend.Network
 import Safe (fromJustNote)
 import qualified Pact.Types.Command as Pact
+import qualified Pact.Types.Hash as Pact
 import qualified Text.URI as URI hiding (uriPath)
 import qualified Text.URI.QQ as URI
 import Text.URI.Lens (uriPath)
@@ -108,11 +110,12 @@ app sidebarExtra appCfg = Store.versionedUi (Store.versioner @key) $ do
     uri = URI.URI (Just [URI.scheme|https|]) (Right auth) Nothing [] Nothing
       & uriPath .~ path
 
-  cmd <- liftIO $ Pact.mkCommand' [] "{\"networkId\":\"testnet\",\"payload\":{\"exec\":{\"data\":{},\"code\":\"(list-modules)\"}},\"signers\":[],\"meta\":{\"creationTime\":1580337414,\"ttl\":28800,\"gasLimit\":600,\"chainId\":\"0\",\"gasPrice\":1.0e-5,\"sender\":\"5d0e99e446a078a356e86934c4b1d223f482e9f8888fb215502d3543b4abfdcf\"},\"nonce\":\"2020-01-29 22:37:09.307237957 UTC\"}"
+    payload :: ByteString
+    payload = "{\"networkId\":\"testnet\",\"payload\":{\"exec\":{\"data\":{},\"code\":\"(list-modules)\"}},\"signers\":[],\"meta\":{\"creationTime\":1580337414,\"ttl\":28800,\"gasLimit\":600,\"chainId\":\"0\",\"gasPrice\":1.0e-5,\"sender\":\"5d0e99e446a078a356e86934c4b1d223f482e9f8888fb215502d3543b4abfdcf\"},\"nonce\":\"2020-01-29 22:37:09.307237957 UTC\"}"
 
   liftIO $ do
     putStrLn "=============================="
-  r <- networkRequest uri Endpoint_Local $ fmap T.decodeUtf8 cmd
+  r <- networkRequest uri Endpoint_Local $ fmap T.decodeUtf8 $ Pact.Command payload [] $ Pact.hash payload
   liftIO $ do
     putStrLn "=============================="
     print r
