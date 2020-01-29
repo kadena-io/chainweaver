@@ -94,9 +94,7 @@ app
   => RoutedT t (R FrontendRoute) m ()
   -- ^ Extra widget to display at the bottom of the sidebar
   -> AppCfg key t (RoutedT t (R FrontendRoute) m) -> RoutedT t (R FrontendRoute) m ()
-app sidebarExtra appCfg = Store.versionedUi (Store.versioner @key) $ void . mfix $ \ cfg -> do
-  ideL <- makeIde appCfg cfg
-
+app sidebarExtra appCfg = Store.versionedUi (Store.versioner @key) $ do
   let
     args :: [Text]
     args = ["chainweb", "0.0", "testnet04", "chain", "8", "pact"]
@@ -118,62 +116,6 @@ app sidebarExtra appCfg = Store.versionedUi (Store.versioner @key) $ void . mfix
   liftIO $ do
     putStrLn "=============================="
     print r
-
-  walletSidebar sidebarExtra
-  updates <- divClass "page" $ do
-    netCfg <- networkBar ideL
-    let mkPageContent c = divClass (c <> " page__content visible")
-    -- This route overriding is awkward, but it gets around having to alter the
-    -- types of ideL and appCfg, and we don't actually need the true subroute
-    -- yet.
-    route <- askRoute
-    routedCfg <- subRoute $ lift . flip runRoutedT route . \case
-      FrontendRoute_Accounts -> mkPageContent "accounts" $ do
-        barCfg <- controlBar "Accounts" $ do
-          refreshCfg <- uiWalletRefreshButton
-          addCfg <- uiAddAccountButton ideL
-          pure $ addCfg <> refreshCfg
-        accountsCfg <- uiAccountsTable ideL
-        pure $ barCfg <> accountsCfg
-      FrontendRoute_Keys -> mkPageContent "keys" $ do
-        walletBarCfg <- controlBar "Keys" uiGenerateKeyButton
-        walletCfg <- uiWallet ideL
-        pure $ walletBarCfg <> walletCfg
-      FrontendRoute_Contracts -> mkPageContent "contracts" $ do
-        controlCfg <- controlBar "Contracts" (controlBarRight appCfg ideL)
-        mainCfg <- elClass "main" "main page__main" $ do
-          uiEditorCfg <- codePanel appCfg "main__left-pane" ideL
-          envCfg <- rightTabBar "main__right-pane" ideL
-          pure $ uiEditorCfg <> envCfg
-        pure $ controlCfg <> mainCfg
-      FrontendRoute_Resources -> mkPageContent "resources" $ do
-        controlBar "Resources" blank
-        elClass "main" "main page__main" $ do
-          resourcesWidget
-        pure mempty
-      FrontendRoute_Settings -> do
-        controlCfg <- controlBar "Settings" (mempty <$ blank)
-        mainCfg <- elClass "main" "main page__main" $ do
-          uiSettings (_appCfg_enabledSettings appCfg) ideL
-        pure $ controlCfg <> mainCfg
-    flattenedCfg <- flatten =<< tagOnPostBuild routedCfg
-    pure $ netCfg <> flattenedCfg
-
-  modalCfg <- showModal ideL
-
-  let
-    onGistCreatedModal = Just . uiCreatedGist <$> ideL ^. gistStore_created
-    gistModalCfg = mempty & modalCfg_setModal .~ onGistCreatedModal
-    onSigningModal = Just . uiSigning appCfg ideL <$> _appCfg_signingRequest appCfg
-    signingModalCfg = mempty & modalCfg_setModal .~ onSigningModal
-
-  pure $ mconcat
-    [ updates
-    , modalCfg
-    , gistModalCfg
-    , signingModalCfg
-    , mempty & ideCfg_editor . editorCfg_loadCode .~ _appCfg_externalFileOpened appCfg
-    ]
 
 walletSidebar
   :: (DomBuilder t m, PostBuild t m, Routed t (R FrontendRoute) m, SetRoute t (R FrontendRoute) m, RouteToUrl (R FrontendRoute) m)
