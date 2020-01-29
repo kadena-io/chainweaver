@@ -1,10 +1,10 @@
 { obApp
 , pkgs
 , appName
+, version
 , sass
 , homeManagerModule
 , linuxAppName ? "kadena-chainweaver"
-, linuxPackageVersion ? "0.1.0-3"
 , linuxAppIcon ? ./linux/static/icons/pact-document.png
 }: rec {
   # If we don't wrapGApps, none of the gnome schema stuff works in nixos
@@ -32,7 +32,7 @@
      exec = "${nixosExe}/bin/${linuxAppName}";
      icon = linuxAppIcon;
   };
-  ova = import ./ova.nix { inherit pkgs nixosExe linuxAppName nixosDesktopItem homeManagerModule; };
+  ova = import ./ova.nix { inherit pkgs nixosExe appName linuxAppName version nixosDesktopItem homeManagerModule linuxAppIcon; };
   inherit (ova) chainweaverVM chainweaverVMSystem;
   
   addGObjectIntrospection = hpackage: pkgs.haskell.lib.overrideCabal hpackage (current: {
@@ -231,7 +231,7 @@
   };
   deb-control = pkgs.writeTextFile { name = "control"; text = ''
     Package: ${linuxAppName}
-    Version: ${linuxPackageVersion}
+    Version: ${version}
     Architecture: amd64
     Maintainer: "Kadena.io"
     Description: ${appName}

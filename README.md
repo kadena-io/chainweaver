@@ -193,3 +193,37 @@ $ ./deploy.sh <ssh-key> <hostname> <admin-email>
 It will deploy a pact -s server to the given hostname using the given ssh-key.
 An nginx instance will be setup as a reverse proxy to the pact -s server,
 serving its API via https.
+
+# Installation & Updating Instructions
+
+## Ubuntu Package
+
+To install the ubuntu package, download the .deb, open up a terminal and run:
+
+`dpkg -i Downloads/kadena-chainweaver_YYYY.MM.DD_amd64.deb`
+
+Follow the same process for updating chainweaver. The package manager will detect the old version and do the appropriate upgrades if chainweaver is already installed.
+
+The .deb has been tested on Ubuntu 18.04. It should work on other debian based linuxes and Ubuntus, but Ubuntu 18.04 is the only supported disribution at the moment.
+
+## OVA (if the Ubuntu Package or Mac App doesn't work for you)
+
+First, you will need Virtualbox: https://www.virtualbox.org/wiki/Downloads . If you are using this on a linux machine, it is highly recommended to use virtualbox from your system's package manager as the virtualbox installer often leaves off important components.
+
+To install the virtualbox appliance, download the OVA and double click on it in your downloads folder. This should open up an import dialog in Virtualbox. You can safely accept the default options.
+
+Once imported, start the virtual machine by double clicking on it in the list of VMs in virtualbox. This will start a linux VM that will run chainweaver on login. You can safely delete the OVA file now, as the appliance is imported and can be run just be starting Virtualbox and double clicking the chainweaver VM.
+
+If double clicking on the OVA didn't work, try opening VirtualBox and clicking File > Import Appliance and selecting the OVA from the file chooser. Clicking through and accepting the defaults should be fine.
+
+### Upgrading
+
+Because the OVA file is quite large, there exists a method to update chainweaver inside the virtual machine without redownloading the entire appliance. Press on "Applications" in the bottom right of the screen, then click "Other" and then "Upgrade Kadena Chainweaver". This should update your chainweaver in place. You will want to restart chainweaver at this point.
+
+### Snapshotting
+
+The nice aspect of using a virtual machine is taking advantage of virtualbox's ability to snapshot the disk of the virtual machine. You can back up your chainweaver wallet prior to upgrading if you want an absolute peace of mind.
+
+To take a snapshot (if the machine is running), Click on the "Machine" menu of Virtualbox and click "Take Snapshot".
+
+To restore from a snapshot, go to the VirtualBox manager, click "Snapshot" and click "Restore".

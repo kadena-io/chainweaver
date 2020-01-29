@@ -13,7 +13,7 @@ module Desktop.Setup (Password(..), runSetup, form, splashLogo, setupDiv, setupC
 import Control.Lens ((<>~), (%~), (??))
 import Control.Error (hush)
 import Control.Applicative (liftA2)
-import Control.Monad (unless,void)
+import Control.Monad (unless, guard, void)
 import Control.Monad.Fix (MonadFix)
 import Control.Monad.IO.Class
 import Data.Bool (bool)
@@ -211,7 +211,7 @@ runSetup showBackOverride = setupDiv "fullscreen" $ mdo
 
   pure $ leftmost
     [ fmap Right $ switchDyn $ snd <$> dwf
-    , Left <$> eBack
+    , attachWithMaybe (\s () -> Left () <$ guard (s == WalletScreen_SplashScreen)) (current dCurrentScreen) eBack
     ]
   where
     hideBack ws =
