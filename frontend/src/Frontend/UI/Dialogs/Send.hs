@@ -626,9 +626,7 @@ finishCrossChainTransfer logL netInfo keys (fromName, fromChain) ucct toGasPayer
     dialogSectionHeading mempty "Transaction Result"
     divClass "group" $ do
       void $ runWithReplace (text . ("Request Key " <>) $ Pact.requestKeyToB16Text requestKey) $ leftmost
-        [ ffor errMsg $ \e -> do
-            dialogSectionHeading mempty "Failure"
-            divClass "group" $ text e
+        [ text <$> errMsg
         , blank <$ retry
         ]
 
