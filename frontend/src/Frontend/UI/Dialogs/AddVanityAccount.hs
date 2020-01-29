@@ -166,8 +166,8 @@ createAccountSplash model name chain mPublicKey keysetPresets = Workflow $ do
     notGasPayer <- confirmButton cfg "I am not the Gas Payer"
     gasPayer <- confirmButton cfg "I am the Gas Payer"
     let next = leftmost
-          [ tagMaybe (fmap (createAccountNotGasPayer model name chain keysetSelections) <$> current keyset) notGasPayer
-          , tagMaybe (fmap (createAccountConfig model name chain keysetSelections) <$> current keyset) gasPayer
+          [ tagMaybe (fmap (createAccountNotGasPayer model name chain mPublicKey keysetSelections) <$> current keyset) notGasPayer
+          , tagMaybe (fmap (createAccountConfig model name chain mPublicKey keysetSelections) <$> current keyset) gasPayer
           ]
     pure (cancel, next)
   return (("Create Account", (mempty, cancel)), next)
@@ -186,10 +186,11 @@ createAccountNotGasPayer
   => model
   -> AccountName
   -> ChainId
+  -> Maybe PublicKey
   -> DefinedKeyset t
   -> AddressKeyset
   -> Workflow t m (Text, (mConf, Event t ()))
-createAccountNotGasPayer ideL name chain selectedKeyset keyset = Workflow $ do
+createAccountNotGasPayer ideL name chain mPublicKey selectedKeyset keyset = Workflow $ do
   modalMain $ do
     dialogSectionHeading mempty "Notice"
     divClass "group" $ text "The text below contains all of the Account info you have just configured. Share this Tx Builder with someone else to pay the gas for the transaction to create the Account."
@@ -206,7 +207,7 @@ createAccountNotGasPayer ideL name chain selectedKeyset keyset = Workflow $ do
     done <- confirmButton def "Done"
 
     pure ( ("Create Account", (mempty, done))
-        , createAccountSplash ideL name chain Nothing selectedKeyset <$ back
+        , createAccountSplash ideL name chain mPublicKey selectedKeyset <$ back
         )
 
 createAccountConfig
@@ -220,10 +221,11 @@ createAccountConfig
   => model
   -> AccountName
   -> ChainId
+  -> Maybe PublicKey
   -> DefinedKeyset t
   -> AddressKeyset
   -> Workflow t m (Text, (mConf, Event t ()))
-createAccountConfig ideL name chainId selectedKeyset keyset = Workflow $ do
+createAccountConfig ideL name chainId mPublicKey selectedKeyset keyset = Workflow $ do
   let includePreviewTab = False
 
   (cfg, cChainId, mGasPayer, ttl, gasLimit, _) <- divClass "modal__main transaction_details" $ uiCfg
@@ -284,7 +286,7 @@ createAccountConfig ideL name chainId selectedKeyset keyset = Workflow $ do
                (current $ ideL ^. network_selectedNodes)
                command
 
-           , createAccountSplash ideL name chainId Nothing selectedKeyset <$ onBack
+           , createAccountSplash ideL name chainId mPublicKey selectedKeyset <$ onBack
            ]
          )
 
