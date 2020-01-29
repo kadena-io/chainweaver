@@ -1,7 +1,9 @@
 { obApp
 , pkgs
 , appName
-, version
+, chainWeaverVersion
+, linuxReleaseNumber
+, ovaReleaseNumber
 , sass
 , homeManagerModule
 , linuxAppName ? "kadena-chainweaver"
@@ -32,7 +34,7 @@
      exec = "${nixosExe}/bin/${linuxAppName}";
      icon = linuxAppIcon;
   };
-  ova = import ./ova.nix { inherit pkgs nixosExe appName linuxAppName version nixosDesktopItem homeManagerModule linuxAppIcon; };
+  ova = import ./ova.nix { inherit pkgs nixosExe appName linuxAppName chainWeaverVersion ovaReleaseNumber nixosDesktopItem homeManagerModule linuxAppIcon; };
   inherit (ova) chainweaverVM chainweaverVMSystem;
   
   addGObjectIntrospection = hpackage: pkgs.haskell.lib.overrideCabal hpackage (current: {
@@ -231,7 +233,7 @@
   };
   deb-control = pkgs.writeTextFile { name = "control"; text = ''
     Package: ${linuxAppName}
-    Version: ${version}
+    Version: ${chainWeaverVersion}.${linuxReleaseNumber}
     Architecture: amd64
     Maintainer: "Kadena.io"
     Description: ${appName}

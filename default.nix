@@ -6,6 +6,14 @@ args@{ system ? builtins.currentSystem
 }:
 with obelisk;
 let
+  # All the versions that the user cares about are here so that they can
+  # be changed in one place
+  chainWeaverVersion = "2.0";
+  appName = "Kadena Chainweaver Beta ${chainWeaverVersion}";
+  macReleaseNumber = "0";
+  linuxReleaseNumber = "0";
+  ovaReleaseNumber = "0";
+
   obApp = import ./obApp.nix args;
   pactServerModule = import ./pact-server/service.nix;
   sass = pkgs.runCommand "sass" {} ''
@@ -13,14 +21,12 @@ let
     mkdir $out
     ${pkgs.sass}/bin/sass ${./backend/sass}/index.scss $out/sass.css
   '';
-  appName = "Kadena Chainweaver Beta 2";
-  version = "2020.01.28";
   macApp = (import ./mac.nix) {
-    inherit obApp pkgs appName sass version;
+    inherit obApp pkgs appName sass chainWeaverVersion macReleaseNumber;
   };
   homeManagerModule = obelisk.reflex-platform.hackGet ./deps/home-manager + /nixos;
   linuxApp = (import ./linux.nix) {
-    inherit obApp pkgs appName sass homeManagerModule version;
+    inherit obApp pkgs appName sass homeManagerModule chainWeaverVersion linuxReleaseNumber ovaReleaseNumber;
   };
 in obApp // rec {
   inherit sass;
