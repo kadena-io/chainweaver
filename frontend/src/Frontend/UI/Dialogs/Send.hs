@@ -724,7 +724,7 @@ crossChainTransfer logL netInfo keys fromAccount toAccount fromGasPayer crossCha
     let errMsg = leftmost [keySetError, initiatedError, errMsg0]
     dialogSectionHeading mempty "Transaction Result"
     divClass "group" $ do
-      void $ runWithReplace (text "Loading...") $ leftmost
+      void $ runWithReplace (text "Waiting for response...") $ leftmost
         [ text . ("Request Key " <>) . Pact.requestKeyToB16Text <$> initiatedOk
         , text <$> errMsg
         , blank <$ retry0
