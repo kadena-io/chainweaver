@@ -137,7 +137,7 @@ moveToForeground w = do
   Gtk.windowPresent w
 
 moveToBackground :: Gtk.Window -> IO ()
-moveToBackground w = do
+moveToBackground _w = do
   --Gtk.windowIconify w
   -- This is pretty ugly, so lets stop doing it.
   pure ()
