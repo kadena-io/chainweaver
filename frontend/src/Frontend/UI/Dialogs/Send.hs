@@ -381,47 +381,48 @@ sendConfig model initData = Workflow $ do
         (conf, _, gasLimit, gasPrice) <- divClass "group" $ uiMetaData model Nothing Nothing
         pure (conf, recipient)
       mCaps <- tabPane mempty currentTab SendModalTab_Sign $ do
-        fmap join . holdDyn (pure Nothing) <=< dyn $ ffor recipient $ \case
-          Left e -> do
-            divClass "group" $ text $ e <> ": please go back and check the configuration."
+        dedrecipient <- eitherDyn $ (fmap . fmap) fst recipient
+        fmap join . holdDyn (pure Nothing) <=< dyn $ ffor dedrecipient $ \case
+          Left de -> do
+            divClass "group" $ dynText $ ffor de (<> ": please go back and check the configuration.")
             pure $ pure Nothing
-          Right (ka, _amount) -> do
-            let toChain = _txBuilder_chainId ka
-            when (toChain /= fromChain) $ do
+          Right dka -> do
+            toChain <- holdUniqDyn $ _txBuilder_chainId <$> dka
+            let isCross = ffor toChain (fromChain /=)
+                gasPayerSection forChain mpayer = do
+                  dyn_ $ ffor2 isCross forChain $ \x c ->
+                    dialogSectionHeading mempty $ "Gas Payer" <> if x then " (Chain " <> _chainId c <> ")" else ""
+                  divClass "group" $ elClass "div" "segment segment_type_tertiary labeled-input" $ do
+                    divClass "label labeled-input__label" $ text "Account Name"
+                    let cfg = def & dropdownConfig_attributes .~ pure ("class" =: "labeled-input__input select select_mandatory_missing")
+                        chain = fmap Just forChain
+                    uiSenderDropdown' cfg model (mpayer ^? _Just . _1) chain never
+
+            dyn_ $ ffor2 isCross toChain $ \x c -> when x $ do
               elClass "h3" ("heading heading_type_h3") $ text "This is a cross chain transfer."
               el "p" $ text $ T.concat
                 [ "Coin will be transferred from chain "
                 , _chainId fromChain
                 , " to chain "
-                , _chainId toChain
+                , _chainId c
                 , "."
                 ]
               el "p" $ text $ T.unwords
                 [ "This is a multi step operation."
                 , "The coin will leave the sender account immediately, and gas must be paid on the recipient chain in order to redeem the coin."
                 ]
-            elClass "h2" "heading heading_type_h2" $ do
-              text "Gas Payer"
-              when (toChain /= fromChain) $ text $ " (Chain " <> _chainId fromChain <> ")"
-            fromGasPayer <- divClass "group" $ elClass "div" "segment segment_type_tertiary labeled-input" $ do
-              divClass "label labeled-input__label" $ text "Account Name"
-              let cfg = def & dropdownConfig_attributes .~ pure ("class" =: "labeled-input__input select select_mandatory_missing")
-                  chain = pure $ Just fromChain
-              uiSenderDropdown' cfg model (mInitFromGasPayer ^? _Just . _1) chain never
-            toGasPayer <- if toChain == fromChain
+            fromGasPayer <- gasPayerSection (pure fromChain) mInitFromGasPayer
+            toGasPayer <- fmap join . holdDyn (pure Nothing) <=< dyn $ ffor isCross $ \x ->
+              if not x
               then pure $ pure $ Just Nothing
-              else do
+              else (fmap . fmap . fmap) Just $ do
                 -- TODO this bit should have an option with a generic input for Ed25519 keys
                 -- and perhaps be skippable entirely in favour of a blob the user
                 -- can send to someone else to continue the tx on the recipient chain
-                dialogSectionHeading mempty  $ "Gas Payer (Chain " <> _chainId toChain <> ")"
-                divClass "group" $ elClass "div" "segment segment_type_tertiary labeled-input" $ do
-                  divClass "label labeled-input__label" $ text "Account Name"
-                  let cfg = def & dropdownConfig_attributes .~ pure ("class" =: "labeled-input__input select select_mandatory_missing")
-                      chain = pure $ Just toChain
-                  (fmap . fmap) Just <$> uiSenderDropdown' cfg model (mInitCrossChainGasPayer ^? _Just . _1) chain never
+                gasPayerSection toChain mInitCrossChainGasPayer
             pure $ (liftA2 . liftA2) (,) fromGasPayer toGasPayer
       pure (conf, mCaps, recipient)
+
     footerSection currentTab recipient mCaps = modalFooter $ do
       cancel <- cancelButton def "Cancel"
       let (name, disabled) = splitDynPure $ ffor currentTab $ \case
