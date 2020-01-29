@@ -309,7 +309,7 @@ sendConfig model initData = Workflow $ do
     mInitFromGasPayer = withInitialTransfer (_transferData_fromGasPayer) initData
     mInitCrossChainGasPayer = join $ withInitialTransfer (fmap (_crossChainData_recipientChainGasPayer) . _transferData_crossChainData) initData
     mInitAmount = withInitialTransfer _transferData_amount initData
-    mainSection currentTab = elClass "div" "modal__main" $ do
+    mainSection currentTab = elClass "div" "modal__main" $ mdo
       (conf, recipient) <- tabPane mempty currentTab SendModalTab_Configuration $ mdo
         dialogSectionHeading mempty  "Destination"
         divClass "group" $ transactionDisplayNetwork model
@@ -337,8 +337,16 @@ sendConfig model initData = Workflow $ do
 
           let
             balance = _account_status fromAcc ^? _AccountStatus_Exists . accountDetails_balance . to unAccountBalance
-            maxTransfer = ffor balance $ \b -> ffor2 gasLimit gasPrice $ \l p ->
-              GasPrice (ParsedDecimal b) - fromIntegral l * p
+            maxFee = ffor2 gasLimit gasPrice $ \l p -> fromIntegral l * p
+            maxTransfer = ffor balance $ \b ->
+              ffor2 maxFee mCaps $ \f mc ->
+                let
+                  senderIsGasPayer = (== fromName)
+                  assumedSenderFee = case mc of
+                    Nothing -> 0
+                    Just ((sourceChainGasPayer,_), _) -> bool 0 f $ senderIsGasPayer sourceChainGasPayer
+                in
+                  GasPrice (ParsedDecimal b) - assumedSenderFee
 
             gasInputWithMaxButton cfg = mdo
               g <- uiGasPriceInputField $ cfg
