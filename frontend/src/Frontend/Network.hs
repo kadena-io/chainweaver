@@ -26,7 +26,7 @@
 --   sending commands to it, by making use of the Pact REST API.
 module Frontend.Network
   ( -- * Types & Classes
-    NetworkRequest (..), networkRequest_cmd
+    NetworkRequest (..), networkRequest_cmd, networkRequest
   , Endpoint (..)
   , displayEndpoint
   , NetworkError (..)
@@ -886,7 +886,9 @@ networkRequest
   -> m (Either NetworkError (Maybe Gas, PactValue))
 networkRequest baseUri endpoint cmd = case S.parseBaseUrl $ URI.renderStr baseUri of
   Nothing -> pure $ Left $ NetworkError_NetworkError $ T.pack $ "Invalid url: " <> URI.renderStr baseUri
-  Just baseUrl -> runExceptT $ performReq $ S.mkClientEnv baseUrl
+  Just baseUrl -> do
+    liftIO $ print baseUrl
+    runExceptT $ performReq $ S.mkClientEnv baseUrl
   where
     performReq clientEnv = case endpoint of
       Endpoint_Send -> do

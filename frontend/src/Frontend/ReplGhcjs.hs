@@ -9,6 +9,8 @@
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE TypeFamilies #-}
 
+{-# LANGUAGE QuasiQuotes #-}
+
 -- |
 -- Copyright   :  (C) 2018 Kadena
 -- License     :  BSD-style (see the file LICENSE)
@@ -70,6 +72,14 @@ import Frontend.UI.Settings
 import Frontend.UI.Wallet
 import Frontend.UI.Widgets
 
+import qualified Data.Text.Encoding as T
+import Frontend.Network
+import Safe (fromJustNote)
+import qualified Pact.Types.Command as Pact
+import qualified Text.URI as URI hiding (uriPath)
+import qualified Text.URI.QQ as URI
+import Text.URI.Lens (uriPath)
+
 app
   :: forall key t m.
      ( MonadWidget t m
@@ -86,6 +96,28 @@ app
   -> AppCfg key t (RoutedT t (R FrontendRoute) m) -> RoutedT t (R FrontendRoute) m ()
 app sidebarExtra appCfg = Store.versionedUi (Store.versioner @key) $ void . mfix $ \ cfg -> do
   ideL <- makeIde appCfg cfg
+
+  let
+    args :: [Text]
+    args = ["chainweb", "0.0", "testnet04", "chain", "8", "pact"]
+    path :: [URI.RText 'URI.PathPiece]
+    path = fromJustNote "Building chain base path failed!" . traverse URI.mkPathPiece $ args
+    host :: URI.RText 'URI.Host
+    host = fromJustNote "HOOOST" $ URI.mkHost "eu1.testnet.chainweb.com"
+    auth :: URI.Authority
+    auth = URI.Authority Nothing host Nothing
+    uri :: URI.URI
+    uri = URI.URI (Just [URI.scheme|https|]) (Right auth) Nothing [] Nothing
+      & uriPath .~ path
+
+  cmd <- liftIO $ Pact.mkCommand' [] "{\"networkId\":\"testnet\",\"payload\":{\"exec\":{\"data\":{},\"code\":\"(list-modules)\"}},\"signers\":[],\"meta\":{\"creationTime\":1580337414,\"ttl\":28800,\"gasLimit\":600,\"chainId\":\"0\",\"gasPrice\":1.0e-5,\"sender\":\"5d0e99e446a078a356e86934c4b1d223f482e9f8888fb215502d3543b4abfdcf\"},\"nonce\":\"2020-01-29 22:37:09.307237957 UTC\"}"
+
+  liftIO $ do
+    putStrLn "=============================="
+  r <- networkRequest uri Endpoint_Local $ fmap T.decodeUtf8 cmd
+  liftIO $ do
+    putStrLn "=============================="
+    print r
 
   walletSidebar sidebarExtra
   updates <- divClass "page" $ do
