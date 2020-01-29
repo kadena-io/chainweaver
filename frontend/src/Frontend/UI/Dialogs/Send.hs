@@ -623,15 +623,14 @@ finishCrossChainTransfer logL netInfo keys (fromName, fromChain) ucct toGasPayer
         pb <- getPostBuild
         runUnfinishedCrossChainTransfer logL netInfo keys fromChain toChain toGasPayer $ requestKey <$ pb
 
-    dialogSectionHeading mempty "Request Key"
-    divClass "group" $ text $ Pact.requestKeyToB16Text requestKey
-
-    void $ runWithReplace blank $ ffor (leftmost [Just <$> errMsg, Nothing <$ retry]) $ \case
-      Just e -> do
-        dialogSectionHeading mempty "Failure"
-        divClass "group" $ text e
-      Nothing ->
-        blank
+    dialogSectionHeading mempty "Transaction Result"
+    divClass "group" $ do
+      void $ runWithReplace (text . ("Request Key " <>) $ Pact.requestKeyToB16Text requestKey) $ leftmost
+        [ ffor errMsg $ \e -> do
+            dialogSectionHeading mempty "Failure"
+            divClass "group" $ text e
+        , blank <$ retry
+        ]
 
     pure resultOk0
 
@@ -724,17 +723,14 @@ crossChainTransfer logL netInfo keys fromAccount toAccount fromGasPayer crossCha
         let toGasPayer = _crossChainData_recipientChainGasPayer crossChainData
         runUnfinishedCrossChainTransfer logL netInfo keys fromChain toChain toGasPayer initiatedOk
 
-    dialogSectionHeading mempty "Request Key"
-    divClass "group" $ void $ runWithReplace (text "Loading...") $ ffor initiatedOk $ \rk ->
-      text $ Pact.requestKeyToB16Text rk
-
     let errMsg = leftmost [keySetError, initiatedError, errMsg0]
-    void $ runWithReplace blank $ ffor (leftmost [Just <$> errMsg, Nothing <$ retry0]) $ \case
-      Just e -> do
-        dialogSectionHeading mempty "Failure"
-        divClass "group" $ text e
-      Nothing -> do
-        blank
+    dialogSectionHeading mempty "Transaction Result"
+    divClass "group" $ do
+      void $ runWithReplace (text "Loading...") $ leftmost
+        [ text . ("Request Key " <>) . Pact.requestKeyToB16Text <$> initiatedOk
+        , text <$> errMsg
+        , blank <$ retry0
+        ]
 
     pure resultOk0
   done <- modalFooter $ confirmButton def "Done"
