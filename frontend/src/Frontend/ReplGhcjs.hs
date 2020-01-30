@@ -72,10 +72,14 @@ import Frontend.UI.Settings
 import Frontend.UI.Wallet
 import Frontend.UI.Widgets
 
+import qualified Servant.Client.JSaddle            as S
+import qualified Servant.Client.Internal.JSaddleXhrClient as S
+
 import Data.ByteString (ByteString)
 import qualified Data.Text.Encoding as T
 import Frontend.Network
 import Safe (fromJustNote)
+import Pact.Server.ApiV1Client as Pact
 import qualified Pact.Types.Command as Pact
 import qualified Pact.Types.Hash as Pact
 import qualified Text.URI as URI hiding (uriPath)
@@ -115,7 +119,12 @@ app sidebarExtra appCfg = Store.versionedUi (Store.versioner @key) $ do
 
   liftIO $ do
     putStrLn "=============================="
-  r <- networkRequest uri Endpoint_Local $ fmap T.decodeUtf8 $ Pact.Command payload [] $ Pact.hash payload
+  r <- case S.parseBaseUrl $ URI.renderStr uri of
+    Nothing -> error "nope"
+    Just baseUrl -> do
+       let env = S.mkClientEnv baseUrl
+           cmd = fmap T.decodeUtf8 $ Pact.Command payload [] $ Pact.hash payload
+       liftJSM $ flip S.runClientM env $ Pact.local apiV1Client cmd
   liftIO $ do
     putStrLn "=============================="
     print r

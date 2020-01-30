@@ -26,7 +26,7 @@
 --   sending commands to it, by making use of the Pact REST API.
 module Frontend.Network
   ( -- * Types & Classes
-    NetworkRequest (..), networkRequest_cmd, networkRequest
+    NetworkRequest (..), networkRequest_cmd
   , Endpoint (..)
   , displayEndpoint
   , NetworkError (..)
