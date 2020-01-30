@@ -50,10 +50,6 @@ module Frontend.UI.DeploymentSettings
   , uiMetaData
   , uiDeployPreview
 
-  , uiAccountFixed
-  , uiAccountDropdown
-  , uiAccountDropdown'
-
   , transactionInputSection
   , transactionHashSection
   , transactionDisplayNetwork
@@ -739,81 +735,6 @@ uiMetaData m mTTL mGasLimit = do
       showTtl (TTLSeconds (ParsedInteger i)) = tshow i
 
       readPact wrapper =  fmap wrapper . readMay . T.unpack
-
--- | Set the account to a fixed value
-uiAccountFixed
-  :: DomBuilder t m
-  => AccountName
-  -> m (Dynamic t (Maybe (AccountName, Account)))
-uiAccountFixed sender = do
-  _ <- uiInputElement $ def
-    & initialAttributes %~ Map.insert "disabled" ""
-    & inputElementConfig_initialValue .~ unAccountName sender
-  pure $ pure $ pure (sender, Account AccountStatus_Unknown blankVanityAccount)
-
-mkChainTextAccounts
-  :: (Reflex t, HasWallet model key t, HasNetwork model t)
-  => model
-  -> Dynamic t (Maybe ChainId)
-  -> Dynamic t (Either Text (Map AccountName Text))
-mkChainTextAccounts m mChainId = runExceptT $ do
-  netId <- lift $ m ^. network_selectedNetwork
-  chain <- ExceptT $ note "You must select a chain ID before choosing an account" <$> mChainId
-  accountsOnNetwork <- ExceptT $ note "No accounts on current network" . Map.lookup netId . unAccountData <$> m ^. wallet_accounts
-  let mkVanity n (AccountInfo _ chainMap)
-        | Map.member chain chainMap = Map.singleton n (unAccountName n)
-        | otherwise = mempty
-      vanityAccounts = Map.foldMapWithKey mkVanity accountsOnNetwork
-      accountsOnChain = vanityAccounts
-  when (Map.null accountsOnChain) $ throwError "No accounts on current chain"
-  pure accountsOnChain
-
--- | Let the user pick an account
-uiAccountDropdown'
-  :: ( PostBuild t m, DomBuilder t m
-     , MonadHold t m, MonadFix m
-     , HasWallet model key t
-     , HasNetwork model t
-     )
-  => DropdownConfig t (Maybe AccountName)
-  -> model
-  -> Maybe AccountName
-  -> Dynamic t (Maybe ChainId)
-  -> Event t (Maybe AccountName)
-  -> m (Dynamic t (Maybe (AccountName, Account)))
-uiAccountDropdown' uCfg m initVal chainId setSender = do
-  let
-    textAccounts = mkChainTextAccounts m chainId
-    dropdownItems =
-      either
-          (Map.singleton Nothing)
-          (Map.insert Nothing "Choose an Account" . Map.mapKeys Just)
-      <$> textAccounts
-  choice <- dropdown initVal dropdownItems $ uCfg
-    & dropdownConfig_setValue .~ leftmost [Nothing <$ updated chainId, setSender]
-    & dropdownConfig_attributes <>~ pure ("class" =: "labeled-input__input select select_mandatory_missing")
-  let result = runMaybeT $ do
-        net <- lift $ m ^. network_selectedNetwork
-        accs <- lift $ m ^. wallet_accounts
-        chain <- MaybeT chainId
-        name <- MaybeT $ value choice
-        acc <- MaybeT $ pure $ accs ^? _AccountData . ix net . ix name . accountInfo_chains . ix chain
-        pure (name, acc)
-  pure result
-
--- | Let the user pick an account
-uiAccountDropdown
-  :: ( PostBuild t m, DomBuilder t m
-     , MonadHold t m, MonadFix m
-     , HasWallet model key t
-     , HasNetwork model t
-     )
-  => DropdownConfig t (Maybe AccountName)
-  -> model
-  -> Dynamic t (Maybe ChainId)
-  -> Event t (Maybe AccountName)
-  -> m (Dynamic t (Maybe (AccountName, Account)))
-uiAccountDropdown uCfg m = uiAccountDropdown' uCfg m Nothing
 
 -- | Let the user pick signers
 uiSignerList
