@@ -30,9 +30,7 @@ import Data.ByteString (ByteString)
 import Data.Constraint.Extras.TH
 import Data.GADT.Show.TH
 import Data.GADT.Compare.TH
-import Data.Foldable (fold)
 import Data.Maybe (isJust)
-import Data.Monoid (Endo(..))
 import Data.Text (Text)
 import Data.Time (NominalDiffTime, getCurrentTime, addUTCTime)
 import Data.Universe.Some.TH
