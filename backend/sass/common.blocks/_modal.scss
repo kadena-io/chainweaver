@@ -100,13 +100,21 @@ body[data-modal-open='true'] {
   position: relative;
 }
 
-.modal__filler-horizontal-center-box {
+@mixin modal-filler-horizontal-center() {
   display: flex;
   justify-content: center;
   align-items: center;
+}
+
+.modal__filler-horizontal-center-box {
+  @include modal-filler-horizontal-center;
   @media (max-height: 750px) {
     display: none;
   }
+}
+
+.modal__filler-horizontal-center-box-no-hide {
+  @include modal-filler-horizontal-center;
 }
 
 /* Image to be put in the modal__filler. */
