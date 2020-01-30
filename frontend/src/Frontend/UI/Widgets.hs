@@ -7,7 +7,7 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE ViewPatterns #-}
- 
+
 -- | Widgets collection
 -- Was based on semui, but now transitioning to custom widgets
 module Frontend.UI.Widgets
@@ -911,23 +911,24 @@ data PopoverState
   deriving (Eq, Show)
 
 uiInputWithPopover
-  :: forall t m cfg a
+  :: forall t m cfg el a b
   .  ( DomBuilder t m
      , MonadHold t m
-     , MonadFix m
+     , PostBuild t m
+     -- , MonadFix m
      , PerformEvent t m
      , MonadJSM (Performable m)
      , DomBuilderSpace m ~ GhcjsDomSpace
+     , JS.IsElement el
      , a ~ InputElement EventResult (DomBuilderSpace m) t
      )
-  => (cfg -> m a)
-  -> (a -> Event t PopoverState)
+  => (cfg -> m (a,b))
+  -> ((a,b) -> el)
+  -> ((a,b) -> m (Event t PopoverState))
   -> cfg
-  -> m a
-uiInputWithPopover body mkMsg cfg = do
+  -> m (a,b)
+uiInputWithPopover body getStateBorderTarget mkMsg cfg = do
   let
-    -- popoverBlurCls :: Text
-    -- popoverBlurCls = "popover__error-state"
     popoverBlurCls = \case
       PopoverState_Error _ -> Just "popover__error-state"
       PopoverState_Warning _ -> Just "popover__warning-state"
@@ -936,10 +937,10 @@ uiInputWithPopover body mkMsg cfg = do
     popoverDiv :: Map Text Text -> m ()
     popoverDiv attrs = elAttr "div" attrs blank
 
-    popoverHiddenAttrs = "class" =: "popover"
+    popoverHiddenAttrs = "class" =: "popover__message"
 
     popoverAttrs cls d =
-      "class" =: ("popover popover__display " <> cls) <>
+      "class" =: ("popover__message popover__display " <> cls) <>
       "data-tip" =: d
 
     popoverToAttrs = \case
@@ -956,23 +957,33 @@ uiInputWithPopover body mkMsg cfg = do
     onShift f e (popoverBlurCls -> Just cls) = liftJSM $ f cls e
     onShift _ _ _ = pure ()
 
-  rec
-    a <- body cfg
-    popState <- holdDyn PopoverState_Disabled $ mkMsg a
+    popoverIcon cls =
+      elClass "i" ("fa fa-warning popover__icon " <> cls) blank
+
+  a <- body cfg
+  onMsg <- mkMsg a
+  dPopState <- holdDyn PopoverState_Disabled onMsg
+
+  _ <- elClass "span" "popover" $ do
+    _ <- dyn_ $ ffor dPopState $ \case
+      PopoverState_Disabled -> blank
+      PopoverState_Error _ -> popoverIcon "popover__icon-error"
+      PopoverState_Warning _ -> popoverIcon "popover__icon-warning"
 
     let
-      onFocus = domEvent Focus a
-      onBlur = domEvent Blur a
+      borderTargetEl = getStateBorderTarget a
+      onFocus = domEvent Focus $ fst a
+      onBlur = domEvent Blur $ fst a
 
     _ <- performEvent_ $ leftmost
-      [ onShift pushClass (_inputElement_raw a) <$> current popState <@ onBlur
-      , onShift dropClass (_inputElement_raw a) <$> current popState <@ onFocus
+      [ onShift pushClass borderTargetEl <$> current dPopState <@ onBlur
+      , onShift dropClass borderTargetEl <$> current dPopState <@ onFocus
       ]
 
-    _ <- runWithReplace (divClass "popover" blank) $ leftmost
-      [ popoverDiv . popoverToAttrs <$> mkMsg a
+    runWithReplace (divClass "popover__message" blank) $ leftmost
+      [ popoverDiv . popoverToAttrs <$> onMsg
       , popoverDiv popoverHiddenAttrs <$ onBlur
-      , popoverDiv . popoverToAttrs <$> current popState <@ onFocus
+      , popoverDiv . popoverToAttrs <$> current dPopState <@ onFocus
       ]
 
   pure a

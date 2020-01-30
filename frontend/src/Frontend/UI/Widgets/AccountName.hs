@@ -1,3 +1,4 @@
+{-# LANGUAGE TupleSections #-}
 module Frontend.UI.Widgets.AccountName
   ( uiAccountNameInput
   ) where
@@ -10,13 +11,13 @@ import Reflex
 import Reflex.Dom
 import Language.Javascript.JSaddle (MonadJSM)
 import Frontend.UI.Widgets (PopoverState (..), mkLabeledInput, uiInputElement, uiInputWithPopover)
-import Frontend.UI.Widgets.Helpers (inputIsDirty)
 import Frontend.Network (HasNetwork)
 import Frontend.Wallet (AccountName(..), checkAccountNameValidity, HasWallet)
 
 uiAccountNameInput
   :: ( DomBuilder t m
      , MonadFix m
+     , PostBuild t m
      , MonadHold t m
      , HasWallet model key t
      , HasNetwork model t
@@ -32,11 +33,15 @@ uiAccountNameInput w initval = do
     mkMsg True (Left e) = PopoverState_Error e
     mkMsg _    _ = PopoverState_Disabled
 
-    showPopover ie = (\chk t -> mkMsg (not $ Text.null t) (chk t))
+    showPopover (ie, _) = pure $ (\chk t -> mkMsg (not $ Text.null t) (chk t))
       <$> current (checkAccountNameValidity w)
       <@> _inputElement_input ie
 
-  inputE <- mkLabeledInput True "Account Name" (uiInputWithPopover uiInputElement showPopover)
+    uiNameInput cfg = do
+      inp <- uiInputElement cfg
+      pure (inp, _inputElement_raw inp)
+
+  inputE <- fmap fst $ mkLabeledInput True "Account Name" (uiInputWithPopover uiNameInput snd showPopover)
     $ def & inputElementConfig_initialValue .~ fold (fmap unAccountName initval)
 
   pure $ hush <$> (checkAccountNameValidity w <*> value inputE)

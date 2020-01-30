@@ -11,9 +11,9 @@
 
 
 /*== common styles for both parts of popover tip ==*/
-.popover::before,
-.popover::after {
-  left: -34.5rem;
+.popover__message::before,
+.popover__message::after {
+  left: -24.4rem;
   opacity: 0;
   position: absolute;
   z-index: -100;
@@ -26,10 +26,10 @@
 // .popover.popover__popovertip:hover::after,
 // .popover.popover__popovertip:focus::after,
 
-.popover.popover__display::before,
-.popover.popover__display::after {
+.popover__message.popover__display::before,
+.popover__message.popover__display::after {
   opacity: 1;
-  z-index: 100; 
+  z-index: 100;
 }
 
 // Use this to create more colour variations for the bubble and arrow
@@ -47,26 +47,33 @@
   border: 0.1rem solid $colour;
 }
 
-.popover.popover__error { @include popover-colouring($danger-red); }
+.popover__message.popover__error { @include popover-colouring($danger-red); }
 .popover__error-state { @include popover-state-border($danger-red); }
 
-.popover.popover__warning { @include popover-colouring($chainweaver-orange); } 
+.popover__message.popover__warning { @include popover-colouring($chainweaver-orange); }
 .popover__warning-state { @include popover-state-border($chainweaver-orange); }
 
+.popover__icon {
+  position: absolute;
+  right: 1em;
+  top: -0.5rem;
+}
+
+i.fa.popover__icon-error { color: $danger-red; };
+i.fa.popover__icon-warning { color: $chainweaver-orange; }
+
 /*== pointer tip ==*/
-.popover::before {
+.popover__message::before {
   border-left: 0 solid transparent;
   border-right: 1rem solid transparent;
   border-bottom: 2rem solid;
-
   top: 0.5rem;
   content: "";
-} 
+}
 
 /*== speech bubble ==*/
-.popover::after {
+.popover__message::after {
   border-radius: .25em;
-
   content: attr(data-tip);
   padding: 0.4rem;
   top: 2rem;
