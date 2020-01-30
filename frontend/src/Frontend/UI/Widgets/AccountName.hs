@@ -1,4 +1,3 @@
-{-# LANGUAGE RecursiveDo #-}
 module Frontend.UI.Widgets.AccountName
   ( uiAccountNameInput
   ) where
@@ -8,8 +7,8 @@ import Control.Monad.Fix (MonadFix)
 import Data.Foldable (fold)
 import Reflex
 import Reflex.Dom
-
-import Frontend.UI.Widgets (mkLabeledInput, uiInputElement)
+import Language.Javascript.JSaddle (MonadJSM)
+import Frontend.UI.Widgets (PopoverState (..), mkLabeledInput, uiInputElement, uiInputWithPopover)
 import Frontend.UI.Widgets.Helpers (inputIsDirty)
 import Frontend.Network (HasNetwork)
 import Frontend.Wallet (AccountName(..), checkAccountNameValidity, HasWallet)
@@ -20,24 +19,22 @@ uiAccountNameInput
      , MonadFix m
      , HasWallet model key t
      , HasNetwork model t
+     , DomBuilderSpace m ~ GhcjsDomSpace
+     , PerformEvent t m
+     , MonadJSM (Performable m)
      )
   => model
   -> Maybe AccountName
   -> m (Dynamic t (Maybe AccountName))
-uiAccountNameInput w initval = mdo
+uiAccountNameInput w initval = do
   let
-    uiInputWithPopover dAttrs cfg = do
-      ie <- uiInputElement cfg
-      _ <- elDynAttr "div" dAttrs blank
-      pure ie
+    mkMsg True (Left e) = PopoverState_Error e
+    mkMsg _    _ = PopoverState_Disabled
 
-    showPopover True (Left e) = "class" =: "popover popover__error popover__display" <> "data-tip" =: e
-    showPopover _    _        = "class" =: "popover popover__error"
+    showPopover ie =
+      mkMsg <$> inputIsDirty ie <*> (checkAccountNameValidity w <*> value ie)
 
-    dEitherAccName = checkAccountNameValidity w <*> value inputE
-    dContainerAttrs = showPopover <$> inputIsDirty inputE <*> dEitherAccName
-
-  inputE <- mkLabeledInput True "Account Name" (uiInputWithPopover dContainerAttrs)
+  inputE <- mkLabeledInput True "Account Name" (uiInputWithPopover uiInputElement showPopover)
     $ def & inputElementConfig_initialValue .~ fold (fmap unAccountName initval)
 
-  pure $ hush <$> dEitherAccName
+  pure $ hush <$> (checkAccountNameValidity w <*> value inputE)

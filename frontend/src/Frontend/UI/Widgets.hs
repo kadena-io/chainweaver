@@ -5,7 +5,6 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecursiveDo #-}
 {-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE TupleSections #-}
 {-# LANGUAGE TypeApplications #-}
 
 -- | Widgets collection
@@ -25,6 +24,8 @@ module Frontend.UI.Widgets
   , userChainIdSelectWithPreselect
   , uiChainSelection
   -- ** Other widgets
+  , PopoverState (..)
+  , uiInputWithPopover
   , uiInputWithInlineFeedback
   , uiSegment
   , uiGroup
@@ -97,6 +98,8 @@ import           GHC.Word                    (Word8)
 import           Data.Decimal                (Decimal)
 import qualified Data.Decimal                as D
 import           Language.Javascript.JSaddle (js0, pToJSVal)
+import qualified GHCJS.DOM.Element as JS
+import qualified GHCJS.DOM.DOMTokenList as JS
 import           Obelisk.Generated.Static
 import           Reflex.Dom.Contrib.CssClass
 import           Reflex.Dom.Core
@@ -899,3 +902,54 @@ uiSidebarIcon selected src label = do
     preventTwitching $ elDynAttr "img" (ffor cls $ \c -> "class" =: c <> "src" =: src) blank
     elAttr "span" ("class" =: "sidebar__link-label") $ text label
   pure $ domEvent Click e
+
+data PopoverState
+  = PopoverState_Error Text
+  | PopoverState_Warning Text
+  | PopoverState_Disabled
+  deriving (Eq, Show)
+
+uiInputWithPopover
+  :: ( DomBuilder t m
+     , PostBuild t m
+     , MonadFix m
+     , PerformEvent t m
+     , MonadJSM (Performable m)
+     , DomBuilderSpace m ~ GhcjsDomSpace
+     )
+  => (InputElementConfig EventResult t (DomBuilderSpace m) -> m (InputElement EventResult (DomBuilderSpace m) t))
+  -> (InputElement EventResult (DomBuilderSpace m) t -> Dynamic t PopoverState)
+  -> InputElementConfig EventResult t (DomBuilderSpace m)
+  -> m (InputElement EventResult (DomBuilderSpace m) t)
+uiInputWithPopover body mkMsg cfg = do
+  let
+    popoverBlurCls :: Text
+    popoverBlurCls = "popover__error-state"
+
+    popoverAttrs cls d =
+      "class" =: ("popover popover__display " <> cls) <>
+      "data-tip" =: d
+
+    showPopover = \case
+      PopoverState_Error m -> popoverAttrs "popover__error" m
+      PopoverState_Warning m -> popoverAttrs "popover__warning" m
+      PopoverState_Disabled -> "class" =: "popover"
+
+    pushClass :: JS.IsElement e => Text -> e -> JSM ()
+    pushClass cls = JS.getClassList >=> flip JS.add [cls]
+
+    dropClass :: JS.IsElement e => Text -> e -> JSM ()
+    dropClass cls = JS.getClassList >=> flip JS.remove [cls]
+
+    onBlur ie = liftJSM . \case
+      PopoverState_Disabled -> dropClass popoverBlurCls (_inputElement_raw ie)
+      _ -> pushClass popoverBlurCls (_inputElement_raw ie)
+
+  rec
+    a <- body cfg
+    let popState = mkMsg a
+    _ <- performEvent_ $ onBlur a <$> current popState <@ domEvent Blur a
+
+    _ <- elDynAttr "div" (showPopover <$> popState) blank
+
+  pure a
