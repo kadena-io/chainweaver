@@ -8,8 +8,8 @@ with obelisk;
 let
   # All the versions that the user cares about are here so that they can
   # be changed in one place
-  chainWeaverVersion = "1.0";
-  appName = "Kadena Chainweaver ${chainWeaverVersion}";
+  chainweaverVersion = "1.0";
+  appName = "Kadena Chainweaver ${chainweaverVersion}";
   macReleaseNumber = "0";
   linuxReleaseNumber = "0";
   ovaReleaseNumber = "0";
@@ -22,11 +22,11 @@ let
     ${pkgs.sass}/bin/sass ${./backend/sass}/index.scss $out/sass.css
   '';
   macApp = (import ./mac.nix) {
-    inherit obApp pkgs appName sass chainWeaverVersion macReleaseNumber;
+    inherit obApp pkgs appName sass chainweaverVersion macReleaseNumber;
   };
   homeManagerModule = obelisk.reflex-platform.hackGet ./deps/home-manager + /nixos;
   linuxApp = (import ./linux.nix) {
-    inherit obApp pkgs appName sass homeManagerModule chainWeaverVersion linuxReleaseNumber ovaReleaseNumber;
+    inherit obApp pkgs appName sass homeManagerModule chainweaverVersion linuxReleaseNumber ovaReleaseNumber;
   };
 in obApp // rec {
   inherit sass;

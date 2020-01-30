@@ -1,4 +1,4 @@
-{ pkgs, nixosExe, appName, linuxAppName, chainWeaverVersion, ovaReleaseNumber, nixosDesktopItem, homeManagerModule, linuxAppIcon }:
+{ pkgs, nixosExe, appName, linuxAppName, chainweaverVersion, ovaReleaseNumber, nixosDesktopItem, homeManagerModule, linuxAppIcon }:
 let
   kadenaOVACache = "https://nixcache.chainweb.com";
   kadenaOVACacheKey = "nixcache.chainweb.com:FVN503ABX9F8x8K0ptnc99XEz5SaA4Sks6kNcZn2pBY=";
@@ -36,7 +36,7 @@ let
 
     (${doUpgradeVM}/bin/${linuxAppName}-do-upgrade $@ && successful) || finished "Update Failed"
   '';
-  versionFile = pkgs.writeText "${linuxAppName}-version" "${chainWeaverVersion}.${ovaReleaseNumber}";
+  versionFile = pkgs.writeText "${linuxAppName}-version" "${chainweaverVersion}.${ovaReleaseNumber}";
   versionScript = pkgs.writeScriptBin "${linuxAppName}-version.sh" ''cat ${versionFile}'';
   upgradeDesktopItem = pkgs.makeDesktopItem {
      name = "${linuxAppName}-upgrade";
@@ -112,7 +112,7 @@ let
         vmDerivationName = "${linuxAppName}-vm";
         # This should not be Appname as this name will persist forever in the users virtualbox.
         vmName = "Kadena Chainweaver VM";
-        vmFileName = "${linuxAppName}-vm.${chainWeaverVersion}.${ovaReleaseNumber}.ova";
+        vmFileName = "${linuxAppName}-vm.${chainweaverVersion}.${ovaReleaseNumber}.ova";
       };
     };
   });

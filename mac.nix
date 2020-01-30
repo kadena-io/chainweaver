@@ -1,7 +1,7 @@
 { obApp
 , pkgs
 , appName
-, chainWeaverVersion
+, chainweaverVersion
 , macReleaseNumber
 , sass
 , macAppIcon ? ./mac/static/icons/kadena.png
@@ -9,7 +9,7 @@
 }:
 let
   macPactDocumentIcon = ./mac/static/icons/pact-document.png;
-  macFullVersion = "${chainWeaverVersion}.${macReleaseNumber}";
+  macFullVersion = "${chainweaverVersion}.${macReleaseNumber}";
   # ^ This can be created in Preview using 'GenericDocumentIcon.icns' from
   # /System/Library/CoreServices/CoreTypes.bundle/Contents/Resources/
   # and the kadena logo

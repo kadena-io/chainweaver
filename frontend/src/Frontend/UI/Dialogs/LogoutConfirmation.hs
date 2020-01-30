@@ -85,7 +85,7 @@ uiIdeLogoutConfirmation _onClose = do
   onClose <- modalHeader $ text "Logout?"
   modalMain $ do
     divClass "segment modal__filler logout-confirm__modal-filler" $
-      divClass "modal__filler-horizontal-center-box" $ do
+      divClass ".modal__filler-horizontal-center-box-no-hide" $ do
         onCancel <- cancelButton btnCfg "Cancel"
         onConfirm <- confirmButton btnCfg "Yes, logout"
         pure (onConfirm, leftmost [onClose, onCancel])
