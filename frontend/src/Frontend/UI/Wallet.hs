@@ -31,6 +31,7 @@ module Frontend.UI.Wallet
 
 ------------------------------------------------------------------------------
 import           Control.Applicative         (liftA2)
+import           Control.Error               (hush)
 import           Control.Lens
 import           Control.Monad               (when, (<=<))
 import qualified Data.IntMap                 as IntMap
@@ -229,7 +230,7 @@ uiAccountItem keys name accountInfo = do
         AccountStatus_Unknown -> pure never
         AccountStatus_DoesNotExist -> do
           create <- uiCreateAccountButton cfg
-          let keyFromName = textToKey $ unAccountName name
+          let keyFromName = hush $ parsePublicKey $ unAccountName name
           pure $ AccountDialog_Create name chain keyFromName <$ create
         AccountStatus_Exists d -> do
           owned <- holdUniqDyn $ (_addressKeyset_keys (_accountDetails_keyset d) `Set.isSubsetOf`) <$> keys
