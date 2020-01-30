@@ -1,13 +1,15 @@
 { obApp
 , pkgs
 , appName
-, version
+, chainweaverVersion
+, macReleaseNumber
 , sass
 , macAppIcon ? ./mac/static/icons/kadena.png
 , macPactDocumentIcon ? ./mac/static/icons/pact-document.png
 }:
 let
   macPactDocumentIcon = ./mac/static/icons/pact-document.png;
+  macFullVersion = "${chainweaverVersion}.${macReleaseNumber}";
   # ^ This can be created in Preview using 'GenericDocumentIcon.icns' from
   # /System/Library/CoreServices/CoreTypes.bundle/Contents/Resources/
   # and the kadena logo
@@ -38,9 +40,9 @@ let
       <key>CFBundleIdentifier</key>
       <string>${bundleIdentifier}</string>
       <key>CFBundleVersion</key>
-      <string>${obApp.ghc.frontend.version}</string>
+      <string>${macFullVersion}</string>
       <key>CFBundleShortVersionString</key>
-      <string>${obApp.ghc.frontend.version}</string>
+      <string>${macFullVersion}</string>
       <key>CFBundlePackageType</key>
       <string>APPL</string>
       <key>CFBundleExecutable</key>
@@ -181,15 +183,15 @@ in rec {
       --icon-size 100 \
       --icon "${appName}.app" 200 190 \
       --app-drop-link 600 185 \
-      "$tmpdir/${appName}.${version}.dmg" \
+      "$tmpdir/${appName}.${macFullVersion}.dmg" \
       "$tmpdir/${appName}.app"
 
     # Sign the dmg
-    /usr/bin/codesign --sign "$signer" "$tmpdir/${appName}.${version}.dmg"
+    /usr/bin/codesign --sign "$signer" "$tmpdir/${appName}.${macFullVersion}.dmg"
 
-    mv "$tmpdir/${appName}.${version}.dmg" .
+    mv "$tmpdir/${appName}.${macFullVersion}.dmg" .
 
     # Quarantine it for reproducibility (otherwise can cause unexpected 'app is damaged' errors when automatically applied to downloaded .dmg files)
-    xattr -w com.apple.quarantine "00a3;5d4331e1;Safari;1AE3D17F-B83D-4ADA-94EA-219A44467959" "${appName}.${version}.dmg"
+    xattr -w com.apple.quarantine "00a3;5d4331e1;Safari;1AE3D17F-B83D-4ADA-94EA-219A44467959" "${appName}.${macFullVersion}.dmg"
   '';
 }
