@@ -35,7 +35,7 @@ import Data.Text (Text)
 import Data.Time (NominalDiffTime, getCurrentTime, addUTCTime)
 import Data.Universe.Some.TH
 import Language.Javascript.JSaddle (liftJSM)
-import Pact.Server.ApiV1Client (HasTransactionLogger, runTransactionLoggerT, logTransactionStdout)
+import Pact.Server.ApiV1Client (runTransactionLoggerT, logTransactionStdout)
 import Reflex.Dom.Core
 import qualified Cardano.Crypto.Wallet as Crypto
 import qualified Data.Text.Encoding as T
@@ -52,7 +52,6 @@ import Frontend.Log (defaultLogger)
 import Frontend.Storage
 import Frontend.UI.Button
 import Frontend.UI.Widgets
-import Obelisk.Configs
 import Obelisk.Generated.Static
 import Obelisk.Frontend
 import Obelisk.Route
@@ -61,9 +60,6 @@ import qualified Frontend
 import qualified Frontend.ReplGhcjs
 import Frontend.Store (StoreFrontend(..))
 import Frontend.Storage (runBrowserStorageT)
-
-import Frontend.UI.Modal.Impl (showModalBrutal)
-import Frontend.UI.Dialogs.LogoutConfirmation (uiIdeLogoutConfirmation)
 
 import Desktop.Orphans ()
 import Desktop.Setup
@@ -98,12 +94,11 @@ desktop = Frontend
       (pure ()) -- Can't foreground or background things
       (pure ())
     mapRoutedT (flip runTransactionLoggerT logTransactionStdout . runBrowserStorageT) $ do
-      (fileOpened, triggerOpen) <- Frontend.openFileDialog
       signingRequest <- mvarTriggerEvent signingRequestMVar
       bipWallet AppCfg
         { _appCfg_gistEnabled = False
-        , _appCfg_externalFileOpened = fileOpened
-        , _appCfg_openFileDialog = liftJSM triggerOpen
+        , _appCfg_externalFileOpened = never
+        , _appCfg_openFileDialog = pure ()
         , _appCfg_loadEditor = loadEditorFromLocalStorage
         , _appCfg_editorReadOnly = False
         , _appCfg_signingRequest = signingRequest
@@ -122,14 +117,11 @@ data LockScreen
 
 bipWallet
   :: ( MonadWidget t m
-     , RouteToUrl (R FrontendRoute) m, SetRoute t (R FrontendRoute) m
-     , HasConfigs m
      , HasStorage m, HasStorage (Performable m)
-     , HasTransactionLogger m
      )
   => AppCfg Crypto.XPrv t (RoutedT t (R FrontendRoute) (BIPCryptoT m))
   -> RoutedT t (R FrontendRoute) m ()
-bipWallet appCfg = do
+bipWallet _appCfg = do
   let
     runSetup0 r fromLockScreen = do
       keyAndPass <- runSetup fromLockScreen
@@ -157,15 +149,19 @@ bipWallet appCfg = do
         result <- dyn $ ffor mPassword $ \case
           Nothing -> lockScreen xprv
           Just pass -> mapRoutedT (runBIPCryptoT xprv pass) $ do
+            Frontend.ReplGhcjs.app
+            pure (never, never)
+{-
             (onLogout, sidebarLogoutLink) <- mkSidebarLogoutLink
 
             onLogoutConfirm <- fmap switchDyn $ widgetHold (pure never)
               $ showModalBrutal "logout-confirm-modal" uiIdeLogoutConfirmation <$ onLogout
 
-            Frontend.ReplGhcjs.app sidebarLogoutLink appCfg
+            Frontend.ReplGhcjs.app
 
             setRoute $ landingPageRoute <$ onLogoutConfirm
             pure (never, Nothing <$ onLogoutConfirm)
+-}
 
         pure $ LockScreen_Restore xprv <$ restore
   pure ()
@@ -185,8 +181,8 @@ _watchInactivity checkInterval timeout = do
   let checkTime la ti = guard $ addUTCTime timeout la <= _tickInfo_lastUTC ti
   pure $ attachWithMaybe checkTime lastActivity check
 
-mkSidebarLogoutLink :: (TriggerEvent t m, PerformEvent t n, PostBuild t n, DomBuilder t n, MonadIO (Performable n)) => m (Event t (), n ())
-mkSidebarLogoutLink = do
+_mkSidebarLogoutLink :: (TriggerEvent t m, PerformEvent t n, PostBuild t n, DomBuilder t n, MonadIO (Performable n)) => m (Event t (), n ())
+_mkSidebarLogoutLink = do
   (logout, triggerLogout) <- newTriggerEvent
   pure $ (,) logout $ do
     clk <- uiSidebarIcon (pure False) (static @"img/menu/logout.svg") "Logout"
