@@ -5,6 +5,7 @@ module Frontend.UI.Widgets.AccountName
 import Control.Error (hush)
 import Control.Monad.Fix (MonadFix)
 import Data.Foldable (fold)
+import qualified Data.Text as Text
 import Reflex
 import Reflex.Dom
 import Language.Javascript.JSaddle (MonadJSM)
@@ -15,8 +16,8 @@ import Frontend.Wallet (AccountName(..), checkAccountNameValidity, HasWallet)
 
 uiAccountNameInput
   :: ( DomBuilder t m
-     , PostBuild t m
      , MonadFix m
+     , MonadHold t m
      , HasWallet model key t
      , HasNetwork model t
      , DomBuilderSpace m ~ GhcjsDomSpace
@@ -31,8 +32,9 @@ uiAccountNameInput w initval = do
     mkMsg True (Left e) = PopoverState_Error e
     mkMsg _    _ = PopoverState_Disabled
 
-    showPopover ie =
-      mkMsg <$> inputIsDirty ie <*> (checkAccountNameValidity w <*> value ie)
+    showPopover ie = (\chk t -> mkMsg (not $ Text.null t) (chk t))
+      <$> current (checkAccountNameValidity w)
+      <@> _inputElement_input ie
 
   inputE <- mkLabeledInput True "Account Name" (uiInputWithPopover uiInputElement showPopover)
     $ def & inputElementConfig_initialValue .~ fold (fmap unAccountName initval)

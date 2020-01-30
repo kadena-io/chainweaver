@@ -6,7 +6,8 @@
 {-# LANGUAGE RecursiveDo #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications #-}
-
+{-# LANGUAGE ViewPatterns #-}
+ 
 -- | Widgets collection
 -- Was based on semui, but now transitioning to custom widgets
 module Frontend.UI.Widgets
@@ -910,30 +911,41 @@ data PopoverState
   deriving (Eq, Show)
 
 uiInputWithPopover
-  :: ( DomBuilder t m
-     , PostBuild t m
+  :: forall t m cfg a
+  .  ( DomBuilder t m
+     , MonadHold t m
      , MonadFix m
      , PerformEvent t m
      , MonadJSM (Performable m)
      , DomBuilderSpace m ~ GhcjsDomSpace
+     , a ~ InputElement EventResult (DomBuilderSpace m) t
      )
-  => (InputElementConfig EventResult t (DomBuilderSpace m) -> m (InputElement EventResult (DomBuilderSpace m) t))
-  -> (InputElement EventResult (DomBuilderSpace m) t -> Dynamic t PopoverState)
-  -> InputElementConfig EventResult t (DomBuilderSpace m)
-  -> m (InputElement EventResult (DomBuilderSpace m) t)
+  => (cfg -> m a)
+  -> (a -> Event t PopoverState)
+  -> cfg
+  -> m a
 uiInputWithPopover body mkMsg cfg = do
   let
-    popoverBlurCls :: Text
-    popoverBlurCls = "popover__error-state"
+    -- popoverBlurCls :: Text
+    -- popoverBlurCls = "popover__error-state"
+    popoverBlurCls = \case
+      PopoverState_Error _ -> Just "popover__error-state"
+      PopoverState_Warning _ -> Just "popover__warning-state"
+      PopoverState_Disabled -> Nothing
+
+    popoverDiv :: Map Text Text -> m ()
+    popoverDiv attrs = elAttr "div" attrs blank
+
+    popoverHiddenAttrs = "class" =: "popover"
 
     popoverAttrs cls d =
       "class" =: ("popover popover__display " <> cls) <>
       "data-tip" =: d
 
-    showPopover = \case
+    popoverToAttrs = \case
       PopoverState_Error m -> popoverAttrs "popover__error" m
       PopoverState_Warning m -> popoverAttrs "popover__warning" m
-      PopoverState_Disabled -> "class" =: "popover"
+      PopoverState_Disabled -> popoverHiddenAttrs
 
     pushClass :: JS.IsElement e => Text -> e -> JSM ()
     pushClass cls = JS.getClassList >=> flip JS.add [cls]
@@ -941,15 +953,26 @@ uiInputWithPopover body mkMsg cfg = do
     dropClass :: JS.IsElement e => Text -> e -> JSM ()
     dropClass cls = JS.getClassList >=> flip JS.remove [cls]
 
-    onBlur ie = liftJSM . \case
-      PopoverState_Disabled -> dropClass popoverBlurCls (_inputElement_raw ie)
-      _ -> pushClass popoverBlurCls (_inputElement_raw ie)
+    onShift f e (popoverBlurCls -> Just cls) = liftJSM $ f cls e
+    onShift _ _ _ = pure ()
 
   rec
     a <- body cfg
-    let popState = mkMsg a
-    _ <- performEvent_ $ onBlur a <$> current popState <@ domEvent Blur a
+    popState <- holdDyn PopoverState_Disabled $ mkMsg a
 
-    _ <- elDynAttr "div" (showPopover <$> popState) blank
+    let
+      onFocus = domEvent Focus a
+      onBlur = domEvent Blur a
+
+    _ <- performEvent_ $ leftmost
+      [ onShift pushClass (_inputElement_raw a) <$> current popState <@ onBlur
+      , onShift dropClass (_inputElement_raw a) <$> current popState <@ onFocus
+      ]
+
+    _ <- runWithReplace (divClass "popover" blank) $ leftmost
+      [ popoverDiv . popoverToAttrs <$> mkMsg a
+      , popoverDiv popoverHiddenAttrs <$ onBlur
+      , popoverDiv . popoverToAttrs <$> current popState <@ onFocus
+      ]
 
   pure a

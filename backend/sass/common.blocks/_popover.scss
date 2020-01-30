@@ -43,8 +43,15 @@
   };
 }
 
+@mixin popover-state-border($colour) {
+  border: 0.1rem solid $colour;
+}
+
 .popover.popover__error { @include popover-colouring($danger-red); }
+.popover__error-state { @include popover-state-border($danger-red); }
+
 .popover.popover__warning { @include popover-colouring($chainweaver-orange); } 
+.popover__warning-state { @include popover-state-border($chainweaver-orange); }
 
 /*== pointer tip ==*/
 .popover::before {
