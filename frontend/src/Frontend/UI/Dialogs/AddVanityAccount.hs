@@ -92,7 +92,8 @@ uiAddAccountDialog model _onCloseExternal = mdo
         n <- MaybeT $ current name
         pure (net, n)
       conf = mempty & walletCfg_importAccount .~ tagMaybe val add
-  return (conf, onClose)
+  -- Since this always succeeds, we're okay to close on the add button event
+  return (conf, onClose <> add)
 
 uiCreateAccountButton :: DomBuilder t m => UiButtonCfg -> m (Event t ())
 uiCreateAccountButton cfg =
