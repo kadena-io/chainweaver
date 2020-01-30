@@ -915,13 +915,16 @@ uiInputWithPopover
   .  ( DomBuilder t m
      , MonadHold t m
      , PostBuild t m
-     -- , MonadFix m
      , PerformEvent t m
      , MonadJSM (Performable m)
      , DomBuilderSpace m ~ GhcjsDomSpace
      , JS.IsElement el
+     -- This isn't here for any special reason other than it makes
+     -- the type signature a bit easier to read.
      , a ~ InputElement EventResult (DomBuilderSpace m) t
      )
+  -- Return a tuple here so there is a bit more flexibility for what
+  -- can be returned from your input widget.
   => (cfg -> m (a,b))
   -> ((a,b) -> el)
   -> ((a,b) -> m (Event t PopoverState))

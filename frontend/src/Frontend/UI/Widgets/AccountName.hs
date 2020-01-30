@@ -1,10 +1,8 @@
-{-# LANGUAGE TupleSections #-}
 module Frontend.UI.Widgets.AccountName
   ( uiAccountNameInput
   ) where
 
 import Control.Error (hush)
-import Control.Monad.Fix (MonadFix)
 import Data.Foldable (fold)
 import qualified Data.Text as Text
 import Reflex
@@ -16,7 +14,6 @@ import Frontend.Wallet (AccountName(..), checkAccountNameValidity, HasWallet)
 
 uiAccountNameInput
   :: ( DomBuilder t m
-     , MonadFix m
      , PostBuild t m
      , MonadHold t m
      , HasWallet model key t
@@ -41,7 +38,7 @@ uiAccountNameInput w initval = do
       inp <- uiInputElement cfg
       pure (inp, _inputElement_raw inp)
 
-  inputE <- fmap fst $ mkLabeledInput True "Account Name" (uiInputWithPopover uiNameInput snd showPopover)
+  (inputE, _) <- mkLabeledInput True "Account Name" (uiInputWithPopover uiNameInput snd showPopover)
     $ def & inputElementConfig_initialValue .~ fold (fmap unAccountName initval)
 
   pure $ hush <$> (checkAccountNameValidity w <*> value inputE)
