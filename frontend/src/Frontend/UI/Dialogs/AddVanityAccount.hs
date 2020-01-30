@@ -1,7 +1,7 @@
-{-# LANGUAGE TupleSections #-}
 {-# LANGUAGE ConstraintKinds #-}
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE RecursiveDo #-}
+{-# LANGUAGE TupleSections #-}
 module Frontend.UI.Dialogs.AddVanityAccount
   ( uiAddAccountButton
   , uiCreateAccountButton
@@ -86,7 +86,7 @@ uiAddAccountDialog model _onCloseExternal = mdo
     divClass "group" $ do
       uiAccountNameInput model Nothing
   add <- modalFooter $ do
-    confirmButton def "Add Account"
+    confirmButton (def & uiButtonCfg_disabled .~ (isNothing <$> name)) "Add Account"
   let val = runMaybeT $ do
         net <- lift $ current $ model ^. network_selectedNetwork
         n <- MaybeT $ current name
