@@ -199,9 +199,9 @@ lockScreen xprv = setupDiv "fullscreen" $ divClass "wrapper" $ setupDiv "splash"
   splashLogo
 
   el "div" $ mdo
-    dValid <- foldDyn appEndo True $ fold
-      [ Endo . const . isJust <$> isValid
-      , Endo (const True) <$ _inputElement_input pass
+    dValid <- holdDyn True $ leftmost
+      [ isJust <$> isValid
+      , True <$ _inputElement_input pass
       ]
 
     let unlock = void $ confirmButton (def & uiButtonCfg_type ?~ "submit") "Unlock"
