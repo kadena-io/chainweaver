@@ -3,7 +3,6 @@ module Frontend.UI.Widgets.AccountName
   ( uiAccountNameInput
   ) where
 
-import Control.Monad.IO.Class (MonadIO)
 import Control.Error (hush)
 import Control.Monad.Fix (MonadFix)
 import Data.Foldable (fold)
@@ -26,14 +25,19 @@ uiAccountNameInput
   -> Maybe AccountName
   -> m (Dynamic t (Maybe AccountName))
 uiAccountNameInput w initval = mdo
-  inputE <- elDynAttr "div" dContainerAttrs $ mkLabeledInput True "Account Name"
-    uiInputElement $ def & inputElementConfig_initialValue .~ fold (fmap unAccountName initval)
-
   let
+    uiInputWithPopover dAttrs cfg = do
+      ie <- uiInputElement cfg
+      _ <- elDynAttr "div" dAttrs blank
+      pure ie
+
     showPopover True (Left e) = "class" =: "popover popover__error popover__display" <> "data-tip" =: e
     showPopover _    _        = "class" =: "popover popover__error"
 
     dEitherAccName = checkAccountNameValidity w <*> value inputE
-    dContainerAttrs = showPopover <$> (inputIsDirty inputE) <*> dEitherAccName
+    dContainerAttrs = showPopover <$> inputIsDirty inputE <*> dEitherAccName
+
+  inputE <- mkLabeledInput True "Account Name" (uiInputWithPopover dContainerAttrs)
+    $ def & inputElementConfig_initialValue .~ fold (fmap unAccountName initval)
 
   pure $ hush <$> dEitherAccName

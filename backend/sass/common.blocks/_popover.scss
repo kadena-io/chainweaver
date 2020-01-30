@@ -13,11 +13,10 @@
 /*== common styles for both parts of popover tip ==*/
 .popover::before,
 .popover::after {
-  left: 50%;
+  left: -34.5rem;
   opacity: 0;
   position: absolute;
   z-index: -100;
-  top: 130%;
 }
 
 // If you want to use 'tooltip' like behaviour, then these are
@@ -48,23 +47,20 @@
 .popover.popover__warning { @include popover-colouring($chainweaver-orange); } 
 
 /*== pointer tip ==*/
-
 .popover::before {
-  border-left: 1rem solid transparent;
+  border-left: 0 solid transparent;
   border-right: 1rem solid transparent;
-  border-bottom: 1.2rem solid;
+  border-bottom: 2rem solid;
 
-  top: 2rem;
-  left: 11.5rem;
+  top: 0.5rem;
   content: "";
-  margin-left: -0.5em;
 } 
 
 /*== speech bubble ==*/
 .popover::after {
   border-radius: .25em;
+
   content: attr(data-tip);
   padding: 0.4rem;
-  width: 33rem;
-  left: 3.4rem;
+  top: 2rem;
 }
