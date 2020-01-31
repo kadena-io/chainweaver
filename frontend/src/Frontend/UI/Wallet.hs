@@ -196,10 +196,7 @@ uiAccountItem keys name accountInfo = do
   pure $ leftmost [dialog, dialogs]
   where
   trKey = elClass "tr" "wallet__table-row wallet__table-row-account"
-  trAcc visible = elDynAttr "tr" $ ffor visible $ \v -> mconcat
-    [ "class" =: "wallet__table-row"
-    , if v then mempty else "style" =: "display:none"
-    ]
+  trAcc = elClass "tr" "wallet__table-row"
   td = elClass "td" "wallet__table-cell"
   buttons = divClass "wallet__table-buttons"
   cfg = def
@@ -215,44 +212,50 @@ uiAccountItem keys name accountInfo = do
     onDetails <- td $ buttons $ detailsIconButton cfg
     pure (clk, AccountDialog_Details name <$> current notes <@ onDetails)
 
-  accountRow visible chain dAccount = trAcc visible $ do
-    td blank -- Arrow column
-    td $ text $ "Chain ID: " <> _chainId chain
-    accStatus <- holdUniqDyn $ _account_status <$> dAccount
-    elClass "td" "wallet__table-cell wallet__table-cell-keyset" $ dynText $ ffor accStatus $ \case
-      AccountStatus_Unknown -> "Unknown"
-      AccountStatus_DoesNotExist -> "Does not exist"
-      AccountStatus_Exists d -> keysetSummary $ _accountDetails_keyset d
-    td $ dynText $ maybe "" unAccountNotes . _vanityAccount_notes . _account_storage <$> dAccount
-    td $ dynText $ fmap (uiAccountBalance' False) dAccount
-    td $ buttons $ do
-      action <- switchHold never <=< dyn $ ffor accStatus $ \case
-        AccountStatus_Unknown -> pure never
-        AccountStatus_DoesNotExist -> do
-          create <- uiCreateAccountButton cfg
-          let keyFromName = hush $ parsePublicKey $ unAccountName name
-          pure $ AccountDialog_Create name chain keyFromName <$ create
-        AccountStatus_Exists d -> do
-          owned <- holdUniqDyn $ (_addressKeyset_keys (_accountDetails_keyset d) `Set.isSubsetOf`) <$> keys
-          switchHold never <=< dyn $ ffor owned $ \case
-            True -> do
-              recv <- receiveButton cfg
-              send <- sendButton cfg
-              onDetails <- detailsIconButton cfg
-              pure $ leftmost
-                [ AccountDialog_Receive name chain <$ recv
-                , AccountDialog_Send . (name, chain, ) <$> current dAccount <@ send
-                , AccountDialog_DetailsChain . (name, chain, ) <$> current dAccount <@ onDetails
-                ]
-            False -> do
-              transferTo <- transferToButton cfg
-              onDetails <- detailsIconButton cfg
-              pure $ leftmost
-                [ AccountDialog_Receive name chain <$ transferTo
-                , AccountDialog_DetailsChain . (name, chain, ) <$> current dAccount <@ onDetails
-                ]
-      let balance = (^? account_status . _AccountStatus_Exists . accountDetails_balance) <$> dAccount
-      pure (balance, action)
+  accountRow :: Dynamic t Bool -> ChainId -> Dynamic t Account -> m (Dynamic t (Maybe AccountBalance), Event t AccountDialog)
+  accountRow visible chain dAccount = do
+    let balance = (^? account_status . _AccountStatus_Exists . accountDetails_balance) <$> dAccount
+    -- Previously we always added all chain rows, but hid them with CSS. A bug
+    -- somewhere between reflex-dom and jsaddle means we had to push this under
+    -- a `dyn`.
+    dialog <- switchHold never <=< dyn $ ffor visible $ \case
+      False -> pure never
+      True -> trAcc $ do
+        td blank -- Arrow column
+        td $ text $ "Chain ID: " <> _chainId chain
+        accStatus <- holdUniqDyn $ _account_status <$> dAccount
+        elClass "td" "wallet__table-cell wallet__table-cell-keyset" $ dynText $ ffor accStatus $ \case
+          AccountStatus_Unknown -> "Unknown"
+          AccountStatus_DoesNotExist -> "Does not exist"
+          AccountStatus_Exists d -> keysetSummary $ _accountDetails_keyset d
+        td $ dynText $ maybe "" unAccountNotes . _vanityAccount_notes . _account_storage <$> dAccount
+        td $ dynText $ fmap (uiAccountBalance' False) dAccount
+        td $ buttons $ switchHold never <=< dyn $ ffor accStatus $ \case
+          AccountStatus_Unknown -> pure never
+          AccountStatus_DoesNotExist -> do
+            create <- uiCreateAccountButton cfg
+            let keyFromName = hush $ parsePublicKey $ unAccountName name
+            pure $ AccountDialog_Create name chain keyFromName <$ create
+          AccountStatus_Exists d -> do
+            owned <- holdUniqDyn $ (_addressKeyset_keys (_accountDetails_keyset d) `Set.isSubsetOf`) <$> keys
+            switchHold never <=< dyn $ ffor owned $ \case
+              True -> do
+                recv <- receiveButton cfg
+                send <- sendButton cfg
+                onDetails <- detailsIconButton cfg
+                pure $ leftmost
+                  [ AccountDialog_Receive name chain <$ recv
+                  , AccountDialog_Send . (name, chain, ) <$> current dAccount <@ send
+                  , AccountDialog_DetailsChain . (name, chain, ) <$> current dAccount <@ onDetails
+                  ]
+              False -> do
+                transferTo <- transferToButton cfg
+                onDetails <- detailsIconButton cfg
+                pure $ leftmost
+                  [ AccountDialog_Receive name chain <$ transferTo
+                  , AccountDialog_DetailsChain . (name, chain, ) <$> current dAccount <@ onDetails
+                  ]
+    pure (balance, dialog)
 
 keysetSummary :: AddressKeyset -> Text
 keysetSummary ks = T.intercalate ", "
