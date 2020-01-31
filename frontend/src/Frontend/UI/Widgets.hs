@@ -603,7 +603,7 @@ validatedInputWithButton uCls check placeholder buttonText = do
 uiAccountBalance' :: Bool -> Account -> Text
 uiAccountBalance' showUnits acc = case _account_status acc of
   AccountStatus_Unknown -> "Unknown"
-  AccountStatus_DoesNotExist -> "Account not present"
+  AccountStatus_DoesNotExist -> "Does not exist"
   AccountStatus_Exists d -> mconcat $ catMaybes
     [ Just $ tshow $ unAccountBalance $ _accountDetails_balance d
     , " KDA" <$ guard showUnits
@@ -612,7 +612,7 @@ uiAccountBalance' showUnits acc = case _account_status acc of
 
 uiAccountBalance :: Bool -> Maybe AccountBalance -> Text
 uiAccountBalance showUnits = \case
-  Nothing -> "Account not present"
+  Nothing -> "Does not exist"
   Just b -> mconcat $ catMaybes
     [ Just $ tshow $ unAccountBalance b
     , " KDA" <$ guard showUnits

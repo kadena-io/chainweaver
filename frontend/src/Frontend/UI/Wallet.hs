@@ -226,7 +226,7 @@ uiAccountItem keys name accountInfo = do
         accStatus <- holdUniqDyn $ _account_status <$> dAccount
         elClass "td" "wallet__table-cell wallet__table-cell-keyset" $ dynText $ ffor accStatus $ \case
           AccountStatus_Unknown -> "Unknown"
-          AccountStatus_DoesNotExist -> "Does not exist"
+          AccountStatus_DoesNotExist -> ""
           AccountStatus_Exists d -> keysetSummary $ _accountDetails_keyset d
         td $ dynText $ maybe "" unAccountNotes . _vanityAccount_notes . _account_storage <$> dAccount
         td $ dynText $ fmap (uiAccountBalance' False) dAccount
