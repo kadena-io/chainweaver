@@ -153,7 +153,7 @@ data DeploymentSettingsConfig t m model a = DeploymentSettingsConfig
 
 data CapabilityInputRow t = CapabilityInputRow
   { _capabilityInputRow_empty :: Dynamic t Bool
-  , _capabilityInputRow_value :: Dynamic t (Map AccountName [SigCapability])
+  , _capabilityInputRow_value :: Dynamic t (Maybe (AccountName, SigCapability))
   , _capabilityInputRow_account :: Dynamic t (Maybe AccountName)
   , _capabilityInputRow_cap :: Dynamic t (Either String SigCapability)
   }
@@ -804,11 +804,11 @@ capabilityInputRow mCap mkSender = elClass "tr" "table__row" $ do
   pure $ CapabilityInputRow
     { _capabilityInputRow_empty = emptyCap
     , _capabilityInputRow_value = emptyCap >>= \case
-      True -> pure mempty
-      False -> fmap (fromMaybe mempty) $ runMaybeT $ do
+      True -> pure Nothing
+      False -> runMaybeT $ do
         (a, _) <- MaybeT account
         p <- MaybeT $ either (const Nothing) pure <$> parsed
-        pure $ Map.singleton a [p]
+        pure (a, p)
     , _capabilityInputRow_account = fmap fst <$> account
     , _capabilityInputRow_cap = parsed
     }
@@ -836,8 +836,9 @@ capabilityInputRows addNew mkSender = do
           -- Deletions caused by users entering GAS
           (ffilter (either (const False) isGas) . updated $ _capabilityInputRow_cap row)
         deletions = switch . current $ IM.foldMapWithKey decideDeletions <$> results
+        mkSingleton = fmap $ maybe mempty $ \(a,b) -> a =: [b]
 
-  pure ( fmap (Map.unionsWith (<>) . IM.elems) $ traverse _capabilityInputRow_value =<< results
+  pure ( fmap (Map.unionsWith (<>) . IM.elems) $ traverse (mkSingleton . _capabilityInputRow_value) =<< results
        , fmap length results
        )
 
@@ -858,14 +859,16 @@ uiSenderCapabilities m cid mCaps mSender mkGasPayer = do
         acc <- el "td" $ sender
         pure $ CapabilityInputRow
           { _capabilityInputRow_empty = pure False
-          , _capabilityInputRow_value = maybe mempty (\s -> Map.singleton (fst s) [_dappCap_cap cap]) <$> acc
+          , _capabilityInputRow_value = fmap (\s -> (fst s, _dappCap_cap cap)) <$> acc
           , _capabilityInputRow_account = fmap fst <$> acc
           , _capabilityInputRow_cap = pure $ Right $ _dappCap_cap cap
           }
 
       staticCapabilityRows setGasPayer caps = fmap combineMaps $ for caps $ \cap ->
-        elClass "tr" "table__row" $ _capabilityInputRow_value
+        elClass "tr" "table__row" $ (mkSingleton . _capabilityInputRow_value)
           <$> staticCapabilityRow (senderDropdown setGasPayer) cap
+
+      mkSingleton = fmap $ maybe mempty $ \(a,b) -> a =: [b]
 
       combineMaps :: (Semigroup v, Ord k) => [Dynamic t (Map k v)] -> Dynamic t (Map k v)
       combineMaps = fmap (Map.unionsWith (<>)) . sequence
@@ -893,7 +896,7 @@ uiSenderCapabilities m cid mCaps mSender mkGasPayer = do
           gas <- capabilityInputRow (Just defaultGASCapability) (mkGasPayer eDefaultGasPayerToSender)
           (rest, restCount) <- capabilityInputRows eAddCap (senderDropdown (Just <$> eApplyToAll))
           pure ( _capabilityInputRow_account gas
-               , combineMaps [(_capabilityInputRow_value gas), rest]
+               , combineMaps [(mkSingleton $ _capabilityInputRow_value gas), rest]
                , fmap (1+) restCount
                )
       Just caps -> do
@@ -905,7 +908,7 @@ uiSenderCapabilities m cid mCaps mSender mkGasPayer = do
           gas <- staticCapabilityRow (mkGasPayer eDefaultGasPayerToSender) defaultGASCapability
           rest <- staticCapabilityRows (Just <$> eApplyToAll) $ filter (not . isGas . _dappCap_cap) caps
           pure ( _capabilityInputRow_account gas
-               , combineMaps [(_capabilityInputRow_value gas),rest]
+               , combineMaps [(mkSingleton $ _capabilityInputRow_value gas),rest]
                , constDyn (1 {- Gas payer -} + length caps)
                )
 
