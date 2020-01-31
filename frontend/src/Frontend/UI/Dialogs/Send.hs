@@ -279,7 +279,7 @@ sendConfig
   :: (SendConstraints model mConf key t m, HasTransactionLogger m)
   => model -> InitialTransferData -> Workflow t m (mConf, Event t ())
 sendConfig model initData = Workflow $ do
-  close <- modalHeader $ text "Withdraw"
+  close <- modalHeader $ text "Send"
   rec
     (currentTab, _done) <- makeTabs initData $ attachWithMaybe (const . void . hush) (current recipient) nextTab
     (conf, mCaps, recipient) <- mainSection currentTab
