@@ -248,21 +248,24 @@ buildDeploymentSettingsResult m mSender mGasPayer signers cChainId capabilities 
 
   caps <- lift capabilities
   signs <- lift signers
-  let signingAccounts = signs <> (Set.insert sender $ Map.keysSet caps)
-      deploySettingsJsonData = fromMaybe mempty $ _deploymentSettingsConfig_data settings
   jsonData' <- ExceptT $ over (mapped . _Left) DeploymentSettingsResultError_InvalidJsonData $ m ^. jsonData . to getJsonDataObjectStrict
   ttl' <- lift ttl
   limit <- lift gasLimit
   lastPublicMeta <- lift $ m ^. network_meta
-  let publicMeta = lastPublicMeta
-        { _pmChainId = chainId
-        , _pmGasLimit = limit
-        , _pmSender = unAccountName sender
-        , _pmTTL = ttl' }
   code' <- lift code
   keys <- lift $ m ^. wallet_keys
   allAccounts <- failWithM (DeploymentSettingsResultError_NoAccountsOnNetwork networkName)
     $ Map.lookup networkName . unAccountData <$> m ^. wallet_accounts
+
+  let signingAccounts = signs <> (Set.insert sender $ Map.keysSet caps)
+      deploySettingsJsonData = fromMaybe mempty $ _deploymentSettingsConfig_data settings
+      pkCaps = publicKeysForAccounts chainId allAccounts caps
+      signingPairs = getSigningPairs chainId keys allAccounts signingAccounts
+      publicMeta = lastPublicMeta
+        { _pmChainId = chainId
+        , _pmGasLimit = limit
+        , _pmSender = unAccountName sender
+        , _pmTTL = ttl' }
 
   -- Make an effort to ensure the gas payer (if there is one) account has enough balance to actually
   -- pay the gas. This won't work if the user selects an account on a different
@@ -281,9 +284,7 @@ buildDeploymentSettingsResult m mSender mGasPayer signers cChainId capabilities 
         in unless (unAccountBalance b > fromIntegral lim * price) $
              throwError DeploymentSettingsResultError_InsufficientFundsOnGasPayer
 
-  let pkCaps = publicKeysForAccounts chainId allAccounts caps
   pure $ do
-    let signingPairs = getSigningPairs chainId keys allAccounts signingAccounts
     cmd <- buildCmd
       (_deploymentSettingsConfig_nonce settings)
       networkId publicMeta signingPairs
