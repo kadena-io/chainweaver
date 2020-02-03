@@ -60,6 +60,9 @@ module Frontend.UI.Widgets
   , uiAccountBalance
   , uiAccountBalance'
   , uiPublicKeyShrunk
+    -- ** Helper types to avoid boolean blindness for additive input
+  , AllowAddNewRow (..)
+  , AllowDeleteRow (..)
   , uiAdditiveInput
     -- ** Helper widgets
   , imgWithAlt
@@ -635,28 +638,28 @@ uiPublicKeyShrunk pk = do
   where
     ktxt = keyToText <$> pk
 
+newtype AllowAddNewRow t out = AllowAddNewRow (out -> Event t Bool)
+newtype AllowDeleteRow t out = AllowDeleteRow (out -> Event t Bool)
+
 uiAdditiveInput
   :: forall t m out particular
      . ( MonadWidget t m
        )
   => (IntMap.Key -> particular -> m out)
-  -> (out -> Event t particular)
-  -> (particular -> Bool)
-  -> (particular -> Bool)
+  -> AllowAddNewRow t out
+  -> AllowDeleteRow t out
   -> particular
   -> Event t (PatchIntMap particular)
   -> m (Dynamic t (IntMap.IntMap out))
-uiAdditiveInput mkIndividualInput getParticular allowNewRow allowDeleteRow initialSelection onExternal = do
+uiAdditiveInput mkIndividualInput (AllowAddNewRow newRow) (AllowDeleteRow deleteRow) initialSelection onExternal = do
   let
     minRowIx = 0
 
     decideAddNewRow :: (IntMap.Key, out) -> Event t (IntMap.IntMap (Maybe particular))
-    decideAddNewRow (i, out) = IntMap.singleton (succ i) (Just initialSelection) <$
-      ffilter allowNewRow (getParticular out)
+    decideAddNewRow (i, out) = IntMap.singleton (succ i) (Just initialSelection) <$ ffilter id (newRow out)
 
     decideDeletion :: IntMap.Key -> out -> Event t (IntMap.IntMap (Maybe particular))
-    decideDeletion i out = IntMap.singleton i Nothing <$
-      ffilter allowDeleteRow (getParticular out)
+    decideDeletion i out = IntMap.singleton i Nothing <$ ffilter id (deleteRow out)
 
   rec
     (keys, newSelection) <- traverseIntMapWithKeyWithAdjust mkIndividualInput (IntMap.singleton minRowIx initialSelection) $
