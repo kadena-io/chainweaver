@@ -46,6 +46,7 @@ emptyKeysetPresets = DefinedKeyset
 data ExternalKeyInput t = ExternalKeyInput
   { _externalKeyInput_input :: Event t (Maybe PublicKey)
   , _externalKeyInput_value :: Dynamic t (Maybe PublicKey)
+  , _externalKeyInput_raw :: Event t Text
   }
 
 uiExternalKeyInput
@@ -72,16 +73,19 @@ uiExternalKeyInput onPreselection = do
       pure $ ExternalKeyInput
         { _externalKeyInput_input = (hush . parsePublicKey) <$> _inputElement_input inp
         , _externalKeyInput_value = hush <$> dE
+        , _externalKeyInput_raw = _inputElement_input inp
         }
 
     toSet :: IntMap.IntMap (ExternalKeyInput t) -> Dynamic t (Set PublicKey)
     toSet = fmap (Set.fromList . IntMap.elems) . wither _externalKeyInput_value
 
+  let doAddDel yesno =
+        fmap (yesno . T.null) . _externalKeyInput_raw
+
   dExternalKeyInput <- uiAdditiveInput
     (const uiPubkeyInput)
-    _externalKeyInput_input
-    isJust
-    isNothing
+    (doAddDel not)
+    (doAddDel id)
     Nothing
     onPreselection
 
@@ -115,11 +119,13 @@ defineKeyset model onPreselection = do
     toIntSet :: IntMap.IntMap (Dropdown t (Maybe Int)) -> Dynamic t IntSet.IntSet
     toIntSet = fmap (IntSet.fromList . IntMap.elems) . wither value
 
+  let doAddDel yesno =
+        fmap (yesno selectMsgKey) . _dropdown_change
+
   dSelectedKeys <- uiAdditiveInput
     (const uiSelectKey)
-    _dropdown_change
-    (/= selectMsgKey)
-    (== selectMsgKey)
+    (doAddDel (/=))
+    (doAddDel (==))
     selectMsgKey
     onPreselection
 

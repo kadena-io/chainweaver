@@ -631,23 +631,20 @@ uiAdditiveInput
      . ( MonadWidget t m
        )
   => (IntMap.Key -> particular -> m out)
-  -> (out -> Event t particular)
-  -> (particular -> Bool)
-  -> (particular -> Bool)
+  -> (out -> Event t Bool)
+  -> (out -> Event t Bool)
   -> particular
   -> Event t (PatchIntMap particular)
   -> m (Dynamic t (IntMap.IntMap out))
-uiAdditiveInput mkIndividualInput getParticular allowNewRow allowDeleteRow initialSelection onExternal = do
+uiAdditiveInput mkIndividualInput allowNewRow allowDeleteRow initialSelection onExternal = do
   let
     minRowIx = 0
 
     decideAddNewRow :: (IntMap.Key, out) -> Event t (IntMap.IntMap (Maybe particular))
-    decideAddNewRow (i, out) = IntMap.singleton (succ i) (Just initialSelection) <$
-      ffilter allowNewRow (getParticular out)
+    decideAddNewRow (i, out) = IntMap.singleton (succ i) (Just initialSelection) <$ ffilter id (allowNewRow out)
 
     decideDeletion :: IntMap.Key -> out -> Event t (IntMap.IntMap (Maybe particular))
-    decideDeletion i out = IntMap.singleton i Nothing <$
-      ffilter allowDeleteRow (getParticular out)
+    decideDeletion i out = IntMap.singleton i Nothing <$ ffilter id (allowDeleteRow out)
 
   rec
     (keys, newSelection) <- traverseIntMapWithKeyWithAdjust mkIndividualInput (IntMap.singleton minRowIx initialSelection) $
