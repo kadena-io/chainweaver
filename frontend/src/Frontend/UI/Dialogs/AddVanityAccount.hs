@@ -15,6 +15,7 @@ import           Control.Monad.Trans.Class              (lift)
 import           Control.Monad.Trans.Maybe              (MaybeT (..), runMaybeT)
 import           Data.Maybe                             (isNothing)
 import           Data.Either                            (isLeft)
+import qualified Data.Map as Map
 import           Data.Text                              (Text)
 import qualified Data.HashMap.Lazy as HM
 import qualified Data.Set as Set
@@ -256,13 +257,17 @@ createAccountConfig ideL name chainId mPublicKey selectedKeyset keyset = Workflo
         , _deploymentSettingsConfig_includePreviewTab = includePreviewTab
         }
 
-      capabilities = maybe mempty (=: [_dappCap_cap defaultGASCapability])
-        <$> mGasPayer
+      networkAccounts = ffor2 (ideL ^. wallet_accounts) (ideL ^. network_selectedNetwork) $ \ad n ->
+        fromMaybe mempty $ Map.lookup n (unAccountData ad)
+
+      senderKeyPairs = ffor3 networkAccounts (ideL ^. wallet_keys) mGasPayer $
+        \accs keys -> foldMap $ getSigningPairs chainId keys accs . Set.singleton
+
+      capabilities = ffor senderKeyPairs $ \kps -> Map.unionsWith (<>) $ ffor kps (=: [_dappCap_cap defaultGASCapability])
 
       conf = cfg & networkCfg_setSender .~ fmapMaybe (fmap unAccountName) (updated mGasPayer)
       result = buildDeploymentSettingsResult
         ideL
-        mGasPayer
         mGasPayer
         (pure mempty)
         cChainId

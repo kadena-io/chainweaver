@@ -29,6 +29,7 @@ module Frontend.UI.Widgets
   , uiAccountFixed
   , uiAccountDropdown
   , uiAccountDropdown'
+  , uiKeyPairDropdown
 
   -- ** Other widgets
   , uiInputWithInlineFeedback
@@ -972,6 +973,23 @@ uiAccountDropdown
   -> Event t (Maybe AccountName)
   -> m (Dynamic t (Maybe (AccountName, Account)))
 uiAccountDropdown uCfg m = uiAccountDropdown' uCfg m Nothing
+
+uiKeyPairDropdown
+  :: forall t m key model
+   . ( HasWallet model key t
+     , DomBuilder t m, MonadFix m, MonadHold t m, PostBuild t m
+     )
+  => model
+  -> DropdownConfig t (Maybe (KeyPair key))
+  -> m (Dynamic t (Maybe (KeyPair key)))
+uiKeyPairDropdown m cfg = fmap _dropdown_value $ uiDropdown Nothing options $ cfg
+  & dropdownConfig_attributes <>~ pure ("class" =: "labeled-input__input select select_mandatory_missing")
+  where
+    options = ffor (m ^. wallet_keys)
+      $ Map.fromList
+      . fmap (\k -> (Just k, keyToText (_keyPair_publicKey k)))
+      . fmap _key_pair
+      . IntMap.elems
 
 uiSidebarIcon :: (DomBuilder t m, PostBuild t m) => Dynamic t Bool -> Text -> Text -> m (Event t ())
 uiSidebarIcon selected src label = do
