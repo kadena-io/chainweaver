@@ -190,17 +190,8 @@ nextView includePreviewTab = \case
   DeploymentSettingsView_Preview -> Nothing
 
 data DeploymentSettingsResult key = DeploymentSettingsResult
-  { _deploymentSettingsResult_gasPrice :: GasPrice
-  , _deploymentSettingsResult_signingKeys :: [KeyPair key]
-  , _deploymentSettingsResult_signingAccounts :: Set AccountName
-  , _deploymentSettingsResult_sender :: AccountName
-  , _deploymentSettingsResult_chainId :: ChainId
-  , _deploymentSettingsResult_code :: Text
+  { _deploymentSettingsResult_chainId :: ChainId
   , _deploymentSettingsResult_command :: Pact.Command Text
-  , _deploymentSettingsResult_wrappedCommand :: Either String (Pact.Command Text)
-  -- ^ This differs from 'command' because this wraps the code with balance
-  -- checks for a /local request. This should never be actually deployed.
-  , _deploymentSettingsResult_accountsToTrack :: Set AccountName
   }
 
 -- TODO this function doesn't make sense with multisig. We shouldn't just throw all
@@ -298,22 +289,15 @@ buildDeploymentSettingsResult m mSender mGasPayer signers cChainId capabilities 
       networkId publicMeta signingPairs
       (_deploymentSettingsConfig_extraSigners settings)
       code' (HM.union jsonData' deploySettingsJsonData) pkCaps
-    wrappedCmd <- for (wrapWithBalanceChecks signingAccounts code') $ \wrappedCode -> do
+    for_ (wrapWithBalanceChecks signingAccounts code') $ \wrappedCode -> do
       buildCmd
         (_deploymentSettingsConfig_nonce settings)
         networkId publicMeta signingPairs
         (_deploymentSettingsConfig_extraSigners settings)
         wrappedCode (HM.union jsonData' deploySettingsJsonData) pkCaps
     pure $ DeploymentSettingsResult
-      { _deploymentSettingsResult_gasPrice = _pmGasPrice publicMeta
-      , _deploymentSettingsResult_signingKeys = signingPairs
-      , _deploymentSettingsResult_signingAccounts = signingAccounts
-      , _deploymentSettingsResult_sender = sender
-      , _deploymentSettingsResult_wrappedCommand = wrappedCmd
-      , _deploymentSettingsResult_accountsToTrack = signingAccounts
-      , _deploymentSettingsResult_chainId = chainId
+      { _deploymentSettingsResult_chainId = chainId
       , _deploymentSettingsResult_command = cmd
-      , _deploymentSettingsResult_code = code'
       }
 
 buildDeployTabs
