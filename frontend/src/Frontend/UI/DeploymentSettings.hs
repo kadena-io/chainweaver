@@ -50,10 +50,6 @@ module Frontend.UI.DeploymentSettings
   , uiMetaData
   , uiDeployPreview
 
-  , uiSenderFixed
-  , uiSenderDropdown
-  , uiSenderDropdown'
-
   , transactionInputSection
   , transactionHashSection
   , transactionDisplayNetwork
@@ -132,7 +128,7 @@ data DeploymentSettingsConfig t m model a = DeploymentSettingsConfig
     -> Dynamic t (Maybe ChainId)
     -> Event t (Maybe AccountName)
     -> m (Dynamic t (Maybe (AccountName, Account)))
-    -- ^ Sender selection widget. Use 'uiSenderFixed' or 'uiSenderDropdown'.
+    -- ^ Sender selection widget. Use 'uiAccountFixed' or 'uiSenderDropdown'.
     -- Note that uiSenderDropdown has a setSender event, but because this UI only "Apply to All"s on the non-GAS capabilities
     -- this event is not exposed here. Just pass in never to get a function compatible with here.
   , _deploymentSettingsConfig_data        :: Maybe Aeson.Object
@@ -756,81 +752,6 @@ uiMetaData m mTTL mGasLimit = do
 
       readPact wrapper =  fmap wrapper . readMay . T.unpack
 
--- | Set the sender to a fixed value
-uiSenderFixed
-  :: DomBuilder t m
-  => AccountName
-  -> m (Dynamic t (Maybe (AccountName, Account)))
-uiSenderFixed sender = do
-  _ <- uiInputElement $ def
-    & initialAttributes %~ Map.insert "disabled" ""
-    & inputElementConfig_initialValue .~ unAccountName sender
-  pure $ pure $ pure (sender, Account AccountStatus_Unknown blankVanityAccount)
-
-mkChainTextAccounts
-  :: (Reflex t, HasWallet model key t, HasNetwork model t)
-  => model
-  -> Dynamic t (Maybe ChainId)
-  -> Dynamic t (Either Text (Map AccountName Text))
-mkChainTextAccounts m mChainId = runExceptT $ do
-  netId <- lift $ m ^. network_selectedNetwork
-  chain <- ExceptT $ note "You must select a chain ID before choosing an account" <$> mChainId
-  accountsOnNetwork <- ExceptT $ note "No accounts on current network" . Map.lookup netId . unAccountData <$> m ^. wallet_accounts
-  let mkVanity n (AccountInfo _ chainMap)
-        | Map.member chain chainMap = Map.singleton n (unAccountName n)
-        | otherwise = mempty
-      vanityAccounts = Map.foldMapWithKey mkVanity accountsOnNetwork
-      accountsOnChain = vanityAccounts
-  when (Map.null accountsOnChain) $ throwError "No accounts on current chain"
-  pure accountsOnChain
-
--- | Let the user pick a sender
-uiSenderDropdown'
-  :: ( PostBuild t m, DomBuilder t m
-     , MonadHold t m, MonadFix m
-     , HasWallet model key t
-     , HasNetwork model t
-     )
-  => DropdownConfig t (Maybe AccountName)
-  -> model
-  -> Maybe AccountName
-  -> Dynamic t (Maybe ChainId)
-  -> Event t (Maybe AccountName)
-  -> m (Dynamic t (Maybe (AccountName, Account)))
-uiSenderDropdown' uCfg m initVal chainId setSender = do
-  let
-    textAccounts = mkChainTextAccounts m chainId
-    dropdownItems =
-      either
-          (Map.singleton Nothing)
-          (Map.insert Nothing "Choose an Account" . Map.mapKeys Just)
-      <$> textAccounts
-  choice <- dropdown initVal dropdownItems $ uCfg
-    & dropdownConfig_setValue .~ leftmost [Nothing <$ updated chainId, setSender]
-    & dropdownConfig_attributes <>~ pure ("class" =: "labeled-input__input select select_mandatory_missing")
-  let result = runMaybeT $ do
-        net <- lift $ m ^. network_selectedNetwork
-        accs <- lift $ m ^. wallet_accounts
-        chain <- MaybeT chainId
-        name <- MaybeT $ value choice
-        acc <- MaybeT $ pure $ accs ^? _AccountData . ix net . ix name . accountInfo_chains . ix chain
-        pure (name, acc)
-  pure result
-
--- | Let the user pick a sender
-uiSenderDropdown
-  :: ( PostBuild t m, DomBuilder t m
-     , MonadHold t m, MonadFix m
-     , HasWallet model key t
-     , HasNetwork model t
-     )
-  => DropdownConfig t (Maybe AccountName)
-  -> model
-  -> Dynamic t (Maybe ChainId)
-  -> Event t (Maybe AccountName)
-  -> m (Dynamic t (Maybe (AccountName, Account)))
-uiSenderDropdown uCfg m = uiSenderDropdown' uCfg m Nothing
-
 -- | Let the user pick signers
 uiSignerList
   :: ( Adjustable t m, PostBuild t m, DomBuilder t m
@@ -946,7 +867,7 @@ uiSenderCapabilities
   -> (Event t (Maybe AccountName) -> m (Dynamic t (Maybe (AccountName, Account))))
   -> m (Dynamic t (Maybe AccountName), Dynamic t (Set AccountName), Dynamic t (Map AccountName [SigCapability]))
 uiSenderCapabilities m cid mCaps mSender mkGasPayer = do
-  let senderDropdown setGasPayer = uiSenderDropdown def m cid setGasPayer
+  let senderDropdown setGasPayer = uiAccountDropdown def m cid setGasPayer
       staticCapabilityRow sender cap = do
         elClass "td" "grant-capabilities-static-row__wrapped-cell" $ text $ _dappCap_role cap
         elClass "td" "grant-capabilities-static-row__wrapped-cell" $ text $ renderCompactText $ _dappCap_cap cap
@@ -1120,7 +1041,7 @@ uiDeployPreview model settings keys accounts signers gasLimit ttl code lastPubli
 
       dialogSectionHeading mempty  "Transaction Sender"
       _ <- divClass "group segment" $ mkLabeledClsInput True "Account" $ \_ -> do
-        uiSenderFixed sender
+        uiAccountFixed sender
 
       let accountsToTrack = getAccounts networkName accountData signing
           localReq = case wrappedCmd of
