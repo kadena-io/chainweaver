@@ -1,7 +1,7 @@
-{-# LANGUAGE TupleSections #-}
 {-# LANGUAGE ConstraintKinds #-}
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE RecursiveDo #-}
+{-# LANGUAGE TupleSections #-}
 module Frontend.UI.Dialogs.AddVanityAccount
   ( uiAddAccountButton
   , uiCreateAccountButton
@@ -86,13 +86,14 @@ uiAddAccountDialog model _onCloseExternal = mdo
     divClass "group" $ do
       uiAccountNameInput model Nothing
   add <- modalFooter $ do
-    confirmButton def "Add Account"
+    confirmButton (def & uiButtonCfg_disabled .~ (isNothing <$> name)) "Add Account"
   let val = runMaybeT $ do
         net <- lift $ current $ model ^. network_selectedNetwork
         n <- MaybeT $ current name
         pure (net, n)
       conf = mempty & walletCfg_importAccount .~ tagMaybe val add
-  return (conf, onClose)
+  -- Since this always succeeds, we're okay to close on the add button event
+  return (conf, onClose <> add)
 
 uiCreateAccountButton :: DomBuilder t m => UiButtonCfg -> m (Event t ())
 uiCreateAccountButton cfg =

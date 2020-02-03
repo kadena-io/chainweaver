@@ -34,6 +34,10 @@
   overflow: hidden;
 }
 
+.wallet__table-cell-balance {
+  word-break: break-word;
+}
+
 .wallet__table-cell-keyset {
   white-space: nowrap;
   text-overflow: ellipsis;
