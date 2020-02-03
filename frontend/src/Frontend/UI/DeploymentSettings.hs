@@ -151,10 +151,10 @@ data DeploymentSettingsConfig t m model a = DeploymentSettingsConfig
     -- ^ Whether or not to show the preview tab on the deployment dialog.
   }
 
-data CapabilityInputRow t = CapabilityInputRow
+data CapabilityInputRow t key = CapabilityInputRow
   { _capabilityInputRow_empty :: Dynamic t Bool
-  , _capabilityInputRow_value :: Dynamic t (Maybe (AccountName, SigCapability))
-  , _capabilityInputRow_account :: Dynamic t (Maybe AccountName)
+  , _capabilityInputRow_value :: Dynamic t (Maybe ((KeyPair key), SigCapability))
+  , _capabilityInputRow_keyPair :: Dynamic t (Maybe (KeyPair key))
   , _capabilityInputRow_cap :: Dynamic t (Either String SigCapability)
   }
 
@@ -194,14 +194,6 @@ data DeploymentSettingsResult key = DeploymentSettingsResult
   , _deploymentSettingsResult_command :: Pact.Command Text
   }
 
--- TODO this function doesn't make sense with multisig. We shouldn't just throw all
--- the signatures in.
-publicKeysForAccounts :: Semigroup a => ChainId -> Map AccountName (AccountInfo Account) -> Map AccountName a -> Map PublicKey a
-publicKeysForAccounts chain allAccounts caps =
-  let toKeyset :: AccountName -> Set PublicKey
-      toKeyset name = allAccounts ^. ix name . accountInfo_chains . ix chain . account_status . _AccountStatus_Exists . accountDetails_keyset . addressKeyset_keys
-  in Map.fromListWith (<>) $ concatMap (\(k, a) -> (, a) <$> Set.toList (toKeyset k)) $ Map.toList caps
-
 lookupAccountBalance :: AccountName -> ChainId -> Map AccountName (AccountInfo Account) -> Maybe (AccountStatus AccountBalance)
 lookupAccountBalance name chain m = fmap _accountDetails_balance <$> m ^? ix name . accountInfo_chains . ix chain . account_status
 
@@ -227,16 +219,15 @@ buildDeploymentSettingsResult
      )
   => model
   -> Dynamic t (Maybe AccountName)
-  -> Dynamic t (Maybe AccountName)
   -> Dynamic t (Set AccountName)
   -> Dynamic t (Maybe ChainId)
-  -> Dynamic t (Map AccountName [SigCapability])
+  -> Dynamic t (Map (KeyPair key) [SigCapability])
   -> Dynamic t TTLSeconds
   -> Dynamic t GasLimit
   -> Dynamic t Text
   -> DeploymentSettingsConfig t m model a
   -> Dynamic t (Either DeploymentSettingsResultError (Performable m (DeploymentSettingsResult key)))
-buildDeploymentSettingsResult m mSender mGasPayer signers cChainId capabilities ttl gasLimit code settings = runExceptT $ do
+buildDeploymentSettingsResult m mSender signers cChainId capabilities ttl gasLimit code settings = runExceptT $ do
   selNodes <- lift $ m ^. network_selectedNodes
   networkName <- lift $ m ^. network_selectedNetwork
   networkId <- liftEither
@@ -248,6 +239,7 @@ buildDeploymentSettingsResult m mSender mGasPayer signers cChainId capabilities 
 
   caps <- lift capabilities
   signs <- lift signers
+
   jsonData' <- ExceptT $ over (mapped . _Left) DeploymentSettingsResultError_InvalidJsonData $ m ^. jsonData . to getJsonDataObjectStrict
   ttl' <- lift ttl
   limit <- lift gasLimit
@@ -257,10 +249,10 @@ buildDeploymentSettingsResult m mSender mGasPayer signers cChainId capabilities 
   allAccounts <- failWithM (DeploymentSettingsResultError_NoAccountsOnNetwork networkName)
     $ Map.lookup networkName . unAccountData <$> m ^. wallet_accounts
 
-  let signingAccounts = signs <> (Set.insert sender $ Map.keysSet caps)
+  let signingAccounts = Set.insert sender signs
+      signingKeypairs = Map.keys caps <> getSigningPairs chainId keys allAccounts signingAccounts
+      publicKeyCapabilities = disregardPrivateKey caps
       deploySettingsJsonData = fromMaybe mempty $ _deploymentSettingsConfig_data settings
-      pkCaps = publicKeysForAccounts chainId allAccounts caps
-      signingPairs = getSigningPairs chainId keys allAccounts signingAccounts
       publicMeta = lastPublicMeta
         { _pmChainId = chainId
         , _pmGasLimit = limit
@@ -270,7 +262,7 @@ buildDeploymentSettingsResult m mSender mGasPayer signers cChainId capabilities 
   -- Make an effort to ensure the gas payer (if there is one) account has enough balance to actually
   -- pay the gas. This won't work if the user selects an account on a different
   -- chain, but that's another issue.
-  gasPayer <- lift mGasPayer
+  gasPayer <- lift mSender
   case gasPayer of
     Nothing -> pure () -- No gas payer selected, move along
     Just gp ->  for_ (lookupAccountBalance gp chainId allAccounts) $ \case
@@ -287,15 +279,15 @@ buildDeploymentSettingsResult m mSender mGasPayer signers cChainId capabilities 
   pure $ do
     cmd <- buildCmd
       (_deploymentSettingsConfig_nonce settings)
-      networkId publicMeta signingPairs
+      networkId publicMeta signingKeypairs
       (_deploymentSettingsConfig_extraSigners settings)
-      code' (HM.union jsonData' deploySettingsJsonData) pkCaps
-    for_ (wrapWithBalanceChecks signingAccounts code') $ \wrappedCode -> do
+      code' (HM.union jsonData' deploySettingsJsonData) publicKeyCapabilities
+    for_ (wrapWithBalanceChecks (Set.singleton sender) code') $ \wrappedCode -> do
       buildCmd
         (_deploymentSettingsConfig_nonce settings)
-        networkId publicMeta signingPairs
+        networkId publicMeta signingKeypairs
         (_deploymentSettingsConfig_extraSigners settings)
-        wrappedCode (HM.union jsonData' deploySettingsJsonData) pkCaps
+        wrappedCode (HM.union jsonData' deploySettingsJsonData) publicKeyCapabilities
     pure $ DeploymentSettingsResult
       { _deploymentSettingsResult_chainId = chainId
       , _deploymentSettingsResult_command = cmd
@@ -372,6 +364,10 @@ buildDeployTabFooterControls mUserTabName includePreviewTab curSelection stepFn 
     , prevView mUserTabName <$ back
     ]
 
+--TODO: are we worried about multiple private keys with the same public key?
+disregardPrivateKey :: Map (KeyPair key) a -> Map PublicKey a
+disregardPrivateKey = Map.mapKeys _keyPair_publicKey
+
 -- | Show settings related to deployments to the user.
 --
 --
@@ -404,15 +400,14 @@ uiDeploymentSettings m settings = mdo
           (Just advancedAccordion)
           (_deploymentSettingsConfig_sender settings)
 
-      (mGasPayer, signers, capabilities) <- tabPane mempty curSelection DeploymentSettingsView_Keys $ do
+      (signers, capabilities) <- tabPane mempty curSelection DeploymentSettingsView_Keys $ do
         dyn_ $ ffor result $ \case
           Left (DeploymentSettingsResultError_GasPayerIsNotValid _) -> divClass "group segment" $
             text "Selected account for 'coin.GAS' capability does not exist on this chain."
           _ ->
             blank
 
-        uiSenderCapabilities m cChainId (_deploymentSettingsConfig_caps settings) mSender
-          $ (_deploymentSettingsConfig_sender settings) m cChainId
+        uiSenderCapabilities m cChainId (_deploymentSettingsConfig_caps settings)
 
       when (_deploymentSettingsConfig_includePreviewTab settings) $ tabPane mempty curSelection DeploymentSettingsView_Preview $ do
         let currentNode = headMay . rights <$> (m ^. network_selectedNodes)
@@ -445,7 +440,7 @@ uiDeploymentSettings m settings = mdo
 
       pure
         ( cfg & networkCfg_setSender .~ fmapMaybe (fmap unAccountName) (updated mSender)
-        , buildDeploymentSettingsResult m mSender mGasPayer signers cChainId capabilities ttl gasLimit code settings
+        , buildDeploymentSettingsResult m mSender signers cChainId capabilities ttl gasLimit code settings
         , mRes
         )
 
@@ -778,9 +773,9 @@ parseSigCapability txt = parsed >>= compiled >>= parseApp
 capabilityInputRow
   :: MonadWidget t m
   => Maybe DappCap
-  -> m (Dynamic t (Maybe (AccountName, Account)))
-  -> m (CapabilityInputRow t)
-capabilityInputRow mCap mkSender = elClass "tr" "table__row" $ do
+  -> m (Dynamic t (Maybe (KeyPair key)))
+  -> m (CapabilityInputRow t key)
+capabilityInputRow mCap keyPairSelector = elClass "tr" "table__row" $ do
   (emptyCap, parsed) <- elClass "td" "table__cell_padded" $ mdo
     cap <- uiInputElement $ def
       & inputElementConfig_initialValue .~ foldMap (renderCompactText . _dappCap_cap) mCap
@@ -800,44 +795,44 @@ capabilityInputRow mCap mkSender = elClass "tr" "table__row" $ do
           , False <$ _inputElement_input cap
           ]
     pure (emptyCap, parsed)
-  account <- elClass "td" "table__cell_padded" mkSender
+  dkp <- elClass "td" "table__cell_padded" keyPairSelector
 
   pure $ CapabilityInputRow
     { _capabilityInputRow_empty = emptyCap
     , _capabilityInputRow_value = emptyCap >>= \case
       True -> pure Nothing
       False -> runMaybeT $ do
-        (a, _) <- MaybeT account
+        kp <- MaybeT dkp
         p <- MaybeT $ either (const Nothing) pure <$> parsed
-        pure (a, p)
-    , _capabilityInputRow_account = fmap fst <$> account
+        pure (kp, p)
+    , _capabilityInputRow_keyPair = dkp
     , _capabilityInputRow_cap = parsed
     }
 
 -- | Display a dynamic number of rows for the user to enter custom capabilities
 capabilityInputRows
-  :: forall t m. MonadWidget t m
+  :: forall t m key. MonadWidget t m
   => Event t ()  -- Add new row
-  -> m (Dynamic t (Maybe (AccountName, Account)))
-  -> m (Dynamic t (Map AccountName [SigCapability]), Dynamic t Int)
-capabilityInputRows addNew mkSender = do
+  -> m (Dynamic t (Maybe (KeyPair key)))
+  -> m (Dynamic t (Map (KeyPair key) [SigCapability]), Dynamic t Int)
+capabilityInputRows addNew keysSelector = do
   rec
-    (im0, im') <- traverseIntMapWithKeyWithAdjust (\_ _ -> capabilityInputRow Nothing mkSender) IM.empty $ leftmost
+    (im0, im') <- traverseIntMapWithKeyWithAdjust (\_ _ -> capabilityInputRow Nothing keysSelector) IM.empty $ leftmost
       -- Delete rows, but ensure we don't delete them all
       [ PatchIntMap <$> deletions
       -- Add a new row when all rows are used
       , attachWith (\i _ -> PatchIntMap (IM.singleton i (Just ()))) nextKeyToUse addNew
       ]
-    results :: Dynamic t (IntMap (CapabilityInputRow t))
+    results :: Dynamic t (IntMap (CapabilityInputRow t key))
       <- foldDyn applyAlways im0 im'
     let nextKeyToUse = maybe 0 (succ . fst) . IM.lookupMax <$> current results
 
-        decideDeletions :: Int -> CapabilityInputRow t -> Event t (IntMap (Maybe ()))
+        decideDeletions :: Int -> CapabilityInputRow t key -> Event t (IntMap (Maybe ()))
         decideDeletions i row = IM.singleton i Nothing <$
           -- Deletions caused by users entering GAS
           (ffilter (either (const False) isGas) . updated $ _capabilityInputRow_cap row)
         deletions = switch . current $ IM.foldMapWithKey decideDeletions <$> results
-        mkSingleton = fmap $ maybe mempty $ \(a,b) -> a =: [b]
+        mkSingleton = fmap $ maybe Map.empty $ \(a,b) -> a =: [b]
 
   pure ( fmap (Map.unionsWith (<>) . IM.elems) $ traverse (mkSingleton . _capabilityInputRow_value) =<< results
        , fmap length results
@@ -849,32 +844,28 @@ uiSenderCapabilities
   => model
   -> Dynamic t (Maybe Pact.ChainId)
   -> Maybe [DappCap]
-  -> Dynamic t (Maybe AccountName)
-  -> (Event t (Maybe AccountName) -> m (Dynamic t (Maybe (AccountName, Account))))
-  -> m (Dynamic t (Maybe AccountName), Dynamic t (Set AccountName), Dynamic t (Map AccountName [SigCapability]))
-uiSenderCapabilities m cid mCaps mSender mkGasPayer = do
-  let senderDropdown setGasPayer = uiAccountDropdown def m cid setGasPayer
-      staticCapabilityRow sender cap = do
+  -> m (Dynamic t (Set AccountName), Dynamic t (Map (KeyPair key) [SigCapability]))
+uiSenderCapabilities m cid mCaps = do
+  let keyPairDropdown ev = uiKeyPairDropdown m $ def & dropdownConfig_setValue .~ fmap Just ev
+      staticCapabilityRow dd cap = do
         elClass "td" "grant-capabilities-static-row__wrapped-cell" $ text $ _dappCap_role cap
         elClass "td" "grant-capabilities-static-row__wrapped-cell" $ text $ renderCompactText $ _dappCap_cap cap
-        acc <- el "td" $ sender
+        dkp <- el "td" dd
         pure $ CapabilityInputRow
           { _capabilityInputRow_empty = pure False
-          , _capabilityInputRow_value = fmap (\s -> (fst s, _dappCap_cap cap)) <$> acc
-          , _capabilityInputRow_account = fmap fst <$> acc
+          , _capabilityInputRow_value = fmap (\kp -> (kp, _dappCap_cap cap)) <$> dkp
+          , _capabilityInputRow_keyPair = dkp
           , _capabilityInputRow_cap = pure $ Right $ _dappCap_cap cap
           }
 
-      staticCapabilityRows setGasPayer caps = fmap combineMaps $ for caps $ \cap ->
+      staticCapabilityRows dd caps = fmap combineMaps $ for caps $ \cap ->
         elClass "tr" "table__row" $ (mkSingleton . _capabilityInputRow_value)
-          <$> staticCapabilityRow (senderDropdown setGasPayer) cap
+          <$> staticCapabilityRow dd cap
 
       mkSingleton = fmap $ maybe mempty $ \(a,b) -> a =: [b]
 
       combineMaps :: (Semigroup v, Ord k) => [Dynamic t (Map k v)] -> Dynamic t (Map k v)
       combineMaps = fmap (Map.unionsWith (<>)) . sequence
-
-  pb <- getPostBuild
 
   eAddCap <- divClass "grant-capabilities-title" $ do
     dialogSectionHeading "grant-capabilities-title__title" "Grant Capabilities"
@@ -883,20 +874,16 @@ uiSenderCapabilities m cid mCaps mSender mkGasPayer = do
       Just _  -> pure never
 
   -- Capabilities
-  (mGasAcct, capabilities) <- divClass "group" $ mdo
-    let eDefaultGasPayerToSender = gate (current $ isNothing <$> mGasAcct') $ leftmost
-          [ updated mSender
-          , current mSender <@ pb
-          ]
-    (mGasAcct', capabilities', rowCount) <- elAttr "table" ("class" =: "table" <> "style" =: "width: 100%; table-layout: fixed;") $ case mCaps of
+  capabilities <- divClass "group" $ mdo
+    (mGasCapKey, capabilities', rowCount) <- elAttr "table" ("class" =: "table" <> "style" =: "width: 100%; table-layout: fixed;") $ case mCaps of
       Nothing -> do
         el "thead" $ el "tr" $ do
           elClass "th" "table__heading table__cell_padded" $ text "Capability"
           elClass "th" "table__heading table__cell_padded" $ text "Account"
         el "tbody" $ do
-          gas <- capabilityInputRow (Just defaultGASCapability) (mkGasPayer eDefaultGasPayerToSender)
-          (rest, restCount) <- capabilityInputRows eAddCap (senderDropdown (Just <$> eApplyToAll))
-          pure ( _capabilityInputRow_account gas
+          gas <- capabilityInputRow (Just defaultGASCapability) (keyPairDropdown never)
+          (rest, restCount) <- capabilityInputRows eAddCap (keyPairDropdown eApplyToAll)
+          pure ( _capabilityInputRow_keyPair gas
                , combineMaps [(mkSingleton $ _capabilityInputRow_value gas), rest]
                , fmap (1+) restCount
                )
@@ -906,35 +893,33 @@ uiSenderCapabilities m cid mCaps mSender mkGasPayer = do
           elAttr "th" ("class" =: "table__heading") $ text "Capability"
           elAttr "th" ("class" =: "table__heading" <> "width" =: "30%") $ text "Account"
         el "tbody" $ do
-          gas <- staticCapabilityRow (mkGasPayer eDefaultGasPayerToSender) defaultGASCapability
-          rest <- staticCapabilityRows (Just <$> eApplyToAll) $ filter (not . isGas . _dappCap_cap) caps
-          pure ( _capabilityInputRow_account gas
+          gas <- staticCapabilityRow (keyPairDropdown never) defaultGASCapability
+          rest <- staticCapabilityRows (keyPairDropdown eApplyToAll) $ filter (not . isGas . _dappCap_cap) caps
+          pure ( _capabilityInputRow_keyPair gas
                , combineMaps [(mkSingleton $ _capabilityInputRow_value gas),rest]
                , constDyn (1 {- Gas payer -} + length caps)
                )
 
     -- If the gas capability is set, we enable the button that will set every other
     -- capability's sender from the gas account.
-    eApplyToAllClick <- (switchHold never =<<) $ dyn $ ffor rowCount $ \n ->
+    eApplyToAll <- (switchHold never =<<) $ dyn $ ffor rowCount $ \n ->
       if n > 1 then do
         eAllGasPayer <- divClass "grant-capabilities-apply-all-wrapper" $ uiButtonDyn
           (btnCfgSecondary
-            & uiButtonCfg_disabled .~ (isNothing <$> mGasAcct')
+            & uiButtonCfg_disabled .~ (isNothing <$> mGasCapKey)
             & uiButtonCfg_class .~ (constDyn $ "grant-capabilities-apply-all")
           )
           (text "Apply to all")
 
-        pure $ current ( (<|>) <$> mGasAcct' <*> mSender ) <@ eAllGasPayer
+        pure $ fmapMaybe id $ current mGasCapKey <@ eAllGasPayer
       else
         pure never
 
-    let eApplyToAll = fmapMaybe id eApplyToAllClick
-
-    pure (mGasAcct', capabilities')
+    pure capabilities'
 
   signers <- uiSignerList m cid
 
-  pure (mGasAcct, signers, capabilities)
+  pure (signers, capabilities)
 
 isGas :: SigCapability -> Bool
 isGas = (^. to PC._scName . to PN._qnName . to (== "GAS"))
@@ -974,7 +959,7 @@ uiDeployPreview
   -> TTLSeconds
   -> Text
   -> PublicMeta
-  -> Map AccountName [SigCapability]
+  -> Map (KeyPair key) [SigCapability]
   -> Either JsonError Aeson.Object
   -> Maybe NetworkName
   -> Maybe ChainId
@@ -988,9 +973,9 @@ uiDeployPreview model settings keys accounts signers gasLimit ttl code lastPubli
 
   let deploySettingsJsonData = fromMaybe mempty $ _deploymentSettingsConfig_data settings
       jsonData0 = fromMaybe mempty $ hush jData
-      signing = signers <> (Set.insert sender $ Map.keysSet capabilities)
-      pkCaps = publicKeysForAccounts chainId accounts capabilities
-      signingPairs = getSigningPairs chainId keys accounts signing
+      signingAccounts = Set.insert sender signers
+      signingPairs = Map.keys capabilities <> getSigningPairs chainId keys accounts signingAccounts
+      publicKeyCapabilities = disregardPrivateKey capabilities
 
   let publicMeta = lastPublicMeta
         { _pmChainId = chainId
@@ -1004,14 +989,14 @@ uiDeployPreview model settings keys accounts signers gasLimit ttl code lastPubli
       jsondata = HM.union jsonData0 deploySettingsJsonData
 
   eCmds <- performEvent $ ffor pb $ \_ -> do
-    c <- buildCmd nonce networkId publicMeta signingPairs extraSigners code jsondata pkCaps
-    wc <- for (wrapWithBalanceChecks signing code) $ \wrappedCode -> do
-      buildCmd nonce networkId publicMeta signingPairs extraSigners wrappedCode jsondata pkCaps
+    c <- buildCmd nonce networkId publicMeta signingPairs extraSigners code jsondata publicKeyCapabilities
+    wc <- for (wrapWithBalanceChecks (Set.singleton sender) code) $ \wrappedCode -> do
+      buildCmd nonce networkId publicMeta signingPairs extraSigners wrappedCode jsondata publicKeyCapabilities
     pure (c, wc)
 
   void $ runWithReplace
     (text "Preparing transaction preview...")
-    (attachWith (uiPreviewResponses signing) ((,) <$> (current $ model ^. network_selectedNetwork) <*> (current $ model ^. wallet_accounts)) eCmds)
+    (attachWith (uiPreviewResponses signingAccounts) ((,) <$> (current $ model ^. network_selectedNetwork) <*> (current $ model ^. wallet_accounts)) eCmds)
   where
     uiPreviewResponses signing (networkName, accountData) (cmd, wrappedCmd) = do
       pb <- getPostBuild

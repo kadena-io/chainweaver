@@ -23,7 +23,6 @@ module Frontend.UI.Wallet
   , uiAvailableKeys
   , uiWalletRefreshButton
   , uiGenerateKeyButton
-  , uiPublicKeyDropdown
     -- ** Filters for keys
   , hasPrivateKey
   , HasUiWalletModelCfg
@@ -264,14 +263,6 @@ keysetSummary ks = T.intercalate ", "
   , "[" <> T.intercalate ", " (fmap keyToText . Set.toList $ _addressKeyset_keys ks) <> "]"
   ]
     where numKeys = Set.size $ _addressKeyset_keys ks
-
-uiPublicKeyDropdown
-  :: (DomBuilder t m, MonadFix m, MonadHold t m, PostBuild t m, HasWallet model key t)
-  => model -> CssClass -> m (Dynamic t (Maybe PublicKey))
-uiPublicKeyDropdown model cls = do
-  let toPair k = let pk = _keyPair_publicKey $ _key_pair k in (Just pk, keyToText pk)
-      keys = ffor (model ^. wallet_keys) $ Map.fromList . fmap toPair . IntMap.elems
-  value <$> uiDropdown Nothing keys (def & dropdownConfig_attributes .~ pure ("class" =: renderClass cls))
 
 -- | Widget listing all available keys.
 uiAvailableKeys
