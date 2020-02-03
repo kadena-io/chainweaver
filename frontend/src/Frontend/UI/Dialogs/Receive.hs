@@ -70,16 +70,25 @@ uiReceiveFromLegacyAccount
 uiReceiveFromLegacyAccount model = do
   mAccountName <- uiAccountNameInput model Nothing
 
-  onKeyPair <-  _inputElement_input <$> mkLabeledInput True "Private Key" uiInputElement def
+  let
+    onDeriveKey (_, onKey) =
+      pure $ ffor onKey $ \case
+        Left e -> PopoverState_Error $ T.takeWhile (/= ':') e
+        Right _ -> PopoverState_Disabled
 
-  (deriveErr, okPair) <- fmap fanEither . performEvent $ deriveKeyPair <$> onKeyPair
+    uiInputPrivKey cfg = do
+      inputE <- uiInputElement cfg
+      onKey <- performEvent $ deriveKeyPair <$> _inputElement_input inputE
+      pure (inputE, onKey)
 
-  _ <- widgetHold blank $ leftmost
-    [ text <$> deriveErr
-    , blank <$ okPair
-    ]
+  (_, onKeyPair) <- mkLabeledInput True "Private Key"
+    ( uiInputWithPopover
+        uiInputPrivKey
+        (_inputElement_raw . fst)
+        onDeriveKey
+    ) def
 
-  keyPair <- holdDyn Nothing $ Just <$> okPair
+  keyPair <- holdDyn Nothing $ hush <$> onKeyPair
 
   amount <- view _2 <$> mkLabeledInput True "Amount" uiGasPriceInputField def
 

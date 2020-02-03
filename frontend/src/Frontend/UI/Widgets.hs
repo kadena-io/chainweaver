@@ -5,8 +5,8 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecursiveDo #-}
 {-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE TupleSections #-}
 {-# LANGUAGE TypeApplications #-}
+{-# LANGUAGE ViewPatterns #-}
 
 -- | Widgets collection
 -- Was based on semui, but now transitioning to custom widgets
@@ -32,6 +32,8 @@ module Frontend.UI.Widgets
   , uiKeyPairDropdown
 
   -- ** Other widgets
+  , PopoverState (..)
+  , uiInputWithPopover
   , uiInputWithInlineFeedback
   , uiSegment
   , uiGroup
@@ -109,6 +111,8 @@ import           GHC.Word                    (Word8)
 import           Data.Decimal                (Decimal)
 import qualified Data.Decimal                as D
 import           Language.Javascript.JSaddle (js0, pToJSVal)
+import qualified GHCJS.DOM.Element as JS
+import qualified GHCJS.DOM.DOMTokenList as JS
 import           Obelisk.Generated.Static
 import           Reflex.Dom.Contrib.CssClass
 import           Reflex.Dom.Core
@@ -1003,3 +1007,90 @@ uiSidebarIcon selected src label = do
     preventTwitching $ elDynAttr "img" (ffor cls $ \c -> "class" =: c <> "src" =: src) blank
     elAttr "span" ("class" =: "sidebar__link-label") $ text label
   pure $ domEvent Click e
+
+data PopoverState
+  = PopoverState_Error Text
+  | PopoverState_Warning Text
+  | PopoverState_Disabled
+  deriving (Eq, Show)
+
+uiInputWithPopover
+  :: forall t m cfg el a b
+  .  ( DomBuilder t m
+     , MonadHold t m
+     , PostBuild t m
+     , PerformEvent t m
+     , MonadJSM (Performable m)
+     , DomBuilderSpace m ~ GhcjsDomSpace
+     , JS.IsElement el
+     -- This isn't here for any special reason other than it makes
+     -- the type signature a bit easier to read.
+     , a ~ InputElement EventResult (DomBuilderSpace m) t
+     )
+  -- Return a tuple here so there is a bit more flexibility for what
+  -- can be returned from your input widget.
+  => (cfg -> m (a,b))
+  -> ((a,b) -> el)
+  -> ((a,b) -> m (Event t PopoverState))
+  -> cfg
+  -> m (a,b)
+uiInputWithPopover body getStateBorderTarget mkMsg cfg = divClass "popover" $ do
+  let
+    popoverBlurCls = \case
+      PopoverState_Error _ -> Just "popover__error-state"
+      PopoverState_Warning _ -> Just "popover__warning-state"
+      PopoverState_Disabled -> Nothing
+
+    popoverDiv :: Map Text Text -> m ()
+    popoverDiv attrs = elAttr "div" attrs blank
+
+    popoverHiddenAttrs = "class" =: "popover__message"
+
+    popoverAttrs cls d =
+      "class" =: ("popover__message popover__display " <> cls) <>
+      "data-tip" =: d
+
+    popoverToAttrs = \case
+      PopoverState_Error m -> popoverAttrs "popover__error" m
+      PopoverState_Warning m -> popoverAttrs "popover__warning" m
+      PopoverState_Disabled -> popoverHiddenAttrs
+
+    pushClass :: JS.IsElement e => Text -> e -> JSM ()
+    pushClass cls = JS.getClassList >=> flip JS.add [cls]
+
+    dropClass :: JS.IsElement e => Text -> e -> JSM ()
+    dropClass cls = JS.getClassList >=> flip JS.remove [cls]
+
+    onShift f e (popoverBlurCls -> Just cls) = liftJSM $ f cls e
+    onShift _ _ _ = pure ()
+
+    popoverIcon cls =
+      elClass "i" ("fa fa-warning popover__icon " <> cls) blank
+
+  a <- body cfg
+
+  onMsg <- mkMsg a
+  dPopState <- holdDyn PopoverState_Disabled onMsg
+
+  _ <- dyn_ $ ffor dPopState $ \case
+    PopoverState_Disabled -> blank
+    PopoverState_Error _ -> popoverIcon "popover__icon-error"
+    PopoverState_Warning _ -> popoverIcon "popover__icon-warning"
+
+  let
+    borderTargetEl = getStateBorderTarget a
+    onFocus = domEvent Focus $ fst a
+    onBlur = domEvent Blur $ fst a
+
+  _ <- performEvent_ $ leftmost
+    [ onShift pushClass borderTargetEl <$> current dPopState <@ onBlur
+    , onShift dropClass borderTargetEl <$> current dPopState <@ onFocus
+    ]
+
+  _ <- runWithReplace (divClass "popover__message" blank) $ leftmost
+    [ popoverDiv . popoverToAttrs <$> onMsg
+    -- , popoverDiv popoverHiddenAttrs <$ onBlur
+    -- , popoverDiv . popoverToAttrs <$> current dPopState <@ onFocus
+    ]
+
+  pure a
