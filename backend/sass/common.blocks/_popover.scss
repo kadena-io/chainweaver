@@ -35,9 +35,10 @@
 // Use this to create more colour variations for the bubble and arrow
 @mixin popover-colouring($colour, $text-colour: white) {
   &::before {
-    border-bottom-color: $colour;
+    border-bottom-color: $text-colour;
   };
   &::after {
+    border-color: $text-colour;
     background: $colour;
     color: $text-colour;
   };
@@ -47,11 +48,8 @@
   border: 0.1rem solid $colour;
 }
 
-.popover__message.popover__error { @include popover-colouring($danger-red); }
-.popover__error-state { @include popover-state-border($danger-red); }
-
-.popover__message.popover__warning { @include popover-colouring($chainweaver-orange); }
-.popover__warning-state { @include popover-state-border($chainweaver-orange); }
+.popover__message.popover__error { @include popover-colouring($chainweaver-light-red, $chainweaver-dark-red); }
+.popover__error-state { @include popover-state-border($chainweaver-dark-red); }
 
 .popover__icon {
   position: absolute;
@@ -75,6 +73,7 @@ i.fa.popover__icon-warning { color: $chainweaver-orange; }
 
 /*== speech bubble ==*/
 .popover__message::after {
+  border: 0.2rem solid;
   border-radius: .25em;
   content: attr(data-tip);
   padding: 0.4rem;
