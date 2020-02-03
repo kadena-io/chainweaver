@@ -196,7 +196,8 @@ uiAccountItem keys name accountInfo = do
   where
   trKey = elClass "tr" "wallet__table-row wallet__table-row-account"
   trAcc = elClass "tr" "wallet__table-row"
-  td = elClass "td" "wallet__table-cell"
+  td = td' ""
+  td' extraClass = elClass "td" ("wallet__table-cell" <> extraClass)
   buttons = divClass "wallet__table-buttons"
   cfg = def
     & uiButtonCfg_class <>~ "wallet__table-button"
@@ -207,7 +208,7 @@ uiAccountItem keys name accountInfo = do
     td $ text $ unAccountName name
     td blank -- Keyset info column
     td $ dynText $ maybe "" unAccountNotes <$> notes
-    td $ dynText $ uiAccountBalance False . Just <$> balance
+    td' " wallet__table-cell-balance" $ dynText $ uiAccountBalance False . Just <$> balance
     onDetails <- td $ buttons $ detailsIconButton cfg
     pure (clk, AccountDialog_Details name <$> current notes <@ onDetails)
 
@@ -228,7 +229,7 @@ uiAccountItem keys name accountInfo = do
           AccountStatus_DoesNotExist -> ""
           AccountStatus_Exists d -> keysetSummary $ _accountDetails_keyset d
         td $ dynText $ maybe "" unAccountNotes . _vanityAccount_notes . _account_storage <$> dAccount
-        td $ dynText $ fmap (uiAccountBalance' False) dAccount
+        td' " wallet__table-cell-balance" $ dynText $ fmap (uiAccountBalance' False) dAccount
         td $ buttons $ switchHold never <=< dyn $ ffor accStatus $ \case
           AccountStatus_Unknown -> pure never
           AccountStatus_DoesNotExist -> do
