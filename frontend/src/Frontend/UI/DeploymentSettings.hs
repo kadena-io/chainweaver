@@ -802,20 +802,12 @@ capabilityInputRows
 capabilityInputRows addNew keysSelector = do
   rec
     (im0, im') <- traverseIntMapWithKeyWithAdjust (\_ _ -> capabilityInputRow Nothing keysSelector) IM.empty $ leftmost
-      -- Delete rows, but ensure we don't delete them all
-      [ PatchIntMap <$> deletions
-      -- Add a new row when all rows are used
-      , attachWith (\i _ -> PatchIntMap (IM.singleton i (Just ()))) nextKeyToUse addNew
+      [ -- Add a new row when all rows are used
+        attachWith (\i _ -> PatchIntMap (IM.singleton i (Just ()))) nextKeyToUse addNew
       ]
     results :: Dynamic t (IntMap (CapabilityInputRow t key))
       <- foldDyn applyAlways im0 im'
     let nextKeyToUse = maybe 0 (succ . fst) . IM.lookupMax <$> current results
-
-        decideDeletions :: Int -> CapabilityInputRow t key -> Event t (IntMap (Maybe ()))
-        decideDeletions i row = IM.singleton i Nothing <$
-          -- Deletions caused by users entering GAS
-          (ffilter (either (const False) isGas) . updated $ _capabilityInputRow_cap row)
-        deletions = switch . current $ IM.foldMapWithKey decideDeletions <$> results
         mkSingleton = fmap $ maybe Map.empty $ \(a,b) -> a =: [b]
 
   pure ( fmap (Map.unionsWith (<>) . IM.elems) $ traverse (mkSingleton . _capabilityInputRow_value) =<< results
