@@ -245,12 +245,10 @@ buildDeploymentSettingsResult m mSender signers cChainId capabilities ttl gasLim
   limit <- lift gasLimit
   lastPublicMeta <- lift $ m ^. network_meta
   code' <- lift code
-  keys <- lift $ m ^. wallet_keys
   allAccounts <- failWithM (DeploymentSettingsResultError_NoAccountsOnNetwork networkName)
     $ Map.lookup networkName . unAccountData <$> m ^. wallet_accounts
 
-  let signingAccounts = Set.singleton sender
-      signingKeypairs = Map.keys caps <> Set.toList signs <> getSigningPairs chainId keys allAccounts signingAccounts
+  let signingKeypairs = Map.keys caps <> Set.toList signs
       publicKeyCapabilities = disregardPrivateKey caps
       deploySettingsJsonData = fromMaybe mempty $ _deploymentSettingsConfig_data settings
       publicMeta = lastPublicMeta
@@ -421,9 +419,7 @@ uiDeploymentSettings m settings = mdo
             aChainId = (<|>) <$> cChainId <*> mHeadChain
 
             uiPreviewPane = uiDeployPreview m settings
-              <$> (m ^. wallet_keys)
-              <*> accounts
-              <*> signers
+              <$> signers
               <*> gasLimit
               <*> ttl
               <*> code
@@ -945,8 +941,6 @@ uiDeployPreview
      )
   => model
   -> DeploymentSettingsConfig t m model a
-  -> KeyStorage key
-  -> Map AccountName (AccountInfo Account)
   -> Set (KeyPair key)
   -> GasLimit
   -> TTLSeconds
@@ -958,16 +952,15 @@ uiDeployPreview
   -> Maybe ChainId
   -> Maybe AccountName
   -> m ()
-uiDeployPreview _ _ _ _ _ _ _ _ _ _ _ _ _ Nothing = text "No valid GAS payer accounts in Wallet."
-uiDeployPreview _ _ _ _ _ _ _ _ _ _ _ _ Nothing _ = text "Please select a Chain."
-uiDeployPreview _ _ _ _ _ _ _ _ _ _ _ Nothing _ _ = text "No network nodes configured."
-uiDeployPreview model settings keys accounts signers gasLimit ttl code lastPublicMeta capabilities jData (Just networkId) (Just chainId) (Just sender) = do
+uiDeployPreview _ _ _ _ _ _ _ _ _ _ _ Nothing = text "No valid GAS payer accounts in Wallet."
+uiDeployPreview _ _ _ _ _ _ _ _ _ _ Nothing _ = text "Please select a Chain."
+uiDeployPreview _ _ _ _ _ _ _ _ _ Nothing _ _ = text "No network nodes configured."
+uiDeployPreview model settings signers gasLimit ttl code lastPublicMeta capabilities jData (Just networkId) (Just chainId) (Just sender) = do
   pb <- getPostBuild
 
   let deploySettingsJsonData = fromMaybe mempty $ _deploymentSettingsConfig_data settings
       jsonData0 = fromMaybe mempty $ hush jData
-      signingAccounts = Set.singleton sender
-      signingPairs = Map.keys capabilities <> Set.toList signers <> getSigningPairs chainId keys accounts signingAccounts
+      signingPairs = Map.keys capabilities <> Set.toList signers
       publicKeyCapabilities = disregardPrivateKey capabilities
 
   let publicMeta = lastPublicMeta
@@ -989,9 +982,9 @@ uiDeployPreview model settings keys accounts signers gasLimit ttl code lastPubli
 
   void $ runWithReplace
     (text "Preparing transaction preview...")
-    (attachWith (uiPreviewResponses signingAccounts) ((,) <$> (current $ model ^. network_selectedNetwork) <*> (current $ model ^. wallet_accounts)) eCmds)
+    (uiPreviewResponses <$> current (model ^. network_selectedNetwork) <*> current (model ^. wallet_accounts) <@> eCmds)
   where
-    uiPreviewResponses signing (networkName, accountData) (cmd, wrappedCmd) = do
+    uiPreviewResponses networkName accountData (cmd, wrappedCmd) = do
       pb <- getPostBuild
 
       unless (any (any isGas) capabilities) $ do
@@ -1009,7 +1002,7 @@ uiDeployPreview model settings keys accounts signers gasLimit ttl code lastPubli
       _ <- divClass "group segment" $ mkLabeledClsInput True "Account" $ \_ -> do
         uiAccountFixed sender
 
-      let accountsToTrack = getAccounts networkName accountData signing
+      let accountsToTrack = getAccounts networkName accountData
           localReq = case wrappedCmd of
             Left _e -> []
             Right cmd0 -> pure $ NetworkRequest
@@ -1051,10 +1044,10 @@ uiDeployPreview model settings keys accounts signers gasLimit ttl code lastPubli
         , text <$> errors
         ]
 
-    getAccounts :: NetworkName -> AccountData -> Set AccountName -> Map AccountName (Set PublicKey)
-    getAccounts net (AccountData m) signing = fromMaybe mempty $ do
+    getAccounts :: NetworkName -> AccountData -> Map AccountName (Set PublicKey)
+    getAccounts net (AccountData m) = fromMaybe mempty $ do
       allAccounts <- Map.lookup net m
-      let accs = Map.restrictKeys allAccounts signing
+      let accs = Map.restrictKeys allAccounts (Set.singleton sender)
       pure $ ffor accs $ \info -> case Map.lookup chainId $ _accountInfo_chains info of
         Just status | AccountStatus_Exists details <- _account_status status
           -> _addressKeyset_keys $ _accountDetails_keyset details
