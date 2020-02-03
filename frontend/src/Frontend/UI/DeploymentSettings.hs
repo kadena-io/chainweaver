@@ -280,12 +280,6 @@ buildDeploymentSettingsResult m mSender signers cChainId capabilities ttl gasLim
       networkId publicMeta signingKeypairs
       (_deploymentSettingsConfig_extraSigners settings)
       code' (HM.union jsonData' deploySettingsJsonData) publicKeyCapabilities
-    for_ (wrapWithBalanceChecks (Set.singleton sender) code') $ \wrappedCode -> do
-      buildCmd
-        (_deploymentSettingsConfig_nonce settings)
-        networkId publicMeta signingKeypairs
-        (_deploymentSettingsConfig_extraSigners settings)
-        wrappedCode (HM.union jsonData' deploySettingsJsonData) publicKeyCapabilities
     pure $ DeploymentSettingsResult
       { _deploymentSettingsResult_chainId = chainId
       , _deploymentSettingsResult_command = cmd
