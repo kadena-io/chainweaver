@@ -1,5 +1,5 @@
-{-# LANGUAGE ConstraintKinds #-}
 {-# LANGUAGE CPP #-}
+{-# LANGUAGE ConstraintKinds #-}
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
@@ -197,7 +197,10 @@ lockScreen xprv = setupDiv "fullscreen" $ divClass "wrapper" $ setupDiv "splash"
   splashLogo
 
   el "div" $ mdo
-    dValid <- holdDyn True . fmap isJust $ isValid
+    dValid <- holdDyn True $ leftmost
+      [ isJust <$> isValid
+      , True <$ _inputElement_input pass
+      ]
 
     let unlock = void $ confirmButton (def & uiButtonCfg_type ?~ "submit") "Unlock"
         cfg = def & elementConfig_initialAttributes .~ ("class" =: setupClass "splash-terms-buttons")

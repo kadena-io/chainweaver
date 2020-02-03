@@ -1,0 +1,82 @@
+/*********************************************************************************
+   Ensure classes and structure are created in accordance with the BEM methodology.
+   For more info: https://en.bem.info/methodology/quick-start/
+
+*********************************************************************************/
+
+.popover {
+  cursor: help;
+  position: relative;
+  width: 100%;
+}
+
+/*== common styles for both parts of popover tip ==*/
+.popover__message::before,
+.popover__message::after {
+  opacity: 0;
+  position: absolute;
+  z-index: -100;
+  right: 3.3%
+}
+
+// If you want to use 'tooltip' like behaviour, then these are
+// some of the selectors you will need.
+// .popover.popover__popovertip:hover::before,
+// .popover.popover__popovertip:focus::before,
+// .popover.popover__popovertip:hover::after,
+// .popover.popover__popovertip:focus::after,
+
+.popover__message.popover__display::before,
+.popover__message.popover__display::after {
+  opacity: 1;
+  z-index: 100;
+}
+
+// Use this to create more colour variations for the bubble and arrow
+@mixin popover-colouring($colour, $text-colour: white) {
+  &::before {
+    border-bottom-color: $colour;
+  };
+  &::after {
+    background: $colour;
+    color: $text-colour;
+  };
+}
+
+@mixin popover-state-border($colour) {
+  border: 0.1rem solid $colour;
+}
+
+.popover__message.popover__error { @include popover-colouring($danger-red); }
+.popover__error-state { @include popover-state-border($danger-red); }
+
+.popover__message.popover__warning { @include popover-colouring($chainweaver-orange); }
+.popover__warning-state { @include popover-state-border($chainweaver-orange); }
+
+.popover__icon {
+  position: absolute;
+  top: 25%;
+  right: 2%;
+}
+
+i.fa.popover__icon-error { color: $danger-red; };
+i.fa.popover__icon-warning { color: $chainweaver-orange; }
+
+/*== pointer tip ==*/
+.popover__message::before {
+  content: "";
+
+  border-left: 1rem solid transparent;
+  border-right: 0 solid transparent;
+  border-bottom: 1.3rem solid;
+
+  top: 1.7rem;
+}
+
+/*== speech bubble ==*/
+.popover__message::after {
+  border-radius: .25em;
+  content: attr(data-tip);
+  padding: 0.4rem;
+  top: 115%;
+}

@@ -1,10 +1,10 @@
-{ pkgs, nixosExe, appName, linuxAppName, version, nixosDesktopItem, homeManagerModule, linuxAppIcon }:
+{ pkgs, nixosExe, appName, linuxAppName, chainweaverVersion, ovaReleaseNumber, nixosDesktopItem, homeManagerModule, linuxAppIcon }:
 let
   kadenaOVACache = "https://nixcache.chainweb.com";
   kadenaOVACacheKey = "nixcache.chainweb.com:FVN503ABX9F8x8K0ptnc99XEz5SaA4Sks6kNcZn2pBY=";
   desktopItemPath = "${nixosDesktopItem}/share/applications/${linuxAppName}.desktop";
   doUpgradeVM = let
-    resultStorePathFile = "https://chainweaver-builds.s3.amazonaws.com/vm/master-store-path";
+    resultStorePathFile = "https://chainweaver-builds.s3.amazonaws.com/release-store-paths/latest-ova";
   in pkgs.writeScriptBin "${linuxAppName}-do-upgrade" ''
     #!/usr/bin/env bash
     set -e
@@ -36,7 +36,7 @@ let
 
     (${doUpgradeVM}/bin/${linuxAppName}-do-upgrade $@ && successful) || finished "Update Failed"
   '';
-  versionFile = pkgs.writeText "${linuxAppName}-version" version;
+  versionFile = pkgs.writeText "${linuxAppName}-version" "${chainweaverVersion}.${ovaReleaseNumber}";
   versionScript = pkgs.writeScriptBin "${linuxAppName}-version.sh" ''cat ${versionFile}'';
   upgradeDesktopItem = pkgs.makeDesktopItem {
      name = "${linuxAppName}-upgrade";
@@ -58,12 +58,23 @@ let
         password = "";
         uid = 1000;
       };
-      home-manager.users.chainweaver = { ... }: {
-        home.file.".config" = { source = ./ova/home/chainweaver/config; recursive = true; };
+      home-manager.users.chainweaver = { config, ... }: {
+        home.file.".config/xfce4/helpers.rc".source = ./ova/home/chainweaver/config/xfce4/helpers.rc;
         home.file.".config/autostart/${linuxAppName}.desktop".source = desktopItemPath;
         home.file."desktop.png".source = ./ova/home/chainweaver/desktop.png;
         home.file."Desktop/${linuxAppName}.desktop".source = desktopItemPath;
         home.file."Desktop/${linuxAppName}-upgrade.desktop".source = "${upgradeDesktopItem}/share/applications/${linuxAppName}-upgrade.desktop";
+        # Instead of symlinking these and them potentially conflicting on upgrades, we'll
+        # copy them each time our profile activates. This may override something that the user
+        # fiddles with, but it should hopefully be OK.
+        home.activation.checkoutOrg = config.lib.dag.entryAfter [ "writeBoundary" ] ''
+            FOLDER="$HOME/.config/xfce4/xfconf/xfce-perchannel-xml";
+            mkdir -p $FOLDER
+            for i in $(find ${./ova/home/chainweaver/config/xfce4/xfconf/xfce-perchannel-xml} -type f); do
+              cp $i $FOLDER
+            done;
+            chmod u+w -R $FOLDER
+          '';
         home.sessionVariables = {
           WEBKIT_DISABLE_COMPOSITING_MODE = 1;
         };
@@ -101,7 +112,7 @@ let
         vmDerivationName = "${linuxAppName}-vm";
         # This should not be Appname as this name will persist forever in the users virtualbox.
         vmName = "Kadena Chainweaver VM";
-        vmFileName = "${linuxAppName}-vm.${version}.ova";
+        vmFileName = "${linuxAppName}-vm.${chainweaverVersion}.${ovaReleaseNumber}.ova";
       };
     };
   });
