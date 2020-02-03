@@ -32,7 +32,7 @@ data KeysetInputs t i a = KeysetInputs
 
 data DefinedKeyset t = DefinedKeyset
   { _definedKeyset_internalKeys :: KeysetInputs t (Maybe Int) PublicKey
-  , _definedKeyset_externalKeys :: KeysetInputs t (Maybe PublicKey) PublicKey
+  , _definedKeyset_externalKeys :: KeysetInputs t (Maybe Text) PublicKey
   , _definedKeyset_predicate :: Dynamic t Text
   }
 
@@ -46,16 +46,18 @@ emptyKeysetPresets = DefinedKeyset
 data ExternalKeyInput t = ExternalKeyInput
   { _externalKeyInput_input :: Event t (Maybe PublicKey)
   , _externalKeyInput_value :: Dynamic t (Maybe PublicKey)
-  , _externalKeyInput_raw :: Event t Text
+  , _externalKeyInput_raw_input :: Event t Text
+  , _externalKeyInput_raw_value :: Dynamic t Text
   }
 
 uiExternalKeyInput
   :: forall t m. MonadWidget t m
-  => Event t (PatchIntMap (Maybe PublicKey))
-  -> m (KeysetInputs t (Maybe PublicKey) PublicKey)
+  -- => Event t (PatchIntMap (Maybe PublicKey))
+  => Event t (PatchIntMap (Maybe Text))
+  -> m (KeysetInputs t (Maybe Text) PublicKey)
 uiExternalKeyInput onPreselection = do
   let
-    uiPubkeyInput :: Maybe PublicKey -> m (ExternalKeyInput t)
+    uiPubkeyInput :: Maybe Text -> m (ExternalKeyInput t)
     uiPubkeyInput iv = do
       (inp, dE) <- uiInputWithInlineFeedback
         (fmap parsePublicKey . value)
@@ -68,30 +70,37 @@ uiExternalKeyInput onPreselection = do
           "placeholder" =: "External public key" <>
           "class" =: "labeled-input__input"
           )
-        & inputElementConfig_initialValue .~ maybe T.empty keyToText iv
+        & inputElementConfig_initialValue .~ fold iv -- maybe T.empty keyToText iv
 
       pure $ ExternalKeyInput
         { _externalKeyInput_input = (hush . parsePublicKey) <$> _inputElement_input inp
         , _externalKeyInput_value = hush <$> dE
-        , _externalKeyInput_raw = _inputElement_input inp
+        , _externalKeyInput_raw_input = _inputElement_input inp
+        , _externalKeyInput_raw_value = _inputElement_value inp
         }
 
     toSet :: IntMap.IntMap (ExternalKeyInput t) -> Dynamic t (Set PublicKey)
     toSet = fmap (Set.fromList . IntMap.elems) . wither _externalKeyInput_value
 
   let doAddDel yesno =
-        fmap (yesno . T.null) . _externalKeyInput_raw
+        fmap (yesno . T.null) . _externalKeyInput_raw_input
 
   dExternalKeyInput <- uiAdditiveInput
     (const uiPubkeyInput)
-    (doAddDel not)
-    (doAddDel id)
+    (AllowAddNewRow $ doAddDel not)
+    (AllowDeleteRow $ doAddDel id)
     Nothing
     onPreselection
 
-  let dFormState :: Dynamic t (PatchIntMap (Maybe PublicKey))
-      dFormState = dExternalKeyInput >>= fmap PatchIntMap
-        . IntMap.foldMapWithKey (\k t -> IntMap.singleton k . Just <$> _externalKeyInput_value t)
+  let
+    dFormState :: Dynamic t (PatchIntMap (Maybe Text))
+    dFormState = dExternalKeyInput >>= fmap (PatchIntMap . ensureInputLine . newIntMap . IntMap.elems)
+      . wither _externalKeyInput_value
+      where
+        newIntMap = ifoldMap (\k -> IntMap.singleton k . Just . Just . keyToText)
+        ensureInputLine im = case IntMap.lookupMax im of
+          Nothing -> IntMap.singleton 0 (Just $ Just T.empty)
+          Just (mkey, _) -> IntMap.insert (succ mkey) (Just $ Just T.empty) im
 
   pure $ KeysetInputs dFormState (dExternalKeyInput >>= toSet)
 
@@ -124,8 +133,8 @@ defineKeyset model onPreselection = do
 
   dSelectedKeys <- uiAdditiveInput
     (const uiSelectKey)
-    (doAddDel (/=))
-    (doAddDel (==))
+    (AllowAddNewRow $ doAddDel (/=))
+    (AllowDeleteRow $ doAddDel (==))
     selectMsgKey
     onPreselection
 
