@@ -239,7 +239,7 @@ createAccountConfig ideL name chainId mPublicKey selectedKeyset keyset = Workflo
     []
     TxnSenderTitle_GasPayer
     Nothing
-    $ uiAccountDropdown def
+    $ uiAccountDropdown def True
 
   let payload = HM.singleton tempkeyset $ toJSON keyset
       code = mkPactCode name
@@ -247,7 +247,7 @@ createAccountConfig ideL name chainId mPublicKey selectedKeyset keyset = Workflo
         { _deploymentSettingsConfig_chainId = userChainIdSelect
         , _deploymentSettingsConfig_userTab = Nothing :: Maybe (Text, m ())
         , _deploymentSettingsConfig_code = pure code
-        , _deploymentSettingsConfig_sender = uiAccountDropdown def
+        , _deploymentSettingsConfig_sender = uiAccountDropdown def False
         , _deploymentSettingsConfig_data = Just payload
         , _deploymentSettingsConfig_nonce = Nothing
         , _deploymentSettingsConfig_ttl = Nothing

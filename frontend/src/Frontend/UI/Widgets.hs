@@ -134,6 +134,7 @@ import           Frontend.UI.Widgets.Helpers (imgWithAlt, imgWithAltCls, makeCli
                                               preventScrollWheel,
                                               tabPane')
 import           Frontend.TxBuilder (TxBuilder)
+
 ------------------------------------------------------------------------------
 
 -- | A styled checkbox.
@@ -920,19 +921,38 @@ uiAccountFixed sender = do
 mkChainTextAccounts
   :: (Reflex t, HasWallet model key t, HasNetwork model t)
   => model
+  -> Bool
   -> Dynamic t (Maybe ChainId)
   -> Dynamic t (Either Text (Map AccountName Text))
-mkChainTextAccounts m mChainId = runExceptT $ do
+mkChainTextAccounts m needsGas mChainId = runExceptT $ do
   netId <- lift $ m ^. network_selectedNetwork
+  -- Calculating the max gas from the network meta causes a causality loop
+  -- maxGasPriceBalance <- lift $ AccountBalance . calcMaxGas <$> m ^. network_meta
+
   chain <- ExceptT $ note "You must select a chain ID before choosing an account" <$> mChainId
   accountsOnNetwork <- ExceptT $ note "No accounts on current network" . Map.lookup netId . unAccountData <$> m ^. wallet_accounts
   let mkVanity n (AccountInfo _ chainMap)
-        | Map.member chain chainMap = Map.singleton n (unAccountName n)
+        | Just a <- Map.lookup chain chainMap
+        , not needsGas || (fromMaybe 0 (a ^? account_status . _AccountStatus_Exists . accountDetails_balance)) > 0
+        = Map.singleton n (unAccountName n)
         | otherwise = mempty
       vanityAccounts = Map.foldMapWithKey mkVanity accountsOnNetwork
       accountsOnChain = vanityAccounts
   when (Map.null accountsOnChain) $ throwError "No accounts on current chain"
   pure accountsOnChain
+  -- where
+  --  calcMaxGas :: PublicMeta -> Decimal
+  --  calcMaxGas meta =
+  --    (meta ^. pmGasLimit . to gasLimitToDecimal)
+  --    *
+  --    (meta ^. pmGasPrice . to gasPriceToDecimal)
+  --  -- from some reason, _Wrapped wasn't working for me. Probably pebkac
+  --  gasLimitToDecimal :: GasLimit -> Decimal
+  --  gasLimitToDecimal (GasLimit (ParsedInteger l)) = fromIntegral l
+  --  gasPriceToDecimal :: GasPrice -> Decimal
+  --  gasPriceToDecimal (GasPrice (ParsedDecimal p)) = p
+
+
 
 -- | Let the user pick an account
 uiAccountDropdown'
@@ -942,14 +962,15 @@ uiAccountDropdown'
      , HasNetwork model t
      )
   => DropdownConfig t (Maybe AccountName)
+  -> Bool
   -> model
   -> Maybe AccountName
   -> Dynamic t (Maybe ChainId)
   -> Event t (Maybe AccountName)
   -> m (Dynamic t (Maybe (AccountName, Account)))
-uiAccountDropdown' uCfg m initVal chainId setSender = do
+uiAccountDropdown' uCfg needsGas m initVal chainId setSender = do
   let
-    textAccounts = mkChainTextAccounts m chainId
+    textAccounts = mkChainTextAccounts m needsGas chainId
     dropdownItems =
       either
           (Map.singleton Nothing)
@@ -975,11 +996,12 @@ uiAccountDropdown
      , HasNetwork model t
      )
   => DropdownConfig t (Maybe AccountName)
+  -> Bool
   -> model
   -> Dynamic t (Maybe ChainId)
   -> Event t (Maybe AccountName)
   -> m (Dynamic t (Maybe (AccountName, Account)))
-uiAccountDropdown uCfg m = uiAccountDropdown' uCfg m Nothing
+uiAccountDropdown uCfg needsGas m = uiAccountDropdown' uCfg needsGas m Nothing
 
 uiKeyPairDropdown
   :: forall t m key model

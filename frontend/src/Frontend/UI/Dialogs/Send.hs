@@ -376,7 +376,7 @@ sendConfig model initData = Workflow $ do
                     divClass "label labeled-input__label" $ text "Account Name"
                     let cfg = def & dropdownConfig_attributes .~ pure ("class" =: "labeled-input__input select select_mandatory_missing")
                         chain = fmap Just forChain
-                    uiAccountDropdown' cfg model (mpayer ^? _Just . _1) chain never
+                    uiAccountDropdown' cfg True model (mpayer ^? _Just . _1) chain never
 
             dyn_ $ ffor2 isCross toChain $ \x c -> when x $ do
               elClass "h3" ("heading heading_type_h3") $ text "This is a cross chain transfer."
@@ -557,7 +557,7 @@ finishCrossChainTransferConfig model fromAccount ucct = Workflow $ do
       divClass "label labeled-input__label" $ text "Account Name"
       let cfg = def & dropdownConfig_attributes .~ pure ("class" =: "labeled-input__input select select_mandatory_missing")
           chain = pure $ Just toChain
-      gasAcc <- uiAccountDropdown cfg model chain never
+      gasAcc <- uiAccountDropdown cfg True model chain never
       pure $ ffor3 (model ^. wallet_accounts) (model ^. network_selectedNetwork) gasAcc $ \netToAccount net ma -> do
         accounts <- Map.lookup net $ unAccountData netToAccount
         n <- ma
