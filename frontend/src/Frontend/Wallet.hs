@@ -171,6 +171,7 @@ makeWallet
     , TriggerEvent t m
     , HasCrypto key (Performable m)
     , FromJSON key, ToJSON key
+    , PostBuild t m
     )
   => model
   -> WalletCfg key t
@@ -187,7 +188,11 @@ makeWallet model conf = do
 
   -- Slight hack here, even with prompt tagging we don't pick up the new accounts
   newNetwork <- delay 0.5 $ void $ updated $ model ^. network_selectedNetwork
-  fullRefresh <- throttle 3 $ leftmost [_walletCfg_refreshBalances conf, newNetwork]
+  -- Another slight hack. We want to load the account details on load, but if we don't delay
+  -- the selectedNodes sampled in getAccountStatus is empty. Sadness
+  initialLoad <- getPostBuild >>= delay 0.5
+  fullRefresh <- throttle 3 $ leftmost [_walletCfg_refreshBalances conf, newNetwork, initialLoad]
+
   rec
     newStatuses <- getAccountStatus model $ leftmost
       [ (,) . IntMap.elems <$> current keys <*> current accounts <@ fullRefresh
