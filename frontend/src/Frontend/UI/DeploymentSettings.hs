@@ -219,7 +219,7 @@ buildDeploymentSettingsResult
      )
   => model
   -> Dynamic t (Maybe AccountName)
-  -> Dynamic t (Set AccountName)
+  -> Dynamic t (Set (KeyPair key))
   -> Dynamic t (Maybe ChainId)
   -> Dynamic t (Map (KeyPair key) [SigCapability])
   -> Dynamic t TTLSeconds
@@ -249,8 +249,8 @@ buildDeploymentSettingsResult m mSender signers cChainId capabilities ttl gasLim
   allAccounts <- failWithM (DeploymentSettingsResultError_NoAccountsOnNetwork networkName)
     $ Map.lookup networkName . unAccountData <$> m ^. wallet_accounts
 
-  let signingAccounts = Set.insert sender signs
-      signingKeypairs = Map.keys caps <> getSigningPairs chainId keys allAccounts signingAccounts
+  let signingAccounts = Set.singleton sender
+      signingKeypairs = Map.keys caps <> Set.toList signs <> getSigningPairs chainId keys allAccounts signingAccounts
       publicKeyCapabilities = disregardPrivateKey caps
       deploySettingsJsonData = fromMaybe mempty $ _deploymentSettingsConfig_data settings
       publicMeta = lastPublicMeta
@@ -407,7 +407,7 @@ uiDeploymentSettings m settings = mdo
           _ ->
             blank
 
-        uiSenderCapabilities m cChainId (_deploymentSettingsConfig_caps settings)
+        uiSenderCapabilities m (_deploymentSettingsConfig_caps settings)
 
       when (_deploymentSettingsConfig_includePreviewTab settings) $ tabPane mempty curSelection DeploymentSettingsView_Preview $ do
         let currentNode = headMay . rights <$> (m ^. network_selectedNodes)
@@ -737,24 +737,18 @@ uiSignerList
   :: ( Adjustable t m, PostBuild t m, DomBuilder t m
      , MonadHold t m
      , HasWallet model key t
-     , HasNetwork model t
      )
   => model
-  -> Dynamic t (Maybe ChainId)
-  -> m (Dynamic t (Set AccountName))
-uiSignerList m chainId = do
-  let textAccounts = mkChainTextAccounts m chainId
-  dialogSectionHeading mempty "Unrestricted Signing Accounts"
-  eSwitchSigners <- divClass "group signing-ui-signers" $
-    dyn $ ffor textAccounts $ \case
-      Left e -> do
-        text e
-        pure $ constDyn Set.empty
-      Right accts -> do
-        cbs <- for (Map.toList accts) $ \(an, aTxt) -> do
-          cb <- uiCheckbox "signing-ui-signers__signer" False def $ text aTxt
-          pure $ bool Nothing (Just an) <$> _checkbox_value cb
-        pure $ fmap (Set.fromList . catMaybes) $ sequence $ cbs
+  -> m (Dynamic t (Set (KeyPair key)))
+uiSignerList m = do
+  dialogSectionHeading mempty "Unrestricted Signing Keys"
+  eSwitchSigners <- divClass "group signing-ui-signers" $ do
+    dyn $ ffor (m ^. wallet_keys) $ \ks -> do
+      cbs <- for (toList ks) $ \(Key kp) -> do
+        cb <- uiCheckbox "signing-ui-signers__signer" False def $
+          text $ keyToText $ _keyPair_publicKey kp
+        pure $ bool Nothing (Just kp) <$> _checkbox_value cb
+      pure $ fmap (Set.fromList . catMaybes) $ sequence $ cbs
   join <$> holdDyn (constDyn Set.empty) eSwitchSigners
 
 parseSigCapability :: Text -> Either String SigCapability
@@ -840,12 +834,11 @@ capabilityInputRows addNew keysSelector = do
 
 -- | Widget for selection of sender and signing keys.
 uiSenderCapabilities
-  :: forall key t m model. (MonadWidget t m, HasWallet model key t, HasNetwork model t)
+  :: forall key t m model. (MonadWidget t m, HasWallet model key t)
   => model
-  -> Dynamic t (Maybe Pact.ChainId)
   -> Maybe [DappCap]
-  -> m (Dynamic t (Set AccountName), Dynamic t (Map (KeyPair key) [SigCapability]))
-uiSenderCapabilities m cid mCaps = do
+  -> m (Dynamic t (Set (KeyPair key)), Dynamic t (Map (KeyPair key) [SigCapability]))
+uiSenderCapabilities m mCaps = do
   let keyPairDropdown ev = uiKeyPairDropdown m $ def & dropdownConfig_setValue .~ fmap Just ev
       staticCapabilityRow dd cap = do
         elClass "td" "grant-capabilities-static-row__wrapped-cell" $ text $ _dappCap_role cap
@@ -917,7 +910,7 @@ uiSenderCapabilities m cid mCaps = do
 
     pure capabilities'
 
-  signers <- uiSignerList m cid
+  signers <- uiSignerList m
 
   pure (signers, capabilities)
 
@@ -954,7 +947,7 @@ uiDeployPreview
   -> DeploymentSettingsConfig t m model a
   -> KeyStorage key
   -> Map AccountName (AccountInfo Account)
-  -> Set AccountName
+  -> Set (KeyPair key)
   -> GasLimit
   -> TTLSeconds
   -> Text
@@ -973,8 +966,8 @@ uiDeployPreview model settings keys accounts signers gasLimit ttl code lastPubli
 
   let deploySettingsJsonData = fromMaybe mempty $ _deploymentSettingsConfig_data settings
       jsonData0 = fromMaybe mempty $ hush jData
-      signingAccounts = Set.insert sender signers
-      signingPairs = Map.keys capabilities <> getSigningPairs chainId keys accounts signingAccounts
+      signingAccounts = Set.singleton sender
+      signingPairs = Map.keys capabilities <> Set.toList signers <> getSigningPairs chainId keys accounts signingAccounts
       publicKeyCapabilities = disregardPrivateKey capabilities
 
   let publicMeta = lastPublicMeta
