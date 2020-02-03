@@ -292,8 +292,8 @@ cancelButton cfg msg =
 receiveButton :: StaticButtonConstraints t m => UiButtonCfg -> m (Event t ())
 receiveButton cfg =
   uiButton (cfg & uiButtonCfg_class <>~ "button_type_secondary" <> "button_type_secondary") $ do
-    imgWithAltCls "button__text-icon" (static @"img/receive.svg") "Deposit" blank
-    elClass "span" "button__text button__text-exclusive" $ text "Deposit"
+    imgWithAltCls "button__text-icon" (static @"img/receive.svg") "Receive" blank
+    elClass "span" "button__text button__text-exclusive" $ text "Receive"
 
 transferToButton :: StaticButtonConstraints t m => UiButtonCfg -> m (Event t ())
 transferToButton cfg =
@@ -315,8 +315,8 @@ detailsIconButton cfg =
 sendButton :: StaticButtonConstraints t m => UiButtonCfg -> m (Event t ())
 sendButton cfg =
   uiButton (cfg & uiButtonCfg_class <>~ "button_type_secondary" <> "button_type_secondary") $ do
-    imgWithAltCls "button__text-icon" (static @"img/send.svg") "Withdraw" blank
-    elClass "span" "button__text button__text-exclusive" $ text "Withdraw"
+    imgWithAltCls "button__text-icon" (static @"img/send.svg") "Send" blank
+    elClass "span" "button__text button__text-exclusive" $ text "Send"
 
 accordionButton :: StaticButtonConstraints t m => UiButtonCfg -> m (Event t ())
 accordionButton cfg =

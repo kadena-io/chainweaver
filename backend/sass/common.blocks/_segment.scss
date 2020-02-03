@@ -40,8 +40,16 @@
 .segment_type_tertiary {
   padding: 0 0 0;
   margin-bottom: $medium-margin;
+
+  &:last-child {
+    margin-bottom: 0;
+  }
 }
 
 .segment_type_tertiary:last-child {
+  margin-bottom: 0;
+}
+
+.segment .segment_type_tertiary .labeled-input-inline :last-child {
   margin-bottom: 0;
 }

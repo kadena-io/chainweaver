@@ -52,6 +52,7 @@ import Control.Monad (guard, void)
 import Control.Monad.Except (runExcept)
 import Control.Monad.Fix
 import Data.Aeson
+import Data.Bifunctor (first)
 import Data.Either (rights)
 import Data.IntMap (IntMap)
 import Data.Map (Map)
@@ -171,6 +172,7 @@ makeWallet
     , TriggerEvent t m
     , HasCrypto key (Performable m)
     , FromJSON key, ToJSON key
+    , PostBuild t m
     )
   => model
   -> WalletCfg key t
@@ -187,14 +189,16 @@ makeWallet model conf = do
 
   -- Slight hack here, even with prompt tagging we don't pick up the new accounts
   newNetwork <- delay 0.5 $ void $ updated $ model ^. network_selectedNetwork
-  fullRefresh <- throttle 3 $ leftmost [_walletCfg_refreshBalances conf, newNetwork]
+  -- Another slight hack. We want to load the account details on load, but if we don't delay
+  -- the selectedNodes sampled in getAccountStatus is empty. Sadness
+  initialLoad <- getPostBuild >>= delay 0.5
+  fullRefresh <- throttle 3 $ leftmost [_walletCfg_refreshBalances conf, newNetwork, initialLoad]
+
   rec
     newStatuses <- getAccountStatus model $ leftmost
-      [ (,) . IntMap.elems <$> current keys <*> current accounts <@ fullRefresh
-      -- Get details for a new key
-      , ffor onNewKey $ \k -> ([k], mempty)
+      [ current accounts <@ fullRefresh
       -- Get details for a new account
-      , ffor (_walletCfg_importAccount conf) $ \(net, name) -> ([], AccountData $ net =: name =: mempty)
+      , ffor (_walletCfg_importAccount conf) $ \(net, name) -> AccountData $ net =: name =: mempty
       ]
     accounts <- foldDyn id initialAccounts $ leftmost
       [ ffor (_walletCfg_importAccount conf) $ \(net, name) ->
@@ -256,28 +260,25 @@ getAccountStatus
     , HasLogger model t
     , HasNetwork model t, HasCrypto key (Performable m)
     )
-  => model -> Event t ([Key key], AccountData) -> m (Event t [(NetworkName, AccountName, ChainId, AccountStatus AccountDetails)])
-getAccountStatus model accStore = performEventAsync $ flip push accStore $ \(keys, AccountData networkAccounts) -> do
+  => model -> Event t AccountData -> m (Event t [(NetworkName, AccountName, ChainId, AccountStatus AccountDetails)])
+getAccountStatus model accStore = performEventAsync $ flip push accStore $ \(AccountData networkAccounts) -> do
   nodes <- fmap rights $ sample $ current $ model ^. network_selectedNodes
   net <- sample $ current $ model ^. network_selectedNetwork
-  pure . Just $ mkRequests nodes net keys (Map.lookup net networkAccounts)
+  pure . Just $ mkRequests nodes net (Map.lookup net networkAccounts)
   where
     allChains = ChainId . tshow <$> ([0..9] :: [Int])
     allChainsLen = length allChains
     onAllChains = MonoidalMap.fromList . zip allChains . replicate allChainsLen
 
-    mkRequests nodes net keys mAccounts cb = do
+    mkRequests nodes net mAccounts cb = do
       -- Transform the accounts structure into a map from chain ID to
-      -- set of account names. We grab balances for keys and accounts on all chains
-      --
-      -- We spam extra balance requests here for keys rather than just adding the
-      -- accounts on generateKey because if we just did it on create then we'd
-      -- get the user stuck if they ever added in a new network.
+      -- set of account names. We grab balances accounts on all chains,
+      -- but only if the user has actually clicked Add Account for that
+      -- account name. We no longer automatically add public keys as an
+      -- account.
       let
         chainsToAccounts = onAllChains $ fold
-          [ Set.fromList
-            (keys ^.. to toList . traverse . to _key_pair . to _keyPair_publicKey . to keyToText)
-          , case mAccounts of
+          [ case mAccounts of
             Nothing -> mempty
             Just as -> Set.fromList $ fmap unAccountName $ Map.keys as
           ]
@@ -329,7 +330,8 @@ checkAccountNameValidity
 checkAccountNameValidity m = getErr <$> (m ^. network_selectedNetwork) <*> (m ^. wallet_accounts)
   where
     getErr net (AccountData networks) k = do
-      acc <- mkAccountName k
+      -- TODO: Remove this hushing of the Kadena error once our error display is better.
+      acc <- first (const "Invalid Account Name") $ mkAccountName k
       maybe (Right acc) (\_ -> Left "This account name is already in use") $ do
         accounts <- Map.lookup net networks
         guard $ Map.member acc accounts

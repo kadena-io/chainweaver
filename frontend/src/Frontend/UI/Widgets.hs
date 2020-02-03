@@ -5,8 +5,8 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecursiveDo #-}
 {-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE TupleSections #-}
 {-# LANGUAGE TypeApplications #-}
+{-# LANGUAGE ViewPatterns #-}
 
 -- | Widgets collection
 -- Was based on semui, but now transitioning to custom widgets
@@ -24,7 +24,16 @@ module Frontend.UI.Widgets
   , userChainIdSelect
   , userChainIdSelectWithPreselect
   , uiChainSelection
+
+  , mkChainTextAccounts
+  , uiAccountFixed
+  , uiAccountDropdown
+  , uiAccountDropdown'
+  , uiKeyPairDropdown
+
   -- ** Other widgets
+  , PopoverState (..)
+  , uiInputWithPopover
   , uiInputWithInlineFeedback
   , uiSegment
   , uiGroup
@@ -53,6 +62,9 @@ module Frontend.UI.Widgets
   , uiAccountBalance
   , uiAccountBalance'
   , uiPublicKeyShrunk
+    -- ** Helper types to avoid boolean blindness for additive input
+  , AllowAddNewRow (..)
+  , AllowDeleteRow (..)
   , uiAdditiveInput
     -- ** Helper widgets
   , imgWithAlt
@@ -82,6 +94,8 @@ import           Control.Applicative
 import           Control.Arrow (first, (&&&))
 import           Control.Lens
 import           Control.Monad
+import           Control.Monad.Except
+import           Control.Monad.Trans.Maybe
 import qualified Data.Aeson.Encode.Pretty as AesonPretty
 import           Data.Either (isLeft, rights)
 import           Data.Map.Strict             (Map)
@@ -97,6 +111,8 @@ import           GHC.Word                    (Word8)
 import           Data.Decimal                (Decimal)
 import qualified Data.Decimal                as D
 import           Language.Javascript.JSaddle (js0, pToJSVal)
+import qualified GHCJS.DOM.Element as JS
+import qualified GHCJS.DOM.DOMTokenList as JS
 import           Obelisk.Generated.Static
 import           Reflex.Dom.Contrib.CssClass
 import           Reflex.Dom.Core
@@ -603,7 +619,7 @@ validatedInputWithButton uCls check placeholder buttonText = do
 uiAccountBalance' :: Bool -> Account -> Text
 uiAccountBalance' showUnits acc = case _account_status acc of
   AccountStatus_Unknown -> "Unknown"
-  AccountStatus_DoesNotExist -> "Account not present"
+  AccountStatus_DoesNotExist -> "Does not exist"
   AccountStatus_Exists d -> mconcat $ catMaybes
     [ Just $ tshow $ unAccountBalance $ _accountDetails_balance d
     , " KDA" <$ guard showUnits
@@ -612,7 +628,7 @@ uiAccountBalance' showUnits acc = case _account_status acc of
 
 uiAccountBalance :: Bool -> Maybe AccountBalance -> Text
 uiAccountBalance showUnits = \case
-  Nothing -> "Account not present"
+  Nothing -> "Does not exist"
   Just b -> mconcat $ catMaybes
     [ Just $ tshow $ unAccountBalance b
     , " KDA" <$ guard showUnits
@@ -626,28 +642,28 @@ uiPublicKeyShrunk pk = do
   where
     ktxt = keyToText <$> pk
 
+newtype AllowAddNewRow t out = AllowAddNewRow (out -> Event t Bool)
+newtype AllowDeleteRow t out = AllowDeleteRow (out -> Event t Bool)
+
 uiAdditiveInput
   :: forall t m out particular
      . ( MonadWidget t m
        )
   => (IntMap.Key -> particular -> m out)
-  -> (out -> Event t particular)
-  -> (particular -> Bool)
-  -> (particular -> Bool)
+  -> AllowAddNewRow t out
+  -> AllowDeleteRow t out
   -> particular
   -> Event t (PatchIntMap particular)
   -> m (Dynamic t (IntMap.IntMap out))
-uiAdditiveInput mkIndividualInput getParticular allowNewRow allowDeleteRow initialSelection onExternal = do
+uiAdditiveInput mkIndividualInput (AllowAddNewRow newRow) (AllowDeleteRow deleteRow) initialSelection onExternal = do
   let
     minRowIx = 0
 
     decideAddNewRow :: (IntMap.Key, out) -> Event t (IntMap.IntMap (Maybe particular))
-    decideAddNewRow (i, out) = IntMap.singleton (succ i) (Just initialSelection) <$
-      ffilter allowNewRow (getParticular out)
+    decideAddNewRow (i, out) = IntMap.singleton (succ i) (Just initialSelection) <$ ffilter id (newRow out)
 
     decideDeletion :: IntMap.Key -> out -> Event t (IntMap.IntMap (Maybe particular))
-    decideDeletion i out = IntMap.singleton i Nothing <$
-      ffilter allowDeleteRow (getParticular out)
+    decideDeletion i out = IntMap.singleton i Nothing <$ ffilter id (deleteRow out)
 
   rec
     (keys, newSelection) <- traverseIntMapWithKeyWithAdjust mkIndividualInput (IntMap.singleton minRowIx initialSelection) $
@@ -890,6 +906,98 @@ predefinedChainIdDisplayed cid _ = do
     & inputElementConfig_initialValue .~ _chainId cid
   pure $ pure $ pure cid
 
+-- | Set the account to a fixed value
+uiAccountFixed
+  :: DomBuilder t m
+  => AccountName
+  -> m (Dynamic t (Maybe (AccountName, Account)))
+uiAccountFixed sender = do
+  _ <- uiInputElement $ def
+    & initialAttributes %~ Map.insert "disabled" ""
+    & inputElementConfig_initialValue .~ unAccountName sender
+  pure $ pure $ pure (sender, Account AccountStatus_Unknown blankVanityAccount)
+
+mkChainTextAccounts
+  :: (Reflex t, HasWallet model key t, HasNetwork model t)
+  => model
+  -> Dynamic t (Maybe ChainId)
+  -> Dynamic t (Either Text (Map AccountName Text))
+mkChainTextAccounts m mChainId = runExceptT $ do
+  netId <- lift $ m ^. network_selectedNetwork
+  chain <- ExceptT $ note "You must select a chain ID before choosing an account" <$> mChainId
+  accountsOnNetwork <- ExceptT $ note "No accounts on current network" . Map.lookup netId . unAccountData <$> m ^. wallet_accounts
+  let mkVanity n (AccountInfo _ chainMap)
+        | Map.member chain chainMap = Map.singleton n (unAccountName n)
+        | otherwise = mempty
+      vanityAccounts = Map.foldMapWithKey mkVanity accountsOnNetwork
+      accountsOnChain = vanityAccounts
+  when (Map.null accountsOnChain) $ throwError "No accounts on current chain"
+  pure accountsOnChain
+
+-- | Let the user pick an account
+uiAccountDropdown'
+  :: ( PostBuild t m, DomBuilder t m
+     , MonadHold t m, MonadFix m
+     , HasWallet model key t
+     , HasNetwork model t
+     )
+  => DropdownConfig t (Maybe AccountName)
+  -> model
+  -> Maybe AccountName
+  -> Dynamic t (Maybe ChainId)
+  -> Event t (Maybe AccountName)
+  -> m (Dynamic t (Maybe (AccountName, Account)))
+uiAccountDropdown' uCfg m initVal chainId setSender = do
+  let
+    textAccounts = mkChainTextAccounts m chainId
+    dropdownItems =
+      either
+          (Map.singleton Nothing)
+          (Map.insert Nothing "Choose an Account" . Map.mapKeys Just)
+      <$> textAccounts
+  choice <- dropdown initVal dropdownItems $ uCfg
+    & dropdownConfig_setValue .~ leftmost [Nothing <$ updated chainId, setSender]
+    & dropdownConfig_attributes <>~ pure ("class" =: "labeled-input__input select select_mandatory_missing")
+  let result = runMaybeT $ do
+        net <- lift $ m ^. network_selectedNetwork
+        accs <- lift $ m ^. wallet_accounts
+        chain <- MaybeT chainId
+        name <- MaybeT $ value choice
+        acc <- MaybeT $ pure $ accs ^? _AccountData . ix net . ix name . accountInfo_chains . ix chain
+        pure (name, acc)
+  pure result
+
+-- | Let the user pick an account
+uiAccountDropdown
+  :: ( PostBuild t m, DomBuilder t m
+     , MonadHold t m, MonadFix m
+     , HasWallet model key t
+     , HasNetwork model t
+     )
+  => DropdownConfig t (Maybe AccountName)
+  -> model
+  -> Dynamic t (Maybe ChainId)
+  -> Event t (Maybe AccountName)
+  -> m (Dynamic t (Maybe (AccountName, Account)))
+uiAccountDropdown uCfg m = uiAccountDropdown' uCfg m Nothing
+
+uiKeyPairDropdown
+  :: forall t m key model
+   . ( HasWallet model key t
+     , DomBuilder t m, MonadFix m, MonadHold t m, PostBuild t m
+     )
+  => model
+  -> DropdownConfig t (Maybe (KeyPair key))
+  -> m (Dynamic t (Maybe (KeyPair key)))
+uiKeyPairDropdown m cfg = fmap _dropdown_value $ uiDropdown Nothing options $ cfg
+  & dropdownConfig_attributes <>~ pure ("class" =: "labeled-input__input select select_mandatory_missing")
+  where
+    options = ffor (m ^. wallet_keys)
+      $ Map.fromList
+      . fmap (\k -> (Just k, keyToText (_keyPair_publicKey k)))
+      . fmap _key_pair
+      . IntMap.elems
+
 uiSidebarIcon :: (DomBuilder t m, PostBuild t m) => Dynamic t Bool -> Text -> Text -> m (Event t ())
 uiSidebarIcon selected src label = do
   let preventTwitching = el "div" -- questionable hack - somehow prevents images from twitching when container is resized
@@ -899,3 +1007,90 @@ uiSidebarIcon selected src label = do
     preventTwitching $ elDynAttr "img" (ffor cls $ \c -> "class" =: c <> "src" =: src) blank
     elAttr "span" ("class" =: "sidebar__link-label") $ text label
   pure $ domEvent Click e
+
+data PopoverState
+  = PopoverState_Error Text
+  | PopoverState_Warning Text
+  | PopoverState_Disabled
+  deriving (Eq, Show)
+
+uiInputWithPopover
+  :: forall t m cfg el a b
+  .  ( DomBuilder t m
+     , MonadHold t m
+     , PostBuild t m
+     , PerformEvent t m
+     , MonadJSM (Performable m)
+     , DomBuilderSpace m ~ GhcjsDomSpace
+     , JS.IsElement el
+     -- This isn't here for any special reason other than it makes
+     -- the type signature a bit easier to read.
+     , a ~ InputElement EventResult (DomBuilderSpace m) t
+     )
+  -- Return a tuple here so there is a bit more flexibility for what
+  -- can be returned from your input widget.
+  => (cfg -> m (a,b))
+  -> ((a,b) -> el)
+  -> ((a,b) -> m (Event t PopoverState))
+  -> cfg
+  -> m (a,b)
+uiInputWithPopover body getStateBorderTarget mkMsg cfg = divClass "popover" $ do
+  let
+    popoverBlurCls = \case
+      PopoverState_Error _ -> Just "popover__error-state"
+      PopoverState_Warning _ -> Just "popover__warning-state"
+      PopoverState_Disabled -> Nothing
+
+    popoverDiv :: Map Text Text -> m ()
+    popoverDiv attrs = elAttr "div" attrs blank
+
+    popoverHiddenAttrs = "class" =: "popover__message"
+
+    popoverAttrs cls d =
+      "class" =: ("popover__message popover__display " <> cls) <>
+      "data-tip" =: d
+
+    popoverToAttrs = \case
+      PopoverState_Error m -> popoverAttrs "popover__error" m
+      PopoverState_Warning m -> popoverAttrs "popover__warning" m
+      PopoverState_Disabled -> popoverHiddenAttrs
+
+    pushClass :: JS.IsElement e => Text -> e -> JSM ()
+    pushClass cls = JS.getClassList >=> flip JS.add [cls]
+
+    dropClass :: JS.IsElement e => Text -> e -> JSM ()
+    dropClass cls = JS.getClassList >=> flip JS.remove [cls]
+
+    onShift f e (popoverBlurCls -> Just cls) = liftJSM $ f cls e
+    onShift _ _ _ = pure ()
+
+    popoverIcon cls =
+      elClass "i" ("fa fa-warning popover__icon " <> cls) blank
+
+  a <- body cfg
+
+  onMsg <- mkMsg a
+  dPopState <- holdDyn PopoverState_Disabled onMsg
+
+  _ <- dyn_ $ ffor dPopState $ \case
+    PopoverState_Disabled -> blank
+    PopoverState_Error _ -> popoverIcon "popover__icon-error"
+    PopoverState_Warning _ -> popoverIcon "popover__icon-warning"
+
+  let
+    borderTargetEl = getStateBorderTarget a
+    onFocus = domEvent Focus $ fst a
+    onBlur = domEvent Blur $ fst a
+
+  _ <- performEvent_ $ leftmost
+    [ onShift pushClass borderTargetEl <$> current dPopState <@ onBlur
+    , onShift dropClass borderTargetEl <$> current dPopState <@ onFocus
+    ]
+
+  _ <- runWithReplace (divClass "popover__message" blank) $ leftmost
+    [ popoverDiv . popoverToAttrs <$> onMsg
+    -- , popoverDiv popoverHiddenAttrs <$ onBlur
+    -- , popoverDiv . popoverToAttrs <$> current dPopState <@ onFocus
+    ]
+
+  pure a
