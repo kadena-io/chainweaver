@@ -930,7 +930,7 @@ uiInputWithPopover
   -> ((a,b) -> m (Event t PopoverState))
   -> cfg
   -> m (a,b)
-uiInputWithPopover body getStateBorderTarget mkMsg cfg = do
+uiInputWithPopover body getStateBorderTarget mkMsg cfg = divClass "popover" $ do
   let
     popoverBlurCls = \case
       PopoverState_Error _ -> Just "popover__error-state"
@@ -964,29 +964,29 @@ uiInputWithPopover body getStateBorderTarget mkMsg cfg = do
       elClass "i" ("fa fa-warning popover__icon " <> cls) blank
 
   a <- body cfg
+
   onMsg <- mkMsg a
   dPopState <- holdDyn PopoverState_Disabled onMsg
 
-  _ <- elClass "span" "popover" $ do
-    _ <- dyn_ $ ffor dPopState $ \case
-      PopoverState_Disabled -> blank
-      PopoverState_Error _ -> popoverIcon "popover__icon-error"
-      PopoverState_Warning _ -> popoverIcon "popover__icon-warning"
+  _ <- dyn_ $ ffor dPopState $ \case
+    PopoverState_Disabled -> blank
+    PopoverState_Error _ -> popoverIcon "popover__icon-error"
+    PopoverState_Warning _ -> popoverIcon "popover__icon-warning"
 
-    let
-      borderTargetEl = getStateBorderTarget a
-      onFocus = domEvent Focus $ fst a
-      onBlur = domEvent Blur $ fst a
+  let
+    borderTargetEl = getStateBorderTarget a
+    onFocus = domEvent Focus $ fst a
+    onBlur = domEvent Blur $ fst a
 
-    _ <- performEvent_ $ leftmost
-      [ onShift pushClass borderTargetEl <$> current dPopState <@ onBlur
-      , onShift dropClass borderTargetEl <$> current dPopState <@ onFocus
-      ]
+  _ <- performEvent_ $ leftmost
+    [ onShift pushClass borderTargetEl <$> current dPopState <@ onBlur
+    , onShift dropClass borderTargetEl <$> current dPopState <@ onFocus
+    ]
 
-    runWithReplace (divClass "popover__message" blank) $ leftmost
-      [ popoverDiv . popoverToAttrs <$> onMsg
-      , popoverDiv popoverHiddenAttrs <$ onBlur
-      , popoverDiv . popoverToAttrs <$> current dPopState <@ onFocus
-      ]
+  _ <- runWithReplace (divClass "popover__message" blank) $ leftmost
+    [ popoverDiv . popoverToAttrs <$> onMsg
+    -- , popoverDiv popoverHiddenAttrs <$ onBlur
+    -- , popoverDiv . popoverToAttrs <$> current dPopState <@ onFocus
+    ]
 
   pure a
