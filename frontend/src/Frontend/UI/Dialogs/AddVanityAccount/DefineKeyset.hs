@@ -52,7 +52,6 @@ data ExternalKeyInput t = ExternalKeyInput
 
 uiExternalKeyInput
   :: forall t m. MonadWidget t m
-  -- => Event t (PatchIntMap (Maybe PublicKey))
   => Event t (PatchIntMap (Maybe Text))
   -> m (KeysetInputs t (Maybe Text) PublicKey)
 uiExternalKeyInput onPreselection = do
@@ -70,7 +69,7 @@ uiExternalKeyInput onPreselection = do
           "placeholder" =: "External public key" <>
           "class" =: "labeled-input__input"
           )
-        & inputElementConfig_initialValue .~ fold iv -- maybe T.empty keyToText iv
+        & inputElementConfig_initialValue .~ fold iv
 
       pure $ ExternalKeyInput
         { _externalKeyInput_input = (hush . parsePublicKey) <$> _inputElement_input inp
