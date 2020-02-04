@@ -310,12 +310,12 @@ sendConfig model initData = Workflow $ do
     mInitCrossChainGasPayer = join $ withInitialTransfer (fmap (_crossChainData_recipientChainGasPayer) . _transferData_crossChainData) initData
     mInitAmount = withInitialTransfer _transferData_amount initData
     mainSection currentTab = elClass "div" "modal__main" $ mdo
-      (conf, recipient) <- tabPane mempty currentTab SendModalTab_Configuration $ mdo
+      (conf, txBuilder, amount) <- tabPane mempty currentTab SendModalTab_Configuration $ mdo
         dialogSectionHeading mempty  "Destination"
         divClass "group" $ transactionDisplayNetwork model
 
         dialogSectionHeading mempty  "Recipient"
-        recipient <- divClass "group" $ do
+        (txBuilder, amount) <- divClass "group" $ do
 
           let displayImmediateFeedback e feedbackMsg showMsg = widgetHold_ blank $ ffor e $ \x ->
                 when (showMsg x) $ mkLabeledView True mempty $ text feedbackMsg
@@ -365,23 +365,25 @@ sendConfig model initData = Workflow $ do
                 _ -> False
           displayImmediateFeedback (updated insufficientFunds) insufficientFundsMsg id
 
-          pure $ runExceptT $ do
-            r <- ExceptT $ first (\_ -> "Invalid Tx Builder") <$> decoded
-            a <- ExceptT $ maybe (Left "Invalid amount") Right <$> amount
+          let validatedTxBuilder = runExceptT $ do
+                r <- ExceptT $ first (\_ -> "Invalid Tx Builder") <$> decoded
+                when (r == TxBuilder fromName fromChain Nothing) $
+                  throwError cannotBeReceiverMsg
+                pure r
 
-            when (maybe True (a >) $ fromAcc ^? account_status . _AccountStatus_Exists . accountDetails_balance . _AccountBalance) $
-              throwError insufficientFundsMsg
+              validatedAmount = runExceptT $ do
+                a <- ExceptT $ maybe (Left "Invalid amount") Right <$> amount
+                when (maybe True (a >) $ fromAcc ^? account_status . _AccountStatus_Exists . accountDetails_balance . _AccountBalance) $
+                  throwError insufficientFundsMsg
+                pure a
 
-            when (r == TxBuilder fromName fromChain Nothing) $
-              throwError cannotBeReceiverMsg
-
-            pure (r, a)
+          pure (validatedTxBuilder, validatedAmount)
 
         dialogSectionHeading mempty  "Transaction Settings"
         (conf, _, gasLimit, gasPrice) <- divClass "group" $ uiMetaData model Nothing Nothing
-        pure (conf, recipient)
+        pure (conf, txBuilder, amount)
       mCaps <- tabPane mempty currentTab SendModalTab_Sign $ do
-        dedrecipient <- eitherDyn $ (fmap . fmap) fst recipient
+        dedrecipient <- eitherDyn txBuilder
         fmap join . holdDyn (pure Nothing) <=< dyn $ ffor dedrecipient $ \case
           Left de -> do
             divClass "group" $ dynText $ ffor de (<> ": please go back and check the configuration.")
@@ -421,7 +423,7 @@ sendConfig model initData = Workflow $ do
                 -- can send to someone else to continue the tx on the recipient chain
                 gasPayerSection toChain mInitCrossChainGasPayer
             pure $ (liftA2 . liftA2) (,) fromGasPayer toGasPayer
-      pure (conf, mCaps, recipient)
+      pure (conf, mCaps, (liftA2 . liftA2) (,) txBuilder amount)
 
     footerSection currentTab recipient mCaps = modalFooter $ do
       cancel <- cancelButton def "Cancel"
