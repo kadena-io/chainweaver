@@ -19,7 +19,7 @@ import System.FilePath ((</>))
 import System.IO
 import qualified System.Process as Process
 
-import Desktop (main', AppFFI(..))
+import Backend.App (main', AppFFI(..))
 import Desktop.Syslog (sysloggedMain, logToSyslog)
 
 foreign import ccall setupAppMenu :: StablePtr (CString -> IO ()) -> IO ()

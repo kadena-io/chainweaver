@@ -4,7 +4,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeOperators #-}
-module Desktop.App where
+module Backend.App where
 
 import Control.Monad.Logger (LogStr,LogLevel)
 import Control.Concurrent
