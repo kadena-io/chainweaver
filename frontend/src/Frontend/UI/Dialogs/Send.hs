@@ -20,7 +20,7 @@ module Frontend.UI.Dialogs.Send
   ( uiSendModal
   ) where
 
-import Control.Applicative (liftA2)
+import Control.Applicative (liftA2, (<|>))
 import Control.Concurrent
 import Control.Error.Util (hush)
 import Control.Lens hiding (failover)
@@ -309,13 +309,13 @@ sendConfig model initData = Workflow $ do
     mInitFromGasPayer = withInitialTransfer (_transferData_fromGasPayer) initData
     mInitCrossChainGasPayer = join $ withInitialTransfer (fmap (_crossChainData_recipientChainGasPayer) . _transferData_crossChainData) initData
     mInitAmount = withInitialTransfer _transferData_amount initData
-    mainSection currentTab = elClass "div" "modal__main" $ mdo
-      (conf, txBuilder, amount) <- tabPane mempty currentTab SendModalTab_Configuration $ mdo
+    mainSection currentTab = elClass "div" "modal__main" $ do
+      (conf, useEntireBalance, txBuilder, amount) <- tabPane mempty currentTab SendModalTab_Configuration $ do
         dialogSectionHeading mempty  "Destination"
         divClass "group" $ transactionDisplayNetwork model
 
         dialogSectionHeading mempty  "Recipient"
-        (txBuilder, amount) <- divClass "group" $ do
+        (txBuilder, amount, useEntireBalance) <- divClass "group" $ do
 
           let displayImmediateFeedback e feedbackMsg showMsg = widgetHold_ blank $ ffor e $ \x ->
                 when (showMsg x) $ mkLabeledView True mempty $ text feedbackMsg
@@ -337,31 +337,22 @@ sendConfig model initData = Workflow $ do
 
           let
             balance = _account_status fromAcc ^? _AccountStatus_Exists . accountDetails_balance . to unAccountBalance
-            maxFee = ffor2 gasLimit gasPrice $ \l p -> fromIntegral l * p
-            maxTransfer = ffor balance $ \b ->
-              ffor2 maxFee mCaps $ \f mc ->
-                let
-                  senderIsGasPayer = (== fromName)
-                  assumedSenderFee = case mc of
-                    Nothing -> 0
-                    Just ((sourceChainGasPayer,_), _) -> bool 0 f $ senderIsGasPayer sourceChainGasPayer
-                in
-                  GasPrice (ParsedDecimal b) - assumedSenderFee
 
             gasInputWithMaxButton cfg = mdo
-              g <- uiGasPriceInputField $ cfg
-                & inputElementConfig_setValue .~ maybe never (<@ clk) (fmap tshow . current <$> maxTransfer)
-              clk <- confirmButton ?? "Max" $ def
-                & uiButtonCfg_class <>~ "input-max-button"
-              pure g
+              let projectAmount = over (_2 . mapped . mapped) (\(GasPrice (ParsedDecimal d)) -> d)
+                  attrs = ffor useEntireBalance $ \u -> "disabled" =: ("disabled" <$ u)
+              (_, inputAmount, _) <- fmap projectAmount $ uiGasPriceInputField $ cfg
+                & inputElementConfig_elementConfig . elementConfig_modifyAttributes .~ updated attrs
+              useEntireBalance <- case balance of
+                Nothing -> pure $ pure Nothing
+                Just b -> fmap (\v -> b <$ guard v) . _checkbox_value <$> uiCheckbox "input-max-toggle" False def (text "Max")
+              pure (isJust <$> useEntireBalance, liftA2 (<|>) useEntireBalance inputAmount)
 
-          (_, amount, _) <- mkLabeledInput True "Amount" gasInputWithMaxButton
+          (useEntireBalance, amount) <- mkLabeledInput True "Amount" gasInputWithMaxButton
             (def & inputElementConfig_initialValue .~ (maybe "" tshow mInitAmount))
-            -- We're only interested in the decimal of the gas price
-            <&> over (_2 . mapped . mapped) (\(GasPrice (ParsedDecimal d)) -> d)
 
-          let insufficientFunds = ffor2 amount (sequence maxTransfer) $ curry $ \case
-                (Just a, Just mt) -> GasPrice (ParsedDecimal a) > mt
+          let insufficientFunds = ffor amount $ \ma -> case (ma, balance) of
+                (Just a, Just b) -> a > b
                 _ -> False
           displayImmediateFeedback (updated insufficientFunds) insufficientFundsMsg id
 
@@ -377,11 +368,11 @@ sendConfig model initData = Workflow $ do
                   throwError insufficientFundsMsg
                 pure a
 
-          pure (validatedTxBuilder, validatedAmount)
+          pure (validatedTxBuilder, validatedAmount, useEntireBalance)
 
         dialogSectionHeading mempty  "Transaction Settings"
-        (conf, _, gasLimit, gasPrice) <- divClass "group" $ uiMetaData model Nothing Nothing
-        pure (conf, txBuilder, amount)
+        (conf, _, _, _) <- divClass "group" $ uiMetaData model Nothing Nothing
+        pure (conf, useEntireBalance, txBuilder, amount)
       mCaps <- tabPane mempty currentTab SendModalTab_Sign $ do
         dedrecipient <- eitherDyn txBuilder
         fmap join . holdDyn (pure Nothing) <=< dyn $ ffor dedrecipient $ \case
@@ -391,14 +382,15 @@ sendConfig model initData = Workflow $ do
           Right dka -> do
             toChain <- holdUniqDyn $ _txBuilder_chainId <$> dka
             let isCross = ffor toChain (fromChain /=)
-                gasPayerSection forChain mpayer = do
+                gasPayerSection forChain mpayer accountPredicate = do
                   dyn_ $ ffor2 isCross forChain $ \x c ->
                     dialogSectionHeading mempty $ "Gas Payer" <> if x then " (Chain " <> _chainId c <> ")" else ""
                   divClass "group" $ elClass "div" "segment segment_type_tertiary labeled-input" $ do
                     divClass "label labeled-input__label" $ text "Account Name"
                     let cfg = def & dropdownConfig_attributes .~ pure ("class" =: "labeled-input__input select select_mandatory_missing")
                         chain = fmap Just forChain
-                    uiAccountDropdown' cfg (pure $ \_ a -> fromMaybe False (accountHasFunds a)) model (mpayer ^? _Just . _1) chain never
+                        allowAccount = ffor accountPredicate $ \p an acc -> p an acc && fromMaybe False (accountHasFunds acc)
+                    uiAccountDropdown' cfg allowAccount model (mpayer ^? _Just . _1) chain never
 
             dyn_ $ ffor2 isCross toChain $ \x c -> when x $ do
               elClass "h3" ("heading heading_type_h3") $ text "This is a cross chain transfer."
@@ -413,7 +405,9 @@ sendConfig model initData = Workflow $ do
                 [ "This is a multi step operation."
                 , "The coin will leave the sender account immediately, and gas must be paid on the recipient chain in order to redeem the coin."
                 ]
-            fromGasPayer <- gasPayerSection (pure fromChain) mInitFromGasPayer
+            fromGasPayer <- mdo
+              let allowAccount = ffor useEntireBalance $ \useAll an _ -> not $ useAll && fromName == an
+              gasPayerSection (pure fromChain) mInitFromGasPayer allowAccount
             toGasPayer <- fmap join . holdDyn (pure Nothing) <=< dyn $ ffor isCross $ \x ->
               if not x
               then pure $ pure $ Just Nothing
@@ -421,7 +415,7 @@ sendConfig model initData = Workflow $ do
                 -- TODO this bit should have an option with a generic input for Ed25519 keys
                 -- and perhaps be skippable entirely in favour of a blob the user
                 -- can send to someone else to continue the tx on the recipient chain
-                gasPayerSection toChain mInitCrossChainGasPayer
+                gasPayerSection toChain mInitCrossChainGasPayer (pure $ \_ _ -> True)
             pure $ (liftA2 . liftA2) (,) fromGasPayer toGasPayer
       pure (conf, mCaps, (liftA2 . liftA2) (,) txBuilder amount)
 

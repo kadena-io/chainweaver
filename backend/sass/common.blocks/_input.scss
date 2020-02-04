@@ -155,6 +155,9 @@ input[type=number] {
   overflow: hidden;
 }
 
-.input-max-button {
-  margin-left: 10px;
+.input-max-toggle {
+  margin-left: 20px;
+  .checkbox__checkmark {
+    margin-right: 5px;
+  }
 }
