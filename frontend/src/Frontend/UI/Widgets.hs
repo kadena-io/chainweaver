@@ -921,10 +921,11 @@ uiAccountFixed sender = do
 mkChainTextAccounts
   :: (Reflex t, HasWallet model key t, HasNetwork model t)
   => model
-  -> Bool
+  -> Dynamic t (AccountName -> Account -> Bool)
   -> Dynamic t (Maybe ChainId)
   -> Dynamic t (Either Text (Map AccountName Text))
-mkChainTextAccounts m needsGas mChainId = runExceptT $ do
+mkChainTextAccounts m allowAccount mChainId = runExceptT $ do
+  allowAcc <- lift allowAccount
   netId <- lift $ m ^. network_selectedNetwork
   -- Calculating the max gas from the network meta causes a causality loop
   -- maxGasPriceBalance <- lift $ AccountBalance . calcMaxGas <$> m ^. network_meta
@@ -932,9 +933,7 @@ mkChainTextAccounts m needsGas mChainId = runExceptT $ do
   chain <- ExceptT $ note "You must select a chain ID before choosing an account" <$> mChainId
   accountsOnNetwork <- ExceptT $ note "No accounts on current network" . Map.lookup netId . unAccountData <$> m ^. wallet_accounts
   let mkVanity n (AccountInfo _ chainMap)
-        | Just a <- Map.lookup chain chainMap
-        , not needsGas || (fromMaybe 0 (a ^? account_status . _AccountStatus_Exists . accountDetails_balance)) > 0
-        = Map.singleton n (unAccountName n)
+        | Just a <- Map.lookup chain chainMap, allowAcc n a = Map.singleton n (unAccountName n)
         | otherwise = mempty
       vanityAccounts = Map.foldMapWithKey mkVanity accountsOnNetwork
       accountsOnChain = vanityAccounts
@@ -962,15 +961,15 @@ uiAccountDropdown'
      , HasNetwork model t
      )
   => DropdownConfig t (Maybe AccountName)
-  -> Bool
+  -> Dynamic t (AccountName -> Account -> Bool)
   -> model
   -> Maybe AccountName
   -> Dynamic t (Maybe ChainId)
   -> Event t (Maybe AccountName)
   -> m (Dynamic t (Maybe (AccountName, Account)))
-uiAccountDropdown' uCfg needsGas m initVal chainId setSender = do
+uiAccountDropdown' uCfg allowAccount m initVal chainId setSender = do
   let
-    textAccounts = mkChainTextAccounts m needsGas chainId
+    textAccounts = mkChainTextAccounts m allowAccount chainId
     dropdownItems =
       either
           (Map.singleton Nothing)
@@ -996,12 +995,12 @@ uiAccountDropdown
      , HasNetwork model t
      )
   => DropdownConfig t (Maybe AccountName)
-  -> Bool
+  -> Dynamic t (AccountName -> Account -> Bool)
   -> model
   -> Dynamic t (Maybe ChainId)
   -> Event t (Maybe AccountName)
   -> m (Dynamic t (Maybe (AccountName, Account)))
-uiAccountDropdown uCfg needsGas m = uiAccountDropdown' uCfg needsGas m Nothing
+uiAccountDropdown uCfg allowAccount m = uiAccountDropdown' uCfg allowAccount m Nothing
 
 uiKeyPairDropdown
   :: forall t m key model
