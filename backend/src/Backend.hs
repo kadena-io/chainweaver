@@ -9,7 +9,12 @@
 -- For autoreloading sass
 {-# OPTIONS_GHC -fforce-recomp #-}
 
-module Backend where
+module Backend
+  ( backend
+  , frontend
+  , main
+  , serveBackendRoute
+  ) where
 
 import           Control.Monad             (when, (<=<))
 import           Control.Monad.Except      (ExceptT (..), runExceptT,
