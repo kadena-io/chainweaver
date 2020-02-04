@@ -255,8 +255,11 @@ uiRealInputElement cfg = do
         (<> ("type" =: "number")) . addInputElementCls . addNoAutofillAttrs
 
 uiCorrectingInputElement
-  :: forall t m a explanation. DomBuilder t m
-  => MonadFix m
+  :: forall t m a explanation
+     . ( DomBuilder t m
+       , MonadFix m
+       , MonadHold t m
+       )
   => (Text -> Maybe a)
   -> (a -> Maybe (a, explanation))
   -> (a -> Maybe (a, explanation))
@@ -269,8 +272,17 @@ uiCorrectingInputElement parse inputSanitize blurSanitize render cfg = mdo
       , forceCorrection inp
       , blurAttemptCorrection eBlurredVal
       , blurForceCorrection eBlurredVal
+      , purgeInvalidInputs
       ]
     )
+
+  dLastGoodValue <- holdUniqDyn =<< holdDyn
+    (cfg ^. inputElementConfig_initialValue)
+    (leftmost
+     [ cfg ^. inputElementConfig_setValue
+     , fmapMaybe (fmap render) $ fmap parse inp
+     ])
+
   let
     inp = _inputElement_input ie
     val = value ie
@@ -281,6 +293,12 @@ uiCorrectingInputElement parse inputSanitize blurSanitize render cfg = mdo
       case f p of
         Nothing -> (p, Nothing)
         Just (a, x) -> (a, Just x)
+
+    purgeInvalidInputs :: Event t Text
+    purgeInvalidInputs = attachWithMaybe
+      (\old -> maybe (Just old) (const Nothing) . parse)
+      (current dLastGoodValue)
+      inp
 
     inputSanitization :: Functor f => f Text -> f (Maybe (a, Maybe explanation))
     inputSanitization = sanitization inputSanitize
@@ -379,8 +397,10 @@ uiNonnegativeRealWithPrecisionInputElement prec fromDecimal cfg = do
 
 -- TODO: correct floating point decimals
 uiIntInputElement
-  :: DomBuilder t m
-  => MonadFix m
+  :: ( DomBuilder t m
+     , MonadFix m
+     , MonadHold t m
+     )
   => Maybe Integer
   -> Maybe Integer
   -> InputElementConfig EventResult t (DomBuilderSpace m)
