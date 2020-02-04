@@ -9,6 +9,7 @@
 {-# LANGUAGE RecursiveDo #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TupleSections #-}
+{-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE TypeFamilies #-}
 
 -- | Wallet management ui for handling private/public keys.
@@ -29,16 +30,17 @@ module Frontend.UI.Wallet
   ) where
 
 ------------------------------------------------------------------------------
-import           Control.Applicative         (liftA2)
 import           Control.Error               (hush)
 import           Control.Lens
 import           Control.Monad               (when, (<=<))
 import qualified Data.IntMap                 as IntMap
+import           Data.Map                    (Map)
 import qualified Data.Map                    as Map
 import           Data.Set (Set)
 import qualified Data.Set                    as Set
 import           Data.Text                   (Text)
 import qualified Data.Text                   as T
+import           Obelisk.Generated.Static
 import           Reflex
 import           Reflex.Dom hiding (Key)
 ------------------------------------------------------------------------------
@@ -117,15 +119,28 @@ uiAccountsTable
   :: forall t m model mConf key.
   (MonadWidget t m, HasUiWalletModelCfg model mConf key m t, HasTransactionLogger m)
   => model -> m mConf
-uiAccountsTable = divClass "wallet__keys-list" . uiAccountItems
+uiAccountsTable model = do
+  let net = model ^. network_selectedNetwork
+      networks = model ^. wallet_accounts
+  mAccounts <- maybeDyn $ ffor2 net networks $ \n (AccountData m) -> case Map.lookup n m of
+    Just accs | not (Map.null accs) -> Just accs
+    _ -> Nothing
+  flatten <=< dyn $ ffor mAccounts $ \case
+    Nothing -> uiEmptyState (static @"img/menu/wallet.svg") "No Accounts Found" $ do
+      el "p" $ do
+        text "Create new Accounts or interact with existing Accounts by selecting the "
+        el "strong" $ text "+ Add Account"
+        text " button."
+      pure mempty
+    Just m -> divClass "wallet__keys-list" $ uiAccountItems model m
+
 
 uiAccountItems
   :: forall t m model mConf key.
   (MonadWidget t m, HasUiWalletModelCfg model mConf key m t, HasTransactionLogger m)
-  => model -> m mConf
-uiAccountItems model = do
+  => model -> Dynamic t (Map AccountName (AccountInfo Account)) -> m mConf
+uiAccountItems model accountsMap = do
   let net = model ^. network_selectedNetwork
-      accountsMap = liftA2 (Map.findWithDefault mempty) net (unAccountData <$> model ^. wallet_accounts)
       tableAttrs = mconcat
         [ "style" =: "table-layout: fixed; width: 98%"
         , "class" =: "wallet table"
@@ -274,24 +289,34 @@ uiAvailableKeys
   => model
   -> m mConf
 uiAvailableKeys model = do
-  divClass "wallet__keys-list" $ do
-    uiKeyItems model
+  let keyMap' = model ^. wallet_keys
+  mKeyMap <- maybeDyn $ ffor keyMap' $ \im -> case IntMap.toAscList im of
+    [] -> Nothing
+    xs -> Just $ Map.fromAscList xs
+  flatten <=< dyn $ ffor mKeyMap $ \case
+    Nothing -> uiEmptyState (static @"img/menu/keys.svg") "No Keys Found" $ do
+      el "p" $ text "The first step towards transacting on the Kadena blockchain is to generate a key pair."
+      el "p" $ do
+        text "Begin by selecting the "
+        el "strong" $ text "+ Generate Key"
+        text " button, then continue to Accounts."
+      pure mempty
+    Just keyMap -> divClass "wallet__keys-list" $ uiKeyItems keyMap
 
 -- | Render a list of key items.
 --
 -- Does not include the surrounding `div` tag. Use uiAvailableKeys for the
 -- complete `div`.
 uiKeyItems
-  :: forall t m model mConf key.
-     ( MonadWidget t m
-     , HasUiWalletModelCfg model mConf key m t
+  :: ( MonadWidget t m
+     , Monoid mConf, Monoid (ModalCfg mConf t)
+     , HasModalCfg mConf (Modal mConf m t) t
+     , HasCrypto key m
      )
-  => model
+  => Dynamic t (Map Int (Key key))
   -> m mConf
-uiKeyItems model = do
+uiKeyItems keyMap = do
   let
-    keyMap' = model ^. wallet_keys
-    keyMap = Map.fromAscList . IntMap.toAscList <$> keyMap'
     tableAttrs =
       "style" =: "table-layout: fixed; width: calc(100% - 22px);"
       <> "class" =: "wallet table"

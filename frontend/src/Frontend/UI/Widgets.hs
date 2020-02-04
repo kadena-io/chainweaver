@@ -86,6 +86,7 @@ module Frontend.UI.Widgets
   , horizontalDashedSeparator
   , dimensionalInputFeedbackWrapper
   , uiSidebarIcon
+  , uiEmptyState
   ) where
 
 
@@ -1116,3 +1117,13 @@ uiInputWithPopover body getStateBorderTarget mkMsg cfg = divClass "popover" $ do
     ]
 
   pure a
+
+uiEmptyState :: DomBuilder t m => Text -> Text -> m a -> m a
+uiEmptyState icon title content = divClass "empty-state" $ do
+  let iconAttrs = Map.fromList
+        [ ("class", "empty-state__icon")
+        , ("style", "background-image: url(" <> icon <>")")
+        ]
+  divClass "empty-state__icon-circle" $ elAttr "div" iconAttrs blank
+  elClass "h1" "empty-state__title" $ text title
+  divClass "empty-state__content" content
