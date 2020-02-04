@@ -66,7 +66,7 @@ i.fa.popover__icon-warning { color: $chainweaver-orange; }
 
   border-left: 1rem solid transparent;
   border-right: 0 solid transparent;
-  border-bottom: 1.3rem solid;
+  border-bottom: 1.4rem solid;
 
   top: 1.7rem;
 }
@@ -78,4 +78,5 @@ i.fa.popover__icon-warning { color: $chainweaver-orange; }
   content: attr(data-tip);
   padding: 0.4rem;
   top: 115%;
+  line-height: initial;
 }

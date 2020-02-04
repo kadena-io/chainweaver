@@ -170,8 +170,10 @@ createAccountSplash model name chain mPublicKey keysetPresets = Workflow $ do
     notGasPayer <- confirmButton cfg "I am not the Gas Payer"
     gasPayer <- confirmButton cfg "I am the Gas Payer"
     let next = leftmost
-          [ tagMaybe (fmap (createAccountNotGasPayer model name chain mPublicKey keysetSelections) <$> current keyset) notGasPayer
-          , tagMaybe (fmap (createAccountConfig model name chain mPublicKey keysetSelections) <$> current keyset) gasPayer
+          [ tagMaybe (fmap (createAccountNotGasPayer model name chain mPublicKey keysetSelections)
+                      <$> current keyset) notGasPayer
+          , tagMaybe (fmap (createAccountConfig model name chain mPublicKey keysetSelections)
+                      <$> current keyset) gasPayer
           ]
     pure (cancel, next)
   return (("Create Account", (mempty, cancel)), next)

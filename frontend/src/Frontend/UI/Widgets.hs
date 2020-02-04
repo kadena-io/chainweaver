@@ -36,7 +36,6 @@ module Frontend.UI.Widgets
   -- ** Other widgets
   , PopoverState (..)
   , uiInputWithPopover
-  , uiInputWithInlineFeedback
   , uiSegment
   , uiGroup
   , uiGroupHeader
@@ -333,47 +332,34 @@ uiCorrectingInputElement parse inputSanitize blurSanitize render cfg = mdo
 
   pure (ie, (fmap . fmap) fst $ inputSanitization val, inp')
 
-uiInputWithInlineFeedback
-  :: ( DomBuilder t m
-     , MonadHold t m
-     , MonadFix m
-     , PostBuild t m
-     )
-  => (a -> Dynamic t (Either e b))
-  -> (a -> Dynamic t Bool)
-  -> (e -> Text)
-  -> Maybe Text
-  -> (InputElementConfig EventResult t (DomBuilderSpace m) -> m a)
-  -> InputElementConfig EventResult t (DomBuilderSpace m)
-  -> m (a, Dynamic t (Either e b))
-uiInputWithInlineFeedback parse isDirty renderFeedback mUnits mkInp cfg =
-  dimensionalInputFeedbackWrapper mUnits $ do
-    inp <- mkInp cfg
-
-    let dParsed = parse inp
-    dIsDirty <- holdUniqDyn $ isDirty inp
-
-    dyn_ $ ffor2 dParsed dIsDirty $ curry $ \case
-      (Left e, True) -> elClass "span" "dimensional-input__feedback" $ text $ renderFeedback e
-      _ -> blank
-
-    pure (inp, dParsed)
-
 -- | Decimal input to the given precision. Returns the element, the value, and
 -- the user input events
 uiNonnegativeRealWithPrecisionInputElement
-  :: forall t m a. (DomBuilder t m, MonadFix m, MonadHold t m)
+  :: forall t m a
+     . ( DomBuilder t m
+       , MonadFix m
+       , MonadHold t m
+       , PostBuild t m
+       , PerformEvent t m
+       , MonadJSM (Performable m)
+       , DomBuilderSpace m ~ GhcjsDomSpace
+       )
   => Word8
   -> (Decimal -> a)
   -> InputElementConfig EventResult t (DomBuilderSpace m)
   -> m (InputElement EventResult (DomBuilderSpace m) t, Dynamic t (Maybe a), Event t a)
 uiNonnegativeRealWithPrecisionInputElement prec fromDecimal cfg = do
-  rec
-    (ie, val, input) <- uiCorrectingInputElement parse inputSanitize blurSanitize tshow $ cfg
-      & initialAttributes %~ addInputElementCls . addNoAutofillAttrs
-        . (<> ("type" =: "number" <> "step" =: stepSize <> "min" =: stepSize))
-    widgetHold_ blank $ ffor (fmap snd input) $ traverse_ $
-      elClass "span" "dimensional-input__feedback" . text
+  let
+    uiCorrecting cfg0 = do
+      (ie, val, input) <- uiCorrectingInputElement parse inputSanitize blurSanitize tshow $ cfg0
+      pure (ie, (input, val))
+
+    showPopover (_, (onInput, _)) = pure $ ffor onInput $
+      maybe PopoverState_Disabled PopoverState_Error . snd
+
+  (ie, (input, val)) <- uiInputWithPopover uiCorrecting (_inputElement_raw . fst) showPopover $ cfg
+    & initialAttributes %~ addInputElementCls . addNoAutofillAttrs
+    . (<> ("type" =: "number" <> "step" =: stepSize <> "min" =: stepSize))
 
   pure (ie, (fmap . fmap) fromDecimal val, fmap (fromDecimal . fst) input)
 
@@ -851,7 +837,9 @@ uiGasPriceInputField
      , MonadFix m
      , MonadHold t m
      , GhcjsDomSpace ~ DomBuilderSpace m
-     , MonadJSM m
+     , MonadJSM m, MonadJSM (Performable m)
+     , PostBuild t m
+     , PerformEvent t m
      )
   => InputElementConfig EventResult t (DomBuilderSpace m)
   -> m ( InputElement EventResult (DomBuilderSpace m) t

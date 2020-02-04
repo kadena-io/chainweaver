@@ -194,9 +194,9 @@ body[data-modal-open='true'] {
   }
   .table td {
     max-width: 0;
-    overflow: hidden;
+    // overflow: hidden;
     text-overflow: ellipsis;
-    white-space: nowrap;
+    // white-space: nowrap;
   }
 }
 
