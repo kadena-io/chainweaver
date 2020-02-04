@@ -33,10 +33,10 @@ import           Frontend.Storage
 main :: IO ()
 main = do
   let Right validFullEncoder = checkEncoder backendRouteEncoder
-  run $ runFrontend validFullEncoder frontend
+  run $ runFrontend validFullEncoder webFrontend
 
-frontend :: Frontend (R FrontendRoute)
-frontend = Frontend
+webFrontend :: Frontend (R FrontendRoute)
+webFrontend = Frontend
   { _frontend_head = do
       let backendEncoder = either (error "frontend: Failed to check backendRouteEncoder") id $
             checkEncoder backendRouteEncoder

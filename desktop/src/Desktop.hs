@@ -1,3 +1,3 @@
-module Desktop (desktop) where
+module Desktop (desktopFrontend) where
 
 import Desktop.Frontend

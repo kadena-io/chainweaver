@@ -35,7 +35,8 @@ import qualified Data.Text.Encoding.Error  as T
 import qualified Data.Text.IO              as T
 import           Network.HTTP.Client       (Manager)
 import           Network.HTTP.Client.TLS   (newTlsManager)
-import qualified Obelisk.Backend           as Ob
+import           Obelisk.Backend           (Backend(..), runBackend)
+import           Obelisk.Frontend          (Frontend)
 import           Obelisk.ExecutableConfig.Lookup
 import           Obelisk.Route             (pattern (:/), R, checkEncoder,
                                             renderFrontendRoute)
@@ -62,7 +63,7 @@ import           Common.OAuth              (OAuthProvider (..),
                                             buildOAuthConfig', oAuthClientIdPath)
 import           Common.Route
 import           Common.Network
-import           Frontend                  (frontend)
+import           Frontend                  (webFrontend)
 
 data BackendCfg = BackendCfg
   { _backendCfg_oAuth                :: OAuthConfig OAuthProvider
@@ -75,7 +76,10 @@ main = do
   runCheck <- not . null . filter (== "check-deployment") <$> getArgs
   if runCheck
      then checkDeployment
-     else Ob.runBackend backend frontend
+     else runBackend backend webFrontend
+
+frontend :: Frontend (R FrontendRoute)
+frontend = webFrontend
 
 -- | Where to put OAuth related backend configs:
 oAuthBackendCfgPath :: Text
@@ -166,9 +170,9 @@ checkDeployment = do
 
     putErrLn = T.hPutStrLn stderr
 
-backend :: Ob.Backend BackendRoute FrontendRoute
-backend = Ob.Backend
-    { Ob._backend_run = \serve -> do
+backend :: Backend BackendRoute FrontendRoute
+backend = Backend
+    { _backend_run = \serve -> do
         cfg <- buildCfg
         networks <- getConfig networksPath
         let hasServerList = isJust networks
@@ -180,7 +184,7 @@ backend = Ob.Backend
            --  Devel mode:
            else Devel.withPactInstances serveIt
 
-    , Ob._backend_routeEncoder = backendRouteEncoder
+    , _backend_routeEncoder = backendRouteEncoder
     }
 
 serveBackendRoute :: Maybe Text -> BackendCfg -> R BackendRoute -> Snap ()

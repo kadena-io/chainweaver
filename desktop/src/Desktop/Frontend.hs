@@ -16,7 +16,7 @@
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE UndecidableInstances #-}
 
-module Desktop.Frontend (desktop, bipWallet, bipCryptoGenPair, runFileStorageT) where
+module Desktop.Frontend (desktopFrontend, bipWallet, bipCryptoGenPair, runFileStorageT) where
 
 import Control.Lens ((?~))
 import Control.Monad ((<=<), guard, void)
@@ -86,8 +86,8 @@ concat <$> traverse ($ ''BIPStorage)
 
 -- | This is for development
 -- > ob run --import desktop:Desktop.Frontend --frontend Desktop.Frontend.desktop
-desktop :: Frontend (R FrontendRoute)
-desktop = Frontend
+desktopFrontend :: Frontend (R FrontendRoute)
+desktopFrontend = Frontend
   { _frontend_head = do
       let backendEncoder = either (error "frontend: Failed to check backendRouteEncoder") id $
             checkEncoder backendRouteEncoder
