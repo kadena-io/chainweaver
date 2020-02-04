@@ -191,6 +191,15 @@ uiAccountItems model accountsMap = do
     & modalCfg_setModal .~ attachWith accModal (current net) onAccountModal
     & walletCfg_refreshBalances .~ refresh
 
+-- | This function only exists to workaround a reflex-dom Adjustable bug.
+-- It should be removed immediately when that bug is fixed.
+accursedUnutterableListWithKey
+  :: forall t k v m a. (Eq v, NotReady t m, Ord k, Adjustable t m, PostBuild t m, MonadFix m, MonadHold t m)
+  => Dynamic t (Map k v) -> (k -> Dynamic t v -> m a) -> m (Dynamic t (Map k a))
+accursedUnutterableListWithKey dMap f = do
+  dm <- holdUniqDyn dMap
+  holdDyn mempty <=< dyn $ ffor dm $ \m -> Map.traverseWithKey (\k -> f k . pure) m
+
 uiAccountItem
   :: forall t m. MonadWidget t m
   => Dynamic t (Set PublicKey)
@@ -203,7 +212,7 @@ uiAccountItem keys name accountInfo = do
   rec
     (clk, dialog) <- keyRow visible notes $ sum . catMaybes <$> balances
     visible <- toggle False clk
-    results <- listWithKey chainMap $ accountRow visible
+    results <- accursedUnutterableListWithKey chainMap $ accountRow visible
     let balances :: Dynamic t [Maybe AccountBalance]
         balances = fmap Map.elems $ joinDynThroughMap $ (fmap . fmap) fst results
   let dialogs = switch $ leftmost . fmap snd . Map.elems <$> current results
