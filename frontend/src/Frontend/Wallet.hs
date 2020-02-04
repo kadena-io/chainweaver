@@ -33,6 +33,7 @@ module Frontend.Wallet
   , AccountData (..)
   , _AccountData
   , accountKeys
+  , accountHasFunds
   -- * Creation
   , makeWallet
   , loadKeys
@@ -152,6 +153,9 @@ getSigningPairs chain allKeys allAccounts signing = filterKeyPairs (Set.unions w
 -- TODO replace this at the use sites with proper multisig
 accountKeys :: Account -> Set.Set PublicKey
 accountKeys a = a ^. account_status . _AccountStatus_Exists . accountDetails_keyset . addressKeyset_keys
+
+accountHasFunds :: Account -> Maybe Bool
+accountHasFunds a = fmap (> 0) $ a ^? account_status . _AccountStatus_Exists . accountDetails_balance
 
 snocIntMap :: a -> IntMap a -> IntMap a
 snocIntMap a m = IntMap.insert (nextKey m) a m
