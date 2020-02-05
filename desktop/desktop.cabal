@@ -28,6 +28,7 @@ library
     , free
     , ghcjs-dom
     , hsyslog
+    , http-client
     , jsaddle
     , kadena-signing-api
     , lens

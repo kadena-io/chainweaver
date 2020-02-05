@@ -4,7 +4,7 @@ let
   kadenaOVACacheKey = "nixcache.chainweb.com:FVN503ABX9F8x8K0ptnc99XEz5SaA4Sks6kNcZn2pBY=";
   desktopItemPath = "${nixosDesktopItem}/share/applications/${linuxAppName}.desktop";
   doUpgradeVM = let
-    resultStorePathFile = "https://chainweaver-builds.s3.amazonaws.com/vm/master-store-path";
+    resultStorePathFile = "https://chainweaver-builds.s3.amazonaws.com/release-store-paths/latest-ova";
   in pkgs.writeScriptBin "${linuxAppName}-do-upgrade" ''
     #!/usr/bin/env bash
     set -e
@@ -31,13 +31,14 @@ let
       read;
     }
     function successful() {
-      finished "Successfully upgraded to $(${linuxAppName}-version.sh)";
+      finished "Successfully upgraded to $(${linuxAppName}-version)";
     }
 
+    echo "Currently on chainweaver OVA version $(${linuxAppName}-version)";
     (${doUpgradeVM}/bin/${linuxAppName}-do-upgrade $@ && successful) || finished "Update Failed"
   '';
   versionFile = pkgs.writeText "${linuxAppName}-version" "${chainweaverVersion}.${ovaReleaseNumber}";
-  versionScript = pkgs.writeScriptBin "${linuxAppName}-version.sh" ''cat ${versionFile}'';
+  versionScript = pkgs.writeScriptBin "${linuxAppName}-version" ''cat ${versionFile}'';
   upgradeDesktopItem = pkgs.makeDesktopItem {
      name = "${linuxAppName}-upgrade";
      desktopName = "Upgrade ${appName}";
@@ -60,7 +61,6 @@ let
       };
       home-manager.users.chainweaver = { ... }: {
         home.file.".config" = { source = ./ova/home/chainweaver/config; recursive = true; };
-        home.file.".config/autostart/${linuxAppName}.desktop".source = desktopItemPath;
         home.file."desktop.png".source = ./ova/home/chainweaver/desktop.png;
         home.file."Desktop/${linuxAppName}.desktop".source = desktopItemPath;
         home.file."Desktop/${linuxAppName}-upgrade.desktop".source = "${upgradeDesktopItem}/share/applications/${linuxAppName}-upgrade.desktop";
@@ -76,6 +76,18 @@ let
             export WEBKIT_DISABLE_COMPOSITING_MODE=1;
           '';
         };
+        systemd.user.services.kadena-chainweaver = {
+          Unit = {
+            Description = appName;
+            After = [ "network-online.target" ];
+            Wants = [ "network-online.target" ];
+          };
+          Service = {
+            Environment = "WEBKIT_DISABLE_COMPOSITING_MODE=1";
+            ExecStart = "${nixosExe}/bin/${linuxAppName}";
+          };
+          Install = { WantedBy = [ "graphical-session.target" ]; };
+        };
       };
       services.xserver = {
         enable = true;
@@ -89,7 +101,8 @@ let
         libinput.enable = true; # for touchpad support on many laptops
       };
       security.sudo.wheelNeedsPassword = false;
-      networking.firewall.allowedTCPPorts = [ 9467 ];
+      networking.firewall.enable = false;
+      networking.networkmanager.enable = true;
       environment.systemPackages = [ nixosExe pkgs.chromium nixosDesktopItem upgradeVM versionScript upgradeDesktopItem ];
       nix.binaryCaches = [ "https://cache.nixos.org/" "https://nixcache.reflex-frp.org" kadenaOVACache ];
       nix.binaryCachePublicKeys = [ "ryantrinkle.com-1:JJiAKaRv9mWgpVAz8dwewnZe0AzzEAzPkagE9SP5NWI=" kadenaOVACacheKey ];
