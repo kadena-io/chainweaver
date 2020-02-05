@@ -73,7 +73,7 @@ in obApp // rec {
 
   ci = {
     mac   = { inherit mac; };
-    linux = { inherit (linuxApp) nixosExe chainweaverVM; }; # deb chainweaverVMSystem; };
+    linux = { inherit (linuxApp) nixosExe chainweaverVM chainweaverVMSystem; }; # deb ; };
     cross = {
       inherit (obApp) exe;
       inherit (obApp.ghc) desktop;
