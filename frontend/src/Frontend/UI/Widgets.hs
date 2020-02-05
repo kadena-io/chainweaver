@@ -951,10 +951,16 @@ mkChainTextAccounts m allowAccount mChainId = runExceptT $ do
   -- Calculating the max gas from the network meta causes a causality loop
   -- maxGasPriceBalance <- lift $ AccountBalance . calcMaxGas <$> m ^. network_meta
 
+  keys <- lift $ m ^. wallet_keys
   chain <- ExceptT $ note "You must select a chain ID before choosing an account" <$> mChainId
   accountsOnNetwork <- ExceptT $ note "No accounts on current network" . Map.lookup netId . unAccountData <$> m ^. wallet_accounts
   let mkVanity n (AccountInfo _ chainMap)
         | Just a <- Map.lookup chain chainMap, allowAcc n a = Map.singleton n (unAccountName n)
+        , not needsGas || (fromMaybe 0 (a ^? account_status . _AccountStatus_Exists . accountDetails_balance)) > 0
+        -- Only select _our_ accounts. TODO: run pact code to ensure keyset predicate(s)
+        -- are satisfied so we're able to handle user created predicates correctly.
+        , not . null $ filterKeyPairs (accountKeys a) keys
+        = Map.singleton n (unAccountName n)
         | otherwise = mempty
       vanityAccounts = Map.foldMapWithKey mkVanity accountsOnNetwork
       accountsOnChain = vanityAccounts
