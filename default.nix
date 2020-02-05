@@ -76,7 +76,7 @@ in obApp // rec {
     linux = {}; # inherit (linuxApp) nixosExe deb chainweaverVM chainweaverVMSystem; };
     cross = {
       #inherit (obApp) exe;
-      #inherit (obApp.ghc) desktop;
+      inherit (obApp.ghc) desktop;
       shell = obApp.shells.ghc;
     };
   };
