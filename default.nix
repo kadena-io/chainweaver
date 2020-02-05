@@ -9,7 +9,7 @@ let
   # All the versions that the user cares about are here so that they can
   # be changed in one place
   chainweaverVersion = "1.0";
-  appName = "Kadena Chainweaver ${chainweaverVersion}";
+  appName = "Kadena Chainweaver";
   macReleaseNumber = "0";
   linuxReleaseNumber = "0";
   ovaReleaseNumber = "0";

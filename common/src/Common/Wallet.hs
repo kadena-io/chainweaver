@@ -84,8 +84,10 @@ import Data.Bifunctor (first)
 import Data.ByteString (ByteString)
 import Data.Decimal (Decimal)
 import Data.Default
+import Data.Function (on)
 import Data.IntMap (IntMap)
 import Data.Map (Map)
+import Data.Ord (comparing)
 import Data.Set (Set)
 import Data.Text (Text)
 import Data.Traversable (for)
@@ -269,7 +271,14 @@ makePactPrisms ''AccountBalance
 data KeyPair key = KeyPair
   { _keyPair_publicKey  :: PublicKey
   , _keyPair_privateKey :: Maybe key
-  } deriving (Generic, Show, Eq)
+  } deriving (Generic, Show)
+
+-- Assumes public key uniquely identifies private key
+-- TODO: Figure out if we/upstream can/should have Eq/Ord XPrv
+instance Eq (KeyPair key) where
+  (==) = (==) `on` _keyPair_publicKey
+instance Ord (KeyPair key) where
+  compare = comparing _keyPair_publicKey
 
 instance ToJSON key => ToJSON (KeyPair key) where
   toJSON p = object

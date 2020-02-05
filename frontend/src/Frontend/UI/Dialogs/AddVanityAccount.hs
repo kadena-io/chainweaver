@@ -1,7 +1,7 @@
-{-# LANGUAGE TupleSections #-}
 {-# LANGUAGE ConstraintKinds #-}
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE RecursiveDo #-}
+{-# LANGUAGE TupleSections #-}
 module Frontend.UI.Dialogs.AddVanityAccount
   ( uiAddAccountButton
   , uiCreateAccountButton
@@ -15,6 +15,7 @@ import           Control.Monad.Trans.Class              (lift)
 import           Control.Monad.Trans.Maybe              (MaybeT (..), runMaybeT)
 import           Data.Maybe                             (isNothing)
 import           Data.Either                            (isLeft)
+import qualified Data.Map as Map
 import           Data.Text                              (Text)
 import qualified Data.HashMap.Lazy as HM
 import qualified Data.Set as Set
@@ -86,13 +87,14 @@ uiAddAccountDialog model _onCloseExternal = mdo
     divClass "group" $ do
       uiAccountNameInput model Nothing
   add <- modalFooter $ do
-    confirmButton def "Add Account"
+    confirmButton (def & uiButtonCfg_disabled .~ (isNothing <$> name)) "Add Account"
   let val = runMaybeT $ do
         net <- lift $ current $ model ^. network_selectedNetwork
         n <- MaybeT $ current name
         pure (net, n)
       conf = mempty & walletCfg_importAccount .~ tagMaybe val add
-  return (conf, onClose)
+  -- Since this always succeeds, we're okay to close on the add button event
+  return (conf, onClose <> add)
 
 uiCreateAccountButton :: DomBuilder t m => UiButtonCfg -> m (Event t ())
 uiCreateAccountButton cfg =
@@ -237,7 +239,7 @@ createAccountConfig ideL name chainId mPublicKey selectedKeyset keyset = Workflo
     []
     TxnSenderTitle_GasPayer
     Nothing
-    $ uiSenderDropdown def
+    $ uiAccountDropdown def True
 
   let payload = HM.singleton tempkeyset $ toJSON keyset
       code = mkPactCode name
@@ -245,7 +247,7 @@ createAccountConfig ideL name chainId mPublicKey selectedKeyset keyset = Workflo
         { _deploymentSettingsConfig_chainId = userChainIdSelect
         , _deploymentSettingsConfig_userTab = Nothing :: Maybe (Text, m ())
         , _deploymentSettingsConfig_code = pure code
-        , _deploymentSettingsConfig_sender = uiSenderDropdown def
+        , _deploymentSettingsConfig_sender = uiAccountDropdown def False
         , _deploymentSettingsConfig_data = Just payload
         , _deploymentSettingsConfig_nonce = Nothing
         , _deploymentSettingsConfig_ttl = Nothing
@@ -255,13 +257,17 @@ createAccountConfig ideL name chainId mPublicKey selectedKeyset keyset = Workflo
         , _deploymentSettingsConfig_includePreviewTab = includePreviewTab
         }
 
-      capabilities = maybe mempty (=: [_dappCap_cap defaultGASCapability])
-        <$> mGasPayer
+      networkAccounts = ffor2 (ideL ^. wallet_accounts) (ideL ^. network_selectedNetwork) $ \ad n ->
+        fromMaybe mempty $ Map.lookup n (unAccountData ad)
+
+      senderKeyPairs = ffor3 networkAccounts (ideL ^. wallet_keys) mGasPayer $
+        \accs keys -> foldMap $ getSigningPairs chainId keys accs . Set.singleton
+
+      capabilities = ffor senderKeyPairs $ \kps -> Map.unionsWith (<>) $ ffor kps (=: [_dappCap_cap defaultGASCapability])
 
       conf = cfg & networkCfg_setSender .~ fmapMaybe (fmap unAccountName) (updated mGasPayer)
       result = buildDeploymentSettingsResult
         ideL
-        mGasPayer
         mGasPayer
         (pure mempty)
         cChainId
