@@ -81,6 +81,7 @@ input[type=number] {
 
 .input:disabled {
   color: #757575;
+  cursor: not-allowed;
 }
 
 .input_transparent {
