@@ -123,8 +123,7 @@ let
         baseImageSize = 32  * 1024; # in MiB
         memorySize = 2 * 1024; # in MiB
         vmDerivationName = "${linuxAppName}-vm";
-        # This should not be Appname as this name will persist forever in the users virtualbox.
-        vmName = "Kadena Chainweaver VM";
+        vmName = "${appName} VM";
         vmFileName = "${linuxAppName}-vm.${chainweaverVersion}.${ovaReleaseNumber}.ova";
       };
     };
