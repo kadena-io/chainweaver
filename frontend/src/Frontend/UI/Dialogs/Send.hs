@@ -20,7 +20,7 @@ module Frontend.UI.Dialogs.Send
   ( uiSendModal
   ) where
 
-import Control.Applicative (liftA2, (<|>))
+import Control.Applicative (liftA2)
 import Control.Concurrent
 import Control.Error.Util (hush)
 import Control.Lens hiding (failover)
@@ -43,8 +43,6 @@ import Pact.Types.Exp
 import Pact.Types.PactError
 import Pact.Types.Names
 import Pact.Types.PactValue
-import Pact.Types.Runtime (GasPrice (..))
-import Pact.Parse (ParsedDecimal (..))
 import Pact.Types.RPC
 import Pact.Types.Term
 import Reflex
@@ -339,14 +337,16 @@ sendConfig model initData = Workflow $ do
             balance = _account_status fromAcc ^? _AccountStatus_Exists . accountDetails_balance . to unAccountBalance
 
             gasInputWithMaxButton cfg = mdo
-              let projectAmount = over (_2 . mapped . mapped) (\(GasPrice (ParsedDecimal d)) -> d)
-                  attrs = ffor useEntireBalance $ \u -> "disabled" =: ("disabled" <$ u)
-              (_, inputAmount, _) <- fmap projectAmount $ uiGasPriceInputField $ cfg
+              let attrs = ffor useEntireBalance $ \u -> "disabled" =: ("disabled" <$ u)
+              (_, inputAmount, _) <- uiGasPriceInputField $ cfg
+                & inputElementConfig_setValue .~ fmap tshow (mapMaybe id $ updated useEntireBalance)
                 & inputElementConfig_elementConfig . elementConfig_modifyAttributes .~ updated attrs
               useEntireBalance <- case balance of
                 Nothing -> pure $ pure Nothing
                 Just b -> fmap (\v -> b <$ guard v) . _checkbox_value <$> uiCheckbox "input-max-toggle" False def (text "Max")
-              pure (isJust <$> useEntireBalance, liftA2 (<|>) useEntireBalance inputAmount)
+              pure ( isJust <$> useEntireBalance
+                   , inputAmount & mapped . mapped %~ view (_Wrapped' . _Wrapped')
+                   )
 
           (useEntireBalance, amount) <- mkLabeledInput True "Amount" gasInputWithMaxButton
             (def & inputElementConfig_initialValue .~ (maybe "" tshow mInitAmount))
