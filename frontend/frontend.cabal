@@ -139,6 +139,7 @@ library
                  , Frontend.UI.Button
                  , Frontend.UI.DeploymentSettings
                  , Frontend.UI.Dialogs.CallFunction
+                 , Frontend.UI.Dialogs.ChangePassword
                  , Frontend.UI.Dialogs.CreateGist
                  , Frontend.UI.Dialogs.CreatedGist
                  , Frontend.UI.Dialogs.DeployConfirmation

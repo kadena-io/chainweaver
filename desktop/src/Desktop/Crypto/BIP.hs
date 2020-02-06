@@ -35,8 +35,9 @@ import Frontend.Crypto.Class
 import Frontend.Foundation
 import Frontend.Storage
 
-newtype BIPCryptoT m a = BIPCryptoT
-  { unBIPCryptoT :: ReaderT (Crypto.XPrv, Text) m a
+-- This transformer has access to the current root key and login password
+newtype BIPCryptoT t m a = BIPCryptoT
+  { unBIPCryptoT :: ReaderT (Behavior t (Crypto.XPrv, Text)) m a
   } deriving
     ( Functor, Applicative, Monad
     , MonadFix, MonadIO, MonadRef, MonadAtomicRef
@@ -57,12 +58,12 @@ bipCryptoGenPair root pass i =
     scheme = Crypto.DerivationScheme2
     mkHardened = (0x80000000 .|.)
 
-instance MonadJSM m => HasCrypto Crypto.XPrv (BIPCryptoT m) where
+instance (MonadSample t m, MonadJSM m) => HasCrypto Crypto.XPrv (BIPCryptoT t m) where
   cryptoSign bs xprv = BIPCryptoT $ do
-    (_root, pass) <- ask
+    (_, pass) <- sample =<< ask
     pure $ Newtype.pack $ Crypto.unXSignature $ Crypto.sign (T.encodeUtf8 pass) xprv bs
   cryptoGenKey i = BIPCryptoT $ do
-    (root, pass) <- ask
+    (root, pass) <- sample =<< ask
     liftIO $ putStrLn $ "Deriving key at index: " <> show i
     pure $ bipCryptoGenPair root pass i
   -- This assumes that the secret is already base16 encoded (being pasted in, so makes sense)
@@ -87,38 +88,34 @@ importKey pkScheme mPubBytes secBytes = PactCrypto.importKeyPair
   (PactCrypto.PrivBS secBytes)
 
 
-instance PerformEvent t m => PerformEvent t (BIPCryptoT m) where
-  type Performable (BIPCryptoT m) = BIPCryptoT (Performable m)
-  performEvent_ e = BIPCryptoT $ do
-    (x, p) <- ask
-    lift $ performEvent_ $ runBIPCryptoT x p <$> e
-  performEvent e = BIPCryptoT $ do
-    (x, p) <- ask
-    lift $ performEvent $ runBIPCryptoT x p <$> e
+instance PerformEvent t m => PerformEvent t (BIPCryptoT t m) where
+  type Performable (BIPCryptoT t m) = BIPCryptoT t (Performable m)
+  performEvent_ = BIPCryptoT . performEvent_ . fmap unBIPCryptoT
+  performEvent = BIPCryptoT . performEvent . fmap unBIPCryptoT
 
-instance PrimMonad m => PrimMonad (BIPCryptoT m) where
-  type PrimState (BIPCryptoT m) = PrimState m
+instance PrimMonad m => PrimMonad (BIPCryptoT t m) where
+  type PrimState (BIPCryptoT t m) = PrimState m
   primitive = lift . primitive
 
-instance HasJSContext m => HasJSContext (BIPCryptoT m) where
-  type JSContextPhantom (BIPCryptoT m) = JSContextPhantom m
+instance HasJSContext m => HasJSContext (BIPCryptoT t m) where
+  type JSContextPhantom (BIPCryptoT t m) = JSContextPhantom m
   askJSContext = BIPCryptoT askJSContext
 #if !defined(ghcjs_HOST_OS)
-instance MonadJSM m => MonadJSM (BIPCryptoT m)
+instance MonadJSM m => MonadJSM (BIPCryptoT t m)
 #endif
 
-instance MonadTrans BIPCryptoT where
+instance MonadTrans (BIPCryptoT t) where
   lift = BIPCryptoT . lift
 
-instance (Adjustable t m, MonadHold t m, MonadFix m) => Adjustable t (BIPCryptoT m) where
+instance (Adjustable t m, MonadHold t m, MonadFix m) => Adjustable t (BIPCryptoT t m) where
   runWithReplace a0 a' = BIPCryptoT $ runWithReplace (unBIPCryptoT a0) (fmapCheap unBIPCryptoT a')
   traverseDMapWithKeyWithAdjust f dm0 dm' = BIPCryptoT $ traverseDMapWithKeyWithAdjust (coerce . f) dm0 dm'
   traverseDMapWithKeyWithAdjustWithMove f dm0 dm' = BIPCryptoT $ traverseDMapWithKeyWithAdjustWithMove (coerce . f) dm0 dm'
   traverseIntMapWithKeyWithAdjust f im0 im' = BIPCryptoT $ traverseIntMapWithKeyWithAdjust (coerce f) im0 im'
 
-instance (Prerender js t m, Monad m, Reflex t) => Prerender js t (BIPCryptoT m) where
-  type Client (BIPCryptoT m) = BIPCryptoT (Client m)
+instance (Prerender js t m, Monad m, Reflex t) => Prerender js t (BIPCryptoT t m) where
+  type Client (BIPCryptoT t m) = BIPCryptoT t (Client m)
   prerender a b = BIPCryptoT $ prerender (unBIPCryptoT a) (unBIPCryptoT b)
 
-runBIPCryptoT :: Crypto.XPrv -> Text -> BIPCryptoT m a -> m a
-runBIPCryptoT xprv pass (BIPCryptoT m) = runReaderT m (xprv, pass)
+runBIPCryptoT :: Behavior t (Crypto.XPrv, Text) -> BIPCryptoT t m a -> m a
+runBIPCryptoT b (BIPCryptoT m) = runReaderT m b

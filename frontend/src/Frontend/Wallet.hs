@@ -78,6 +78,7 @@ import Common.Network (NetworkName)
 import Common.Wallet
 import Common.Orphans ()
 
+import Frontend.AppCfg
 import Frontend.Crypto.Class
 import Frontend.Crypto.Ed25519
 import Frontend.Foundation
@@ -174,10 +175,11 @@ makeWallet
     , FromJSON key, ToJSON key
     , PostBuild t m
     )
-  => model
+  => Maybe (ChangePassword key t m)
+  -> model
   -> WalletCfg key t
   -> m (Wallet key t)
-makeWallet model conf = do
+makeWallet mChangePassword model conf = do
   initialKeys <- fromMaybe IntMap.empty <$> loadKeys
   initialAccounts <- maybe (AccountData mempty) fromStorage <$> loadAccounts
 
@@ -185,6 +187,7 @@ makeWallet model conf = do
     onNewKey <- performEvent $ createKey . nextKey <$> current keys <@ _walletCfg_genKey conf
     keys <- foldDyn id initialKeys $ leftmost
       [ snocIntMap <$> onNewKey
+      , maybe never (fmap IntMap.mapWithKey . _changePassword_updateKeys) mChangePassword
       ]
 
   -- Slight hack here, even with prompt tagging we don't pick up the new accounts
