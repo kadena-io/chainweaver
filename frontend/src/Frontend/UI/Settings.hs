@@ -42,7 +42,7 @@ uiSettings enabledSettings model = elClass "div" "icon-grid" $ do
   netCfg <- settingItem "Network" (static @"img/network.svg") (uiNetworkEdit model)
   configs <- sequence $ catMaybes $
     [ ffor (_enabledSettings_changePassword enabledSettings) $ \changePassword -> do
-      settingItem "Change Password" (static @"img/password-cursor.svg") (uiChangePasswordDialog changePassword)
+      settingItem "Change Password" (static @"img/lock-light.svg") (uiChangePasswordDialog changePassword)
     ]
   pure $ netCfg <> fold configs
   where
