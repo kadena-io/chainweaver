@@ -28,10 +28,14 @@
       ln -s "${sass}/sass.css" "$out/bin/sass.css"
     '';
   });
+  nixosWrapper = pkgs.writeScriptBin "${linuxAppName}-wrapper" ''
+    #!/usr/bin/env bash
+    WEBKIT_DISABLE_COMPOSITING_MODE=1 ${nixosExe}/bin/${linuxAppName}
+  '';
   nixosDesktopItem = pkgs.makeDesktopItem {
      name = linuxAppName;
      desktopName = appName;
-     exec = "${nixosExe}/bin/${linuxAppName}";
+     exec = "${nixosWrapper}/bin/${linuxAppName}-wrapper";
      icon = linuxAppIcon;
   };
   ova = import ./ova.nix { inherit pkgs nixosExe appName linuxAppName chainweaverVersion ovaReleaseNumber nixosDesktopItem homeManagerModule linuxAppIcon; };
