@@ -54,6 +54,7 @@ data FrontendRoute :: * -> * where
   FrontendRoute_Keys :: FrontendRoute ()
   FrontendRoute_Resources :: FrontendRoute ()
   FrontendRoute_Settings :: FrontendRoute ()
+  FrontendRoute_TxLogs :: FrontendRoute ()
 
 data ContractRoute a where
   -- | Route for loading an example.
@@ -89,6 +90,7 @@ backendRouteEncoder = handleEncoder (\_e -> hoistR (FullRoute_Frontend . Obelisk
       FrontendRoute_Accounts -> PathSegment "accounts" $ unitEncoder mempty
       FrontendRoute_Keys -> PathSegment "keys" $ unitEncoder mempty
       FrontendRoute_Settings -> PathSegment "settings" $ unitEncoder mempty
+      FrontendRoute_TxLogs -> PathSegment "txn-logs" $ unitEncoder mempty
       FrontendRoute_Resources -> PathSegment "resources" $ unitEncoder mempty
 
 contractRouteEncoder :: (MonadError Text parse, MonadError Text check) => Encoder parse check (R ContractRoute) PageName

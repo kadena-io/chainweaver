@@ -160,6 +160,7 @@ library
                  , Frontend.UI.Repl
                  , Frontend.UI.RightPanel
                  , Frontend.UI.Settings
+                 , Frontend.UI.TxLogs
                  , Frontend.UI.TabBar
                  , Frontend.UI.Wallet
                  , Frontend.UI.Widgets

@@ -67,6 +67,7 @@ import Frontend.UI.Modal
 import Frontend.UI.Modal.Impl
 import Frontend.UI.RightPanel
 import Frontend.UI.Settings
+import Frontend.UI.TxLogs
 import Frontend.UI.Wallet
 import Frontend.UI.Widgets
 
@@ -126,6 +127,12 @@ app sidebarExtra fileFFI appCfg = Store.versionedFrontend (Store.versionedStorag
         mainCfg <- elClass "main" "main page__main" $ do
           uiSettings (_appCfg_enabledSettings appCfg) ideL
         pure $ controlCfg <> mainCfg
+      FrontendRoute_TxLogs -> do
+        controlCfg <- controlBar "Transaction Logs" (mempty <$ blank)
+        mainCfg <- elClass "main" "main page__main" $ do
+          uiTxLogs (_appCfg_enabledSettings appCfg) ideL
+        pure $ controlCfg <> mainCfg
+
     flattenedCfg <- flatten =<< tagOnPostBuild routedCfg
     pure $ netCfg <> flattenedCfg
 
@@ -146,8 +153,14 @@ app sidebarExtra fileFFI appCfg = Store.versionedFrontend (Store.versionedStorag
     ]
 
 walletSidebar
-  :: (DomBuilder t m, PostBuild t m, Routed t (R FrontendRoute) m, SetRoute t (R FrontendRoute) m, RouteToUrl (R FrontendRoute) m)
-  => m () -> m ()
+  :: ( DomBuilder t m
+     , PostBuild t m
+     , Routed t (R FrontendRoute) m
+     , SetRoute t (R FrontendRoute) m
+     , RouteToUrl (R FrontendRoute) m
+     )
+  => m ()
+  -> m ()
 walletSidebar sidebarExtra = elAttr "div" ("class" =: "sidebar") $ do
   divClass "sidebar__logo" $ elAttr "img" ("src" =: static @"img/logo.png") blank
 
@@ -173,6 +186,7 @@ routeIcon = \case
   FrontendRoute_Keys :/ _ -> static @"img/menu/keys.svg"
   FrontendRoute_Resources :/ _ -> static @"img/menu/resources.svg"
   FrontendRoute_Settings :/ _ -> static @"img/menu/settings.svg"
+  FrontendRoute_TxLogs :/ _ -> static @"img/menu/settings.svg"
 
 -- | Code editing (left hand side currently)
 codePanel :: forall r key t m a. (MonadWidget t m, Routed t r m) => AppCfg key t m -> CssClass -> Ide a key t -> m (IdeCfg a key t)

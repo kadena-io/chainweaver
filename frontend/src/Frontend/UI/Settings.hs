@@ -15,6 +15,8 @@ import Data.Text (Text)
 import Reflex
 import Reflex.Dom.Core
 import Obelisk.Generated.Static
+import Obelisk.Route.Frontend
+import Common.Route
 
 import Frontend.AppCfg (EnabledSettings(..))
 import Frontend.Foundation
@@ -37,10 +39,17 @@ type HasUiSettingModelCfg model mConf key m t =
 
 uiSettings
   :: forall t m key model mConf
-  . (MonadWidget t m, HasNetwork model t, HasUiSettingModelCfg model mConf key m t)
-  => EnabledSettings key t m -> model -> m mConf
+     . ( MonadWidget t m
+       , HasNetwork model t
+       , HasUiSettingModelCfg model mConf key m t
+       , SetRoute t (R FrontendRoute) m
+       )
+  => EnabledSettings
+  -> model
+  -> m mConf
 uiSettings enabledSettings model = elClass "div" "icon-grid" $ do
   netCfg <- settingItem "Network" (static @"img/network.svg") (uiNetworkEdit model)
+  _ <- settingItemInternalLink "Transaction Logs" (static @"img/network.svg") (FrontendRoute_TxLogs :/ ())
   configs <- sequence $ catMaybes $
     [ ffor (_enabledSettings_changePassword enabledSettings) $ \changePassword -> do
       settingItem "Change Password" (static @"img/lock-light.svg") (uiChangePasswordDialog changePassword)
@@ -51,6 +60,22 @@ uiSettings enabledSettings model = elClass "div" "icon-grid" $ do
   pure $ netCfg <> fold configs
   where
     _includeSetting f s = if f enabledSettings then Just s else Nothing
+
+settingItemInternalLink
+  :: ( DomBuilder t m
+     , SetRoute t (R FrontendRoute) m
+     )
+  => Text
+  -> Text
+  -> R FrontendRoute
+  -> m ()
+settingItemInternalLink title iconUrl r = do
+  eClick <- iconGridCell $ IconGridCellConfig
+    { _iconGridCellConfig_title = title
+    , _iconGridCellConfig_iconUrl = iconUrl
+    , _iconGridCellConfig_desc = Nothing
+    }
+  setRoute $ r <$ eClick
 
 settingItem
   :: forall t m mConf
