@@ -1146,8 +1146,8 @@ uiInputWithPopover body getStateBorderTarget mkMsg cfg = divClass "popover" $ do
 
   _ <- runWithReplace (divClass "popover__message" blank) $ leftmost
     [ popoverDiv . popoverToAttrs <$> onMsg
-    -- , popoverDiv popoverHiddenAttrs <$ onBlur
-    -- , popoverDiv . popoverToAttrs <$> current dPopState <@ onFocus
+    , popoverDiv popoverHiddenAttrs <$ onBlur
+    , popoverDiv . popoverToAttrs <$> current dPopState <@ onFocus
     ]
 
   pure a
