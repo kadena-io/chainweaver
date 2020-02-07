@@ -16,6 +16,7 @@
 
 // Wrapper for body so scrollbar appears outside the margin.
 .pane__body-wrapper {
+  overflow-x: hidden;
   overflow-y: auto;
   flex-grow: 1;
 }
