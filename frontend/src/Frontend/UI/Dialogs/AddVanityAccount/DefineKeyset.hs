@@ -5,6 +5,7 @@ module Frontend.UI.Dialogs.AddVanityAccount.DefineKeyset
   , emptyKeysetPresets
   ) where
 
+import           Control.Arrow                          ((&&&))
 import           Control.Lens                           ((^.),ifoldMap)
 import           Control.Error                          (hush)
 import           Data.Witherable                        (wither)
@@ -33,7 +34,7 @@ data KeysetInputs t i a = KeysetInputs
 data DefinedKeyset t = DefinedKeyset
   { _definedKeyset_internalKeys :: KeysetInputs t (Maybe Int) PublicKey
   , _definedKeyset_externalKeys :: KeysetInputs t (Maybe Text) PublicKey
-  , _definedKeyset_predicate :: Dynamic t Text
+  , _definedKeyset_predicate :: Dynamic t (Maybe Text)
   }
 
 emptyKeysetPresets :: forall t. Reflex t => DefinedKeyset t
@@ -162,8 +163,8 @@ uiDefineKeyset model presets = do
       $ fmap _keyset_pred
       <$> model ^. jsonData_keysets
 
-    allPredSelectMap = ffor allPreds $ \ps ->
-      Map.fromList . fmap (\x -> (x,x)) $ ps <> predefinedPreds
+    allPredSelectMap = ffor allPreds $ \ps -> Map.fromList
+      $ (Nothing, "Select") : fmap (Just &&& id) (ps <> predefinedPreds)
 
   rec
     selectedKeys <- mkLabeledClsInput False "Chainweaver Keys" $ const
@@ -173,7 +174,7 @@ uiDefineKeyset model presets = do
       $ uiExternalKeyInput $ current (_keysetInputs_value $ _definedKeyset_externalKeys presets) <@ pb
 
     predicate <- mkLabeledClsInput False "Predicate (Keys Required to Sign for Account)" $ const
-      $ fmap value $ uiDropdown mempty allPredSelectMap $ def
+      $ fmap value $ uiDropdown Nothing allPredSelectMap $ def
       & dropdownConfig_attributes .~ constDyn ("class" =: "labeled-input__input")
       & dropdownConfig_setValue .~ (current (_definedKeyset_predicate presets) <@ pb)
 
@@ -181,6 +182,6 @@ uiDefineKeyset model presets = do
     ipks = _keysetInputs_set selectedKeys
     epks = _keysetInputs_set externalKeys
 
-  pure ( mkAddressKeyset <$> (ipks <> epks) <*> predicate
+  pure ( ffor2 (ipks <> epks) predicate $ \pks kspred -> kspred >>= mkAddressKeyset pks
        , DefinedKeyset selectedKeys externalKeys predicate
        )
