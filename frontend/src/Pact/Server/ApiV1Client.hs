@@ -6,11 +6,15 @@
 {-# LANGUAGE QuasiQuotes #-}
 
 -- Limit API to the parts that are common to chainweb and `pact -s`.
-module Pact.Server.ApiV1Client
-  ( ApiV1API
-  , ApiV1Client(..)
-  , apiV1Client
-  , CommandLog(..)
+module Pact.Server.ApiClient
+  (
+
+    -- Re-export from Latest
+  --   ApiAPI
+  -- , ApiClient(..)
+  -- , apiClient
+  -- , CommandLog(..)
+
   , commandLogCurrentVersion
   , HasTransactionLogger(..)
   , TransactionLoggerT(..)
@@ -20,7 +24,7 @@ module Pact.Server.ApiV1Client
   , logTransactionFile
   , logTransactionSQLite
     -- * CommandLog Queries
-  , createCommandLogTableQuery
+  -- , createCommandLogTableQuery
   ) where
 
 import Control.Lens
