@@ -66,6 +66,7 @@ import Control.Monad
 import Control.Monad.Trans.Class
 import Control.Monad.Trans.Maybe
 import Control.Monad.Except
+import Data.Bits (xor)
 import Data.Decimal (roundTo)
 import Data.Either (rights, isLeft)
 import Data.IntMap (IntMap)
@@ -727,19 +728,31 @@ uiSignerList
   :: ( Adjustable t m, PostBuild t m, DomBuilder t m
      , MonadHold t m
      , HasWallet model key t
+     , MonadFix m
      )
   => model
+  -> Dynamic t (Map (KeyPair key) [SigCapability])
   -> m (Dynamic t (Set (KeyPair key)))
-uiSignerList m = do
+uiSignerList m dCapMap = do
   dialogSectionHeading mempty "Unrestricted Signing Keys"
-  eSwitchSigners <- divClass "group signing-ui-signers" $ do
-    dyn $ ffor (m ^. wallet_keys) $ \ks -> do
-      cbs <- for (toList ks) $ \(Key kp) -> do
-        cb <- uiCheckbox "signing-ui-signers__signer" False def $
-          text $ keyToText $ _keyPair_publicKey kp
-        pure $ bool Nothing (Just kp) <$> _checkbox_value cb
-      pure $ fmap (Set.fromList . catMaybes) $ sequence $ cbs
-  join <$> holdDyn (constDyn Set.empty) eSwitchSigners
+  divClass "group signing-ui-signers" $ do
+    let dKeys = ffor2 dCapMap (m ^. wallet_keys) $ \capMap keyIndices ->
+          let caps = Map.map (not . null) capMap
+              keys = Map.fromList $ (, False) . _key_pair <$> IM.elems keyIndices
+           in Map.unionWith (||) caps keys
+    results <- listWithKey dKeys $ \pair preSelected' -> do
+      preSelected <- holdUniqDyn preSelected'
+      pb <- getPostBuild
+      let conf = def
+            & checkboxConfig_attributes .~ ffor preSelected (\s -> if s then "disabled" =: "disabled" else mempty)
+            & checkboxConfig_setValue .~ leftmost
+              [ updated preSelected
+              , tag (current preSelected) pb
+              ]
+      cb <- uiCheckbox "signing-ui-signers__signer" False conf $
+        text $ keyToText $ _keyPair_publicKey pair
+      pure $ xor <$> _checkbox_value cb <*> preSelected
+    pure $ Map.keysSet . Map.filter id <$> joinDynThroughMap results
 
 parseSigCapability :: Text -> Either String SigCapability
 parseSigCapability txt = parsed >>= compiled >>= parseApp
@@ -892,7 +905,7 @@ uiSenderCapabilities m mCaps = do
 
     pure capabilities'
 
-  signers <- uiSignerList m
+  signers <- uiSignerList m capabilities
 
   pure (signers, capabilities)
 
