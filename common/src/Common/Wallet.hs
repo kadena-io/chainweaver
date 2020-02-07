@@ -30,6 +30,8 @@ module Common.Wallet
   , addressKeysetObject
   , addressKeyset_keys
   , addressKeyset_pred
+  , predefinedPreds
+  , keysetSatisfiesPredicate
   , toPactKeyset
   , fromPactKeyset
   , AccountNotes (unAccountNotes)
@@ -384,12 +386,30 @@ instance FromJSON key => FromJSON (Key key) where
       { _key_pair = pair
       }
 
-
 type KeyStorage key = IntMap (Key key)
+
+-- | Predefined predicates in Pact.
+--
+--   Userdefined ones are possible too, although the UI currently does not support them.
+predefinedPreds :: [ Text ]
+predefinedPreds = [ "keys-all", "keys-2", "keys-any" ]
 
 filterKeyPairs :: Set PublicKey -> IntMap (Key key) -> [KeyPair key]
 filterKeyPairs s m = Map.elems $ Map.restrictKeys (toMap m) s
   where toMap = Map.fromList . fmap (\k -> (_keyPair_publicKey $ _key_pair k, _key_pair k)) . IntMap.elems
+
+keysetSatisfiesPredicate :: AddressKeyset -> IntMap (Key key) -> Bool
+keysetSatisfiesPredicate ak keys0 =
+  let
+    keys = Set.fromList $ fmap (_keyPair_publicKey . _key_pair) $ IntMap.elems keys0
+    kskeys = _addressKeyset_keys ak
+    keyIntersections = Set.intersection kskeys keys
+  in
+    case _addressKeyset_pred ak of
+      "keys-all" -> kskeys == keyIntersections
+      "keys-any" -> not $ Set.null keyIntersections
+      "keys-2" -> length keyIntersections >= 2
+      _ -> not $ null $ filterKeyPairs (_addressKeyset_keys ak) keys0
 
 newtype Accounts = Accounts
   { _accounts_vanity :: Map AccountName (AccountInfo VanityAccount)
