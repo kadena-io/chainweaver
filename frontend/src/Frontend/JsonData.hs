@@ -179,12 +179,6 @@ getJsonDataObjectLax jd = ffor (_jsonData_data jd) $ \(keysetsObj, rawParse) -> 
 getJsonDataObjectStrict :: Reflex t => JsonData t -> Dynamic t (Either JsonError Object)
 getJsonDataObjectStrict jd = ffor (_jsonData_data jd) $ \(keysetsObj, rawParse) -> (keysetsObj <>) <$> rawParse
 
--- | Predefined predicates in Pact.
---
---   Userdefined ones are possible too, although the UI currently does not support them.
-predefinedPreds :: [ Text ]
-predefinedPreds = ["keys-all", "keys-2", "keys-any"]
-
 -- | Build `JsonData` by means of the given `Wallet` and `JsonDataCfg`.
 makeJsonData
   :: forall key t m. (MonadHold t m, PerformEvent t m, MonadFix m)
