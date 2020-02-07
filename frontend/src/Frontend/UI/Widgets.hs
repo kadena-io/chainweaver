@@ -954,7 +954,7 @@ mkChainTextAccounts m allowAccount mChainId = runExceptT $ do
   accountsOnNetwork <- ExceptT $ note "No accounts on current network" . Map.lookup netId . unAccountData <$> m ^. wallet_accounts
   let mkVanity n (AccountInfo _ chainMap)
         | Just a <- Map.lookup chain chainMap
-         , not needsGas || (fromMaybe 0 (a ^? account_status . _AccountStatus_Exists . accountDetails_balance)) > 0
+         , allowAcc n a
         -- Only select _our_ accounts. TODO: run pact code to ensure keyset predicate(s)
         -- are satisfied so we're able to handle user created predicates correctly.
         , accountSatisfiesKeysetPredicate keys a
