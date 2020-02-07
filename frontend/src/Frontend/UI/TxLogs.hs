@@ -64,7 +64,7 @@ uiTxLogs _enabledSettings _model = divClass "tx-logs__page" $ do
   let
     loadN :: MonadIO m => Int -> m (Either SQLiteResponse [(UTCTime, Text, Text, Int, ByteString)])
     loadN n = liftIO $ Api._transactionLogger_queryLog txLogger
-        [sql| SELECT (cmd_timestamp, request_hash, payload, version, blob) FROM chainweaver_txn_logs LIMIT ? |]
+        [sql| SELECT (cmd_timestamp, request_hash, payload, version, raw_blob) FROM chainweaver_txn_logs LIMIT ? |]
         [n]
 
   pb <- getPostBuild
@@ -93,7 +93,9 @@ uiTxLogs _enabledSettings _model = divClass "tx-logs__page" $ do
 
     -- Rows
     el "tbody" $ widgetHold (text "wat") $ ffor onLogLoad $ \case
-      Left _ -> text "Transaction logs currently unavailable"
+      Left e -> do
+        text $ "Error: " <> Pact.tShow e
+        text "Transaction logs currently unavailable"
       Right xs -> forM_ xs $ \(ts, rqHash, payload, version, _) -> elClass "tr" "table-row" $ do
         td' $ text $ Pact.tShow ts
         td' $ text $ Pact.tShow rqHash

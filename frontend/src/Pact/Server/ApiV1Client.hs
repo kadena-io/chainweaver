@@ -52,6 +52,7 @@ import qualified Data.Aeson.Text as Aeson
 import qualified Data.Text as T
 import qualified Data.Text.Lazy    as LT
 import qualified Data.Text.Lazy.IO as LT
+import qualified Data.List.NonEmpty as NE
 import qualified Control.Monad.Reader as Reader
 
 import Database.SQLite.Simple (FromRow (..), ToRow (..))
@@ -63,8 +64,13 @@ import Database.SQLite.Simple.QQ (sql)
 import Data.Pool (Pool)
 import qualified Data.Pool as Pool
 
+import qualified Pact.Types.Hash as Pact
 import qualified Pact.Types.Command as Pact
 import qualified Pact.Types.Util as Pact
+import Pact.Types.ChainId (ChainId)
+import qualified Pact.Types.ChainId as Pact
+
+import Pact.Server.Orphans ()
 
 data TransactionLogger = TransactionLogger
   { _transactionLogger_appendLog :: CommandLog -> IO ()
@@ -72,7 +78,7 @@ data TransactionLogger = TransactionLogger
   }
 
 data ApiV1Client m = ApiV1Client
-  { send :: TransactionLogger -> SubmitBatch -> m RequestKeys
+  { send :: TransactionLogger -> Text -> ChainId -> SubmitBatch -> m RequestKeys
   , poll :: Poll -> m PollResponses
   , listen :: ListenerRequest -> m ListenResponse
   , local :: Command Text -> m (CommandResult Hash)
@@ -82,15 +88,21 @@ data ApiV1Client m = ApiV1Client
 {- apiV1API = Proxy -}
 apiV1Client :: forall m. (MonadIO m, MonadReader ClientEnv m, RunClient m) => ApiV1Client m
 apiV1Client = ApiV1Client
-  { send = \txnLogger batch@(SubmitBatch commands) -> do
+  { send = \txnLogger sender chain batch@(SubmitBatch commands) -> do
       url <- asks baseUrl
       timestamp <- liftIO getCurrentTime
+      rqkeys <- sendF batch
+
       for_ commands $ \command -> liftIO $ _transactionLogger_appendLog txnLogger $ CommandLog
         { _commandLog_command = command
+        , _commandLog_sender = sender
+        , _commandLog_chain = chain
+        , _commandLog_request_key = NE.head $ _rkRequestKeys rqkeys
         , _commandLog_timestamp = timestamp
         , _commandLog_url = T.pack $ showBaseUrl url
         }
-      sendF batch
+
+      pure rqkeys
   , poll = pollF
   , listen = listenF
   , local = localF
@@ -104,9 +116,21 @@ apiV1Client = ApiV1Client
 -- with 'commandLogParsers'.
 data CommandLog = CommandLog
   { _commandLog_timestamp :: UTCTime
+  , _commandLog_sender :: Text
+  , _commandLog_chain :: ChainId
+  , _commandLog_request_key :: RequestKey
   , _commandLog_url :: Text
   , _commandLog_command :: Command Text
   } deriving (Eq, Show)
+
+instance FromRow CommandLog where
+  fromRow = CommandLog
+    <$> Sql.field
+    <*> Sql.field
+    <*> Sql.field
+    <*> Sql.field
+    <*> Sql.field
+    <*> Sql.field
 
 instance ToJSON CommandLog where
   toJSON cl = Aeson.object
@@ -232,8 +256,10 @@ logTransactionSQLite pool = TransactionLogger
       \cmdlog -> Pool.withResource pool $ \conn -> do
         Sql.execute conn insertStmt
                  ( _commandLog_timestamp cmdlog
-                 , Pact.tShow $ Pact._cmdHash $ _commandLog_command cmdlog
-                 , Pact._cmdPayload $ _commandLog_command cmdlog
+                 , _commandLog_sender cmdlog
+                 , Pact._chainId $ _commandLog_chain cmdlog
+                 , _commandLog_url cmdlog
+                 , Pact.hashToText $ Pact.unRequestKey $ _commandLog_request_key cmdlog
                  , commandLogCurrentVersion
                  , Aeson.encode cmdlog
                  )
@@ -243,7 +269,15 @@ logTransactionSQLite pool = TransactionLogger
   where
     insertStmt =
       [sql|
-          INSERT INTO chainweaver_txn_logs (cmd_timestamp, request_key, payload, version, raw_blob)
+          INSERT INTO chainweaver_txn_logs
+            ( cmd_timestamp
+            , sender
+            , chain_id
+            , node_url
+            , request_key
+            , version
+            , cmd_blob
+            )
           VALUES (?, ?, ?, ?, ?)
       |]
 
@@ -251,11 +285,12 @@ createCommandLogTableQuery :: Sql.Query
 createCommandLogTableQuery =
   [sql|
       CREATE TABLE IF NOT EXISTS chainweaver_txn_logs
-      ( log_timestamp TEXT DEFAULT CURRENT_TIMESTAMP NOT NULL
-      , cmd_timestamp TEXT NOT NULL
-      , request_key TEXT NOT NULL
-      , payload TEXT NOT NULL
+      ( cmd_timestamp TEXT NOT NULL
+      , sender TEXT NOT NULL
+      , chain_id TEXT NOT NULL
+      , node_url TEXT NOT NULL
+      , request_key BLOB NOT NULL
       , version INT NOT NULL
-      , raw_blob BLOB NOT NULL
+      , cmd_blob BLOB NOT NULL
       )
       |]

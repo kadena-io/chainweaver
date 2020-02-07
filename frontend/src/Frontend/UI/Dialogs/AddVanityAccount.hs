@@ -311,9 +311,10 @@ createAccountSubmit
   -> Workflow t m (Text, (mConf, Event t ()))
 createAccountSubmit model chainId result nodeInfos = Workflow $ do
   let cmd = _deploymentSettingsResult_command result
+      sender = _deploymentSettingsResult_sender result
 
   submitFeedback <- elClass "div" "modal__main transaction_details" $
-    submitTransactionWithFeedback model cmd chainId nodeInfos
+    submitTransactionWithFeedback model cmd sender chainId nodeInfos
 
   let succeeded = fmapMaybe (^? _Status_Done) (submitFeedback ^. transactionSubmitFeedback_listenStatus . to updated)
 

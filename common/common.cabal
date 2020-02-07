@@ -38,6 +38,7 @@ library
                , universe
                , unordered-containers
                , case-insensitive
+               , sqlite-simple
 
   exposed-modules:
     Common.Api

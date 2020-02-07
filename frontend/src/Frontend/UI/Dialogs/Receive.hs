@@ -276,7 +276,7 @@ receiveFromLegacySubmit model onClose account chain ttl gasLimit netInfo transfe
     pkCaps
 
   txnSubFeedback <- elClass "div" "modal__main transaction_details" $
-    submitTransactionWithFeedback model cmd chain (netInfo ^. _1)
+    submitTransactionWithFeedback model cmd sender chain (netInfo ^. _1)
 
   let isDisabled = maybe True isLeft <$> _transactionSubmitFeedback_message txnSubFeedback
 
