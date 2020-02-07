@@ -34,6 +34,7 @@ module Frontend.Wallet
   , _AccountData
   , accountKeys
   , accountHasFunds
+  , accountSatisfiesKeysetPredicate
   -- * Creation
   , makeWallet
   , loadKeys
@@ -155,6 +156,11 @@ accountKeys a = a ^. account_status . _AccountStatus_Exists . accountDetails_key
 
 accountHasFunds :: Account -> Maybe Bool
 accountHasFunds a = fmap (> 0) $ a ^? account_status . _AccountStatus_Exists . accountDetails_balance
+
+accountSatisfiesKeysetPredicate :: IntMap (Key key) -> Account -> Bool
+accountSatisfiesKeysetPredicate keys a = fromMaybe False
+  $ fmap (flip keysetSatisfiesPredicate keys)
+  $ a ^? account_status . _AccountStatus_Exists . accountDetails_keyset
 
 snocIntMap :: a -> IntMap a -> IntMap a
 snocIntMap a m = IntMap.insert (nextKey m) a m

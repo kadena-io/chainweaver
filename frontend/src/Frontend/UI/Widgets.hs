@@ -948,31 +948,21 @@ mkChainTextAccounts
 mkChainTextAccounts m allowAccount mChainId = runExceptT $ do
   allowAcc <- lift allowAccount
   netId <- lift $ m ^. network_selectedNetwork
-  -- Calculating the max gas from the network meta causes a causality loop
-  -- maxGasPriceBalance <- lift $ AccountBalance . calcMaxGas <$> m ^. network_meta
 
+  keys <- lift $ m ^. wallet_keys
   chain <- ExceptT $ note "You must select a chain ID before choosing an account" <$> mChainId
   accountsOnNetwork <- ExceptT $ note "No accounts on current network" . Map.lookup netId . unAccountData <$> m ^. wallet_accounts
   let mkVanity n (AccountInfo _ chainMap)
-        | Just a <- Map.lookup chain chainMap, allowAcc n a = Map.singleton n (unAccountName n)
+        | Just a <- Map.lookup chain chainMap
+        -- Only select _our_ accounts. TODO: run pact code to ensure keyset predicate(s)
+        -- are satisfied so we're able to handle user created predicates correctly.
+        , accountSatisfiesKeysetPredicate keys a
+        , allowAcc n a = Map.singleton n (unAccountName n)
         | otherwise = mempty
       vanityAccounts = Map.foldMapWithKey mkVanity accountsOnNetwork
       accountsOnChain = vanityAccounts
   when (Map.null accountsOnChain) $ throwError "No accounts on current chain"
   pure accountsOnChain
-  -- where
-  --  calcMaxGas :: PublicMeta -> Decimal
-  --  calcMaxGas meta =
-  --    (meta ^. pmGasLimit . to gasLimitToDecimal)
-  --    *
-  --    (meta ^. pmGasPrice . to gasPriceToDecimal)
-  --  -- from some reason, _Wrapped wasn't working for me. Probably pebkac
-  --  gasLimitToDecimal :: GasLimit -> Decimal
-  --  gasLimitToDecimal (GasLimit (ParsedInteger l)) = fromIntegral l
-  --  gasPriceToDecimal :: GasPrice -> Decimal
-  --  gasPriceToDecimal (GasPrice (ParsedDecimal p)) = p
-
-
 
 -- | Let the user pick an account
 uiAccountDropdown'
