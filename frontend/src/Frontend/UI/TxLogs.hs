@@ -1,4 +1,5 @@
 {-# LANGUAGE ConstraintKinds #-}
+{-# LANGUAGE QuasiQuotes #-}
 -- |
 -- Copyright   :  (C) 2018 Kadena
 -- License     :  BSD-style (see the file LICENSE)
@@ -12,6 +13,9 @@ import Control.Monad (replicateM_)
 import Reflex
 import Reflex.Dom.Core
 
+import Data.ByteString (ByteString)
+
+import Data.Text (Text)
 import qualified Data.Text as Text
 
 import Data.Time (UTCTime (..), fromGregorian)
@@ -19,13 +23,18 @@ import Data.Time (UTCTime (..), fromGregorian)
 import Frontend.AppCfg (EnabledSettings(..))
 import Frontend.Foundation
 
+import Database.SQLite.Simple.QQ (sql)
+import Database.SQLite.SimpleErrors.Types (SQLiteResponse)
+
 import qualified Pact.Types.Command as Pact
 import qualified Pact.Types.Util as Pact
+
 import qualified Pact.Server.ApiV1Client as Api
 
-type HasUiTxLogModelCfg mConf t =
+type HasUiTxLogModelCfg mConf m t =
   ( Monoid mConf
   , Flattenable mConf t
+  , Api.HasTransactionLogger m
   )
 
 dummyLog :: Api.CommandLog
@@ -44,12 +53,24 @@ dummyData = replicate 10 dummyLog
 
 uiTxLogs
   :: ( MonadWidget t m
-     , HasUiTxLogModelCfg mConf t
+     , HasUiTxLogModelCfg mConf m t
      )
   => EnabledSettings
   -> model
   -> m mConf
 uiTxLogs _enabledSettings _model = divClass "tx-logs__page" $ do
+  txLogger <- Api.askTransactionLogger
+
+  let
+    loadN :: MonadIO m => Int -> m (Either SQLiteResponse [(UTCTime, Text, Text, Int, ByteString)])
+    loadN n = liftIO $ Api._transactionLogger_queryLog txLogger
+        [sql| SELECT (cmd_timestamp, request_hash, payload, version, blob) FROM chainweaver_txn_logs LIMIT ? |]
+        [n]
+
+  pb <- getPostBuild
+
+  onLogLoad <- performEvent $ loadN 10 <$ pb
+
   let
     mkCol w = elAttr "col" ("style" =: ("width: " <> w)) blank
     mkHeading = elClass "th" "table__heading" . text
@@ -60,7 +81,7 @@ uiTxLogs _enabledSettings _model = divClass "tx-logs__page" $ do
       , "class" =: "tx-logs table"
       ]
 
-  elAttr "table" tableAttrs $ do
+  _ <- elAttr "table" tableAttrs $ do
     -- Structure
     el "colgroup" $ replicateM_ 3 (mkCol "33%")
     -- Headings
@@ -71,10 +92,11 @@ uiTxLogs _enabledSettings _model = divClass "tx-logs__page" $ do
       ]
 
     -- Rows
-    el "tbody" $ forM_ dummyData $ \cmdlog -> do
-      elClass "tr" "table-row" $ do
-        td' $ text $ Pact.tShow $ Api._commandLog_timestamp cmdlog
-        td' $ text $ Pact.tShow $ Pact._cmdHash $ Api._commandLog_command cmdlog
-        td' $ text $ Pact._cmdPayload $ Api._commandLog_command cmdlog
+    el "tbody" $ widgetHold (text "wat") $ ffor onLogLoad $ \case
+      Left _ -> text "Transaction logs currently unavailable"
+      Right xs -> forM_ xs $ \(ts, rqHash, payload, version, _) -> elClass "tr" "table-row" $ do
+        td' $ text $ Pact.tShow ts
+        td' $ text $ Pact.tShow rqHash
+        td' $ text $ payload
 
   pure mempty

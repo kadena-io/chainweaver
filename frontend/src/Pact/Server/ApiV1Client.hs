@@ -3,6 +3,7 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeOperators #-}
 {-# LANGUAGE UndecidableInstances #-}
+{-# LANGUAGE QuasiQuotes #-}
 
 -- Limit API to the parts that are common to chainweb and `pact -s`.
 module Pact.Server.ApiV1Client
@@ -13,9 +14,13 @@ module Pact.Server.ApiV1Client
   , commandLogCurrentVersion
   , HasTransactionLogger(..)
   , TransactionLoggerT(..)
+  , TransactionLogger (..)
   , runTransactionLoggerT
   , logTransactionStdout
   , logTransactionFile
+  , logTransactionSQLite
+    -- * CommandLog Queries
+  , createCommandLogTableQuery
   ) where
 
 import Control.Lens
@@ -45,10 +50,26 @@ import qualified Data.Aeson as Aeson
 import qualified Data.Aeson.Types as Aeson
 import qualified Data.Aeson.Text as Aeson
 import qualified Data.Text as T
+import qualified Data.Text.Lazy    as LT
 import qualified Data.Text.Lazy.IO as LT
 import qualified Control.Monad.Reader as Reader
 
-type TransactionLogger = CommandLog -> IO ()
+import Database.SQLite.Simple (FromRow (..), ToRow (..))
+import qualified Database.SQLite.Simple as Sql
+import Database.SQLite.SimpleErrors (runDBAction)
+import Database.SQLite.SimpleErrors.Types (SQLiteResponse)
+import Database.SQLite.Simple.QQ (sql)
+
+import Data.Pool (Pool)
+import qualified Data.Pool as Pool
+
+import qualified Pact.Types.Command as Pact
+import qualified Pact.Types.Util as Pact
+
+data TransactionLogger = TransactionLogger
+  { _transactionLogger_appendLog :: CommandLog -> IO ()
+  , _transactionLogger_queryLog :: forall r a. (Sql.ToRow r, Sql.FromRow a) => Sql.Query -> r -> IO (Either SQLiteResponse [a])
+  }
 
 data ApiV1Client m = ApiV1Client
   { send :: TransactionLogger -> SubmitBatch -> m RequestKeys
@@ -61,10 +82,10 @@ data ApiV1Client m = ApiV1Client
 {- apiV1API = Proxy -}
 apiV1Client :: forall m. (MonadIO m, MonadReader ClientEnv m, RunClient m) => ApiV1Client m
 apiV1Client = ApiV1Client
-  { send = \appendLog batch@(SubmitBatch commands) -> do
+  { send = \txnLogger batch@(SubmitBatch commands) -> do
       url <- asks baseUrl
       timestamp <- liftIO getCurrentTime
-      for_ commands $ \command -> liftIO $ appendLog $ CommandLog
+      for_ commands $ \command -> liftIO $ _transactionLogger_appendLog txnLogger $ CommandLog
         { _commandLog_command = command
         , _commandLog_timestamp = timestamp
         , _commandLog_url = T.pack $ showBaseUrl url
@@ -194,7 +215,47 @@ runTransactionLoggerT :: TransactionLoggerT m a -> TransactionLogger -> m a
 runTransactionLoggerT = runReaderT . unTransactionLoggerT
 
 logTransactionStdout :: TransactionLogger
-logTransactionStdout = LT.putStrLn . Aeson.encodeToLazyText
+logTransactionStdout = TransactionLogger
+  { _transactionLogger_appendLog = LT.putStrLn . Aeson.encodeToLazyText
+  , _transactionLogger_queryLog = \_ _ -> pure (Right [])
+  }
 
-logTransactionFile :: FilePath -> CommandLog -> IO ()
-logTransactionFile f = LT.appendFile f . (<> "\n") . Aeson.encodeToLazyText
+logTransactionFile :: FilePath -> TransactionLogger
+logTransactionFile f = TransactionLogger
+  { _transactionLogger_appendLog = LT.appendFile f . (<> "\n") . Aeson.encodeToLazyText
+  , _transactionLogger_queryLog = \_ _ -> pure (Right [])
+  }
+
+logTransactionSQLite :: Pool Sql.Connection -> TransactionLogger
+logTransactionSQLite pool = TransactionLogger
+  { _transactionLogger_appendLog =
+      \cmdlog -> Pool.withResource pool $ \conn -> do
+        Sql.execute conn insertStmt
+                 ( _commandLog_timestamp cmdlog
+                 , Pact.tShow $ Pact._cmdHash $ _commandLog_command cmdlog
+                 , Pact._cmdPayload $ _commandLog_command cmdlog
+                 , commandLogCurrentVersion
+                 , Aeson.encode cmdlog
+                 )
+  , _transactionLogger_queryLog = \q r -> Pool.withResource pool $ \conn ->
+      runDBAction $ Sql.query conn q r
+  }
+  where
+    insertStmt =
+      [sql|
+          INSERT INTO chainweaver_txn_logs (cmd_timestamp, request_key, payload, version, raw_blob)
+          VALUES (?, ?, ?, ?, ?)
+      |]
+
+createCommandLogTableQuery :: Sql.Query
+createCommandLogTableQuery =
+  [sql|
+      CREATE TABLE IF NOT EXISTS chainweaver_txn_logs
+      ( log_timestamp TEXT DEFAULT CURRENT_TIMESTAMP NOT NULL
+      , cmd_timestamp TEXT NOT NULL
+      , request_key TEXT NOT NULL
+      , payload TEXT NOT NULL
+      , version INT NOT NULL
+      , raw_blob BLOB NOT NULL
+      )
+      |]

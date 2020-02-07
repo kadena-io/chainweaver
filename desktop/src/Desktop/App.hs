@@ -206,7 +206,14 @@ main' ffi mainBundleResourcePath runHTML = do
                 , _appCfg_enabledSettings = enabledSettings
                 , _appCfg_logMessage = _appFFI_global_logFunction ffi
                 }
-          _ <- mapRoutedT (flip runTransactionLoggerT (logTransactionFile $ libPath </> "transaction_log") . runFileStorageT libPath) $ runWithReplace loaderMarkup $
-            (liftIO (_appFFI_activateWindow ffi) >> liftIO (_appFFI_resizeWindow ffi defaultWindowSize) >> bipWallet fileFFI appCfg) <$ bowserLoad
+          _ <- mapRoutedT ( flip runTransactionLoggerT (logTransactionFile $ libPath </> "transaction_log") .
+                            runFileStorageT libPath
+                          )
+               $ runWithReplace loaderMarkup
+               $ ( liftIO (_appFFI_activateWindow ffi)
+                   >> liftIO (_appFFI_resizeWindow ffi defaultWindowSize)
+                   >> bipWallet appCfg
+                 )
+               <$ bowserLoad
           pure ()
         }

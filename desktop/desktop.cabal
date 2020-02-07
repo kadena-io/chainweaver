@@ -63,6 +63,10 @@ library
     , wai-cors
     , warp
     , monad-logger
+    , sqlite-simple
+    , sqlite-simple-errors
+    , resource-pool
+
   exposed-modules:
       Desktop
     , Desktop.Crypto.BIP
@@ -73,6 +77,7 @@ library
     , Desktop.Setup
     , Desktop.SigningApi
     , Desktop.Storage.File
+    , Desktop.Storage.SQLite
     , Desktop.Syslog
     , Desktop.Util
   ghc-options: -Wall

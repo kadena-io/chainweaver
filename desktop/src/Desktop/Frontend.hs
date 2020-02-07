@@ -34,15 +34,15 @@ import Data.Text (Text)
 import Data.Time (NominalDiffTime, getCurrentTime, addUTCTime)
 import Data.Traversable (for)
 import Language.Javascript.JSaddle (liftJSM)
-import Pact.Server.ApiV1Client (HasTransactionLogger, runTransactionLoggerT, logTransactionStdout)
-import Reflex.Dom.Core hiding (Key)
+import Pact.Server.ApiV1Client (HasTransactionLogger, runTransactionLoggerT, logTransactionStdout, logTransactionSQLite,createCommandLogTableQuery)
+import Reflex.Dom.Core
 import qualified Cardano.Crypto.Wallet as Crypto
 import qualified Data.Text.Encoding as T
 import qualified Data.Text.IO as T
 import qualified GHCJS.DOM as DOM
 import qualified GHCJS.DOM.EventM as EventM
 import qualified GHCJS.DOM.GlobalEventHandlers as GlobalEventHandlers
-
+import qualified System.Directory as Dir
 import Common.Api (getConfigRoute)
 import Common.Route
 import Common.Wallet
@@ -71,6 +71,10 @@ import Desktop.SigningApi
 import Desktop.ImportExport
 import Desktop.Util
 import Desktop.Storage.File
+import Desktop.Storage.SQLite
+
+import qualified Data.Pool as Pool
+import qualified Database.SQLite.Simple as Sql
 
 
 -- | This is for development
@@ -83,10 +87,13 @@ desktop = Frontend
       base <- getConfigRoute
       void $ Frontend.newHead $ \r -> base <> renderBackendRoute backendEncoder r
   , _frontend_body = prerender_ blank $ do
+    devDBLocation <- liftIO $ (<> "/chainweaver_dev_db") <$> Dir.getTemporaryDirectory
+    pool <- initCommandLogDB devDBLocation
     (signingRequestMVar, signingResponseMVar) <- signingServer
       (pure ()) -- Can't foreground or background things
       (pure ())
-    mapRoutedT (flip runTransactionLoggerT logTransactionStdout . runBrowserStorageT) $ do
+    -- mapRoutedT (flip runTransactionLoggerT logTransactionStdout . runBrowserStorageT) $ do
+    mapRoutedT (flip runTransactionLoggerT (logTransactionSQLite pool) . runBrowserStorageT) $ do
       (fileOpened, triggerOpen) <- Frontend.openFileDialog
       signingRequest <- mvarTriggerEvent signingRequestMVar
       let fileFFI = FileFFI
@@ -104,6 +111,17 @@ desktop = Frontend
         , _appCfg_logMessage = defaultLogger
         }
   }
+  where
+    initCommandLogDB :: MonadIO m => FilePath -> m (Pool.Pool Sql.Connection)
+    initCommandLogDB db = do
+      liftIO $ putStrLn "WUUUUT - A"
+      pool <- initialiseInMemorySQLiteLogStorage db
+      -- Initialise the command log table
+      _ <- liftIO $ Pool.withResource pool $ \conn -> do
+        putStrLn "WUUUUT - C"
+        Sql.execute_ conn createCommandLogTableQuery
+      liftIO $ putStrLn "WUUUUT - D"
+      pure pool
 
 -- This is the deliver file that is only used for development (i.e jsaddle web version)
 -- so it is hacky and just writes to the current directory.
