@@ -10,10 +10,9 @@
 {-# OPTIONS_GHC -fforce-recomp #-}
 
 module Backend
-  ( backend
-  , frontend
-  , main
+  ( main
   , serveBackendRoute
+  , obRunEntrypoint
   ) where
 
 import           Control.Monad             (when, (<=<))
@@ -63,6 +62,7 @@ import           Common.OAuth              (OAuthProvider (..),
                                             buildOAuthConfig', oAuthClientIdPath)
 import           Common.Route
 import           Common.Network
+import           Desktop                   (desktopFrontend)
 import           Frontend                  (webFrontend)
 
 data BackendCfg = BackendCfg
@@ -78,8 +78,8 @@ main = do
      then checkDeployment
      else runBackend backend webFrontend
 
-frontend :: Frontend (R FrontendRoute)
-frontend = webFrontend
+obRunEntrypoint :: (Backend BackendRoute FrontendRoute -> Frontend (R FrontendRoute) -> IO ()) -> IO ()
+obRunEntrypoint run = run backend $ if True then webFrontend else desktopFrontend
 
 -- | Where to put OAuth related backend configs:
 oAuthBackendCfgPath :: Text
