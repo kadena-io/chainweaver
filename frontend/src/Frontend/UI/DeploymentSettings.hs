@@ -66,7 +66,6 @@ import Control.Monad
 import Control.Monad.Trans.Class
 import Control.Monad.Trans.Maybe
 import Control.Monad.Except
-import Data.Bits (xor)
 import Data.Decimal (roundTo)
 import Data.Either (rights, isLeft)
 import Data.IntMap (IntMap)
@@ -742,16 +741,12 @@ uiSignerList m dCapMap = do
            in Map.unionWith (||) caps keys
     results <- listWithKey dKeys $ \pair preSelected' -> do
       preSelected <- holdUniqDyn preSelected'
-      pb <- getPostBuild
       let conf = def
             & checkboxConfig_attributes .~ ffor preSelected (\s -> if s then "disabled" =: "disabled" else mempty)
-            & checkboxConfig_setValue .~ leftmost
-              [ updated preSelected
-              , tag (current preSelected) pb
-              ]
-      cb <- uiCheckbox "signing-ui-signers__signer" False conf $
+            -- Disable the checkbox when this item gains a capability
+            & checkboxConfig_setValue .~ fmap not (ffilter id $ updated preSelected)
+      fmap value $ uiCheckbox "signing-ui-signers__signer" False conf $
         text $ keyToText $ _keyPair_publicKey pair
-      pure $ xor <$> _checkbox_value cb <*> preSelected
     pure $ Map.keysSet . Map.filter id <$> joinDynThroughMap results
 
 parseSigCapability :: Text -> Either String SigCapability
