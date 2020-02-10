@@ -153,7 +153,10 @@ input[type=number] {
   background: white;
   max-width: 60%;
   height: 1.1em;
-  overflow: hidden;
+}
+
+.define-keyset__external-key-input {
+  margin-bottom: 10px;
 }
 
 .input-max-toggle {
