@@ -32,7 +32,7 @@ uiAccountNameInput w initval = do
 
     showPopover (ie, _) = pure $ (\chk t -> mkMsg (not $ Text.null t) (chk t))
       <$> current (checkAccountNameValidity w)
-      <@> _inputElement_input ie
+      <@> fmap Text.strip (_inputElement_input ie)
 
     uiNameInput cfg = do
       inp <- uiInputElement cfg
@@ -41,4 +41,4 @@ uiAccountNameInput w initval = do
   (inputE, _) <- mkLabeledInput True "Account Name" (uiInputWithPopover uiNameInput snd showPopover)
     $ def & inputElementConfig_initialValue .~ fold (fmap unAccountName initval)
 
-  pure $ hush <$> (checkAccountNameValidity w <*> value inputE)
+  pure $ hush <$> (checkAccountNameValidity w <*> fmap Text.strip (value inputE))
