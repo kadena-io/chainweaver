@@ -15,6 +15,7 @@ $main-separator-border-color: #e2e2e2;
 
   padding-top: 43px;
   padding-left: 22px;
+  padding-right: 22px;
 }
 
 .main__left-pane {
@@ -27,6 +28,25 @@ $main-separator-border-color: #e2e2e2;
 
 
   border-right: 1px solid $main-separator-border-color;
+}
+
+.main__pane-collapse-button {
+  height: 15px;
+  width: 15px;
+  position: absolute;
+  top: 15px;
+  z-index: 100;
+  cursor: pointer;
+  opacity: 0.5;
+
+  left: calc(50% + 15px);
+  right: auto;
+  transform: rotate(180deg);
+  &.collapsed {
+    left: auto;
+    right: 15px;
+    transform: none;
+  }
 }
 
 .main__wysiwyg {

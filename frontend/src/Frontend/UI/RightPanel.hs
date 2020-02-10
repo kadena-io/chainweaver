@@ -54,10 +54,10 @@ selectionToText = \case
 
 rightTabBar
   :: forall key t m. (MonadWidget t m, HasCrypto key (Performable m), HasTransactionLogger m)
-  => CssClass
+  => Dynamic t CssClass
   -> Ide (ModalImpl m key t) key t
   -> m (IdeCfg (ModalImpl m key t) key t)
-rightTabBar cls ideL = elKlass "div" (cls <> "pane") $ do
+rightTabBar cls ideL = elDynKlass "div" (cls <> "pane") $ do
   let curSelection = _ide_envSelection ideL
   (TabBar onTabClick) <- makeTabBar $ TabBarCfg
     { _tabBarCfg_tabs = [minBound .. maxBound]
