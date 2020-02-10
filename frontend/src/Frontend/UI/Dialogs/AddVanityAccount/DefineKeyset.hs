@@ -57,7 +57,7 @@ uiExternalKeyInput
 uiExternalKeyInput onPreselection = do
   let
     uiPubkeyInput :: Maybe Text -> m (ExternalKeyInput t)
-    uiPubkeyInput iv = do
+    uiPubkeyInput iv = divClass "define-keyset__external-key-input" $ do
       (inp, dE) <- uiInputWithInlineFeedback
         (fmap parsePublicKey . value)
         (fmap (not . T.null) . value)
