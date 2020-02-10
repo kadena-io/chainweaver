@@ -739,12 +739,12 @@ uiSignerList m dCapMap = do
           let caps = Map.map (not . null) capMap
               keys = Map.fromList $ (, False) . _key_pair <$> IM.elems keyIndices
            in Map.unionWith (||) caps keys
-    results <- listWithKey dKeys $ \pair preSelected' -> do
-      preSelected <- holdUniqDyn preSelected'
+    results <- listWithKey dKeys $ \pair hasCap' -> do
+      hasCap <- holdUniqDyn hasCap'
       let conf = def
-            & checkboxConfig_attributes .~ ffor preSelected (\s -> if s then "disabled" =: "disabled" else mempty)
-            -- Disable the checkbox when this item gains a capability
-            & checkboxConfig_setValue .~ fmap not (ffilter id $ updated preSelected)
+            & checkboxConfig_attributes .~ ffor hasCap (\s -> if s then "disabled" =: "disabled" else mempty)
+            -- Uncheck the checkbox when this item gains a capability
+            & checkboxConfig_setValue .~ (False <$ ffilter id (updated hasCap))
       fmap value $ uiCheckbox "signing-ui-signers__signer" False conf $
         text $ keyToText $ _keyPair_publicKey pair
     pure $ Map.keysSet . Map.filter id <$> joinDynThroughMap results
