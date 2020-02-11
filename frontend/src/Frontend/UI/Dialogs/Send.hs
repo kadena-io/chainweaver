@@ -49,7 +49,7 @@ import Pact.Types.RPC
 import Pact.Types.Term
 import Reflex
 import Reflex.Dom
-import Safe (succMay, headMay)
+import Safe (headMay)
 import qualified Data.Aeson as Aeson
 import qualified Data.HashMap.Lazy as HM
 import qualified Data.Map as Map
@@ -281,9 +281,9 @@ sendConfig
 sendConfig model initData = Workflow $ do
   close <- modalHeader $ text "Send"
   rec
-    (currentTab, _done) <- makeTabs initData $ attachWithMaybe (const . void . hush) (current recipient) nextTab
+    (currentTab, _done) <- makeTabs initData $ leftmost [prevTab, fmapMaybe id nextTab]
     (conf, mCaps, recipient) <- mainSection currentTab
-    (cancel, nextTab) <- footerSection currentTab recipient mCaps
+    (cancel, prevTab, nextTab) <- footerSection currentTab recipient mCaps
   let nextScreen = flip push nextTab $ \case
         Just _ -> pure Nothing
         Nothing -> runMaybeT $ do
@@ -406,18 +406,22 @@ sendConfig model initData = Workflow $ do
       pure (conf, mCaps, (liftA2 . liftA2) (,) txBuilder amount)
 
     footerSection currentTab recipient mCaps = modalFooter $ do
-      cancel <- cancelButton def "Cancel"
-      let (name, disabled) = splitDynPure $ ffor currentTab $ \case
+      let (lbl, fanTag) = splitDynPure $ ffor currentTab $ \case
+            SendModalTab_Configuration -> ("Cancel", Left ())
+            SendModalTab_Sign -> ("Back", Right SendModalTab_Configuration)
+      ev <- cancelButton def lbl
+      let (cancel, back) = fanEither $ current fanTag <@ ev
+          (name, disabled) = splitDynPure $ ffor currentTab $ \case
             SendModalTab_Configuration -> ("Next", fmap isLeft recipient)
             SendModalTab_Sign -> ("Preview", fmap isNothing mCaps)
-      let cfg = def
+          cfg = def
             & uiButtonCfg_class <>~ "button_type_confirm"
             & uiButtonCfg_disabled .~ join disabled
       next <- uiButtonDyn cfg $ dynText name
       let nextTab = ffor (current currentTab <@ next) $ \case
             SendModalTab_Configuration -> Just SendModalTab_Sign
             SendModalTab_Sign -> Nothing
-      pure (cancel, nextTab)
+      pure (cancel, back, nextTab)
 
 -- | This function finishes cross chain transfers. The return event signals that
 -- the transfer is complete.
@@ -1035,8 +1039,8 @@ displaySendModalTab = text . \case
 
 makeTabs
   :: (DomBuilder t m, PostBuild t m, MonadHold t m, MonadFix m)
-  => InitialTransferData -> Event t () -> m (Dynamic t SendModalTab, Event t ())
-makeTabs initData next = do
+  => InitialTransferData -> Event t SendModalTab -> m (Dynamic t SendModalTab, Event t ())
+makeTabs initData tabEv = do
   -- We assume that if there is a full transfer that we should head to the sign tab
   let initTab = initialTransferDataCata (const SendModalTab_Configuration) (const SendModalTab_Sign) initData
       f t0 g = case g t0 of
@@ -1045,7 +1049,7 @@ makeTabs initData next = do
   rec
     (curSelection, done) <- mapAccumMaybeDyn f initTab $ leftmost
       [ const . Just <$> onTabClick
-      , succMay <$ next
+      , const . Just <$> tabEv
       ]
     (TabBar onTabClick) <- makeTabBar $ TabBarCfg
       { _tabBarCfg_tabs = [SendModalTab_Configuration, SendModalTab_Sign]
