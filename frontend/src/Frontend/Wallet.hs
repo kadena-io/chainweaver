@@ -42,7 +42,7 @@ module Frontend.Wallet
   -- * Parsing
   , parseWalletKeyPair
   -- * Other helper functions
-  , checkAccountNameValidity
+  , checkAccountNameAvailability
   , snocIntMap
   , findNextKey
   , getSigningPairs
@@ -329,16 +329,12 @@ parseWalletKeyPair errPubKey privKey = do
   pubKey <- errPubKey
   runExcept $ uncurry KeyPair <$> parseKeyPair pubKey privKey
 
--- | Check account name validity (uniqueness).
---
---   Returns `Left` error msg in case it is not valid.
-checkAccountNameValidity
+checkAccountNameAvailability
   :: NetworkName
   -> AccountData
-  -> Text
+  -> AccountName
   -> Either Text AccountName
-checkAccountNameValidity net (AccountData networks) k = do
-  acc <- mkAccountName k
+checkAccountNameAvailability net (AccountData networks) acc = do
   maybe (Right acc) (\_ -> Left "This account name is already in use") $ do
     accounts <- Map.lookup net networks
     guard $ Map.member acc accounts

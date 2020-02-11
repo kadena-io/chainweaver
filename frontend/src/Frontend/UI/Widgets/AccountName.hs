@@ -1,40 +1,42 @@
 module Frontend.UI.Widgets.AccountName
   ( uiAccountNameInput
+  , noValidation
   ) where
 
 import Control.Error (hush)
-import Control.Lens ((^.))
+import Control.Monad ((<=<))
 import Data.Foldable (fold)
+import Data.Text (Text)
 import qualified Data.Text as Text
 import Reflex
 import Reflex.Dom
 import Language.Javascript.JSaddle (MonadJSM)
 import Frontend.UI.Widgets (PopoverState (..), mkLabeledInput, uiInputElement, uiInputWithPopover)
-import Frontend.Network (HasNetwork(..))
-import Frontend.Wallet (AccountName(..), checkAccountNameValidity, HasWallet(..))
+import Frontend.Wallet (AccountName(..), mkAccountName)
+
+noValidation :: Applicative f => f (a -> Either err a)
+noValidation = pure Right
 
 uiAccountNameInput
   :: ( DomBuilder t m
      , PostBuild t m
      , MonadHold t m
-     , HasWallet model key t
-     , HasNetwork model t
      , DomBuilderSpace m ~ GhcjsDomSpace
      , PerformEvent t m
      , MonadJSM (Performable m)
      )
-  => model
-  -> Maybe AccountName
+  => Maybe AccountName
+  -> Dynamic t (AccountName -> Either Text AccountName)
   -> m (Dynamic t (Maybe AccountName))
-uiAccountNameInput m initval = do
+uiAccountNameInput initval validateName = do
   let
     mkMsg True (Left e) = PopoverState_Error e
     mkMsg _    _ = PopoverState_Disabled
 
-    chkValidity = checkAccountNameValidity <$> (m ^. network_selectedNetwork) <*> (m ^. wallet_accounts)
+    validate = ffor validateName $ (<=< mkAccountName)
 
-    showPopover (ie, _) = pure $ (\chk t -> mkMsg (not $ Text.null t) (chk t))
-      <$> current chkValidity
+    showPopover (ie, _) = pure $ (\v t -> mkMsg (not $ Text.null t) (v t))
+      <$> current validate
       <@> fmap Text.strip (_inputElement_input ie)
 
     uiNameInput cfg = do
@@ -44,4 +46,4 @@ uiAccountNameInput m initval = do
   (inputE, _) <- mkLabeledInput True "Account Name" (uiInputWithPopover uiNameInput snd showPopover)
     $ def & inputElementConfig_initialValue .~ fold (fmap unAccountName initval)
 
-  pure $ hush <$> (chkValidity <*> fmap Text.strip (value inputE))
+  pure $ hush <$> (validate <*> fmap Text.strip (value inputE))
