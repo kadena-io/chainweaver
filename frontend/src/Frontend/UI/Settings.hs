@@ -20,8 +20,10 @@ import Frontend.AppCfg (EnabledSettings(..))
 import Frontend.Foundation
 import Frontend.Network
 import Frontend.UI.Dialogs.NetworkEdit (uiNetworkEdit)
+import Frontend.UI.Dialogs.ChangePassword (uiChangePasswordDialog)
 import Frontend.UI.IconGrid (IconGridCellConfig(..), iconGridCell)
 import Frontend.UI.Modal
+
 
 type HasUiSettingModelCfg model mConf key m t =
   ( Monoid mConf
@@ -35,15 +37,16 @@ type HasUiSettingModelCfg model mConf key m t =
 uiSettings
   :: forall t m key model mConf
   . (MonadWidget t m, HasNetwork model t, HasUiSettingModelCfg model mConf key m t)
-  => EnabledSettings -> model -> m mConf
+  => EnabledSettings key t m -> model -> m mConf
 uiSettings enabledSettings model = elClass "div" "icon-grid" $ do
   netCfg <- settingItem "Network" (static @"img/network.svg") (uiNetworkEdit model)
   configs <- sequence $ catMaybes $
-    [ -- For later: e.g: includeSetting _enabledSettings_password $ settingItem "Password" ...
+    [ ffor (_enabledSettings_changePassword enabledSettings) $ \changePassword -> do
+      settingItem "Change Password" (static @"img/lock-light.svg") (uiChangePasswordDialog changePassword)
     ]
   pure $ netCfg <> fold configs
   where
-    _includeSetting f s = if (f enabledSettings) then Just s else Nothing
+    _includeSetting f s = if f enabledSettings then Just s else Nothing
 
 settingItem
   :: forall t m mConf

@@ -155,6 +155,12 @@
   font-size: $secondary-font-size;
 }
 
+.button_right_floated {
+  display: block;
+  margin-top: 1rem;
+  margin-left: auto;
+}
+
 // Tiny buttons:
 .button_size_tiny {
   height: $tiny-height;

@@ -1,19 +1,24 @@
 -- | AppCfg is used to configure the app and pass things in and out of reflex
 module Frontend.AppCfg where
 
-import Data.Text (Text)
-
 import Control.Monad.Logger (LogLevel, LogStr)
+import Data.Text (Text)
 import Language.Javascript.JSaddle (JSM)
+import Reflex.Dom hiding (Key)
 
-import Reflex.Dom
-
+import Common.Wallet (Key)
 import Kadena.SigningApi
 
-data EnabledSettings = EnabledSettings
-  { -- Eventually, our settings page will want different settings per app type
-    -- but right now we only have the network settings, and all apps want that
-    -- so this is empty for now but wired between the bits that need it
+data ChangePassword key t m = ChangePassword
+  { _changePassword_requestChange :: Event t (Text, Text, Text) -> m (Event t (Either Text ()))
+  -- ^ Request to change the password. Performs validation and changes passwords
+  -- if validation passes. (Old pass, new pass, repeat pass).
+  , _changePassword_updateKeys :: Event t (Int -> Key key -> Key key)
+  -- ^ Update all keys using the given function
+  }
+
+data EnabledSettings key t m = EnabledSettings
+  { _enabledSettings_changePassword :: Maybe (ChangePassword key t m)
   }
 
 data AppCfg key t m = AppCfg
@@ -30,7 +35,7 @@ data AppCfg key t m = AppCfg
   -- ^ Requests to sign this object
   , _appCfg_signingResponse :: Either Text SigningResponse -> JSM ()
   -- ^ Responses to signings
-  , _appCfg_enabledSettings :: EnabledSettings
+  , _appCfg_enabledSettings :: EnabledSettings key t m
   , _appCfg_logMessage :: LogLevel -> LogStr -> IO ()
   -- ^ Logging Function
   }
