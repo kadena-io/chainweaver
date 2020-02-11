@@ -36,7 +36,6 @@ import qualified Data.Text.IO              as T
 import           Network.HTTP.Client       (Manager)
 import           Network.HTTP.Client.TLS   (newTlsManager)
 import           Obelisk.Backend           (Backend(..), runBackend)
-import           Obelisk.Frontend          (Frontend)
 import           Obelisk.ExecutableConfig.Lookup
 import           Obelisk.Route             (pattern (:/), R, checkEncoder,
                                             renderFrontendRoute)
@@ -57,6 +56,7 @@ import "template-haskell" Language.Haskell.TH.Lib   (stringE)
 import           Obelisk.OAuth.Backend     (getAccessToken)
 import           Obelisk.OAuth.Common
 
+import           Backend.Devel             (frontend)
 import qualified Backend.Devel             as Devel
 import           Common.Api
 import           Common.OAuth              (OAuthProvider (..),
@@ -77,9 +77,6 @@ main = do
   if runCheck
      then checkDeployment
      else runBackend backend webFrontend
-
-frontend :: Frontend (R FrontendRoute)
-frontend = webFrontend
 
 -- | Where to put OAuth related backend configs:
 oAuthBackendCfgPath :: Text
