@@ -3,14 +3,15 @@ module Frontend.UI.Widgets.AccountName
   ) where
 
 import Control.Error (hush)
+import Control.Lens ((^.))
 import Data.Foldable (fold)
 import qualified Data.Text as Text
 import Reflex
 import Reflex.Dom
 import Language.Javascript.JSaddle (MonadJSM)
 import Frontend.UI.Widgets (PopoverState (..), mkLabeledInput, uiInputElement, uiInputWithPopover)
-import Frontend.Network (HasNetwork)
-import Frontend.Wallet (AccountName(..), checkAccountNameValidity, HasWallet)
+import Frontend.Network (HasNetwork(..))
+import Frontend.Wallet (AccountName(..), checkAccountNameValidity, HasWallet(..))
 
 uiAccountNameInput
   :: ( DomBuilder t m
@@ -25,13 +26,15 @@ uiAccountNameInput
   => model
   -> Maybe AccountName
   -> m (Dynamic t (Maybe AccountName))
-uiAccountNameInput w initval = do
+uiAccountNameInput m initval = do
   let
     mkMsg True (Left e) = PopoverState_Error e
     mkMsg _    _ = PopoverState_Disabled
 
+    chkValidity = checkAccountNameValidity <$> (m ^. network_selectedNetwork) <*> (m ^. wallet_accounts)
+
     showPopover (ie, _) = pure $ (\chk t -> mkMsg (not $ Text.null t) (chk t))
-      <$> current (checkAccountNameValidity w)
+      <$> current chkValidity
       <@> fmap Text.strip (_inputElement_input ie)
 
     uiNameInput cfg = do
@@ -41,4 +44,4 @@ uiAccountNameInput w initval = do
   (inputE, _) <- mkLabeledInput True "Account Name" (uiInputWithPopover uiNameInput snd showPopover)
     $ def & inputElementConfig_initialValue .~ fold (fmap unAccountName initval)
 
-  pure $ hush <$> (checkAccountNameValidity w <*> fmap Text.strip (value inputE))
+  pure $ hush <$> (chkValidity <*> fmap Text.strip (value inputE))
