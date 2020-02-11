@@ -67,7 +67,7 @@ webFrontend = Frontend
       , _appCfg_signingRequest = never
       , _appCfg_signingResponse = liftIO . print
       , _appCfg_enabledSettings = EnabledSettings
-        {
+        { _enabledSettings_changePassword = Nothing
         }
       , _appCfg_logMessage = defaultLogger
       }

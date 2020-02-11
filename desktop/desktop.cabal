@@ -20,6 +20,7 @@ library
     , constraints-extras
     , containers
     , cryptonite
+    , dependent-sum
     , dependent-sum-template
     , directory
     , errors

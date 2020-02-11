@@ -175,7 +175,7 @@ main' ffi mainBundleResourcePath runHTML = do
           bowserLoad <- mvarTriggerEvent bowserMVar
           fileOpened <- mvarTriggerEvent fileOpenedMVar
           signingRequest <- mvarTriggerEvent signingRequestMVar
-          let appCfg = AppCfg
+          let appCfg enabledSettings = AppCfg
                 { _appCfg_gistEnabled = False
                 , _appCfg_externalFileOpened = fileOpened
                 , _appCfg_openFileDialog = liftIO $ _appFFI_global_openFileDialog ffi
@@ -185,9 +185,7 @@ main' ffi mainBundleResourcePath runHTML = do
                 , _appCfg_editorReadOnly = False
                 , _appCfg_signingRequest = signingRequest
                 , _appCfg_signingResponse = signingResponseHandler signingResponseMVar
-                , _appCfg_enabledSettings = EnabledSettings
-                  {
-                  }
+                , _appCfg_enabledSettings = enabledSettings
                 , _appCfg_logMessage = _appFFI_global_logFunction ffi
                 }
           _ <- mapRoutedT (flip runTransactionLoggerT (logTransactionFile $ libPath </> "transaction_log") . runFileStorageT libPath) $ runWithReplace loaderMarkup $

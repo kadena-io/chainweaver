@@ -8,7 +8,7 @@
 {-# LANGUAGE TypeApplications #-}
 
 -- | Wallet setup screens
-module Desktop.Setup (Password(..), runSetup, form, splashLogo, setupDiv, setupClass) where
+module Desktop.Setup (Password(..), runSetup, form, splashLogo, setupDiv, setupClass, checkPassword) where
 
 import Control.Lens ((<>~), (%~), (??))
 import Control.Error (hush)
@@ -38,6 +38,7 @@ import qualified Data.Text as T
 import qualified Data.Text.Encoding as T
 
 import Frontend.UI.Button
+import Frontend.UI.Dialogs.ChangePassword (minPasswordLength)
 import Frontend.UI.Widgets
 import Obelisk.Generated.Static
 
@@ -591,15 +592,14 @@ setPassword dSeed = do
     , (\s p -> Just (Crypto.generate s (T.encodeUtf8 p), Password p)) <$> current dSeed <@> pass
     ]
 
-  where
-    minPasswordLength = 10
-    checkPassword p1 p2
-      | T.length p1 < minPasswordLength =
-          Left $ "Passwords must be at least " <> tshow minPasswordLength <> " characters long"
-      | p1 /= p2 =
-          Left "Passwords must match"
-      | otherwise =
-          Right p1
+checkPassword :: Text -> Text -> Either Text Text
+checkPassword p1 p2
+  | T.length p1 < minPasswordLength =
+      Left $ "Passwords must be at least " <> tshow minPasswordLength <> " characters long"
+  | p1 /= p2 =
+      Left "Passwords must match"
+  | otherwise =
+      Right p1
 
 -- | Generate a 12 word mnemonic sentence, using cryptonite.
 --
