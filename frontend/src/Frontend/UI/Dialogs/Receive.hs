@@ -50,7 +50,6 @@ import Frontend.UI.DeploymentSettings (uiMetaData, defaultGASCapability, transac
 import Frontend.UI.Modal
 import Frontend.UI.Widgets
 import Frontend.UI.Widgets.Helpers (dialogSectionHeading)
-import Frontend.UI.Widgets.AccountName (uiAccountNameInput)
 import Frontend.Wallet
 
 data NonBIP32TransferInfo = NonBIP32TransferInfo
@@ -61,14 +60,11 @@ data NonBIP32TransferInfo = NonBIP32TransferInfo
 
 uiReceiveFromLegacyAccount
   :: ( MonadWidget t m
-     , HasWallet model key t
-     , HasNetwork model t
      , HasCrypto key (Performable m)
      )
-  => model
-  -> m (Dynamic t (Maybe NonBIP32TransferInfo))
-uiReceiveFromLegacyAccount model = do
-  mAccountName <- uiAccountNameInput model Nothing
+  => m (Dynamic t (Maybe NonBIP32TransferInfo))
+uiReceiveFromLegacyAccount = do
+  mAccountName <- uiAccountNameInput Nothing noValidation
 
   let
     onDeriveKey (_, onKey) =
@@ -102,7 +98,6 @@ uiReceiveModal
      , Monoid mConf
      , HasNetwork model t
      , HasNetworkCfg mConf t
-     , HasWallet model key t
      , Flattenable mConf t
      , HasCrypto key m
      , HasCrypto key (Performable m)
@@ -126,7 +121,6 @@ uiReceiveModal0
      , Monoid mConf
      , HasNetwork model t
      , HasNetworkCfg mConf t
-     , HasWallet model key t
      , HasCrypto key (Performable m)
      , HasCrypto key m
      , HasLogger model t
@@ -174,7 +168,7 @@ uiReceiveModal0 model account mchain onClose = Workflow $ do
       (onReceiClick, results) <- controlledAccordionItem (not <$> showingTxBuilder) mempty
         (accordionHeaderBtn "Option 2: Transfer from non-Chainweaver Account") $ do
         dialogSectionHeading mempty "Sender Details"
-        transferInfo0 <- divClass "group" $ uiReceiveFromLegacyAccount model
+        transferInfo0 <- divClass "group" uiReceiveFromLegacyAccount
         dialogSectionHeading mempty "Transaction Settings"
         (conf0, ttl0, gaslimit0) <- divClass "group" $ uiMetaData model Nothing Nothing
         pure (conf0, ttl0, gaslimit0, transferInfo0)

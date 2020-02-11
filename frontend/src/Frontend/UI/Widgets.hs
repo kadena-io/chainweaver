@@ -14,6 +14,7 @@ module Frontend.UI.Widgets
   ( -- * Standard widgets for chainweaver
     -- ** Buttons
     module Frontend.UI.Button
+  , noValidation
   -- ** Single Purpose Widgets
   , uiGasPriceInputField
   , uiDetailsCopyButton
@@ -26,6 +27,7 @@ module Frontend.UI.Widgets
   , uiChainSelection
 
   , mkChainTextAccounts
+  , uiAccountNameInput
   , uiAccountFixed
   , uiAccountDropdown
   , uiAccountDropdown'
@@ -93,6 +95,7 @@ module Frontend.UI.Widgets
 ------------------------------------------------------------------------------
 import           Control.Applicative
 import           Control.Arrow (first, (&&&))
+import           Control.Error (hush)
 import           Control.Lens
 import           Control.Monad
 import           Control.Monad.Except
@@ -927,6 +930,40 @@ predefinedChainIdDisplayed cid _ = do
     & initialAttributes %~ Map.insert "disabled" ""
     & inputElementConfig_initialValue .~ _chainId cid
   pure $ pure $ pure cid
+
+noValidation :: Applicative f => f (a -> Either err a)
+noValidation = pure Right
+
+uiAccountNameInput
+  :: ( DomBuilder t m
+     , PostBuild t m
+     , MonadHold t m
+     , DomBuilderSpace m ~ GhcjsDomSpace
+     , PerformEvent t m
+     , MonadJSM (Performable m)
+     )
+  => Maybe AccountName
+  -> Dynamic t (AccountName -> Either Text AccountName)
+  -> m (Dynamic t (Maybe AccountName))
+uiAccountNameInput initval validateName = do
+  let
+    mkMsg True (Left e) = PopoverState_Error e
+    mkMsg _    _ = PopoverState_Disabled
+
+    validate = ffor validateName $ (<=< mkAccountName)
+
+    showPopover (ie, _) = pure $ (\v t -> mkMsg (not $ T.null t) (v t))
+      <$> current validate
+      <@> fmap T.strip (_inputElement_input ie)
+
+    uiNameInput cfg = do
+      inp <- uiInputElement cfg
+      pure (inp, _inputElement_raw inp)
+
+  (inputE, _) <- mkLabeledInput True "Account Name" (uiInputWithPopover uiNameInput snd showPopover)
+    $ def & inputElementConfig_initialValue .~ fold (fmap unAccountName initval)
+
+  pure $ hush <$> (validate <*> fmap T.strip (value inputE))
 
 -- | Set the account to a fixed value
 uiAccountFixed
