@@ -33,7 +33,6 @@ import           Frontend.UI.Dialogs.AddVanityAccount.DefineKeyset (DefinedKeyse
 import           Frontend.UI.Modal.Impl
 import           Frontend.UI.Widgets
 import           Frontend.UI.Widgets.Helpers (dialogSectionHeading)
-import           Frontend.UI.Widgets.AccountName
 
 import           Frontend.Crypto.Class
 import           Frontend.JsonData

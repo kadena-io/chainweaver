@@ -50,7 +50,6 @@ import Frontend.UI.DeploymentSettings (uiMetaData, defaultGASCapability, transac
 import Frontend.UI.Modal
 import Frontend.UI.Widgets
 import Frontend.UI.Widgets.Helpers (dialogSectionHeading)
-import Frontend.UI.Widgets.AccountName
 import Frontend.Wallet
 
 data NonBIP32TransferInfo = NonBIP32TransferInfo
