@@ -212,7 +212,7 @@ main' ffi mainBundleResourcePath runHTML = do
                $ runWithReplace loaderMarkup
                $ ( liftIO (_appFFI_activateWindow ffi)
                    >> liftIO (_appFFI_resizeWindow ffi defaultWindowSize)
-                   >> bipWallet appCfg
+                   >> bipWallet fileFFI appCfg
                  )
                <$ bowserLoad
           pure ()

@@ -63,9 +63,6 @@ library
     , wai-cors
     , warp
     , monad-logger
-    , sqlite-simple
-    , sqlite-simple-errors
-    , resource-pool
 
   exposed-modules:
       Desktop

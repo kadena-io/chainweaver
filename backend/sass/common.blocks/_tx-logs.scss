@@ -6,6 +6,22 @@
 
 @import '../include/defs';
 
-.tx-logs__page {
-  padding: 1rem;
+.tx-logs .table-row {
+  border-top: 1px solid;
+}
+
+.tx-logs .table__cell {
+  padding-top: 12px;
+  padding-bottom: 12px;
+
+  // &:first-child {
+  //   border-left: 1px solid;
+  // }
+  // &:last-child {
+  //   border-right: 1px solid;
+  // }
+}
+
+.tx-log-row__ix {
+  text-align: center;
 }

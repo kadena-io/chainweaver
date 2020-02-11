@@ -62,6 +62,7 @@ module Frontend.UI.Widgets
   , uiAccountBalance
   , uiAccountBalance'
   , uiPublicKeyShrunk
+  , uiPublicKeyShrunkDyn
     -- ** Helper types to avoid boolean blindness for additive input
   , AllowAddNewRow (..)
   , AllowDeleteRow (..)
@@ -656,11 +657,22 @@ uiAccountBalance showUnits = \case
     , " KDA" <$ guard showUnits
     ]
 
-uiPublicKeyShrunk :: (DomBuilder t m, PostBuild t m) => Dynamic t PublicKey -> m ()
-uiPublicKeyShrunk pk = do
-  divClass "wallet__public-key" $ do
-    elClass "span" "wallet__public-key__prefix" $ dynText $ T.dropEnd 6 <$> ktxt
-    elClass "span" "wallet__public-key__suffix" $ dynText $ T.takeEnd 6 <$> ktxt
+uiPublicKeyShrunkDOM :: DomBuilder t m => m () -> m () -> m ()
+uiPublicKeyShrunkDOM f6 l6 = divClass "wallet__public-key" $ do
+  elClass "span" "wallet__public-key__prefix" f6
+  elClass "span" "wallet__public-key__suffix" l6
+
+uiPublicKeyShrunk :: DomBuilder t m => PublicKey -> m ()
+uiPublicKeyShrunk pk = uiPublicKeyShrunkDOM
+  (text $ T.dropEnd 6 ktxt)
+  (text $ T.takeEnd 6 ktxt)
+  where
+    ktxt = keyToText pk
+
+uiPublicKeyShrunkDyn :: (DomBuilder t m, PostBuild t m) => Dynamic t PublicKey -> m ()
+uiPublicKeyShrunkDyn pk = uiPublicKeyShrunkDOM
+  (dynText $ T.dropEnd 6 <$> ktxt)
+  (dynText $ T.takeEnd 6 <$> ktxt)
   where
     ktxt = keyToText <$> pk
 

@@ -107,7 +107,6 @@ handleRoutes m = do
       FrontendRoute_Keys :/ () -> Nothing
       FrontendRoute_Resources :/ () -> Nothing
       FrontendRoute_Settings :/ () -> Nothing
-      FrontendRoute_TxLogs :/ () -> Nothing
 
     runRefParser = MP.parse parseRef "URL" . RefPath
 

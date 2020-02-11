@@ -98,7 +98,7 @@ library
                , monad-logger
                , fast-logger
                , witherable
-               , sqlite-simple
+               , system-locale
 
   exposed-modules: Frontend
                  , Frontend.AppCfg
@@ -148,6 +148,7 @@ library
                  , Frontend.UI.Dialogs.KeyDetails
                  , Frontend.UI.Dialogs.AddVanityAccount.DefineKeyset
                  , Frontend.UI.Dialogs.AddVanityAccount
+                 , Frontend.UI.Dialogs.TxLogs
                  , Frontend.UI.ErrorList
                  , Frontend.UI.Icon
                  , Frontend.UI.IconGrid
@@ -161,7 +162,6 @@ library
                  , Frontend.UI.Repl
                  , Frontend.UI.RightPanel
                  , Frontend.UI.Settings
-                 , Frontend.UI.TxLogs
                  , Frontend.UI.TabBar
                  , Frontend.UI.Wallet
                  , Frontend.UI.Widgets

@@ -1,4 +1,5 @@
 {-# LANGUAGE CPP #-}
+{-# LANGUAGE TupleSections #-}
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeOperators #-}
@@ -6,31 +7,26 @@
 {-# LANGUAGE QuasiQuotes #-}
 
 -- Limit API to the parts that are common to chainweb and `pact -s`.
-module Pact.Server.ApiClient
-  (
-
-    -- Re-export from Latest
-  --   ApiAPI
-  -- , ApiClient(..)
-  -- , apiClient
-  -- , CommandLog(..)
-
+module Pact.Server.ApiV1Client
+  ( ApiV1API
+  , ApiV1Client(..)
+  , apiV1Client
+  , CommandLog(..)
   , commandLogCurrentVersion
+  , commandLogFilename
   , HasTransactionLogger(..)
   , TransactionLoggerT(..)
   , TransactionLogger (..)
   , runTransactionLoggerT
   , logTransactionStdout
   , logTransactionFile
-  , logTransactionSQLite
-    -- * CommandLog Queries
-  -- , createCommandLogTableQuery
   ) where
 
 import Control.Lens
 import Control.Monad.IO.Class
 import Control.Monad.Primitive
 import Control.Monad.Reader hiding (local)
+import Control.Monad.Except
 import Control.Monad.Ref
 import Data.Aeson (ToJSON, FromJSON)
 import Data.Coerce
@@ -53,32 +49,31 @@ import Servant.Client.JSaddle hiding (Client)
 import qualified Data.Aeson as Aeson
 import qualified Data.Aeson.Types as Aeson
 import qualified Data.Aeson.Text as Aeson
+import qualified Data.ByteString as BS
+import qualified Data.ByteString.Char8 as BS8
+import qualified Data.ByteString.Lazy as BSL
+import qualified Data.ByteString.Builder as BSL
 import qualified Data.Text as T
-import qualified Data.Text.Lazy    as LT
 import qualified Data.Text.Lazy.IO as LT
 import qualified Data.List.NonEmpty as NE
+import qualified Data.Map as Map
 import qualified Control.Monad.Reader as Reader
 
-import Database.SQLite.Simple (FromRow (..), ToRow (..))
-import qualified Database.SQLite.Simple as Sql
-import Database.SQLite.SimpleErrors (runDBAction)
-import Database.SQLite.SimpleErrors.Types (SQLiteResponse)
-import Database.SQLite.Simple.QQ (sql)
+import qualified Data.Csv as Csv
+import qualified Data.Csv.Builder as Csv
 
-import Data.Pool (Pool)
-import qualified Data.Pool as Pool
+import Data.Time (TimeLocale)
+import System.Locale.Read (getCurrentLocale)
 
-import qualified Pact.Types.Hash as Pact
 import qualified Pact.Types.Command as Pact
 import qualified Pact.Types.Util as Pact
+import qualified Pact.Types.Hash as Pact
 import Pact.Types.ChainId (ChainId)
-import qualified Pact.Types.ChainId as Pact
-
-import Pact.Server.Orphans ()
 
 data TransactionLogger = TransactionLogger
   { _transactionLogger_appendLog :: CommandLog -> IO ()
-  , _transactionLogger_queryLog :: forall r a. (Sql.ToRow r, Sql.FromRow a) => Sql.Query -> r -> IO (Either SQLiteResponse [a])
+  , _transactionLogger_loadFirstNLogs :: Int -> IO (Either String (TimeLocale, [CommandLog]))
+  , _transactionLogger_exportFile :: IO (Either String FilePath)
   }
 
 data ApiV1Client m = ApiV1Client
@@ -101,7 +96,7 @@ apiV1Client = ApiV1Client
         { _commandLog_command = command
         , _commandLog_sender = sender
         , _commandLog_chain = chain
-        , _commandLog_request_key = NE.head $ _rkRequestKeys rqkeys
+        , _commandLog_requestKey = NE.head $ _rkRequestKeys rqkeys
         , _commandLog_timestamp = timestamp
         , _commandLog_url = T.pack $ showBaseUrl url
         }
@@ -122,27 +117,33 @@ data CommandLog = CommandLog
   { _commandLog_timestamp :: UTCTime
   , _commandLog_sender :: Text
   , _commandLog_chain :: ChainId
-  , _commandLog_request_key :: RequestKey
+  , _commandLog_requestKey :: RequestKey
   , _commandLog_url :: Text
   , _commandLog_command :: Command Text
   } deriving (Eq, Show)
 
-instance FromRow CommandLog where
-  fromRow = CommandLog
-    <$> Sql.field
-    <*> Sql.field
-    <*> Sql.field
-    <*> Sql.field
-    <*> Sql.field
-    <*> Sql.field
-
 instance ToJSON CommandLog where
-  toJSON cl = Aeson.object
-    [ "version" Aeson..= commandLogCurrentVersion
-    , "timestamp" Aeson..= _commandLog_timestamp cl
-    , "url" Aeson..= _commandLog_url cl
-    , "command" Aeson..= _commandLog_command cl
-    ]
+  toJSON = encodeCommandLogV1
+
+encodeCommandLogV1 :: CommandLog -> Aeson.Value
+encodeCommandLogV1 cl = Aeson.object
+  [ "version" Aeson..= commandLogCurrentVersion
+  , "sender" Aeson..= _commandLog_sender cl
+  , "chain" Aeson..= _commandLog_chain cl
+  , "request_key" Aeson..= _commandLog_requestKey cl
+  , "timestamp" Aeson..= _commandLog_timestamp cl
+  , "url" Aeson..= _commandLog_url cl
+  , "command" Aeson..= _commandLog_command cl
+  ]
+
+-- Do we really need to keep this around ?
+-- encodeCommandLogV0 :: CommandLog -> Aeson.Value
+-- encodeCommandLogV0 cl = Aeson.object
+--   [ "version" Aeson..= commandLogCurrentVersion
+--   , "timestamp" Aeson..= _commandLog_timestamp cl
+--   , "url" Aeson..= _commandLog_url cl
+--   , "command" Aeson..= _commandLog_command cl
+--   ]
 
 instance FromJSON CommandLog where
   parseJSON = Aeson.withObject "CommandLog" $ \o -> do
@@ -154,10 +155,14 @@ instance FromJSON CommandLog where
 commandLogCurrentVersion :: Int
 commandLogCurrentVersion = pred $ length commandLogParsers
 
+commandLogFilename :: FilePath
+commandLogFilename = "chainweaver_transaction_log"
+
 -- | Add newer versions to the end of this list
 commandLogParsers :: [Aeson.Object -> Aeson.Parser CommandLog]
 commandLogParsers =
   [ parseCommandLogV0
+  , parseCommandLogV1
   ]
 
 parseCommandLogV0 :: Aeson.Object -> Aeson.Parser CommandLog
@@ -170,6 +175,15 @@ parseCommandLogV0 o = do
     , _commandLog_url = url
     , _commandLog_command = command
     }
+
+parseCommandLogV1 :: Aeson.Object -> Aeson.Parser CommandLog
+parseCommandLogV1 o = CommandLog
+  <$> o Aeson..: "timestamp"
+  <*> o Aeson..: "sender"
+  <*> o Aeson..: "chain"
+  <*> o Aeson..: "request_key"
+  <*> o Aeson..: "url"
+  <*> o Aeson..: "command"
 
 class HasTransactionLogger m where
   askTransactionLogger :: m TransactionLogger
@@ -245,56 +259,55 @@ runTransactionLoggerT = runReaderT . unTransactionLoggerT
 logTransactionStdout :: TransactionLogger
 logTransactionStdout = TransactionLogger
   { _transactionLogger_appendLog = LT.putStrLn . Aeson.encodeToLazyText
-  , _transactionLogger_queryLog = \_ _ -> pure (Right [])
+  , _transactionLogger_loadFirstNLogs = const $ pure logsdisabled
+  , _transactionLogger_exportFile = pure logsdisabled
   }
+  where
+    logsdisabled = Left "Logs Disabled"
 
 logTransactionFile :: FilePath -> TransactionLogger
 logTransactionFile f = TransactionLogger
-  { _transactionLogger_appendLog = LT.appendFile f . (<> "\n") . Aeson.encodeToLazyText
-  , _transactionLogger_queryLog = \_ _ -> pure (Right [])
-  }
-
-logTransactionSQLite :: Pool Sql.Connection -> TransactionLogger
-logTransactionSQLite pool = TransactionLogger
   { _transactionLogger_appendLog =
-      \cmdlog -> Pool.withResource pool $ \conn -> do
-        Sql.execute conn insertStmt
-                 ( _commandLog_timestamp cmdlog
-                 , _commandLog_sender cmdlog
-                 , Pact._chainId $ _commandLog_chain cmdlog
-                 , _commandLog_url cmdlog
-                 , Pact.hashToText $ Pact.unRequestKey $ _commandLog_request_key cmdlog
-                 , commandLogCurrentVersion
-                 , Aeson.encode cmdlog
-                 )
-  , _transactionLogger_queryLog = \q r -> Pool.withResource pool $ \conn ->
-      runDBAction $ Sql.query conn q r
-  }
-  where
-    insertStmt =
-      [sql|
-          INSERT INTO chainweaver_txn_logs
-            ( cmd_timestamp
-            , sender
-            , chain_id
-            , node_url
-            , request_key
-            , version
-            , cmd_blob
-            )
-          VALUES (?, ?, ?, ?, ?)
-      |]
+      LT.appendFile f . (<> "\n") . Aeson.encodeToLazyText
 
-createCommandLogTableQuery :: Sql.Query
-createCommandLogTableQuery =
-  [sql|
-      CREATE TABLE IF NOT EXISTS chainweaver_txn_logs
-      ( cmd_timestamp TEXT NOT NULL
-      , sender TEXT NOT NULL
-      , chain_id TEXT NOT NULL
-      , node_url TEXT NOT NULL
-      , request_key BLOB NOT NULL
-      , version INT NOT NULL
-      , cmd_blob BLOB NOT NULL
-      )
-      |]
+  , _transactionLogger_loadFirstNLogs = \n -> do
+      xs <- traverse Aeson.eitherDecodeStrict . take n . BS8.lines <$> BS.readFile f
+      tl <- getCurrentLocale
+      pure $ fmap (tl,) xs
+
+  , _transactionLogger_exportFile =
+      createCommandLogExportFileV1 f
+  }
+
+createCommandLogExportFileV1 :: FilePath -> IO (Either String FilePath)
+createCommandLogExportFileV1 fp = runExceptT $ do
+  let logFilePath = fp
+      exportFilePath = fp <> "_" <> show commandLogCurrentVersion
+  xs <- ExceptT $ traverse Aeson.eitherDecodeStrict . BS8.lines <$> BS.readFile logFilePath
+  liftIO $ BSL.writeFile exportFilePath $ BSL.toLazyByteString $ ifoldMap mkLogLine xs
+  pure exportFilePath
+  where
+    header = Csv.header
+      [ "index"
+      , "timestamp"
+      , "sender"
+      , "chain"
+      , "requestKey"
+      , "url"
+      , "command_payload"
+      , "command_sigs"
+      , "command_hash"
+      ]
+
+    mkLogLine :: Int -> CommandLog -> BSL.Builder
+    mkLogLine i cl = Csv.encodeNamedRecord header $ Map.fromList
+      [ ("index" :: BSL.ByteString, Pact.tShow i)
+      , ("timestamp", Pact.tShow $ _commandLog_timestamp cl)
+      , ("sender", _commandLog_sender cl)
+      , ("chain", Pact.tShow $ _commandLog_chain cl)
+      , ("requestKey", Pact.hashToText $ Pact.unRequestKey $ _commandLog_requestKey cl)
+      , ("url", _commandLog_url cl)
+      , ("command_payload", Pact._cmdPayload $ _commandLog_command cl)
+      , ("command_sigs", Pact.tShow $ fmap Pact._usSig $ Pact._cmdSigs $ _commandLog_command cl)
+      , ("command_hash", Pact.tShow $ Pact._cmdHash $ _commandLog_command cl)
+      ]

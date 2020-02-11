@@ -70,6 +70,7 @@ frontend = Frontend
         , _appCfg_enabledSettings = EnabledSettings
           { _enabledSettings_changePassword = Nothing
           , _enabledSettings_exportWallet = Nothing
+          , _enabledSettings_transactionLog = False
           }
         , _appCfg_logMessage = defaultLogger
         }

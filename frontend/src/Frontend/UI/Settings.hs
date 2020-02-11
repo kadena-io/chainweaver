@@ -15,8 +15,6 @@ import Data.Text (Text)
 import Reflex
 import Reflex.Dom.Core
 import Obelisk.Generated.Static
-import Obelisk.Route.Frontend
-import Common.Route
 
 import Frontend.AppCfg (EnabledSettings(..))
 import Frontend.Foundation
@@ -24,6 +22,7 @@ import Frontend.Network
 import Frontend.UI.Dialogs.NetworkEdit (uiNetworkEdit)
 import Frontend.UI.Dialogs.ChangePassword (uiChangePasswordDialog)
 import Frontend.UI.Dialogs.ExportWallet (uiExportWalletDialog)
+import Frontend.UI.Dialogs.TxLogs (uiTxLogs)
 import Frontend.UI.IconGrid (IconGridCellConfig(..), iconGridCell)
 import Frontend.UI.Modal
 
@@ -35,6 +34,7 @@ type HasUiSettingModelCfg model mConf key m t =
   , Monoid (ModalCfg mConf t)
   , Flattenable (ModalCfg mConf t) t
   , HasNetworkCfg (ModalCfg mConf t) t
+  , HasTransactionLogger m
   )
 
 uiSettings
@@ -42,40 +42,24 @@ uiSettings
      . ( MonadWidget t m
        , HasNetwork model t
        , HasUiSettingModelCfg model mConf key m t
-       , SetRoute t (R FrontendRoute) m
        )
   => EnabledSettings
   -> model
   -> m mConf
 uiSettings enabledSettings model = elClass "div" "icon-grid" $ do
   netCfg <- settingItem "Network" (static @"img/network.svg") (uiNetworkEdit model)
-  _ <- settingItemInternalLink "Transaction Logs" (static @"img/network.svg") (FrontendRoute_TxLogs :/ ())
   configs <- sequence $ catMaybes $
     [ ffor (_enabledSettings_changePassword enabledSettings) $ \changePassword -> do
       settingItem "Change Password" (static @"img/lock-light.svg") (uiChangePasswordDialog changePassword)
     , ffor (_enabledSettings_exportWallet enabledSettings) $ \exportWallet-> do
       -- TODO: Need to center the svg properly
       settingItem "Export Wallet" (static @"img/export.svg") (uiExportWalletDialog exportWallet)
+    , includeSetting _enabledSettings_transactionLog $ settingItem "Transaction Log" (static @"img/network.svg")
+        $ uiTxLogs model
     ]
   pure $ netCfg <> fold configs
   where
     _includeSetting f s = if f enabledSettings then Just s else Nothing
-
-settingItemInternalLink
-  :: ( DomBuilder t m
-     , SetRoute t (R FrontendRoute) m
-     )
-  => Text
-  -> Text
-  -> R FrontendRoute
-  -> m ()
-settingItemInternalLink title iconUrl r = do
-  eClick <- iconGridCell $ IconGridCellConfig
-    { _iconGridCellConfig_title = title
-    , _iconGridCellConfig_iconUrl = iconUrl
-    , _iconGridCellConfig_desc = Nothing
-    }
-  setRoute $ r <$ eClick
 
 settingItem
   :: forall t m mConf
