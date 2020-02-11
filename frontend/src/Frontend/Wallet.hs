@@ -54,7 +54,6 @@ import Control.Monad (guard, void)
 import Control.Monad.Except (runExcept)
 import Control.Monad.Fix
 import Data.Aeson
-import Data.Bifunctor (first)
 import Data.Either (rights)
 import Data.IntMap (IntMap)
 import Data.Map (Map)
@@ -340,8 +339,7 @@ checkAccountNameValidity
 checkAccountNameValidity m = getErr <$> (m ^. network_selectedNetwork) <*> (m ^. wallet_accounts)
   where
     getErr net (AccountData networks) k = do
-      -- TODO: Remove this hushing of the Kadena error once our error display is better.
-      acc <- first (const "Invalid Account Name") $ mkAccountName k
+      acc <- mkAccountName k
       maybe (Right acc) (\_ -> Left "This account name is already in use") $ do
         accounts <- Map.lookup net networks
         guard $ Map.member acc accounts
