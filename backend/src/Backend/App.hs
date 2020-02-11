@@ -3,6 +3,7 @@
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE TypeOperators #-}
 module Backend.App where
 
@@ -25,6 +26,7 @@ import qualified Data.Text as T
 import qualified Data.Text.Encoding as T
 import qualified Data.Text.IO as T
 import qualified Network.Socket as Socket
+import qualified Network.HTTP.Client as HTTPClient
 import qualified Snap.Http.Server as Snap
 import qualified System.Directory as Directory
 import qualified System.Environment as Env
@@ -60,13 +62,33 @@ getUserLibraryPath ffi = liftIO $ do
 -- ultimate use by the backend.
 getFreePort :: IO Socket.PortNumber
 getFreePort = Socket.withSocketsDo $ do
-  addr:_ <- Socket.getAddrInfo (Just Socket.defaultHints) (Just "127.0.0.1") (Just "0")
+  addr:_ <- Socket.getAddrInfo (Just Socket.defaultHints) (Just "localhost") (Just "0")
   bracket (open addr) Socket.close Socket.socketPort
   where
     open addr = do
       sock <- Socket.socket (Socket.addrFamily addr) (Socket.addrSocketType addr) (Socket.addrProtocol addr)
       Socket.bind sock (Socket.addrAddress addr)
       pure sock
+
+waitForBackend :: Socket.PortNumber -> IO ()
+waitForBackend port = do
+  putStrLn $ "Checking that backend is reachable at " <> urlStr
+  manager <- HTTPClient.newManager HTTPClient.defaultManagerSettings
+  go manager 5
+  where
+    urlStr = "http://localhost:" <> show port
+    go :: HTTPClient.Manager -> Int -> IO ()
+    go _ 0 = error $ "Giving up trying to connect to the backend at " <> urlStr <> "."
+    go manager n = do
+      threadDelay (1 * 1000 * 1000)
+      respEither <- try @HTTPClient.HttpException $ do
+        request <- HTTPClient.parseRequest urlStr
+        HTTPClient.httpLbs request manager
+      case respEither of
+        Left e -> do
+          putStrLn $ "Could not connect to " <> urlStr <> " with err : " <> show e
+          go manager (n - 1)
+        Right _ -> pure ()
 
 backend :: Backend BackendRoute FrontendRoute
 backend = Backend
@@ -118,13 +140,15 @@ main' ffi mainBundleResourcePath runHTML = do
         staticAssets
         backend
         (Frontend blank blank)
+
   -- Run the backend in a forked thread, and run jsaddle-wkwebview on the main thread
   putStrLn $ "Starting backend on port: " <> show port
   Async.withAsync b $ \_ -> do
-    liftIO $ putStrLn "Starting jsaddle"
     (signingRequestMVar, signingResponseMVar) <- signingServer
       (_appFFI_moveToForeground ffi)
       (_appFFI_moveToBackground ffi)
+    waitForBackend port
+    liftIO $ putStrLn "Starting jsaddle"
     runHTML "index.html" route putStrLn handleOpen $ do
       let frontendMode = FrontendMode
             { _frontendMode_hydrate = False

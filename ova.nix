@@ -31,13 +31,14 @@ let
       read;
     }
     function successful() {
-      finished "Successfully upgraded to $(${linuxAppName}-version.sh)";
+      finished "Successfully upgraded to $(${linuxAppName}-version)";
     }
 
+    echo "Currently on chainweaver OVA version $(${linuxAppName}-version)";
     (${doUpgradeVM}/bin/${linuxAppName}-do-upgrade $@ && successful) || finished "Update Failed"
   '';
   versionFile = pkgs.writeText "${linuxAppName}-version" "${chainweaverVersion}.${ovaReleaseNumber}";
-  versionScript = pkgs.writeScriptBin "${linuxAppName}-version.sh" ''cat ${versionFile}'';
+  versionScript = pkgs.writeScriptBin "${linuxAppName}-version" ''cat ${versionFile}'';
   upgradeDesktopItem = pkgs.makeDesktopItem {
      name = "${linuxAppName}-upgrade";
      desktopName = "Upgrade ${appName}";
@@ -45,7 +46,7 @@ let
      icon = linuxAppIcon;
      terminal = "true";
   };
-  chainweaverVMConfig = (import (pkgs.path + /nixos) {
+  chainweaverVMConfig = (import ((import ./deps/ovanixpkgs {}).pkgs.path + /nixos) {
     configuration = {
       imports = [
         ./virtualbox-image.nix
@@ -60,7 +61,6 @@ let
       };
       home-manager.users.chainweaver = { config, ... }: {
         home.file.".config/xfce4/helpers.rc".source = ./ova/home/chainweaver/config/xfce4/helpers.rc;
-        home.file.".config/autostart/${linuxAppName}.desktop".source = desktopItemPath;
         home.file."desktop.png".source = ./ova/home/chainweaver/desktop.png;
         home.file."Desktop/${linuxAppName}.desktop".source = desktopItemPath;
         home.file."Desktop/${linuxAppName}-upgrade.desktop".source = "${upgradeDesktopItem}/share/applications/${linuxAppName}-upgrade.desktop";
@@ -87,6 +87,18 @@ let
             export WEBKIT_DISABLE_COMPOSITING_MODE=1;
           '';
         };
+        systemd.user.services.kadena-chainweaver = {
+          Unit = {
+            Description = appName;
+            After = [ "network-online.target" ];
+            Wants = [ "network-online.target" ];
+          };
+          Service = {
+            Environment = "WEBKIT_DISABLE_COMPOSITING_MODE=1";
+            ExecStart = "${nixosExe}/bin/${linuxAppName}";
+          };
+          Install = { WantedBy = [ "graphical-session.target" ]; };
+        };
       };
       services.xserver = {
         enable = true;
@@ -100,7 +112,8 @@ let
         libinput.enable = true; # for touchpad support on many laptops
       };
       security.sudo.wheelNeedsPassword = false;
-      networking.firewall.allowedTCPPorts = [ 9467 ];
+      networking.firewall.enable = false;
+      networking.networkmanager.enable = true;
       environment.systemPackages = [ nixosExe pkgs.chromium nixosDesktopItem upgradeVM versionScript upgradeDesktopItem ];
       nix.binaryCaches = [ "https://cache.nixos.org/" "https://nixcache.reflex-frp.org" kadenaOVACache ];
       nix.binaryCachePublicKeys = [ "ryantrinkle.com-1:JJiAKaRv9mWgpVAz8dwewnZe0AzzEAzPkagE9SP5NWI=" kadenaOVACacheKey ];
@@ -110,8 +123,7 @@ let
         baseImageSize = 32  * 1024; # in MiB
         memorySize = 2 * 1024; # in MiB
         vmDerivationName = "${linuxAppName}-vm";
-        # This should not be Appname as this name will persist forever in the users virtualbox.
-        vmName = "Kadena Chainweaver VM";
+        vmName = "${appName} VM";
         vmFileName = "${linuxAppName}-vm.${chainweaverVersion}.${ovaReleaseNumber}.ova";
       };
     };

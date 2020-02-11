@@ -81,6 +81,7 @@ input[type=number] {
 
 .input:disabled {
   color: #757575;
+  cursor: not-allowed;
 }
 
 .input_transparent {
@@ -152,5 +153,8 @@ input[type=number] {
   background: white;
   max-width: 60%;
   height: 1.1em;
-  overflow: hidden;
+}
+
+.define-keyset__external-key-input {
+  margin-bottom: 10px;
 }
