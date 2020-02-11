@@ -50,7 +50,7 @@ uiWatchRequestDialog model onCloseExternal = do
   let close = switch $ current closes
   pure (mConf, close)
 
--- | General transfer workflow. This is the initial configuration screen.
+-- | Allow the user to input a request key and chain
 inputRequestKey
   :: ( Monoid mConf
      , MonadWidget t m
