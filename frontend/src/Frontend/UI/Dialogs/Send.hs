@@ -382,7 +382,7 @@ sendConfig model initData = Workflow $ do
           Right dka -> do
             toChain <- holdUniqDyn $ _txBuilder_chainId <$> dka
             let isCross = ffor toChain (fromChain /=)
-                gasPayerSection forChain mpayer accountPredicate = do
+                gasPayerSection forChain mpayer accountPredicate mkPlaceholder = do
                   dyn_ $ ffor2 isCross forChain $ \x c ->
                     dialogSectionHeading mempty $ "Gas Payer" <> if x then " (Chain " <> _chainId c <> ")" else ""
                   divClass "group" $ elClass "div" "segment segment_type_tertiary labeled-input" $ do
@@ -390,7 +390,7 @@ sendConfig model initData = Workflow $ do
                     let cfg = def & dropdownConfig_attributes .~ pure ("class" =: "labeled-input__input select select_mandatory_missing")
                         chain = fmap Just forChain
                         allowAccount = ffor accountPredicate $ \p an acc -> p an acc && fromMaybe False (accountHasFunds acc)
-                    uiAccountDropdown' cfg allowAccount model (mpayer ^? _Just . _1) chain never
+                    uiAccountDropdown' cfg allowAccount mkPlaceholder model (mpayer ^? _Just . _1) chain never
 
             dyn_ $ ffor2 isCross toChain $ \x c -> when x $ do
               elClass "h3" ("heading heading_type_h3") $ text "This is a cross chain transfer."
@@ -407,7 +407,8 @@ sendConfig model initData = Workflow $ do
                 ]
             fromGasPayer <- mdo
               let allowAccount = ffor useEntireBalance $ \useAll an _ -> not $ useAll && fromName == an
-              gasPayerSection (pure fromChain) mInitFromGasPayer allowAccount
+                  mkPlaceholder = ffor useEntireBalance $ bool id (<> " (sender excluded due to maximum transfer)")
+              gasPayerSection (pure fromChain) mInitFromGasPayer allowAccount mkPlaceholder
             toGasPayer <- fmap join . holdDyn (pure Nothing) <=< dyn $ ffor isCross $ \x ->
               if not x
               then pure $ pure $ Just Nothing
@@ -415,7 +416,7 @@ sendConfig model initData = Workflow $ do
                 -- TODO this bit should have an option with a generic input for Ed25519 keys
                 -- and perhaps be skippable entirely in favour of a blob the user
                 -- can send to someone else to continue the tx on the recipient chain
-                gasPayerSection toChain mInitCrossChainGasPayer (pure $ \_ _ -> True)
+                gasPayerSection toChain mInitCrossChainGasPayer (pure $ \_ _ -> True) (pure id)
             pure $ (liftA2 . liftA2) (,) fromGasPayer toGasPayer
       pure (conf, mCaps, (liftA2 . liftA2) (,) txBuilder amount)
 
@@ -573,7 +574,7 @@ finishCrossChainTransferConfig model fromAccount ucct = Workflow $ do
       divClass "label labeled-input__label" $ text "Account Name"
       let cfg = def & dropdownConfig_attributes .~ pure ("class" =: "labeled-input__input select select_mandatory_missing")
           chain = pure $ Just toChain
-      gasAcc <- uiAccountDropdown cfg (pure $ \_ a -> fromMaybe False (accountHasFunds a)) model chain never
+      gasAcc <- uiAccountDropdown cfg (pure $ \_ a -> fromMaybe False (accountHasFunds a)) (pure id) model chain never
       pure $ ffor3 (model ^. wallet_accounts) (model ^. network_selectedNetwork) gasAcc $ \netToAccount net ma -> do
         accounts <- Map.lookup net $ unAccountData netToAccount
         n <- ma

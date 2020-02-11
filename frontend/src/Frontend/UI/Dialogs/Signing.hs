@@ -64,7 +64,7 @@ uiSigning appCfg ideL signingRequest onCloseExternal = do
     , _deploymentSettingsConfig_code = pure $ _signingRequest_code signingRequest
     , _deploymentSettingsConfig_sender = case _signingRequest_sender signingRequest of
         Just sender -> \_ _ _ -> uiAccountFixed sender
-        Nothing -> uiAccountDropdown def (pure $ \_ _ -> True)
+        Nothing -> uiAccountDropdown def (pure $ \_ _ -> True) (pure id)
     , _deploymentSettingsConfig_data = _signingRequest_data signingRequest
     , _deploymentSettingsConfig_nonce = _signingRequest_nonce signingRequest
     , _deploymentSettingsConfig_ttl = _signingRequest_ttl signingRequest

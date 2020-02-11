@@ -84,7 +84,7 @@ uiCallFunction m mModule func _onClose
             , _deploymentSettingsConfig_chainId =
                 predefinedChainIdSelect $ _chainRef_chain . _moduleRef_source $ moduleRef
             , _deploymentSettingsConfig_code = fromMaybe (pure $ buildCall func []) mPactCall
-            , _deploymentSettingsConfig_sender = uiAccountDropdown def (pure $ \_ _ -> True)
+            , _deploymentSettingsConfig_sender = uiAccountDropdown def (pure $ \_ _ -> True) (pure id)
             , _deploymentSettingsConfig_data = Nothing
             , _deploymentSettingsConfig_ttl = Nothing
             , _deploymentSettingsConfig_nonce = Nothing

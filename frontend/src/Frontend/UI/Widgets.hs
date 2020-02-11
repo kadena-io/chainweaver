@@ -974,19 +974,20 @@ uiAccountDropdown'
      )
   => DropdownConfig t (Maybe AccountName)
   -> Dynamic t (AccountName -> Account -> Bool)
+  -> Dynamic t (Text -> Text)
   -> model
   -> Maybe AccountName
   -> Dynamic t (Maybe ChainId)
   -> Event t (Maybe AccountName)
   -> m (Dynamic t (Maybe (AccountName, Account)))
-uiAccountDropdown' uCfg allowAccount m initVal chainId setSender = do
+uiAccountDropdown' uCfg allowAccount mkPlaceholder m initVal chainId setSender = do
   let
     textAccounts = mkChainTextAccounts m allowAccount chainId
-    dropdownItems =
+    dropdownItems = ffor2 mkPlaceholder textAccounts $ \mk ->
       either
           (Map.singleton Nothing)
-          (Map.insert Nothing "Choose an Account" . Map.mapKeys Just)
-      <$> textAccounts
+          (Map.insert Nothing (mk "Choose an Account") . Map.mapKeys Just)
+
   choice <- dropdown initVal dropdownItems $ uCfg
     & dropdownConfig_setValue .~ leftmost [Nothing <$ updated chainId, setSender]
     & dropdownConfig_attributes <>~ pure ("class" =: "labeled-input__input select select_mandatory_missing")
@@ -1008,11 +1009,12 @@ uiAccountDropdown
      )
   => DropdownConfig t (Maybe AccountName)
   -> Dynamic t (AccountName -> Account -> Bool)
+  -> Dynamic t (Text -> Text)
   -> model
   -> Dynamic t (Maybe ChainId)
   -> Event t (Maybe AccountName)
   -> m (Dynamic t (Maybe (AccountName, Account)))
-uiAccountDropdown uCfg allowAccount m = uiAccountDropdown' uCfg allowAccount m Nothing
+uiAccountDropdown uCfg allowAccount mkPlaceholder m = uiAccountDropdown' uCfg allowAccount mkPlaceholder m Nothing
 
 uiKeyPairDropdown
   :: forall t m key model
