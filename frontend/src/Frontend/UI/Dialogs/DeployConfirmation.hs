@@ -40,6 +40,9 @@ module Frontend.UI.Dialogs.DeployConfirmation
   , uiDeployConfirmation
   , fullDeployFlow
   , deploySubmit
+  , transactionResultSection
+  , transactionStatusSection
+  , listenToRequestKey
   ) where
 
 import Common.Foundation
@@ -171,14 +174,43 @@ submitTransactionWithFeedback model cmd chain nodeInfos = do
           pure Nothing
 
         Just baseUrl -> pure $ Just $ S.mkClientEnv baseUrl
-  let
-    newTriggerHold a = do
-      (e, t) <- newTriggerEvent
-      s <- holdDyn a e
-      pure (s, liftIO . t)
 
   -- These maintain the UI state for each step and are updated as responses come in
   (sendStatus, send) <- newTriggerHold Status_Waiting
+
+  -- Send the transaction
+  pb <- getPostBuild
+  transactionLogger <- askTransactionLogger
+  rec
+    onRequestKey <- performEventAsync $ ffor pb $ \() cb -> liftJSM $ do
+      send Status_Working
+      doReqFailover clientEnvs (Api.send Api.apiV1Client transactionLogger $ Api.SubmitBatch $ pure cmd) >>= \case
+        Left errs -> do
+          send Status_Failed
+          for_ (nonEmpty errs) $ setMessage . Just . Left . packHttpErr . NEL.last
+        Right (Api.RequestKeys (key :| _)) -> do
+          send Status_Done
+          liftIO $ cb key
+    (listenStatus, message, setMessage) <- listenToRequestKey clientEnvs $ Just <$> leftmost [onRequestKey, reloadKey]
+    requestKey <- holdDyn Nothing $ Just <$> onRequestKey
+
+    reload <- transactionStatusSection sendStatus listenStatus
+    let reloadKey = tagMaybe (current requestKey) reload
+  transactionResultSection message
+  pure $ TransactionSubmitFeedback sendStatus listenStatus message
+
+newTriggerHold :: (MonadHold t m, TriggerEvent t m, MonadIO n) => a -> m (Dynamic t a, a -> n ())
+newTriggerHold a = do
+  (e, t) <- newTriggerEvent
+  s <- holdDyn a e
+  pure (s, liftIO . t)
+
+listenToRequestKey
+  :: (MonadHold t m, PerformEvent t m, TriggerEvent t m, MonadIO m, MonadJSM (Performable m))
+  => [S.ClientEnv]
+  -> Event t (Maybe Pact.RequestKey)
+  -> m (Dynamic t Status, Dynamic t (Maybe (Either NetworkError PactValue)), Maybe (Either NetworkError PactValue) -> JSM ())
+listenToRequestKey clientEnvs onRequestKey = do
   (listenStatus, listen) <- newTriggerHold Status_Waiting
   --(confirmedStatus, confirm) <- newTriggerHold Status_Waiting
   (message, setMessage) <- newTriggerHold Nothing
@@ -187,11 +219,10 @@ submitTransactionWithFeedback model cmd chain nodeInfos = do
   thread <- liftIO newEmptyMVar
   let forkListen requestKey = do
         -- Kill the currently running thread and start a new thread
-        liftIO (tryTakeMVar thread) >>= \case
-          Nothing -> liftIO . putMVar thread =<< forkJSM' (getStatus requestKey)
-          Just tid -> do
-            liftIO $ killThread tid
-            forkListen requestKey
+        liftIO $ traverse_ killThread =<< tryTakeMVar thread
+        case requestKey of
+          Just key -> liftIO . putMVar thread =<< forkJSM' (getStatus key)
+          Nothing -> pure ()
 
       getStatus requestKey = do
         listen Status_Working
@@ -200,7 +231,9 @@ submitTransactionWithFeedback model cmd chain nodeInfos = do
         doReqFailover clientEnvs (Api.listen Api.apiV1Client $ Api.ListenerRequest requestKey) >>= \case
           Left errs -> do
             listen Status_Failed
-            for_ (nonEmpty errs) $ setMessage . Just . Left . packHttpErr . NEL.last
+            setMessage . Just . Left $ case nonEmpty errs of
+              Nothing -> NetworkError_NetworkError "Unknown error"
+              Just es -> packHttpErr $ NEL.last es
           Right (Api.ListenTimeout _i) -> listen Status_Failed
           Right (Api.ListenResponse commandResult) -> case (Pact._crTxId commandResult, Pact._crResult commandResult) of
             -- We should always have a txId when we have a result
@@ -213,22 +246,11 @@ submitTransactionWithFeedback model cmd chain nodeInfos = do
               setMessage $ Just $ Left $ NetworkError_CommandFailure err
             -- This case shouldn't happen
             _ -> listen Status_Failed
-
-  -- Send the transaction
-  pb <- getPostBuild
-  transactionLogger <- askTransactionLogger
-  onRequestKey <- performEventAsync $ ffor pb $ \() cb -> liftJSM $ do
-    send Status_Working
-    doReqFailover clientEnvs (Api.send Api.apiV1Client transactionLogger $ Api.SubmitBatch $ pure cmd) >>= \case
-      Left errs -> do
-        send Status_Failed
-        for_ (nonEmpty errs) $ setMessage . Just . Left . packHttpErr . NEL.last
-      Right (Api.RequestKeys (requestKey :| _)) -> do
-        send Status_Done
-        liftIO $ cb requestKey
   performEvent_ $ liftJSM . forkListen <$> onRequestKey
-  requestKey <- holdDyn Nothing $ Just <$> onRequestKey
+  pure (listenStatus, message, setMessage)
 
+transactionStatusSection :: MonadWidget t m => Dynamic t Status -> Dynamic t Status -> m (Event t ())
+transactionStatusSection sendStatus listenStatus = do
   dialogSectionHeading mempty "Transaction Status"
   divClass "group" $ do
     elClass "ol" "transaction_status" $ do
@@ -240,15 +262,15 @@ submitTransactionWithFeedback model cmd chain nodeInfos = do
       reloading <- holdDyn False $ leftmost [False <$ canReload, True <$ reload]
       reload <- confirmButton (def & uiButtonCfg_class .~ pure "extra-margin" & uiButtonCfg_disabled .~ reloading) "Reload Status"
       canReload <- delay 2 reload
-    throttledReload <- throttle 2 reload
-    performEvent_ $ attachWithMaybe (\k _ -> liftJSM . forkListen <$> k) (current requestKey) throttledReload
+    throttle 2 reload
+
+transactionResultSection :: MonadWidget t m => Dynamic t (Maybe (Either NetworkError PactValue)) -> m ()
+transactionResultSection message = do
   dialogSectionHeading mempty "Transaction Result"
   divClass "group" $ do
     maybeDyn message >>= \md -> dyn_ $ ffor md $ \case
       Nothing -> text "Waiting for response..."
       Just a -> dynText $ prettyPrintNetworkErrorResult . either (This . pure . (Nothing,)) (That . (Nothing,)) <$> a
-
-  pure $ TransactionSubmitFeedback sendStatus listenStatus message
 
 deploySubmit
   :: forall key t m a model modelCfg.

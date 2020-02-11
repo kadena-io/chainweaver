@@ -23,6 +23,7 @@ module Frontend.UI.Wallet
   , uiAccountsTable
   , uiAvailableKeys
   , uiWalletRefreshButton
+  , uiWatchRequestButton
   , uiGenerateKeyButton
     -- ** Filters for keys
   , hasPrivateKey
@@ -56,6 +57,7 @@ import           Frontend.UI.Dialogs.AddVanityAccount (uiCreateAccountButton, ui
 import           Frontend.UI.Dialogs.KeyDetails (uiKeyDetails)
 import           Frontend.UI.Dialogs.Receive (uiReceiveModal)
 import           Frontend.UI.Dialogs.Send (uiSendModal)
+import           Frontend.UI.Dialogs.WatchRequest (uiWatchRequestDialog)
 import           Frontend.UI.Modal
 import           Frontend.Network
 ------------------------------------------------------------------------------
@@ -94,6 +96,19 @@ uiWalletRefreshButton
 uiWalletRefreshButton = do
   eRefresh <- uiButton (def & uiButtonCfg_class <>~ " main-header__wallet-refresh-button")  (text "Refresh")
   pure $ mempty & walletCfg_refreshBalances <>~ eRefresh
+
+uiWatchRequestButton
+  :: ( MonadWidget t m
+     , Monoid mConf
+     , Monoid (ModalCfg mConf t)
+     , Flattenable (ModalCfg mConf t) t
+     , HasModalCfg mConf (Modal mConf m t) t
+     , HasNetwork model t
+     )
+  => model -> m mConf
+uiWatchRequestButton model = do
+  watch <- uiButton (def & uiButtonCfg_class <>~ " main-header__wallet-refresh-button")  (text "Watch Request")
+  pure $ mempty & modalCfg_setModal .~ (Just (uiWatchRequestDialog model) <$ watch)
 
 -- | UI for managing the keys wallet.
 uiWallet

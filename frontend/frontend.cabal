@@ -151,6 +151,7 @@ library
                  , Frontend.UI.Dialogs.KeyDetails
                  , Frontend.UI.Dialogs.AddVanityAccount.DefineKeyset
                  , Frontend.UI.Dialogs.AddVanityAccount
+                 , Frontend.UI.Dialogs.WatchRequest
                  , Frontend.UI.ErrorList
                  , Frontend.UI.Icon
                  , Frontend.UI.IconGrid
