@@ -1,6 +1,7 @@
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE TupleSections #-}
 {-# LANGUAGE TypeApplications #-}
 module Frontend where
 
@@ -13,6 +14,7 @@ import qualified GHCJS.DOM.EventM         as EventM
 import qualified GHCJS.DOM.FileReader     as FileReader
 import qualified GHCJS.DOM.HTMLElement    as HTMLElement
 import qualified GHCJS.DOM.Types          as Types
+import qualified GHCJS.DOM.File           as JSFile
 import           Reflex.Dom.Core
 import Pact.Server.ApiV1Client (runTransactionLoggerT, logTransactionStdout)
 
@@ -76,7 +78,7 @@ frontend = Frontend
 
 -- | The 'JSM' action *must* be run from a user initiated event in order for the
 -- dialog to open
-openFileDialog :: MonadWidget t m => m (Event t Text, FileType -> JSM ())
+openFileDialog :: MonadWidget t m => m (Event t (FilePath, Text), FileType -> JSM ())
 openFileDialog = do
   (pactE, triggerPact) <- fileDialog (fileTypeExtension FileType_Pact)
   (importE, triggerImport) <- fileDialog (fileTypeExtension FileType_Import)
@@ -95,7 +97,8 @@ openFileDialog = do
         _ <- EventM.on fileReader FileReader.loadEnd $ Types.liftJSM $ do
           mStringOrArrayBuffer <- FileReader.getResult fileReader
           mText <- traverse (Types.fromJSVal . Types.unStringOrArrayBuffer) mStringOrArrayBuffer
-          liftIO $ cb $ join mText
+          name <- Types.fromJSString <$> JSFile.getName file
+          liftIO $ cb $ ((name,) <$> join mText)
         pure ()
       let open = HTMLElement.click $ _inputElement_raw input
       pure (fmapMaybe id mContents, open)

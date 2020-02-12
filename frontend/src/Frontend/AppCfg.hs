@@ -39,7 +39,7 @@ fileTypeExtension FileType_Pact = ".pact"
 data FileFFI t m = FileFFI
   { _fileFFI_openFileDialog :: FileType -> JSM ()
   -- ^ Trigger an "open file" dialog
-  , _fileFFI_externalFileOpened :: Event t Text
+  , _fileFFI_externalFileOpened :: Event t (FilePath, Text)
   -- ^ File contents from file chosen in "open file" dialog
   , _fileFFI_deliverFile :: Event t (FilePath, Text) -> m (Event t ())
   -- ^ Delivers a file to an appropriate place to the user

@@ -110,14 +110,14 @@ main'
   -> (BS.ByteString -> BS.ByteString -> (String -> IO ()) -> (FilePath -> IO Bool) -> JSM () -> IO ())
   -> IO ()
 main' ffi mainBundleResourcePath runHTML = do
-  fileOpenedMVar :: MVar T.Text <- liftIO newEmptyMVar
+  fileOpenedMVar :: MVar (FilePath, T.Text) <- liftIO newEmptyMVar
   let handleOpen f = try (T.readFile f) >>= \case
         Left (e :: IOError) -> do
           putStrLn $ "Failed reading file " <> f <> ": " <> show e
           pure False
         Right c -> do
           putStrLn $ "Opened file successfully: " <> f
-          putMVar fileOpenedMVar c
+          putMVar fileOpenedMVar (f, c)
           pure True
   -- Set the path to z3. I tried using the plist key LSEnvironment, but it
   -- doesn't work with relative paths.

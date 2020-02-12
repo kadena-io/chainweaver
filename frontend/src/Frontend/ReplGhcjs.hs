@@ -142,7 +142,7 @@ app sidebarExtra fileFFI appCfg = Store.versionedUi (Store.versioner @key) $ voi
     , modalCfg
     , gistModalCfg
     , signingModalCfg
-    , mempty & ideCfg_editor . editorCfg_loadCode .~ (_fileFFI_externalFileOpened fileFFI)
+    , mempty & ideCfg_editor . editorCfg_loadCode .~ (snd <$> _fileFFI_externalFileOpened fileFFI)
     ]
 
 walletSidebar

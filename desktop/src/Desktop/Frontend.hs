@@ -207,7 +207,7 @@ bipWallet fileFFI mkAppCfg = do
             , _enabledSettings_exportWallet = Just $ ExportWallet
               { _exportWallet_requestExport = \ePw -> do
                 let bOldPw = (\(Identity (_,oldPw)) -> oldPw) <$> current details
-                eExport <- performEvent $ doExport <$> bOldPw <@> ePw
+                eExport <- performEvent $ doExport <$> (Password <$> bOldPw) <@> (Password <$> ePw)
                 let (eErrExport, eGoodExport) = fanEither eExport
                 eFileDone <- _fileFFI_deliverFile frontendFileFFI eGoodExport
                 pure $ (Left <$> eErrExport) <> (Right <$> eFileDone)

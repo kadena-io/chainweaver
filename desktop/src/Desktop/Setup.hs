@@ -15,10 +15,11 @@ import Control.Error (hush)
 import Control.Applicative (liftA2)
 import Control.Monad (unless, guard, void)
 import Control.Monad.Fix (MonadFix)
+import Control.Monad.Trans.Maybe (MaybeT(MaybeT), runMaybeT)
 import Control.Monad.IO.Class
 import Data.Bool (bool)
 import Data.Proxy (Proxy(Proxy))
-import Data.Foldable (fold)
+import Data.Foldable (fold, traverse_)
 import Data.Maybe (isNothing, fromMaybe)
 import Data.Bifunctor
 import Data.ByteArray (ByteArrayAccess)
@@ -38,6 +39,7 @@ import qualified Data.Text as T
 import qualified Data.Text.Encoding as T
 
 import Frontend.AppCfg (FileFFI(..), FileType(FileType_Import))
+import Desktop.ImportExport (doImport, Password(..), ImportWalletError(..))
 import Frontend.Storage.Class (HasStorage)
 import Frontend.UI.Button
 import Frontend.UI.Dialogs.ChangePassword (minPasswordLength)
@@ -132,8 +134,6 @@ kadenaWalletLogo = divClass "logo" $ do
   elClass "div" "chainweaver" $ text "Chainweaver"
   elClass "div" "by-kadena" $ text "by Kadena"
 
-newtype Password = Password { unPassword :: Text }
-
 type SetupWF t m = Workflow t m
   (WalletScreen
   , Event t (Crypto.XPrv, Password)
@@ -202,6 +202,7 @@ runSetup
     , PostBuild t m
     , MonadJSM (Performable m)
     , TriggerEvent t m
+    , HasStorage (Performable m)
     )
   => FileFFI t m
   -> Bool
@@ -239,7 +240,9 @@ splashLogo = do
     ) kadenaWalletLogo
 
 splashScreen
-  :: (DomBuilder t m, MonadFix m, MonadHold t m, MonadIO m, PerformEvent t m, PostBuild t m, MonadJSM (Performable m), TriggerEvent t m)
+  :: (DomBuilder t m, MonadFix m, MonadHold t m, MonadIO m, PerformEvent t m
+     , PostBuild t m, MonadJSM (Performable m), TriggerEvent t m, HasStorage (Performable m)
+     )
   => FileFFI t m -> Event t () -> SetupWF t m
 splashScreen fileFFI eBack = selfWF
   where
@@ -343,7 +346,7 @@ restoreBipWallet backWF eBack = Workflow $ do
 
 restoreFromImport
   :: ( DomBuilder t m, MonadFix m, MonadHold t m, MonadIO m, PerformEvent t m
-     , PostBuild t m, MonadJSM (Performable m), TriggerEvent t m
+     , PostBuild t m, MonadJSM (Performable m), TriggerEvent t m, HasStorage (Performable m)
      )
   => FileFFI t m -> SetupWF t m -> Event t () -> SetupWF t m
 restoreFromImport fileFFI backWF eBack = nagScreen
@@ -366,20 +369,42 @@ restoreFromImport fileFFI backWF eBack = nagScreen
           ]
         )
 
-    importScreen = Workflow $ setupDiv "splash" $ do
+    importScreen = Workflow $ setupDiv "splash" $ mdo
       splashLogo
       elClass "h1" "setup__recover_import_title" $ text "Import File Password"
       elClass "p" "setup__recover_import_text" $ text "Enter the password for the chosen wallet file in order to authorize access to the data."
-      (selectElt, _) <- elClass' "div" "setup__recover_import_file" $ text "Select a file"
-      performEvent_ $ liftJSM (_fileFFI_openFileDialog fileFFI FileType_Import) <$ domEvent Click selectElt
-      pw <- uiPassword (setupClass "password-wrapper") (setupClass "password") "Enter import wallet password"
-      eImport <- confirmButton def "Import File"
+
+      let disabled = isNothing <$> dmValidForm
+      dErr <- holdDyn Nothing (leftmost [Just <$> eImportErr, Nothing <$ _inputElement_input pwInput])
+      (eSubmit, (dFileSelected, pwInput)) <- setupForm "" "Import File" disabled $ mdo
+        (selectElt, _) <- elClass' "div" "setup__recover_import_file" $
+          dynText $ ffor dFileSelected $ maybe "Select a file" (T.pack . fst)
+        performEvent_ $ liftJSM (_fileFFI_openFileDialog fileFFI FileType_Import) <$ domEvent Click selectElt
+        dFileSelected <- holdDyn Nothing (Just <$> _fileFFI_externalFileOpened fileFFI)
+        pw <- uiPassword (setupClass "password-wrapper") (setupClass "password") "Enter import wallet password"
+
+        dyn_ $ ffor dErr $ traverse_ $ \err ->
+          elClass "p" "setup__recover_import_error" $ text $ case err of
+            ImportWalletError_PasswordIncorrect -> "Incorrect Password"
+
+        pure (dFileSelected, pw)
+
       eExit <- nagBack
+      let dmValidForm = runMaybeT $ (,)
+            <$> MaybeT (nonEmptyPassword <$> (_inputElement_value pwInput))
+            <*> MaybeT (fmap snd <$> dFileSelected)
+
+      eImport <- performEvent $ tagMaybe (fmap (uncurry doImport) <$> current dmValidForm) eSubmit
+
+      let (eImportErr, eImportDone) = fanEither eImport
 
       pure
-        ( (WalletScreen_RecoverImport, never, eExit)
+        ( (WalletScreen_RecoverImport, eImportDone, eExit)
         , backWF <$ eBack
         )
+
+    nonEmptyPassword "" = Nothing
+    nonEmptyPassword pw = Just (Password pw)
 
 passphraseWordElement
   :: (DomBuilder t m, PostBuild t m, MonadFix m)
