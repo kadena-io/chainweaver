@@ -14,7 +14,7 @@ import Control.Lens ((<>~), (%~), (??))
 import Control.Error (hush)
 import Control.Applicative (liftA2)
 import Control.Monad (unless, guard, void)
-import Control.Monad.Fix (MonadFix)
+import Control.Monad.Fix (MonadFix, fix)
 import Control.Monad.IO.Class
 import Data.Bool (bool)
 import Data.Proxy (Proxy(Proxy))
@@ -189,7 +189,6 @@ runSetup
   . ( DomBuilder t m
     , MonadFix m
     , MonadHold t m
-    , MonadIO m
     , PerformEvent t m
     , PostBuild t m
     , MonadJSM (Performable m)
@@ -229,9 +228,9 @@ splashLogo = do
     ) kadenaWalletLogo
 
 splashScreen
-  :: (DomBuilder t m, MonadFix m, MonadHold t m, MonadIO m, PerformEvent t m, PostBuild t m, MonadJSM (Performable m), TriggerEvent t m)
+  :: (DomBuilder t m, MonadFix m, MonadHold t m, PerformEvent t m, PostBuild t m, MonadJSM (Performable m), TriggerEvent t m)
   => Event t () -> SetupWF t m
-splashScreen eBack = Workflow $ setupDiv "splash" $ do
+splashScreen eBack = fix $ \self -> Workflow $ setupDiv "splash" $ do
   splashLogo
 
   (agreed, create, recover) <- setupDiv "splash-terms-buttons" $ do
@@ -254,8 +253,8 @@ splashScreen eBack = Workflow $ setupDiv "splash" $ do
   let hasAgreed = gate (current agreed)
 
   finishSetupWF WalletScreen_SplashScreen $ leftmost
-    [ createNewWallet eBack <$ hasAgreed create
-    , recoverWallet eBack <$ hasAgreed recover
+    [ createNewWallet (self <$ eBack) <$ hasAgreed create
+    , recoverWallet (self <$ eBack) <$ hasAgreed recover
     ]
 
 data BIP39PhraseError
@@ -271,8 +270,8 @@ sentenceToSeed :: Crypto.ValidMnemonicSentence mw => Crypto.MnemonicSentence mw 
 sentenceToSeed s = Crypto.sentenceToSeed s Crypto.english ""
 
 recoverWallet
-  :: (DomBuilder t m, MonadFix m, MonadHold t m, MonadIO m, PerformEvent t m, PostBuild t m, MonadJSM (Performable m), TriggerEvent t m)
-  => Event t () -> SetupWF t m
+  :: (DomBuilder t m, MonadFix m, MonadHold t m, PerformEvent t m, PostBuild t m, MonadJSM (Performable m), TriggerEvent t m)
+  => Event t (SetupWF t m) -> SetupWF t m
 recoverWallet eBack = Workflow $ do
   el "h1" $ text "Recover your wallet"
 
@@ -324,7 +323,7 @@ recoverWallet eBack = Workflow $ do
 
   pure
     ( (WalletScreen_RecoverPassphrase, switchDyn dSetPassword)
-    , splashScreen eBack <$ eBack
+    , eBack
     )
 
 passphraseWordElement
@@ -389,9 +388,9 @@ passphraseWidget dWords dStage exposeEmpty = do
     listViewWithKey dWords (passphraseWordElement dStage exposeEmpty)
 
 createNewWallet
-  :: forall t m. (DomBuilder t m, MonadFix m, MonadHold t m, MonadIO m, PerformEvent t m, PostBuild t m, MonadJSM (Performable m), TriggerEvent t m)
-  => Event t () -> SetupWF t m
-createNewWallet eBack = Workflow $  do
+  :: forall t m. (DomBuilder t m, MonadFix m, MonadHold t m, PerformEvent t m, PostBuild t m, MonadJSM (Performable m), TriggerEvent t m)
+  => Event t (SetupWF t m) -> SetupWF t m
+createNewWallet eBack = fix $ \self -> Workflow $  do
   ePb <- getPostBuild
   elAttr "img" ("src" =: static @"img/Wallet_Graphic_2.png" <> "class" =: setupClass "password-bg") blank
 
@@ -413,12 +412,12 @@ createNewWallet eBack = Workflow $  do
         holdDyn Nothing =<< setPassword (pure $ sentenceToSeed mnem)
 
       fmap snd $ runWithReplace blank $ ffor (tagMaybe (current dPassword) ePwSubmit) $ \p ->
-        pure $ precreatePassphraseWarning eBack p mnem
+        pure $ precreatePassphraseWarning (self <$ eBack) p mnem
 
   dContinue <- widgetHold generating (proceed <$> eGenSuccess)
 
   finishSetupWF WalletScreen_Password $ leftmost
-    [ splashScreen eBack <$ eBack
+    [ eBack
     , switchDyn dContinue
     ]
 
@@ -440,8 +439,8 @@ stackFaIcon icon = elClass "span" "fa-stack fa-5x" $ do
   elClass "i" ("fa " <> icon <> " fa-stack-1x fa-inverse") blank
 
 precreatePassphraseWarning
-  :: (DomBuilder t m, MonadFix m, MonadHold t m, MonadIO m, PerformEvent t m, PostBuild t m, MonadJSM (Performable m), TriggerEvent t m)
-  => Event t ()
+  :: (DomBuilder t m, MonadFix m, MonadHold t m, PerformEvent t m, PostBuild t m, MonadJSM (Performable m))
+  => Event t (SetupWF t m)
   -> (Crypto.XPrv, Password)
   -> Crypto.MnemonicSentence 12
   -> SetupWF t m
@@ -466,7 +465,7 @@ precreatePassphraseWarning eBack (rootKey, password) mnemonicSentence = Workflow
       line "I will not be able to restore my wallet."
 
   finishSetupWF WalletScreen_PrePassphrase $ leftmost
-    [ createNewWallet eBack <$ eBack
+    [ eBack
     , createNewPassphrase eBack (rootKey, password) mnemonicSentence <$ eContinue
     ]
   where
@@ -490,12 +489,12 @@ doneScreen (rootKey, passwd) = Workflow $ do
 
 -- | UI for generating and displaying a new mnemonic sentence.
 createNewPassphrase
-  :: (DomBuilder t m, MonadFix m, MonadHold t m, MonadIO m, PerformEvent t m, PostBuild t m, MonadJSM (Performable m), TriggerEvent t m)
-  => Event t ()
+  :: (DomBuilder t m, MonadFix m, MonadHold t m, PerformEvent t m, PostBuild t m, MonadJSM (Performable m))
+  => Event t (SetupWF t m)
   -> (Crypto.XPrv, Password)
   -> Crypto.MnemonicSentence 12
   -> SetupWF t m
-createNewPassphrase eBack (rootKey, password) mnemonicSentence = Workflow $ mdo
+createNewPassphrase eBack (rootKey, password) mnemonicSentence = fix $ \self -> Workflow $ mdo
   (eContinue, dIsStored) <- continueForm (fmap not dIsStored) $ do
     el "h1" $ text "Record Recovery Phrase"
     el "div" $ do
@@ -516,15 +515,15 @@ createNewPassphrase eBack (rootKey, password) mnemonicSentence = Workflow $ mdo
       $ text "I have safely stored my recovery phrase."
 
   finishSetupWF WalletScreen_CreatePassphrase $ leftmost
-    [ createNewWallet eBack <$ eBack
-    , confirmPhrase eBack (rootKey, password) mnemonicSentence <$ eContinue
+    [ eBack
+    , confirmPhrase (self <$ eBack) (rootKey, password) mnemonicSentence <$ eContinue
     ]
 
 -- | UI for mnemonic sentence confirmation: scramble the phrase, make the user
 -- choose the words in the right order.
 confirmPhrase
-  :: (DomBuilder t m, MonadFix m, MonadHold t m, MonadIO m, PerformEvent t m, PostBuild t m, MonadJSM (Performable m), TriggerEvent t m)
-  => Event t ()
+  :: (DomBuilder t m, MonadFix m, MonadHold t m, PostBuild t m)
+  => Event t (SetupWF t m)
   -> (Crypto.XPrv, Password)
   -> Crypto.MnemonicSentence 12
   -- ^ Mnemonic sentence to confirm
@@ -549,7 +548,7 @@ confirmPhrase eBack (rootKey, password) mnemonicSentence = Workflow $ mdo
 
   finishSetupWF WalletScreen_VerifyPassphrase $ leftmost
     [ doneScreen (rootKey, password) <$ continue
-    , createNewPassphrase eBack (rootKey, password) mnemonicSentence <$ eBack
+    , eBack
     ]
 
 setPassword
