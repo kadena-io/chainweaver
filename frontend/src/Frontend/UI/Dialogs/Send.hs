@@ -77,7 +77,7 @@ import Frontend.UI.Dialogs.DeployConfirmation (submitTransactionWithFeedback)
 import Frontend.UI.Modal
 import Frontend.UI.TabBar
 import Frontend.UI.Widgets
-import Frontend.UI.Widgets.Helpers (inputIsDirty, dialogSectionHeading)
+import Frontend.UI.Widgets.Helpers (dialogSectionHeading)
 import Frontend.Wallet
 
 -- | A modal for handling sending coin
@@ -317,33 +317,54 @@ sendConfig model initData = Workflow $ do
         dialogSectionHeading mempty  "Recipient"
         (txBuilder, amount) <- divClass "group" $ do
 
-          let displayImmediateFeedback e feedbackMsg showMsg = widgetHold_ blank $ ffor e $ \x ->
-                when (showMsg x) $ mkLabeledView True mempty $ text feedbackMsg
-
-              insufficientFundsMsg = "Sender has insufficient funds."
+          let insufficientFundsMsg = "Sender has insufficient funds."
               cannotBeReceiverMsg = "Sender cannot be the receiver of a transfer"
 
-          decoded <- fmap snd $ mkLabeledInput True "Tx Builder" (uiInputWithInlineFeedback
-            (fmap (first (const "Invalid Tx Builder") . Aeson.eitherDecodeStrict . T.encodeUtf8) . value)
-            inputIsDirty
-            T.pack
-            Nothing
-            uiInputElement
-            )
-            (def & inputElementConfig_initialValue .~ (maybe "" (T.decodeUtf8 . LBS.toStrict . Aeson.encode) mInitToAddress))
+              renderTxBuilder = T.decodeUtf8 . LBS.toStrict . Aeson.encode
+              validateTxBuilder = Aeson.eitherDecodeStrict . T.encodeUtf8
 
-          displayImmediateFeedback (updated decoded) cannotBeReceiverMsg
-            $ either (const False) (\ka -> _txBuilder_accountName ka == fromName && _txBuilder_chainId ka == fromChain)
+              uiTxBuilderInput cfg = do
+                ie <- uiInputElement cfg
+                pure (ie
+                     , ( validateTxBuilder <$> _inputElement_input ie
+                       , validateTxBuilder <$> value ie
+                       )
+                     )
 
-          (_, amount, _) <- mkLabeledInput True "Amount" uiGasPriceInputField
-            (def & inputElementConfig_initialValue .~ (maybe "" tshow mInitAmount))
-            -- We're only interested in the decimal of the gas price
-            <&> over (_2 . mapped . mapped) (\(GasPrice (ParsedDecimal d)) -> d)
+              showTxBuilderPopover (_, (onInput, _)) = pure $ ffor onInput $ \case
+                Left _ ->
+                  PopoverState_Error "Invalid Tx Builder"
+                Right txb ->
+                  if _txBuilder_accountName txb == fromName && _txBuilder_chainId txb == fromChain then
+                    PopoverState_Error cannotBeReceiverMsg
+                  else
+                    PopoverState_Disabled
 
-          displayImmediateFeedback (updated amount) insufficientFundsMsg $ \ma ->
-            case (ma, _account_status fromAcc) of
-              (Just a, AccountStatus_Exists d) -> a > unAccountBalance (_accountDetails_balance d)
-              (_, _) -> False
+          decoded <- fmap (snd . snd) $ mkLabeledInput True "Tx Builder"
+            (uiInputWithPopover uiTxBuilderInput (_inputElement_raw . fst) showTxBuilderPopover)
+            (def & inputElementConfig_initialValue .~ (maybe "" renderTxBuilder mInitToAddress))
+
+          let uiGasPriceInput cfg0 = do
+                (ie, amount, onGasPrice) <- mkLabeledInput True "Amount" uiGasPriceInputField cfg0
+                -- We're only interested in the decimal of the gas price
+                  <&> over (_2 . mapped . mapped) (\(GasPrice (ParsedDecimal d)) -> d)
+                pure (ie, (amount, onGasPrice))
+
+              showGasPriceInsuffPopover (_, (_, onGasPrice)) = pure $ ffor onGasPrice $ \gp0 ->
+                let fromBal = fromAcc ^? account_status
+                      . _AccountStatus_Exists
+                      . accountDetails_balance
+                      . _AccountBalance
+
+                    (GasPrice (ParsedDecimal gp)) = gp0
+                in
+                  if maybe True (gp >) fromBal then
+                    PopoverState_Error insufficientFundsMsg
+                  else
+                    PopoverState_Disabled
+
+          (_, (amount, _)) <- uiInputWithPopover uiGasPriceInput (_inputElement_raw . fst) showGasPriceInsuffPopover
+            $ def & inputElementConfig_initialValue .~ (maybe "" tshow mInitAmount)
 
           let validatedTxBuilder = runExceptT $ do
                 r <- ExceptT $ first (\_ -> "Invalid Tx Builder") <$> decoded

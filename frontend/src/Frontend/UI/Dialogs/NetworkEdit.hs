@@ -282,14 +282,23 @@ uiNode
   => Maybe NodeRef
   -> m (Event t NodeAction, Dynamic t (Maybe NodeRef), MDynamic t (Either Text NodeInfo))
 uiNode initVal = do
+  let
+    uiNodeInput cfg = do
+      ie <- uiInputElement cfg
+      pure (ie, parseNodeRefFull . T.strip <$> _inputElement_input ie)
+
+    showNodePopover =
+      pure . fmap (either PopoverState_Error (const PopoverState_Disabled)) . snd
+
   elClass "li" "table__row table__row_type_primary" $ do
     divClass "table__row-counter" blank
-    nodeInput <- divClass "table__cell table__cell_size_flex" $ uiInputElement $ def
-      & inputElementConfig_initialValue .~ maybe "" renderNodeRef initVal
-      & initialAttributes .~ mconcat
-        [ "class" =: "input_width_full"
-        , "placeholder" =: "Add node"
-        ]
+    (nodeInput, _) <- divClass "table__cell table__cell_size_flex" $
+      uiInputWithPopover uiNodeInput (_inputElement_raw . fst) showNodePopover $ def
+        & inputElementConfig_initialValue .~ maybe "" renderNodeRef initVal
+        & initialAttributes .~ mconcat
+          [ "class" =: "input_width_full"
+          , "placeholder" =: "Add node"
+          ]
     let checkVal = \case
           t | T.null (T.strip t) -> Just Nothing
             | Right v <- parseNodeRefFull (T.strip t) -> Just (Just v)
