@@ -66,9 +66,7 @@ uiTxLogs fileFFI _model _onExtClose = do
       tableAttrs = "class" =: "tx-logs table"
 
     void $ runWithReplace blank $ ffor onLogLoad $ \case
-      Left e -> do
-        divClass "tx-log__decode-error" $ text $ "Error: " <> Pact.tShow e
-        divClass "tx-log__logs-unavailable-message" $ text "Transaction logs currently unavailable"
+      Left e -> divClass "tx-log__decode-error" $ text $ Text.pack e
       Right (timeLocale, cmdLogs) -> elAttr "table" tableAttrs $ do
         -- Structure
         el "colgroup" $ do
@@ -107,14 +105,14 @@ uiTxLogs fileFFI _model _onExtClose = do
 
   modalFooter $ do
     onExport <- confirmButton def "Export Full Transaction Log"
-    -- (onFileErr, onContentsReady) <- fmap fanEither $ performEvent $
-    --   liftIO (Api._transactionLogger_exportFile txLogger) <$ onExport
+    (onFileErr, onContentsReady) <- fmap fanEither $ performEvent $
+      liftIO (Api._transactionLogger_exportFile txLogger) <$ onExport
 
-    -- onDeliveredFile <- _fileFFI_deliverFile fileFFI onContentsReady
+    onDeliveredFile <- _fileFFI_deliverFile fileFFI onContentsReady
 
-    -- _ <- runWithReplace blank $ leftmost
-    --   [ text "Transaction Log Exported!" <$ onDeliveredFile
-    --   , text . Text.pack <$> onFileErr
-    --   ]
+    _ <- runWithReplace blank $ leftmost
+      [ text "Transaction Log Exported!" <$ onDeliveredFile
+      , text . Text.pack <$> onFileErr
+      ]
 
     pure (mempty, onClose)

@@ -22,11 +22,15 @@ module Pact.Server.ApiV1Client
   , logTransactionFile
   ) where
 
+import Debug.Trace (traceShowId)
+
+
 import Control.Lens
 import Control.Monad.IO.Class
 import Control.Monad.Primitive
 import Control.Monad.Reader hiding (local)
 import Control.Monad.Except
+import Control.Exception (try, displayException)
 import Control.Monad.Ref
 import Data.Aeson (ToJSON, FromJSON)
 import Data.Coerce
@@ -61,11 +65,14 @@ import qualified Data.List.NonEmpty as NE
 import qualified Data.Map as Map
 import qualified Control.Monad.Reader as Reader
 
+import Text.Printf (printf)
+
 import qualified Data.Csv as Csv
 import qualified Data.Csv.Builder as Csv
 
 import Data.Time (TimeLocale)
 import System.Locale.Read (getCurrentLocale)
+import qualified System.Directory as Dir
 
 import qualified Pact.Types.Command as Pact
 import qualified Pact.Types.Util as Pact
@@ -270,16 +277,29 @@ logTransactionStdout = TransactionLogger
 logTransactionFile :: FilePath -> TransactionLogger
 logTransactionFile f = TransactionLogger
   { _transactionLogger_appendLog =
-      LT.appendFile f . (<> "\n") . Aeson.encodeToLazyText
+      LT.appendFile f . (<> "\n") . traceShowId . Aeson.encodeToLazyText
 
-  , _transactionLogger_loadFirstNLogs = \n -> do
-      xs <- traverse Aeson.eitherDecodeStrict . take n . BS8.lines <$> BS.readFile f
-      tl <- getCurrentLocale
-      pure $ fmap (tl,) xs
+  , _transactionLogger_loadFirstNLogs = \n -> runExceptT $ do
+      logmsg $ printf "Loading logs from: %s" f
+      nLogs <- liftIO (Dir.doesFileExist f) >>= \case
+        True -> do
+          logmsg "Log file exists"
+          ExceptT $ over (mapped . _Left) ppIOException $ try $ take n . BS8.lines <$> BS.readFile f
+        False -> do
+          logmsg $ printf "No log file found at %s" f
+          throwError "Chainweaver transaction log is currently empty"
+      tl <- liftIO getCurrentLocale
+      xs <- liftEither $ traverse Aeson.eitherDecodeStrict nLogs
+      pure (tl,xs)
 
   , _transactionLogger_exportFile =
       createCommandLogExportFileV1 f
   }
+  where
+    logmsg = liftIO . putStrLn
+
+    ppIOException :: IOError -> String
+    ppIOException = displayException
 
 createCommandLogExportFileV1 :: FilePath -> IO (Either String (FilePath, Text))
 createCommandLogExportFileV1 fp = runExceptT $ do
