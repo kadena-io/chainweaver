@@ -345,18 +345,18 @@ sendConfig model initData = Workflow $ do
             (def & inputElementConfig_initialValue .~ (maybe "" renderTxBuilder mInitToAddress))
 
           let balance = _account_status fromAcc ^? _AccountStatus_Exists . accountDetails_balance . to unAccountBalance
-          let showGasPriceInsuffPopover (_, (_, onInput)) = pure $ ffor onInput $ \gp0 ->
-                let (GasPrice (ParsedDecimal gp)) = gp0
-                in
-                  if maybe True (gp >) balance then
-                    PopoverState_Error insufficientFundsMsg
-                  else
-                    PopoverState_Disabled
-          let gasInputWithMaxButton cfg = mdo
+
+              showGasPriceInsuffPopover (_, (_, onInput)) = pure $ ffor onInput $ \(GasPrice (ParsedDecimal gp)) ->
+                if maybe True (gp >) balance then
+                  PopoverState_Error insufficientFundsMsg
+                else
+                  PopoverState_Disabled
+
+              gasInputWithMaxButton cfg = mdo
                 let attrs = ffor useEntireBalance $ \u -> "disabled" =: ("disabled" <$ u)
                     nestTuple (a,b,c) = (a,(b,c))
                     field = fmap nestTuple . uiGasPriceInputField
-                (ie, (amountValue, amountInput)) <- uiInputWithPopover field (_inputElement_raw . fst) showGasPriceInsuffPopover $ cfg
+                (_, (amountValue, _)) <- uiInputWithPopover field (_inputElement_raw . fst) showGasPriceInsuffPopover $ cfg
                   & inputElementConfig_setValue .~ fmap tshow (mapMaybe id $ updated useEntireBalance)
                   & inputElementConfig_elementConfig . elementConfig_modifyAttributes .~ updated attrs
                 useEntireBalance <- case balance of
