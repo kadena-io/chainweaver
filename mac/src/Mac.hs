@@ -20,6 +20,7 @@ import System.IO
 import qualified System.Process as Process
 
 import Desktop (main', AppFFI(..))
+import Frontend.AppCfg (FileType(..))
 import Desktop.Syslog (sysloggedMain, logToSyslog)
 
 foreign import ccall setupAppMenu :: StablePtr (CString -> IO ()) -> IO ()
@@ -28,7 +29,7 @@ foreign import ccall hideWindow :: IO ()
 foreign import ccall moveToForeground :: IO ()
 foreign import ccall moveToBackground :: IO ()
 foreign import ccall resizeWindow :: Int -> Int -> IO ()
-foreign import ccall global_openFileDialog :: IO ()
+foreign import ccall global_openFileDialog :: CString -> IO ()
 foreign import ccall global_getHomeDirectory :: IO CString
 
 ffi :: AppFFI
@@ -37,7 +38,8 @@ ffi = AppFFI
   , _appFFI_moveToBackground = moveToBackground
   , _appFFI_moveToForeground = moveToForeground
   , _appFFI_resizeWindow = uncurry resizeWindow
-  , _appFFI_global_openFileDialog = global_openFileDialog
+  -- TODO : Take file type and give it to the dialog
+  , _appFFI_global_openFileDialog = const global_openFileDialog
   , _appFFI_global_getStorageDirectory = getStorageDirectory
   , _appFFI_global_logFunction = logToSyslog
   }

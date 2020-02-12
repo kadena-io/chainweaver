@@ -20,6 +20,7 @@ import System.FilePath ((</>), takeDirectory)
 import qualified System.Posix.User as PU
 
 import Desktop (main', AppFFI(..))
+import Frontend.AppCfg (FileType(..), fileTypeExtension)
 import Desktop.Syslog (logToSyslog, sysloggedMain)
 import WebKitGTK
 
@@ -47,7 +48,7 @@ unless we bump r-p
 --}
 
 data LinuxMVars = LinuxMVars
-  { _linuxMVars_openFileDialog :: MVar ()
+  { _linuxMVars_openFileDialog :: MVar FileType
   , _linuxMVars_moveToForeground :: MVar ()
   , _linuxMVars_moveToBackground :: MVar ()
   , _linuxMVars_resizeWindow :: MVar (Int,Int)
@@ -69,7 +70,7 @@ mkFfi = do
         , _appFFI_moveToBackground = putMVar moveToBackgroundMV ()
         , _appFFI_moveToForeground = putMVar moveToForegroundMV ()
         , _appFFI_resizeWindow = putMVar resizeMV
-        , _appFFI_global_openFileDialog = putMVar openFileDialogMV ()
+        , _appFFI_global_openFileDialog = putMVar openFileDialogMV
         , _appFFI_global_getStorageDirectory = (\hd -> hd </> ".local" </> "share" </> "chainweaver") <$> getHomeDirectory
         , _appFFI_global_logFunction = logToSyslog
         }
@@ -100,7 +101,7 @@ runLinux
   -> IO ()
 runLinux mvars _url allowing _onUniversalLink handleOpen jsm = do
   customRun (TE.decodeUtf8With TE.lenientDecode allowing) jsm $ \window -> do
-    mvarHandler (_linuxMVars_openFileDialog mvars) (const $ openFileDialog handleOpen)
+    mvarHandler (_linuxMVars_openFileDialog mvars) (openFileDialog handleOpen)
     mvarHandler (_linuxMVars_moveToForeground mvars) (const $ moveToForeground window)
     mvarHandler (_linuxMVars_moveToBackground mvars) (const $ moveToBackground window)
     mvarHandler (_linuxMVars_resizeWindow mvars) (resizeWindow window)
@@ -111,10 +112,10 @@ runLinux mvars _url allowing _onUniversalLink handleOpen jsm = do
       v <- takeMVar mvar
       postGUIASync $ f v
 
-openFileDialog :: (FilePath -> IO Bool) -> IO ()
-openFileDialog handleOpen = do
+openFileDialog :: (FilePath -> IO Bool) -> FileType -> IO ()
+openFileDialog handleOpen fileType = do
   fileFilter <- Gtk.fileFilterNew
-  Gtk.fileFilterAddPattern fileFilter (T.pack "*.pact")
+  Gtk.fileFilterAddPattern fileFilter ("*" <> fileTypeExtension fileType)
   Gtk.fileFilterSetName fileFilter (Just "Pact Files")
 
   chooser <- Gtk.fileChooserNativeNew

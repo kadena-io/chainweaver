@@ -29,8 +29,15 @@ data EnabledSettings key t m = EnabledSettings
   , _enabledSettings_exportWallet :: Maybe (ExportWallet t m)
   }
 
+-- The types of files targeted by the open file dialog. Used for filtering in the dialog
+data FileType = FileType_Pact | FileType_Import
+
+fileTypeExtension :: FileType -> Text
+fileTypeExtension FileType_Import = ".chainweaverdb"
+fileTypeExtension FileType_Pact = ".pact"
+
 data FileFFI t m = FileFFI
-  { _fileFFI_openFileDialog :: JSM ()
+  { _fileFFI_openFileDialog :: FileType -> JSM ()
   -- ^ Trigger an "open file" dialog
   , _fileFFI_externalFileOpened :: Event t Text
   -- ^ File contents from file chosen in "open file" dialog

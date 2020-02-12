@@ -37,7 +37,7 @@ import qualified Data.Map as Map
 import qualified Data.Text as T
 import qualified Data.Text.Encoding as T
 
-import Frontend.AppCfg (FileFFI(..))
+import Frontend.AppCfg (FileFFI(..), FileType(FileType_Import))
 import Frontend.Storage.Class (HasStorage)
 import Frontend.UI.Button
 import Frontend.UI.Dialogs.ChangePassword (minPasswordLength)
@@ -371,7 +371,7 @@ restoreFromImport fileFFI backWF eBack = nagScreen
       elClass "h1" "setup__recover_import_title" $ text "Import File Password"
       elClass "p" "setup__recover_import_text" $ text "Enter the password for the chosen wallet file in order to authorize access to the data."
       (selectElt, _) <- elClass' "div" "setup__recover_import_file" $ text "Select a file"
-      performEvent_ $ liftJSM (_fileFFI_openFileDialog fileFFI) <$ domEvent Click selectElt
+      performEvent_ $ liftJSM (_fileFFI_openFileDialog fileFFI FileType_Import) <$ domEvent Click selectElt
       pw <- uiPassword (setupClass "password-wrapper") (setupClass "password") "Enter import wallet password"
       eImport <- confirmButton def "Import File"
       eExit <- nagBack

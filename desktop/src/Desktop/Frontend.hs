@@ -91,7 +91,7 @@ desktop = Frontend
       signingRequest <- mvarTriggerEvent signingRequestMVar
       let fileFFI = FileFFI
             { _fileFFI_externalFileOpened = fileOpened
-            , _fileFFI_openFileDialog = liftJSM triggerOpen
+            , _fileFFI_openFileDialog = liftJSM . triggerOpen
             , _fileFFI_deliverFile = deliverFile
             }
       bipWallet fileFFI $ \enabledSettings -> AppCfg

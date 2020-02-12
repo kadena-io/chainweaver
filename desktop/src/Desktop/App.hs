@@ -47,7 +47,7 @@ data AppFFI = AppFFI
   , _appFFI_resizeWindow :: (Int, Int) -> IO ()
   , _appFFI_moveToBackground :: IO ()
   , _appFFI_moveToForeground :: IO ()
-  , _appFFI_global_openFileDialog :: IO ()
+  , _appFFI_global_openFileDialog :: FileType -> IO ()
   , _appFFI_global_getStorageDirectory :: IO String
   , _appFFI_global_logFunction :: LogLevel -> LogStr -> IO ()
   }
@@ -182,7 +182,7 @@ main' ffi mainBundleResourcePath runHTML = do
           fileOpened <- mvarTriggerEvent fileOpenedMVar
           signingRequest <- mvarTriggerEvent signingRequestMVar
           let fileFFI = FileFFI
-                { _fileFFI_openFileDialog = liftIO $ _appFFI_global_openFileDialog ffi
+                { _fileFFI_openFileDialog = liftIO . _appFFI_global_openFileDialog ffi
                 , _fileFFI_externalFileOpened = fileOpened
                 , _fileFFI_deliverFile = deliverFile
                 }

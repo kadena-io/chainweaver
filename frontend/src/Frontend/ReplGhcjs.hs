@@ -354,7 +354,7 @@ controlBarRight fileFFI appCfg m = do
 
     openFileBtn = do
       let cfg = headerBtnCfg & uiButtonCfg_title ?~ "Open a local contract"
-      uiButtonWithOnClick (_fileFFI_openFileDialog fileFFI) cfg $ do
+      uiButtonWithOnClick (_fileFFI_openFileDialog fileFFI FileType_Pact) cfg $ do
         text "Open File"
 
 headerBtnCfg
