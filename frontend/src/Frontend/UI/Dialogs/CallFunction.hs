@@ -262,18 +262,25 @@ funTypeInput json = \case
         readInt :: Text -> Maybe Int
         readInt = readMay . T.unpack
 
+        uiIntInput cfg0 = do
+          ie <- uiInputElement cfg0
+          pure (ie, (value ie, readInt <$> _inputElement_input ie))
+
+        showIntPopover (_, (_, onInput)) = pure $ ffor onInput $ \case
+          Nothing -> PopoverState_Error "Not a valid int"
+          _ -> PopoverState_Disabled
+
       lastValid <- hold "0" onValid
 
       let
         onInvalidLastValid = tag lastValid onInvalid
         cfg = def
-          -- Does not work well weith "number":
+          -- Does not work well with "number":
           & initialAttributes .~ ("type" =: "text" <> "class" =: "labeled-input__input input_type_secondary")
           & inputElementConfig_initialValue .~ "0"
           & inputElementConfig_setValue .~ onInvalidLastValid
-      i <- uiInputElement cfg
-      pure $ _inputElement_value i
-
+      i <- fmap fst $ uiInputWithPopover uiIntInput (_inputElement_raw . fst) showIntPopover cfg
+      pure $ value i
 
     mkCheckbox :: Bool -> m (Dynamic t Text)
     mkCheckbox iVal =

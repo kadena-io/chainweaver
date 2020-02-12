@@ -37,12 +37,14 @@ import Data.List.NonEmpty (NonEmpty(..))
 import Data.Map (Map)
 import Data.Text (Text)
 import Kadena.SigningApi
+import Pact.Parse (ParsedDecimal (..))
 import Pact.Types.Capability
 import Pact.Types.ChainMeta
 import Pact.Types.Exp
 import Pact.Types.PactError
 import Pact.Types.Names
 import Pact.Types.PactValue
+import Pact.Types.Runtime (GasPrice (..))
 import Pact.Types.RPC
 import Pact.Types.Term
 import Reflex
@@ -75,7 +77,7 @@ import Frontend.UI.Dialogs.DeployConfirmation (submitTransactionWithFeedback)
 import Frontend.UI.Modal
 import Frontend.UI.TabBar
 import Frontend.UI.Widgets
-import Frontend.UI.Widgets.Helpers (inputIsDirty, dialogSectionHeading)
+import Frontend.UI.Widgets.Helpers (dialogSectionHeading)
 import Frontend.Wallet
 
 -- | A modal for handling sending coin
@@ -315,46 +317,57 @@ sendConfig model initData = Workflow $ do
         dialogSectionHeading mempty  "Recipient"
         (txBuilder, amount, useEntireBalance) <- divClass "group" $ do
 
-          let displayImmediateFeedback e feedbackMsg showMsg = widgetHold_ blank $ ffor e $ \x ->
-                when (showMsg x) $ mkLabeledView True mempty $ text feedbackMsg
-
-              insufficientFundsMsg = "Sender has insufficient funds."
+          let insufficientFundsMsg = "Sender has insufficient funds."
               cannotBeReceiverMsg = "Sender cannot be the receiver of a transfer"
 
-          decoded <- fmap snd $ mkLabeledInput True "Tx Builder" (uiInputWithInlineFeedback
-            (fmap (first (const "Invalid Tx Builder") . Aeson.eitherDecodeStrict . T.encodeUtf8) . value)
-            inputIsDirty
-            T.pack
-            Nothing
-            uiInputElement
-            )
-            (def & inputElementConfig_initialValue .~ (maybe "" (T.decodeUtf8 . LBS.toStrict . Aeson.encode) mInitToAddress))
+              renderTxBuilder = T.decodeUtf8 . LBS.toStrict . Aeson.encode
+              validateTxBuilder = Aeson.eitherDecodeStrict . T.encodeUtf8
 
-          displayImmediateFeedback (updated decoded) cannotBeReceiverMsg
-            $ either (const False) (\ka -> _txBuilder_accountName ka == fromName && _txBuilder_chainId ka == fromChain)
+              uiTxBuilderInput cfg = do
+                ie <- uiInputElement cfg
+                pure (ie
+                     , ( validateTxBuilder <$> _inputElement_input ie
+                       , validateTxBuilder <$> value ie
+                       )
+                     )
 
-          let
-            balance = _account_status fromAcc ^? _AccountStatus_Exists . accountDetails_balance . to unAccountBalance
+              showTxBuilderPopover (_, (onInput, _)) = pure $ ffor onInput $ \case
+                Left _ ->
+                  PopoverState_Error "Invalid Tx Builder"
+                Right txb ->
+                  if _txBuilder_accountName txb == fromName && _txBuilder_chainId txb == fromChain then
+                    PopoverState_Error cannotBeReceiverMsg
+                  else
+                    PopoverState_Disabled
 
-            gasInputWithMaxButton cfg = mdo
-              let attrs = ffor useEntireBalance $ \u -> "disabled" =: ("disabled" <$ u)
-              (_, inputAmount, _) <- uiGasPriceInputField $ cfg
-                & inputElementConfig_setValue .~ fmap tshow (mapMaybe id $ updated useEntireBalance)
-                & inputElementConfig_elementConfig . elementConfig_modifyAttributes .~ updated attrs
-              useEntireBalance <- case balance of
-                Nothing -> pure $ pure Nothing
-                Just b -> fmap (\v -> b <$ guard v) . _checkbox_value <$> uiCheckbox "input-max-toggle" False def (text "Max")
-              pure ( isJust <$> useEntireBalance
-                   , inputAmount & mapped . mapped %~ view (_Wrapped' . _Wrapped')
-                   )
+          decoded <- fmap (snd . snd) $ mkLabeledInput True "Tx Builder"
+            (uiInputWithPopover uiTxBuilderInput (_inputElement_raw . fst) showTxBuilderPopover)
+            (def & inputElementConfig_initialValue .~ (maybe "" renderTxBuilder mInitToAddress))
+
+          let balance = _account_status fromAcc ^? _AccountStatus_Exists . accountDetails_balance . to unAccountBalance
+          let showGasPriceInsuffPopover (_, (_, onInput)) = pure $ ffor onInput $ \gp0 ->
+                let (GasPrice (ParsedDecimal gp)) = gp0
+                in
+                  if maybe True (gp >) balance then
+                    PopoverState_Error insufficientFundsMsg
+                  else
+                    PopoverState_Disabled
+          let gasInputWithMaxButton cfg = mdo
+                let attrs = ffor useEntireBalance $ \u -> "disabled" =: ("disabled" <$ u)
+                    nestTuple (a,b,c) = (a,(b,c))
+                    field = fmap nestTuple . uiGasPriceInputField
+                (ie, (amountValue, amountInput)) <- uiInputWithPopover field (_inputElement_raw . fst) showGasPriceInsuffPopover $ cfg
+                  & inputElementConfig_setValue .~ fmap tshow (mapMaybe id $ updated useEntireBalance)
+                  & inputElementConfig_elementConfig . elementConfig_modifyAttributes .~ updated attrs
+                useEntireBalance <- case balance of
+                  Nothing -> pure $ pure Nothing
+                  Just b -> fmap (\v -> b <$ guard v) . _checkbox_value <$> uiCheckbox "input-max-toggle" False def (text "Max")
+                pure ( isJust <$> useEntireBalance
+                     , amountValue & mapped . mapped %~ view (_Wrapped' . _Wrapped')
+                     )
 
           (useEntireBalance, amount) <- mkLabeledInput True "Amount" gasInputWithMaxButton
             (def & inputElementConfig_initialValue .~ (maybe "" tshow mInitAmount))
-
-          let insufficientFunds = ffor amount $ \ma -> case (ma, balance) of
-                (Just a, Just b) -> a > b
-                _ -> False
-          displayImmediateFeedback (updated insufficientFunds) insufficientFundsMsg id
 
           let validatedTxBuilder = runExceptT $ do
                 r <- ExceptT $ first (\_ -> "Invalid Tx Builder") <$> decoded

@@ -100,8 +100,9 @@ app sidebarExtra appCfg = Store.versionedUi (Store.versioner @key) $ void . mfix
       FrontendRoute_Accounts -> mkPageContent "accounts" $ do
         barCfg <- controlBar "Accounts" $ do
           refreshCfg <- uiWalletRefreshButton
+          watchCfg <- uiWatchRequestButton ideL
           addCfg <- uiAddAccountButton ideL
-          pure $ addCfg <> refreshCfg
+          pure $ watchCfg <> addCfg <> refreshCfg
         accountsCfg <- uiAccountsTable ideL
         pure $ barCfg <> accountsCfg
       FrontendRoute_Keys -> mkPageContent "keys" $ do

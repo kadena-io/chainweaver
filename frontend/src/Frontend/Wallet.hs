@@ -42,7 +42,7 @@ module Frontend.Wallet
   -- * Parsing
   , parseWalletKeyPair
   -- * Other helper functions
-  , checkAccountNameValidity
+  , checkAccountNameAvailability
   , snocIntMap
   , findNextKey
   , getSigningPairs
@@ -54,7 +54,6 @@ import Control.Monad (guard, void)
 import Control.Monad.Except (runExcept)
 import Control.Monad.Fix
 import Data.Aeson
-import Data.Bifunctor (first)
 import Data.Either (rights)
 import Data.IntMap (IntMap)
 import Data.Map (Map)
@@ -80,6 +79,7 @@ import Common.Network (NetworkName)
 import Common.Wallet
 import Common.Orphans ()
 
+import Frontend.AppCfg
 import Frontend.Crypto.Class
 import Frontend.Crypto.Ed25519
 import Frontend.Foundation
@@ -184,10 +184,11 @@ makeWallet
     , FromJSON key, ToJSON key
     , PostBuild t m
     )
-  => model
+  => Maybe (ChangePassword key t m)
+  -> model
   -> WalletCfg key t
   -> m (Wallet key t)
-makeWallet model conf = do
+makeWallet mChangePassword model conf = do
   initialKeys <- fromMaybe IntMap.empty <$> loadKeys
   initialAccounts <- maybe (AccountData mempty) fromStorage <$> loadAccounts
 
@@ -195,6 +196,7 @@ makeWallet model conf = do
     onNewKey <- performEvent $ createKey . nextKey <$> current keys <@ _walletCfg_genKey conf
     keys <- foldDyn id initialKeys $ leftmost
       [ snocIntMap <$> onNewKey
+      , maybe never (fmap IntMap.mapWithKey . _changePassword_updateKeys) mChangePassword
       ]
 
   -- Slight hack here, even with prompt tagging we don't pick up the new accounts
@@ -330,22 +332,16 @@ parseWalletKeyPair errPubKey privKey = do
   pubKey <- errPubKey
   runExcept $ uncurry KeyPair <$> parseKeyPair pubKey privKey
 
--- | Check account name validity (uniqueness).
---
---   Returns `Left` error msg in case it is not valid.
-checkAccountNameValidity
-  :: (Reflex t, HasNetwork m t, HasWallet m key t)
-  => m
-  -> Dynamic t (Text -> Either Text AccountName)
-checkAccountNameValidity m = getErr <$> (m ^. network_selectedNetwork) <*> (m ^. wallet_accounts)
-  where
-    getErr net (AccountData networks) k = do
-      -- TODO: Remove this hushing of the Kadena error once our error display is better.
-      acc <- first (const "Invalid Account Name") $ mkAccountName k
-      maybe (Right acc) (\_ -> Left "This account name is already in use") $ do
-        accounts <- Map.lookup net networks
-        guard $ Map.member acc accounts
-        pure acc
+checkAccountNameAvailability
+  :: NetworkName
+  -> AccountData
+  -> AccountName
+  -> Either Text AccountName
+checkAccountNameAvailability net (AccountData networks) acc = do
+  maybe (Right acc) (\_ -> Left "This account name is already in use") $ do
+    accounts <- Map.lookup net networks
+    guard $ Map.member acc accounts
+    pure acc
 
 -- | Write key pairs to localstorage.
 storeKeys :: (ToJSON key, HasStorage m) => KeyStorage key -> m ()

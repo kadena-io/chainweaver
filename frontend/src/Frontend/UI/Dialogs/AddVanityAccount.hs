@@ -33,7 +33,6 @@ import           Frontend.UI.Dialogs.AddVanityAccount.DefineKeyset (DefinedKeyse
 import           Frontend.UI.Modal.Impl
 import           Frontend.UI.Widgets
 import           Frontend.UI.Widgets.Helpers (dialogSectionHeading)
-import           Frontend.UI.Widgets.AccountName (uiAccountNameInput)
 
 import           Frontend.Crypto.Class
 import           Frontend.JsonData
@@ -85,7 +84,7 @@ uiAddAccountDialog model _onCloseExternal = mdo
     divClass "group" $ text "Add an Account here to display its status. If the Account does not yet exist, then you will be able to create and control the Account on the blockchain."
     dialogSectionHeading mempty "Add Account"
     divClass "group" $ do
-      uiAccountNameInput model Nothing
+      uiAccountNameInput Nothing (checkAccountNameAvailability <$> (model ^. network_selectedNetwork) <*> (model ^. wallet_accounts))
   modalFooter $ do
     onCancel <- cancelButton def "Cancel"
     onAdd <- confirmButton (def & uiButtonCfg_disabled .~ (isNothing <$> name)) "Add"
@@ -171,8 +170,10 @@ createAccountSplash model name chain mPublicKey keysetPresets = Workflow $ do
     notGasPayer <- confirmButton cfg "I am not the Gas Payer"
     gasPayer <- confirmButton cfg "I am the Gas Payer"
     let next = leftmost
-          [ tagMaybe (fmap (createAccountNotGasPayer model name chain mPublicKey keysetSelections) <$> current keyset) notGasPayer
-          , tagMaybe (fmap (createAccountConfig model name chain mPublicKey keysetSelections) <$> current keyset) gasPayer
+          [ tagMaybe (fmap (createAccountNotGasPayer model name chain mPublicKey keysetSelections)
+                      <$> current keyset) notGasPayer
+          , tagMaybe (fmap (createAccountConfig model name chain mPublicKey keysetSelections)
+                      <$> current keyset) gasPayer
           ]
     pure (cancel, next)
   return (("Create Account", (mempty, cancel)), next)
