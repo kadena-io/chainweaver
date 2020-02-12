@@ -21,6 +21,7 @@ import Frontend.Foundation
 import Frontend.Network
 import Frontend.UI.Dialogs.NetworkEdit (uiNetworkEdit)
 import Frontend.UI.Dialogs.ChangePassword (uiChangePasswordDialog)
+import Frontend.UI.Dialogs.ExportWallet (uiExportWalletDialog)
 import Frontend.UI.IconGrid (IconGridCellConfig(..), iconGridCell)
 import Frontend.UI.Modal
 
@@ -43,6 +44,9 @@ uiSettings enabledSettings model = elClass "div" "icon-grid" $ do
   configs <- sequence $ catMaybes $
     [ ffor (_enabledSettings_changePassword enabledSettings) $ \changePassword -> do
       settingItem "Change Password" (static @"img/lock-light.svg") (uiChangePasswordDialog changePassword)
+    , ffor (_enabledSettings_exportWallet enabledSettings) $ \exportWallet-> do
+      -- TODO: Need to center the svg properly
+      settingItem "Export Wallet" (static @"img/export.svg") (uiExportWalletDialog exportWallet)
     ]
   pure $ netCfg <> fold configs
   where

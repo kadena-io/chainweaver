@@ -4,6 +4,7 @@
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE UndecidableInstances #-}
 
@@ -13,10 +14,16 @@ import Control.Monad.IO.Class (MonadIO)
 import Control.Monad.Primitive (PrimMonad (PrimState, primitive))
 import Control.Monad.Reader
 import Control.Monad.Ref (MonadRef, MonadAtomicRef)
+import Data.Aeson (ToJSON(..), FromJSON(..))
+import Data.Aeson.GADT.TH
 import Data.Bits ((.|.))
 import Data.ByteString (ByteString)
 import Data.Coerce (coerce)
+import Data.Constraint.Extras.TH
+import Data.GADT.Compare.TH
+import Data.GADT.Show.TH
 import Data.Text (Text)
+import Data.Universe.Some.TH
 import Language.Javascript.JSaddle (MonadJSM)
 import Obelisk.Route.Frontend
 import Pact.Server.ApiV1Client (HasTransactionLogger)
@@ -34,6 +41,23 @@ import Frontend.Crypto.Ed25519
 import Frontend.Crypto.Class
 import Frontend.Foundation
 import Frontend.Storage
+
+data BIPStorage a where
+  BIPStorage_RootKey :: BIPStorage Crypto.XPrv
+deriving instance Show (BIPStorage a)
+
+bipMetaPrefix :: StoreKeyMetaPrefix
+bipMetaPrefix = StoreKeyMetaPrefix "BIPStorage_Meta"
+
+
+concat <$> traverse ($ ''BIPStorage)
+  [ deriveGShow
+  , deriveGEq
+  , deriveGCompare
+  , deriveUniverseSome
+  , deriveArgDict
+  , deriveJSONGADT
+  ]
 
 -- This transformer has access to the current root key and login password
 newtype BIPCryptoT t m a = BIPCryptoT

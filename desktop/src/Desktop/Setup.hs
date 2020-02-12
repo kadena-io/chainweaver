@@ -10,7 +10,7 @@
 -- | Wallet setup screens
 module Desktop.Setup (Password(..), runSetup, form, splashLogo, setupDiv, setupClass, checkPassword) where
 
-import Control.Lens ((<>~), (%~), (??))
+import Control.Lens ((<>~), (%~), (??), (^.), _1, _2, _3)
 import Control.Error (hush)
 import Control.Applicative (liftA2)
 import Control.Monad (unless, guard, void)
@@ -37,6 +37,8 @@ import qualified Data.Map as Map
 import qualified Data.Text as T
 import qualified Data.Text.Encoding as T
 
+import Frontend.AppCfg (FileFFI)
+import Frontend.Storage.Class (HasStorage)
 import Frontend.UI.Button
 import Frontend.UI.Dialogs.ChangePassword (minPasswordLength)
 import Frontend.UI.Widgets
@@ -59,6 +61,7 @@ data WalletScreen
   | WalletScreen_CreatePassphrase
   | WalletScreen_VerifyPassphrase
   | WalletScreen_RecoverPassphrase
+  | WalletScreen_RecoverImport
   | WalletScreen_SplashScreen
   | WalletScreen_Done
   deriving (Show, Eq, Ord)
@@ -131,10 +134,14 @@ kadenaWalletLogo = divClass "logo" $ do
 
 newtype Password = Password { unPassword :: Text }
 
-type SetupWF t m = Workflow t m (WalletScreen, Event t (Crypto.XPrv, Password))
+type SetupWF t m = Workflow t m
+  (WalletScreen
+  , Event t (Crypto.XPrv, Password)
+  , Event t () -- ExitSetup Event
+  )
 
-finishSetupWF :: (Reflex t, Applicative m) => WalletScreen -> a -> m ((WalletScreen, Event t x), a)
-finishSetupWF ws = pure . (,) (ws, never)
+finishSetupWF :: (Reflex t, Applicative m) => WalletScreen -> a -> m ((WalletScreen, Event t x, Event t ()), a)
+finishSetupWF ws = pure . (,) (ws, never, never)
 
 -- Make this take a list of the current progress instead so we can maintain
 -- the list of how much we have done so far.
@@ -144,7 +151,7 @@ walletSetupRecoverHeader
   => WalletScreen
   -> m ()
 walletSetupRecoverHeader currentScreen = setupDiv "workflow-header" $ do
-  unless (currentScreen `elem` [WalletScreen_RecoverPassphrase, WalletScreen_SplashScreen]) $ do
+  unless (currentScreen `elem` [WalletScreen_RecoverPassphrase, WalletScreen_RecoverImport, WalletScreen_SplashScreen]) $ do
     elClass "ol" (setupClass "workflow-icons") $ do
       faEl "1" "Password" WalletScreen_Password
       line WalletScreen_PrePassphrase
@@ -187,6 +194,7 @@ walletSetupRecoverHeader currentScreen = setupDiv "workflow-header" $ do
 runSetup
   :: forall t m
   . ( DomBuilder t m
+    , HasStorage m
     , MonadFix m
     , MonadHold t m
     , MonadIO m
@@ -195,10 +203,11 @@ runSetup
     , MonadJSM (Performable m)
     , TriggerEvent t m
     )
-  => Bool
+  => FileFFI t m
+  -> Bool
   -> m (Event t (Either () (Crypto.XPrv, Password)))
-runSetup showBackOverride = setupDiv "fullscreen" $ mdo
-  let dCurrentScreen = fst <$> dwf
+runSetup _ showBackOverride = setupDiv "fullscreen" $ mdo
+  let dCurrentScreen = (^._1) <$> dwf
 
   eBack <- fmap (domEvent Click . fst) $ elDynClass "div" ((setupClass "back " <>) . hideBack <$> dCurrentScreen) $
     el' "span" $ do
@@ -211,8 +220,9 @@ runSetup showBackOverride = setupDiv "fullscreen" $ mdo
     workflow (splashScreen eBack)
 
   pure $ leftmost
-    [ fmap Right $ switchDyn $ snd <$> dwf
+    [ fmap Right $ switchDyn $ (^. _2) <$> dwf
     , attachWithMaybe (\s () -> Left () <$ guard (s == WalletScreen_SplashScreen)) (current dCurrentScreen) eBack
+    , fmap Left $ switchDyn $ (^. _3) <$> dwf
     ]
   where
     hideBack ws =
@@ -234,7 +244,7 @@ splashScreen
 splashScreen eBack = Workflow $ setupDiv "splash" $ do
   splashLogo
 
-  (agreed, create, recover) <- setupDiv "splash-terms-buttons" $ do
+  (agreed, create, restoreBip, restoreImport) <- setupDiv "splash-terms-buttons" $ do
     agreed <- fmap value $ setupCheckbox False def $ el "div" $ do
       text "I have read & agree to the "
       elAttr "a" ?? (text "Terms of Service") $ mconcat
@@ -248,14 +258,16 @@ splashScreen eBack = Workflow $ setupDiv "splash" $ do
         restoreCfg = uiButtonCfg_class <>~ "setup__restore-existing-button"
 
     create <- confirmButton (def & disabledCfg ) "Create a new wallet"
-    recover <- uiButtonDyn (btnCfgSecondary & disabledCfg & restoreCfg) $ text "Restore existing wallet"
-    pure (agreed, create, recover)
+    restoreBipPhrase <- uiButtonDyn (btnCfgSecondary & disabledCfg & restoreCfg) $ text "Restore from recovery phrase"
+    restoreImport <- uiButtonDyn (btnCfgSecondary & disabledCfg & restoreCfg) $ text "Restore from wallet export"
+    pure (agreed, create, restoreBipPhrase, restoreImport)
 
   let hasAgreed = gate (current agreed)
 
   finishSetupWF WalletScreen_SplashScreen $ leftmost
     [ createNewWallet eBack <$ hasAgreed create
-    , recoverWallet eBack <$ hasAgreed recover
+    , restoreBipWallet eBack <$ hasAgreed restoreBip
+    , restoreFromImport eBack <$ hasAgreed restoreImport
     ]
 
 data BIP39PhraseError
@@ -270,10 +282,10 @@ passphraseLen = 12
 sentenceToSeed :: Crypto.ValidMnemonicSentence mw => Crypto.MnemonicSentence mw -> Crypto.Seed
 sentenceToSeed s = Crypto.sentenceToSeed s Crypto.english ""
 
-recoverWallet
+restoreBipWallet
   :: (DomBuilder t m, MonadFix m, MonadHold t m, MonadIO m, PerformEvent t m, PostBuild t m, MonadJSM (Performable m), TriggerEvent t m)
   => Event t () -> SetupWF t m
-recoverWallet eBack = Workflow $ do
+restoreBipWallet eBack = Workflow $ do
   el "h1" $ text "Recover your wallet"
 
   setupDiv "recovery-text" $ do
@@ -323,9 +335,50 @@ recoverWallet eBack = Workflow $ do
     withSeedConfirmPassword <$> eSeedUpdated
 
   pure
-    ( (WalletScreen_RecoverPassphrase, switchDyn dSetPassword)
+    ( (WalletScreen_RecoverPassphrase, switchDyn dSetPassword, never)
     , splashScreen eBack <$ eBack
     )
+
+restoreFromImport
+  :: ( DomBuilder t m, MonadFix m, MonadHold t m, MonadIO m, PerformEvent t m
+     , PostBuild t m, MonadJSM (Performable m), TriggerEvent t m
+     )
+  => Event t () -> SetupWF t m
+restoreFromImport eBack = nagScreen
+  where
+    nagBack = uiButtonDyn
+      -- TODO: Don't reuse this class or at least rename it
+      (btnCfgSecondary & uiButtonCfg_class <>~ "setup__restore-existing-button")
+      (text "Go back and export current wallet")
+    nagScreen = Workflow $ setupDiv "splash" $ do
+      splashLogo
+      elClass "h1" "setup__recover_import_title" $ text "You are about to replace the current wallet's data"
+      elClass "p" "setup__recover_import_text" $ text "Reminder: Importing a wallet file will replace the data within the current wallet."
+      eImport <- confirmButton def "Select Import File"
+      eExit <- nagBack
+      pure
+        ( (WalletScreen_RecoverImport, never, eExit)
+        , leftmost
+          [ splashScreen eBack <$ eBack
+          , importScreen <$ eImport
+          ]
+        )
+
+    importScreen = Workflow $ setupDiv "splash" $ do
+      splashLogo
+      elClass "h1" "setup__recover_import_title" $ text "Import File Password"
+      elClass "p" "setup__recover_import_text" $ text "Enter the password for the chosen wallet file in order to authorize access to the data."
+      (selectElt, _) <- elClass' "div" "setup__recover_import_file" $ text "Select a file"
+      let eSelectFile = domEvent Click selectElt
+      dCounted <- count eSelectFile
+      pw <- uiPassword (setupClass "password-wrapper") (setupClass "password") "Enter import wallet password"
+      eImport <- confirmButton def "Import File"
+      eExit <- nagBack
+
+      pure
+        ( (WalletScreen_RecoverImport, never, eExit)
+        , splashScreen eBack <$ eBack
+        )
 
 passphraseWordElement
   :: (DomBuilder t m, PostBuild t m, MonadFix m)
@@ -484,7 +537,7 @@ doneScreen (rootKey, passwd) = Workflow $ do
   eContinue <- setupDiv "continue-button" $
     confirmButton def "Done"
 
-  pure ( (WalletScreen_Done, (rootKey, passwd) <$ eContinue)
+  pure ( (WalletScreen_Done, (rootKey, passwd) <$ eContinue, never)
        , never
        )
 

@@ -17,16 +17,33 @@ data ChangePassword key t m = ChangePassword
   -- ^ Update all keys using the given function
   }
 
+data ExportWalletError =  ExportWalletError_PasswordIncorrect | ExportWalletError_NoKeys
+
+data ExportWallet t m = ExportWallet
+  { _exportWallet_requestExport :: Event t Text -> m (Event t (Either ExportWalletError ()))
+  -- ^ Request to export the wallet to the user as a file. Password must match storage.
+  }
+
 data EnabledSettings key t m = EnabledSettings
   { _enabledSettings_changePassword :: Maybe (ChangePassword key t m)
+  , _enabledSettings_exportWallet :: Maybe (ExportWallet t m)
   }
+
+data FileFFI t m = FileFFI
+  { _fileFFI_openFileDialog :: JSM ()
+  -- ^ Trigger an "open file" dialog
+  , _fileFFI_externalFileOpened :: Event t Text
+  -- ^ File contents from file chosen in "open file" dialog
+  , _fileFFI_deliverFile :: Event t (FilePath, Text) -> m (Event t ())
+  -- ^ Delivers a file to an appropriate place to the user
+  }
+
+-- TODO: Tidy this up
+liftFileFFI :: (forall a. m a -> n a) -> FileFFI t m -> FileFFI t n
+liftFileFFI natTransform oldFFI = oldFFI { _fileFFI_deliverFile = natTransform . (_fileFFI_deliverFile oldFFI) }
 
 data AppCfg key t m = AppCfg
   { _appCfg_gistEnabled :: Bool
-  , _appCfg_externalFileOpened :: Event t Text
-  -- ^ File contents from file chosen in "open file" dialog
-  , _appCfg_openFileDialog :: JSM ()
-  -- ^ Trigger an "open file" dialog
   , _appCfg_loadEditor :: m (Maybe Text)
   -- ^ Initial code to load into editor
   , _appCfg_editorReadOnly :: Bool

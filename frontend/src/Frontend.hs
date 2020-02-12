@@ -53,19 +53,24 @@ frontend = Frontend
 
   , _frontend_body = prerender_ loaderMarkup $ do
     (fileOpened, triggerOpen) <- openFileDialog
-    mapRoutedT (flip runTransactionLoggerT logTransactionStdout . runBrowserStorageT . runBrowserCryptoT) $ app blank $ AppCfg
-      { _appCfg_gistEnabled = True
-      , _appCfg_externalFileOpened = fileOpened
-      , _appCfg_openFileDialog = liftJSM triggerOpen
-      , _appCfg_loadEditor = loadEditorFromLocalStorage
-      , _appCfg_editorReadOnly = False
-      , _appCfg_signingRequest = never
-      , _appCfg_signingResponse = liftIO . print
-      , _appCfg_enabledSettings = EnabledSettings
-        { _enabledSettings_changePassword = Nothing
+    mapRoutedT (flip runTransactionLoggerT logTransactionStdout . runBrowserStorageT . runBrowserCryptoT) $ do
+      let fileFFI = FileFFI
+            { _fileFFI_externalFileOpened = fileOpened
+            , _fileFFI_openFileDialog = liftJSM triggerOpen
+            , _fileFFI_deliverFile = \_ -> pure never
+            }
+      app blank fileFFI $ AppCfg
+        { _appCfg_gistEnabled = True
+        , _appCfg_loadEditor = loadEditorFromLocalStorage
+        , _appCfg_editorReadOnly = False
+        , _appCfg_signingRequest = never
+        , _appCfg_signingResponse = liftIO . print
+        , _appCfg_enabledSettings = EnabledSettings
+          { _enabledSettings_changePassword = Nothing
+          , _enabledSettings_exportWallet = Nothing
+          }
+        , _appCfg_logMessage = defaultLogger
         }
-      , _appCfg_logMessage = defaultLogger
-      }
   }
 
 

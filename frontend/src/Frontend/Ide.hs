@@ -141,8 +141,10 @@ makeIde
     , FromJSON key, ToJSON key
     , HasTransactionLogger m
     )
-  => AppCfg key t m -> IdeCfg modal key t -> m (Ide modal key t)
-makeIde appCfg userCfg = build $ \ ~(cfg, ideL) -> do
+  => FileFFI t m
+  -> AppCfg key t m
+  -> IdeCfg modal key t -> m (Ide modal key t)
+makeIde fileFFI appCfg userCfg = build $ \ ~(cfg, ideL) -> do
 
     let mChangePassword = _enabledSettings_changePassword $ _appCfg_enabledSettings appCfg
     walletL <- makeWallet mChangePassword ideL $ _ideCfg_wallet cfg
@@ -196,7 +198,7 @@ makeIde appCfg userCfg = build $ \ ~(cfg, ideL) -> do
     ideLogger = Logger
       { _log_formatMessage = formatLogMessage
       , _log_putLog = \lvl -> _appCfg_logMessage appCfg lvl . formatLogMessage lvl
-      } 
+      }
 
 makeEnvSelection
   :: forall key t m modal. (MonadHold t m, Reflex t)

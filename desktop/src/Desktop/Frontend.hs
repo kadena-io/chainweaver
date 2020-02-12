@@ -21,27 +21,24 @@ module Desktop.Frontend (desktop, bipWallet, bipCryptoGenPair, runFileStorageT) 
 import Control.Lens ((?~))
 import Control.Monad ((<=<), guard, void)
 import Control.Monad.Fix (MonadFix)
+import Control.Monad.Trans (lift)
 import Control.Monad.IO.Class
-import Data.Aeson (ToJSON(..), FromJSON(..))
-import Data.Aeson.GADT.TH
 import Data.Bool (bool)
 import Data.ByteString (ByteString)
-import Data.Constraint.Extras.TH
 import Data.Dependent.Sum
 import Data.Functor.Compose
 import Data.Functor.Identity
 import Data.GADT.Compare.TH
-import Data.GADT.Show.TH
 import Data.Maybe (isJust)
 import Data.Text (Text)
 import Data.Time (NominalDiffTime, getCurrentTime, addUTCTime)
 import Data.Traversable (for)
-import Data.Universe.Some.TH
 import Language.Javascript.JSaddle (liftJSM)
 import Pact.Server.ApiV1Client (HasTransactionLogger, runTransactionLoggerT, logTransactionStdout)
 import Reflex.Dom.Core hiding (Key)
 import qualified Cardano.Crypto.Wallet as Crypto
 import qualified Data.Text.Encoding as T
+import qualified Data.Text.IO as T
 import qualified GHCJS.DOM as DOM
 import qualified GHCJS.DOM.EventM as EventM
 import qualified GHCJS.DOM.GlobalEventHandlers as GlobalEventHandlers
@@ -69,24 +66,12 @@ import Frontend.Storage (runBrowserStorageT)
 import Frontend.UI.Modal.Impl (showModalBrutal)
 import Frontend.UI.Dialogs.LogoutConfirmation (uiIdeLogoutConfirmation)
 
-import Desktop.Orphans ()
 import Desktop.Setup
 import Desktop.SigningApi
+import Desktop.ImportExport
 import Desktop.Util
 import Desktop.Storage.File
 
-data BIPStorage a where
-  BIPStorage_RootKey :: BIPStorage Crypto.XPrv
-deriving instance Show (BIPStorage a)
-
-concat <$> traverse ($ ''BIPStorage)
-  [ deriveGShow
-  , deriveGEq
-  , deriveGCompare
-  , deriveUniverseSome
-  , deriveArgDict
-  , deriveJSONGADT
-  ]
 
 -- | This is for development
 -- > ob run --import desktop:Desktop.Frontend --frontend Desktop.Frontend.desktop
@@ -104,10 +89,13 @@ desktop = Frontend
     mapRoutedT (flip runTransactionLoggerT logTransactionStdout . runBrowserStorageT) $ do
       (fileOpened, triggerOpen) <- Frontend.openFileDialog
       signingRequest <- mvarTriggerEvent signingRequestMVar
-      bipWallet $ \enabledSettings -> AppCfg
+      let fileFFI = FileFFI
+            { _fileFFI_externalFileOpened = fileOpened
+            , _fileFFI_openFileDialog = liftJSM triggerOpen
+            , _fileFFI_deliverFile = deliverFile
+            }
+      bipWallet fileFFI $ \enabledSettings -> AppCfg
         { _appCfg_gistEnabled = False
-        , _appCfg_externalFileOpened = fileOpened
-        , _appCfg_openFileDialog = liftJSM triggerOpen
         , _appCfg_loadEditor = loadEditorFromLocalStorage
         , _appCfg_editorReadOnly = False
         , _appCfg_signingRequest = signingRequest
@@ -117,6 +105,15 @@ desktop = Frontend
         }
   }
 
+-- This is the deliver file that is only used for development (i.e jsaddle web version)
+-- so it is hacky and just writes to the current directory.
+deliverFile
+  :: (MonadIO (Performable m), PerformEvent t m)
+  => Event t (FilePath, Text)
+  -> m (Event t ())
+deliverFile = performEvent . fmap (liftIO . uncurry T.writeFile)
+
+
 data LockScreen a where
   LockScreen_Restore :: LockScreen Crypto.XPrv -- ^ Root key
   LockScreen_RunSetup :: LockScreen ()
@@ -124,23 +121,26 @@ data LockScreen a where
   LockScreen_Unlocked :: LockScreen (Crypto.XPrv, Text) -- ^ The root key and password
 
 type MkAppCfg t m
-  = EnabledSettings Crypto.XPrv t (RoutedT t (R FrontendRoute) (BIPCryptoT t m))
+  =  EnabledSettings Crypto.XPrv t (RoutedT t (R FrontendRoute) (BIPCryptoT t m))
   -- ^ Settings
   -> AppCfg Crypto.XPrv t (RoutedT t (R FrontendRoute) (BIPCryptoT t m))
 
 bipWallet
-  :: ( MonadWidget t m
+  :: forall t m
+  .  ( MonadWidget t m
      , RouteToUrl (R FrontendRoute) m, SetRoute t (R FrontendRoute) m
      , HasConfigs m
      , HasStorage m, HasStorage (Performable m)
      , HasTransactionLogger m
      )
-  => MkAppCfg t m
+  => FileFFI t m
+  -> MkAppCfg t m
   -> RoutedT t (R FrontendRoute) m ()
-bipWallet mkAppCfg = do
+bipWallet fileFFI mkAppCfg = do
   let
+    runSetup0 :: Maybe (Behavior t Crypto.XPrv) -> RoutedT t (R FrontendRoute) m (Event t (DSum LockScreen Identity))
     runSetup0 mPrv = do
-      keyAndPass <- runSetup $ isJust mPrv
+      keyAndPass <- runSetup (liftFileFFI lift fileFFI) $ isJust mPrv
       performEvent $ flip push keyAndPass $ \case
         Right (x, Password p) -> pure $ Just $ do
           setItemStorage localStorage BIPStorage_RootKey x
@@ -178,7 +178,10 @@ bipWallet mkAppCfg = do
             $ showModalBrutal "logout-confirm-modal" uiIdeLogoutConfirmation <$ onLogout
 
           (updates, trigger) <- newTriggerEvent
-          Frontend.ReplGhcjs.app sidebarLogoutLink $ mkAppCfg $ EnabledSettings
+          --  _ :: FileFFI t m -> FileFFI t (RoutedT t (R FrontendRoute) (BIPCryptoT t m))
+
+          let frontendFileFFI = liftFileFFI (lift . lift) fileFFI
+          Frontend.ReplGhcjs.app sidebarLogoutLink frontendFileFFI $ mkAppCfg $ EnabledSettings
             { _enabledSettings_changePassword = Just $ ChangePassword
               { _changePassword_requestChange =
                 let doChange (Identity (oldRoot, _)) (oldPass, newPass, repeatPass)
@@ -201,6 +204,14 @@ bipWallet mkAppCfg = do
                   , _keyPair_privateKey = Just newPrv
                   }
               }
+            , _enabledSettings_exportWallet = Just $ ExportWallet
+              { _exportWallet_requestExport = \ePw -> do
+                let bOldPw = (\(Identity (_,oldPw)) -> oldPw) <$> current details
+                eExport <- performEvent $ doExport <$> bOldPw <@> ePw
+                let (eErrExport, eGoodExport) = fanEither eExport
+                eFileDone <- _fileFFI_deliverFile frontendFileFFI eGoodExport
+                pure $ (Left <$> eErrExport) <> (Right <$> eFileDone)
+              }
             }
 
           setRoute $ landingPageRoute <$ onLogoutConfirm
@@ -209,6 +220,7 @@ bipWallet mkAppCfg = do
             , (LockScreen_Locked ==>) . fst . runIdentity <$> current details <@ onLogoutConfirm
             ]
   pure ()
+
 
 -- | Returns an event which fires at the given check interval when the user has
 -- been inactive for at least the given timeout.

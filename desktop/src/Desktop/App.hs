@@ -22,6 +22,7 @@ import qualified Control.Concurrent.Async as Async
 import qualified Data.ByteString as BS
 import qualified Data.List as L
 import qualified Data.Map as M
+import Data.Text (Text)
 import qualified Data.Text as T
 import qualified Data.Text.Encoding as T
 import qualified Data.Text.IO as T
@@ -56,6 +57,11 @@ getUserLibraryPath ffi = liftIO $ do
   lib <- _appFFI_global_getStorageDirectory ffi
   Directory.createDirectoryIfMissing True lib
   pure lib
+
+-- TODO: Put something into FFI for a system dialog that chooses a directory
+-- for the user to choose first
+deliverFile :: (Reflex t, Applicative m) => Event t (FilePath, Text) -> m (Event t ())
+deliverFile _ = pure never
 
 -- | Get a random free port. This isn't quite safe: it is possible for the port
 -- to be grabbed by something else between the use of this function and the
@@ -175,12 +181,14 @@ main' ffi mainBundleResourcePath runHTML = do
           bowserLoad <- mvarTriggerEvent bowserMVar
           fileOpened <- mvarTriggerEvent fileOpenedMVar
           signingRequest <- mvarTriggerEvent signingRequestMVar
+          let fileFFI = FileFFI
+                { _fileFFI_openFileDialog = liftIO $ _appFFI_global_openFileDialog ffi
+                , _fileFFI_externalFileOpened = fileOpened
+                , _fileFFI_deliverFile = deliverFile
+                }
           let appCfg enabledSettings = AppCfg
                 { _appCfg_gistEnabled = False
-                , _appCfg_externalFileOpened = fileOpened
-                , _appCfg_openFileDialog = liftIO $ _appFFI_global_openFileDialog ffi
                 , _appCfg_loadEditor = loadEditorFromLocalStorage
-
                 -- DB 2019-08-07 Changing this back to False because it's just too convenient this way.
                 , _appCfg_editorReadOnly = False
                 , _appCfg_signingRequest = signingRequest
@@ -189,6 +197,6 @@ main' ffi mainBundleResourcePath runHTML = do
                 , _appCfg_logMessage = _appFFI_global_logFunction ffi
                 }
           _ <- mapRoutedT (flip runTransactionLoggerT (logTransactionFile $ libPath </> "transaction_log") . runFileStorageT libPath) $ runWithReplace loaderMarkup $
-            (liftIO (_appFFI_activateWindow ffi) >> liftIO (_appFFI_resizeWindow ffi defaultWindowSize) >> bipWallet appCfg) <$ bowserLoad
+            (liftIO (_appFFI_activateWindow ffi) >> liftIO (_appFFI_resizeWindow ffi defaultWindowSize) >> bipWallet fileFFI appCfg) <$ bowserLoad
           pure ()
         }

@@ -83,9 +83,11 @@ app
      )
   => RoutedT t (R FrontendRoute) m ()
   -- ^ Extra widget to display at the bottom of the sidebar
-  -> AppCfg key t (RoutedT t (R FrontendRoute) m) -> RoutedT t (R FrontendRoute) m ()
-app sidebarExtra appCfg = Store.versionedUi (Store.versioner @key) $ void . mfix $ \ cfg -> do
-  ideL <- makeIde appCfg cfg
+  -> FileFFI t (RoutedT t (R FrontendRoute) m)
+  -> AppCfg key t (RoutedT t (R FrontendRoute) m)
+  -> RoutedT t (R FrontendRoute) m ()
+app sidebarExtra fileFFI appCfg = Store.versionedUi (Store.versioner @key) $ void . mfix $ \ cfg -> do
+  ideL <- makeIde fileFFI appCfg cfg
 
   walletSidebar sidebarExtra
   updates <- divClass "page" $ do
@@ -108,7 +110,7 @@ app sidebarExtra appCfg = Store.versionedUi (Store.versioner @key) $ void . mfix
         walletCfg <- uiWallet ideL
         pure $ walletBarCfg <> walletCfg
       FrontendRoute_Contracts -> mkPageContent "contracts" $ do
-        controlCfg <- controlBar "Contracts" (controlBarRight appCfg ideL)
+        controlCfg <- controlBar "Contracts" (controlBarRight fileFFI appCfg ideL)
         mainCfg <- elClass "main" "main page__main" $ do
           uiEditorCfg <- codePanel appCfg "main__left-pane" ideL
           envCfg <- rightTabBar "main__right-pane" ideL
@@ -140,7 +142,7 @@ app sidebarExtra appCfg = Store.versionedUi (Store.versioner @key) $ void . mfix
     , modalCfg
     , gistModalCfg
     , signingModalCfg
-    , mempty & ideCfg_editor . editorCfg_loadCode .~ _appCfg_externalFileOpened appCfg
+    , mempty & ideCfg_editor . editorCfg_loadCode .~ (_fileFFI_externalFileOpened fileFFI)
     ]
 
 walletSidebar
@@ -289,8 +291,8 @@ getPactVersion = do
     return ver
 
 controlBarRight  :: forall key t m. (MonadWidget t m, HasCrypto key (Performable m), HasTransactionLogger m)
-  => AppCfg key t m -> ModalIde m key t -> m (ModalIdeCfg m key t)
-controlBarRight appCfg m = do
+  => FileFFI t m -> AppCfg key t m -> ModalIde m key t -> m (ModalIdeCfg m key t)
+controlBarRight fileFFI appCfg m = do
     divClass "main-header__controls-nav" $ do
       elClass "div" "main-header__project-loader" $ do
 
@@ -352,7 +354,7 @@ controlBarRight appCfg m = do
 
     openFileBtn = do
       let cfg = headerBtnCfg & uiButtonCfg_title ?~ "Open a local contract"
-      uiButtonWithOnClick (_appCfg_openFileDialog appCfg) cfg $ do
+      uiButtonWithOnClick (_fileFFI_openFileDialog fileFFI) cfg $ do
         text "Open File"
 
 headerBtnCfg
