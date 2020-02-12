@@ -43,7 +43,7 @@ uiSettings
        , HasNetwork model t
        , HasUiSettingModelCfg model mConf key m t
        )
-  => EnabledSettings
+  => EnabledSettings key t m
   -> model
   -> m mConf
 uiSettings enabledSettings model = elClass "div" "icon-grid" $ do
@@ -59,7 +59,7 @@ uiSettings enabledSettings model = elClass "div" "icon-grid" $ do
     ]
   pure $ netCfg <> fold configs
   where
-    _includeSetting f s = if f enabledSettings then Just s else Nothing
+    includeSetting f s = if f enabledSettings then Just s else Nothing
 
 settingItem
   :: forall t m mConf

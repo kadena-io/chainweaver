@@ -217,6 +217,7 @@ bipWallet fileFFI mkAppCfg = do
                   (Left <$> eErrExport)
                   <> (bool (Left ExportWalletError_FileNotWritable) (Right ()) <$> eFileDone)
               }
+            , _enabledSettings_transactionLog = True
             }
 
           setRoute $ landingPageRoute <$ onLogoutConfirm
