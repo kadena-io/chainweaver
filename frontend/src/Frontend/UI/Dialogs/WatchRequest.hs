@@ -71,7 +71,7 @@ inputRequestKey model onCloseExternal = Workflow $ mdo
       mChain <- mkLabeledClsInput False "Chain ID" $ uiChainSelection (headMay <$> nodes) (pure Nothing)
       eKey <- mkLabeledInput False "Request Key" uiInputElement def
       let parseRequestKey t
-            | {- T.length t == 43, -} Right v <- Pact.fromText' t = Right v
+            | Right v <- Pact.fromText' t = Right v
             | otherwise = Left "Invalid hash"
       pure $ liftA2 (,) (current mChain) (fmap parseRequestKey . current $ value eKey)
     void $ runWithReplace blank $ ffor err $ \e -> do
