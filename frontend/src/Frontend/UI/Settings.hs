@@ -16,7 +16,7 @@ import Reflex
 import Reflex.Dom.Core
 import Obelisk.Generated.Static
 
-import Frontend.AppCfg (EnabledSettings(..))
+import Frontend.AppCfg (EnabledSettings(..), FileFFI)
 import Frontend.Foundation
 import Frontend.Network
 import Frontend.UI.Dialogs.NetworkEdit (uiNetworkEdit)
@@ -45,8 +45,9 @@ uiSettings
        )
   => EnabledSettings key t m
   -> model
+  -> FileFFI t m
   -> m mConf
-uiSettings enabledSettings model = elClass "div" "icon-grid" $ do
+uiSettings enabledSettings model fileFFI = elClass "div" "icon-grid" $ do
   netCfg <- settingItem "Network" (static @"img/network.svg") (uiNetworkEdit model)
   configs <- sequence $ catMaybes $
     [ ffor (_enabledSettings_changePassword enabledSettings) $ \changePassword -> do
@@ -55,7 +56,7 @@ uiSettings enabledSettings model = elClass "div" "icon-grid" $ do
       -- TODO: Need to center the svg properly
       settingItem "Export Wallet" (static @"img/export.svg") (uiExportWalletDialog exportWallet)
     , includeSetting _enabledSettings_transactionLog $ settingItem "Transaction Log" (static @"img/network.svg")
-        $ uiTxLogs model
+        $ uiTxLogs fileFFI model
     ]
   pure $ netCfg <> fold configs
   where

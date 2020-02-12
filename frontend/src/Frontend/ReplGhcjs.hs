@@ -124,7 +124,7 @@ app sidebarExtra fileFFI appCfg = Store.versionedFrontend (Store.versionedStorag
       FrontendRoute_Settings -> do
         controlCfg <- controlBar "Settings" (mempty <$ blank)
         mainCfg <- elClass "main" "main page__main" $ do
-          uiSettings (_appCfg_enabledSettings appCfg) ideL
+          uiSettings (_appCfg_enabledSettings appCfg) ideL fileFFI
         pure $ controlCfg <> mainCfg
 
     flattenedCfg <- flatten =<< tagOnPostBuild routedCfg

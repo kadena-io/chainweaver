@@ -54,6 +54,8 @@ import qualified Data.ByteString.Char8 as BS8
 import qualified Data.ByteString.Lazy as BSL
 import qualified Data.ByteString.Builder as BSL
 import qualified Data.Text as T
+import qualified Data.Text.Encoding as T
+import qualified Data.Text.Encoding.Error as T
 import qualified Data.Text.Lazy.IO as LT
 import qualified Data.List.NonEmpty as NE
 import qualified Data.Map as Map
@@ -73,7 +75,7 @@ import Pact.Types.ChainId (ChainId)
 data TransactionLogger = TransactionLogger
   { _transactionLogger_appendLog :: CommandLog -> IO ()
   , _transactionLogger_loadFirstNLogs :: Int -> IO (Either String (TimeLocale, [CommandLog]))
-  , _transactionLogger_exportFile :: IO (Either String FilePath)
+  , _transactionLogger_exportFile :: IO (Either String (FilePath, Text))
   }
 
 data ApiV1Client m = ApiV1Client
@@ -279,13 +281,13 @@ logTransactionFile f = TransactionLogger
       createCommandLogExportFileV1 f
   }
 
-createCommandLogExportFileV1 :: FilePath -> IO (Either String FilePath)
+createCommandLogExportFileV1 :: FilePath -> IO (Either String (FilePath, Text))
 createCommandLogExportFileV1 fp = runExceptT $ do
   let logFilePath = fp
       exportFilePath = fp <> "_" <> show commandLogCurrentVersion
   xs <- ExceptT $ traverse Aeson.eitherDecodeStrict . BS8.lines <$> BS.readFile logFilePath
-  liftIO $ BSL.writeFile exportFilePath $ BSL.toLazyByteString $ ifoldMap mkLogLine xs
-  pure exportFilePath
+  let contents = BSL.toStrict $ BSL.toLazyByteString $ ifoldMap mkLogLine xs
+  pure (exportFilePath, T.decodeUtf8With T.lenientDecode contents)
   where
     header = Csv.header
       [ "index"

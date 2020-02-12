@@ -19,6 +19,7 @@ import qualified Data.Text as Text
 import Data.Time (formatTime)
 
 import Common.Wallet (PublicKey, textToKey)
+import Frontend.AppCfg (FileFFI (..))
 import Frontend.UI.Modal (modalHeader, modalFooter)
 import Frontend.Foundation
 import Frontend.UI.Widgets
@@ -40,10 +41,11 @@ uiTxLogs
   :: ( MonadWidget t m
      , HasUiTxLogModelCfg mConf m t
      )
-  => model
+  => FileFFI t m
+  -> model
   -> Event t ()
   -> m (mConf, Event t ())
-uiTxLogs _model _onExtClose = do
+uiTxLogs fileFFI _model _onExtClose = do
   txLogger <- Api.askTransactionLogger
   pb <- getPostBuild
   onClose <- modalHeader $ text "Transaction Log"
@@ -105,5 +107,14 @@ uiTxLogs _model _onExtClose = do
 
   modalFooter $ do
     onExport <- confirmButton def "Export Full Transaction Log"
+    -- (onFileErr, onContentsReady) <- fmap fanEither $ performEvent $
+    --   liftIO (Api._transactionLogger_exportFile txLogger) <$ onExport
+
+    -- onDeliveredFile <- _fileFFI_deliverFile fileFFI onContentsReady
+
+    -- _ <- runWithReplace blank $ leftmost
+    --   [ text "Transaction Log Exported!" <$ onDeliveredFile
+    --   , text . Text.pack <$> onFileErr
+    --   ]
 
     pure (mempty, onClose)
