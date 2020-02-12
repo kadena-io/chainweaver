@@ -69,6 +69,13 @@
   width: 100%;
 }
 
+input::-webkit-caps-lock-indicator {
+  position: absolute;
+  top: 50%;
+  right: 10px;
+  transform: translateY(-50%);
+}
+
 // Disable spin buttons for number inputs
 input[type=number]::-webkit-outer-spin-button,
 input[type=number]::-webkit-inner-spin-button {
