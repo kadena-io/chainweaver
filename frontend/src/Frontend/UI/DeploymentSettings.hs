@@ -382,7 +382,7 @@ uiDeploymentSettings m settings = mdo
 
       mRes <- traverse (uncurry $ tabPane mempty curSelection) mUserTabCfg
 
-      (cfg, cChainId, mSender, ttl, gasLimit, _) <- tabPane mempty curSelection DeploymentSettingsView_Cfg $
+      (cfg, cChainId, mSender, ttl, gasLimit, _, _) <- tabPane mempty curSelection DeploymentSettingsView_Cfg $
         uiCfg (Just code) m
           (_deploymentSettingsConfig_chainId settings $ m)
           (_deploymentSettingsConfig_ttl settings)
@@ -470,7 +470,7 @@ uiDeployMetaData
   => model
   -> Maybe TTLSeconds
   -> Maybe GasLimit
-  -> m (mConf, Dynamic t TTLSeconds, Dynamic t GasLimit)
+  -> m (mConf, Dynamic t TTLSeconds, Dynamic t GasLimit, Dynamic t GasPrice)
 uiDeployMetaData m mTTL mGasLimit = do
   dialogSectionHeading mempty "Settings"
   elKlass "div" ("group segment") $ uiMetaData m mTTL mGasLimit
@@ -508,6 +508,7 @@ uiCfg
        , Dynamic t (Maybe AccountName)
        , Dynamic t TTLSeconds
        , Dynamic t GasLimit
+       , Dynamic t GasPrice
        , g a
        )
 uiCfg mCode m wChainId mTTL mGasLimit userSections txnSenderTitle otherAccordion mSenderSelect = do
@@ -525,8 +526,8 @@ uiCfg mCode m wChainId mTTL mGasLimit userSections txnSenderTitle otherAccordion
           dialogSectionHeading mempty title
           elKlass "div" ("group segment") body
 
-        (cfg, ttl, gasLimit) <- uiDeployMetaData m mTTL mGasLimit
-        pure (cfg, cId, mSender, ttl, gasLimit, fa)
+        (cfg, ttl, gasLimit, gasPrice) <- uiDeployMetaData m mTTL mGasLimit
+        pure (cfg, cId, mSender, ttl, gasLimit, gasPrice, fa)
 
   rec
     let mkAccordionControlDyn initActive = foldDyn (const not) initActive
@@ -598,7 +599,7 @@ uiMetaData
        , PerformEvent t m
        , GhcjsDomSpace ~ DomBuilderSpace m
        )
-  => model -> Maybe TTLSeconds -> Maybe GasLimit -> m (mConf, Dynamic t TTLSeconds, Dynamic t GasLimit)
+  => model -> Maybe TTLSeconds -> Maybe GasLimit -> m (mConf, Dynamic t TTLSeconds, Dynamic t GasLimit, Dynamic t GasPrice)
 uiMetaData m mTTL mGasLimit = do
     pbGasPrice <- tag (current $ _pmGasPrice <$> m ^. network_meta) <$> getPostBuild
 
@@ -630,6 +631,7 @@ uiMetaData m mTTL mGasLimit = do
       gpInput <- mkLabeledInput True "Gas Price" (gasPriceInputBox $ fmap showGasPrice setSpeed) def
       let setPrice = fmap (showGasPrice . scaleGPtoTxnSpeed) gpInput
       pure $ leftmost [gpInput, setSpeed]
+    gasPrice <- holdDyn defaultTransactionGasPrice onGasPrice
 
     let initGasLimit = fromMaybe defaultTransactionGasLimit mGasLimit
     pbGasLimit <- case mGasLimit of
@@ -695,6 +697,7 @@ uiMetaData m mTTL mGasLimit = do
         & networkCfg_setTTL .~ onTTL
       , ttl
       , gasLimit
+      , gasPrice
       )
 
   where

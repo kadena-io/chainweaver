@@ -37,6 +37,7 @@ import Data.List.NonEmpty (NonEmpty(..))
 import Data.Map (Map)
 import Data.Text (Text)
 import Kadena.SigningApi
+import Pact.Parse (ParsedDecimal (..))
 import Pact.Types.Capability
 import Pact.Types.ChainMeta
 import Pact.Types.Exp
@@ -44,7 +45,6 @@ import Pact.Types.PactError
 import Pact.Types.Names
 import Pact.Types.PactValue
 import Pact.Types.Runtime (GasPrice (..))
-import Pact.Parse (ParsedDecimal (..))
 import Pact.Types.RPC
 import Pact.Types.Term
 import Reflex
@@ -310,12 +310,12 @@ sendConfig model initData = Workflow $ do
     mInitCrossChainGasPayer = join $ withInitialTransfer (fmap (_crossChainData_recipientChainGasPayer) . _transferData_crossChainData) initData
     mInitAmount = withInitialTransfer _transferData_amount initData
     mainSection currentTab = elClass "div" "modal__main" $ do
-      (conf, txBuilder, amount) <- tabPane mempty currentTab SendModalTab_Configuration $ do
+      (conf, useEntireBalance, txBuilder, amount) <- tabPane mempty currentTab SendModalTab_Configuration $ do
         dialogSectionHeading mempty  "Destination"
         divClass "group" $ transactionDisplayNetwork model
 
         dialogSectionHeading mempty  "Recipient"
-        (txBuilder, amount) <- divClass "group" $ do
+        (txBuilder, amount, useEntireBalance) <- divClass "group" $ do
 
           let insufficientFundsMsg = "Sender has insufficient funds."
               cannotBeReceiverMsg = "Sender cannot be the receiver of a transfer"
@@ -344,27 +344,30 @@ sendConfig model initData = Workflow $ do
             (uiInputWithPopover uiTxBuilderInput (_inputElement_raw . fst) showTxBuilderPopover)
             (def & inputElementConfig_initialValue .~ (maybe "" renderTxBuilder mInitToAddress))
 
-          let uiGasPriceInput cfg0 = do
-                (ie, amount, onGasPrice) <- mkLabeledInput True "Amount" uiGasPriceInputField cfg0
-                -- We're only interested in the decimal of the gas price
-                  <&> over (_2 . mapped . mapped) (\(GasPrice (ParsedDecimal d)) -> d)
-                pure (ie, (amount, onGasPrice))
+          let balance = _account_status fromAcc ^? _AccountStatus_Exists . accountDetails_balance . to unAccountBalance
 
-              showGasPriceInsuffPopover (_, (_, onGasPrice)) = pure $ ffor onGasPrice $ \gp0 ->
-                let fromBal = fromAcc ^? account_status
-                      . _AccountStatus_Exists
-                      . accountDetails_balance
-                      . _AccountBalance
+              showGasPriceInsuffPopover (_, (_, onInput)) = pure $ ffor onInput $ \(GasPrice (ParsedDecimal gp)) ->
+                if maybe True (gp >) balance then
+                  PopoverState_Error insufficientFundsMsg
+                else
+                  PopoverState_Disabled
 
-                    (GasPrice (ParsedDecimal gp)) = gp0
-                in
-                  if maybe True (gp >) fromBal then
-                    PopoverState_Error insufficientFundsMsg
-                  else
-                    PopoverState_Disabled
+              gasInputWithMaxButton cfg = mdo
+                let attrs = ffor useEntireBalance $ \u -> "disabled" =: ("disabled" <$ u)
+                    nestTuple (a,b,c) = (a,(b,c))
+                    field = fmap nestTuple . uiGasPriceInputField
+                (_, (amountValue, _)) <- uiInputWithPopover field (_inputElement_raw . fst) showGasPriceInsuffPopover $ cfg
+                  & inputElementConfig_setValue .~ fmap tshow (mapMaybe id $ updated useEntireBalance)
+                  & inputElementConfig_elementConfig . elementConfig_modifyAttributes .~ updated attrs
+                useEntireBalance <- case balance of
+                  Nothing -> pure $ pure Nothing
+                  Just b -> fmap (\v -> b <$ guard v) . _checkbox_value <$> uiCheckbox "input-max-toggle" False def (text "Max")
+                pure ( isJust <$> useEntireBalance
+                     , amountValue & mapped . mapped %~ view (_Wrapped' . _Wrapped')
+                     )
 
-          (_, (amount, _)) <- uiInputWithPopover uiGasPriceInput (_inputElement_raw . fst) showGasPriceInsuffPopover
-            $ def & inputElementConfig_initialValue .~ (maybe "" tshow mInitAmount)
+          (useEntireBalance, amount) <- mkLabeledInput True "Amount" gasInputWithMaxButton
+            (def & inputElementConfig_initialValue .~ (maybe "" tshow mInitAmount))
 
           let validatedTxBuilder = runExceptT $ do
                 r <- ExceptT $ first (\_ -> "Invalid Tx Builder") <$> decoded
@@ -378,11 +381,11 @@ sendConfig model initData = Workflow $ do
                   throwError insufficientFundsMsg
                 pure a
 
-          pure (validatedTxBuilder, validatedAmount)
+          pure (validatedTxBuilder, validatedAmount, useEntireBalance)
 
         dialogSectionHeading mempty  "Transaction Settings"
-        (conf, _, _) <- divClass "group" $ uiMetaData model Nothing Nothing
-        pure (conf, txBuilder, amount)
+        (conf, _, _, _) <- divClass "group" $ uiMetaData model Nothing Nothing
+        pure (conf, useEntireBalance, txBuilder, amount)
       mCaps <- tabPane mempty currentTab SendModalTab_Sign $ do
         dedrecipient <- eitherDyn txBuilder
         fmap join . holdDyn (pure Nothing) <=< dyn $ ffor dedrecipient $ \case
@@ -392,14 +395,15 @@ sendConfig model initData = Workflow $ do
           Right dka -> do
             toChain <- holdUniqDyn $ _txBuilder_chainId <$> dka
             let isCross = ffor toChain (fromChain /=)
-                gasPayerSection forChain mpayer = do
+                gasPayerSection forChain mpayer accountPredicate mkPlaceholder = do
                   dyn_ $ ffor2 isCross forChain $ \x c ->
                     dialogSectionHeading mempty $ "Gas Payer" <> if x then " (Chain " <> _chainId c <> ")" else ""
                   divClass "group" $ elClass "div" "segment segment_type_tertiary labeled-input" $ do
                     divClass "label labeled-input__label" $ text "Account Name"
                     let cfg = def & dropdownConfig_attributes .~ pure ("class" =: "labeled-input__input select select_mandatory_missing")
                         chain = fmap Just forChain
-                    uiAccountDropdown' cfg True model (mpayer ^? _Just . _1) chain never
+                        allowAccount = ffor accountPredicate $ \p an acc -> p an acc && fromMaybe False (accountHasFunds acc)
+                    uiAccountDropdown' cfg allowAccount mkPlaceholder model (mpayer ^? _Just . _1) chain never
 
             dyn_ $ ffor2 isCross toChain $ \x c -> when x $ do
               elClass "h3" ("heading heading_type_h3") $ text "This is a cross chain transfer."
@@ -414,7 +418,10 @@ sendConfig model initData = Workflow $ do
                 [ "This is a multi step operation."
                 , "The coin will leave the sender account immediately, and gas must be paid on the recipient chain in order to redeem the coin."
                 ]
-            fromGasPayer <- gasPayerSection (pure fromChain) mInitFromGasPayer
+            fromGasPayer <- mdo
+              let allowAccount = ffor useEntireBalance $ \useAll an _ -> not $ useAll && fromName == an
+                  mkPlaceholder = ffor useEntireBalance $ bool id (<> " (sender excluded due to maximum transfer)")
+              gasPayerSection (pure fromChain) mInitFromGasPayer allowAccount mkPlaceholder
             toGasPayer <- fmap join . holdDyn (pure Nothing) <=< dyn $ ffor isCross $ \x ->
               if not x
               then pure $ pure $ Just Nothing
@@ -422,7 +429,7 @@ sendConfig model initData = Workflow $ do
                 -- TODO this bit should have an option with a generic input for Ed25519 keys
                 -- and perhaps be skippable entirely in favour of a blob the user
                 -- can send to someone else to continue the tx on the recipient chain
-                gasPayerSection toChain mInitCrossChainGasPayer
+                gasPayerSection toChain mInitCrossChainGasPayer (pure $ \_ _ -> True) (pure id)
             pure $ (liftA2 . liftA2) (,) fromGasPayer toGasPayer
       pure (conf, mCaps, (liftA2 . liftA2) (,) txBuilder amount)
 
@@ -574,13 +581,13 @@ finishCrossChainTransferConfig model fromAccount ucct = Workflow $ do
         & inputElementConfig_initialValue .~ tshow (_unfinishedCrossChainTransfer_amount ucct)
     el "p" $ text "The coin has been debited from your account but hasn't been redeemed by the recipient."
     dialogSectionHeading mempty "Transaction Settings"
-    (conf, _, _) <- divClass "group" $ uiMetaData model Nothing Nothing
+    (conf, _, _, _) <- divClass "group" $ uiMetaData model Nothing Nothing
     dialogSectionHeading mempty "Gas Payer (recipient chain)"
     sender <- divClass "group" $ elClass "div" "segment segment_type_tertiary labeled-input" $ do
       divClass "label labeled-input__label" $ text "Account Name"
       let cfg = def & dropdownConfig_attributes .~ pure ("class" =: "labeled-input__input select select_mandatory_missing")
           chain = pure $ Just toChain
-      gasAcc <- uiAccountDropdown cfg True model chain never
+      gasAcc <- uiAccountDropdown cfg (pure $ \_ a -> fromMaybe False (accountHasFunds a)) (pure id) model chain never
       pure $ ffor3 (model ^. wallet_accounts) (model ^. network_selectedNetwork) gasAcc $ \netToAccount net ma -> do
         accounts <- Map.lookup net $ unAccountData netToAccount
         n <- ma
