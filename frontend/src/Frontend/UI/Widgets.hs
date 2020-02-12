@@ -18,6 +18,8 @@ module Frontend.UI.Widgets
   -- ** Single Purpose Widgets
   , uiGasPriceInputField
   , uiDetailsCopyButton
+
+  , uiTxBuilder
   , uiDisplayTxBuilderWithCopy
     -- * Values for _deploymentSettingsConfig_chainId:
   , predefinedChainIdSelect
@@ -806,6 +808,23 @@ uiDetailsCopyButton txt = do
         & uiButtonCfg_title .~ constDyn (Just "Copy")
   divClass "details__copy-btn-wrapper" $ copyButton cfg False txt
 
+prettyTxBuilder :: TxBuilder -> Text
+prettyTxBuilder = LT.toStrict . LTB.toLazyText . AesonPretty.encodePrettyToTextBuilder
+
+uiTxBuilder
+  :: DomBuilder t m
+  => Maybe TxBuilder
+  -> TextAreaElementConfig r t (DomBuilderSpace m)
+  -> m (TextAreaElement r (DomBuilderSpace m) t)
+uiTxBuilder txBuilder cfg = do
+  let txt = prettyTxBuilder <$> txBuilder
+  uiTextAreaElement $ cfg
+    & maybe id (textAreaElementConfig_initialValue .~) txt
+    & initialAttributes <>~ fold
+      [ "rows" =: tshow (max 13 {- for good luck -} $ maybe 0 (length . T.lines) txt)
+      , "class" =: " labeled-input__input labeled-input__tx-builder"
+      ]
+
 uiDisplayTxBuilderWithCopy
   :: ( MonadJSM (Performable m)
      , DomBuilder t m
@@ -817,19 +836,12 @@ uiDisplayTxBuilderWithCopy
   => Bool
   -> TxBuilder
   -> m ()
-uiDisplayTxBuilderWithCopy withLabel address = void $ do
-  let txtAddr = LT.toStrict $ LTB.toLazyText $ AesonPretty.encodePrettyToTextBuilder address
-  -- Tx Builder
+uiDisplayTxBuilderWithCopy withLabel txBuilder = do
   elClass "div" "segment segment_type_tertiary labeled-input" $ do
     when withLabel $ divClass "label labeled-input__label" $ text "Tx Builder"
-    void $ uiTextAreaElement $ def
-      & initialAttributes <>~ (
-        "disabled" =: "true" <>
-        "rows" =: tshow (max 13 {- for good luck -} $ length $ T.lines txtAddr) <>
-        "class" =: " labeled-input__input labeled-input__tx-builder"
-        )
-      & textAreaElementConfig_initialValue .~ txtAddr
-  uiDetailsCopyButton $ pure txtAddr
+    void $ uiTxBuilder (Just txBuilder) $ def
+      & initialAttributes <>~ "disabled" =: "true"
+  uiDetailsCopyButton $ pure $ prettyTxBuilder txBuilder
 
 uiGasPriceInputField
   :: forall m t.
@@ -1075,25 +1087,23 @@ data PopoverState
   deriving (Eq, Show)
 
 uiInputWithPopover
-  :: forall t m cfg el a b
+  :: forall t m cfg el rawEl a
   .  ( DomBuilder t m
      , MonadHold t m
      , PostBuild t m
      , PerformEvent t m
      , MonadJSM (Performable m)
-     , DomBuilderSpace m ~ GhcjsDomSpace
-     , JS.IsElement el
-     -- This isn't here for any special reason other than it makes
-     -- the type signature a bit easier to read.
-     , a ~ InputElement EventResult (DomBuilderSpace m) t
+     , HasDomEvent t el 'BlurTag
+     , HasDomEvent t el 'FocusTag
+     , JS.IsElement rawEl
      )
   -- Return a tuple here so there is a bit more flexibility for what
   -- can be returned from your input widget.
-  => (cfg -> m (a,b))
-  -> ((a,b) -> el)
-  -> ((a,b) -> m (Event t PopoverState))
+  => (cfg -> m (el,a))
+  -> ((el,a) -> rawEl)
+  -> ((el,a) -> m (Event t PopoverState))
   -> cfg
-  -> m (a,b)
+  -> m (el,a)
 uiInputWithPopover body getStateBorderTarget mkMsg cfg = divClass "popover" $ do
   let
     popoverBlurCls = \case
