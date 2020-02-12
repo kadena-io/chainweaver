@@ -87,7 +87,7 @@ data AccountDialog
   = AccountDialog_DetailsChain (AccountName, ChainId, Account)
   | AccountDialog_Details AccountName (Maybe AccountNotes)
   | AccountDialog_Receive AccountName ChainId
-  | AccountDialog_Send (AccountName, ChainId, Account)
+  | AccountDialog_Send (AccountName, ChainId, AccountDetails, Maybe UnfinishedCrossChainTransfer)
   | AccountDialog_Create AccountName ChainId (Maybe PublicKey)
 
 uiWalletRefreshButton
@@ -197,7 +197,7 @@ uiAccountItems model accountsMap = do
       AccountDialog_Details acc notes -> uiAccountDetails n acc notes
       AccountDialog_DetailsChain acc -> uiAccountDetailsOnChain n acc
       AccountDialog_Receive name chain -> uiReceiveModal model name (Just chain)
-      AccountDialog_Send acc -> uiSendModal model acc
+      AccountDialog_Send x -> uiSendModal model x
       AccountDialog_Create name chain mKey -> uiCreateAccountDialog model name chain mKey
 
   refresh <- delay 1 =<< getPostBuild
@@ -291,7 +291,9 @@ uiAccountItem keys name accountInfo = do
                 onDetails <- detailsIconButton cfg
                 pure $ leftmost
                   [ AccountDialog_Receive name chain <$ recv
-                  , AccountDialog_Send . (name, chain, ) <$> current dAccount <@ send
+                  , AccountDialog_Send . (name,chain,d,)
+                      <$> current (_vanityAccount_unfinishedCrossChainTransfer . _account_storage <$> dAccount)
+                      <@ send
                   , AccountDialog_DetailsChain . (name, chain, ) <$> current dAccount <@ onDetails
                   ]
               False -> do

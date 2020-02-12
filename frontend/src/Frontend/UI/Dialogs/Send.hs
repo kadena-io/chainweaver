@@ -86,9 +86,9 @@ uiSendModal
      , Flattenable mConf t
      , HasTransactionLogger m
      )
-  => model -> (AccountName, ChainId, Account) -> Event t () -> m (mConf, Event t ())
-uiSendModal model (name, chain, acc) _onCloseExternal = do
-  (conf, closes) <- fmap splitDynPure $ workflow $ case _vanityAccount_unfinishedCrossChainTransfer $ _account_storage acc of
+  => model -> (AccountName, ChainId, AccountDetails, Maybe UnfinishedCrossChainTransfer) -> Event t () -> m (mConf, Event t ())
+uiSendModal model (name, chain, acc, mucct) _onCloseExternal = do
+  (conf, closes) <- fmap splitDynPure $ workflow $ case mucct of
     Nothing -> sendConfig model (InitialTransferData_Account (name, chain, acc))
     -- If we have unfinished business, force the user to finish it first
     Just ucct -> finishCrossChainTransferConfig model (name, chain) ucct
@@ -120,7 +120,7 @@ data SharedNetInfo a = SharedNetInfo
   }
 
 data TransferData = TransferData
-  { _transferData_fromAccount :: (AccountName, ChainId, Account)
+  { _transferData_fromAccount :: (AccountName, ChainId, AccountDetails)
   , _transferData_fromGasPayer :: (AccountName, Account)
   , _transferData_toTxBuilder :: TxBuilder
   , _transferData_crossChainData :: Maybe CrossChainData
@@ -128,10 +128,10 @@ data TransferData = TransferData
   }
 
 data InitialTransferData
-  = InitialTransferData_Account (AccountName, ChainId, Account)
+  = InitialTransferData_Account (AccountName, ChainId, AccountDetails)
   | InitialTransferData_Transfer TransferData
 
-initialTransferDataCata :: ((AccountName, ChainId, Account) -> b) -> (TransferData -> b) -> InitialTransferData -> b
+initialTransferDataCata :: ((AccountName, ChainId, AccountDetails) -> b) -> (TransferData -> b) -> InitialTransferData -> b
 initialTransferDataCata fa _ (InitialTransferData_Account a) = fa a
 initialTransferDataCata _ ft (InitialTransferData_Transfer t) = ft t
 
@@ -216,7 +216,7 @@ sameChainTransfer
   => model
   -> SharedNetInfo NodeInfo
   -> KeyStorage key
-  -> (AccountName, ChainId, Account)
+  -> (AccountName, ChainId, AccountDetails)
   -- ^ From account
   -> (AccountName, Account)
   -- ^ Gas payer
@@ -239,7 +239,8 @@ sameChainTransfer model netInfo keys (fromName, fromChain, fromAcc) (gasPayer, g
         , tshow amount
         , ")"
         ]
-      signingSet = Set.unions [accountKeys fromAcc, accountKeys gasPayerAcc]
+      fromAccKeys = fromAcc ^. accountDetails_keyset . addressKeyset_keys
+      signingSet = Set.unions [fromAccKeys, accountKeys gasPayerAcc]
       signingPairs = filterKeyPairs signingSet keys
       transferCap = SigCapability
         { _scName = QualifiedName { _qnQual = "coin", _qnName = "TRANSFER", _qnInfo = def }
@@ -256,7 +257,7 @@ sameChainTransfer model netInfo keys (fromName, fromChain, fromAcc) (gasPayer, g
         _ -> mempty
       pkCaps = Map.unionsWith (<>)
         [ Map.fromSet (\_ -> [_dappCap_cap defaultGASCapability]) (accountKeys gasPayerAcc)
-        , Map.fromSet (\_ -> [transferCap]) (accountKeys fromAcc)
+        , Map.fromSet (\_ -> [transferCap]) fromAccKeys
         ]
       pm = (_sharedNetInfo_meta netInfo)
         { _pmChainId = fromChain
@@ -344,10 +345,10 @@ sendConfig model initData = Workflow $ do
             (uiInputWithPopover uiTxBuilderInput (_textAreaElement_raw . fst) showTxBuilderPopover)
             (def & textAreaElementConfig_initialValue .~ (maybe "" renderTxBuilder mInitToAddress))
 
-          let balance = _account_status fromAcc ^? _AccountStatus_Exists . accountDetails_balance . to unAccountBalance
+          let balance = fromAcc ^. accountDetails_balance . to unAccountBalance
 
               showGasPriceInsuffPopover (_, (_, onInput)) = pure $ ffor onInput $ \(GasPrice (ParsedDecimal gp)) ->
-                if maybe True (gp >) balance then
+                if gp > balance then
                   PopoverState_Error insufficientFundsMsg
                 else
                   PopoverState_Disabled
@@ -359,9 +360,9 @@ sendConfig model initData = Workflow $ do
                 (_, (amountValue, _)) <- uiInputWithPopover field (_inputElement_raw . fst) showGasPriceInsuffPopover $ cfg
                   & inputElementConfig_setValue .~ fmap tshow (mapMaybe id $ updated useEntireBalance)
                   & inputElementConfig_elementConfig . elementConfig_modifyAttributes .~ updated attrs
-                useEntireBalance <- case balance of
-                  Nothing -> pure $ pure Nothing
-                  Just b -> fmap (\v -> b <$ guard v) . _checkbox_value <$> uiCheckbox "input-max-toggle" False def (text "Max")
+                useEntireBalance <- do
+                  cb <- uiCheckbox "input-max-toggle" False def (text "Max")
+                  pure $ fmap (\v -> balance <$ guard v) $ _checkbox_value cb
                 pure ( isJust <$> useEntireBalance
                      , amountValue & mapped . mapped %~ view (_Wrapped' . _Wrapped')
                      )
@@ -377,7 +378,7 @@ sendConfig model initData = Workflow $ do
 
               validatedAmount = runExceptT $ do
                 a <- ExceptT $ maybe (Left "Invalid amount") Right <$> amount
-                when (maybe True (a >) $ fromAcc ^? account_status . _AccountStatus_Exists . accountDetails_balance . _AccountBalance) $
+                when (a > balance) $
                   throwError insufficientFundsMsg
                 pure a
 
@@ -697,7 +698,7 @@ crossChainTransfer
   => Logger t
   -> SharedNetInfo NodeInfo
   -> KeyStorage key
-  -> (AccountName, ChainId, Account)
+  -> (AccountName, ChainId, AccountDetails)
   -- ^ From account
   -> Either TxBuilder (AccountName, ChainId, Account)
   -- ^ To address/account. We pass in a full 'Account' if we have one, such that
@@ -892,7 +893,7 @@ initiateCrossChainTransfer
   -- ^ Meta info - really only interested in gas settings
   -> KeyStorage key
   -- ^ Keys
-  -> (AccountName, ChainId, Account)
+  -> (AccountName, ChainId, AccountDetails)
   -- ^ From account
   -> (AccountName, Account)
   -- ^ Gas payer ("from" chain)
@@ -919,6 +920,7 @@ initiateCrossChainTransfer model networkName envs publicMeta keys fromAccount fr
             Right (Api.RequestKeys (requestKey :| _)) -> pure $ Right requestKey
       liftIO $ cb r
   where
+    fromAccKeys = fromAccount ^. _3 . accountDetails_keyset . addressKeyset_keys
     keysetName = "receiverKey"
     code = T.unwords
       [ "(coin.transfer-crosschain"
@@ -930,7 +932,7 @@ initiateCrossChainTransfer model networkName envs publicMeta keys fromAccount fr
       , ")"
       ]
     mkDat rg = HM.singleton keysetName $ Aeson.toJSON rg
-    signingSet = Set.unions [accountKeys $ view _3 fromAccount, accountKeys $ snd fromGasPayer]
+    signingSet = Set.unions [fromAccKeys, accountKeys $ snd fromGasPayer]
     signingPairs = filterKeyPairs signingSet keys
     -- This capability is required for `transfer-crosschain`.
     debitCap = SigCapability
@@ -939,7 +941,7 @@ initiateCrossChainTransfer model networkName envs publicMeta keys fromAccount fr
       }
     capabilities = Map.unionsWith (<>)
       [ Map.fromSet (\_ -> [_dappCap_cap defaultGASCapability]) (accountKeys $ snd fromGasPayer)
-      , Map.fromSet (\_ -> [debitCap]) (accountKeys $ view _3 fromAccount)
+      , Map.fromSet (\_ -> [debitCap]) fromAccKeys
       ]
     pm = publicMeta
       { _pmChainId = view _2 fromAccount
