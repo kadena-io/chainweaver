@@ -298,6 +298,7 @@ body[data-modal-open='true'] {
 .signing-ui-signers__signer {
   margin-top: $normal-margin;
   margin-bottom: $normal-margin;
+  overflow: hidden;
 }
 
 .cross-chain-transfer-retry {
