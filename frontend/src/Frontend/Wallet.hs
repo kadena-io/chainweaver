@@ -332,21 +332,16 @@ parseWalletKeyPair errPubKey privKey = do
   pubKey <- errPubKey
   runExcept $ uncurry KeyPair <$> parseKeyPair pubKey privKey
 
--- | Check account name validity (uniqueness).
---
---   Returns `Left` error msg in case it is not valid.
-checkAccountNameValidity
-  :: (Reflex t, HasNetwork m t, HasWallet m key t)
-  => m
-  -> Dynamic t (Text -> Either Text AccountName)
-checkAccountNameValidity m = getErr <$> (m ^. network_selectedNetwork) <*> (m ^. wallet_accounts)
-  where
-    getErr net (AccountData networks) k = do
-      acc <- mkAccountName k
-      maybe (Right acc) (\_ -> Left "This account name is already in use") $ do
-        accounts <- Map.lookup net networks
-        guard $ Map.member acc accounts
-        pure acc
+checkAccountNameAvailability
+  :: NetworkName
+  -> AccountData
+  -> AccountName
+  -> Either Text AccountName
+checkAccountNameAvailability net (AccountData networks) acc = do
+  maybe (Right acc) (\_ -> Left "This account name is already in use") $ do
+    accounts <- Map.lookup net networks
+    guard $ Map.member acc accounts
+    pure acc
 
 -- | Write key pairs to localstorage.
 storeKeys :: (ToJSON key, HasStorage m) => KeyStorage key -> m ()
