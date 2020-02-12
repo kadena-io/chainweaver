@@ -324,9 +324,9 @@ sendConfig model initData = Workflow $ do
               validateTxBuilder = Aeson.eitherDecodeStrict . T.encodeUtf8
 
               uiTxBuilderInput cfg = do
-                ie <- uiInputElement cfg
+                ie <- uiTxBuilder Nothing cfg
                 pure (ie
-                     , ( validateTxBuilder <$> _inputElement_input ie
+                     , ( validateTxBuilder <$> _textAreaElement_input ie
                        , validateTxBuilder <$> value ie
                        )
                      )
@@ -341,8 +341,8 @@ sendConfig model initData = Workflow $ do
                     PopoverState_Disabled
 
           decoded <- fmap (snd . snd) $ mkLabeledInput True "Tx Builder"
-            (uiInputWithPopover uiTxBuilderInput (_inputElement_raw . fst) showTxBuilderPopover)
-            (def & inputElementConfig_initialValue .~ (maybe "" renderTxBuilder mInitToAddress))
+            (uiInputWithPopover uiTxBuilderInput (_textAreaElement_raw . fst) showTxBuilderPopover)
+            (def & textAreaElementConfig_initialValue .~ (maybe "" renderTxBuilder mInitToAddress))
 
           let balance = _account_status fromAcc ^? _AccountStatus_Exists . accountDetails_balance . to unAccountBalance
 
