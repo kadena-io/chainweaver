@@ -225,7 +225,10 @@ uiAccountItem keys name accountInfo = do
   let chainMap = _accountInfo_chains <$> accountInfo
       notes = _accountInfo_notes <$> accountInfo
   rec
-    (clk, dialog) <- keyRow visible notes $ sum . catMaybes <$> balances
+    (clk, dialog) <- keyRow visible notes $ ffor balances $ \xs0 -> case catMaybes xs0 of
+      [] -> "Does not exist"
+      xs -> uiAccountBalance False $ Just $ sum xs
+
     visible <- toggle False clk
     results <- accursedUnutterableListWithKey chainMap $ accountRow visible
     let balances :: Dynamic t [Maybe AccountBalance]
@@ -247,11 +250,15 @@ uiAccountItem keys name accountInfo = do
     td $ text $ unAccountName name
     td blank -- Keyset info column
     td $ dynText $ maybe "" unAccountNotes <$> notes
-    td' " wallet__table-cell-balance" $ dynText $ uiAccountBalance False . Just <$> balance
+    td' " wallet__table-cell-balance" $ dynText balance
     onDetails <- td $ buttons $ detailsIconButton cfg
     pure (clk, AccountDialog_Details name <$> current notes <@ onDetails)
 
-  accountRow :: Dynamic t Bool -> ChainId -> Dynamic t Account -> m (Dynamic t (Maybe AccountBalance), Event t AccountDialog)
+  accountRow
+    :: Dynamic t Bool
+    -> ChainId
+    -> Dynamic t Account
+    -> m (Dynamic t (Maybe AccountBalance), Event t AccountDialog)
   accountRow visible chain dAccount = do
     let balance = (^? account_status . _AccountStatus_Exists . accountDetails_balance) <$> dAccount
     -- Previously we always added all chain rows, but hid them with CSS. A bug
