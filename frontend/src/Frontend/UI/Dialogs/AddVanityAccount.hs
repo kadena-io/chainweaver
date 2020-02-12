@@ -126,6 +126,12 @@ uiCreateAccountDialog model name chain mPublicKey _onCloseExternal = do
   let close = switch $ current closes
   pure (mConf, onClose <> close)
 
+createAccountSplashBaseText, createAccountSplashKeysetInfoText :: Text
+createAccountSplashBaseText =
+  "In order to receive funds to an Account, the unique Account must be recorded on the blockchain."
+createAccountSplashKeysetInfoText =
+  " First configure the Account by defining which keys are required to sign transactions. Then create the Account by recording it on the blockchain."
+
 createAccountSplash
   :: ( Monoid mConf, Flattenable mConf t
      , MonadWidget t m
@@ -142,9 +148,12 @@ createAccountSplash
   -> Workflow t m (Text, (mConf, Event t ()))
 createAccountSplash model name chain mPublicKey keysetPresets = Workflow $ do
   (keyset, keysetSelections) <- modalMain $ do
+
     dialogSectionHeading mempty "Notice"
     -- Placeholder text
-    divClass "group" $ text "In order to receive funds to an Account, the unique Account must be recorded on the blockchain. First configure the Account by defining which keys are required to sign transactions. Then create the Account by recording it on the blockchain."
+    divClass "group" $ text $ createAccountSplashBaseText
+      <> maybe createAccountSplashKeysetInfoText mempty mPublicKey
+
     dialogSectionHeading mempty "Destination"
     divClass "group" $ transactionDisplayNetwork model
     case mPublicKey of
