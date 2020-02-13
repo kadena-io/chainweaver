@@ -76,12 +76,13 @@ uiNetworkEdit
   => model
   -> Event t () -> m (mConf, Event t ())
 uiNetworkEdit m _onClose = do
+  let networks = m ^. network_networks
   onClose <- modalHeader $ text "Network Settings"
-  (dNew, cfg) <- modalMain $ do
-      selCfg <- uiGroup "segment" $ do
+  (selectEv, dNew, cfg) <- modalMain $ do
+      selectEv <- uiGroup "segment" $ do
         uiGroupHeader mempty $ do
           dialogSectionHeading mempty "Select Network"
-        uiNetworkSelect "select_type_primary select_width_full" m
+        uiNetworkSelect "select_type_primary select_width_full" (m ^. network_selectedNetwork) networks
 
       (dNew, editCfg) <- uiGroup "segment" $ do
         uiGroupHeader mempty $ dialogSectionHeading mempty "Edit Networks"
@@ -92,7 +93,7 @@ uiNetworkEdit m _onClose = do
 
         pure $ (dSelectNewNet, mconcat [ newCfg, editCfg ])
 
-      pure $ (dNew, selCfg <> editCfg)
+      pure $ (selectEv, dNew, editCfg)
 
   let
     dSelectNewest = (\nets mnet -> do
@@ -101,7 +102,7 @@ uiNetworkEdit m _onClose = do
         guard $ not $ null nodes
         pure net
       )
-      <$> (m ^. network_networks)
+      <$> networks
       <*> dNew
 
   modalFooter $ do
@@ -113,7 +114,7 @@ uiNetworkEdit m _onClose = do
       ( cfg
           & networkCfg_resetNetworks .~ onReset
           & networkCfg_refreshModule .~ onConfirm
-          & networkCfg_selectNetwork %~ (\ev -> leftmost [ev, tagMaybe (current dSelectNewest) onConfirm])
+          & networkCfg_selectNetwork .~ leftmost [selectEv, tagMaybe (current dSelectNewest) onConfirm]
       , leftmost [onConfirm, onClose]
       )
   where
@@ -124,19 +125,14 @@ uiNetworkEdit m _onClose = do
          else mkNetworkName k
 
 
-uiNetworkSelect
-  :: forall t m model mConf.
-    (MonadWidget t m, HasUiNetworkEditModel model t, HasUiNetworkEditModelCfg mConf t
-    )
-  => Text -> model -> m mConf
-uiNetworkSelect cls m = do
-  selected <- holdUniqDyn $ m ^. network_selectedNetwork
+uiNetworkSelect :: MonadWidget t m => Text -> Dynamic t NetworkName -> Dynamic t (Map NetworkName [NodeRef]) -> m (Event t NetworkName)
+uiNetworkSelect cls name networks = do
+  selected <- holdUniqDyn name
   onNetworkDirect <- tagOnPostBuild selected
   -- Delay necessary until we have mount hooks. (SelectElement won't accept
   -- setting event until its children are properly rendered.)
   onNetworkDelayed <- delay 0 onNetworkDirect
-  let
-    networks = m ^. network_networks
+
   -- The refresh is necessary, because we currently always have a valid
   -- selection even if there are no networks. Now if a previously invalid
   -- network becomes valid - selected is not updated, therefore we have no
@@ -155,7 +151,7 @@ uiNetworkSelect cls m = do
 
   (s, ()) <- uiSelectElement cfg $
     void $ networkView $ traverse_ (itemDom . textNetworkName) <$> networkNames
-  pure $ mempty & networkCfg_selectNetwork .~ fmap uncheckedNetworkName (_selectElement_change s)
+  pure $ fmap uncheckedNetworkName (_selectElement_change s)
 
 
 uiNetworks
