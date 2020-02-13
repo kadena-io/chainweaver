@@ -127,16 +127,9 @@ uiSendModal
   -> Event t ()
   -> m (mConf, Event t ())
 uiSendModal model (name, chain, acc) _onCloseExternal = do
-  (conf, closes) <- fmap splitDynPure $ workflow $
-    sendConfig model $ InitialTransferData_Account
-    ( name
-    , chain
-    , acc
-    )
+  (conf, closes) <- fmap splitDynPure $ workflow $ sendConfig model
+    $ InitialTransferData_Account (name, chain, acc)
     $ _vanityAccount_unfinishedCrossChainTransfer $ _account_storage acc
-      -- _vanityAccount_unfinishedCrossChainTransfer $ _account_storage acc
-      -- If we have unfinished business, force the user to finish it first
-      -- Just ucct -> finishCrossChainTransferConfig model (name, chain) ucct
 
   mConf <- flatten =<< tagOnPostBuild conf
   let close = switch $ current closes
@@ -319,7 +312,7 @@ sendConfig model initData = Workflow $ do
   rec
     (currentTab, _done) <- makeTabs initData $ leftmost [prevTab, fmapMaybe id nextTab]
     (conf, mCaps, recipient) <- mainSection currentTab
-    (cancel, nextTab, onFinishXChain) <- footerSection currentTab recipient mCaps
+    (cancel, prevTab, nextTab, onFinishXChain) <- footerSection currentTab recipient mCaps
   let onToPreviewTransfer = flip push nextTab $ \case
         Just _ -> pure Nothing
         Nothing -> runMaybeT $ do
@@ -419,11 +412,13 @@ sendConfig model initData = Workflow $ do
           (useEntireBalance, amount) <- mkLabeledInput True "Amount" gasInputWithMaxButton
             (def & inputElementConfig_initialValue .~ (maybe "" tshow mInitAmount))
 
-<<<<<<< HEAD
+
           let validatedTxBuilder = runExceptT $ do
                 r <- ExceptT $ first (\_ -> "Invalid Tx Builder") <$> decoded
                 when (r == TxBuilder fromName fromChain Nothing) $
                   throwError cannotBeReceiverMsg
+                when (_txBuilder_chainId r /= fromChain && isJust mUcct) $
+                  throwError cannotInitiateNewXChainTfr
                 pure r
 
               validatedAmount = runExceptT $ do
@@ -431,21 +426,6 @@ sendConfig model initData = Workflow $ do
                 when (maybe True (a >) $ fromAcc ^? account_status . _AccountStatus_Exists . accountDetails_balance . _AccountBalance) $
                   throwError insufficientFundsMsg
                 pure a
-=======
-            let fromBalance = fromAcc ^? account_status
-                  . _AccountStatus_Exists
-                  . accountDetails_balance
-                  . _AccountBalance
-
-            when (maybe True (a >) fromBalance) $
-              throwError insufficientFundsMsg
-
-            when (_txBuilder_chainId r /= fromChain && isJust mUcct) $
-              throwError cannotInitiateNewXChainTfr
-
-            when (r == TxBuilder fromName fromChain Nothing) $
-              throwError cannotBeReceiverMsg
->>>>>>> b5cb9380... WIP: unblock xchain transfers, add button for completing them
 
           pure (validatedTxBuilder, validatedAmount, useEntireBalance)
 
@@ -500,22 +480,17 @@ sendConfig model initData = Workflow $ do
       pure (conf, mCaps, (liftA2 . liftA2) (,) txBuilder amount)
 
     footerSection currentTab recipient mCaps = modalFooter $ do
-<<<<<<< HEAD
       let (lbl, fanTag) = splitDynPure $ ffor currentTab $ \case
             SendModalTab_Configuration -> ("Cancel", Left ())
             SendModalTab_Sign -> ("Back", Right SendModalTab_Configuration)
-      ev <- cancelButton def lbl
-      let (cancel, back) = fanEither $ current fanTag <@ ev
-          (name, disabled) = splitDynPure $ ffor currentTab $ \case
-=======
 
       onFinXChain <- case mUcct of
         Nothing -> pure never
         Just ucct -> fmap (ucct <$) $ confirmButton def "Complete Crosschain"
 
-      cancel <- cancelButton def "Cancel"
-      let (name, disabled) = splitDynPure $ ffor currentTab $ \case
->>>>>>> b5cb9380... WIP: unblock xchain transfers, add button for completing them
+      ev <- cancelButton def lbl
+      let (cancel, back) = fanEither $ current fanTag <@ ev
+          (name, disabled) = splitDynPure $ ffor currentTab $ \case
             SendModalTab_Configuration -> ("Next", fmap isLeft recipient)
             SendModalTab_Sign -> ("Preview", fmap isNothing mCaps)
           cfg = def
@@ -525,11 +500,12 @@ sendConfig model initData = Workflow $ do
       let nextTab = ffor (current currentTab <@ next) $ \case
             SendModalTab_Configuration -> Just SendModalTab_Sign
             SendModalTab_Sign -> Nothing
-<<<<<<< HEAD
-      pure (cancel, back, nextTab)
-=======
-      pure (cancel, nextTab, onFinXChain)
->>>>>>> b5cb9380... WIP: unblock xchain transfers, add button for completing them
+
+      pure ( cancel
+           , back
+           , nextTab
+           , onFinXChain
+           )
 
 -- | This function finishes cross chain transfers. The return event signals that
 -- the transfer is complete.
@@ -669,7 +645,8 @@ finishCrossChainTransferConfig model fromAccount ucct = Workflow $ do
     dialogSectionHeading mempty "Gas Payer (recipient chain)"
     sender <- divClass "group" $ elClass "div" "segment segment_type_tertiary labeled-input" $ do
       divClass "label labeled-input__label" $ text "Account Name"
-      let cfg = def & dropdownConfig_attributes .~ pure ("class" =: "labeled-input__input select select_mandatory_missing")
+      let cfg = def & dropdownConfig_attributes .~
+            pure ("class" =: "labeled-input__input select select_mandatory_missing")
           chain = pure $ Just toChain
       gasAcc <- uiAccountDropdown cfg (pure $ \_ a -> fromMaybe False (accountHasFunds a)) (pure id) model chain never
       pure $ ffor3 (model ^. wallet_accounts) (model ^. network_selectedNetwork) gasAcc $ \netToAccount net ma -> do
@@ -679,12 +656,13 @@ finishCrossChainTransferConfig model fromAccount ucct = Workflow $ do
         guard $ Map.member fromChain chains
         pure n
     pure (sender, conf)
-  next <- modalFooter $ confirmButton def "Next"
+  next <- modalFooter $ confirmButton (def & uiButtonCfg_disabled .~ fmap isNothing sender) "Next"
   let nextScreen = flip push next $ \() -> do
         mNetInfo <- sampleNetInfo model
         mToGasPayer <- sample $ current sender
         keys <- sample $ current $ model ^. wallet_keys
-        pure $ ffor2 mNetInfo mToGasPayer $ \ni gp -> finishCrossChainTransfer (model ^. logger) ni keys fromAccount ucct gp
+        pure $ ffor2 mNetInfo mToGasPayer $ \ni gp ->
+          finishCrossChainTransfer (model ^. logger) ni keys fromAccount ucct gp
   pure ((conf, close), nextScreen)
 
 -- | Handy function for getting network / meta information in 'PushM'. Type
