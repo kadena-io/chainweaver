@@ -144,7 +144,7 @@ makeIde
   => FileFFI t m
   -> AppCfg key t m
   -> IdeCfg modal key t -> m (Ide modal key t)
-makeIde fileFFI appCfg userCfg = build $ \ ~(cfg, ideL) -> do
+makeIde _ appCfg userCfg = build $ \ ~(cfg, ideL) -> do
 
     let mChangePassword = _enabledSettings_changePassword $ _appCfg_enabledSettings appCfg
     walletL <- makeWallet mChangePassword ideL $ _ideCfg_wallet cfg

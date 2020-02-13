@@ -133,7 +133,7 @@ import           Frontend.Foundation
 import           Frontend.Messages
 import           Frontend.Network.NodeInfo
 import           Frontend.Storage
-import           Frontend.Store
+import           Frontend.VersionedStore
 import           Frontend.Log
 
 

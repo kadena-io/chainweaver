@@ -88,7 +88,7 @@ openFileDialog = do
   pure (pactE <> importE, trigger)
   where
     fileDialog accept = do
-      let attrs = "type" =: "file" <> "accept" =: accept <> "style" =: "display: none"
+      let attrs = "type" =: "file" <> "accept" =: ("." <> accept) <> "style" =: "display: none"
       input <- inputElement $ def & initialAttributes .~ attrs
       let newFile = fmapMaybe listToMaybe $ updated $ _inputElement_files input
       mContents <- performEventAsync $ ffor newFile $ \file cb -> Types.liftJSM $ do

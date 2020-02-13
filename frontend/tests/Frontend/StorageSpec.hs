@@ -27,7 +27,7 @@ import Test.Tasty.HUnit
 import Frontend.Storage
 import Frontend.Storage.InMemoryStorage
 import qualified Frontend.Storage.InMemoryStorageSpec as InMemoryStorageSpec
-import Frontend.StoreTestKey
+import Frontend.VersionedStoreTestKey
 
 test_dumpStorage :: TestTree
 test_dumpStorage = testCase "Dump Storage" $ do

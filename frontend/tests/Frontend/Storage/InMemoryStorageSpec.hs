@@ -8,7 +8,7 @@ import Test.Tasty.HUnit
 import System.FilePath ((</>))
 
 import Frontend.Storage
-import Frontend.StoreTestKey
+import Frontend.VersionedStoreTestKey
 import Frontend.Storage.InMemoryStorage
 
 test_inMemoryStorage :: TestTree

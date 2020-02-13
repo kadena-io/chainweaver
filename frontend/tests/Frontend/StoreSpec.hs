@@ -4,7 +4,7 @@
 {-# LANGUAGE QuasiQuotes #-}
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE TypeSynonymInstances #-}
-module Frontend.StoreSpec where
+module Frontend.VersionedStoreSpec where
 
 import Control.Monad.IO.Class (liftIO)
 import Data.Aeson (decodeFileStrict)
@@ -36,10 +36,10 @@ import Frontend.Crypto.Class
 import Frontend.Storage
 import Frontend.Storage.InMemoryStorage
 
-import qualified Frontend.Store.V0 as V0
-import qualified Frontend.Store.V0.Wallet as V0
-import qualified Frontend.Store.V1 as V1
-import Frontend.Store (versioner)
+import qualified Frontend.VersionedStore.V0 as V0
+import qualified Frontend.VersionedStore.V0.Wallet as V0
+import qualified Frontend.VersionedStore.V1 as V1
+import Frontend.VersionedStore (versioner)
 
 type TestPrv = Text
 

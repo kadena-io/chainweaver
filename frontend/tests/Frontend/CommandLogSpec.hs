@@ -27,7 +27,7 @@ import Test.Tasty.HUnit
 import Frontend.Storage
 import Frontend.Storage.InMemoryStorage
 import qualified Frontend.Storage.InMemoryStorageSpec as InMemoryStorageSpec
-import Frontend.StoreTestKey
+import Frontend.VersionedStoreTestKey
 import qualified Data.ByteString.Lazy as LBS
 import qualified Data.Aeson as Aeson
 import qualified Data.Text as T

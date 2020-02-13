@@ -115,7 +115,7 @@ runLinux mvars _url allowing _onUniversalLink handleOpen jsm = do
 openFileDialog :: (FilePath -> IO Bool) -> FileType -> IO ()
 openFileDialog handleOpen fileType = do
   fileFilter <- Gtk.fileFilterNew
-  Gtk.fileFilterAddPattern fileFilter ("*" <> fileTypeExtension fileType)
+  Gtk.fileFilterAddPattern fileFilter ("*." <> fileTypeExtension fileType)
   Gtk.fileFilterSetName fileFilter (Just "Pact Files")
 
   chooser <- Gtk.fileChooserNativeNew

@@ -57,7 +57,7 @@ import           Frontend.Network
 import           Frontend.Repl
 import           Frontend.Log
 import           Frontend.Storage
-import           Frontend.VersionedStore
+import           Frontend.Store
 
 type HasModuleExplorerModelCfg mConf t =
   ( Monoid mConf
@@ -106,7 +106,7 @@ makeModuleExplorer
     , HasLogger model t
     , HasTransactionLogger m
     )
-  => AppCfg key t m
+  => AppCfg key t m m
   -> model
   -> cfg
   -> m (mConf, ModuleExplorer t)

@@ -194,15 +194,14 @@ walletSetupRecoverHeader currentScreen = setupDiv "workflow-header" $ do
 runSetup
   :: forall t m
   . ( DomBuilder t m
-    , HasStorage m
     , MonadFix m
     , MonadHold t m
-    , MonadIO m
     , PerformEvent t m
     , PostBuild t m
     , MonadJSM (Performable m)
     , TriggerEvent t m
     , HasStorage (Performable m)
+    , MonadSample t (Performable m)
     )
   => FileFFI t m
   -> Bool
@@ -240,8 +239,9 @@ splashLogo = do
     ) kadenaWalletLogo
 
 splashScreen
-  :: (DomBuilder t m, MonadFix m, MonadHold t m, MonadIO m, PerformEvent t m
+  :: (DomBuilder t m, MonadFix m, MonadHold t m, PerformEvent t m
      , PostBuild t m, MonadJSM (Performable m), TriggerEvent t m, HasStorage (Performable m)
+     , MonadSample t (Performable m)
      )
   => FileFFI t m -> Event t () -> SetupWF t m
 splashScreen fileFFI eBack = selfWF
@@ -288,7 +288,7 @@ sentenceToSeed :: Crypto.ValidMnemonicSentence mw => Crypto.MnemonicSentence mw 
 sentenceToSeed s = Crypto.sentenceToSeed s Crypto.english ""
 
 restoreBipWallet
-  :: (DomBuilder t m, MonadFix m, MonadHold t m, MonadIO m, PerformEvent t m, PostBuild t m, MonadJSM (Performable m), TriggerEvent t m)
+  :: (DomBuilder t m, MonadFix m, MonadHold t m, PerformEvent t m, PostBuild t m, MonadJSM (Performable m), TriggerEvent t m)
   => SetupWF t m -> Event t () -> SetupWF t m
 restoreBipWallet backWF eBack = Workflow $ do
   el "h1" $ text "Recover your wallet"
@@ -345,8 +345,10 @@ restoreBipWallet backWF eBack = Workflow $ do
     )
 
 restoreFromImport
-  :: ( DomBuilder t m, MonadFix m, MonadHold t m, MonadIO m, PerformEvent t m
-     , PostBuild t m, MonadJSM (Performable m), TriggerEvent t m, HasStorage (Performable m)
+  :: forall t m
+  .  ( DomBuilder t m, MonadFix m, MonadHold t m, PerformEvent t m
+     , PostBuild t m, MonadJSM (Performable m), HasStorage (Performable m)
+     , MonadSample t (Performable m), TriggerEvent t m
      )
   => FileFFI t m -> SetupWF t m -> Event t () -> SetupWF t m
 restoreFromImport fileFFI backWF eBack = nagScreen
@@ -386,6 +388,13 @@ restoreFromImport fileFFI backWF eBack = nagScreen
         dyn_ $ ffor dErr $ traverse_ $ \err ->
           elClass "p" "setup__recover_import_error" $ text $ case err of
             ImportWalletError_PasswordIncorrect -> "Incorrect Password"
+            ImportWalletError_NoRootKey -> "Backup cannot be restored as it does not contain a BIP Root Key"
+            (ImportWalletError_NotJson eMsg) -> "Backup cannot be restored as it is not a valid json file. Error: " <> eMsg
+            (ImportWalletError_DecodeError section ver eMsg) ->
+              "Backup section " <> section <> " cannot be parsed as version " <> tshow ver  <>  " with error: " <> eMsg
+            (ImportWalletError_UnknownVersion section ver) ->
+              "Backup section " <> section <> " has an unknown version " <> tshow ver <> ". It's likely that this backup is from a newer version of chainweaver."
+
 
         pure (dFileSelected, pw)
 
@@ -394,12 +403,17 @@ restoreFromImport fileFFI backWF eBack = nagScreen
             <$> MaybeT (nonEmptyPassword <$> (_inputElement_value pwInput))
             <*> MaybeT (fmap snd <$> dFileSelected)
 
-      eImport <- performEvent $ tagMaybe (fmap (uncurry doImport) <$> current dmValidForm) eSubmit
+      eImport <- performEvent $ tagMaybe (fmap (uncurry (doImport @t)) <$> current dmValidForm) eSubmit
 
       let (eImportErr, eImportDone) = fanEither eImport
 
+      -- TODO: This seems to restore OK, then once the wallet unlocks something destroys the data that
+      -- we restored for the keys and accounts.
+      -- Take a look at versionedUi and what is happening in there
+      eDone <- delay 10 eImportDone
+
       pure
-        ( (WalletScreen_RecoverImport, eImportDone, eExit)
+        ( (WalletScreen_RecoverImport, eDone, eExit)
         , backWF <$ eBack
         )
 
@@ -468,7 +482,7 @@ passphraseWidget dWords dStage exposeEmpty = do
     listViewWithKey dWords (passphraseWordElement dStage exposeEmpty)
 
 createNewWallet
-  :: forall t m. (DomBuilder t m, MonadFix m, MonadHold t m, MonadIO m, PerformEvent t m, PostBuild t m, MonadJSM (Performable m), TriggerEvent t m)
+  :: forall t m. (DomBuilder t m, MonadFix m, MonadHold t m, PerformEvent t m, PostBuild t m, MonadJSM (Performable m), TriggerEvent t m)
   => SetupWF t m -> Event t () -> SetupWF t m
 createNewWallet backWF eBack = selfWF
   where
@@ -521,7 +535,7 @@ stackFaIcon icon = elClass "span" "fa-stack fa-5x" $ do
   elClass "i" ("fa " <> icon <> " fa-stack-1x fa-inverse") blank
 
 precreatePassphraseWarning
-  :: (DomBuilder t m, MonadFix m, MonadHold t m, MonadIO m, PerformEvent t m, PostBuild t m, MonadJSM (Performable m), TriggerEvent t m)
+  :: (DomBuilder t m, MonadFix m, MonadHold t m, PerformEvent t m, PostBuild t m, MonadJSM (Performable m))
   => SetupWF t m
   -> Event t ()
   -> (Crypto.XPrv, Password)
@@ -572,7 +586,7 @@ doneScreen (rootKey, passwd) = Workflow $ do
 
 -- | UI for generating and displaying a new mnemonic sentence.
 createNewPassphrase
-  :: (DomBuilder t m, MonadFix m, MonadHold t m, MonadIO m, PerformEvent t m, PostBuild t m, MonadJSM (Performable m), TriggerEvent t m)
+  :: (DomBuilder t m, MonadFix m, MonadHold t m, PerformEvent t m, PostBuild t m, MonadJSM (Performable m))
   => SetupWF t m
   -> Event t ()
   -> (Crypto.XPrv, Password)
@@ -608,7 +622,7 @@ createNewPassphrase backWF eBack (rootKey, password) mnemonicSentence = selfWF
 -- | UI for mnemonic sentence confirmation: scramble the phrase, make the user
 -- choose the words in the right order.
 confirmPhrase
-  :: (DomBuilder t m, MonadFix m, MonadHold t m, MonadIO m, PerformEvent t m, PostBuild t m, MonadJSM (Performable m), TriggerEvent t m)
+  :: (DomBuilder t m, MonadFix m, MonadHold t m, PostBuild t m)
   => SetupWF t m
   -> Event t ()
   -> (Crypto.XPrv, Password)

@@ -54,7 +54,7 @@ import           Frontend.Foundation
 import           Frontend.Messages
 import           Frontend.OAuth
 import           Frontend.Storage
-import           Frontend.Store
+import           Frontend.VersionedStore
 
 type GistRef = GistId
 

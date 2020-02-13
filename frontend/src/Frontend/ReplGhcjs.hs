@@ -53,7 +53,7 @@ import Frontend.Ide
 import Frontend.OAuth
 import Frontend.Repl
 import Frontend.Storage
-import qualified Frontend.Store as Store
+import qualified Frontend.VersionedStore as Store
 import Frontend.UI.Button
 import Frontend.UI.Dialogs.AddVanityAccount (uiAddAccountButton)
 import Frontend.UI.Dialogs.CreateGist (uiCreateGist)
@@ -86,7 +86,7 @@ app
   -> FileFFI t (RoutedT t (R FrontendRoute) m)
   -> AppCfg key t (RoutedT t (R FrontendRoute) m)
   -> RoutedT t (R FrontendRoute) m ()
-app sidebarExtra fileFFI appCfg = Store.versionedUi (Store.versioner @key) $ void . mfix $ \ cfg -> do
+app sidebarExtra fileFFI appCfg = Store.versionedFrontend (Store.versionedStorage @key) $ void . mfix $ \ cfg -> do
   ideL <- makeIde fileFFI appCfg cfg
 
   walletSidebar sidebarExtra

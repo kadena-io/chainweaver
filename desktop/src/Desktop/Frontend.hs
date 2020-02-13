@@ -60,7 +60,7 @@ import Obelisk.Route
 import Obelisk.Route.Frontend
 import qualified Frontend
 import qualified Frontend.ReplGhcjs
-import Frontend.Store (StoreFrontend(..))
+import Frontend.VersionedStore (StoreFrontend(..))
 import Frontend.Storage (runBrowserStorageT)
 
 import Frontend.UI.Modal.Impl (showModalBrutal)

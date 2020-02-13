@@ -84,7 +84,7 @@ import Frontend.Crypto.Ed25519
 import Frontend.Foundation
 import Frontend.Storage
 import Frontend.Network
-import Frontend.Store
+import Frontend.VersionedStore
 import Frontend.Log
 
 data WalletCfg key t = WalletCfg

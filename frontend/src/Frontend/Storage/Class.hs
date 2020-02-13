@@ -19,11 +19,7 @@ module Frontend.Storage.Class
   , getCurrentVersion
   , StoreType (..)
   , HasStorage(..)
-  -- Versioning Stuff
-  , StorageVersioner(..)
   , StoreKeyMetaPrefix(..)
-  , VersioningError(..)
-  , StorageVersion
   ) where
 
 import Control.Monad.Reader
@@ -246,18 +242,6 @@ removeKeyUniverse _ st =
 keyToText :: (GShow k) => k a -> Text
 keyToText = T.pack . gshow
 
-type StorageVersion = Natural
-data VersioningError
-  = VersioningError_UnknownVersion StorageVersion
-
-
-data StorageVersioner m ( k :: * -> * ) = StorageVersioner
-  { _storageVersioner_metaPrefix :: StoreKeyMetaPrefix
-  , _storageVersioner_upgrade :: m (Maybe VersioningError)
-  -- It's entirely possible that a simpler just "copy the directory" or copy "all the storage keys" is
-  -- a better way here, but lets explore this route and see what falls out for export / import
-  , _storageVersioner_backupVersion :: m (Maybe VersioningError)
-  }
 
 -- | Get access to browser's local storage.
 localStorage :: StoreType

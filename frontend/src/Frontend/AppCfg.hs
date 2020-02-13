@@ -33,8 +33,8 @@ data EnabledSettings key t m = EnabledSettings
 data FileType = FileType_Pact | FileType_Import
 
 fileTypeExtension :: FileType -> Text
-fileTypeExtension FileType_Import = ".chainweaverdb"
-fileTypeExtension FileType_Pact = ".pact"
+fileTypeExtension FileType_Import = "chainweaver"
+fileTypeExtension FileType_Pact = "pact"
 
 data FileFFI t m = FileFFI
   { _fileFFI_openFileDialog :: FileType -> JSM ()

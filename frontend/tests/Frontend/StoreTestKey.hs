@@ -5,7 +5,7 @@
 {-# LANGUAGE StandaloneDeriving #-}
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE TypeFamilies #-}
-module Frontend.StoreTestKey where
+module Frontend.VersionedStoreTestKey where
 
 import Data.Aeson (ToJSON(..), FromJSON(..), encode, decode)
 import Data.Aeson.GADT.TH
