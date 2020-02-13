@@ -45,6 +45,7 @@ module Frontend.UI.Button
   , receiveButton
   , transferToButton
   , sendButton
+  , sendCrossChainButton
   , detailsButton
   , detailsIconButton
   , accordionButton
@@ -317,6 +318,12 @@ sendButton cfg =
   uiButton (cfg & uiButtonCfg_class <>~ "button_type_secondary" <> "button_type_secondary") $ do
     imgWithAltCls "button__text-icon" (static @"img/send.svg") "Send" blank
     elClass "span" "button__text button__text-exclusive" $ text "Send"
+
+sendCrossChainButton :: StaticButtonConstraints t m => UiButtonCfg -> m (Event t ())
+sendCrossChainButton cfg =
+  uiButton (cfg & uiButtonCfg_class <>~ "button_type_secondary" <> "button_type_secondary") $ do
+    imgWithAltCls "button__text-icon" (static @"img/send.svg") "Send cross chain" blank
+    elClass "span" "button__text button__text-exclusive" $ text "XChain"
 
 accordionButton :: StaticButtonConstraints t m => UiButtonCfg -> m (Event t ())
 accordionButton cfg =

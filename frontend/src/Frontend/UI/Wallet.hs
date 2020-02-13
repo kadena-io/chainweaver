@@ -57,6 +57,7 @@ import           Frontend.UI.Dialogs.AddVanityAccount (uiCreateAccountButton, ui
 import           Frontend.UI.Dialogs.KeyDetails (uiKeyDetails)
 import           Frontend.UI.Dialogs.Receive (uiReceiveModal)
 import           Frontend.UI.Dialogs.Send (uiSendModal)
+import           Frontend.UI.Dialogs.SendCrossChain (uiSendCrossChainModal)
 import           Frontend.UI.Dialogs.WatchRequest (uiWatchRequestDialog)
 import           Frontend.UI.Modal
 import           Frontend.Network
@@ -88,6 +89,7 @@ data AccountDialog
   | AccountDialog_Details AccountName (Maybe AccountNotes)
   | AccountDialog_Receive AccountName ChainId
   | AccountDialog_Send (AccountName, ChainId, Account)
+  | AccountDialog_SendCrossChain (AccountName, ChainId, Account)
   | AccountDialog_Create AccountName ChainId (Maybe PublicKey)
 
 uiWalletRefreshButton
@@ -198,6 +200,7 @@ uiAccountItems model accountsMap = do
       AccountDialog_DetailsChain acc -> uiAccountDetailsOnChain n acc
       AccountDialog_Receive name chain -> uiReceiveModal model name (Just chain)
       AccountDialog_Send acc -> uiSendModal model acc
+      AccountDialog_SendCrossChain acc -> uiSendCrossChainModal model acc
       AccountDialog_Create name chain mKey -> uiCreateAccountDialog model name chain mKey
 
   refresh <- delay 1 =<< getPostBuild
@@ -288,10 +291,12 @@ uiAccountItem keys name accountInfo = do
               True -> do
                 recv <- receiveButton cfg
                 send <- sendButton cfg
+                sendCrossChain <- sendCrossChainButton cfg
                 onDetails <- detailsIconButton cfg
                 pure $ leftmost
                   [ AccountDialog_Receive name chain <$ recv
                   , AccountDialog_Send . (name, chain, ) <$> current dAccount <@ send
+                  , AccountDialog_SendCrossChain . (name, chain, ) <$> current dAccount <@ sendCrossChain
                   , AccountDialog_DetailsChain . (name, chain, ) <$> current dAccount <@ onDetails
                   ]
               False -> do

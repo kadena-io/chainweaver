@@ -147,6 +147,7 @@ library
                  , Frontend.UI.Dialogs.LogoutConfirmation
                  , Frontend.UI.Dialogs.Receive
                  , Frontend.UI.Dialogs.Send
+                 , Frontend.UI.Dialogs.SendCrossChain
                  , Frontend.UI.Dialogs.Signing
                  , Frontend.UI.Dialogs.AccountDetails
                  , Frontend.UI.Dialogs.KeyDetails
