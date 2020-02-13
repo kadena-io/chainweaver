@@ -312,7 +312,7 @@ sendConfig model initData = Workflow $ do
   rec
     (currentTab, _done) <- makeTabs initData $ attachWithMaybe (const . void . hush) (current recipient) nextTab
     (conf, mCaps, recipient) <- mainSection currentTab
-    (cancel, nextTab, onFinishXChain) <- footerSection currentTab recipient mCaps
+    (cancel, nextTab) <- footerSection currentTab recipient mCaps
   let onToPreviewTransfer = flip push nextTab $ \case
         Just _ -> pure Nothing
         Nothing -> runMaybeT $ do
@@ -332,10 +332,7 @@ sendConfig model initData = Workflow $ do
                 }
           pure $ previewTransfer model transfer
   pure ( (conf, close <> cancel)
-       , leftmost
-         [ onToPreviewTransfer
-         , finishCrossChainTransferConfig model (fromName, fromChain) <$> onFinishXChain
-         ]
+       , onToPreviewTransfer
        )
   where
     (fromAccount@(fromName, fromChain, fromAcc), mUcct) = initialTransferDataCata
@@ -451,11 +448,6 @@ sendConfig model initData = Workflow $ do
       pure (conf, mCaps, recipient)
 
     footerSection currentTab recipient mCaps = modalFooter $ do
-
-      onFinXChain <- case mUcct of
-        Nothing -> pure never
-        Just ucct -> fmap (ucct <$) $ confirmButton def "Complete Crosschain"
-
       cancel <- cancelButton def "Cancel"
       let (name, disabled) = splitDynPure $ ffor currentTab $ \case
             SendModalTab_Configuration -> ("Next", fmap isLeft recipient)
@@ -467,7 +459,7 @@ sendConfig model initData = Workflow $ do
       let nextTab = ffor (current currentTab <@ next) $ \case
             SendModalTab_Configuration -> Just SendModalTab_Sign
             SendModalTab_Sign -> Nothing
-      pure (cancel, nextTab, onFinXChain)
+      pure (cancel, nextTab)
 
 -- | This function finishes cross chain transfers. The return event signals that
 -- the transfer is complete.
