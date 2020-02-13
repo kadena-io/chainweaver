@@ -344,13 +344,9 @@ sendConfig model initData = Workflow $ do
       initData
 
     mInitToAddress = withInitialTransfer _transferData_toTxBuilder initData
-
     mInitFromGasPayer = withInitialTransfer (_transferData_fromGasPayer) initData
-
     mInitCrossChainGasPayer = join $ withInitialTransfer (fmap (_crossChainData_recipientChainGasPayer) . _transferData_crossChainData) initData
-
     mInitAmount = withInitialTransfer _transferData_amount initData
-
     mainSection currentTab = elClass "div" "modal__main" $ do
       (conf, useEntireBalance, txBuilder, amount) <- tabPane mempty currentTab SendModalTab_Configuration $ do
         dialogSectionHeading mempty  "Destination"
@@ -644,8 +640,7 @@ finishCrossChainTransferConfig model fromAccount ucct = Workflow $ do
     dialogSectionHeading mempty "Gas Payer (recipient chain)"
     sender <- divClass "group" $ elClass "div" "segment segment_type_tertiary labeled-input" $ do
       divClass "label labeled-input__label" $ text "Account Name"
-      let cfg = def & dropdownConfig_attributes .~
-            pure ("class" =: "labeled-input__input select select_mandatory_missing")
+      let cfg = def & dropdownConfig_attributes .~ pure ("class" =: "labeled-input__input select select_mandatory_missing")
           chain = pure $ Just toChain
       gasAcc <- uiAccountDropdown cfg (pure $ \_ a -> fromMaybe False (accountHasFunds a)) (pure id) model chain never
       pure $ ffor3 (model ^. wallet_accounts) (model ^. network_selectedNetwork) gasAcc $ \netToAccount net ma -> do
@@ -660,8 +655,7 @@ finishCrossChainTransferConfig model fromAccount ucct = Workflow $ do
         mNetInfo <- sampleNetInfo model
         mToGasPayer <- sample $ current sender
         keys <- sample $ current $ model ^. wallet_keys
-        pure $ ffor2 mNetInfo mToGasPayer $ \ni gp ->
-          finishCrossChainTransfer (model ^. logger) ni keys fromAccount ucct gp
+        pure $ ffor2 mNetInfo mToGasPayer $ \ni gp -> finishCrossChainTransfer (model ^. logger) ni keys fromAccount ucct gp
   pure ((conf, close), nextScreen)
 
 -- | Handy function for getting network / meta information in 'PushM'. Type
