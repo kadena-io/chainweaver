@@ -1,7 +1,5 @@
 module Desktop.ImportExport where
 
-import Debug.Trace
-
 import qualified Cardano.Crypto.Wallet as Crypto
 import Control.Error (hoistEither, failWith)
 import Control.Monad (unless)
@@ -93,7 +91,7 @@ doImport pw contents = runExceptT $ do
 
   _ <- ExceptT $ runBIPCryptoT (constant (rootKey, unPassword pw)) $ do
     let vStore = FrontendStore.versionedStorage
-    feLatestEither <- first (traceShowId . expandDecodeVersionJsonError storeFrontendDataKey feVer)
+    feLatestEither <- first (expandDecodeVersionJsonError storeFrontendDataKey feVer)
       <$> (_versionedStorage_decodeVersionedJson vStore feVer feData)
     -- For some silly reason, this has the right data, but the import doesn't stick
     -- We end up with no keys or accounts

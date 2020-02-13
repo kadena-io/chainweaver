@@ -19,7 +19,7 @@
 module Desktop.Frontend (desktop, bipWallet, bipCryptoGenPair, runFileStorageT) where
 
 import Control.Lens ((?~))
-import Control.Monad ((<=<), guard, void)
+import Control.Monad ((<=<), guard, void, when)
 import Control.Monad.Fix (MonadFix)
 import Control.Monad.Trans (lift)
 import Control.Monad.IO.Class
@@ -142,10 +142,11 @@ bipWallet fileFFI mkAppCfg = do
     runSetup0 mPrv = do
       keyAndPass <- runSetup (liftFileFFI lift fileFFI) $ isJust mPrv
       performEvent $ flip push keyAndPass $ \case
-        Right (x, Password p) -> pure $ Just $ do
+        Right (x, Password p, newWallet) -> pure $ Just $ do
           setItemStorage localStorage BIPStorage_RootKey x
-          removeItemStorage localStorage StoreFrontend_Wallet_Keys
-          removeItemStorage localStorage StoreFrontend_Wallet_Accounts
+          when newWallet $ do
+            removeItemStorage localStorage StoreFrontend_Wallet_Keys
+            removeItemStorage localStorage StoreFrontend_Wallet_Accounts
           pure $ LockScreen_Unlocked ==> (x, p)
         Left _ ->
           for mPrv $ fmap (pure . (LockScreen_Locked ==>)) . sample

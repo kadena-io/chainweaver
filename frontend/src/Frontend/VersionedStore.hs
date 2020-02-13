@@ -24,7 +24,7 @@ import Data.Text (Text)
 import qualified Data.Text as T
 import Numeric.Natural (Natural)
 import Reflex
-import Reflex.Dom (DomBuilder, widgetHold_, blank)
+import Reflex.Dom (DomBuilder, widgetHold_, blank, text)
 
 import Frontend.Storage.Class
 import qualified Frontend.Storage.Class as Storage
@@ -38,10 +38,12 @@ type StorageVersion = Natural
 data VersioningUpgradeError
   = VersioningUpgradeError_UnknownVersion StorageVersion
   | VersioningUpgradeError_CouldNotBackup StorageVersion
+  deriving (Show)
 
 data VersioningDecodeJsonError
   = VersioningDecodeJsonError_UnknownVersion StorageVersion
   | VersioningDecodeJsonError_DecodeFailure Text
+  deriving Show
 
 data StoreFrontendVersion key k where
   StoreFrontendVersion_0 :: StoreFrontendVersion key (V0.StoreFrontend key)
@@ -65,15 +67,14 @@ versionedFrontend
   -> m ()
 versionedFrontend v widget = do
   pbE <- getPostBuild
-  migratedE <- performEvent $ performUpdate <$ pbE
-  widgetHold_ blank $ widget <$ migratedE
+  migratedE <- performEvent $ (_versionedStorage_upgradeStorage v) <$ pbE
+  widgetHold_ blank (displayResult <$> migratedE)
   where
-    performUpdate = do
-      -- TODO: We need to do something with the error here. But the only reason
-      -- that things can fail is if the current version is unknown or the current version
-      -- can't be backed up, which are pretty intense and unrecoverable circumstances
-      _ <- _versionedStorage_upgradeStorage v
-      pure ()
+    -- Should we do this, or should we just push on? The backup functionality really
+    -- depends on the storage being properly latest, but I think that our failthrough
+    -- to nothing behaviour in storage will just zero everything out to latest version...
+    displayResult (Left e) = text $ "Version upgrade failed. Chainweaver cannot start. Error is: " <> (T.pack . show $ e)
+    displayResult (Right ()) = widget
 
 data VersionedStorage m k = VersionedStorage
   { _versionedStorage_metaPrefix :: StoreKeyMetaPrefix

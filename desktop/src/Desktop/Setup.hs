@@ -136,7 +136,7 @@ kadenaWalletLogo = divClass "logo" $ do
 
 type SetupWF t m = Workflow t m
   (WalletScreen
-  , Event t (Crypto.XPrv, Password)
+  , Event t (Crypto.XPrv, Password, Bool)
   , Event t () -- ExitSetup Event
   )
 
@@ -205,7 +205,7 @@ runSetup
     )
   => FileFFI t m
   -> Bool
-  -> m (Event t (Either () (Crypto.XPrv, Password)))
+  -> m (Event t (Either () (Crypto.XPrv, Password, Bool)))
 runSetup fileFFI showBackOverride = setupDiv "fullscreen" $ mdo
   let dCurrentScreen = (^._1) <$> dwf
 
@@ -340,7 +340,7 @@ restoreBipWallet backWF eBack = Workflow $ do
     withSeedConfirmPassword <$> eSeedUpdated
 
   pure
-    ( (WalletScreen_RecoverPassphrase, switchDyn dSetPassword, never)
+    ( (WalletScreen_RecoverPassphrase, (\(prv, pw) -> (prv, pw, True)) <$> switchDyn dSetPassword, never)
     , backWF <$ eBack
     )
 
@@ -348,7 +348,7 @@ restoreFromImport
   :: forall t m
   .  ( DomBuilder t m, MonadFix m, MonadHold t m, PerformEvent t m
      , PostBuild t m, MonadJSM (Performable m), HasStorage (Performable m)
-     , MonadSample t (Performable m), TriggerEvent t m
+     , MonadSample t (Performable m)
      )
   => FileFFI t m -> SetupWF t m -> Event t () -> SetupWF t m
 restoreFromImport fileFFI backWF eBack = nagScreen
@@ -403,17 +403,15 @@ restoreFromImport fileFFI backWF eBack = nagScreen
             <$> MaybeT (nonEmptyPassword <$> (_inputElement_value pwInput))
             <*> MaybeT (fmap snd <$> dFileSelected)
 
+      -- TODO: This seems to restore OK, then once the wallet unlocks something destroys the data that
+      -- we restored for the keys and accounts.
+      -- Take a look at versionedUi and what is happening in there
       eImport <- performEvent $ tagMaybe (fmap (uncurry (doImport @t)) <$> current dmValidForm) eSubmit
 
       let (eImportErr, eImportDone) = fanEither eImport
 
-      -- TODO: This seems to restore OK, then once the wallet unlocks something destroys the data that
-      -- we restored for the keys and accounts.
-      -- Take a look at versionedUi and what is happening in there
-      eDone <- delay 10 eImportDone
-
       pure
-        ( (WalletScreen_RecoverImport, eDone, eExit)
+        ( (WalletScreen_RecoverImport, (\(prv,pw) -> (prv, pw, False)) <$> eImportDone, eExit)
         , backWF <$ eBack
         )
 
@@ -580,7 +578,7 @@ doneScreen (rootKey, passwd) = Workflow $ do
   eContinue <- setupDiv "continue-button" $
     confirmButton def "Done"
 
-  pure ( (WalletScreen_Done, (rootKey, passwd) <$ eContinue, never)
+  pure ( (WalletScreen_Done, (rootKey, passwd, True) <$ eContinue, never)
        , never
        )
 
