@@ -322,7 +322,7 @@ sendButton cfg =
 completeCrossChainButton :: StaticButtonConstraints t m => UiButtonCfg -> m (Event t ())
 completeCrossChainButton cfg =
   uiButton (cfg & uiButtonCfg_class <>~ "button_type_secondary" <> "button_type_secondary") $ do
-    imgWithAltCls "button__text-icon" (static @"img/send.svg") "Complete Crosschain" blank
+    elClass "i" "fa fa-random button__cross-chain-icon" blank
     elClass "span" "button__text button__text-exclusive" $ text "Complete Crosschain"
 
 accordionButton :: StaticButtonConstraints t m => UiButtonCfg -> m (Event t ())

@@ -137,10 +137,10 @@ uiAccountItems model = do
     el "colgroup" $ do
       elAttr "col" ("style" =: "width: 5%") blank
       elAttr "col" ("style" =: "width: 22.5%") blank
-      elAttr "col" ("style" =: "width: 22.5%") blank
+      elAttr "col" ("style" =: "width: 12.5%") blank
       elAttr "col" ("style" =: "width: 15%") blank
       elAttr "col" ("style" =: "width: 10%") blank
-      elAttr "col" ("style" =: "width: 25%") blank
+      elAttr "col" ("style" =: "width: 35%") blank
 
     el "thead" $ el "tr" $ do
       let mkHeading = elClass "th" "wallet__table-heading" . text

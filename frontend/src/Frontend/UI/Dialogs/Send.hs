@@ -127,16 +127,9 @@ uiSendModal
   -> Event t ()
   -> m (mConf, Event t ())
 uiSendModal model (name, chain, acc) _onCloseExternal = do
-  (conf, closes) <- fmap splitDynPure $ workflow $
-    sendConfig model $ InitialTransferData_Account
-    ( name
-    , chain
-    , acc
-    )
+  (conf, closes) <- fmap splitDynPure $ workflow $ sendConfig model
+    $ InitialTransferData_Account (name, chain, acc)
     $ _vanityAccount_unfinishedCrossChainTransfer $ _account_storage acc
-      -- _vanityAccount_unfinishedCrossChainTransfer $ _account_storage acc
-      -- If we have unfinished business, force the user to finish it first
-      -- Just ucct -> finishCrossChainTransferConfig model (name, chain) ucct
 
   mConf <- flatten =<< tagOnPostBuild conf
   let close = switch $ current closes
@@ -366,20 +359,12 @@ sendConfig model initData = Workflow $ do
         dialogSectionHeading mempty  "Recipient"
         recipient <- divClass "group" $ do
 
-          let insufficientFundsMsg = "Sender has insufficient funds."
-              cannotBeReceiverMsg = "Sender cannot be the receiver of a transfer"
-              cannotInitiateNewXChainTfr = "Existing cross chain transfer in progress."
-
           let displayImmediateFeedback e feedbackMsg showMsg = widgetHold_ blank $ ffor e $ \x ->
                 when (showMsg x) $ mkLabeledView True mempty $ text feedbackMsg
 
-              uiTxBuilderInput cfg = do
-                ie <- uiTxBuilder Nothing cfg
-                pure (ie
-                     , ( validateTxBuilder <$> _textAreaElement_input ie
-                       , validateTxBuilder <$> value ie
-                       )
-                     )
+              insufficientFundsMsg = "Sender has insufficient funds."
+              cannotBeReceiverMsg = "Sender cannot be the receiver of a transfer"
+              cannotInitiateNewXChainTfr = "Existing cross chain transfer in progress."
 
           decoded <- fmap snd $ mkLabeledInput True "Tx Builder" (uiInputWithInlineFeedback
             (fmap (first (const "Invalid Tx Builder") . Aeson.eitherDecodeStrict . T.encodeUtf8) . value)
@@ -626,7 +611,8 @@ finishCrossChainTransferConfig model fromAccount ucct = Workflow $ do
     dialogSectionHeading mempty "Gas Payer (recipient chain)"
     sender <- divClass "group" $ elClass "div" "segment segment_type_tertiary labeled-input" $ do
       divClass "label labeled-input__label" $ text "Account Name"
-      let cfg = def & dropdownConfig_attributes .~ pure ("class" =: "labeled-input__input select select_mandatory_missing")
+      let cfg = def & dropdownConfig_attributes .~
+            pure ("class" =: "labeled-input__input select select_mandatory_missing")
           chain = pure $ Just toChain
       gasAcc <- uiAccountDropdown cfg True model chain never
       pure $ ffor3 (model ^. wallet_accounts) (model ^. network_selectedNetwork) gasAcc $ \netToAccount net ma -> do
@@ -636,12 +622,13 @@ finishCrossChainTransferConfig model fromAccount ucct = Workflow $ do
         guard $ Map.member fromChain chains
         pure n
     pure (sender, conf)
-  next <- modalFooter $ confirmButton def "Next"
+  next <- modalFooter $ confirmButton (def & uiButtonCfg_disabled .~ fmap isNothing sender) "Next"
   let nextScreen = flip push next $ \() -> do
         mNetInfo <- sampleNetInfo model
         mToGasPayer <- sample $ current sender
         keys <- sample $ current $ model ^. wallet_keys
-        pure $ ffor2 mNetInfo mToGasPayer $ \ni gp -> finishCrossChainTransfer (model ^. logger) ni keys fromAccount ucct gp
+        pure $ ffor2 mNetInfo mToGasPayer $ \ni gp ->
+          finishCrossChainTransfer (model ^. logger) ni keys fromAccount ucct gp
   pure ((conf, close), nextScreen)
 
 -- | Handy function for getting network / meta information in 'PushM'. Type

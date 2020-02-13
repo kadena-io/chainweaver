@@ -217,3 +217,18 @@
     }
   }
 }
+
+i.fa.fa-random.button__cross-chain-icon {
+  color: #A8A8A8;
+  display: inline-block;
+  margin-right: 7px;
+  position: relative;
+  bottom: -1.5px;
+  width: 18px;
+  height: 11.1px;
+
+  @media (max-width: 1550px) {
+    margin-right: 0;
+  }
+}
+
