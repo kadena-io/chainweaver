@@ -113,7 +113,7 @@ uiNetworkEdit m _onClose = do
       ( cfg
           & networkCfg_resetNetworks .~ onReset
           & networkCfg_refreshModule .~ onConfirm
-          & networkCfg_selectNetwork .~ tagMaybe (current dSelectNewest) onConfirm
+          & networkCfg_selectNetwork %~ (\ev -> leftmost [ev, tagMaybe (current dSelectNewest) onConfirm])
       , leftmost [onConfirm, onClose]
       )
   where
