@@ -675,6 +675,8 @@ uiMetaData m mTTL mGasLimit = do
             & inputElementConfig_setValue .~ _inputElement_input inputEl
           (inputEl, inputEv) <- dimensionalInputFeedbackWrapper (Just "Seconds") $ uiIntInputElement (Just minTTL) (Just secondsInDay) $ conf
             & inputElementConfig_setValue .~ _inputElement_input sliderEl
+            & inputElementConfig_elementConfig . elementConfig_eventSpec %~ preventUpAndDownArrow @m
+          preventScrollWheel $ _inputElement_raw inputEl
           pure $ leftmost
             [ TTLSeconds . ParsedInteger <$> inputEv
             , fmapMaybe (readPact (TTLSeconds . ParsedInteger)) $ _inputElement_input sliderEl
