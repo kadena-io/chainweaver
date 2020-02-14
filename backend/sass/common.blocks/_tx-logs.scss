@@ -7,18 +7,20 @@
 @import '../include/defs';
 
 .tx-logs .table-row {
-  border-top: 1px solid;
-
-  overflow: hidden;
-  white-space: nowrap;
+  @include std-border;
 }
 
 .tx-logs .table__cell {
   padding-top: 12px;
   padding-bottom: 12px;
 
-  .tx-log-row__request-key {
-    text-overflow: ellipsis;
+  &.tx-log-row__request-key {
+    overflow: hidden;
+    white-space: nowrap;
+
+    .request-key-text {
+      text-overflow: ellipsis;
+    }
   }
 }
 

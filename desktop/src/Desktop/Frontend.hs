@@ -84,7 +84,7 @@ desktop = Frontend
       base <- getConfigRoute
       void $ Frontend.newHead $ \r -> base <> renderBackendRoute backendEncoder r
   , _frontend_body = prerender_ blank $ do
-    logDir <- (<> commandLogFilename) <$> liftIO Dir.getTemporaryDirectory
+    logDir <- (<> "/" <> commandLogFilename) <$> liftIO Dir.getTemporaryDirectory
     liftIO $ putStrLn $ "Logging to: " <> logDir
     (signingRequestMVar, signingResponseMVar) <- signingServer
       (pure ()) -- Can't foreground or background things

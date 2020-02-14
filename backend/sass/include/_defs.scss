@@ -16,6 +16,11 @@ $std-border-radius: 4px;
 $std-border-width: 1px;
 $std-border-style: solid;
 $std-border-color: #d7d7d7;
+
+@mixin std-border {
+  border: $std-border-width $std-border-style $std-border-color;
+}
+
 $std-color: black;
 
 $body-background: #f1f1f1;

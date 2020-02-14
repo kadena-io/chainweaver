@@ -69,11 +69,11 @@ uiTxLogs fileFFI _model _onExtClose = do
       Right (timeLocale, cmdLogs) -> elAttr "table" tableAttrs $ do
         -- Structure
         el "colgroup" $ do
-          mkCol "5%"
+          mkCol "10%"
+          mkCol "40%"
           mkCol "20%"
           mkCol "15%"
-          mkCol "10%"
-          mkCol "50%"
+          mkCol "15%"
         -- Headings
         el "thead" $ el "tr" $ traverse_ mkHeading $
           [ ""
@@ -99,7 +99,7 @@ uiTxLogs fileFFI _model _onExtClose = do
           td "tx-log-row__chain" $ text
             $ Pact._chainId $ Api._commandLog_chain cmdLog
 
-          td "tx-log-row__request-key" $ text
+          td "tx-log-row__request-key" $ elClass "span" "request-key-text" $ text
             $ Pact.hashToText $ Pact.unRequestKey $ Api._commandLog_requestKey cmdLog
 
   modalFooter $ do
