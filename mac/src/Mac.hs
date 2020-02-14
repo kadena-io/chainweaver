@@ -10,8 +10,9 @@ import Data.ByteString (ByteString)
 import Data.Default (Default(..))
 import Data.Functor (void)
 import Data.Foldable (for_)
+import qualified Data.Text as T
 import GHC.IO.Handle (hDuplicateTo, BufferMode(LineBuffering))
-import Foreign.C.String (CString, peekCString)
+import Foreign.C.String (CString, peekCString, withCString)
 import Foreign.StablePtr (StablePtr, newStablePtr)
 import Language.Javascript.JSaddle.Types (JSM)
 import Language.Javascript.JSaddle.WKWebView (AppDelegateConfig(..), mainBundleResourcePath, runHTMLWithBaseURL)
@@ -20,7 +21,7 @@ import System.IO
 import qualified System.Process as Process
 
 import Desktop (main', AppFFI(..))
-import Frontend.AppCfg (FileType(..))
+import Frontend.AppCfg (FileType(..), fileTypeExtension)
 import Desktop.Syslog (sysloggedMain, logToSyslog)
 
 foreign import ccall setupAppMenu :: StablePtr (CString -> IO ()) -> IO ()
@@ -30,6 +31,7 @@ foreign import ccall moveToForeground :: IO ()
 foreign import ccall moveToBackground :: IO ()
 foreign import ccall resizeWindow :: Int -> Int -> IO ()
 foreign import ccall global_openFileDialog :: CString -> IO ()
+foreign import ccall global_openSaveDialog :: StablePtr (CString -> IO ()) -> IO ()
 foreign import ccall global_getHomeDirectory :: IO CString
 
 ffi :: AppFFI
@@ -39,10 +41,17 @@ ffi = AppFFI
   , _appFFI_moveToForeground = moveToForeground
   , _appFFI_resizeWindow = uncurry resizeWindow
   -- TODO : Take file type and give it to the dialog
-  , _appFFI_global_openFileDialog = const global_openFileDialog
+  , _appFFI_global_openFileDialog = openFileDialog
+  , _appFFI_global_dirSelectDialog = dirSelectDialog
   , _appFFI_global_getStorageDirectory = getStorageDirectory
   , _appFFI_global_logFunction = logToSyslog
   }
+
+openFileDialog :: FileType -> IO ()
+openFileDialog ft = withCString (T.unpack . fileTypeExtension $ ft) global_openFileDialog
+
+dirSelectDialog :: (FilePath -> IO ()) -> IO ()
+dirSelectDialog cb = global_openSaveDialog =<< (newStablePtr $ cb <=< peekCString)
 
 getStorageDirectory :: IO String
 getStorageDirectory = do
