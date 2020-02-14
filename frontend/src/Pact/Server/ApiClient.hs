@@ -231,7 +231,7 @@ logTransactionFile f = TransactionLogger
 createCommandLogExportFileV1 :: FilePath -> IO (Either String (FilePath, Text))
 createCommandLogExportFileV1 fp = runExceptT $ do
   let logFilePath = fp
-      exportFilePath = fp <> "_" <> show commandLogCurrentVersion
+      exportFilePath = printf "%s_v%i" fp commandLogCurrentVersion
   xs <- ExceptT $ traverse Aeson.eitherDecodeStrict . BS8.lines <$> BS.readFile logFilePath
   let contents = BSL.toStrict $ BSL.toLazyByteString $ ifoldMap Latest.exportCommandLog xs
   pure (exportFilePath, T.decodeUtf8With T.lenientDecode contents)
