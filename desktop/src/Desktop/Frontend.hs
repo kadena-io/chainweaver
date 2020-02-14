@@ -72,6 +72,7 @@ import Desktop.ImportExport
 import Desktop.Util
 import Desktop.Storage.File
 
+import Pact.Server.ApiClient (commandLogFilename)
 
 -- | This is for development
 -- > ob run --import desktop:Desktop.Frontend --frontend Desktop.Frontend.desktop
@@ -83,7 +84,7 @@ desktop = Frontend
       base <- getConfigRoute
       void $ Frontend.newHead $ \r -> base <> renderBackendRoute backendEncoder r
   , _frontend_body = prerender_ blank $ do
-    logDir <- (<> "/CHAINWEAVER_LOGS_YO") <$> liftIO Dir.getTemporaryDirectory
+    logDir <- (<> commandLogFilename) <$> liftIO Dir.getTemporaryDirectory
     liftIO $ putStrLn $ "Logging to: " <> logDir
     (signingRequestMVar, signingResponseMVar) <- signingServer
       (pure ()) -- Can't foreground or background things
