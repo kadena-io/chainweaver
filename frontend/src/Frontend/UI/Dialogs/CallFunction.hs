@@ -51,6 +51,7 @@ import           Frontend.UI.DeploymentSettings
 import           Frontend.UI.Dialogs.DeployConfirmation (fullDeployFlow, deployConfirmationConfig_modalTitle)
 import           Frontend.UI.Modal
 import           Frontend.UI.Widgets
+import           Frontend.UI.Widgets.Helpers    (preventUpAndDownArrow, preventScrollWheel)
 import           Frontend.Wallet                (HasWallet (..))
 ------------------------------------------------------------------------------
 
@@ -305,10 +306,14 @@ funTypeInput json = \case
       in
         _textAreaElement_value <$> textAreaElement cfg
 
-    mkInput :: Text -> Text -> InputElementConfig er t (DomBuilderSpace m) -> m (Dynamic t Text)
-    mkInput iType iVal cfg = fmap _inputElement_value $ uiInputElement $ cfg
-      & initialAttributes .~ ("type" =: iType <> "class" =: "labeled-input__input input_type_secondary")
-      & inputElementConfig_initialValue .~ iVal
+    mkInput :: Text -> Text -> InputElementConfig EventResult t (DomBuilderSpace m) -> m (Dynamic t Text)
+    mkInput iType iVal cfg = do
+      i <- uiInputElement $ cfg
+        & initialAttributes .~ ("type" =: iType <> "class" =: "labeled-input__input input_type_secondary")
+        & inputElementConfig_initialValue .~ iVal
+        & inputElementConfig_elementConfig . elementConfig_eventSpec %~ preventUpAndDownArrow @m
+      preventScrollWheel $ _inputElement_raw i
+      pure $ _inputElement_value i
 
 keysetSelector :: MonadWidget t m => JsonData t -> m (Dynamic t Text)
 keysetSelector json = do

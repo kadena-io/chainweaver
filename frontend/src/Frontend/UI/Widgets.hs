@@ -331,6 +331,7 @@ uiNonnegativeRealWithPrecisionInputElement
        , MonadHold t m
        , PostBuild t m
        , PerformEvent t m
+       , MonadJSM m
        , MonadJSM (Performable m)
        , DomBuilderSpace m ~ GhcjsDomSpace
        )
@@ -348,8 +349,9 @@ uiNonnegativeRealWithPrecisionInputElement prec fromDecimal cfg = do
       maybe PopoverState_Disabled PopoverState_Error . snd
 
   (ie, (input, val)) <- uiInputWithPopover uiCorrecting (_inputElement_raw . fst) showPopover $ cfg
-    & initialAttributes %~ addInputElementCls . addNoAutofillAttrs
-    . (<> ("type" =: "number" <> "step" =: stepSize <> "min" =: stepSize))
+    & initialAttributes %~ addInputElementCls . addNoAutofillAttrs . (<> ("type" =: "number" <> "step" =: stepSize <> "min" =: stepSize))
+    & inputElementConfig_elementConfig . elementConfig_eventSpec %~ preventUpAndDownArrow @m
+  preventScrollWheel $ _inputElement_raw ie
 
   pure (ie, (fmap . fmap) fromDecimal val, fmap (fromDecimal . fst) input)
 
@@ -377,17 +379,22 @@ uiNonnegativeRealWithPrecisionInputElement prec fromDecimal cfg = do
 
 -- TODO: correct floating point decimals
 uiIntInputElement
-  :: ( DomBuilder t m
-     , MonadFix m
-     , MonadHold t m
-     )
+  :: forall t m
+     . ( DomBuilder t m
+       , MonadJSM m
+       , GhcjsDomSpace ~ DomBuilderSpace m
+       , MonadHold t m
+       , MonadFix m
+       )
   => Maybe Integer
   -> Maybe Integer
   -> InputElementConfig EventResult t (DomBuilderSpace m)
   -> m (InputElement EventResult (DomBuilderSpace m) t, Event t Integer)
 uiIntInputElement mmin mmax cfg = do
-    (r, _, input) <- uiCorrectingInputElement (tread . fixNum) sanitize (const Nothing) tshow $ cfg & initialAttributes %~
-      ((<> numberAttrs) . addInputElementCls . addNoAutofillAttrs)
+    (r, _, input) <- uiCorrectingInputElement (tread . fixNum) sanitize (const Nothing) tshow $ cfg
+      & initialAttributes %~ ((<> numberAttrs) . addInputElementCls . addNoAutofillAttrs)
+      & inputElementConfig_elementConfig . elementConfig_eventSpec %~ preventUpAndDownArrow @m
+    preventScrollWheel $ _inputElement_raw r
 
     pure (r
           { _inputElement_value = fmap fixNum $ _inputElement_value r
@@ -847,12 +854,8 @@ uiGasPriceInputField
        , Event t GasPrice
        )
 uiGasPriceInputField conf = dimensionalInputFeedbackWrapper (Just "KDA") $ do
-  (i, d, e) <- uiNonnegativeRealWithPrecisionInputElement maxCoinPrecision (GasPrice . ParsedDecimal) $ conf
+  uiNonnegativeRealWithPrecisionInputElement maxCoinPrecision (GasPrice . ParsedDecimal) $ conf
     & initialAttributes %~ addToClassAttr "input-units"
-    & inputElementConfig_elementConfig . elementConfig_eventSpec %~ preventUpAndDownArrow @m
-  preventScrollWheel $ _inputElement_raw i
-  pure (i, d, e)
-
 
 -- | Let the user pick a chain id.
 userChainIdSelect
