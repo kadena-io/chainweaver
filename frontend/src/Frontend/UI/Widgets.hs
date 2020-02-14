@@ -45,7 +45,6 @@ module Frontend.UI.Widgets
   , uiInputElement
   , uiTextAreaElement
   , uiCorrectingInputElement
-  , uiRealInputElement
   , uiNonnegativeRealWithPrecisionInputElement
   , uiIntInputElement
   , uiSlider
@@ -247,17 +246,6 @@ uiInputElement
   => InputElementConfig er t (DomBuilderSpace m)
   -> m (InputElement er (DomBuilderSpace m) t)
 uiInputElement cfg = inputElement $ cfg & initialAttributes %~ (addInputElementCls . addNoAutofillAttrs)
-
--- | uiInputElement which should always provide a proper real number.
---
---   In particular it will always have a decimal point in it.
-uiRealInputElement
-  :: DomBuilder t m
-  => InputElementConfig er t (DomBuilderSpace m)
-  -> m (InputElement er (DomBuilderSpace m) t)
-uiRealInputElement cfg = do
-    inputElement $ cfg & initialAttributes %~
-        (<> ("type" =: "number")) . addInputElementCls . addNoAutofillAttrs
 
 uiCorrectingInputElement
   :: forall t m a explanation
