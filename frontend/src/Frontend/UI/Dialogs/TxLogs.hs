@@ -8,7 +8,7 @@ module Frontend.UI.Dialogs.TxLogs
   ( uiTxLogs
   ) where
 
-import Control.Lens (iforM_)
+import Control.Lens (iforM_, (<&>))
 import Control.Monad (void)
 
 import Reflex
@@ -108,10 +108,13 @@ uiTxLogs fileFFI _model _onExtClose = do
     (onFileErr, onContentsReady) <- fmap fanEither $ performEvent $
       liftIO (Api._transactionLogger_exportFile txLogger) <$ onExport
 
-    onDeliveredFile <- _fileFFI_deliverFile fileFFI onContentsReady
+    onDeliveredFileOk <- _fileFFI_deliverFile fileFFI onContentsReady
 
     _ <- runWithReplace blank $ leftmost
-      [ text "Transaction Log Exported!" <$ onDeliveredFile
+      [ onDeliveredFileOk <&> \case
+          True -> text "Transaction Log Exported!"
+          False -> text "Something went wrong, please check the destination and try again."
+
       , text . Text.pack <$> onFileErr
       ]
 

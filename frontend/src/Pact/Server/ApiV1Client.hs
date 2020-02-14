@@ -22,9 +22,6 @@ module Pact.Server.ApiV1Client
   , logTransactionFile
   ) where
 
-import Debug.Trace (traceShowId)
-
-
 import Control.Lens
 import Control.Monad.IO.Class
 import Control.Monad.Primitive
@@ -32,12 +29,11 @@ import Control.Monad.Reader hiding (local)
 import Control.Monad.Except
 import Control.Exception (try, displayException)
 import Control.Monad.Ref
-import Data.Aeson (ToJSON, FromJSON)
 import Data.Coerce
 import Data.Foldable (for_)
 import Data.Proxy
 import Data.Text (Text)
-import Data.Time (UTCTime, getCurrentTime)
+import Data.Time (getCurrentTime)
 import Language.Javascript.JSaddle (MonadJSM)
 import Obelisk.Configs
 import Obelisk.Route.Frontend
@@ -51,7 +47,6 @@ import Servant.API
 import Servant.Client.Core hiding (Client)
 import Servant.Client.JSaddle hiding (Client)
 import qualified Data.Aeson as Aeson
-import qualified Data.Aeson.Types as Aeson
 import qualified Data.Aeson.Text as Aeson
 import qualified Data.ByteString as BS
 import qualified Data.ByteString.Char8 as BS8
@@ -79,6 +74,9 @@ import qualified Pact.Types.Util as Pact
 import qualified Pact.Types.Hash as Pact
 import Pact.Types.ChainId (ChainId)
 
+import Pact.Server.ApiClient.V1 (CommandLog (..))
+import qualified Pact.Server.ApiClient.V1 as Latest
+
 data TransactionLogger = TransactionLogger
   { _transactionLogger_appendLog :: CommandLog -> IO ()
   , _transactionLogger_loadFirstNLogs :: Int -> IO (Either String (TimeLocale, [CommandLog]))
@@ -100,7 +98,10 @@ apiV1Client = ApiV1Client
       url <- asks baseUrl
       timestamp <- liftIO getCurrentTime
       rqkeys <- sendF batch
-
+      -- | Commands are logged with the time they were sent and the node URL they were
+      -- sent to. We only define 'toJSON' for the current version, thus only write
+      -- logs in the latest version, but we allow parsing older versions automatically
+      -- with 'commandLogParsers'.
       for_ commands $ \command -> liftIO $ _transactionLogger_appendLog txnLogger $ CommandLog
         { _commandLog_command = command
         , _commandLog_sender = sender
@@ -118,81 +119,11 @@ apiV1Client = ApiV1Client
   where
     sendF :<|> pollF :<|> listenF :<|> localF = clientIn apiV1API (Proxy :: Proxy m)
 
--- | Commands are logged with the time they were sent and the node URL they were
--- sent to. We only define 'toJSON' for the current version, thus only write
--- logs in the latest version, but we allow parsing older versions automatically
--- with 'commandLogParsers'.
-data CommandLog = CommandLog
-  { _commandLog_timestamp :: UTCTime
-  , _commandLog_sender :: Text
-  , _commandLog_chain :: ChainId
-  , _commandLog_requestKey :: RequestKey
-  , _commandLog_url :: Text
-  , _commandLog_command :: Command Text
-  } deriving (Eq, Show)
-
-instance ToJSON CommandLog where
-  toJSON = encodeCommandLogV1
-
-encodeCommandLogV1 :: CommandLog -> Aeson.Value
-encodeCommandLogV1 cl = Aeson.object
-  [ "version" Aeson..= commandLogCurrentVersion
-  , "sender" Aeson..= _commandLog_sender cl
-  , "chain" Aeson..= _commandLog_chain cl
-  , "request_key" Aeson..= _commandLog_requestKey cl
-  , "timestamp" Aeson..= _commandLog_timestamp cl
-  , "url" Aeson..= _commandLog_url cl
-  , "command" Aeson..= _commandLog_command cl
-  ]
-
--- Do we really need to keep this around ?
--- encodeCommandLogV0 :: CommandLog -> Aeson.Value
--- encodeCommandLogV0 cl = Aeson.object
---   [ "version" Aeson..= commandLogCurrentVersion
---   , "timestamp" Aeson..= _commandLog_timestamp cl
---   , "url" Aeson..= _commandLog_url cl
---   , "command" Aeson..= _commandLog_command cl
---   ]
-
-instance FromJSON CommandLog where
-  parseJSON = Aeson.withObject "CommandLog" $ \o -> do
-    version <- o Aeson..: "version"
-    case commandLogParsers ^? ix version of
-      Nothing -> fail $ "Unexpected version: " <> show version
-      Just parse -> parse o
-
 commandLogCurrentVersion :: Int
-commandLogCurrentVersion = pred $ length commandLogParsers
+commandLogCurrentVersion = Latest.versionNumber
 
 commandLogFilename :: FilePath
 commandLogFilename = "chainweaver_transaction_log"
-
--- | Add newer versions to the end of this list
-commandLogParsers :: [Aeson.Object -> Aeson.Parser CommandLog]
-commandLogParsers =
-  [ parseCommandLogV0
-  , parseCommandLogV1
-  ]
-
-parseCommandLogV0 :: Aeson.Object -> Aeson.Parser CommandLog
-parseCommandLogV0 o = do
-  timestamp <- o Aeson..: "timestamp"
-  url <- o Aeson..: "url"
-  command <- o Aeson..: "command"
-  pure $ CommandLog
-    { _commandLog_timestamp = timestamp
-    , _commandLog_url = url
-    , _commandLog_command = command
-    }
-
-parseCommandLogV1 :: Aeson.Object -> Aeson.Parser CommandLog
-parseCommandLogV1 o = CommandLog
-  <$> o Aeson..: "timestamp"
-  <*> o Aeson..: "sender"
-  <*> o Aeson..: "chain"
-  <*> o Aeson..: "request_key"
-  <*> o Aeson..: "url"
-  <*> o Aeson..: "command"
 
 class HasTransactionLogger m where
   askTransactionLogger :: m TransactionLogger
@@ -277,7 +208,7 @@ logTransactionStdout = TransactionLogger
 logTransactionFile :: FilePath -> TransactionLogger
 logTransactionFile f = TransactionLogger
   { _transactionLogger_appendLog =
-      LT.appendFile f . (<> "\n") . traceShowId . Aeson.encodeToLazyText
+      LT.appendFile f . (<> "\n") . Aeson.encodeToLazyText
 
   , _transactionLogger_loadFirstNLogs = \n -> runExceptT $ do
       logmsg $ printf "Loading logs from: %s" f
