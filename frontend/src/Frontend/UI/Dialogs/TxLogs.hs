@@ -1,4 +1,5 @@
 {-# LANGUAGE ConstraintKinds #-}
+{-# LANGUAGE RecursiveDo #-}
 {-# LANGUAGE QuasiQuotes #-}
 -- |
 -- Copyright   :  (C) 2018 Kadena
@@ -8,7 +9,7 @@ module Frontend.UI.Dialogs.TxLogs
   ( uiTxLogs
   ) where
 
-import Control.Lens (iforM_, (<&>))
+import Control.Lens (iforM_, (^.))
 import Control.Monad (void)
 
 import Reflex
@@ -102,22 +103,23 @@ uiTxLogs fileFFI _model _onExtClose = do
           td "tx-log-row__request-key" $ elClass "span" "request-key-text" $ text
             $ Pact.hashToText $ Pact.unRequestKey $ Api._commandLog_requestKey cmdLog
 
-  modalFooter $ do
-    onExport <- fmap fst $ runWithReplace (pure never) $ ffor onLogLoad $ \case
-      Right (_, xs) | not (null xs) -> confirmButton def "Export Full Transaction Log"
-      _ -> pure never
+  _ <- modalFooter $
+    exportButton txLogger
 
-    (onFileErr, onContentsReady) <- fmap fanEither $ performEvent $
-      liftIO (Api._transactionLogger_exportFile txLogger) <$ onExport
+  pure (mempty, onClose)
+  where
+    exportButton txlog = mdo
+      let cfg' = btnCfgPrimary & uiButtonCfg_title .~ pure (Just "Export Full Transaction Log")
+      status <- holdDyn "fa-download" $ ffor (leftmost [False <$ onFileErr, onDeliveredFileOk])
+        $ bool "tx-log-export-fail fa-times" "tx-log-export-success fa-check"
 
-    onDeliveredFileOk <- _fileFFI_deliverFile fileFFI onContentsReady
+      (onFileErr, onContentsReady) <- fmap fanEither $ performEvent $
+        liftIO (Api._transactionLogger_exportFile txlog) <$ onClick
 
-    _ <- runWithReplace blank $ leftmost
-      [ onDeliveredFileOk <&> \case
-          True -> text "Transaction Log Exported!"
-          False -> text "Something went wrong, please check the destination and try again."
+      onDeliveredFileOk <- _fileFFI_deliverFile fileFFI onContentsReady
 
-      , text . Text.pack <$> onFileErr
-      ]
+      onClick <- uiButtonDyn cfg' $ do
+        dynText $ ffor (cfg' ^. uiButtonCfg_title) fold
+        elDynClass "i" ("fa fa-fw tx-log-export-status " <> status) blank
 
-    pure (mempty, onClose)
+      pure ()
