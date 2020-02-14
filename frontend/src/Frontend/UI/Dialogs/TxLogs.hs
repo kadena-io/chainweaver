@@ -72,8 +72,8 @@ uiTxLogs fileFFI _model _onExtClose = do
           mkCol "10%"
           mkCol "40%"
           mkCol "20%"
-          mkCol "15%"
-          mkCol "15%"
+          mkCol "20%"
+          mkCol "10%"
         -- Headings
         el "thead" $ el "tr" $ traverse_ mkHeading $
           [ ""
