@@ -49,10 +49,9 @@ uiTxLogs fileFFI _model _onExtClose = do
   txLogger <- Api.askTransactionLogger
   pb <- getPostBuild
   onClose <- modalHeader $ text "Transaction Log"
+  onLogLoad <- performEvent $ liftIO (Api._transactionLogger_loadFirstNLogs txLogger 10) <$ pb
 
   divClass "modal__main key-details" $ do
-    onLogLoad <- performEvent $ liftIO (Api._transactionLogger_loadFirstNLogs txLogger 10) <$ pb
-
     let
       showIndex i = let itxt = Pact.tShow i in
         if Text.length itxt < 2 then
@@ -104,7 +103,10 @@ uiTxLogs fileFFI _model _onExtClose = do
             $ Pact.hashToText $ Pact.unRequestKey $ Api._commandLog_requestKey cmdLog
 
   modalFooter $ do
-    onExport <- confirmButton def "Export Full Transaction Log"
+    onExport <- fmap fst $ runWithReplace (pure never) $ ffor onLogLoad $ \case
+      Right (_, xs) | not (null xs) -> confirmButton def "Export Full Transaction Log"
+      _ -> pure never
+
     (onFileErr, onContentsReady) <- fmap fanEither $ performEvent $
       liftIO (Api._transactionLogger_exportFile txLogger) <$ onExport
 

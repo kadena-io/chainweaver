@@ -62,21 +62,14 @@ import qualified Data.Text.Encoding as T
 import qualified Data.Text.Encoding.Error as T
 import qualified Data.Text.Lazy.IO as LT
 import qualified Data.List.NonEmpty as NE
-import qualified Data.Map as Map
 import qualified Control.Monad.Reader as Reader
 
 import Text.Printf (printf)
-
-import qualified Data.Csv as Csv
-import qualified Data.Csv.Builder as Csv
 
 import Data.Time (TimeLocale)
 import System.Locale.Read (getCurrentLocale)
 import qualified System.Directory as Dir
 
-import qualified Pact.Types.Command as Pact
-import qualified Pact.Types.Util as Pact
-import qualified Pact.Types.Hash as Pact
 import Pact.Types.ChainId (ChainId)
 
 import Pact.Server.ApiClient.V1 (CommandLog (..))
@@ -240,30 +233,5 @@ createCommandLogExportFileV1 fp = runExceptT $ do
   let logFilePath = fp
       exportFilePath = fp <> "_" <> show commandLogCurrentVersion
   xs <- ExceptT $ traverse Aeson.eitherDecodeStrict . BS8.lines <$> BS.readFile logFilePath
-  let contents = BSL.toStrict $ BSL.toLazyByteString $ ifoldMap mkLogLine xs
+  let contents = BSL.toStrict $ BSL.toLazyByteString $ ifoldMap Latest.exportCommandLog xs
   pure (exportFilePath, T.decodeUtf8With T.lenientDecode contents)
-  where
-    header = Csv.header
-      [ "index"
-      , "timestamp"
-      , "sender"
-      , "chain"
-      , "requestKey"
-      , "url"
-      , "command_payload"
-      , "command_sigs"
-      , "command_hash"
-      ]
-
-    mkLogLine :: Int -> CommandLog -> BSL.Builder
-    mkLogLine i cl = Csv.encodeNamedRecord header $ Map.fromList
-      [ ("index" :: BSL.ByteString, Pact.tShow i)
-      , ("timestamp", Pact.tShow $ _commandLog_timestamp cl)
-      , ("sender", _commandLog_sender cl)
-      , ("chain", Pact.tShow $ _commandLog_chain cl)
-      , ("requestKey", Pact.hashToText $ Pact.unRequestKey $ _commandLog_requestKey cl)
-      , ("url", _commandLog_url cl)
-      , ("command_payload", Pact._cmdPayload $ _commandLog_command cl)
-      , ("command_sigs", Pact.tShow $ fmap Pact._usSig $ Pact._cmdSigs $ _commandLog_command cl)
-      , ("command_hash", Pact.tShow $ Pact._cmdHash $ _commandLog_command cl)
-      ]

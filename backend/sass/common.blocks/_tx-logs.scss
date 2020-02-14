@@ -8,20 +8,22 @@
 
 .tx-logs .table-row {
   border-top: 1px solid;
+
+  overflow: hidden;
+  white-space: nowrap;
 }
 
 .tx-logs .table__cell {
   padding-top: 12px;
   padding-bottom: 12px;
 
-  // &:first-child {
-  //   border-left: 1px solid;
-  // }
-  // &:last-child {
-  //   border-right: 1px solid;
-  // }
+  .tx-log-row__request-key {
+    text-overflow: ellipsis;
+  }
 }
 
 .tx-log-row__ix {
   text-align: center;
+  color: $counter-color;
+  font-family: WorkSans-Bold;
 }
