@@ -379,9 +379,11 @@ restoreFromImport fileFFI backWF eBack = nagScreen
       let disabled = isNothing <$> dmValidForm
       dErr <- holdDyn Nothing (leftmost [Just <$> eImportErr, Nothing <$ _inputElement_input pwInput])
       (eSubmit, (dFileSelected, pwInput)) <- setupForm "" "Import File" disabled $ mdo
+        ePb <- getPostBuild
         (selectElt, _) <- elClass' "div" "setup__recover_import_file" $
           dynText $ ffor dFileSelected $ maybe "Select a file" (T.pack . fst)
-        performEvent_ $ liftJSM (_fileFFI_openFileDialog fileFFI FileType_Import) <$ domEvent Click selectElt
+        performEvent_ $ liftJSM (_fileFFI_openFileDialog fileFFI FileType_Import) <$
+          ((domEvent Click selectElt) <> ePb)
         dFileSelected <- holdDyn Nothing (Just <$> _fileFFI_externalFileOpened fileFFI)
         pw <- uiPassword (setupClass "password-wrapper") (setupClass "password") "Enter import wallet password"
 
