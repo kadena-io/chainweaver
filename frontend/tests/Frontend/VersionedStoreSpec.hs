@@ -39,7 +39,7 @@ import Frontend.Storage.InMemoryStorage
 import qualified Frontend.VersionedStore.V0 as V0
 import qualified Frontend.VersionedStore.V0.Wallet as V0
 import qualified Frontend.VersionedStore.V1 as V1
-import Frontend.VersionedStore (versioner)
+import Frontend.VersionedStore (VersionedStorage(..),versionedStorage)
 
 type TestPrv = Text
 
@@ -207,8 +207,8 @@ expectedAccounts =
     , (uncheckedNetworkName "testnet", testnetmap)
     ]
 
-testVersioner :: (HasCrypto TestPrv m, HasStorage m, Monad m) => StorageVersioner m (V1.StoreFrontend TestPrv)
-testVersioner = versioner
+testVersioner :: (HasCrypto TestPrv m, HasStorage m, Monad m) => VersionedStorage m (V1.StoreFrontend TestPrv)
+testVersioner = versionedStorage
 
 instance HasCrypto TestPrv InMemoryStorage where
   cryptoGenKey n = do
@@ -225,7 +225,7 @@ test_v0ToV1Upgrade = testCaseSteps "V0 to V1 Upgrade" $ \step -> do
   let v = testVersioner
   step "Loading test data into 'InMemoryStorage'..."
   ims@(localRef, sessionRef) <- inMemoryStorageFromTestData
-    (_storageVersioner_metaPrefix v)
+    (_versionedStorage_metaPrefix v)
     (Proxy @(V0.StoreFrontend TestPrv))
     0
     path
@@ -233,7 +233,7 @@ test_v0ToV1Upgrade = testCaseSteps "V0 to V1 Upgrade" $ \step -> do
 
   step "Running versioner upgrade..."
   (sn, pm, ns, sf, ks, as) <- flip runInMemoryStorage ims $ do
-    _storageVersioner_upgrade v
+    _versionedStorage_upgradeStorage v
     sn <- getItemStorage localStorage V1.StoreFrontend_Network_SelectedNetwork
     pm <- getItemStorage localStorage V1.StoreFrontend_Network_PublicMeta
     ns <- getItemStorage localStorage V1.StoreFrontend_Network_Networks
@@ -281,9 +281,9 @@ test_v0ToV1Upgrade = testCaseSteps "V0 to V1 Upgrade" $ \step -> do
   pure ()
 
   where
-    path = "tests" </> "Frontend" </> "StoreSpec.files" </> "V0"
+    path = "tests" </> "Frontend" </> "VersionedStoreSpec.files" </> "V0"
 
 tests :: TestTree
-tests = testGroup "StoreSpec"
+tests = testGroup "VersionedStoreSpec"
   [ test_v0ToV1Upgrade
   ]

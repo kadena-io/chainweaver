@@ -130,12 +130,6 @@ library
                  , Frontend.Storage
                  , Frontend.Storage.Class
                  , Frontend.Storage.Browser
-                 , Frontend.Store
-                 , Frontend.Store.MigrationUtils
-                 , Frontend.Store.TH
-                 , Frontend.Store.V0
-                 , Frontend.Store.V0.Wallet
-                 , Frontend.Store.V1
                  , Frontend.UI.Button
                  , Frontend.UI.DeploymentSettings
                  , Frontend.UI.Dialogs.CallFunction
@@ -143,8 +137,9 @@ library
                  , Frontend.UI.Dialogs.CreateGist
                  , Frontend.UI.Dialogs.CreatedGist
                  , Frontend.UI.Dialogs.DeployConfirmation
-                 , Frontend.UI.Dialogs.NetworkEdit
+                 , Frontend.UI.Dialogs.ExportWallet
                  , Frontend.UI.Dialogs.LogoutConfirmation
+                 , Frontend.UI.Dialogs.NetworkEdit
                  , Frontend.UI.Dialogs.Receive
                  , Frontend.UI.Dialogs.Send
                  , Frontend.UI.Dialogs.Signing
@@ -171,6 +166,12 @@ library
                  , Frontend.UI.Widgets.AccountName
                  , Frontend.UI.Widgets.Helpers
                  , Frontend.TxBuilder
+                 , Frontend.VersionedStore
+                 , Frontend.VersionedStore.MigrationUtils
+                 , Frontend.VersionedStore.TH
+                 , Frontend.VersionedStore.V0
+                 , Frontend.VersionedStore.V0.Wallet
+                 , Frontend.VersionedStore.V1
                  , Frontend.Wallet
                  , Reflex.Class.Extended
                  , Reflex.Dom.ACE.Extended
@@ -236,8 +237,8 @@ test-suite tests
                , Frontend.Storage.InMemoryStorage
                , Frontend.Storage.InMemoryStorageSpec
                , Frontend.StorageSpec
-               , Frontend.StoreSpec
-               , Frontend.StoreTestKey
+               , Frontend.VersionedStoreSpec
+               , Frontend.VersionedStoreTestKey
                , TestUtils
   build-depends: base
                , frontend

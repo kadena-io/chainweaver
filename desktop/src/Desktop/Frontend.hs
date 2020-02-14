@@ -110,8 +110,8 @@ desktop = Frontend
 deliverFile
   :: (MonadIO (Performable m), PerformEvent t m)
   => Event t (FilePath, Text)
-  -> m (Event t ())
-deliverFile = performEvent . fmap (liftIO . uncurry T.writeFile)
+  -> m (Event t Bool)
+deliverFile = performEvent . fmap (liftIO . (True <$) . uncurry T.writeFile)
 
 
 data LockScreen a where
@@ -211,7 +211,9 @@ bipWallet fileFFI mkAppCfg = do
                 eExport <- performEvent $ doExport <$> (Password <$> bOldPw) <@> (Password <$> ePw)
                 let (eErrExport, eGoodExport) = fanEither eExport
                 eFileDone <- _fileFFI_deliverFile frontendFileFFI eGoodExport
-                pure $ (Left <$> eErrExport) <> (Right <$> eFileDone)
+                pure $
+                  (Left <$> eErrExport)
+                  <> (bool (Left ExportWalletError_FileNotWritable) (Right ()) <$> eFileDone)
               }
             }
 

@@ -9,7 +9,7 @@ module Desktop.App where
 
 import Control.Monad.Logger (LogStr,LogLevel)
 import Control.Concurrent
-import Control.Exception (bracket, try)
+import Control.Exception (bracket, try, catch)
 import Control.Monad.IO.Class
 import Data.String (IsString(..))
 import Language.Javascript.JSaddle.Types (JSM)
@@ -48,6 +48,7 @@ data AppFFI = AppFFI
   , _appFFI_moveToBackground :: IO ()
   , _appFFI_moveToForeground :: IO ()
   , _appFFI_global_openFileDialog :: FileType -> IO ()
+  , _appFFI_global_dirSelectDialog :: (FilePath -> IO ()) -> IO ()
   , _appFFI_global_getStorageDirectory :: IO String
   , _appFFI_global_logFunction :: LogLevel -> LogStr -> IO ()
   }
@@ -58,10 +59,19 @@ getUserLibraryPath ffi = liftIO $ do
   Directory.createDirectoryIfMissing True lib
   pure lib
 
--- TODO: Put something into FFI for a system dialog that chooses a directory
--- for the user to choose first
-deliverFile :: (Reflex t, Applicative m) => Event t (FilePath, Text) -> m (Event t ())
-deliverFile _ = pure never
+deliverFile
+  :: (TriggerEvent t m, MonadIO (Performable m), PerformEvent t m)
+  => AppFFI
+  -> Event t (FilePath, Text) -- inputEvent
+  -> m (Event t Bool)
+deliverFile appFFI eFile = do
+  performEventAsync $ ffor eFile $ \(fName,fContent) cb ->
+    let doWriteFile dirName =
+          liftIO $ catch ((T.writeFile (dirName </> fName) fContent) *> cb True) $ \(e :: IOError) -> do
+            putStrLn $ "Error '" <> show e <> "' exporting file: " <> show fName <> " to  " <> dirName
+            cb False
+    in liftIO (_appFFI_global_dirSelectDialog appFFI doWriteFile)
+
 
 -- | Get a random free port. This isn't quite safe: it is possible for the port
 -- to be grabbed by something else between the use of this function and the
@@ -184,7 +194,7 @@ main' ffi mainBundleResourcePath runHTML = do
           let fileFFI = FileFFI
                 { _fileFFI_openFileDialog = liftIO . _appFFI_global_openFileDialog ffi
                 , _fileFFI_externalFileOpened = fileOpened
-                , _fileFFI_deliverFile = deliverFile
+                , _fileFFI_deliverFile = deliverFile ffi
                 }
           let appCfg enabledSettings = AppCfg
                 { _appCfg_gistEnabled = False
