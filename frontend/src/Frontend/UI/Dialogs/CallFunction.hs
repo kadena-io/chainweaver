@@ -228,7 +228,7 @@ funTypeInput json = \case
     TyPrim TyDecimal -> mkDecimalInput
     -- Not working properly:
     {- TyPrim TyTime -> mkInput "datetime-local" "" -}
-    TyPrim TyTime -> mkInput "text" ""
+    TyPrim TyTime -> mkInput "text" "" def
     TyPrim TyBool -> mkCheckbox False
     TyPrim TyString -> mkTextInput
     TyPrim (TyGuard (Just GTyKeySet)) -> keysetSelector json
@@ -238,12 +238,12 @@ funTypeInput json = \case
       pure r
   where
     mkTextInput :: m (Dynamic t Text)
-    mkTextInput = fmap (surroundWith "\"" . T.dropAround (=='\"')) <$> mkInput "text" ""
+    mkTextInput = fmap (surroundWith "\"" . T.dropAround (=='\"')) <$> mkInput "text" "" def
       where
         surroundWith s x = s <> x <> s
 
     mkDecimalInput :: m (Dynamic t Text)
-    mkDecimalInput = fmap fixNum <$> mkInput "number" "0.0"
+    mkDecimalInput = fmap fixNum <$> mkInput "number" "0.0" def
       where
         fixNum x = if T.isInfixOf "." x then x else x <> ".0"
 
@@ -305,14 +305,10 @@ funTypeInput json = \case
       in
         _textAreaElement_value <$> textAreaElement cfg
 
-    mkInput :: Text -> Text -> m (Dynamic t Text)
-    mkInput iType iVal =
-      let
-        cfg = def
-          & initialAttributes .~ ("type" =: iType <> "class" =: "labeled-input__input input_type_secondary")
-          & inputElementConfig_initialValue .~ iVal
-      in
-        _inputElement_value <$> uiInputElement cfg
+    mkInput :: Text -> Text -> InputElementConfig er t (DomBuilderSpace m) -> m (Dynamic t Text)
+    mkInput iType iVal cfg = fmap _inputElement_value $ uiInputElement $ cfg
+      & initialAttributes .~ ("type" =: iType <> "class" =: "labeled-input__input input_type_secondary")
+      & inputElementConfig_initialValue .~ iVal
 
 keysetSelector :: MonadWidget t m => JsonData t -> m (Dynamic t Text)
 keysetSelector json = do
