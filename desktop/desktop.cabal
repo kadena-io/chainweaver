@@ -74,7 +74,6 @@ library
     , Desktop.Setup
     , Desktop.SigningApi
     , Desktop.Storage.File
-    , Desktop.Storage.SQLite
     , Desktop.Syslog
     , Desktop.Util
   ghc-options: -Wall
