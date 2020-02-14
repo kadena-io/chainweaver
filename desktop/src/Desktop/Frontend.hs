@@ -34,7 +34,7 @@ import Data.Text (Text)
 import Data.Time (NominalDiffTime, getCurrentTime, addUTCTime)
 import Data.Traversable (for)
 import Language.Javascript.JSaddle (liftJSM)
-import Pact.Server.ApiV1Client (HasTransactionLogger, runTransactionLoggerT, logTransactionFile)
+import Pact.Server.ApiClient (HasTransactionLogger, runTransactionLoggerT, logTransactionFile)
 import Reflex.Dom.Core
 import qualified Cardano.Crypto.Wallet as Crypto
 import qualified Data.Text.Encoding as T

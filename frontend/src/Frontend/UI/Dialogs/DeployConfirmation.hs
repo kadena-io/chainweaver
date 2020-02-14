@@ -73,7 +73,7 @@ import Reflex.Extended (tagOnPostBuild)
 import Reflex.Network.Extended (Flattenable)
 import Reflex.Network.Extended (flatten)
 import qualified Data.Text as T
-import qualified Pact.Server.ApiV1Client as Api
+import qualified Pact.Server.ApiClient as Api
 import qualified Pact.Types.API as Api
 import qualified Pact.Types.Command as Pact
 import qualified Servant.Client.JSaddle as S

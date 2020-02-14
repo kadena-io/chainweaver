@@ -7,13 +7,18 @@
 {-# LANGUAGE QuasiQuotes #-}
 
 -- Limit API to the parts that are common to chainweb and `pact -s`.
-module Pact.Server.ApiV1Client
-  ( ApiV1API
-  , ApiV1Client(..)
+module Pact.Server.ApiClient
+  ( -- * Named V1 from Pact
+    ApiV1API
+  , ApiClient(..)
   , apiV1Client
+
+    -- * Command log structures, versioned in submodules
   , CommandLog(..)
   , commandLogCurrentVersion
   , commandLogFilename
+
+    -- * Transaction specific logging impl
   , HasTransactionLogger(..)
   , TransactionLoggerT(..)
   , TransactionLogger (..)
@@ -83,7 +88,7 @@ data TransactionLogger = TransactionLogger
   , _transactionLogger_exportFile :: IO (Either String (FilePath, Text))
   }
 
-data ApiV1Client m = ApiV1Client
+data ApiClient m = ApiClient
   { send :: TransactionLogger -> Text -> ChainId -> SubmitBatch -> m RequestKeys
   , poll :: Poll -> m PollResponses
   , listen :: ListenerRequest -> m ListenResponse
@@ -92,16 +97,14 @@ data ApiV1Client m = ApiV1Client
 
 {- apiV1API :: Proxy ApiV1API -}
 {- apiV1API = Proxy -}
-apiV1Client :: forall m. (MonadIO m, MonadReader ClientEnv m, RunClient m) => ApiV1Client m
-apiV1Client = ApiV1Client
+apiV1Client :: forall m. (MonadIO m, MonadReader ClientEnv m, RunClient m) => ApiClient m
+apiV1Client = ApiClient
   { send = \txnLogger sender chain batch@(SubmitBatch commands) -> do
       url <- asks baseUrl
       timestamp <- liftIO getCurrentTime
       rqkeys <- sendF batch
       -- | Commands are logged with the time they were sent and the node URL they were
-      -- sent to. We only define 'toJSON' for the current version, thus only write
-      -- logs in the latest version, but we allow parsing older versions automatically
-      -- with 'commandLogParsers'.
+      -- sent to. We only define 'toJSON' for the current version, thus only write logs in the latest version.
       for_ commands $ \command -> liftIO $ _transactionLogger_appendLog txnLogger $ CommandLog
         { _commandLog_command = command
         , _commandLog_sender = sender

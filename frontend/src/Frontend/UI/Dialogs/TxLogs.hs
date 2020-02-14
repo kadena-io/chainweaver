@@ -29,7 +29,7 @@ import qualified Pact.Types.Util as Pact
 import qualified Pact.Types.Hash as Pact
 import qualified Pact.Types.ChainId as Pact
 
-import qualified Pact.Server.ApiV1Client as Api
+import qualified Pact.Server.ApiClient as Api
 
 type HasUiTxLogModelCfg mConf m t =
   ( Monoid mConf

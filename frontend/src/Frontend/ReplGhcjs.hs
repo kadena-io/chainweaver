@@ -34,7 +34,7 @@ import Obelisk.Route (R)
 import Obelisk.Route.Frontend
 import Pact.Repl
 import Pact.Repl.Types
-import Pact.Server.ApiV1Client (HasTransactionLogger)
+import Pact.Server.ApiClient (HasTransactionLogger)
 import Pact.Types.Lang
 import Reflex
 import Reflex.Dom.ACE.Extended hiding (Annotation (..))

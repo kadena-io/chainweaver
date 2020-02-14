@@ -31,7 +31,7 @@ import qualified Network.HTTP.Client as HTTPClient
 import qualified Snap.Http.Server as Snap
 import qualified System.Directory as Directory
 import qualified System.Environment as Env
-import Pact.Server.ApiV1Client (runTransactionLoggerT, logTransactionFile)
+import Pact.Server.ApiClient (runTransactionLoggerT, logTransactionFile)
 
 import Backend (serveBackendRoute)
 import Common.Route

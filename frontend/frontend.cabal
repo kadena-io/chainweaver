@@ -183,7 +183,7 @@ library
                  , Pact.Server.ApiClient.Helpers
                  , Pact.Server.ApiClient.V0
                  , Pact.Server.ApiClient.V1
-                 , Pact.Server.ApiV1Client
+                 , Pact.Server.ApiClient
 
   ghc-options: -Wall
   default-extensions: ScopedTypeVariables

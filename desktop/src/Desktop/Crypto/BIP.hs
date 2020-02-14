@@ -30,7 +30,7 @@ import Data.Text (Text)
 import Data.Universe.Some.TH
 import Language.Javascript.JSaddle (MonadJSM)
 import Obelisk.Route.Frontend
-import Pact.Server.ApiV1Client (HasTransactionLogger)
+import Pact.Server.ApiClient (HasTransactionLogger)
 import Pact.Types.Util (parseB16TextOnly)
 import Reflex.Dom hiding (fromJSString)
 import Reflex.Host.Class (MonadReflexCreateTrigger)

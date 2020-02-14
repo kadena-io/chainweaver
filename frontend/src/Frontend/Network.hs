@@ -106,7 +106,7 @@ import qualified Text.URI                          as URI
 import qualified Text.URI.Lens                     as URIL
 
 import           Pact.Parse                        (ParsedDecimal (..))
-import           Pact.Server.ApiV1Client
+import           Pact.Server.ApiClient
 import           Pact.Types.API
 import           Pact.Types.Capability
 import           Pact.Types.Command

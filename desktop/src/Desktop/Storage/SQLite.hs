@@ -44,7 +44,7 @@ import Obelisk.Route.Frontend
 import Reflex.Dom.Core
 import Reflex.Host.Class (MonadReflexCreateTrigger)
 
-import Pact.Server.ApiV1Client (HasTransactionLogger)
+import Pact.Server.ApiClient (HasTransactionLogger)
 
 newtype SQLiteStorageT m a = SQLiteStorageT
   { unSQLiteStorageT :: ReaderT (Pool Connection) m a

@@ -33,7 +33,7 @@ import Data.Text (Text)
 import Language.Javascript.JSaddle (MonadJSM)
 import Obelisk.Configs
 import Obelisk.Route.Frontend
-import Pact.Server.ApiV1Client (HasTransactionLogger)
+import Pact.Server.ApiClient (HasTransactionLogger)
 import Reflex.Dom.Core
 import Reflex.Host.Class (MonadReflexCreateTrigger)
 import System.FilePath ((</>))

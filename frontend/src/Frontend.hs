@@ -16,7 +16,7 @@ import qualified GHCJS.DOM.HTMLElement    as HTMLElement
 import qualified GHCJS.DOM.Types          as Types
 import qualified GHCJS.DOM.File           as JSFile
 import           Reflex.Dom.Core
-import Pact.Server.ApiV1Client (runTransactionLoggerT, logTransactionStdout)
+import Pact.Server.ApiClient (runTransactionLoggerT, logTransactionStdout)
 
 import           Obelisk.Frontend
 import           Obelisk.Route.Frontend

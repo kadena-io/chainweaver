@@ -56,7 +56,7 @@ import qualified Data.Map as Map
 import qualified Data.Set as Set
 import qualified Data.Text as T
 import qualified Data.Text.Encoding as T
-import qualified Pact.Server.ApiV1Client as Api
+import qualified Pact.Server.ApiClient as Api
 import qualified Pact.Types.API as Api
 import qualified Pact.Types.Command as Pact
 import qualified Pact.Types.Continuation as Pact

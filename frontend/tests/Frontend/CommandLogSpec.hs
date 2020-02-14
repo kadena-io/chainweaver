@@ -32,7 +32,7 @@ import qualified Data.ByteString.Lazy as LBS
 import qualified Data.Aeson as Aeson
 import qualified Data.Text as T
 
-import Pact.Server.ApiV1Client
+import Pact.Server.ApiClient
 import System.FilePath ((</>))
 import Data.Time
 import qualified Pact.Types.Command as Pact
