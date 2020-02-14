@@ -32,6 +32,11 @@ import           Frontend.ModuleExplorer.Impl (loadEditorFromLocalStorage)
 import           Frontend.ReplGhcjs
 import           Frontend.Storage
 
+main :: IO ()
+main = do
+  let Right validFullEncoder = checkEncoder backendRouteEncoder
+  run $ runFrontend validFullEncoder frontend
+
 frontend :: Frontend (R FrontendRoute)
 frontend = Frontend
   { _frontend_head = do

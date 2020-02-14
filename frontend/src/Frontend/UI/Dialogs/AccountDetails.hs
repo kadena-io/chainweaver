@@ -190,8 +190,10 @@ uiDeleteConfirmation net name = Workflow $ do
   modalMain $ do
     divClass "segment modal__filler" $ do
       dialogSectionHeading mempty "Warning"
-      divClass "group" $
-        text "You are about to remove this account from your wallet"
+      let line = divClass "group" . text
+      line "You are about to remove this account from view in your wallet"
+      line "Note that removing an account from your wallet does not remove any existing accounts from the blockchain."
+      line "To restore this account back into view, simply enter the account's name within the \"Add Account\" dialog."
   modalFooter $ do
     onConfirm <- confirmButton (def & uiButtonCfg_class .~ "account-delete__confirm") "Remove Account"
     let cfg = mempty & walletCfg_delAccount .~ ((net, name) <$ onConfirm)

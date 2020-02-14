@@ -5,6 +5,7 @@
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE RecursiveDo #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE TypeFamilies #-}
@@ -112,8 +113,16 @@ app sidebarExtra fileFFI appCfg = Store.versionedFrontend (Store.versionedStorag
       FrontendRoute_Contracts -> mkPageContent "contracts" $ do
         controlCfg <- controlBar "Contracts" (controlBarRight fileFFI appCfg ideL)
         mainCfg <- elClass "main" "main page__main" $ do
-          uiEditorCfg <- codePanel appCfg "main__left-pane" ideL
-          envCfg <- rightTabBar "main__right-pane" ideL
+          rec
+            let collapseAttrs = ffor open $ \o -> Map.fromList
+                  [ ("class", "main__pane-collapse-button" <> if o then "" else " collapsed")
+                  , ("src", static @"img/double_left_arrow.svg")
+                  , ("title", if o then "Collapse" else "Open")
+                  ]
+            (e, _) <- elDynAttr' "img" collapseAttrs blank
+            open <- toggle True $ domEvent Click e
+          uiEditorCfg <- codePanel appCfg (ffor open $ \o -> "main__left-pane" <> if o then "" else " pane-fullwidth") ideL
+          envCfg <- rightTabBar (ffor open $ \o -> "main__right-pane" <> if o then "" else " pane-collapsed") ideL
           pure $ uiEditorCfg <> envCfg
         pure $ controlCfg <> mainCfg
       FrontendRoute_Resources -> mkPageContent "resources" $ do
@@ -175,8 +184,8 @@ routeIcon = \case
   FrontendRoute_Settings :/ _ -> static @"img/menu/settings.svg"
 
 -- | Code editing (left hand side currently)
-codePanel :: forall r key t m a. (MonadWidget t m, Routed t r m) => AppCfg key t m -> CssClass -> Ide a key t -> m (IdeCfg a key t)
-codePanel appCfg cls m = elKlass "div" (cls <> "pane") $ do
+codePanel :: forall r key t m a. (MonadWidget t m, Routed t r m) => AppCfg key t m -> Dynamic t CssClass -> Ide a key t -> m (IdeCfg a key t)
+codePanel appCfg cls m = elDynKlass "div" (cls <> "pane") $ do
     (e, eCfg) <- wysiwyg $ do
       onNewCode <- tagOnPostBuild $ m ^. editor_code
       let annotations = mapMaybe mkCodeAceAnnotation <$> m ^. editor_annotations

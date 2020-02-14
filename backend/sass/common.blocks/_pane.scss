@@ -16,6 +16,7 @@
 
 // Wrapper for body so scrollbar appears outside the margin.
 .pane__body-wrapper {
+  overflow-x: hidden;
   overflow-y: auto;
   flex-grow: 1;
 }
@@ -27,4 +28,12 @@
 // Prevent the repl from jumping around in the mac app
 .pane__body_heightfix {
   height: auto !important;
+}
+
+.pane-fullwidth {
+  width: 100%;
+}
+
+.pane-collapsed {
+  display: none;
 }
