@@ -86,15 +86,18 @@ uiAddAccountDialog model _onCloseExternal = mdo
     dialogSectionHeading mempty "Add Account"
     divClass "group" $ do
       uiAccountNameInput model Nothing
-  add <- modalFooter $ do
-    confirmButton (def & uiButtonCfg_disabled .~ (isNothing <$> name)) "Add Account"
-  let val = runMaybeT $ do
-        net <- lift $ current $ model ^. network_selectedNetwork
-        n <- MaybeT $ current name
-        pure (net, n)
-      conf = mempty & walletCfg_importAccount .~ tagMaybe val add
-  -- Since this always succeeds, we're okay to close on the add button event
-  return (conf, onClose <> add)
+  modalFooter $ do
+    onCancel <- cancelButton def "Cancel"
+    onAdd <- confirmButton (def & uiButtonCfg_disabled .~ (isNothing <$> name)) "Add"
+    let val = runMaybeT $ do
+          net <- lift $ current $ model ^. network_selectedNetwork
+          n <- MaybeT $ current name
+          pure (net, n)
+        conf = mempty & walletCfg_importAccount .~ tagMaybe val onAdd
+    -- Since this always succeeds, we're okay to close on the add button event
+    return ( conf
+           , onCancel <> onClose <> onAdd
+           )
 
 uiCreateAccountButton :: DomBuilder t m => UiButtonCfg -> m (Event t ())
 uiCreateAccountButton cfg =

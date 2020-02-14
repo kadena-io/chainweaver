@@ -41,6 +41,7 @@ import           Snap                      (Method (POST), Request (..), Snap,
                                             writeBS, writeLBS)
 import qualified Snap
 import qualified Snap.Util.CORS            as CORS
+import           System.Environment        (getArgs)
 import           System.Exit               (exitFailure)
 import           System.IO                 (stderr)
 import qualified Text.Sass                 as Sass
@@ -56,12 +57,20 @@ import           Common.OAuth              (OAuthProvider (..),
                                             buildOAuthConfig', oAuthClientIdPath)
 import           Common.Route
 import           Common.Network
+import           Frontend                  (frontend)
 
 data BackendCfg = BackendCfg
   { _backendCfg_oAuth                :: OAuthConfig OAuthProvider
   , _backendCfg_getOAuthClientSecret :: Maybe (OAuthProvider -> OAuthClientSecret)
   , _backendCfg_manager              :: Manager
   }
+
+main :: IO ()
+main = do
+  runCheck <- not . null . filter (== "check-deployment") <$> getArgs
+  if runCheck
+     then checkDeployment
+     else Ob.runBackend backend frontend
 
 -- | Where to put OAuth related backend configs:
 oAuthBackendCfgPath :: Text
@@ -248,4 +257,3 @@ oAuthErrorToResponse err = do
 
   modifyResponse $ setResponseStatus status (T.encodeUtf8 $ textOAuthError err)
   writeLBS $ Aeson.encode $ (Left err :: Either OAuthError AccessToken)
-

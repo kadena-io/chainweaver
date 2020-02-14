@@ -15,7 +15,7 @@ import qualified GHCJS.DOM.FileReader     as FileReader
 import qualified GHCJS.DOM.HTMLElement    as HTMLElement
 import qualified GHCJS.DOM.Types          as Types
 import qualified GHCJS.DOM.File           as JSFile
-import           Reflex.Dom.Core
+import           Reflex.Dom
 import Pact.Server.ApiClient (runTransactionLoggerT, logTransactionStdout)
 
 import           Obelisk.Frontend
@@ -31,6 +31,11 @@ import           Frontend.Foundation
 import           Frontend.ModuleExplorer.Impl (loadEditorFromLocalStorage)
 import           Frontend.ReplGhcjs
 import           Frontend.Storage
+
+main :: IO ()
+main = do
+  let Right validFullEncoder = checkEncoder backendRouteEncoder
+  run $ runFrontend validFullEncoder frontend
 
 frontend :: Frontend (R FrontendRoute)
 frontend = Frontend

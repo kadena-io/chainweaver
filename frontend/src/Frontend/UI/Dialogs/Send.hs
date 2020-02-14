@@ -373,6 +373,7 @@ sendConfig model initData = Workflow $ do
         dialogSectionHeading mempty  "Transaction Settings"
         (conf, _, _, _) <- divClass "group" $ uiMetaData model Nothing Nothing
         pure (conf, useEntireBalance, txBuilder, amount)
+
       mCaps <- tabPane mempty currentTab SendModalTab_Sign $ do
         dedrecipient <- eitherDyn txBuilder
         fmap join . holdDyn (pure Nothing) <=< dyn $ ffor dedrecipient $ \case
