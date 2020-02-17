@@ -98,6 +98,8 @@ library
                , monad-logger
                , fast-logger
                , witherable
+               , system-locale
+               , cassava
 
   exposed-modules: Frontend
                  , Frontend.AppCfg
@@ -147,6 +149,7 @@ library
                  , Frontend.UI.Dialogs.KeyDetails
                  , Frontend.UI.Dialogs.AddVanityAccount.DefineKeyset
                  , Frontend.UI.Dialogs.AddVanityAccount
+                 , Frontend.UI.Dialogs.TxLogs
                  , Frontend.UI.ErrorList
                  , Frontend.UI.Icon
                  , Frontend.UI.IconGrid
@@ -178,7 +181,10 @@ library
                  , Reflex.Dom.Widget.Resize.Extended
                  , Reflex.Extended
                  , Reflex.Network.Extended
-                 , Pact.Server.ApiV1Client
+                 , Pact.Server.ApiClient.Helpers
+                 , Pact.Server.ApiClient.V0
+                 , Pact.Server.ApiClient.V1
+                 , Pact.Server.ApiClient
 
   ghc-options: -Wall
   default-extensions: ScopedTypeVariables

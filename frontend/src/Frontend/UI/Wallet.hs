@@ -368,7 +368,7 @@ uiKeyItem
   -> Dynamic t (Key key)
   -> m (Event t (KeyDialog key))
 uiKeyItem keyIndex key = trKey $ do
-  td $ dynText $ keyToText <$> _keyPair_publicKey . _key_pair <$> key
+  td $ uiPublicKeyShrunkDyn $ _keyPair_publicKey . _key_pair <$> key
   td $ buttons $ do
     onDetails <- detailsButton (cfg & uiButtonCfg_class <>~ "wallet__table-button--hamburger" <> "wallet__table-button-key")
     pure $ KeyDialog_Details keyIndex <$> current key <@ onDetails

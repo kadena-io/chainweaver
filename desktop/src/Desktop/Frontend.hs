@@ -36,8 +36,8 @@ import Data.Text (Text)
 import Data.Time (NominalDiffTime, getCurrentTime, addUTCTime)
 import Data.Traversable (for)
 import Language.Javascript.JSaddle (liftJSM)
-import Pact.Server.ApiV1Client (HasTransactionLogger, runTransactionLoggerT, logTransactionStdout)
-import Reflex.Dom.Core hiding (Key)
+import Pact.Server.ApiClient (HasTransactionLogger, runTransactionLoggerT, logTransactionFile)
+import Reflex.Dom.Core
 import qualified Cardano.Crypto.Wallet as Crypto
 import qualified Data.Text as T
 import qualified Data.Text.Encoding as T
@@ -45,7 +45,8 @@ import qualified Data.Text.IO as T
 import qualified GHCJS.DOM as DOM
 import qualified GHCJS.DOM.EventM as EventM
 import qualified GHCJS.DOM.GlobalEventHandlers as GlobalEventHandlers
-import System.Directory (getCurrentDirectory)
+
+import System.Directory (getCurrentDirectory, getTemporaryDirectory)
 import System.FilePath ((</>))
 
 import Common.Api (getConfigRoute)
@@ -77,6 +78,7 @@ import Desktop.ImportExport
 import Desktop.Util
 import Desktop.Storage.File
 
+import Pact.Server.ApiClient (commandLogFilename)
 
 -- | This is for development
 -- > ob run --import desktop:Desktop.Frontend --frontend Desktop.Frontend.desktop
@@ -88,10 +90,12 @@ desktop = Frontend
       base <- getConfigRoute
       void $ Frontend.newHead $ \r -> base <> renderBackendRoute backendEncoder r
   , _frontend_body = prerender_ blank $ do
+    logDir <- (<> "/" <> commandLogFilename) <$> liftIO getTemporaryDirectory
+    liftIO $ putStrLn $ "Logging to: " <> logDir
     (signingRequestMVar, signingResponseMVar) <- signingServer
       (pure ()) -- Can't foreground or background things
       (pure ())
-    mapRoutedT (flip runTransactionLoggerT logTransactionStdout . runBrowserStorageT) $ do
+    mapRoutedT (flip runTransactionLoggerT (logTransactionFile logDir) . runBrowserStorageT) $ do
       (fileOpened, triggerOpen) <- Frontend.openFileDialog
       signingRequest <- mvarTriggerEvent signingRequestMVar
       let fileFFI = FileFFI
@@ -226,6 +230,7 @@ bipWallet fileFFI mkAppCfg = do
                   (Left <$> eErrExport)
                   <> (first ExportWalletError_FileNotWritable <$> eFileDone)
               }
+            , _enabledSettings_transactionLog = True
             }
 
           setRoute $ landingPageRoute <$ onLogoutConfirm

@@ -1,0 +1,36 @@
+/*********************************************************************************
+   Ensure classes and structure are created in accordance with the BEM methodology.
+   For more info: https://en.bem.info/methodology/quick-start/
+
+*********************************************************************************/
+
+@import '../include/defs';
+
+.tx-logs .table-row {
+  @include std-border;
+}
+
+.tx-logs .table__cell {
+  padding-top: 12px;
+  padding-bottom: 12px;
+
+  &.tx-log-row__request-key {
+    overflow: hidden;
+    white-space: nowrap;
+
+    .request-key-text {
+      margin-right: 10px;
+      text-overflow: ellipsis;
+    }
+  }
+}
+
+.tx-log-row__ix {
+  text-align: center;
+  color: $counter-color;
+  font-family: WorkSans-Bold;
+}
+
+.tx-log-export-status {
+  margin-left: 1rem;
+}

@@ -30,6 +30,7 @@ data ExportWallet t m = ExportWallet
 data EnabledSettings key t m = EnabledSettings
   { _enabledSettings_changePassword :: Maybe (ChangePassword key t m)
   , _enabledSettings_exportWallet :: Maybe (ExportWallet t m)
+  , _enabledSettings_transactionLog :: Bool
   }
 
 -- The types of files targeted by the open file dialog. Used for filtering in the dialog

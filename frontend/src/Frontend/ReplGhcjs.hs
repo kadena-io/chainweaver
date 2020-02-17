@@ -35,7 +35,7 @@ import Obelisk.Route (R)
 import Obelisk.Route.Frontend
 import Pact.Repl
 import Pact.Repl.Types
-import Pact.Server.ApiV1Client (HasTransactionLogger)
+import Pact.Server.ApiClient (HasTransactionLogger)
 import Pact.Types.Lang
 import Reflex
 import Reflex.Dom.ACE.Extended hiding (Annotation (..))
@@ -133,8 +133,9 @@ app sidebarExtra fileFFI appCfg = Store.versionedFrontend (Store.versionedStorag
       FrontendRoute_Settings -> do
         controlCfg <- controlBar "Settings" (mempty <$ blank)
         mainCfg <- elClass "main" "main page__main" $ do
-          uiSettings (_appCfg_enabledSettings appCfg) ideL
+          uiSettings (_appCfg_enabledSettings appCfg) ideL fileFFI
         pure $ controlCfg <> mainCfg
+
     flattenedCfg <- flatten =<< tagOnPostBuild routedCfg
     pure $ netCfg <> flattenedCfg
 
@@ -155,8 +156,14 @@ app sidebarExtra fileFFI appCfg = Store.versionedFrontend (Store.versionedStorag
     ]
 
 walletSidebar
-  :: (DomBuilder t m, PostBuild t m, Routed t (R FrontendRoute) m, SetRoute t (R FrontendRoute) m, RouteToUrl (R FrontendRoute) m)
-  => m () -> m ()
+  :: ( DomBuilder t m
+     , PostBuild t m
+     , Routed t (R FrontendRoute) m
+     , SetRoute t (R FrontendRoute) m
+     , RouteToUrl (R FrontendRoute) m
+     )
+  => m ()
+  -> m ()
 walletSidebar sidebarExtra = elAttr "div" ("class" =: "sidebar") $ do
   divClass "sidebar__logo" $ elAttr "img" ("src" =: static @"img/logo.png") blank
 

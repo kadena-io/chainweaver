@@ -158,3 +158,10 @@ input[type=number] {
 .define-keyset__external-key-input {
   margin-bottom: 10px;
 }
+
+.input-max-toggle {
+  margin-left: 20px;
+  .checkbox__checkmark {
+    margin-right: 5px;
+  }
+}

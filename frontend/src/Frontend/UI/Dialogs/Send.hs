@@ -20,7 +20,7 @@ module Frontend.UI.Dialogs.Send
   ( uiSendModal
   ) where
 
-import Control.Applicative (liftA2)
+import Control.Applicative (liftA2, (<|>))
 import Control.Concurrent
 import Control.Error.Util (hush)
 import Control.Lens hiding (failover)
@@ -56,7 +56,7 @@ import qualified Data.Map as Map
 import qualified Data.Set as Set
 import qualified Data.Text as T
 import qualified Data.Text.Encoding as T
-import qualified Pact.Server.ApiV1Client as Api
+import qualified Pact.Server.ApiClient as Api
 import qualified Pact.Types.API as Api
 import qualified Pact.Types.Command as Pact
 import qualified Pact.Types.Continuation as Pact
@@ -267,7 +267,7 @@ sameChainTransfer model netInfo keys (fromName, fromChain, fromAcc) (gasPayer, g
   close <- modalHeader $ text "Transaction Status"
   cmd <- buildCmd Nothing networkName pm signingPairs [] code dat pkCaps
   _ <- elClass "div" "modal__main transaction_details" $
-    submitTransactionWithFeedback model cmd fromChain (fmap Right nodeInfos)
+    submitTransactionWithFeedback model cmd fromName fromChain (fmap Right nodeInfos)
   done <- modalFooter $ confirmButton def "Done"
   pure
     ( (mempty, close <> done)
@@ -310,12 +310,12 @@ sendConfig model initData = Workflow $ do
     mInitCrossChainGasPayer = join $ withInitialTransfer (fmap (_crossChainData_recipientChainGasPayer) . _transferData_crossChainData) initData
     mInitAmount = withInitialTransfer _transferData_amount initData
     mainSection currentTab = elClass "div" "modal__main" $ do
-      (conf, txBuilder, amount) <- tabPane mempty currentTab SendModalTab_Configuration $ do
+      (conf, useEntireBalance, txBuilder, amount) <- tabPane mempty currentTab SendModalTab_Configuration $ do
         dialogSectionHeading mempty  "Destination"
         divClass "group" $ transactionDisplayNetwork model
 
         dialogSectionHeading mempty  "Recipient"
-        (txBuilder, amount) <- divClass "group" $ do
+        (txBuilder, amount, useEntireBalance) <- divClass "group" $ do
 
           let displayImmediateFeedback e feedbackMsg showMsg = widgetHold_ blank $ ffor e $ \x ->
                 when (showMsg x) $ mkLabeledView True mempty $ text feedbackMsg
@@ -335,15 +335,26 @@ sendConfig model initData = Workflow $ do
           displayImmediateFeedback (updated decoded) cannotBeReceiverMsg
             $ either (const False) (\ka -> _txBuilder_accountName ka == fromName && _txBuilder_chainId ka == fromChain)
 
-          (_, amount, _) <- mkLabeledInput True "Amount" uiGasPriceInputField
-            (def & inputElementConfig_initialValue .~ (maybe "" tshow mInitAmount))
-            -- We're only interested in the decimal of the gas price
-            <&> over (_2 . mapped . mapped) (\(GasPrice (ParsedDecimal d)) -> d)
+          let
+            balance = _account_status fromAcc ^? _AccountStatus_Exists . accountDetails_balance . to unAccountBalance
 
-          displayImmediateFeedback (updated amount) insufficientFundsMsg $ \ma ->
-            case (ma, _account_status fromAcc) of
-              (Just a, AccountStatus_Exists d) -> a > unAccountBalance (_accountDetails_balance d)
-              (_, _) -> False
+            gasInputWithMaxButton cfg = mdo
+              let projectAmount = over (_2 . mapped . mapped) (\(GasPrice (ParsedDecimal d)) -> d)
+                  attrs = ffor useEntireBalance $ \u -> "disabled" =: ("disabled" <$ u)
+              (_, inputAmount, _) <- fmap projectAmount $ uiGasPriceInputField $ cfg
+                & inputElementConfig_elementConfig . elementConfig_modifyAttributes .~ updated attrs
+              useEntireBalance <- case balance of
+                Nothing -> pure $ pure Nothing
+                Just b -> fmap (\v -> b <$ guard v) . _checkbox_value <$> uiCheckbox "input-max-toggle" False def (text "Max")
+              pure (isJust <$> useEntireBalance, liftA2 (<|>) useEntireBalance inputAmount)
+
+          (useEntireBalance, amount) <- mkLabeledInput True "Amount" gasInputWithMaxButton
+            (def & inputElementConfig_initialValue .~ (maybe "" tshow mInitAmount))
+
+          let insufficientFunds = ffor amount $ \ma -> case (ma, balance) of
+                (Just a, Just b) -> a > b
+                _ -> False
+          displayImmediateFeedback (updated insufficientFunds) insufficientFundsMsg id
 
           let validatedTxBuilder = runExceptT $ do
                 r <- ExceptT $ first (\_ -> "Invalid Tx Builder") <$> decoded
@@ -357,11 +368,11 @@ sendConfig model initData = Workflow $ do
                   throwError insufficientFundsMsg
                 pure a
 
-          pure (validatedTxBuilder, validatedAmount)
+          pure (validatedTxBuilder, validatedAmount, useEntireBalance)
 
         dialogSectionHeading mempty  "Transaction Settings"
-        (conf, _, _) <- divClass "group" $ uiMetaData model Nothing Nothing
-        pure (conf, txBuilder, amount)
+        (conf, _, _, _) <- divClass "group" $ uiMetaData model Nothing Nothing
+        pure (conf, useEntireBalance, txBuilder, amount)
       mCaps <- tabPane mempty currentTab SendModalTab_Sign $ do
         dedrecipient <- eitherDyn txBuilder
         fmap join . holdDyn (pure Nothing) <=< dyn $ ffor dedrecipient $ \case
@@ -371,14 +382,15 @@ sendConfig model initData = Workflow $ do
           Right dka -> do
             toChain <- holdUniqDyn $ _txBuilder_chainId <$> dka
             let isCross = ffor toChain (fromChain /=)
-                gasPayerSection forChain mpayer = do
+                gasPayerSection forChain mpayer accountPredicate = do
                   dyn_ $ ffor2 isCross forChain $ \x c ->
                     dialogSectionHeading mempty $ "Gas Payer" <> if x then " (Chain " <> _chainId c <> ")" else ""
                   divClass "group" $ elClass "div" "segment segment_type_tertiary labeled-input" $ do
                     divClass "label labeled-input__label" $ text "Account Name"
                     let cfg = def & dropdownConfig_attributes .~ pure ("class" =: "labeled-input__input select select_mandatory_missing")
                         chain = fmap Just forChain
-                    uiAccountDropdown' cfg True model (mpayer ^? _Just . _1) chain never
+                        allowAccount = ffor accountPredicate $ \p an acc -> p an acc && fromMaybe False (accountHasFunds acc)
+                    uiAccountDropdown' cfg allowAccount model (mpayer ^? _Just . _1) chain never
 
             dyn_ $ ffor2 isCross toChain $ \x c -> when x $ do
               elClass "h3" ("heading heading_type_h3") $ text "This is a cross chain transfer."
@@ -393,7 +405,9 @@ sendConfig model initData = Workflow $ do
                 [ "This is a multi step operation."
                 , "The coin will leave the sender account immediately, and gas must be paid on the recipient chain in order to redeem the coin."
                 ]
-            fromGasPayer <- gasPayerSection (pure fromChain) mInitFromGasPayer
+            fromGasPayer <- mdo
+              let allowAccount = ffor useEntireBalance $ \useAll an _ -> not $ useAll && fromName == an
+              gasPayerSection (pure fromChain) mInitFromGasPayer allowAccount
             toGasPayer <- fmap join . holdDyn (pure Nothing) <=< dyn $ ffor isCross $ \x ->
               if not x
               then pure $ pure $ Just Nothing
@@ -401,7 +415,7 @@ sendConfig model initData = Workflow $ do
                 -- TODO this bit should have an option with a generic input for Ed25519 keys
                 -- and perhaps be skippable entirely in favour of a blob the user
                 -- can send to someone else to continue the tx on the recipient chain
-                gasPayerSection toChain mInitCrossChainGasPayer
+                gasPayerSection toChain mInitCrossChainGasPayer (pure $ \_ _ -> True)
             pure $ (liftA2 . liftA2) (,) fromGasPayer toGasPayer
       pure (conf, mCaps, (liftA2 . liftA2) (,) txBuilder amount)
 
@@ -553,13 +567,13 @@ finishCrossChainTransferConfig model fromAccount ucct = Workflow $ do
         & inputElementConfig_initialValue .~ tshow (_unfinishedCrossChainTransfer_amount ucct)
     el "p" $ text "The coin has been debited from your account but hasn't been redeemed by the recipient."
     dialogSectionHeading mempty "Transaction Settings"
-    (conf, _, _) <- divClass "group" $ uiMetaData model Nothing Nothing
+    (conf, _, _, _) <- divClass "group" $ uiMetaData model Nothing Nothing
     dialogSectionHeading mempty "Gas Payer (recipient chain)"
     sender <- divClass "group" $ elClass "div" "segment segment_type_tertiary labeled-input" $ do
       divClass "label labeled-input__label" $ text "Account Name"
       let cfg = def & dropdownConfig_attributes .~ pure ("class" =: "labeled-input__input select select_mandatory_missing")
           chain = pure $ Just toChain
-      gasAcc <- uiAccountDropdown cfg True model chain never
+      gasAcc <- uiAccountDropdown cfg (pure $ \_ a -> fromMaybe False (accountHasFunds a)) model chain never
       pure $ ffor3 (model ^. wallet_accounts) (model ^. network_selectedNetwork) gasAcc $ \netToAccount net ma -> do
         accounts <- Map.lookup net $ unAccountData netToAccount
         n <- ma
@@ -774,12 +788,16 @@ continueCrossChainTransfer
 continueCrossChainTransfer logL networkName envs publicMeta keys toChain gasPayer spvOk = do
   transactionLogger <- askTransactionLogger
   performEventAsync $ ffor spvOk $ \(pe, proof) cb -> do
-    let pm = publicMeta
-          { _pmChainId = toChain
-          , _pmSender = unAccountName $ fst gasPayer
-          }
-        signingSet = accountKeys $ snd gasPayer
-        signingPairs = filterKeyPairs signingSet keys
+
+    let
+      sender = unAccountName $ fst gasPayer
+
+      pm = publicMeta
+        { _pmChainId = toChain
+        , _pmSender = sender
+        }
+      signingSet = accountKeys $ snd gasPayer
+      signingPairs = filterKeyPairs signingSet keys
     payload <- buildContPayload networkName pm signingPairs $ ContMsg
       { _cmPactId = Pact._pePactId pe
       , _cmStep = succ $ Pact._peStep pe
@@ -791,7 +809,7 @@ continueCrossChainTransfer logL networkName envs publicMeta keys toChain gasPaye
     putLog logL LevelWarn "transfer-crosschain: running continuation on target chain"
     -- We can't do a /local with continuations :(
     liftJSM $ forkJSM $ do
-      r <- doReqFailover envs (Api.send Api.apiV1Client transactionLogger $ Api.SubmitBatch $ pure cont) >>= \case
+      r <- doReqFailover envs (Api.send Api.apiV1Client transactionLogger sender toChain $ Api.SubmitBatch $ pure cont) >>= \case
         Left es -> packHttpErrors logL es
         Right (Api.RequestKeys (requestKey :| _)) -> pure $ Right (Pact._pePactId pe, requestKey)
       liftIO $ cb r
@@ -882,9 +900,13 @@ initiateCrossChainTransfer model networkName envs publicMeta keys fromAccount fr
           Pact.PactResult (Left e) -> do
             putLog model LevelError (tshow e)
             pure $ Left $ tshow e
-          Pact.PactResult (Right _) -> doReqFailover envs (Api.send Api.apiV1Client transactionLogger $ Api.SubmitBatch $ pure cmd) >>= \case
-            Left es -> packHttpErrors (model ^. logger) es
-            Right (Api.RequestKeys (requestKey :| _)) -> pure $ Right requestKey
+          Pact.PactResult (Right _) -> do
+            r <- doReqFailover envs $ Api.send Api.apiV1Client transactionLogger senderText toChain
+              $ Api.SubmitBatch $ pure cmd
+            case r of
+              Left es -> packHttpErrors (model ^. logger) es
+              Right (Api.RequestKeys (requestKey :| _)) -> pure $ Right requestKey
+
       liftIO $ cb r
   where
     keysetName = "receiverKey"
@@ -909,9 +931,13 @@ initiateCrossChainTransfer model networkName envs publicMeta keys fromAccount fr
       [ Map.fromSet (\_ -> [_dappCap_cap defaultGASCapability]) (accountKeys $ snd fromGasPayer)
       , Map.fromSet (\_ -> [debitCap]) (accountKeys $ view _3 fromAccount)
       ]
+
+    senderText = unAccountName $ fst fromGasPayer
+    toChain = view _2 fromAccount
+
     pm = publicMeta
-      { _pmChainId = view _2 fromAccount
-      , _pmSender = unAccountName $ fst fromGasPayer
+      { _pmChainId = toChain
+      , _pmSender = senderText
       }
 
 -- | Listen to a request key for some continuation

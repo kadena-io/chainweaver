@@ -64,6 +64,7 @@ module Frontend.UI.Widgets
   , uiPublicKeyShrunk
   , uiForm
   , uiForm'
+  , uiPublicKeyShrunkDyn
     -- ** Helper types to avoid boolean blindness for additive input
   , AllowAddNewRow (..)
   , AllowDeleteRow (..)
@@ -668,11 +669,22 @@ uiAccountBalance showUnits = \case
     , " KDA" <$ guard showUnits
     ]
 
-uiPublicKeyShrunk :: (DomBuilder t m, PostBuild t m) => Dynamic t PublicKey -> m ()
-uiPublicKeyShrunk pk = do
-  divClass "wallet__public-key" $ do
-    elClass "span" "wallet__public-key__prefix" $ dynText $ T.dropEnd 6 <$> ktxt
-    elClass "span" "wallet__public-key__suffix" $ dynText $ T.takeEnd 6 <$> ktxt
+uiPublicKeyShrunkDOM :: DomBuilder t m => m () -> m () -> m ()
+uiPublicKeyShrunkDOM f6 l6 = divClass "wallet__public-key" $ do
+  elClass "span" "wallet__public-key__prefix" f6
+  elClass "span" "wallet__public-key__suffix" l6
+
+uiPublicKeyShrunk :: DomBuilder t m => PublicKey -> m ()
+uiPublicKeyShrunk pk = uiPublicKeyShrunkDOM
+  (text $ T.dropEnd 6 ktxt)
+  (text $ T.takeEnd 6 ktxt)
+  where
+    ktxt = keyToText pk
+
+uiPublicKeyShrunkDyn :: (DomBuilder t m, PostBuild t m) => Dynamic t PublicKey -> m ()
+uiPublicKeyShrunkDyn pk = uiPublicKeyShrunkDOM
+  (dynText $ T.dropEnd 6 <$> ktxt)
+  (dynText $ T.takeEnd 6 <$> ktxt)
   where
     ktxt = keyToText <$> pk
 
@@ -954,10 +966,11 @@ uiAccountFixed sender = do
 mkChainTextAccounts
   :: (Reflex t, HasWallet model key t, HasNetwork model t)
   => model
-  -> Bool
+  -> Dynamic t (AccountName -> Account -> Bool)
   -> Dynamic t (Maybe ChainId)
   -> Dynamic t (Either Text (Map AccountName Text))
-mkChainTextAccounts m needsGas mChainId = runExceptT $ do
+mkChainTextAccounts m allowAccount mChainId = runExceptT $ do
+  allowAcc <- lift allowAccount
   netId <- lift $ m ^. network_selectedNetwork
 
   keys <- lift $ m ^. wallet_keys
@@ -965,7 +978,7 @@ mkChainTextAccounts m needsGas mChainId = runExceptT $ do
   accountsOnNetwork <- ExceptT $ note "No accounts on current network" . Map.lookup netId . unAccountData <$> m ^. wallet_accounts
   let mkVanity n (AccountInfo _ chainMap)
         | Just a <- Map.lookup chain chainMap
-         , not needsGas || (fromMaybe 0 (a ^? account_status . _AccountStatus_Exists . accountDetails_balance)) > 0
+        , allowAcc n a
         -- Only select _our_ accounts. TODO: run pact code to ensure keyset predicate(s)
         -- are satisfied so we're able to handle user created predicates correctly.
         , accountSatisfiesKeysetPredicate keys a
@@ -984,15 +997,15 @@ uiAccountDropdown'
      , HasNetwork model t
      )
   => DropdownConfig t (Maybe AccountName)
-  -> Bool
+  -> Dynamic t (AccountName -> Account -> Bool)
   -> model
   -> Maybe AccountName
   -> Dynamic t (Maybe ChainId)
   -> Event t (Maybe AccountName)
   -> m (Dynamic t (Maybe (AccountName, Account)))
-uiAccountDropdown' uCfg needsGas m initVal chainId setSender = do
+uiAccountDropdown' uCfg allowAccount m initVal chainId setSender = do
   let
-    textAccounts = mkChainTextAccounts m needsGas chainId
+    textAccounts = mkChainTextAccounts m allowAccount chainId
     dropdownItems =
       either
           (Map.singleton Nothing)
@@ -1018,12 +1031,12 @@ uiAccountDropdown
      , HasNetwork model t
      )
   => DropdownConfig t (Maybe AccountName)
-  -> Bool
+  -> Dynamic t (AccountName -> Account -> Bool)
   -> model
   -> Dynamic t (Maybe ChainId)
   -> Event t (Maybe AccountName)
   -> m (Dynamic t (Maybe (AccountName, Account)))
-uiAccountDropdown uCfg needsGas m = uiAccountDropdown' uCfg needsGas m Nothing
+uiAccountDropdown uCfg allowAccount m = uiAccountDropdown' uCfg allowAccount m Nothing
 
 uiKeyPairDropdown
   :: forall t m key model

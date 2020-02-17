@@ -19,7 +19,7 @@ import Frontend.Crypto.Ed25519
 import Frontend.Crypto.Class
 import Frontend.Foundation
 import Frontend.Storage
-import Pact.Server.ApiV1Client (HasTransactionLogger)
+import Pact.Server.ApiClient (HasTransactionLogger)
 
 newtype BrowserCryptoT m a = BrowserCryptoT
   { unBrowserCryptoT :: m a

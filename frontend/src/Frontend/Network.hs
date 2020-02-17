@@ -106,7 +106,7 @@ import qualified Text.URI                          as URI
 import qualified Text.URI.Lens                     as URIL
 
 import           Pact.Parse                        (ParsedDecimal (..))
-import           Pact.Server.ApiV1Client
+import           Pact.Server.ApiClient
 import           Pact.Types.API
 import           Pact.Types.Capability
 import           Pact.Types.Command
@@ -139,14 +139,14 @@ import           Frontend.Log
 
 -- | What endpoint to use for a network request.
 data Endpoint
-  = Endpoint_Send
+  = Endpoint_Send AccountName ChainId
   | Endpoint_Local
-  deriving (Show, Read, Generic, Eq, Ord, Bounded, Enum)
+  deriving (Show, Generic, Eq, Ord)
 
 -- | Get string representation of `Endpoint` suitable for being displayed to an end user.
 displayEndpoint :: Endpoint -> Text
 displayEndpoint = \case
-  Endpoint_Send -> "Transact"
+  Endpoint_Send _ _ -> "Transact"
   Endpoint_Local -> "Read"
 
 -- | Request data to be sent to the current network.
@@ -889,9 +889,9 @@ networkRequest baseUri endpoint cmd = case S.parseBaseUrl $ URI.renderStr baseUr
   Just baseUrl -> runExceptT $ performReq $ S.mkClientEnv baseUrl
   where
     performReq clientEnv = case endpoint of
-      Endpoint_Send -> do
+      Endpoint_Send sender chain -> do
         transactionLogger <- lift askTransactionLogger
-        res <- runReq clientEnv $ send apiV1Client transactionLogger $ SubmitBatch . pure $ cmd
+        res <- runReq clientEnv $ send apiV1Client transactionLogger (unAccountName sender) chain $ SubmitBatch . pure $ cmd
         key <- getRequestKey $ res
         -- TODO: If we no longer wait for /listen, we should change the type instead of wrapping that message in `PactValue`.
         pure $ (Nothing,) $ PLiteral . LString $

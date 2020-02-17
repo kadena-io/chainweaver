@@ -233,7 +233,7 @@ createAccountConfig
 createAccountConfig ideL name chainId mPublicKey selectedKeyset keyset = Workflow $ do
   let includePreviewTab = False
 
-  (cfg, cChainId, mGasPayer, ttl, gasLimit, _) <- divClass "modal__main transaction_details" $ uiCfg
+  (cfg, cChainId, mGasPayer, ttl, gasLimit, _,  _) <- divClass "modal__main transaction_details" $ uiCfg
     Nothing
     ideL
     (predefinedChainIdDisplayed chainId ideL)
@@ -242,7 +242,7 @@ createAccountConfig ideL name chainId mPublicKey selectedKeyset keyset = Workflo
     []
     TxnSenderTitle_GasPayer
     Nothing
-    $ uiAccountDropdown def True
+    $ uiAccountDropdown def (pure $ \_ a -> fromMaybe False (accountHasFunds a))
 
   let payload = HM.singleton tempkeyset $ toJSON keyset
       code = mkPactCode name
@@ -250,7 +250,7 @@ createAccountConfig ideL name chainId mPublicKey selectedKeyset keyset = Workflo
         { _deploymentSettingsConfig_chainId = userChainIdSelect
         , _deploymentSettingsConfig_userTab = Nothing :: Maybe (Text, m ())
         , _deploymentSettingsConfig_code = pure code
-        , _deploymentSettingsConfig_sender = uiAccountDropdown def False
+        , _deploymentSettingsConfig_sender = uiAccountDropdown def (pure $ \_ _ -> True)
         , _deploymentSettingsConfig_data = Just payload
         , _deploymentSettingsConfig_nonce = Nothing
         , _deploymentSettingsConfig_ttl = Nothing
@@ -314,9 +314,10 @@ createAccountSubmit
   -> Workflow t m (Text, (mConf, Event t ()))
 createAccountSubmit model chainId result nodeInfos = Workflow $ do
   let cmd = _deploymentSettingsResult_command result
+      sender = _deploymentSettingsResult_sender result
 
   submitFeedback <- elClass "div" "modal__main transaction_details" $
-    submitTransactionWithFeedback model cmd chainId nodeInfos
+    submitTransactionWithFeedback model cmd sender chainId nodeInfos
 
   let succeeded = fmapMaybe (^? _Status_Done) (submitFeedback ^. transactionSubmitFeedback_listenStatus . to updated)
 

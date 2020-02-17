@@ -17,7 +17,7 @@ import qualified GHCJS.DOM.HTMLInputElement as HTMLInput
 import qualified GHCJS.DOM.Types as Types
 import qualified GHCJS.DOM.File as JSFile
 import Reflex.Dom
-import Pact.Server.ApiV1Client (runTransactionLoggerT, logTransactionStdout)
+import Pact.Server.ApiClient (runTransactionLoggerT, logTransactionStdout)
 
 import Obelisk.Frontend
 import Obelisk.Route.Frontend
@@ -76,6 +76,7 @@ frontend = Frontend
         , _appCfg_enabledSettings = EnabledSettings
           { _enabledSettings_changePassword = Nothing
           , _enabledSettings_exportWallet = Nothing
+          , _enabledSettings_transactionLog = False
           }
         , _appCfg_logMessage = defaultLogger
         }
