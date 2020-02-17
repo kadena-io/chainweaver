@@ -31,7 +31,7 @@ foreign import ccall moveToForeground :: IO ()
 foreign import ccall moveToBackground :: IO ()
 foreign import ccall resizeWindow :: Int -> Int -> IO ()
 foreign import ccall global_openFileDialog :: CString -> IO ()
-foreign import ccall global_openSaveDialog :: StablePtr (CString -> IO ()) -> IO ()
+foreign import ccall global_openSaveDialog :: CString -> StablePtr (CString -> IO ()) -> IO ()
 foreign import ccall global_getHomeDirectory :: IO CString
 
 ffi :: AppFFI
@@ -42,7 +42,7 @@ ffi = AppFFI
   , _appFFI_resizeWindow = uncurry resizeWindow
   -- TODO : Take file type and give it to the dialog
   , _appFFI_global_openFileDialog = openFileDialog
-  , _appFFI_global_dirSelectDialog = dirSelectDialog
+  , _appFFI_global_saveFileDialog = saveFileDialog
   , _appFFI_global_getStorageDirectory = getStorageDirectory
   , _appFFI_global_logFunction = logToSyslog
   }
@@ -50,8 +50,8 @@ ffi = AppFFI
 openFileDialog :: FileType -> IO ()
 openFileDialog ft = withCString (T.unpack . fileTypeExtension $ ft) global_openFileDialog
 
-dirSelectDialog :: (FilePath -> IO ()) -> IO ()
-dirSelectDialog cb = global_openSaveDialog =<< (newStablePtr $ cb <=< peekCString)
+saveFileDialog :: FilePath -> (FilePath -> IO ()) -> IO ()
+saveFileDialog fp cb = withCString fp  (\fps -> global_openSaveDialog fps =<< (newStablePtr $ cb <=< peekCString))
 
 getStorageDirectory :: IO String
 getStorageDirectory = do

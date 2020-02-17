@@ -28,7 +28,7 @@ extern void callWithCString(const char * _Nonnull, HsStablePtr);
   HsStablePtr dirSelectedHandler;
 }
 -(SaveDialogController *) init;
--(void) openSaveDialog:(HsStablePtr)handler;
+-(void) openSaveDialog:(HsStablePtr)handler fileName:(NSString *)fileName;
 @end
 
 OpenDialogController *global_openDialogController = 0;
@@ -53,9 +53,10 @@ void global_openFileDialog(char * cFileType) {
     [global_openDialogController openFileDialog:fileType];
   }];
 }
-void global_openSaveDialog(HsStablePtr handler) {
+void global_openSaveDialog(char * cFileName, HsStablePtr handler) {
+  NSString * fileName = [NSString stringWithCString:cFileName];
   [[NSOperationQueue mainQueue] addOperationWithBlock:^(void) {
-    [global_saveDialogController openSaveDialog:handler];
+    [global_saveDialogController openSaveDialog:handler fileName:fileName];
   }];
 }
 
@@ -92,7 +93,8 @@ void global_openSaveDialog(HsStablePtr handler) {
 
   return self;
 }
--(void) openSaveDialog:(HsStablePtr)handler {
+-(void) openSaveDialog:(HsStablePtr)handler  fileName:(NSString *)fileName {
+  [saveFilePanel setNameFieldStringValue:fileName];
   if ([saveFilePanel runModal] == NSFileHandlingPanelOKButton) {
     NSURL *url = [saveFilePanel URL];
     callWithCString([url fileSystemRepresentation], handler);

@@ -48,7 +48,7 @@ data AppFFI = AppFFI
   , _appFFI_moveToBackground :: IO ()
   , _appFFI_moveToForeground :: IO ()
   , _appFFI_global_openFileDialog :: FileType -> IO ()
-  , _appFFI_global_dirSelectDialog :: (FilePath -> IO ()) -> IO ()
+  , _appFFI_global_saveFileDialog :: FilePath -> (FilePath -> IO ()) -> IO ()
   , _appFFI_global_getStorageDirectory :: IO String
   , _appFFI_global_logFunction :: LogLevel -> LogStr -> IO ()
   }
@@ -66,12 +66,12 @@ deliverFile
   -> m (Event t (Either Text FilePath))
 deliverFile appFFI eFile = do
   performEventAsync $ ffor eFile $ \(fName,fContent) cb ->
-    let doWriteFile dirName =
+    let doWriteFile chosenPath =
           liftIO $ catch
-            ((T.writeFile (dirName </> fName) fContent) *> cb (Right (dirName </> fName)))
+            ((T.writeFile chosenPath fContent) *> cb (Right chosenPath))
             $ \(e :: IOError) -> do
-              cb (Left . T.pack $ "Error '" <> show e <> "' exporting file: " <> show fName <> " to  " <> dirName)
-    in liftIO (_appFFI_global_dirSelectDialog appFFI doWriteFile)
+              cb (Left . T.pack $ "Error '" <> show e <> "' exporting file: " <> show chosenPath)
+    in liftIO (_appFFI_global_saveFileDialog appFFI fName doWriteFile)
 
 
 -- | Get a random free port. This isn't quite safe: it is possible for the port
