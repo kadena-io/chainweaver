@@ -90,14 +90,16 @@ data ApiClient m = ApiClient
 
 {- apiV1API :: Proxy ApiV1API -}
 {- apiV1API = Proxy -}
+
+-- | Commands are logged with the time they were sent and the node URL they were sent
+-- to. We only define 'toJSON' for the current version, thus only write logs in the latest
+-- version.
 apiV1Client :: forall m. (MonadIO m, MonadReader ClientEnv m, RunClient m) => ApiClient m
 apiV1Client = ApiClient
   { send = \txnLogger sender chain batch@(SubmitBatch commands) -> do
       url <- asks baseUrl
       timestamp <- liftIO getCurrentTime
       rqkeys <- sendF batch
-      -- | Commands are logged with the time they were sent and the node URL they were
-      -- sent to. We only define 'toJSON' for the current version, thus only write logs in the latest version.
       for_ commands $ \command -> liftIO $ _transactionLogger_appendLog txnLogger $ CommandLog
         { _commandLog_command = command
         , _commandLog_sender = sender

@@ -13,7 +13,6 @@ import qualified Data.Aeson as Aeson
 import qualified Data.Aeson.Types as Aeson
 
 import Pact.Types.Command
-import Pact.Types.ChainId (ChainId)
 import Pact.Server.ApiClient.Helpers (decodeForVersion)
 
 data CommandLog = CommandLog
