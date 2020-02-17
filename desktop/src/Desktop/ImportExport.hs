@@ -141,7 +141,8 @@ doExport oldPw pw = runExceptT $ do
     ( fold
       [ (T.unpack . (T.take 8) . keyToText . _keyPair_publicKey . _key_pair $ keyPair)
       , "."
-      , formatTime defaultTimeLocale (iso8601DateFormat (Just "%H:%M:%S")) lt
+      -- Mac does something weird with colons in the name and converts them to subdirs...
+      , formatTime defaultTimeLocale (iso8601DateFormat (Just "%H-%M-%S")) lt
       , "."
       , T.unpack (fileTypeExtension FileType_Import)
       ]

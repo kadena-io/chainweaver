@@ -49,7 +49,7 @@ unless we bump r-p
 
 data LinuxMVars = LinuxMVars
   { _linuxMVars_openFileDialog :: MVar FileType
-  , _linuxMVars_dirSelectDialog :: MVar (FilePath -> IO())
+  , _linuxMVars_saveFileDialog :: MVar (FilePath, FilePath -> IO())
   , _linuxMVars_moveToForeground :: MVar ()
   , _linuxMVars_moveToBackground :: MVar ()
   , _linuxMVars_resizeWindow :: MVar (Int,Int)
@@ -65,7 +65,7 @@ mkFfi = do
   moveToForegroundMV <- newEmptyMVar
   moveToBackgroundMV <- newEmptyMVar
   resizeMV <- newEmptyMVar
-  dirSelectDialogMV <- newEmptyMVar
+  saveFileDialogMV <- newEmptyMVar
 
   let ffi = AppFFI
         { _appFFI_activateWindow = putMVar activateMV ()
@@ -73,7 +73,7 @@ mkFfi = do
         , _appFFI_moveToForeground = putMVar moveToForegroundMV ()
         , _appFFI_resizeWindow = putMVar resizeMV
         , _appFFI_global_openFileDialog = putMVar openFileDialogMV
-        , _appFFI_global_dirSelectDialog = putMVar dirSelectDialogMV
+        , _appFFI_global_saveFileDialog = curry (putMVar saveFileDialogMV)
         , _appFFI_global_getStorageDirectory = (\hd -> hd </> ".local" </> "share" </> "chainweaver") <$> getHomeDirectory
         , _appFFI_global_logFunction = logToSyslog
         }
@@ -83,7 +83,7 @@ mkFfi = do
     , _linuxMVars_moveToBackground = moveToBackgroundMV
     , _linuxMVars_resizeWindow = resizeMV
     , _linuxMVars_activateWindow = activateMV
-    , _linuxMVars_dirSelectDialog = dirSelectDialogMV
+    , _linuxMVars_saveFileDialog = saveFileDialogMV
     })
 
 main :: IO ()
@@ -106,7 +106,7 @@ runLinux
 runLinux mvars _url allowing _onUniversalLink handleOpen jsm = do
   customRun (TE.decodeUtf8With TE.lenientDecode allowing) jsm $ \window -> do
     mvarHandler (_linuxMVars_openFileDialog mvars) (openFileDialog handleOpen)
-    mvarHandler (_linuxMVars_dirSelectDialog mvars) openDirDialog
+    mvarHandler (_linuxMVars_saveFileDialog mvars) (uncurry saveFileDialog)
     mvarHandler (_linuxMVars_moveToForeground mvars) (const $ moveToForeground window)
     mvarHandler (_linuxMVars_moveToBackground mvars) (const $ moveToBackground window)
     mvarHandler (_linuxMVars_resizeWindow mvars) (resizeWindow window)
@@ -138,20 +138,21 @@ openFileDialog handleOpen fileType = do
     Gtk.ResponseTypeAccept ->  Gtk.fileChooserGetFilenames chooser >>= traverse_ handleOpen . headMay
     _ -> pure ()
 
-openDirDialog :: (FilePath -> IO ()) -> IO ()
-openDirDialog handleSelectDir = do
+saveFileDialog :: FilePath -> (FilePath -> IO ()) -> IO ()
+saveFileDialog fileName handleSelectDir = do
   chooser <- Gtk.fileChooserNativeNew
     (Just $ T.pack "Choose a directory to save to")
     Gtk.noWindow
-    Gtk.FileChooserActionSelectFolder
+    Gtk.FileChooserActionSave
     Nothing
     Nothing
 
   Gtk.fileChooserSetCreateFolders chooser True
+  _ <- Gtk.fileChooserSetCurrentName chooser fileName
 
   res <- Gtk.nativeDialogRun chooser
   void $ case toEnum (fromIntegral res) of
-    Gtk.ResponseTypeAccept ->  Gtk.fileChooserGetCurrentFolder chooser >>= traverse_ handleSelectDir
+    Gtk.ResponseTypeAccept ->  Gtk.fileChooserGetFilenames chooser >>= traverse_ handleSelectDir . headMay
     _ -> pure ()
 
 moveToForeground :: Gtk.Window -> IO ()
