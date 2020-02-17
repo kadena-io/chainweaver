@@ -40,6 +40,7 @@ import System.FilePath (takeFileName)
 
 import Frontend.AppCfg (FileFFI(..), FileType(FileType_Import))
 import Desktop.ImportExport (doImport, Password(..), ImportWalletError(..))
+import Pact.Server.ApiClient (HasTransactionLogger, askTransactionLogger)
 import Frontend.Storage.Class (HasStorage)
 import Frontend.UI.Button
 import Frontend.UI.Dialogs.ChangePassword (minPasswordLength)
@@ -196,6 +197,7 @@ runSetup
     , TriggerEvent t m
     , HasStorage (Performable m)
     , MonadSample t (Performable m)
+    , HasTransactionLogger m
     )
   => FileFFI t m
   -> Bool
@@ -236,6 +238,7 @@ splashScreen
   :: (DomBuilder t m, MonadFix m, MonadHold t m, PerformEvent t m
      , PostBuild t m, MonadJSM (Performable m), TriggerEvent t m, HasStorage (Performable m)
      , MonadSample t (Performable m)
+     , HasTransactionLogger m
      )
   => FileFFI t m -> Event t () -> SetupWF t m
 splashScreen fileFFI eBack = selfWF
@@ -343,6 +346,7 @@ restoreFromImport
   .  ( DomBuilder t m, MonadFix m, MonadHold t m, PerformEvent t m
      , PostBuild t m, MonadJSM (Performable m), HasStorage (Performable m)
      , MonadSample t (Performable m)
+     , HasTransactionLogger m
      )
   => FileFFI t m -> SetupWF t m -> Event t () -> SetupWF t m
 restoreFromImport fileFFI backWF eBack = nagScreen
@@ -378,19 +382,23 @@ restoreFromImport fileFFI backWF eBack = nagScreen
           imgWithAlt (static @"img/import.svg") "Import" blank
           divClass "setup__recover-import-file-text" $ dynText $ ffor dFileSelected $
             maybe "Select a file" (T.pack . takeFileName . fst)
+
         performEvent_ $ liftJSM (_fileFFI_openFileDialog fileFFI FileType_Import) <$
           ((domEvent Click selectElt) <> ePb)
+
         dFileSelected <- holdDyn Nothing (Just <$> _fileFFI_externalFileOpened fileFFI)
+
         pw <- uiPassword (setupClass "password-wrapper") (setupClass "password") "Enter import wallet password"
 
         dyn_ $ ffor dErr $ traverse_ $ \err ->
           elClass "p" "error_inline" $ text $ case err of
+            ImportWalletError_InvalidCommandLogDestination -> "Unable to restore transaction logs"
             ImportWalletError_PasswordIncorrect -> "Incorrect Password"
             ImportWalletError_NoRootKey -> "Backup cannot be restored as it does not contain a BIP Root Key"
-            (ImportWalletError_NotJson eMsg) -> "Backup cannot be restored as it is not a valid json file. Error: " <> eMsg
-            (ImportWalletError_DecodeError section ver eMsg) ->
+            ImportWalletError_NotJson eMsg -> "Backup cannot be restored as it is not a valid json file. Error: " <> eMsg
+            ImportWalletError_DecodeError section ver eMsg ->
               "Backup section " <> section <> " cannot be parsed as version " <> tshow ver  <>  " with error: " <> eMsg
-            (ImportWalletError_UnknownVersion section ver) ->
+            ImportWalletError_UnknownVersion section ver ->
               "Backup section " <> section <> " has an unknown version " <> tshow ver <> ". It's likely that this backup is from a newer version of chainweaver."
 
 
@@ -401,7 +409,8 @@ restoreFromImport fileFFI backWF eBack = nagScreen
             <$> MaybeT (nonEmptyPassword <$> (_inputElement_value pwInput))
             <*> MaybeT (fmap snd <$> dFileSelected)
 
-      eImport <- performEvent $ tagMaybe (fmap (uncurry (doImport @t)) <$> current dmValidForm) eSubmit
+      txLogger <- askTransactionLogger
+      eImport <- performEvent $ tagMaybe (fmap (uncurry (doImport @t txLogger)) <$> current dmValidForm) eSubmit
 
       let (eImportErr, eImportDone) = fanEither eImport
 

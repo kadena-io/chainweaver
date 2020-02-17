@@ -63,8 +63,9 @@ uiExportWalletScreen (ExportWallet _exportWallet_requestExport) onClose = Workfl
         let errWidget = elClass "p" "error_inline" . text
         _ <- widgetHold blank $ ffor eErr $ \case
           ExportWalletError_FileNotWritable fp -> errWidget $ "Could not write file to " <> fp
-          ExportWalletError_PasswordIncorrect -> errWidget $ "Password Incorrect"
-          ExportWalletError_NoKeys-> errWidget $ "This wallet has no keys yet and cannot be exported"
+          ExportWalletError_PasswordIncorrect -> errWidget "Password Incorrect"
+          ExportWalletError_NoKeys -> errWidget "This wallet has no keys yet and cannot be exported"
+          ExportWalletError_CommandLogExport err -> errWidget $ T.pack err
 
         pure pw'
 

@@ -36,7 +36,7 @@ import Data.Text (Text)
 import Data.Time (NominalDiffTime, getCurrentTime, addUTCTime)
 import Data.Traversable (for)
 import Language.Javascript.JSaddle (liftJSM)
-import Pact.Server.ApiClient (HasTransactionLogger, runTransactionLoggerT, logTransactionFile)
+import Pact.Server.ApiClient (HasTransactionLogger, runTransactionLoggerT, logTransactionFile, askTransactionLogger)
 import Reflex.Dom.Core
 import qualified Cardano.Crypto.Wallet as Crypto
 import qualified Data.Text as T
@@ -167,6 +167,7 @@ bipWallet fileFFI mkAppCfg = do
           for mPrv $ fmap (pure . (LockScreen_Locked ==>)) . sample
 
   mRoot <- getItemStorage localStorage BIPStorage_RootKey
+  txLogger <- askTransactionLogger
   let initScreen = case mRoot of
         Nothing -> LockScreen_RunSetup :=> Identity ()
         Just xprv -> LockScreen_Locked ==> xprv
@@ -222,13 +223,13 @@ bipWallet fileFFI mkAppCfg = do
               }
             , _enabledSettings_exportWallet = Just $ ExportWallet
               { _exportWallet_requestExport = \ePw -> do
-                let bOldPw = (\(Identity (_,oldPw)) -> oldPw) <$> current details
-                eExport <- performEvent $ doExport <$> (Password <$> bOldPw) <@> (Password <$> ePw)
-                let (eErrExport, eGoodExport) = fanEither eExport
-                eFileDone <- _fileFFI_deliverFile frontendFileFFI eGoodExport
-                pure $
-                  (Left <$> eErrExport)
-                  <> (first ExportWalletError_FileNotWritable <$> eFileDone)
+                  let bOldPw = (\(Identity (_,oldPw)) -> oldPw) <$> current details
+                  eExport <- performEvent $ doExport txLogger <$> (Password <$> bOldPw) <@> (Password <$> ePw)
+                  let (eErrExport, eGoodExport) = fanEither eExport
+                  eFileDone <- _fileFFI_deliverFile frontendFileFFI eGoodExport
+                  pure $
+                    (Left <$> eErrExport)
+                    <> (first ExportWalletError_FileNotWritable <$> eFileDone)
               }
             , _enabledSettings_transactionLog = True
             }

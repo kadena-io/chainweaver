@@ -34,6 +34,7 @@ import Common.Wallet (_keyPair_publicKey, _key_pair, keyToText)
 import Desktop.Orphans ()
 import Desktop.Crypto.BIP (BIPStorage(..), bipMetaPrefix, runBIPCryptoT)
 import Frontend.AppCfg (ExportWalletError(..), FileType(FileType_Import), fileTypeExtension)
+import Pact.Server.ApiClient (TransactionLogger (..), CommandLog, commandLogCurrentVersion, commandLogFilename)
 import Frontend.Crypto.Class (HasCrypto)
 import Frontend.Storage (HasStorage, dumpLocalStorage)
 import Frontend.VersionedStore (StoreFrontend(..), VersionedStorage(..), StorageVersion, VersioningDecodeJsonError(..))
@@ -47,28 +48,59 @@ data ImportWalletError
   | ImportWalletError_NotJson Text
   | ImportWalletError_UnknownVersion Text StorageVersion
   | ImportWalletError_DecodeError Text StorageVersion Text
+  | ImportWalletError_InvalidCommandLogDestination
   deriving (Eq, Show)
 
 bipStorageVersionKey :: Text
 bipStorageVersionKey = "BIPStorage_Version"
+
 bipStorageDataKey :: Text
 bipStorageDataKey = "BIPStorage_Data"
+
 storeFrontendVersionKey :: Text
 storeFrontendVersionKey = "StoreFrontend_Version"
+
 storeFrontendDataKey :: Text
 storeFrontendDataKey = "StoreFrontend_Data"
 
-hoistParser :: Monad m => Text -> StorageVersion -> (Value -> Parser a) -> Value -> ExceptT ImportWalletError m a
+commandLogDataKey :: Text
+commandLogDataKey = "CommandLogs_Data"
+
+commandLogVersionKey :: Text
+commandLogVersionKey  = "CommandLogs_Data"
+
+hoistParser
+  :: Monad m
+  => Text
+  -> StorageVersion
+  -> (Value -> Parser a)
+  -> Value
+  -> ExceptT ImportWalletError m a
 hoistParser errLabel ver p  =
   hoistEither
   . first (ImportWalletError_DecodeError errLabel ver . T.pack)
   . parseEither p
 
-extractImportVersionField :: (Monad m) => Text -> StorageVersion -> Value -> ExceptT ImportWalletError m StorageVersion
-extractImportVersionField key ver = hoistParser key ver (withObject "ChainWeaverImport" (\o -> o .:? key .!= 0 ))
+extractImportVersionField
+  :: (Monad m)
+  => Text
+  -> StorageVersion
+  -> Value
+  -> ExceptT ImportWalletError m StorageVersion
+extractImportVersionField key ver =
+  hoistParser key ver (withObject "ChainWeaverImport" (\o -> o .:? key .!= 0 ))
 
-extractImportDataField :: forall a m. (Monad m, FromJSON a) => Text -> StorageVersion -> Value -> ExceptT ImportWalletError m a
-extractImportDataField key ver = hoistParser key ver (withObject "ChainWeaverImport" (\o -> o .: key))
+extractImportDataField
+  :: forall a m
+  . ( Monad m
+    , FromJSON a
+    )
+  => Text
+  -> StorageVersion
+  -> Value
+  -> ExceptT ImportWalletError m a
+extractImportDataField key ver =
+  hoistParser key ver (withObject "ChainWeaverImport" (\o -> o .: key))
 
 doImport
   :: forall t m
@@ -78,10 +110,11 @@ doImport
      , MonadSample t m
      , Reflex t
      )
-  => Password -- Password
+  => TransactionLogger
+  -> Password -- Password
   -> Text -- Backup data
   -> m (Either ImportWalletError (Crypto.XPrv, Password))
-doImport pw contents = runExceptT $ do
+doImport txLogger pw contents = runExceptT $ do
   jVal <- hoistEither . first (ImportWalletError_NotJson . T.pack) $
     eitherDecode @Value (TL.encodeUtf8 . TL.fromStrict $ contents)
 
@@ -100,12 +133,30 @@ doImport pw contents = runExceptT $ do
   feVer <- extractImportVersionField storeFrontendVersionKey 0 jVal
   feData <- extractImportDataField @Value storeFrontendDataKey feVer jVal
 
+  -- TODO: Can/should this be stored using HasStorage mechanisms? Did not think it was
+  -- possible at the time, but not sure that's true. Think on this and fix it up when
+  -- able.
+  _cmdLogVer <- extractImportVersionField commandLogVersionKey (fromIntegral commandLogCurrentVersion) jVal
+  cmdLogData <- extractImportDataField @CommandLog commandLogDataKey (fromIntegral commandLogCurrentVersion) jVal
+
+  logFileDestination <- failWith ImportWalletError_InvalidCommandLogDestination $
+    _transactionLogger_destinationDir txLogger
+
+  let logFilePath = (<> "/" <> commandLogFilename)
+        $ maybe logFileDestination TL.unpack
+        $ TL.stripSuffix "/"
+        $ TL.pack logFileDestination
+
+  _ <- liftIO $ TL.writeFile logFilePath $ encodeToLazyText cmdLogData
+
   _ <- ExceptT $ runBIPCryptoT (constant (rootKey, unPassword pw)) $ do
     let vStore = FrontendStore.versionedStorage
     feLatestEither <- first (expandDecodeVersionJsonError storeFrontendDataKey feVer)
       <$> (_versionedStorage_decodeVersionedJson vStore feVer feData)
 
-    traverse (\dmap -> liftIO (TL.putStrLn $ encodeToLazyText dmap) >> _versionedStorage_restoreBackup vStore dmap) feLatestEither
+    traverse
+      (\dmap -> liftIO (TL.putStrLn $ encodeToLazyText dmap) >> _versionedStorage_restoreBackup vStore dmap)
+      feLatestEither
 
   pure (rootKey, pw)
 
@@ -119,14 +170,15 @@ doImport pw contents = runExceptT $ do
 -- an old version.
 doExport
   :: forall m
-  .  (HasCrypto Crypto.XPrv m
+  .  ( HasCrypto Crypto.XPrv m
      , MonadJSM m
      , HasStorage m
      )
-  => Password
+  => TransactionLogger
+  -> Password
   -> Password
   -> m (Either ExportWalletError (FilePath, Text))
-doExport oldPw pw = runExceptT $ do
+doExport txLogger oldPw pw = runExceptT $ do
   unless (oldPw == pw) $ throwError ExportWalletError_PasswordIncorrect
   (bipVer,bipData) <- lift $ dumpLocalStorage @BIPStorage bipMetaPrefix
   (feVer, feData) <- lift $ _versionedStorage_dumpLocalStorage (FrontendStore.versionedStorage @Crypto.XPrv @m)
@@ -134,6 +186,9 @@ doExport oldPw pw = runExceptT $ do
   keyPair <- failWith ExportWalletError_NoKeys $ do
     (Identity keyMap) <- DMap.lookup StoreFrontend_Wallet_Keys feData
     IntMap.lookup 0 keyMap
+
+  (_, cmdLogs) <- ExceptT $ liftIO $ fmap (first ExportWalletError_CommandLogExport) $
+    _transactionLogger_exportFile txLogger
 
   lt <- zonedTimeToLocalTime <$> liftIO getZonedTime
 
@@ -149,5 +204,6 @@ doExport oldPw pw = runExceptT $ do
     , TL.toStrict $ encodeToLazyText $ object
       [ "BIPStorage_Version" .= bipVer, "BIPStorage_Data" .= bipData
       , "StoreFrontend_Version" .= feVer, "StoreFrontend_Data" .= feData
+      , commandLogVersionKey .= commandLogCurrentVersion, commandLogDataKey .= cmdLogs
       ]
     )
