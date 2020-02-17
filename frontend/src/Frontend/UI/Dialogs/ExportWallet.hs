@@ -65,7 +65,7 @@ uiExportWalletScreen (ExportWallet _exportWallet_requestExport) onClose = Workfl
           ExportWalletError_FileNotWritable fp -> errWidget $ "Could not write file to " <> fp
           ExportWalletError_PasswordIncorrect -> errWidget "Password Incorrect"
           ExportWalletError_NoKeys -> errWidget "This wallet has no keys yet and cannot be exported"
-          ExportWalletError_CommandLogExport err -> errWidget $ T.pack err
+          ExportWalletError_CommandLogExport -> errWidget "Unable to export transaction logs"
 
         pure pw'
 

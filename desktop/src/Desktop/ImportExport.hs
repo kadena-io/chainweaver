@@ -24,6 +24,7 @@ import Data.Functor.Identity (Identity(Identity), runIdentity)
 import Language.Javascript.JSaddle (MonadJSM)
 import Data.Text (Text)
 import qualified Data.Text as T
+import qualified Data.Text.IO as T
 import qualified Data.Text.Encoding as T
 import qualified Data.Text.Lazy as TL
 import qualified Data.Text.Lazy.IO as TL
@@ -34,7 +35,7 @@ import Common.Wallet (_keyPair_publicKey, _key_pair, keyToText)
 import Desktop.Orphans ()
 import Desktop.Crypto.BIP (BIPStorage(..), bipMetaPrefix, runBIPCryptoT)
 import Frontend.AppCfg (ExportWalletError(..), FileType(FileType_Import), fileTypeExtension)
-import Pact.Server.ApiClient (TransactionLogger (..), CommandLog, commandLogCurrentVersion, commandLogFilename)
+import Pact.Server.ApiClient (TransactionLogger (..), CommandLog, commandLogCurrentVersion)
 import Frontend.Crypto.Class (HasCrypto)
 import Frontend.Storage (HasStorage, dumpLocalStorage)
 import Frontend.VersionedStore (StoreFrontend(..), VersionedStorage(..), StorageVersion, VersioningDecodeJsonError(..))
@@ -67,7 +68,7 @@ commandLogDataKey :: Text
 commandLogDataKey = "CommandLogs_Data"
 
 commandLogVersionKey :: Text
-commandLogVersionKey  = "CommandLogs_Data"
+commandLogVersionKey  = "CommandLogs_Version"
 
 hoistParser
   :: Monad m
@@ -134,20 +135,16 @@ doImport txLogger pw contents = runExceptT $ do
   feData <- extractImportDataField @Value storeFrontendDataKey feVer jVal
 
   -- TODO: Can/should this be stored using HasStorage mechanisms? Did not think it was
-  -- possible at the time, but not sure that's true. Think on this and fix it up when
-  -- able.
-  _cmdLogVer <- extractImportVersionField commandLogVersionKey (fromIntegral commandLogCurrentVersion) jVal
-  cmdLogData <- extractImportDataField @CommandLog commandLogDataKey (fromIntegral commandLogCurrentVersion) jVal
+  -- possible at the time, but not sure that's true. Think on this and fix it up when able.
+  cmdLogVer <- extractImportVersionField commandLogVersionKey (fromIntegral commandLogCurrentVersion) jVal
+  rawCmdLogData <- extractImportDataField @Text commandLogDataKey (fromIntegral commandLogCurrentVersion) jVal
+  _ <- hoistEither $ first (ImportWalletError_DecodeError commandLogDataKey cmdLogVer . T.pack)
+    $ traverse (eitherDecode @CommandLog . TL.encodeUtf8 . TL.fromStrict) $ T.lines rawCmdLogData
 
-  logFileDestination <- failWith ImportWalletError_InvalidCommandLogDestination $
-    _transactionLogger_destinationDir txLogger
+  logFilePath <- failWith ImportWalletError_InvalidCommandLogDestination $
+    _transactionLogger_destination txLogger
 
-  let logFilePath = (<> "/" <> commandLogFilename)
-        $ maybe logFileDestination TL.unpack
-        $ TL.stripSuffix "/"
-        $ TL.pack logFileDestination
-
-  _ <- liftIO $ TL.writeFile logFilePath $ encodeToLazyText cmdLogData
+  _ <- liftIO $ T.writeFile logFilePath rawCmdLogData
 
   _ <- ExceptT $ runBIPCryptoT (constant (rootKey, unPassword pw)) $ do
     let vStore = FrontendStore.versionedStorage
@@ -187,8 +184,10 @@ doExport txLogger oldPw pw = runExceptT $ do
     (Identity keyMap) <- DMap.lookup StoreFrontend_Wallet_Keys feData
     IntMap.lookup 0 keyMap
 
-  (_, cmdLogs) <- ExceptT $ liftIO $ fmap (first ExportWalletError_CommandLogExport) $
-    _transactionLogger_exportFile txLogger
+  cmdLogFile <- failWith ExportWalletError_CommandLogExport $
+    _transactionLogger_destination txLogger
+
+  cmdLogs <- liftIO $ TL.readFile cmdLogFile
 
   lt <- zonedTimeToLocalTime <$> liftIO getZonedTime
 

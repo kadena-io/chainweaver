@@ -77,7 +77,7 @@ import qualified Pact.Server.ApiClient.V1 as Latest
 
 data TransactionLogger = TransactionLogger
   { _transactionLogger_appendLog :: CommandLog -> IO ()
-  , _transactionLogger_destinationDir :: Maybe FilePath
+  , _transactionLogger_destination :: Maybe FilePath
   , _transactionLogger_loadFirstNLogs :: Int -> IO (Either String (TimeLocale, [CommandLog]))
   , _transactionLogger_exportFile :: IO (Either String (FilePath, Text))
   }
@@ -198,7 +198,7 @@ runTransactionLoggerT = runReaderT . unTransactionLoggerT
 logTransactionStdout :: TransactionLogger
 logTransactionStdout = TransactionLogger
   { _transactionLogger_appendLog = LT.putStrLn . Aeson.encodeToLazyText
-  , _transactionLogger_destinationDir = Nothing
+  , _transactionLogger_destination = Nothing
   , _transactionLogger_loadFirstNLogs = const $ pure logsdisabled
   , _transactionLogger_exportFile = pure logsdisabled
   }
@@ -210,7 +210,7 @@ logTransactionFile f = TransactionLogger
   { _transactionLogger_appendLog =
       LT.appendFile f . (<> "\n") . Aeson.encodeToLazyText
 
-  , _transactionLogger_destinationDir =
+  , _transactionLogger_destination =
       Just f
 
   , _transactionLogger_loadFirstNLogs = \n -> runExceptT $ do

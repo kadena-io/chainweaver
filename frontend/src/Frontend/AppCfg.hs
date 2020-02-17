@@ -21,7 +21,7 @@ data ExportWalletError
   = ExportWalletError_PasswordIncorrect
   | ExportWalletError_NoKeys
   | ExportWalletError_FileNotWritable Text
-  | ExportWalletError_CommandLogExport String
+  | ExportWalletError_CommandLogExport
 
 data ExportWallet t m = ExportWallet
   { _exportWallet_requestExport :: Event t Text -> m (Event t (Either ExportWalletError FilePath))
@@ -68,5 +68,3 @@ data AppCfg key t m = AppCfg
   , _appCfg_logMessage :: LogLevel -> LogStr -> IO ()
   -- ^ Logging Function
   }
-
-
