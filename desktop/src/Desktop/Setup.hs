@@ -36,6 +36,7 @@ import qualified Data.ByteArray as BA
 import qualified Data.Map as Map
 import qualified Data.Text as T
 import qualified Data.Text.Encoding as T
+import System.FilePath (takeFileName)
 
 import Frontend.AppCfg (FileFFI(..), FileType(FileType_Import))
 import Desktop.ImportExport (doImport, Password(..), ImportWalletError(..))
@@ -375,7 +376,8 @@ restoreFromImport fileFFI backWF eBack = nagScreen
         ePb <- getPostBuild
         (selectElt, _) <- elClass' "div" "setup__recover-import-file" $ do
           imgWithAlt (static @"img/import.svg") "Import" blank
-          divClass "setup__recover-import-file-text" $ dynText $ ffor dFileSelected $ maybe "Select a file" (T.pack . fst)
+          divClass "setup__recover-import-file-text" $ dynText $ ffor dFileSelected $
+            maybe "Select a file" (T.pack . takeFileName . fst)
         performEvent_ $ liftJSM (_fileFFI_openFileDialog fileFFI FileType_Import) <$
           ((domEvent Click selectElt) <> ePb)
         dFileSelected <- holdDyn Nothing (Just <$> _fileFFI_externalFileOpened fileFFI)
