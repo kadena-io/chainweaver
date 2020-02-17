@@ -42,7 +42,6 @@ module Frontend.UI.Widgets
   , uiInputElement
   , uiTextAreaElement
   , uiCorrectingInputElement
-  , uiRealInputElement
   , uiNonnegativeRealWithPrecisionInputElement
   , uiIntInputElement
   , uiSlider
@@ -243,17 +242,6 @@ uiInputElement
   -> m (InputElement er (DomBuilderSpace m) t)
 uiInputElement cfg = inputElement $ cfg & initialAttributes %~ (addInputElementCls . addNoAutofillAttrs)
 
--- | uiInputElement which should always provide a proper real number.
---
---   In particular it will always have a decimal point in it.
-uiRealInputElement
-  :: DomBuilder t m
-  => InputElementConfig er t (DomBuilderSpace m)
-  -> m (InputElement er (DomBuilderSpace m) t)
-uiRealInputElement cfg = do
-    inputElement $ cfg & initialAttributes %~
-        (<> ("type" =: "number")) . addInputElementCls . addNoAutofillAttrs
-
 uiCorrectingInputElement
   :: forall t m a explanation. DomBuilder t m
   => MonadFix m
@@ -340,7 +328,7 @@ uiInputWithInlineFeedback parse isDirty renderFeedback mUnits mkInp cfg =
 -- | Decimal input to the given precision. Returns the element, the value, and
 -- the user input events
 uiNonnegativeRealWithPrecisionInputElement
-  :: forall t m a. (DomBuilder t m, MonadFix m, MonadHold t m)
+  :: forall t m a. (DomBuilder t m, MonadFix m, MonadHold t m, MonadJSM m, GhcjsDomSpace ~ DomBuilderSpace m)
   => Word8
   -> (Decimal -> a)
   -> InputElementConfig EventResult t (DomBuilderSpace m)
@@ -350,6 +338,9 @@ uiNonnegativeRealWithPrecisionInputElement prec fromDecimal cfg = do
     (ie, val, input) <- uiCorrectingInputElement parse inputSanitize blurSanitize tshow $ cfg
       & initialAttributes %~ addInputElementCls . addNoAutofillAttrs
         . (<> ("type" =: "number" <> "step" =: stepSize <> "min" =: stepSize))
+      & inputElementConfig_elementConfig . elementConfig_eventSpec %~ preventUpAndDownArrow @m
+    preventScrollWheel $ _inputElement_raw ie
+
     widgetHold_ blank $ ffor (fmap snd input) $ traverse_ $
       elClass "span" "dimensional-input__feedback" . text
 
@@ -379,15 +370,17 @@ uiNonnegativeRealWithPrecisionInputElement prec fromDecimal cfg = do
 
 -- TODO: correct floating point decimals
 uiIntInputElement
-  :: DomBuilder t m
+  :: forall t m. (DomBuilder t m, MonadJSM m, GhcjsDomSpace ~ DomBuilderSpace m)
   => MonadFix m
   => Maybe Integer
   -> Maybe Integer
   -> InputElementConfig EventResult t (DomBuilderSpace m)
   -> m (InputElement EventResult (DomBuilderSpace m) t, Event t Integer)
 uiIntInputElement mmin mmax cfg = do
-    (r, _, input) <- uiCorrectingInputElement (tread . fixNum) sanitize (const Nothing) tshow $ cfg & initialAttributes %~
-      ((<> numberAttrs) . addInputElementCls . addNoAutofillAttrs)
+    (r, _, input) <- uiCorrectingInputElement (tread . fixNum) sanitize (const Nothing) tshow $ cfg
+      & initialAttributes %~ ((<> numberAttrs) . addInputElementCls . addNoAutofillAttrs)
+      & inputElementConfig_elementConfig . elementConfig_eventSpec %~ preventUpAndDownArrow @m
+    preventScrollWheel $ _inputElement_raw r
 
     pure (r
           { _inputElement_value = fmap fixNum $ _inputElement_value r
@@ -835,12 +828,8 @@ uiGasPriceInputField
        , Event t GasPrice
        )
 uiGasPriceInputField conf = dimensionalInputFeedbackWrapper (Just "KDA") $ do
-  (i, d, e) <- uiNonnegativeRealWithPrecisionInputElement maxCoinPrecision (GasPrice . ParsedDecimal) $ conf
+  uiNonnegativeRealWithPrecisionInputElement maxCoinPrecision (GasPrice . ParsedDecimal) $ conf
     & initialAttributes %~ addToClassAttr "input-units"
-    & inputElementConfig_elementConfig . elementConfig_eventSpec %~ preventUpAndDownArrow @m
-  preventScrollWheel $ _inputElement_raw i
-  pure (i, d, e)
-
 
 -- | Let the user pick a chain id.
 userChainIdSelect
