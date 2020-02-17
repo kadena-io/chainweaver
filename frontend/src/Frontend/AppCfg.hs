@@ -20,10 +20,10 @@ data ChangePassword key t m = ChangePassword
 data ExportWalletError
   = ExportWalletError_PasswordIncorrect
   | ExportWalletError_NoKeys
-  | ExportWalletError_FileNotWritable
+  | ExportWalletError_FileNotWritable Text
 
 data ExportWallet t m = ExportWallet
-  { _exportWallet_requestExport :: Event t Text -> m (Event t (Either ExportWalletError ()))
+  { _exportWallet_requestExport :: Event t Text -> m (Event t (Either ExportWalletError FilePath))
   -- ^ Request to export the wallet to the user as a file. Password must match storage.
   }
 
@@ -44,7 +44,7 @@ data FileFFI t m = FileFFI
   -- ^ Trigger an "open file" dialog
   , _fileFFI_externalFileOpened :: Event t (FilePath, Text)
   -- ^ File contents from file chosen in "open file" dialog
-  , _fileFFI_deliverFile :: Event t (FilePath, Text) -> m (Event t Bool)
+  , _fileFFI_deliverFile :: Event t (FilePath, Text) -> m (Event t (Either Text FilePath))
   -- ^ Delivers a file to an appropriate place to the user
   }
 

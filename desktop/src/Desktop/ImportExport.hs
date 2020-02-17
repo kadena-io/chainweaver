@@ -14,6 +14,7 @@ import Data.Aeson (FromJSON, Value, eitherDecode, object, (.=), (.!=), (.:?), (.
 import Data.Aeson.Types (Parser, parseEither)
 import Data.Aeson.Text (encodeToLazyText)
 import Data.Bifunctor (first)
+import Data.ByteString (ByteString)
 import Data.Dependent.Map (DMap)
 import qualified Data.Dependent.Map as DMap
 import Data.Foldable (fold)
@@ -23,6 +24,7 @@ import Data.Functor.Identity (Identity(Identity), runIdentity)
 import Language.Javascript.JSaddle (MonadJSM)
 import Data.Text (Text)
 import qualified Data.Text as T
+import qualified Data.Text.Encoding as T
 import qualified Data.Text.Lazy as TL
 import qualified Data.Text.Lazy.IO as TL
 import qualified Data.Text.Lazy.Encoding as TL
@@ -89,6 +91,11 @@ doImport pw contents = runExceptT $ do
   rootKey <- failWith ImportWalletError_NoRootKey (runIdentity <$> DMap.lookup BIPStorage_RootKey bipCrypto)
 
   -- TODO: Test that the password is good for the XPrv.Crypto
+  let
+    testMsg = "test" :: ByteString
+    pwOk = Crypto.verify (Crypto.toXPub rootKey) testMsg $
+       Crypto.sign (T.encodeUtf8 $ unPassword pw) rootKey testMsg
+  unless pwOk $ throwError ImportWalletError_PasswordIncorrect
 
   feVer <- extractImportVersionField storeFrontendVersionKey 0 jVal
   feData <- extractImportDataField @Value storeFrontendDataKey feVer jVal
@@ -97,8 +104,7 @@ doImport pw contents = runExceptT $ do
     let vStore = FrontendStore.versionedStorage
     feLatestEither <- first (expandDecodeVersionJsonError storeFrontendDataKey feVer)
       <$> (_versionedStorage_decodeVersionedJson vStore feVer feData)
-    -- For some silly reason, this has the right data, but the import doesn't stick
-    -- We end up with no keys or accounts
+
     traverse (\dmap -> liftIO (TL.putStrLn $ encodeToLazyText dmap) >> _versionedStorage_restoreBackup vStore dmap) feLatestEither
 
   pure (rootKey, pw)
@@ -133,7 +139,7 @@ doExport oldPw pw = runExceptT $ do
 
   pure $
     ( fold
-      [ (T.unpack . (\t -> T.take 4 t <> T.takeEnd 4 t) . keyToText . _keyPair_publicKey . _key_pair $ keyPair)
+      [ (T.unpack . (T.take 8) . keyToText . _keyPair_publicKey . _key_pair $ keyPair)
       , "."
       , formatTime defaultTimeLocale (iso8601DateFormat (Just "%H:%M:%S")) lt
       , "."

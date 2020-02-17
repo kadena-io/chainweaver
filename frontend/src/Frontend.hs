@@ -5,32 +5,33 @@
 {-# LANGUAGE TypeApplications #-}
 module Frontend where
 
-import           Control.Monad            (join, void)
-import           Control.Monad.IO.Class
-import           Data.Maybe               (listToMaybe)
-import           Data.Text                (Text)
-import qualified Data.Text                as T
-import qualified GHCJS.DOM.EventM         as EventM
-import qualified GHCJS.DOM.FileReader     as FileReader
-import qualified GHCJS.DOM.HTMLElement    as HTMLElement
-import qualified GHCJS.DOM.Types          as Types
-import qualified GHCJS.DOM.File           as JSFile
-import           Reflex.Dom
+import Control.Monad (join, void)
+import Control.Monad.IO.Class
+import Data.Maybe (listToMaybe)
+import Data.Text (Text)
+import qualified Data.Text as T
+import qualified GHCJS.DOM.EventM as EventM
+import qualified GHCJS.DOM.FileReader as FileReader
+import qualified GHCJS.DOM.HTMLElement as HTMLElement
+import qualified GHCJS.DOM.HTMLInputElement as HTMLInput
+import qualified GHCJS.DOM.Types as Types
+import qualified GHCJS.DOM.File as JSFile
+import Reflex.Dom
 import Pact.Server.ApiV1Client (runTransactionLoggerT, logTransactionStdout)
 
-import           Obelisk.Frontend
-import           Obelisk.Route.Frontend
-import           Obelisk.Generated.Static
+import Obelisk.Frontend
+import Obelisk.Route.Frontend
+import Obelisk.Generated.Static
 
-import           Common.Api
-import           Common.Route
-import           Frontend.AppCfg
-import           Frontend.Log (defaultLogger)
-import           Frontend.Crypto.Browser
-import           Frontend.Foundation
-import           Frontend.ModuleExplorer.Impl (loadEditorFromLocalStorage)
-import           Frontend.ReplGhcjs
-import           Frontend.Storage
+import Common.Api
+import Common.Route
+import Frontend.AppCfg
+import Frontend.Log (defaultLogger)
+import Frontend.Crypto.Browser
+import Frontend.Foundation
+import Frontend.ModuleExplorer.Impl (loadEditorFromLocalStorage)
+import Frontend.ReplGhcjs
+import Frontend.Storage
 
 main :: IO ()
 main = do
@@ -105,7 +106,11 @@ openFileDialog = do
           name <- Types.fromJSString <$> JSFile.getName file
           liftIO $ cb $ ((name,) <$> join mText)
         pure ()
-      let open = HTMLElement.click $ _inputElement_raw input
+      let open = do
+            -- This doesn't fix the bug where if you open the same file twice we don't get an event
+            -- for the second select
+            HTMLInput.setFiles (_inputElement_raw input) Nothing
+            HTMLElement.click $ _inputElement_raw input
       pure (fmapMaybe id mContents, open)
 
 loaderMarkup :: DomBuilder t m => m ()

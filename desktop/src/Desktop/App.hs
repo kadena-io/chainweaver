@@ -63,13 +63,14 @@ deliverFile
   :: (TriggerEvent t m, MonadIO (Performable m), PerformEvent t m)
   => AppFFI
   -> Event t (FilePath, Text) -- inputEvent
-  -> m (Event t Bool)
+  -> m (Event t (Either Text FilePath))
 deliverFile appFFI eFile = do
   performEventAsync $ ffor eFile $ \(fName,fContent) cb ->
     let doWriteFile dirName =
-          liftIO $ catch ((T.writeFile (dirName </> fName) fContent) *> cb True) $ \(e :: IOError) -> do
-            putStrLn $ "Error '" <> show e <> "' exporting file: " <> show fName <> " to  " <> dirName
-            cb False
+          liftIO $ catch
+            ((T.writeFile (dirName </> fName) fContent) *> cb (Right (dirName </> fName)))
+            $ \(e :: IOError) -> do
+              cb (Left . T.pack $ "Error '" <> show e <> "' exporting file: " <> show fName <> " to  " <> dirName)
     in liftIO (_appFFI_global_dirSelectDialog appFFI doWriteFile)
 
 

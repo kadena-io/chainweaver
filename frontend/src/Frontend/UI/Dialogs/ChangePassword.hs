@@ -9,8 +9,9 @@ module Frontend.UI.Dialogs.ChangePassword
   , minPasswordLength
   ) where
 
-import Control.Monad (void)
 import Reflex.Dom.Core
+import Data.Functor (void)
+import Data.Text (Text)
 
 import Frontend.AppCfg
 import Frontend.Foundation
@@ -22,14 +23,23 @@ minPasswordLength :: Int
 minPasswordLength = 10
 
 uiChangePasswordDialog
-  :: ( MonadWidget t m, Monoid mConf
+  :: ( DomBuilder t m, MonadFix m, MonadHold t m, PostBuild t m, Monoid mConf, Flattenable mConf t
      )
   => ChangePassword key t m
   -> Event t ()
   -> m (mConf, Event t ())
-uiChangePasswordDialog (ChangePassword changePassword _) _onCloseExternal = mdo
-  onClose <- modalHeader $ text "Change Password"
-  modalMain $ do
+uiChangePasswordDialog changePassword _onCloseExternal = mdo
+  onClose <- modalHeader $ dynText dTitle
+  (dTitle, (conf, closes)) <- fmap splitDynPure . splitDynPure <$> workflow (uiChangePasswordScreen changePassword onClose)
+  mConf <- flatten =<< tagOnPostBuild conf
+  let close = switch $ current closes
+  pure (mConf, close <> onClose)
+
+uiChangePasswordScreen
+  :: (DomBuilder t m, PostBuild t m, Monoid mConf, MonadFix m)
+  => ChangePassword key t m -> Event t () -> Workflow t m (Text, (mConf, Event t ()))
+uiChangePasswordScreen (ChangePassword changePassword _) onClose = Workflow $ mdo
+  (currentPassword, newPassword, repeatPassword) <- modalMain $ do
     dialogSectionHeading mempty "Notice"
     divClass "group" $ text "Change the password which guards this wallet. \
       \ Your private keys will be re-encrypted using the new password, and the new password will take immediate effect. \
@@ -38,20 +48,39 @@ uiChangePasswordDialog (ChangePassword changePassword _) _onCloseExternal = mdo
     let passwordInput style title = fmap (current . value) $ uiInputElement $ def
           & initialAttributes .~ ("type" =: "password" <> "placeholder" =: title <> "class" =: "input_width_full" <> "style" =: style)
     dialogSectionHeading mempty "Current Password"
-    currentPassword <- divClass "group" $ passwordInput "" "Current password"
+    currentPassword' <- divClass "group" $ passwordInput "" "Current password"
     dialogSectionHeading mempty "New Password"
-    response <- divClass "group" $ do
-      newPassword <- passwordInput "" $ "New password (" <> tshow minPasswordLength <> " character min.)"
-      repeatPassword <- passwordInput "margin-top: 1rem" "Confirm new password"
-      change <- confirmButton (def & uiButtonCfg_class .~ "button_right_floated") "Change Password"
-      changePassword $ (,,) <$> currentPassword <*> newPassword <*> repeatPassword <@ change
-    void $ runWithReplace blank $ ffor response $ \case
-      Right () -> do
-        dialogSectionHeading mempty "Success"
-        divClass "group" $ text "Your password has successfully been changed."
-      Left e -> do
+    out <- divClass "group" $ do
+      newPassword' <- passwordInput "" $ "New password (" <> tshow minPasswordLength <> " character min.)"
+      repeatPassword' <- passwordInput "margin-top: 1rem" "Confirm new password"
+      pure (currentPassword', newPassword', repeatPassword')
+
+    void $ runWithReplace blank $ leftmost
+      [ (blank <$ eOk)
+      , ffor eErr $ \e -> do
         dialogSectionHeading mempty "Error"
         divClass "group" $ text e
+      ]
+
+    pure out
+  (eCancel, (eErr, eOk)) <- modalFooter $ do
+    eCancel' <- cancelButton def "Cancel"
+    eSubmit <- confirmButton def "Submit"
+    eResponse <- changePassword $ (,,) <$> currentPassword <*> newPassword <*> repeatPassword <@ eSubmit
+    pure $ (eCancel', fanEither eResponse)
+
+  return (("Change Password", (mempty, onClose <> eCancel)), uiChangePasswordSuccess onClose <$ eOk)
+
+uiChangePasswordSuccess
+  :: (DomBuilder t m, PostBuild t m, Monoid mConf)
+  => Event t () -> Workflow t m (Text, (mConf, Event t ()))
+uiChangePasswordSuccess onClose = Workflow $ do
+  modalMain $ do
+    elClass "div" "modal__success_screen" $ do
+      el "p" $ elClass "i" "fa fa-check-circle" $ blank
+      el "p" $ text $ "Password successfully changed"
+
   done <- modalFooter $ do
-    cancelButton def "Done"
-  return (mempty, onClose <> done)
+    confirmButton def "Close"
+
+  pure (("Change Password Success", (mempty, onClose <> done)), never)

@@ -8,9 +8,9 @@
 {-# LANGUAGE TypeApplications #-}
 
 -- | Wallet setup screens
-module Desktop.Setup (Password(..), runSetup, form, splashLogo, setupDiv, setupClass, checkPassword) where
+module Desktop.Setup (Password(..), runSetup, splashLogo, setupDiv, setupClass, checkPassword) where
 
-import Control.Lens ((<>~), (%~), (??), (^.), _1, _2, _3)
+import Control.Lens ((<>~), (??), (^.), _1, _2, _3)
 import Control.Error (hush)
 import Control.Applicative (liftA2)
 import Control.Monad (unless, guard, void)
@@ -18,7 +18,6 @@ import Control.Monad.Fix (MonadFix)
 import Control.Monad.Trans.Maybe (MaybeT(MaybeT), runMaybeT)
 import Control.Monad.IO.Class
 import Data.Bool (bool)
-import Data.Proxy (Proxy(Proxy))
 import Data.Foldable (fold, traverse_)
 import Data.Maybe (isNothing, fromMaybe)
 import Data.Bifunctor
@@ -43,6 +42,7 @@ import Desktop.ImportExport (doImport, Password(..), ImportWalletError(..))
 import Frontend.Storage.Class (HasStorage)
 import Frontend.UI.Button
 import Frontend.UI.Dialogs.ChangePassword (minPasswordLength)
+import Frontend.UI.Widgets.Helpers (imgWithAlt)
 import Frontend.UI.Widgets
 import Obelisk.Generated.Static
 
@@ -110,15 +110,8 @@ textTo = fromString . T.unpack
 tshow :: Show a => a -> Text
 tshow = T.pack . show
 
--- | Produces a form wrapper given a suitable submit button so that the enter key is correctly handled
-form :: forall t m a. DomBuilder t m => ElementConfig EventResult t (DomBuilderSpace m) -> m () -> m a -> m (Event t (), a)
-form cfg btn fields = do
-  let mkCfg = elementConfig_eventSpec %~ addEventSpecFlags (Proxy :: Proxy (DomBuilderSpace m)) Submit (\_ -> preventDefault)
-  (elt, a) <- element "form" (mkCfg cfg) $ fields <* btn
-  pure (domEvent Submit elt, a)
-
 setupForm :: forall t m a. (DomBuilder t m, PostBuild t m) => Text -> Text -> Dynamic t Bool -> m a -> m (Event t (), a)
-setupForm cls lbl disabled = form cfg $ setupDiv cls $ void $ confirmButton (def & uiButtonCfg_disabled .~ disabled) lbl
+setupForm cls lbl disabled = uiForm cfg $ setupDiv cls $ void $ confirmButton (def & uiButtonCfg_disabled .~ disabled) lbl
   where cfg = def & elementConfig_initialAttributes .~ ("class" =: setupClass "form")
 
 restoreForm :: (DomBuilder t m, PostBuild t m) => Dynamic t Bool -> m a -> m (Event t (), a)
@@ -359,8 +352,8 @@ restoreFromImport fileFFI backWF eBack = nagScreen
       (text "Go back and export current wallet")
     nagScreen = Workflow $ setupDiv "splash" $ do
       splashLogo
-      elClass "h1" "setup__recover_import_title" $ text "You are about to replace the current wallet's data"
-      elClass "p" "setup__recover_import_text" $ text "Reminder: Importing a wallet file will replace the data within the current wallet."
+      elClass "h1" "setup__recover-import-title" $ text "You are about to replace the current wallet's data"
+      elClass "p" "setup__recover-import-text" $ text "Reminder: Importing a wallet file will replace the data within the current wallet."
       eImport <- confirmButton def "Select Import File"
       eExit <- nagBack
       pure
@@ -373,22 +366,23 @@ restoreFromImport fileFFI backWF eBack = nagScreen
 
     importScreen = Workflow $ setupDiv "splash" $ mdo
       splashLogo
-      elClass "h1" "setup__recover_import_title" $ text "Import File Password"
-      elClass "p" "setup__recover_import_text" $ text "Enter the password for the chosen wallet file in order to authorize access to the data."
+      elClass "h1" "setup__recover-import-title" $ text "Import File Password"
+      elClass "p" "setup__recover-import-text" $ text "Enter the password for the chosen wallet file in order to authorize access to the data."
 
       let disabled = isNothing <$> dmValidForm
-      dErr <- holdDyn Nothing (leftmost [Just <$> eImportErr, Nothing <$ _inputElement_input pwInput])
+      dErr <- holdDyn Nothing (leftmost [Just <$> eImportErr, Nothing <$ updated dmValidForm])
       (eSubmit, (dFileSelected, pwInput)) <- setupForm "" "Import File" disabled $ mdo
         ePb <- getPostBuild
-        (selectElt, _) <- elClass' "div" "setup__recover_import_file" $
-          dynText $ ffor dFileSelected $ maybe "Select a file" (T.pack . fst)
+        (selectElt, _) <- elClass' "div" "setup__recover-import-file" $ do
+          imgWithAlt (static @"img/import.svg") "Import" blank
+          divClass "setup__recover-import-file-text" $ dynText $ ffor dFileSelected $ maybe "Select a file" (T.pack . fst)
         performEvent_ $ liftJSM (_fileFFI_openFileDialog fileFFI FileType_Import) <$
           ((domEvent Click selectElt) <> ePb)
         dFileSelected <- holdDyn Nothing (Just <$> _fileFFI_externalFileOpened fileFFI)
         pw <- uiPassword (setupClass "password-wrapper") (setupClass "password") "Enter import wallet password"
 
         dyn_ $ ffor dErr $ traverse_ $ \err ->
-          elClass "p" "setup__recover_import_error" $ text $ case err of
+          elClass "p" "error_inline" $ text $ case err of
             ImportWalletError_PasswordIncorrect -> "Incorrect Password"
             ImportWalletError_NoRootKey -> "Backup cannot be restored as it does not contain a BIP Root Key"
             (ImportWalletError_NotJson eMsg) -> "Backup cannot be restored as it is not a valid json file. Error: " <> eMsg
@@ -405,9 +399,6 @@ restoreFromImport fileFFI backWF eBack = nagScreen
             <$> MaybeT (nonEmptyPassword <$> (_inputElement_value pwInput))
             <*> MaybeT (fmap snd <$> dFileSelected)
 
-      -- TODO: This seems to restore OK, then once the wallet unlocks something destroys the data that
-      -- we restored for the keys and accounts.
-      -- Take a look at versionedUi and what is happening in there
       eImport <- performEvent $ tagMaybe (fmap (uncurry (doImport @t)) <$> current dmValidForm) eSubmit
 
       let (eImportErr, eImportDone) = fanEither eImport

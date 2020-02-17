@@ -18,12 +18,14 @@
 
 module Desktop.Frontend (desktop, bipWallet, bipCryptoGenPair, runFileStorageT) where
 
+import Control.Exception (catch)
 import Control.Lens ((?~))
 import Control.Monad ((<=<), guard, void, when)
 import Control.Monad.Fix (MonadFix)
 import Control.Monad.Trans (lift)
 import Control.Monad.IO.Class
 import Data.Bool (bool)
+import Data.Bifunctor (first)
 import Data.ByteString (ByteString)
 import Data.Dependent.Sum
 import Data.Functor.Compose
@@ -37,11 +39,14 @@ import Language.Javascript.JSaddle (liftJSM)
 import Pact.Server.ApiV1Client (HasTransactionLogger, runTransactionLoggerT, logTransactionStdout)
 import Reflex.Dom.Core hiding (Key)
 import qualified Cardano.Crypto.Wallet as Crypto
+import qualified Data.Text as T
 import qualified Data.Text.Encoding as T
 import qualified Data.Text.IO as T
 import qualified GHCJS.DOM as DOM
 import qualified GHCJS.DOM.EventM as EventM
 import qualified GHCJS.DOM.GlobalEventHandlers as GlobalEventHandlers
+import System.Directory (getCurrentDirectory)
+import System.FilePath ((</>))
 
 import Common.Api (getConfigRoute)
 import Common.Route
@@ -106,13 +111,19 @@ desktop = Frontend
   }
 
 -- This is the deliver file that is only used for development (i.e jsaddle web version)
--- so it is hacky and just writes to the current directory.
+-- so it is hacky and just writes to the current directory. We could likely make a
+-- thing with a data uri and then click on it with JS, but this is probably OK enough
+-- for dev.
 deliverFile
   :: (MonadIO (Performable m), PerformEvent t m)
   => Event t (FilePath, Text)
-  -> m (Event t Bool)
-deliverFile = performEvent . fmap (liftIO . (True <$) . uncurry T.writeFile)
-
+  -> m (Event t (Either Text FilePath))
+deliverFile eInput = performEvent . ffor eInput $ \(fName, fContent) -> liftIO $ do
+  dirName <- getCurrentDirectory
+  catch
+    ((T.writeFile (dirName </> fName) fContent) *> (pure . Right $ dirName </> fName))
+    $ \(e :: IOError) ->
+      pure . Left . T.pack $ "Error '" <> show e <> "' exporting file: " <> show fName <> " to  " <> dirName
 
 data LockScreen a where
   LockScreen_Restore :: LockScreen Crypto.XPrv -- ^ Root key
@@ -213,7 +224,7 @@ bipWallet fileFFI mkAppCfg = do
                 eFileDone <- _fileFFI_deliverFile frontendFileFFI eGoodExport
                 pure $
                   (Left <$> eErrExport)
-                  <> (bool (Left ExportWalletError_FileNotWritable) (Right ()) <$> eFileDone)
+                  <> (first ExportWalletError_FileNotWritable <$> eFileDone)
               }
             }
 
@@ -259,7 +270,7 @@ lockScreen xprv = setupDiv "fullscreen" $ divClass "wrapper" $ setupDiv "splash"
 
     let unlock = void $ confirmButton (def & uiButtonCfg_type ?~ "submit") "Unlock"
         cfg = def & elementConfig_initialAttributes .~ ("class" =: setupClass "splash-terms-buttons")
-    (eSubmit, pass) <- form cfg unlock $ do
+    (eSubmit, pass) <- uiForm cfg unlock $ do
       elDynClass "div"
         (("lock-screen__invalid-password" <>) . bool " lock-screen__invalid-password--invalid" "" <$> dValid)
         (text "Invalid Password")

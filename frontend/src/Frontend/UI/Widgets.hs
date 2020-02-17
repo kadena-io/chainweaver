@@ -62,6 +62,8 @@ module Frontend.UI.Widgets
   , uiAccountBalance
   , uiAccountBalance'
   , uiPublicKeyShrunk
+  , uiForm
+  , uiForm'
     -- ** Helper types to avoid boolean blindness for additive input
   , AllowAddNewRow (..)
   , AllowDeleteRow (..)
@@ -93,7 +95,7 @@ module Frontend.UI.Widgets
 ------------------------------------------------------------------------------
 import           Control.Applicative
 import           Control.Arrow (first, (&&&))
-import           Control.Lens
+import           Control.Lens hiding (element)
 import           Control.Monad
 import           Control.Monad.Except
 import           Control.Monad.Trans.Maybe
@@ -236,6 +238,16 @@ addInputElementCls = addToClassAttr "input"
 addNoAutofillAttrs :: (Ord attr, IsString attr) => Map attr Text -> Map attr Text
 addNoAutofillAttrs = (noAutofillAttrs <>)
 
+-- | Produces a form wrapper given a suitable submit button so that the enter key is correctly handled
+uiForm' :: forall t m a b. DomBuilder t m => ElementConfig EventResult t (DomBuilderSpace m) -> m b -> m a -> m (Event t (), (a,b))
+uiForm' cfg btn fields = do
+  let mkCfg = elementConfig_eventSpec %~ addEventSpecFlags (Proxy :: Proxy (DomBuilderSpace m)) Submit (\_ -> preventDefault)
+  (elt, a) <- element "form" (mkCfg cfg) $ (,) <$> fields <*> btn
+  pure (domEvent Submit elt, a)
+
+-- | Produces a form wrapper given a suitable submit button so that the enter key is correctly handled
+uiForm :: forall t m a. DomBuilder t m => ElementConfig EventResult t (DomBuilderSpace m) -> m () -> m a -> m (Event t (), a)
+uiForm cfg btn fields = (_2 %~ fst) <$> uiForm' cfg btn fields
 
 -- | reflex-dom `inputElement` with chainweaver default styling:
 uiInputElement
