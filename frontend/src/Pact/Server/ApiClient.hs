@@ -32,7 +32,7 @@ import Control.Monad.IO.Class
 import Control.Monad.Primitive
 import Control.Monad.Reader hiding (local)
 import Control.Monad.Except
-import Control.Exception (try, displayException)
+import Control.Exception (try, displayException, catch)
 import Control.Monad.Ref
 import Data.Coerce
 import Data.Foldable (for_)
@@ -239,6 +239,11 @@ createCommandLogExportFileV1 :: FilePath -> IO (Either String (FilePath, Text))
 createCommandLogExportFileV1 fp = runExceptT $ do
   let logFilePath = fp
       exportFilePath = printf "%s_v%i" fp commandLogCurrentVersion
-  xs <- ExceptT $ traverse Aeson.eitherDecodeStrict . BS8.lines <$> BS.readFile logFilePath
-  let contents = BSL.toStrict $ BSL.toLazyByteString $ ifoldMap Latest.exportCommandLog xs
-  pure (exportFilePath, T.decodeUtf8With T.lenientDecode contents)
+
+  logContents <- ExceptT $ catch (Right . BS8.lines <$> BS.readFile logFilePath)
+    $ \(e :: IOError) -> pure $ Left $ displayException e
+
+  xs <- liftEither $ traverse Aeson.eitherDecodeStrict logContents
+
+  let csvContents = BSL.toStrict $ BSL.toLazyByteString $ ifoldMap Latest.exportCommandLog xs
+  pure (exportFilePath, T.decodeUtf8With T.lenientDecode csvContents)
