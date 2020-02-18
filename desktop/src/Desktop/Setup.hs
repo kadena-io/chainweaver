@@ -393,6 +393,7 @@ restoreFromImport fileFFI backWF eBack = nagScreen
         dyn_ $ ffor dErr $ traverse_ $ \err ->
           elClass "p" "error_inline" $ text $ case err of
             ImportWalletError_InvalidCommandLogDestination -> "Destination for transaction log file is invalid"
+            ImportWalletError_CommandLogWriteError -> "Unable to write transaction log file"
             ImportWalletError_PasswordIncorrect -> "Incorrect Password"
             ImportWalletError_NoRootKey -> "Backup cannot be restored as it does not contain a BIP Root Key"
             ImportWalletError_NotJson eMsg -> "Backup cannot be restored as it is not a valid json file. Error: " <> eMsg

@@ -52,6 +52,7 @@ uiExportWalletScreen (ExportWallet _exportWallet_requestExport) onClose = Workfl
           el "li" $ text "Account notes"
           el "li" $ text "Network configuration"
           el "li" $ text "Transaction configuration"
+          el "li" $ text "Transaction logs"
 
       dialogSectionHeading mempty "Current Password"
       divClass "group" $ do

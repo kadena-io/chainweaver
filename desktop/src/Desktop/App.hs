@@ -31,7 +31,7 @@ import qualified Network.HTTP.Client as HTTPClient
 import qualified Snap.Http.Server as Snap
 import qualified System.Directory as Directory
 import qualified System.Environment as Env
-import Pact.Server.ApiClient (runTransactionLoggerT, logTransactionFile)
+import Pact.Server.ApiClient (runTransactionLoggerT, logTransactionFile, commandLogFilename)
 
 import Backend (serveBackendRoute)
 import Common.Route
@@ -207,7 +207,7 @@ main' ffi mainBundleResourcePath runHTML = do
                 , _appCfg_enabledSettings = enabledSettings
                 , _appCfg_logMessage = _appFFI_global_logFunction ffi
                 }
-          _ <- mapRoutedT ( flip runTransactionLoggerT (logTransactionFile $ libPath </> "transaction_log") .
+          _ <- mapRoutedT ( flip runTransactionLoggerT (logTransactionFile $ libPath </> commandLogFilename) .
                             runFileStorageT libPath
                           )
                $ runWithReplace loaderMarkup

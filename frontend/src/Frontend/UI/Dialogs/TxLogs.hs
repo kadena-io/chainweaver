@@ -55,12 +55,6 @@ uiTxLogs fileFFI _model _onExtClose = do
 
   divClass "modal__main key-details" $ do
     let
-      showIndex i = let itxt = Pact.tShow i in
-        if Text.length itxt < 2 then
-          "0" <> itxt
-        else
-          itxt
-
       mkCol w = elAttr "col" ("style" =: ("width: " <> w)) blank
       mkHeading = elClass "th" "table__heading" . text
       td extraClass = elClass "td" ("table__cell " <> extraClass)
@@ -87,7 +81,7 @@ uiTxLogs fileFFI _model _onExtClose = do
 
         -- Rows
         el "tbody" $ iforM_ cmdLogs $ \i cmdLog -> elClass "tr" "table-row" $ do
-          td "tx-log-row__ix" $ text $ showIndex i
+          td "tx-log-row__ix" $ text $ Text.justifyRight 2 '0' $ Pact.tShow i
 
           -- Expected time format : YYYY-MM-DD  HH:MM
           td "tx-log-row__timestamp" $ text $ Text.pack
@@ -96,7 +90,7 @@ uiTxLogs fileFFI _model _onExtClose = do
           let sender = Api._commandLog_sender cmdLog
           td "tx-log-row__sender" $ case (textToKey sender) :: Maybe PublicKey of
             Nothing -> text sender
-            Just _ -> text $ Text.take 4 sender <> "..." <> Text.takeEnd 4 sender
+            Just _ -> text $ Text.take 8 sender
 
           td "tx-log-row__chain" $ text
             $ Pact._chainId $ Api._commandLog_chain cmdLog

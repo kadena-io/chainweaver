@@ -4,16 +4,19 @@
 {-# LANGUAGE TypeApplications #-}
 module Desktop.ImportExport where
 
+import qualified System.Directory as Dir
 import qualified Cardano.Crypto.Wallet as Crypto
 import Control.Error (hoistEither, failWith)
+import Control.Exception (catch, displayException)
 import Control.Monad (unless)
 import Control.Monad.IO.Class (MonadIO, liftIO)
-import Control.Monad.Except (ExceptT(ExceptT), runExceptT, throwError)
+import Control.Monad.Except (ExceptT(ExceptT), runExceptT, throwError, catchError)
 import Control.Monad.Trans (lift)
 import Data.Aeson (FromJSON, Value, eitherDecode, object, (.=), (.!=), (.:?), (.:), withObject)
 import Data.Aeson.Types (Parser, parseEither)
 import Data.Aeson.Text (encodeToLazyText)
 import Data.Bifunctor (first)
+import Data.Functor (($>))
 import Data.ByteString (ByteString)
 import Data.Dependent.Map (DMap)
 import qualified Data.Dependent.Map as DMap
@@ -50,6 +53,7 @@ data ImportWalletError
   | ImportWalletError_UnknownVersion Text StorageVersion
   | ImportWalletError_DecodeError Text StorageVersion Text
   | ImportWalletError_InvalidCommandLogDestination
+  | ImportWalletError_CommandLogWriteError
   deriving (Eq, Show)
 
 bipStorageVersionKey :: Text
@@ -134,17 +138,9 @@ doImport txLogger pw contents = runExceptT $ do
   feVer <- extractImportVersionField storeFrontendVersionKey 0 jVal
   feData <- extractImportDataField @Value storeFrontendDataKey feVer jVal
 
-  -- TODO: Can/should this be stored using HasStorage mechanisms? Did not think it was
-  -- possible at the time, but not sure that's true. Think on this and fix it up when able.
-  cmdLogVer <- extractImportVersionField commandLogVersionKey (fromIntegral commandLogCurrentVersion) jVal
-  rawCmdLogData <- extractImportDataField @Text commandLogDataKey (fromIntegral commandLogCurrentVersion) jVal
-  _ <- hoistEither $ first (ImportWalletError_DecodeError commandLogDataKey cmdLogVer . T.pack)
-    $ traverse (eitherDecode @CommandLog . TL.encodeUtf8 . TL.fromStrict) $ T.lines rawCmdLogData
-
-  logFilePath <- failWith ImportWalletError_InvalidCommandLogDestination $
-    _transactionLogger_destination txLogger
-
-  _ <- liftIO $ T.writeFile logFilePath rawCmdLogData
+  -- We may not have any commandlogs included in the import so only fail if there is
+  -- something to try to import.
+  _ <- attemptImportCommandLogs jVal
 
   _ <- ExceptT $ runBIPCryptoT (constant (rootKey, unPassword pw)) $ do
     let vStore = FrontendStore.versionedStorage
@@ -162,6 +158,26 @@ doImport txLogger pw contents = runExceptT $ do
       ImportWalletError_DecodeError section expectedVer err
     expandDecodeVersionJsonError section _ (VersioningDecodeJsonError_UnknownVersion ver) =
       ImportWalletError_UnknownVersion section ver
+
+    attemptImportCommandLogs jVal = do
+      let natVer = fromIntegral commandLogCurrentVersion
+      mGetLogVer <- catchError
+        (Just <$> extractImportVersionField commandLogVersionKey natVer jVal)
+        (const $ pure Nothing)
+
+      case mGetLogVer of
+        -- No CommandLogs included in wallet export
+        Nothing -> pure ()
+        Just cmdLogVer -> do
+          rawCmdLogData <- extractImportDataField @Text commandLogDataKey natVer jVal
+          _ <- hoistEither $ first (ImportWalletError_DecodeError commandLogDataKey cmdLogVer . T.pack)
+            $ traverse (eitherDecode @CommandLog . TL.encodeUtf8 . TL.fromStrict) $ T.lines rawCmdLogData
+
+          logFilePath <- failWith ImportWalletError_InvalidCommandLogDestination $
+            _transactionLogger_destination txLogger
+
+          ExceptT $ liftIO $ catch (Right <$> T.writeFile logFilePath rawCmdLogData) $ \(_ :: IOError) ->
+            pure $ Left ImportWalletError_CommandLogWriteError
 
 -- This is running on the assumption that the storage has been upgraded already and isn't on
 -- an old version.
@@ -187,7 +203,18 @@ doExport txLogger oldPw pw = runExceptT $ do
   cmdLogFile <- failWith ExportWalletError_CommandLogExport $
     _transactionLogger_destination txLogger
 
-  cmdLogs <- liftIO $ TL.readFile cmdLogFile
+  cmdLogsExist <- liftIO $ catch (Dir.doesFileExist cmdLogFile) $ \(_ :: IOError) ->
+    pure False
+
+  cmdLogs <-
+    if cmdLogsExist then do
+      logs <- ExceptT $ liftIO $ catch (Right <$> TL.readFile cmdLogFile) $ \(e :: IOError) -> do
+        liftIO (putStrLn $ displayException e) $> Left ExportWalletError_CommandLogExport
+      pure [ commandLogVersionKey .= commandLogCurrentVersion
+           , commandLogDataKey .= logs
+           ]
+    else
+      pure mempty
 
   lt <- zonedTimeToLocalTime <$> liftIO getZonedTime
 
@@ -200,9 +227,8 @@ doExport txLogger oldPw pw = runExceptT $ do
       , "."
       , T.unpack (fileTypeExtension FileType_Import)
       ]
-    , TL.toStrict $ encodeToLazyText $ object
+    , TL.toStrict $ encodeToLazyText $ object $
       [ "BIPStorage_Version" .= bipVer, "BIPStorage_Data" .= bipData
       , "StoreFrontend_Version" .= feVer, "StoreFrontend_Data" .= feData
-      , commandLogVersionKey .= commandLogCurrentVersion, commandLogDataKey .= cmdLogs
-      ]
+      ] <> cmdLogs
     )

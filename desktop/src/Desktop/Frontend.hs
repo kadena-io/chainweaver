@@ -195,7 +195,6 @@ bipWallet fileFFI mkAppCfg = do
             $ showModalBrutal "logout-confirm-modal" uiIdeLogoutConfirmation <$ onLogout
 
           (updates, trigger) <- newTriggerEvent
-          --  _ :: FileFFI t m -> FileFFI t (RoutedT t (R FrontendRoute) (BIPCryptoT t m))
 
           let frontendFileFFI = liftFileFFI (lift . lift) fileFFI
           Frontend.ReplGhcjs.app sidebarLogoutLink frontendFileFFI $ mkAppCfg $ EnabledSettings
