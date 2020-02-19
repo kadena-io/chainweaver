@@ -52,6 +52,7 @@ import Frontend.Foundation
 import Frontend.GistStore
 import Frontend.Ide
 import Frontend.OAuth
+import Frontend.Network
 import Frontend.Repl
 import Frontend.Storage
 import qualified Frontend.VersionedStore as Store
@@ -276,7 +277,9 @@ networkBar m = divClass "main-header main-header__network-bar" $ do
   --  >>= uiNetworkStatus (pure " page__network-bar-status")
   -- Present the dropdown box for selecting one of the configured networks.
   divClass "page__network-bar-select" $ do
-    uiNetworkSelect "select_type_special" (m ^. ide_network)
+    selectEv <- uiNetworkSelect "select_type_special" (m ^. network_selectedNetwork) (m ^. network_networks)
+    pure $ mempty & networkCfg_selectNetwork .~ selectEv
+
 
 controlBar
   :: MonadWidget t m
