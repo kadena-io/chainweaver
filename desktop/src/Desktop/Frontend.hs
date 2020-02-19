@@ -26,7 +26,6 @@ import Control.Monad.Trans (lift)
 import Control.Monad.IO.Class
 import Data.Bool (bool)
 import Data.Bifunctor (first)
-import Data.ByteString (ByteString)
 import Data.Dependent.Sum
 import Data.Functor.Compose
 import Data.Functor.Identity
@@ -201,7 +200,7 @@ bipWallet fileFFI mkAppCfg = do
             { _enabledSettings_changePassword = Just $ ChangePassword
               { _changePassword_requestChange =
                 let doChange (Identity (oldRoot, _)) (oldPass, newPass, repeatPass)
-                      | testKeyPassword oldRoot oldPass = case checkPassword newPass repeatPass of
+                      | passwordRoundTripTest oldRoot oldPass = case checkPassword newPass repeatPass of
                         Left e -> pure $ Left e
                         Right _ -> do
                           -- Change password for root key
@@ -290,12 +289,7 @@ lockScreen xprv = setupDiv "fullscreen" $ divClass "wrapper" $ setupDiv "splash"
         text "Help"
       uiButton btnCfgSecondary $ text "Restore"
 
-    let isValid = attachWith (\(p, x) _ -> p <$ guard (testKeyPassword x p)) ((,) <$> current (value pass) <*> xprv) eSubmit
+    let isValid = attachWith (\(p, x) _ -> p <$ guard (passwordRoundTripTest x p)) ((,) <$> current (value pass) <*> xprv) eSubmit
     pure (restore, fmapMaybe id isValid)
-
--- | Check the validity of the password by signing and verifying a message
-testKeyPassword :: Crypto.XPrv -> Text -> Bool
-testKeyPassword xprv pass = Crypto.verify (Crypto.toXPub xprv) msg $ Crypto.sign (T.encodeUtf8 pass) xprv msg
-  where msg = "test message" :: ByteString
 
 deriveGEq ''LockScreen

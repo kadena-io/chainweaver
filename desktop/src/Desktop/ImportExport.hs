@@ -17,7 +17,6 @@ import Data.Aeson.Types (Parser, parseEither)
 import Data.Aeson.Text (encodeToLazyText)
 import Data.Bifunctor (first)
 import Data.Functor (($>))
-import Data.ByteString (ByteString)
 import Data.Dependent.Map (DMap)
 import qualified Data.Dependent.Map as DMap
 import Data.Foldable (fold)
@@ -28,7 +27,6 @@ import Language.Javascript.JSaddle (MonadJSM)
 import Data.Text (Text)
 import qualified Data.Text as T
 import qualified Data.Text.IO as T
-import qualified Data.Text.Encoding as T
 import qualified Data.Text.Lazy as TL
 import qualified Data.Text.Lazy.IO as TL
 import qualified Data.Text.Lazy.Encoding as TL
@@ -36,7 +34,7 @@ import Reflex
 
 import Common.Wallet (_keyPair_publicKey, _key_pair, keyToText)
 import Desktop.Orphans ()
-import Desktop.Crypto.BIP (BIPStorage(..), bipMetaPrefix, runBIPCryptoT)
+import Desktop.Crypto.BIP (BIPStorage(..), bipMetaPrefix, runBIPCryptoT, passwordRoundTripTest)
 import Frontend.AppCfg (ExportWalletError(..), FileType(FileType_Import), fileTypeExtension)
 import Pact.Server.ApiClient (TransactionLogger (..), CommandLog, commandLogCurrentVersion)
 import Frontend.Crypto.Class (HasCrypto)
@@ -128,11 +126,8 @@ doImport txLogger pw contents = runExceptT $ do
   bipCrypto <- extractImportDataField @(DMap BIPStorage Identity) bipStorageDataKey 0 jVal
   rootKey <- failWith ImportWalletError_NoRootKey (runIdentity <$> DMap.lookup BIPStorage_RootKey bipCrypto)
 
-  -- TODO: Test that the password is good for the XPrv.Crypto
-  let
-    testMsg = "test" :: ByteString
-    pwOk = Crypto.verify (Crypto.toXPub rootKey) testMsg $
-       Crypto.sign (T.encodeUtf8 $ unPassword pw) rootKey testMsg
+  let pwOk = passwordRoundTripTest rootKey (unPassword pw)
+
   unless pwOk $ throwError ImportWalletError_PasswordIncorrect
 
   feVer <- extractImportVersionField storeFrontendVersionKey 0 jVal
