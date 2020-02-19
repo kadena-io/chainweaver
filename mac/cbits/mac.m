@@ -217,7 +217,6 @@ void setupAppMenu(HsStablePtr hs_handleOpenedFile) {
 
   NSMenuItem *open = [fileMenu
     addItemWithTitle:@"Open"
-    // TODO: This is broken now because it needs an arg
     action: @selector(openPactFileDialog)
     keyEquivalent:@"o"
   ];
