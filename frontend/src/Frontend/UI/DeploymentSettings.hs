@@ -597,7 +597,9 @@ uiMetaData
   :: forall t m model mConf
      . ( DomBuilder t m, MonadHold t m, MonadFix m, PostBuild t m
        , HasNetwork model t, HasNetworkCfg mConf t, Monoid mConf
-       , GhcjsDomSpace ~ DomBuilderSpace m, MonadJSM m
+       , MonadJSM m, MonadJSM (Performable m)
+       , PerformEvent t m
+       , GhcjsDomSpace ~ DomBuilderSpace m
        )
   => model -> Maybe TTLSeconds -> Maybe GasLimit -> m (mConf, Dynamic t TTLSeconds, Dynamic t GasLimit, Dynamic t GasPrice)
 uiMetaData m mTTL mGasLimit = do
@@ -763,34 +765,50 @@ parseSigCapability txt = parsed >>= compiled >>= parseApp
     compiled parsedPactCode = fmapL (("Sig capability parse failed: " ++) . show) $
       compileExps (mkTextInfo $ Pact._pcCode parsedPactCode) (Pact._pcExps parsedPactCode)
     parsed = parsePact txt
-    toPV a = fmapL (("Sig capability argument parse failed, expected simple pact value: " ++) . T.unpack) $ toPactValue a
+    toPV a = fmapL (("Sig capability argument parse failed, expected simple pact value: " ++) . T.unpack)
+      $ toPactValue a
 
 -- | Display a single row for the user to enter a custom capability and
 -- account to attach
 capabilityInputRow
-  :: MonadWidget t m
+  :: forall t m key
+     . MonadWidget t m
   => Maybe DappCap
   -> m (Dynamic t (Maybe (KeyPair key)))
   -> m (CapabilityInputRow t key)
 capabilityInputRow mCap keyPairSelector = elClass "tr" "table__row" $ do
+  let
+    uiCapInput cfg0 = do
+      i <- uiInputElement cfg0
+      pure ( i
+           , ( parseSigCapability <$> value i
+             , _inputElement_input i
+             )
+           )
+
+    showCapPopover (_, (_, onInput)) = pure $ ffor onInput $ \case
+      "" -> PopoverState_Disabled
+      inp -> case parseSigCapability inp of
+        Left e -> PopoverState_Error $ T.pack e
+        Right _ -> PopoverState_Disabled
+
   (emptyCap, parsed) <- elClass "td" "table__cell_padded" $ mdo
-    cap <- uiInputElement $ def
+    (cap, (parsed, _)) <- uiInputWithPopover uiCapInput (_inputElement_raw . fst) showCapPopover $ def
       & inputElementConfig_initialValue .~ foldMap (renderCompactText . _dappCap_cap) mCap
-      & initialAttributes .~
-        (let (cls, dis) = maybe mempty (const (" input_transparent grant-capabilities-static-input", "disabled" =: "true")) mCap
+      & initialAttributes .~ (
+        let (cls, dis) = maybe
+              mempty
+              (const (" input_transparent grant-capabilities-static-input", "disabled" =: "true"))
+              mCap
         in mconcat
           [ "placeholder" =: "(module.capability arg1 arg2)"
           , "class" =: ("input_width_full" <> cls)
           , dis
-          ])
-      & modifyAttributes .~ ffor errors (\e -> "style" =: ("background-color: #fdd" <$ guard e))
-    emptyCap <- holdUniqDyn $ T.null <$> value cap
-    let parsed = parseSigCapability <$> value cap
-        showError = (\p e -> isLeft p && not e) <$> parsed <*> emptyCap
-        errors = leftmost
-          [ tag (current showError) (domEvent Blur cap)
-          , False <$ _inputElement_input cap
           ]
+        )
+
+    emptyCap <- holdUniqDyn $ T.null <$> value cap
+
     pure (emptyCap, parsed)
   dkp <- elClass "td" "table__cell_padded" keyPairSelector
 

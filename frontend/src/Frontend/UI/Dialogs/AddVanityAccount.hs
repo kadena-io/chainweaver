@@ -33,7 +33,6 @@ import           Frontend.UI.Dialogs.AddVanityAccount.DefineKeyset (DefinedKeyse
 import           Frontend.UI.Modal.Impl
 import           Frontend.UI.Widgets
 import           Frontend.UI.Widgets.Helpers (dialogSectionHeading)
-import           Frontend.UI.Widgets.AccountName (uiAccountNameInput)
 
 import           Frontend.Crypto.Class
 import           Frontend.JsonData
@@ -85,7 +84,7 @@ uiAddAccountDialog model _onCloseExternal = mdo
     divClass "group" $ text "Add an Account here to display its status. If the Account does not yet exist, then you will be able to create and control the Account on the blockchain."
     dialogSectionHeading mempty "Add Account"
     divClass "group" $ do
-      uiAccountNameInput model Nothing
+      uiAccountNameInput Nothing (checkAccountNameAvailability <$> (model ^. network_selectedNetwork) <*> (model ^. wallet_accounts))
   modalFooter $ do
     onCancel <- cancelButton def "Cancel"
     onAdd <- confirmButton (def & uiButtonCfg_disabled .~ (isNothing <$> name)) "Add"
@@ -127,6 +126,12 @@ uiCreateAccountDialog model name chain mPublicKey _onCloseExternal = do
   let close = switch $ current closes
   pure (mConf, onClose <> close)
 
+createAccountSplashBaseText, createAccountSplashKeysetInfoText :: Text
+createAccountSplashBaseText =
+  "In order to receive funds to an Account, the unique Account must be recorded on the blockchain."
+createAccountSplashKeysetInfoText =
+  " First configure the Account by defining which keys are required to sign transactions. Then create the Account by recording it on the blockchain."
+
 createAccountSplash
   :: ( Monoid mConf, Flattenable mConf t
      , MonadWidget t m
@@ -143,9 +148,12 @@ createAccountSplash
   -> Workflow t m (Text, (mConf, Event t ()))
 createAccountSplash model name chain mPublicKey keysetPresets = Workflow $ do
   (keyset, keysetSelections) <- modalMain $ do
+
     dialogSectionHeading mempty "Notice"
     -- Placeholder text
-    divClass "group" $ text "In order to receive funds to an Account, the unique Account must be recorded on the blockchain. First configure the Account by defining which keys are required to sign transactions. Then create the Account by recording it on the blockchain."
+    divClass "group" $ text $ createAccountSplashBaseText
+      <> maybe createAccountSplashKeysetInfoText mempty mPublicKey
+
     dialogSectionHeading mempty "Destination"
     divClass "group" $ transactionDisplayNetwork model
     case mPublicKey of
@@ -171,8 +179,10 @@ createAccountSplash model name chain mPublicKey keysetPresets = Workflow $ do
     notGasPayer <- confirmButton cfg "I am not the Gas Payer"
     gasPayer <- confirmButton cfg "I am the Gas Payer"
     let next = leftmost
-          [ tagMaybe (fmap (createAccountNotGasPayer model name chain mPublicKey keysetSelections) <$> current keyset) notGasPayer
-          , tagMaybe (fmap (createAccountConfig model name chain mPublicKey keysetSelections) <$> current keyset) gasPayer
+          [ tagMaybe (fmap (createAccountNotGasPayer model name chain mPublicKey keysetSelections)
+                      <$> current keyset) notGasPayer
+          , tagMaybe (fmap (createAccountConfig model name chain mPublicKey keysetSelections)
+                      <$> current keyset) gasPayer
           ]
     pure (cancel, next)
   return (("Create Account", (mempty, cancel)), next)
@@ -242,7 +252,7 @@ createAccountConfig ideL name chainId mPublicKey selectedKeyset keyset = Workflo
     []
     TxnSenderTitle_GasPayer
     Nothing
-    $ uiAccountDropdown def (pure $ \_ a -> fromMaybe False (accountHasFunds a))
+    $ uiAccountDropdown def (pure $ \_ a -> fromMaybe False (accountHasFunds a)) (pure id)
 
   let payload = HM.singleton tempkeyset $ toJSON keyset
       code = mkPactCode name
@@ -250,7 +260,7 @@ createAccountConfig ideL name chainId mPublicKey selectedKeyset keyset = Workflo
         { _deploymentSettingsConfig_chainId = userChainIdSelect
         , _deploymentSettingsConfig_userTab = Nothing :: Maybe (Text, m ())
         , _deploymentSettingsConfig_code = pure code
-        , _deploymentSettingsConfig_sender = uiAccountDropdown def (pure $ \_ _ -> True)
+        , _deploymentSettingsConfig_sender = uiAccountDropdown def (pure $ \_ _ -> True) (pure id)
         , _deploymentSettingsConfig_data = Just payload
         , _deploymentSettingsConfig_nonce = Nothing
         , _deploymentSettingsConfig_ttl = Nothing

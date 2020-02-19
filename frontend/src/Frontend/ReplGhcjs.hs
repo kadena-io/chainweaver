@@ -102,8 +102,9 @@ app sidebarExtra fileFFI appCfg = Store.versionedFrontend (Store.versionedStorag
       FrontendRoute_Accounts -> mkPageContent "accounts" $ do
         barCfg <- controlBar "Accounts" $ do
           refreshCfg <- uiWalletRefreshButton
+          watchCfg <- uiWatchRequestButton ideL
           addCfg <- uiAddAccountButton ideL
-          pure $ addCfg <> refreshCfg
+          pure $ watchCfg <> addCfg <> refreshCfg
         accountsCfg <- uiAccountsTable ideL
         pure $ barCfg <> accountsCfg
       FrontendRoute_Keys -> mkPageContent "keys" $ do

@@ -14,9 +14,12 @@ module Frontend.UI.Widgets
   ( -- * Standard widgets for chainweaver
     -- ** Buttons
     module Frontend.UI.Button
+  , noValidation
   -- ** Single Purpose Widgets
   , uiGasPriceInputField
   , uiDetailsCopyButton
+
+  , uiTxBuilder
   , uiDisplayTxBuilderWithCopy
     -- * Values for _deploymentSettingsConfig_chainId:
   , predefinedChainIdSelect
@@ -26,6 +29,7 @@ module Frontend.UI.Widgets
   , uiChainSelection
 
   , mkChainTextAccounts
+  , uiAccountNameInput
   , uiAccountFixed
   , uiAccountDropdown
   , uiAccountDropdown'
@@ -34,7 +38,6 @@ module Frontend.UI.Widgets
   -- ** Other widgets
   , PopoverState (..)
   , uiInputWithPopover
-  , uiInputWithInlineFeedback
   , uiSegment
   , uiGroup
   , uiGroupHeader
@@ -97,6 +100,7 @@ module Frontend.UI.Widgets
 import           Control.Applicative
 import           Control.Arrow (first, (&&&))
 import           Control.Lens hiding (element)
+import           Control.Error (hush)
 import           Control.Monad
 import           Control.Monad.Except
 import           Control.Monad.Trans.Maybe
@@ -343,47 +347,34 @@ uiCorrectingInputElement parse inputSanitize blurSanitize render cfg = mdo
 
   pure (ie, (fmap . fmap) fst $ inputSanitization val, inp')
 
-uiInputWithInlineFeedback
-  :: ( DomBuilder t m
-     , MonadHold t m
-     , MonadFix m
-     , PostBuild t m
-     )
-  => (a -> Dynamic t (Either e b))
-  -> (a -> Dynamic t Bool)
-  -> (e -> Text)
-  -> Maybe Text
-  -> (InputElementConfig EventResult t (DomBuilderSpace m) -> m a)
-  -> InputElementConfig EventResult t (DomBuilderSpace m)
-  -> m (a, Dynamic t (Either e b))
-uiInputWithInlineFeedback parse isDirty renderFeedback mUnits mkInp cfg =
-  dimensionalInputFeedbackWrapper mUnits $ do
-    inp <- mkInp cfg
-
-    let dParsed = parse inp
-    dIsDirty <- holdUniqDyn $ isDirty inp
-
-    dyn_ $ ffor2 dParsed dIsDirty $ curry $ \case
-      (Left e, True) -> elClass "span" "dimensional-input__feedback" $ text $ renderFeedback e
-      _ -> blank
-
-    pure (inp, dParsed)
-
 -- | Decimal input to the given precision. Returns the element, the value, and
 -- the user input events
 uiNonnegativeRealWithPrecisionInputElement
-  :: forall t m a. (DomBuilder t m, MonadFix m, MonadHold t m)
+  :: forall t m a
+     . ( DomBuilder t m
+       , MonadFix m
+       , MonadHold t m
+       , PostBuild t m
+       , PerformEvent t m
+       , MonadJSM (Performable m)
+       , DomBuilderSpace m ~ GhcjsDomSpace
+       )
   => Word8
   -> (Decimal -> a)
   -> InputElementConfig EventResult t (DomBuilderSpace m)
   -> m (InputElement EventResult (DomBuilderSpace m) t, Dynamic t (Maybe a), Event t a)
 uiNonnegativeRealWithPrecisionInputElement prec fromDecimal cfg = do
-  rec
-    (ie, val, input) <- uiCorrectingInputElement parse inputSanitize blurSanitize tshow $ cfg
-      & initialAttributes %~ addInputElementCls . addNoAutofillAttrs
-        . (<> ("type" =: "number" <> "step" =: stepSize <> "min" =: stepSize))
-    widgetHold_ blank $ ffor (fmap snd input) $ traverse_ $
-      elClass "span" "dimensional-input__feedback" . text
+  let
+    uiCorrecting cfg0 = do
+      (ie, val, input) <- uiCorrectingInputElement parse inputSanitize blurSanitize tshow $ cfg0
+      pure (ie, (input, val))
+
+    showPopover (_, (onInput, _)) = pure $ ffor onInput $
+      maybe PopoverState_Disabled PopoverState_Error . snd
+
+  (ie, (input, val)) <- uiInputWithPopover uiCorrecting (_inputElement_raw . fst) showPopover $ cfg
+    & initialAttributes %~ addInputElementCls . addNoAutofillAttrs
+    . (<> ("type" =: "number" <> "step" =: stepSize <> "min" =: stepSize))
 
   pure (ie, (fmap . fmap) fromDecimal val, fmap (fromDecimal . fst) input)
 
@@ -841,6 +832,23 @@ uiDetailsCopyButton txt = do
         & uiButtonCfg_title .~ constDyn (Just "Copy")
   divClass "details__copy-btn-wrapper" $ copyButton cfg False txt
 
+prettyTxBuilder :: TxBuilder -> Text
+prettyTxBuilder = LT.toStrict . LTB.toLazyText . AesonPretty.encodePrettyToTextBuilder
+
+uiTxBuilder
+  :: DomBuilder t m
+  => Maybe TxBuilder
+  -> TextAreaElementConfig r t (DomBuilderSpace m)
+  -> m (TextAreaElement r (DomBuilderSpace m) t)
+uiTxBuilder txBuilder cfg = do
+  let txt = prettyTxBuilder <$> txBuilder
+  uiTextAreaElement $ cfg
+    & maybe id (textAreaElementConfig_initialValue .~) txt
+    & initialAttributes <>~ fold
+      [ "rows" =: tshow (max 13 {- for good luck -} $ maybe 0 (length . T.lines) txt)
+      , "class" =: " labeled-input__input labeled-input__tx-builder"
+      ]
+
 uiDisplayTxBuilderWithCopy
   :: ( MonadJSM (Performable m)
      , DomBuilder t m
@@ -852,19 +860,12 @@ uiDisplayTxBuilderWithCopy
   => Bool
   -> TxBuilder
   -> m ()
-uiDisplayTxBuilderWithCopy withLabel address = void $ do
-  let txtAddr = LT.toStrict $ LTB.toLazyText $ AesonPretty.encodePrettyToTextBuilder address
-  -- Tx Builder
+uiDisplayTxBuilderWithCopy withLabel txBuilder = do
   elClass "div" "segment segment_type_tertiary labeled-input" $ do
     when withLabel $ divClass "label labeled-input__label" $ text "Tx Builder"
-    void $ uiTextAreaElement $ def
-      & initialAttributes <>~ (
-        "disabled" =: "true" <>
-        "rows" =: tshow (max 13 {- for good luck -} $ length $ T.lines txtAddr) <>
-        "class" =: " labeled-input__input labeled-input__tx-builder"
-        )
-      & textAreaElementConfig_initialValue .~ txtAddr
-  uiDetailsCopyButton $ pure txtAddr
+    void $ uiTxBuilder (Just txBuilder) $ def
+      & initialAttributes <>~ "disabled" =: "true"
+  uiDetailsCopyButton $ pure $ prettyTxBuilder txBuilder
 
 uiGasPriceInputField
   :: forall m t.
@@ -872,7 +873,9 @@ uiGasPriceInputField
      , MonadFix m
      , MonadHold t m
      , GhcjsDomSpace ~ DomBuilderSpace m
-     , MonadJSM m
+     , MonadJSM m, MonadJSM (Performable m)
+     , PostBuild t m
+     , PerformEvent t m
      )
   => InputElementConfig EventResult t (DomBuilderSpace m)
   -> m ( InputElement EventResult (DomBuilderSpace m) t
@@ -952,6 +955,40 @@ predefinedChainIdDisplayed cid _ = do
     & inputElementConfig_initialValue .~ _chainId cid
   pure $ pure $ pure cid
 
+noValidation :: Applicative f => f (a -> Either err a)
+noValidation = pure Right
+
+uiAccountNameInput
+  :: ( DomBuilder t m
+     , PostBuild t m
+     , MonadHold t m
+     , DomBuilderSpace m ~ GhcjsDomSpace
+     , PerformEvent t m
+     , MonadJSM (Performable m)
+     )
+  => Maybe AccountName
+  -> Dynamic t (AccountName -> Either Text AccountName)
+  -> m (Dynamic t (Maybe AccountName))
+uiAccountNameInput initval validateName = do
+  let
+    mkMsg True (Left e) = PopoverState_Error e
+    mkMsg _    _ = PopoverState_Disabled
+
+    validate = ffor validateName $ (<=< mkAccountName)
+
+    showPopover (ie, _) = pure $ (\v t -> mkMsg (not $ T.null t) (v t))
+      <$> current validate
+      <@> fmap T.strip (_inputElement_input ie)
+
+    uiNameInput cfg = do
+      inp <- uiInputElement cfg
+      pure (inp, _inputElement_raw inp)
+
+  (inputE, _) <- mkLabeledInput True "Account Name" (uiInputWithPopover uiNameInput snd showPopover)
+    $ def & inputElementConfig_initialValue .~ fold (fmap unAccountName initval)
+
+  pure $ hush <$> (validate <*> fmap T.strip (value inputE))
+
 -- | Set the account to a fixed value
 uiAccountFixed
   :: DomBuilder t m
@@ -998,19 +1035,20 @@ uiAccountDropdown'
      )
   => DropdownConfig t (Maybe AccountName)
   -> Dynamic t (AccountName -> Account -> Bool)
+  -> Dynamic t (Text -> Text)
   -> model
   -> Maybe AccountName
   -> Dynamic t (Maybe ChainId)
   -> Event t (Maybe AccountName)
   -> m (Dynamic t (Maybe (AccountName, Account)))
-uiAccountDropdown' uCfg allowAccount m initVal chainId setSender = do
+uiAccountDropdown' uCfg allowAccount mkPlaceholder m initVal chainId setSender = do
   let
     textAccounts = mkChainTextAccounts m allowAccount chainId
-    dropdownItems =
+    dropdownItems = ffor2 mkPlaceholder textAccounts $ \mk ->
       either
           (Map.singleton Nothing)
-          (Map.insert Nothing "Choose an Account" . Map.mapKeys Just)
-      <$> textAccounts
+          (Map.insert Nothing (mk "Choose an Account") . Map.mapKeys Just)
+
   choice <- dropdown initVal dropdownItems $ uCfg
     & dropdownConfig_setValue .~ leftmost [Nothing <$ updated chainId, setSender]
     & dropdownConfig_attributes <>~ pure ("class" =: "labeled-input__input select select_mandatory_missing")
@@ -1032,11 +1070,12 @@ uiAccountDropdown
      )
   => DropdownConfig t (Maybe AccountName)
   -> Dynamic t (AccountName -> Account -> Bool)
+  -> Dynamic t (Text -> Text)
   -> model
   -> Dynamic t (Maybe ChainId)
   -> Event t (Maybe AccountName)
   -> m (Dynamic t (Maybe (AccountName, Account)))
-uiAccountDropdown uCfg allowAccount m = uiAccountDropdown' uCfg allowAccount m Nothing
+uiAccountDropdown uCfg allowAccount mkPlaceholder m = uiAccountDropdown' uCfg allowAccount mkPlaceholder m Nothing
 
 uiKeyPairDropdown
   :: forall t m key model
@@ -1072,25 +1111,23 @@ data PopoverState
   deriving (Eq, Show)
 
 uiInputWithPopover
-  :: forall t m cfg el a b
+  :: forall t m cfg el rawEl a
   .  ( DomBuilder t m
      , MonadHold t m
      , PostBuild t m
      , PerformEvent t m
      , MonadJSM (Performable m)
-     , DomBuilderSpace m ~ GhcjsDomSpace
-     , JS.IsElement el
-     -- This isn't here for any special reason other than it makes
-     -- the type signature a bit easier to read.
-     , a ~ InputElement EventResult (DomBuilderSpace m) t
+     , HasDomEvent t el 'BlurTag
+     , HasDomEvent t el 'FocusTag
+     , JS.IsElement rawEl
      )
   -- Return a tuple here so there is a bit more flexibility for what
   -- can be returned from your input widget.
-  => (cfg -> m (a,b))
-  -> ((a,b) -> el)
-  -> ((a,b) -> m (Event t PopoverState))
+  => (cfg -> m (el,a))
+  -> ((el,a) -> rawEl)
+  -> ((el,a) -> m (Event t PopoverState))
   -> cfg
-  -> m (a,b)
+  -> m (el,a)
 uiInputWithPopover body getStateBorderTarget mkMsg cfg = divClass "popover" $ do
   let
     popoverBlurCls = \case

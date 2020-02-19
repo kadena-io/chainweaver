@@ -151,6 +151,7 @@ library
                  , Frontend.UI.Dialogs.AddVanityAccount.DefineKeyset
                  , Frontend.UI.Dialogs.AddVanityAccount
                  , Frontend.UI.Dialogs.TxLogs
+                 , Frontend.UI.Dialogs.WatchRequest
                  , Frontend.UI.ErrorList
                  , Frontend.UI.Icon
                  , Frontend.UI.IconGrid
@@ -167,7 +168,6 @@ library
                  , Frontend.UI.TabBar
                  , Frontend.UI.Wallet
                  , Frontend.UI.Widgets
-                 , Frontend.UI.Widgets.AccountName
                  , Frontend.UI.Widgets.Helpers
                  , Frontend.TxBuilder
                  , Frontend.VersionedStore

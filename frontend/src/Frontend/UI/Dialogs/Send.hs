@@ -20,7 +20,7 @@ module Frontend.UI.Dialogs.Send
   ( uiSendModal
   ) where
 
-import Control.Applicative (liftA2, (<|>))
+import Control.Applicative (liftA2)
 import Control.Concurrent
 import Control.Error.Util (hush)
 import Control.Lens hiding (failover)
@@ -37,6 +37,7 @@ import Data.List.NonEmpty (NonEmpty(..))
 import Data.Map (Map)
 import Data.Text (Text)
 import Kadena.SigningApi
+import Pact.Parse (ParsedDecimal (..))
 import Pact.Types.Capability
 import Pact.Types.ChainMeta
 import Pact.Types.Exp
@@ -44,12 +45,11 @@ import Pact.Types.PactError
 import Pact.Types.Names
 import Pact.Types.PactValue
 import Pact.Types.Runtime (GasPrice (..))
-import Pact.Parse (ParsedDecimal (..))
 import Pact.Types.RPC
 import Pact.Types.Term
 import Reflex
 import Reflex.Dom
-import Safe (succMay, headMay)
+import Safe (headMay)
 import qualified Data.Aeson as Aeson
 import qualified Data.HashMap.Lazy as HM
 import qualified Data.Map as Map
@@ -77,7 +77,7 @@ import Frontend.UI.Dialogs.DeployConfirmation (submitTransactionWithFeedback)
 import Frontend.UI.Modal
 import Frontend.UI.TabBar
 import Frontend.UI.Widgets
-import Frontend.UI.Widgets.Helpers (inputIsDirty, dialogSectionHeading)
+import Frontend.UI.Widgets.Helpers (dialogSectionHeading)
 import Frontend.Wallet
 
 -- | A modal for handling sending coin
@@ -281,9 +281,9 @@ sendConfig
 sendConfig model initData = Workflow $ do
   close <- modalHeader $ text "Send"
   rec
-    (currentTab, _done) <- makeTabs initData $ attachWithMaybe (const . void . hush) (current recipient) nextTab
+    (currentTab, _done) <- makeTabs initData $ leftmost [prevTab, fmapMaybe id nextTab]
     (conf, mCaps, recipient) <- mainSection currentTab
-    (cancel, nextTab) <- footerSection currentTab recipient mCaps
+    (cancel, prevTab, nextTab) <- footerSection currentTab recipient mCaps
   let nextScreen = flip push nextTab $ \case
         Just _ -> pure Nothing
         Nothing -> runMaybeT $ do
@@ -317,44 +317,57 @@ sendConfig model initData = Workflow $ do
         dialogSectionHeading mempty  "Recipient"
         (txBuilder, amount, useEntireBalance) <- divClass "group" $ do
 
-          let displayImmediateFeedback e feedbackMsg showMsg = widgetHold_ blank $ ffor e $ \x ->
-                when (showMsg x) $ mkLabeledView True mempty $ text feedbackMsg
-
-              insufficientFundsMsg = "Sender has insufficient funds."
+          let insufficientFundsMsg = "Sender has insufficient funds."
               cannotBeReceiverMsg = "Sender cannot be the receiver of a transfer"
 
-          decoded <- fmap snd $ mkLabeledInput True "Tx Builder" (uiInputWithInlineFeedback
-            (fmap (first (const "Invalid Tx Builder") . Aeson.eitherDecodeStrict . T.encodeUtf8) . value)
-            inputIsDirty
-            T.pack
-            Nothing
-            uiInputElement
-            )
-            (def & inputElementConfig_initialValue .~ (maybe "" (T.decodeUtf8 . LBS.toStrict . Aeson.encode) mInitToAddress))
+              renderTxBuilder = T.decodeUtf8 . LBS.toStrict . Aeson.encode
+              validateTxBuilder = Aeson.eitherDecodeStrict . T.encodeUtf8
 
-          displayImmediateFeedback (updated decoded) cannotBeReceiverMsg
-            $ either (const False) (\ka -> _txBuilder_accountName ka == fromName && _txBuilder_chainId ka == fromChain)
+              uiTxBuilderInput cfg = do
+                ie <- uiTxBuilder Nothing cfg
+                pure (ie
+                     , ( validateTxBuilder <$> _textAreaElement_input ie
+                       , validateTxBuilder <$> value ie
+                       )
+                     )
 
-          let
-            balance = _account_status fromAcc ^? _AccountStatus_Exists . accountDetails_balance . to unAccountBalance
+              showTxBuilderPopover (_, (onInput, _)) = pure $ ffor onInput $ \case
+                Left _ ->
+                  PopoverState_Error "Invalid Tx Builder"
+                Right txb ->
+                  if _txBuilder_accountName txb == fromName && _txBuilder_chainId txb == fromChain then
+                    PopoverState_Error cannotBeReceiverMsg
+                  else
+                    PopoverState_Disabled
 
-            gasInputWithMaxButton cfg = mdo
-              let projectAmount = over (_2 . mapped . mapped) (\(GasPrice (ParsedDecimal d)) -> d)
-                  attrs = ffor useEntireBalance $ \u -> "disabled" =: ("disabled" <$ u)
-              (_, inputAmount, _) <- fmap projectAmount $ uiGasPriceInputField $ cfg
-                & inputElementConfig_elementConfig . elementConfig_modifyAttributes .~ updated attrs
-              useEntireBalance <- case balance of
-                Nothing -> pure $ pure Nothing
-                Just b -> fmap (\v -> b <$ guard v) . _checkbox_value <$> uiCheckbox "input-max-toggle" False def (text "Max")
-              pure (isJust <$> useEntireBalance, liftA2 (<|>) useEntireBalance inputAmount)
+          decoded <- fmap (snd . snd) $ mkLabeledInput True "Tx Builder"
+            (uiInputWithPopover uiTxBuilderInput (_textAreaElement_raw . fst) showTxBuilderPopover)
+            (def & textAreaElementConfig_initialValue .~ (maybe "" renderTxBuilder mInitToAddress))
+
+          let balance = _account_status fromAcc ^? _AccountStatus_Exists . accountDetails_balance . to unAccountBalance
+
+              showGasPriceInsuffPopover (_, (_, onInput)) = pure $ ffor onInput $ \(GasPrice (ParsedDecimal gp)) ->
+                if maybe True (gp >) balance then
+                  PopoverState_Error insufficientFundsMsg
+                else
+                  PopoverState_Disabled
+
+              gasInputWithMaxButton cfg = mdo
+                let attrs = ffor useEntireBalance $ \u -> "disabled" =: ("disabled" <$ u)
+                    nestTuple (a,b,c) = (a,(b,c))
+                    field = fmap nestTuple . uiGasPriceInputField
+                (_, (amountValue, _)) <- uiInputWithPopover field (_inputElement_raw . fst) showGasPriceInsuffPopover $ cfg
+                  & inputElementConfig_setValue .~ fmap tshow (mapMaybe id $ updated useEntireBalance)
+                  & inputElementConfig_elementConfig . elementConfig_modifyAttributes .~ updated attrs
+                useEntireBalance <- case balance of
+                  Nothing -> pure $ pure Nothing
+                  Just b -> fmap (\v -> b <$ guard v) . _checkbox_value <$> uiCheckbox "input-max-toggle" False def (text "Max")
+                pure ( isJust <$> useEntireBalance
+                     , amountValue & mapped . mapped %~ view (_Wrapped' . _Wrapped')
+                     )
 
           (useEntireBalance, amount) <- mkLabeledInput True "Amount" gasInputWithMaxButton
             (def & inputElementConfig_initialValue .~ (maybe "" tshow mInitAmount))
-
-          let insufficientFunds = ffor amount $ \ma -> case (ma, balance) of
-                (Just a, Just b) -> a > b
-                _ -> False
-          displayImmediateFeedback (updated insufficientFunds) insufficientFundsMsg id
 
           let validatedTxBuilder = runExceptT $ do
                 r <- ExceptT $ first (\_ -> "Invalid Tx Builder") <$> decoded
@@ -382,7 +395,7 @@ sendConfig model initData = Workflow $ do
           Right dka -> do
             toChain <- holdUniqDyn $ _txBuilder_chainId <$> dka
             let isCross = ffor toChain (fromChain /=)
-                gasPayerSection forChain mpayer accountPredicate = do
+                gasPayerSection forChain mpayer accountPredicate mkPlaceholder = do
                   dyn_ $ ffor2 isCross forChain $ \x c ->
                     dialogSectionHeading mempty $ "Gas Payer" <> if x then " (Chain " <> _chainId c <> ")" else ""
                   divClass "group" $ elClass "div" "segment segment_type_tertiary labeled-input" $ do
@@ -390,7 +403,7 @@ sendConfig model initData = Workflow $ do
                     let cfg = def & dropdownConfig_attributes .~ pure ("class" =: "labeled-input__input select select_mandatory_missing")
                         chain = fmap Just forChain
                         allowAccount = ffor accountPredicate $ \p an acc -> p an acc && fromMaybe False (accountHasFunds acc)
-                    uiAccountDropdown' cfg allowAccount model (mpayer ^? _Just . _1) chain never
+                    uiAccountDropdown' cfg allowAccount mkPlaceholder model (mpayer ^? _Just . _1) chain never
 
             dyn_ $ ffor2 isCross toChain $ \x c -> when x $ do
               elClass "h3" ("heading heading_type_h3") $ text "This is a cross chain transfer."
@@ -407,7 +420,8 @@ sendConfig model initData = Workflow $ do
                 ]
             fromGasPayer <- mdo
               let allowAccount = ffor useEntireBalance $ \useAll an _ -> not $ useAll && fromName == an
-              gasPayerSection (pure fromChain) mInitFromGasPayer allowAccount
+                  mkPlaceholder = ffor useEntireBalance $ bool id (<> " (sender excluded due to maximum transfer)")
+              gasPayerSection (pure fromChain) mInitFromGasPayer allowAccount mkPlaceholder
             toGasPayer <- fmap join . holdDyn (pure Nothing) <=< dyn $ ffor isCross $ \x ->
               if not x
               then pure $ pure $ Just Nothing
@@ -415,23 +429,27 @@ sendConfig model initData = Workflow $ do
                 -- TODO this bit should have an option with a generic input for Ed25519 keys
                 -- and perhaps be skippable entirely in favour of a blob the user
                 -- can send to someone else to continue the tx on the recipient chain
-                gasPayerSection toChain mInitCrossChainGasPayer (pure $ \_ _ -> True)
+                gasPayerSection toChain mInitCrossChainGasPayer (pure $ \_ _ -> True) (pure id)
             pure $ (liftA2 . liftA2) (,) fromGasPayer toGasPayer
       pure (conf, mCaps, (liftA2 . liftA2) (,) txBuilder amount)
 
     footerSection currentTab recipient mCaps = modalFooter $ do
-      cancel <- cancelButton def "Cancel"
-      let (name, disabled) = splitDynPure $ ffor currentTab $ \case
+      let (lbl, fanTag) = splitDynPure $ ffor currentTab $ \case
+            SendModalTab_Configuration -> ("Cancel", Left ())
+            SendModalTab_Sign -> ("Back", Right SendModalTab_Configuration)
+      ev <- cancelButton def lbl
+      let (cancel, back) = fanEither $ current fanTag <@ ev
+          (name, disabled) = splitDynPure $ ffor currentTab $ \case
             SendModalTab_Configuration -> ("Next", fmap isLeft recipient)
             SendModalTab_Sign -> ("Preview", fmap isNothing mCaps)
-      let cfg = def
+          cfg = def
             & uiButtonCfg_class <>~ "button_type_confirm"
             & uiButtonCfg_disabled .~ join disabled
       next <- uiButtonDyn cfg $ dynText name
       let nextTab = ffor (current currentTab <@ next) $ \case
             SendModalTab_Configuration -> Just SendModalTab_Sign
             SendModalTab_Sign -> Nothing
-      pure (cancel, nextTab)
+      pure (cancel, back, nextTab)
 
 -- | This function finishes cross chain transfers. The return event signals that
 -- the transfer is complete.
@@ -573,7 +591,7 @@ finishCrossChainTransferConfig model fromAccount ucct = Workflow $ do
       divClass "label labeled-input__label" $ text "Account Name"
       let cfg = def & dropdownConfig_attributes .~ pure ("class" =: "labeled-input__input select select_mandatory_missing")
           chain = pure $ Just toChain
-      gasAcc <- uiAccountDropdown cfg (pure $ \_ a -> fromMaybe False (accountHasFunds a)) model chain never
+      gasAcc <- uiAccountDropdown cfg (pure $ \_ a -> fromMaybe False (accountHasFunds a)) (pure id) model chain never
       pure $ ffor3 (model ^. wallet_accounts) (model ^. network_selectedNetwork) gasAcc $ \netToAccount net ma -> do
         accounts <- Map.lookup net $ unAccountData netToAccount
         n <- ma
@@ -1061,8 +1079,8 @@ displaySendModalTab = text . \case
 
 makeTabs
   :: (DomBuilder t m, PostBuild t m, MonadHold t m, MonadFix m)
-  => InitialTransferData -> Event t () -> m (Dynamic t SendModalTab, Event t ())
-makeTabs initData next = do
+  => InitialTransferData -> Event t SendModalTab -> m (Dynamic t SendModalTab, Event t ())
+makeTabs initData tabEv = do
   -- We assume that if there is a full transfer that we should head to the sign tab
   let initTab = initialTransferDataCata (const SendModalTab_Configuration) (const SendModalTab_Sign) initData
       f t0 g = case g t0 of
@@ -1071,7 +1089,7 @@ makeTabs initData next = do
   rec
     (curSelection, done) <- mapAccumMaybeDyn f initTab $ leftmost
       [ const . Just <$> onTabClick
-      , succMay <$ next
+      , const . Just <$> tabEv
       ]
     (TabBar onTabClick) <- makeTabBar $ TabBarCfg
       { _tabBarCfg_tabs = [SendModalTab_Configuration, SendModalTab_Sign]

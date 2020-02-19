@@ -23,6 +23,7 @@ module Frontend.UI.Wallet
   , uiAccountsTable
   , uiAvailableKeys
   , uiWalletRefreshButton
+  , uiWatchRequestButton
   , uiGenerateKeyButton
     -- ** Filters for keys
   , hasPrivateKey
@@ -56,6 +57,7 @@ import           Frontend.UI.Dialogs.AddVanityAccount (uiCreateAccountButton, ui
 import           Frontend.UI.Dialogs.KeyDetails (uiKeyDetails)
 import           Frontend.UI.Dialogs.Receive (uiReceiveModal)
 import           Frontend.UI.Dialogs.Send (uiSendModal)
+import           Frontend.UI.Dialogs.WatchRequest (uiWatchRequestDialog)
 import           Frontend.UI.Modal
 import           Frontend.Network
 ------------------------------------------------------------------------------
@@ -94,6 +96,19 @@ uiWalletRefreshButton
 uiWalletRefreshButton = do
   eRefresh <- uiButton (def & uiButtonCfg_class <>~ " main-header__wallet-refresh-button")  (text "Refresh")
   pure $ mempty & walletCfg_refreshBalances <>~ eRefresh
+
+uiWatchRequestButton
+  :: ( MonadWidget t m
+     , Monoid mConf
+     , Monoid (ModalCfg mConf t)
+     , Flattenable (ModalCfg mConf t) t
+     , HasModalCfg mConf (Modal mConf m t) t
+     , HasNetwork model t
+     )
+  => model -> m mConf
+uiWatchRequestButton model = do
+  watch <- uiButton (def & uiButtonCfg_class <>~ " main-header__wallet-refresh-button")  (text "Watch Request")
+  pure $ mempty & modalCfg_setModal .~ (Just (uiWatchRequestDialog model) <$ watch)
 
 -- | UI for managing the keys wallet.
 uiWallet
@@ -150,9 +165,9 @@ uiAccountItems model accountsMap = do
     el "colgroup" $ do
       elAttr "col" ("style" =: "width: 5%") blank
       elAttr "col" ("style" =: "width: 22.5%") blank
-      elAttr "col" ("style" =: "width: 22.5%") blank
+      elAttr "col" ("style" =: "width: 20.5%") blank
       elAttr "col" ("style" =: "width: 15%") blank
-      elAttr "col" ("style" =: "width: 10%") blank
+      elAttr "col" ("style" =: "width: 12%") blank
       elAttr "col" ("style" =: "width: 25%") blank
 
     el "thead" $ el "tr" $ do
@@ -210,7 +225,10 @@ uiAccountItem keys name accountInfo = do
   let chainMap = _accountInfo_chains <$> accountInfo
       notes = _accountInfo_notes <$> accountInfo
   rec
-    (clk, dialog) <- keyRow visible notes $ sum . catMaybes <$> balances
+    (clk, dialog) <- keyRow visible notes $ ffor balances $ \xs0 -> case catMaybes xs0 of
+      [] -> "Does not exist"
+      xs -> uiAccountBalance False $ Just $ sum xs
+
     visible <- toggle False clk
     results <- accursedUnutterableListWithKey chainMap $ accountRow visible
     let balances :: Dynamic t [Maybe AccountBalance]
@@ -232,11 +250,15 @@ uiAccountItem keys name accountInfo = do
     td $ text $ unAccountName name
     td blank -- Keyset info column
     td $ dynText $ maybe "" unAccountNotes <$> notes
-    td' " wallet__table-cell-balance" $ dynText $ uiAccountBalance False . Just <$> balance
+    td' " wallet__table-cell-balance" $ dynText balance
     onDetails <- td $ buttons $ detailsIconButton cfg
     pure (clk, AccountDialog_Details name <$> current notes <@ onDetails)
 
-  accountRow :: Dynamic t Bool -> ChainId -> Dynamic t Account -> m (Dynamic t (Maybe AccountBalance), Event t AccountDialog)
+  accountRow
+    :: Dynamic t Bool
+    -> ChainId
+    -> Dynamic t Account
+    -> m (Dynamic t (Maybe AccountBalance), Event t AccountDialog)
   accountRow visible chain dAccount = do
     let balance = (^? account_status . _AccountStatus_Exists . accountDetails_balance) <$> dAccount
     -- Previously we always added all chain rows, but hid them with CSS. A bug

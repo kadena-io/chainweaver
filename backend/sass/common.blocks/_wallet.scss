@@ -32,6 +32,7 @@
 .wallet__table-cell {
   padding: 15px;
   overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .wallet__table-cell-balance {
