@@ -355,6 +355,7 @@ restoreFromImport fileFFI backWF eBack = nagScreen
       -- TODO: Don't reuse this class or at least rename it
       (btnCfgSecondary & uiButtonCfg_class <>~ "setup__restore-existing-button")
       (text "Go back and export current wallet")
+
     nagScreen = Workflow $ setupDiv "splash" $ do
       splashLogo
       elClass "h1" "setup__recover-import-title" $ text "You are about to replace the current wallet's data"
@@ -364,7 +365,7 @@ restoreFromImport fileFFI backWF eBack = nagScreen
       pure
         ( (WalletScreen_RecoverImport, never, eExit)
         , leftmost
-          [ backWF <$ eBack
+          [ backWF <$ (eBack <> eExit)
           , importScreen <$ eImport
           ]
         )
@@ -417,7 +418,7 @@ restoreFromImport fileFFI backWF eBack = nagScreen
 
       pure
         ( (WalletScreen_RecoverImport, (\(prv,pw) -> (prv, pw, False)) <$> eImportDone, eExit)
-        , backWF <$ eBack
+        , backWF <$ (eBack <> eExit)
         )
 
     nonEmptyPassword "" = Nothing
