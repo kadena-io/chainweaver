@@ -133,7 +133,7 @@ preventUpAndDownArrow = addEventSpecFlags (Proxy :: Proxy (DomBuilderSpace m)) K
 preventScrollWheel :: (MonadJSM m, DOM.IsGObject obj) => obj -> m ()
 preventScrollWheel raw = liftJSM $ do
   htmlElement <- DOM.unsafeCastTo DOM.HTMLElement raw
-  void $ htmlElement `EventM.on` GlobalEventHandlers.scroll $ do
+  void $ htmlElement `EventM.on` GlobalEventHandlers.wheel $ do
     doc <- DOM.currentDocumentUnchecked
     Document.getActiveElement doc >>= \case
       Just activeElement -> do

@@ -10,9 +10,9 @@ let
   # be changed in one place
   chainweaverVersion = "1.0";
   appName = "Kadena Chainweaver";
-  macReleaseNumber = "0";
-  linuxReleaseNumber = "0";
-  ovaReleaseNumber = "0";
+  macReleaseNumber = "2";
+  linuxReleaseNumber = "2";
+  ovaReleaseNumber = "2";
 
   obApp = import ./obApp.nix args;
   pactServerModule = import ./pact-server/service.nix;

@@ -18,6 +18,7 @@
 -- License     :  BSD-style (see the file LICENSE)
 module Frontend.UI.Dialogs.Send
   ( uiSendModal
+  , uiFinishCrossChainTransferModal
   ) where
 
 import Control.Applicative (liftA2)
@@ -80,22 +81,6 @@ import Frontend.UI.Widgets
 import Frontend.UI.Widgets.Helpers (dialogSectionHeading)
 import Frontend.Wallet
 
--- | A modal for handling sending coin
-uiSendModal
-  :: ( SendConstraints model mConf key t m
-     , Flattenable mConf t
-     , HasTransactionLogger m
-     )
-  => model -> (AccountName, ChainId, AccountDetails, Maybe UnfinishedCrossChainTransfer) -> Event t () -> m (mConf, Event t ())
-uiSendModal model (name, chain, acc, mucct) _onCloseExternal = do
-  (conf, closes) <- fmap splitDynPure $ workflow $ case mucct of
-    Nothing -> sendConfig model (InitialTransferData_Account (name, chain, acc))
-    -- If we have unfinished business, force the user to finish it first
-    Just ucct -> finishCrossChainTransferConfig model (name, chain) ucct
-  mConf <- flatten =<< tagOnPostBuild conf
-  let close = switch $ current closes
-  pure (mConf, close)
-
 type SendConstraints model mConf key t m
   = ( Monoid mConf, HasNetwork model t, HasNetworkCfg mConf t, HasWallet model key t, HasWalletCfg mConf key t
     , MonadWidget t m, PostBuild t m, HasCrypto key m
@@ -128,19 +113,59 @@ data TransferData = TransferData
   }
 
 data InitialTransferData
-  = InitialTransferData_Account (AccountName, ChainId, AccountDetails)
+  = InitialTransferData_Account (AccountName, ChainId, AccountDetails) (Maybe UnfinishedCrossChainTransfer)
   | InitialTransferData_Transfer TransferData
 
-initialTransferDataCata :: ((AccountName, ChainId, AccountDetails) -> b) -> (TransferData -> b) -> InitialTransferData -> b
-initialTransferDataCata fa _ (InitialTransferData_Account a) = fa a
+-- | A modal for handling sending coin
+uiSendModal
+  :: ( SendConstraints model mConf key t m
+     , Flattenable mConf t
+     , HasTransactionLogger m
+     )
+  => model
+  -> (AccountName, ChainId, AccountDetails)
+  -> Maybe UnfinishedCrossChainTransfer
+  -> Event t ()
+  -> m (mConf, Event t ())
+uiSendModal model (name, chain, acc) mucct _onCloseExternal = do
+  (conf, closes) <- fmap splitDynPure $ workflow $ sendConfig model
+    $ InitialTransferData_Account (name, chain, acc) mucct
+
+  mConf <- flatten =<< tagOnPostBuild conf
+  let close = switch $ current closes
+  pure (mConf, close)
+
+uiFinishCrossChainTransferModal
+  :: ( SendConstraints model mConf key t m
+     , Flattenable mConf t
+     , HasTransactionLogger m
+     )
+  => model
+  -> AccountName
+  -> ChainId
+  -> UnfinishedCrossChainTransfer
+  -> Event t ()
+  -> m (mConf, Event t ())
+uiFinishCrossChainTransferModal model name chain ucct _onCloseExternal = do
+  (conf, closes) <- fmap splitDynPure $ workflow $ finishCrossChainTransferConfig model (name, chain) ucct
+  mConf <- flatten =<< tagOnPostBuild conf
+  let close = switch $ current closes
+  pure (mConf, close)
+
+initialTransferDataCata
+  :: ((AccountName, ChainId, AccountDetails) -> Maybe UnfinishedCrossChainTransfer -> b)
+  -> (TransferData -> b)
+  -> InitialTransferData
+  -> b
+initialTransferDataCata fa _ (InitialTransferData_Account a b) = fa a b
 initialTransferDataCata _ ft (InitialTransferData_Transfer t) = ft t
 
 -- should probably make lenses, but we'd have to move the data types out to another file because this
 -- file can't deal with the mutually recursive functions if TH was on. So lets just avoid the lenses
 
 withInitialTransfer :: (TransferData -> a) -> InitialTransferData -> Maybe a
-withInitialTransfer f (InitialTransferData_Transfer t)  = Just $ f t
-withInitialTransfer _ (InitialTransferData_Account _)  = Nothing
+withInitialTransfer f (InitialTransferData_Transfer t) = Just $ f t
+withInitialTransfer _ (InitialTransferData_Account _ _) = Nothing
 
 -- | Preview the transfer. Doesn't actually send any requests.
 previewTransfer
@@ -277,15 +302,19 @@ sameChainTransfer model netInfo keys (fromName, fromChain, fromAcc) (gasPayer, g
 
 -- | General transfer workflow. This is the initial configuration screen.
 sendConfig
-  :: (SendConstraints model mConf key t m, HasTransactionLogger m)
-  => model -> InitialTransferData -> Workflow t m (mConf, Event t ())
+  :: ( SendConstraints model mConf key t m
+     , HasTransactionLogger m
+     )
+  => model
+  -> InitialTransferData
+  -> Workflow t m (mConf, Event t ())
 sendConfig model initData = Workflow $ do
   close <- modalHeader $ text "Send"
   rec
     (currentTab, _done) <- makeTabs initData $ leftmost [prevTab, fmapMaybe id nextTab]
     (conf, mCaps, recipient) <- mainSection currentTab
-    (cancel, prevTab, nextTab) <- footerSection currentTab recipient mCaps
-  let nextScreen = flip push nextTab $ \case
+    (cancel, prevTab, nextTab, onFinishXChain) <- footerSection currentTab recipient mCaps
+  let onToPreviewTransfer = flip push nextTab $ \case
         Just _ -> pure Nothing
         Nothing -> runMaybeT $ do
           (fromGasPayer, mToGasPayer) <- MaybeT $ sample $ current mCaps
@@ -303,9 +332,18 @@ sendConfig model initData = Workflow $ do
                 , _transferData_toTxBuilder = toAccount
                 }
           pure $ previewTransfer model transfer
-  pure ((conf, close <> cancel), nextScreen)
+  pure ( (conf, close <> cancel)
+       , leftmost
+         [ onToPreviewTransfer
+         , finishCrossChainTransferConfig model (fromName, fromChain) <$> onFinishXChain
+         ]
+       )
   where
-    fromAccount@(fromName, fromChain, fromAcc) = initialTransferDataCata id _transferData_fromAccount initData
+    (fromAccount@(fromName, fromChain, fromAcc), mUcct) = initialTransferDataCata
+      (,)
+      ((,Nothing) . _transferData_fromAccount)
+      initData
+
     mInitToAddress = withInitialTransfer _transferData_toTxBuilder initData
     mInitFromGasPayer = withInitialTransfer (_transferData_fromGasPayer) initData
     mInitCrossChainGasPayer = join $ withInitialTransfer (fmap (_crossChainData_recipientChainGasPayer) . _transferData_crossChainData) initData
@@ -320,6 +358,7 @@ sendConfig model initData = Workflow $ do
 
           let insufficientFundsMsg = "Sender has insufficient funds."
               cannotBeReceiverMsg = "Sender cannot be the receiver of a transfer"
+              cannotInitiateNewXChainTfr = "Existing cross chain transfer in progress."
 
               renderTxBuilder = T.decodeUtf8 . LBS.toStrict . Aeson.encode
               validateTxBuilder = Aeson.eitherDecodeStrict . T.encodeUtf8
@@ -338,6 +377,8 @@ sendConfig model initData = Workflow $ do
                 Right txb ->
                   if _txBuilder_accountName txb == fromName && _txBuilder_chainId txb == fromChain then
                     PopoverState_Error cannotBeReceiverMsg
+                  else if _txBuilder_chainId txb /= fromChain && isJust mUcct then
+                    PopoverState_Error cannotInitiateNewXChainTfr
                   else
                     PopoverState_Disabled
 
@@ -438,6 +479,11 @@ sendConfig model initData = Workflow $ do
       let (lbl, fanTag) = splitDynPure $ ffor currentTab $ \case
             SendModalTab_Configuration -> ("Cancel", Left ())
             SendModalTab_Sign -> ("Back", Right SendModalTab_Configuration)
+
+      onFinXChain <- case mUcct of
+        Nothing -> pure never
+        Just ucct -> fmap (ucct <$) $ confirmButton def "Complete Crosschain"
+
       ev <- cancelButton def lbl
       let (cancel, back) = fanEither $ current fanTag <@ ev
           (name, disabled) = splitDynPure $ ffor currentTab $ \case
@@ -450,7 +496,7 @@ sendConfig model initData = Workflow $ do
       let nextTab = ffor (current currentTab <@ next) $ \case
             SendModalTab_Configuration -> Just SendModalTab_Sign
             SendModalTab_Sign -> Nothing
-      pure (cancel, back, nextTab)
+      pure (cancel, back, nextTab, onFinXChain)
 
 -- | This function finishes cross chain transfers. The return event signals that
 -- the transfer is complete.
@@ -600,7 +646,7 @@ finishCrossChainTransferConfig model fromAccount ucct = Workflow $ do
         guard $ Map.member fromChain chains
         pure n
     pure (sender, conf)
-  next <- modalFooter $ confirmButton def "Next"
+  next <- modalFooter $ confirmButton (def & uiButtonCfg_disabled .~ fmap isNothing sender) "Next"
   let nextScreen = flip push next $ \() -> do
         mNetInfo <- sampleNetInfo model
         mToGasPayer <- sample $ current sender
@@ -1072,7 +1118,7 @@ makeTabs
   => InitialTransferData -> Event t SendModalTab -> m (Dynamic t SendModalTab, Event t ())
 makeTabs initData tabEv = do
   -- We assume that if there is a full transfer that we should head to the sign tab
-  let initTab = initialTransferDataCata (const SendModalTab_Configuration) (const SendModalTab_Sign) initData
+  let initTab = initialTransferDataCata (const $ const SendModalTab_Configuration) (const SendModalTab_Sign) initData
       f t0 g = case g t0 of
         Nothing -> (Just t0, Just ())
         Just t -> (Just t, Nothing)

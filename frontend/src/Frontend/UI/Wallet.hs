@@ -56,8 +56,8 @@ import           Frontend.UI.Dialogs.AccountDetails
 import           Frontend.UI.Dialogs.AddVanityAccount (uiCreateAccountButton, uiCreateAccountDialog)
 import           Frontend.UI.Dialogs.KeyDetails (uiKeyDetails)
 import           Frontend.UI.Dialogs.Receive (uiReceiveModal)
-import           Frontend.UI.Dialogs.Send (uiSendModal)
 import           Frontend.UI.Dialogs.WatchRequest (uiWatchRequestDialog)
+import           Frontend.UI.Dialogs.Send (uiSendModal, uiFinishCrossChainTransferModal)
 import           Frontend.UI.Modal
 import           Frontend.Network
 ------------------------------------------------------------------------------
@@ -87,7 +87,8 @@ data AccountDialog
   = AccountDialog_DetailsChain (AccountName, ChainId, Account)
   | AccountDialog_Details AccountName (Maybe AccountNotes)
   | AccountDialog_Receive AccountName ChainId
-  | AccountDialog_Send (AccountName, ChainId, AccountDetails, Maybe UnfinishedCrossChainTransfer)
+  | AccountDialog_Send (AccountName, ChainId, AccountDetails) (Maybe UnfinishedCrossChainTransfer)
+  | AccountDialog_CompleteCrosschain AccountName ChainId UnfinishedCrossChainTransfer
   | AccountDialog_Create AccountName ChainId (Maybe PublicKey)
 
 uiWalletRefreshButton
@@ -165,10 +166,10 @@ uiAccountItems model accountsMap = do
     el "colgroup" $ do
       elAttr "col" ("style" =: "width: 5%") blank
       elAttr "col" ("style" =: "width: 22.5%") blank
-      elAttr "col" ("style" =: "width: 20.5%") blank
+      elAttr "col" ("style" =: "width: 12.5%") blank
       elAttr "col" ("style" =: "width: 15%") blank
-      elAttr "col" ("style" =: "width: 12%") blank
-      elAttr "col" ("style" =: "width: 25%") blank
+      elAttr "col" ("style" =: "width: 10%") blank
+      elAttr "col" ("style" =: "width: 35%") blank
 
     el "thead" $ el "tr" $ do
       let mkHeading = elClass "th" "wallet__table-heading" . text
@@ -197,7 +198,8 @@ uiAccountItems model accountsMap = do
       AccountDialog_Details acc notes -> uiAccountDetails n acc notes
       AccountDialog_DetailsChain acc -> uiAccountDetailsOnChain n acc
       AccountDialog_Receive name chain -> uiReceiveModal model name (Just chain)
-      AccountDialog_Send x -> uiSendModal model x
+      AccountDialog_Send acc mucct -> uiSendModal model acc mucct
+      AccountDialog_CompleteCrosschain name chain ucct -> uiFinishCrossChainTransferModal model name chain ucct
       AccountDialog_Create name chain mKey -> uiCreateAccountDialog model name chain mKey
 
   refresh <- delay 1 =<< getPostBuild
@@ -288,12 +290,19 @@ uiAccountItem keys name accountInfo = do
               True -> do
                 recv <- receiveButton cfg
                 send <- sendButton cfg
+
+                onCompleteCrossChain <- switchHold never <=< dyn $ ffor dAccount $ \acc ->
+                  case _vanityAccount_unfinishedCrossChainTransfer (_account_storage acc) of
+                    Nothing -> pure never
+                    Just ucct -> fmap (ucct <$) $ completeCrossChainButton cfg
+
                 onDetails <- detailsIconButton cfg
                 pure $ leftmost
                   [ AccountDialog_Receive name chain <$ recv
-                  , AccountDialog_Send . (name,chain,d,)
+                  , AccountDialog_Send (name, chain, d)
                       <$> current (_vanityAccount_unfinishedCrossChainTransfer . _account_storage <$> dAccount)
                       <@ send
+                  , AccountDialog_CompleteCrosschain name chain <$> onCompleteCrossChain
                   , AccountDialog_DetailsChain . (name, chain, ) <$> current dAccount <@ onDetails
                   ]
               False -> do
