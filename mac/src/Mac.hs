@@ -40,7 +40,6 @@ ffi = AppFFI
   , _appFFI_moveToBackground = moveToBackground
   , _appFFI_moveToForeground = moveToForeground
   , _appFFI_resizeWindow = uncurry resizeWindow
-  -- TODO : Take file type and give it to the dialog
   , _appFFI_global_openFileDialog = openFileDialog
   , _appFFI_global_saveFileDialog = saveFileDialog
   , _appFFI_global_getStorageDirectory = getStorageDirectory

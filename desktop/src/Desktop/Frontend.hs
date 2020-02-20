@@ -152,9 +152,12 @@ bipWallet
   -> RoutedT t (R FrontendRoute) m ()
 bipWallet fileFFI mkAppCfg = do
   let
-    runSetup0 :: Maybe (Behavior t Crypto.XPrv) -> RoutedT t (R FrontendRoute) m (Event t (DSum LockScreen Identity))
-    runSetup0 mPrv = do
-      keyAndPass <- runSetup (liftFileFFI lift fileFFI) $ isJust mPrv
+    runSetup0
+      :: Maybe (Behavior t Crypto.XPrv)
+      -> WalletExists
+      -> RoutedT t (R FrontendRoute) m (Event t (DSum LockScreen Identity))
+    runSetup0 mPrv walletExists = do
+      keyAndPass <- runSetup (liftFileFFI lift fileFFI) (isJust mPrv) walletExists
       performEvent $ flip push keyAndPass $ \case
         Right (x, Password p, newWallet) -> pure $ Just $ do
           setItemStorage localStorage BIPStorage_RootKey x
@@ -175,9 +178,9 @@ bipWallet fileFFI mkAppCfg = do
     whichScreen <- factorDyn =<< holdDyn initScreen updateScreen
     updateScreen <- switchHold never <=< dyn $ ffor whichScreen $ \case
       -- Run the restore process or return to the lock screen
-      LockScreen_Restore :=> Compose root -> runSetup0 $ Just $ fmap runIdentity $ current root
+      LockScreen_Restore :=> Compose root -> runSetup0 (Just $ fmap runIdentity $ current root) WalletExists_Yes
       -- We have no wallet so run the creation/setup process
-      LockScreen_RunSetup :=> _ -> runSetup0 Nothing
+      LockScreen_RunSetup :=> _ -> runSetup0 Nothing WalletExists_No
       -- Wallet exists but the lock screen is active
       LockScreen_Locked :=> Compose root -> do
         (restore, mLogin) <- lockScreen $ fmap runIdentity $ current root
@@ -225,9 +228,10 @@ bipWallet fileFFI mkAppCfg = do
                   eExport <- performEvent $ doExport txLogger <$> (Password <$> bOldPw) <@> (Password <$> ePw)
                   let (eErrExport, eGoodExport) = fanEither eExport
                   eFileDone <- _fileFFI_deliverFile frontendFileFFI eGoodExport
-                  pure $
-                    (Left <$> eErrExport)
-                    <> (first ExportWalletError_FileNotWritable <$> eFileDone)
+                  pure $ leftmost
+                    [ Left <$> eErrExport
+                    , first ExportWalletError_FileNotWritable <$> eFileDone
+                    ]
               }
             , _enabledSettings_transactionLog = True
             }

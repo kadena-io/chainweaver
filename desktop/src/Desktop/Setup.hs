@@ -8,7 +8,7 @@
 {-# LANGUAGE TypeApplications #-}
 
 -- | Wallet setup screens
-module Desktop.Setup (Password(..), runSetup, splashLogo, setupDiv, setupClass, checkPassword) where
+module Desktop.Setup (WalletExists (..), Password(..), runSetup, splashLogo, setupDiv, setupClass, checkPassword) where
 
 import Control.Lens ((<>~), (??), (^.), _1, _2, _3)
 import Control.Error (hush)
@@ -186,6 +186,11 @@ walletSetupRecoverHeader currentScreen = setupDiv "workflow-header" $ do
               else text n
             setupDiv "workflow-icon-label" $ text lbl
 
+data WalletExists
+  = WalletExists_Yes
+  | WalletExists_No
+  deriving (Show, Eq)
+
 runSetup
   :: forall t m
   . ( DomBuilder t m
@@ -201,8 +206,9 @@ runSetup
     )
   => FileFFI t m
   -> Bool
+  -> WalletExists
   -> m (Event t (Either () (Crypto.XPrv, Password, Bool)))
-runSetup fileFFI showBackOverride = setupDiv "fullscreen" $ mdo
+runSetup fileFFI showBackOverride walletExists = setupDiv "fullscreen" $ mdo
   let dCurrentScreen = (^._1) <$> dwf
 
   eBack <- fmap (domEvent Click . fst) $ elDynClass "div" ((setupClass "back " <>) . hideBack <$> dCurrentScreen) $
@@ -213,7 +219,7 @@ runSetup fileFFI showBackOverride = setupDiv "fullscreen" $ mdo
   _ <- dyn_ $ walletSetupRecoverHeader <$> dCurrentScreen
 
   dwf <- divClass "wrapper" $
-    workflow (splashScreen fileFFI eBack)
+    workflow (splashScreen walletExists fileFFI eBack)
 
   pure $ leftmost
     [ fmap Right $ switchDyn $ (^. _2) <$> dwf
@@ -240,13 +246,16 @@ splashScreen
      , MonadSample t (Performable m)
      , HasTransactionLogger m
      )
-  => FileFFI t m -> Event t () -> SetupWF t m
-splashScreen fileFFI eBack = selfWF
+  => WalletExists
+  -> FileFFI t m
+  -> Event t ()
+  -> SetupWF t m
+splashScreen walletExists fileFFI eBack = selfWF
   where
     selfWF = Workflow $ setupDiv "splash" $ do
       splashLogo
 
-      (agreed, create, restoreBip, restoreImport) <- setupDiv "splash-terms-buttons" $ do
+      setupDiv "splash-terms-buttons" $ do
         agreed <- fmap value $ setupCheckbox False def $ el "div" $ do
           text "I have read & agree to the "
           elAttr "a" ?? (text "Terms of Service") $ mconcat
@@ -255,22 +264,23 @@ splashScreen fileFFI eBack = selfWF
             , "class" =: setupClass "terms-conditions-link"
             ]
 
-        let dNeedAgree = fmap not agreed
-            disabledCfg = uiButtonCfg_disabled .~ dNeedAgree
+        let hasAgreed = gate (current agreed)
+            disabledCfg = uiButtonCfg_disabled .~ fmap not agreed
             restoreCfg = uiButtonCfg_class <>~ "setup__restore-existing-button"
 
         create <- confirmButton (def & disabledCfg ) "Create a new wallet"
-        restoreBipPhrase <- uiButtonDyn (btnCfgSecondary & disabledCfg & restoreCfg) $ text "Restore from recovery phrase"
-        restoreImport <- uiButtonDyn (btnCfgSecondary & disabledCfg & restoreCfg) $ text "Restore from wallet export"
-        pure (agreed, create, restoreBipPhrase, restoreImport)
 
-      let hasAgreed = gate (current agreed)
+        restoreBipPhrase <- uiButtonDyn (btnCfgSecondary & disabledCfg & restoreCfg)
+          $ text "Restore from recovery phrase"
 
-      finishSetupWF WalletScreen_SplashScreen $ leftmost
-        [ createNewWallet selfWF eBack <$ hasAgreed create
-        , restoreBipWallet selfWF eBack <$ hasAgreed restoreBip
-        , restoreFromImport fileFFI selfWF eBack <$ hasAgreed restoreImport
-        ]
+        restoreImport <- uiButtonDyn (btnCfgSecondary & disabledCfg & restoreCfg)
+          $ text "Restore from wallet export"
+
+        finishSetupWF WalletScreen_SplashScreen $ leftmost
+          [ createNewWallet selfWF eBack <$ hasAgreed create
+          , restoreBipWallet selfWF eBack <$ hasAgreed restoreBipPhrase
+          , restoreFromImport walletExists fileFFI selfWF eBack <$ hasAgreed restoreImport
+          ]
 
 data BIP39PhraseError
   = BIP39PhraseError_Dictionary Crypto.DictionaryError
@@ -348,18 +358,35 @@ restoreFromImport
      , MonadSample t (Performable m)
      , HasTransactionLogger m
      )
-  => FileFFI t m -> SetupWF t m -> Event t () -> SetupWF t m
-restoreFromImport fileFFI backWF eBack = nagScreen
+  => WalletExists
+  -> FileFFI t m
+  -> SetupWF t m
+  -> Event t ()
+  -> SetupWF t m
+restoreFromImport walletExists fileFFI backWF eBack = nagScreen
   where
-    nagBack = uiButtonDyn
-      -- TODO: Don't reuse this class or at least rename it
-      (btnCfgSecondary & uiButtonCfg_class <>~ "setup__restore-existing-button")
-      (text "Go back and export current wallet")
+    nagMsgs = case walletExists of
+      WalletExists_Yes ->
+        ("You are about to replace the current wallet's data"
+        ,"Reminder: Importing a wallet file will replace the data within the current wallet."
+        )
+      WalletExists_No ->
+        ("Please select the wallet import file."
+        ,"Reminder: You will need your wallet password to proceed."
+        )
+
+    nagBack = case walletExists of
+      WalletExists_No -> pure never
+      WalletExists_Yes -> uiButtonDyn
+        -- TODO: Don't reuse this class or at least rename it
+        (btnCfgSecondary & uiButtonCfg_class <>~ "setup__restore-existing-button")
+        (text "Go back and export current wallet")
 
     nagScreen = Workflow $ setupDiv "splash" $ do
       splashLogo
-      elClass "h1" "setup__recover-import-title" $ text "You are about to replace the current wallet's data"
-      elClass "p" "setup__recover-import-text" $ text "Reminder: Importing a wallet file will replace the data within the current wallet."
+      let (nagTitle, nagReminder) = nagMsgs
+      elClass "h1" "setup__recover-import-title" $ text nagTitle
+      elClass "p" "setup__recover-import-text" $ text nagReminder
       eImport <- confirmButton def "Select Import File"
       eExit <- nagBack
       pure

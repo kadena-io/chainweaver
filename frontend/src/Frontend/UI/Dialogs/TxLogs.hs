@@ -9,7 +9,7 @@ module Frontend.UI.Dialogs.TxLogs
   ( uiTxLogs
   ) where
 
-import Control.Lens (iforM_, (^.))
+import Control.Lens (iforM_)
 import Control.Monad (void)
 
 import Reflex
@@ -44,10 +44,9 @@ uiTxLogs
      , HasUiTxLogModelCfg mConf m t
      )
   => FileFFI t m
-  -> model
   -> Event t ()
   -> m (mConf, Event t ())
-uiTxLogs fileFFI _model _onExtClose = do
+uiTxLogs fileFFI _onExtClose = do
   txLogger <- Api.askTransactionLogger
   pb <- getPostBuild
   onClose <- modalHeader $ text "Transaction Log"
@@ -104,17 +103,18 @@ uiTxLogs fileFFI _model _onExtClose = do
   pure (mempty, onClose)
   where
     exportButton txlog = mdo
-      let cfg' = btnCfgPrimary & uiButtonCfg_title .~ pure (Just "Export Full Transaction Log")
-      status <- holdDyn "fa-download" $ ffor (leftmost [False <$ onFileErr, isRight <$> onDeliveredFileOk])
-        $ bool "tx-log-export-fail fa-times" "tx-log-export-success fa-check"
-
       (onFileErr, onContentsReady) <- fmap fanEither $ performEvent $
         liftIO (Api._transactionLogger_exportFile txlog) <$ onClick
 
       onDeliveredFileOk <- _fileFFI_deliverFile fileFFI onContentsReady
 
-      onClick <- uiButtonDyn cfg' $ do
-        dynText $ ffor (cfg' ^. uiButtonCfg_title) fold
+      status <- holdDyn "fa-download" $ leftmost
+        [ "tx-log-export-fail fa-times" <$ onFileErr
+        , "tx-log-export-success fa-check" <$ ffilter isRight onDeliveredFileOk
+        ]
+
+      onClick <- uiButtonDyn btnCfgPrimary $ do
+        text "Export Full Transaction Log"
         elDynClass "i" ("fa fa-fw tx-log-export-status " <> status) blank
 
       pure ()

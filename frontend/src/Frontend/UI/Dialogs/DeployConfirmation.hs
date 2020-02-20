@@ -248,22 +248,6 @@ listenToRequestKey clientEnvs onRequestKey = do
               setMessage $ Just $ Left $ NetworkError_CommandFailure err
             -- This case shouldn't happen
             _ -> listen Status_Failed
--- <<<<<<< HEAD
-
---   -- Send the transaction
---   pb <- getPostBuild
---   transactionLogger <- askTransactionLogger
---   onRequestKey <- performEventAsync $ ffor pb $ \() cb -> liftJSM $ do
---     send Status_Working
---     doReqFailover clientEnvs (Api.send Api.apiV1Client transactionLogger (unAccountName sender) chain $ Api.SubmitBatch $ pure cmd) >>= \case
---       Left errs -> do
---         send Status_Failed
---         for_ (nonEmpty errs) $ setMessage . Just . Left . packHttpErr . NEL.last
---       Right (Api.RequestKeys (requestKey :| _)) -> do
---         send Status_Done
---         liftIO $ cb requestKey
--- =======
--- >>>>>>> develop
   performEvent_ $ liftJSM . forkListen <$> onRequestKey
   pure (listenStatus, message, setMessage)
 

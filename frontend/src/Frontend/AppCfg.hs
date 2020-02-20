@@ -50,7 +50,6 @@ data FileFFI t m = FileFFI
   -- ^ Delivers a file to an appropriate place to the user
   }
 
--- TODO: Tidy this up
 liftFileFFI :: (forall a. m a -> n a) -> FileFFI t m -> FileFFI t n
 liftFileFFI natTransform oldFFI = oldFFI { _fileFFI_deliverFile = natTransform . (_fileFFI_deliverFile oldFFI) }
 

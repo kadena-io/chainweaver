@@ -17,9 +17,10 @@ import Data.Aeson.Types (Parser, parseEither)
 import Data.Aeson.Text (encodeToLazyText)
 import Data.Bifunctor (first)
 import Data.Functor (($>))
+import Data.Foldable (traverse_)
+import Data.List (intercalate)
 import Data.Dependent.Map (DMap)
 import qualified Data.Dependent.Map as DMap
-import Data.Foldable (fold)
 import qualified Data.IntMap as IntMap
 import Data.Time (getZonedTime, zonedTimeToLocalTime, iso8601DateFormat, formatTime, defaultTimeLocale)
 import Data.Functor.Identity (Identity(Identity), runIdentity)
@@ -72,6 +73,9 @@ commandLogDataKey = "CommandLogs_Data"
 commandLogVersionKey :: Text
 commandLogVersionKey  = "CommandLogs_Version"
 
+chainweaverImportObj :: String
+chainweaverImportObj = "ChainweaverImport"
+
 hoistParser
   :: Monad m
   => Text
@@ -91,7 +95,7 @@ extractImportVersionField
   -> Value
   -> ExceptT ImportWalletError m StorageVersion
 extractImportVersionField key ver =
-  hoistParser key ver (withObject "ChainWeaverImport" (\o -> o .:? key .!= 0 ))
+  hoistParser key ver (withObject chainweaverImportObj (\o -> o .:? key .!= 0 ))
 
 extractImportDataField
   :: forall a m
@@ -103,7 +107,7 @@ extractImportDataField
   -> Value
   -> ExceptT ImportWalletError m a
 extractImportDataField key ver =
-  hoistParser key ver (withObject "ChainWeaverImport" (\o -> o .: key))
+  hoistParser key ver (withObject chainweaverImportObj (\o -> o .: key))
 
 doImport
   :: forall t m
@@ -114,7 +118,7 @@ doImport
      , Reflex t
      )
   => TransactionLogger
-  -> Password -- Password
+  -> Password 
   -> Text -- Backup data
   -> m (Either ImportWalletError (Crypto.XPrv, Password))
 doImport txLogger pw contents = runExceptT $ do
@@ -166,7 +170,7 @@ doImport txLogger pw contents = runExceptT $ do
         Just cmdLogVer -> do
           rawCmdLogData <- extractImportDataField @Text commandLogDataKey natVer jVal
           _ <- hoistEither $ first (ImportWalletError_DecodeError commandLogDataKey cmdLogVer . T.pack)
-            $ traverse (eitherDecode @CommandLog . TL.encodeUtf8 . TL.fromStrict) $ T.lines rawCmdLogData
+            $ traverse_ (eitherDecode @CommandLog . TL.encodeUtf8 . TL.fromStrict) $ T.lines rawCmdLogData
 
           logFilePath <- failWith ImportWalletError_InvalidCommandLogDestination $
             _transactionLogger_destination txLogger
@@ -214,12 +218,10 @@ doExport txLogger oldPw pw = runExceptT $ do
   lt <- zonedTimeToLocalTime <$> liftIO getZonedTime
 
   pure $
-    ( fold
+    ( intercalate "."
       [ (T.unpack . (T.take 8) . keyToText . _keyPair_publicKey . _key_pair $ keyPair)
-      , "."
       -- Mac does something weird with colons in the name and converts them to subdirs...
       , formatTime defaultTimeLocale (iso8601DateFormat (Just "%H-%M-%S")) lt
-      , "."
       , T.unpack (fileTypeExtension FileType_Import)
       ]
     , TL.toStrict $ encodeToLazyText $ object $

@@ -53,10 +53,9 @@ uiSettings enabledSettings model fileFFI = elClass "div" "icon-grid" $ do
     [ ffor (_enabledSettings_changePassword enabledSettings) $ \changePassword -> do
       settingItem "Change Password" (static @"img/lock-light.svg") (uiChangePasswordDialog changePassword)
     , ffor (_enabledSettings_exportWallet enabledSettings) $ \exportWallet-> do
-      -- TODO: Need to center the svg properly
       settingItem "Export Wallet" (static @"img/export.svg") (uiExportWalletDialog exportWallet)
     , includeSetting _enabledSettings_transactionLog $ settingItem "Transaction Log" (static @"img/network.svg")
-        $ uiTxLogs fileFFI model
+        $ uiTxLogs fileFFI
     ]
   pure $ netCfg <> fold configs
   where
