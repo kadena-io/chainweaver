@@ -22,6 +22,7 @@ data ExportWalletError
   | ExportWalletError_NoKeys
   | ExportWalletError_FileNotWritable Text
   | ExportWalletError_CommandLogExport
+  | ExportWalletError_UpgradeFailed
 
 data ExportWallet t m = ExportWallet
   { _exportWallet_requestExport :: Event t Text -> m (Event t (Either ExportWalletError FilePath))

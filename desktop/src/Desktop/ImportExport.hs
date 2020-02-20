@@ -6,13 +6,14 @@ module Desktop.ImportExport where
 
 import qualified System.Directory as Dir
 import qualified Cardano.Crypto.Wallet as Crypto
+import Control.Lens (over, mapped, _Left)
 import Control.Error (hoistEither, failWith)
 import Control.Exception (catch, displayException)
 import Control.Monad (unless)
 import Control.Monad.IO.Class (MonadIO, liftIO)
 import Control.Monad.Except (ExceptT(ExceptT), runExceptT, throwError, catchError)
 import Control.Monad.Trans (lift)
-import Data.Aeson (FromJSON, Value, eitherDecode, object, (.=), (.!=), (.:?), (.:), withObject)
+import Data.Aeson (FromJSON, Value, eitherDecode, object, (.=), (.:), withObject)
 import Data.Aeson.Types (Parser, parseEither)
 import Data.Aeson.Text (encodeToLazyText)
 import Data.Bifunctor (first)
@@ -88,15 +89,6 @@ hoistParser errLabel ver p  =
   . first (ImportWalletError_DecodeError errLabel ver . T.pack)
   . parseEither p
 
-extractImportVersionField
-  :: (Monad m)
-  => Text
-  -> StorageVersion
-  -> Value
-  -> ExceptT ImportWalletError m StorageVersion
-extractImportVersionField key ver =
-  hoistParser key ver (withObject chainweaverImportObj (\o -> o .:? key .!= 0 ))
-
 extractImportDataField
   :: forall a m
   . ( Monad m
@@ -109,6 +101,15 @@ extractImportDataField
 extractImportDataField key ver =
   hoistParser key ver (withObject chainweaverImportObj (\o -> o .: key))
 
+extractImportVersionField
+  :: (Monad m)
+  => Text
+  -> StorageVersion
+  -> Value
+  -> ExceptT ImportWalletError m StorageVersion
+extractImportVersionField =
+  extractImportDataField
+
 doImport
   :: forall t m
   .  ( MonadIO m
@@ -118,7 +119,7 @@ doImport
      , Reflex t
      )
   => TransactionLogger
-  -> Password 
+  -> Password
   -> Text -- Backup data
   -> m (Either ImportWalletError (Crypto.XPrv, Password))
 doImport txLogger pw contents = runExceptT $ do
@@ -178,8 +179,6 @@ doImport txLogger pw contents = runExceptT $ do
           ExceptT $ liftIO $ catch (Right <$> T.writeFile logFilePath rawCmdLogData) $ \(_ :: IOError) ->
             pure $ Left ImportWalletError_CommandLogWriteError
 
--- This is running on the assumption that the storage has been upgraded already and isn't on
--- an old version.
 doExport
   :: forall m
   .  ( HasCrypto Crypto.XPrv m
@@ -192,8 +191,14 @@ doExport
   -> m (Either ExportWalletError (FilePath, Text))
 doExport txLogger oldPw pw = runExceptT $ do
   unless (oldPw == pw) $ throwError ExportWalletError_PasswordIncorrect
+  let store = FrontendStore.versionedStorage @Crypto.XPrv @m
+
+  -- Trigger an upgrade of the storage to ensure we're exporting the latest version.
+  _ <- ExceptT $ over (mapped . _Left) (const ExportWalletError_UpgradeFailed)
+    $ _versionedStorage_upgradeStorage store
+
   (bipVer,bipData) <- lift $ dumpLocalStorage @BIPStorage bipMetaPrefix
-  (feVer, feData) <- lift $ _versionedStorage_dumpLocalStorage (FrontendStore.versionedStorage @Crypto.XPrv @m)
+  (feVer, feData) <- lift $ _versionedStorage_dumpLocalStorage store
 
   keyPair <- failWith ExportWalletError_NoKeys $ do
     (Identity keyMap) <- DMap.lookup StoreFrontend_Wallet_Keys feData

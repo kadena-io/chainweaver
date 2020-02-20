@@ -66,6 +66,7 @@ uiExportWalletScreen (ExportWallet _exportWallet_requestExport) onClose = Workfl
           ExportWalletError_PasswordIncorrect -> "Password Incorrect"
           ExportWalletError_NoKeys -> "This wallet has no keys yet and cannot be exported"
           ExportWalletError_CommandLogExport -> "Unable to export transaction logs"
+          ExportWalletError_UpgradeFailed -> "Wallet data is out of date and could not be upgraded. Please back up wallet data manually"
 
         pure pw'
 
