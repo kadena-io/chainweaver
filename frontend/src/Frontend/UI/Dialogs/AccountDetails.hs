@@ -173,7 +173,7 @@ uiAccountDetailsImpl net account notes onClose = Workflow $ do
     let onNotesUpdate = (net, account, Nothing,) <$> current notesEdit <@ (onDone <> onClose)
         conf = mempty & walletCfg_updateAccountNotes .~ onNotesUpdate
 
-    pure ( ("Key Details", (conf, onDone))
+    pure ( ("Account Details", (conf, onDone))
          , uiDeleteConfirmation net account <$ onRemove
          )
 
