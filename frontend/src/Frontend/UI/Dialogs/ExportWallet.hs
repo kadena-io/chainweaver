@@ -42,7 +42,7 @@ uiExportWalletScreen (ExportWallet _exportWallet_requestExport) onClose = Workfl
         el "p" $ text
           "Exporting wallet data will generate an encrypted file containing sensitive and \
           \non-sensitive information available within the wallet. The file will be protected\
-          \by the wallet password that was in use at time of export. Store this file in a \
+          \ by the wallet password that was in use at time of export. Store this file in a \
           \secure location and do not alter its contents."
 
         el "p" $ text "The wallet data to be exported within this file includes:"

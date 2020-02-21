@@ -113,6 +113,7 @@ in
         wai-extra = haskellLib.dontCheck super.wai-extra;
         wai-app-static = haskellLib.dontCheck super.wai-app-static;
         servant-client = haskellLib.dontCheck super.servant-client;
+        system-locale = haskellLib.dontCheck super.system-locale;
 
         unliftio = haskellLib.dontCheck super.unliftio;
       };
