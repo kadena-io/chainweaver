@@ -56,27 +56,25 @@ uiExportWalletScreen (ExportWallet _exportWallet_requestExport) onClose = Workfl
 
       dialogSectionHeading mempty "Current Password"
       divClass "group" $ do
-        pw' <- uiInputElement $ def & initialAttributes .~
-            ( "type" =: "password"
-            <> "placeholder" =: "Current Password"
-            <> "class" =: "input_width_full"
-            )
+        pw' <- uiPassword "password-input__wrapper" "password-input" "Enter current password"
         widgetHold_ blank $ ffor eErr $ elClass "p" "error_inline" . text . \case
           ExportWalletError_FileNotWritable fp -> "Could not write file to " <> fp
           ExportWalletError_PasswordIncorrect -> "Password Incorrect"
           ExportWalletError_NoKeys -> "This wallet has no keys yet and cannot be exported"
           ExportWalletError_CommandLogExport -> "Unable to export transaction logs"
           ExportWalletError_UpgradeFailed -> "Wallet data is out of date and could not be upgraded. Please back up wallet data manually"
-
         pure pw'
 
-
   (eErr, eOk) <- fmap fanEither . _exportWallet_requestExport $ (current $ value pw) <@ eSubmit
-  pure $ (("Export Wallet", (mempty, onClose <> eCancel)), uiExportWalletSuccess onClose <$> eOk)
+  pure ( ( "Export Wallet Data"
+         , (mempty, onClose <> eCancel)
+         )
+       , uiExportWalletSuccess onClose <$> eOk
+       )
   where
-    footer = divClass "modal__footer-reversed" $ do
-      _ <- confirmButton def "Export"
-      cancelButton def "Cancel"
+    footer = modalFooter $
+      cancelButton def "Cancel" <*
+      confirmButton def "Export"
 
 uiExportWalletSuccess
   :: (DomBuilder t m, PostBuild t m, Monoid mConf)

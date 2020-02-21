@@ -172,3 +172,25 @@ input[type=number] {
     margin-right: 5px;
   }
 }
+
+.password-input {
+  padding-left: 46px;
+  line-height: initial;
+  font-size: 16px;
+  font-weight: initial;
+  flex-grow: 1;
+}
+
+.password-input__wrapper {
+  position: relative;
+  display: flex;
+  justify-content: space-around;
+  align-items: center;
+}
+
+.password-input__lock {
+  position: absolute;
+  left: 15px;
+  justify-content: space-around;
+  align-items: center;
+}
