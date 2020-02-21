@@ -170,8 +170,11 @@ doImport txLogger pw contents = runExceptT $ do
         Nothing -> pure ()
         Just cmdLogVer -> do
           rawCmdLogData <- extractImportDataField @Text commandLogDataKey natVer jVal
-          _ <- hoistEither $ first (ImportWalletError_DecodeError commandLogDataKey cmdLogVer . T.pack)
-            $ traverse_ (eitherDecode @CommandLog . TL.encodeUtf8 . TL.fromStrict) $ T.lines rawCmdLogData
+          -- Empty logs are possible and acceptable, so don't fail if there isn't anything to parse.
+          unless (T.null rawCmdLogData) $ hoistEither
+            $ first (ImportWalletError_DecodeError commandLogDataKey cmdLogVer . T.pack)
+            $ traverse_ (eitherDecode @CommandLog . TL.encodeUtf8 . TL.fromStrict)
+            $ T.lines rawCmdLogData
 
           logFilePath <- failWith ImportWalletError_InvalidCommandLogDestination $
             _transactionLogger_destination txLogger
