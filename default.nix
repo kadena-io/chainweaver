@@ -8,11 +8,11 @@ with obelisk;
 let
   # All the versions that the user cares about are here so that they can
   # be changed in one place
-  chainweaverVersion = "1.0";
+  chainweaverVersion = "1.1";
   appName = "Kadena Chainweaver";
-  macReleaseNumber = "2";
-  linuxReleaseNumber = "2";
-  ovaReleaseNumber = "2";
+  macReleaseNumber = "1";
+  linuxReleaseNumber = "1";
+  ovaReleaseNumber = "1";
 
   obApp = import ./obApp.nix args;
   pactServerModule = import ./pact-server/service.nix;
