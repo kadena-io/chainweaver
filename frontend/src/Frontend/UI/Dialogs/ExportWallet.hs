@@ -45,8 +45,8 @@ uiExportWalletScreen (ExportWallet _exportWallet_requestExport) onClose = Workfl
           \ by the wallet password that was in use at time of export. Store this file in a \
           \secure location and do not alter its contents."
 
-        el "p" $ text "The wallet data to be exported within this file includes:"
-        el "ul" $ do
+        elClass "p" "export-wallet__contents-includes" $ text "The wallet data to be exported within this file includes:"
+        elClass "ul" "export-wallet__contents-list" $ do
           el "li" $ text "Generated public/private key pairs"
           el "li" $ text "Added accounts"
           el "li" $ text "Account notes"
