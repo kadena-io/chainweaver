@@ -57,7 +57,7 @@ import           Frontend.Network
 import           Frontend.Repl
 import           Frontend.Log
 import           Frontend.Storage
-import           Frontend.Store
+import           Frontend.VersionedStore
 
 type HasModuleExplorerModelCfg mConf t =
   ( Monoid mConf

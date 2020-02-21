@@ -12,3 +12,4 @@ pact-log
 ui-styling/node_modules
 *.dmg
 *.tix
+*.chainweaver

@@ -76,7 +76,7 @@ import Reflex.Extended (tagOnPostBuild)
 import Reflex.Network.Extended (Flattenable)
 import Reflex.Network.Extended (flatten)
 import qualified Data.Text as T
-import qualified Pact.Server.ApiV1Client as Api
+import qualified Pact.Server.ApiClient as Api
 import qualified Pact.Types.API as Api
 import qualified Pact.Types.Command as Pact
 import qualified Servant.Client.JSaddle as S
@@ -157,10 +157,11 @@ submitTransactionWithFeedback
      )
   => model
   -> Pact.Command Text
+  -> AccountName
   -> ChainId
   -> [Either a NodeInfo]
   -> m (TransactionSubmitFeedback t)
-submitTransactionWithFeedback model cmd chain nodeInfos = do
+submitTransactionWithFeedback model cmd sender chain nodeInfos = do
   transactionHashSection cmd
   -- Shove the node infos into servant client envs
   clientEnvs <- fmap catMaybes $ for (rights nodeInfos) $ \nodeInfo -> do
@@ -179,12 +180,13 @@ submitTransactionWithFeedback model cmd chain nodeInfos = do
   (sendStatus, send) <- newTriggerHold Status_Waiting
 
   -- Send the transaction
+
   pb <- getPostBuild
   transactionLogger <- askTransactionLogger
   rec
     onRequestKey <- performEventAsync $ ffor pb $ \() cb -> liftJSM $ do
       send Status_Working
-      doReqFailover clientEnvs (Api.send Api.apiV1Client transactionLogger $ Api.SubmitBatch $ pure cmd) >>= \case
+      doReqFailover clientEnvs (Api.send Api.apiV1Client transactionLogger (unAccountName sender) chain $ Api.SubmitBatch $ pure cmd) >>= \case
         Left errs -> do
           send Status_Failed
           for_ (nonEmpty errs) $ setMessage . Just . Left . packHttpErr . NEL.last
@@ -280,15 +282,16 @@ deploySubmit
      , HasTransactionLogger m
      )
   => model
+  -> AccountName
   -> ChainId
   -> DeploymentSettingsResult key
   -> [Either a NodeInfo]
   -> Workflow t m (Text, (Event t (), modelCfg))
-deploySubmit model chain result nodeInfos = Workflow $ do
+deploySubmit model sender chain result nodeInfos = Workflow $ do
   let cmd = _deploymentSettingsResult_command result
 
   _ <- elClass "div" "modal__main transaction_details" $
-    submitTransactionWithFeedback model cmd chain nodeInfos
+    submitTransactionWithFeedback model cmd sender chain nodeInfos
 
   done <- modalFooter $ uiButtonDyn (def & uiButtonCfg_class .~ "button_type_confirm") $ text "Done"
   pure
@@ -337,6 +340,7 @@ fullDeployFlow dcfg model runner _onCloseExternal = do
 
     showSubmit nodes result = deploySubmit
       model
+      (_deploymentSettingsResult_sender result)
       (_deploymentSettingsResult_chainId result)
       result
       nodes

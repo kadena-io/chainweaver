@@ -4,7 +4,7 @@ import Test.Tasty (TestTree, defaultMain, testGroup)
 
 import qualified Frontend.CommandLogSpec as CommandLog
 import qualified Frontend.StorageSpec as Storage
-import qualified Frontend.StoreSpec as Store
+import qualified Frontend.VersionedStoreSpec as Store
 import qualified Frontend.Network.NodeInfoSpec as NodeInfoSpec
 
 main :: IO ()

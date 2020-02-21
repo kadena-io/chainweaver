@@ -57,7 +57,7 @@ import qualified Data.Map as Map
 import qualified Data.Set as Set
 import qualified Data.Text as T
 import qualified Data.Text.Encoding as T
-import qualified Pact.Server.ApiV1Client as Api
+import qualified Pact.Server.ApiClient as Api
 import qualified Pact.Types.API as Api
 import qualified Pact.Types.Command as Pact
 import qualified Pact.Types.Continuation as Pact
@@ -293,7 +293,7 @@ sameChainTransfer model netInfo keys (fromName, fromChain, fromAcc) (gasPayer, g
   close <- modalHeader $ text "Transaction Status"
   cmd <- buildCmd Nothing networkName pm signingPairs [] code dat pkCaps
   _ <- elClass "div" "modal__main transaction_details" $
-    submitTransactionWithFeedback model cmd fromChain (fmap Right nodeInfos)
+    submitTransactionWithFeedback model cmd fromName fromChain (fmap Right nodeInfos)
   done <- modalFooter $ confirmButton def "Done"
   pure
     ( (mempty, close <> done)
@@ -853,12 +853,16 @@ continueCrossChainTransfer
 continueCrossChainTransfer logL networkName envs publicMeta keys toChain gasPayer spvOk = do
   transactionLogger <- askTransactionLogger
   performEventAsync $ ffor spvOk $ \(pe, proof) cb -> do
-    let pm = publicMeta
-          { _pmChainId = toChain
-          , _pmSender = unAccountName $ fst gasPayer
-          }
-        signingSet = accountKeys $ snd gasPayer
-        signingPairs = filterKeyPairs signingSet keys
+
+    let
+      sender = unAccountName $ fst gasPayer
+
+      pm = publicMeta
+        { _pmChainId = toChain
+        , _pmSender = sender
+        }
+      signingSet = accountKeys $ snd gasPayer
+      signingPairs = filterKeyPairs signingSet keys
     payload <- buildContPayload networkName pm signingPairs $ ContMsg
       { _cmPactId = Pact._pePactId pe
       , _cmStep = succ $ Pact._peStep pe
@@ -870,7 +874,7 @@ continueCrossChainTransfer logL networkName envs publicMeta keys toChain gasPaye
     putLog logL LevelWarn "transfer-crosschain: running continuation on target chain"
     -- We can't do a /local with continuations :(
     liftJSM $ forkJSM $ do
-      r <- doReqFailover envs (Api.send Api.apiV1Client transactionLogger $ Api.SubmitBatch $ pure cont) >>= \case
+      r <- doReqFailover envs (Api.send Api.apiV1Client transactionLogger sender toChain $ Api.SubmitBatch $ pure cont) >>= \case
         Left es -> packHttpErrors logL es
         Right (Api.RequestKeys (requestKey :| _)) -> pure $ Right (Pact._pePactId pe, requestKey)
       liftIO $ cb r
@@ -961,9 +965,13 @@ initiateCrossChainTransfer model networkName envs publicMeta keys fromAccount fr
           Pact.PactResult (Left e) -> do
             putLog model LevelError (tshow e)
             pure $ Left $ tshow e
-          Pact.PactResult (Right _) -> doReqFailover envs (Api.send Api.apiV1Client transactionLogger $ Api.SubmitBatch $ pure cmd) >>= \case
-            Left es -> packHttpErrors (model ^. logger) es
-            Right (Api.RequestKeys (requestKey :| _)) -> pure $ Right requestKey
+          Pact.PactResult (Right _) -> do
+            r <- doReqFailover envs $ Api.send Api.apiV1Client transactionLogger senderText toChain
+              $ Api.SubmitBatch $ pure cmd
+            case r of
+              Left es -> packHttpErrors (model ^. logger) es
+              Right (Api.RequestKeys (requestKey :| _)) -> pure $ Right requestKey
+
       liftIO $ cb r
   where
     fromAccKeys = fromAccount ^. _3 . accountDetails_keyset . addressKeyset_keys
@@ -989,9 +997,13 @@ initiateCrossChainTransfer model networkName envs publicMeta keys fromAccount fr
       [ Map.fromSet (\_ -> [_dappCap_cap defaultGASCapability]) (accountKeys $ snd fromGasPayer)
       , Map.fromSet (\_ -> [debitCap]) fromAccKeys
       ]
+
+    senderText = unAccountName $ fst fromGasPayer
+    toChain = view _2 fromAccount
+
     pm = publicMeta
-      { _pmChainId = view _2 fromAccount
-      , _pmSender = unAccountName $ fst fromGasPayer
+      { _pmChainId = toChain
+      , _pmSender = senderText
       }
 
 -- | Listen to a request key for some continuation

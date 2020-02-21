@@ -113,7 +113,6 @@ in
         wai-extra = haskellLib.dontCheck super.wai-extra;
         wai-app-static = haskellLib.dontCheck super.wai-app-static;
         servant-client = haskellLib.dontCheck super.servant-client;
-
         unliftio = haskellLib.dontCheck super.unliftio;
       };
       common-overlay = self: super:
@@ -132,6 +131,8 @@ in
         these-lens = haskellLib.doJailbreak (self.callHackage "these-lens" "1" {});
         obelisk-oauth-frontend = haskellLib.doJailbreak super.obelisk-oauth-frontend;
         pact = haskellLib.dontCheck super.pact; # tests can timeout...
+        system-locale = haskellLib.dontCheck super.system-locale; # tests fail on minor discrepancies on successfully parsed locale time formats.
+
       };
     in self: super: lib.foldr lib.composeExtensions (_: _: {}) [
       (import (hackGet ./deps/pact + "/overrides.nix") pkgs hackGet)

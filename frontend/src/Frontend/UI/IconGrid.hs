@@ -17,10 +17,16 @@ data IconGridCellConfig = IconGridCellConfig
   , _iconGridCellConfig_desc :: Maybe Text
   }
 
-iconGridLaunchLink :: DomBuilder t m => Text -> IconGridCellConfig -> m ()
-iconGridLaunchLink href config =
-  elAttr "a" ("class" =: "icon-grid__cell" <> "href" =: href <> "target" =: "_blank") $
+iconGridLaunchLink' :: DomBuilder t m => Text -> Bool -> IconGridCellConfig -> m ()
+iconGridLaunchLink' href inNewWindow config =
+  elAttr "a" (withTarget inNewWindow $ "class" =: "icon-grid__cell" <> "href" =: href) $
     void $ iconGridCell' config True
+  where
+    withTarget True = mappend ("target" =: "_blank")
+    withTarget _ = id
+
+iconGridLaunchLink :: DomBuilder t m => Text -> IconGridCellConfig -> m ()
+iconGridLaunchLink href = iconGridLaunchLink' href True
 
 iconGridCell :: DomBuilder t m => IconGridCellConfig -> m (Event t ())
 iconGridCell config = elAttr "div" ("class" =: "icon-grid__cell") $ iconGridCell' config False

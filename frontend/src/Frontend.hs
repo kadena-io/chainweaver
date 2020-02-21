@@ -1,34 +1,37 @@
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE TupleSections #-}
 {-# LANGUAGE TypeApplications #-}
 module Frontend where
 
-import           Control.Monad            (join, void)
-import           Control.Monad.IO.Class
-import           Data.Maybe               (listToMaybe)
-import           Data.Text                (Text)
-import qualified Data.Text                as T
-import qualified GHCJS.DOM.EventM         as EventM
-import qualified GHCJS.DOM.FileReader     as FileReader
-import qualified GHCJS.DOM.HTMLElement    as HTMLElement
-import qualified GHCJS.DOM.Types          as Types
-import           Reflex.Dom
-import Pact.Server.ApiV1Client (runTransactionLoggerT, logTransactionStdout)
+import Control.Monad (join, void)
+import Control.Monad.IO.Class
+import Data.Maybe (listToMaybe)
+import Data.Text (Text)
+import qualified Data.Text as T
+import qualified GHCJS.DOM.EventM as EventM
+import qualified GHCJS.DOM.FileReader as FileReader
+import qualified GHCJS.DOM.HTMLElement as HTMLElement
+import qualified GHCJS.DOM.HTMLInputElement as HTMLInput
+import qualified GHCJS.DOM.Types as Types
+import qualified GHCJS.DOM.File as JSFile
+import Reflex.Dom
+import Pact.Server.ApiClient (runTransactionLoggerT, logTransactionStdout)
 
-import           Obelisk.Frontend
-import           Obelisk.Route.Frontend
-import           Obelisk.Generated.Static
+import Obelisk.Frontend
+import Obelisk.Route.Frontend
+import Obelisk.Generated.Static
 
-import           Common.Api
-import           Common.Route
-import           Frontend.AppCfg
-import           Frontend.Log (defaultLogger)
-import           Frontend.Crypto.Browser
-import           Frontend.Foundation
-import           Frontend.ModuleExplorer.Impl (loadEditorFromLocalStorage)
-import           Frontend.ReplGhcjs
-import           Frontend.Storage
+import Common.Api
+import Common.Route
+import Frontend.AppCfg
+import Frontend.Log (defaultLogger)
+import Frontend.Crypto.Browser
+import Frontend.Foundation
+import Frontend.ModuleExplorer.Impl (loadEditorFromLocalStorage)
+import Frontend.ReplGhcjs
+import Frontend.Storage
 
 main :: IO ()
 main = do
@@ -58,39 +61,58 @@ frontend = Frontend
 
   , _frontend_body = prerender_ loaderMarkup $ do
     (fileOpened, triggerOpen) <- openFileDialog
-    mapRoutedT (flip runTransactionLoggerT logTransactionStdout . runBrowserStorageT . runBrowserCryptoT) $ app blank $ AppCfg
-      { _appCfg_gistEnabled = True
-      , _appCfg_externalFileOpened = fileOpened
-      , _appCfg_openFileDialog = liftJSM triggerOpen
-      , _appCfg_loadEditor = loadEditorFromLocalStorage
-      , _appCfg_editorReadOnly = False
-      , _appCfg_signingRequest = never
-      , _appCfg_signingResponse = liftIO . print
-      , _appCfg_enabledSettings = EnabledSettings
-        { _enabledSettings_changePassword = Nothing
+    mapRoutedT (flip runTransactionLoggerT logTransactionStdout . runBrowserStorageT . runBrowserCryptoT) $ do
+      let fileFFI = FileFFI
+            { _fileFFI_externalFileOpened = fileOpened
+            , _fileFFI_openFileDialog = liftJSM . triggerOpen
+            , _fileFFI_deliverFile = \_ -> pure never
+            }
+      app blank fileFFI $ AppCfg
+        { _appCfg_gistEnabled = True
+        , _appCfg_loadEditor = loadEditorFromLocalStorage
+        , _appCfg_editorReadOnly = False
+        , _appCfg_signingRequest = never
+        , _appCfg_signingResponse = liftIO . print
+        , _appCfg_enabledSettings = EnabledSettings
+          { _enabledSettings_changePassword = Nothing
+          , _enabledSettings_exportWallet = Nothing
+          , _enabledSettings_transactionLog = False
+          }
+        , _appCfg_logMessage = defaultLogger
         }
-      , _appCfg_logMessage = defaultLogger
-      }
   }
 
 
 -- | The 'JSM' action *must* be run from a user initiated event in order for the
 -- dialog to open
-openFileDialog :: MonadWidget t m => m (Event t Text, JSM ())
+openFileDialog :: MonadWidget t m => m (Event t (FilePath, Text), FileType -> JSM ())
 openFileDialog = do
-  let attrs = "type" =: "file" <> "accept" =: ".pact" <> "style" =: "display: none"
-  input <- inputElement $ def & initialAttributes .~ attrs
-  let newFile = fmapMaybe listToMaybe $ updated $ _inputElement_files input
-  mContents <- performEventAsync $ ffor newFile $ \file cb -> Types.liftJSM $ do
-    fileReader <- FileReader.newFileReader
-    FileReader.readAsText fileReader (Just file) (Nothing :: Maybe Text)
-    _ <- EventM.on fileReader FileReader.loadEnd $ Types.liftJSM $ do
-      mStringOrArrayBuffer <- FileReader.getResult fileReader
-      mText <- traverse (Types.fromJSVal . Types.unStringOrArrayBuffer) mStringOrArrayBuffer
-      liftIO $ cb $ join mText
-    pure ()
-  let open = HTMLElement.click $ _inputElement_raw input
-  pure (fmapMaybe id mContents, open)
+  (pactE, triggerPact) <- fileDialog (fileTypeExtension FileType_Pact)
+  (importE, triggerImport) <- fileDialog (fileTypeExtension FileType_Import)
+  let trigger = \case
+        FileType_Pact -> triggerPact
+        FileType_Import -> triggerImport
+  pure (pactE <> importE, trigger)
+  where
+    fileDialog accept = do
+      let attrs = "type" =: "file" <> "accept" =: ("." <> accept) <> "style" =: "display: none"
+      input <- inputElement $ def & initialAttributes .~ attrs
+      let newFile = fmapMaybe listToMaybe $ updated $ _inputElement_files input
+      mContents <- performEventAsync $ ffor newFile $ \file cb -> Types.liftJSM $ do
+        fileReader <- FileReader.newFileReader
+        FileReader.readAsText fileReader (Just file) (Nothing :: Maybe Text)
+        _ <- EventM.on fileReader FileReader.loadEnd $ Types.liftJSM $ do
+          mStringOrArrayBuffer <- FileReader.getResult fileReader
+          mText <- traverse (Types.fromJSVal . Types.unStringOrArrayBuffer) mStringOrArrayBuffer
+          name <- Types.fromJSString <$> JSFile.getName file
+          liftIO $ cb $ ((name,) <$> join mText)
+        pure ()
+      let open = do
+            -- This doesn't fix the bug where if you open the same file twice we don't get an event
+            -- for the second select
+            HTMLInput.setFiles (_inputElement_raw input) Nothing
+            HTMLElement.click $ _inputElement_raw input
+      pure (fmapMaybe id mContents, open)
 
 loaderMarkup :: DomBuilder t m => m ()
 loaderMarkup = divClass "spinner" $ do

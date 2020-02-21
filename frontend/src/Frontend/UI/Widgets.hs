@@ -64,6 +64,9 @@ module Frontend.UI.Widgets
   , uiAccountBalance
   , uiAccountBalance'
   , uiPublicKeyShrunk
+  , uiForm
+  , uiForm'
+  , uiPublicKeyShrunkDyn
     -- ** Helper types to avoid boolean blindness for additive input
   , AllowAddNewRow (..)
   , AllowDeleteRow (..)
@@ -95,8 +98,8 @@ module Frontend.UI.Widgets
 ------------------------------------------------------------------------------
 import           Control.Applicative
 import           Control.Arrow (first, (&&&))
+import           Control.Lens hiding (element)
 import           Control.Error (hush)
-import           Control.Lens
 import           Control.Monad
 import           Control.Monad.Except
 import           Control.Monad.Trans.Maybe
@@ -239,6 +242,16 @@ addInputElementCls = addToClassAttr "input"
 addNoAutofillAttrs :: (Ord attr, IsString attr) => Map attr Text -> Map attr Text
 addNoAutofillAttrs = (noAutofillAttrs <>)
 
+-- | Produces a form wrapper given a suitable submit button so that the enter key is correctly handled
+uiForm' :: forall t m a b. DomBuilder t m => ElementConfig EventResult t (DomBuilderSpace m) -> m b -> m a -> m (Event t (), (a,b))
+uiForm' cfg btn fields = do
+  let mkCfg = elementConfig_eventSpec %~ addEventSpecFlags (Proxy :: Proxy (DomBuilderSpace m)) Submit (\_ -> preventDefault)
+  (elt, a) <- element "form" (mkCfg cfg) $ (,) <$> fields <*> btn
+  pure (domEvent Submit elt, a)
+
+-- | Produces a form wrapper given a suitable submit button so that the enter key is correctly handled
+uiForm :: forall t m a. DomBuilder t m => ElementConfig EventResult t (DomBuilderSpace m) -> m () -> m a -> m (Event t (), a)
+uiForm cfg btn fields = (_2 %~ fst) <$> uiForm' cfg btn fields
 
 -- | reflex-dom `inputElement` with chainweaver default styling:
 uiInputElement
@@ -642,11 +655,22 @@ uiAccountBalance showUnits = \case
     , " KDA" <$ guard showUnits
     ]
 
-uiPublicKeyShrunk :: (DomBuilder t m, PostBuild t m) => Dynamic t PublicKey -> m ()
-uiPublicKeyShrunk pk = do
-  divClass "wallet__public-key" $ do
-    elClass "span" "wallet__public-key__prefix" $ dynText $ T.dropEnd 6 <$> ktxt
-    elClass "span" "wallet__public-key__suffix" $ dynText $ T.takeEnd 6 <$> ktxt
+uiPublicKeyShrunkDOM :: DomBuilder t m => m () -> m () -> m ()
+uiPublicKeyShrunkDOM f6 l6 = divClass "wallet__public-key" $ do
+  elClass "span" "wallet__public-key__prefix" f6
+  elClass "span" "wallet__public-key__suffix" l6
+
+uiPublicKeyShrunk :: DomBuilder t m => PublicKey -> m ()
+uiPublicKeyShrunk pk = uiPublicKeyShrunkDOM
+  (text $ T.dropEnd 6 ktxt)
+  (text $ T.takeEnd 6 ktxt)
+  where
+    ktxt = keyToText pk
+
+uiPublicKeyShrunkDyn :: (DomBuilder t m, PostBuild t m) => Dynamic t PublicKey -> m ()
+uiPublicKeyShrunkDyn pk = uiPublicKeyShrunkDOM
+  (dynText $ T.dropEnd 6 <$> ktxt)
+  (dynText $ T.takeEnd 6 <$> ktxt)
   where
     ktxt = keyToText <$> pk
 
@@ -982,7 +1006,7 @@ mkChainTextAccounts m allowAccount mChainId = runExceptT $ do
   accountsOnNetwork <- ExceptT $ note "No accounts on current network" . Map.lookup netId . unAccountData <$> m ^. wallet_accounts
   let mkVanity n (AccountInfo _ chainMap)
         | Just a <- Map.lookup chain chainMap
-         , allowAcc n a
+        , allowAcc n a
         -- Only select _our_ accounts. TODO: run pact code to ensure keyset predicate(s)
         -- are satisfied so we're able to handle user created predicates correctly.
         , accountSatisfiesKeysetPredicate keys a

@@ -53,7 +53,7 @@ import           Common.Route
 import           Frontend.Foundation
 import           Frontend.Messages
 import           Frontend.Storage
-import           Frontend.Store
+import           Frontend.VersionedStore
 
 
 data OAuthCfg t = OAuthCfg

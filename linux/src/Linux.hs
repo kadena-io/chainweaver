@@ -20,6 +20,7 @@ import System.FilePath ((</>), takeDirectory)
 import qualified System.Posix.User as PU
 
 import Desktop (main', AppFFI(..))
+import Frontend.AppCfg (FileType(..), fileTypeExtension)
 import Desktop.Syslog (logToSyslog, sysloggedMain)
 import WebKitGTK
 
@@ -47,7 +48,8 @@ unless we bump r-p
 --}
 
 data LinuxMVars = LinuxMVars
-  { _linuxMVars_openFileDialog :: MVar ()
+  { _linuxMVars_openFileDialog :: MVar FileType
+  , _linuxMVars_saveFileDialog :: MVar (FilePath, FilePath -> IO())
   , _linuxMVars_moveToForeground :: MVar ()
   , _linuxMVars_moveToBackground :: MVar ()
   , _linuxMVars_resizeWindow :: MVar (Int,Int)
@@ -63,13 +65,15 @@ mkFfi = do
   moveToForegroundMV <- newEmptyMVar
   moveToBackgroundMV <- newEmptyMVar
   resizeMV <- newEmptyMVar
+  saveFileDialogMV <- newEmptyMVar
 
   let ffi = AppFFI
         { _appFFI_activateWindow = putMVar activateMV ()
         , _appFFI_moveToBackground = putMVar moveToBackgroundMV ()
         , _appFFI_moveToForeground = putMVar moveToForegroundMV ()
         , _appFFI_resizeWindow = putMVar resizeMV
-        , _appFFI_global_openFileDialog = putMVar openFileDialogMV ()
+        , _appFFI_global_openFileDialog = putMVar openFileDialogMV
+        , _appFFI_global_saveFileDialog = curry (putMVar saveFileDialogMV)
         , _appFFI_global_getStorageDirectory = (\hd -> hd </> ".local" </> "share" </> "chainweaver") <$> getHomeDirectory
         , _appFFI_global_logFunction = logToSyslog
         }
@@ -79,6 +83,7 @@ mkFfi = do
     , _linuxMVars_moveToBackground = moveToBackgroundMV
     , _linuxMVars_resizeWindow = resizeMV
     , _linuxMVars_activateWindow = activateMV
+    , _linuxMVars_saveFileDialog = saveFileDialogMV
     })
 
 main :: IO ()
@@ -100,7 +105,8 @@ runLinux
   -> IO ()
 runLinux mvars _url allowing _onUniversalLink handleOpen jsm = do
   customRun (TE.decodeUtf8With TE.lenientDecode allowing) jsm $ \window -> do
-    mvarHandler (_linuxMVars_openFileDialog mvars) (const $ openFileDialog handleOpen)
+    mvarHandler (_linuxMVars_openFileDialog mvars) (openFileDialog handleOpen)
+    mvarHandler (_linuxMVars_saveFileDialog mvars) (uncurry saveFileDialog)
     mvarHandler (_linuxMVars_moveToForeground mvars) (const $ moveToForeground window)
     mvarHandler (_linuxMVars_moveToBackground mvars) (const $ moveToBackground window)
     mvarHandler (_linuxMVars_resizeWindow mvars) (resizeWindow window)
@@ -111,14 +117,14 @@ runLinux mvars _url allowing _onUniversalLink handleOpen jsm = do
       v <- takeMVar mvar
       postGUIASync $ f v
 
-openFileDialog :: (FilePath -> IO Bool) -> IO ()
-openFileDialog handleOpen = do
+openFileDialog :: (FilePath -> IO Bool) -> FileType -> IO ()
+openFileDialog handleOpen fileType = do
   fileFilter <- Gtk.fileFilterNew
-  Gtk.fileFilterAddPattern fileFilter (T.pack "*.pact")
-  Gtk.fileFilterSetName fileFilter (Just "Pact Files")
+  Gtk.fileFilterAddPattern fileFilter ("*." <> fileTypeExtension fileType)
+  Gtk.fileFilterSetName fileFilter (Just $ fileTypeExtension fileType <> " files")
 
   chooser <- Gtk.fileChooserNativeNew
-    (Just $ T.pack "Open Pact File")
+    (Just $ T.pack "Open File")
     Gtk.noWindow
     Gtk.FileChooserActionOpen
     Nothing
@@ -130,6 +136,23 @@ openFileDialog handleOpen = do
   res <- Gtk.nativeDialogRun chooser
   void $ case toEnum (fromIntegral res) of
     Gtk.ResponseTypeAccept ->  Gtk.fileChooserGetFilenames chooser >>= traverse_ handleOpen . headMay
+    _ -> pure ()
+
+saveFileDialog :: FilePath -> (FilePath -> IO ()) -> IO ()
+saveFileDialog fileName handleSelectDir = do
+  chooser <- Gtk.fileChooserNativeNew
+    (Just $ T.pack "Choose a directory to save to")
+    Gtk.noWindow
+    Gtk.FileChooserActionSave
+    Nothing
+    Nothing
+
+  Gtk.fileChooserSetCreateFolders chooser True
+  _ <- Gtk.fileChooserSetCurrentName chooser fileName
+
+  res <- Gtk.nativeDialogRun chooser
+  void $ case toEnum (fromIntegral res) of
+    Gtk.ResponseTypeAccept ->  Gtk.fileChooserGetFilenames chooser >>= traverse_ handleSelectDir . headMay
     _ -> pure ()
 
 moveToForeground :: Gtk.Window -> IO ()

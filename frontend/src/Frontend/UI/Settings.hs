@@ -16,11 +16,13 @@ import Reflex
 import Reflex.Dom.Core
 import Obelisk.Generated.Static
 
-import Frontend.AppCfg (EnabledSettings(..))
+import Frontend.AppCfg (EnabledSettings(..), FileFFI)
 import Frontend.Foundation
 import Frontend.Network
 import Frontend.UI.Dialogs.NetworkEdit (uiNetworkEdit)
 import Frontend.UI.Dialogs.ChangePassword (uiChangePasswordDialog)
+import Frontend.UI.Dialogs.ExportWallet (uiExportWalletDialog)
+import Frontend.UI.Dialogs.TxLogs (uiTxLogs)
 import Frontend.UI.IconGrid (IconGridCellConfig(..), iconGridCell)
 import Frontend.UI.Modal
 
@@ -32,21 +34,32 @@ type HasUiSettingModelCfg model mConf key m t =
   , Monoid (ModalCfg mConf t)
   , Flattenable (ModalCfg mConf t) t
   , HasNetworkCfg (ModalCfg mConf t) t
+  , HasTransactionLogger m
   )
 
 uiSettings
   :: forall t m key model mConf
-  . (MonadWidget t m, HasNetwork model t, HasUiSettingModelCfg model mConf key m t)
-  => EnabledSettings key t m -> model -> m mConf
-uiSettings enabledSettings model = elClass "div" "icon-grid" $ do
+     . ( MonadWidget t m
+       , HasNetwork model t
+       , HasUiSettingModelCfg model mConf key m t
+       )
+  => EnabledSettings key t m
+  -> model
+  -> FileFFI t m
+  -> m mConf
+uiSettings enabledSettings model fileFFI = elClass "div" "icon-grid" $ do
   netCfg <- settingItem "Network" (static @"img/network.svg") (uiNetworkEdit model)
   configs <- sequence $ catMaybes $
     [ ffor (_enabledSettings_changePassword enabledSettings) $ \changePassword -> do
       settingItem "Change Password" (static @"img/lock-light.svg") (uiChangePasswordDialog changePassword)
+    , ffor (_enabledSettings_exportWallet enabledSettings) $ \exportWallet-> do
+      settingItem "Export Wallet" (static @"img/export.svg") (uiExportWalletDialog exportWallet)
+    , includeSetting _enabledSettings_transactionLog $ settingItem "Transaction Log" (static @"img/network.svg")
+        $ uiTxLogs fileFFI
     ]
   pure $ netCfg <> fold configs
   where
-    _includeSetting f s = if f enabledSettings then Just s else Nothing
+    includeSetting f s = if f enabledSettings then Just s else Nothing
 
 settingItem
   :: forall t m mConf

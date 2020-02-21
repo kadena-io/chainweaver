@@ -190,7 +190,8 @@ nextView includePreviewTab = \case
   DeploymentSettingsView_Preview -> Nothing
 
 data DeploymentSettingsResult key = DeploymentSettingsResult
-  { _deploymentSettingsResult_chainId :: ChainId
+  { _deploymentSettingsResult_sender :: AccountName
+  , _deploymentSettingsResult_chainId :: ChainId
   , _deploymentSettingsResult_command :: Pact.Command Text
   }
 
@@ -281,7 +282,8 @@ buildDeploymentSettingsResult m mSender signers cChainId capabilities ttl gasLim
       (_deploymentSettingsConfig_extraSigners settings)
       code' (HM.union jsonData' deploySettingsJsonData) publicKeyCapabilities
     pure $ DeploymentSettingsResult
-      { _deploymentSettingsResult_chainId = chainId
+      { _deploymentSettingsResult_sender = sender
+      , _deploymentSettingsResult_chainId = chainId
       , _deploymentSettingsResult_command = cmd
       }
 

@@ -71,7 +71,7 @@ import qualified Data.IntMap as IntMap
 import qualified Data.Map as Map
 import qualified Data.Map.Monoidal as MonoidalMap
 import qualified Data.Set as Set
-import qualified Pact.Server.ApiV1Client as Api
+import qualified Pact.Server.ApiClient as Api
 import qualified Pact.Types.ChainMeta as Pact
 import qualified Pact.Types.Command as Pact
 
@@ -85,7 +85,7 @@ import Frontend.Crypto.Ed25519
 import Frontend.Foundation
 import Frontend.Storage
 import Frontend.Network
-import Frontend.Store
+import Frontend.VersionedStore
 import Frontend.Log
 
 data WalletCfg key t = WalletCfg

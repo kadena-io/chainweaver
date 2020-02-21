@@ -98,6 +98,9 @@ library
                , monad-logger
                , fast-logger
                , witherable
+               , system-locale
+               , cassava
+               , directory
 
   exposed-modules: Frontend
                  , Frontend.AppCfg
@@ -130,12 +133,6 @@ library
                  , Frontend.Storage
                  , Frontend.Storage.Class
                  , Frontend.Storage.Browser
-                 , Frontend.Store
-                 , Frontend.Store.MigrationUtils
-                 , Frontend.Store.TH
-                 , Frontend.Store.V0
-                 , Frontend.Store.V0.Wallet
-                 , Frontend.Store.V1
                  , Frontend.UI.Button
                  , Frontend.UI.DeploymentSettings
                  , Frontend.UI.Dialogs.CallFunction
@@ -143,8 +140,9 @@ library
                  , Frontend.UI.Dialogs.CreateGist
                  , Frontend.UI.Dialogs.CreatedGist
                  , Frontend.UI.Dialogs.DeployConfirmation
-                 , Frontend.UI.Dialogs.NetworkEdit
+                 , Frontend.UI.Dialogs.ExportWallet
                  , Frontend.UI.Dialogs.LogoutConfirmation
+                 , Frontend.UI.Dialogs.NetworkEdit
                  , Frontend.UI.Dialogs.Receive
                  , Frontend.UI.Dialogs.Send
                  , Frontend.UI.Dialogs.Signing
@@ -152,6 +150,7 @@ library
                  , Frontend.UI.Dialogs.KeyDetails
                  , Frontend.UI.Dialogs.AddVanityAccount.DefineKeyset
                  , Frontend.UI.Dialogs.AddVanityAccount
+                 , Frontend.UI.Dialogs.TxLogs
                  , Frontend.UI.Dialogs.WatchRequest
                  , Frontend.UI.ErrorList
                  , Frontend.UI.Icon
@@ -171,13 +170,22 @@ library
                  , Frontend.UI.Widgets
                  , Frontend.UI.Widgets.Helpers
                  , Frontend.TxBuilder
+                 , Frontend.VersionedStore
+                 , Frontend.VersionedStore.MigrationUtils
+                 , Frontend.VersionedStore.TH
+                 , Frontend.VersionedStore.V0
+                 , Frontend.VersionedStore.V0.Wallet
+                 , Frontend.VersionedStore.V1
                  , Frontend.Wallet
                  , Reflex.Class.Extended
                  , Reflex.Dom.ACE.Extended
                  , Reflex.Dom.Widget.Resize.Extended
                  , Reflex.Extended
                  , Reflex.Network.Extended
-                 , Pact.Server.ApiV1Client
+                 , Pact.Server.ApiClient.Helpers
+                 , Pact.Server.ApiClient.V0
+                 , Pact.Server.ApiClient.V1
+                 , Pact.Server.ApiClient
 
   ghc-options: -Wall
   default-extensions: ScopedTypeVariables
@@ -236,8 +244,8 @@ test-suite tests
                , Frontend.Storage.InMemoryStorage
                , Frontend.Storage.InMemoryStorageSpec
                , Frontend.StorageSpec
-               , Frontend.StoreSpec
-               , Frontend.StoreTestKey
+               , Frontend.VersionedStoreSpec
+               , Frontend.VersionedStoreTestKey
                , TestUtils
   build-depends: base
                , frontend

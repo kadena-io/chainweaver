@@ -24,7 +24,6 @@ run = id
 
 #else
 
-import Debug.Trace (traceShowM, traceShowId)
 import Control.Monad (void)
 import Control.Monad.IO.Class (MonadIO(..), MonadIO)
 import Control.Concurrent (forkIO, yield)
@@ -34,8 +33,6 @@ import System.Posix.Signals (installHandler, keyboardSignal, Handler(Catch))
 import System.Posix.Process (forkProcess, executeFile)
 #endif
 import System.Directory (getCurrentDirectory)
-
--- import Debug.Trace
 
 import Data.Monoid ((<>))
 import Data.ByteString.Lazy (toStrict, fromStrict)
@@ -110,19 +107,19 @@ decidePolicyCallback
 decidePolicyCallback pd pt = case pt of
   WK2.PolicyDecisionTypeNewWindowAction -> openUsingLocal
   WK2.PolicyDecisionTypeNavigationAction -> openUsingLocal
-  _ -> False <$ traceShowM pt
+  _ -> pure False
   where
     openUsingLocal = do
       np <- Gio.unsafeCastTo WK2.NavigationPolicyDecision pd
       na <- WK2.navigationPolicyDecisionGetNavigationAction np
-      ntype <- traceShowId <$> WK2.navigationActionGetNavigationType na
+      ntype <- WK2.navigationActionGetNavigationType na
       case ntype of
         WK2.NavigationTypeLinkClicked -> do
           requested <- WK2.uRIRequestGetUri =<< WK2.navigationActionGetRequest na
           void $ forkProcess $ executeFile "xdg-open" True [T.unpack requested] Nothing
           pure True
-        t ->
-          False <$ traceShowM t
+        _ ->
+          pure False
 
 
 customRun :: T.Text -> JSM () -> (Window -> IO ()) -> IO ()

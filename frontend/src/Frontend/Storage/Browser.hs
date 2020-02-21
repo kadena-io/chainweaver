@@ -20,7 +20,7 @@ import Frontend.Storage.Class
 import GHCJS.DOM.Types (fromJSString, toJSString)
 import Language.Javascript.JSaddle (MonadJSM)
 import Obelisk.Route.Frontend
-import Pact.Server.ApiV1Client (HasTransactionLogger)
+import Pact.Server.ApiClient (HasTransactionLogger)
 import Reflex.Dom hiding (fromJSString)
 import Reflex.Host.Class (MonadReflexCreateTrigger)
 

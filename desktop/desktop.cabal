@@ -21,6 +21,7 @@ library
     , constraints-extras
     , containers
     , cryptonite
+    , dependent-map
     , dependent-sum
     , dependent-sum-template
     , directory
@@ -57,14 +58,17 @@ library
     , snap-server
     , text
     , time
+    , transformers
     , universe-dependent-sum
     , wai-cors
     , warp
     , monad-logger
+
   exposed-modules:
       Desktop
     , Desktop.Crypto.BIP
     , Desktop.Frontend
+    , Desktop.ImportExport
     , Desktop.App
     , Desktop.Orphans
     , Desktop.Setup

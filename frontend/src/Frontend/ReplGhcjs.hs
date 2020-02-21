@@ -35,7 +35,7 @@ import Obelisk.Route (R)
 import Obelisk.Route.Frontend
 import Pact.Repl
 import Pact.Repl.Types
-import Pact.Server.ApiV1Client (HasTransactionLogger)
+import Pact.Server.ApiClient (HasTransactionLogger)
 import Pact.Types.Lang
 import Reflex
 import Reflex.Dom.ACE.Extended hiding (Annotation (..))
@@ -55,7 +55,7 @@ import Frontend.OAuth
 import Frontend.Network
 import Frontend.Repl
 import Frontend.Storage
-import qualified Frontend.Store as Store
+import qualified Frontend.VersionedStore as Store
 import Frontend.UI.Button
 import Frontend.UI.Dialogs.AddVanityAccount (uiAddAccountButton)
 import Frontend.UI.Dialogs.CreateGist (uiCreateGist)
@@ -85,9 +85,11 @@ app
      )
   => RoutedT t (R FrontendRoute) m ()
   -- ^ Extra widget to display at the bottom of the sidebar
-  -> AppCfg key t (RoutedT t (R FrontendRoute) m) -> RoutedT t (R FrontendRoute) m ()
-app sidebarExtra appCfg = Store.versionedUi (Store.versioner @key) $ void . mfix $ \ cfg -> do
-  ideL <- makeIde appCfg cfg
+  -> FileFFI t (RoutedT t (R FrontendRoute) m)
+  -> AppCfg key t (RoutedT t (R FrontendRoute) m)
+  -> RoutedT t (R FrontendRoute) m ()
+app sidebarExtra fileFFI appCfg = Store.versionedFrontend (Store.versionedStorage @key) $ void . mfix $ \ cfg -> do
+  ideL <- makeIde fileFFI appCfg cfg
 
   walletSidebar sidebarExtra
   updates <- divClass "page" $ do
@@ -111,7 +113,7 @@ app sidebarExtra appCfg = Store.versionedUi (Store.versioner @key) $ void . mfix
         walletCfg <- uiWallet ideL
         pure $ walletBarCfg <> walletCfg
       FrontendRoute_Contracts -> mkPageContent "contracts" $ do
-        controlCfg <- controlBar "Contracts" (controlBarRight appCfg ideL)
+        controlCfg <- controlBar "Contracts" (controlBarRight fileFFI appCfg ideL)
         mainCfg <- elClass "main" "main page__main" $ do
           rec
             let collapseAttrs = ffor open $ \o -> Map.fromList
@@ -133,8 +135,9 @@ app sidebarExtra appCfg = Store.versionedUi (Store.versioner @key) $ void . mfix
       FrontendRoute_Settings -> do
         controlCfg <- controlBar "Settings" (mempty <$ blank)
         mainCfg <- elClass "main" "main page__main" $ do
-          uiSettings (_appCfg_enabledSettings appCfg) ideL
+          uiSettings (_appCfg_enabledSettings appCfg) ideL fileFFI
         pure $ controlCfg <> mainCfg
+
     flattenedCfg <- flatten =<< tagOnPostBuild routedCfg
     pure $ netCfg <> flattenedCfg
 
@@ -151,12 +154,18 @@ app sidebarExtra appCfg = Store.versionedUi (Store.versioner @key) $ void . mfix
     , modalCfg
     , gistModalCfg
     , signingModalCfg
-    , mempty & ideCfg_editor . editorCfg_loadCode .~ _appCfg_externalFileOpened appCfg
+    , mempty & ideCfg_editor . editorCfg_loadCode .~ (snd <$> _fileFFI_externalFileOpened fileFFI)
     ]
 
 walletSidebar
-  :: (DomBuilder t m, PostBuild t m, Routed t (R FrontendRoute) m, SetRoute t (R FrontendRoute) m, RouteToUrl (R FrontendRoute) m)
-  => m () -> m ()
+  :: ( DomBuilder t m
+     , PostBuild t m
+     , Routed t (R FrontendRoute) m
+     , SetRoute t (R FrontendRoute) m
+     , RouteToUrl (R FrontendRoute) m
+     )
+  => m ()
+  -> m ()
 walletSidebar sidebarExtra = elAttr "div" ("class" =: "sidebar") $ do
   divClass "sidebar__logo" $ elAttr "img" ("src" =: static @"img/logo.png") blank
 
@@ -302,8 +311,8 @@ getPactVersion = do
     return ver
 
 controlBarRight  :: forall key t m. (MonadWidget t m, HasCrypto key (Performable m), HasTransactionLogger m)
-  => AppCfg key t m -> ModalIde m key t -> m (ModalIdeCfg m key t)
-controlBarRight appCfg m = do
+  => FileFFI t m -> AppCfg key t m -> ModalIde m key t -> m (ModalIdeCfg m key t)
+controlBarRight fileFFI appCfg m = do
     divClass "main-header__controls-nav" $ do
       elClass "div" "main-header__project-loader" $ do
 
@@ -365,7 +374,7 @@ controlBarRight appCfg m = do
 
     openFileBtn = do
       let cfg = headerBtnCfg & uiButtonCfg_title ?~ "Open a local contract"
-      uiButtonWithOnClick (_appCfg_openFileDialog appCfg) cfg $ do
+      uiButtonWithOnClick (_fileFFI_openFileDialog fileFFI FileType_Pact) cfg $ do
         text "Open File"
 
 headerBtnCfg
