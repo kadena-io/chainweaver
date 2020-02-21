@@ -228,7 +228,7 @@ uiSelectElement uCfg child = do
 
 uiPassword :: DomBuilder t m => Text -> Text -> Text -> m (InputElement EventResult (DomBuilderSpace m) t)
 uiPassword wrapperCls inputCls ph = elClass "span" wrapperCls $ do
-  imgWithAltCls "setup__password-wrapper-lock" (static @"img/lock-dark.svg") "Password" blank
+  imgWithAltCls "password-input__lock" (static @"img/lock-dark.svg") "Password" blank
   uiInputElement $ def & initialAttributes .~ mconcat
     [ "type" =: "password"
     , "placeholder" =: ph
