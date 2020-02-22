@@ -40,7 +40,7 @@
   };
   ova = import ./ova.nix { inherit pkgs nixosExe appName linuxAppName chainweaverVersion ovaReleaseNumber nixosDesktopItem homeManagerModule linuxAppIcon; };
   inherit (ova) chainweaverVM chainweaverVMSystem;
-  
+
   addGObjectIntrospection = hpackage: pkgs.haskell.lib.overrideCabal hpackage (current: {
     libraryPkgconfigDepends =
       current.libraryPkgconfigDepends ++ [ pkgs.gobject-introspection ];
@@ -61,7 +61,7 @@
   ubuntuWebkitgtk = pkgs.webkitgtk.overrideAttrs (old: {
     patches = old.patches ++ [
       # Note this patch overrides the macro, because we can't do it in the cmake file lol
-      # This wrecks anything we try to do to reference outside the nix store. 
+      # This wrecks anything we try to do to reference outside the nix store.
       # https://github.com/NixOS/nixpkgs/blob/master/pkgs/development/tools/build-managers/cmake/setup-hook.sh#L10
       # Also in newer webgtks there is some sandboxing going on, which means that we may have to fiddle with another patch
       # when that happens. See https://github.com/NixOS/nixpkgs/commit/84fb39ef12a71caabd4fb4a87a4892497bcb2f7f
@@ -113,7 +113,7 @@
 
       cp ${obApp.ghc.linux}/bin/linuxApp $TMPEXE
       chmod u+w $TMPEXE
-       
+
       cp $TMPEXE $CHAINWEAVER_LIBEXEC_EXE
       cp "${pkgs.z3}"/bin/z3 "$LIBEXECDIR/z3"
 
@@ -125,11 +125,11 @@
       cp ${linuxAppIcon} "$SHAREDIR/icon.png"
       cp ${linuxDesktopItem}/share/applications/${linuxAppName}.desktop $APPLICATIONSDIR
 
-      # Copy the webgtk libexec over because we really want the webworker. 
+      # Copy the webgtk libexec over because we really want the webworker.
       # This depends on our patch to ubuntuWebkitgtk for the lib to find the exec dir
       cp ${ubuntuWebkitgtk}/libexec/webkit2gtk-4.0/* $LIBEXECDIR/
       # We don't need the gi-repository folders in lib. They are a compile time gobject introspection
- 
+
       # Figure out how to make the array work with nix escaping
       wrapperArgs=""
       wrapperArgs+="--set WEBKIT_DISABLE_COMPOSITING_MODE 1 "
@@ -168,7 +168,7 @@
             if [ ! -f "$LIBDIR/$(basename $f)" ]; then
                cp -L $f "$LIBDIR"
                so_name=$(basename $f)
- 
+
                # If the so is a .so.MAJOR.MINOR.PATCH type file
                if echo $f | egrep "(\.[[:digit:]]+){2,}$"; then
                  trimmed_so=$LIBDIR/$(echo $so_name | sed -e 's/\(\.[[:digit:]]\+\)\(\.[[:digit:]]\+\)*$/\1/');
@@ -185,16 +185,16 @@
         read nrRefs
         for ((i = 0; i < nrRefs; i++)); do read ref; done
       done < graph
-      
-      # The pixbuf api is critically important for rendering images to the low level gnome drawing tools. Because it links 
+
+      # The pixbuf api is critically important for rendering images to the low level gnome drawing tools. Because it links
       # back to glibc, it's very important to make sure it's the same libc and stack as we built gtk with.
       pixbuf_path=${pkgs.gdk_pixbuf}
-      cp -r $pixbuf_path/lib/gdk-pixbuf-2.0 $LIBDIR/gdk-pixbuf-2.0 
+      cp -r $pixbuf_path/lib/gdk-pixbuf-2.0 $LIBDIR/gdk-pixbuf-2.0
       pixbuf_nixcache=$(ls ${pkgs.gdk_pixbuf}/lib/gdk-pixbuf-2.0/*/loaders.cache)
-      pixbuf_filename=$(echo $pixbuf_nixcache | sed "s|$pixbuf_path/lib||") 
-    
-      # The pixbuf dir isn't writable by root, so temporarily make it so to replace the cache config 
-      # alternatively we could use sponge or copy the file somewhere else, but this is 
+      pixbuf_filename=$(echo $pixbuf_nixcache | sed "s|$pixbuf_path/lib||")
+
+      # The pixbuf dir isn't writable by root, so temporarily make it so to replace the cache config
+      # alternatively we could use sponge or copy the file somewhere else, but this is
       chmod u+w $LIBDIR/gdk-pixbuf-2.0/2.10.0
       sed -i "s|$pixbuf_path/lib|$LIBPATH|g" $LIBDIR$pixbuf_filename
       chmod u-w $LIBDIR/gdk-pixbuf-2.0/2.10.0
@@ -217,7 +217,7 @@
         sed -i "s|$CHAINWEAVER_LIBEXEC_EXE|$LIBEXECPATH/${linuxAppName}|" $CHAINWEAVER_BIN_EXE
         sed -i "1s|#! /nix/store.*|#! /usr/bin/env bash|" $CHAINWEAVER_BIN_EXE
       fi
-      
+
       ${pkgs.dpkg}/bin/dpkg-deb --build $DEBDIR $out
 
     '';
@@ -229,7 +229,7 @@
 
     -- Obsidian Systems Thu, 9 Jan 2020 02:09:09 +1000
   ''; };
-  linuxDesktopItem = pkgs.makeDesktopItem { 
+  linuxDesktopItem = pkgs.makeDesktopItem {
      name = linuxAppName;
      desktopName = appName;
      exec = "/usr/bin/${linuxAppName}";
@@ -246,10 +246,10 @@
   deb-copyright = pkgs.writeTextFile { name = "chainweaver-deb-copyright"; text = ''
     Format: https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
     Upstream-Name: ${appName}
-    Source: https://github.com/kadena-io/chainweaver 
+    Source: https://github.com/kadena-io/chainweaver
 
     Files: *
-    Copyright: 2019 Kadena.io
+    Copyright: 2020 Kadena
     License: MIT
       Permission is hereby granted, free of charge, to any person obtaining a copy
       of this software and associated documentation files (the "Software"), to deal

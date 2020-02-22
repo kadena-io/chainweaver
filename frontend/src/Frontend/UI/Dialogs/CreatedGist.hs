@@ -10,7 +10,7 @@
 {-# LANGUAGE TypeApplications #-}
 
 -- | Confirmation dialog for creating a GIST allowing setting of name and description.
--- Copyright   :  (C) 2018 Kadena
+-- Copyright   :  (C) 2020 Kadena
 -- License     :  BSD-style (see the file LICENSE)
 module Frontend.UI.Dialogs.CreatedGist
   ( uiCreatedGist

@@ -20,7 +20,7 @@
 --   In the future also load modules and data from server storage or local
 --   storage.
 --
--- Copyright   :  (C) 2018 Kadena
+-- Copyright   :  (C) 2020 Kadena
 -- License     :  BSD-style (see the file LICENSE)
 --
 

@@ -21,7 +21,7 @@
 --
 --   Share your code via github gists.
 --
--- Copyright   :  (C) 2018 Kadena
+-- Copyright   :  (C) 2020 Kadena
 -- License     :  BSD-style (see the file LICENSE)
 --
 

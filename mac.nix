@@ -48,7 +48,7 @@ let
       <key>CFBundleExecutable</key>
       <string>${appName}</string>
       <key>NSHumanReadableCopyright</key>
-      <string>(C) 2018 Kadena</string>
+      <string>(C) 2020 Kadena</string>
       <key>CFBundleIconFile</key>
       <string>pact.icns</string>
       <key>NSHighResolutionCapable</key>

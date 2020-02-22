@@ -12,7 +12,7 @@
 {-# OPTIONS_GHC -fno-warn-type-defaults #-}
 
 -- |
--- Copyright   :  (C) 2018 Kadena
+-- Copyright   :  (C) 2020 Kadena
 -- License     :  BSD-style (see the file LICENSE)
 --
 
@@ -148,7 +148,7 @@ showModal ideL = do
         lConf = mempty & ideCfg_setModal .~ (LeftmostEv $ Nothing <$ onClose)
 
       usedModal <- headE $ updated $ _ide_modal ideL
-      jsHackForStopPropagation $ () <$ usedModal 
+      jsHackForStopPropagation $ () <$ usedModal
 
       pure $ lConf <> mCfg
   where

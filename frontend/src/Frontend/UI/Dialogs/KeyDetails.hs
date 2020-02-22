@@ -3,7 +3,7 @@
 {-# LANGUAGE RecursiveDo #-}
 {-# LANGUAGE TypeApplications #-}
 -- | Dialog for viewing the details of a key.
--- Copyright   :  (C) 2018 Kadena
+-- Copyright   :  (C) 2020 Kadena
 -- License     :  BSD-style (see the file LICENSE)
 module Frontend.UI.Dialogs.KeyDetails
   ( uiKeyDetails
