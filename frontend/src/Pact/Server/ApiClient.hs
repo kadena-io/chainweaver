@@ -69,17 +69,20 @@ import Text.Printf (printf)
 import Data.Time (TimeLocale)
 import System.Locale.Read (getCurrentLocale)
 import qualified System.Directory as Dir
+import qualified System.FilePath as File
 
 import Pact.Types.ChainId (ChainId)
 
 import Pact.Server.ApiClient.V1 (CommandLog (..))
 import qualified Pact.Server.ApiClient.V1 as Latest
 
+import Common.Wallet (PublicKey, keyToText)
+
 data TransactionLogger = TransactionLogger
   { _transactionLogger_appendLog :: CommandLog -> IO ()
   , _transactionLogger_destination :: Maybe FilePath
   , _transactionLogger_loadFirstNLogs :: Int -> IO (Either String (TimeLocale, [CommandLog]))
-  , _transactionLogger_exportFile :: IO (Either String (FilePath, Text))
+  , _transactionLogger_exportFile :: PublicKey -> IO (Either String (FilePath, Text))
   }
 
 data ApiClient m = ApiClient
@@ -199,11 +202,11 @@ logTransactionStdout :: TransactionLogger
 logTransactionStdout = TransactionLogger
   { _transactionLogger_appendLog = LT.putStrLn . Aeson.encodeToLazyText
   , _transactionLogger_destination = Nothing
-  , _transactionLogger_loadFirstNLogs = const $ pure logsdisabled
-  , _transactionLogger_exportFile = pure logsdisabled
+  , _transactionLogger_loadFirstNLogs = logsdisabled
+  , _transactionLogger_exportFile = logsdisabled
   }
   where
-    logsdisabled = Left "Logs Disabled"
+    logsdisabled = const $ pure $ Left "Logs Disabled"
 
 logTransactionFile :: FilePath -> TransactionLogger
 logTransactionFile f = TransactionLogger
@@ -226,8 +229,8 @@ logTransactionFile f = TransactionLogger
       xs <- liftEither $ traverse Aeson.eitherDecodeStrict nLogs
       pure (tl,xs)
 
-  , _transactionLogger_exportFile =
-      createCommandLogExportFileV1 f
+  , _transactionLogger_exportFile = \pk ->
+      createCommandLogExportFileV1 pk f
   }
   where
     logmsg = liftIO . putStrLn
@@ -235,12 +238,15 @@ logTransactionFile f = TransactionLogger
     ppIOException :: IOError -> String
     ppIOException = displayException
 
-createCommandLogExportFileV1 :: FilePath -> IO (Either String (FilePath, Text))
-createCommandLogExportFileV1 fp = runExceptT $ do
-  let logFilePath = fp
-      exportFilePath = printf "%s_v%i" fp commandLogCurrentVersion
+createCommandLogExportFileV1 :: PublicKey -> FilePath -> IO (Either String (FilePath, Text))
+createCommandLogExportFileV1 keyForPrefix fp = runExceptT $ do
+  let
+    -- Use system-filepath to avoid being caught out by platform differences
+    (logPath, filename) = File.splitFileName fp
+    pfx = T.unpack $ T.take 8 $ keyToText keyForPrefix
+    exportFilePath = logPath File.</> printf "%s_%s_%vi" pfx filename commandLogCurrentVersion
 
-  logContents <- ExceptT $ catch (Right . BS8.lines <$> BS.readFile logFilePath)
+  logContents <- ExceptT $ catch (Right . BS8.lines <$> BS.readFile fp)
     $ \(e :: IOError) -> pure $ Left $ displayException e
 
   xs <- liftEither $ traverse Aeson.eitherDecodeStrict logContents

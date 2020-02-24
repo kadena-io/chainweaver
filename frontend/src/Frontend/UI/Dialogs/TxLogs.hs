@@ -9,7 +9,7 @@ module Frontend.UI.Dialogs.TxLogs
   ( uiTxLogs
   ) where
 
-import Control.Lens (iforM_)
+import Control.Lens -- (iforM_, (^.), _head)
 import Control.Monad (void)
 
 import Reflex
@@ -20,8 +20,9 @@ import qualified Data.Text as Text
 import Data.Either (isRight)
 import Data.Time (formatTime)
 
-import Common.Wallet (PublicKey, textToKey)
+import Common.Wallet (PublicKey, textToKey, Key (..), KeyPair (..))
 import Frontend.AppCfg (FileFFI (..))
+import Frontend.Wallet (HasWallet (..))
 import Frontend.UI.Modal (modalHeader, modalFooter)
 import Frontend.Foundation
 import Frontend.UI.Widgets
@@ -33,22 +34,28 @@ import qualified Pact.Types.ChainId as Pact
 
 import qualified Pact.Server.ApiClient as Api
 
-type HasUiTxLogModelCfg mConf m t =
+type HasUiTxLogModelCfg model mConf key m t =
   ( Monoid mConf
   , Flattenable mConf t
+  , HasWallet model key t
   , Api.HasTransactionLogger m
   )
 
 uiTxLogs
   :: ( MonadWidget t m
-     , HasUiTxLogModelCfg mConf m t
+     , HasUiTxLogModelCfg model mConf key m t
      )
   => FileFFI t m
+  -> model
   -> Event t ()
   -> m (mConf, Event t ())
-uiTxLogs fileFFI _onExtClose = do
+uiTxLogs fileFFI model _onExtClose = do
   txLogger <- Api.askTransactionLogger
   pb <- getPostBuild
+
+  let dKey = fmap (preview (ix 0 . to _key_pair . to _keyPair_publicKey))
+        $ model ^. wallet_keys
+
   onClose <- modalHeader $ text "Transaction Log"
   onLogLoad <- performEvent $ liftIO (Api._transactionLogger_loadFirstNLogs txLogger 10) <$ pb
 
@@ -97,20 +104,28 @@ uiTxLogs fileFFI _onExtClose = do
           td "tx-log-row__request-key" $ elClass "span" "request-key-text" $ text
             $ Pact.hashToText $ Pact.unRequestKey $ Api._commandLog_requestKey cmdLog
 
-  _ <- modalFooter $
-    exportButton txLogger
+  -- Both export wallet and txnlog export use the first 8 characters of the first
+  -- key in the wallet. Given that key is deterministic, could we simply generate it
+  -- rather than either loading keys or requiring them to exist in the wallet first?
+  _ <- modalFooter $ dyn_ $ ffor dKey $ \case
+    Nothing -> void $ cancelButton
+      (def & uiButtonCfg_disabled .~ constDyn True)
+      "Export Unavailable"
+
+    Just pk ->
+      exportButton txLogger pk
 
   pure (mempty, onClose)
   where
-    exportButton txlog = mdo
+    exportButton txlog pk = mdo
       (onFileErr, onContentsReady) <- fmap fanEither $ performEvent $
-        liftIO (Api._transactionLogger_exportFile txlog) <$ onClick
+        liftIO (Api._transactionLogger_exportFile txlog pk) <$ onClick
 
       onDeliveredFileOk <- _fileFFI_deliverFile fileFFI onContentsReady
 
       status <- holdDyn "fa-download" $ leftmost
-        [ "tx-log-export-fail fa-times" <$ onFileErr
-        , "tx-log-export-success fa-check" <$ ffilter isRight onDeliveredFileOk
+        [ "tx-log-export-fail fa-times" <$ traceEvent "file err" onFileErr
+        , "tx-log-export-success fa-check" <$ ffilter isRight (traceEvent "delivered file" onDeliveredFileOk)
         ]
 
       onClick <- uiButtonDyn btnCfgPrimary $ do
