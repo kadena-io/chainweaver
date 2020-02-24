@@ -9,7 +9,7 @@ module Frontend.UI.Dialogs.TxLogs
   ( uiTxLogs
   ) where
 
-import Control.Lens -- (iforM_, (^.), _head)
+import Control.Lens (iforM_, preview, to, ix, (^.))
 import Control.Monad (void)
 
 import Reflex
@@ -124,8 +124,8 @@ uiTxLogs fileFFI model _onExtClose = do
       onDeliveredFileOk <- _fileFFI_deliverFile fileFFI onContentsReady
 
       status <- holdDyn "fa-download" $ leftmost
-        [ "tx-log-export-fail fa-times" <$ traceEvent "file err" onFileErr
-        , "tx-log-export-success fa-check" <$ ffilter isRight (traceEvent "delivered file" onDeliveredFileOk)
+        [ "tx-log-export-fail fa-times" <$ onFileErr
+        , "tx-log-export-success fa-check" <$ ffilter isRight onDeliveredFileOk
         ]
 
       onClick <- uiButtonDyn btnCfgPrimary $ do
