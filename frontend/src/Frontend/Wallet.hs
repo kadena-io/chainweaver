@@ -17,6 +17,7 @@ module Frontend.Wallet
   (  -- * Types & Classes
     PrivateKey
   , KeyPair (..)
+  , PublicKeyPrefix (..)
   , WalletCfg (..)
   , HasWalletCfg (..)
   , IsWalletCfg
@@ -46,6 +47,7 @@ module Frontend.Wallet
   , snocIntMap
   , findNextKey
   , getSigningPairs
+  , genZeroKeyPrefix
   , module Common.Wallet
   ) where
 
@@ -67,6 +69,7 @@ import Pact.Types.Pretty
 import Reflex
 import Reflex.Dom.Core ((=:))
 
+import qualified Data.Text as Text
 import qualified Data.IntMap as IntMap
 import qualified Data.Map as Map
 import qualified Data.Map.Monoidal as MonoidalMap
@@ -130,6 +133,10 @@ emptyAccount = Account
   , _account_status = AccountStatus_Unknown
   }
 
+newtype PublicKeyPrefix = PublicKeyPrefix
+  { _unPublicKeyPrefix :: Text
+  }
+
 newtype AccountData = AccountData
   { unAccountData :: Map NetworkName (Map AccountName (AccountInfo Account))
   } deriving (Generic, Show)
@@ -170,6 +177,14 @@ nextKey = maybe 0 (succ . fst) . IntMap.lookupMax
 
 findNextKey :: Reflex t => Wallet key t -> Dynamic t Int
 findNextKey = fmap nextKey . _wallet_keys
+
+genZeroKeyPrefix
+  :: ( Functor m
+     , HasCrypto key m
+     )
+  => m PublicKeyPrefix
+genZeroKeyPrefix =
+  PublicKeyPrefix . Text.take 8 . keyToText . snd <$> cryptoGenKey 0
 
 -- | Make a functional wallet that can contain actual keys.
 makeWallet

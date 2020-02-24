@@ -76,13 +76,11 @@ import Pact.Types.ChainId (ChainId)
 import Pact.Server.ApiClient.V1 (CommandLog (..))
 import qualified Pact.Server.ApiClient.V1 as Latest
 
-import Common.Wallet (PublicKey, keyToText)
-
 data TransactionLogger = TransactionLogger
   { _transactionLogger_appendLog :: CommandLog -> IO ()
   , _transactionLogger_destination :: Maybe FilePath
   , _transactionLogger_loadFirstNLogs :: Int -> IO (Either String (TimeLocale, [CommandLog]))
-  , _transactionLogger_exportFile :: PublicKey -> IO (Either String (FilePath, Text))
+  , _transactionLogger_exportFile :: Text -> IO (Either String (FilePath, Text))
   }
 
 data ApiClient m = ApiClient
@@ -238,13 +236,12 @@ logTransactionFile f = TransactionLogger
     ppIOException :: IOError -> String
     ppIOException = displayException
 
-createCommandLogExportFileV1 :: PublicKey -> FilePath -> IO (Either String (FilePath, Text))
-createCommandLogExportFileV1 keyForPrefix fp = runExceptT $ do
+createCommandLogExportFileV1 :: Text -> FilePath -> IO (Either String (FilePath, Text))
+createCommandLogExportFileV1 filePfx fp = runExceptT $ do
   let
     -- Use system-filepath to avoid being caught out by platform differences
     (logPath, filename) = File.splitFileName fp
-    pfx = T.unpack $ T.take 8 $ keyToText keyForPrefix
-    exportFilePath = logPath File.</> printf "%s_%s_%vi" pfx filename commandLogCurrentVersion
+    exportFilePath = logPath File.</> printf "%s_%s_%vi" filePfx filename commandLogCurrentVersion
 
   logContents <- ExceptT $ catch (Right . BS8.lines <$> BS.readFile fp)
     $ \(e :: IOError) -> pure $ Left $ displayException e

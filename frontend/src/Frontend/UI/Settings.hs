@@ -16,10 +16,10 @@ import Reflex
 import Reflex.Dom.Core
 import Obelisk.Generated.Static
 
+import Frontend.Crypto.Class (HasCrypto)
 import Frontend.AppCfg (EnabledSettings(..), FileFFI)
 import Frontend.Foundation
 import Frontend.Network
-import Frontend.Wallet
 import Frontend.UI.Dialogs.NetworkEdit (uiNetworkEdit)
 import Frontend.UI.Dialogs.ChangePassword (uiChangePasswordDialog)
 import Frontend.UI.Dialogs.ExportWallet (uiExportWalletDialog)
@@ -36,7 +36,8 @@ type HasUiSettingModelCfg model mConf key m t =
   , Flattenable (ModalCfg mConf t) t
   , HasNetworkCfg (ModalCfg mConf t) t
   , HasTransactionLogger m
-  , HasWallet model key t
+  , HasCrypto key (Performable m)
+
   )
 
 uiSettings
@@ -57,7 +58,7 @@ uiSettings enabledSettings model fileFFI = elClass "div" "icon-grid" $ do
     , ffor (_enabledSettings_exportWallet enabledSettings) $ \exportWallet-> do
       settingItem "Export Wallet" (static @"img/export.svg") (uiExportWalletDialog exportWallet)
     , includeSetting _enabledSettings_transactionLog $ settingItem "Transaction Log" (static @"img/network.svg")
-        $ uiTxLogs fileFFI model
+        $ uiTxLogs fileFFI
     ]
   pure $ netCfg <> fold configs
   where
