@@ -16,6 +16,7 @@ import Reflex
 import Reflex.Dom.Core
 import Obelisk.Generated.Static
 
+import Frontend.Crypto.Class (HasCrypto)
 import Frontend.AppCfg (EnabledSettings(..), FileFFI)
 import Frontend.Foundation
 import Frontend.Network
@@ -35,6 +36,8 @@ type HasUiSettingModelCfg model mConf key m t =
   , Flattenable (ModalCfg mConf t) t
   , HasNetworkCfg (ModalCfg mConf t) t
   , HasTransactionLogger m
+  , HasCrypto key (Performable m)
+
   )
 
 uiSettings

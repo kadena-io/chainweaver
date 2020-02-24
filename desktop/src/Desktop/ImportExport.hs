@@ -22,9 +22,8 @@ import Data.Foldable (traverse_)
 import Data.List (intercalate)
 import Data.Dependent.Map (DMap)
 import qualified Data.Dependent.Map as DMap
-import qualified Data.IntMap as IntMap
 import Data.Time (getZonedTime, zonedTimeToLocalTime, iso8601DateFormat, formatTime, defaultTimeLocale)
-import Data.Functor.Identity (Identity(Identity), runIdentity)
+import Data.Functor.Identity (Identity, runIdentity)
 import Language.Javascript.JSaddle (MonadJSM)
 import Data.Text (Text)
 import qualified Data.Text as T
@@ -34,14 +33,14 @@ import qualified Data.Text.Lazy.IO as TL
 import qualified Data.Text.Lazy.Encoding as TL
 import Reflex
 
-import Common.Wallet (_keyPair_publicKey, _key_pair, keyToText)
 import Desktop.Orphans ()
 import Desktop.Crypto.BIP (BIPStorage(..), bipMetaPrefix, runBIPCryptoT, passwordRoundTripTest)
 import Frontend.AppCfg (ExportWalletError(..), FileType(FileType_Import), fileTypeExtension)
 import Pact.Server.ApiClient (TransactionLogger (..), CommandLog, commandLogCurrentVersion)
 import Frontend.Crypto.Class (HasCrypto)
+import Frontend.Wallet (PublicKeyPrefix (..))
 import Frontend.Storage (HasStorage, dumpLocalStorage)
-import Frontend.VersionedStore (StoreFrontend(..), VersionedStorage(..), StorageVersion, VersioningDecodeJsonError(..))
+import Frontend.VersionedStore (VersionedStorage(..), StorageVersion, VersioningDecodeJsonError(..))
 import qualified Frontend.VersionedStore as FrontendStore
 
 newtype Password = Password { unPassword :: Text } deriving (Eq)
@@ -189,10 +188,11 @@ doExport
      , HasStorage m
      )
   => TransactionLogger
+  -> PublicKeyPrefix
   -> Password
   -> Password
   -> m (Either ExportWalletError (FilePath, Text))
-doExport txLogger oldPw pw = runExceptT $ do
+doExport txLogger keyPfx oldPw pw = runExceptT $ do
   unless (oldPw == pw) $ throwError ExportWalletError_PasswordIncorrect
   let store = FrontendStore.versionedStorage @Crypto.XPrv @m
 
@@ -202,10 +202,6 @@ doExport txLogger oldPw pw = runExceptT $ do
 
   (bipVer,bipData) <- lift $ dumpLocalStorage @BIPStorage bipMetaPrefix
   (feVer, feData) <- lift $ _versionedStorage_dumpLocalStorage store
-
-  keyPair <- failWith ExportWalletError_NoKeys $ do
-    (Identity keyMap) <- DMap.lookup StoreFrontend_Wallet_Keys feData
-    IntMap.lookup 0 keyMap
 
   cmdLogFile <- failWith ExportWalletError_CommandLogExport $
     _transactionLogger_destination txLogger
@@ -227,7 +223,7 @@ doExport txLogger oldPw pw = runExceptT $ do
 
   pure $
     ( intercalate "."
-      [ (T.unpack . (T.take 8) . keyToText . _keyPair_publicKey . _key_pair $ keyPair)
+      [ T.unpack $ _unPublicKeyPrefix keyPfx
       -- Mac does something weird with colons in the name and converts them to subdirs...
       , formatTime defaultTimeLocale (iso8601DateFormat (Just "%H-%M-%S")) lt
       , T.unpack (fileTypeExtension FileType_Import)

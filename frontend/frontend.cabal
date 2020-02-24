@@ -101,6 +101,7 @@ library
                , system-locale
                , cassava
                , directory
+               , filepath
 
   exposed-modules: Frontend
                  , Frontend.AppCfg

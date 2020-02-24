@@ -55,6 +55,7 @@ import Frontend.AppCfg
 import Desktop.Crypto.BIP
 import Frontend.ModuleExplorer.Impl (loadEditorFromLocalStorage)
 import Frontend.Log (defaultLogger)
+import Frontend.Wallet (genZeroKeyPrefix)
 import Frontend.Storage
 import Frontend.UI.Button
 import Frontend.UI.Widgets
@@ -225,7 +226,14 @@ bipWallet fileFFI mkAppCfg = do
             , _enabledSettings_exportWallet = Just $ ExportWallet
               { _exportWallet_requestExport = \ePw -> do
                   let bOldPw = (\(Identity (_,oldPw)) -> oldPw) <$> current details
-                  eExport <- performEvent $ doExport txLogger <$> (Password <$> bOldPw) <@> (Password <$> ePw)
+                      runExport txlogger oldPw newPw = do
+                        pfx <- genZeroKeyPrefix
+                        doExport txlogger pfx oldPw newPw
+
+                  eExport <- performEvent $ runExport txLogger
+                    <$> (Password <$> bOldPw)
+                    <@> (Password <$> ePw)
+
                   let (eErrExport, eGoodExport) = fanEither eExport
                   eFileDone <- _fileFFI_deliverFile frontendFileFFI eGoodExport
                   pure $ leftmost

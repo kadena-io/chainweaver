@@ -1,6 +1,8 @@
 {-# LANGUAGE ConstraintKinds #-}
 {-# LANGUAGE RecursiveDo #-}
 {-# LANGUAGE QuasiQuotes #-}
+{-# LANGUAGE ScopedTypeVariables #-}
+
 -- |
 -- Copyright   :  (C) 2020 Kadena
 -- License     :  BSD-style (see the file LICENSE)
@@ -20,7 +22,9 @@ import qualified Data.Text as Text
 import Data.Either (isRight)
 import Data.Time (formatTime)
 
-import Common.Wallet (PublicKey, textToKey)
+import Frontend.Crypto.Class (HasCrypto)
+
+import Frontend.Wallet (PublicKey, PublicKeyPrefix (..), textToKey, genZeroKeyPrefix)
 import Frontend.AppCfg (FileFFI (..))
 import Frontend.UI.Modal (modalHeader, modalFooter)
 import Frontend.Foundation
@@ -33,15 +37,17 @@ import qualified Pact.Types.ChainId as Pact
 
 import qualified Pact.Server.ApiClient as Api
 
-type HasUiTxLogModelCfg mConf m t =
+type HasUiTxLogModelCfg model mConf key m t =
   ( Monoid mConf
   , Flattenable mConf t
   , Api.HasTransactionLogger m
+  , HasCrypto key (Performable m)
   )
 
 uiTxLogs
-  :: ( MonadWidget t m
-     , HasUiTxLogModelCfg mConf m t
+  :: forall t m model mConf key
+  .  ( MonadWidget t m
+     , HasUiTxLogModelCfg model mConf key m t
      )
   => FileFFI t m
   -> Event t ()
@@ -102,9 +108,12 @@ uiTxLogs fileFFI _onExtClose = do
 
   pure (mempty, onClose)
   where
+    runExport txlog = genZeroKeyPrefix >>=
+      liftIO . Api._transactionLogger_exportFile txlog . _unPublicKeyPrefix
+
     exportButton txlog = mdo
       (onFileErr, onContentsReady) <- fmap fanEither $ performEvent $
-        liftIO (Api._transactionLogger_exportFile txlog) <$ onClick
+        runExport txlog <$ onClick
 
       onDeliveredFileOk <- _fileFFI_deliverFile fileFFI onContentsReady
 
