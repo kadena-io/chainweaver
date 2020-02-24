@@ -103,9 +103,6 @@ uiTxLogs fileFFI _onExtClose = do
           td "tx-log-row__request-key" $ elClass "span" "request-key-text" $ text
             $ Pact.hashToText $ Pact.unRequestKey $ Api._commandLog_requestKey cmdLog
 
-  -- Both export wallet and txnlog export use the first 8 characters of the first
-  -- key in the wallet. Given that key is deterministic, could we simply generate it
-  -- rather than either loading keys or requiring them to exist in the wallet first?
   _ <- modalFooter $
     exportButton txLogger
 
