@@ -170,6 +170,7 @@ createAccountSplash model name chain mPublicKey keysetPresets = Workflow $ do
         pure $ ( constDyn $ Just $ AddressKeyset
                  { _addressKeyset_keys = Set.singleton key
                  , _addressKeyset_pred = "keys-all"
+                 , _addressKeyset_pactGuard = Nothing
                  }
                , emptyKeysetPresets
                )

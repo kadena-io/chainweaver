@@ -215,6 +215,7 @@ instance FromJSON AccountBalance where
 data AddressKeyset = AddressKeyset
   { _addressKeyset_keys :: Set PublicKey
   , _addressKeyset_pred :: Text
+  , _addressKeyset_pactGuard :: Maybe (Pact.Guard PactValue)
   } deriving (Eq,Ord,Show)
 
 mkAddressKeyset :: Set PublicKey -> Text -> Maybe AddressKeyset
@@ -223,6 +224,7 @@ mkAddressKeyset keys predicate
   | otherwise = Just $ AddressKeyset
     { _addressKeyset_keys = keys
     , _addressKeyset_pred = predicate
+    , _addressKeyset_pactGuard = Nothing
     }
 
 addressKeysetObject :: AddressKeyset -> Aeson.Object
@@ -241,6 +243,7 @@ fromPactKeyset :: Pact.KeySet -> AddressKeyset
 fromPactKeyset ak = AddressKeyset
   { _addressKeyset_keys = Set.map fromPactPublicKey $ Pact._ksKeys ak
   , _addressKeyset_pred = renderCompactText $ Pact._ksPredFun ak
+  , _addressKeyset_pactGuard = Just $ Pact.GKeySet ak
   }
 
 instance ToJSON AddressKeyset where
@@ -250,6 +253,7 @@ instance FromJSON AddressKeyset where
   parseJSON = withObject "AddressKeyset" $ \o -> AddressKeyset
     <$> o .: "keys"
     <*> o .: "pred"
+    <*> pure Nothing
 
 data AccountStatus a
   = AccountStatus_Unknown
@@ -540,10 +544,13 @@ parseAccountDetails = first ("parseAccountDetails: " <>) . \case
       bal <- case pv of
         PObject (ObjectMap details) -> maybe (Left "Missing key") Right $ do
           PLiteral (LDecimal balance) <- Map.lookup "balance" details
-          PGuard (GKeySet keyset) <- Map.lookup "guard" details
+          -- PGuard (GKeySet keyset) <- Map.lookup "guard" details
+          PGuard pactGuard <- Map.lookup "guard" details
           pure $ AccountStatus_Exists $ AccountDetails
             { _accountDetails_balance = AccountBalance balance
-            , _accountDetails_keyset = fromPactKeyset keyset
+            , _accountDetails_keyset = case pactGuard of
+                GKeySet keyset -> fromPactKeyset keyset
+                _ -> AddressKeyset mempty mempty (Just pactGuard)
             }
         PLiteral (LBool False) -> pure AccountStatus_DoesNotExist
         t -> Left $ "Unexpected PactValue (expected decimal): " <> renderCompactText t

@@ -45,6 +45,8 @@ import           Obelisk.Generated.Static
 import           Reflex
 import           Reflex.Dom hiding (Key)
 ------------------------------------------------------------------------------
+import qualified Pact.Types.Pretty as Pact
+------------------------------------------------------------------------------
 import           Frontend.Log (HasLogger, HasLogCfg)
 import           Frontend.Crypto.Class
 import           Frontend.Crypto.Ed25519     (keyToText)
@@ -315,12 +317,21 @@ uiAccountItem keys name accountInfo = do
     pure (balance, dialog)
 
 keysetSummary :: AddressKeyset -> Text
-keysetSummary ks = T.intercalate ", "
-  [ tshow numKeys <> if numKeys == 1 then " key" else " keys"
-  , _addressKeyset_pred ks
-  , "[" <> T.intercalate ", " (fmap keyToText . Set.toList $ _addressKeyset_keys ks) <> "]"
-  ]
-    where numKeys = Set.size $ _addressKeyset_keys ks
+keysetSummary ks =
+  if numKeys == 0 then
+    fromMaybe defaultSummary guardSummary
+  else
+    defaultSummary
+  where
+    numKeys = Set.size $ _addressKeyset_keys ks
+
+    guardSummary = mappend "Guard: " . Pact.renderCompactText <$> _addressKeyset_pactGuard ks
+
+    defaultSummary = T.intercalate ", "
+      [ tshow numKeys <> if numKeys == 1 then " key" else " keys"
+      , _addressKeyset_pred ks
+      , "[" <> T.intercalate ", " (fmap keyToText . Set.toList $ _addressKeyset_keys ks) <> "]"
+      ]
 
 -- | Widget listing all available keys.
 uiAvailableKeys
