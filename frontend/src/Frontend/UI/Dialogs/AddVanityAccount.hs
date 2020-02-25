@@ -9,7 +9,7 @@ module Frontend.UI.Dialogs.AddVanityAccount
   ) where
 
 import Data.Aeson (toJSON)
-import           Control.Lens                           ((^.),(<>~), (^?), to)
+import           Control.Lens                           ((^.),(<>~), (^?), to, _3)
 import           Control.Error                          (hush)
 import           Control.Monad.Trans.Class              (lift)
 import           Control.Monad.Trans.Maybe              (MaybeT (..), runMaybeT)
@@ -167,11 +167,7 @@ createAccountSplash model name chain mPublicKey keysetPresets = Workflow $ do
         _ <- divClass "group" $ uiInputElement $ def
           & inputElementConfig_initialValue .~ keyToText key
           & initialAttributes <>~ ("disabled" =: "true" <> "class" =: " key-details__pubkey input labeled-input__input")
-        pure $ ( constDyn $ Just $ AddressKeyset
-                 { _addressKeyset_keys = Set.singleton key
-                 , _addressKeyset_pred = "keys-all"
-                 , _addressKeyset_pactGuard = Nothing
-                 }
+        pure $ ( constDyn $ mkAccountGuard (Set.singleton key) "keys-all"
                , emptyKeysetPresets
                )
   (cancel, next) <- modalFooter $ do
@@ -204,7 +200,7 @@ createAccountNotGasPayer
   -> ChainId
   -> Maybe PublicKey
   -> DefinedKeyset t
-  -> AddressKeyset
+  -> AccountGuard
   -> Workflow t m (Text, (mConf, Event t ()))
 createAccountNotGasPayer ideL name chain mPublicKey selectedKeyset keyset = Workflow $ do
   modalMain $ do
@@ -215,7 +211,7 @@ createAccountNotGasPayer ideL name chain mPublicKey selectedKeyset keyset = Work
       _ <- uiDisplayTxBuilderWithCopy False $ TxBuilder
         { _txBuilder_accountName = name
         , _txBuilder_chainId = chain
-        , _txBuilder_keyset = Just keyset
+        , _txBuilder_keyset = keyset ^? _AccountGuard_KeySet . _3
         }
       pure ()
   modalFooter $ do
@@ -239,7 +235,7 @@ createAccountConfig
   -> ChainId
   -> Maybe PublicKey
   -> DefinedKeyset t
-  -> AddressKeyset
+  -> AccountGuard
   -> Workflow t m (Text, (mConf, Event t ()))
 createAccountConfig ideL name chainId mPublicKey selectedKeyset keyset = Workflow $ do
   let includePreviewTab = False

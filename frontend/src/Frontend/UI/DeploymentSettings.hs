@@ -1069,5 +1069,5 @@ uiDeployPreview model settings signers gasLimit ttl code lastPublicMeta capabili
       let accs = Map.restrictKeys allAccounts (Set.singleton sender)
       pure $ ffor accs $ \info -> case Map.lookup chainId $ _accountInfo_chains info of
         Just status | AccountStatus_Exists details <- _account_status status
-          -> _addressKeyset_keys $ _accountDetails_keyset details
+          -> details ^. accountDetails_guard . _AccountGuard_KeySet . _1
         _ -> mempty

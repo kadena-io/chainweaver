@@ -277,7 +277,7 @@ uiAccountItem keys name accountInfo = do
         elClass "td" "wallet__table-cell wallet__table-cell-keyset" $ dynText $ ffor accStatus $ \case
           AccountStatus_Unknown -> "Unknown"
           AccountStatus_DoesNotExist -> ""
-          AccountStatus_Exists d -> keysetSummary $ _accountDetails_keyset d
+          AccountStatus_Exists d -> accountGuardSummary $ _accountDetails_guard d
         td $ dynText $ maybe "" unAccountNotes . _vanityAccount_notes . _account_storage <$> dAccount
         td' " wallet__table-cell-balance" $ dynText $ fmap (uiAccountBalance' False) dAccount
         td $ buttons $ switchHold never <=< dyn $ ffor accStatus $ \case
@@ -287,7 +287,8 @@ uiAccountItem keys name accountInfo = do
             let keyFromName = hush $ parsePublicKey $ unAccountName name
             pure $ AccountDialog_Create name chain keyFromName <$ create
           AccountStatus_Exists d -> do
-            owned <- holdUniqDyn $ (_addressKeyset_keys (_accountDetails_keyset d) `Set.isSubsetOf`) <$> keys
+            let ksKeys = d ^. accountDetails_guard . _AccountGuard_KeySet . _1
+            owned <- holdUniqDyn $ (ksKeys `Set.isSubsetOf`) <$> keys
             switchHold never <=< dyn $ ffor owned $ \case
               True -> do
                 recv <- receiveButton cfg
@@ -316,22 +317,15 @@ uiAccountItem keys name accountInfo = do
                   ]
     pure (balance, dialog)
 
-keysetSummary :: AddressKeyset -> Text
-keysetSummary ks =
-  if numKeys == 0 then
-    fromMaybe defaultSummary guardSummary
-  else
-    defaultSummary
+accountGuardSummary :: AccountGuard -> Text
+accountGuardSummary (AccountGuard_Other pactGuard) = Pact.renderCompactText pactGuard
+accountGuardSummary (AccountGuard_KeySet ksKeys ksPred _) = T.intercalate ", "
+  [ tshow numKeys <> if numKeys == 1 then " key" else " keys"
+  , ksPred
+  , "[" <> T.intercalate ", " (keyToText <$> Set.toList ksKeys) <> "]"
+  ]
   where
-    numKeys = Set.size $ _addressKeyset_keys ks
-
-    guardSummary = mappend "Guard: " . Pact.renderCompactText <$> _addressKeyset_pactGuard ks
-
-    defaultSummary = T.intercalate ", "
-      [ tshow numKeys <> if numKeys == 1 then " key" else " keys"
-      , _addressKeyset_pred ks
-      , "[" <> T.intercalate ", " (fmap keyToText . Set.toList $ _addressKeyset_keys ks) <> "]"
-      ]
+    numKeys = Set.size ksKeys
 
 -- | Widget listing all available keys.
 uiAvailableKeys

@@ -151,15 +151,27 @@ makePactPrisms ''AccountData
 makePactLenses ''Wallet
 makePactLenses ''Account
 
-getSigningPairs :: ChainId -> KeyStorage key -> Map AccountName (AccountInfo Account) -> Set AccountName -> [KeyPair key]
-getSigningPairs chain allKeys allAccounts signing = filterKeyPairs (Set.unions wantedKeys) allKeys
+getSigningPairs
+  :: ChainId
+  -> KeyStorage key
+  -> Map AccountName (AccountInfo Account)
+  -> Set AccountName
+  -> [KeyPair key]
+getSigningPairs chain allKeys allAccounts signing =
+  filterKeyPairs (Set.unions wantedKeys) allKeys
   where
-    wantedKeys = Map.restrictKeys allAccounts signing
-      ^.. folded . accountInfo_chains . ix chain . account_status . _AccountStatus_Exists . accountDetails_keyset . addressKeyset_keys
+    wantedKeys = Map.restrictKeys allAccounts signing ^.. folded
+      . accountInfo_chains
+      . ix chain
+      . account_status
+      . _AccountStatus_Exists
+      . accountDetails_guard
+      . _AccountGuard_KeySet
+      . _1
 
 -- TODO replace this at the use sites with proper multisig
 accountKeys :: Account -> Set.Set PublicKey
-accountKeys a = a ^. account_status . _AccountStatus_Exists . accountDetails_keyset . addressKeyset_keys
+accountKeys a = a ^. account_status . _AccountStatus_Exists . accountDetails_guard . _AccountGuard_KeySet . _1
 
 accountHasFunds :: Account -> Maybe Bool
 accountHasFunds a = fmap (> 0) $ a ^? account_status . _AccountStatus_Exists . accountDetails_balance
@@ -167,7 +179,7 @@ accountHasFunds a = fmap (> 0) $ a ^? account_status . _AccountStatus_Exists . a
 accountSatisfiesKeysetPredicate :: IntMap (Key key) -> Account -> Bool
 accountSatisfiesKeysetPredicate keys a = fromMaybe False
   $ fmap (flip keysetSatisfiesPredicate keys)
-  $ a ^? account_status . _AccountStatus_Exists . accountDetails_keyset
+  $ a ^? account_status . _AccountStatus_Exists . accountDetails_guard
 
 snocIntMap :: a -> IntMap a -> IntMap a
 snocIntMap a m = IntMap.insert (nextKey m) a m

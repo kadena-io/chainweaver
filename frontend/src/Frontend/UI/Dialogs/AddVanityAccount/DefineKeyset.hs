@@ -161,7 +161,7 @@ uiDefineKeyset
      )
   => model
   -> DefinedKeyset t
-  -> m (Dynamic t (Maybe AddressKeyset), DefinedKeyset t)
+  -> m (Dynamic t (Maybe AccountGuard), DefinedKeyset t)
 uiDefineKeyset model presets = do
   pb <- getPostBuild
   let
@@ -189,6 +189,6 @@ uiDefineKeyset model presets = do
     ipks = _keysetInputs_set selectedKeys
     epks = _keysetInputs_set externalKeys
 
-  pure ( ffor2 (ipks <> epks) predicate $ \pks kspred -> kspred >>= mkAddressKeyset pks
+  pure ( ffor2 (ipks <> epks) predicate $ \pks kspred -> kspred >>= mkAccountGuard pks
        , DefinedKeyset selectedKeys externalKeys predicate
        )
