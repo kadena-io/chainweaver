@@ -70,7 +70,7 @@ module Common.Wallet
   , parseAccountDetails
   ) where
 
-import Control.Applicative (liftA2)
+import Control.Applicative (liftA2, (<|>))
 import Control.Monad.Fail (MonadFail)
 import Control.Lens hiding ((.=))
 import Control.Monad
@@ -251,8 +251,23 @@ pactGuardTypeText = \case
   Pact.GTyUser -> "User"
   Pact.GTyModule -> "Module"
 
-instance FromJSON AccountGuard
-instance ToJSON AccountGuard
+instance FromJSON AccountGuard where
+  parseJSON v = keySet v <|> (AccountGuard_Other <$> parseJSON v)
+    where
+      keySet = withObject "AccountGuard" $ \o -> do
+        keys <- o .: "keys"
+        ksPred <- o .: "pred"
+        case mkAccountGuard keys ksPred of
+          Nothing -> fail "Could not create KeySet for AccountGuard"
+          Just ag -> pure ag
+
+instance ToJSON AccountGuard where
+  toJSON (AccountGuard_KeySet ksKeys ksPred _) = object
+    [ "keys" .= ksKeys
+    , "pred" .= ksPred
+    ]
+  toJSON (AccountGuard_Other pactGuard) =
+    toJSON pactGuard
 
 data AccountDetails = AccountDetails
   { _accountDetails_balance :: AccountBalance

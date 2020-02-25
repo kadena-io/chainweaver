@@ -540,7 +540,7 @@ runUnfinishedCrossChainTransfer logL netInfo keys fromChain toChain toGasPayer r
   let (continueError, continueOk) = fanEither continueResponse
   -- Wait for result
   resultResponse <- listenForSuccess logL envToChain continueOk
-  let (resultError, resultOk) = fanEither resultResponse
+  let (resultError, resultOk) = fanEither $ traceEvent "resultResponse" resultResponse
 
   contStatus <- holdDyn Status_Waiting $ leftmost
     [ Status_Working <$ initCont
@@ -772,7 +772,11 @@ crossChainTransfer logL netInfo keys fromAccount toAccount fromGasPayer crossCha
   -- Lookup the guard if we don't already have it
   keySetResponse <- case toAccount of
     Right (_name, _chain, acc)
-      | Just ks <- acc ^? account_status . _AccountStatus_Exists . accountDetails_guard . _AccountGuard_KeySet . _3
+      | Just ks <- acc ^? account_status
+          . _AccountStatus_Exists
+          . accountDetails_guard
+          . _AccountGuard_KeySet
+          . _3
       -> pure $ Right ks <$ pb
       | otherwise -> lookupKeySet logL networkName envToChain publicMeta toTxBuilder
     Left ka -> case _txBuilder_keyset ka of

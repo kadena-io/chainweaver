@@ -73,6 +73,7 @@ module Frontend.Network
   , HasTransactionLogger(..)
   ) where
 
+import Debug.Trace
 import           Control.Exception                 (fromException)
 import           Control.Arrow                     (first, left, second, (&&&))
 import           Control.Lens                      hiding ((.=))
@@ -799,7 +800,7 @@ mkClientEnvs nodeInfos chain = fforMaybe nodeInfos $ \nodeInfo ->
 doReqFailover :: MonadJSM m => [S.ClientEnv] -> S.ClientM a -> m (Either [S.ClientError] a)
 doReqFailover [] _ = pure $ Left []
 doReqFailover (c:cs) request = liftJSM $ S.runClientM request c >>= \case
-  Left e -> BiF.first (e:) <$> doReqFailover cs request
+  Left e -> BiF.first (traceShowId e:) <$> doReqFailover cs request
   Right r -> pure $ Right r
 
 
