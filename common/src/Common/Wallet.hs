@@ -33,6 +33,7 @@ module Common.Wallet
   , AccountGuard(..)
   , _AccountGuard_KeySet
   , _AccountGuard_Other
+  , toPactKeyset
   , UnfinishedCrossChainTransfer(..)
   , KeyStorage
   , AccountStatus (..)
@@ -208,13 +209,16 @@ instance ToJSON AccountBalance where
 instance FromJSON AccountBalance where
   parseJSON x = (\(ParsedDecimal d) -> AccountBalance d) <$> parseJSON x
 
+toPactKeyset :: Set PublicKey -> Text -> Pact.KeySet
+toPactKeyset keys ksPred = Pact.KeySet
+  { Pact._ksKeys = Set.map toPactPublicKey keys
+  , Pact._ksPredFun = Pact.Name $ Pact.BareName ksPred def
+  }
+
 mkAccountGuard :: Set PublicKey -> Text -> Maybe AccountGuard
 mkAccountGuard keys ksPred
   | Set.null keys = Nothing
-  | otherwise = Just $ AccountGuard_KeySet keys ksPred $ Pact.KeySet
-    { Pact._ksKeys = Set.map toPactPublicKey keys
-    , Pact._ksPredFun = Pact.Name $ Pact.BareName ksPred def
-    }
+  | otherwise = Just $ AccountGuard_KeySet keys ksPred
 
 data AccountStatus a
   = AccountStatus_Unknown
@@ -226,7 +230,7 @@ data AccountStatus a
 -- interested in keyset guards right now. Someday we might end up replacing this
 -- with pact's representation for guards directly.
 data AccountGuard
-  = AccountGuard_KeySet (Set PublicKey) Text Pact.KeySet
+  = AccountGuard_KeySet (Set PublicKey) Text
   -- ^ Keyset guards
   | AccountGuard_Other (Pact.Guard PactValue)
   -- ^ Other types of guard
@@ -237,7 +241,6 @@ fromPactGuard = \case
   Pact.GKeySet ks -> AccountGuard_KeySet
     (Set.map fromPactPublicKey $ Pact._ksKeys ks)
     (renderCompactText $ Pact._ksPredFun ks)
-    ks
   g ->
     AccountGuard_Other g
 
@@ -260,7 +263,7 @@ instance FromJSON AccountGuard where
           Just ag -> pure ag
 
 instance ToJSON AccountGuard where
-  toJSON (AccountGuard_KeySet ksKeys ksPred _) = object
+  toJSON (AccountGuard_KeySet ksKeys ksPred) = object
     [ "keys" .= ksKeys
     , "pred" .= ksPred
     ]
@@ -385,7 +388,7 @@ filterKeyPairs s m = Map.elems $ Map.restrictKeys (toMap m) s
 keysetSatisfiesPredicate :: AccountGuard -> IntMap (Key key) -> Bool
 keysetSatisfiesPredicate ag keys0 = case ag of
   AccountGuard_Other _ -> False
-  AccountGuard_KeySet ksKeys ksPred _ ->
+  AccountGuard_KeySet ksKeys ksPred ->
     let
       keys = Set.fromList $ fmap (_keyPair_publicKey . _key_pair) $ IntMap.elems keys0
       keyIntersections = Set.intersection ksKeys keys

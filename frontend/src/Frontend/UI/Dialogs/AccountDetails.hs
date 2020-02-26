@@ -111,7 +111,7 @@ uiAccountDetailsOnChainImpl netname (name, chain, account) onClose = Workflow $ 
         AccountStatus_Unknown -> text "Unknown"
         AccountStatus_DoesNotExist -> text "Does not exist"
         AccountStatus_Exists d -> case _accountDetails_guard d of
-          AccountGuard_KeySet ksKeys ksPred _ -> do
+          AccountGuard_KeySet ksKeys ksPred -> do
             _ <- displayText "Predicate" ksPred ""
             elClass "div" "segment segment_type_tertiary labeled-input" $ do
               divClass "label labeled-input__label" $ text "Public Keys Associated to Account"

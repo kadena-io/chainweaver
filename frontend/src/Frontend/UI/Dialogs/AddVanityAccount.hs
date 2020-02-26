@@ -9,7 +9,7 @@ module Frontend.UI.Dialogs.AddVanityAccount
   ) where
 
 import Data.Aeson (toJSON)
-import           Control.Lens                           ((^.),(<>~), (^?), to, _3)
+import           Control.Lens                           ((^.),(<>~), (^?), to)
 import           Control.Error                          (hush)
 import           Control.Monad.Trans.Class              (lift)
 import           Control.Monad.Trans.Maybe              (MaybeT (..), runMaybeT)
@@ -211,7 +211,7 @@ createAccountNotGasPayer ideL name chain mPublicKey selectedKeyset keyset = Work
       _ <- uiDisplayTxBuilderWithCopy False $ TxBuilder
         { _txBuilder_accountName = name
         , _txBuilder_chainId = chain
-        , _txBuilder_keyset = keyset ^? _AccountGuard_KeySet . _3
+        , _txBuilder_keyset = keyset ^? _AccountGuard_KeySet . to (uncurry toPactKeyset)
         }
       pure ()
   modalFooter $ do

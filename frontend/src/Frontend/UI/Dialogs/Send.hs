@@ -776,7 +776,8 @@ crossChainTransfer logL netInfo keys fromAccount toAccount fromGasPayer crossCha
           . _AccountStatus_Exists
           . accountDetails_guard
           . _AccountGuard_KeySet
-          . _3
+          . to (uncurry toPactKeyset)
+
       -> pure $ Right ks <$ pb
       | otherwise -> lookupKeySet logL networkName envToChain publicMeta toTxBuilder
     Left ka -> case _txBuilder_keyset ka of

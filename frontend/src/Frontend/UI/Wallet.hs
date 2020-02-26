@@ -325,7 +325,7 @@ accountGuardSummary (AccountGuard_Other pactGuard) =
   where
     gType = pactGuardTypeText $ Pact.guardTypeOf pactGuard
 
-accountGuardSummary (AccountGuard_KeySet ksKeys ksPred _) = T.intercalate ", "
+accountGuardSummary (AccountGuard_KeySet ksKeys ksPred) = T.intercalate ", "
   [ tshow numKeys <> if numKeys == 1 then " key" else " keys"
   , ksPred
   , "[" <> T.intercalate ", " (keyToText <$> Set.toList ksKeys) <> "]"
