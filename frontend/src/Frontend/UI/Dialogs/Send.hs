@@ -540,7 +540,7 @@ runUnfinishedCrossChainTransfer logL netInfo keys fromChain toChain toGasPayer r
   let (continueError, continueOk) = fanEither continueResponse
   -- Wait for result
   resultResponse <- listenForSuccess logL envToChain continueOk
-  let (resultError, resultOk) = fanEither $ traceEvent "resultResponse" resultResponse
+  let (resultError, resultOk) = fanEither resultResponse
 
   contStatus <- holdDyn Status_Waiting $ leftmost
     [ Status_Working <$ initCont
