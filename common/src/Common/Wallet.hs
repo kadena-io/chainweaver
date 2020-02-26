@@ -208,12 +208,6 @@ instance ToJSON AccountBalance where
 instance FromJSON AccountBalance where
   parseJSON x = (\(ParsedDecimal d) -> AccountBalance d) <$> parseJSON x
 
-data AddressKeyset = AddressKeyset
-  { _addressKeyset_keys :: Set PublicKey
-  , _addressKeyset_pred :: Text
-  , _addressKeyset_pactGuard :: Maybe (Pact.Guard PactValue)
-  } deriving (Eq,Ord,Show)
-
 mkAccountGuard :: Set PublicKey -> Text -> Maybe AccountGuard
 mkAccountGuard keys ksPred
   | Set.null keys = Nothing
@@ -240,13 +234,17 @@ data AccountGuard
 
 fromPactGuard :: Pact.Guard PactValue -> AccountGuard
 fromPactGuard = \case
-  Pact.GKeySet ks -> AccountGuard_KeySet (Set.map fromPactPublicKey $ Pact._ksKeys ks) (renderCompactText $ Pact._ksPredFun ks) ks
-  g -> AccountGuard_Other g
+  Pact.GKeySet ks -> AccountGuard_KeySet
+    (Set.map fromPactPublicKey $ Pact._ksKeys ks)
+    (renderCompactText $ Pact._ksPredFun ks)
+    ks
+  g ->
+    AccountGuard_Other g
 
 pactGuardTypeText :: Pact.GuardType -> Text
 pactGuardTypeText = \case
   Pact.GTyKeySet -> "Keyset"
-  Pact.GTyKeySetName -> "Keyset Name"
+  Pact.GTyKeySetName -> "Named"
   Pact.GTyPact -> "Pact"
   Pact.GTyUser -> "User"
   Pact.GTyModule -> "Module"
@@ -277,7 +275,6 @@ data AccountDetails = AccountDetails
 makePactPrisms ''Pact.Guard
 makePactPrisms ''AccountGuard
 makePactLenses ''AccountDetails
-makePactLenses ''AddressKeyset
 makePactPrisms ''AccountStatus
 makePactPrisms ''AccountBalance
 

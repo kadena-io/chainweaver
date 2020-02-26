@@ -18,6 +18,7 @@ import Reflex.Dom.Core hiding (Key)
 
 import Pact.Types.Pretty (renderCompactText)
 import qualified Pact.Types.ChainId as Pact
+import qualified Pact.Types.Term as Pact
 
 import Frontend.Crypto.Ed25519 (keyToText)
 import Frontend.Foundation
@@ -98,7 +99,12 @@ uiAccountDetailsOnChainImpl netname (name, chain, account) onClose = Workflow $ 
       _ <- uiDisplayTxBuilderWithCopy True kAddr
       pure notesEdit
 
-    dialogSectionHeading mempty "Keyset Info"
+    let guardTitle = maybe "Keyset" (const "Guard") $ account ^? account_status
+          . _AccountStatus_Exists
+          . accountDetails_guard
+          . _AccountGuard_Other
+
+    dialogSectionHeading mempty (guardTitle <> " Info")
     divClass "group" $ do
       -- Public key
       case _account_status account of
@@ -113,7 +119,7 @@ uiAccountDetailsOnChainImpl netname (name, chain, account) onClose = Workflow $ 
                 & initialAttributes %~ Map.insert "disabled" "disabled" . addToClassAttr "labeled-input__input labeled-input__multiple"
                 & inputElementConfig_initialValue .~ keyToText key
           AccountGuard_Other g ->
-            void $ displayText "Guard" (renderCompactText g) ""
+            void $ displayText (pactGuardTypeText $ Pact.guardTypeOf g) (renderCompactText g) ""
 
     pure notesEdit
 

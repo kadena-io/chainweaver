@@ -46,6 +46,7 @@ import           Reflex
 import           Reflex.Dom hiding (Key)
 ------------------------------------------------------------------------------
 import qualified Pact.Types.Pretty as Pact
+import qualified Pact.Types.Term   as Pact
 ------------------------------------------------------------------------------
 import           Frontend.Log (HasLogger, HasLogCfg)
 import           Frontend.Crypto.Class
@@ -317,14 +318,20 @@ uiAccountItem keys name accountInfo = do
                   ]
     pure (balance, dialog)
 
+
 accountGuardSummary :: AccountGuard -> Text
-accountGuardSummary (AccountGuard_Other pactGuard) = Pact.renderCompactText pactGuard
+accountGuardSummary (AccountGuard_Other pactGuard) =
+  gType <> " : " <> Pact.renderCompactText pactGuard
+  where
+    gType = pactGuardTypeText $ Pact.guardTypeOf pactGuard
+
 accountGuardSummary (AccountGuard_KeySet ksKeys ksPred _) = T.intercalate ", "
   [ tshow numKeys <> if numKeys == 1 then " key" else " keys"
   , ksPred
   , "[" <> T.intercalate ", " (keyToText <$> Set.toList ksKeys) <> "]"
   ]
   where
+
     numKeys = Set.size ksKeys
 
 -- | Widget listing all available keys.
