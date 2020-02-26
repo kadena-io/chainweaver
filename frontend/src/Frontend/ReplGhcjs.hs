@@ -106,6 +106,7 @@ app sidebarExtra fileFFI appCfg = Store.versionedFrontend (Store.versionedStorag
           watchCfg <- uiWatchRequestButton ideL
           addCfg <- uiAddAccountButton ideL
           pure $ watchCfg <> addCfg <> refreshCfg
+        genericTransferWidget
         accountsCfg <- uiAccountsTable ideL
         pure $ barCfg <> accountsCfg
       FrontendRoute_Keys -> mkPageContent "keys" $ do
@@ -156,6 +157,14 @@ app sidebarExtra fileFFI appCfg = Store.versionedFrontend (Store.versionedStorag
     , signingModalCfg
     , mempty & ideCfg_editor . editorCfg_loadCode .~ (snd <$> _fileFFI_externalFileOpened fileFFI)
     ]
+
+genericTransferWidget
+  :: forall t m key.
+  (MonadWidget t m, HasTransactionLogger m)
+  => m ()
+genericTransferWidget = do
+  elAttr "div" ("class" =: "gtransfer")$ do
+    text "Hello Francesco"
 
 walletSidebar
   :: ( DomBuilder t m
