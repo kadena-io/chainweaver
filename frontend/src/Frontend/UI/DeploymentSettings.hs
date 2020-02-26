@@ -79,9 +79,9 @@ import Pact.Compile (compileExps, mkTextInfo)
 import Pact.Parse
 import Pact.Types.Capability
 import Pact.Types.ChainMeta (PublicMeta (..), TTLSeconds (..))
-import Pact.Types.PactValue (PactValue (PLiteral), toPactValue)
+import Pact.Types.PactValue (toPactValue)
 import Pact.Types.Pretty
-import Pact.Types.Runtime (App(..), GasLimit (..), Literal (LString), GasPrice (..), Name(..), Term(..), hashToText, toUntypedHash)
+import Pact.Types.Runtime (App(..), GasLimit (..), GasPrice (..), Name(..), Term(..), hashToText, toUntypedHash)
 import Reflex
 import Reflex.Dom
 import Reflex.Dom.Contrib.CssClass (elKlass)
@@ -1052,10 +1052,11 @@ uiDeployPreview model settings signers gasLimit ttl code lastPublicMeta capabili
             if isChainwebNode then
               parseWrappedBalanceChecks
             else
-              -- Non-chainweb nodes won't have the expected contracts to utilise wrapped balance checks
-              \case
-                pv@(PLiteral (LString _)) -> Right (fmap (const Nothing) accountsToTrack, pv)
-                v -> Left $ "Unexpected PactValue: " <> renderCompactText v
+              -- Non-chainweb nodes won't have the expected contracts to utilise wrapped
+              -- balance checks, so we don't know what structure to expect here.
+              -- Kuro returns a (PLiteral (LString ...))
+              -- Chainweb returns a (PObject ...)
+              \pv -> Right (fmap (const Nothing) accountsToTrack, pv)
 
       responses <- performLocalRead (model ^. logger) (model ^. network) $ localReq <$ pb
       (errors, resp) <- fmap fanThese $ performEvent $ ffor responses $ \case
