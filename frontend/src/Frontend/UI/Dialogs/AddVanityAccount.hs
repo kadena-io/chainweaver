@@ -167,10 +167,7 @@ createAccountSplash model name chain mPublicKey keysetPresets = Workflow $ do
         _ <- divClass "group" $ uiInputElement $ def
           & inputElementConfig_initialValue .~ keyToText key
           & initialAttributes <>~ ("disabled" =: "true" <> "class" =: " key-details__pubkey input labeled-input__input")
-        pure $ ( constDyn $ Just $ AddressKeyset
-                 { _addressKeyset_keys = Set.singleton key
-                 , _addressKeyset_pred = "keys-all"
-                 }
+        pure $ ( constDyn $ mkAccountGuard (Set.singleton key) "keys-all"
                , emptyKeysetPresets
                )
   (cancel, next) <- modalFooter $ do
@@ -203,7 +200,7 @@ createAccountNotGasPayer
   -> ChainId
   -> Maybe PublicKey
   -> DefinedKeyset t
-  -> AddressKeyset
+  -> AccountGuard
   -> Workflow t m (Text, (mConf, Event t ()))
 createAccountNotGasPayer ideL name chain mPublicKey selectedKeyset keyset = Workflow $ do
   modalMain $ do
@@ -214,7 +211,7 @@ createAccountNotGasPayer ideL name chain mPublicKey selectedKeyset keyset = Work
       _ <- uiDisplayTxBuilderWithCopy False $ TxBuilder
         { _txBuilder_accountName = name
         , _txBuilder_chainId = chain
-        , _txBuilder_keyset = Just keyset
+        , _txBuilder_keyset = keyset ^? _AccountGuard_KeySet . to (uncurry toPactKeyset)
         }
       pure ()
   modalFooter $ do
@@ -238,7 +235,7 @@ createAccountConfig
   -> ChainId
   -> Maybe PublicKey
   -> DefinedKeyset t
-  -> AddressKeyset
+  -> AccountGuard
   -> Workflow t m (Text, (mConf, Event t ()))
 createAccountConfig ideL name chainId mPublicKey selectedKeyset keyset = Workflow $ do
   let includePreviewTab = False

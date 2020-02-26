@@ -264,7 +264,7 @@ sameChainTransfer model netInfo keys (fromName, fromChain, fromAcc) (gasPayer, g
         , tshow amount
         , ")"
         ]
-      fromAccKeys = fromAcc ^. accountDetails_keyset . addressKeyset_keys
+      fromAccKeys = fromAcc ^. accountDetails_guard . _AccountGuard_KeySet . _1
       signingSet = Set.unions [fromAccKeys, accountKeys gasPayerAcc]
       signingPairs = filterKeyPairs signingSet keys
       transferCap = SigCapability
@@ -772,15 +772,20 @@ crossChainTransfer logL netInfo keys fromAccount toAccount fromGasPayer crossCha
   -- Lookup the guard if we don't already have it
   keySetResponse <- case toAccount of
     Right (_name, _chain, acc)
-      | Just ks <- acc ^? account_status . _AccountStatus_Exists . accountDetails_keyset
-      -> pure $ Right (toPactKeyset ks) <$ pb
+      | Just ks <- acc ^? account_status
+          . _AccountStatus_Exists
+          . accountDetails_guard
+          . _AccountGuard_KeySet
+          . to (uncurry toPactKeyset)
+
+      -> pure $ Right ks <$ pb
       | otherwise -> lookupKeySet logL networkName envToChain publicMeta toTxBuilder
     Left ka -> case _txBuilder_keyset ka of
       Nothing -> lookupKeySet logL networkName envToChain publicMeta ka
       -- If the account hasn't been created, don't try to lookup the guard. Just
       -- assume the account name _is_ the public key (since it must be a
       -- non-vanity account).
-      Just ks -> pure $ Right (toPactKeyset ks) <$ pb -- TODO verify against chain
+      Just ks -> pure $ Right ks <$ pb -- TODO verify against chain
   let (keySetError, keySetOk) = fanEither keySetResponse
   -- Start the transfer
   initiated <- initiateCrossChainTransfer logL networkName envFromChain publicMeta keys fromAccount fromGasPayer toTxBuilder amount keySetOk
@@ -974,7 +979,7 @@ initiateCrossChainTransfer model networkName envs publicMeta keys fromAccount fr
 
       liftIO $ cb r
   where
-    fromAccKeys = fromAccount ^. _3 . accountDetails_keyset . addressKeyset_keys
+    fromAccKeys = fromAccount ^. _3 . accountDetails_guard . _AccountGuard_KeySet . _1
     keysetName = "receiverKey"
     code = T.unwords
       [ "(coin.transfer-crosschain"

@@ -45,6 +45,9 @@ import           Obelisk.Generated.Static
 import           Reflex
 import           Reflex.Dom hiding (Key)
 ------------------------------------------------------------------------------
+import qualified Pact.Types.Pretty as Pact
+import qualified Pact.Types.Term   as Pact
+------------------------------------------------------------------------------
 import           Frontend.Log (HasLogger, HasLogCfg)
 import           Frontend.Crypto.Class
 import           Frontend.Crypto.Ed25519     (keyToText)
@@ -275,7 +278,7 @@ uiAccountItem keys name accountInfo = do
         elClass "td" "wallet__table-cell wallet__table-cell-keyset" $ dynText $ ffor accStatus $ \case
           AccountStatus_Unknown -> "Unknown"
           AccountStatus_DoesNotExist -> ""
-          AccountStatus_Exists d -> keysetSummary $ _accountDetails_keyset d
+          AccountStatus_Exists d -> accountGuardSummary $ _accountDetails_guard d
         td $ dynText $ maybe "" unAccountNotes . _vanityAccount_notes . _account_storage <$> dAccount
         td' " wallet__table-cell-balance" $ dynText $ fmap (uiAccountBalance' False) dAccount
         td $ buttons $ switchHold never <=< dyn $ ffor accStatus $ \case
@@ -285,7 +288,8 @@ uiAccountItem keys name accountInfo = do
             let keyFromName = hush $ parsePublicKey $ unAccountName name
             pure $ AccountDialog_Create name chain keyFromName <$ create
           AccountStatus_Exists d -> do
-            owned <- holdUniqDyn $ (_addressKeyset_keys (_accountDetails_keyset d) `Set.isSubsetOf`) <$> keys
+            let ksKeys = d ^. accountDetails_guard . _AccountGuard_KeySet . _1
+            owned <- holdUniqDyn $ (ksKeys `Set.isSubsetOf`) <$> keys
             switchHold never <=< dyn $ ffor owned $ \case
               True -> do
                 recv <- receiveButton cfg
@@ -314,13 +318,21 @@ uiAccountItem keys name accountInfo = do
                   ]
     pure (balance, dialog)
 
-keysetSummary :: AddressKeyset -> Text
-keysetSummary ks = T.intercalate ", "
+
+accountGuardSummary :: AccountGuard -> Text
+accountGuardSummary (AccountGuard_Other pactGuard) =
+  gType <> " : " <> Pact.renderCompactText pactGuard
+  where
+    gType = pactGuardTypeText $ Pact.guardTypeOf pactGuard
+
+accountGuardSummary (AccountGuard_KeySet ksKeys ksPred) = T.intercalate ", "
   [ tshow numKeys <> if numKeys == 1 then " key" else " keys"
-  , _addressKeyset_pred ks
-  , "[" <> T.intercalate ", " (fmap keyToText . Set.toList $ _addressKeyset_keys ks) <> "]"
+  , ksPred
+  , "[" <> T.intercalate ", " (keyToText <$> Set.toList ksKeys) <> "]"
   ]
-    where numKeys = Set.size $ _addressKeyset_keys ks
+  where
+
+    numKeys = Set.size ksKeys
 
 -- | Widget listing all available keys.
 uiAvailableKeys
