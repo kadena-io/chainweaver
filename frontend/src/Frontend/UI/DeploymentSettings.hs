@@ -982,6 +982,12 @@ uiDeployPreview model settings signers gasLimit ttl code lastPublicMeta capabili
       signingPairs = Map.keys capabilities <> Set.toList signers
       publicKeyCapabilities = disregardPrivateKey capabilities
 
+      isChainwebNode (NodeType_Pact _) = False
+      isChainwebNode (NodeType_Chainweb _) = True
+
+      dIsChainWebNode = maybe False (isChainwebNode . _nodeInfo_type) . headMay . rights
+        <$> model ^. network_selectedNodes
+
   let publicMeta = lastPublicMeta
         { _pmChainId = chainId
         , _pmGasLimit = gasLimit
@@ -993,17 +999,29 @@ uiDeployPreview model settings signers gasLimit ttl code lastPublicMeta capabili
       extraSigners = _deploymentSettingsConfig_extraSigners settings
       jsondata = HM.union jsonData0 deploySettingsJsonData
 
-  eCmds <- performEvent $ ffor pb $ \_ -> do
-    c <- buildCmd nonce networkId publicMeta signingPairs extraSigners code jsondata publicKeyCapabilities
-    wc <- for (wrapWithBalanceChecks (Set.singleton sender) code) $ \wrappedCode -> do
-      buildCmd nonce networkId publicMeta signingPairs extraSigners wrappedCode jsondata publicKeyCapabilities
+  let
+    mkBuildCmd code0 = buildCmd nonce networkId publicMeta signingPairs
+      extraSigners code0 jsondata publicKeyCapabilities
+
+  eCmds <- performEvent $ ffor (current dIsChainWebNode <@ pb) $ \onChainweb -> do
+    c <- mkBuildCmd code
+    wc <-
+      if onChainweb then
+        Just <$> for (wrapWithBalanceChecks (Set.singleton sender) code) mkBuildCmd
+      else
+        pure Nothing
     pure (c, wc)
 
   void $ runWithReplace
     (text "Preparing transaction preview...")
-    (uiPreviewResponses <$> current (model ^. network_selectedNetwork) <*> current (model ^. wallet_accounts) <@> eCmds)
+    ( uiPreviewResponses
+      <$> current (model ^. network_selectedNetwork)
+      <*> current (model ^. wallet_accounts)
+      <*> current dIsChainWebNode
+      <@> eCmds
+    )
   where
-    uiPreviewResponses networkName accountData (cmd, wrappedCmd) = do
+    uiPreviewResponses networkName accountData isChainwebNode (cmd, mWrappedCmd) = do
       pb <- getPostBuild
 
       unless (any (any isGas) capabilities) $ do
@@ -1022,16 +1040,30 @@ uiDeployPreview model settings signers gasLimit ttl code lastPublicMeta capabili
         uiAccountFixed sender
 
       let accountsToTrack = getAccounts networkName accountData
-          localReq = case wrappedCmd of
-            Left _e -> []
-            Right cmd0 -> pure $ NetworkRequest
+          localReq = case mWrappedCmd of
+            Nothing -> []
+            Just (Left _e) -> []
+            Just (Right cmd0) -> pure $ NetworkRequest
               { _networkRequest_cmd = cmd0
               , _networkRequest_chainRef = ChainRef Nothing chainId
               , _networkRequest_endpoint = Endpoint_Local
               }
+          parseChainwebWrapped =
+            if isChainwebNode then
+              parseWrappedBalanceChecks
+            else
+              -- Non-chainweb nodes won't have the expected contracts to utilise wrapped
+              -- balance checks, so we don't know what structure to expect here.
+              -- Kuro returns a (PLiteral (LString ...))
+              -- Chainweb returns a (PObject ...)
+              \pv -> Right (fmap (const Nothing) accountsToTrack, pv)
+
       responses <- performLocalRead (model ^. logger) (model ^. network) $ localReq <$ pb
       (errors, resp) <- fmap fanThese $ performEvent $ ffor responses $ \case
-        [(_, errorResult)] -> parseNetworkErrorResult (model ^. logger) parseWrappedBalanceChecks errorResult
+        [(_, errorResult)] -> parseNetworkErrorResult
+          (model ^. logger)
+          parseChainwebWrapped
+          errorResult
         n -> do
           putLog model LevelWarn $ "Expected 1 response, but got " <> tshow (length n)
           pure $ This "Couldn't get a response from the node"
@@ -1046,7 +1078,10 @@ uiDeployPreview model settings signers gasLimit ttl code lastPublicMeta capabili
             th "Public Key"
             th "Change in Balance"
           accountBalances <- flip Map.traverseWithKey accountsToTrack $ \acc pks -> do
-            bal <- holdDyn Nothing $ leftmost [Just Nothing <$ errors, Just . join . Map.lookup acc . fst <$> resp]
+            bal <- holdDyn Nothing $ leftmost
+              [ Just Nothing <$ errors
+              , Just . join . Map.lookup acc . fst <$> resp
+              ]
             pure (pks, bal)
           el "tbody" $ void $ flip Map.traverseWithKey accountBalances $ \acc (pks, balance) -> el "tr" $ do
             let displayBalance = \case
@@ -1058,7 +1093,8 @@ uiDeployPreview model settings signers gasLimit ttl code lastPublicMeta capabili
             el "td" $ dynText $ displayBalance <$> balance
 
       dialogSectionHeading mempty "Raw Response"
-      void $ divClass "group segment transaction_details__raw-response" $ runWithReplace (text "Loading...") $ leftmost
+      void $ divClass "group segment transaction_details__raw-response"
+        $ runWithReplace (text "Loading...") $ leftmost
         [ text . renderCompactText . snd <$> resp
         , text <$> errors
         ]
