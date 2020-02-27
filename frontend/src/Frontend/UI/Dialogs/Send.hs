@@ -401,14 +401,13 @@ sendConfig model initData = Workflow $ do
 
                     nestTuple (a,b,c) = (a,(b,c))
 
-                    x = () <$ (ffilter isNothing $ updated useEntireBalance)
+                    reset = () <$ (ffilter isNothing $ updated useEntireBalance)
 
-                    field = fmap nestTuple . uiGasPriceInputField x
+                    field = fmap nestTuple . uiGasPriceInputField reset
 
                 (_, (amountValue, _)) <- uiInputWithPopover field
                   (_inputElement_raw . fst)
                   showGasPriceInsuffPopover $ cfg
-                    -- & inputElementConfig_setValue .~ (maybe "0" tshow <$> updated useEntireBalance)
                     & inputElementConfig_setValue .~ fmap tshow (mapMaybe id $ updated useEntireBalance)
                     & inputElementConfig_elementConfig . elementConfig_modifyAttributes .~ updated attrs
 
