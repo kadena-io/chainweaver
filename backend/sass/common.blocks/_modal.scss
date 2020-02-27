@@ -150,6 +150,26 @@ body[data-modal-open='true'] {
   text-align: right;
 }
 
+.modal__footer-reversed {
+  margin: 0 $normal-margin;
+  padding: $normal-padding 0;
+  border-top: $std-border-width $std-border-style $std-border-color;
+  border-bottom-left-radius: $std-border-radius;
+  border-bottom-right-radius: $std-border-radius;
+  text-align: right;
+
+  display: flex;
+  flex-flow: row-reverse;
+  justify-content: flex-start;
+
+  button {
+    margin-right: $normal-margin;
+    flex-grow: 0;
+  }
+  button:first-child {
+    margin-right: 0px;
+  }
+}
 
 .modal__footer > * {
   margin-right: $small-margin;
@@ -194,9 +214,7 @@ body[data-modal-open='true'] {
   }
   .table td {
     max-width: 0;
-    overflow: hidden;
     text-overflow: ellipsis;
-    white-space: nowrap;
   }
 }
 
@@ -300,6 +318,7 @@ body[data-modal-open='true'] {
 .signing-ui-signers__signer {
   margin-top: $normal-margin;
   margin-bottom: $normal-margin;
+  overflow: hidden;
 }
 
 .cross-chain-transfer-retry {
@@ -324,4 +343,22 @@ body[data-modal-open='true'] {
 
 button.button.button_type_tertiary.logout-confirm-modal__button {
   margin-right: 2em;
+}
+
+.modal__success_screen {
+  p {
+    text-align: center;
+  }
+  .fa {
+    font-size: 10em;
+    color: $chainweaver-blue;
+  }
+}
+
+.export-wallet__contents-list {
+  margin-top: 0rem;
+}
+
+.export-wallet__contents-includes {
+  margin-bottom: 0.2rem;
 }

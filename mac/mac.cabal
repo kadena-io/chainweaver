@@ -11,13 +11,14 @@ library
       base
     , backend
     , desktop
-
+    , frontend
     , async
     , bytestring
     , data-default
     , jsaddle
     , jsaddle-wkwebview
     , filepath
+    , text
     , hsyslog
     , monad-logger
     , fast-logger

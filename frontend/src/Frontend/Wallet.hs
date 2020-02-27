@@ -17,6 +17,7 @@ module Frontend.Wallet
   (  -- * Types & Classes
     PrivateKey
   , KeyPair (..)
+  , PublicKeyPrefix (..)
   , WalletCfg (..)
   , HasWalletCfg (..)
   , IsWalletCfg
@@ -46,6 +47,7 @@ module Frontend.Wallet
   , snocIntMap
   , findNextKey
   , getSigningPairs
+  , genZeroKeyPrefix
   , module Common.Wallet
   ) where
 
@@ -67,11 +69,12 @@ import Pact.Types.Pretty
 import Reflex
 import Reflex.Dom.Core ((=:))
 
+import qualified Data.Text as Text
 import qualified Data.IntMap as IntMap
 import qualified Data.Map as Map
 import qualified Data.Map.Monoidal as MonoidalMap
 import qualified Data.Set as Set
-import qualified Pact.Server.ApiV1Client as Api
+import qualified Pact.Server.ApiClient as Api
 import qualified Pact.Types.ChainMeta as Pact
 import qualified Pact.Types.Command as Pact
 
@@ -85,7 +88,7 @@ import Frontend.Crypto.Ed25519
 import Frontend.Foundation
 import Frontend.Storage
 import Frontend.Network
-import Frontend.Store
+import Frontend.VersionedStore
 import Frontend.Log
 
 data WalletCfg key t = WalletCfg
@@ -130,6 +133,10 @@ emptyAccount = Account
   , _account_status = AccountStatus_Unknown
   }
 
+newtype PublicKeyPrefix = PublicKeyPrefix
+  { _unPublicKeyPrefix :: Text
+  }
+
 newtype AccountData = AccountData
   { unAccountData :: Map NetworkName (Map AccountName (AccountInfo Account))
   } deriving (Generic, Show)
@@ -144,15 +151,27 @@ makePactPrisms ''AccountData
 makePactLenses ''Wallet
 makePactLenses ''Account
 
-getSigningPairs :: ChainId -> KeyStorage key -> Map AccountName (AccountInfo Account) -> Set AccountName -> [KeyPair key]
-getSigningPairs chain allKeys allAccounts signing = filterKeyPairs (Set.unions wantedKeys) allKeys
+getSigningPairs
+  :: ChainId
+  -> KeyStorage key
+  -> Map AccountName (AccountInfo Account)
+  -> Set AccountName
+  -> [KeyPair key]
+getSigningPairs chain allKeys allAccounts signing =
+  filterKeyPairs (Set.unions wantedKeys) allKeys
   where
-    wantedKeys = Map.restrictKeys allAccounts signing
-      ^.. folded . accountInfo_chains . ix chain . account_status . _AccountStatus_Exists . accountDetails_keyset . addressKeyset_keys
+    wantedKeys = Map.restrictKeys allAccounts signing ^.. folded
+      . accountInfo_chains
+      . ix chain
+      . account_status
+      . _AccountStatus_Exists
+      . accountDetails_guard
+      . _AccountGuard_KeySet
+      . _1
 
 -- TODO replace this at the use sites with proper multisig
 accountKeys :: Account -> Set.Set PublicKey
-accountKeys a = a ^. account_status . _AccountStatus_Exists . accountDetails_keyset . addressKeyset_keys
+accountKeys a = a ^. account_status . _AccountStatus_Exists . accountDetails_guard . _AccountGuard_KeySet . _1
 
 accountHasFunds :: Account -> Maybe Bool
 accountHasFunds a = fmap (> 0) $ a ^? account_status . _AccountStatus_Exists . accountDetails_balance
@@ -160,7 +179,7 @@ accountHasFunds a = fmap (> 0) $ a ^? account_status . _AccountStatus_Exists . a
 accountSatisfiesKeysetPredicate :: IntMap (Key key) -> Account -> Bool
 accountSatisfiesKeysetPredicate keys a = fromMaybe False
   $ fmap (flip keysetSatisfiesPredicate keys)
-  $ a ^? account_status . _AccountStatus_Exists . accountDetails_keyset
+  $ a ^? account_status . _AccountStatus_Exists . accountDetails_guard
 
 snocIntMap :: a -> IntMap a -> IntMap a
 snocIntMap a m = IntMap.insert (nextKey m) a m
@@ -170,6 +189,14 @@ nextKey = maybe 0 (succ . fst) . IntMap.lookupMax
 
 findNextKey :: Reflex t => Wallet key t -> Dynamic t Int
 findNextKey = fmap nextKey . _wallet_keys
+
+genZeroKeyPrefix
+  :: ( Functor m
+     , HasCrypto key m
+     )
+  => m PublicKeyPrefix
+genZeroKeyPrefix =
+  PublicKeyPrefix . Text.take 8 . keyToText . snd <$> cryptoGenKey 0
 
 -- | Make a functional wallet that can contain actual keys.
 makeWallet

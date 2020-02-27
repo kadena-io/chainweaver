@@ -17,7 +17,7 @@
 
 -- | File abstraction in `ModuleExplorer`.
 --
--- Copyright   :  (C) 2019 Kadena
+-- Copyright   :  (C) 2020 Kadena
 -- License     :  BSD-style (see the file LICENSE)
 --
 

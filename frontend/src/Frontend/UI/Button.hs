@@ -45,6 +45,7 @@ module Frontend.UI.Button
   , receiveButton
   , transferToButton
   , sendButton
+  , completeCrossChainButton
   , detailsButton
   , detailsIconButton
   , accordionButton
@@ -285,9 +286,9 @@ confirmButton :: DynamicButtonConstraints t m => UiButtonDynCfg t -> Text -> m (
 confirmButton cfg msg =
     uiButtonDyn (cfg & uiButtonCfg_class <>~ "button_type_confirm") $ text msg
 
-cancelButton :: DynamicButtonConstraints t m => UiButtonDynCfg t -> Text -> m (Event t ())
+cancelButton :: DynamicButtonConstraints t m => UiButtonDynCfg t -> Dynamic t Text -> m (Event t ())
 cancelButton cfg msg =
-    uiButtonDyn (cfg & uiButtonCfg_class <>~ "button_type_tertiary") $ text msg
+    uiButtonDyn (cfg & uiButtonCfg_class <>~ "button_type_tertiary") $ dynText msg
 
 receiveButton :: StaticButtonConstraints t m => UiButtonCfg -> m (Event t ())
 receiveButton cfg =
@@ -317,6 +318,12 @@ sendButton cfg =
   uiButton (cfg & uiButtonCfg_class <>~ "button_type_secondary" <> "button_type_secondary") $ do
     imgWithAltCls "button__text-icon" (static @"img/send.svg") "Send" blank
     elClass "span" "button__text button__text-exclusive" $ text "Send"
+
+completeCrossChainButton :: StaticButtonConstraints t m => UiButtonCfg -> m (Event t ())
+completeCrossChainButton cfg =
+  uiButton (cfg & uiButtonCfg_class <>~ "button_type_secondary" <> "button_type_secondary") $ do
+    imgWithAltCls "button__text-icon" (static @"img/shuffle.svg") "Complete crosschain" blank
+    elClass "span" "button__text button__text-exclusive" $ text "Complete Crosschain"
 
 accordionButton :: StaticButtonConstraints t m => UiButtonCfg -> m (Event t ())
 accordionButton cfg =

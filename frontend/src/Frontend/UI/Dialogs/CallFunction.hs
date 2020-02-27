@@ -14,7 +14,7 @@
 
 -- | Confirmation dialog for deploying modules and calling functions on the
 -- network.
--- Copyright   :  (C) 2018 Kadena
+-- Copyright   :  (C) 2020 Kadena
 -- License     :  BSD-style (see the file LICENSE)
 --
 
@@ -51,6 +51,7 @@ import           Frontend.UI.DeploymentSettings
 import           Frontend.UI.Dialogs.DeployConfirmation (fullDeployFlow, deployConfirmationConfig_modalTitle)
 import           Frontend.UI.Modal
 import           Frontend.UI.Widgets
+import           Frontend.UI.Widgets.Helpers    (preventUpAndDownArrow, preventScrollWheel)
 import           Frontend.Wallet                (HasWallet (..))
 ------------------------------------------------------------------------------
 
@@ -84,7 +85,7 @@ uiCallFunction m mModule func _onClose
             , _deploymentSettingsConfig_chainId =
                 predefinedChainIdSelect $ _chainRef_chain . _moduleRef_source $ moduleRef
             , _deploymentSettingsConfig_code = fromMaybe (pure $ buildCall func []) mPactCall
-            , _deploymentSettingsConfig_sender = uiAccountDropdown def False
+            , _deploymentSettingsConfig_sender = uiAccountDropdown def (pure $ \_ _ -> True) (pure id)
             , _deploymentSettingsConfig_data = Nothing
             , _deploymentSettingsConfig_ttl = Nothing
             , _deploymentSettingsConfig_nonce = Nothing
@@ -228,7 +229,7 @@ funTypeInput json = \case
     TyPrim TyDecimal -> mkDecimalInput
     -- Not working properly:
     {- TyPrim TyTime -> mkInput "datetime-local" "" -}
-    TyPrim TyTime -> mkInput "text" ""
+    TyPrim TyTime -> mkInput "text" "" def
     TyPrim TyBool -> mkCheckbox False
     TyPrim TyString -> mkTextInput
     TyPrim (TyGuard (Just GTyKeySet)) -> keysetSelector json
@@ -238,12 +239,12 @@ funTypeInput json = \case
       pure r
   where
     mkTextInput :: m (Dynamic t Text)
-    mkTextInput = fmap (surroundWith "\"" . T.dropAround (=='\"')) <$> mkInput "text" ""
+    mkTextInput = fmap (surroundWith "\"" . T.dropAround (=='\"')) <$> mkInput "text" "" def
       where
         surroundWith s x = s <> x <> s
 
     mkDecimalInput :: m (Dynamic t Text)
-    mkDecimalInput = fmap fixNum <$> mkInput "number" "0.0"
+    mkDecimalInput = fmap fixNum <$> mkInput "number" "0.0" def
       where
         fixNum x = if T.isInfixOf "." x then x else x <> ".0"
 
@@ -262,18 +263,25 @@ funTypeInput json = \case
         readInt :: Text -> Maybe Int
         readInt = readMay . T.unpack
 
+        uiIntInput cfg0 = do
+          ie <- uiInputElement cfg0
+          pure (ie, (value ie, readInt <$> _inputElement_input ie))
+
+        showIntPopover (_, (_, onInput)) = pure $ ffor onInput $ \case
+          Nothing -> PopoverState_Error "Not a valid int"
+          _ -> PopoverState_Disabled
+
       lastValid <- hold "0" onValid
 
       let
         onInvalidLastValid = tag lastValid onInvalid
         cfg = def
-          -- Does not work well weith "number":
+          -- Does not work well with "number":
           & initialAttributes .~ ("type" =: "text" <> "class" =: "labeled-input__input input_type_secondary")
           & inputElementConfig_initialValue .~ "0"
           & inputElementConfig_setValue .~ onInvalidLastValid
-      i <- uiInputElement cfg
-      pure $ _inputElement_value i
-
+      i <- fmap fst $ uiInputWithPopover uiIntInput (_inputElement_raw . fst) showIntPopover cfg
+      pure $ value i
 
     mkCheckbox :: Bool -> m (Dynamic t Text)
     mkCheckbox iVal =
@@ -298,14 +306,14 @@ funTypeInput json = \case
       in
         _textAreaElement_value <$> textAreaElement cfg
 
-    mkInput :: Text -> Text -> m (Dynamic t Text)
-    mkInput iType iVal =
-      let
-        cfg = def
-          & initialAttributes .~ ("type" =: iType <> "class" =: "labeled-input__input input_type_secondary")
-          & inputElementConfig_initialValue .~ iVal
-      in
-        _inputElement_value <$> uiInputElement cfg
+    mkInput :: Text -> Text -> InputElementConfig EventResult t (DomBuilderSpace m) -> m (Dynamic t Text)
+    mkInput iType iVal cfg = do
+      i <- uiInputElement $ cfg
+        & initialAttributes .~ ("type" =: iType <> "class" =: "labeled-input__input input_type_secondary")
+        & inputElementConfig_initialValue .~ iVal
+        & inputElementConfig_elementConfig . elementConfig_eventSpec %~ preventUpAndDownArrow @m
+      preventScrollWheel $ _inputElement_raw i
+      pure $ _inputElement_value i
 
 keysetSelector :: MonadWidget t m => JsonData t -> m (Dynamic t Text)
 keysetSelector json = do

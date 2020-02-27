@@ -13,7 +13,7 @@
 --   This view shows details about a particular Pact file, it shows contained
 --   modules and offers loading to editor.
 --
--- Copyright   :  (C) 2019 Kadena
+-- Copyright   :  (C) 2020 Kadena
 -- License     :  BSD-style (see the file LICENSE)
 --
 

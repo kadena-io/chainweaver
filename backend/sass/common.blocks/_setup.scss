@@ -217,13 +217,6 @@ $setup-progress-font-size: 18px;
       width: $setup-progress-button-width;
   }
 
-  .setup__password-wrapper-lock {
-      position: absolute;
-      left: 15px;
-      justify-content: space-around;
-      align-items: center;
-  }
-
   .button {
     height: initial;
     line-height: initial;
@@ -484,4 +477,38 @@ $setup-progress-font-size: 18px;
 
 .setup__verify-passphrase-wrapper {
   margin-bottom: 20px;
+}
+
+.setup__recover-import-title {
+  font-size: 1.4em;
+  margin-bottom: 0;
+}
+
+.setup__recover-import-text {
+  color: $tertiary-color;
+  font-size: 0.8em;
+}
+
+.setup__recover-import-file {
+  border-style: $std-border-style;
+  border-width: $std-border-width;
+  border-radius: $std-border-radius;
+  border-color: $std-border-color;
+  cursor: pointer;
+  font-size: 0.8em;
+  padding: 15px 10px;
+  width: 350px;
+  display: flex;
+
+  .setup__recover-import-file-text {
+    margin-left: 10px;
+    margin-top: 2px;
+    color: $tertiary-color;
+  }
+
+  img {
+      height: 16px;
+      display: inline-block;
+      flex-grow: 0;
+  }
 }

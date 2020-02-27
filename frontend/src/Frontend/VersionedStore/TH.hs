@@ -1,6 +1,6 @@
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE TemplateHaskellQuotes #-}
-module Frontend.Store.TH where
+module Frontend.VersionedStore.TH where
 
 import Control.Monad (replicateM, guard)
 import Data.List (intersperse)
@@ -57,7 +57,7 @@ deriveStoreInstances typeName = do
     tyVarTuple (KindedTV n k) = (n, Just k)
 
 -- The Data.GADT.Compare.TH machinery doesn't like the extra type
---src/Frontend/Store/V0.hs:43:1-25: error:
+--src/Frontend.VersionedStore/V0.hs:43:1-25: error:
 -- • Expecting one more argument to ‘StoreFrontend’
 --      Expected kind ‘* -> *’, but ‘StoreFrontend’ has kind ‘* -> * -> *’
 --    • In the first argument of ‘Data.GADT.Compare.GEq’, namely

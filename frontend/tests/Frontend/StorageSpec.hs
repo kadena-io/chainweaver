@@ -27,15 +27,16 @@ import Test.Tasty.HUnit
 import Frontend.Storage
 import Frontend.Storage.InMemoryStorage
 import qualified Frontend.Storage.InMemoryStorageSpec as InMemoryStorageSpec
-import Frontend.StoreTestKey
+import Frontend.VersionedStoreTestKey
 
 test_dumpStorage :: TestTree
 test_dumpStorage = testCase "Dump Storage" $ do
   ims <- newInMemoryStorage
-  localRes <- flip runInMemoryStorage ims $ do
+  (localVer, localRes) <- flip runInMemoryStorage ims $ do
     setItemStorage localStorage StoreInt 42
     setItemStorage localStorage StoreString "This is a string"
-    dumpLocalStorage @StoreTestKey
+    dumpLocalStorage @StoreTestKey storeTestKeyMetaPrefix
+  localVer @?= 0
   localRes @?= DMap.fromList [ StoreInt :=> Identity 42, StoreString :=> Identity "This is a string" ]
   pure ()
 

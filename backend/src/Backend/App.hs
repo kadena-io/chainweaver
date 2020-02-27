@@ -9,7 +9,7 @@ module Backend.App where
 
 import Control.Monad.Logger (LogStr,LogLevel)
 import Control.Concurrent
-import Control.Exception (bracket, try)
+import Control.Exception (bracket, try, catch)
 import Control.Monad.IO.Class
 import Data.String (IsString(..))
 import Language.Javascript.JSaddle.Types (JSM)
@@ -22,6 +22,7 @@ import qualified Control.Concurrent.Async as Async
 import qualified Data.ByteString as BS
 import qualified Data.List as L
 import qualified Data.Map as M
+import Data.Text (Text)
 import qualified Data.Text as T
 import qualified Data.Text.Encoding as T
 import qualified Data.Text.IO as T
@@ -30,7 +31,7 @@ import qualified Network.HTTP.Client as HTTPClient
 import qualified Snap.Http.Server as Snap
 import qualified System.Directory as Directory
 import qualified System.Environment as Env
-import Pact.Server.ApiV1Client (runTransactionLoggerT, logTransactionFile)
+import Pact.Server.ApiClient (runTransactionLoggerT, logTransactionFile, commandLogFilename)
 
 import Backend (serveBackendRoute)
 import Common.Route
@@ -46,7 +47,8 @@ data AppFFI = AppFFI
   , _appFFI_resizeWindow :: (Int, Int) -> IO ()
   , _appFFI_moveToBackground :: IO ()
   , _appFFI_moveToForeground :: IO ()
-  , _appFFI_global_openFileDialog :: IO ()
+  , _appFFI_global_openFileDialog :: FileType -> IO ()
+  , _appFFI_global_saveFileDialog :: FilePath -> (FilePath -> IO ()) -> IO ()
   , _appFFI_global_getStorageDirectory :: IO String
   , _appFFI_global_logFunction :: LogLevel -> LogStr -> IO ()
   }
@@ -56,6 +58,21 @@ getUserLibraryPath ffi = liftIO $ do
   lib <- _appFFI_global_getStorageDirectory ffi
   Directory.createDirectoryIfMissing True lib
   pure lib
+
+deliverFile
+  :: (TriggerEvent t m, MonadIO (Performable m), PerformEvent t m)
+  => AppFFI
+  -> Event t (FilePath, Text) -- inputEvent
+  -> m (Event t (Either Text FilePath))
+deliverFile appFFI eFile = do
+  performEventAsync $ ffor eFile $ \(fName,fContent) cb ->
+    let doWriteFile chosenPath =
+          liftIO $ catch
+            ((T.writeFile chosenPath fContent) *> cb (Right chosenPath))
+            $ \(e :: IOError) -> do
+              cb (Left . T.pack $ "Error '" <> show e <> "' exporting file: " <> show chosenPath)
+    in liftIO (_appFFI_global_saveFileDialog appFFI fName doWriteFile)
+
 
 -- | Get a random free port. This isn't quite safe: it is possible for the port
 -- to be grabbed by something else between the use of this function and the
@@ -104,14 +121,14 @@ main'
   -> (BS.ByteString -> BS.ByteString -> (String -> IO ()) -> (FilePath -> IO Bool) -> JSM () -> IO ())
   -> IO ()
 main' ffi mainBundleResourcePath runHTML = do
-  fileOpenedMVar :: MVar T.Text <- liftIO newEmptyMVar
+  fileOpenedMVar :: MVar (FilePath, T.Text) <- liftIO newEmptyMVar
   let handleOpen f = try (T.readFile f) >>= \case
         Left (e :: IOError) -> do
           putStrLn $ "Failed reading file " <> f <> ": " <> show e
           pure False
         Right c -> do
           putStrLn $ "Opened file successfully: " <> f
-          putMVar fileOpenedMVar c
+          putMVar fileOpenedMVar (f, c)
           pure True
   -- Set the path to z3. I tried using the plist key LSEnvironment, but it
   -- doesn't work with relative paths.
@@ -175,12 +192,14 @@ main' ffi mainBundleResourcePath runHTML = do
           bowserLoad <- mvarTriggerEvent bowserMVar
           fileOpened <- mvarTriggerEvent fileOpenedMVar
           signingRequest <- mvarTriggerEvent signingRequestMVar
+          let fileFFI = FileFFI
+                { _fileFFI_openFileDialog = liftIO . _appFFI_global_openFileDialog ffi
+                , _fileFFI_externalFileOpened = fileOpened
+                , _fileFFI_deliverFile = deliverFile ffi
+                }
           let appCfg enabledSettings = AppCfg
                 { _appCfg_gistEnabled = False
-                , _appCfg_externalFileOpened = fileOpened
-                , _appCfg_openFileDialog = liftIO $ _appFFI_global_openFileDialog ffi
                 , _appCfg_loadEditor = loadEditorFromLocalStorage
-
                 -- DB 2019-08-07 Changing this back to False because it's just too convenient this way.
                 , _appCfg_editorReadOnly = False
                 , _appCfg_signingRequest = signingRequest
@@ -188,7 +207,14 @@ main' ffi mainBundleResourcePath runHTML = do
                 , _appCfg_enabledSettings = enabledSettings
                 , _appCfg_logMessage = _appFFI_global_logFunction ffi
                 }
-          _ <- mapRoutedT (flip runTransactionLoggerT (logTransactionFile $ libPath </> "transaction_log") . runFileStorageT libPath) $ runWithReplace loaderMarkup $
-            (liftIO (_appFFI_activateWindow ffi) >> liftIO (_appFFI_resizeWindow ffi defaultWindowSize) >> bipWallet appCfg) <$ bowserLoad
+          _ <- mapRoutedT ( flip runTransactionLoggerT (logTransactionFile $ libPath </> commandLogFilename) .
+                            runFileStorageT libPath
+                          )
+               $ runWithReplace loaderMarkup
+               $ ( liftIO (_appFFI_activateWindow ffi)
+                   >> liftIO (_appFFI_resizeWindow ffi defaultWindowSize)
+                   >> bipWallet fileFFI appCfg
+                 )
+               <$ bowserLoad
           pure ()
         }

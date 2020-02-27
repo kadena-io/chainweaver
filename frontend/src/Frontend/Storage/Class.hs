@@ -19,11 +19,7 @@ module Frontend.Storage.Class
   , getCurrentVersion
   , StoreType (..)
   , HasStorage(..)
-  -- Versioning Stuff
-  , StorageVersioner(..)
   , StoreKeyMetaPrefix(..)
-  , VersioningError(..)
-  , StorageVersion
   ) where
 
 import Control.Monad.Reader
@@ -48,24 +44,6 @@ import qualified Data.ByteString.Lazy as BL
 import qualified Data.Dependent.Map as DMap
 import qualified Data.Text as T
 import qualified Data.Text.Encoding as T
-
-{-- Notes for migration
- * We can't close off the keys to a single GADT because that would mean that
-   desktop and web need to share the same storage keys, which will not work.
-   Currently Desktop has the root BIP key on top of the rest of the storage.
- * The backup/restore process for the user is going to be interesting. Because we don't
-   want to export the whole store because I don't think that we want to export the
-   encrypted keys. It's not quite what we want for the versioning process so we are not
-   going to get it "for free" sadly.
- * The current storage type locks things up in JSM which makes it really tricky to test.
-   We could run the frontend storage tests in ghcjs but then we'd be stuck not being able to
-   test the desktop migrations. We could parameterise Storage with a type parameter for the
-   inner monad, but then HasStorage needs to become a MTPC and stuff gets weird for the rest
-   of the app. Really, we just want to be able to test the derived functions from the algebra
-   and we don't want "testability" stuff bleeding out into the app.
-   For this reason, I'm going to change Storage to a Free Monad and HasStorage / StorageT just
-   to something that holds an interpreter that can run the free in a given m. Way cleaner.
---}
 
 data StoreType
   = StoreType_Local
@@ -177,11 +155,10 @@ backupLocalStorage
   -> Natural  -- This version is the expectation set by the caller who has already chosen the key type
   -> m (Maybe (DMap storeKeys Identity))
 backupLocalStorage p _ expectedVer = do
-  actualVer <- getCurrentVersion p
+  (actualVer,dump) <- dumpLocalStorage @storeKeys p
   if actualVer /= expectedVer
     then pure Nothing
     else do
-      dump <- dumpLocalStorage @storeKeys
       thisSeqNo <- maybe 0 (+1) <$> getLatestBackupSequence p expectedVer
       setBackup p expectedVer thisSeqNo dump
       setLatestBackupSequence p expectedVer thisSeqNo
@@ -219,12 +196,15 @@ dumpLocalStorage
     , Has FromJSON storeKeys
     , GShow storeKeys
     )
-  => m (DMap storeKeys Identity)
-dumpLocalStorage = fmap (DMap.fromList . catMaybes)
-  . traverse (\(Some k) -> has @FromJSON k $
-    (fmap (\v -> k :=> Identity v)) <$> getItemStorage StoreType_Local k
-  )
-  $ universeSome @storeKeys
+  => StoreKeyMetaPrefix -> m (Natural, DMap storeKeys Identity)
+dumpLocalStorage p = do
+  actualVer <- getCurrentVersion p
+  d <- fmap (DMap.fromList . catMaybes)
+    . traverse (\(Some k) -> has @FromJSON k $
+      (fmap (\v -> k :=> Identity v)) <$> getItemStorage StoreType_Local k
+    )
+    $ universeSome @storeKeys
+  pure (actualVer, d)
 
 restoreLocalStorageDump
   :: forall storeKeys m
@@ -262,18 +242,6 @@ removeKeyUniverse _ st =
 keyToText :: (GShow k) => k a -> Text
 keyToText = T.pack . gshow
 
-type StorageVersion = Natural
-data VersioningError
-  = VersioningError_UnknownVersion StorageVersion
-
-
-data StorageVersioner m ( k :: * -> * ) = StorageVersioner
-  { _storageVersioner_metaPrefix :: StoreKeyMetaPrefix
-  , _storageVersioner_upgrade :: m (Maybe VersioningError)
-  -- It's entirely possible that a simpler just "copy the directory" or copy "all the storage keys" is
-  -- a better way here, but lets explore this route and see what falls out for export / import
-  , _storageVersioner_backupVersion :: m (Maybe VersioningError)
-  }
 
 -- | Get access to browser's local storage.
 localStorage :: StoreType

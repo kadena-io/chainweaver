@@ -1,6 +1,6 @@
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE TemplateHaskell #-}
-module Frontend.Store.V1 where
+module Frontend.VersionedStore.V1 where
 
 import Data.Aeson
 import Data.Aeson.GADT.TH
@@ -21,10 +21,10 @@ import Common.Network (NetworkName, NodeRef)
 import Common.OAuth (OAuthProvider(..))
 import Common.GistStore (GistMeta)
 
-import Frontend.Store.TH
-import qualified Frontend.Store.V0 as V0
-import qualified Frontend.Store.V0.Wallet as V0
-import Frontend.Store.MigrationUtils
+import Frontend.VersionedStore.TH
+import qualified Frontend.VersionedStore.V0 as V0
+import qualified Frontend.VersionedStore.V0.Wallet as V0
+import Frontend.VersionedStore.MigrationUtils
 import Frontend.Crypto.Class
 
 -- WARNING: Upstream deps. Check this when we bump pact and obelisk!
@@ -92,7 +92,6 @@ upgradeFromV0 v0 = do
     newNetworks = (\nets -> StoreFrontend_Network_Networks :=> Identity (V0.unNetworkMap $ runIdentity nets))
       <$> DMap.lookup V0.StoreNetwork_Networks v0
 
-    -- It's unfortunate that we don't have the key around or access to crypto here to recreate the keys.
     -- This will regenerate the missing key. Desktop will recover the key with
     -- BIP, but the web version will generate a new key!
     splitOldKey (keyIdx, V0.SomeAccount_Deleted) = do
@@ -134,7 +133,7 @@ upgradeFromV0 v0 = do
 -- The TH doesn't deal with the key type param well because the key in each constructor is actually a
 -- different type variable to the one in the data decl.
 --
--- src/Frontend/Store/V0.hs:69:1-29: error:
+-- src/Frontend.VersionedStore/V0.hs:69:1-29: error:
 --    The exact Name ‘key_a2Kfr’ is not in scope
 --      Probable cause: you used a unique Template Haskell name (NameU),
 --      perhaps via newName, but did not bind it

@@ -3,7 +3,7 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TupleSections #-}
 -- | Dialog for displaying account information required for receiving transfers
--- Copyright   :  (C) 2018 Kadena
+-- Copyright   :  (C) 2020 Kadena
 -- License     :  BSD-style (see the file LICENSE)
 module Frontend.UI.Dialogs.Receive
   ( uiReceiveModal
@@ -86,7 +86,7 @@ uiReceiveFromLegacyAccount = do
 
   keyPair <- holdDyn Nothing $ hush <$> onKeyPair
 
-  amount <- view _2 <$> mkLabeledInput True "Amount" uiGasPriceInputField def
+  amount <- view _2 <$> mkLabeledInput True "Amount" (uiGasPriceInputField never) def
 
   pure $ (liftA3 . liftA3) NonBIP32TransferInfo mAccountName amount keyPair
   where
@@ -146,7 +146,7 @@ uiReceiveModal0 model account mchain onClose = Workflow $ do
       in
         mkLabeledInputView True lbl attrFn $ pure v
 
-  (showingAddr, chain, (conf, ttl, gaslimit, transferInfo)) <- divClass "modal__main receive" $ do
+  (showingAddr, chain, (conf, ttl, gaslimit, _, transferInfo)) <- divClass "modal__main receive" $ do
     rec
       showingTxBuilder <- toggle True $ onAddrClick <> onReceiClick
 
@@ -170,8 +170,8 @@ uiReceiveModal0 model account mchain onClose = Workflow $ do
         dialogSectionHeading mempty "Sender Details"
         transferInfo0 <- divClass "group" uiReceiveFromLegacyAccount
         dialogSectionHeading mempty "Transaction Settings"
-        (conf0, ttl0, gaslimit0) <- divClass "group" $ uiMetaData model Nothing Nothing
-        pure (conf0, ttl0, gaslimit0, transferInfo0)
+        (conf0, ttl0, gaslimit0, gasPrice) <- divClass "group" $ uiMetaData model Nothing Nothing
+        pure (conf0, ttl0, gaslimit0, gasPrice, transferInfo0)
 
     pure (showingTxBuilder, chain, snd results)
 
@@ -270,7 +270,7 @@ receiveFromLegacySubmit model onClose account chain ttl gasLimit netInfo transfe
     pkCaps
 
   txnSubFeedback <- elClass "div" "modal__main transaction_details" $
-    submitTransactionWithFeedback model cmd chain (netInfo ^. _1)
+    submitTransactionWithFeedback model cmd sender chain (netInfo ^. _1)
 
   let isDisabled = maybe True isLeft <$> _transactionSubmitFeedback_message txnSubFeedback
 

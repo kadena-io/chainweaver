@@ -10,8 +10,9 @@ import Data.ByteString (ByteString)
 import Data.Default (Default(..))
 import Data.Functor (void)
 import Data.Foldable (for_)
+import qualified Data.Text as T
 import GHC.IO.Handle (hDuplicateTo, BufferMode(LineBuffering))
-import Foreign.C.String (CString, peekCString)
+import Foreign.C.String (CString, peekCString, withCString)
 import Foreign.StablePtr (StablePtr, newStablePtr)
 import Language.Javascript.JSaddle.Types (JSM)
 import Language.Javascript.JSaddle.WKWebView (AppDelegateConfig(..), mainBundleResourcePath, runHTMLWithBaseURL)
@@ -20,6 +21,7 @@ import System.IO
 import qualified System.Process as Process
 
 import Backend.App (main', AppFFI(..))
+import Frontend.AppCfg (FileType(..), fileTypeExtension)
 import Desktop.Syslog (sysloggedMain, logToSyslog)
 
 foreign import ccall setupAppMenu :: StablePtr (CString -> IO ()) -> IO ()
@@ -28,7 +30,8 @@ foreign import ccall hideWindow :: IO ()
 foreign import ccall moveToForeground :: IO ()
 foreign import ccall moveToBackground :: IO ()
 foreign import ccall resizeWindow :: Int -> Int -> IO ()
-foreign import ccall global_openFileDialog :: IO ()
+foreign import ccall global_openFileDialog :: CString -> IO ()
+foreign import ccall global_openSaveDialog :: CString -> StablePtr (CString -> IO ()) -> IO ()
 foreign import ccall global_getHomeDirectory :: IO CString
 
 ffi :: AppFFI
@@ -37,10 +40,17 @@ ffi = AppFFI
   , _appFFI_moveToBackground = moveToBackground
   , _appFFI_moveToForeground = moveToForeground
   , _appFFI_resizeWindow = uncurry resizeWindow
-  , _appFFI_global_openFileDialog = global_openFileDialog
+  , _appFFI_global_openFileDialog = openFileDialog
+  , _appFFI_global_saveFileDialog = saveFileDialog
   , _appFFI_global_getStorageDirectory = getStorageDirectory
   , _appFFI_global_logFunction = logToSyslog
   }
+
+openFileDialog :: FileType -> IO ()
+openFileDialog ft = withCString (T.unpack . fileTypeExtension $ ft) global_openFileDialog
+
+saveFileDialog :: FilePath -> (FilePath -> IO ()) -> IO ()
+saveFileDialog fp cb = withCString fp  (\fps -> global_openSaveDialog fps =<< (newStablePtr $ cb <=< peekCString))
 
 getStorageDirectory :: IO String
 getStorageDirectory = do

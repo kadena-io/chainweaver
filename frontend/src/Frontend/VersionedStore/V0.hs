@@ -2,7 +2,7 @@
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TemplateHaskell #-}
-module Frontend.Store.V0 where
+module Frontend.VersionedStore.V0 where
 
 import Data.Aeson
 import Data.Aeson.GADT.TH
@@ -11,8 +11,8 @@ import Data.Constraint.Extras
 import Data.Map (Map)
 import Data.Text (Text)
 
-import Frontend.Store.TH
-import Frontend.Store.V0.Wallet
+import Frontend.VersionedStore.TH
+import Frontend.VersionedStore.V0.Wallet
 
 -- WARNING: Be careful about changing stuff in here. Tests will catch snafus here and upstream though
 import Common.Network (NetworkName)
@@ -44,7 +44,7 @@ deriving instance Show (StoreFrontend key a)
 -- The TH doesn't deal with the key type param well because the key in each constructor is actually a
 -- different type variable to the one in the data decl.
 --
--- src/Frontend/Store/V0.hs:69:1-29: error:
+-- src/Frontend.VersionedStore/V0.hs:69:1-29: error:
 --    The exact Name ‘key_a2Kfr’ is not in scope
 --      Probable cause: you used a unique Template Haskell name (NameU),
 --      perhaps via newName, but did not bind it

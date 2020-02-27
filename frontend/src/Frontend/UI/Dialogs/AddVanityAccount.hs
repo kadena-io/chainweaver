@@ -126,6 +126,12 @@ uiCreateAccountDialog model name chain mPublicKey _onCloseExternal = do
   let close = switch $ current closes
   pure (mConf, onClose <> close)
 
+createAccountSplashBaseText, createAccountSplashKeysetInfoText :: Text
+createAccountSplashBaseText =
+  "In order to receive funds to an Account, the unique Account must be recorded on the blockchain."
+createAccountSplashKeysetInfoText =
+  " First configure the Account by defining which keys are required to sign transactions. Then create the Account by recording it on the blockchain."
+
 createAccountSplash
   :: ( Monoid mConf, Flattenable mConf t
      , MonadWidget t m
@@ -142,9 +148,12 @@ createAccountSplash
   -> Workflow t m (Text, (mConf, Event t ()))
 createAccountSplash model name chain mPublicKey keysetPresets = Workflow $ do
   (keyset, keysetSelections) <- modalMain $ do
+
     dialogSectionHeading mempty "Notice"
     -- Placeholder text
-    divClass "group" $ text "In order to receive funds to an Account, the unique Account must be recorded on the blockchain. First configure the Account by defining which keys are required to sign transactions. Then create the Account by recording it on the blockchain."
+    divClass "group" $ text $ createAccountSplashBaseText
+      <> maybe createAccountSplashKeysetInfoText mempty mPublicKey
+
     dialogSectionHeading mempty "Destination"
     divClass "group" $ transactionDisplayNetwork model
     case mPublicKey of
@@ -158,10 +167,7 @@ createAccountSplash model name chain mPublicKey keysetPresets = Workflow $ do
         _ <- divClass "group" $ uiInputElement $ def
           & inputElementConfig_initialValue .~ keyToText key
           & initialAttributes <>~ ("disabled" =: "true" <> "class" =: " key-details__pubkey input labeled-input__input")
-        pure $ ( constDyn $ Just $ AddressKeyset
-                 { _addressKeyset_keys = Set.singleton key
-                 , _addressKeyset_pred = "keys-all"
-                 }
+        pure $ ( constDyn $ mkAccountGuard (Set.singleton key) "keys-all"
                , emptyKeysetPresets
                )
   (cancel, next) <- modalFooter $ do
@@ -170,8 +176,10 @@ createAccountSplash model name chain mPublicKey keysetPresets = Workflow $ do
     notGasPayer <- confirmButton cfg "I am not the Gas Payer"
     gasPayer <- confirmButton cfg "I am the Gas Payer"
     let next = leftmost
-          [ tagMaybe (fmap (createAccountNotGasPayer model name chain mPublicKey keysetSelections) <$> current keyset) notGasPayer
-          , tagMaybe (fmap (createAccountConfig model name chain mPublicKey keysetSelections) <$> current keyset) gasPayer
+          [ tagMaybe (fmap (createAccountNotGasPayer model name chain mPublicKey keysetSelections)
+                      <$> current keyset) notGasPayer
+          , tagMaybe (fmap (createAccountConfig model name chain mPublicKey keysetSelections)
+                      <$> current keyset) gasPayer
           ]
     pure (cancel, next)
   return (("Create Account", (mempty, cancel)), next)
@@ -192,7 +200,7 @@ createAccountNotGasPayer
   -> ChainId
   -> Maybe PublicKey
   -> DefinedKeyset t
-  -> AddressKeyset
+  -> AccountGuard
   -> Workflow t m (Text, (mConf, Event t ()))
 createAccountNotGasPayer ideL name chain mPublicKey selectedKeyset keyset = Workflow $ do
   modalMain $ do
@@ -203,7 +211,7 @@ createAccountNotGasPayer ideL name chain mPublicKey selectedKeyset keyset = Work
       _ <- uiDisplayTxBuilderWithCopy False $ TxBuilder
         { _txBuilder_accountName = name
         , _txBuilder_chainId = chain
-        , _txBuilder_keyset = Just keyset
+        , _txBuilder_keyset = keyset ^? _AccountGuard_KeySet . to (uncurry toPactKeyset)
         }
       pure ()
   modalFooter $ do
@@ -227,12 +235,12 @@ createAccountConfig
   -> ChainId
   -> Maybe PublicKey
   -> DefinedKeyset t
-  -> AddressKeyset
+  -> AccountGuard
   -> Workflow t m (Text, (mConf, Event t ()))
 createAccountConfig ideL name chainId mPublicKey selectedKeyset keyset = Workflow $ do
   let includePreviewTab = False
 
-  (cfg, cChainId, mGasPayer, ttl, gasLimit, _) <- divClass "modal__main transaction_details" $ uiCfg
+  (cfg, cChainId, mGasPayer, ttl, gasLimit, _,  _) <- divClass "modal__main transaction_details" $ uiCfg
     Nothing
     ideL
     (predefinedChainIdDisplayed chainId ideL)
@@ -241,7 +249,7 @@ createAccountConfig ideL name chainId mPublicKey selectedKeyset keyset = Workflo
     []
     TxnSenderTitle_GasPayer
     Nothing
-    $ uiAccountDropdown def True
+    $ uiAccountDropdown def (pure $ \_ a -> fromMaybe False (accountHasFunds a)) (pure id)
 
   let payload = HM.singleton tempkeyset $ toJSON keyset
       code = mkPactCode name
@@ -249,7 +257,7 @@ createAccountConfig ideL name chainId mPublicKey selectedKeyset keyset = Workflo
         { _deploymentSettingsConfig_chainId = userChainIdSelect
         , _deploymentSettingsConfig_userTab = Nothing :: Maybe (Text, m ())
         , _deploymentSettingsConfig_code = pure code
-        , _deploymentSettingsConfig_sender = uiAccountDropdown def False
+        , _deploymentSettingsConfig_sender = uiAccountDropdown def (pure $ \_ _ -> True) (pure id)
         , _deploymentSettingsConfig_data = Just payload
         , _deploymentSettingsConfig_nonce = Nothing
         , _deploymentSettingsConfig_ttl = Nothing
@@ -313,9 +321,10 @@ createAccountSubmit
   -> Workflow t m (Text, (mConf, Event t ()))
 createAccountSubmit model chainId result nodeInfos = Workflow $ do
   let cmd = _deploymentSettingsResult_command result
+      sender = _deploymentSettingsResult_sender result
 
   submitFeedback <- elClass "div" "modal__main transaction_details" $
-    submitTransactionWithFeedback model cmd chainId nodeInfos
+    submitTransactionWithFeedback model cmd sender chainId nodeInfos
 
   let succeeded = fmapMaybe (^? _Status_Done) (submitFeedback ^. transactionSubmitFeedback_listenStatus . to updated)
 

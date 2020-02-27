@@ -15,7 +15,7 @@
 
 -- | Little widget providing a UI for deployment related settings.
 --
--- Copyright   :  (C) 2018 Kadena
+-- Copyright   :  (C) 2020 Kadena
 -- License     :  BSD-style (see the file LICENSE)
 
 module Frontend.UI.DeploymentSettings
@@ -190,7 +190,8 @@ nextView includePreviewTab = \case
   DeploymentSettingsView_Preview -> Nothing
 
 data DeploymentSettingsResult key = DeploymentSettingsResult
-  { _deploymentSettingsResult_chainId :: ChainId
+  { _deploymentSettingsResult_sender :: AccountName
+  , _deploymentSettingsResult_chainId :: ChainId
   , _deploymentSettingsResult_command :: Pact.Command Text
   }
 
@@ -281,7 +282,8 @@ buildDeploymentSettingsResult m mSender signers cChainId capabilities ttl gasLim
       (_deploymentSettingsConfig_extraSigners settings)
       code' (HM.union jsonData' deploySettingsJsonData) publicKeyCapabilities
     pure $ DeploymentSettingsResult
-      { _deploymentSettingsResult_chainId = chainId
+      { _deploymentSettingsResult_sender = sender
+      , _deploymentSettingsResult_chainId = chainId
       , _deploymentSettingsResult_command = cmd
       }
 
@@ -382,7 +384,7 @@ uiDeploymentSettings m settings = mdo
 
       mRes <- traverse (uncurry $ tabPane mempty curSelection) mUserTabCfg
 
-      (cfg, cChainId, mSender, ttl, gasLimit, _) <- tabPane mempty curSelection DeploymentSettingsView_Cfg $
+      (cfg, cChainId, mSender, ttl, gasLimit, _, _) <- tabPane mempty curSelection DeploymentSettingsView_Cfg $
         uiCfg (Just code) m
           (_deploymentSettingsConfig_chainId settings $ m)
           (_deploymentSettingsConfig_ttl settings)
@@ -470,7 +472,7 @@ uiDeployMetaData
   => model
   -> Maybe TTLSeconds
   -> Maybe GasLimit
-  -> m (mConf, Dynamic t TTLSeconds, Dynamic t GasLimit)
+  -> m (mConf, Dynamic t TTLSeconds, Dynamic t GasLimit, Dynamic t GasPrice)
 uiDeployMetaData m mTTL mGasLimit = do
   dialogSectionHeading mempty "Settings"
   elKlass "div" ("group segment") $ uiMetaData m mTTL mGasLimit
@@ -502,12 +504,17 @@ uiCfg
   -> g (Text, m a)
   -> TxnSenderTitle
   -> Maybe (model -> Dynamic t Bool -> m (Event t (), ((), mConf)))
-  -> (model -> Dynamic t (Maybe ChainId) -> Event t (Maybe AccountName) -> m (Dynamic t (Maybe (AccountName, Account))))
+  -> ( model
+       -> Dynamic t (Maybe ChainId)
+       -> Event t (Maybe AccountName)
+       -> m (Dynamic t (Maybe (AccountName, Account)))
+     )
   -> m ( mConf
        , Dynamic t (Maybe Pact.ChainId)
        , Dynamic t (Maybe AccountName)
        , Dynamic t TTLSeconds
        , Dynamic t GasLimit
+       , Dynamic t GasPrice
        , g a
        )
 uiCfg mCode m wChainId mTTL mGasLimit userSections txnSenderTitle otherAccordion mSenderSelect = do
@@ -525,8 +532,8 @@ uiCfg mCode m wChainId mTTL mGasLimit userSections txnSenderTitle otherAccordion
           dialogSectionHeading mempty title
           elKlass "div" ("group segment") body
 
-        (cfg, ttl, gasLimit) <- uiDeployMetaData m mTTL mGasLimit
-        pure (cfg, cId, mSender, ttl, gasLimit, fa)
+        (cfg, ttl, gasLimit, gasPrice) <- uiDeployMetaData m mTTL mGasLimit
+        pure (cfg, cId, mSender, ttl, gasLimit, gasPrice, fa)
 
   rec
     let mkAccordionControlDyn initActive = foldDyn (const not) initActive
@@ -594,9 +601,18 @@ uiMetaData
   :: forall t m model mConf
      . ( DomBuilder t m, MonadHold t m, MonadFix m, PostBuild t m
        , HasNetwork model t, HasNetworkCfg mConf t, Monoid mConf
-       , GhcjsDomSpace ~ DomBuilderSpace m, MonadJSM m
+       , MonadJSM m, MonadJSM (Performable m)
+       , PerformEvent t m
+       , GhcjsDomSpace ~ DomBuilderSpace m
        )
-  => model -> Maybe TTLSeconds -> Maybe GasLimit -> m (mConf, Dynamic t TTLSeconds, Dynamic t GasLimit)
+  => model
+  -> Maybe TTLSeconds
+  -> Maybe GasLimit
+  -> m ( mConf
+       , Dynamic t TTLSeconds
+       , Dynamic t GasLimit
+       , Dynamic t GasPrice
+       )
 uiMetaData m mTTL mGasLimit = do
     pbGasPrice <- tag (current $ _pmGasPrice <$> m ^. network_meta) <$> getPostBuild
 
@@ -613,7 +629,7 @@ uiMetaData m mTTL mGasLimit = do
         :: Event t Text
         -> InputElementConfig EventResult t (DomBuilderSpace m)
         -> m (Event t GasPrice)
-      gasPriceInputBox setExternal conf = fmap (view _3) $ uiGasPriceInputField $ conf
+      gasPriceInputBox setExternal conf = fmap (view _3) $ uiGasPriceInputField never $ conf
         & initialAttributes %~ addToClassAttr "input-units"
         & inputElementConfig_initialValue .~ showGasPrice defaultTransactionGasPrice
         & inputElementConfig_setValue .~ leftmost
@@ -628,6 +644,7 @@ uiMetaData m mTTL mGasLimit = do
       gpInput <- mkLabeledInput True "Gas Price" (gasPriceInputBox $ fmap showGasPrice setSpeed) def
       let setPrice = fmap (showGasPrice . scaleGPtoTxnSpeed) gpInput
       pure $ leftmost [gpInput, setSpeed]
+    gasPrice <- holdDyn defaultTransactionGasPrice onGasPrice
 
     let initGasLimit = fromMaybe defaultTransactionGasLimit mGasLimit
     pbGasLimit <- case mGasLimit of
@@ -650,7 +667,7 @@ uiMetaData m mTTL mGasLimit = do
 
     gasLimit <- holdDyn initGasLimit $ leftmost [onGasLimit, pbGasLimit]
 
-    let mkTransactionFee c = fmap (view _1) $ uiGasPriceInputField $ c
+    let mkTransactionFee c = fmap (view _1) $ uiGasPriceInputField never $ c
           & initialAttributes %~ Map.insert "disabled" ""
 
     _ <- mkLabeledInputView True "Max Transaction Fee"  mkTransactionFee $
@@ -675,6 +692,8 @@ uiMetaData m mTTL mGasLimit = do
             & inputElementConfig_setValue .~ _inputElement_input inputEl
           (inputEl, inputEv) <- dimensionalInputFeedbackWrapper (Just "Seconds") $ uiIntInputElement (Just minTTL) (Just secondsInDay) $ conf
             & inputElementConfig_setValue .~ _inputElement_input sliderEl
+            & inputElementConfig_elementConfig . elementConfig_eventSpec %~ preventUpAndDownArrow @m
+          preventScrollWheel $ _inputElement_raw inputEl
           pure $ leftmost
             [ TTLSeconds . ParsedInteger <$> inputEv
             , fmapMaybe (readPact (TTLSeconds . ParsedInteger)) $ _inputElement_input sliderEl
@@ -693,6 +712,7 @@ uiMetaData m mTTL mGasLimit = do
         & networkCfg_setTTL .~ onTTL
       , ttl
       , gasLimit
+      , gasPrice
       )
 
   where
@@ -758,34 +778,50 @@ parseSigCapability txt = parsed >>= compiled >>= parseApp
     compiled parsedPactCode = fmapL (("Sig capability parse failed: " ++) . show) $
       compileExps (mkTextInfo $ Pact._pcCode parsedPactCode) (Pact._pcExps parsedPactCode)
     parsed = parsePact txt
-    toPV a = fmapL (("Sig capability argument parse failed, expected simple pact value: " ++) . T.unpack) $ toPactValue a
+    toPV a = fmapL (("Sig capability argument parse failed, expected simple pact value: " ++) . T.unpack)
+      $ toPactValue a
 
 -- | Display a single row for the user to enter a custom capability and
 -- account to attach
 capabilityInputRow
-  :: MonadWidget t m
+  :: forall t m key
+     . MonadWidget t m
   => Maybe DappCap
   -> m (Dynamic t (Maybe (KeyPair key)))
   -> m (CapabilityInputRow t key)
 capabilityInputRow mCap keyPairSelector = elClass "tr" "table__row" $ do
+  let
+    uiCapInput cfg0 = do
+      i <- uiInputElement cfg0
+      pure ( i
+           , ( parseSigCapability <$> value i
+             , _inputElement_input i
+             )
+           )
+
+    showCapPopover (_, (_, onInput)) = pure $ ffor onInput $ \case
+      "" -> PopoverState_Disabled
+      inp -> case parseSigCapability inp of
+        Left e -> PopoverState_Error $ T.pack e
+        Right _ -> PopoverState_Disabled
+
   (emptyCap, parsed) <- elClass "td" "table__cell_padded" $ mdo
-    cap <- uiInputElement $ def
+    (cap, (parsed, _)) <- uiInputWithPopover uiCapInput (_inputElement_raw . fst) showCapPopover $ def
       & inputElementConfig_initialValue .~ foldMap (renderCompactText . _dappCap_cap) mCap
-      & initialAttributes .~
-        (let (cls, dis) = maybe mempty (const (" input_transparent grant-capabilities-static-input", "disabled" =: "true")) mCap
+      & initialAttributes .~ (
+        let (cls, dis) = maybe
+              mempty
+              (const (" input_transparent grant-capabilities-static-input", "disabled" =: "true"))
+              mCap
         in mconcat
           [ "placeholder" =: "(module.capability arg1 arg2)"
           , "class" =: ("input_width_full" <> cls)
           , dis
-          ])
-      & modifyAttributes .~ ffor errors (\e -> "style" =: ("background-color: #fdd" <$ guard e))
-    emptyCap <- holdUniqDyn $ T.null <$> value cap
-    let parsed = parseSigCapability <$> value cap
-        showError = (\p e -> isLeft p && not e) <$> parsed <*> emptyCap
-        errors = leftmost
-          [ tag (current showError) (domEvent Blur cap)
-          , False <$ _inputElement_input cap
           ]
+        )
+
+    emptyCap <- holdUniqDyn $ T.null <$> value cap
+
     pure (emptyCap, parsed)
   dkp <- elClass "td" "table__cell_padded" keyPairSelector
 
@@ -957,6 +993,12 @@ uiDeployPreview model settings signers gasLimit ttl code lastPublicMeta capabili
       signingPairs = Map.keys capabilities <> Set.toList signers
       publicKeyCapabilities = disregardPrivateKey capabilities
 
+      isChainwebNode (NodeType_Pact _) = False
+      isChainwebNode (NodeType_Chainweb _) = True
+
+      dIsChainWebNode = maybe False (isChainwebNode . _nodeInfo_type) . headMay . rights
+        <$> model ^. network_selectedNodes
+
   let publicMeta = lastPublicMeta
         { _pmChainId = chainId
         , _pmGasLimit = gasLimit
@@ -968,17 +1010,29 @@ uiDeployPreview model settings signers gasLimit ttl code lastPublicMeta capabili
       extraSigners = _deploymentSettingsConfig_extraSigners settings
       jsondata = HM.union jsonData0 deploySettingsJsonData
 
-  eCmds <- performEvent $ ffor pb $ \_ -> do
-    c <- buildCmd nonce networkId publicMeta signingPairs extraSigners code jsondata publicKeyCapabilities
-    wc <- for (wrapWithBalanceChecks (Set.singleton sender) code) $ \wrappedCode -> do
-      buildCmd nonce networkId publicMeta signingPairs extraSigners wrappedCode jsondata publicKeyCapabilities
+  let
+    mkBuildCmd code0 = buildCmd nonce networkId publicMeta signingPairs
+      extraSigners code0 jsondata publicKeyCapabilities
+
+  eCmds <- performEvent $ ffor (current dIsChainWebNode <@ pb) $ \onChainweb -> do
+    c <- mkBuildCmd code
+    wc <-
+      if onChainweb then
+        Just <$> for (wrapWithBalanceChecks (Set.singleton sender) code) mkBuildCmd
+      else
+        pure Nothing
     pure (c, wc)
 
   void $ runWithReplace
     (text "Preparing transaction preview...")
-    (uiPreviewResponses <$> current (model ^. network_selectedNetwork) <*> current (model ^. wallet_accounts) <@> eCmds)
+    ( uiPreviewResponses
+      <$> current (model ^. network_selectedNetwork)
+      <*> current (model ^. wallet_accounts)
+      <*> current dIsChainWebNode
+      <@> eCmds
+    )
   where
-    uiPreviewResponses networkName accountData (cmd, wrappedCmd) = do
+    uiPreviewResponses networkName accountData isChainwebNode (cmd, mWrappedCmd) = do
       pb <- getPostBuild
 
       unless (any (any isGas) capabilities) $ do
@@ -997,16 +1051,30 @@ uiDeployPreview model settings signers gasLimit ttl code lastPublicMeta capabili
         uiAccountFixed sender
 
       let accountsToTrack = getAccounts networkName accountData
-          localReq = case wrappedCmd of
-            Left _e -> []
-            Right cmd0 -> pure $ NetworkRequest
+          localReq = case mWrappedCmd of
+            Nothing -> []
+            Just (Left _e) -> []
+            Just (Right cmd0) -> pure $ NetworkRequest
               { _networkRequest_cmd = cmd0
               , _networkRequest_chainRef = ChainRef Nothing chainId
               , _networkRequest_endpoint = Endpoint_Local
               }
+          parseChainwebWrapped =
+            if isChainwebNode then
+              parseWrappedBalanceChecks
+            else
+              -- Non-chainweb nodes won't have the expected contracts to utilise wrapped
+              -- balance checks, so we don't know what structure to expect here.
+              -- Kuro returns a (PLiteral (LString ...))
+              -- Chainweb returns a (PObject ...)
+              \pv -> Right (fmap (const Nothing) accountsToTrack, pv)
+
       responses <- performLocalRead (model ^. logger) (model ^. network) $ localReq <$ pb
       (errors, resp) <- fmap fanThese $ performEvent $ ffor responses $ \case
-        [(_, errorResult)] -> parseNetworkErrorResult (model ^. logger) parseWrappedBalanceChecks errorResult
+        [(_, errorResult)] -> parseNetworkErrorResult
+          (model ^. logger)
+          parseChainwebWrapped
+          errorResult
         n -> do
           putLog model LevelWarn $ "Expected 1 response, but got " <> tshow (length n)
           pure $ This "Couldn't get a response from the node"
@@ -1021,7 +1089,10 @@ uiDeployPreview model settings signers gasLimit ttl code lastPublicMeta capabili
             th "Public Key"
             th "Change in Balance"
           accountBalances <- flip Map.traverseWithKey accountsToTrack $ \acc pks -> do
-            bal <- holdDyn Nothing $ leftmost [Just Nothing <$ errors, Just . join . Map.lookup acc . fst <$> resp]
+            bal <- holdDyn Nothing $ leftmost
+              [ Just Nothing <$ errors
+              , Just . join . Map.lookup acc . fst <$> resp
+              ]
             pure (pks, bal)
           el "tbody" $ void $ flip Map.traverseWithKey accountBalances $ \acc (pks, balance) -> el "tr" $ do
             let displayBalance = \case
@@ -1033,7 +1104,8 @@ uiDeployPreview model settings signers gasLimit ttl code lastPublicMeta capabili
             el "td" $ dynText $ displayBalance <$> balance
 
       dialogSectionHeading mempty "Raw Response"
-      void $ divClass "group segment transaction_details__raw-response" $ runWithReplace (text "Loading...") $ leftmost
+      void $ divClass "group segment transaction_details__raw-response"
+        $ runWithReplace (text "Loading...") $ leftmost
         [ text . renderCompactText . snd <$> resp
         , text <$> errors
         ]
@@ -1044,5 +1116,5 @@ uiDeployPreview model settings signers gasLimit ttl code lastPublicMeta capabili
       let accs = Map.restrictKeys allAccounts (Set.singleton sender)
       pure $ ffor accs $ \info -> case Map.lookup chainId $ _accountInfo_chains info of
         Just status | AccountStatus_Exists details <- _account_status status
-          -> _addressKeyset_keys $ _accountDetails_keyset details
+          -> details ^. accountDetails_guard . _AccountGuard_KeySet . _1
         _ -> mempty

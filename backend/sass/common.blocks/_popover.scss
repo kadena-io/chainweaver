@@ -13,10 +13,10 @@
 /*== common styles for both parts of popover tip ==*/
 .popover__message::before,
 .popover__message::after {
-  opacity: 0;
+  display: none;
   position: absolute;
-  z-index: -100;
-  right: 3.3%
+  right: 3.3%;
+  z-index: 100;
 }
 
 // If you want to use 'tooltip' like behaviour, then these are
@@ -28,16 +28,16 @@
 
 .popover__message.popover__display::before,
 .popover__message.popover__display::after {
-  opacity: 1;
-  z-index: 100;
+  display: initial;
 }
 
 // Use this to create more colour variations for the bubble and arrow
 @mixin popover-colouring($colour, $text-colour: white) {
   &::before {
-    border-bottom-color: $colour;
+    border-bottom-color: $text-colour;
   };
   &::after {
+    border-color: $text-colour;
     background: $colour;
     color: $text-colour;
   };
@@ -47,15 +47,12 @@
   border: 0.1rem solid $colour;
 }
 
-.popover__message.popover__error { @include popover-colouring($danger-red); }
-.popover__error-state { @include popover-state-border($danger-red); }
-
-.popover__message.popover__warning { @include popover-colouring($chainweaver-orange); }
-.popover__warning-state { @include popover-state-border($chainweaver-orange); }
+.popover__message.popover__error { @include popover-colouring($chainweaver-light-red, $chainweaver-dark-red); }
+.popover__error-state { @include popover-state-border($chainweaver-dark-red); }
 
 .popover__icon {
   position: absolute;
-  top: 25%;
+  bottom: 10px;
   right: 2%;
 }
 
@@ -64,19 +61,19 @@ i.fa.popover__icon-warning { color: $chainweaver-orange; }
 
 /*== pointer tip ==*/
 .popover__message::before {
+  bottom: -20px;
   content: "";
-
   border-left: 1rem solid transparent;
   border-right: 0 solid transparent;
-  border-bottom: 1.3rem solid;
-
-  top: 1.7rem;
+  border-bottom: 1.4rem solid;
 }
 
 /*== speech bubble ==*/
 .popover__message::after {
+  border: 0.2rem solid;
   border-radius: .25em;
   content: attr(data-tip);
   padding: 0.4rem;
-  top: 115%;
+  bottom: -50px;
+  line-height: initial;
 }

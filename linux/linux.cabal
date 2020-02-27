@@ -11,6 +11,7 @@ library
       base
     , backend
     , desktop
+    , frontend
     , async
     , bytestring
     , data-default

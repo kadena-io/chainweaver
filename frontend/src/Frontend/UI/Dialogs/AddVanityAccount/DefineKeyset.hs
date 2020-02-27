@@ -58,25 +58,32 @@ uiExternalKeyInput
 uiExternalKeyInput onPreselection = do
   let
     uiPubkeyInput :: Maybe Text -> m (ExternalKeyInput t)
-    uiPubkeyInput iv = divClass "define-keyset__external-key-input" $ do
-      (inp, dE) <- uiInputWithInlineFeedback
-        (fmap parsePublicKey . value)
-        (fmap (not . T.null) . value)
-        id
-        Nothing
-        uiInputElement
-        $ def
-        & initialAttributes .~ (
+    uiPubkeyInput iv = do
+      let
+        inp cfg = do
+          ie <- uiInputElement cfg
+          pure (ie
+               , ( parsePublicKey <$> value ie
+                 , parsePublicKey <$> _inputElement_input ie
+                 )
+               )
+
+        inputCfg = def & initialAttributes .~ (
           "placeholder" =: "External public key" <>
           "class" =: "labeled-input__input"
           )
-        & inputElementConfig_initialValue .~ fold iv
+          & inputElementConfig_initialValue .~ fold iv
+
+        showPopover (_, (_, onInput)) = pure $
+          either PopoverState_Error (const PopoverState_Disabled) <$> onInput
+
+      (inputE, (dE, onE)) <- uiInputWithPopover inp (_inputElement_raw . fst) showPopover inputCfg
 
       pure $ ExternalKeyInput
-        { _externalKeyInput_input = (hush . parsePublicKey) <$> _inputElement_input inp
+        { _externalKeyInput_input = hush <$> onE
         , _externalKeyInput_value = hush <$> dE
-        , _externalKeyInput_raw_input = _inputElement_input inp
-        , _externalKeyInput_raw_value = _inputElement_value inp
+        , _externalKeyInput_raw_input = _inputElement_input inputE
+        , _externalKeyInput_raw_value = _inputElement_value inputE
         }
 
     toSet :: IntMap.IntMap (ExternalKeyInput t) -> Dynamic t (Set PublicKey)
@@ -154,7 +161,7 @@ uiDefineKeyset
      )
   => model
   -> DefinedKeyset t
-  -> m (Dynamic t (Maybe AddressKeyset), DefinedKeyset t)
+  -> m (Dynamic t (Maybe AccountGuard), DefinedKeyset t)
 uiDefineKeyset model presets = do
   pb <- getPostBuild
   let
@@ -182,6 +189,6 @@ uiDefineKeyset model presets = do
     ipks = _keysetInputs_set selectedKeys
     epks = _keysetInputs_set externalKeys
 
-  pure ( ffor2 (ipks <> epks) predicate $ \pks kspred -> kspred >>= mkAddressKeyset pks
+  pure ( ffor2 (ipks <> epks) predicate $ \pks kspred -> kspred >>= mkAccountGuard pks
        , DefinedKeyset selectedKeys externalKeys predicate
        )

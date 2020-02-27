@@ -9,15 +9,14 @@ import Data.Aeson
 import Data.Maybe
 import Pact.Types.ChainId
 import Kadena.SigningApi (AccountName(..))
-
-import Common.Wallet
+import Pact.Types.Term (KeySet (..))
 
 data TxBuilder = TxBuilder
   { _txBuilder_accountName :: AccountName
     -- ^ The account name associated with this address
   , _txBuilder_chainId :: ChainId
     -- ^ The chain where this account resides
-  , _txBuilder_keyset :: Maybe AddressKeyset
+  , _txBuilder_keyset :: Maybe KeySet
     -- ^ Presence or absence of a keyset may be used to determine transfer vs
     -- transfer-create. If the keyset is present and the account already exists
     -- you could choose to do either a transfer or a transfer-create.

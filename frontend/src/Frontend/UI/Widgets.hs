@@ -18,6 +18,8 @@ module Frontend.UI.Widgets
   -- ** Single Purpose Widgets
   , uiGasPriceInputField
   , uiDetailsCopyButton
+
+  , uiTxBuilder
   , uiDisplayTxBuilderWithCopy
     -- * Values for _deploymentSettingsConfig_chainId:
   , predefinedChainIdSelect
@@ -36,7 +38,6 @@ module Frontend.UI.Widgets
   -- ** Other widgets
   , PopoverState (..)
   , uiInputWithPopover
-  , uiInputWithInlineFeedback
   , uiSegment
   , uiGroup
   , uiGroupHeader
@@ -44,7 +45,6 @@ module Frontend.UI.Widgets
   , uiInputElement
   , uiTextAreaElement
   , uiCorrectingInputElement
-  , uiRealInputElement
   , uiNonnegativeRealWithPrecisionInputElement
   , uiIntInputElement
   , uiSlider
@@ -64,6 +64,9 @@ module Frontend.UI.Widgets
   , uiAccountBalance
   , uiAccountBalance'
   , uiPublicKeyShrunk
+  , uiForm
+  , uiForm'
+  , uiPublicKeyShrunkDyn
     -- ** Helper types to avoid boolean blindness for additive input
   , AllowAddNewRow (..)
   , AllowDeleteRow (..)
@@ -95,8 +98,8 @@ module Frontend.UI.Widgets
 ------------------------------------------------------------------------------
 import           Control.Applicative
 import           Control.Arrow (first, (&&&))
+import           Control.Lens hiding (element)
 import           Control.Error (hush)
-import           Control.Lens
 import           Control.Monad
 import           Control.Monad.Except
 import           Control.Monad.Trans.Maybe
@@ -225,7 +228,7 @@ uiSelectElement uCfg child = do
 
 uiPassword :: DomBuilder t m => Text -> Text -> Text -> m (InputElement EventResult (DomBuilderSpace m) t)
 uiPassword wrapperCls inputCls ph = elClass "span" wrapperCls $ do
-  imgWithAltCls "setup__password-wrapper-lock" (static @"img/lock-dark.svg") "Password" blank
+  imgWithAltCls "password-input__lock" (static @"img/lock-dark.svg") "Password" blank
   uiInputElement $ def & initialAttributes .~ mconcat
     [ "type" =: "password"
     , "placeholder" =: ph
@@ -239,6 +242,16 @@ addInputElementCls = addToClassAttr "input"
 addNoAutofillAttrs :: (Ord attr, IsString attr) => Map attr Text -> Map attr Text
 addNoAutofillAttrs = (noAutofillAttrs <>)
 
+-- | Produces a form wrapper given a suitable submit button so that the enter key is correctly handled
+uiForm' :: forall t m a b. DomBuilder t m => ElementConfig EventResult t (DomBuilderSpace m) -> m b -> m a -> m (Event t (), (a,b))
+uiForm' cfg btn fields = do
+  let mkCfg = elementConfig_eventSpec %~ addEventSpecFlags (Proxy :: Proxy (DomBuilderSpace m)) Submit (\_ -> preventDefault)
+  (elt, a) <- element "form" (mkCfg cfg) $ (,) <$> fields <*> btn
+  pure (domEvent Submit elt, a)
+
+-- | Produces a form wrapper given a suitable submit button so that the enter key is correctly handled
+uiForm :: forall t m a. DomBuilder t m => ElementConfig EventResult t (DomBuilderSpace m) -> m () -> m a -> m (Event t (), a)
+uiForm cfg btn fields = (_2 %~ fst) <$> uiForm' cfg btn fields
 
 -- | reflex-dom `inputElement` with chainweaver default styling:
 uiInputElement
@@ -247,36 +260,27 @@ uiInputElement
   -> m (InputElement er (DomBuilderSpace m) t)
 uiInputElement cfg = inputElement $ cfg & initialAttributes %~ (addInputElementCls . addNoAutofillAttrs)
 
--- | uiInputElement which should always provide a proper real number.
---
---   In particular it will always have a decimal point in it.
-uiRealInputElement
-  :: DomBuilder t m
-  => InputElementConfig er t (DomBuilderSpace m)
-  -> m (InputElement er (DomBuilderSpace m) t)
-uiRealInputElement cfg = do
-    inputElement $ cfg & initialAttributes %~
-        (<> ("type" =: "number")) . addInputElementCls . addNoAutofillAttrs
-
 uiCorrectingInputElement
   :: forall t m a explanation
      . ( DomBuilder t m
        , MonadFix m
        , MonadHold t m
        )
-  => (Text -> Maybe a)
+  => Event t ()
+  -> (Text -> Maybe a)
   -> (a -> Maybe (a, explanation))
   -> (a -> Maybe (a, explanation))
   -> (a -> Text)
   -> InputElementConfig EventResult t (DomBuilderSpace m)
   -> m (InputElement EventResult (DomBuilderSpace m) t, Dynamic t (Maybe a), Event t (a, Maybe explanation))
-uiCorrectingInputElement parse inputSanitize blurSanitize render cfg = mdo
+uiCorrectingInputElement eReset parse inputSanitize blurSanitize render cfg = mdo
   ie <- inputElement $ cfg & inputElementConfig_setValue %~ (\e -> leftmost
       [ attemptCorrection e
       , forceCorrection inp
       , blurAttemptCorrection eBlurredVal
       , blurForceCorrection eBlurredVal
       , purgeInvalidInputs
+      , mempty <$ eReset
       ]
     )
 
@@ -333,47 +337,37 @@ uiCorrectingInputElement parse inputSanitize blurSanitize render cfg = mdo
 
   pure (ie, (fmap . fmap) fst $ inputSanitization val, inp')
 
-uiInputWithInlineFeedback
-  :: ( DomBuilder t m
-     , MonadHold t m
-     , MonadFix m
-     , PostBuild t m
-     )
-  => (a -> Dynamic t (Either e b))
-  -> (a -> Dynamic t Bool)
-  -> (e -> Text)
-  -> Maybe Text
-  -> (InputElementConfig EventResult t (DomBuilderSpace m) -> m a)
-  -> InputElementConfig EventResult t (DomBuilderSpace m)
-  -> m (a, Dynamic t (Either e b))
-uiInputWithInlineFeedback parse isDirty renderFeedback mUnits mkInp cfg =
-  dimensionalInputFeedbackWrapper mUnits $ do
-    inp <- mkInp cfg
-
-    let dParsed = parse inp
-    dIsDirty <- holdUniqDyn $ isDirty inp
-
-    dyn_ $ ffor2 dParsed dIsDirty $ curry $ \case
-      (Left e, True) -> elClass "span" "dimensional-input__feedback" $ text $ renderFeedback e
-      _ -> blank
-
-    pure (inp, dParsed)
-
 -- | Decimal input to the given precision. Returns the element, the value, and
 -- the user input events
 uiNonnegativeRealWithPrecisionInputElement
-  :: forall t m a. (DomBuilder t m, MonadFix m, MonadHold t m)
-  => Word8
+  :: forall t m a
+     . ( DomBuilder t m
+       , MonadFix m
+       , MonadHold t m
+       , PostBuild t m
+       , PerformEvent t m
+       , MonadJSM m
+       , MonadJSM (Performable m)
+       , DomBuilderSpace m ~ GhcjsDomSpace
+       )
+  => Event t ()
+  -> Word8
   -> (Decimal -> a)
   -> InputElementConfig EventResult t (DomBuilderSpace m)
   -> m (InputElement EventResult (DomBuilderSpace m) t, Dynamic t (Maybe a), Event t a)
-uiNonnegativeRealWithPrecisionInputElement prec fromDecimal cfg = do
-  rec
-    (ie, val, input) <- uiCorrectingInputElement parse inputSanitize blurSanitize tshow $ cfg
-      & initialAttributes %~ addInputElementCls . addNoAutofillAttrs
-        . (<> ("type" =: "number" <> "step" =: stepSize <> "min" =: stepSize))
-    widgetHold_ blank $ ffor (fmap snd input) $ traverse_ $
-      elClass "span" "dimensional-input__feedback" . text
+uiNonnegativeRealWithPrecisionInputElement eReset prec fromDecimal cfg = do
+  let
+    uiCorrecting cfg0 = do
+      (ie, val, input) <- uiCorrectingInputElement eReset parse inputSanitize blurSanitize tshow $ cfg0
+      pure (ie, (input, val))
+
+    showPopover (_, (onInput, _)) = pure $ ffor onInput $
+      maybe PopoverState_Disabled PopoverState_Error . snd
+
+  (ie, (input, val)) <- uiInputWithPopover uiCorrecting (_inputElement_raw . fst) showPopover $ cfg
+    & initialAttributes %~ addInputElementCls . addNoAutofillAttrs . (<> ("type" =: "number" <> "step" =: stepSize <> "min" =: stepSize))
+    & inputElementConfig_elementConfig . elementConfig_eventSpec %~ preventUpAndDownArrow @m
+  preventScrollWheel $ _inputElement_raw ie
 
   pure (ie, (fmap . fmap) fromDecimal val, fmap (fromDecimal . fst) input)
 
@@ -401,17 +395,22 @@ uiNonnegativeRealWithPrecisionInputElement prec fromDecimal cfg = do
 
 -- TODO: correct floating point decimals
 uiIntInputElement
-  :: ( DomBuilder t m
-     , MonadFix m
-     , MonadHold t m
-     )
+  :: forall t m
+     . ( DomBuilder t m
+       , MonadJSM m
+       , GhcjsDomSpace ~ DomBuilderSpace m
+       , MonadHold t m
+       , MonadFix m
+       )
   => Maybe Integer
   -> Maybe Integer
   -> InputElementConfig EventResult t (DomBuilderSpace m)
   -> m (InputElement EventResult (DomBuilderSpace m) t, Event t Integer)
 uiIntInputElement mmin mmax cfg = do
-    (r, _, input) <- uiCorrectingInputElement (tread . fixNum) sanitize (const Nothing) tshow $ cfg & initialAttributes %~
-      ((<> numberAttrs) . addInputElementCls . addNoAutofillAttrs)
+    (r, _, input) <- uiCorrectingInputElement never (tread . fixNum) sanitize (const Nothing) tshow $ cfg
+      & initialAttributes %~ ((<> numberAttrs) . addInputElementCls . addNoAutofillAttrs)
+      & inputElementConfig_elementConfig . elementConfig_eventSpec %~ preventUpAndDownArrow @m
+    preventScrollWheel $ _inputElement_raw r
 
     pure (r
           { _inputElement_value = fmap fixNum $ _inputElement_value r
@@ -659,11 +658,22 @@ uiAccountBalance showUnits = \case
     , " KDA" <$ guard showUnits
     ]
 
-uiPublicKeyShrunk :: (DomBuilder t m, PostBuild t m) => Dynamic t PublicKey -> m ()
-uiPublicKeyShrunk pk = do
-  divClass "wallet__public-key" $ do
-    elClass "span" "wallet__public-key__prefix" $ dynText $ T.dropEnd 6 <$> ktxt
-    elClass "span" "wallet__public-key__suffix" $ dynText $ T.takeEnd 6 <$> ktxt
+uiPublicKeyShrunkDOM :: DomBuilder t m => m () -> m () -> m ()
+uiPublicKeyShrunkDOM f6 l6 = divClass "wallet__public-key" $ do
+  elClass "span" "wallet__public-key__prefix" f6
+  elClass "span" "wallet__public-key__suffix" l6
+
+uiPublicKeyShrunk :: DomBuilder t m => PublicKey -> m ()
+uiPublicKeyShrunk pk = uiPublicKeyShrunkDOM
+  (text $ T.dropEnd 6 ktxt)
+  (text $ T.takeEnd 6 ktxt)
+  where
+    ktxt = keyToText pk
+
+uiPublicKeyShrunkDyn :: (DomBuilder t m, PostBuild t m) => Dynamic t PublicKey -> m ()
+uiPublicKeyShrunkDyn pk = uiPublicKeyShrunkDOM
+  (dynText $ T.dropEnd 6 <$> ktxt)
+  (dynText $ T.takeEnd 6 <$> ktxt)
   where
     ktxt = keyToText <$> pk
 
@@ -820,6 +830,23 @@ uiDetailsCopyButton txt = do
         & uiButtonCfg_title .~ constDyn (Just "Copy")
   divClass "details__copy-btn-wrapper" $ copyButton cfg False txt
 
+prettyTxBuilder :: TxBuilder -> Text
+prettyTxBuilder = LT.toStrict . LTB.toLazyText . AesonPretty.encodePrettyToTextBuilder
+
+uiTxBuilder
+  :: DomBuilder t m
+  => Maybe TxBuilder
+  -> TextAreaElementConfig r t (DomBuilderSpace m)
+  -> m (TextAreaElement r (DomBuilderSpace m) t)
+uiTxBuilder txBuilder cfg = do
+  let txt = prettyTxBuilder <$> txBuilder
+  uiTextAreaElement $ cfg
+    & maybe id (textAreaElementConfig_initialValue .~) txt
+    & initialAttributes <>~ fold
+      [ "rows" =: tshow (max 13 {- for good luck -} $ maybe 0 (length . T.lines) txt)
+      , "class" =: " labeled-input__input labeled-input__tx-builder"
+      ]
+
 uiDisplayTxBuilderWithCopy
   :: ( MonadJSM (Performable m)
      , DomBuilder t m
@@ -831,19 +858,12 @@ uiDisplayTxBuilderWithCopy
   => Bool
   -> TxBuilder
   -> m ()
-uiDisplayTxBuilderWithCopy withLabel address = void $ do
-  let txtAddr = LT.toStrict $ LTB.toLazyText $ AesonPretty.encodePrettyToTextBuilder address
-  -- Tx Builder
+uiDisplayTxBuilderWithCopy withLabel txBuilder = do
   elClass "div" "segment segment_type_tertiary labeled-input" $ do
     when withLabel $ divClass "label labeled-input__label" $ text "Tx Builder"
-    void $ uiTextAreaElement $ def
-      & initialAttributes <>~ (
-        "disabled" =: "true" <>
-        "rows" =: tshow (max 13 {- for good luck -} $ length $ T.lines txtAddr) <>
-        "class" =: " labeled-input__input labeled-input__tx-builder"
-        )
-      & textAreaElementConfig_initialValue .~ txtAddr
-  uiDetailsCopyButton $ pure txtAddr
+    void $ uiTxBuilder (Just txBuilder) $ def
+      & initialAttributes <>~ "disabled" =: "true"
+  uiDetailsCopyButton $ pure $ prettyTxBuilder txBuilder
 
 uiGasPriceInputField
   :: forall m t.
@@ -851,20 +871,19 @@ uiGasPriceInputField
      , MonadFix m
      , MonadHold t m
      , GhcjsDomSpace ~ DomBuilderSpace m
-     , MonadJSM m
+     , MonadJSM m, MonadJSM (Performable m)
+     , PostBuild t m
+     , PerformEvent t m
      )
-  => InputElementConfig EventResult t (DomBuilderSpace m)
+  => Event t ()
+  -> InputElementConfig EventResult t (DomBuilderSpace m)
   -> m ( InputElement EventResult (DomBuilderSpace m) t
        , Dynamic t (Maybe GasPrice)
        , Event t GasPrice
        )
-uiGasPriceInputField conf = dimensionalInputFeedbackWrapper (Just "KDA") $ do
-  (i, d, e) <- uiNonnegativeRealWithPrecisionInputElement maxCoinPrecision (GasPrice . ParsedDecimal) $ conf
+uiGasPriceInputField eReset conf = dimensionalInputFeedbackWrapper (Just "KDA") $ do
+  uiNonnegativeRealWithPrecisionInputElement eReset maxCoinPrecision (GasPrice . ParsedDecimal) $ conf
     & initialAttributes %~ addToClassAttr "input-units"
-    & inputElementConfig_elementConfig . elementConfig_eventSpec %~ preventUpAndDownArrow @m
-  preventScrollWheel $ _inputElement_raw i
-  pure (i, d, e)
-
 
 -- | Let the user pick a chain id.
 userChainIdSelect
@@ -979,10 +998,11 @@ uiAccountFixed sender = do
 mkChainTextAccounts
   :: (Reflex t, HasWallet model key t, HasNetwork model t)
   => model
-  -> Bool
+  -> Dynamic t (AccountName -> Account -> Bool)
   -> Dynamic t (Maybe ChainId)
   -> Dynamic t (Either Text (Map AccountName Text))
-mkChainTextAccounts m needsGas mChainId = runExceptT $ do
+mkChainTextAccounts m allowAccount mChainId = runExceptT $ do
+  allowAcc <- lift allowAccount
   netId <- lift $ m ^. network_selectedNetwork
 
   keys <- lift $ m ^. wallet_keys
@@ -990,7 +1010,7 @@ mkChainTextAccounts m needsGas mChainId = runExceptT $ do
   accountsOnNetwork <- ExceptT $ note "No accounts on current network" . Map.lookup netId . unAccountData <$> m ^. wallet_accounts
   let mkVanity n (AccountInfo _ chainMap)
         | Just a <- Map.lookup chain chainMap
-         , not needsGas || (fromMaybe 0 (a ^? account_status . _AccountStatus_Exists . accountDetails_balance)) > 0
+        , allowAcc n a
         -- Only select _our_ accounts. TODO: run pact code to ensure keyset predicate(s)
         -- are satisfied so we're able to handle user created predicates correctly.
         , accountSatisfiesKeysetPredicate keys a
@@ -1009,20 +1029,21 @@ uiAccountDropdown'
      , HasNetwork model t
      )
   => DropdownConfig t (Maybe AccountName)
-  -> Bool
+  -> Dynamic t (AccountName -> Account -> Bool)
+  -> Dynamic t (Text -> Text)
   -> model
   -> Maybe AccountName
   -> Dynamic t (Maybe ChainId)
   -> Event t (Maybe AccountName)
   -> m (Dynamic t (Maybe (AccountName, Account)))
-uiAccountDropdown' uCfg needsGas m initVal chainId setSender = do
+uiAccountDropdown' uCfg allowAccount mkPlaceholder m initVal chainId setSender = do
   let
-    textAccounts = mkChainTextAccounts m needsGas chainId
-    dropdownItems =
+    textAccounts = mkChainTextAccounts m allowAccount chainId
+    dropdownItems = ffor2 mkPlaceholder textAccounts $ \mk ->
       either
           (Map.singleton Nothing)
-          (Map.insert Nothing "Choose an Account" . Map.mapKeys Just)
-      <$> textAccounts
+          (Map.insert Nothing (mk "Choose an Account") . Map.mapKeys Just)
+
   choice <- dropdown initVal dropdownItems $ uCfg
     & dropdownConfig_setValue .~ leftmost [Nothing <$ updated chainId, setSender]
     & dropdownConfig_attributes <>~ pure ("class" =: "labeled-input__input select select_mandatory_missing")
@@ -1043,12 +1064,13 @@ uiAccountDropdown
      , HasNetwork model t
      )
   => DropdownConfig t (Maybe AccountName)
-  -> Bool
+  -> Dynamic t (AccountName -> Account -> Bool)
+  -> Dynamic t (Text -> Text)
   -> model
   -> Dynamic t (Maybe ChainId)
   -> Event t (Maybe AccountName)
   -> m (Dynamic t (Maybe (AccountName, Account)))
-uiAccountDropdown uCfg needsGas m = uiAccountDropdown' uCfg needsGas m Nothing
+uiAccountDropdown uCfg allowAccount mkPlaceholder m = uiAccountDropdown' uCfg allowAccount mkPlaceholder m Nothing
 
 uiKeyPairDropdown
   :: forall t m key model
@@ -1084,25 +1106,23 @@ data PopoverState
   deriving (Eq, Show)
 
 uiInputWithPopover
-  :: forall t m cfg el a b
+  :: forall t m cfg el rawEl a
   .  ( DomBuilder t m
      , MonadHold t m
      , PostBuild t m
      , PerformEvent t m
      , MonadJSM (Performable m)
-     , DomBuilderSpace m ~ GhcjsDomSpace
-     , JS.IsElement el
-     -- This isn't here for any special reason other than it makes
-     -- the type signature a bit easier to read.
-     , a ~ InputElement EventResult (DomBuilderSpace m) t
+     , HasDomEvent t el 'BlurTag
+     , HasDomEvent t el 'FocusTag
+     , JS.IsElement rawEl
      )
   -- Return a tuple here so there is a bit more flexibility for what
   -- can be returned from your input widget.
-  => (cfg -> m (a,b))
-  -> ((a,b) -> el)
-  -> ((a,b) -> m (Event t PopoverState))
+  => (cfg -> m (el,a))
+  -> ((el,a) -> rawEl)
+  -> ((el,a) -> m (Event t PopoverState))
   -> cfg
-  -> m (a,b)
+  -> m (el,a)
 uiInputWithPopover body getStateBorderTarget mkMsg cfg = divClass "popover" $ do
   let
     popoverBlurCls = \case

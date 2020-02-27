@@ -71,8 +71,13 @@ $tab-nav-secondary-active-border-color: $chainweaver-blue;
   font-weight: 500;
 }
 
+.tab-nav__button_type_secondary,
+.tab-nav__button_type_secondary.tab-nav__button {
+  border-bottom: 2px solid transparent;
+}
+
 .tab-nav__button_type_secondary:active,
 .tab-nav__button_type_secondary.tab-nav__button_active {
-  border-bottom: 2px solid $tab-nav-secondary-active-border-color;
+  border-bottom-color: $tab-nav-secondary-active-border-color;
   color: $black-disabled-bg;
 }

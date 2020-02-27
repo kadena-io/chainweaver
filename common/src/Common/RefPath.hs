@@ -11,7 +11,7 @@
 -- | References that can be rendered as some kind of path (string
 -- representation) and parsed again.
 --
--- Copyright   :  (C) 2019 Kadena
+-- Copyright   :  (C) 2020 Kadena
 -- License     :  BSD-style (see the file LICENSE)
 --
 

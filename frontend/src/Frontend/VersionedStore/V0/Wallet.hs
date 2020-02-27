@@ -1,4 +1,4 @@
-module Frontend.Store.V0.Wallet where
+module Frontend.VersionedStore.V0.Wallet where
 
 import Data.Aeson (ToJSON(..), FromJSON(..), Value(Null), object, (.=), (.:), withObject, (.:?), withText)
 import Data.ByteString (ByteString)

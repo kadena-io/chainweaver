@@ -1,4 +1,4 @@
-module Frontend.Store.MigrationUtils where
+module Frontend.VersionedStore.MigrationUtils where
 
 import qualified Data.Dependent.Map as DMap
 import Data.Dependent.Map (DMap, DSum(..))

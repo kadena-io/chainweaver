@@ -10,15 +10,29 @@ extern void callIO(HsStablePtr);
 extern void callWithCString(const char * _Nonnull, HsStablePtr);
 
 // This class is here so we can send messages to it from selectors
-@interface DialogController:NSObject {
+@interface OpenDialogController:NSObject {
   NSOpenPanel *openFilePanel;
   HsStablePtr openFileHandler;
 }
--(DialogController *) initWithHandler:(HsStablePtr)handler;
--(void) openFileDialog;
+-(OpenDialogController *) initWithHandler:(HsStablePtr)handler;
+-(void) openFileDialog:(NSString *)fileType;
+-(void) openPactFileDialog;
 @end
 
-DialogController *global_dialogController = 0;
+// This doesn't technically need to be a separate controller thing because
+// we don't call it from the menu, but it also probably doesn't hurt. I have
+// no idea whether we need to free the panels if we created one every call
+// instead of it being a controller, so...
+@interface SaveDialogController:NSObject {
+  NSSavePanel *saveFilePanel;
+  HsStablePtr dirSelectedHandler;
+}
+-(SaveDialogController *) init;
+-(void) openSaveDialog:(HsStablePtr)handler fileName:(NSString *)fileName;
+@end
+
+OpenDialogController *global_openDialogController = 0;
+SaveDialogController *global_saveDialogController = 0;
 
 // This function will return ~/ only when the app is not quarantined in a sandbox
 const char *global_getHomeDirectory() {
@@ -32,14 +46,21 @@ const char *global_getBundleIdentifier() {
 }
 
 // For use from haskell land
-void global_openFileDialog() {
+void global_openFileDialog(char * cFileType) {
+  NSString * fileType = [NSString stringWithCString:cFileType];
   // Add the operation to the queue to ensure it happens on main thread
   [[NSOperationQueue mainQueue] addOperationWithBlock:^(void) {
-    [global_dialogController openFileDialog];
+    [global_openDialogController openFileDialog:fileType];
+  }];
+}
+void global_openSaveDialog(char * cFileName, HsStablePtr handler) {
+  NSString * fileName = [NSString stringWithCString:cFileName];
+  [[NSOperationQueue mainQueue] addOperationWithBlock:^(void) {
+    [global_saveDialogController openSaveDialog:handler fileName:fileName];
   }];
 }
 
-@implementation DialogController
+@implementation OpenDialogController
 -(id)initWithHandler:(HsStablePtr)handler {
   self = [super init];
   openFilePanel = [[NSOpenPanel openPanel] retain];
@@ -47,14 +68,36 @@ void global_openFileDialog() {
   [openFilePanel setCanChooseFiles:YES];
   [openFilePanel setAllowsMultipleSelection:NO];
   [openFilePanel setCanChooseDirectories:NO];
-  NSArray *fileTypes = @[@"pact"];
-  [openFilePanel setAllowedFileTypes:fileTypes];
+
   return self;
 }
--(void) openFileDialog {
+-(void) openFileDialog:(NSString *)fileType {
+  NSArray *fileTypes = @[fileType];
+  [openFilePanel setAllowedFileTypes:fileTypes];
+
   if ([openFilePanel runModal] == NSFileHandlingPanelOKButton) {
     NSURL *url = [[openFilePanel URLs] objectAtIndex:0];
     callWithCString([url fileSystemRepresentation], openFileHandler);
+  }
+}
+-(void) openPactFileDialog {
+  [self openFileDialog:@"pact"];
+}
+@end
+
+@implementation SaveDialogController
+-(id)init {
+  self = [super init];
+  saveFilePanel = [[NSSavePanel alloc] init];
+  [saveFilePanel setCanCreateDirectories:YES];
+
+  return self;
+}
+-(void) openSaveDialog:(HsStablePtr)handler  fileName:(NSString *)fileName {
+  [saveFilePanel setNameFieldStringValue:fileName];
+  if ([saveFilePanel runModal] == NSFileHandlingPanelOKButton) {
+    NSURL *url = [saveFilePanel URL];
+    callWithCString([url fileSystemRepresentation], handler);
   }
 }
 @end
@@ -106,7 +149,8 @@ void moveToBackground() {
 
 void setupAppMenu(HsStablePtr hs_handleOpenedFile) {
   NSApplication *application = [NSApplication sharedApplication];
-  global_dialogController = [[DialogController alloc] initWithHandler:hs_handleOpenedFile];
+  global_openDialogController = [[OpenDialogController alloc] initWithHandler:hs_handleOpenedFile];
+  global_saveDialogController = [[SaveDialogController alloc] init];
 
   NSMenu *mainMenu = [[NSMenu alloc] init];
   NSMenuItem *appMenuItem = [mainMenu
@@ -173,10 +217,10 @@ void setupAppMenu(HsStablePtr hs_handleOpenedFile) {
 
   NSMenuItem *open = [fileMenu
     addItemWithTitle:@"Open"
-    action: @selector(openFileDialog)
+    action: @selector(openPactFileDialog)
     keyEquivalent:@"o"
   ];
-  [open setTarget:global_dialogController];
+  [open setTarget:global_openDialogController];
 
   WKWebView *webView = [[application mainWindow] contentView];
 

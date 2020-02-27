@@ -19,7 +19,7 @@
 --
 --   In short, what can be loaded to the editor are files and single modules.
 --
--- Copyright   :  (C) 2019 Kadena
+-- Copyright   :  (C) 2020 Kadena
 -- License     :  BSD-style (see the file LICENSE)
 --
 

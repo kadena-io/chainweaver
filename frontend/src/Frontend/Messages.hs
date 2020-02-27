@@ -20,7 +20,7 @@
 --
 --   E.g. The response of a deployment, errors when loading code into the REPL, ..
 --
--- Copyright   :  (C) 2018 Kadena
+-- Copyright   :  (C) 2020 Kadena
 -- License     :  BSD-style (see the file LICENSE)
 --
 
