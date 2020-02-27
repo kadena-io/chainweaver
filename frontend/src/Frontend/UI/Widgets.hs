@@ -266,19 +266,21 @@ uiCorrectingInputElement
        , MonadFix m
        , MonadHold t m
        )
-  => (Text -> Maybe a)
+  => Event t ()
+  -> (Text -> Maybe a)
   -> (a -> Maybe (a, explanation))
   -> (a -> Maybe (a, explanation))
   -> (a -> Text)
   -> InputElementConfig EventResult t (DomBuilderSpace m)
   -> m (InputElement EventResult (DomBuilderSpace m) t, Dynamic t (Maybe a), Event t (a, Maybe explanation))
-uiCorrectingInputElement parse inputSanitize blurSanitize render cfg = mdo
+uiCorrectingInputElement eReset parse inputSanitize blurSanitize render cfg = mdo
   ie <- inputElement $ cfg & inputElementConfig_setValue %~ (\e -> leftmost
       [ attemptCorrection e
       , forceCorrection inp
       , blurAttemptCorrection eBlurredVal
       , blurForceCorrection eBlurredVal
       , purgeInvalidInputs
+      , mempty <$ eReset
       ]
     )
 
@@ -348,14 +350,15 @@ uiNonnegativeRealWithPrecisionInputElement
        , MonadJSM (Performable m)
        , DomBuilderSpace m ~ GhcjsDomSpace
        )
-  => Word8
+  => Event t ()
+  -> Word8
   -> (Decimal -> a)
   -> InputElementConfig EventResult t (DomBuilderSpace m)
   -> m (InputElement EventResult (DomBuilderSpace m) t, Dynamic t (Maybe a), Event t a)
-uiNonnegativeRealWithPrecisionInputElement prec fromDecimal cfg = do
+uiNonnegativeRealWithPrecisionInputElement eReset prec fromDecimal cfg = do
   let
     uiCorrecting cfg0 = do
-      (ie, val, input) <- uiCorrectingInputElement parse inputSanitize blurSanitize tshow $ cfg0
+      (ie, val, input) <- uiCorrectingInputElement eReset parse inputSanitize blurSanitize tshow $ cfg0
       pure (ie, (input, val))
 
     showPopover (_, (onInput, _)) = pure $ ffor onInput $
@@ -404,7 +407,7 @@ uiIntInputElement
   -> InputElementConfig EventResult t (DomBuilderSpace m)
   -> m (InputElement EventResult (DomBuilderSpace m) t, Event t Integer)
 uiIntInputElement mmin mmax cfg = do
-    (r, _, input) <- uiCorrectingInputElement (tread . fixNum) sanitize (const Nothing) tshow $ cfg
+    (r, _, input) <- uiCorrectingInputElement never (tread . fixNum) sanitize (const Nothing) tshow $ cfg
       & initialAttributes %~ ((<> numberAttrs) . addInputElementCls . addNoAutofillAttrs)
       & inputElementConfig_elementConfig . elementConfig_eventSpec %~ preventUpAndDownArrow @m
     preventScrollWheel $ _inputElement_raw r
@@ -872,13 +875,14 @@ uiGasPriceInputField
      , PostBuild t m
      , PerformEvent t m
      )
-  => InputElementConfig EventResult t (DomBuilderSpace m)
+  => Event t ()
+  -> InputElementConfig EventResult t (DomBuilderSpace m)
   -> m ( InputElement EventResult (DomBuilderSpace m) t
        , Dynamic t (Maybe GasPrice)
        , Event t GasPrice
        )
-uiGasPriceInputField conf = dimensionalInputFeedbackWrapper (Just "KDA") $ do
-  uiNonnegativeRealWithPrecisionInputElement maxCoinPrecision (GasPrice . ParsedDecimal) $ conf
+uiGasPriceInputField eReset conf = dimensionalInputFeedbackWrapper (Just "KDA") $ do
+  uiNonnegativeRealWithPrecisionInputElement eReset maxCoinPrecision (GasPrice . ParsedDecimal) $ conf
     & initialAttributes %~ addToClassAttr "input-units"
 
 -- | Let the user pick a chain id.

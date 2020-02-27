@@ -504,7 +504,11 @@ uiCfg
   -> g (Text, m a)
   -> TxnSenderTitle
   -> Maybe (model -> Dynamic t Bool -> m (Event t (), ((), mConf)))
-  -> (model -> Dynamic t (Maybe ChainId) -> Event t (Maybe AccountName) -> m (Dynamic t (Maybe (AccountName, Account))))
+  -> ( model
+       -> Dynamic t (Maybe ChainId)
+       -> Event t (Maybe AccountName)
+       -> m (Dynamic t (Maybe (AccountName, Account)))
+     )
   -> m ( mConf
        , Dynamic t (Maybe Pact.ChainId)
        , Dynamic t (Maybe AccountName)
@@ -601,7 +605,14 @@ uiMetaData
        , PerformEvent t m
        , GhcjsDomSpace ~ DomBuilderSpace m
        )
-  => model -> Maybe TTLSeconds -> Maybe GasLimit -> m (mConf, Dynamic t TTLSeconds, Dynamic t GasLimit, Dynamic t GasPrice)
+  => model
+  -> Maybe TTLSeconds
+  -> Maybe GasLimit
+  -> m ( mConf
+       , Dynamic t TTLSeconds
+       , Dynamic t GasLimit
+       , Dynamic t GasPrice
+       )
 uiMetaData m mTTL mGasLimit = do
     pbGasPrice <- tag (current $ _pmGasPrice <$> m ^. network_meta) <$> getPostBuild
 
@@ -618,7 +629,7 @@ uiMetaData m mTTL mGasLimit = do
         :: Event t Text
         -> InputElementConfig EventResult t (DomBuilderSpace m)
         -> m (Event t GasPrice)
-      gasPriceInputBox setExternal conf = fmap (view _3) $ uiGasPriceInputField $ conf
+      gasPriceInputBox setExternal conf = fmap (view _3) $ uiGasPriceInputField never $ conf
         & initialAttributes %~ addToClassAttr "input-units"
         & inputElementConfig_initialValue .~ showGasPrice defaultTransactionGasPrice
         & inputElementConfig_setValue .~ leftmost
@@ -656,7 +667,7 @@ uiMetaData m mTTL mGasLimit = do
 
     gasLimit <- holdDyn initGasLimit $ leftmost [onGasLimit, pbGasLimit]
 
-    let mkTransactionFee c = fmap (view _1) $ uiGasPriceInputField $ c
+    let mkTransactionFee c = fmap (view _1) $ uiGasPriceInputField never $ c
           & initialAttributes %~ Map.insert "disabled" ""
 
     _ <- mkLabeledInputView True "Max Transaction Fee"  mkTransactionFee $
