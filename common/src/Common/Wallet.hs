@@ -11,6 +11,7 @@
 {-# LANGUAGE PatternGuards #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE TypeFamilies #-}
 
 module Common.Wallet
   ( PublicKey(..)
@@ -538,7 +539,7 @@ parseAccountDetails = first ("parseAccountDetails: " <>) . \case
           PLiteral (LDecimal balance) <- Map.lookup "balance" details
           PGuard pactGuard <- Map.lookup "guard" details
           pure $ AccountStatus_Exists $ AccountDetails
-            { _accountDetails_balance = AccountBalance $ forceDecimal balance
+            { _accountDetails_balance = AccountBalance $ forceDecimalPoint balance
             , _accountDetails_guard = fromPactGuard pactGuard
             }
         PLiteral (LBool False) -> pure AccountStatus_DoesNotExist
