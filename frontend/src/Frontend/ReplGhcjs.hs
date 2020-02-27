@@ -143,7 +143,6 @@ app sidebarExtra fileFFI appCfg = Store.versionedFrontend (Store.versionedStorag
         pure $ controlCfg <> mainCfg
 
     flatten =<< tagOnPostBuild routedCfg
-    -- pure $ netCfg <> flattenedCfg
 
   modalCfg <- showModal ideL
 

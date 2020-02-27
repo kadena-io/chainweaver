@@ -16,7 +16,7 @@
   display: none;
   position: absolute;
   right: 3.3%;
-  z-index: 100;
+  z-index: $popover-z-index;
 }
 
 // If you want to use 'tooltip' like behaviour, then these are
