@@ -14,6 +14,8 @@ $main-header-std-height-small-screen: 24px;
 $main-header-btn-font-size: $secondary-font-size;
 $main-header-wallet-btn-bg: #ececec;
 
+$main-header-z-index: 5;
+
 // For simplicity this block does not fully adhere to BEM (we are using child
 // selectors), but this does seem to be very ok for the main header and
 // minimizes the changes we need to do in Haskell. If this ever causes trouble,
@@ -31,7 +33,7 @@ $main-header-wallet-btn-bg: #ececec;
 
   position: sticky;
   top: 70px;
-  z-index: 1000;
+  z-index: $main-header-z-index;
 }
 
 .main-header__page-name {
@@ -97,7 +99,7 @@ $main-header-wallet-btn-bg: #ececec;
 .main-header__network-bar {
   position: sticky;
   top: 0;
-  z-index: 1000;
+  z-index: $main-header-z-index;
 
   justify-content: flex-start;
   background-color: white;
