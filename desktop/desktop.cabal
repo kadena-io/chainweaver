@@ -64,7 +64,6 @@ library
     , Desktop.Crypto.BIP
     , Desktop.Frontend
     , Desktop.ImportExport
-    , Desktop.App
     , Desktop.Orphans
     , Desktop.Setup
     , Desktop.SigningApi
