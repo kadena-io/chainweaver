@@ -1,4 +1,3 @@
-module Desktop (desktop, main', AppFFI(..)) where
+module Desktop (desktopFrontend) where
 
 import Desktop.Frontend
-import Desktop.App

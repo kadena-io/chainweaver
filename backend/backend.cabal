@@ -12,7 +12,9 @@ library
                , common
                , containers
                , data-default
+               , desktop
                , frontend
+               , jsaddle
                , obelisk-backend
                , text
                , filepath
@@ -21,14 +23,19 @@ library
                , async
                , lifted-async
                , monad-control
+               , reflex-dom
                , snap
                , snap-core
+               , snap-server
                , safe
                , obelisk-route
                , dependent-sum
+               , monad-logger
                , mtl
+               , network
                , obelisk-executable-config-lookup
                , obelisk-executable-config-inject
+               , obelisk-frontend
                , obelisk-oauth-common
                , obelisk-oauth-backend
                , text
@@ -40,7 +47,9 @@ library
                , hsass
                , template-haskell
                , th-utilities
+
   exposed-modules: Backend
+                 , Backend.App
                  , Backend.Devel
 
   ghc-options: -Wall

@@ -6,7 +6,7 @@
 -- | Provide a working test environment in "devel mode", e.g. on `ob run`.
 --
 --   This module is meant to be imported qualified as "Devel".
-module Backend.Devel (withPactInstances) where
+module Backend.Devel (frontend, withPactInstances) where
 
 import           Control.Monad.IO.Class
 import           Control.Monad.Trans.Control
@@ -20,8 +20,20 @@ import qualified Pact.Types.SPV           as Pact
 import           System.Directory         (createDirectoryIfMissing)
 import           System.FilePath          ((</>))
 
-import           Common.Network
+import           Obelisk.Frontend         (Frontend)
+import           Obelisk.Route            (R)
 
+import           Common.Network
+import           Common.Route             (FrontendRoute)
+import           Desktop.Frontend         (desktopFrontend)
+import           Frontend                 (webFrontend)
+
+-- required by 'ob run'
+frontend :: Frontend (R FrontendRoute)
+frontend = devFrontend
+
+devFrontend :: Frontend (R FrontendRoute)
+devFrontend = if True then webFrontend else desktopFrontend
 
 -- | Configuration for pact instances.
 data PactInstanceConfig = PactInstanceConfig

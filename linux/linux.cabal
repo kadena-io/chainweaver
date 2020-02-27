@@ -9,6 +9,7 @@ library
     buildable: False
   build-depends:
       base
+    , backend
     , desktop
     , frontend
     , async
