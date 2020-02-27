@@ -81,7 +81,7 @@ import Data.Aeson
 import Data.Aeson.Types (toJSONKeyText)
 import Data.Bifunctor (first)
 import Data.ByteString (ByteString)
-import Data.Decimal (Decimal)
+import Data.Decimal (Decimal, roundTo)
 import Data.Default
 import Data.Function (on)
 import Data.IntMap (IntMap)
@@ -201,7 +201,10 @@ throwWrongLength should k =
      else pure k
 
 -- | Account balance wrapper
-newtype AccountBalance = AccountBalance { unAccountBalance :: Decimal } deriving (Eq, Ord, Num, Show)
+newtype AccountBalance = AccountBalance
+  { unAccountBalance :: Decimal
+  }
+  deriving (Eq, Ord, Num, Show)
 
 -- Via ParsedDecimal
 instance ToJSON AccountBalance where
@@ -519,6 +522,12 @@ parseWrappedBalanceChecks = first ("parseWrappedBalanceChecks: " <>) . \case
     pure (Map.unionWith (liftA2 subtract) before after, result)
   v -> Left $ "Unexpected PactValue (expected object): " <> renderCompactText v
 
+-- Should Pact even have amounts that don't have a decimal place?  It's possible to
+-- receive amounts that are 'LDecimal 10' that will cause a transaction to fail if used in
+-- conjunction with 'Max' etc.
+forceDecimalPoint :: Decimal -> Decimal
+forceDecimalPoint d = if d == roundTo 0 d then roundTo 1 d else d
+
 -- | Turn the object of account->balance into a map
 parseAccountDetails :: PactValue -> Either Text (Map AccountName (AccountStatus AccountDetails))
 parseAccountDetails = first ("parseAccountDetails: " <>) . \case
@@ -529,7 +538,7 @@ parseAccountDetails = first ("parseAccountDetails: " <>) . \case
           PLiteral (LDecimal balance) <- Map.lookup "balance" details
           PGuard pactGuard <- Map.lookup "guard" details
           pure $ AccountStatus_Exists $ AccountDetails
-            { _accountDetails_balance = AccountBalance balance
+            { _accountDetails_balance = AccountBalance $ forceDecimal balance
             , _accountDetails_guard = fromPactGuard pactGuard
             }
         PLiteral (LBool False) -> pure AccountStatus_DoesNotExist
@@ -606,3 +615,4 @@ makePactLenses ''VanityAccount
 makePactLenses ''AccountInfo
 makePactLenses ''Accounts
 makePactPrisms ''AccountStorage
+makeWrapped ''AccountBalance
