@@ -525,8 +525,8 @@ parseWrappedBalanceChecks = first ("parseWrappedBalanceChecks: " <>) . \case
 -- Should Pact even have amounts that don't have a decimal place?  It's possible to
 -- receive amounts that are 'LDecimal 10' that will cause a transaction to fail if used in
 -- conjunction with 'Max' etc.
-forceDecimal :: Decimal -> Decimal
-forceDecimal d = if d == roundTo 0 d then roundTo 1 d else d
+forceDecimalPoint :: Decimal -> Decimal
+forceDecimalPoint d = if d == roundTo 0 d then roundTo 1 d else d
 
 -- | Turn the object of account->balance into a map
 parseAccountDetails :: PactValue -> Either Text (Map AccountName (AccountStatus AccountDetails))
