@@ -208,7 +208,7 @@ previewTransfer model transfer = Workflow $ do
           & inputElementConfig_initialValue .~ unAccountName (fst $ _crossChainData_recipientChainGasPayer ccd)
     dialogSectionHeading mempty "Transaction Details"
     divClass "group" $ do
-      void $ mkLabeledInput True "Amount" uiGasPriceInputField $ def
+      void $ mkLabeledInput True "Amount" (uiGasPriceInputField never) $ def
         & initialAttributes .~ "disabled" =: "disabled"
         & inputElementConfig_initialValue .~ tshow amount
       -- TODO The designs show gas fees here, but we can't get that information yet.
@@ -395,21 +395,32 @@ sendConfig model initData = Workflow $ do
                   PopoverState_Disabled
 
               gasInputWithMaxButton cfg = mdo
-                let attrs = ffor useEntireBalance $ \u -> "disabled" =: ("disabled" <$ u)
+
+                let attrs = ffor useEntireBalance $ \u ->
+                      "disabled" =: ("disabled" <$ u)
+
                     nestTuple (a,b,c) = (a,(b,c))
-                    field = fmap nestTuple . uiGasPriceInputField
-                (_, (amountValue, _)) <- uiInputWithPopover field (_inputElement_raw . fst) showGasPriceInsuffPopover $ cfg
-                  & inputElementConfig_setValue .~ fmap tshow (mapMaybe id $ updated useEntireBalance)
-                  & inputElementConfig_elementConfig . elementConfig_modifyAttributes .~ updated attrs
+
+                    reset = () <$ (ffilter isNothing $ updated useEntireBalance)
+
+                    field = fmap nestTuple . uiGasPriceInputField reset
+
+                (_, (amountValue, _)) <- uiInputWithPopover field
+                  (_inputElement_raw . fst)
+                  showGasPriceInsuffPopover $ cfg
+                    & inputElementConfig_setValue .~ fmap tshow (mapMaybe id $ updated useEntireBalance)
+                    & inputElementConfig_elementConfig . elementConfig_modifyAttributes .~ updated attrs
+
                 useEntireBalance <- do
                   cb <- uiCheckbox "input-max-toggle" False def (text "Max")
                   pure $ fmap (\v -> balance <$ guard v) $ _checkbox_value cb
+
                 pure ( isJust <$> useEntireBalance
                      , amountValue & mapped . mapped %~ view (_Wrapped' . _Wrapped')
                      )
 
-          (useEntireBalance, amount) <- mkLabeledInput True "Amount" gasInputWithMaxButton
-            (def & inputElementConfig_initialValue .~ (maybe "" tshow mInitAmount))
+          (useEntireBalance, amount) <- mkLabeledInput True "Amount" gasInputWithMaxButton $ def
+            & inputElementConfig_initialValue .~ maybe "" tshow mInitAmount
 
           let validatedTxBuilder = runExceptT $ do
                 r <- ExceptT $ first (\_ -> "Invalid Tx Builder") <$> decoded
@@ -627,7 +638,7 @@ finishCrossChainTransferConfig model fromAccount ucct = Workflow $ do
       mkLabeledInput True "Recipient Account" uiInputElement $ def
         & initialAttributes .~ "disabled" =: "disabled"
         & inputElementConfig_initialValue .~ unAccountName (_unfinishedCrossChainTransfer_recipientAccount ucct)
-      mkLabeledInput True "Amount" uiGasPriceInputField $ def
+      mkLabeledInput True "Amount" (uiGasPriceInputField never) $ def
         & initialAttributes .~ "disabled" =: "disabled"
         & inputElementConfig_initialValue .~ tshow (_unfinishedCrossChainTransfer_amount ucct)
     el "p" $ text "The coin has been debited from your account but hasn't been redeemed by the recipient."

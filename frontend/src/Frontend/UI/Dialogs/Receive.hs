@@ -86,7 +86,7 @@ uiReceiveFromLegacyAccount = do
 
   keyPair <- holdDyn Nothing $ hush <$> onKeyPair
 
-  amount <- view _2 <$> mkLabeledInput True "Amount" uiGasPriceInputField def
+  amount <- view _2 <$> mkLabeledInput True "Amount" (uiGasPriceInputField never) def
 
   pure $ (liftA3 . liftA3) NonBIP32TransferInfo mAccountName amount keyPair
   where
