@@ -93,15 +93,19 @@ app sidebarExtra fileFFI appCfg = Store.versionedFrontend (Store.versionedStorag
 
   walletSidebar sidebarExtra
   updates <- divClass "page" $ do
-    netCfg <- networkBar ideL
     let mkPageContent c = divClass (c <> " page__content visible")
+
+        underNetworkBar lbl sub = do
+          netCfg <- networkBar ideL
+          subBarCfg <- controlBar lbl sub
+          pure $ netCfg <> subBarCfg
     -- This route overriding is awkward, but it gets around having to alter the
     -- types of ideL and appCfg, and we don't actually need the true subroute
     -- yet.
     route <- askRoute
     routedCfg <- subRoute $ lift . flip runRoutedT route . \case
       FrontendRoute_Accounts -> mkPageContent "accounts" $ do
-        barCfg <- controlBar "Accounts" $ do
+        barCfg <- underNetworkBar "Accounts" $ do
           refreshCfg <- uiWalletRefreshButton
           watchCfg <- uiWatchRequestButton ideL
           addCfg <- uiAddAccountButton ideL
@@ -109,11 +113,11 @@ app sidebarExtra fileFFI appCfg = Store.versionedFrontend (Store.versionedStorag
         accountsCfg <- uiAccountsTable ideL
         pure $ barCfg <> accountsCfg
       FrontendRoute_Keys -> mkPageContent "keys" $ do
-        walletBarCfg <- controlBar "Keys" uiGenerateKeyButton
+        walletBarCfg <- underNetworkBar "Keys" uiGenerateKeyButton
         walletCfg <- uiWallet ideL
         pure $ walletBarCfg <> walletCfg
       FrontendRoute_Contracts -> mkPageContent "contracts" $ do
-        controlCfg <- controlBar "Contracts" (controlBarRight fileFFI appCfg ideL)
+        controlCfg <- underNetworkBar "Contracts" (controlBarRight fileFFI appCfg ideL)
         mainCfg <- elClass "main" "main page__main" $ do
           rec
             let collapseAttrs = ffor open $ \o -> Map.fromList
@@ -128,18 +132,17 @@ app sidebarExtra fileFFI appCfg = Store.versionedFrontend (Store.versionedStorag
           pure $ uiEditorCfg <> envCfg
         pure $ controlCfg <> mainCfg
       FrontendRoute_Resources -> mkPageContent "resources" $ do
-        controlBar "Resources" blank
+        controlCfg <- underNetworkBar "Resources" (mempty <$ blank)
         elClass "main" "main page__main" $ do
           resourcesWidget
-        pure mempty
+        pure controlCfg
       FrontendRoute_Settings -> do
-        controlCfg <- controlBar "Settings" (mempty <$ blank)
+        controlCfg <- underNetworkBar "Settings" (mempty <$ blank)
         mainCfg <- elClass "main" "main page__main" $ do
           uiSettings (_appCfg_enabledSettings appCfg) ideL fileFFI
         pure $ controlCfg <> mainCfg
 
-    flattenedCfg <- flatten =<< tagOnPostBuild routedCfg
-    pure $ netCfg <> flattenedCfg
+    flatten =<< tagOnPostBuild routedCfg
 
   modalCfg <- showModal ideL
 

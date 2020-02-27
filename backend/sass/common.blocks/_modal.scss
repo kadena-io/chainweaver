@@ -8,8 +8,7 @@
 
 .modal {
   display: none;
-  z-index: 100;
-
+  z-index: $modal-z-index;
 }
 
 .modal,

@@ -432,7 +432,7 @@ $setup-progress-font-size: 18px;
   position: absolute;
   color: #212121;
   left: 350px;
-  z-index: 10;
+  z-index: $setup-repeat-icon-z-index;
 
   .fa-repeat {
     font-size: 7rem;

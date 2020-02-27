@@ -146,6 +146,10 @@ $table-cell-size-tiny: $table-cell-size-small / 2;
   line-height: normal;
   margin-top: 8px;
   font-size: $small-font-size;
+
+  .button__text-icon {
+    margin-right: 7px;
+  }
 }
 
 .table__left-action-button {

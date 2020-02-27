@@ -10,6 +10,14 @@
 $std-fonts: 'WorkSans-Regular', sans-serif;
 $button-font: 'WorkSans';
 
+// Z Index Catalog
+$main-pane-collapse-button-z-index: 1; // Needs to sit over content for clickability
+$main-header-z-index: 5;               // Required for sticky headers
+$sidebar-z-index: 6;                   // Must expand on top of headers and content
+$setup-repeat-icon-z-index: 10;        // Combined part of splashscreen image.
+$popover-z-index: 100;                 // Needs to sit over all input types
+$modal-z-index: 100;                   // Lord of Z Mountain
+
 // We have rounded corners, hopefully no-one is going to tell Apple:
 $std-border-radius: 4px;
 
