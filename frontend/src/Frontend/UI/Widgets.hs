@@ -63,10 +63,8 @@ module Frontend.UI.Widgets
   , validatedInputWithButton
   , uiAccountBalance
   , uiAccountBalance'
-  , uiPublicKeyShrunk
   , uiForm
   , uiForm'
-  , uiPublicKeyShrunkDyn
     -- ** Helper types to avoid boolean blindness for additive input
   , AllowAddNewRow (..)
   , AllowDeleteRow (..)
@@ -657,25 +655,6 @@ uiAccountBalance showUnits = \case
     [ Just $ tshow $ unAccountBalance b
     , " KDA" <$ guard showUnits
     ]
-
-uiPublicKeyShrunkDOM :: DomBuilder t m => m () -> m () -> m ()
-uiPublicKeyShrunkDOM f6 l6 = divClass "wallet__public-key" $ do
-  elClass "span" "wallet__public-key__prefix" f6
-  elClass "span" "wallet__public-key__suffix" l6
-
-uiPublicKeyShrunk :: DomBuilder t m => PublicKey -> m ()
-uiPublicKeyShrunk pk = uiPublicKeyShrunkDOM
-  (text $ T.dropEnd 6 ktxt)
-  (text $ T.takeEnd 6 ktxt)
-  where
-    ktxt = keyToText pk
-
-uiPublicKeyShrunkDyn :: (DomBuilder t m, PostBuild t m) => Dynamic t PublicKey -> m ()
-uiPublicKeyShrunkDyn pk = uiPublicKeyShrunkDOM
-  (dynText $ T.dropEnd 6 <$> ktxt)
-  (dynText $ T.takeEnd 6 <$> ktxt)
-  where
-    ktxt = keyToText <$> pk
 
 newtype AllowAddNewRow t out = AllowAddNewRow (out -> Event t Bool)
 newtype AllowDeleteRow t out = AllowDeleteRow (out -> Event t Bool)
