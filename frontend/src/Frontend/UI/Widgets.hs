@@ -248,8 +248,15 @@ uiForm' cfg btn fields = do
   pure (domEvent Submit elt, a)
 
 -- | Produces a form wrapper given a suitable submit button so that the enter key is correctly handled
-uiForm :: forall t m a. DomBuilder t m => ElementConfig EventResult t (DomBuilderSpace m) -> m () -> m a -> m (Event t (), a)
-uiForm cfg btn fields = (_2 %~ fst) <$> uiForm' cfg btn fields
+uiForm
+  :: forall t m a
+     . DomBuilder t m
+  => ElementConfig EventResult t (DomBuilderSpace m)
+  -> m ()
+  -> m a
+  -> m (Event t (), a)
+uiForm cfg btn fields =
+  (_2 %~ fst) <$> uiForm' cfg btn fields
 
 -- | reflex-dom `inputElement` with chainweaver default styling:
 uiInputElement
@@ -285,9 +292,9 @@ uiCorrectingInputElement eReset parse inputSanitize blurSanitize render cfg = md
   dLastGoodValue <- holdUniqDyn =<< holdDyn
     (cfg ^. inputElementConfig_initialValue)
     (leftmost
-     [ cfg ^. inputElementConfig_setValue
-     , fmapMaybe (fmap render) $ fmap parse inp
-     ])
+      [ cfg ^. inputElementConfig_setValue
+      , fmapMaybe (fmap render) $ fmap parse inp
+      ])
 
   let
     inp = _inputElement_input ie
@@ -302,7 +309,12 @@ uiCorrectingInputElement eReset parse inputSanitize blurSanitize render cfg = md
 
     purgeInvalidInputs :: Event t Text
     purgeInvalidInputs = attachWithMaybe
-      (\old -> maybe (Just old) (const Nothing) . parse)
+      (\old new ->
+         if T.null new then
+           Just new
+        else
+           maybe (Just old) (const Nothing) $ parse new
+      )
       (current dLastGoodValue)
       inp
 

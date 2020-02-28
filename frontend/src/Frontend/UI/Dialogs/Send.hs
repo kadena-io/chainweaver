@@ -388,11 +388,16 @@ sendConfig model initData = Workflow $ do
 
           let balance = fromAcc ^. accountDetails_balance . to unAccountBalance
 
-              showGasPriceInsuffPopover (_, (_, onInput)) = pure $ ffor onInput $ \(GasPrice (ParsedDecimal gp)) ->
+              checkFunds (GasPrice (ParsedDecimal gp)) =
                 if gp > balance then
                   PopoverState_Error insufficientFundsMsg
                 else
                   PopoverState_Disabled
+
+              showGasPriceInsuffPopover (ie, (_, onInput)) = pure $ leftmost
+                [ ffor onInput checkFunds
+                , PopoverState_Disabled <$ ffilter T.null (_inputElement_input ie)
+                ]
 
               gasInputWithMaxButton cfg = mdo
 
