@@ -361,3 +361,10 @@ button.button.button_type_tertiary.logout-confirm-modal__button {
 .export-wallet__contents-includes {
   margin-bottom: 0.2rem;
 }
+
+.preview-acc-key {
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  overflow: hidden;
+  margin-right: 5px;
+}

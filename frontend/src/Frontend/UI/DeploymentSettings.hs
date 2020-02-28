@@ -1099,8 +1099,12 @@ uiDeployPreview model settings signers gasLimit ttl code lastPublicMeta capabili
                   Nothing -> "Loading..."
                   Just Nothing -> "Error"
                   Just (Just b) -> tshow (unAccountBalance b) <> " KDA"
-            el "td" $ text $ unAccountName acc
-            el "td" $ for_ pks $ \pk -> divClass "wallet__key" $ text $ keyToText pk
+
+                wrapEllipsis =
+                  elClass "div" "preview-acc-key" . text
+
+            el "td" $ wrapEllipsis $ unAccountName acc
+            el "td" $ for_ pks $ \pk -> divClass "wallet__key" $ wrapEllipsis $ keyToText pk
             el "td" $ dynText $ displayBalance <$> balance
 
       dialogSectionHeading mempty "Raw Response"
