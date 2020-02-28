@@ -181,16 +181,26 @@ doImport txLogger pw contents = runExceptT $ do
             _transactionLogger_destination txLogger
 
           let withWriteError ma = ExceptT $ liftIO $ catch (Right <$> ma) $ \(e :: IOError) -> do
+                -- Print the raw error to console
                 putStrLn $ displayException e
+                -- Simple UX error
                 pure $ Left ImportWalletError_CommandLogWriteError
 
+          -- See if we have a log file in place already.
           txnLogsExist <- liftIO $ Dir.doesFileExist logFilePath
           when txnLogsExist $ withWriteError $ do
-            let (logDir, logFileName) = File.splitFileName logFilePath
-                nextFileSuffix = show . succ . length . filter (T.isPrefixOf (T.pack logFileName) . T.pack)
-            oldLogs <- Dir.findFiles [logDir] logFileName
+            -- We don't know how many others might be there so try to find them.
+            let
+              (logDir, logFileName) = File.splitFileName logFilePath
+              nextFileSuffix = show . succ . length
+            -- Find any old log files that might impede us writing the imported log file
+            oldLogs <- Dir.findFilesWith
+              (pure . T.isPrefixOf (T.pack logFileName) . T.pack)
+              [logDir]
+              logFileName
+            -- Rename the old log file out of the way.
             Dir.renameFile logFilePath (logFilePath <.> nextFileSuffix oldLogs)
-
+          -- Write the imported log file
           withWriteError $ T.writeFile logFilePath rawCmdLogData
 
 doExport
