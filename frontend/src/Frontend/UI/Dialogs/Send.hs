@@ -725,9 +725,9 @@ finishCrossChainTransfer logL netInfo keys (fromName, fromChain) ucct toGasPayer
     pure resultOk0
 
   (abandon, done) <- modalFooter $ do
-    abandon <- widgetHold (uiButton btnCfgSecondary $ text "Abandon Transfer") (pure never <$ resultOk)
+    (abandon, _) <- runWithReplace (uiButton btnCfgSecondary $ text "Abandon Transfer") (blank <$ resultOk)
     done <- confirmButton def "Done"
-    pure (switchDyn abandon, done)
+    pure (abandon, done)
 
   let
     cctDetails = (_sharedNetInfo_selectedNetwork netInfo, fromName, fromChain, Nothing)
