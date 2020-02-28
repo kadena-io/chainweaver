@@ -88,9 +88,6 @@ in
           sha256 = "0h5959ayjvipj54z0f350bz23fic90xw9z06xw4wcvxvwkrsi2br";
         } { };
       };
-      desktop-overlay = self: super: {
-        ether = haskellLib.doJailbreak super.ether;
-      };
       guard-ghcjs-overlay = self: super:
         let hsNames = [ "cacophony" "haskeline" "katip" "ridley" ];
         in lib.genAttrs hsNames (name: null);
@@ -101,18 +98,9 @@ in
         tls = haskellLib.dontCheck super.tls;
         x509-validation = haskellLib.dontCheck super.x509-validation;
 
-        # doctest
-        iproute = haskellLib.dontCheck super.iproute;
-        swagger2 = haskellLib.dontCheck super.swagger2;
-        servant = haskellLib.dontCheck super.servant;
-        servant-server = haskellLib.dontCheck super.servant-server;
-
         # failing
         mono-traversable = haskellLib.dontCheck super.mono-traversable;
         conduit = haskellLib.dontCheck super.conduit;
-        wai-extra = haskellLib.dontCheck super.wai-extra;
-        wai-app-static = haskellLib.dontCheck super.wai-app-static;
-        servant-client = haskellLib.dontCheck super.servant-client;
         unliftio = haskellLib.dontCheck super.unliftio;
       };
       common-overlay = self: super:
@@ -124,9 +112,7 @@ in
                 inherit sha256;
               }) {};
         in {
-        ghc-lib-parser = haskellLib.overrideCabal super.ghc-lib-parser { postInstall = "sed -i 's/exposed: True/exposed: False/' $out/lib/ghc*/package.conf.d/*.conf"; };
         reflex-dom-core = haskellLib.dontCheck super.reflex-dom-core; # webdriver fails to build
-        modern-uri = haskellLib.dontCheck super.modern-uri;
         servant-jsaddle = haskellLib.dontCheck (haskellLib.doJailbreak super.servant-jsaddle);
         these-lens = haskellLib.doJailbreak (self.callHackage "these-lens" "1" {});
         obelisk-oauth-frontend = haskellLib.doJailbreak super.obelisk-oauth-frontend;
@@ -138,7 +124,6 @@ in
       (import (hackGet ./deps/pact + "/overrides.nix") pkgs hackGet)
       mac-overlay
       linux-overlay
-      desktop-overlay
       common-overlay
       (optionalExtension (super.ghc.isGhcjs or false) guard-ghcjs-overlay)
       (optionalExtension (super.ghc.isGhcjs or false) ghcjs-overlay)
