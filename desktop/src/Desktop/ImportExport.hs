@@ -5,11 +5,13 @@
 module Desktop.ImportExport where
 
 import qualified System.Directory as Dir
+import System.FilePath ((<.>))
+import qualified System.FilePath as File
 import qualified Cardano.Crypto.Wallet as Crypto
 import Control.Lens (over, mapped, _Left)
 import Control.Error (hoistEither, failWith)
 import Control.Exception (catch, displayException)
-import Control.Monad (unless)
+import Control.Monad (unless,when)
 import Control.Monad.IO.Class (MonadIO, liftIO)
 import Control.Monad.Except (ExceptT(ExceptT), runExceptT, throwError, catchError)
 import Control.Monad.Trans (lift)
@@ -178,8 +180,18 @@ doImport txLogger pw contents = runExceptT $ do
           logFilePath <- failWith ImportWalletError_InvalidCommandLogDestination $
             _transactionLogger_destination txLogger
 
-          ExceptT $ liftIO $ catch (Right <$> T.writeFile logFilePath rawCmdLogData) $ \(_ :: IOError) ->
-            pure $ Left ImportWalletError_CommandLogWriteError
+          let withWriteError ma = ExceptT $ liftIO $ catch (Right <$> ma) $ \(e :: IOError) -> do
+                putStrLn $ displayException e
+                pure $ Left ImportWalletError_CommandLogWriteError
+
+          txnLogsExist <- liftIO $ Dir.doesFileExist logFilePath
+          when txnLogsExist $ withWriteError $ do
+            let (logDir, logFileName) = File.splitFileName logFilePath
+                nextFileSuffix = show . succ . length . filter (T.isPrefixOf (T.pack logFileName) . T.pack)
+            oldLogs <- Dir.findFiles [logDir] logFileName
+            Dir.renameFile logFilePath (logFilePath <.> nextFileSuffix oldLogs)
+
+          withWriteError $ T.writeFile logFilePath rawCmdLogData
 
 doExport
   :: forall m
