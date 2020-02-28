@@ -725,11 +725,19 @@ finishCrossChainTransfer logL netInfo keys (fromName, fromChain) ucct toGasPayer
     pure resultOk0
 
   (abandon, done) <- modalFooter $ do
-    abandon <- uiButton btnCfgSecondary $ text "Abandon Transfer"
+    abandon <- widgetHold (uiButton btnCfgSecondary $ text "Abandon Transfer") (pure never <$ resultOk)
     done <- confirmButton def "Done"
-    pure (abandon, done)
-  let conf = mempty & walletCfg_setCrossChainTransfer .~ ((_sharedNetInfo_selectedNetwork netInfo, fromName, fromChain, Nothing) <$ (resultOk <> abandon))
-  pure ((conf, close <> done <> abandon), never)
+    pure (switchDyn abandon, done)
+
+  let
+    cctDetails = (_sharedNetInfo_selectedNetwork netInfo, fromName, fromChain, Nothing)
+    conf = mempty & walletCfg_setCrossChainTransfer .~ (cctDetails <$ (resultOk <> abandon))
+
+  pure ( ( conf
+         , close <> done <> abandon
+         )
+       , never
+       )
 
 -- | Workflow for doing cross chain transfers from scratch. Steps are roughly:
 --
