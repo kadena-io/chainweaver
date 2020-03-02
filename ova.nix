@@ -37,6 +37,12 @@ let
     echo "Currently on chainweaver OVA version $(${linuxAppName}-version)";
     (${doUpgradeVM}/bin/${linuxAppName}-do-upgrade $@ && successful) || finished "Update Failed"
   '';
+  # The path is required because the application requires 'xdg-open' to be available, and the related
+  # applications to also be available as it expects when a normal environment is setup.
+  chainweaverServiceEnvironmentFile = pkgs.writeText "${linuxAppName}-${chainweaverVersion}-service-environment" ''
+    WEBKIT_DISABLE_COMPOSITING_MODE=1
+    PATH=/run/wrappers/bin:/etc/profiles/per-user/chainweaver/bin:/nix/var/nix/profiles/default/bin:/run/current-system/sw/bin
+  '';
   versionFile = pkgs.writeText "${linuxAppName}-version" "${chainweaverVersion}.${ovaReleaseNumber}";
   versionScript = pkgs.writeScriptBin "${linuxAppName}-version" ''cat ${versionFile}'';
   upgradeDesktopItem = pkgs.makeDesktopItem {
@@ -87,6 +93,20 @@ let
             export WEBKIT_DISABLE_COMPOSITING_MODE=1;
           '';
         };
+        # TODO: Why can't I use more declarative nix:
+        # systemd.user.services.kadena-chainweaver = {
+        #   description = appName;
+        #   after = [ "network-online.target" ];
+        #   wants = [ "network-online.target" ];
+        #   environment = {
+        #     WEBKIT_DISABLE_COMPOSITING_MODE = 1;
+        #   };
+        #   path = [
+        #     pkgs.xdg_utils
+        #   ];
+        #   script = "${nixosExe}/bin/${linuxAppName}";
+        #   wantedBy = [ "graphical-session.target" ];
+        # };
         systemd.user.services.kadena-chainweaver = {
           Unit = {
             Description = appName;
@@ -94,7 +114,7 @@ let
             Wants = [ "network-online.target" ];
           };
           Service = {
-            Environment = "WEBKIT_DISABLE_COMPOSITING_MODE=1";
+            EnvironmentFile = "${chainweaverServiceEnvironmentFile}";
             ExecStart = "${nixosExe}/bin/${linuxAppName}";
           };
           Install = { WantedBy = [ "graphical-session.target" ]; };
@@ -114,7 +134,14 @@ let
       security.sudo.wheelNeedsPassword = false;
       networking.firewall.enable = false;
       networking.networkmanager.enable = true;
-      environment.systemPackages = [ nixosExe pkgs.chromium nixosDesktopItem upgradeVM versionScript upgradeDesktopItem ];
+      environment.systemPackages =
+        [ nixosExe
+          pkgs.chromium
+          nixosDesktopItem
+          upgradeVM
+          versionScript
+          upgradeDesktopItem
+        ];
       nix.binaryCaches = [ "https://cache.nixos.org/" "https://nixcache.reflex-frp.org" kadenaOVACache ];
       nix.binaryCachePublicKeys = [ "ryantrinkle.com-1:JJiAKaRv9mWgpVAz8dwewnZe0AzzEAzPkagE9SP5NWI=" kadenaOVACacheKey ];
 
