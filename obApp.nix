@@ -1,15 +1,16 @@
 { system ? builtins.currentSystem # TODO: Get rid of this system cruft
 , iosSdkVersion ? "10.2"
-, obelisk ? (import ./.obelisk/impl { inherit system iosSdkVersion; })
-, pkgs ? obelisk.reflex-platform.nixpkgs
 , withHoogle ? false
+, kpkgs ? import ./deps/kpkgs { inherit system; }
 }:
-with obelisk;
 let
+  obelisk = import ./.obelisk/impl { inherit system iosSdkVersion; inherit (kpkgs) reflex-platform-func;};
+  pkgs = obelisk.reflex-platform.nixpkgs;
+
   optionalExtension = cond: overlay: if cond then overlay else _: _: {};
   getGhcVersion = ghc: if ghc.isGhcjs or false then ghc.ghcVersion else ghc.version;
   haskellLib = pkgs.haskell.lib;
-in
+in with obelisk;
   project ./. ({ pkgs, hackGet, ... }: with pkgs.haskell.lib; {
     inherit withHoogle;
 
@@ -103,25 +104,15 @@ in
         conduit = haskellLib.dontCheck super.conduit;
         unliftio = haskellLib.dontCheck super.unliftio;
       };
-      common-overlay = self: super:
-        let
-          callHackageDirect = {pkg, ver, sha256}@args:
-            let pkgver = "${pkg}-${ver}";
-            in self.callCabal2nix pkg (pkgs.fetchzip {
-                url = "http://hackage.haskell.org/package/${pkgver}/${pkgver}.tar.gz";
-                inherit sha256;
-              }) {};
-        in {
+      common-overlay = self: super: {
         reflex-dom-core = haskellLib.dontCheck super.reflex-dom-core; # webdriver fails to build
         servant-jsaddle = haskellLib.dontCheck (haskellLib.doJailbreak super.servant-jsaddle);
         these-lens = haskellLib.doJailbreak (self.callHackage "these-lens" "1" {});
         obelisk-oauth-frontend = haskellLib.doJailbreak super.obelisk-oauth-frontend;
         pact = haskellLib.dontCheck super.pact; # tests can timeout...
         system-locale = haskellLib.dontCheck super.system-locale; # tests fail on minor discrepancies on successfully parsed locale time formats.
-
       };
     in self: super: lib.foldr lib.composeExtensions (_: _: {}) [
-      (import (hackGet ./deps/pact + "/overrides.nix") pkgs hackGet)
       mac-overlay
       linux-overlay
       common-overlay
