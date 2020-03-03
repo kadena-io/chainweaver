@@ -61,7 +61,7 @@ uiExternalKeyInput onPreselection = do
     uiPubkeyInput iv = do
       let
         inp cfg = do
-          ie <- mkLabeledInput False  mempty uiInputElement  cfg
+          ie <- mkLabeledInput False mempty uiInputElement cfg
           pure (ie
                , ( parsePublicKey <$> value ie
                  , parsePublicKey <$> _inputElement_input ie
