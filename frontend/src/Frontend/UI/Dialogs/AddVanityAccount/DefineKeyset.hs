@@ -1,6 +1,7 @@
 {-# LANGUAGE RecursiveDo #-}
 module Frontend.UI.Dialogs.AddVanityAccount.DefineKeyset
-  ( DefinedKeyset
+  ( DefinedKeyset (..)
+  , KeysetInputs (..)
   , uiDefineKeyset
   , emptyKeysetPresets
   ) where

@@ -87,7 +87,7 @@ type HasUiWalletModelCfg model mConf key m t =
 
 -- | Possible actions from an account
 data AccountDialog
-  = AccountDialog_DetailsChain (AccountName, ChainId, Account)
+  = AccountDialog_DetailsChain (AccountName, ChainId, AccountDetails, Account)
   | AccountDialog_Details AccountName (Maybe AccountNotes)
   | AccountDialog_Receive AccountName ChainId
   | AccountDialog_Send (AccountName, ChainId, AccountDetails) (Maybe UnfinishedCrossChainTransfer)
@@ -307,14 +307,14 @@ uiAccountItem keys name accountInfo = do
                       <$> current (_vanityAccount_unfinishedCrossChainTransfer . _account_storage <$> dAccount)
                       <@ send
                   , AccountDialog_CompleteCrosschain name chain <$> onCompleteCrossChain
-                  , AccountDialog_DetailsChain . (name, chain, ) <$> current dAccount <@ onDetails
+                  , AccountDialog_DetailsChain . (name, chain, d, ) <$> current dAccount <@ onDetails
                   ]
               False -> do
                 transferTo <- transferToButton cfg
                 onDetails <- detailsIconButton cfg
                 pure $ leftmost
                   [ AccountDialog_Receive name chain <$ transferTo
-                  , AccountDialog_DetailsChain . (name, chain, ) <$> current dAccount <@ onDetails
+                  , AccountDialog_DetailsChain . (name, chain, d, ) <$> current dAccount <@ onDetails
                   ]
     pure (balance, dialog)
 

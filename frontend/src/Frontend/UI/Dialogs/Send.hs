@@ -1,4 +1,5 @@
 {-# LANGUAGE ApplicativeDo #-}
+{-# LANGUAGE ViewPatterns #-}
 {-# LANGUAGE ConstraintKinds #-}
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE ExtendedDefaultRules #-}
@@ -54,12 +55,14 @@ import Safe (headMay)
 import qualified Data.Aeson as Aeson
 import qualified Data.HashMap.Lazy as HM
 import qualified Data.Map as Map
+import qualified Data.IntMap as IntMap
 import qualified Data.Set as Set
 import qualified Data.Text as T
 import qualified Data.Text.Encoding as T
 import qualified Pact.Server.ApiClient as Api
 import qualified Pact.Types.API as Api
 import qualified Pact.Types.Command as Pact
+import qualified Pact.Types.Pretty as Pact
 import qualified Pact.Types.Continuation as Pact
 import qualified Pact.Types.SPV as Pact
 import qualified Pact.Types.Term as Pact
@@ -70,6 +73,7 @@ import Common.Wallet
 import Frontend.Crypto.Class (HasCrypto)
 import Frontend.Foundation hiding (Arg)
 import Frontend.TxBuilder
+import Frontend.JsonData
 import Frontend.Network
 import Frontend.Log
 import Frontend.UI.DeploymentSettings
@@ -81,11 +85,14 @@ import Frontend.UI.Widgets
 import Frontend.UI.Widgets.Helpers (dialogSectionHeading)
 import Frontend.Wallet
 
+import Frontend.UI.Dialogs.AddVanityAccount.DefineKeyset
+
 type SendConstraints model mConf key t m
   = ( Monoid mConf, HasNetwork model t, HasNetworkCfg mConf t, HasWallet model key t, HasWalletCfg mConf key t
     , MonadWidget t m, PostBuild t m, HasCrypto key m
     , HasCrypto key (Performable m)
     , HasLogger model t
+    , HasJsonData model t
     )
 
 -- | Data which is only required for cross chain transfers
@@ -348,6 +355,64 @@ sendConfig model initData = Workflow $ do
     mInitFromGasPayer = withInitialTransfer (_transferData_fromGasPayer) initData
     mInitCrossChainGasPayer = join $ withInitialTransfer (fmap (_crossChainData_recipientChainGasPayer) . _transferData_crossChainData) initData
     mInitAmount = withInitialTransfer _transferData_amount initData
+
+    validateTxBuilder = Aeson.eitherDecodeStrict . T.encodeUtf8
+
+    uiTxBuilderInput cfg = do
+      ie <- uiTxBuilder Nothing cfg
+
+      let
+        onTxBValidate = validateTxBuilder <$> _textAreaElement_input ie
+
+        onDefinedKeyset = ffor ((,) <$> current (model ^. wallet_keys) <@> onTxBValidate) $ \(keys, eTxB) ->
+          case eTxB of
+            Left _ -> Nothing
+            Right tb ->
+              let
+                tbKeys = Set.map fromPactPublicKey $ fold $ Pact._ksKeys <$> _txBuilder_keyset tb
+                intKeys = ifoldl
+                  (\i acc k ->
+                     let
+                       pk = _keyPair_publicKey $ _key_pair k
+                     in
+                       if pk `elem` tbKeys then
+                         acc & _1 <>~ Set.singleton (i,pk)
+                       else
+                         acc
+                  )
+                  mempty
+                  keys
+
+                extKeys = filter (\k -> not $ k `elem` intKeys) tbKeys
+
+                toPatchIntMap :: (a -> b) -> Set.Set a -> PatchIntMap (Maybe b)
+                toPatchIntMap f = PatchIntMap
+                  . ifoldMap (\n a -> IntMap.singleton n $ Just (Just $ f a))
+                  . Set.toList
+
+              in
+              Just $ DefinedKeyset
+              { _definedKeyset_internalKeys = KeysetInputs
+                { _keysetInputs_value = constDyn $ toPatchIntMap fst intKeys
+                , _keysetInputs_set = constDyn (Set.map snd intKeys)
+                }
+              , _definedKeyset_externalKeys = KeysetInputs
+                { _keysetInputs_value = constDyn $ toPatchIntMap (keyToText . snd) extKeys
+                , _keysetInputs_set = constDyn (Set.map snd extKeys)
+                }
+              , _definedKeyset_predicate = constDyn
+                $ Pact.renderCompactText . Pact._ksPredFun <$> _txBuilder_keyset tb
+              }
+
+      _ <- runWithReplace (uiDefineKeyset model emptyKeysetPresets)
+        $ fmapMaybe (fmap (uiDefineKeyset model)) onDefinedKeyset
+
+      pure (ie
+           , ( onTxBValidate
+             , validateTxBuilder <$> value ie
+             )
+           )
+
     mainSection currentTab = elClass "div" "modal__main" $ do
       (conf, useEntireBalance, txBuilder, amount) <- tabPane mempty currentTab SendModalTab_Configuration $ do
         dialogSectionHeading mempty  "Destination"
@@ -361,15 +426,6 @@ sendConfig model initData = Workflow $ do
               cannotInitiateNewXChainTfr = "Existing cross chain transfer in progress."
 
               renderTxBuilder = T.decodeUtf8 . LBS.toStrict . Aeson.encode
-              validateTxBuilder = Aeson.eitherDecodeStrict . T.encodeUtf8
-
-              uiTxBuilderInput cfg = do
-                ie <- uiTxBuilder Nothing cfg
-                pure (ie
-                     , ( validateTxBuilder <$> _textAreaElement_input ie
-                       , validateTxBuilder <$> value ie
-                       )
-                     )
 
               showTxBuilderPopover (_, (onInput, _)) = pure $ ffor onInput $ \case
                 Left _ ->
@@ -382,7 +438,7 @@ sendConfig model initData = Workflow $ do
                   else
                     PopoverState_Disabled
 
-          decoded <- fmap (snd . snd) $ mkLabeledInput True "Tx Builder"
+          decoded <- fmap (snd . snd) $ mkLabeledInput False "Tx Builder"
             (uiInputWithPopover uiTxBuilderInput (_textAreaElement_raw . fst) showTxBuilderPopover)
             (def & textAreaElementConfig_initialValue .~ (maybe "" renderTxBuilder mInitToAddress))
 

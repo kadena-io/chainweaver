@@ -40,7 +40,7 @@ uiAccountDetailsOnChain
      , MonadWidget t m
      )
   => NetworkName
-  -> (AccountName, ChainId, Account)
+  -> (AccountName, ChainId, AccountDetails, Account)
   -> Event t ()
   -> m (mConf, Event t ())
 uiAccountDetailsOnChain netname a onCloseExternal = mdo
@@ -71,11 +71,14 @@ uiAccountDetailsOnChainImpl
      , MonadWidget t m
      )
   => NetworkName
-  -> (AccountName, ChainId, Account)
+  -> (AccountName, ChainId, AccountDetails, Account)
   -> Event t ()
   -> Workflow t m (Text, (mConf, Event t ()))
-uiAccountDetailsOnChainImpl netname (name, chain, account) onClose = Workflow $ do
-  let kAddr = TxBuilder name chain Nothing
+uiAccountDetailsOnChainImpl netname (name, chain, details, account) onClose = Workflow $ do
+  let kAddr = TxBuilder name chain $ details
+        ^? accountDetails_guard
+        . _AccountGuard_KeySet
+        . to (uncurry toPactKeyset)
 
       displayText lbl v cls =
         let
