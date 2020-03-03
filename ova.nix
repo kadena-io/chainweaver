@@ -52,7 +52,7 @@ let
      icon = linuxAppIcon;
      terminal = "true";
   };
-  chainweaverVMConfig = (import ((import ./deps/ovanixpkgs {}).pkgs.path + /nixos) {
+  chainweaverVMConfig = (import ((import ./dep/ovanixpkgs {}).pkgs.path + /nixos) {
     configuration = {
       imports = [
         ./virtualbox-image.nix
