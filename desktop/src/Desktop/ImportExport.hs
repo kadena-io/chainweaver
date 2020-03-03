@@ -15,12 +15,14 @@ import Data.Aeson (FromJSON, Value, eitherDecode, object, (.=), (.:), withObject
 import Data.Aeson.Types (Parser, parseEither)
 import Data.Aeson.Text (encodeToLazyText)
 import Data.Bifunctor (first)
+import Data.Foldable (traverse_)
 import Data.List (intercalate)
 import Data.Dependent.Map (DMap)
 import qualified Data.Dependent.Map as DMap
 import Data.Time (getZonedTime, zonedTimeToLocalTime, iso8601DateFormat, formatTime, defaultTimeLocale)
 import Data.Functor.Identity (Identity, runIdentity)
 import Language.Javascript.JSaddle (MonadJSM)
+import Data.Time (getCurrentTime)
 import Data.Text (Text)
 import qualified Data.Text as T
 import qualified Data.Text.Lazy as TL
@@ -31,9 +33,9 @@ import Reflex
 import Desktop.Orphans ()
 import Desktop.Crypto.BIP (BIPStorage(..), bipMetaPrefix, runBIPCryptoT, passwordRoundTripTest)
 import Frontend.AppCfg (ExportWalletError(..), FileType(FileType_Import), fileTypeExtension)
-import Pact.Server.ApiClient (TransactionLogger (..), CommandLog, commandLogCurrentVersion)
+import Pact.Server.ApiClient (WalletEvent (..), TransactionLogger (..))
 import Frontend.Crypto.Class (HasCrypto)
-import Frontend.Wallet (PublicKeyPrefix (..))
+import Frontend.Wallet (PublicKeyPrefix (..), genZeroKeyPrefix)
 import Frontend.Storage (HasStorage, dumpLocalStorage)
 import Frontend.VersionedStore (VersionedStorage(..), StorageVersion, VersioningDecodeJsonError(..))
 import qualified Frontend.VersionedStore as FrontendStore
@@ -131,10 +133,15 @@ doImport txLogger pw contents = runExceptT $ do
     feLatestEither <- first (expandDecodeVersionJsonError storeFrontendDataKey feVer)
       <$> (_versionedStorage_decodeVersionedJson vStore feVer feData)
 
-    traverse
+    traverse_
       (\dmap -> liftIO (TL.putStrLn $ encodeToLazyText dmap) >> _versionedStorage_restoreBackup vStore dmap)
       feLatestEither
- 
+
+    ts <- liftIO getCurrentTime
+    sender <- genZeroKeyPrefix
+    liftIO $ _transactionLogger_walletEvent txLogger WalletEvent_Import (_unPublicKeyPrefix sender) ts
+    pure $ Right ()
+
   pure (rootKey, pw)
 
   where
@@ -149,12 +156,11 @@ doExport
      , MonadJSM m
      , HasStorage m
      )
-  => TransactionLogger
-  -> PublicKeyPrefix
+  => PublicKeyPrefix
   -> Password
   -> Password
   -> m (Either ExportWalletError (FilePath, Text))
-doExport txLogger keyPfx oldPw pw = runExceptT $ do
+doExport keyPfx oldPw pw = runExceptT $ do
   unless (oldPw == pw) $ throwError ExportWalletError_PasswordIncorrect
   let store = FrontendStore.versionedStorage @Crypto.XPrv @m
 

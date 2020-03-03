@@ -13,6 +13,10 @@ module Pact.Server.ApiClient
   , ApiClient(..)
   , apiV1Client
 
+    -- * Parent structure for log entries
+  , LogEntry (..)
+  , WalletEvent (..)
+
     -- * Command log structures, versioned in submodules
   , CommandLog(..)
   , commandLogCurrentVersion
@@ -27,6 +31,7 @@ module Pact.Server.ApiClient
   , logTransactionFile
   ) where
 
+import Control.Applicative ((<|>))
 import Control.Lens
 import Control.Monad.IO.Class
 import Control.Monad.Primitive
@@ -38,7 +43,7 @@ import Data.Coerce
 import Data.Foldable (for_)
 import Data.Proxy
 import Data.Text (Text)
-import Data.Time (getCurrentTime)
+import Data.Time (UTCTime, getCurrentTime)
 import Language.Javascript.JSaddle (MonadJSM)
 import Obelisk.Configs
 import Obelisk.Route.Frontend
@@ -51,6 +56,8 @@ import Reflex.Host.Class (MonadReflexCreateTrigger)
 import Servant.API
 import Servant.Client.Core hiding (Client)
 import Servant.Client.JSaddle hiding (Client)
+
+import Data.Aeson (ToJSON (..), FromJSON (..))
 import qualified Data.Aeson as Aeson
 import qualified Data.Aeson.Text as Aeson
 import qualified Data.ByteString as BS
@@ -58,11 +65,17 @@ import qualified Data.ByteString.Char8 as BS8
 import qualified Data.ByteString.Lazy as BSL
 import qualified Data.ByteString.Builder as BSL
 import qualified Data.Text as T
+import qualified Data.Text.IO as T
 import qualified Data.Text.Encoding as T
 import qualified Data.Text.Encoding.Error as T
+import qualified Data.Text.Lazy as LT
 import qualified Data.Text.Lazy.IO as LT
+import qualified Data.Text.Lazy.Encoding as LT
 import qualified Data.List.NonEmpty as NE
 import qualified Control.Monad.Reader as Reader
+
+import qualified Data.Map as Map
+import qualified Data.Csv.Builder as Csv
 
 import Text.Printf (printf)
 
@@ -71,15 +84,59 @@ import System.Locale.Read (getCurrentLocale)
 import qualified System.Directory as Dir
 import qualified System.FilePath as File
 
+import qualified Pact.Types.Util as Pact
 import Pact.Types.ChainId (ChainId)
 
 import Pact.Server.ApiClient.V1 (CommandLog (..))
 import qualified Pact.Server.ApiClient.V1 as Latest
 
+data WalletEvent
+  = WalletEvent_Import
+  | WalletEvent_Export
+  deriving (Eq, Show)
+
+instance FromJSON WalletEvent where
+  parseJSON = Aeson.withText "WalletEvent" $ \case
+    "import" -> pure WalletEvent_Import
+    "export" -> pure WalletEvent_Export
+    x -> fail $ "Unknown WalletEvent value: " <> T.unpack x
+
+instance ToJSON WalletEvent where
+  toJSON WalletEvent_Import = Aeson.String "import"
+  toJSON WalletEvent_Export = Aeson.String "export"
+
+data LogEntry
+  = LogEntry_Cmd Latest.CommandLog
+  | LogEntry_Event
+    { _logEntry_eventType :: WalletEvent
+    , _logEntry_zeroKey :: Text
+    , _logEntry_timestamp :: UTCTime
+    }
+
+encodeLogEntryEvent :: WalletEvent -> Text -> UTCTime -> Aeson.Value
+encodeLogEntryEvent etype sender timestamp = Aeson.object
+  [ "event_type" Aeson..= etype
+  , "sender" Aeson..= sender
+  , "timestamp" Aeson..= timestamp
+  ]
+
+instance FromJSON LogEntry where
+  parseJSON v = (LogEntry_Cmd <$> parseJSON v) <|> parseLogEvent v
+    where
+      parseLogEvent = Aeson.withObject "LogEntry_Event" $ \o -> LogEntry_Event
+        <$> (o Aeson..: "event_type")
+        <*> (o Aeson..: "sender")
+        <*> (o Aeson..: "timestamp")
+
+instance ToJSON LogEntry where
+  toJSON (LogEntry_Cmd clog) = toJSON clog
+  toJSON (LogEntry_Event e s t) = encodeLogEntryEvent e s t
+
 data TransactionLogger = TransactionLogger
-  { _transactionLogger_appendLog :: CommandLog -> IO ()
+  { _transactionLogger_appendLog :: Latest.CommandLog -> IO ()
+  , _transactionLogger_walletEvent :: WalletEvent -> Text -> UTCTime -> IO ()
   , _transactionLogger_destination :: Maybe FilePath
-  , _transactionLogger_loadFirstNLogs :: Int -> IO (Either String (TimeLocale, [CommandLog]))
+  , _transactionLogger_loadFirstNLogs :: Int -> IO (Either String (TimeLocale, [LogEntry]))
   , _transactionLogger_exportFile :: Text -> IO (Either String (FilePath, Text))
   }
 
@@ -199,6 +256,8 @@ runTransactionLoggerT = runReaderT . unTransactionLoggerT
 logTransactionStdout :: TransactionLogger
 logTransactionStdout = TransactionLogger
   { _transactionLogger_appendLog = LT.putStrLn . Aeson.encodeToLazyText
+  , _transactionLogger_walletEvent = \wE pk t ->
+      T.putStrLn $ T.unwords [T.pack $ show wE, "[", pk, "]", T.pack $ show t]
   , _transactionLogger_destination = Nothing
   , _transactionLogger_loadFirstNLogs = logsdisabled
   , _transactionLogger_exportFile = logsdisabled
@@ -210,6 +269,9 @@ logTransactionFile :: FilePath -> TransactionLogger
 logTransactionFile f = TransactionLogger
   { _transactionLogger_appendLog =
       LT.appendFile f . (<> "\n") . Aeson.encodeToLazyText
+
+  , _transactionLogger_walletEvent = \etype pk t ->
+      LT.appendFile f $ (<> "\n") $ Aeson.encodeToLazyText $ encodeLogEntryEvent etype pk t
 
   , _transactionLogger_destination =
       Just f
@@ -240,13 +302,31 @@ createCommandLogExportFileV1 :: Text -> FilePath -> IO (Either String (FilePath,
 createCommandLogExportFileV1 filePfx fp = runExceptT $ do
   let
     -- Use system-filepath to avoid being caught out by platform differences
-    (logPath, filename) = File.splitFileName fp
-    exportFilePath = logPath File.</> printf "%s_%s_%vi" filePfx filename commandLogCurrentVersion
+    filename = snd $ File.splitFileName fp
+    exportFilePath = printf "%s_%s_v%i" filePfx filename commandLogCurrentVersion
 
   logContents <- ExceptT $ catch (Right . BS8.lines <$> BS.readFile fp)
     $ \(e :: IOError) -> pure $ Left $ displayException e
 
   xs <- liftEither $ traverse Aeson.eitherDecodeStrict logContents
 
-  let csvContents = BSL.toStrict $ BSL.toLazyByteString $ ifoldMap Latest.exportCommandLog xs
+  let
+    aesonTextEncode :: ToJSON a => a -> Text
+    aesonTextEncode = LT.toStrict . LT.decodeUtf8With T.lenientDecode . Aeson.encode
+
+    toCsv i (LogEntry_Cmd cmdLog) = Latest.exportCommandLog i cmdLog
+    toCsv i (LogEntry_Event eType sender timestamp) = Csv.encodeNamedRecord Latest.exportHeader $ Map.fromList
+      [ ("index" :: BSL.ByteString, Pact.tShow i)
+      , ("timestamp", aesonTextEncode timestamp)
+      , ("sender", sender)
+      , ("chain", mempty)
+      , ("requestKey", aesonTextEncode eType)
+      , ("url", mempty)
+      , ("command_payload", mempty)
+      , ("command_sigs", mempty)
+      , ("command_hash", mempty)
+      ]
+
+  let
+    csvContents = BSL.toStrict $ BSL.toLazyByteString $ ifoldMap toCsv xs
   pure (exportFilePath, T.decodeUtf8With T.lenientDecode csvContents)
