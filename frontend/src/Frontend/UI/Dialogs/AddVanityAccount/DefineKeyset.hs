@@ -61,23 +61,25 @@ uiExternalKeyInput onPreselection = do
     uiPubkeyInput iv = do
       let
         inp cfg = do
-          ie <- uiInputElement cfg
+          ie <- mkLabeledInput False  mempty uiInputElement  cfg
           pure (ie
                , ( parsePublicKey <$> value ie
                  , parsePublicKey <$> _inputElement_input ie
                  )
                )
 
-        inputCfg = def & initialAttributes .~ (
-          "placeholder" =: "External public key" <>
-          "class" =: "labeled-input__input"
-          )
+        inputCfg = def
+          & initialAttributes .~ ("placeholder" =: "External public key")
           & inputElementConfig_initialValue .~ fold iv
 
         showPopover (_, (_, onInput)) = pure $
           either PopoverState_Error (const PopoverState_Disabled) <$> onInput
 
-      (inputE, (dE, onE)) <- uiInputWithPopover inp (_inputElement_raw . fst) showPopover inputCfg
+      (inputE, (dE, onE)) <- uiInputWithPopover
+        inp
+        (_inputElement_raw . fst)
+        showPopover
+        inputCfg
 
       pure $ ExternalKeyInput
         { _externalKeyInput_input = hush <$> onE
