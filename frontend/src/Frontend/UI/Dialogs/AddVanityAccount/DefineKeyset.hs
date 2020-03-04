@@ -176,10 +176,10 @@ uiDefineKeyset model presets = do
       $ (Nothing, "Select") : fmap (Just &&& id) (ps <> predefinedPreds)
 
   rec
-    selectedKeys <- mkLabeledClsInput False "Chainweaver Keys" $ const
+    selectedKeys <- mkLabeledClsInput False "Chainweaver Generated Keys" $ const
       $ defineKeyset model $ current (_keysetInputs_value $ _definedKeyset_internalKeys presets) <@ pb
 
-    externalKeys <- mkLabeledClsInput False "External Keys" $ const
+    externalKeys <- mkLabeledClsInput False "Externally Generated Keys" $ const
       $ uiExternalKeyInput $ current (_keysetInputs_value $ _definedKeyset_externalKeys presets) <@ pb
 
     predicate <- mkLabeledClsInput False "Predicate (Keys Required to Sign for Account)" $ const
