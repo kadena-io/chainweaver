@@ -155,7 +155,13 @@ mkDefinedKeyset keys tb =
         in if pk `elem` tbKeys then Set.singleton (i,pk) else Set.empty
       ) keys
 
-    extKeys = Set.filter (\k -> not $ k `elem` Set.map snd intKeys) tbKeys
+    extKeys = Set.filter
+      (\k ->
+         not (k `elem` Set.map snd intKeys) &&
+         -- The FromJSON for Pact.PublicKey does not validate the text input.
+         isJust ((textToKey $ keyToText k) :: Maybe PublicKey)
+      )
+      tbKeys
 
     toPatchIntMap :: (a -> b) -> Set.Set a -> PatchIntMap (Maybe b)
     toPatchIntMap f = PatchIntMap
