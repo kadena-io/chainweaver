@@ -150,18 +150,10 @@ mkDefinedKeyset
 mkDefinedKeyset keys tb =
   let
     tbKeys = Set.map fromPactPublicKey $ fold $ Pact._ksKeys <$> _txBuilder_keyset tb
-    intKeys = ifoldl
-      (\i acc k ->
-          let
-            pk = _keyPair_publicKey $ _key_pair k
-          in
-            if pk `elem` tbKeys then
-              acc <> Set.singleton (i,pk)
-            else
-              acc
-      )
-      mempty
-      keys
+    intKeys = ifoldMap
+      (\i k -> let pk = _keyPair_publicKey $ _key_pair k
+        in if pk `elem` tbKeys then Set.singleton (i,pk) else Set.empty
+      ) keys
 
     extKeys = Set.filter (\k -> not $ k `elem` Set.map snd intKeys) tbKeys
 
