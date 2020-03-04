@@ -64,7 +64,7 @@ uiExportWalletScreen (ExportWallet _exportWallet_requestExport) onClose = Workfl
       pure pw'
 
   eSubmit <- modalFooter $
-      confirmButton def "Export"
+      confirmButton def "Export Wallet"
 
   (eErr, eOk) <- fmap fanEither . _exportWallet_requestExport $ (current $ value pw) <@ eSubmit
   pure ( ( "Export Wallet Data"
