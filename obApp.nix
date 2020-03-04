@@ -1,7 +1,7 @@
 { system ? builtins.currentSystem # TODO: Get rid of this system cruft
 , iosSdkVersion ? "10.2"
 , withHoogle ? false
-, kpkgs ? import ./deps/kpkgs { inherit system; }
+, kpkgs ? import ./dep/kpkgs { inherit system; }
 }:
 let
   obelisk = import ./.obelisk/impl { inherit system iosSdkVersion; inherit (kpkgs) reflex-platform-func;};
@@ -26,26 +26,26 @@ in with obelisk;
      };
    packages =
      let
-       servantSrc = hackGet ./deps/servant;
+       servantSrc = hackGet ./dep/servant;
      in
        {
-          pact = hackGet ./deps/pact;
+          pact = hackGet ./dep/pact;
           # servant-client-core = servantSrc + "/servant-client-core";
           # servant = servantSrc + "/servant";
           servant-jsaddle = servantSrc + "/servant-jsaddle";
-          reflex-dom-ace = hackGet ./deps/reflex-dom-ace;
-          reflex-dom-contrib = hackGet ./deps/reflex-dom-contrib;
-          dependent-sum-aeson-orphans = hackGet ./deps/dependent-sum-aeson-orphans;
-          servant-github = hackGet ./deps/servant-github;
-          obelisk-oauth-common = hackGet ./deps/obelisk-oauth + /common;
-          obelisk-oauth-frontend = hackGet ./deps/obelisk-oauth + /frontend;
-          obelisk-oauth-backend = hackGet ./deps/obelisk-oauth + /backend;
+          reflex-dom-ace = hackGet ./dep/reflex-dom-ace;
+          reflex-dom-contrib = hackGet ./dep/reflex-dom-contrib;
+          dependent-sum-aeson-orphans = hackGet ./dep/dependent-sum-aeson-orphans;
+          servant-github = hackGet ./dep/servant-github;
+          obelisk-oauth-common = hackGet ./dep/obelisk-oauth + /common;
+          obelisk-oauth-frontend = hackGet ./dep/obelisk-oauth + /frontend;
+          obelisk-oauth-backend = hackGet ./dep/obelisk-oauth + /backend;
 
           # Needed for obelisk-oauth currently (ghcjs support mostly):
-          entropy = hackGet ./deps/entropy;
-          crc = hackGet ./deps/crc;
-          cardano-crypto = hackGet ./deps/cardano-crypto;
-          kadena-signing-api = hackGet ./deps/signing-api + /kadena-signing-api;
+          entropy = hackGet ./dep/entropy;
+          crc = hackGet ./dep/crc;
+          cardano-crypto = hackGet ./dep/cardano-crypto;
+          kadena-signing-api = hackGet ./dep/signing-api + /kadena-signing-api;
           desktop = ./desktop;
           mac = builtins.filterSource (path: type: !(builtins.elem (baseNameOf path) ["static"])) ./mac;
           linux = builtins.filterSource (path: type: !(builtins.elem (baseNameOf path) ["static"])) ./linux;

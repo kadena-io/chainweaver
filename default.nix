@@ -24,7 +24,7 @@ let
   macApp = (import ./mac.nix) {
     inherit obApp pkgs appName sass chainweaverVersion macReleaseNumber;
   };
-  homeManagerModule = obelisk.reflex-platform.hackGet ./deps/home-manager + /nixos;
+  homeManagerModule = obelisk.reflex-platform.hackGet ./dep/home-manager + /nixos;
   linuxApp = (import ./linux.nix) {
     inherit obApp pkgs appName sass homeManagerModule chainweaverVersion linuxReleaseNumber ovaReleaseNumber;
   };
