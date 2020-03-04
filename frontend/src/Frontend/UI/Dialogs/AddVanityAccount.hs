@@ -84,7 +84,7 @@ uiAddAccountDialog model _onCloseExternal = mdo
     divClass "group" $ text "Add an Account here to display its status. If the Account does not yet exist, then you will be able to create and control the Account on the blockchain."
     dialogSectionHeading mempty "Add Account"
     divClass "group" $ do
-      uiAccountNameInput Nothing (checkAccountNameAvailability <$> (model ^. network_selectedNetwork) <*> (model ^. wallet_accounts))
+      uiAccountNameInput True Nothing (checkAccountNameAvailability <$> (model ^. network_selectedNetwork) <*> (model ^. wallet_accounts))
   modalFooter $ do
     onCancel <- cancelButton def "Cancel"
     onAdd <- confirmButton (def & uiButtonCfg_disabled .~ (isNothing <$> name)) "Add"

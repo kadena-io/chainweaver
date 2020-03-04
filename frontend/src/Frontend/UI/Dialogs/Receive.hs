@@ -10,7 +10,7 @@ module Frontend.UI.Dialogs.Receive
   ) where
 
 import Control.Applicative (liftA2, liftA3)
-import Control.Lens ((^.), (<>~), _1, _2, _3, view)
+import Control.Lens ((^.), (^?), (<>~), _1, _2, _3, view, to)
 import Control.Monad ((<=<))
 import Control.Monad.Trans.Class (lift)
 import Control.Monad.Trans.Maybe (MaybeT(..))
@@ -64,7 +64,7 @@ uiReceiveFromLegacyAccount
      )
   => m (Dynamic t (Maybe NonBIP32TransferInfo))
 uiReceiveFromLegacyAccount = do
-  mAccountName <- uiAccountNameInput Nothing noValidation
+  mAccountName <- uiAccountNameInput True Nothing noValidation
 
   let
     onDeriveKey (_, onKey) =
@@ -106,12 +106,14 @@ uiReceiveModal
      )
   => model
   -> AccountName
+  -> AccountDetails
   -> Maybe ChainId
   -> Event t ()
   -> m (mConf, Event t ())
-uiReceiveModal model account mchain _onClose = do
+uiReceiveModal model account details mchain _onClose = do
   onClose <- modalHeader $ text "Receive"
-  (conf, closes) <- fmap splitDynPure $ workflow $ uiReceiveModal0 model account mchain onClose
+  (conf, closes) <- fmap splitDynPure $ workflow $
+    uiReceiveModal0 model account details mchain onClose
   mConf <- flatten =<< tagOnPostBuild conf
   let close = switch $ current closes
   pure (mConf, close)
@@ -128,10 +130,11 @@ uiReceiveModal0
      )
   => model
   -> AccountName
+  -> AccountDetails
   -> Maybe ChainId
   -> Event t ()
   -> Workflow t m (mConf, Event t ())
-uiReceiveModal0 model account mchain onClose = Workflow $ do
+uiReceiveModal0 model account details mchain onClose = Workflow $ do
   let
     netInfo = do
       nodes <- model ^. network_selectedNodes
@@ -163,7 +166,9 @@ uiReceiveModal0 model account mchain onClose = Workflow $ do
         (accordionHeaderBtn "Option 1: Copy and share Tx Builder") $ do
         dyn_ $ ffor chain $ divClass "group" . \case
           Nothing -> text "Please select a chain"
-          Just cid -> uiDisplayTxBuilderWithCopy True $ TxBuilder account cid Nothing
+          Just cid -> uiDisplayTxBuilderWithCopy True
+            $ TxBuilder account cid
+            $ details ^? accountDetails_guard . _AccountGuard_KeySet . to (uncurry toPactKeyset)
 
       (onReceiClick, results) <- controlledAccordionItem (not <$> showingTxBuilder) mempty
         (accordionHeaderBtn "Option 2: Transfer from non-Chainweaver Account") $ do

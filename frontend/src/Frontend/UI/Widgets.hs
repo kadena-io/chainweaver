@@ -883,17 +883,20 @@ userChainIdSelect
   => model
   -> m (MDynamic t ChainId)
 userChainIdSelect m =
-  userChainIdSelectWithPreselect m (constDyn Nothing)
+  userChainIdSelectWithPreselect m True (constDyn Nothing)
 
 -- | Let the user pick a chain id but preselect a value
 userChainIdSelectWithPreselect
   :: (MonadWidget t m, HasNetwork model t
      )
   => model
+  -> Bool
   -> Dynamic t (Maybe ChainId)
   -> m (MDynamic t ChainId)
-userChainIdSelectWithPreselect m mChainId = mkLabeledClsInput True "Chain ID" (uiChainSelection mNodeInfo mChainId)
-  where mNodeInfo = (^? to rights . _head) <$> m ^. network_selectedNodes
+userChainIdSelectWithPreselect m inlineLabel mChainId =
+  mkLabeledClsInput inlineLabel "Chain ID" (uiChainSelection mNodeInfo mChainId)
+  where
+    mNodeInfo = (^? to rights . _head) <$> m ^. network_selectedNodes
 
 uiChainSelection
   :: MonadWidget t m
@@ -952,10 +955,11 @@ uiAccountNameInput
      , PerformEvent t m
      , MonadJSM (Performable m)
      )
-  => Maybe AccountName
+  => Bool
+  -> Maybe AccountName
   -> Dynamic t (AccountName -> Either Text AccountName)
   -> m (Dynamic t (Maybe AccountName))
-uiAccountNameInput initval validateName = do
+uiAccountNameInput inlineLabel initval validateName = do
   let
     mkMsg True (Left e) = PopoverState_Error e
     mkMsg _    _ = PopoverState_Disabled
@@ -970,7 +974,7 @@ uiAccountNameInput initval validateName = do
       inp <- uiInputElement cfg
       pure (inp, _inputElement_raw inp)
 
-  (inputE, _) <- mkLabeledInput True "Account Name" (uiInputWithPopover uiNameInput snd showPopover)
+  (inputE, _) <- mkLabeledInput inlineLabel "Account Name" (uiInputWithPopover uiNameInput snd showPopover)
     $ def & inputElementConfig_initialValue .~ fold (fmap unAccountName initval)
 
   pure $ hush <$> (validate <*> fmap T.strip (value inputE))

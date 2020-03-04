@@ -24,15 +24,13 @@ module Frontend.UI.Dialogs.Send
 
 import Control.Applicative (liftA2)
 import Control.Concurrent
-import Control.Error.Util (hush)
+import Control.Error.Util (hush, failWithM)
 import Control.Lens hiding (failover)
 import Control.Monad (guard, join, when, void, (<=<))
 import Control.Monad.Except (throwError)
 import Control.Monad.Logger (LogLevel(..))
 import Control.Monad.Trans.Except
 import Control.Monad.Trans.Maybe
-import Data.Bifunctor (first)
-import qualified Data.ByteString.Lazy as LBS
 import Data.Decimal (Decimal)
 import Data.Either (isLeft, rights)
 import Data.List.NonEmpty (NonEmpty(..))
@@ -55,14 +53,11 @@ import Safe (headMay)
 import qualified Data.Aeson as Aeson
 import qualified Data.HashMap.Lazy as HM
 import qualified Data.Map as Map
-import qualified Data.IntMap as IntMap
 import qualified Data.Set as Set
 import qualified Data.Text as T
-import qualified Data.Text.Encoding as T
 import qualified Pact.Server.ApiClient as Api
 import qualified Pact.Types.API as Api
 import qualified Pact.Types.Command as Pact
-import qualified Pact.Types.Pretty as Pact
 import qualified Pact.Types.Continuation as Pact
 import qualified Pact.Types.SPV as Pact
 import qualified Pact.Types.Term as Pact
@@ -85,7 +80,7 @@ import Frontend.UI.Widgets
 import Frontend.UI.Widgets.Helpers (dialogSectionHeading)
 import Frontend.Wallet
 
-import Frontend.UI.Dialogs.AddVanityAccount.DefineKeyset
+import Frontend.UI.Dialogs.Send.ManualTxBuilder (uiExplodedTxBuilder, recipientMatchesSender)
 
 type SendConstraints model mConf key t m
   = ( Monoid mConf, HasNetwork model t, HasNetworkCfg mConf t, HasWallet model key t, HasWalletCfg mConf key t
@@ -356,66 +351,8 @@ sendConfig model initData = Workflow $ do
     mInitCrossChainGasPayer = join $ withInitialTransfer (fmap (_crossChainData_recipientChainGasPayer) . _transferData_crossChainData) initData
     mInitAmount = withInitialTransfer _transferData_amount initData
 
-    validateTxBuilder = Aeson.eitherDecodeStrict . T.encodeUtf8
-
-    uiTxBuilderInput cfg = do
-      ie <- uiTxBuilder Nothing cfg
-
-      let
-        onTxBValidate = validateTxBuilder <$> _textAreaElement_input ie
-
-        onDefinedKeyset = ffor ((,) <$> current (model ^. wallet_keys) <@> onTxBValidate) $ \(keys, eTxB) ->
-          case eTxB of
-            Left _ -> Nothing
-            Right tb ->
-              let
-                tbKeys = Set.map fromPactPublicKey $ fold $ Pact._ksKeys <$> _txBuilder_keyset tb
-                intKeys = ifoldl
-                  (\i acc k ->
-                     let
-                       pk = _keyPair_publicKey $ _key_pair k
-                     in
-                       if pk `elem` tbKeys then
-                         acc <> Set.singleton (i,pk)
-                       else
-                         acc
-                  )
-                  mempty
-                  keys
-
-                extKeys = Set.filter (\k -> not $ k `elem` Set.map snd intKeys) tbKeys
-
-                toPatchIntMap :: (a -> b) -> Set.Set a -> PatchIntMap (Maybe b)
-                toPatchIntMap f = PatchIntMap
-                  . ifoldMap (\n a -> IntMap.singleton n $ Just (Just $ f a))
-                  . Set.toList
-
-              in
-              Just $ DefinedKeyset
-              { _definedKeyset_internalKeys = KeysetInputs
-                { _keysetInputs_value = constDyn $ toPatchIntMap fst intKeys
-                , _keysetInputs_set = constDyn (Set.map snd intKeys)
-                }
-              , _definedKeyset_externalKeys = KeysetInputs
-                { _keysetInputs_value = constDyn $ toPatchIntMap keyToText extKeys
-                , _keysetInputs_set = constDyn extKeys
-                }
-              , _definedKeyset_predicate = constDyn
-                $ Pact.renderCompactText . Pact._ksPredFun <$> _txBuilder_keyset tb
-              }
-
-      _ <- runWithReplace (uiDefineKeyset model emptyKeysetPresets)
-        $ fmapMaybe (fmap (uiDefineKeyset model)) onDefinedKeyset
-
-      pure (ie
-           , ( onTxBValidate
-             , validateTxBuilder <$> value ie
-             )
-           )
-
     insufficientFundsMsg = "Sender has insufficient funds."
     cannotBeReceiverMsg = "Sender cannot be the receiver of a transfer"
-    cannotInitiateNewXChainTfr = "Existing cross chain transfer in progress."
 
     mainSection currentTab = elClass "div" "modal__main" $ do
       (conf, useEntireBalance, txBuilder, amount) <- tabPane mempty currentTab SendModalTab_Configuration $ do
@@ -474,28 +411,12 @@ sendConfig model initData = Workflow $ do
 
           pure (useEntireBalance, validatedAmount)
 
-        dialogSectionHeading mempty "Recipient"
+        dialogSectionHeading mempty "Recipient Info"
         validatedTxBuilder <- divClass "group" $ do
-          let renderTxBuilder = T.decodeUtf8 . LBS.toStrict . Aeson.encode
-
-              showTxBuilderPopover (_, (onInput, _)) = pure $ ffor onInput $ \case
-                Left _ ->
-                  PopoverState_Error "Invalid Tx Builder"
-                Right txb ->
-                  if _txBuilder_accountName txb == fromName && _txBuilder_chainId txb == fromChain then
-                    PopoverState_Error cannotBeReceiverMsg
-                  else if _txBuilder_chainId txb /= fromChain && isJust mUcct then
-                    PopoverState_Error cannotInitiateNewXChainTfr
-                  else
-                    PopoverState_Disabled
-
-          decoded <- fmap (snd . snd) $ mkLabeledInput False "Tx Builder"
-            (uiInputWithPopover uiTxBuilderInput (_textAreaElement_raw . fst) showTxBuilderPopover)
-            (def & textAreaElementConfig_initialValue .~ (maybe "" renderTxBuilder mInitToAddress))
-
+          dTxBuilder <- uiExplodedTxBuilder model fromName fromChain mUcct mInitToAddress
           pure $ runExceptT $ do
-            r <- ExceptT $ first (\_ -> "Invalid Tx Builder") <$> decoded
-            when (r == TxBuilder fromName fromChain Nothing) $
+            r <- failWithM "Invalid Tx Builder" dTxBuilder
+            when (recipientMatchesSender (fromName, fromChain) r) $
               throwError cannotBeReceiverMsg
             pure r
 
