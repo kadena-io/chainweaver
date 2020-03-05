@@ -79,7 +79,7 @@ import qualified Data.Csv.Builder as Csv
 
 import Text.Printf (printf)
 
-import Data.Time (TimeLocale)
+import Data.Time (TimeLocale, formatTime, iso8601DateFormat)
 import System.Locale.Read (getCurrentLocale)
 import qualified System.Directory as Dir
 import qualified System.FilePath as File
@@ -138,6 +138,7 @@ data TransactionLogger = TransactionLogger
   , _transactionLogger_destination :: Maybe FilePath
   , _transactionLogger_loadFirstNLogs :: Int -> IO (Either String (TimeLocale, [LogEntry]))
   , _transactionLogger_exportFile :: Text -> IO (Either String (FilePath, Text))
+  , _transactionLogger_rotateLogFile :: IO ()
   }
 
 data ApiClient m = ApiClient
@@ -261,6 +262,7 @@ logTransactionStdout = TransactionLogger
   , _transactionLogger_destination = Nothing
   , _transactionLogger_loadFirstNLogs = logsdisabled
   , _transactionLogger_exportFile = logsdisabled
+  , _transactionLogger_rotateLogFile = pure ()
   }
   where
     logsdisabled = const $ pure $ Left "Logs Disabled"
@@ -291,6 +293,14 @@ logTransactionFile f = TransactionLogger
 
   , _transactionLogger_exportFile = \pk ->
       createCommandLogExportFileV1 pk f
+
+  , _transactionLogger_rotateLogFile = Dir.doesFileExist f >>= \exists -> when exists $ do
+      putStrLn "Moving existing log file."
+      tl <- getCurrentLocale
+      nowish <- getCurrentTime
+      let timestamp = formatTime tl (iso8601DateFormat (Just "%H-%M-%S")) nowish
+      catch (Dir.renameFile f $ printf "%s_v%i_%s" f commandLogCurrentVersion timestamp) $ \(e :: IOError) ->
+        putStrLn $ "Unable to move existing log file. Reason: " <> displayException e
   }
   where
     logmsg = liftIO . putStrLn

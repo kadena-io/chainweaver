@@ -78,7 +78,7 @@ import Desktop.ImportExport
 import Desktop.Util
 import Desktop.Storage.File
 
-import Pact.Server.ApiClient (WalletEvent (..), commandLogFilename, _transactionLogger_walletEvent)
+import Pact.Server.ApiClient (WalletEvent (..), commandLogFilename, _transactionLogger_walletEvent, _transactionLogger_rotateLogFile)
 
 -- | This is for development
 -- > ob run --import desktop:Desktop.Frontend --frontend Desktop.Frontend.desktop
@@ -152,6 +152,8 @@ bipWallet
   -> MkAppCfg t m
   -> RoutedT t (R FrontendRoute) m ()
 bipWallet fileFFI mkAppCfg = do
+  txLogger <- askTransactionLogger
+
   let
     runSetup0
       :: Maybe (Behavior t Crypto.XPrv)
@@ -163,6 +165,7 @@ bipWallet fileFFI mkAppCfg = do
         Right (x, Password p, newWallet) -> pure $ Just $ do
           setItemStorage localStorage BIPStorage_RootKey x
           when newWallet $ do
+            liftIO $ _transactionLogger_rotateLogFile txLogger
             removeItemStorage localStorage StoreFrontend_Wallet_Keys
             removeItemStorage localStorage StoreFrontend_Wallet_Accounts
           pure $ LockScreen_Unlocked ==> (x, p)
@@ -170,7 +173,6 @@ bipWallet fileFFI mkAppCfg = do
           for mPrv $ fmap (pure . (LockScreen_Locked ==>)) . sample
 
   mRoot <- getItemStorage localStorage BIPStorage_RootKey
-  txLogger <- askTransactionLogger
   let initScreen = case mRoot of
         Nothing -> LockScreen_RunSetup :=> Identity ()
         Just xprv -> LockScreen_Locked ==> xprv
@@ -228,7 +230,7 @@ bipWallet fileFFI mkAppCfg = do
                   let bOldPw = (\(Identity (_,oldPw)) -> oldPw) <$> current details
                       runExport oldPw newPw = do
                         pfx <- genZeroKeyPrefix
-                        doExport pfx oldPw newPw
+                        doExport txLogger pfx oldPw newPw
 
                       logExport = do
                         ts <- liftIO getCurrentTime
