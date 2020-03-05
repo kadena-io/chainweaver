@@ -22,6 +22,7 @@ module Frontend.UI.Dialogs.Send.ManualTxBuilder
 
 import Control.Applicative (liftA2, (<|>))
 import Control.Error (hush)
+import Control.Monad (join)
 import Control.Lens hiding (failover)
 import Reflex
 import Reflex.Dom
@@ -98,8 +99,8 @@ uiManualTxBuilderInput fromName fromChain mUcct mInitToAddress = do
            )
 
   mkLabeledInput False "Tx Builder"
-    (uiInputWithPopover txInput (_textAreaElement_raw . fst) showTxBuilderPopover)
-    $ def & textAreaElementConfig_initialValue .~ (maybe "" renderTxBuilder mInitToAddress)
+    (uiInputWithPopover txInput (_textAreaElement_raw . fst) showTxBuilderPopover) $ def
+    & textAreaElementConfig_initialValue .~ (maybe "" renderTxBuilder mInitToAddress)
 
 uiExplodedTxBuilder
   :: ( MonadWidget t m
@@ -114,33 +115,33 @@ uiExplodedTxBuilder
   -> Maybe TxBuilder
   -> m (Dynamic t (Maybe TxBuilder))
 uiExplodedTxBuilder model fromName fromChain mUcct mInitToAddress = do
-  (onEitherTxB, dEitherTxB) <- fmap snd $ uiManualTxBuilderInput fromName fromChain mUcct mInitToAddress
-
   let
-    explodedTxB txAccName txChainId keysetsPresets = (,,)
-      <$> uiAccountNameInput False txAccName noValidation
-      <*> userChainIdSelectWithPreselect model False (constDyn txChainId)
-      <*> fmap snd (uiDefineKeyset model keysetsPresets)
+    mkAlteredTxB mname mchain intKeys extKeys mPredicate = TxBuilder <$> mname <*> mchain
+      <*> pure (fmap (toPactKeyset $ intKeys <> extKeys) mPredicate)
 
-    onDefinedKeyset _    (Left _) = Nothing
+    explodedTxB txAccName txChainId keysetsPresets = do
+      dname <- uiAccountNameInput False txAccName noValidation
+      dchain <- userChainIdSelectWithPreselect model False (constDyn txChainId)
+      keyset <- fmap snd $ uiDefineKeyset model keysetsPresets
+      pure $ mkAlteredTxB
+        <$> dname
+        <*> dchain
+        <*> _keysetInputs_set (_definedKeyset_internalKeys keyset)
+        <*> _keysetInputs_set (_definedKeyset_externalKeys keyset)
+        <*> _definedKeyset_predicate keyset
+
+    onDefinedKeyset _ (Left _) = Nothing
     onDefinedKeyset keys (Right txb) = Just $ explodedTxB
       (Just $ _txBuilder_accountName txb)
       (Just $ _txBuilder_chainId txb)
       $ mkDefinedKeyset keys txb
 
-  (mName, mChain, keySet) <- fmap fst $ runWithReplace (explodedTxB Nothing Nothing emptyKeysetPresets)
+  (onEitherTxB, dEitherTxB) <- fmap snd $ uiManualTxBuilderInput fromName fromChain mUcct mInitToAddress
+
+  dExplodedInputs <- widgetHold (explodedTxB Nothing Nothing emptyKeysetPresets)
     $ attachWithMaybe onDefinedKeyset (current $ model ^. wallet_keys) onEitherTxB
 
-  let
-    mkAlteredTxB mname mchain intKeys extKeys mPredicate = TxBuilder <$> mname <*> mchain
-      <*> pure (fmap (toPactKeyset $ intKeys <> extKeys) mPredicate)
-
-    dAlteredTxBuilder = mkAlteredTxB <$> mName <*> mChain
-      <*> _keysetInputs_set (_definedKeyset_internalKeys keySet)
-      <*> _keysetInputs_set (_definedKeyset_externalKeys keySet)
-      <*> _definedKeyset_predicate keySet
-
-  pure $ liftA2 (<|>) dAlteredTxBuilder (hush <$> dEitherTxB)
+  pure $ liftA2 (<|>) (join dExplodedInputs) (hush <$> dEitherTxB)
 
 mkDefinedKeyset
   :: Reflex t
