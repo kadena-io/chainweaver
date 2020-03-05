@@ -19,10 +19,11 @@ import Data.Foldable (traverse_)
 import Data.List (intercalate)
 import Data.Dependent.Map (DMap)
 import qualified Data.Dependent.Map as DMap
-import Data.Time (getZonedTime, zonedTimeToLocalTime, iso8601DateFormat, formatTime, defaultTimeLocale)
+import Data.Time (getZonedTime, zonedTimeToLocalTime, iso8601DateFormat, formatTime)
 import Data.Functor.Identity (Identity, runIdentity)
 import Language.Javascript.JSaddle (MonadJSM)
 import Data.Time (getCurrentTime)
+import System.Locale.Read (getCurrentLocale)
 import Data.Text (Text)
 import qualified Data.Text as T
 import qualified Data.Text.Lazy as TL
@@ -156,28 +157,30 @@ doExport
      , MonadJSM m
      , HasStorage m
      )
-  => PublicKeyPrefix
+  => TransactionLogger
+  -> PublicKeyPrefix
   -> Password
   -> Password
   -> m (Either ExportWalletError (FilePath, Text))
-doExport keyPfx oldPw pw = runExceptT $ do
+doExport txLogger keyPfx oldPw pw = runExceptT $ do
   unless (oldPw == pw) $ throwError ExportWalletError_PasswordIncorrect
   let store = FrontendStore.versionedStorage @Crypto.XPrv @m
 
   -- Trigger an upgrade of the storage to ensure we're exporting the latest version.
   _ <- ExceptT $ over (mapped . _Left) (const ExportWalletError_UpgradeFailed)
-    $ _versionedStorage_upgradeStorage store
+    $ _versionedStorage_upgradeStorage store txLogger
 
   (bipVer,bipData) <- lift $ dumpLocalStorage @BIPStorage bipMetaPrefix
   (feVer, feData) <- lift $ _versionedStorage_dumpLocalStorage store
 
+  tl <- liftIO getCurrentLocale
   lt <- zonedTimeToLocalTime <$> liftIO getZonedTime
 
   pure $
     ( intercalate "."
       [ T.unpack $ _unPublicKeyPrefix keyPfx
       -- Mac does something weird with colons in the name and converts them to subdirs...
-      , formatTime defaultTimeLocale (iso8601DateFormat (Just "%H-%M-%S")) lt
+      , formatTime tl (iso8601DateFormat (Just "%H-%M-%S")) lt
       , T.unpack (fileTypeExtension FileType_Import)
       ]
     , TL.toStrict $ encodeToLazyText $ object $
