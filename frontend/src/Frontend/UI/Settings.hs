@@ -57,7 +57,7 @@ uiSettings enabledSettings model fileFFI = elClass "div" "icon-grid" $ do
       settingItem "Change Password" (static @"img/lock-light.svg") (uiChangePasswordDialog changePassword)
     , ffor (_enabledSettings_exportWallet enabledSettings) $ \exportWallet-> do
       settingItem "Export Wallet" (static @"img/export.svg") (uiExportWalletDialog exportWallet)
-    , includeSetting _enabledSettings_transactionLog $ settingItem "Transaction Log" (static @"img/network.svg")
+    , includeSetting _enabledSettings_transactionLog $ settingItem "Transaction Log" (static @"img/transaction-logs.svg")
         $ uiTxLogs fileFFI
     ]
   pure $ netCfg <> fold configs
