@@ -363,7 +363,7 @@ uiDeployConfirmation
   -> Event t () -> m (modelCfg, Event t ())
 uiDeployConfirmation code model = fullDeployFlow def model $ do
   (settingsCfg, result, _) <- uiDeploymentSettings model $ DeploymentSettingsConfig
-    { _deploymentSettingsConfig_chainId = userChainIdSelect
+    { _deploymentSettingsConfig_chainId = fmap snd . userChainIdSelect
     , _deploymentSettingsConfig_userTab = Nothing
     , _deploymentSettingsConfig_code = pure code
     , _deploymentSettingsConfig_sender = uiAccountDropdown def (pure $ \_ _ -> True) (pure id)

@@ -64,7 +64,7 @@ uiReceiveFromLegacyAccount
      )
   => m (Dynamic t (Maybe NonBIP32TransferInfo))
 uiReceiveFromLegacyAccount = do
-  mAccountName <- uiAccountNameInput True Nothing noValidation
+  (_, mAccountName) <- uiAccountNameInput True Nothing noValidation
 
   let
     onDeriveKey (_, onKey) =
@@ -159,7 +159,7 @@ uiReceiveModal0 model account details mchain onClose = Workflow $ do
         transactionDisplayNetwork model
         -- Chain id
         case mchain of
-          Nothing -> userChainIdSelect model
+          Nothing -> snd <$> userChainIdSelect model
           Just cid -> (pure $ Just cid) <$ displayText "Chain ID" (_chainId cid) mempty
 
       (onAddrClick, ((), ())) <- controlledAccordionItem showingTxBuilder mempty

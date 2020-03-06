@@ -68,7 +68,8 @@ inputRequestKey model onCloseExternal = Workflow $ mdo
       text "If you have a request key from a previously submitted transaction, you can use this dialog to wait for and display the results."
     dialogSectionHeading mempty "Required Information"
     info <- divClass "group" $ do
-      mChain <- mkLabeledClsInput False "Chain ID" $ uiChainSelection (headMay <$> nodes) (pure Nothing)
+      mChain <- fmap snd $ mkLabeledClsInput False "Chain ID" $
+        uiChainSelection (headMay <$> nodes) (pure Nothing)
       eKey <- mkLabeledInput False "Request Key" uiInputElement def
       let parseRequestKey t
             | Right v <- Pact.fromText' t = Right v

@@ -59,7 +59,7 @@ uiSigning appCfg ideL signingRequest onCloseExternal = do
   (mConf, result, _) <- uiDeploymentSettings ideL $ DeploymentSettingsConfig
     { _deploymentSettingsConfig_chainId = case _signingRequest_chainId signingRequest of
         Just c -> predefinedChainIdDisplayed c
-        Nothing -> userChainIdSelect
+        Nothing -> fmap snd . userChainIdSelect
     , _deploymentSettingsConfig_userTab = Nothing
     , _deploymentSettingsConfig_code = pure $ _signingRequest_code signingRequest
     , _deploymentSettingsConfig_sender = case _signingRequest_sender signingRequest of

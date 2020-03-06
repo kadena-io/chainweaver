@@ -585,9 +585,10 @@ mkLabeledClsInput
   -> Dynamic t Text
   -> (CssClass -> m element)
   -> m element
-mkLabeledClsInput inlineLabel name mkInput = elClass "div" ("segment segment_type_tertiary labeled-input" <> inlineState) $ do
-  divClass ("label labeled-input__label" <> inlineState) $ dynText name
-  mkInput "labeled-input__input"
+mkLabeledClsInput inlineLabel name mkInput =
+  elClass "div" ("segment segment_type_tertiary labeled-input" <> inlineState) $ do
+    divClass ("label labeled-input__label" <> inlineState) $ dynText name
+    mkInput "labeled-input__input"
   where
     inlineState = bool "" "-inline" inlineLabel
 
@@ -680,7 +681,7 @@ uiAdditiveInput
   -> AllowDeleteRow t out
   -> particular
   -> Event t (PatchIntMap particular)
-  -> m (Dynamic t (IntMap.IntMap out))
+  -> m (Dynamic t (IntMap.IntMap out), Event t (PatchIntMap particular))
 uiAdditiveInput mkIndividualInput (AllowAddNewRow newRow) (AllowDeleteRow deleteRow) initialSelection onExternal = do
   let
     minRowIx = 0
@@ -692,18 +693,22 @@ uiAdditiveInput mkIndividualInput (AllowAddNewRow newRow) (AllowDeleteRow delete
     decideDeletion i out = IntMap.singleton i Nothing <$ ffilter id (deleteRow out)
 
   rec
+    let
+      -- Delete rows when 'select' is chosen
+      onDelete = fmap PatchIntMap $ switchDyn $ IntMap.foldMapWithKey decideDeletion <$> dInputKeys
+      -- Add a new row when all rows have a selection and there are more keys to choose from
+      onAdd = fmap PatchIntMap $ switchDyn $ maybe never decideAddNewRow . IntMap.lookupMax <$> dInputKeys
+
     (keys, newSelection) <- traverseIntMapWithKeyWithAdjust mkIndividualInput (IntMap.singleton minRowIx initialSelection) $
       leftmost
-      [ -- Delete rows when 'select' is chosen
-        fmap PatchIntMap $ switchDyn $ IntMap.foldMapWithKey decideDeletion <$> dInputKeys
-        -- Add a new row when all rows have a selection and there are more keys to choose from
-      , fmap PatchIntMap $ switchDyn $ maybe never decideAddNewRow . IntMap.lookupMax <$> dInputKeys
+      [ onDelete
+      , onAdd
         -- Set the values of the rows from an external event.
       , onExternal
       ]
     dInputKeys <- foldDyn applyAlways keys newSelection
 
-  pure dInputKeys
+  pure (dInputKeys, onAdd <> onDelete)
 
 showLoading
   :: (NotReady t m, Adjustable t m, PostBuild t m, DomBuilder t m, Monoid b)
@@ -878,10 +883,13 @@ uiGasPriceInputField eReset conf = dimensionalInputFeedbackWrapper (Just "KDA") 
 
 -- | Let the user pick a chain id.
 userChainIdSelect
-  :: (MonadWidget t m, HasNetwork model t
+  :: ( MonadWidget t m
+     , HasNetwork model t
      )
   => model
-  -> m (MDynamic t ChainId)
+  -> m ( Dropdown t (Maybe ChainId)
+       , MDynamic t ChainId
+       )
 userChainIdSelect m =
   userChainIdSelectWithPreselect m True (constDyn Nothing)
 
@@ -892,7 +900,9 @@ userChainIdSelectWithPreselect
   => model
   -> Bool
   -> Dynamic t (Maybe ChainId)
-  -> m (MDynamic t ChainId)
+  -> m ( Dropdown t (Maybe ChainId)
+       , MDynamic t ChainId
+       )
 userChainIdSelectWithPreselect m inlineLabel mChainId =
   mkLabeledClsInput inlineLabel "Chain ID" (uiChainSelection mNodeInfo mChainId)
   where
@@ -903,7 +913,9 @@ uiChainSelection
   => Dynamic t (Maybe NodeInfo)
   -> Dynamic t (Maybe ChainId)
   -> CssClass
-  -> m (Dynamic t (Maybe ChainId))
+  -> m ( Dropdown t (Maybe ChainId)
+       , Dynamic t (Maybe ChainId)
+       )
 uiChainSelection info mPreselected cls = do
   pb <- getPostBuild
 
@@ -916,13 +928,15 @@ uiChainSelection info mPreselected cls = do
     mkDynCls v = if isNothing v then "select_mandatory_missing" else mempty
 
   rec
-    let allCls = renderClass <$> fmap mkDynCls d <> pure staticCls
+    let allCls = renderClass <$> fmap mkDynCls (_dropdown_value ddE) <> pure staticCls
         cfg = def
           & dropdownConfig_attributes .~ (("class" =:) <$> allCls)
           & dropdownConfig_setValue .~ (current mPreselected <@ pb)
 
-    d <- _dropdown_value <$> dropdown Nothing (mkOptions <$> chains) cfg
-  pure d
+    ddE <- dropdown Nothing (mkOptions <$> chains) cfg
+  pure ( ddE
+       , _dropdown_value ddE
+       )
 
 -- | Use a predefined chain id, don't let the user pick one.
 predefinedChainIdSelect
@@ -958,7 +972,9 @@ uiAccountNameInput
   => Bool
   -> Maybe AccountName
   -> Dynamic t (AccountName -> Either Text AccountName)
-  -> m (Dynamic t (Maybe AccountName))
+  -> m ( Event t (Maybe AccountName)
+       , Dynamic t (Maybe AccountName)
+       )
 uiAccountNameInput inlineLabel initval validateName = do
   let
     mkMsg True (Left e) = PopoverState_Error e
@@ -977,7 +993,9 @@ uiAccountNameInput inlineLabel initval validateName = do
   (inputE, _) <- mkLabeledInput inlineLabel "Account Name" (uiInputWithPopover uiNameInput snd showPopover)
     $ def & inputElementConfig_initialValue .~ fold (fmap unAccountName initval)
 
-  pure $ hush <$> (validate <*> fmap T.strip (value inputE))
+  pure ( fmap hush $ current validate <@> _inputElement_input inputE
+       , hush <$> (validate <*> fmap T.strip (value inputE))
+       )
 
 -- | Set the account to a fixed value
 uiAccountFixed

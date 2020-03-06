@@ -79,7 +79,7 @@ import Frontend.UI.Widgets
 import Frontend.UI.Widgets.Helpers (dialogSectionHeading)
 import Frontend.Wallet
 
-import Frontend.UI.Dialogs.Send.ManualTxBuilder (uiExplodedTxBuilder, recipientMatchesSender)
+import Frontend.UI.Dialogs.Send.ManualTxBuilder (uiExplodedTxBuilder, recipientMatchesSenderTxBuilder)
 
 type SendConstraints model mConf key t m
   = ( Monoid mConf, HasNetwork model t, HasNetworkCfg mConf t, HasWallet model key t, HasWalletCfg mConf key t
@@ -415,7 +415,7 @@ sendConfig model initData = Workflow $ do
           dTxBuilder <- uiExplodedTxBuilder model fromName fromChain mUcct mInitToAddress
           pure $ runExceptT $ do
             r <- failWithM "Invalid Tx Builder" dTxBuilder
-            when (recipientMatchesSender (fromName, fromChain) r) $
+            when (recipientMatchesSenderTxBuilder (fromName, fromChain) r) $
               throwError cannotBeReceiverMsg
             pure r
 
