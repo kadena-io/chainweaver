@@ -69,6 +69,7 @@ import Frontend.UI.Modal
 import Frontend.UI.Modal.Impl
 import Frontend.UI.RightPanel
 import Frontend.UI.Settings
+import Frontend.UI.Transfer
 import Frontend.UI.Wallet
 import Frontend.UI.Widgets
 
@@ -106,6 +107,7 @@ app sidebarExtra fileFFI appCfg = Store.versionedFrontend (Store.versionedStorag
           watchCfg <- uiWatchRequestButton ideL
           addCfg <- uiAddAccountButton ideL
           pure $ watchCfg <> addCfg <> refreshCfg
+        uiGenericTransfer
         accountsCfg <- uiAccountsTable ideL
         pure $ barCfg <> accountsCfg
       FrontendRoute_Keys -> mkPageContent "keys" $ do

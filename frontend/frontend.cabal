@@ -167,6 +167,7 @@ library
                  , Frontend.UI.RightPanel
                  , Frontend.UI.Settings
                  , Frontend.UI.TabBar
+                 , Frontend.UI.Transfer
                  , Frontend.UI.Wallet
                  , Frontend.UI.Widgets
                  , Frontend.UI.Widgets.Helpers
