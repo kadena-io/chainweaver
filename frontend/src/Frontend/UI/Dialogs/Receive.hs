@@ -9,89 +9,28 @@ module Frontend.UI.Dialogs.Receive
   ( uiReceiveModal
   ) where
 
-import Control.Applicative (liftA2, liftA3)
-import Control.Lens ((^.), (^?), (<>~), _1, _2, _3, view, to)
-import Control.Monad ((<=<))
+import Control.Applicative (liftA2)
+import Control.Lens ((^.), (<>~))
 import Control.Monad.Trans.Class (lift)
 import Control.Monad.Trans.Maybe (MaybeT(..))
-import Control.Error (hush, headMay)
-import Data.Bifunctor (first)
-import Data.Either (isLeft,rights)
-import Data.Text (Text)
-import qualified Data.Text as T
-import qualified Data.Map as Map
 
 import Reflex
 import Reflex.Dom
 
-import Kadena.SigningApi (DappCap (..))
-import Pact.Types.Capability (SigCapability (..))
-import Pact.Types.Term (QualifiedName (..))
-import Pact.Types.ChainMeta (PublicMeta (..), TTLSeconds)
-import Pact.Types.PactValue (PactValue (..))
-import Pact.Types.Exp (Literal (LString, LDecimal))
-import Pact.Types.Runtime (GasLimit, GasPrice (..))
-import Pact.Parse (ParsedDecimal (..))
-import qualified Pact.Types.Scheme as PactScheme
-
-import Language.Javascript.JSaddle.Types (MonadJSM)
-
-import Frontend.Crypto.Class (PactKey (..), HasCrypto, cryptoGenPubKeyFromPrivate)
+import Frontend.Crypto.Class (HasCrypto)
 
 import Frontend.Foundation
 import Frontend.TxBuilder
 import Frontend.Network
 import Frontend.Log
 
-import Frontend.UI.Dialogs.DeployConfirmation (CanSubmitTransaction, TransactionSubmitFeedback (..), submitTransactionWithFeedback)
-
-import Frontend.UI.DeploymentSettings (uiMetaData, defaultGASCapability, transactionDisplayNetwork)
+import Frontend.UI.Dialogs.Receive.Legacy
+import Frontend.UI.DeploymentSettings (transactionDisplayNetwork)
 
 import Frontend.UI.Modal
 import Frontend.UI.Widgets
 import Frontend.UI.Widgets.Helpers (dialogSectionHeading)
 import Frontend.Wallet
-
-data NonBIP32TransferInfo = NonBIP32TransferInfo
-  { _legacyTransferInfo_account :: AccountName
-  , _legacyTransferInfo_amount :: GasPrice
-  , _legacyTransferInfo_pactKey :: PactKey
-  }
-
-uiReceiveFromLegacyAccount
-  :: ( MonadWidget t m
-     , HasCrypto key (Performable m)
-     )
-  => m (Dynamic t (Maybe NonBIP32TransferInfo))
-uiReceiveFromLegacyAccount = do
-  (_, mAccountName) <- uiAccountNameInput True Nothing noValidation
-
-  let
-    onDeriveKey (_, onKey) =
-      pure $ ffor onKey $ \case
-        Left e -> PopoverState_Error $ T.takeWhile (/= ':') e
-        Right _ -> PopoverState_Disabled
-
-    uiInputPrivKey cfg = do
-      inputE <- uiInputElement cfg
-      onKey <- performEvent $ deriveKeyPair <$> _inputElement_input inputE
-      pure (inputE, onKey)
-
-  (_, onKeyPair) <- mkLabeledInput True "Private Key"
-    ( uiInputWithPopover
-        uiInputPrivKey
-        (_inputElement_raw . fst)
-        onDeriveKey
-    ) def
-
-  keyPair <- holdDyn Nothing $ hush <$> onKeyPair
-
-  amount <- view _2 <$> mkLabeledInput True "Amount" (uiGasPriceInputField never) def
-
-  pure $ (liftA3 . liftA3) NonBIP32TransferInfo mAccountName amount keyPair
-  where
-    deriveKeyPair :: (HasCrypto key m, MonadJSM m) => Text -> m (Either Text PactKey)
-    deriveKeyPair = fmap (first T.pack) . cryptoGenPubKeyFromPrivate PactScheme.ED25519
 
 uiReceiveModal
   :: ( MonadWidget t m
@@ -136,11 +75,7 @@ uiReceiveModal0
   -> Workflow t m (mConf, Event t ())
 uiReceiveModal0 model account details mchain onClose = Workflow $ do
   let
-    netInfo = do
-      nodes <- model ^. network_selectedNodes
-      meta <- model ^. network_meta
-      let networkId = hush . mkNetworkName . nodeVersion <=< headMay $ rights nodes
-      pure $ (nodes, meta, ) <$> networkId
+    netInfo = getNetworkInfoTriple $ model ^. network
 
     displayText lbl v cls =
       let
@@ -149,7 +84,7 @@ uiReceiveModal0 model account details mchain onClose = Workflow $ do
       in
         mkLabeledInputView True lbl attrFn $ pure v
 
-  (showingAddr, chain, (conf, ttl, gaslimit, _, transferInfo)) <- divClass "modal__main receive" $ do
+  (showingAddr, chain, (conf, ttl, gaslimit, transferInfo)) <- divClass "modal__main receive" $ do
     rec
       showingTxBuilder <- toggle True $ onAddrClick <> onReceiClick
 
@@ -172,11 +107,12 @@ uiReceiveModal0 model account details mchain onClose = Workflow $ do
 
       (onReceiClick, results) <- controlledAccordionItem (not <$> showingTxBuilder) mempty
         (accordionHeaderBtn "Option 2: Transfer from non-Chainweaver Account") $ do
-        dialogSectionHeading mempty "Sender Details"
-        transferInfo0 <- divClass "group" uiReceiveFromLegacyAccount
-        dialogSectionHeading mempty "Transaction Settings"
-        (conf0, ttl0, gaslimit0, gasPrice) <- divClass "group" $ uiMetaData model Nothing Nothing
-        pure (conf0, ttl0, gaslimit0, gasPrice, transferInfo0)
+        legacyReceive <- uiReceiveFromLegacy model
+        pure ( _receiveFromLegacy_conf legacyReceive
+             , _receiveFromLegacy_ttl legacyReceive
+             , _receiveFromLegacy_gasLimit legacyReceive
+             , _receiveFromLegacy_transferInfo legacyReceive
+             )
 
     pure (showingTxBuilder, chain, snd results)
 
@@ -200,90 +136,8 @@ uiReceiveModal0 model account details mchain onClose = Workflow $ do
       g <- lift $ sample $ current gaslimit
       ni <- MaybeT $ sample $ current netInfo
       ti <- MaybeT $ sample $ current transferInfo
-      pure $ receiveFromLegacySubmit model onClose account c t g ni ti
+      pure $ receiveFromLegacySubmitTransfer model onClose account c t g ni ti
 
   pure ( (conf, onClose <> done)
        , submit
        )
-
-receiveFromLegacySubmit
-  :: ( Monoid mConf
-     , CanSubmitTransaction t m
-     , HasCrypto key m
-     , HasLogger model t
-     , HasTransactionLogger m
-     )
-  => model
-  -> Event t ()
-  -> AccountName
-  -> ChainId
-  -> TTLSeconds
-  -> GasLimit
-  -> ([Either a NodeInfo], PublicMeta, NetworkName)
-  -> NonBIP32TransferInfo
-  -> Workflow t m (mConf, Event t ())
-receiveFromLegacySubmit model onClose account chain ttl gasLimit netInfo transferInfo = Workflow $ do
-  let
-    sender = _legacyTransferInfo_account transferInfo
-    senderKey = _legacyTransferInfo_pactKey transferInfo
-    senderPubKey = _pactKey_publicKey senderKey
-    amount = _legacyTransferInfo_amount transferInfo
-
-    unpackGasPrice (GasPrice (ParsedDecimal d)) = d
-
-    code = T.unwords $
-      [ "(coin.transfer"
-      , tshow $ unAccountName $ sender
-      , tshow $ unAccountName account
-      , tshow amount
-      , ")"
-      ]
-
-    transferSigCap = SigCapability
-      { _scName = QualifiedName
-        { _qnQual = "coin"
-        , _qnName = "TRANSFER"
-        , _qnInfo = def
-        }
-      , _scArgs =
-        [ PLiteral $ LString $ unAccountName sender
-        , PLiteral $ LString $ unAccountName account
-        , PLiteral $ LDecimal (unpackGasPrice amount)
-        ]
-      }
-
-    dat = mempty
-
-    pkCaps = Map.singleton senderPubKey [_dappCap_cap defaultGASCapability, transferSigCap]
-
-    pm = (netInfo ^. _2)
-      { _pmChainId = chain
-      , _pmSender = unAccountName sender
-      , _pmGasLimit = gasLimit
-      , _pmTTL = ttl
-      }
-
-  cmd <- buildCmdWithPactKey
-    senderKey
-    Nothing
-    (netInfo ^. _3)
-    pm
-    [KeyPair (_pactKey_publicKey senderKey) Nothing]
-    []
-    code
-    dat
-    pkCaps
-
-  txnSubFeedback <- elClass "div" "modal__main transaction_details" $
-    submitTransactionWithFeedback model cmd sender chain (netInfo ^. _1)
-
-  let isDisabled = maybe True isLeft <$> _transactionSubmitFeedback_message txnSubFeedback
-
-  done <- modalFooter $ uiButtonDyn
-    (def & uiButtonCfg_class .~ "button_type_confirm" & uiButtonCfg_disabled .~ isDisabled)
-    (text "Done")
-
-  pure
-    ( (mempty, done <> onClose)
-    , never
-    )
