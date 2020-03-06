@@ -305,7 +305,7 @@ createAccountFromExternalAccount model name chain mPublicKey selectedKeyset keys
       getNetworkInfoTriple $ model ^. network
 
     isSubmitDisabled =
-      isJust <$> _receiveFromLegacy_transferInfo receiveConf
+      isNothing <$> _receiveFromLegacy_transferInfo receiveConf
 
   modalFooter $ do
     back <- cancelButton def "Back"
