@@ -39,6 +39,7 @@ import Pact.Server.ApiClient (HasTransactionLogger)
 import Pact.Types.Lang
 import Reflex
 import Reflex.Dom.ACE.Extended hiding (Annotation (..))
+import Reflex.Dom.Contrib.Vanishing
 import Reflex.Dom.Core
 import qualified Data.Map as Map
 import qualified Data.Text as T
@@ -72,6 +73,13 @@ import Frontend.UI.Settings
 import Frontend.UI.Wallet
 import Frontend.UI.Widgets
 
+data TransferCfg t = TransferCfg
+  { _transferCfg_isVisible :: Dynamic t Bool
+  }
+
+instance Reflex t => Default (TransferCfg t) where
+  def = TransferCfg (constDyn False)
+
 uiGenericTransfer
   :: forall key t m.
      ( MonadWidget t m
@@ -83,7 +91,23 @@ uiGenericTransfer
      , FromJSON key, ToJSON key
      , HasTransactionLogger m
      )
-  => RoutedT t (R FrontendRoute) m ()
-uiGenericTransfer = do
-  elAttr "div" ("style" =: "border: 1px solid red;") $ do
-    text "Transfer Placeholder"
+  => TransferCfg t
+  -> RoutedT t (R FrontendRoute) m ()
+uiGenericTransfer cfg = do
+  let visibility = displayNoneWhen . not <$> _transferCfg_isVisible cfg
+  vanishingAttr "main" ("class" =: "main page__main" <> "style" =: "border: 1px solid red;") visibility $ do
+    divClass "transfer__left-pane" $ do
+      el "div" $ text "Left side"
+    divClass "transfer__right-pane" $ do
+      el "div" $ text "Right side"
+
+uiTransferButton
+  :: ( MonadWidget t m
+     )
+  => m (Dynamic t Bool)
+uiTransferButton = mdo
+  let buttonText = bool "Show Transfer" "Hide Transfer" <$> isVisible
+  click <- uiButton (def & uiButtonCfg_class <>~ " main-header__account-button") $ do
+    dynText buttonText
+  isVisible <- toggle False click
+  return isVisible

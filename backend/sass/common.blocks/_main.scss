@@ -7,9 +7,31 @@
 $main-separator-border-color: #e2e2e2;
 
 .main__right-pane {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: 50%;
+    right: 0;
+
+    padding-top: 43px;
+    padding-left: 22px;
+    padding-right: 22px;
+}
+
+.main__left-pane {
+    position: absolute;
+
+    top: 0px;
+    bottom: 0px;
+    left: 0px;
+    right: 50%;
+
+
+    border-right: 1px solid $main-separator-border-color;
+}
+
+.transfer__right-pane {
   position: absolute;
-  top: 0;
-  bottom: 0;
   left: 50%;
   right: 0;
 
@@ -18,14 +40,15 @@ $main-separator-border-color: #e2e2e2;
   padding-right: 22px;
 }
 
-.main__left-pane {
+.transfer__left-pane {
   position: absolute;
 
-  top: 0px;
-  bottom: 0px;
   left: 0px;
   right: 50%;
 
+  padding-top: 43px;
+  padding-left: 22px;
+  padding-right: 22px;
 
   border-right: 1px solid $main-separator-border-color;
 }

@@ -61,6 +61,12 @@ $main-header-wallet-btn-bg: #ececec;
   }
 }
 
+.main-header__account-button {
+    @extend .main-header__button;
+    color: $black;
+    background: $main-header-wallet-btn-bg;
+}
+
 .main-header__add-account-button {
   @extend .main-header__button;
   color: $black;

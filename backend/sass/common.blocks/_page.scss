@@ -42,6 +42,15 @@
   display: block;
 }
 
+.page__content.accounts {
+    margin: 0;
+    flex-direction: column;
+}
+
+.page__content.accounts.visible {
+    display: flex;
+}
+
 .page__content.contracts {
   margin: 0;
   flex-direction: column;
