@@ -29,6 +29,7 @@ import GHCJS.DOM.EventM (on)
 import GHCJS.DOM.GlobalEventHandlers (keyPress)
 import GHCJS.DOM.KeyboardEvent (getCtrlKey, getKey, getKeyCode, getMetaKey)
 import GHCJS.DOM.Types (HTMLElement (..), unElement)
+import Kadena.SigningApi (AccountName(..))
 import Language.Javascript.JSaddle (liftJSM)
 import Obelisk.Generated.Static
 import Obelisk.Route (R)
@@ -81,25 +82,40 @@ instance Reflex t => Default (TransferCfg t) where
   def = TransferCfg (constDyn False)
 
 uiGenericTransfer
-  :: forall key t m.
+  :: forall model t m.
      ( MonadWidget t m
      , RouteToUrl (R FrontendRoute) m, SetRoute t (R FrontendRoute) m
      , HasConfigs m
      , HasStorage m, HasStorage (Performable m)
-     , HasCrypto key (Performable m)
-     , HasCrypto key m
-     , FromJSON key, ToJSON key
      , HasTransactionLogger m
+     , HasNetwork model t
      )
-  => TransferCfg t
+  => model
+  -> TransferCfg t
   -> RoutedT t (R FrontendRoute) m ()
-uiGenericTransfer cfg = do
-  let visibility = displayNoneWhen . not <$> _transferCfg_isVisible cfg
-  vanishingAttr "main" ("class" =: "main page__main" <> "style" =: "border: 1px solid red;") visibility $ do
-    divClass "transfer__left-pane" $ do
-      el "div" $ text "Left side"
-    divClass "transfer__right-pane" $ do
-      el "div" $ text "Right side"
+uiGenericTransfer model cfg = do
+  --let visibility = displayNoneWhen . not <$> _transferCfg_isVisible cfg
+  --vanishingAttr "main" ("class" =: "main transfer__pane") visibility $ do
+  let attrs = do
+        visible <- _transferCfg_isVisible cfg
+        pure $ if visible
+          then ("class" =: "main transfer transfer__expanded")
+          else ("class" =: "main transfer")
+  elDynAttr "main" attrs $ do
+    divClass "transfer-fields" $ do
+      divClass "transfer__left-pane" $ do
+        el "h4" $ text "From"
+        userChainIdSelect model
+        uiAccountNameInput Nothing noValidation
+        mkLabeledInput True "Amount" uiGasPriceInputField def
+      divClass "transfer__right-pane" $ do
+        el "h4" $ text "To"
+        userChainIdSelect model
+        uiAccountNameInput Nothing noValidation
+    divClass "transfer-fields submit" $ do
+      confirmButton def "Sign & Transfer"
+    return ()
+  return ()
 
 uiTransferButton
   :: ( MonadWidget t m

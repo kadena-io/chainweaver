@@ -108,7 +108,7 @@ app sidebarExtra fileFFI appCfg = Store.versionedFrontend (Store.versionedStorag
           watchCfg <- uiWatchRequestButton ideL
           addCfg <- uiAddAccountButton ideL
           pure $ (xferVisible, watchCfg <> addCfg <> refreshCfg)
-        uiGenericTransfer $ TransferCfg transferVisible
+        uiGenericTransfer ideL $ TransferCfg transferVisible
         accountsCfg <- uiAccountsTable ideL
         pure $ barCfg <> accountsCfg
       FrontendRoute_Keys -> mkPageContent "keys" $ do
