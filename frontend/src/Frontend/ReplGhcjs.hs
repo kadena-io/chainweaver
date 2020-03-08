@@ -101,7 +101,7 @@ app sidebarExtra fileFFI appCfg = Store.versionedFrontend (Store.versionedStorag
     -- yet.
     route <- askRoute
     routedCfg <- subRoute $ lift . flip runRoutedT route . \case
-      FrontendRoute_Accounts -> mkPageContent "accounts" $ do
+      FrontendRoute_Accounts -> mkPageContent "accounts" $ mdo
         (transferVisible, barCfg) <- controlBar "Accounts" $ do
           refreshCfg <- uiWalletRefreshButton
           xferVisible <- uiTransferButton
@@ -141,6 +141,7 @@ app sidebarExtra fileFFI appCfg = Store.versionedFrontend (Store.versionedStorag
           uiSettings (_appCfg_enabledSettings appCfg) ideL fileFFI
         pure $ controlCfg <> mainCfg
 
+    accountDatalist ideL
     flattenedCfg <- flatten =<< tagOnPostBuild routedCfg
     pure $ netCfg <> flattenedCfg
 

@@ -29,6 +29,8 @@ module Frontend.UI.Widgets
   , uiChainSelection
 
   , mkChainTextAccounts
+  , accountListId
+  , accountDatalist
   , uiAccountNameInput
   , uiAccountFixed
   , uiAccountDropdown
@@ -130,17 +132,19 @@ import Pact.Types.Runtime (GasPrice (..))
 import Pact.Parse (ParsedDecimal (..))
 ------------------------------------------------------------------------------
 import           Common.Wallet
-import           Frontend.Network (HasNetwork(..), NodeInfo, getChains, maxCoinPrecision)
 import           Frontend.Foundation
+import           Frontend.Ide
+import           Frontend.Network (HasNetwork(..), NodeInfo, getChains, maxCoinPrecision)
+import           Frontend.TxBuilder (TxBuilder)
 import           Frontend.UI.Button
-import           Frontend.Wallet
+import           Frontend.UI.Modal.Impl
 import           Frontend.UI.Widgets.Helpers (imgWithAlt, imgWithAltCls, makeClickable,
                                               setFocus, setFocusOn,
                                               setFocusOnSelected, tabPane,
                                               preventUpAndDownArrow,
                                               preventScrollWheel,
                                               tabPane')
-import           Frontend.TxBuilder (TxBuilder)
+import           Frontend.Wallet
 
 ------------------------------------------------------------------------------
 
@@ -949,6 +953,34 @@ predefinedChainIdDisplayed cid _ = do
 noValidation :: Applicative f => f (a -> Either err a)
 noValidation = pure Right
 
+-- | Global dom representation of the account list for use in an HTML5 combo
+-- box. This uses and is addressed by an id, so there should only ever be one of
+-- them in the DOM. Currently it's at the very top of the <body> tag.
+accountDatalist
+  :: ( DomBuilder t m, PostBuild t m, MonadFix m, MonadHold t m
+     , HasNetwork ide t
+     , HasWallet ide key t
+     )
+  => ide
+  -> m ()
+accountDatalist ideL = elAttr "datalist" ("id" =: accountListId) $ do
+  let net = ideL ^. network_selectedNetwork
+      networks = ideL ^. wallet_accounts
+  mAccounts <- maybeDyn $ ffor2 net networks $ \n (AccountData m) -> case Map.lookup n m of
+    Just accs | not (Map.null accs) -> Just accs
+    _ -> Nothing
+  dyn $ ffor mAccounts $ \case
+    Nothing -> blank
+    Just am -> void $ listWithKey am $ \k _ -> do
+      el "option" $ text $ unAccountName k
+  pure ()
+
+accountMapNames :: Map AccountName (AccountInfo Account) -> [Text]
+accountMapNames = map unAccountName . Map.keys
+
+accountListId :: Text
+accountListId = "account-list"
+
 uiAccountNameInput
   :: ( DomBuilder t m
      , PostBuild t m
@@ -972,7 +1004,7 @@ uiAccountNameInput initval validateName = do
       <@> fmap T.strip (_inputElement_input ie)
 
     uiNameInput cfg = do
-      inp <- uiInputElement cfg
+      inp <- uiInputElement $ cfg & initialAttributes %~ (<> "list" =: accountListId)
       pure (inp, _inputElement_raw inp)
 
   (inputE, _) <- mkLabeledInput True "Account Name" (uiInputWithPopover uiNameInput snd showPopover)
