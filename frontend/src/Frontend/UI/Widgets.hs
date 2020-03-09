@@ -887,9 +887,7 @@ userChainIdSelect
      , HasNetwork model t
      )
   => model
-  -> m ( Dropdown t (Maybe ChainId)
-       , MDynamic t ChainId
-       )
+  -> m ( Dropdown t (Maybe ChainId) )
 userChainIdSelect m =
   userChainIdSelectWithPreselect m True (constDyn Nothing)
 
@@ -900,9 +898,7 @@ userChainIdSelectWithPreselect
   => model
   -> Bool
   -> Dynamic t (Maybe ChainId)
-  -> m ( Dropdown t (Maybe ChainId)
-       , MDynamic t ChainId
-       )
+  -> m ( Dropdown t (Maybe ChainId) )
 userChainIdSelectWithPreselect m inlineLabel mChainId =
   mkLabeledClsInput inlineLabel "Chain ID" (uiChainSelection mNodeInfo mChainId)
   where
@@ -913,9 +909,7 @@ uiChainSelection
   => Dynamic t (Maybe NodeInfo)
   -> Dynamic t (Maybe ChainId)
   -> CssClass
-  -> m ( Dropdown t (Maybe ChainId)
-       , Dynamic t (Maybe ChainId)
-       )
+  -> m ( Dropdown t (Maybe ChainId) )
 uiChainSelection info mPreselected cls = do
   pb <- getPostBuild
 
@@ -934,9 +928,7 @@ uiChainSelection info mPreselected cls = do
           & dropdownConfig_setValue .~ (current mPreselected <@ pb)
 
     ddE <- dropdown Nothing (mkOptions <$> chains) cfg
-  pure ( ddE
-       , _dropdown_value ddE
-       )
+  pure ddE
 
 -- | Use a predefined chain id, don't let the user pick one.
 predefinedChainIdSelect

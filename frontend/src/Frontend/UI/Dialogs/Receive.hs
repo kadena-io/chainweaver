@@ -159,7 +159,7 @@ uiReceiveModal0 model account details mchain onClose = Workflow $ do
         transactionDisplayNetwork model
         -- Chain id
         case mchain of
-          Nothing -> snd <$> userChainIdSelect model
+          Nothing -> value <$> userChainIdSelect model
           Just cid -> (pure $ Just cid) <$ displayText "Chain ID" (_chainId cid) mempty
 
       (onAddrClick, ((), ())) <- controlledAccordionItem showingTxBuilder mempty

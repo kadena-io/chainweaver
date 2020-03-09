@@ -125,17 +125,15 @@ uiExplodedChainSelect
   -> AccountName
   -> ChainId
   -> Maybe ChainId
-  -> m ( Dropdown t (Maybe ChainId)
-       , Dynamic t (Maybe ChainId)
-       )
+  -> m ( Dropdown t (Maybe ChainId) )
 uiExplodedChainSelect model mUcct onFromName dFromName fromName fromChain txChainId = do
   let
     chainSelect _ = elClass' "div" "segment_type_tertiary" $
       userChainIdSelectWithPreselect model False (constDyn txChainId)
 
-    onNameChainUpdated (_, (chainE, dChain)) = leftmost
+    onNameChainUpdated (_, chainE) = leftmost
       [ (,) <$> current dFromName <@> _dropdown_change chainE
-      , flip (,) <$> current dChain <@> onFromName
+      , flip (,) <$> current (value chainE) <@> onFromName
       ]
 
     showPopover e = pure $ onNameChainUpdated e <&> \case
@@ -166,7 +164,7 @@ uiExplodedTxBuilder model fromName fromChain mUcct mInitToAddress = do
     explodedTxB txAccName txChainId keysetsPresets = do
       (onNameInput, dname) <- uiAccountNameInput False txAccName noValidation
 
-      (chainE, dchain) <- uiExplodedChainSelect model
+      chainE <- uiExplodedChainSelect model
         mUcct
         onNameInput
         dname
@@ -186,7 +184,7 @@ uiExplodedTxBuilder model fromName fromChain mUcct mInitToAddress = do
 
       pure $ (,) onKeysetChange $ mkAlteredTxB
         <$> dname
-        <*> dchain
+        <*> value chainE
         <*> _keysetInputs_set (_definedKeyset_internalKeys keyset)
         <*> _keysetInputs_set (_definedKeyset_externalKeys keyset)
         <*> _definedKeyset_predicate keyset
