@@ -306,8 +306,7 @@ getAccountStatus model accStore = performEventAsync $ flip push accStore $ \(Acc
   pure . Just $ mkRequests nodes net (Map.lookup net networkAccounts)
   where
     allChains = ChainId . tshow <$> ([0..9] :: [Int])
-    allChainsLen = length allChains
-    onAllChains = MonoidalMap.fromList . zip allChains . replicate allChainsLen
+    onAllChains x = MonoidalMap.fromList $ fmap (,x) allChains
 
     mkRequests nodes net mAccounts cb = do
       -- Transform the accounts structure into a map from chain ID to
@@ -316,11 +315,9 @@ getAccountStatus model accStore = performEventAsync $ flip push accStore $ \(Acc
       -- account name. We no longer automatically add public keys as an
       -- account.
       let
-        chainsToAccounts = onAllChains $ fold
-          [ case mAccounts of
+        chainsToAccounts = onAllChains $ case mAccounts of
             Nothing -> mempty
             Just as -> Set.fromList $ fmap unAccountName $ Map.keys as
-          ]
 
         code = renderCompactText . accountDetailsObject . Set.toList
         pm chain = Pact.PublicMeta
