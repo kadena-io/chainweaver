@@ -10,7 +10,7 @@ module Frontend.UI.Dialogs.Receive
   ) where
 
 import Control.Applicative (liftA2)
-import Control.Lens ((^.), (<>~))
+import Control.Lens ((^.), (<>~), (^?), to)
 import Control.Monad.Trans.Class (lift)
 import Control.Monad.Trans.Maybe (MaybeT(..))
 
