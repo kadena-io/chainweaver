@@ -83,8 +83,9 @@ uiAddAccountDialog model _onCloseExternal = mdo
     dialogSectionHeading mempty "Notice"
     divClass "group" $ text "Add an Account here to display its status. If the Account does not yet exist, then you will be able to create and control the Account on the blockchain."
     dialogSectionHeading mempty "Add Account"
-    divClass "group" $ do
-      uiAccountNameInput Nothing (checkAccountNameAvailability <$> (model ^. network_selectedNetwork) <*> (model ^. wallet_accounts))
+    divClass "group" $ fmap snd $ uiAccountNameInput True Nothing $ checkAccountNameAvailability
+      <$> (model ^. network_selectedNetwork)
+      <*> (model ^. wallet_accounts)
   modalFooter $ do
     onCancel <- cancelButton def "Cancel"
     onAdd <- confirmButton (def & uiButtonCfg_disabled .~ (isNothing <$> name)) "Add"
@@ -254,7 +255,7 @@ createAccountConfig ideL name chainId mPublicKey selectedKeyset keyset = Workflo
   let payload = HM.singleton tempkeyset $ toJSON keyset
       code = mkPactCode name
       deployConfig = DeploymentSettingsConfig
-        { _deploymentSettingsConfig_chainId = userChainIdSelect
+        { _deploymentSettingsConfig_chainId = fmap value . userChainIdSelect
         , _deploymentSettingsConfig_userTab = Nothing :: Maybe (Text, m ())
         , _deploymentSettingsConfig_code = pure code
         , _deploymentSettingsConfig_sender = uiAccountDropdown def (pure $ \_ _ -> True) (pure id)

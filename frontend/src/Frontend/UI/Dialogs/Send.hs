@@ -23,15 +23,13 @@ module Frontend.UI.Dialogs.Send
 
 import Control.Applicative (liftA2)
 import Control.Concurrent
-import Control.Error.Util (hush)
+import Control.Error.Util (hush, failWithM)
 import Control.Lens hiding (failover)
 import Control.Monad (guard, join, when, void, (<=<))
 import Control.Monad.Except (throwError)
 import Control.Monad.Logger (LogLevel(..))
 import Control.Monad.Trans.Except
 import Control.Monad.Trans.Maybe
-import Data.Bifunctor (first)
-import qualified Data.ByteString.Lazy as LBS
 import Data.Decimal (Decimal)
 import Data.Either (isLeft, rights)
 import Data.List.NonEmpty (NonEmpty(..))
@@ -56,7 +54,6 @@ import qualified Data.HashMap.Lazy as HM
 import qualified Data.Map as Map
 import qualified Data.Set as Set
 import qualified Data.Text as T
-import qualified Data.Text.Encoding as T
 import qualified Pact.Server.ApiClient as Api
 import qualified Pact.Types.API as Api
 import qualified Pact.Types.Command as Pact
@@ -70,6 +67,7 @@ import Common.Wallet
 import Frontend.Crypto.Class (HasCrypto)
 import Frontend.Foundation hiding (Arg)
 import Frontend.TxBuilder
+import Frontend.JsonData
 import Frontend.Network
 import Frontend.Log
 import Frontend.UI.DeploymentSettings
@@ -81,11 +79,14 @@ import Frontend.UI.Widgets
 import Frontend.UI.Widgets.Helpers (dialogSectionHeading)
 import Frontend.Wallet
 
+import Frontend.UI.Dialogs.Send.ManualTxBuilder (uiExplodedTxBuilder, recipientMatchesSenderTxBuilder)
+
 type SendConstraints model mConf key t m
   = ( Monoid mConf, HasNetwork model t, HasNetworkCfg mConf t, HasWallet model key t, HasWalletCfg mConf key t
     , MonadWidget t m, PostBuild t m, HasCrypto key m
     , HasCrypto key (Performable m)
     , HasLogger model t
+    , HasJsonData model t
     )
 
 -- | Data which is only required for cross chain transfers
@@ -348,47 +349,21 @@ sendConfig model initData = Workflow $ do
     mInitFromGasPayer = withInitialTransfer (_transferData_fromGasPayer) initData
     mInitCrossChainGasPayer = join $ withInitialTransfer (fmap (_crossChainData_recipientChainGasPayer) . _transferData_crossChainData) initData
     mInitAmount = withInitialTransfer _transferData_amount initData
+
+    insufficientFundsMsg = "Sender has insufficient funds."
+    cannotBeReceiverMsg = "Sender cannot be the receiver of a transfer"
+
     mainSection currentTab = elClass "div" "modal__main" $ do
       (conf, useEntireBalance, txBuilder, amount) <- tabPane mempty currentTab SendModalTab_Configuration $ do
-        dialogSectionHeading mempty  "Destination"
+
+        let balance = fromAcc ^. accountDetails_balance . to unAccountBalance
+
+        dialogSectionHeading mempty "Destination"
         divClass "group" $ transactionDisplayNetwork model
 
-        dialogSectionHeading mempty  "Recipient"
-        (txBuilder, amount, useEntireBalance) <- divClass "group" $ do
-
-          let insufficientFundsMsg = "Sender has insufficient funds."
-              cannotBeReceiverMsg = "Sender cannot be the receiver of a transfer"
-              cannotInitiateNewXChainTfr = "Existing cross chain transfer in progress."
-
-              renderTxBuilder = T.decodeUtf8 . LBS.toStrict . Aeson.encode
-              validateTxBuilder = Aeson.eitherDecodeStrict . T.encodeUtf8
-
-              uiTxBuilderInput cfg = do
-                ie <- uiTxBuilder Nothing cfg
-                pure (ie
-                     , ( validateTxBuilder <$> _textAreaElement_input ie
-                       , validateTxBuilder <$> value ie
-                       )
-                     )
-
-              showTxBuilderPopover (_, (onInput, _)) = pure $ ffor onInput $ \case
-                Left _ ->
-                  PopoverState_Error "Invalid Tx Builder"
-                Right txb ->
-                  if _txBuilder_accountName txb == fromName && _txBuilder_chainId txb == fromChain then
-                    PopoverState_Error cannotBeReceiverMsg
-                  else if _txBuilder_chainId txb /= fromChain && isJust mUcct then
-                    PopoverState_Error cannotInitiateNewXChainTfr
-                  else
-                    PopoverState_Disabled
-
-          decoded <- fmap (snd . snd) $ mkLabeledInput True "Tx Builder"
-            (uiInputWithPopover uiTxBuilderInput (_textAreaElement_raw . fst) showTxBuilderPopover)
-            (def & textAreaElementConfig_initialValue .~ (maybe "" renderTxBuilder mInitToAddress))
-
-          let balance = fromAcc ^. accountDetails_balance . to unAccountBalance
-
-              checkFunds (GasPrice (ParsedDecimal gp)) =
+        dialogSectionHeading mempty "Amount"
+        (useEntireBalance, validatedAmount) <- divClass "group" $ do
+          let checkFunds (GasPrice (ParsedDecimal gp)) =
                 if gp > balance then
                   PopoverState_Error insufficientFundsMsg
                 else
@@ -427,23 +402,28 @@ sendConfig model initData = Workflow $ do
           (useEntireBalance, amount) <- mkLabeledInput True "Amount" gasInputWithMaxButton $ def
             & inputElementConfig_initialValue .~ maybe "" tshow mInitAmount
 
-          let validatedTxBuilder = runExceptT $ do
-                r <- ExceptT $ first (\_ -> "Invalid Tx Builder") <$> decoded
-                when (r == TxBuilder fromName fromChain Nothing) $
-                  throwError cannotBeReceiverMsg
-                pure r
-
-              validatedAmount = runExceptT $ do
+          let validatedAmount = runExceptT $ do
                 a <- ExceptT $ maybe (Left "Invalid amount") Right <$> amount
                 when (a > balance) $
                   throwError insufficientFundsMsg
                 pure a
 
-          pure (validatedTxBuilder, validatedAmount, useEntireBalance)
+          pure (useEntireBalance, validatedAmount)
+
+        dialogSectionHeading mempty "Recipient Info"
+        validatedTxBuilder <- divClass "group" $ do
+          dTxBuilder <- uiExplodedTxBuilder model fromName fromChain mUcct mInitToAddress
+          pure $ runExceptT $ do
+            r <- failWithM "Invalid Tx Builder" dTxBuilder
+            when (recipientMatchesSenderTxBuilder (fromName, fromChain) r) $
+              throwError cannotBeReceiverMsg
+            pure r
 
         dialogSectionHeading mempty  "Transaction Settings"
         (conf, _, _, _) <- divClass "group" $ uiMetaData model Nothing Nothing
-        pure (conf, useEntireBalance, txBuilder, amount)
+
+        pure (conf, useEntireBalance, validatedTxBuilder, validatedAmount)
+
       mCaps <- tabPane mempty currentTab SendModalTab_Sign $ do
         dedrecipient <- eitherDyn txBuilder
         fmap join . holdDyn (pure Nothing) <=< dyn $ ffor dedrecipient $ \case

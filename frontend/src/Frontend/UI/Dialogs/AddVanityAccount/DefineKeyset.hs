@@ -1,6 +1,7 @@
 {-# LANGUAGE RecursiveDo #-}
 module Frontend.UI.Dialogs.AddVanityAccount.DefineKeyset
-  ( DefinedKeyset
+  ( DefinedKeyset (..)
+  , KeysetInputs (..)
   , uiDefineKeyset
   , emptyKeysetPresets
   ) where
@@ -29,19 +30,23 @@ import           Frontend.Foundation
 data KeysetInputs t i a = KeysetInputs
   { _keysetInputs_value :: Dynamic t (PatchIntMap i)
   , _keysetInputs_set :: Dynamic t (Set a)
+  , _keysetInputs_rowAddDelete :: Event t (PatchIntMap i)
+  , _keysetInputs_rowChange :: Event t ()
   }
 
 data DefinedKeyset t = DefinedKeyset
   { _definedKeyset_internalKeys :: KeysetInputs t (Maybe Int) PublicKey
   , _definedKeyset_externalKeys :: KeysetInputs t (Maybe Text) PublicKey
   , _definedKeyset_predicate :: Dynamic t (Maybe Text)
+  , _definedKeyset_predicateChange :: Event t (Maybe Text)
   }
 
 emptyKeysetPresets :: forall t. Reflex t => DefinedKeyset t
 emptyKeysetPresets = DefinedKeyset
-  { _definedKeyset_internalKeys = KeysetInputs mempty mempty
-  , _definedKeyset_externalKeys = KeysetInputs mempty mempty
+  { _definedKeyset_internalKeys = KeysetInputs mempty mempty never never
+  , _definedKeyset_externalKeys = KeysetInputs mempty mempty never never
   , _definedKeyset_predicate = mempty
+  , _definedKeyset_predicateChange = never
   }
 
 data ExternalKeyInput t = ExternalKeyInput
@@ -94,7 +99,7 @@ uiExternalKeyInput onPreselection = do
   let doAddDel yesno =
         fmap (yesno . T.null) . _externalKeyInput_raw_input
 
-  dExternalKeyInput <- uiAdditiveInput
+  (dExternalKeyInput, onRowAddDel) <- uiAdditiveInput
     (const uiPubkeyInput)
     (AllowAddNewRow $ doAddDel not)
     (AllowDeleteRow $ doAddDel id)
@@ -111,7 +116,8 @@ uiExternalKeyInput onPreselection = do
           Nothing -> IntMap.singleton 0 (Just $ Just T.empty)
           Just (mkey, _) -> IntMap.insert (succ mkey) (Just $ Just T.empty) im
 
-  pure $ KeysetInputs dFormState (dExternalKeyInput >>= toSet)
+  pure $ KeysetInputs dFormState (dExternalKeyInput >>= toSet) onRowAddDel
+    $ switchDyn $ foldMap ((() <$) . _externalKeyInput_raw_input) <$> dExternalKeyInput
 
 defineKeyset
   :: forall t m key model
@@ -140,7 +146,7 @@ defineKeyset model onPreselection = do
   let doAddDel yesno =
         fmap (yesno selectMsgKey) . _dropdown_change
 
-  dSelectedKeys <- uiAdditiveInput
+  (dSelectedKeys, onRowAddDel) <- uiAdditiveInput
     (const uiSelectKey)
     (AllowAddNewRow $ doAddDel (/=))
     (AllowDeleteRow $ doAddDel (==))
@@ -153,8 +159,13 @@ defineKeyset model onPreselection = do
         $ joinDynThroughMap
         $ fmap (Map.fromList . IntMap.assocs . fmap value) dSelectedKeys
 
-  pure $ KeysetInputs dFormState $ ffor2 (model ^. wallet_keys) (dSelectedKeys >>= toIntSet) $ \wKeys ->
-    Set.fromDistinctAscList . IntMap.elems . fmap (_keyPair_publicKey . _key_pair) . IntMap.restrictKeys wKeys
+      x = ffor2 (model ^. wallet_keys) (dSelectedKeys >>= toIntSet) $ \wKeys -> Set.fromDistinctAscList
+        . IntMap.elems
+        . fmap (_keyPair_publicKey . _key_pair)
+        . IntMap.restrictKeys wKeys
+
+  pure $ KeysetInputs dFormState x onRowAddDel
+    $ switchDyn $ foldMap ((() <$) . _dropdown_change) <$> dSelectedKeys
 
 uiDefineKeyset
   :: ( MonadWidget t m
@@ -182,8 +193,8 @@ uiDefineKeyset model presets = do
     externalKeys <- mkLabeledClsInput False "Externally Generated Keys" $ const
       $ uiExternalKeyInput $ current (_keysetInputs_value $ _definedKeyset_externalKeys presets) <@ pb
 
-    predicate <- mkLabeledClsInput False "Predicate (Keys Required to Sign for Account)" $ const
-      $ fmap value $ uiDropdown Nothing allPredSelectMap $ def
+    predicateE <- mkLabeledClsInput False "Predicate (Keys Required to Sign for Account)" $ const
+      $ uiDropdown Nothing allPredSelectMap $ def
       & dropdownConfig_attributes .~ constDyn ("class" =: "labeled-input__input")
       & dropdownConfig_setValue .~ (current (_definedKeyset_predicate presets) <@ pb)
 
@@ -191,6 +202,6 @@ uiDefineKeyset model presets = do
     ipks = _keysetInputs_set selectedKeys
     epks = _keysetInputs_set externalKeys
 
-  pure ( ffor2 (ipks <> epks) predicate $ \pks kspred -> kspred >>= mkAccountGuard pks
-       , DefinedKeyset selectedKeys externalKeys predicate
+  pure ( ffor2 (ipks <> epks) (value predicateE) $ \pks kspred -> kspred >>= mkAccountGuard pks
+       , DefinedKeyset selectedKeys externalKeys (value predicateE) (_dropdown_change predicateE)
        )

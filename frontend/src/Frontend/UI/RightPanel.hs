@@ -114,7 +114,10 @@ envTab m = do
 -- _request_ to add an account: the actual lookup must be done elsewhere.
 addAccountForm :: (MonadWidget t m, HasNetwork model t) => model -> m (Event t (ChainId, AccountName))
 addAccountForm model = divClass "new-by-name group__header" $ divClass "new-by-name_inputs" $ do
-  mChainId <- uiChainSelection ((^? to rights . _head) <$> model ^. network_selectedNodes) (constDyn Nothing) "select_no_border"
+  mChainId <- fmap value $ uiChainSelection
+    ((^? to rights . _head) <$> model ^. network_selectedNodes)
+    (constDyn Nothing)
+    "select_no_border"
   rec
     nameText <- uiInputElement $ def
       & initialAttributes .~ "class" =: "new-by-name__input" <> "placeholder" =: "Enter an account name"
