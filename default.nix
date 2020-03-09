@@ -71,13 +71,14 @@ in obApp // rec {
       };
     };
 
-  ci = {
-    mac   = { inherit mac; };
-    linux = { inherit (linuxApp) nixosExe deb chainweaverVM chainweaverVMSystem; };
-    cross = {
-      inherit (obApp) exe;
-      inherit (obApp.ghc) desktop;
-      shell = obApp.shells.ghc;
+  ci =
+    let cross = {
+          inherit (obApp) exe;
+          inherit (obApp.ghc) desktop;
+          shell = obApp.shells.ghc;
+        };
+    in {
+      mac   = cross // { inherit mac; };
+      linux = cross // { inherit (linuxApp) nixosExe deb chainweaverVM chainweaverVMSystem; };
     };
-  };
 }
