@@ -30,7 +30,8 @@ import           Frontend.Foundation
 data KeysetInputs t i a = KeysetInputs
   { _keysetInputs_value :: Dynamic t (PatchIntMap i)
   , _keysetInputs_set :: Dynamic t (Set a)
-  , _keysetInputs_input :: Event t (PatchIntMap i)
+  , _keysetInputs_rowAddDelete :: Event t (PatchIntMap i)
+  , _keysetInputs_rowChange :: Event t ()
   }
 
 data DefinedKeyset t = DefinedKeyset
@@ -42,8 +43,8 @@ data DefinedKeyset t = DefinedKeyset
 
 emptyKeysetPresets :: forall t. Reflex t => DefinedKeyset t
 emptyKeysetPresets = DefinedKeyset
-  { _definedKeyset_internalKeys = KeysetInputs mempty mempty never
-  , _definedKeyset_externalKeys = KeysetInputs mempty mempty never
+  { _definedKeyset_internalKeys = KeysetInputs mempty mempty never never
+  , _definedKeyset_externalKeys = KeysetInputs mempty mempty never never
   , _definedKeyset_predicate = mempty
   , _definedKeyset_predicateChange = never
   }
@@ -96,7 +97,7 @@ uiExternalKeyInput onPreselection = do
   let doAddDel yesno =
         fmap (yesno . T.null) . _externalKeyInput_raw_input
 
-  (dExternalKeyInput, onNewSelection) <- uiAdditiveInput
+  (dExternalKeyInput, onRowAddDel) <- uiAdditiveInput
     (const uiPubkeyInput)
     (AllowAddNewRow $ doAddDel not)
     (AllowDeleteRow $ doAddDel id)
@@ -113,7 +114,8 @@ uiExternalKeyInput onPreselection = do
           Nothing -> IntMap.singleton 0 (Just $ Just T.empty)
           Just (mkey, _) -> IntMap.insert (succ mkey) (Just $ Just T.empty) im
 
-  pure $ KeysetInputs dFormState (dExternalKeyInput >>= toSet) onNewSelection
+  pure $ KeysetInputs dFormState (dExternalKeyInput >>= toSet) onRowAddDel
+    $ switchDyn $ foldMap ((() <$) . _externalKeyInput_raw_input) <$> dExternalKeyInput
 
 defineKeyset
   :: forall t m key model
@@ -142,7 +144,7 @@ defineKeyset model onPreselection = do
   let doAddDel yesno =
         fmap (yesno selectMsgKey) . _dropdown_change
 
-  (dSelectedKeys, onNewSelection) <- uiAdditiveInput
+  (dSelectedKeys, onRowAddDel) <- uiAdditiveInput
     (const uiSelectKey)
     (AllowAddNewRow $ doAddDel (/=))
     (AllowDeleteRow $ doAddDel (==))
@@ -160,7 +162,8 @@ defineKeyset model onPreselection = do
         . fmap (_keyPair_publicKey . _key_pair)
         . IntMap.restrictKeys wKeys
 
-  pure $ KeysetInputs dFormState x onNewSelection
+  pure $ KeysetInputs dFormState x onRowAddDel
+    $ switchDyn $ foldMap ((() <$) . _dropdown_change) <$> dSelectedKeys
 
 uiDefineKeyset
   :: ( MonadWidget t m

@@ -681,7 +681,9 @@ uiAdditiveInput
   -> AllowDeleteRow t out
   -> particular
   -> Event t (PatchIntMap particular)
-  -> m (Dynamic t (IntMap.IntMap out), Event t (PatchIntMap particular))
+  -> m ( Dynamic t (IntMap.IntMap out)
+       , Event t (PatchIntMap particular)
+       )
 uiAdditiveInput mkIndividualInput (AllowAddNewRow newRow) (AllowDeleteRow deleteRow) initialSelection onExternal = do
   let
     minRowIx = 0

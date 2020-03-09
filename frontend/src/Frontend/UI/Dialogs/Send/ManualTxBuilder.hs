@@ -20,8 +20,6 @@ module Frontend.UI.Dialogs.Send.ManualTxBuilder
   , recipientMatchesSenderTxBuilder
   ) where
 
-import Control.Applicative (liftA2, (<|>))
-import Control.Error (hush)
 import Control.Lens hiding (failover)
 import Reflex
 import Reflex.Dom
@@ -175,8 +173,10 @@ uiExplodedTxBuilder model fromName fromChain mUcct mInitToAddress = do
       keyset <- fmap snd $ uiDefineKeyset model keysetsPresets
 
       let onKeysetChange = leftmost
-            [ () <$ _keysetInputs_input (_definedKeyset_internalKeys keyset)
-            , () <$ _keysetInputs_input (_definedKeyset_externalKeys keyset)
+            [ () <$ _keysetInputs_rowAddDelete (_definedKeyset_internalKeys keyset)
+            , () <$ _keysetInputs_rowAddDelete (_definedKeyset_externalKeys keyset)
+            , () <$ _keysetInputs_rowChange (_definedKeyset_internalKeys keyset)
+            , () <$ _keysetInputs_rowChange (_definedKeyset_externalKeys keyset)
             , () <$ _definedKeyset_predicateChange keyset
             , () <$ onNameInput
             , () <$ _dropdown_change chainE
@@ -196,7 +196,7 @@ uiExplodedTxBuilder model fromName fromChain mUcct mInitToAddress = do
       $ mkDefinedKeyset keys txb
 
   rec
-    (onEitherTxB, dEitherTxB) <- fmap snd $ uiManualTxBuilderInput
+    onEitherTxB <- fmap (fst . snd) $ uiManualTxBuilderInput
       (switchDyn $ fmap fst explodedWidget)
       fromName
       fromChain
@@ -206,7 +206,7 @@ uiExplodedTxBuilder model fromName fromChain mUcct mInitToAddress = do
     explodedWidget <- widgetHold (explodedTxB Nothing Nothing emptyKeysetPresets)
       $ attachWithMaybe onDefinedKeyset (current $ model ^. wallet_keys) onEitherTxB
 
-  pure $ liftA2 (<|>) (explodedWidget >>= snd) (hush <$> dEitherTxB)
+  pure $ explodedWidget >>= snd
 
 mkDefinedKeyset
   :: Reflex t
@@ -239,12 +239,14 @@ mkDefinedKeyset keys tb =
       { _definedKeyset_internalKeys = KeysetInputs
         { _keysetInputs_value = constDyn $ toPatchIntMap fst intKeys
         , _keysetInputs_set = constDyn (Set.map snd intKeys)
-        , _keysetInputs_input = never
+        , _keysetInputs_rowAddDelete = never
+        , _keysetInputs_rowChange = never
         }
       , _definedKeyset_externalKeys = KeysetInputs
         { _keysetInputs_value = constDyn $ toPatchIntMap keyToText extKeys
         , _keysetInputs_set = constDyn extKeys
-        , _keysetInputs_input = never
+        , _keysetInputs_rowAddDelete = never
+        , _keysetInputs_rowChange = never
         }
       , _definedKeyset_predicate = constDyn
         $ Pact.renderCompactText . Pact._ksPredFun <$> _txBuilder_keyset tb
