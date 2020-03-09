@@ -305,9 +305,6 @@ getAccountStatus model accStore = performEventAsync $ flip push accStore $ \(Acc
   net <- sample $ current $ model ^. network_selectedNetwork
   pure . Just $ mkRequests nodes net (Map.lookup net networkAccounts)
   where
-    allChains = ChainId . tshow <$> ([0..9] :: [Int])
-    onAllChains x = MonoidalMap.fromList $ fmap (,x) allChains
-
     mkRequests nodes net mAccounts cb = do
       -- Transform the accounts structure into a map from chain ID to
       -- set of account names. We grab balances accounts on all chains,
@@ -315,9 +312,13 @@ getAccountStatus model accStore = performEventAsync $ flip push accStore $ \(Acc
       -- account name. We no longer automatically add public keys as an
       -- account.
       let
-        chainsToAccounts = onAllChains $ case mAccounts of
+        allAccounts = case mAccounts of
             Nothing -> mempty
             Just as -> Set.fromList $ fmap unAccountName $ Map.keys as
+
+        allChains = ChainId . tshow <$> ([0..9] :: [Int])
+
+        chainsToAccounts = MonoidalMap.fromList $ fmap (,allAccounts) allChains
 
         code = renderCompactText . accountDetailsObject . Set.toList
         pm chain = Pact.PublicMeta
