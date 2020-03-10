@@ -92,10 +92,10 @@ data ChainwebInfo = ChainwebInfo
 
 data NodeType =
     NodeType_Pact Text -- ^ A pact -s node with the provided version string.
-  | NodeType_Chainweb  ChainwebInfo -- ^ A chainweb node.
+  | NodeType_Chainweb ChainwebInfo -- ^ A chainweb node.
   deriving (Eq, Ord, Show)
 
--- | Internaly used Uri type, which diverges from URI mostly for a mandatory
+-- | Internally used Uri type, which diverges from URI mostly for a mandatory
 -- instead of optional Authority. (Thus we can avoid pointless `Maybe`s or
 -- partial functions.)
 data NodeUri = NodeUri
