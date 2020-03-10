@@ -158,77 +158,75 @@ createAccountSplash
   -> Maybe PublicKey
   -> DefinedKeyset t
   -> Workflow t m (Text, (mConf, Event t ()))
-createAccountSplash model name chain mPublicKey initialKeysets = splashWF initialKeysets where
-  splashWF = fix $ \self keysetselections -> Workflow $ do
-    (keyset, keysetSelections, dCreationMethod) <- modalMain $ do
+createAccountSplash model name chain mPublicKey = fix $ \splashWF keysetselections -> Workflow $ do
+  (keyset, keysetSelections, dCreationMethod) <- modalMain $ do
+    dialogSectionHeading mempty "Notice"
+    -- Placeholder text
+    divClass "group" $ text $ createAccountSplashBaseText
+      <> maybe createAccountSplashKeysetInfoText mempty mPublicKey
 
-      dialogSectionHeading mempty "Notice"
-      -- Placeholder text
-      divClass "group" $ text $ createAccountSplashBaseText
-        <> maybe createAccountSplashKeysetInfoText mempty mPublicKey
+    dialogSectionHeading mempty "Destination"
+    divClass "group" $ transactionDisplayNetwork model
+    (ks, ksSelections) <- case mPublicKey of
+      Nothing -> do
+        dialogSectionHeading mempty "Define Account Keyset"
+        divClass "group" $ do
+          uiDefineKeyset model keysetselections
 
-      dialogSectionHeading mempty "Destination"
-      divClass "group" $ transactionDisplayNetwork model
-      (ks, ksSelections) <- case mPublicKey of
-        Nothing -> do
-          dialogSectionHeading mempty "Define Account Keyset"
-          divClass "group" $ do
-            uiDefineKeyset model keysetselections
+      Just key -> do
+        dialogSectionHeading mempty "Account Key"
+        _ <- divClass "group" $ uiInputElement $ def
+          & inputElementConfig_initialValue .~ keyToText key
+          & initialAttributes <>~ ("disabled" =: "true" <> "class" =: " key-details__pubkey input labeled-input__input")
+        pure $ ( constDyn $ mkAccountGuard (Set.singleton key) "keys-all"
+               , emptyKeysetPresets
+               )
 
-        Just key -> do
-          dialogSectionHeading mempty "Account Key"
-          _ <- divClass "group" $ uiInputElement $ def
-            & inputElementConfig_initialValue .~ keyToText key
-            & initialAttributes <>~ ("disabled" =: "true" <> "class" =: " key-details__pubkey input labeled-input__input")
-          pure $ ( constDyn $ mkAccountGuard (Set.singleton key) "keys-all"
-                 , emptyKeysetPresets
-                 )
-
-      dialogSectionHeading mempty "Transaction Gas Payer"
-      dCreateSelect <- divClass "group" $ mdo
-        dCreate <- holdDyn CreateAccountMethod_SelfGasPayer $ onCreateSelect
-        let
-          mkLbl lbl cls =
-            fst <$> elClass' "span" (renderClass cls) (text lbl)
-
-          mkRadioOption lbl opt = divClass "create-account__gas-payer" $
-            uiLabeledRadioView (mkLbl lbl) dCreate opt
-
-          onCreateSelect =
-            leftmost [onOwn, onExternal, onShare]
-
-        onOwn <- mkRadioOption "My own Chainweaver account (basic transaction)"
-          CreateAccountMethod_SelfGasPayer
-        onExternal <- mkRadioOption "My own external account (requires private key)"
-          CreateAccountMethod_ExternalAccount
-        onShare <- mkRadioOption "Another user’s account (share account creation details)"
-          CreateAccountMethod_ShareTxBuilder
-
-        pure dCreate
-
-      pure (ks, ksSelections, dCreateSelect)
-
-    (cancel, next) <- modalFooter $ do
-      cancel <- cancelButton def "Cancel"
-      next <- confirmButton (def & uiButtonCfg_disabled .~ fmap isNothing keyset) "Next"
-
+    dialogSectionHeading mempty "Transaction Gas Payer"
+    dCreateSelect <- divClass "group" $ mdo
+      dCreate <- holdDyn CreateAccountMethod_SelfGasPayer $ onCreateSelect
       let
-        nextWF = ffor2 keyset dCreationMethod $ \mkeys mth ->
-          let
-            wf = case mth of
-              CreateAccountMethod_ShareTxBuilder -> createAccountNotGasPayer
-              CreateAccountMethod_SelfGasPayer -> createAccountConfig model
-              CreateAccountMethod_ExternalAccount -> createAccountFromExternalAccount model
-          in
-            wf (self keysetSelections) name chain <$> mkeys
+        mkLbl lbl cls =
+          fst <$> elClass' "span" (renderClass cls) (text lbl)
 
-      pure ( cancel
-           , tagMaybe (current nextWF) next
-           )
+        mkRadioOption lbl opt = divClass "create-account__gas-payer" $
+          uiLabeledRadioView (mkLbl lbl) dCreate opt
 
-    return ( ("Create Account", (mempty, cancel))
-           , next
-           )
+        onCreateSelect =
+          leftmost [onOwn, onExternal, onShare]
+
+      onOwn <- mkRadioOption "My own Chainweaver account (basic transaction)"
+        CreateAccountMethod_SelfGasPayer
+      onExternal <- mkRadioOption "My own external account (requires private key)"
+        CreateAccountMethod_ExternalAccount
+      onShare <- mkRadioOption "Another user’s account (share account creation details)"
+        CreateAccountMethod_ShareTxBuilder
+
+      pure dCreate
+
+    pure (ks, ksSelections, dCreateSelect)
+
+  (cancel, next) <- modalFooter $ do
+    cancel <- cancelButton def "Cancel"
+    next <- confirmButton (def & uiButtonCfg_disabled .~ fmap isNothing keyset) "Next"
+
+    let
+      nextWF = ffor2 keyset dCreationMethod $ \mkeys mth ->
+        let
+          wf = case mth of
+            CreateAccountMethod_ShareTxBuilder -> createAccountNotGasPayer
+            CreateAccountMethod_SelfGasPayer -> createAccountConfig model
+            CreateAccountMethod_ExternalAccount -> createAccountFromExternalAccount model
+        in
+          wf (splashWF keysetSelections) name chain <$> mkeys
+
+    pure ( cancel
+         , tagMaybe (current nextWF) next
+         )
+
+  return ( ("Create Account", (mempty, cancel))
+         , next
+         )
 
 createAccountNotGasPayer
   :: ( Monoid mConf
@@ -393,7 +391,6 @@ createAccountConfig ideL splashWF name chainId keyset = Workflow $ do
                (current $ ideL ^. network_selectedNodes)
                command
 
-           -- , createAccountSplash ideL name chainId mPublicKey selectedKeyset <$ onBack
            , splashWF <$ onBack
            ]
          )
