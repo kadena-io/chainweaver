@@ -74,7 +74,7 @@ uiExternalKeyInput onPreselection = do
                )
 
         inputCfg = def
-          & initialAttributes .~ ("placeholder" =: "External public key")
+          & initialAttributes .~ ("placeholder" =: "Enter public key (optional)")
           & inputElementConfig_initialValue .~ fold iv
 
         showPopover (_, (_, onInput)) = pure $
@@ -183,8 +183,11 @@ uiDefineKeyset model presets = do
       $ fmap _keyset_pred
       <$> model ^. jsonData_keysets
 
-    allPredSelectMap = ffor allPreds $ \ps -> Map.fromList
-      $ (Nothing, "Select") : fmap (Just &&& id) (ps <> predefinedPreds)
+    allPredSelectMap nkeys = ffor2 nkeys allPreds $ \nks ps -> Map.fromList
+      $ (Nothing, "Select") : fmap (Just &&& id) (dropkeys2 nks $ ps <> predefinedPreds)
+      where
+        dropkeys2 n xs | n >= 2 = xs
+                       | otherwise = filter (/= "keys-2") xs
 
   rec
     selectedKeys <- mkLabeledClsInput False "Chainweaver Generated Keys" $ const
@@ -193,15 +196,13 @@ uiDefineKeyset model presets = do
     externalKeys <- mkLabeledClsInput False "Externally Generated Keys" $ const
       $ uiExternalKeyInput $ current (_keysetInputs_value $ _definedKeyset_externalKeys presets) <@ pb
 
+    let allpks = _keysetInputs_set selectedKeys <> _keysetInputs_set externalKeys
+
     predicateE <- mkLabeledClsInput False "Predicate (Keys Required to Sign for Account)" $ const
-      $ uiDropdown Nothing allPredSelectMap $ def
+      $ uiDropdown Nothing (allPredSelectMap $ fmap Set.size allpks) $ def
       & dropdownConfig_attributes .~ constDyn ("class" =: "labeled-input__input")
       & dropdownConfig_setValue .~ (current (_definedKeyset_predicate presets) <@ pb)
 
-  let
-    ipks = _keysetInputs_set selectedKeys
-    epks = _keysetInputs_set externalKeys
-
-  pure ( ffor2 (ipks <> epks) (value predicateE) $ \pks kspred -> kspred >>= mkAccountGuard pks
+  pure ( ffor2 allpks (value predicateE) $ \pks kspred -> kspred >>= mkAccountGuard pks
        , DefinedKeyset selectedKeys externalKeys (value predicateE) (_dropdown_change predicateE)
        )
