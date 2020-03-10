@@ -67,7 +67,7 @@ import Control.Monad.Trans.Class
 import Control.Monad.Trans.Maybe
 import Control.Monad.Except
 import Data.Decimal (roundTo)
-import Data.Either (rights, isLeft)
+import Data.Either (rights)
 import Data.IntMap (IntMap)
 import Data.Map (Map)
 import Data.Set (Set)
@@ -209,6 +209,25 @@ data DeploymentSettingsResultError
   | DeploymentSettingsResultError_InsufficientFundsOnGasPayer
   deriving Eq
 
+deploymentSettingsResultErrorText :: DeploymentSettingsResultError -> Text
+deploymentSettingsResultErrorText = \case
+  DeploymentSettingsResultError_GasPayerIsNotValid acc ->
+    "Selected gas payer is not valid: " <> unAccountName acc
+  DeploymentSettingsResultError_InvalidNetworkName networkName ->
+    "Selected Network cannot be used: " <> networkName
+  DeploymentSettingsResultError_NoSenderSelected ->
+    "No transaction sender has been selected"
+  DeploymentSettingsResultError_NoChainIdSelected ->
+    "No target Chain ID has been selected"
+  DeploymentSettingsResultError_NoNodesAvailable ->
+    "No nodes available on selected network"
+  DeploymentSettingsResultError_InvalidJsonData _ ->
+    "Raw input JSON is not a valid object"
+  DeploymentSettingsResultError_NoAccountsOnNetwork networkName ->
+    "No usable accounts found on " <> textNetworkName networkName
+  DeploymentSettingsResultError_InsufficientFundsOnGasPayer ->
+    "Insufficient funds on selected gas payer"
+
 buildDeploymentSettingsResult
   :: ( HasNetwork model t
      , HasJsonData model t
@@ -335,9 +354,9 @@ buildDeployTabFooterControls
   -> Bool
   -> Dynamic t DeploymentSettingsView
   -> (DeploymentSettingsView -> Text)
-  -> Dynamic t Bool
+  -> Dynamic t (Maybe DeploymentSettingsResultError)
   -> m (Event t (DeploymentSettingsView -> Maybe DeploymentSettingsView))
-buildDeployTabFooterControls mUserTabName includePreviewTab curSelection stepFn hasResult = do
+buildDeployTabFooterControls mUserTabName includePreviewTab curSelection stepFn hasResultErr = do
   let backConfig = btnCfgTertiary & uiButtonCfg_class .~ ffor curSelection
         (\s -> if s == fromMaybe DeploymentSettingsView_Cfg mUserTabName then "hidden" else "")
 
@@ -346,7 +365,10 @@ buildDeployTabFooterControls mUserTabName includePreviewTab curSelection stepFn 
         else DeploymentSettingsView_Keys
 
       shouldBeDisabled tab hasRes = tab == tabToBeDisabled && hasRes
-      isDisabled = shouldBeDisabled <$> curSelection <*> hasResult
+      isDisabled = shouldBeDisabled <$> curSelection <*> fmap isJust hasResultErr
+
+  _ <- elClass "span" "deploy-settings-result-errors" $ dyn_ $ ffor hasResultErr $
+    maybe blank (text . deploymentSettingsResultErrorText)
 
   back <- cancelButton backConfig "Back"
   next <- uiButtonDyn
@@ -442,7 +464,7 @@ uiDeploymentSettings m settings = mdo
       (_deploymentSettingsConfig_includePreviewTab settings)
       curSelection
       defaultTabViewProgressButtonLabel
-      (isLeft <$> result)
+      (preview _Left <$> result)
 
     pure (conf, command, ma)
     where
