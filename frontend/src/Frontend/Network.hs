@@ -656,7 +656,10 @@ loadModules logL networkL onRefresh = do
             (o:_, n:_) -> if o /= n then Just newInfos else Nothing
             _          -> Just newInfos
 
-      mkReq netName pm = mkSimpleReadReq "(list-modules)" netName pm . ChainRef Nothing
+      -- We need a minimum GasLimit to ensure that this call cannot fail. As the
+      -- PublicMeta stores the users last transaction configuration and may not be
+      -- sufficient for this function.
+      mkReq netName pm = mkSimpleReadReq "(list-modules)" netName (pm & Pact.pmGasLimit .~ 200) . ChainRef Nothing
 
       byChainId :: (NetworkRequest, NetworkErrorResult) -> Either (NonEmpty NetworkError) (ChainId, PactValue)
       byChainId = sequence . bimap (_chainRef_chain . _networkRequest_chainRef) (bimap (fmap snd) snd . networkErrorResultToEither)
