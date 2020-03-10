@@ -58,6 +58,7 @@ library
     , wai-cors
     , warp
     , monad-logger
+    , system-locale
 
   exposed-modules:
       Desktop
