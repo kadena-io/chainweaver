@@ -311,7 +311,7 @@ uiAccountItem keys name accountInfo = do
                                   )
                       <@ send
                   , AccountDialog_CompleteCrosschain name chain <$> onCompleteCrossChain
-                  , AccountDialog_DetailsChain . (name, chain, d, ) <$> current dAccount <@ onDetails
+                  , AccountDialog_DetailsChain . (name, chain, d,) <$> current dAccount <@ onDetails
                   ]
               False -> do
                 transferTo <- transferToButton cfg

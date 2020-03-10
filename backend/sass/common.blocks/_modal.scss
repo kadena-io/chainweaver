@@ -368,3 +368,13 @@ button.button.button_type_tertiary.logout-confirm-modal__button {
   overflow: hidden;
   margin-right: 5px;
 }
+.create-account__gas-payer {
+  .input.input_type_radio {
+    margin-right: 12px;
+    transform: scale(1.5);
+  }
+
+  .label.label_for_radio {
+    color: $black-text;
+  }
+}

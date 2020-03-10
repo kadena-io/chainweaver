@@ -8,39 +8,42 @@ module Frontend.UI.Dialogs.AddVanityAccount
   , uiCreateAccountDialog
   ) where
 
+import Control.Applicative (liftA2)
 import Data.Aeson (toJSON)
-import           Control.Lens                           ((^.),(<>~), (^?), to)
-import           Control.Error                          (hush)
-import           Control.Monad.Trans.Class              (lift)
-import           Control.Monad.Trans.Maybe              (MaybeT (..), runMaybeT)
-import           Data.Maybe                             (isNothing)
-import           Data.Either                            (isLeft)
+import Control.Lens                           ((^.),(<>~), (^?), to)
+import Control.Error                          (hush)
+import Control.Monad.Trans.Class              (lift)
+import Control.Monad.Trans.Maybe              (MaybeT (..), runMaybeT)
+import Data.Maybe                             (isNothing)
+import Data.Either                            (isLeft)
 import qualified Data.Map as Map
-import           Data.Text                              (Text)
+import Data.Text                              (Text)
 import qualified Data.HashMap.Lazy as HM
 import qualified Data.Set as Set
 
-import           Kadena.SigningApi
+import Kadena.SigningApi
 
-import           Reflex
-import           Reflex.Dom.Core
+import Reflex
+import Reflex.Dom.Core
 
-import           Reflex.Network.Extended
+import Reflex.Network.Extended
 
-import           Frontend.UI.DeploymentSettings
-import           Frontend.UI.Dialogs.DeployConfirmation (CanSubmitTransaction, submitTransactionWithFeedback, _Status_Done, transactionSubmitFeedback_listenStatus)
-import           Frontend.UI.Dialogs.AddVanityAccount.DefineKeyset (DefinedKeyset, uiDefineKeyset, emptyKeysetPresets)
-import           Frontend.UI.Modal.Impl
-import           Frontend.UI.Widgets
-import           Frontend.UI.Widgets.Helpers (dialogSectionHeading)
+import Frontend.UI.DeploymentSettings
+import Frontend.UI.Dialogs.DeployConfirmation (CanSubmitTransaction, submitTransactionWithFeedback, _Status_Done, transactionSubmitFeedback_listenStatus)
+import Frontend.UI.Dialogs.AddVanityAccount.DefineKeyset (DefinedKeyset, uiDefineKeyset, emptyKeysetPresets)
+import Frontend.UI.Dialogs.Receive.Legacy
 
-import           Frontend.Crypto.Class
-import           Frontend.JsonData
-import           Frontend.Network
-import           Frontend.Wallet
-import           Frontend.Foundation
-import           Frontend.Log
-import           Frontend.TxBuilder
+import Frontend.UI.Modal.Impl
+import Frontend.UI.Widgets
+import Frontend.UI.Widgets.Helpers (dialogSectionHeading)
+
+import Frontend.Crypto.Class
+import Frontend.JsonData
+import Frontend.Network
+import Frontend.Wallet
+import Frontend.Foundation
+import Frontend.Log
+import Frontend.TxBuilder
 
 -- Allow the user to create a 'vanity' account, which is an account with a custom name
 -- that lives on the chain. Requires GAS to create.
@@ -109,6 +112,7 @@ uiCreateAccountDialog
      , MonadWidget t m
      , HasJsonData model t, HasLogger model t, HasNetwork model t, HasWallet model key t
      , HasCrypto key (Performable m)
+     , HasCrypto key m
      , HasJsonDataCfg mConf t, HasNetworkCfg mConf t, HasWalletCfg mConf key t
      , HasTransactionLogger m
      )
@@ -133,11 +137,18 @@ createAccountSplashBaseText =
 createAccountSplashKeysetInfoText =
   " First configure the Account by defining which keys are required to sign transactions. Then create the Account by recording it on the blockchain."
 
+data CreateAccountMethod
+  = CreateAccountMethod_SelfGasPayer
+  | CreateAccountMethod_ExternalAccount
+  | CreateAccountMethod_ShareTxBuilder
+  deriving Eq
+
 createAccountSplash
   :: ( Monoid mConf, Flattenable mConf t
      , MonadWidget t m
      , HasJsonData model t, HasLogger model t, HasNetwork model t, HasWallet model key t
      , HasCrypto key (Performable m)
+     , HasCrypto key m
      , HasJsonDataCfg mConf t, HasNetworkCfg mConf t, HasWalletCfg mConf key t
      , HasTransactionLogger m
      )
@@ -147,9 +158,8 @@ createAccountSplash
   -> Maybe PublicKey
   -> DefinedKeyset t
   -> Workflow t m (Text, (mConf, Event t ()))
-createAccountSplash model name chain mPublicKey keysetPresets = Workflow $ do
-  (keyset, keysetSelections) <- modalMain $ do
-
+createAccountSplash model name chain mPublicKey = fix $ \splashWF keysetselections -> Workflow $ do
+  (keyset, keysetSelections, dCreationMethod) <- modalMain $ do
     dialogSectionHeading mempty "Notice"
     -- Placeholder text
     divClass "group" $ text $ createAccountSplashBaseText
@@ -157,11 +167,11 @@ createAccountSplash model name chain mPublicKey keysetPresets = Workflow $ do
 
     dialogSectionHeading mempty "Destination"
     divClass "group" $ transactionDisplayNetwork model
-    case mPublicKey of
+    (ks, ksSelections) <- case mPublicKey of
       Nothing -> do
         dialogSectionHeading mempty "Define Account Keyset"
         divClass "group" $ do
-          uiDefineKeyset model keysetPresets
+          uiDefineKeyset model keysetselections
 
       Just key -> do
         dialogSectionHeading mempty "Account Key"
@@ -171,39 +181,63 @@ createAccountSplash model name chain mPublicKey keysetPresets = Workflow $ do
         pure $ ( constDyn $ mkAccountGuard (Set.singleton key) "keys-all"
                , emptyKeysetPresets
                )
+
+    dialogSectionHeading mempty "Transaction Gas Payer"
+    dCreateSelect <- divClass "group" $ mdo
+      dCreate <- holdDyn CreateAccountMethod_SelfGasPayer $ onCreateSelect
+      let
+        mkLbl lbl cls =
+          fst <$> elClass' "span" (renderClass cls) (text lbl)
+
+        mkRadioOption lbl opt = divClass "create-account__gas-payer" $
+          uiLabeledRadioView (mkLbl lbl) dCreate opt
+
+        onCreateSelect =
+          leftmost [onOwn, onExternal, onShare]
+
+      onOwn <- mkRadioOption "My own Chainweaver account (basic transaction)"
+        CreateAccountMethod_SelfGasPayer
+      onExternal <- mkRadioOption "My own external account (requires private key)"
+        CreateAccountMethod_ExternalAccount
+      onShare <- mkRadioOption "Another user’s account (share account creation details)"
+        CreateAccountMethod_ShareTxBuilder
+
+      pure dCreate
+
+    pure (ks, ksSelections, dCreateSelect)
+
   (cancel, next) <- modalFooter $ do
     cancel <- cancelButton def "Cancel"
-    let cfg = def & uiButtonCfg_disabled .~ fmap isNothing keyset
-    notGasPayer <- confirmButton cfg "I am not the Gas Payer"
-    gasPayer <- confirmButton cfg "I am the Gas Payer"
-    let next = leftmost
-          [ tagMaybe (fmap (createAccountNotGasPayer model name chain mPublicKey keysetSelections)
-                      <$> current keyset) notGasPayer
-          , tagMaybe (fmap (createAccountConfig model name chain mPublicKey keysetSelections)
-                      <$> current keyset) gasPayer
-          ]
-    pure (cancel, next)
-  return (("Create Account", (mempty, cancel)), next)
+    next <- confirmButton (def & uiButtonCfg_disabled .~ fmap isNothing keyset) "Next"
+
+    let
+      nextWF = ffor2 keyset dCreationMethod $ \mkeys mth ->
+        let
+          wf = case mth of
+            CreateAccountMethod_ShareTxBuilder -> createAccountNotGasPayer
+            CreateAccountMethod_SelfGasPayer -> createAccountConfig model
+            CreateAccountMethod_ExternalAccount -> createAccountFromExternalAccount model
+        in
+          wf (splashWF keysetSelections) name chain <$> mkeys
+
+    pure ( cancel
+         , tagMaybe (current nextWF) next
+         )
+
+  return ( ("Create Account", (mempty, cancel))
+         , next
+         )
 
 createAccountNotGasPayer
   :: ( Monoid mConf
-     , Flattenable mConf t
-     , HasJsonData model t, HasJsonDataCfg mConf t
-     , HasLogger model t
-     , HasNetwork model t, HasNetworkCfg mConf t
-     , HasWallet model key t, HasWalletCfg mConf key t
-     , HasCrypto key (Performable m)
      , MonadWidget t m
-     , HasTransactionLogger m
      )
-  => model
+  => Workflow t m (Text, (mConf, Event t ()))
   -> AccountName
   -> ChainId
-  -> Maybe PublicKey
-  -> DefinedKeyset t
   -> AccountGuard
   -> Workflow t m (Text, (mConf, Event t ()))
-createAccountNotGasPayer ideL name chain mPublicKey selectedKeyset keyset = Workflow $ do
+createAccountNotGasPayer splashWF name chain keyset = Workflow $ do
   modalMain $ do
     dialogSectionHeading mempty "Notice"
     divClass "group" $ text "The text below contains all of the Account info you have just configured. Share this Tx Builder with someone else to pay the gas for the transaction to create the Account."
@@ -220,25 +254,79 @@ createAccountNotGasPayer ideL name chain mPublicKey selectedKeyset keyset = Work
     done <- confirmButton def "Done"
 
     pure ( ("Create Account", (mempty, done))
-        , createAccountSplash ideL name chain mPublicKey selectedKeyset <$ back
+        , splashWF <$ back
         )
+
+createAccountFromExternalAccount
+  :: forall t m mConf model key
+     . ( MonadWidget t m
+       , Monoid mConf
+       , HasNetwork model t
+       , HasNetworkCfg mConf t
+       , HasCrypto key (Performable m)
+       , HasCrypto key m
+       , HasLogger model t
+       , HasTransactionLogger m
+       )
+  => model
+  -> Workflow t m (Text, (mConf, Event t ()))
+  -> AccountName
+  -> ChainId
+  -> AccountGuard
+  -> Workflow t m (Text, (mConf, Event t ()))
+createAccountFromExternalAccount model splashWF name chain keyset = Workflow $ do
+  receiveConf <- modalMain $
+    uiReceiveFromLegacy model
+
+  let
+    netInfo =
+      getNetworkInfoTriple $ model ^. network
+
+    isSubmitDisabled =
+      isNothing <$> _receiveFromLegacy_transferInfo receiveConf
+
+  modalFooter $ do
+    back <- cancelButton def "Back"
+    submit <- confirmButton (def & uiButtonCfg_disabled .~ isSubmitDisabled) "Submit"
+
+    let
+      nextWF = receiveFromLegacySubmitTransferCreate model never name chain
+        <$> _receiveFromLegacy_ttl receiveConf
+        <*> _receiveFromLegacy_gasLimit receiveConf
+
+      requiredInfo = (liftA2 .liftA2) (,) netInfo $
+        _receiveFromLegacy_transferInfo receiveConf
+
+      onSubmit = tagMaybe (current requiredInfo) submit
+
+      rewrapWF wfFn (netI, tfrI) = mapWorkflow ("Creating account",) $
+        wfFn netI tfrI keyset
+
+    pure ( ("Sender Details" , (_receiveFromLegacy_conf receiveConf, never) )
+         , leftmost
+           [ splashWF <$ back
+           , rewrapWF <$> (current nextWF) <@> onSubmit
+           ]
+         )
 
 createAccountConfig
   :: forall key t m mConf model
   . ( MonadWidget t m
     , HasUISigningModelCfg mConf key t
     , HasCrypto key (Performable m)
-    , HasJsonData model t, HasLogger model t, HasNetwork model t, HasWallet model key t
+    , HasJsonData model t
+    , HasLogger model t
+    , HasNetwork model t
+    , HasWallet model key t
     , HasTransactionLogger m
     )
   => model
+  -> Workflow t m (Text, (mConf, Event t ()))
   -> AccountName
   -> ChainId
-  -> Maybe PublicKey
-  -> DefinedKeyset t
   -> AccountGuard
   -> Workflow t m (Text, (mConf, Event t ()))
-createAccountConfig ideL name chainId mPublicKey selectedKeyset keyset = Workflow $ do
+createAccountConfig ideL splashWF name chainId keyset = Workflow $ do
   let includePreviewTab = False
 
   (cfg, cChainId, mGasPayer, ttl, gasLimit, _,  _) <- divClass "modal__main transaction_details" $ uiCfg
@@ -303,7 +391,7 @@ createAccountConfig ideL name chainId mPublicKey selectedKeyset keyset = Workflo
                (current $ ideL ^. network_selectedNodes)
                command
 
-           , createAccountSplash ideL name chainId mPublicKey selectedKeyset <$ onBack
+           , splashWF <$ onBack
            ]
          )
 

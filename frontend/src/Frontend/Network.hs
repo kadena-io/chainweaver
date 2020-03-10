@@ -38,6 +38,7 @@ module Frontend.Network
   , HasNetwork (..)
     -- * Useful helpers
   , updateNetworks
+  , getNetworkInfoTriple
     -- * Definitions from Common
   , module Common.Network
     -- * NodeInfo
@@ -73,6 +74,7 @@ module Frontend.Network
   , HasTransactionLogger(..)
   ) where
 
+import           Control.Error                     (hush, headMay)
 import           Control.Exception                 (fromException)
 import           Control.Arrow                     (first, left, second, (&&&))
 import           Control.Lens                      hiding ((.=))
@@ -404,6 +406,15 @@ chainwebGasLimitMaximum = 1e5
 defaultTransactionGasLimit :: GasLimit
 defaultTransactionGasLimit = GasLimit 600
 
+getNetworkInfoTriple
+  :: Reflex t
+  => Network t
+  -> Dynamic t (Maybe ([Either Text NodeInfo], PublicMeta, NetworkName))
+getNetworkInfoTriple nw = do
+  nodes <- nw ^. network_selectedNodes
+  meta <- nw ^. network_meta
+  let networkId = hush . mkNetworkName . nodeVersion <=< headMay $ rights nodes
+  pure $ (nodes, meta, ) <$> networkId
 
 buildMeta
   :: ( MonadHold t m, MonadFix m, MonadJSM m
