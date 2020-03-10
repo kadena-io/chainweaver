@@ -184,7 +184,7 @@ createAccountSplash model name chain mPublicKey keysetPresets = Workflow $ do
                )
 
     dialogSectionHeading mempty "Transaction Gas Payer"
-    (_onCreateSelect, dCreateSelect) <- divClass "group" $ mdo
+    dCreateSelect <- fmap snd $ divClass "group" $ mdo
       dCreate <- holdDyn CreateAccountMethod_SelfGasPayer $ onCreateSelect
       let
         mkLbl lbl cls =
