@@ -209,30 +209,27 @@ createAccountSplash model name chain mPublicKey keysetPresets = Workflow $ do
 
     pure (ks, ksSelections, dCreateSelect)
 
-  let nextDisabled = ffor2 keyset dCreationMethod $ \mkeys -> \case
-        CreateAccountMethod_ExternalAccount -> False
-        _ -> isNothing mkeys
-
   (cancel, next) <- modalFooter $ do
     cancel <- cancelButton def "Cancel"
-
-    next <- confirmButton (def & uiButtonCfg_disabled .~ nextDisabled) "Next"
+    next <- confirmButton (def & uiButtonCfg_disabled .~ fmap isNothing keyset) "Next"
 
     let
-      notGasPayerWF = createAccountNotGasPayer model name chain mPublicKey keysetSelections
-      gasPayerWF = createAccountConfig model name chain mPublicKey keysetSelections
-      externalPayerWF = createAccountFromExternalAccount  model name chain mPublicKey keysetSelections
-
-      nextWF = ffor2 keyset dCreationMethod $ \mkeys -> \case
-        CreateAccountMethod_ShareTxBuilder -> notGasPayerWF <$> mkeys
-        CreateAccountMethod_SelfGasPayer -> gasPayerWF <$> mkeys
-        CreateAccountMethod_ExternalAccount -> externalPayerWF <$> mkeys
+      nextWF = ffor2 keyset dCreationMethod $ \mkeys mth ->
+        let
+          wf = case mth of
+            CreateAccountMethod_ShareTxBuilder -> createAccountNotGasPayer
+            CreateAccountMethod_SelfGasPayer -> createAccountConfig
+            CreateAccountMethod_ExternalAccount -> createAccountFromExternalAccount
+        in
+          wf model name chain mPublicKey keysetSelections <$> mkeys
 
     pure ( cancel
          , tagMaybe (current nextWF) next
          )
 
-  return (("Create Account", (mempty, cancel)), next)
+  return ( ("Create Account", (mempty, cancel))
+         , next
+         )
 
 createAccountNotGasPayer
   :: ( Monoid mConf
