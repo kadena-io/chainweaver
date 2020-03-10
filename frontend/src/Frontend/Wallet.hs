@@ -316,9 +316,9 @@ getAccountStatus model accStore = performEventAsync $ flip push accStore $ \(Acc
             Nothing -> mempty
             Just as -> Set.fromList $ fmap unAccountName $ Map.keys as
 
-        allChains = ChainId . tshow <$> ([0..9] :: [Int])
+        allChains = foldMap (Set.fromList . getChains) nodes
 
-        chainsToAccounts = MonoidalMap.fromList $ fmap (,allAccounts) allChains
+        chainsToAccounts = MonoidalMap.fromSet (const allAccounts) allChains
 
         code = renderCompactText . accountDetailsObject . Set.toList
         pm chain = Pact.PublicMeta
