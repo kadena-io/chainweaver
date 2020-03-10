@@ -201,8 +201,8 @@ uiAccountItems model accountsMap = do
     accModal n = Just . \case
       AccountDialog_Details acc notes -> uiAccountDetails n acc notes
       AccountDialog_DetailsChain acc -> uiAccountDetailsOnChain n acc
-      AccountDialog_Receive name details chain -> uiReceiveModal Nothing model name details (Just chain)
-      AccountDialog_TransferTo name details chain -> uiReceiveModal (Just "Transfer To") model name details (Just chain)
+      AccountDialog_Receive name details chain -> uiReceiveModal "Receive" model name details (Just chain)
+      AccountDialog_TransferTo name details chain -> uiReceiveModal "Transfer To" model name details (Just chain)
       AccountDialog_Send acc mucct -> uiSendModal model acc mucct
       AccountDialog_CompleteCrosschain name chain ucct -> uiFinishCrossChainTransferModal model name chain ucct
       AccountDialog_Create name chain mKey -> uiCreateAccountDialog model name chain mKey

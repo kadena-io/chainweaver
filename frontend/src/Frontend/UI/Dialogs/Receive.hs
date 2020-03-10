@@ -104,15 +104,15 @@ uiReceiveModal
      , HasLogger model t
      , HasTransactionLogger m
      )
-  => Maybe Text
+  => Text
   -> model
   -> AccountName
   -> AccountDetails
   -> Maybe ChainId
   -> Event t ()
   -> m (mConf, Event t ())
-uiReceiveModal titleOverride model account details mchain _onClose = do
-  onClose <- modalHeader $ text $ fromMaybe "Receive" titleOverride
+uiReceiveModal modalTitle model account details mchain _onClose = do
+  onClose <- modalHeader $ text modalTitle
   (conf, closes) <- fmap splitDynPure $ workflow $
     uiReceiveModal0 model account details mchain onClose
   mConf <- flatten =<< tagOnPostBuild conf
