@@ -74,7 +74,7 @@ uiExternalKeyInput onPreselection = do
                )
 
         inputCfg = def
-          & initialAttributes .~ ("placeholder" =: "External public key")
+          & initialAttributes .~ ("placeholder" =: "Enter public key (optional)")
           & inputElementConfig_initialValue .~ fold iv
 
         showPopover (_, (_, onInput)) = pure $
