@@ -32,7 +32,7 @@ in with obelisk;
           # servant-client-core = servantSrc + "/servant-client-core";
           # servant = servantSrc + "/servant";
           servant-jsaddle = servantSrc + "/servant-jsaddle";
-          jsaddle-warp = hackGet ./dep/jsaddle + /jsaddle-warp;
+          jsaddle-warp = hackGet ./dep/jsaddle + /jsaddle-warp; #https://github.com/ghcjs/jsaddle/pull/114
           reflex-dom-ace = hackGet ./dep/reflex-dom-ace;
           reflex-dom-contrib = hackGet ./dep/reflex-dom-contrib;
           dependent-sum-aeson-orphans = hackGet ./dep/dependent-sum-aeson-orphans;
