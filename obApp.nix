@@ -107,7 +107,7 @@ in with obelisk;
       common-overlay = self: super: {
         reflex-dom-core = haskellLib.dontCheck super.reflex-dom-core; # webdriver fails to build
         servant-jsaddle = haskellLib.dontCheck (haskellLib.doJailbreak super.servant-jsaddle);
-        these-lens = haskellLib.doJailbreak (self.callHackage "these-lens" "1" {});
+        these-lens = haskellLib.doJailbreak super.these-lens; # lens bounds
         pact = haskellLib.dontCheck super.pact; # tests can timeout...
         system-locale = haskellLib.dontCheck super.system-locale; # tests fail on minor discrepancies on successfully parsed locale time formats.
       };
