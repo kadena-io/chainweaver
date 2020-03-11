@@ -29,10 +29,10 @@ in with obelisk;
        servantSrc = hackGet ./dep/servant;
      in
        {
-          pact = hackGet ./dep/pact;
           # servant-client-core = servantSrc + "/servant-client-core";
           # servant = servantSrc + "/servant";
           servant-jsaddle = servantSrc + "/servant-jsaddle";
+          jsaddle-warp = hackGet ./dep/jsaddle + /jsaddle-warp;
           reflex-dom-ace = hackGet ./dep/reflex-dom-ace;
           reflex-dom-contrib = hackGet ./dep/reflex-dom-contrib;
           dependent-sum-aeson-orphans = hackGet ./dep/dependent-sum-aeson-orphans;
@@ -45,7 +45,6 @@ in with obelisk;
           entropy = hackGet ./dep/entropy;
           crc = hackGet ./dep/crc;
           cardano-crypto = hackGet ./dep/cardano-crypto;
-          kadena-signing-api = hackGet ./dep/signing-api + /kadena-signing-api;
           desktop = ./desktop;
           mac = builtins.filterSource (path: type: !(builtins.elem (baseNameOf path) ["static"])) ./mac;
           linux = builtins.filterSource (path: type: !(builtins.elem (baseNameOf path) ["static"])) ./linux;
@@ -105,11 +104,14 @@ in with obelisk;
         unliftio = haskellLib.dontCheck super.unliftio;
       };
       common-overlay = self: super: {
+        jsaddle-warp = haskellLib.dontCheck super.jsaddle-warp; # webdriver fails to build
         reflex-dom-core = haskellLib.dontCheck super.reflex-dom-core; # webdriver fails to build
         servant-jsaddle = haskellLib.dontCheck (haskellLib.doJailbreak super.servant-jsaddle);
+        semialign = haskellLib.doJailbreak super.semialign; # vector bounds
         these-lens = haskellLib.doJailbreak super.these-lens; # lens bounds
         pact = haskellLib.dontCheck super.pact; # tests can timeout...
         system-locale = haskellLib.dontCheck super.system-locale; # tests fail on minor discrepancies on successfully parsed locale time formats.
+        typed-process = haskellLib.dontCheck super.typed-process;
       };
     in self: super: lib.foldr lib.composeExtensions (_: _: {}) [
       mac-overlay
