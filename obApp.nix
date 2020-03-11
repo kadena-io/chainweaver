@@ -108,7 +108,6 @@ in with obelisk;
         reflex-dom-core = haskellLib.dontCheck super.reflex-dom-core; # webdriver fails to build
         servant-jsaddle = haskellLib.dontCheck (haskellLib.doJailbreak super.servant-jsaddle);
         these-lens = haskellLib.doJailbreak (self.callHackage "these-lens" "1" {});
-        obelisk-oauth-frontend = haskellLib.doJailbreak super.obelisk-oauth-frontend;
         pact = haskellLib.dontCheck super.pact; # tests can timeout...
         system-locale = haskellLib.dontCheck super.system-locale; # tests fail on minor discrepancies on successfully parsed locale time formats.
       };
