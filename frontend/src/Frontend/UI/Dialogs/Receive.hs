@@ -14,6 +14,8 @@ import Control.Lens ((^.), (<>~), (^?), to)
 import Control.Monad.Trans.Class (lift)
 import Control.Monad.Trans.Maybe (MaybeT(..))
 
+import Data.Text (Text)
+
 import Reflex
 import Reflex.Dom
 
