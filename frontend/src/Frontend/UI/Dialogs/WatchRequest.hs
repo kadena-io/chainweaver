@@ -20,18 +20,15 @@ module Frontend.UI.Dialogs.WatchRequest
   ( uiWatchRequestDialog
   ) where
 
-import Debug.Trace
 import Control.Lens hiding (failover)
 import Control.Error (hush)
-import Control.Monad (forM)
+import Control.Monad (foldM, unless)
 
 import Data.List.NonEmpty (NonEmpty ((:|)))
 
 import Data.Either (rights)
 import Data.Text (Text)
 import qualified Data.Text as Text
-import Data.Map (Map)
-import qualified Data.Map as Map
 import qualified Data.HashMap.Strict as HM
 
 import Reflex.Dom
@@ -107,9 +104,16 @@ inputRequestKey
   -> Workflow t m (mConf, Event t ())
 inputRequestKey model _ = Workflow $ do
   let
+    checkTxBtnLbl = "Check TX Status"
     nodes = fmap rights $ model ^. network_selectedNodes
+    noResponseMsg = "Request Key not found"
+    showPollResponse (Pact.PollResponses pollMap) = case HM.elems pollMap ^? _head of
+      Nothing -> noResponseMsg
+      Just commandResult -> case commandResult ^. Pact.crResult of
+        Pact.PactResult (Left err) -> "Error: " <> Pact.tShow err
+        Pact.PactResult (Right a) -> Pact.renderCompactText a
 
-  close <- modalHeader $ text "Watch Request Key"
+  close <- modalHeader $ text "Check TX Status"
 
   modalMain $ do
     dialogSectionHeading mempty "Notice"
@@ -120,12 +124,10 @@ inputRequestKey model _ = Workflow $ do
     dRqKey <- divClass "group" $ fmap snd $ uiRequestKeyInput False
 
     rec
-      let lockRefresh = (||)
-            <$> fmap isNothing dRqKey
-            <*> blockSpam
+      let lockRefresh = (||) <$> fmap isNothing dRqKey <*> blockSpam
 
       onRequest <- divClass "group" $
-        confirmButton (def & uiButtonCfg_disabled .~ lockRefresh) "Refresh Status"
+        confirmButton (def & uiButtonCfg_disabled .~ lockRefresh) checkTxBtnLbl
 
       onTimeoutFinished <- delay 5 onRequest
 
@@ -134,31 +136,17 @@ inputRequestKey model _ = Workflow $ do
         , onTimeoutFinished
         ]
 
-    let
-      showPollResponse (Pact.PollResponses pollMap) = case HM.elems pollMap ^? _head of
-        Nothing -> "Request Key not found"
-        Just commandResult -> case commandResult ^. Pact.crResult of
-          Pact.PactResult (Left err) -> "Error: " <> Pact.tShow err
-          Pact.PactResult (Right a) -> Pact.renderCompactText a
-
-      onPollRequestKey = tagMaybe (current dRqKey) onRequest
-
-      collectResults nodes0 rKey cb = do
-        nodeChainMap <- buildNodeChainClientEnvs nodes0
-        let allenvs = foldMap (fmap snd) $ Map.elems nodeChainMap
-        pollRequestKey allenvs (traceShowId rKey) cb
-
-    onPollResponse <- performEventAsync $ collectResults
+    onPollResponse <- performEventAsync $ pollRequestKey
       <$> current nodes
-      <@> onPollRequestKey
+      <@> tagMaybe (current dRqKey) onRequest
 
     dResp <- holdDyn Nothing $ fmap Just onPollResponse
 
     dialogSectionHeading mempty "Transaction Result"
     divClass "group" $ do
       maybeDyn dResp >>= \md -> dyn_ $ ffor md $ \case
-        Nothing -> text "Please enter a valid Request Key and click 'Refresh Status'"
-        Just a -> dynText $ either (Text.unlines . fmap prettyPrintNetworkError) (showPollResponse) <$> a
+        Nothing -> text $ "Please enter a valid Request Key and click '" <> checkTxBtnLbl <> "'"
+        Just a -> dynText $ maybe noResponseMsg showPollResponse <$> a
 
   done <- modalFooter $ do
     confirmButton def "Done"
@@ -167,21 +155,33 @@ inputRequestKey model _ = Workflow $ do
        , never
        )
 
-buildNodeChainClientEnvs :: MonadJSM m => [NodeInfo] -> m (Map NodeInfo [(ChainId, S.ClientEnv)])
-buildNodeChainClientEnvs nodes = fmap Map.fromList $ forM nodes $ \node -> let chains = getChains node in
-  fmap (node,) $ flip foldMapM chains $ \chain ->
-    getChainRefBaseUrl (ChainRef (Just $ nodeInfoRef node) chain) (Just node) <&> \case
-      Left _ -> []
-      Right chainUrl -> S.parseBaseUrl (URI.renderStr chainUrl) & \case
-        Nothing -> []
-        Just baseUrl -> [(chain, S.mkClientEnv baseUrl)]
+buildNodeChainClientEnvs :: MonadJSM m => NodeInfo -> m [(ChainId, S.ClientEnv)]
+buildNodeChainClientEnvs node = let chains = getChains node in flip foldMapM chains $ \chain ->
+  getChainRefBaseUrl (ChainRef (Just $ nodeInfoRef node) chain) (Just node) <&> \case
+    Left _ -> []
+    Right chainUrl -> S.parseBaseUrl (URI.renderStr chainUrl) & \case
+      Nothing -> []
+      Just baseUrl -> [(chain, S.mkClientEnv baseUrl)]
 
 pollRequestKey
   :: MonadJSM m
-  => [S.ClientEnv]
+  => [NodeInfo]
   -> Pact.RequestKey
-  -> (Either [NetworkError] Pact.PollResponses -> IO ())
+  -> (Maybe Pact.PollResponses -> IO ())
   -> m ()
-pollRequestKey clientEnvs rKey cb = do
-  doReqFailover clientEnvs (Api.poll Api.apiV1Client $ Pact.Poll (rKey :| []))
-  >>= liftIO . cb . over _Left (fmap packHttpErr)
+pollRequestKey nodes rKey cb = do
+  responseReceived <- foldM
+    (\respReceived node -> if respReceived then pure respReceived else buildEnvAndPoll node)
+    False
+    nodes
+
+  unless responseReceived $
+    liftIO $ cb Nothing
+  where
+    doPoll cEnvs = doReqFailover cEnvs (Api.poll Api.apiV1Client $ Pact.Poll (rKey :| [])) >>= \case
+      Left _ -> pure False
+      Right r -> True <$ liftIO (cb $ Just r)
+
+    buildEnvAndPoll node = do
+      envs <- buildNodeChainClientEnvs node
+      doPoll $ fmap snd envs
