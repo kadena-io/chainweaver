@@ -1,7 +1,6 @@
 {-# LANGUAGE ApplicativeDo #-}
 {-# LANGUAGE ConstraintKinds #-}
 {-# LANGUAGE DataKinds #-}
-{-# LANGUAGE ExtendedDefaultRules #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE KindSignatures #-}
@@ -27,8 +26,6 @@ import Control.Monad (foldM, unless)
 import Data.List.NonEmpty (NonEmpty ((:|)))
 
 import Data.Either (rights)
-import Data.Text (Text)
-import qualified Data.Text as Text
 import qualified Data.HashMap.Strict as HM
 
 import Reflex.Dom
@@ -62,37 +59,6 @@ uiWatchRequestDialog model onCloseExternal = do
   let close = switch $ current closes
   pure (mConf, close)
 
-uiRequestKeyInput
-  :: ( MonadWidget t m
-     )
-  => Bool
-  -> m ( Event t (Maybe Pact.RequestKey)
-       , Dynamic t (Maybe Pact.RequestKey)
-       )
-uiRequestKeyInput inlineLabel = do
-  let
-    parseRequestKey :: Text -> Either Text Pact.RequestKey
-    parseRequestKey t | Text.null t = Left "Please enter a Request Key"
-                      | Right v <- Pact.fromText' t = Right v
-                      | otherwise = Left "Invalid hash"
-
-    mkMsg True (Left e) = PopoverState_Error e
-    mkMsg _    _ = PopoverState_Disabled
-
-    showPopover (ie, _) = pure $ _inputElement_input ie <&> \t ->
-      mkMsg (not $ Text.null t) (parseRequestKey $ Text.strip t)
-
-    uiKeyInput cfg = do
-      inp <- uiInputElement cfg
-      pure (inp, _inputElement_raw inp)
-
-  (inputE, _) <- mkLabeledInput inlineLabel "Request Key" (uiInputWithPopover uiKeyInput snd showPopover) def
-
-  pure ( hush . parseRequestKey <$> _inputElement_input inputE
-       , hush . parseRequestKey <$> value inputE
-       )
-
-
 -- | Allow the user to input a request key and chain
 inputRequestKey
   :: ( Monoid mConf
@@ -121,12 +87,12 @@ inputRequestKey model _ = Workflow $ do
       text "If you have a request key from a previously submitted transaction, you can use this dialog to wait for and display the results."
 
     dialogSectionHeading mempty "Required Information"
-    dRqKey <- divClass "group" $ fmap snd $ uiRequestKeyInput False
+    dRqKey <- (fmap . fmap) hush $ divClass "group" $ fmap snd $ uiRequestKeyInput False
 
     rec
       let lockRefresh = (||) <$> fmap isNothing dRqKey <*> blockSpam
 
-      onRequest <- divClass "group" $
+      onRequest <- divClass "group check-tx-status__button-wrapper" $
         confirmButton (def & uiButtonCfg_disabled .~ lockRefresh) checkTxBtnLbl
 
       onTimeoutFinished <- delay 5 onRequest
