@@ -51,6 +51,7 @@ library
     , ref-tf
     , servant
     , servant-server
+    , system-locale
     , text
     , time
     , transformers
