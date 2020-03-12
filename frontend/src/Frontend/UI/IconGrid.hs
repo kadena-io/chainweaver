@@ -33,7 +33,7 @@ iconGridCell config = elAttr "div" ("class" =: "icon-grid__cell") $ iconGridCell
 
 iconGridCell' :: DomBuilder t m => IconGridCellConfig -> Bool -> m (Event t ())
 iconGridCell' config hasLaunch = do
-  elAttr "div"
+  (iconEl, _) <- elAttr' "div"
     (  "class" =: "icon-grid__cell-icon"
     <> "style" =: ("background-image: url(" <> _iconGridCellConfig_iconUrl config <>")")
     )
@@ -45,4 +45,4 @@ iconGridCell' config hasLaunch = do
     elClass "span" "icon-grid__cell-title" $ text (_iconGridCellConfig_title config)
 
   traverse_ (elClass "div" "icon-grid__cell-desc" . text) (_iconGridCellConfig_desc config)
-  pure evt
+  pure (evt <> domEvent Click iconEl)
