@@ -62,7 +62,7 @@ import Frontend.UI.Dialogs.CreateGist (uiCreateGist)
 import Frontend.UI.Dialogs.CreatedGist (uiCreatedGist)
 import Frontend.UI.Dialogs.DeployConfirmation (uiDeployConfirmation)
 import Frontend.UI.Dialogs.LogoutConfirmation (uiLogoutConfirmation)
-import Frontend.UI.Dialogs.NetworkEdit (uiNetworkSelect)
+import Frontend.UI.Dialogs.NetworkEdit (uiNetworkSelectTopBar)
 import Frontend.UI.Dialogs.Signing (uiSigning)
 import Frontend.UI.IconGrid (IconGridCellConfig(..), iconGridLaunchLink)
 import Frontend.UI.Modal
@@ -275,12 +275,9 @@ networkBar
   => ModalIde m key t
   -> m (ModalIdeCfg m key t)
 networkBar m = divClass "main-header main-header__network-bar" $ do
-  -- Fetch and display the status of the currently selected network.
-  --queryNetworkStatus (m ^. ide_network . network_networks) (m ^. ide_network . network_selectedNetwork)
-  --  >>= uiNetworkStatus (pure " page__network-bar-status")
   -- Present the dropdown box for selecting one of the configured networks.
   divClass "page__network-bar-select" $ do
-    selectEv <- uiNetworkSelect "select_type_special" (m ^. network_selectedNetwork) (m ^. network_networks)
+    selectEv <- uiNetworkSelectTopBar "select_type_special" (m ^. network_selectedNetwork) (m ^. network_networks)
     pure $ mempty & networkCfg_selectNetwork .~ selectEv
 
 
