@@ -97,9 +97,9 @@ inputRequestKey model _ = Workflow $ do
 
       onTimeoutFinished <- delay 5 onRequest
 
-      blockSpam <- toggle False $ leftmost
-        [ onRequest
-        , onTimeoutFinished
+      blockSpam <- holdDyn False $ leftmost
+        [ True <$ onRequest
+        , False <$ onTimeoutFinished
         ]
 
     onPollResponse <- performEventAsync $ pollRequestKey
