@@ -34,6 +34,7 @@ module Frontend.UI.Widgets
   , uiAccountDropdown
   , uiAccountDropdown'
   , uiKeyPairDropdown
+  , uiRequestKeyInput
 
   -- ** Other widgets
   , PopoverState (..)
@@ -126,6 +127,8 @@ import           Reflex.Extended             (tagOnPostBuild)
 import Pact.Types.ChainId (ChainId (..))
 import Pact.Types.Runtime (GasPrice (..))
 import Pact.Parse (ParsedDecimal (..))
+import Pact.Types.Command (RequestKey)
+import qualified Pact.Types.Util as Pact
 ------------------------------------------------------------------------------
 import           Common.Wallet
 import           Frontend.Network (HasNetwork(..), NodeInfo, getChains, maxCoinPrecision)
@@ -1200,3 +1203,33 @@ uiEmptyState icon title content = divClass "empty-state" $ do
   divClass "empty-state__icon-circle" $ elAttr "div" iconAttrs blank
   elClass "h1" "empty-state__title" $ text title
   divClass "empty-state__content" content
+
+uiRequestKeyInput
+  :: ( MonadWidget t m
+     )
+  => Bool
+  -> m ( Event t (Either Text RequestKey)
+       , Dynamic t (Either Text RequestKey)
+       )
+uiRequestKeyInput inlineLabel = do
+  let
+    parseRequestKey :: Text -> Either Text RequestKey
+    parseRequestKey t | T.null t = Left "Please enter a Request Key"
+                      | Right v <- Pact.fromText' t = Right v
+                      | otherwise = Left "Invalid hash"
+
+    mkMsg True (Left e) = PopoverState_Error e
+    mkMsg _    _ = PopoverState_Disabled
+
+    showPopover (ie, _) = pure $ _inputElement_input ie <&> \t ->
+      mkMsg (not $ T.null t) (parseRequestKey $ T.strip t)
+
+    uiKeyInput cfg = do
+      inp <- uiInputElement cfg
+      pure (inp, _inputElement_raw inp)
+
+  (inputE, _) <- mkLabeledInput inlineLabel "Request Key" (uiInputWithPopover uiKeyInput snd showPopover) def
+
+  pure ( parseRequestKey <$> _inputElement_input inputE
+       , parseRequestKey <$> value inputE
+       )
