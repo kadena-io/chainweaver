@@ -179,7 +179,6 @@ uiDefineKeyset
   -> DefinedKeyset t
   -> m (Dynamic t (Maybe AccountGuard), DefinedKeyset t)
 uiDefineKeyset model presets = do
-  pb <- getPostBuild
   let
     allPreds = fmap (catMaybes . Map.elems)
       $ joinDynThroughMap
@@ -204,7 +203,7 @@ uiDefineKeyset model presets = do
     predicateE <- mkLabeledClsInput False "Predicate (Keys Required to Sign for Account)" $ const
       $ uiDropdown Nothing (allPredSelectMap $ fmap Set.size allpks) $ def
       & dropdownConfig_attributes .~ constDyn ("class" =: "labeled-input__input")
-      & dropdownConfig_setValue .~ (current (_definedKeyset_predicate presets) <@ pb)
+      & dropdownConfig_setValue .~ _definedKeyset_predicateChange presets
 
   pure ( ffor2 allpks (value predicateE) $ \pks kspred -> kspred >>= mkAccountGuard pks
        , DefinedKeyset selectedKeys externalKeys (value predicateE) (_dropdown_change predicateE)

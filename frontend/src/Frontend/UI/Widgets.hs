@@ -27,6 +27,7 @@ module Frontend.UI.Widgets
   , userChainIdSelect
   , userChainIdSelectWithPreselect
   , uiChainSelection
+  , uiChainSelectionWithUpdate
 
   , mkChainTextAccounts
   , uiAccountNameInput
@@ -917,7 +918,15 @@ uiChainSelection
   -> m ( Dropdown t (Maybe ChainId) )
 uiChainSelection info mPreselected cls = do
   pb <- getPostBuild
+  uiChainSelectionWithUpdate info (current mPreselected <@ pb) cls
 
+uiChainSelectionWithUpdate
+  :: MonadWidget t m
+  => Dynamic t (Maybe NodeInfo)
+  -> Event t (Maybe ChainId)
+  -> CssClass
+  -> m ( Dropdown t (Maybe ChainId) )
+uiChainSelectionWithUpdate info onPreselected cls = do
   let
     chains = map (id &&& _chainId) . maybe [] getChains <$> info
     mkPlaceHolder cChains = if null cChains then "No chains available" else "Select chain"
@@ -930,10 +939,11 @@ uiChainSelection info mPreselected cls = do
     let allCls = renderClass <$> fmap mkDynCls (_dropdown_value ddE) <> pure staticCls
         cfg = def
           & dropdownConfig_attributes .~ (("class" =:) <$> allCls)
-          & dropdownConfig_setValue .~ (current mPreselected <@ pb)
+          & dropdownConfig_setValue .~ onPreselected
 
     ddE <- dropdown Nothing (mkOptions <$> chains) cfg
   pure ddE
+
 
 -- | Use a predefined chain id, don't let the user pick one.
 predefinedChainIdSelect
@@ -968,11 +978,12 @@ uiAccountNameInput
      )
   => Bool
   -> Maybe AccountName
+  -> Event t (Maybe AccountName)
   -> Dynamic t (AccountName -> Either Text AccountName)
   -> m ( Event t (Maybe AccountName)
        , Dynamic t (Maybe AccountName)
        )
-uiAccountNameInput inlineLabel initval validateName = do
+uiAccountNameInput inlineLabel initval onSetName validateName = do
   let
     mkMsg True (Left e) = PopoverState_Error e
     mkMsg _    _ = PopoverState_Disabled
@@ -988,7 +999,9 @@ uiAccountNameInput inlineLabel initval validateName = do
       pure (inp, _inputElement_raw inp)
 
   (inputE, _) <- mkLabeledInput inlineLabel "Account Name" (uiInputWithPopover uiNameInput snd showPopover)
-    $ def & inputElementConfig_initialValue .~ fold (fmap unAccountName initval)
+    $ def
+    & inputElementConfig_initialValue .~ fold (fmap unAccountName initval)
+    & inputElementConfig_setValue .~ fmapMaybe (fmap unAccountName) onSetName
 
   pure ( fmap hush $ current validate <@> _inputElement_input inputE
        , hush <$> (validate <*> fmap T.strip (value inputE))
