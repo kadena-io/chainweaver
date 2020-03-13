@@ -30,7 +30,7 @@ import Reflex.Network.Extended
 
 import Frontend.UI.DeploymentSettings
 import Frontend.UI.Dialogs.DeployConfirmation (CanSubmitTransaction, submitTransactionWithFeedback, _Status_Done, transactionSubmitFeedback_listenStatus)
-import Frontend.UI.Dialogs.AddVanityAccount.DefineKeyset (DefinedKeyset, uiDefineKeyset, emptyKeysetPresets)
+import Frontend.UI.Dialogs.AddVanityAccount.DefineKeyset (HasDefinedKeyset (..), HasKeysetInputs (..), DefinedKeyset, uiDefineKeyset, emptyKeysetPresets)
 import Frontend.UI.Dialogs.Receive.Legacy
 
 import Frontend.UI.Modal.Impl
@@ -86,7 +86,7 @@ uiAddAccountDialog model _onCloseExternal = mdo
     dialogSectionHeading mempty "Notice"
     divClass "group" $ text "Add an Account here to display its status. If the Account does not yet exist, then you will be able to create and control the Account on the blockchain."
     dialogSectionHeading mempty "Add Account"
-    divClass "group" $ fmap snd $ uiAccountNameInput True Nothing $ checkAccountNameAvailability
+    divClass "group" $ fmap snd $ uiAccountNameInput True Nothing never $ checkAccountNameAvailability
       <$> (model ^. network_selectedNetwork)
       <*> (model ^. wallet_accounts)
   modalFooter $ do
@@ -171,7 +171,14 @@ createAccountSplash model name chain mPublicKey = fix $ \splashWF keysetselectio
       Nothing -> do
         dialogSectionHeading mempty "Define Account Keyset"
         divClass "group" $ do
-          uiDefineKeyset model keysetselections
+          onSetInternalKeyset <- tagOnPostBuild $ keysetselections ^. definedKeyset_internalKeys . keysetInputs_value
+          onSetExternalKeyset <- tagOnPostBuild $ keysetselections ^. definedKeyset_externalKeys . keysetInputs_value
+          onSetPredicate <- tagOnPostBuild $ keysetselections ^. definedKeyset_predicate
+
+          uiDefineKeyset model $ emptyKeysetPresets
+            & definedKeyset_internalKeys . keysetInputs_rowAddDelete .~ onSetInternalKeyset
+            & definedKeyset_externalKeys . keysetInputs_rowAddDelete .~ onSetExternalKeyset
+            & definedKeyset_predicateChange .~ onSetPredicate
 
       Just key -> do
         dialogSectionHeading mempty "Account Key"

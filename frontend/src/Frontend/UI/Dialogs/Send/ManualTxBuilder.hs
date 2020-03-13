@@ -24,6 +24,7 @@ import Control.Lens hiding (failover)
 import Reflex
 import Reflex.Dom
 
+import Data.Either (rights)
 import Data.Text (Text)
 import Data.Aeson (ToJSON)
 import qualified Data.Aeson as Aeson
@@ -43,7 +44,7 @@ import Frontend.TxBuilder
 import Frontend.JsonData
 import Frontend.Network
 import Frontend.UI.Widgets
-import Frontend.UI.Dialogs.AddVanityAccount.DefineKeyset (DefinedKeyset (..), KeysetInputs (..), uiDefineKeyset, emptyKeysetPresets)
+import Frontend.UI.Dialogs.AddVanityAccount.DefineKeyset (HasDefinedKeyset (..), DefinedKeyset (..), HasKeysetInputs (..), KeysetInputs (..), uiDefineKeyset, emptyKeysetPresets)
 import Frontend.Wallet
 
 recipientMatchesSenderTxBuilder
@@ -122,12 +123,14 @@ uiExplodedChainSelect
   -> Dynamic t (Maybe AccountName)
   -> AccountName
   -> ChainId
-  -> Maybe ChainId
+  -> Event t (Maybe ChainId)
   -> m ( Dropdown t (Maybe ChainId) )
-uiExplodedChainSelect model mUcct onFromName dFromName fromName fromChain txChainId = do
+uiExplodedChainSelect model mUcct onFromName dFromName fromName fromChain onTxChainId = do
+  let mNodeInfo = (^? to rights . _head) <$> model ^. network_selectedNodes
+
   let
     chainSelect _ = elClass' "div" "segment_type_tertiary" $
-      userChainIdSelectWithPreselect model False (constDyn txChainId)
+      mkLabeledClsInput False "Chain ID" (uiChainSelectionWithUpdate mNodeInfo onTxChainId)
 
     onNameChainUpdated (_, chainE) = leftmost
       [ (,) <$> current dFromName <@> _dropdown_change chainE
@@ -143,11 +146,12 @@ uiExplodedChainSelect model mUcct onFromName dFromName fromName fromChain txChai
   fmap snd $ uiInputWithPopover chainSelect (_element_raw . fst) showPopover (def :: DropdownConfig t k)
 
 uiExplodedTxBuilder
-  :: ( MonadWidget t m
-     , HasWallet model key t
-     , HasJsonData model t
-     , HasNetwork model t
-     )
+  :: forall t m model key
+     . ( MonadWidget t m
+       , HasWallet model key t
+       , HasJsonData model t
+       , HasNetwork model t
+       )
   => model
   -> AccountName
   -> ChainId
@@ -159,8 +163,8 @@ uiExplodedTxBuilder model fromName fromChain mUcct mInitToAddress = do
     mkAlteredTxB mname mchain intKeys extKeys mPredicate = TxBuilder <$> mname <*> mchain
       <*> pure (fmap (toPactKeyset $ intKeys <> extKeys) mPredicate)
 
-    explodedTxB txAccName txChainId keysetsPresets = do
-      (onNameInput, dname) <- uiAccountNameInput False txAccName noValidation
+    explodedTxB onTxAccountName onTxChainId keysetsPresets = do
+      (onNameInput, dname) <- uiAccountNameInput False Nothing onTxAccountName noValidation
 
       chainE <- uiExplodedChainSelect model
         mUcct
@@ -168,11 +172,11 @@ uiExplodedTxBuilder model fromName fromChain mUcct mInitToAddress = do
         dname
         fromName
         fromChain
-        txChainId
+        onTxChainId
 
       keyset <- fmap snd $ uiDefineKeyset model keysetsPresets
 
-      let onKeysetChange = leftmost
+      let onKeysetChange = mconcat
             [ () <$ _keysetInputs_rowAddDelete (_definedKeyset_internalKeys keyset)
             , () <$ _keysetInputs_rowAddDelete (_definedKeyset_externalKeys keyset)
             , () <$ _keysetInputs_rowChange (_definedKeyset_internalKeys keyset)
@@ -189,31 +193,34 @@ uiExplodedTxBuilder model fromName fromChain mUcct mInitToAddress = do
         <*> _keysetInputs_set (_definedKeyset_externalKeys keyset)
         <*> _definedKeyset_predicate keyset
 
-    onDefinedKeyset _ (Left _) = Nothing
-    onDefinedKeyset keys (Right txb) = Just $ explodedTxB
-      (Just $ _txBuilder_accountName txb)
-      (Just $ _txBuilder_chainId txb)
-      $ mkDefinedKeyset keys txb
-
   rec
-    onEitherTxB <- fmap (fst . snd) $ uiManualTxBuilderInput
-      (switchDyn $ fmap fst explodedWidget)
-      fromName
-      fromChain
-      mUcct
-      mInitToAddress
+    onEitherTxB <- fmap (fst . snd) $
+      uiManualTxBuilderInput onKeysetChange fromName fromChain mUcct mInitToAddress
 
-    explodedWidget <- widgetHold (explodedTxB Nothing Nothing emptyKeysetPresets)
-      $ attachWithMaybe onDefinedKeyset (current $ model ^. wallet_keys) onEitherTxB
+    let
+      onTxBAccountName = fmap (^? _Right . to _txBuilder_accountName) onEitherTxB
+      onTxBChainId = fmap (^? _Right . to _txBuilder_chainId) onEitherTxB
+      onTxBPredicate = fmap
+        (^? _Right . to _txBuilder_keyset . _Just . to Pact._ksPredFun . to Pact.renderCompactText)
+        onEitherTxB
 
-  pure $ explodedWidget >>= snd
+      (onInternalKeys, onExternalKeys) = splitE $ attachWithMaybe
+        (\keys -> either (const Nothing) (Just . mkKeysets keys))
+        (current $ model ^. wallet_keys)
+        onEitherTxB
 
-mkDefinedKeyset
-  :: Reflex t
-  => KeyStorage key
+    (onKeysetChange, dKeyset) <- explodedTxB onTxBAccountName onTxBChainId $ emptyKeysetPresets
+      & definedKeyset_internalKeys . keysetInputs_rowAddDelete .~ onInternalKeys
+      & definedKeyset_externalKeys . keysetInputs_rowAddDelete .~ onExternalKeys
+      & definedKeyset_predicateChange .~ onTxBPredicate
+
+  pure dKeyset
+
+mkKeysets
+  :: KeyStorage key
   -> TxBuilder
-  -> DefinedKeyset t
-mkDefinedKeyset keys tb =
+  -> (PatchIntMap (Maybe Int), PatchIntMap (Maybe Text))
+mkKeysets keys tb =
   let
     tbKeys = Set.map fromPactPublicKey $ fold $ Pact._ksKeys <$> _txBuilder_keyset tb
     intKeys = ifoldMap
@@ -233,22 +240,7 @@ mkDefinedKeyset keys tb =
     toPatchIntMap f = PatchIntMap
       . ifoldMap (\n a -> IntMap.singleton n $ Just $ Just $ f a)
       . Set.toList
-
   in
-    DefinedKeyset
-      { _definedKeyset_internalKeys = KeysetInputs
-        { _keysetInputs_value = constDyn $ toPatchIntMap fst intKeys
-        , _keysetInputs_set = constDyn (Set.map snd intKeys)
-        , _keysetInputs_rowAddDelete = never
-        , _keysetInputs_rowChange = never
-        }
-      , _definedKeyset_externalKeys = KeysetInputs
-        { _keysetInputs_value = constDyn $ toPatchIntMap keyToText extKeys
-        , _keysetInputs_set = constDyn extKeys
-        , _keysetInputs_rowAddDelete = never
-        , _keysetInputs_rowChange = never
-        }
-      , _definedKeyset_predicate = constDyn
-        $ Pact.renderCompactText . Pact._ksPredFun <$> _txBuilder_keyset tb
-      , _definedKeyset_predicateChange = never
-      }
+    ( toPatchIntMap fst intKeys
+    , toPatchIntMap keyToText extKeys
+    )

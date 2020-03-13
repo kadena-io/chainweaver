@@ -1,7 +1,10 @@
 {-# LANGUAGE RecursiveDo #-}
+{-# LANGUAGE TemplateHaskell #-}
 module Frontend.UI.Dialogs.AddVanityAccount.DefineKeyset
   ( DefinedKeyset (..)
+  , HasDefinedKeyset (..)
   , KeysetInputs (..)
+  , HasKeysetInputs (..)
   , uiDefineKeyset
   , emptyKeysetPresets
   ) where
@@ -176,7 +179,6 @@ uiDefineKeyset
   -> DefinedKeyset t
   -> m (Dynamic t (Maybe AccountGuard), DefinedKeyset t)
 uiDefineKeyset model presets = do
-  pb <- getPostBuild
   let
     allPreds = fmap (catMaybes . Map.elems)
       $ joinDynThroughMap
@@ -191,18 +193,21 @@ uiDefineKeyset model presets = do
 
   rec
     selectedKeys <- mkLabeledClsInput False "Chainweaver Generated Keys" $ const
-      $ defineKeyset model $ current (_keysetInputs_value $ _definedKeyset_internalKeys presets) <@ pb
+      $ defineKeyset model $ _keysetInputs_rowAddDelete $ _definedKeyset_internalKeys presets
 
     externalKeys <- mkLabeledClsInput False "Externally Generated Keys" $ const
-      $ uiExternalKeyInput $ current (_keysetInputs_value $ _definedKeyset_externalKeys presets) <@ pb
+      $ uiExternalKeyInput $ _keysetInputs_rowAddDelete $ _definedKeyset_externalKeys presets
 
     let allpks = _keysetInputs_set selectedKeys <> _keysetInputs_set externalKeys
 
     predicateE <- mkLabeledClsInput False "Predicate (Keys Required to Sign for Account)" $ const
       $ uiDropdown Nothing (allPredSelectMap $ fmap Set.size allpks) $ def
       & dropdownConfig_attributes .~ constDyn ("class" =: "labeled-input__input")
-      & dropdownConfig_setValue .~ (current (_definedKeyset_predicate presets) <@ pb)
+      & dropdownConfig_setValue .~ _definedKeyset_predicateChange presets
 
   pure ( ffor2 allpks (value predicateE) $ \pks kspred -> kspred >>= mkAccountGuard pks
        , DefinedKeyset selectedKeys externalKeys (value predicateE) (_dropdown_change predicateE)
        )
+
+makePactLenses ''KeysetInputs
+makePactLenses ''DefinedKeyset
