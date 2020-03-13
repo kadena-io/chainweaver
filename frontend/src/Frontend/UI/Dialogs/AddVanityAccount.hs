@@ -179,7 +179,7 @@ createAccountSplash model name chain mPublicKey = fix $ \splashWF keysetselectio
             & definedKeyset_internalKeys . keysetInputs_rowAddDelete .~ onSetInternalKeyset
             & definedKeyset_externalKeys . keysetInputs_rowAddDelete .~ onSetExternalKeyset
             -- Ensure the predicate defaults to keys-all
-            & definedKeyset_predicateChange .~ fmap (Just . fromMaybe "keys-all") onSetPredicate
+            & definedKeyset_predicateChange .~ fmap (Just . fromMaybe defaultPredicate) onSetPredicate
 
       Just key -> do
         dialogSectionHeading mempty "Account Key"

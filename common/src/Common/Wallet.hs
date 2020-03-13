@@ -28,6 +28,8 @@ module Common.Wallet
   , _AccountBalance
   , mkAccountGuard
   , predefinedPreds
+  , defaultPredicate
+  , keys2Predicate
   , keysetSatisfiesPredicate
   , AccountNotes (unAccountNotes)
   , mkAccountNotes
@@ -384,6 +386,12 @@ type KeyStorage key = IntMap (Key key)
 --   Userdefined ones are possible too, although the UI currently does not support them.
 predefinedPreds :: [ Text ]
 predefinedPreds = [ "keys-all", "keys-2", "keys-any" ]
+
+defaultPredicate :: Text
+defaultPredicate = "keys-all"
+
+keys2Predicate :: Text
+keys2Predicate = "keys-2"
 
 filterKeyPairs :: Set PublicKey -> IntMap (Key key) -> [KeyPair key]
 filterKeyPairs s m = Map.elems $ Map.restrictKeys (toMap m) s
