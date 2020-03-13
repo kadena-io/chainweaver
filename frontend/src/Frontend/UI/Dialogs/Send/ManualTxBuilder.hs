@@ -176,7 +176,7 @@ uiExplodedTxBuilder model fromName fromChain mUcct mInitToAddress = do
 
       keyset <- fmap snd $ uiDefineKeyset model keysetsPresets
 
-      let onKeysetChange = leftmost
+      let onKeysetChange = mconcat
             [ () <$ _keysetInputs_rowAddDelete (_definedKeyset_internalKeys keyset)
             , () <$ _keysetInputs_rowAddDelete (_definedKeyset_externalKeys keyset)
             , () <$ _keysetInputs_rowChange (_definedKeyset_internalKeys keyset)
