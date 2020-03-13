@@ -1,7 +1,10 @@
 {-# LANGUAGE RecursiveDo #-}
+{-# LANGUAGE TemplateHaskell #-}
 module Frontend.UI.Dialogs.AddVanityAccount.DefineKeyset
   ( DefinedKeyset (..)
+  , HasDefinedKeyset (..)
   , KeysetInputs (..)
+  , HasKeysetInputs (..)
   , uiDefineKeyset
   , emptyKeysetPresets
   ) where
@@ -191,10 +194,10 @@ uiDefineKeyset model presets = do
 
   rec
     selectedKeys <- mkLabeledClsInput False "Chainweaver Generated Keys" $ const
-      $ defineKeyset model $ current (_keysetInputs_value $ _definedKeyset_internalKeys presets) <@ pb
+      $ defineKeyset model $ _keysetInputs_rowAddDelete $ _definedKeyset_internalKeys presets
 
     externalKeys <- mkLabeledClsInput False "Externally Generated Keys" $ const
-      $ uiExternalKeyInput $ current (_keysetInputs_value $ _definedKeyset_externalKeys presets) <@ pb
+      $ uiExternalKeyInput $ _keysetInputs_rowAddDelete $ _definedKeyset_externalKeys presets
 
     let allpks = _keysetInputs_set selectedKeys <> _keysetInputs_set externalKeys
 
@@ -206,3 +209,6 @@ uiDefineKeyset model presets = do
   pure ( ffor2 allpks (value predicateE) $ \pks kspred -> kspred >>= mkAccountGuard pks
        , DefinedKeyset selectedKeys externalKeys (value predicateE) (_dropdown_change predicateE)
        )
+
+makePactLenses ''KeysetInputs
+makePactLenses ''DefinedKeyset
