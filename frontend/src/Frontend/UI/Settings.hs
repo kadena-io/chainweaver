@@ -53,7 +53,7 @@ uiSettings
 uiSettings enabledSettings model fileFFI = elClass "div" "icon-grid" $ do
 
   netCfg <- settingItemOnClick "Network" (static @"img/network.svg") $ \onOpen -> uiNetworkEditRedux
-    <$> current (traceDyn "SELECTED NETWORK:" $ model ^. network_selectedNetwork)
+    <$> current (model ^. network_selectedNetwork)
     <*> current (model ^. network_networks)
     <@ onOpen
 
