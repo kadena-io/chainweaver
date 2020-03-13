@@ -13,7 +13,6 @@ import Control.Applicative (liftA2)
 import Control.Lens ((^.), (<>~), (^?), to)
 import Control.Monad.Trans.Class (lift)
 import Control.Monad.Trans.Maybe (MaybeT(..))
-import Data.Text (Text)
 
 import Data.Text (Text)
 
