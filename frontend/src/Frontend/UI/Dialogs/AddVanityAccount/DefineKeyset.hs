@@ -186,7 +186,7 @@ uiDefineKeyset model presets = do
       <$> model ^. jsonData_keysets
 
     allPredSelectMap nkeys = ffor2 nkeys allPreds $ \nks ps -> Map.fromList
-      $ (Nothing, "Select") : fmap (Just &&& id) (dropkeys2 nks $ ps <> predefinedPreds)
+      $ fmap (Just &&& id) (dropkeys2 nks $ ps <> predefinedPreds)
       where
         dropkeys2 n xs | n >= 2 = xs
                        | otherwise = filter (/= "keys-2") xs
@@ -201,7 +201,7 @@ uiDefineKeyset model presets = do
     let allpks = _keysetInputs_set selectedKeys <> _keysetInputs_set externalKeys
 
     predicateE <- mkLabeledClsInput False "Predicate (Keys Required to Sign for Account)" $ const
-      $ uiDropdown Nothing (allPredSelectMap $ fmap Set.size allpks) $ def
+      $ uiDropdown (Just "keys-all") (allPredSelectMap $ fmap Set.size allpks) $ def
       & dropdownConfig_attributes .~ constDyn ("class" =: "labeled-input__input")
       & dropdownConfig_setValue .~ _definedKeyset_predicateChange presets
 
