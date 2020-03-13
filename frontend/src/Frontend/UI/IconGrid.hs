@@ -29,7 +29,10 @@ iconGridLaunchLink :: DomBuilder t m => Text -> IconGridCellConfig -> m ()
 iconGridLaunchLink href = iconGridLaunchLink' href True
 
 iconGridCell :: DomBuilder t m => IconGridCellConfig -> m (Event t ())
-iconGridCell config = elAttr "div" ("class" =: "icon-grid__cell") $ iconGridCell' config False
+iconGridCell config = do
+  (cellEl, onBtnClick) <- elAttr' "div" ("class" =: "icon-grid__cell") $
+    iconGridCell' config False
+  pure $ onBtnClick <> domEvent Click cellEl
 
 iconGridCell' :: DomBuilder t m => IconGridCellConfig -> Bool -> m (Event t ())
 iconGridCell' config hasLaunch = do
