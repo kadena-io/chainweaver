@@ -46,7 +46,7 @@ import           Frontend.UI.Modal
 import           Frontend.UI.Widgets
 import           Frontend.UI.Widgets.Helpers (dialogSectionHeading)
 ------------------------------------------------------------------------------
-import Debug.Trace
+
 -- | Internal data type for manipulating networks, based on user edits.
 data NetworkAction
   = NetworkDelete NetworkName
@@ -61,23 +61,18 @@ uiNetworkDropdown
   -> NetworkName
   -> Map NetworkName [NodeRef]
   -> Event t (Map NetworkName [NodeRef])
-  -> m (SelectElement EventResult (DomBuilderSpace m) t)
+  -> m (Dropdown t NetworkName)
 uiNetworkDropdown cls initialNetwork initialNetworks onNetworkUpdate = do
-  let
-    cfg = SelectElementConfig
-      { _selectElementConfig_initialValue = traceShowId $ textNetworkName initialNetwork
-      , _selectElementConfig_setValue = Nothing -- Just $ textNetworkName initialNetwork <$ pb
-      , _selectElementConfig_elementConfig = def
-        & elementConfig_initialAttributes .~ "class" =: renderClass cls
-      }
-    itemDom v =
-      elAttr "option" ("value" =: v) $ text v
+  let mkMap nets = foldMap (\k -> Map.singleton k $ textNetworkName k)
+        $ Map.keys
+        -- Don't allow networks without nodes to be selected
+        $ Map.filter (not . null) nets
 
-  networkNames <- holdDyn (Map.keys initialNetworks) $
-    Map.keys <$> onNetworkUpdate
+  networks <- holdDyn (mkMap initialNetworks)
+    $ mkMap <$> onNetworkUpdate
 
-  fmap fst $ uiSelectElement cfg $ dyn_ $
-    traverse_ (itemDom . textNetworkName) <$> networkNames
+  uiDropdown initialNetwork networks $ def
+    & dropdownConfig_attributes .~ constDyn ("class" =: renderClass cls)
 
 -- | Confirmation dialog for deployments.
 --
@@ -99,8 +94,7 @@ uiNetworkEditRedux selectedNetwork networks _onCloseExternal = do
     selectEv <- uiGroup "segment" $ do
       uiGroupHeader mempty $
         dialogSectionHeading mempty "Select Network"
-      fmap (fmap uncheckedNetworkName . _selectElement_change) $ uiNetworkDropdown
-        "select_type_primary select_width_full"
+      fmap _dropdown_change $ uiNetworkDropdown "select_type_primary select_width_full"
         selectedNetwork
         networks
         (updated dNetworks)
