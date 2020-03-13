@@ -20,7 +20,7 @@
 -- Copyright   :  (C) 2020 Kadena
 -- License     :  BSD-style (see the file LICENSE)
 module Frontend.UI.Dialogs.NetworkEdit
-  ( uiNetworkEditRedux
+  ( uiNetworkEdit
   , uiNetworkStatus
   , uiNetworkSelectTopBar
   , queryNetworkStatus
@@ -78,7 +78,7 @@ uiNetworkDropdown cls initialNetwork initialNetworks onNetworkUpdate = do
 --
 --   User can make sure to deploy to the right network, has the right keysets,
 --   the right keys, ...
-uiNetworkEditRedux
+uiNetworkEdit
   :: ( MonadWidget t m
      , Monoid mConf
      , HasNetworkCfg mConf t
@@ -87,7 +87,7 @@ uiNetworkEditRedux
   -> Map NetworkName [NodeRef]
   -> Event t ()
   -> m (mConf, Event t ())
-uiNetworkEditRedux selectedNetwork networks _onCloseExternal = do
+uiNetworkEdit selectedNetwork networks _onCloseExternal = do
   onClose <- modalHeader $ text "Network Settings"
 
   (selectEvent, dHasNewNetwork, dNetworks) <- modalMain $ mdo
@@ -105,7 +105,7 @@ uiNetworkEditRedux selectedNetwork networks _onCloseExternal = do
 
       rec
         onNewNet <- validatedInputWithButton "group__header" (getErr <$> dNets) "Create new network." "Create"
-        onUpdateNodes <- uiNetworksRedux networks onNewNet
+        onUpdateNodes <- uiNetworks networks onNewNet
 
         let onNetworkUpdates = mergeWith (.)
               [ onUpdateNodes
@@ -189,12 +189,12 @@ uiNetworkSelectTopBar cls name networks = do
     void $ networkView $ traverse_ (itemDom . textNetworkName) <$> networkNames
   pure $ fmap uncheckedNetworkName (_selectElement_change s)
 
-uiNetworksRedux
+uiNetworks
   :: MonadWidget t m
   => Map NetworkName [NodeRef]
   -> Event t NetworkName
   -> m ( Event t (Map NetworkName [NodeRef] -> Map NetworkName [NodeRef]) )
-uiNetworksRedux initialNetworks onNewNetwork = mdo
+uiNetworks initialNetworks onNewNetwork = mdo
   let
     onAddNetwork = flip Map.singleton (Just []) <$> onNewNetwork
     onDelete = flip Map.singleton Nothing <$> fmapMaybe (^? _NetworkDelete) onNodeEvent
@@ -203,7 +203,7 @@ uiNetworksRedux initialNetworks onNewNetwork = mdo
       rec
         (onDeletes, (nodeUpdates, status)) <- accordionItem' False "segment segment_type_secondary"
           (uiNetworkHeading networkName status)
-          (uiNodesRedux nodes)
+          (uiNodes nodes)
       pure $ leftmost
         [ onDeletes
         , NetworkNode networkName <$> updated nodeUpdates
@@ -251,13 +251,13 @@ uiNetworkHeading self mStat = do
 -- | Renders line edits for all nodes in a network.
 --
 --   Delivers change events and a `Dynamic` holding the current overall `NetworkStatus`.
-uiNodesRedux
+uiNodes
   :: forall t m. MonadWidget t m
   => [NodeRef]
   -> m ( Dynamic t [NodeRef]
        , Dynamic t (Maybe NetworkStatus)
        )
-uiNodesRedux nodes = elClass "ol" "table table_type_primary" $ do
+uiNodes nodes = elClass "ol" "table table_type_primary" $ do
   -- Build a patch which adds all the nodes, plus an extra empty node input
   let mkIntMap = IntMap.fromList . zip [0..] . (<> [Nothing]) . fmap Just
   rec

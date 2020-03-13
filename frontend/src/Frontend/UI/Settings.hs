@@ -20,7 +20,7 @@ import Frontend.Crypto.Class (HasCrypto)
 import Frontend.AppCfg (EnabledSettings(..), FileFFI)
 import Frontend.Foundation
 import Frontend.Network
-import Frontend.UI.Dialogs.NetworkEdit (uiNetworkEditRedux)
+import Frontend.UI.Dialogs.NetworkEdit (uiNetworkEdit)
 import Frontend.UI.Dialogs.ChangePassword (uiChangePasswordDialog)
 import Frontend.UI.Dialogs.ExportWallet (uiExportWalletDialog)
 import Frontend.UI.Dialogs.TxLogs (uiTxLogs)
@@ -52,7 +52,7 @@ uiSettings
   -> m mConf
 uiSettings enabledSettings model fileFFI = elClass "div" "icon-grid" $ do
 
-  netCfg <- settingItemOnClick "Network" (static @"img/network.svg") $ \onOpen -> uiNetworkEditRedux
+  netCfg <- settingItemOnClick "Network" (static @"img/network.svg") $ \onOpen -> uiNetworkEdit
     <$> current (model ^. network_selectedNetwork)
     <*> current (model ^. network_networks)
     <@ onOpen
