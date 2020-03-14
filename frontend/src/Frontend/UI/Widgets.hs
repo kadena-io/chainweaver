@@ -27,6 +27,7 @@ module Frontend.UI.Widgets
   , userChainIdSelect
   , userChainIdSelectWithPreselect
   , uiChainSelection
+  , uiChainSelectionWithUpdate
 
   , mkChainTextAccounts
   , accountListId
@@ -36,6 +37,7 @@ module Frontend.UI.Widgets
   , uiAccountDropdown
   , uiAccountDropdown'
   , uiKeyPairDropdown
+  , uiRequestKeyInput
 
   -- ** Other widgets
   , PopoverState (..)
@@ -65,10 +67,8 @@ module Frontend.UI.Widgets
   , validatedInputWithButton
   , uiAccountBalance
   , uiAccountBalance'
-  , uiPublicKeyShrunk
   , uiForm
   , uiForm'
-  , uiPublicKeyShrunkDyn
     -- ** Helper types to avoid boolean blindness for additive input
   , AllowAddNewRow (..)
   , AllowDeleteRow (..)
@@ -130,6 +130,8 @@ import           Reflex.Extended             (tagOnPostBuild)
 import Pact.Types.ChainId (ChainId (..))
 import Pact.Types.Runtime (GasPrice (..))
 import Pact.Parse (ParsedDecimal (..))
+import Pact.Types.Command (RequestKey)
+import qualified Pact.Types.Util as Pact
 ------------------------------------------------------------------------------
 import           Common.Wallet
 import           Frontend.Foundation
@@ -254,8 +256,15 @@ uiForm' cfg btn fields = do
   pure (domEvent Submit elt, a)
 
 -- | Produces a form wrapper given a suitable submit button so that the enter key is correctly handled
-uiForm :: forall t m a. DomBuilder t m => ElementConfig EventResult t (DomBuilderSpace m) -> m () -> m a -> m (Event t (), a)
-uiForm cfg btn fields = (_2 %~ fst) <$> uiForm' cfg btn fields
+uiForm
+  :: forall t m a
+     . DomBuilder t m
+  => ElementConfig EventResult t (DomBuilderSpace m)
+  -> m ()
+  -> m a
+  -> m (Event t (), a)
+uiForm cfg btn fields =
+  (_2 %~ fst) <$> uiForm' cfg btn fields
 
 -- | reflex-dom `inputElement` with chainweaver default styling:
 uiInputElement
@@ -270,28 +279,30 @@ uiCorrectingInputElement
        , MonadFix m
        , MonadHold t m
        )
-  => (Text -> Maybe a)
+  => Event t ()
+  -> (Text -> Maybe a)
   -> (a -> Maybe (a, explanation))
   -> (a -> Maybe (a, explanation))
   -> (a -> Text)
   -> InputElementConfig EventResult t (DomBuilderSpace m)
   -> m (InputElement EventResult (DomBuilderSpace m) t, Dynamic t (Maybe a), Event t (a, Maybe explanation))
-uiCorrectingInputElement parse inputSanitize blurSanitize render cfg = mdo
+uiCorrectingInputElement eReset parse inputSanitize blurSanitize render cfg = mdo
   ie <- inputElement $ cfg & inputElementConfig_setValue %~ (\e -> leftmost
       [ attemptCorrection e
       , forceCorrection inp
       , blurAttemptCorrection eBlurredVal
       , blurForceCorrection eBlurredVal
       , purgeInvalidInputs
+      , mempty <$ eReset
       ]
     )
 
   dLastGoodValue <- holdUniqDyn =<< holdDyn
     (cfg ^. inputElementConfig_initialValue)
     (leftmost
-     [ cfg ^. inputElementConfig_setValue
-     , fmapMaybe (fmap render) $ fmap parse inp
-     ])
+      [ cfg ^. inputElementConfig_setValue
+      , fmapMaybe (fmap render) $ fmap parse inp
+      ])
 
   let
     inp = _inputElement_input ie
@@ -306,7 +317,12 @@ uiCorrectingInputElement parse inputSanitize blurSanitize render cfg = mdo
 
     purgeInvalidInputs :: Event t Text
     purgeInvalidInputs = attachWithMaybe
-      (\old -> maybe (Just old) (const Nothing) . parse)
+      (\old new ->
+         if T.null new then
+           Just new
+        else
+           maybe (Just old) (const Nothing) $ parse new
+      )
       (current dLastGoodValue)
       inp
 
@@ -352,14 +368,15 @@ uiNonnegativeRealWithPrecisionInputElement
        , MonadJSM (Performable m)
        , DomBuilderSpace m ~ GhcjsDomSpace
        )
-  => Word8
+  => Event t ()
+  -> Word8
   -> (Decimal -> a)
   -> InputElementConfig EventResult t (DomBuilderSpace m)
   -> m (InputElement EventResult (DomBuilderSpace m) t, Dynamic t (Maybe a), Event t a)
-uiNonnegativeRealWithPrecisionInputElement prec fromDecimal cfg = do
+uiNonnegativeRealWithPrecisionInputElement eReset prec fromDecimal cfg = do
   let
     uiCorrecting cfg0 = do
-      (ie, val, input) <- uiCorrectingInputElement parse inputSanitize blurSanitize tshow $ cfg0
+      (ie, val, input) <- uiCorrectingInputElement eReset parse inputSanitize blurSanitize tshow $ cfg0
       pure (ie, (input, val))
 
     showPopover (_, (onInput, _)) = pure $ ffor onInput $
@@ -408,7 +425,7 @@ uiIntInputElement
   -> InputElementConfig EventResult t (DomBuilderSpace m)
   -> m (InputElement EventResult (DomBuilderSpace m) t, Event t Integer)
 uiIntInputElement mmin mmax cfg = do
-    (r, _, input) <- uiCorrectingInputElement (tread . fixNum) sanitize (const Nothing) tshow $ cfg
+    (r, _, input) <- uiCorrectingInputElement never (tread . fixNum) sanitize (const Nothing) tshow $ cfg
       & initialAttributes %~ ((<> numberAttrs) . addInputElementCls . addNoAutofillAttrs)
       & inputElementConfig_elementConfig . elementConfig_eventSpec %~ preventUpAndDownArrow @m
     preventScrollWheel $ _inputElement_raw r
@@ -576,9 +593,10 @@ mkLabeledClsInput
   -> Dynamic t Text
   -> (CssClass -> m element)
   -> m element
-mkLabeledClsInput inlineLabel name mkInput = elClass "div" ("segment segment_type_tertiary labeled-input" <> inlineState) $ do
-  divClass ("label labeled-input__label" <> inlineState) $ dynText name
-  mkInput "labeled-input__input"
+mkLabeledClsInput inlineLabel name mkInput =
+  elClass "div" ("segment segment_type_tertiary labeled-input" <> inlineState) $ do
+    divClass ("label labeled-input__label" <> inlineState) $ dynText name
+    mkInput "labeled-input__input"
   where
     inlineState = bool "" "-inline" inlineLabel
 
@@ -659,25 +677,6 @@ uiAccountBalance showUnits = \case
     , " KDA" <$ guard showUnits
     ]
 
-uiPublicKeyShrunkDOM :: DomBuilder t m => m () -> m () -> m ()
-uiPublicKeyShrunkDOM f6 l6 = divClass "wallet__public-key" $ do
-  elClass "span" "wallet__public-key__prefix" f6
-  elClass "span" "wallet__public-key__suffix" l6
-
-uiPublicKeyShrunk :: DomBuilder t m => PublicKey -> m ()
-uiPublicKeyShrunk pk = uiPublicKeyShrunkDOM
-  (text $ T.dropEnd 6 ktxt)
-  (text $ T.takeEnd 6 ktxt)
-  where
-    ktxt = keyToText pk
-
-uiPublicKeyShrunkDyn :: (DomBuilder t m, PostBuild t m) => Dynamic t PublicKey -> m ()
-uiPublicKeyShrunkDyn pk = uiPublicKeyShrunkDOM
-  (dynText $ T.dropEnd 6 <$> ktxt)
-  (dynText $ T.takeEnd 6 <$> ktxt)
-  where
-    ktxt = keyToText <$> pk
-
 newtype AllowAddNewRow t out = AllowAddNewRow (out -> Event t Bool)
 newtype AllowDeleteRow t out = AllowDeleteRow (out -> Event t Bool)
 
@@ -690,7 +689,9 @@ uiAdditiveInput
   -> AllowDeleteRow t out
   -> particular
   -> Event t (PatchIntMap particular)
-  -> m (Dynamic t (IntMap.IntMap out))
+  -> m ( Dynamic t (IntMap.IntMap out)
+       , Event t (PatchIntMap particular)
+       )
 uiAdditiveInput mkIndividualInput (AllowAddNewRow newRow) (AllowDeleteRow deleteRow) initialSelection onExternal = do
   let
     minRowIx = 0
@@ -702,18 +703,22 @@ uiAdditiveInput mkIndividualInput (AllowAddNewRow newRow) (AllowDeleteRow delete
     decideDeletion i out = IntMap.singleton i Nothing <$ ffilter id (deleteRow out)
 
   rec
+    let
+      -- Delete rows when 'select' is chosen
+      onDelete = fmap PatchIntMap $ switchDyn $ IntMap.foldMapWithKey decideDeletion <$> dInputKeys
+      -- Add a new row when all rows have a selection and there are more keys to choose from
+      onAdd = fmap PatchIntMap $ switchDyn $ maybe never decideAddNewRow . IntMap.lookupMax <$> dInputKeys
+
     (keys, newSelection) <- traverseIntMapWithKeyWithAdjust mkIndividualInput (IntMap.singleton minRowIx initialSelection) $
       leftmost
-      [ -- Delete rows when 'select' is chosen
-        fmap PatchIntMap $ switchDyn $ IntMap.foldMapWithKey decideDeletion <$> dInputKeys
-        -- Add a new row when all rows have a selection and there are more keys to choose from
-      , fmap PatchIntMap $ switchDyn $ maybe never decideAddNewRow . IntMap.lookupMax <$> dInputKeys
+      [ onDelete
+      , onAdd
         -- Set the values of the rows from an external event.
       , onExternal
       ]
     dInputKeys <- foldDyn applyAlways keys newSelection
 
-  pure dInputKeys
+  pure (dInputKeys, onAdd <> onDelete)
 
 showLoading
   :: (NotReady t m, Adjustable t m, PostBuild t m, DomBuilder t m, Monoid b)
@@ -876,43 +881,47 @@ uiGasPriceInputField
      , PostBuild t m
      , PerformEvent t m
      )
-  => InputElementConfig EventResult t (DomBuilderSpace m)
+  => Event t ()
+  -> InputElementConfig EventResult t (DomBuilderSpace m)
   -> m ( InputElement EventResult (DomBuilderSpace m) t
        , Dynamic t (Maybe GasPrice)
        , Event t GasPrice
        )
-uiGasPriceInputField conf = dimensionalInputFeedbackWrapper (Just "KDA") $ do
-  uiNonnegativeRealWithPrecisionInputElement maxCoinPrecision (GasPrice . ParsedDecimal) $ conf
+uiGasPriceInputField eReset conf = dimensionalInputFeedbackWrapper (Just "KDA") $ do
+  uiNonnegativeRealWithPrecisionInputElement eReset maxCoinPrecision (GasPrice . ParsedDecimal) $ conf
     & initialAttributes %~ addToClassAttr "input-units"
 
 -- | Let the user pick a chain id.
 userChainIdSelect
-  :: (MonadWidget t m, HasNetwork model t
+  :: ( MonadWidget t m
+     , HasNetwork model t
      )
   => model
-  -> m (MDynamic t ChainId)
+  -> m ( Dropdown t (Maybe ChainId) )
 userChainIdSelect m =
-  userChainIdSelectWithPreselect m (constDyn Nothing)
+  userChainIdSelectWithPreselect m True (constDyn Nothing)
 
 -- | Let the user pick a chain id but preselect a value
 userChainIdSelectWithPreselect
   :: (MonadWidget t m, HasNetwork model t
      )
   => model
+  -> Bool
   -> Dynamic t (Maybe ChainId)
-  -> m (MDynamic t ChainId)
-userChainIdSelectWithPreselect m mChainId = mkLabeledClsInput True "Chain ID" (uiChainSelection mNodeInfo mChainId)
-  where mNodeInfo = (^? to rights . _head) <$> m ^. network_selectedNodes
+  -> m ( Dropdown t (Maybe ChainId) )
+userChainIdSelectWithPreselect m inlineLabel mChainId =
+  mkLabeledClsInput inlineLabel "Chain ID" (uiChainSelection mNodeInfo mChainId)
+  where
+    mNodeInfo = (^? to rights . _head) <$> m ^. network_selectedNodes
 
 uiChainSelection
   :: MonadWidget t m
   => Dynamic t (Maybe NodeInfo)
   -> Dynamic t (Maybe ChainId)
   -> CssClass
-  -> m (Dynamic t (Maybe ChainId))
+  -> m ( Dropdown t (Maybe ChainId) )
 uiChainSelection info mPreselected cls = do
-  pb <- getPostBuild
-
+  onPreselected <- tagOnPostBuild mPreselected
   let
     chains = map (id &&& _chainId) . maybe [] getChains <$> info
     mkPlaceHolder cChains = if null cChains then "No chains available" else "Select chain"
@@ -922,13 +931,38 @@ uiChainSelection info mPreselected cls = do
     mkDynCls v = if isNothing v then "select_mandatory_missing" else mempty
 
   rec
-    let allCls = renderClass <$> fmap mkDynCls d <> pure staticCls
+    let allCls = renderClass <$> fmap mkDynCls (_dropdown_value ddE) <> pure staticCls
         cfg = def
           & dropdownConfig_attributes .~ (("class" =:) <$> allCls)
-          & dropdownConfig_setValue .~ (current mPreselected <@ pb)
+          & dropdownConfig_setValue .~ onPreselected
 
-    d <- _dropdown_value <$> dropdown Nothing (mkOptions <$> chains) cfg
-  pure d
+    ddE <- dropdown Nothing (mkOptions <$> chains) cfg
+  pure ddE
+
+uiChainSelectionWithUpdate
+  :: MonadWidget t m
+  => Dynamic t (Maybe NodeInfo)
+  -> Event t (Maybe ChainId)
+  -> CssClass
+  -> m ( Dropdown t (Maybe ChainId) )
+uiChainSelectionWithUpdate info onPreselected cls = do
+  let
+    chains = map (id &&& _chainId) . maybe [] getChains <$> info
+    mkPlaceHolder cChains = if null cChains then "No chains available" else "Select chain"
+    mkOptions cs = Map.fromList $ (Nothing, mkPlaceHolder cs) : map (first Just) cs
+
+    staticCls = cls <> "select"
+    mkDynCls v = if isNothing v then "select_mandatory_missing" else mempty
+
+  rec
+    let allCls = renderClass <$> fmap mkDynCls (_dropdown_value ddE) <> pure staticCls
+        cfg = def
+          & dropdownConfig_attributes .~ (("class" =:) <$> allCls)
+          & dropdownConfig_setValue .~ onPreselected
+
+    ddE <- dropdown Nothing (mkOptions <$> chains) cfg
+  pure ddE
+
 
 -- | Use a predefined chain id, don't let the user pick one.
 predefinedChainIdSelect
@@ -989,10 +1023,14 @@ uiAccountNameInput
      , PerformEvent t m
      , MonadJSM (Performable m)
      )
-  => Maybe AccountName
+  => Bool
+  -> Maybe AccountName
+  -> Event t (Maybe AccountName)
   -> Dynamic t (AccountName -> Either Text AccountName)
-  -> m (Dynamic t (Maybe AccountName))
-uiAccountNameInput initval validateName = do
+  -> m ( Event t (Maybe AccountName)
+       , Dynamic t (Maybe AccountName)
+       )
+uiAccountNameInput inlineLabel initval onSetName validateName = do
   let
     mkMsg True (Left e) = PopoverState_Error e
     mkMsg _    _ = PopoverState_Disabled
@@ -1007,10 +1045,14 @@ uiAccountNameInput initval validateName = do
       inp <- uiInputElement $ cfg & initialAttributes %~ (<> "list" =: accountListId)
       pure (inp, _inputElement_raw inp)
 
-  (inputE, _) <- mkLabeledInput True "Account Name" (uiInputWithPopover uiNameInput snd showPopover)
-    $ def & inputElementConfig_initialValue .~ fold (fmap unAccountName initval)
+  (inputE, _) <- mkLabeledInput inlineLabel "Account Name" (uiInputWithPopover uiNameInput snd showPopover)
+    $ def
+    & inputElementConfig_initialValue .~ fold (fmap unAccountName initval)
+    & inputElementConfig_setValue .~ fmapMaybe (fmap unAccountName) onSetName
 
-  pure $ hush <$> (validate <*> fmap T.strip (value inputE))
+  pure ( fmap hush $ current validate <@> _inputElement_input inputE
+       , hush <$> (validate <*> fmap T.strip (value inputE))
+       )
 
 -- | Set the account to a fixed value
 uiAccountFixed
@@ -1221,3 +1263,33 @@ uiEmptyState icon title content = divClass "empty-state" $ do
   divClass "empty-state__icon-circle" $ elAttr "div" iconAttrs blank
   elClass "h1" "empty-state__title" $ text title
   divClass "empty-state__content" content
+
+uiRequestKeyInput
+  :: ( MonadWidget t m
+     )
+  => Bool
+  -> m ( Event t (Either Text RequestKey)
+       , Dynamic t (Either Text RequestKey)
+       )
+uiRequestKeyInput inlineLabel = do
+  let
+    parseRequestKey :: Text -> Either Text RequestKey
+    parseRequestKey t | T.null t = Left "Please enter a Request Key"
+                      | Right v <- Pact.fromText' t = Right v
+                      | otherwise = Left "Invalid hash"
+
+    mkMsg True (Left e) = PopoverState_Error e
+    mkMsg _    _ = PopoverState_Disabled
+
+    showPopover (ie, _) = pure $ _inputElement_input ie <&> \t ->
+      mkMsg (not $ T.null t) (parseRequestKey $ T.strip t)
+
+    uiKeyInput cfg = do
+      inp <- uiInputElement cfg
+      pure (inp, _inputElement_raw inp)
+
+  (inputE, _) <- mkLabeledInput inlineLabel "Request Key" (uiInputWithPopover uiKeyInput snd showPopover) def
+
+  pure ( parseRequestKey <$> _inputElement_input inputE
+       , parseRequestKey <$> value inputE
+       )

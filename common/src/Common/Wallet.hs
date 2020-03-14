@@ -11,6 +11,7 @@
 {-# LANGUAGE PatternGuards #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE TypeFamilies #-}
 
 module Common.Wallet
   ( PublicKey(..)
@@ -25,18 +26,17 @@ module Common.Wallet
   , AccountName(..)
   , AccountBalance(..)
   , _AccountBalance
-  , AddressKeyset(..)
-  , mkAddressKeyset
-  , addressKeysetObject
-  , addressKeyset_keys
-  , addressKeyset_pred
+  , mkAccountGuard
   , predefinedPreds
+  , defaultPredicate
+  , keys2Predicate
   , keysetSatisfiesPredicate
-  , toPactKeyset
-  , fromPactKeyset
   , AccountNotes (unAccountNotes)
   , mkAccountNotes
   , AccountGuard(..)
+  , _AccountGuard_KeySet
+  , _AccountGuard_Other
+  , toPactKeyset
   , UnfinishedCrossChainTransfer(..)
   , KeyStorage
   , AccountStatus (..)
@@ -45,7 +45,7 @@ module Common.Wallet
   , _AccountStatus_DoesNotExist
   , AccountDetails (..)
   , accountDetails_balance
-  , accountDetails_keyset
+  , accountDetails_guard
     -- * Prisms for working directly with Account
   , AccountStorage(..)
   , _AccountStorage
@@ -74,7 +74,7 @@ module Common.Wallet
   , parseAccountDetails
   ) where
 
-import Control.Applicative (liftA2)
+import Control.Applicative (liftA2, (<|>))
 import Control.Monad.Fail (MonadFail)
 import Control.Lens hiding ((.=))
 import Control.Monad
@@ -84,7 +84,7 @@ import Data.Aeson
 import Data.Aeson.Types (toJSONKeyText)
 import Data.Bifunctor (first)
 import Data.ByteString (ByteString)
-import Data.Decimal (Decimal)
+import Data.Decimal (Decimal, roundTo)
 import Data.Default
 import Data.Function (on)
 import Data.IntMap (IntMap)
@@ -204,7 +204,10 @@ throwWrongLength should k =
      else pure k
 
 -- | Account balance wrapper
-newtype AccountBalance = AccountBalance { unAccountBalance :: Decimal } deriving (Eq, Ord, Num, Show)
+newtype AccountBalance = AccountBalance
+  { unAccountBalance :: Decimal
+  }
+  deriving (Eq, Ord, Num, Show)
 
 -- Via ParsedDecimal
 instance ToJSON AccountBalance where
@@ -212,44 +215,16 @@ instance ToJSON AccountBalance where
 instance FromJSON AccountBalance where
   parseJSON x = (\(ParsedDecimal d) -> AccountBalance d) <$> parseJSON x
 
-data AddressKeyset = AddressKeyset
-  { _addressKeyset_keys :: Set PublicKey
-  , _addressKeyset_pred :: Text
-  } deriving (Eq,Ord,Show)
+toPactKeyset :: Set PublicKey -> Text -> Pact.KeySet
+toPactKeyset keys ksPred = Pact.KeySet
+  { Pact._ksKeys = Set.map toPactPublicKey keys
+  , Pact._ksPredFun = Pact.Name $ Pact.BareName ksPred def
+  }
 
-mkAddressKeyset :: Set PublicKey -> Text -> Maybe AddressKeyset
-mkAddressKeyset keys predicate
+mkAccountGuard :: Set PublicKey -> Text -> Maybe AccountGuard
+mkAccountGuard keys ksPred
   | Set.null keys = Nothing
-  | otherwise = Just $ AddressKeyset
-    { _addressKeyset_keys = keys
-    , _addressKeyset_pred = predicate
-    }
-
-addressKeysetObject :: AddressKeyset -> Aeson.Object
-addressKeysetObject o = HM.fromList
-  [ "keys" .= _addressKeyset_keys o
-  , "pred" .= _addressKeyset_pred o
-  ]
-
-toPactKeyset :: AddressKeyset -> Pact.KeySet
-toPactKeyset ak = Pact.KeySet
-  { Pact._ksKeys = Set.map toPactPublicKey $ _addressKeyset_keys ak
-  , Pact._ksPredFun = Pact.Name $ Pact.BareName (_addressKeyset_pred ak) def
-  }
-
-fromPactKeyset :: Pact.KeySet -> AddressKeyset
-fromPactKeyset ak = AddressKeyset
-  { _addressKeyset_keys = Set.map fromPactPublicKey $ Pact._ksKeys ak
-  , _addressKeyset_pred = renderCompactText $ Pact._ksPredFun ak
-  }
-
-instance ToJSON AddressKeyset where
-  toJSON = Aeson.Object . addressKeysetObject
-
-instance FromJSON AddressKeyset where
-  parseJSON = withObject "AddressKeyset" $ \o -> AddressKeyset
-    <$> o .: "keys"
-    <*> o .: "pred"
+  | otherwise = Just $ AccountGuard_KeySet keys ksPred
 
 data AccountStatus a
   = AccountStatus_Unknown
@@ -257,16 +232,60 @@ data AccountStatus a
   | AccountStatus_Exists a
   deriving (Eq, Show, Functor)
 
+-- | Account guards. We split this out here because we are only really
+-- interested in keyset guards right now. Someday we might end up replacing this
+-- with pact's representation for guards directly.
+data AccountGuard
+  = AccountGuard_KeySet (Set PublicKey) Text
+  -- ^ Keyset guards
+  | AccountGuard_Other (Pact.Guard PactValue)
+  -- ^ Other types of guard
+  deriving (Show, Eq, Generic)
+
+fromPactGuard :: Pact.Guard PactValue -> AccountGuard
+fromPactGuard = \case
+  Pact.GKeySet ks -> AccountGuard_KeySet
+    (Set.map fromPactPublicKey $ Pact._ksKeys ks)
+    (renderCompactText $ Pact._ksPredFun ks)
+  g ->
+    AccountGuard_Other g
+
+pactGuardTypeText :: Pact.GuardType -> Text
+pactGuardTypeText = \case
+  Pact.GTyKeySet -> "Keyset"
+  Pact.GTyKeySetName -> "Named"
+  Pact.GTyPact -> "Pact"
+  Pact.GTyUser -> "User"
+  Pact.GTyModule -> "Module"
+
+instance FromJSON AccountGuard where
+  parseJSON v = keySet v <|> (AccountGuard_Other <$> parseJSON v)
+    where
+      keySet = withObject "AccountGuard" $ \o -> do
+        keys <- o .: "keys"
+        ksPred <- o .: "pred"
+        case mkAccountGuard keys ksPred of
+          Nothing -> fail "Could not create KeySet for AccountGuard"
+          Just ag -> pure ag
+
+instance ToJSON AccountGuard where
+  toJSON (AccountGuard_KeySet ksKeys ksPred) = object
+    [ "keys" .= ksKeys
+    , "pred" .= ksPred
+    ]
+  toJSON (AccountGuard_Other pactGuard) =
+    toJSON pactGuard
+
 data AccountDetails = AccountDetails
   { _accountDetails_balance :: AccountBalance
-  , _accountDetails_keyset :: AddressKeyset
+  , _accountDetails_guard :: AccountGuard
   } deriving (Eq, Show)
 
+makePactPrisms ''Pact.Guard
+makePactPrisms ''AccountGuard
 makePactLenses ''AccountDetails
-makePactLenses ''AddressKeyset
 makePactPrisms ''AccountStatus
 makePactPrisms ''AccountBalance
-
 
 -- | A key consists of a public key and an optional private key.
 --
@@ -298,32 +317,6 @@ instance FromJSON key => FromJSON (KeyPair key) where
       }
 
 makePactLenses ''KeyPair
-
--- | Account guards. We split this out here because we are only really
--- interested in keyset guards right now. Someday we might end up replacing this
--- with pact's representation for guards directly.
-data AccountGuard
-  = AccountGuard_KeySet Pact.KeySet
-  -- ^ Keyset guards
-  | AccountGuard_Other Pact.GuardType
-  -- ^ Other types of guard
-  deriving (Show, Generic)
-
-fromPactGuard :: Pact.Guard a -> AccountGuard
-fromPactGuard = \case
-  Pact.GKeySet ks -> AccountGuard_KeySet ks
-  g -> AccountGuard_Other $ Pact.guardTypeOf g
-
-pactGuardTypeText :: Pact.GuardType -> Text
-pactGuardTypeText = \case
-  Pact.GTyKeySet -> "Keyset"
-  Pact.GTyKeySetName -> "Keyset Name"
-  Pact.GTyPact -> "Pact"
-  Pact.GTyUser -> "User"
-  Pact.GTyModule -> "Module"
-
-instance FromJSON AccountGuard
-instance ToJSON AccountGuard
 
 -- | Account notes wrapper
 newtype AccountNotes = AccountNotes { unAccountNotes :: Text } deriving (Eq, Show)
@@ -394,22 +387,29 @@ type KeyStorage key = IntMap (Key key)
 predefinedPreds :: [ Text ]
 predefinedPreds = [ "keys-all", "keys-2", "keys-any" ]
 
+defaultPredicate :: Text
+defaultPredicate = "keys-all"
+
+keys2Predicate :: Text
+keys2Predicate = "keys-2"
+
 filterKeyPairs :: Set PublicKey -> IntMap (Key key) -> [KeyPair key]
 filterKeyPairs s m = Map.elems $ Map.restrictKeys (toMap m) s
   where toMap = Map.fromList . fmap (\k -> (_keyPair_publicKey $ _key_pair k, _key_pair k)) . IntMap.elems
 
-keysetSatisfiesPredicate :: AddressKeyset -> IntMap (Key key) -> Bool
-keysetSatisfiesPredicate ak keys0 =
-  let
-    keys = Set.fromList $ fmap (_keyPair_publicKey . _key_pair) $ IntMap.elems keys0
-    kskeys = _addressKeyset_keys ak
-    keyIntersections = Set.intersection kskeys keys
-  in
-    case _addressKeyset_pred ak of
-      "keys-all" -> kskeys == keyIntersections
-      "keys-any" -> not $ Set.null keyIntersections
-      "keys-2" -> length keyIntersections >= 2
-      _ -> not $ null $ filterKeyPairs (_addressKeyset_keys ak) keys0
+keysetSatisfiesPredicate :: AccountGuard -> IntMap (Key key) -> Bool
+keysetSatisfiesPredicate ag keys0 = case ag of
+  AccountGuard_Other _ -> False
+  AccountGuard_KeySet ksKeys ksPred ->
+    let
+      keys = Set.fromList $ fmap (_keyPair_publicKey . _key_pair) $ IntMap.elems keys0
+      keyIntersections = Set.intersection ksKeys keys
+    in
+      case ksPred of
+        "keys-all" -> ksKeys == keyIntersections
+        "keys-any" -> not $ Set.null keyIntersections
+        "keys-2" -> length keyIntersections >= 2
+        _ -> not $ null $ filterKeyPairs ksKeys keys0
 
 newtype Accounts = Accounts
   { _accounts_vanity :: Map AccountName (AccountInfo VanityAccount)
@@ -463,7 +463,6 @@ instance FromJSON a => FromJSON (AccountInfo a) where
       { _accountInfo_notes = notes
       , _accountInfo_chains = chains
       }
-
 
 data VanityAccount = VanityAccount
   { _vanityAccount_notes :: Maybe AccountNotes
@@ -532,6 +531,12 @@ parseWrappedBalanceChecks = first ("parseWrappedBalanceChecks: " <>) . \case
     pure (Map.unionWith (liftA2 subtract) before after, result)
   v -> Left $ "Unexpected PactValue (expected object): " <> renderCompactText v
 
+-- Should Pact even have amounts that don't have a decimal place?  It's possible to
+-- receive amounts that are 'LDecimal 10' that will cause a transaction to fail if used in
+-- conjunction with 'Max' etc.
+forceDecimalPoint :: Decimal -> Decimal
+forceDecimalPoint d = if d == roundTo 0 d then roundTo 1 d else d
+
 -- | Turn the object of account->balance into a map
 parseAccountDetails :: PactValue -> Either Text (Map AccountName (AccountStatus AccountDetails))
 parseAccountDetails = first ("parseAccountDetails: " <>) . \case
@@ -540,10 +545,10 @@ parseAccountDetails = first ("parseAccountDetails: " <>) . \case
       bal <- case pv of
         PObject (ObjectMap details) -> maybe (Left "Missing key") Right $ do
           PLiteral (LDecimal balance) <- Map.lookup "balance" details
-          PGuard (GKeySet keyset) <- Map.lookup "guard" details
+          PGuard pactGuard <- Map.lookup "guard" details
           pure $ AccountStatus_Exists $ AccountDetails
-            { _accountDetails_balance = AccountBalance balance
-            , _accountDetails_keyset = fromPactKeyset keyset
+            { _accountDetails_balance = AccountBalance $ forceDecimalPoint balance
+            , _accountDetails_guard = fromPactGuard pactGuard
             }
         PLiteral (LBool False) -> pure AccountStatus_DoesNotExist
         t -> Left $ "Unexpected PactValue (expected decimal): " <> renderCompactText t
@@ -619,3 +624,4 @@ makePactLenses ''VanityAccount
 makePactLenses ''AccountInfo
 makePactLenses ''Accounts
 makePactPrisms ''AccountStorage
+makeWrapped ''AccountBalance

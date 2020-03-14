@@ -22,7 +22,7 @@
 module Frontend.UI.Dialogs.NetworkEdit
   ( uiNetworkEdit
   , uiNetworkStatus
-  , uiNetworkSelect
+  , uiNetworkSelectTopBar
   , queryNetworkStatus
   , NetworkStatus(..)
   ) where
@@ -47,15 +47,6 @@ import           Frontend.UI.Widgets
 import           Frontend.UI.Widgets.Helpers (dialogSectionHeading)
 ------------------------------------------------------------------------------
 
-type HasUiNetworkEditModel model t =
-  (HasNetwork model t)
-
-type HasUiNetworkEditModelCfg mConf t =
-  ( Monoid mConf, Flattenable mConf t
-  , HasNetworkCfg mConf t
-  )
-
-
 -- | Internal data type for manipulating networks, based on user edits.
 data NetworkAction
   = NetworkDelete NetworkName
@@ -64,36 +55,75 @@ data NetworkAction
 
 makePrisms ''NetworkAction
 
+uiNetworkDropdown
+  :: MonadWidget t m
+  => CssClass
+  -> NetworkName
+  -> Map NetworkName [NodeRef]
+  -> Event t (Map NetworkName [NodeRef])
+  -> m (Dropdown t NetworkName)
+uiNetworkDropdown cls initialNetwork initialNetworks onNetworkUpdate = do
+  let mkMap nets = foldMap (\k -> Map.singleton k $ textNetworkName k)
+        $ Map.keys
+        -- Don't allow networks without nodes to be selected
+        $ Map.filter (not . null) nets
+
+  networks <- holdDyn (mkMap initialNetworks)
+    $ mkMap <$> onNetworkUpdate
+
+  uiDropdown initialNetwork networks $ def
+    & dropdownConfig_attributes .~ constDyn ("class" =: renderClass cls)
 
 -- | Confirmation dialog for deployments.
 --
 --   User can make sure to deploy to the right network, has the right keysets,
 --   the right keys, ...
 uiNetworkEdit
-  :: forall t m model mConf.
-    ( MonadWidget t m, HasUiNetworkEditModel model t, HasUiNetworkEditModelCfg mConf t
-    )
-  => model
-  -> Event t () -> m (mConf, Event t ())
-uiNetworkEdit m _onClose = do
-  let networks = m ^. network_networks
+  :: ( MonadWidget t m
+     , Monoid mConf
+     , HasNetworkCfg mConf t
+     )
+  => NetworkName
+  -> Map NetworkName [NodeRef]
+  -> Event t ()
+  -> m (mConf, Event t ())
+uiNetworkEdit selectedNetwork networks _onCloseExternal = do
   onClose <- modalHeader $ text "Network Settings"
-  (selectEv, dNew, cfg) <- modalMain $ do
-      selectEv <- uiGroup "segment" $ do
-        uiGroupHeader mempty $ do
-          dialogSectionHeading mempty "Select Network"
-        uiNetworkSelect "select_type_primary select_width_full" (m ^. network_selectedNetwork) networks
 
-      (dNew, editCfg) <- uiGroup "segment" $ do
-        uiGroupHeader mempty $ dialogSectionHeading mempty "Edit Networks"
-        onNewNet <- validatedInputWithButton "group__header" checkNetName "Create new network." "Create"
-        dSelectNewNet <- holdDyn Nothing $ Just <$> onNewNet
-        editCfg <- uiNetworks m
-        let newCfg = updateNetworks m $ (\n -> Map.insert n []) <$> onNewNet
+  (selectEvent, dHasNewNetwork, dNetworks) <- modalMain $ mdo
+    selectEv <- uiGroup "segment" $ do
+      uiGroupHeader mempty $
+        dialogSectionHeading mempty "Select Network"
+      fmap _dropdown_change $ uiNetworkDropdown "select_type_primary select_width_full"
+        selectedNetwork
+        networks
+        (updated dNetworks)
 
-        pure $ (dSelectNewNet, mconcat [ newCfg, editCfg ])
+    (dSelectNewNet, dNetworks) <- uiGroup "segment" $ do
+      uiGroupHeader mempty $
+        dialogSectionHeading mempty "Edit Networks"
 
-      pure $ (selectEv, dNew, editCfg)
+      rec
+        onNewNet <- validatedInputWithButton "group__header" (getErr <$> dNets) "Create new network." "Create"
+        onUpdateNodes <- uiNetworks networks onNewNet
+
+        let onNetworkUpdates = mergeWith (.)
+              [ onUpdateNodes
+              , (\n -> Map.insert n []) <$> onNewNet
+              ]
+
+        dNets <- foldDyn ($) networks onNetworkUpdates
+
+      dHasNewNet <- holdDyn Nothing $ Just <$> onNewNet
+
+      pure ( dHasNewNet
+           , dNets
+           )
+
+    pure ( selectEv
+         , dSelectNewNet
+         , dNetworks
+         )
 
   let
     dSelectNewest = (\nets mnet -> do
@@ -102,31 +132,37 @@ uiNetworkEdit m _onClose = do
         guard $ not $ null nodes
         pure net
       )
-      <$> networks
-      <*> dNew
+      <$> dNetworks
+      <*> dHasNewNetwork
 
   modalFooter $ do
-    -- TODO: Is this really a "Cancel" button?!
-    onReset <- cancelButton def "Restore Defaults"
+    onReset <- uiButton btnCfgTertiary $ text "Restore Defaults"
     onConfirm <- confirmButton def "Ok"
 
     pure
-      ( cfg
-          & networkCfg_resetNetworks .~ onReset
-          & networkCfg_refreshModule .~ onConfirm
-          & networkCfg_selectNetwork .~ leftmost [selectEv, tagMaybe (current dSelectNewest) onConfirm]
+      ( mempty
+        & networkCfg_setNetworks .~ tag (current dNetworks) onConfirm
+        & networkCfg_resetNetworks .~ onReset
+        & networkCfg_refreshModule .~ onConfirm
+        & networkCfg_selectNetwork .~ leftmost
+          [ selectEvent
+          , tagMaybe (current dSelectNewest) onConfirm
+          ]
       , leftmost [onConfirm, onClose]
       )
+
   where
-    checkNetName = getErr <$> m ^. network_networks
     getErr nets k =
       if Map.member (uncheckedNetworkName k) nets
          then Left "This network already exists."
          else mkNetworkName k
 
-
-uiNetworkSelect :: MonadWidget t m => Text -> Dynamic t NetworkName -> Dynamic t (Map NetworkName [NodeRef]) -> m (Event t NetworkName)
-uiNetworkSelect cls name networks = do
+uiNetworkSelectTopBar
+  :: MonadWidget t m
+  => Text
+  -> Dynamic t NetworkName
+  -> Dynamic t (Map NetworkName [NodeRef]) -> m (Event t NetworkName)
+uiNetworkSelectTopBar cls name networks = do
   selected <- holdUniqDyn name
   onNetworkDirect <- tagOnPostBuild selected
   -- Delay necessary until we have mount hooks. (SelectElement won't accept
@@ -153,39 +189,36 @@ uiNetworkSelect cls name networks = do
     void $ networkView $ traverse_ (itemDom . textNetworkName) <$> networkNames
   pure $ fmap uncheckedNetworkName (_selectElement_change s)
 
-
 uiNetworks
-  :: forall t m model mConf.
-    (MonadWidget t m, HasUiNetworkEditModel model t, HasUiNetworkEditModelCfg mConf t
-    )
-  => model -> m mConf
-uiNetworks m = do
-  let networks = m ^. network_networks
-  evEv :: Dynamic t (Map NetworkName (Event t NetworkAction))
-    <- listWithKey networks $ \networkName nodes -> do
+  :: MonadWidget t m
+  => Map NetworkName [NodeRef]
+  -> Event t NetworkName
+  -> m ( Event t (Map NetworkName [NodeRef] -> Map NetworkName [NodeRef]) )
+uiNetworks initialNetworks onNewNetwork = mdo
+  let
+    onAddNetwork = flip Map.singleton (Just []) <$> onNewNetwork
+    onDelete = flip Map.singleton Nothing <$> fmapMaybe (^? _NetworkDelete) onNodeEvent
+
+  evEv <- listHoldWithKey initialNetworks (onAddNetwork <> onDelete) $ \networkName nodes -> do
       rec
-        (deletions, (nodeUpdates, status)) <- accordionItem' False "segment segment_type_secondary"
+        (onDeletes, (nodeUpdates, status)) <- accordionItem' False "segment segment_type_secondary"
           (uiNetworkHeading networkName status)
           (uiNodes nodes)
       pure $ leftmost
-        [ deletions
+        [ onDeletes
         , NetworkNode networkName <$> updated nodeUpdates
         ]
 
-  let ev = switch $ fmap (leftmost . Map.elems) $ current evEv
+  let
+    onNodeEvent = switch $ fmap (leftmost . Map.elems) $ current evEv
 
-  pure $ mconcat
-    [ updateNetworks m $ leftmost
-      [ Map.delete <$> fmapMaybe (^? _NetworkDelete) ev
-      , applyNodeUpdate <$> fmapMaybe (^? _NetworkNode) ev
-      ]
+  pure $ leftmost
+    [ Map.delete <$> fmapMaybe (^? _NetworkDelete) onNodeEvent
+    , applyNodeUpdate <$> fmapMaybe (^? _NetworkNode) onNodeEvent
     ]
-
   where
-
     applyNodeUpdate (netName, ns) nets =
       nets & at netName . _Just .~ ns
-
 
 -- | Overall `NetworkStatus` for a particular network.
 data NetworkStatus =
@@ -215,29 +248,27 @@ uiNetworkHeading self mStat = do
   where
     accordionDeleteBtn = deleteButtonNaked $ def & uiButtonCfg_class .~ "accordion__title-button"
 
-
 -- | Renders line edits for all nodes in a network.
 --
 --   Delivers change events and a `Dynamic` holding the current overall `NetworkStatus`.
 uiNodes
   :: forall t m. MonadWidget t m
-  => Dynamic t [NodeRef]
-  -> m (Dynamic t [NodeRef], Dynamic t (Maybe NetworkStatus))
+  => [NodeRef]
+  -> m ( Dynamic t [NodeRef]
+       , Dynamic t (Maybe NetworkStatus)
+       )
 uiNodes nodes = elClass "ol" "table table_type_primary" $ do
-  pb <- getPostBuild
   -- Build a patch which adds all the nodes, plus an extra empty node input
-  let mkInitialNodes = PatchIntMap . fmap Just . IntMap.fromList . zip [0..] . (<> [Nothing]) . fmap Just
+  let mkIntMap = IntMap.fromList . zip [0..] . (<> [Nothing]) . fmap Just
   rec
     responses <- uncurry (foldDyn applyAlways) <=<
-      traverseIntMapWithKeyWithAdjust (const uiNode) IntMap.empty $ leftmost
-        [ switch $ actionToPatch . fmap (view _1) <$> current responses
-        , attachWith (const . mkInitialNodes) (current nodes) pb
-        ]
-  let updates = calculateUpdates $ fmap (view _2) <$> responses
-      netState = calculateNetworkStatusDyn $ fmap (view _3) <$> responses
+      traverseIntMapWithKeyWithAdjust (const uiNode) (mkIntMap nodes) $ leftmost
+      [ switch $ actionToPatch . fmap (view _1) <$> current responses
+      ]
 
-  pure (updates, netState)
-
+  pure ( calculateUpdates $ fmap (view _2) <$> responses
+       , calculateNetworkStatusDyn $ fmap (view _3) <$> responses
+       )
   where
     calculateNetworkStatusDyn
       :: Dynamic t (IntMap (MDynamic t (Either Text NodeInfo)))
@@ -260,6 +291,8 @@ uiNodes nodes = elClass "ol" "table table_type_primary" $ do
       NodeAction_Deleted -> IntMap.singleton i Nothing
       NodeAction_Dirtied -> IntMap.singleton s $ Just Nothing
 
+
+
 getNetworkStatus :: Either Text NodeInfo -> NetworkStatus
 getNetworkStatus = \case
     Left _ -> NetworkStatus_Bad
@@ -276,7 +309,10 @@ data NodeAction
 uiNode
   :: MonadWidget t m
   => Maybe NodeRef
-  -> m (Event t NodeAction, Dynamic t (Maybe NodeRef), MDynamic t (Either Text NodeInfo))
+  -> m ( Event t NodeAction
+       , Dynamic t (Maybe NodeRef)
+       , MDynamic t (Either Text NodeInfo)
+       )
 uiNode initVal = do
   let
     uiNodeInput cfg = do

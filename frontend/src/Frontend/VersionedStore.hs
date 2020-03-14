@@ -11,6 +11,7 @@ module Frontend.VersionedStore
   ) where
 
 import Control.Monad.Except (ExceptT, runExceptT, throwError)
+import Control.Monad.IO.Class (MonadIO, liftIO)
 import Control.Monad.Trans (lift)
 import Control.Error ((!?), hoistEither)
 import Data.Aeson (FromJSON, ToJSON, Value, parseJSON)
@@ -32,6 +33,9 @@ import qualified Frontend.VersionedStore.V0 as V0
 import qualified Frontend.VersionedStore.V1 as V1
 import Frontend.VersionedStore.V1 as Latest
 import Frontend.Crypto.Class
+
+import Pact.Server.ApiClient (HasTransactionLogger)
+import qualified Pact.Server.ApiClient as Api
 
 type StorageVersion = Natural
 
@@ -60,14 +64,19 @@ _nextVersion (Some StoreFrontendVersion_1) = Nothing
 
 versionedFrontend
   :: forall t m key
-   . ( DomBuilder t m, PostBuild t m, MonadHold t m, PerformEvent t m
+   . ( DomBuilder t m
+     , PostBuild t m
+     , MonadHold t m
+     , PerformEvent t m
+     , HasTransactionLogger m
      )
   => VersionedStorage (Performable m) (Latest.StoreFrontend key)
   -> m ()
   -> m ()
 versionedFrontend v widget = do
+  txLogger <- Api.askTransactionLogger
   pbE <- getPostBuild
-  migratedE <- performEvent $ (_versionedStorage_upgradeStorage v) <$ pbE
+  migratedE <- performEvent $ (_versionedStorage_upgradeStorage v txLogger) <$ pbE
   widgetHold_ blank (displayResult <$> migratedE)
   where
     -- Should we do this, or should we just push on? The backup functionality really
@@ -78,7 +87,7 @@ versionedFrontend v widget = do
 
 data VersionedStorage m k = VersionedStorage
   { _versionedStorage_metaPrefix :: StoreKeyMetaPrefix
-  , _versionedStorage_upgradeStorage :: m (Either VersioningUpgradeError ())
+  , _versionedStorage_upgradeStorage :: Api.TransactionLogger -> m (Either VersioningUpgradeError ())
   , _versionedStorage_decodeVersionedJson :: StorageVersion -> Value -> m (Either VersioningDecodeJsonError (DMap k Identity))
   , _versionedStorage_dumpLocalStorage :: m (StorageVersion, DMap k Identity)
   , _versionedStorage_restoreBackup :: DMap k Identity -> m ()
@@ -93,7 +102,7 @@ versionedStorage
   :: forall key m.
      ( ToJSON key
      , FromJSON key
-     , Monad m
+     , MonadIO m
      , HasStorage m
      , HasCrypto key m
      )
@@ -133,8 +142,8 @@ versionedStorage = VersionedStorage
     dumpLocalStorage' :: m (StorageVersion, DMap (Latest.StoreFrontend key) Identity)
     dumpLocalStorage' = Storage.dumpLocalStorage prefix
 
-    upgradeStorage :: m (Either VersioningUpgradeError ())
-    upgradeStorage = runExceptT $ do
+    upgradeStorage :: Api.TransactionLogger -> m (Either VersioningUpgradeError ())
+    upgradeStorage txLogger = runExceptT $ do
       ver <- lift $ getCurrentVersion prefix
       case parseVersion @key ver of
         Nothing -> throwError $ VersioningUpgradeError_UnknownVersion ver
@@ -145,5 +154,7 @@ versionedStorage = VersionedStorage
             removeKeyUniverse p localStorage
             removeKeyUniverse p sessionStorage
             restoreLocalStorageDump prefix v1Dump 1
+          -- Complete the whole upgrade process, then move the logs
+          liftIO $ Api._transactionLogger_rotateLogFile txLogger
           pure ()
         Just (StoreFrontendVersion_1 :=> _) -> pure ()

@@ -8,11 +8,11 @@ with obelisk;
 let
   # All the versions that the user cares about are here so that they can
   # be changed in one place
-  chainweaverVersion = "1.0";
+  chainweaverVersion = "1.3";
   appName = "Kadena Chainweaver";
-  macReleaseNumber = "2";
-  linuxReleaseNumber = "2";
-  ovaReleaseNumber = "2";
+  macReleaseNumber = "0";
+  linuxReleaseNumber = "0";
+  ovaReleaseNumber = "0";
 
   obApp = import ./obApp.nix args;
   pactServerModule = import ./pact-server/service.nix;
@@ -24,7 +24,7 @@ let
   macApp = (import ./mac.nix) {
     inherit obApp pkgs appName sass chainweaverVersion macReleaseNumber;
   };
-  homeManagerModule = obelisk.reflex-platform.hackGet ./deps/home-manager + /nixos;
+  homeManagerModule = obelisk.reflex-platform.hackGet ./dep/home-manager + /nixos;
   linuxApp = (import ./linux.nix) {
     inherit obApp pkgs appName sass homeManagerModule chainweaverVersion linuxReleaseNumber ovaReleaseNumber;
   };
@@ -71,13 +71,14 @@ in obApp // rec {
       };
     };
 
-  ci = {
-    mac   = { inherit mac; };
-    linux = { inherit (linuxApp) nixosExe deb chainweaverVM chainweaverVMSystem; };
-    cross = {
-      inherit (obApp) exe;
-      inherit (obApp.ghc) desktop;
-      shell = obApp.shells.ghc;
+  ci =
+    let cross = {
+          inherit (obApp) exe;
+          inherit (obApp.ghc) desktop;
+          shell = obApp.shells.ghc;
+        };
+    in {
+      mac   = cross // { inherit mac; };
+      linux = cross // { inherit (linuxApp) nixosExe deb chainweaverVM chainweaverVMSystem; };
     };
-  };
 }

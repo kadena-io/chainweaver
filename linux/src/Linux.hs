@@ -19,7 +19,7 @@ import System.Environment (getEnvironment, getExecutablePath)
 import System.FilePath ((</>), takeDirectory)
 import qualified System.Posix.User as PU
 
-import Desktop (main', AppFFI(..))
+import Backend.App (main', AppFFI(..))
 import Frontend.AppCfg (FileType(..), fileTypeExtension)
 import Desktop.Syslog (logToSyslog, sysloggedMain)
 import WebKitGTK

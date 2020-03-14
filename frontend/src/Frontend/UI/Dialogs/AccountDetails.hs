@@ -10,12 +10,15 @@ module Frontend.UI.Dialogs.AccountDetails
   ) where
 
 import Control.Lens
+import Control.Monad (void)
 import qualified Data.Map as Map
 import Data.Text (Text)
 import Reflex
 import Reflex.Dom.Core hiding (Key)
 
+import Pact.Types.Pretty (renderCompactText)
 import qualified Pact.Types.ChainId as Pact
+import qualified Pact.Types.Term as Pact
 
 import Frontend.Crypto.Ed25519 (keyToText)
 import Frontend.Foundation
@@ -37,7 +40,7 @@ uiAccountDetailsOnChain
      , MonadWidget t m
      )
   => NetworkName
-  -> (AccountName, ChainId, Account)
+  -> (AccountName, ChainId, AccountDetails, Account)
   -> Event t ()
   -> m (mConf, Event t ())
 uiAccountDetailsOnChain netname a onCloseExternal = mdo
@@ -68,11 +71,14 @@ uiAccountDetailsOnChainImpl
      , MonadWidget t m
      )
   => NetworkName
-  -> (AccountName, ChainId, Account)
+  -> (AccountName, ChainId, AccountDetails, Account)
   -> Event t ()
   -> Workflow t m (Text, (mConf, Event t ()))
-uiAccountDetailsOnChainImpl netname (name, chain, account) onClose = Workflow $ do
-  let kAddr = TxBuilder name chain Nothing
+uiAccountDetailsOnChainImpl netname (name, chain, details, account) onClose = Workflow $ do
+  let kAddr = TxBuilder name chain $ details
+        ^? accountDetails_guard
+        . _AccountGuard_KeySet
+        . to (uncurry toPactKeyset)
 
       displayText lbl v cls =
         let
@@ -96,19 +102,27 @@ uiAccountDetailsOnChainImpl netname (name, chain, account) onClose = Workflow $ 
       _ <- uiDisplayTxBuilderWithCopy True kAddr
       pure notesEdit
 
-    dialogSectionHeading mempty "Keyset Info"
+    let guardTitle = maybe "Keyset" (const "Guard") $ account ^? account_status
+          . _AccountStatus_Exists
+          . accountDetails_guard
+          . _AccountGuard_Other
+
+    dialogSectionHeading mempty (guardTitle <> " Info")
     divClass "group" $ do
       -- Public key
       case _account_status account of
         AccountStatus_Unknown -> text "Unknown"
         AccountStatus_DoesNotExist -> text "Does not exist"
-        AccountStatus_Exists d -> do
-          _ <- displayText "Predicate" (_addressKeyset_pred $ _accountDetails_keyset d) ""
-          elClass "div" "segment segment_type_tertiary labeled-input" $ do
-            divClass "label labeled-input__label" $ text "Public Keys Associated to Account"
-            for_ (_addressKeyset_keys $ _accountDetails_keyset d) $ \key -> uiInputElement $ def
-              & initialAttributes %~ Map.insert "disabled" "disabled" . addToClassAttr "labeled-input__input labeled-input__multiple"
-              & inputElementConfig_initialValue .~ keyToText key
+        AccountStatus_Exists d -> case _accountDetails_guard d of
+          AccountGuard_KeySet ksKeys ksPred -> do
+            _ <- displayText "Predicate" ksPred ""
+            elClass "div" "segment segment_type_tertiary labeled-input" $ do
+              divClass "label labeled-input__label" $ text "Public Keys Associated to Account"
+              for_ ksKeys $ \key -> uiInputElement $ def
+                & initialAttributes %~ Map.insert "disabled" "disabled" . addToClassAttr "labeled-input__input labeled-input__multiple"
+                & inputElementConfig_initialValue .~ keyToText key
+          AccountGuard_Other g ->
+            void $ displayText (pactGuardTypeText $ Pact.guardTypeOf g) (renderCompactText g) ""
 
     pure notesEdit
 

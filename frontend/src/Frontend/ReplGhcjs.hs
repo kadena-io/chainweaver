@@ -62,7 +62,7 @@ import Frontend.UI.Dialogs.CreateGist (uiCreateGist)
 import Frontend.UI.Dialogs.CreatedGist (uiCreatedGist)
 import Frontend.UI.Dialogs.DeployConfirmation (uiDeployConfirmation)
 import Frontend.UI.Dialogs.LogoutConfirmation (uiLogoutConfirmation)
-import Frontend.UI.Dialogs.NetworkEdit (uiNetworkSelect)
+import Frontend.UI.Dialogs.NetworkEdit (uiNetworkSelectTopBar)
 import Frontend.UI.Dialogs.Signing (uiSigning)
 import Frontend.UI.IconGrid (IconGridCellConfig(..), iconGridLaunchLink)
 import Frontend.UI.Modal
@@ -94,15 +94,19 @@ app sidebarExtra fileFFI appCfg = Store.versionedFrontend (Store.versionedStorag
 
   walletSidebar sidebarExtra
   updates <- divClass "page" $ do
-    netCfg <- networkBar ideL
     let mkPageContent c = divClass (c <> " page__content visible")
+
+        underNetworkBar lbl sub = do
+          netCfg <- networkBar ideL
+          subBarCfg <- controlBar lbl sub
+          pure $ netCfg <> subBarCfg
     -- This route overriding is awkward, but it gets around having to alter the
     -- types of ideL and appCfg, and we don't actually need the true subroute
     -- yet.
     route <- askRoute
     routedCfg <- subRoute $ lift . flip runRoutedT route . \case
       FrontendRoute_Accounts -> mkPageContent "accounts" $ mdo
-        (transferVisible, barCfg) <- controlBar "Accounts" $ do
+        (transferVisible, barCfg) <- underNetworkBar "Accounts" $ do
           refreshCfg <- uiWalletRefreshButton
           xferVisible <- uiTransferButton
           watchCfg <- uiWatchRequestButton ideL
@@ -112,11 +116,11 @@ app sidebarExtra fileFFI appCfg = Store.versionedFrontend (Store.versionedStorag
         accountsCfg <- uiAccountsTable ideL
         pure $ barCfg <> accountsCfg
       FrontendRoute_Keys -> mkPageContent "keys" $ do
-        walletBarCfg <- controlBar "Keys" uiGenerateKeyButton
+        walletBarCfg <- underNetworkBar "Keys" uiGenerateKeyButton
         walletCfg <- uiWallet ideL
         pure $ walletBarCfg <> walletCfg
       FrontendRoute_Contracts -> mkPageContent "contracts" $ do
-        controlCfg <- controlBar "Contracts" (controlBarRight fileFFI appCfg ideL)
+        controlCfg <- underNetworkBar "Contracts" (controlBarRight fileFFI appCfg ideL)
         mainCfg <- elClass "main" "main page__main" $ do
           rec
             let collapseAttrs = ffor open $ \o -> Map.fromList
@@ -131,19 +135,18 @@ app sidebarExtra fileFFI appCfg = Store.versionedFrontend (Store.versionedStorag
           pure $ uiEditorCfg <> envCfg
         pure $ controlCfg <> mainCfg
       FrontendRoute_Resources -> mkPageContent "resources" $ do
-        controlBar "Resources" blank
+        controlCfg <- underNetworkBar "Resources" (mempty <$ blank)
         elClass "main" "main page__main" $ do
           resourcesWidget
-        pure mempty
+        pure controlCfg
       FrontendRoute_Settings -> do
-        controlCfg <- controlBar "Settings" (mempty <$ blank)
+        controlCfg <- underNetworkBar "Settings" (mempty <$ blank)
         mainCfg <- elClass "main" "main page__main" $ do
           uiSettings (_appCfg_enabledSettings appCfg) ideL fileFFI
         pure $ controlCfg <> mainCfg
 
     accountDatalist ideL
-    flattenedCfg <- flatten =<< tagOnPostBuild routedCfg
-    pure $ netCfg <> flattenedCfg
+    flatten =<< tagOnPostBuild routedCfg
 
   modalCfg <- showModal ideL
 
@@ -276,12 +279,9 @@ networkBar
   => ModalIde m key t
   -> m (ModalIdeCfg m key t)
 networkBar m = divClass "main-header main-header__network-bar" $ do
-  -- Fetch and display the status of the currently selected network.
-  --queryNetworkStatus (m ^. ide_network . network_networks) (m ^. ide_network . network_selectedNetwork)
-  --  >>= uiNetworkStatus (pure " page__network-bar-status")
   -- Present the dropdown box for selecting one of the configured networks.
   divClass "page__network-bar-select" $ do
-    selectEv <- uiNetworkSelect "select_type_special" (m ^. network_selectedNetwork) (m ^. network_networks)
+    selectEv <- uiNetworkSelectTopBar "select_type_special" (m ^. network_selectedNetwork) (m ^. network_networks)
     pure $ mempty & networkCfg_selectNetwork .~ selectEv
 
 

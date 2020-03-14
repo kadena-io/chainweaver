@@ -16,7 +16,7 @@
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE UndecidableInstances #-}
 
-module Desktop.Frontend (desktop, bipWallet, bipCryptoGenPair, runFileStorageT) where
+module Desktop.Frontend (desktopFrontend, bipWallet, bipCryptoGenPair, runFileStorageT) where
 
 import Control.Exception (catch)
 import Control.Lens ((?~))
@@ -55,7 +55,7 @@ import Frontend.AppCfg
 import Desktop.Crypto.BIP
 import Frontend.ModuleExplorer.Impl (loadEditorFromLocalStorage)
 import Frontend.Log (defaultLogger)
-import Frontend.Wallet (genZeroKeyPrefix)
+import Frontend.Wallet (genZeroKeyPrefix, _unPublicKeyPrefix)
 import Frontend.Storage
 import Frontend.UI.Button
 import Frontend.UI.Widgets
@@ -78,12 +78,12 @@ import Desktop.ImportExport
 import Desktop.Util
 import Desktop.Storage.File
 
-import Pact.Server.ApiClient (commandLogFilename)
+import Pact.Server.ApiClient (WalletEvent (..), commandLogFilename, _transactionLogger_walletEvent, _transactionLogger_rotateLogFile)
 
 -- | This is for development
 -- > ob run --import desktop:Desktop.Frontend --frontend Desktop.Frontend.desktop
-desktop :: Frontend (R FrontendRoute)
-desktop = Frontend
+desktopFrontend :: Frontend (R FrontendRoute)
+desktopFrontend = Frontend
   { _frontend_head = do
       let backendEncoder = either (error "frontend: Failed to check backendRouteEncoder") id $
             checkEncoder backendRouteEncoder
@@ -152,6 +152,8 @@ bipWallet
   -> MkAppCfg t m
   -> RoutedT t (R FrontendRoute) m ()
 bipWallet fileFFI mkAppCfg = do
+  txLogger <- askTransactionLogger
+
   let
     runSetup0
       :: Maybe (Behavior t Crypto.XPrv)
@@ -163,6 +165,7 @@ bipWallet fileFFI mkAppCfg = do
         Right (x, Password p, newWallet) -> pure $ Just $ do
           setItemStorage localStorage BIPStorage_RootKey x
           when newWallet $ do
+            liftIO $ _transactionLogger_rotateLogFile txLogger
             removeItemStorage localStorage StoreFrontend_Wallet_Keys
             removeItemStorage localStorage StoreFrontend_Wallet_Accounts
           pure $ LockScreen_Unlocked ==> (x, p)
@@ -170,7 +173,6 @@ bipWallet fileFFI mkAppCfg = do
           for mPrv $ fmap (pure . (LockScreen_Locked ==>)) . sample
 
   mRoot <- getItemStorage localStorage BIPStorage_RootKey
-  txLogger <- askTransactionLogger
   let initScreen = case mRoot of
         Nothing -> LockScreen_RunSetup :=> Identity ()
         Just xprv -> LockScreen_Locked ==> xprv
@@ -226,19 +228,30 @@ bipWallet fileFFI mkAppCfg = do
             , _enabledSettings_exportWallet = Just $ ExportWallet
               { _exportWallet_requestExport = \ePw -> do
                   let bOldPw = (\(Identity (_,oldPw)) -> oldPw) <$> current details
-                      runExport txlogger oldPw newPw = do
+                      runExport oldPw newPw = do
                         pfx <- genZeroKeyPrefix
-                        doExport txlogger pfx oldPw newPw
+                        doExport txLogger pfx oldPw newPw
 
-                  eExport <- performEvent $ runExport txLogger
+                      logExport = do
+                        ts <- liftIO getCurrentTime
+                        sender <- genZeroKeyPrefix
+                        liftIO $ _transactionLogger_walletEvent txLogger
+                          WalletEvent_Export
+                          (_unPublicKeyPrefix sender)
+                          ts
+
+                  eExport <- performEvent $ runExport
                     <$> (Password <$> bOldPw)
                     <@> (Password <$> ePw)
 
                   let (eErrExport, eGoodExport) = fanEither eExport
+
                   eFileDone <- _fileFFI_deliverFile frontendFileFFI eGoodExport
+                  eLogExportDone <- performEvent $ (\r -> r <$ logExport) <$> eFileDone
+
                   pure $ leftmost
                     [ Left <$> eErrExport
-                    , first ExportWalletError_FileNotWritable <$> eFileDone
+                    , first ExportWalletError_FileNotWritable <$> eLogExportDone
                     ]
               }
             , _enabledSettings_transactionLog = True

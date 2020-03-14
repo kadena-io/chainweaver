@@ -1,15 +1,16 @@
 { system ? builtins.currentSystem # TODO: Get rid of this system cruft
 , iosSdkVersion ? "10.2"
-, obelisk ? (import ./.obelisk/impl { inherit system iosSdkVersion; })
-, pkgs ? obelisk.reflex-platform.nixpkgs
 , withHoogle ? false
+, kpkgs ? import ./dep/kpkgs { inherit system; }
 }:
-with obelisk;
 let
+  obelisk = import ./.obelisk/impl { inherit system iosSdkVersion; inherit (kpkgs) reflex-platform-func;};
+  pkgs = obelisk.reflex-platform.nixpkgs;
+
   optionalExtension = cond: overlay: if cond then overlay else _: _: {};
   getGhcVersion = ghc: if ghc.isGhcjs or false then ghc.ghcVersion else ghc.version;
   haskellLib = pkgs.haskell.lib;
-in
+in with obelisk;
   project ./. ({ pkgs, hackGet, ... }: with pkgs.haskell.lib; {
     inherit withHoogle;
 
@@ -25,26 +26,25 @@ in
      };
    packages =
      let
-       servantSrc = hackGet ./deps/servant;
+       servantSrc = hackGet ./dep/servant;
      in
        {
-          pact = hackGet ./deps/pact;
           # servant-client-core = servantSrc + "/servant-client-core";
           # servant = servantSrc + "/servant";
           servant-jsaddle = servantSrc + "/servant-jsaddle";
-          reflex-dom-ace = hackGet ./deps/reflex-dom-ace;
-          reflex-dom-contrib = hackGet ./deps/reflex-dom-contrib;
-          dependent-sum-aeson-orphans = hackGet ./deps/dependent-sum-aeson-orphans;
-          servant-github = hackGet ./deps/servant-github;
-          obelisk-oauth-common = hackGet ./deps/obelisk-oauth + /common;
-          obelisk-oauth-frontend = hackGet ./deps/obelisk-oauth + /frontend;
-          obelisk-oauth-backend = hackGet ./deps/obelisk-oauth + /backend;
+          jsaddle-warp = hackGet ./dep/jsaddle + /jsaddle-warp; #https://github.com/ghcjs/jsaddle/pull/114
+          reflex-dom-ace = hackGet ./dep/reflex-dom-ace;
+          reflex-dom-contrib = hackGet ./dep/reflex-dom-contrib;
+          dependent-sum-aeson-orphans = hackGet ./dep/dependent-sum-aeson-orphans;
+          servant-github = hackGet ./dep/servant-github;
+          obelisk-oauth-common = hackGet ./dep/obelisk-oauth + /common;
+          obelisk-oauth-frontend = hackGet ./dep/obelisk-oauth + /frontend;
+          obelisk-oauth-backend = hackGet ./dep/obelisk-oauth + /backend;
 
           # Needed for obelisk-oauth currently (ghcjs support mostly):
-          entropy = hackGet ./deps/entropy;
-          crc = hackGet ./deps/crc;
-          cardano-crypto = hackGet ./deps/cardano-crypto;
-          kadena-signing-api = hackGet ./deps/signing-api + /kadena-signing-api;
+          entropy = hackGet ./dep/entropy;
+          crc = hackGet ./dep/crc;
+          cardano-crypto = hackGet ./dep/cardano-crypto;
           desktop = ./desktop;
           mac = builtins.filterSource (path: type: !(builtins.elem (baseNameOf path) ["static"])) ./mac;
           linux = builtins.filterSource (path: type: !(builtins.elem (baseNameOf path) ["static"])) ./linux;
@@ -88,9 +88,6 @@ in
           sha256 = "0h5959ayjvipj54z0f350bz23fic90xw9z06xw4wcvxvwkrsi2br";
         } { };
       };
-      desktop-overlay = self: super: {
-        ether = haskellLib.doJailbreak super.ether;
-      };
       guard-ghcjs-overlay = self: super:
         let hsNames = [ "cacophony" "haskeline" "katip" "ridley" ];
         in lib.genAttrs hsNames (name: null);
@@ -101,44 +98,24 @@ in
         tls = haskellLib.dontCheck super.tls;
         x509-validation = haskellLib.dontCheck super.x509-validation;
 
-        # doctest
-        iproute = haskellLib.dontCheck super.iproute;
-        swagger2 = haskellLib.dontCheck super.swagger2;
-        servant = haskellLib.dontCheck super.servant;
-        servant-server = haskellLib.dontCheck super.servant-server;
-
         # failing
         mono-traversable = haskellLib.dontCheck super.mono-traversable;
         conduit = haskellLib.dontCheck super.conduit;
-        wai-extra = haskellLib.dontCheck super.wai-extra;
-        wai-app-static = haskellLib.dontCheck super.wai-app-static;
-        servant-client = haskellLib.dontCheck super.servant-client;
         unliftio = haskellLib.dontCheck super.unliftio;
       };
-      common-overlay = self: super:
-        let
-          callHackageDirect = {pkg, ver, sha256}@args:
-            let pkgver = "${pkg}-${ver}";
-            in self.callCabal2nix pkg (pkgs.fetchzip {
-                url = "http://hackage.haskell.org/package/${pkgver}/${pkgver}.tar.gz";
-                inherit sha256;
-              }) {};
-        in {
-        ghc-lib-parser = haskellLib.overrideCabal super.ghc-lib-parser { postInstall = "sed -i 's/exposed: True/exposed: False/' $out/lib/ghc*/package.conf.d/*.conf"; };
+      common-overlay = self: super: {
+        jsaddle-warp = haskellLib.dontCheck super.jsaddle-warp; # webdriver fails to build
         reflex-dom-core = haskellLib.dontCheck super.reflex-dom-core; # webdriver fails to build
-        modern-uri = haskellLib.dontCheck super.modern-uri;
         servant-jsaddle = haskellLib.dontCheck (haskellLib.doJailbreak super.servant-jsaddle);
-        these-lens = haskellLib.doJailbreak (self.callHackage "these-lens" "1" {});
-        obelisk-oauth-frontend = haskellLib.doJailbreak super.obelisk-oauth-frontend;
+        semialign = haskellLib.doJailbreak super.semialign; # vector bounds
+        these-lens = haskellLib.doJailbreak super.these-lens; # lens bounds
         pact = haskellLib.dontCheck super.pact; # tests can timeout...
         system-locale = haskellLib.dontCheck super.system-locale; # tests fail on minor discrepancies on successfully parsed locale time formats.
-
+        typed-process = haskellLib.dontCheck super.typed-process;
       };
     in self: super: lib.foldr lib.composeExtensions (_: _: {}) [
-      (import (hackGet ./deps/pact + "/overrides.nix") pkgs hackGet)
       mac-overlay
       linux-overlay
-      desktop-overlay
       common-overlay
       (optionalExtension (super.ghc.isGhcjs or false) guard-ghcjs-overlay)
       (optionalExtension (super.ghc.isGhcjs or false) ghcjs-overlay)

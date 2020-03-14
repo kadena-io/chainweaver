@@ -23,15 +23,13 @@ module Frontend.UI.Dialogs.Send
 
 import Control.Applicative (liftA2)
 import Control.Concurrent
-import Control.Error.Util (hush)
+import Control.Error.Util (hush, failWithM)
 import Control.Lens hiding (failover)
 import Control.Monad (guard, join, when, void, (<=<))
 import Control.Monad.Except (throwError)
 import Control.Monad.Logger (LogLevel(..))
 import Control.Monad.Trans.Except
 import Control.Monad.Trans.Maybe
-import Data.Bifunctor (first)
-import qualified Data.ByteString.Lazy as LBS
 import Data.Decimal (Decimal)
 import Data.Either (isLeft, rights)
 import Data.List.NonEmpty (NonEmpty(..))
@@ -56,7 +54,6 @@ import qualified Data.HashMap.Lazy as HM
 import qualified Data.Map as Map
 import qualified Data.Set as Set
 import qualified Data.Text as T
-import qualified Data.Text.Encoding as T
 import qualified Pact.Server.ApiClient as Api
 import qualified Pact.Types.API as Api
 import qualified Pact.Types.Command as Pact
@@ -70,6 +67,7 @@ import Common.Wallet
 import Frontend.Crypto.Class (HasCrypto)
 import Frontend.Foundation hiding (Arg)
 import Frontend.TxBuilder
+import Frontend.JsonData
 import Frontend.Network
 import Frontend.Log
 import Frontend.UI.DeploymentSettings
@@ -81,11 +79,14 @@ import Frontend.UI.Widgets
 import Frontend.UI.Widgets.Helpers (dialogSectionHeading)
 import Frontend.Wallet
 
+import Frontend.UI.Dialogs.Send.ManualTxBuilder (uiExplodedTxBuilder, recipientMatchesSenderTxBuilder)
+
 type SendConstraints model mConf key t m
   = ( Monoid mConf, HasNetwork model t, HasNetworkCfg mConf t, HasWallet model key t, HasWalletCfg mConf key t
     , MonadWidget t m, PostBuild t m, HasCrypto key m
     , HasCrypto key (Performable m)
     , HasLogger model t
+    , HasJsonData model t
     )
 
 -- | Data which is only required for cross chain transfers
@@ -208,7 +209,7 @@ previewTransfer model transfer = Workflow $ do
           & inputElementConfig_initialValue .~ unAccountName (fst $ _crossChainData_recipientChainGasPayer ccd)
     dialogSectionHeading mempty "Transaction Details"
     divClass "group" $ do
-      void $ mkLabeledInput True "Amount" uiGasPriceInputField $ def
+      void $ mkLabeledInput True "Amount" (uiGasPriceInputField never) $ def
         & initialAttributes .~ "disabled" =: "disabled"
         & inputElementConfig_initialValue .~ tshow amount
       -- TODO The designs show gas fees here, but we can't get that information yet.
@@ -264,7 +265,7 @@ sameChainTransfer model netInfo keys (fromName, fromChain, fromAcc) (gasPayer, g
         , tshow amount
         , ")"
         ]
-      fromAccKeys = fromAcc ^. accountDetails_keyset . addressKeyset_keys
+      fromAccKeys = fromAcc ^. accountDetails_guard . _AccountGuard_KeySet . _1
       signingSet = Set.unions [fromAccKeys, accountKeys gasPayerAcc]
       signingPairs = filterKeyPairs signingSet keys
       transferCap = SigCapability
@@ -348,86 +349,81 @@ sendConfig model initData = Workflow $ do
     mInitFromGasPayer = withInitialTransfer (_transferData_fromGasPayer) initData
     mInitCrossChainGasPayer = join $ withInitialTransfer (fmap (_crossChainData_recipientChainGasPayer) . _transferData_crossChainData) initData
     mInitAmount = withInitialTransfer _transferData_amount initData
+
+    insufficientFundsMsg = "Sender has insufficient funds."
+    cannotBeReceiverMsg = "Sender cannot be the receiver of a transfer"
+
     mainSection currentTab = elClass "div" "modal__main" $ do
       (conf, useEntireBalance, txBuilder, amount) <- tabPane mempty currentTab SendModalTab_Configuration $ do
-        dialogSectionHeading mempty  "Destination"
+
+        let balance = fromAcc ^. accountDetails_balance . to unAccountBalance
+
+        dialogSectionHeading mempty "Destination"
         divClass "group" $ transactionDisplayNetwork model
 
-        dialogSectionHeading mempty  "Recipient"
-        (txBuilder, amount, useEntireBalance) <- divClass "group" $ do
-
-          let insufficientFundsMsg = "Sender has insufficient funds."
-              cannotBeReceiverMsg = "Sender cannot be the receiver of a transfer"
-              cannotInitiateNewXChainTfr = "Existing cross chain transfer in progress."
-
-              renderTxBuilder = T.decodeUtf8 . LBS.toStrict . Aeson.encode
-              validateTxBuilder = Aeson.eitherDecodeStrict . T.encodeUtf8
-
-              uiTxBuilderInput cfg = do
-                ie <- uiTxBuilder Nothing cfg
-                pure (ie
-                     , ( validateTxBuilder <$> _textAreaElement_input ie
-                       , validateTxBuilder <$> value ie
-                       )
-                     )
-
-              showTxBuilderPopover (_, (onInput, _)) = pure $ ffor onInput $ \case
-                Left _ ->
-                  PopoverState_Error "Invalid Tx Builder"
-                Right txb ->
-                  if _txBuilder_accountName txb == fromName && _txBuilder_chainId txb == fromChain then
-                    PopoverState_Error cannotBeReceiverMsg
-                  else if _txBuilder_chainId txb /= fromChain && isJust mUcct then
-                    PopoverState_Error cannotInitiateNewXChainTfr
-                  else
-                    PopoverState_Disabled
-
-          decoded <- fmap (snd . snd) $ mkLabeledInput True "Tx Builder"
-            (uiInputWithPopover uiTxBuilderInput (_textAreaElement_raw . fst) showTxBuilderPopover)
-            (def & textAreaElementConfig_initialValue .~ (maybe "" renderTxBuilder mInitToAddress))
-
-          let balance = fromAcc ^. accountDetails_balance . to unAccountBalance
-
-              showGasPriceInsuffPopover (_, (_, onInput)) = pure $ ffor onInput $ \(GasPrice (ParsedDecimal gp)) ->
+        dialogSectionHeading mempty "Amount"
+        (useEntireBalance, validatedAmount) <- divClass "group" $ do
+          let checkFunds (GasPrice (ParsedDecimal gp)) =
                 if gp > balance then
                   PopoverState_Error insufficientFundsMsg
                 else
                   PopoverState_Disabled
 
+              showGasPriceInsuffPopover (ie, (_, onInput)) = pure $ leftmost
+                [ ffor onInput checkFunds
+                , PopoverState_Disabled <$ ffilter T.null (_inputElement_input ie)
+                ]
+
               gasInputWithMaxButton cfg = mdo
-                let attrs = ffor useEntireBalance $ \u -> "disabled" =: ("disabled" <$ u)
+
+                let attrs = ffor useEntireBalance $ \u ->
+                      "disabled" =: ("disabled" <$ u)
+
                     nestTuple (a,b,c) = (a,(b,c))
-                    field = fmap nestTuple . uiGasPriceInputField
-                (_, (amountValue, _)) <- uiInputWithPopover field (_inputElement_raw . fst) showGasPriceInsuffPopover $ cfg
-                  & inputElementConfig_setValue .~ fmap tshow (mapMaybe id $ updated useEntireBalance)
-                  & inputElementConfig_elementConfig . elementConfig_modifyAttributes .~ updated attrs
+
+                    reset = () <$ (ffilter isNothing $ updated useEntireBalance)
+
+                    field = fmap nestTuple . uiGasPriceInputField reset
+
+                (_, (amountValue, _)) <- uiInputWithPopover field
+                  (_inputElement_raw . fst)
+                  showGasPriceInsuffPopover $ cfg
+                    & inputElementConfig_setValue .~ fmap tshow (mapMaybe id $ updated useEntireBalance)
+                    & inputElementConfig_elementConfig . elementConfig_modifyAttributes .~ updated attrs
+
                 useEntireBalance <- do
                   cb <- uiCheckbox "input-max-toggle" False def (text "Max")
                   pure $ fmap (\v -> balance <$ guard v) $ _checkbox_value cb
+
                 pure ( isJust <$> useEntireBalance
                      , amountValue & mapped . mapped %~ view (_Wrapped' . _Wrapped')
                      )
 
-          (useEntireBalance, amount) <- mkLabeledInput True "Amount" gasInputWithMaxButton
-            (def & inputElementConfig_initialValue .~ (maybe "" tshow mInitAmount))
+          (useEntireBalance, amount) <- mkLabeledInput True "Amount" gasInputWithMaxButton $ def
+            & inputElementConfig_initialValue .~ maybe "" tshow mInitAmount
 
-          let validatedTxBuilder = runExceptT $ do
-                r <- ExceptT $ first (\_ -> "Invalid Tx Builder") <$> decoded
-                when (r == TxBuilder fromName fromChain Nothing) $
-                  throwError cannotBeReceiverMsg
-                pure r
-
-              validatedAmount = runExceptT $ do
+          let validatedAmount = runExceptT $ do
                 a <- ExceptT $ maybe (Left "Invalid amount") Right <$> amount
                 when (a > balance) $
                   throwError insufficientFundsMsg
                 pure a
 
-          pure (validatedTxBuilder, validatedAmount, useEntireBalance)
+          pure (useEntireBalance, validatedAmount)
+
+        dialogSectionHeading mempty "Recipient Info"
+        validatedTxBuilder <- divClass "group" $ do
+          dTxBuilder <- uiExplodedTxBuilder model fromName fromChain mUcct mInitToAddress
+          pure $ runExceptT $ do
+            r <- failWithM "Invalid Tx Builder" dTxBuilder
+            when (recipientMatchesSenderTxBuilder (fromName, fromChain) r) $
+              throwError cannotBeReceiverMsg
+            pure r
 
         dialogSectionHeading mempty  "Transaction Settings"
         (conf, _, _, _) <- divClass "group" $ uiMetaData model Nothing Nothing
-        pure (conf, useEntireBalance, txBuilder, amount)
+
+        pure (conf, useEntireBalance, validatedTxBuilder, validatedAmount)
+
       mCaps <- tabPane mempty currentTab SendModalTab_Sign $ do
         dedrecipient <- eitherDyn txBuilder
         fmap join . holdDyn (pure Nothing) <=< dyn $ ffor dedrecipient $ \case
@@ -627,7 +623,7 @@ finishCrossChainTransferConfig model fromAccount ucct = Workflow $ do
       mkLabeledInput True "Recipient Account" uiInputElement $ def
         & initialAttributes .~ "disabled" =: "disabled"
         & inputElementConfig_initialValue .~ unAccountName (_unfinishedCrossChainTransfer_recipientAccount ucct)
-      mkLabeledInput True "Amount" uiGasPriceInputField $ def
+      mkLabeledInput True "Amount" (uiGasPriceInputField never) $ def
         & initialAttributes .~ "disabled" =: "disabled"
         & inputElementConfig_initialValue .~ tshow (_unfinishedCrossChainTransfer_amount ucct)
     el "p" $ text "The coin has been debited from your account but hasn't been redeemed by the recipient."
@@ -714,11 +710,19 @@ finishCrossChainTransfer logL netInfo keys (fromName, fromChain) ucct toGasPayer
     pure resultOk0
 
   (abandon, done) <- modalFooter $ do
-    abandon <- uiButton btnCfgSecondary $ text "Abandon Transfer"
+    (abandon, _) <- runWithReplace (uiButton btnCfgSecondary $ text "Abandon Transfer") (blank <$ resultOk)
     done <- confirmButton def "Done"
     pure (abandon, done)
-  let conf = mempty & walletCfg_setCrossChainTransfer .~ ((_sharedNetInfo_selectedNetwork netInfo, fromName, fromChain, Nothing) <$ (resultOk <> abandon))
-  pure ((conf, close <> done <> abandon), never)
+
+  let
+    cctDetails = (_sharedNetInfo_selectedNetwork netInfo, fromName, fromChain, Nothing)
+    conf = mempty & walletCfg_setCrossChainTransfer .~ (cctDetails <$ (resultOk <> abandon))
+
+  pure ( ( conf
+         , close <> done <> abandon
+         )
+       , never
+       )
 
 -- | Workflow for doing cross chain transfers from scratch. Steps are roughly:
 --
@@ -772,15 +776,20 @@ crossChainTransfer logL netInfo keys fromAccount toAccount fromGasPayer crossCha
   -- Lookup the guard if we don't already have it
   keySetResponse <- case toAccount of
     Right (_name, _chain, acc)
-      | Just ks <- acc ^? account_status . _AccountStatus_Exists . accountDetails_keyset
-      -> pure $ Right (toPactKeyset ks) <$ pb
+      | Just ks <- acc ^? account_status
+          . _AccountStatus_Exists
+          . accountDetails_guard
+          . _AccountGuard_KeySet
+          . to (uncurry toPactKeyset)
+
+      -> pure $ Right ks <$ pb
       | otherwise -> lookupKeySet logL networkName envToChain publicMeta toTxBuilder
     Left ka -> case _txBuilder_keyset ka of
       Nothing -> lookupKeySet logL networkName envToChain publicMeta ka
       -- If the account hasn't been created, don't try to lookup the guard. Just
       -- assume the account name _is_ the public key (since it must be a
       -- non-vanity account).
-      Just ks -> pure $ Right (toPactKeyset ks) <$ pb -- TODO verify against chain
+      Just ks -> pure $ Right ks <$ pb -- TODO verify against chain
   let (keySetError, keySetOk) = fanEither keySetResponse
   -- Start the transfer
   initiated <- initiateCrossChainTransfer logL networkName envFromChain publicMeta keys fromAccount fromGasPayer toTxBuilder amount keySetOk
@@ -974,7 +983,7 @@ initiateCrossChainTransfer model networkName envs publicMeta keys fromAccount fr
 
       liftIO $ cb r
   where
-    fromAccKeys = fromAccount ^. _3 . accountDetails_keyset . addressKeyset_keys
+    fromAccKeys = fromAccount ^. _3 . accountDetails_guard . _AccountGuard_KeySet . _1
     keysetName = "receiverKey"
     code = T.unwords
       [ "(coin.transfer-crosschain"

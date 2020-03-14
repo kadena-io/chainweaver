@@ -12,12 +12,6 @@ The homepage URL will be http://localhost:8000, the authorization callback url w
 
 Image files are located in [static/img](./static/img). To test an updated image, replace the old file with the new one and refresh the browser.
 
-## Web app
-Run [`./scripts/devWeb`](./scripts/devWeb)
-
-## Web app with desktop app bits
-Run [`./scripts/devDesktop`](./scripts/devDesktop)
-
 ## Linux Based Chainweaver
 A linux webkitgtk version of chainweaver can be built and run in a number of different ways:
 - Run `nix-build -A deb default.nix` to build a debian package of chainweaver.

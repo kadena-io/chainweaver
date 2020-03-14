@@ -151,15 +151,27 @@ makePactPrisms ''AccountData
 makePactLenses ''Wallet
 makePactLenses ''Account
 
-getSigningPairs :: ChainId -> KeyStorage key -> Map AccountName (AccountInfo Account) -> Set AccountName -> [KeyPair key]
-getSigningPairs chain allKeys allAccounts signing = filterKeyPairs (Set.unions wantedKeys) allKeys
+getSigningPairs
+  :: ChainId
+  -> KeyStorage key
+  -> Map AccountName (AccountInfo Account)
+  -> Set AccountName
+  -> [KeyPair key]
+getSigningPairs chain allKeys allAccounts signing =
+  filterKeyPairs (Set.unions wantedKeys) allKeys
   where
-    wantedKeys = Map.restrictKeys allAccounts signing
-      ^.. folded . accountInfo_chains . ix chain . account_status . _AccountStatus_Exists . accountDetails_keyset . addressKeyset_keys
+    wantedKeys = Map.restrictKeys allAccounts signing ^.. folded
+      . accountInfo_chains
+      . ix chain
+      . account_status
+      . _AccountStatus_Exists
+      . accountDetails_guard
+      . _AccountGuard_KeySet
+      . _1
 
 -- TODO replace this at the use sites with proper multisig
 accountKeys :: Account -> Set.Set PublicKey
-accountKeys a = a ^. account_status . _AccountStatus_Exists . accountDetails_keyset . addressKeyset_keys
+accountKeys a = a ^. account_status . _AccountStatus_Exists . accountDetails_guard . _AccountGuard_KeySet . _1
 
 accountHasFunds :: Account -> Maybe Bool
 accountHasFunds a = fmap (> 0) $ a ^? account_status . _AccountStatus_Exists . accountDetails_balance
@@ -167,7 +179,7 @@ accountHasFunds a = fmap (> 0) $ a ^? account_status . _AccountStatus_Exists . a
 accountSatisfiesKeysetPredicate :: IntMap (Key key) -> Account -> Bool
 accountSatisfiesKeysetPredicate keys a = fromMaybe False
   $ fmap (flip keysetSatisfiesPredicate keys)
-  $ a ^? account_status . _AccountStatus_Exists . accountDetails_keyset
+  $ a ^? account_status . _AccountStatus_Exists . accountDetails_guard
 
 snocIntMap :: a -> IntMap a -> IntMap a
 snocIntMap a m = IntMap.insert (nextKey m) a m
@@ -293,10 +305,6 @@ getAccountStatus model accStore = performEventAsync $ flip push accStore $ \(Acc
   net <- sample $ current $ model ^. network_selectedNetwork
   pure . Just $ mkRequests nodes net (Map.lookup net networkAccounts)
   where
-    allChains = ChainId . tshow <$> ([0..9] :: [Int])
-    allChainsLen = length allChains
-    onAllChains = MonoidalMap.fromList . zip allChains . replicate allChainsLen
-
     mkRequests nodes net mAccounts cb = do
       -- Transform the accounts structure into a map from chain ID to
       -- set of account names. We grab balances accounts on all chains,
@@ -304,11 +312,13 @@ getAccountStatus model accStore = performEventAsync $ flip push accStore $ \(Acc
       -- account name. We no longer automatically add public keys as an
       -- account.
       let
-        chainsToAccounts = onAllChains $ fold
-          [ case mAccounts of
+        allAccounts = case mAccounts of
             Nothing -> mempty
             Just as -> Set.fromList $ fmap unAccountName $ Map.keys as
-          ]
+
+        allChains = foldMap (Set.fromList . getChains) nodes
+
+        chainsToAccounts = MonoidalMap.fromSet (const allAccounts) allChains
 
         code = renderCompactText . accountDetailsObject . Set.toList
         pm chain = Pact.PublicMeta

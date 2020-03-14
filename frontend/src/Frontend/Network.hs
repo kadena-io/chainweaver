@@ -38,6 +38,7 @@ module Frontend.Network
   , HasNetwork (..)
     -- * Useful helpers
   , updateNetworks
+  , getNetworkInfoTriple
     -- * Definitions from Common
   , module Common.Network
     -- * NodeInfo
@@ -73,6 +74,7 @@ module Frontend.Network
   , HasTransactionLogger(..)
   ) where
 
+import           Control.Error                     (hush, headMay)
 import           Control.Exception                 (fromException)
 import           Control.Arrow                     (first, left, second, (&&&))
 import           Control.Lens                      hiding ((.=))
@@ -404,6 +406,15 @@ chainwebGasLimitMaximum = 1e5
 defaultTransactionGasLimit :: GasLimit
 defaultTransactionGasLimit = GasLimit 600
 
+getNetworkInfoTriple
+  :: Reflex t
+  => Network t
+  -> Dynamic t (Maybe ([Either Text NodeInfo], PublicMeta, NetworkName))
+getNetworkInfoTriple nw = do
+  nodes <- nw ^. network_selectedNodes
+  meta <- nw ^. network_meta
+  let networkId = hush . mkNetworkName . nodeVersion <=< headMay $ rights nodes
+  pure $ (nodes, meta, ) <$> networkId
 
 buildMeta
   :: ( MonadHold t m, MonadFix m, MonadJSM m
@@ -645,7 +656,10 @@ loadModules logL networkL onRefresh = do
             (o:_, n:_) -> if o /= n then Just newInfos else Nothing
             _          -> Just newInfos
 
-      mkReq netName pm = mkSimpleReadReq "(list-modules)" netName pm . ChainRef Nothing
+      -- We need a minimum GasLimit to ensure that this call cannot fail. As the
+      -- PublicMeta stores the users last transaction configuration and may not be
+      -- sufficient for this function.
+      mkReq netName pm = mkSimpleReadReq "(list-modules)" netName (pm & Pact.pmGasLimit .~ 200) . ChainRef Nothing
 
       byChainId :: (NetworkRequest, NetworkErrorResult) -> Either (NonEmpty NetworkError) (ChainId, PactValue)
       byChainId = sequence . bimap (_chainRef_chain . _networkRequest_chainRef) (bimap (fmap snd) snd . networkErrorResultToEither)

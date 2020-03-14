@@ -145,7 +145,9 @@ library
                  , Frontend.UI.Dialogs.LogoutConfirmation
                  , Frontend.UI.Dialogs.NetworkEdit
                  , Frontend.UI.Dialogs.Receive
+                 , Frontend.UI.Dialogs.Receive.Legacy
                  , Frontend.UI.Dialogs.Send
+                 , Frontend.UI.Dialogs.Send.ManualTxBuilder
                  , Frontend.UI.Dialogs.Signing
                  , Frontend.UI.Dialogs.AccountDetails
                  , Frontend.UI.Dialogs.KeyDetails

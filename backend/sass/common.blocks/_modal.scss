@@ -8,8 +8,7 @@
 
 .modal {
   display: none;
-  z-index: 100;
-
+  z-index: $modal-z-index;
 }
 
 .modal,
@@ -361,4 +360,25 @@ button.button.button_type_tertiary.logout-confirm-modal__button {
 
 .export-wallet__contents-includes {
   margin-bottom: 0.2rem;
+}
+
+.preview-acc-key {
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  overflow: hidden;
+  margin-right: 5px;
+}
+.create-account__gas-payer {
+  .input.input_type_radio {
+    margin-right: 12px;
+    transform: scale(1.5);
+  }
+
+  .label.label_for_radio {
+    color: $black-text;
+  }
+}
+
+.check-tx-status__button-wrapper {
+  text-align: right;
 }

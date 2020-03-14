@@ -51,7 +51,6 @@ uiExportWalletScreen (ExportWallet _exportWallet_requestExport) onClose = Workfl
         el "li" $ text "Account notes"
         el "li" $ text "Network configuration"
         el "li" $ text "Transaction configuration"
-        el "li" $ text "Transaction logs"
 
     dialogSectionHeading mempty "Current Password"
     divClass "group" $ do
@@ -64,18 +63,15 @@ uiExportWalletScreen (ExportWallet _exportWallet_requestExport) onClose = Workfl
         ExportWalletError_UpgradeFailed -> "Wallet data is out of date and could not be upgraded. Please back up wallet data manually"
       pure pw'
 
-  (eCancel, eSubmit) <- footer
+  eSubmit <- modalFooter $
+      confirmButton def "Export Wallet"
 
   (eErr, eOk) <- fmap fanEither . _exportWallet_requestExport $ (current $ value pw) <@ eSubmit
   pure ( ( "Export Wallet Data"
-         , (mempty, onClose <> eCancel)
+         , (mempty, onClose)
          )
        , uiExportWalletSuccess onClose <$> eOk
        )
-  where
-    footer = modalFooter $ (,)
-      <$> cancelButton def "Cancel"
-      <*> confirmButton def "Export"
 
 uiExportWalletSuccess
   :: (DomBuilder t m, PostBuild t m, Monoid mConf)

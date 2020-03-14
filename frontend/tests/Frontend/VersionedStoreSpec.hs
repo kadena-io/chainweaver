@@ -6,7 +6,7 @@
 {-# LANGUAGE TypeSynonymInstances #-}
 module Frontend.VersionedStoreSpec where
 
-import Control.Monad.IO.Class (liftIO)
+import Control.Monad.IO.Class (MonadIO, liftIO)
 import Data.Aeson (decodeFileStrict)
 import qualified Data.IntMap as IntMap
 import Data.IORef (readIORef)
@@ -35,6 +35,8 @@ import Common.GistStore (GistMeta)
 import Frontend.Crypto.Class
 import Frontend.Storage
 import Frontend.Storage.InMemoryStorage
+
+import Pact.Server.ApiClient (logTransactionStdout)
 
 import qualified Frontend.VersionedStore.V0 as V0
 import qualified Frontend.VersionedStore.V0.Wallet as V0
@@ -207,7 +209,12 @@ expectedAccounts =
     , (uncheckedNetworkName "testnet", testnetmap)
     ]
 
-testVersioner :: (HasCrypto TestPrv m, HasStorage m, Monad m) => VersionedStorage m (V1.StoreFrontend TestPrv)
+testVersioner
+  :: ( HasCrypto TestPrv m
+     , HasStorage m
+     , MonadIO m
+     )
+  => VersionedStorage m (V1.StoreFrontend TestPrv)
 testVersioner = versionedStorage
 
 instance HasCrypto TestPrv InMemoryStorage where
@@ -233,7 +240,7 @@ test_v0ToV1Upgrade = testCaseSteps "V0 to V1 Upgrade" $ \step -> do
 
   step "Running versioner upgrade..."
   (sn, pm, ns, sf, ks, as) <- flip runInMemoryStorage ims $ do
-    _versionedStorage_upgradeStorage v
+    _versionedStorage_upgradeStorage v logTransactionStdout
     sn <- getItemStorage localStorage V1.StoreFrontend_Network_SelectedNetwork
     pm <- getItemStorage localStorage V1.StoreFrontend_Network_PublicMeta
     ns <- getItemStorage localStorage V1.StoreFrontend_Network_Networks

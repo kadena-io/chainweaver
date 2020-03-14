@@ -208,10 +208,18 @@ newTriggerHold a = do
   pure (s, liftIO . t)
 
 listenToRequestKey
-  :: (MonadHold t m, PerformEvent t m, TriggerEvent t m, MonadIO m, MonadJSM (Performable m))
+  :: ( MonadHold t m
+     , PerformEvent t m
+     , TriggerEvent t m
+     , MonadIO m
+     , MonadJSM (Performable m)
+     )
   => [S.ClientEnv]
   -> Event t (Maybe Pact.RequestKey)
-  -> m (Dynamic t Status, Dynamic t (Maybe (Either NetworkError PactValue)), Maybe (Either NetworkError PactValue) -> JSM ())
+  -> m ( Dynamic t Status
+       , Dynamic t (Maybe (Either NetworkError PactValue))
+       , Maybe (Either NetworkError PactValue) -> JSM ()
+       )
 listenToRequestKey clientEnvs onRequestKey = do
   (listenStatus, listen) <- newTriggerHold Status_Waiting
   --(confirmedStatus, confirm) <- newTriggerHold Status_Waiting
@@ -363,7 +371,7 @@ uiDeployConfirmation
   -> Event t () -> m (modelCfg, Event t ())
 uiDeployConfirmation code model = fullDeployFlow def model $ do
   (settingsCfg, result, _) <- uiDeploymentSettings model $ DeploymentSettingsConfig
-    { _deploymentSettingsConfig_chainId = userChainIdSelect
+    { _deploymentSettingsConfig_chainId = fmap value . userChainIdSelect
     , _deploymentSettingsConfig_userTab = Nothing
     , _deploymentSettingsConfig_code = pure code
     , _deploymentSettingsConfig_sender = uiAccountDropdown def (pure $ \_ _ -> True) (pure id)

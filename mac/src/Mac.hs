@@ -20,7 +20,7 @@ import System.FilePath ((</>))
 import System.IO
 import qualified System.Process as Process
 
-import Desktop (main', AppFFI(..))
+import Backend.App (main', AppFFI(..))
 import Frontend.AppCfg (FileType(..), fileTypeExtension)
 import Desktop.Syslog (sysloggedMain, logToSyslog)
 

@@ -45,6 +45,9 @@ import           Obelisk.Generated.Static
 import           Reflex
 import           Reflex.Dom hiding (Key)
 ------------------------------------------------------------------------------
+import qualified Pact.Types.Pretty as Pact
+import qualified Pact.Types.Term   as Pact
+------------------------------------------------------------------------------
 import           Frontend.Log (HasLogger, HasLogCfg)
 import           Frontend.Crypto.Class
 import           Frontend.Crypto.Ed25519     (keyToText)
@@ -84,9 +87,10 @@ type HasUiWalletModelCfg model mConf key m t =
 
 -- | Possible actions from an account
 data AccountDialog
-  = AccountDialog_DetailsChain (AccountName, ChainId, Account)
+  = AccountDialog_DetailsChain (AccountName, ChainId, AccountDetails, Account)
   | AccountDialog_Details AccountName (Maybe AccountNotes)
-  | AccountDialog_Receive AccountName ChainId
+  | AccountDialog_Receive AccountName AccountDetails ChainId
+  | AccountDialog_TransferTo AccountName AccountDetails ChainId
   | AccountDialog_Send (AccountName, ChainId, AccountDetails) (Maybe UnfinishedCrossChainTransfer)
   | AccountDialog_CompleteCrosschain AccountName ChainId UnfinishedCrossChainTransfer
   | AccountDialog_Create AccountName ChainId (Maybe PublicKey)
@@ -197,7 +201,8 @@ uiAccountItems model accountsMap = do
     accModal n = Just . \case
       AccountDialog_Details acc notes -> uiAccountDetails n acc notes
       AccountDialog_DetailsChain acc -> uiAccountDetailsOnChain n acc
-      AccountDialog_Receive name chain -> uiReceiveModal model name (Just chain)
+      AccountDialog_Receive name details chain -> uiReceiveModal "Receive" model name details (Just chain)
+      AccountDialog_TransferTo name details chain -> uiReceiveModal "Transfer To" model name details (Just chain)
       AccountDialog_Send acc mucct -> uiSendModal model acc mucct
       AccountDialog_CompleteCrosschain name chain ucct -> uiFinishCrossChainTransferModal model name chain ucct
       AccountDialog_Create name chain mKey -> uiCreateAccountDialog model name chain mKey
@@ -275,7 +280,7 @@ uiAccountItem keys name accountInfo = do
         elClass "td" "wallet__table-cell wallet__table-cell-keyset" $ dynText $ ffor accStatus $ \case
           AccountStatus_Unknown -> "Unknown"
           AccountStatus_DoesNotExist -> ""
-          AccountStatus_Exists d -> keysetSummary $ _accountDetails_keyset d
+          AccountStatus_Exists d -> accountGuardSummary $ _accountDetails_guard d
         td $ dynText $ maybe "" unAccountNotes . _vanityAccount_notes . _account_storage <$> dAccount
         td' " wallet__table-cell-balance" $ dynText $ fmap (uiAccountBalance' False) dAccount
         td $ buttons $ switchHold never <=< dyn $ ffor accStatus $ \case
@@ -285,7 +290,8 @@ uiAccountItem keys name accountInfo = do
             let keyFromName = hush $ parsePublicKey $ unAccountName name
             pure $ AccountDialog_Create name chain keyFromName <$ create
           AccountStatus_Exists d -> do
-            owned <- holdUniqDyn $ (_addressKeyset_keys (_accountDetails_keyset d) `Set.isSubsetOf`) <$> keys
+            let ksKeys = d ^. accountDetails_guard . _AccountGuard_KeySet . _1
+            owned <- holdUniqDyn $ (ksKeys `Set.isSubsetOf`) <$> keys
             switchHold never <=< dyn $ ffor owned $ \case
               True -> do
                 recv <- receiveButton cfg
@@ -298,29 +304,39 @@ uiAccountItem keys name accountInfo = do
 
                 onDetails <- detailsIconButton cfg
                 pure $ leftmost
-                  [ AccountDialog_Receive name chain <$ recv
+                  [ AccountDialog_Receive name d chain <$ recv
                   , AccountDialog_Send (name, chain, d)
-                      <$> current (_vanityAccount_unfinishedCrossChainTransfer . _account_storage <$> dAccount)
+                      <$> current ( _vanityAccount_unfinishedCrossChainTransfer . _account_storage
+                                    <$> dAccount
+                                  )
                       <@ send
                   , AccountDialog_CompleteCrosschain name chain <$> onCompleteCrossChain
-                  , AccountDialog_DetailsChain . (name, chain, ) <$> current dAccount <@ onDetails
+                  , AccountDialog_DetailsChain . (name, chain, d,) <$> current dAccount <@ onDetails
                   ]
               False -> do
                 transferTo <- transferToButton cfg
                 onDetails <- detailsIconButton cfg
                 pure $ leftmost
-                  [ AccountDialog_Receive name chain <$ transferTo
-                  , AccountDialog_DetailsChain . (name, chain, ) <$> current dAccount <@ onDetails
+                  [ AccountDialog_TransferTo name d chain <$ transferTo
+                  , AccountDialog_DetailsChain . (name, chain, d, ) <$> current dAccount <@ onDetails
                   ]
     pure (balance, dialog)
 
-keysetSummary :: AddressKeyset -> Text
-keysetSummary ks = T.intercalate ", "
+
+accountGuardSummary :: AccountGuard -> Text
+accountGuardSummary (AccountGuard_Other pactGuard) =
+  gType <> " : " <> Pact.renderCompactText pactGuard
+  where
+    gType = pactGuardTypeText $ Pact.guardTypeOf pactGuard
+
+accountGuardSummary (AccountGuard_KeySet ksKeys ksPred) = T.intercalate ", "
   [ tshow numKeys <> if numKeys == 1 then " key" else " keys"
-  , _addressKeyset_pred ks
-  , "[" <> T.intercalate ", " (fmap keyToText . Set.toList $ _addressKeyset_keys ks) <> "]"
+  , ksPred
+  , "[" <> T.intercalate ", " (keyToText <$> Set.toList ksKeys) <> "]"
   ]
-    where numKeys = Set.size $ _addressKeyset_keys ks
+  where
+
+    numKeys = Set.size ksKeys
 
 -- | Widget listing all available keys.
 uiAvailableKeys
@@ -401,7 +417,7 @@ uiKeyItem
   -> Dynamic t (Key key)
   -> m (Event t (KeyDialog key))
 uiKeyItem keyIndex key = trKey $ do
-  td $ uiPublicKeyShrunkDyn $ _keyPair_publicKey . _key_pair <$> key
+  td $ dynText $ keyToText . _keyPair_publicKey . _key_pair <$> key
   td $ buttons $ do
     onDetails <- detailsButton (cfg & uiButtonCfg_class <>~ "wallet__table-button--hamburger" <> "wallet__table-button-key")
     pure $ KeyDialog_Details keyIndex <$> current key <@ onDetails

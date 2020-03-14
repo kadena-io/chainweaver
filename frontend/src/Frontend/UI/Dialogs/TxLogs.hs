@@ -60,11 +60,6 @@ uiTxLogs fileFFI _onExtClose = do
 
   divClass "modal__main key-details" $ do
     let
-      mkCol w = elAttr "col" ("style" =: ("width: " <> w)) blank
-      mkHeading = elClass "th" "table__heading" . text
-      td extraClass = elClass "td" ("table__cell " <> extraClass)
-      tableAttrs = "class" =: "tx-logs table"
-
     void $ runWithReplace blank $ ffor onLogLoad $ \case
       Left e -> divClass "tx-log__decode-error" $ text $ Text.pack e
       Right (timeLocale, cmdLogs) -> elAttr "table" tableAttrs $ do
@@ -85,29 +80,49 @@ uiTxLogs fileFFI _onExtClose = do
           ]
 
         -- Rows
-        el "tbody" $ iforM_ cmdLogs $ \i cmdLog -> elClass "tr" "table-row" $ do
+        el "tbody" $ iforM_ cmdLogs $ \i logEntry -> elClass "tr" "table-row" $ do
           td "tx-log-row__ix" $ text $ Text.justifyRight 2 '0' $ Pact.tShow i
-
-          -- Expected time format : YYYY-MM-DD  HH:MM
-          td "tx-log-row__timestamp" $ text $ Text.pack
-            $ formatTime timeLocale "%F %R" $ Api._commandLog_timestamp cmdLog
-
-          let sender = Api._commandLog_sender cmdLog
-          td "tx-log-row__sender" $ case (textToKey sender) :: Maybe PublicKey of
-            Nothing -> text sender
-            Just _ -> text $ Text.take 8 sender
-
-          td "tx-log-row__chain" $ text
-            $ Pact._chainId $ Api._commandLog_chain cmdLog
-
-          td "tx-log-row__request-key" $ elClass "span" "request-key-text" $ text
-            $ Pact.hashToText $ Pact.unRequestKey $ Api._commandLog_requestKey cmdLog
+          case logEntry of
+            Api.LogEntry_Cmd cmdLog ->
+              commandLogRow timeLocale cmdLog
+            Api.LogEntry_Event eType sender timestamp ->
+              walletEventRow timeLocale eType sender timestamp
 
   _ <- modalFooter $
     exportButton txLogger
 
   pure (mempty, onClose)
   where
+    mkCol w = elAttr "col" ("style" =: ("width: " <> w)) blank
+    mkHeading = elClass "th" "table__heading" . text
+    td extraClass = elClass "td" ("table__cell " <> extraClass)
+    tableAttrs = "class" =: "tx-logs table"
+
+    timestampTD timeLocale t =
+      td "tx-log-row__timestamp" $ text $ Text.pack $ formatTime timeLocale "%F %R" t
+
+    senderTD sender =
+      td "tx-log-row__sender" $ case (textToKey sender) :: Maybe PublicKey of
+        Nothing -> text sender
+        Just _ -> text $ Text.take 8 sender
+
+    commandLogRow timeLoc cmdLog = do
+      timestampTD timeLoc $ Api._commandLog_timestamp cmdLog
+      senderTD $ Api._commandLog_sender cmdLog
+      td "tx-log-row__chain" $ text
+        $ Pact._chainId $ Api._commandLog_chain cmdLog
+
+      td "tx-log-row__request-key" $ elClass "span" "request-key-text" $ text
+        $ Pact.hashToText $ Pact.unRequestKey $ Api._commandLog_requestKey cmdLog
+
+    walletEventRow timeLoc eType sender timestamp = do
+      timestampTD timeLoc timestamp
+      senderTD sender
+      td "" blank
+      td "" $ text $ case eType of
+        Api.WalletEvent_Import -> "Wallet imported"
+        Api.WalletEvent_Export -> "Wallet exported"
+
     runExport txlog = genZeroKeyPrefix >>=
       liftIO . Api._transactionLogger_exportFile txlog . _unPublicKeyPrefix
 
