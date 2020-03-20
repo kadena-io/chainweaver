@@ -24,7 +24,6 @@ module Frontend.UI.Widgets
     -- * Values for _deploymentSettingsConfig_chainId:
   , predefinedChainIdDisplayed
   , userChainIdSelect
-  , uiChainSelection
   , uiChainSelectionWithUpdate
 
   , mkChainTextAccounts
@@ -890,18 +889,8 @@ userChainIdSelect
   :: MonadWidget t m
   => Dynamic t [ChainId]
   -> m ( Dropdown t (Maybe ChainId) )
-userChainIdSelect options =
-  mkLabeledClsInput True "Chain ID" (uiChainSelection options (constDyn Nothing))
-
-uiChainSelection
-  :: MonadWidget t m
-  => Dynamic t [ChainId]
-  -> Dynamic t (Maybe ChainId)
-  -> CssClass
-  -> m ( Dropdown t (Maybe ChainId) )
-uiChainSelection options mPreselected cls = do
-  onPreselected <- tagOnPostBuild mPreselected
-  uiChainSelectionWithUpdate options onPreselected cls
+userChainIdSelect options = do
+  mkLabeledClsInput True "Chain ID" (uiChainSelectionWithUpdate options never)
 
 uiChainSelectionWithUpdate
   :: MonadWidget t m
@@ -917,12 +906,19 @@ uiChainSelectionWithUpdate options onPreselected cls = do
 
     staticCls = cls <> "select"
     mkDynCls v = if isNothing v then "select_mandatory_missing" else mempty
+  pb <- getPostBuild
+  let optionsEv = leftmost [current options <@ pb, updated options]
 
   rec
     let allCls = renderClass <$> fmap mkDynCls (_dropdown_value ddE) <> pure staticCls
         cfg = def
           & dropdownConfig_attributes .~ (("class" =:) <$> allCls)
-          & dropdownConfig_setValue .~ onPreselected
+          & dropdownConfig_setValue .~ leftmost
+            [ onPreselected
+            , fforMaybe optionsEv $ \case
+                [c] -> Just (Just c)
+                _ -> Nothing
+            ]
 
     ddE <- dropdown Nothing (mkOptions <$> chains) cfg
   pure ddE
