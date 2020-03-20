@@ -102,7 +102,7 @@ import           Control.Monad
 import           Control.Monad.Except
 import           Control.Monad.Trans.Maybe
 import qualified Data.Aeson.Encode.Pretty as AesonPretty
-import           Data.Either (isLeft, rights)
+import           Data.Either (isLeft)
 import           Data.Map.Strict             (Map)
 import qualified Data.Map.Strict as Map
 import qualified Data.IntMap as IntMap
@@ -130,7 +130,7 @@ import Pact.Types.Command (RequestKey)
 import qualified Pact.Types.Util as Pact
 ------------------------------------------------------------------------------
 import           Common.Wallet
-import           Frontend.Network (HasNetwork(..), NodeInfo, getChains, maxCoinPrecision)
+import           Frontend.Network (HasNetwork(..), maxCoinPrecision)
 import           Frontend.Foundation
 import           Frontend.UI.Button
 import           Frontend.Wallet
@@ -887,35 +887,31 @@ uiGasPriceInputField eReset conf = dimensionalInputFeedbackWrapper (Just "KDA") 
 
 -- | Let the user pick a chain id.
 userChainIdSelect
-  :: ( MonadWidget t m
-     , HasNetwork model t
-     )
-  => model
+  :: MonadWidget t m
+  => Dynamic t [ChainId]
   -> m ( Dropdown t (Maybe ChainId) )
-userChainIdSelect m =
-  mkLabeledClsInput True "Chain ID" (uiChainSelection mNodeInfo (constDyn Nothing))
-  where
-    mNodeInfo = (^? to rights . _head) <$> m ^. network_selectedNodes
+userChainIdSelect options =
+  mkLabeledClsInput True "Chain ID" (uiChainSelection options (constDyn Nothing))
 
 uiChainSelection
   :: MonadWidget t m
-  => Dynamic t (Maybe NodeInfo)
+  => Dynamic t [ChainId]
   -> Dynamic t (Maybe ChainId)
   -> CssClass
   -> m ( Dropdown t (Maybe ChainId) )
-uiChainSelection info mPreselected cls = do
+uiChainSelection options mPreselected cls = do
   onPreselected <- tagOnPostBuild mPreselected
-  uiChainSelectionWithUpdate info onPreselected cls
+  uiChainSelectionWithUpdate options onPreselected cls
 
 uiChainSelectionWithUpdate
   :: MonadWidget t m
-  => Dynamic t (Maybe NodeInfo)
+  => Dynamic t [ChainId]
   -> Event t (Maybe ChainId)
   -> CssClass
   -> m ( Dropdown t (Maybe ChainId) )
-uiChainSelectionWithUpdate info onPreselected cls = do
+uiChainSelectionWithUpdate options onPreselected cls = do
   let
-    chains = map (id &&& _chainId) . maybe [] getChains <$> info
+    chains = map (id &&& _chainId) <$> options
     mkPlaceHolder cChains = if null cChains then "No chains available" else "Select chain"
     mkOptions cs = Map.fromList $ (Nothing, mkPlaceHolder cs) : map (first Just) cs
 

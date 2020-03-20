@@ -62,6 +62,7 @@ module Frontend.Network
   , buildCmdWithPayload
   , buildCmdWithPactKey
   , mkSimpleReadReq
+  , getChainsFromHomogenousNetwork
   , getNetworkNameAndMeta
   , getCreationTime
     -- * Defaults
@@ -550,7 +551,12 @@ getNetworks cfg = do
          then Nothing
          else fst <$> Map.lookupMin networks
 
-
+-- Assumes all nodes have exactly the same chains
+-- TODO: Make the network dialog enforce that assumption, pull chains out of NodeInfo and remove this method
+getChainsFromHomogenousNetwork :: Reflex t => HasNetwork model t => model -> Dynamic t [ChainId]
+getChainsFromHomogenousNetwork m =
+  let mNodeInfo = (^? to rights . _head) <$> m ^. network_selectedNodes
+  in maybe [] getChains <$> mNodeInfo
 
 -- | Get networks from Obelisk config.
 getConfigNetworks
