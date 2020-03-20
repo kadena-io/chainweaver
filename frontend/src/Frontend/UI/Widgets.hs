@@ -918,22 +918,7 @@ uiChainSelection
   -> m ( Dropdown t (Maybe ChainId) )
 uiChainSelection info mPreselected cls = do
   onPreselected <- tagOnPostBuild mPreselected
-  let
-    chains = map (id &&& _chainId) . maybe [] getChains <$> info
-    mkPlaceHolder cChains = if null cChains then "No chains available" else "Select chain"
-    mkOptions cs = Map.fromList $ (Nothing, mkPlaceHolder cs) : map (first Just) cs
-
-    staticCls = cls <> "select"
-    mkDynCls v = if isNothing v then "select_mandatory_missing" else mempty
-
-  rec
-    let allCls = renderClass <$> fmap mkDynCls (_dropdown_value ddE) <> pure staticCls
-        cfg = def
-          & dropdownConfig_attributes .~ (("class" =:) <$> allCls)
-          & dropdownConfig_setValue .~ onPreselected
-
-    ddE <- dropdown Nothing (mkOptions <$> chains) cfg
-  pure ddE
+  uiChainSelectionWithUpdate info onPreselected cls
 
 uiChainSelectionWithUpdate
   :: MonadWidget t m
