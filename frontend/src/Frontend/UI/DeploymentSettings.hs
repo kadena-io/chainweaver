@@ -1040,7 +1040,7 @@ uiDeployPreview model settings signers gasLimit ttl code lastPublicMeta capabili
       dialogSectionHeading mempty  "Destination"
       _ <- divClass "group segment" $ do
         transactionDisplayNetwork model
-        predefinedChainIdDisplayed chainId model
+        predefinedChainIdDisplayed chainId
 
       dialogSectionHeading mempty  "Transaction Sender"
       _ <- divClass "group segment" $ mkLabeledClsInput True "Account" $ \_ -> do

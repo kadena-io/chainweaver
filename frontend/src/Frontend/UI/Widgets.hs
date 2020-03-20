@@ -947,9 +947,8 @@ uiChainSelectionWithUpdate info onPreselected cls = do
 predefinedChainIdDisplayed
   :: DomBuilder t m
   => ChainId
-  -> model
   -> m (Dynamic t (Maybe ChainId))
-predefinedChainIdDisplayed cid _ = do
+predefinedChainIdDisplayed cid = do
   _ <- mkLabeledInput True "Chain ID" uiInputElement $ def
     & initialAttributes %~ Map.insert "disabled" ""
     & inputElementConfig_initialValue .~ _chainId cid

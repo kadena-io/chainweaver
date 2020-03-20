@@ -340,7 +340,7 @@ createAccountConfig ideL splashWF name chainId keyset = Workflow $ do
   (cfg, cChainId, mGasPayer, ttl, gasLimit, _,  _) <- divClass "modal__main transaction_details" $ uiCfg
     Nothing
     ideL
-    (predefinedChainIdDisplayed chainId ideL)
+    (predefinedChainIdDisplayed chainId)
     Nothing
     (Just defaultTransactionGasLimit)
     []
