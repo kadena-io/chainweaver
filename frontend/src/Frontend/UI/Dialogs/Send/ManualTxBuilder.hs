@@ -24,7 +24,6 @@ import Control.Lens hiding (failover)
 import Reflex
 import Reflex.Dom
 
-import Data.Either (rights)
 import Data.Text (Text)
 import Data.Aeson (ToJSON)
 import qualified Data.Aeson as Aeson
@@ -126,11 +125,9 @@ uiExplodedChainSelect
   -> Event t (Maybe ChainId)
   -> m ( Dropdown t (Maybe ChainId) )
 uiExplodedChainSelect model mUcct onFromName dFromName fromName fromChain onTxChainId = do
-  let mNodeInfo = (^? to rights . _head) <$> model ^. network_selectedNodes
-
   let
     chainSelect _ = elClass' "div" "segment_type_tertiary" $
-      mkLabeledClsInput False "Chain ID" (uiChainSelectionWithUpdate mNodeInfo onTxChainId)
+      mkLabeledClsInput False "Chain ID" (uiChainSelectionWithUpdate (getChainsFromHomogenousNetwork model) onTxChainId)
 
     onNameChainUpdated (_, chainE) = leftmost
       [ (,) <$> current dFromName <@> _dropdown_change chainE

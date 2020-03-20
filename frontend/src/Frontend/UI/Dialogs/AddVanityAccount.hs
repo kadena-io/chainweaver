@@ -340,7 +340,7 @@ createAccountConfig ideL splashWF name chainId keyset = Workflow $ do
   (cfg, cChainId, mGasPayer, ttl, gasLimit, _,  _) <- divClass "modal__main transaction_details" $ uiCfg
     Nothing
     ideL
-    (predefinedChainIdDisplayed chainId ideL)
+    (predefinedChainIdDisplayed chainId)
     Nothing
     (Just defaultTransactionGasLimit)
     []
@@ -351,7 +351,7 @@ createAccountConfig ideL splashWF name chainId keyset = Workflow $ do
   let payload = HM.singleton tempkeyset $ toJSON keyset
       code = mkPactCode name
       deployConfig = DeploymentSettingsConfig
-        { _deploymentSettingsConfig_chainId = fmap value . userChainIdSelect
+        { _deploymentSettingsConfig_chainId = fmap value . userChainIdSelect . getChainsFromHomogenousNetwork
         , _deploymentSettingsConfig_userTab = Nothing :: Maybe (Text, m ())
         , _deploymentSettingsConfig_code = pure code
         , _deploymentSettingsConfig_sender = uiAccountDropdown def (pure $ \_ _ -> True) (pure id)
