@@ -22,7 +22,6 @@ module Frontend.UI.Widgets
   , uiTxBuilder
   , uiDisplayTxBuilderWithCopy
     -- * Values for _deploymentSettingsConfig_chainId:
-  , predefinedChainIdSelect
   , predefinedChainIdDisplayed
   , userChainIdSelect
   , userChainIdSelectWithPreselect
@@ -943,15 +942,6 @@ uiChainSelectionWithUpdate info onPreselected cls = do
 
     ddE <- dropdown Nothing (mkOptions <$> chains) cfg
   pure ddE
-
-
--- | Use a predefined chain id, don't let the user pick one.
-predefinedChainIdSelect
-  :: (Reflex t, Monad m)
-  => ChainId
-  -> model
-  -> m (Dynamic t (Maybe ChainId))
-predefinedChainIdSelect chanId _ = pure . pure . pure $ chanId
 
 -- | Use a predefined immutable chain id, but display it too.
 predefinedChainIdDisplayed

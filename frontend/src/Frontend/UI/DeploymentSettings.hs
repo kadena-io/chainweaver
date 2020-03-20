@@ -119,10 +119,6 @@ data DeploymentSettingsConfig t m model a = DeploymentSettingsConfig
     -- ^ Some optional extra tab. fst is the tab's name, snd is its content.
   , _deploymentSettingsConfig_chainId     :: model -> m (Dynamic t (Maybe Pact.ChainId))
     -- ^ ChainId selection widget.
-    --   You can pick (predefinedChainIdSelect someId) - for not showing a
-    --   widget at all, but having `uiDeploymentSettings` use the provided one.
-    --
-    --   Or you can use `userChainIdSelect` for having the user pick a chainid.
   , _deploymentSettingsConfig_sender
     :: model
     -> Dynamic t (Maybe ChainId)
