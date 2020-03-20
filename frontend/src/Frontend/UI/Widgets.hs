@@ -24,7 +24,6 @@ module Frontend.UI.Widgets
     -- * Values for _deploymentSettingsConfig_chainId:
   , predefinedChainIdDisplayed
   , userChainIdSelect
-  , userChainIdSelectWithPreselect
   , uiChainSelection
   , uiChainSelectionWithUpdate
 
@@ -894,18 +893,7 @@ userChainIdSelect
   => model
   -> m ( Dropdown t (Maybe ChainId) )
 userChainIdSelect m =
-  userChainIdSelectWithPreselect m True (constDyn Nothing)
-
--- | Let the user pick a chain id but preselect a value
-userChainIdSelectWithPreselect
-  :: (MonadWidget t m, HasNetwork model t
-     )
-  => model
-  -> Bool
-  -> Dynamic t (Maybe ChainId)
-  -> m ( Dropdown t (Maybe ChainId) )
-userChainIdSelectWithPreselect m inlineLabel mChainId =
-  mkLabeledClsInput inlineLabel "Chain ID" (uiChainSelection mNodeInfo mChainId)
+  mkLabeledClsInput True "Chain ID" (uiChainSelection mNodeInfo (constDyn Nothing))
   where
     mNodeInfo = (^? to rights . _head) <$> m ^. network_selectedNodes
 
