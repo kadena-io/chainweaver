@@ -43,7 +43,6 @@ module Frontend.ModuleExplorer.ModuleRef
     -- * Pretty printing
   , textModuleRefSource
   , textModuleRefName
-  , textModuleName
   ) where
 
 ------------------------------------------------------------------------------
@@ -52,7 +51,6 @@ import           Control.Lens
 import           Control.Monad
 import           Control.Monad.Except            (throwError)
 import           Data.Bifunctor                  (first)
-import           Data.Coerce                     (coerce)
 import           Data.List.NonEmpty              (NonEmpty ((:|)))
 import qualified Data.Map                        as Map
 import qualified Data.Set                        as Set
@@ -67,6 +65,7 @@ import           Pact.Types.Exp                  (Literal (LString))
 import           Pact.Types.Info                 (Code (..))
 import           Pact.Types.Lang                 (ModuleName)
 import           Pact.Types.PactValue
+import           Pact.Types.Pretty               (renderCompactText)
 import           Pact.Types.Term                 as PactTerm (FieldKey,
                                                               Module (..),
                                                               ModuleDef (..),
@@ -171,13 +170,8 @@ instance IsRefPath ModuleSource where
           "deployed" -> parseRef
           _          -> MP.unexpected $ MP.Tokens (r :| [])
 
-
 instance IsRefPath ModuleName where
-  renderRef (ModuleName n mNamespace) = mkRefPath $
-    case mNamespace of
-      Nothing                 -> n
-      Just (NamespaceName ns) -> ns <> "." <> n
-
+  renderRef = mkRefPath . renderCompactText
   parseRef = do
     fn <- MP.anySingle
     case reverse $ T.splitOn "." fn of
@@ -205,13 +199,7 @@ getFileModuleRef = traverse (^? _ModuleSource_File)
 --   textModuleName . _moduleRef_name
 -- @
 textModuleRefName :: ModuleRefV a -> Text
-textModuleRefName = textModuleName . _moduleRef_name
-
--- | Render a `ModuleName` as `Text`.
-textModuleName :: ModuleName -> Text
-textModuleName = \case
-  ModuleName n Nothing  -> n
-  ModuleName n (Just s) -> coerce s <> "." <> n
+textModuleRefName = renderCompactText . _moduleRef_name
 
 -- | Show the type of the selected module.
 --

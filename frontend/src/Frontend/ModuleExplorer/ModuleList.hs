@@ -123,7 +123,7 @@ makeModuleList m cfg = mfix $ \mList -> do
 
       -- Modules after network filter and search filter applied:
       searchModules :: Dynamic t [DeployedModuleRef]
-      searchModules = L.sortBy (compareBy (textModuleName . _moduleRef_name)) <$> do
+      searchModules = L.sortBy (compareBy textModuleRefName) <$> do
         needle <- T.toCaseFold <$> nameFilter
         cModules <- chainModules
         let getCName = T.toCaseFold . textModuleRefName
