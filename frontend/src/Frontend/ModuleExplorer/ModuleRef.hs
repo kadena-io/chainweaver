@@ -118,7 +118,7 @@ instance A.ToJSON ModuleSource where
 instance A.FromJSON ModuleSource where
   parseJSON = A.genericParseJSON compactEncoding
 
--- | A Module is uniquely idendified by its name and its origin.
+-- | A Module is uniquely identified by its name and its origin.
 data ModuleRefV s = ModuleRef
   { _moduleRef_source :: s -- ^ Where does the module come from.
   , _moduleRef_name   :: ModuleName   -- ^ Fully qualified name of the module.
@@ -264,9 +264,8 @@ fetchModule model onReq = do
   where
     mkReq (networkName, pm) mRef = (mRef,) <$> mkSimpleReadReq code networkName pm (_moduleRef_source mRef)
       where code = mconcat
-              [ defineNamespace . _moduleRef_name $ mRef
-              , "(describe-module '"
-              , _mnName . _moduleRef_name $ mRef
+              [ "(describe-module '"
+              , textModuleRefName mRef
               , ")"
               ]
 
@@ -300,10 +299,6 @@ fetchModule model onReq = do
       case codeLit of
         PLiteral (LString c) -> pure $ Code c
         _ -> throwError "No code found, but something else!"
-
-    defineNamespace =
-      maybe "" (\n -> "(namespace '" <> coerce n <> ")") . _mnNamespace
-
 
 -- Instances:
 
