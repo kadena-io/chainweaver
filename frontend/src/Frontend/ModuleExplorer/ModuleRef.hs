@@ -78,6 +78,7 @@ import           Pact.Types.Term                 as PactTerm (FieldKey,
                                                               Term (TList, TLiteral, TModule, TObject),
                                                               tStr)
 ------------------------------------------------------------------------------
+import           Common.Modules
 import           Common.RefPath                  as MP
 import           Frontend.Foundation
 import           Frontend.ModuleExplorer.Example
@@ -252,8 +253,8 @@ fetchModule model onReq = do
   where
     mkReq (networkName, pm) mRef = (mRef,) <$> mkSimpleReadReq code networkName pm (_moduleRef_source mRef)
       where code = mconcat
-              [ "(describe-module '"
-              , textModuleRefName mRef
+              [ "(describe-module "
+              , quotedFullName $ _moduleRef_name mRef
               , ")"
               ]
 
