@@ -260,34 +260,26 @@ fetchModule model onReq = do
 
     getModule :: PactValue -> Either Text (ModuleDef (Term Name))
     getModule  = \case
-      PObject obj -> do
-        mods <- codeModules =<< getCode obj
+      PObject (ObjectMap props) -> do
+        --Compatibility hack: pact has this wrapped, chainweb not yet - so:
+        (ObjectMap objMod) <- case  Map.lookup "v" props of
+          Just (PObject obj) -> pure obj
+          Nothing -> pure $ ObjectMap props
+          _ -> throwError "Expected object describing the module."
+
+        codeLit <- note "No code property in module description object:\n" $
+          Map.lookup "code" objMod
+
+        c <- case codeLit of
+          PLiteral (LString c) -> pure $ Code c
+          _ -> throwError "No code found, but something else!"
+
+        mods <- codeModules c
         case Map.elems mods of
           []   -> throwError "No module in response"
           m:[] -> pure m
           _    -> throwError "More than one module in response?"
       _ -> throwError "Server response did not contain a PObject module description."
-
-    getCode :: ObjectMap PactValue -> Either Text Code
-    getCode (ObjectMap props) = do
-      {- termMod <- -}
-        {- note "Property v missing!" $ Map.lookup "v" props -}
-
-      --Compatibility hack: pact has this wrapped, chainweb not yet - so:
-      let
-        termMod =
-          Map.lookup "v" props
-      (ObjectMap objMod) <- case termMod of
-        Just (PObject obj) -> pure obj
-        Nothing -> pure $ ObjectMap props
-        _ -> throwError "Expected object describing the module."
-
-      codeLit <- note "No code property in module description object:\n" $
-        Map.lookup "code" objMod
-
-      case codeLit of
-        PLiteral (LString c) -> pure $ Code c
-        _ -> throwError "No code found, but something else!"
 
 -- Instances:
 
