@@ -261,7 +261,7 @@ fetchModule model onReq = do
     getModule :: PactValue -> Either Text (ModuleDef (Term Name))
     getModule  = \case
       PObject obj -> do
-        mods <- fileModules =<< getCode obj
+        mods <- codeModules =<< getCode obj
         case Map.elems mods of
           []   -> throwError "No module in response"
           m:[] -> pure m

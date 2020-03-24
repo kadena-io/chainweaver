@@ -24,6 +24,7 @@ import           Control.Lens
 import           Reflex.Dom
 import           Reflex.Network.Extended
 import qualified Data.Map as Map
+import           Pact.Types.Lang (Code)
 ------------------------------------------------------------------------------
 import           Frontend.Network
 import           Frontend.ModuleExplorer
@@ -44,7 +45,7 @@ fileDetails
   . ( MonadWidget t m
     , HasUIFileDetailsModelCfg mConf m t
     )
-  => (FileRef, PactFile)
+  => (FileRef, Code)
   -> m mConf
 fileDetails (selectedRef, selected) = do
     headerCfg <- elClass "div" "segment" $ do
@@ -65,7 +66,7 @@ fileDetails (selectedRef, selected) = do
   where
     moduleRefs :: [ModuleRef]
     moduleRefs =
-      map (ModuleRef (ModuleSource_File selectedRef)) . Map.keys . fileModulesDiscardingErrors $ selected
+      map (ModuleRef (ModuleSource_File selectedRef)) . Map.keys . codeModulesDiscardingErrors $ selected
 
     moduleTitle = elClass "h2" "heading heading_type_h2" $ do
       text $ fileRefName selectedRef
