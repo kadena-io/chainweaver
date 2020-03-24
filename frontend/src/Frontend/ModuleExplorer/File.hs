@@ -205,7 +205,7 @@ codeModulesDiscardingErrors = fold . codeModules
 -- | Get module from a `Term`
 getModule :: MonadPlus m => Term Name -> m (ModuleName, ModuleDef (Term Name))
 getModule = \case
-  TModule m _ _ -> pure (m ^. nameOfModule, m)
+  TModule m _ _ -> pure (moduleDefName m, m)
   _             -> mzero
 
 

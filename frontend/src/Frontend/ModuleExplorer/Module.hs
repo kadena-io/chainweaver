@@ -29,8 +29,6 @@ module Frontend.ModuleExplorer.Module
     -- * Retrieve information about a `Module`
   , PactFunction (..)
   , HasPactFunction (..)
-  , nameOfModule
-  , codeOfModule
   , functionsOfModule
   , importsOfModule
   , importNamesOfModule
@@ -59,19 +57,6 @@ import           Frontend.Foundation
 
 -- | ModuleDef (Term Name) is quite a mouth full.
 type ModDef = ModuleDef (Term Name)
-
--- | Get the `ModuleName` of a `Module`.
-nameOfModule :: Lens' (ModuleDef g) ModuleName
-nameOfModule f = \case
-  MDInterface m -> MDInterface <$> interfaceName f m
-  MDModule m    -> MDModule <$> mName f m
-
--- | Get the source code of a `Module`.
-codeOfModule :: Lens' (ModuleDef g) Code
-codeOfModule f = \case
-  MDInterface m -> MDInterface <$> interfaceCode f m
-  MDModule m    -> MDModule <$> mCode f m
-
 
 -- | Get the used modules of a `Module`.
 importsOfModule :: Lens' (ModuleDef g) [ Use ]
@@ -126,7 +111,7 @@ makePactLenses ''PactFunction
 -- | Functions of a `Module`
 functionsOfModule :: ModuleDef g -> [PactFunction]
 functionsOfModule m =
-  case Pact.compileExps Pact.mkEmptyInfo <$> Pact.parseExprs (_unCode $ m ^. codeOfModule) of
+  case Pact.compileExps Pact.mkEmptyInfo <$> Pact.parseExprs (_unCode $ moduleDefCode m) of
     Right (Right terms) -> concatMap getFunctions terms
     _                   -> []
 

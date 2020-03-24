@@ -276,7 +276,7 @@ loadToEditor m onFileRef onModRef onClear = do
         [ snd <$> onFileMod
         , snd <$> onFile
           -- Clear editor in case of loading error:
-        , maybe "" (view codeOfModule) . snd <$> onMod
+        , maybe "" moduleDefCode . snd <$> onMod
         , "" <$ onClear
         ]
 
@@ -305,7 +305,7 @@ loadToEditor m onFileRef onModRef onClear = do
     getFileModuleCode = \case
       Nothing -> const Nothing
       Just r@(ModuleRef _ n) ->
-        fmap ((r,) . view codeOfModule)
+        fmap ((r,) . moduleDefCode)
         . Map.lookup n
         . codeModulesDiscardingErrors
         . snd
