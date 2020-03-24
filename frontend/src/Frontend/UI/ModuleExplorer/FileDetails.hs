@@ -72,24 +72,3 @@ fileDetails (selectedRef, selected) = do
       text $ fileRefName selectedRef
       elClass "div" "heading__type-details" $
         text $ textFileType selectedRef
-
-
-{- functionList -}
-{-   :: forall t m mConf model -}
-{-   .  ( MonadWidget t m, HasUIFileDetailsModelCfg mConf m t -}
-{-      , HasUIFileDetailsModel model t -}
-{-      ) -}
-{-   => model -> Maybe DeployedModuleRef -> [PactFunction] -> m mConf -}
-{- functionList m mDeployed functions = -}
-{-     elClass "ol" "table table_type_primary" $ do -}
-{-       onView <- fmap leftmost . for functions $ \f -> -}
-{-         elClass "li" "table__row table__row_type_primary" $ do -}
-{-           divClass "table__text-cell table__cell_size_side title" $ -}
-{-             text $ _pactFunction_name f -}
-{-           divClass "table__text-cell table__cell_size_double-main description" $ -}
-{-             text $ fromMaybe "" $ _pactFunction_documentation f -}
-{-           divClass "table__cell_size_flex" $ do -}
-{-             let btnCls = "table__action-button" -}
-{-             let isDeployed = isJust mDeployed -}
-{-             fmap (const f) <$> bool (callButton btnCls) (viewButton btnCls) isDeployed -}
-{-       pure $ mempty & modalCfg_setModal .~ (Just . uiCallFunction m mDeployed <$> onView) -}
