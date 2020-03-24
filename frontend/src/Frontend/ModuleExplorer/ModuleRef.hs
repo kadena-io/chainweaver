@@ -57,6 +57,7 @@ import qualified Data.Set                        as Set
 import           Data.Text                       (Text)
 import qualified Data.Text                       as T
 import           Data.These                      (These(This,That))
+import           Data.Traversable                (for)
 import           Reflex.Dom.Core                 (MonadHold)
 import qualified Text.Megaparsec                 as MP
 ------------------------------------------------------------------------------
@@ -76,13 +77,14 @@ import           Pact.Types.Term                 as PactTerm (FieldKey,
                                                               Object (..),
                                                               ObjectMap (..),
                                                               Term (TList, TLiteral, TModule, TObject),
-                                                              tStr)
+                                                              moduleDefName, mnNamespace, tStr)
 ------------------------------------------------------------------------------
 import           Common.Modules
 import           Common.RefPath                  as MP
 import           Frontend.Foundation
 import           Frontend.ModuleExplorer.Example
 import           Frontend.ModuleExplorer.File
+import           Frontend.ModuleExplorer.Module (nameOfModule)
 import           Frontend.Network
 import           Frontend.Log
 import           Frontend.Crypto.Class
@@ -274,10 +276,14 @@ fetchModule model onReq = do
           PLiteral (LString c) -> pure $ Code c
           _ -> throwError "No code found, but something else!"
 
+        mn <- for (Map.lookup "name" objMod) $ \case
+          PLiteral (LString mn) -> first T.pack $ parseModuleName mn
+          _ -> throwError "Expected module name"
+
         mods <- codeModules c
         case Map.elems mods of
           []   -> throwError "No module in response"
-          m:[] -> pure m
+          m:[] -> pure $ m & maybe id (nameOfModule .~) mn
           _    -> throwError "More than one module in response?"
       _ -> throwError "Server response did not contain a PObject module description."
 
