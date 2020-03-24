@@ -129,6 +129,14 @@ functionsOfModule m =
   case Pact.compileExps Pact.mkEmptyInfo <$> Pact.parseExprs (_unCode $ m ^. codeOfModule) of
     Right (Right terms) -> concatMap getFunctions terms
     _                   -> []
+  where
+    -- | Get the top level functions from a 'Term'.
+    getFunctions :: Term Name -> [PactFunction]
+    getFunctions (TModule _ body _) = getFunctions $ Bound.instantiate undefined body
+    getFunctions (TDef (Def (DefName name) moduleName defType funType _body meta _defMeta _info) _) =
+      [PactFunction moduleName name defType (_mDocs meta) funType]
+    getFunctions (TList list1 _ _) = getFunctions =<< toList list1
+    getFunctions _ = []
 
 
 -- | Separate functions by their `DefType`.
@@ -145,12 +153,3 @@ functionIsCallable f =
     Defcap -> False
     Defpact -> False
     Defun  -> True
-
-
--- | Get the top level functions from a 'Term'.
-getFunctions :: Term Name -> [PactFunction]
-getFunctions (TModule _ body _) = getFunctions $ Bound.instantiate undefined body
-getFunctions (TDef (Def (DefName name) moduleName defType funType _body meta _defMeta _info) _) =
-  [PactFunction moduleName name defType (_mDocs meta) funType]
-getFunctions (TList list1 _ _) = getFunctions =<< toList list1
-getFunctions _ = []
