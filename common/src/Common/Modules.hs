@@ -1,3 +1,4 @@
+{-# LANGUAGE OverloadedStrings #-}
 module Common.Modules where
 
 import qualified Data.Attoparsec.Text as AP
