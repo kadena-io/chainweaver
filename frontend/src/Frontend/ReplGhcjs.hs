@@ -21,6 +21,7 @@ import Control.Lens
 import Control.Monad.Reader (ask)
 import Control.Monad.State.Strict
 import Data.Aeson (FromJSON, ToJSON)
+import Data.CaseInsensitive (original)
 import Data.Default (Default (..))
 import Data.Some (Some(..))
 import Data.String (IsString)
@@ -91,13 +92,17 @@ app
 app sidebarExtra fileFFI appCfg = Store.versionedFrontend (Store.versionedStorage @key) $ void . mfix $ \ cfg -> do
   ideL <- makeIde fileFFI appCfg cfg
 
-  walletSidebar sidebarExtra
+  let
+    isKadenamint = ffor (ideL ^. network_selectedNetwork) $
+      \n -> "kadenamint" `T.isPrefixOf` original (unNetworkName n)
+
+  walletSidebar isKadenamint sidebarExtra
   updates <- divClass "page" $ do
     let mkPageContent c = divClass (c <> " page__content visible")
 
         underNetworkBar lbl sub = do
           netCfg <- networkBar ideL
-          subBarCfg <- controlBar lbl sub
+          subBarCfg <- controlBar lbl sub isKadenamint
           pure $ netCfg <> subBarCfg
     -- This route overriding is awkward, but it gets around having to alter the
     -- types of ideL and appCfg, and we don't actually need the true subroute
@@ -167,10 +172,14 @@ walletSidebar
      , SetRoute t (R FrontendRoute) m
      , RouteToUrl (R FrontendRoute) m
      )
-  => m ()
+  => Dynamic t Bool
   -> m ()
-walletSidebar sidebarExtra = elAttr "div" ("class" =: "sidebar") $ do
-  divClass "sidebar__logo" $ elAttr "img" ("src" =: static @"img/logo.png") blank
+  -> m ()
+walletSidebar isKadenamint sidebarExtra = elAttr "div" ("class" =: "sidebar") $ do
+  divClass "sidebar__logo" $ elDynAttr "img" ?? blank $ ffor isKadenamint $ \k ->
+    if k
+    then "src" =: static @"img/logo-kadenamint.png" <> "style" =: "width: 50px; height: 50px"
+    else "src" =: static @"img/logo.png"
 
   elAttr "div" ("class" =: "sidebar__content") $ do
     route <- demux . fmap (\(r :/ _) -> Some r) <$> askRoute
@@ -285,8 +294,9 @@ controlBar
   :: MonadWidget t m
   => Text
   -> m a
+  -> Dynamic t Bool
   -> m a
-controlBar pageTitle controls = do
+controlBar pageTitle controls isKadenamint = do
     mainHeader $ do
       divClass "main-header__page-name" $ text pageTitle
       controls
@@ -300,7 +310,12 @@ controlBar pageTitle controls = do
         cls = if isMac
                  then baseCls <> "page__main-header_platform_mac"
                  else baseCls
-      divClass cls child
+      elDynAttr "div" ?? child $ ffor isKadenamint $ \k -> fold
+        [ "class" =: cls
+        , if k
+          then "style" =: T.intercalate "; " ["background:#47C648", "color:black"]
+          else mempty
+        ]
 
 getPactVersion :: MonadWidget t m => m Text
 getPactVersion = do
