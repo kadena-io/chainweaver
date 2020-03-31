@@ -20,6 +20,7 @@ library
   build-depends: base
                , async
                , aeson-gadt-th
+               , case-insensitive
                , constraints
                , unliftio
                , unliftio-core
