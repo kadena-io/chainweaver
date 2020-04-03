@@ -53,6 +53,7 @@ import Frontend.Editor
 import Frontend.Foundation
 import Frontend.GistStore
 import Frontend.Ide
+import Frontend.JsonData
 import Frontend.OAuth
 import Frontend.Network
 import Frontend.Repl
@@ -60,19 +61,21 @@ import Frontend.Storage
 import qualified Frontend.VersionedStore as Store
 import Frontend.UI.Button
 import Frontend.UI.Dialogs.AddVanityAccount (uiAddAccountButton)
+import Frontend.UI.Dialogs.AddVanityAccount.DefineKeyset
 import Frontend.UI.Dialogs.CreateGist (uiCreateGist)
 import Frontend.UI.Dialogs.CreatedGist (uiCreatedGist)
 import Frontend.UI.Dialogs.DeployConfirmation (uiDeployConfirmation)
 import Frontend.UI.Dialogs.LogoutConfirmation (uiLogoutConfirmation)
-import Frontend.UI.Dialogs.NetworkEdit (uiNetworkSelect)
 import Frontend.UI.Dialogs.Signing (uiSigning)
 import Frontend.UI.IconGrid (IconGridCellConfig(..), iconGridLaunchLink)
+import Frontend.UI.KeysetWidget
 import Frontend.UI.Modal
 import Frontend.UI.Modal.Impl
 import Frontend.UI.RightPanel
 import Frontend.UI.Settings
 import Frontend.UI.Wallet
 import Frontend.UI.Widgets
+import Frontend.Wallet
 
 data TransferCfg t = TransferCfg
   { _transferCfg_isVisible :: Dynamic t Bool
@@ -82,13 +85,15 @@ instance Reflex t => Default (TransferCfg t) where
   def = TransferCfg (constDyn False)
 
 uiGenericTransfer
-  :: forall model t m.
+  :: forall model key t m.
      ( MonadWidget t m
      , RouteToUrl (R FrontendRoute) m, SetRoute t (R FrontendRoute) m
      , HasConfigs m
      , HasStorage m, HasStorage (Performable m)
      , HasTransactionLogger m
      , HasNetwork model t
+     , HasWallet model key t
+     , HasJsonData model t
      )
   => model
   -> TransferCfg t
@@ -106,12 +111,15 @@ uiGenericTransfer model cfg = do
       divClass "transfer__left-pane" $ do
         el "h4" $ text "From"
         userChainIdSelect model
-        uiAccountNameInput Nothing noValidation
-        mkLabeledInput True "Amount" uiGasPriceInputField def
+        uiAccountNameInput True Nothing never noValidation
+        mkLabeledInput True "Amount" (uiGasPriceInputField never) def
       divClass "transfer__right-pane" $ do
         el "h4" $ text "To"
         userChainIdSelect model
-        uiAccountNameInput Nothing noValidation
+        uiAccountNameInput True Nothing never noValidation
+        -- _ <- uiDefineKeyset model emptyKeysetPresets
+        keysetWidget Nothing
+        return ()
     divClass "transfer-fields submit" $ do
       confirmButton def "Sign & Transfer"
     return ()

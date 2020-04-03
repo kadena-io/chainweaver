@@ -30,6 +30,11 @@ module Frontend.UI.Widgets
   , uiChainSelectionWithUpdate
 
   , mkChainTextAccounts
+  , uiComboBox
+  , uiComboBoxGlobalDatalist
+  , uiDatalist
+  , keyListId
+  , keyDatalist
   , accountListId
   , accountDatalist
   , uiAccountNameInput
@@ -116,7 +121,8 @@ import           Data.Text                   (Text)
 import qualified Data.Text                   as T
 import qualified Data.Text.Lazy as LT
 import qualified Data.Text.Lazy.Builder as LTB
-import           GHC.Word                    (Word8)
+import           Data.Tuple
+import           GHC.Word
 import           Data.Decimal                (Decimal)
 import qualified Data.Decimal                as D
 import           Language.Javascript.JSaddle (js0, pToJSVal)
@@ -126,6 +132,7 @@ import           Obelisk.Generated.Static
 import           Reflex.Dom.Contrib.CssClass
 import           Reflex.Dom.Core
 import           Reflex.Extended             (tagOnPostBuild)
+import           System.Random
 ------------------------------------------------------------------------------
 import Pact.Types.ChainId (ChainId (..))
 import Pact.Types.Runtime (GasPrice (..))
@@ -987,6 +994,69 @@ predefinedChainIdDisplayed cid _ = do
 noValidation :: Applicative f => f (a -> Either err a)
 noValidation = pure Right
 
+-- | Like uiComboBoxGlobalDatalist but handles creation of a unique datalist ID
+-- for you.
+uiComboBox
+  :: ( DomBuilder t m, PostBuild t m, MonadFix m, MonadHold t m
+     , MonadIO m
+     )
+  => Text
+  -> Dynamic t [Text]
+  -> InputElementConfig er t (DomBuilderSpace m)
+  -> m (InputElement er (DomBuilderSpace m) t)
+uiComboBox iv options cfg = do
+  listNum :: Word64 <- liftIO randomIO
+  let listId = "datalist-" <> T.pack (show listNum)
+  res <- uiComboBoxGlobalDatalist listId iv cfg
+  uiDatalist listId options
+  pure res
+
+-- | HTML5 combo box widget that presents a dropdown but also allows work like a
+-- text input.
+uiComboBoxGlobalDatalist
+  :: ( DomBuilder t m, PostBuild t m, MonadFix m, MonadHold t m
+     , MonadIO m
+     )
+  => Text
+  -> Text
+  -> InputElementConfig er t (DomBuilderSpace m)
+  -> m (InputElement er (DomBuilderSpace m) t)
+uiComboBoxGlobalDatalist datalistId iv cfg =
+  uiInputElement $ cfg
+    & initialAttributes %~ (<> "list" =: datalistId)
+    & inputElementConfig_initialValue .~ ""
+
+-- | Renders an options list suitable for use with HTML5 combo boxes.
+uiDatalist
+  :: ( DomBuilder t m, PostBuild t m, MonadFix m, MonadHold t m
+     )
+  => Text
+  -> Dynamic t [Text]
+  -> m ()
+uiDatalist datalistId items = elAttr "datalist" ("id" =: datalistId) $ do
+  void $ simpleList items $ \v ->
+    elDynAttr "option" (("value" =:) <$> v) blank
+  pure ()
+
+
+-- | Global dom representation of the account list for use in an HTML5 combo
+-- box. This uses and is addressed by an id, so there should only ever be one of
+-- them in the DOM. Currently it's at the very top of the <body> tag.
+keyDatalist
+  :: ( DomBuilder t m, PostBuild t m, MonadFix m, MonadHold t m
+     , HasWallet ide key t
+     )
+  => ide
+  -> m ()
+keyDatalist ideL = elAttr "datalist" ("id" =: keyListId) $ do
+  let keys = Map.fromList . IntMap.toList <$> ideL ^. wallet_keys
+  listWithKey keys $ \k v -> do
+      el "option" $ dynText $ keyToText . _keyPair_publicKey . _key_pair <$> v
+  pure ()
+
+keyListId :: Text
+keyListId = "key-list"
+
 -- | Global dom representation of the account list for use in an HTML5 combo
 -- box. This uses and is addressed by an id, so there should only ever be one of
 -- them in the DOM. Currently it's at the very top of the <body> tag.
@@ -999,8 +1069,8 @@ accountDatalist
   -> m ()
 accountDatalist ideL = elAttr "datalist" ("id" =: accountListId) $ do
   let net = ideL ^. network_selectedNetwork
-      networks = ideL ^. wallet_accounts
-  mAccounts <- maybeDyn $ ffor2 net networks $ \n (AccountData m) -> case Map.lookup n m of
+      accounts = ideL ^. wallet_accounts
+  mAccounts <- maybeDyn $ ffor2 net accounts $ \n (AccountData m) -> case Map.lookup n m of
     Just accs | not (Map.null accs) -> Just accs
     _ -> Nothing
   dyn $ ffor mAccounts $ \case
@@ -1008,9 +1078,6 @@ accountDatalist ideL = elAttr "datalist" ("id" =: accountListId) $ do
     Just am -> void $ listWithKey am $ \k _ -> do
       el "option" $ text $ unAccountName k
   pure ()
-
-accountMapNames :: Map AccountName (AccountInfo Account) -> [Text]
-accountMapNames = map unAccountName . Map.keys
 
 accountListId :: Text
 accountListId = "account-list"

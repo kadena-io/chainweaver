@@ -65,6 +65,7 @@ import Frontend.UI.Dialogs.LogoutConfirmation (uiLogoutConfirmation)
 import Frontend.UI.Dialogs.NetworkEdit (uiNetworkSelectTopBar)
 import Frontend.UI.Dialogs.Signing (uiSigning)
 import Frontend.UI.IconGrid (IconGridCellConfig(..), iconGridLaunchLink)
+import Frontend.UI.KeysetWidget
 import Frontend.UI.Modal
 import Frontend.UI.Modal.Impl
 import Frontend.UI.RightPanel
@@ -106,7 +107,8 @@ app sidebarExtra fileFFI appCfg = Store.versionedFrontend (Store.versionedStorag
     route <- askRoute
     routedCfg <- subRoute $ lift . flip runRoutedT route . \case
       FrontendRoute_Accounts -> mkPageContent "accounts" $ mdo
-        (transferVisible, barCfg) <- underNetworkBar "Accounts" $ do
+        netCfg <- networkBar ideL
+        (transferVisible, barCfg) <- controlBar "Accounts" $ do
           refreshCfg <- uiWalletRefreshButton
           xferVisible <- uiTransferButton
           watchCfg <- uiWatchRequestButton ideL
@@ -114,7 +116,7 @@ app sidebarExtra fileFFI appCfg = Store.versionedFrontend (Store.versionedStorag
           pure $ (xferVisible, watchCfg <> addCfg <> refreshCfg)
         uiGenericTransfer ideL $ TransferCfg transferVisible
         accountsCfg <- uiAccountsTable ideL
-        pure $ barCfg <> accountsCfg
+        pure $ netCfg <> barCfg <> accountsCfg
       FrontendRoute_Keys -> mkPageContent "keys" $ do
         walletBarCfg <- underNetworkBar "Keys" uiGenerateKeyButton
         walletCfg <- uiWallet ideL
@@ -146,6 +148,7 @@ app sidebarExtra fileFFI appCfg = Store.versionedFrontend (Store.versionedStorag
         pure $ controlCfg <> mainCfg
 
     accountDatalist ideL
+    keyDatalist ideL
     flatten =<< tagOnPostBuild routedCfg
 
   modalCfg <- showModal ideL

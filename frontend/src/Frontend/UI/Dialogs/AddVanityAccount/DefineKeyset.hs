@@ -10,7 +10,7 @@ module Frontend.UI.Dialogs.AddVanityAccount.DefineKeyset
   ) where
 
 import           Control.Arrow                          ((&&&))
-import           Control.Lens                           ((^.),ifoldMap)
+import           Control.Lens hiding (element)
 import           Control.Error                          (hush)
 import           Data.Witherable                        (wither)
 import           Data.Text                              (Text)

@@ -104,6 +104,7 @@ in with obelisk;
         unliftio = haskellLib.dontCheck super.unliftio;
       };
       common-overlay = self: super: {
+        brittany = haskellLib.dontCheck super.brittany;
         jsaddle-warp = haskellLib.dontCheck super.jsaddle-warp; # webdriver fails to build
         reflex-dom-core = haskellLib.dontCheck super.reflex-dom-core; # webdriver fails to build
         servant-jsaddle = haskellLib.dontCheck (haskellLib.doJailbreak super.servant-jsaddle);
