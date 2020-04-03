@@ -22,11 +22,8 @@ module Frontend.UI.Widgets
   , uiTxBuilder
   , uiDisplayTxBuilderWithCopy
     -- * Values for _deploymentSettingsConfig_chainId:
-  , predefinedChainIdSelect
   , predefinedChainIdDisplayed
   , userChainIdSelect
-  , userChainIdSelectWithPreselect
-  , uiChainSelection
   , uiChainSelectionWithUpdate
 
   , mkChainTextAccounts
@@ -111,7 +108,7 @@ import           Control.Monad
 import           Control.Monad.Except
 import           Control.Monad.Trans.Maybe
 import qualified Data.Aeson.Encode.Pretty as AesonPretty
-import           Data.Either (isLeft, rights)
+import           Data.Either (isLeft)
 import           Data.Map.Strict             (Map)
 import qualified Data.Map.Strict as Map
 import qualified Data.IntMap as IntMap
@@ -141,6 +138,7 @@ import Pact.Types.Command (RequestKey)
 import qualified Pact.Types.Util as Pact
 ------------------------------------------------------------------------------
 import           Common.Wallet
+import           Frontend.Network (HasNetwork(..), NodeInfo, getChains, maxCoinPrecision)
 import           Frontend.Foundation
 import           Frontend.Ide
 import           Frontend.Network (HasNetwork(..), NodeInfo, getChains, maxCoinPrecision)
@@ -900,92 +898,49 @@ uiGasPriceInputField eReset conf = dimensionalInputFeedbackWrapper (Just "KDA") 
 
 -- | Let the user pick a chain id.
 userChainIdSelect
-  :: ( MonadWidget t m
-     , HasNetwork model t
-     )
-  => model
-  -> m ( Dropdown t (Maybe ChainId) )
-userChainIdSelect m =
-  userChainIdSelectWithPreselect m True (constDyn Nothing)
-
--- | Let the user pick a chain id but preselect a value
-userChainIdSelectWithPreselect
-  :: (MonadWidget t m, HasNetwork model t
-     )
-  => model
-  -> Bool
-  -> Dynamic t (Maybe ChainId)
-  -> m ( Dropdown t (Maybe ChainId) )
-userChainIdSelectWithPreselect m inlineLabel mChainId =
-  mkLabeledClsInput inlineLabel "Chain ID" (uiChainSelection mNodeInfo mChainId)
-  where
-    mNodeInfo = (^? to rights . _head) <$> m ^. network_selectedNodes
-
-uiChainSelection
   :: MonadWidget t m
-  => Dynamic t (Maybe NodeInfo)
-  -> Dynamic t (Maybe ChainId)
-  -> CssClass
+  => Dynamic t [ChainId]
   -> m ( Dropdown t (Maybe ChainId) )
-uiChainSelection info mPreselected cls = do
-  onPreselected <- tagOnPostBuild mPreselected
-  let
-    chains = map (id &&& _chainId) . maybe [] getChains <$> info
-    mkPlaceHolder cChains = if null cChains then "No chains available" else "Select chain"
-    mkOptions cs = Map.fromList $ (Nothing, mkPlaceHolder cs) : map (first Just) cs
-
-    staticCls = cls <> "select"
-    mkDynCls v = if isNothing v then "select_mandatory_missing" else mempty
-
-  rec
-    let allCls = renderClass <$> fmap mkDynCls (_dropdown_value ddE) <> pure staticCls
-        cfg = def
-          & dropdownConfig_attributes .~ (("class" =:) <$> allCls)
-          & dropdownConfig_setValue .~ onPreselected
-
-    ddE <- dropdown Nothing (mkOptions <$> chains) cfg
-  pure ddE
+userChainIdSelect options = do
+  mkLabeledClsInput True "Chain ID" (uiChainSelectionWithUpdate options never)
 
 uiChainSelectionWithUpdate
   :: MonadWidget t m
-  => Dynamic t (Maybe NodeInfo)
+  => Dynamic t [ChainId]
   -> Event t (Maybe ChainId)
   -> CssClass
   -> m ( Dropdown t (Maybe ChainId) )
-uiChainSelectionWithUpdate info onPreselected cls = do
+uiChainSelectionWithUpdate options onPreselected cls = do
   let
-    chains = map (id &&& _chainId) . maybe [] getChains <$> info
+    chains = map (id &&& _chainId) <$> options
     mkPlaceHolder cChains = if null cChains then "No chains available" else "Select chain"
     mkOptions cs = Map.fromList $ (Nothing, mkPlaceHolder cs) : map (first Just) cs
 
     staticCls = cls <> "select"
     mkDynCls v = if isNothing v then "select_mandatory_missing" else mempty
+  pb <- getPostBuild
+  let optionsEv = leftmost [current options <@ pb, updated options]
 
   rec
     let allCls = renderClass <$> fmap mkDynCls (_dropdown_value ddE) <> pure staticCls
         cfg = def
           & dropdownConfig_attributes .~ (("class" =:) <$> allCls)
-          & dropdownConfig_setValue .~ onPreselected
+          & dropdownConfig_setValue .~ leftmost
+            [ onPreselected
+            , fforMaybe optionsEv $ \case
+                [c] -> Just (Just c)
+                _ -> Nothing
+            ]
 
     ddE <- dropdown Nothing (mkOptions <$> chains) cfg
   pure ddE
-
-
--- | Use a predefined chain id, don't let the user pick one.
-predefinedChainIdSelect
-  :: (Reflex t, Monad m)
-  => ChainId
-  -> model
-  -> m (Dynamic t (Maybe ChainId))
-predefinedChainIdSelect chanId _ = pure . pure . pure $ chanId
 
 -- | Use a predefined immutable chain id, but display it too.
 predefinedChainIdDisplayed
   :: DomBuilder t m
   => ChainId
-  -> model
   -> m (Dynamic t (Maybe ChainId))
-predefinedChainIdDisplayed cid _ = do
+predefinedChainIdDisplayed cid = do
   _ <- mkLabeledInput True "Chain ID" uiInputElement $ def
     & initialAttributes %~ Map.insert "disabled" ""
     & inputElementConfig_initialValue .~ _chainId cid

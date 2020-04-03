@@ -110,12 +110,12 @@ uiGenericTransfer model cfg = do
     divClass "transfer-fields" $ do
       divClass "transfer__left-pane" $ do
         el "h4" $ text "From"
-        userChainIdSelect model
+        userChainIdSelect $ getChainsFromHomogenousNetwork model
         uiAccountNameInput True Nothing never noValidation
         mkLabeledInput True "Amount" (uiGasPriceInputField never) def
       divClass "transfer__right-pane" $ do
         el "h4" $ text "To"
-        userChainIdSelect model
+        userChainIdSelect $ getChainsFromHomogenousNetwork model
         uiAccountNameInput True Nothing never noValidation
         -- _ <- uiDefineKeyset model emptyKeysetPresets
         keysetWidget Nothing

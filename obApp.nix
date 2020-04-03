@@ -99,7 +99,7 @@ in with obelisk;
         x509-validation = haskellLib.dontCheck super.x509-validation;
 
         # failing
-        mono-traversable = haskellLib.dontCheck super.mono-traversable;
+        mono-traversable = haskellLib.dontCheck super.mono-traversable; #https://github.com/ghcjs/ghcjs-base/issues/128
         conduit = haskellLib.dontCheck super.conduit;
         unliftio = haskellLib.dontCheck super.unliftio;
       };
