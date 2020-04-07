@@ -16,10 +16,7 @@
 -- | Dialogs for sending money between accounts
 -- Copyright   :  (C) 2020 Kadena
 -- License     :  BSD-style (see the file LICENSE)
-module Frontend.UI.Dialogs.Send
-  ( uiSendModal
-  , uiFinishCrossChainTransferModal
-  ) where
+module Frontend.UI.Dialogs.Send where
 
 import Control.Applicative (liftA2)
 import Control.Concurrent
@@ -783,9 +780,13 @@ crossChainTransfer logL netInfo keys fromAccount toAccount fromGasPayer crossCha
           . to (uncurry toPactKeyset)
 
       -> pure $ Right ks <$ pb
-      | otherwise -> lookupKeySet logL networkName envToChain publicMeta toTxBuilder
+      | otherwise -> lookupKeySet logL networkName nodeInfos
+                       (_txBuilder_chainId toTxBuilder)
+                       (_txBuilder_accountName toTxBuilder)
     Left ka -> case _txBuilder_keyset ka of
-      Nothing -> lookupKeySet logL networkName envToChain publicMeta ka
+      Nothing -> lookupKeySet logL networkName nodeInfos
+                   (_txBuilder_chainId ka)
+                   (_txBuilder_accountName ka)
       -- If the account hasn't been created, don't try to lookup the guard. Just
       -- assume the account name _is_ the public key (since it must be a
       -- non-vanity account).
@@ -895,29 +896,30 @@ lookupKeySet
   => Logger t
   -> NetworkName
   -- ^ Which network we are on
-  -> [S.ClientEnv]
+  -> [NodeInfo]
   -- ^ Envs which point to the appropriate chain
-  -> PublicMeta
-  -- ^ Public meta to steal values from TODO this can be removed when pact
-  -- allows /local requests without running gas
-  -> TxBuilder
+  -> ChainId
+  -> AccountName
   -- ^ Account on said chain to find
   -> m (Event t (Either Text Pact.KeySet))
-lookupKeySet logL networkName envs publicMeta addr = do
+lookupKeySet logL networkName nodes chainId accountName = do
   now <- getCreationTime
   let code = T.unwords
         [ "(coin.details"
-        , tshow $ unAccountName $ _txBuilder_accountName addr
+        , tshow $ unAccountName accountName
         , ")"
         ]
-      pm = publicMeta
-        { _pmChainId = _txBuilder_chainId addr
+      pm = PublicMeta
+        { _pmChainId = chainId
         , _pmSender = "chainweaver"
         , _pmTTL = 60
         , _pmCreationTime = now
+        , _pmGasLimit = 600
+        , _pmGasPrice = 0.00001
         }
   cmd <- buildCmd Nothing networkName pm [] [] code mempty mempty
   (result, trigger) <- newTriggerEvent
+  let envs = mkClientEnvs nodes chainId
   liftJSM $ forkJSM $ do
     r <- doReqFailover envs (Api.local Api.apiV1Client cmd) >>= \case
       Left es -> packHttpErrors logL es

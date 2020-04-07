@@ -49,6 +49,8 @@ module Frontend.UI.Widgets
   , uiGroupHeader
   , uiCodeFont
   , uiInputElement
+  , uiParsingInputElement
+  , uiDecimalInputElement
   , uiTextAreaElement
   , uiCorrectingInputElement
   , uiNonnegativeRealWithPrecisionInputElement
@@ -130,6 +132,7 @@ import           Reflex.Dom.Contrib.CssClass
 import           Reflex.Dom.Core
 import           Reflex.Extended             (tagOnPostBuild)
 import           System.Random
+import           Text.Read                   (readMaybe)
 ------------------------------------------------------------------------------
 import Pact.Types.ChainId (ChainId (..))
 import Pact.Types.Runtime (GasPrice (..))
@@ -277,6 +280,25 @@ uiInputElement
   => InputElementConfig er t (DomBuilderSpace m)
   -> m (InputElement er (DomBuilderSpace m) t)
 uiInputElement cfg = inputElement $ cfg & initialAttributes %~ (addInputElementCls . addNoAutofillAttrs)
+
+-- | reflex-dom `inputElement` with chainweaver default styling:
+uiParsingInputElement
+  :: DomBuilder t m
+  => (Text -> Either String a)
+  -> InputElementConfig er t (DomBuilderSpace m)
+  -> m (Dynamic t (Either String a))
+uiParsingInputElement parser cfg = do
+  ie <- inputElement $ cfg & initialAttributes %~ (addInputElementCls . addNoAutofillAttrs)
+  return $ parser <$> value ie
+
+-- | reflex-dom `inputElement` with chainweaver default styling:
+uiDecimalInputElement
+  :: DomBuilder t m
+  => InputElementConfig er t (DomBuilderSpace m)
+  -> m (Dynamic t (Either String Decimal))
+uiDecimalInputElement cfg = do
+  let p t = maybe (Left "Not a valid number") Right $ readMaybe (T.unpack t)
+  uiParsingInputElement p cfg
 
 uiCorrectingInputElement
   :: forall t m a explanation

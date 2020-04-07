@@ -114,9 +114,9 @@ app sidebarExtra fileFFI appCfg = Store.versionedFrontend (Store.versionedStorag
           watchCfg <- uiWatchRequestButton ideL
           addCfg <- uiAddAccountButton ideL
           pure $ (xferVisible, watchCfg <> addCfg <> refreshCfg)
-        uiGenericTransfer ideL $ TransferCfg transferVisible
+        transferCfg <- uiGenericTransfer ideL $ TransferCfg transferVisible never never
         accountsCfg <- uiAccountsTable ideL
-        pure $ netCfg <> barCfg <> accountsCfg
+        pure $ netCfg <> barCfg <> accountsCfg <> transferCfg
       FrontendRoute_Keys -> mkPageContent "keys" $ do
         walletBarCfg <- underNetworkBar "Keys" uiGenerateKeyButton
         walletCfg <- uiWallet ideL

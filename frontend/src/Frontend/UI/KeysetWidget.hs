@@ -22,6 +22,7 @@ import           Reflex
 import           Reflex.Dom.Core
 
 import           Common.Wallet
+import           Frontend.UI.Dialogs.WatchRequest
 import           Frontend.UI.Widgets
 
 newtype PublicKeyText = PublicKeyText { unPublicKeyText :: Text }
@@ -72,7 +73,7 @@ pubKeyWidget iv = do
 keysetWidget
   :: (MonadWidget t m)
   => Maybe UserKeyset
-  -> m (Dynamic t UserKeyset)
+  -> m (Dynamic t (Maybe UserKeyset))
 keysetWidget iv = do
   let
     selectMsgKey = PublicKeyText ""
@@ -80,8 +81,13 @@ keysetWidget iv = do
 
     doAddDel yesno = fmap (yesno selectMsgKey) . updated
 
+    prettyPred "keys-all" = "All keys"
+    prettyPred "keys-any" = "Any single key"
+    prettyPred "keys-2" = "Any two keys"
+    prettyPred p = p
+
     allPredSelectMap nkeys = ffor nkeys $ \nks -> Map.fromList
-      $ fmap (id &&& id) (dropkeys2 nks predefinedPreds)
+      $ fmap (id &&& prettyPred) (dropkeys2 nks predefinedPreds)
       where
         dropkeys2 n xs | n >= 3 = xs
                        | otherwise = filter (/= keys2Predicate) xs
@@ -95,11 +101,14 @@ keysetWidget iv = do
 
   let keys = join $ distributeMapOverDynPure . Map.fromList . IntMap.toList <$> ddKeys
 
-  predicateE <- mkLabeledClsInput False "Predicate (Keys Required to Sign for Account)" $ const
+  predicateE <- mkLabeledClsInput False "Keys Required to Sign for Account (Predicate)" $ const
     $ uiDropdown defaultPredicate (allPredSelectMap $ fmap Map.size keys) $ def
     & dropdownConfig_attributes .~ constDyn ("class" =: "labeled-input__input")
     -- & dropdownConfig_setValue .~ _definedKeyset_predicateChange presets
 
-  return $ UserKeyset
-    <$> (Set.fromList . catMaybes . map (textToKey . unPublicKeyText ) . Map.elems <$> keys)
-    <*> (KeysetPred <$> value predicateE)
+  return $ do
+    ks <- Set.fromList . catMaybes . map textToKey . filter (not . T.null) . map unPublicKeyText . Map.elems <$> keys
+    pred <- KeysetPred <$> value predicateE
+    if Set.null ks
+      then pure Nothing
+      else pure $ Just $ UserKeyset ks pred

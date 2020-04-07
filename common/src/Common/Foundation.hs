@@ -36,6 +36,8 @@ module Common.Foundation
   , someTag
   , upsert
   , foldMapM
+  , (<$$>)
+  , (<$$$>)
     -- * Re-exports
   , module Data.Bool
   , module Data.Maybe
@@ -77,6 +79,14 @@ import qualified Pact.Types.Term                       as Pact
 import qualified Pact.Types.Exp                        as Pact
 import           Text.Read                             as T
 
+
+infixl 4 <$$>
+(<$$>) :: (Functor f, Functor g) => (a -> b) -> f (g a) -> f (g b)
+f <$$> a = fmap f <$> a
+
+infixl 4 <$$$>
+(<$$$>) :: (Functor f, Functor g, Functor h) => (a -> b) -> f (g (h a)) -> f (g (h b))
+f <$$$> a = fmap f <$$> a
 
 -- | Aeson encoding options for compact encoding.
 --
