@@ -86,7 +86,7 @@ uiAddAccountDialog model _onCloseExternal = mdo
     dialogSectionHeading mempty "Notice"
     divClass "group" $ text "Add an Account here to display its status. If the Account does not yet exist, then you will be able to create and control the Account on the blockchain."
     dialogSectionHeading mempty "Add Account"
-    divClass "group" $ fmap snd $ uiAccountNameInput True Nothing never $ checkAccountNameAvailability
+    divClass "group" $ fmap snd $ uiAccountNameInput "Account Name" True Nothing never $ checkAccountNameAvailability
       <$> (model ^. network_selectedNetwork)
       <*> (model ^. wallet_accounts)
   modalFooter $ do

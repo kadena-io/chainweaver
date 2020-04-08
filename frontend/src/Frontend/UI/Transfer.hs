@@ -20,70 +20,38 @@ module Frontend.UI.Transfer where
 
 import Control.Error hiding (bool)
 import Control.Lens
-import Control.Monad.Reader (ask)
 import Control.Monad.State.Strict
-import Data.Aeson (FromJSON, ToJSON)
 import Data.Decimal
 import Data.Default (Default (..))
-import Data.Some (Some(..))
-import Data.String (IsString)
 import Data.Text (Text)
-import GHCJS.DOM.EventM (on)
-import GHCJS.DOM.GlobalEventHandlers (keyPress)
-import GHCJS.DOM.KeyboardEvent (getCtrlKey, getKey, getKeyCode, getMetaKey)
-import GHCJS.DOM.Types (HTMLElement (..), unElement)
 import Kadena.SigningApi (AccountName(..))
-import Language.Javascript.JSaddle (liftJSM)
-import Obelisk.Generated.Static
 import Obelisk.Route (R)
 import Obelisk.Route.Frontend
-import Pact.Repl
-import Pact.Repl.Types
-import Pact.Server.ApiClient (HasTransactionLogger)
-import Pact.Types.Lang
-import qualified Pact.Types.Term as Pact
+import qualified Pact.Types.Lang as Pact
 import Reflex
-import Reflex.Dom.ACE.Extended hiding (Annotation (..))
-import Reflex.Dom.Contrib.Vanishing
 import Reflex.Dom.Core
 import qualified Data.Map as Map
-import qualified Data.Text as T
+import qualified Data.Set as S
+import qualified Data.Text.Encoding as T
 
 import Common.Foundation
-import Common.OAuth (OAuthProvider (OAuthProvider_GitHub))
 import Common.Route
-import Frontend.AppCfg
+import Common.Wallet
 import Frontend.Crypto.Class
-import Frontend.Editor
+import Frontend.Crypto.Ed25519
 import Frontend.Foundation
-import Frontend.GistStore
-import Frontend.Ide
 import Frontend.JsonData
 import Frontend.Log
-import Frontend.OAuth
 import Frontend.Network
-import Frontend.Repl
 import Frontend.Storage
-import qualified Frontend.VersionedStore as Store
 import Frontend.UI.Button
-import Frontend.UI.Dialogs.AddVanityAccount (uiAddAccountButton)
-import Frontend.UI.Dialogs.AddVanityAccount.DefineKeyset
-import Frontend.UI.Dialogs.CreateGist (uiCreateGist)
-import Frontend.UI.Dialogs.CreatedGist (uiCreatedGist)
-import Frontend.UI.Dialogs.DeployConfirmation (uiDeployConfirmation)
-import Frontend.UI.Dialogs.LogoutConfirmation (uiLogoutConfirmation)
+import Frontend.UI.DeploymentSettings
 import Frontend.UI.Dialogs.Send
-import Frontend.UI.Dialogs.Signing (uiSigning)
-import Frontend.UI.Dialogs.WatchRequest
-import Frontend.UI.IconGrid (IconGridCellConfig(..), iconGridLaunchLink)
 import Frontend.UI.KeysetWidget
 import Frontend.UI.Modal
-import Frontend.UI.Modal.Impl
-import Frontend.UI.RightPanel
-import Frontend.UI.Settings
 import Frontend.UI.TabBar
-import Frontend.UI.Wallet
 import Frontend.UI.Widgets
+import Frontend.UI.Widgets.Helpers
 import Frontend.Wallet
 
 data TransferCfg t = TransferCfg
@@ -111,12 +79,12 @@ uiChainAccount
   -> m (Dynamic t (Maybe ChainAccount))
 uiChainAccount model = do
   cd <- userChainIdSelect $ getChainsFromHomogenousNetwork model
-  (_,a) <- uiAccountNameInput True Nothing never noValidation
+  (_,a) <- uiAccountNameInput "Account Name" True Nothing never noValidation
   return $ runMaybeT $ ChainAccount <$> MaybeT (value cd) <*> MaybeT (unAccountName <$$> a)
 
 data TransferInfo = TransferInfo
   { _ti_fromAccount :: ChainAccount
-  , _ti_amount :: Decimal -- Maybe use ParsedDecimal
+  , _ti_amount :: Decimal -- Possibly use ParsedDecimal
   , _ti_toAccount :: ChainAccount
   , _ti_toKeyset :: Maybe UserKeyset
   } deriving (Eq,Ord,Show)
@@ -127,7 +95,6 @@ uiGenericTransfer
      , RouteToUrl (R FrontendRoute) m, SetRoute t (R FrontendRoute) m
      , HasConfigs m
      , HasStorage m, HasStorage (Performable m)
-     , HasTransactionLogger m
      , HasLogger model t
      , HasCrypto key (Performable m)
      , HasCrypto key m
@@ -145,8 +112,6 @@ uiGenericTransfer
   -> TransferCfg t
   -> m mConf
 uiGenericTransfer model cfg = do
-  --let visibility = displayNoneWhen . not <$> _transferCfg_isVisible cfg
-  --vanishingAttr "main" ("class" =: "main transfer__pane") visibility $ do
   let attrs = do
         visible <- _transferCfg_isVisible cfg
         pure $ if visible
@@ -156,8 +121,12 @@ uiGenericTransfer model cfg = do
     transferInfo <- divClass "transfer-fields" $ do
       (fromAcct,amount) <- divClass "transfer__left-pane" $ do
         el "h4" $ text "From"
-        fca <- uiChainAccount model
-        amt <- mkLabeledInput True "Amount" uiDecimalInputElement def
+        --fca <- uiChainAccount model
+        cd <- userChainIdSelect $ getChainsFromHomogenousNetwork model
+        (_,a) <- uiAccountNameInput "Account Name" True Nothing never noValidation
+        let fca = runMaybeT $ ChainAccount <$> MaybeT (value cd) <*> MaybeT (unAccountName <$$> a)
+
+        amt <- amountButton
         return (fca,amt)
       (toAcct,ks) <- divClass "transfer__right-pane" $ do
         el "h4" $ text "To"
@@ -177,10 +146,13 @@ uiGenericTransfer model cfg = do
         mkModal Nothing _ = Nothing
     pure $ mempty & modalCfg_setModal .~ (attachWith mkModal (current transferInfo) netInfo)
 
+amountButton :: DomBuilder t m => m (Dynamic t (Either String Decimal))
+amountButton =
+ mkLabeledInput True "Amount" uiDecimalInputElement def
+
 lookupAndTransfer
   :: ( SendConstraints model mConf key t m
      , Flattenable mConf t
-     , HasTransactionLogger m
      )
   => model
   -> TransferInfo
@@ -193,10 +165,13 @@ lookupAndTransfer model ti netInfo onCloseExternal = do
         fromChain = _ca_chain $ _ti_fromAccount ti
     eks <- lookupKeySet (model ^. logger) (_sharedNetInfo_network netInfo)
                  nodes fromChain (AccountName fromAccount)
---    let eWrapper (Left m) = text m
---        eWrapper (Right ks) = void $ uiTransferModal model ti ks onCloseExternal
---    networkHold (text "Querying sender keyset...") (eWrapper <$> eks)
-    return (mempty, never)
+    let eWrapper (Left m) = do
+          text m
+          return (mempty, never)
+        eWrapper (Right ks) = uiTransferModal model ti ks onCloseExternal
+    (conf, closes) <- splitDynPure <$> networkHold (text "Querying sender keyset..." >> return (mempty, never)) (eWrapper <$> eks)
+    mConf <- flatten =<< tagOnPostBuild conf
+    return (mConf, switch $ current closes)
 
 uiTransferButton
   :: ( DomBuilder t m, PostBuild t m, MonadHold t m, MonadFix m)
@@ -212,7 +187,6 @@ uiTransferButton = mdo
 uiTransferModal
   :: ( SendConstraints model mConf key t m
      , Flattenable mConf t
-     , HasTransactionLogger m
      )
   => model
   -> TransferInfo
@@ -221,20 +195,40 @@ uiTransferModal
   -> m (mConf, Event t ())
 uiTransferModal model ti ks _onCloseExternal = do
 
-  (conf, closes) <- fmap splitDynPure $ workflow $ signAndTransfer model ti
+  (conf, closes) <- fmap splitDynPure $ workflow $ signAndTransfer model ti ks
 
   mConf <- flatten =<< tagOnPostBuild conf
   let close = switch $ current closes
   pure (mConf, close)
 
+data ExternalSignatory = Signature | PrivateKey
+  deriving (Eq,Ord,Show,Read,Enum,Bounded)
+
+uiSigRadio
+  :: (MonadWidget t m)
+  => m (Dynamic t ExternalSignatory)
+uiSigRadio = mdo
+  dopt <- holdDyn Signature onRadioChange
+  let
+    mkLbl lbl cls =
+      fst <$> elClass' "span" (renderClass cls) (text lbl)
+
+    mkRadioOption lbl opt = divClass "create-account__gas-payer" $
+      uiLabeledRadioView (mkLbl lbl) dopt opt
+
+  onSig <- mkRadioOption "Signature" Signature
+  onKey <- mkRadioOption "Private Key" PrivateKey
+  let onRadioChange = leftmost [onSig, onKey]
+  return dopt
+
 signAndTransfer
   :: ( SendConstraints model mConf key t m
-     , HasTransactionLogger m
      )
   => model
   -> TransferInfo
+  -> Pact.KeySet
   -> Workflow t m (mConf, Event t ())
-signAndTransfer model ti = Workflow $ do
+signAndTransfer model ti ks = Workflow $ do
     close <- modalHeader $ text "Sign Transfer"
     rec
       (currentTab, _done) <- transferTabs $ leftmost [prevTab, fmapMaybe id nextTab]
@@ -246,31 +240,101 @@ signAndTransfer model ti = Workflow $ do
            ]
          )
   where
-    mainSection currentTab = do
-      text "Main Section"
-      return mempty
+    mainSection currentTab = elClass "div" "modal__main" $ do
+      mconf <- tabPane mempty currentTab TransferTab_Metadata $ transferMetadata model ti
+      tabPane mempty currentTab TransferTab_Signatures $ transferSigs ks
+      return mconf
     footerSection currentTab = modalFooter $ do
       let (lbl, fanTag) = splitDynPure $ ffor currentTab $ \case
-            TransferTab_Signatures -> ("Cancel", Left ())
-            TransferTab_Metadata -> ("Back", Right TransferTab_Signatures)
+            TransferTab_Metadata -> ("Cancel", Left ())
+            TransferTab_Signatures -> ("Back", Right TransferTab_Signatures)
 
       ev <- cancelButton def lbl
       let (cancel, back) = fanEither $ current fanTag <@ ev
           (name, disabled) = splitDynPure $ ffor currentTab $ \case
-            TransferTab_Signatures -> ("Next", constDyn False) -- TODO Properly enable/disable Next button
-            TransferTab_Metadata -> ("Preview", constDyn False)
+            TransferTab_Metadata -> ("Next", constDyn False) -- TODO Properly enable/disable Next button
+            TransferTab_Signatures -> ("Preview", constDyn False)
           cfg = def
             & uiButtonCfg_class <>~ "button_type_confirm"
             & uiButtonCfg_disabled .~ join disabled
       next <- uiButtonDyn cfg $ dynText name
       let nextTab = ffor (current currentTab <@ next) $ \case
-            TransferTab_Signatures -> Just TransferTab_Metadata
-            TransferTab_Metadata -> Nothing
+            TransferTab_Metadata -> Just TransferTab_Signatures
+            TransferTab_Signatures -> Nothing
       pure (cancel, back, nextTab)
 
+transferMetadata
+  :: (MonadWidget t m, HasNetwork model t, HasNetworkCfg mConf t, Monoid mConf)
+  => model
+  -> TransferInfo
+  -> m mConf
+transferMetadata model ti = do
+  (_,gp) <- uiAccountNameInput "Gas Paying Account" True (Just $ AccountName $ _ca_account $ _ti_fromAccount ti) never noValidation
+  dialogSectionHeading mempty "Transaction Settings"
+  (conf, _, _, _) <- divClass "group" $ uiMetaData model Nothing Nothing
+  -- TODO Add creationTime to uiMetaData dialog and default it to current time - 60s
+  return conf
+
+transferSigs
+  :: (MonadWidget t m)
+  => Pact.KeySet
+  -> m ()
+transferSigs ks = do
+  divClass "group" $ do
+    mkLabeledInput True "Request Key" uiInputElement $ def
+      & initialAttributes .~ "disabled" =: "disabled"
+      & inputElementConfig_initialValue .~ "aZVR2QgI2UAoPtk6q4w4HmaiC4E7CyLP93zjb0V0gG4="
+
+  dialogSectionHeading mempty "Signatures"
+  let pkWidget = text . T.decodeUtf8 . Pact._pubKey
+  let externalSig pk = do
+        pkWidget pk
+        let optMap = Map.fromList $ map (\a -> (a, tshow a)) [Signature, PrivateKey]
+        uiDropdown Signature (constDyn optMap) def
+        uiPrivateKeyInput (fromPactPublicKey pk) Nothing
+        pure ()
+      internalSig pk = do
+        _ <- fmap value $ uiCheckbox "signing-ui-signers__signer" False def $
+          pkWidget pk
+        pure ()
+  divClass "group signing-ui-signers" $ do
+    forM_ (S.toList $ Pact._ksKeys ks) $ \pk -> do
+      externalSig pk
+    return ()
+
+uiPrivateKeyInput
+  :: MonadWidget t m
+  => PublicKey
+  -> Maybe Text
+  -> m (Dynamic t (Maybe PrivateKey))
+uiPrivateKeyInput pubKey iv = do
+  let
+    inp cfg = do
+      ie <- mkLabeledInput False mempty uiInputElement cfg
+      pure (ie
+           , ( parsePrivateKey pubKey <$> value ie
+             , parsePrivateKey pubKey <$> _inputElement_input ie
+             )
+           )
+
+    inputCfg = def
+      & initialAttributes .~ ("placeholder" =: "Private key")
+      & inputElementConfig_initialValue .~ fold iv
+
+    showPopover (_, (_, onInput)) = pure $
+      either PopoverState_Error (const PopoverState_Disabled) <$> onInput
+
+  (inputE, (dE, onE)) <- uiInputWithPopover
+    inp
+    (_inputElement_raw . fst)
+    showPopover
+    inputCfg
+
+  pure $ (join . hush) <$> dE
+
 data TransferTab
-  = TransferTab_Signatures
-  | TransferTab_Metadata
+  = TransferTab_Metadata
+  | TransferTab_Signatures
   deriving (Eq, Ord, Show, Enum, Bounded)
 
 displayTransferTab :: DomBuilder t m => TransferTab -> m ()
@@ -287,12 +351,12 @@ transferTabs tabEv = do
         Nothing -> (Just t0, Just ())
         Just t -> (Just t, Nothing)
   rec
-    (curSelection, done) <- mapAccumMaybeDyn f TransferTab_Signatures $ leftmost
+    (curSelection, done) <- mapAccumMaybeDyn f TransferTab_Metadata $ leftmost
       [ const . Just <$> onTabClick
       , const . Just <$> tabEv
       ]
     (TabBar onTabClick) <- makeTabBar $ TabBarCfg
-      { _tabBarCfg_tabs = [TransferTab_Signatures, TransferTab_Metadata]
+      { _tabBarCfg_tabs = [TransferTab_Metadata, TransferTab_Signatures]
       , _tabBarCfg_mkLabel = \_ -> displayTransferTab
       , _tabBarCfg_selectedTab = Just <$> curSelection
       , _tabBarCfg_classes = mempty

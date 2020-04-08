@@ -161,7 +161,7 @@ uiExplodedTxBuilder model fromName fromChain mUcct mInitToAddress = do
       <*> pure (fmap (toPactKeyset $ intKeys <> extKeys) mPredicate)
 
     explodedTxB onTxAccountName onTxChainId keysetsPresets = do
-      (onNameInput, dname) <- uiAccountNameInput False Nothing onTxAccountName noValidation
+      (onNameInput, dname) <- uiAccountNameInput "Account Name" False Nothing onTxAccountName noValidation
 
       chainE <- uiExplodedChainSelect model
         mUcct

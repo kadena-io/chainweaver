@@ -1067,14 +1067,15 @@ uiAccountNameInput
      , PerformEvent t m
      , MonadJSM (Performable m)
      )
-  => Bool
+  => Text
+  -> Bool
   -> Maybe AccountName
   -> Event t (Maybe AccountName)
   -> Dynamic t (AccountName -> Either Text AccountName)
   -> m ( Event t (Maybe AccountName)
        , Dynamic t (Maybe AccountName)
        )
-uiAccountNameInput inlineLabel initval onSetName validateName = do
+uiAccountNameInput label inlineLabel initval onSetName validateName = do
   let
     mkMsg True (Left e) = PopoverState_Error e
     mkMsg _    _ = PopoverState_Disabled
@@ -1089,7 +1090,7 @@ uiAccountNameInput inlineLabel initval onSetName validateName = do
       inp <- uiInputElement $ cfg & initialAttributes %~ (<> "list" =: accountListId)
       pure (inp, _inputElement_raw inp)
 
-  (inputE, _) <- mkLabeledInput inlineLabel "Account Name" (uiInputWithPopover uiNameInput snd showPopover)
+  (inputE, _) <- mkLabeledInput inlineLabel label (uiInputWithPopover uiNameInput snd showPopover)
     $ def
     & inputElementConfig_initialValue .~ fold (fmap unAccountName initval)
     & inputElementConfig_setValue .~ fmapMaybe (fmap unAccountName) onSetName
