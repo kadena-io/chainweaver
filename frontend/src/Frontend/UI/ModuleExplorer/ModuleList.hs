@@ -54,8 +54,8 @@ uiModuleList
   -> m (Event t ModuleRef)
 uiModuleList modules = do
   let
-    showModules :: ModuleRef -> m ()
-    showModules c = do
+    showModule :: ModuleRef -> m ()
+    showModule c = do
       divClass "table__text-cell table__cell_size_main" $
         text $ textModuleRefName c
       case _moduleRef_source c of
@@ -65,7 +65,7 @@ uiModuleList modules = do
         _ ->
           blank
 
-  listEv <- networkView $ viewList showModules <$> modules
+  listEv <- networkView $ viewList showModule <$> modules
   switchHold never listEv
 
 

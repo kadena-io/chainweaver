@@ -113,7 +113,7 @@ import           Pact.Server.ApiClient
 import           Pact.Types.API
 import           Pact.Types.Capability
 import           Pact.Types.Command
-import           Pact.Types.Runtime                (PactError (..), GasLimit (..), GasPrice (..), Gas (..))
+import           Pact.Types.Runtime                (PactError (..), GasLimit (..), GasPrice (..), Gas (..), ModuleName)
 import           Pact.Types.ChainMeta              (PublicMeta (..), TTLSeconds (..), TxCreationTime (..))
 import qualified Pact.Types.ChainMeta              as Pact
 import           Pact.Types.ChainId                (NetworkId (..))
@@ -128,6 +128,7 @@ import qualified Servant.Client.Internal.JSaddleXhrClient as S
 import           Pact.Types.Crypto                 (PPKScheme (..))
 #endif
 
+import           Common.Modules
 import           Common.Network
 import           Common.Wallet
 import           Frontend.Crypto.Class
@@ -236,7 +237,7 @@ data Network t = Network
   , _network_selectedNodes   :: Dynamic t [Either Text NodeInfo]
     -- ^ Node information for the nodes in the currently selected network.
     --  The first `Right` `NodeInfo` will be used for deployments and such.
-  , _network_modules         :: Dynamic t (Map ChainId [Text])
+  , _network_modules         :: Dynamic t (Map ChainId [ModuleName])
    -- ^ Available modules on all chains.
   , _network_deployed        :: Event t ()
    -- ^ Event gets triggered whenever some code got deployed sucessfully.
@@ -616,7 +617,7 @@ loadModules
   => Logger t
   -> Network t
   -> Event t ()
-  -> m (Dynamic t (Map ChainId [Text]))
+  -> m (Dynamic t (Map ChainId [ModuleName]))
 loadModules logL networkL onRefresh = do
 
       let nodeInfos = rights <$> (networkL ^. network_selectedNodes)
@@ -640,7 +641,7 @@ loadModules logL networkL onRefresh = do
         onErrs = ffilter (not . null) $ fmap lefts onByChainId
         onResps = fmap rights onByChainId
 
-        onModules :: Event t [(ChainId, [Text])]
+        onModules :: Event t [(ChainId, [ModuleName])]
         onModules =  map (second getModuleList) <$> onResps
 
       performEvent_ $ traverse_ (putLog logL LevelWarn . renderErrs . toList) <$> onErrs
@@ -677,14 +678,14 @@ loadModules logL networkL onRefresh = do
         . map prettyPrintNetworkError
 
 
-      getModuleList :: PactValue -> [Text]
+      getModuleList :: PactValue -> [ModuleName]
       getModuleList = \case
         PList terms -> mapMaybe getStringLit $ toList terms
         _               -> []
 
-      getStringLit :: PactValue -> Maybe Text
+      getStringLit :: PactValue -> Maybe ModuleName
       getStringLit = \case
-        PLiteral (LString v) -> Just v
+        PLiteral (LString v) -> hush $ parseModuleName v
         _         -> Nothing
 
 

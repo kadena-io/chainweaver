@@ -67,7 +67,7 @@ import           Pact.Repl
 import           Pact.Repl.Types
 import           Pact.Types.Exp
 import           Pact.Types.Info
-import           Pact.Types.Term            (ModuleName (..), Name, NamespaceName (..), Term (..), mnNamespace)
+import           Pact.Types.Term            (ModuleName (..), Name, Term (..), mnNamespace)
 ------------------------------------------------------------------------------
 import           Frontend.Network
 import           Frontend.Foundation
@@ -75,7 +75,8 @@ import           Frontend.JsonData
 import           Frontend.Messages
 import           Frontend.ModuleExplorer.Example (exampleNamespacesFile)
 import           Frontend.Wallet
-import Common.Api (getVerificationServerUrl)
+import           Common.Api (getVerificationServerUrl)
+import           Common.Modules
 ------------------------------------------------------------------------------
 
 -- | Output of Repl to be shown to the user.
@@ -338,9 +339,8 @@ runVerify impl onMod =
       void $ pactEvalRepl' $ buildTypecheck m
       pactEvalRepl' $ buildVerify m
 
-    buildVerify m = "(verify " <> qualifiedName m <> ")"
-    buildTypecheck m = "(typecheck " <> qualifiedName m <> ")"
-    qualifiedName (ModuleName mn nn) = "\"" <> maybe mn (\(NamespaceName nn') -> nn' <> "." <> mn) nn <> "\""
+    buildVerify m = "(verify " <> quotedFullName m <> ")"
+    buildTypecheck m = "(typecheck " <> quotedFullName m <> ")"
 
 -- | Run code in a transaction on the REPL.
 runTransaction
