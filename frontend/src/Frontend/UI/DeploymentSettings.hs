@@ -1047,14 +1047,23 @@ uiDeployPreview model settings signers gasLimit ttl code lastPublicMeta capabili
         uiAccountFixed sender
 
       let accountsToTrack = getAccounts networkName accountData
-          localReq = case mWrappedCmd of
-            Nothing -> []
-            Just (Left _e) -> []
-            Just (Right cmd0) -> pure $ NetworkRequest
-              { _networkRequest_cmd = cmd0
-              , _networkRequest_chainRef = ChainRef Nothing chainId
-              , _networkRequest_endpoint = Endpoint_Local
-              }
+          localReq =
+            if isChainwebNode then
+              case mWrappedCmd of
+                Nothing -> []
+                Just (Left _e) -> []
+                Just (Right cmd0) -> pure $ NetworkRequest
+                  { _networkRequest_cmd = cmd0
+                  , _networkRequest_chainRef = ChainRef Nothing chainId
+                  , _networkRequest_endpoint = Endpoint_Local
+                  }
+            else
+              pure $ NetworkRequest
+                { _networkRequest_cmd = cmd
+                , _networkRequest_chainRef = ChainRef Nothing chainId
+                , _networkRequest_endpoint = Endpoint_Local
+                }
+
           parseChainwebWrapped =
             if isChainwebNode then
               parseWrappedBalanceChecks
