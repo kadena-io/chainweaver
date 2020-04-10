@@ -50,6 +50,7 @@ module Frontend.Network
   , performLocalReadCustom
   , performLocalRead
   , doReqFailover
+  , doReqFailoverTagged
   , mkClientEnvs
     -- * Utilities
   , parseNetworkErrorResult
@@ -818,10 +819,14 @@ mkClientEnvs nodeInfos chain = fforMaybe nodeInfos $ \nodeInfo ->
 
 -- | Perform some servant request by stepping through the given envs
 doReqFailover :: MonadJSM m => [S.ClientEnv] -> S.ClientM a -> m (Either [S.ClientError] a)
-doReqFailover [] _ = pure $ Left []
-doReqFailover (c:cs) request = liftJSM $ S.runClientM request c >>= \case
-  Left e -> BiF.first (e:) <$> doReqFailover cs request
-  Right r -> pure $ Right r
+doReqFailover envs = fmap (fmap snd) . doReqFailoverTagged (fmap ((),) envs)
+
+-- | Perform some servant request by stepping through the given envs
+doReqFailoverTagged :: MonadJSM m => [(tag, S.ClientEnv)] -> S.ClientM a -> m (Either [S.ClientError] (tag, a))
+doReqFailoverTagged [] _ = pure $ Left []
+doReqFailoverTagged ((t, c):cs) request = liftJSM $ S.runClientM request c >>= \case
+  Left e -> BiF.first (e:) <$> doReqFailoverTagged cs request
+  Right r -> pure $ Right (t, r)
 
 
 -- | Send a transaction via the /send endpoint.

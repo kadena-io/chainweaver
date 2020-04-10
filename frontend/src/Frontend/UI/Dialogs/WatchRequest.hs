@@ -73,11 +73,11 @@ inputRequestKey model _ = Workflow $ do
     checkTxBtnLbl = "Check TX Status"
     nodes = fmap rights $ model ^. network_selectedNodes
     noResponseMsg = "Request Key not found"
-    showPollResponse (Pact.PollResponses pollMap) = case HM.elems pollMap ^? _head of
+    showPollResponse (chainId, Pact.PollResponses pollMap) = case HM.elems pollMap ^? _head of
       Nothing -> noResponseMsg
       Just commandResult -> case commandResult ^. Pact.crResult of
         Pact.PactResult (Left err) -> "Error: " <> Pact.tShow err
-        Pact.PactResult (Right a) -> Pact.renderCompactText a
+        Pact.PactResult (Right a) -> "Chain " <> _chainId chainId <> ": " <> Pact.renderCompactText a
 
   close <- modalHeader $ text "Check TX Status"
 
@@ -133,7 +133,7 @@ pollRequestKey
   :: MonadJSM m
   => [NodeInfo]
   -> Pact.RequestKey
-  -> (Maybe Pact.PollResponses -> IO ())
+  -> (Maybe (ChainId, Pact.PollResponses) -> IO ())
   -> m ()
 pollRequestKey nodes rKey cb = do
   responseReceived <- foldM
@@ -144,10 +144,10 @@ pollRequestKey nodes rKey cb = do
   unless responseReceived $
     liftIO $ cb Nothing
   where
-    doPoll cEnvs = doReqFailover cEnvs (Api.poll Api.apiV1Client $ Pact.Poll (rKey :| [])) >>= \case
+    doPoll cEnvs = doReqFailoverTagged cEnvs (Api.poll Api.apiV1Client $ Pact.Poll (rKey :| [])) >>= \case
       Left _ -> pure False
       Right r -> True <$ liftIO (cb $ Just r)
 
     buildEnvAndPoll node = do
       envs <- buildNodeChainClientEnvs node
-      doPoll $ fmap snd envs
+      doPoll envs
