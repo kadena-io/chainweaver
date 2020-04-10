@@ -21,7 +21,7 @@ module Frontend.UI.Dialogs.WatchRequest
 
 import Control.Lens hiding (failover)
 import Control.Error (hush)
-import Control.Monad (foldM, unless)
+import Control.Monad (foldM)
 
 import Data.List.NonEmpty (NonEmpty ((:|)))
 
@@ -136,18 +136,12 @@ pollRequestKey
   -> (Maybe (ChainId, Pact.PollResponses) -> IO ())
   -> m ()
 pollRequestKey nodes rKey cb = do
-  responseReceived <- foldM
-    (\respReceived node -> if respReceived then pure respReceived else buildEnvAndPoll node)
-    False
+  liftIO . cb =<< foldM
+    (\respReceived node -> case respReceived of
+        Nothing -> buildNodeChainClientEnvs node >>= doPoll
+        Just r -> pure (Just r)
+    )
+    Nothing
     nodes
-
-  unless responseReceived $
-    liftIO $ cb Nothing
   where
-    doPoll cEnvs = doReqFailoverTagged cEnvs (Api.poll Api.apiV1Client $ Pact.Poll (rKey :| [])) >>= \case
-      Left _ -> pure False
-      Right r -> True <$ liftIO (cb $ Just r)
-
-    buildEnvAndPoll node = do
-      envs <- buildNodeChainClientEnvs node
-      doPoll envs
+    doPoll cEnvs = doReqFailoverTagged cEnvs (Api.poll Api.apiV1Client $ Pact.Poll (rKey :| [])) <&> preview _Right
