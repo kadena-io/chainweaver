@@ -73,10 +73,10 @@ import Frontend.UI.Modal.Impl (showModalBrutal)
 import Frontend.UI.Dialogs.LogoutConfirmation (uiIdeLogoutConfirmation)
 
 import Desktop.Setup
-import Desktop.SigningApi
 import Desktop.ImportExport
 import Desktop.Util
 import Desktop.Storage.File
+import Desktop.WalletApi
 
 import Pact.Server.ApiClient (WalletEvent (..), commandLogFilename, _transactionLogger_walletEvent, _transactionLogger_rotateLogFile)
 

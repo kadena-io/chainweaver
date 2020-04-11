@@ -1,6 +1,6 @@
 {-# LANGUAGE FlexibleContexts #-}
 
-module Desktop.SigningApi where
+module Desktop.WalletApi where
 
 import Control.Concurrent
 import qualified Control.Concurrent.Async as Async

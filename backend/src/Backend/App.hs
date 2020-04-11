@@ -39,8 +39,8 @@ import Frontend
 import Frontend.AppCfg
 import Frontend.ModuleExplorer.Impl (loadEditorFromLocalStorage)
 import Desktop.Frontend
-import Desktop.SigningApi
 import Desktop.Util
+import Desktop.WalletApi
 
 data AppFFI = AppFFI
   { _appFFI_activateWindow :: IO ()
