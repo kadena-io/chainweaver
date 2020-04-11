@@ -130,7 +130,7 @@ moduleDetails m (selectedRef, selected) = do
          else Nothing
 
     moduleTitle = elClass "h2" "heading heading_type_h2" $ do
-      text $ textModuleName $ _moduleRef_name selectedRef
+      text $ textModuleRefName selectedRef
       elClass "div" "heading__type-details" $ do
         text $ textModuleRefSource (isModule selected) selectedRef
 

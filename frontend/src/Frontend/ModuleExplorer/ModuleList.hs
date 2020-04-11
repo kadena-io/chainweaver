@@ -123,7 +123,7 @@ makeModuleList m cfg = mfix $ \mList -> do
 
       -- Modules after network filter and search filter applied:
       searchModules :: Dynamic t [DeployedModuleRef]
-      searchModules = L.sortBy (compareBy (textModuleName . _moduleRef_name)) <$> do
+      searchModules = L.sortBy (compareBy textModuleRefName) <$> do
         needle <- T.toCaseFold <$> nameFilter
         cModules <- chainModules
         let getCName = T.toCaseFold . textModuleRefName
@@ -157,16 +157,9 @@ makeModuleList m cfg = mfix $ \mList -> do
 
 -- | Get the available module map as proper `DeployedModuleRef`.
 getModuleRefs
-  :: Map ChainId [Text]
+  :: Map ChainId [ModuleName]
   -> Map ChainId [DeployedModuleRef]
-getModuleRefs = Map.mapWithKey buildModRefs
-  where
-    buildModRefs :: ChainId -> [Text] -> [DeployedModuleRef]
-    buildModRefs c = map (buildModRef c)
-
-    buildModRef :: ChainId -> Text -> DeployedModuleRef
-    buildModRef c = ModuleRef (ChainRef Nothing c) . flip ModuleName Nothing
-
+getModuleRefs = imap $ \c -> fmap (ModuleRef $ ChainRef Nothing c)
 
 -- Instances:
 

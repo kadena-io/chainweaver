@@ -31,14 +31,12 @@ module Frontend.ModuleExplorer.File
     -- ** Retrieving information about `FileRef`:
   , fileRefName
   , textFileType
-   -- * A PactFile
-  , PactFile
   -- * Storing and Retrieval
   , fetchFile
   {- , fetchFileCached -}
   -- * Retrieve contents:
-  , fileModules
-  , fileModulesDiscardingErrors
+  , codeModules
+  , codeModulesDiscardingErrors
   ) where
 
 ------------------------------------------------------------------------------
@@ -119,18 +117,6 @@ instance IsRefPath FileName where
 
   parseRef = FileName <$> MP.anySingle
 
-
-{- -- | A selected file. -}
-{- data PactFile = PactFile -}
-{-   { _pactFile_content :: Code -- * Full content of the file, no matter what. -}
-{-   , _pactFile_modules :: [Module] -- * Any modules contained in the file. (Parsed content) -}
-{-   } deriving (Show) -}
-
-{- makePactLenses ''PactFile -}
-
--- | A Pact file is simply some piece of `Code`.
-type PactFile = Code
-
 -- | Text representation of a `FileRef` suitable for showing to the user.
 fileRefName :: FileRef -> Text
 fileRefName = \case
@@ -155,7 +141,7 @@ fetchFile
      , HasJSContext JSM, MonadHold t m
      , HasGistStore model t, HasGistStoreCfg mConf t, Monoid mConf
      )
-  => model -> Event t FileRef -> m (mConf, Event t (FileRef, PactFile))
+  => model -> Event t FileRef -> m (mConf, Event t (FileRef, Code))
 fetchFile m onFileRef = do
     onExample <- fetchExample $ fmapMaybe (^? _FileRef_Example) onFileRef
     let
@@ -206,16 +192,15 @@ fetchFile m onFileRef = do
 {-          then pure Nothing -}
 {-          else pure $ Just req -}
 
--- | Get the `Module`s contained in `PactFile`.
-fileModules :: PactFile -> Either Text (Map ModuleName (ModuleDef (Term Name)))
-fileModules (Code c) = case Pact.compileExps (Pact.mkTextInfo c) <$> Pact.parseExprs c of
+codeModules :: Code -> Either Text (Map ModuleName (ModuleDef (Term Name)))
+codeModules (Code c) = case Pact.compileExps (Pact.mkTextInfo c) <$> Pact.parseExprs c of
   Left err -> Left $ "Parsing failed: " <> tshow err
   Right (Left err) -> Left $ "Compilation failed: " <> tshow err
   Right (Right terms) -> Right $ Map.fromList $ mapMaybe getModule terms
 
 -- TODO: remove, only used for compatibility with older code
-fileModulesDiscardingErrors :: PactFile -> Map ModuleName (ModuleDef (Term Name))
-fileModulesDiscardingErrors = fold . fileModules
+codeModulesDiscardingErrors :: Code -> Map ModuleName (ModuleDef (Term Name))
+codeModulesDiscardingErrors = fold . codeModules
 
 -- | Get module from a `Term`
 getModule :: MonadPlus m => Term Name -> m (ModuleName, ModuleDef (Term Name))

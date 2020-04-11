@@ -301,17 +301,17 @@ loadToEditor m onFileRef onModRef onClear = do
         (i:_, ChainRef Nothing c)  -> ChainRef (Just $ nodeInfoRef i) c
         _ -> ref
 
-    getFileModuleCode :: Maybe FileModuleRef -> (FileRef, PactFile) -> Maybe (FileModuleRef, Code)
+    getFileModuleCode :: Maybe FileModuleRef -> (FileRef, Code) -> Maybe (FileModuleRef, Code)
     getFileModuleCode = \case
       Nothing -> const Nothing
       Just r@(ModuleRef _ n) ->
         fmap ((r,) . view codeOfModule)
         . Map.lookup n
-        . fileModulesDiscardingErrors
+        . codeModulesDiscardingErrors
         . snd
 
 
--- | Select a `PactFile`, note that a file gets also implicitely selected when
+-- | Select a file, note that a file gets also implicitly selected when
 --   a module of a given file gets selected.
 selectFile
   :: forall m t model mConf
@@ -322,7 +322,7 @@ selectFile
   => model
   -> Event t FileModuleRef
   -> Event t (Maybe FileRef)
-  -> m (mConf, MDynamic t (FileRef, PactFile))
+  -> m (mConf, MDynamic t (FileRef, Code))
 selectFile m onModRef onMayFileRef = mdo
 
     (fCfg, onFileSelect) <- fetchFile m . push (filterNewFileRef selected) $ leftmost
@@ -387,7 +387,7 @@ pushPopModule m explr onClear onPush onPop = mdo
       )
   where
     waitForFile
-      :: MDynamic t (FileRef, PactFile)
+      :: MDynamic t (FileRef, Code)
       -> Event t FileModuleRef
       -> m (Event t (FileModuleRef, ModDef))
     waitForFile fileL onRef = do
@@ -400,7 +400,7 @@ pushPopModule m explr onClear onPush onPop = mdo
           guard $ _moduleRef_source cReq == fst cFile
 
           let n = _moduleRef_name cReq
-          moduleL <- MaybeT . pure $ Map.lookup n $ fileModulesDiscardingErrors (snd cFile)
+          moduleL <- MaybeT . pure $ Map.lookup n $ codeModulesDiscardingErrors (snd cFile)
           pure (cReq, moduleL)
       pure $ fmapMaybe id . updated $ retrievedModule
 
