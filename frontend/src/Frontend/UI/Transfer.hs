@@ -373,6 +373,29 @@ gasPayersSection model ti = do
           gp2 <- dgp2
           pure [(fromChain, gp1), (toChain, gp2)]
 
+transferMetadata
+  :: (MonadWidget t m, HasNetwork model t, HasNetworkCfg mConf t, Monoid mConf)
+  => model
+  -> Map AccountName (AccountStatus AccountDetails)
+  -> Map AccountName (AccountStatus AccountDetails)
+  -> TransferInfo
+  -> m mConf
+transferMetadata model fks tks ti = do
+  gps <- gasPayersSection model ti
+  let fromAccount = _ca_account $ _ti_fromAccount ti
+      fromChain = _ca_chain $ _ti_fromAccount ti
+      toAccount = _ca_account $ _ti_toAccount ti
+      toChain = _ca_chain $ _ti_toAccount ti
+      ks = Map.fromList [(fromChain, fks), (toChain, tks)]
+
+  -- TODO Get keysets for gas payers that we don't have yet
+  networkView (signersSection model ti ks <$> gps)
+
+  dialogSectionHeading mempty "Transaction Settings"
+  (conf, _, _, _) <- divClass "group" $ uiMetaData model Nothing Nothing
+  -- TODO Add creationTime to uiMetaData dialog and default it to current time - 60s
+  return conf
+
 signersSection
   :: (MonadWidget t m, HasNetwork model t)
   => model
@@ -382,7 +405,7 @@ signersSection
 --  -> ((ChainId, AccountName), Maybe (Map AccountName (AccountStatus AccountDetails)))
   -> m ()
 signersSection model ti ks gps = do
-    dialogSectionHeading mempty "Signers"
+    dialogSectionHeading mempty "Keys to Sign With"
     let fromAccount = _ca_account $ _ti_fromAccount ti
         fromChain = _ca_chain $ _ti_fromAccount ti
         from = (fromChain, Just $ AccountName fromAccount)
@@ -407,35 +430,13 @@ singleSigner ks (c,Just a) = do
           if pred == "keys-all" || length keys == 1 || (length keys == 2 && pred == "keys-2")
             then blank
             else do
-              elClass "h3" ("heading heading_type_h3") $ text $ unAccountName a
               divClass "group signing-ui-signers" $ do
+                elClass "h3" ("heading heading_type_h3") $
+                  text $ unAccountName a <> " (" <> T.toLower (prettyPred pred) <> ")"
                 forM (Set.toList keys) $ \key ->
                   uiCheckbox "signing-ui-signers__signer" False def $
                     text $ keyToText key
               return ()
-
-transferMetadata
-  :: (MonadWidget t m, HasNetwork model t, HasNetworkCfg mConf t, Monoid mConf)
-  => model
-  -> Map AccountName (AccountStatus AccountDetails)
-  -> Map AccountName (AccountStatus AccountDetails)
-  -> TransferInfo
-  -> m mConf
-transferMetadata model fks tks ti = do
-  gps <- gasPayersSection model ti
-  let fromAccount = _ca_account $ _ti_fromAccount ti
-      fromChain = _ca_chain $ _ti_fromAccount ti
-      toAccount = _ca_account $ _ti_toAccount ti
-      toChain = _ca_chain $ _ti_toAccount ti
-      ks = Map.fromList [(fromChain, fks), (toChain, tks)]
-
-  -- TODO Get keysets for gas payers that we don't have yet
-  networkView (signersSection model ti ks <$> gps)
-
-  dialogSectionHeading mempty "Transaction Settings"
-  (conf, _, _, _) <- divClass "group" $ uiMetaData model Nothing Nothing
-  -- TODO Add creationTime to uiMetaData dialog and default it to current time - 60s
-  return conf
 
 transferSigs
   :: (MonadWidget t m)

@@ -70,6 +70,12 @@ pubKeyWidget iv = do
 
   return $ PublicKeyText <$> res
 
+prettyPred :: Text -> Text
+prettyPred "keys-all" = "All keys"
+prettyPred "keys-any" = "Any single key"
+prettyPred "keys-2" = "Any two keys"
+prettyPred p = p
+
 keysetWidget
   :: (MonadWidget t m)
   => Maybe UserKeyset
@@ -80,11 +86,6 @@ keysetWidget iv = do
     selectMsgMap = Map.singleton selectMsgKey "Select"
 
     doAddDel yesno = fmap (yesno selectMsgKey) . updated
-
-    prettyPred "keys-all" = "All keys"
-    prettyPred "keys-any" = "Any single key"
-    prettyPred "keys-2" = "Any two keys"
-    prettyPred p = p
 
     allPredSelectMap nkeys = ffor nkeys $ \nks -> Map.fromList
       $ fmap (id &&& prettyPred) (dropkeys2 nks predefinedPreds)
