@@ -1,3 +1,21 @@
+{-|
+
+Design Requirements:
+
+* MUST support both Chainweaver, non-Chainweaver, and external cold wallet keys
+* MUST support cross chain transfers
+* MUST allow cross chain transfer target gas to be paid by a gas station
+* MUST support multi-sig
+* MUST support both transfer and transfer-create AND allow transfer-create to be
+  done even if the receiving account already exists
+
+* SHOULD be able to support safe bi-directional transfers at some point in the future
+
+* Does not need to support fully offline transfers (i.e. ok to require internet
+  access to query keysets for the relevant accounts)
+
+-}
+
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE ExtendedDefaultRules #-}
 {-# LANGUAGE FlexibleContexts #-}
@@ -18,41 +36,50 @@
 
 module Frontend.UI.Transfer where
 
-import Control.Error hiding (bool)
-import Control.Lens
-import Control.Monad.State.Strict
-import Data.Decimal
-import Data.Default (Default (..))
-import Data.Text (Text)
-import Kadena.SigningApi (AccountName(..))
-import Obelisk.Route (R)
-import Obelisk.Route.Frontend
-import qualified Pact.Types.Lang as Pact
-import Reflex
-import Reflex.Dom.Core
+import           Control.Error hiding (bool)
+import           Control.Lens
+import           Control.Monad.State.Strict
+import           Data.Decimal
+import           Data.Default (Default (..))
+import           Data.Map (Map)
 import qualified Data.Map as Map
-import qualified Data.Set as S
+import           Data.Set (Set)
+import qualified Data.Set as Set
+import           Data.Text (Text)
+import qualified Data.Text as T
 import qualified Data.Text.Encoding as T
+import           Kadena.SigningApi (AccountName(..))
+import           Obelisk.Route (R)
+import           Obelisk.Route.Frontend
+import qualified Pact.Server.ApiClient as Api
+import qualified Pact.Types.Command as Pact
+import qualified Pact.Types.Lang as Pact
+import           Pact.Types.PactValue
+import           Pact.Types.Pretty
+import           Reflex
+import           Reflex.Dom.Core
+import           Text.Printf
 
-import Common.Foundation
-import Common.Route
-import Common.Wallet
-import Frontend.Crypto.Class
-import Frontend.Crypto.Ed25519
-import Frontend.Foundation
-import Frontend.JsonData
-import Frontend.Log
-import Frontend.Network
-import Frontend.Storage
-import Frontend.UI.Button
-import Frontend.UI.DeploymentSettings
-import Frontend.UI.Dialogs.Send
-import Frontend.UI.KeysetWidget
-import Frontend.UI.Modal
-import Frontend.UI.TabBar
-import Frontend.UI.Widgets
-import Frontend.UI.Widgets.Helpers
-import Frontend.Wallet
+import           Common.Foundation
+import           Common.Route
+import           Common.Wallet
+import           Frontend.Crypto.Class
+import           Frontend.Crypto.Ed25519
+import           Frontend.Foundation
+import           Frontend.JsonData
+import           Frontend.Log
+import           Frontend.Network
+import           Frontend.PactQueries
+import           Frontend.Storage
+import           Frontend.UI.Button
+import           Frontend.UI.DeploymentSettings
+import           Frontend.UI.Dialogs.Send
+import           Frontend.UI.KeysetWidget
+import           Frontend.UI.Modal
+import           Frontend.UI.TabBar
+import           Frontend.UI.Widgets
+import           Frontend.UI.Widgets.Helpers
+import           Frontend.Wallet
 
 data TransferCfg t = TransferCfg
   { _transferCfg_isVisible :: Dynamic t Bool
@@ -142,7 +169,7 @@ uiGenericTransfer model cfg = do
     signTransfer <- divClass "transfer-fields submit" $ do
       confirmButton (def { _uiButtonCfg_disabled = (isNothing <$> transferInfo) }) "Sign & Transfer"
     let netInfo = flip push signTransfer $ \() -> sampleNetInfo model
-    let mkModal (Just ti) ni = Just $ lookupAndTransfer model ti ni
+    let mkModal (Just ti) ni = Just $ lookupAndTransfer model ni ti
         mkModal Nothing _ = Nothing
     pure $ mempty & modalCfg_setModal .~ (attachWith mkModal (current transferInfo) netInfo)
 
@@ -155,23 +182,92 @@ lookupAndTransfer
      , Flattenable mConf t
      )
   => model
-  -> TransferInfo
   -> SharedNetInfo NodeInfo
+  -> TransferInfo
   -> Event t ()
   -> m (mConf, Event t ())
-lookupAndTransfer model ti netInfo onCloseExternal = do
+lookupAndTransfer model netInfo ti onCloseExternal = do
     let nodes = _sharedNetInfo_nodes netInfo
         fromAccount = _ca_account $ _ti_fromAccount ti
         fromChain = _ca_chain $ _ti_fromAccount ti
-    eks <- lookupKeySet (model ^. logger) (_sharedNetInfo_network netInfo)
-                 nodes fromChain (AccountName fromAccount)
-    let eWrapper (Left m) = do
-          text m
-          return (mempty, never)
-        eWrapper (Right ks) = uiTransferModal model ti ks onCloseExternal
-    (conf, closes) <- splitDynPure <$> networkHold (text "Querying sender keyset..." >> return (mempty, never)) (eWrapper <$> eks)
+        toAccount = _ca_account $ _ti_toAccount ti
+        toChain = _ca_chain $ _ti_toAccount ti
+        accounts = setify [fromAccount, toAccount]
+        accountNames = AccountName <$> accounts
+        chains = setify [fromChain, toChain]
+        code = renderCompactText $ accountDetailsObject accounts
+        mkCmd c = do
+          pm <- mkPublicMeta c
+          buildCmd Nothing (_sharedNetInfo_network netInfo) pm [] [] code mempty mempty
+    cmds <- mapM mkCmd chains
+    efks <- lookupKeySets (model ^. logger) (_sharedNetInfo_network netInfo)
+                 nodes fromChain accountNames
+    etks <- lookupKeySets (model ^. logger) (_sharedNetInfo_network netInfo)
+                 nodes toChain accountNames
+    allKeys <- foldDyn ($) (Nothing, Nothing) $ leftmost
+      [ (\ks (_,b) -> (Just ks, b)) <$> efks
+      , (\ks (a,_) -> (a, Just ks)) <$> etks
+      ]
+    let eWrapper (Just f, Just t) = do
+          let fks = fromMaybe mempty f
+          let tks = fromMaybe mempty t
+          (conf, closes) <- fmap splitDynPure $ workflow $ signAndTransfer model netInfo ti fks tks
+          mConf <- flatten =<< tagOnPostBuild conf
+          let close = switch $ current closes
+          pure (mConf, close)
+        eWrapper (_, Nothing) = msgModal "Sign Transfer" $ text "Loading..."
+        eWrapper (Nothing, _) = msgModal "Sign Transfer" $ text "Loading..."
+    (conf, closes) <- splitDynPure <$> networkHold (msgModal "Sign Transfer" $ text "Querying sender keyset...")
+                        (eWrapper <$> ffilter (\(a,b) -> isJust a && isJust b) (updated allKeys))
     mConf <- flatten =<< tagOnPostBuild conf
     return (mConf, switch $ current closes)
+  where
+    setify :: Ord a => [a] -> [a]
+    setify = Set.toList . Set.fromList
+
+msgModal :: (DomBuilder t m, PostBuild t m, Monoid mConf) => Text -> m a -> m (mConf, Event t ())
+msgModal headerMsg body = do
+  close <- modalHeader $ text headerMsg
+  modalMain body
+  done <- modalFooter $ do
+    confirmButton def "Ok"
+
+  pure (mempty, done <> close)
+
+-- | Lookup the keyset of an account
+lookupKeySets
+  :: (HasCrypto key m, TriggerEvent t m, MonadJSM m)
+  => Logger t
+  -> NetworkName
+  -- ^ Which network we are on
+  -> [NodeInfo]
+  -- ^ Envs which point to the appropriate chain
+  -> ChainId
+  -> [AccountName]
+  -- ^ Account on said chain to find
+  -> m (Event t (Maybe (Map AccountName (AccountStatus AccountDetails))))
+lookupKeySets logL networkName nodes chainId accounts = do
+  let code = renderCompactText $ accountDetailsObject (map unAccountName accounts)
+  pm <- mkPublicMeta chainId
+  cmd <- buildCmd Nothing networkName pm [] [] code mempty mempty
+  (result, trigger) <- newTriggerEvent
+  let envs = mkClientEnvs nodes chainId
+  liftJSM $ forkJSM $ do
+    r <- doReqFailover envs (Api.local Api.apiV1Client cmd) >>= \case
+      Left es -> pure Nothing
+      Right cr -> case Pact._crResult cr of
+        Pact.PactResult (Right pv) -> case parseAccountDetails pv of
+          Left e -> pure Nothing
+          Right balances -> liftIO $ do
+            putLog logL LevelInfo $ "lookupKeysets: success:"
+            putLog logL LevelInfo $ tshow balances
+            pure $ Just balances
+        Pact.PactResult (Left e) -> do
+          putLog logL LevelInfo $ "lookupKeysets failed:" <> tshow e
+          pure Nothing
+
+    liftIO $ trigger r
+  pure result
 
 uiTransferButton
   :: ( DomBuilder t m, PostBuild t m, MonadHold t m, MonadFix m)
@@ -182,24 +278,6 @@ uiTransferButton = mdo
     dynText buttonText
   isVisible <- toggle False click
   return isVisible
-
--- | A modal for handling sending coin
-uiTransferModal
-  :: ( SendConstraints model mConf key t m
-     , Flattenable mConf t
-     )
-  => model
-  -> TransferInfo
-  -> Pact.KeySet
-  -> Event t ()
-  -> m (mConf, Event t ())
-uiTransferModal model ti ks _onCloseExternal = do
-
-  (conf, closes) <- fmap splitDynPure $ workflow $ signAndTransfer model ti ks
-
-  mConf <- flatten =<< tagOnPostBuild conf
-  let close = switch $ current closes
-  pure (mConf, close)
 
 data ExternalSignatory = Signature | PrivateKey
   deriving (Eq,Ord,Show,Read,Enum,Bounded)
@@ -225,10 +303,12 @@ signAndTransfer
   :: ( SendConstraints model mConf key t m
      )
   => model
+  -> SharedNetInfo NodeInfo
   -> TransferInfo
-  -> Pact.KeySet
+  -> Map AccountName (AccountStatus AccountDetails)
+  -> Map AccountName (AccountStatus AccountDetails)
   -> Workflow t m (mConf, Event t ())
-signAndTransfer model ti ks = Workflow $ do
+signAndTransfer model netInfo ti fks tks = Workflow $ do
     close <- modalHeader $ text "Sign Transfer"
     rec
       (currentTab, _done) <- transferTabs $ leftmost [prevTab, fmapMaybe id nextTab]
@@ -240,9 +320,10 @@ signAndTransfer model ti ks = Workflow $ do
            ]
          )
   where
+    nodes = _sharedNetInfo_nodes netInfo
     mainSection currentTab = elClass "div" "modal__main" $ do
-      mconf <- tabPane mempty currentTab TransferTab_Metadata $ transferMetadata model ti
-      tabPane mempty currentTab TransferTab_Signatures $ transferSigs ks
+      mconf <- tabPane mempty currentTab TransferTab_Metadata $ transferMetadata model fks tks ti
+      tabPane mempty currentTab TransferTab_Signatures $ transferSigs fks tks
       return mconf
     footerSection currentTab = modalFooter $ do
       let (lbl, fanTag) = splitDynPure $ ffor currentTab $ \case
@@ -263,13 +344,94 @@ signAndTransfer model ti ks = Workflow $ do
             TransferTab_Signatures -> Nothing
       pure (cancel, back, nextTab)
 
+
+isMissingGasPayer
+  :: Map ChainId (Map AccountName (AccountStatus AccountDetails))
+  -> (ChainId, Maybe AccountName)
+  -> Bool
+isMissingGasPayer keysets (cid, Nothing) = False
+isMissingGasPayer keysets (cid, Just a) = isNothing $ Map.lookup a =<< Map.lookup cid keysets
+
+gasPayersSection
+  :: (MonadWidget t m, HasNetwork model t)
+  => model
+  -> TransferInfo
+  -> m (Dynamic t [(ChainId, Maybe AccountName)])
+gasPayersSection model ti = do
+    let fromChain = _ca_chain (_ti_fromAccount ti)
+        toChain = _ca_chain (_ti_toAccount ti)
+    if fromChain == toChain
+      then do
+        (_,dgp1) <- uiAccountNameInput "Gas Paying Account" True (Just $ AccountName $ _ca_account $ _ti_fromAccount ti) never noValidation
+        pure $ (:[]) . (fromChain,) <$> dgp1
+      else do
+        let mkLabel c = T.pack $ printf "Gas Paying Account (Chain %s)" (T.unpack $ _chainId c)
+        (_,dgp1) <- uiAccountNameInput (mkLabel fromChain) True (Just $ AccountName $ _ca_account $ _ti_fromAccount ti) never noValidation
+        (_,dgp2) <- uiAccountNameInput (mkLabel toChain) True Nothing never noValidation
+        pure $ do
+          gp1 <- dgp1
+          gp2 <- dgp2
+          pure [(fromChain, gp1), (toChain, gp2)]
+
+signersSection
+  :: (MonadWidget t m, HasNetwork model t)
+  => model
+  -> TransferInfo
+  -> Map ChainId (Map AccountName (AccountStatus AccountDetails))
+  -> [(ChainId, Maybe AccountName)]
+--  -> ((ChainId, AccountName), Maybe (Map AccountName (AccountStatus AccountDetails)))
+  -> m ()
+signersSection model ti ks gps = do
+    dialogSectionHeading mempty "Signers"
+    let fromAccount = _ca_account $ _ti_fromAccount ti
+        fromChain = _ca_chain $ _ti_fromAccount ti
+        from = (fromChain, Just $ AccountName fromAccount)
+        signers = if from `elem` gps then gps else (from : gps)
+
+    mapM_ (singleSigner ks) signers
+
+singleSigner
+  :: (DomBuilder t m, PostBuild t m)
+  => Map ChainId (Map AccountName (AccountStatus AccountDetails))
+  -> (ChainId, Maybe AccountName)
+  -> m ()
+singleSigner _ (_,Nothing) = blank
+singleSigner ks (c,Just a) = do
+  case Map.lookup a =<< Map.lookup c ks of
+    Nothing -> el "div" $ text $ "Couldn't find key for account " <> unAccountName a
+    Just AccountStatus_DoesNotExist -> el "div" $ text $ "Account " <> unAccountName a <> " does not exist"
+    Just (AccountStatus_Exists (AccountDetails bal guard)) -> do
+      case guard of
+        AccountGuard_Other _ -> el "div" $ text $ "Account " <> unAccountName a <> " guard is not a keyset"
+        AccountGuard_KeySet keys pred -> do
+          if pred == "keys-all" || length keys == 1 || (length keys == 2 && pred == "keys-2")
+            then blank
+            else do
+              elClass "h3" ("heading heading_type_h3") $ text $ unAccountName a
+              divClass "group signing-ui-signers" $ do
+                forM (Set.toList keys) $ \key ->
+                  uiCheckbox "signing-ui-signers__signer" False def $
+                    text $ keyToText key
+              return ()
+
 transferMetadata
   :: (MonadWidget t m, HasNetwork model t, HasNetworkCfg mConf t, Monoid mConf)
   => model
+  -> Map AccountName (AccountStatus AccountDetails)
+  -> Map AccountName (AccountStatus AccountDetails)
   -> TransferInfo
   -> m mConf
-transferMetadata model ti = do
-  (_,gp) <- uiAccountNameInput "Gas Paying Account" True (Just $ AccountName $ _ca_account $ _ti_fromAccount ti) never noValidation
+transferMetadata model fks tks ti = do
+  gps <- gasPayersSection model ti
+  let fromAccount = _ca_account $ _ti_fromAccount ti
+      fromChain = _ca_chain $ _ti_fromAccount ti
+      toAccount = _ca_account $ _ti_toAccount ti
+      toChain = _ca_chain $ _ti_toAccount ti
+      ks = Map.fromList [(fromChain, fks), (toChain, tks)]
+
+  -- TODO Get keysets for gas payers that we don't have yet
+  networkView (signersSection model ti ks <$> gps)
+
   dialogSectionHeading mempty "Transaction Settings"
   (conf, _, _, _) <- divClass "group" $ uiMetaData model Nothing Nothing
   -- TODO Add creationTime to uiMetaData dialog and default it to current time - 60s
@@ -277,9 +439,10 @@ transferMetadata model ti = do
 
 transferSigs
   :: (MonadWidget t m)
-  => Pact.KeySet
+  => Map AccountName (AccountStatus AccountDetails)
+  -> Map AccountName (AccountStatus AccountDetails)
   -> m ()
-transferSigs ks = do
+transferSigs fks tks = do
   divClass "group" $ do
     mkLabeledInput True "Request Key" uiInputElement $ def
       & initialAttributes .~ "disabled" =: "disabled"
@@ -298,7 +461,9 @@ transferSigs ks = do
           pkWidget pk
         pure ()
   divClass "group signing-ui-signers" $ do
-    forM_ (S.toList $ Pact._ksKeys ks) $ \pk -> do
+    text "TODO transferSigs"
+    --forM_ (Set.toList $ Pact._ksKeys ks) $ \pk -> do
+    forM_ [Pact.PublicKey "abc123"] $ \pk -> do
       externalSig pk
     return ()
 

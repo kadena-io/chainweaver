@@ -63,10 +63,11 @@ import qualified Text.URI as URI
 import Common.Wallet
 import Frontend.Crypto.Class (HasCrypto)
 import Frontend.Foundation hiding (Arg)
-import Frontend.TxBuilder
 import Frontend.JsonData
-import Frontend.Network
 import Frontend.Log
+import Frontend.Network
+import Frontend.PactQueries
+import Frontend.TxBuilder
 import Frontend.UI.DeploymentSettings
 import Frontend.UI.Dialogs.DeployConfirmation (statusText, Status(..))
 import Frontend.UI.Dialogs.DeployConfirmation (submitTransactionWithFeedback)
@@ -903,21 +904,7 @@ lookupKeySet
   -- ^ Account on said chain to find
   -> m (Event t (Either Text Pact.KeySet))
 lookupKeySet logL networkName nodes chainId accountName = do
-  now <- getCreationTime
-  let code = T.unwords
-        [ "(coin.details"
-        , tshow $ unAccountName accountName
-        , ")"
-        ]
-      pm = PublicMeta
-        { _pmChainId = chainId
-        , _pmSender = "chainweaver"
-        , _pmTTL = 60
-        , _pmCreationTime = now
-        , _pmGasLimit = 600
-        , _pmGasPrice = 0.00001
-        }
-  cmd <- buildCmd Nothing networkName pm [] [] code mempty mempty
+  cmd <- mkCoinDetailsCmd networkName chainId accountName
   (result, trigger) <- newTriggerEvent
   let envs = mkClientEnvs nodes chainId
   liftJSM $ forkJSM $ do
@@ -936,6 +923,7 @@ lookupKeySet logL networkName nodes chainId accountName = do
     liftIO $ trigger r
   pure result
 
+-- | Lookup the keyset of an account
 -- | Initiate a cross chain transfer on the sender chain.
 initiateCrossChainTransfer
   :: ( MonadJSM (Performable m)
