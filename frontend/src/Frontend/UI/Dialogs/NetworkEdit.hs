@@ -23,17 +23,18 @@ module Frontend.UI.Dialogs.NetworkEdit
   ( uiNetworkEdit
   , uiNetworkStatus
   , uiNetworkSelectTopBar
-  , queryNetworkStatus
-  , NetworkStatus(..)
   ) where
 
 ------------------------------------------------------------------------------
 import           Control.Lens
 import           Control.Monad       (join, void, (<=<), guard)
+import           Control.Monad.Reader
 import           Data.IntMap         (IntMap)
 import qualified Data.IntMap         as IntMap
 import           Data.Map            (Map)
 import qualified Data.Map            as Map
+import           Data.Set            (Set)
+import qualified Data.Set            as Set
 import           Data.Text           (Text)
 import qualified Data.Text           as T
 import           Reflex.Dom
@@ -52,6 +53,8 @@ data NetworkAction
   = NetworkDelete NetworkName
   | NetworkNode NetworkName [NodeRef]
   -- ^ Deletion or update of a node
+
+type NodeQuery t m = (MonadReader (Dynamic t (Map NodeRef (Either Text NodeInfo))) m, EventWriter t (Set NodeRef) m)
 
 makePrisms ''NetworkAction
 
@@ -82,15 +85,17 @@ uiNetworkEdit
   :: ( MonadWidget t m
      , Monoid mConf
      , HasNetworkCfg mConf t
+     , HasNetwork model t
      )
-  => NetworkName
+  => model
+  -> NetworkName
   -> Map NetworkName [NodeRef]
   -> Event t ()
   -> m (mConf, Event t ())
-uiNetworkEdit selectedNetwork networks _onCloseExternal = do
+uiNetworkEdit model selectedNetwork networks _onCloseExternal = do
   onClose <- modalHeader $ text "Network Settings"
 
-  (selectEvent, dHasNewNetwork, dNetworks) <- modalMain $ mdo
+  (trackNodes, selectEvent, dHasNewNetwork, dNetworks) <- modalMain $ mdo
     selectEv <- uiGroup "segment" $ do
       uiGroupHeader mempty $
         dialogSectionHeading mempty "Select Network"
@@ -99,13 +104,15 @@ uiNetworkEdit selectedNetwork networks _onCloseExternal = do
         networks
         (updated dNetworks)
 
-    (dSelectNewNet, dNetworks) <- uiGroup "segment" $ do
+    (trackNodes, dSelectNewNet, dNetworks) <- uiGroup "segment" $ do
       uiGroupHeader mempty $
         dialogSectionHeading mempty "Edit Networks"
 
       rec
         onNewNet <- validatedInputWithButton "group__header" (getErr <$> dNets) "Create new network." "Create"
-        onUpdateNodes <- uiNetworks networks onNewNet
+        (onUpdateNodes, trackNodes) <- uiNetworks networks onNewNet
+          & runEventWriterT
+          & flip runReaderT (model ^. network_trackedNodes)
 
         let onNetworkUpdates = mergeWith (.)
               [ onUpdateNodes
@@ -116,11 +123,13 @@ uiNetworkEdit selectedNetwork networks _onCloseExternal = do
 
       dHasNewNet <- holdDyn Nothing $ Just <$> onNewNet
 
-      pure ( dHasNewNet
+      pure ( trackNodes
+           , dHasNewNet
            , dNets
            )
 
-    pure ( selectEv
+    pure ( trackNodes
+         , selectEv
          , dSelectNewNet
          , dNetworks
          )
@@ -141,6 +150,7 @@ uiNetworkEdit selectedNetwork networks _onCloseExternal = do
 
     pure
       ( mempty
+        & networkCfg_trackNodes .~ trackNodes
         & networkCfg_setNetworks .~ tag (current dNetworks) onConfirm
         & networkCfg_resetNetworks .~ onReset
         & networkCfg_refreshModule .~ onConfirm
@@ -191,6 +201,7 @@ uiNetworkSelectTopBar cls name networks = do
 
 uiNetworks
   :: MonadWidget t m
+  => NodeQuery t m
   => Map NetworkName [NodeRef]
   -> Event t NetworkName
   -> m ( Event t (Map NetworkName [NodeRef] -> Map NetworkName [NodeRef]) )
@@ -253,6 +264,7 @@ uiNetworkHeading self mStat = do
 --   Delivers change events and a `Dynamic` holding the current overall `NetworkStatus`.
 uiNodes
   :: forall t m. MonadWidget t m
+  => NodeQuery t m
   => [NodeRef]
   -> m ( Dynamic t [NodeRef]
        , Dynamic t (Maybe NetworkStatus)
@@ -308,6 +320,7 @@ data NodeAction
 -- | Render a line edit for a single node + `uiNodeStatus`.
 uiNode
   :: MonadWidget t m
+  => NodeQuery t m
   => Maybe NodeRef
   -> m ( Event t NodeAction
        , Dynamic t (Maybe NodeRef)
@@ -355,56 +368,22 @@ uiNode initVal = do
            then res
            else Left "Input could not be fully parsed"
 
-queryNetworkStatus
-  :: forall t m. MonadWidget t m
-  => Dynamic t (Map NetworkName [NodeRef])
-  -> Dynamic t NetworkName
-  -> m (MDynamic t NetworkStatus)
-queryNetworkStatus networks self = do
-  let nodes = Map.findWithDefault [] <$> self <*> networks
-  -- Append node for new entry (`Nothing`):
-  (initMap, onUpdate) <- getListUpdates $ (<> [Nothing]) . map Just <$> nodes
-  (initialResp, onRespUpdate) <-
-    traverseIntMapWithKeyWithAdjust (\_ -> queryNodeStatus) initMap onUpdate
-  responses :: Dynamic t (IntMap (MDynamic t (Either Text NodeInfo))) <-
-      incrementalToDynamic <$> holdIncremental initialResp onRespUpdate
-  pure $ fmap (mconcat . map (fmap getNetworkStatus)) $ join $ fmap (sequenceA . IntMap.elems) responses
-
-queryNodeStatus
-  :: MonadWidget t m
-  => Dynamic t (Maybe NodeRef)
-  -> m (Dynamic t (Maybe (Either Text NodeInfo)))
-queryNodeStatus nodeRef = do
-  pb <- getPostBuild
-  nodeUpdated <- debounce 0.5 $ updated nodeRef
-  mStatus <- throttle 2 $ leftmost
-    [ nodeUpdated
-    , tag (current nodeRef) pb
-    ]
-  onErrInfo <- performEventAsync $ getInfoAsync <$> mStatus
-  holdDyn Nothing onErrInfo
-  where
-    getInfoAsync ref cb =
-      void $ liftJSM $ forkJSM $ do
-        r <- traverse discoverNode ref
-        liftIO $ cb r
-
-
--- | Display status of a single node.
---
---   This is a circle, either not filled (no info yet) or red (something went
---   wrong) or green (everything is fine).
 uiNodeStatus
-  :: forall m t. MonadWidget t m
+  :: (DomBuilder t m, MonadFix m, MonadHold t m, PerformEvent t m, MonadIO (Performable m), TriggerEvent t m, PostBuild t m)
+  => NodeQuery t m
   => CssClass
   -> Dynamic t (Maybe NodeRef)
-  -> m (MDynamic t (Either Text NodeInfo))
+  -> m (Dynamic t (Maybe (Either Text NodeInfo)))
 uiNodeStatus cls nodeRef = do
-    errInfo <- queryNodeStatus nodeRef
     elKlass "div" ("signal" <> cls) $ do
-      let attrs = buildStatusAttrs <$> errInfo
+      trackedNodes <- ask
+      pb <- getPostBuild
+      let req = leftmost [updated nodeRef, tag (current nodeRef) pb]
+          resp = ffor2 nodeRef trackedNodes $ \nr ns -> nr >>= flip Map.lookup ns
+      tellEvent <=< throttle 2 $ fmap (maybe Set.empty Set.singleton) req
+      let attrs = buildStatusAttrs <$> resp
       elDynAttr "div" attrs blank
-      pure errInfo
+      pure resp
   where
     emptyAttrs = "class" =: "signal__circle"
 
@@ -417,7 +396,6 @@ uiNodeStatus cls nodeRef = do
       Just (Right rT) ->
         "title" =: infoTitle rT
         <> "class" =: "signal__circle signal__circle_status_ok"
-
 
 -- | Show a status circle for a whole network (red, yellow, green).
 --
