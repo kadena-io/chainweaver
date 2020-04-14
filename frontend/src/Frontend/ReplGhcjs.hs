@@ -21,11 +21,13 @@ import Control.Lens
 import Control.Monad.Reader (ask)
 import Control.Monad.State.Strict
 import Data.Aeson (FromJSON, ToJSON)
+import Data.CaseInsensitive (original)
 import Data.Default (Default (..))
+import Data.Function (on)
 import Data.Some (Some(..))
 import Data.String (IsString)
 import Data.Text (Text)
-import GHCJS.DOM.EventM (on)
+import qualified GHCJS.DOM.EventM as EventM
 import GHCJS.DOM.GlobalEventHandlers (keyPress)
 import GHCJS.DOM.KeyboardEvent (getCtrlKey, getKey, getKeyCode, getMetaKey)
 import GHCJS.DOM.Types (HTMLElement (..), unElement)
@@ -91,7 +93,14 @@ app
 app sidebarExtra fileFFI appCfg = Store.versionedFrontend (Store.versionedStorage @key) $ void . mfix $ \ cfg -> do
   ideL <- makeIde fileFFI appCfg cfg
 
-  walletSidebar sidebarExtra
+  let
+    logo = divClass "sidebar__logo" $ elDynAttr "img" ?? blank $ ffor (ideL ^. network_selectedNetwork) $ \n ->
+      let matches = T.isPrefixOf `on` T.toLower
+      in "src" =: if "kadenamint" `matches` original (unNetworkName n)
+                  then static @"img/logo-kadenamint.png"
+                  else static @"img/logo.png"
+
+  walletSidebar logo sidebarExtra
   updates <- divClass "page" $ do
     let mkPageContent c = divClass (c <> " page__content visible")
 
@@ -169,9 +178,9 @@ walletSidebar
      )
   => m ()
   -> m ()
-walletSidebar sidebarExtra = elAttr "div" ("class" =: "sidebar") $ do
-  divClass "sidebar__logo" $ elAttr "img" ("src" =: static @"img/logo.png") blank
-
+  -> m ()
+walletSidebar logo sidebarExtra = elAttr "div" ("class" =: "sidebar") $ do
+  logo
   elAttr "div" ("class" =: "sidebar__content") $ do
     route <- demux . fmap (\(r :/ _) -> Some r) <$> askRoute
 
@@ -216,7 +225,7 @@ codePanel appCfg cls m = elDynKlass "div" (cls <> "pane") $ do
     getCtrlEnterEvent e = do
       (onCtrlEnter, triggerEv) <- newTriggerEvent
       let htmlElement = HTMLElement . unElement $ _element_raw e
-      void $ liftJSM $ htmlElement `on` keyPress $ do
+      void $ liftJSM $ htmlElement `EventM.on` keyPress $ do
         ev <- ask
         hasCtrl <- liftJSM $ getCtrlKey ev
         hasMeta <- liftJSM $ getMetaKey ev
