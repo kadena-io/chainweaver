@@ -254,7 +254,7 @@ sameChainTransfer
 sameChainTransfer model netInfo keys (fromName, fromChain, fromAcc) (gasPayer, gasPayerAcc) toAccount amount = Workflow $ do
   -- TODO check against chain - this data may be outdated (key rotations) unless refreshed recently
   let (functionName, readKeyset, keyData) = case _txBuilder_keyset toAccount of
-        Just ks -> ("transfer-create", "(read-keyset 'key)", HM.singleton "key" $ Aeson.toJSON ks)
+        Just ks | not (null $ _ksKeys ks) -> ("transfer-create", "(read-keyset 'key)", HM.singleton "key" $ Aeson.toJSON ks)
         _ -> ("transfer", "", mempty)
       code = T.unwords $
         [ "(coin." <> functionName
