@@ -7,8 +7,9 @@
 @import '../include/defs';
 
 .wallet__keys-list {
-  margin-top: 20px;
-  margin-left: 22px;
+  padding-left: 22px;
+  padding-top: 20px;
+  overflow: auto;
 }
 
 .wallet__table-row {
