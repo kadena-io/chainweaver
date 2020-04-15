@@ -160,7 +160,7 @@ main' ffi mainBundleResourcePath runHTML = do
   -- Run the backend in a forked thread, and run jsaddle-wkwebview on the main thread
   putStrLn $ "Starting backend on port: " <> show port
   Async.withAsync b $ \_ -> do
-    signingIOHandler <- signingServer
+    (signingIOHandler, keysIOHandler, accountsIOHandler) <- walletServer
       (_appFFI_moveToForeground ffi)
       (_appFFI_moveToBackground ffi)
     waitForBackend port
@@ -191,6 +191,9 @@ main' ffi mainBundleResourcePath runHTML = do
           bowserLoad <- mvarTriggerEvent bowserMVar
           fileOpened <- mvarTriggerEvent fileOpenedMVar
           signingHandler <- mkFRPHandler signingIOHandler
+          keysHandler <- mkFRPHandler keysIOHandler
+          accountsHandler <- mkFRPHandler accountsIOHandler
+
           let fileFFI = FileFFI
                 { _fileFFI_openFileDialog = liftIO . _appFFI_global_openFileDialog ffi
                 , _fileFFI_externalFileOpened = fileOpened
@@ -202,6 +205,8 @@ main' ffi mainBundleResourcePath runHTML = do
                 -- DB 2019-08-07 Changing this back to False because it's just too convenient this way.
                 , _appCfg_editorReadOnly = False
                 , _appCfg_signingHandler = signingHandler
+                , _appCfg_keysEndpointHandler = keysHandler
+                , _appCfg_accountsEndpointHandler = accountsHandler
                 , _appCfg_enabledSettings = enabledSettings
                 , _appCfg_logMessage = _appFFI_global_logFunction ffi
                 }

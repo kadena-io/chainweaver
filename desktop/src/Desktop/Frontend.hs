@@ -91,11 +91,14 @@ desktopFrontend = Frontend
   , _frontend_body = prerender_ blank $ do
     logDir <- (<> "/" <> commandLogFilename) <$> liftIO getTemporaryDirectory
     liftIO $ putStrLn $ "Logging to: " <> logDir
-    signingHandler <- mkFRPHandler =<< signingServer
+    (signingIOHandler, keysIOHandler, accountsIOHandler) <- walletServer
       (pure ()) -- Can't foreground or background things
       (pure ())
     mapRoutedT (flip runTransactionLoggerT (logTransactionFile logDir) . runBrowserStorageT) $ do
       (fileOpened, triggerOpen) <- Frontend.openFileDialog
+      signingHandler <- mkFRPHandler signingIOHandler
+      keysHandler <- mkFRPHandler keysIOHandler
+      accountsHandler <- mkFRPHandler accountsIOHandler
       let fileFFI = FileFFI
             { _fileFFI_externalFileOpened = fileOpened
             , _fileFFI_openFileDialog = liftJSM . triggerOpen
@@ -106,6 +109,8 @@ desktopFrontend = Frontend
         , _appCfg_loadEditor = loadEditorFromLocalStorage
         , _appCfg_editorReadOnly = False
         , _appCfg_signingHandler = signingHandler
+        , _appCfg_keysEndpointHandler = keysHandler
+        , _appCfg_accountsEndpointHandler = accountsHandler
         , _appCfg_enabledSettings = enabledSettings
         , _appCfg_logMessage = defaultLogger
         }

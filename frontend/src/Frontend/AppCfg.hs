@@ -5,13 +5,15 @@ import Control.Concurrent (MVar, forkIO, newEmptyMVar, putMVar, takeMVar)
 import Control.Monad (forever)
 import Control.Monad.Logger (LogLevel, LogStr)
 import Control.Monad.IO.Class (MonadIO, liftIO)
+import Data.Map (Map)
 import Data.Text (Text)
 import Language.Javascript.JSaddle (JSM, MonadJSM, liftJSM)
 
 import Kadena.SigningApi
 import Reflex (PerformEvent(..), TriggerEvent, Event, newTriggerEvent)
 
-import Common.Wallet (Key)
+import Common.Network (NetworkName)
+import Common.Wallet (Key, PublicKey)
 
 data ChangePassword key t m = ChangePassword
   { _changePassword_requestChange :: Event t (Text, Text, Text) -> m (Event t (Either Text ()))
@@ -65,6 +67,8 @@ data AppCfg key t m = AppCfg
   , _appCfg_editorReadOnly :: Bool
   -- ^ Is the editor read only?
   , _appCfg_signingHandler :: FRPHandler SigningRequest SigningResponse t m
+  , _appCfg_keysEndpointHandler :: FRPHandler () [PublicKey] t m
+  , _appCfg_accountsEndpointHandler :: FRPHandler () (Map NetworkName [AccountName]) t m
   , _appCfg_enabledSettings :: EnabledSettings key t m
   , _appCfg_logMessage :: LogLevel -> LogStr -> IO ()
   -- ^ Logging Function

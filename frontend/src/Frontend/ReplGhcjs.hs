@@ -71,6 +71,7 @@ import Frontend.UI.RightPanel
 import Frontend.UI.Settings
 import Frontend.UI.Wallet
 import Frontend.UI.Widgets
+import Frontend.Wallet hiding (walletCfg)
 
 app
   :: forall key t m.
@@ -90,6 +91,7 @@ app
   -> RoutedT t (R FrontendRoute) m ()
 app sidebarExtra fileFFI appCfg = Store.versionedFrontend (Store.versionedStorage @key) $ void . mfix $ \ cfg -> do
   ideL <- makeIde fileFFI appCfg cfg
+  handleEndpoints ideL appCfg
 
   walletSidebar sidebarExtra
   updates <- divClass "page" $ do
@@ -159,6 +161,17 @@ app sidebarExtra fileFFI appCfg = Store.versionedFrontend (Store.versionedStorag
     , signingModalCfg
     , mempty & ideCfg_editor . editorCfg_loadCode .~ (snd <$> _fileFFI_externalFileOpened fileFFI)
     ]
+
+handleEndpoints :: (HasWallet model key t, Reflex t, Monad m) => model -> AppCfg key t m -> m ()
+handleEndpoints m cfg = do
+  let keys = ffor (m ^. wallet_keys) $ Right . toList . fmap (_keyPair_publicKey . _key_pair)
+      accounts = ffor (m ^. wallet_accounts) $ Right . fmap Map.keys . unAccountData
+
+      FRPHandler keysReqs keysResps = _appCfg_keysEndpointHandler cfg
+      FRPHandler accountsReqs accountsResps = _appCfg_accountsEndpointHandler cfg
+
+  void $ keysResps $ current keys <@ keysReqs
+  void $ accountsResps $ current accounts <@ accountsReqs
 
 walletSidebar
   :: ( DomBuilder t m
