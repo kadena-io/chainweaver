@@ -388,12 +388,6 @@ uiDeploymentSettings m settings = mdo
           (_deploymentSettingsConfig_sender settings)
 
       (signers, capabilities) <- tabPane mempty curSelection DeploymentSettingsView_Keys $ do
-        dyn_ $ ffor result $ \case
-          Left (DeploymentSettingsResultError_GasPayerIsNotValid _) -> divClass "group segment" $
-            text "Selected account for 'coin.GAS' capability does not exist on this chain."
-          _ ->
-            blank
-
         uiSenderCapabilities m (_deploymentSettingsConfig_caps settings)
 
       when (_deploymentSettingsConfig_includePreviewTab settings) $ tabPane mempty curSelection DeploymentSettingsView_Preview $ do
