@@ -153,9 +153,9 @@ uiNetworkEdit selectedNetwork networks _onCloseExternal = do
 
   where
     getErr nets k =
-      if Map.member (uncheckedNetworkName k) nets
+      if Map.member (mkNetworkName k) nets
          then Left "This network already exists."
-         else mkNetworkName k
+         else Right $ mkNetworkName k
 
 uiNetworkSelectTopBar
   :: MonadWidget t m
@@ -187,7 +187,7 @@ uiNetworkSelectTopBar cls name networks = do
 
   (s, ()) <- uiSelectElement cfg $
     void $ networkView $ traverse_ (itemDom . textNetworkName) <$> networkNames
-  pure $ fmap uncheckedNetworkName (_selectElement_change s)
+  pure $ fmap mkNetworkName (_selectElement_change s)
 
 uiNetworks
   :: MonadWidget t m

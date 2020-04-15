@@ -196,7 +196,6 @@ lookupAccountBalance name chain m = fmap _accountDetails_balance <$> m ^? ix nam
 
 data DeploymentSettingsResultError
   = DeploymentSettingsResultError_GasPayerIsNotValid AccountName
-  | DeploymentSettingsResultError_InvalidNetworkName Text
   | DeploymentSettingsResultError_NoSenderSelected
   | DeploymentSettingsResultError_NoChainIdSelected
   | DeploymentSettingsResultError_NoNodesAvailable
@@ -227,9 +226,7 @@ buildDeploymentSettingsResult
 buildDeploymentSettingsResult m mSender signers cChainId capabilities ttl gasLimit code settings = runExceptT $ do
   selNodes <- lift $ m ^. network_selectedNodes
   networkName <- lift $ m ^. network_selectedNetwork
-  networkId <- liftEither
-    . over _Left DeploymentSettingsResultError_InvalidNetworkName . mkNetworkName . nodeVersion
-    =<< failWith DeploymentSettingsResultError_NoNodesAvailable (headMay $ rights selNodes)
+  networkId <- mkNetworkName . nodeVersion <$> failWith DeploymentSettingsResultError_NoNodesAvailable (headMay $ rights selNodes)
 
   sender <- mSender !? DeploymentSettingsResultError_NoSenderSelected
   chainId <- cChainId !? DeploymentSettingsResultError_NoChainIdSelected
@@ -401,7 +398,7 @@ uiDeploymentSettings m settings = mdo
 
       when (_deploymentSettingsConfig_includePreviewTab settings) $ tabPane mempty curSelection DeploymentSettingsView_Preview $ do
         let currentNode = headMay . rights <$> (m ^. network_selectedNodes)
-            mNetworkId = (hush . mkNetworkName . nodeVersion =<<) <$> currentNode
+            mNetworkId = ffor currentNode $ fmap $ mkNetworkName . nodeVersion
 
             accounts = liftA2 (Map.findWithDefault mempty) (m ^. network_selectedNetwork) (unAccountData <$> m ^. wallet_accounts)
             mHeadAccount = fmap fst . Map.lookupMin <$> accounts

@@ -415,7 +415,7 @@ getNetworkInfoTriple
 getNetworkInfoTriple nw = do
   nodes <- nw ^. network_selectedNodes
   meta <- nw ^. network_meta
-  let networkId = hush . mkNetworkName . nodeVersion <=< headMay $ rights nodes
+  let networkId = mkNetworkName . nodeVersion <$> headMay (rights nodes)
   pure $ (nodes, meta, ) <$> networkId
 
 buildMeta
@@ -571,7 +571,7 @@ getConfigNetworks = do
       . ("localhost:" <>)
       . getPactInstancePort
 
-    buildName = uncheckedNetworkName . ("dev-" <>) . tshow
+    buildName = mkNetworkName . ("dev-" <>) . tshow
     buildNetwork = buildName &&& pure . buildNodeRef
     devNetworks = Map.fromList $ map buildNetwork [1 .. numPactInstances]
 
@@ -580,7 +580,7 @@ getConfigNetworks = do
     Left (Left _) -> -- Development mode
       (buildName 1, devNetworks, Nothing)
     Left (Right x) -> -- Mac app remote list
-      (uncheckedNetworkName "pact", mempty, Just x)
+      (mkNetworkName "pact", mempty, Just x)
     Right (x,y) -> (x,y, Nothing) -- Production mode
 
 getNetworkNameAndMeta
