@@ -145,11 +145,13 @@ uiNetworkEdit model selectedNetwork networks _onCloseExternal = do
       <*> dHasNewNetwork
 
   modalFooter $ do
+    pb <- delay 0 =<< getPostBuild
     onReset <- uiButton btnCfgTertiary $ text "Restore Defaults"
     onConfirm <- confirmButton def "Ok"
 
     pure
       ( mempty
+        & networkCfg_refreshNodes .~ pb
         & networkCfg_trackNodes .~ trackNodes
         & networkCfg_setNetworks .~ tag (current dNetworks) onConfirm
         & networkCfg_resetNetworks .~ onReset

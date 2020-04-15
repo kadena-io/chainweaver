@@ -211,6 +211,7 @@ data NetworkCfg t = NetworkCfg
     -- transaction executed.
   , _networkCfg_setTTL   :: Event t TTLSeconds
     -- ^ TTL for this transaction
+  , _networkCfg_refreshNodes  :: Event t ()
   , _networkCfg_trackNodes    :: Event t (Set NodeRef)
   , _networkCfg_setNetworks   :: Event t (Map NetworkName [NodeRef])
     -- ^ Provide a new networks configuration.
@@ -289,12 +290,12 @@ makeNetwork model cfg = mfix $ \ ~(_, networkL) -> do
 
 
     let
-      trackInitial = Set.fromList . join . Map.elems <$> current networks <@ pb
+      refreshTracking = Set.fromList . join . Map.elems <$> current networks <@ leftmost [pb, cfg^.networkCfg_refreshNodes]
       requestTracking = cfg ^. networkCfg_trackNodes
       markTrackingStale = ffor (cfg ^. networkCfg_trackNodes) $ \ns m -> Map.restrictKeys m (Set.difference (Map.keysSet m) ns)
     tracks <- performEventAsync $ fmap (getNodeInfosAsync . Set.toList) $ leftmost
-      [ trackInitial
-      , requestTracking
+      [ requestTracking
+      , refreshTracking
       ]
     tracked <- foldDyn ($) mempty $ leftmost
       [ ffor tracks $ uncurry Map.insert
@@ -1201,10 +1202,10 @@ encodeAsText = safeDecodeUtf8 . BSL.toStrict
 
 instance Reflex t => Semigroup (NetworkCfg t) where
   NetworkCfg
-    refreshA deployA setSenderA setGasLimitA setGasPriceA setTtlA trackNodesA setNetworksA resetNetworksA selectNetworkA
+    refreshA deployA setSenderA setGasLimitA setGasPriceA setTtlA refreshNodesA trackNodesA setNetworksA resetNetworksA selectNetworkA
     <>
     NetworkCfg
-      refreshB deployB setSenderB setGasLimitB setGasPriceB setTtlB trackNodesB setNetworksB resetNetworksB selectNetworkB
+      refreshB deployB setSenderB setGasLimitB setGasPriceB setTtlB refreshNodesB trackNodesB setNetworksB resetNetworksB selectNetworkB
       = NetworkCfg
         { _networkCfg_refreshModule = leftmost [ refreshA, refreshB ]
         , _networkCfg_deployCode    = deployA <> deployB
@@ -1212,6 +1213,7 @@ instance Reflex t => Semigroup (NetworkCfg t) where
         , _networkCfg_setGasLimit   = leftmost [ setGasLimitA, setGasLimitB ]
         , _networkCfg_setGasPrice   = leftmost [ setGasPriceA, setGasPriceB ]
         , _networkCfg_setTTL        = leftmost [ setTtlA, setTtlB ]
+        , _networkCfg_refreshNodes  = leftmost [ refreshNodesA, refreshNodesB ]
         , _networkCfg_trackNodes    = trackNodesA <> trackNodesB
         , _networkCfg_setNetworks   = leftmost [setNetworksA, setNetworksB ]
         , _networkCfg_resetNetworks = leftmost [resetNetworksA, resetNetworksB ]
@@ -1219,7 +1221,7 @@ instance Reflex t => Semigroup (NetworkCfg t) where
         }
 
 instance Reflex t => Monoid (NetworkCfg t) where
-  mempty = NetworkCfg never never never never never never never never never never
+  mempty = NetworkCfg never never never never never never never never never never never
   mappend = (<>)
 
 instance Flattenable (NetworkCfg t) t where
@@ -1231,6 +1233,7 @@ instance Flattenable (NetworkCfg t) t where
       <*> doSwitch never (_networkCfg_setGasLimit <$> ev)
       <*> doSwitch never (_networkCfg_setGasPrice <$> ev)
       <*> doSwitch never (_networkCfg_setTTL <$> ev)
+      <*> doSwitch never (_networkCfg_refreshNodes <$> ev)
       <*> doSwitch never (_networkCfg_trackNodes <$> ev)
       <*> doSwitch never (_networkCfg_setNetworks <$> ev)
       <*> doSwitch never (_networkCfg_resetNetworks <$> ev)
