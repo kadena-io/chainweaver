@@ -69,6 +69,5 @@ library
     , Desktop.Setup
     , Desktop.Storage.File
     , Desktop.Syslog
-    , Desktop.Util
     , Desktop.WallettApi
   ghc-options: -Wall

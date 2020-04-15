@@ -39,7 +39,6 @@ import Frontend
 import Frontend.AppCfg
 import Frontend.ModuleExplorer.Impl (loadEditorFromLocalStorage)
 import Desktop.Frontend
-import Desktop.Util
 import Desktop.WalletApi
 
 data AppFFI = AppFFI
@@ -161,7 +160,7 @@ main' ffi mainBundleResourcePath runHTML = do
   -- Run the backend in a forked thread, and run jsaddle-wkwebview on the main thread
   putStrLn $ "Starting backend on port: " <> show port
   Async.withAsync b $ \_ -> do
-    (signingRequestMVar, signingResponseMVar) <- signingServer
+    signingIOHandler <- signingServer
       (_appFFI_moveToForeground ffi)
       (_appFFI_moveToBackground ffi)
     waitForBackend port
@@ -191,7 +190,7 @@ main' ffi mainBundleResourcePath runHTML = do
         , _frontend_body = prerender_ blank $ do
           bowserLoad <- mvarTriggerEvent bowserMVar
           fileOpened <- mvarTriggerEvent fileOpenedMVar
-          signingRequest <- mvarTriggerEvent signingRequestMVar
+          signingHandler <- mkFRPHandler signingIOHandler
           let fileFFI = FileFFI
                 { _fileFFI_openFileDialog = liftIO . _appFFI_global_openFileDialog ffi
                 , _fileFFI_externalFileOpened = fileOpened
@@ -202,8 +201,7 @@ main' ffi mainBundleResourcePath runHTML = do
                 , _appCfg_loadEditor = loadEditorFromLocalStorage
                 -- DB 2019-08-07 Changing this back to False because it's just too convenient this way.
                 , _appCfg_editorReadOnly = False
-                , _appCfg_signingRequest = signingRequest
-                , _appCfg_signingResponse = signingResponseHandler signingResponseMVar
+                , _appCfg_signingHandler = signingHandler
                 , _appCfg_enabledSettings = enabledSettings
                 , _appCfg_logMessage = _appFFI_global_logFunction ffi
                 }

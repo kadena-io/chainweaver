@@ -74,14 +74,13 @@ import Frontend.UI.Dialogs.LogoutConfirmation (uiIdeLogoutConfirmation)
 
 import Desktop.Setup
 import Desktop.ImportExport
-import Desktop.Util
 import Desktop.Storage.File
 import Desktop.WalletApi
 
 import Pact.Server.ApiClient (WalletEvent (..), commandLogFilename, _transactionLogger_walletEvent, _transactionLogger_rotateLogFile)
 
 -- | This is for development
--- > ob run --import desktop:Desktop.Frontend --frontend Desktop.Frontend.desktop
+-- > ob run --import desktop:Desktop
 desktopFrontend :: Frontend (R FrontendRoute)
 desktopFrontend = Frontend
   { _frontend_head = do
@@ -92,12 +91,11 @@ desktopFrontend = Frontend
   , _frontend_body = prerender_ blank $ do
     logDir <- (<> "/" <> commandLogFilename) <$> liftIO getTemporaryDirectory
     liftIO $ putStrLn $ "Logging to: " <> logDir
-    (signingRequestMVar, signingResponseMVar) <- signingServer
+    signingHandler <- mkFRPHandler =<< signingServer
       (pure ()) -- Can't foreground or background things
       (pure ())
     mapRoutedT (flip runTransactionLoggerT (logTransactionFile logDir) . runBrowserStorageT) $ do
       (fileOpened, triggerOpen) <- Frontend.openFileDialog
-      signingRequest <- mvarTriggerEvent signingRequestMVar
       let fileFFI = FileFFI
             { _fileFFI_externalFileOpened = fileOpened
             , _fileFFI_openFileDialog = liftJSM . triggerOpen
@@ -107,8 +105,7 @@ desktopFrontend = Frontend
         { _appCfg_gistEnabled = False
         , _appCfg_loadEditor = loadEditorFromLocalStorage
         , _appCfg_editorReadOnly = False
-        , _appCfg_signingRequest = signingRequest
-        , _appCfg_signingResponse = signingResponseHandler signingResponseMVar
+        , _appCfg_signingHandler = signingHandler
         , _appCfg_enabledSettings = enabledSettings
         , _appCfg_logMessage = defaultLogger
         }

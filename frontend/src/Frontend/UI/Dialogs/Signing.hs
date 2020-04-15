@@ -76,7 +76,7 @@ uiSigning appCfg ideL signingRequest onCloseExternal = do
 
   let response = deploymentResToResponse <$> result
 
-  finished <- performEvent . fmap (liftJSM . _appCfg_signingResponse appCfg) <=< headE $
+  finished <- (_frpHandler_writeResponses $ _appCfg_signingHandler appCfg) <=< headE $
     maybe (Left "Cancelled") Right <$> leftmost
       [ Just <$> response
       , Nothing <$ onCloseExternal

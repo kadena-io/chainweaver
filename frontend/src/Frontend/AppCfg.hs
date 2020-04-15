@@ -1,13 +1,17 @@
 -- | AppCfg is used to configure the app and pass things in and out of reflex
 module Frontend.AppCfg where
 
+import Control.Concurrent (MVar, forkIO, newEmptyMVar, putMVar, takeMVar)
+import Control.Monad (forever)
 import Control.Monad.Logger (LogLevel, LogStr)
+import Control.Monad.IO.Class (MonadIO, liftIO)
 import Data.Text (Text)
-import Language.Javascript.JSaddle (JSM)
-import Reflex.Dom hiding (Key)
+import Language.Javascript.JSaddle (JSM, MonadJSM, liftJSM)
+
+import Kadena.SigningApi
+import Reflex (PerformEvent(..), TriggerEvent, Event, newTriggerEvent)
 
 import Common.Wallet (Key)
-import Kadena.SigningApi
 
 data ChangePassword key t m = ChangePassword
   { _changePassword_requestChange :: Event t (Text, Text, Text) -> m (Event t (Either Text ()))
@@ -60,11 +64,39 @@ data AppCfg key t m = AppCfg
   -- ^ Initial code to load into editor
   , _appCfg_editorReadOnly :: Bool
   -- ^ Is the editor read only?
-  , _appCfg_signingRequest :: Event t SigningRequest
-  -- ^ Requests to sign this object
-  , _appCfg_signingResponse :: Either Text SigningResponse -> JSM ()
-  -- ^ Responses to signings
+  , _appCfg_signingHandler :: FRPHandler SigningRequest SigningResponse t m
   , _appCfg_enabledSettings :: EnabledSettings key t m
   , _appCfg_logMessage :: LogLevel -> LogStr -> IO ()
   -- ^ Logging Function
   }
+
+data MVarHandler req res = MVarHandler
+  { _mvarHandler_readRequest :: MVar req
+  , _mvarHandler_writeResponse :: MVar (Either Text res)
+  }
+
+data FRPHandler req res t m = FRPHandler
+  { _frpHandler_readRequests :: Event t req
+  , _frpHandler_writeResponses :: Event t (Either Text res) -> m (Event t ())
+  }
+
+newMVarHandler :: IO (MVarHandler req res)
+newMVarHandler = MVarHandler <$> newEmptyMVar <*> newEmptyMVar
+
+mkFRPHandler
+  :: (PerformEvent t m, TriggerEvent t m, MonadIO m)
+  => (PerformEvent t n, MonadJSM (Performable n))
+  => MVarHandler req res -> m (FRPHandler req res t n)
+mkFRPHandler (MVarHandler reqMVar resMVar) = do
+  reqs <- mvarTriggerEvent reqMVar
+  let resps = performEvent . fmap (liftJSM . liftIO . putMVar resMVar)
+  pure $ FRPHandler reqs resps
+
+-- | Push writes to the given 'MVar' into an 'Event'.
+mvarTriggerEvent
+  :: (PerformEvent t m, TriggerEvent t m, MonadIO m)
+  => MVar a -> m (Event t a)
+mvarTriggerEvent mvar = do
+  (e, trigger) <- newTriggerEvent
+  _ <- liftIO $ forkIO $ forever $ trigger =<< takeMVar mvar
+  pure e

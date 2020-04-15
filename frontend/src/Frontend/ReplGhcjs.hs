@@ -149,7 +149,7 @@ app sidebarExtra fileFFI appCfg = Store.versionedFrontend (Store.versionedStorag
   let
     onGistCreatedModal = Just . uiCreatedGist <$> ideL ^. gistStore_created
     gistModalCfg = mempty & modalCfg_setModal .~ onGistCreatedModal
-    onSigningModal = Just . uiSigning appCfg ideL <$> _appCfg_signingRequest appCfg
+    onSigningModal = Just . uiSigning appCfg ideL <$> (_frpHandler_readRequests $ _appCfg_signingHandler appCfg)
     signingModalCfg = mempty & modalCfg_setModal .~ onSigningModal
 
   pure $ mconcat

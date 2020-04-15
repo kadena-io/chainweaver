@@ -8,22 +8,22 @@ import Control.Exception (bracket_, bracket)
 import Control.Monad.IO.Class
 import Control.Monad.Except (throwError)
 import qualified Data.ByteString.Lazy as LBS
-import Data.Text (Text)
 import qualified Data.Text.Encoding as T
 import Kadena.SigningApi (SigningRequest, SigningResponse, signingAPI)
 import qualified Network.Wai.Handler.Warp as Warp
 import qualified Network.Wai.Middleware.Cors as Wai
 import qualified Servant.Server as Servant
 
+import Frontend.AppCfg
+
 signingServer
   :: MonadIO m
   => IO ()
   -> IO ()
-  -> m (MVar SigningRequest, MVar (Either Text SigningResponse))
+  -> m (MVarHandler SigningRequest SigningResponse)
 signingServer moveToForeground moveToBackground = do
   signingLock <- liftIO newEmptyMVar -- Only allow one signing request to be served at once
-  signingRequestMVar <- liftIO newEmptyMVar
-  signingResponseMVar <- liftIO newEmptyMVar
+  h@(MVarHandler signingRequestMVar signingResponseMVar) <- liftIO newMVarHandler
   let runSign obj = do
         resp <- liftIO $ bracket_ (putMVar signingLock ()) (takeMVar signingLock) $ do
           putMVar signingRequestMVar obj -- handoff to app
@@ -39,7 +39,4 @@ signingServer moveToForeground moveToBackground = do
         = Warp.runSettings s $ Wai.cors laxCors
         $ Servant.serve signingAPI runSign
   _ <- liftIO $ Async.async $ apiServer
-  pure (signingRequestMVar, signingResponseMVar)
-
-signingResponseHandler :: MonadIO m => MVar (Either Text SigningResponse) -> Either Text SigningResponse -> m ()
-signingResponseHandler signingResponseMVar = liftIO . putMVar signingResponseMVar
+  pure h
