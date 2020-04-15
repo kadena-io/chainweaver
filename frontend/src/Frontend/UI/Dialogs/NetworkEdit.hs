@@ -151,7 +151,7 @@ uiNetworkEdit model selectedNetwork networks _onCloseExternal = do
 
     pure
       ( mempty
-        & networkCfg_refreshNodes .~ pb
+        & networkCfg_refreshNodes .~ leftmost [pb, onReset]
         & networkCfg_trackNodes .~ trackNodes
         & networkCfg_setNetworks .~ tag (current dNetworks) onConfirm
         & networkCfg_resetNetworks .~ onReset
@@ -160,7 +160,7 @@ uiNetworkEdit model selectedNetwork networks _onCloseExternal = do
           [ selectEvent
           , tagMaybe (current dSelectNewest) onConfirm
           ]
-      , leftmost [onConfirm, onClose]
+      , leftmost [onConfirm, onClose, onReset]
       )
 
   where
