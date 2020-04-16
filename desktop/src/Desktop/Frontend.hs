@@ -91,28 +91,28 @@ desktopFrontend = Frontend
       base <- getConfigRoute
       void $ Frontend.newHead $ \r -> base <> renderBackendRoute backendEncoder r
   , _frontend_body = prerender_ blank $ do
-    logDir <- (<> "/" <> commandLogFilename) <$> liftIO getTemporaryDirectory
-    liftIO $ putStrLn $ "Logging to: " <> logDir
-    (signingHandler, keysHandler, accountsHandler) <- walletServer
-      (pure ()) -- Can't foreground or background things
-      (pure ())
-    mapRoutedT (flip runTransactionLoggerT (logTransactionFile logDir) . runBrowserStorageT) $ do
-      (fileOpened, triggerOpen) <- Frontend.openFileDialog
-      let fileFFI = FileFFI
-            { _fileFFI_externalFileOpened = fileOpened
-            , _fileFFI_openFileDialog = liftJSM . triggerOpen
-            , _fileFFI_deliverFile = deliverFile
-            }
-      bipWallet fileFFI (_mvarHandler_readRequest signingHandler) $ \enabledSettings -> AppCfg
-        { _appCfg_gistEnabled = False
-        , _appCfg_loadEditor = loadEditorFromLocalStorage
-        , _appCfg_editorReadOnly = False
-        , _appCfg_signingHandler = mkFRPHandler signingHandler
-        , _appCfg_keysEndpointHandler = mkFRPHandler keysHandler
-        , _appCfg_accountsEndpointHandler = mkFRPHandler accountsHandler
-        , _appCfg_enabledSettings = enabledSettings
-        , _appCfg_logMessage = defaultLogger
-        }
+      logDir <- (<> "/" <> commandLogFilename) <$> liftIO getTemporaryDirectory
+      liftIO $ putStrLn $ "Logging to: " <> logDir
+      (signingHandler, keysHandler, accountsHandler) <- walletServer
+        (pure ()) -- Can't foreground or background things
+        (pure ())
+      mapRoutedT (flip runTransactionLoggerT (logTransactionFile logDir) . runBrowserStorageT) $ do
+        (fileOpened, triggerOpen) <- Frontend.openFileDialog
+        let fileFFI = FileFFI
+              { _fileFFI_externalFileOpened = fileOpened
+              , _fileFFI_openFileDialog = liftJSM . triggerOpen
+              , _fileFFI_deliverFile = deliverFile
+              }
+        bipWallet fileFFI (_mvarHandler_readRequest signingHandler) $ \enabledSettings -> AppCfg
+          { _appCfg_gistEnabled = False
+          , _appCfg_loadEditor = loadEditorFromLocalStorage
+          , _appCfg_editorReadOnly = False
+          , _appCfg_signingHandler = mkFRPHandler signingHandler
+          , _appCfg_keysEndpointHandler = mkFRPHandler keysHandler
+          , _appCfg_accountsEndpointHandler = mkFRPHandler accountsHandler
+          , _appCfg_enabledSettings = enabledSettings
+          , _appCfg_logMessage = defaultLogger
+          }
   }
 
 -- This is the deliver file that is only used for development (i.e jsaddle web version)

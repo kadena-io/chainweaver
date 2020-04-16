@@ -188,33 +188,33 @@ main' ffi mainBundleResourcePath runHTML = do
           bowserLoad <- newHead $ \r -> T.pack $ T.unpack route </> T.unpack (renderBackendRoute backendEncoder r)
           performEvent_ $ liftIO . putMVar bowserMVar <$> bowserLoad
         , _frontend_body = prerender_ blank $ do
-          bowserLoad <- takeMVarTriggerEvent bowserMVar
-          fileOpened <- takeMVarTriggerEvent fileOpenedMVar
+            bowserLoad <- takeMVarTriggerEvent bowserMVar
+            fileOpened <- takeMVarTriggerEvent fileOpenedMVar
 
-          let fileFFI = FileFFI
-                { _fileFFI_openFileDialog = liftIO . _appFFI_global_openFileDialog ffi
-                , _fileFFI_externalFileOpened = fileOpened
-                , _fileFFI_deliverFile = deliverFile ffi
-                }
-          let appCfg enabledSettings = AppCfg
-                { _appCfg_gistEnabled = False
-                , _appCfg_loadEditor = loadEditorFromLocalStorage
-                -- DB 2019-08-07 Changing this back to False because it's just too convenient this way.
-                , _appCfg_editorReadOnly = False
-                , _appCfg_signingHandler = mkFRPHandler signingHandler
-                , _appCfg_keysEndpointHandler = mkFRPHandler keysHandler
-                , _appCfg_accountsEndpointHandler = mkFRPHandler accountsHandler
-                , _appCfg_enabledSettings = enabledSettings
-                , _appCfg_logMessage = _appFFI_global_logFunction ffi
-                }
-          _ <- mapRoutedT ( flip runTransactionLoggerT (logTransactionFile $ libPath </> commandLogFilename) .
-                            runFileStorageT libPath
-                          )
-               $ runWithReplace loaderMarkup
-               $ ( liftIO (_appFFI_activateWindow ffi)
-                   >> liftIO (_appFFI_resizeWindow ffi defaultWindowSize)
-                   >> bipWallet fileFFI (_mvarHandler_readRequest signingHandler) appCfg
-                 )
-               <$ bowserLoad
-          pure ()
+            let fileFFI = FileFFI
+                  { _fileFFI_openFileDialog = liftIO . _appFFI_global_openFileDialog ffi
+                  , _fileFFI_externalFileOpened = fileOpened
+                  , _fileFFI_deliverFile = deliverFile ffi
+                  }
+            let appCfg enabledSettings = AppCfg
+                  { _appCfg_gistEnabled = False
+                  , _appCfg_loadEditor = loadEditorFromLocalStorage
+                  -- DB 2019-08-07 Changing this back to False because it's just too convenient this way.
+                  , _appCfg_editorReadOnly = False
+                  , _appCfg_signingHandler = mkFRPHandler signingHandler
+                  , _appCfg_keysEndpointHandler = mkFRPHandler keysHandler
+                  , _appCfg_accountsEndpointHandler = mkFRPHandler accountsHandler
+                  , _appCfg_enabledSettings = enabledSettings
+                  , _appCfg_logMessage = _appFFI_global_logFunction ffi
+                  }
+            _ <- mapRoutedT ( flip runTransactionLoggerT (logTransactionFile $ libPath </> commandLogFilename) .
+                              runFileStorageT libPath
+                            )
+                 $ runWithReplace loaderMarkup
+                 $ ( liftIO (_appFFI_activateWindow ffi)
+                     >> liftIO (_appFFI_resizeWindow ffi defaultWindowSize)
+                     >> bipWallet fileFFI (_mvarHandler_readRequest signingHandler) appCfg
+                   )
+                 <$ bowserLoad
+            pure ()
         }
