@@ -348,7 +348,6 @@ uiCorrectingInputElement eReset parse inputSanitize blurSanitize render cfg = md
 
   pure (ie, (fmap . fmap) fst $ inputSanitization val, inp')
 
-
 -- | Decimal input to the given precision. Returns the element, the value, and
 -- the user input events
 uiNonnegativeRealWithPrecisionInputElement
