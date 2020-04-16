@@ -390,7 +390,6 @@ uiNonnegativeRealWithPrecisionInputElement eReset prec fromDecimal cfg = do
       [_] -> tread t
       _ -> Nothing
 
-
     blurSanitize :: Decimal -> Maybe (Decimal, Text)
     blurSanitize decimal = asum
       [ (D.roundTo 1 decimal, "")
