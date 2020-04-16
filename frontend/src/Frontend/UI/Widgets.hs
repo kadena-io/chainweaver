@@ -348,6 +348,7 @@ uiCorrectingInputElement eReset parse inputSanitize blurSanitize render cfg = md
 
   pure (ie, (fmap . fmap) fst $ inputSanitization val, inp')
 
+
 -- | Decimal input to the given precision. Returns the element, the value, and
 -- the user input events
 uiNonnegativeRealWithPrecisionInputElement
@@ -384,11 +385,12 @@ uiNonnegativeRealWithPrecisionInputElement eReset prec fromDecimal cfg = do
 
   where
     stepSize = "0." <> T.replicate (fromIntegral prec - 1) "0" <> "1"
-    parse t = tread $
-      if "." `T.isPrefixOf` t && not (T.any (== '.') $ T.tail t) then
-        T.cons '0' t
-      else
-        t
+    parse t = case T.splitOn "." t of
+      ["",v] -> tread ("0." <> v)
+      [_, _] -> tread t
+      [_] -> tread t
+      _ -> Nothing
+
 
     blurSanitize :: Decimal -> Maybe (Decimal, Text)
     blurSanitize decimal = asum
