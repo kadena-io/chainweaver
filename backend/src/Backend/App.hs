@@ -160,7 +160,7 @@ main' ffi mainBundleResourcePath runHTML = do
   -- Run the backend in a forked thread, and run jsaddle-wkwebview on the main thread
   putStrLn $ "Starting backend on port: " <> show port
   Async.withAsync b $ \_ -> do
-    (signingIOHandler, keysIOHandler, accountsIOHandler) <- walletServer
+    (signingHandler, keysHandler, accountsHandler) <- walletServer
       (_appFFI_moveToForeground ffi)
       (_appFFI_moveToBackground ffi)
     waitForBackend port
@@ -188,11 +188,8 @@ main' ffi mainBundleResourcePath runHTML = do
           bowserLoad <- newHead $ \r -> T.pack $ T.unpack route </> T.unpack (renderBackendRoute backendEncoder r)
           performEvent_ $ liftIO . putMVar bowserMVar <$> bowserLoad
         , _frontend_body = prerender_ blank $ do
-          bowserLoad <- mvarTriggerEvent bowserMVar
-          fileOpened <- mvarTriggerEvent fileOpenedMVar
-          signingHandler <- mkFRPHandler signingIOHandler
-          keysHandler <- mkFRPHandler keysIOHandler
-          accountsHandler <- mkFRPHandler accountsIOHandler
+          bowserLoad <- takeMVarTriggerEvent bowserMVar
+          fileOpened <- takeMVarTriggerEvent fileOpenedMVar
 
           let fileFFI = FileFFI
                 { _fileFFI_openFileDialog = liftIO . _appFFI_global_openFileDialog ffi
@@ -204,9 +201,9 @@ main' ffi mainBundleResourcePath runHTML = do
                 , _appCfg_loadEditor = loadEditorFromLocalStorage
                 -- DB 2019-08-07 Changing this back to False because it's just too convenient this way.
                 , _appCfg_editorReadOnly = False
-                , _appCfg_signingHandler = signingHandler
-                , _appCfg_keysEndpointHandler = keysHandler
-                , _appCfg_accountsEndpointHandler = accountsHandler
+                , _appCfg_signingHandler = mkFRPHandler signingHandler
+                , _appCfg_keysEndpointHandler = mkFRPHandler keysHandler
+                , _appCfg_accountsEndpointHandler = mkFRPHandler accountsHandler
                 , _appCfg_enabledSettings = enabledSettings
                 , _appCfg_logMessage = _appFFI_global_logFunction ffi
                 }
@@ -216,7 +213,7 @@ main' ffi mainBundleResourcePath runHTML = do
                $ runWithReplace loaderMarkup
                $ ( liftIO (_appFFI_activateWindow ffi)
                    >> liftIO (_appFFI_resizeWindow ffi defaultWindowSize)
-                   >> bipWallet fileFFI appCfg
+                   >> bipWallet fileFFI (_mvarHandler_readRequest signingHandler) appCfg
                  )
                <$ bowserLoad
           pure ()

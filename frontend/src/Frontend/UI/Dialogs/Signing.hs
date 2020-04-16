@@ -16,11 +16,11 @@ module Frontend.UI.Dialogs.Signing
   ) where
 
 import Control.Monad ((<=<))
+import Data.Text (Text)
 import Kadena.SigningApi
 import Reflex
 import Reflex.Dom
 
-import Frontend.AppCfg
 import Frontend.Crypto.Class
 import Frontend.Crypto.Ed25519 (fromPactPublicKey)
 import Frontend.Foundation hiding (Arg)
@@ -48,12 +48,12 @@ uiSigning
     , HasCrypto key (Performable m)
     , HasTransactionLogger m
     )
-  => AppCfg key t m
-  -> ModalIde m key t
+  => ModalIde m key t
+  -> (Event t (Either Text SigningResponse) -> m (Event t ()))
   -> SigningRequest
   -> Event t ()
   -> m (mConf, Event t ())
-uiSigning appCfg ideL signingRequest onCloseExternal = do
+uiSigning ideL writeSigningResponse signingRequest onCloseExternal = do
   onClose <- modalHeader $ text "Signing Request"
 
   (mConf, result, _) <- uiDeploymentSettings ideL $ DeploymentSettingsConfig
@@ -76,7 +76,7 @@ uiSigning appCfg ideL signingRequest onCloseExternal = do
 
   let response = deploymentResToResponse <$> result
 
-  finished <- (_frpHandler_writeResponses $ _appCfg_signingHandler appCfg) <=< headE $
+  finished <- writeSigningResponse <=< headE $
     maybe (Left "Cancelled") Right <$> leftmost
       [ Just <$> response
       , Nothing <$ onCloseExternal

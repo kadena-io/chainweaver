@@ -1,7 +1,8 @@
+{-# LANGUAGE NumDecimals #-}
 -- | AppCfg is used to configure the app and pass things in and out of reflex
 module Frontend.AppCfg where
 
-import Control.Concurrent (MVar, forkIO, newEmptyMVar, putMVar, takeMVar)
+import Control.Concurrent (MVar, forkIO, newEmptyMVar, putMVar, takeMVar, threadDelay, tryReadMVar)
 import Control.Monad (forever)
 import Control.Monad.Logger (LogLevel, LogStr)
 import Control.Monad.IO.Class (MonadIO, liftIO)
@@ -10,7 +11,7 @@ import Data.Text (Text)
 import Language.Javascript.JSaddle (JSM, MonadJSM, liftJSM)
 
 import Kadena.SigningApi
-import Reflex (PerformEvent(..), TriggerEvent, Event, newTriggerEvent)
+import Reflex
 
 import Common.Network (NetworkName)
 import Common.Wallet (Key, PublicKey)
@@ -66,9 +67,9 @@ data AppCfg key t m = AppCfg
   -- ^ Initial code to load into editor
   , _appCfg_editorReadOnly :: Bool
   -- ^ Is the editor read only?
-  , _appCfg_signingHandler :: FRPHandler SigningRequest SigningResponse t m
-  , _appCfg_keysEndpointHandler :: FRPHandler () [PublicKey] t m
-  , _appCfg_accountsEndpointHandler :: FRPHandler () (Map NetworkName [AccountName]) t m
+  , _appCfg_signingHandler :: m (FRPHandler SigningRequest SigningResponse t m)
+  , _appCfg_keysEndpointHandler :: m (FRPHandler () [PublicKey] t m)
+  , _appCfg_accountsEndpointHandler :: m (FRPHandler () (Map NetworkName [AccountName]) t m)
   , _appCfg_enabledSettings :: EnabledSettings key t m
   , _appCfg_logMessage :: LogLevel -> LogStr -> IO ()
   -- ^ Logging Function
@@ -92,15 +93,26 @@ mkFRPHandler
   => (PerformEvent t n, MonadJSM (Performable n))
   => MVarHandler req res -> m (FRPHandler req res t n)
 mkFRPHandler (MVarHandler reqMVar resMVar) = do
-  reqs <- mvarTriggerEvent reqMVar
+  reqs <- takeMVarTriggerEvent reqMVar
   let resps = performEvent . fmap (liftJSM . liftIO . putMVar resMVar)
   pure $ FRPHandler reqs resps
 
--- | Push writes to the given 'MVar' into an 'Event'.
-mvarTriggerEvent
+takeMVarTriggerEvent
   :: (PerformEvent t m, TriggerEvent t m, MonadIO m)
   => MVar a -> m (Event t a)
-mvarTriggerEvent mvar = do
+takeMVarTriggerEvent mvar = do
   (e, trigger) <- newTriggerEvent
-  _ <- liftIO $ forkIO $ forever $ trigger =<< takeMVar mvar
+  _ <- liftIO $ forkIO $ forever $ do
+    trigger =<< takeMVar mvar
   pure e
+
+tryReadMVarTriggerEvent
+  :: (PerformEvent t m, TriggerEvent t m, MonadIO m)
+  => MVar a -> m (Event t a)
+tryReadMVarTriggerEvent mvar = do
+  (e, trigger) <- newTriggerEvent
+  _ <- liftIO $ forkIO $ forever $ do
+    let seconds = (*1e6)
+    trigger =<< tryReadMVar mvar
+    threadDelay (seconds 1)
+  pure $ fmapMaybe id e

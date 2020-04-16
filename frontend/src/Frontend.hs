@@ -68,7 +68,7 @@ webFrontend = Frontend
             , _fileFFI_openFileDialog = liftJSM . triggerOpen
             , _fileFFI_deliverFile = \_ -> pure never
             }
-          printResponsesHandler = FRPHandler never $ performEvent . fmap (liftIO . print)
+          printResponsesHandler = pure $ FRPHandler never $ performEvent . fmap (liftIO . print)
 
       app blank fileFFI $ AppCfg
         { _appCfg_gistEnabled = True
