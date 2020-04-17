@@ -195,7 +195,7 @@ previewTransfer model transfer = Workflow $ do
       transactionDisplayNetwork model
       case crossChainData of
         Nothing ->
-          void $ predefinedChainIdDisplayed fromChain model
+          void $ predefinedChainIdDisplayed fromChain
         Just _ -> do
           _ <- cidDisplay "From Chain ID" fromChain
           _ <- cidDisplay "To Chain ID" (_txBuilder_chainId toTxBuilder)
