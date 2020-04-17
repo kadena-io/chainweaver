@@ -27,7 +27,6 @@ module Frontend.UI.Dialogs.CallFunction
 ------------------------------------------------------------------------------
 import           Control.Lens
 import           Control.Monad
-import           Data.Coerce                    (coerce)
 import           Data.List                      (intersperse)
 import qualified Data.Map                       as Map
 import           Data.Text                      (Text)
@@ -37,9 +36,9 @@ import           Reflex.Dom
 import           Safe                           (headMay, readMay)
 ------------------------------------------------------------------------------
 import           Pact.Types.Lang                (Arg (..), FunType (..),
-                                                 GuardType (..),
-                                                 ModuleName (..), Name,
+                                                 GuardType (..), Name,
                                                  PrimType (..), Term, Type (..))
+import           Pact.Types.Pretty (renderCompactText)
 ------------------------------------------------------------------------------
 import           Frontend.Crypto.Class
 import           Frontend.Foundation            hiding (Arg)
@@ -82,8 +81,7 @@ uiCallFunction m mModule func _onClose
     let content = mdo
           (cfg, result, mPactCall) <- uiDeploymentSettings m $ DeploymentSettingsConfig
             { _deploymentSettingsConfig_userTab = parametersTab m func
-            , _deploymentSettingsConfig_chainId =
-                predefinedChainIdSelect $ _chainRef_chain . _moduleRef_source $ moduleRef
+            , _deploymentSettingsConfig_chainId = \_ -> pure $ pure $ Just $ _chainRef_chain . _moduleRef_source $ moduleRef
             , _deploymentSettingsConfig_code = fromMaybe (pure $ buildCall func []) mPactCall
             , _deploymentSettingsConfig_sender = uiAccountDropdown def (pure $ \_ _ -> True) (pure id)
             , _deploymentSettingsConfig_data = Nothing
@@ -141,19 +139,20 @@ parametersTab m func =
         args :: [ Dynamic t Text ] <- traverse (funArgEdit (m ^. jsonData)) fArgs
         pure $ buildCall func <$> sequence args
 
-
 -- | Build a function call
 buildCall
   :: PactFunction
   -> [Text] -- ^ Function arguments
   -> Text -- ^ Pact function call
-buildCall func args =
-  let
-    ModuleName mn nn = _pactFunction_module func
-    namespacePrefix = maybe "" (\(NamespaceName nn') -> nn' <> ".") nn
-    argsSeparator = if null args then "" else " "
-  in
-    mconcat [ "(", namespacePrefix, coerce mn, ".", _pactFunction_name func, argsSeparator, T.unwords args, ")" ]
+buildCall func args = fold
+  [ "("
+  , renderCompactText (_pactFunction_module func)
+  , "."
+  , _pactFunction_name func
+  , if null args then "" else " "
+  , T.unwords args
+  , ")"
+  ]
 
 -- renderQualified :: PactFunction -> Text
 -- renderQualified func = (coerce . _pactFunction_module) func <> "." <> _pactFunction_name func

@@ -7,8 +7,8 @@
 @import '../include/defs';
 
 .wallet__keys-list {
-  margin-top: 20px;
-  margin-left: 22px;
+  padding-left: 22px;
+  overflow: auto;
 }
 
 .wallet__table-row {
@@ -24,13 +24,24 @@
 
 .wallet__table-heading {
   @extend .table__heading;
-  padding: 15px;
+  padding: 5px;
+  padding-top: 35px;
   padding-bottom: 30px;
   white-space: nowrap;
+
+  position: sticky;
+  top: 0px;
+  z-index: $main-header-z-index;
+  background: #f1f1f1;
+
+  // sticky table headers have non-sticky borders
+  // fake it with box-shadow to hide borders from the non-sticky elements scrolled under the header
+  // https://stackoverflow.com/questions/44175408/unable-to-set-border-properties-on-position-fixed-thead
+  box-shadow: 0px -1px 0px 1px #f1f1f1;
 }
 
 .wallet__table-cell {
-  padding: 15px;
+  padding: 5px;
   overflow: hidden;
   text-overflow: ellipsis;
 }
@@ -80,7 +91,7 @@
   text-overflow: ellipsis;
   overflow: hidden;
 
-  @media (max-width: 1550px) {
+  @media (max-width: $cutoff-account-buttons-text) {
     padding: 0 10px;
     margin-right: 0;
     &:not(:first-child) {

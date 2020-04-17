@@ -29,6 +29,7 @@ import GHCJS.DOM.EventM (on)
 import GHCJS.DOM.GlobalEventHandlers (keyPress)
 import GHCJS.DOM.KeyboardEvent (getCtrlKey, getKey, getKeyCode, getMetaKey)
 import GHCJS.DOM.Types (HTMLElement (..), unElement)
+import Kadena.SigningApi (SigningRequest, SigningResponse)
 import Language.Javascript.JSaddle (liftJSM)
 import Obelisk.Generated.Static
 import Obelisk.Route (R)
@@ -62,7 +63,7 @@ import Frontend.UI.Dialogs.CreateGist (uiCreateGist)
 import Frontend.UI.Dialogs.CreatedGist (uiCreatedGist)
 import Frontend.UI.Dialogs.DeployConfirmation (uiDeployConfirmation)
 import Frontend.UI.Dialogs.LogoutConfirmation (uiLogoutConfirmation)
-import Frontend.UI.Dialogs.NetworkEdit (uiNetworkSelect)
+import Frontend.UI.Dialogs.NetworkEdit (uiNetworkSelectTopBar)
 import Frontend.UI.Dialogs.Signing (uiSigning)
 import Frontend.UI.IconGrid (IconGridCellConfig(..), iconGridLaunchLink)
 import Frontend.UI.Modal
@@ -71,6 +72,7 @@ import Frontend.UI.RightPanel
 import Frontend.UI.Settings
 import Frontend.UI.Wallet
 import Frontend.UI.Widgets
+import Frontend.Wallet hiding (walletCfg)
 
 app
   :: forall key t m.
@@ -90,6 +92,7 @@ app
   -> RoutedT t (R FrontendRoute) m ()
 app sidebarExtra fileFFI appCfg = Store.versionedFrontend (Store.versionedStorage @key) $ void . mfix $ \ cfg -> do
   ideL <- makeIde fileFFI appCfg cfg
+  FRPHandler signingReq signingResp <- handleEndpoints ideL appCfg
 
   walletSidebar sidebarExtra
   updates <- divClass "page" $ do
@@ -146,10 +149,11 @@ app sidebarExtra fileFFI appCfg = Store.versionedFrontend (Store.versionedStorag
 
   modalCfg <- showModal ideL
 
+  req <- delay 0 signingReq
   let
     onGistCreatedModal = Just . uiCreatedGist <$> ideL ^. gistStore_created
     gistModalCfg = mempty & modalCfg_setModal .~ onGistCreatedModal
-    onSigningModal = Just . uiSigning appCfg ideL <$> _appCfg_signingRequest appCfg
+    onSigningModal = Just . uiSigning ideL signingResp <$> req
     signingModalCfg = mempty & modalCfg_setModal .~ onSigningModal
 
   pure $ mconcat
@@ -159,6 +163,20 @@ app sidebarExtra fileFFI appCfg = Store.versionedFrontend (Store.versionedStorag
     , signingModalCfg
     , mempty & ideCfg_editor . editorCfg_loadCode .~ (snd <$> _fileFFI_externalFileOpened fileFFI)
     ]
+
+handleEndpoints
+  :: (HasWallet model key t, MonadIO m, PerformEvent t m)
+  => model -> AppCfg key t m -> m (FRPHandler SigningRequest SigningResponse t m)
+handleEndpoints m cfg = do
+  let keys = ffor (m ^. wallet_keys) $ Right . toList . fmap (_keyPair_publicKey . _key_pair)
+      accounts = ffor (m ^. wallet_accounts) $ Right . fmap Map.keys . unAccountData
+
+  FRPHandler keysReqs keysResps <- _appCfg_keysEndpointHandler cfg
+  FRPHandler accountsReqs accountsResps <- _appCfg_accountsEndpointHandler cfg
+
+  void $ keysResps $ current keys <@ keysReqs
+  void $ accountsResps $ current accounts <@ accountsReqs
+  _appCfg_signingHandler cfg
 
 walletSidebar
   :: ( DomBuilder t m
@@ -275,12 +293,9 @@ networkBar
   => ModalIde m key t
   -> m (ModalIdeCfg m key t)
 networkBar m = divClass "main-header main-header__network-bar" $ do
-  -- Fetch and display the status of the currently selected network.
-  --queryNetworkStatus (m ^. ide_network . network_networks) (m ^. ide_network . network_selectedNetwork)
-  --  >>= uiNetworkStatus (pure " page__network-bar-status")
   -- Present the dropdown box for selecting one of the configured networks.
   divClass "page__network-bar-select" $ do
-    selectEv <- uiNetworkSelect "select_type_special" (m ^. network_selectedNetwork) (m ^. network_networks)
+    selectEv <- uiNetworkSelectTopBar "select_type_special" (m ^. network_selectedNetwork) (m ^. network_networks)
     pure $ mempty & networkCfg_selectNetwork .~ selectEv
 
 

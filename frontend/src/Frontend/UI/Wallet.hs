@@ -90,6 +90,7 @@ data AccountDialog
   = AccountDialog_DetailsChain (AccountName, ChainId, AccountDetails, Account)
   | AccountDialog_Details AccountName (Maybe AccountNotes)
   | AccountDialog_Receive AccountName AccountDetails ChainId
+  | AccountDialog_TransferTo AccountName AccountDetails ChainId
   | AccountDialog_Send (AccountName, ChainId, AccountDetails) (Maybe UnfinishedCrossChainTransfer)
   | AccountDialog_CompleteCrosschain AccountName ChainId UnfinishedCrossChainTransfer
   | AccountDialog_Create AccountName ChainId (Maybe PublicKey)
@@ -111,7 +112,7 @@ uiWatchRequestButton
      )
   => model -> m mConf
 uiWatchRequestButton model = do
-  watch <- uiButton (def & uiButtonCfg_class <>~ " main-header__wallet-refresh-button")  (text "Watch Request")
+  watch <- uiButton (def & uiButtonCfg_class <>~ " main-header__wallet-refresh-button")  (text "Check TX Status")
   pure $ mempty & modalCfg_setModal .~ (Just (uiWatchRequestDialog model) <$ watch)
 
 -- | UI for managing the keys wallet.
@@ -168,11 +169,11 @@ uiAccountItems model accountsMap = do
   events <- elAttr "table" tableAttrs $ do
     el "colgroup" $ do
       elAttr "col" ("style" =: "width: 5%") blank
-      elAttr "col" ("style" =: "width: 22.5%") blank
-      elAttr "col" ("style" =: "width: 12.5%") blank
+      elAttr "col" ("style" =: "width: 20%") blank
+      elAttr "col" ("style" =: "width: 17.5%") blank
       elAttr "col" ("style" =: "width: 15%") blank
-      elAttr "col" ("style" =: "width: 10%") blank
-      elAttr "col" ("style" =: "width: 35%") blank
+      elAttr "col" ("style" =: "width: 20%") blank
+      elAttr "col" ("style" =: "width: 22.5%") blank
 
     el "thead" $ el "tr" $ do
       let mkHeading = elClass "th" "wallet__table-heading" . text
@@ -200,7 +201,8 @@ uiAccountItems model accountsMap = do
     accModal n = Just . \case
       AccountDialog_Details acc notes -> uiAccountDetails n acc notes
       AccountDialog_DetailsChain acc -> uiAccountDetailsOnChain n acc
-      AccountDialog_Receive name details chain -> uiReceiveModal model name details (Just chain)
+      AccountDialog_Receive name details chain -> uiReceiveModal "Receive" model name details (Just chain)
+      AccountDialog_TransferTo name details chain -> uiReceiveModal "Transfer To" model name details (Just chain)
       AccountDialog_Send acc mucct -> uiSendModal model acc mucct
       AccountDialog_CompleteCrosschain name chain ucct -> uiFinishCrossChainTransferModal model name chain ucct
       AccountDialog_Create name chain mKey -> uiCreateAccountDialog model name chain mKey
@@ -309,13 +311,13 @@ uiAccountItem keys name accountInfo = do
                                   )
                       <@ send
                   , AccountDialog_CompleteCrosschain name chain <$> onCompleteCrossChain
-                  , AccountDialog_DetailsChain . (name, chain, d, ) <$> current dAccount <@ onDetails
+                  , AccountDialog_DetailsChain . (name, chain, d,) <$> current dAccount <@ onDetails
                   ]
               False -> do
                 transferTo <- transferToButton cfg
                 onDetails <- detailsIconButton cfg
                 pure $ leftmost
-                  [ AccountDialog_Receive name d chain <$ transferTo
+                  [ AccountDialog_TransferTo name d chain <$ transferTo
                   , AccountDialog_DetailsChain . (name, chain, d, ) <$> current dAccount <@ onDetails
                   ]
     pure (balance, dialog)

@@ -39,7 +39,9 @@
 }
 
 .page__content.visible {
-  display: block;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
 }
 
 .page__content.contracts {

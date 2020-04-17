@@ -43,7 +43,6 @@ module Frontend.ModuleExplorer.ModuleRef
     -- * Pretty printing
   , textModuleRefSource
   , textModuleRefName
-  , textModuleName
   ) where
 
 ------------------------------------------------------------------------------
@@ -52,13 +51,13 @@ import           Control.Lens
 import           Control.Monad
 import           Control.Monad.Except            (throwError)
 import           Data.Bifunctor                  (first)
-import           Data.Coerce                     (coerce)
 import           Data.List.NonEmpty              (NonEmpty ((:|)))
 import qualified Data.Map                        as Map
 import qualified Data.Set                        as Set
 import           Data.Text                       (Text)
 import qualified Data.Text                       as T
 import           Data.These                      (These(This,That))
+import           Data.Traversable                (for)
 import           Reflex.Dom.Core                 (MonadHold)
 import qualified Text.Megaparsec                 as MP
 ------------------------------------------------------------------------------
@@ -67,6 +66,7 @@ import           Pact.Types.Exp                  (Literal (LString))
 import           Pact.Types.Info                 (Code (..))
 import           Pact.Types.Lang                 (ModuleName)
 import           Pact.Types.PactValue
+import           Pact.Types.Pretty               (renderCompactText)
 import           Pact.Types.Term                 as PactTerm (FieldKey,
                                                               Module (..),
                                                               ModuleDef (..),
@@ -77,12 +77,14 @@ import           Pact.Types.Term                 as PactTerm (FieldKey,
                                                               Object (..),
                                                               ObjectMap (..),
                                                               Term (TList, TLiteral, TModule, TObject),
-                                                              tStr)
+                                                              moduleDefName, mnNamespace, tStr)
 ------------------------------------------------------------------------------
+import           Common.Modules
 import           Common.RefPath                  as MP
 import           Frontend.Foundation
 import           Frontend.ModuleExplorer.Example
 import           Frontend.ModuleExplorer.File
+import           Frontend.ModuleExplorer.Module (nameOfModule)
 import           Frontend.Network
 import           Frontend.Log
 import           Frontend.Crypto.Class
@@ -118,7 +120,7 @@ instance A.ToJSON ModuleSource where
 instance A.FromJSON ModuleSource where
   parseJSON = A.genericParseJSON compactEncoding
 
--- | A Module is uniquely idendified by its name and its origin.
+-- | A Module is uniquely identified by its name and its origin.
 data ModuleRefV s = ModuleRef
   { _moduleRef_source :: s -- ^ Where does the module come from.
   , _moduleRef_name   :: ModuleName   -- ^ Fully qualified name of the module.
@@ -171,13 +173,8 @@ instance IsRefPath ModuleSource where
           "deployed" -> parseRef
           _          -> MP.unexpected $ MP.Tokens (r :| [])
 
-
 instance IsRefPath ModuleName where
-  renderRef (ModuleName n mNamespace) = mkRefPath $
-    case mNamespace of
-      Nothing                 -> n
-      Just (NamespaceName ns) -> ns <> "." <> n
-
+  renderRef = mkRefPath . renderCompactText
   parseRef = do
     fn <- MP.anySingle
     case reverse $ T.splitOn "." fn of
@@ -205,13 +202,7 @@ getFileModuleRef = traverse (^? _ModuleSource_File)
 --   textModuleName . _moduleRef_name
 -- @
 textModuleRefName :: ModuleRefV a -> Text
-textModuleRefName = textModuleName . _moduleRef_name
-
--- | Render a `ModuleName` as `Text`.
-textModuleName :: ModuleName -> Text
-textModuleName = \case
-  ModuleName n Nothing  -> n
-  ModuleName n (Just s) -> coerce s <> "." <> n
+textModuleRefName = renderCompactText . _moduleRef_name
 
 -- | Show the type of the selected module.
 --
@@ -264,46 +255,37 @@ fetchModule model onReq = do
   where
     mkReq (networkName, pm) mRef = (mRef,) <$> mkSimpleReadReq code networkName pm (_moduleRef_source mRef)
       where code = mconcat
-              [ defineNamespace . _moduleRef_name $ mRef
-              , "(describe-module '"
-              , _mnName . _moduleRef_name $ mRef
+              [ "(describe-module "
+              , quotedFullName $ _moduleRef_name mRef
               , ")"
               ]
 
     getModule :: PactValue -> Either Text (ModuleDef (Term Name))
     getModule  = \case
-      PObject obj -> do
-        mods <- fileModules =<< getCode obj
+      PObject (ObjectMap props) -> do
+        --Compatibility hack: pact has this wrapped, chainweb not yet - so:
+        (ObjectMap objMod) <- case  Map.lookup "v" props of
+          Just (PObject obj) -> pure obj
+          Nothing -> pure $ ObjectMap props
+          _ -> throwError "Expected object describing the module."
+
+        codeLit <- note "No code property in module description object:\n" $
+          Map.lookup "code" objMod
+
+        c <- case codeLit of
+          PLiteral (LString c) -> pure $ Code c
+          _ -> throwError "No code found, but something else!"
+
+        mn <- for (Map.lookup "name" objMod) $ \case
+          PLiteral (LString mn) -> first T.pack $ parseModuleName mn
+          _ -> throwError "Expected module name"
+
+        mods <- codeModules c
         case Map.elems mods of
           []   -> throwError "No module in response"
-          m:[] -> pure m
+          m:[] -> pure $ m & maybe id (nameOfModule .~) mn
           _    -> throwError "More than one module in response?"
       _ -> throwError "Server response did not contain a PObject module description."
-
-    getCode :: ObjectMap PactValue -> Either Text Code
-    getCode (ObjectMap props) = do
-      {- termMod <- -}
-        {- note "Property v missing!" $ Map.lookup "v" props -}
-
-      --Compatibility hack: pact has this wrapped, chainweb not yet - so:
-      let
-        termMod =
-          Map.lookup "v" props
-      (ObjectMap objMod) <- case termMod of
-        Just (PObject obj) -> pure obj
-        Nothing -> pure $ ObjectMap props
-        _ -> throwError "Expected object describing the module."
-
-      codeLit <- note "No code property in module description object:\n" $
-        Map.lookup "code" objMod
-
-      case codeLit of
-        PLiteral (LString c) -> pure $ Code c
-        _ -> throwError "No code found, but something else!"
-
-    defineNamespace =
-      maybe "" (\n -> "(namespace '" <> coerce n <> ")") . _mnNamespace
-
 
 -- Instances:
 

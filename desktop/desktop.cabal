@@ -51,6 +51,7 @@ library
     , ref-tf
     , servant
     , servant-server
+    , system-locale
     , text
     , time
     , transformers
@@ -66,8 +67,7 @@ library
     , Desktop.ImportExport
     , Desktop.Orphans
     , Desktop.Setup
-    , Desktop.SigningApi
     , Desktop.Storage.File
     , Desktop.Syslog
-    , Desktop.Util
+    , Desktop.WallettApi
   ghc-options: -Wall

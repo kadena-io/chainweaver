@@ -52,6 +52,7 @@ import           Control.Monad               (void)
 import           Control.Monad.Except        (ExceptT (..), MonadError,
                                               runExceptT, throwError)
 import           Control.Monad.IO.Unlift
+import           Control.Monad.Trans.Except  (except)
 import           Data.Aeson                  (Value)
 import qualified Data.Aeson                  as Aeson
 import qualified Data.Aeson.Lens             as AL
@@ -92,10 +93,10 @@ data ChainwebInfo = ChainwebInfo
 
 data NodeType =
     NodeType_Pact Text -- ^ A pact -s node with the provided version string.
-  | NodeType_Chainweb  ChainwebInfo -- ^ A chainweb node.
+  | NodeType_Chainweb ChainwebInfo -- ^ A chainweb node.
   deriving (Eq, Ord, Show)
 
--- | Internaly used Uri type, which diverges from URI mostly for a mandatory
+-- | Internally used Uri type, which diverges from URI mostly for a mandatory
 -- instead of optional Authority. (Thus we can avoid pointless `Maybe`s or
 -- partial functions.)
 data NodeUri = NodeUri
@@ -209,8 +210,7 @@ discoverChainwebOrPact uri = do
 --   This function will only succeed for chainweb nodes.
 discoverChainwebNode :: (MonadJSM m, HasJSContext m, MonadUnliftIO m) => NodeUri -> m (Either Text NodeInfo)
 discoverChainwebNode baseUri = runExceptT $ do
-
-    let req = mkInfoReq $ nodeToBaseUri baseUri
+    req <- except $ mkSafeReq $ nodeToBaseUri baseUri & URI.uriPath .~ [ [URI.pathPiece|info|] ]
     resp <- ExceptT . fmap (left tshow) $ runReq req
 
     when (_xhrResponse_status resp /= 200) $
@@ -233,7 +233,7 @@ discoverChainwebNode baseUri = runExceptT $ do
 --   `discoverChainwebNode` first, which is more reliable.
 discoverPactNode :: (MonadJSM m, HasJSContext m, MonadUnliftIO m) => NodeUri -> m (Either Text NodeInfo)
 discoverPactNode baseUri = runExceptT $ do
-    let req = mkVersionReq $ nodeToBaseUri baseUri
+    req <- except $ mkSafeReq $ nodeToBaseUri baseUri & URI.uriPath .~ [ [URI.pathPiece|version|] ]
     resp <- ExceptT . fmap (left tshow) $ runReq req
     when (_xhrResponse_status resp /= 200) $
       throwError $ "Received non 200 status: " <> tshow (_xhrResponse_status resp)
@@ -274,9 +274,9 @@ sortChainIds ids = sortOn chainIdIndex ids
 
 runReq
   :: (HasJSContext m, MonadJSM m, MonadUnliftIO m, IsXhrPayload a)
-  => XhrRequest a
+  => SafeXhrRequest a
   -> m (Either XhrException XhrResponse)
-runReq req = do
+runReq (SafeXhrRequest req) = do
   resp <- newEmptyMVar
   void $ newXMLHttpRequestWithErrorSane req (liftIO . putMVar resp)
   takeMVar resp
@@ -302,20 +302,19 @@ newXMLHttpRequestWithErrorSane req cb =
     handleException :: XhrException -> m ()
     handleException e = liftJSM $ cb $ Left e
 
+{-
+   When the port number is >=2^16, calling 'newXMLHttpRequestWithError' fails with
+   a javascript exception that doesn't seem catchable in haskell.
 
--- | Get requests for retrieving the /info from a node
-mkInfoReq :: URI -> XhrRequest ()
-mkInfoReq uri =
-  let
-    infoURI = uri & URI.uriPath .~ [ [URI.pathPiece|info|] ]
-  in
-    xhrRequest "GET" (URI.render infoURI) def
+  'modern-uri' considers the spec allows those ports, so we validate the request instead.
 
+   Possibly a bug in 'newXMLHttpRequestWithError': https://github.com/reflex-frp/reflex-dom/issues/369
+-}
+newtype SafeXhrRequest a = SafeXhrRequest (XhrRequest a)
 
--- | Get requests for retrieving /version from a given pact -s node.
-mkVersionReq :: URI -> XhrRequest ()
-mkVersionReq uri =
-  let
-    versionURI = uri & URI.uriPath .~ [ [URI.pathPiece|version|] ]
-  in
-    xhrRequest "GET" (URI.render versionURI) def
+mkSafeReq :: URI -> Either Text (SafeXhrRequest ())
+mkSafeReq uri = case uri ^. uriAuthority ^? _Right . authPort of
+  Just (Just p) | p > maxPort -> Left $ "invalid port number: " <> tshow p
+  _ -> Right $ SafeXhrRequest $ xhrRequest "GET" (URI.render uri) def
+  where
+    maxPort = 2^(16 :: Word) - 1

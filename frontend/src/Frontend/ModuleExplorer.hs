@@ -49,7 +49,7 @@ import           Generics.Deriving.Monoid           (mappenddefault,
 import           GHC.Generics                       (Generic)
 import           Reflex
 ------------------------------------------------------------------------------
-import           Pact.Types.Lang                    (ModuleName)
+import           Pact.Types.Lang                    (Code, ModuleName)
 ------------------------------------------------------------------------------
 import           Common.GistStore                  (GistMeta (..))
 import           Frontend.Foundation
@@ -92,7 +92,7 @@ makePactLenses ''ModuleExplorerCfg
 data ModuleExplorer t = ModuleExplorer
   { _moduleExplorer_moduleStack     :: Dynamic t [(ModuleRef, ModuleDef (Term Name))]
     -- ^ The stack of currently selected modules.
-  , _moduleExplorer_selectedFile    :: MDynamic t (FileRef, PactFile)
+  , _moduleExplorer_selectedFile    :: MDynamic t (FileRef, Code)
     -- ^ The currently selected file if any.
   , _moduleExplorer_selectionGrowth :: Dynamic t Ordering
     -- ^ Whether the stack is currently growing/shrinking.
@@ -115,7 +115,7 @@ makePactLenses ''ModuleExplorer
 moduleExplorer_selection
   :: (Reflex t, HasModuleExplorer explr t)
   => explr
-  -> MDynamic t (Either (FileRef, PactFile) (ModuleRef, ModuleDef (Term Name)))
+  -> MDynamic t (Either (FileRef, Code) (ModuleRef, ModuleDef (Term Name)))
 moduleExplorer_selection explr = do
   stk <- explr ^. moduleExplorer_moduleStack
   fileL <- explr ^. moduleExplorer_selectedFile

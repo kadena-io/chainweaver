@@ -22,11 +22,9 @@ module Frontend.UI.Widgets
   , uiTxBuilder
   , uiDisplayTxBuilderWithCopy
     -- * Values for _deploymentSettingsConfig_chainId:
-  , predefinedChainIdSelect
   , predefinedChainIdDisplayed
   , userChainIdSelect
-  , userChainIdSelectWithPreselect
-  , uiChainSelection
+  , uiChainSelectionWithUpdate
 
   , mkChainTextAccounts
   , uiAccountNameInput
@@ -34,6 +32,7 @@ module Frontend.UI.Widgets
   , uiAccountDropdown
   , uiAccountDropdown'
   , uiKeyPairDropdown
+  , uiRequestKeyInput
 
   -- ** Other widgets
   , PopoverState (..)
@@ -102,7 +101,7 @@ import           Control.Monad
 import           Control.Monad.Except
 import           Control.Monad.Trans.Maybe
 import qualified Data.Aeson.Encode.Pretty as AesonPretty
-import           Data.Either (isLeft, rights)
+import           Data.Either (isLeft)
 import           Data.Map.Strict             (Map)
 import qualified Data.Map.Strict as Map
 import qualified Data.IntMap as IntMap
@@ -126,9 +125,11 @@ import           Reflex.Extended             (tagOnPostBuild)
 import Pact.Types.ChainId (ChainId (..))
 import Pact.Types.Runtime (GasPrice (..))
 import Pact.Parse (ParsedDecimal (..))
+import Pact.Types.Command (RequestKey)
+import qualified Pact.Types.Util as Pact
 ------------------------------------------------------------------------------
 import           Common.Wallet
-import           Frontend.Network (HasNetwork(..), NodeInfo, getChains, maxCoinPrecision)
+import           Frontend.Network (HasNetwork(..), maxCoinPrecision)
 import           Frontend.Foundation
 import           Frontend.UI.Button
 import           Frontend.Wallet
@@ -383,11 +384,12 @@ uiNonnegativeRealWithPrecisionInputElement eReset prec fromDecimal cfg = do
 
   where
     stepSize = "0." <> T.replicate (fromIntegral prec - 1) "0" <> "1"
-    parse t = tread $
-      if "." `T.isPrefixOf` t && not (T.any (== '.') $ T.tail t) then
-        T.cons '0' t
-      else
-        t
+    parse t = case T.splitOn "." t of
+      ["",v] -> tread ("0." <> v)
+      [_, _] -> tread t
+      [_] -> tread t
+      _ -> Nothing
+
 
     blurSanitize :: Decimal -> Maybe (Decimal, Text)
     blurSanitize decimal = asum
@@ -885,68 +887,49 @@ uiGasPriceInputField eReset conf = dimensionalInputFeedbackWrapper (Just "KDA") 
 
 -- | Let the user pick a chain id.
 userChainIdSelect
-  :: ( MonadWidget t m
-     , HasNetwork model t
-     )
-  => model
-  -> m ( Dropdown t (Maybe ChainId) )
-userChainIdSelect m =
-  userChainIdSelectWithPreselect m True (constDyn Nothing)
-
--- | Let the user pick a chain id but preselect a value
-userChainIdSelectWithPreselect
-  :: (MonadWidget t m, HasNetwork model t
-     )
-  => model
-  -> Bool
-  -> Dynamic t (Maybe ChainId)
-  -> m ( Dropdown t (Maybe ChainId) )
-userChainIdSelectWithPreselect m inlineLabel mChainId =
-  mkLabeledClsInput inlineLabel "Chain ID" (uiChainSelection mNodeInfo mChainId)
-  where
-    mNodeInfo = (^? to rights . _head) <$> m ^. network_selectedNodes
-
-uiChainSelection
   :: MonadWidget t m
-  => Dynamic t (Maybe NodeInfo)
-  -> Dynamic t (Maybe ChainId)
+  => Dynamic t [ChainId]
+  -> m ( Dropdown t (Maybe ChainId) )
+userChainIdSelect options = do
+  mkLabeledClsInput True "Chain ID" (uiChainSelectionWithUpdate options never)
+
+uiChainSelectionWithUpdate
+  :: MonadWidget t m
+  => Dynamic t [ChainId]
+  -> Event t (Maybe ChainId)
   -> CssClass
   -> m ( Dropdown t (Maybe ChainId) )
-uiChainSelection info mPreselected cls = do
-  pb <- getPostBuild
-
+uiChainSelectionWithUpdate options onPreselected cls = do
   let
-    chains = map (id &&& _chainId) . maybe [] getChains <$> info
+    chains = map (id &&& _chainId) <$> options
     mkPlaceHolder cChains = if null cChains then "No chains available" else "Select chain"
     mkOptions cs = Map.fromList $ (Nothing, mkPlaceHolder cs) : map (first Just) cs
 
     staticCls = cls <> "select"
     mkDynCls v = if isNothing v then "select_mandatory_missing" else mempty
+  pb <- getPostBuild
+  let optionsEv = leftmost [current options <@ pb, updated options]
 
   rec
     let allCls = renderClass <$> fmap mkDynCls (_dropdown_value ddE) <> pure staticCls
         cfg = def
           & dropdownConfig_attributes .~ (("class" =:) <$> allCls)
-          & dropdownConfig_setValue .~ (current mPreselected <@ pb)
+          & dropdownConfig_setValue .~ leftmost
+            [ onPreselected
+            , fforMaybe optionsEv $ \case
+                [c] -> Just (Just c)
+                _ -> Nothing
+            ]
 
     ddE <- dropdown Nothing (mkOptions <$> chains) cfg
   pure ddE
-
--- | Use a predefined chain id, don't let the user pick one.
-predefinedChainIdSelect
-  :: (Reflex t, Monad m)
-  => ChainId
-  -> model
-  -> m (Dynamic t (Maybe ChainId))
-predefinedChainIdSelect chanId _ = pure . pure . pure $ chanId
 
 -- | Use a predefined immutable chain id, but display it too.
 predefinedChainIdDisplayed
   :: DomBuilder t m
   => ChainId
-  -> model
   -> m (Dynamic t (Maybe ChainId))
-predefinedChainIdDisplayed cid _ = do
+predefinedChainIdDisplayed cid = do
   _ <- mkLabeledInput True "Chain ID" uiInputElement $ def
     & initialAttributes %~ Map.insert "disabled" ""
     & inputElementConfig_initialValue .~ _chainId cid
@@ -965,11 +948,12 @@ uiAccountNameInput
      )
   => Bool
   -> Maybe AccountName
+  -> Event t (Maybe AccountName)
   -> Dynamic t (AccountName -> Either Text AccountName)
   -> m ( Event t (Maybe AccountName)
        , Dynamic t (Maybe AccountName)
        )
-uiAccountNameInput inlineLabel initval validateName = do
+uiAccountNameInput inlineLabel initval onSetName validateName = do
   let
     mkMsg True (Left e) = PopoverState_Error e
     mkMsg _    _ = PopoverState_Disabled
@@ -985,7 +969,9 @@ uiAccountNameInput inlineLabel initval validateName = do
       pure (inp, _inputElement_raw inp)
 
   (inputE, _) <- mkLabeledInput inlineLabel "Account Name" (uiInputWithPopover uiNameInput snd showPopover)
-    $ def & inputElementConfig_initialValue .~ fold (fmap unAccountName initval)
+    $ def
+    & inputElementConfig_initialValue .~ fold (fmap unAccountName initval)
+    & inputElementConfig_setValue .~ fmapMaybe (fmap unAccountName) onSetName
 
   pure ( fmap hush $ current validate <@> _inputElement_input inputE
        , hush <$> (validate <*> fmap T.strip (value inputE))
@@ -1200,3 +1186,33 @@ uiEmptyState icon title content = divClass "empty-state" $ do
   divClass "empty-state__icon-circle" $ elAttr "div" iconAttrs blank
   elClass "h1" "empty-state__title" $ text title
   divClass "empty-state__content" content
+
+uiRequestKeyInput
+  :: ( MonadWidget t m
+     )
+  => Bool
+  -> m ( Event t (Either Text RequestKey)
+       , Dynamic t (Either Text RequestKey)
+       )
+uiRequestKeyInput inlineLabel = do
+  let
+    parseRequestKey :: Text -> Either Text RequestKey
+    parseRequestKey t | T.null t = Left "Please enter a Request Key"
+                      | Right v <- Pact.fromText' t = Right v
+                      | otherwise = Left "Invalid hash"
+
+    mkMsg True (Left e) = PopoverState_Error e
+    mkMsg _    _ = PopoverState_Disabled
+
+    showPopover (ie, _) = pure $ _inputElement_input ie <&> \t ->
+      mkMsg (not $ T.null t) (parseRequestKey $ T.strip t)
+
+    uiKeyInput cfg = do
+      inp <- uiInputElement cfg
+      pure (inp, _inputElement_raw inp)
+
+  (inputE, _) <- mkLabeledInput inlineLabel "Request Key" (uiInputWithPopover uiKeyInput snd showPopover) def
+
+  pure ( parseRequestKey <$> _inputElement_input inputE
+       , parseRequestKey <$> value inputE
+       )

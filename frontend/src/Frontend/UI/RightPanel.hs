@@ -21,7 +21,6 @@ module Frontend.UI.RightPanel where
 import           Control.Applicative         (liftA2)
 import           Control.Lens
 import           Control.Monad.State.Strict
-import           Data.Either                 (rights)
 import           Data.Foldable
 import           Data.Text                   (Text)
 import           GHCJS.DOM.Element
@@ -114,9 +113,9 @@ envTab m = do
 -- _request_ to add an account: the actual lookup must be done elsewhere.
 addAccountForm :: (MonadWidget t m, HasNetwork model t) => model -> m (Event t (ChainId, AccountName))
 addAccountForm model = divClass "new-by-name group__header" $ divClass "new-by-name_inputs" $ do
-  mChainId <- fmap value $ uiChainSelection
-    ((^? to rights . _head) <$> model ^. network_selectedNodes)
-    (constDyn Nothing)
+  mChainId <- fmap value $ uiChainSelectionWithUpdate
+    (getChainsFromHomogenousNetwork model)
+    never
     "select_no_border"
   rec
     nameText <- uiInputElement $ def

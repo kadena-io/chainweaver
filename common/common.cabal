@@ -9,6 +9,7 @@ library
   build-depends: base
                , base16-bytestring
                , aeson
+               , attoparsec
                , containers
                , dependent-sum
                , dependent-sum-template
@@ -26,6 +27,7 @@ library
                , newtype-generics
                , prettyprinter
                , pact
+               , parsers
                , split
                , bytestring
                , tasty
@@ -44,6 +46,7 @@ library
     Common.GistStore
     Common.Route
     Common.OAuth
+    Common.Modules
     Common.Network
     Common.Orphans
     Common.RefPath

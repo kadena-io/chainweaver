@@ -1,7 +1,6 @@
 {-# LANGUAGE ApplicativeDo #-}
 {-# LANGUAGE ConstraintKinds #-}
 {-# LANGUAGE DataKinds #-}
-{-# LANGUAGE ExtendedDefaultRules #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE KindSignatures #-}
@@ -20,18 +19,28 @@ module Frontend.UI.Dialogs.WatchRequest
   ( uiWatchRequestDialog
   ) where
 
-import Control.Applicative (liftA2)
 import Control.Lens hiding (failover)
-import Control.Monad (void)
+import Control.Error (hush)
+import Control.Monad (foldM)
+
+import Data.List.NonEmpty (NonEmpty ((:|)))
+
 import Data.Either (rights)
+import qualified Data.HashMap.Strict as HM
+
 import Reflex.Dom
-import Safe (headMay)
+
 import qualified Pact.Types.Command as Pact
 import qualified Pact.Types.Util as Pact
+import qualified Pact.Types.API as Pact
+import qualified Pact.Types.Pretty as Pact
+
+import qualified Text.URI as URI
+import qualified Servant.Client.JSaddle as S
+import qualified Pact.Server.ApiClient as Api
 
 import Frontend.Foundation hiding (Arg)
 import Frontend.Network
-import Frontend.UI.Dialogs.DeployConfirmation (Status(..), listenToRequestKey, transactionStatusSection, transactionResultSection)
 import Frontend.UI.Modal
 import Frontend.UI.Widgets
 import Frontend.UI.Widgets.Helpers (dialogSectionHeading)
@@ -59,59 +68,80 @@ inputRequestKey
   => model
   -> Event t () -- ^ Modal was externally closed
   -> Workflow t m (mConf, Event t ())
-inputRequestKey model onCloseExternal = Workflow $ mdo
-  let nodes = fmap rights $ model ^. network_selectedNodes
-  close <- modalHeader $ text "Watch Request Key"
-  choice <- modalMain $ do
+inputRequestKey model _ = Workflow $ do
+  let
+    checkTxBtnLbl = "Check TX Status"
+    nodes = fmap rights $ model ^. network_selectedNodes
+    noResponseMsg = "Request Key not found"
+    showPollResponse (chainId, Pact.PollResponses pollMap) = case HM.elems pollMap ^? _head of
+      Nothing -> noResponseMsg
+      Just commandResult -> case commandResult ^. Pact.crResult of
+        Pact.PactResult (Left err) -> "Error: " <> Pact.tShow err
+        Pact.PactResult (Right a) -> "Chain " <> _chainId chainId <> ": " <> Pact.renderCompactText a
+
+  close <- modalHeader $ text "Check TX Status"
+
+  modalMain $ do
     dialogSectionHeading mempty "Notice"
     divClass "group" $ do
       text "If you have a request key from a previously submitted transaction, you can use this dialog to wait for and display the results."
-    dialogSectionHeading mempty "Required Information"
-    info <- divClass "group" $ do
-      mChain <- fmap value $ mkLabeledClsInput False "Chain ID" $
-        uiChainSelection (headMay <$> nodes) (pure Nothing)
-      eKey <- mkLabeledInput False "Request Key" uiInputElement def
-      let parseRequestKey t
-            | Right v <- Pact.fromText' t = Right v
-            | otherwise = Left "Invalid hash"
-      pure $ liftA2 (,) (current mChain) (fmap parseRequestKey . current $ value eKey)
-    void $ runWithReplace blank $ ffor err $ \e -> do
-      dialogSectionHeading mempty "Error"
-      divClass "group" $ text e
-    pure info
-  (cancel, next) <- modalFooter $ do
-    cancel' <- cancelButton def "Cancel"
-    next' <- confirmButton def "Next"
-    pure (cancel', next')
-  let f (Just c, Right k) = Right (c, k)
-      f (_, Left e) = Left e
-      f (Nothing, _) = Left "You must select a chain"
-      (err, ok) = fanEither $ attachWith (const . f) choice next
-      nextScreen = attachWith (watchRequestKey onCloseExternal) (current nodes) ok
-  pure ((mempty, close <> cancel), nextScreen)
 
-watchRequestKey
-  :: (Monoid mConf, MonadWidget t m)
-  => Event t () -- ^ Modal was externally closed
-  -> [NodeInfo] -- ^ Nodes to try
-  -> (ChainId, Pact.RequestKey) -- ^ User selected chain and request key
-  -> Workflow t m (mConf, Event t ())
-watchRequestKey onCloseExternal nodes (chain, reqKey) = Workflow $ mdo -- can't use 'rec' due to GHC bug
-  close <- modalHeader $ text "Transaction Status"
-  pb <- getPostBuild
-  let clientEnvs = mkClientEnvs nodes chain
-  (listenStatus, message, _) <- listenToRequestKey clientEnvs $ leftmost
-    [ Just reqKey <$ (pb <> reloadKey)
-    , Nothing <$ (closeModal <> onCloseExternal) -- Cancel any inflight request when the modal is closed
-    ]
-  reloadKey <- elClass "div" "modal__main transaction_details" $ do
-    mkLabeledInput True "Transaction Hash" uiInputElement $ def
-      & initialAttributes .~ "disabled" =: "disabled"
-      & inputElementConfig_initialValue .~ Pact.requestKeyToB16Text reqKey
-    reload <- transactionStatusSection (pure Status_Done) listenStatus
-    transactionResultSection message
-    pure reload
+    dialogSectionHeading mempty "Required Information"
+    dRqKey <- (fmap . fmap) hush $ divClass "group" $ fmap snd $ uiRequestKeyInput False
+
+    rec
+      let lockRefresh = (||) <$> fmap isNothing dRqKey <*> blockSpam
+
+      onRequest <- divClass "group check-tx-status__button-wrapper" $
+        confirmButton (def & uiButtonCfg_disabled .~ lockRefresh) checkTxBtnLbl
+
+      onTimeoutFinished <- delay 5 onRequest
+
+      blockSpam <- holdDyn False $ leftmost
+        [ True <$ onRequest
+        , False <$ onTimeoutFinished
+        ]
+
+    onPollResponse <- performEventAsync $ pollRequestKey
+      <$> current nodes
+      <@> tagMaybe (current dRqKey) onRequest
+
+    dResp <- holdDyn Nothing $ fmap Just onPollResponse
+
+    dialogSectionHeading mempty "Transaction Result"
+    divClass "group" $ do
+      maybeDyn dResp >>= \md -> dyn_ $ ffor md $ \case
+        Nothing -> text $ "Please enter a valid Request Key and click '" <> checkTxBtnLbl <> "'"
+        Just a -> dynText $ maybe noResponseMsg showPollResponse <$> a
+
   done <- modalFooter $ do
     confirmButton def "Done"
-  let closeModal = close <> done
-  pure ((mempty, close <> done), never)
+
+  pure ( (mempty, done <> close)
+       , never
+       )
+
+buildNodeChainClientEnvs :: MonadJSM m => NodeInfo -> m [(ChainId, S.ClientEnv)]
+buildNodeChainClientEnvs node = let chains = getChains node in flip foldMapM chains $ \chain ->
+  getChainRefBaseUrl (ChainRef (Just $ nodeInfoRef node) chain) (Just node) <&> \case
+    Left _ -> []
+    Right chainUrl -> S.parseBaseUrl (URI.renderStr chainUrl) & \case
+      Nothing -> []
+      Just baseUrl -> [(chain, S.mkClientEnv baseUrl)]
+
+pollRequestKey
+  :: MonadJSM m
+  => [NodeInfo]
+  -> Pact.RequestKey
+  -> (Maybe (ChainId, Pact.PollResponses) -> IO ())
+  -> m ()
+pollRequestKey nodes rKey cb = do
+  liftIO . cb =<< foldM
+    (\respReceived node -> case respReceived of
+        Nothing -> buildNodeChainClientEnvs node >>= doPoll
+        Just r -> pure (Just r)
+    )
+    Nothing
+    nodes
+  where
+    doPoll cEnvs = doReqFailoverTagged cEnvs (Api.poll Api.apiV1Client $ Pact.Poll (rKey :| [])) <&> preview _Right
