@@ -177,6 +177,10 @@ previewTransfer
   -> Workflow t m (mConf, Event t ())
 previewTransfer model transfer = Workflow $ do
   let
+    cidDisplay lbl cid = mkLabeledInput True lbl uiInputElement $ def
+      & initialAttributes %~ Map.insert "disabled" ""
+      & inputElementConfig_initialValue .~ _chainId cid
+
     toTxBuilder = _transferData_toTxBuilder transfer
     fromAccount@(fromName,fromChain,_) = _transferData_fromAccount transfer
     fromGasPayer = _transferData_fromGasPayer transfer
@@ -185,7 +189,16 @@ previewTransfer model transfer = Workflow $ do
   close <- modalHeader $ text "Transaction Preview"
   elClass "div" "modal__main" $ do
     dialogSectionHeading mempty "Destination"
-    divClass "group" $ transactionDisplayNetwork model
+    divClass "group" $ do
+      transactionDisplayNetwork model
+      case crossChainData of
+        Nothing ->
+          void $ predefinedChainIdDisplayed fromChain
+        Just _ -> do
+          _ <- cidDisplay "From Chain ID" fromChain
+          _ <- cidDisplay "To Chain ID" (_txBuilder_chainId toTxBuilder)
+          pure ()
+
     dialogSectionHeading mempty "Participants"
     divClass "group" $ do
       mkLabeledInput True "Sender Account" uiInputElement $ def

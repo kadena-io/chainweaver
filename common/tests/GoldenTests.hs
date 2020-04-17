@@ -5,7 +5,7 @@ import Control.Monad.Except (runExcept)
 
 import Test.Tasty
 
-import Common.Network (ChainId (..), uncheckedNetworkName, parseNodeRef)
+import Common.Network (ChainId (..), mkNetworkName, parseNodeRef)
 import Common.OAuth (OAuthProvider (..))
 
 import Common.Wallet (AccountBalance (..), AccountName (..), UnfinishedCrossChainTransfer (..), parsePublicKey)
@@ -29,7 +29,7 @@ goldenTests =
     unfinishedXChainTfr = UnfinishedCrossChainTransfer rk chain (AccountName "donatello") 1e-8
   in
     [ mkGTest "ChainId" "chainid" chain
-    , mkGTest "NetworkName" "networkname" (uncheckedNetworkName "testnet")
+    , mkGTest "NetworkName" "networkname" (mkNetworkName "testnet")
     , mkGTest "NodeRef" "noderef" node
     , mkGTest "OAuthProvider" "oauth" OAuthProvider_GitHub
     , mkGTest "PublicKey" "pubkey" pubkey
