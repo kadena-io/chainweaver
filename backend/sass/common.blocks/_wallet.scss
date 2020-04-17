@@ -91,7 +91,7 @@
   text-overflow: ellipsis;
   overflow: hidden;
 
-  @media (max-width: 1550px) {
+  @media (max-width: $cutoff-account-buttons-text) {
     padding: 0 10px;
     margin-right: 0;
     &:not(:first-child) {
