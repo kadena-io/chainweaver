@@ -24,7 +24,7 @@
 
 .wallet__table-heading {
   @extend .table__heading;
-  padding: 15px;
+  padding: 5px;
   padding-top: 35px;
   padding-bottom: 30px;
   white-space: nowrap;
@@ -41,7 +41,7 @@
 }
 
 .wallet__table-cell {
-  padding: 15px;
+  padding: 5px;
   overflow: hidden;
   text-overflow: ellipsis;
 }
