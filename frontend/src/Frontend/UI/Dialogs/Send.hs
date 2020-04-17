@@ -653,7 +653,7 @@ sampleNetInfo model = do
   net <- sample $ current $ model ^. network_selectedNetwork
   nodes <- fmap rights $ sample $ current $ model ^. network_selectedNodes
   meta <- sample $ current $ model ^. network_meta
-  let networkName = hush . mkNetworkName . nodeVersion =<< headMay nodes
+  let networkName = mkNetworkName . nodeVersion <$> headMay nodes
   pure $ ffor networkName $ \name -> SharedNetInfo
     { _sharedNetInfo_network = name
     , _sharedNetInfo_nodes = nodes

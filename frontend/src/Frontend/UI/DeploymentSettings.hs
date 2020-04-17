@@ -25,7 +25,7 @@ module Frontend.UI.DeploymentSettings
 
     -- * Errors
   , DeploymentSettingsResultError (..)
-
+  , renderDeploymentSettingsResultError
     -- * Helpers
   , TxnSenderTitle (..)
   , getTxnSenderTitle
@@ -194,16 +194,26 @@ data DeploymentSettingsResult key = DeploymentSettingsResult
 lookupAccountBalance :: AccountName -> ChainId -> Map AccountName (AccountInfo Account) -> Maybe (AccountStatus AccountBalance)
 lookupAccountBalance name chain m = fmap _accountDetails_balance <$> m ^? ix name . accountInfo_chains . ix chain . account_status
 
+-- Overapproximation
 data DeploymentSettingsResultError
   = DeploymentSettingsResultError_GasPayerIsNotValid AccountName
-  | DeploymentSettingsResultError_InvalidNetworkName Text
   | DeploymentSettingsResultError_NoSenderSelected
   | DeploymentSettingsResultError_NoChainIdSelected
   | DeploymentSettingsResultError_NoNodesAvailable
   | DeploymentSettingsResultError_InvalidJsonData JsonError
-  | DeploymentSettingsResultError_NoAccountsOnNetwork NetworkName
+  | DeploymentSettingsResultError_NoAccountsOnNetwork
   | DeploymentSettingsResultError_InsufficientFundsOnGasPayer
   deriving Eq
+
+renderDeploymentSettingsResultError :: DeploymentSettingsResultError -> Text
+renderDeploymentSettingsResultError = \case
+  DeploymentSettingsResultError_GasPayerIsNotValid a -> "Invalid gas payer: " <> unAccountName a
+  DeploymentSettingsResultError_NoSenderSelected -> "No sender selected"
+  DeploymentSettingsResultError_NoChainIdSelected -> "No chain selected"
+  DeploymentSettingsResultError_NoNodesAvailable -> "No nodes available on network"
+  DeploymentSettingsResultError_InvalidJsonData err -> "JSON error: " <> showJsonError err
+  DeploymentSettingsResultError_NoAccountsOnNetwork -> "No accounts on network"
+  DeploymentSettingsResultError_InsufficientFundsOnGasPayer -> "Gas payer does not have sufficient funds"
 
 buildDeploymentSettingsResult
   :: ( HasNetwork model t
@@ -227,12 +237,10 @@ buildDeploymentSettingsResult
 buildDeploymentSettingsResult m mSender signers cChainId capabilities ttl gasLimit code settings = runExceptT $ do
   selNodes <- lift $ m ^. network_selectedNodes
   networkName <- lift $ m ^. network_selectedNetwork
-  networkId <- liftEither
-    . over _Left DeploymentSettingsResultError_InvalidNetworkName . mkNetworkName . nodeVersion
-    =<< failWith DeploymentSettingsResultError_NoNodesAvailable (headMay $ rights selNodes)
+  networkId <- mkNetworkName . nodeVersion <$> failWith DeploymentSettingsResultError_NoNodesAvailable (headMay $ rights selNodes)
 
-  sender <- mSender !? DeploymentSettingsResultError_NoSenderSelected
   chainId <- cChainId !? DeploymentSettingsResultError_NoChainIdSelected
+  sender <- mSender !? DeploymentSettingsResultError_NoSenderSelected
 
   caps <- lift capabilities
   signs <- lift signers
@@ -242,7 +250,7 @@ buildDeploymentSettingsResult m mSender signers cChainId capabilities ttl gasLim
   limit <- lift gasLimit
   lastPublicMeta <- lift $ m ^. network_meta
   code' <- lift code
-  allAccounts <- failWithM (DeploymentSettingsResultError_NoAccountsOnNetwork networkName)
+  allAccounts <- failWithM DeploymentSettingsResultError_NoAccountsOnNetwork
     $ Map.lookup networkName . unAccountData <$> m ^. wallet_accounts
 
   let signingKeypairs = Map.keys caps <> Set.toList signs
@@ -252,7 +260,8 @@ buildDeploymentSettingsResult m mSender signers cChainId capabilities ttl gasLim
         { _pmChainId = chainId
         , _pmGasLimit = limit
         , _pmSender = unAccountName sender
-        , _pmTTL = ttl' }
+        , _pmTTL = ttl'
+        }
 
   -- Make an effort to ensure the gas payer (if there is one) account has enough balance to actually
   -- pay the gas. This won't work if the user selects an account on a different
@@ -391,17 +400,13 @@ uiDeploymentSettings m settings = mdo
           (_deploymentSettingsConfig_sender settings)
 
       (signers, capabilities) <- tabPane mempty curSelection DeploymentSettingsView_Keys $ do
-        dyn_ $ ffor result $ \case
-          Left (DeploymentSettingsResultError_GasPayerIsNotValid _) -> divClass "group segment" $
-            text "Selected account for 'coin.GAS' capability does not exist on this chain."
-          _ ->
-            blank
-
         uiSenderCapabilities m (_deploymentSettingsConfig_caps settings)
+
+      let res = buildDeploymentSettingsResult m mSender signers cChainId capabilities ttl gasLimit code settings
 
       when (_deploymentSettingsConfig_includePreviewTab settings) $ tabPane mempty curSelection DeploymentSettingsView_Preview $ do
         let currentNode = headMay . rights <$> (m ^. network_selectedNodes)
-            mNetworkId = (hush . mkNetworkName . nodeVersion =<<) <$> currentNode
+            mNetworkId = ffor currentNode $ fmap $ mkNetworkName . nodeVersion
 
             accounts = liftA2 (Map.findWithDefault mempty) (m ^. network_selectedNetwork) (unAccountData <$> m ^. wallet_accounts)
             mHeadAccount = fmap fst . Map.lookupMin <$> accounts
@@ -418,6 +423,7 @@ uiDeploymentSettings m settings = mdo
               <*> (m ^. network_meta)
               <*> capabilities
               <*> (m ^. jsonData . to getJsonDataObjectStrict)
+              <*> (preview _Left <$> res)
               <*> mNetworkId
               <*> aChainId
               <*> aSender
@@ -428,7 +434,7 @@ uiDeploymentSettings m settings = mdo
 
       pure
         ( cfg & networkCfg_setSender .~ fmapMaybe (fmap unAccountName) (updated mSender)
-        , buildDeploymentSettingsResult m mSender signers cChainId capabilities ttl gasLimit code settings
+        , res
         , mRes
         )
 
@@ -974,14 +980,15 @@ uiDeployPreview
   -> PublicMeta
   -> Map (KeyPair key) [SigCapability]
   -> Either JsonError Aeson.Object
+  -> Maybe DeploymentSettingsResultError
   -> Maybe NetworkName
   -> Maybe ChainId
   -> Maybe AccountName
   -> m ()
-uiDeployPreview _ _ _ _ _ _ _ _ _ _ _ Nothing = text "No valid GAS payer accounts in Wallet."
-uiDeployPreview _ _ _ _ _ _ _ _ _ _ Nothing _ = text "Please select a Chain."
-uiDeployPreview _ _ _ _ _ _ _ _ _ Nothing _ _ = text "No network nodes configured."
-uiDeployPreview model settings signers gasLimit ttl code lastPublicMeta capabilities jData (Just networkId) (Just chainId) (Just sender) = do
+uiDeployPreview _ _ _ _ _ _ _ _ _ _ _ _ Nothing = text "No valid GAS payer accounts in Wallet."
+uiDeployPreview _ _ _ _ _ _ _ _ _ _ _ Nothing _ = text "Please select a Chain."
+uiDeployPreview _ _ _ _ _ _ _ _ _ _ Nothing _ _ = text "No network nodes configured."
+uiDeployPreview model settings signers gasLimit ttl code lastPublicMeta capabilities jData resultError (Just networkId) (Just chainId) (Just sender) = do
   pb <- getPostBuild
 
   let deploySettingsJsonData = fromMaybe mempty $ _deploymentSettingsConfig_data settings
@@ -1030,6 +1037,12 @@ uiDeployPreview model settings signers gasLimit ttl code lastPublicMeta capabili
   where
     uiPreviewResponses networkName accountData isChainwebNode (cmd, mWrappedCmd) = do
       pb <- getPostBuild
+
+      for_ resultError $ \err -> do
+        dialogSectionHeading mempty "Error"
+        divClass "group segment" $ mkLabeledView True mempty
+          $ text $ renderDeploymentSettingsResultError err
+        text "Cannot submit. Preview will try to fill in the blanks with default values"
 
       unless (any (any isGas) capabilities) $ do
         dialogSectionHeading mempty "Notice"
