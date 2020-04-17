@@ -112,7 +112,7 @@ uiWatchRequestButton
      )
   => model -> m mConf
 uiWatchRequestButton model = do
-  watch <- uiButton (def & uiButtonCfg_class <>~ " main-header__wallet-refresh-button")  (text "Watch Request")
+  watch <- uiButton (def & uiButtonCfg_class <>~ " main-header__wallet-refresh-button")  (text "Check TX Status")
   pure $ mempty & modalCfg_setModal .~ (Just (uiWatchRequestDialog model) <$ watch)
 
 -- | UI for managing the keys wallet.
