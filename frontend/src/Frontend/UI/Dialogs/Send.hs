@@ -252,16 +252,15 @@ sameChainTransfer
   -- ^ Amount to transfer
   -> Workflow t m (mConf, Event t ())
 sameChainTransfer model netInfo keys (fromName, fromChain, fromAcc) (gasPayer, gasPayerAcc) toAccount amount = Workflow $ do
-  let mKeyset = _txBuilder_keyset toAccount
-  let code = T.unwords $
-        [ "(coin." <> case mKeyset of
-          Nothing -> "transfer"
-          Just _ -> "transfer-create"
+  -- TODO check against chain - this data may be outdated (key rotations) unless refreshed recently
+  let (functionName, readKeyset, keyData) = case _txBuilder_keyset toAccount of
+        Just ks | not (null $ _ksKeys ks) -> ("transfer-create", "(read-keyset 'key)", HM.singleton "key" $ Aeson.toJSON ks)
+        _ -> ("transfer", "", mempty)
+      code = T.unwords $
+        [ "(coin." <> functionName
         , tshow $ unAccountName fromName
         , tshow $ unAccountName $ _txBuilder_accountName toAccount
-        , case mKeyset of
-          Nothing -> mempty
-          Just _ -> "(read-keyset 'key)"
+        , readKeyset
         , tshow amount
         , ")"
         ]
@@ -276,11 +275,6 @@ sameChainTransfer model netInfo keys (fromName, fromChain, fromAcc) (gasPayer, g
           , PLiteral $ LDecimal amount
           ]
         }
-      dat = case mKeyset of
-        -- TODO check against chain (this data may be outdated unless refreshed
-        -- recently)
-        Just keyset -> HM.singleton "key" $ Aeson.toJSON keyset
-        _ -> mempty
       pkCaps = Map.unionsWith (<>)
         [ Map.fromSet (\_ -> [_dappCap_cap defaultGASCapability]) (accountKeys gasPayerAcc)
         , Map.fromSet (\_ -> [transferCap]) fromAccKeys
@@ -292,7 +286,7 @@ sameChainTransfer model netInfo keys (fromName, fromChain, fromAcc) (gasPayer, g
       nodeInfos = _sharedNetInfo_nodes netInfo
       networkName = _sharedNetInfo_network netInfo
   close <- modalHeader $ text "Transaction Status"
-  cmd <- buildCmd Nothing networkName pm signingPairs [] code dat pkCaps
+  cmd <- buildCmd Nothing networkName pm signingPairs [] code keyData pkCaps
   _ <- elClass "div" "modal__main transaction_details" $
     submitTransactionWithFeedback model cmd fromName fromChain (fmap Right nodeInfos)
   done <- modalFooter $ confirmButton def "Done"
