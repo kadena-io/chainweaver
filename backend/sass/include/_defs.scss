@@ -10,6 +10,9 @@
 $std-fonts: 'WorkSans-Regular', sans-serif;
 $button-font: 'WorkSans';
 
+// Cutoffs
+$cutoff-account-buttons-text: 1200px;
+
 // Z Index Catalog
 $main-pane-collapse-button-z-index: 1; // Needs to sit over content for clickability
 $main-header-z-index: 5;               // Required for sticky headers

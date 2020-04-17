@@ -50,6 +50,7 @@ module Frontend.Network
   , performLocalReadCustom
   , performLocalRead
   , doReqFailover
+  , doReqFailoverTagged
   , mkClientEnvs
     -- * Utilities
   , parseNetworkErrorResult
@@ -77,7 +78,7 @@ module Frontend.Network
 
 import           Control.Error                     (hush, headMay)
 import           Control.Exception                 (fromException)
-import           Control.Arrow                     (first, left, second, (&&&))
+import           Control.Arrow                     (left, second, (&&&))
 import           Control.Lens                      hiding ((.=))
 import           Control.Monad.Except
 import           GHC.Word                          (Word8)
@@ -87,12 +88,13 @@ import           Data.Functor                      (($>))
 import qualified Data.ByteString.Lazy              as BSL
 import           Data.Decimal                      (DecimalRaw (..))
 import           Data.Either                       (lefts, rights)
-import qualified Data.IntMap                       as IntMap
 import qualified Data.List                         as L
 import           Data.List.NonEmpty                (NonEmpty (..), nonEmpty)
 import qualified Data.List.NonEmpty                as NEL
 import qualified Data.Map                          as Map
 import           Data.Map.Strict                   (Map)
+import           Data.Set                          (Set)
+import qualified Data.Set                          as Set
 import           Data.Text                         (Text)
 import qualified Data.Text                         as T
 import qualified Data.Text.Encoding                as T
@@ -210,6 +212,8 @@ data NetworkCfg t = NetworkCfg
     -- transaction executed.
   , _networkCfg_setTTL   :: Event t TTLSeconds
     -- ^ TTL for this transaction
+  , _networkCfg_refreshNodes  :: Event t ()
+  , _networkCfg_trackNodes    :: Event t (Set NodeRef)
   , _networkCfg_setNetworks   :: Event t (Map NetworkName [NodeRef])
     -- ^ Provide a new networks configuration.
   , _networkCfg_resetNetworks :: Event t ()
@@ -234,9 +238,11 @@ data Network t = Network
     --   deleted all available networks.)
   , _network_selectedNetwork :: Dynamic t NetworkName
     -- ^ The currently selected network
-  , _network_selectedNodes   :: Dynamic t [Either Text NodeInfo]
+  , _network_selectedNodes   :: Dynamic t [Either Text NodeInfo] -- TODO: redundant field; replace with util
     -- ^ Node information for the nodes in the currently selected network.
     --  The first `Right` `NodeInfo` will be used for deployments and such.
+  , _network_trackedNodes    :: Dynamic t (Map NodeRef (Either Text NodeInfo))
+    -- ^ All nodes we have cared about
   , _network_modules         :: Dynamic t (Map ChainId [ModuleName])
    -- ^ Available modules on all chains.
   , _network_deployed        :: Event t ()
@@ -275,20 +281,31 @@ makeNetwork
   -> NetworkCfg t
   -> m (mConf, Network t)
 makeNetwork model cfg = mfix $ \ ~(_, networkL) -> do
+    pb <- getPostBuild
 
     (mConf, onDeployed) <- deployCode (model ^. logger) networkL $ cfg ^. networkCfg_deployCode
 
     (cName, networks) <- getNetworks cfg
-    onCName <- tagOnPostBuild cName
 
     let onRefresh = leftmost [ onDeployed, cfg ^. networkCfg_refreshModule ]
-    nodeInfos <-
-      getNetworkNodeInfosIncremental (current networks) (current cName) $ leftmost
-        [ Just <$> onCName
-          -- Refresh info on deployments and well on refresh (Refreshed node
-          -- info triggers re-loading of modules too):
-        , Nothing <$ onRefresh
-        ]
+
+
+    let
+      refreshTracking = Set.fromList . join . Map.elems <$> current networks <@ leftmost [pb, cfg^.networkCfg_refreshNodes]
+      requestTracking = cfg ^. networkCfg_trackNodes
+      markTrackingStale = ffor (cfg ^. networkCfg_trackNodes) $ \ns m -> Map.restrictKeys m (Set.difference (Map.keysSet m) ns)
+    tracks <- performEventAsync $ fmap (getNodeInfosAsync . Set.toList) $ leftmost
+      [ requestTracking
+      , refreshTracking
+      ]
+    tracked <- foldDyn ($) mempty $ leftmost
+      [ ffor tracks $ uncurry Map.insert
+      , markTrackingStale
+      ]
+    let nodeInfos = ffor3 cName networks tracked $ \n nets nodes ->
+          let nodeRefs = fromMaybe [] $ Map.lookup n nets
+          in fforMaybe nodeRefs $ flip Map.lookup nodes
+
 
     performEvent_ $ traverse_ reportNodeInfoError . lefts <$> updated nodeInfos
 
@@ -302,6 +319,7 @@ makeNetwork model cfg = mfix $ \ ~(_, networkL) -> do
           { _network_networks = networks
           , _network_selectedNetwork = cName
           , _network_selectedNodes = nodeInfos
+          , _network_trackedNodes = tracked
           , _network_modules = modules
           , _network_deployed = onDeployed
           , _network_meta = meta
@@ -310,7 +328,6 @@ makeNetwork model cfg = mfix $ \ ~(_, networkL) -> do
   where
     reportNodeInfoError err =
       putLog model LevelWarn $ "Fetching node info failed: " <> err
-
 
 -- | Update networks, given an updating event.
 updateNetworks
@@ -324,60 +341,14 @@ updateNetworks m onUpdate =
   in
     mempty & networkCfg_setNetworks .~ onNew
 
-
--- | Retrieve `NodeInfo`s asynchronously and incremental.
---
---   This means the returned dynamic list will grow as responses come in.
-getNetworkNodeInfosIncremental
-  :: forall t m.
-    ( Reflex t, MonadSample t m, TriggerEvent t m, PerformEvent t m
-    , MonadHold t m, MonadFix m, MonadJSM (Performable m)
-    )
-  => Behavior t (Map NetworkName [NodeRef])
-  -> Behavior t NetworkName -- ^ The currently user selected network.
-  -> Event t (Maybe NetworkName) -- ^ Start NodeInfo retrieval for new selection/ or just do a refresh (`Nothing` case).
-  -> m (Dynamic t [Either Text NodeInfo])
-getNetworkNodeInfosIncremental cNets currentName onRefreshLoad = do
-    let
-      onNetName = attachWith fromMaybe currentName onRefreshLoad
-      onLoad = fmapMaybe id onRefreshLoad
-
-      onNodes :: Event t (NetworkName, [(Int, NodeRef)])
-      onNodes = attachWith (flip getIndexedNodes) cNets onNetName
-
-    onInfo <- performEventAsync $ uncurry getNodeInfosAsync <$> onNodes
-
-    infoMap <- foldDyn id IntMap.empty $ leftmost
-      [ const IntMap.empty <$ onLoad -- Only clear if network selection changed, not on refresh!
-      , fmap (uncurry IntMap.insert) . filterValidUpdates $ onInfo
-      ]
-    pure $ IntMap.elems <$> infoMap
-  where
-    -- Ignore updates if currently selected network no longer matches:
-    filterValidUpdates = fmap snd . ffilter fst . attachWith checkSelected currentName
-
-    checkSelected :: NetworkName -> (NetworkName, a) -> (Bool, a)
-    checkSelected n = first (== n)
-
-    getIndexedNodes name = (name, ) . zip [0..] . fromMaybe [] . Map.lookup name
-
-
--- | Retrieve the node information for the given `NetworkName`
---
---   As we are sending those requests asynchronously, we also return the
---   NetworkName corresponding to our response, so we get the matching right.
 getNodeInfosAsync
   :: MonadJSM m
-  => NetworkName
-  -> [(Int, NodeRef)]
-  -> ((NetworkName, (Int, Either Text NodeInfo)) -> IO ())
+  => [NodeRef]
+  -> ((NodeRef, Either Text NodeInfo) -> IO ())
   -> m ()
-getNodeInfosAsync netName nodes cb = traverse_ discoverNodeAsync nodes
-  where
-    discoverNodeAsync (i, nodeRef) = void $ liftJSM $ forkJSM $ do
-      r <- discoverNode nodeRef
-      liftIO $ cb (netName, (i, r))
-
+getNodeInfosAsync nodes cb = for_ nodes $ \nodeRef -> void $ liftJSM $ forkJSM $ do
+  r <- discoverNode nodeRef
+  liftIO $ cb (nodeRef, r)
 
 -- | Get the currently selected network.
 --
@@ -415,7 +386,7 @@ getNetworkInfoTriple
 getNetworkInfoTriple nw = do
   nodes <- nw ^. network_selectedNodes
   meta <- nw ^. network_meta
-  let networkId = hush . mkNetworkName . nodeVersion <=< headMay $ rights nodes
+  let networkId = mkNetworkName . nodeVersion <$> headMay (rights nodes)
   pure $ (nodes, meta, ) <$> networkId
 
 buildMeta
@@ -571,7 +542,7 @@ getConfigNetworks = do
       . ("localhost:" <>)
       . getPactInstancePort
 
-    buildName = uncheckedNetworkName . ("dev-" <>) . tshow
+    buildName = mkNetworkName . ("dev-" <>) . tshow
     buildNetwork = buildName &&& pure . buildNodeRef
     devNetworks = Map.fromList $ map buildNetwork [1 .. numPactInstances]
 
@@ -580,7 +551,7 @@ getConfigNetworks = do
     Left (Left _) -> -- Development mode
       (buildName 1, devNetworks, Nothing)
     Left (Right x) -> -- Mac app remote list
-      (uncheckedNetworkName "pact", mempty, Just x)
+      (mkNetworkName "pact", mempty, Just x)
     Right (x,y) -> (x,y, Nothing) -- Production mode
 
 getNetworkNameAndMeta
@@ -818,10 +789,14 @@ mkClientEnvs nodeInfos chain = fforMaybe nodeInfos $ \nodeInfo ->
 
 -- | Perform some servant request by stepping through the given envs
 doReqFailover :: MonadJSM m => [S.ClientEnv] -> S.ClientM a -> m (Either [S.ClientError] a)
-doReqFailover [] _ = pure $ Left []
-doReqFailover (c:cs) request = liftJSM $ S.runClientM request c >>= \case
-  Left e -> BiF.first (e:) <$> doReqFailover cs request
-  Right r -> pure $ Right r
+doReqFailover envs = fmap (fmap snd) . doReqFailoverTagged (fmap ((),) envs)
+
+-- | Perform some servant request by stepping through the given envs
+doReqFailoverTagged :: MonadJSM m => [(tag, S.ClientEnv)] -> S.ClientM a -> m (Either [S.ClientError] (tag, a))
+doReqFailoverTagged [] _ = pure $ Left []
+doReqFailoverTagged ((t, c):cs) request = liftJSM $ S.runClientM request c >>= \case
+  Left e -> BiF.first (e:) <$> doReqFailoverTagged cs request
+  Right r -> pure $ Right (t, r)
 
 
 -- | Send a transaction via the /send endpoint.
@@ -1232,26 +1207,27 @@ encodeAsText = safeDecodeUtf8 . BSL.toStrict
 
 instance Reflex t => Semigroup (NetworkCfg t) where
   NetworkCfg
-    refreshA deployA setSenderA setGasLimitA setGasPriceA setTtlA setNetworksA resetNetworksA selectNetworkA
+    refreshA deployA setSenderA setGasLimitA setGasPriceA setTtlA refreshNodesA trackNodesA setNetworksA resetNetworksA selectNetworkA
     <>
     NetworkCfg
-      refreshB deployB setSenderB setGasLimitB setGasPriceB setTtlB setNetworksB resetNetworksB selectNetworkB
+      refreshB deployB setSenderB setGasLimitB setGasPriceB setTtlB refreshNodesB trackNodesB setNetworksB resetNetworksB selectNetworkB
       = NetworkCfg
         { _networkCfg_refreshModule = leftmost [ refreshA, refreshB ]
-        , _networkCfg_deployCode    =  deployA <> deployB
+        , _networkCfg_deployCode    = deployA <> deployB
         , _networkCfg_setSender     = leftmost [ setSenderA, setSenderB ]
         , _networkCfg_setGasLimit   = leftmost [ setGasLimitA, setGasLimitB ]
         , _networkCfg_setGasPrice   = leftmost [ setGasPriceA, setGasPriceB ]
         , _networkCfg_setTTL        = leftmost [ setTtlA, setTtlB ]
-        , _networkCfg_setNetworks = leftmost [setNetworksA, setNetworksB ]
+        , _networkCfg_refreshNodes  = leftmost [ refreshNodesA, refreshNodesB ]
+        , _networkCfg_trackNodes    = trackNodesA <> trackNodesB
+        , _networkCfg_setNetworks   = leftmost [setNetworksA, setNetworksB ]
         , _networkCfg_resetNetworks = leftmost [resetNetworksA, resetNetworksB ]
         , _networkCfg_selectNetwork = leftmost [selectNetworkA, selectNetworkB ]
         }
 
 instance Reflex t => Monoid (NetworkCfg t) where
-  mempty = NetworkCfg never never never never never never never never never
+  mempty = NetworkCfg never never never never never never never never never never never
   mappend = (<>)
---
 
 instance Flattenable (NetworkCfg t) t where
   flattenWith doSwitch ev =
@@ -1262,6 +1238,8 @@ instance Flattenable (NetworkCfg t) t where
       <*> doSwitch never (_networkCfg_setGasLimit <$> ev)
       <*> doSwitch never (_networkCfg_setGasPrice <$> ev)
       <*> doSwitch never (_networkCfg_setTTL <$> ev)
+      <*> doSwitch never (_networkCfg_refreshNodes <$> ev)
+      <*> doSwitch never (_networkCfg_trackNodes <$> ev)
       <*> doSwitch never (_networkCfg_setNetworks <$> ev)
       <*> doSwitch never (_networkCfg_resetNetworks <$> ev)
       <*> doSwitch never (_networkCfg_selectNetwork <$> ev)

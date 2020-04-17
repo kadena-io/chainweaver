@@ -27,11 +27,6 @@ $main-header-wallet-btn-bg: #ececec;
   padding-top: $normal-padding;
   padding-bottom: $normal-padding;
   flex: none;
-
-  position: -webkit-sticky;
-  position: sticky;
-  top: 70px;
-  z-index: $main-header-z-index;
 }
 
 .main-header__page-name {
@@ -101,11 +96,6 @@ $main-header-wallet-btn-bg: #ececec;
 }
 
 .main-header__network-bar {
-  position: -webkit-sticky;
-  position: sticky;
-  top: 0;
-  z-index: $main-header-z-index;
-
   justify-content: flex-start;
   background-color: white;
   height: $top-bar-height;

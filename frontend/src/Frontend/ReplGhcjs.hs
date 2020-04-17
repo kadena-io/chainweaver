@@ -29,6 +29,7 @@ import GHCJS.DOM.EventM (on)
 import GHCJS.DOM.GlobalEventHandlers (keyPress)
 import GHCJS.DOM.KeyboardEvent (getCtrlKey, getKey, getKeyCode, getMetaKey)
 import GHCJS.DOM.Types (HTMLElement (..), unElement)
+import Kadena.SigningApi (SigningRequest, SigningResponse)
 import Language.Javascript.JSaddle (liftJSM)
 import Obelisk.Generated.Static
 import Obelisk.Route (R)
@@ -73,6 +74,7 @@ import Frontend.UI.Settings
 import Frontend.UI.Transfer
 import Frontend.UI.Wallet
 import Frontend.UI.Widgets
+import Frontend.Wallet hiding (walletCfg)
 
 app
   :: forall key t m.
@@ -92,6 +94,7 @@ app
   -> RoutedT t (R FrontendRoute) m ()
 app sidebarExtra fileFFI appCfg = Store.versionedFrontend (Store.versionedStorage @key) $ void . mfix $ \ cfg -> do
   ideL <- makeIde fileFFI appCfg cfg
+  FRPHandler signingReq signingResp <- handleEndpoints ideL appCfg
 
   walletSidebar sidebarExtra
   updates <- divClass "page" $ do
@@ -153,10 +156,11 @@ app sidebarExtra fileFFI appCfg = Store.versionedFrontend (Store.versionedStorag
 
   modalCfg <- showModal ideL
 
+  req <- delay 0 signingReq
   let
     onGistCreatedModal = Just . uiCreatedGist <$> ideL ^. gistStore_created
     gistModalCfg = mempty & modalCfg_setModal .~ onGistCreatedModal
-    onSigningModal = Just . uiSigning appCfg ideL <$> _appCfg_signingRequest appCfg
+    onSigningModal = Just . uiSigning ideL signingResp <$> req
     signingModalCfg = mempty & modalCfg_setModal .~ onSigningModal
 
   pure $ mconcat
@@ -166,6 +170,20 @@ app sidebarExtra fileFFI appCfg = Store.versionedFrontend (Store.versionedStorag
     , signingModalCfg
     , mempty & ideCfg_editor . editorCfg_loadCode .~ (snd <$> _fileFFI_externalFileOpened fileFFI)
     ]
+
+handleEndpoints
+  :: (HasWallet model key t, MonadIO m, PerformEvent t m)
+  => model -> AppCfg key t m -> m (FRPHandler SigningRequest SigningResponse t m)
+handleEndpoints m cfg = do
+  let keys = ffor (m ^. wallet_keys) $ Right . toList . fmap (_keyPair_publicKey . _key_pair)
+      accounts = ffor (m ^. wallet_accounts) $ Right . fmap Map.keys . unAccountData
+
+  FRPHandler keysReqs keysResps <- _appCfg_keysEndpointHandler cfg
+  FRPHandler accountsReqs accountsResps <- _appCfg_accountsEndpointHandler cfg
+
+  void $ keysResps $ current keys <@ keysReqs
+  void $ accountsResps $ current accounts <@ accountsReqs
+  _appCfg_signingHandler cfg
 
 walletSidebar
   :: ( DomBuilder t m

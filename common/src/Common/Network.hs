@@ -10,7 +10,6 @@
 
 module Common.Network
   ( NetworkName
-  , uncheckedNetworkName
   , textNetworkName
   , mkNetworkName
   , networksPath
@@ -35,7 +34,6 @@ import Control.Monad.Trans
 import Data.Aeson
 import Data.CaseInsensitive (CI)
 import Data.Coerce (coerce)
-import Data.Either (rights)
 import Data.Map (Map)
 import Data.Maybe (fromMaybe)
 import Data.Text (Text)
@@ -64,21 +62,16 @@ newtype NetworkName = NetworkName
   } deriving (Eq, Ord, Show)
 
 instance FromJSON NetworkName where
-  parseJSON = either (fail . T.unpack) pure . mkNetworkName <=< parseJSON
+  parseJSON = fmap mkNetworkName . parseJSON
 instance FromJSONKey NetworkName where
-  fromJSONKey = FromJSONKeyTextParser $ either (fail . T.unpack) pure . mkNetworkName
+  fromJSONKey = FromJSONKeyTextParser $ pure . mkNetworkName
 instance ToJSON NetworkName where
   toJSON = toJSON . CI.original . unNetworkName
 instance ToJSONKey NetworkName where
   toJSONKey = A.toJSONKeyText (CI.original . unNetworkName)
 
--- | Construct a 'NetworkName', and banish mainnet - for now.
-mkNetworkName :: Text -> Either Text NetworkName
-mkNetworkName (T.strip -> t) = Right $ NetworkName $ CI.mk t
-
--- | Construct a 'NetworkName' but don't perform any checks
-uncheckedNetworkName :: Text -> NetworkName
-uncheckedNetworkName = NetworkName . CI.mk . T.strip
+mkNetworkName :: Text -> NetworkName
+mkNetworkName = NetworkName . CI.mk . T.strip
 
 -- | Render a network name as `Text`.
 textNetworkName :: NetworkName -> Text
@@ -183,7 +176,7 @@ parseNetworks raw = do
     rawNamesHosts = map (fmap (T.dropWhile (== ':')) . T.breakOn ":") . T.lines $ raw
 
     strippedSplitted :: [(NetworkName, [Text])]
-    strippedSplitted = rights $ map (\(n, refs) -> (, T.words refs) <$> mkNetworkName n) rawNamesHosts
+    strippedSplitted = map (\(n, refs) -> (mkNetworkName n, T.words refs)) rawNamesHosts
 
   --        outer list snd        host list
   parsed <- traverse (traverse (traverse parseNodeRef)) strippedSplitted

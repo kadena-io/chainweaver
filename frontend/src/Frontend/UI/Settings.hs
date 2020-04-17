@@ -52,7 +52,7 @@ uiSettings
   -> m mConf
 uiSettings enabledSettings model fileFFI = elClass "div" "icon-grid" $ do
 
-  netCfg <- settingItemOnClick "Network" (static @"img/network.svg") $ \onOpen -> uiNetworkEdit
+  netCfg <- settingItemOnClick "Network" (static @"img/network.svg") $ \onOpen -> uiNetworkEdit model
     <$> current (model ^. network_selectedNetwork)
     <*> current (model ^. network_networks)
     <@ onOpen
