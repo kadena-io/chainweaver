@@ -160,6 +160,7 @@ library
                  , Frontend.UI.Icon
                  , Frontend.UI.IconGrid
                  , Frontend.UI.JsonData
+                 , Frontend.UI.KeysetWidget
                  , Frontend.UI.Modal
                  , Frontend.UI.Modal.Impl
                  , Frontend.UI.ModuleExplorer
