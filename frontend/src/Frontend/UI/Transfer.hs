@@ -48,13 +48,18 @@ import           Data.Set (Set)
 import qualified Data.Set as Set
 import           Data.Text (Text)
 import qualified Data.Text as T
+import           Data.Time.Clock.POSIX
 import           Kadena.SigningApi (AccountName(..))
+import           Pact.Parse
 import qualified Pact.Server.ApiClient as Api
+import           Pact.Types.ChainMeta
 import qualified Pact.Types.Command as Pact
+import           Pact.Types.Gas
 import           Pact.Types.Pretty
 import           Reflex
 import           Reflex.Dom.Core
 import           Text.Printf
+import           Text.Read (readMaybe)
 
 import           Common.Foundation
 import           Common.Wallet
@@ -433,9 +438,9 @@ transferDialog model netInfo ti fks tks _ _ = do
     pure ((conf, close <> cancel), never)
   where
     mainSection currentTab = elClass "div" "modal__main" $ do
-      mconf <- tabPane mempty currentTab TransferTab_Metadata $ transferMetadata model netInfo fks tks ti
+      (conf, meta) <- tabPane mempty currentTab TransferTab_Metadata $ transferMetadata model netInfo fks tks ti
       tabPane mempty currentTab TransferTab_Signatures $ transferSigs fks
-      return mconf
+      return conf
     footerSection currentTab = modalFooter $ do
       let (lbl, fanTag) = splitDynPure $ ffor currentTab $ \case
             TransferTab_Metadata -> ("Cancel", Left ())
@@ -509,6 +514,13 @@ gasPayersSection model netInfo ti = do
     gpKeys <- networkHold (return $ constDyn mempty) (getGasPayerKeys <$> debouncedGasPayers)
     return (dgps, join gpKeys)
 
+data TransferMeta t = TransferMeta
+  { _transferMeta_gasPrice :: Dynamic t GasPrice
+  , _transferMeta_gasLimit :: Dynamic t GasLimit
+  , _transferMeta_gasTTL :: Dynamic t TTLSeconds
+  , _transferMeta_creationTime :: Dynamic t TxCreationTime
+  }
+
 transferMetadata
   :: (MonadWidget t m, HasNetwork model t, HasNetworkCfg mConf t, Monoid mConf,
       HasCrypto key m, HasLogger model t)
@@ -517,7 +529,7 @@ transferMetadata
   -> Map AccountName (AccountStatus AccountDetails)
   -> Map AccountName (AccountStatus AccountDetails)
   -> TransferInfo
-  -> m mConf
+  -> m (mConf, TransferMeta t)
 transferMetadata model netInfo fks tks ti = do
   (dgps, gpDetails) <- gasPayersSection model netInfo ti
   let fromChain = _ca_chain $ _ti_fromAccount ti
@@ -530,9 +542,17 @@ transferMetadata model netInfo fks tks ti = do
   -- TODO NEXT...use the signers to construct the request key
 
   dialogSectionHeading mempty "Transaction Settings"
-  (conf, _, _, _) <- divClass "group" $ uiMetaData model Nothing Nothing
-  -- TODO Add creationTime to uiMetaData dialog and default it to current time - 60s
-  return conf
+  divClass "group" $ do
+    (conf, ttl, lim, price) <- uiMetaData model Nothing Nothing
+    elAttr "div" ("style" =: "margin-top: 10px") $ do
+      now <- fmap round $ liftIO $ getPOSIXTime
+      let timeParser = maybe (Left "Not a valid creation time") Right . readMaybe . T.unpack
+      ect <- mkLabeledInput True "Creation Time" (uiParsingInputElement timeParser)
+        (def { _inputElementConfig_initialValue = tshow now})
+      ct <- holdDyn now $ fmapMaybe hush $ updated ect
+      return (conf, TransferMeta price lim ttl (TxCreationTime . ParsedInteger <$> ct))
+      -- TODO Add creationTime to uiMetaData dialog and default it to current time - 60s
+
 
 combineStatus :: AccountStatus a -> AccountStatus a -> AccountStatus a
 combineStatus a@(AccountStatus_Exists _) _ = a
