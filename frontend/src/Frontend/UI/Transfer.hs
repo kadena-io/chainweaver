@@ -1,5 +1,8 @@
 {-|
 
+Copyright   :  (C) 2020 Kadena
+License     :  BSD-style (see the file LICENSE)
+
 Design Requirements:
 
 * MUST support both Chainweaver, non-Chainweaver, and external cold wallet keys
@@ -29,11 +32,6 @@ Design Requirements:
 {-# LANGUAGE TupleSections #-}
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE TypeFamilies #-}
-
--- |
--- Copyright   :  (C) 2020 Kadena
--- License     :  BSD-style (see the file LICENSE)
---
 
 module Frontend.UI.Transfer where
 
@@ -519,6 +517,8 @@ data TransferMeta t = TransferMeta
   , _transferMeta_gasLimit :: Dynamic t GasLimit
   , _transferMeta_gasTTL :: Dynamic t TTLSeconds
   , _transferMeta_creationTime :: Dynamic t TxCreationTime
+  , _transferMeta_keysetActions :: Dynamic t [KeysetAction]
+  , _transferMeta_signers :: Dynamic t [(ChainId, AccountName, PublicKey)]
   }
 
 transferMetadata
@@ -542,8 +542,7 @@ transferMetadata model netInfo fks tks ti = do
   esigners <- networkView (signersSection <$> actions)
   --signers :: Char <- networkHold (return $ constDyn []) (updated $ callSigners <$> dgps <*> gpDetails)
   -- TODO NEXT...use the signers to construct the request key
-  --initialSigners <- sample k
-  --signers <- hold
+  signers <- holdDyn (constDyn []) esigners
 
   dialogSectionHeading mempty "Transaction Settings"
   divClass "group" $ do
@@ -554,7 +553,7 @@ transferMetadata model netInfo fks tks ti = do
       ect <- mkLabeledInput True "Creation Time" (uiParsingInputElement timeParser)
         (def { _inputElementConfig_initialValue = tshow now})
       ct <- holdDyn now $ fmapMaybe hush $ updated ect
-      return (conf, TransferMeta price lim ttl (TxCreationTime . ParsedInteger <$> ct))
+      return (conf, TransferMeta price lim ttl (TxCreationTime . ParsedInteger <$> ct) actions (join signers))
       -- TODO Add creationTime to uiMetaData dialog and default it to current time - 60s
 
 combineStatus :: AccountStatus a -> AccountStatus a -> AccountStatus a
