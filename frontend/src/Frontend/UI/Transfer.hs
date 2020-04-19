@@ -535,11 +535,15 @@ transferMetadata model netInfo fks tks ti = do
   let fromChain = _ca_chain $ _ti_fromAccount ti
       toChain = _ca_chain $ _ti_toAccount ti
       ks = Map.fromList [(fromChain, fks), (toChain, tks)]
-      callSigners gps gpds = signersSection ti
+      getActions gps gpds = getKeysetActions ti
         (Map.unionWith (Map.unionWith combineStatus) ks gpds) gps
+      actions = getActions <$> dgps <*> gpDetails
 
-  signers <- networkHold (return $ constDyn []) (updated $ callSigners <$> dgps <*> gpDetails)
+  esigners <- networkView (signersSection <$> actions)
+  --signers :: Char <- networkHold (return $ constDyn []) (updated $ callSigners <$> dgps <*> gpDetails)
   -- TODO NEXT...use the signers to construct the request key
+  --initialSigners <- sample k
+  --signers <- hold
 
   dialogSectionHeading mempty "Transaction Settings"
   divClass "group" $ do
@@ -553,28 +557,32 @@ transferMetadata model netInfo fks tks ti = do
       return (conf, TransferMeta price lim ttl (TxCreationTime . ParsedInteger <$> ct))
       -- TODO Add creationTime to uiMetaData dialog and default it to current time - 60s
 
-
 combineStatus :: AccountStatus a -> AccountStatus a -> AccountStatus a
 combineStatus a@(AccountStatus_Exists _) _ = a
 combineStatus _ a@(AccountStatus_Exists _) = a
 combineStatus a _ = a
+
+getKeysetActions
+  :: TransferInfo
+  -> Map ChainId (Map AccountName (AccountStatus AccountDetails))
+  -> [(ChainId, Maybe AccountName)]
+  -> [KeysetAction]
+getKeysetActions ti ks gps = map (getKeysetAction ks) signers
+  where
+    fromAccount = _ca_account $ _ti_fromAccount ti
+    fromChain = _ca_chain $ _ti_fromAccount ti
+    fromPair = (fromChain, Just $ AccountName fromAccount)
+    signers = if fromPair `elem` gps then gps else (fromPair : gps)
 
 -- | Returns a list of all the keys that should be signed with and their
 -- associated chains and account names. These are either there because they were
 -- unambiguous (keys-all or a single-key keyset) or the user selected them.
 signersSection
   :: (MonadWidget t m)
-  => TransferInfo
-  -> Map ChainId (Map AccountName (AccountStatus AccountDetails))
-  -> [(ChainId, Maybe AccountName)]
+  => [KeysetAction]
   -> m (Dynamic t [(ChainId, AccountName, PublicKey)])
-signersSection ti ks gps = do
-    let fromAccount = _ca_account $ _ti_fromAccount ti
-        fromChain = _ca_chain $ _ti_fromAccount ti
-        fromPair = (fromChain, Just $ AccountName fromAccount)
-        signers = if fromPair `elem` gps then gps else (fromPair : gps)
-        actions = map (getKeysetAction ks) signers
-        ambiguous = actions ^.. each . _KeysetAmbiguous
+signersSection actions = do
+    let ambiguous = actions ^.. each . _KeysetAmbiguous
         ukToKeys (c,a,uk) = (c,a,) <$> Set.toList (_userKeyset_keys uk)
     if (null ambiguous)
       then return $ constDyn $ concat $ map ukToKeys $ actions ^.. each . _KeysetUnambiguous
