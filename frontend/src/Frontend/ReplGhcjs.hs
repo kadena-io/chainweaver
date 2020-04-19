@@ -66,7 +66,6 @@ import Frontend.UI.Dialogs.LogoutConfirmation (uiLogoutConfirmation)
 import Frontend.UI.Dialogs.NetworkEdit (uiNetworkSelectTopBar)
 import Frontend.UI.Dialogs.Signing (uiSigning)
 import Frontend.UI.IconGrid (IconGridCellConfig(..), iconGridLaunchLink)
-import Frontend.UI.KeysetWidget
 import Frontend.UI.Modal
 import Frontend.UI.Modal.Impl
 import Frontend.UI.RightPanel

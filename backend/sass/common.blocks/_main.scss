@@ -34,7 +34,6 @@ $main-separator-border-color: #e2e2e2;
     border-bottom: 1px solid $main-separator-border-color;
     position: relative;
     width: 100%;
-    overflow: hidden;
     max-height: 0px;
     transition: max-height 0.3s ease;
 }
@@ -42,6 +41,10 @@ $main-separator-border-color: #e2e2e2;
 .transfer.transfer__expanded {
     max-height: 600px;
     transition: max-height 0.3s ease;
+}
+
+.transfer.transfer__collapsed {
+    overflow: hidden;
 }
 
 .transfer-fields {

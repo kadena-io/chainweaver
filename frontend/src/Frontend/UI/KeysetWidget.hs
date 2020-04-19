@@ -28,8 +28,26 @@ import           Frontend.UI.Widgets
 newtype PublicKeyText = PublicKeyText { unPublicKeyText :: Text }
   deriving (Eq,Ord,Show,Read)
 
-newtype KeysetPred = KeysetPred { unKeysetPred :: Text }
+data KeysetPred
+  = KeysAll
+  | KeysAny
+  | Keys2
+  | OtherPred { unKeysetPred :: Text }
   deriving (Eq,Ord,Show,Read)
+
+renderKeysetPred :: KeysetPred -> Text
+renderKeysetPred = \case
+  KeysAny -> "keys-any"
+  KeysAll -> "keys-all"
+  Keys2 -> "keys-2"
+  OtherPred t -> t
+
+parseKeysetPred :: Text -> KeysetPred
+parseKeysetPred = \case
+  "keys-any" -> KeysAny
+  "keys-all" -> KeysAll
+  "keys-2" -> Keys2
+  t -> OtherPred t
 
 data UserKeyset = UserKeyset
   { _userKeyset_keys :: Set PublicKey
@@ -38,11 +56,11 @@ data UserKeyset = UserKeyset
 
 -- | Uses thin wrapper around Text so callers can distinguish between empty
 -- string and an invalid public key.
-pubKeyWidget
+pubKeyInputWidget
   :: forall t m. MonadWidget t m
   => PublicKeyText
   -> m (Dynamic t PublicKeyText)
-pubKeyWidget iv = do
+pubKeyInputWidget iv = do
   let
     inp cfg = do
       ie <- mkLabeledInput False mempty (uiComboBoxGlobalDatalist keyListId (unPublicKeyText iv)) cfg
@@ -76,11 +94,11 @@ prettyPred "keys-any" = "Any single key"
 prettyPred "keys-2" = "Any two keys"
 prettyPred p = p
 
-keysetWidget
+keysetInputWidget
   :: (MonadWidget t m)
   => Maybe UserKeyset
   -> m (Dynamic t (Maybe UserKeyset))
-keysetWidget iv = do
+keysetInputWidget iv = do
   let
     selectMsgKey = PublicKeyText ""
     selectMsgMap = Map.singleton selectMsgKey "Select"
@@ -94,7 +112,7 @@ keysetWidget iv = do
                        | otherwise = filter (/= keys2Predicate) xs
 
   (ddKeys, patchEvents) <- mkLabeledClsInput False "Public Keys" $ const $ uiAdditiveInput
-    (const pubKeyWidget)
+    (const pubKeyInputWidget)
     (AllowAddNewRow $ doAddDel (/=))
     (AllowDeleteRow $ doAddDel (==))
     selectMsgKey
@@ -109,7 +127,22 @@ keysetWidget iv = do
 
   return $ do
     ks <- Set.fromList . catMaybes . map textToKey . filter (not . T.null) . map unPublicKeyText . Map.elems <$> keys
-    pred <- KeysetPred <$> value predicateE
+    pred <- parseKeysetPred <$> value predicateE
     if Set.null ks
       then pure Nothing
       else pure $ Just $ UserKeyset ks pred
+
+keysetWidget
+  :: (MonadWidget t m)
+  => UserKeyset
+  -> m ()
+keysetWidget (UserKeyset keys pred) = do
+    mkLabeledView False "Keys" $ forM_ keys $ \k -> do
+      uiInputElement $ def
+        & initialAttributes .~ "disabled" =: "disabled"
+        & inputElementConfig_initialValue .~ keyToText k
+
+    mkLabeledInput False "Predicate" uiInputElement $ def
+      & initialAttributes .~ "disabled" =: "disabled"
+      & inputElementConfig_initialValue .~ renderKeysetPred pred
+    return ()
