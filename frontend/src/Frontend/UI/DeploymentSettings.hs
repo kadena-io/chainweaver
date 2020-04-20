@@ -576,7 +576,7 @@ advancedAccordion m active = do
 
 transactionHashSection :: MonadWidget t m => Pact.Command Text -> m ()
 transactionHashSection cmd = void $ do
-  mkLabeledInput True "Transaction Hash" (\c -> uiInputElement $ c & initialAttributes %~ Map.insert "disabled" "") $ def
+  mkLabeledInput True "Request Key" (\c -> uiInputElement $ c & initialAttributes %~ Map.insert "disabled" "") $ def
     & inputElementConfig_initialValue .~ hashToText (toUntypedHash $ Pact._cmdHash cmd)
 
 transactionInputSection
