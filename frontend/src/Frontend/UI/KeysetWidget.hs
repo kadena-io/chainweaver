@@ -18,6 +18,7 @@ import qualified Data.Set as Set
 import           Data.Text (Text)
 import qualified Data.Text as T
 import qualified Data.Text.Encoding as T
+import           Pact.Types.Term (KeySet (..), mkKeySet)
 import           Reflex
 import           Reflex.Dom.Core
 
@@ -53,6 +54,9 @@ data UserKeyset = UserKeyset
   { _userKeyset_keys :: Set PublicKey
   , _userKeyset_pred :: KeysetPred
   } deriving (Eq,Ord,Show)
+
+userToPactKeyset :: UserKeyset -> KeySet
+userToPactKeyset (UserKeyset ks p) = mkKeySet (toPactPublicKey <$> Set.toList ks) (renderKeysetPred p)
 
 -- | Uses thin wrapper around Text so callers can distinguish between empty
 -- string and an invalid public key.

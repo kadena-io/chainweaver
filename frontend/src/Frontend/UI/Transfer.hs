@@ -38,6 +38,7 @@ module Frontend.UI.Transfer where
 import           Control.Error hiding (bool)
 import           Control.Lens
 import           Control.Monad.State.Strict
+import           Data.Aeson
 import           Data.Decimal
 import           Data.Default (Default (..))
 import           Data.Map (Map)
@@ -46,14 +47,26 @@ import           Data.Set (Set)
 import qualified Data.Set as Set
 import           Data.Text (Text)
 import qualified Data.Text as T
+import qualified Data.Text.Encoding as T
+import           Data.Traversable
 import           Data.Time.Clock.POSIX
 import           Kadena.SigningApi (AccountName(..))
 import           Pact.Parse
 import qualified Pact.Server.ApiClient as Api
+import           Pact.Types.Capability
+import           Pact.Types.ChainId
 import           Pact.Types.ChainMeta
 import qualified Pact.Types.Command as Pact
+import           Pact.Types.Command
+import           Pact.Types.Exp
 import           Pact.Types.Gas
+import           Pact.Types.Hash
+import           Pact.Types.Info
+import           Pact.Types.Names
+import           Pact.Types.PactValue
 import           Pact.Types.Pretty
+import           Pact.Types.RPC
+import           Pact.Types.Term (KeySet (..))
 import           Reflex
 import           Reflex.Dom.Core
 import           Text.Printf
@@ -353,6 +366,7 @@ checkReceivingAccount model netInfo ti fks tks fromPair = do
     let toAccount = AccountName $ _ca_account $ _ti_toAccount ti
     pb <- getPostBuild
     case (Map.lookup toAccount tks, _ti_toKeyset ti) of
+      -- TODO Might need more checks for cross-chain error cases
       (Just (AccountStatus_Exists (AccountDetails _ g)), Just userKeyset) -> do
         -- Use transfer-create, but check first to see whether it will fail
         let AccountGuard_KeySet ks p = g
@@ -431,14 +445,15 @@ transferDialog model netInfo ti fks tks _ _ = do
     close <- modalHeader $ text "Sign Transfer"
     rec
       (currentTab, _done) <- transferTabs $ leftmost [prevTab, fmapMaybe id nextTab]
-      conf <- mainSection currentTab
+      (conf, meta) <- mainSection currentTab
       (cancel, prevTab, nextTab) <- footerSection currentTab
     pure ((conf, close <> cancel), never)
   where
     mainSection currentTab = elClass "div" "modal__main" $ do
-      (conf, meta) <- tabPane mempty currentTab TransferTab_Metadata $ transferMetadata model netInfo fks tks ti
-      tabPane mempty currentTab TransferTab_Signatures $ transferSigs fks
-      return conf
+      (conf, meta, toSigners) <- tabPane mempty currentTab TransferTab_Metadata $ transferMetadata model netInfo fks tks ti
+      let unsignedCmd = buildUnsignedCmd netInfo ti <$> meta
+      tabPane mempty currentTab TransferTab_Signatures $ transferSigs fks unsignedCmd
+      return (conf, meta)
     footerSection currentTab = modalFooter $ do
       let (lbl, fanTag) = splitDynPure $ ffor currentTab $ \case
             TransferTab_Metadata -> ("Cancel", Left ())
@@ -458,6 +473,77 @@ transferDialog model netInfo ti fks tks _ _ = do
             TransferTab_Signatures -> Nothing
       pure (cancel, back, nextTab)
 
+buildUnsignedCmd
+  :: SharedNetInfo NodeInfo
+  -> TransferInfo
+  -> TransferMeta
+  -> Command Text
+buildUnsignedCmd netInfo ti tmeta = Pact.Command payloadText [] (hash $ T.encodeUtf8 payloadText)
+  where
+    network = _sharedNetInfo_network netInfo
+    fromAccount = _ca_account $ _ti_fromAccount ti
+    fromChain = _ca_chain $ _ti_fromAccount ti
+    toAccount = _ca_account $ _ti_toAccount ti
+    toChain = _ca_chain $ _ti_toAccount ti
+    amount = _ti_amount ti
+    dataKey = "ks"
+    (mDataKey, code) = if fromChain == toChain
+             then case _ti_toKeyset ti of
+                    Nothing ->
+                      (Nothing, printf "(coin.transfer %s %s %s)"
+                                  (show fromAccount) (show toAccount) (show amount))
+                    Just ks ->
+                      (Just dataKey, printf "(coin.transfer-create %s %s (read-keyset '%s) %s)"
+                                    (show fromAccount) (show toAccount) dataKey (show amount))
+             else -- cross-chain transfer
+               (Just dataKey, printf "(coin.transfer-crosschain %s %s (read-keyset '%s) %s %s)"
+                             (show fromAccount) (show toAccount) dataKey (show toChain) (show amount))
+    tdata = maybe Null (toJSON . userToPactKeyset) $ _ti_toKeyset ti
+    lim = _transferMeta_gasLimit tmeta
+    price = _transferMeta_gasPrice tmeta
+    ttl = _transferMeta_ttl tmeta
+    ct = _transferMeta_creationTime tmeta
+    meta = PublicMeta fromChain fromAccount lim price ttl ct
+
+    signers = _transferMeta_fromSigners tmeta
+
+    payload = Payload
+      { _pPayload = Exec (ExecMsg (T.pack code) tdata)
+      , _pNonce = "chainweaver"
+      , _pMeta = meta
+      , _pSigners = signers
+      , _pNetworkId = pure $ NetworkId $ textNetworkName network
+      }
+
+    payloadText = encodeAsText $ encode payload
+
+--getUnambiguousSigners :: TransferMeta -> [Signer]
+--getUnambiguousSigners tm = mkSigner <$> ks
+--  where
+--    ks = _transferMeta_keysetActions tm ^.. each . _KeysetUnambiguous
+--    mkSigner (chain,account,UserKeyset ks p) =
+
+--getFinalSigners :: TransferMeta -> [(ChainId, AccountName, PublicKey)]
+--getFinalSigners tm =
+
+--onToPreviewTransfer = flip push nextTab $ \case
+--  Just _ -> pure Nothing
+--  Nothing -> runMaybeT $ do
+--    (fromGasPayer, mToGasPayer) <- MaybeT $ sample $ current mCaps
+--    (toAccount, amount) <- MaybeT $ fmap hush $ sample $ current recipient
+--    let mCCD = case mToGasPayer of
+--          Just toGasPayer | toGasPayer /= fromGasPayer -> Just $ CrossChainData
+--            { _crossChainData_recipientChainGasPayer = toGasPayer
+--            }
+--          _ -> Nothing
+--    let transfer = TransferData
+--          { _transferData_amount = amount
+--          , _transferData_crossChainData = mCCD
+--          , _transferData_fromAccount = fromAccount
+--          , _transferData_fromGasPayer = fromGasPayer
+--          , _transferData_toTxBuilder = toAccount
+--          }
+--    pure $ previewTransfer model transfer
 
 -- | An unrecoverable error.  Display an error message and only allow cancel.
 fatalTransferError
@@ -512,13 +598,35 @@ gasPayersSection model netInfo ti = do
     gpKeys <- networkHold (return $ constDyn mempty) (getGasPayerKeys <$> debouncedGasPayers)
     return (dgps, join gpKeys)
 
-data TransferMeta t = TransferMeta
-  { _transferMeta_gasPrice :: Dynamic t GasPrice
-  , _transferMeta_gasLimit :: Dynamic t GasLimit
-  , _transferMeta_gasTTL :: Dynamic t TTLSeconds
-  , _transferMeta_creationTime :: Dynamic t TxCreationTime
-  , _transferMeta_keysetActions :: Dynamic t [KeysetAction]
-  , _transferMeta_signers :: Dynamic t [(ChainId, AccountName, PublicKey)]
+data TransferMeta = TransferMeta
+  { _transferMeta_gasPrice :: GasPrice
+  , _transferMeta_gasLimit :: GasLimit
+  , _transferMeta_ttl :: TTLSeconds
+  , _transferMeta_creationTime :: TxCreationTime
+  , _transferMeta_fromSigners :: [Signer]
+  }
+
+transferCapability :: AccountName -> AccountName -> Decimal -> SigCapability
+transferCapability from to amount = SigCapability
+  { _scName = QualifiedName { _qnQual = "coin", _qnName = "TRANSFER", _qnInfo = def }
+  , _scArgs =
+    [ PLiteral $ LString $ unAccountName from
+    , PLiteral $ LString $ unAccountName to
+    , PLiteral $ LDecimal amount
+    ]
+  }
+
+gasCapability :: SigCapability
+gasCapability = SigCapability
+  { _scName = QualifiedName
+    { _qnQual = ModuleName
+      { _mnName = "coin"
+      , _mnNamespace = Nothing
+      }
+    , _qnName = "GAS"
+    , _qnInfo = mkInfo "coin.GAS"
+    }
+  , _scArgs = []
   }
 
 transferMetadata
@@ -529,20 +637,58 @@ transferMetadata
   -> Map AccountName (AccountStatus AccountDetails)
   -> Map AccountName (AccountStatus AccountDetails)
   -> TransferInfo
-  -> m (mConf, TransferMeta t)
+  -> m (mConf, Dynamic t TransferMeta, Maybe (Dynamic t [Signer]))
 transferMetadata model netInfo fks tks ti = do
   (dgps, gpDetails) <- gasPayersSection model netInfo ti
   let fromChain = _ca_chain $ _ti_fromAccount ti
+      fromAccount = _ca_account $ _ti_fromAccount ti
       toChain = _ca_chain $ _ti_toAccount ti
+      toAccount = _ca_account $ _ti_toAccount ti
+      amount = _ti_amount ti
       ks = Map.fromList [(fromChain, fks), (toChain, tks)]
       getActions gps gpds = getKeysetActions ti
         (Map.unionWith (Map.unionWith combineStatus) ks gpds) gps
       actions = getActions <$> dgps <*> gpDetails
 
   esigners <- networkView (signersSection <$> actions)
-  --signers :: Char <- networkHold (return $ constDyn []) (updated $ callSigners <$> dgps <*> gpDetails)
-  -- TODO NEXT...use the signers to construct the request key
-  signers <- holdDyn (constDyn []) esigners
+  signTuples <- fmap join $ holdDyn (constDyn []) esigners
+
+  -- To get the final list of signers we need to take all the public keys from
+  -- each of the unambiguous keysets. Then we combine that with the signers
+  -- specified by the user which came from the ambiguous keysets. For new we just
+  -- ignore the KeysetError and KeysetNoAction constructors because doing so
+  -- should only ever result in failed transactions. We can come back later and
+  -- try to prevent them if it makes sense.
+  let mkSigners tuples = do
+        gps <- dgps
+        as <- actions
+        let getCaps c a =
+              (if (c, Just a) `elem` gps then [gasCapability] else []) <>
+              (if ChainAccount c (unAccountName a) == _ti_fromAccount ti
+                 then [transferCapability (AccountName fromAccount) (AccountName toAccount) amount]
+                 else [])
+
+            ambig = Map.unionsWith (<>) $ map (\(c, a, pk) -> Map.singleton pk (getCaps c a)) tuples
+            foo (c, a, ks) =
+              map (\pk -> Map.singleton pk $ getCaps c a) (Set.toList $ _userKeyset_keys ks)
+            unamb = Map.unionsWith (<>) $ concat $ map foo (as ^.. each . _KeysetUnambiguous)
+        pure $ map (\(k,v) -> Signer Nothing (keyToText k) Nothing v) (Map.toList $ Map.unionWith (<>) ambig unamb)
+      fromSigners = mkSigners =<< (filter (\(c,_,_) -> c == fromChain) <$> signTuples)
+      toSigners = if fromChain == toChain
+                    then Nothing
+                    else Just $ mkSigners =<< (filter (\(c,_,_) -> c == toChain) <$> signTuples)
+
+  -----
+  el "h2" $ text "From Signers"
+  divClass "group" $ do
+    networkView (mapM_ (el "div" . text . tshow) <$> fromSigners)
+
+  el "h2" $ text "To Signers"
+  divClass "group" $ do
+    case toSigners of
+      Nothing -> blank
+      Just s -> void $ networkView (mapM_ (el "div" . text . tshow) <$> s)
+  -----
 
   dialogSectionHeading mempty "Transaction Settings"
   divClass "group" $ do
@@ -553,7 +699,13 @@ transferMetadata model netInfo fks tks ti = do
       ect <- mkLabeledInput True "Creation Time" (uiParsingInputElement timeParser)
         (def { _inputElementConfig_initialValue = tshow now})
       ct <- holdDyn now $ fmapMaybe hush $ updated ect
-      return (conf, TransferMeta price lim ttl (TxCreationTime . ParsedInteger <$> ct) actions (join signers))
+      let meta = TransferMeta
+             <$> price
+             <*> lim
+             <*> ttl
+             <*> (TxCreationTime . ParsedInteger <$> ct)
+             <*> fromSigners
+      return (conf, meta, toSigners)
       -- TODO Add creationTime to uiMetaData dialog and default it to current time - 60s
 
 combineStatus :: AccountStatus a -> AccountStatus a -> AccountStatus a
@@ -625,19 +777,20 @@ getKeysetAction allKeys (c,Just a) =
             else KeysetAmbiguous (c, a, ks)
 
 unambiguousKeyset :: Set PublicKey -> Text -> Bool
-unambiguousKeyset keys p = False
-  -- TODO re-enable when done testing
-  --p == "keys-all" || length keys == 1 || (length keys == 2 && p == "keys-2")
+unambiguousKeyset keys p =
+  p == "keys-all" || length keys == 1 || (length keys == 2 && p == "keys-2")
 
 transferSigs
   :: (MonadWidget t m)
   => Map AccountName (AccountStatus AccountDetails)
+  -> Dynamic t (Command Text)
   -> m ()
-transferSigs fks = do
+transferSigs fks cmd = do
   _ <- divClass "group" $ do
     mkLabeledInput True "Request Key" uiInputElement $ def
       & initialAttributes .~ "disabled" =: "disabled"
-      & inputElementConfig_initialValue .~ "aZVR2QgI2UAoPtk6q4w4HmaiC4E7CyLP93zjb0V0gG4="
+      & inputElementConfig_initialValue .~ ""
+      & inputElementConfig_setValue .~ (hashToText . toUntypedHash . _cmdHash <$> updated cmd)
 
   dialogSectionHeading mempty "Signatures"
   --let pkWidget = text . T.decodeUtf8 . Pact._pubKey

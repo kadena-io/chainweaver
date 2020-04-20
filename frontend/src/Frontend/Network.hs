@@ -66,6 +66,7 @@ module Frontend.Network
   , getChainsFromHomogenousNetwork
   , getNetworkNameAndMeta
   , getCreationTime
+  , encodeAsText
     -- * Defaults
   , chainwebGasLimitMaximum
   , defaultTransactionGasLimit
