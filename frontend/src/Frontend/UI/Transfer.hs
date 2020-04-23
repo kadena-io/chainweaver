@@ -88,6 +88,7 @@ import           Frontend.Network
 import           Frontend.PactQueries
 import           Frontend.UI.Button
 import           Frontend.UI.DeploymentSettings
+import           Frontend.UI.Dialogs.DeployConfirmation
 import           Frontend.UI.Dialogs.Send
 import           Frontend.UI.KeysetWidget
 import           Frontend.UI.Modal
@@ -164,6 +165,7 @@ uiGenericTransfer
      , HasModalCfg mConf (Modal mConf m t) t
      , HasCrypto key m
      , HasWallet model key t
+     , HasTransactionLogger m
      )
   => model
   -> TransferCfg t
@@ -217,6 +219,7 @@ lookupAndTransfer
      , HasNetwork model t
      , HasNetworkCfg mConf t
      , HasWallet model key t
+     , HasTransactionLogger m
      )
   => model
   -> SharedNetInfo NodeInfo
@@ -328,6 +331,7 @@ checkSendingAccountExists
      , HasLogger model t
      , HasWallet model key t
      , HasCrypto key m
+     , HasTransactionLogger m
      )
   => model
   -> SharedNetInfo NodeInfo
@@ -353,6 +357,7 @@ checkReceivingAccount
      , HasLogger model t
      , HasWallet model key t
      , HasCrypto key m
+     , HasTransactionLogger m
      )
   => model
   -> SharedNetInfo NodeInfo
@@ -417,6 +422,7 @@ handleMissingKeyset
      , HasLogger model t
      , HasWallet model key t
      , HasCrypto key m
+     , HasTransactionLogger m
      )
   => model
   -> SharedNetInfo NodeInfo
@@ -456,6 +462,7 @@ transferDialog
      , HasLogger model t
      , HasWallet model key t
      , HasCrypto key m
+     , HasTransactionLogger m
      )
   => model
   -> SharedNetInfo NodeInfo
@@ -468,11 +475,20 @@ transferDialog
 transferDialog model netInfo ti fks tks _ _ = do
     close <- modalHeader $ text "Sign Transfer"
     rec
-      (currentTab, _done) <- transferTabs $ leftmost [prevTab, fmapMaybe id nextTab]
-      (conf, meta, sc) <- mainSection currentTab
-      (cancel, prevTab, nextTab) <- footerSection currentTab meta sc
-    pure ((conf, close <> cancel), never)
+      (currentTab, _done) <- transferTabs newTab -- $ leftmost [prevTab, fmapMaybe id nextTab]
+      (conf, meta, dSignedCmd) <- mainSection currentTab
+      (cancel, newTab, next) <- footerSection currentTab meta dSignedCmd
+
+    let nextScreen = ffor (tag (current dSignedCmd) next) $ \case
+          Nothing -> Workflow $ pure (mempty, never)
+          Just sc -> if fromChain == toChain
+                       then gSameChainTransfer model netInfo ti sc
+                       else Workflow $ pure (mempty, never)
+
+    pure ((conf, close <> cancel), nextScreen)
   where
+    fromChain = _ca_chain $ _ti_fromAccount ti
+    toChain = _ca_chain $ _ti_toAccount ti
     mainSection currentTab = elClass "div" "modal__main" $ do
       (conf, meta, destChainSigners) <- tabPane mempty currentTab TransferTab_Metadata $
         transferMetadata model netInfo fks tks ti
@@ -488,22 +504,48 @@ transferDialog model netInfo ti fks tks _ _ = do
       let (lbl, fanTag) = splitDynPure $ ffor currentTab $ \case
             TransferTab_Metadata -> ("Cancel", Left ())
             TransferTab_Signatures -> ("Back", Right TransferTab_Metadata)
-
       ev <- cancelButton def lbl
+      let (cancel, back) = fanEither $ current fanTag <@ ev
+
       let isDisabled m s = length (_transferMeta_sourceChainSigners m) /= maybe (-1) (length . _cmdSigs) s
       let mkNextButton ct m s = case ct of
             TransferTab_Metadata -> ("Next", constDyn False) -- TODO Properly enable/disable Next button
             TransferTab_Signatures -> ("Preview", isDisabled <$> meta <*> sc)
-      let (cancel, back) = fanEither $ current fanTag <@ ev
           (name, disabled) = splitDynPure $ mkNextButton <$> currentTab <*> meta <*> sc
           cfg = def
             & uiButtonCfg_class <>~ "button_type_confirm"
             & uiButtonCfg_disabled .~ join disabled
-      next <- uiButtonDyn cfg $ dynText name
-      let nextTab = ffor (current currentTab <@ next) $ \case
+      nextClick <- uiButtonDyn cfg $ dynText name
+      let newTab = ffor (tag (current currentTab) nextClick) $ \case
             TransferTab_Metadata -> Just TransferTab_Signatures
             TransferTab_Signatures -> Nothing
-      pure (cancel, back, nextTab)
+
+      let tabChange = leftmost [back, fmapMaybe id newTab]
+      let screenChange = () <$ ffilter isNothing newTab
+
+      pure (cancel, tabChange, screenChange)
+
+-- | Perform a same chain transfer or transfer-create
+gSameChainTransfer
+  :: (MonadWidget t m, Monoid mConf, HasLogger model t, HasTransactionLogger m)
+  => model
+  -> SharedNetInfo NodeInfo
+  -> TransferInfo -- TODO Not principle of least context, but quick and dirty for now
+  -> Command Text
+  -> Workflow t m (mConf, Event t ())
+gSameChainTransfer model netInfo ti cmd = Workflow $ do
+    let nodeInfos = _sharedNetInfo_nodes netInfo
+    close <- modalHeader $ text "Transaction Status"
+    _ <- elClass "div" "modal__main transaction_details" $
+      submitTransactionWithFeedback model cmd fromAccount fromChain (fmap Right nodeInfos)
+    done <- modalFooter $ confirmButton def "Done"
+    pure
+      ( (mempty, close <> done)
+      , never
+      )
+  where
+    fromChain = _ca_chain $ _ti_fromAccount ti
+    fromAccount = AccountName $ _ca_account $ _ti_fromAccount ti
 
 buildUnsignedCmd
   :: SharedNetInfo NodeInfo
@@ -518,18 +560,21 @@ buildUnsignedCmd netInfo ti tmeta = Pact.Command payloadText [] (hash $ T.encode
     toAccount = _ca_account $ _ti_toAccount ti
     toChain = _ca_chain $ _ti_toAccount ti
     amount = _ti_amount ti
+    amountString = if not ('.' `elem` s) then s ++ ".0" else s
+      where
+        s = show amount
     dataKey = "ks"
     (mDataKey, code) = if fromChain == toChain
              then case _ti_toKeyset ti of
                     Nothing ->
                       (Nothing, printf "(coin.transfer %s %s %s)"
-                                  (show fromAccount) (show toAccount) (show amount))
+                                  (show fromAccount) (show toAccount) amountString)
                     Just ks ->
                       (Just dataKey, printf "(coin.transfer-create %s %s (read-keyset '%s) %s)"
-                                    (show fromAccount) (show toAccount) dataKey (show amount))
+                                    (show fromAccount) (show toAccount) dataKey amountString)
              else -- cross-chain transfer
                (Just dataKey, printf "(coin.transfer-crosschain %s %s (read-keyset '%s) %s %s)"
-                             (show fromAccount) (show toAccount) dataKey (show toChain) (show amount))
+                             (show fromAccount) (show toAccount) dataKey (show toChain) amountString)
     tdata = maybe Null (toJSON . userToPactKeyset) $ _ti_toKeyset ti
     lim = _transferMeta_gasLimit tmeta
     price = _transferMeta_gasPrice tmeta
