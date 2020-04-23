@@ -70,7 +70,7 @@ inputRequestKey
   -> Workflow t m (mConf, Event t ())
 inputRequestKey model _ = Workflow $ do
   let
-    checkTxBtnLbl = "Check TX Status"
+    checkTxBtnLbl = "Check Tx Status"
     nodes = fmap rights $ model ^. network_selectedNodes
     noResponseMsg = "Request Key not found"
     showPollResponse (chainId, Pact.PollResponses pollMap) = case HM.elems pollMap ^? _head of
@@ -79,7 +79,7 @@ inputRequestKey model _ = Workflow $ do
         Pact.PactResult (Left err) -> "Error: " <> Pact.tShow err
         Pact.PactResult (Right a) -> "Chain " <> _chainId chainId <> ": " <> Pact.renderCompactText a
 
-  close <- modalHeader $ text "Check TX Status"
+  close <- modalHeader $ text "Check Tx Status"
 
   modalMain $ do
     dialogSectionHeading mempty "Notice"
