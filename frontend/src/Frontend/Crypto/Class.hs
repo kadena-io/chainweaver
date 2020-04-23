@@ -23,12 +23,16 @@ data PactKey = PactKey
 
 class HasCrypto key m | m -> key where
   cryptoSign :: ByteString -> key -> m Signature
+  cryptoVerify :: ByteString -> Signature -> PublicKey -> m Bool
   cryptoGenKey :: Int -> m (key, PublicKey)
   cryptoSignWithPactKey :: ByteString -> PactKey -> m Signature
   cryptoGenPubKeyFromPrivate :: PPKScheme -> Text -> m (Either String PactKey)
 
   default cryptoSign :: (MonadTrans t, Monad n, HasCrypto key n, m ~ t n) => ByteString -> key -> m Signature
   cryptoSign bs = lift . cryptoSign bs
+
+  default cryptoVerify :: (MonadTrans t, Monad n, HasCrypto key n, m ~ t n) => ByteString -> Signature -> PublicKey -> m Bool
+  cryptoVerify bs sig = lift . cryptoVerify bs sig
 
   default cryptoGenKey :: (MonadTrans t, Monad n, HasCrypto key n, m ~ t n) => Int -> m (key, PublicKey)
   cryptoGenKey = lift . cryptoGenKey

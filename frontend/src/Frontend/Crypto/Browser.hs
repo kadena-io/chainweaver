@@ -39,9 +39,10 @@ newtype BrowserCryptoT m a = BrowserCryptoT
 
 instance MonadJSM m => HasCrypto PrivateKey (BrowserCryptoT m) where
   cryptoSign = mkSignature
+  cryptoVerify = verifySignature
   cryptoGenKey = const genKeyPair
   cryptoGenPubKeyFromPrivate _ _ = pure $ Left "Not supported on web"
-  cryptoSignWithPactKey _ _ = error "Not supported on web"
+  cryptoSignWithPactKey m (PactKey _ _ sec) = mkSignature m (PrivateKey sec)
 
 instance PerformEvent t m => PerformEvent t (BrowserCryptoT m) where
   type Performable (BrowserCryptoT m) = BrowserCryptoT (Performable m)

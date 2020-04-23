@@ -107,6 +107,11 @@ instance (MonadSample t m, MonadJSM m) => HasCrypto Crypto.XPrv (BIPCryptoT t m)
   cryptoSign bs xprv = BIPCryptoT $ do
     (_, pass) <- sample =<< ask
     pure $ Newtype.pack $ Crypto.unXSignature $ Crypto.sign (T.encodeUtf8 pass) xprv bs
+  cryptoVerify bs sig (PublicKey pub) = BIPCryptoT $ do
+    pure $ either (const False) id $ do
+      s <- Crypto.xsignature $ unSignature sig
+      p <- Crypto.xpub pub
+      pure $ Crypto.verify p bs s
   cryptoGenKey i = BIPCryptoT $ do
     (root, pass) <- sample =<< ask
     liftIO $ putStrLn $ "Deriving key at index: " <> show i

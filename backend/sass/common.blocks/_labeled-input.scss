@@ -51,7 +51,11 @@
 }
 
 .input_type_textarea.labeled-input__input {
-  min-height: 115px;
+    min-height: 115px;
+}
+
+.input_type_textarea.labeled-input__input.signature-input {
+  min-height: 0;
 }
 
 .input_type_textarea.labeled-input__input.labeled-input__tx-builder {

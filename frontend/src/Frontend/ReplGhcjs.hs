@@ -110,7 +110,7 @@ app sidebarExtra fileFFI appCfg = Store.versionedFrontend (Store.versionedStorag
     routedCfg <- subRoute $ lift . flip runRoutedT route . \case
       FrontendRoute_Accounts -> mkPageContent "accounts" $ mdo
         netCfg <- networkBar ideL
-        (transferVisible, barCfg) <- controlBar "Accounts" $ do
+        (transferVisible, barCfg) <- controlBar "Accounts You Are Watching" $ do
           refreshCfg <- uiWalletRefreshButton
           xferVisible <- uiTransferButton
           watchCfg <- uiWatchRequestButton ideL
