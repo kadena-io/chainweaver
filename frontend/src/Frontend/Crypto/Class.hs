@@ -10,6 +10,7 @@ import Obelisk.Route.Frontend
 import Data.ByteString (ByteString)
 import Data.Text (Text)
 
+import Pact.Types.Hash
 import Pact.Types.Scheme (PPKScheme)
 
 import Frontend.Crypto.Ed25519
@@ -26,6 +27,7 @@ class HasCrypto key m | m -> key where
   cryptoVerify :: ByteString -> Signature -> PublicKey -> m Bool
   cryptoGenKey :: Int -> m (key, PublicKey)
   cryptoSignWithPactKey :: ByteString -> PactKey -> m Signature
+  cryptoSignWithPactKeyEither :: ByteString -> PactKey -> m (Either Text Signature)
   cryptoGenPubKeyFromPrivate :: PPKScheme -> Text -> m (Either String PactKey)
 
   default cryptoSign :: (MonadTrans t, Monad n, HasCrypto key n, m ~ t n) => ByteString -> key -> m Signature
@@ -39,6 +41,9 @@ class HasCrypto key m | m -> key where
 
   default cryptoSignWithPactKey :: (MonadTrans t, Monad n, HasCrypto key n, m ~ t n) => ByteString -> PactKey -> m Signature
   cryptoSignWithPactKey bs = lift . cryptoSignWithPactKey bs
+
+  default cryptoSignWithPactKeyEither :: (MonadTrans t, Monad n, HasCrypto key n, m ~ t n) => ByteString -> PactKey -> m (Either Text Signature)
+  cryptoSignWithPactKeyEither bs = lift . cryptoSignWithPactKeyEither bs
 
   default cryptoGenPubKeyFromPrivate :: (MonadTrans t, Monad n, HasCrypto key n, m ~ t n) => PPKScheme -> Text -> m (Either String PactKey)
   cryptoGenPubKeyFromPrivate scheme = lift . cryptoGenPubKeyFromPrivate scheme

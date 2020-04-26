@@ -475,7 +475,7 @@ transferDialog
 transferDialog model netInfo ti fks tks _ _ = do
     close <- modalHeader $ text "Sign Transfer"
     rec
-      (currentTab, _done) <- transferTabs newTab -- $ leftmost [prevTab, fmapMaybe id nextTab]
+      (currentTab, _done) <- transferTabs newTab
       (conf, meta, dSignedCmd) <- mainSection currentTab
       (cancel, newTab, next) <- footerSection currentTab meta dSignedCmd
 
@@ -921,6 +921,7 @@ yamlOptions = Y.setFormat (Y.setWidth Nothing Y.defaultFormatOptions) Y.defaultE
 uiSigningInput
   :: ( MonadWidget t m
      , HasCrypto key m
+--     , HasCrypto key (Performable m)
      )
   => Hash
   -> PublicKey
@@ -930,8 +931,8 @@ uiSigningInput hash pubKey = do
   let
     inp cfg = do
       ie <- mkLabeledInput False mempty uiInputElement cfg
-      sig <- networkView (checkSigOrKey hash pubKey <$> value ie)
-      sigDyn <- holdDyn (Left "") $ fmap (UserSig . keyToText) <$> sig
+
+      sigDyn <- networkHold (pure $ Left "") (checkSigOrKey hash pubKey <$> updated (value ie))
       pure (ie
            , ( sigDyn
              , updated sigDyn
@@ -948,7 +949,7 @@ uiSigningInput hash pubKey = do
     -- See checkSigOrKey for where this is generated.
     mkErr e = if T.null e
                 then PopoverState_Disabled
-                else PopoverState_Error "Must be a signature or private key"
+                else PopoverState_Error e -- "Must be a signature or private key"
     showPopover (_, (_, onInput)) = pure $
       either mkErr (const PopoverState_Disabled) <$> onInput
 
@@ -962,38 +963,47 @@ uiSigningInput hash pubKey = do
 
 checkSigOrKey
   :: forall key m t.
-     ( MonadJSM m, PostBuild t m, PerformEvent t m, MonadIO (Performable m)
+     ( MonadJSM m
      , HasCrypto key m
-     , MonadJSM (Performable m)
+--     , HasCrypto key (Performable m)
+--     ( MonadJSM m, PostBuild t m, PerformEvent t m, MonadIO (Performable m)
+--     , HasCrypto key m
+--     , MonadJSM (Performable m)
      )
   => Hash
   -> PublicKey
   -> Text
-  -> m (Either Text Signature)
+  -> m (Either Text UserSig)
 checkSigOrKey hash pubKey userInput = do
     let hashBytes = unHash hash
     let tryAsKey t = do
-          case parsePrivateKey pubKey t of
-            Left _ -> pure $ Left genericErr
-            Right Nothing -> pure $ Left genericErr
-            Right (Just privKey) -> do
-              sig <- cryptoSignWithPactKey hashBytes (PactKey ED25519 pubKey $ unPrivateKey privKey)
-              valid <- verifySignature hashBytes sig pubKey
-              if valid
-                then pure $ Right sig
-                else pure $ Left genericErr
+          -- Expects input to be 64 hex characters
+          case textToKey t of
+            Nothing -> do
+              pure $ Left "Couldn't parse as key"
+            Just (PrivateKey privKey) -> do
+              let pactKey = PactKey ED25519 pubKey privKey
+              cryptoSignWithPactKeyEither hashBytes pactKey >>= \case
+                Left e -> pure $ Left $ "Wrong key"
+                Right sig -> do
+                  valid <- cryptoVerify hashBytes sig pubKey
+                  if valid
+                    then pure $ Right sig
+                    else pure $ Left $ "Key does not generate a valid signature"
         tryAsSig t = do
           case parseSignature t of
-            Left e -> pure $ Left e
+            Left e -> do
+              pure $ Left $ "Error parsing signature"
             Right sig -> do
-              valid <- verifySignature hashBytes sig pubKey
+              --pure $ Right sig
+              valid <- cryptoVerify hashBytes sig pubKey
               pure $ if valid
                 then Right sig
                 else Left "Signature not valid"
 
-    case T.length userInput of
+    res <- case T.length userInput of
       128 -> if T.drop 64 userInput == keyToText pubKey
-               then tryAsKey (T.take 64 userInput)
+               then tryAsKey $ T.take 64 userInput
                else tryAsSig userInput
       64 -> tryAsKey userInput
 
@@ -1001,6 +1011,7 @@ checkSigOrKey hash pubKey userInput = do
       -- when the form first opens but it's good enough for now.
       0 -> pure $ Left ""
       _ -> pure $ Left genericErr
+    pure $ UserSig . keyToText <$> res
   where
     genericErr = "Must specify a key or signature"
 

@@ -226,6 +226,7 @@ instance HasCrypto TestPrv InMemoryStorage where
   cryptoSign = error "cryptoSign for InMemoryStorage: not implemented"
   cryptoVerify = error "cryptoVerify for InMemoryStorage: not implemented"
   cryptoSignWithPactKey = error "cryptoSignWithPactKey for InMemoryStorage: not implemented"
+  cryptoSignWithPactKeyEither = error "cryptoSignWithPactKeyEither for InMemoryStorage: not implemented"
   cryptoGenPubKeyFromPrivate = error "cryptoGenPubKeyFromPrivate for InMemoryStorage: not implemented"
 
 test_v0ToV1Upgrade :: TestTree

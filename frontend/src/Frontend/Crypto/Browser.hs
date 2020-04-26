@@ -10,6 +10,8 @@ import Control.Monad.Primitive (PrimMonad (PrimState, primitive))
 import Control.Monad.Reader
 import Control.Monad.Ref (MonadRef, MonadAtomicRef)
 import Data.Coerce (coerce)
+import qualified Data.ByteString as B
+import Data.Text.Encoding
 import Language.Javascript.JSaddle (MonadJSM)
 import Obelisk.Route.Frontend
 import Reflex.Dom hiding (fromJSString)
@@ -41,8 +43,16 @@ instance MonadJSM m => HasCrypto PrivateKey (BrowserCryptoT m) where
   cryptoSign = mkSignature
   cryptoVerify = verifySignature
   cryptoGenKey = const genKeyPair
-  cryptoGenPubKeyFromPrivate _ _ = pure $ Left "Not supported on web"
-  cryptoSignWithPactKey m (PactKey _ _ sec) = mkSignature m (PrivateKey sec)
+  cryptoGenPubKeyFromPrivate pkScheme t = do
+    case textToKey t of
+      Nothing -> pure $ Left $ "cryptoGenPubKeyFromPrivate: not a valid private key"
+      Just (PrivateKey k) -> do
+        (priv,pub) <- deriveKeyPairFromPrivateKey k
+        pure $ Right $ PactKey pkScheme pub (unPrivateKey priv)
+  cryptoSignWithPactKey m (PactKey _ (PublicKey pub) sec) = mkSignature m priv
+    where
+     priv = PrivateKey $ sec <> pub
+  cryptoSignWithPactKeyEither m pk = Right <$> cryptoSignWithPactKey m pk
 
 instance PerformEvent t m => PerformEvent t (BrowserCryptoT m) where
   type Performable (BrowserCryptoT m) = BrowserCryptoT (Performable m)
