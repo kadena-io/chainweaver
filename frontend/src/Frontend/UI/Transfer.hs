@@ -36,7 +36,7 @@ Design Requirements:
 module Frontend.UI.Transfer where
 
 import           Control.Error hiding (bool)
-import           Control.Lens
+import           Control.Lens hiding ((.=))
 import           Control.Monad.State.Strict
 import           Data.Aeson
 import qualified Data.ByteString.Lazy as LB
@@ -563,7 +563,7 @@ buildUnsignedCmd netInfo ti tmeta = Pact.Command payloadText [] (hash $ T.encode
     amountString = if not ('.' `elem` s) then s ++ ".0" else s
       where
         s = show amount
-    dataKey = "ks" :: String
+    dataKey = "ks" :: Text
     (mDataKey, code) = if fromChain == toChain
              then case _ti_toKeyset ti of
                     Nothing ->
@@ -574,8 +574,8 @@ buildUnsignedCmd netInfo ti tmeta = Pact.Command payloadText [] (hash $ T.encode
                                     (show fromAccount) (show toAccount) dataKey amountString)
              else -- cross-chain transfer
                (Just dataKey, printf "(coin.transfer-crosschain %s %s (read-keyset '%s) %s %s)"
-                             (show fromAccount) (show toAccount) dataKey (show toChain) amountString)
-    tdata = maybe Null (toJSON . userToPactKeyset) $ _ti_toKeyset ti
+                             (show fromAccount) (show toAccount) (T.unpack dataKey) (show toChain) amountString)
+    tdata = maybe Null (\a -> object [ dataKey .= toJSON (userToPactKeyset a) ]) $ _ti_toKeyset ti
     lim = _transferMeta_gasLimit tmeta
     price = _transferMeta_gasPrice tmeta
     ttl = _transferMeta_ttl tmeta
