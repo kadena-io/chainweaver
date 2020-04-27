@@ -563,7 +563,7 @@ buildUnsignedCmd netInfo ti tmeta = Pact.Command payloadText [] (hash $ T.encode
     amountString = if not ('.' `elem` s) then s ++ ".0" else s
       where
         s = show amount
-    dataKey = "ks"
+    dataKey = "ks" :: String
     (mDataKey, code) = if fromChain == toChain
              then case _ti_toKeyset ti of
                     Nothing ->
@@ -847,7 +847,7 @@ transferSigs dKeyStorage cmd signers = do
       pkt2pk = fromPactPublicKey . Pact.PublicKey . T.encodeUtf8
       sigsNeeded = length $ filter (\s -> not $ isJust $ join $ Map.lookup (pkt2pk $ _siPubKey s) cwKeyMap) signers
 
-  dialogSectionHeading mempty $ if sigsNeeded > 0 then "Signatures" else "No signatures needed"
+  dialogSectionHeading mempty $ if sigsNeeded > 0 then "External Signatures" else "No external signatures needed"
 
   let sig s = do
         let pubKeyText = _siPubKey s
@@ -890,6 +890,10 @@ showTransferDetailsTabName = \case
   TransferDetails_Yaml -> "YAML"
   TransferDetails_Json -> "JSON"
 
+transferDetails
+  :: (DomBuilder t m, MonadHold t m, PostBuild t m, MonadFix m)
+  => Dynamic t (Command Text)
+  -> m ()
 transferDetails signedCmd = do
     divClass "tabset" $ mdo
       curSelection <- holdDyn TransferDetails_Yaml onTabClick
@@ -903,13 +907,17 @@ transferDetails signedCmd = do
 
       tabPane mempty curSelection TransferDetails_Yaml $ do
         let preview = T.decodeUtf8 . Y.encodeWith yamlOptions <$> signedCmd
+        iv <- sample (current preview)
         uiTextAreaElement $ def
+          & textAreaElementConfig_initialValue .~ iv
           & initialAttributes %~ (<> "disabled" =: "" <> "style" =: "width: 100%; height: 18em;")
           & textAreaElementConfig_setValue .~ updated preview
 
       tabPane mempty curSelection TransferDetails_Json $ do
         let preview = T.decodeUtf8 . LB.toStrict . encode . toJSON <$> signedCmd
+        iv <- sample (current preview)
         uiTextAreaElement $ def
+          & textAreaElementConfig_initialValue .~ iv
           & initialAttributes %~ (<> "disabled" =: "" <> "style" =: "width: 100%; height: 18em;")
           & textAreaElementConfig_setValue .~ updated preview
 
@@ -965,10 +973,6 @@ checkSigOrKey
   :: forall key m t.
      ( MonadJSM m
      , HasCrypto key m
---     , HasCrypto key (Performable m)
---     ( MonadJSM m, PostBuild t m, PerformEvent t m, MonadIO (Performable m)
---     , HasCrypto key m
---     , MonadJSM (Performable m)
      )
   => Hash
   -> PublicKey
