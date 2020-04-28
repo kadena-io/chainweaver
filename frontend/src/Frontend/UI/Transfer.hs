@@ -387,7 +387,7 @@ checkReceivingAccount model netInfo ti fks tks fromPair = do
                   keysetWidget onChainKeyset
             return ((mempty, cancel), never)
           else
-            transferDialog model netInfo ti fks tks fromPair (Just userKeyset)
+            transferDialog model netInfo ti fks tks fromPair
       (Just (AccountStatus_Exists (AccountDetails _ g)), Nothing) -> do
         if (_ca_chain $ _ti_fromAccount ti) /= (_ca_chain $ _ti_toAccount ti)
           then do
@@ -406,10 +406,10 @@ checkReceivingAccount model netInfo ti fks tks fromPair = do
           else
             -- Use transfer, probably show the guard at some point
             -- TODO check well-formedness of all keys in the keyset
-            transferDialog model netInfo ti fks tks fromPair Nothing
+            transferDialog model netInfo ti fks tks fromPair
       (_, Just userKeyset) -> do
         -- Use transfer-create
-        transferDialog model netInfo ti fks tks fromPair (Just userKeyset)
+        transferDialog model netInfo ti fks tks fromPair
       (_, Nothing) -> do
         -- If the account name looks like a public key, ask about making a keyset
         -- Otherwise throw an error
@@ -451,9 +451,9 @@ handleMissingKeyset model netInfo ti fks tks fromPair = do
           cancel <- cancelButton def "No, take me back"
           let cfg = def & uiButtonCfg_class <>~ "button_type_confirm"
           next <- uiButtonDyn cfg $ text "Yes, proceed to transfer"
-          let ks = UserKeyset (Set.singleton pk) KeysAll
+          let ti2 = ti { _ti_toKeyset = Just $ UserKeyset (Set.singleton pk) KeysAll }
           return ((mempty, close <> cancel),
-                  Workflow (transferDialog model netInfo ti fks tks fromPair (Just ks)) <$ next)
+                  Workflow (transferDialog model netInfo ti2 fks tks fromPair) <$ next)
 
 transferDialog
   :: ( MonadWidget t m, Monoid mConf
@@ -470,9 +470,8 @@ transferDialog
   -> Map AccountName (AccountStatus AccountDetails)
   -> Map AccountName (AccountStatus AccountDetails)
   -> (AccountName, AccountDetails)
-  -> Maybe UserKeyset
   -> m ((mConf, Event t ()), Event t (Workflow t m (mConf, Event t ())))
-transferDialog model netInfo ti fks tks _ _ = do
+transferDialog model netInfo ti fks tks _ = do
     close <- modalHeader $ text "Sign Transfer"
     rec
       (currentTab, _done) <- transferTabs newTab
