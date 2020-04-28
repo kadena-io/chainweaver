@@ -130,9 +130,13 @@ uiChainAccount
   -> Maybe (ChainId, AccountName)
   -> m (Dynamic t (Maybe ChainAccount))
 uiChainAccount model iv = do
-  cd <- userChainIdSelectDef (getChainsFromHomogenousNetwork model) (fst <$> iv)
-  (_,a) <- uiAccountNameInput "Account Name" True (snd <$> iv) never noValidation
-  return $ runMaybeT $ ChainAccount <$> MaybeT (value cd) <*> MaybeT (unAccountName <$$> a)
+  elClass "div" ("segment segment_type_tertiary labeled-input-inline") $ do
+    divClass ("label labeled-input__label-inline") $ text "Account Name"
+    divClass "labeled-input__input account-chain-input" $ do
+      (_,a) <- uiAccountNameInput' (snd <$> iv) never noValidation
+      cd <- uiMandatoryChainSelection (getChainsFromHomogenousNetwork model) mempty
+                                      (maybe (ChainId "0") fst iv) never
+      return $ runMaybeT $ ChainAccount <$> lift (value cd) <*> MaybeT (unAccountName <$$> a)
 
 data TransferInfo = TransferInfo
   { _ti_fromAccount :: ChainAccount
@@ -140,17 +144,6 @@ data TransferInfo = TransferInfo
   , _ti_toAccount :: ChainAccount
   , _ti_toKeyset :: Maybe UserKeyset
   } deriving (Eq,Ord,Show)
-
--- TODO This only for more convenient testing
-userChainIdSelectDef
-  :: MonadWidget t m
-  => Dynamic t [ChainId]
-  -> Maybe ChainId
-  -> m ( Dropdown t (Maybe ChainId) )
-userChainIdSelectDef options iv = do
-  pb <- getPostBuild
-  mkLabeledClsInput True "Chain ID"
-    (uiChainSelectionWithUpdate options (iv <$ pb))
 
 -- -> RoutedT t (R FrontendRoute) m ()
 uiGenericTransfer

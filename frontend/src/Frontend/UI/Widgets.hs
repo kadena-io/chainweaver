@@ -25,6 +25,7 @@ module Frontend.UI.Widgets
   , predefinedChainIdDisplayed
   , userChainIdSelect
   , uiChainSelectionWithUpdate
+  , uiMandatoryChainSelection
 
   , mkChainTextAccounts
   , uiComboBox
@@ -35,6 +36,7 @@ module Frontend.UI.Widgets
   , accountListId
   , accountDatalist
   , uiAccountNameInput
+  , uiAccountNameInput'
   , uiAccountFixed
   , uiAccountDropdown
   , uiAccountDropdown'
@@ -958,6 +960,25 @@ uiChainSelectionWithUpdate options onPreselected cls = do
     ddE <- dropdown Nothing (mkOptions <$> chains) cfg
   pure ddE
 
+uiMandatoryChainSelection
+  :: MonadWidget t m
+  => Dynamic t [ChainId]
+  -> CssClass
+  -> ChainId
+  -> Event t ChainId
+  -> m ( Dropdown t ChainId )
+uiMandatoryChainSelection options cls iv sv = do
+  let chains = map (id &&& (("Chain " <>) .  _chainId)) <$> options
+      mkOptions cs = Map.fromList cs
+      staticCls = cls <> "select"
+      allCls = renderClass <$> pure staticCls
+      cfg = def
+        & dropdownConfig_attributes .~ (("class" =:) <$> allCls)
+        & dropdownConfig_setValue .~ sv
+
+  ddE <- dropdown iv (mkOptions <$> chains) cfg
+  pure ddE
+
 -- | Use a predefined immutable chain id, but display it too.
 predefinedChainIdDisplayed
   :: DomBuilder t m
@@ -1060,6 +1081,45 @@ accountDatalist ideL = elAttr "datalist" ("id" =: accountListId) $ do
 accountListId :: Text
 accountListId = "account-list"
 
+uiAccountNameInput'
+  :: ( DomBuilder t m
+     , PostBuild t m
+     , MonadHold t m
+     , DomBuilderSpace m ~ GhcjsDomSpace
+     , PerformEvent t m
+     , MonadJSM (Performable m)
+     )
+  => Maybe AccountName
+  -> Event t (Maybe AccountName)
+  -> Dynamic t (AccountName -> Either Text AccountName)
+  -> m ( Event t (Maybe AccountName)
+       , Dynamic t (Maybe AccountName)
+       )
+uiAccountNameInput' initval onSetName validateName = do
+  let
+    mkMsg True (Left e) = PopoverState_Error e
+    mkMsg _    _ = PopoverState_Disabled
+
+    validate = ffor validateName $ (<=< mkAccountName)
+
+    showPopover (ie, _) = pure $ (\v t -> mkMsg (not $ T.null t) (v t))
+      <$> current validate
+      <@> fmap T.strip (_inputElement_input ie)
+
+    uiNameInput cfg = do
+      inp <- uiInputElement $ cfg & initialAttributes %~
+               (<> "list" =: accountListId) . addToClassAttr "account-input"
+      pure (inp, _inputElement_raw inp)
+
+  (inputE, _) <- uiInputWithPopover uiNameInput snd showPopover
+    $ def
+    & inputElementConfig_initialValue .~ fold (fmap unAccountName initval)
+    & inputElementConfig_setValue .~ fmapMaybe (fmap unAccountName) onSetName
+
+  pure ( fmap hush $ current validate <@> _inputElement_input inputE
+       , hush <$> (validate <*> fmap T.strip (value inputE))
+       )
+
 uiAccountNameInput
   :: ( DomBuilder t m
      , PostBuild t m
@@ -1099,6 +1159,7 @@ uiAccountNameInput label inlineLabel initval onSetName validateName = do
   pure ( fmap hush $ current validate <@> _inputElement_input inputE
        , hush <$> (validate <*> fmap T.strip (value inputE))
        )
+
 
 -- | Set the account to a fixed value
 uiAccountFixed
