@@ -229,10 +229,6 @@ lookupAndTransfer model netInfo ti onCloseExternal = do
         accountNames = AccountName <$> accounts
         chains = setify [fromChain, toChain]
         code = renderCompactText $ accountDetailsObject accounts
---        mkCmd c = do
---          pm <- mkPublicMeta c
---          buildCmd Nothing (_sharedNetInfo_network netInfo) pm [] [] code mempty mempty
---    cmds <- mapM mkCmd chains
     efks <- lookupKeySets (model ^. logger) (_sharedNetInfo_network netInfo)
                  nodes fromChain accountNames
     etks <- if fromChain == toChain
@@ -465,24 +461,24 @@ transferDialog
   -> (AccountName, AccountDetails)
   -> m ((mConf, Event t ()), Event t (Workflow t m (mConf, Event t ())))
 transferDialog model netInfo ti fks tks _ = do
+    -- TODO Clean up the unused parameter
+    -- It contains the from account name and details retrieved from blockchain
     close <- modalHeader $ text "Sign Transfer"
     rec
       (currentTab, _done) <- transferTabs newTab
-      (conf, meta, dSignedCmd) <- mainSection currentTab
+      (conf, meta, dSignedCmd, destChainInfo) <- mainSection currentTab
       (cancel, newTab, next) <- footerSection currentTab meta dSignedCmd
 
     let nextScreen = ffor (tag (current dSignedCmd) next) $ \case
           Nothing -> Workflow $ pure (mempty, never)
-          Just sc -> if fromChain == toChain
-                       then gSameChainTransfer model netInfo ti sc
-                       else Workflow $ pure (mempty, never)
+          Just sc -> sendTransferCommand model netInfo ti sc destChainInfo
 
     pure ((conf, close <> cancel), nextScreen)
   where
     fromChain = _ca_chain $ _ti_fromAccount ti
     toChain = _ca_chain $ _ti_toAccount ti
     mainSection currentTab = elClass "div" "modal__main" $ do
-      (conf, meta, destChainSigners) <- tabPane mempty currentTab TransferTab_Metadata $
+      (conf, meta, destChainInfo) <- tabPane mempty currentTab TransferTab_Metadata $
         transferMetadata model netInfo fks tks ti
       let unsignedCmd = buildUnsignedCmd netInfo ti <$> meta
       edSigned <- tabPane mempty currentTab TransferTab_Signatures $ do
@@ -491,7 +487,7 @@ transferDialog model netInfo ti fks tks _ = do
           <*> unsignedCmd
           <*> (_transferMeta_sourceChainSigners <$> meta)
       sc <- holdUniqDyn . join =<< holdDyn (constDyn Nothing) (Just <$$> edSigned)
-      return (conf, meta, sc)
+      return (conf, meta, sc, destChainInfo)
     footerSection currentTab meta sc = modalFooter $ do
       let (lbl, fanTag) = splitDynPure $ ffor currentTab $ \case
             TransferTab_Metadata -> ("Cancel", Left ())
@@ -518,26 +514,89 @@ transferDialog model netInfo ti fks tks _ = do
       pure (cancel, tabChange, screenChange)
 
 -- | Perform a same chain transfer or transfer-create
-gSameChainTransfer
+sendTransferCommand
   :: (MonadWidget t m, Monoid mConf, HasLogger model t, HasTransactionLogger m)
   => model
   -> SharedNetInfo NodeInfo
   -> TransferInfo -- TODO Not principle of least context, but quick and dirty for now
   -> Command Text
+  -> Maybe (Dynamic t (Maybe AccountName), Dynamic t [Signer])
   -> Workflow t m (mConf, Event t ())
-gSameChainTransfer model netInfo ti cmd = Workflow $ do
+sendTransferCommand model netInfo ti cmd destInfo = Workflow $ do
+    res <- case destInfo of
+      Nothing -> sameChainTransferAndStatus model netInfo ti cmd
+      Just (gp, ss) -> crossChainTransferAndStatus model netInfo ti cmd gp ss
+    pure (res, never)
+
+sameChainTransferAndStatus
+  :: (MonadWidget t m, Monoid mConf, HasLogger model t, HasTransactionLogger m)
+  => model
+  -> SharedNetInfo NodeInfo
+  -> TransferInfo -- TODO Not principle of least context, but quick and dirty for now
+  -> Command Text
+  -> m (mConf, Event t ())
+sameChainTransferAndStatus model netInfo ti cmd = do
     let nodeInfos = _sharedNetInfo_nodes netInfo
-    close <- modalHeader $ text "Transaction Status"
+    close <- modalHeader $ text "Transfer Status"
     _ <- elClass "div" "modal__main transaction_details" $
       submitTransactionWithFeedback model cmd fromAccount fromChain (fmap Right nodeInfos)
     done <- modalFooter $ confirmButton def "Done"
-    pure
-      ( (mempty, close <> done)
-      , never
-      )
+    pure (mempty, close <> done)
   where
     fromChain = _ca_chain $ _ti_fromAccount ti
     fromAccount = AccountName $ _ca_account $ _ti_fromAccount ti
+
+crossChainTransferAndStatus
+  :: (MonadWidget t m, Monoid mConf, HasLogger model t, HasTransactionLogger m)
+  => model
+  -> SharedNetInfo NodeInfo
+  -> TransferInfo -- TODO Not principle of least context, but quick and dirty for now
+  -> Command Text
+  -> Dynamic t (Maybe AccountName)
+  -> Dynamic t [Signer]
+  -> m (mConf, Event t ())
+crossChainTransferAndStatus model netInfo ti cmd destGasPayer destSigners = do
+    pure (mempty, never)
+
+-- Commented code is WIP, not building yet
+--    let logL = model ^. logger
+--    let nodeInfos = _sharedNetInfo_nodes netInfo
+--    close <- modalHeader $ text "Cross Chain Transfer"
+--    _ <- elClass "div" "modal__main" $ do
+--      fbk <- submitTransactionWithFeedback model cmd fromAccount fromChain (fmap Right nodeInfos)
+--      let listenDone = ffilter (==Status_Done) $ updated $ _transactionSubmitFeedback_listenStatus fbk
+--          -- Not sure whether this should be when the listen is done or when the send is done
+--          rk = RequestKey (toUntypedHash $ _cmdHash cmd) <$ listenDone
+--      (resultOk0, errMsg0, retry0) <- divClass "group" $ do
+--        elClass "ol" "transaction_status" $ do
+--          let item ds = elDynAttr "li" (ffor ds $ \s -> "class" =: statusText s)
+--          item (_transactionSubmitFeedback_sendStatus fbk) $
+--            el "p" $ text $ "Cross chain transfer initiated on chain " <> _chainId fromChain
+--
+--          keys <- sample $ current $ model ^. wallet_keys
+--          -- TODO Next: Modify runUnfinished to take gas payer in different form.
+--          runUnfinishedCrossChainTransfer logL netInfo keys fromChain toChain destGasPayer rk
+--
+--      let isError = \case
+--            Just (Left _) -> True
+--            _ -> False
+--      let initiatedError = ffilter isError $ updated $ _transactionSubmitFeedback_message fbk
+--      let errMsg = leftmost [initiatedError, errMsg0]
+--      dialogSectionHeading mempty "Transaction Result"
+--      divClass "group" $ do
+--        void $ runWithReplace (text "Waiting for response...") $ leftmost
+--          [ text . ("Request Key " <>) . Pact.requestKeyToB16Text <$> rk
+--          , text <$> errMsg
+--          , blank <$ retry0
+--          ]
+--
+--      pure resultOk0
+--    done <- modalFooter $ confirmButton def "Done"
+--    pure (mempty, close <> done)
+--  where
+--    fromChain = _ca_chain $ _ti_fromAccount ti
+--    toChain = _ca_chain $ _ti_toAccount ti
+--    fromAccount = AccountName $ _ca_account $ _ti_fromAccount ti
 
 buildUnsignedCmd
   :: SharedNetInfo NodeInfo
@@ -606,6 +665,15 @@ isMissingGasPayer
 isMissingGasPayer _ (_, Nothing) = False
 isMissingGasPayer keysets (cid, Just a) = isNothing $ Map.lookup a =<< Map.lookup cid keysets
 
+-- Fields in this structure are Dynamic because they get consumed independently
+data GasPayers t = GasPayers
+  { srcChainGasPayer :: Dynamic t (Maybe AccountName)
+    -- Outer Maybe indicates cross-chain transfer (redundantly with fromChain == toChain, but oh well)
+    -- Inner Maybe indicates whether there is a gas payer.  Private blockchains allow this.
+  , destChainGasPayer :: Maybe (Dynamic t (Maybe AccountName))
+  , gasPayerDetails :: Dynamic t (Map ChainId (Map AccountName (AccountStatus AccountDetails)))
+  }
+
 gasPayersSection
   :: ( MonadWidget t m, HasLogger model t
      , HasCrypto key m
@@ -613,22 +681,20 @@ gasPayersSection
   => model
   -> SharedNetInfo NodeInfo
   -> TransferInfo
-  -> m (Dynamic t [(ChainId, Maybe AccountName)], Dynamic t (Map ChainId (Map AccountName (AccountStatus AccountDetails))))
+  -> m (GasPayers t)
+--  -> m (Dynamic t [(ChainId, Maybe AccountName)], Dynamic t (Map ChainId (Map AccountName (AccountStatus AccountDetails))))
 gasPayersSection model netInfo ti = do
     let fromChain = _ca_chain (_ti_fromAccount ti)
         toChain = _ca_chain (_ti_toAccount ti)
-    dgps <- if fromChain == toChain
+    (dgp1, mdgp2) <- if fromChain == toChain
       then do
         (_,dgp1) <- uiAccountNameInput "Gas Paying Account" True (Just $ AccountName $ _ca_account $ _ti_fromAccount ti) never noValidation
-        pure $ (:[]) . (fromChain,) <$> dgp1
+        pure $ (dgp1, Nothing)
       else do
         let mkLabel c = T.pack $ printf "Gas Paying Account (Chain %s)" (T.unpack $ _chainId c)
         (_,dgp1) <- uiAccountNameInput (mkLabel fromChain) True (Just $ AccountName $ _ca_account $ _ti_fromAccount ti) never noValidation
         (_,dgp2) <- uiAccountNameInput (mkLabel toChain) True Nothing never noValidation
-        pure $ do
-          gp1 <- dgp1
-          gp2 <- dgp2
-          pure [(fromChain, gp1), (toChain, gp2)]
+        pure $ (dgp1, Just dgp2)
     let getGasPayerKeys gps = do
           let accounts = catMaybes $ map snd gps
           resps <- forM (Set.toList $ Set.fromList $ map fst gps) $ \chain -> do
@@ -637,9 +703,30 @@ gasPayersSection model netInfo ti = do
                           (_sharedNetInfo_nodes netInfo) chain accounts
             return $ Map.singleton chain <$> fmapMaybe id evt
           foldDyn ($) mempty $ Map.union <$> mergeWith (Map.unionWith Map.union) resps
+        dgps = mkGasPayerList fromChain toChain dgp1 mdgp2
     debouncedGasPayers <- debounce 1.0 $ updated dgps
+    -- TODO FIXME debouncedGasPayers doesn't show dest chain payers
+    -- this might actually be the desired behavior, need to think more
+    -- also not sure what to do if the source chain gas payer is the same as dest chain gas payer
+    -- should we let the user choose different signers for the source and dest chain?
     gpKeys <- networkHold (return $ constDyn mempty) (getGasPayerKeys <$> debouncedGasPayers)
-    return (dgps, join gpKeys)
+    return $ GasPayers dgp1 mdgp2 (join gpKeys)
+
+-- Slightly annoying helper function for combining the gas payers
+mkGasPayerList
+  :: Reflex t
+  => ChainId
+  -> ChainId
+  -> Dynamic t (Maybe AccountName)
+  -> Maybe (Dynamic t (Maybe AccountName))
+  -> Dynamic t [(ChainId, Maybe AccountName)]
+mkGasPayerList fromChain toChain dgp1 mdgp2 =
+    case mdgp2 of
+      Nothing -> (:[]) . (fromChain,) <$> dgp1
+      Just dgp2 -> do
+        gp1 <- dgp1
+        gp2 <- dgp2
+        pure $ [(fromChain, gp1), (toChain, gp2)]
 
 data TransferMeta = TransferMeta
   { _transferMeta_gasPrice :: GasPrice
@@ -682,15 +769,19 @@ transferMetadata
   -> Map AccountName (AccountStatus AccountDetails)
   -> Map AccountName (AccountStatus AccountDetails)
   -> TransferInfo
-  -> m (mConf, Dynamic t TransferMeta, Maybe (Dynamic t [Signer]))
+  -> m (mConf,
+        Dynamic t TransferMeta,
+        -- Destination chain gas payer and signer information when there is a cross-chain transfer
+        Maybe (Dynamic t (Maybe AccountName), Dynamic t [Signer]))
 transferMetadata model netInfo fks tks ti = do
-  (dgps, gpDetails) <- gasPayersSection model netInfo ti
+  (GasPayers srcPayer mdestPayer gpDetails) <- gasPayersSection model netInfo ti
   let fromChain = _ca_chain $ _ti_fromAccount ti
       fromAccount = _ca_account $ _ti_fromAccount ti
       toChain = _ca_chain $ _ti_toAccount ti
       toAccount = _ca_account $ _ti_toAccount ti
       amount = _ti_amount ti
       ks = Map.fromList [(fromChain, fks), (toChain, tks)]
+      dgps = mkGasPayerList fromChain toChain srcPayer mdestPayer
       getActions gps gpds = getKeysetActions ti
         (Map.unionWith (Map.unionWith combineStatus) ks gpds) gps
       actions = getActions <$> dgps <*> gpDetails
@@ -719,9 +810,9 @@ transferMetadata model netInfo fks tks ti = do
             unamb = Map.unionsWith (<>) $ concat $ map foo (as ^.. each . _KeysetUnambiguous)
         pure $ map (\(k,v) -> Signer Nothing (keyToText k) Nothing v) (Map.toList $ Map.unionWith (<>) ambig unamb)
       fromSigners = mkSigners =<< (filter (\(c,_,_) -> c == fromChain) <$> signTuples)
-      destChainSigners = if fromChain == toChain
-                    then Nothing
-                    else Just $ mkSigners =<< (filter (\(c,_,_) -> c == toChain) <$> signTuples)
+      destChainSigners = case mdestPayer of
+        Nothing -> Nothing
+        Just dp -> Just $ (dp, mkSigners =<< (filter (\(c,_,_) -> c == toChain) <$> signTuples))
 
   dialogSectionHeading mempty "Transaction Settings"
   divClass "group" $ do
@@ -739,7 +830,6 @@ transferMetadata model netInfo fks tks ti = do
              <*> (TxCreationTime . ParsedInteger <$> ct)
              <*> fromSigners
       return (conf, meta, destChainSigners)
-      -- TODO Add creationTime to uiMetaData dialog and default it to current time - 60s
 
 combineStatus :: AccountStatus a -> AccountStatus a -> AccountStatus a
 combineStatus a@(AccountStatus_Exists _) _ = a
@@ -826,7 +916,7 @@ transferSigs
   -> (Command Text)
   -> [Signer]
   -> m (Dynamic t (Command Text))
-transferSigs dKeyStorage cmd signers = do
+transferSigs keyStorage cmd signers = do
   let hash = toUntypedHash $ _cmdHash cmd
   _ <- divClass "group" $ do
     mkLabeledInput True "Request Key" uiInputElement $ def
@@ -835,7 +925,7 @@ transferSigs dKeyStorage cmd signers = do
       & inputElementConfig_setValue .~ never
 
   let mkKeyTuple (KeyPair pub priv) = (pub, priv)
-  let cwKeyMap = Map.fromList . map (mkKeyTuple . _key_pair) . IntMap.elems $ dKeyStorage
+  let cwKeyMap = Map.fromList . map (mkKeyTuple . _key_pair) . IntMap.elems $ keyStorage
       pkt2pk = fromPactPublicKey . Pact.PublicKey . T.encodeUtf8
       sigsNeeded = length $ filter (\s -> not $ isJust $ join $ Map.lookup (pkt2pk $ _siPubKey s) cwKeyMap) signers
 
