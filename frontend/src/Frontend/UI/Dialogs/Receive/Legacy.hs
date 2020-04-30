@@ -27,7 +27,6 @@ import Reflex
 import Reflex.Dom.Core
 
 import Kadena.SigningApi (DappCap (..))
-import Pact.Parse (ParsedDecimal (..))
 import Pact.Types.PactValue (PactValue (..))
 import Pact.Types.Exp (Literal (LString, LDecimal))
 import Pact.Types.Capability (SigCapability (..))
@@ -214,8 +213,6 @@ receiveFromLegacySubmit m onClose account chain ttl gasLimit netInfo transferInf
     senderKey = _legacyTransferInfo_pactKey transferInfo
     senderPubKey = _pactKey_publicKey senderKey
     amount = _legacyTransferInfo_amount transferInfo
-
-    unpackGasPrice (GasPrice (ParsedDecimal d)) = d
 
     transferSigCap = SigCapability
       { _scName = QualifiedName

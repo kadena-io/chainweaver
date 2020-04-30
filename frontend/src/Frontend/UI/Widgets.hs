@@ -104,7 +104,6 @@ import           Control.Monad
 import           Control.Monad.Except
 import           Control.Monad.Trans.Maybe
 import qualified Data.Aeson.Encode.Pretty as AesonPretty
-import           Data.Decimal
 import           Data.Either (isLeft)
 import           Data.Map.Strict             (Map)
 import qualified Data.Map.Strict as Map
@@ -298,7 +297,6 @@ uiAmountInput
 uiAmountInput cfg = do
     uiParsingInputElement p cfg
   where
-    stepSize = Decimal maxCoinPrecision 1
     p t = case readMaybe (T.unpack t) of
             Nothing -> Left "Not a valid number"
             Just x

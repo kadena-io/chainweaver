@@ -36,14 +36,12 @@ import Data.List.NonEmpty (NonEmpty(..))
 import Data.Map (Map)
 import Data.Text (Text)
 import Kadena.SigningApi
-import Pact.Parse (ParsedDecimal (..))
 import Pact.Types.Capability
 import Pact.Types.ChainMeta
 import Pact.Types.Exp
 import Pact.Types.PactError
 import Pact.Types.Names
 import Pact.Types.PactValue
-import Pact.Types.Runtime (GasPrice (..))
 import Pact.Types.RPC
 import Pact.Types.Term
 import Reflex
@@ -388,10 +386,6 @@ sendConfig model initData = Workflow $ do
 
                 let attrs = ffor useEntireBalance $ \u ->
                       "disabled" =: ("disabled" <$ u)
-
-                    nestTuple (a,b,c) = (a,(b,c))
-
-                    reset = () <$ (ffilter isNothing $ updated useEntireBalance)
 
                 (_, amountValue) <- uiInputWithPopover uiAmountInput
                   (_inputElement_raw . fst)
