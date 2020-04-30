@@ -12,6 +12,7 @@ module Frontend.UI.Dialogs.Receive.Legacy
 import Control.Applicative (liftA3)
 import Control.Lens (view, _1, _2, _3, (^.))
 import Control.Error (hush)
+import Data.Decimal
 import Data.Either (isLeft)
 import Data.Bifunctor (first)
 import Data.Text (Text)
@@ -50,7 +51,7 @@ import Frontend.Network
 
 data NonBIP32TransferInfo = NonBIP32TransferInfo
   { _legacyTransferInfo_account :: AccountName
-  , _legacyTransferInfo_amount :: GasPrice
+  , _legacyTransferInfo_amount :: Decimal
   , _legacyTransferInfo_pactKey :: PactKey
   }
 makePactLenses ''NonBIP32TransferInfo
@@ -92,7 +93,7 @@ uiReceiveFromLegacyAccount = do
 
   keyPair <- holdDyn Nothing $ hush <$> onKeyPair
 
-  amount <- view _2 <$> mkLabeledInput True "Amount" (uiGasPriceInputField never) def
+  amount <- fmap hush . view _2 <$> mkLabeledInput True "Amount" uiAmountInput def
 
   pure $ (liftA3 . liftA3) NonBIP32TransferInfo mAccountName amount keyPair
   where
@@ -181,7 +182,7 @@ receiveFromLegacySubmitTransferCreate m onClose account chain ttl gasLimit netIn
       , tshow $ unAccountName $ sender
       , tshow $ unAccountName account
       , "(read-keyset \""<> tempkeyset <> "\")"
-      , tshow amount
+      , tshow $ addDecimalPoint amount
       , ")"
       ]
 
@@ -225,7 +226,7 @@ receiveFromLegacySubmit m onClose account chain ttl gasLimit netInfo transferInf
       , _scArgs =
         [ PLiteral $ LString $ unAccountName sender
         , PLiteral $ LString $ unAccountName account
-        , PLiteral $ LDecimal (unpackGasPrice amount)
+        , PLiteral $ LDecimal amount
         ]
       }
 

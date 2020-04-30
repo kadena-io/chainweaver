@@ -905,6 +905,10 @@ uiDisplayTxBuilderWithCopy withLabel txBuilder = do
       & initialAttributes <>~ "disabled" =: "true"
   uiDetailsCopyButton $ pure $ prettyTxBuilder txBuilder
 
+-- TODO This is mostly unused and can probably be removed along with
+-- uiNonnegativeRealWithPrecisionInputElement and uiCorrectingInputElement.
+-- Remaining uses are mostly disabled input elements where a simpler widget
+-- would be more appropriate.
 uiGasPriceInputField
   :: forall m t.
      ( DomBuilder t m

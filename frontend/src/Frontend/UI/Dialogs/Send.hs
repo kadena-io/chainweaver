@@ -249,9 +249,6 @@ lookupAccountByTxBuilder ka accounts = (name, chain,) <$> accounts ^? ix name . 
     name = _txBuilder_accountName ka
     chain = _txBuilder_chainId ka
 
-addDecimalPoint :: Decimal -> Decimal
-addDecimalPoint d@(Decimal ps m) = if ps == 0 then Decimal 1 (m*10) else d
-
 -- | Perform a same chain transfer or transfer-create
 sameChainTransfer
   :: (MonadWidget t m, HasCrypto key m, Monoid mConf, HasLogger model t, HasTransactionLogger m)
