@@ -168,12 +168,12 @@ uiAccountItems model accountsMap = do
 
   events <- elAttr "table" tableAttrs $ do
     el "colgroup" $ do
-      elAttr "col" ("style" =: "width: 5%") blank
-      elAttr "col" ("style" =: "width: 20%") blank
-      elAttr "col" ("style" =: "width: 17.5%") blank
+      elAttr "col" ("style" =: "width: 30px") blank
+      elAttr "col" ("style" =: "width: 180px") blank
+      elAttr "col" ("style" =: "width: 180px") blank
       elAttr "col" ("style" =: "width: 15%") blank
-      elAttr "col" ("style" =: "width: 20%") blank
-      elAttr "col" ("style" =: "width: 22.5%") blank
+      elAttr "col" ("style" =: "width: 200px") blank
+      elAttr "col" ("style" =: "width: 25%") blank
 
     el "thead" $ el "tr" $ do
       let mkHeading = elClass "th" "wallet__table-heading" . text
