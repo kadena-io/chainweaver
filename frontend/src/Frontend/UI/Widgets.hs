@@ -53,6 +53,7 @@ module Frontend.UI.Widgets
   , uiInputElement
   , uiParsingInputElement
   , uiDecimalInputElement
+  , uiAmountInput
   , uiTextAreaElement
   , uiCorrectingInputElement
   , uiNonnegativeRealWithPrecisionInputElement
@@ -288,19 +289,34 @@ uiParsingInputElement
   :: DomBuilder t m
   => (Text -> Either String a)
   -> InputElementConfig er t (DomBuilderSpace m)
-  -> m (Dynamic t (Either String a))
+  -> m (InputElement er (DomBuilderSpace m) t, Dynamic t (Either String a))
 uiParsingInputElement parser cfg = do
   ie <- inputElement $ cfg & initialAttributes %~ (addInputElementCls . addNoAutofillAttrs)
-  return $ parser <$> value ie
+  return (ie, parser <$> value ie)
 
 -- | reflex-dom `inputElement` with chainweaver default styling:
 uiDecimalInputElement
   :: DomBuilder t m
   => InputElementConfig er t (DomBuilderSpace m)
-  -> m (Dynamic t (Either String Decimal))
+  -> m (InputElement er (DomBuilderSpace m) t, Dynamic t (Either String Decimal))
 uiDecimalInputElement cfg = do
-  let p t = maybe (Left "Not a valid number") Right $ readMaybe (T.unpack t)
+  let p t = maybe (Left "Not a valid amount") Right $ readMaybe (T.unpack t)
   uiParsingInputElement p cfg
+
+-- | reflex-dom `inputElement` with chainweaver default styling:
+uiAmountInput
+  :: DomBuilder t m
+  => InputElementConfig er t (DomBuilderSpace m)
+  -> m (InputElement er (DomBuilderSpace m) t, Dynamic t (Either String Decimal))
+uiAmountInput cfg = do
+    uiParsingInputElement p cfg
+  where
+    p t = case readMaybe (T.unpack t) of
+            Nothing -> Left "Not a valid number"
+            Just x
+              | x < 0 -> Left "Cannot be negative"
+              | D.decimalPlaces x > maxCoinPrecision -> Left "Too many decimal places"
+              | otherwise -> Right x
 
 uiCorrectingInputElement
   :: forall t m a explanation
@@ -901,6 +917,10 @@ uiDisplayTxBuilderWithCopy withLabel txBuilder = do
       & initialAttributes <>~ "disabled" =: "true"
   uiDetailsCopyButton $ pure $ prettyTxBuilder txBuilder
 
+-- TODO This is mostly unused and can probably be removed along with
+-- uiNonnegativeRealWithPrecisionInputElement and uiCorrectingInputElement.
+-- Remaining uses are mostly disabled input elements where a simpler widget
+-- would be more appropriate.
 uiGasPriceInputField
   :: forall m t.
      ( DomBuilder t m

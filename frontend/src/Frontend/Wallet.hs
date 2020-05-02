@@ -48,6 +48,7 @@ module Frontend.Wallet
   , findNextKey
   , getSigningPairs
   , genZeroKeyPrefix
+  , addDecimalPoint
   , module Common.Wallet
   ) where
 
@@ -56,6 +57,7 @@ import Control.Monad (guard, void)
 import Control.Monad.Except (runExcept)
 import Control.Monad.Fix
 import Data.Aeson
+import Data.Decimal
 import Data.Either (rights)
 import Data.IntMap (IntMap)
 import Data.Map (Map)
@@ -437,3 +439,8 @@ instance Reflex t => Semigroup (Wallet key t) where
 instance Reflex t => Monoid (Wallet key t) where
   mempty = Wallet mempty mempty
   mappend = (<>)
+
+-- Helper for getting around the fact that the coin contract doesn't allow
+-- integer amounts.  Can't think of a better place to put this.
+addDecimalPoint :: Decimal -> Decimal
+addDecimalPoint d@(Decimal ps m) = if ps == 0 then Decimal 1 (m*10) else d

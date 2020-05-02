@@ -240,7 +240,9 @@ buildDeploymentSettingsResult m mSender signers cChainId capabilities ttl gasLim
   networkId <- mkNetworkName . nodeVersion <$> failWith DeploymentSettingsResultError_NoNodesAvailable (headMay $ rights selNodes)
 
   chainId <- cChainId !? DeploymentSettingsResultError_NoChainIdSelected
-  sender <- mSender !? DeploymentSettingsResultError_NoSenderSelected
+
+  -- Don't require a signer because gas may not be required on private blockchains
+  sender <- lift $ fromMaybe (AccountName "") <$> mSender
 
   caps <- lift capabilities
   signs <- lift signers

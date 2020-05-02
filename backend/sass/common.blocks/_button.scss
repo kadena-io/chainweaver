@@ -94,6 +94,13 @@
   }
 }
 
+// Text which turns cross-chain button into an icon on small screens
+.crosschain-button.button__text-exclusive {
+    @media (max-width: $cutoff-crosschain-button-text) {
+        display: none;
+    }
+}
+
 // Standalone icon in a button
 .button__icon {
   position: absolute;

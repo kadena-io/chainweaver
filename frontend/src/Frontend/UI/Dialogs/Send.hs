@@ -27,20 +27,18 @@ import Control.Monad.Except (throwError)
 import Control.Monad.Logger (LogLevel(..))
 import Control.Monad.Trans.Except
 import Control.Monad.Trans.Maybe
-import Data.Decimal (Decimal)
+import Data.Decimal
 import Data.Either (isLeft, rights)
 import Data.List.NonEmpty (NonEmpty(..))
 import Data.Map (Map)
 import Data.Text (Text)
 import Kadena.SigningApi
-import Pact.Parse (ParsedDecimal (..))
 import Pact.Types.Capability
 import Pact.Types.ChainMeta
 import Pact.Types.Exp
 import Pact.Types.PactError
 import Pact.Types.Names
 import Pact.Types.PactValue
-import Pact.Types.Runtime (GasPrice (..))
 import Pact.Types.RPC
 import Pact.Types.Term
 import Reflex
@@ -272,7 +270,7 @@ sameChainTransfer model netInfo keys (fromName, fromChain, fromAcc) (gasPayer, g
         , tshow $ unAccountName fromName
         , tshow $ unAccountName $ _txBuilder_accountName toAccount
         , readKeyset
-        , tshow amount
+        , tshow $ addDecimalPoint amount
         , ")"
         ]
       fromAccKeys = fromAcc ^. accountDetails_guard . _AccountGuard_KeySet . _1
@@ -368,15 +366,18 @@ sendConfig model initData = Workflow $ do
 
         dialogSectionHeading mempty "Amount"
         (useEntireBalance, validatedAmount) <- divClass "group" $ do
-          let checkFunds (GasPrice (ParsedDecimal gp)) =
-                if gp > balance then
+          let checkFunds amt =
+                if amt > balance then
                   PopoverState_Error insufficientFundsMsg
                 else
                   PopoverState_Disabled
 
-              showGasPriceInsuffPopover (ie, (_, onInput)) = pure $ leftmost
-                [ ffor onInput checkFunds
-                , PopoverState_Disabled <$ ffilter T.null (_inputElement_input ie)
+              -- NOTE If this results in an event loop, might need to switch to
+              -- using the change event rather than the value
+              showGasPriceInsuffPopover (ie, v) = pure $ leftmost
+                [ PopoverState_Disabled <$ ffilter T.null (_inputElement_input ie)
+                , ffor (ffilter isLeft $ updated v) $ either (PopoverState_Error . T.pack) (const PopoverState_Disabled)
+                , ffor (fmapMaybe hush $ updated v) checkFunds
                 ]
 
               gasInputWithMaxButton cfg = mdo
@@ -384,13 +385,7 @@ sendConfig model initData = Workflow $ do
                 let attrs = ffor useEntireBalance $ \u ->
                       "disabled" =: ("disabled" <$ u)
 
-                    nestTuple (a,b,c) = (a,(b,c))
-
-                    reset = () <$ (ffilter isNothing $ updated useEntireBalance)
-
-                    field = fmap nestTuple . uiGasPriceInputField reset
-
-                (_, (amountValue, _)) <- uiInputWithPopover field
+                (_, amountValue) <- uiInputWithPopover uiAmountInput
                   (_inputElement_raw . fst)
                   showGasPriceInsuffPopover $ cfg
                     & inputElementConfig_setValue .~ fmap tshow (mapMaybe id $ updated useEntireBalance)
@@ -401,14 +396,14 @@ sendConfig model initData = Workflow $ do
                   pure $ fmap (\v -> balance <$ guard v) $ _checkbox_value cb
 
                 pure ( isJust <$> useEntireBalance
-                     , amountValue & mapped . mapped %~ view (_Wrapped' . _Wrapped')
+                     , amountValue
                      )
 
           (useEntireBalance, amount) <- mkLabeledInput True "Amount" gasInputWithMaxButton $ def
             & inputElementConfig_initialValue .~ maybe "" tshow mInitAmount
 
           let validatedAmount = runExceptT $ do
-                a <- ExceptT $ maybe (Left "Invalid amount") Right <$> amount
+                a <- ExceptT $ either (\_ -> Left "Invalid amount") Right <$> amount
                 when (a > balance) $
                   throwError insufficientFundsMsg
                 pure a
@@ -988,7 +983,7 @@ initiateCrossChainTransfer model networkName envs publicMeta keys fromAccount fr
       , tshow $ unAccountName $ _txBuilder_accountName toAccount
       , "(read-keyset '" <> keysetName <> ")"
       , tshow $ _chainId $ _txBuilder_chainId toAccount
-      , tshow amount
+      , tshow $ addDecimalPoint amount
       , ")"
       ]
     mkDat rg = HM.singleton keysetName $ Aeson.toJSON rg
