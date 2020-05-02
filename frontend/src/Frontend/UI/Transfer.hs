@@ -202,7 +202,7 @@ amountButton
   => Maybe Decimal
   -> m (Dynamic t (Either String Decimal))
 amountButton iv =
- mkLabeledInput True "Amount" uiDecimalInputElement
+ mkLabeledInput True "Amount" (fmap snd . uiDecimalInputElement)
    (def { _inputElementConfig_initialValue = maybe "" tshow iv})
 
 lookupAndTransfer
@@ -820,7 +820,7 @@ transferMetadata model netInfo fks tks ti = do
     elAttr "div" ("style" =: "margin-top: 10px") $ do
       now <- fmap round $ liftIO $ getPOSIXTime
       let timeParser = maybe (Left "Not a valid creation time") Right . readMaybe . T.unpack
-      ect <- mkLabeledInput True "Creation Time" (uiParsingInputElement timeParser)
+      ect <- mkLabeledInput True "Creation Time" (fmap snd . uiParsingInputElement timeParser)
         (def { _inputElementConfig_initialValue = tshow now})
       ct <- holdDyn now $ fmapMaybe hush $ updated ect
       let meta = TransferMeta
