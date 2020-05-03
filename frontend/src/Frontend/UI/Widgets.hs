@@ -101,6 +101,10 @@ module Frontend.UI.Widgets
   , dimensionalInputFeedbackWrapper
   , uiSidebarIcon
   , uiEmptyState
+
+  , parsingFormWidget
+  , decimalFormWidget
+  , amountFormWidget
   ) where
 
 
@@ -150,6 +154,7 @@ import           Frontend.Ide
 import           Frontend.Network (HasNetwork(..), NodeInfo, getChains, maxCoinPrecision)
 import           Frontend.TxBuilder (TxBuilder)
 import           Frontend.UI.Button
+import           Frontend.UI.FormWidget
 import           Frontend.UI.Modal.Impl
 import           Frontend.UI.Widgets.Helpers (imgWithAlt, imgWithAltCls, makeClickable,
                                               setFocus, setFocusOn,
@@ -766,6 +771,43 @@ uiAdditiveInput mkIndividualInput (AllowAddNewRow newRow) (AllowDeleteRow delete
 
   pure (dInputKeys, onAdd <> onDelete)
 
+--growingListFormWidget
+--  :: forall t m out a
+--     . ( MonadWidget t m
+--       )
+--  => (IntMap.Key -> a -> m out)
+--  -> AllowAddNewRow t out
+--  -> AllowDeleteRow t out
+--  -> FormWidgetConfig t (PatchIntMap a)
+--  -> m (FormWidget t (PatchIntMap a))
+--growingListFormWidget mkOne (AllowAddNewRow newRow) (AllowDeleteRow deleteRow) cfg = do
+--  let
+--    minRowIx = 0
+--
+--    decideAddNewRow :: (IntMap.Key, out) -> Event t (IntMap.IntMap (Maybe particular))
+--    decideAddNewRow (i, out) = initialValue cfg <$ ffilter id (newRow out)
+--
+--    decideDeletion :: IntMap.Key -> out -> Event t (IntMap.IntMap (Maybe particular))
+--    decideDeletion i out = IntMap.singleton i Nothing <$ ffilter id (deleteRow out)
+--
+--  rec
+--    let
+--      -- Delete rows when 'select' is chosen
+--      onDelete = fmap PatchIntMap $ switchDyn $ IntMap.foldMapWithKey decideDeletion <$> dInputKeys
+--      -- Add a new row when all rows have a selection and there are more keys to choose from
+--      onAdd = fmap PatchIntMap $ switchDyn $ maybe never decideAddNewRow . IntMap.lookupMax <$> dInputKeys
+--
+--    (keys, newSelection) <- traverseIntMapWithKeyWithAdjust mkOne (initialValue cfg) $
+--      leftmost
+--      [ onDelete
+--      , onAdd
+--        -- Set the values of the rows from an external event.
+--      , setValue cfg
+--      ]
+--    dInputKeys <- foldDyn applyAlways keys newSelection
+--
+--  pure (dInputKeys, onAdd <> onDelete)
+
 showLoading
   :: (NotReady t m, Adjustable t m, PostBuild t m, DomBuilder t m, Monoid b)
   => Dynamic t (Maybe a)
@@ -984,20 +1026,19 @@ uiMandatoryChainSelection
   :: MonadWidget t m
   => Dynamic t [ChainId]
   -> CssClass
-  -> ChainId
-  -> Event t ChainId
-  -> m ( Dropdown t ChainId )
-uiMandatoryChainSelection options cls iv sv = do
+  -> FormWidgetConfig t ChainId
+  -> m (FormWidget t ChainId)
+uiMandatoryChainSelection options cls cfg = do
   let chains = map (id &&& (("Chain " <>) .  _chainId)) <$> options
       mkOptions cs = Map.fromList cs
       staticCls = cls <> "select"
       allCls = renderClass <$> pure staticCls
-      cfg = def
+      dcfg = def
         & dropdownConfig_attributes .~ (("class" =:) <$> allCls)
-        & dropdownConfig_setValue .~ sv
+        & dropdownConfig_setValue .~ fromMaybe never (view setValue cfg)
 
-  ddE <- dropdown iv (mkOptions <$> chains) cfg
-  pure ddE
+  ddE <- dropdown (_initialValue cfg) (mkOptions <$> chains) dcfg
+  pure $ FormWidget (value ddE) (() <$ _dropdown_change ddE) (constDyn False)
 
 -- | Use a predefined immutable chain id, but display it too.
 predefinedChainIdDisplayed
@@ -1107,15 +1148,13 @@ uiAccountNameInput'
      , MonadHold t m
      , DomBuilderSpace m ~ GhcjsDomSpace
      , PerformEvent t m
+     , TriggerEvent t m
      , MonadJSM (Performable m)
      )
-  => Maybe AccountName
-  -> Event t (Maybe AccountName)
-  -> Dynamic t (AccountName -> Either Text AccountName)
-  -> m ( Event t (Maybe AccountName)
-       , Dynamic t (Maybe AccountName)
-       )
-uiAccountNameInput' initval onSetName validateName = do
+  => Dynamic t (AccountName -> Either Text AccountName)
+  -> PrimFormWidgetConfig t (Maybe AccountName)
+  -> m (FormWidget t (Maybe AccountName), Event t (Maybe Text))
+uiAccountNameInput' validateName cfg = do
   let
     mkMsg True (Left e) = PopoverState_Error e
     mkMsg _    _ = PopoverState_Disabled
@@ -1131,14 +1170,17 @@ uiAccountNameInput' initval onSetName validateName = do
                (<> "list" =: accountListId) . addToClassAttr "account-input"
       pure (inp, _inputElement_raw inp)
 
-  (inputE, _) <- uiInputWithPopover uiNameInput snd showPopover
-    $ def
-    & inputElementConfig_initialValue .~ fold (fmap unAccountName initval)
-    & inputElementConfig_setValue .~ fmapMaybe (fmap unAccountName) onSetName
+  (inputE, _) <- uiInputWithPopover uiNameInput snd showPopover $ def
+    & inputElementConfig_initialValue .~ fold (fmap unAccountName $ view initialValue cfg)
+    & inputElementConfig_setValue .~ maybe never (fmapMaybe (fmap unAccountName)) (view setValue cfg)
+    & initialAttributes .~ view initialAttributes cfg
 
-  pure ( fmap hush $ current validate <@> _inputElement_input inputE
-       , hush <$> (validate <*> fmap T.strip (value inputE))
-       )
+  let w = FormWidget
+            (hush <$> (validate <*> fmap T.strip (value inputE)))
+            (() <$ _inputElement_input inputE)
+            (_inputElement_hasFocus inputE)
+  --afterPaste <- delay 0.1 $ domEvent Paste inputE
+  pure (w, domEvent Paste inputE)
 
 uiAccountNameInput
   :: ( DomBuilder t m
@@ -1146,6 +1188,7 @@ uiAccountNameInput
      , MonadHold t m
      , DomBuilderSpace m ~ GhcjsDomSpace
      , PerformEvent t m
+     , TriggerEvent t m
      , MonadJSM (Performable m)
      )
   => Text
@@ -1157,28 +1200,9 @@ uiAccountNameInput
        , Dynamic t (Maybe AccountName)
        )
 uiAccountNameInput label inlineLabel initval onSetName validateName = do
-  let
-    mkMsg True (Left e) = PopoverState_Error e
-    mkMsg _    _ = PopoverState_Disabled
-
-    validate = ffor validateName $ (<=< mkAccountName)
-
-    showPopover (ie, _) = pure $ (\v t -> mkMsg (not $ T.null t) (v t))
-      <$> current validate
-      <@> fmap T.strip (_inputElement_input ie)
-
-    uiNameInput cfg = do
-      inp <- uiInputElement $ cfg & initialAttributes %~ (<> "list" =: accountListId)
-      pure (inp, _inputElement_raw inp)
-
-  (inputE, _) <- mkLabeledInput inlineLabel label (uiInputWithPopover uiNameInput snd showPopover)
-    $ def
-    & inputElementConfig_initialValue .~ fold (fmap unAccountName initval)
-    & inputElementConfig_setValue .~ fmapMaybe (fmap unAccountName) onSetName
-
-  pure ( fmap hush $ current validate <@> _inputElement_input inputE
-       , hush <$> (validate <*> fmap T.strip (value inputE))
-       )
+  (FormWidget v i _, _) <- mkLabeledInput inlineLabel label (uiAccountNameInput' validateName) $ mkCfg initval
+    & setValue .~ Just onSetName
+  pure (tagPromptlyDyn v i, v)
 
 
 -- | Set the account to a fixed value
@@ -1420,3 +1444,41 @@ uiRequestKeyInput inlineLabel = do
   pure ( parseRequestKey <$> _inputElement_input inputE
        , parseRequestKey <$> value inputE
        )
+
+------------------------------------------------------------------------------
+
+-- | reflex-dom `inputElement` with chainweaver default styling:
+parsingFormWidget
+  :: DomBuilder t m
+  => (Text -> Either String a)
+  -> (Either String a -> Text)
+  -> PrimFormWidgetConfig t (Either String a)
+  -> m (FormWidget t (Either String a))
+parsingFormWidget fromText toText cfg = do
+    let iecCfg = pfwc2iec toText cfg
+    ie <- inputElement $ iecCfg & initialAttributes %~ (addInputElementCls . addNoAutofillAttrs)
+    return (ie2iw fromText ie)
+
+-- | reflex-dom `inputElement` with chainweaver default styling:
+decimalFormWidget
+  :: DomBuilder t m
+  => PrimFormWidgetConfig t (Either String Decimal)
+  -> m (FormWidget t (Either String Decimal))
+decimalFormWidget cfg = do
+  let p t = maybe (Left "Not a valid amount") Right $ readMaybe (T.unpack t)
+  parsingFormWidget p (either (const "") tshow) cfg
+
+-- | reflex-dom `inputElement` with chainweaver default styling:
+amountFormWidget
+  :: DomBuilder t m
+  => PrimFormWidgetConfig t (Either String Decimal)
+  -> m (FormWidget t (Either String Decimal))
+amountFormWidget cfg = do
+    parsingFormWidget p (either (const "") tshow) cfg
+  where
+    p t = case readMaybe (T.unpack t) of
+            Nothing -> Left "Not a valid number"
+            Just x
+              | x < 0 -> Left "Cannot be negative"
+              | D.decimalPlaces x > maxCoinPrecision -> Left "Too many decimal places"
+              | otherwise -> Right x

@@ -27,12 +27,15 @@ in with obelisk;
    packages =
      let
        servantSrc = hackGet ./dep/servant;
+       reflex-dom-src = hackGet ./dep/reflex-dom;
      in
        {
           # servant-client-core = servantSrc + "/servant-client-core";
           # servant = servantSrc + "/servant";
           servant-jsaddle = servantSrc + "/servant-jsaddle";
           jsaddle-warp = hackGet ./dep/jsaddle + /jsaddle-warp; #https://github.com/ghcjs/jsaddle/pull/114
+          reflex-dom = reflex-dom-src + "/reflex-dom";
+          reflex-dom-core = reflex-dom-src + "/reflex-dom-core";
           reflex-dom-ace = hackGet ./dep/reflex-dom-ace;
           reflex-dom-contrib = hackGet ./dep/reflex-dom-contrib;
           dependent-sum-aeson-orphans = hackGet ./dep/dependent-sum-aeson-orphans;

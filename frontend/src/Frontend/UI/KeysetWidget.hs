@@ -24,6 +24,7 @@ import           Reflex.Dom.Core
 
 import           Common.Wallet
 import           Frontend.UI.Dialogs.WatchRequest
+import           Frontend.UI.FormWidget
 import           Frontend.UI.Widgets
 
 newtype PublicKeyText = PublicKeyText { unPublicKeyText :: Text }
@@ -97,6 +98,44 @@ prettyPred "keys-all" = "All keys"
 prettyPred "keys-any" = "Any single key"
 prettyPred "keys-2" = "Any two keys"
 prettyPred p = p
+
+--keysetFormWidget
+--  :: (MonadWidget t m)
+--  => FormWidgetConfig t (Maybe UserKeyset)
+--  -> m (FormWidget t (Maybe UserKeyset))
+--keysetFormWidget cfg = do
+--  let
+--    selectMsgKey = PublicKeyText ""
+--    selectMsgMap = Map.singleton selectMsgKey "Select"
+--
+--    doAddDel yesno = fmap (yesno selectMsgKey) . updated
+--
+--    allPredSelectMap nkeys = ffor nkeys $ \nks -> Map.fromList
+--      $ fmap (id &&& prettyPred) (dropkeys2 nks predefinedPreds)
+--      where
+--        dropkeys2 n xs | n >= 3 = xs
+--                       | otherwise = filter (/= keys2Predicate) xs
+--
+--  (ddKeys, patchEvents) <- mkLabeledClsInput False "Public Keys" $ const $ uiAdditiveInput
+--    (const pubKeyInputWidget)
+--    (AllowAddNewRow $ doAddDel (/=))
+--    (AllowDeleteRow $ doAddDel (==))
+--    selectMsgKey
+--    never
+--
+--  let keys = join $ distributeMapOverDynPure . Map.fromList . IntMap.toList <$> ddKeys
+--
+--  predicateE <- mkLabeledClsInput False "Keys Required to Sign for Account (Predicate)" $ const
+--    $ uiDropdown defaultPredicate (allPredSelectMap $ fmap Map.size keys) $ def
+--    & dropdownConfig_attributes .~ constDyn ("class" =: "labeled-input__input")
+--    -- & dropdownConfig_setValue .~ _definedKeyset_predicateChange presets
+--
+--  return $ do
+--    ks <- Set.fromList . catMaybes . map textToKey . filter (not . T.null) . map unPublicKeyText . Map.elems <$> keys
+--    pred <- parseKeysetPred <$> value predicateE
+--    if Set.null ks
+--      then pure Nothing
+--      else pure $ Just $ UserKeyset ks pred
 
 keysetInputWidget
   :: (MonadWidget t m)

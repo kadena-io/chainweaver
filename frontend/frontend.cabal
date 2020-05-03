@@ -159,6 +159,7 @@ library
                  , Frontend.UI.Dialogs.TxLogs
                  , Frontend.UI.Dialogs.WatchRequest
                  , Frontend.UI.ErrorList
+                 , Frontend.UI.FormWidget
                  , Frontend.UI.Icon
                  , Frontend.UI.IconGrid
                  , Frontend.UI.JsonData

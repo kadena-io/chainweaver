@@ -86,10 +86,12 @@ import           Frontend.JsonData
 import           Frontend.Log
 import           Frontend.Network
 import           Frontend.PactQueries
+import           Frontend.TxBuilder
 import           Frontend.UI.Button
 import           Frontend.UI.DeploymentSettings
 import           Frontend.UI.Dialogs.DeployConfirmation
 import           Frontend.UI.Dialogs.Send
+import           Frontend.UI.FormWidget
 import           Frontend.UI.KeysetWidget
 import           Frontend.UI.Modal
 import           Frontend.UI.TabBar
@@ -116,7 +118,7 @@ instance Reflex t => Default (TransferCfg t) where
 
 data ChainAccount = ChainAccount
   { _ca_chain :: ChainId
-  , _ca_account :: Text -- TODO Might use a newtype wrapper and correct account validation
+  , _ca_account :: AccountName
   } deriving (Eq,Ord,Show)
 
 data ReceivingAccount = ReceivingAccount
@@ -124,19 +126,53 @@ data ReceivingAccount = ReceivingAccount
   , _ra_keyset :: UserKeyset
   } deriving (Eq,Ord,Show)
 
+labeledChainAccount
+  :: (MonadWidget t m, HasNetwork model t)
+  => model
+  -> PrimFormWidgetConfig t (Maybe ChainAccount)
+  -> m (FormWidget t (Maybe ChainAccount))
+labeledChainAccount model cfg = do
+  elClass "div" ("segment segment_type_tertiary labeled-input-inline") $ do
+    divClass ("label labeled-input__label-inline") $ text "Account"
+    divClass "labeled-input__input account-chain-input" $
+      fst <$> uiChainAccount model cfg
+
 uiChainAccount
   :: (MonadWidget t m, HasNetwork model t)
   => model
-  -> Maybe (ChainId, AccountName)
-  -> m (Dynamic t (Maybe ChainAccount))
-uiChainAccount model iv = do
-  elClass "div" ("segment segment_type_tertiary labeled-input-inline") $ do
-    divClass ("label labeled-input__label-inline") $ text "Account Name"
-    divClass "labeled-input__input account-chain-input" $ do
-      (_,a) <- uiAccountNameInput' (snd <$> iv) never noValidation
-      cd <- uiMandatoryChainSelection (getChainsFromHomogenousNetwork model) mempty
-                                      (maybe (ChainId "0") fst iv) never
-      return $ runMaybeT $ ChainAccount <$> lift (value cd) <*> MaybeT (unAccountName <$$> a)
+  -> PrimFormWidgetConfig t (Maybe ChainAccount)
+  -> m (FormWidget t (Maybe ChainAccount), Event t (Maybe Text))
+uiChainAccount model cfg = do
+  (a,onPaste) <- uiAccountNameInput' noValidation $ _ca_account <$$> cfg
+  cd <- uiMandatoryChainSelection (getChainsFromHomogenousNetwork model) mempty
+                                  (maybe (ChainId "0") _ca_chain <$> _primFormWidgetConfig_fwc cfg)
+  return (runMaybeT $ ChainAccount <$> lift cd <*> MaybeT a, onPaste)
+
+toFormWidget
+  :: (MonadWidget t m, HasNetwork model t)
+  => model
+  -> m (FormWidget t (Maybe ChainAccount), Dynamic t (Maybe UserKeyset))
+toFormWidget model = mdo
+  let pastedBuilder = fmapMaybe ((decode' . LB.fromStrict . T.encodeUtf8) =<<) $ traceEvent "onPaste" onPaste
+      mkChainAccount b = ChainAccount (_txBuilder_chainId b) (_txBuilder_accountName b)
+  (tca,onPaste) <- elClass "div" ("segment segment_type_tertiary labeled-input-inline") $ do
+    divClass ("label labeled-input__label-inline") $ text "Account"
+    divClass "labeled-input__input account-chain-input" $ uiChainAccount model $ mkCfg Nothing
+      --(Just $ ChainAccount (ChainId "0") $ AccountName "doug2")
+      & initialAttributes .~ "placeholder" =: "Account Name or Tx Builder"
+      & setValue .~ Just (Just . mkChainAccount <$> pastedBuilder)
+
+  keysetOpen <- foldDyn ($) False $ leftmost
+    [ const not <$> clk
+    , const True <$ pastedBuilder
+    ]
+  (clk,(_,k)) <- controlledAccordionItem keysetOpen mempty
+    (accordionHeaderBtn "Keyset") $ do
+    keysetInputWidget Nothing
+    --keysetFormWidget $ mkCfg Nothing
+    --  & setValue .~ Just (_txBuilder_keyset <$> pastedBuilder)
+
+  return (tca,k)
 
 data TransferInfo = TransferInfo
   { _ti_fromAccount :: ChainAccount
@@ -173,22 +209,18 @@ uiGenericTransfer model cfg = do
     transferInfo <- divClass "transfer-fields" $ do
       (fromAcct,amount) <- divClass "transfer__left-pane" $ do
         el "h4" $ text "From"
-        fca <- uiChainAccount model (Just $ (ChainId "0", AccountName "multi"))
-        amt <- amountButton (Just 2)
+        fca <- labeledChainAccount model $ mkCfg Nothing
+          --(Just $ ChainAccount (ChainId "0") $ AccountName "multi")
+          & initialAttributes .~ "placeholder" =: "Account Name"
+        amt <- mkLabeledInput True "Amount" amountFormWidget $ mkCfg $ Right 2
         return (fca,amt)
       (toAcct,ks) <- divClass "transfer__right-pane" $ do
         el "h4" $ text "To"
-        tca <- uiChainAccount model (Just $ (ChainId "0", AccountName "doug2"))
-        rec
-          keysetOpen <- toggle False clk
-          (clk,(_,k)) <- controlledAccordionItem keysetOpen mempty
-            (accordionHeaderBtn "Keyset") $ do
-            keysetInputWidget Nothing
-        return (tca,k)
+        toFormWidget model
       return $ runMaybeT $ TransferInfo <$>
-        MaybeT fromAcct <*>
-        MaybeT (hush <$> amount) <*>
-        MaybeT toAcct <*>
+        MaybeT (value fromAcct) <*>
+        MaybeT (hush <$> value amount) <*>
+        MaybeT (value toAcct) <*>
         lift ks
     signTransfer <- divClass "transfer-fields submit" $ do
       confirmButton (def { _uiButtonCfg_disabled = (isNothing <$> transferInfo) }) "Sign & Transfer"
@@ -196,14 +228,6 @@ uiGenericTransfer model cfg = do
     let mkModal (Just ti) ni = Just $ lookupAndTransfer model ni ti
         mkModal Nothing _ = Nothing
     pure $ mempty & modalCfg_setModal .~ (attachWith mkModal (current transferInfo) netInfo)
-
-amountButton
-  :: DomBuilder t m
-  => Maybe Decimal
-  -> m (Dynamic t (Either String Decimal))
-amountButton iv =
- mkLabeledInput True "Amount" (fmap snd . uiDecimalInputElement)
-   (def { _inputElementConfig_initialValue = maybe "" tshow iv})
 
 lookupAndTransfer
   :: ( MonadWidget t m, Monoid mConf, Flattenable mConf t
@@ -225,8 +249,8 @@ lookupAndTransfer model netInfo ti onCloseExternal = do
         fromChain = _ca_chain $ _ti_fromAccount ti
         toAccount = _ca_account $ _ti_toAccount ti
         toChain = _ca_chain $ _ti_toAccount ti
-        accounts = setify [fromAccount, toAccount]
-        accountNames = AccountName <$> accounts
+        accountNames = setify [fromAccount, toAccount]
+        accounts = unAccountName <$> accountNames
         chains = setify [fromChain, toChain]
         code = renderCompactText $ accountDetailsObject accounts
     efks <- lookupKeySets (model ^. logger) (_sharedNetInfo_network netInfo)
@@ -329,14 +353,13 @@ checkSendingAccountExists
   -> Map AccountName (AccountStatus AccountDetails)
   -> Workflow t m (mConf, Event t ())
 checkSendingAccountExists model netInfo ti fks tks = Workflow $ do
-    let fromAccountText = _ca_account $ _ti_fromAccount ti
-        fromAccount = AccountName fromAccountText
+    let fromAccount = _ca_account $ _ti_fromAccount ti
     case Map.lookup fromAccount fks of
       Just (AccountStatus_Exists ad) -> do
         checkReceivingAccount model netInfo ti fks tks (fromAccount, ad)
       _ -> do
         cancel <- fatalTransferError $
-          text $ "Sending account " <> fromAccountText <> " does not exist."
+          text $ "Sending account " <> unAccountName fromAccount <> " does not exist."
         return ((mempty, cancel), never)
 
 checkReceivingAccount
@@ -356,7 +379,7 @@ checkReceivingAccount
   -> (AccountName, AccountDetails)
   -> m ((mConf, Event t ()), Event t (Workflow t m (mConf, Event t ())))
 checkReceivingAccount model netInfo ti fks tks fromPair = do
-    let toAccount = AccountName $ _ca_account $ _ti_toAccount ti
+    let toAccount = _ca_account $ _ti_toAccount ti
     pb <- getPostBuild
     case (Map.lookup toAccount tks, _ti_toKeyset ti) of
       -- TODO Might need more checks for cross-chain error cases
@@ -421,7 +444,7 @@ handleMissingKeyset
   -> (AccountName, AccountDetails)
   -> m ((mConf, Event t ()), Event t (Workflow t m (mConf, Event t ())))
 handleMissingKeyset model netInfo ti fks tks fromPair = do
-    let toAccountText = _ca_account $ _ti_toAccount ti
+    let toAccountText = unAccountName $ _ca_account $ _ti_toAccount ti
     case parsePublicKey toAccountText of
       Left _ -> do
         cancel <- fatalTransferError $
@@ -544,7 +567,7 @@ sameChainTransferAndStatus model netInfo ti cmd = do
     pure (mempty, close <> done)
   where
     fromChain = _ca_chain $ _ti_fromAccount ti
-    fromAccount = AccountName $ _ca_account $ _ti_fromAccount ti
+    fromAccount = _ca_account $ _ti_fromAccount ti
 
 crossChainTransferAndStatus
   :: (MonadWidget t m, Monoid mConf, HasLogger model t, HasTransactionLogger m)
@@ -606,7 +629,7 @@ buildUnsignedCmd
 buildUnsignedCmd netInfo ti tmeta = Pact.Command payloadText [] (hash $ T.encodeUtf8 payloadText)
   where
     network = _sharedNetInfo_network netInfo
-    fromAccount = _ca_account $ _ti_fromAccount ti
+    fromAccount = unAccountName $ _ca_account $ _ti_fromAccount ti
     fromChain = _ca_chain $ _ti_fromAccount ti
     toAccount = _ca_account $ _ti_toAccount ti
     toChain = _ca_chain $ _ti_toAccount ti
@@ -631,7 +654,7 @@ buildUnsignedCmd netInfo ti tmeta = Pact.Command payloadText [] (hash $ T.encode
     price = _transferMeta_gasPrice tmeta
     ttl = _transferMeta_ttl tmeta
     ct = _transferMeta_creationTime tmeta
-    meta = PublicMeta fromChain fromAccount lim price ttl ct
+    meta = PublicMeta fromChain (fromAccount) lim price ttl ct
 
     signers = _transferMeta_sourceChainSigners tmeta
 
@@ -688,11 +711,11 @@ gasPayersSection model netInfo ti = do
         toChain = _ca_chain (_ti_toAccount ti)
     (dgp1, mdgp2) <- if fromChain == toChain
       then do
-        (_,dgp1) <- uiAccountNameInput "Gas Paying Account" True (Just $ AccountName $ _ca_account $ _ti_fromAccount ti) never noValidation
+        (_,dgp1) <- uiAccountNameInput "Gas Paying Account" True (Just $ _ca_account $ _ti_fromAccount ti) never noValidation
         pure $ (dgp1, Nothing)
       else do
         let mkLabel c = T.pack $ printf "Gas Paying Account (Chain %s)" (T.unpack $ _chainId c)
-        (_,dgp1) <- uiAccountNameInput (mkLabel fromChain) True (Just $ AccountName $ _ca_account $ _ti_fromAccount ti) never noValidation
+        (_,dgp1) <- uiAccountNameInput (mkLabel fromChain) True (Just $ _ca_account $ _ti_fromAccount ti) never noValidation
         (_,dgp2) <- uiAccountNameInput (mkLabel toChain) True Nothing never noValidation
         pure $ (dgp1, Just dgp2)
     let getGasPayerKeys gps = do
@@ -800,8 +823,8 @@ transferMetadata model netInfo fks tks ti = do
         as <- actions
         let getCaps c a =
               (if (c, Just a) `elem` gps then [gasCapability] else []) <>
-              (if ChainAccount c (unAccountName a) == _ti_fromAccount ti
-                 then [transferCapability (AccountName fromAccount) (AccountName toAccount) amount]
+              (if ChainAccount c a == _ti_fromAccount ti
+                 then [transferCapability fromAccount toAccount amount]
                  else [])
 
             ambig = Map.unionsWith (<>) $ map (\(c, a, pk) -> Map.singleton pk (getCaps c a)) tuples
@@ -845,7 +868,7 @@ getKeysetActions ti ks gps = map (getKeysetAction ks) signers
   where
     fromAccount = _ca_account $ _ti_fromAccount ti
     fromChain = _ca_chain $ _ti_fromAccount ti
-    fromPair = (fromChain, Just $ AccountName fromAccount)
+    fromPair = (fromChain, Just fromAccount)
     signers = if fromPair `elem` gps then gps else (fromPair : gps)
 
 -- | Returns a list of all the keys that should be signed with and their
