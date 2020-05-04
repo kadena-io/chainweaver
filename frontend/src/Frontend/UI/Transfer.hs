@@ -91,6 +91,7 @@ import           Frontend.UI.Button
 import           Frontend.UI.DeploymentSettings
 import           Frontend.UI.Dialogs.DeployConfirmation
 import           Frontend.UI.Dialogs.Send
+import           Frontend.UI.Form.Common
 import           Frontend.UI.FormWidget
 import           Frontend.UI.KeysetWidget
 import           Frontend.UI.Modal
@@ -143,7 +144,7 @@ uiChainAccount
   -> PrimFormWidgetConfig t (Maybe ChainAccount)
   -> m (FormWidget t (Maybe ChainAccount), Event t (Maybe Text))
 uiChainAccount model cfg = do
-  (a,onPaste) <- uiAccountNameInput' noValidation $ _ca_account <$$> cfg
+  (a,onPaste) <- accountNameFormWidget noValidation $ _ca_account <$$> cfg
   cd <- uiMandatoryChainSelection (getChainsFromHomogenousNetwork model) mempty
                                   (maybe (ChainId "0") _ca_chain <$> _primFormWidgetConfig_fwc cfg)
   return (runMaybeT $ ChainAccount <$> lift cd <*> MaybeT a, onPaste)
@@ -153,7 +154,7 @@ toFormWidget
   => model
   -> m (FormWidget t (Maybe ChainAccount), Dynamic t (Maybe UserKeyset))
 toFormWidget model = mdo
-  let pastedBuilder = fmapMaybe ((decode' . LB.fromStrict . T.encodeUtf8) =<<) $ traceEvent "onPaste" onPaste
+  let pastedBuilder = fmapMaybe ((decode' . LB.fromStrict . T.encodeUtf8) =<<) $ onPaste
       mkChainAccount b = ChainAccount (_txBuilder_chainId b) (_txBuilder_accountName b)
   (tca,onPaste) <- elClass "div" ("segment segment_type_tertiary labeled-input-inline") $ do
     divClass ("label labeled-input__label-inline") $ text "Account"
@@ -168,9 +169,9 @@ toFormWidget model = mdo
     ]
   (clk,(_,k)) <- controlledAccordionItem keysetOpen mempty
     (accordionHeaderBtn "Keyset") $ do
-    keysetInputWidget Nothing
-    --keysetFormWidget $ mkCfg Nothing
-    --  & setValue .~ Just (_txBuilder_keyset <$> pastedBuilder)
+    --keysetInputWidget Nothing
+    keysetFormWidget $ mkCfg Nothing
+      & setValue .~ Just (fmap userFromPactKeyset . _txBuilder_keyset <$> pastedBuilder)
 
   return (tca,k)
 
@@ -212,7 +213,7 @@ uiGenericTransfer model cfg = do
         fca <- labeledChainAccount model $ mkCfg Nothing
           --(Just $ ChainAccount (ChainId "0") $ AccountName "multi")
           & initialAttributes .~ "placeholder" =: "Account Name"
-        amt <- mkLabeledInput True "Amount" amountFormWidget $ mkCfg $ Right 2
+        amt <- mkLabeledInput True "Amount (KDA)" amountFormWidget $ mkCfg $ Right 2
         return (fca,amt)
       (toAcct,ks) <- divClass "transfer__right-pane" $ do
         el "h4" $ text "To"
@@ -304,12 +305,12 @@ lookupKeySets
   -> [AccountName]
   -- ^ Account on said chain to find
   -> m (Event t (Maybe (Map AccountName (AccountStatus AccountDetails))))
-lookupKeySets logL networkName nodes chainId accounts = do
+lookupKeySets logL networkName nodes chain accounts = do
   let code = renderCompactText $ accountDetailsObject (map unAccountName accounts)
-  pm <- mkPublicMeta chainId
+  pm <- mkPublicMeta chain
   cmd <- buildCmd Nothing networkName pm [] [] code mempty mempty
   (result, trigger) <- newTriggerEvent
-  let envs = mkClientEnvs nodes chainId
+  let envs = mkClientEnvs nodes chain
   liftJSM $ forkJSM $ do
     r <- doReqFailover envs (Api.local Api.apiV1Client cmd) >>= \case
       Left _ -> pure Nothing
@@ -498,8 +499,6 @@ transferDialog model netInfo ti fks tks _ = do
 
     pure ((conf, close <> cancel), nextScreen)
   where
-    fromChain = _ca_chain $ _ti_fromAccount ti
-    toChain = _ca_chain $ _ti_toAccount ti
     mainSection currentTab = elClass "div" "modal__main" $ do
       (conf, meta, destChainInfo) <- tabPane mempty currentTab TransferTab_Metadata $
         transferMetadata model netInfo fks tks ti
@@ -631,7 +630,7 @@ buildUnsignedCmd netInfo ti tmeta = Pact.Command payloadText [] (hash $ T.encode
     network = _sharedNetInfo_network netInfo
     fromAccount = unAccountName $ _ca_account $ _ti_fromAccount ti
     fromChain = _ca_chain $ _ti_fromAccount ti
-    toAccount = _ca_account $ _ti_toAccount ti
+    toAccount = unAccountName $ _ca_account $ _ti_toAccount ti
     toChain = _ca_chain $ _ti_toAccount ti
     amount = _ti_amount ti
     amountString = if not ('.' `elem` s) then s ++ ".0" else s

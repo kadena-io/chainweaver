@@ -36,7 +36,7 @@ module Frontend.UI.Widgets
   , accountListId
   , accountDatalist
   , uiAccountNameInput
-  , uiAccountNameInput'
+  , accountNameFormWidget
   , uiAccountFixed
   , uiAccountDropdown
   , uiAccountDropdown'
@@ -102,9 +102,6 @@ module Frontend.UI.Widgets
   , uiSidebarIcon
   , uiEmptyState
 
-  , parsingFormWidget
-  , decimalFormWidget
-  , amountFormWidget
   ) where
 
 
@@ -117,9 +114,12 @@ import           Control.Monad
 import           Control.Monad.Except
 import           Control.Monad.Trans.Maybe
 import qualified Data.Aeson.Encode.Pretty as AesonPretty
+import qualified Data.Bimap as Bimap
 import           Data.Either (isLeft)
+import           Data.Functor.Misc
 import           Data.Map.Strict             (Map)
 import qualified Data.Map.Strict as Map
+import           Data.Monoid
 import qualified Data.IntMap as IntMap
 import           Data.String                 (IsString)
 import           Data.Proxy                  (Proxy(..))
@@ -127,6 +127,7 @@ import           Data.Text                   (Text)
 import qualified Data.Text                   as T
 import qualified Data.Text.Lazy as LT
 import qualified Data.Text.Lazy.Builder as LTB
+import qualified Text.Read as T
 import           Data.Tuple
 import           GHC.Word
 import           Data.Decimal                (Decimal)
@@ -154,6 +155,8 @@ import           Frontend.Ide
 import           Frontend.Network (HasNetwork(..), NodeInfo, getChains, maxCoinPrecision)
 import           Frontend.TxBuilder (TxBuilder)
 import           Frontend.UI.Button
+import           Frontend.UI.Common
+import           Frontend.UI.Form.Common
 import           Frontend.UI.FormWidget
 import           Frontend.UI.Modal.Impl
 import           Frontend.UI.Widgets.Helpers (imgWithAlt, imgWithAltCls, makeClickable,
@@ -256,13 +259,6 @@ uiPassword wrapperCls inputCls ph = elClass "span" wrapperCls $ do
     , "placeholder" =: ph
     , "class" =: inputCls
     ]
-
--- | Factored out input class modifier, so we can keep it in sync.
-addInputElementCls :: (Ord attr, IsString attr) => Map attr Text -> Map attr Text
-addInputElementCls = addToClassAttr "input"
-
-addNoAutofillAttrs :: (Ord attr, IsString attr) => Map attr Text -> Map attr Text
-addNoAutofillAttrs = (noAutofillAttrs <>)
 
 -- | Produces a form wrapper given a suitable submit button so that the enter key is correctly handled
 uiForm' :: forall t m a b. DomBuilder t m => ElementConfig EventResult t (DomBuilderSpace m) -> m b -> m a -> m (Event t (), (a,b))
@@ -651,16 +647,6 @@ mkLabeledClsInput inlineLabel name mkInput =
   where
     inlineState = bool "" "-inline" inlineLabel
 
--- | Attributes which will turn off all autocomplete/autofill/autocorrect
--- functions, including the OS-level suggestions on macOS.
-noAutofillAttrs :: (Ord attr, IsString attr) => Map attr Text
-noAutofillAttrs = Map.fromList
-  [ ("autocomplete", "off")
-  , ("autocorrect", "off")
-  , ("autocapitalize", "off")
-  , ("spellcheck", "false")
-  ]
-
 -- | Validated input with button
 validatedInputWithButton
   :: MonadWidget t m
@@ -770,43 +756,6 @@ uiAdditiveInput mkIndividualInput (AllowAddNewRow newRow) (AllowDeleteRow delete
     dInputKeys <- foldDyn applyAlways keys newSelection
 
   pure (dInputKeys, onAdd <> onDelete)
-
---growingListFormWidget
---  :: forall t m out a
---     . ( MonadWidget t m
---       )
---  => (IntMap.Key -> a -> m out)
---  -> AllowAddNewRow t out
---  -> AllowDeleteRow t out
---  -> FormWidgetConfig t (PatchIntMap a)
---  -> m (FormWidget t (PatchIntMap a))
---growingListFormWidget mkOne (AllowAddNewRow newRow) (AllowDeleteRow deleteRow) cfg = do
---  let
---    minRowIx = 0
---
---    decideAddNewRow :: (IntMap.Key, out) -> Event t (IntMap.IntMap (Maybe particular))
---    decideAddNewRow (i, out) = initialValue cfg <$ ffilter id (newRow out)
---
---    decideDeletion :: IntMap.Key -> out -> Event t (IntMap.IntMap (Maybe particular))
---    decideDeletion i out = IntMap.singleton i Nothing <$ ffilter id (deleteRow out)
---
---  rec
---    let
---      -- Delete rows when 'select' is chosen
---      onDelete = fmap PatchIntMap $ switchDyn $ IntMap.foldMapWithKey decideDeletion <$> dInputKeys
---      -- Add a new row when all rows have a selection and there are more keys to choose from
---      onAdd = fmap PatchIntMap $ switchDyn $ maybe never decideAddNewRow . IntMap.lookupMax <$> dInputKeys
---
---    (keys, newSelection) <- traverseIntMapWithKeyWithAdjust mkOne (initialValue cfg) $
---      leftmost
---      [ onDelete
---      , onAdd
---        -- Set the values of the rows from an external event.
---      , setValue cfg
---      ]
---    dInputKeys <- foldDyn applyAlways keys newSelection
---
---  pure (dInputKeys, onAdd <> onDelete)
 
 showLoading
   :: (NotReady t m, Adjustable t m, PostBuild t m, DomBuilder t m, Monoid b)
@@ -1022,24 +971,6 @@ uiChainSelectionWithUpdate options onPreselected cls = do
     ddE <- dropdown Nothing (mkOptions <$> chains) cfg
   pure ddE
 
-uiMandatoryChainSelection
-  :: MonadWidget t m
-  => Dynamic t [ChainId]
-  -> CssClass
-  -> FormWidgetConfig t ChainId
-  -> m (FormWidget t ChainId)
-uiMandatoryChainSelection options cls cfg = do
-  let chains = map (id &&& (("Chain " <>) .  _chainId)) <$> options
-      mkOptions cs = Map.fromList cs
-      staticCls = cls <> "select"
-      allCls = renderClass <$> pure staticCls
-      dcfg = def
-        & dropdownConfig_attributes .~ (("class" =:) <$> allCls)
-        & dropdownConfig_setValue .~ fromMaybe never (view setValue cfg)
-
-  ddE <- dropdown (_initialValue cfg) (mkOptions <$> chains) dcfg
-  pure $ FormWidget (value ddE) (() <$ _dropdown_change ddE) (constDyn False)
-
 -- | Use a predefined immutable chain id, but display it too.
 predefinedChainIdDisplayed
   :: DomBuilder t m
@@ -1083,8 +1014,8 @@ uiComboBoxGlobalDatalist
   -> m (InputElement er (DomBuilderSpace m) t)
 uiComboBoxGlobalDatalist datalistId iv cfg =
   uiInputElement $ cfg
+    & inputElementConfig_initialValue .~ iv
     & initialAttributes %~ (<> "list" =: datalistId)
-    & inputElementConfig_initialValue .~ ""
 
 -- | Renders an options list suitable for use with HTML5 combo boxes.
 uiDatalist
@@ -1142,46 +1073,6 @@ accountDatalist ideL = elAttr "datalist" ("id" =: accountListId) $ do
 accountListId :: Text
 accountListId = "account-list"
 
-uiAccountNameInput'
-  :: ( DomBuilder t m
-     , PostBuild t m
-     , MonadHold t m
-     , DomBuilderSpace m ~ GhcjsDomSpace
-     , PerformEvent t m
-     , TriggerEvent t m
-     , MonadJSM (Performable m)
-     )
-  => Dynamic t (AccountName -> Either Text AccountName)
-  -> PrimFormWidgetConfig t (Maybe AccountName)
-  -> m (FormWidget t (Maybe AccountName), Event t (Maybe Text))
-uiAccountNameInput' validateName cfg = do
-  let
-    mkMsg True (Left e) = PopoverState_Error e
-    mkMsg _    _ = PopoverState_Disabled
-
-    validate = ffor validateName $ (<=< mkAccountName)
-
-    showPopover (ie, _) = pure $ (\v t -> mkMsg (not $ T.null t) (v t))
-      <$> current validate
-      <@> fmap T.strip (_inputElement_input ie)
-
-    uiNameInput cfg = do
-      inp <- uiInputElement $ cfg & initialAttributes %~
-               (<> "list" =: accountListId) . addToClassAttr "account-input"
-      pure (inp, _inputElement_raw inp)
-
-  (inputE, _) <- uiInputWithPopover uiNameInput snd showPopover $ def
-    & inputElementConfig_initialValue .~ fold (fmap unAccountName $ view initialValue cfg)
-    & inputElementConfig_setValue .~ maybe never (fmapMaybe (fmap unAccountName)) (view setValue cfg)
-    & initialAttributes .~ view initialAttributes cfg
-
-  let w = FormWidget
-            (hush <$> (validate <*> fmap T.strip (value inputE)))
-            (() <$ _inputElement_input inputE)
-            (_inputElement_hasFocus inputE)
-  --afterPaste <- delay 0.1 $ domEvent Paste inputE
-  pure (w, domEvent Paste inputE)
-
 uiAccountNameInput
   :: ( DomBuilder t m
      , PostBuild t m
@@ -1200,7 +1091,7 @@ uiAccountNameInput
        , Dynamic t (Maybe AccountName)
        )
 uiAccountNameInput label inlineLabel initval onSetName validateName = do
-  (FormWidget v i _, _) <- mkLabeledInput inlineLabel label (uiAccountNameInput' validateName) $ mkCfg initval
+  (FormWidget v i _, _) <- mkLabeledInput inlineLabel label (accountNameFormWidget validateName) $ mkCfg initval
     & setValue .~ Just onSetName
   pure (tagPromptlyDyn v i, v)
 
@@ -1445,40 +1336,95 @@ uiRequestKeyInput inlineLabel = do
        , parseRequestKey <$> value inputE
        )
 
-------------------------------------------------------------------------------
+accountNameFormWidget
+  :: ( DomBuilder t m
+     , PostBuild t m
+     , MonadHold t m
+     , DomBuilderSpace m ~ GhcjsDomSpace
+     , PerformEvent t m
+     , TriggerEvent t m
+     , MonadJSM (Performable m)
+     )
+  => Dynamic t (AccountName -> Either Text AccountName)
+  -> PrimFormWidgetConfig t (Maybe AccountName)
+  -> m (FormWidget t (Maybe AccountName), Event t (Maybe Text))
+accountNameFormWidget validateName cfg = do
+  let
+    mkMsg True (Left e) = PopoverState_Error e
+    mkMsg _    _ = PopoverState_Disabled
 
--- | reflex-dom `inputElement` with chainweaver default styling:
-parsingFormWidget
-  :: DomBuilder t m
-  => (Text -> Either String a)
-  -> (Either String a -> Text)
-  -> PrimFormWidgetConfig t (Either String a)
-  -> m (FormWidget t (Either String a))
-parsingFormWidget fromText toText cfg = do
-    let iecCfg = pfwc2iec toText cfg
-    ie <- inputElement $ iecCfg & initialAttributes %~ (addInputElementCls . addNoAutofillAttrs)
-    return (ie2iw fromText ie)
+    validate = ffor validateName $ (<=< mkAccountName)
 
--- | reflex-dom `inputElement` with chainweaver default styling:
-decimalFormWidget
-  :: DomBuilder t m
-  => PrimFormWidgetConfig t (Either String Decimal)
-  -> m (FormWidget t (Either String Decimal))
-decimalFormWidget cfg = do
-  let p t = maybe (Left "Not a valid amount") Right $ readMaybe (T.unpack t)
-  parsingFormWidget p (either (const "") tshow) cfg
+    showPopover (ie, _) = pure $ (\v t -> mkMsg (not $ T.null t) (v t))
+      <$> current validate
+      <@> fmap T.strip (_inputElement_input ie)
 
--- | reflex-dom `inputElement` with chainweaver default styling:
-amountFormWidget
-  :: DomBuilder t m
-  => PrimFormWidgetConfig t (Either String Decimal)
-  -> m (FormWidget t (Either String Decimal))
-amountFormWidget cfg = do
-    parsingFormWidget p (either (const "") tshow) cfg
-  where
-    p t = case readMaybe (T.unpack t) of
-            Nothing -> Left "Not a valid number"
-            Just x
-              | x < 0 -> Left "Cannot be negative"
-              | D.decimalPlaces x > maxCoinPrecision -> Left "Too many decimal places"
-              | otherwise -> Right x
+    uiNameInput cfg = do
+      inp <- uiInputElement $ cfg & initialAttributes %~
+               (<> "list" =: accountListId) . addToClassAttr "account-input"
+      pure (inp, _inputElement_raw inp)
+
+  (inputE, _) <- uiInputWithPopover uiNameInput snd showPopover $ def
+    & inputElementConfig_initialValue .~ fold (fmap unAccountName $ view initialValue cfg)
+    & inputElementConfig_setValue .~ maybe never (fmapMaybe (fmap unAccountName)) (view setValue cfg)
+    & initialAttributes .~ view initialAttributes cfg
+
+  let w = FormWidget
+            (hush <$> (validate <*> fmap T.strip (value inputE)))
+            (() <$ _inputElement_input inputE)
+            (_inputElement_hasFocus inputE)
+  --afterPaste <- delay 0.1 $ domEvent Paste inputE
+  pure (w, domEvent Paste inputE)
+
+-- Not used yet, might need more work.
+--growingList
+--  :: forall t m out particular
+--     . ( MonadWidget t m
+--       )
+--  => (IntMap.Key -> particular -> m (FormWidget t out))
+--  -> AllowAddNewRow t out
+--  -> AllowDeleteRow t out
+--  -> particular
+--  -> Event t (PatchIntMap particular)
+--  -> m (FormWidget t (IntMap.IntMap out))
+--growingList mkIndividualInput (AllowAddNewRow newRow) (AllowDeleteRow deleteRow) initialSelection onExternal = do
+--  let
+--    minRowIx = 0
+--
+--    decideAddNewRow :: (IntMap.Key, out) -> Event t (IntMap.IntMap (Maybe particular))
+--    decideAddNewRow (i, out) = IntMap.singleton (succ i) (Just initialSelection) <$ ffilter id (newRow out)
+--
+--    decideDeletion :: IntMap.Key -> out -> Event t (IntMap.IntMap (Maybe particular))
+--    decideDeletion i out = IntMap.singleton i Nothing <$ ffilter id (deleteRow out)
+--
+--  rec
+--    let
+--      -- Delete rows when 'select' is chosen
+--      onDelete = fmap PatchIntMap $ switchDyn $ IntMap.foldMapWithKey decideDeletion <$> v
+--      -- Add a new row when all rows have a selection and there are more keys to choose from
+--      onAdd = fmap PatchIntMap $ switchDyn $ maybe never decideAddNewRow . IntMap.lookupMax <$> v
+--
+--
+--    (keys, newSelection) <- traverseIntMapWithKeyWithAdjust mkIndividualInput (IntMap.singleton minRowIx initialSelection) $
+--      leftmost
+--      [ onDelete
+--      , onAdd
+--        -- Set the values of the rows from an external event.
+--      , onExternal
+--      ]
+--    dInputKeys <- foldDyn applyAlways keys newSelection
+--
+--    let v = joinDynThroughIntMap (fmap value <$> dInputKeys)
+--    let i = () <$ (onAdd <> onDelete) -- TODO this might not fire as often as it should
+--    let hf = getAny . foldMap Any <$> joinDynThroughIntMap (fmap _formWidget_hasFocus <$> dInputKeys)
+--
+--  pure $ FormWidget v i hf
+--
+--joinDynThroughIntMap
+--  :: forall t a. (Reflex t)
+--  => Dynamic t (IntMap.IntMap (Dynamic t a))
+--  -> Dynamic t (IntMap.IntMap a)
+--joinDynThroughIntMap = (distributeIntMapOverDynPure =<<)
+--
+--distributeIntMapOverDynPure :: (Reflex t) => IntMap.IntMap (Dynamic t v) -> Dynamic t (IntMap.IntMap v)
+--distributeIntMapOverDynPure = fmap dmapToIntMap . distributeDMapOverDynPure . intMapWithFunctorToDMap

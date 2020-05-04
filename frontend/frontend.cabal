@@ -138,6 +138,7 @@ library
                  , Frontend.Storage.Class
                  , Frontend.Storage.Browser
                  , Frontend.UI.Button
+                 , Frontend.UI.Common
                  , Frontend.UI.DeploymentSettings
                  , Frontend.UI.Dialogs.CallFunction
                  , Frontend.UI.Dialogs.ChangePassword
@@ -159,6 +160,7 @@ library
                  , Frontend.UI.Dialogs.TxLogs
                  , Frontend.UI.Dialogs.WatchRequest
                  , Frontend.UI.ErrorList
+                 , Frontend.UI.Form.Common
                  , Frontend.UI.FormWidget
                  , Frontend.UI.Icon
                  , Frontend.UI.IconGrid

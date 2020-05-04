@@ -15,6 +15,7 @@ module Frontend.UI.FormWidget
   , primFormWidgetConfig_fwc
   , primFormWidgetConfig_initialAttributes
   , primFormWidgetConfig_modifyAttributes
+  , mkPfwc
   , iec2pfwc
   , pfwc2iec
   , FormWidget(..)
@@ -80,11 +81,13 @@ instance HasSetValue (FormWidgetConfig t a) where
   type SetValue (FormWidgetConfig t a) = Maybe (Event t a)
   setValue = formWidgetConfig_setValue
 
+-- TODO Come up with better name
 fwc2iec :: (Reflex t, DomSpace s) => (a -> Text) -> FormWidgetConfig t a -> InputElementConfig EventResult t s
 fwc2iec toText (FormWidgetConfig iv sv) = def
   & inputElementConfig_initialValue .~ (toText iv)
   & inputElementConfig_setValue .~ (maybe never (fmap toText) sv)
 
+-- TODO Come up with better name
 iec2fwc :: Reflex t => (Text -> a) -> InputElementConfig EventResult t s -> FormWidgetConfig t a
 iec2fwc fromText iec = FormWidgetConfig
   (fromText $ _inputElementConfig_initialValue iec)
@@ -113,12 +116,16 @@ primFormWidgetConfig_modifyAttributes f a =
   where
     getter = fromMaybe never . _primFormWidgetConfig_modifyAttributes
 
+instance MakeConfig (PrimFormWidgetConfig t a) a where
+  mkCfg a = mkPfwc (mkCfg a)
+  {-# INLINABLE mkCfg #-}
+
+-- TODO Come up with better name
+mkPfwc :: FormWidgetConfig t a -> PrimFormWidgetConfig t a
+mkPfwc fwc = PrimFormWidgetConfig fwc mempty Nothing
+
 instance Reflex t => Functor (PrimFormWidgetConfig t) where
   fmap f (PrimFormWidgetConfig fwc ia ma) = PrimFormWidgetConfig (f <$> fwc) ia ma
-
-instance MakeConfig (PrimFormWidgetConfig t a) a where
-  mkCfg a = PrimFormWidgetConfig (mkCfg a) mempty Nothing
-  {-# INLINABLE mkCfg #-}
 
 instance InitialAttributes (PrimFormWidgetConfig t a) where
   {-# INLINABLE initialAttributes #-}
@@ -137,6 +144,7 @@ instance HasSetValue (PrimFormWidgetConfig t a) where
   type SetValue (PrimFormWidgetConfig t a) = Maybe (Event t a)
   setValue = primFormWidgetConfig_fwc . setValue
 
+-- TODO Come up with better name
 pfwc2iec :: (Reflex t, DomSpace s) => (a -> Text) -> PrimFormWidgetConfig t a -> InputElementConfig EventResult t s
 pfwc2iec toText (PrimFormWidgetConfig (FormWidgetConfig iv sv) ia ma) = def
   & inputElementConfig_initialValue .~ (toText iv)
@@ -144,6 +152,7 @@ pfwc2iec toText (PrimFormWidgetConfig (FormWidgetConfig iv sv) ia ma) = def
   & initialAttributes .~ ia
   & modifyAttributes .~ fromMaybe never ma
 
+-- TODO Come up with better name
 iec2pfwc :: Reflex t => (Text -> a) -> InputElementConfig EventResult t s -> PrimFormWidgetConfig t a
 iec2pfwc fromText iec = PrimFormWidgetConfig fwc ia ma
   where
@@ -198,6 +207,7 @@ instance HasValue (FormWidget t a) where
   type Value (FormWidget t a) = Dynamic t a
   value = _formWidget_value
 
+-- TODO Come up with better name
 ie2iw :: Reflex t => (Text -> a) -> InputElement er d t -> FormWidget t a
 ie2iw fromText ie = FormWidget
   (fromText <$> value ie) (() <$ _inputElement_input ie) (_inputElement_hasFocus ie)

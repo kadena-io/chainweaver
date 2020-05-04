@@ -107,7 +107,7 @@ uiExternalKeyInput onPreselection = do
     (AllowAddNewRow $ doAddDel not)
     (AllowDeleteRow $ doAddDel id)
     Nothing
-    onPreselection
+    (traceEventWith (\(PatchIntMap m) -> "onPreselection: " <> show m) onPreselection)
 
   let
     dFormState :: Dynamic t (PatchIntMap (Maybe Text))

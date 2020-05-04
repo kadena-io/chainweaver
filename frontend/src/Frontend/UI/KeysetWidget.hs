@@ -1,3 +1,5 @@
+{-# LANGUAGE RecursiveDo #-}
+
 module Frontend.UI.KeysetWidget where
 
 import           Control.Arrow ((&&&))
@@ -18,12 +20,17 @@ import qualified Data.Set as Set
 import           Data.Text (Text)
 import qualified Data.Text as T
 import qualified Data.Text.Encoding as T
+import           Pact.Types.Pretty
 import           Pact.Types.Term (KeySet (..), mkKeySet)
 import           Reflex
+import           Reflex.Dom.Contrib.CssClass
 import           Reflex.Dom.Core
+import           Reflex.Network
 
+import           Common.Foundation
 import           Common.Wallet
 import           Frontend.UI.Dialogs.WatchRequest
+import           Frontend.UI.Form.Common
 import           Frontend.UI.FormWidget
 import           Frontend.UI.Widgets
 
@@ -58,6 +65,40 @@ data UserKeyset = UserKeyset
 
 userToPactKeyset :: UserKeyset -> KeySet
 userToPactKeyset (UserKeyset ks p) = mkKeySet (toPactPublicKey <$> Set.toList ks) (renderKeysetPred p)
+
+userFromPactKeyset :: KeySet -> UserKeyset
+userFromPactKeyset (KeySet ks p) = UserKeyset (Set.map fromPactPublicKey ks) (parseKeysetPred $ renderCompactText p)
+
+-- | Uses thin wrapper around Text so callers can distinguish between empty
+-- string and an invalid public key.
+pubKeyFormWidget
+  :: forall t m. MonadWidget t m
+  => PrimFormWidgetConfig t PublicKeyText
+  -> m (FormWidget t PublicKeyText)
+pubKeyFormWidget cfg = do
+  let
+    cfg2 = unPublicKeyText <$> cfg
+    iv = _initialValue cfg2
+    inp cfg = do
+      ie <- mkLabeledInput False mempty (uiComboBoxGlobalDatalist keyListId iv) cfg
+      pure (ie,  _inputElement_input ie)
+
+    inputCfg = pfwc2iec id cfg2
+      & initialAttributes %~ mappend ("placeholder" =: "Enter public key (optional)")
+
+    popoverMsg t
+      | T.length t /= 0 && T.length t /= 64 = PopoverState_Error "Key has unexpected length"
+      | not (BS.null $ snd $ Base16.decode $ T.encodeUtf8 t) = PopoverState_Error "Input was not valid Base16 encoding"
+      | otherwise = PopoverState_Disabled
+    showPopover (_, onInput) = pure $ popoverMsg <$> onInput
+
+  (ie,_) <- uiInputWithPopover
+    inp
+    (_inputElement_raw . fst)
+    showPopover
+    inputCfg
+
+  return $ FormWidget (PublicKeyText <$> value ie) (() <$ _inputElement_input ie) (_inputElement_hasFocus ie)
 
 -- | Uses thin wrapper around Text so callers can distinguish between empty
 -- string and an invalid public key.
@@ -99,78 +140,46 @@ prettyPred "keys-any" = "Any single key"
 prettyPred "keys-2" = "Any two keys"
 prettyPred p = p
 
---keysetFormWidget
---  :: (MonadWidget t m)
---  => FormWidgetConfig t (Maybe UserKeyset)
---  -> m (FormWidget t (Maybe UserKeyset))
---keysetFormWidget cfg = do
---  let
---    selectMsgKey = PublicKeyText ""
---    selectMsgMap = Map.singleton selectMsgKey "Select"
---
---    doAddDel yesno = fmap (yesno selectMsgKey) . updated
---
---    allPredSelectMap nkeys = ffor nkeys $ \nks -> Map.fromList
---      $ fmap (id &&& prettyPred) (dropkeys2 nks predefinedPreds)
---      where
---        dropkeys2 n xs | n >= 3 = xs
---                       | otherwise = filter (/= keys2Predicate) xs
---
---  (ddKeys, patchEvents) <- mkLabeledClsInput False "Public Keys" $ const $ uiAdditiveInput
---    (const pubKeyInputWidget)
---    (AllowAddNewRow $ doAddDel (/=))
---    (AllowDeleteRow $ doAddDel (==))
---    selectMsgKey
---    never
---
---  let keys = join $ distributeMapOverDynPure . Map.fromList . IntMap.toList <$> ddKeys
---
---  predicateE <- mkLabeledClsInput False "Keys Required to Sign for Account (Predicate)" $ const
---    $ uiDropdown defaultPredicate (allPredSelectMap $ fmap Map.size keys) $ def
---    & dropdownConfig_attributes .~ constDyn ("class" =: "labeled-input__input")
---    -- & dropdownConfig_setValue .~ _definedKeyset_predicateChange presets
---
---  return $ do
---    ks <- Set.fromList . catMaybes . map textToKey . filter (not . T.null) . map unPublicKeyText . Map.elems <$> keys
---    pred <- parseKeysetPred <$> value predicateE
---    if Set.null ks
---      then pure Nothing
---      else pure $ Just $ UserKeyset ks pred
-
-keysetInputWidget
+keysetFormWidget
   :: (MonadWidget t m)
-  => Maybe UserKeyset
+  => FormWidgetConfig t (Maybe UserKeyset)
   -> m (Dynamic t (Maybe UserKeyset))
-keysetInputWidget iv = do
+keysetFormWidget cfg = do
   let
     selectMsgKey = PublicKeyText ""
     selectMsgMap = Map.singleton selectMsgKey "Select"
 
     doAddDel yesno = fmap (yesno selectMsgKey) . updated
 
-    allPredSelectMap nkeys = ffor nkeys $ \nks -> Map.fromList
-      $ fmap (id &&& prettyPred) (dropkeys2 nks predefinedPreds)
-      where
-        dropkeys2 n xs | n >= 3 = xs
-                       | otherwise = filter (/= keys2Predicate) xs
+    dropkeys2 n xs | n >= 3 = xs
+                   | otherwise = filter (/= keys2Predicate) xs
 
-  (ddKeys, patchEvents) <- mkLabeledClsInput False "Public Keys" $ const $ uiAdditiveInput
+  let setKeys = maybe never (fmap (fromMaybe mempty)) $ _formWidgetConfig_setValue (fmap _userKeyset_keys <$> cfg)
+      toPatchIntMap f = PatchIntMap
+        . ifoldMap (\n a -> IntMap.singleton n $ Just $ f a)
+        . Set.toList
+  (ddKeys,_) <- mkLabeledClsInput False "Public Keys" $ const $ uiAdditiveInput
     (const pubKeyInputWidget)
     (AllowAddNewRow $ doAddDel (/=))
     (AllowDeleteRow $ doAddDel (==))
     selectMsgKey
-    never
+    (toPatchIntMap (PublicKeyText . keyToText) <$> setKeys)
 
   let keys = join $ distributeMapOverDynPure . Map.fromList . IntMap.toList <$> ddKeys
 
-  predicateE <- mkLabeledClsInput False "Keys Required to Sign for Account (Predicate)" $ const
-    $ uiDropdown defaultPredicate (allPredSelectMap $ fmap Map.size keys) $ def
-    & dropdownConfig_attributes .~ constDyn ("class" =: "labeled-input__input")
-    -- & dropdownConfig_setValue .~ _definedKeyset_predicateChange presets
+  let predCfg klass = (mkPfwc $ maybe KeysAll _userKeyset_pred <$> cfg)
+        & initialAttributes .~ addToClassAttr (klass <> "select") mempty
+  predicateE <- mkLabeledClsInput False "Keys Required to Sign for Account (Predicate)" $ \klass -> mdo
+    let allPreds = do
+          ks <- keys
+          let ps = if Map.size ks >= 3 then [KeysAll, KeysAny, Keys2] else [KeysAll, KeysAny]
+          return $ Map.fromList $ map (\p -> (p, prettyPred $ renderKeysetPred p)) ps
+    predfw <- dropdownFormWidget allPreds (predCfg klass)
+    return predfw
 
   return $ do
     ks <- Set.fromList . catMaybes . map textToKey . filter (not . T.null) . map unPublicKeyText . Map.elems <$> keys
-    pred <- parseKeysetPred <$> value predicateE
+    pred <- value predicateE
     if Set.null ks
       then pure Nothing
       else pure $ Just $ UserKeyset ks pred
