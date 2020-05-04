@@ -10,7 +10,7 @@ module Frontend.UI.Dialogs.AddVanityAccount
 
 import Control.Applicative (liftA2)
 import Data.Aeson (toJSON)
-import Control.Lens                           ((^.),(<>~), (^?), to)
+import Control.Lens                           ((^.),(<>~), (^?), to, _Left)
 import Control.Error                          (hush)
 import Control.Monad.Trans.Class              (lift)
 import Control.Monad.Trans.Maybe              (MaybeT (..), runMaybeT)
@@ -219,11 +219,20 @@ createAccountSplash model name chain mPublicKey = fix $ \splashWF keysetselectio
     next <- confirmButton (def & uiButtonCfg_disabled .~ fmap isNothing keyset) "Next"
 
     let
+      renderErrors result = do
+        dyn_ $ ffor result $ traverse $ \err -> do
+          case err of
+            DeploymentSettingsResultError_NoSenderSelected -> blank
+            _ -> do
+              dialogSectionHeading mempty "Error"
+              divClass "group segment" $ mkLabeledView True mempty $ text $
+                renderDeploymentSettingsResultError err
+
       nextWF = ffor2 keyset dCreationMethod $ \mkeys mth ->
         let
           wf = case mth of
             CreateAccountMethod_ShareTxBuilder -> createAccountNotGasPayer
-            CreateAccountMethod_SelfGasPayer -> createAccountConfig model
+            CreateAccountMethod_SelfGasPayer -> createAccountConfig model renderErrors
             CreateAccountMethod_ExternalAccount -> createAccountFromExternalAccount model
         in
           wf (splashWF keysetSelections) name chain <$> mkeys
@@ -329,24 +338,25 @@ createAccountConfig
     , HasTransactionLogger m
     )
   => model
+  -> (Dynamic t (Maybe DeploymentSettingsResultError) -> m ())
   -> Workflow t m (Text, (mConf, Event t ()))
   -> AccountName
   -> ChainId
   -> AccountGuard
   -> Workflow t m (Text, (mConf, Event t ()))
-createAccountConfig ideL splashWF name chainId keyset = Workflow $ do
-  let includePreviewTab = False
-
-  (cfg, cChainId, mGasPayer, ttl, gasLimit, _,  _) <- divClass "modal__main transaction_details" $ uiCfg
-    Nothing
-    ideL
-    (predefinedChainIdDisplayed chainId)
-    Nothing
-    (Just defaultTransactionGasLimit)
-    []
-    TxnSenderTitle_GasPayer
-    Nothing
-    $ uiAccountDropdown def (pure $ \_ a -> fromMaybe False (accountHasFunds a)) (pure id)
+createAccountConfig ideL renderErrors splashWF name chainId keyset = Workflow $ mdo
+  (cfg, cChainId, mGasPayer, ttl, gasLimit, _,  _) <- divClass "modal__main transaction_details" $ do
+    renderErrors $ (^? _Left) <$> result
+    uiCfg
+      Nothing
+      ideL
+      (predefinedChainIdDisplayed chainId)
+      Nothing
+      (Just defaultTransactionGasLimit)
+      []
+      TxnSenderTitle_GasPayer
+      Nothing
+      $ uiAccountDropdown def (pure $ \_ a -> fromMaybe False (accountHasFunds a)) (pure id)
 
   let payload = HM.singleton tempkeyset $ toJSON keyset
       code = mkPactCode name
@@ -361,7 +371,7 @@ createAccountConfig ideL splashWF name chainId keyset = Workflow $ do
         , _deploymentSettingsConfig_gasLimit = Nothing
         , _deploymentSettingsConfig_caps = Nothing
         , _deploymentSettingsConfig_extraSigners = []
-        , _deploymentSettingsConfig_includePreviewTab = includePreviewTab
+        , _deploymentSettingsConfig_includePreviewTab = False
         }
 
       networkAccounts = ffor2 (ideL ^. wallet_accounts) (ideL ^. network_selectedNetwork) $ \ad n ->

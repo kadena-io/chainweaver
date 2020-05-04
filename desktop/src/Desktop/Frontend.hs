@@ -18,6 +18,7 @@
 
 module Desktop.Frontend (desktopFrontend, bipWallet, bipCryptoGenPair, runFileStorageT) where
 
+import Control.Concurrent (MVar)
 import Control.Exception (catch)
 import Control.Lens ((?~))
 import Control.Monad ((<=<), guard, void, when)
@@ -34,6 +35,7 @@ import Data.Maybe (isJust)
 import Data.Text (Text)
 import Data.Time (NominalDiffTime, getCurrentTime, addUTCTime)
 import Data.Traversable (for)
+import Kadena.SigningApi (SigningRequest)
 import Language.Javascript.JSaddle (liftJSM)
 import Pact.Server.ApiClient (HasTransactionLogger, runTransactionLoggerT, logTransactionFile, askTransactionLogger)
 import Reflex.Dom.Core
@@ -73,15 +75,14 @@ import Frontend.UI.Modal.Impl (showModalBrutal)
 import Frontend.UI.Dialogs.LogoutConfirmation (uiIdeLogoutConfirmation)
 
 import Desktop.Setup
-import Desktop.SigningApi
 import Desktop.ImportExport
-import Desktop.Util
 import Desktop.Storage.File
+import Desktop.WalletApi
 
 import Pact.Server.ApiClient (WalletEvent (..), commandLogFilename, _transactionLogger_walletEvent, _transactionLogger_rotateLogFile)
 
 -- | This is for development
--- > ob run --import desktop:Desktop.Frontend --frontend Desktop.Frontend.desktop
+-- > ob run --import desktop:Desktop
 desktopFrontend :: Frontend (R FrontendRoute)
 desktopFrontend = Frontend
   { _frontend_head = do
@@ -90,28 +91,28 @@ desktopFrontend = Frontend
       base <- getConfigRoute
       void $ Frontend.newHead $ \r -> base <> renderBackendRoute backendEncoder r
   , _frontend_body = prerender_ blank $ do
-    logDir <- (<> "/" <> commandLogFilename) <$> liftIO getTemporaryDirectory
-    liftIO $ putStrLn $ "Logging to: " <> logDir
-    (signingRequestMVar, signingResponseMVar) <- signingServer
-      (pure ()) -- Can't foreground or background things
-      (pure ())
-    mapRoutedT (flip runTransactionLoggerT (logTransactionFile logDir) . runBrowserStorageT) $ do
-      (fileOpened, triggerOpen) <- Frontend.openFileDialog
-      signingRequest <- mvarTriggerEvent signingRequestMVar
-      let fileFFI = FileFFI
-            { _fileFFI_externalFileOpened = fileOpened
-            , _fileFFI_openFileDialog = liftJSM . triggerOpen
-            , _fileFFI_deliverFile = deliverFile
-            }
-      bipWallet fileFFI $ \enabledSettings -> AppCfg
-        { _appCfg_gistEnabled = False
-        , _appCfg_loadEditor = loadEditorFromLocalStorage
-        , _appCfg_editorReadOnly = False
-        , _appCfg_signingRequest = signingRequest
-        , _appCfg_signingResponse = signingResponseHandler signingResponseMVar
-        , _appCfg_enabledSettings = enabledSettings
-        , _appCfg_logMessage = defaultLogger
-        }
+      logDir <- (<> "/" <> commandLogFilename) <$> liftIO getTemporaryDirectory
+      liftIO $ putStrLn $ "Logging to: " <> logDir
+      (signingHandler, keysHandler, accountsHandler) <- walletServer
+        (pure ()) -- Can't foreground or background things
+        (pure ())
+      mapRoutedT (flip runTransactionLoggerT (logTransactionFile logDir) . runBrowserStorageT) $ do
+        (fileOpened, triggerOpen) <- Frontend.openFileDialog
+        let fileFFI = FileFFI
+              { _fileFFI_externalFileOpened = fileOpened
+              , _fileFFI_openFileDialog = liftJSM . triggerOpen
+              , _fileFFI_deliverFile = deliverFile
+              }
+        bipWallet fileFFI (_mvarHandler_readRequest signingHandler) $ \enabledSettings -> AppCfg
+          { _appCfg_gistEnabled = False
+          , _appCfg_loadEditor = loadEditorFromLocalStorage
+          , _appCfg_editorReadOnly = False
+          , _appCfg_signingHandler = mkFRPHandler signingHandler
+          , _appCfg_keysEndpointHandler = mkFRPHandler keysHandler
+          , _appCfg_accountsEndpointHandler = mkFRPHandler accountsHandler
+          , _appCfg_enabledSettings = enabledSettings
+          , _appCfg_logMessage = defaultLogger
+          }
   }
 
 -- This is the deliver file that is only used for development (i.e jsaddle web version)
@@ -149,9 +150,10 @@ bipWallet
      , HasTransactionLogger m
      )
   => FileFFI t m
+  -> MVar SigningRequest
   -> MkAppCfg t m
   -> RoutedT t (R FrontendRoute) m ()
-bipWallet fileFFI mkAppCfg = do
+bipWallet fileFFI signingReq mkAppCfg = do
   txLogger <- askTransactionLogger
 
   let
@@ -186,7 +188,7 @@ bipWallet fileFFI mkAppCfg = do
       LockScreen_RunSetup :=> _ -> runSetup0 Nothing WalletExists_No
       -- Wallet exists but the lock screen is active
       LockScreen_Locked :=> Compose root -> do
-        (restore, mLogin) <- lockScreen $ fmap runIdentity $ current root
+        (restore, mLogin) <- lockScreen signingReq $ fmap runIdentity $ current root
         pure $ leftmost
           [ (LockScreen_Restore ==>) . runIdentity <$> current root <@ restore
           , (LockScreen_Unlocked ==>) <$> attach (runIdentity <$> current root) mLogin
@@ -287,8 +289,10 @@ mkSidebarLogoutLink = do
     clk <- uiSidebarIcon (pure False) (static @"img/menu/logout.svg") "Logout"
     performEvent_ $ liftIO . triggerLogout <$> clk
 
-lockScreen :: (DomBuilder t m, PostBuild t m, MonadFix m, MonadHold t m) => Behavior t Crypto.XPrv -> m (Event t (), Event t Text)
-lockScreen xprv = setupDiv "fullscreen" $ divClass "wrapper" $ setupDiv "splash" $ do
+lockScreen
+  :: (DomBuilder t m, PostBuild t m, TriggerEvent t m, PerformEvent t m, MonadIO m, MonadFix m, MonadHold t m)
+  => MVar SigningRequest -> Behavior t Crypto.XPrv -> m (Event t (), Event t Text)
+lockScreen signingReq xprv = setupDiv "fullscreen" $ divClass "wrapper" $ setupDiv "splash" $ do
   splashLogo
 
   el "div" $ mdo
@@ -313,6 +317,12 @@ lockScreen xprv = setupDiv "fullscreen" $ divClass "wrapper" $ setupDiv "splash"
         elAttr "img" ("src" =: static @"img/launch_dark.svg" <> "class" =: "button__text-icon") blank
         text "Help"
       uiButton btnCfgSecondary $ text "Restore"
+
+    req <- tryReadMVarTriggerEvent signingReq
+    widgetHold_ blank $ ffor req $ \_ -> do
+      let line = divClass (setupClass "signing-request") . text
+      line "You have an incoming signing request."
+      line "Unlock your wallet to view and sign the transaction."
 
     let isValid = attachWith (\(p, x) _ -> p <$ guard (passwordRoundTripTest x p)) ((,) <$> current (value pass) <*> xprv) eSubmit
     pure (restore, fmapMaybe id isValid)

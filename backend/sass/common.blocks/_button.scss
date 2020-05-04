@@ -75,23 +75,30 @@
   bottom: -1.5px;
   width: 18px;
   height: 11.1px;
-  @media (max-width: 1550px) {
+  @media (max-width: $cutoff-account-buttons-text) {
     margin-right: 0;
   }
 }
 
 // Icon which only shows for small screens
 .button__text-icon-exclusive {
-  @media (min-width: 1550px + 1px) {
+  @media (min-width: $cutoff-account-buttons-text + 1px) {
     display: none;
   }
 }
 
 // Text which turns into an icon on small screens
 .button__text-exclusive {
-  @media (max-width: 1550px) {
+  @media (max-width: $cutoff-account-buttons-text) {
     display: none;
   }
+}
+
+// Text which turns cross-chain button into an icon on small screens
+.crosschain-button.button__text-exclusive {
+    @media (max-width: $cutoff-crosschain-button-text) {
+        display: none;
+    }
 }
 
 // Standalone icon in a button

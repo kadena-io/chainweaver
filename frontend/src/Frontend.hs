@@ -1,4 +1,5 @@
 {-# LANGUAGE DataKinds #-}
+{-# LANGUAGE NoMonomorphismRestriction #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE TupleSections #-}
@@ -67,12 +68,15 @@ webFrontend = Frontend
             , _fileFFI_openFileDialog = liftJSM . triggerOpen
             , _fileFFI_deliverFile = \_ -> pure never
             }
+          printResponsesHandler = pure $ FRPHandler never $ performEvent . fmap (liftIO . print)
+
       app blank fileFFI $ AppCfg
         { _appCfg_gistEnabled = True
         , _appCfg_loadEditor = loadEditorFromLocalStorage
         , _appCfg_editorReadOnly = False
-        , _appCfg_signingRequest = never
-        , _appCfg_signingResponse = liftIO . print
+        , _appCfg_signingHandler = printResponsesHandler
+        , _appCfg_keysEndpointHandler = printResponsesHandler
+        , _appCfg_accountsEndpointHandler = printResponsesHandler
         , _appCfg_enabledSettings = EnabledSettings
           { _enabledSettings_changePassword = Nothing
           , _enabledSettings_exportWallet = Nothing

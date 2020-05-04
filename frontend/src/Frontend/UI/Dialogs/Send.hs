@@ -30,20 +30,18 @@ import Control.Monad.Except (throwError)
 import Control.Monad.Logger (LogLevel(..))
 import Control.Monad.Trans.Except
 import Control.Monad.Trans.Maybe
-import Data.Decimal (Decimal)
+import Data.Decimal
 import Data.Either (isLeft, rights)
 import Data.List.NonEmpty (NonEmpty(..))
 import Data.Map (Map)
 import Data.Text (Text)
 import Kadena.SigningApi
-import Pact.Parse (ParsedDecimal (..))
 import Pact.Types.Capability
 import Pact.Types.ChainMeta
 import Pact.Types.Exp
 import Pact.Types.PactError
 import Pact.Types.Names
 import Pact.Types.PactValue
-import Pact.Types.Runtime (GasPrice (..))
 import Pact.Types.RPC
 import Pact.Types.Term
 import Reflex
@@ -179,6 +177,10 @@ previewTransfer
   -> Workflow t m (mConf, Event t ())
 previewTransfer model transfer = Workflow $ do
   let
+    cidDisplay lbl cid = mkLabeledInput True lbl uiInputElement $ def
+      & initialAttributes %~ Map.insert "disabled" ""
+      & inputElementConfig_initialValue .~ _chainId cid
+
     toTxBuilder = _transferData_toTxBuilder transfer
     fromAccount@(fromName,fromChain,_) = _transferData_fromAccount transfer
     fromGasPayer = _transferData_fromGasPayer transfer
@@ -187,7 +189,16 @@ previewTransfer model transfer = Workflow $ do
   close <- modalHeader $ text "Transaction Preview"
   elClass "div" "modal__main" $ do
     dialogSectionHeading mempty "Destination"
-    divClass "group" $ transactionDisplayNetwork model
+    divClass "group" $ do
+      transactionDisplayNetwork model
+      case crossChainData of
+        Nothing ->
+          void $ predefinedChainIdDisplayed fromChain
+        Just _ -> do
+          _ <- cidDisplay "From Chain ID" fromChain
+          _ <- cidDisplay "To Chain ID" (_txBuilder_chainId toTxBuilder)
+          pure ()
+
     dialogSectionHeading mempty "Participants"
     divClass "group" $ do
       mkLabeledInput True "Sender Account" uiInputElement $ def
@@ -252,17 +263,16 @@ sameChainTransfer
   -- ^ Amount to transfer
   -> Workflow t m (mConf, Event t ())
 sameChainTransfer model netInfo keys (fromName, fromChain, fromAcc) (gasPayer, gasPayerAcc) toAccount amount = Workflow $ do
-  let mKeyset = _txBuilder_keyset toAccount
-  let code = T.unwords $
-        [ "(coin." <> case mKeyset of
-          Nothing -> "transfer"
-          Just _ -> "transfer-create"
+  -- TODO check against chain - this data may be outdated (key rotations) unless refreshed recently
+  let (functionName, readKeyset, keyData) = case _txBuilder_keyset toAccount of
+        Just ks | not (null $ _ksKeys ks) -> ("transfer-create", "(read-keyset 'key)", HM.singleton "key" $ Aeson.toJSON ks)
+        _ -> ("transfer", "", mempty)
+      code = T.unwords $
+        [ "(coin." <> functionName
         , tshow $ unAccountName fromName
         , tshow $ unAccountName $ _txBuilder_accountName toAccount
-        , case mKeyset of
-          Nothing -> mempty
-          Just _ -> "(read-keyset 'key)"
-        , tshow amount
+        , readKeyset
+        , tshow $ addDecimalPoint amount
         , ")"
         ]
       fromAccKeys = fromAcc ^. accountDetails_guard . _AccountGuard_KeySet . _1
@@ -276,11 +286,6 @@ sameChainTransfer model netInfo keys (fromName, fromChain, fromAcc) (gasPayer, g
           , PLiteral $ LDecimal amount
           ]
         }
-      dat = case mKeyset of
-        -- TODO check against chain (this data may be outdated unless refreshed
-        -- recently)
-        Just keyset -> HM.singleton "key" $ Aeson.toJSON keyset
-        _ -> mempty
       pkCaps = Map.unionsWith (<>)
         [ Map.fromSet (\_ -> [_dappCap_cap defaultGASCapability]) (accountKeys gasPayerAcc)
         , Map.fromSet (\_ -> [transferCap]) fromAccKeys
@@ -292,7 +297,7 @@ sameChainTransfer model netInfo keys (fromName, fromChain, fromAcc) (gasPayer, g
       nodeInfos = _sharedNetInfo_nodes netInfo
       networkName = _sharedNetInfo_network netInfo
   close <- modalHeader $ text "Transaction Status"
-  cmd <- buildCmd Nothing networkName pm signingPairs [] code dat pkCaps
+  cmd <- buildCmd Nothing networkName pm signingPairs [] code keyData pkCaps
   _ <- elClass "div" "modal__main transaction_details" $
     submitTransactionWithFeedback model cmd fromName fromChain (fmap Right nodeInfos)
   done <- modalFooter $ confirmButton def "Done"
@@ -363,15 +368,18 @@ sendConfig model initData = Workflow $ do
 
         dialogSectionHeading mempty "Amount"
         (useEntireBalance, validatedAmount) <- divClass "group" $ do
-          let checkFunds (GasPrice (ParsedDecimal gp)) =
-                if gp > balance then
+          let checkFunds amt =
+                if amt > balance then
                   PopoverState_Error insufficientFundsMsg
                 else
                   PopoverState_Disabled
 
-              showGasPriceInsuffPopover (ie, (_, onInput)) = pure $ leftmost
-                [ ffor onInput checkFunds
-                , PopoverState_Disabled <$ ffilter T.null (_inputElement_input ie)
+              -- NOTE If this results in an event loop, might need to switch to
+              -- using the change event rather than the value
+              showGasPriceInsuffPopover (ie, v) = pure $ leftmost
+                [ PopoverState_Disabled <$ ffilter T.null (_inputElement_input ie)
+                , ffor (ffilter isLeft $ updated v) $ either (PopoverState_Error . T.pack) (const PopoverState_Disabled)
+                , ffor (fmapMaybe hush $ updated v) checkFunds
                 ]
 
               gasInputWithMaxButton cfg = mdo
@@ -379,13 +387,7 @@ sendConfig model initData = Workflow $ do
                 let attrs = ffor useEntireBalance $ \u ->
                       "disabled" =: ("disabled" <$ u)
 
-                    nestTuple (a,b,c) = (a,(b,c))
-
-                    reset = () <$ (ffilter isNothing $ updated useEntireBalance)
-
-                    field = fmap nestTuple . uiGasPriceInputField reset
-
-                (_, (amountValue, _)) <- uiInputWithPopover field
+                (_, amountValue) <- uiInputWithPopover uiAmountInput
                   (_inputElement_raw . fst)
                   showGasPriceInsuffPopover $ cfg
                     & inputElementConfig_setValue .~ fmap tshow (mapMaybe id $ updated useEntireBalance)
@@ -396,14 +398,14 @@ sendConfig model initData = Workflow $ do
                   pure $ fmap (\v -> balance <$ guard v) $ _checkbox_value cb
 
                 pure ( isJust <$> useEntireBalance
-                     , amountValue & mapped . mapped %~ view (_Wrapped' . _Wrapped')
+                     , amountValue
                      )
 
           (useEntireBalance, amount) <- mkLabeledInput True "Amount" gasInputWithMaxButton $ def
             & inputElementConfig_initialValue .~ maybe "" tshow mInitAmount
 
           let validatedAmount = runExceptT $ do
-                a <- ExceptT $ maybe (Left "Invalid amount") Right <$> amount
+                a <- ExceptT $ either (\_ -> Left "Invalid amount") Right <$> amount
                 when (a > balance) $
                   throwError insufficientFundsMsg
                 pure a
@@ -659,7 +661,7 @@ sampleNetInfo model = do
   net <- sample $ current $ model ^. network_selectedNetwork
   nodes <- fmap rights $ sample $ current $ model ^. network_selectedNodes
   meta <- sample $ current $ model ^. network_meta
-  let networkName = hush . mkNetworkName . nodeVersion =<< headMay nodes
+  let networkName = mkNetworkName . nodeVersion <$> headMay nodes
   pure $ ffor networkName $ \name -> SharedNetInfo
     { _sharedNetInfo_network = name
     , _sharedNetInfo_nodes = nodes
@@ -991,7 +993,7 @@ initiateCrossChainTransfer model networkName envs publicMeta keys fromAccount fr
       , tshow $ unAccountName $ _txBuilder_accountName toAccount
       , "(read-keyset '" <> keysetName <> ")"
       , tshow $ _chainId $ _txBuilder_chainId toAccount
-      , tshow amount
+      , tshow $ addDecimalPoint amount
       , ")"
       ]
     mkDat rg = HM.singleton keysetName $ Aeson.toJSON rg

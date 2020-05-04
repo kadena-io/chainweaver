@@ -112,7 +112,7 @@ uiWatchRequestButton
      )
   => model -> m mConf
 uiWatchRequestButton model = do
-  watch <- uiButton (def & uiButtonCfg_class <>~ " main-header__wallet-refresh-button")  (text "Watch Request")
+  watch <- uiButton (def & uiButtonCfg_class <>~ " main-header__wallet-refresh-button")  (text "Check Tx Status")
   pure $ mempty & modalCfg_setModal .~ (Just (uiWatchRequestDialog model) <$ watch)
 
 -- | UI for managing the keys wallet.
@@ -168,12 +168,12 @@ uiAccountItems model accountsMap = do
 
   events <- elAttr "table" tableAttrs $ do
     el "colgroup" $ do
-      elAttr "col" ("style" =: "width: 5%") blank
-      elAttr "col" ("style" =: "width: 22.5%") blank
-      elAttr "col" ("style" =: "width: 12.5%") blank
+      elAttr "col" ("style" =: "width: 30px") blank
+      elAttr "col" ("style" =: "width: 180px") blank
+      elAttr "col" ("style" =: "width: 180px") blank
       elAttr "col" ("style" =: "width: 15%") blank
-      elAttr "col" ("style" =: "width: 10%") blank
-      elAttr "col" ("style" =: "width: 35%") blank
+      elAttr "col" ("style" =: "width: 200px") blank
+      elAttr "col" ("style" =: "width: 25%") blank
 
     el "thead" $ el "tr" $ do
       let mkHeading = elClass "th" "wallet__table-heading" . text

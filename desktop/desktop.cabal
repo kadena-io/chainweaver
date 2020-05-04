@@ -67,8 +67,7 @@ library
     , Desktop.ImportExport
     , Desktop.Orphans
     , Desktop.Setup
-    , Desktop.SigningApi
     , Desktop.Storage.File
     , Desktop.Syslog
-    , Desktop.Util
+    , Desktop.WalletApi
   ghc-options: -Wall

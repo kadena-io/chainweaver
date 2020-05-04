@@ -28,7 +28,7 @@ import System.FilePath ((</>))
 import TestUtils ((@?~))
 
 import Common.Wallet
-import Common.Network (ChainId (..), NetworkName, uncheckedNetworkName, NodeRef(NodeRef))
+import Common.Network (ChainId (..), NetworkName, mkNetworkName, NodeRef(NodeRef))
 import Common.OAuth (OAuthProvider)
 import Common.GistStore (GistMeta)
 
@@ -59,17 +59,17 @@ type TestPrv = Text
 -- and it hasn't changed, that should be okay.
 
 expectedSelectedNetwork :: NetworkName
-expectedSelectedNetwork = uncheckedNetworkName "devnet"
+expectedSelectedNetwork = mkNetworkName "devnet"
 
 expectedNetworks :: Map NetworkName [NodeRef]
 expectedNetworks = Map.fromList
-  [ (uncheckedNetworkName "devnet",
+  [ (mkNetworkName "devnet",
     [ mkNodeRef [host|us1.tn1.chainweb.com|]
     , mkNodeRef [host|us2.tn1.chainweb.com|]
     , mkNodeRef [host|eu1.tn1.chainweb.com|]
     , mkNodeRef [host|eu2.tn1.chainweb.com|]
     ])
-  , (uncheckedNetworkName "testnet",
+  , (mkNetworkName "testnet",
     [ mkNodeRef [host|ap1.testnet.chainweb.com|]
     , mkNodeRef [host|ap2.testnet.chainweb.com|]
     , mkNodeRef [host|eu1.testnet.chainweb.com|]
@@ -205,8 +205,8 @@ expectedAccounts =
       ]
   in
     AccountStorage $ Map.fromList
-    [ (uncheckedNetworkName "devnet", devnetmap)
-    , (uncheckedNetworkName "testnet", testnetmap)
+    [ (mkNetworkName "devnet", devnetmap)
+    , (mkNetworkName "testnet", testnetmap)
     ]
 
 testVersioner

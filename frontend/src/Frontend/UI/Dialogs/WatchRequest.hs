@@ -21,23 +21,28 @@ module Frontend.UI.Dialogs.WatchRequest
 
 import Control.Lens hiding (failover)
 import Control.Error (hush)
-import Control.Monad (foldM, unless)
+import Control.Monad
 
+import Data.Aeson.Lens
 import Data.List.NonEmpty (NonEmpty ((:|)))
 
 import Data.Either (rights)
 import qualified Data.HashMap.Strict as HM
+import Data.Map (Map)
+import qualified Data.Map as M
 
 import Reflex.Dom
+import System.Random (randomRIO)
 
-import qualified Pact.Types.Command as Pact
-import qualified Pact.Types.Util as Pact
+import qualified Pact.Server.ApiClient as Api
 import qualified Pact.Types.API as Pact
+import qualified Pact.Types.Command as Pact
+import qualified Pact.Types.Hash as Pact
 import qualified Pact.Types.Pretty as Pact
+import qualified Pact.Types.Util as Pact
 
 import qualified Text.URI as URI
 import qualified Servant.Client.JSaddle as S
-import qualified Pact.Server.ApiClient as Api
 
 import Frontend.Foundation hiding (Arg)
 import Frontend.Network
@@ -59,6 +64,17 @@ uiWatchRequestDialog model onCloseExternal = do
   let close = switch $ current closes
   pure (mConf, close)
 
+data RequestStatus a = InFlight | ReturnedNothing | ReturnedSomething a
+  deriving (Eq,Ord,Show)
+
+instance Semigroup a => Semigroup (RequestStatus a) where
+  a@(ReturnedSomething _) <> ReturnedNothing = a
+  ReturnedNothing <> b@(ReturnedSomething _) = b
+  (ReturnedSomething a) <> (ReturnedSomething b) = ReturnedSomething (a <> b)
+  ReturnedNothing <> ReturnedNothing = ReturnedNothing
+  InFlight <> b = b
+  a <> InFlight = a
+
 -- | Allow the user to input a request key and chain
 inputRequestKey
   :: ( Monoid mConf
@@ -70,16 +86,10 @@ inputRequestKey
   -> Workflow t m (mConf, Event t ())
 inputRequestKey model _ = Workflow $ do
   let
-    checkTxBtnLbl = "Check TX Status"
+    checkTxBtnLbl = "Check Tx Status"
     nodes = fmap rights $ model ^. network_selectedNodes
-    noResponseMsg = "Request Key not found"
-    showPollResponse (Pact.PollResponses pollMap) = case HM.elems pollMap ^? _head of
-      Nothing -> noResponseMsg
-      Just commandResult -> case commandResult ^. Pact.crResult of
-        Pact.PactResult (Left err) -> "Error: " <> Pact.tShow err
-        Pact.PactResult (Right a) -> Pact.renderCompactText a
 
-  close <- modalHeader $ text "Check TX Status"
+  close <- modalHeader $ text "Check Tx Status"
 
   modalMain $ do
     dialogSectionHeading mempty "Notice"
@@ -102,17 +112,23 @@ inputRequestKey model _ = Workflow $ do
         , False <$ onTimeoutFinished
         ]
 
+    -- This delay gives the Transaction Result section time to update.
+    afterRequest <- delay 0 onRequest
     onPollResponse <- performEventAsync $ pollRequestKey
       <$> current nodes
-      <@> tagMaybe (current dRqKey) onRequest
+      <@> tagMaybe (current dRqKey) afterRequest
 
-    dResp <- holdDyn Nothing $ fmap Just onPollResponse
+    dResp <- foldDyn ($) ReturnedNothing $ leftmost
+      [ const InFlight <$ onRequest
+      , accumRequests <$> onPollResponse
+      ]
 
     dialogSectionHeading mempty "Transaction Result"
     divClass "group" $ do
-      maybeDyn dResp >>= \md -> dyn_ $ ffor md $ \case
-        Nothing -> text $ "Please enter a valid Request Key and click '" <> checkTxBtnLbl <> "'"
-        Just a -> dynText $ maybe noResponseMsg showPollResponse <$> a
+      networkView $ ffor dResp $ \case
+        InFlight -> text $ "Querying for transaction..."
+        ReturnedNothing -> text $ "Please enter a valid Request Key and click '" <> checkTxBtnLbl <> "'"
+        ReturnedSomething m -> showPollResponse m
 
   done <- modalFooter $ do
     confirmButton def "Done"
@@ -121,33 +137,59 @@ inputRequestKey model _ = Workflow $ do
        , never
        )
 
-buildNodeChainClientEnvs :: MonadJSM m => NodeInfo -> m [(ChainId, S.ClientEnv)]
-buildNodeChainClientEnvs node = let chains = getChains node in flip foldMapM chains $ \chain ->
-  getChainRefBaseUrl (ChainRef (Just $ nodeInfoRef node) chain) (Just node) <&> \case
-    Left _ -> []
-    Right chainUrl -> S.parseBaseUrl (URI.renderStr chainUrl) & \case
-      Nothing -> []
-      Just baseUrl -> [(chain, S.mkClientEnv baseUrl)]
+accumRequests
+  :: Map ChainId (RequestStatus [Pact.CommandResult Pact.Hash])
+  -> RequestStatus (Map ChainId (RequestStatus [Pact.CommandResult Pact.Hash]))
+  -> RequestStatus (Map ChainId (RequestStatus [Pact.CommandResult Pact.Hash]))
+accumRequests a InFlight = ReturnedSomething a
+accumRequests a ReturnedNothing = ReturnedSomething a
+accumRequests a (ReturnedSomething b) = ReturnedSomething $ M.unionWith (<>) a b
+
+showPollResponse :: DomBuilder t m => Map ChainId (RequestStatus [Pact.CommandResult Pact.Hash]) -> m ()
+showPollResponse m =
+    if M.size m == M.size (M.filter (==ReturnedNothing) m)
+      then text "Your request key is not associated with an already processed transaction on any chain."
+      else mapM_ showSingleResponse $ M.toList m
+  where
+    showSingleResponse (chainId, reqStatus) = case reqStatus of
+      InFlight -> blank
+      ReturnedNothing -> blank
+      ReturnedSomething resList -> forM_ resList $ \commandResult ->
+        case Pact._crResult commandResult of
+          Pact.PactResult (Left err) -> text $ "Error: " <> Pact.tShow err
+          Pact.PactResult (Right pv) -> do
+            el "div" $ do
+              text $ "Chain " <> _chainId chainId
+              case Pact._crMetaData commandResult ^? _Just . key "blockHeight" . _Integer of
+                Nothing -> blank
+                Just h -> text $ ", height " <> tshow h
+              text $ ": " <> Pact.renderCompactText pv
+
+buildNodeChainClientEnvs :: NodeInfo -> [(ChainId, S.ClientEnv)]
+buildNodeChainClientEnvs node = catMaybes $ map mkPair chains
+  where
+    chains = getChains node
+    mkPair c = case S.parseBaseUrl (URI.renderStr $ getChainBaseUrl c node) of
+                 Nothing -> Nothing
+                 Just bu -> Just (c, S.mkClientEnv bu)
 
 pollRequestKey
   :: MonadJSM m
   => [NodeInfo]
   -> Pact.RequestKey
-  -> (Maybe Pact.PollResponses -> IO ())
+  -> (Map ChainId (RequestStatus [Pact.CommandResult Pact.Hash]) -> IO ())
   -> m ()
 pollRequestKey nodes rKey cb = do
-  responseReceived <- foldM
-    (\respReceived node -> if respReceived then pure respReceived else buildEnvAndPoll node)
-    False
-    nodes
-
-  unless responseReceived $
-    liftIO $ cb Nothing
+    i <- liftIO $ randomRIO (0, length nodes - 1)
+    let envs = buildNodeChainClientEnvs (nodes !! i)
+        m0 = M.fromList $ map ((,InFlight) . fst) envs
+        fireResult (c, Pact.PollResponses m) = liftIO $ cb $ case HM.toList m of
+          [] -> M.insert c ReturnedNothing m0
+          ((_,cr):_) -> M.insert c (ReturnedSomething [cr]) m0
+    forM_ envs $ \pair -> do
+      res <- pollOne pair
+      either (\_ -> pure ()) fireResult res
   where
-    doPoll cEnvs = doReqFailover cEnvs (Api.poll Api.apiV1Client $ Pact.Poll (rKey :| [])) >>= \case
-      Left _ -> pure False
-      Right r -> True <$ liftIO (cb $ Just r)
-
-    buildEnvAndPoll node = do
-      envs <- buildNodeChainClientEnvs node
-      doPoll $ fmap snd envs
+    pollOne (chain,cEnv) = do
+      resp <- liftJSM $ S.runClientM (Api.poll Api.apiV1Client $ Pact.Poll (rKey :| [])) cEnv
+      pure $ (chain,) <$> resp

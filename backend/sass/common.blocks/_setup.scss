@@ -512,3 +512,7 @@ $setup-progress-font-size: 18px;
       flex-grow: 0;
   }
 }
+
+.setup__signing-request {
+  max-width: $setup-progress-button-width;
+}

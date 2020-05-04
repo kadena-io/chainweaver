@@ -42,6 +42,9 @@ module Frontend.UI.Widgets
   , uiGroupHeader
   , uiCodeFont
   , uiInputElement
+  , uiParsingInputElement
+  , uiDecimalInputElement
+  , uiAmountInput
   , uiTextAreaElement
   , uiCorrectingInputElement
   , uiNonnegativeRealWithPrecisionInputElement
@@ -121,6 +124,7 @@ import           Obelisk.Generated.Static
 import           Reflex.Dom.Contrib.CssClass
 import           Reflex.Dom.Core
 import           Reflex.Extended             (tagOnPostBuild)
+import           Text.Read                   (readMaybe)
 ------------------------------------------------------------------------------
 import Pact.Types.ChainId (ChainId (..))
 import Pact.Types.Runtime (GasPrice (..))
@@ -266,6 +270,40 @@ uiInputElement
   -> m (InputElement er (DomBuilderSpace m) t)
 uiInputElement cfg = inputElement $ cfg & initialAttributes %~ (addInputElementCls . addNoAutofillAttrs)
 
+-- | reflex-dom `inputElement` with chainweaver default styling:
+uiParsingInputElement
+  :: DomBuilder t m
+  => (Text -> Either String a)
+  -> InputElementConfig er t (DomBuilderSpace m)
+  -> m (InputElement er (DomBuilderSpace m) t, Dynamic t (Either String a))
+uiParsingInputElement parser cfg = do
+  ie <- inputElement $ cfg & initialAttributes %~ (addInputElementCls . addNoAutofillAttrs)
+  return (ie, parser <$> value ie)
+
+-- | reflex-dom `inputElement` with chainweaver default styling:
+uiDecimalInputElement
+  :: DomBuilder t m
+  => InputElementConfig er t (DomBuilderSpace m)
+  -> m (InputElement er (DomBuilderSpace m) t, Dynamic t (Either String Decimal))
+uiDecimalInputElement cfg = do
+  let p t = maybe (Left "Not a valid amount") Right $ readMaybe (T.unpack t)
+  uiParsingInputElement p cfg
+
+-- | reflex-dom `inputElement` with chainweaver default styling:
+uiAmountInput
+  :: DomBuilder t m
+  => InputElementConfig er t (DomBuilderSpace m)
+  -> m (InputElement er (DomBuilderSpace m) t, Dynamic t (Either String Decimal))
+uiAmountInput cfg = do
+    uiParsingInputElement p cfg
+  where
+    p t = case readMaybe (T.unpack t) of
+            Nothing -> Left "Not a valid number"
+            Just x
+              | x < 0 -> Left "Cannot be negative"
+              | D.decimalPlaces x > maxCoinPrecision -> Left "Too many decimal places"
+              | otherwise -> Right x
+
 uiCorrectingInputElement
   :: forall t m a explanation
      . ( DomBuilder t m
@@ -384,11 +422,12 @@ uiNonnegativeRealWithPrecisionInputElement eReset prec fromDecimal cfg = do
 
   where
     stepSize = "0." <> T.replicate (fromIntegral prec - 1) "0" <> "1"
-    parse t = tread $
-      if "." `T.isPrefixOf` t && not (T.any (== '.') $ T.tail t) then
-        T.cons '0' t
-      else
-        t
+    parse t = case T.splitOn "." t of
+      ["",v] -> tread ("0." <> v)
+      [_, _] -> tread t
+      [_] -> tread t
+      _ -> Nothing
+
 
     blurSanitize :: Decimal -> Maybe (Decimal, Text)
     blurSanitize decimal = asum
@@ -864,6 +903,10 @@ uiDisplayTxBuilderWithCopy withLabel txBuilder = do
       & initialAttributes <>~ "disabled" =: "true"
   uiDetailsCopyButton $ pure $ prettyTxBuilder txBuilder
 
+-- TODO This is mostly unused and can probably be removed along with
+-- uiNonnegativeRealWithPrecisionInputElement and uiCorrectingInputElement.
+-- Remaining uses are mostly disabled input elements where a simpler widget
+-- would be more appropriate.
 uiGasPriceInputField
   :: forall m t.
      ( DomBuilder t m
