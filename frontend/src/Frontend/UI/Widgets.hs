@@ -102,6 +102,9 @@ module Frontend.UI.Widgets
   , uiSidebarIcon
   , uiEmptyState
 
+  , growingList
+  , joinDynThroughIntMap
+  , distributeIntMapOverDynPure
   ) where
 
 
@@ -1364,67 +1367,100 @@ accountNameFormWidget validateName cfg = do
                (<> "list" =: accountListId) . addToClassAttr "account-input"
       pure (inp, _inputElement_raw inp)
 
-  (inputE, _) <- uiInputWithPopover uiNameInput snd showPopover $ def
-    & inputElementConfig_initialValue .~ fold (fmap unAccountName $ view initialValue cfg)
-    & inputElementConfig_setValue .~ maybe never (fmapMaybe (fmap unAccountName)) (view setValue cfg)
-    & initialAttributes .~ view initialAttributes cfg
+  (inputE, _) <- uiInputWithPopover uiNameInput snd showPopover $ pfwc2iec (maybe "" unAccountName) cfg
 
   let w = FormWidget
             (hush <$> (validate <*> fmap T.strip (value inputE)))
             (() <$ _inputElement_input inputE)
             (_inputElement_hasFocus inputE)
-  --afterPaste <- delay 0.1 $ domEvent Paste inputE
   pure (w, domEvent Paste inputE)
 
--- Not used yet, might need more work.
---growingList
---  :: forall t m out particular
---     . ( MonadWidget t m
---       )
---  => (IntMap.Key -> particular -> m (FormWidget t out))
---  -> AllowAddNewRow t out
---  -> AllowDeleteRow t out
---  -> particular
---  -> Event t (PatchIntMap particular)
---  -> m (FormWidget t (IntMap.IntMap out))
---growingList mkIndividualInput (AllowAddNewRow newRow) (AllowDeleteRow deleteRow) initialSelection onExternal = do
---  let
---    minRowIx = 0
---
---    decideAddNewRow :: (IntMap.Key, out) -> Event t (IntMap.IntMap (Maybe particular))
---    decideAddNewRow (i, out) = IntMap.singleton (succ i) (Just initialSelection) <$ ffilter id (newRow out)
---
---    decideDeletion :: IntMap.Key -> out -> Event t (IntMap.IntMap (Maybe particular))
---    decideDeletion i out = IntMap.singleton i Nothing <$ ffilter id (deleteRow out)
---
---  rec
---    let
---      -- Delete rows when 'select' is chosen
---      onDelete = fmap PatchIntMap $ switchDyn $ IntMap.foldMapWithKey decideDeletion <$> v
---      -- Add a new row when all rows have a selection and there are more keys to choose from
---      onAdd = fmap PatchIntMap $ switchDyn $ maybe never decideAddNewRow . IntMap.lookupMax <$> v
---
---
---    (keys, newSelection) <- traverseIntMapWithKeyWithAdjust mkIndividualInput (IntMap.singleton minRowIx initialSelection) $
---      leftmost
---      [ onDelete
---      , onAdd
---        -- Set the values of the rows from an external event.
---      , onExternal
---      ]
---    dInputKeys <- foldDyn applyAlways keys newSelection
---
---    let v = joinDynThroughIntMap (fmap value <$> dInputKeys)
---    let i = () <$ (onAdd <> onDelete) -- TODO this might not fire as often as it should
---    let hf = getAny . foldMap Any <$> joinDynThroughIntMap (fmap _formWidget_hasFocus <$> dInputKeys)
---
---  pure $ FormWidget v i hf
---
---joinDynThroughIntMap
---  :: forall t a. (Reflex t)
---  => Dynamic t (IntMap.IntMap (Dynamic t a))
---  -> Dynamic t (IntMap.IntMap a)
---joinDynThroughIntMap = (distributeIntMapOverDynPure =<<)
---
---distributeIntMapOverDynPure :: (Reflex t) => IntMap.IntMap (Dynamic t v) -> Dynamic t (IntMap.IntMap v)
---distributeIntMapOverDynPure = fmap dmapToIntMap . distributeDMapOverDynPure . intMapWithFunctorToDMap
+-- | A dynamically resizing list widget with a very low visual footprint. It
+-- always displays one more item than is in the list. As soon as the user starts
+-- typing or selects anything for that item, a new empty item gets added. When
+-- any item becomes empty, it will be removed. This widget allows the user to
+-- specify the definition of "empty" that triggers the adding or removing of
+-- items.
+growingList
+  :: forall t m a
+     . ( MonadWidget t m
+       , Show a
+       )
+  => (IntMap.Key -> FormWidgetConfig t a -> m (FormWidget t a))
+  -- ^ Form for a single element
+  -> AllowAddNewRow t (FormWidget t a)
+  -- ^ When to add a new row
+  -> AllowDeleteRow t (FormWidget t a)
+  -- ^ When to remove a row
+  -> a
+  -- ^ Initial value of a newly added row
+  -> Event t (PatchIntMap a)
+  -- ^ External patches to the list of values. This is different from the
+  -- setValue event contained in the next parameter, which completely swaps out
+  -- the whole list rather than making incremental updates.
+  -- (i.e. PatchIntMap vs IntMap)
+  -> FormWidgetConfig t (IntMap.IntMap a)
+  -> m (Dynamic t (IntMap.IntMap (FormWidget t a)))
+  -- ^ TODO Maybe convert this into an outer FormWidget instead of Dynamic
+growingList mkOne (AllowAddNewRow newRow) (AllowDeleteRow deleteRow) initialSelection externalPatches cfg = do
+  let
+    minRowIx = 0
+
+    --decideAddNewRow :: (IntMap.Key, FormWidget t a) -> Event t (IntMap.IntMap (Maybe a))
+    decideAddNewRow (i, a) = IntMap.singleton (succ i) (Just initialSelection) <$ ffilter id (newRow a)
+
+    --decideDeletion :: IntMap.Key -> FormWidget t a -> Event t (IntMap.IntMap (Maybe a))
+    decideDeletion i a = IntMap.singleton i Nothing <$ ffilter id (deleteRow a)
+
+  rec
+    let
+      -- Delete rows when the appropriate value is chosen
+      onDelete = fmap PatchIntMap $ switchDyn $ (IntMap.foldMapWithKey decideDeletion) <$> dInputKeys
+      -- Add a new row when all rows have a selection and there are more keys to choose from
+      onAdd = fmap PatchIntMap $ switchDyn $ maybe never decideAddNewRow . IntMap.lookupMax <$> dInputKeys
+
+      addEmptyItem m =
+          case IntMap.lookupMax m of
+            Nothing -> IntMap.insert minRowIx initialSelection mempty
+            Just (k,_) -> IntMap.insert (k+1) initialSelection m
+
+      endIndex = maybe minRowIx (succ . fst) . IntMap.lookupMax
+      addEmptyPatchItem m =
+          case IntMap.lookupMin $ IntMap.filter isNothing m of
+            Nothing -> IntMap.insert (endIndex m) (Just initialSelection) m
+            Just (k,_) -> IntMap.insert k (Just initialSelection) m
+
+
+      initMap :: IntMap.IntMap (FormWidgetConfig t a)
+      initMap = fmap mkCfg $ addEmptyItem $ _initialValue cfg
+
+      toPatchIntMap cur as = PatchIntMap $ addEmptyPatchItem $ IntMap.union (Just <$> as) resets
+        where
+          resets = Nothing <$ cur
+
+      fullReplacements = maybe never (attachWith toPatchIntMap $ current dInputKeys) $
+        _formWidgetConfig_setValue cfg
+
+      mapUpdates :: Event t (PatchIntMap (FormWidgetConfig t a))
+      mapUpdates = mkCfg <$$> leftmost
+        [ onDelete
+        , onAdd
+        , externalPatches
+        , fullReplacements
+        ]
+    (keys, newSelection) <- traverseIntMapWithKeyWithAdjust mkOne initMap mapUpdates
+    dInputKeys <- foldDyn applyAlways keys newSelection
+
+  pure dInputKeys
+
+-- These functions added to reflex in
+-- https://github.com/reflex-frp/reflex/pull/419. They can be removed after
+-- Chainweaver is upgraded to that version.
+joinDynThroughIntMap
+  :: forall t a. (Reflex t)
+  => Dynamic t (IntMap.IntMap (Dynamic t a))
+  -> Dynamic t (IntMap.IntMap a)
+joinDynThroughIntMap = (distributeIntMapOverDynPure =<<)
+
+distributeIntMapOverDynPure :: (Reflex t) => IntMap.IntMap (Dynamic t v) -> Dynamic t (IntMap.IntMap v)
+distributeIntMapOverDynPure = fmap dmapToIntMap . distributeDMapOverDynPure . intMapWithFunctorToDMap

@@ -1,3 +1,4 @@
+{-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecursiveDo #-}
 
 module Frontend.UI.KeysetWidget where
@@ -73,17 +74,17 @@ userFromPactKeyset (KeySet ks p) = UserKeyset (Set.map fromPactPublicKey ks) (pa
 -- string and an invalid public key.
 pubKeyFormWidget
   :: forall t m. MonadWidget t m
-  => PrimFormWidgetConfig t PublicKeyText
+  => FormWidgetConfig t PublicKeyText
   -> m (FormWidget t PublicKeyText)
 pubKeyFormWidget cfg = do
   let
     cfg2 = unPublicKeyText <$> cfg
     iv = _initialValue cfg2
-    inp cfg = do
-      ie <- mkLabeledInput False mempty (uiComboBoxGlobalDatalist keyListId iv) cfg
+    inp c = do
+      ie <- mkLabeledInput False mempty (uiComboBoxGlobalDatalist keyListId iv) c
       pure (ie,  _inputElement_input ie)
 
-    inputCfg = pfwc2iec id cfg2
+    inputCfg = fwc2iec id cfg2
       & initialAttributes %~ mappend ("placeholder" =: "Enter public key (optional)")
 
     popoverMsg t
@@ -155,34 +156,47 @@ keysetFormWidget cfg = do
                    | otherwise = filter (/= keys2Predicate) xs
 
   let setKeys = maybe never (fmap (fromMaybe mempty)) $ _formWidgetConfig_setValue (fmap _userKeyset_keys <$> cfg)
-      toPatchIntMap f = PatchIntMap
-        . ifoldMap (\n a -> IntMap.singleton n $ Just $ f a)
-        . Set.toList
-  (ddKeys,_) <- mkLabeledClsInput False "Public Keys" $ const $ uiAdditiveInput
-    (const pubKeyInputWidget)
-    (AllowAddNewRow $ doAddDel (/=))
-    (AllowDeleteRow $ doAddDel (==))
+      toPatchIntMap f cur keys = PatchIntMap (IntMap.union resets ps)
+        where
+          resets = Nothing <$ cur
+          ps = ifoldMap (\n a -> IntMap.singleton n $ Just $ f a) $ Set.toList keys
+
+      setToIntMap = ifoldMap (\n a -> IntMap.singleton n $ PublicKeyText $ keyToText a) . Set.toList
+
+      listCfg = maybe mempty (setToIntMap . _userKeyset_keys) <$> cfg
+  ddKeys <- mkLabeledClsInput False "Public Keys" $ const $ growingList
+    (const pubKeyFormWidget)
+    (AllowAddNewRow $ doAddDel (/=) . value)
+    (AllowDeleteRow $ doAddDel (==) . value)
     selectMsgKey
-    (toPatchIntMap (PublicKeyText . keyToText) <$> setKeys)
+    never
+    listCfg
 
-  let keys = join $ distributeMapOverDynPure . Map.fromList . IntMap.toList <$> ddKeys
-
-  let predCfg klass = (mkPfwc $ maybe KeysAll _userKeyset_pred <$> cfg)
+  let keys = IntMap.filter (/= selectMsgKey) <$> joinDynThroughIntMap (value <$$> ddKeys)
+  let newPred oldKeys newKeys = if IntMap.size oldKeys == 2 && IntMap.size newKeys == 1
+                            then Just KeysAll else Nothing
+      ditchKeys2 = fmapMaybe id $ attachWith newPred (current keys) (updated keys)
+      predCfg = maybe KeysAll _userKeyset_pred <$> cfg
+  let mkPredCfg klass = (mkPfwc predCfg)
         & initialAttributes .~ addToClassAttr (klass <> "select") mempty
+        & setValue %~ (\a -> Just $ leftmost (ditchKeys2 : maybeToList a))
   predicateE <- mkLabeledClsInput False "Keys Required to Sign for Account (Predicate)" $ \klass -> mdo
     let allPreds = do
           ks <- keys
-          let ps = if Map.size ks >= 3 then [KeysAll, KeysAny, Keys2] else [KeysAll, KeysAny]
+          let ps = if IntMap.size ks >= 2 then [KeysAll, KeysAny, Keys2] else [KeysAll, KeysAny]
           return $ Map.fromList $ map (\p -> (p, prettyPred $ renderKeysetPred p)) ps
-    predfw <- dropdownFormWidget allPreds (predCfg klass)
+    predfw <- unsafeDropdownFormWidget allPreds (mkPredCfg klass)
+    -- TODO Need to put in a different dropdown implementation that correctly
+    -- handles when an option goes away
     return predfw
 
   return $ do
-    ks <- Set.fromList . catMaybes . map textToKey . filter (not . T.null) . map unPublicKeyText . Map.elems <$> keys
+    ks <- Set.fromList . catMaybes . map textToKey . filter (not . T.null) . map unPublicKeyText . IntMap.elems <$> keys
     pred <- value predicateE
     if Set.null ks
       then pure Nothing
       else pure $ Just $ UserKeyset ks pred
+
 
 keysetWidget
   :: (MonadWidget t m)

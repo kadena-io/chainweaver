@@ -90,6 +90,9 @@ amountFormWidget cfg = do
               | D.decimalPlaces x > maxCoinPrecision -> Left "Too many decimal places"
               | otherwise -> Right x
 
+-- | This options shown by this widget are the union of the incoming dynamic
+-- options, the initial option, and any changes to the selection passed in from
+-- outside via the setValue event.
 dropdownFormWidget
   :: (DomBuilder t m, MonadHold t m, PostBuild t m, MonadFix m, Ord a)
   => Dynamic t (Map a Text)
@@ -98,11 +101,25 @@ dropdownFormWidget
 dropdownFormWidget options cfg = do
   let k0 = _initialValue cfg
       setK = fromMaybe never $ view setValue cfg
+  optionsWithAddedKeys <- fmap (zipDynWith Map.union options) $ foldDyn Map.union (k0 =: "") $ fmap (=: "") setK
+  unsafeDropdownFormWidget optionsWithAddedKeys cfg
+
+-- | This dropdown widget does not ensure that the selected value exists in the
+-- options list. It is your responsibility to make sure the dynamic map of
+-- options contains both the initial value AND that if it changes, the current
+-- selected option stays in sync.
+unsafeDropdownFormWidget
+  :: (DomBuilder t m, MonadHold t m, PostBuild t m, MonadFix m, Ord a)
+  => Dynamic t (Map a Text)
+  -> PrimFormWidgetConfig t a
+  -> m (FormWidget t a)
+unsafeDropdownFormWidget options cfg = do
+  let k0 = _initialValue cfg
+      setK = fromMaybe never $ view setValue cfg
       initAttrs = view initialAttributes cfg
       modifyAttrs = view modifyAttributes cfg
-  optionsWithAddedKeys <- fmap (zipDynWith Map.union options) $ foldDyn Map.union (k0 =: "") $ fmap (=: "") setK
   defaultKey <- holdDyn k0 setK
-  let (indexedOptions, ixKeys) = splitDynPure $ ffor optionsWithAddedKeys $ \os ->
+  let (indexedOptions, ixKeys) = splitDynPure $ ffor options $ \os ->
         let xs = fmap (\(i, (k, v)) -> ((i, k), ((i, k), v))) $ zip [0::Int ..] $ Map.toList os
         in (Map.fromList $ map snd xs, Bimap.fromList $ map fst xs)
   let scfg = def

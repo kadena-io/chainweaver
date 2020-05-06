@@ -202,8 +202,8 @@ walletSidebar sidebarExtra = elAttr "div" ("class" =: "sidebar") $ do
     let sidebarLink r@(r' :/ _) label = routeLink r $ do
           let selected = demuxed route (Some r')
           void $ uiSidebarIcon selected (routeIcon r) label
-    sidebarLink (FrontendRoute_Keys :/ ()) "Keys"
     sidebarLink (FrontendRoute_Accounts :/ ()) "Accounts"
+    sidebarLink (FrontendRoute_Keys :/ ()) "Keys"
     sidebarLink (FrontendRoute_Contracts :/ Nothing) "Contracts"
     elAttr "div" ("style" =: "flex-grow: 1") blank
     sidebarLink (FrontendRoute_Resources :/ ()) "Resources"

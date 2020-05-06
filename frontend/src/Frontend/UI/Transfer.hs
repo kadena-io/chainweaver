@@ -152,26 +152,28 @@ uiChainAccount model cfg = do
 toFormWidget
   :: (MonadWidget t m, HasNetwork model t)
   => model
+  -> FormWidgetConfig t (Maybe ChainAccount, Maybe UserKeyset)
   -> m (FormWidget t (Maybe ChainAccount), Dynamic t (Maybe UserKeyset))
-toFormWidget model = mdo
+toFormWidget model cfg = mdo
   let pastedBuilder = fmapMaybe ((decode' . LB.fromStrict . T.encodeUtf8) =<<) $ onPaste
       mkChainAccount b = ChainAccount (_txBuilder_chainId b) (_txBuilder_accountName b)
+      modSetValue (Just e1) (Just e2) = Just $ leftmost [e1, e2]
+      modSetValue Nothing a = a
+      modSetValue a Nothing = a
   (tca,onPaste) <- elClass "div" ("segment segment_type_tertiary labeled-input-inline") $ do
     divClass ("label labeled-input__label-inline") $ text "Account"
-    divClass "labeled-input__input account-chain-input" $ uiChainAccount model $ mkCfg Nothing
+    divClass "labeled-input__input account-chain-input" $ uiChainAccount model $ mkPfwc (fst <$> cfg)
       --(Just $ ChainAccount (ChainId "0") $ AccountName "doug2")
-      & initialAttributes .~ "placeholder" =: "Account Name or Tx Builder"
-      & setValue .~ Just (Just . mkChainAccount <$> pastedBuilder)
+      & initialAttributes %~ (<> "placeholder" =: "Account Name or Tx Builder")
+      & setValue %~ modSetValue (Just (Just . mkChainAccount <$> pastedBuilder))
 
   keysetOpen <- foldDyn ($) False $ leftmost
     [ const not <$> clk
     , const True <$ pastedBuilder
     ]
-  (clk,(_,k)) <- controlledAccordionItem keysetOpen mempty
-    (accordionHeaderBtn "Keyset") $ do
-    --keysetInputWidget Nothing
-    keysetFormWidget $ mkCfg Nothing
-      & setValue .~ Just (fmap userFromPactKeyset . _txBuilder_keyset <$> pastedBuilder)
+  (clk,(_,k)) <- controlledAccordionItem keysetOpen mempty (accordionHeaderBtn "Keyset") $ do
+    keysetFormWidget $ (snd <$> cfg)
+      & setValue %~ modSetValue (Just (fmap userFromPactKeyset . _txBuilder_keyset <$> pastedBuilder))
 
   return (tca,k)
 
@@ -206,25 +208,29 @@ uiGenericTransfer model cfg = do
         pure $ if visible
           then ("class" =: "main transfer transfer__expanded")
           else ("class" =: "main transfer transfer__collapsed")
-  elDynAttr "main" attrs $ do
+  elDynAttr "main" attrs $ mdo
     transferInfo <- divClass "transfer-fields" $ do
       (fromAcct,amount) <- divClass "transfer__left-pane" $ do
         el "h4" $ text "From"
         fca <- labeledChainAccount model $ mkCfg Nothing
-          --(Just $ ChainAccount (ChainId "0") $ AccountName "multi")
           & initialAttributes .~ "placeholder" =: "Account Name"
-        amt <- mkLabeledInput True "Amount (KDA)" amountFormWidget $ mkCfg $ Right 2
+          & setValue .~ (Just $ Nothing <$ clear)
+        amt <- mkLabeledInput True "Amount (KDA)" amountFormWidget $ mkCfg (Right 2)
+          & setValue .~ (Just $ Left "" <$ clear)
         return (fca,amt)
       (toAcct,ks) <- divClass "transfer__right-pane" $ do
         el "h4" $ text "To"
-        toFormWidget model
+        toFormWidget model $ mkCfg (Nothing, Nothing)
+          & setValue .~ (Just $ (Nothing, Nothing) <$ clear)
       return $ runMaybeT $ TransferInfo <$>
         MaybeT (value fromAcct) <*>
         MaybeT (hush <$> value amount) <*>
         MaybeT (value toAcct) <*>
         lift ks
-    signTransfer <- divClass "transfer-fields submit" $ do
-      confirmButton (def { _uiButtonCfg_disabled = (isNothing <$> transferInfo) }) "Sign & Transfer"
+    (clear, signTransfer) <- divClass "transfer-fields submit" $ do
+      clr <- el "div" $ uiButton btnCfgTertiary $ text "Clear"
+      st <- confirmButton (def { _uiButtonCfg_disabled = (isNothing <$> transferInfo) }) "Sign & Transfer"
+      return (clr, st)
     let netInfo = flip push signTransfer $ \() -> sampleNetInfo model
     let mkModal (Just ti) ni = Just $ lookupAndTransfer model ni ti
         mkModal Nothing _ = Nothing
