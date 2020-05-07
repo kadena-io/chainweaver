@@ -163,11 +163,13 @@ toFormWidget model cfg = mdo
   (tca,onPaste) <- elClass "div" ("segment segment_type_tertiary labeled-input-inline") $ do
     divClass ("label labeled-input__label-inline") $ text "Account"
     divClass "labeled-input__input account-chain-input" $ uiChainAccount model $ mkPfwc (fst <$> cfg)
-      --(Just $ ChainAccount (ChainId "0") $ AccountName "doug2")
       & initialAttributes %~ (<> "placeholder" =: "Account Name or Tx Builder")
       & setValue %~ modSetValue (Just (Just . mkChainAccount <$> pastedBuilder))
 
-  keysetOpen <- foldDyn ($) False $ leftmost
+  let keysetStartsOpen = case snd (_initialValue cfg) of
+                           Nothing -> False
+                           Just uk -> not $ Set.null $ _userKeyset_keys uk
+  keysetOpen <- foldDyn ($) keysetStartsOpen $ leftmost
     [ const not <$> clk
     , const True <$ pastedBuilder
     ]
@@ -184,7 +186,6 @@ data TransferInfo = TransferInfo
   , _ti_toKeyset :: Maybe UserKeyset
   } deriving (Eq,Ord,Show)
 
--- -> RoutedT t (R FrontendRoute) m ()
 uiGenericTransfer
   :: ( MonadWidget t m
      , HasLogger model t
@@ -297,7 +298,7 @@ msgModal headerMsg body = do
 
   pure (mempty, done <> close)
 
--- | Lookup the keyset of an account
+-- | Lookup the keyset of some accounts
 lookupKeySets
   :: ( TriggerEvent t m, MonadJSM m
      , HasCrypto key m
@@ -341,7 +342,8 @@ uiTransferButton = mdo
   let buttonText = bool "Show Transfer" "Hide Transfer" <$> isVisible
   click <- uiButton (def & uiButtonCfg_class <>~ " main-header__account-button") $ do
     dynText buttonText
-  isVisible <- toggle False click
+  -- TODO Change this back to False
+  isVisible <- toggle True click
   return isVisible
 
 checkSendingAccountExists
@@ -496,26 +498,26 @@ transferDialog model netInfo ti fks tks _ = do
     close <- modalHeader $ text "Sign Transfer"
     rec
       (currentTab, _done) <- transferTabs newTab
-      (conf, meta, dSignedCmd, destChainInfo) <- mainSection currentTab
+      (conf, meta, payload, dSignedCmd, destChainInfo) <- mainSection currentTab
       (cancel, newTab, next) <- footerSection currentTab meta dSignedCmd
 
-    let nextScreen = ffor (tag (current dSignedCmd) next) $ \case
-          Nothing -> Workflow $ pure (mempty, never)
-          Just sc -> sendTransferCommand model netInfo ti sc destChainInfo
+    let nextScreen = ffor (tag ((,) <$> current payload <*> current dSignedCmd) next) $ \case
+          (_,Nothing) -> Workflow $ pure (mempty, never)
+          (p,Just sc) -> sendTransferCommand model netInfo ti p sc destChainInfo
 
     pure ((conf, close <> cancel), nextScreen)
   where
     mainSection currentTab = elClass "div" "modal__main" $ do
       (conf, meta, destChainInfo) <- tabPane mempty currentTab TransferTab_Metadata $
         transferMetadata model netInfo fks tks ti
-      let unsignedCmd = buildUnsignedCmd netInfo ti <$> meta
+      let payload = buildUnsignedCmd netInfo ti <$> meta
       edSigned <- tabPane mempty currentTab TransferTab_Signatures $ do
         networkView $ transferSigs
           <$> (model ^. wallet_keys)
-          <*> unsignedCmd
+          <*> payload
           <*> (_transferMeta_sourceChainSigners <$> meta)
       sc <- holdUniqDyn . join =<< holdDyn (constDyn Nothing) (Just <$$> edSigned)
-      return (conf, meta, sc, destChainInfo)
+      return (conf, meta, payload, sc, destChainInfo)
     footerSection currentTab meta sc = modalFooter $ do
       let (lbl, fanTag) = splitDynPure $ ffor currentTab $ \case
             TransferTab_Metadata -> ("Cancel", Left ())
@@ -547,10 +549,11 @@ sendTransferCommand
   => model
   -> SharedNetInfo NodeInfo
   -> TransferInfo -- TODO Not principle of least context, but quick and dirty for now
+  -> Payload PublicMeta Text
   -> Command Text
   -> Maybe (Dynamic t (Maybe AccountName), Dynamic t [Signer])
   -> Workflow t m (mConf, Event t ())
-sendTransferCommand model netInfo ti cmd destInfo = Workflow $ do
+sendTransferCommand model netInfo ti payload cmd destInfo = Workflow $ do
     res <- case destInfo of
       Nothing -> sameChainTransferAndStatus model netInfo ti cmd
       Just (gp, ss) -> crossChainTransferAndStatus model netInfo ti cmd gp ss
@@ -586,7 +589,6 @@ crossChainTransferAndStatus
 crossChainTransferAndStatus model netInfo ti cmd destGasPayer destSigners = do
     pure (mempty, never)
 
--- Commented code is WIP, not building yet
 --    let logL = model ^. logger
 --    let nodeInfos = _sharedNetInfo_nodes netInfo
 --    close <- modalHeader $ text "Cross Chain Transfer"
@@ -624,14 +626,20 @@ crossChainTransferAndStatus model netInfo ti cmd destGasPayer destSigners = do
 --  where
 --    fromChain = _ca_chain $ _ti_fromAccount ti
 --    toChain = _ca_chain $ _ti_toAccount ti
---    fromAccount = AccountName $ _ca_account $ _ti_fromAccount ti
+--    fromAccount = _ca_account $ _ti_fromAccount ti
+
+payloadToCommand :: Payload PublicMeta Text -> Command Text
+payloadToCommand p =
+    Pact.Command payloadText [] (hash $ T.encodeUtf8 payloadText)
+  where
+    payloadText = encodeAsText $ encode p
 
 buildUnsignedCmd
   :: SharedNetInfo NodeInfo
   -> TransferInfo
   -> TransferMeta
-  -> Command Text
-buildUnsignedCmd netInfo ti tmeta = Pact.Command payloadText [] (hash $ T.encodeUtf8 payloadText)
+  -> Payload PublicMeta Text
+buildUnsignedCmd netInfo ti tmeta = payload
   where
     network = _sharedNetInfo_network netInfo
     fromAccount = unAccountName $ _ca_account $ _ti_fromAccount ti
@@ -671,7 +679,6 @@ buildUnsignedCmd netInfo ti tmeta = Pact.Command payloadText [] (hash $ T.encode
       , _pNetworkId = pure $ NetworkId $ textNetworkName network
       }
 
-    payloadText = encodeAsText $ encode payload
 
 -- | An unrecoverable error.  Display an error message and only allow cancel.
 fatalTransferError
@@ -941,10 +948,11 @@ transferSigs
      , HasCrypto key m
      )
   => (KeyStorage key)
-  -> (Command Text)
+  -> Payload PublicMeta Text
   -> [Signer]
   -> m (Dynamic t (Command Text))
-transferSigs keyStorage cmd signers = do
+transferSigs keyStorage payload signers = do
+  let cmd = payloadToCommand payload
   let hash = toUntypedHash $ _cmdHash cmd
   _ <- divClass "group" $ do
     mkLabeledInput True "Request Key" uiInputElement $ def
