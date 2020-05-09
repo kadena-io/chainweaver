@@ -197,16 +197,21 @@ keysetFormWidget cfg = do
       then pure Nothing
       else pure $ Just $ UserKeyset ks pred
 
+keyDisplayWidget
+  :: MonadWidget t m
+  => PublicKey
+  -> m ()
+keyDisplayWidget k = void $ do
+    uiInputElement $ def
+      & initialAttributes .~ ("class" =: "key-display" <> "disabled" =: "disabled")
+      & inputElementConfig_initialValue .~ keyToText k
 
 keysetWidget
   :: (MonadWidget t m)
   => UserKeyset
   -> m ()
 keysetWidget (UserKeyset keys pred) = do
-    mkLabeledView False "Keys" $ forM_ keys $ \k -> do
-      uiInputElement $ def
-        & initialAttributes .~ "disabled" =: "disabled"
-        & inputElementConfig_initialValue .~ keyToText k
+    mkLabeledView False "Keys" $ forM_ keys keyDisplayWidget
 
     mkLabeledInput False "Predicate" uiInputElement $ def
       & initialAttributes .~ "disabled" =: "disabled"

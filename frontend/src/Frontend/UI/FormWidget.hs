@@ -30,10 +30,8 @@ import           Control.Lens
 import           Control.Monad
 import           Data.Default
 import           Data.Map (Map)
-import qualified Data.Map.Strict as Map
 import           Data.Maybe
 import           Data.Text (Text)
-import qualified Data.Text as T
 import           Reflex
 import           Reflex.Dom.Core
 ------------------------------------------------------------------------------

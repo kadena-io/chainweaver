@@ -10,11 +10,13 @@ module Reflex.Extended
   , tagOnPostBuild
   , waitForEvents
   , getListUpdates
+  , newTriggerHold
   ) where
 
 import Reflex
 import Control.Applicative
 import Control.Monad.Fix
+import Control.Monad.Trans
 import qualified Data.IntMap as IntMap
 import Data.IntMap (IntMap)
 import Control.Monad
@@ -91,3 +93,9 @@ getListUpdates l = do
               -- fanInt.
             pure $ insertions <> deletions
         )
+
+newTriggerHold :: (MonadHold t m, TriggerEvent t m, MonadIO n) => a -> m (Dynamic t a, a -> n ())
+newTriggerHold a = do
+  (e, t) <- newTriggerEvent
+  s <- holdDyn a e
+  pure (s, liftIO . t)

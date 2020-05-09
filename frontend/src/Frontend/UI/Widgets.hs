@@ -117,21 +117,17 @@ import           Control.Monad
 import           Control.Monad.Except
 import           Control.Monad.Trans.Maybe
 import qualified Data.Aeson.Encode.Pretty as AesonPretty
-import qualified Data.Bimap as Bimap
 import           Data.Either (isLeft)
 import           Data.Functor.Misc
 import           Data.Map.Strict             (Map)
 import qualified Data.Map.Strict as Map
 import           Data.Monoid
 import qualified Data.IntMap as IntMap
-import           Data.String                 (IsString)
 import           Data.Proxy                  (Proxy(..))
 import           Data.Text                   (Text)
 import qualified Data.Text                   as T
 import qualified Data.Text.Lazy as LT
 import qualified Data.Text.Lazy.Builder as LTB
-import qualified Text.Read as T
-import           Data.Tuple
 import           GHC.Word
 import           Data.Decimal                (Decimal)
 import qualified Data.Decimal                as D
@@ -152,16 +148,13 @@ import Pact.Types.Command (RequestKey)
 import qualified Pact.Types.Util as Pact
 ------------------------------------------------------------------------------
 import           Common.Wallet
-import           Frontend.Network (HasNetwork(..), NodeInfo, getChains, maxCoinPrecision)
+import           Frontend.Network (HasNetwork(..), maxCoinPrecision)
 import           Frontend.Foundation
-import           Frontend.Ide
-import           Frontend.Network (HasNetwork(..), NodeInfo, getChains, maxCoinPrecision)
 import           Frontend.TxBuilder (TxBuilder)
 import           Frontend.UI.Button
 import           Frontend.UI.Common
 import           Frontend.UI.Form.Common
 import           Frontend.UI.FormWidget
-import           Frontend.UI.Modal.Impl
 import           Frontend.UI.Widgets.Helpers (imgWithAlt, imgWithAltCls, makeClickable,
                                               setFocus, setFocusOn,
                                               setFocusOnSelected, tabPane,

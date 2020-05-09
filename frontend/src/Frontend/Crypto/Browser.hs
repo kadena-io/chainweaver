@@ -10,8 +10,6 @@ import Control.Monad.Primitive (PrimMonad (PrimState, primitive))
 import Control.Monad.Reader
 import Control.Monad.Ref (MonadRef, MonadAtomicRef)
 import Data.Coerce (coerce)
-import qualified Data.ByteString as B
-import Data.Text.Encoding
 import Language.Javascript.JSaddle (MonadJSM)
 import Obelisk.Route.Frontend
 import Reflex.Dom hiding (fromJSString)

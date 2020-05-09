@@ -123,7 +123,10 @@ import Common.Orphans ()
 
 -- | PublicKey with a Pact compatible JSON representation.
 newtype PublicKey = PublicKey ByteString
-  deriving (Generic, Eq, Ord, Show)
+  deriving (Generic, Eq, Ord)
+
+instance Show PublicKey where
+  show pk = "PublicKey " <> (show $ keyToText pk)
 
 -- | Input must be base16
 unsafePublicKey :: ByteString -> PublicKey

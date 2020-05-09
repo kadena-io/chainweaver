@@ -10,7 +10,6 @@ import Obelisk.Route.Frontend
 import Data.ByteString (ByteString)
 import Data.Text (Text)
 
-import Pact.Types.Hash
 import Pact.Types.Scheme (PPKScheme)
 
 import Frontend.Crypto.Ed25519

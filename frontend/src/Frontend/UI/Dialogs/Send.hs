@@ -27,6 +27,7 @@ import Control.Monad.Except (throwError)
 import Control.Monad.Logger (LogLevel(..))
 import Control.Monad.Trans.Except
 import Control.Monad.Trans.Maybe
+import Data.Bifunctor
 import Data.Decimal
 import Data.Either (isLeft, rights)
 import Data.List.NonEmpty (NonEmpty(..))
@@ -511,7 +512,7 @@ runUnfinishedCrossChainTransfer
   -- ^ From chain
   -> ChainId
   -- ^ To chain
-  -> (AccountName, Account)
+  -> (AccountName, AccountStatus AccountDetails)
   -- ^ Gas payer on "To" chain
   -> Event t Pact.RequestKey
   -- ^ The request key to follow up on
@@ -647,7 +648,7 @@ finishCrossChainTransferConfig model fromAccount ucct = Workflow $ do
         mNetInfo <- sampleNetInfo model
         mToGasPayer <- sample $ current sender
         keys <- sample $ current $ model ^. wallet_keys
-        pure $ ffor2 mNetInfo mToGasPayer $ \ni gp -> finishCrossChainTransfer (model ^. logger) ni keys fromAccount ucct gp
+        pure $ ffor2 mNetInfo mToGasPayer $ \ni gp -> finishCrossChainTransfer (model ^. logger) ni keys fromAccount ucct (second _account_status gp)
   pure ((conf, close), nextScreen)
 
 -- | Handy function for getting network / meta information in 'PushM'. Type
@@ -682,7 +683,7 @@ finishCrossChainTransfer
   -- ^ From account
   -> UnfinishedCrossChainTransfer
   -- ^ The unfinished transfer
-  -> (AccountName, Account)
+  -> (AccountName, AccountStatus AccountDetails)
   -- ^ The account which pays the gas on the recipient chain
   -> Workflow t m (mConf, Event t ())
 finishCrossChainTransfer logL netInfo keys (fromName, fromChain) ucct toGasPayer = Workflow $ do
@@ -812,7 +813,7 @@ crossChainTransfer logL netInfo keys fromAccount toAccount fromGasPayer crossCha
         item initiateStatus $
           el "p" $ text $ "Cross chain transfer initiated on chain " <> _chainId fromChain
 
-        let toGasPayer = _crossChainData_recipientChainGasPayer crossChainData
+        let toGasPayer = second _account_status $ _crossChainData_recipientChainGasPayer crossChainData
         runUnfinishedCrossChainTransfer logL netInfo keys fromChain toChain toGasPayer initiatedOk
 
     let errMsg = leftmost [keySetError, initiatedError, errMsg0]
@@ -858,7 +859,7 @@ continueCrossChainTransfer
   -- ^ Keys
   -> ChainId
   -- ^ To chain
-  -> (AccountName, Account)
+  -> (AccountName, AccountStatus AccountDetails)
   -- ^ Gas payer on target chain
   -> Event t (Pact.PactExec, Pact.ContProof)
   -- ^ The previous continuation step and associated proof
@@ -874,7 +875,7 @@ continueCrossChainTransfer logL networkName envs publicMeta keys toChain gasPaye
         { _pmChainId = toChain
         , _pmSender = sender
         }
-      signingSet = accountKeys $ snd gasPayer
+      signingSet = snd gasPayer ^. _AccountStatus_Exists . accountDetails_guard . _AccountGuard_KeySet . _1
       signingPairs = filterKeyPairs signingSet keys
     payload <- buildContPayload networkName pm signingPairs $ ContMsg
       { _cmPactId = Pact._pePactId pe

@@ -35,7 +35,7 @@ Design Requirements:
 
 module Frontend.UI.Transfer where
 
-import           Control.Error hiding (bool)
+import           Control.Error hiding (bool, note)
 import           Control.Lens hiding ((.=))
 import           Control.Monad.State.Strict
 import           Data.Aeson
@@ -43,6 +43,8 @@ import qualified Data.ByteString.Lazy as LB
 import           Data.Decimal
 import           Data.Default (Default (..))
 import qualified Data.IntMap as IntMap
+import           Data.List.NonEmpty (NonEmpty(..), nonEmpty)
+import qualified Data.List.NonEmpty as NEL
 import           Data.Map (Map)
 import qualified Data.Map as Map
 import           Data.Set (Set)
@@ -56,6 +58,7 @@ import qualified Data.Yaml as Y
 import           Kadena.SigningApi (AccountName(..))
 import           Pact.Parse
 import qualified Pact.Server.ApiClient as Api
+import qualified Pact.Types.API as Api
 import           Pact.Types.Capability
 import           Pact.Types.ChainId
 import           Pact.Types.ChainMeta
@@ -74,8 +77,10 @@ import           Pact.Types.Term (KeySet (..))
 import qualified Pact.Types.Term as Pact
 import           Reflex
 import           Reflex.Dom.Core
+import qualified Servant.Client.JSaddle as S
 import           Text.Printf
 import           Text.Read (readMaybe)
+import qualified Text.URI as URI
 
 import           Common.Foundation
 import           Common.Wallet
@@ -105,6 +110,7 @@ data KeysetAction
   | KeysetUnambiguous (ChainId, AccountName, UserKeyset)
   | KeysetError Text
   | KeysetNoAction
+  deriving (Eq,Ord,Show)
 
 makePrisms ''KeysetAction
 
@@ -197,6 +203,7 @@ uiGenericTransfer
      , Flattenable (ModalCfg mConf t) t
      , HasModalCfg mConf (Modal mConf m t) t
      , HasCrypto key m
+     , HasCrypto key (Performable m)
      , HasWallet model key t
      , HasTransactionLogger m
      )
@@ -231,6 +238,7 @@ uiGenericTransfer model cfg = do
     (clear, signTransfer) <- divClass "transfer-fields submit" $ do
       clr <- el "div" $ uiButton btnCfgTertiary $ text "Clear"
       st <- confirmButton (def { _uiButtonCfg_disabled = (isNothing <$> transferInfo) }) "Sign & Transfer"
+      _ <- confirmButton (def { _uiButtonCfg_disabled = (isNothing <$> transferInfo) }) "Quick Transfer"
       return (clr, st)
     let netInfo = flip push signTransfer $ \() -> sampleNetInfo model
     let mkModal (Just ti) ni = Just $ lookupAndTransfer model ni ti
@@ -241,6 +249,7 @@ lookupAndTransfer
   :: ( MonadWidget t m, Monoid mConf, Flattenable mConf t
      , HasLogger model t
      , HasCrypto key m
+     , HasCrypto key (Performable m)
      , HasNetwork model t
      , HasNetworkCfg mConf t
      , HasWallet model key t
@@ -353,6 +362,7 @@ checkSendingAccountExists
      , HasLogger model t
      , HasWallet model key t
      , HasCrypto key m
+     , HasCrypto key (Performable m)
      , HasTransactionLogger m
      )
   => model
@@ -378,6 +388,7 @@ checkReceivingAccount
      , HasLogger model t
      , HasWallet model key t
      , HasCrypto key m
+     , HasCrypto key (Performable m)
      , HasTransactionLogger m
      )
   => model
@@ -420,7 +431,6 @@ checkReceivingAccount model netInfo ti fks tks fromPair = do
               el "div" $ do
                 mkLabeledView False "Keyset You Entered" $ divClass "group" $
                   text "You didn't enter any keys"
-                  --keysetWidget userKeyset
                 mkLabeledView False "On-chain Keyset" $ divClass "group" $
                   keysetWidget onChainKeyset
             return ((mempty, cancel), never)
@@ -443,6 +453,7 @@ handleMissingKeyset
      , HasLogger model t
      , HasWallet model key t
      , HasCrypto key m
+     , HasCrypto key (Performable m)
      , HasTransactionLogger m
      )
   => model
@@ -483,6 +494,7 @@ transferDialog
      , HasLogger model t
      , HasWallet model key t
      , HasCrypto key m
+     , HasCrypto key (Performable m)
      , HasTransactionLogger m
      )
   => model
@@ -501,11 +513,23 @@ transferDialog model netInfo ti fks tks _ = do
       (conf, meta, payload, dSignedCmd, destChainInfo) <- mainSection currentTab
       (cancel, newTab, next) <- footerSection currentTab meta dSignedCmd
 
-    let nextScreen = ffor (tag ((,) <$> current payload <*> current dSignedCmd) next) $ \case
-          (_,Nothing) -> Workflow $ pure (mempty, never)
-          (p,Just sc) -> sendTransferCommand model netInfo ti p sc destChainInfo
+    case destChainInfo of
+      Nothing -> do
+        let nextScreen = ffor (tag (current dSignedCmd) next) $ \case
+              Nothing -> Workflow $ pure (mempty, never)
+              Just sc -> Workflow $ do
+                res <- sameChainTransferAndStatus model netInfo ti sc
+                pure (res, never)
+        pure ((conf, close <> cancel), nextScreen)
 
-    pure ((conf, close <> cancel), nextScreen)
+      Just (dgp, dss) -> do
+        let allDyns = (,,,) <$> current payload <*> current dSignedCmd <*> current dgp <*> current dss
+        let nextScreen = ffor (tag allDyns next) $ \case
+              (_,Nothing,_,_) -> Workflow $ pure (mempty, never)
+              (p,Just sc,gp,ss) -> Workflow $ do
+                res <- crossChainTransferAndStatus model netInfo ti sc gp ss
+                pure (res, never)
+        pure ((conf, close <> cancel), nextScreen)
   where
     mainSection currentTab = elClass "div" "modal__main" $ do
       (conf, meta, destChainInfo) <- tabPane mempty currentTab TransferTab_Metadata $
@@ -543,22 +567,6 @@ transferDialog model netInfo ti fks tks _ = do
 
       pure (cancel, tabChange, screenChange)
 
--- | Perform a same chain transfer or transfer-create
-sendTransferCommand
-  :: (MonadWidget t m, Monoid mConf, HasLogger model t, HasTransactionLogger m)
-  => model
-  -> SharedNetInfo NodeInfo
-  -> TransferInfo -- TODO Not principle of least context, but quick and dirty for now
-  -> Payload PublicMeta Text
-  -> Command Text
-  -> Maybe (Dynamic t (Maybe AccountName), Dynamic t [Signer])
-  -> Workflow t m (mConf, Event t ())
-sendTransferCommand model netInfo ti payload cmd destInfo = Workflow $ do
-    res <- case destInfo of
-      Nothing -> sameChainTransferAndStatus model netInfo ti cmd
-      Just (gp, ss) -> crossChainTransferAndStatus model netInfo ti cmd gp ss
-    pure (res, never)
-
 sameChainTransferAndStatus
   :: (MonadWidget t m, Monoid mConf, HasLogger model t, HasTransactionLogger m)
   => model
@@ -578,55 +586,107 @@ sameChainTransferAndStatus model netInfo ti cmd = do
     fromAccount = _ca_account $ _ti_fromAccount ti
 
 crossChainTransferAndStatus
-  :: (MonadWidget t m, Monoid mConf, HasLogger model t, HasTransactionLogger m)
+  :: ( MonadWidget t m
+     , Monoid mConf
+     , HasLogger model t
+     , HasTransactionLogger m
+     , HasWallet model key t
+     , HasCrypto key (Performable m)
+     )
   => model
   -> SharedNetInfo NodeInfo
   -> TransferInfo -- TODO Not principle of least context, but quick and dirty for now
   -> Command Text
-  -> Dynamic t (Maybe AccountName)
-  -> Dynamic t [Signer]
+  -> Maybe (AccountName, AccountStatus AccountDetails)
+  -> [Signer]
   -> m (mConf, Event t ())
-crossChainTransferAndStatus model netInfo ti cmd destGasPayer destSigners = do
-    pure (mempty, never)
+crossChainTransferAndStatus model netInfo ti cmd Nothing destSigners = pure (mempty, never)
+crossChainTransferAndStatus model netInfo ti cmd (Just destGP) destSigners = do
+    let logL = model ^. logger
+    let nodeInfos = _sharedNetInfo_nodes netInfo
+    close <- modalHeader $ text "Cross Chain Transfer"
+    _ <- elClass "div" "modal__main" $ do
+      transactionHashSection cmd
+      fbk <- submitTransactionAndListen model cmd fromAccount fromChain (fmap Right nodeInfos)
+      let listenDone = ffilter (==Status_Done) $ updated $ _transactionSubmitFeedback_listenStatus fbk
+          -- Not sure whether this should be when the listen is done or when the send is done
+          rk = RequestKey (toUntypedHash $ _cmdHash cmd) <$ listenDone
+      (resultOk0, errMsg0, retry0) <- divClass "group" $ do
+        elClass "ol" "transaction_status" $ do
+          let item ds = elDynAttr "li" (ffor ds $ \s -> "class" =: statusText s)
+          item (_transactionSubmitFeedback_sendStatus fbk) $
+            el "p" $ text $ "Cross chain transfer initiated on chain " <> _chainId fromChain
 
---    let logL = model ^. logger
---    let nodeInfos = _sharedNetInfo_nodes netInfo
---    close <- modalHeader $ text "Cross Chain Transfer"
---    _ <- elClass "div" "modal__main" $ do
---      fbk <- submitTransactionWithFeedback model cmd fromAccount fromChain (fmap Right nodeInfos)
---      let listenDone = ffilter (==Status_Done) $ updated $ _transactionSubmitFeedback_listenStatus fbk
---          -- Not sure whether this should be when the listen is done or when the send is done
---          rk = RequestKey (toUntypedHash $ _cmdHash cmd) <$ listenDone
---      (resultOk0, errMsg0, retry0) <- divClass "group" $ do
---        elClass "ol" "transaction_status" $ do
---          let item ds = elDynAttr "li" (ffor ds $ \s -> "class" =: statusText s)
---          item (_transactionSubmitFeedback_sendStatus fbk) $
---            el "p" $ text $ "Cross chain transfer initiated on chain " <> _chainId fromChain
---
---          keys <- sample $ current $ model ^. wallet_keys
---          -- TODO Next: Modify runUnfinished to take gas payer in different form.
---          runUnfinishedCrossChainTransfer logL netInfo keys fromChain toChain destGasPayer rk
---
---      let isError = \case
---            Just (Left _) -> True
---            _ -> False
---      let initiatedError = ffilter isError $ updated $ _transactionSubmitFeedback_message fbk
---      let errMsg = leftmost [initiatedError, errMsg0]
---      dialogSectionHeading mempty "Transaction Result"
---      divClass "group" $ do
---        void $ runWithReplace (text "Waiting for response...") $ leftmost
---          [ text . ("Request Key " <>) . Pact.requestKeyToB16Text <$> rk
---          , text <$> errMsg
---          , blank <$ retry0
---          ]
---
---      pure resultOk0
---    done <- modalFooter $ confirmButton def "Done"
---    pure (mempty, close <> done)
---  where
---    fromChain = _ca_chain $ _ti_fromAccount ti
---    toChain = _ca_chain $ _ti_toAccount ti
---    fromAccount = _ca_account $ _ti_fromAccount ti
+          keys <- sample $ current $ model ^. wallet_keys
+          runUnfinishedCrossChainTransfer logL netInfo keys fromChain toChain destGP rk
+
+      let isError = \case
+            Just (Left _) -> True
+            _ -> False
+      let initiatedError = ffilter isError $ updated $ _transactionSubmitFeedback_message fbk
+          toErrMsg = maybe "" (either prettyPrintNetworkError (const ""))
+      let errMsg = leftmost [toErrMsg <$> initiatedError, errMsg0]
+      dialogSectionHeading mempty "Transaction Result"
+      divClass "group" $ do
+        void $ runWithReplace (text "Waiting for response...") $ leftmost
+          [ text . ("Request Key " <>) . Pact.requestKeyToB16Text <$> rk
+          , text <$> errMsg
+          , blank <$ retry0
+          ]
+
+      pure resultOk0
+    done <- modalFooter $ confirmButton def "Done"
+    pure (mempty, close <> done)
+  where
+    fromChain = _ca_chain $ _ti_fromAccount ti
+    toChain = _ca_chain $ _ti_toAccount ti
+    fromAccount = _ca_account $ _ti_fromAccount ti
+
+submitTransactionAndListen
+  :: ( CanSubmitTransaction t m
+     , HasLogger model t
+     , HasTransactionLogger m
+     )
+  => model
+  -> Pact.Command Text
+  -> AccountName
+  -> ChainId
+  -> [Either a NodeInfo]
+  -> m (TransactionSubmitFeedback t)
+submitTransactionAndListen model cmd sender chain nodeInfos = do
+  -- Shove the node infos into servant client envs
+  clientEnvs <- fmap catMaybes $ for (rights nodeInfos) $ \nodeInfo -> do
+    getChainRefBaseUrl (ChainRef Nothing chain) (Just nodeInfo) >>= \case
+      Left e -> do
+        putLog model LevelWarn $ "deploySubmit: Couldn't get chainUrl: " <> e
+        pure Nothing
+      Right chainUrl -> case S.parseBaseUrl $ URI.renderStr chainUrl of
+        Nothing -> do
+          putLog model LevelWarn $ T.pack $ "deploySubmit: Failed to parse chainUrl: " <> URI.renderStr chainUrl
+          pure Nothing
+
+        Just baseUrl -> pure $ Just $ S.mkClientEnv baseUrl
+
+  -- These maintain the UI state for each step and are updated as responses come in
+  (sendStatus, send) <- newTriggerHold Status_Waiting
+
+  -- Send the transaction
+
+  pb <- getPostBuild
+  transactionLogger <- askTransactionLogger
+  rec
+    onRequestKey <- performEventAsync $ ffor pb $ \() cb -> liftJSM $ do
+      send Status_Working
+      doReqFailover clientEnvs (Api.send Api.apiV1Client transactionLogger (unAccountName sender) chain $ Api.SubmitBatch $ pure cmd) >>= \case
+        Left errs -> do
+          send Status_Failed
+          for_ (nonEmpty errs) $ setMessage . Just . Left . packHttpErr . NEL.last
+        Right (Api.RequestKeys (key :| _)) -> do
+          send Status_Done
+          liftIO $ cb key
+    (listenStatus, message, setMessage) <- listenToRequestKey clientEnvs $ Just <$> onRequestKey
+    requestKey <- holdDyn Nothing $ Just <$> onRequestKey
+  pure $ TransactionSubmitFeedback sendStatus listenStatus message
 
 payloadToCommand :: Payload PublicMeta Text -> Command Text
 payloadToCommand p =
@@ -700,13 +760,17 @@ isMissingGasPayer
 isMissingGasPayer _ (_, Nothing) = False
 isMissingGasPayer keysets (cid, Just a) = isNothing $ Map.lookup a =<< Map.lookup cid keysets
 
+data GasPayerDetails = GasPayerDetails
+  { gpdChain :: ChainId
+  , gpdAccount :: Maybe AccountName
+  , gpdDetails :: Maybe (AccountStatus AccountDetails)
+  }
 -- Fields in this structure are Dynamic because they get consumed independently
 data GasPayers t = GasPayers
-  { srcChainGasPayer :: Dynamic t (Maybe AccountName)
+  { srcChainGasPayer :: Dynamic t GasPayerDetails
     -- Outer Maybe indicates cross-chain transfer (redundantly with fromChain == toChain, but oh well)
     -- Inner Maybe indicates whether there is a gas payer.  Private blockchains allow this.
-  , destChainGasPayer :: Maybe (Dynamic t (Maybe AccountName))
-  , gasPayerDetails :: Dynamic t (Map ChainId (Map AccountName (AccountStatus AccountDetails)))
+  , destChainGasPayer :: Maybe (Dynamic t GasPayerDetails)
   }
 
 gasPayersSection
@@ -717,9 +781,9 @@ gasPayersSection
   -> SharedNetInfo NodeInfo
   -> TransferInfo
   -> m (GasPayers t)
---  -> m (Dynamic t [(ChainId, Maybe AccountName)], Dynamic t (Map ChainId (Map AccountName (AccountStatus AccountDetails))))
 gasPayersSection model netInfo ti = do
     let fromChain = _ca_chain (_ti_fromAccount ti)
+        fromAccount = _ca_account (_ti_fromAccount ti)
         toChain = _ca_chain (_ti_toAccount ti)
     (dgp1, mdgp2) <- if fromChain == toChain
       then do
@@ -730,38 +794,37 @@ gasPayersSection model netInfo ti = do
         (_,dgp1) <- uiAccountNameInput (mkLabel fromChain) True (Just $ _ca_account $ _ti_fromAccount ti) never noValidation
         (_,dgp2) <- uiAccountNameInput (mkLabel toChain) True Nothing never noValidation
         pure $ (dgp1, Just dgp2)
-    let getGasPayerKeys gps = do
-          let accounts = catMaybes $ map snd gps
-          resps <- forM (Set.toList $ Set.fromList $ map fst gps) $ \chain -> do
-            -- I think lookupKeySets can't be done the PushM monad
-            evt <- lookupKeySets (model ^. logger) (_sharedNetInfo_network netInfo)
-                          (_sharedNetInfo_nodes netInfo) chain accounts
-            return $ Map.singleton chain <$> fmapMaybe id evt
-          foldDyn ($) mempty $ Map.union <$> mergeWith (Map.unionWith Map.union) resps
-        dgps = mkGasPayerList fromChain toChain dgp1 mdgp2
-    debouncedGasPayers <- debounce 1.0 $ updated dgps
-    -- TODO FIXME debouncedGasPayers doesn't show dest chain payers
-    -- this might actually be the desired behavior, need to think more
+    let getGasPayerKeys chain mgp = do
+          case mgp of
+            Nothing -> return never
+            Just gp -> do
+              -- I think lookupKeySets can't be done in the PushM monad
+              evt <- lookupKeySets (model ^. logger) (_sharedNetInfo_network netInfo)
+                            (_sharedNetInfo_nodes netInfo) chain [gp]
+              return $ Map.lookup gp <$> fmapMaybe id evt
+
+    -- Event t (Maybe AccountName)
+    gp1Debounced <- debounce 1.0 $ updated dgp1
+    -- Maybe (Event t (Maybe AccountName))
+    mgp2Debounced <- maybe (return Nothing) (fmap Just . debounce 1.0 . updated) mdgp2
     -- also not sure what to do if the source chain gas payer is the same as dest chain gas payer
     -- should we let the user choose different signers for the source and dest chain?
-    gpKeys <- networkHold (return $ constDyn mempty) (getGasPayerKeys <$> debouncedGasPayers)
-    return $ GasPayers dgp1 mdgp2 (join gpKeys)
-
--- Slightly annoying helper function for combining the gas payers
-mkGasPayerList
-  :: Reflex t
-  => ChainId
-  -> ChainId
-  -> Dynamic t (Maybe AccountName)
-  -> Maybe (Dynamic t (Maybe AccountName))
-  -> Dynamic t [(ChainId, Maybe AccountName)]
-mkGasPayerList fromChain toChain dgp1 mdgp2 =
-    case mdgp2 of
-      Nothing -> (:[]) . (fromChain,) <$> dgp1
+    gp1Keys <- networkHold (return never)
+                           (getGasPayerKeys fromChain <$> gp1Debounced)
+    gp1 <- foldDyn ($) (GasPayerDetails fromChain (Just fromAccount) Nothing) $ leftmost
+      [ (\a gp -> gp { gpdAccount = a }) <$> updated dgp1
+      , (\keys gp -> gp { gpdDetails = keys }) <$> switch (current gp1Keys)
+      ]
+    case mgp2Debounced of
+      Nothing -> return $ GasPayers gp1 Nothing
       Just dgp2 -> do
-        gp1 <- dgp1
-        gp2 <- dgp2
-        pure $ [(fromChain, gp1), (toChain, gp2)]
+        gp2Keys <- networkHold (return never) (getGasPayerKeys toChain <$> dgp2)
+        gp2 <- foldDyn ($) (GasPayerDetails toChain Nothing Nothing) $ leftmost
+          [ (\a gp -> gp { gpdAccount = a }) <$> maybe never updated mdgp2
+          , (\keys gp -> gp { gpdDetails = keys }) <$> switch (current gp2Keys)
+          ]
+        return $ GasPayers gp1 (Just gp2)
+
 
 data TransferMeta = TransferMeta
   { _transferMeta_gasPrice :: GasPrice
@@ -781,6 +844,12 @@ transferCapability from to amount = SigCapability
     ]
   }
 
+crosschainCapability :: AccountName -> SigCapability
+crosschainCapability from = SigCapability
+  { _scName = QualifiedName { _qnQual = "coin", _qnName = "DEBIT", _qnInfo = def }
+  , _scArgs = [PLiteral $ LString $ unAccountName from]
+  }
+
 gasCapability :: SigCapability
 gasCapability = SigCapability
   { _scName = QualifiedName
@@ -794,8 +863,13 @@ gasCapability = SigCapability
   , _scArgs = []
   }
 
+flashyStr label a = unlines [dashes, label, a, dashes]
+  where
+    dashes = "-----------------"
+
 transferMetadata
-  :: ( MonadWidget t m, HasNetwork model t, HasNetworkCfg mConf t, Monoid mConf
+  :: forall model mConf key t m.
+     ( MonadWidget t m, HasNetwork model t, HasNetworkCfg mConf t, Monoid mConf
      , HasLogger model t
      , HasCrypto key m
      )
@@ -807,47 +881,70 @@ transferMetadata
   -> m (mConf,
         Dynamic t TransferMeta,
         -- Destination chain gas payer and signer information when there is a cross-chain transfer
-        Maybe (Dynamic t (Maybe AccountName), Dynamic t [Signer]))
+        Maybe (Dynamic t (Maybe (AccountName, AccountStatus AccountDetails)), Dynamic t [Signer]))
 transferMetadata model netInfo fks tks ti = do
-  (GasPayers srcPayer mdestPayer gpDetails) <- gasPayersSection model netInfo ti
+  (GasPayers srcPayer mdestPayer) <- gasPayersSection model netInfo ti
   let fromChain = _ca_chain $ _ti_fromAccount ti
       fromAccount = _ca_account $ _ti_fromAccount ti
       toChain = _ca_chain $ _ti_toAccount ti
       toAccount = _ca_account $ _ti_toAccount ti
       amount = _ti_amount ti
       ks = Map.fromList [(fromChain, fks), (toChain, tks)]
-      dgps = mkGasPayerList fromChain toChain srcPayer mdestPayer
-      getActions gps gpds = getKeysetActions ti
-        (Map.unionWith (Map.unionWith combineStatus) ks gpds) gps
-      actions = getActions <$> dgps <*> gpDetails
 
+  let senderAction = getKeysetActionSingle fromChain fks (Just fromAccount)
+      dgasAction = getKeysetActionSingle fromChain fks . gpdAccount <$> srcPayer
+      dDestGasAction = getKeysetActionSingle toChain tks . gpdAccount <$$> mdestPayer
+      actions = do
+        ga <- dgasAction
+        case dDestGasAction of
+          Nothing -> pure $ Set.toList $ Set.fromList [senderAction, ga]
+          Just ddga -> do
+            dga <- ddga
+            pure $ Set.toList $ Set.fromList [senderAction, ga, dga]
+
+  -- TODO Filter out ambiguous accounts that Chainweaver knows how to sign for
   esigners <- networkView (signersSection <$> actions)
-  signTuples <- fmap join $ holdDyn (constDyn []) esigners
+  signTuples <- fmap join $ holdDyn (constDyn mempty) esigners
 
   -- To get the final list of signers we need to take all the public keys from
   -- each of the unambiguous keysets. Then we combine that with the signers
-  -- specified by the user which came from the ambiguous keysets. For new we just
-  -- ignore the KeysetError and KeysetNoAction constructors because doing so
+  -- specified by the user which came from the ambiguous keysets. For now we just
+  -- ignore the KeysetError and KeysetNoAction constructors because not doing so
   -- should only ever result in failed transactions. We can come back later and
   -- try to prevent them if it makes sense.
-  let mkSigners tuples = do
-        gps <- dgps
-        as <- actions
-        let getCaps c a =
-              (if (c, Just a) `elem` gps then [gasCapability] else []) <>
-              (if ChainAccount c a == _ti_fromAccount ti
-                 then [transferCapability fromAccount toAccount amount]
-                 else [])
+  let mkSigner (k, caps) = Signer Nothing (keyToText k) Nothing caps
 
-            ambig = Map.unionsWith (<>) $ map (\(c, a, pk) -> Map.singleton pk (getCaps c a)) tuples
-            foo (c, a, ks) =
-              map (\pk -> Map.singleton pk $ getCaps c a) (Set.toList $ _userKeyset_keys ks)
-            unamb = Map.unionsWith (<>) $ concat $ map foo (as ^.. each . _KeysetUnambiguous)
-        pure $ map (\(k,v) -> Signer Nothing (keyToText k) Nothing v) (Map.toList $ Map.unionWith (<>) ambig unamb)
-      fromSigners = mkSigners =<< (filter (\(c,_,_) -> c == fromChain) <$> signTuples)
+      -- Get just the keys for coin.TRANSFER
+      fromTxKeys = fromMaybe [] . Map.lookup (fromChain, fromAccount) <$> signTuples
+
+      -- Get just the keys for coin.GAS
+      lookupGas chain Nothing = mempty
+      lookupGas chain (Just gp) = Map.lookup (chain, gp)
+      fromGasKeys = fmap (fromMaybe mempty) $ lookupGas fromChain <$> fmap gpdAccount srcPayer <*> signTuples
+      toGasKeys = case mdestPayer of
+                    Nothing -> constDyn []
+                    Just dp -> fmap (fromMaybe mempty) $ lookupGas toChain <$> fmap gpdAccount dp <*> signTuples
+
+      -- Build up a Map PublicKey [SigCapability]
+      addCap cap pk = Map.insertWith (<>) pk [cap]
+      gasCaps = foldr (addCap gasCapability) mempty <$> fromGasKeys
+      transferCap = if fromChain == toChain
+                      then transferCapability fromAccount toAccount amount
+                      else crosschainCapability fromAccount
+      allFromCaps = foldr (addCap transferCap) <$> gasCaps <*> fromTxKeys
+      toCaps = foldr (addCap gasCapability) mempty <$> toGasKeys
+
+      -- Convert that map into a [Signer]
+      fromSigners = map mkSigner . Map.toList <$> allFromCaps
+      toSigners = map mkSigner . Map.toList <$> toCaps
+
+      lookupDetails mp = (\p -> (p,) <$> Map.lookup p tks) =<< mp
       destChainSigners = case mdestPayer of
         Nothing -> Nothing
-        Just dp -> Just $ (dp, mkSigners =<< (filter (\(c,_,_) -> c == toChain) <$> signTuples))
+        Just dp -> Just $ ( lookupDetails . gpdAccount <$> dp
+                          , traceDynWith (flashyStr "toSigners" . unlines . map show) toSigners )
+
+  performEvent_ (liftIO . putStrLn . ("toSigners changed: "<>) . show <$> updated toSigners)
 
   dialogSectionHeading mempty "Transaction Settings"
   divClass "group" $ do
@@ -863,7 +960,7 @@ transferMetadata model netInfo fks tks ti = do
              <*> lim
              <*> ttl
              <*> (TxCreationTime . ParsedInteger <$> ct)
-             <*> fromSigners
+             <*> traceDynWith (flashyStr "fromSigners" . unlines . map show) fromSigners
       return (conf, meta, destChainSigners)
 
 combineStatus :: AccountStatus a -> AccountStatus a -> AccountStatus a
@@ -889,29 +986,32 @@ getKeysetActions ti ks gps = map (getKeysetAction ks) signers
 signersSection
   :: (MonadWidget t m)
   => [KeysetAction]
-  -> m (Dynamic t [(ChainId, AccountName, PublicKey)])
+  -> m (Dynamic t (Map (ChainId, AccountName) [PublicKey]))
 signersSection actions = do
     let ambiguous = actions ^.. each . _KeysetAmbiguous
+        unamb = Map.fromList $ map (\(c,a,uk) -> ((c,a), Set.toList $ _userKeyset_keys uk)) $
+                  actions ^.. each . _KeysetUnambiguous
         ukToKeys (c,a,uk) = (c,a,) <$> Set.toList (_userKeyset_keys uk)
-    if (null ambiguous)
-      then return $ constDyn $ concat $ map ukToKeys $ actions ^.. each . _KeysetUnambiguous
+    ambig <- if (null ambiguous)
+      then return $ constDyn mempty
       else do
         dialogSectionHeading mempty "Public Keys to Sign With"
         dynList <- divClass "group signing-ui-signers" $ do
           mapM singleSigner ambiguous
-        return $ concat <$> distributeListOverDyn dynList
+        return $ Map.unions <$> distributeListOverDyn dynList
+    return $ Map.union unamb <$> ambig
 
 singleSigner
   :: (DomBuilder t m, PostBuild t m)
   => (ChainId, AccountName, UserKeyset)
-  -> m (Dynamic t [(ChainId, AccountName, PublicKey)])
+  -> m (Dynamic t (Map (ChainId, AccountName) [PublicKey]))
 singleSigner (c, a, UserKeyset keys p) = do
     elClass "h3" ("heading heading_type_h3") $
       text $ unAccountName a <> " (" <> T.toLower (prettyPred $ renderKeysetPred p) <> ")"
     res <- forM (Set.toList keys) $ \key -> do
       c <- uiCheckbox "signing-ui-signers__signer" False def $ text $ keyToText key
       return $ bool Nothing (Just key) <$> value c
-    pure $ map (c, a,) . catMaybes <$> distributeListOverDyn res
+    pure $ Map.singleton (c, a) . catMaybes <$> distributeListOverDyn res
 
 getKeysetAction
   :: Map ChainId (Map AccountName (AccountStatus AccountDetails))
@@ -920,6 +1020,28 @@ getKeysetAction
 getKeysetAction _ (_,Nothing) = KeysetNoAction
 getKeysetAction allKeys (c,Just a) =
   case Map.lookup a =<< Map.lookup c allKeys of
+    Nothing -> KeysetError $ T.pack $
+      printf "Couldn't find account %s on chain %s" (unAccountName a) (show c)
+    Just AccountStatus_DoesNotExist -> KeysetError $ T.pack $
+      printf "Account %s does not exist on chain %s" (unAccountName a) (show c)
+    Just AccountStatus_Unknown -> KeysetNoAction -- TODO not sure about this
+    Just (AccountStatus_Exists (AccountDetails _ g)) -> do
+      case g of
+        AccountGuard_Other _ -> KeysetNoAction
+        AccountGuard_KeySet keys p -> do
+          let ks = UserKeyset keys (parseKeysetPred p)
+          if unambiguousKeyset keys p
+            then KeysetUnambiguous (c, a, ks)
+            else KeysetAmbiguous (c, a, ks)
+
+getKeysetActionSingle
+  :: ChainId
+  -> Map AccountName (AccountStatus AccountDetails)
+  -> Maybe AccountName
+  -> KeysetAction
+getKeysetActionSingle _ _ (Nothing) = KeysetNoAction
+getKeysetActionSingle c keyDetails (Just a) =
+  case Map.lookup a keyDetails of
     Nothing -> KeysetError $ T.pack $
       printf "Couldn't find account %s on chain %s" (unAccountName a) (show c)
     Just AccountStatus_DoesNotExist -> KeysetError $ T.pack $
