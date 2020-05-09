@@ -28,6 +28,7 @@ library
     , base
     , base16-bytestring
     , base64-bytestring
+    , bimap
     , bound
     , bytestring
     , cassava
