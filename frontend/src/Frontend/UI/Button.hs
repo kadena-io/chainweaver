@@ -31,6 +31,7 @@ module Frontend.UI.Button
   , homeButton
   , backButton
   , copyButton
+  , copyButton'
   , deleteButton
   , addButton
   , signoutButton
@@ -190,15 +191,27 @@ copyButton
   -> Bool
   -> Behavior t Text
   -> m ()
-copyButton cfg showStatus t = mdo
+copyButton cfg = copyButton' "Copy" (cfg & uiButtonCfg_class <>~ "button_type_copy" <> "button_border_none")
+
+-- | Copies the text content of a given node.
+--
+--   Probably won't work for input elements.
+copyButton'
+  :: forall t m
+  . (DynamicButtonConstraints t m, MonadFix m, MonadHold t m, MonadJSM (Performable m), PerformEvent t m)
+  => Text
+  -> UiButtonDynCfg t
+  -> Bool
+  -> Behavior t Text
+  -> m ()
+copyButton' label cfg showStatus t = mdo
   let cfg' = cfg
-        & uiButtonCfg_class <>~ "button_type_copy" <> "button_border_none"
         & uiButtonCfg_type ?~ "button"
-        & uiButtonCfg_title .~ pure (Just "Copy")
+        & uiButtonCfg_title .~ pure (Just label)
   status <- holdDyn "" $ ffor copy $ bool "copy-fail fa-times" "copy-success fa-check"
   copy <- copyToClipboard $ tag t onClick
   onClick <- uiButtonDyn cfg' $ do
-    imgWithAlt (static @"img/copy.svg") "Copy" blank
+    imgWithAlt (static @"img/copy.svg") label blank
     dynText $ ffor (cfg ^. uiButtonCfg_title) fold
     when showStatus $ elDynClass "i" ("fa copy-status " <> status) blank
   pure ()

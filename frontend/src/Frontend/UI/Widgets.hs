@@ -36,7 +36,9 @@ module Frontend.UI.Widgets
   , accountListId
   , accountDatalist
   , uiAccountNameInput
+  , uiAccountNameInputNoDropdown
   , accountNameFormWidget
+  , accountNameFormWidgetNoDropdown
   , uiAccountFixed
   , uiAccountDropdown
   , uiAccountDropdown'
@@ -150,7 +152,7 @@ import qualified Pact.Types.Util as Pact
 import           Common.Wallet
 import           Frontend.Network (HasNetwork(..), maxCoinPrecision)
 import           Frontend.Foundation
-import           Frontend.TxBuilder (TxBuilder)
+import           Frontend.TxBuilder
 import           Frontend.UI.Button
 import           Frontend.UI.Common
 import           Frontend.UI.Form.Common
@@ -869,9 +871,6 @@ uiDetailsCopyButton txt = do
         & uiButtonCfg_title .~ constDyn (Just "Copy")
   divClass "details__copy-btn-wrapper" $ copyButton cfg False txt
 
-prettyTxBuilder :: TxBuilder -> Text
-prettyTxBuilder = LT.toStrict . LTB.toLazyText . AesonPretty.encodePrettyToTextBuilder
-
 uiTxBuilder
   :: DomBuilder t m
   => Maybe TxBuilder
@@ -1088,6 +1087,28 @@ uiAccountNameInput
        )
 uiAccountNameInput label inlineLabel initval onSetName validateName = do
   (FormWidget v i _, _) <- mkLabeledInput inlineLabel label (accountNameFormWidget validateName) $ mkCfg initval
+    & setValue .~ Just onSetName
+  pure (tagPromptlyDyn v i, v)
+
+uiAccountNameInputNoDropdown
+  :: ( DomBuilder t m
+     , PostBuild t m
+     , MonadHold t m
+     , DomBuilderSpace m ~ GhcjsDomSpace
+     , PerformEvent t m
+     , TriggerEvent t m
+     , MonadJSM (Performable m)
+     )
+  => Text
+  -> Bool
+  -> Maybe AccountName
+  -> Event t (Maybe AccountName)
+  -> Dynamic t (AccountName -> Either Text AccountName)
+  -> m ( Event t (Maybe AccountName)
+       , Dynamic t (Maybe AccountName)
+       )
+uiAccountNameInputNoDropdown label inlineLabel initval onSetName validateName = do
+  (FormWidget v i _, _) <- mkLabeledInput inlineLabel label (accountNameFormWidgetNoDropdown validateName) $ mkCfg initval
     & setValue .~ Just onSetName
   pure (tagPromptlyDyn v i, v)
 
@@ -1358,6 +1379,41 @@ accountNameFormWidget validateName cfg = do
     uiNameInput cfg = do
       inp <- uiInputElement $ cfg & initialAttributes %~
                (<> "list" =: accountListId) . addToClassAttr "account-input"
+      pure (inp, _inputElement_raw inp)
+
+  (inputE, _) <- uiInputWithPopover uiNameInput snd showPopover $ pfwc2iec (maybe "" unAccountName) cfg
+
+  let w = FormWidget
+            (hush <$> (validate <*> fmap T.strip (value inputE)))
+            (() <$ _inputElement_input inputE)
+            (_inputElement_hasFocus inputE)
+  pure (w, domEvent Paste inputE)
+
+accountNameFormWidgetNoDropdown
+  :: ( DomBuilder t m
+     , PostBuild t m
+     , MonadHold t m
+     , DomBuilderSpace m ~ GhcjsDomSpace
+     , PerformEvent t m
+     , TriggerEvent t m
+     , MonadJSM (Performable m)
+     )
+  => Dynamic t (AccountName -> Either Text AccountName)
+  -> PrimFormWidgetConfig t (Maybe AccountName)
+  -> m (FormWidget t (Maybe AccountName), Event t (Maybe Text))
+accountNameFormWidgetNoDropdown validateName cfg = do
+  let
+    mkMsg True (Left e) = PopoverState_Error e
+    mkMsg _    _ = PopoverState_Disabled
+
+    validate = ffor validateName $ (<=< mkAccountName)
+
+    showPopover (ie, _) = pure $ (\v t -> mkMsg (not $ T.null t) (v t))
+      <$> current validate
+      <@> fmap T.strip (_inputElement_input ie)
+
+    uiNameInput cfg = do
+      inp <- uiInputElement $ cfg & initialAttributes %~ addToClassAttr "account-input"
       pure (inp, _inputElement_raw inp)
 
   (inputE, _) <- uiInputWithPopover uiNameInput snd showPopover $ pfwc2iec (maybe "" unAccountName) cfg

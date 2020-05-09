@@ -96,10 +96,6 @@ uiAccountDetailsOnChainImpl netname (name, chain, details, account) onClose = Wo
       _ <- displayText "Chain ID" (Pact._chainId chain) "account-details__chain-id"
       -- Notes edit
       notesEdit <- notesEditor $ _vanityAccount_notes $ _account_storage account
-      -- separator
-      horizontalDashedSeparator
-      -- Tx Builder
-      _ <- uiDisplayTxBuilderWithCopy True kAddr
       pure notesEdit
 
     let guardTitle = maybe "Keyset" (const "Guard") $ account ^? account_status
@@ -117,7 +113,7 @@ uiAccountDetailsOnChainImpl netname (name, chain, details, account) onClose = Wo
           AccountGuard_KeySet ksKeys ksPred -> do
             _ <- displayText "Predicate" ksPred ""
             elClass "div" "segment segment_type_tertiary labeled-input" $ do
-              divClass "label labeled-input__label" $ text "Public Keys Associated to Account"
+              divClass "label labeled-input__label" $ text "Public Keys Controlling Account"
               for_ ksKeys $ \key -> uiInputElement $ def
                 & initialAttributes %~ Map.insert "disabled" "disabled" . addToClassAttr "labeled-input__input labeled-input__multiple"
                 & inputElementConfig_initialValue .~ keyToText key

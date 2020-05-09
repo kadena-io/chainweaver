@@ -55,13 +55,16 @@ import           Frontend.Wallet
 import           Frontend.UI.Widgets
 import           Frontend.Foundation
 import           Frontend.JsonData (HasJsonData, HasJsonDataCfg)
+import           Frontend.TxBuilder
 import           Frontend.UI.Dialogs.AccountDetails
 import           Frontend.UI.Dialogs.AddVanityAccount (uiCreateAccountButton, uiCreateAccountDialog)
 import           Frontend.UI.Dialogs.KeyDetails (uiKeyDetails)
 import           Frontend.UI.Dialogs.Receive (uiReceiveModal)
 import           Frontend.UI.Dialogs.WatchRequest (uiWatchRequestDialog)
 import           Frontend.UI.Dialogs.Send (uiSendModal, uiFinishCrossChainTransferModal)
+import           Frontend.UI.KeysetWidget
 import           Frontend.UI.Modal
+import           Frontend.UI.Widgets
 import           Frontend.Network
 ------------------------------------------------------------------------------
 
@@ -89,7 +92,7 @@ type HasUiWalletModelCfg model mConf key m t =
 data AccountDialog
   = AccountDialog_DetailsChain (AccountName, ChainId, AccountDetails, Account)
   | AccountDialog_Details AccountName (Maybe AccountNotes)
-  | AccountDialog_Receive AccountName AccountDetails ChainId
+  | AccountDialog_Receive AccountName ChainId (Maybe AccountDetails)
   | AccountDialog_TransferTo AccountName AccountDetails ChainId
   | AccountDialog_Send (AccountName, ChainId, AccountDetails) (Maybe UnfinishedCrossChainTransfer)
   | AccountDialog_CompleteCrosschain AccountName ChainId UnfinishedCrossChainTransfer
@@ -187,8 +190,7 @@ uiAccountItems model accountsMap = do
         ]
 
     el "tbody" $ do
-      let keys = Set.fromList . fmap (_keyPair_publicKey . _key_pair) . IntMap.elems <$> model ^. wallet_keys
-      events <- listWithKey accountsMap $ uiAccountItem keys
+      events <- listWithKey accountsMap uiAccountItem
       dyn_ $ ffor accountsMap $ \accs ->
         when (null accs) $
           elClass "tr" "wallet__table-row" $ elAttr "td" ("colspan" =: "5" <> "class" =: "wallet__table-cell") $
@@ -201,8 +203,8 @@ uiAccountItems model accountsMap = do
     accModal n = Just . \case
       AccountDialog_Details acc notes -> uiAccountDetails n acc notes
       AccountDialog_DetailsChain acc -> uiAccountDetailsOnChain n acc
-      AccountDialog_Receive name details chain -> uiReceiveModal "Receive" model name details (Just chain)
-      AccountDialog_TransferTo name details chain -> uiReceiveModal "Transfer To" model name details (Just chain)
+      AccountDialog_Receive name chain details -> uiReceiveModal "Receive" model name chain details
+      AccountDialog_TransferTo name details chain -> uiReceiveModal "Transfer To" model name chain (Just details)
       AccountDialog_Send acc mucct -> uiSendModal model acc mucct
       AccountDialog_CompleteCrosschain name chain ucct -> uiFinishCrossChainTransferModal model name chain ucct
       AccountDialog_Create name chain mKey -> uiCreateAccountDialog model name chain mKey
@@ -224,11 +226,10 @@ accursedUnutterableListWithKey dMap f = do
 
 uiAccountItem
   :: forall t m. MonadWidget t m
-  => Dynamic t (Set PublicKey)
-  -> AccountName
+  => AccountName
   -> Dynamic t (AccountInfo Account)
   -> m (Event t AccountDialog)
-uiAccountItem keys name accountInfo = do
+uiAccountItem name accountInfo = do
   let chainMap = _accountInfo_chains <$> accountInfo
       notes = _accountInfo_notes <$> accountInfo
   rec
@@ -286,40 +287,22 @@ uiAccountItem keys name accountInfo = do
         td $ buttons $ switchHold never <=< dyn $ ffor accStatus $ \case
           AccountStatus_Unknown -> pure never
           AccountStatus_DoesNotExist -> do
-            create <- uiCreateAccountButton cfg
-            let keyFromName = hush $ parsePublicKey $ unAccountName name
-            pure $ AccountDialog_Create name chain keyFromName <$ create
+            receive <- receiveButton cfg
+            pure $ AccountDialog_Receive name chain Nothing <$ receive
           AccountStatus_Exists d -> do
-            let ksKeys = d ^. accountDetails_guard . _AccountGuard_KeySet . _1
-            owned <- holdUniqDyn $ (ksKeys `Set.isSubsetOf`) <$> keys
-            switchHold never <=< dyn $ ffor owned $ \case
-              True -> do
-                recv <- receiveButton cfg
-                send <- sendButton cfg
+            let ks = d ^. accountDetails_guard . _AccountGuard_KeySet
+            let uk = (\(k,p) -> UserKeyset k (parseKeysetPred p)) ks
 
-                onCompleteCrossChain <- switchHold never <=< dyn $ ffor dAccount $ \acc ->
-                  case _vanityAccount_unfinishedCrossChainTransfer (_account_storage acc) of
-                    Nothing -> pure never
-                    Just ucct -> fmap (ucct <$) $ completeCrossChainButton cfg
+            let txb = TxBuilder name chain (Just $ userToPactKeyset uk)
+            let bcfg = btnCfgSecondary & uiButtonCfg_class <>~ "wallet__table-button" <> "button_border_none"
+            copyAddress <- copyButton' "Copy Tx Builder" bcfg False (constant $ prettyTxBuilder txb)
 
-                onDetails <- detailsIconButton cfg
-                pure $ leftmost
-                  [ AccountDialog_Receive name d chain <$ recv
-                  , AccountDialog_Send (name, chain, d)
-                      <$> current ( _vanityAccount_unfinishedCrossChainTransfer . _account_storage
-                                    <$> dAccount
-                                  )
-                      <@ send
-                  , AccountDialog_CompleteCrosschain name chain <$> onCompleteCrossChain
-                  , AccountDialog_DetailsChain . (name, chain, d,) <$> current dAccount <@ onDetails
-                  ]
-              False -> do
-                transferTo <- transferToButton cfg
-                onDetails <- detailsIconButton cfg
-                pure $ leftmost
-                  [ AccountDialog_TransferTo name d chain <$ transferTo
-                  , AccountDialog_DetailsChain . (name, chain, d, ) <$> current dAccount <@ onDetails
-                  ]
+            receive <- receiveButton cfg
+            onDetails <- detailsIconButton cfg
+            pure $ leftmost
+              [ AccountDialog_DetailsChain . (name, chain, d,) <$> current dAccount <@ onDetails
+              , AccountDialog_Receive name chain (Just d) <$ receive
+              ]
     pure (balance, dialog)
 
 

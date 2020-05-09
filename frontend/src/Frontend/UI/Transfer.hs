@@ -238,7 +238,7 @@ uiGenericTransfer model cfg = do
     (clear, signTransfer) <- divClass "transfer-fields submit" $ do
       clr <- el "div" $ uiButton btnCfgTertiary $ text "Clear"
       st <- confirmButton (def { _uiButtonCfg_disabled = (isNothing <$> transferInfo) }) "Sign & Transfer"
-      _ <- confirmButton (def { _uiButtonCfg_disabled = (isNothing <$> transferInfo) }) "Quick Transfer"
+      -- _ <- confirmButton (def { _uiButtonCfg_disabled = (isNothing <$> transferInfo) }) "Quick Transfer"
       return (clr, st)
     let netInfo = flip push signTransfer $ \() -> sampleNetInfo model
     let mkModal (Just ti) ni = Just $ lookupAndTransfer model ni ti
@@ -348,7 +348,7 @@ uiTransferButton
   :: ( DomBuilder t m, PostBuild t m, MonadHold t m, MonadFix m)
   => m (Dynamic t Bool)
 uiTransferButton = mdo
-  let buttonText = bool "Show Transfer" "Hide Transfer" <$> isVisible
+  let buttonText = bool "Transfer Coins" "Hide Transfer" <$> isVisible
   click <- uiButton (def & uiButtonCfg_class <>~ " main-header__account-button") $ do
     dynText buttonText
   -- TODO Change this back to False
