@@ -169,7 +169,7 @@ toFormWidget model cfg = mdo
   (tca,onPaste) <- elClass "div" ("segment segment_type_tertiary labeled-input-inline") $ do
     divClass ("label labeled-input__label-inline") $ text "Account"
     divClass "labeled-input__input account-chain-input" $ uiChainAccount model $ mkPfwc (fst <$> cfg)
-      & initialAttributes %~ (<> "placeholder" =: "Account Name or Tx Builder")
+      & initialAttributes %~ (<> "placeholder" =: "Account Name or Paste Tx Builder")
       & setValue %~ modSetValue (Just (Just . mkChainAccount <$> pastedBuilder))
 
   let keysetStartsOpen = case snd (_initialValue cfg) of
@@ -351,8 +351,7 @@ uiTransferButton = mdo
   let buttonText = bool "Transfer Coins" "Hide Transfer" <$> isVisible
   click <- uiButton (def & uiButtonCfg_class <>~ " main-header__account-button") $ do
     dynText buttonText
-  -- TODO Change this back to False
-  isVisible <- toggle True click
+  isVisible <- toggle False click
   return isVisible
 
 checkSendingAccountExists
@@ -552,7 +551,7 @@ transferDialog model netInfo ti fks tks _ = do
       let isDisabled m s = length (_transferMeta_sourceChainSigners m) /= maybe (-1) (length . _cmdSigs) s
       let mkNextButton ct m s = case ct of
             TransferTab_Metadata -> ("Next", constDyn False) -- TODO Properly enable/disable Next button
-            TransferTab_Signatures -> ("Preview", isDisabled <$> meta <*> sc)
+            TransferTab_Signatures -> ("Transfer", isDisabled <$> meta <*> sc)
           (name, disabled) = splitDynPure $ mkNextButton <$> currentTab <*> meta <*> sc
           cfg = def
             & uiButtonCfg_class <>~ "button_type_confirm"

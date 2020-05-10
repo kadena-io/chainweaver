@@ -218,11 +218,16 @@ makeWallet
   -> WalletCfg key t
   -> m (Wallet key t)
 makeWallet mChangePassword model conf = do
+  pb <- getPostBuild
   initialKeys <- fromMaybe IntMap.empty <$> loadKeys
   initialAccounts <- maybe (AccountData mempty) fromStorage <$> loadAccounts
 
   rec
-    onNewKey <- performEvent $ createKey . nextKey <$> current keys <@ _walletCfg_genKey conf
+    onNewKey <- performEvent $ leftmost
+      [ fmapMaybe id $ addStarterKey <$> current keys <@ pb
+      , addNewKey <$> current keys <@ _walletCfg_genKey conf
+      ]
+
     keys <- foldDyn id initialKeys $ leftmost
       [ snocIntMap <$> onNewKey
       , maybe never (fmap IntMap.mapWithKey . _changePassword_updateKeys) mChangePassword
@@ -244,6 +249,9 @@ makeWallet mChangePassword model conf = do
     accounts <- foldDyn id initialAccounts $ leftmost
       [ ffor (_walletCfg_importAccount conf) $ \(net, name) ->
         ((<>) (AccountData $ net =: name =: mempty))
+
+      -- Add the public key as an account to get people started
+      , attachWith addStarterAccount (current $ model ^. network_selectedNetwork) (updated keys)
       , ffor (_walletCfg_updateAccountNotes conf) updateAccountNotes
       , foldr (.) id . fmap updateAccountStatus <$> newStatuses
       , ffor (_walletCfg_setCrossChainTransfer conf) updateCrossChain
@@ -260,6 +268,19 @@ makeWallet mChangePassword model conf = do
     , _wallet_accounts = accounts
     }
   where
+    addStarterKey m = if IntMap.null m then Just (addNewKey m) else Nothing
+    --addStarterAccount :: IntMap (Key key) -> AccountData -> AccountData
+    addStarterAccount net ks ad =
+      case IntMap.toList ks of
+        [(i,k)] -> if Map.size (ad ^. _AccountData . ix net) == 0
+                     then ad <> (AccountData $ net =: (AccountName $ keyToText $ _keyPair_publicKey $ _key_pair k) =: mempty)
+                     else ad
+        _ -> ad
+
+
+    addNewKey :: IntMap a -> Performable m (Key key)
+    addNewKey = createKey . nextKey
+
     fromStorage :: AccountStorage -> AccountData
     fromStorage (AccountStorage m) = AccountData $ (fmap . fmap . fmap) (Account AccountStatus_Unknown) m
 
