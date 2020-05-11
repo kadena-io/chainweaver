@@ -222,7 +222,7 @@ uiGenericTransfer model cfg = do
     transferInfo <- divClass "transfer-fields" $ do
       (fromAcct,amount) <- divClass "transfer__left-pane" $ do
         el "h4" $ text "From"
-        fca <- labeledChainAccount model $ mkCfg (Just $ ChainAccount "0" $ AccountName "doug2")
+        fca <- labeledChainAccount model $ mkCfg Nothing
           & initialAttributes .~ "placeholder" =: "Account Name"
           & setValue .~ (Just $ Nothing <$ clear)
         amt <- mkLabeledInput True "Amount (KDA)" amountFormWidget $ mkCfg (Right 2)
@@ -230,7 +230,7 @@ uiGenericTransfer model cfg = do
         return (fca,amt)
       (toAcct,ks) <- divClass "transfer__right-pane" $ do
         el "h4" $ text "To"
-        toFormWidget model $ mkCfg (Just $ ChainAccount "0" $ AccountName "doug3", Nothing)
+        toFormWidget model $ mkCfg (Nothing, Nothing)
           & setValue .~ (Just $ (Nothing, Nothing) <$ clear)
       return $ runMaybeT $ TransferInfo <$>
         MaybeT (value fromAcct) <*>
