@@ -39,6 +39,7 @@ import           Control.Error hiding (bool, note)
 import           Control.Lens hiding ((.=))
 import           Control.Monad.State.Strict
 import           Data.Aeson
+import           Data.Bifunctor
 import qualified Data.ByteString.Lazy as LB
 import           Data.Decimal
 import           Data.Default (Default (..))
@@ -52,6 +53,7 @@ import qualified Data.Set as Set
 import           Data.Text (Text)
 import qualified Data.Text as T
 import qualified Data.Text.Encoding as T
+import           Data.These (These(This))
 import           Data.Traversable
 import           Data.Time.Clock.POSIX
 import qualified Data.Yaml as Y
@@ -220,7 +222,7 @@ uiGenericTransfer model cfg = do
     transferInfo <- divClass "transfer-fields" $ do
       (fromAcct,amount) <- divClass "transfer__left-pane" $ do
         el "h4" $ text "From"
-        fca <- labeledChainAccount model $ mkCfg Nothing
+        fca <- labeledChainAccount model $ mkCfg (Just $ ChainAccount "0" $ AccountName "doug2")
           & initialAttributes .~ "placeholder" =: "Account Name"
           & setValue .~ (Just $ Nothing <$ clear)
         amt <- mkLabeledInput True "Amount (KDA)" amountFormWidget $ mkCfg (Right 2)
@@ -228,7 +230,7 @@ uiGenericTransfer model cfg = do
         return (fca,amt)
       (toAcct,ks) <- divClass "transfer__right-pane" $ do
         el "h4" $ text "To"
-        toFormWidget model $ mkCfg (Nothing, Nothing)
+        toFormWidget model $ mkCfg (Just $ ChainAccount "0" $ AccountName "doug3", Nothing)
           & setValue .~ (Just $ (Nothing, Nothing) <$ clear)
       return $ runMaybeT $ TransferInfo <$>
         MaybeT (value fromAcct) <*>
@@ -516,18 +518,16 @@ transferDialog model netInfo ti fks tks _ = do
       Nothing -> do
         let nextScreen = ffor (tag (current dSignedCmd) next) $ \case
               Nothing -> Workflow $ pure (mempty, never)
-              Just sc -> Workflow $ do
-                res <- sameChainTransferAndStatus model netInfo ti sc
-                pure (res, never)
+              Just sc -> previewDialog model netInfo ti payload sc $
+                           sameChainTransferAndStatus model netInfo ti sc
         pure ((conf, close <> cancel), nextScreen)
 
       Just (dgp, dss) -> do
         let allDyns = (,,,) <$> current payload <*> current dSignedCmd <*> current dgp <*> current dss
         let nextScreen = ffor (tag allDyns next) $ \case
               (_,Nothing,_,_) -> Workflow $ pure (mempty, never)
-              (p,Just sc,gp,ss) -> Workflow $ do
-                res <- crossChainTransferAndStatus model netInfo ti sc gp ss
-                pure (res, never)
+              (p,Just sc,gp,ss) -> previewDialog model netInfo ti payload sc $
+                                     crossChainTransferAndStatus model netInfo ti sc gp ss
         pure ((conf, close <> cancel), nextScreen)
   where
     mainSection currentTab = elClass "div" "modal__main" $ do
@@ -551,7 +551,7 @@ transferDialog model netInfo ti fks tks _ = do
       let isDisabled m s = length (_transferMeta_sourceChainSigners m) /= maybe (-1) (length . _cmdSigs) s
       let mkNextButton ct m s = case ct of
             TransferTab_Metadata -> ("Next", constDyn False) -- TODO Properly enable/disable Next button
-            TransferTab_Signatures -> ("Transfer", isDisabled <$> meta <*> sc)
+            TransferTab_Signatures -> ("Preview", isDisabled <$> meta <*> sc)
           (name, disabled) = splitDynPure $ mkNextButton <$> currentTab <*> meta <*> sc
           cfg = def
             & uiButtonCfg_class <>~ "button_type_confirm"
@@ -566,20 +566,106 @@ transferDialog model netInfo ti fks tks _ = do
 
       pure (cancel, tabChange, screenChange)
 
+previewTransaction
+  :: ( MonadWidget t m
+     , HasNetwork model t
+     , HasLogger model t
+     , HasTransactionLogger m
+     )
+  => model
+  -> ChainId
+  -> Dynamic t (Payload PublicMeta Text)
+  -> Event t (Command Text)
+  -> m ()
+previewTransaction model chain payload cmd = do
+    let mkReq c = [NetworkRequest c (ChainRef Nothing chain) Endpoint_Local]
+
+    responses <- performLocalRead (model ^. logger) (model ^. network) (mkReq <$> cmd)
+
+    (errors, resp) <- fmap fanThese $ performEvent $ ffor responses $ \case
+      [(_, errorResult)] -> pure $ first prettyPrintNetworkErrors errorResult
+      n -> do
+        putLog model LevelWarn $ "Expected 1 response, but got " <> tshow (length n)
+        pure $ This "Couldn't get a response from the node"
+
+    dialogSectionHeading mempty "Transaction Result"
+    void $ divClass "group segment transaction_details__raw-response"
+      $ runWithReplace (text "Loading...") $ leftmost
+      [ renderResult payload <$> resp
+      , text <$> errors
+      ]
+
+renderResult
+  :: (DomBuilder t m, PostBuild t m)
+  => Dynamic t (Payload PublicMeta Text)
+  -> (Maybe Gas, PactValue) -> m ()
+renderResult payload (mgas, pactValue) = do
+    case mgas of
+      Nothing -> blank
+      Just (Gas gas) -> uiPreviewItem "Gas Used" $ dynText $ (tshow . (fromIntegral gas *) . getGasPrice . _pmGasPrice . _pMeta) <$> payload
+    uiPreviewItem "Result" $ text $ renderCompactText pactValue
+  where
+    getGasPrice (GasPrice p) = p
+
+previewDialog
+  :: ( MonadWidget t m
+     , Monoid mConf
+     , HasNetwork model t
+     , HasLogger model t
+     , HasTransactionLogger m
+     )
+  => model
+  -> SharedNetInfo NodeInfo
+  -> TransferInfo -- TODO Not principle of least context, but quick and dirty for now
+  -> Dynamic t (Payload PublicMeta Text)
+  -> Command Text
+  -> Workflow t m (mConf, Event t ())
+  -> Workflow t m (mConf, Event t ())
+previewDialog model netInfo ti payload cmd next = Workflow $ do
+    let nodeInfos = _sharedNetInfo_nodes netInfo
+    close <- modalHeader $ text "Transfer Preview"
+    _ <- elClass "div" "modal__main transaction_details" $ do
+      dialogSectionHeading mempty "Summary"
+      divClass "group" $ do
+        transactionDisplayNetwork model
+
+        uiPreviewItem "From Account" $ text $ unAccountName fromAccount
+        uiPreviewItem "From Chain" $ text $ _chainId fromChain
+        uiPreviewItem "To Account" $ text $ unAccountName toAccount
+        uiPreviewItem "To Chain" $ text $ _chainId toChain
+        uiPreviewItem "Max Gas" $ dynText ((\m -> tshow $ maxGas (_pmGasLimit m) (_pmGasPrice m)) . _pMeta <$> payload)
+        uiPreviewItem "Amount" $ text $ tshow (_ti_amount ti) <> " KDA"
+      pb <- getPostBuild
+      previewTransaction model fromChain payload (cmd <$ pb)
+      --submitTransactionWithFeedback model cmd fromAccount fromChain (fmap Right nodeInfos)
+    send <- modalFooter $ confirmButton def "Send Transfer"
+    pure ((mempty, close), next <$ send)
+  where
+    fromChain = _ca_chain $ _ti_fromAccount ti
+    fromAccount = _ca_account $ _ti_fromAccount ti
+    toChain = _ca_chain $ _ti_toAccount ti
+    toAccount = _ca_account $ _ti_toAccount ti
+    maxGas (GasLimit lim) (GasPrice p) = fromIntegral lim * p
+
+uiPreviewItem :: DomBuilder t m => Text -> m a -> m a
+uiPreviewItem label val =
+  divClass "segment segment_type_tertiary labeled-input-inline" $
+    divClass "label labeled-input__label-inline" (text label) >> val
+
 sameChainTransferAndStatus
   :: (MonadWidget t m, Monoid mConf, HasLogger model t, HasTransactionLogger m)
   => model
   -> SharedNetInfo NodeInfo
   -> TransferInfo -- TODO Not principle of least context, but quick and dirty for now
   -> Command Text
-  -> m (mConf, Event t ())
-sameChainTransferAndStatus model netInfo ti cmd = do
+  -> Workflow t m (mConf, Event t ())
+sameChainTransferAndStatus model netInfo ti cmd = Workflow $ do
     let nodeInfos = _sharedNetInfo_nodes netInfo
     close <- modalHeader $ text "Transfer Status"
     _ <- elClass "div" "modal__main transaction_details" $
       submitTransactionWithFeedback model cmd fromAccount fromChain (fmap Right nodeInfos)
     done <- modalFooter $ confirmButton def "Done"
-    pure (mempty, close <> done)
+    pure ((mempty, close <> done), never)
   where
     fromChain = _ca_chain $ _ti_fromAccount ti
     fromAccount = _ca_account $ _ti_fromAccount ti
@@ -598,9 +684,9 @@ crossChainTransferAndStatus
   -> Command Text
   -> Maybe (AccountName, AccountStatus AccountDetails)
   -> [Signer]
-  -> m (mConf, Event t ())
-crossChainTransferAndStatus model netInfo ti cmd Nothing destSigners = pure (mempty, never)
-crossChainTransferAndStatus model netInfo ti cmd (Just destGP) destSigners = do
+  -> Workflow t m (mConf, Event t ())
+crossChainTransferAndStatus model netInfo ti cmd Nothing destSigners = Workflow $ pure (mempty, never)
+crossChainTransferAndStatus model netInfo ti cmd (Just destGP) destSigners = Workflow $ do
     let logL = model ^. logger
     let nodeInfos = _sharedNetInfo_nodes netInfo
     close <- modalHeader $ text "Cross Chain Transfer"
@@ -635,7 +721,7 @@ crossChainTransferAndStatus model netInfo ti cmd (Just destGP) destSigners = do
 
       pure resultOk0
     done <- modalFooter $ confirmButton def "Done"
-    pure (mempty, close <> done)
+    pure ((mempty, close <> done), never)
   where
     fromChain = _ca_chain $ _ti_fromAccount ti
     toChain = _ca_chain $ _ti_toAccount ti
@@ -941,7 +1027,7 @@ transferMetadata model netInfo fks tks ti = do
       destChainSigners = case mdestPayer of
         Nothing -> Nothing
         Just dp -> Just $ ( lookupDetails . gpdAccount <$> dp
-                          , traceDynWith (flashyStr "toSigners" . unlines . map show) toSigners )
+                          , toSigners )
 
   performEvent_ (liftIO . putStrLn . ("toSigners changed: "<>) . show <$> updated toSigners)
 
@@ -959,7 +1045,7 @@ transferMetadata model netInfo fks tks ti = do
              <*> lim
              <*> ttl
              <*> (TxCreationTime . ParsedInteger <$> ct)
-             <*> traceDynWith (flashyStr "fromSigners" . unlines . map show) fromSigners
+             <*> fromSigners
       return (conf, meta, destChainSigners)
 
 combineStatus :: AccountStatus a -> AccountStatus a -> AccountStatus a
@@ -1076,10 +1162,7 @@ transferSigs keyStorage payload signers = do
   let cmd = payloadToCommand payload
   let hash = toUntypedHash $ _cmdHash cmd
   _ <- divClass "group" $ do
-    mkLabeledInput True "Request Key" uiInputElement $ def
-      & initialAttributes .~ "disabled" =: "disabled"
-      & inputElementConfig_initialValue .~ (hashToText hash)
-      & inputElementConfig_setValue .~ never
+    uiPreviewItem "Request Key" $ el "code" $ text (hashToText hash)
 
   let mkKeyTuple (KeyPair pub priv) = (pub, priv)
   let cwKeyMap = Map.fromList . map (mkKeyTuple . _key_pair) . IntMap.elems $ keyStorage

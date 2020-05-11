@@ -567,7 +567,7 @@ runUnfinishedCrossChainTransfer logL netInfo keys fromChain toChain toGasPayer r
 
   item contStatus "Got continuation response"
   item spvStatus "SPV proof retrieved"
-  item continueStatus $ "Initiate claiming coin on chain " <> _chainId toChain
+  item continueStatus $ "Initiate claiming coins on chain " <> _chainId toChain
   item resultStatus "Coins retrieved on target chain"
 
   anyError <- holdUniqDyn $ any (== Status_Failed) <$> sequence
@@ -1084,9 +1084,11 @@ getSPVProof
   -> m (Event t (Either Text (Pact.PactExec, Pact.ContProof)))
 getSPVProof model nodeInfos thisChain targetChain e = performEventAsync $ ffor e $ \(requestKey, pe) cb -> do
   liftJSM $ forkJSM $ do
-    proof <- failover $ spvRequests requestKey
+    proof <- failover $ take maxPolls $ cycle $ spvRequests requestKey
     liftIO . cb $ (,) pe <$> proof
   where
+    maxPolls = 12 -- Wait up to 6 blocks for the SPV proof
+    waitTime = 15
     chainUrls = getChainBaseUrl thisChain <$> nodeInfos
     -- Can't use chainweb-node's definition to generate a client, it won't build on GHCJS.
     -- Maybe we can split the API bits out later.
@@ -1096,8 +1098,8 @@ getSPVProof model nodeInfos thisChain targetChain e = performEventAsync $ ffor e
       , "targetChainId" Aeson..= targetChain
       ]
     failover [] = do
-      putLog model LevelWarn "Ran out of nodes to try for SPV proof"
-      pure $ Left "Failed to get SPV proof"
+      putLog model LevelWarn $ "No proof found after " <> tshow (maxPolls * waitTime) <> " seconds"
+      pure $ Left "Failed to get SPV proof.  Save the request key and try to finish the cross-chain transfer later."
     failover (req : rs) = do
       putLog model LevelWarn $ "Sending SPV Request: " <> tshow req
       m <- liftIO newEmptyMVar
@@ -1110,7 +1112,7 @@ getSPVProof model nodeInfos thisChain targetChain e = performEventAsync $ ffor e
         _ -> do
           -- Wait 15 seconds. We should improve this to wait instead of poll,
           -- but this is simple and it works
-          liftIO $ threadDelay $ 15 * 1000 * 1000
+          liftIO $ threadDelay $ waitTime * 1000 * 1000
           case s of
             400 -- If the TX isn't reachable yet. This is fragile if chainweb changes the response message under us.
               | Just "SPV target not reachable: Target of SPV proof can't be reached from the source transaction" <- _xhrResponse_responseText resp
