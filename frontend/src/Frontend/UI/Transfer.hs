@@ -35,6 +35,7 @@ Design Requirements:
 
 module Frontend.UI.Transfer where
 
+import qualified Codec.QRCode as QR
 import           Control.Error hiding (bool, note)
 import           Control.Lens hiding ((.=))
 import           Control.Monad.State.Strict
@@ -225,7 +226,7 @@ uiGenericTransfer model cfg = do
         fca <- labeledChainAccount model $ mkCfg Nothing
           & initialAttributes .~ "placeholder" =: "Account Name"
           & setValue .~ (Just $ Nothing <$ clear)
-        amt <- mkLabeledInput True "Amount (KDA)" amountFormWidget $ mkCfg (Right 2)
+        amt <- mkLabeledInput True "Amount (KDA)" amountFormWidget $ mkCfg (Left "")
           & setValue .~ (Just $ Left "" <$ clear)
         return (fca,amt)
       (toAcct,ks) <- divClass "transfer__right-pane" $ do
