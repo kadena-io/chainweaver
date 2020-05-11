@@ -15,7 +15,7 @@
 .popover__message::after {
   display: none;
   position: absolute;
-  right: 3.3%;
+  right: 0;
   z-index: $popover-z-index;
 }
 
@@ -53,20 +53,21 @@
 .popover__icon {
   position: absolute;
   bottom: 10px;
-  right: 2%;
+  right: 30px;
 }
 
 i.fa.popover__icon-error { color: $danger-red; };
 i.fa.popover__icon-warning { color: $chainweaver-orange; }
 
 /*== pointer tip ==*/
-.popover__message::before {
-  bottom: -20px;
+/* Looks weird in the presence of the triangle icon in combo boxes */
+/*.popover__message::before {
+  bottom: 35px;
   content: "";
   border-left: 1rem solid transparent;
   border-right: 0 solid transparent;
   border-bottom: 1.4rem solid;
-}
+}*/
 
 /*== speech bubble ==*/
 .popover__message::after {
@@ -74,6 +75,8 @@ i.fa.popover__icon-warning { color: $chainweaver-orange; }
   border-radius: .25em;
   content: attr(data-tip);
   padding: 0.4rem;
-  bottom: -50px;
+  /*bottom: -50px;*/
+  /* Used to show up below the field, but moved to above because of poor interaction with combo boxes. */
+  bottom: 45px;
   line-height: initial;
 }
