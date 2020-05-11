@@ -948,6 +948,8 @@ gasCapability = SigCapability
   , _scArgs = []
   }
 
+-- Noticeable debug string
+flashyStr :: String -> String -> String
 flashyStr label a = unlines [dashes, label, a, dashes]
   where
     dashes = "-----------------"
