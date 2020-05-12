@@ -425,16 +425,8 @@ checkReceivingAccount model netInfo ti fks tks fromPair = do
         if (_ca_chain $ _ti_fromAccount ti) /= (_ca_chain $ _ti_toAccount ti)
           then do
             let AccountGuard_KeySet ks p = g
-            let onChainKeyset = UserKeyset ks (parseKeysetPred p)
-            cancel <- fatalTransferError $ do
-              el "div" $ text "Your keyset does not match the on-chain keyset.  Your transfer would fail."
-              el "hr" blank
-              el "div" $ do
-                mkLabeledView False "Keyset You Entered" $ divClass "group" $
-                  text "You didn't enter any keys"
-                mkLabeledView False "On-chain Keyset" $ divClass "group" $
-                  keysetWidget onChainKeyset
-            return ((mempty, cancel), never)
+            let ti2 = ti { _ti_toKeyset = Just $ UserKeyset ks (parseKeysetPred p) }
+            transferDialog model netInfo ti2 fks tks fromPair
           else
             -- Use transfer, probably show the guard at some point
             -- TODO check well-formedness of all keys in the keyset
