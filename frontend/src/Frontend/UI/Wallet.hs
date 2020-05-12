@@ -173,6 +173,7 @@ uiAccountItems model accountsMap = do
     el "colgroup" $ do
       elAttr "col" ("style" =: "width: 30px") blank
       elAttr "col" ("style" =: "width: 180px") blank
+      elAttr "col" ("style" =: "width: 80px") blank
       elAttr "col" ("style" =: "width: 180px") blank
       elAttr "col" ("style" =: "width: 15%") blank
       elAttr "col" ("style" =: "width: 200px") blank
@@ -183,6 +184,7 @@ uiAccountItems model accountsMap = do
       traverse_ mkHeading $
         [ ""
         , "Account Name"
+        , "Owner"
         , "Keyset Info"
         , "Notes"
         , "Balance (KDA)"
@@ -190,7 +192,8 @@ uiAccountItems model accountsMap = do
         ]
 
     el "tbody" $ do
-      events <- listWithKey accountsMap uiAccountItem
+      let cwKeys = model ^. wallet_keys
+      events <- listWithKey accountsMap (uiAccountItem cwKeys)
       dyn_ $ ffor accountsMap $ \accs ->
         when (null accs) $
           elClass "tr" "wallet__table-row" $ elAttr "td" ("colspan" =: "5" <> "class" =: "wallet__table-cell") $
@@ -224,12 +227,56 @@ accursedUnutterableListWithKey dMap f = do
   dm <- holdUniqDyn dMap
   holdDyn mempty <=< dyn $ ffor dm $ \m -> Map.traverseWithKey (\k -> f k . pure) m
 
+data AccountOwnership = SoleOwner | JointOwner | NotOwner
+  deriving (Eq,Ord,Show,Read,Enum)
+
+ownershipText :: AccountOwnership -> Text
+ownershipText SoleOwner = "me"
+ownershipText JointOwner = "joint" -- shared?
+ownershipText NotOwner = "no" -- other?
+
+getAccountOwnership
+  :: Reflex t
+  => Dynamic t (KeyStorage key)
+  -> Dynamic t (Maybe AccountDetails)
+  -> Dynamic t (Maybe AccountOwnership)
+getAccountOwnership dcwKeys dacctDetails = do
+  cwKeys <- dcwKeys
+  mad <- dacctDetails
+
+  case mad of
+    Nothing -> pure Nothing
+    Just acctDetails -> do
+      let cwKeySet = Set.fromList $ map (_keyPair_publicKey . _key_pair) $ IntMap.elems cwKeys
+      pure $ Just $ case acctDetails ^? accountDetails_guard . _AccountGuard_KeySet of
+        -- Keys can't own the non-keyset guards with the exception of GKeySetRef
+        -- which we're not going to worry about for now. Erroneously flagging an
+        -- account as NotOwner is less potentially damaging than erroneously
+        -- flagging it as owned.
+        Nothing -> NotOwner
+        Just (acctKeys, pred) -> do
+          let numAcctKeys = Set.size acctKeys
+              controlCount = case pred of
+                "keys-any" -> 1
+                "keys-2" -> 2
+                "keys-all" -> numAcctKeys
+              calcOwnership cwks =
+                  if numGoodKeys == 0
+                     then NotOwner
+                     else if numGoodKeys == numAcctKeys
+                             then SoleOwner
+                             else JointOwner
+                where
+                  numGoodKeys = Set.size (Set.intersection acctKeys cwks)
+          calcOwnership cwKeySet
+
 uiAccountItem
-  :: forall t m. MonadWidget t m
-  => AccountName
+  :: forall key t m. MonadWidget t m
+  => Dynamic t (KeyStorage key)
+  -> AccountName
   -> Dynamic t (AccountInfo Account)
   -> m (Event t AccountDialog)
-uiAccountItem name accountInfo = do
+uiAccountItem cwKeys name accountInfo = do
   let chainMap = _accountInfo_chains <$> accountInfo
       notes = _accountInfo_notes <$> accountInfo
   rec
@@ -255,8 +302,7 @@ uiAccountItem name accountInfo = do
   keyRow open notes balance = trKey $ do
     let accordionCell o = "wallet__table-cell" <> if o then "" else " accordion-collapsed"
     clk <- elDynClass "td" (accordionCell <$> open) $ accordionButton def
-    td $ text $ unAccountName name
-    td blank -- Keyset info column
+    elAttr "td" ("class" =: "wallet__table-cell" <> "colspan" =: "3") $ text $ unAccountName name
     td $ dynText $ maybe "" unAccountNotes <$> notes
     td' " wallet__table-cell-balance" $ dynText balance
     onDetails <- td $ buttons $ detailsIconButton cfg
@@ -268,7 +314,8 @@ uiAccountItem name accountInfo = do
     -> Dynamic t Account
     -> m (Dynamic t (Maybe AccountBalance), Event t AccountDialog)
   accountRow visible chain dAccount = do
-    let balance = (^? account_status . _AccountStatus_Exists . accountDetails_balance) <$> dAccount
+    let details = (^? account_status . _AccountStatus_Exists) <$> dAccount
+    let balance = _accountDetails_balance <$$> details
     -- Previously we always added all chain rows, but hid them with CSS. A bug
     -- somewhere between reflex-dom and jsaddle means we had to push this under
     -- a `dyn`.
@@ -277,6 +324,7 @@ uiAccountItem name accountInfo = do
       True -> trAcc $ do
         td blank -- Arrow column
         td $ text $ "Chain ID: " <> _chainId chain
+        td $ dynText $ maybe "" ownershipText <$> getAccountOwnership cwKeys details
         accStatus <- holdUniqDyn $ _account_status <$> dAccount
         elClass "td" "wallet__table-cell wallet__table-cell-keyset" $ dynText $ ffor accStatus $ \case
           AccountStatus_Unknown -> "Unknown"
