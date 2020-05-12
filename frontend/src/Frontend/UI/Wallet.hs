@@ -44,6 +44,7 @@ import qualified Data.Text                   as T
 import           Obelisk.Generated.Static
 import           Reflex
 import           Reflex.Dom hiding (Key)
+import           Text.Read
 ------------------------------------------------------------------------------
 import qualified Pact.Types.Pretty as Pact
 import qualified Pact.Types.Term   as Pact
@@ -193,7 +194,8 @@ uiAccountItems model accountsMap = do
 
     el "tbody" $ do
       let cwKeys = model ^. wallet_keys
-      events <- listWithKey accountsMap (uiAccountItem cwKeys)
+          startsOpen = (\m -> Map.size m == 1) <$> accountsMap
+      events <- listWithKey accountsMap (uiAccountItem cwKeys startsOpen)
       dyn_ $ ffor accountsMap $ \accs ->
         when (null accs) $
           elClass "tr" "wallet__table-row" $ elAttr "td" ("colspan" =: "5" <> "class" =: "wallet__table-cell") $
@@ -231,7 +233,7 @@ data AccountOwnership = SoleOwner | JointOwner | NotOwner
   deriving (Eq,Ord,Show,Read,Enum)
 
 ownershipText :: AccountOwnership -> Text
-ownershipText SoleOwner = "me"
+ownershipText SoleOwner = "yes"
 ownershipText JointOwner = "joint" -- shared?
 ownershipText NotOwner = "no" -- other?
 
@@ -272,27 +274,36 @@ getAccountOwnership dcwKeys dacctDetails = do
 
 newtype OrderedChain = OrderedChain { getOrderedChain :: ChainId }
 
-chainIdToInt :: ChainId -> Int
-chainIdToInt = read . T.unpack . _chainId
+padChainId :: Int -> ChainId -> ChainId
+padChainId n (ChainId c) =
+  case readMaybe (T.unpack c) :: Maybe Int of
+    Nothing -> ChainId c
+    Just _ -> ChainId $ T.replicate (n - T.length c) "0" <> c
 
 uiAccountItem
   :: forall key t m. MonadWidget t m
   => Dynamic t (KeyStorage key)
+  -> Dynamic t Bool
   -> AccountName
   -> Dynamic t (AccountInfo Account)
   -> m (Event t AccountDialog)
-uiAccountItem cwKeys name accountInfo = do
+uiAccountItem cwKeys startsOpen name accountInfo = do
   let chainMap = _accountInfo_chains <$> accountInfo
 
-      -- Chains get sorted in text order which is wrong for more than 10 chains
-      orderedChainMap = Map.mapKeys chainIdToInt <$> chainMap
+      -- Chains get sorted in text order without padding is wrong for more than 10 chains
+      padKeys m = Map.mapKeys (padChainId maxKeyLen) m
+        where
+          maxKeyLen = maximum $ map (T.length . _chainId) $ Map.keys m
+      orderedChainMap = padKeys <$> chainMap
+
       notes = _accountInfo_notes <$> accountInfo
   rec
     (clk, dialog) <- keyRow visible notes $ ffor balances $ \xs0 -> case catMaybes xs0 of
       [] -> "Does not exist"
       xs -> uiAccountBalance False $ Just $ sum xs
 
-    visible <- toggle False clk
+    v0 <- sample $ current startsOpen
+    visible <- toggle v0 clk
     results <- accursedUnutterableListWithKey orderedChainMap $ accountRow visible
     let balances :: Dynamic t [Maybe AccountBalance]
         balances = fmap Map.elems $ joinDynThroughMap $ (fmap . fmap) fst results
@@ -320,11 +331,10 @@ uiAccountItem cwKeys name accountInfo = do
 
   accountRow
     :: Dynamic t Bool
-    -> Int
+    -> ChainId
     -> Dynamic t Account
     -> m (Dynamic t (Maybe AccountBalance), Event t AccountDialog)
-  accountRow visible chainNum dAccount = do
-    let chain = ChainId $ tshow chainNum
+  accountRow visible chain dAccount = do
     let details = (^? account_status . _AccountStatus_Exists) <$> dAccount
     let balance = _accountDetails_balance <$$> details
     -- Previously we always added all chain rows, but hid them with CSS. A bug
@@ -334,7 +344,7 @@ uiAccountItem cwKeys name accountInfo = do
       False -> pure never
       True -> trAcc $ do
         td blank -- Arrow column
-        td $ text $ "Chain ID: " <> _chainId chain
+        td $ text $ "Chain " <> _chainId chain
         td $ dynText $ maybe "" ownershipText <$> getAccountOwnership cwKeys details
         accStatus <- holdUniqDyn $ _account_status <$> dAccount
         elClass "td" "wallet__table-cell wallet__table-cell-keyset" $ dynText $ ffor accStatus $ \case
