@@ -857,9 +857,10 @@ gasPayersSection
      )
   => model
   -> SharedNetInfo NodeInfo
+  -> Map AccountName (AccountStatus AccountDetails)
   -> TransferInfo
   -> m (GasPayers t)
-gasPayersSection model netInfo ti = do
+gasPayersSection model netInfo fks ti = do
     let fromChain = _ca_chain (_ti_fromAccount ti)
         fromAccount = _ca_account (_ti_fromAccount ti)
         toChain = _ca_chain (_ti_toAccount ti)
@@ -889,7 +890,8 @@ gasPayersSection model netInfo ti = do
     -- should we let the user choose different signers for the source and dest chain?
     gp1Keys <- networkHold (return never)
                            (getGasPayerKeys fromChain <$> gp1Debounced)
-    gp1 <- foldDyn ($) (GasPayerDetails fromChain (Just fromAccount) Nothing) $ leftmost
+    let initialDetails = Map.lookup fromAccount fks
+    gp1 <- foldDyn ($) (GasPayerDetails fromChain (Just fromAccount) initialDetails) $ leftmost
       [ (\a gp -> gp { gpdAccount = a }) <$> updated dgp1
       , (\keys gp -> gp { gpdDetails = keys }) <$> switch (current gp1Keys)
       ]
@@ -963,7 +965,6 @@ transferMetadata
         -- Destination chain gas payer and signer information when there is a cross-chain transfer
         Maybe (Dynamic t (Maybe (AccountName, AccountStatus AccountDetails)), Dynamic t [Signer]))
 transferMetadata model netInfo fks tks ti = do
-  (GasPayers srcPayer mdestPayer) <- gasPayersSection model netInfo ti
   let fromChain = _ca_chain $ _ti_fromAccount ti
       fromAccount = _ca_account $ _ti_fromAccount ti
       toChain = _ca_chain $ _ti_toAccount ti
@@ -971,20 +972,27 @@ transferMetadata model netInfo fks tks ti = do
       amount = _ti_amount ti
       ks = Map.fromList [(fromChain, fks), (toChain, tks)]
 
+  dialogSectionHeading mempty "Important"
+  divClass "group" $ text $ T.pack $ printf
+    "This is a cross-chain transfer.  You must choose an account that has coins on chain %s as the chain %s gas payer otherwise your coins will not arrive!  They will be stuck in transit.  If this happens, they can stil be recovered.  Save the request key and get someone with coins on that chain to finish the cross-chain transfer for you." (_chainId toChain) (_chainId toChain)
+  el "br" blank
+
+  (GasPayers srcPayer mdestPayer) <- gasPayersSection model netInfo fks ti
+
   let senderAction = getKeysetActionSingle fromChain (Just fromAccount) (Map.lookup fromAccount fks)
       getGpdAction (GasPayerDetails f a d) = getKeysetActionSingle f a d
-      dSourceGasAction = getGpdAction <$> traceDynWith (flashyStr "srcPayer" . show) srcPayer
+      dSourceGasAction = getGpdAction <$> srcPayer
       dDestGasAction = getGpdAction <$$> mdestPayer
       actions = do
         sga <- dSourceGasAction
         case dDestGasAction of
           Nothing -> pure $ Set.toList $ Set.fromList [senderAction, sga]
           Just ddga -> do
-            dga <- traceDynWith (flashyStr "destPayer" . show) ddga
+            dga <- ddga
             pure $ Set.toList $ Set.fromList [senderAction, sga, dga]
 
   -- TODO Filter out ambiguous accounts that Chainweaver knows how to sign for
-  esigners <- networkView (signersSection <$> traceDynWith (flashyStr "actions" . unlines . map show) actions)
+  esigners <- networkView (signersSection <$> actions)
   signTuples <- fmap join $ holdDyn (constDyn mempty) esigners
 
   -- To get the final list of signers we need to take all the public keys from
@@ -996,7 +1004,7 @@ transferMetadata model netInfo fks tks ti = do
   let mkSigner (k, caps) = Signer Nothing (keyToText k) Nothing caps
 
       -- Get just the keys for coin.TRANSFER
-      fromTxKeys = fromMaybe [] . Map.lookup (fromChain, fromAccount) <$> traceDynWith (flashyStr "signTuples" . show) signTuples
+      fromTxKeys = fromMaybe [] . Map.lookup (fromChain, fromAccount) <$> signTuples
 
       -- Get just the keys for coin.GAS
       lookupGas chain Nothing = mempty
@@ -1061,6 +1069,9 @@ signersSection actions = do
         unamb = Map.fromList $ map (\(c,a,uk) -> ((c,a), Set.toList $ _userKeyset_keys uk)) $
                   actions ^.. each . _KeysetUnambiguous
         ukToKeys (c,a,uk) = (c,a,) <$> Set.toList (_userKeyset_keys uk)
+        errors = actions ^.. each . _KeysetError
+    when (not $ null errors) $ divClass "group" $ do
+      mapM_ (el "div" . text) errors
     ambig <- if (null ambiguous)
       then return $ constDyn mempty
       else do
@@ -1091,9 +1102,9 @@ getKeysetActionSingle _ Nothing _ = KeysetNoAction
 getKeysetActionSingle c (Just a) mDetails =
   case mDetails of
     Nothing -> KeysetError $ T.pack $
-      printf "Couldn't find account %s on chain %s" (unAccountName a) (show c)
+      printf "Couldn't find account %s on chain %s" (unAccountName a) (_chainId c)
     Just AccountStatus_DoesNotExist -> KeysetError $ T.pack $
-      printf "Account %s does not exist on chain %s" (unAccountName a) (show c)
+      printf "Account %s does not exist on chain %s" (unAccountName a) (_chainId c)
     Just AccountStatus_Unknown -> KeysetNoAction -- TODO not sure about this
     Just (AccountStatus_Exists (AccountDetails _ g)) -> do
       case g of
