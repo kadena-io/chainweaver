@@ -50,6 +50,11 @@
   margin-bottom: 10px;
 }
 
+.labeled-preview {
+  text-overflow: ellipsis;
+  overflow-x: hidden;
+}
+
 .input_type_textarea.labeled-input__input {
     min-height: 115px;
 }

@@ -649,8 +649,9 @@ previewDialog model netInfo ti payload cmd next = Workflow $ do
 
 uiPreviewItem :: DomBuilder t m => Text -> m a -> m a
 uiPreviewItem label val =
-  divClass "segment segment_type_tertiary labeled-input-inline" $
-    divClass "label labeled-input__label-inline" (text label) >> val
+  divClass "segment segment_type_tertiary labeled-input-inline" $ do
+    divClass "label labeled-input__label-inline" (text label)
+    divClass "labeled-preview" val
 
 sameChainTransferAndStatus
   :: (MonadWidget t m, Monoid mConf, HasLogger model t, HasTransactionLogger m)
