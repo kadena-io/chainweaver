@@ -116,9 +116,10 @@ app sidebarExtra fileFFI appCfg = Store.versionedFrontend (Store.versionedStorag
           watchCfg <- uiWatchRequestButton ideL
           addCfg <- uiAddAccountButton ideL
           pure $ (xferVisible, watchCfg <> addCfg <> refreshCfg)
-        transferCfg <- uiGenericTransfer ideL $ TransferCfg transferVisible never never
-        accountsCfg <- uiAccountsTable ideL
-        pure $ netCfg <> barCfg <> accountsCfg <> transferCfg
+        divClass "wallet-scroll-wrapper" $ do
+          transferCfg <- uiGenericTransfer ideL $ TransferCfg transferVisible never never
+          accountsCfg <- uiAccountsTable ideL
+          pure $ netCfg <> barCfg <> accountsCfg <> transferCfg
       FrontendRoute_Keys -> mkPageContent "keys" $ do
         walletBarCfg <- underNetworkBar "Keys" uiGenerateKeyButton
         walletCfg <- uiWallet ideL

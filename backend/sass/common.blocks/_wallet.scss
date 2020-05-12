@@ -6,9 +6,13 @@
 
 @import '../include/defs';
 
+.wallet-scroll-wrapper {
+  overflow: auto;
+}
+
 .wallet__keys-list {
   padding-left: 22px;
-  overflow: auto;
+  margin-top: 3px; /* Make the bottom border of the transfer section visible */
 }
 
 .wallet__table-row {

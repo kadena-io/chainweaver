@@ -171,4 +171,4 @@ minWindowSize :: (Int, Int)
 minWindowSize = (800, 600)
 
 defaultWindowSize :: (Int, Int)
-defaultWindowSize = (1400, 900)
+defaultWindowSize = (1280, 800)

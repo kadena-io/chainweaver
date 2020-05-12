@@ -182,7 +182,7 @@ toFormWidget model cfg = mdo
     [ const not <$> clk
     , const True <$ pastedBuilder
     ]
-  (clk,(_,k)) <- controlledAccordionItem keysetOpen mempty (accordionHeaderBtn "Keyset") $ do
+  (clk,(_,k)) <- controlledAccordionItem keysetOpen mempty (accordionHeaderBtn "Owner Keyset") $ do
     keysetFormWidget $ (snd <$> cfg)
       & setValue %~ modSetValue (Just (fmap userFromPactKeyset . _txBuilder_keyset <$> pastedBuilder))
 
@@ -470,7 +470,7 @@ handleMissingKeyset model netInfo ti fks tks fromPair = do
     case parsePublicKey toAccountText of
       Left _ -> do
         cancel <- fatalTransferError $
-          el "div" $ text "Account does not exist, you must specify a keyset."
+          el "div" $ text $ "Receiving account " <> toAccountText <> " does not exist. You must specify a keyset to create this account."
         return ((mempty, cancel), never)
       Right pk -> do
         close <- modalHeader $ text "Account Keyset"
@@ -603,7 +603,7 @@ renderResult
 renderResult payload (mgas, pactValue) = do
     case mgas of
       Nothing -> blank
-      Just (Gas gas) -> uiPreviewItem "Gas Used" $ dynText $ (tshow . (fromIntegral gas *) . getGasPrice . _pmGasPrice . _pMeta) <$> payload
+      Just (Gas gas) -> uiPreviewItem "Gas Cost" $ dynText $ ((<> " KDA") . tshow . (fromIntegral gas *) . getGasPrice . _pmGasPrice . _pMeta) <$> payload
     uiPreviewItem "Result" $ text $ renderCompactText pactValue
   where
     getGasPrice (GasPrice p) = p
@@ -634,7 +634,6 @@ previewDialog model netInfo ti payload cmd next = Workflow $ do
         uiPreviewItem "From Chain" $ text $ _chainId fromChain
         uiPreviewItem "To Account" $ text $ unAccountName toAccount
         uiPreviewItem "To Chain" $ text $ _chainId toChain
-        uiPreviewItem "Max Gas" $ dynText ((\m -> tshow $ maxGas (_pmGasLimit m) (_pmGasPrice m)) . _pMeta <$> payload)
         uiPreviewItem "Amount" $ text $ tshow (_ti_amount ti) <> " KDA"
       pb <- getPostBuild
       previewTransaction model fromChain payload (cmd <$ pb)
