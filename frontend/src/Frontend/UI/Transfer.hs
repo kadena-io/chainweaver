@@ -35,7 +35,6 @@ Design Requirements:
 
 module Frontend.UI.Transfer where
 
-import qualified Codec.QRCode as QR
 import           Control.Error hiding (bool, note)
 import           Control.Lens hiding ((.=))
 import           Control.Monad.State.Strict
