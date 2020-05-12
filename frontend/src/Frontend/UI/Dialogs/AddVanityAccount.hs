@@ -70,7 +70,7 @@ uiAddAccountButton
   => ModalIde m key t
   -> m mConf
 uiAddAccountButton m = do
-  eOpenAddAccount <- uiButton (def & uiButtonCfg_class <>~ " main-header__add-account-button")  (text "+ Add Account")
+  eOpenAddAccount <- uiButton headerBtnCfg  (text "+ Add Account")
   pure $ mempty & modalCfg_setModal .~ (Just (uiAddAccountDialog m) <$ eOpenAddAccount)
 
 uiAddAccountDialog

@@ -23,6 +23,8 @@ module Frontend.UI.Button
   , btnCfgPrimary
   , btnCfgSecondary
   , btnCfgTertiary
+  , headerBtnCfg
+  , headerBtnCfgPrimary
     -- * Primitives
   , uiButton
   , uiButtonDyn
@@ -127,6 +129,16 @@ btnCfgTertiary
   :: (Default (UiButtonCfgRep f), IsString (ReflexValue f CssClass))
   => UiButtonCfgRep f
 btnCfgTertiary = def & uiButtonCfg_class .~ "button_type_tertiary"
+
+headerBtnCfg
+  :: (Default (UiButtonCfgRep f), IsString (ReflexValue f CssClass), Semigroup (ReflexValue f CssClass))
+  => UiButtonCfgRep f
+headerBtnCfg = btnCfgPrimary & uiButtonCfg_class %~ (<> "main-header__button")
+
+headerBtnCfgPrimary
+  :: (Default (UiButtonCfgRep f), IsString (ReflexValue f CssClass), Semigroup (ReflexValue f CssClass))
+  => UiButtonCfgRep f
+headerBtnCfgPrimary = btnCfgPrimary & uiButtonCfg_class %~ (<> "main-header__button main-header__primary-button")
 
 -- | Constraints needed for a static button
 type StaticButtonConstraints t m =

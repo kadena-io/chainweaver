@@ -112,9 +112,9 @@ app sidebarExtra fileFFI appCfg = Store.versionedFrontend (Store.versionedStorag
         netCfg <- networkBar ideL
         (transferVisible, barCfg) <- controlBar "Accounts You Are Watching" $ do
           refreshCfg <- uiWalletRefreshButton
-          xferVisible <- uiTransferButton
           watchCfg <- uiWatchRequestButton ideL
           addCfg <- uiAddAccountButton ideL
+          xferVisible <- uiTransferButton
           pure $ (xferVisible, watchCfg <> addCfg <> refreshCfg)
         divClass "wallet-scroll-wrapper" $ do
           transferCfg <- uiGenericTransfer ideL $ TransferCfg transferVisible never never
@@ -381,7 +381,7 @@ controlBarRight fileFFI appCfg m = do
     signoutBtn = signoutButton $
       headerBtnCfg & uiButtonCfg_title .~ Just "Sign out from GitHub"
 
-    deployBtn = uiButton (headerBtnCfg & uiButtonCfg_class <>~ "main-header__deploy-button") $
+    deployBtn = uiButton (headerBtnCfg & uiButtonCfg_class <>~ "main-header__primary-button") $
       text $ "Deploy"
 
     loadReplBtn =
@@ -401,11 +401,6 @@ controlBarRight fileFFI appCfg m = do
       let cfg = headerBtnCfg & uiButtonCfg_title ?~ "Open a local contract"
       uiButtonWithOnClick (_fileFFI_openFileDialog fileFFI FileType_Pact) cfg $ do
         text "Open File"
-
-headerBtnCfg
-  :: (Default (UiButtonCfgRep f), IsString (ReflexValue f CssClass), Semigroup (ReflexValue f CssClass))
-  => UiButtonCfgRep f
-headerBtnCfg = btnCfgPrimary & uiButtonCfg_class %~ (<> "main-header__button")
 
 resourcesWidget
   :: (DomBuilder t m)

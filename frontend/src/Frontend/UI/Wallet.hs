@@ -102,7 +102,7 @@ uiWalletRefreshButton
   :: (MonadWidget t m, Monoid mConf, HasWalletCfg mConf key t)
   => m mConf
 uiWalletRefreshButton = do
-  eRefresh <- uiButton (def & uiButtonCfg_class <>~ " main-header__wallet-refresh-button")  (text "Refresh")
+  eRefresh <- uiButton headerBtnCfg (text "Refresh")
   pure $ mempty & walletCfg_refreshBalances <>~ eRefresh
 
 uiWatchRequestButton
@@ -115,7 +115,7 @@ uiWatchRequestButton
      )
   => model -> m mConf
 uiWatchRequestButton model = do
-  watch <- uiButton (def & uiButtonCfg_class <>~ " main-header__wallet-refresh-button")  (text "Check Tx Status")
+  watch <- uiButton headerBtnCfg (text "Check Tx Status")
   pure $ mempty & modalCfg_setModal .~ (Just (uiWatchRequestDialog model) <$ watch)
 
 -- | UI for managing the keys wallet.
@@ -270,6 +270,11 @@ getAccountOwnership dcwKeys dacctDetails = do
                   numGoodKeys = Set.size (Set.intersection acctKeys cwks)
           calcOwnership cwKeySet
 
+newtype OrderedChain = OrderedChain { getOrderedChain :: ChainId }
+
+chainIdToInt :: ChainId -> Int
+chainIdToInt = read . T.unpack . _chainId
+
 uiAccountItem
   :: forall key t m. MonadWidget t m
   => Dynamic t (KeyStorage key)
@@ -278,6 +283,9 @@ uiAccountItem
   -> m (Event t AccountDialog)
 uiAccountItem cwKeys name accountInfo = do
   let chainMap = _accountInfo_chains <$> accountInfo
+
+      -- Chains get sorted in text order which is wrong for more than 10 chains
+      orderedChainMap = Map.mapKeys chainIdToInt <$> chainMap
       notes = _accountInfo_notes <$> accountInfo
   rec
     (clk, dialog) <- keyRow visible notes $ ffor balances $ \xs0 -> case catMaybes xs0 of
@@ -285,7 +293,7 @@ uiAccountItem cwKeys name accountInfo = do
       xs -> uiAccountBalance False $ Just $ sum xs
 
     visible <- toggle False clk
-    results <- accursedUnutterableListWithKey chainMap $ accountRow visible
+    results <- accursedUnutterableListWithKey orderedChainMap $ accountRow visible
     let balances :: Dynamic t [Maybe AccountBalance]
         balances = fmap Map.elems $ joinDynThroughMap $ (fmap . fmap) fst results
   let dialogs = switch $ leftmost . fmap snd . Map.elems <$> current results
@@ -302,7 +310,9 @@ uiAccountItem cwKeys name accountInfo = do
   keyRow open notes balance = trKey $ do
     let accordionCell o = "wallet__table-cell" <> if o then "" else " accordion-collapsed"
     clk <- elDynClass "td" (accordionCell <$> open) $ accordionButton def
-    elAttr "td" ("class" =: "wallet__table-cell" <> "colspan" =: "3") $ text $ unAccountName name
+    elAttr "td" ("class" =: "wallet__table-cell") $ text $ unAccountName name
+    td blank
+    td blank
     td $ dynText $ maybe "" unAccountNotes <$> notes
     td' " wallet__table-cell-balance" $ dynText balance
     onDetails <- td $ buttons $ detailsIconButton cfg
@@ -310,10 +320,11 @@ uiAccountItem cwKeys name accountInfo = do
 
   accountRow
     :: Dynamic t Bool
-    -> ChainId
+    -> Int
     -> Dynamic t Account
     -> m (Dynamic t (Maybe AccountBalance), Event t AccountDialog)
-  accountRow visible chain dAccount = do
+  accountRow visible chainNum dAccount = do
+    let chain = ChainId $ tshow chainNum
     let details = (^? account_status . _AccountStatus_Exists) <$> dAccount
     let balance = _accountDetails_balance <$$> details
     -- Previously we always added all chain rows, but hid them with CSS. A bug
@@ -463,5 +474,5 @@ uiGenerateKeyButton
   :: (MonadWidget t m, Monoid mConf, HasWalletCfg mConf key t)
   => m mConf
 uiGenerateKeyButton = do
-  e <- uiButton (def & uiButtonCfg_class <>~ " main-header__add-account-button")  (text "+ Generate Key")
+  e <- uiButton headerBtnCfg (text "+ Generate Key")
   pure $ mempty & walletCfg_genKey .~ e

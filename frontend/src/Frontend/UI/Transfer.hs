@@ -351,7 +351,7 @@ uiTransferButton
   => m (Dynamic t Bool)
 uiTransferButton = mdo
   let buttonText = bool "Transfer Coins" "Hide Transfer" <$> isVisible
-  click <- uiButton (def & uiButtonCfg_class <>~ " main-header__account-button") $ do
+  click <- uiButton (headerBtnCfgPrimary & uiButtonCfg_class <>~ " main-header__account-button") $ do
     dynText buttonText
   isVisible <- toggle False click
   return isVisible
