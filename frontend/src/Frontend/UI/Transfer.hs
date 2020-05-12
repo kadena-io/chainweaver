@@ -849,7 +849,8 @@ data GasPayerDetails = GasPayerDetails
   { gpdChain :: ChainId
   , gpdAccount :: Maybe AccountName
   , gpdDetails :: Maybe (AccountStatus AccountDetails)
-  }
+  } deriving (Eq,Show)
+
 -- Fields in this structure are Dynamic because they get consumed independently
 data GasPayers t = GasPayers
   { srcChainGasPayer :: Dynamic t GasPayerDetails
@@ -978,19 +979,20 @@ transferMetadata model netInfo fks tks ti = do
       amount = _ti_amount ti
       ks = Map.fromList [(fromChain, fks), (toChain, tks)]
 
-  let senderAction = getKeysetActionSingle fromChain fks (Just fromAccount)
-      dgasAction = getKeysetActionSingle fromChain fks . gpdAccount <$> srcPayer
-      dDestGasAction = getKeysetActionSingle toChain tks . gpdAccount <$$> mdestPayer
+  let senderAction = getKeysetActionSingle fromChain (Just fromAccount) (Map.lookup fromAccount fks)
+      getGpdAction (GasPayerDetails f a d) = getKeysetActionSingle f a d
+      dSourceGasAction = getGpdAction <$> traceDynWith (flashyStr "srcPayer" . show) srcPayer
+      dDestGasAction = getGpdAction <$$> mdestPayer
       actions = do
-        ga <- dgasAction
+        sga <- dSourceGasAction
         case dDestGasAction of
-          Nothing -> pure $ Set.toList $ Set.fromList [senderAction, ga]
+          Nothing -> pure $ Set.toList $ Set.fromList [senderAction, sga]
           Just ddga -> do
-            dga <- ddga
-            pure $ Set.toList $ Set.fromList [senderAction, ga, dga]
+            dga <- traceDynWith (flashyStr "destPayer" . show) ddga
+            pure $ Set.toList $ Set.fromList [senderAction, sga, dga]
 
   -- TODO Filter out ambiguous accounts that Chainweaver knows how to sign for
-  esigners <- networkView (signersSection <$> actions)
+  esigners <- networkView (signersSection <$> traceDynWith (flashyStr "actions" . unlines . map show) actions)
   signTuples <- fmap join $ holdDyn (constDyn mempty) esigners
 
   -- To get the final list of signers we need to take all the public keys from
@@ -1002,7 +1004,7 @@ transferMetadata model netInfo fks tks ti = do
   let mkSigner (k, caps) = Signer Nothing (keyToText k) Nothing caps
 
       -- Get just the keys for coin.TRANSFER
-      fromTxKeys = fromMaybe [] . Map.lookup (fromChain, fromAccount) <$> signTuples
+      fromTxKeys = fromMaybe [] . Map.lookup (fromChain, fromAccount) <$> traceDynWith (flashyStr "signTuples" . show) signTuples
 
       -- Get just the keys for coin.GAS
       lookupGas chain Nothing = mempty
@@ -1055,18 +1057,6 @@ combineStatus a@(AccountStatus_Exists _) _ = a
 combineStatus _ a@(AccountStatus_Exists _) = a
 combineStatus a _ = a
 
-getKeysetActions
-  :: TransferInfo
-  -> Map ChainId (Map AccountName (AccountStatus AccountDetails))
-  -> [(ChainId, Maybe AccountName)]
-  -> [KeysetAction]
-getKeysetActions ti ks gps = map (getKeysetAction ks) signers
-  where
-    fromAccount = _ca_account $ _ti_fromAccount ti
-    fromChain = _ca_chain $ _ti_fromAccount ti
-    fromPair = (fromChain, Just fromAccount)
-    signers = if fromPair `elem` gps then gps else (fromPair : gps)
-
 -- | Returns a list of all the keys that should be signed with and their
 -- associated chains and account names. These are either there because they were
 -- unambiguous (keys-all or a single-key keyset) or the user selected them.
@@ -1100,35 +1090,14 @@ singleSigner (c, a, UserKeyset keys p) = do
       return $ bool Nothing (Just key) <$> value c
     pure $ Map.singleton (c, a) . catMaybes <$> distributeListOverDyn res
 
-getKeysetAction
-  :: Map ChainId (Map AccountName (AccountStatus AccountDetails))
-  -> (ChainId, Maybe AccountName)
-  -> KeysetAction
-getKeysetAction _ (_,Nothing) = KeysetNoAction
-getKeysetAction allKeys (c,Just a) =
-  case Map.lookup a =<< Map.lookup c allKeys of
-    Nothing -> KeysetError $ T.pack $
-      printf "Couldn't find account %s on chain %s" (unAccountName a) (show c)
-    Just AccountStatus_DoesNotExist -> KeysetError $ T.pack $
-      printf "Account %s does not exist on chain %s" (unAccountName a) (show c)
-    Just AccountStatus_Unknown -> KeysetNoAction -- TODO not sure about this
-    Just (AccountStatus_Exists (AccountDetails _ g)) -> do
-      case g of
-        AccountGuard_Other _ -> KeysetNoAction
-        AccountGuard_KeySet keys p -> do
-          let ks = UserKeyset keys (parseKeysetPred p)
-          if unambiguousKeyset keys p
-            then KeysetUnambiguous (c, a, ks)
-            else KeysetAmbiguous (c, a, ks)
-
 getKeysetActionSingle
   :: ChainId
-  -> Map AccountName (AccountStatus AccountDetails)
   -> Maybe AccountName
+  -> Maybe (AccountStatus AccountDetails)
   -> KeysetAction
-getKeysetActionSingle _ _ (Nothing) = KeysetNoAction
-getKeysetActionSingle c keyDetails (Just a) =
-  case Map.lookup a keyDetails of
+getKeysetActionSingle _ Nothing _ = KeysetNoAction
+getKeysetActionSingle c (Just a) mDetails =
+  case mDetails of
     Nothing -> KeysetError $ T.pack $
       printf "Couldn't find account %s on chain %s" (unAccountName a) (show c)
     Just AccountStatus_DoesNotExist -> KeysetError $ T.pack $
