@@ -809,7 +809,8 @@ buildUnsignedCmd netInfo ti tmeta = payload
     price = _transferMeta_gasPrice tmeta
     ttl = _transferMeta_ttl tmeta
     ct = _transferMeta_creationTime tmeta
-    meta = PublicMeta fromChain (fromAccount) lim price ttl ct
+    sender = maybe "" unAccountName $ _transferMeta_senderAccount tmeta
+    meta = PublicMeta fromChain sender lim price ttl ct
 
     signers = _transferMeta_sourceChainSigners tmeta
 
@@ -912,7 +913,8 @@ gasPayersSection model netInfo fks ti = do
 
 
 data TransferMeta = TransferMeta
-  { _transferMeta_gasPrice :: GasPrice
+  { _transferMeta_senderAccount :: Maybe AccountName
+  , _transferMeta_gasPrice :: GasPrice
   , _transferMeta_gasLimit :: GasLimit
   , _transferMeta_ttl :: TTLSeconds
   , _transferMeta_creationTime :: TxCreationTime
@@ -1051,7 +1053,8 @@ transferMetadata model netInfo fks tks ti = do
         (def { _inputElementConfig_initialValue = tshow now})
       ct <- holdDyn now $ fmapMaybe hush $ updated ect
       let meta = TransferMeta
-             <$> price
+             <$> fmap gpdAccount srcPayer
+             <*> price
              <*> lim
              <*> ttl
              <*> (TxCreationTime . ParsedInteger <$> ct)
