@@ -977,8 +977,8 @@ transferMetadata model netInfo fks tks ti = do
       amount = _ti_amount ti
       ks = Map.fromList [(fromChain, fks), (toChain, tks)]
 
-  dialogSectionHeading mempty "Important"
   when (fromChain /= toChain) $ do
+    dialogSectionHeading mempty "Important"
     divClass "group" $ text $ T.pack $ printf
       "This is a cross-chain transfer.  You must choose an account that has coins on chain %s as the chain %s gas payer otherwise your coins will not arrive!  They will be stuck in transit.  If this happens, they can still be recovered.  Save the request key and get someone with coins on that chain to finish the cross-chain transfer for you." (_chainId toChain) (_chainId toChain)
     el "br" blank
