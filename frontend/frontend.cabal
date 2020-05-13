@@ -104,7 +104,10 @@ library
     , unordered-containers
     , vector
     , witherable
-    , yaml
+
+  if !impl(ghcjs)
+    build-depends:
+      yaml
 
   exposed-modules: Frontend
                  , Frontend.AppCfg

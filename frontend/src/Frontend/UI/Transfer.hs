@@ -19,6 +19,7 @@ Design Requirements:
 
 -}
 
+{-# LANGUAGE CPP #-}
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE ExtendedDefaultRules #-}
 {-# LANGUAGE FlexibleContexts #-}
@@ -56,7 +57,11 @@ import qualified Data.Text.Encoding as T
 import           Data.These (These(This))
 import           Data.Traversable
 import           Data.Time.Clock.POSIX
+
+#if !defined(ghcjs_HOST_OS)
 import qualified Data.Yaml as Y
+#endif
+
 import           Kadena.SigningApi (AccountName(..))
 import           Pact.Parse
 import qualified Pact.Server.ApiClient as Api
@@ -1201,6 +1206,7 @@ transferDetails signedCmd = do
         , _tabBarCfg_type = TabBarType_Primary
         }
 
+#if !defined(ghcjs_HOST_OS)
       tabPane mempty curSelection TransferDetails_Yaml $ do
         let preview = T.decodeUtf8 . Y.encodeWith yamlOptions <$> signedCmd
         iv <- sample (current preview)
@@ -1208,6 +1214,7 @@ transferDetails signedCmd = do
           & textAreaElementConfig_initialValue .~ iv
           & initialAttributes %~ (<> "disabled" =: "" <> "style" =: "width: 100%; height: 18em;")
           & textAreaElementConfig_setValue .~ updated preview
+#endif
 
       tabPane mempty curSelection TransferDetails_Json $ do
         let preview = T.decodeUtf8 . LB.toStrict . encode . toJSON <$> signedCmd
@@ -1219,8 +1226,10 @@ transferDetails signedCmd = do
 
       pure ()
 
+#if !defined(ghcjs_HOST_OS)
 yamlOptions :: Y.EncodeOptions
 yamlOptions = Y.setFormat (Y.setWidth Nothing Y.defaultFormatOptions) Y.defaultEncodeOptions
+#endif
 
 uiSigningInput
   :: ( MonadWidget t m
