@@ -484,5 +484,5 @@ uiGenerateKeyButton
   :: (MonadWidget t m, Monoid mConf, HasWalletCfg mConf key t)
   => m mConf
 uiGenerateKeyButton = do
-  e <- uiButton headerBtnCfg (text "+ Generate Key")
+  e <- uiButton headerBtnCfgPrimary (text "+ Generate Key")
   pure $ mempty & walletCfg_genKey .~ e
