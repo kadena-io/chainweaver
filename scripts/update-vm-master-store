@@ -4,4 +4,7 @@
 # This script requires you to have credentials setup in ~/.aws/credentials already
 FILEPATH=$(mktemp)
 nix-build -A chainweaverVMSystem > $FILEPATH
+
+# Not sure which one of this is currently used
 aws s3 cp $FILEPATH s3://chainweaver-builds/vm/master-store-path
+aws s3 cp $FILEPATH s3://chainweaver-builds/release-store-paths/latest-ova
