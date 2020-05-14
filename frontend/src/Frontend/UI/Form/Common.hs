@@ -90,7 +90,7 @@ amountFormWidget cfg = do
               | D.decimalPlaces x > maxCoinPrecision -> Left "Too many decimal places"
               | otherwise -> Right x
 
--- | This options shown by this widget are the union of the incoming dynamic
+-- | The options shown by this widget are the union of the incoming dynamic
 -- options, the initial option, and any changes to the selection passed in from
 -- outside via the setValue event.
 dropdownFormWidget
@@ -180,19 +180,32 @@ comboBoxDatalist datalistId items = elAttr "datalist" ("id" =: datalistId) $ do
   pure ()
 
 uiMandatoryChainSelection
-  :: MonadWidget t m
+  :: forall t m. MonadWidget t m
   => Dynamic t [ChainId]
-  -> CssClass
-  -> FormWidgetConfig t ChainId
+  -> PrimFormWidgetConfig t ChainId
   -> m (FormWidget t ChainId)
-uiMandatoryChainSelection options cls cfg = do
-  let chains = map (id &&& (("Chain " <>) .  _chainId)) <$> options
+uiMandatoryChainSelection options cfg = do
+  let chainIndList = zip [0..] <$> options
+      chainIndMap = Bimap.fromList <$> chainIndList
       mkOptions cs = Map.fromList cs
-      staticCls = cls <> "select"
-      allCls = renderClass <$> pure staticCls
-      dcfg = def
-        & dropdownConfig_attributes .~ (("class" =:) <$> allCls)
-        & dropdownConfig_setValue .~ fromMaybe never (view setValue cfg)
+      cidText cid = "Chain " <> _chainId cid
+      v0 = _initialValue cfg
+      ec = pfwc2ec cfg & initialAttributes %~ addToClassAttr "select"
+      selcfg = SelectElementConfig (cidText v0)
+                                   (cidText <$$> view setValue cfg)
+                                   ec
 
-  ddE <- dropdown (_initialValue cfg) (mkOptions <$> chains) dcfg
-  pure $ FormWidget (value ddE) (() <$ _dropdown_change ddE) (constDyn False)
+  -- This function uses low level selectElement to avoid the `dropdown` widget's Ord instance.
+  -- The ChainId list comes in the correct order.  dropdown butchers it for more than 10 chains.
+  (se,_) <- selectElement selcfg $ do
+    let mkOption (ind,cid) = elAttr "option" ("value" =: tshow ind <> sel) $
+                               text $ "Chain " <> _chainId cid
+          where
+            sel = if cid == v0 then "selected" =: "selected" else mempty
+    dyn_ $ mapM_ (mkOption) <$> chainIndList
+
+  let val = do
+        vtext <- _selectElement_value se
+        indMap <- chainIndMap
+        pure $ maybe v0 (\v -> fromMaybe v0 $ Bimap.lookup v indMap) $ readMaybe $ T.unpack vtext
+  pure $ FormWidget val (() <$ _selectElement_change se) (constDyn False)

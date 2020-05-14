@@ -17,6 +17,7 @@ module Frontend.UI.FormWidget
   , primFormWidgetConfig_modifyAttributes
   , mkPfwc
   , iec2pfwc
+  , pfwc2ec
   , pfwc2iec
   , FormWidget(..)
   , formWidget_value
@@ -141,6 +142,12 @@ instance HasInitialValue (PrimFormWidgetConfig t a) where
 instance HasSetValue (PrimFormWidgetConfig t a) where
   type SetValue (PrimFormWidgetConfig t a) = Maybe (Event t a)
   setValue = primFormWidgetConfig_fwc . setValue
+
+-- TODO Come up with better name
+pfwc2ec :: (Reflex t, DomSpace s) => PrimFormWidgetConfig t a -> ElementConfig EventResult t s
+pfwc2ec (PrimFormWidgetConfig _ ia ma) = def
+  & initialAttributes .~ ia
+  & modifyAttributes .~ fromMaybe never ma
 
 -- TODO Come up with better name
 pfwc2iec :: (Reflex t, DomSpace s) => (a -> Text) -> PrimFormWidgetConfig t a -> InputElementConfig EventResult t s

@@ -158,8 +158,8 @@ uiChainAccount
   -> m (FormWidget t (Maybe ChainAccount), Event t (Maybe Text))
 uiChainAccount model cfg = do
   (a,onPaste) <- accountNameFormWidget noValidation $ _ca_account <$$> cfg
-  cd <- uiMandatoryChainSelection (getChainsFromHomogenousNetwork model) mempty
-                                  (maybe (ChainId "0") _ca_chain <$> _primFormWidgetConfig_fwc cfg)
+  cd <- uiMandatoryChainSelection (getChainsFromHomogenousNetwork model)
+                                  (maybe (ChainId "0") _ca_chain <$> cfg)
   return (runMaybeT $ ChainAccount <$> lift cd <*> MaybeT a, onPaste)
 
 toFormWidget

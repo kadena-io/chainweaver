@@ -272,8 +272,6 @@ getAccountOwnership dcwKeys dacctDetails = do
                   numGoodKeys = Set.size (Set.intersection acctKeys cwks)
           calcOwnership cwKeySet
 
-newtype OrderedChain = OrderedChain { getOrderedChain :: ChainId }
-
 padChainId :: Int -> ChainId -> ChainId
 padChainId n (ChainId c) =
   case readMaybe (T.unpack c) :: Maybe Int of
