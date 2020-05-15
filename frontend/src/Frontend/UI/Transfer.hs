@@ -194,7 +194,8 @@ toFormWidget model cfg = mdo
 
 data TransferInfo = TransferInfo
   { _ti_fromAccount :: ChainAccount
-  , _ti_amount :: Decimal -- Possibly use ParsedDecimal
+  , _ti_amount :: Decimal
+  , _ti_maxAmount :: Bool
   , _ti_toAccount :: ChainAccount
   , _ti_toKeyset :: Maybe UserKeyset
   } deriving (Eq,Ord,Show)
@@ -230,8 +231,15 @@ uiGenericTransfer model cfg = do
         fca <- labeledChainAccount model $ mkCfg Nothing
           & initialAttributes .~ "placeholder" =: "Account Name"
           & setValue .~ (Just $ Nothing <$ clear)
-        amt <- mkLabeledInput True "Amount (KDA)" amountFormWidget $ mkCfg (Left "")
-          & setValue .~ (Just $ Left "" <$ clear)
+        rec
+          amt <- amountFormWithMaxButton model fca $ mkCfg (Left "", False)
+            & setValue .~ (Just $ (Left "", False) <$ leftmost
+                [ clear
+
+                -- If Max is checked, clear the amount and max checkbox when the
+                -- ChainAccount is updated.  Otherwise leave it alone.
+                , () <$ gate (fmap snd <$> current $ value amt) (updated (value fca))
+                ])
         return (fca,amt)
       (toAcct,ks) <- divClass "transfer__right-pane" $ do
         el "h4" $ text "To"
@@ -239,7 +247,8 @@ uiGenericTransfer model cfg = do
           & setValue .~ (Just $ (Nothing, Nothing) <$ clear)
       return $ runMaybeT $ TransferInfo <$>
         MaybeT (value fromAcct) <*>
-        MaybeT (hush <$> value amount) <*>
+        MaybeT (hush . fst <$> value amount) <*>
+        lift (snd <$> value amount) <*>
         MaybeT (value toAcct) <*>
         lift ks
     (clear, signTransfer) <- divClass "transfer-fields submit" $ do
@@ -251,6 +260,76 @@ uiGenericTransfer model cfg = do
     let mkModal (Just ti) ni = Just $ lookupAndTransfer model ni ti
         mkModal Nothing _ = Nothing
     pure $ mempty & modalCfg_setModal .~ (attachWith mkModal (current transferInfo) netInfo)
+
+amountFormWithMaxButton
+  :: ( DomBuilder t m, MonadFix m
+     , TriggerEvent t m
+     , MonadHold t m
+     , HasNetwork model t
+     , HasLogger model t
+     , HasCrypto key m
+     , MonadJSM m
+     )
+  => model
+  -> FormWidget t (Maybe ChainAccount)
+  -> FormWidgetConfig t (Either String Decimal, Bool)
+  -> m (FormWidget t (Either String Decimal, Bool))
+amountFormWithMaxButton model ca cfg = do
+  elClass "div" ("segment segment_type_tertiary labeled-input-inline") $ mdo
+    divClass ("label labeled-input__label-inline") $ text "Amount (KDA)"
+    let attrs = ffor maxE $ \isMaxed ->
+          "disabled" =: (if isMaxed then Just "disabled" else Nothing)
+        sv = Just $ leftmost
+          [ maybe (Left "") (Right . unAccountBalance) <$> maxedBalance
+          , Left "" <$ ffilter not maxE
+          ]
+    amt <- amountFormWidget $ mkPfwc (fst <$> cfg)
+      & setValue <>~ sv
+      & initialAttributes <>~ ("class" =: "labeled-input__input")
+      & modifyAttributes .~ attrs
+
+    useEntireBalance <- do
+      elKlass "label" ("input-max-toggle label checkbox checkbox_type_secondary") $ do
+        cb <- checkboxFormWidget $ mkPfwc (snd <$> cfg)
+        elClass "span" "checkbox__checkmark checkbox__checkmark_type_secondary" blank
+        text "Max"
+        pure cb
+
+    let maxE = updated $ value useEntireBalance
+    let maxSelected = ffilter id maxE
+    details <- getAccountDetails model (fmapMaybe id $ tag (current $ value ca) maxSelected)
+    let maxedBalance = join . fmap (^? (_AccountStatus_Exists . accountDetails_balance)) <$> details
+
+    pure $ (,) <$> amt <*> useEntireBalance
+
+getAccountDetails
+  :: ( Reflex t, TriggerEvent t m, MonadJSM m
+     , HasNetwork model t
+     , MonadHold t m
+     , Adjustable t m
+     , HasLogger model t
+     , HasCrypto key m
+     )
+  => model
+  -> Event t ChainAccount
+  -> m (Event t (Maybe (AccountStatus AccountDetails)))
+getAccountDetails model eca = do
+    let netAndCa = flip push eca $ \ca -> do
+          ni <- sampleNetInfo model
+          return $ (ca,) <$> ni
+    dd <- networkHold (pure never) (go <$> netAndCa)
+    pure $ switch $ current dd
+  where
+    go (ca, netInfo) = do
+      let nodes = _sharedNetInfo_nodes netInfo
+          chain = _ca_chain ca
+          acct = _ca_account ca
+          extractDetails Nothing = Nothing
+          extractDetails (Just m) = Map.lookup acct m
+      ks <- lookupKeySets (model ^. logger) (_sharedNetInfo_network netInfo)
+                   nodes chain [acct]
+      pure $ extractDetails <$> ks
+
 
 lookupAndTransfer
   :: ( MonadWidget t m, Monoid mConf, Flattenable mConf t
@@ -872,7 +951,12 @@ gasPayersSection model netInfo fks ti = do
         toChain = _ca_chain (_ti_toAccount ti)
     (dgp1, mdgp2) <- if fromChain == toChain
       then do
-        (_,dgp1) <- uiAccountNameInput "Gas Paying Account" True (Just $ _ca_account $ _ti_fromAccount ti) never noValidation
+        let initialGasPayer = if _ti_maxAmount ti then Nothing else Just (_ca_account $ _ti_fromAccount ti)
+        let goodGasPayer a = if _ti_maxAmount ti && a == fromAccount
+                               then Left $ "The account sending coins cannot be the gas payer on a max transfer"
+                               else Right a
+        (_,dgp1) <- uiAccountNameInput "Gas Paying Account" True initialGasPayer
+                                       never (constDyn goodGasPayer)
         pure $ (dgp1, Nothing)
       else do
         let mkLabel c = T.pack $ printf "Gas Paying Account (Chain %s)" (T.unpack $ _chainId c)
@@ -985,7 +1069,8 @@ transferMetadata model netInfo fks tks ti = do
       "This is a cross-chain transfer.  You must choose an account that has coins on chain %s as the chain %s gas payer otherwise your coins will not arrive!  They will be stuck in transit.  If this happens, they can still be recovered.  Save the request key and get someone with coins on that chain to finish the cross-chain transfer for you." (_chainId toChain) (_chainId toChain)
     el "br" blank
 
-  (GasPayers srcPayer mdestPayer) <- gasPayersSection model netInfo fks ti
+  dialogSectionHeading mempty "Gas Payers"
+  (GasPayers srcPayer mdestPayer) <- divClass "group" $ gasPayersSection model netInfo fks ti
 
   let senderAction = getKeysetActionSingle fromChain (Just fromAccount) (Map.lookup fromAccount fks)
       getGpdAction (GasPayerDetails f a d) = getKeysetActionSingle f a d

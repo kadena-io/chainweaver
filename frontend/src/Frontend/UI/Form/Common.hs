@@ -44,6 +44,17 @@ import           Frontend.UI.Common
 import           Frontend.UI.FormWidget
 ------------------------------------------------------------------------------
 
+checkboxFormWidget
+  :: DomBuilder t m
+  => PrimFormWidgetConfig t Bool
+  -> m (FormWidget t Bool)
+checkboxFormWidget cfg = do
+    let iecCfg = InputElementConfig "" Nothing (_initialValue cfg) (view setValue cfg) (pfwc2ec cfg)
+    ie <- inputElement $ iecCfg & initialAttributes %~ (("type" =: "checkbox" <>) . addNoAutofillAttrs)
+    return $ FormWidget (_inputElement_checked ie)
+                        (() <$ _inputElement_checkedChange ie)
+                        (_inputElement_hasFocus ie)
+
 -- | reflex-dom `inputElement` with chainweaver default styling:
 textFormWidget
   :: DomBuilder t m
@@ -184,7 +195,7 @@ uiMandatoryChainSelection
   => Dynamic t [ChainId]
   -> PrimFormWidgetConfig t ChainId
   -> m (FormWidget t ChainId)
-uiMandatoryChainSelection options cfg = do
+uiMandatoryChainSelection options cfg = mdo
   let chainIndList = zip [0..] <$> options
       chainIndMap = Bimap.fromList <$> chainIndList
       mkOptions cs = Map.fromList cs
@@ -198,14 +209,18 @@ uiMandatoryChainSelection options cfg = do
   -- This function uses low level selectElement to avoid the `dropdown` widget's Ord instance.
   -- The ChainId list comes in the correct order.  dropdown butchers it for more than 10 chains.
   (se,_) <- selectElement selcfg $ do
-    let mkOption (ind,cid) = elAttr "option" ("value" =: tshow ind <> sel) $
-                               text $ "Chain " <> _chainId cid
-          where
-            sel = if cid == v0 then "selected" =: "selected" else mempty
-    dyn_ $ mapM_ (mkOption) <$> chainIndList
+    let mkOption (ind,cid) = do
+            let staticAttrs = "value" =: tshow ind
+            let mkOptAttr v = if cid == v
+                                then staticAttrs <> "selected" =: "selected"
+                                else staticAttrs
+            elDynAttr "option" (mkOptAttr <$> val) $
+              text $ cidText cid
+    dyn_ $ mapM_ mkOption <$> chainIndList
 
   let val = do
         vtext <- _selectElement_value se
         indMap <- chainIndMap
         pure $ maybe v0 (\v -> fromMaybe v0 $ Bimap.lookup v indMap) $ readMaybe $ T.unpack vtext
-  pure $ FormWidget val (() <$ _selectElement_change se) (constDyn False)
+  pure $ FormWidget val
+                    (() <$ _selectElement_change se) (constDyn False)
