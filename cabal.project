@@ -1,2 +1,66 @@
 optional-packages:
   *
+
+source-repository-package
+    type: git
+    location: https://github.com/obsidiansystems/obelisk.git
+    tag: ce64679d2629356249bf744d37b4f3f3d499f77a
+    subdir: lib/backend
+
+source-repository-package
+    type: git
+    location: https://github.com/obsidiansystems/obelisk.git
+    tag: ce64679d2629356249bf744d37b4f3f3d499f77a
+    subdir: lib/executable-config/inject
+
+source-repository-package
+    type: git
+    location: https://github.com/obsidiansystems/obelisk.git
+    tag: ce64679d2629356249bf744d37b4f3f3d499f77a
+    subdir: lib/executable-config/lookup
+
+source-repository-package
+    type: git
+    location: https://github.com/obsidiansystems/obelisk.git
+    tag: ce64679d2629356249bf744d37b4f3f3d499f77a
+    subdir: lib/frontend
+
+source-repository-package
+    type: git
+    location: https://github.com/obsidiansystems/obelisk.git
+    tag: ce64679d2629356249bf744d37b4f3f3d499f77a
+    subdir: lib/route
+
+source-repository-package
+    type: git
+    location: https://github.com/obsidiansystems/obelisk-oauth.git
+    tag: b7fd1f4f1b96ee14c5af4d90a3db3a6b38eb1995
+    subdir: common
+
+source-repository-package
+    type: git
+    location: https://github.com/obsidiansystems/obelisk-oauth.git
+    tag: b7fd1f4f1b96ee14c5af4d90a3db3a6b38eb1995
+    subdir: backend
+
+source-repository-package
+    type: git
+    location: https://github.com/obsidiansystems/obelisk-oauth.git
+    tag: b7fd1f4f1b96ee14c5af4d90a3db3a6b38eb1995
+    subdir: frontend
+
+source-repository-package
+    type: git
+    location: https://github.com/kadena-io/pact.git
+    tag: b8a6fd4007751b525fc4ce6d3ec05938cd181908
+
+source-repository-package
+    type: git
+    location: https://github.com/kadena-io/signing-api.git
+    tag: 68075be0ba5a1c361ca8416ae993cff42374fdd3
+    subdir: kadena-signing-api
+
+source-repository-package
+    type: git
+    location: https://github.com/kadena-io/thyme.git
+    tag: 6ee9fcb026ebdb49b810802a981d166680d867c9
