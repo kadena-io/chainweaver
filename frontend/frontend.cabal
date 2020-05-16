@@ -74,6 +74,8 @@ library
     , pact
     , prettyprinter
     , primitive
+    , qrcode-core
+    , qrcode-juicypixels
     , random
     , ref-tf
     , reflex

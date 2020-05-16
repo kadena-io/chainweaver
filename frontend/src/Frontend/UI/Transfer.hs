@@ -36,6 +36,8 @@ Design Requirements:
 
 module Frontend.UI.Transfer where
 
+import qualified Codec.QRCode as QR
+import qualified Codec.QRCode.JuicyPixels as QR
 import           Control.Error hiding (bool, note)
 import           Control.Lens hiding ((.=))
 import           Control.Monad.State.Strict
@@ -54,6 +56,7 @@ import qualified Data.Set as Set
 import           Data.Text (Text)
 import qualified Data.Text as T
 import qualified Data.Text.Encoding as T
+import qualified Data.Text.Lazy as LT
 import           Data.These (These(This))
 import           Data.Traversable
 import           Data.Time.Clock.POSIX
@@ -1265,7 +1268,7 @@ transferSigs keyStorage payload signers = do
   rec
     keysetOpen <- toggle False clk
     (clk,(_,k)) <- controlledAccordionItem keysetOpen mempty
-      (accordionHeaderBtn "Advanced Details") $ do
+      (accordionHeaderBtn "Advanced Details and Signing Data") $ do
         transferDetails signedCmd
 
   return signedCmd
@@ -1273,12 +1276,16 @@ transferSigs keyStorage payload signers = do
 data TransferDetails
   = TransferDetails_Yaml
   | TransferDetails_Json
+  | TransferDetails_HashQR
+  | TransferDetails_FullQR
   deriving (Eq,Ord,Show,Read,Enum,Bounded)
 
 showTransferDetailsTabName :: TransferDetails -> Text
 showTransferDetailsTabName = \case
   TransferDetails_Yaml -> "YAML"
   TransferDetails_Json -> "JSON"
+  TransferDetails_HashQR -> "Hash QR Code"
+  TransferDetails_FullQR -> "Full Tx QR Code"
 
 transferDetails
   :: (DomBuilder t m, MonadHold t m, PostBuild t m, MonadFix m)
@@ -1312,6 +1319,25 @@ transferDetails signedCmd = do
           & textAreaElementConfig_initialValue .~ iv
           & initialAttributes %~ (<> "disabled" =: "" <> "style" =: "width: 100%; height: 18em;")
           & textAreaElementConfig_setValue .~ updated preview
+
+#if !defined(ghcjs_HOST_OS)
+      tabPane mempty curSelection TransferDetails_HashQR $ do
+        let hashText = hashToText . toUntypedHash . _cmdHash <$> signedCmd
+            qrImage = QR.encodeText (QR.defaultQRCodeOptions QR.L) QR.Iso8859_1OrUtf8WithECI <$> hashText
+            img = maybe "Error creating QR code" (QR.toPngDataUrlT 4 6) <$> qrImage
+        el "div" $ text $ T.unwords
+          [ "This QR code contains only the request key."
+          , "It doesn't give any transaction information, so some wallets may not accept it."
+          , "This is useful when you are signing your own transactions and don't want to transmit as much data."
+          ]
+        el "br" blank
+        elDynAttr "img" (("src" =:) . LT.toStrict <$> img) blank
+      tabPane mempty curSelection TransferDetails_FullQR $ do
+        let yamlText = T.decodeUtf8 . Y.encodeWith yamlOptions <$> signedCmd
+            qrImage = QR.encodeText (QR.defaultQRCodeOptions QR.L) QR.Iso8859_1OrUtf8WithECI <$> yamlText
+            img = maybe "Error creating QR code" (QR.toPngDataUrlT 4 4) <$> qrImage
+        elDynAttr "img" (("src" =:) . LT.toStrict <$> img) blank
+#endif
 
       pure ()
 
