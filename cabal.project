@@ -26,49 +26,49 @@ source-repository-package
 source-repository-package
     type: git
     location: https://github.com/mightybyte/obelisk.git
-    tag: 0857ab42c628232afa13749e5638edd536058e29
+    tag: 4afc23f031218669822d3b6bcc7120b0a2d894a7
     subdir: lib/asset/serve-snap
 
 source-repository-package
     type: git
     location: https://github.com/mightybyte/obelisk.git
-    tag: 0857ab42c628232afa13749e5638edd536058e29
+    tag: 4afc23f031218669822d3b6bcc7120b0a2d894a7
     subdir: lib/backend
 
 source-repository-package
     type: git
     location: https://github.com/mightybyte/obelisk.git
-    tag: 0857ab42c628232afa13749e5638edd536058e29
+    tag: 4afc23f031218669822d3b6bcc7120b0a2d894a7
     subdir: lib/executable-config/inject
 
 source-repository-package
     type: git
     location: https://github.com/mightybyte/obelisk.git
-    tag: 0857ab42c628232afa13749e5638edd536058e29
+    tag: 4afc23f031218669822d3b6bcc7120b0a2d894a7
     subdir: lib/executable-config/lookup
 
 source-repository-package
     type: git
     location: https://github.com/mightybyte/obelisk.git
-    tag: 0857ab42c628232afa13749e5638edd536058e29
+    tag: 4afc23f031218669822d3b6bcc7120b0a2d894a7
     subdir: lib/frontend
 
 source-repository-package
     type: git
     location: https://github.com/mightybyte/obelisk.git
-    tag: 0857ab42c628232afa13749e5638edd536058e29
+    tag: 4afc23f031218669822d3b6bcc7120b0a2d894a7
     subdir: lib/route
 
 source-repository-package
     type: git
     location: https://github.com/mightybyte/obelisk.git
-    tag: 0857ab42c628232afa13749e5638edd536058e29
+    tag: 4afc23f031218669822d3b6bcc7120b0a2d894a7
     subdir: lib/snap-extras
 
 source-repository-package
     type: git
     location: https://github.com/mightybyte/obelisk.git
-    tag: 0857ab42c628232afa13749e5638edd536058e29
+    tag: 4afc23f031218669822d3b6bcc7120b0a2d894a7
     subdir: lib/tabulation
 
 source-repository-package
