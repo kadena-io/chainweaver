@@ -67,7 +67,7 @@ library
     , newtype-generics
     , obelisk-executable-config-lookup
     , obelisk-frontend
-    , obelisk-generated-static
+--    , obelisk-generated-static
     , obelisk-oauth-common
     , obelisk-oauth-frontend
     , obelisk-route
@@ -231,7 +231,7 @@ executable frontend
   build-depends: base
                , common
                , reflex-dom
-               , obelisk-generated-static
+--               , obelisk-generated-static
                , obelisk-frontend
                , obelisk-route
                , text

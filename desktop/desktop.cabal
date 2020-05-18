@@ -39,7 +39,7 @@ library
     , obelisk-backend
     , obelisk-frontend
     , obelisk-executable-config-lookup
-    , obelisk-generated-static
+--    , obelisk-generated-static
     , obelisk-route
     , pact
     , primitive

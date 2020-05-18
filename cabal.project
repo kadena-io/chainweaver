@@ -1,6 +1,34 @@
 optional-packages:
   *
 
+tests: False
+
+allow-newer: base-compat,
+             dependent-sum,
+             hspec-discover,
+             lens,
+             servant-client
+allow-older: ghcjs-dom,
+             hspec-discover,
+             lens
+
+source-repository-package
+    type: git
+    location: https://github.com/kadena-io/cardano-crypto.git
+    tag: 4590efa638397e952a51a8994b5543e4ea3c1ecd
+
+source-repository-package
+    type: git
+    location: https://github.com/obsidiansystems/jsaddle.git
+    tag: 86b166033186c1724d4d52eeaf0935f0f29fe1ca
+    subdir: jsaddle-warp
+
+source-repository-package
+    type: git
+    location: https://github.com/obsidiansystems/obelisk.git
+    tag: ce64679d2629356249bf744d37b4f3f3d499f77a
+    subdir: lib/asset/serve-snap
+
 source-repository-package
     type: git
     location: https://github.com/obsidiansystems/obelisk.git
@@ -33,6 +61,18 @@ source-repository-package
 
 source-repository-package
     type: git
+    location: https://github.com/obsidiansystems/obelisk.git
+    tag: ce64679d2629356249bf744d37b4f3f3d499f77a
+    subdir: lib/snap-extras
+
+source-repository-package
+    type: git
+    location: https://github.com/obsidiansystems/obelisk.git
+    tag: ce64679d2629356249bf744d37b4f3f3d499f77a
+    subdir: lib/tabulation
+
+source-repository-package
+    type: git
     location: https://github.com/obsidiansystems/obelisk-oauth.git
     tag: b7fd1f4f1b96ee14c5af4d90a3db3a6b38eb1995
     subdir: common
@@ -53,6 +93,33 @@ source-repository-package
     type: git
     location: https://github.com/kadena-io/pact.git
     tag: b8a6fd4007751b525fc4ce6d3ec05938cd181908
+
+source-repository-package
+    type: git
+    location: https://github.com/mightybyte/reflex-dom.git
+    tag: 086ec2a729f964ededa9f47469ccdb9852b3cdb0
+    subdir: reflex-dom-core
+
+source-repository-package
+    type: git
+    location: https://github.com/reflex-frp/reflex-dom-ace.git
+    tag: 4fbc5bcf6dc8c8982373269ca5729089b14d69ac
+
+source-repository-package
+    type: git
+    location: https://github.com/reflex-frp/reflex-dom-contrib.git
+    tag: b9e2965dff062a4e13140f66d487362a34fe58b3
+
+source-repository-package
+    type: git
+    location: https://github.com/haskell-servant/servant.git
+    tag: 925d50d7526a9b95918b7a2d49e57afa10985302
+    subdir: servant-jsaddle
+
+source-repository-package
+    type: git
+    location: https://github.com/kadena-io/servant-github.git
+    tag: f4575b6757caa0e69135f94743c7e82ed9cd9a8e
 
 source-repository-package
     type: git
