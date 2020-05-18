@@ -25,50 +25,50 @@ source-repository-package
 
 source-repository-package
     type: git
-    location: https://github.com/obsidiansystems/obelisk.git
-    tag: ce64679d2629356249bf744d37b4f3f3d499f77a
+    location: https://github.com/mightybyte/obelisk.git
+    tag: 0857ab42c628232afa13749e5638edd536058e29
     subdir: lib/asset/serve-snap
 
 source-repository-package
     type: git
-    location: https://github.com/obsidiansystems/obelisk.git
-    tag: ce64679d2629356249bf744d37b4f3f3d499f77a
+    location: https://github.com/mightybyte/obelisk.git
+    tag: 0857ab42c628232afa13749e5638edd536058e29
     subdir: lib/backend
 
 source-repository-package
     type: git
-    location: https://github.com/obsidiansystems/obelisk.git
-    tag: ce64679d2629356249bf744d37b4f3f3d499f77a
+    location: https://github.com/mightybyte/obelisk.git
+    tag: 0857ab42c628232afa13749e5638edd536058e29
     subdir: lib/executable-config/inject
 
 source-repository-package
     type: git
-    location: https://github.com/obsidiansystems/obelisk.git
-    tag: ce64679d2629356249bf744d37b4f3f3d499f77a
+    location: https://github.com/mightybyte/obelisk.git
+    tag: 0857ab42c628232afa13749e5638edd536058e29
     subdir: lib/executable-config/lookup
 
 source-repository-package
     type: git
-    location: https://github.com/obsidiansystems/obelisk.git
-    tag: ce64679d2629356249bf744d37b4f3f3d499f77a
+    location: https://github.com/mightybyte/obelisk.git
+    tag: 0857ab42c628232afa13749e5638edd536058e29
     subdir: lib/frontend
 
 source-repository-package
     type: git
-    location: https://github.com/obsidiansystems/obelisk.git
-    tag: ce64679d2629356249bf744d37b4f3f3d499f77a
+    location: https://github.com/mightybyte/obelisk.git
+    tag: 0857ab42c628232afa13749e5638edd536058e29
     subdir: lib/route
 
 source-repository-package
     type: git
-    location: https://github.com/obsidiansystems/obelisk.git
-    tag: ce64679d2629356249bf744d37b4f3f3d499f77a
+    location: https://github.com/mightybyte/obelisk.git
+    tag: 0857ab42c628232afa13749e5638edd536058e29
     subdir: lib/snap-extras
 
 source-repository-package
     type: git
-    location: https://github.com/obsidiansystems/obelisk.git
-    tag: ce64679d2629356249bf744d37b4f3f3d499f77a
+    location: https://github.com/mightybyte/obelisk.git
+    tag: 0857ab42c628232afa13749e5638edd536058e29
     subdir: lib/tabulation
 
 source-repository-package
