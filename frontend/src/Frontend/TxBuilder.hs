@@ -5,11 +5,15 @@
 {-# LANGUAGE LambdaCase #-}
 module Frontend.TxBuilder where
 
-import Data.Aeson
-import Data.Maybe
-import Pact.Types.ChainId
-import Kadena.SigningApi (AccountName(..))
-import Pact.Types.Term (KeySet (..))
+import           Data.Aeson
+import qualified Data.Aeson.Encode.Pretty as AesonPretty
+import           Data.Maybe
+import           Data.Text (Text)
+import qualified Data.Text.Lazy as LT
+import qualified Data.Text.Lazy.Builder as LTB
+import           Pact.Types.ChainId
+import           Kadena.SigningApi (AccountName(..))
+import           Pact.Types.Term (KeySet (..))
 
 data TxBuilder = TxBuilder
   { _txBuilder_accountName :: AccountName
@@ -35,3 +39,6 @@ instance FromJSON TxBuilder where
     <$> o .: "account"
     <*> o .: "chain"
     <*> o .:? "keyset"
+
+prettyTxBuilder :: TxBuilder -> Text
+prettyTxBuilder = LT.toStrict . LTB.toLazyText . AesonPretty.encodePrettyToTextBuilder

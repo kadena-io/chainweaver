@@ -6,9 +6,13 @@
 
 @import '../include/defs';
 
+.wallet-scroll-wrapper {
+  overflow: auto;
+}
+
 .wallet__keys-list {
   padding-left: 22px;
-  overflow: auto;
+  margin-top: 3px; /* Make the bottom border of the transfer section visible */
 }
 
 .wallet__table-row {
@@ -25,8 +29,8 @@
 .wallet__table-heading {
   @extend .table__heading;
   padding: 5px;
-  padding-top: 35px;
-  padding-bottom: 30px;
+  padding-top: 20px;
+  padding-bottom: 20px;
   white-space: nowrap;
 
   position: sticky;
@@ -112,4 +116,25 @@
 
 .wallet__table-button--hamburger {
   padding: 0 15px;
+}
+
+.labeled-input__input.account-chain-input .popover {
+    width: 70%;
+    display: inline-block;
+}
+.labeled-input__input.account-chain-input input {
+    border-top-right-radius: 0;
+    border-bottom-right-radius: 0;
+}
+.labeled-input__input.account-chain-input select {
+    width: 30%;
+    background-color: white;
+    border-left: none;
+    border-top-left-radius: 0;
+    border-bottom-left-radius: 0;
+    font-size: 15px;
+}
+
+.key-display {
+    font-family: 'RobotoMono', monospace;
 }

@@ -25,7 +25,7 @@ import           Obelisk.Route            (R)
 
 import           Common.Network
 import           Common.Route             (FrontendRoute)
-import           Desktop.Frontend         (desktopFrontend)
+--import           Desktop.Frontend         (desktopFrontend)
 import           Frontend                 (webFrontend)
 
 -- required by 'ob run'
@@ -33,7 +33,7 @@ frontend :: Frontend (R FrontendRoute)
 frontend = devFrontend
 
 devFrontend :: Frontend (R FrontendRoute)
-devFrontend = if True then webFrontend else desktopFrontend
+devFrontend = webFrontend --if True then webFrontend else desktopFrontend
 
 -- | Configuration for pact instances.
 data PactInstanceConfig = PactInstanceConfig

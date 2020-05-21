@@ -72,6 +72,7 @@ import Frontend.UI.Modal
 import Frontend.UI.Modal.Impl
 import Frontend.UI.RightPanel
 import Frontend.UI.Settings
+import Frontend.UI.Transfer
 import Frontend.UI.Wallet
 import Frontend.UI.Widgets
 import Frontend.Wallet hiding (walletCfg)
@@ -116,14 +117,18 @@ app sidebarExtra fileFFI appCfg = Store.versionedFrontend (Store.versionedStorag
     -- yet.
     route <- askRoute
     routedCfg <- subRoute $ lift . flip runRoutedT route . \case
-      FrontendRoute_Accounts -> mkPageContent "accounts" $ do
-        barCfg <- underNetworkBar "Accounts" $ do
+      FrontendRoute_Accounts -> mkPageContent "accounts" $ mdo
+        netCfg <- networkBar ideL
+        (transferVisible, barCfg) <- controlBar "Accounts You Are Watching" $ do
           refreshCfg <- uiWalletRefreshButton
           watchCfg <- uiWatchRequestButton ideL
           addCfg <- uiAddAccountButton ideL
-          pure $ watchCfg <> addCfg <> refreshCfg
-        accountsCfg <- uiAccountsTable ideL
-        pure $ barCfg <> accountsCfg
+          xferVisible <- uiTransferButton
+          pure $ (xferVisible, watchCfg <> addCfg <> refreshCfg)
+        divClass "wallet-scroll-wrapper" $ do
+          transferCfg <- uiGenericTransfer ideL $ TransferCfg transferVisible never never
+          accountsCfg <- uiAccountsTable ideL
+          pure $ netCfg <> barCfg <> accountsCfg <> transferCfg
       FrontendRoute_Keys -> mkPageContent "keys" $ do
         walletBarCfg <- underNetworkBar "Keys" uiGenerateKeyButton
         walletCfg <- uiWallet ideL
@@ -154,6 +159,8 @@ app sidebarExtra fileFFI appCfg = Store.versionedFrontend (Store.versionedStorag
           uiSettings (_appCfg_enabledSettings appCfg) ideL fileFFI
         pure $ controlCfg <> mainCfg
 
+    accountDatalist ideL
+    keyDatalist ideL
     flatten =<< tagOnPostBuild routedCfg
 
   modalCfg <- showModal ideL
@@ -205,8 +212,8 @@ walletSidebar logo sidebarExtra = elAttr "div" ("class" =: "sidebar") $ do
     let sidebarLink r@(r' :/ _) label = routeLink r $ do
           let selected = demuxed route (Some r')
           void $ uiSidebarIcon selected (routeIcon r) label
-    sidebarLink (FrontendRoute_Keys :/ ()) "Keys"
     sidebarLink (FrontendRoute_Accounts :/ ()) "Accounts"
+    sidebarLink (FrontendRoute_Keys :/ ()) "Keys"
     sidebarLink (FrontendRoute_Contracts :/ Nothing) "Contracts"
     elAttr "div" ("style" =: "flex-grow: 1") blank
     sidebarLink (FrontendRoute_Resources :/ ()) "Resources"
@@ -383,7 +390,7 @@ controlBarRight fileFFI appCfg m = do
     signoutBtn = signoutButton $
       headerBtnCfg & uiButtonCfg_title .~ Just "Sign out from GitHub"
 
-    deployBtn = uiButton (headerBtnCfg & uiButtonCfg_class <>~ "main-header__deploy-button") $
+    deployBtn = uiButton (headerBtnCfg & uiButtonCfg_class <>~ "main-header__primary-button") $
       text $ "Deploy"
 
     loadReplBtn =
@@ -403,11 +410,6 @@ controlBarRight fileFFI appCfg m = do
       let cfg = headerBtnCfg & uiButtonCfg_title ?~ "Open a local contract"
       uiButtonWithOnClick (_fileFFI_openFileDialog fileFFI FileType_Pact) cfg $ do
         text "Open File"
-
-headerBtnCfg
-  :: (Default (UiButtonCfgRep f), IsString (ReflexValue f CssClass), Semigroup (ReflexValue f CssClass))
-  => UiButtonCfgRep f
-headerBtnCfg = btnCfgPrimary & uiButtonCfg_class %~ (<> "main-header__button")
 
 resourcesWidget
   :: (DomBuilder t m)

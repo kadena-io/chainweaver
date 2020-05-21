@@ -7,28 +7,92 @@
 $main-separator-border-color: #e2e2e2;
 
 .main__right-pane {
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  left: 50%;
-  right: 0;
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: 50%;
+    right: 0;
 
-  padding-top: 43px;
-  padding-left: 22px;
-  padding-right: 22px;
+    padding-top: 43px;
+    padding-left: 22px;
+    padding-right: 22px;
 }
 
 .main__left-pane {
-  position: absolute;
+    position: absolute;
 
-  top: 0px;
-  bottom: 0px;
-  left: 0px;
-  right: 50%;
+    top: 0px;
+    bottom: 0px;
+    left: 0px;
+    right: 50%;
 
 
-  border-right: 1px solid $main-separator-border-color;
+    border-right: 1px solid $main-separator-border-color;
 }
+
+.transfer {
+    border-bottom: 1px solid $main-separator-border-color;
+    position: relative;
+    width: 100%;
+    max-height: 0px;
+    transition: max-height 0.3s ease;
+}
+
+.transfer.transfer__expanded {
+    max-height: 600px;
+    transition: max-height 0.3s ease;
+}
+
+.transfer.transfer__collapsed {
+    overflow: hidden;
+}
+
+.transfer-fields {
+    display: flex;
+    flex-direction: row;
+    justify-content: center;
+}
+
+.transfer-fields.submit {
+    padding: 22px;
+}
+
+.transfer-fields.submit button.button{
+    margin-left: 10px;
+}
+
+.transfer__left-pane {
+    width: 50%;
+    padding-left: 22px;
+    padding-right: 22px;
+}
+
+.transfer__right-pane {
+    width: 50%;
+    padding-left: 22px;
+    padding-right: 22px;
+}
+
+/*
+.transfer__left-pane {
+    position: relative;
+
+    width: calc(50% - 5px);
+
+    padding-left: 22px;
+    padding-right: 22px;
+
+    border-right: 1px solid $main-separator-border-color;
+}
+
+.transfer__right-pane {
+    position: relative;
+    width: calc(50% - 5px);
+
+    padding-left: 22px;
+    padding-right: 22px;
+}
+*/
 
 .main__pane-collapse-button {
   height: 15px;

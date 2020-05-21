@@ -27,6 +27,7 @@ import Data.Constraint.Extras.TH
 import Data.GADT.Compare.TH
 import Data.GADT.Show.TH
 import Data.Text (Text)
+import qualified Data.Text as T
 import Data.Universe.Some.TH
 import Language.Javascript.JSaddle (MonadJSM)
 import Obelisk.Route.Frontend
@@ -107,6 +108,12 @@ instance (MonadSample t m, MonadJSM m) => HasCrypto Crypto.XPrv (BIPCryptoT t m)
   cryptoSign bs xprv = BIPCryptoT $ do
     (_, pass) <- sample =<< ask
     pure $ Newtype.pack $ Crypto.unXSignature $ Crypto.sign (T.encodeUtf8 pass) xprv bs
+  cryptoVerify bs sig (PublicKey pub) = BIPCryptoT $ do
+    pure $ PactCrypto.verify
+      (PactCrypto.toScheme PactCrypto.ED25519)
+      (Pact.Hash bs)
+      (PactCrypto.PubBS pub)
+      (PactCrypto.SigBS $ unSignature sig)
   cryptoGenKey i = BIPCryptoT $ do
     (root, pass) <- sample =<< ask
     liftIO $ putStrLn $ "Deriving key at index: " <> show i
@@ -125,6 +132,15 @@ instance (MonadSample t m, MonadJSM m) => HasCrypto Crypto.XPrv (BIPCryptoT t m)
     case someKpE of
       Right someKp -> liftIO $ Newtype.pack <$> PactCrypto.sign someKp (Pact.Hash bs)
       Left e -> error $ "Error importing pact key from account: " <> e
+  cryptoSignWithPactKeyEither bs pk = do
+    let someKpE = importKey
+          (_pactKey_scheme pk)
+          (Just $ Newtype.unpack $ _pactKey_publicKey pk)
+          $ _pactKey_secret pk
+
+    case someKpE of
+      Right someKp -> liftIO $ (Right . Newtype.pack) <$> PactCrypto.sign someKp (Pact.Hash bs)
+      Left e -> pure $ Left $ "Error importing pact key from account: " <> T.pack e
 
 importKey :: PactCrypto.PPKScheme -> Maybe ByteString -> ByteString -> Either String PactCrypto.SomeKeyPair
 importKey pkScheme mPubBytes secBytes = PactCrypto.importKeyPair

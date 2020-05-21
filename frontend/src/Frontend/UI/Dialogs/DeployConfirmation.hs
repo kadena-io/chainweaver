@@ -72,7 +72,7 @@ import Pact.Types.PactValue (PactValue)
 import Reflex
 import Reflex.Host.Class (MonadReflexCreateTrigger)
 import Reflex.Dom
-import Reflex.Extended (tagOnPostBuild)
+import Reflex.Extended
 import Reflex.Network.Extended (Flattenable)
 import Reflex.Network.Extended (flatten)
 import qualified Data.Text as T
@@ -200,12 +200,6 @@ submitTransactionWithFeedback model cmd sender chain nodeInfos = do
     let reloadKey = tagMaybe (current requestKey) reload
   transactionResultSection message
   pure $ TransactionSubmitFeedback sendStatus listenStatus message
-
-newTriggerHold :: (MonadHold t m, TriggerEvent t m, MonadIO n) => a -> m (Dynamic t a, a -> n ())
-newTriggerHold a = do
-  (e, t) <- newTriggerEvent
-  s <- holdDyn a e
-  pure (s, liftIO . t)
 
 listenToRequestKey
   :: ( MonadHold t m

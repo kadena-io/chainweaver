@@ -66,6 +66,7 @@ module Frontend.Network
   , getChainsFromHomogenousNetwork
   , getNetworkNameAndMeta
   , getCreationTime
+  , encodeAsText
     -- * Defaults
   , chainwebGasLimitMaximum
   , defaultTransactionGasLimit
@@ -1093,7 +1094,7 @@ buildContPayload networkName meta signingKeys payload = do
     nonce <- getNonce
     pure $ Payload
       { _pPayload = Continuation payload
-      , _pNonce = nonce
+      , _pNonce = "CW:" <> nonce
       , _pMeta = meta { _pmCreationTime = time }
       , _pSigners = map mkSigner (map _keyPair_publicKey signingKeys)
       , _pNetworkId = pure $ NetworkId $ textNetworkName networkName
@@ -1140,7 +1141,7 @@ buildExecPayload mNonce networkName meta signingKeys extraKeys code dat caps = d
         }
     pure $ Payload
       { _pPayload = Exec payload
-      , _pNonce = nonce
+      , _pNonce = "CW:" <> nonce
       , _pMeta = meta { _pmCreationTime = time }
       , _pSigners = map mkSigner (map _keyPair_publicKey signingKeys ++ extraKeys)
       , _pNetworkId = pure $ NetworkId $ textNetworkName networkName

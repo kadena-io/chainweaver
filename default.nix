@@ -8,7 +8,7 @@ with obelisk;
 let
   # All the versions that the user cares about are here so that they can
   # be changed in one place
-  chainweaverVersion = "1.3";
+  chainweaverVersion = "2.0";
   appName = "Kadena Chainweaver";
   macReleaseNumber = "0";
   linuxReleaseNumber = "0";

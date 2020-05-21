@@ -17,92 +17,100 @@ library
   ghc-options: -O
   hs-source-dirs: src
 
-  build-depends: base
-               , async
-               , aeson-gadt-th
-               , case-insensitive
-               , constraints
-               , unliftio
-               , unliftio-core
-               , ListZipper
-               , aeson
-               , lens-aeson
-               , aeson-pretty
-               , base16-bytestring
-               , bound
-               , bytestring
-               , common
-               , constraints-extras
-               , containers
-               , data-default
-               , Decimal
-               , dependent-map
-               , dependent-sum
-               , dependent-sum-aeson-orphans
-               , dependent-sum-template
-               , errors
-               , exceptions
-               , free
-               , generic-deriving
-               , ghcjs-dom
-               , here
-               , http-client
-               , http-client-tls
-               , http-types
-               , jsaddle
-               , keycode
-               , lens
-               , megaparsec
-               , modern-uri
-               , monoidal-containers
-               , mtl
-               , newtype-generics
-               , obelisk-executable-config-lookup
-               , obelisk-frontend
-               , obelisk-generated-static
-               , obelisk-oauth-common
-               , obelisk-oauth-frontend
-               , obelisk-route
-               , pact
-               , prettyprinter
-               , primitive
-               , random
-               , reflex
-               , reflex-dom
-               , reflex-dom-ace
-               , reflex-dom-contrib
-               , ref-tf
-               , safe
-               , servant
-               , servant-client-core
-               , servant-jsaddle
-               , servant-github
-               , split
-               , string-qq
-               , template-haskell
-               , text
-               , these
-               , these-lens
-               , time
-               , th-extras
-               , transformers
-               , trifecta
-               , universe
-               , unordered-containers
-               , kadena-signing-api
-               , base64-bytestring
-               , crc
-               , attoparsec
-               , universe-base
-               , universe-dependent-sum
-               , vector
-               , monad-logger
-               , fast-logger
-               , witherable
-               , system-locale
-               , cassava
-               , directory
-               , filepath
+  build-depends:
+      Decimal
+    , ListZipper
+    , aeson
+    , aeson-gadt-th
+    , aeson-pretty
+    , async
+    , attoparsec
+    , base
+    , base16-bytestring
+    , base64-bytestring
+    , bimap
+    , bound
+    , bytestring
+    , case-insensitive
+    , cassava
+    , common
+    , constraints
+    , constraints-extras
+    , containers
+    , crc
+    , data-default
+    , dependent-map
+    , dependent-sum
+    , dependent-sum-aeson-orphans
+    , dependent-sum-template
+    , directory
+    , errors
+    , exceptions
+    , fast-logger
+    , filepath
+    , free
+    , generic-deriving
+    , ghcjs-dom
+    , here
+    , http-client
+    , http-client-tls
+    , http-types
+    , jsaddle
+    , kadena-signing-api
+    , keycode
+    , lens
+    , lens-aeson
+    , megaparsec
+    , modern-uri
+    , monad-logger
+    , monoidal-containers
+    , mtl
+    , newtype-generics
+    , obelisk-executable-config-lookup
+    , obelisk-frontend
+    , obelisk-generated-static
+    , obelisk-oauth-common
+    , obelisk-oauth-frontend
+    , obelisk-route
+    , pact
+    , prettyprinter
+    , primitive
+    , qrcode-core
+    , qrcode-juicypixels
+    , random
+    , ref-tf
+    , reflex
+    , reflex-dom
+    , reflex-dom-ace
+    , reflex-dom-contrib
+    , safe
+    , servant
+    , servant-client-core
+    , servant-github
+    , servant-jsaddle
+    , split
+    , string-qq
+    , system-locale
+    , template-haskell
+    , text
+    , th-extras
+    , these
+    , these-lens
+    , time
+    , transformers
+    , trifecta
+    , universe
+    , universe-base
+    , universe-dependent-sum
+    , unliftio
+    , unliftio-core
+    , unordered-containers
+    , vector
+    , witherable
+
+  if !impl(ghcjs)
+    build-depends:
+      yaml
 
   exposed-modules: Frontend
                  , Frontend.AppCfg
@@ -129,6 +137,7 @@ library
                  , Frontend.ModuleExplorer.ModuleList
                  , Frontend.ModuleExplorer.ModuleRef
                  , Frontend.OAuth
+                 , Frontend.PactQueries
                  , Frontend.Repl
                  , Frontend.ReplGhcjs
                  , Frontend.Routes
@@ -136,6 +145,7 @@ library
                  , Frontend.Storage.Class
                  , Frontend.Storage.Browser
                  , Frontend.UI.Button
+                 , Frontend.UI.Common
                  , Frontend.UI.DeploymentSettings
                  , Frontend.UI.Dialogs.CallFunction
                  , Frontend.UI.Dialogs.ChangePassword
@@ -157,9 +167,12 @@ library
                  , Frontend.UI.Dialogs.TxLogs
                  , Frontend.UI.Dialogs.WatchRequest
                  , Frontend.UI.ErrorList
+                 , Frontend.UI.Form.Common
+                 , Frontend.UI.FormWidget
                  , Frontend.UI.Icon
                  , Frontend.UI.IconGrid
                  , Frontend.UI.JsonData
+                 , Frontend.UI.KeysetWidget
                  , Frontend.UI.Modal
                  , Frontend.UI.Modal.Impl
                  , Frontend.UI.ModuleExplorer
@@ -170,6 +183,7 @@ library
                  , Frontend.UI.RightPanel
                  , Frontend.UI.Settings
                  , Frontend.UI.TabBar
+                 , Frontend.UI.Transfer
                  , Frontend.UI.Wallet
                  , Frontend.UI.Widgets
                  , Frontend.UI.Widgets.Helpers

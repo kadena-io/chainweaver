@@ -109,7 +109,7 @@ pathOnlyEncoderIgnoringQuery = unsafeMkEncoder $ EncoderImpl
   }
 
 landingPageRoute :: R FrontendRoute
-landingPageRoute = FrontendRoute_Keys :/ ()
+landingPageRoute = FrontendRoute_Accounts :/ ()
 
 concat <$> mapM deriveRouteComponent
   [ ''BackendRoute

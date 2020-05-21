@@ -224,7 +224,9 @@ instance HasCrypto TestPrv InMemoryStorage where
         priv = fromMaybe (error "cryptoSign InMemoryStorage: no private key") $ _keyPair_privateKey pair
     pure (priv, _keyPair_publicKey pair)
   cryptoSign = error "cryptoSign for InMemoryStorage: not implemented"
+  cryptoVerify = error "cryptoVerify for InMemoryStorage: not implemented"
   cryptoSignWithPactKey = error "cryptoSignWithPactKey for InMemoryStorage: not implemented"
+  cryptoSignWithPactKeyEither = error "cryptoSignWithPactKeyEither for InMemoryStorage: not implemented"
   cryptoGenPubKeyFromPrivate = error "cryptoGenPubKeyFromPrivate for InMemoryStorage: not implemented"
 
 test_v0ToV1Upgrade :: TestTree

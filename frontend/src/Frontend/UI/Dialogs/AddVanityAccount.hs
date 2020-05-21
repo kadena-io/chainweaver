@@ -70,7 +70,7 @@ uiAddAccountButton
   => ModalIde m key t
   -> m mConf
 uiAddAccountButton m = do
-  eOpenAddAccount <- uiButton (def & uiButtonCfg_class <>~ " main-header__add-account-button")  (text "+ Add Account")
+  eOpenAddAccount <- uiButton headerBtnCfg  (text "+ Add Account")
   pure $ mempty & modalCfg_setModal .~ (Just (uiAddAccountDialog m) <$ eOpenAddAccount)
 
 uiAddAccountDialog
@@ -84,9 +84,9 @@ uiAddAccountDialog model _onCloseExternal = mdo
   onClose <- modalHeader $ text "Add Account"
   name <- modalMain $ do
     dialogSectionHeading mempty "Notice"
-    divClass "group" $ text "Add an Account here to display its status. If the Account does not yet exist, then you will be able to create and control the Account on the blockchain."
+    divClass "group" $ text "Add an Account here to display its status. You can add accounts that you do not own as well as accounts that do not exist yet."
     dialogSectionHeading mempty "Add Account"
-    divClass "group" $ fmap snd $ uiAccountNameInput True Nothing never $ checkAccountNameAvailability
+    divClass "group" $ fmap snd $ uiAccountNameInputNoDropdown "Account Name" True Nothing never $ checkAccountNameAvailability
       <$> (model ^. network_selectedNetwork)
       <*> (model ^. wallet_accounts)
   modalFooter $ do

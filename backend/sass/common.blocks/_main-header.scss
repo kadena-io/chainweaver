@@ -50,7 +50,7 @@ $main-header-wallet-btn-bg: #ececec;
   line-height: 0;
   height: $main-header-std-height;
 
-  &.main-header__deploy-button {
+  &.main-header__primary-button {
     @extend .main-header__button;
     color: $black;
     background: $white;
@@ -58,6 +58,12 @@ $main-header-wallet-btn-bg: #ececec;
       background: $white-hover;
     }
   }
+}
+
+.main-header__account-button {
+    @extend .main-header__button;
+    color: $black;
+    background: $main-header-wallet-btn-bg;
 }
 
 .main-header__add-account-button {
@@ -100,5 +106,8 @@ $main-header-wallet-btn-bg: #ececec;
   }
   .page__network-bar-select {
     width: 15%;
+    select {
+        padding-left: 0;
+    }
   }
 }

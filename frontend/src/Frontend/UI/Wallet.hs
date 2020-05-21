@@ -44,6 +44,7 @@ import qualified Data.Text                   as T
 import           Obelisk.Generated.Static
 import           Reflex
 import           Reflex.Dom hiding (Key)
+import           Text.Read
 ------------------------------------------------------------------------------
 import qualified Pact.Types.Pretty as Pact
 import qualified Pact.Types.Term   as Pact
@@ -55,13 +56,16 @@ import           Frontend.Wallet
 import           Frontend.UI.Widgets
 import           Frontend.Foundation
 import           Frontend.JsonData (HasJsonData, HasJsonDataCfg)
+import           Frontend.TxBuilder
 import           Frontend.UI.Dialogs.AccountDetails
 import           Frontend.UI.Dialogs.AddVanityAccount (uiCreateAccountButton, uiCreateAccountDialog)
 import           Frontend.UI.Dialogs.KeyDetails (uiKeyDetails)
 import           Frontend.UI.Dialogs.Receive (uiReceiveModal)
 import           Frontend.UI.Dialogs.WatchRequest (uiWatchRequestDialog)
 import           Frontend.UI.Dialogs.Send (uiSendModal, uiFinishCrossChainTransferModal)
+import           Frontend.UI.KeysetWidget
 import           Frontend.UI.Modal
+import           Frontend.UI.Widgets
 import           Frontend.Network
 ------------------------------------------------------------------------------
 
@@ -89,7 +93,7 @@ type HasUiWalletModelCfg model mConf key m t =
 data AccountDialog
   = AccountDialog_DetailsChain (AccountName, ChainId, AccountDetails, Account)
   | AccountDialog_Details AccountName (Maybe AccountNotes)
-  | AccountDialog_Receive AccountName AccountDetails ChainId
+  | AccountDialog_Receive AccountName ChainId (Maybe AccountDetails)
   | AccountDialog_TransferTo AccountName AccountDetails ChainId
   | AccountDialog_Send (AccountName, ChainId, AccountDetails) (Maybe UnfinishedCrossChainTransfer)
   | AccountDialog_CompleteCrosschain AccountName ChainId UnfinishedCrossChainTransfer
@@ -99,7 +103,7 @@ uiWalletRefreshButton
   :: (MonadWidget t m, Monoid mConf, HasWalletCfg mConf key t)
   => m mConf
 uiWalletRefreshButton = do
-  eRefresh <- uiButton (def & uiButtonCfg_class <>~ " main-header__wallet-refresh-button")  (text "Refresh")
+  eRefresh <- uiButton headerBtnCfg (text "Refresh")
   pure $ mempty & walletCfg_refreshBalances <>~ eRefresh
 
 uiWatchRequestButton
@@ -112,7 +116,7 @@ uiWatchRequestButton
      )
   => model -> m mConf
 uiWatchRequestButton model = do
-  watch <- uiButton (def & uiButtonCfg_class <>~ " main-header__wallet-refresh-button")  (text "Check Tx Status")
+  watch <- uiButton headerBtnCfg (text "Check Tx Status")
   pure $ mempty & modalCfg_setModal .~ (Just (uiWatchRequestDialog model) <$ watch)
 
 -- | UI for managing the keys wallet.
@@ -170,6 +174,7 @@ uiAccountItems model accountsMap = do
     el "colgroup" $ do
       elAttr "col" ("style" =: "width: 30px") blank
       elAttr "col" ("style" =: "width: 180px") blank
+      elAttr "col" ("style" =: "width: 80px") blank
       elAttr "col" ("style" =: "width: 180px") blank
       elAttr "col" ("style" =: "width: 15%") blank
       elAttr "col" ("style" =: "width: 200px") blank
@@ -180,6 +185,7 @@ uiAccountItems model accountsMap = do
       traverse_ mkHeading $
         [ ""
         , "Account Name"
+        , "Owner"
         , "Keyset Info"
         , "Notes"
         , "Balance (KDA)"
@@ -187,8 +193,9 @@ uiAccountItems model accountsMap = do
         ]
 
     el "tbody" $ do
-      let keys = Set.fromList . fmap (_keyPair_publicKey . _key_pair) . IntMap.elems <$> model ^. wallet_keys
-      events <- listWithKey accountsMap $ uiAccountItem keys
+      let cwKeys = model ^. wallet_keys
+          startsOpen = (\m -> Map.size m == 1) <$> accountsMap
+      events <- listWithKey accountsMap (uiAccountItem cwKeys startsOpen)
       dyn_ $ ffor accountsMap $ \accs ->
         when (null accs) $
           elClass "tr" "wallet__table-row" $ elAttr "td" ("colspan" =: "5" <> "class" =: "wallet__table-cell") $
@@ -201,8 +208,8 @@ uiAccountItems model accountsMap = do
     accModal n = Just . \case
       AccountDialog_Details acc notes -> uiAccountDetails n acc notes
       AccountDialog_DetailsChain acc -> uiAccountDetailsOnChain n acc
-      AccountDialog_Receive name details chain -> uiReceiveModal "Receive" model name details (Just chain)
-      AccountDialog_TransferTo name details chain -> uiReceiveModal "Transfer To" model name details (Just chain)
+      AccountDialog_Receive name chain details -> uiReceiveModal "Receive" model name chain details
+      AccountDialog_TransferTo name details chain -> uiReceiveModal "Transfer To" model name chain (Just details)
       AccountDialog_Send acc mucct -> uiSendModal model acc mucct
       AccountDialog_CompleteCrosschain name chain ucct -> uiFinishCrossChainTransferModal model name chain ucct
       AccountDialog_Create name chain mKey -> uiCreateAccountDialog model name chain mKey
@@ -222,22 +229,80 @@ accursedUnutterableListWithKey dMap f = do
   dm <- holdUniqDyn dMap
   holdDyn mempty <=< dyn $ ffor dm $ \m -> Map.traverseWithKey (\k -> f k . pure) m
 
+data AccountOwnership = SoleOwner | JointOwner | NotOwner
+  deriving (Eq,Ord,Show,Read,Enum)
+
+ownershipText :: AccountOwnership -> Text
+ownershipText SoleOwner = "yes"
+ownershipText JointOwner = "joint" -- shared?
+ownershipText NotOwner = "no" -- other?
+
+getAccountOwnership
+  :: Reflex t
+  => Dynamic t (KeyStorage key)
+  -> Dynamic t (Maybe AccountDetails)
+  -> Dynamic t (Maybe AccountOwnership)
+getAccountOwnership dcwKeys dacctDetails = do
+  cwKeys <- dcwKeys
+  mad <- dacctDetails
+
+  case mad of
+    Nothing -> pure Nothing
+    Just acctDetails -> do
+      let cwKeySet = Set.fromList $ map (_keyPair_publicKey . _key_pair) $ IntMap.elems cwKeys
+      pure $ Just $ case acctDetails ^? accountDetails_guard . _AccountGuard_KeySet of
+        -- Keys can't own the non-keyset guards with the exception of GKeySetRef
+        -- which we're not going to worry about for now. Erroneously flagging an
+        -- account as NotOwner is less potentially damaging than erroneously
+        -- flagging it as owned.
+        Nothing -> NotOwner
+        Just (acctKeys, pred) -> do
+          let numAcctKeys = Set.size acctKeys
+              controlCount = case pred of
+                "keys-any" -> 1
+                "keys-2" -> 2
+                "keys-all" -> numAcctKeys
+              calcOwnership cwks =
+                  if numGoodKeys == 0
+                     then NotOwner
+                     else if numGoodKeys == numAcctKeys
+                             then SoleOwner
+                             else JointOwner
+                where
+                  numGoodKeys = Set.size (Set.intersection acctKeys cwks)
+          calcOwnership cwKeySet
+
+padChainId :: Int -> ChainId -> ChainId
+padChainId n (ChainId c) =
+  case readMaybe (T.unpack c) :: Maybe Int of
+    Nothing -> ChainId c
+    Just _ -> ChainId $ T.replicate (n - T.length c) "0" <> c
+
 uiAccountItem
-  :: forall t m. MonadWidget t m
-  => Dynamic t (Set PublicKey)
+  :: forall key t m. MonadWidget t m
+  => Dynamic t (KeyStorage key)
+  -> Dynamic t Bool
   -> AccountName
   -> Dynamic t (AccountInfo Account)
   -> m (Event t AccountDialog)
-uiAccountItem keys name accountInfo = do
+uiAccountItem cwKeys startsOpen name accountInfo = do
   let chainMap = _accountInfo_chains <$> accountInfo
+
+      -- Chains get sorted in text order without padding is wrong for more than 10 chains
+      padKeys m = Map.mapKeys (padChainId maxKeyLen) m
+        where
+          maxKeyLen = maximum $ map (T.length . _chainId) $ Map.keys m
+      orderedChainMap = padKeys <$> chainMap
+
       notes = _accountInfo_notes <$> accountInfo
   rec
     (clk, dialog) <- keyRow visible notes $ ffor balances $ \xs0 -> case catMaybes xs0 of
       [] -> "Does not exist"
       xs -> uiAccountBalance False $ Just $ sum xs
 
-    visible <- toggle False clk
-    results <- accursedUnutterableListWithKey chainMap $ accountRow visible
+    v0 <- sample $ current startsOpen
+    visible <- toggle v0 clk
+    results <- accursedUnutterableListWithKey orderedChainMap $ accountRow visible
     let balances :: Dynamic t [Maybe AccountBalance]
         balances = fmap Map.elems $ joinDynThroughMap $ (fmap . fmap) fst results
   let dialogs = switch $ leftmost . fmap snd . Map.elems <$> current results
@@ -254,8 +319,9 @@ uiAccountItem keys name accountInfo = do
   keyRow open notes balance = trKey $ do
     let accordionCell o = "wallet__table-cell" <> if o then "" else " accordion-collapsed"
     clk <- elDynClass "td" (accordionCell <$> open) $ accordionButton def
-    td $ text $ unAccountName name
-    td blank -- Keyset info column
+    elAttr "td" ("class" =: "wallet__table-cell") $ text $ unAccountName name
+    td blank
+    td blank
     td $ dynText $ maybe "" unAccountNotes <$> notes
     td' " wallet__table-cell-balance" $ dynText balance
     onDetails <- td $ buttons $ detailsIconButton cfg
@@ -267,7 +333,8 @@ uiAccountItem keys name accountInfo = do
     -> Dynamic t Account
     -> m (Dynamic t (Maybe AccountBalance), Event t AccountDialog)
   accountRow visible chain dAccount = do
-    let balance = (^? account_status . _AccountStatus_Exists . accountDetails_balance) <$> dAccount
+    let details = (^? account_status . _AccountStatus_Exists) <$> dAccount
+    let balance = _accountDetails_balance <$$> details
     -- Previously we always added all chain rows, but hid them with CSS. A bug
     -- somewhere between reflex-dom and jsaddle means we had to push this under
     -- a `dyn`.
@@ -275,7 +342,8 @@ uiAccountItem keys name accountInfo = do
       False -> pure never
       True -> trAcc $ do
         td blank -- Arrow column
-        td $ text $ "Chain ID: " <> _chainId chain
+        td $ text $ "Chain " <> _chainId chain
+        td $ dynText $ maybe "" ownershipText <$> getAccountOwnership cwKeys details
         accStatus <- holdUniqDyn $ _account_status <$> dAccount
         elClass "td" "wallet__table-cell wallet__table-cell-keyset" $ dynText $ ffor accStatus $ \case
           AccountStatus_Unknown -> "Unknown"
@@ -286,40 +354,22 @@ uiAccountItem keys name accountInfo = do
         td $ buttons $ switchHold never <=< dyn $ ffor accStatus $ \case
           AccountStatus_Unknown -> pure never
           AccountStatus_DoesNotExist -> do
-            create <- uiCreateAccountButton cfg
-            let keyFromName = hush $ parsePublicKey $ unAccountName name
-            pure $ AccountDialog_Create name chain keyFromName <$ create
+            receive <- receiveButton cfg
+            pure $ AccountDialog_Receive name chain Nothing <$ receive
           AccountStatus_Exists d -> do
-            let ksKeys = d ^. accountDetails_guard . _AccountGuard_KeySet . _1
-            owned <- holdUniqDyn $ (ksKeys `Set.isSubsetOf`) <$> keys
-            switchHold never <=< dyn $ ffor owned $ \case
-              True -> do
-                recv <- receiveButton cfg
-                send <- sendButton cfg
+            let ks = d ^. accountDetails_guard . _AccountGuard_KeySet
+            let uk = (\(k,p) -> UserKeyset k (parseKeysetPred p)) ks
 
-                onCompleteCrossChain <- switchHold never <=< dyn $ ffor dAccount $ \acc ->
-                  case _vanityAccount_unfinishedCrossChainTransfer (_account_storage acc) of
-                    Nothing -> pure never
-                    Just ucct -> fmap (ucct <$) $ completeCrossChainButton cfg
+            let txb = TxBuilder name chain (Just $ userToPactKeyset uk)
+            let bcfg = btnCfgSecondary & uiButtonCfg_class <>~ "wallet__table-button" <> "button_border_none"
+            copyAddress <- copyButton' "Copy Tx Builder" bcfg False (constant $ prettyTxBuilder txb)
 
-                onDetails <- detailsIconButton cfg
-                pure $ leftmost
-                  [ AccountDialog_Receive name d chain <$ recv
-                  , AccountDialog_Send (name, chain, d)
-                      <$> current ( _vanityAccount_unfinishedCrossChainTransfer . _account_storage
-                                    <$> dAccount
-                                  )
-                      <@ send
-                  , AccountDialog_CompleteCrosschain name chain <$> onCompleteCrossChain
-                  , AccountDialog_DetailsChain . (name, chain, d,) <$> current dAccount <@ onDetails
-                  ]
-              False -> do
-                transferTo <- transferToButton cfg
-                onDetails <- detailsIconButton cfg
-                pure $ leftmost
-                  [ AccountDialog_TransferTo name d chain <$ transferTo
-                  , AccountDialog_DetailsChain . (name, chain, d, ) <$> current dAccount <@ onDetails
-                  ]
+            receive <- receiveButton cfg
+            onDetails <- detailsIconButton cfg
+            pure $ leftmost
+              [ AccountDialog_DetailsChain . (name, chain, d,) <$> current dAccount <@ onDetails
+              , AccountDialog_Receive name chain (Just d) <$ receive
+              ]
     pure (balance, dialog)
 
 
@@ -432,5 +482,5 @@ uiGenerateKeyButton
   :: (MonadWidget t m, Monoid mConf, HasWalletCfg mConf key t)
   => m mConf
 uiGenerateKeyButton = do
-  e <- uiButton (def & uiButtonCfg_class <>~ " main-header__add-account-button")  (text "+ Generate Key")
+  e <- uiButton headerBtnCfgPrimary (text "+ Generate Key")
   pure $ mempty & walletCfg_genKey .~ e

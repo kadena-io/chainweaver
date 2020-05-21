@@ -16,10 +16,7 @@
 -- | Dialogs for sending money between accounts
 -- Copyright   :  (C) 2020 Kadena
 -- License     :  BSD-style (see the file LICENSE)
-module Frontend.UI.Dialogs.Send
-  ( uiSendModal
-  , uiFinishCrossChainTransferModal
-  ) where
+module Frontend.UI.Dialogs.Send where
 
 import Control.Applicative (liftA2)
 import Control.Concurrent
@@ -30,6 +27,7 @@ import Control.Monad.Except (throwError)
 import Control.Monad.Logger (LogLevel(..))
 import Control.Monad.Trans.Except
 import Control.Monad.Trans.Maybe
+import Data.Bifunctor
 import Data.Decimal
 import Data.Either (isLeft, rights)
 import Data.List.NonEmpty (NonEmpty(..))
@@ -64,10 +62,11 @@ import qualified Text.URI as URI
 import Common.Wallet
 import Frontend.Crypto.Class (HasCrypto)
 import Frontend.Foundation hiding (Arg)
-import Frontend.TxBuilder
 import Frontend.JsonData
-import Frontend.Network
 import Frontend.Log
+import Frontend.Network
+import Frontend.PactQueries
+import Frontend.TxBuilder
 import Frontend.UI.DeploymentSettings
 import Frontend.UI.Dialogs.DeployConfirmation (statusText, Status(..))
 import Frontend.UI.Dialogs.DeployConfirmation (submitTransactionWithFeedback)
@@ -513,7 +512,7 @@ runUnfinishedCrossChainTransfer
   -- ^ From chain
   -> ChainId
   -- ^ To chain
-  -> (AccountName, Account)
+  -> (AccountName, AccountStatus AccountDetails)
   -- ^ Gas payer on "To" chain
   -> Event t Pact.RequestKey
   -- ^ The request key to follow up on
@@ -568,7 +567,7 @@ runUnfinishedCrossChainTransfer logL netInfo keys fromChain toChain toGasPayer r
 
   item contStatus "Got continuation response"
   item spvStatus "SPV proof retrieved"
-  item continueStatus $ "Initiate claiming coin on chain " <> _chainId toChain
+  item continueStatus $ "Initiate claiming coins on chain " <> _chainId toChain
   item resultStatus "Coins retrieved on target chain"
 
   anyError <- holdUniqDyn $ any (== Status_Failed) <$> sequence
@@ -649,7 +648,7 @@ finishCrossChainTransferConfig model fromAccount ucct = Workflow $ do
         mNetInfo <- sampleNetInfo model
         mToGasPayer <- sample $ current sender
         keys <- sample $ current $ model ^. wallet_keys
-        pure $ ffor2 mNetInfo mToGasPayer $ \ni gp -> finishCrossChainTransfer (model ^. logger) ni keys fromAccount ucct gp
+        pure $ ffor2 mNetInfo mToGasPayer $ \ni gp -> finishCrossChainTransfer (model ^. logger) ni keys fromAccount ucct (second _account_status gp)
   pure ((conf, close), nextScreen)
 
 -- | Handy function for getting network / meta information in 'PushM'. Type
@@ -684,7 +683,7 @@ finishCrossChainTransfer
   -- ^ From account
   -> UnfinishedCrossChainTransfer
   -- ^ The unfinished transfer
-  -> (AccountName, Account)
+  -> (AccountName, AccountStatus AccountDetails)
   -- ^ The account which pays the gas on the recipient chain
   -> Workflow t m (mConf, Event t ())
 finishCrossChainTransfer logL netInfo keys (fromName, fromChain) ucct toGasPayer = Workflow $ do
@@ -785,9 +784,13 @@ crossChainTransfer logL netInfo keys fromAccount toAccount fromGasPayer crossCha
           . to (uncurry toPactKeyset)
 
       -> pure $ Right ks <$ pb
-      | otherwise -> lookupKeySet logL networkName envToChain publicMeta toTxBuilder
+      | otherwise -> lookupKeySet logL networkName nodeInfos
+                       (_txBuilder_chainId toTxBuilder)
+                       (_txBuilder_accountName toTxBuilder)
     Left ka -> case _txBuilder_keyset ka of
-      Nothing -> lookupKeySet logL networkName envToChain publicMeta ka
+      Nothing -> lookupKeySet logL networkName nodeInfos
+                   (_txBuilder_chainId ka)
+                   (_txBuilder_accountName ka)
       -- If the account hasn't been created, don't try to lookup the guard. Just
       -- assume the account name _is_ the public key (since it must be a
       -- non-vanity account).
@@ -810,7 +813,7 @@ crossChainTransfer logL netInfo keys fromAccount toAccount fromGasPayer crossCha
         item initiateStatus $
           el "p" $ text $ "Cross chain transfer initiated on chain " <> _chainId fromChain
 
-        let toGasPayer = _crossChainData_recipientChainGasPayer crossChainData
+        let toGasPayer = second _account_status $ _crossChainData_recipientChainGasPayer crossChainData
         runUnfinishedCrossChainTransfer logL netInfo keys fromChain toChain toGasPayer initiatedOk
 
     let errMsg = leftmost [keySetError, initiatedError, errMsg0]
@@ -856,7 +859,7 @@ continueCrossChainTransfer
   -- ^ Keys
   -> ChainId
   -- ^ To chain
-  -> (AccountName, Account)
+  -> (AccountName, AccountStatus AccountDetails)
   -- ^ Gas payer on target chain
   -> Event t (Pact.PactExec, Pact.ContProof)
   -- ^ The previous continuation step and associated proof
@@ -872,7 +875,7 @@ continueCrossChainTransfer logL networkName envs publicMeta keys toChain gasPaye
         { _pmChainId = toChain
         , _pmSender = sender
         }
-      signingSet = accountKeys $ snd gasPayer
+      signingSet = snd gasPayer ^. _AccountStatus_Exists . accountDetails_guard . _AccountGuard_KeySet . _1
       signingPairs = filterKeyPairs signingSet keys
     payload <- buildContPayload networkName pm signingPairs $ ContMsg
       { _cmPactId = Pact._pePactId pe
@@ -897,29 +900,16 @@ lookupKeySet
   => Logger t
   -> NetworkName
   -- ^ Which network we are on
-  -> [S.ClientEnv]
+  -> [NodeInfo]
   -- ^ Envs which point to the appropriate chain
-  -> PublicMeta
-  -- ^ Public meta to steal values from TODO this can be removed when pact
-  -- allows /local requests without running gas
-  -> TxBuilder
+  -> ChainId
+  -> AccountName
   -- ^ Account on said chain to find
   -> m (Event t (Either Text Pact.KeySet))
-lookupKeySet logL networkName envs publicMeta addr = do
-  now <- getCreationTime
-  let code = T.unwords
-        [ "(coin.details"
-        , tshow $ unAccountName $ _txBuilder_accountName addr
-        , ")"
-        ]
-      pm = publicMeta
-        { _pmChainId = _txBuilder_chainId addr
-        , _pmSender = "chainweaver"
-        , _pmTTL = 60
-        , _pmCreationTime = now
-        }
-  cmd <- buildCmd Nothing networkName pm [] [] code mempty mempty
+lookupKeySet logL networkName nodes chainId accountName = do
+  cmd <- mkCoinDetailsCmd networkName chainId accountName
   (result, trigger) <- newTriggerEvent
+  let envs = mkClientEnvs nodes chainId
   liftJSM $ forkJSM $ do
     r <- doReqFailover envs (Api.local Api.apiV1Client cmd) >>= \case
       Left es -> packHttpErrors logL es
@@ -936,6 +926,7 @@ lookupKeySet logL networkName envs publicMeta addr = do
     liftIO $ trigger r
   pure result
 
+-- | Lookup the keyset of an account
 -- | Initiate a cross chain transfer on the sender chain.
 initiateCrossChainTransfer
   :: ( MonadJSM (Performable m)
@@ -1093,9 +1084,11 @@ getSPVProof
   -> m (Event t (Either Text (Pact.PactExec, Pact.ContProof)))
 getSPVProof model nodeInfos thisChain targetChain e = performEventAsync $ ffor e $ \(requestKey, pe) cb -> do
   liftJSM $ forkJSM $ do
-    proof <- failover $ spvRequests requestKey
+    proof <- failover $ take maxPolls $ cycle $ spvRequests requestKey
     liftIO . cb $ (,) pe <$> proof
   where
+    maxPolls = 12 -- Wait up to 6 blocks for the SPV proof
+    waitTime = 15
     chainUrls = getChainBaseUrl thisChain <$> nodeInfos
     -- Can't use chainweb-node's definition to generate a client, it won't build on GHCJS.
     -- Maybe we can split the API bits out later.
@@ -1105,8 +1098,8 @@ getSPVProof model nodeInfos thisChain targetChain e = performEventAsync $ ffor e
       , "targetChainId" Aeson..= targetChain
       ]
     failover [] = do
-      putLog model LevelWarn "Ran out of nodes to try for SPV proof"
-      pure $ Left "Failed to get SPV proof"
+      putLog model LevelWarn $ "No proof found after " <> tshow (maxPolls * waitTime) <> " seconds"
+      pure $ Left "Failed to get SPV proof.  Save the request key and try to finish the cross-chain transfer later."
     failover (req : rs) = do
       putLog model LevelWarn $ "Sending SPV Request: " <> tshow req
       m <- liftIO newEmptyMVar
@@ -1119,7 +1112,7 @@ getSPVProof model nodeInfos thisChain targetChain e = performEventAsync $ ffor e
         _ -> do
           -- Wait 15 seconds. We should improve this to wait instead of poll,
           -- but this is simple and it works
-          liftIO $ threadDelay $ 15 * 1000 * 1000
+          liftIO $ threadDelay $ waitTime * 1000 * 1000
           case s of
             400 -- If the TX isn't reachable yet. This is fragile if chainweb changes the response message under us.
               | Just "SPV target not reachable: Target of SPV proof can't be reached from the source transaction" <- _xhrResponse_responseText resp

@@ -71,7 +71,7 @@ uiReceiveFromLegacyAccount
      )
   => m (Dynamic t (Maybe NonBIP32TransferInfo))
 uiReceiveFromLegacyAccount = do
-  (_, mAccountName) <- uiAccountNameInput True Nothing never noValidation
+  (_, mAccountName) <- uiAccountNameInput "Account Name" True Nothing never noValidation
   let
     onDeriveKey (_, onKey) =
       pure $ ffor onKey $ \case

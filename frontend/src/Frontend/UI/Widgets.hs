@@ -25,9 +25,20 @@ module Frontend.UI.Widgets
   , predefinedChainIdDisplayed
   , userChainIdSelect
   , uiChainSelectionWithUpdate
+  , uiMandatoryChainSelection
 
   , mkChainTextAccounts
+  , uiComboBox
+  , uiComboBoxGlobalDatalist
+  , uiDatalist
+  , keyListId
+  , keyDatalist
+  , accountListId
+  , accountDatalist
   , uiAccountNameInput
+  , uiAccountNameInputNoDropdown
+  , accountNameFormWidget
+  , accountNameFormWidgetNoDropdown
   , uiAccountFixed
   , uiAccountDropdown
   , uiAccountDropdown'
@@ -92,6 +103,10 @@ module Frontend.UI.Widgets
   , dimensionalInputFeedbackWrapper
   , uiSidebarIcon
   , uiEmptyState
+
+  , growingList
+  , joinDynThroughIntMap
+  , distributeIntMapOverDynPure
   ) where
 
 
@@ -105,16 +120,17 @@ import           Control.Monad.Except
 import           Control.Monad.Trans.Maybe
 import qualified Data.Aeson.Encode.Pretty as AesonPretty
 import           Data.Either (isLeft)
+import           Data.Functor.Misc
 import           Data.Map.Strict             (Map)
 import qualified Data.Map.Strict as Map
+import           Data.Monoid
 import qualified Data.IntMap as IntMap
-import           Data.String                 (IsString)
 import           Data.Proxy                  (Proxy(..))
 import           Data.Text                   (Text)
 import qualified Data.Text                   as T
 import qualified Data.Text.Lazy as LT
 import qualified Data.Text.Lazy.Builder as LTB
-import           GHC.Word                    (Word8)
+import           GHC.Word
 import           Data.Decimal                (Decimal)
 import qualified Data.Decimal                as D
 import           Language.Javascript.JSaddle (js0, pToJSVal)
@@ -124,6 +140,7 @@ import           Obelisk.Generated.Static
 import           Reflex.Dom.Contrib.CssClass
 import           Reflex.Dom.Core
 import           Reflex.Extended             (tagOnPostBuild)
+import           System.Random
 import           Text.Read                   (readMaybe)
 ------------------------------------------------------------------------------
 import Pact.Types.ChainId (ChainId (..))
@@ -135,15 +152,18 @@ import qualified Pact.Types.Util as Pact
 import           Common.Wallet
 import           Frontend.Network (HasNetwork(..), maxCoinPrecision)
 import           Frontend.Foundation
+import           Frontend.TxBuilder
 import           Frontend.UI.Button
-import           Frontend.Wallet
+import           Frontend.UI.Common
+import           Frontend.UI.Form.Common
+import           Frontend.UI.FormWidget
 import           Frontend.UI.Widgets.Helpers (imgWithAlt, imgWithAltCls, makeClickable,
                                               setFocus, setFocusOn,
                                               setFocusOnSelected, tabPane,
                                               preventUpAndDownArrow,
                                               preventScrollWheel,
                                               tabPane')
-import           Frontend.TxBuilder (TxBuilder)
+import           Frontend.Wallet
 
 ------------------------------------------------------------------------------
 
@@ -237,13 +257,6 @@ uiPassword wrapperCls inputCls ph = elClass "span" wrapperCls $ do
     , "placeholder" =: ph
     , "class" =: inputCls
     ]
-
--- | Factored out input class modifier, so we can keep it in sync.
-addInputElementCls :: (Ord attr, IsString attr) => Map attr Text -> Map attr Text
-addInputElementCls = addToClassAttr "input"
-
-addNoAutofillAttrs :: (Ord attr, IsString attr) => Map attr Text -> Map attr Text
-addNoAutofillAttrs = (noAutofillAttrs <>)
 
 -- | Produces a form wrapper given a suitable submit button so that the enter key is correctly handled
 uiForm' :: forall t m a b. DomBuilder t m => ElementConfig EventResult t (DomBuilderSpace m) -> m b -> m a -> m (Event t (), (a,b))
@@ -632,16 +645,6 @@ mkLabeledClsInput inlineLabel name mkInput =
   where
     inlineState = bool "" "-inline" inlineLabel
 
--- | Attributes which will turn off all autocomplete/autofill/autocorrect
--- functions, including the OS-level suggestions on macOS.
-noAutofillAttrs :: (Ord attr, IsString attr) => Map attr Text
-noAutofillAttrs = Map.fromList
-  [ ("autocomplete", "off")
-  , ("autocorrect", "off")
-  , ("autocapitalize", "off")
-  , ("spellcheck", "false")
-  ]
-
 -- | Validated input with button
 validatedInputWithButton
   :: MonadWidget t m
@@ -868,9 +871,6 @@ uiDetailsCopyButton txt = do
         & uiButtonCfg_title .~ constDyn (Just "Copy")
   divClass "details__copy-btn-wrapper" $ copyButton cfg False txt
 
-prettyTxBuilder :: TxBuilder -> Text
-prettyTxBuilder = LT.toStrict . LTB.toLazyText . AesonPretty.encodePrettyToTextBuilder
-
 uiTxBuilder
   :: DomBuilder t m
   => Maybe TxBuilder
@@ -980,44 +980,138 @@ predefinedChainIdDisplayed cid = do
 noValidation :: Applicative f => f (a -> Either err a)
 noValidation = pure Right
 
+-- | Like uiComboBoxGlobalDatalist but handles creation of a unique datalist ID
+-- for you.
+uiComboBox
+  :: ( DomBuilder t m, PostBuild t m, MonadFix m, MonadHold t m
+     , MonadIO m
+     )
+  => Text
+  -> Dynamic t [Text]
+  -> InputElementConfig er t (DomBuilderSpace m)
+  -> m (InputElement er (DomBuilderSpace m) t)
+uiComboBox iv options cfg = do
+  listNum :: Word64 <- liftIO randomIO
+  let listId = "datalist-" <> T.pack (show listNum)
+  res <- uiComboBoxGlobalDatalist listId iv cfg
+  uiDatalist listId options
+  pure res
+
+-- | HTML5 combo box widget that presents a dropdown but also allows work like a
+-- text input.
+uiComboBoxGlobalDatalist
+  :: ( DomBuilder t m, PostBuild t m, MonadFix m, MonadHold t m
+     , MonadIO m
+     )
+  => Text
+  -> Text
+  -> InputElementConfig er t (DomBuilderSpace m)
+  -> m (InputElement er (DomBuilderSpace m) t)
+uiComboBoxGlobalDatalist datalistId iv cfg =
+  uiInputElement $ cfg
+    & inputElementConfig_initialValue .~ iv
+    & initialAttributes %~ (<> "list" =: datalistId)
+
+-- | Renders an options list suitable for use with HTML5 combo boxes.
+uiDatalist
+  :: ( DomBuilder t m, PostBuild t m, MonadFix m, MonadHold t m
+     )
+  => Text
+  -> Dynamic t [Text]
+  -> m ()
+uiDatalist datalistId items = elAttr "datalist" ("id" =: datalistId) $ do
+  void $ simpleList items $ \v ->
+    elDynAttr "option" (("value" =:) <$> v) blank
+  pure ()
+
+
+-- | Global dom representation of the account list for use in an HTML5 combo
+-- box. This uses and is addressed by an id, so there should only ever be one of
+-- them in the DOM. Currently it's at the very top of the <body> tag.
+keyDatalist
+  :: ( DomBuilder t m, PostBuild t m, MonadFix m, MonadHold t m
+     , HasWallet ide key t
+     )
+  => ide
+  -> m ()
+keyDatalist ideL = elAttr "datalist" ("id" =: keyListId) $ do
+  let keys = Map.fromList . IntMap.toList <$> ideL ^. wallet_keys
+  listWithKey keys $ \k v -> do
+      el "option" $ dynText $ keyToText . _keyPair_publicKey . _key_pair <$> v
+  pure ()
+
+keyListId :: Text
+keyListId = "key-list"
+
+-- | Global dom representation of the account list for use in an HTML5 combo
+-- box. This uses and is addressed by an id, so there should only ever be one of
+-- them in the DOM. Currently it's at the very top of the <body> tag.
+accountDatalist
+  :: ( DomBuilder t m, PostBuild t m, MonadFix m, MonadHold t m
+     , HasNetwork ide t
+     , HasWallet ide key t
+     )
+  => ide
+  -> m ()
+accountDatalist ideL = elAttr "datalist" ("id" =: accountListId) $ do
+  let net = ideL ^. network_selectedNetwork
+      accounts = ideL ^. wallet_accounts
+  mAccounts <- maybeDyn $ ffor2 net accounts $ \n (AccountData m) -> case Map.lookup n m of
+    Just accs | not (Map.null accs) -> Just accs
+    _ -> Nothing
+  dyn $ ffor mAccounts $ \case
+    Nothing -> blank
+    Just am -> void $ listWithKey am $ \k _ -> do
+      el "option" $ text $ unAccountName k
+  pure ()
+
+accountListId :: Text
+accountListId = "account-list"
+
 uiAccountNameInput
   :: ( DomBuilder t m
      , PostBuild t m
      , MonadHold t m
      , DomBuilderSpace m ~ GhcjsDomSpace
      , PerformEvent t m
+     , TriggerEvent t m
      , MonadJSM (Performable m)
      )
-  => Bool
+  => Text
+  -> Bool
   -> Maybe AccountName
   -> Event t (Maybe AccountName)
   -> Dynamic t (AccountName -> Either Text AccountName)
   -> m ( Event t (Maybe AccountName)
        , Dynamic t (Maybe AccountName)
        )
-uiAccountNameInput inlineLabel initval onSetName validateName = do
-  let
-    mkMsg True (Left e) = PopoverState_Error e
-    mkMsg _    _ = PopoverState_Disabled
+uiAccountNameInput label inlineLabel initval onSetName validateName = do
+  (FormWidget v i _, _) <- mkLabeledInput inlineLabel label (accountNameFormWidget validateName) $ mkCfg initval
+    & setValue .~ Just onSetName
+  pure (tagPromptlyDyn v i, v)
 
-    validate = ffor validateName $ (<=< mkAccountName)
-
-    showPopover (ie, _) = pure $ (\v t -> mkMsg (not $ T.null t) (v t))
-      <$> current validate
-      <@> fmap T.strip (_inputElement_input ie)
-
-    uiNameInput cfg = do
-      inp <- uiInputElement cfg
-      pure (inp, _inputElement_raw inp)
-
-  (inputE, _) <- mkLabeledInput inlineLabel "Account Name" (uiInputWithPopover uiNameInput snd showPopover)
-    $ def
-    & inputElementConfig_initialValue .~ fold (fmap unAccountName initval)
-    & inputElementConfig_setValue .~ fmapMaybe (fmap unAccountName) onSetName
-
-  pure ( fmap hush $ current validate <@> _inputElement_input inputE
-       , hush <$> (validate <*> fmap T.strip (value inputE))
+uiAccountNameInputNoDropdown
+  :: ( DomBuilder t m
+     , PostBuild t m
+     , MonadHold t m
+     , DomBuilderSpace m ~ GhcjsDomSpace
+     , PerformEvent t m
+     , TriggerEvent t m
+     , MonadJSM (Performable m)
+     )
+  => Text
+  -> Bool
+  -> Maybe AccountName
+  -> Event t (Maybe AccountName)
+  -> Dynamic t (AccountName -> Either Text AccountName)
+  -> m ( Event t (Maybe AccountName)
+       , Dynamic t (Maybe AccountName)
        )
+uiAccountNameInputNoDropdown label inlineLabel initval onSetName validateName = do
+  (FormWidget v i _, _) <- mkLabeledInput inlineLabel label (accountNameFormWidgetNoDropdown validateName) $ mkCfg initval
+    & setValue .~ Just onSetName
+  pure (tagPromptlyDyn v i, v)
+
 
 -- | Set the account to a fixed value
 uiAccountFixed
@@ -1258,3 +1352,164 @@ uiRequestKeyInput inlineLabel = do
   pure ( parseRequestKey <$> _inputElement_input inputE
        , parseRequestKey <$> value inputE
        )
+
+accountNameFormWidget
+  :: ( DomBuilder t m
+     , PostBuild t m
+     , MonadHold t m
+     , DomBuilderSpace m ~ GhcjsDomSpace
+     , PerformEvent t m
+     , TriggerEvent t m
+     , MonadJSM (Performable m)
+     )
+  => Dynamic t (AccountName -> Either Text AccountName)
+  -> PrimFormWidgetConfig t (Maybe AccountName)
+  -> m (FormWidget t (Maybe AccountName), Event t (Maybe Text))
+accountNameFormWidget validateName cfg = do
+  let
+    mkMsg True (Left e) = PopoverState_Error e
+    mkMsg _    _ = PopoverState_Disabled
+
+    validate = ffor validateName $ (<=< mkAccountName)
+
+    showPopover (ie, _) = pure $ (\v t -> mkMsg (not $ T.null t) (v t))
+      <$> current validate
+      <@> fmap T.strip (_inputElement_input ie)
+
+    uiNameInput cfg = do
+      inp <- uiInputElement $ cfg & initialAttributes %~
+               (<> "list" =: accountListId) . addToClassAttr "account-input"
+      pure (inp, _inputElement_raw inp)
+
+  (inputE, _) <- uiInputWithPopover uiNameInput snd showPopover $ pfwc2iec (maybe "" unAccountName) cfg
+
+  let w = FormWidget
+            (hush <$> (validate <*> fmap T.strip (value inputE)))
+            (() <$ _inputElement_input inputE)
+            (_inputElement_hasFocus inputE)
+  pure (w, domEvent Paste inputE)
+
+accountNameFormWidgetNoDropdown
+  :: ( DomBuilder t m
+     , PostBuild t m
+     , MonadHold t m
+     , DomBuilderSpace m ~ GhcjsDomSpace
+     , PerformEvent t m
+     , TriggerEvent t m
+     , MonadJSM (Performable m)
+     )
+  => Dynamic t (AccountName -> Either Text AccountName)
+  -> PrimFormWidgetConfig t (Maybe AccountName)
+  -> m (FormWidget t (Maybe AccountName), Event t (Maybe Text))
+accountNameFormWidgetNoDropdown validateName cfg = do
+  let
+    mkMsg True (Left e) = PopoverState_Error e
+    mkMsg _    _ = PopoverState_Disabled
+
+    validate = ffor validateName $ (<=< mkAccountName)
+
+    showPopover (ie, _) = pure $ (\v t -> mkMsg (not $ T.null t) (v t))
+      <$> current validate
+      <@> fmap T.strip (_inputElement_input ie)
+
+    uiNameInput cfg = do
+      inp <- uiInputElement $ cfg & initialAttributes %~ addToClassAttr "account-input"
+      pure (inp, _inputElement_raw inp)
+
+  (inputE, _) <- uiInputWithPopover uiNameInput snd showPopover $ pfwc2iec (maybe "" unAccountName) cfg
+
+  let w = FormWidget
+            (hush <$> (validate <*> fmap T.strip (value inputE)))
+            (() <$ _inputElement_input inputE)
+            (_inputElement_hasFocus inputE)
+  pure (w, domEvent Paste inputE)
+
+-- | A dynamically resizing list widget with a very low visual footprint. It
+-- always displays one more item than is in the list. As soon as the user starts
+-- typing or selects anything for that item, a new empty item gets added. When
+-- any item becomes empty, it will be removed. This widget allows the user to
+-- specify the definition of "empty" that triggers the adding or removing of
+-- items.
+growingList
+  :: forall t m a
+     . ( MonadWidget t m
+       , Show a
+       )
+  => (IntMap.Key -> FormWidgetConfig t a -> m (FormWidget t a))
+  -- ^ Form for a single element
+  -> AllowAddNewRow t (FormWidget t a)
+  -- ^ When to add a new row
+  -> AllowDeleteRow t (FormWidget t a)
+  -- ^ When to remove a row
+  -> a
+  -- ^ Initial value of a newly added row
+  -> Event t (PatchIntMap a)
+  -- ^ External patches to the list of values. This is different from the
+  -- setValue event contained in the next parameter, which completely swaps out
+  -- the whole list rather than making incremental updates.
+  -- (i.e. PatchIntMap vs IntMap)
+  -> FormWidgetConfig t (IntMap.IntMap a)
+  -> m (Dynamic t (IntMap.IntMap (FormWidget t a)))
+  -- ^ TODO Maybe convert this into an outer FormWidget instead of Dynamic
+growingList mkOne (AllowAddNewRow newRow) (AllowDeleteRow deleteRow) initialSelection externalPatches cfg = do
+  let
+    minRowIx = 0
+
+    --decideAddNewRow :: (IntMap.Key, FormWidget t a) -> Event t (IntMap.IntMap (Maybe a))
+    decideAddNewRow (i, a) = IntMap.singleton (succ i) (Just initialSelection) <$ ffilter id (newRow a)
+
+    --decideDeletion :: IntMap.Key -> FormWidget t a -> Event t (IntMap.IntMap (Maybe a))
+    decideDeletion i a = IntMap.singleton i Nothing <$ ffilter id (deleteRow a)
+
+  rec
+    let
+      -- Delete rows when the appropriate value is chosen
+      onDelete = fmap PatchIntMap $ switchDyn $ (IntMap.foldMapWithKey decideDeletion) <$> dInputKeys
+      -- Add a new row when all rows have a selection and there are more keys to choose from
+      onAdd = fmap PatchIntMap $ switchDyn $ maybe never decideAddNewRow . IntMap.lookupMax <$> dInputKeys
+
+      addEmptyItem m =
+          case IntMap.lookupMax m of
+            Nothing -> IntMap.insert minRowIx initialSelection mempty
+            Just (k,_) -> IntMap.insert (k+1) initialSelection m
+
+      endIndex = maybe minRowIx (succ . fst) . IntMap.lookupMax
+      addEmptyPatchItem m =
+          case IntMap.lookupMin $ IntMap.filter isNothing m of
+            Nothing -> IntMap.insert (endIndex m) (Just initialSelection) m
+            Just (k,_) -> IntMap.insert k (Just initialSelection) m
+
+
+      initMap :: IntMap.IntMap (FormWidgetConfig t a)
+      initMap = fmap mkCfg $ addEmptyItem $ _initialValue cfg
+
+      toPatchIntMap cur as = PatchIntMap $ addEmptyPatchItem $ IntMap.union (Just <$> as) resets
+        where
+          resets = Nothing <$ cur
+
+      fullReplacements = maybe never (attachWith toPatchIntMap $ current dInputKeys) $
+        _formWidgetConfig_setValue cfg
+
+      mapUpdates :: Event t (PatchIntMap (FormWidgetConfig t a))
+      mapUpdates = mkCfg <$$> leftmost
+        [ onDelete
+        , onAdd
+        , externalPatches
+        , fullReplacements
+        ]
+    (keys, newSelection) <- traverseIntMapWithKeyWithAdjust mkOne initMap mapUpdates
+    dInputKeys <- foldDyn applyAlways keys newSelection
+
+  pure dInputKeys
+
+-- These functions added to reflex in
+-- https://github.com/reflex-frp/reflex/pull/419. They can be removed after
+-- Chainweaver is upgraded to that version.
+joinDynThroughIntMap
+  :: forall t a. (Reflex t)
+  => Dynamic t (IntMap.IntMap (Dynamic t a))
+  -> Dynamic t (IntMap.IntMap a)
+joinDynThroughIntMap = (distributeIntMapOverDynPure =<<)
+
+distributeIntMapOverDynPure :: (Reflex t) => IntMap.IntMap (Dynamic t v) -> Dynamic t (IntMap.IntMap v)
+distributeIntMapOverDynPure = fmap dmapToIntMap . distributeDMapOverDynPure . intMapWithFunctorToDMap

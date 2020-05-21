@@ -27,12 +27,15 @@ in with obelisk;
    packages =
      let
        servantSrc = hackGet ./dep/servant;
+       reflex-dom-src = hackGet ./dep/reflex-dom;
      in
        {
           # servant-client-core = servantSrc + "/servant-client-core";
           # servant = servantSrc + "/servant";
           servant-jsaddle = servantSrc + "/servant-jsaddle";
           jsaddle-warp = hackGet ./dep/jsaddle + /jsaddle-warp; #https://github.com/ghcjs/jsaddle/pull/114
+          reflex-dom = reflex-dom-src + "/reflex-dom";
+          reflex-dom-core = reflex-dom-src + "/reflex-dom-core";
           reflex-dom-ace = hackGet ./dep/reflex-dom-ace;
           reflex-dom-contrib = hackGet ./dep/reflex-dom-contrib;
           dependent-sum-aeson-orphans = hackGet ./dep/dependent-sum-aeson-orphans;
@@ -104,6 +107,7 @@ in with obelisk;
         unliftio = haskellLib.dontCheck super.unliftio;
       };
       common-overlay = self: super: {
+        brittany = haskellLib.dontCheck super.brittany;
         jsaddle-warp = haskellLib.dontCheck super.jsaddle-warp; # webdriver fails to build
         reflex-dom-core = haskellLib.dontCheck super.reflex-dom-core; # webdriver fails to build
         servant-jsaddle = haskellLib.dontCheck (haskellLib.doJailbreak super.servant-jsaddle);

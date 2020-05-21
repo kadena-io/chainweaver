@@ -12,12 +12,16 @@
 -- | Crypto and keys needed for signing transactions.
 module Frontend.Crypto.Ed25519
   ( -- * Types & Classes
-    PublicKey
-  , PrivateKey
-  , Signature
+    PublicKey(..)
+  , PrivateKey(..)
+  , Signature(..)
+  , unverifiedUserSuppliedSignature
+  , parseSignature
   -- * Creation
   , genKeyPair
   , deriveKeyPairFromPrivateKey
+  -- * Verifying
+  , verifySignature
   -- * Signing
   , mkSignature
   -- * Parsing
@@ -57,12 +61,27 @@ import Frontend.Foundation
 
 --
 -- | PrivateKey with a Pact compatible JSON representation.
-newtype PrivateKey = PrivateKey ByteString
+newtype PrivateKey = PrivateKey { unPrivateKey :: ByteString }
   deriving (Generic)
 --
 -- | Signature with a Pact compatible JSON representation.
-newtype Signature = Signature ByteString
-  deriving (Generic)
+newtype Signature = Signature { unSignature :: ByteString }
+  deriving (Eq,Ord,Show,Generic)
+
+unverifiedUserSuppliedSignature :: MonadFail m => Text -> m Signature
+unverifiedUserSuppliedSignature = fmap Signature . decodeBase16M . T.encodeUtf8
+
+-- | Parse just a public key with some sanity checks applied.
+parseSignature :: MonadError Text m => Text -> m Signature
+parseSignature = throwDecodingErr . textToKey <=< checkSig . T.strip
+
+checkSig :: MonadError Text m => Text -> m Text
+checkSig t =
+    if len /= 128
+      then throwError $ T.pack "Signature is not the right length"
+      else pure t
+  where
+    len = T.length t
 
 mkKeyPairFromJS :: MakeObject s => s -> JSM (PrivateKey, PublicKey)
 mkKeyPairFromJS jsPair = do
@@ -75,6 +94,14 @@ mkKeyPairFromJS jsPair = do
 -- | Generate a `PublicKey`, `PrivateKey` keypair.
 genKeyPair :: MonadJSM m => m (PrivateKey, PublicKey)
 genKeyPair = liftJSM $ eval "nacl.sign.keyPair()" >>= mkKeyPairFromJS
+
+-- | Create a signature based on the given payload and `PrivateKey`.
+verifySignature :: MonadJSM m => ByteString -> Signature -> PublicKey -> m Bool
+verifySignature msg (Signature sig) (PublicKey key) = liftJSM $ do
+  jsSign <- eval "(function(m, sig, pub) {return window.nacl.sign.detached.verify(Uint8Array.from(m), Uint8Array.from(sig), Uint8Array.from(pub));})"
+  jsSig <- call jsSign valNull [BS.unpack msg, BS.unpack sig, BS.unpack key]
+  fromJSValUnchecked jsSig
+  {- pure $ Signature BS.empty -}
 
 -- | Create a signature based on the given payload and `PrivateKey`.
 mkSignature :: MonadJSM m => ByteString -> PrivateKey -> m Signature

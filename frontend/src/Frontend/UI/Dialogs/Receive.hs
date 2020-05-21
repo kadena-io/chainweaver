@@ -11,9 +11,14 @@ module Frontend.UI.Dialogs.Receive
 
 import Control.Applicative (liftA2)
 import Control.Lens ((^.), (<>~), (^?), to)
+import Control.Monad
 import Control.Monad.Trans.Class (lift)
 import Control.Monad.Trans.Maybe (MaybeT(..))
+import qualified Data.IntMap as IntMap
+import Data.Set (Set)
+import qualified Data.Set as Set
 import Data.Text (Text)
+import qualified Data.Text as T
 
 import Reflex
 import Reflex.Dom
@@ -27,6 +32,8 @@ import Frontend.Log
 
 import Frontend.UI.Dialogs.Receive.Legacy
 import Frontend.UI.DeploymentSettings (transactionDisplayNetwork)
+import Frontend.UI.FormWidget
+import Frontend.UI.KeysetWidget
 
 import Frontend.UI.Modal
 import Frontend.UI.Widgets
@@ -41,23 +48,95 @@ uiReceiveModal
      , Flattenable mConf t
      , HasCrypto key m
      , HasCrypto key (Performable m)
+     , HasWallet model key t
      , HasLogger model t
      , HasTransactionLogger m
      )
   => Text
   -> model
   -> AccountName
-  -> AccountDetails
-  -> Maybe ChainId
+  -> ChainId
+  -> Maybe AccountDetails
   -> Event t ()
   -> m (mConf, Event t ())
-uiReceiveModal modalTitle model account details mchain _onClose = do
+uiReceiveModal modalTitle model account chain mdetails _onClose = do
   onClose <- modalHeader $ text modalTitle
-  (conf, closes) <- fmap splitDynPure $ workflow $
-    uiReceiveModal0 model account details mchain onClose
-  mConf <- flatten =<< tagOnPostBuild conf
-  let close = switch $ current closes
-  pure (mConf, close)
+
+  divClass "modal__main receive" $ do
+    dmks <- receiveToNonexistentAccount model account chain mdetails
+
+    dyn_ $ ffor dmks $ \mks -> do
+      case mks of
+        Nothing -> blank
+        Just ks -> do
+          let txb = TxBuilder account chain (Just $ userToPactKeyset ks)
+          dialogSectionHeading mempty "Account Information"
+          divClass "group" $ uiDisplayTxBuilderWithCopy True txb
+
+  let doneCfg = def & uiButtonCfg_class <>~ "button_type_confirm"
+  done <- modalFooter $ uiButtonDyn doneCfg $ text "Done"
+
+  pure (mempty, onClose <> done)
+
+receiveToNonexistentAccount
+  :: ( MonadWidget t m
+     , HasNetwork model t
+     , HasCrypto key (Performable m)
+     , HasCrypto key m
+     , HasWallet model key t
+     , HasLogger model t
+     , HasTransactionLogger m
+     )
+  => model
+  -> AccountName
+  -> ChainId
+  -> Maybe AccountDetails
+  -> m (Dynamic t (Maybe UserKeyset))
+receiveToNonexistentAccount model account chain mdetails = do
+    case mdetails of
+      Just d -> pure $ constDyn (d ^? accountDetails_guard . _AccountGuard_KeySet .
+                                      to (uncurry toPactKeyset) . to userFromPactKeyset)
+      Nothing -> do
+        let dynWalletKeys = Set.fromList . fmap (_keyPair_publicKey . _key_pair) . IntMap.elems <$>
+              model ^. wallet_keys
+        res <- dyn $ ffor dynWalletKeys $ \walletKeys -> do
+          dialogSectionHeading mempty "Description"
+          mks1 <- divClass "group" $ do
+            mks1 <- case parsePublicKey $ unAccountName account of
+              Left _ -> do
+                para1
+                pure Nothing
+              Right pk -> do
+                let ks = UserKeyset (Set.singleton pk) KeysAll
+                if Set.member pk walletKeys
+                  then pure $ Just ks
+                  else do
+                    el "p" $ text "NOTICE: This account name looks like a public key, but it is not one of Chainweaver's keys.  Make sure it is the key you want before continuing!"
+                    pure $ Just ks
+
+            para2
+            return mks1
+
+          case mks1 of
+            Nothing -> do
+              dialogSectionHeading mempty "Define Keyset"
+              divClass "group" $ keysetFormWidget (mkCfg Nothing)
+            Just ks -> pure (constDyn $ Just ks)
+        fmap join $ holdDyn (constDyn Nothing) res
+  where
+    para1 = el "p" $ text $ T.unwords
+      [ "Before you can receive coins, you must decide who owns this account."
+      , "You do this by specifying a keyset."
+      , "A keyset contains one or more public keys for everyone who owns the account"
+      , "as well as a predicate that decides how many keys have to sign to send coins."
+      , "After you add keys, a Tx Builder will appear."
+      ]
+    para2 = el "p" $ text $ T.unwords
+      [ "To receive funds, copy the the Tx Builder."
+      , "It contains the information necessary to send Kadena coins to this account."
+      , "Paste it into the To field in Chainweaver's Transfer section"
+      , "or send it someone else so they can use it to transfer."
+      ]
 
 uiReceiveModal0
   :: ( MonadWidget t m
@@ -71,40 +150,27 @@ uiReceiveModal0
      )
   => model
   -> AccountName
+  -> ChainId
   -> AccountDetails
-  -> Maybe ChainId
   -> Event t ()
   -> Workflow t m (mConf, Event t ())
-uiReceiveModal0 model account details mchain onClose = Workflow $ do
+uiReceiveModal0 model account chain details onClose = Workflow $ do
   let
     netInfo = getNetworkInfoTriple $ model ^. network
-
-    displayText lbl v cls =
-      let
-        attrFn cfg = uiInputElement $ cfg
-          & initialAttributes <>~ ("disabled" =: "true" <> "class" =: (" " <> cls))
-      in
-        mkLabeledInputView True lbl attrFn $ pure v
 
   (showingAddr, chain, (conf, ttl, gaslimit, transferInfo)) <- divClass "modal__main receive" $ do
     rec
       showingTxBuilder <- toggle True $ onAddrClick <> onReceiClick
 
       dialogSectionHeading mempty "Destination"
-      chain <- divClass "group" $ do
-        -- Network
+      divClass "group" $ do
         transactionDisplayNetwork model
-        -- Chain id
-        case mchain of
-          Nothing -> value <$> userChainIdSelect (getChainsFromHomogenousNetwork model)
-          Just cid -> (pure $ Just cid) <$ displayText "Chain ID" (_chainId cid) mempty
+        displayText "Chain ID" (_chainId chain) mempty
 
       (onAddrClick, ((), ())) <- controlledAccordionItem showingTxBuilder mempty
         (accordionHeaderBtn "Option 1: Copy and share Tx Builder") $ do
-        dyn_ $ ffor chain $ divClass "group" . \case
-          Nothing -> text "Please select a chain"
-          Just cid -> uiDisplayTxBuilderWithCopy True
-            $ TxBuilder account cid
+          uiDisplayTxBuilderWithCopy True
+            $ TxBuilder account chain
             $ details ^? accountDetails_guard . _AccountGuard_KeySet . to (uncurry toPactKeyset)
 
       (onReceiClick, results) <- controlledAccordionItem (not <$> showingTxBuilder) mempty
@@ -119,12 +185,11 @@ uiReceiveModal0 model account details mchain onClose = Workflow $ do
     pure (showingTxBuilder, chain, snd results)
 
   let needsSender = liftA2 (&&) (isNothing <$> transferInfo) (not <$> showingAddr)
-      isDisabled = liftA2 (||) (isNothing <$> chain) needsSender
 
   doneNext <- modalFooter $ uiButtonDyn
     (def
      & uiButtonCfg_class <>~ "button_type_confirm"
-     & uiButtonCfg_disabled .~ isDisabled
+     & uiButtonCfg_disabled .~ needsSender
     )
     $ dynText (bool "Submit Transfer" "Close" <$> showingAddr)
 
@@ -133,13 +198,23 @@ uiReceiveModal0 model account details mchain onClose = Workflow $ do
     deploy = gate (not <$> current showingAddr) doneNext
 
     submit = flip push deploy $ \() -> runMaybeT $ do
-      c <- MaybeT $ sample $ current chain
       t <- lift $ sample $ current ttl
       g <- lift $ sample $ current gaslimit
       ni <- MaybeT $ sample $ current netInfo
       ti <- MaybeT $ sample $ current transferInfo
-      pure $ receiveFromLegacySubmitTransfer model onClose account c t g ni ti
+      pure $ receiveFromLegacySubmitTransfer model onClose account chain t g ni ti
 
   pure ( (conf, onClose <> done)
        , submit
        )
+
+displayText
+  :: (DomBuilder t m, PostBuild t m, MonadFix m, MonadHold t m)
+  => Text
+  -> Text
+  -> Text
+  -> m (Event t Text)
+displayText lbl v cls = mkLabeledInputView True lbl attrFn $ pure v
+  where
+    attrFn cfg = uiInputElement $ cfg
+      & initialAttributes <>~ ("disabled" =: "true" <> "class" =: (" " <> cls))

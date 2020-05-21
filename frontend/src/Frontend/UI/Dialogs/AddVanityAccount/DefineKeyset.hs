@@ -10,7 +10,7 @@ module Frontend.UI.Dialogs.AddVanityAccount.DefineKeyset
   ) where
 
 import           Control.Arrow                          ((&&&))
-import           Control.Lens                           ((^.),ifoldMap)
+import           Control.Lens hiding (element)
 import           Control.Error                          (hush)
 import           Data.Witherable                        (wither)
 import           Data.Text                              (Text)
@@ -107,7 +107,7 @@ uiExternalKeyInput onPreselection = do
     (AllowAddNewRow $ doAddDel not)
     (AllowDeleteRow $ doAddDel id)
     Nothing
-    onPreselection
+    (traceEventWith (\(PatchIntMap m) -> "onPreselection: " <> show m) onPreselection)
 
   let
     dFormState :: Dynamic t (PatchIntMap (Maybe Text))

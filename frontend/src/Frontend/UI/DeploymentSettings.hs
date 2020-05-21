@@ -648,7 +648,7 @@ uiMetaData m mTTL mGasLimit = do
       gpInput <- mkLabeledInput True "Gas Price" (gasPriceInputBox $ fmap showGasPrice setSpeed) def
       let setPrice = fmap (showGasPrice . scaleGPtoTxnSpeed) gpInput
       pure $ leftmost [gpInput, setSpeed]
-    gasPrice <- holdDyn defaultTransactionGasPrice onGasPrice
+    gasPrice <- holdDyn defaultTransactionGasPrice $ leftmost [pbGasPrice, onGasPrice]
 
     let initGasLimit = fromMaybe defaultTransactionGasLimit mGasLimit
     pbGasLimit <- case mGasLimit of
