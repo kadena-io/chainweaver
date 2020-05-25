@@ -351,6 +351,9 @@ getAccountDetails model eca = do
                    nodes chain [acct]
       pure $ extractDetails <$> ks
 
+transferModalTitle :: TransferType -> Text
+transferModalTitle NormalTransfer = "Transfer"
+transferModalTitle SafeTransfer = "Safe Transfer"
 
 lookupAndTransfer
   :: ( MonadWidget t m, Monoid mConf, Flattenable mConf t
@@ -394,9 +397,9 @@ lookupAndTransfer model netInfo ti ty onCloseExternal = do
           mConf <- flatten =<< tagOnPostBuild conf
           let close = switch $ current closes
           pure (mConf, close)
-        eWrapper (_, Nothing) = msgModal "Sign Transfer" $ text "Loading..."
-        eWrapper (Nothing, _) = msgModal "Sign Transfer" $ text "Loading..."
-    (conf, closes) <- splitDynPure <$> networkHold (msgModal "Sign Transfer" $ text "Querying keysets...")
+        eWrapper (_, Nothing) = msgModal (transferModalTitle ty) $ text "Loading..."
+        eWrapper (Nothing, _) = msgModal (transferModalTitle ty) $ text "Loading..."
+    (conf, closes) <- splitDynPure <$> networkHold (msgModal (transferModalTitle ty) $ text "Querying keysets...")
                         (eWrapper <$> ffilter (\(a,b) -> isJust a && isJust b) (updated allKeys))
     mConf <- flatten =<< tagOnPostBuild conf
     return (mConf, switch $ current closes)
@@ -608,7 +611,7 @@ transferDialog
 transferDialog model netInfo ti ty fks tks _ = do
     -- TODO Clean up the unused parameter
     -- It contains the from account name and details retrieved from blockchain
-    close <- modalHeader $ text "Sign Transfer"
+    close <- modalHeader $ text $ transferModalTitle ty
     rec
       (currentTab, _done) <- transferTabs newTab
       (conf, meta, payload, dSignedCmd, destChainInfo) <- mainSection currentTab
