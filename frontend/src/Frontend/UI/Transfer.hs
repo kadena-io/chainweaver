@@ -203,6 +203,9 @@ data TransferInfo = TransferInfo
   , _ti_toKeyset :: Maybe UserKeyset
   } deriving (Eq,Ord,Show)
 
+data TransferType = NormalTransfer | SafeTransfer
+  deriving (Eq,Ord,Show,Read,Enum)
+
 uiGenericTransfer
   :: ( MonadWidget t m
      , HasLogger model t
@@ -256,11 +259,26 @@ uiGenericTransfer model cfg = do
         lift ks
     (clear, signTransfer) <- divClass "transfer-fields submit" $ do
       clr <- el "div" $ uiButton btnCfgTertiary $ text "Clear"
-      st <- confirmButton (def { _uiButtonCfg_disabled = (isNothing <$> transferInfo) }) "Sign & Transfer"
+      normal <- confirmButton (def { _uiButtonCfg_disabled = (isNothing <$> transferInfo) }) "Sign & Transfer"
+      let safeDisabled Nothing = True
+          safeDisabled (Just i) = _ca_chain (_ti_fromAccount i) /= _ca_chain (_ti_toAccount i)
+                               || (Set.null . _userKeyset_keys <$> _ti_toKeyset i) == Just True
+                               || isNothing (_ti_toKeyset i)
+          safeBtnCfg = def
+            { _uiButtonCfg_disabled = (safeDisabled <$> transferInfo)
+            , _uiButtonCfg_title = constDyn $ Just "Safe transfers can be done when you are doing a transfer-create to the same chain.  This makes it impossible for you to lose coins by sending it to the wrong public key.  It requires a little extra work because the receiving account also has to sign the transaction."
+            }
+      safe <- confirmButton safeBtnCfg "Safe Transfer"
       -- _ <- confirmButton (def { _uiButtonCfg_disabled = (isNothing <$> transferInfo) }) "Quick Transfer"
-      return (clr, st)
-    let netInfo = flip push signTransfer $ \() -> sampleNetInfo model
-    let mkModal (Just ti) ni = Just $ lookupAndTransfer model ni ti
+      let txEvt = leftmost
+            [ NormalTransfer <$ normal
+            , SafeTransfer <$ safe
+            ]
+      return (clr, txEvt)
+    let netInfo = flip push signTransfer $ \ty -> do
+          ni <- sampleNetInfo model
+          return ((ty,) <$> ni)
+    let mkModal (Just ti) (ty, ni) = Just $ lookupAndTransfer model ni ti ty
         mkModal Nothing _ = Nothing
     pure $ mempty & modalCfg_setModal .~ (attachWith mkModal (current transferInfo) netInfo)
 
@@ -347,9 +365,10 @@ lookupAndTransfer
   => model
   -> SharedNetInfo NodeInfo
   -> TransferInfo
+  -> TransferType
   -> Event t ()
   -> m (mConf, Event t ())
-lookupAndTransfer model netInfo ti onCloseExternal = do
+lookupAndTransfer model netInfo ti ty onCloseExternal = do
     let nodes = _sharedNetInfo_nodes netInfo
         fromAccount = _ca_account $ _ti_fromAccount ti
         fromChain = _ca_chain $ _ti_fromAccount ti
@@ -357,8 +376,6 @@ lookupAndTransfer model netInfo ti onCloseExternal = do
         toChain = _ca_chain $ _ti_toAccount ti
         accountNames = setify [fromAccount, toAccount]
         accounts = unAccountName <$> accountNames
-        chains = setify [fromChain, toChain]
-        code = renderCompactText $ accountDetailsObject accounts
     efks <- lookupKeySets (model ^. logger) (_sharedNetInfo_network netInfo)
                  nodes fromChain accountNames
     etks <- if fromChain == toChain
@@ -373,7 +390,7 @@ lookupAndTransfer model netInfo ti onCloseExternal = do
           let fks = fromMaybe mempty f
           let tks = fromMaybe mempty t
           (conf, closes) <- fmap splitDynPure $ workflow $
-            checkSendingAccountExists model netInfo ti fks tks
+            checkSendingAccountExists model netInfo ti ty fks tks
           mConf <- flatten =<< tagOnPostBuild conf
           let close = switch $ current closes
           pure (mConf, close)
@@ -456,14 +473,15 @@ checkSendingAccountExists
   => model
   -> SharedNetInfo NodeInfo
   -> TransferInfo
+  -> TransferType
   -> Map AccountName (AccountStatus AccountDetails)
   -> Map AccountName (AccountStatus AccountDetails)
   -> Workflow t m (mConf, Event t ())
-checkSendingAccountExists model netInfo ti fks tks = Workflow $ do
+checkSendingAccountExists model netInfo ti ty fks tks = Workflow $ do
     let fromAccount = _ca_account $ _ti_fromAccount ti
     case Map.lookup fromAccount fks of
       Just (AccountStatus_Exists ad) -> do
-        checkReceivingAccount model netInfo ti fks tks (fromAccount, ad)
+        checkReceivingAccount model netInfo ti ty fks tks (fromAccount, ad)
       _ -> do
         cancel <- fatalTransferError $
           text $ "Sending account " <> unAccountName fromAccount <> " does not exist."
@@ -482,11 +500,12 @@ checkReceivingAccount
   => model
   -> SharedNetInfo NodeInfo
   -> TransferInfo
+  -> TransferType
   -> Map AccountName (AccountStatus AccountDetails)
   -> Map AccountName (AccountStatus AccountDetails)
   -> (AccountName, AccountDetails)
   -> m ((mConf, Event t ()), Event t (Workflow t m (mConf, Event t ())))
-checkReceivingAccount model netInfo ti fks tks fromPair = do
+checkReceivingAccount model netInfo ti ty fks tks fromPair = do
     let toAccount = _ca_account $ _ti_toAccount ti
     pb <- getPostBuild
     case (Map.lookup toAccount tks, _ti_toKeyset ti) of
@@ -507,24 +526,24 @@ checkReceivingAccount model netInfo ti fks tks fromPair = do
                   keysetWidget onChainKeyset
             return ((mempty, cancel), never)
           else
-            transferDialog model netInfo ti fks tks fromPair
+            transferDialog model netInfo ti ty fks tks fromPair
       (Just (AccountStatus_Exists (AccountDetails _ g)), Nothing) -> do
         if (_ca_chain $ _ti_fromAccount ti) /= (_ca_chain $ _ti_toAccount ti)
           then do
             let AccountGuard_KeySet ks p = g
             let ti2 = ti { _ti_toKeyset = Just $ UserKeyset ks (parseKeysetPred p) }
-            transferDialog model netInfo ti2 fks tks fromPair
+            transferDialog model netInfo ti2 ty fks tks fromPair
           else
             -- Use transfer, probably show the guard at some point
             -- TODO check well-formedness of all keys in the keyset
-            transferDialog model netInfo ti fks tks fromPair
+            transferDialog model netInfo ti ty fks tks fromPair
       (_, Just userKeyset) -> do
         -- Use transfer-create
-        transferDialog model netInfo ti fks tks fromPair
+        transferDialog model netInfo ti ty fks tks fromPair
       (_, Nothing) -> do
         -- If the account name looks like a public key, ask about making a keyset
         -- Otherwise throw an error
-        handleMissingKeyset model netInfo ti fks tks fromPair
+        handleMissingKeyset model netInfo ti ty fks tks fromPair
 
 handleMissingKeyset
   :: ( MonadWidget t m, Monoid mConf
@@ -539,11 +558,12 @@ handleMissingKeyset
   => model
   -> SharedNetInfo NodeInfo
   -> TransferInfo
+  -> TransferType
   -> Map AccountName (AccountStatus AccountDetails)
   -> Map AccountName (AccountStatus AccountDetails)
   -> (AccountName, AccountDetails)
   -> m ((mConf, Event t ()), Event t (Workflow t m (mConf, Event t ())))
-handleMissingKeyset model netInfo ti fks tks fromPair = do
+handleMissingKeyset model netInfo ti ty fks tks fromPair = do
     let toAccountText = unAccountName $ _ca_account $ _ti_toAccount ti
     case parsePublicKey toAccountText of
       Left _ -> do
@@ -565,7 +585,7 @@ handleMissingKeyset model netInfo ti fks tks fromPair = do
           next <- uiButtonDyn cfg $ text "Yes, proceed to transfer"
           let ti2 = ti { _ti_toKeyset = Just $ UserKeyset (Set.singleton pk) KeysAll }
           return ((mempty, close <> cancel),
-                  Workflow (transferDialog model netInfo ti2 fks tks fromPair) <$ next)
+                  Workflow (transferDialog model netInfo ti2 ty fks tks fromPair) <$ next)
 
 transferDialog
   :: ( MonadWidget t m, Monoid mConf
@@ -580,11 +600,12 @@ transferDialog
   => model
   -> SharedNetInfo NodeInfo
   -> TransferInfo
+  -> TransferType
   -> Map AccountName (AccountStatus AccountDetails)
   -> Map AccountName (AccountStatus AccountDetails)
   -> (AccountName, AccountDetails)
   -> m ((mConf, Event t ()), Event t (Workflow t m (mConf, Event t ())))
-transferDialog model netInfo ti fks tks _ = do
+transferDialog model netInfo ti ty fks tks _ = do
     -- TODO Clean up the unused parameter
     -- It contains the from account name and details retrieved from blockchain
     close <- modalHeader $ text "Sign Transfer"
@@ -611,8 +632,8 @@ transferDialog model netInfo ti fks tks _ = do
   where
     mainSection currentTab = elClass "div" "modal__main" $ do
       (conf, meta, destChainInfo) <- tabPane mempty currentTab TransferTab_Metadata $
-        transferMetadata model netInfo fks tks ti
-      let payload = buildUnsignedCmd netInfo ti <$> meta
+        transferMetadata model netInfo fks tks ti ty
+      let payload = buildUnsignedCmd netInfo ti ty <$> meta
       edSigned <- tabPane mempty currentTab TransferTab_Signatures $ do
         networkView $ transferSigs
           <$> (model ^. wallet_keys)
@@ -861,9 +882,10 @@ payloadToCommand p =
 buildUnsignedCmd
   :: SharedNetInfo NodeInfo
   -> TransferInfo
+  -> TransferType
   -> TransferMeta
   -> Payload PublicMeta Text
-buildUnsignedCmd netInfo ti tmeta = payload
+buildUnsignedCmd netInfo ti ty tmeta = payload
   where
     network = _sharedNetInfo_network netInfo
     fromAccount = unAccountName $ _ca_account $ _ti_fromAccount ti
@@ -881,8 +903,13 @@ buildUnsignedCmd netInfo ti tmeta = payload
                       (Nothing, printf "(coin.transfer %s %s %s)"
                                   (show fromAccount) (show toAccount) amountString)
                     Just ks ->
-                      (Just dataKey, printf "(coin.transfer-create %s %s (read-keyset '%s) %s)"
-                                    (show fromAccount) (show toAccount) dataKey amountString)
+                      -- This has to match epsilon in transferMetadata
+                      let epsilon = "0.000000000001"
+                          there = printf "(coin.transfer-create %s %s (read-keyset %s) (+ %s %s))"
+                                    (show fromAccount) (show toAccount) (show dataKey) amountString epsilon
+                          back = printf "(coin.transfer %s %s %s)"
+                                    (show toAccount) (show fromAccount) epsilon
+                      in (Just dataKey, if ty == SafeTransfer then unlines [there, back] else there)
              else -- cross-chain transfer
                (Just dataKey, printf "(coin.transfer-crosschain %s %s (read-keyset '%s) %s %s)"
                              (show fromAccount) (show toAccount) (T.unpack dataKey) (show toChain) amountString)
@@ -1054,16 +1081,16 @@ transferMetadata
   -> Map AccountName (AccountStatus AccountDetails)
   -> Map AccountName (AccountStatus AccountDetails)
   -> TransferInfo
+  -> TransferType
   -> m (mConf,
         Dynamic t TransferMeta,
         -- Destination chain gas payer and signer information when there is a cross-chain transfer
         Maybe (Dynamic t (Maybe (AccountName, AccountStatus AccountDetails)), Dynamic t [Signer]))
-transferMetadata model netInfo fks tks ti = do
+transferMetadata model netInfo fks tks ti ty = do
   let fromChain = _ca_chain $ _ti_fromAccount ti
       fromAccount = _ca_account $ _ti_fromAccount ti
       toChain = _ca_chain $ _ti_toAccount ti
       toAccount = _ca_account $ _ti_toAccount ti
-      amount = _ti_amount ti
       ks = Map.fromList [(fromChain, fks), (toChain, tks)]
 
   when (fromChain /= toChain) $ do
@@ -1081,11 +1108,18 @@ transferMetadata model netInfo fks tks ti = do
       dDestGasAction = getGpdAction <$$> mdestPayer
       actions = do
         sga <- dSourceGasAction
-        case dDestGasAction of
-          Nothing -> pure $ Set.toList $ Set.fromList [senderAction, sga]
+        dga <- case dDestGasAction of
+          Nothing -> pure []
           Just ddga -> do
             dga <- ddga
-            pure $ Set.toList $ Set.fromList [senderAction, sga, dga]
+            pure [dga]
+        backAction <- case (ty, _ti_toKeyset ti) of
+          (SafeTransfer, Just uks) ->
+            pure $ if unambiguousKeyset uks
+              then [KeysetUnambiguous (toChain,toAccount,uks)]
+              else [KeysetAmbiguous (toChain,toAccount,uks)]
+          (_, _) -> pure []
+        pure $ Set.toList $ Set.fromList $ [senderAction, sga] <> backAction <> dga
 
   -- TODO Filter out ambiguous accounts that Chainweaver knows how to sign for
   esigners <- networkView (signersSection <$> actions)
@@ -1101,6 +1135,7 @@ transferMetadata model netInfo fks tks ti = do
 
       -- Get just the keys for coin.TRANSFER
       fromTxKeys = fromMaybe [] . Map.lookup (fromChain, fromAccount) <$> signTuples
+      safeTxKeys = fromMaybe [] . Map.lookup (fromChain, toAccount) <$> signTuples
 
       -- Get just the keys for coin.GAS
       lookupGas chain Nothing = mempty
@@ -1113,10 +1148,18 @@ transferMetadata model netInfo fks tks ti = do
       -- Build up a Map PublicKey [SigCapability]
       addCap cap pk = Map.insertWith (<>) pk [cap]
       gasCaps = foldr (addCap gasCapability) mempty <$> fromGasKeys
+      -- This has to match epsilon in buildUnsignedCmd (TODO Fix later)
+      epsilon = 0.000000000001
+      rawAmount = _ti_amount ti
+      amount = if ty == SafeTransfer then rawAmount + epsilon else rawAmount
       transferCap = if fromChain == toChain
                       then transferCapability fromAccount toAccount amount
                       else crosschainCapability fromAccount
-      allFromCaps = foldr (addCap transferCap) <$> gasCaps <*> fromTxKeys
+      fromCapsA = foldr (addCap transferCap) <$> gasCaps <*> fromTxKeys
+      allFromCaps = if ty == SafeTransfer
+                      then foldr (addCap (transferCapability toAccount fromAccount epsilon))
+                             <$> fromCapsA <*> safeTxKeys
+                      else fromCapsA
       toCaps = foldr (addCap gasCapability) mempty <$> toGasKeys
 
       -- Convert that map into a [Signer]
@@ -1133,7 +1176,7 @@ transferMetadata model netInfo fks tks ti = do
 
   dialogSectionHeading mempty "Transaction Settings"
   divClass "group" $ do
-    (conf, ttl, lim, price) <- uiMetaData model Nothing Nothing
+    (conf, ttl, lim, price) <- uiMetaData model Nothing (if ty == SafeTransfer then Just 1200 else Just 600)
     elAttr "div" ("style" =: "margin-top: 10px") $ do
       now <- fmap round $ liftIO $ getPOSIXTime
       let timeParser = maybe (Left "Not a valid creation time") Right . readMaybe . T.unpack
@@ -1208,13 +1251,13 @@ getKeysetActionSingle c (Just a) mDetails =
         AccountGuard_Other _ -> KeysetNoAction
         AccountGuard_KeySet keys p -> do
           let ks = UserKeyset keys (parseKeysetPred p)
-          if unambiguousKeyset keys p
+          if unambiguousKeyset ks
             then KeysetUnambiguous (c, a, ks)
             else KeysetAmbiguous (c, a, ks)
 
-unambiguousKeyset :: Set PublicKey -> Text -> Bool
-unambiguousKeyset keys p =
-  p == "keys-all" || length keys == 1 || (length keys == 2 && p == "keys-2")
+unambiguousKeyset :: UserKeyset -> Bool
+unambiguousKeyset (UserKeyset keys p) =
+  p == KeysAll || length keys == 1 || (length keys == 2 && p == Keys2)
 
 data AdvancedDetails
   = DetailsJson
