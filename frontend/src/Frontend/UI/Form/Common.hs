@@ -196,31 +196,7 @@ uiMandatoryChainSelection
   -> PrimFormWidgetConfig t ChainId
   -> m (FormWidget t ChainId)
 uiMandatoryChainSelection options cfg = mdo
-  let chainIndList = zip [0..] <$> options
-      chainIndMap = Bimap.fromList <$> chainIndList
-      mkOptions cs = Map.fromList cs
-      cidText cid = "Chain " <> _chainId cid
-      v0 = _initialValue cfg
-      ec = pfwc2ec cfg & initialAttributes %~ addToClassAttr "select"
-      selcfg = SelectElementConfig (cidText v0)
-                                   (cidText <$$> view setValue cfg)
-                                   ec
-
-  -- This function uses low level selectElement to avoid the `dropdown` widget's Ord instance.
-  -- The ChainId list comes in the correct order.  dropdown butchers it for more than 10 chains.
-  (se,_) <- selectElement selcfg $ do
-    let mkOption (ind,cid) = do
-            let staticAttrs = "value" =: tshow ind
-            let mkOptAttr v = if cid == v
-                                then staticAttrs <> "selected" =: "selected"
-                                else staticAttrs
-            elDynAttr "option" (mkOptAttr <$> val) $
-              text $ cidText cid
-    dyn_ $ mapM_ mkOption <$> chainIndList
-
-  let val = do
-        vtext <- _selectElement_value se
-        indMap <- chainIndMap
-        pure $ maybe v0 (\v -> fromMaybe v0 $ Bimap.lookup v indMap) $ readMaybe $ T.unpack vtext
-  pure $ FormWidget val
-                    (() <$ _selectElement_change se) (constDyn False)
+  let cidText cid = "Chain " <> _chainId cid
+      mkOpt cid = (cid, cidText cid)
+      cfg2 = cfg & initialAttributes %~ addToClassAttr "select"
+  unsafeDropdownFormWidget (Map.fromList . fmap mkOpt <$> options) cfg2
