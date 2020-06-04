@@ -908,8 +908,11 @@ buildUnsignedCmd netInfo ti ty tmeta = payload
                     Just ks ->
                       -- This has to match epsilon in transferMetadata
                       let epsilon = "0.000000000001"
-                          there = printf "(coin.transfer-create %s %s (read-keyset %s) (+ %s %s))"
-                                    (show fromAccount) (show toAccount) (show dataKey) amountString epsilon
+                          amountExpr = case ty of
+                            NormalTransfer -> amountString
+                            SafeTransfer -> printf "(+ %s %s)" amountString epsilon
+                          there = printf "(coin.transfer-create %s %s (read-keyset %s) %s)"
+                                    (show fromAccount) (show toAccount) (show dataKey) amountExpr
                           back = printf "(coin.transfer %s %s %s)"
                                     (show toAccount) (show fromAccount) epsilon
                       in (Just dataKey, if ty == SafeTransfer then unlines [there, back] else there)
