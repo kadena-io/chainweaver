@@ -417,18 +417,20 @@ lookupKeySets logL networkName nodes chain accounts = do
   (result, trigger) <- newTriggerEvent
   let envs = mkClientEnvs nodes chain
   liftJSM $ forkJSM $ do
-    r <- doReqFailover envs (Api.local Api.apiV1Client cmd) >>= \case
-      Left _ -> pure Nothing
-      Right cr -> case Pact._crResult cr of
-        Pact.PactResult (Right pv) -> case parseAccountDetails pv of
-          Left _ -> pure Nothing
-          Right balances -> liftIO $ do
-            putLog logL LevelInfo $ "lookupKeysets: success:"
-            putLog logL LevelInfo $ tshow balances
-            pure $ Just balances
-        Pact.PactResult (Left e) -> do
-          putLog logL LevelInfo $ "lookupKeysets failed:" <> tshow e
-          pure Nothing
+    r <- doReqFailover envs (Api.local Api.apiV1Client cmd) >>= \rawRes -> do
+      liftIO $ print rawRes
+      case rawRes of
+        Left _ -> pure Nothing
+        Right cr -> case Pact._crResult cr of
+          Pact.PactResult (Right pv) -> case parseAccountDetails pv of
+            Left _ -> pure Nothing
+            Right balances -> liftIO $ do
+              putLog logL LevelInfo $ "lookupKeysets: success:"
+              putLog logL LevelInfo $ tshow balances
+              pure $ Just balances
+          Pact.PactResult (Left e) -> do
+            putLog logL LevelInfo $ "lookupKeysets failed:" <> tshow e
+            pure Nothing
 
     liftIO $ trigger r
   pure result
