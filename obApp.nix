@@ -32,7 +32,7 @@ in with obelisk;
        {
           # servant-client-core = servantSrc + "/servant-client-core";
           # servant = servantSrc + "/servant";
-          servant-jsaddle = servantSrc + "/servant-jsaddle";
+          servant-jsaddle = hackGet ./dep/servant-jsaddle;
           jsaddle-warp = hackGet ./dep/jsaddle + /jsaddle-warp; #https://github.com/ghcjs/jsaddle/pull/114
           reflex-dom = reflex-dom-src + "/reflex-dom";
           reflex-dom-core = reflex-dom-src + "/reflex-dom-core";
