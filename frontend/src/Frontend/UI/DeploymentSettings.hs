@@ -726,11 +726,14 @@ uiMetaData m mTTL mGasLimit = do
         let GasPrice (ParsedDecimal gp) = (newMax-newMin)/(oldMax-oldMin)*(x-oldMin)+newMin
          in GasPrice $ ParsedDecimal $ roundTo maxCoinPrecision gp
 
+      slowGasPrice = 1e-12
+      fastGasPrice = 1e-9
+
       scaleTxnSpeedToGP :: GasPrice -> GasPrice
-      scaleTxnSpeedToGP = shiftGP 1 1001 (1e-12) (1e-3)
+      scaleTxnSpeedToGP = shiftGP 1 1001 slowGasPrice fastGasPrice
 
       scaleGPtoTxnSpeed :: GasPrice -> GasPrice
-      scaleGPtoTxnSpeed = shiftGP (1e-12) (1e-3) 1 1001
+      scaleGPtoTxnSpeed = shiftGP slowGasPrice fastGasPrice 1 1001
 
       parseGasPrice :: Text -> Maybe GasPrice
       parseGasPrice t = GasPrice . ParsedDecimal . roundTo maxCoinPrecision <$> readMay (T.unpack t)
