@@ -264,6 +264,14 @@ uiGenericTransfer model cfg = do
           safeDisabled (Just i) = _ca_chain (_ti_fromAccount i) /= _ca_chain (_ti_toAccount i)
                                || (Set.null . _userKeyset_keys <$> _ti_toKeyset i) == Just True
                                || isNothing (_ti_toKeyset i)
+                               || _ti_maxAmount i
+          -- It doesn't make sense to do safe transfer with max amount because
+          -- the receiver sends coins back to the sender. If someone wants to do
+          -- this, they can first do a safe transfer to create the new account
+          -- and then do a second transfer for the max balance. The convenience
+          -- of doing it in one transaction is not worth the additional code
+          -- complexity.
+
           safeBtnCfg = def
             { _uiButtonCfg_disabled = (safeDisabled <$> transferInfo)
             , _uiButtonCfg_title = constDyn $ Just "Safe transfers can be done when you are doing a transfer-create to the same chain.  This makes it impossible for you to lose coins by sending it to the wrong public key.  It requires a little extra work because the receiving account also has to sign the transaction."
