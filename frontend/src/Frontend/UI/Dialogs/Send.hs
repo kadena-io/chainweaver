@@ -512,12 +512,12 @@ runUnfinishedCrossChainTransfer
   -- ^ From chain
   -> ChainId
   -- ^ To chain
-  -> (AccountName, AccountStatus AccountDetails)
+  -> Maybe (AccountName, AccountStatus AccountDetails)
   -- ^ Gas payer on "To" chain
   -> Event t Pact.RequestKey
   -- ^ The request key to follow up on
   -> m (Event t (), Event t Text, Event t ())
-runUnfinishedCrossChainTransfer logL netInfo keys fromChain toChain toGasPayer requestKey = mdo
+runUnfinishedCrossChainTransfer logL netInfo keys fromChain toChain mtoGasPayer requestKey = mdo
   let nodeInfos = _sharedNetInfo_nodes netInfo
       networkName = _sharedNetInfo_network netInfo
       publicMeta = _sharedNetInfo_meta netInfo
@@ -529,62 +529,70 @@ runUnfinishedCrossChainTransfer logL netInfo keys fromChain toChain toGasPayer r
   let initCont = leftmost [requestKey, tagMaybe mRequestKey retry]
   contResponse <- listenForContinuation logL envFromChain initCont
   let (contError, contOk) = fanEither contResponse
-  -- Get the proof
-  spvResponse <- getSPVProof logL nodeInfos fromChain toChain contOk
-  let (spvError, spvOk) = fanEither spvResponse
-  -- Run continuation on target chain
-  continueResponse <- continueCrossChainTransfer logL networkName envToChain publicMeta keys toChain toGasPayer spvOk
-  let (continueError, continueOk) = fanEither continueResponse
-  -- Wait for result
-  resultResponse <- listenForSuccess logL envToChain continueOk
-  let (resultError, resultOk) = fanEither resultResponse
-
   contStatus <- holdDyn Status_Waiting $ leftmost
     [ Status_Working <$ initCont
     , Status_Failed <$ contError
     , Status_Done <$ contOk
     ]
-  spvStatus <- holdDyn Status_Waiting $ leftmost
-    [ Status_Waiting <$ initCont
-    , Status_Working <$ contOk
-    , Status_Failed <$ spvError
-    , Status_Done <$ spvOk
-    ]
-  continueStatus <- holdDyn Status_Waiting $ leftmost
-    [ Status_Waiting <$ (void contOk <> void initCont)
-    , Status_Working <$ spvOk
-    , Status_Failed <$ continueError
-    , Status_Done <$ continueOk
-    ]
-  resultStatus <- holdDyn Status_Waiting $ leftmost
-    [ Status_Working <$ continueOk
-    , Status_Failed <$ resultError
-    , Status_Done <$ resultOk
-    ]
 
-  let item ds txt = elDynAttr "li" (ffor ds $ \s -> "class" =: statusText s)
-                      $ el "p" $ text txt
+  es@(resultOk, resultErr, retry) <- case mtoGasPayer of
+    Nothing -> do
+      dialogSectionHeading mempty "Notice: Cannot finish cross-chain transfer"
+      divClass "group" $ text "blah"
+      return (() <$ contResponse, never, never)
+    Just toGasPayer -> do
+      -- Get the proof
+      spvResponse <- getSPVProof logL nodeInfos fromChain toChain contOk
+      let (spvError, spvOk) = fanEither spvResponse
+      -- Run continuation on target chain
+      continueResponse <- continueCrossChainTransfer logL networkName envToChain publicMeta keys toChain toGasPayer spvOk
+      let (continueError, continueOk) = fanEither continueResponse
+      -- Wait for result
+      resultResponse <- listenForSuccess logL envToChain continueOk
+      let (resultError, resultOk) = fanEither resultResponse
 
-  item contStatus "Got continuation response"
-  item spvStatus "SPV proof retrieved"
-  item continueStatus $ "Initiate claiming coins on chain " <> _chainId toChain
-  item resultStatus "Coins retrieved on target chain"
+      spvStatus <- holdDyn Status_Waiting $ leftmost
+        [ Status_Waiting <$ initCont
+        , Status_Working <$ contOk
+        , Status_Failed <$ spvError
+        , Status_Done <$ spvOk
+        ]
+      continueStatus <- holdDyn Status_Waiting $ leftmost
+        [ Status_Waiting <$ (void contOk <> void initCont)
+        , Status_Working <$ spvOk
+        , Status_Failed <$ continueError
+        , Status_Done <$ continueOk
+        ]
+      resultStatus <- holdDyn Status_Waiting $ leftmost
+        [ Status_Working <$ continueOk
+        , Status_Failed <$ resultError
+        , Status_Done <$ resultOk
+        ]
 
-  anyError <- holdUniqDyn $ any (== Status_Failed) <$> sequence
-    [ contStatus
-    , spvStatus
-    , continueStatus
-    , resultStatus
-    ]
+      let item ds txt = elDynAttr "li" (ffor ds $ \s -> "class" =: statusText s)
+                          $ el "p" $ text txt
 
-  retry <- switchHold never <=< dyn $ ffor anyError $ \case
-    False -> pure never
-    True -> uiButton (btnCfgPrimary & uiButtonCfg_class .~ "cross-chain-transfer-retry")  $ text "Retry"
+      item contStatus "Got continuation response"
+      item spvStatus "SPV proof retrieved"
+      item continueStatus $ "Initiate claiming coins on chain " <> _chainId toChain
+      item resultStatus "Coins retrieved on target chain"
 
-  pure ( resultOk
-       , leftmost [contError, spvError, continueError, resultError]
-       , retry
-       )
+      anyError <- holdUniqDyn $ any (== Status_Failed) <$> sequence
+        [ contStatus
+        , spvStatus
+        , continueStatus
+        , resultStatus
+        ]
+
+      retry <- switchHold never <=< dyn $ ffor anyError $ \case
+        False -> pure never
+        True -> uiButton (btnCfgPrimary & uiButtonCfg_class .~ "cross-chain-transfer-retry")  $ text "Retry"
+
+      pure ( resultOk
+           , leftmost [contError, spvError, continueError, resultError]
+           , retry
+           )
+  pure es
 
 -- | Configuration step before finishing a previously unfinished cross chain
 -- transfer.
@@ -699,7 +707,7 @@ finishCrossChainTransfer logL netInfo keys (fromName, fromChain) ucct toGasPayer
         item (pure Status_Done) $ el "p" $
           text $ "Cross chain transfer initiated on chain " <> _chainId fromChain
         pb <- getPostBuild
-        runUnfinishedCrossChainTransfer logL netInfo keys fromChain toChain toGasPayer $ requestKey <$ pb
+        runUnfinishedCrossChainTransfer logL netInfo keys fromChain toChain (Just toGasPayer) $ requestKey <$ pb
 
     dialogSectionHeading mempty "Transaction Result"
     divClass "group" $ do
@@ -814,7 +822,7 @@ crossChainTransfer logL netInfo keys fromAccount toAccount fromGasPayer crossCha
           el "p" $ text $ "Cross chain transfer initiated on chain " <> _chainId fromChain
 
         let toGasPayer = second _account_status $ _crossChainData_recipientChainGasPayer crossChainData
-        runUnfinishedCrossChainTransfer logL netInfo keys fromChain toChain toGasPayer initiatedOk
+        runUnfinishedCrossChainTransfer logL netInfo keys fromChain toChain (Just toGasPayer) initiatedOk
 
     let errMsg = leftmost [keySetError, initiatedError, errMsg0]
     dialogSectionHeading mempty "Transaction Result"

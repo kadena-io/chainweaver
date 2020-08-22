@@ -788,8 +788,7 @@ crossChainTransferAndStatus
   -> Maybe (AccountName, AccountStatus AccountDetails)
   -> [Signer]
   -> Workflow t m (mConf, Event t ())
-crossChainTransferAndStatus model netInfo ti cmd Nothing destSigners = Workflow $ pure (mempty, never)
-crossChainTransferAndStatus model netInfo ti cmd (Just destGP) destSigners = Workflow $ do
+crossChainTransferAndStatus model netInfo ti cmd mdestGP destSigners = Workflow $ do
     let logL = model ^. logger
     let nodeInfos = _sharedNetInfo_nodes netInfo
     close <- modalHeader $ text "Cross Chain Transfer"
@@ -806,7 +805,7 @@ crossChainTransferAndStatus model netInfo ti cmd (Just destGP) destSigners = Wor
             el "p" $ text $ "Cross chain transfer initiated on chain " <> _chainId fromChain
 
           keys <- sample $ current $ model ^. wallet_keys
-          runUnfinishedCrossChainTransfer logL netInfo keys fromChain toChain destGP rk
+          runUnfinishedCrossChainTransfer logL netInfo keys fromChain toChain mdestGP rk
 
       let isError = \case
             Just (Left _) -> True
@@ -1172,13 +1171,15 @@ transferMetadata model netInfo fks tks ti ty = do
       fromSigners = map mkSigner . Map.toList <$> allFromCaps
       toSigners = map mkSigner . Map.toList <$> toCaps
 
-      lookupDetails mp = (\p -> (p,) <$> Map.lookup p tks) =<< mp
+      mkDetails gpd =
+        case (gpdAccount gpd, gpdDetails gpd) of
+          (Just n, Just s) -> Just (n,s)
+          (Just n, Nothing) -> (n,) <$> Map.lookup n tks
+          _ -> Nothing
       destChainSigners = case mdestPayer of
         Nothing -> Nothing
-        Just dp -> Just $ ( lookupDetails . gpdAccount <$> dp
+        Just dp -> Just $ ( mkDetails <$> dp
                           , toSigners )
-
-  performEvent_ (liftIO . putStrLn . ("toSigners changed: "<>) . show <$> updated toSigners)
 
   dialogSectionHeading mempty "Transaction Settings"
   divClass "group" $ do
