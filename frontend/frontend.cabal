@@ -115,6 +115,7 @@ library
                  , Frontend.AppCfg
                  , Frontend.Log
                  , Frontend.Network
+                 , Frontend.Network.AccountDetails
                  , Frontend.Network.NodeInfo
                  , Frontend.Crypto.Browser
                  , Frontend.Crypto.Class

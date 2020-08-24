@@ -102,6 +102,19 @@ data SharedNetInfo a = SharedNetInfo
   , _sharedNetInfo_nodes :: [a]
   }
 
+-- | Handy function for getting network / meta information in 'PushM'. Type
+-- monomorphised to prevent accidentally sampling outside of 'push'
+mkNetInfo
+  :: (Reflex t, HasNetwork model t)
+  => model -> Dynamic t (Maybe (SharedNetInfo NodeInfo))
+mkNetInfo model = mk
+    <$> (model ^. network_selectedNetwork)
+    <*> (model ^. network_meta)
+    <*> (rights <$> model ^. network_selectedNodes)
+  where
+    mk net meta nodes = mk2 net meta nodes <$> (mkNetworkName . nodeVersion <$> headMay nodes)
+    mk2 net meta nodes name = SharedNetInfo name net meta nodes
+
 data TransferData = TransferData
   { _transferData_fromAccount :: (AccountName, ChainId, AccountDetails)
   , _transferData_fromGasPayer :: (AccountName, Account)

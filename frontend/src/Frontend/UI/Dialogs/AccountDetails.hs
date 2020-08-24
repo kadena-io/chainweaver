@@ -20,10 +20,14 @@ import Pact.Types.Pretty (renderCompactText)
 import qualified Pact.Types.ChainId as Pact
 import qualified Pact.Types.Term as Pact
 
+import Frontend.Crypto.Class
 import Frontend.Crypto.Ed25519 (keyToText)
 import Frontend.Foundation
-import Frontend.TxBuilder
+import Frontend.Log
 import Frontend.Network
+import Frontend.Network.AccountDetails
+import Frontend.TxBuilder
+import Frontend.UI.Dialogs.Send
 import Frontend.UI.Modal
 import Frontend.UI.Widgets
 import Frontend.UI.Widgets.Helpers (dialogSectionHeading)
@@ -38,15 +42,19 @@ type HasUiAccountDetailsModelCfg mConf key t =
 uiAccountDetailsOnChain
   :: ( HasUiAccountDetailsModelCfg mConf key t
      , MonadWidget t m
+     , HasLogger model t
+     , HasCrypto key m
+     , HasNetwork model t
      )
-  => NetworkName
+  => model
+  -> SharedNetInfo NodeInfo
   -> (AccountName, ChainId, AccountDetails, Account)
   -> Event t ()
   -> m (mConf, Event t ())
-uiAccountDetailsOnChain netname a onCloseExternal = mdo
+uiAccountDetailsOnChain model ni a onCloseExternal = mdo
   onClose <- modalHeader $ dynText title
 
-  dwf <- workflow (uiAccountDetailsOnChainImpl netname a (onClose <> onCloseExternal))
+  dwf <- workflow (uiAccountDetailsOnChainImpl model ni a (onClose <> onCloseExternal))
 
   let (title, (conf, dEvent)) = fmap splitDynPure $ splitDynPure dwf
 
@@ -66,15 +74,20 @@ notesEditor mNotes = do
     & initialAttributes <>~ "maxlength" =: "70"
 
 uiAccountDetailsOnChainImpl
-  :: forall mConf key t m.
+  :: forall model mConf key t m.
      ( HasUiAccountDetailsModelCfg mConf key t
      , MonadWidget t m
+     , HasLogger model t
+     , HasCrypto key m
+     , HasNetwork model t
      )
-  => NetworkName
+  => model
+  -> SharedNetInfo NodeInfo
   -> (AccountName, ChainId, AccountDetails, Account)
   -> Event t ()
   -> Workflow t m (Text, (mConf, Event t ()))
-uiAccountDetailsOnChainImpl netname (name, chain, details, account) onClose = Workflow $ do
+uiAccountDetailsOnChainImpl model ni (name, chain, details, account) onClose = Workflow $ do
+  let net = _sharedNetInfo_network ni
   let kAddr = TxBuilder name chain $ details
         ^? accountDetails_guard
         . _AccountGuard_KeySet
@@ -123,14 +136,15 @@ uiAccountDetailsOnChainImpl netname (name, chain, details, account) onClose = Wo
     pure notesEdit
 
   modalFooter $ do
+    onRotate <- cancelButton (def & uiButtonCfg_class <>~ " account-details__rotate-btn") "Rotate Keyset"
     onDone <- confirmButton def "Done"
 
     let
-      onNotesUpdate = (netname, name, Just chain,) <$> current notesEdit <@ (onDone <> onClose)
+      onNotesUpdate = (net, name, Just chain,) <$> current notesEdit <@ (onDone <> onClose)
       conf = mempty & walletCfg_updateAccountNotes .~ onNotesUpdate
 
     pure ( ("Account Details", (conf, onDone))
-         , never
+         , uiRotateDialog model ni (ChainAccount chain name) <$ onRotate
          )
 
 uiAccountDetails
@@ -201,12 +215,45 @@ uiDeleteConfirmation net name = Workflow $ do
     divClass "segment modal__filler" $ do
       dialogSectionHeading mempty "Warning"
       let line = divClass "group" . text
-      line "You are about to remove this account from view in your wallet"
+      line "You are about to remove this account from view in your wallet."
       line "Note that removing an account from your wallet does not remove any existing accounts from the blockchain."
       line "To restore this account back into view, simply enter the account's name within the \"Add Account\" dialog."
   modalFooter $ do
     onConfirm <- confirmButton (def & uiButtonCfg_class .~ "account-delete__confirm") "Remove Account"
     let cfg = mempty & walletCfg_delAccount .~ ((net, name) <$ onConfirm)
     pure ( ("Remove Confirmation", (cfg, onConfirm))
+         , never
+         )
+
+uiRotateDialog
+  :: forall model key t m mConf
+  . ( MonadWidget t m
+    , Monoid mConf
+    , HasWalletCfg mConf key t
+    , HasLogger model t
+    , HasCrypto key m
+    , HasNetwork model t
+    )
+  => model
+  -> SharedNetInfo NodeInfo
+  -> ChainAccount
+  -> Workflow t m (Text, (mConf, Event t ()))
+uiRotateDialog model ni ca = Workflow $ do
+  pb <- getPostBuild
+  getAccountDetails model (ca <$ pb)
+  lookupKeySets (model ^. logger) (_sharedNetInfo_network ni)
+       (_sharedNetInfo_nodes ni) (_ca_chain ca) [_ca_account ca]
+  modalMain $ do
+    divClass "segment modal__filler" $ do
+      dialogSectionHeading mempty "Warning"
+      let line = divClass "group" . text
+      line "Rotating keysets is inherently risky!"
+      line "If you make a mistake you could lose all the coins in this account."
+      line "Proceed with great caution!"
+    --keysetFormWidget $ (snd <$> cfg)
+    --  & setValue %~ modSetValue (Just (fmap userFromPactKeyset . _txBuilder_keyset <$> pastedBuilder))
+  modalFooter $ do
+    onConfirm <- confirmButton (def & uiButtonCfg_class .~ "account-rotate__confirm") "Rotate Keyset"
+    pure ( ("Rotate Keyset", (mempty, onConfirm))
          , never
          )

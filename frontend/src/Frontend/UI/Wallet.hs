@@ -62,7 +62,7 @@ import           Frontend.UI.Dialogs.AddVanityAccount (uiCreateAccountButton, ui
 import           Frontend.UI.Dialogs.KeyDetails (uiKeyDetails)
 import           Frontend.UI.Dialogs.Receive (uiReceiveModal)
 import           Frontend.UI.Dialogs.WatchRequest (uiWatchRequestDialog)
-import           Frontend.UI.Dialogs.Send (uiSendModal, uiFinishCrossChainTransferModal)
+import           Frontend.UI.Dialogs.Send
 import           Frontend.UI.KeysetWidget
 import           Frontend.UI.Modal
 import           Frontend.UI.Widgets
@@ -164,8 +164,7 @@ uiAccountItems
   (MonadWidget t m, HasUiWalletModelCfg model mConf key m t, HasTransactionLogger m)
   => model -> Dynamic t (Map AccountName (AccountInfo Account)) -> m mConf
 uiAccountItems model accountsMap = do
-  let net = model ^. network_selectedNetwork
-      tableAttrs = mconcat
+  let tableAttrs = mconcat
         [ "style" =: "table-layout: fixed; width: 98%"
         , "class" =: "wallet table"
         ]
@@ -205,19 +204,23 @@ uiAccountItems model accountsMap = do
   let
     onAccountModal = switchDyn $ leftmost . Map.elems <$> events
 
-    accModal n = Just . \case
+    combineNetAndAction msni ad = (,ad) <$> msni
+    accModal (sni, ad) = Just $ case ad of
       AccountDialog_Details acc notes -> uiAccountDetails n acc notes
-      AccountDialog_DetailsChain acc -> uiAccountDetailsOnChain n acc
+      AccountDialog_DetailsChain acc -> uiAccountDetailsOnChain model sni acc
       AccountDialog_Receive name chain details -> uiReceiveModal "Receive" model name chain details
       AccountDialog_TransferTo name details chain -> uiReceiveModal "Transfer To" model name chain (Just details)
       AccountDialog_Send acc mucct -> uiSendModal model acc mucct
       AccountDialog_CompleteCrosschain name chain ucct -> uiFinishCrossChainTransferModal model name chain ucct
       AccountDialog_Create name chain mKey -> uiCreateAccountDialog model name chain mKey
+      where
+        n = _sharedNetInfo_selectedNetwork sni
 
   refresh <- delay 1 =<< getPostBuild
 
   pure $ mempty
-    & modalCfg_setModal .~ attachWith accModal (current net) onAccountModal
+    & modalCfg_setModal .~ fmap accModal (attachWithMaybe combineNetAndAction
+                                           (current $ mkNetInfo model) onAccountModal)
     & walletCfg_refreshBalances .~ refresh
 
 -- | This function only exists to workaround a reflex-dom Adjustable bug.

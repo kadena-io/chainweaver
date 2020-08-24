@@ -228,6 +228,16 @@ body[data-modal-open='true'] {
   justify-content: flex-end;
 }
 
+.account-details__rotate-btn {
+  float: left;
+  background-color: $chainweaver-orange;
+  color: $white;
+}
+
+.account-rotate__confirm {
+    background-color: $danger-red;
+}
+
 .account-details__remove-account-btn {
   float: left;
   background-color: $chainweaver-orange;
