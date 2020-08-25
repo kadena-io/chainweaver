@@ -121,77 +121,13 @@ in rec {
     ln -s "${sass}/sass.css" "$out/${appName}.app/Contents/Resources/sass.css"
     cat ${plist} > "$out/${appName}.app/Contents/Info.plist"
   '';
-  deployMac = pkgs.writeScript "deploy" ''
-    #!/usr/bin/env bash
-    set -eo pipefail
+  deployMac = pkgs.runCommand "deploy" {} ''
+    mkdir -p "$out"
+    cp -LR "${mac}/${appName}.app" "$out"
+    chmod -R +w "$out/${appName}.app"
+    ${pkgs.binutils-unwrapped}/bin/strip "$out/${appName}.app/Contents/MacOS/${appName}"
 
-    if (( "$#" < 1 )); then
-      echo "Usage: $0 [TEAM_ID]" >&2
-      exit 1
-    fi
-
-    TEAM_ID=$1
-    shift
-
-    set -euox pipefail
-
-    function cleanup {
-      if [ -n "$tmpdir" -a -d "$tmpdir" ]; then
-        echo "Cleaning up tmpdir" >&2
-        chmod -R +w $tmpdir
-        rm -fR $tmpdir
-      fi
-    }
-
-    trap cleanup EXIT
-
-    tmpdir=$(mktemp -d)
-    # Find the signer given the OU
-    signer=$(security find-certificate -c "Mac Developer" -a \
-      | grep '^    "alis"<blob>="' \
-      | sed 's|    "alis"<blob>="\(.*\)"$|\1|' \
-      | while read c; do \
-          security find-certificate -c "$c" -p \
-            | openssl x509 -subject -noout; \
-        done \
-      | grep "OU[[:space:]]\?=[[:space:]]\?$TEAM_ID" \
-      | sed 's|subject= /UID=[^/]*/CN=\([^/]*\).*|\1|' \
-      | head -n 1)
-
-    if [ -z "$signer" ]; then
-      echo "Error: No Mac Developer certificate found for team id $TEAM_ID" >&2
-      echo "See https://github.com/kadena-io/chainweaver/blob/redesign/README.md#mac-developer-certificate" >&2
-      exit 1
-    fi
-
-    # Create and sign the app
-    mkdir -p "$tmpdir"
-    cp -LR "${mac}/${appName}.app" "$tmpdir"
-    chmod -R +w "$tmpdir/${appName}.app"
-    strip "$tmpdir/${appName}.app/Contents/MacOS/${appName}"
-    sed "s|<team-id/>|$TEAM_ID|" < "${xcent}" > "$tmpdir/xcent"
-    cat "$tmpdir/xcent"
-    plutil "$tmpdir/xcent"
-    /usr/bin/codesign --deep --force --sign "$signer" --entitlements "$tmpdir/xcent" --timestamp=none "$tmpdir/${appName}.app"
-
-    # Create the dmg
-    ${createDmg}/create-dmg \
-      --volname "${appName} Installer" \
-      --background "${macAppInstallerBackground}" \
-      --window-pos 200 120 \
-      --window-size 800 400 \
-      --icon-size 100 \
-      --icon "${appName}.app" 200 190 \
-      --app-drop-link 600 185 \
-      "$tmpdir/${appName}.${macFullVersion}.dmg" \
-      "$tmpdir/${appName}.app"
-
-    # Sign the dmg
-    /usr/bin/codesign --sign "$signer" "$tmpdir/${appName}.${macFullVersion}.dmg"
-
-    mv "$tmpdir/${appName}.${macFullVersion}.dmg" .
-
-    # Quarantine it for reproducibility (otherwise can cause unexpected 'app is damaged' errors when automatically applied to downloaded .dmg files)
-    xattr -w com.apple.quarantine "00a3;5d4331e1;Safari;1AE3D17F-B83D-4ADA-94EA-219A44467959" "${appName}.${macFullVersion}.dmg"
+    cd "$out"
+    ${pkgs.zip}/bin/zip -r "Kadena Chainweaver.zip" "${appName}.app"
   '';
 }
