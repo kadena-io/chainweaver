@@ -1,5 +1,13 @@
 # Chainweaver Changelog
 
+## 2.1 (2020-08-26)
+
+* Fix ordering of ChainId dropdown to work with 20 chains
+* Add ability to transfer an account's whole balance without leaving dust
+* Make signing info available as a QR code
+* Reduce default gas price
+* Add safe bidirectional transfers that guarantee you are not sending coins into the abyss
+
 ## 2.0 (2020-05-13)
 
 This version features a greatly simplified transfer interface as well as
