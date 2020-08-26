@@ -273,7 +273,7 @@ uiGenericTransfer model cfg = do
 
           safeBtnCfg = def
             { _uiButtonCfg_disabled = (safeDisabled <$> transferInfo)
-            , _uiButtonCfg_title = constDyn $ Just "Safe transfers make it impossible for you to lose coins by sending to the wrong public key when you are transferring to the same chain.  They require a little extra work because the receiving account also has to sign the transaction."
+            , _uiButtonCfg_title = constDyn $ Just "Safe transfers make it impossible to lose coins by sending to the wrong public key when transferring to the same chain.  They require a little extra work because the receiving account also has to sign the transaction."
             }
       safe <- confirmButton safeBtnCfg "Safe Transfer"
       -- _ <- confirmButton (def { _uiButtonCfg_disabled = (isNothing <$> transferInfo) }) "Quick Transfer"
