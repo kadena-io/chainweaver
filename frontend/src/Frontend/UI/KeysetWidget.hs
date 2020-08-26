@@ -184,7 +184,7 @@ keysetFormWidget cfg = do
     let allPreds = do
           ks <- keys
           let ps = if IntMap.size ks >= 2 then [KeysAll, KeysAny, Keys2] else [KeysAll, KeysAny]
-          return $ Map.fromList $ map (\p -> (p, prettyPred $ renderKeysetPred p)) ps
+          return $ map (\p -> (p, prettyPred $ renderKeysetPred p)) ps
     predfw <- unsafeDropdownFormWidget allPreds (mkPredCfg klass)
     -- TODO Need to put in a different dropdown implementation that correctly
     -- handles when an option goes away

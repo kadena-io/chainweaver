@@ -113,7 +113,7 @@ dropdownFormWidget options cfg = do
   let k0 = _initialValue cfg
       setK = fromMaybe never $ view setValue cfg
   optionsWithAddedKeys <- fmap (zipDynWith Map.union options) $ foldDyn Map.union (k0 =: "") $ fmap (=: "") setK
-  unsafeDropdownFormWidget optionsWithAddedKeys cfg
+  unsafeDropdownFormWidget (Map.toList <$> optionsWithAddedKeys) cfg
 
 -- | This dropdown widget does not ensure that the selected value exists in the
 -- options list. It is your responsibility to make sure the dynamic map of
@@ -121,7 +121,7 @@ dropdownFormWidget options cfg = do
 -- selected option stays in sync.
 unsafeDropdownFormWidget
   :: (DomBuilder t m, MonadHold t m, PostBuild t m, MonadFix m, Ord a)
-  => Dynamic t (Map a Text)
+  => Dynamic t [(a, Text)]
   -> PrimFormWidgetConfig t a
   -> m (FormWidget t a)
 unsafeDropdownFormWidget options cfg = do
@@ -131,7 +131,7 @@ unsafeDropdownFormWidget options cfg = do
       modifyAttrs = view modifyAttributes cfg
   defaultKey <- holdDyn k0 setK
   let (indexedOptions, ixKeys) = splitDynPure $ ffor options $ \os ->
-        let xs = fmap (\(i, (k, v)) -> ((i, k), ((i, k), v))) $ zip [0::Int ..] $ Map.toList os
+        let xs = fmap (\(i, (k, v)) -> ((i, k), ((i, k), v))) $ zip [0::Int ..] os
         in (Map.fromList $ map snd xs, Bimap.fromList $ map fst xs)
   let scfg = def
         & selectElementConfig_elementConfig . elementConfig_initialAttributes .~ initAttrs
@@ -199,4 +199,4 @@ uiMandatoryChainSelection options cfg = mdo
   let cidText cid = "Chain " <> _chainId cid
       mkOpt cid = (cid, cidText cid)
       cfg2 = cfg & initialAttributes %~ addToClassAttr "select"
-  unsafeDropdownFormWidget (Map.fromList . fmap mkOpt <$> options) cfg2
+  unsafeDropdownFormWidget (fmap mkOpt <$> options) cfg2
