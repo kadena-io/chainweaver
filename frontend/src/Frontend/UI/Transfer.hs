@@ -38,6 +38,7 @@ module Frontend.UI.Transfer where
 
 import qualified Codec.QRCode as QR
 import qualified Codec.QRCode.JuicyPixels as QR
+import           Control.Applicative
 import           Control.Error hiding (bool, note)
 import           Control.Lens hiding ((.=))
 import           Control.Monad.State.Strict
@@ -262,8 +263,6 @@ uiGenericTransfer model cfg = do
       normal <- confirmButton (def { _uiButtonCfg_disabled = (isNothing <$> transferInfo) }) "Sign & Transfer"
       let safeDisabled Nothing = True
           safeDisabled (Just i) = _ca_chain (_ti_fromAccount i) /= _ca_chain (_ti_toAccount i)
-                               || (Set.null . _userKeyset_keys <$> _ti_toKeyset i) == Just True
-                               || isNothing (_ti_toKeyset i)
                                || _ti_maxAmount i
           -- It doesn't make sense to do safe transfer with max amount because
           -- the receiver sends coins back to the sender. If someone wants to do
@@ -889,6 +888,34 @@ payloadToCommand p =
   where
     payloadText = encodeAsText $ encode p
 
+safeTransferEpsilon :: Decimal
+safeTransferEpsilon = 0.000000000001
+
+sameChainCmdAndData :: TransferType -> Text -> Text -> Maybe UserKeyset -> String -> (Maybe Text, String)
+sameChainCmdAndData ty fromAccount toAccount toKeyset amountString =
+    case ty of
+      NormalTransfer ->
+        case toKeyset of
+          Nothing ->
+            (Nothing, printf "(coin.transfer %s %s %s)"
+                        (show fromAccount) (show toAccount) amountString)
+          Just ks ->
+            (Just dataKey, printf "(coin.transfer-create %s %s (read-keyset %s) %s)"
+                      (show fromAccount) (show toAccount) (show dataKey) amountString)
+      SafeTransfer ->
+        let amountExpr :: String = printf "(+ %s %s)" amountString (show safeTransferEpsilon)
+            back :: String = printf "(coin.transfer %s %s %s)"
+                      (show toAccount) (show fromAccount) (show safeTransferEpsilon)
+        in case toKeyset of
+             Nothing ->
+               (Nothing, printf "(coin.transfer %s %s %s)\n%s"
+                           (show fromAccount) (show toAccount) amountExpr back)
+             Just _ ->
+               (Just dataKey, printf "(coin.transfer-create %s %s (read-keyset %s) %s)\n%s"
+                       (show fromAccount) (show toAccount) (show dataKey) amountExpr back)
+  where
+    dataKey = "ks"
+
 buildUnsignedCmd
   :: SharedNetInfo NodeInfo
   -> TransferInfo
@@ -908,21 +935,8 @@ buildUnsignedCmd netInfo ti ty tmeta = payload
         s = show amount
     dataKey = "ks" :: Text
     (mDataKey, code) = if fromChain == toChain
-             then case _ti_toKeyset ti of
-                    Nothing ->
-                      (Nothing, printf "(coin.transfer %s %s %s)"
-                                  (show fromAccount) (show toAccount) amountString)
-                    Just ks ->
-                      -- This has to match epsilon in transferMetadata
-                      let epsilon = "0.000000000001"
-                          amountExpr = case ty of
-                            NormalTransfer -> amountString
-                            SafeTransfer -> printf "(+ %s %s)" amountString epsilon
-                          there = printf "(coin.transfer-create %s %s (read-keyset %s) %s)"
-                                    (show fromAccount) (show toAccount) (show dataKey) amountExpr
-                          back = printf "(coin.transfer %s %s %s)"
-                                    (show toAccount) (show fromAccount) epsilon
-                      in (Just dataKey, if ty == SafeTransfer then unlines [there, back] else there)
+             then sameChainCmdAndData ty fromAccount toAccount (_ti_toKeyset ti) amountString
+
              else -- cross-chain transfer
                (Just dataKey, printf "(coin.transfer-crosschain %s %s (read-keyset '%s) %s %s)"
                              (show fromAccount) (show toAccount) (T.unpack dataKey) (show toChain) amountString)
@@ -1119,6 +1133,7 @@ transferMetadata model netInfo fks tks ti ty = do
       getGpdAction (GasPayerDetails f a d) = getKeysetActionSingle f a d
       dSourceGasAction = getGpdAction <$> srcPayer
       dDestGasAction = getGpdAction <$$> mdestPayer
+      toKeysetAction = getKeysetActionSingle toChain (Just toAccount) (Map.lookup toAccount tks)
       actions = do
         sga <- dSourceGasAction
         dga <- case dDestGasAction of
@@ -1126,12 +1141,13 @@ transferMetadata model netInfo fks tks ti ty = do
           Just ddga -> do
             dga <- ddga
             pure [dga]
-        backAction <- case (ty, _ti_toKeyset ti) of
-          (SafeTransfer, Just uks) ->
-            pure $ if unambiguousKeyset uks
-              then [KeysetUnambiguous (toChain,toAccount,uks)]
-              else [KeysetAmbiguous (toChain,toAccount,uks)]
-          (_, _) -> pure []
+        let backAction = case (ty, _ti_toKeyset ti) of
+              (SafeTransfer, Nothing) -> [toKeysetAction]
+              (SafeTransfer, Just uks) ->
+                if unambiguousKeyset uks
+                  then [KeysetUnambiguous (toChain,toAccount,uks)]
+                  else [KeysetAmbiguous (toChain,toAccount,uks)]
+              (_, _) -> []
         pure $ Set.toList $ Set.fromList $ [senderAction, sga] <> backAction <> dga
 
   -- TODO Filter out ambiguous accounts that Chainweaver knows how to sign for
@@ -1161,16 +1177,14 @@ transferMetadata model netInfo fks tks ti ty = do
       -- Build up a Map PublicKey [SigCapability]
       addCap cap pk = Map.insertWith (<>) pk [cap]
       gasCaps = foldr (addCap gasCapability) mempty <$> fromGasKeys
-      -- This has to match epsilon in buildUnsignedCmd (TODO Fix later)
-      epsilon = 0.000000000001
       rawAmount = _ti_amount ti
-      amount = if ty == SafeTransfer then rawAmount + epsilon else rawAmount
+      amount = if ty == SafeTransfer then rawAmount + safeTransferEpsilon else rawAmount
       transferCap = if fromChain == toChain
                       then transferCapability fromAccount toAccount amount
                       else crosschainCapability fromAccount
       fromCapsA = foldr (addCap transferCap) <$> gasCaps <*> fromTxKeys
       allFromCaps = if ty == SafeTransfer
-                      then foldr (addCap (transferCapability toAccount fromAccount epsilon))
+                      then foldr (addCap (transferCapability toAccount fromAccount safeTransferEpsilon))
                              <$> fromCapsA <*> safeTxKeys
                       else fromCapsA
       toCaps = foldr (addCap gasCapability) mempty <$> toGasKeys
