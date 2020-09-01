@@ -100,9 +100,8 @@ type family ReflexValue (f :: * -> *) x where
 
 appendDecimalToText :: Text -> Text
 appendDecimalToText t = case readP_to_S scientificP s of 
-    [] -> T.pack s
     [(x,_)] -> tshow x
     [_,(x,_)] -> tshow x
-    _ -> error "impossible"
+    _ -> t
   where
     s = T.unpack t
