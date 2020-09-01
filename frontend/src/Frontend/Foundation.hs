@@ -21,6 +21,7 @@ module Frontend.Foundation
   , LeftmostEv (..)
     -- * Helpers that should really not be here
   , getBrowserProperty
+  , addDecimalToString
     -- * Common Foundation
   , module Common
     -- * Re-exports
@@ -39,6 +40,7 @@ import           Data.Coerce                       (coerce)
 import           Data.Foldable
 import           Data.Semigroup
 import           Data.Text                         (Text)
+import qualified Data.Text                         as T
 import           GHC.Generics                      (Generic)
 import           Language.Javascript.JSaddle       (JSM, MonadJSM, askJSM,
                                                     liftJSM, runJSM)
@@ -93,3 +95,14 @@ type family ReflexValue (f :: * -> *) x where
     ReflexValue (Behavior t) x = Behavior t x
 
     ReflexValue (Event t) x = Event t x
+
+addDecimalToString :: Text -> Text
+addDecimalToString s =
+    case T.find f s of
+      Nothing -> s <> ".0"
+      Just _ -> s
+  where
+    f '.' = True
+    f 'e' = True
+    -- Need to also check for 'e' because we don't want "1e-7" to be converted
+    -- to "1e-7.0"

@@ -243,9 +243,7 @@ funTypeInput json = \case
         surroundWith s x = s <> x <> s
 
     mkDecimalInput :: m (Dynamic t Text)
-    mkDecimalInput = fmap fixNum <$> mkInput "number" "0.0" def
-      where
-        fixNum x = if T.isInfixOf "." x then x else x <> ".0"
+    mkDecimalInput = fmap addDecimalToString <$> mkInput "number" "0.0" def
 
     mkIntInput :: m (Dynamic t Text)
     mkIntInput = mdo

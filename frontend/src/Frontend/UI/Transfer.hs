@@ -48,6 +48,7 @@ import qualified Data.ByteString.Lazy as LB
 import           Data.Decimal
 import           Data.Default (Default (..))
 import qualified Data.IntMap as IntMap
+import           Data.List
 import           Data.List.NonEmpty (NonEmpty(..), nonEmpty)
 import qualified Data.List.NonEmpty as NEL
 import           Data.Map (Map)
@@ -891,19 +892,19 @@ payloadToCommand p =
 safeTransferEpsilon :: Decimal
 safeTransferEpsilon = 0.000000000001
 
-sameChainCmdAndData :: TransferType -> Text -> Text -> Maybe UserKeyset -> String -> (Maybe Text, String)
-sameChainCmdAndData ty fromAccount toAccount toKeyset amountString =
+sameChainCmdAndData :: TransferType -> Text -> Text -> Maybe UserKeyset -> Text -> (Maybe Text, String)
+sameChainCmdAndData ty fromAccount toAccount toKeyset amountText =
     case ty of
       NormalTransfer ->
         case toKeyset of
           Nothing ->
             (Nothing, printf "(coin.transfer %s %s %s)"
-                        (show fromAccount) (show toAccount) amountString)
+                        (show fromAccount) (show toAccount) amountText)
           Just ks ->
             (Just dataKey, printf "(coin.transfer-create %s %s (read-keyset %s) %s)"
-                      (show fromAccount) (show toAccount) (show dataKey) amountString)
+                      (show fromAccount) (show toAccount) (show dataKey) amountText)
       SafeTransfer ->
-        let amountExpr :: String = printf "(+ %s %s)" amountString (show safeTransferEpsilon)
+        let amountExpr :: String = printf "(+ %s %s)" amountText (show safeTransferEpsilon)
             back :: String = printf "(coin.transfer %s %s %s)"
                       (show toAccount) (show fromAccount) (show safeTransferEpsilon)
         in case toKeyset of
@@ -930,16 +931,14 @@ buildUnsignedCmd netInfo ti ty tmeta = payload
     toAccount = unAccountName $ _ca_account $ _ti_toAccount ti
     toChain = _ca_chain $ _ti_toAccount ti
     amount = _ti_amount ti
-    amountString = if not ('.' `elem` s) then s ++ ".0" else s
-      where
-        s = show amount
+    amountText = addDecimalToString (tshow amount)
     dataKey = "ks" :: Text
     (mDataKey, code) = if fromChain == toChain
-             then sameChainCmdAndData ty fromAccount toAccount (_ti_toKeyset ti) amountString
+             then sameChainCmdAndData ty fromAccount toAccount (_ti_toKeyset ti) amountText
 
              else -- cross-chain transfer
                (Just dataKey, printf "(coin.transfer-crosschain %s %s (read-keyset '%s) %s %s)"
-                             (show fromAccount) (show toAccount) (T.unpack dataKey) (show toChain) amountString)
+                             (show fromAccount) (show toAccount) (T.unpack dataKey) (show toChain) amountText)
     tdata = maybe Null (\a -> object [ dataKey .= toJSON (userToPactKeyset a) ]) $ _ti_toKeyset ti
     lim = _transferMeta_gasLimit tmeta
     price = _transferMeta_gasPrice tmeta
