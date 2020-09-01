@@ -931,7 +931,7 @@ buildUnsignedCmd netInfo ti ty tmeta = payload
     toAccount = unAccountName $ _ca_account $ _ti_toAccount ti
     toChain = _ca_chain $ _ti_toAccount ti
     amount = _ti_amount ti
-    amountText = addDecimalToString (tshow amount)
+    amountText = appendDecimalToText (tshow amount)
     dataKey = "ks" :: Text
     (mDataKey, code) = if fromChain == toChain
              then sameChainCmdAndData ty fromAccount toAccount (_ti_toKeyset ti) amountText

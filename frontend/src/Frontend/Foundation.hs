@@ -21,7 +21,7 @@ module Frontend.Foundation
   , LeftmostEv (..)
     -- * Helpers that should really not be here
   , getBrowserProperty
-  , addDecimalToString
+  , appendDecimalToText
     -- * Common Foundation
   , module Common
     -- * Re-exports
@@ -39,6 +39,7 @@ import           Control.Monad.IO.Class
 import           Data.Coerce                       (coerce)
 import           Data.Foldable
 import           Data.Semigroup
+import           Data.Scientific
 import           Data.Text                         (Text)
 import qualified Data.Text                         as T
 import           GHC.Generics                      (Generic)
@@ -54,6 +55,7 @@ import           Reflex.Dom.WebSocket              (forkJSM)
 import           Reflex.Extended
 import           Reflex.Network.Extended
 
+import           Text.ParserCombinators.ReadP
 
 import           Data.Maybe
 
@@ -96,13 +98,11 @@ type family ReflexValue (f :: * -> *) x where
 
     ReflexValue (Event t) x = Event t x
 
-addDecimalToString :: Text -> Text
-addDecimalToString s =
-    case T.find f s of
-      Nothing -> s <> ".0"
-      Just _ -> s
+appendDecimalToText :: Text -> Text
+appendDecimalToText t = case readP_to_S scientificP s of 
+    [] -> T.pack s
+    [(x,_)] -> tshow x
+    [_,(x,_)] -> tshow x
+    _ -> error "impossible"
   where
-    f '.' = True
-    f 'e' = True
-    -- Need to also check for 'e' because we don't want "1e-7" to be converted
-    -- to "1e-7.0"
+    s = T.unpack t
