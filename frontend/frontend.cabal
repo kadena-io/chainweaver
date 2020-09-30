@@ -83,6 +83,7 @@ library
     , reflex-dom-ace
     , reflex-dom-contrib
     , safe
+    , scientific
     , servant
     , servant-client-core
     , servant-github
