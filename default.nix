@@ -31,7 +31,7 @@ let
 in obApp // rec {
   inherit sass;
   inherit (macApp) mac deployMac;
-  inherit (linuxApp) nixosExe deb chainweaverVM chainweaverVMSystem;
+  inherit (linuxApp) nixosExe ubuntuExe deb chainweaverVM chainweaverVMSystem;
 
   server = args@{ hostName, adminEmail, routeHost, enableHttps, version }:
     let
