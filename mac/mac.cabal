@@ -25,7 +25,7 @@ library
     , process
 
   ghc-options:
-    -O -Wall
+    -O -Wall -fno-show-valid-hole-fits
 
   exposed-modules:
     Mac
@@ -44,4 +44,4 @@ executable macApp
       base
     , mac
   ghc-options:
-    -threaded -O -Wall
+    -threaded -O -Wall -fno-show-valid-hole-fits

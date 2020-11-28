@@ -14,7 +14,7 @@ bug-reports:         https://github.com/kadena-io/pact/issues
 
 library
   default-language: Haskell2010
-  ghc-options: -O
+  ghc-options: -O -fno-show-valid-hole-fits
   hs-source-dirs: src
 
   build-depends:
@@ -205,7 +205,7 @@ library
                  , Pact.Server.ApiClient.V1
                  , Pact.Server.ApiClient
 
-  ghc-options: -Wall
+  ghc-options: -Wall -fno-show-valid-hole-fits
   default-extensions: ScopedTypeVariables
                     , FlexibleContexts
                     , FlexibleInstances
@@ -241,7 +241,7 @@ executable frontend
                , frontend
 
   --TODO: Make these ghc-options optional
-  ghc-options: -threaded -O -Wall
+  ghc-options: -threaded -O -Wall -fno-show-valid-hole-fits
   if os(darwin)
      ghc-options: -dynamic
   -- Can and _should_ be re-enabled once

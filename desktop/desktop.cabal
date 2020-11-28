@@ -70,4 +70,4 @@ library
     , Desktop.Storage.File
     , Desktop.Syslog
     , Desktop.WalletApi
-  ghc-options: -Wall
+  ghc-options: -Wall -fno-show-valid-hole-fits
