@@ -1,7 +1,8 @@
 module Frontend.VersionedStore.MigrationUtils where
 
 import qualified Data.Dependent.Map as DMap
-import Data.Dependent.Map (DMap, DSum(..))
+import Data.Dependent.Map (DMap)
+import Data.Dependent.Sum (DSum(..))
 import Data.Functor.Identity (Identity)
 import Data.GADT.Compare (GCompare)
 

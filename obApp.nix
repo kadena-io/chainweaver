@@ -5,6 +5,7 @@
 }:
 let
   obelisk = import ./.obelisk/impl { inherit system iosSdkVersion; inherit (kpkgs) reflex-platform-func;};
+  nix-thunk = import ./dep/nix-thunk {};
   pkgs = obelisk.reflex-platform.nixpkgs;
 
   optionalExtension = cond: overlay: if cond then overlay else _: _: {};
@@ -27,18 +28,19 @@ in with obelisk;
    packages =
      let
        servantSrc = hackGet ./dep/servant;
-       reflex-dom-src = hackGet ./dep/reflex-dom;
+#       reflex-dom-src = hackGet ./dep/reflex-dom;
+       signing-api-src = hackGet ./dep/signing-api;
      in
        {
           # servant-client-core = servantSrc + "/servant-client-core";
           # servant = servantSrc + "/servant";
           servant-jsaddle = hackGet ./dep/servant-jsaddle;
           jsaddle-warp = hackGet ./dep/jsaddle + /jsaddle-warp; #https://github.com/ghcjs/jsaddle/pull/114
-          reflex-dom = reflex-dom-src + "/reflex-dom";
-          reflex-dom-core = reflex-dom-src + "/reflex-dom-core";
+          kadena-signing-api = signing-api-src + "/kadena-signing-api";
+#          reflex-dom = reflex-dom-src + "/reflex-dom";
+#          reflex-dom-core = reflex-dom-src + "/reflex-dom-core";
           reflex-dom-ace = hackGet ./dep/reflex-dom-ace;
           reflex-dom-contrib = hackGet ./dep/reflex-dom-contrib;
-          dependent-sum-aeson-orphans = hackGet ./dep/dependent-sum-aeson-orphans;
           servant-github = hackGet ./dep/servant-github;
           obelisk-oauth-common = hackGet ./dep/obelisk-oauth + /common;
           obelisk-oauth-frontend = hackGet ./dep/obelisk-oauth + /frontend;
@@ -108,14 +110,26 @@ in with obelisk;
       };
       common-overlay = self: super: {
         brittany = haskellLib.dontCheck super.brittany;
+
+        http-media = dontCheck (self.callHackageDirect {
+          pkg = "http-media";
+          ver = "0.7.1.3";
+          sha256 = "04d0f7rmr2z3nkd7l6jbl6iq2f1rc7psqyynrn9287bbv1hfrmqs";
+        } {});
+
         jsaddle-warp = haskellLib.dontCheck super.jsaddle-warp; # webdriver fails to build
         reflex-dom-core = haskellLib.dontCheck super.reflex-dom-core; # webdriver fails to build
+        reflex-dom-contrib = haskellLib.doJailbreak (haskellLib.dontCheck super.reflex-dom-contrib);
         servant-jsaddle = haskellLib.dontCheck (haskellLib.doJailbreak super.servant-jsaddle);
         semialign = haskellLib.doJailbreak super.semialign; # vector bounds
         these-lens = haskellLib.doJailbreak super.these-lens; # lens bounds
         pact = haskellLib.dontCheck super.pact; # tests can timeout...
         system-locale = haskellLib.dontCheck super.system-locale; # tests fail on minor discrepancies on successfully parsed locale time formats.
-        typed-process = haskellLib.dontCheck super.typed-process;
+        typed-process = haskellLib.dontCheck (self.callHackageDirect {
+          pkg = "typed-process";
+          ver = "0.2.6.0";
+          sha256 = "17m2n9ffh88nj32xc00d48phaxav92dxisprc42pipgigq7fzs5s";
+        } {});
       };
     in self: super: lib.foldr lib.composeExtensions (_: _: {}) [
       mac-overlay

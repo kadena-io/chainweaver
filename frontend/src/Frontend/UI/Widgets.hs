@@ -105,7 +105,6 @@ module Frontend.UI.Widgets
   , uiEmptyState
 
   , growingList
-  , joinDynThroughIntMap
   , distributeIntMapOverDynPure
   ) where
 
@@ -1510,6 +1509,3 @@ joinDynThroughIntMap
   => Dynamic t (IntMap.IntMap (Dynamic t a))
   -> Dynamic t (IntMap.IntMap a)
 joinDynThroughIntMap = (distributeIntMapOverDynPure =<<)
-
-distributeIntMapOverDynPure :: (Reflex t) => IntMap.IntMap (Dynamic t v) -> Dynamic t (IntMap.IntMap v)
-distributeIntMapOverDynPure = fmap dmapToIntMap . distributeDMapOverDynPure . intMapWithFunctorToDMap

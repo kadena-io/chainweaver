@@ -34,15 +34,15 @@ module Common.RefPath
   ) where
 
 ------------------------------------------------------------------------------
-import           Control.Arrow        (second, (***))
-import qualified Data.List            as L
-import qualified Data.List.NonEmpty   as NE
-import           Data.String          (IsString (fromString))
-import           Data.Text            (Text)
-import qualified Data.Text            as T
-import           Data.Void            (Void)
-import           Text.Megaparsec      as MP
-import qualified Pact.Types.ChainId   as Pact
+import           Control.Arrow          (second, (***))
+import qualified Data.List              as L
+import qualified Data.List.NonEmpty     as NE
+import           Data.String            (IsString (fromString))
+import           Data.Text              (Text)
+import qualified Data.Text              as T
+import           Data.Void              (Void)
+import           Text.Megaparsec        as MP
+import qualified Pact.Types.ChainId     as Pact
 ------------------------------------------------------------------------------
 
 -- | A path segment is just a piece of `Text`.
@@ -138,9 +138,9 @@ instance MP.Stream RefPath where
     | null xs = Nothing
     | otherwise = Just . (RefPath *** RefPath) $ splitAt n xs
   takeWhile_ f = (RefPath *** RefPath) . span f . unRefPath
-  showTokens _ = T.unpack . renderPath . RefPath . NE.toList
-  reachOffset o_d ps@(PosState i o (SourcePos n l c) tw lp) = (sp, line, ps')
-    where
-      sp = SourcePos n l $ mkPos $ unPos c + o_d
-      line = T.unpack $ renderPath $ pstateInput ps
-      ps' = PosState i o sp tw lp
+--  showTokens _ = T.unpack . renderPath . RefPath . NE.toList
+--  reachOffset o_d ps@(PosState i o (SourcePos n l c) tw lp) = (sp, line, ps')
+--    where
+--      sp = SourcePos n l $ mkPos $ unPos c + o_d
+--      line = T.unpack $ renderPath $ pstateInput ps
+--      ps' = PosState i o sp tw lp
