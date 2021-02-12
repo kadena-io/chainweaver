@@ -51,8 +51,6 @@ library
     , generic-deriving
     , ghcjs-dom
     , here
-    , http-client
-    , http-client-tls
     , http-types
     , jsaddle
     , kadena-signing-api
