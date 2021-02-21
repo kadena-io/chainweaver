@@ -34,6 +34,8 @@ in with obelisk;
           # servant = servantSrc + "/servant";
           servant-jsaddle = hackGet ./dep/servant-jsaddle;
           jsaddle-warp = hackGet ./dep/jsaddle + /jsaddle-warp; #https://github.com/ghcjs/jsaddle/pull/114
+          kadena-signing-api = hackGet ./dep/signing-api + "/kadena-signing-api";
+          pact = hackGet ./dep/pact;
           reflex-dom = reflex-dom-src + "/reflex-dom";
           reflex-dom-core = reflex-dom-src + "/reflex-dom-core";
           reflex-dom-ace = hackGet ./dep/reflex-dom-ace;
@@ -109,6 +111,7 @@ in with obelisk;
       common-overlay = self: super: {
         brittany = haskellLib.dontCheck super.brittany;
         jsaddle-warp = haskellLib.dontCheck super.jsaddle-warp; # webdriver fails to build
+        reflex-dom-contrib = haskellLib.doJailbreak (haskellLib.dontCheck super.reflex-dom-contrib); # webdriver fails to build
         reflex-dom-core = haskellLib.dontCheck super.reflex-dom-core; # webdriver fails to build
         servant-jsaddle = haskellLib.dontCheck (haskellLib.doJailbreak super.servant-jsaddle);
         semialign = haskellLib.doJailbreak super.semialign; # vector bounds

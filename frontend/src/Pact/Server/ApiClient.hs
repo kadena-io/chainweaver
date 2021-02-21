@@ -136,7 +136,7 @@ data TransactionLogger = TransactionLogger
   { _transactionLogger_appendLog :: Latest.CommandLog -> IO ()
   , _transactionLogger_walletEvent :: WalletEvent -> Text -> UTCTime -> IO ()
   , _transactionLogger_destination :: Maybe FilePath
-  , _transactionLogger_loadFirstNLogs :: Int -> IO (Either String (TimeLocale, [LogEntry]))
+  , _transactionLogger_loadLastNLogs :: Int -> IO (Either String (TimeLocale, [LogEntry]))
   , _transactionLogger_exportFile :: Text -> IO (Either String (FilePath, Text))
   , _transactionLogger_rotateLogFile :: IO ()
   }
@@ -260,7 +260,7 @@ logTransactionStdout = TransactionLogger
   , _transactionLogger_walletEvent = \wE pk t ->
       T.putStrLn $ T.unwords [T.pack $ show wE, "[", pk, "]", T.pack $ show t]
   , _transactionLogger_destination = Nothing
-  , _transactionLogger_loadFirstNLogs = logsdisabled
+  , _transactionLogger_loadLastNLogs = logsdisabled
   , _transactionLogger_exportFile = logsdisabled
   , _transactionLogger_rotateLogFile = pure ()
   }
@@ -278,12 +278,12 @@ logTransactionFile f = TransactionLogger
   , _transactionLogger_destination =
       Just f
 
-  , _transactionLogger_loadFirstNLogs = \n -> runExceptT $ do
+  , _transactionLogger_loadLastNLogs = \n -> runExceptT $ do
       logmsg $ printf "Loading logs from: %s" f
       nLogs <- liftIO (Dir.doesFileExist f) >>= \case
         True -> do
           logmsg "Log file exists"
-          ExceptT $ over (mapped . _Left) ppIOException $ try $ take n . BS8.lines <$> BS.readFile f
+          ExceptT $ over (mapped . _Left) ppIOException $ try $ lastN n . BS8.lines <$> BS.readFile f
         False -> do
           logmsg $ printf "No log file found at %s" f
           throwError "Chainweaver transaction log is currently empty"
@@ -304,6 +304,8 @@ logTransactionFile f = TransactionLogger
   }
   where
     logmsg = liftIO . putStrLn
+
+    lastN n as = drop (length as - n) as
 
     ppIOException :: IOError -> String
     ppIOException = displayException

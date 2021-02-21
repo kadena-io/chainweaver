@@ -6,7 +6,8 @@ import Data.Aeson
 import Data.Aeson.GADT.TH
 import Data.Constraint (Dict(Dict))
 import Data.Constraint.Extras
-import Data.Dependent.Map (DMap, DSum(..))
+import Data.Dependent.Map (DMap)
+import Data.Dependent.Sum (DSum(..))
 import qualified Data.Dependent.Map as DMap
 import Data.Functor.Identity (Identity(Identity), runIdentity)
 import qualified Data.IntMap as IntMap

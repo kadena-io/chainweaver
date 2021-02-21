@@ -56,7 +56,7 @@ uiTxLogs fileFFI _onExtClose = do
   txLogger <- Api.askTransactionLogger
   pb <- getPostBuild
   onClose <- modalHeader $ text "Transaction Log"
-  onLogLoad <- performEvent $ liftIO (Api._transactionLogger_loadFirstNLogs txLogger 10) <$ pb
+  onLogLoad <- performEvent $ liftIO (Api._transactionLogger_loadLastNLogs txLogger 10) <$ pb
 
   divClass "modal__main key-details" $ do
     let

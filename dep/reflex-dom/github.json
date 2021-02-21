@@ -1,7 +1,7 @@
 {
-  "owner": "mightybyte",
+  "owner": "reflex-frp",
   "repo": "reflex-dom",
-  "branch": "paste-event",
-  "rev": "086ec2a729f964ededa9f47469ccdb9852b3cdb0",
-  "sha256": "0ia1a5fva5kkkhjhjxql7w07aqvjijgns3qjr2a5ncqm52ps1i77"
+  "branch": "develop",
+  "rev": "2028ff64becdfc28032b7e6a91fcdbc285d39d2f",
+  "sha256": "0d0gvi44lra11ms7dkkl4czrki000y2qywk8bdar2ipsgsh36391"
 }
