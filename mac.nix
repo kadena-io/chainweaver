@@ -113,7 +113,7 @@ in rec {
     # Copy instead of symlink, so we can set the path to z3
     cp "${obApp.ghc.mac}"/bin/macApp "$out/${appName}.app/Contents/MacOS/${appName}"
     ln -s "${fixedZ3}"/bin/z3 "$out/${appName}.app/Contents/MacOS/z3"
-    ln -s "${obApp.mkAssets obApp.passthru.staticFiles}" "$out/${appName}.app/Contents/Resources/static.assets"
+    ln -s "${obApp.obelisk.mkAssets obApp.passthru.staticFiles}" "$out/${appName}.app/Contents/Resources/static.assets"
     ln -s "${obApp.passthru.staticFiles}" "$out/${appName}.app/Contents/Resources/static"
     ${pkgs.libicns}/bin/png2icns "$out/${appName}.app/Contents/Resources/pact.icns" "${macAppIcon}"
     ${pkgs.libicns}/bin/png2icns "$out/${appName}.app/Contents/Resources/pact-document.icns" "${macPactDocumentIcon}"
