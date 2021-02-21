@@ -917,7 +917,7 @@ uiSenderCapabilities m mCaps = do
         el "thead" $ el "tr" $ do
           elAttr "th" ("class" =: "table__heading" <> "width" =: "23%") $ text "Role"
           elAttr "th" ("class" =: "table__heading") $ text "Capability"
-          elAttr "th" ("class" =: "table__heading" <> "width" =: "30%") $ text "Account"
+          elAttr "th" ("class" =: "table__heading" <> "width" =: "30%") $ text "Public Key"
         el "tbody" $ do
           gas <- staticCapabilityRow (keyPairDropdown never) defaultGASCapability
           rest <- staticCapabilityRows (keyPairDropdown eApplyToAll) $ filter (not . isGas . _dappCap_cap) caps
