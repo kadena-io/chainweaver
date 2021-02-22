@@ -11,7 +11,7 @@
 module Frontend.StorageSpec where
 
 import Data.ByteString.Lazy (ByteString)
-import Data.Dependent.Map (DSum((:=>)))
+import Data.Dependent.Sum (DSum((:=>)))
 import qualified Data.Dependent.Map as DMap
 import Data.Functor (void)
 import Data.Functor.Identity (Identity(Identity))

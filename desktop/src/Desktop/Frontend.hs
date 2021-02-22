@@ -142,12 +142,13 @@ type MkAppCfg t m
   -> AppCfg Crypto.XPrv t (RoutedT t (R FrontendRoute) (BIPCryptoT t m))
 
 bipWallet
-  :: forall t m
+  :: forall js t m
   .  ( MonadWidget t m
      , RouteToUrl (R FrontendRoute) m, SetRoute t (R FrontendRoute) m
      , HasConfigs m
      , HasStorage m, HasStorage (Performable m)
      , HasTransactionLogger m
+     , Prerender js t m
      )
   => FileFFI t m
   -> MVar SigningRequest

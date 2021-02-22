@@ -63,7 +63,7 @@ import           Common.OAuth              (OAuthProvider (..),
                                             buildOAuthConfig', oAuthClientIdPath)
 import           Common.Route
 import           Common.Network
-import           Frontend                  (webFrontend)
+import qualified Frontend                  as F
 
 data BackendCfg = BackendCfg
   { _backendCfg_oAuth                :: OAuthConfig OAuthProvider
@@ -76,7 +76,7 @@ main = do
   runCheck <- not . null . filter (== "check-deployment") <$> getArgs
   if runCheck
      then checkDeployment
-     else runBackend backend webFrontend
+     else runBackend backend F.frontend
 
 -- | Where to put OAuth related backend configs:
 oAuthBackendCfgPath :: Text
