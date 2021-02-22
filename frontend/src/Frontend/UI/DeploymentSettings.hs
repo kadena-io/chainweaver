@@ -106,6 +106,7 @@ import Frontend.Foundation
 import Frontend.JsonData
 import Frontend.Log
 import Frontend.Network
+import Frontend.UI.FormWidget
 import Frontend.UI.JsonData
 import Frontend.UI.Modal
 import Frontend.UI.TabBar
@@ -529,7 +530,9 @@ uiCfg mCode m wChainId mTTL mGasLimit userSections txnSenderTitle otherAccordion
 
         dialogSectionHeading mempty $ getTxnSenderTitle txnSenderTitle
         mSender <- elKlass "div" ("group segment") $ mkLabeledClsInput True "Account" $ \_ -> do
-          (fmap . fmap) fst <$> mSenderSelect m cId never
+          (a,_) <- accountNameFormWidget noValidation $ mkCfg Nothing
+                     & primFormWidgetConfig_initialAttributes .~ ("class" =: "labeled-input__input")
+          return $ value a
 
         -- Customisable user provided UI section
         fa <- for userSections $ \(title, body) -> do
@@ -917,7 +920,7 @@ uiSenderCapabilities m mCaps = do
         el "thead" $ el "tr" $ do
           elAttr "th" ("class" =: "table__heading" <> "width" =: "23%") $ text "Role"
           elAttr "th" ("class" =: "table__heading") $ text "Capability"
-          elAttr "th" ("class" =: "table__heading" <> "width" =: "30%") $ text "Account"
+          elAttr "th" ("class" =: "table__heading" <> "width" =: "30%") $ text "Public Key"
         el "tbody" $ do
           gas <- staticCapabilityRow (keyPairDropdown never) defaultGASCapability
           rest <- staticCapabilityRows (keyPairDropdown eApplyToAll) $ filter (not . isGas . _dappCap_cap) caps

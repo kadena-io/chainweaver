@@ -80,7 +80,7 @@ uiTxLogs fileFFI _onExtClose = do
           ]
 
         -- Rows
-        el "tbody" $ iforM_ cmdLogs $ \i logEntry -> elClass "tr" "table-row" $ do
+        el "tbody" $ iforM_ (reverse cmdLogs) $ \i logEntry -> elClass "tr" "table-row" $ do
           td "tx-log-row__ix" $ text $ Text.justifyRight 2 '0' $ Pact.tShow i
           case logEntry of
             Api.LogEntry_Cmd cmdLog ->

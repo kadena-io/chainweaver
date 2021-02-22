@@ -51,17 +51,15 @@ library
     , generic-deriving
     , ghcjs-dom
     , here
-    , http-client
-    , http-client-tls
+--    , http-client
+--    , http-client-tls
     , http-types
     , jsaddle
-    , kadena-signing-api
     , keycode
     , lens
     , lens-aeson
     , megaparsec
     , modern-uri
-    , monad-logger
     , monoidal-containers
     , mtl
     , newtype-generics
@@ -75,7 +73,6 @@ library
     , prettyprinter
     , primitive
     , qrcode-core
-    , qrcode-juicypixels
     , random
     , ref-tf
     , reflex
@@ -110,7 +107,11 @@ library
 
   if !impl(ghcjs)
     build-depends:
-      yaml
+        kadena-signing-api
+      -- TODO Remove monad-logger with something simpler
+      , monad-logger
+      , qrcode-juicypixels
+      , yaml
 
   exposed-modules: Frontend
                  , Frontend.AppCfg

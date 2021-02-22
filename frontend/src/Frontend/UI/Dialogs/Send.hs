@@ -24,7 +24,6 @@ import Control.Error.Util (hush, failWithM)
 import Control.Lens hiding (failover)
 import Control.Monad (guard, join, when, void, (<=<))
 import Control.Monad.Except (throwError)
-import Control.Monad.Logger (LogLevel(..))
 import Control.Monad.Trans.Except
 import Control.Monad.Trans.Maybe
 import Data.Bifunctor
