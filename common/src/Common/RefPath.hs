@@ -138,9 +138,3 @@ instance MP.Stream RefPath where
     | null xs = Nothing
     | otherwise = Just . (RefPath *** RefPath) $ splitAt n xs
   takeWhile_ f = (RefPath *** RefPath) . span f . unRefPath
-  showTokens _ = T.unpack . renderPath . RefPath . NE.toList
-  reachOffset o_d ps@(PosState i o (SourcePos n l c) tw lp) = (sp, line, ps')
-    where
-      sp = SourcePos n l $ mkPos $ unPos c + o_d
-      line = T.unpack $ renderPath $ pstateInput ps
-      ps' = PosState i o sp tw lp

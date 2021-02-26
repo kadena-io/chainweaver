@@ -23,7 +23,7 @@
       set -eux
       mv $out/bin/linuxApp $out/bin/${linuxAppName}
       ln -s "${pkgs.z3}"/bin/z3 "$out/bin/z3"
-      ln -s "${obApp.mkAssets obApp.passthru.staticFiles}" "$out/bin/static.assets"
+      ln -s "${obApp.obelisk.mkAssets obApp.passthru.staticFiles}" "$out/bin/static.assets"
       ln -s "${obApp.passthru.staticFiles}" "$out/bin/static"
       ln -s "${sass}/sass.css" "$out/bin/sass.css"
     '';
@@ -118,7 +118,7 @@
       cp "${pkgs.z3}"/bin/z3 "$LIBEXECDIR/z3"
 
       #TODO : This shouldn't be in libexec
-      cp -rL "${obApp.mkAssets obApp.passthru.staticFiles}" "$SHAREDIR/static.assets"
+      cp -rL "${obApp.obelisk.mkAssets obApp.passthru.staticFiles}" "$SHAREDIR/static.assets"
       cp -rL "${obApp.passthru.staticFiles}" "$SHAREDIR/static"
       cp -rL "${sass}/sass.css" "$SHAREDIR/sass.css"
 

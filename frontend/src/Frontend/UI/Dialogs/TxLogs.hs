@@ -56,7 +56,7 @@ uiTxLogs fileFFI _onExtClose = do
   txLogger <- Api.askTransactionLogger
   pb <- getPostBuild
   onClose <- modalHeader $ text "Transaction Log"
-  onLogLoad <- performEvent $ liftIO (Api._transactionLogger_loadFirstNLogs txLogger 10) <$ pb
+  onLogLoad <- performEvent $ liftIO (Api._transactionLogger_loadLastNLogs txLogger 10) <$ pb
 
   divClass "modal__main key-details" $ do
     let
@@ -80,7 +80,7 @@ uiTxLogs fileFFI _onExtClose = do
           ]
 
         -- Rows
-        el "tbody" $ iforM_ cmdLogs $ \i logEntry -> elClass "tr" "table-row" $ do
+        el "tbody" $ iforM_ (reverse cmdLogs) $ \i logEntry -> elClass "tr" "table-row" $ do
           td "tx-log-row__ix" $ text $ Text.justifyRight 2 '0' $ Pact.tShow i
           case logEntry of
             Api.LogEntry_Cmd cmdLog ->

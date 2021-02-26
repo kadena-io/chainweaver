@@ -11,7 +11,8 @@ import Data.Aeson (FromJSON, ToJSON, eitherDecode)
 import Data.Bool (bool)
 import qualified Data.ByteString.Lazy as LBS
 import Data.Constraint.Extras (Has, Has', has)
-import Data.Dependent.Map (DMap, DSum(..), Some(Some))
+import Data.Dependent.Map (DMap)
+import Data.Dependent.Sum (DSum(..))
 import qualified Data.Dependent.Map as DMap
 import Data.Functor.Identity (Identity(..))
 import Data.IORef (IORef, newIORef, readIORef, modifyIORef)
@@ -22,6 +23,7 @@ import Data.Map (Map)
 import qualified Data.Map as Map
 import Data.Maybe (catMaybes)
 import Data.Proxy (Proxy(Proxy))
+import Data.Some
 import Data.Text (Text)
 import Data.Universe.Some (UniverseSome, universeSome)
 import Numeric.Natural (Natural)

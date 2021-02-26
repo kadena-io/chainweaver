@@ -39,7 +39,7 @@ library
     , webkit2gtk3-javascriptcore >=0.14.0.0 && <0.15
 
   ghc-options:
-    -O -Wall
+    -O -Wall -fno-show-valid-hole-fits
 
   exposed-modules:
     Linux
@@ -54,4 +54,4 @@ executable linuxApp
       base
     , linux
   ghc-options:
-    -threaded -O2 -Wall
+    -threaded -O2 -Wall -fno-show-valid-hole-fits

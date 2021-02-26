@@ -18,9 +18,12 @@ import Data.Aeson (FromJSON, ToJSON, Value, parseJSON)
 import Data.Aeson.Types (parseEither)
 import Data.Bifunctor (first)
 import Data.Constraint.Extras (Has')
-import Data.Dependent.Map (DMap, DSum(..), Some(Some), GCompare)
+import Data.Dependent.Map (DMap)
+import Data.Dependent.Sum (DSum(..))
 import Data.Functor.Identity (Identity)
+import Data.GADT.Compare
 import Data.Proxy (Proxy(Proxy))
+import Data.Some
 import Data.Text (Text)
 import qualified Data.Text as T
 import Numeric.Natural (Natural)

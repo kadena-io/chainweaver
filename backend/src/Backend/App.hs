@@ -151,9 +151,10 @@ main' ffi mainBundleResourcePath runHTML = do
       route :: (IsString s, Semigroup s) => s
       route = "http://localhost:" <> fromString (show port) <> "/"
       -- We don't need to serve anything useful here under Frontend
+      bcfg = BackendConfig (runSnapWithConfig $ Snap.setPort (fromIntegral port) Snap.defaultConfig)
+                           staticAssets defaultGhcjsWidgets
       b = runBackendWith
-        (runSnapWithConfig $ Snap.setPort (fromIntegral port) Snap.defaultConfig)
-        staticAssets
+        bcfg
         backend
         (Frontend blank blank)
 

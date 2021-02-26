@@ -106,7 +106,6 @@ module Frontend.UI.Widgets
 
   , growingList
   , joinDynThroughIntMap
-  , distributeIntMapOverDynPure
   ) where
 
 
@@ -1502,14 +1501,3 @@ growingList mkOne (AllowAddNewRow newRow) (AllowDeleteRow deleteRow) initialSele
 
   pure dInputKeys
 
--- These functions added to reflex in
--- https://github.com/reflex-frp/reflex/pull/419. They can be removed after
--- Chainweaver is upgraded to that version.
-joinDynThroughIntMap
-  :: forall t a. (Reflex t)
-  => Dynamic t (IntMap.IntMap (Dynamic t a))
-  -> Dynamic t (IntMap.IntMap a)
-joinDynThroughIntMap = (distributeIntMapOverDynPure =<<)
-
-distributeIntMapOverDynPure :: (Reflex t) => IntMap.IntMap (Dynamic t v) -> Dynamic t (IntMap.IntMap v)
-distributeIntMapOverDynPure = fmap dmapToIntMap . distributeDMapOverDynPure . intMapWithFunctorToDMap

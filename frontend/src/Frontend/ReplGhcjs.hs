@@ -76,7 +76,7 @@ import Frontend.UI.Widgets
 import Frontend.Wallet hiding (walletCfg)
 
 app
-  :: forall key t m.
+  :: forall js key t m.
      ( MonadWidget t m
      , RouteToUrl (R FrontendRoute) m, SetRoute t (R FrontendRoute) m
      , HasConfigs m
@@ -85,6 +85,7 @@ app
      , HasCrypto key m
      , FromJSON key, ToJSON key
      , HasTransactionLogger m
+     , Prerender js t m
      )
   => RoutedT t (R FrontendRoute) m ()
   -- ^ Extra widget to display at the bottom of the sidebar
@@ -191,6 +192,7 @@ walletSidebar
      , Routed t (R FrontendRoute) m
      , SetRoute t (R FrontendRoute) m
      , RouteToUrl (R FrontendRoute) m
+     , Prerender js t m
      )
   => m ()
   -> m ()

@@ -384,7 +384,7 @@ runTransaction impl onCode =
       where
         toModule :: Exp Parsed -> Maybe (ModuleName, Int)
         toModule = \case
-          EList (ListExp (EAtom (AtomExp "module" _ _):EAtom (AtomExp m _ _):_) _ (Parsed (Delta.Lines l _ _ _) _))
+          EList (ListExp (EAtom (AtomExp "module" _ _ _):EAtom (AtomExp m _ _ _):_) _ (Parsed (Delta.Lines l _ _ _) _))
             -> Just $ (ModuleName m Nothing, fromIntegral l)
           _ -> Nothing
 

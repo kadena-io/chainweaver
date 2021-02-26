@@ -6,6 +6,7 @@
 {-# LANGUAGE RecursiveDo #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications #-}
+{-# LANGUAGE TypeFamilies #-}
 
 -- | Wallet setup screens
 module Desktop.Setup (WalletExists (..), Password(..), runSetup, splashLogo, setupDiv, setupClass, checkPassword) where

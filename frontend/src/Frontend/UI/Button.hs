@@ -4,6 +4,7 @@
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE PackageImports #-}
 {-# LANGUAGE RecursiveDo #-}
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE TypeApplications #-}
@@ -76,7 +77,7 @@ import           Reflex.Dom.Core
 import           Language.Javascript.JSaddle (MonadJSM)
 import qualified Language.Javascript.JSaddle as JS
 import qualified GHCJS.DOM as DOM
-import qualified GHCJS.DOM.Document as Document
+import qualified "ghcjs-dom" GHCJS.DOM.Document as Document
 import qualified GHCJS.DOM.EventM as EventM
 import qualified GHCJS.DOM.GlobalEventHandlers as GlobalEventHandlers
 import qualified GHCJS.DOM.HTMLElement as HTMLElement

@@ -52,7 +52,7 @@ library
                  , Backend.App
                  , Backend.Devel
 
-  ghc-options: -Wall
+  ghc-options: -Wall -fno-show-valid-hole-fits
 
 executable backend
   main-is: main.hs
