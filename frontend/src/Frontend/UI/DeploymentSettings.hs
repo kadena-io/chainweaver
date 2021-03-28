@@ -709,7 +709,7 @@ uiMetaData m mTTL mGasLimit = do
     horizontalDashedSeparator
 
     onTTL <- divClass "deploy-meta-cfg__request-expires"
-      $ mkLabeledClsInput True "Request Expires" ttlInput
+      $ mkLabeledClsInput True "Request Expires (TTL)" ttlInput
     ttl <- holdDyn initTTL $ leftmost [onTTL, pbTTL]
 
     pure
