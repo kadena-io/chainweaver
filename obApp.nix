@@ -36,8 +36,7 @@ in with obelisk;
           # Playing with attempts at fixing the xhr spin problem
           # jsaddle = hackGet ./dep/jsaddle + /jsaddle;
           jsaddle-warp = hackGet ./dep/jsaddle + /jsaddle-warp; #https://github.com/ghcjs/jsaddle/pull/114
-          #kadena-signing-api = hackGet ./dep/signing-api + "/kadena-signing-api";
-          kadena-signing-api = /Users/doug/work/signing-api/kadena-signing-api;
+          kadena-signing-api = hackGet ./dep/signing-api + "/kadena-signing-api";
           pact = hackGet ./dep/pact;
           reflex-dom = reflex-dom-src + "/reflex-dom";
           reflex-dom-core = reflex-dom-src + "/reflex-dom-core";
