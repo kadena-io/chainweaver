@@ -17,6 +17,7 @@ import qualified GHCJS.DOM.HTMLElement as HTMLElement
 import qualified GHCJS.DOM.HTMLInputElement as HTMLInput
 import qualified GHCJS.DOM.Types as Types
 import qualified GHCJS.DOM.File as JSFile
+import Kadena.SigningApi
 import Reflex.Dom
 import Pact.Server.ApiClient (runTransactionLoggerT, logTransactionStdout)
 
@@ -69,12 +70,14 @@ frontend = Frontend
             , _fileFFI_deliverFile = \_ -> pure never
             }
           printResponsesHandler = pure $ FRPHandler never $ performEvent . fmap (liftIO . print)
+          printResponsesHandler2 f = pure $ FRPHandler never $ performEvent . fmap (liftIO . print . f)
 
       app blank fileFFI $ AppCfg
         { _appCfg_gistEnabled = True
         , _appCfg_loadEditor = loadEditorFromLocalStorage
         , _appCfg_editorReadOnly = False
         , _appCfg_signingHandler = printResponsesHandler
+        , _appCfg_quickSignHandler = printResponsesHandler2 (fmap _quickSignResponse_hash)
         , _appCfg_keysEndpointHandler = printResponsesHandler
         , _appCfg_accountsEndpointHandler = printResponsesHandler
         , _appCfg_enabledSettings = EnabledSettings

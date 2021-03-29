@@ -17,7 +17,7 @@ import qualified Data.ByteString.Lazy as LBS
 import Data.Map (Map)
 import Data.Proxy (Proxy(..))
 import qualified Data.Text.Encoding as T
-import Kadena.SigningApi (SigningRequest, SigningResponse, V1SigningApi)
+import Kadena.SigningApi
 import qualified Network.Wai.Handler.Warp as Warp
 import qualified Network.Wai.Middleware.Cors as Wai
 import Servant (Get, JSON, serve, (:<|>)(..), (:>))
@@ -32,18 +32,24 @@ walletServer
   => IO ()
   -> IO ()
   -> m ( MVarHandler SigningRequest SigningResponse
+       , MVarHandler QuickSignRequest QuickSignResponse
        , MVarHandler () [PublicKey]
        , MVarHandler () (Map NetworkName [AccountName])
        )
 walletServer moveToForeground moveToBackground = do
   signingLock <- liftIO newEmptyMVar -- Only allow one signing request to be served at once
   h@(MVarHandler signingRequestMVar signingResponseMVar) <- liftIO newMVarHandler
+  qs@(MVarHandler quickSignRequestMVar quickSignResponseMVar) <- liftIO newMVarHandler
   keysHandler <- liftIO newMVarHandler
   accountsHandler <- liftIO newMVarHandler
   let
     runSign obj = mkServantHandler <=< liftIO $ bracket_ (putMVar signingLock ()) (takeMVar signingLock) $ do
         putMVar signingRequestMVar obj -- handoff to app
         bracket moveToForeground (const $ moveToBackground) (\_ -> takeMVar signingResponseMVar)
+
+    runQuickSign obj = mkServantHandler <=< liftIO $ bracket_ (putMVar signingLock ()) (takeMVar signingLock) $ do
+        putMVar quickSignRequestMVar obj -- handoff to app
+        bracket moveToForeground (const $ moveToBackground) (\_ -> takeMVar quickSignResponseMVar)
 
     runMVarHandler (MVarHandler req resp) = do
       mkServantHandler <=< liftIO $ do
@@ -59,10 +65,10 @@ walletServer moveToForeground moveToBackground = do
       { Wai.corsRequestHeaders = Wai.simpleHeaders }
     apiServer
       = Warp.runSettings s $ Wai.cors laxCors
-      $ Servant.serve walletApi $ runSign :<|> runMVarHandler keysHandler :<|> runMVarHandler accountsHandler
+      $ Servant.serve walletApi $ (runSign :<|> runQuickSign) :<|> runMVarHandler keysHandler :<|> runMVarHandler accountsHandler
 
   liftIO $ void $ Async.async $ apiServer
-  pure (h, keysHandler, accountsHandler)
+  pure (h, qs, keysHandler, accountsHandler)
 
 type WalletAPI = "v1" :> V1WalletAPI
 type V1WalletAPI = V1SigningApi

@@ -5,6 +5,7 @@
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE QuasiQuotes #-}
 {-# LANGUAGE RecursiveDo #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications #-}
@@ -29,7 +30,7 @@ import GHCJS.DOM.EventM (on)
 import GHCJS.DOM.GlobalEventHandlers (keyPress)
 import GHCJS.DOM.KeyboardEvent (getCtrlKey, getKey, getKeyCode, getMetaKey)
 import GHCJS.DOM.Types (HTMLElement (..), unElement)
-import Kadena.SigningApi (SigningRequest, SigningResponse)
+import Kadena.SigningApi
 import Language.Javascript.JSaddle (liftJSM)
 import Obelisk.Generated.Static
 import Obelisk.Route (R)
@@ -64,7 +65,7 @@ import Frontend.UI.Dialogs.CreatedGist (uiCreatedGist)
 import Frontend.UI.Dialogs.DeployConfirmation (uiDeployConfirmation)
 import Frontend.UI.Dialogs.LogoutConfirmation (uiLogoutConfirmation)
 import Frontend.UI.Dialogs.NetworkEdit (uiNetworkSelectTopBar)
-import Frontend.UI.Dialogs.Signing (uiSigning)
+import Frontend.UI.Dialogs.Signing (uiSigning, uiQuickSign)
 import Frontend.UI.IconGrid (IconGridCellConfig(..), iconGridLaunchLink)
 import Frontend.UI.Modal
 import Frontend.UI.Modal.Impl
@@ -94,7 +95,7 @@ app
   -> RoutedT t (R FrontendRoute) m ()
 app sidebarExtra fileFFI appCfg = Store.versionedFrontend (Store.versionedStorage @key) $ void . mfix $ \ cfg -> do
   ideL <- makeIde fileFFI appCfg cfg
-  FRPHandler signingReq signingResp <- handleEndpoints ideL appCfg
+  (FRPHandler signingReq signingResp, FRPHandler quickSignReq quickSignResp) <- handleEndpoints ideL appCfg
 
   walletSidebar sidebarExtra
   updates <- divClass "page" $ do
@@ -119,8 +120,9 @@ app sidebarExtra fileFFI appCfg = Store.versionedFrontend (Store.versionedStorag
           pure $ (xferVisible, watchCfg <> addCfg <> refreshCfg)
         divClass "wallet-scroll-wrapper" $ do
           transferCfg <- uiGenericTransfer ideL $ TransferCfg transferVisible never never
-          accountsCfg <- uiAccountsTable ideL
-          pure $ netCfg <> barCfg <> accountsCfg <> transferCfg
+          --accountsCfg <- uiAccountsTable ideL
+          --pure $ netCfg <> barCfg <> accountsCfg <> transferCfg
+          pure $ netCfg <> barCfg <> transferCfg
       FrontendRoute_Keys -> mkPageContent "keys" $ do
         walletBarCfg <- underNetworkBar "Keys" uiGenerateKeyButton
         walletCfg <- uiWallet ideL
@@ -158,23 +160,34 @@ app sidebarExtra fileFFI appCfg = Store.versionedFrontend (Store.versionedStorag
   modalCfg <- showModal ideL
 
   req <- delay 0 signingReq
+  --qreq <- delay 0 quickSignReq
+  let qsr = QuickSignRequest ["{\"networkId\":\"testnet04\",\"payload\":{\"exec\":{\"data\":null,\"code\":\"(coin.transfer \\\"doug\\\" \\\"taylor\\\" 2.1)\"}},\"signers\":[{\"pubKey\":\"dea647009295dc015ba6e6359b85bafe09d2ce935a03c3bf83f775442d539025\",\"clist\":[{\"args\":[\"doug\",\"taylor\",2.1],\"name\":\"coin.TRANSFER\"},{\"args\":[],\"name\":\"coin.GAS\"}]}],\"meta\":{\"creationTime\":1614459080,\"ttl\":7200,\"gasLimit\":1200,\"chainId\":\"0\",\"gasPrice\":1.0e-12,\"sender\":\"doug\"},\"nonce\":\"2021-02-27 20:51:20.026156 UTC\"}"]
+  qreq <- elAttr "div" ("style" =: "position: absolute; border: 1px solid black; left: 200px; top: 20px;") $
+    uiButton (headerBtnCfgPrimary & uiButtonCfg_class <>~ " main-header__account-button") $
+      text "QuickSign"
   let
     onGistCreatedModal = Just . uiCreatedGist <$> ideL ^. gistStore_created
     gistModalCfg = mempty & modalCfg_setModal .~ onGistCreatedModal
     onSigningModal = Just . uiSigning ideL signingResp <$> req
+    onQuickSignModal = Just . uiQuickSign ideL quickSignResp <$> (qsr <$ qreq)
     signingModalCfg = mempty & modalCfg_setModal .~ onSigningModal
+    quickSignModalCfg = mempty & modalCfg_setModal .~ onQuickSignModal
 
   pure $ mconcat
     [ updates
     , modalCfg
     , gistModalCfg
     , signingModalCfg
+    , quickSignModalCfg
     , mempty & ideCfg_editor . editorCfg_loadCode .~ (snd <$> _fileFFI_externalFileOpened fileFFI)
     ]
 
 handleEndpoints
   :: (HasWallet model key t, MonadIO m, PerformEvent t m)
-  => model -> AppCfg key t m -> m (FRPHandler SigningRequest SigningResponse t m)
+  => model
+  -> AppCfg key t m
+  -> m (FRPHandler SigningRequest SigningResponse t m
+       ,FRPHandler QuickSignRequest QuickSignResponse t m)
 handleEndpoints m cfg = do
   let keys = ffor (m ^. wallet_keys) $ Right . toList . fmap (_keyPair_publicKey . _key_pair)
       accounts = ffor (m ^. wallet_accounts) $ Right . fmap Map.keys . unAccountData
@@ -184,7 +197,9 @@ handleEndpoints m cfg = do
 
   void $ keysResps $ current keys <@ keysReqs
   void $ accountsResps $ current accounts <@ accountsReqs
-  _appCfg_signingHandler cfg
+  s <- _appCfg_signingHandler cfg
+  qs <- _appCfg_quickSignHandler cfg
+  pure (s, qs)
 
 walletSidebar
   :: ( DomBuilder t m

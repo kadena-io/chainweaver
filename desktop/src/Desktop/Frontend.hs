@@ -35,7 +35,7 @@ import Data.Maybe (isJust)
 import Data.Text (Text)
 import Data.Time (NominalDiffTime, getCurrentTime, addUTCTime)
 import Data.Traversable (for)
-import Kadena.SigningApi (SigningRequest)
+import Kadena.SigningApi (SigningRequest, QuickSignRequest)
 import Language.Javascript.JSaddle (liftJSM)
 import Pact.Server.ApiClient (HasTransactionLogger, runTransactionLoggerT, logTransactionFile, askTransactionLogger)
 import Reflex.Dom.Core
@@ -93,7 +93,7 @@ desktopFrontend = Frontend
   , _frontend_body = prerender_ blank $ do
       logDir <- (<> "/" <> commandLogFilename) <$> liftIO getTemporaryDirectory
       liftIO $ putStrLn $ "Logging to: " <> logDir
-      (signingHandler, keysHandler, accountsHandler) <- walletServer
+      (signingHandler, quickSignHandler, keysHandler, accountsHandler) <- walletServer
         (pure ()) -- Can't foreground or background things
         (pure ())
       mapRoutedT (flip runTransactionLoggerT (logTransactionFile logDir) . runBrowserStorageT) $ do
@@ -103,11 +103,12 @@ desktopFrontend = Frontend
               , _fileFFI_openFileDialog = liftJSM . triggerOpen
               , _fileFFI_deliverFile = deliverFile
               }
-        bipWallet fileFFI (_mvarHandler_readRequest signingHandler) $ \enabledSettings -> AppCfg
+        bipWallet fileFFI (_mvarHandler_readRequest signingHandler) (_mvarHandler_readRequest quickSignHandler) $ \enabledSettings -> AppCfg
           { _appCfg_gistEnabled = False
           , _appCfg_loadEditor = loadEditorFromLocalStorage
           , _appCfg_editorReadOnly = False
           , _appCfg_signingHandler = mkFRPHandler signingHandler
+          , _appCfg_quickSignHandler = mkFRPHandler quickSignHandler
           , _appCfg_keysEndpointHandler = mkFRPHandler keysHandler
           , _appCfg_accountsEndpointHandler = mkFRPHandler accountsHandler
           , _appCfg_enabledSettings = enabledSettings
@@ -152,9 +153,10 @@ bipWallet
      )
   => FileFFI t m
   -> MVar SigningRequest
+  -> MVar QuickSignRequest
   -> MkAppCfg t m
   -> RoutedT t (R FrontendRoute) m ()
-bipWallet fileFFI signingReq mkAppCfg = do
+bipWallet fileFFI signingReq quickSignReq mkAppCfg = do
   txLogger <- askTransactionLogger
 
   let
@@ -189,7 +191,7 @@ bipWallet fileFFI signingReq mkAppCfg = do
       LockScreen_RunSetup :=> _ -> runSetup0 Nothing WalletExists_No
       -- Wallet exists but the lock screen is active
       LockScreen_Locked :=> Compose root -> do
-        (restore, mLogin) <- lockScreen signingReq $ fmap runIdentity $ current root
+        (restore, mLogin) <- lockScreen signingReq quickSignReq $ fmap runIdentity $ current root
         pure $ leftmost
           [ (LockScreen_Restore ==>) . runIdentity <$> current root <@ restore
           , (LockScreen_Unlocked ==>) <$> attach (runIdentity <$> current root) mLogin
@@ -292,8 +294,8 @@ mkSidebarLogoutLink = do
 
 lockScreen
   :: (DomBuilder t m, PostBuild t m, TriggerEvent t m, PerformEvent t m, MonadIO m, MonadFix m, MonadHold t m)
-  => MVar SigningRequest -> Behavior t Crypto.XPrv -> m (Event t (), Event t Text)
-lockScreen signingReq xprv = setupDiv "fullscreen" $ divClass "wrapper" $ setupDiv "splash" $ do
+  => MVar SigningRequest -> MVar QuickSignRequest -> Behavior t Crypto.XPrv -> m (Event t (), Event t Text)
+lockScreen signingReq quickSignReq xprv = setupDiv "fullscreen" $ divClass "wrapper" $ setupDiv "splash" $ do
   splashLogo
 
   el "div" $ mdo
@@ -319,7 +321,9 @@ lockScreen signingReq xprv = setupDiv "fullscreen" $ divClass "wrapper" $ setupD
         text "Help"
       uiButton btnCfgSecondary $ text "Restore"
 
-    req <- tryReadMVarTriggerEvent signingReq
+    sreq <- tryReadMVarTriggerEvent signingReq
+    qsreq <- tryReadMVarTriggerEvent  quickSignReq
+    let req = leftmost [() <$ sreq, () <$ qsreq]
     widgetHold_ blank $ ffor req $ \_ -> do
       let line = divClass (setupClass "signing-request") . text
       line "You have an incoming signing request."

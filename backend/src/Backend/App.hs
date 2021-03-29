@@ -161,7 +161,7 @@ main' ffi mainBundleResourcePath runHTML = do
   -- Run the backend in a forked thread, and run jsaddle-wkwebview on the main thread
   putStrLn $ "Starting backend on port: " <> show port
   Async.withAsync b $ \_ -> do
-    (signingHandler, keysHandler, accountsHandler) <- walletServer
+    (signingHandler, quickSignHandler, keysHandler, accountsHandler) <- walletServer
       (_appFFI_moveToForeground ffi)
       (_appFFI_moveToBackground ffi)
     waitForBackend port
@@ -203,6 +203,7 @@ main' ffi mainBundleResourcePath runHTML = do
                   -- DB 2019-08-07 Changing this back to False because it's just too convenient this way.
                   , _appCfg_editorReadOnly = False
                   , _appCfg_signingHandler = mkFRPHandler signingHandler
+                  , _appCfg_quickSignHandler = mkFRPHandler quickSignHandler
                   , _appCfg_keysEndpointHandler = mkFRPHandler keysHandler
                   , _appCfg_accountsEndpointHandler = mkFRPHandler accountsHandler
                   , _appCfg_enabledSettings = enabledSettings
@@ -214,7 +215,7 @@ main' ffi mainBundleResourcePath runHTML = do
                  $ runWithReplace loaderMarkup
                  $ ( liftIO (_appFFI_activateWindow ffi)
                      >> liftIO (_appFFI_resizeWindow ffi defaultWindowSize)
-                     >> bipWallet fileFFI (_mvarHandler_readRequest signingHandler) appCfg
+                     >> bipWallet fileFFI (_mvarHandler_readRequest signingHandler) (_mvarHandler_readRequest quickSignHandler) appCfg
                    )
                  <$ bowserLoad
             pure ()
