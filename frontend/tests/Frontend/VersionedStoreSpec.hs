@@ -63,20 +63,10 @@ expectedSelectedNetwork = mkNetworkName "devnet"
 
 expectedNetworks :: Map NetworkName [NodeRef]
 expectedNetworks = Map.fromList
-  [ (mkNetworkName "devnet",
-    [ mkNodeRef [host|us1.tn1.chainweb.com|]
-    , mkNodeRef [host|us2.tn1.chainweb.com|]
-    , mkNodeRef [host|eu1.tn1.chainweb.com|]
-    , mkNodeRef [host|eu2.tn1.chainweb.com|]
-    ])
+  [ (mkNetworkName "mainnet",
+    [ mkNodeRef [host|api.chainweb.com|] ])
   , (mkNetworkName "testnet",
-    [ mkNodeRef [host|ap1.testnet.chainweb.com|]
-    , mkNodeRef [host|ap2.testnet.chainweb.com|]
-    , mkNodeRef [host|eu1.testnet.chainweb.com|]
-    , mkNodeRef [host|eu2.testnet.chainweb.com|]
-    , mkNodeRef [host|us1.testnet.chainweb.com|]
-    , mkNodeRef [host|us2.testnet.chainweb.com|]
-    ])
+    [ mkNodeRef [host|api.testnet.chainweb.com|] ])
   ]
   where
     mkNodeRef h = NodeRef $ Authority Nothing h Nothing

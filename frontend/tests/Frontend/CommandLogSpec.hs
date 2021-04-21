@@ -76,7 +76,7 @@ v0CommandLogDecoded = V0.CommandLog
     , Pact._cmdHash = either error id $ Pact.fromText' "n1bWvpxcplbqw3IsaL34bmqvFO1F0iy0FcEcjj8adhA"
     }
   , V0._commandLog_timestamp = UTCTime (fromGregorian 2020 01 24) 47976.199626747
-  , V0._commandLog_url = "https://eu1.testnet.chainweb.com/chainweb/0.0/testnet04/chain/0/pact"
+  , V0._commandLog_url = "https://api.testnet.chainweb.com/chainweb/0.0/testnet04/chain/0/pact"
   }
 
 v1CommandLogDecoded :: V1.CommandLog
@@ -85,7 +85,7 @@ v1CommandLogDecoded = V1.CommandLog
   , V1._commandLog_sender = "dib"
   , V1._commandLog_chain = Pact.ChainId "0"
   , V1._commandLog_requestKey = either error id $ Pact.fromText' "B8H6ZFcoCLAMHTeoKMC5oOi32MG2abRkZfz3EaKuJTA"
-  , V1._commandLog_url = "https://eu1.testnet.chainweb.com/chainweb/0.0/testnet04/chain/0/pact"
+  , V1._commandLog_url = "https://api.testnet.chainweb.com/chainweb/0.0/testnet04/chain/0/pact"
   , V1._commandLog_command = Pact.Command
     { Pact._cmdPayload = "payload"
     , Pact._cmdSigs = [Pact.UserSig "6b5eef89c3c930f2e555aa468e7fea423ca42a29dc7e30dad11c42911ddab24bda4b13b03b7c6342efa2a0c91de46d8be016785b410a2688e17430a045855a0b"]
