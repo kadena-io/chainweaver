@@ -69,7 +69,7 @@ uiReceiveModal modalTitle model account chain mdetails _onClose = do
       case mks of
         Nothing -> blank
         Just ks -> do
-          let txb = TxBuilder account chain (Just $ userToPactKeyset ks)
+          let txb = TxBuilder account chain (Just $ Right $ userToPactKeyset ks)
           dialogSectionHeading mempty "Account Information"
           divClass "group" $ uiDisplayTxBuilderWithCopy True txb
 
@@ -171,7 +171,8 @@ uiReceiveModal0 model account chain details onClose = Workflow $ do
         (accordionHeaderBtn "Option 1: Copy and share Tx Builder") $ do
           uiDisplayTxBuilderWithCopy True
             $ TxBuilder account chain
-            $ details ^? accountDetails_guard . _AccountGuard_KeySet . to (uncurry toPactKeyset)
+             -- COME BACK TO THIS
+            $ details ^? accountDetails_guard . _AccountGuard_KeySet . to (Right . uncurry toPactKeyset)
 
       (onReceiClick, results) <- controlledAccordionItem (not <$> showingTxBuilder) mempty
         (accordionHeaderBtn "Option 2: Transfer from non-Chainweaver Account") $ do

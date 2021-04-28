@@ -360,7 +360,7 @@ uiAccountItem cwKeys startsOpen name accountInfo = do
             let ks = d ^. accountDetails_guard . _AccountGuard_KeySet
             let uk = (\(k,p) -> UserKeyset k (parseKeysetPred p)) ks
 
-            let txb = TxBuilder name chain (Just $ userToPactKeyset uk)
+            let txb = TxBuilder name chain (Just $ Right $ userToPactKeyset uk)
             let bcfg = btnCfgSecondary & uiButtonCfg_class <>~ "wallet__table-button" <> "button_border_none"
             copyAddress <- copyButton' "Copy Tx Builder" bcfg False (constant $ prettyTxBuilder txb)
 
@@ -379,6 +379,9 @@ accountGuardSummary (AccountGuard_Other pactGuard) =
   where
     gType = pactGuardTypeText $ Pact.guardTypeOf pactGuard
 
+accountGuardSummary (AccountGuard_KeySetRef ksName) = fold
+  ["Keyset reference: "
+  , ksName]
 accountGuardSummary (AccountGuard_KeySet ksKeys ksPred) = T.intercalate ", "
   [ tshow numKeys <> if numKeys == 1 then " key" else " keys"
   , ksPred

@@ -9,6 +9,7 @@ module Frontend.UI.Dialogs.AccountDetails
   , uiAccountDetails
   ) where
 
+import Control.Applicative ((<|>))
 import Control.Lens
 import Control.Monad (void)
 import qualified Data.Map as Map
@@ -75,10 +76,17 @@ uiAccountDetailsOnChainImpl
   -> Event t ()
   -> Workflow t m (Text, (mConf, Event t ()))
 uiAccountDetailsOnChainImpl netname (name, chain, details, account) onClose = Workflow $ do
-  let kAddr = TxBuilder name chain $ details
-        ^? accountDetails_guard
+  let detailsKeyset = details ^?
+        accountDetails_guard
         . _AccountGuard_KeySet
         . to (uncurry toPactKeyset)
+  let detailsKeysetRef = details ^?
+        accountDetails_guard
+        . _AccountGuard_KeySetRef
+        . to toPactKeysetRef
+  let kAddr =  TxBuilder name chain $
+        (Right <$> detailsKeyset)
+        <|> (Left <$> detailsKeysetRef)
 
       displayText lbl v cls =
         let
@@ -117,6 +125,7 @@ uiAccountDetailsOnChainImpl netname (name, chain, details, account) onClose = Wo
               for_ ksKeys $ \key -> uiInputElement $ def
                 & initialAttributes %~ Map.insert "disabled" "disabled" . addToClassAttr "labeled-input__input labeled-input__multiple"
                 & inputElementConfig_initialValue .~ keyToText key
+          AccountGuard_KeySetRef ksName -> void $ displayText "Keyset Reference" ksName ""
           AccountGuard_Other g ->
             void $ displayText (pactGuardTypeText $ Pact.guardTypeOf g) (renderCompactText g) ""
 

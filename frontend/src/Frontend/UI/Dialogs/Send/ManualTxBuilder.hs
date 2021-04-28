@@ -158,7 +158,7 @@ uiExplodedTxBuilder
 uiExplodedTxBuilder model fromName fromChain mUcct mInitToAddress = do
   let
     mkAlteredTxB mname mchain intKeys extKeys mPredicate = TxBuilder <$> mname <*> mchain
-      <*> pure (fmap (toPactKeyset $ intKeys <> extKeys) mPredicate)
+      <*> pure (fmap (Right . toPactKeyset (intKeys <> extKeys)) mPredicate)
 
     explodedTxB onTxAccountName onTxChainId keysetsPresets = do
       (onNameInput, dname) <- uiAccountNameInput "Account Name" False Nothing onTxAccountName noValidation
@@ -198,7 +198,7 @@ uiExplodedTxBuilder model fromName fromChain mUcct mInitToAddress = do
       onTxBAccountName = fmap (^? _Right . to _txBuilder_accountName) onEitherTxB
       onTxBChainId = fmap (^? _Right . to _txBuilder_chainId) onEitherTxB
       onTxBPredicate = fmap
-        (^? _Right . to _txBuilder_keyset . _Just . to Pact._ksPredFun . to Pact.renderCompactText)
+        (^? _Right . to _txBuilder_keyset . _Just . _Right . to Pact._ksPredFun . to Pact.renderCompactText)
         onEitherTxB
 
       (onInternalKeys, onExternalKeys) = splitE $ attachWithMaybe
@@ -219,7 +219,8 @@ mkKeysets
   -> (PatchIntMap (Maybe Int), PatchIntMap (Maybe Text))
 mkKeysets keys tb =
   let
-    tbKeys = Set.map fromPactPublicKey $ fold $ Pact._ksKeys <$> _txBuilder_keyset tb
+    msg = "PLEASE COME BACK TO THIS!"
+    tbKeys = Set.map fromPactPublicKey $ fold $ Pact._ksKeys . either (error msg) id <$> _txBuilder_keyset tb
     intKeys = ifoldMap
       (\i k -> let pk = _keyPair_publicKey $ _key_pair k
         in if pk `elem` tbKeys then Set.singleton (i,pk) else Set.empty
