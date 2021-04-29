@@ -94,8 +94,6 @@ module Frontend.UI.Widgets
   , accordionItemWithClick
   , controlledAccordionItem
   , accordionHeaderBtn
-  , accordionHeaderBtn'
-  , TransferKeysetOption(..)
   , setFocus
   , setFocusOn
   , setFocusOnSelected
@@ -790,9 +788,6 @@ controlledAccordionItem dActive contentClass title inner = do
       False -> singleClass "accordion-collapsed"
       True -> singleClass "accordion-revealed"
 
-_controlledAccordionItem' :: MonadWidget t m => Dynamic t Bool -> CssClass -> m a ->  m b -> m (Event t (), (a,b))
-_controlledAccordionItem' = undefined
-
 accordionItemWithClick
   :: MonadWidget t m
   => Bool
@@ -821,17 +816,6 @@ accordionItem initActive contentClass title inner =
 
 accordionHeaderBtn :: DomBuilder t m => Text -> m ()
 accordionHeaderBtn = divClass "accordion__header-btn-text" . text
-
-data TransferKeysetOption = TKO_Keyset |  TKO_KeysetReference
-  deriving (Eq, Ord)
-
-accordionHeaderBtn' :: (PostBuild t m, MonadFix m, MonadHold t m, DomBuilder t m) => m (Dynamic t TransferKeysetOption)
-accordionHeaderBtn' = divClass "accordion__header-btn-text" $ value <$> dropdown TKO_Keyset (pure m) def
-  where
-    m = ["Owner Keyset", "Keyset Reference"]
-      & zip [TKO_Keyset, TKO_KeysetReference]
-      & Map.fromList
-
 
 ----------------------------------------------------------------------------------
 

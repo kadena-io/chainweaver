@@ -194,10 +194,9 @@ toFormWidget model cfg = mdo
     [ const not <$> clk
     , const True <$ pastedBuilder
     ]
-  (clk,(_selectedOption,k)) <- controlledAccordionItem keysetOpen mempty accordionHeaderBtn' $ do
-    let msg = "COME BACK TO THIS"
+  (clk,(_,k)) <- controlledAccordionItem keysetOpen mempty (accordionHeaderBtn "Owner Keyset") $ do
     keysetFormWidget $ (snd <$> cfg)
-      & setValue %~ modSetValue (Just (fmap (either (error msg) userFromPactKeyset) . _txBuilder_keyset <$> pastedBuilder))
+      & setValue %~ modSetValue (Just (fmap userFromPactKeyset . _txBuilder_keyset <$> pastedBuilder))
 
   return (tca,k)
 

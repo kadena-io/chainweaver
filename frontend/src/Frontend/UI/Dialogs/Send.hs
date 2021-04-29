@@ -263,7 +263,7 @@ sameChainTransfer
 sameChainTransfer model netInfo keys (fromName, fromChain, fromAcc) (gasPayer, gasPayerAcc) toAccount amount = Workflow $ do
   -- TODO check against chain - this data may be outdated (key rotations) unless refreshed recently
   let (functionName, readKeyset, keyData) = case _txBuilder_keyset toAccount of
-        Just (Right ks) | not (null $ _ksKeys ks) -> ("transfer-create", "(read-keyset 'key)", HM.singleton "key" $ Aeson.toJSON ks)
+        Just ks | not (null $ _ksKeys ks) -> ("transfer-create", "(read-keyset 'key)", HM.singleton "key" $ Aeson.toJSON ks)
         _ -> ("transfer", "", mempty)
       code = T.unwords $
         [ "(coin." <> functionName
@@ -801,7 +801,7 @@ crossChainTransfer logL netInfo keys fromAccount toAccount fromGasPayer crossCha
       -- If the account hasn't been created, don't try to lookup the guard. Just
       -- assume the account name _is_ the public key (since it must be a
       -- non-vanity account).
-      Just ks -> let msg = "COME BACK TO THIS" in pure $ (either (error msg) Right ks) <$ pb -- TODO verify against chain
+      Just ks -> pure $ Right ks <$ pb -- TODO verify against chain
   let (keySetError, keySetOk) = fanEither keySetResponse
   -- Start the transfer
   initiated <- initiateCrossChainTransfer logL networkName envFromChain publicMeta keys fromAccount fromGasPayer toTxBuilder amount keySetOk

@@ -263,7 +263,7 @@ createAccountNotGasPayer splashWF name chain keyset = Workflow $ do
       _ <- uiDisplayTxBuilderWithCopy False $ TxBuilder
         { _txBuilder_accountName = name
         , _txBuilder_chainId = chain
-        , _txBuilder_keyset = Right <$> keyset ^? _AccountGuard_KeySet . to (uncurry toPactKeyset)
+        , _txBuilder_keyset = keyset ^? _AccountGuard_KeySet . to (uncurry toPactKeyset)
         }
       pure ()
   modalFooter $ do
