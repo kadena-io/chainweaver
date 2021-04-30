@@ -48,14 +48,11 @@ import           Data.Bifunctor
 import qualified Data.ByteString.Lazy as LB
 import           Data.Decimal
 import           Data.Default (Default (..))
-import           Data.Function (on)
 import qualified Data.IntMap as IntMap
-import           Data.List
 import           Data.List.NonEmpty (NonEmpty(..), nonEmpty)
 import qualified Data.List.NonEmpty as NEL
 import           Data.Map (Map)
 import qualified Data.Map as Map
-import           Data.Set (Set)
 import qualified Data.Set as Set
 import           Data.String
 import           Data.Text (Text)
@@ -89,9 +86,9 @@ import           Pact.Types.PactValue
 import           Pact.Types.Pretty
 import           Pact.Types.RPC
 import           Pact.Types.Scheme
-import           Pact.Types.Term (KeySet (..))
+-- import           Pact.Types.Term (KeySet (..))
 import qualified Pact.Types.Term as Pact
-import           Pact.Types.Util
+-- import           Pact.Types.Util
 import           Reflex
 import           Reflex.Dom.Core
 import qualified Servant.Client.JSaddle as S
@@ -450,7 +447,7 @@ lookupKeySets logL networkName nodes chain accounts = do
   (result, trigger) <- newTriggerEvent
   let envs = mkClientEnvs nodes chain
   liftJSM $ forkJSM $ do
-    r <- doReqFailover envs (Api.local Api.apiV1Client cmd) >>= \case
+    initReq <- doReqFailover envs (Api.local Api.apiV1Client cmd) >>= \case
       Left _ -> pure Nothing
       Right cr -> case Pact._crResult cr of
         Pact.PactResult (Right pv) -> case parseAccountDetails pv of
@@ -463,36 +460,30 @@ lookupKeySets logL networkName nodes chain accounts = do
           putLog logL LevelInfo $ "lookupKeysets failed:" <> tshow e
           pure Nothing
 
-  -- TODO: CLEAN THIS UP!
-    rr <- case r of
-      Just res -> fmap Just $ iforM res $ \(AccountName name) dets -> do
-        let ref' = dets ^? _AccountStatus_Exists . accountDetails_guard . _AccountGuard_KeySetRef
-        let bal' = dets ^? _AccountStatus_Exists . accountDetails_balance . (to unAccountBalance)
-            updateBal old new = if old == new then old else new
-        case (,) <$> bal' <*> ref' of
-          Just (bal, ref) -> do
-            let describeCode keysetref account = printf "{\"balance\" : (at 'balance (coin.details \"%s\")), \"guard\" : (describe-keyset \"%s\")}" account keysetref
-            cmd <- simpleLocal Nothing networkName pm (T.pack (on describeCode T.unpack ref name))
-            doReqFailover envs (Api.local Api.apiV1Client cmd) >>= \case
-              Left err -> do
-                liftIO $ print err
-                pure dets
-              Right cr -> case Pact._crResult cr of
-                Pact.PactResult (Right pv) -> do
-                  putLog logL LevelInfo $ "result: " <> tshow pv
-                  res <- maybe (pure dets) pure
-                    $ (\b g -> AccountStatus_Exists $ AccountDetails (AccountBalance b) g)
-                    <$> pv ^? Pact.Types.PactValue._PObject . (to Pact._objectMap) . (at "balance") . _Just . Pact.Types.PactValue._PLiteral . (to (updateBal bal . _lDecimal))
-                    <*> pv ^? Pact.Types.PactValue._PObject . (to Pact._objectMap) . (at "guard") . _Just . Pact.Types.PactValue._PGuard . (to fromPactGuard)
-                  putLog logL LevelInfo $ "lookupKeySets on ref: success"
-                  putLog logL LevelInfo $ tshow res
-                  return res
-                Pact.PactResult (Left e) -> do
-                  putLog logL LevelInfo $ "lookupKeysets failed on keyset-ref lookup:" <> tshow e
-                  pure dets
-          Nothing -> pure $ dets
-      Nothing -> pure Nothing
-    liftIO $ trigger rr
+    resolvedReq <- for initReq $ imapM $ \(AccountName name) details -> do
+            let mref = details ^? _AccountStatus_Exists . accountDetails_guard . _AccountGuard_KeySetRef
+                mbal = details ^? _AccountStatus_Exists . accountDetails_balance . (to unAccountBalance)
+                updateBal old new = if old == new then old else new
+            fmap (fromMaybe details) $ for (liftA2 (,) mbal mref) $ \(bal,ref) -> do
+              let describeCode = printf "{\"balance\" : (at 'balance (coin.details \"%s\")), \"guard\" : (describe-keyset \"%s\")}" name ref
+              cmd <- simpleLocal Nothing networkName pm (T.pack describeCode)
+              doReqFailover envs (Api.local Api.apiV1Client cmd) >>= \case
+                Left _ -> pure details
+                Right cr -> case Pact._crResult cr of
+                  Pact.PactResult (Right pv) -> do
+                    putLog logL LevelInfo "lookupKeySets on ref: success"
+                    let res = fromMaybe details $
+                          liftA2 (\b g -> AccountStatus_Exists $ AccountDetails (AccountBalance b) g)
+                            (pv ^? Pact.Types.PactValue._PObject . (to Pact._objectMap) . (at "balance") . _Just . Pact.Types.PactValue._PLiteral . (to (updateBal bal . _lDecimal)))
+                            (pv ^? Pact.Types.PactValue._PObject . (to Pact._objectMap) . (at "guard") . _Just . Pact.Types.PactValue._PGuard . (to fromPactGuard))
+                    putLog logL LevelInfo $ tshow res
+                    return res
+                  Pact.PactResult (Left e) -> do
+                    putLog logL LevelInfo $ "lookupKeySets failed on keyset-ref lookup:" <> tshow e
+                    pure details
+
+
+    liftIO $ trigger resolvedReq
   pure result
 
 -- no signing of any kind here
