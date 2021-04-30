@@ -35,6 +35,7 @@ module Common.Wallet
   , mkAccountNotes
   , AccountGuard(..)
   , _AccountGuard_KeySet
+  , _AccountGuard_KeySetRef
   , _AccountGuard_Other
   , toPactKeyset
   , UnfinishedCrossChainTransfer(..)
@@ -241,6 +242,8 @@ data AccountStatus a
 data AccountGuard
   = AccountGuard_KeySet (Set PublicKey) Text
   -- ^ Keyset guards
+  | AccountGuard_KeySetRef Text
+  -- ^ Keyset-ref guards
   | AccountGuard_Other (Pact.Guard PactValue)
   -- ^ Other types of guard
   deriving (Show, Eq, Generic)
@@ -250,6 +253,7 @@ fromPactGuard = \case
   Pact.GKeySet ks -> AccountGuard_KeySet
     (Set.map fromPactPublicKey $ Pact._ksKeys ks)
     (renderCompactText $ Pact._ksPredFun ks)
+  Pact.GKeySetRef (Pact.KeySetName name) -> AccountGuard_KeySetRef name
   g ->
     AccountGuard_Other g
 

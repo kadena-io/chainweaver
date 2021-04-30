@@ -27,6 +27,7 @@ Design Requirements:
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE QuasiQuotes #-}
 {-# LANGUAGE RecursiveDo #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TemplateHaskell #-}
@@ -63,6 +64,7 @@ import qualified Data.Text.Lazy as LT
 import           Data.These (These(This))
 import           Data.Traversable
 import           Data.Time.Clock.POSIX
+import qualified NeatInterpolation (text)
 
 #if !defined(ghcjs_HOST_OS)
 import qualified Data.Yaml as Y
@@ -461,8 +463,56 @@ lookupKeySets logL networkName nodes chain accounts = do
           putLog logL LevelInfo $ "lookupKeysets failed:" <> tshow e
           pure Nothing
 
-    liftIO $ trigger r
+  -- TODO: CLEAN THIS UP!
+    rr <- case r of
+      Just res -> fmap Just $ iforM res $ \(AccountName name) dets -> do
+        let ref' = dets ^? _AccountStatus_Exists . accountDetails_guard . _AccountGuard_KeySetRef
+        let bal' = dets ^? _AccountStatus_Exists . accountDetails_balance . (to unAccountBalance)
+            updateBal old new = if old == new then old else new
+        case (,) <$> bal' <*> ref' of
+          Just (bal, ref) -> do
+            let describeCode keysetref account =
+                  [NeatInterpolation.text|{"balance" : (at 'balance (coin.details "$account")), "guard" : (describe-keyset "$keysetref")}|]
+            cmd <- simpleLocal Nothing networkName pm (describeCode ref name)
+            doReqFailover envs (Api.local Api.apiV1Client cmd) >>= \case
+              Left err -> do
+                liftIO $ print err
+                pure dets
+              Right cr -> case Pact._crResult cr of
+                Pact.PactResult (Right pv) -> do
+                  putLog logL LevelInfo $ "result: " <> tshow pv
+                  res <- maybe (pure dets) pure
+                    $ (\b g -> AccountStatus_Exists $ AccountDetails (AccountBalance b) g)
+                    <$> pv ^? Pact.Types.PactValue._PObject . (to Pact._objectMap) . (at "balance") . _Just . Pact.Types.PactValue._PLiteral . (to (updateBal bal . _lDecimal))
+                    <*> pv ^? Pact.Types.PactValue._PObject . (to Pact._objectMap) . (at "guard") . _Just . Pact.Types.PactValue._PGuard . (to fromPactGuard)
+                  putLog logL LevelInfo $ "lookupKeySets on ref: success"
+                  putLog logL LevelInfo $ tshow res
+                  return res
+                Pact.PactResult (Left e) -> do
+                  putLog logL LevelInfo $ "lookupKeysets failed on keyset-ref lookup:" <> tshow e
+                  pure dets
+          Nothing -> pure $ dets
+      Nothing -> pure Nothing
+    liftIO $ trigger rr
   pure result
+
+-- no signing of any kind here
+simpleLocal
+  :: (MonadIO m)
+  => Maybe Text
+  -> NetworkName
+  -> PublicMeta
+  -> Text
+  -> m (Command Text)
+simpleLocal nonce networkName meta code = do
+  cmd <- encodeAsText . encode <$> buildExecPayload nonce networkName meta mempty mempty code mempty mempty
+  let cmdHashL = hash (T.encodeUtf8 cmd)
+  pure $ Pact.Types.Command.Command
+    { _cmdPayload = cmd
+    , _cmdSigs = mempty
+    , _cmdHash = cmdHashL
+    }
+
 
 uiTransferButton
   :: ( DomBuilder t m, PostBuild t m, MonadHold t m, MonadFix m)
@@ -1280,6 +1330,8 @@ getKeysetActionSingle c (Just a) mDetails =
     Just (AccountStatus_Exists (AccountDetails _ g)) -> do
       case g of
         AccountGuard_Other _ -> KeysetNoAction
+        -- TODO: needs better comment below lol
+        AccountGuard_KeySetRef refName -> KeysetNoAction -- this should be resolved at an earlier step
         AccountGuard_KeySet keys p -> do
           let ks = UserKeyset keys (parseKeysetPred p)
           if unambiguousKeyset ks

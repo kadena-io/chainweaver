@@ -62,6 +62,7 @@ module Frontend.Network
   , buildContPayload
   , buildCmdWithPayload
   , buildCmdWithPactKey
+  , buildExecPayload
   , mkSimpleReadReq
   , getChainsFromHomogenousNetwork
   , getNetworkNameAndMeta

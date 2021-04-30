@@ -379,6 +379,8 @@ accountGuardSummary (AccountGuard_Other pactGuard) =
   where
     gType = pactGuardTypeText $ Pact.guardTypeOf pactGuard
 
+accountGuardSummary (AccountGuard_KeySetRef name) = "keyset-ref: " <> name
+
 accountGuardSummary (AccountGuard_KeySet ksKeys ksPred) = T.intercalate ", "
   [ tshow numKeys <> if numKeys == 1 then " key" else " keys"
   , ksPred

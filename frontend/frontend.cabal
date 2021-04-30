@@ -62,6 +62,7 @@ library
     , modern-uri
     , monoidal-containers
     , mtl
+    , neat-interpolation
     , newtype-generics
     , obelisk-executable-config-lookup
     , obelisk-frontend
