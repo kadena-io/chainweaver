@@ -48,6 +48,7 @@ import           Data.Bifunctor
 import qualified Data.ByteString.Lazy as LB
 import           Data.Decimal
 import           Data.Default (Default (..))
+import           Data.Function (on)
 import qualified Data.IntMap as IntMap
 import           Data.List
 import           Data.List.NonEmpty (NonEmpty(..), nonEmpty)
@@ -64,7 +65,6 @@ import qualified Data.Text.Lazy as LT
 import           Data.These (These(This))
 import           Data.Traversable
 import           Data.Time.Clock.POSIX
-import qualified NeatInterpolation (text)
 
 #if !defined(ghcjs_HOST_OS)
 import qualified Data.Yaml as Y
@@ -471,9 +471,8 @@ lookupKeySets logL networkName nodes chain accounts = do
             updateBal old new = if old == new then old else new
         case (,) <$> bal' <*> ref' of
           Just (bal, ref) -> do
-            let describeCode keysetref account =
-                  [NeatInterpolation.text|{"balance" : (at 'balance (coin.details "$account")), "guard" : (describe-keyset "$keysetref")}|]
-            cmd <- simpleLocal Nothing networkName pm (describeCode ref name)
+            let describeCode keysetref account = printf "{\"balance\" : (at 'balance (coin.details \"%s\")), \"guard\" : (describe-keyset \"%s\")}" account keysetref
+            cmd <- simpleLocal Nothing networkName pm (T.pack (on describeCode T.unpack ref name))
             doReqFailover envs (Api.local Api.apiV1Client cmd) >>= \case
               Left err -> do
                 liftIO $ print err
