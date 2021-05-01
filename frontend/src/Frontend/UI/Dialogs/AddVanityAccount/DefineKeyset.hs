@@ -205,7 +205,7 @@ uiDefineKeyset model presets = do
       & dropdownConfig_attributes .~ constDyn ("class" =: "labeled-input__input")
       & dropdownConfig_setValue .~ _definedKeyset_predicateChange presets
 
-  pure ( ffor2 allpks (value predicateE) $ \pks kspred -> kspred >>= mkAccountGuard pks
+  pure ( ffor2 allpks (value predicateE) $ \pks kspred -> kspred >>= \k -> mkAccountGuard pks k Nothing
        , DefinedKeyset selectedKeys externalKeys (value predicateE) (_dropdown_change predicateE)
        )
 

@@ -186,7 +186,7 @@ createAccountSplash model name chain mPublicKey = fix $ \splashWF keysetselectio
         _ <- divClass "group" $ uiInputElement $ def
           & inputElementConfig_initialValue .~ keyToText key
           & initialAttributes <>~ ("disabled" =: "true" <> "class" =: " key-details__pubkey input labeled-input__input")
-        pure $ ( constDyn $ mkAccountGuard (Set.singleton key) "keys-all"
+        pure $ ( constDyn $ mkAccountGuard (Set.singleton key) "keys-all" Nothing
                , emptyKeysetPresets
                )
 
@@ -263,7 +263,7 @@ createAccountNotGasPayer splashWF name chain keyset = Workflow $ do
       _ <- uiDisplayTxBuilderWithCopy False $ TxBuilder
         { _txBuilder_accountName = name
         , _txBuilder_chainId = chain
-        , _txBuilder_keyset = keyset ^? _AccountGuard_KeySet . to (uncurry toPactKeyset)
+        , _txBuilder_keyset = keyset ^? _AccountGuard_KeySetLike . to toPactKeyset
         }
       pure ()
   modalFooter $ do

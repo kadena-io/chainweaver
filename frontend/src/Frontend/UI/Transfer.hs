@@ -461,12 +461,12 @@ lookupKeySets logL networkName nodes chain accounts = do
           pure Nothing
 
     resolvedReq <- for initReq $ imapM $ \(AccountName name) details -> do
-            let mref = details ^? _AccountStatus_Exists . accountDetails_guard . _AccountGuard_KeySetRef
+            let mref = details ^? _AccountStatus_Exists . accountDetails_guard . _AccountGuard_Other . Pact._GKeySetRef . to (\(Pact.KeySetName name) -> name)
                 mbal = details ^? _AccountStatus_Exists . accountDetails_balance . (to unAccountBalance)
                 updateBal old new = if old == new then old else new
             fmap (fromMaybe details) $ for (liftA2 (,) mbal mref) $ \(bal,ref) -> do
-              let describeCode = printf "{\"balance\" : (at 'balance (coin.details \"%s\")), \"guard\" : (describe-keyset \"%s\")}" name ref
-              cmd <- simpleLocal Nothing networkName pm (T.pack describeCode)
+              let code = printf "{\"balance\" : (at 'balance (coin.details \"%s\")), \"guard\" : (describe-keyset \"%s\")}" name ref
+              cmd <- simpleLocal Nothing networkName pm (T.pack code)
               doReqFailover envs (Api.local Api.apiV1Client cmd) >>= \case
                 Left _ -> pure details
                 Right cr -> case Pact._crResult cr of
@@ -475,7 +475,7 @@ lookupKeySets logL networkName nodes chain accounts = do
                     let res = fromMaybe details $
                           liftA2 (\b g -> AccountStatus_Exists $ AccountDetails (AccountBalance b) g)
                             (pv ^? Pact.Types.PactValue._PObject . (to Pact._objectMap) . (at "balance") . _Just . Pact.Types.PactValue._PLiteral . (to (updateBal bal . _lDecimal)))
-                            (pv ^? Pact.Types.PactValue._PObject . (to Pact._objectMap) . (at "guard") . _Just . Pact.Types.PactValue._PGuard . (to fromPactGuard))
+                            (pv ^? Pact.Types.PactValue._PObject . (to Pact._objectMap) . (at "guard") . _Just . Pact.Types.PactValue._PGuard . (to (fromPactGuard mref)))
                     putLog logL LevelInfo $ tshow res
                     return res
                   Pact.PactResult (Left e) -> do
@@ -566,7 +566,7 @@ checkReceivingAccount model netInfo ti ty fks tks fromPair = do
       -- TODO Might need more checks for cross-chain error cases
       (Just (AccountStatus_Exists (AccountDetails _ g)), Just userKeyset) -> do
         -- Use transfer-create, but check first to see whether it will fail
-        let AccountGuard_KeySet ks p = g
+        let AccountGuard_KeySetLike (KeySetHeritage ks p _ref) = g
         let onChainKeyset = UserKeyset ks (parseKeysetPred p)
         if onChainKeyset /= userKeyset
           then do
@@ -584,7 +584,7 @@ checkReceivingAccount model netInfo ti ty fks tks fromPair = do
       (Just (AccountStatus_Exists (AccountDetails _ g)), Nothing) -> do
         if (_ca_chain $ _ti_fromAccount ti) /= (_ca_chain $ _ti_toAccount ti)
           then do
-            let AccountGuard_KeySet ks p = g
+            let AccountGuard_KeySetLike (KeySetHeritage ks p _ref) = g
             let ti2 = ti { _ti_toKeyset = Just $ UserKeyset ks (parseKeysetPred p) }
             transferDialog model netInfo ti2 ty fks tks fromPair
           else
@@ -1320,9 +1320,7 @@ getKeysetActionSingle c (Just a) mDetails =
     Just (AccountStatus_Exists (AccountDetails _ g)) -> do
       case g of
         AccountGuard_Other _ -> KeysetNoAction
-        -- TODO: needs better comment below lol
-        AccountGuard_KeySetRef refName -> KeysetNoAction -- this should be resolved at an earlier step
-        AccountGuard_KeySet keys p -> do
+        AccountGuard_KeySetLike (KeySetHeritage keys p _ref) -> do
           let ks = UserKeyset keys (parseKeysetPred p)
           if unambiguousKeyset ks
             then KeysetUnambiguous (c, a, ks)

@@ -168,12 +168,12 @@ getSigningPairs chain allKeys allAccounts signing =
       . account_status
       . _AccountStatus_Exists
       . accountDetails_guard
-      . _AccountGuard_KeySet
-      . _1
+      . _AccountGuard_KeySetLike
+      . ksh_keys
 
 -- TODO replace this at the use sites with proper multisig
 accountKeys :: Account -> Set.Set PublicKey
-accountKeys a = a ^. account_status . _AccountStatus_Exists . accountDetails_guard . _AccountGuard_KeySet . _1
+accountKeys a = a ^. account_status . _AccountStatus_Exists . accountDetails_guard . _AccountGuard_KeySetLike . ksh_keys
 
 accountHasFunds :: Account -> Maybe Bool
 accountHasFunds a = fmap (> 0) $ a ^? account_status . _AccountStatus_Exists . accountDetails_balance

@@ -250,13 +250,13 @@ getAccountOwnership dcwKeys dacctDetails = do
     Nothing -> pure Nothing
     Just acctDetails -> do
       let cwKeySet = Set.fromList $ map (_keyPair_publicKey . _key_pair) $ IntMap.elems cwKeys
-      pure $ Just $ case acctDetails ^? accountDetails_guard . _AccountGuard_KeySet of
+      pure $ Just $ case acctDetails ^? accountDetails_guard . _AccountGuard_KeySetLike of
         -- Keys can't own the non-keyset guards with the exception of GKeySetRef
         -- which we're not going to worry about for now. Erroneously flagging an
         -- account as NotOwner is less potentially damaging than erroneously
         -- flagging it as owned.
         Nothing -> NotOwner
-        Just (acctKeys, pred) -> do
+        Just (KeySetHeritage acctKeys pred _ref) -> do
           let numAcctKeys = Set.size acctKeys
               controlCount = case pred of
                 "keys-any" -> 1
@@ -357,10 +357,10 @@ uiAccountItem cwKeys startsOpen name accountInfo = do
             receive <- receiveButton cfg
             pure $ AccountDialog_Receive name chain Nothing <$ receive
           AccountStatus_Exists d -> do
-            let ks = d ^. accountDetails_guard . _AccountGuard_KeySet
-            let uk = (\(k,p) -> UserKeyset k (parseKeysetPred p)) ks
+            let ks = d ^? accountDetails_guard . _AccountGuard_KeySetLike
+            let uk = (\(KeySetHeritage k p _ref) -> UserKeyset k (parseKeysetPred p)) <$> ks
 
-            let txb = TxBuilder name chain (Just $ userToPactKeyset uk)
+            let txb = TxBuilder name chain (userToPactKeyset <$> uk)
             let bcfg = btnCfgSecondary & uiButtonCfg_class <>~ "wallet__table-button" <> "button_border_none"
             copyAddress <- copyButton' "Copy Tx Builder" bcfg False (constant $ prettyTxBuilder txb)
 
@@ -379,12 +379,13 @@ accountGuardSummary (AccountGuard_Other pactGuard) =
   where
     gType = pactGuardTypeText $ Pact.guardTypeOf pactGuard
 
-accountGuardSummary (AccountGuard_KeySetRef name) = "keyset-ref: " <> name
+-- accountGuardSummary (AccountGuard_KeySetRef name) = "keyset-ref: " <> name
 
-accountGuardSummary (AccountGuard_KeySet ksKeys ksPred) = T.intercalate ", "
+accountGuardSummary (AccountGuard_KeySetLike (KeySetHeritage ksKeys ksPred ksRef)) = T.intercalate ", "
   [ tshow numKeys <> if numKeys == 1 then " key" else " keys"
   , ksPred
   , "[" <> T.intercalate ", " (keyToText <$> Set.toList ksKeys) <> "]"
+  , maybe "" ("ref: " <>) ksRef
   ]
   where
 
