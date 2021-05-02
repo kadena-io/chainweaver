@@ -375,11 +375,11 @@ uiAccountItem cwKeys startsOpen name accountInfo = do
 
 accountGuardSummary :: AccountGuard -> Text
 accountGuardSummary (AccountGuard_Other pactGuard) =
-  gType <> " : " <> Pact.renderCompactText pactGuard
+  case pactGuard ^? Pact._GKeySetRef of
+    Nothing -> gType <> " : " <> Pact.renderCompactText pactGuard
+    Just (Pact.KeySetName name) -> "ref: " <> name
   where
     gType = pactGuardTypeText $ Pact.guardTypeOf pactGuard
-
--- accountGuardSummary (AccountGuard_KeySetRef name) = "keyset-ref: " <> name
 
 accountGuardSummary (AccountGuard_KeySetLike (KeySetHeritage ksKeys ksPred ksRef)) = T.intercalate ", "
   [ tshow numKeys <> if numKeys == 1 then " key" else " keys"
