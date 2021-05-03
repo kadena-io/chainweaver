@@ -472,10 +472,10 @@ lookupKeySets logL networkName nodes chain accounts = do
                 Right cr -> case Pact._crResult cr of
                   Pact.PactResult (Right pv) -> do
                     putLog logL LevelInfo "lookupKeySets on ref: success"
-                    let res = fromMaybe details $
-                          liftA2 (\b g -> AccountStatus_Exists $ AccountDetails (AccountBalance b) g)
-                            (pv ^? Pact.Types.PactValue._PObject . (to Pact._objectMap) . (at "balance") . _Just . Pact.Types.PactValue._PLiteral . (to (updateBal bal . _lDecimal)))
-                            (pv ^? Pact.Types.PactValue._PObject . (to Pact._objectMap) . (at "guard") . _Just . Pact.Types.PactValue._PGuard . (to (fromPactGuard mref)))
+                    let res = fromMaybe details $ do
+                          guard' <- pv ^? Pact.Types.PactValue._PObject . (to Pact._objectMap) . (at "guard") . _Just . Pact.Types.PactValue._PGuard . (to (fromPactGuard mref))
+                          balance <- pv ^? Pact.Types.PactValue._PObject . (to Pact._objectMap) . (at "balance") . _Just . Pact.Types.PactValue._PLiteral . (to (updateBal bal . _lDecimal))
+                          return $ AccountStatus_Exists $ AccountDetails (AccountBalance balance) guard'
                     putLog logL LevelInfo $ tshow res
                     return res
                   Pact.PactResult (Left e) -> do
