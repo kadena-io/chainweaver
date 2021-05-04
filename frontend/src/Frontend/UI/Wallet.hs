@@ -31,13 +31,11 @@ module Frontend.UI.Wallet
   ) where
 
 ------------------------------------------------------------------------------
-import           Control.Error               (hush)
 import           Control.Lens
 import           Control.Monad               (when, (<=<))
 import qualified Data.IntMap                 as IntMap
 import           Data.Map                    (Map)
 import qualified Data.Map                    as Map
-import           Data.Set (Set)
 import qualified Data.Set                    as Set
 import           Data.Text                   (Text)
 import qualified Data.Text                   as T
@@ -58,14 +56,12 @@ import           Frontend.Foundation
 import           Frontend.JsonData (HasJsonData, HasJsonDataCfg)
 import           Frontend.TxBuilder
 import           Frontend.UI.Dialogs.AccountDetails
-import           Frontend.UI.Dialogs.AddVanityAccount (uiCreateAccountButton)
 import           Frontend.UI.Dialogs.KeyDetails (uiKeyDetails)
 import           Frontend.UI.Dialogs.Receive (uiReceiveModal)
 import           Frontend.UI.Dialogs.WatchRequest (uiWatchRequestDialog)
 import           Frontend.UI.Dialogs.Send (uiSendModal, uiFinishCrossChainTransferModal)
 import           Frontend.UI.KeysetWidget
 import           Frontend.UI.Modal
-import           Frontend.UI.Widgets
 import           Frontend.Network
 ------------------------------------------------------------------------------
 
@@ -254,9 +250,9 @@ getAccountOwnership dcwKeys dacctDetails = do
         -- account as NotOwner is less potentially damaging than erroneously
         -- flagging it as owned.
         Nothing -> NotOwner
-        Just (KeySetHeritage acctKeys pred _ref) -> do
+        Just (KeySetHeritage acctKeys pred' _ref) -> do
           let numAcctKeys = Set.size acctKeys
-              controlCount = case pred of
+              controlCount = case pred' of
                 "keys-any" -> 1
                 "keys-2" -> 2
                 "keys-all" -> numAcctKeys

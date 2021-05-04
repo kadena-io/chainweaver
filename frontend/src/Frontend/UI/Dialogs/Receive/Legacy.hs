@@ -7,7 +7,6 @@ module Frontend.UI.Dialogs.Receive.Legacy
   , uiReceiveFromLegacy
   , receiveFromLegacySubmitTransfer
   , receiveFromLegacySubmit
-  -- , receiveFromLegacySubmitTransferCreate
   ) where
 
 import Control.Applicative (liftA3)
