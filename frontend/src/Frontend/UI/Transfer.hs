@@ -27,7 +27,6 @@ Design Requirements:
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE QuasiQuotes #-}
 {-# LANGUAGE RecursiveDo #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TemplateHaskell #-}
@@ -86,10 +85,7 @@ import           Pact.Types.PactValue
 import           Pact.Types.Pretty
 import           Pact.Types.RPC
 import           Pact.Types.Scheme
--- import           Pact.Types.Term (KeySet (..))
 import qualified Pact.Types.Term as Pact
--- import           Pact.Types.Util
-import           Reflex
 import           Reflex.Dom.Core
 import qualified Servant.Client.JSaddle as S
 import           Text.Printf
@@ -485,24 +481,6 @@ lookupKeySets logL networkName nodes chain accounts = do
 
     liftIO $ trigger resolvedReq
   pure result
-
--- no signing of any kind here
-simpleLocal
-  :: (MonadIO m)
-  => Maybe Text
-  -> NetworkName
-  -> PublicMeta
-  -> Text
-  -> m (Command Text)
-simpleLocal nonce networkName meta code = do
-  cmd <- encodeAsText . encode <$> buildExecPayload nonce networkName meta mempty mempty code mempty mempty
-  let cmdHashL = hash (T.encodeUtf8 cmd)
-  pure $ Pact.Types.Command.Command
-    { _cmdPayload = cmd
-    , _cmdSigs = mempty
-    , _cmdHash = cmdHashL
-    }
-
 
 uiTransferButton
   :: ( DomBuilder t m, PostBuild t m, MonadHold t m, MonadFix m)

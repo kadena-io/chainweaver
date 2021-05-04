@@ -244,7 +244,7 @@ data AccountStatus a
 -- with pact's representation for guards directly.
 data AccountGuard
   = AccountGuard_KeySetLike KeySetHeritage
-  -- ^ Keyset guards. This may contain the name of the ke
+  -- ^ Keyset guards. This may contain the name of a keyset-ref pointing to the encased keyset.
   | AccountGuard_Other (Pact.Guard PactValue)
   -- ^ Other types of guard
   deriving (Show, Eq, Generic)
