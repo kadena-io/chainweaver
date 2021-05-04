@@ -58,7 +58,7 @@ import           Frontend.Foundation
 import           Frontend.JsonData (HasJsonData, HasJsonDataCfg)
 import           Frontend.TxBuilder
 import           Frontend.UI.Dialogs.AccountDetails
-import           Frontend.UI.Dialogs.AddVanityAccount (uiCreateAccountButton, uiCreateAccountDialog)
+import           Frontend.UI.Dialogs.AddVanityAccount (uiCreateAccountButton)
 import           Frontend.UI.Dialogs.KeyDetails (uiKeyDetails)
 import           Frontend.UI.Dialogs.Receive (uiReceiveModal)
 import           Frontend.UI.Dialogs.WatchRequest (uiWatchRequestDialog)
@@ -97,7 +97,6 @@ data AccountDialog
   | AccountDialog_TransferTo AccountName AccountDetails ChainId
   | AccountDialog_Send (AccountName, ChainId, AccountDetails) (Maybe UnfinishedCrossChainTransfer)
   | AccountDialog_CompleteCrosschain AccountName ChainId UnfinishedCrossChainTransfer
-  | AccountDialog_Create AccountName ChainId (Maybe PublicKey)
 
 uiWalletRefreshButton
   :: (MonadWidget t m, Monoid mConf, HasWalletCfg mConf key t)
@@ -212,7 +211,6 @@ uiAccountItems model accountsMap = do
       AccountDialog_TransferTo name details chain -> uiReceiveModal "Transfer To" model name chain (Just details)
       AccountDialog_Send acc mucct -> uiSendModal model acc mucct
       AccountDialog_CompleteCrosschain name chain ucct -> uiFinishCrossChainTransferModal model name chain ucct
-      AccountDialog_Create name chain mKey -> uiCreateAccountDialog model name chain mKey
 
   refresh <- delay 1 =<< getPostBuild
 
