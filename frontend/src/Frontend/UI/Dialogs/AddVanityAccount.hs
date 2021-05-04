@@ -18,6 +18,7 @@ import Data.Maybe                             (isNothing)
 import Data.Either                            (isLeft)
 import qualified Data.Map as Map
 import Data.Text                              (Text)
+import qualified Data.Text as T
 import qualified Data.HashMap.Lazy as HM
 import qualified Data.Set as Set
 
@@ -44,6 +45,8 @@ import Frontend.Wallet
 import Frontend.Foundation
 import Frontend.Log
 import Frontend.TxBuilder
+
+import Pact.Types.ChainMeta (PublicMeta (..), TTLSeconds)
 
 -- Allow the user to create a 'vanity' account, which is an account with a custom name
 -- that lives on the chain. Requires GAS to create.
@@ -307,7 +310,30 @@ createAccountFromExternalAccount model splashWF name chain keyset = Workflow $ d
     submit <- confirmButton (def & uiButtonCfg_disabled .~ isSubmitDisabled) "Submit"
 
     let
-      nextWF = receiveFromLegacySubmitTransferCreate model never name chain
+      sender ti = _legacyTransferInfo_account ti
+      amount ti = _legacyTransferInfo_amount ti
+      tempkeyset = "tempkeyset"
+
+      code account ti = T.unwords $
+        [ "(coin.transfer-create"
+        , tshow $ unAccountName $ (sender ti)
+        , tshow $ unAccountName account
+        , "(read-keyset \"" <> tempkeyset <> "\")"
+        , tshow $ addDecimalPoint (amount ti)
+        , ")"
+        ]
+      payload keyset = HM.singleton tempkeyset $ toJSON' keyset
+
+      toJSON' (AccountGuard_KeySetLike (KeySetHeritage ksKeys ksPred _)) =
+        object
+        [
+          "keys" .= ksKeys
+        , "pred" .= ksPred
+        ]
+      toJSON' (AccountGuard_Other pactGuard) = toJSON pactGuard
+
+      nextWF =
+        (\ttl gasLimit ni ti ks -> receiveFromLegacySubmit model never name chain ttl gasLimit ni ti (code name ti) (payload ks))
         <$> _receiveFromLegacy_ttl receiveConf
         <*> _receiveFromLegacy_gasLimit receiveConf
 

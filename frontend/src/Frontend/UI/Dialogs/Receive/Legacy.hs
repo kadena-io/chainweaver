@@ -6,7 +6,8 @@ module Frontend.UI.Dialogs.Receive.Legacy
   , HasNonBIP32TransferInfo (..)
   , uiReceiveFromLegacy
   , receiveFromLegacySubmitTransfer
-  , receiveFromLegacySubmitTransferCreate
+  , receiveFromLegacySubmit
+  -- , receiveFromLegacySubmitTransferCreate
   ) where
 
 import Control.Applicative (liftA3)
@@ -153,50 +154,6 @@ receiveFromLegacySubmitTransfer m onClose account chain ttl gasLimit netInfo tra
       ]
   in
     receiveFromLegacySubmit m onClose account chain ttl gasLimit netInfo transferInfo code mempty
-
-receiveFromLegacySubmitTransferCreate
-  :: ( Monoid mConf
-     , CanSubmitTransaction t m
-     , HasCrypto key m
-     , HasLogger model t
-     , HasTransactionLogger m
-     )
-  => model
-  -> Event t ()
-  -> AccountName
-  -> ChainId
-  -> TTLSeconds
-  -> GasLimit
-  -> ([Either a NodeInfo], PublicMeta, NetworkName)
-  -> NonBIP32TransferInfo
-  -> AccountGuard
-  -> Workflow t m (mConf, Event t ())
-receiveFromLegacySubmitTransferCreate m onClose account chain ttl gasLimit netInfo transferInfo keyset =
-    let
-      sender = _legacyTransferInfo_account transferInfo
-      amount = _legacyTransferInfo_amount transferInfo
-      tempkeyset = "tempkeyset"
-
-      code = T.unwords $
-        [ "(coin.transfer-create"
-        , tshow $ unAccountName $ sender
-        , tshow $ unAccountName account
-        , "(read-keyset \""<> tempkeyset <> "\")"
-        , tshow $ addDecimalPoint amount
-        , ")"
-        ]
-
-      payload = HM.singleton tempkeyset $ toJSON' keyset
-    in
-      receiveFromLegacySubmit m onClose account chain ttl gasLimit netInfo transferInfo code payload
-  where
-    toJSON' (AccountGuard_KeySetLike (KeySetHeritage ksKeys ksPred _ksRef)) =
-      object
-        [
-          "keys" .= ksKeys
-        , "pred" .= ksPred
-        ]
-    toJSON' (AccountGuard_Other pactGuard) = toJSON pactGuard
 
 receiveFromLegacySubmit
   :: ( Monoid mConf
