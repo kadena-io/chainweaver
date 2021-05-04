@@ -274,30 +274,6 @@ pactGuardTypeText = \case
   Pact.GTyUser -> "User"
   Pact.GTyModule -> "Module"
 
-instance FromJSON AccountGuard where
-  parseJSON v = keySet v <|> (AccountGuard_Other <$> parseJSON v)
-    where
-      keySet = withObject "AccountGuard" $ \o -> do
-        keys <- o .: "keys"
-        ksPred <- o .: "pred"
-        ksRef <- o .:? "ref"
-        case mkAccountGuard keys ksPred ksRef of
-          Nothing -> fail "Could not create KeySet for AccountGuard"
-          Just ag -> pure ag
-
-instance ToJSON AccountGuard where
-  toJSON (AccountGuard_KeySetLike (KeySetHeritage ksKeys ksPred ksRef)) =
-      object $ addRef
-        [ "keys" .= ksKeys
-        , "pred" .= ksPred
-        ]
-    where addRef :: [Aeson.Pair] -> [Aeson.Pair]
-          addRef = case ksRef of
-            Nothing -> id
-            Just ref -> (("ref" .= ref) :)
-  toJSON (AccountGuard_Other pactGuard) =
-    toJSON pactGuard
-
 data AccountDetails = AccountDetails
   { _accountDetails_balance :: AccountBalance
   , _accountDetails_guard :: AccountGuard

@@ -9,7 +9,7 @@ module Frontend.UI.Dialogs.AddVanityAccount
   ) where
 
 import Control.Applicative (liftA2)
-import Data.Aeson (toJSON)
+import Data.Aeson ((.=), object, toJSON)
 import Control.Lens                           ((^.),(<>~), (^?), to, _Left)
 import Control.Error                          (hush)
 import Control.Monad.Trans.Class              (lift)
@@ -358,7 +358,14 @@ createAccountConfig ideL renderErrors splashWF name chainId keyset = Workflow $ 
       Nothing
       $ uiAccountDropdown def (pure $ \_ a -> fromMaybe False (accountHasFunds a)) (pure id)
 
-  let payload = HM.singleton tempkeyset $ toJSON keyset
+  let payload = HM.singleton tempkeyset $ toJSON' keyset
+      toJSON' (AccountGuard_KeySetLike (KeySetHeritage ksKeys ksPred _ksRef)) =
+        object
+          [
+            "keys" .= ksKeys
+          , "pred" .= ksPred
+          ]
+      toJSON' (AccountGuard_Other pactGuard) = toJSON pactGuard
       code = mkPactCode name
       deployConfig = DeploymentSettingsConfig
         { _deploymentSettingsConfig_chainId = fmap value . userChainIdSelect . getChainsFromHomogenousNetwork

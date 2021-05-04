@@ -16,6 +16,7 @@ import Data.Decimal
 import Data.Either (isLeft)
 import Data.Bifunctor (first)
 import Data.Text (Text)
+import Data.Aeson ((.=), object,toJSON)
 import qualified Data.Aeson as Aeson
 import qualified Data.Text as T
 import qualified Data.Map as Map
@@ -171,23 +172,31 @@ receiveFromLegacySubmitTransferCreate
   -> AccountGuard
   -> Workflow t m (mConf, Event t ())
 receiveFromLegacySubmitTransferCreate m onClose account chain ttl gasLimit netInfo transferInfo keyset =
-  let
-    sender = _legacyTransferInfo_account transferInfo
-    amount = _legacyTransferInfo_amount transferInfo
-    tempkeyset = "tempkeyset"
+    let
+      sender = _legacyTransferInfo_account transferInfo
+      amount = _legacyTransferInfo_amount transferInfo
+      tempkeyset = "tempkeyset"
 
-    code = T.unwords $
-      [ "(coin.transfer-create"
-      , tshow $ unAccountName $ sender
-      , tshow $ unAccountName account
-      , "(read-keyset \""<> tempkeyset <> "\")"
-      , tshow $ addDecimalPoint amount
-      , ")"
-      ]
+      code = T.unwords $
+        [ "(coin.transfer-create"
+        , tshow $ unAccountName $ sender
+        , tshow $ unAccountName account
+        , "(read-keyset \""<> tempkeyset <> "\")"
+        , tshow $ addDecimalPoint amount
+        , ")"
+        ]
 
-    payload = HM.singleton tempkeyset $ Aeson.toJSON keyset
-  in
-    receiveFromLegacySubmit m onClose account chain ttl gasLimit netInfo transferInfo code payload
+      payload = HM.singleton tempkeyset $ toJSON' keyset
+    in
+      receiveFromLegacySubmit m onClose account chain ttl gasLimit netInfo transferInfo code payload
+  where
+    toJSON' (AccountGuard_KeySetLike (KeySetHeritage ksKeys ksPred _ksRef)) =
+      object
+        [
+          "keys" .= ksKeys
+        , "pred" .= ksPred
+        ]
+    toJSON' (AccountGuard_Other pactGuard) = toJSON pactGuard
 
 receiveFromLegacySubmit
   :: ( Monoid mConf
