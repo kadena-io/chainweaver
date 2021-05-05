@@ -77,8 +77,8 @@ uiAccountDetailsOnChainImpl
 uiAccountDetailsOnChainImpl netname (name, chain, details, account) onClose = Workflow $ do
   let kAddr = TxBuilder name chain $ details
         ^? accountDetails_guard
-        . _AccountGuard_KeySet
-        . to (uncurry toPactKeyset)
+        . _AccountGuard_KeySetLike
+        . to toPactKeyset
 
       displayText lbl v cls =
         let
@@ -110,7 +110,7 @@ uiAccountDetailsOnChainImpl netname (name, chain, details, account) onClose = Wo
         AccountStatus_Unknown -> text "Unknown"
         AccountStatus_DoesNotExist -> text "Does not exist"
         AccountStatus_Exists d -> case _accountDetails_guard d of
-          AccountGuard_KeySet ksKeys ksPred -> do
+          AccountGuard_KeySetLike (KeySetHeritage ksKeys ksPred _ksRef) -> do
             _ <- displayText "Predicate" ksPred ""
             elClass "div" "segment segment_type_tertiary labeled-input" $ do
               divClass "label labeled-input__label" $ text "Public Keys Controlling Account"

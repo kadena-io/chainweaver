@@ -34,7 +34,7 @@ module Common.Wallet
   , AccountNotes (unAccountNotes)
   , mkAccountNotes
   , AccountGuard(..)
-  , _AccountGuard_KeySet
+  , _AccountGuard_KeySetLike
   , _AccountGuard_Other
   , toPactKeyset
   , UnfinishedCrossChainTransfer(..)
@@ -55,6 +55,10 @@ module Common.Wallet
   , accountInfo_chains
   , accountInfo_notes
   , Key(..)
+  , KeySetHeritage(..)
+  , ksh_keys
+  , ksh_pred
+  , ksh_ref
   , filterKeyPairs
   , VanityAccount(..)
   , vanityAccount_notes
@@ -218,16 +222,16 @@ instance ToJSON AccountBalance where
 instance FromJSON AccountBalance where
   parseJSON x = (\(ParsedDecimal d) -> AccountBalance d) <$> parseJSON x
 
-toPactKeyset :: Set PublicKey -> Text -> Pact.KeySet
-toPactKeyset keys ksPred = Pact.KeySet
+toPactKeyset :: KeySetHeritage -> Pact.KeySet
+toPactKeyset (KeySetHeritage keys ksPred _ksRef) = Pact.KeySet
   { Pact._ksKeys = Set.map toPactPublicKey keys
   , Pact._ksPredFun = Pact.Name $ Pact.BareName ksPred def
   }
 
-mkAccountGuard :: Set PublicKey -> Text -> Maybe AccountGuard
-mkAccountGuard keys ksPred
+mkAccountGuard :: Set PublicKey -> Text -> Maybe Text -> Maybe AccountGuard
+mkAccountGuard keys ksPred ref
   | Set.null keys = Nothing
-  | otherwise = Just $ AccountGuard_KeySet keys ksPred
+  | otherwise = Just $ AccountGuard_KeySetLike $ KeySetHeritage keys ksPred ref
 
 data AccountStatus a
   = AccountStatus_Unknown
@@ -239,17 +243,26 @@ data AccountStatus a
 -- interested in keyset guards right now. Someday we might end up replacing this
 -- with pact's representation for guards directly.
 data AccountGuard
-  = AccountGuard_KeySet (Set PublicKey) Text
-  -- ^ Keyset guards
+  = AccountGuard_KeySetLike KeySetHeritage
+  -- ^ Keyset guards. This may contain the name of a keyset-ref pointing to the encased keyset.
   | AccountGuard_Other (Pact.Guard PactValue)
   -- ^ Other types of guard
   deriving (Show, Eq, Generic)
 
-fromPactGuard :: Pact.Guard PactValue -> AccountGuard
-fromPactGuard = \case
-  Pact.GKeySet ks -> AccountGuard_KeySet
+
+data KeySetHeritage  = KeySetHeritage
+  {
+    _ksh_keys :: Set PublicKey
+  , _ksh_pred :: Text
+  , _ksh_ref :: Maybe Text
+  } deriving (Show, Eq, Generic)
+
+fromPactGuard :: Maybe Text -> Pact.Guard PactValue -> AccountGuard
+fromPactGuard mref = \case
+  Pact.GKeySet ks -> AccountGuard_KeySetLike $ KeySetHeritage
     (Set.map fromPactPublicKey $ Pact._ksKeys ks)
     (renderCompactText $ Pact._ksPredFun ks)
+    mref
   g ->
     AccountGuard_Other g
 
@@ -261,24 +274,6 @@ pactGuardTypeText = \case
   Pact.GTyUser -> "User"
   Pact.GTyModule -> "Module"
 
-instance FromJSON AccountGuard where
-  parseJSON v = keySet v <|> (AccountGuard_Other <$> parseJSON v)
-    where
-      keySet = withObject "AccountGuard" $ \o -> do
-        keys <- o .: "keys"
-        ksPred <- o .: "pred"
-        case mkAccountGuard keys ksPred of
-          Nothing -> fail "Could not create KeySet for AccountGuard"
-          Just ag -> pure ag
-
-instance ToJSON AccountGuard where
-  toJSON (AccountGuard_KeySet ksKeys ksPred) = object
-    [ "keys" .= ksKeys
-    , "pred" .= ksPred
-    ]
-  toJSON (AccountGuard_Other pactGuard) =
-    toJSON pactGuard
-
 data AccountDetails = AccountDetails
   { _accountDetails_balance :: AccountBalance
   , _accountDetails_guard :: AccountGuard
@@ -289,6 +284,7 @@ makePactPrisms ''AccountGuard
 makePactLenses ''AccountDetails
 makePactPrisms ''AccountStatus
 makePactPrisms ''AccountBalance
+makePactLenses ''KeySetHeritage
 
 -- | A key consists of a public key and an optional private key.
 --
@@ -403,7 +399,7 @@ filterKeyPairs s m = Map.elems $ Map.restrictKeys (toMap m) s
 keysetSatisfiesPredicate :: AccountGuard -> IntMap (Key key) -> Bool
 keysetSatisfiesPredicate ag keys0 = case ag of
   AccountGuard_Other _ -> False
-  AccountGuard_KeySet ksKeys ksPred ->
+  AccountGuard_KeySetLike (KeySetHeritage ksKeys ksPred _ksRef) ->
     let
       keys = Set.fromList $ fmap (_keyPair_publicKey . _key_pair) $ IntMap.elems keys0
       keyIntersections = Set.intersection ksKeys keys
@@ -551,7 +547,7 @@ parseAccountDetails = first ("parseAccountDetails: " <>) . \case
           PGuard pactGuard <- Map.lookup "guard" details
           pure $ AccountStatus_Exists $ AccountDetails
             { _accountDetails_balance = AccountBalance $ forceDecimalPoint balance
-            , _accountDetails_guard = fromPactGuard pactGuard
+            , _accountDetails_guard = fromPactGuard Nothing pactGuard
             }
         PLiteral (LBool False) -> pure AccountStatus_DoesNotExist
         t -> Left $ "Unexpected PactValue (expected decimal): " <> renderCompactText t

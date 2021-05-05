@@ -31,13 +31,11 @@ module Frontend.UI.Wallet
   ) where
 
 ------------------------------------------------------------------------------
-import           Control.Error               (hush)
 import           Control.Lens
 import           Control.Monad               (when, (<=<))
 import qualified Data.IntMap                 as IntMap
 import           Data.Map                    (Map)
 import qualified Data.Map                    as Map
-import           Data.Set (Set)
 import qualified Data.Set                    as Set
 import           Data.Text                   (Text)
 import qualified Data.Text                   as T
@@ -58,14 +56,12 @@ import           Frontend.Foundation
 import           Frontend.JsonData (HasJsonData, HasJsonDataCfg)
 import           Frontend.TxBuilder
 import           Frontend.UI.Dialogs.AccountDetails
-import           Frontend.UI.Dialogs.AddVanityAccount (uiCreateAccountButton, uiCreateAccountDialog)
 import           Frontend.UI.Dialogs.KeyDetails (uiKeyDetails)
 import           Frontend.UI.Dialogs.Receive (uiReceiveModal)
 import           Frontend.UI.Dialogs.WatchRequest (uiWatchRequestDialog)
 import           Frontend.UI.Dialogs.Send (uiSendModal, uiFinishCrossChainTransferModal)
 import           Frontend.UI.KeysetWidget
 import           Frontend.UI.Modal
-import           Frontend.UI.Widgets
 import           Frontend.Network
 ------------------------------------------------------------------------------
 
@@ -97,7 +93,6 @@ data AccountDialog
   | AccountDialog_TransferTo AccountName AccountDetails ChainId
   | AccountDialog_Send (AccountName, ChainId, AccountDetails) (Maybe UnfinishedCrossChainTransfer)
   | AccountDialog_CompleteCrosschain AccountName ChainId UnfinishedCrossChainTransfer
-  | AccountDialog_Create AccountName ChainId (Maybe PublicKey)
 
 uiWalletRefreshButton
   :: (MonadWidget t m, Monoid mConf, HasWalletCfg mConf key t)
@@ -212,7 +207,6 @@ uiAccountItems model accountsMap = do
       AccountDialog_TransferTo name details chain -> uiReceiveModal "Transfer To" model name chain (Just details)
       AccountDialog_Send acc mucct -> uiSendModal model acc mucct
       AccountDialog_CompleteCrosschain name chain ucct -> uiFinishCrossChainTransferModal model name chain ucct
-      AccountDialog_Create name chain mKey -> uiCreateAccountDialog model name chain mKey
 
   refresh <- delay 1 =<< getPostBuild
 
@@ -250,15 +244,15 @@ getAccountOwnership dcwKeys dacctDetails = do
     Nothing -> pure Nothing
     Just acctDetails -> do
       let cwKeySet = Set.fromList $ map (_keyPair_publicKey . _key_pair) $ IntMap.elems cwKeys
-      pure $ Just $ case acctDetails ^? accountDetails_guard . _AccountGuard_KeySet of
+      pure $ Just $ case acctDetails ^? accountDetails_guard . _AccountGuard_KeySetLike of
         -- Keys can't own the non-keyset guards with the exception of GKeySetRef
         -- which we're not going to worry about for now. Erroneously flagging an
         -- account as NotOwner is less potentially damaging than erroneously
         -- flagging it as owned.
         Nothing -> NotOwner
-        Just (acctKeys, pred) -> do
+        Just (KeySetHeritage acctKeys pred' _ref) -> do
           let numAcctKeys = Set.size acctKeys
-              controlCount = case pred of
+              controlCount = case pred' of
                 "keys-any" -> 1
                 "keys-2" -> 2
                 "keys-all" -> numAcctKeys
@@ -357,10 +351,10 @@ uiAccountItem cwKeys startsOpen name accountInfo = do
             receive <- receiveButton cfg
             pure $ AccountDialog_Receive name chain Nothing <$ receive
           AccountStatus_Exists d -> do
-            let ks = d ^. accountDetails_guard . _AccountGuard_KeySet
-            let uk = (\(k,p) -> UserKeyset k (parseKeysetPred p)) ks
+            let ks = d ^? accountDetails_guard . _AccountGuard_KeySetLike
+            let uk = (\(KeySetHeritage k p _ref) -> UserKeyset k (parseKeysetPred p)) <$> ks
 
-            let txb = TxBuilder name chain (Just $ userToPactKeyset uk)
+            let txb = TxBuilder name chain (userToPactKeyset <$> uk)
             let bcfg = btnCfgSecondary & uiButtonCfg_class <>~ "wallet__table-button" <> "button_border_none"
             copyAddress <- copyButton' "Copy Tx Builder" bcfg False (constant $ prettyTxBuilder txb)
 
@@ -375,14 +369,17 @@ uiAccountItem cwKeys startsOpen name accountInfo = do
 
 accountGuardSummary :: AccountGuard -> Text
 accountGuardSummary (AccountGuard_Other pactGuard) =
-  gType <> " : " <> Pact.renderCompactText pactGuard
+  case pactGuard ^? Pact._GKeySetRef of
+    Nothing -> gType <> " : " <> Pact.renderCompactText pactGuard
+    Just (Pact.KeySetName name) -> "ref: " <> name
   where
     gType = pactGuardTypeText $ Pact.guardTypeOf pactGuard
 
-accountGuardSummary (AccountGuard_KeySet ksKeys ksPred) = T.intercalate ", "
+accountGuardSummary (AccountGuard_KeySetLike (KeySetHeritage ksKeys ksPred ksRef)) = T.intercalate ", "
   [ tshow numKeys <> if numKeys == 1 then " key" else " keys"
   , ksPred
   , "[" <> T.intercalate ", " (keyToText <$> Set.toList ksKeys) <> "]"
+  , maybe "" ("ref: " <>) ksRef
   ]
   where
 

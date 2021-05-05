@@ -62,6 +62,8 @@ module Frontend.Network
   , buildContPayload
   , buildCmdWithPayload
   , buildCmdWithPactKey
+  , buildExecPayload
+  , simpleLocal
   , mkSimpleReadReq
   , getChainsFromHomogenousNetwork
   , getNetworkNameAndMeta
@@ -1153,6 +1155,23 @@ buildExecPayload mNonce networkName meta signingKeys extraKeys code dat caps = d
       , _siAddress = pure $ keyToText pubKey
       , _siCapList = Map.findWithDefault [] pubKey caps
       }
+
+-- no signing of any kind here
+simpleLocal
+  :: (MonadIO m)
+  => Maybe Text
+  -> NetworkName
+  -> PublicMeta
+  -> Text
+  -> m (Command Text)
+simpleLocal nonce networkName meta code = do
+  cmd <- encodeAsText . encode <$> buildExecPayload nonce networkName meta mempty mempty code mempty mempty
+  let cmdHashL = hash (T.encodeUtf8 cmd)
+  pure $ Pact.Types.Command.Command
+    { _cmdPayload = cmd
+    , _cmdSigs = mempty
+    , _cmdHash = cmdHashL
+    }
 
 -- Response handling ...
 
