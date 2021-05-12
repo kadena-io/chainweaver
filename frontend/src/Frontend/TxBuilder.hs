@@ -5,7 +5,6 @@
 {-# LANGUAGE LambdaCase #-}
 module Frontend.TxBuilder where
 
-import Control.Applicative ((<|>))
 import           Data.Aeson
 import qualified Data.Aeson.Encode.Pretty as AesonPretty
 import           Data.Maybe

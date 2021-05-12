@@ -73,7 +73,7 @@ uiReceiveModal network nodes modalTitle model account chain mdetails _onClose = 
 
     dyn_ $ ffor dmks $ \mks -> do
       case mks of
-        (Nothing, Nothing) -> text "Something should be here"
+        (Nothing, Nothing) -> blank
         (Just ks, ref) -> do
           let txb = TxBuilder account chain (Just $ userToPactKeyset ks) ref --TODO bruh
           dialogSectionHeading mempty "Account Information"
