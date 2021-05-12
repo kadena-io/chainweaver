@@ -776,7 +776,7 @@ crossChainTransfer logL netInfo keys fromAccount toAccount fromGasPayer crossCha
   pb <- getPostBuild
   let (fromName, fromChain, _) = fromAccount
       toChain = either _txBuilder_chainId (view _2) toAccount
-      toTxBuilder = either id (\(n, c, _) -> TxBuilder n c Nothing) toAccount
+      toTxBuilder = either id (\(n, c, _) -> TxBuilder n c Nothing Nothing) toAccount
   -- Client envs for making requests to each chain
   let envFromChain = mkClientEnvs nodeInfos fromChain
       envToChain = mkClientEnvs nodeInfos toChain

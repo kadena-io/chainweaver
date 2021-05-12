@@ -5,6 +5,7 @@
 {-# LANGUAGE LambdaCase #-}
 module Frontend.TxBuilder where
 
+import Control.Applicative ((<|>))
 import           Data.Aeson
 import qualified Data.Aeson.Encode.Pretty as AesonPretty
 import           Data.Maybe
@@ -13,7 +14,7 @@ import qualified Data.Text.Lazy as LT
 import qualified Data.Text.Lazy.Builder as LTB
 import           Pact.Types.ChainId
 import           Kadena.SigningApi (AccountName(..))
-import           Pact.Types.Term (KeySet (..))
+import           Pact.Types.Term (KeySet (..), KeySetName(..))
 
 data TxBuilder = TxBuilder
   { _txBuilder_accountName :: AccountName
@@ -24,6 +25,7 @@ data TxBuilder = TxBuilder
     -- ^ Presence or absence of a keyset may be used to determine transfer vs
     -- transfer-create. If the keyset is present and the account already exists
     -- you could choose to do either a transfer or a transfer-create.
+  , _txBuilder_keysetRef :: Maybe KeySetName
   }
   deriving (Show, Eq)
 
@@ -32,6 +34,7 @@ instance ToJSON TxBuilder where
       [ Just $ "account" .= _txBuilder_accountName o
       , Just $ "chain" .= _txBuilder_chainId o
       , ("keyset" .=) <$> _txBuilder_keyset o
+      , ("ref" .=) <$> _txBuilder_keysetRef o
       ]
 
 instance FromJSON TxBuilder where
@@ -39,6 +42,7 @@ instance FromJSON TxBuilder where
     <$> o .: "account"
     <*> o .: "chain"
     <*> o .:? "keyset"
+    <*> o .:? "ref"
 
 prettyTxBuilder :: TxBuilder -> Text
 prettyTxBuilder = LT.toStrict . LTB.toLazyText . AesonPretty.encodePrettyToTextBuilder

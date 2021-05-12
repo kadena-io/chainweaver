@@ -10,10 +10,11 @@ module Frontend.UI.Dialogs.Receive
   ) where
 
 import Control.Applicative (liftA2)
-import Control.Lens ((^.), (<>~), (^?), to)
+import Control.Lens ((^.), (<>~), (^?), at, to, _Just)
 import Control.Monad
 import Control.Monad.Trans.Class (lift)
 import Control.Monad.Trans.Maybe (MaybeT(..))
+import Data.Either (rights)
 import qualified Data.IntMap as IntMap
 import Data.Set (Set)
 import qualified Data.Set as Set
@@ -36,9 +37,12 @@ import Frontend.UI.FormWidget
 import Frontend.UI.KeysetWidget
 
 import Frontend.UI.Modal
+import Frontend.UI.Transfer
 import Frontend.UI.Widgets
 import Frontend.UI.Widgets.Helpers (dialogSectionHeading)
 import Frontend.Wallet
+
+import qualified Pact.Types.Term as Pact
 
 uiReceiveModal
   :: ( MonadWidget t m
@@ -52,24 +56,26 @@ uiReceiveModal
      , HasLogger model t
      , HasTransactionLogger m
      )
-  => Text
+  => NetworkName
+  -> [Either Text NodeInfo]
+  -> Text
   -> model
   -> AccountName
   -> ChainId
   -> Maybe AccountDetails
   -> Event t ()
   -> m (mConf, Event t ())
-uiReceiveModal modalTitle model account chain mdetails _onClose = do
+uiReceiveModal network nodes modalTitle model account chain mdetails _onClose = do
   onClose <- modalHeader $ text modalTitle
 
   divClass "modal__main receive" $ do
-    dmks <- receiveToNonexistentAccount model account chain mdetails
+    dmks <- receiveToNonexistentAccount model network nodes account chain mdetails
 
     dyn_ $ ffor dmks $ \mks -> do
       case mks of
-        Nothing -> blank
-        Just ks -> do
-          let txb = TxBuilder account chain (Just $ userToPactKeyset ks)
+        (Nothing, Nothing) -> text "Something should be here"
+        (Just ks, ref) -> do
+          let txb = TxBuilder account chain (Just $ userToPactKeyset ks) ref --TODO bruh
           dialogSectionHeading mempty "Account Information"
           divClass "group" $ uiDisplayTxBuilderWithCopy True txb
 
@@ -86,16 +92,51 @@ receiveToNonexistentAccount
      , HasWallet model key t
      , HasLogger model t
      , HasTransactionLogger m
+     , TriggerEvent t m
      )
   => model
+  -> NetworkName
+  -> [Either Text NodeInfo]
   -> AccountName
   -> ChainId
   -> Maybe AccountDetails
+<<<<<<< Updated upstream
   -> m (Dynamic t (Maybe UserKeyset))
 receiveToNonexistentAccount model account chain mdetails = do
     case mdetails of
       Just d -> pure $ constDyn (d ^? accountDetails_guard . _AccountGuard_KeySet .
                                       to (uncurry toPactKeyset) . to userFromPactKeyset)
+=======
+  -> m (Dynamic t (Maybe UserKeyset, Maybe Pact.KeySetName))
+receiveToNonexistentAccount model net nodes account chain mdetails = do
+    case _accountDetails_guard <$> mdetails of
+      Just (AccountGuard_Other g) -> case g of
+        Pact.GKeySetRef ref -> do
+          let chain' = case chain of -- in case the chain id is 0, make sure 00 becomes 0
+                ChainId c -> case c of
+                  "00" -> ChainId "0"
+                  _ -> ChainId c
+
+          eAccountMap <- lookupKeySets (model ^. logger) net (rights nodes) chain' [account]
+          accDyn <- holdDyn Nothing eAccountMap
+          pure $ ffor accDyn $ \case
+            Nothing -> (Nothing, Nothing)
+            Just m ->
+              let ks = m ^?
+                    at account
+                    . _Just
+                    . _AccountStatus_Exists
+                    . accountDetails_guard
+                    . _AccountGuard_KeySetLike
+                    . to toPactKeyset
+                    . to userFromPactKeyset
+
+              in (ks, Just ref)
+        _ -> pure $ constDyn (Nothing, Nothing)
+
+      Just (AccountGuard_KeySetLike d) -> pure $ constDyn (Just $ userFromPactKeyset $ toPactKeyset d, Nothing)
+
+>>>>>>> Stashed changes
       Nothing -> do
         let dynWalletKeys = Set.fromList . fmap (_keyPair_publicKey . _key_pair) . IntMap.elems <$>
               model ^. wallet_keys
@@ -122,7 +163,7 @@ receiveToNonexistentAccount model account chain mdetails = do
               dialogSectionHeading mempty "Define Keyset"
               divClass "group" $ keysetFormWidget (mkCfg Nothing)
             Just ks -> pure (constDyn $ Just ks)
-        fmap join $ holdDyn (constDyn Nothing) res
+        fmap join $ holdDyn (constDyn (Nothing, Nothing)) (fmap (fmap (\a -> (a, Nothing))) res)
   where
     para1 = el "p" $ text $ T.unwords
       [ "Before you can receive coins, you must decide who owns this account."
@@ -171,7 +212,12 @@ uiReceiveModal0 model account chain details onClose = Workflow $ do
         (accordionHeaderBtn "Option 1: Copy and share Tx Builder") $ do
           uiDisplayTxBuilderWithCopy True
             $ TxBuilder account chain
+<<<<<<< Updated upstream
             $ details ^? accountDetails_guard . _AccountGuard_KeySet . to (uncurry toPactKeyset)
+=======
+              (details ^? accountDetails_guard . _AccountGuard_KeySetLike . to toPactKeyset)
+              (Pact.KeySetName <$> details ^? accountDetails_guard . _AccountGuard_KeySetLike . ksh_ref . _Just)
+>>>>>>> Stashed changes
 
       (onReceiClick, results) <- controlledAccordionItem (not <$> showingTxBuilder) mempty
         (accordionHeaderBtn "Option 2: Transfer from non-Chainweaver Account") $ do
