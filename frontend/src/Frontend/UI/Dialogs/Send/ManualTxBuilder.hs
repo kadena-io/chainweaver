@@ -158,15 +158,7 @@ uiExplodedTxBuilder
 uiExplodedTxBuilder model fromName fromChain mUcct mInitToAddress = do
   let
     mkAlteredTxB mname mchain intKeys extKeys mPredicate = TxBuilder <$> mname <*> mchain
-<<<<<<< HEAD
-<<<<<<< Updated upstream
-      <*> pure (fmap (toPactKeyset $ intKeys <> extKeys) mPredicate)
-=======
       <*> pure (fmap (\p -> toPactKeyset $ KeySetHeritage (intKeys <> extKeys) p Nothing) mPredicate) <*> pure Nothing
->>>>>>> Stashed changes
-=======
-      <*> pure (fmap (\p -> toPactKeyset $ KeySetHeritage (intKeys <> extKeys) p Nothing) mPredicate)
->>>>>>> 2c40194d4c1b65bab63b4fec0c40595768ed2cee
 
     explodedTxB onTxAccountName onTxChainId keysetsPresets = do
       (onNameInput, dname) <- uiAccountNameInput "Account Name" False Nothing onTxAccountName noValidation

@@ -352,25 +352,11 @@ uiAccountItem cwKeys startsOpen name accountInfo = do
             receive <- receiveButton cfg
             pure $ AccountDialog_Receive name chain Nothing <$ receive
           AccountStatus_Exists d -> do
-<<<<<<< HEAD
-<<<<<<< Updated upstream
-            let ks = d ^. accountDetails_guard . _AccountGuard_KeySet
-            let uk = (\(k,p) -> UserKeyset k (parseKeysetPred p)) ks
-
-            let txb = TxBuilder name chain (Just $ userToPactKeyset uk)
-=======
             let ks = d ^? accountDetails_guard . _AccountGuard_KeySetLike
             let ref = Pact.KeySetName <$> d ^? accountDetails_guard . _AccountGuard_KeySetLike . ksh_ref . _Just
             let uk = (\(KeySetHeritage k p _ref) -> UserKeyset k (parseKeysetPred p)) <$> ks
 
             let txb = TxBuilder name chain (userToPactKeyset <$> uk) ref
->>>>>>> Stashed changes
-=======
-            let ks = d ^? accountDetails_guard . _AccountGuard_KeySetLike
-            let uk = (\(KeySetHeritage k p _ref) -> UserKeyset k (parseKeysetPred p)) <$> ks
-
-            let txb = TxBuilder name chain (userToPactKeyset <$> uk)
->>>>>>> 2c40194d4c1b65bab63b4fec0c40595768ed2cee
             let bcfg = btnCfgSecondary & uiButtonCfg_class <>~ "wallet__table-button" <> "button_border_none"
             copyAddress <- copyButton' "Copy Tx Builder" bcfg False (constant $ prettyTxBuilder txb)
 
