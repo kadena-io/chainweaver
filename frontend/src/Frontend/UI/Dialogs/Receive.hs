@@ -100,13 +100,6 @@ receiveToNonexistentAccount
   -> AccountName
   -> ChainId
   -> Maybe AccountDetails
-<<<<<<< Updated upstream
-  -> m (Dynamic t (Maybe UserKeyset))
-receiveToNonexistentAccount model account chain mdetails = do
-    case mdetails of
-      Just d -> pure $ constDyn (d ^? accountDetails_guard . _AccountGuard_KeySet .
-                                      to (uncurry toPactKeyset) . to userFromPactKeyset)
-=======
   -> m (Dynamic t (Maybe UserKeyset, Maybe Pact.KeySetName))
 receiveToNonexistentAccount model net nodes account chain mdetails = do
     case _accountDetails_guard <$> mdetails of
@@ -136,7 +129,6 @@ receiveToNonexistentAccount model net nodes account chain mdetails = do
 
       Just (AccountGuard_KeySetLike d) -> pure $ constDyn (Just $ userFromPactKeyset $ toPactKeyset d, Nothing)
 
->>>>>>> Stashed changes
       Nothing -> do
         let dynWalletKeys = Set.fromList . fmap (_keyPair_publicKey . _key_pair) . IntMap.elems <$>
               model ^. wallet_keys
@@ -212,12 +204,8 @@ uiReceiveModal0 model account chain details onClose = Workflow $ do
         (accordionHeaderBtn "Option 1: Copy and share Tx Builder") $ do
           uiDisplayTxBuilderWithCopy True
             $ TxBuilder account chain
-<<<<<<< Updated upstream
-            $ details ^? accountDetails_guard . _AccountGuard_KeySet . to (uncurry toPactKeyset)
-=======
               (details ^? accountDetails_guard . _AccountGuard_KeySetLike . to toPactKeyset)
               (Pact.KeySetName <$> details ^? accountDetails_guard . _AccountGuard_KeySetLike . ksh_ref . _Just)
->>>>>>> Stashed changes
 
       (onReceiClick, results) <- controlledAccordionItem (not <$> showingTxBuilder) mempty
         (accordionHeaderBtn "Option 2: Transfer from non-Chainweaver Account") $ do
