@@ -11,7 +11,7 @@
 is_darwin() { [ "$(uname -s)" == 'Darwin' ]; }
 
 if is_darwin; then
-  ob run --import desktop:Desktop --import mac:Mac
+  ob run --interpret desktop --interpret mac
 else
-  ob run --import desktop:Desktop --import linux:Linux
+  ob run --interpret desktop --interpret linux
 fi

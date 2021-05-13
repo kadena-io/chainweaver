@@ -147,14 +147,15 @@
         fi
       }
 
+      mkdir -p $SHAREDIR/gsettings-schemas
       function copy_gtk_settings() {
         path=$1
         gsettings_path=$path/share/gsettings-schemas
 
         if [ -d $gsettings_path ]; then
-          cp -r $gsettings_path $SHAREDIR/gsettings-schemas
+          cp -r $gsettings_path/. $SHAREDIR/gsettings-schemas/
           for d in $(find $gsettings_path -maxdepth 1 -type d); do
-            wrapperArgs+="--prefix XDG_DATA_DIRS : $SHAREDIR/gsettings-schema/$(basename $d) "
+            wrapperArgs+="--prefix XDG_DATA_DIRS : $SHAREDIR/gsettings-schemas/$(basename $d) "
           done;
         fi
       }

@@ -274,7 +274,7 @@ sameChainTransfer model netInfo keys (fromName, fromChain, fromAcc) (gasPayer, g
         , tshow $ addDecimalPoint amount
         , ")"
         ]
-      fromAccKeys = fromAcc ^. accountDetails_guard . _AccountGuard_KeySet . _1
+      fromAccKeys = fromAcc ^. accountDetails_guard . _AccountGuard_KeySetLike . ksh_keys
       signingSet = Set.unions [fromAccKeys, accountKeys gasPayerAcc]
       signingPairs = filterKeyPairs signingSet keys
       transferCap = SigCapability
@@ -787,8 +787,8 @@ crossChainTransfer logL netInfo keys fromAccount toAccount fromGasPayer crossCha
       | Just ks <- acc ^? account_status
           . _AccountStatus_Exists
           . accountDetails_guard
-          . _AccountGuard_KeySet
-          . to (uncurry toPactKeyset)
+          . _AccountGuard_KeySetLike
+          . to toPactKeyset
 
       -> pure $ Right ks <$ pb
       | otherwise -> lookupKeySet logL networkName nodeInfos
@@ -882,7 +882,7 @@ continueCrossChainTransfer logL networkName envs publicMeta keys toChain gasPaye
         { _pmChainId = toChain
         , _pmSender = sender
         }
-      signingSet = snd gasPayer ^. _AccountStatus_Exists . accountDetails_guard . _AccountGuard_KeySet . _1
+      signingSet = snd gasPayer ^. _AccountStatus_Exists . accountDetails_guard . _AccountGuard_KeySetLike . ksh_keys
       signingPairs = filterKeyPairs signingSet keys
     payload <- buildContPayload networkName pm signingPairs $ ContMsg
       { _cmPactId = Pact._pePactId pe
@@ -983,7 +983,7 @@ initiateCrossChainTransfer model networkName envs publicMeta keys fromAccount fr
 
       liftIO $ cb r
   where
-    fromAccKeys = fromAccount ^. _3 . accountDetails_guard . _AccountGuard_KeySet . _1
+    fromAccKeys = fromAccount ^. _3 . accountDetails_guard . _AccountGuard_KeySetLike . ksh_keys
     keysetName = "receiverKey"
     code = T.unwords
       [ "(coin.transfer-crosschain"
