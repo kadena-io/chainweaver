@@ -1032,7 +1032,7 @@ pollNodesForSuccess
   -> [S.ClientEnv]
   -> Event t (Pact.PactId, Pact.RequestKey)
   -> m (Event t (Either Text ()))
-pollNodesForSuccess model envs reqEv = pollNodesForReq model envs (first Just <$> reqEv) 12 10 $ \pr mpid->
+pollNodesForSuccess model envs reqEv = pollNodesForReq model envs (first Just <$> reqEv) 12 15 $ \pr mpid->
   case Pact._crResult pr of
     Pact.PactResult (Left pe)
       -- There doesn't seem to be a nicer way to do this check
@@ -1055,7 +1055,7 @@ pollNodesForCont
   -> [S.ClientEnv]
   -> Event t Pact.RequestKey
   -> m (Event t (Either Text (Pact.RequestKey, Pact.PactExec)))
-pollNodesForCont model envs reqEv = pollNodesForReq model envs ((Nothing,) <$> reqEv) 12 10 $ \cr _->
+pollNodesForCont model envs reqEv = pollNodesForReq model envs ((Nothing,) <$> reqEv) 12 15 $ \cr _->
   case Pact._crContinuation cr of
     Nothing ->
       Left $ T.unlines ["Result was not a continuation", tshow (Pact._crResult cr)]
@@ -1086,7 +1086,9 @@ pollNodesForReq model envs requestPair maxPolls waitTime handler =
     let
       getHttpErrors es = T.unlines $ fmap (tshow . packHttpErr) es
 
-      pollNodesSingleRound = ffor (doReqFailover envs (Api.poll Api.apiV1Client $ Api.Poll (rk :| []))) $ \case
+      pollReq = Api.poll Api.apiV1Client $ Api.Poll (rk :| [])
+
+      pollNodesSingleRound = ffor (doReqFailover envs pollReq) $ \case
         Left es -> PollingAttempt_Error $ getHttpErrors es
         Right (Api.PollResponses m) -> case HM.toList m of
           -- Not Found, poll again
