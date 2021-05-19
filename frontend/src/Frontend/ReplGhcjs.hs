@@ -120,9 +120,8 @@ app sidebarExtra fileFFI appCfg = Store.versionedFrontend (Store.versionedStorag
           pure $ (xferVisible, watchCfg <> addCfg <> refreshCfg)
         divClass "wallet-scroll-wrapper" $ do
           transferCfg <- uiGenericTransfer ideL $ TransferCfg transferVisible never never
-          --accountsCfg <- uiAccountsTable ideL
-          --pure $ netCfg <> barCfg <> accountsCfg <> transferCfg
-          pure $ netCfg <> barCfg <> transferCfg
+          accountsCfg <- uiAccountsTable ideL
+          pure $ netCfg <> barCfg <> accountsCfg <> transferCfg
       FrontendRoute_Keys -> mkPageContent "keys" $ do
         walletBarCfg <- underNetworkBar "Keys" uiGenerateKeyButton
         walletCfg <- uiWallet ideL
@@ -161,7 +160,13 @@ app sidebarExtra fileFFI appCfg = Store.versionedFrontend (Store.versionedStorag
 
   req <- delay 0 signingReq
   --qreq <- delay 0 quickSignReq
-  let qsr = QuickSignRequest ["{\"networkId\":\"testnet04\",\"payload\":{\"exec\":{\"data\":null,\"code\":\"(coin.transfer \\\"doug\\\" \\\"taylor\\\" 2.1)\"}},\"signers\":[{\"pubKey\":\"dea647009295dc015ba6e6359b85bafe09d2ce935a03c3bf83f775442d539025\",\"clist\":[{\"args\":[\"doug\",\"taylor\",2.1],\"name\":\"coin.TRANSFER\"},{\"args\":[],\"name\":\"coin.GAS\"}]}],\"meta\":{\"creationTime\":1614459080,\"ttl\":7200,\"gasLimit\":1200,\"chainId\":\"0\",\"gasPrice\":1.0e-12,\"sender\":\"doug\"},\"nonce\":\"2021-02-27 20:51:20.026156 UTC\"}"]
+  let 
+    signCmd1 = "{\"networkId\":\"testnet04\",\"payload\":{\"exec\":{\"data\":null,\"code\":\"(coin.transfer \\\"doug\\\" \\\"taylor\\\" 2.1)\"}},\"signers\":[{\"pubKey\":\"dea647009295dc015ba6e6359b85bafe09d2ce935a03c3bf83f775442d539025\",\"clist\":[{\"args\":[\"doug\",\"taylor\",2.1],\"name\":\"coin.TRANSFER\"},{\"args\":[],\"name\":\"coin.GAS\"}]}],\"meta\":{\"creationTime\":1614459080,\"ttl\":7200,\"gasLimit\":1200,\"chainId\":\"0\",\"gasPrice\":1.0e-12,\"sender\":\"doug\"},\"nonce\":\"2021-02-27 20:51:20.026156 UTC\"}"
+    signCmd2 = "{\"networkId\":\"testnet04\",\"payload\":{\"exec\":{\"data\":null,\"code\":\"(coin.transfer \\\"doug\\\" \\\"taylor\\\" 2.1)\"}},\"signers\":[{\"pubKey\":\"dea647009295dc015ba6e6359b85bafe09d2ce935a03c3bf83f775442d539025\",\"clist\":[{\"args\":[\"doug\",\"taylor\",2.1],\"name\":\"coin.TRANSFER\"},{\"args\":[],\"name\":\"coin.GAS\"}]}],\"meta\":{\"creationTime\":1614459080,\"ttl\":7200,\"gasLimit\":1200,\"chainId\":\"0\",\"gasPrice\":1.0e-12,\"sender\":\"doug\"},\"nonce\":\"2021-02-27 20:51:20.026156 UTC\"}"
+    -- Different key, shouldn't show up, since it is not one of ours
+    signCmd3 = "{\"networkId\":\"testnet04\",\"payload\":{\"exec\":{\"data\":null,\"code\":\"(coin.transfer \\\"doug\\\" \\\"taylor\\\" 2.1)\"}},\"signers\":[{\"pubKey\":\"aea647009295dc015ba6e6359b85bafe09d2ce935a03c3bf83f775442d539025\",\"clist\":[{\"args\":[\"doug\",\"taylor\",2.1],\"name\":\"coin.TRANSFER\"},{\"args\":[],\"name\":\"coin.GAS\"}]}],\"meta\":{\"creationTime\":1614459080,\"ttl\":7200,\"gasLimit\":1200,\"chainId\":\"0\",\"gasPrice\":1.0e-12,\"sender\":\"doug\"},\"nonce\":\"2021-02-27 20:51:20.026156 UTC\"}"
+
+    qsr = QuickSignRequest [signCmd1, signCmd2, signCmd3 ]
   qreq <- elAttr "div" ("style" =: "position: absolute; border: 1px solid black; left: 200px; top: 20px;") $
     uiButton (headerBtnCfgPrimary & uiButtonCfg_class <>~ " main-header__account-button") $
       text "QuickSign"

@@ -24,6 +24,7 @@ import qualified Data.ByteString.Lazy as BSL
 import Data.ByteString (ByteString)
 import Data.Either
 import qualified Data.Map.Strict as Map
+import qualified Data.IntMap as IMap
 import Data.Text (Text)
 import qualified Data.Text as T
 import Data.Text.Encoding
@@ -117,19 +118,20 @@ uiSigning ideL writeSigningResponse signingRequest onCloseExternal = do
 -- configurable for now.
 --
 uiQuickSign
-  :: forall key t m mConf
+  :: forall key t m mConf model
   . ( MonadWidget t m
     , HasUISigningModelCfg mConf key t
     , HasCrypto key (Performable m)
+    , HasWallet model key t -- So we can determine which signing-reqs are for our keys
     , HasTransactionLogger m
     )
-  => ModalIde m key t
+  => model -- ModalIde m key t
   -> (Event t (Either Text QuickSignResponse) -> m (Event t ()))
   -> QuickSignRequest
   -> Event t ()
   -> m (mConf, Event t ())
 uiQuickSign ideL writeSigningResponse qsr onCloseExternal = do
-  case partitionEithers $ map parsePactPayload $ _quickSignReuest_commands qsr of
+  case partitionEithers $ map parsePactPayload $ _quickSignRequest_commands qsr of
     ([], payloads) -> quickSignModal ideL writeSigningResponse payloads onCloseExternal
     (es, _) -> do
       pb <- getPostBuild
@@ -140,52 +142,108 @@ uiQuickSign ideL writeSigningResponse qsr onCloseExternal = do
 parsePactPayload :: Text -> Either String (Payload PublicMeta ParsedCode)
 parsePactPayload t = traverse parsePact =<< eitherDecodeStrict (encodeUtf8 t)
 
+-- data QuickSignStrategy = 
+--     QuickSignStrategy_Default
+--   | QuickSignStrategy_MultipleTransactions
+
+-- requiredSignatures :: Payload PublicMeta ParsedCode -> [Payload PublicMeta ParsedCode]
+-- requiredSignatures payloads = foldr f mempty
+--   where 
+--     f :: Payload a b -> [ Signers ] ->_  = 
+--     f elem myKeys = 
+--       let
+--         requiredSigners = 
+
 quickSignModal
-  :: forall key t m mConf
+  :: forall key t m mConf model
   . ( MonadWidget t m
     , HasUISigningModelCfg mConf key t
     , HasCrypto key (Performable m)
+    , HasWallet model key t -- So we can determine which signing-reqs are for our keys
     , HasTransactionLogger m
     )
-  => ModalIde m key t
-  -> (Event t (Either Text QuickSignResponse) -> m (Event t ()))
+  => 
+  -- ModalIde m key t
+  model ->
+  (Event t (Either Text QuickSignResponse) -> m (Event t ()))
   -> [Payload PublicMeta ParsedCode]
   -> Event t ()
   -> m (mConf, Event t ())
 quickSignModal ideL writeSigningResponse payloads onCloseExternal = do
+  let 
+    -- Use this to check with all signing reqs that come in and have a list of all sigs that we can
+    -- make with the current accounts that we have
+    publicKeys = ffor (ideL ^. wallet ^. wallet_keys) $ \keyStore-> 
+      toPactPublicKey . _keyPair_publicKey . _key_pair <$> IMap.elems keyStore
+
   onClose <- modalHeader $ text "Quick Signing Request"
+  modalMain $ do 
+    (qsTab, _) <- quickSignTabs never
+    dyn $ ffor qsTab $ \case
+      QuickSignTab_Summary -> do
+        singleTransactionDetails $ head payloads
+      QuickSignTab_AllTransactions -> do
+        dialogSectionHeading mempty "Signing Requests"
 
-  modalMain $ do
-    quickSignTabs never
-    singleTransactionDetails $ head payloads
+        -- _ <- elAttr "table" mempty $ do
+          -- el "colgroup" $ do
+          --   elAttr "col" ("style" =: "width: 30px") blank
+          --   elAttr "col" ("style" =: "width: 80px") blank
+          --   elAttr "col" ("style" =: "width: 180px") blank
 
 
-    divClass "group" $ do
-      el "div" $ text $ (tshow $ length payloads) <> " payloads to sign"
-      el "ul" $ do
-        mapM (el "li" . text . tshow) payloads
+        divClass "group payload__header" $ do
+          divClass "payload__accordion-header" $ text ""
+          divClass "payload__index-header" $ text "Request Number"
+          divClass "payload__signer-header" $ text "Signer"
 
+        -- reqSigs <- requiredSignatures payloads
+        mapM_ txRow $ zip payloads [1..]
+        pure ()
+
+        -- divClass "group" $ do
+        --   el "div" $ text $ (tshow $ length payloads) <> " payloads to sign"
+        --   el "ul" $ do
+        --     mapM (el "li" . text . tshow) payloads
   (cancel, sign) <- modalFooter $ do
     cancel <- cancelButton def "Cancel"
     sign <- confirmButton def "Sign Transaction"
     pure (cancel, sign)
   pure (mempty, leftmost [onClose, cancel])
 
+   where
+     txRow (p, i) = do
+       divClass "group" $ do
+         visible <- divClass "payload__row" $ do
+           let accordionCell o = (if o then "" else "accordion-collapsed ") <> "payload__accordion "
+           rec
+             clk <- elDynClass "div" (accordionCell <$> visible') $ accordionButton def
+             visible' <- toggle False clk
+           divClass "payload__tx-index" $ text $ tshow i <> "."
+           divClass "payload__signer" $ text $ tshow $ _siPubKey $ head $ _pSigners p
+           pure visible'
+         elDynAttr "div" (ffor visible $ bool ("hidden"=:mempty) mempty)$ singleTransactionDetails p
+
+
+
+
+
 singleTransactionDetails
   :: MonadWidget t m
   => Payload PublicMeta ParsedCode
   -> m ()
 singleTransactionDetails p = do
-  case _pNetworkId p of
-    Nothing -> blank
-    Just n -> do
-      dialogSectionHeading mempty "Network"
-      divClass "group" $ text $ _networkId n
-
+  networkWidget p
   txMetaWidget $ _pMeta p
-
   pactRpcWidget (_pPayload p)
   signersWidget (_pSigners p)
+
+   where
+     networkWidget p = case _pNetworkId p of
+       Nothing -> blank
+       Just n -> do
+         dialogSectionHeading mempty "Network"
+         divClass "group" $ text $ _networkId n
 
 --  { _pPayload :: !(PactRPC c)
 --  , _pNonce :: !Text
@@ -298,12 +356,13 @@ quickSignTabs tabEv = do
         Nothing -> (Just t0, Just ())
         Just t -> (Just t, Nothing)
   rec
-    (curSelection, done) <- mapAccumMaybeDyn f QuickSignTab_Summary $ leftmost
+    (curSelection, done) <- mapAccumMaybeDyn f QuickSignTab_AllTransactions $ leftmost
       [ const . Just <$> onTabClick
       , const . Just <$> tabEv
       ]
     (TabBar onTabClick) <- makeTabBar $ TabBarCfg
-      { _tabBarCfg_tabs = [QuickSignTab_Summary, QuickSignTab_AllTransactions]
+      -- { _tabBarCfg_tabs = [QuickSignTab_Summary, QuickSignTab_AllTransactions]
+      { _tabBarCfg_tabs = [QuickSignTab_AllTransactions, QuickSignTab_Summary]
       , _tabBarCfg_mkLabel = \_ -> displayQuickSignTab
       , _tabBarCfg_selectedTab = Just <$> curSelection
       , _tabBarCfg_classes = mempty

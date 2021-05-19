@@ -382,3 +382,44 @@ button.button.button_type_tertiary.logout-confirm-modal__button {
 .check-tx-status__button-wrapper {
   text-align: right;
 }
+
+
+$index-width: 20%;
+$accordion-width: 10%;
+$signer-width: 60%;
+
+.payload__header {
+  margin: $normal-margin;
+  display: flex;
+}
+.payload__accordion-header {
+  width: $accordion-width;
+}
+
+.payload__index-header {
+  width: $index-width;
+}
+
+.payload__signer-header {
+  width: $signer-width;
+}
+
+
+.payload__row {
+  margin: $normal-margin;
+  display: flex;
+}
+
+.payload__accordion {
+  width: $accordion-width;
+}
+
+.payload__signer {
+  width: $signer-width;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.payload__tx-index {
+  width: $index-width;
+}
