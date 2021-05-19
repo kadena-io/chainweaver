@@ -1032,7 +1032,7 @@ pollNodesForSuccess
   -> [S.ClientEnv]
   -> Event t (Pact.PactId, Pact.RequestKey)
   -> m (Event t (Either Text ()))
-pollNodesForSuccess model envs reqEv = pollNodesForReq model envs (first Just <$> reqEv) 12 15 $ \pr mpid->
+pollNodesForSuccess model envs reqEv = pollNodesForReq model envs (first Just <$> reqEv) 24 15 $ \pr mpid->
   case Pact._crResult pr of
     Pact.PactResult (Left pe)
       -- There doesn't seem to be a nicer way to do this check
@@ -1055,7 +1055,7 @@ pollNodesForCont
   -> [S.ClientEnv]
   -> Event t Pact.RequestKey
   -> m (Event t (Either Text (Pact.RequestKey, Pact.PactExec)))
-pollNodesForCont model envs reqEv = pollNodesForReq model envs ((Nothing,) <$> reqEv) 12 15 $ \cr _->
+pollNodesForCont model envs reqEv = pollNodesForReq model envs ((Nothing,) <$> reqEv) 24 15 $ \cr _->
   case Pact._crContinuation cr of
     Nothing ->
       Left $ T.unlines ["Result was not a continuation", tshow (Pact._crResult cr)]
@@ -1063,7 +1063,7 @@ pollNodesForCont model envs reqEv = pollNodesForReq model envs ((Nothing,) <$> r
       Right (Pact._crReqKey cr, pe)
 
 data PollingAttempt a =
-    PollingAttempt_Error Text
+    PollingAttempt_Error Text  -- Servant.ClientError
   | PollingAttempt_NotFound
   | PollingAttempt_Success a
   deriving (Eq)
