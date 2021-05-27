@@ -12,15 +12,14 @@ module Frontend.Log
   , fmtLogTH
   ) where
 
+import Control.Monad.Logger -- From commmon
+
 import Control.Lens (view,(.~))
 import Control.Monad.IO.Class (MonadIO, liftIO)
-import Control.Monad.Logger (LogLevel (..), LogStr, liftLoc, defaultLogStr, toLogStr, defaultLoc)
-import System.Log.FastLogger (fromLogStr)
 import System.IO (stdout)
 import Data.Function ((&))
 import Data.ByteString (hPut)
 import Data.Text (Text)
-
 import Language.Haskell.TH.Syntax (Q, Exp, qLocation)
 
 import Reflex

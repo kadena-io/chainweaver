@@ -13,6 +13,7 @@ library
                , containers
                , dependent-sum
                , dependent-sum-template
+               , fast-logger
                , generic-deriving
                , modern-uri
                , mtl
@@ -42,6 +43,7 @@ library
                , case-insensitive
 
   exposed-modules:
+    Control.Monad.Logger
     Common.Api
     Common.GistStore
     Common.Route

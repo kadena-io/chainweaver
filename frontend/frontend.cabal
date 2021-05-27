@@ -55,6 +55,7 @@ library
 --    , http-client-tls
     , http-types
     , jsaddle
+    , kadena-signing-api
     , keycode
     , lens
     , lens-aeson
@@ -107,10 +108,7 @@ library
 
   if !impl(ghcjs)
     build-depends:
-        kadena-signing-api
-      -- TODO Remove monad-logger with something simpler
-      , monad-logger
-      , qrcode-juicypixels
+        qrcode-juicypixels
       , yaml
 
   exposed-modules: Frontend
