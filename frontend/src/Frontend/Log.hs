@@ -12,8 +12,6 @@ module Frontend.Log
   , fmtLogTH
   ) where
 
-import Control.Monad.Logger -- From commmon
-
 import Control.Lens (view,(.~))
 import Control.Monad.IO.Class (MonadIO, liftIO)
 import System.IO (stdout)
@@ -25,6 +23,7 @@ import Language.Haskell.TH.Syntax (Q, Exp, qLocation)
 import Reflex
 import Reflex.Network.Extended (Flattenable (..))
 
+import Common.Logger
 import Common.Foundation (makePactLenses)
 
 newtype LogCfg t = LogCfg
