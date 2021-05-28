@@ -45,7 +45,6 @@ library
     , directory
     , errors
     , exceptions
-    , fast-logger
     , filepath
     , free
     , generic-deriving

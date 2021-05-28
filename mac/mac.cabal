@@ -10,6 +10,7 @@ library
   build-depends:
       base
     , backend
+    , common
     , desktop
     , frontend
     , async
@@ -20,8 +21,6 @@ library
     , filepath
     , text
     , hsyslog
-    , monad-logger
-    , fast-logger
     , process
 
   ghc-options:
