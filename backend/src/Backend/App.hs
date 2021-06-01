@@ -7,7 +7,6 @@
 {-# LANGUAGE TypeOperators #-}
 module Backend.App where
 
-import Control.Monad.Logger (LogStr,LogLevel)
 import Control.Concurrent
 import Control.Exception (bracket, try, catch)
 import Control.Monad.IO.Class
@@ -34,6 +33,7 @@ import qualified System.Environment as Env
 import Pact.Server.ApiClient (runTransactionLoggerT, logTransactionFile, commandLogFilename)
 
 import Backend (serveBackendRoute)
+import Common.Logger (LogStr,LogLevel)
 import Common.Route
 import Frontend
 import Frontend.AppCfg

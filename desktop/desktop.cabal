@@ -9,7 +9,6 @@ library
       base
     , common
     , frontend
-
     , aeson
     , aeson-gadt-th
     , async
@@ -33,7 +32,6 @@ library
     , jsaddle
     , lens
     , memory
-    , fast-logger
     , mtl
     , newtype-generics
     , obelisk-backend
@@ -58,7 +56,6 @@ library
     , universe-dependent-sum
     , wai-cors
     , warp
-    , monad-logger
 
   exposed-modules:
       Desktop
