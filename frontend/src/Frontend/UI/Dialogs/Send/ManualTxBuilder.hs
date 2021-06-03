@@ -158,7 +158,7 @@ uiExplodedTxBuilder
 uiExplodedTxBuilder model fromName fromChain mUcct mInitToAddress = do
   let
     mkAlteredTxB mname mchain intKeys extKeys mPredicate = TxBuilder <$> mname <*> mchain
-      <*> pure (fmap (toPactKeyset $ intKeys <> extKeys) mPredicate)
+      <*> pure (fmap (\p -> toPactKeyset $ KeySetHeritage (intKeys <> extKeys) p Nothing) mPredicate)
 
     explodedTxB onTxAccountName onTxChainId keysetsPresets = do
       (onNameInput, dname) <- uiAccountNameInput "Account Name" False Nothing onTxAccountName noValidation

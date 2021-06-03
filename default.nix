@@ -8,11 +8,11 @@ with obelisk;
 let
   # All the versions that the user cares about are here so that they can
   # be changed in one place
-  chainweaverVersion = "2.2";
+  chainweaverVersion = "2.1";
   appName = "Kadena Chainweaver";
-  macReleaseNumber = "0";
-  linuxReleaseNumber = "0";
-  ovaReleaseNumber = "0";
+  macReleaseNumber = "1";
+  linuxReleaseNumber = "1";
+  ovaReleaseNumber = "1";
 
   obApp = import ./obApp.nix args;
   pactServerModule = import ./pact-server/service.nix;
@@ -33,7 +33,7 @@ in obApp // rec {
   inherit (macApp) mac deployMac;
   inherit (linuxApp) nixosExe deb chainweaverVM chainweaverVMSystem;
 
-  server = args@{ hostName, adminEmail, routeHost, enableHttps, version }:
+  server = args@{ hostName, adminEmail, routeHost, enableHttps, version, nixosPkgs ? pkgs }:
     let
       exe = serverExe
         obApp.ghc.backend
@@ -47,8 +47,10 @@ in obApp // rec {
       system = "x86_64-linux";
       configuration = {
         imports = [
-          (obelisk.serverModules.mkBaseEc2 args)
+          # Default args don't get included as 'args' when doing: args@{defArg ? defVal}
+          (obelisk.serverModules.mkBaseEc2 ({ inherit nixosPkgs; } // args))
           (obelisk.serverModules.mkObeliskApp (args//{inherit exe;}))
+
           # Make sure all configs present:
           # (pactServerModule {
           #   hostName = routeHost;

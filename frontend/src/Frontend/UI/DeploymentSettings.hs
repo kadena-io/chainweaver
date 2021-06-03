@@ -709,7 +709,7 @@ uiMetaData m mTTL mGasLimit = do
     horizontalDashedSeparator
 
     onTTL <- divClass "deploy-meta-cfg__request-expires"
-      $ mkLabeledClsInput True "Request Expires" ttlInput
+      $ mkLabeledClsInput True "Request Expires (TTL)" ttlInput
     ttl <- holdDyn initTTL $ leftmost [onTTL, pbTTL]
 
     pure
@@ -1146,5 +1146,5 @@ uiDeployPreview model settings signers gasLimit ttl code lastPublicMeta capabili
       let accs = Map.restrictKeys allAccounts (Set.singleton sender)
       pure $ ffor accs $ \info -> case Map.lookup chainId $ _accountInfo_chains info of
         Just status | AccountStatus_Exists details <- _account_status status
-          -> details ^. accountDetails_guard . _AccountGuard_KeySet . _1
+          -> details ^. accountDetails_guard . _AccountGuard_KeySetLike . ksh_keys
         _ -> mempty

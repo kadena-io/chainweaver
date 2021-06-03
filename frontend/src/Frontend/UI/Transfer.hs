@@ -36,8 +36,6 @@ Design Requirements:
 
 module Frontend.UI.Transfer where
 
-import qualified Codec.QRCode as QR
-import qualified Codec.QRCode.JuicyPixels as QR
 import           Control.Applicative
 import           Control.Error hiding (bool, note)
 import           Control.Lens hiding ((.=))
@@ -48,12 +46,10 @@ import qualified Data.ByteString.Lazy as LB
 import           Data.Decimal
 import           Data.Default (Default (..))
 import qualified Data.IntMap as IntMap
-import           Data.List
 import           Data.List.NonEmpty (NonEmpty(..), nonEmpty)
 import qualified Data.List.NonEmpty as NEL
 import           Data.Map (Map)
 import qualified Data.Map as Map
-import           Data.Set (Set)
 import qualified Data.Set as Set
 import           Data.String
 import           Data.Text (Text)
@@ -65,11 +61,13 @@ import           Data.Traversable
 import           Data.Time.Clock.POSIX
 
 #if !defined(ghcjs_HOST_OS)
+import qualified Codec.QRCode as QR
+import qualified Codec.QRCode.JuicyPixels as QR
 import qualified Data.Yaml as Y
 #endif
 
+import           Pact.Types.SigData
 import           Kadena.SigningApi (AccountName(..))
-import           Pact.ApiReq
 import           Pact.Parse
 import qualified Pact.Server.ApiClient as Api
 import qualified Pact.Types.API as Api
@@ -87,10 +85,7 @@ import           Pact.Types.PactValue
 import           Pact.Types.Pretty
 import           Pact.Types.RPC
 import           Pact.Types.Scheme
-import           Pact.Types.Term (KeySet (..))
 import qualified Pact.Types.Term as Pact
-import           Pact.Types.Util
-import           Reflex
 import           Reflex.Dom.Core
 import qualified Servant.Client.JSaddle as S
 import           Text.Printf
@@ -448,7 +443,7 @@ lookupKeySets logL networkName nodes chain accounts = do
   (result, trigger) <- newTriggerEvent
   let envs = mkClientEnvs nodes chain
   liftJSM $ forkJSM $ do
-    r <- doReqFailover envs (Api.local Api.apiV1Client cmd) >>= \case
+    initReq <- doReqFailover envs (Api.local Api.apiV1Client cmd) >>= \case
       Left _ -> pure Nothing
       Right cr -> case Pact._crResult cr of
         Pact.PactResult (Right pv) -> case parseAccountDetails pv of
@@ -461,7 +456,30 @@ lookupKeySets logL networkName nodes chain accounts = do
           putLog logL LevelInfo $ "lookupKeysets failed:" <> tshow e
           pure Nothing
 
-    liftIO $ trigger r
+    resolvedReq <- for initReq $ imapM $ \(AccountName name) details -> do
+            let mref = details ^? _AccountStatus_Exists . accountDetails_guard . _AccountGuard_Other . Pact._GKeySetRef . to (\(Pact.KeySetName name) -> name)
+                mbal = details ^? _AccountStatus_Exists . accountDetails_balance . (to unAccountBalance)
+                updateBal old new = if old == new then old else new
+            fmap (fromMaybe details) $ for (liftA2 (,) mbal mref) $ \(bal,ref) -> do
+              let code = printf "{\"balance\" : (at 'balance (coin.details \"%s\")), \"guard\" : (describe-keyset \"%s\")}" name ref
+              cmd <- simpleLocal Nothing networkName pm (T.pack code)
+              doReqFailover envs (Api.local Api.apiV1Client cmd) >>= \case
+                Left _ -> pure details
+                Right cr -> case Pact._crResult cr of
+                  Pact.PactResult (Right pv) -> do
+                    putLog logL LevelInfo "lookupKeySets on ref: success"
+                    let res = fromMaybe details $ do
+                          guard' <- pv ^? Pact.Types.PactValue._PObject . (to Pact._objectMap) . (at "guard") . _Just . Pact.Types.PactValue._PGuard . (to (fromPactGuard mref))
+                          balance <- pv ^? Pact.Types.PactValue._PObject . (to Pact._objectMap) . (at "balance") . _Just . Pact.Types.PactValue._PLiteral . (to (updateBal bal . _lDecimal))
+                          return $ AccountStatus_Exists $ AccountDetails (AccountBalance balance) guard'
+                    putLog logL LevelInfo $ tshow res
+                    return res
+                  Pact.PactResult (Left e) -> do
+                    putLog logL LevelInfo $ "lookupKeySets failed on keyset-ref lookup:" <> tshow e
+                    pure details
+
+
+    liftIO $ trigger resolvedReq
   pure result
 
 uiTransferButton
@@ -526,7 +544,7 @@ checkReceivingAccount model netInfo ti ty fks tks fromPair = do
       -- TODO Might need more checks for cross-chain error cases
       (Just (AccountStatus_Exists (AccountDetails _ g)), Just userKeyset) -> do
         -- Use transfer-create, but check first to see whether it will fail
-        let AccountGuard_KeySet ks p = g
+        let AccountGuard_KeySetLike (KeySetHeritage ks p _ref) = g
         let onChainKeyset = UserKeyset ks (parseKeysetPred p)
         if onChainKeyset /= userKeyset
           then do
@@ -544,7 +562,7 @@ checkReceivingAccount model netInfo ti ty fks tks fromPair = do
       (Just (AccountStatus_Exists (AccountDetails _ g)), Nothing) -> do
         if (_ca_chain $ _ti_fromAccount ti) /= (_ca_chain $ _ti_toAccount ti)
           then do
-            let AccountGuard_KeySet ks p = g
+            let AccountGuard_KeySetLike (KeySetHeritage ks p _ref) = g
             let ti2 = ti { _ti_toKeyset = Just $ UserKeyset ks (parseKeysetPred p) }
             transferDialog model netInfo ti2 ty fks tks fromPair
           else
@@ -1280,7 +1298,7 @@ getKeysetActionSingle c (Just a) mDetails =
     Just (AccountStatus_Exists (AccountDetails _ g)) -> do
       case g of
         AccountGuard_Other _ -> KeysetNoAction
-        AccountGuard_KeySet keys p -> do
+        AccountGuard_KeySetLike (KeySetHeritage keys p _ref) -> do
           let ks = UserKeyset keys (parseKeysetPred p)
           if unambiguousKeyset ks
             then KeysetUnambiguous (c, a, ks)

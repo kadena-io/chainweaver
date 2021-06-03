@@ -121,6 +121,12 @@ in with obelisk;
         pact = haskellLib.dontCheck super.pact; # tests can timeout...
         system-locale = haskellLib.dontCheck super.system-locale; # tests fail on minor discrepancies on successfully parsed locale time formats.
         typed-process = haskellLib.dontCheck super.typed-process;
+        pact-time = haskellLib.dontCheck (self.callHackageDirect {
+          pkg = "pact-time";
+          ver = "0.2.0.0";
+          sha256 = "1cfn74j6dr4279bil9k0n1wff074sdlz6g1haqyyy38wm5mdd7mr";
+        } {});
+
       };
     in self: super: lib.foldr lib.composeExtensions (_: _: {}) [
       mac-overlay

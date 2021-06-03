@@ -94,8 +94,8 @@ receiveToNonexistentAccount
   -> m (Dynamic t (Maybe UserKeyset))
 receiveToNonexistentAccount model account chain mdetails = do
     case mdetails of
-      Just d -> pure $ constDyn (d ^? accountDetails_guard . _AccountGuard_KeySet .
-                                      to (uncurry toPactKeyset) . to userFromPactKeyset)
+      Just d -> pure $ constDyn (d ^? accountDetails_guard . _AccountGuard_KeySetLike .
+                                      to toPactKeyset . to userFromPactKeyset)
       Nothing -> do
         let dynWalletKeys = Set.fromList . fmap (_keyPair_publicKey . _key_pair) . IntMap.elems <$>
               model ^. wallet_keys
@@ -171,7 +171,7 @@ uiReceiveModal0 model account chain details onClose = Workflow $ do
         (accordionHeaderBtn "Option 1: Copy and share Tx Builder") $ do
           uiDisplayTxBuilderWithCopy True
             $ TxBuilder account chain
-            $ details ^? accountDetails_guard . _AccountGuard_KeySet . to (uncurry toPactKeyset)
+            $ details ^? accountDetails_guard . _AccountGuard_KeySetLike . to toPactKeyset
 
       (onReceiClick, results) <- controlledAccordionItem (not <$> showingTxBuilder) mempty
         (accordionHeaderBtn "Option 2: Transfer from non-Chainweaver Account") $ do

@@ -4,7 +4,6 @@ module Frontend.AppCfg where
 
 import Control.Concurrent (MVar, forkIO, newEmptyMVar, putMVar, takeMVar, threadDelay, tryReadMVar)
 import Control.Monad (forever)
-import Control.Monad.Logger (LogLevel, LogStr)
 import Control.Monad.IO.Class (MonadIO, liftIO)
 import Data.Map (Map)
 import Data.Text (Text)
@@ -13,6 +12,7 @@ import Language.Javascript.JSaddle (JSM, MonadJSM, liftJSM)
 import Kadena.SigningApi
 import Reflex
 
+import Common.Logger (LogLevel, LogStr)
 import Common.Network (NetworkName)
 import Common.Wallet (Key, PublicKey)
 
