@@ -195,6 +195,7 @@ library
                  , Frontend.VersionedStore.V0
                  , Frontend.VersionedStore.V0.Wallet
                  , Frontend.VersionedStore.V1
+                 , Frontend.VersionedStore.V2
                  , Frontend.Wallet
                  , Reflex.Class.Extended
                  , Reflex.Dom.ACE.Extended
