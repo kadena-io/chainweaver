@@ -9,16 +9,19 @@ import Data.Constraint.Extras
 import Data.Dependent.Map (DMap)
 import Data.Dependent.Sum (DSum(..))
 import qualified Data.Dependent.Map as DMap
+import Data.Function (on)
+import Data.Functor ((<&>))
 import Data.Functor.Identity (Identity(Identity), runIdentity)
 import qualified Data.IntMap as IntMap
 import Data.Map (Map)
 import qualified Data.Map as Map
 import Data.Maybe (catMaybes)
 import Data.Text (Text)
+import Text.Printf (printf)
 
 import Common.Foundation
 import Common.Wallet
-import Common.Network (NetworkName, NodeRef)
+import Common.Network (NetworkName, NodeRef, parseNodeRef)
 import Common.OAuth (OAuthProvider(..))
 import Common.GistStore (GistMeta)
 
@@ -78,7 +81,7 @@ upgradeFromV0 v0 = do
     -- We have to walk through the slightly different encoding of the Network information.
     -- Also if the storage contains _no_ network configuration then we shouldn't break the new version
     -- by storing an empty object.
-    newNetworks = (\nets -> StoreFrontend_Network_Networks :=> Identity (V0.unNetworkMap $ runIdentity nets))
+    newNetworks = (\nets -> StoreFrontend_Network_Networks :=> Identity (convertNodeRefs $ V0.unNetworkMap $ runIdentity nets))
       <$> DMap.lookup V0.StoreNetwork_Networks v0
 
     -- This will regenerate the missing key. Desktop will recover the key with
@@ -120,7 +123,62 @@ upgradeFromV0 v0 = do
       }
 
 upgradeFromV1 :: (Monad m, HasCrypto key m) => DMap (V1.StoreFrontend key) Identity -> m (DMap (StoreFrontend key) Identity)
-upgradeFromV1 = undefined
+upgradeFromV1 v1 =
+    pure $ DMap.fromList  . catMaybes $
+      [
+        copyKeyDSum V1.StoreFrontend_Network_PublicMeta StoreFrontend_Network_PublicMeta v1
+      , copyKeyDSum V1.StoreFrontend_Network_SelectedNetwork StoreFrontend_Network_SelectedNetwork v1
+      , copyKeyDSum V1.StoreFrontend_OAuth_Tokens StoreFrontend_OAuth_Tokens v1
+      , copyKeyDSum (V1.StoreFrontend_OAuth_State OAuthProvider_GitHub) (StoreFrontend_OAuth_State OAuthProvider_GitHub) v1
+      , copyKeyDSum V1.StoreFrontend_Wallet_Keys StoreFrontend_Wallet_Keys v1
+      , copyKeyDSum V1.StoreFrontend_Wallet_Accounts StoreFrontend_Wallet_Accounts v1
+      , copyKeyDSum V1.StoreFrontend_ModuleExplorer_SessionFile StoreFrontend_ModuleExplorer_SessionFile v1
+      , newNetworks
+      ]
+  where
+    newNetworks = DMap.lookup V1.StoreFrontend_Network_Networks v1
+      <&> \nets -> StoreFrontend_Network_Networks :=> convertNodeRefs <$> nets
+
+toMultiSet :: Ord a => [a] -> Map a Int
+toMultiSet = Map.fromList . flip zip (repeat 1)
+
+fromMultiSet :: Ord a => Map a Int -> [a]
+fromMultiSet = ($ []) . Map.foldrWithKey (\k i -> (.) (dlrep k i)) id
+  where
+    dlrep v n
+      | n < 0 = error "fromMultiSet: IMPOSSIBLE"
+      | n == 0 = id
+      | otherwise = (v:) . dlrep v (n - 1)
+
+convertNodeRefs :: Map NetworkName [NodeRef] -> Map NetworkName [NodeRef]
+convertNodeRefs = fmap migrate
+  where
+    -- We traverse over every key because in theory, the user could have renamed
+    -- a network entry (or created a new one) and populated its value with the same
+    -- undesired noderefs (e.g. us1.testnet.chainweb.com)
+    migrate = replaceMainnet . replaceTestnet
+      where
+        replaceTestnet = (unsafeParseNodeRef "api.testnet.chainweb.com" :) . fromMultiSet . on (flip Map.difference) toMultiSet testnetRefs
+        replaceMainnet = (unsafeParseNodeRef "api.chainweb.com" :) . fromMultiSet . on (flip Map.difference) toMultiSet mainnetRefs
+    testnetRefs = unsafeParseNodeRef <$>
+      [ "us1.testnet.chainweb.com"
+      , "us2.testnet.chainweb.com"
+      , "eu1.testnet.chainweb.com"
+      , "eu2.testnet.chainweb.com"
+      , "ap1.testnet.chainweb.com"
+      , "ap2.testnet.chainweb.com"]
+    mainnetRefs = unsafeParseNodeRef <$>
+      [ "us-e1.chainweb.com"
+      , "us-e2.chainweb.com"
+      , "us-w1.chainweb.com"
+      , "us-w2.chainweb.com"
+      , "jp1.chainweb.com"
+      , "jp2.chainweb.com"
+      , "fr1.chainweb.com"
+      , "fr2.chainweb.com"]
+
+unsafeParseNodeRef :: Text -> NodeRef
+unsafeParseNodeRef = either (error . printf "unsafeParseNodeRef: %s") id . parseNodeRef
 
 -- The TH doesn't deal with the key type param well because the key in each constructor is actually a
 -- different type variable to the one in the data decl.
