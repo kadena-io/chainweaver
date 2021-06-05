@@ -126,7 +126,7 @@ versionedStorage = VersionedStorage
     prefix = StoreKeyMetaPrefix "StoreFrontend_Meta"
 
     restoreBackup :: DMap (Latest.StoreFrontend key) Identity -> m ()
-    restoreBackup dm = restoreLocalStorageDump prefix dm 1
+    restoreBackup dm = restoreLocalStorageDump prefix dm 2
 
     -- Takes a json blob and upgrades it to the latest DMap structure
     decodeVersionedJson
