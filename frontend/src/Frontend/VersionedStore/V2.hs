@@ -156,18 +156,18 @@ convertNodeRefs = fmap migrate
     -- We traverse over every key because in theory, the user could have renamed
     -- a network entry (or created a new one) and populated its value with the same
     -- undesired noderefs (e.g. us1.testnet.chainweb.com)
-    migrate = replaceMainnet . replaceTestnet
+    migrate = replaceMainnetNodeRefs . replaceTestnetNodeRefs
       where
-        replaceTestnet = (unsafeParseNodeRef "api.testnet.chainweb.com" :) . fromMultiSet . on (flip Map.difference) toMultiSet testnetRefs
-        replaceMainnet = (unsafeParseNodeRef "api.chainweb.com" :) . fromMultiSet . on (flip Map.difference) toMultiSet mainnetRefs
-    testnetRefs = unsafeParseNodeRef <$>
+        replaceTestnetNodeRefs = (unsafeParseNodeRef "api.testnet.chainweb.com" :) . fromMultiSet . on (flip Map.difference) toMultiSet testnetNodeRefs
+        replaceMainnetNodeRefs = (unsafeParseNodeRef "api.chainweb.com" :) . fromMultiSet . on (flip Map.difference) toMultiSet mainnetNodeRefs
+    testnetNodeRefs = unsafeParseNodeRef <$>
       [ "us1.testnet.chainweb.com"
       , "us2.testnet.chainweb.com"
       , "eu1.testnet.chainweb.com"
       , "eu2.testnet.chainweb.com"
       , "ap1.testnet.chainweb.com"
       , "ap2.testnet.chainweb.com"]
-    mainnetRefs = unsafeParseNodeRef <$>
+    mainnetNodeRefs = unsafeParseNodeRef <$>
       [ "us-e1.chainweb.com"
       , "us-e2.chainweb.com"
       , "us-w1.chainweb.com"

@@ -41,6 +41,7 @@ import Pact.Server.ApiClient (logTransactionStdout)
 import qualified Frontend.VersionedStore.V0 as V0
 import qualified Frontend.VersionedStore.V0.Wallet as V0
 import qualified Frontend.VersionedStore.V1 as V1
+import qualified Frontend.VersionedStore.V2 as V2
 import Frontend.VersionedStore (VersionedStorage(..),versionedStorage)
 
 type TestPrv = Text
@@ -214,7 +215,7 @@ testVersioner
      , HasStorage m
      , MonadIO m
      )
-  => VersionedStorage m (V1.StoreFrontend TestPrv)
+  => VersionedStorage m (V2.StoreFrontend TestPrv)
 testVersioner = versionedStorage
 
 instance HasCrypto TestPrv InMemoryStorage where

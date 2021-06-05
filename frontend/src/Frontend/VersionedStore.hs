@@ -10,7 +10,7 @@ module Frontend.VersionedStore
   , versionedFrontend
   ) where
 
-import Control.Monad.Except (ExceptT, runExceptT, throwError)
+import Control.Monad.Except (ExceptT(..), runExceptT, throwError)
 import Control.Monad.IO.Class (MonadIO, liftIO)
 import Control.Monad.Trans (lift)
 import Control.Error ((!?), hoistEither)
@@ -164,8 +164,16 @@ versionedStorage = VersionedStorage
             removeKeyUniverse p localStorage
             removeKeyUniverse p sessionStorage
             restoreLocalStorageDump prefix v1Dump 1
+          -- Complete the whole upgrade process, then move the logs (TODO: Is this necessary now?)
+          liftIO $ Api._transactionLogger_rotateLogFile txLogger
+          ExceptT $ upgradeStorage txLogger
+        Just (StoreFrontendVersion_1 :=> p) -> do
+          dump <- (backupLocalStorage prefix p ver) !? VersioningUpgradeError_CouldNotBackup ver
+          lift $ do
+            v2Dump <- V2.upgradeFromV1 dump
+            removeKeyUniverse p localStorage
+            removeKeyUniverse p sessionStorage
+            restoreLocalStorageDump prefix v2Dump 2
           -- Complete the whole upgrade process, then move the logs
           liftIO $ Api._transactionLogger_rotateLogFile txLogger
-          pure ()
-        Just (StoreFrontendVersion_1 :=> _) -> pure ()
         Just (StoreFrontendVersion_2 :=> _) -> pure ()
