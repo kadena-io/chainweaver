@@ -151,12 +151,12 @@ fromMultiSet = ($ []) . Map.foldrWithKey (\k i -> (.) (dlrep k i)) id
       | otherwise = (v:) . dlrep v (n - 1)
 
 convertNodeRefs :: Map NetworkName [NodeRef] -> Map NetworkName [NodeRef]
-convertNodeRefs = fmap migrate
+convertNodeRefs = Map.mapWithKey migrate
   where
-    -- We traverse over every key because in theory, the user could have renamed
-    -- a network entry (or created a new one) and populated its value with the same
-    -- undesired noderefs (e.g. us1.testnet.chainweb.com)
-    migrate = replaceMainnetNodeRefs . replaceTestnetNodeRefs
+    migrate = \case
+      "Mainnet" -> replaceMainnetNodeRefs
+      "Testnet" -> replaceTestnetNodeRefs
+      _ -> id
       where
         replaceTestnetNodeRefs = (unsafeParseNodeRef "api.testnet.chainweb.com" :) . fromMultiSet . on (flip Map.difference) toMultiSet testnetNodeRefs
         replaceMainnetNodeRefs = (unsafeParseNodeRef "api.chainweb.com" :) . fromMultiSet . on (flip Map.difference) toMultiSet mainnetNodeRefs
