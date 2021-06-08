@@ -1,13 +1,18 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE GADTs #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE TypeApplications #-}
 module Frontend.Storage.InMemoryStorage where
 
+import Text.Printf
+import Data.Text as T (unpack)
+import qualified Data.Text.Encoding as T
 import Control.Monad.Free (iterM)
 import Control.Monad.Reader
 import Data.Aeson (FromJSON, ToJSON, eitherDecode)
+import Data.Aeson as Aeson (encode)
 import Data.Bool (bool)
 import qualified Data.ByteString.Lazy as LBS
 import Data.Constraint.Extras (Has, Has', has)
@@ -31,7 +36,9 @@ import System.Directory (doesFileExist)
 import System.FilePath ((</>))
 
 import Frontend.Crypto.Class
+import Frontend.Foundation
 import Frontend.Storage
+import Frontend.Storage.Class
 
 lookupRef :: IORef (Map Text Text) -> Text -> IO (Maybe Text)
 lookupRef ref k = Map.lookup k <$> readIORef ref
@@ -79,6 +86,14 @@ newInMemoryStorage = do
   sessionRef <- newIORef (Map.empty :: Map Text Text)
   pure (localRef, sessionRef)
 
+data AtOrBefore a = At a | Before a
+
+data FailStorageState where
+  FailOnWriteSingleKey :: AtOrBefore k -> FailStorageState
+  FailOnWriteKeys :: [AtOrBefore k] -> FailStorageState
+  FailOnSettingVersion :: AtOrBefore () -> FailStorageState
+  NoFailure :: FailStorageState
+
 -- This function *should* be cool because it ought to allow us to drop in a desktop storage directory
 -- into the folder for a given version and then source those files into the inmem store for the tests
 --
@@ -98,13 +113,34 @@ inMemoryStorageFromTestData
   -> Proxy k
   -> Natural
   -> FilePath
+  -> FailStorageState
   -> IO IMS
-inMemoryStorageFromTestData p _ ver dirPath = do
+inMemoryStorageFromTestData p _ ver dirPath failure = do
   dmap <- keyUniverseToFilesDMap
   ims <- newInMemoryStorage
-  _ <- runInMemoryStorage (restoreLocalStorageDump p dmap ver) ims
+  -- _ <- runInMemoryStorage (restoreLocalStorageDump p dmap ver) ims
+  _ <- runInMemoryStorage (mockRestoreLocalStorageDump p dmap ver) ims
   pure ims
   where
+
+    mockRestoreLocalStorageDump p dump ver =
+      case failure of
+        NoFailure -> do
+          for_ (DMap.toList dump) setSum
+          setCurrentVersion p ver
+        FailOnWriteSingleKey _ -> undefined
+        FailOnWriteKeys _ -> undefined
+        FailOnSettingVersion _ -> undefined
+      where
+        {- the three helpers below are added so as to not increase the number of
+          functions exported from Frontend.Storage.Class -}
+        encodeText = T.decodeUtf8 . LBS.toStrict . Aeson.encode
+        currentVersionKeyText :: StoreKeyMetaPrefix -> Text
+        currentVersionKeyText (StoreKeyMetaPrefix p) = (p <> "_Version")
+        setCurrentVersion p' = setItemStorage' localStorage (currentVersionKeyText p') . encodeText
+        setSum (k :=> ( Identity v )) =
+          has @ToJSON k $ setItemStorage localStorage k v
+
     keyToPath :: k a -> FilePath
     keyToPath k = dirPath </> gshow k
 

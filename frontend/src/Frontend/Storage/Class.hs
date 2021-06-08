@@ -169,6 +169,7 @@ restoreLocalStorage
   :: forall storeKeys m
   . ( HasStorage m
     , Monad m
+    , MonadIO m
     , GCompare storeKeys
     , Has' FromJSON storeKeys Identity
     , Has ToJSON storeKeys
@@ -211,6 +212,7 @@ restoreLocalStorageDump
   :: forall storeKeys m
   . ( HasStorage m
     , Monad m
+    , MonadIO m
     , Has ToJSON storeKeys
     , GShow storeKeys
     )

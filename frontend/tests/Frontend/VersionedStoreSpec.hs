@@ -243,6 +243,7 @@ test_v1ToV2Upgrade = testCaseSteps "V1 to V2 upgrade" $ \step -> do
       (Proxy @(V1.StoreFrontend TestPrv))
       1
       path
+      NoFailure
     step "...test data loaded"
 
     step "Running versioner upgrade..."
@@ -311,6 +312,7 @@ test_v0ToV2Upgrade = testCaseSteps "V0 to V2 Upgrade" $ \step -> do
     (Proxy @(V0.StoreFrontend TestPrv))
     0
     path
+    NoFailure
   step "...test data loaded"
 
   step "Running versioner upgrade..."
@@ -366,6 +368,12 @@ test_v0ToV2Upgrade = testCaseSteps "V0 to V2 Upgrade" $ \step -> do
 
   where
     path = "tests" </> "Frontend" </> "VersionedStoreSpec.files" </> "V0"
+
+_fail_test_v0ToV2Upgrade :: FailStorageState -> TestTree
+_fail_test_v0ToV2Upgrade _fstate = testCaseSteps "(failing) V0 to V2 upgrade" $ \step -> do
+  undefined
+
+
 
 tests :: TestTree
 tests = testGroup "VersionedStoreSpec"
