@@ -77,7 +77,7 @@ in obApp // rec {
     let cross = {
           inherit (obApp) exe;
           inherit (obApp.ghc) desktop;
-          shell = obApp.shells.ghc;
+          shell = obApp.shells.ghc { withHoogle = true; };
         };
     in {
       mac   = cross // { inherit mac; };

@@ -1,8 +1,8 @@
 {
   "owner": "kadena-io",
   "repo": "signing-api",
-  "branch": "quicksign",
+  "branch": "jam@fix-pact-swagger-dep",
   "private": false,
-  "rev": "e84f8866f92d4cac0add25a95fa6cef593964a5f",
-  "sha256": "06wlrxi1fcrijdz9ipga5dx9zl4cv4aipfhqa7292gwzd0y8njl7"
+  "rev": "2fa62bdf4effcbc6f8166da81a920bf506a1b123",
+  "sha256": "1jjnmi7xib1sxyj84c2ljgmrf9f5k01qf10431rmw86lb9rph1wi"
 }
