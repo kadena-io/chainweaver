@@ -19,7 +19,7 @@ import Data.Text (Text)
 import Pact.Types.Util (ParseText, fromText')
 import Pact.Types.Command (RequestKey(..))
 import Pact.Types.ChainMeta (PublicMeta (..))
-import Test.Tasty (DependencyType(..), TestTree, after, testGroup)
+import Test.Tasty (TestTree, testGroup)
 import Test.Tasty.HUnit
 import Text.URI (Authority(Authority))
 import Text.URI.QQ (host)
@@ -369,9 +369,6 @@ test_v0ToV2Upgrade = testCaseSteps "V0 to V2 Upgrade" $ \step -> do
 
 tests :: TestTree
 tests = testGroup "VersionedStoreSpec"
-  [ test_v1ToV2Upgrade
+  [ test_v0ToV2Upgrade
+  , test_v1ToV2Upgrade
   ]
-
-  -- [ test_v0ToV2Upgrade
-  -- , after AllSucceed "test_v0ToV2Upgrade" test_v1ToV2Upgrade
-  -- ]
