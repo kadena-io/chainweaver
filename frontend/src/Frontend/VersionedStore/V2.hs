@@ -1,5 +1,6 @@
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE ViewPatterns #-}
 module Frontend.VersionedStore.V2 where
 
 import Data.Aeson
@@ -158,8 +159,9 @@ convertNodeRefs = Map.mapWithKey migrate
       "Testnet" -> replaceTestnetNodeRefs
       _ -> id
       where
-        replaceTestnetNodeRefs = (unsafeParseNodeRef "api.testnet.chainweb.com" :) . fromMultiSet . on (flip Map.difference) toMultiSet testnetNodeRefs
-        replaceMainnetNodeRefs = (unsafeParseNodeRef "api.chainweb.com" :) . fromMultiSet . on (flip Map.difference) toMultiSet mainnetNodeRefs
+        replaceTestnetNodeRefs = addRef "api.testnet.chainweb.com" . fromMultiSet . on (flip Map.difference) toMultiSet testnetNodeRefs
+        replaceMainnetNodeRefs = addRef "api.chainweb.com" . fromMultiSet . on (flip Map.difference) toMultiSet mainnetNodeRefs
+        addRef (unsafeParseNodeRef -> ref) refs = if elem ref refs then refs else ref : refs
     testnetNodeRefs = unsafeParseNodeRef <$>
       [ "us1.testnet.chainweb.com"
       , "us2.testnet.chainweb.com"
