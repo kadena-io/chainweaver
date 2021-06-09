@@ -2,13 +2,12 @@
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE GADTs #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE TypeApplications #-}
 module Frontend.Storage.InMemoryStorage where
 
 import Text.Printf
-import Data.Text as T (unpack)
+import Data.Text as T (pack, unpack)
 import qualified Data.Text.Encoding as T
 import Control.Monad.Free (iterM)
 import Control.Monad.Reader
@@ -34,6 +33,7 @@ import Data.Text (Text)
 import Data.Universe.Some (UniverseSome, universeSome)
 import Numeric.Natural (Natural)
 import System.Directory (doesFileExist)
+import System.Exit (die)
 import System.FilePath ((</>))
 
 import Frontend.Crypto.Class
@@ -87,13 +87,31 @@ newInMemoryStorage = do
   sessionRef <- newIORef (Map.empty :: Map Text Text)
   pure (localRef, sessionRef)
 
-data AtOrBefore a = At a | Before a
+data FailStorageState =
+  FailOnKeyWrite Text Bool
+  | FailOnSettingVersion Bool
+  | NoFailure
 
-data FailStorageState where
-  FailOnWriteSingleKey :: AtOrBefore k -> FailStorageState
-  FailOnWriteKeys :: [AtOrBefore k] -> FailStorageState
-  FailOnSettingVersion :: AtOrBefore () -> FailStorageState
-  NoFailure :: FailStorageState
+
+instance Show FailStorageState where
+  show = \case
+    FailOnKeyWrite text before ->
+      if before
+      then "Failing just before loading key " ++ T.unpack text
+      else "Failing just after loading key " ++ T.unpack text
+    FailOnSettingVersion before ->
+      if before
+      then "Failing just before setting version"
+      else "Failing just after setting version"
+    NoFailure -> "Not exercising failure state"
+
+wrapFail :: MonadIO m => Bool -> m a -> m a
+wrapFail False action = do
+  liftIO (die "") -- there is surely a better way to do this
+  action
+wrapFail True action = do
+  action
+  liftIO (die "") -- there is surely a better way to do this
 
 -- This function *should* be cool because it ought to allow us to drop in a desktop storage directory
 -- into the folder for a given version and then source those files into the inmem store for the tests
@@ -127,11 +145,16 @@ inMemoryStorageFromTestData p _ ver dirPath failure = do
     mockRestoreLocalStorageDump p dump ver =
       case failure of
         NoFailure -> do
-          for_ (DMap.toList dump) setSum
+          for_ (DMap.toList dump) $ \key@(k :=> _) -> do
+            setSum key
           setCurrentVersion p ver
-        FailOnWriteSingleKey _ -> undefined
-        FailOnWriteKeys _ -> undefined
-        FailOnSettingVersion _ -> undefined
+        FailOnKeyWrite keyText at -> do
+          for_ (DMap.toList dump) $ \key@(k :=> _) -> do
+            if T.pack (gshow k) == keyText then wrapFail at (setSum key) else setSum key
+            setCurrentVersion p ver
+        FailOnSettingVersion at -> do
+          for_ (DMap.toList dump) setSum
+          wrapFail at (setCurrentVersion p ver)
       where
         {- the three helpers below are added so as to not increase the number of
           functions exported from Frontend.Storage.Class -}

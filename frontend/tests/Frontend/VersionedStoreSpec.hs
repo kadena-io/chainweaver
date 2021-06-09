@@ -2,13 +2,16 @@
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE QuasiQuotes #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE TypeSynonymInstances #-}
 module Frontend.VersionedStoreSpec where
 
 import Control.Monad.IO.Class (MonadIO, liftIO)
+import Control.Exception
 import Data.Aeson (decodeFileStrict)
 import qualified Data.IntMap as IntMap
+import Data.Functor ((<&>))
 import Data.IORef (readIORef)
 import Data.List (sort)
 import Data.Map (Map)
@@ -23,8 +26,10 @@ import Test.Tasty (TestTree, testGroup)
 import Test.Tasty.HUnit
 import Text.URI (Authority(Authority))
 import Text.URI.QQ (host)
+import Numeric.Natural (Natural)
 import Obelisk.OAuth.Common (AccessToken, OAuthState)
 import System.FilePath ((</>))
+import Text.Printf (printf)
 import TestUtils ((@?~))
 
 import Common.Wallet
@@ -369,14 +374,169 @@ test_v0ToV2Upgrade = testCaseSteps "V0 to V2 Upgrade" $ \step -> do
   where
     path = "tests" </> "Frontend" </> "VersionedStoreSpec.files" </> "V0"
 
-_fail_test_v0ToV2Upgrade :: FailStorageState -> TestTree
-_fail_test_v0ToV2Upgrade _fstate = testCaseSteps "(failing) V0 to V2 upgrade" $ \step -> do
-  undefined
+fail_test_v0ToV2Upgrade :: FailStorageState -> TestTree
+fail_test_v0ToV2Upgrade fstate = testCaseSteps "(failing) V0 to V2 upgrade" $ \step -> do
 
+    let v = versionedStorage
+    step "Loading test data into 'InMemoryStorage'..."
+    ims@(localRef, sessionRef) <- inMemoryStorageFromTestData
+      (_versionedStorage_metaPrefix v)
+      (Proxy @(V0.StoreFrontend TestPrv))
+      0
+      path
+      fstate
+      `catch`
+      \(_ :: SomeException) -> do
+        step $ printf "reloading storage after reason: %s" (show fstate)
+        inMemoryStorageFromTestData (_versionedStorage_metaPrefix v) (Proxy @(V0.StoreFrontend TestPrv)) 0 path NoFailure
 
+    step "...test data loaded"
+
+    step "Running versioner upgrade..."
+    (sn, pm, ns, sf, ks, as) <- flip runInMemoryStorage ims $ do
+      _versionedStorage_upgradeStorage v logTransactionStdout
+      sn <- getItemStorage localStorage V2.StoreFrontend_Network_SelectedNetwork
+      pm <- getItemStorage localStorage V2.StoreFrontend_Network_PublicMeta
+      ns <- getItemStorage localStorage V2.StoreFrontend_Network_Networks
+      sf <- getItemStorage localStorage V2.StoreFrontend_ModuleExplorer_SessionFile
+      ks <- getItemStorage localStorage (V2.StoreFrontend_Wallet_Keys @TestPrv)
+      as <- getItemStorage localStorage V2.StoreFrontend_Wallet_Accounts
+      pure (sn, pm, ns, sf, ks, as)
+    step "...versioner upgrade finished"
+
+    step "Checking version refs match..."
+    curV0Seq <- lookupRef localRef "StoreFrontend_Meta_Backups_V0_Latest"
+    curV0Seq @?= Just "0"
+    curV <- lookupRef localRef "StoreFrontend_Meta_Version"
+    curV @?= Just "2"
+
+    step "Checking networks and session file..."
+    sn @?= Just expectedSelectedNetwork
+    ns @?= Just expectedNetworks
+    pm @?= Nothing
+    expectedSfText <- decodeFileStrict (path </> "StoreModuleExplorer_SessionFile")
+    sf @?= expectedSfText
+
+    step "Checking we have keys from new schema only"
+    -- Check that we just have the keys from the new schema in the DB plus the backup.
+    lkeys <- sort . Map.keys <$> readIORef localRef
+    skeys <- sort . Map.keys <$> readIORef sessionRef
+
+    lkeys @?=
+      [ "StoreFrontend_Meta_Backups_V0_0"
+      , "StoreFrontend_Meta_Backups_V0_Latest"
+      , "StoreFrontend_Meta_Backups_V1_0"
+      , "StoreFrontend_Meta_Backups_V1_Latest"
+      , "StoreFrontend_Meta_Version"
+      , "StoreFrontend_ModuleExplorer_SessionFile"
+      , "StoreFrontend_Network_Networks"
+      , "StoreFrontend_Network_SelectedNetwork"
+      , "StoreFrontend_Wallet_Accounts"
+      , "StoreFrontend_Wallet_Keys"
+      ]
+    skeys @?= []
+
+    step "Checking expected keys"
+    ks @?~ Just expectedKeys
+    step "Checking expected accounts"
+    as @?~ Just expectedAccounts
+
+    pure ()
+
+  where
+    path = "tests" </> "Frontend" </> "VersionedStoreSpec.files" </> "V0"
+
+fail_test_v1ToV2Upgrade :: FailStorageState -> TestTree
+fail_test_v1ToV2Upgrade fstate = testCaseSteps "(failing) V1 to V2 upgrade" $ \step -> do
+
+    let v = versionedStorage
+    step "Loading test data into 'InMemoryStorage'..."
+    ims@(localRef, sessionRef) <- inMemoryStorageFromTestData
+      (_versionedStorage_metaPrefix v)
+      (Proxy @(V1.StoreFrontend TestPrv))
+      1
+      path
+      fstate
+      `catch`
+      \(_ :: SomeException) -> do
+        step $ printf "reloading storage after reason: %s" (show fstate)
+        inMemoryStorageFromTestData (_versionedStorage_metaPrefix v) (Proxy @(V1.StoreFrontend TestPrv)) 1 path NoFailure
+
+    step "...test data loaded"
+
+    step "Running versioner upgrade..."
+    (sn, pm, ns, sf, ks, as) <- flip runInMemoryStorage ims $ do
+      _versionedStorage_upgradeStorage v logTransactionStdout
+      sn <- getItemStorage localStorage V2.StoreFrontend_Network_SelectedNetwork
+      pm <- getItemStorage localStorage V2.StoreFrontend_Network_PublicMeta
+      ns <- getItemStorage localStorage V2.StoreFrontend_Network_Networks
+      sf <- getItemStorage localStorage V2.StoreFrontend_ModuleExplorer_SessionFile
+      ks <- getItemStorage localStorage (V2.StoreFrontend_Wallet_Keys @TestPrv)
+      as <- getItemStorage localStorage V2.StoreFrontend_Wallet_Accounts
+      pure (sn, pm, ns, sf, ks, as)
+    step "...versioner upgrade finished"
+
+    step "Checking version refs match..."
+    curV1Seq <- lookupRef localRef "StoreFrontend_Meta_Backups_V1_Latest"
+    curV1Seq @?= Just "0"
+    curV <- lookupRef localRef "StoreFrontend_Meta_Version"
+    curV @?= Just "2"
+
+    step "Checking networks and session file..."
+    sn @?= Just expectedSelectedNetwork
+    ns @?= Just expectedNetworks
+    pm @?= Just expectedPublicMeta
+    expectedSfText <- decodeFileStrict (path </> "StoreFrontend_ModuleExplorer_SessionFile")
+    sf @?= expectedSfText
+
+    step "Checking we have keys from new schema only"
+    -- Check that we just have the keys from the new schema in the DB plus the backup.
+    lkeys <- sort . Map.keys <$> readIORef localRef
+    skeys <- sort . Map.keys <$> readIORef sessionRef
+
+    lkeys @?=
+      [ "StoreFrontend_Meta_Backups_V1_0"
+      , "StoreFrontend_Meta_Backups_V1_Latest"
+      , "StoreFrontend_Meta_Version"
+      , "StoreFrontend_ModuleExplorer_SessionFile"
+      , "StoreFrontend_Network_Networks"
+      , "StoreFrontend_Network_PublicMeta"
+      , "StoreFrontend_Network_SelectedNetwork"
+      , "StoreFrontend_Wallet_Accounts"
+      , "StoreFrontend_Wallet_Keys"
+      ]
+    skeys @?= []
+
+    step "Checking expected keys"
+    ks @?~ Just expectedKeys
+    step "Checking expected accounts"
+    as @?~ Just expectedAccounts
+
+    pure ()
+
+  where
+    path = "tests" </> "Frontend" </> "VersionedStoreSpec.files" </> "V1"
 
 tests :: TestTree
-tests = testGroup "VersionedStoreSpec"
-  [ test_v0ToV2Upgrade
-  , test_v1ToV2Upgrade
-  ]
+tests = testGroup "VersionedStoreSpec" $
+    [ test_v0ToV2Upgrade
+    , test_v1ToV2Upgrade
+    ]
+    ++ (fail_test_v0ToV2Upgrade <$> (FailOnKeyWrite <$> ks0 <*> [False, True]))
+    ++ (fail_test_v1ToV2Upgrade <$> (FailOnKeyWrite <$> ks1 <*> [False, True]))
+
+ where
+  ks0 = [
+    "StoreNetwork_SelectedNetwork"
+    , "StoreNetwork_Networks"
+    , "StoreModuleExplorer_SessionFile"
+    , "StoreWallet_Keys"
+    ]
+  ks1 = [
+    "StoreNetwork_Network_SelectedNetwork"
+    , "StoreNetwork_Network_PublicMeta"
+    , "StoreNetwork_Network_Networks"
+    , "StoreNetwork_ModuleExplorer_SessionFile"
+    , "StoreNetwork_Wallet_Keys"
+    , "StoreNetwork_Wallet_Accounts"
+    ]
