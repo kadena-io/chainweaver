@@ -1,5 +1,6 @@
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE ViewPatterns #-}
 module Frontend.VersionedStore.V2 where
 
@@ -10,14 +11,16 @@ import Data.Constraint.Extras
 import Data.Dependent.Map (DMap)
 import Data.Dependent.Sum (DSum(..))
 import qualified Data.Dependent.Map as DMap
-import Data.Function (on)
+import Data.Function ((&), on)
 import Data.Functor ((<&>))
 import Data.Functor.Identity (Identity(Identity), runIdentity)
 import qualified Data.IntMap as IntMap
 import Data.Map (Map)
 import qualified Data.Map as Map
+import qualified Data.Map.Merge.Lazy as Map
 import Data.Maybe (catMaybes)
 import Data.Text (Text)
+import Data.These
 import Text.Printf (printf)
 
 import Common.Foundation
@@ -141,7 +144,7 @@ upgradeFromV1 v1 =
       <&> \nets -> StoreFrontend_Network_Networks :=> convertNodeRefs <$> nets
 
 toMultiSet :: Ord a => [a] -> Map a Int
-toMultiSet = Map.fromList . flip zip (repeat 1)
+toMultiSet = Map.fromListWith (+) . flip zip (repeat 1)
 
 fromMultiSet :: Ord a => Map a Int -> [a]
 fromMultiSet = ($ []) . Map.foldrWithKey (\k i -> (.) (dlrep k i)) id
@@ -152,16 +155,19 @@ fromMultiSet = ($ []) . Map.foldrWithKey (\k i -> (.) (dlrep k i)) id
       | otherwise = (v:) . dlrep v (n - 1)
 
 convertNodeRefs :: Map NetworkName [NodeRef] -> Map NetworkName [NodeRef]
-convertNodeRefs = Map.mapWithKey migrate
+convertNodeRefs = fmap migrate
   where
-    migrate = \case
-      "Mainnet" -> replaceMainnetNodeRefs
-      "Testnet" -> replaceTestnetNodeRefs
-      _ -> id
+    migrate = replaceRefsWith "api.chainweb.com" mainnetNodeRefs . replaceRefsWith "api.testnet.chainweb.com" testnetNodeRefs
       where
-        replaceTestnetNodeRefs = addRef "api.testnet.chainweb.com" . fromMultiSet . on (flip Map.difference) toMultiSet testnetNodeRefs
-        replaceMainnetNodeRefs = addRef "api.chainweb.com" . fromMultiSet . on (flip Map.difference) toMultiSet mainnetNodeRefs
-        addRef (unsafeParseNodeRef -> ref) refs = if elem ref refs then refs else ref : refs
+        replaceRefsWith ref baseRefs refs =
+          refs
+            & on (Map.mergeA @(These ()) Map.dropMissing Map.preserveMissing (Map.zipWithMaybeAMatched (\_ _ _ -> pure Nothing))) toMultiSet baseRefs
+            & \case
+                This () -> error "IMPOSSIBLE"
+                That m -> if null m then addRef ref m else m
+                These () m -> addRef ref m
+            & fromMultiSet
+        addRef (unsafeParseNodeRef -> ref) = Map.insert ref 1
     testnetNodeRefs = unsafeParseNodeRef <$>
       [ "us1.testnet.chainweb.com"
       , "us2.testnet.chainweb.com"

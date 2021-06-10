@@ -16,6 +16,7 @@ import Data.IORef (readIORef)
 import Data.List (sort)
 import Data.Map (Map)
 import qualified Data.Map as Map
+import qualified Data.Set as S
 import Data.Maybe (fromJust, fromMaybe)
 import Data.Proxy (Proxy(Proxy))
 import Data.Text (Text)
@@ -274,7 +275,7 @@ test_v1ToV2Upgrade = testCaseSteps "V1 to V2 upgrade" $ \step -> do
 
     step "Checking networks and session file..."
     sn @?= Just expectedSelectedNetwork
-    ns @?= Just expectedNetworks
+    (fmap (S.fromList <$>) ns) @?= Just (S.fromList <$> expectedNetworks)
     pm @?= Just expectedPublicMeta
     expectedSfText <- decodeFileStrict (path </> "StoreFrontend_ModuleExplorer_SessionFile")
     sf @?= expectedSfText
@@ -340,7 +341,7 @@ test_v0ToV2Upgrade = testCaseSteps "V0 to V2 Upgrade" $ \step -> do
 
   step "Checking networks and session file..."
   sn @?= Just expectedSelectedNetwork
-  ns @?= Just expectedNetworks
+  (fmap (S.fromList <$>) ns) @?= Just (S.fromList <$> expectedNetworks)
   pm @?= Nothing
   expectedSfText <- decodeFileStrict (path </> "StoreModuleExplorer_SessionFile")
   sf @?= expectedSfText
@@ -412,7 +413,7 @@ fail_test_v0ToV2Upgrade fstate = testCaseSteps "(failing) V0 to V2 upgrade" $ \s
 
     step "Checking networks and session file..."
     sn @?= Just expectedSelectedNetwork
-    ns @?= Just expectedNetworks
+    (fmap (S.fromList <$>) ns) @?= Just (S.fromList <$> expectedNetworks)
     pm @?= Nothing
     expectedSfText <- decodeFileStrict (path </> "StoreModuleExplorer_SessionFile")
     sf @?= expectedSfText
@@ -484,7 +485,7 @@ fail_test_v1ToV2Upgrade fstate = testCaseSteps "(failing) V1 to V2 upgrade" $ \s
 
     step "Checking networks and session file..."
     sn @?= Just expectedSelectedNetwork
-    ns @?= Just expectedNetworks
+    (fmap (S.fromList <$>) ns) @?= Just (S.fromList <$> expectedNetworks)
     pm @?= Just expectedPublicMeta
     expectedSfText <- decodeFileStrict (path </> "StoreFrontend_ModuleExplorer_SessionFile")
     sf @?= expectedSfText
