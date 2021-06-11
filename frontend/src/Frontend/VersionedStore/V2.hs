@@ -157,20 +157,20 @@ fromMultiSet = ($ []) . Map.foldrWithKey (\k i -> (.) (dlrep k i)) id
 -- "This" constructor. With it gone, we still get the same applicative
 -- operations from "These" (sans "This") but we don't have to account for
 -- the "This" constructor in situations where we know it is impossible to
--- produce it. This is also morally equivalent to Either () b with a
+-- produce it. This is also morally equivalent to Either a a with a
 -- different applicative instance
-data Deez b = Dis b | Dat b
+newtype Deez a = Deez {getDeez :: Either a a}
 
 instance Functor Deez where
-  fmap f (Dis b) = Dis (f b)
-  fmap f (Dat b) = Dat (f b)
+  fmap f (Deez (Right a)) = Deez (Right $ f a)
+  fmap f (Deez (Left a)) = Deez (Left $ f a)
 
 instance Applicative Deez where
-  pure = Dis
-  Dis f <*> Dis x = Dis (f x)
-  Dis f <*> Dat x = Dat (f x)
-  Dat f <*> Dis x = Dat (f x)
-  Dat f <*> Dat x = Dat (f x)
+  pure = Deez . Right
+  Deez (Right f) <*> Deez (Right x) = Deez (Right $ f x)
+  Deez (Right f) <*> Deez (Left x) = Deez (Left $ f x)
+  Deez (Left f) <*> Deez (Right x) = Deez (Left $ f x)
+  Deez (Left f) <*> Deez (Left x) = Deez (Left $ f x)
 
 convertNodeRefs :: Map NetworkName [NodeRef] -> Map NetworkName [NodeRef]
 convertNodeRefs = fmap migrate
@@ -178,10 +178,11 @@ convertNodeRefs = fmap migrate
     migrate = replaceRefsWith "api.chainweb.com" mainnetNodeRefs . replaceRefsWith "api.testnet.chainweb.com" testnetNodeRefs
     replaceRefsWith ref baseRefs refs =
       refs
-        & on (Map.mergeA Map.dropMissing Map.preserveMissing (Map.zipWithMaybeAMatched (\_ _ _ -> Dat Nothing))) toMultiSet baseRefs
+        & on (Map.mergeA Map.dropMissing Map.preserveMissing (Map.zipWithMaybeAMatched (\_ _ _ -> Deez $ Left Nothing))) toMultiSet baseRefs
+        & getDeez
         & \case
-            Dis m -> m
-            Dat m -> addRef ref m -- if we hit this case, there were matching keys
+            Right m -> m
+            Left m -> addRef ref m -- if we hit this case, there were matching keys
         & fromMultiSet
     addRef (unsafeParseNodeRef -> ref) = Map.insert ref 1
     testnetNodeRefs = unsafeParseNodeRef <$>
