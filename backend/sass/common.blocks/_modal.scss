@@ -389,7 +389,8 @@ $accordion-width: 10%;
 $signer-width: 60%;
 
 .payload__header {
-  margin: $normal-margin;
+  margin-top: $normal-margin;
+  margin-bottom: $normal-margin;
   display: flex;
 }
 .payload__accordion-header {
@@ -406,7 +407,8 @@ $signer-width: 60%;
 
 
 .payload__row {
-  margin: $normal-margin;
+  margin-top: $normal-margin;
+  margin-bottom: $normal-margin;
   display: flex;
 }
 

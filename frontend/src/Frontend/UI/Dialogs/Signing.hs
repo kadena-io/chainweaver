@@ -182,14 +182,13 @@ quickSignModal ideL writeSigningResponse payloads _onCloseExternal = do
   -- key handling
   cwKeysets :: Map PublicKey (KeyPair key) <- sample $ current $
     fmap getKeyPairsFromStore $ ideL^.wallet.wallet_keys
-  let quickSignSummary = generateQuickSignSummary payloads $ Map.keys cwKeysets
 
   -- Modal events/ui
   onClose <- modalHeader $ text "Quick Signing Request"
   modalMain $ do
     qsTabDyn <- fst <$> quickSignTabs never
     dyn_ $ ffor qsTabDyn $ \case
-      QuickSignTab_Summary -> summarizeTransactions payloads quickSignSummary
+      QuickSignTab_Summary -> summarizeTransactions payloads $ Map.keys cwKeysets
       QuickSignTab_AllTransactions -> quickSignTransactionDetails payloads
     pure ()
   -- TODO: Add a failure mode based on initial parse (reject multi-network, possible others)
@@ -207,6 +206,7 @@ quickSignModal ideL writeSigningResponse payloads _onCloseExternal = do
     pure $ bimap (const "Error signing command") QuickSignResponse $ sequence userSigs
   let noResponseEv = ffor (leftmost [reject, onClose]) $ const $ Left "QuickSign response rejected"
   finished <- writeSigningResponse $ leftmost [ noResponseEv, quickSignRes ]
+  -- TODO: BUG: Left/Failure on out of focus (but not when "X" is pushed)
   pure (mempty, finished)
    where
      getKeyPairsFromStore keyStore =
@@ -218,9 +218,10 @@ quickSignModal ideL writeSigningResponse payloads _onCloseExternal = do
 summarizeTransactions
   :: MonadWidget t m
   => [Payload PublicMeta Text]
-  -> QuickSignSummary
+  -> [ PublicKey ]
   -> m ()
-summarizeTransactions _payloads summary = do
+summarizeTransactions payloads cwKeys = do
+  let summary = generateQuickSignSummary payloads cwKeys
   let amount = _quickSignSummary_totalKDA summary
       maxGasCost = _quickSignSummary_gasSubTotal summary
   divClass "amount" $ text $ "Amount: " <> tshow amount <> " KDA"
@@ -229,9 +230,9 @@ summarizeTransactions _payloads summary = do
     [chain] -> text $ "Chain: " <>  tshow  chain
     chains -> text $ "Transactions conducted on chains: " <> tshow chains
   divClass "caps" $ do
-    el "div" $ text $ "Extra Caps: "
-    -- el "ul" $ do
-    --   forM_
+    el "div" $ text $ "Extra Caps: " <> "Not currently supported"
+  divClass "rejected-txns" $ do
+    text $ "Number of requests that cannot be signed for: " <> tshow (length payloads - _quickSignSummary_requestsCanSign summary)
   pure ()
 
 -- | Details page for quicksign transactions
@@ -242,7 +243,7 @@ quickSignTransactionDetails payloads = do
     divClass "payload__accordion-header" $ text ""
     divClass "payload__index-header" $ text "Request Number"
     divClass "payload__signer-header" $ text "Signer"
-  mapM_ txRow $ zip payloads [2..]
+  mapM_ txRow $ zip payloads [1..]
   where
     txRow (p, i) = do
       divClass "group" $ do
@@ -273,12 +274,19 @@ singleTransactionDetails p = do
          divClass "group" $ text $ _networkId n
 
 ----------------------------------------------------------------------------
+-- | TODO:
+--   - Taking out network, which should just fail on an initial parse
+--   - Making certain factors Dynamics so that the user can add sigs/priv keys and update the
+--     summary
+--   - Deriving requests_ignored instead of making it a first-class field
+--
 data QuickSignSummary = QuickSignSummary
   { _quickSignSummary_activeOwnedKeys :: Set Pact.PublicKey -- Keys CW can automatically sign with
   , _quickSignSummary_unOwnedKeys :: Set Pact.PublicKey  -- Keys that aren't controlled by cw, but can still be signed with
   , _quickSignSummary_totalKDA :: Decimal
   , _quickSignSummary_gasSubTotal :: Decimal
   , _quickSignSummary_chainsSigned :: Set ChainId
+  , _quickSignSummary_requestsCanSign :: Int
   , _quickSignSummary_network :: [ NetworkId ]
   } deriving (Show, Eq)
 
@@ -291,6 +299,7 @@ instance Semigroup QuickSignSummary where
     , _quickSignSummary_totalKDA = _quickSignSummary_totalKDA  a + _quickSignSummary_totalKDA  b
     , _quickSignSummary_gasSubTotal = _quickSignSummary_gasSubTotal  a + _quickSignSummary_gasSubTotal b
     , _quickSignSummary_chainsSigned = _quickSignSummary_chainsSigned a <> _quickSignSummary_chainsSigned b
+    , _quickSignSummary_requestsCanSign = _quickSignSummary_requestsCanSign a + _quickSignSummary_requestsCanSign b
     , _quickSignSummary_network = _quickSignSummary_network a <> _quickSignSummary_network b
     }
 instance Monoid QuickSignSummary where
@@ -298,12 +307,17 @@ instance Monoid QuickSignSummary where
   mempty = def
 
 instance Default QuickSignSummary where
-  def = QuickSignSummary mempty mempty 0 0 mempty [ NetworkId ""]
+  def = QuickSignSummary mempty mempty 0 0 mempty 0 [ NetworkId ""]
 
 -- | Folds over the all payloads and produces a summary of the "important" data
 generateQuickSignSummary :: [Payload PublicMeta Text] -> [PublicKey] -> QuickSignSummary
-generateQuickSignSummary payloads keys = fold $ join $ ffor payloads $ \p ->
-  ffor (signers p) $ \(pk, capList) ->
+generateQuickSignSummary payloads controlledKeys = fold $ join $ ffor payloads $ \p ->
+  let
+    signers = catMaybes $ ffor (p^.pSigners) $ \s ->
+      case Set.member (signerPublicKey s) pubKeySet of
+        True -> Just (pactPubKeyFromSigner s, s^.siCapList)
+        False -> Nothing
+  in ffor signers $ \(pk, capList) ->
     let coinCap = parseCoinTransferCap capList
         coinCapAmount = fromMaybe 0 $ fmap _fungibleTransferCap_amount coinCap
         networkId' = fromMaybe (NetworkId "Unknown Netork") $ p^.pNetworkId
@@ -317,16 +331,12 @@ generateQuickSignSummary payloads keys = fold $ join $ ffor payloads $ \p ->
       , _quickSignSummary_totalKDA = coinCapAmount
       , _quickSignSummary_gasSubTotal = maxGasCost
       , _quickSignSummary_chainsSigned = Set.singleton chain
+      , _quickSignSummary_requestsCanSign = 1
       , _quickSignSummary_network = [networkId']
       }
   where
-    pubKeySet = Set.fromList keys
+    pubKeySet = Set.fromList controlledKeys
     pactPubKeyFromSigner = Pact.PublicKey . T.encodeUtf8 . view siPubKey
-    -- signers :: Payload PublicMeta ParsedCode -> [ (Pact.PublicKey, [SigCapability])]
-    signers p = catMaybes $ ffor (p^.pSigners) $ \s ->
-      case Set.member (signerPublicKey s) pubKeySet of
-        True -> Just (pactPubKeyFromSigner s, s^.siCapList)
-        False -> Nothing
 
 ---------------------------------------------------------------------------------
 
