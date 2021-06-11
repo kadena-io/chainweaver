@@ -375,6 +375,7 @@ test_v0ToV2Upgrade = testCaseSteps "V0 to V2 Upgrade" $ \step -> do
   where
     path = "tests" </> "Frontend" </> "VersionedStoreSpec.files" </> "V0"
 
+-- for JM
 fail_test_v0ToV2Upgrade :: FailStorageState -> TestTree
 fail_test_v0ToV2Upgrade fstate = testCaseSteps "(failing) V0 to V2 upgrade" $ \step -> do
 
@@ -447,6 +448,8 @@ fail_test_v0ToV2Upgrade fstate = testCaseSteps "(failing) V0 to V2 upgrade" $ \s
   where
     path = "tests" </> "Frontend" </> "VersionedStoreSpec.files" </> "V0"
 
+
+-- for JM
 fail_test_v1ToV2Upgrade :: FailStorageState -> TestTree
 fail_test_v1ToV2Upgrade fstate = testCaseSteps "(failing) V1 to V2 upgrade" $ \step -> do
 

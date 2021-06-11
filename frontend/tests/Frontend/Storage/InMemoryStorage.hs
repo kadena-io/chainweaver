@@ -87,12 +87,14 @@ newInMemoryStorage = do
   sessionRef <- newIORef (Map.empty :: Map Text Text)
   pure (localRef, sessionRef)
 
+-- for JM
 data FailStorageState =
   FailOnKeyWrite Text Bool
   | FailOnSettingVersion Bool
   | NoFailure
 
 
+-- for JM
 instance Show FailStorageState where
   show = \case
     FailOnKeyWrite text before ->
@@ -105,6 +107,7 @@ instance Show FailStorageState where
       else "Failing just after setting version"
     NoFailure -> "Not exercising failure state"
 
+-- for JM
 wrapFail :: MonadIO m => Bool -> m a -> m a
 wrapFail False action = do
   liftIO (die "") -- there is surely a better way to do this
@@ -142,6 +145,7 @@ inMemoryStorageFromTestData p _ ver dirPath failure = do
   pure ims
   where
 
+-- for JM
     mockRestoreLocalStorageDump p dump ver =
       case failure of
         NoFailure -> do
