@@ -153,32 +153,37 @@ fromMultiSet = ($ []) . Map.foldrWithKey (\k i -> (.) (dlrep k i)) id
       | n == 0 = id
       | otherwise = (v:) . dlrep v (n - 1)
 
-data Cheese a b = That b | These a b
+-- It is equivalent to "These () a" except that we take out the
+-- "This" constructor. With it gone, we still get the same applicative
+-- operations from "These" (sans "This") but we don't have to account for
+-- the "This" constructor in situations where we know it is impossible to
+-- produce it. This is also morally equivalent to Either () b with a
+-- different applicative instance
+data Deez b = Dis b | Dat b
 
-instance Functor (Cheese a) where
-  fmap f (That b) = That (f b)
-  fmap f (These a b) = These a (f b)
+instance Functor Deez where
+  fmap f (Dis b) = Dis (f b)
+  fmap f (Dat b) = Dat (f b)
 
-instance (Semigroup a) => Applicative (Cheese a) where
-  pure = That
-  That f <*> That x = That (f x)
-  That f <*> These b x = These b (f x)
-  These a f <*> That x = These a (f x)
-  These a f <*> These b x = These (a <> b) (f x)
+instance Applicative Deez where
+  pure = Dis
+  Dis f <*> Dis x = Dis (f x)
+  Dis f <*> Dat x = Dat (f x)
+  Dat f <*> Dis x = Dat (f x)
+  Dat f <*> Dat x = Dat (f x)
 
 convertNodeRefs :: Map NetworkName [NodeRef] -> Map NetworkName [NodeRef]
 convertNodeRefs = fmap migrate
   where
     migrate = replaceRefsWith "api.chainweb.com" mainnetNodeRefs . replaceRefsWith "api.testnet.chainweb.com" testnetNodeRefs
-      where
-        replaceRefsWith ref baseRefs refs =
-          refs
-            & on (Map.mergeA Map.dropMissing Map.preserveMissing (Map.zipWithMaybeAMatched (\_ _ _ -> These () Nothing))) toMultiSet baseRefs
-            & \case
-                That m -> m
-                These () m -> addRef ref m -- if we hit this case, there were matching keys
-            & fromMultiSet
-        addRef (unsafeParseNodeRef -> ref) = Map.insert ref 1
+    replaceRefsWith ref baseRefs refs =
+      refs
+        & on (Map.mergeA Map.dropMissing Map.preserveMissing (Map.zipWithMaybeAMatched (\_ _ _ -> Dat Nothing))) toMultiSet baseRefs
+        & \case
+            Dis m -> m
+            Dat m -> addRef ref m -- if we hit this case, there were matching keys
+        & fromMultiSet
+    addRef (unsafeParseNodeRef -> ref) = Map.insert ref 1
     testnetNodeRefs = unsafeParseNodeRef <$>
       [ "us1.testnet.chainweb.com"
       , "us2.testnet.chainweb.com"
