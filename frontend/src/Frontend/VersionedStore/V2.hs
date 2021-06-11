@@ -20,7 +20,6 @@ import qualified Data.Map as Map
 import qualified Data.Map.Merge.Lazy as Map
 import Data.Maybe (catMaybes)
 import Data.Text (Text)
-import Data.These
 import Text.Printf (printf)
 
 import Common.Foundation
@@ -154,6 +153,19 @@ fromMultiSet = ($ []) . Map.foldrWithKey (\k i -> (.) (dlrep k i)) id
       | n == 0 = id
       | otherwise = (v:) . dlrep v (n - 1)
 
+data Cheese a b = That b | These a b
+
+instance Functor (Cheese a) where
+  fmap f (That b) = That (f b)
+  fmap f (These a b) = These a (f b)
+
+instance (Semigroup a) => Applicative (Cheese a) where
+  pure = That
+  That f <*> That x = That (f x)
+  That f <*> These b x = These b (f x)
+  These a f <*> That x = These a (f x)
+  These a f <*> These b x = These (a <> b) (f x)
+
 convertNodeRefs :: Map NetworkName [NodeRef] -> Map NetworkName [NodeRef]
 convertNodeRefs = fmap migrate
   where
@@ -161,11 +173,10 @@ convertNodeRefs = fmap migrate
       where
         replaceRefsWith ref baseRefs refs =
           refs
-            & on (Map.mergeA @(These ()) Map.dropMissing Map.preserveMissing (Map.zipWithMaybeAMatched (\_ _ _ -> pure Nothing))) toMultiSet baseRefs
+            & on (Map.mergeA Map.dropMissing Map.preserveMissing (Map.zipWithMaybeAMatched (\_ _ _ -> These () Nothing))) toMultiSet baseRefs
             & \case
-                This () -> error "IMPOSSIBLE"
-                That m -> if null m then addRef ref m else m
-                These () m -> addRef ref m
+                That m -> m
+                These () m -> addRef ref m -- if we hit this case, there were matching keys
             & fromMultiSet
         addRef (unsafeParseNodeRef -> ref) = Map.insert ref 1
     testnetNodeRefs = unsafeParseNodeRef <$>

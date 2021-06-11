@@ -142,7 +142,7 @@ import           Frontend.Foundation
 import           Frontend.Messages
 import           Frontend.Network.NodeInfo
 import           Frontend.Storage
-import           Frontend.VersionedStore
+import           Frontend.VersionedStore hiding (Cheese(..))
 import           Frontend.Log
 
 
