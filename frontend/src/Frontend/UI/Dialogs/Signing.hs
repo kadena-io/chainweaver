@@ -18,11 +18,13 @@ module Frontend.UI.Dialogs.Signing
   , QuickSignSummary(..)
   ) where
 
+import Control.Arrow ((&&&))
 import Control.Lens
 import Control.Monad ((<=<))
 import Data.Aeson
 import qualified Data.ByteString.Lazy as BSL
 import Data.Either
+import Data.Map.Strict (Map)
 import qualified Data.Map.Strict as Map
 import qualified Data.IntMap as IMap
 import Data.Text (Text)
@@ -145,131 +147,80 @@ uiQuickSign
   -> Event t ()
   -> m (mConf, Event t ())
 uiQuickSign ideL writeSigningResponse qsr onCloseExternal = do
-  case partitionEithers $ map parsePactPayload $ _quickSignRequest_commands qsr of
+  case partitionEithers $ map (eitherDecodeStrict . encodeUtf8) $ _quickSignRequest_commands qsr of
     ([], payloads) -> quickSignModal ideL writeSigningResponse payloads onCloseExternal
     (es, _) -> do
       pb <- getPostBuild
       let res = Left $ "QuickSign request contained invalid commands:\n" <> T.unlines (map T.pack es)
       finished <- writeSigningResponse (res <$ pb)
       pure (mempty, finished)
-  where
-    -- parsePactPayload :: Text -> Either String (Payload PublicMeta ParsedCode)
-    -- parsePactPayload t = traverse parsePact =<< eitherDecodeStrict (encodeUtf8 t)
-    parsePactPayload t = eitherDecodeStrict (encodeUtf8 t)
 
--- | Folds over the all payloads and produces a summary of the "important" data
-generateQuickSignSummary :: [Payload PublicMeta Text] -> [Pact.PublicKey] -> QuickSignSummary
-generateQuickSignSummary payloads keys = fold $ join $ ffor payloads $ \p ->
-  ffor (signers p) $ \(pk, capList) ->
-    let coinCap = parseCoinTransferCap capList
-        coinCapAmount = fromMaybe 0 $ fmap _fungibleTransferCap_amount coinCap
-        networkId' = fromMaybe (NetworkId "Unknown Netork") $ p^.pNetworkId
-        chain = p^.pMeta.pmChainId
-        GasLimit lim = p^.pMeta.pmGasLimit
-        GasPrice (ParsedDecimal price) = p^.pMeta.pmGasPrice
-        maxGasCost = fromIntegral lim * price
-    in QuickSignSummary
-      { _quickSignSummary_activeOwnedKeys = Set.singleton pk
-      , _quickSignSummary_unOwnedKeys = mempty
-      , _quickSignSummary_totalKDA = coinCapAmount
-      , _quickSignSummary_gasSubTotal = maxGasCost
-      , _quickSignSummary_chainsSigned = Set.singleton chain
-      , _quickSignSummary_network = [networkId']
-      }
+-- |Matches ownedKeys against signers required by pact cmd; indexes them by public key
+keysRequiredForPayload :: Map PublicKey (KeyPair key) -> Payload PublicMeta a -> [(PublicKey, KeyPair key)]
+keysRequiredForPayload ownedKeys p = foldr foldRequiredKeys [] (p^.pSigners)
   where
-    pubKeySet = Set.fromList keys
-    pactPubKeyFromSigner = Pact.PublicKey . T.encodeUtf8 . view siPubKey
-    -- signers :: Payload PublicMeta ParsedCode -> [ (Pact.PublicKey, [SigCapability])]
-    signers p = catMaybes $ ffor (p^.pSigners) $ \s ->
-      case Set.member (pactPubKeyFromSigner s) pubKeySet of
-        True -> Just (pactPubKeyFromSigner s, s^.siCapList)
-        False -> Nothing
+    foldRequiredKeys payloadKey acc = let key = signerPublicKey payloadKey in
+      maybe acc (\kp -> (key, kp):acc) $ Map.lookup key ownedKeys
+
+signerPublicKey :: Signer -> PublicKey
+signerPublicKey = fromPactPublicKey . Pact.PublicKey . T.encodeUtf8 . view siPubKey
 
 quickSignModal
   :: forall key t m mConf model
   . ( MonadWidget t m
     , HasUISigningModelCfg mConf key t
     , HasCrypto key (Performable m)
-    , HasWallet model key t -- So we can determine which signing-reqs are for our keys
+    , HasWallet model key t
     , HasTransactionLogger m
     )
-  =>
-  -- ModalIde m key t
-  model ->
-  (Event t (Either Text QuickSignResponse) -> m (Event t ()))
+  => model
+  -> (Event t (Either Text QuickSignResponse) -> m (Event t ()))
   -> [Payload PublicMeta Text]
-  -- -> [Payload PublicMeta ParsedCode]
   -> Event t ()
   -> m (mConf, Event t ())
 quickSignModal ideL writeSigningResponse payloads _onCloseExternal = do
-  cwKeysets <- sample $ current $ ffor (ideL ^. wallet.wallet_keys) $ \keyStore->
-     _key_pair <$> IMap.elems keyStore
-  let kpToPactPubkey = toPactPublicKey . _keyPair_publicKey
-      kpIndexedByPubkey = Map.fromList $ ffor cwKeysets $ \ks-> (kpToPactPubkey ks, ks)
+  -- key handling
+  cwKeysets :: Map PublicKey (KeyPair key) <- sample $ current $
+    fmap getKeyPairsFromStore $ ideL^.wallet.wallet_keys
+  let quickSignSummary = generateQuickSignSummary payloads $ Map.keys cwKeysets
 
-      -- filters out keysets we don't control, and maps the ones we do to the full keypair
-      cmdKeyToPubKey = Pact.PublicKey . T.encodeUtf8 . view siPubKey
-      f payloadKey acc = case Map.lookup (cmdKeyToPubKey payloadKey) kpIndexedByPubkey of
-        Nothing -> acc
-        Just keypair -> (payloadKey^.siPubKey, keypair):acc
-      keysForPayload p = foldr f [] (p^.pSigners)
-      readyForSigs :: [(Payload PublicMeta Text, [(Text, KeyPair key)])]
-      readyForSigs = fmap (\p -> (p, keysForPayload p)) payloads
-
+  -- Modal events/ui
   onClose <- modalHeader $ text "Quick Signing Request"
   modalMain $ do
-    let quickSignSummary = generateQuickSignSummary payloads $ fmap kpToPactPubkey cwKeysets
     qsTabDyn <- fst <$> quickSignTabs never
     dyn_ $ ffor qsTabDyn $ \case
-      QuickSignTab_Summary -> do
-        summarizeTransactions payloads quickSignSummary
-      QuickSignTab_AllTransactions -> do
-        dialogSectionHeading mempty "Signing Requests"
-        divClass "group payload__header" $ do
-          divClass "payload__accordion-header" $ text ""
-          divClass "payload__index-header" $ text "Request Number"
-          divClass "payload__signer-header" $ text "Signer"
-        mapM_ txRow $ zip payloads [2..]
-        pure ()
-
+      QuickSignTab_Summary -> summarizeTransactions payloads quickSignSummary
+      QuickSignTab_AllTransactions -> quickSignTransactionDetails payloads
+    pure ()
   -- TODO: Add a failure mode based on initial parse (reject multi-network, possible others)
   (reject, sign) <- modalFooter $ (,)
     <$> cancelButton def "Reject"
     <*> confirmButton def "Sign Transaction"
 
+  -- QuickSignResponse processing
+  let prepareDataForSignatures :: [(Payload PublicMeta Text, [(PublicKey, KeyPair key)])]
+      prepareDataForSignatures = fmap (id &&& (keysRequiredForPayload cwKeysets)) payloads
   quickSignRes <- performEvent $ ffor sign $ \_-> do
-    userSigs <- forM readyForSigs $ \(payload, keyPairList) ->
+    userSigs <- forM prepareDataForSignatures $ \(payload, keyPairList) ->
       buildSigDataWithPayload payload $ snd <$> keyPairList
     -- TODO - more helpful error msg
     pure $ bimap (const "Error signing command") QuickSignResponse $ sequence userSigs
-
   let noResponseEv = ffor (leftmost [reject, onClose]) $ const $ Left "QuickSign response rejected"
   finished <- writeSigningResponse $ leftmost [ noResponseEv, quickSignRes ]
   pure (mempty, finished)
-
    where
-     txRow (p, i) = do
-       divClass "group" $ do
-         visible <- divClass "payload__row" $ do
-           let accordionCell o = (if o then "" else "accordion-collapsed ") <> "payload__accordion "
-           rec
-             clk <- elDynClass "div" (accordionCell <$> visible') $ accordionButton def
-             visible' <- toggle False clk
-           divClass "payload__tx-index" $ text $ tshow i <> "."
-           divClass "payload__signer" $ text $ tshow $ _siPubKey $ head $ _pSigners p
-           pure visible'
-         elDynAttr "div" (ffor visible $ bool ("hidden"=:mempty) mempty)$ singleTransactionDetails p
+     getKeyPairsFromStore keyStore =
+       let keysets = IMap.elems keyStore
+           toIndexablePair = (_keyPair_publicKey &&& id) . _key_pair
+       in Map.fromList $ fmap toIndexablePair keysets
 
-
+-- |Summary view for quicksign ui
 summarizeTransactions
   :: MonadWidget t m
   => [Payload PublicMeta Text]
-  -- => [Payload PublicMeta ParsedCode]
   -> QuickSignSummary
   -> m ()
 summarizeTransactions _payloads summary = do
-  -- text $ tshow keys
-  -- singleTransactionDetails $ head $ tail payloads
   let amount = _quickSignSummary_totalKDA summary
       maxGasCost = _quickSignSummary_gasSubTotal summary
   divClass "amount" $ text $ "Amount: " <> tshow amount <> " KDA"
@@ -283,41 +234,27 @@ summarizeTransactions _payloads summary = do
     --   forM_
   pure ()
 
--- data QualifiedName = QualifiedName
---   { _qnQual :: ModuleName
---   , _qnName :: Text
---   , _qnInfo :: Info
---   } deriving (Generic,Show)
-
-
---  { _pPayload :: !(PactRPC c)
---  , _pNonce :: !Text
---  , _pMeta :: !m
---  , _pSigners :: ![Signer]
---  , _pNetworkId :: !(Maybe NetworkId)
-
- -- { _siScheme :: !(Maybe PPKScheme)
- -- -- ^ PPKScheme, which is defaulted to 'defPPKScheme' if not present
- -- , _siPubKey :: !Text
- -- -- ^ pub key value
- -- , _siAddress :: !(Maybe Text)
- -- -- ^ optional "address", for different pub key formats like ETH
- -- , _siCapList :: [SigCapability]
- -- -- ^ clist for designating signature to specific caps
- -- }
- --
---  { _pmChainId :: !ChainId
---    -- ^ platform-specific chain identifier, e.g. "0"
---  , _pmSender :: !Text
---    -- ^ sender gas account key
---  , _pmGasLimit :: !GasLimit
---    -- ^ gas limit (maximum acceptable gas units for tx)
---  , _pmGasPrice :: !GasPrice
---    -- ^ per-unit gas price
---  , _pmTTL :: !TTLSeconds
---    -- ^ TTL in seconds
---  , _pmCreationTime :: !TxCreationTime
---    -- ^ Creation time in seconds since UNIX epoch
+-- | Details page for quicksign transactions
+quickSignTransactionDetails :: MonadWidget t m => [ Payload PublicMeta Text ] -> m ()
+quickSignTransactionDetails payloads = do
+  dialogSectionHeading mempty "Signing Requests"
+  divClass "group payload__header" $ do
+    divClass "payload__accordion-header" $ text ""
+    divClass "payload__index-header" $ text "Request Number"
+    divClass "payload__signer-header" $ text "Signer"
+  mapM_ txRow $ zip payloads [2..]
+  where
+    txRow (p, i) = do
+      divClass "group" $ do
+        visible <- divClass "payload__row" $ do
+          let accordionCell o = (if o then "" else "accordion-collapsed ") <> "payload__accordion "
+          rec
+            clk <- elDynClass "div" (accordionCell <$> visible') $ accordionButton def
+            visible' <- toggle False clk
+          divClass "payload__tx-index" $ text $ tshow i <> "."
+          divClass "payload__signer" $ text $ tshow $ _siPubKey $ head $ _pSigners p
+          pure visible'
+        elDynAttr "div" (ffor visible $ bool ("hidden"=:mempty) mempty)$ singleTransactionDetails p
 
 singleTransactionDetails
   :: MonadWidget t m
@@ -362,6 +299,34 @@ instance Monoid QuickSignSummary where
 
 instance Default QuickSignSummary where
   def = QuickSignSummary mempty mempty 0 0 mempty [ NetworkId ""]
+
+-- | Folds over the all payloads and produces a summary of the "important" data
+generateQuickSignSummary :: [Payload PublicMeta Text] -> [PublicKey] -> QuickSignSummary
+generateQuickSignSummary payloads keys = fold $ join $ ffor payloads $ \p ->
+  ffor (signers p) $ \(pk, capList) ->
+    let coinCap = parseCoinTransferCap capList
+        coinCapAmount = fromMaybe 0 $ fmap _fungibleTransferCap_amount coinCap
+        networkId' = fromMaybe (NetworkId "Unknown Netork") $ p^.pNetworkId
+        chain = p^.pMeta.pmChainId
+        GasLimit lim = p^.pMeta.pmGasLimit
+        GasPrice (ParsedDecimal price) = p^.pMeta.pmGasPrice
+        maxGasCost = fromIntegral lim * price
+    in QuickSignSummary
+      { _quickSignSummary_activeOwnedKeys = Set.singleton pk
+      , _quickSignSummary_unOwnedKeys = mempty
+      , _quickSignSummary_totalKDA = coinCapAmount
+      , _quickSignSummary_gasSubTotal = maxGasCost
+      , _quickSignSummary_chainsSigned = Set.singleton chain
+      , _quickSignSummary_network = [networkId']
+      }
+  where
+    pubKeySet = Set.fromList keys
+    pactPubKeyFromSigner = Pact.PublicKey . T.encodeUtf8 . view siPubKey
+    -- signers :: Payload PublicMeta ParsedCode -> [ (Pact.PublicKey, [SigCapability])]
+    signers p = catMaybes $ ffor (p^.pSigners) $ \s ->
+      case Set.member (signerPublicKey s) pubKeySet of
+        True -> Just (pactPubKeyFromSigner s, s^.siCapList)
+        False -> Nothing
 
 ---------------------------------------------------------------------------------
 
