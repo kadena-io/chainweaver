@@ -1,13 +1,13 @@
-{-# LANGUAGE ConstraintKinds #-}
-{-# LANGUAGE DataKinds #-}
-{-# LANGUAGE ExtendedDefaultRules #-}
-{-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE FlexibleInstances #-}
-{-# LANGUAGE KindSignatures #-}
+{-# LANGUAGE ConstraintKinds       #-}
+{-# LANGUAGE DataKinds             #-}
+{-# LANGUAGE ExtendedDefaultRules  #-}
+{-# LANGUAGE FlexibleContexts      #-}
+{-# LANGUAGE FlexibleInstances     #-}
+{-# LANGUAGE KindSignatures        #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
-{-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE RecursiveDo #-}
-{-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE OverloadedStrings     #-}
+{-# LANGUAGE RecursiveDo           #-}
+{-# LANGUAGE ScopedTypeVariables   #-}
 
 -- | Dialog presented for generating responses to signing API requests.
 -- Copyright   :  (C) 2020 Kadena
@@ -18,54 +18,53 @@ module Frontend.UI.Dialogs.Signing
   , QuickSignSummary(..)
   ) where
 
-import Control.Arrow ((&&&))
-import Control.Lens
-import Control.Monad ((<=<))
-import Data.Aeson
-import qualified Data.ByteString.Lazy as BSL
-import Data.Either
-import Data.Map.Strict (Map)
-import qualified Data.Map.Strict as Map
-import qualified Data.IntMap as IMap
-import Data.Text (Text)
-import qualified Data.Text as T
-import Data.Text.Encoding
-import Kadena.SigningApi
-import Pact.Parse
-import Pact.Types.Pretty
-import Pact.Types.ChainId
-import Pact.Types.ChainMeta
-import Pact.Types.Command
-import Pact.Types.Exp
-import Pact.Types.Names
-import Pact.Types.PactValue
-import qualified Pact.Types.Term as Pact (PublicKey(..))
-import Pact.Types.Capability
-import Pact.Types.Runtime (GasPrice(..), GasLimit(..))
-import Pact.Types.RPC
-import Reflex
-import Reflex.Dom hiding (Value)
+import           Control.Arrow                  ((&&&))
+import           Control.Lens
+import           Control.Monad                  ((<=<))
+import           Data.Aeson
+import qualified Data.ByteString.Lazy           as BSL
+import           Data.Either
+import qualified Data.IntMap                    as IMap
+import           Data.Map.Strict                (Map)
+import qualified Data.Map.Strict                as Map
+import           Data.Text                      (Text)
+import qualified Data.Text                      as T
+import           Data.Text.Encoding
+import           Kadena.SigningApi
+import           Pact.Parse
+import           Pact.Types.Capability
+import           Pact.Types.ChainId
+import           Pact.Types.ChainMeta
+import           Pact.Types.Command
+import           Pact.Types.Exp
+import           Pact.Types.Names
+import           Pact.Types.PactValue
+import           Pact.Types.Pretty
+import           Pact.Types.RPC
+import           Pact.Types.Runtime             (GasLimit (..), GasPrice (..))
+import qualified Pact.Types.Term                as Pact (PublicKey (..))
+import           Reflex
+import           Reflex.Dom                     hiding (Value)
 
-import Control.Applicative ((<|>))
-import Control.Monad (join)
-import Data.Decimal (Decimal)
-import Data.Default
-import Data.Set (Set)
-import qualified Data.Set as Set
-import qualified Data.Text.Encoding as T (encodeUtf8)
-import Control.Monad (forM)
+import           Control.Applicative            ((<|>))
+import           Control.Monad                  (forM, join)
+import           Data.Decimal                   (Decimal)
+import           Data.Default
+import           Data.Set                       (Set)
+import qualified Data.Set                       as Set
+import qualified Data.Text.Encoding             as T (encodeUtf8)
 
-import Frontend.Crypto.Class
-import Frontend.Crypto.Ed25519 (fromPactPublicKey)
-import Frontend.Foundation hiding (Arg)
-import Frontend.JsonData
-import Frontend.Network
-import Frontend.UI.DeploymentSettings
-import Frontend.UI.Modal.Impl
-import Frontend.UI.TabBar
-import Frontend.UI.Widgets
-import Frontend.UI.Widgets.Helpers
-import Frontend.Wallet
+import           Frontend.Crypto.Class
+import           Frontend.Crypto.Ed25519        (fromPactPublicKey)
+import           Frontend.Foundation            hiding (Arg)
+import           Frontend.JsonData
+import           Frontend.Network
+import           Frontend.UI.DeploymentSettings
+import           Frontend.UI.Modal.Impl
+import           Frontend.UI.TabBar
+import           Frontend.UI.Widgets
+import           Frontend.UI.Widgets.Helpers
+import           Frontend.Wallet
 
 type HasUISigningModelCfg mConf key t =
   ( Monoid mConf, Flattenable mConf t, HasWalletCfg mConf key t
@@ -100,7 +99,7 @@ uiSigning ideL writeSigningResponse signingRequest onCloseExternal = do
     , _deploymentSettingsConfig_code = pure $ _signingRequest_code signingRequest
     , _deploymentSettingsConfig_sender = case _signingRequest_sender signingRequest of
         Just sender -> \_ _ _ -> uiAccountFixed sender
-        Nothing -> uiAccountDropdown def (pure $ \_ _ -> True) (pure id)
+        Nothing     -> uiAccountDropdown def (pure $ \_ _ -> True) (pure id)
     , _deploymentSettingsConfig_data = _signingRequest_data signingRequest
     , _deploymentSettingsConfig_nonce = _signingRequest_nonce signingRequest
     , _deploymentSettingsConfig_ttl = _signingRequest_ttl signingRequest
@@ -228,7 +227,7 @@ summarizeTransactions payloads cwKeys = do
   divClass "gas" $ text $ "Max Gas Cost: " <> tshow maxGasCost <> " KDA"
   divClass "chain" $ case Set.elems (_quickSignSummary_chainsSigned summary) of
     [chain] -> text $ "Chain: " <>  tshow  chain
-    chains -> text $ "Transactions conducted on chains: " <> tshow chains
+    chains  -> text $ "Transactions conducted on chains: " <> tshow chains
   divClass "caps" $ do
     el "div" $ text $ "Extra Caps: " <> "Not currently supported"
   divClass "rejected-txns" $ do
@@ -282,12 +281,12 @@ singleTransactionDetails p = do
 --
 data QuickSignSummary = QuickSignSummary
   { _quickSignSummary_activeOwnedKeys :: Set Pact.PublicKey -- Keys CW can automatically sign with
-  , _quickSignSummary_unOwnedKeys :: Set Pact.PublicKey  -- Keys that aren't controlled by cw, but can still be signed with
-  , _quickSignSummary_totalKDA :: Decimal
-  , _quickSignSummary_gasSubTotal :: Decimal
-  , _quickSignSummary_chainsSigned :: Set ChainId
+  , _quickSignSummary_unOwnedKeys     :: Set Pact.PublicKey  -- Keys that aren't controlled by cw, but can still be signed with
+  , _quickSignSummary_totalKDA        :: Decimal
+  , _quickSignSummary_gasSubTotal     :: Decimal
+  , _quickSignSummary_chainsSigned    :: Set ChainId
   , _quickSignSummary_requestsCanSign :: Int
-  , _quickSignSummary_network :: [ NetworkId ]
+  , _quickSignSummary_network         :: [ NetworkId ]
   } deriving (Show, Eq)
 
 --TODO: Is a semigroup with (+) on decimals appropriate?
@@ -315,7 +314,7 @@ generateQuickSignSummary payloads controlledKeys = fold $ join $ ffor payloads $
   let
     signers = catMaybes $ ffor (p^.pSigners) $ \s ->
       case Set.member (signerPublicKey s) pubKeySet of
-        True -> Just (pactPubKeyFromSigner s, s^.siCapList)
+        True  -> Just (pactPubKeyFromSigner s, s^.siCapList)
         False -> Nothing
   in ffor signers $ \(pk, capList) ->
     let coinCap = parseCoinTransferCap capList
@@ -341,10 +340,10 @@ generateQuickSignSummary payloads controlledKeys = fold $ join $ ffor payloads $
 ---------------------------------------------------------------------------------
 
 data FungibleTransferCap = FungibleTransferCap
-  { _fungibleTransferCap_amount :: Decimal
-  , _fungibleTransferCap_sender :: Text
+  { _fungibleTransferCap_amount   :: Decimal
+  , _fungibleTransferCap_sender   :: Text
   , _fungibleTransferCap_receiver :: Text
-  , _fungibleTransferCap_name :: Text
+  , _fungibleTransferCap_name     :: Text
   } deriving (Show, Eq)
 
 -- | Extracts information from a fungible token's TRANSFER cap
@@ -439,7 +438,7 @@ data QuickSignTab
 
 displayQuickSignTab :: DomBuilder t m => QuickSignTab -> m ()
 displayQuickSignTab = text . \case
-  QuickSignTab_Summary -> "Summary"
+  QuickSignTab_Summary         -> "Summary"
   QuickSignTab_AllTransactions -> "Advanced"
 
 quickSignTabs
@@ -449,7 +448,7 @@ quickSignTabs
 quickSignTabs tabEv = do
   let f t0 g = case g t0 of
         Nothing -> (Just t0, Just ())
-        Just t -> (Just t, Nothing)
+        Just t  -> (Just t, Nothing)
   rec
     (curSelection, done) <- mapAccumMaybeDyn f QuickSignTab_Summary $ leftmost
       [ const . Just <$> onTabClick
