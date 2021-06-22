@@ -1,4 +1,4 @@
-# Chainweaver
+# Chainweaver 
 
 Kadena Chainweaver desktop wallet and web-based playground for the [Pact](https://pact-language.readthedocs.io/en/latest/) language, including support for deployments to backends (blockchains, test servers).
 
