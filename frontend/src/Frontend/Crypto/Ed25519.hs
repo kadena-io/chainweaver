@@ -1,3 +1,4 @@
+{-# LANGUAGE CPP #-}
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE ExtendedDefaultRules #-}
@@ -51,14 +52,63 @@ import qualified Data.ByteString             as BS
 import           Data.Text                   (Text)
 import qualified Data.Text.Encoding          as T
 import           GHC.Generics                (Generic)
-import           Language.Javascript.JSaddle (call, eval, fromJSValUnchecked,
-                                              js, valNull, MakeObject)
+import           Language.Javascript.JSaddle 
 
 import           Pact.Types.Util             (encodeBase64UrlUnpadded, decodeBase64UrlUnpadded)
+
+#ifdef ghcjs_HOST_OS
+import Data.JSVal.Promise
+#endif
 
 import Common.Wallet
 import Frontend.Foundation
 
+--------------------------------------------------------------------------
+#ifdef ghcjs_HOST_OS
+
+--TODO: Should we make this its own js library? to guarantee that script always exists?
+bsToBuffer :: ByteString -> JSM JSVal
+bsToBuffer bs = do
+  cardanoCryptoLib <- jsg @Text "lib"
+  buffer           <- cardanoCryptoLib ! ("Buffer" :: Text)
+  buffer ^. js1 @Text @[Word8] "from" (BS.unpack bs)
+
+-- handlePromise :: -> Maybe JSVal
+handlePromise :: JSVal -> JSM (Maybe JSVal)
+handlePromise rawProm = do
+  mProm <- fromJSValUnchecked rawProm
+  case mProm of
+    Nothing -> pure Nothing
+    Just promise -> do
+      prom <- liftIO $ await promise
+      case prom of
+        Left jsval -> pure Nothing
+        Right jsval -> pure $ Just jsval
+
+mnemonicToRootJS :: [ Text ] -> JSM (Maybe PrivateKey)
+mnemonicToRootJS mnemonics = do
+  --TODO: Make it hex?
+  --TODO: validate 12 words
+  let phrase = T.unwords mnemonics
+  cardanoCryptoLib <- jsg @Text "lib"
+  rawProm <- cardanoCryptoLib ^. js2 @Text @_ @Int "mnemonicToRootKeypair" phrase 3
+  mPrv <- handlePromise rawProm
+  case mPrv of
+    Nothing -> pure Nothing
+    Just prv -> (fmap . fmap) (PrivateKey . BS.pack) $ fromJSValUnchecked prv
+
+genKeyPairFromRoot :: PrivateKey -> Int -> JSM (PrivateKey, PublicKey)
+genKeyPairFromRoot (PrivateKey root) index = do
+  cardanoCryptoLib <- jsg @Text "lib"
+  rootBuf <- bsToBuffer root
+  derivePriv <- cardanoCryptoLib ^. js3 @Text @_ @Int @Int "derivePrivate" rootBuf (fromIntegral (0x80000000 .|. index)) 2
+  getPublic <- cardanoCryptoLib ^. js1 @Text "toKadenaPublic" derivePriv
+  prv <- fmap BS.pack $ fromJSValUnchecked derivePriv
+  pub <- fmap BS.pack $ fromJSValUnchecked getPublic
+  pure (PrivateKey prv, PublicKey pub)
+#endif
+
+--------------------------------------------------------------------------
 --
 -- | PrivateKey with a Pact compatible JSON representation.
 newtype PrivateKey = PrivateKey { unPrivateKey :: ByteString }

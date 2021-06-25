@@ -144,6 +144,7 @@ newHead routeText = do
   js "/static/js/ace/ace.js"
   prerender_ blank $ js "/static/js/ace/mode-pact.js"
   js (static @"js/nacl-fast.min-v1.0.0.js")
+  js (static @"js/cardano-crypto.js")
   (bowser, _) <- js' (static @"js/bowser.min.js")
   pure $ domEvent Load bowser
   where
