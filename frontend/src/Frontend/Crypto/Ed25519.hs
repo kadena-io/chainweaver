@@ -40,12 +40,14 @@ module Frontend.Crypto.Ed25519
   )
   where
 
+import           Control.Monad.Except        (MonadError, throwError)
 import           Control.Lens
 import           Control.Monad
 import           Control.Monad.Fail          (MonadFail)
 import           Control.Newtype.Generics    (Newtype (..))
 import           Data.Aeson                  hiding (Object)
-import           Control.Monad.Except        (MonadError, throwError)
+import           Data.Bits ((.|.))
+import           Data.Word
 import qualified Data.Text as T
 import           Data.ByteString             (ByteString)
 import qualified Data.ByteString             as BS
@@ -90,8 +92,8 @@ mnemonicToRootJS mnemonics = do
   --TODO: Make it hex?
   --TODO: validate 12 words
   let phrase = T.unwords mnemonics
-  cardanoCryptoLib <- jsg @Text "lib"
-  rawProm <- cardanoCryptoLib ^. js2 @Text @_ @Int "mnemonicToRootKeypair" phrase 3
+  cardanoCryptoLib <- jsg "lib"
+  rawProm <- cardanoCryptoLib ^. js2 @_ @_ @Int "mnemonicToRootKeypair" phrase 3
   mPrv <- handlePromise rawProm
   case mPrv of
     Nothing -> pure Nothing
@@ -99,10 +101,10 @@ mnemonicToRootJS mnemonics = do
 
 genKeyPairFromRoot :: PrivateKey -> Int -> JSM (PrivateKey, PublicKey)
 genKeyPairFromRoot (PrivateKey root) index = do
-  cardanoCryptoLib <- jsg @Text "lib"
+  cardanoCryptoLib <- jsg "lib"
   rootBuf <- bsToBuffer root
-  derivePriv <- cardanoCryptoLib ^. js3 @Text @_ @Int @Int "derivePrivate" rootBuf (fromIntegral (0x80000000 .|. index)) 2
-  getPublic <- cardanoCryptoLib ^. js1 @Text "toKadenaPublic" derivePriv
+  derivePriv <- cardanoCryptoLib ^. js3 @_ @_ @Int @Int "derivePrivate" rootBuf (fromIntegral (0x80000000 .|. index)) 2
+  getPublic <- cardanoCryptoLib ^. js1 "toKadenaPublic" derivePriv
   prv <- fmap BS.pack $ fromJSValUnchecked derivePriv
   pub <- fmap BS.pack $ fromJSValUnchecked getPublic
   pure (PrivateKey prv, PublicKey pub)
