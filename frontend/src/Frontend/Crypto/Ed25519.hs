@@ -71,9 +71,9 @@ import Frontend.Foundation
 --TODO: Should we make this its own js library? to guarantee that script always exists?
 bsToBuffer :: ByteString -> JSM JSVal
 bsToBuffer bs = do
-  cardanoCryptoLib <- jsg @Text "lib"
-  buffer           <- cardanoCryptoLib ! ("Buffer" :: Text)
-  buffer ^. js1 @Text @[Word8] "from" (BS.unpack bs)
+  cardanoCryptoLib <- jsg "lib"
+  buffer <- cardanoCryptoLib ! "Buffer"
+  buffer ^. js1 "from" (BS.unpack bs)
 
 -- handlePromise :: -> Maybe JSVal
 handlePromise :: JSVal -> JSM (Maybe JSVal)
