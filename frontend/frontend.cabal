@@ -16,6 +16,8 @@ library
   default-language: Haskell2010
   ghc-options: -O -fno-show-valid-hole-fits
   hs-source-dirs: src
+  -- js-sources: cardano-crypto-js/cardano-crypto.min.js
+  -- js-sources: cardano-crypto-js/cardano-crypto.js
 
   build-depends:
       Decimal
@@ -104,6 +106,10 @@ library
     , unordered-containers
     , vector
     , witherable
+
+  if impl(ghcjs)
+    build-depends:
+      ghcjs-promise
 
   if !impl(ghcjs)
     build-depends:

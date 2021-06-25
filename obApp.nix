@@ -122,6 +122,7 @@ in with obelisk;
         pact = haskellLib.dontCheck super.pact; # tests can timeout...
         system-locale = haskellLib.dontCheck super.system-locale; # tests fail on minor discrepancies on successfully parsed locale time formats.
         typed-process = haskellLib.dontCheck super.typed-process;
+        ghcjs-promise = haskellLib.doJailbreak (self.callHackage "ghcjs-promise" "0.1.0.3" {});
         pact-time = haskellLib.dontCheck (self.callHackageDirect {
           pkg = "pact-time";
           ver = "0.2.0.0";
