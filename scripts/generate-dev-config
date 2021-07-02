@@ -7,8 +7,7 @@ touch config/common/oauth/github/client-id
 # https://github.com/kadena-io/chainweaver#setting-up-production-mode-and-the-network-list
 if [ ! -f config/common/networks ]; then
    cat >config/common/networks <<EOF
-devnet: us1.tn1.chainweb.com us2.tn1.chainweb.com eu1.tn1.chainweb.com eu2.tn1.chainweb.com
-testnet: eu1.testnet.chainweb.com eu2.testnet.chainweb.com us1.testnet.chainweb.com us2.testnet.chainweb.com ap1.testnet.chainweb.com ap2.testnet.chainweb.com
+testnet: api.testnet.chainweb.com
 EOF
 fi;
 

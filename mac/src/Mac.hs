@@ -4,7 +4,6 @@ module Mac where
 
 import qualified Control.Concurrent.Async as Async
 import Control.Monad ((<=<), forever)
-import Control.Monad.Logger (LogLevel(LevelInfo), toLogStr)
 import Control.Exception (bracket)
 import Data.ByteString (ByteString)
 import Data.Default (Default(..))
@@ -21,6 +20,7 @@ import System.IO
 import qualified System.Process as Process
 
 import Backend.App (main', AppFFI(..))
+import Common.Logger (LogLevel(LevelInfo), toLogStr)
 import Frontend.AppCfg (FileType(..), fileTypeExtension)
 import Desktop.Syslog (sysloggedMain, logToSyslog)
 

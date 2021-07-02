@@ -538,7 +538,7 @@ runUnfinishedCrossChainTransfer logL netInfo keys fromChain toChain mtoGasPayer 
   es@(resultOk, resultErr, retry) <- case mtoGasPayer of
     Nothing -> do
       dialogSectionHeading mempty "Notice: Cannot finish cross-chain transfer"
-      divClass "group" $ text "No cross chain gas payer was specified"
+      divClass "group" $ text "No gas payer specified on destination chain"
       return (() <$ contResponse, never, never)
     Just toGasPayer -> do
       -- Get the proof

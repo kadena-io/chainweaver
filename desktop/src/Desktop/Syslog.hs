@@ -1,8 +1,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 module Desktop.Syslog where
 
-import Control.Monad.Logger (LogLevel (..), LogStr)
-import System.Log.FastLogger (fromLogStr)
+import Common.Logger (LogLevel (..), LogStr, fromLogStr)
 import qualified Data.Text as T
 import qualified Data.Text.Encoding as TE
 import Foreign.C.String (withCStringLen)
