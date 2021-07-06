@@ -19,8 +19,8 @@ import qualified GHCJS.DOM.HTMLInputElement as HTMLInput
 import qualified GHCJS.DOM.Types as Types
 import qualified GHCJS.DOM.File as JSFile
 import Reflex.Dom
--- import Pact.Server.ApiClient (runTransactionLoggerT, logTransactionStdout)
 import Pact.Server.ApiClient (HasTransactionLogger, runTransactionLoggerT, logTransactionStdout, askTransactionLogger)
+import Pact.Server.ApiClient (_transactionLogger_walletEvent, _transactionLogger_rotateLogFile)
 
 import Obelisk.Frontend
 import Obelisk.Route.Frontend
@@ -92,22 +92,6 @@ frontend = Frontend
             , _fileFFI_deliverFile = \_ -> pure never
             }
           printResponsesHandler = pure $ FRPHandler never $ performEvent . fmap (liftIO . print)
-
-      -- app blank fileFFI $ AppCfg
-      --   { _appCfg_gistEnabled = True
-      --   , _appCfg_loadEditor = loadEditorFromLocalStorage
-      --   , _appCfg_editorReadOnly = False
-      --   , _appCfg_signingHandler = printResponsesHandler
-      --   , _appCfg_keysEndpointHandler = printResponsesHandler
-      --   , _appCfg_accountsEndpointHandler = printResponsesHandler
-      --   , _appCfg_enabledSettings = EnabledSettings
-      --     { _enabledSettings_changePassword = Nothing
-      --     , _enabledSettings_exportWallet = Nothing
-      --     , _enabledSettings_transactionLog = False
-      --     }
-      --   , _appCfg_logMessage = defaultLogger
-      --   }
-
       bipWallet fileFFI $ \enabledSettings -> AppCfg
         { _appCfg_gistEnabled = False
         , _appCfg_loadEditor = loadEditorFromLocalStorage
@@ -146,6 +130,7 @@ bipWallet
   -> MkAppCfg t m
   -> RoutedT t (R FrontendRoute) m ()
 bipWallet fileFFI mkAppCfg = do
+  txLogger <- askTransactionLogger
   let
     runSetup0
       :: Maybe (Behavior t Crypto.XPrv)
@@ -157,7 +142,7 @@ bipWallet fileFFI mkAppCfg = do
         Right (x, Password p, newWallet) -> pure $ Just $ do
           setItemStorage localStorage BIPStorage_RootKey x
           when newWallet $ do
-            -- liftIO $ _transactionLogger_rotateLogFile txLogger
+            liftIO $ _transactionLogger_rotateLogFile txLogger
             removeItemStorage localStorage StoreFrontend_Wallet_Keys
             removeItemStorage localStorage StoreFrontend_Wallet_Accounts
           pure $ LockScreen_Unlocked ==> (x, p)
@@ -363,6 +348,7 @@ newHead routeText = do
   js "/static/js/ace/ace.js"
   prerender_ blank $ js "/static/js/ace/mode-pact.js"
   js (static @"js/nacl-fast.min-v1.0.0.js")
+  js (static @"js/kadena-crypto.js")
   (bowser, _) <- js' (static @"js/bowser.min.js")
   pure $ domEvent Load bowser
   where

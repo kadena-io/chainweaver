@@ -39,7 +39,7 @@ module Frontend.Crypto.Ed25519
   )
   where
 
-import           Control.Lens
+import           Control.Lens hiding ((#))
 import           Control.Monad
 import           Control.Monad.Fail          (MonadFail)
 import           Control.Newtype.Generics    (Newtype (..))
@@ -51,13 +51,17 @@ import qualified Data.ByteString             as BS
 import           Data.Text                   (Text)
 import qualified Data.Text.Encoding          as T
 import           GHC.Generics                (Generic)
-import           Language.Javascript.JSaddle (call, eval, fromJSValUnchecked,
-                                              js, valNull, MakeObject)
-
+import           Language.Javascript.JSaddle
 import           Pact.Types.Util             (encodeBase64UrlUnpadded, decodeBase64UrlUnpadded)
 
 import Common.Wallet
 import Frontend.Foundation
+
+import           GHCJS.Buffer                       (createFromArrayBuffer, freeze, toByteString)
+import           Language.Javascript.JSaddle
+import           Language.Javascript.JSaddle.Helper (mutableArrayBufferFromJSVal)
+import           Language.Javascript.JSaddle.Types  (ghcjsPure)
+import           Data.Bits ((.|.))
 
 --
 -- | PrivateKey with a Pact compatible JSON representation.
@@ -83,6 +87,77 @@ checkSig t =
   where
     len = T.length t
 
+------------------------------------------
+arrayBufToByteString :: JSVal -> JSM ByteString
+arrayBufToByteString jsBuf = do
+  mutArrBuf <- mutableArrayBufferFromJSVal jsBuf
+  mutBuf <- ghcjsPure $ createFromArrayBuffer mutArrBuf
+  arrBuf <- freeze mutBuf
+  ghcjsPure $ toByteString 0 Nothing arrBuf
+
+generateRoot :: Text -> JSM (Maybe ByteString)
+generateRoot phrase = do
+  let jsPhrase = toJSString phrase
+  lib <- jsg "lib"
+  res <- lib # "kadenaMnemonicToRootKeypair" $ [ jsPhrase ]
+  mJSArr <- fromJSVal res
+  case mJSArr of
+    Just buf -> Just <$> arrayBufToByteString buf
+    Nothing  -> pure Nothing
+
+-- TODO: Test empty bs, test various int values
+generateKeypair :: ByteString -> Int -> JSM (Maybe (ByteString, ByteString))
+generateKeypair root idx = do
+  rootBuf <- toJSVal $ BS.unpack root
+  let idx' = fromIntegral $ 0x80000000 .|. idx
+  idxJS <- toJSVal idx'
+  lib <- jsg "lib"
+  resRaw <- lib # "kadenaGenKeypair" $ [ rootBuf, idxJS ]
+  res <- fromJSVal resRaw
+  case res of
+    Nothing -> pure Nothing
+    Just (prvJS, pubJS) -> fmap Just $
+      (,)
+        <$> arrayBufToByteString prvJS
+        <*> arrayBufToByteString pubJS
+
+sign :: ByteString -> ByteString -> JSM (ByteString)
+sign msg prv = do
+  msgBuf <- toJSVal $ BS.unpack msg
+  prvBuf <- toJSVal $ BS.unpack prv
+  lib <- jsg "lib"
+  res <- lib # "kadenaSign" $ [ msgBuf, prvBuf]
+  arrayBufToByteString res
+
+verify :: ByteString -> ByteString -> ByteString -> JSM Bool
+verify msg pub sig = do
+  msgB <- toBuf msg
+  pubB <- toBuf pub
+  sigB <- toBuf sig
+  lib <- jsg "lib"
+  res <- lib # "kadenaVerify" $ [ msgB, pubB, sigB]
+  --TODO: All JSVals are a bool, so make sure this isn't an exception or somethign
+  valToBool res
+
+  where toBuf = toJSVal . BS.unpack
+
+genMnemonic :: MonadJSM m => m [Text]
+genMnemonic = liftJSM $ do
+  rawMnem <- eval "lib.kadenaGenMnemonic()"
+  fmap (T.words . fromJSString) $ fromJSValUnchecked rawMnem
+
+
+
+-- foreign import javascript unsafe "lib.kadenaGenKeypair($1, $2)"
+--   kadenaGenKeypair :: JSVal -> Int -> JSVal
+
+-- foreign import javascript unsafe "lib.kadenaGetPublic($1)"
+--   kadenaGetPublic :: JSVal -> JSVal
+
+-- foreign import javascript unsafe "lib.kadenaSign($1, $2)"
+--   kadenaSign :: JSVal -> JSVal -> JSVal
+
+------------------------------------------
 mkKeyPairFromJS :: MakeObject s => s -> JSM (PrivateKey, PublicKey)
 mkKeyPairFromJS jsPair = do
   privKey <- fromJSValUnchecked =<< jsPair ^. js "secretKey"
@@ -91,11 +166,17 @@ mkKeyPairFromJS jsPair = do
        , PublicKey . BS.pack $ pubKey
        )
 
--- | Generate a `PublicKey`, `PrivateKey` keypair.
+-- -- | Generate a `PublicKey`, `PrivateKey` keypair.
 genKeyPair :: MonadJSM m => m (PrivateKey, PublicKey)
 genKeyPair = liftJSM $ eval "nacl.sign.keyPair()" >>= mkKeyPairFromJS
 
--- | Create a signature based on the given payload and `PrivateKey`.
+-- -- | Generate a `PublicKey`, `PrivateKey` keypair.
+-- genKeyPair :: MonadJSM m => m (PrivateKey, PublicKey)
+-- genKeyPair = liftJSM $ do 
+--   eval "nacl.sign.keyPair()" >>= mkKeyPairFromJS
+
+
+-- -- | Create a signature based on the given payload and `PrivateKey`.
 verifySignature :: MonadJSM m => ByteString -> Signature -> PublicKey -> m Bool
 verifySignature msg (Signature sig) (PublicKey key) = liftJSM $ do
   jsSign <- eval "(function(m, sig, pub) {return window.nacl.sign.detached.verify(Uint8Array.from(m), Uint8Array.from(sig), Uint8Array.from(pub));})"
