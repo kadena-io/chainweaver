@@ -145,18 +145,6 @@ genMnemonic :: MonadJSM m => m [Text]
 genMnemonic = liftJSM $ do
   rawMnem <- eval "lib.kadenaGenMnemonic()"
   fmap (T.words . fromJSString) $ fromJSValUnchecked rawMnem
-
-
-
--- foreign import javascript unsafe "lib.kadenaGenKeypair($1, $2)"
---   kadenaGenKeypair :: JSVal -> Int -> JSVal
-
--- foreign import javascript unsafe "lib.kadenaGetPublic($1)"
---   kadenaGetPublic :: JSVal -> JSVal
-
--- foreign import javascript unsafe "lib.kadenaSign($1, $2)"
---   kadenaSign :: JSVal -> JSVal -> JSVal
-
 ------------------------------------------
 mkKeyPairFromJS :: MakeObject s => s -> JSM (PrivateKey, PublicKey)
 mkKeyPairFromJS jsPair = do

@@ -20,16 +20,17 @@ import Frontend.Crypto.Class
 import Frontend.Foundation
 import Frontend.Storage
 import Pact.Server.ApiClient (HasTransactionLogger)
-
-newtype BrowserCryptoT m a = BrowserCryptoT
-  { unBrowserCryptoT :: m a
+import Data.Text (Text)
+-- import qualified Data.Text as T
+newtype BrowserCryptoT t m a = BrowserCryptoT
+  { unBrowserCryptoT :: ReaderT (Behavior t (PrivateKey, Text)) m a
   } deriving
     ( Functor, Applicative, Monad
     , MonadFix, MonadIO, MonadRef, MonadAtomicRef
     , DomBuilder t, NotReady t, MonadHold t, MonadSample t
     , TriggerEvent t, PostBuild t, HasJS x
     , MonadReflexCreateTrigger t, MonadQuery t q, Requester t
-    , HasStorage, MonadReader r, HasDocument
+    , HasStorage, HasDocument
     , Routed t r, RouteToUrl r, SetRoute t r, EventWriter t w
     , DomRenderHook t
     , HasConfigs
@@ -37,7 +38,7 @@ newtype BrowserCryptoT m a = BrowserCryptoT
     )
 
 
-instance MonadJSM m => HasCrypto PrivateKey (BrowserCryptoT m) where
+instance MonadJSM m => HasCrypto PrivateKey (BrowserCryptoT t m) where
   cryptoSign = mkSignature
   cryptoVerify = verifySignature
   cryptoGenKey = const genKeyPair
@@ -52,34 +53,34 @@ instance MonadJSM m => HasCrypto PrivateKey (BrowserCryptoT m) where
      priv = PrivateKey $ sec <> pub
   cryptoSignWithPactKeyEither m pk = Right <$> cryptoSignWithPactKey m pk
 
-instance PerformEvent t m => PerformEvent t (BrowserCryptoT m) where
-  type Performable (BrowserCryptoT m) = BrowserCryptoT (Performable m)
-  performEvent_ = lift . performEvent_ . fmap runBrowserCryptoT
-  performEvent = lift . performEvent . fmap runBrowserCryptoT
+instance PerformEvent t m => PerformEvent t (BrowserCryptoT t m) where
+  type Performable (BrowserCryptoT t m) = BrowserCryptoT t (Performable m)
+  performEvent_ = BrowserCryptoT . performEvent_ . fmap unBrowserCryptoT
+  performEvent = BrowserCryptoT . performEvent . fmap unBrowserCryptoT
 
-instance PrimMonad m => PrimMonad (BrowserCryptoT m) where
-  type PrimState (BrowserCryptoT m) = PrimState m
+instance PrimMonad m => PrimMonad (BrowserCryptoT t m) where
+  type PrimState (BrowserCryptoT t m) = PrimState m
   primitive = lift . primitive
 
-instance HasJSContext m => HasJSContext (BrowserCryptoT m) where
-  type JSContextPhantom (BrowserCryptoT m) = JSContextPhantom m
+instance HasJSContext m => HasJSContext (BrowserCryptoT t m) where
+  type JSContextPhantom (BrowserCryptoT t m) = JSContextPhantom m
   askJSContext = BrowserCryptoT askJSContext
 #if !defined(ghcjs_HOST_OS)
-instance MonadJSM m => MonadJSM (BrowserCryptoT m)
+instance MonadJSM m => MonadJSM (BrowserCryptoT t m)
 #endif
 
-instance MonadTrans BrowserCryptoT where
-  lift = BrowserCryptoT
+instance MonadTrans (BrowserCryptoT t) where
+  lift = BrowserCryptoT . lift 
 
-instance (Adjustable t m, MonadHold t m, MonadFix m) => Adjustable t (BrowserCryptoT m) where
+instance (Adjustable t m, MonadHold t m, MonadFix m) => Adjustable t (BrowserCryptoT t m) where
   runWithReplace a0 a' = BrowserCryptoT $ runWithReplace (unBrowserCryptoT a0) (fmapCheap unBrowserCryptoT a')
   traverseDMapWithKeyWithAdjust f dm0 dm' = BrowserCryptoT $ traverseDMapWithKeyWithAdjust (coerce . f) dm0 dm'
   traverseDMapWithKeyWithAdjustWithMove f dm0 dm' = BrowserCryptoT $ traverseDMapWithKeyWithAdjustWithMove (coerce . f) dm0 dm'
   traverseIntMapWithKeyWithAdjust f im0 im' = BrowserCryptoT $ traverseIntMapWithKeyWithAdjust (coerce f) im0 im'
 
-instance (Prerender js t m, Reflex t) => Prerender js t (BrowserCryptoT m) where
-  type Client (BrowserCryptoT m) = BrowserCryptoT (Client m)
+instance (Prerender js t m, Monad m, Reflex t) => Prerender js t (BrowserCryptoT t m) where
+  type Client (BrowserCryptoT t m) = BrowserCryptoT t (Client m)
   prerender a b = BrowserCryptoT $ prerender (unBrowserCryptoT a) (unBrowserCryptoT b)
 
-runBrowserCryptoT :: BrowserCryptoT m a -> m a
-runBrowserCryptoT = unBrowserCryptoT
+runBrowserCryptoT :: Behavior t (PrivateKey, Text) -> BrowserCryptoT t m a -> m a
+runBrowserCryptoT b (BrowserCryptoT m) = runReaderT m b

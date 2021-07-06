@@ -85,7 +85,7 @@ frontend = Frontend
 
   , _frontend_body = prerender_ loaderMarkup $ do
     (fileOpened, triggerOpen) <- openFileDialog
-    mapRoutedT (flip runTransactionLoggerT logTransactionStdout . runBrowserStorageT . runBrowserCryptoT) $ do
+    mapRoutedT (flip runTransactionLoggerT logTransactionStdout . runBrowserStorageT ) $ do
       let fileFFI = FileFFI
             { _fileFFI_externalFileOpened = fileOpened
             , _fileFFI_openFileDialog = liftJSM . triggerOpen
