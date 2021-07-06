@@ -202,6 +202,9 @@ library
                  , Pact.Server.ApiClient.V0
                  , Pact.Server.ApiClient.V1
                  , Pact.Server.ApiClient
+                 , Frontend.GHCOnly.BIP
+                 , Frontend.GHCOnly.Orphans
+                 , Frontend.GHCOnly.Setup
 
   ghc-options: -Wall -fno-show-valid-hole-fits
   default-extensions: ScopedTypeVariables

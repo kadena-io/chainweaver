@@ -4,6 +4,7 @@
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE TupleSections #-}
 {-# LANGUAGE TypeApplications #-}
+{-# LANGUAGE RecursiveDo #-}
 module Frontend where
 
 import Control.Monad (join, void)
@@ -18,7 +19,8 @@ import qualified GHCJS.DOM.HTMLInputElement as HTMLInput
 import qualified GHCJS.DOM.Types as Types
 import qualified GHCJS.DOM.File as JSFile
 import Reflex.Dom
-import Pact.Server.ApiClient (runTransactionLoggerT, logTransactionStdout)
+-- import Pact.Server.ApiClient (runTransactionLoggerT, logTransactionStdout)
+import Pact.Server.ApiClient (HasTransactionLogger, runTransactionLoggerT, logTransactionStdout, askTransactionLogger)
 
 import Obelisk.Frontend
 import Obelisk.Route.Frontend
@@ -33,6 +35,27 @@ import Frontend.Foundation
 import Frontend.ModuleExplorer.Impl (loadEditorFromLocalStorage)
 import Frontend.ReplGhcjs
 import Frontend.Storage
+
+import Frontend.GHCOnly.BIP
+import Frontend.GHCOnly.Setup
+import Frontend.GHCOnly.Orphans ()
+import qualified Cardano.Crypto.Wallet as Crypto
+import Data.Dependent.Sum
+import Data.Functor.Compose
+import Data.Functor.Identity
+import Data.GADT.Compare.TH
+import qualified Data.Text.Encoding as T
+import Common.Wallet
+import Control.Monad.Trans (lift)
+import Control.Monad
+import Frontend.VersionedStore
+import Data.Traversable (for)
+import Frontend.Storage (runBrowserStorageT)
+import Frontend.UI.Modal.Impl (showModalBrutal)
+import Frontend.UI.Dialogs.LogoutConfirmation (uiIdeLogoutConfirmation)
+import Frontend.UI.Button
+import Frontend.UI.Widgets
+import Control.Lens ((?~))
 
 main :: IO ()
 main = do
@@ -70,23 +93,219 @@ frontend = Frontend
             }
           printResponsesHandler = pure $ FRPHandler never $ performEvent . fmap (liftIO . print)
 
-      app blank fileFFI $ AppCfg
-        { _appCfg_gistEnabled = True
+      -- app blank fileFFI $ AppCfg
+      --   { _appCfg_gistEnabled = True
+      --   , _appCfg_loadEditor = loadEditorFromLocalStorage
+      --   , _appCfg_editorReadOnly = False
+      --   , _appCfg_signingHandler = printResponsesHandler
+      --   , _appCfg_keysEndpointHandler = printResponsesHandler
+      --   , _appCfg_accountsEndpointHandler = printResponsesHandler
+      --   , _appCfg_enabledSettings = EnabledSettings
+      --     { _enabledSettings_changePassword = Nothing
+      --     , _enabledSettings_exportWallet = Nothing
+      --     , _enabledSettings_transactionLog = False
+      --     }
+      --   , _appCfg_logMessage = defaultLogger
+      --   }
+
+      bipWallet fileFFI $ \enabledSettings -> AppCfg
+        { _appCfg_gistEnabled = False
         , _appCfg_loadEditor = loadEditorFromLocalStorage
         , _appCfg_editorReadOnly = False
         , _appCfg_signingHandler = printResponsesHandler
         , _appCfg_keysEndpointHandler = printResponsesHandler
         , _appCfg_accountsEndpointHandler = printResponsesHandler
-        , _appCfg_enabledSettings = EnabledSettings
-          { _enabledSettings_changePassword = Nothing
-          , _enabledSettings_exportWallet = Nothing
-          , _enabledSettings_transactionLog = False
-          }
+        , _appCfg_enabledSettings = enabledSettings
         , _appCfg_logMessage = defaultLogger
         }
   }
 
+---------------------------------------------------------------------------------
 
+data LockScreen a where
+  LockScreen_Restore :: LockScreen Crypto.XPrv -- ^ Root key
+  LockScreen_RunSetup :: LockScreen ()
+  LockScreen_Locked :: LockScreen Crypto.XPrv -- ^ Root key
+  LockScreen_Unlocked :: LockScreen (Crypto.XPrv, Text) -- ^ The root key and password
+
+type MkAppCfg t m
+  =  EnabledSettings Crypto.XPrv t (RoutedT t (R FrontendRoute) (BIPCryptoT t m))
+  -- ^ Settings
+  -> AppCfg Crypto.XPrv t (RoutedT t (R FrontendRoute) (BIPCryptoT t m))
+
+bipWallet
+  :: forall js t m
+  .  ( MonadWidget t m
+     , RouteToUrl (R FrontendRoute) m, SetRoute t (R FrontendRoute) m
+     , HasConfigs m
+     , HasStorage m, HasStorage (Performable m)
+     , Prerender js t m
+     , HasTransactionLogger m
+     )
+  => FileFFI t m
+  -> MkAppCfg t m
+  -> RoutedT t (R FrontendRoute) m ()
+bipWallet fileFFI mkAppCfg = do
+  let
+    runSetup0
+      :: Maybe (Behavior t Crypto.XPrv)
+      -> WalletExists
+      -> RoutedT t (R FrontendRoute) m (Event t (DSum LockScreen Identity))
+    runSetup0 mPrv walletExists = do
+      keyAndPass <- runSetup (liftFileFFI lift fileFFI) (isJust mPrv) walletExists
+      performEvent $ flip push keyAndPass $ \case
+        Right (x, Password p, newWallet) -> pure $ Just $ do
+          setItemStorage localStorage BIPStorage_RootKey x
+          when newWallet $ do
+            -- liftIO $ _transactionLogger_rotateLogFile txLogger
+            removeItemStorage localStorage StoreFrontend_Wallet_Keys
+            removeItemStorage localStorage StoreFrontend_Wallet_Accounts
+          pure $ LockScreen_Unlocked ==> (x, p)
+        Left _ ->
+          for mPrv $ fmap (pure . (LockScreen_Locked ==>)) . sample
+
+  mRoot <- getItemStorage localStorage BIPStorage_RootKey
+  let initScreen = case mRoot of
+        Nothing -> LockScreen_RunSetup :=> Identity ()
+        Just xprv -> LockScreen_Locked ==> xprv
+  rec
+    -- Which screen we are on, along with extra information
+    whichScreen <- factorDyn =<< holdDyn initScreen updateScreen
+    updateScreen <- switchHold never <=< dyn $ ffor whichScreen $ \case
+      -- Run the restore process or return to the lock screen
+      LockScreen_Restore :=> Compose root -> runSetup0 (Just $ fmap runIdentity $ current root) WalletExists_Yes
+      -- We have no wallet so run the creation/setup process
+      LockScreen_RunSetup :=> _ -> runSetup0 Nothing WalletExists_No
+      -- Wallet exists but the lock screen is active
+      LockScreen_Locked :=> Compose root -> do
+        (restore, mLogin) <- lockScreen $ fmap runIdentity $ current root
+        pure $ leftmost
+          [ (LockScreen_Restore ==>) . runIdentity <$> current root <@ restore
+          , (LockScreen_Unlocked ==>) <$> attach (runIdentity <$> current root) mLogin
+          ]
+      -- The user is logged in
+      LockScreen_Unlocked :=> Compose details -> do
+        mapRoutedT (runBIPCryptoT $ runIdentity <$> current details) $ do
+          (onLogout, sidebarLogoutLink) <- mkSidebarLogoutLink
+
+          onLogoutConfirm <- fmap switchDyn $ widgetHold (pure never)
+            $ showModalBrutal "logout-confirm-modal" uiIdeLogoutConfirmation <$ onLogout
+
+          (updates, trigger) <- newTriggerEvent
+
+          let frontendFileFFI = liftFileFFI (lift . lift) fileFFI
+          Frontend.ReplGhcjs.app sidebarLogoutLink frontendFileFFI $ mkAppCfg $ EnabledSettings
+            { _enabledSettings_changePassword = Just $ ChangePassword
+              { _changePassword_requestChange =
+                let doChange (Identity (oldRoot, _)) (oldPass, newPass, repeatPass)
+                      | passwordRoundTripTest oldRoot oldPass = case checkPassword newPass repeatPass of
+                        Left e -> pure $ Left e
+                        Right _ -> do
+                          -- Change password for root key
+                          let newRoot = Crypto.xPrvChangePass (T.encodeUtf8 oldPass) (T.encodeUtf8 newPass) oldRoot
+                          setItemStorage localStorage BIPStorage_RootKey newRoot
+                          liftIO $ trigger (newRoot, newPass)
+                          pure $ Right ()
+                      | otherwise = pure $ Left "Invalid password"
+                in performEvent . attachWith doChange (current details)
+              -- When updating the keys here, we just always regenerate the key from
+              -- the new root
+              , _changePassword_updateKeys = ffor updates $ \(newRoot, newPass) i _ ->
+                let (newPrv, pub) = bipCryptoGenPair newRoot newPass i
+                in Key $ KeyPair
+                  { _keyPair_publicKey = pub
+                  , _keyPair_privateKey = Just newPrv
+                  }
+              }
+            , _enabledSettings_exportWallet = Nothing -- Just $ ExportWallet
+              -- { _exportWallet_requestExport = \ePw -> do
+              --     let bOldPw = (\(Identity (_,oldPw)) -> oldPw) <$> current details
+              --         runExport oldPw newPw = do
+              --           pfx <- genZeroKeyPrefix
+              --           doExport txLogger pfx oldPw newPw
+
+              --         logExport = do
+              --           ts <- liftIO getCurrentTime
+              --           sender <- genZeroKeyPrefix
+              --           liftIO $ _transactionLogger_walletEvent txLogger
+              --             WalletEvent_Export
+              --             (_unPublicKeyPrefix sender)
+              --             ts
+
+              --     eExport <- performEvent $ runExport
+              --       <$> (Password <$> bOldPw)
+              --       <@> (Password <$> ePw)
+
+              --     let (eErrExport, eGoodExport) = fanEither eExport
+
+              --     eFileDone <- _fileFFI_deliverFile frontendFileFFI eGoodExport
+              --     eLogExportDone <- performEvent $ (\r -> r <$ logExport) <$> eFileDone
+
+              --     pure $ leftmost
+              --       [ Left <$> eErrExport
+              --       , first ExportWalletError_FileNotWritable <$> eLogExportDone
+              --       ]
+              -- }
+            , _enabledSettings_transactionLog = False
+            }
+
+          setRoute $ landingPageRoute <$ onLogoutConfirm
+          pure $ leftmost
+            [ (LockScreen_Unlocked ==>) <$> updates
+            , (LockScreen_Locked ==>) . fst . runIdentity <$> current details <@ onLogoutConfirm
+            ]
+  pure ()
+
+
+mkSidebarLogoutLink :: (TriggerEvent t m, PerformEvent t n, PostBuild t n, DomBuilder t n, MonadIO (Performable n)) => m (Event t (), n ())
+mkSidebarLogoutLink = do
+  (logout, triggerLogout) <- newTriggerEvent
+  pure $ (,) logout $ do
+    clk <- uiSidebarIcon (pure False) (static @"img/menu/logout.svg") "Logout"
+    performEvent_ $ liftIO . triggerLogout <$> clk
+
+lockScreen
+  :: (DomBuilder t m, PostBuild t m, TriggerEvent t m, PerformEvent t m, MonadIO m, MonadFix m, MonadHold t m)
+  => Behavior t Crypto.XPrv -> m (Event t (), Event t Text)
+lockScreen xprv = setupDiv "fullscreen" $ divClass "wrapper" $ setupDiv "splash" $ do
+  splashLogo
+
+  el "div" $ mdo
+    dValid <- holdDyn True $ leftmost
+      [ isJust <$> isValid
+      , True <$ _inputElement_input pass
+      ]
+
+    let unlock = void $ confirmButton (def & uiButtonCfg_type ?~ "submit") "Unlock"
+        cfg = def & elementConfig_initialAttributes .~ ("class" =: setupClass "splash-terms-buttons")
+    (eSubmit, pass) <- uiForm cfg unlock $ do
+      elDynClass "div"
+        (("lock-screen__invalid-password" <>) . bool " lock-screen__invalid-password--invalid" "" <$> dValid)
+        (text "Invalid Password")
+      uiPassword (setupClass "password-wrapper") (setupClass "password") "Password"
+
+    restore <- setupDiv "button-horizontal-group" $ do
+      elAttr "a" ( "class" =: "button button_type_secondary setup__help" <>
+                   "href" =: "https://www.kadena.io/chainweaver" <>
+                   "target" =: "_blank"
+                 ) $ do
+        elAttr "img" ("src" =: static @"img/launch_dark.svg" <> "class" =: "button__text-icon") blank
+        text "Help"
+      uiButton btnCfgSecondary $ text "Restore"
+
+    -- req <- tryReadMVarTriggerEvent signingReq
+    -- widgetHold_ blank $ ffor req $ \_ -> do
+    --   let line = divClass (setupClass "signing-request") . text
+    --   line "You have an incoming signing request."
+    --   line "Unlock your wallet to view and sign the transaction."
+
+    let isValid = attachWith (\(p, x) _ -> p <$ guard (passwordRoundTripTest x p)) ((,) <$> current (value pass) <*> xprv) eSubmit
+    pure (restore, fmapMaybe id isValid)
+
+
+
+
+---------------------------------------------------------------------------------
 -- | The 'JSM' action *must* be run from a user initiated event in order for the
 -- dialog to open
 openFileDialog :: MonadWidget t m => m (Event t (FilePath, Text), FileType -> JSM ())
@@ -172,3 +391,5 @@ minWindowSize = (800, 600)
 
 defaultWindowSize :: (Int, Int)
 defaultWindowSize = (1280, 800)
+
+deriveGEq ''LockScreen
