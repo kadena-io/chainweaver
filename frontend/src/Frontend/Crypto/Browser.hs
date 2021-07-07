@@ -22,6 +22,7 @@ import Frontend.Storage
 import Pact.Server.ApiClient (HasTransactionLogger)
 import Data.Text (Text)
 -- import qualified Data.Text as T
+
 newtype BrowserCryptoT t m a = BrowserCryptoT
   { unBrowserCryptoT :: ReaderT (Behavior t (PrivateKey, Text)) m a
   } deriving
@@ -70,7 +71,7 @@ instance MonadJSM m => MonadJSM (BrowserCryptoT t m)
 #endif
 
 instance MonadTrans (BrowserCryptoT t) where
-  lift = BrowserCryptoT . lift 
+  lift = BrowserCryptoT . lift
 
 instance (Adjustable t m, MonadHold t m, MonadFix m) => Adjustable t (BrowserCryptoT t m) where
   runWithReplace a0 a' = BrowserCryptoT $ runWithReplace (unBrowserCryptoT a0) (fmapCheap unBrowserCryptoT a')

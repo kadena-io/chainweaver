@@ -30,16 +30,13 @@ import Common.Api
 import Common.Route
 import Frontend.AppCfg
 import Frontend.Log (defaultLogger)
-import Frontend.Crypto.Browser
 import Frontend.Foundation
 import Frontend.ModuleExplorer.Impl (loadEditorFromLocalStorage)
 import Frontend.ReplGhcjs
 import Frontend.Storage
 
-import Frontend.GHCOnly.BIP
 import Frontend.GHCOnly.Setup
 import Frontend.GHCOnly.Orphans ()
-import qualified Cardano.Crypto.Wallet as Crypto
 import Data.Dependent.Sum
 import Data.Functor.Compose
 import Data.Functor.Identity
@@ -56,6 +53,9 @@ import Frontend.UI.Dialogs.LogoutConfirmation (uiIdeLogoutConfirmation)
 import Frontend.UI.Button
 import Frontend.UI.Widgets
 import Control.Lens ((?~))
+import Frontend.Crypto.Ed25519
+import Frontend.Crypto.CommonBIP
+import Frontend.Crypto.Browser
 
 main :: IO ()
 main = do
@@ -85,7 +85,7 @@ frontend = Frontend
 
   , _frontend_body = prerender_ loaderMarkup $ do
     (fileOpened, triggerOpen) <- openFileDialog
-    mapRoutedT (flip runTransactionLoggerT logTransactionStdout . runBrowserStorageT ) $ do
+    mapRoutedT (flip runTransactionLoggerT logTransactionStdout . runBrowserStorageT) $ do
       let fileFFI = FileFFI
             { _fileFFI_externalFileOpened = fileOpened
             , _fileFFI_openFileDialog = liftJSM . triggerOpen
@@ -107,15 +107,15 @@ frontend = Frontend
 ---------------------------------------------------------------------------------
 
 data LockScreen a where
-  LockScreen_Restore :: LockScreen Crypto.XPrv -- ^ Root key
+  LockScreen_Restore :: LockScreen PrivateKey -- ^ Root key
   LockScreen_RunSetup :: LockScreen ()
-  LockScreen_Locked :: LockScreen Crypto.XPrv -- ^ Root key
-  LockScreen_Unlocked :: LockScreen (Crypto.XPrv, Text) -- ^ The root key and password
+  LockScreen_Locked :: LockScreen PrivateKey -- ^ Root key
+  LockScreen_Unlocked :: LockScreen (PrivateKey, Text) -- ^ The root key and password
 
 type MkAppCfg t m
-  =  EnabledSettings Crypto.XPrv t (RoutedT t (R FrontendRoute) (BIPCryptoT t m))
+  =  EnabledSettings PrivateKey t (RoutedT t (R FrontendRoute) (BrowserCryptoT t m))
   -- ^ Settings
-  -> AppCfg Crypto.XPrv t (RoutedT t (R FrontendRoute) (BIPCryptoT t m))
+  -> AppCfg PrivateKey t (RoutedT t (R FrontendRoute) (BrowserCryptoT t m))
 
 bipWallet
   :: forall js t m
@@ -133,7 +133,7 @@ bipWallet fileFFI mkAppCfg = do
   txLogger <- askTransactionLogger
   let
     runSetup0
-      :: Maybe (Behavior t Crypto.XPrv)
+      :: Maybe (Behavior t PrivateKey)
       -> WalletExists
       -> RoutedT t (R FrontendRoute) m (Event t (DSum LockScreen Identity))
     runSetup0 mPrv walletExists = do
@@ -170,7 +170,7 @@ bipWallet fileFFI mkAppCfg = do
           ]
       -- The user is logged in
       LockScreen_Unlocked :=> Compose details -> do
-        mapRoutedT (runBIPCryptoT $ runIdentity <$> current details) $ do
+        mapRoutedT (runBrowserCryptoT $ runIdentity <$> current details) $ do
           (onLogout, sidebarLogoutLink) <- mkSidebarLogoutLink
 
           onLogoutConfirm <- fmap switchDyn $ widgetHold (pure never)
@@ -183,24 +183,21 @@ bipWallet fileFFI mkAppCfg = do
             { _enabledSettings_changePassword = Just $ ChangePassword
               { _changePassword_requestChange =
                 let doChange (Identity (oldRoot, _)) (oldPass, newPass, repeatPass)
-                      | passwordRoundTripTest oldRoot oldPass = case checkPassword newPass repeatPass of
+                      -- | passwordRoundTripTest oldRoot oldPass = case checkPassword newPass repeatPass of
+                      | True = case checkPassword newPass repeatPass of
                         Left e -> pure $ Left e
                         Right _ -> do
                           -- Change password for root key
-                          let newRoot = Crypto.xPrvChangePass (T.encodeUtf8 oldPass) (T.encodeUtf8 newPass) oldRoot
-                          setItemStorage localStorage BIPStorage_RootKey newRoot
-                          liftIO $ trigger (newRoot, newPass)
+                          -- let newRoot = Crypto.xPrvChangePass (T.encodeUtf8 oldPass) (T.encodeUtf8 newPass) oldRoot
+                          -- setItemStorage localStorage BIPStorage_RootKey newRoot
+                          liftIO $ trigger (oldRoot, newPass)
                           pure $ Right ()
                       | otherwise = pure $ Left "Invalid password"
                 in performEvent . attachWith doChange (current details)
               -- When updating the keys here, we just always regenerate the key from
               -- the new root
-              , _changePassword_updateKeys = ffor updates $ \(newRoot, newPass) i _ ->
-                let (newPrv, pub) = bipCryptoGenPair newRoot newPass i
-                in Key $ KeyPair
-                  { _keyPair_publicKey = pub
-                  , _keyPair_privateKey = Just newPrv
-                  }
+              -- TODO: We punted on handling this for now
+              , _changePassword_updateKeys = ffor updates $ \(_, _) -> (\_ key -> key)
               }
             , _enabledSettings_exportWallet = Nothing -- Just $ ExportWallet
               -- { _exportWallet_requestExport = \ePw -> do
@@ -251,7 +248,7 @@ mkSidebarLogoutLink = do
 
 lockScreen
   :: (DomBuilder t m, PostBuild t m, TriggerEvent t m, PerformEvent t m, MonadIO m, MonadFix m, MonadHold t m)
-  => Behavior t Crypto.XPrv -> m (Event t (), Event t Text)
+  => Behavior t PrivateKey -> m (Event t (), Event t Text)
 lockScreen xprv = setupDiv "fullscreen" $ divClass "wrapper" $ setupDiv "splash" $ do
   splashLogo
 
@@ -284,7 +281,9 @@ lockScreen xprv = setupDiv "fullscreen" $ divClass "wrapper" $ setupDiv "splash"
     --   line "You have an incoming signing request."
     --   line "Unlock your wallet to view and sign the transaction."
 
-    let isValid = attachWith (\(p, x) _ -> p <$ guard (passwordRoundTripTest x p)) ((,) <$> current (value pass) <*> xprv) eSubmit
+    -- TODO: Fix
+    -- let isValid = attachWith (\(p, x) _ -> p <$ guard (passwordRoundTripTest x p)) ((,) <$> current (value pass) <*> xprv) eSubmit
+    let isValid = attachWith (\(p, x) _ -> Just p) ((,) <$> current (value pass) <*> xprv) eSubmit
     pure (restore, fmapMaybe id isValid)
 
 

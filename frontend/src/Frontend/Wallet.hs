@@ -230,7 +230,8 @@ makeWallet mChangePassword model conf = do
 
     keys <- foldDyn id initialKeys $ leftmost
       [ snocIntMap <$> onNewKey
-      , maybe never (fmap IntMap.mapWithKey . _changePassword_updateKeys) mChangePassword
+      -- TODO: FIx this
+      -- , maybe never (fmap IntMap.mapWithKey . _changePassword_updateKeys) mChangePassword
       ]
 
   -- Slight hack here, even with prompt tagging we don't pick up the new accounts

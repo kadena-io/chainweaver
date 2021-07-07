@@ -36,6 +36,9 @@ module Frontend.Crypto.Ed25519
   , fromPactPublicKey
   , toPactPublicKey
   , unsafePublicKey
+  ----------------------
+  , generateRoot
+  , generateKeypair
   )
   where
 
@@ -90,24 +93,31 @@ checkSig t =
 ------------------------------------------
 arrayBufToByteString :: JSVal -> JSM ByteString
 arrayBufToByteString jsBuf = do
-  mutArrBuf <- mutableArrayBufferFromJSVal jsBuf
-  mutBuf <- ghcjsPure $ createFromArrayBuffer mutArrBuf
-  arrBuf <- freeze mutBuf
-  ghcjsPure $ toByteString 0 Nothing arrBuf
+  mMutArrBuf <- catch (fmap Just $ mutableArrayBufferFromJSVal jsBuf) $
+    \(_e::JSException) -> pure Nothing
+  case mMutArrBuf of
+    Nothing -> pure BS.empty
+    Just mutArrBuf -> do
+      mutBuf <- ghcjsPure $ createFromArrayBuffer mutArrBuf
+      arrBuf <- freeze mutBuf
+      ghcjsPure $ toByteString 0 Nothing arrBuf
 
-generateRoot :: Text -> JSM (Maybe ByteString)
+generateRoot :: Text -> JSM (Maybe PrivateKey)
 generateRoot phrase = do
   let jsPhrase = toJSString phrase
   lib <- jsg "lib"
-  res <- lib # "kadenaMnemonicToRootKeypair" $ [ jsPhrase ]
-  mJSArr <- fromJSVal res
-  case mJSArr of
-    Just buf -> Just <$> arrayBufToByteString buf
-    Nothing  -> pure Nothing
+  mRes <- catch (fmap Just $ lib # "kadenaMnemonicToRootKeypair" $ [ jsPhrase ])
+    $ \(e::JSException) -> liftIO $ print e >> pure Nothing
+  case mRes of
+    Nothing -> pure Nothing
+    Just res -> do
+      res' <- res ^.js "buffer"
+      jsg "console" # "log" $ [ res' ]
+      Just . PrivateKey <$> arrayBufToByteString res'
 
 -- TODO: Test empty bs, test various int values
-generateKeypair :: ByteString -> Int -> JSM (Maybe (ByteString, ByteString))
-generateKeypair root idx = do
+generateKeypair :: PrivateKey -> Int -> JSM (Maybe (PrivateKey, PublicKey))
+generateKeypair (PrivateKey root) idx = do
   rootBuf <- toJSVal $ BS.unpack root
   let idx' = fromIntegral $ 0x80000000 .|. idx
   idxJS <- toJSVal idx'
@@ -117,7 +127,7 @@ generateKeypair root idx = do
   case res of
     Nothing -> pure Nothing
     Just (prvJS, pubJS) -> fmap Just $
-      (,)
+      (\a b -> (PrivateKey a, PublicKey b))
         <$> arrayBufToByteString prvJS
         <*> arrayBufToByteString pubJS
 
@@ -160,7 +170,7 @@ genKeyPair = liftJSM $ eval "nacl.sign.keyPair()" >>= mkKeyPairFromJS
 
 -- -- | Generate a `PublicKey`, `PrivateKey` keypair.
 -- genKeyPair :: MonadJSM m => m (PrivateKey, PublicKey)
--- genKeyPair = liftJSM $ do 
+-- genKeyPair = liftJSM $ do
 --   eval "nacl.sign.keyPair()" >>= mkKeyPairFromJS
 
 
