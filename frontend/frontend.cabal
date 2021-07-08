@@ -105,6 +105,10 @@ library
     , vector
     , witherable
 
+  if impl(ghcjs)
+    build-depends:
+        ghcjs-base
+
   if !impl(ghcjs)
     build-depends:
         qrcode-juicypixels
@@ -140,9 +144,9 @@ library
                  , Frontend.ReplGhcjs
                  , Frontend.Routes
                  -- , Frontend.GHCOnly.Orphans
+                 , Frontend.Crypto.CommonBIP
                  , Frontend.Setup.Common
                  , Frontend.Setup.Wallet
-                 , Frontend.Crypto.CommonBIP
                  , Frontend.Storage
                  , Frontend.Storage.Class
                  , Frontend.Storage.Browser

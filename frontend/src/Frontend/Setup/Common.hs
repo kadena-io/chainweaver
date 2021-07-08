@@ -26,14 +26,12 @@ import Data.Bool (bool)
 import Data.Foldable (fold, traverse_)
 import Data.Maybe (isNothing, fromMaybe)
 import Data.Bifunctor
-import Data.ByteArray (ByteArrayAccess)
 import Data.ByteString (ByteString)
 import Data.String (IsString, fromString)
 import Data.Functor ((<&>))
 import Data.Text (Text)
 import Language.Javascript.JSaddle (MonadJSM, liftJSM)
 import Reflex.Dom.Core
-import qualified Data.ByteArray as BA
 import qualified Data.Map as Map
 import qualified Data.Text as T
 import qualified Data.Text.Encoding as T
