@@ -116,7 +116,7 @@ bipWallet fileFFI mkAppCfg = do
               { _changePassword_requestChange =
                 let doChange (Identity (oldRoot, _)) (oldPass, newPass, repeatPass)
                       --TODO: Password
-                      -- | passwordRoundTripTest oldRoot oldPass = case checkPassword newPass repeatPass of
+                      -- passwordRoundTripTest oldRoot oldPass = case checkPassword newPass repeatPass of
                       | True = case checkPassword newPass repeatPass of
                         Left e -> pure $ Left e
                         Right _ -> do
