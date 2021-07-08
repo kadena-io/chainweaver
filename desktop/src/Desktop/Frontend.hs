@@ -221,7 +221,7 @@ bipWallet fileFFI signingReq mkAppCfg = do
                 in performEvent . attachWith doChange (current details)
               -- When updating the keys here, we just always regenerate the key from
               -- the new root
-              , _changePassword_updateKeys = ffor updates $ \(newRoot, newPass) i _ ->
+              , _changePassword_updateKeys = ffor updates $ \(newRoot, newPass) -> pure $ \ i _ ->
                 let (newPrv, pub) = bipCryptoGenPair newRoot newPass i
                 in Key $ KeyPair
                   { _keyPair_publicKey = pub
