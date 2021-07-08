@@ -196,8 +196,9 @@ bipWallet fileFFI mkAppCfg = do
                 in performEvent . attachWith doChange (current details)
               -- When updating the keys here, we just always regenerate the key from
               -- the new root
+
               -- TODO: We punted on handling this for now
-              , _changePassword_updateKeys = ffor updates $ \(_, _) -> (\_ key -> key)
+              , _changePassword_updateKeys = never
               }
             , _enabledSettings_exportWallet = Nothing -- Just $ ExportWallet
               -- { _exportWallet_requestExport = \ePw -> do

@@ -18,7 +18,7 @@ module Frontend.Crypto.Ed25519
   , unverifiedUserSuppliedSignature
   , parseSignature
   -- * Creation
-  , genKeyPair
+  -- , genKeyPair
   , deriveKeyPairFromPrivateKey
   -- * Verifying
   , verifySignature
@@ -112,7 +112,6 @@ generateRoot phrase = do
     Nothing -> pure Nothing
     Just res -> do
       res' <- res ^.js "buffer"
-      jsg "console" # "log" $ [ res' ]
       Just . PrivateKey <$> arrayBufToByteString res'
 
 -- TODO: Test empty bs, test various int values
@@ -155,6 +154,17 @@ genMnemonic :: MonadJSM m => m [Text]
 genMnemonic = liftJSM $ do
   rawMnem <- eval "lib.kadenaGenMnemonic()"
   fmap (T.words . fromJSString) $ fromJSValUnchecked rawMnem
+
+------------------------------------------
+
+-- -- | Create a signature based on the given payload and `PrivateKey`.
+verifySignature :: MonadJSM m => ByteString -> Signature -> PublicKey -> m Bool
+verifySignature msg (Signature sig) (PublicKey key) = liftJSM $ verify msg key sig
+
+-- | Create a signature based on the given payload and `PrivateKey`.
+mkSignature :: MonadJSM m => ByteString -> PrivateKey -> m Signature
+mkSignature msg (PrivateKey key) = liftJSM $ Signature <$> sign msg key
+
 ------------------------------------------
 mkKeyPairFromJS :: MakeObject s => s -> JSM (PrivateKey, PublicKey)
 mkKeyPairFromJS jsPair = do
@@ -164,31 +174,11 @@ mkKeyPairFromJS jsPair = do
        , PublicKey . BS.pack $ pubKey
        )
 
--- -- | Generate a `PublicKey`, `PrivateKey` keypair.
-genKeyPair :: MonadJSM m => m (PrivateKey, PublicKey)
-genKeyPair = liftJSM $ eval "nacl.sign.keyPair()" >>= mkKeyPairFromJS
-
--- -- | Generate a `PublicKey`, `PrivateKey` keypair.
+-- -- -- | Generate a `PublicKey`, `PrivateKey` keypair.
 -- genKeyPair :: MonadJSM m => m (PrivateKey, PublicKey)
--- genKeyPair = liftJSM $ do
---   eval "nacl.sign.keyPair()" >>= mkKeyPairFromJS
+-- genKeyPair = liftJSM $ generateKeypair 
 
 
--- -- | Create a signature based on the given payload and `PrivateKey`.
-verifySignature :: MonadJSM m => ByteString -> Signature -> PublicKey -> m Bool
-verifySignature msg (Signature sig) (PublicKey key) = liftJSM $ do
-  jsSign <- eval "(function(m, sig, pub) {return window.nacl.sign.detached.verify(Uint8Array.from(m), Uint8Array.from(sig), Uint8Array.from(pub));})"
-  jsSig <- call jsSign valNull [BS.unpack msg, BS.unpack sig, BS.unpack key]
-  fromJSValUnchecked jsSig
-  {- pure $ Signature BS.empty -}
-
--- | Create a signature based on the given payload and `PrivateKey`.
-mkSignature :: MonadJSM m => ByteString -> PrivateKey -> m Signature
-mkSignature msg (PrivateKey key) = liftJSM $ do
-  jsSign <- eval "(function(m, k) {return window.nacl.sign.detached(Uint8Array.from(m), Uint8Array.from(k));})"
-  jsSig <- call jsSign valNull [BS.unpack msg, BS.unpack key]
-  Signature . BS.pack <$> fromJSValUnchecked jsSig
-  {- pure $ Signature BS.empty -}
 
 -- | Parse a private key with additional checks given the corresponding public key.
 -- `parsePublicKey` and `parsePrivateKey`.

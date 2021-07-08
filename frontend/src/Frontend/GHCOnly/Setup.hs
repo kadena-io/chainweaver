@@ -724,16 +724,15 @@ setPassword dSentence = do
   --Web version doesn't actually encrypt the root
   -- eRoot <- performEvent (updated dSentence) $ (liftJSM . generateRoot . T.unwords)
 
-  resEvent <- performEvent $ ffor pass $ \p -> do
+  encryptedKeyAndPass <- performEvent $ ffor pass $ \p -> do
     sentence <- sample $ current dSentence 
-    liftIO $ print "HERE !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"
     root <- liftJSM $ generateRoot $ T.unwords sentence
+    --TODO: Encrypt root
     return $ ffor root $ \r -> (r, Password p)
 
   pure $ leftmost
     [ Nothing <$ err
-    , resEvent
-    -- , (\s p -> Just (generateRoot s, Password p)) <$> current dSentence <@> pass
+    , encryptedKeyAndPass
     ]
 
 checkPassword :: Text -> Text -> Either Text Text

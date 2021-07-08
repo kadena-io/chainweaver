@@ -210,6 +210,7 @@ makeWallet
     , HasLogger model t
     , TriggerEvent t m
     , HasCrypto key (Performable m)
+    , MonadJSM (Performable m)
     , FromJSON key, ToJSON key
     , PostBuild t m
     )
@@ -221,6 +222,8 @@ makeWallet mChangePassword model conf = do
   pb <- getPostBuild
   initialKeys <- fromMaybe IntMap.empty <$> loadKeys
   initialAccounts <- maybe (AccountData mempty) fromStorage <$> loadAccounts
+  updateKeysOnPwdChangeE <- maybe (pure never) (performEvent . (fmap . fmap) IntMap.mapWithKey) $
+    fmap _changePassword_updateKeys mChangePassword
 
   rec
     onNewKey <- performEvent $ leftmost
@@ -230,8 +233,7 @@ makeWallet mChangePassword model conf = do
 
     keys <- foldDyn id initialKeys $ leftmost
       [ snocIntMap <$> onNewKey
-      -- TODO: FIx this
-      -- , maybe never (fmap IntMap.mapWithKey . _changePassword_updateKeys) mChangePassword
+      , updateKeysOnPwdChangeE
       ]
 
   -- Slight hack here, even with prompt tagging we don't pick up the new accounts

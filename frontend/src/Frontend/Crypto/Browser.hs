@@ -39,10 +39,18 @@ newtype BrowserCryptoT t m a = BrowserCryptoT
     )
 
 
-instance MonadJSM m => HasCrypto PrivateKey (BrowserCryptoT t m) where
+instance (MonadJSM m, MonadSample t m) => HasCrypto PrivateKey (BrowserCryptoT t m) where
   cryptoSign = mkSignature
   cryptoVerify = verifySignature
-  cryptoGenKey = const genKeyPair
+  cryptoGenKey i = BrowserCryptoT $ do
+    (root, _) <- sample =<< ask
+    --TODO handle maybe
+    mKeys <- liftJSM $ generateKeypair root i
+    case mKeys of
+      --TODO FIX THIS
+      Nothing -> undefined
+      Just pair -> pure pair
+
   cryptoGenPubKeyFromPrivate pkScheme t = do
     case textToKey t of
       Nothing -> pure $ Left $ "cryptoGenPubKeyFromPrivate: not a valid private key"
