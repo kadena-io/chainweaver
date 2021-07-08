@@ -1,6 +1,6 @@
 {-# OPTIONS_GHC -Wno-orphans -Werror #-}
 
-module Frontend.GHCOnly.Orphans where
+module Frontend.Setup.Orphans where
 
 import Control.Monad ((<=<))
 import Data.Bimap (Bimap)

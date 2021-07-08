@@ -139,6 +139,10 @@ library
                  , Frontend.Repl
                  , Frontend.ReplGhcjs
                  , Frontend.Routes
+                 -- , Frontend.GHCOnly.Orphans
+                 , Frontend.Setup.Common
+                 , Frontend.Setup.Wallet
+                 , Frontend.Crypto.CommonBIP
                  , Frontend.Storage
                  , Frontend.Storage.Class
                  , Frontend.Storage.Browser
@@ -202,9 +206,6 @@ library
                  , Pact.Server.ApiClient.V0
                  , Pact.Server.ApiClient.V1
                  , Pact.Server.ApiClient
-                 , Frontend.GHCOnly.BIP
-                 , Frontend.GHCOnly.Orphans
-                 , Frontend.GHCOnly.Setup
 
   ghc-options: -Wall -fno-show-valid-hole-fits
   default-extensions: ScopedTypeVariables

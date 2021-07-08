@@ -39,6 +39,7 @@ module Frontend.Crypto.Ed25519
   ----------------------
   , generateRoot
   , generateKeypair
+  , genMnemonic
   )
   where
 
