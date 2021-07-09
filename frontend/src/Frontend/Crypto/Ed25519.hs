@@ -23,6 +23,7 @@ module Frontend.Crypto.Ed25519
   , verifySignature
   -- * Signing
   , mkSignature
+  , mkSignatureLegacyJS
   -- * Parsing
   , parseKeyPair
   , parsePublicKey
@@ -184,6 +185,11 @@ verifySignature msg (Signature sig) (PublicKey key) = liftJSM $ verify msg key s
 mkSignature :: MonadJSM m => Text -> ByteString -> PrivateKey -> m Signature
 mkSignature pwd msg (PrivateKey key) = liftJSM $ Signature <$> sign pwd msg key
 
+mkSignatureLegacyJS :: MonadJSM m => ByteString -> PrivateKey -> m Signature
+mkSignatureLegacyJS msg (PrivateKey key) = liftJSM $ do
+ jsSign <- eval "(function(m, k) {return window.nacl.sign.detached(Uint8Array.from(m), Uint8Array.from(k));})"
+ jsSig <- call jsSign valNull [BS.unpack msg, BS.unpack key]
+ Signature . BS.pack <$> fromJSValUnchecked jsSig
 ------------------------------------------
 mkKeyPairFromJS :: MakeObject s => s -> JSM (PrivateKey, PublicKey)
 mkKeyPairFromJS jsPair = do

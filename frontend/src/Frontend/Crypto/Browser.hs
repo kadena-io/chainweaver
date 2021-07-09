@@ -22,11 +22,6 @@ import Frontend.Foundation
 import Frontend.Storage
 import Pact.Server.ApiClient (HasTransactionLogger)
 import Data.Text (Text)
-import qualified Data.Text as T
-import qualified Pact.Types.Crypto as PactCrypto
-import qualified Pact.Types.Hash as Pact
-import Pact.Types.Util (parseB16TextOnly)
-import Data.ByteString (ByteString)
 
 newtype BrowserCryptoT t m a = BrowserCryptoT
   { unBrowserCryptoT :: ReaderT (Behavior t (PrivateKey, Text)) m a
@@ -57,47 +52,19 @@ instance (MonadJSM m, MonadSample t m) => HasCrypto PrivateKey (BrowserCryptoT t
       --TODO FIX THIS
       Nothing -> undefined
       Just pair -> pure pair
-  -- cryptoGenPubKeyFromPrivate pkScheme t = do
-  --   case textToKey t of
-  --     Nothing -> pure $ Left $ "cryptoGenPubKeyFromPrivate: not a valid private key"
-  --     Just (PrivateKey k) -> do
-  --       (priv,pub) <- deriveKeyPairFromPrivateKey k
-  --       pure $ Right $ PactKey pkScheme pub (unPrivateKey priv)
-  -- cryptoSignWithPactKey m (PactKey _ (PublicKey pub) sec) = mkSignature m priv
-  --   where
-  --    priv = PrivateKey $ sec <> pub
-  -- cryptoSignWithPactKeyEither m pk = Right <$> cryptoSignWithPactKey m pk
--- TODO: Copy this into common
--- COPIED FROM BIP
-  -- This assumes that the secret is already base16 encoded (being pasted in, so makes sense)
-  cryptoGenPubKeyFromPrivate pkScheme sec = pure $ do
-    secBytes <- parseB16TextOnly sec
-    somePactKey <- importKey pkScheme Nothing secBytes
-    pure $ PactKey pkScheme (unsafePublicKey $ PactCrypto.getPublic somePactKey) secBytes
-  cryptoSignWithPactKey bs pk = do
-    let someKpE = importKey
-          (_pactKey_scheme pk)
-          (Just $ Newtype.unpack $ _pactKey_publicKey pk)
-          $ _pactKey_secret pk
 
-    case someKpE of
-      Right someKp -> liftIO $ Newtype.pack <$> PactCrypto.sign someKp (Pact.Hash bs)
-      Left e -> error $ "Error importing pact key from account: " <> e
-  cryptoSignWithPactKeyEither bs pk = do
-    let someKpE = importKey
-          (_pactKey_scheme pk)
-          (Just $ Newtype.unpack $ _pactKey_publicKey pk)
-          $ _pactKey_secret pk
+  --TODO: Is this func used anywhere? 
+  cryptoGenPubKeyFromPrivate _ _ = pure $ Left $ "cryptoGenPubKeyFromPrivate: not supported on browser"
 
-    case someKpE of
-      Right someKp -> liftIO $ (Right . Newtype.pack) <$> PactCrypto.sign someKp (Pact.Hash bs)
-      Left e -> pure $ Left $ "Error importing pact key from account: " <> T.pack e
+  -- We use the legacy js package here and not the BIP-browser one that 
+  -- we use for everything else because the bip-browser one only works with
+  -- encrypted private keys, and not raw one
+  cryptoSignWithPactKey m (PactKey _ (PublicKey pub) sec) = mkSignatureLegacyJS m priv
+    where
+     priv = PrivateKey $ sec <> pub
 
-importKey :: PactCrypto.PPKScheme -> Maybe ByteString -> ByteString -> Either String PactCrypto.SomeKeyPair
-importKey pkScheme mPubBytes secBytes = PactCrypto.importKeyPair
-  (PactCrypto.toScheme pkScheme)
-  (PactCrypto.PubBS <$> mPubBytes)
-  (PactCrypto.PrivBS secBytes)
+  cryptoSignWithPactKeyEither m pk = Right <$> cryptoSignWithPactKey m pk
+
 
 instance PerformEvent t m => PerformEvent t (BrowserCryptoT t m) where
   type Performable (BrowserCryptoT t m) = BrowserCryptoT t (Performable m)
