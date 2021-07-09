@@ -18,7 +18,6 @@ module Frontend.Crypto.Ed25519
   , unverifiedUserSuppliedSignature
   , parseSignature
   -- * Creation
-  -- , genKeyPair
   , deriveKeyPairFromPrivateKey
   -- * Verifying
   , verifySignature
@@ -40,6 +39,7 @@ module Frontend.Crypto.Ed25519
   , generateRoot
   , generateKeypair
   , genMnemonic
+  , toPublic
   )
   where
 
@@ -97,18 +97,19 @@ arrayBufToByteString jsBuf = do
   mMutArrBuf <- catch (fmap Just $ mutableArrayBufferFromJSVal jsBuf) $
     \(_e::JSException) -> pure Nothing
   case mMutArrBuf of
+    -- TODO: Fix empty 
     Nothing -> pure BS.empty
     Just mutArrBuf -> do
       mutBuf <- ghcjsPure $ createFromArrayBuffer mutArrBuf
       arrBuf <- freeze mutBuf
       ghcjsPure $ toByteString 0 Nothing arrBuf
 
-generateRoot :: Text -> JSM (Maybe PrivateKey)
-generateRoot phrase = do
-  let jsPhrase = toJSString phrase
+generateRoot :: Text -> Text -> JSM (Maybe PrivateKey)
+generateRoot pwd phrase = do
+  let args = fmap toJSString [ pwd, phrase ]
   lib <- jsg "lib"
-  mRes <- catch (fmap Just $ lib # "kadenaMnemonicToRootKeypair" $ [ jsPhrase ])
-    $ \(e::JSException) -> liftIO $ print e >> pure Nothing
+  mRes <- catch (fmap Just $ lib # "kadenaMnemonicToRootKeypair" $ args)
+    $ \(e::JSException) -> pure Nothing
   case mRes of
     Nothing -> pure Nothing
     Just res -> do
@@ -116,46 +117,63 @@ generateRoot phrase = do
       Just . PrivateKey <$> arrayBufToByteString res'
 
 -- TODO: Test empty bs, test various int values
-generateKeypair :: PrivateKey -> Int -> JSM (Maybe (PrivateKey, PublicKey))
-generateKeypair (PrivateKey root) idx = do
-  rootBuf <- toJSVal $ BS.unpack root
+generateKeypair :: Text -> PrivateKey -> Int -> JSM (Maybe (PrivateKey, PublicKey))
+generateKeypair pwd (PrivateKey root) idx = do
   let idx' = fromIntegral $ 0x80000000 .|. idx
+  pwdJS <- toJSVal $ toJSString pwd
   idxJS <- toJSVal idx'
+  rootBuf <- toJSVal $ BS.unpack root
   lib <- jsg "lib"
-  resRaw <- lib # "kadenaGenKeypair" $ [ rootBuf, idxJS ]
+  resRaw <- lib # "kadenaGenKeypair" $ [ pwdJS, rootBuf, idxJS ]
   res <- fromJSVal resRaw
-  case res of
-    Nothing -> pure Nothing
-    Just (prvJS, pubJS) -> fmap Just $
+  forM res $ \(prvJS, pubJS) ->
       (\a b -> (PrivateKey a, PublicKey b))
         <$> arrayBufToByteString prvJS
         <*> arrayBufToByteString pubJS
 
-sign :: ByteString -> ByteString -> JSM (ByteString)
-sign msg prv = do
+toPublic :: PrivateKey -> JSM PublicKey
+toPublic (PrivateKey pkey) = do
+  pkey' <- toBuf pkey
+  lib <- jsg "lib"
+  res <- lib # "kadenaGetPublic" $ [ pkey' ]
+  PublicKey <$> arrayBufToByteString res
+
+sign :: Text -> ByteString -> ByteString -> JSM (ByteString)
+sign pwd msg prv = do
+  pwdJS <- toJSVal $ toJSString pwd
   msgBuf <- toJSVal $ BS.unpack msg
   prvBuf <- toJSVal $ BS.unpack prv
   lib <- jsg "lib"
-  res <- lib # "kadenaSign" $ [ msgBuf, prvBuf]
+  res <- lib # "kadenaSign" $ [ pwdJS, msgBuf, prvBuf]
+  -- TODO: What happens if wrong pwd? This will fail which means you gotta handle exce
   arrayBufToByteString res
+
+toBuf :: ByteString -> JSM JSVal
+toBuf = toJSVal . BS.unpack
 
 verify :: ByteString -> ByteString -> ByteString -> JSM Bool
 verify msg pub sig = do
-  msgB <- toBuf msg
-  pubB <- toBuf pub
-  sigB <- toBuf sig
+  args <- mapM toBuf [msg, pub, sig]
   lib <- jsg "lib"
-  res <- lib # "kadenaVerify" $ [ msgB, pubB, sigB]
+  res <- lib # "kadenaVerify" $ args
   --TODO: All JSVals are a bool, so make sure this isn't an exception or somethign
   valToBool res
-
-  where toBuf = toJSVal . BS.unpack
 
 genMnemonic :: MonadJSM m => m [Text]
 genMnemonic = liftJSM $ do
   rawMnem <- eval "lib.kadenaGenMnemonic()"
   fmap (T.words . fromJSString) $ fromJSValUnchecked rawMnem
 
+changePassword :: PrivateKey -> Text -> Text -> JSM PrivateKey
+changePassword (PrivateKey oldKey) oldPwd newPwd = do
+  oldKey' <- toBuf oldKey
+  [oldPwd', newPwd'] <- mapM (toJSVal . toJSString) [oldPwd, newPwd]
+  lib <- jsg "lib"
+  res <- fromJSVal =<< (lib # "kadenaChangePassword" $ [oldKey', oldPwd', newPwd' ])
+  case res of
+    -- TODO: error handle
+    Nothing -> pure $ PrivateKey $ BS.empty
+    Just key -> fmap PrivateKey $ arrayBufToByteString key
 ------------------------------------------
 
 -- -- | Create a signature based on the given payload and `PrivateKey`.
@@ -163,8 +181,8 @@ verifySignature :: MonadJSM m => ByteString -> Signature -> PublicKey -> m Bool
 verifySignature msg (Signature sig) (PublicKey key) = liftJSM $ verify msg key sig
 
 -- | Create a signature based on the given payload and `PrivateKey`.
-mkSignature :: MonadJSM m => ByteString -> PrivateKey -> m Signature
-mkSignature msg (PrivateKey key) = liftJSM $ Signature <$> sign msg key
+mkSignature :: MonadJSM m => Text -> ByteString -> PrivateKey -> m Signature
+mkSignature pwd msg (PrivateKey key) = liftJSM $ Signature <$> sign pwd msg key
 
 ------------------------------------------
 mkKeyPairFromJS :: MakeObject s => s -> JSM (PrivateKey, PublicKey)
@@ -174,12 +192,6 @@ mkKeyPairFromJS jsPair = do
   pure ( PrivateKey . BS.pack $ privKey
        , PublicKey . BS.pack $ pubKey
        )
-
--- -- -- | Generate a `PublicKey`, `PrivateKey` keypair.
--- genKeyPair :: MonadJSM m => m (PrivateKey, PublicKey)
--- genKeyPair = liftJSM $ generateKeypair 
-
-
 
 -- | Parse a private key with additional checks given the corresponding public key.
 -- `parsePublicKey` and `parsePrivateKey`.

@@ -262,9 +262,6 @@ splashScreen walletExists fileFFI eBack = selfWF
         restoreBipPhrase <- uiButtonDyn (btnCfgSecondary & disabledCfg & restoreCfg)
           $ text "Restore from recovery phrase"
 
-        restoreImport <- uiButtonDyn (btnCfgSecondary & disabledCfg & restoreCfg)
-          $ text "Restore from wallet export"
-
         finishSetupWF WalletScreen_SplashScreen $ leftmost
           [ createNewWallet selfWF eBack <$ hasAgreed create
           , restoreBipWallet selfWF eBack <$ hasAgreed restoreBipPhrase
@@ -606,8 +603,7 @@ setPassword dSentence = do
 
   encryptedKeyAndPass <- performEvent $ ffor pass $ \p -> do
     sentence <- sample $ current dSentence 
-    root <- liftJSM $ generateRoot $ T.unwords sentence
-    --TODO: Encrypt root
+    root <- liftJSM $ generateRoot p $ T.unwords sentence
     return $ ffor root $ \r -> (r, Password p)
 
   pure $ leftmost

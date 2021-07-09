@@ -36,6 +36,8 @@ import Frontend.UI.Widgets
 import Frontend.Crypto.Ed25519
 import Frontend.Crypto.CommonBIP
 import Frontend.Crypto.Browser
+import qualified Data.Text.Encoding as T
+import Data.ByteString (ByteString)
 
 
 data LockScreen a where
@@ -116,7 +118,7 @@ bipWallet fileFFI mkAppCfg = do
               { _changePassword_requestChange =
                 let doChange (Identity (oldRoot, _)) (oldPass, newPass, repeatPass)
                       --TODO: Password
-                      -- passwordRoundTripTest oldRoot oldPass = case checkPassword newPass repeatPass of
+                      --  passwordRoundTripTest oldRoot oldPass = case checkPassword newPass repeatPass of
                       | True = case checkPassword newPass repeatPass of
                         Left e -> pure $ Left e
                         Right _ -> do
@@ -131,7 +133,7 @@ bipWallet fileFFI mkAppCfg = do
               -- When updating the keys here, we just always regenerate the key from
               -- the new root
 
-              -- TODO: Update private keys on new pswd 
+              -- TODO: Update private keys on new pswd
               -- We punted on handling this for now
               , _changePassword_updateKeys = never
               }
@@ -155,7 +157,7 @@ mkSidebarLogoutLink = do
     performEvent_ $ liftIO . triggerLogout <$> clk
 
 lockScreen
-  :: (DomBuilder t m, PostBuild t m, TriggerEvent t m, PerformEvent t m, MonadIO m, MonadFix m, MonadHold t m)
+  :: (DomBuilder t m, PostBuild t m, TriggerEvent t m, PerformEvent t m, MonadIO m, MonadFix m, MonadHold t m, MonadJSM (Performable m))
   => Behavior t PrivateKey -> m (Event t (), Event t Text)
 lockScreen xprv = setupDiv "fullscreen" $ divClass "wrapper" $ setupDiv "splash" $ do
   splashLogo
@@ -189,9 +191,22 @@ lockScreen xprv = setupDiv "fullscreen" $ divClass "wrapper" $ setupDiv "splash"
     --   line "You have an incoming signing request."
     --   line "Unlock your wallet to view and sign the transaction."
 
-    -- TODO: Fix
-    -- let isValid = attachWith (\(p, x) _ -> p <$ guard (passwordRoundTripTest x p)) ((,) <$> current (value pass) <*> xprv) eSubmit
-    let isValid = attachWith (\(p, x) _ -> Just p) ((,) <$> current (value pass) <*> xprv) eSubmit
+    let prvAndPass = (,) <$> xprv <*> (current $ value pass)
+
+    isValid <- performEvent $ ffor (attach prvAndPass eSubmit) $ \((xprv', pass'), _) -> do
+      isMatch <- passwordRoundTripTest xprv' pass'
+      pure $ if isMatch then Just pass' else Nothing
     pure (restore, fmapMaybe id isValid)
+
+-- | Check the validity of the password by signing and verifying a message
+passwordRoundTripTest :: MonadJSM m => PrivateKey -> Text -> m Bool
+passwordRoundTripTest xprv pass = liftJSM $ do
+  sig <- mkSignature pass msg xprv
+  pub <- toPublic xprv
+  verifySignature msg sig pub
+  where
+    msg :: ByteString
+    msg = "the quick brown fox jumps over the lazy dog"
+
 
 deriveGEq ''LockScreen
