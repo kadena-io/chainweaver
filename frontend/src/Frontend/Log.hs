@@ -14,18 +14,16 @@ module Frontend.Log
 
 import Control.Lens (view,(.~))
 import Control.Monad.IO.Class (MonadIO, liftIO)
-import Control.Monad.Logger (LogLevel (..), LogStr, liftLoc, defaultLogStr, toLogStr, defaultLoc)
-import System.Log.FastLogger (fromLogStr)
 import System.IO (stdout)
 import Data.Function ((&))
 import Data.ByteString (hPut)
 import Data.Text (Text)
-
 import Language.Haskell.TH.Syntax (Q, Exp, qLocation)
 
 import Reflex
 import Reflex.Network.Extended (Flattenable (..))
 
+import Common.Logger
 import Common.Foundation (makePactLenses)
 
 newtype LogCfg t = LogCfg

@@ -1,4 +1,4 @@
-# Chainweaver
+# Chainweaver 
 
 Kadena Chainweaver desktop wallet and web-based playground for the [Pact](https://pact-language.readthedocs.io/en/latest/) language, including support for deployments to backends (blockchains, test servers).
 
@@ -101,8 +101,8 @@ Where `deploydir` is the same as above.
 In the `deploydir` directory, create a file at `config/common/networks`, it must contain a list of networks. With each network consisting of at least one host. A network can either be some chainweb deployment or also some pact -s server. chainweaver will auto detect what it actually is:
 
 ```
-    testnet: us1.testnet.chainweb.com us2.testnet.chainweb.com eu1.testnet.chainweb.com eu2.testnet.chainweb.com ap1.testnet.chainweb.com ap2.testnet.chainweb.com
-    pact: pact01.kadena.io pact02.kadena.io
+    testnet: api.testnet.chainweb.com
+    mainnet: api.chainweb.com
 ```
 
 This file must exist, so chainweaver won't start up in development mode (launching its own pact servers), as of this writing it should also be populated with entries.

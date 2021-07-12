@@ -36,8 +36,6 @@ Design Requirements:
 
 module Frontend.UI.Transfer where
 
-import qualified Codec.QRCode as QR
-import qualified Codec.QRCode.JuicyPixels as QR
 import           Control.Applicative
 import           Control.Error hiding (bool, note)
 import           Control.Lens hiding ((.=))
@@ -63,11 +61,13 @@ import           Data.Traversable
 import           Data.Time.Clock.POSIX
 
 #if !defined(ghcjs_HOST_OS)
+import qualified Codec.QRCode as QR
+import qualified Codec.QRCode.JuicyPixels as QR
 import qualified Data.Yaml as Y
 #endif
 
+import           Pact.Types.SigData
 import           Kadena.SigningApi (AccountName(..))
-import           Pact.ApiReq
 import           Pact.Parse
 import qualified Pact.Server.ApiClient as Api
 import qualified Pact.Types.API as Api

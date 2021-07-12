@@ -2,8 +2,8 @@
 ;; "Hello, world!" smart contract/module
 ;;
 ;; To try it out, click "Load into REPL" and type into the repl:
-;; (hello-world.set-message "universe")
-;; (hello-world.greet)
+;; (free.hello-world.set-message "universe")
+;; (free.hello-world.greet)
 ;;
 ;; Check lines 21 and 34 to play with Formal Verification
 ;;

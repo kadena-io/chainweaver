@@ -30,7 +30,6 @@ library
                , safe
                , obelisk-route
                , dependent-sum
-               , monad-logger
                , mtl
                , network
                , obelisk-executable-config-lookup

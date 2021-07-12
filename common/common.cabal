@@ -45,6 +45,7 @@ library
     Common.Api
     Common.GistStore
     Common.Route
+    Common.Logger
     Common.OAuth
     Common.Modules
     Common.Network
