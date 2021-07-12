@@ -21,7 +21,7 @@ goldenTests =
     chain = ChainId "0"
 
     (Right (node, pubkey)) = runExcept $ (,)
-      <$> parseNodeRef "us1.testnet.chainweb.com"
+      <$> parseNodeRef "api.testnet.chainweb.com"
       <*> parsePublicKey "368820f80c324bbc7c2b0610688a7da43e39f91d118732671cd9c7500ff43cca"
 
     rk = RequestKey $ Hash.pactHash "this is a test"
