@@ -57,7 +57,22 @@ class HasCrypto key m | m -> key where
   cryptoGenPubKeyFromPrivate scheme = lift . cryptoGenPubKeyFromPrivate scheme
 
 instance (HasCrypto key m, Monad m) => HasCrypto key (RoutedT t r m)
+--------------------------------------------------------------
 
+newtype Password = Password { unPassword :: Text } deriving (Eq)
+
+class BIP39Root key where
+  type Sentence key 
+
+  -- type MonadBIP39Root key :: * -> *
+
+  -- deriveRoot :: Password -> Sentence key -> (MonadBIP39Root key) (Maybe key)
+  deriveRoot :: MonadJSM m => Password -> Sentence key -> m (Maybe key)
+
+
+
+
+--------------------------------------------------------------
 -- newtype CryptoT key t m a = CryptoT
 --   { unCryptoT :: ReaderT (Behavior t (key, Text)) m a
 --   } deriving

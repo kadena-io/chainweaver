@@ -15,9 +15,10 @@ import Reflex
 import Common.Logger (LogLevel, LogStr)
 import Common.Network (NetworkName)
 import Common.Wallet (Key, PublicKey)
+import Frontend.Crypto.Class
 
 data ChangePassword key t m = ChangePassword
-  { _changePassword_requestChange :: Event t (Text, Text, Text) -> m (Event t (Either Text ()))
+  { _changePassword_requestChange :: Event t (Password, Password, Password) -> m (Event t (Either Text ()))
   -- ^ Request to change the password. Performs validation and changes passwords
   -- if validation passes. (Old pass, new pass, repeat pass).
   , _changePassword_updateKeys :: Event t (Performable m (Int -> Key key -> Key key))

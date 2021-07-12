@@ -37,7 +37,6 @@ import qualified Data.Text as T
 import qualified Data.Text.Encoding as T
 
 import Frontend.AppCfg (FileFFI(..))
-import Frontend.Crypto.Ed25519
 import Frontend.Storage.Class (HasStorage)
 import Frontend.UI.Button
 import Frontend.UI.Dialogs.ChangePassword (minPasswordLength)
@@ -45,7 +44,12 @@ import Frontend.UI.Widgets.Helpers (imgWithAlt)
 import Frontend.UI.Widgets
 import Obelisk.Generated.Static
 
-newtype Password = Password { unPassword :: Text } deriving (Eq)
+import Frontend.Setup.Password
+import Frontend.Setup.Widgets
+import Frontend.Crypto.Ed25519 (genMnemonic)
+import Frontend.Crypto.Class
+
+-- newtype Password = Password { unPassword :: Text } deriving (Eq)
 
 -- | Used for changing the settings in the passphrase widget.
 data PassphraseStage
@@ -75,21 +79,6 @@ setupScreenClass = setupClass . T.toLower . tshow
 wordsToPhraseMap :: [Text] -> Map.Map WordKey Text
 wordsToPhraseMap = Map.fromList . zip [WordKey 1 ..]
 
-setupClass :: Text -> Text
-setupClass = mappend "setup__"
-
-setupDiv :: DomBuilder t m => Text -> m a -> m a
-setupDiv t = divClass (setupClass t)
-
-setupCheckbox
-  :: (DomBuilder t m, PostBuild t m)
-  => Bool
-  -> CheckboxConfig t
-  -> m ()
-  -> m (Checkbox t)
-setupCheckbox initialValue cfg inner = elClass "div" (setupClass "checkbox")
-  $ uiCheckbox def initialValue cfg inner
-
 showWordKey :: WordKey -> Text
 showWordKey = T.pack . show . _unWordKey
 
@@ -103,26 +92,9 @@ showWordKey = T.pack . show . _unWordKey
 tshow :: Show a => a -> Text
 tshow = T.pack . show
 
-setupForm :: forall t m a. (DomBuilder t m, PostBuild t m) => Text -> Text -> Dynamic t Bool -> m a -> m (Event t (), a)
-setupForm cls lbl disabled = uiForm cfg $ setupDiv cls $ void $ confirmButton (def & uiButtonCfg_disabled .~ disabled) lbl
-  where cfg = def & elementConfig_initialAttributes .~ ("class" =: setupClass "form")
-
-restoreForm :: (DomBuilder t m, PostBuild t m) => Dynamic t Bool -> m a -> m (Event t (), a)
-restoreForm = setupForm "recover-restore-button" "Restore"
-
-continueForm :: (DomBuilder t m, PostBuild t m) => Dynamic t Bool -> m a -> m (Event t (), a)
-continueForm = setupForm "continue-button" "Continue"
-
--- | Wallet logo
-kadenaWalletLogo :: DomBuilder t m => m ()
-kadenaWalletLogo = divClass "logo" $ do
-  elAttr "img" ("src" =: static @"img/kadena_blue_logo.png" <> "class" =: setupClass "kadena-logo") blank
-  elClass "div" "chainweaver" $ text "Chainweaver"
-  elClass "div" "by-kadena" $ text "by Kadena"
-
-type SetupWF t m = Workflow t m
-  (WalletScreen
-  , Event t (PrivateKey, Password, Bool)
+type SetupWF bipKey t m = Workflow t m
+  ( WalletScreen
+  , Event t (bipKey, Password, Bool)
   , Event t () -- ExitSetup Event
   )
 
@@ -183,7 +155,7 @@ data WalletExists
   deriving (Show, Eq)
 
 runSetup
-  :: forall t m
+  :: forall t m key
   . ( DomBuilder t m
     , MonadFix m
     , MonadHold t m
@@ -193,11 +165,13 @@ runSetup
     , TriggerEvent t m
     , HasStorage (Performable m)
     , MonadSample t (Performable m)
+    , BIP39Root key --(Performable m)
+    , Sentence key ~ [Text]
     )
   => FileFFI t m
   -> Bool
   -> WalletExists
-  -> m (Event t (Either () (PrivateKey, Password, Bool)))
+  -> m (Event t (Either () (key, Password, Bool)))
 runSetup fileFFI showBackOverride walletExists = setupDiv "fullscreen" $ mdo
   let dCurrentScreen = (^._1) <$> dwf
 
@@ -233,12 +207,13 @@ splashLogo = do
 splashScreen
   :: (DomBuilder t m, MonadFix m, MonadHold t m, PerformEvent t m
      , PostBuild t m, MonadJSM (Performable m), TriggerEvent t m, HasStorage (Performable m)
-     , MonadSample t (Performable m)
+     , MonadSample t (Performable m), BIP39Root key -- (Performable m)
+     , Sentence key ~ [Text]
      )
   => WalletExists
   -> FileFFI t m
   -> Event t ()
-  -> SetupWF t m
+  -> SetupWF key t m
 splashScreen walletExists fileFFI eBack = selfWF
   where
     selfWF = Workflow $ setupDiv "splash" $ do
@@ -276,8 +251,11 @@ passphraseLen = 12
 
 restoreBipWallet
   :: (DomBuilder t m, MonadHold t m, MonadFix m, PerformEvent t m, PostBuild t m, 
-      MonadSample t (Performable m), MonadJSM (Performable m), TriggerEvent t m)
-  => SetupWF t m -> Event t () -> SetupWF t m
+      MonadSample t (Performable m), MonadJSM (Performable m), TriggerEvent t m,
+      BIP39Root key -- (Performable m)
+      , Sentence key ~ [Text]
+     )
+  => SetupWF key t m -> Event t () -> SetupWF key t m
 restoreBipWallet backWF eBack = Workflow $ do
   el "h1" $ text "Recover your wallet"
 
@@ -286,27 +264,18 @@ restoreBipWallet backWF eBack = Workflow $ do
     el "div" $ text "to restore your wallet."
 
   rec
-    phraseMap <- holdDyn (wordsToPhraseMap $ replicate passphraseLen T.empty)
-      $ flip Map.union <$> current phraseMap <@> onPhraseMapUpdate
+    dPhraseMap <- holdDyn (wordsToPhraseMap $ replicate passphraseLen T.empty)
+      $ flip Map.union <$> current dPhraseMap <@> onPhraseMapUpdate
+    onPhraseMapUpdate <- passphraseWidget dPhraseMap (pure Recover) True
 
-    onPhraseMapUpdate <- passphraseWidget phraseMap (pure Recover) True
-
-  let enoughWords = (== passphraseLen) . length . filter (not . T.null) . Map.elems
-
-  let sentenceOrError = ffor phraseMap $ \pm -> if enoughWords pm then do
+  -- TODO: Generic "validMnemonic" func here
+  let sentenceOrError = ffor dPhraseMap $ \pm -> if enoughWords pm then do
         let phrase = Map.elems pm
         unless (length phrase == passphraseLen) $ Left BIP39PhraseError_PhraseIncomplete
         Right phrase
         else Left BIP39PhraseError_PhraseIncomplete
 
-  -- Check phrase for errors
-  dyn_ $ ffor sentenceOrError $ \case
-    Right _ -> pure ()
-    Left e -> setupDiv "phrase-error-message-wrapper" $ setupDiv "phrase-error-message" $ text $ case e of
-      BIP39PhraseError_InvalidPhrase
-        -> "Invalid phrase"
-      BIP39PhraseError_PhraseIncomplete
-        -> mempty
+  displaySentenceErrType sentenceOrError
 
   -- GEN SEED: Todo: Make sure wrong words returns Nothing
   let 
@@ -316,6 +285,7 @@ restoreBipWallet backWF eBack = Workflow $ do
         text "Waiting for a valid 12 word passphrase..."
         pure never
 
+      -- Launch password recovery
       withSeedConfirmPassword sentence = setupDiv "recover-enter-password" $ mdo
         (ePwSubmit, dSetPw) <- restoreForm (fmap isNothing dSetPw) $ do
           holdDyn Nothing =<< setPassword (pure sentence)
@@ -327,6 +297,17 @@ restoreBipWallet backWF eBack = Workflow $ do
     ( (WalletScreen_RecoverPassphrase, (\(prv, pw) -> (prv, pw, True)) <$> switchDyn dSetPassword, never)
     , backWF <$ eBack
     )
+  where
+    enoughWords = (== passphraseLen) . length . filter (not . T.null) . Map.elems
+    displaySentenceErrType dSentenceOrError =
+    -- Check phrase for errors
+      dyn_ $ ffor dSentenceOrError $ \case
+        Right _ -> pure ()
+        Left e -> setupDiv "phrase-error-message-wrapper" $ setupDiv "phrase-error-message" $ text $ case e of
+          BIP39PhraseError_InvalidPhrase
+            -> "Invalid phrase"
+          BIP39PhraseError_PhraseIncomplete
+            -> mempty
 
 --     nonEmptyPassword "" = Nothing
 --     nonEmptyPassword pw = Just (Password pw)
@@ -393,9 +374,12 @@ passphraseWidget dWords dStage exposeEmpty = do
     listViewWithKey dWords (passphraseWordElement dStage exposeEmpty)
 
 createNewWallet
-  :: forall t m. (DomBuilder t m, MonadFix m, MonadHold t m, PerformEvent t m, PostBuild t m,
-                  MonadJSM (Performable m), MonadSample t (Performable m), TriggerEvent t m)
-  => SetupWF t m -> Event t () -> SetupWF t m
+  :: forall t m key. (DomBuilder t m, MonadFix m, MonadHold t m, PerformEvent t m, PostBuild t m,
+                  MonadJSM (Performable m), MonadSample t (Performable m), TriggerEvent t m
+    , BIP39Root key -- (Performable m)
+    , Sentence key ~ [Text]
+    )
+  => SetupWF key t m -> Event t () -> SetupWF key t m
 createNewWallet backWF eBack = selfWF
   where
     selfWF = Workflow $  do
@@ -414,7 +398,7 @@ createNewWallet backWF eBack = selfWF
           text "Generating your mnemonic"
           pure never
 
-        proceed :: [Text] -> m (Event t (SetupWF t m))
+        -- proceed :: [Text] -> m (Event t (SetupWF key t m))
         proceed mnem = mdo
           (ePwSubmit, dPassword) <- continueForm (fmap isNothing dPassword) $ do
             holdDyn Nothing =<< setPassword (pure mnem)
@@ -447,12 +431,16 @@ stackFaIcon icon = elClass "span" "fa-stack fa-5x" $ do
   elClass "i" ("fa " <> icon <> " fa-stack-1x fa-inverse") blank
 
 precreatePassphraseWarning
-  :: (DomBuilder t m, MonadFix m, MonadHold t m, PerformEvent t m, PostBuild t m, MonadJSM (Performable m))
-  => SetupWF t m
+  ::
+  ( DomBuilder t m, MonadFix m, MonadHold t m, PerformEvent t m,
+    PostBuild t m, MonadJSM (Performable m), BIP39Root key --(Performable m)
+    , Sentence key ~ [Text]
+  )
+  => SetupWF key t m
   -> Event t ()
-  -> (PrivateKey, Password)
-  -> [Text]
-  -> SetupWF t m
+  -> (key, Password)
+  -> Sentence key
+  -> SetupWF key t m
 precreatePassphraseWarning backWF eBack (rootKey, password) mnemonicSentence = Workflow $ mdo
   (eContinue, dUnderstand) <- continueForm (fmap not dUnderstand) $ do
 
@@ -481,9 +469,9 @@ precreatePassphraseWarning backWF eBack (rootKey, password) mnemonicSentence = W
     line = el "div" . text
 
 doneScreen
-  :: (DomBuilder t m, PostBuild t m)
-  => (PrivateKey, Password)
-  -> SetupWF t m
+  :: (DomBuilder t m, PostBuild t m, BIP39Root key )-- (Performable m))
+  => (key, Password)
+  -> SetupWF key t m
 doneScreen (rootKey, passwd) = Workflow $ do
   walletSplashWithIcon blank
 
@@ -498,13 +486,17 @@ doneScreen (rootKey, passwd) = Workflow $ do
 
 -- | UI for generating and displaying a new mnemonic sentence.
 createNewPassphrase
-  :: (DomBuilder t m, MonadFix m, MonadHold t m, PerformEvent t m, PostBuild t m, MonadJSM (Performable m))
-  => SetupWF t m
+  :: 
+  (DomBuilder t m, MonadFix m, MonadHold t m, PerformEvent t m,
+   PostBuild t m, MonadJSM (Performable m), BIP39Root key -- (Performable m)
+   , Sentence key ~ [Text]
+  )
+  => SetupWF key t m
   -> Event t ()
-  -> (PrivateKey, Password)
+  -> (key, Password)
   -- TODO: Wrap Sentece type
-  -> [ Text ]
-  -> SetupWF t m
+  -> Sentence key
+  -> SetupWF key t m
 createNewPassphrase backWF eBack (rootKey, password) mnemonicSentence = selfWF
   where
     selfWF = Workflow $ mdo
@@ -535,13 +527,15 @@ createNewPassphrase backWF eBack (rootKey, password) mnemonicSentence = selfWF
 -- | UI for mnemonic sentence confirmation: scramble the phrase, make the user
 -- choose the words in the right order.
 confirmPhrase
-  :: (DomBuilder t m, MonadFix m, MonadHold t m, PostBuild t m)
-  => SetupWF t m
+  :: (DomBuilder t m, MonadFix m, MonadHold t m, PostBuild t m, BIP39Root key -- (Performable m)
+  , Sentence key ~ [Text]
+  )
+  => SetupWF key t m
   -> Event t ()
-  -> (PrivateKey, Password)
-  -> [Text]
+  -> (key, Password)
+  -> Sentence key
   -- ^ Mnemonic sentence to confirm
-  -> SetupWF t m
+  -> SetupWF key t m
 confirmPhrase backWF eBack (rootKey, password) mnemonicSentence = Workflow $ mdo
   (continue, done) <- continueForm (fmap not done) $ do
     el "h1" $ text "Verify Recovery Phrase"
@@ -565,57 +559,57 @@ confirmPhrase backWF eBack (rootKey, password) mnemonicSentence = Workflow $ mdo
     , backWF <$ eBack
     ]
 
-setPassword
-  :: (DomBuilder t m, MonadHold t m, MonadFix m, PerformEvent t m, PostBuild t m, 
-      MonadSample t (Performable m), MonadJSM (Performable m), TriggerEvent t m)
-  => Dynamic t [Text]
-  -> m (Event t (Maybe (PrivateKey, Password)))
-setPassword dSentence = do
-  let uiPassword' = uiPassword (setupClass "password-wrapper") (setupClass "password")
+-- setPassword
+--   :: (DomBuilder t m, MonadHold t m, MonadFix m, PerformEvent t m, PostBuild t m, 
+--       MonadSample t (Performable m), MonadJSM (Performable m), TriggerEvent t m)
+--   => Dynamic t [Text]
+--   -> m (Event t (Maybe (PrivateKey, Password)))
+-- setPassword dSentence = do
+--   let uiPassword' = uiPassword (setupClass "password-wrapper") (setupClass "password")
 
-  p1elem <- uiPassword' $ "Enter password (" <> tshow minPasswordLength <> " character min.)"
-  p2elem <- uiPassword' "Confirm password"
+--   p1elem <- uiPassword' $ "Enter password (" <> tshow minPasswordLength <> " character min.)"
+--   p2elem <- uiPassword' "Confirm password"
 
-  p1Dirty <- holdUniqDyn =<< holdDyn False (True <$ _inputElement_input p1elem)
-  p2Dirty <- holdUniqDyn =<< holdDyn False (True <$ _inputElement_input p2elem)
+--   p1Dirty <- holdUniqDyn =<< holdDyn False (True <$ _inputElement_input p1elem)
+--   p2Dirty <- holdUniqDyn =<< holdDyn False (True <$ _inputElement_input p2elem)
 
-  let inputsDirty = current $ liftA2 (||) p1Dirty p2Dirty
+--   let inputsDirty = current $ liftA2 (||) p1Dirty p2Dirty
 
-  eCheckPassword <- fmap (gate inputsDirty) $ delay 0.2 $ leftmost
-    [ _inputElement_input p1elem
-    , _inputElement_input p2elem
-    ]
+--   eCheckPassword <- fmap (gate inputsDirty) $ delay 0.2 $ leftmost
+--     [ _inputElement_input p1elem
+--     , _inputElement_input p2elem
+--     ]
 
-  let (err, pass) = fanEither $
-        checkPassword <$> current (value p1elem) <*> current (value p2elem) <@ eCheckPassword
+--   let (err, pass) = fanEither $
+--         checkPassword <$> current (value p1elem) <*> current (value p2elem) <@ eCheckPassword
 
-  lastError <- holdDyn Nothing $ leftmost
-    [ Just <$> err
-    , Nothing <$ pass
-    ]
+--   lastError <- holdDyn Nothing $ leftmost
+--     [ Just <$> err
+--     , Nothing <$ pass
+--     ]
 
-  let dMsgClass = lastError <&> \m -> setupClass "password-message " <> case m of
-        Nothing -> setupClass "hide-pw-error"
-        Just _ -> setupClass "show-pw-error"
+--   let dMsgClass = lastError <&> \m -> setupClass "password-message " <> case m of
+--         Nothing -> setupClass "hide-pw-error"
+--         Just _ -> setupClass "show-pw-error"
 
-  elDynClass "div" dMsgClass $
-    dynText $ fromMaybe T.empty <$> lastError
+--   elDynClass "div" dMsgClass $
+--     dynText $ fromMaybe T.empty <$> lastError
 
-  encryptedKeyAndPass <- performEvent $ ffor pass $ \p -> do
-    sentence <- sample $ current dSentence 
-    root <- liftJSM $ generateRoot p $ T.unwords sentence
-    return $ ffor root $ \r -> (r, Password p)
+--   encryptedKeyAndPass <- performEvent $ ffor pass $ \p -> do
+--     sentence <- sample $ current dSentence 
+--     root <- liftJSM $ generateRoot p $ T.unwords sentence
+--     return $ ffor root $ \r -> (r, Password p)
 
-  pure $ leftmost
-    [ Nothing <$ err
-    , encryptedKeyAndPass
-    ]
+--   pure $ leftmost
+--     [ Nothing <$ err
+--     , encryptedKeyAndPass
+--     ]
 
-checkPassword :: Text -> Text -> Either Text Text
-checkPassword p1 p2
-  | T.length p1 < minPasswordLength =
-      Left $ "Passwords must be at least " <> tshow minPasswordLength <> " characters long"
-  | p1 /= p2 =
-      Left "Passwords must match"
-  | otherwise =
-      Right p1
+-- checkPassword :: Text -> Text -> Either Text Text
+-- checkPassword p1 p2
+--   | T.length p1 < minPasswordLength =
+--       Left $ "Passwords must be at least " <> tshow minPasswordLength <> " characters long"
+--   | p1 /= p2 =
+--       Left "Passwords must match"
+--   | otherwise =
+--       Right p1

@@ -22,6 +22,7 @@ import Frontend.Foundation
 import Frontend.Storage
 import Pact.Server.ApiClient (HasTransactionLogger)
 import Data.Text (Text)
+import qualified Data.Text as T
 
 newtype BrowserCryptoT t m a = BrowserCryptoT
   { unBrowserCryptoT :: ReaderT (Behavior t (PrivateKey, Text)) m a
@@ -97,3 +98,11 @@ instance (Prerender js t m, Monad m, Reflex t) => Prerender js t (BrowserCryptoT
 
 runBrowserCryptoT :: Behavior t (PrivateKey, Text) -> BrowserCryptoT t m a -> m a
 runBrowserCryptoT b (BrowserCryptoT m) = runReaderT m b
+
+
+-- instance (MonadJSM m) => BIP39Root PrivateKey where
+instance BIP39Root PrivateKey where
+  type Sentence PrivateKey = [Text] 
+  -- type MonadBIP39Root PrivateKey -- = JSM
+  -- deriveRoot :: Password -> Sentence key -> (MonadBIP39Root key) (Maybe key)
+  deriveRoot (Password pwd) sentence = liftJSM $ generateRoot pwd $ T.unwords sentence
