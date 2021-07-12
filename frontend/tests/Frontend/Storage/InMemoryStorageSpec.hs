@@ -31,7 +31,7 @@ test_inMemoryStorage = testCase "In Memory Storage" $ do
 
 test_inMemoryStorageFromTestData :: TestTree
 test_inMemoryStorageFromTestDataEmptyDir = testCase "In Memory storage from /var/empty" $ do
-  ims <- inMemoryStorageFromTestData storeTestKeyMetaPrefix (Proxy @StoreTestKey) 0 "/var/empty/"
+  ims <- inMemoryStorageFromTestData storeTestKeyMetaPrefix (Proxy @StoreTestKey) 0 "/var/empty/" NoFailure
   (mInt, mStr) <- flip runInMemoryStorage ims $ do
     mInt <- getItemStorage localStorage StoreInt
     mStr <- getItemStorage localStorage StoreString
@@ -41,7 +41,7 @@ test_inMemoryStorageFromTestDataEmptyDir = testCase "In Memory storage from /var
   mInt @?= Nothing
 
 test_inMemoryStorageFromTestData = testCase ("In Memory Storage from " <> testDataPath) $ do
-  ims <- inMemoryStorageFromTestData storeTestKeyMetaPrefix (Proxy @StoreTestKey) 0 testDataPath
+  ims <- inMemoryStorageFromTestData storeTestKeyMetaPrefix (Proxy @StoreTestKey) 0 testDataPath NoFailure
   (mInt, mStr) <- flip runInMemoryStorage ims $ do
     mInt <- getItemStorage localStorage StoreInt
     mStr <- getItemStorage localStorage StoreString
