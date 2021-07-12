@@ -22,6 +22,7 @@ import Frontend.UI.Dialogs.ChangePassword (minPasswordLength)
 import Control.Applicative (liftA2)
 import Data.Functor ((<&>))
 import Data.Maybe (fromMaybe)
+import Frontend.Crypto.Password
 import Frontend.Crypto.Class
 import Frontend.UI.Widgets
 import Frontend.Foundation

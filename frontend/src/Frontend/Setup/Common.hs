@@ -48,6 +48,7 @@ import Frontend.Setup.Password
 import Frontend.Setup.Widgets
 import Frontend.Crypto.Ed25519 (genMnemonic)
 import Frontend.Crypto.Class
+import Frontend.Crypto.Password
 
 -- newtype Password = Password { unPassword :: Text } deriving (Eq)
 

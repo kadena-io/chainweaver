@@ -43,10 +43,16 @@ import qualified Data.Bifunctor as BiF
 import Frontend.Crypto.Class
 
 data LockScreen a where
-  LockScreen_Restore :: LockScreen PrivateKey -- ^ Root key
+  LockScreen_Restore :: LockScreen PrivateKey
   LockScreen_RunSetup :: LockScreen ()
   LockScreen_Locked :: LockScreen PrivateKey -- ^ Root key
   LockScreen_Unlocked :: LockScreen (PrivateKey, Password) -- ^ The root key and password
+
+-- data LockScreen root a where
+--   LockScreen_Restore :: LockScreen root
+--   LockScreen_RunSetup :: LockScreen ()
+--   LockScreen_Locked :: LockScreen root -- ^ Root key
+--   LockScreen_Unlocked :: LockScreen (root, Password) -- ^ The root key and password
 
 type MkAppCfg t m
   =  EnabledSettings PrivateKey t (RoutedT t (R FrontendRoute) (BrowserCryptoT t m))

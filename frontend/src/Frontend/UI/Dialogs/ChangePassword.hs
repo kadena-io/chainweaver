@@ -18,7 +18,7 @@ import Frontend.Foundation
 import Frontend.UI.Modal.Impl
 import Frontend.UI.Widgets
 import Frontend.UI.Widgets.Helpers (dialogSectionHeading)
-import Frontend.Crypto.Class
+import Frontend.Crypto.Password
 
 minPasswordLength :: Int
 minPasswordLength = 10

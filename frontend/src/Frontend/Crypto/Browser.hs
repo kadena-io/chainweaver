@@ -18,6 +18,7 @@ import Reflex.Host.Class (MonadReflexCreateTrigger)
 import qualified Control.Newtype.Generics as Newtype
 import Frontend.Crypto.Ed25519
 import Frontend.Crypto.Class
+import Frontend.Crypto.Password
 import Frontend.Foundation
 import Frontend.Storage
 import Pact.Server.ApiClient (HasTransactionLogger)
@@ -39,6 +40,10 @@ newtype BrowserCryptoT t m a = BrowserCryptoT
     , HasTransactionLogger
     , MonadReader (Behavior t (PrivateKey, Text))
     )
+
+instance BIP39Root PrivateKey where
+  type Sentence PrivateKey = [Text] 
+  deriveRoot (Password pwd) sentence = liftJSM $ generateRoot pwd $ T.unwords sentence
 
 instance (MonadJSM m, MonadSample t m) => HasCrypto PrivateKey (BrowserCryptoT t m) where
   cryptoSign msg key = do
@@ -98,11 +103,3 @@ instance (Prerender js t m, Monad m, Reflex t) => Prerender js t (BrowserCryptoT
 
 runBrowserCryptoT :: Behavior t (PrivateKey, Text) -> BrowserCryptoT t m a -> m a
 runBrowserCryptoT b (BrowserCryptoT m) = runReaderT m b
-
-
--- instance (MonadJSM m) => BIP39Root PrivateKey where
-instance BIP39Root PrivateKey where
-  type Sentence PrivateKey = [Text] 
-  -- type MonadBIP39Root PrivateKey -- = JSM
-  -- deriveRoot :: Password -> Sentence key -> (MonadBIP39Root key) (Maybe key)
-  deriveRoot (Password pwd) sentence = liftJSM $ generateRoot pwd $ T.unwords sentence
