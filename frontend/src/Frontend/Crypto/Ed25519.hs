@@ -14,9 +14,6 @@ module Frontend.Crypto.Ed25519
   ( -- * Types & Classes
     PublicKey(..)
   , PrivateKey(..)
-  , Signature(..)
-  , unverifiedUserSuppliedSignature
-  , parseSignature
   -- * Creation
   , deriveKeyPairFromPrivateKey
   -- * Verifying
@@ -67,32 +64,13 @@ import           Language.Javascript.JSaddle
 import           Language.Javascript.JSaddle.Helper (mutableArrayBufferFromJSVal)
 import           Language.Javascript.JSaddle.Types  (ghcjsPure)
 import           Data.Bits ((.|.))
+import           Frontend.Crypto.Signature
 
 --
 -- | PrivateKey with a Pact compatible JSON representation.
 newtype PrivateKey = PrivateKey { unPrivateKey :: ByteString }
   deriving (Generic)
---
--- | Signature with a Pact compatible JSON representation.
-newtype Signature = Signature { unSignature :: ByteString }
-  deriving (Eq,Ord,Show,Generic)
 
-unverifiedUserSuppliedSignature :: MonadFail m => Text -> m Signature
-unverifiedUserSuppliedSignature = fmap Signature . decodeBase16M . T.encodeUtf8
-
--- | Parse just a public key with some sanity checks applied.
-parseSignature :: MonadError Text m => Text -> m Signature
-parseSignature = throwDecodingErr . textToKey <=< checkSig . T.strip
-
-checkSig :: MonadError Text m => Text -> m Text
-checkSig t =
-    if len /= 128
-      then throwError $ T.pack "Signature is not the right length"
-      else pure t
-  where
-    len = T.length t
-
-------------------------------------------
 arrayBufToByteString :: JSVal -> JSM ByteString
 arrayBufToByteString jsBuf = do
   mMutArrBuf <- catch (fmap Just $ mutableArrayBufferFromJSVal jsBuf) $
@@ -270,13 +248,6 @@ instance ToJSON PrivateKey where
 instance FromJSON PrivateKey where
   parseJSON = fmap pack . decodeBase16M <=< fmap T.encodeUtf8 . parseJSON
 
-instance ToJSON Signature where
-  toEncoding = toEncoding . keyToText
-  toJSON = toJSON . keyToText
-
-instance FromJSON Signature where
-  parseJSON = fmap pack . decodeBase16M <=< fmap T.encodeUtf8 . parseJSON
-
 decodeBase64M :: (Monad m, MonadFail m) => ByteString -> m ByteString
 decodeBase64M i =
   case decodeBase64UrlUnpadded i of
@@ -284,5 +255,3 @@ decodeBase64M i =
     Right v -> pure v
 
 instance Newtype PrivateKey
-
-instance Newtype Signature

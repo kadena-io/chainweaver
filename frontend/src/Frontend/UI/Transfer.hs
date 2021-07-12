@@ -96,6 +96,7 @@ import           Common.Foundation
 import           Common.Wallet
 import           Frontend.Crypto.Class
 import           Frontend.Crypto.Ed25519
+import           Frontend.Crypto.Signature
 import           Frontend.Foundation
 import           Frontend.JsonData
 import           Frontend.Log

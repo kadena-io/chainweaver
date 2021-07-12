@@ -21,6 +21,7 @@ import Control.Monad.Reader
 import Control.Monad.Ref (MonadRef, MonadAtomicRef)
 import Frontend.Foundation
 import Frontend.Storage
+import Frontend.Crypto.Signature
 import Frontend.Crypto.Password
 
 import Pact.Server.ApiClient (HasTransactionLogger)
@@ -31,6 +32,11 @@ data PactKey = PactKey
   , _pactKey_publicKey :: PublicKey
   , _pactKey_secret :: ByteString
   } deriving Show
+
+-- Derive a root key from mnemonic; mostly used for setup workflow
+class BIP39Root key where
+  type Sentence key 
+  deriveRoot :: MonadJSM m => Password -> Sentence key -> m (Maybe key)
 
 class HasCrypto key m | m -> key where
   cryptoSign :: ByteString -> key -> m Signature
@@ -59,7 +65,3 @@ class HasCrypto key m | m -> key where
   cryptoGenPubKeyFromPrivate scheme = lift . cryptoGenPubKeyFromPrivate scheme
 
 instance (HasCrypto key m, Monad m) => HasCrypto key (RoutedT t r m)
-
-class BIP39Root key where
-  type Sentence key 
-  deriveRoot :: MonadJSM m => Password -> Sentence key -> m (Maybe key)

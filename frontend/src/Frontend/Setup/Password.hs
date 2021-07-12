@@ -27,11 +27,10 @@ import Frontend.Crypto.Class
 import Frontend.UI.Widgets
 import Frontend.Foundation
 
-
 setPassword
   :: (DomBuilder t m, MonadHold t m, MonadFix m, PerformEvent t m, PostBuild t m, 
       MonadSample t (Performable m), MonadJSM (Performable m), TriggerEvent t m,
-      BIP39Root key -- (Performable m)
+      BIP39Root key
       )
   => Dynamic t (Sentence key)
   -> m (Event t (Maybe (key, Password)))

@@ -47,4 +47,3 @@ concat <$> traverse ($ ''BIPStorage)
   , deriveArgDict
   , deriveJSONGADT
   ]
-
