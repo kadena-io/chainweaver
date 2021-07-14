@@ -1,5 +1,6 @@
 {-# LANGUAGE CPP #-}
 {-# LANGUAGE DataKinds #-}
+{-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE DefaultSignatures #-}
 {-# LANGUAGE UndecidableInstances #-}
 
@@ -19,14 +20,16 @@ import qualified Control.Newtype.Generics as Newtype
 import Frontend.Crypto.Ed25519
 import Frontend.Crypto.Class
 import Frontend.Crypto.Password
+import Frontend.Crypto.Signature
 import Frontend.Foundation
 import Frontend.Storage
 import Pact.Server.ApiClient (HasTransactionLogger)
 import Data.Text (Text)
 import qualified Data.Text as T
+import Data.Either (fromRight)
 
 newtype BrowserCryptoT t m a = BrowserCryptoT
-  { unBrowserCryptoT :: ReaderT (Behavior t (PrivateKey, Text)) m a
+  { unBrowserCryptoT :: ReaderT (Behavior t (PrivateKey, Password)) m a
   } deriving
     ( Functor, Applicative, Monad
     , MonadFix, MonadIO, MonadRef, MonadAtomicRef
@@ -38,26 +41,26 @@ newtype BrowserCryptoT t m a = BrowserCryptoT
     , DomRenderHook t
     , HasConfigs
     , HasTransactionLogger
-    , MonadReader (Behavior t (PrivateKey, Text))
+    , MonadReader (Behavior t (PrivateKey, Password))
     )
 
 instance BIP39Root PrivateKey where
   type Sentence PrivateKey = [Text] 
-  deriveRoot (Password pwd) sentence = liftJSM $ generateRoot pwd $ T.unwords sentence
+  deriveRoot pwd sentence = liftJSM $
+    fmap hush $ generateRoot pwd $ T.unwords sentence
+    where hush = either (const Nothing) Just
+    -- todo; add pwd reset
 
 instance (MonadJSM m, MonadSample t m) => HasCrypto PrivateKey (BrowserCryptoT t m) where
   cryptoSign msg key = do
     (_, p) <- sample =<< ask
-    mkSignature p msg key
+    sigOrErr <- mkSignature p msg key
+    pure $ fromRight (Signature "") sigOrErr
   cryptoVerify = verifySignature
   cryptoGenKey i = BrowserCryptoT $ do
     (root, p) <- sample =<< ask
-    --TODO handle maybe
-    mKeys <- liftJSM $ generateKeypair p root i
-    case mKeys of
-      --TODO FIX THIS
-      Nothing -> undefined
-      Just pair -> pure pair
+    keysOrErr <- liftJSM $ generateKeypair p root i
+    pure $ fromRight (PrivateKey "", PublicKey "") keysOrErr
 
   --TODO: Is this func used anywhere? 
   cryptoGenPubKeyFromPrivate _ _ = pure $ Left $ "cryptoGenPubKeyFromPrivate: not supported on browser"
@@ -101,5 +104,5 @@ instance (Prerender js t m, Monad m, Reflex t) => Prerender js t (BrowserCryptoT
   type Client (BrowserCryptoT t m) = BrowserCryptoT t (Client m)
   prerender a b = BrowserCryptoT $ prerender (unBrowserCryptoT a) (unBrowserCryptoT b)
 
-runBrowserCryptoT :: Behavior t (PrivateKey, Text) -> BrowserCryptoT t m a -> m a
+runBrowserCryptoT :: Behavior t (PrivateKey, Password) -> BrowserCryptoT t m a -> m a
 runBrowserCryptoT b (BrowserCryptoT m) = runReaderT m b

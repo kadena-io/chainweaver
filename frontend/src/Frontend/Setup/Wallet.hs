@@ -11,7 +11,6 @@ import Control.Lens ((?~))
 import Control.Monad.IO.Class
 import Control.Monad.Trans (lift)
 import Control.Monad
-import Data.Text (Text)
 import Data.Dependent.Sum
 import Data.Functor.Compose
 import Data.Functor.Identity
@@ -36,9 +35,7 @@ import Frontend.UI.Widgets
 import Frontend.Crypto.Ed25519
 import Frontend.Crypto.CommonBIP
 import Frontend.Crypto.Browser
-import qualified Data.Text.Encoding as T
 import Data.ByteString (ByteString)
-import qualified Data.Bifunctor as BiF
 
 import Frontend.Crypto.Class
 
@@ -48,19 +45,13 @@ data LockScreen a where
   LockScreen_Locked :: LockScreen PrivateKey -- ^ Root key
   LockScreen_Unlocked :: LockScreen (PrivateKey, Password) -- ^ The root key and password
 
--- data LockScreen root a where
---   LockScreen_Restore :: LockScreen root
---   LockScreen_RunSetup :: LockScreen ()
---   LockScreen_Locked :: LockScreen root -- ^ Root key
---   LockScreen_Unlocked :: LockScreen (root, Password) -- ^ The root key and password
-
 type MkAppCfg t m
   =  EnabledSettings PrivateKey t (RoutedT t (R FrontendRoute) (BrowserCryptoT t m))
   -- ^ Settings
   -> AppCfg PrivateKey t (RoutedT t (R FrontendRoute) (BrowserCryptoT t m))
 
 bipWallet
-  :: forall js t m key
+  :: forall js t m
   .  ( MonadWidget t m
      , RouteToUrl (R FrontendRoute) m, SetRoute t (R FrontendRoute) m
      , HasConfigs m
@@ -68,7 +59,6 @@ bipWallet
      , Prerender js t m
      , HasTransactionLogger m
      , MonadJSM (Performable m)
-     -- , BIP39Root key --(Performable m)
      )
   => FileFFI t m
   -> MkAppCfg t m
@@ -114,7 +104,7 @@ bipWallet fileFFI mkAppCfg = do
           ]
       -- The user is logged in
       LockScreen_Unlocked :=> Compose details -> do
-        mapRoutedT (runBrowserCryptoT $ (\(r, Password p) -> (r,p)) . runIdentity <$> current details) $ do
+        mapRoutedT (runBrowserCryptoT $ runIdentity <$> current details) $ do
           (onLogout, sidebarLogoutLink) <- mkSidebarLogoutLink
 
           onLogoutConfirm <- fmap switchDyn $ widgetHold (pure never)
@@ -214,9 +204,10 @@ lockScreen xprv = setupDiv "fullscreen" $ divClass "wrapper" $ setupDiv "splash"
 
 -- | Check the validity of the password by signing and verifying a message
 passwordRoundTripTest :: MonadJSM m => PrivateKey -> Password -> m Bool
-passwordRoundTripTest xprv (Password pass) = liftJSM $ do
-  sig <- mkSignature pass msg xprv
-  pub <- toPublic xprv
+passwordRoundTripTest xprv pass = liftJSM $ do
+  --TODO: handle failures
+  Right sig <- mkSignature pass msg xprv
+  Right pub <- toPublic xprv
   verifySignature msg sig pub
   where
     msg :: ByteString

@@ -14,8 +14,12 @@ module Frontend.Crypto.Ed25519
   ( -- * Types & Classes
     PublicKey(..)
   , PrivateKey(..)
+  -- * Mnemonic
+  , genMnemonic
   -- * Creation
-  , deriveKeyPairFromPrivateKey
+  , generateRoot
+  , generateKeypair
+  , toPublic
   -- * Verifying
   , verifySignature
   -- * Signing
@@ -33,11 +37,6 @@ module Frontend.Crypto.Ed25519
   , fromPactPublicKey
   , toPactPublicKey
   , unsafePublicKey
-  ----------------------
-  , generateRoot
-  , generateKeypair
-  , genMnemonic
-  , toPublic
   )
   where
 
@@ -46,58 +45,80 @@ import           Control.Monad
 import           Control.Monad.Fail          (MonadFail)
 import           Control.Newtype.Generics    (Newtype (..))
 import           Data.Aeson                  hiding (Object)
-import           Control.Monad.Except        (MonadError, throwError)
 import qualified Data.Text as T
 import           Data.ByteString             (ByteString)
 import qualified Data.ByteString             as BS
 import           Data.Text                   (Text)
 import qualified Data.Text.Encoding          as T
 import           GHC.Generics                (Generic)
-import           Language.Javascript.JSaddle
 import           Pact.Types.Util             (encodeBase64UrlUnpadded, decodeBase64UrlUnpadded)
 
 import Common.Wallet
 import Frontend.Foundation
 
 import           GHCJS.Buffer                       (createFromArrayBuffer, freeze, toByteString)
+import           Control.Exception.Base             (displayException)
 import           Language.Javascript.JSaddle
 import           Language.Javascript.JSaddle.Helper (mutableArrayBufferFromJSVal)
 import           Language.Javascript.JSaddle.Types  (ghcjsPure)
 import           Data.Bits ((.|.))
 import           Frontend.Crypto.Signature
+import           Frontend.Crypto.Password
+import Control.Monad.Except
+import Control.Monad.Catch
 
 --
 -- | PrivateKey with a Pact compatible JSON representation.
 newtype PrivateKey = PrivateKey { unPrivateKey :: ByteString }
   deriving (Generic)
 
-arrayBufToByteString :: JSVal -> JSM ByteString
-arrayBufToByteString jsBuf = do
-  mMutArrBuf <- catch (fmap Just $ mutableArrayBufferFromJSVal jsBuf) $
-    \(_e::JSException) -> pure Nothing
-  case mMutArrBuf of
-    -- TODO: Fix empty 
-    Nothing -> pure BS.empty
-    Just mutArrBuf -> do
-      mutBuf <- ghcjsPure $ createFromArrayBuffer mutArrBuf
-      arrBuf <- freeze mutBuf
-      ghcjsPure $ toByteString 0 Nothing arrBuf
+-- Boring instances:
 
-generateRoot :: Text -> Text -> JSM (Maybe PrivateKey)
-generateRoot pwd phrase = do
-  let args = fmap toJSString [ pwd, phrase ]
-  lib <- jsg "lib"
-  mRes <- catch (fmap Just $ lib # "kadenaMnemonicToRootKeypair" $ args)
-    $ \(e::JSException) -> pure Nothing
-  case mRes of
-    Nothing -> pure Nothing
-    Just res -> do
-      res' <- res ^.js "buffer"
-      Just . PrivateKey <$> arrayBufToByteString res'
+instance ToJSON PrivateKey where
+  toEncoding = toEncoding . keyToText
+  toJSON = toJSON . keyToText
 
--- TODO: Test empty bs, test various int values
-generateKeypair :: Text -> PrivateKey -> Int -> JSM (Maybe (PrivateKey, PublicKey))
-generateKeypair pwd (PrivateKey root) idx = do
+instance FromJSON PrivateKey where
+  parseJSON = fmap pack . decodeBase16M <=< fmap T.encodeUtf8 . parseJSON
+
+instance Newtype PrivateKey
+
+-- Interface with JS
+
+exceptionToText :: JSException -> Text
+exceptionToText = T.pack . displayException
+
+callJSFunction :: (MonadCatch m, MonadJSM m) => Text -> m (Either Text a) -> m (Either Text a)
+callJSFunction funcName exec = catch exec $ handleException funcName
+  where
+    handleException :: (MonadJSM m) => Text -> JSException -> m (Either Text a)
+    handleException fName e = do
+      liftJSM $ liftIO $ print "HERE"
+      pure $ Left $ mconcat
+        [ T.pack "JSException in "
+        , fName
+        , T.pack ": "
+        , exceptionToText e
+        ]
+
+-- Unhandled exception here
+arrayBufToByteString :: (MonadJSM m) => JSVal -> m ByteString
+arrayBufToByteString jsBuf = liftJSM $ do
+  mutArrBuf <- mutableArrayBufferFromJSVal jsBuf
+  mutBuf <- ghcjsPure $ createFromArrayBuffer mutArrBuf
+  arrBuf <- freeze mutBuf
+  ghcjsPure $ toByteString 0 Nothing arrBuf
+
+generateRoot :: Password -> Text -> JSM (Either Text PrivateKey)
+generateRoot (Password pwd) phrase = callJSFunction (T.pack "generateRoot") $ do
+  let args = fmap toJSString [pwd, phrase]
+  lib <- liftJSM $ jsg "lib"
+  root <- liftJSM $ lib # "kadenaMnemonicToRootKeypair" $ args
+  rootBuffer <- liftJSM $ root ^.js "buffer"
+  fmap (Right . PrivateKey) $ arrayBufToByteString rootBuffer
+
+generateKeypair :: Password -> PrivateKey -> Int -> JSM (Either Text (PrivateKey, PublicKey))
+generateKeypair (Password pwd) (PrivateKey root) idx = callJSFunction (T.pack "generateKeypair") $ do
   let idx' = fromIntegral $ 0x80000000 .|. idx
   pwdJS <- toJSVal $ toJSString pwd
   idxJS <- toJSVal idx'
@@ -105,27 +126,28 @@ generateKeypair pwd (PrivateKey root) idx = do
   lib <- jsg "lib"
   resRaw <- lib # "kadenaGenKeypair" $ [ pwdJS, rootBuf, idxJS ]
   res <- fromJSVal resRaw
-  forM res $ \(prvJS, pubJS) ->
-      (\a b -> (PrivateKey a, PublicKey b))
-        <$> arrayBufToByteString prvJS
-        <*> arrayBufToByteString pubJS
+  maybe (pure $ Left $ T.pack "Error: marshaling keypair from js in generateKeypair failed")
+    (fmap Right . jsPairToBS) $ res
+  where
+    jsPairToBS (prvJS, pubJS) = (\a b -> (PrivateKey a, PublicKey b))
+      <$> arrayBufToByteString prvJS
+      <*> arrayBufToByteString pubJS
 
-toPublic :: PrivateKey -> JSM PublicKey
-toPublic (PrivateKey pkey) = do
+toPublic :: PrivateKey -> JSM (Either Text PublicKey)
+toPublic (PrivateKey pkey) = callJSFunction (T.pack "toPublic") $ do
   pkey' <- toBuf pkey
   lib <- jsg "lib"
   res <- lib # "kadenaGetPublic" $ [ pkey' ]
-  PublicKey <$> arrayBufToByteString res
+  Right . PublicKey <$> arrayBufToByteString res
 
-sign :: Text -> ByteString -> ByteString -> JSM (ByteString)
-sign pwd msg prv = do
+sign :: Password -> ByteString -> PrivateKey -> JSM (Either Text ByteString)
+sign (Password pwd) msg (PrivateKey prv) = callJSFunction (T.pack "sign") $ do
   pwdJS <- toJSVal $ toJSString pwd
   msgBuf <- toJSVal $ BS.unpack msg
   prvBuf <- toJSVal $ BS.unpack prv
   lib <- jsg "lib"
   res <- lib # "kadenaSign" $ [ pwdJS, msgBuf, prvBuf]
-  -- TODO: What happens if wrong pwd? This will fail which means you gotta handle exce
-  arrayBufToByteString res
+  Right <$> arrayBufToByteString res
 
 toBuf :: ByteString -> JSM JSVal
 toBuf = toJSVal . BS.unpack
@@ -143,32 +165,31 @@ genMnemonic = liftJSM $ do
   rawMnem <- eval "lib.kadenaGenMnemonic()"
   fmap (T.words . fromJSString) $ fromJSValUnchecked rawMnem
 
-changePassword :: PrivateKey -> Text -> Text -> JSM PrivateKey
-changePassword (PrivateKey oldKey) oldPwd newPwd = do
-  oldKey' <- toBuf oldKey
-  [oldPwd', newPwd'] <- mapM (toJSVal . toJSString) [oldPwd, newPwd]
-  lib <- jsg "lib"
-  res <- fromJSVal =<< (lib # "kadenaChangePassword" $ [oldKey', oldPwd', newPwd' ])
-  case res of
-    -- TODO: error handle
-    Nothing -> pure $ PrivateKey $ BS.empty
-    Just key -> fmap PrivateKey $ arrayBufToByteString key
-------------------------------------------
+changePassword :: PrivateKey -> Password -> Password -> JSM (Either Text PrivateKey)
+changePassword (PrivateKey oldKey) (Password oldPwd) (Password newPwd) =
+  callJSFunction (T.pack "changePassword") $ do
+    oldKey' <- toBuf oldKey
+    [oldPwd', newPwd'] <- mapM (toJSVal . toJSString) [oldPwd, newPwd]
+    lib <- jsg "lib"
+    res <- fromJSVal =<< (lib # "kadenaChangePassword" $ [oldKey', oldPwd', newPwd' ])
+    case res of
+      Nothing -> pure $ Left $ T.pack "error: marshalling to arrayBuffer in changePassword failed"
+      Just key -> Right . PrivateKey <$> arrayBufToByteString key
 
 -- -- | Create a signature based on the given payload and `PrivateKey`.
 verifySignature :: MonadJSM m => ByteString -> Signature -> PublicKey -> m Bool
 verifySignature msg (Signature sig) (PublicKey key) = liftJSM $ verify msg key sig
 
 -- | Create a signature based on the given payload and `PrivateKey`.
-mkSignature :: MonadJSM m => Text -> ByteString -> PrivateKey -> m Signature
-mkSignature pwd msg (PrivateKey key) = liftJSM $ Signature <$> sign pwd msg key
+mkSignature :: MonadJSM m => Password -> ByteString -> PrivateKey -> m (Either Text Signature)
+mkSignature pwd msg key = liftJSM $ (fmap . fmap) Signature $ sign pwd msg key
 
 mkSignatureLegacyJS :: MonadJSM m => ByteString -> PrivateKey -> m Signature
 mkSignatureLegacyJS msg (PrivateKey key) = liftJSM $ do
  jsSign <- eval "(function(m, k) {return window.nacl.sign.detached(Uint8Array.from(m), Uint8Array.from(k));})"
  jsSig <- call jsSign valNull [BS.unpack msg, BS.unpack key]
  Signature . BS.pack <$> fromJSValUnchecked jsSig
-------------------------------------------
+
 mkKeyPairFromJS :: MakeObject s => s -> JSM (PrivateKey, PublicKey)
 mkKeyPairFromJS jsPair = do
   privKey <- fromJSValUnchecked =<< jsPair ^. js "secretKey"
@@ -189,12 +210,6 @@ parseKeyPair pubKey priv = do
     sanityCheck (PublicKey pubRaw) = \case
       Nothing -> True
       Just (PrivateKey privRaw) -> BS.isSuffixOf pubRaw privRaw
-
--- | Derive a keypair from the private key
-deriveKeyPairFromPrivateKey :: MonadJSM m => ByteString -> m (PrivateKey, PublicKey)
-deriveKeyPairFromPrivateKey privKeyBS = liftJSM $ do
-  jsFrom <- eval "(function(k) {return window.nacl.sign.keyPair.fromSecretKey(Uint8Array.from(k));})"
-  call jsFrom valNull [BS.unpack privKeyBS] >>= mkKeyPairFromJS
 
 -- | Parse a private key, with some basic sanity checking.
 parsePrivateKey :: MonadError Text m => PublicKey -> Text -> m (Maybe PrivateKey)
@@ -217,11 +232,16 @@ textToKeyFuture
   => Text
   -> m key
 textToKeyFuture = fmap pack . decodeBase64M . T.encodeUtf8
+  where
+    decodeBase64M :: (Monad m, MonadFail m) => ByteString -> m ByteString
+    decodeBase64M i =
+      case decodeBase64UrlUnpadded i of
+        Left err -> fail err
+        Right v -> pure v
 
 
 -- Internal parsing helpers:
 --
-
 textToMayKey :: (Newtype key, O key ~ ByteString, MonadFail m) => Text -> m (Maybe key)
 textToMayKey t =
   if T.null t
@@ -239,19 +259,3 @@ throwWrongLengthPriv pk t
   | otherwise = throwError $ T.pack "Key has unexpected length"
 
 
--- Boring instances:
-
-instance ToJSON PrivateKey where
-  toEncoding = toEncoding . keyToText
-  toJSON = toJSON . keyToText
-
-instance FromJSON PrivateKey where
-  parseJSON = fmap pack . decodeBase16M <=< fmap T.encodeUtf8 . parseJSON
-
-decodeBase64M :: (Monad m, MonadFail m) => ByteString -> m ByteString
-decodeBase64M i =
-  case decodeBase64UrlUnpadded i of
-    Left err -> fail err
-    Right v -> pure v
-
-instance Newtype PrivateKey
