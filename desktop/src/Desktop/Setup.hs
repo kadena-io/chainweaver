@@ -47,6 +47,7 @@ import Frontend.UI.Button
 import Frontend.UI.Dialogs.ChangePassword (minPasswordLength)
 import Frontend.UI.Widgets.Helpers (imgWithAlt)
 import Frontend.UI.Widgets
+import Frontend.Setup.Widgets
 import Obelisk.Generated.Static
 
 -- | Used for changing the settings in the passphrase widget.
@@ -77,20 +78,20 @@ setupScreenClass = setupClass . T.toLower . tshow
 wordsToPhraseMap :: [Text] -> Map.Map WordKey Text
 wordsToPhraseMap = Map.fromList . zip [WordKey 1 ..]
 
-setupClass :: Text -> Text
-setupClass = mappend "setup__"
+-- setupClass :: Text -> Text
+-- setupClass = mappend "setup__"
 
-setupDiv :: DomBuilder t m => Text -> m a -> m a
-setupDiv t = divClass (setupClass t)
+-- setupDiv :: DomBuilder t m => Text -> m a -> m a
+-- setupDiv t = divClass (setupClass t)
 
-setupCheckbox
-  :: (DomBuilder t m, PostBuild t m)
-  => Bool
-  -> CheckboxConfig t
-  -> m ()
-  -> m (Checkbox t)
-setupCheckbox initialValue cfg inner = elClass "div" (setupClass "checkbox")
-  $ uiCheckbox def initialValue cfg inner
+-- setupCheckbox
+--   :: (DomBuilder t m, PostBuild t m)
+--   => Bool
+--   -> CheckboxConfig t
+--   -> m ()
+--   -> m (Checkbox t)
+-- setupCheckbox initialValue cfg inner = elClass "div" (setupClass "checkbox")
+--   $ uiCheckbox def initialValue cfg inner
 
 mkPhraseMapFromMnemonic
   :: forall mw.
@@ -113,22 +114,22 @@ textTo = fromString . T.unpack
 tshow :: Show a => a -> Text
 tshow = T.pack . show
 
-setupForm :: forall t m a. (DomBuilder t m, PostBuild t m) => Text -> Text -> Dynamic t Bool -> m a -> m (Event t (), a)
-setupForm cls lbl disabled = uiForm cfg $ setupDiv cls $ void $ confirmButton (def & uiButtonCfg_disabled .~ disabled) lbl
-  where cfg = def & elementConfig_initialAttributes .~ ("class" =: setupClass "form")
+-- setupForm :: forall t m a. (DomBuilder t m, PostBuild t m) => Text -> Text -> Dynamic t Bool -> m a -> m (Event t (), a)
+-- setupForm cls lbl disabled = uiForm cfg $ setupDiv cls $ void $ confirmButton (def & uiButtonCfg_disabled .~ disabled) lbl
+--   where cfg = def & elementConfig_initialAttributes .~ ("class" =: setupClass "form")
 
-restoreForm :: (DomBuilder t m, PostBuild t m) => Dynamic t Bool -> m a -> m (Event t (), a)
-restoreForm = setupForm "recover-restore-button" "Restore"
+-- restoreForm :: (DomBuilder t m, PostBuild t m) => Dynamic t Bool -> m a -> m (Event t (), a)
+-- restoreForm = setupForm "recover-restore-button" "Restore"
 
-continueForm :: (DomBuilder t m, PostBuild t m) => Dynamic t Bool -> m a -> m (Event t (), a)
-continueForm = setupForm "continue-button" "Continue"
+-- continueForm :: (DomBuilder t m, PostBuild t m) => Dynamic t Bool -> m a -> m (Event t (), a)
+-- continueForm = setupForm "continue-button" "Continue"
 
 -- | Wallet logo
-kadenaWalletLogo :: DomBuilder t m => m ()
-kadenaWalletLogo = divClass "logo" $ do
-  elAttr "img" ("src" =: static @"img/kadena_blue_logo.png" <> "class" =: setupClass "kadena-logo") blank
-  elClass "div" "chainweaver" $ text "Chainweaver"
-  elClass "div" "by-kadena" $ text "by Kadena"
+-- kadenaWalletLogo :: DomBuilder t m => m ()
+-- kadenaWalletLogo = divClass "logo" $ do
+--   elAttr "img" ("src" =: static @"img/kadena_blue_logo.png" <> "class" =: setupClass "kadena-logo") blank
+--   elClass "div" "chainweaver" $ text "Chainweaver"
+--   elClass "div" "by-kadena" $ text "by Kadena"
 
 type SetupWF t m = Workflow t m
   (WalletScreen

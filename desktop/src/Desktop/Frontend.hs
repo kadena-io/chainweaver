@@ -60,19 +60,18 @@ import Frontend.Log (defaultLogger)
 import Frontend.Wallet (genZeroKeyPrefix, _unPublicKeyPrefix)
 import Frontend.Storage
 import Frontend.UI.Button
+import Frontend.UI.Modal.Impl (showModalBrutal)
+import Frontend.UI.Dialogs.LogoutConfirmation (uiIdeLogoutConfirmation)
 import Frontend.UI.Widgets
 import Obelisk.Configs
 import Obelisk.Generated.Static
 import Obelisk.Frontend
 import Obelisk.Route
 import Obelisk.Route.Frontend
-import qualified Frontend
+import qualified Frontend (newHead, openFileDialog)
 import qualified Frontend.ReplGhcjs
 import Frontend.VersionedStore (StoreFrontend(..))
 import Frontend.Storage (runBrowserStorageT)
-
-import Frontend.UI.Modal.Impl (showModalBrutal)
-import Frontend.UI.Dialogs.LogoutConfirmation (uiIdeLogoutConfirmation)
 
 import Desktop.Setup
 import Desktop.ImportExport

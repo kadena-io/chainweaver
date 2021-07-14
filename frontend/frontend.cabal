@@ -122,6 +122,9 @@ library
                  , Frontend.Crypto.Browser
                  , Frontend.Crypto.Class
                  , Frontend.Crypto.Ed25519
+                 , Frontend.Crypto.CommonBIP
+                 , Frontend.Crypto.Password
+                 , Frontend.Crypto.Signature
                  , Frontend.Editor
                  , Frontend.Editor.Annotation
                  , Frontend.Editor.QuickFix
@@ -143,10 +146,10 @@ library
                  , Frontend.Repl
                  , Frontend.ReplGhcjs
                  , Frontend.Routes
-                 -- , Frontend.GHCOnly.Orphans
-                 , Frontend.Crypto.CommonBIP
                  , Frontend.Setup.Common
+                 , Frontend.Setup.Password
                  , Frontend.Setup.Wallet
+                 , Frontend.Setup.Widgets
                  , Frontend.Storage
                  , Frontend.Storage.Class
                  , Frontend.Storage.Browser

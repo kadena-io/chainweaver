@@ -36,7 +36,7 @@ import Frontend.Crypto.Ed25519
 import Frontend.Crypto.CommonBIP
 import Frontend.Crypto.Browser
 import Data.ByteString (ByteString)
-
+import Frontend.Setup.Password
 import Frontend.Crypto.Class
 
 data LockScreen a where

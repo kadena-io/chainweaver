@@ -12,7 +12,7 @@
 module Frontend.Setup.Common 
   ( 
     WalletExists (..), Password(..), runSetup
-  , splashLogo, setupDiv, setupClass, checkPassword
+  , splashLogo, setupDiv, setupClass
   ) where
 
 import Control.Lens ((<>~), (??), (^.), _1, _2, _3)
@@ -559,58 +559,3 @@ confirmPhrase backWF eBack (rootKey, password) mnemonicSentence = Workflow $ mdo
     [ doneScreen (rootKey, password) <$ continue
     , backWF <$ eBack
     ]
-
--- setPassword
---   :: (DomBuilder t m, MonadHold t m, MonadFix m, PerformEvent t m, PostBuild t m, 
---       MonadSample t (Performable m), MonadJSM (Performable m), TriggerEvent t m)
---   => Dynamic t [Text]
---   -> m (Event t (Maybe (PrivateKey, Password)))
--- setPassword dSentence = do
---   let uiPassword' = uiPassword (setupClass "password-wrapper") (setupClass "password")
-
---   p1elem <- uiPassword' $ "Enter password (" <> tshow minPasswordLength <> " character min.)"
---   p2elem <- uiPassword' "Confirm password"
-
---   p1Dirty <- holdUniqDyn =<< holdDyn False (True <$ _inputElement_input p1elem)
---   p2Dirty <- holdUniqDyn =<< holdDyn False (True <$ _inputElement_input p2elem)
-
---   let inputsDirty = current $ liftA2 (||) p1Dirty p2Dirty
-
---   eCheckPassword <- fmap (gate inputsDirty) $ delay 0.2 $ leftmost
---     [ _inputElement_input p1elem
---     , _inputElement_input p2elem
---     ]
-
---   let (err, pass) = fanEither $
---         checkPassword <$> current (value p1elem) <*> current (value p2elem) <@ eCheckPassword
-
---   lastError <- holdDyn Nothing $ leftmost
---     [ Just <$> err
---     , Nothing <$ pass
---     ]
-
---   let dMsgClass = lastError <&> \m -> setupClass "password-message " <> case m of
---         Nothing -> setupClass "hide-pw-error"
---         Just _ -> setupClass "show-pw-error"
-
---   elDynClass "div" dMsgClass $
---     dynText $ fromMaybe T.empty <$> lastError
-
---   encryptedKeyAndPass <- performEvent $ ffor pass $ \p -> do
---     sentence <- sample $ current dSentence 
---     root <- liftJSM $ generateRoot p $ T.unwords sentence
---     return $ ffor root $ \r -> (r, Password p)
-
---   pure $ leftmost
---     [ Nothing <$ err
---     , encryptedKeyAndPass
---     ]
-
--- checkPassword :: Text -> Text -> Either Text Text
--- checkPassword p1 p2
---   | T.length p1 < minPasswordLength =
---       Left $ "Passwords must be at least " <> tshow minPasswordLength <> " characters long"
---   | p1 /= p2 =
---       Left "Passwords must match"
---   | otherwise =
---       Right p1
