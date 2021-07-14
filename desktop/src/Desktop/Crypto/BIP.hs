@@ -44,6 +44,7 @@ import qualified Pact.Types.Hash as Pact
 
 import Frontend.Crypto.Ed25519
 import Frontend.Crypto.Class
+import Frontend.Crypto.Signature
 import Frontend.Foundation
 import Frontend.Storage
 

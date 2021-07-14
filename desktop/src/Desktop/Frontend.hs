@@ -72,7 +72,7 @@ import qualified Frontend (newHead, openFileDialog)
 import qualified Frontend.ReplGhcjs
 import Frontend.VersionedStore (StoreFrontend(..))
 import Frontend.Storage (runBrowserStorageT)
-
+import Frontend.Crypto.Password
 import Desktop.Setup
 import Desktop.ImportExport
 import Desktop.Storage.File
@@ -207,7 +207,7 @@ bipWallet fileFFI signingReq mkAppCfg = do
           Frontend.ReplGhcjs.app sidebarLogoutLink frontendFileFFI $ mkAppCfg $ EnabledSettings
             { _enabledSettings_changePassword = Just $ ChangePassword
               { _changePassword_requestChange =
-                let doChange (Identity (oldRoot, _)) (oldPass, newPass, repeatPass)
+                let doChange (Identity (oldRoot, _)) (Password oldPass, Password newPass, Password repeatPass)
                       | passwordRoundTripTest oldRoot oldPass = case checkPassword newPass repeatPass of
                         Left e -> pure $ Left e
                         Right _ -> do

@@ -9,7 +9,7 @@
 {-# LANGUAGE TypeFamilies #-}
 
 -- | Wallet setup screens
-module Desktop.Setup (WalletExists (..), Password(..), runSetup, splashLogo, setupDiv, setupClass, checkPassword) where
+module Desktop.Setup (WalletExists (..), runSetup, splashLogo, setupDiv, setupClass, checkPassword) where
 
 import Control.Lens ((<>~), (??), (^.), _1, _2, _3)
 import Control.Error (hush)
@@ -40,7 +40,7 @@ import qualified Data.Text.Encoding as T
 import System.FilePath (takeFileName)
 
 import Frontend.AppCfg (FileFFI(..), FileType(FileType_Import))
-import Desktop.ImportExport (doImport, Password(..), ImportWalletError(..))
+import Desktop.ImportExport (doImport, ImportWalletError(..))
 import Pact.Server.ApiClient (HasTransactionLogger, askTransactionLogger)
 import Frontend.Storage.Class (HasStorage)
 import Frontend.UI.Button
@@ -48,6 +48,7 @@ import Frontend.UI.Dialogs.ChangePassword (minPasswordLength)
 import Frontend.UI.Widgets.Helpers (imgWithAlt)
 import Frontend.UI.Widgets
 import Frontend.Setup.Widgets
+import Frontend.Crypto.Password
 import Obelisk.Generated.Static
 
 -- | Used for changing the settings in the passphrase widget.
