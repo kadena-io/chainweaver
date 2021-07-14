@@ -8,7 +8,6 @@
 module Frontend.Setup.Wallet where
 
 import Control.Lens ((?~))
-import Control.Monad.IO.Class
 import Control.Monad.Trans (lift)
 import Control.Monad
 import Data.Dependent.Sum
@@ -20,7 +19,6 @@ import Reflex.Dom
 import Pact.Server.ApiClient (HasTransactionLogger, askTransactionLogger, _transactionLogger_rotateLogFile)
 import Obelisk.Route.Frontend
 import Obelisk.Generated.Static
-
 import Common.Route
 import Frontend.AppCfg
 import Frontend.Foundation
@@ -30,14 +28,15 @@ import qualified Frontend.ReplGhcjs as ReplGhcjs (app)
 import Frontend.VersionedStore
 import Frontend.UI.Modal.Impl (showModalBrutal)
 import Frontend.UI.Dialogs.LogoutConfirmation (uiIdeLogoutConfirmation)
-import Frontend.UI.Button
 import Frontend.UI.Widgets
 import Frontend.Crypto.Ed25519
 import Frontend.Crypto.CommonBIP
 import Frontend.Crypto.Browser
 import Data.ByteString (ByteString)
 import Frontend.Setup.Password
-import Frontend.Crypto.Class
+import Frontend.Crypto.Password
+import Frontend.Setup.Browser
+import Frontend.Setup.Widgets
 
 data LockScreen a where
   LockScreen_Restore :: LockScreen PrivateKey

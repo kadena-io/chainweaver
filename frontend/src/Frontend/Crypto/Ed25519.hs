@@ -20,6 +20,7 @@ module Frontend.Crypto.Ed25519
   , generateRoot
   , generateKeypair
   , toPublic
+  , changePassword
   -- * Verifying
   , verifySignature
   -- * Signing

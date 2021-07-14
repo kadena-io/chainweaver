@@ -37,6 +37,8 @@ import Reflex.Dom hiding (fromJSString)
 import Reflex.Host.Class (MonadReflexCreateTrigger)
 
 import qualified Cardano.Crypto.Wallet as Crypto
+import qualified Crypto.Encoding.BIP39 as Crypto
+import qualified Crypto.Encoding.BIP39.English as Crypto
 import qualified Control.Newtype.Generics as Newtype
 import qualified Data.Text.Encoding as T
 import qualified Pact.Types.Crypto as PactCrypto
@@ -45,6 +47,7 @@ import qualified Pact.Types.Hash as Pact
 import Frontend.Crypto.Ed25519
 import Frontend.Crypto.Class
 import Frontend.Crypto.Signature
+import Frontend.Crypto.Password
 import Frontend.Foundation
 import Frontend.Storage
 
@@ -104,6 +107,12 @@ bipCryptoGenPair root pass i =
   where
     scheme = Crypto.DerivationScheme2
     mkHardened = (0x80000000 .|.)
+
+instance BIP39Root Crypto.XPrv where
+  type Sentence (Crypto.XPrv) = Crypto.MnemonicSentence 12
+  deriveRoot (Password pwd) sentence = do
+    let seed = Crypto.sentenceToSeed sentence Crypto.english ""
+    pure $ Just $ Crypto.generate seed $ T.encodeUtf8 pwd
 
 instance (MonadSample t m, MonadJSM m) => HasCrypto Crypto.XPrv (BIPCryptoT t m) where
   cryptoSign bs xprv = BIPCryptoT $ do

@@ -11,20 +11,10 @@ import Data.ByteString (ByteString)
 import Data.Text (Text)
 
 import Pact.Types.Scheme (PPKScheme)
-import Reflex.Dom hiding (fromJSString)
-import Reflex.Host.Class (MonadReflexCreateTrigger)
-
 import Frontend.Crypto.Ed25519
-import Control.Monad.IO.Class (MonadIO)
-import Control.Monad.Primitive (PrimMonad (PrimState, primitive))
-import Control.Monad.Reader
-import Control.Monad.Ref (MonadRef, MonadAtomicRef)
 import Frontend.Foundation
-import Frontend.Storage
 import Frontend.Crypto.Signature
 import Frontend.Crypto.Password
-
-import Pact.Server.ApiClient (HasTransactionLogger)
 
 -- TODO : Hide the pact key constructor so the caller is forced to verify it
 data PactKey = PactKey

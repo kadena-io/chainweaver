@@ -73,6 +73,8 @@ import qualified Frontend.ReplGhcjs
 import Frontend.VersionedStore (StoreFrontend(..))
 import Frontend.Storage (runBrowserStorageT)
 import Frontend.Crypto.Password
+import Frontend.Setup.Common
+import Frontend.Setup.Widgets
 import Desktop.Setup
 import Desktop.ImportExport
 import Desktop.Storage.File

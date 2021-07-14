@@ -146,6 +146,7 @@ library
                  , Frontend.Repl
                  , Frontend.ReplGhcjs
                  , Frontend.Routes
+                 , Frontend.Setup.Browser
                  , Frontend.Setup.Common
                  , Frontend.Setup.Password
                  , Frontend.Setup.Wallet
