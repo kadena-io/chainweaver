@@ -36,6 +36,7 @@ import Kadena.SigningApi
 import Pact.Types.Capability
 import Pact.Types.ChainMeta
 import Pact.Types.Exp
+import Pact.Types.Hash
 import Pact.Types.PactError
 import Pact.Types.Names
 import Pact.Types.PactValue
@@ -526,7 +527,7 @@ runUnfinishedCrossChainTransfer logL netInfo keys fromChain toChain mtoGasPayer 
   -- Wait for result
   mRequestKey <- hold Nothing $ Just <$> requestKey
   let initCont = leftmost [requestKey, tagMaybe mRequestKey retry]
-  contResponse <- listenForContinuation logL envFromChain initCont
+  contResponse <- pollNodesForCont logL envFromChain initCont
   let (contError, contOk) = fanEither contResponse
   contStatus <- holdDyn Status_Waiting $ leftmost
     [ Status_Working <$ initCont
@@ -547,7 +548,7 @@ runUnfinishedCrossChainTransfer logL netInfo keys fromChain toChain mtoGasPayer 
       continueResponse <- continueCrossChainTransfer logL networkName envToChain publicMeta keys toChain toGasPayer spvOk
       let (continueError, continueOk) = fanEither continueResponse
       -- Wait for result
-      resultResponse <- listenForSuccess logL envToChain continueOk
+      resultResponse <- pollNodesForSuccess logL envToChain continueOk
       let (resultError, resultOk) = fanEither resultResponse
 
       spvStatus <- holdDyn Status_Waiting $ leftmost
@@ -779,7 +780,6 @@ crossChainTransfer logL netInfo keys fromAccount toAccount fromGasPayer crossCha
       toTxBuilder = either id (\(n, c, _) -> TxBuilder n c Nothing) toAccount
   -- Client envs for making requests to each chain
   let envFromChain = mkClientEnvs nodeInfos fromChain
-      envToChain = mkClientEnvs nodeInfos toChain
   -- TODO *always* look up the guard and check the validity
   -- Lookup the guard if we don't already have it
   keySetResponse <- case toAccount of
@@ -1015,38 +1015,14 @@ initiateCrossChainTransfer model networkName envs publicMeta keys fromAccount fr
       , _pmSender = senderText
       }
 
--- | Listen to a request key for some continuation
-listenForContinuation
-  :: ( TriggerEvent t m
-     , PerformEvent t m
-     , MonadJSM (Performable m)
-     , HasLogger model t
-     )
-  => model
-  -> [S.ClientEnv]
-  -> Event t Pact.RequestKey
-  -> m (Event t (Either Text (Pact.RequestKey, Pact.PactExec)))
-listenForContinuation model envs requestKey = performEventAsync $ ffor requestKey $ \rk cb -> liftJSM $ forkJSM $ do
-  r <- doReqFailover envs (Api.listen Api.apiV1Client $ Api.ListenerRequest rk) >>= \case
-    Left es -> packHttpErrors (model ^. logger) es
-    Right (Api.ListenResponse cr) -> case Pact._crContinuation cr of
-      Nothing ->
-        pure $ Left $ T.unlines ["Result was not a continuation", tshow (Pact._crResult cr)]
-      Just pe ->
-        pure $ Right (Pact._crReqKey cr, pe)
-
-    Right (Api.ListenTimeout _) -> pure $ Left "Listen timeout"
-  liftIO $ cb r
-
 packHttpErrors :: MonadIO m => Logger t -> [S.ClientError] -> m (Either Text a)
 packHttpErrors logL es = do
   let prettyErr = T.unlines $ fmap (tshow . packHttpErr) es
   putLog logL LevelWarn prettyErr
   pure $ Left prettyErr
 
--- | Listen to a request key for the second step (redeeming coin on the target
--- chain).
-listenForSuccess
+-- |Poll a request key for the second step (redeeming coin on target chain)
+pollNodesForSuccess
   :: ( TriggerEvent t m
      , PerformEvent t m
      , MonadJSM (Performable m)
@@ -1056,19 +1032,85 @@ listenForSuccess
   -> [S.ClientEnv]
   -> Event t (Pact.PactId, Pact.RequestKey)
   -> m (Event t (Either Text ()))
-listenForSuccess model envs e = performEventAsync $ ffor e $ \(PactId pactId, requestKey) cb -> liftJSM $ forkJSM $ do
-  -- This string appears in the error if the pact was previously completed
-  let completedMsg = "resumePact: pact completed: " <> pactId
-  r <- doReqFailover envs (Api.listen Api.apiV1Client $ Api.ListenerRequest requestKey) >>= \case
-    Left es -> packHttpErrors (model ^. logger) es
-    Right (Api.ListenResponse cr) -> case Pact._crResult cr of
-      Pact.PactResult (Left pe)
-        -- There doesn't seem to be a nicer way to do this check
-        | completedMsg == tshow (peDoc pe) -> pure $ Right ()
-        | otherwise -> pure $ Left $ tshow $ peDoc pe
-      Pact.PactResult (Right _) -> pure $ Right ()
-    Right (Api.ListenTimeout _) -> pure $ Left "Listen timeout"
-  liftIO $ cb r
+pollNodesForSuccess model envs reqEv = pollNodesForReq model envs (first Just <$> reqEv) 24 15 $ \pr mpid->
+  case Pact._crResult pr of
+    Pact.PactResult (Left pe)
+      -- There doesn't seem to be a nicer way to do this check
+      | (completedMsg mpid) == tshow (peDoc pe) -> Right ()
+      | otherwise -> Left $ tshow $ peDoc pe
+    Pact.PactResult (Right _) -> Right ()
+   where
+     completedMsg :: Maybe Pact.PactId -> Text
+     completedMsg Nothing = ""
+     completedMsg (Just (PactId pactId)) = "resumePact: pact completed: " <> pactId
+
+-- |Poll a request key for some continuation
+pollNodesForCont
+  :: ( TriggerEvent t m
+     , PerformEvent t m
+     , MonadJSM (Performable m)
+     , HasLogger model t
+     )
+  => model
+  -> [S.ClientEnv]
+  -> Event t Pact.RequestKey
+  -> m (Event t (Either Text (Pact.RequestKey, Pact.PactExec)))
+pollNodesForCont model envs reqEv = pollNodesForReq model envs ((Nothing,) <$> reqEv) 24 15 $ \cr _->
+  case Pact._crContinuation cr of
+    Nothing ->
+      Left $ T.unlines ["Result was not a continuation", tshow (Pact._crResult cr)]
+    Just pe ->
+      Right (Pact._crReqKey cr, pe)
+
+data PollingAttempt a =
+    PollingAttempt_Error Text  -- Servant.ClientError
+  | PollingAttempt_NotFound
+  | PollingAttempt_Success a
+  deriving (Eq)
+
+pollNodesForReq
+  :: ( TriggerEvent t m
+     , PerformEvent t m
+     , MonadJSM (Performable m)
+     , HasLogger model t
+     )
+  => model
+  -> [S.ClientEnv]
+  -> Event t (Maybe Pact.PactId, Pact.RequestKey)
+  -> Int --max polls
+  -> Int -- delay between polls (seconds)
+  -> (Pact.CommandResult Hash -> Maybe Pact.PactId -> Either Text a) -- callback for handling poll result
+  -> m (Event t (Either Text a))
+pollNodesForReq model envs requestPair maxPolls waitTime handler =
+  performEventAsync $ ffor requestPair $ \(mPid, rk) cb -> liftJSM $ forkJSM $
+    let
+      getHttpErrors es = T.unlines $ fmap (tshow . packHttpErr) es
+
+      pollReq = Api.poll Api.apiV1Client $ Api.Poll (rk :| [])
+
+      pollNodesSingleRound = ffor (doReqFailover envs pollReq) $ \case
+        Left es -> PollingAttempt_Error $ getHttpErrors es
+        Right (Api.PollResponses m) -> case HM.toList m of
+          -- Not Found, poll again
+          [] -> PollingAttempt_NotFound
+          (_,cr):_ -> PollingAttempt_Success $ handler cr mPid
+
+      pollNodes iterations
+        | iterations <= 0 = liftIO $ cb $ Left "Polling timeout"
+        | otherwise = pollNodesSingleRound >>= \case
+            PollingAttempt_Success r -> do
+              putLog (model^.logger) LevelInfo "Successful polling attempt"
+              liftIO $ cb r
+            --Requests failed on all nodes
+            PollingAttempt_Error e -> do
+              putLog (model^.logger) LevelWarn e
+              liftIO $ cb $ Left e
+            --Polling came back empty
+            PollingAttempt_NotFound -> do
+              liftIO $ threadDelay $ waitTime * 1000 * 1000
+              putLog (model^.logger) LevelWarn $ "Polling iteration " <> tshow (maxPolls - iterations) <> " / "<> tshow maxPolls <> " unsucessful. Trying again in " <> tshow waitTime <> " seconds"
+              pollNodes $ iterations - 1
+     in pollNodes maxPolls
 
 -- | Using the given nodes, attempt to get an SPV proof for
 -- the request key. Polls every X seconds for the proof, repeatedly going
