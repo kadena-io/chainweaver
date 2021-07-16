@@ -60,20 +60,21 @@ import Frontend.Log (defaultLogger)
 import Frontend.Wallet (genZeroKeyPrefix, _unPublicKeyPrefix)
 import Frontend.Storage
 import Frontend.UI.Button
+import Frontend.UI.Modal.Impl (showModalBrutal)
+import Frontend.UI.Dialogs.LogoutConfirmation (uiIdeLogoutConfirmation)
 import Frontend.UI.Widgets
 import Obelisk.Configs
 import Obelisk.Generated.Static
 import Obelisk.Frontend
 import Obelisk.Route
 import Obelisk.Route.Frontend
-import qualified Frontend
+import qualified Frontend (newHead, openFileDialog)
 import qualified Frontend.ReplGhcjs
 import Frontend.VersionedStore (StoreFrontend(..))
 import Frontend.Storage (runBrowserStorageT)
-
-import Frontend.UI.Modal.Impl (showModalBrutal)
-import Frontend.UI.Dialogs.LogoutConfirmation (uiIdeLogoutConfirmation)
-
+import Frontend.Crypto.Password
+import Frontend.Setup.Common
+import Frontend.Setup.Widgets
 import Desktop.Setup
 import Desktop.ImportExport
 import Desktop.Storage.File
@@ -208,7 +209,7 @@ bipWallet fileFFI signingReq mkAppCfg = do
           Frontend.ReplGhcjs.app sidebarLogoutLink frontendFileFFI $ mkAppCfg $ EnabledSettings
             { _enabledSettings_changePassword = Just $ ChangePassword
               { _changePassword_requestChange =
-                let doChange (Identity (oldRoot, _)) (oldPass, newPass, repeatPass)
+                let doChange (Identity (oldRoot, _)) (Password oldPass, Password newPass, Password repeatPass)
                       | passwordRoundTripTest oldRoot oldPass = case checkPassword newPass repeatPass of
                         Left e -> pure $ Left e
                         Right _ -> do
@@ -221,7 +222,7 @@ bipWallet fileFFI signingReq mkAppCfg = do
                 in performEvent . attachWith doChange (current details)
               -- When updating the keys here, we just always regenerate the key from
               -- the new root
-              , _changePassword_updateKeys = ffor updates $ \(newRoot, newPass) i _ ->
+              , _changePassword_updateKeys = ffor updates $ \(newRoot, newPass) -> pure $ \ i _ ->
                 let (newPrv, pub) = bipCryptoGenPair newRoot newPass i
                 in Key $ KeyPair
                   { _keyPair_publicKey = pub

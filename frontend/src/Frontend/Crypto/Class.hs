@@ -11,8 +11,10 @@ import Data.ByteString (ByteString)
 import Data.Text (Text)
 
 import Pact.Types.Scheme (PPKScheme)
-
 import Frontend.Crypto.Ed25519
+import Frontend.Foundation
+import Frontend.Crypto.Signature
+import Frontend.Crypto.Password
 
 -- TODO : Hide the pact key constructor so the caller is forced to verify it
 data PactKey = PactKey
@@ -20,6 +22,11 @@ data PactKey = PactKey
   , _pactKey_publicKey :: PublicKey
   , _pactKey_secret :: ByteString
   } deriving Show
+
+-- Derive a root key from mnemonic; mostly used for setup workflow
+class BIP39Root key where
+  type Sentence key 
+  deriveRoot :: MonadJSM m => Password -> Sentence key -> m (Maybe key)
 
 class HasCrypto key m | m -> key where
   cryptoSign :: ByteString -> key -> m Signature

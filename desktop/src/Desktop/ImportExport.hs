@@ -40,8 +40,7 @@ import Frontend.Wallet (PublicKeyPrefix (..), genZeroKeyPrefix)
 import Frontend.Storage (HasStorage, dumpLocalStorage)
 import Frontend.VersionedStore (VersionedStorage(..), StorageVersion, VersioningDecodeJsonError(..))
 import qualified Frontend.VersionedStore as FrontendStore
-
-newtype Password = Password { unPassword :: Text } deriving (Eq)
+import Frontend.Crypto.Password
 
 data ImportWalletError
   = ImportWalletError_PasswordIncorrect
