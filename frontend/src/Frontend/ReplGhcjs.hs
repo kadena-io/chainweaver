@@ -128,18 +128,19 @@ app sidebarExtra fileFFI appCfg = Store.versionedFrontend (Store.versionedStorag
       FrontendRoute_Contracts -> mkPageContent "contracts" $ do
         controlCfg <- underNetworkBar "Contracts" (controlBarRight fileFFI appCfg ideL)
         -- mainCfg <- elClass "main" "main page__main" $ do
-          -- rec
-          --   let collapseAttrs = ffor open $ \o -> Map.fromList
-          --         [ ("class", "main__pane-collapse-button" <> if o then "" else " collapsed")
-          --         , ("src", static @"img/double_left_arrow.svg")
-          --         , ("title", if o then "Collapse" else "Open")
-          --         ]
-          --   (e, _) <- elDynAttr' "img" collapseAttrs blank
-          --   open <- toggle True $ domEvent Click e
-          -- uiEditorCfg <- codePanel appCfg (ffor open $ \o -> "main__left-pane" <> if o then "" else " pane-fullwidth") ideL
-          -- envCfg <- rightTabBar (ffor open $ \o -> "main__right-pane" <> if o then "" else " pane-collapsed") ideL
-          -- pure mempty -- $ uiEditorCfg -- <> envCfg
-        pure $ controlCfg -- <> mainCfg
+        --   rec
+        --     let collapseAttrs = ffor open $ \o -> Map.fromList
+        --           [ ("class", "main__pane-collapse-button" <> if o then "" else " collapsed")
+        --           , ("src", static @"img/double_left_arrow.svg")
+        --           , ("title", if o then "Collapse" else "Open")
+        --           ]
+        --     (e, _) <- elDynAttr' "img" collapseAttrs blank
+        --     open <- toggle True $ domEvent Click e
+        --   uiEditorCfg <- codePanel appCfg (ffor open $ \o -> "main__left-pane" <> if o then "" else " pane-fullwidth") ideL
+        --   envCfg <- rightTabBar (ffor open $ \o -> "main__right-pane" <> if o then "" else " pane-collapsed") ideL
+        --   pure $ uiEditorCfg <> envCfg
+        -- pure $ controlCfg <> mainCfg
+        pure controlCfg
       FrontendRoute_Resources -> mkPageContent "resources" $ do
         controlCfg <- underNetworkBar "Resources" (mempty <$ blank)
         elClass "main" "main page__main" $ do
@@ -343,45 +344,43 @@ controlBarRight fileFFI appCfg m = do
     divClass "main-header__controls-nav" $ do
       elClass "div" "main-header__project-loader" $ do
 
-        _ <- openFileBtn
+        -- _ <- openFileBtn
 
-        (onCreateGist, onLogoutClick) <- if _appCfg_gistEnabled appCfg
-                                         then (,) <$> gistBtn <*> maySignoutBtn
-                                         else pure (never, never)
+        -- (onCreateGist, onLogoutClick) <- if _appCfg_gistEnabled appCfg
+        --                                  then (,) <$> gistBtn <*> maySignoutBtn
+        --                                  else pure (never, never)
 
         onLoadClicked <- loadReplBtn
-
-
         onDeployClick <- deployBtn
-
         loadCfg <- loadCodeIntoRepl m onLoadClicked
         let
           reqConfirmation :: Event t (Maybe (ModalImpl m key t))
           reqConfirmation = attachWith (\c _ -> Just $ uiDeployConfirmation c m) (current $ m ^. editor_code) onDeployClick
 
-          gistConfirmation :: Event t (Maybe (ModalImpl m key t))
-          gistConfirmation = Just uiCreateGist <$ onCreateGist
+          -- gistConfirmation :: Event t (Maybe (ModalImpl m key t))
+          -- gistConfirmation = Just uiCreateGist <$ onCreateGist
 
-          logoutConfirmation :: Event t (Maybe (ModalImpl m key t))
-          logoutConfirmation = Just uiLogoutConfirmation <$ onLogoutClick
+          -- logoutConfirmation :: Event t (Maybe (ModalImpl m key t))
+          -- logoutConfirmation = Just uiLogoutConfirmation <$ onLogoutClick
 
-          gistCfg =  mempty & modalCfg_setModal .~  gistConfirmation
+          -- gistCfg =  mempty & modalCfg_setModal .~  gistConfirmation
 
           deployCfg = mempty & modalCfg_setModal .~ reqConfirmation
 
-          logoutCfg = mempty & modalCfg_setModal .~ logoutConfirmation
+          -- logoutCfg = mempty & modalCfg_setModal .~ logoutConfirmation
 
 
-        pure $ deployCfg <> loadCfg <> gistCfg <> logoutCfg
+        pure $ deployCfg <> loadCfg
+        -- pure $ deployCfg <> loadCfg <> gistCfg <> logoutCfg
   where
-    maySignoutBtn = do
-      let gitHubOnline = Map.member OAuthProvider_GitHub <$> m ^. oAuth_accessTokens
-      onEvClick <- networkView $ ffor gitHubOnline $ \isOnline ->
-        if isOnline then signoutBtn else pure never
-      switchHold never onEvClick
+    -- maySignoutBtn = do
+    --   let gitHubOnline = Map.member OAuthProvider_GitHub <$> m ^. oAuth_accessTokens
+    --   onEvClick <- networkView $ ffor gitHubOnline $ \isOnline ->
+    --     if isOnline then signoutBtn else pure never
+    --   switchHold never onEvClick
 
-    signoutBtn = signoutButton $
-      headerBtnCfg & uiButtonCfg_title .~ Just "Sign out from GitHub"
+    -- signoutBtn = signoutButton $
+    --   headerBtnCfg & uiButtonCfg_title .~ Just "Sign out from GitHub"
 
     deployBtn = uiButton (headerBtnCfg & uiButtonCfg_class <>~ "main-header__primary-button") $
       text $ "Deploy"
@@ -390,19 +389,19 @@ controlBarRight fileFFI appCfg m = do
       uiButton ( headerBtnCfg & uiButtonCfg_title .~ Just "Editor Shortcut: Ctrl+Enter") $ do
         text "Load into REPL"
 
-    gistBtn =
-      uiButton
-          ( headerBtnCfg
-              & uiButtonCfg_title .~ Just "Create gist on GitHub"
-              {- & uiButtonCfg_class %~ (<> "main-header__text-icon-button") -}
-          ) $ do
-        {- btnTextIcon (static @"img/github-gist-dark.svg") "Make Gist" blank -}
-        text "Make Gist"
+    -- gistBtn =
+    --   uiButton
+    --       ( headerBtnCfg
+    --           & uiButtonCfg_title .~ Just "Create gist on GitHub"
+    --           {- & uiButtonCfg_class %~ (<> "main-header__text-icon-button") -}
+    --       ) $ do
+    --     {- btnTextIcon (static @"img/github-gist-dark.svg") "Make Gist" blank -}
+    --     text "Make Gist"
 
-    openFileBtn = do
-      let cfg = headerBtnCfg & uiButtonCfg_title ?~ "Open a local contract"
-      uiButtonWithOnClick (_fileFFI_openFileDialog fileFFI FileType_Pact) cfg $ do
-        text "Open File"
+    -- openFileBtn = do
+    --   let cfg = headerBtnCfg & uiButtonCfg_title ?~ "Open a local contract"
+    --   uiButtonWithOnClick (_fileFFI_openFileDialog fileFFI FileType_Pact) cfg $ do
+    --     text "Open File"
 
 resourcesWidget
   :: (DomBuilder t m)
