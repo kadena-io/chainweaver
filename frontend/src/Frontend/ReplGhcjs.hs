@@ -126,7 +126,7 @@ app sidebarExtra fileFFI appCfg = Store.versionedFrontend (Store.versionedStorag
         walletCfg <- uiWallet ideL
         pure $ walletBarCfg <> walletCfg
       FrontendRoute_Contracts -> mkPageContent "contracts" $ do
-        controlCfg <- underNetworkBar "Contracts" (controlBarRight fileFFI appCfg ideL)
+        -- controlCfg <- underNetworkBar "Contracts" (controlBarRight fileFFI appCfg ideL)
         -- mainCfg <- elClass "main" "main page__main" $ do
         --   rec
         --     let collapseAttrs = ffor open $ \o -> Map.fromList
@@ -140,7 +140,7 @@ app sidebarExtra fileFFI appCfg = Store.versionedFrontend (Store.versionedStorag
         --   envCfg <- rightTabBar (ffor open $ \o -> "main__right-pane" <> if o then "" else " pane-collapsed") ideL
         --   pure $ uiEditorCfg <> envCfg
         -- pure $ controlCfg <> mainCfg
-        pure controlCfg
+        pure mempty
       FrontendRoute_Resources -> mkPageContent "resources" $ do
         controlCfg <- underNetworkBar "Resources" (mempty <$ blank)
         elClass "main" "main page__main" $ do
@@ -343,19 +343,18 @@ controlBarRight  :: forall key t m. (MonadWidget t m, HasCrypto key (Performable
 controlBarRight fileFFI appCfg m = do
     divClass "main-header__controls-nav" $ do
       elClass "div" "main-header__project-loader" $ do
-
+        text "CONTRACT PAGE UNDER MAINTENANCE"
         -- _ <- openFileBtn
 
         -- (onCreateGist, onLogoutClick) <- if _appCfg_gistEnabled appCfg
         --                                  then (,) <$> gistBtn <*> maySignoutBtn
         --                                  else pure (never, never)
-
-        onLoadClicked <- loadReplBtn
-        onDeployClick <- deployBtn
-        loadCfg <- loadCodeIntoRepl m onLoadClicked
-        let
-          reqConfirmation :: Event t (Maybe (ModalImpl m key t))
-          reqConfirmation = attachWith (\c _ -> Just $ uiDeployConfirmation c m) (current $ m ^. editor_code) onDeployClick
+        -- onLoadClicked <- loadReplBtn
+        -- onDeployClick <- deployBtn
+        -- loadCfg <- loadCodeIntoRepl m onLoadClicked
+        -- let
+          -- reqConfirmation :: Event t (Maybe (ModalImpl m key t))
+          -- reqConfirmation = attachWith (\c _ -> Just $ uiDeployConfirmation c m) (current $ m ^. editor_code) onDeployClick
 
           -- gistConfirmation :: Event t (Maybe (ModalImpl m key t))
           -- gistConfirmation = Just uiCreateGist <$ onCreateGist
@@ -365,14 +364,14 @@ controlBarRight fileFFI appCfg m = do
 
           -- gistCfg =  mempty & modalCfg_setModal .~  gistConfirmation
 
-          deployCfg = mempty & modalCfg_setModal .~ reqConfirmation
+          -- deployCfg = mempty & modalCfg_setModal .~ reqConfirmation
 
           -- logoutCfg = mempty & modalCfg_setModal .~ logoutConfirmation
 
 
-        pure $ deployCfg <> loadCfg
+        pure mempty -- $ deployCfg <> loadCfg
         -- pure $ deployCfg <> loadCfg <> gistCfg <> logoutCfg
-  where
+  -- where
     -- maySignoutBtn = do
     --   let gitHubOnline = Map.member OAuthProvider_GitHub <$> m ^. oAuth_accessTokens
     --   onEvClick <- networkView $ ffor gitHubOnline $ \isOnline ->
@@ -382,12 +381,12 @@ controlBarRight fileFFI appCfg m = do
     -- signoutBtn = signoutButton $
     --   headerBtnCfg & uiButtonCfg_title .~ Just "Sign out from GitHub"
 
-    deployBtn = uiButton (headerBtnCfg & uiButtonCfg_class <>~ "main-header__primary-button") $
-      text $ "Deploy"
+    -- deployBtn = uiButton (headerBtnCfg & uiButtonCfg_class <>~ "main-header__primary-button") $
+    --   text $ "Deploy"
 
-    loadReplBtn =
-      uiButton ( headerBtnCfg & uiButtonCfg_title .~ Just "Editor Shortcut: Ctrl+Enter") $ do
-        text "Load into REPL"
+    -- loadReplBtn =
+    --   uiButton ( headerBtnCfg & uiButtonCfg_title .~ Just "Editor Shortcut: Ctrl+Enter") $ do
+    --     text "Load into REPL"
 
     -- gistBtn =
     --   uiButton
