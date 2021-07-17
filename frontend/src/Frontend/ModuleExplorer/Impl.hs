@@ -136,7 +136,7 @@ makeModuleExplorer appCfg m cfg = mfix $ \ ~(_, explr) -> do
         & editorCfg_loadCode .~ fmapMaybe (const mInitFile) onPostBuild
     -- Store to disk max every 2 seconds:
     onAutoStore <- throttle 2 $ updated $ m ^. editor_code
-    performEvent_ $ storeEditor <$> onAutoStore
+    -- performEvent_ $ storeEditor <$> onAutoStore
     let
       onCreateGistUnsafe = fmap swap
           -- TODO: We should save whenever we are about to leave the page, no matter the cause:
