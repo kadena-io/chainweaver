@@ -344,6 +344,7 @@ controlBarRight fileFFI appCfg m = do
     divClass "main-header__controls-nav" $ do
       elClass "div" "main-header__project-loader" $ do
         text "CONTRACT PAGE UNDER MAINTENANCE"
+        pure mempty 
         -- _ <- openFileBtn
 
         -- (onCreateGist, onLogoutClick) <- if _appCfg_gistEnabled appCfg
@@ -367,10 +368,7 @@ controlBarRight fileFFI appCfg m = do
           -- deployCfg = mempty & modalCfg_setModal .~ reqConfirmation
 
           -- logoutCfg = mempty & modalCfg_setModal .~ logoutConfirmation
-
-
-        pure mempty -- $ deployCfg <> loadCfg
-        -- pure $ deployCfg <> loadCfg <> gistCfg <> logoutCfg
+          -- pure $ deployCfg <> loadCfg <> gistCfg <> logoutCfg
   -- where
     -- maySignoutBtn = do
     --   let gitHubOnline = Map.member OAuthProvider_GitHub <$> m ^. oAuth_accessTokens
