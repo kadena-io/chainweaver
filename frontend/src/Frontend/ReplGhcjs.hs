@@ -127,19 +127,19 @@ app sidebarExtra fileFFI appCfg = Store.versionedFrontend (Store.versionedStorag
         pure $ walletBarCfg <> walletCfg
       FrontendRoute_Contracts -> mkPageContent "contracts" $ do
         controlCfg <- underNetworkBar "Contracts" (controlBarRight fileFFI appCfg ideL)
-        mainCfg <- elClass "main" "main page__main" $ do
-          rec
-            let collapseAttrs = ffor open $ \o -> Map.fromList
-                  [ ("class", "main__pane-collapse-button" <> if o then "" else " collapsed")
-                  , ("src", static @"img/double_left_arrow.svg")
-                  , ("title", if o then "Collapse" else "Open")
-                  ]
-            (e, _) <- elDynAttr' "img" collapseAttrs blank
-            open <- toggle True $ domEvent Click e
-          uiEditorCfg <- codePanel appCfg (ffor open $ \o -> "main__left-pane" <> if o then "" else " pane-fullwidth") ideL
-          envCfg <- rightTabBar (ffor open $ \o -> "main__right-pane" <> if o then "" else " pane-collapsed") ideL
-          pure $ uiEditorCfg <> envCfg
-        pure $ controlCfg <> mainCfg
+        -- mainCfg <- elClass "main" "main page__main" $ do
+          -- rec
+          --   let collapseAttrs = ffor open $ \o -> Map.fromList
+          --         [ ("class", "main__pane-collapse-button" <> if o then "" else " collapsed")
+          --         , ("src", static @"img/double_left_arrow.svg")
+          --         , ("title", if o then "Collapse" else "Open")
+          --         ]
+          --   (e, _) <- elDynAttr' "img" collapseAttrs blank
+          --   open <- toggle True $ domEvent Click e
+          -- uiEditorCfg <- codePanel appCfg (ffor open $ \o -> "main__left-pane" <> if o then "" else " pane-fullwidth") ideL
+          -- envCfg <- rightTabBar (ffor open $ \o -> "main__right-pane" <> if o then "" else " pane-collapsed") ideL
+          -- pure mempty -- $ uiEditorCfg -- <> envCfg
+        pure $ controlCfg -- <> mainCfg
       FrontendRoute_Resources -> mkPageContent "resources" $ do
         controlCfg <- underNetworkBar "Resources" (mempty <$ blank)
         elClass "main" "main page__main" $ do
