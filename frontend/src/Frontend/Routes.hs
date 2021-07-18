@@ -61,7 +61,7 @@ handleRoutes m = do
 
       onInvalidRoute = () <$ fmapMaybe (^? _Just . _Left) onParsedRoute
 
-      onOAuthRouteReset = (FrontendRoute_Contracts :/ Nothing) <$ m ^. oAuth_error
+      onOAuthRouteReset = (FrontendRoute_Contracts :/ ()) <$ m ^. oAuth_error
 
       onNewRoute = fmapMaybe id
         . attachWith buildRoute (current route)
@@ -87,7 +87,7 @@ handleRoutes m = do
     buildRoute :: R FrontendRoute -> Maybe LoadedRef -> Maybe (R FrontendRoute)
     buildRoute cRoute ref =
       let
-        newRoute = maybe (FrontendRoute_Contracts :/ Nothing) (renderRoute . renderRef) ref
+        newRoute = maybe (FrontendRoute_Contracts :/ ()) (renderRoute . renderRef) ref
       in
         if newRoute == cRoute
            then Nothing
@@ -95,14 +95,15 @@ handleRoutes m = do
 
     parseRoute :: R FrontendRoute -> Maybe (Either (MP.ParseErrorBundle RefPath Void) LoadedRef)
     parseRoute = fmap runRefParser . \case
-      FrontendRoute_Contracts :/ Nothing -> Nothing
-      FrontendRoute_Contracts :/ Just c -> case c of
-        ContractRoute_Example  :/ xs -> Just $ "example":xs
-        ContractRoute_Stored   :/ xs -> Just $ "stored":xs
-        ContractRoute_Gist     :/ xs -> Just $ "gist":xs
-        ContractRoute_Deployed :/ xs -> Just $ "deployed":xs
-        ContractRoute_New      :/ () -> Nothing
-        ContractRoute_OAuth    :/ _  -> Nothing
+      FrontendRoute_Contracts :/ () -> Nothing
+      -- FrontendRoute_Contracts :/ Nothing -> Nothing
+      -- FrontendRoute_Contracts :/ Just c -> case c of
+      --   ContractRoute_Example  :/ xs -> Just $ "example":xs
+      --   ContractRoute_Stored   :/ xs -> Just $ "stored":xs
+      --   ContractRoute_Gist     :/ xs -> Just $ "gist":xs
+      --   ContractRoute_Deployed :/ xs -> Just $ "deployed":xs
+      --   ContractRoute_New      :/ () -> Nothing
+      --   ContractRoute_OAuth    :/ _  -> Nothing
       FrontendRoute_Accounts :/ () -> Nothing
       FrontendRoute_Keys :/ () -> Nothing
       FrontendRoute_Resources :/ () -> Nothing
@@ -112,9 +113,9 @@ handleRoutes m = do
 
     renderRoute :: RefPath -> R FrontendRoute
     renderRoute (RefPath (n:ns)) = case n of
-      "example"  -> FrontendRoute_Contracts ?/ ContractRoute_Example  :/ ns
-      "stored"   -> FrontendRoute_Contracts ?/ ContractRoute_Stored   :/ ns
-      "gist"     -> FrontendRoute_Contracts ?/ ContractRoute_Gist     :/ ns
-      "deployed" -> FrontendRoute_Contracts ?/ ContractRoute_Deployed :/ ns
-      _          -> FrontendRoute_Contracts :/ Nothing
-    renderRoute _ = FrontendRoute_Contracts :/ Nothing
+      -- "example"  -> FrontendRoute_Contracts ?/ ContractRoute_Example  :/ ns
+      -- "stored"   -> FrontendRoute_Contracts ?/ ContractRoute_Stored   :/ ns
+      -- "gist"     -> FrontendRoute_Contracts ?/ ContractRoute_Gist     :/ ns
+      -- "deployed" -> FrontendRoute_Contracts ?/ ContractRoute_Deployed :/ ns
+      _          -> FrontendRoute_Contracts :/ ()
+    renderRoute _ = FrontendRoute_Contracts :/ ()

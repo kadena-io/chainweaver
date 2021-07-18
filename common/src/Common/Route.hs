@@ -49,25 +49,25 @@ data BackendRoute :: * -> * where
 
 -- | This type is used to define frontend routes, i.e. ones for which the backend will serve the frontend.
 data FrontendRoute :: * -> * where
-  FrontendRoute_Contracts :: FrontendRoute (Maybe (R ContractRoute))
+  FrontendRoute_Contracts :: FrontendRoute () -- (Maybe (R ContractRoute))
   FrontendRoute_Accounts :: FrontendRoute ()
   FrontendRoute_Keys :: FrontendRoute ()
   FrontendRoute_Resources :: FrontendRoute ()
   FrontendRoute_Settings :: FrontendRoute ()
 
-data ContractRoute a where
-  -- | Route for loading an example.
-  ContractRoute_Example :: ContractRoute [Text]
-  -- | Route for loading a stored file/module.
-  ContractRoute_Stored  :: ContractRoute [Text]
-  -- | Route for loading GitHub gists.
-  ContractRoute_Gist  :: ContractRoute [Text]
-  -- | Route for loading a deployed module.
-  ContractRoute_Deployed :: ContractRoute [Text]
-  -- | Route when editing a new file.
-  ContractRoute_New :: ContractRoute ()
-  -- | Route for auth handling
-  ContractRoute_OAuth :: ContractRoute (R OAuthRoute)
+-- data ContractRoute a where
+--   -- | Route for loading an example.
+--   ContractRoute_Example :: ContractRoute [Text]
+--   -- | Route for loading a stored file/module.
+--   ContractRoute_Stored  :: ContractRoute [Text]
+--   -- | Route for loading GitHub gists.
+--   ContractRoute_Gist  :: ContractRoute [Text]
+--   -- | Route for loading a deployed module.
+--   ContractRoute_Deployed :: ContractRoute [Text]
+--   -- | Route when editing a new file.
+--   ContractRoute_New :: ContractRoute ()
+--   -- | Route for auth handling
+--   ContractRoute_OAuth :: ContractRoute (R OAuthRoute)
 
 backendRouteEncoder
   :: Encoder (Either Text) Identity (R (FullRoute BackendRoute FrontendRoute)) PageName
@@ -85,20 +85,20 @@ backendRouteEncoder = handleEncoder (\_e -> hoistR (FullRoute_Frontend . Obelisk
       BackendRoute_Css
         -> PathSegment "sass.css" $ unitEncoder mempty
     FullRoute_Frontend obeliskRoute -> obeliskRouteSegment obeliskRoute $ \case
-      FrontendRoute_Contracts -> PathSegment "contracts" $ maybeEncoder (unitEncoder mempty) contractRouteEncoder
+      FrontendRoute_Contracts -> PathSegment "contracts" $ unitEncoder mempty   -- maybeEncoder (unitEncoder mempty) contractRouteEncoder
       FrontendRoute_Accounts -> PathSegment "accounts" $ unitEncoder mempty
       FrontendRoute_Keys -> PathSegment "keys" $ unitEncoder mempty
       FrontendRoute_Settings -> PathSegment "settings" $ unitEncoder mempty
       FrontendRoute_Resources -> PathSegment "resources" $ unitEncoder mempty
 
-contractRouteEncoder :: (MonadError Text parse, MonadError Text check) => Encoder parse check (R ContractRoute) PageName
-contractRouteEncoder = pathComponentEncoder $ \case
-  ContractRoute_Example -> PathSegment "example" $ pathOnlyEncoderIgnoringQuery
-  ContractRoute_Stored -> PathSegment "stored" $ pathOnlyEncoderIgnoringQuery
-  ContractRoute_Gist -> PathSegment "gist" $ pathOnlyEncoderIgnoringQuery
-  ContractRoute_Deployed -> PathSegment "deployed" $ pathOnlyEncoderIgnoringQuery
-  ContractRoute_New -> PathSegment "new" $ unitEncoder mempty
-  ContractRoute_OAuth -> PathSegment "oauth" $ oAuthRouteEncoder
+-- contractRouteEncoder :: (MonadError Text parse, MonadError Text check) => Encoder parse check (R ContractRoute) PageName
+-- contractRouteEncoder = pathComponentEncoder $ \case
+--   ContractRoute_Example -> PathSegment "example" $ pathOnlyEncoderIgnoringQuery
+--   ContractRoute_Stored -> PathSegment "stored" $ pathOnlyEncoderIgnoringQuery
+--   ContractRoute_Gist -> PathSegment "gist" $ pathOnlyEncoderIgnoringQuery
+--   ContractRoute_Deployed -> PathSegment "deployed" $ pathOnlyEncoderIgnoringQuery
+--   ContractRoute_New -> PathSegment "new" $ unitEncoder mempty
+--   ContractRoute_OAuth -> PathSegment "oauth" $ oAuthRouteEncoder
 
 -- | Stolen from Obelisk as it is not exported. (Probably for a reason, but it
 -- seems to do what we want right now.
@@ -114,5 +114,5 @@ landingPageRoute = FrontendRoute_Accounts :/ ()
 concat <$> mapM deriveRouteComponent
   [ ''BackendRoute
   , ''FrontendRoute
-  , ''ContractRoute
+  -- , ''ContractRoute
   ]

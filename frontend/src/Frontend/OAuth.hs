@@ -90,7 +90,7 @@ makeOAuth cfg = mdo -- Required to get access to `tokens` for clearing any old t
   r <- askRoute
   let
     oAuthRoute = ffor r $ \case
-      FrontendRoute_Contracts :/ Just (ContractRoute_OAuth :/ oR) -> Just oR
+      -- FrontendRoute_Contracts :/ Just (ContractRoute_OAuth :/ oR) -> Just oR
       _ -> Nothing
 
   sCfg <- buildOAuthConfigFront

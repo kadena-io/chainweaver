@@ -126,6 +126,10 @@ app sidebarExtra fileFFI appCfg = Store.versionedFrontend (Store.versionedStorag
         walletCfg <- uiWallet ideL
         pure $ walletBarCfg <> walletCfg
       FrontendRoute_Contracts -> mkPageContent "contracts" $ do
+        controlCfg <- underNetworkBar "Resources" (mempty <$ blank)
+        elClass "main" "main page__main" $ do
+          resourcesWidget
+        pure controlCfg
         -- controlCfg <- underNetworkBar "Contracts" (controlBarRight fileFFI appCfg ideL)
         -- mainCfg <- elClass "main" "main page__main" $ do
         --   rec
@@ -140,7 +144,6 @@ app sidebarExtra fileFFI appCfg = Store.versionedFrontend (Store.versionedStorag
         --   envCfg <- rightTabBar (ffor open $ \o -> "main__right-pane" <> if o then "" else " pane-collapsed") ideL
         --   pure $ uiEditorCfg <> envCfg
         -- pure $ controlCfg <> mainCfg
-        pure mempty
       FrontendRoute_Resources -> mkPageContent "resources" $ do
         controlCfg <- underNetworkBar "Resources" (mempty <$ blank)
         elClass "main" "main page__main" $ do
@@ -208,7 +211,7 @@ walletSidebar sidebarExtra = elAttr "div" ("class" =: "sidebar") $ do
           void $ uiSidebarIcon selected (routeIcon r) label
     sidebarLink (FrontendRoute_Accounts :/ ()) "Accounts"
     sidebarLink (FrontendRoute_Keys :/ ()) "Keys"
-    sidebarLink (FrontendRoute_Contracts :/ Nothing) "Contracts"
+    sidebarLink (FrontendRoute_Contracts :/ ()) "Contracts"
     elAttr "div" ("style" =: "flex-grow: 1") blank
     sidebarLink (FrontendRoute_Resources :/ ()) "Resources"
     sidebarLink (FrontendRoute_Settings :/ ()) "Settings"
@@ -224,36 +227,36 @@ routeIcon = \case
   FrontendRoute_Settings :/ _ -> static @"img/menu/settings.svg"
 
 -- | Code editing (left hand side currently)
-codePanel :: forall r key t m a. (MonadWidget t m, Routed t r m) => AppCfg key t m -> Dynamic t CssClass -> Ide a key t -> m (IdeCfg a key t)
-codePanel appCfg cls m = elDynKlass "div" (cls <> "pane") $ do
-    (e, eCfg) <- wysiwyg $ do
-      onNewCode <- tagOnPostBuild $ m ^. editor_code
-      let annotations = mapMaybe mkCodeAceAnnotation <$> m ^. editor_annotations
-      onUserCode <- codeWidget appCfg (updated annotations) "" onNewCode
-      pure $ mempty & editorCfg_setCode .~ onUserCode
+-- codePanel :: forall r key t m a. (MonadWidget t m, Routed t r m) => AppCfg key t m -> Dynamic t CssClass -> Ide a key t -> m (IdeCfg a key t)
+-- codePanel appCfg cls m = elDynKlass "div" (cls <> "pane") $ do
+--     (e, eCfg) <- wysiwyg $ do
+--       onNewCode <- tagOnPostBuild $ m ^. editor_code
+--       let annotations = mapMaybe mkCodeAceAnnotation <$> m ^. editor_annotations
+--       onUserCode <- codeWidget appCfg (updated annotations) "" onNewCode
+--       pure $ mempty & editorCfg_setCode .~ onUserCode
 
-    setFocusOn e ".ace_text-input" =<< getPostBuild
+--     setFocusOn e ".ace_text-input" =<< getPostBuild
 
-    onCtrlEnter <- getCtrlEnterEvent e
-    loadCfg <- loadCodeIntoRepl m onCtrlEnter
-    pure $ mconcat [ eCfg , loadCfg ]
-  where
-    wysiwyg = elClass' "div" "wysiwyg pane__body"
-    -- We can't use domEvent Keypress because it only gets us the
-    -- deprecated key code which does not work cross platform in this case:
-    getCtrlEnterEvent e = do
-      (onCtrlEnter, triggerEv) <- newTriggerEvent
-      let htmlElement = HTMLElement . unElement $ _element_raw e
-      void $ liftJSM $ htmlElement `on` keyPress $ do
-        ev <- ask
-        hasCtrl <- liftJSM $ getCtrlKey ev
-        hasMeta <- liftJSM $ getMetaKey ev
-        key <- liftJSM $ getKey ev
-        code <- liftJSM $ getKeyCode ev
-        let hasEnter = key == ("Enter" :: Text) || code == 10 || code == 13
+--     onCtrlEnter <- getCtrlEnterEvent e
+--     loadCfg <- loadCodeIntoRepl m onCtrlEnter
+--     pure $ mconcat [ eCfg , loadCfg ]
+--   where
+--     wysiwyg = elClass' "div" "wysiwyg pane__body"
+--     -- We can't use domEvent Keypress because it only gets us the
+--     -- deprecated key code which does not work cross platform in this case:
+--     getCtrlEnterEvent e = do
+--       (onCtrlEnter, triggerEv) <- newTriggerEvent
+--       let htmlElement = HTMLElement . unElement $ _element_raw e
+--       void $ liftJSM $ htmlElement `on` keyPress $ do
+--         ev <- ask
+--         hasCtrl <- liftJSM $ getCtrlKey ev
+--         hasMeta <- liftJSM $ getMetaKey ev
+--         key <- liftJSM $ getKey ev
+--         code <- liftJSM $ getKeyCode ev
+--         let hasEnter = key == ("Enter" :: Text) || code == 10 || code == 13
 
-        liftIO $ when ((hasCtrl || hasMeta) && hasEnter) $ triggerEv ()
-      pure onCtrlEnter
+--         liftIO $ when ((hasCtrl || hasMeta) && hasEnter) $ triggerEv ()
+--       pure onCtrlEnter
 
 -- | Load current editor code into REPL.
 loadCodeIntoRepl

@@ -71,7 +71,7 @@ uiCreatedGist gistRef _onClose = do
 
                 baseUrlText <- getConfigRoute
                 routeToUrl <- askRouteToUrl
-                let route = routeToUrl $ FrontendRoute_Contracts ?/ ContractRoute_Gist :/ [gistRef]
+                let route = routeToUrl $ FrontendRoute_Contracts :/ ()    --  ?/ ContractRoute_Gist :/ [gistRef]
 
                 elClass "td" "table__text-cell table__cell_size_flex" $
                   text $ baseUrlText <> route
