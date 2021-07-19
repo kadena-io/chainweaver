@@ -44,13 +44,6 @@ newtype BrowserCryptoT t m a = BrowserCryptoT
     , MonadReader (Behavior t (PrivateKey, Password))
     )
 
-instance BIP39Root PrivateKey where
-  type Sentence PrivateKey = [Text] 
-  deriveRoot pwd sentence = liftJSM $
-    fmap hush $ generateRoot pwd $ T.unwords sentence
-    where hush = either (const Nothing) Just
-    -- todo; add pwd reset
-
 instance (MonadJSM m, MonadSample t m) => HasCrypto PrivateKey (BrowserCryptoT t m) where
   cryptoSign msg key = do
     (_, p) <- sample =<< ask
@@ -62,10 +55,10 @@ instance (MonadJSM m, MonadSample t m) => HasCrypto PrivateKey (BrowserCryptoT t
     keysOrErr <- liftJSM $ generateKeypair p root i
     pure $ fromRight (PrivateKey "", PublicKey "") keysOrErr
 
-  --TODO: Is this func used anywhere? 
+  --TODO: Is this func used anywhere?
   cryptoGenPubKeyFromPrivate _ _ = pure $ Left $ "cryptoGenPubKeyFromPrivate: not supported on browser"
 
-  -- We use the legacy js package here and not the BIP-browser one that 
+  -- We use the same js package as pact here (nacl) and not the BIP-browser one that
   -- we use for everything else because the bip-browser one only works with
   -- encrypted private keys, and not raw one
   cryptoSignWithPactKey m (PactKey _ (PublicKey pub) sec) = mkSignatureLegacyJS m priv

@@ -9,6 +9,7 @@ import Control.Monad.Reader
 import Obelisk.Route.Frontend
 import Data.ByteString (ByteString)
 import Data.Text (Text)
+import qualified Data.Text as T
 
 import Pact.Types.Scheme (PPKScheme)
 import Frontend.Crypto.Ed25519
@@ -23,10 +24,37 @@ data PactKey = PactKey
   , _pactKey_secret :: ByteString
   } deriving Show
 
+data MnemonicError =
+    MnemonicError_InvalidPhrase
+  | MnemonicError_NotEnoughWords
+  deriving (Show)
+
+class (Show (BIP39MnemonicError mnem)) => BIP39Mnemonic mnem where
+  type BIP39MnemonicError mnem
+  generateMnemonic :: MonadJSM m => m mnem
+  mnemonicError :: MonadJSM m => mnem -> m (Maybe (BIP39MnemonicError mnem))
+
+instance BIP39Mnemonic [Text] where
+  type BIP39MnemonicError [Text] = MnemonicError
+  generateMnemonic = genMnemonic
+  mnemonicError mnem = if (length mnem /= 12)
+    then pure $ Just MnemonicError_NotEnoughWords
+    else
+      ffor (liftJSM $ validateMnemonic $ T.unwords mnem) $ \case
+        True -> Nothing
+        False -> Just MnemonicError_InvalidPhrase
+
 -- Derive a root key from mnemonic; mostly used for setup workflow
 class BIP39Root key where
-  type Sentence key 
+  type Sentence key
   deriveRoot :: MonadJSM m => Password -> Sentence key -> m (Maybe key)
+
+instance BIP39Root PrivateKey where
+  type Sentence PrivateKey = [Text]
+  deriveRoot pwd sentence = liftJSM $
+    fmap hush $ generateRoot pwd $ T.unwords sentence
+    where hush = either (const Nothing) Just
+    -- todo; add pwd reset
 
 class HasCrypto key m | m -> key where
   cryptoSign :: ByteString -> key -> m Signature

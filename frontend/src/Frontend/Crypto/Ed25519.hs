@@ -16,6 +16,7 @@ module Frontend.Crypto.Ed25519
   , PrivateKey(..)
   -- * Mnemonic
   , genMnemonic
+  , validateMnemonic
   -- * Creation
   , generateRoot
   , generateKeypair
@@ -133,6 +134,13 @@ generateKeypair (Password pwd) (PrivateKey root) idx = callJSFunction (T.pack "g
     jsPairToBS (prvJS, pubJS) = (\a b -> (PrivateKey a, PublicKey b))
       <$> arrayBufToByteString prvJS
       <*> arrayBufToByteString pubJS
+
+validateMnemonic :: Text -> JSM Bool
+validateMnemonic mnemPhrase = do
+  mnemPhrase' <- toJSVal $ toJSString mnemPhrase
+  lib <- jsg "lib"
+  res <- lib # "kadenaCheckMnemonic" $ [ mnemPhrase' ]
+  valToBool res
 
 toPublic :: PrivateKey -> JSM (Either Text PublicKey)
 toPublic (PrivateKey pkey) = callJSFunction (T.pack "toPublic") $ do
