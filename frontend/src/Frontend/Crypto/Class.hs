@@ -1,5 +1,6 @@
 {-# LANGUAGE CPP #-}
 {-# LANGUAGE DataKinds #-}
+{-# LANGUAGE ConstraintKinds #-}
 {-# LANGUAGE DefaultSignatures #-}
 {-# LANGUAGE UndecidableInstances #-}
 
@@ -31,18 +32,23 @@ data MnemonicError =
 
 class (Show (BIP39MnemonicError mnem)) => BIP39Mnemonic mnem where
   type BIP39MnemonicError mnem
-  generateMnemonic :: MonadJSM m => m mnem
-  mnemonicError :: MonadJSM m => mnem -> m (Maybe (BIP39MnemonicError mnem))
+  generateMnemonic :: MonadJSM m => m (Either Text mnem)
+  toMnemonic :: MonadJSM m => [Text] -> m (Either (BIP39MnemonicError mnem) mnem)
+  mnemonicToText :: mnem -> [Text]
 
 instance BIP39Mnemonic [Text] where
   type BIP39MnemonicError [Text] = MnemonicError
-  generateMnemonic = genMnemonic
-  mnemonicError mnem = if (length mnem /= 12)
-    then pure $ Just MnemonicError_NotEnoughWords
-    else
-      ffor (liftJSM $ validateMnemonic $ T.unwords mnem) $ \case
-        True -> Nothing
-        False -> Just MnemonicError_InvalidPhrase
+
+  generateMnemonic = fmap Right genMnemonic
+
+  -- Basic case where input type ([Text]) is the same as output type and we are just validating
+  toMnemonic sentence = case (length sentence == 12) of
+    False -> pure $ Left MnemonicError_NotEnoughWords
+    True -> do
+      ffor (liftJSM $ validateMnemonic $ T.unwords sentence) $ \case
+        False -> Left MnemonicError_InvalidPhrase
+        True -> Right sentence
+  mnemonicToText = id
 
 -- Derive a root key from mnemonic; mostly used for setup workflow
 class BIP39Root key where
@@ -54,7 +60,10 @@ instance BIP39Root PrivateKey where
   deriveRoot pwd sentence = liftJSM $
     fmap hush $ generateRoot pwd $ T.unwords sentence
     where hush = either (const Nothing) Just
-    -- todo; add pwd reset
+    -- TODO; add pwd reset
+
+-- |Main constraint for frontend use
+type DerivableKey key mnem = (BIP39Mnemonic mnem, BIP39Root key, Sentence key ~ mnem)
 
 class HasCrypto key m | m -> key where
   cryptoSign :: ByteString -> key -> m Signature

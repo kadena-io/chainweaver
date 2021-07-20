@@ -30,9 +30,9 @@ import Frontend.Foundation
 setPassword
   :: (DomBuilder t m, MonadHold t m, MonadFix m, PerformEvent t m, PostBuild t m, 
       MonadSample t (Performable m), MonadJSM (Performable m), TriggerEvent t m,
-      BIP39Root key
+      DerivableKey key mnem
       )
-  => Dynamic t (Sentence key)
+  => Dynamic t mnem
   -> m (Event t (Maybe (key, Password)))
 setPassword dSentence = do
   let uiPassword' = uiPassword (setupClass "password-wrapper") (setupClass "password")
@@ -65,7 +65,6 @@ setPassword dSentence = do
   elDynClass "div" dMsgClass $
     dynText $ fromMaybe T.empty <$> lastError
 
-  --TODO: Make ed25519 func take Password type and unwrap there
   encryptedKeyAndPass <- performEvent $ ffor pass $ \p -> do
     sentence <- sample $ current dSentence 
     root <- deriveRoot p sentence

@@ -10,34 +10,20 @@
 
 -- | Wallet setup screens
 module Frontend.Setup.Common where
-  -- (
-  --   WalletExists (..), Password(..), runSetup
-  -- , splashLogo, setupClass
-  -- ) where
 
-import Control.Lens ((<>~), (??), (^.), _1, _2, _3)
+import Control.Lens ((<>~))
 import Control.Error (hush)
-import Control.Applicative (liftA2)
-import Control.Monad (unless, guard, void)
+import Control.Monad (unless, void)
 import Control.Monad.Fix (MonadFix)
-import Control.Monad.Trans.Maybe (MaybeT(MaybeT), runMaybeT)
-import Control.Monad.IO.Class
 import Data.Bool (bool)
-import Data.Foldable (fold, traverse_)
-import Data.Maybe (isNothing, fromMaybe)
-import Data.Bifunctor
-import Data.ByteString (ByteString)
-import Data.String (IsString, fromString)
-import Data.Functor ((<&>))
+import Data.Foldable (fold)
+import Data.Maybe (isNothing)
 import Data.Text (Text)
 import Language.Javascript.JSaddle (MonadJSM, liftJSM)
 import Reflex.Dom.Core
 import qualified Data.Map as Map
 import qualified Data.Text as T
-import qualified Data.Text.Encoding as T
 
-import Frontend.AppCfg (FileFFI(..))
-import Frontend.Storage.Class (HasStorage)
 import Frontend.UI.Button
 import Frontend.UI.Dialogs.ChangePassword (minPasswordLength)
 import Frontend.UI.Widgets.Helpers (imgWithAlt)
@@ -46,7 +32,6 @@ import Obelisk.Generated.Static
 
 import Frontend.Setup.Password
 import Frontend.Setup.Widgets
-import Frontend.Crypto.Ed25519 (genMnemonic)
 import Frontend.Crypto.Class
 import Frontend.Crypto.Password
 
@@ -81,13 +66,6 @@ wordsToPhraseMap = Map.fromList . zip [WordKey 1 ..]
 showWordKey :: WordKey -> Text
 showWordKey = T.pack . show . _unWordKey
 
--- | Convenience function for unpacking byte array things into 'Text'
--- baToText :: ByteArrayAccess b => b -> Text
--- baToText = T.decodeUtf8 . BA.pack . BA.unpack
-
--- textTo :: IsString a => Text -> a
--- textTo = fromString . T.unpack
-
 tshow :: Show a => a -> Text
 tshow = T.pack . show
 
@@ -102,7 +80,6 @@ finishSetupWF ws = pure . (,) (ws, never, never)
 
 -- Make this take a list of the current progress instead so we can maintain
 -- the list of how much we have done so far.
---
 walletSetupRecoverHeader
   :: DomBuilder t m
   => WalletScreen
@@ -256,3 +233,195 @@ doneScreen (rootKey, passwd) = Workflow $ do
   pure ( (WalletScreen_Done, (rootKey, passwd, True) <$ eContinue, never)
        , never
        )
+
+createNewWallet
+  :: forall t m key mnem. (DomBuilder t m, MonadFix m, MonadHold t m, PerformEvent t m, PostBuild t m,
+      MonadJSM (Performable m), MonadSample t (Performable m), TriggerEvent t m,
+      DerivableKey key mnem
+    )
+  => SetupWF key t m -> Event t () -> SetupWF key t m
+createNewWallet backWF eBack = selfWF
+  where
+    selfWF = Workflow $  do
+      ePb <- getPostBuild
+      elAttr "img" ("src" =: static @"img/Wallet_Graphic_2.png" <> "class" =: setupClass "password-bg") blank
+
+      el "h1" $ text "Set a password"
+      setupDiv "new-wallet-password-text" $ do
+        el "div" $ text "Enter a strong and unique password"
+        el "div" $ text "to protect access to your Chainweaver wallet"
+
+      (eGenError, eGenSuccess) <- fmap fanEither . performEvent $ liftJSM generateMnemonic <$ ePb
+
+      let
+        generating = do
+          dynText =<< holdDyn "Generating your mnemonic..." eGenError
+          pure never
+
+        proceed mnem = mdo
+          (ePwSubmit, dPassword) <- continueForm (fmap isNothing dPassword) $ do
+            holdDyn Nothing =<< setPassword (pure mnem)
+
+          fmap snd $ runWithReplace blank $ ffor (tagMaybe (current dPassword) ePwSubmit) $ \p ->
+            pure $ precreatePassphraseWarning selfWF eBack p mnem
+
+      dContinue <- widgetHold generating (proceed <$> eGenSuccess)
+
+      finishSetupWF WalletScreen_Password $ leftmost
+        [ backWF <$ eBack
+        , switchDyn dContinue
+        ]
+
+precreatePassphraseWarning
+  ::
+  ( DomBuilder t m, MonadFix m, MonadHold t m, PerformEvent t m,
+    PostBuild t m, MonadJSM (Performable m),
+    DerivableKey key mnem
+  )
+  => SetupWF key t m
+  -> Event t ()
+  -> (key, Password)
+  -> mnem
+  -> SetupWF key t m
+precreatePassphraseWarning backWF eBack (rootKey, password) mnemonicSentence = Workflow $ mdo
+  (eContinue, dUnderstand) <- continueForm (fmap not dUnderstand) $ do
+
+    setupDiv "warning-splash" $ do
+      walletSplashWithIcon $ do
+        setupDiv "repeat-icon" $ stackFaIcon "fa-repeat"
+
+    el "h1" $ text "Wallet Recovery Phrase"
+
+    setupDiv "recovery-phrase-warning" $ do
+      line "In the next step you will record your 12 word recovery phrase."
+      line "Your recovery phrase makes it easy to restore your wallet on a new device."
+      line "Anyone with this phrase can take control of your wallet, keep this phrase private."
+      line "Kadena cannot access your recovery phrase if lost, please store it safely."
+
+    let chkboxcls = setupClass "checkbox-wrapper"
+    fmap value $ elClass "div" chkboxcls $ setupCheckbox False def $ el "div" $ do
+      line "I understand that if I lose my recovery phrase,"
+      line "I will not be able to restore my wallet."
+
+  finishSetupWF WalletScreen_PrePassphrase $ leftmost
+    [ backWF <$ eBack
+    , createNewPassphrase backWF eBack (rootKey, password) mnemonicSentence <$ eContinue
+    ]
+  where
+    line = el "div" . text
+
+-- | UI for generating and displaying a new mnemonic sentence.
+createNewPassphrase
+  ::
+  (DomBuilder t m, MonadFix m, MonadHold t m, PerformEvent t m,
+   PostBuild t m, MonadJSM (Performable m), DerivableKey key mnemonic
+  )
+  => SetupWF key t m
+  -> Event t ()
+  -> (key, Password)
+  -> mnemonic
+  -> SetupWF key t m
+createNewPassphrase backWF eBack (rootKey, password) mnemonicSentence = selfWF
+  where
+    selfWF = Workflow $ mdo
+      (eContinue, dIsStored) <- continueForm (fmap not dIsStored) $ do
+        el "h1" $ text "Record Recovery Phrase"
+        el "div" $ do
+          el "div" $ text "Write down or copy these words in the correct order and store them safely."
+          el "div" $ text "The recovery words are hidden for security. Mouseover the numbers to reveal."
+
+        rec
+          dPassphrase <- passphraseWidget dPassphrase (pure Setup) False
+            >>= holdDyn (wordsToPhraseMap $ mnemonicToText mnemonicSentence)
+
+          let cfg = def
+                & uiButtonCfg_class .~ "setup__recovery-phrase-copy"
+                & uiButtonCfg_title .~ pure (Just "Copy")
+          copyButton cfg True $ fmap (T.unwords . Map.elems) $ current dPassphrase
+
+        fmap value $ setupDiv "checkbox-wrapper" $ setupCheckbox False def
+          $ text "I have safely stored my recovery phrase."
+
+      finishSetupWF WalletScreen_CreatePassphrase $ leftmost
+        [ backWF <$ eBack
+        , confirmPhrase selfWF eBack (rootKey, password) mnemonicSentence <$ eContinue
+        ]
+
+-- | UI for mnemonic sentence confirmation: scramble the phrase, make the user
+-- choose the words in the right order.
+confirmPhrase
+  :: (
+   DomBuilder t m, MonadFix m, MonadHold t m, PostBuild t m,
+   DerivableKey key mnemonic
+  )
+  => SetupWF key t m
+  -> Event t ()
+  -> (key, Password)
+  -> mnemonic
+  -- ^ Mnemonic sentence to confirm
+  -> SetupWF key t m
+confirmPhrase backWF eBack (rootKey, password) mnemonicSentence = Workflow $ mdo
+  (continue, done) <- continueForm (fmap not done) $ do
+    el "h1" $ text "Verify Recovery Phrase"
+    el "div" $ do
+      el "div" $ text "Please confirm your recovery phrase by"
+      el "div" $ text "typing the words in the correct order."
+
+    let actualMap = wordsToPhraseMap $ mnemonicToText mnemonicSentence
+
+    rec
+      onPhraseUpdate <- divClass "setup__verify-passphrase-wrapper" $
+        passphraseWidget dConfirmPhrase (pure Recover) True
+
+      dConfirmPhrase <- holdDyn (wordsToPhraseMap $ replicate passphraseLen T.empty)
+        $ flip Map.union <$> current dConfirmPhrase <@> onPhraseUpdate
+
+    pure $ (== actualMap) <$> dConfirmPhrase
+
+  finishSetupWF WalletScreen_VerifyPassphrase $ leftmost
+    [ doneScreen (rootKey, password) <$ continue
+    , backWF <$ eBack
+    ]
+
+restoreBipWallet
+  :: (DomBuilder t m, MonadHold t m, MonadFix m, PerformEvent t m, PostBuild t m,
+      MonadSample t (Performable m), MonadJSM (Performable m), TriggerEvent t m,
+      DerivableKey key mnem
+     )
+  => SetupWF key t m -> Event t () -> SetupWF key t m
+restoreBipWallet backWF eBack = Workflow $ do
+  el "h1" $ text "Recover your wallet"
+  setupDiv "recovery-text" $ do
+    el "div" $ text "Enter your 12 word recovery phrase"
+    el "div" $ text "to restore your wallet."
+
+  rec
+    dPhraseMap <- holdDyn (wordsToPhraseMap $ replicate passphraseLen T.empty)
+      $ flip Map.union <$> current dPhraseMap <@> onPhraseMapUpdate
+    onPhraseMapUpdate <- passphraseWidget dPhraseMap (pure Recover) True
+
+  sentenceOrError <- performEvent $ ffor (updated dPhraseMap) $ \pMap ->
+    toMnemonic $ Map.elems pMap
+  widgetHold_ blank $ ffor sentenceOrError $ \case
+    Right _ -> blank
+    Left e -> setupDiv "phrase-error-message-wrapper" $ setupDiv "phrase-error-message" $
+      text $ tshow e
+  let
+      ePhraseUpdated = fmapMaybe hush sentenceOrError
+
+      waitingForPhrase = setupDiv "waiting-passphrase" $ do
+        text "Waiting for a valid 12 word passphrase..."
+        pure never
+
+      -- Launch password recovery
+      withSeedConfirmPassword sentence = setupDiv "recover-enter-password" $ mdo
+        (ePwSubmit, dSetPw) <- restoreForm (fmap isNothing dSetPw) $ do
+          holdDyn Nothing =<< setPassword (pure sentence)
+        pure $ tagMaybe (current dSetPw) ePwSubmit
+
+  dSetPassword <- widgetHold waitingForPhrase $
+    withSeedConfirmPassword <$> ePhraseUpdated
+  pure
+    ( (WalletScreen_RecoverPassphrase, (\(prv, pw) -> (prv, pw, True)) <$> switchDyn dSetPassword, never)
+    , backWF <$ eBack
+    )
