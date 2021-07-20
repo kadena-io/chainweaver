@@ -74,6 +74,7 @@ import Frontend.VersionedStore (StoreFrontend(..))
 import Frontend.Storage (runBrowserStorageT)
 import Frontend.Crypto.Password
 import Frontend.Setup.Common
+import Frontend.Setup.Password
 import Frontend.Setup.Widgets
 import Desktop.Setup
 import Desktop.ImportExport
@@ -210,7 +211,7 @@ bipWallet fileFFI signingReq mkAppCfg = do
             { _enabledSettings_changePassword = Just $ ChangePassword
               { _changePassword_requestChange =
                 let doChange (Identity (oldRoot, _)) (Password oldPass, Password newPass, Password repeatPass)
-                      | passwordRoundTripTest oldRoot oldPass = case checkPassword newPass repeatPass of
+                      | passwordRoundTripTest oldRoot oldPass = case checkPassword (Password newPass) (Password repeatPass) of
                         Left e -> pure $ Left e
                         Right _ -> do
                           -- Change password for root key
