@@ -31,12 +31,18 @@ import qualified GHCJS.DOM.Window as Window
 -- | Uses the browser's local/session storage, as appropriate
 instance MonadJSM m => HasStorage (BrowserStorageT m) where
   getItemStorage' storeType key = liftJSM $ do
+    liftIO $ print $ "FETCHING ITEM: " <> show key
+    liftIO $ putStrLn ""
     storage <- getStorageJSM storeType
     fmap fromJSString <$> GHCJS.getItem storage (toJSString key)
   setItemStorage' storeType key data' = liftJSM $ do
+    liftIO $ print $ "SETTING ITEM: " <> show key
+    liftIO $ putStrLn ""
     storage <- getStorageJSM storeType
     GHCJS.setItem storage (toJSString key) (toJSString data')
   removeItemStorage' storeType key = liftJSM $ do
+    liftIO $ putStrLn $ "REMOVING ITEM: " <> show key
+    liftIO $ putStrLn ""
     storage <- getStorageJSM storeType
     GHCJS.removeItem storage (toJSString key)
 

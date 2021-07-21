@@ -71,6 +71,7 @@ versionedFrontend
      , PostBuild t m
      , MonadHold t m
      , PerformEvent t m
+     , MonadIO (Performable m)
      , HasTransactionLogger m
      )
   => VersionedStorage (Performable m) (Latest.StoreFrontend key)
@@ -79,7 +80,7 @@ versionedFrontend
 versionedFrontend v widget = do
   txLogger <- Api.askTransactionLogger
   pbE <- getPostBuild
-  migratedE <- performEvent $ (_versionedStorage_upgradeStorage v txLogger) <$ pbE
+  migratedE <- performEvent $ ((liftIO $ putStrLn ">  >>>>>>>>>>>>>     > RUNNING MIGRATIOIN " ) >> _versionedStorage_upgradeStorage v txLogger) <$ pbE
   widgetHold_ blank (displayResult <$> migratedE)
   where
     -- Should we do this, or should we just push on? The backup functionality really

@@ -125,11 +125,11 @@ app sidebarExtra fileFFI appCfg = Store.versionedFrontend (Store.versionedStorag
         walletBarCfg <- underNetworkBar "Keys" uiGenerateKeyButton
         walletCfg <- uiWallet ideL
         pure $ walletBarCfg <> walletCfg
-      FrontendRoute_Contracts -> mkPageContent "contracts" $ do
-        controlCfg <- underNetworkBar "Resources" (mempty <$ blank)
-        elClass "main" "main page__main" $ do
-          resourcesWidget
-        pure controlCfg
+      FrontendRoute_Contracts -> mkPageContent "contracts" $ pure mempty
+        -- controlCfg <- underNetworkBar "Resources" (mempty <$ blank)
+        -- elClass "main" "main page__main" $ do
+        --   resourcesWidget
+        -- pure controlCfg
         -- controlCfg <- underNetworkBar "Contracts" (controlBarRight fileFFI appCfg ideL)
         -- mainCfg <- elClass "main" "main page__main" $ do
         --   rec
@@ -173,7 +173,7 @@ app sidebarExtra fileFFI appCfg = Store.versionedFrontend (Store.versionedStorag
     , modalCfg
     , gistModalCfg
     , signingModalCfg
-    , mempty & ideCfg_editor . editorCfg_loadCode .~ (snd <$> _fileFFI_externalFileOpened fileFFI)
+    -- , mempty & ideCfg_editor . editorCfg_loadCode .~ (snd <$> _fileFFI_externalFileOpened fileFFI)
     ]
 
 handleEndpoints
@@ -197,18 +197,22 @@ walletSidebar
      , SetRoute t (R FrontendRoute) m
      , RouteToUrl (R FrontendRoute) m
      , Prerender js t m
+     , MonadJSM m
      )
   => m ()
   -> m ()
 walletSidebar sidebarExtra = elAttr "div" ("class" =: "sidebar") $ do
   divClass "sidebar__logo" $ elAttr "img" ("src" =: static @"img/logo.png") blank
 
+  liftIO $ putStrLn "Asking Route: Resetting sidebar"
   elAttr "div" ("class" =: "sidebar__content") $ do
-    route <- demux . fmap (\(r :/ _) -> Some r) <$> askRoute
+    -- route <- demux . fmap (\(r :/ _) -> Some r) <$> askRoute
+    -- liftIO $ putStrLn $ "ROUTE: " <> show route
+    -- liftIO $ putStrLn ""
 
     let sidebarLink r@(r' :/ _) label = routeLink r $ do
-          let selected = demuxed route (Some r')
-          void $ uiSidebarIcon selected (routeIcon r) label
+          -- let selected = demuxed route (Some r')
+          void $ uiSidebarIcon (constDyn False) (routeIcon r) label
     sidebarLink (FrontendRoute_Accounts :/ ()) "Accounts"
     sidebarLink (FrontendRoute_Keys :/ ()) "Keys"
     sidebarLink (FrontendRoute_Contracts :/ ()) "Contracts"
