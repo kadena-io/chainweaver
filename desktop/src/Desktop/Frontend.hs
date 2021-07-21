@@ -26,7 +26,7 @@ import Control.Monad.Fix (MonadFix)
 import Control.Monad.Trans (lift)
 import Control.Monad.IO.Class
 import Data.Bool (bool)
-import Data.Bifunctor (first)
+import Data.Bifunctor (first, second)
 import Data.Dependent.Sum
 import Data.Functor.Compose
 import Data.Functor.Identity
@@ -206,7 +206,14 @@ bipWallet fileFFI signingReq mkAppCfg = do
 
           (updates, trigger) <- newTriggerEvent
 
-          let frontendFileFFI = liftFileFFI (lift . lift) fileFFI
+          let 
+            frontendFileFFI = liftFileFFI (lift . lift) fileFFI
+            changePasswordDesktopAction i newRoot (Password newPass) = do
+              let (newPrv, pub) = bipCryptoGenPair newRoot newPass i
+              pure $ Key $ KeyPair
+                { _keyPair_publicKey = pub
+                , _keyPair_privateKey = Just newPrv
+                }
           Frontend.ReplGhcjs.app sidebarLogoutLink frontendFileFFI $ mkAppCfg $ EnabledSettings
             { _enabledSettings_changePassword = Just $ ChangePassword
               { _changePassword_requestChange =
@@ -223,12 +230,7 @@ bipWallet fileFFI signingReq mkAppCfg = do
                 in performEvent . attachWith doChange (current details)
               -- When updating the keys here, we just always regenerate the key from
               -- the new root
-              , _changePassword_updateKeys = ffor updates $ \(newRoot, newPass) -> pure $ \ i _ ->
-                let (newPrv, pub) = bipCryptoGenPair newRoot newPass i
-                in Key $ KeyPair
-                  { _keyPair_publicKey = pub
-                  , _keyPair_privateKey = Just newPrv
-                  }
+              , _changePassword_updateKeys = ((second Password) <$> updates, changePasswordDesktopAction)
               }
             , _enabledSettings_exportWallet = Just $ ExportWallet
               { _exportWallet_requestExport = \ePw -> do
