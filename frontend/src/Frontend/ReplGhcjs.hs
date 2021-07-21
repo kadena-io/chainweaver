@@ -94,6 +94,7 @@ app
   -> AppCfg key t (RoutedT t (R FrontendRoute) m)
   -> RoutedT t (R FrontendRoute) m ()
 app sidebarExtra fileFFI appCfg = Store.versionedFrontend (Store.versionedStorage @key) $ void . mfix $ \ cfg -> do
+  ideL <- makeIde fileFFI appCfg cfg
   walletSidebar sidebarExtra
   route <- askRoute
   let route' = traceDynWith (const "a new route has been set") route
@@ -113,6 +114,9 @@ app sidebarExtra fileFFI appCfg = Store.versionedFrontend (Store.versionedStorag
         pure mempty
       FrontendRoute_Resources -> pure mempty 
       FrontendRoute_Settings -> pure mempty
+  modalCfg <- showModal ideL
+  pure $ mconcat [ modalCfg ]
+
 
 walletSidebar
   :: ( DomBuilder t m
