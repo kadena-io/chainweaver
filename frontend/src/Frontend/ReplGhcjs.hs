@@ -74,6 +74,7 @@ import Frontend.UI.Transfer
 import Frontend.UI.Wallet
 import Frontend.UI.Widgets
 import Frontend.Wallet hiding (walletCfg)
+import Reflex.Dynamic(traceDynWith)
 
 app
   :: forall js key t m.
@@ -94,38 +95,47 @@ app
   -> RoutedT t (R FrontendRoute) m ()
 app sidebarExtra fileFFI appCfg = Store.versionedFrontend (Store.versionedStorage @key) $ void . mfix $ \ cfg -> do
   ideL <- makeIde fileFFI appCfg cfg
-  FRPHandler signingReq signingResp <- handleEndpoints ideL appCfg
-
+  -- FRPHandler signingReq signingResp <- handleEndpoints ideL appCfg
   walletSidebar sidebarExtra
+  route <- askRoute
+  let route' = traceDynWith (const "a new route has been set") route
+  display route'
   updates <- divClass "page" $ do
     let mkPageContent c = divClass (c <> " page__content visible")
 
-        underNetworkBar lbl sub = do
-          netCfg <- networkBar ideL
-          subBarCfg <- controlBar lbl sub
-          pure $ netCfg <> subBarCfg
+        -- underNetworkBar lbl sub = do
+        --   netCfg <- networkBar ideL
+        --   subBarCfg <- controlBar lbl sub
+        --   pure $ netCfg <> subBarCfg
     -- This route overriding is awkward, but it gets around having to alter the
     -- types of ideL and appCfg, and we don't actually need the true subroute
     -- yet.
-    route <- askRoute
-    routedCfg <- subRoute $ lift . flip runRoutedT route . \case
-      FrontendRoute_Accounts -> mkPageContent "accounts" $ mdo
-        netCfg <- networkBar ideL
-        (transferVisible, barCfg) <- controlBar "Accounts You Are Watching" $ do
-          refreshCfg <- uiWalletRefreshButton
-          watchCfg <- uiWatchRequestButton ideL
-          addCfg <- uiAddAccountButton ideL
-          xferVisible <- uiTransferButton
-          pure $ (xferVisible, watchCfg <> addCfg <> refreshCfg)
-        divClass "wallet-scroll-wrapper" $ do
-          transferCfg <- uiGenericTransfer ideL $ TransferCfg transferVisible never never
-          accountsCfg <- uiAccountsTable ideL
-          pure $ netCfg <> barCfg <> accountsCfg <> transferCfg
-      FrontendRoute_Keys -> mkPageContent "keys" $ do
-        walletBarCfg <- underNetworkBar "Keys" uiGenerateKeyButton
-        walletCfg <- uiWallet ideL
-        pure $ walletBarCfg <> walletCfg
-      FrontendRoute_Contracts -> mkPageContent "contracts" $ pure mempty
+    routedCfg <- subRoute $ lift . flip runRoutedT route' . \case
+      FrontendRoute_Accounts -> mkPageContent "accounts" $ do
+        liftIO $ putStrLn "ACCOUNTS"
+        text "ACCOUNTS"
+        pure mempty
+        -- netCfg <- networkBar ideL
+        -- (transferVisible, barCfg) <- controlBar "Accounts You Are Watching" $ do
+        --   refreshCfg <- uiWalletRefreshButton
+        --   watchCfg <- uiWatchRequestButton ideL
+        --   addCfg <- uiAddAccountButton ideL
+        --   xferVisible <- uiTransferButton
+        --   pure $ (xferVisible, watchCfg <> addCfg <> refreshCfg)
+        -- divClass "wallet-scroll-wrapper" $ do
+        --   transferCfg <- uiGenericTransfer ideL $ TransferCfg transferVisible never never
+        --   accountsCfg <- uiAccountsTable ideL
+        --   pure $ netCfg <> barCfg <> accountsCfg <> transferCfg
+      FrontendRoute_Keys -> do
+        liftIO $ putStrLn "KEYS"
+        pure mempty
+        -- walletBarCfg <- underNetworkBar "Keys" uiGenerateKeyButton
+        -- walletCfg <- uiWallet ideL
+        -- pure $ walletBarCfg <> walletCfg
+      FrontendRoute_Contracts -> do
+        text "Contracts"
+        liftIO $ putStrLn "Contracts"
+        pure mempty
         -- controlCfg <- underNetworkBar "Resources" (mempty <$ blank)
         -- elClass "main" "main page__main" $ do
         --   resourcesWidget
@@ -144,35 +154,36 @@ app sidebarExtra fileFFI appCfg = Store.versionedFrontend (Store.versionedStorag
         --   envCfg <- rightTabBar (ffor open $ \o -> "main__right-pane" <> if o then "" else " pane-collapsed") ideL
         --   pure $ uiEditorCfg <> envCfg
         -- pure $ controlCfg <> mainCfg
-      FrontendRoute_Resources -> mkPageContent "resources" $ do
-        controlCfg <- underNetworkBar "Resources" (mempty <$ blank)
-        elClass "main" "main page__main" $ do
-          resourcesWidget
-        pure controlCfg
-      FrontendRoute_Settings -> do
-        controlCfg <- underNetworkBar "Settings" (mempty <$ blank)
-        mainCfg <- elClass "main" "main page__main" $ do
-          uiSettings (_appCfg_enabledSettings appCfg) ideL fileFFI
-        pure $ controlCfg <> mainCfg
+      FrontendRoute_Resources -> pure mempty 
+        -- mkPageContent "resources" $ do
+        -- controlCfg <- underNetworkBar "Resources" (mempty <$ blank)
+        -- elClass "main" "main page__main" $ do
+        --   resourcesWidget
+        -- pure controlCfg
+      FrontendRoute_Settings -> pure mempty
+        -- controlCfg <- underNetworkBar "Settings" (mempty <$ blank)
+        -- mainCfg <- elClass "main" "main page__main" $ do
+        --   uiSettings (_appCfg_enabledSettings appCfg) ideL fileFFI
+        -- pure $ controlCfg <> mainCfg
 
-    accountDatalist ideL
-    keyDatalist ideL
+    -- accountDatalist ideL
+    -- keyDatalist ideL
     flatten =<< tagOnPostBuild routedCfg
 
   modalCfg <- showModal ideL
 
-  req <- delay 0 signingReq
-  let
-    onGistCreatedModal = Just . uiCreatedGist <$> ideL ^. gistStore_created
-    gistModalCfg = mempty & modalCfg_setModal .~ onGistCreatedModal
-    onSigningModal = Just . uiSigning ideL signingResp <$> req
-    signingModalCfg = mempty & modalCfg_setModal .~ onSigningModal
+  -- req <- delay 0 signingReq
+  -- let
+    -- onGistCreatedModal = Just . uiCreatedGist <$> ideL ^. gistStore_created
+    -- gistModalCfg = mempty & modalCfg_setModal .~ onGistCreatedModal
+    -- onSigningModal = Just . uiSigning ideL signingResp <$> req
+    -- signingModalCfg = mempty & modalCfg_setModal .~ onSigningModal
 
   pure $ mconcat
     [ updates
     , modalCfg
-    , gistModalCfg
-    , signingModalCfg
+    -- , gistModalCfg
+    -- , signingModalCfg
     -- , mempty & ideCfg_editor . editorCfg_loadCode .~ (snd <$> _fileFFI_externalFileOpened fileFFI)
     ]
 
@@ -202,24 +213,11 @@ walletSidebar
   => m ()
   -> m ()
 walletSidebar sidebarExtra = elAttr "div" ("class" =: "sidebar") $ do
-  divClass "sidebar__logo" $ elAttr "img" ("src" =: static @"img/logo.png") blank
-
+  -- divClass "sidebar__logo" $ elAttr "img" ("src" =: static @"img/logo.png") blank
   liftIO $ putStrLn "Asking Route: Resetting sidebar"
   elAttr "div" ("class" =: "sidebar__content") $ do
-    -- route <- demux . fmap (\(r :/ _) -> Some r) <$> askRoute
-    -- liftIO $ putStrLn $ "ROUTE: " <> show route
-    -- liftIO $ putStrLn ""
-
-    let sidebarLink r@(r' :/ _) label = routeLink r $ do
-          -- let selected = demuxed route (Some r')
-          void $ uiSidebarIcon (constDyn False) (routeIcon r) label
-    sidebarLink (FrontendRoute_Accounts :/ ()) "Accounts"
-    sidebarLink (FrontendRoute_Keys :/ ()) "Keys"
-    sidebarLink (FrontendRoute_Contracts :/ ()) "Contracts"
-    elAttr "div" ("style" =: "flex-grow: 1") blank
-    sidebarLink (FrontendRoute_Resources :/ ()) "Resources"
-    sidebarLink (FrontendRoute_Settings :/ ()) "Settings"
-    sidebarExtra
+    routeLink (FrontendRoute_Accounts :/ ()) $ text "Accounts"
+    routeLink (FrontendRoute_Contracts :/ ()) $ text "Contracts"
 
 -- | Get the routes to the icon assets for each route
 routeIcon :: R FrontendRoute -> Text
