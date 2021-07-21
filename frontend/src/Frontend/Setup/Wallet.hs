@@ -15,7 +15,7 @@ import Data.Functor.Compose
 import Data.Functor.Identity
 import Data.GADT.Compare.TH
 import Data.Traversable (for)
-import Reflex.Dom
+import Reflex.Dom hiding (Key)
 import Pact.Server.ApiClient (HasTransactionLogger, askTransactionLogger, _transactionLogger_rotateLogFile)
 import Obelisk.Route.Frontend
 import Obelisk.Generated.Static
@@ -37,6 +37,7 @@ import Frontend.Setup.Password
 import Frontend.Crypto.Password
 import Frontend.Setup.Browser
 import Frontend.Setup.Widgets
+import Common.Wallet
 
 data LockScreen a where
   LockScreen_Restore :: LockScreen PrivateKey
@@ -49,7 +50,7 @@ type MkAppCfg t m
   -- ^ Settings
   -> AppCfg PrivateKey t (RoutedT t (R FrontendRoute) (BrowserCryptoT t m))
 
-bipWallet
+bipWalletBrowser
   :: forall js t m
   .  ( MonadWidget t m
      , RouteToUrl (R FrontendRoute) m, SetRoute t (R FrontendRoute) m
@@ -62,9 +63,17 @@ bipWallet
   => FileFFI t m
   -> MkAppCfg t m
   -> RoutedT t (R FrontendRoute) m ()
-bipWallet fileFFI mkAppCfg = do
+bipWalletBrowser fileFFI mkAppCfg = do
   txLogger <- askTransactionLogger
   let
+    changePasswordBrowserAction i newRoot newPass = do
+      keypairOrErr <- liftJSM $ generateKeypair newPass newRoot i
+      case keypairOrErr of
+        Left _ -> pure $ Key $ KeyPair (unsafePublicKey "") Nothing
+        Right (newPrv, pub) -> pure $ Key $ KeyPair 
+          { _keyPair_publicKey = pub
+          , _keyPair_privateKey = Just newPrv
+          }
     runSetup0
       :: Maybe (Behavior t PrivateKey)
       -> WalletExists
@@ -110,31 +119,29 @@ bipWallet fileFFI mkAppCfg = do
             $ showModalBrutal "logout-confirm-modal" uiIdeLogoutConfirmation <$ onLogout
 
           (updates, trigger) <- newTriggerEvent
-
           let frontendFileFFI = liftFileFFI (lift . lift) fileFFI
           ReplGhcjs.app sidebarLogoutLink frontendFileFFI $ mkAppCfg $ EnabledSettings
             { _enabledSettings_changePassword = Just $ ChangePassword
               { _changePassword_requestChange =
-                let doChange (Identity (oldRoot, _)) (oldPass, newPass, repeatPass)
-                      --TODO: Password
-                      --  passwordRoundTripTest oldRoot oldPass = case checkPassword newPass repeatPass of
-                      | True = case checkPassword newPass repeatPass of
-                        Left e -> pure $ Left e
-                        Right _ -> do
-                          --TODO: Password
-                          -- Change password for root key
-                          -- let newRoot = Crypto.xPrvChangePass (T.encodeUtf8 oldPass) (T.encodeUtf8 newPass) oldRoot
-                          -- setItemStorage localStorage BIPStorage_RootKey newRoot
-                          liftIO $ trigger (oldRoot, newPass)
-                          pure $ Right ()
-                      | otherwise = pure $ Left "Invalid password"
+                let doChange (Identity (oldRoot, _)) (oldPass, newPass, repeatPass) = do
+                      passesRoundTrip <- passwordRoundTripTest oldRoot oldPass
+                      if passesRoundTrip then do
+                        case checkPassword newPass repeatPass of
+                          Left e -> pure $ Left e
+                          Right _ -> do
+                            -- Change password for root key
+                            newRootOrErr <- liftJSM $ changePassword oldRoot oldPass newPass
+                            case newRootOrErr of
+                              Left e -> pure $ Left $ "Error changing password: " <> e
+                              Right newRoot -> do
+                                setItemStorage localStorage BIPStorage_RootKey newRoot
+                                liftIO $ trigger (newRoot, newPass)
+                                pure $ Right ()
+                      else pure $ Left "Invalid password"
                 in performEvent . attachWith doChange (current details)
               -- When updating the keys here, we just always regenerate the key from
               -- the new root
-
-              -- TODO: Update private keys on new pswd
-              -- We punted on handling this for now
-              , _changePassword_updateKeys = never
+              , _changePassword_updateKeys = (updates, changePasswordBrowserAction)
               }
             , _enabledSettings_exportWallet = Nothing
             , _enabledSettings_transactionLog = False
@@ -211,6 +218,5 @@ passwordRoundTripTest xprv pass = liftJSM $ do
   where
     msg :: ByteString
     msg = "the quick brown fox jumps over the lazy dog"
-
 
 deriveGEq ''LockScreen

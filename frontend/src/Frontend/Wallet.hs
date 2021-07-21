@@ -222,8 +222,7 @@ makeWallet mChangePassword model conf = do
   pb <- getPostBuild
   initialKeys <- fromMaybe IntMap.empty <$> loadKeys
   initialAccounts <- maybe (AccountData mempty) fromStorage <$> loadAccounts
-  updateKeysOnPwdChangeE <- maybe (pure never) (performEvent . (fmap . fmap) IntMap.mapWithKey) $
-    fmap _changePassword_updateKeys mChangePassword
+
 
   rec
     onNewKey <- performEvent $ leftmost
@@ -233,8 +232,15 @@ makeWallet mChangePassword model conf = do
 
     keys <- foldDyn id initialKeys $ leftmost
       [ snocIntMap <$> onNewKey
-      , updateKeysOnPwdChangeE
+      , fmap const keyChangeOnPwdResetE
       ]
+    keyChangeOnPwdResetE <- case fmap _changePassword_updateKeys mChangePassword of
+      Nothing -> pure never
+      Just (changePwdE, changeKeysAction) -> do
+        let 
+          currentKeyMap = attach (current keys) changePwdE
+        performEvent $ ffor currentKeyMap $ \(km, (newRoot, newPwd)) ->
+          flip IntMap.traverseWithKey km $ \i _ -> changeKeysAction i newRoot newPwd 
 
   -- Slight hack here, even with prompt tagging we don't pick up the new accounts
   newNetwork <- delay 0.5 $ void $ updated $ model ^. network_selectedNetwork

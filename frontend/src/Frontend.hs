@@ -31,7 +31,7 @@ import Frontend.Log (defaultLogger)
 import Frontend.Foundation
 import Frontend.ModuleExplorer.Impl (loadEditorFromLocalStorage)
 import Frontend.Storage
-import Frontend.Setup.Wallet (bipWallet)
+import Frontend.Setup.Wallet (bipWalletBrowser)
 
 main :: IO ()
 main = do
@@ -68,7 +68,7 @@ frontend = Frontend
             , _fileFFI_deliverFile = \_ -> pure never
             }
           printResponsesHandler = pure $ FRPHandler never $ performEvent . fmap (liftIO . print)
-      bipWallet fileFFI $ \enabledSettings -> AppCfg
+      bipWalletBrowser fileFFI $ \enabledSettings -> AppCfg
         { _appCfg_gistEnabled = False
         , _appCfg_loadEditor = loadEditorFromLocalStorage
         , _appCfg_editorReadOnly = False
