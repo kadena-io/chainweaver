@@ -145,7 +145,6 @@ makeIde
   -> AppCfg key t m
   -> IdeCfg modal key t -> m (Ide modal key t)
 makeIde _ appCfg userCfg = build $ \ ~(cfg, ideL) -> do
-
     let mChangePassword = _enabledSettings_changePassword $ _appCfg_enabledSettings appCfg
     walletL <- makeWallet mChangePassword ideL $ _ideCfg_wallet cfg
     json <- makeJsonData walletL $ _ideCfg_jsonData cfg
@@ -162,8 +161,8 @@ makeIde _ appCfg userCfg = build $ \ ~(cfg, ideL) -> do
 
     modal <- holdDyn Nothing $ unLeftmostEv (_ideCfg_setModal cfg)
 
-    _ <- performEvent_ $ ffor (_logCfg_logMessage (_ideCfg_logger cfg)) $ \(lvl, msg) ->
-      liftIO $ _appCfg_logMessage appCfg lvl $ formatLogMessage lvl msg
+    -- _ <- performEvent_ $ ffor (_logCfg_logMessage (_ideCfg_logger cfg)) $ \(lvl, msg) ->
+    --   liftIO $ _appCfg_logMessage appCfg lvl $ formatLogMessage lvl msg
 
     pure
       ( mconcat
