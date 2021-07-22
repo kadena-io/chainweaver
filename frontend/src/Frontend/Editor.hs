@@ -137,7 +137,7 @@ makeEditor m cfg = mdo
     gen <- liftIO newStdGen
     (quickFixCfg, onCodeFix) <- applyQuickFix (randoms gen) t $ cfg ^. editorCfg_applyQuickFix
     -- codeAnnotations <- holdDyn [] =<< typeCheckVerify m t
-    let codeAnnotations <- constDyn []
+    let codeAnnotations = constDyn []
     let dataAnnotations = ffor (m ^. jsonData . to getJsonDataError) $ foldMap $ (: []) . annoJsonParser . showJsonError
     pure
       ( quickFixCfg
