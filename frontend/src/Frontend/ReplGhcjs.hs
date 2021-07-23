@@ -97,6 +97,7 @@ app sidebarExtra fileFFI appCfg = Store.versionedFrontend (Store.versionedStorag
   FRPHandler signingReq signingResp <- handleEndpoints ideL appCfg
 
   walletSidebar sidebarExtra
+  -- display $ ideL ^. ide_network.network_networks        
   updates <- divClass "page" $ do
     let mkPageContent c = divClass (c <> " page__content visible")
 
