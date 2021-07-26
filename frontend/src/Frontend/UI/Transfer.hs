@@ -1377,8 +1377,8 @@ data TransferDetails
 
 showTransferDetailsTabName :: TransferDetails -> Text
 showTransferDetailsTabName = \case
-  TransferDetails_Yaml -> "YAML"
   TransferDetails_Json -> "JSON"
+  TransferDetails_Yaml -> "YAML"
   TransferDetails_HashQR -> "Hash QR Code"
   TransferDetails_FullQR -> "Full Tx QR Code"
 
@@ -1388,7 +1388,7 @@ transferDetails
   -> m ()
 transferDetails signedCmd = do
     divClass "tabset" $ mdo
-      curSelection <- holdDyn TransferDetails_Yaml onTabClick
+      curSelection <- holdDyn TransferDetails_Json onTabClick
       (TabBar onTabClick) <- makeTabBar $ TabBarCfg
         { _tabBarCfg_tabs = [minBound .. maxBound]
         , _tabBarCfg_mkLabel = const $ text . showTransferDetailsTabName
@@ -1405,6 +1405,9 @@ transferDetails signedCmd = do
           & textAreaElementConfig_initialValue .~ iv
           & initialAttributes %~ (<> "disabled" =: "" <> "style" =: "width: 100%; height: 18em;")
           & textAreaElementConfig_setValue .~ updated preview
+#else
+      let notAvailMsg = el "ul" $ text "This feature is not currently available in the browser"
+      tabPane mempty curSelection TransferDetails_Yaml notAvailMsg
 #endif
 
       tabPane mempty curSelection TransferDetails_Json $ do
@@ -1432,6 +1435,9 @@ transferDetails signedCmd = do
             qrImage = QR.encodeText (QR.defaultQRCodeOptions QR.L) QR.Iso8859_1OrUtf8WithECI <$> yamlText
             img = maybe "Error creating QR code" (QR.toPngDataUrlT 4 4) <$> qrImage
         elDynAttr "img" (("src" =:) . LT.toStrict <$> img) blank
+#else
+      tabPane mempty curSelection TransferDetails_HashQR notAvailMsg
+      tabPane mempty curSelection TransferDetails_FullQR notAvailMsg
 #endif
 
       pure ()
@@ -1444,7 +1450,6 @@ yamlOptions = Y.setFormat (Y.setWidth Nothing Y.defaultFormatOptions) Y.defaultE
 uiSigningInput
   :: ( MonadWidget t m
      , HasCrypto key m
---     , HasCrypto key (Performable m)
      )
   => Hash
   -> PublicKey
