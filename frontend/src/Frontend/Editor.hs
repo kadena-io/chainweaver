@@ -195,29 +195,29 @@ applyQuickFix rs t onQuickFix = do
 typeCheckVerify
   :: ( ReflexConstraints t m, HasEditorModel model key t
      , HasConfigs m
+     -- , MonadWidget t m
      )
   => model -> Dynamic t Text -> m (Event t [Annotation])
 typeCheckVerify m t = mdo
     let newInput = leftmost [ updated t, tag (current t) $ updated (m ^. jsonData_data)  ]
     -- Reset repl on each check to avoid memory leak.
     onReplReset <- throttle 1 $ newInput
-    onTypeCheck <- delay 0 onReplReset
+    -- onTypeCheck <- delay 0 onReplReset
 
     let
       onTransSuccess = fmapMaybe (^? _Right) $ replL ^. repl_transactionFinished
 
     (replO :: MessagesCfg t, replL) <- makeRepl m $ mempty
-      { _replCfg_sendTransaction = onTypeCheck
+      { _replCfg_sendTransaction = onReplReset
       , _replCfg_reset = () <$ onReplReset
       , _replCfg_verifyModules = Map.keysSet . _ts_modules <$> onTransSuccess
       }
 -- #ifdef  ghcjs_HOST_OS
     cModules <- holdDyn Map.empty $ _ts_modules <$> onTransSuccess
     let
-      newAnnotations = mconcat
-       [ attachPromptlyDynWith parseVerifyOutput cModules $ _repl_modulesVerified replL
-       , concatMap annoFallbackParser <$> replO ^. messagesCfg_send
-       ]
+      newAnnotations = attachPromptlyDynWith parseVerifyOutput cModules $ _repl_modulesVerified replL
+       -- [-- , concatMap annoFallbackParser <$> replO ^. messagesCfg_send
+       -- ]
 -- #else
 --     let
 --       newAnnotations = mconcat
