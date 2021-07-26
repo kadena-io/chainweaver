@@ -44,7 +44,7 @@ import           Data.Void                    (Void)
 import           Generics.Deriving.Monoid     (mappenddefault, memptydefault)
 import           GHC.Generics                 (Generic)
 import           Reflex
-import           Reflex.Dom.Core              (HasJSContext)
+import           Reflex.Dom.Core              -- (HasJSContext, display)
 ------------------------------------------------------------------------------
 import           Obelisk.Route.Frontend       (R, RouteToUrl (..), Routed (..),
                                                SetRoute (..))
@@ -140,6 +140,7 @@ makeIde
     , HasCrypto key (Performable m)
     , FromJSON key, ToJSON key
     , HasTransactionLogger m
+    , DomBuilder t m
     )
   => FileFFI t m
   -> AppCfg key t m
@@ -164,6 +165,8 @@ makeIde _ appCfg userCfg = build $ \ ~(cfg, ideL) -> do
     -- _ <- performEvent_ $ ffor (_logCfg_logMessage (_ideCfg_logger cfg)) $ \(lvl, msg) ->
     --   liftIO $ _appCfg_logMessage appCfg lvl $ formatLogMessage lvl msg
 
+    display $ editorL ^. editor_quickFixes
+    display $ editorL ^. editor_annotations
     pure
       ( mconcat
           [ userCfg

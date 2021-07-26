@@ -96,24 +96,24 @@ app
 app sidebarExtra fileFFI appCfg = Store.versionedFrontend (Store.versionedStorage @key) $ void . mfix $ \ cfg -> do
   makeIde fileFFI appCfg cfg
   walletSidebar sidebarExtra
-  route <- askRoute
-  let route' = traceDynWith (const "a new route has been set") route
-  display route'
-  divClass "page" $ do
-    subRoute_ $ lift . flip runRoutedT route' . \case
-      FrontendRoute_Accounts -> do
-        liftIO $ putStrLn "ACCOUNTS"
-        text "ACCOUNTS"
-        pure mempty
-      FrontendRoute_Keys -> do
-        liftIO $ putStrLn "KEYS"
-        pure mempty
-      FrontendRoute_Contracts -> do
-        text "Contracts"
-        liftIO $ putStrLn "Contracts"
-        pure mempty
-      FrontendRoute_Resources -> pure mempty 
-      FrontendRoute_Settings -> pure mempty
+  -- route <- askRoute
+  -- let route' = traceDynWith (const "a new route has been set") route
+  -- display route'
+  -- divClass "page" $ do
+  --   subRoute_ $ lift . flip runRoutedT route' . \case
+  --     FrontendRoute_Accounts -> do
+  --       liftIO $ putStrLn "ACCOUNTS"
+  --       text "ACCOUNTS"
+  --       pure mempty
+  --     FrontendRoute_Keys -> do
+  --       liftIO $ putStrLn "KEYS"
+  --       pure mempty
+  --     FrontendRoute_Contracts -> do
+  --       text "Contracts"
+  --       liftIO $ putStrLn "Contracts"
+  --       pure mempty
+  --     FrontendRoute_Resources -> pure mempty 
+  --     FrontendRoute_Settings -> pure mempty
   pure $ mconcat [ ]
 
 

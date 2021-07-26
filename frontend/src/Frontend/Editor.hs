@@ -51,11 +51,11 @@ import           GHC.Generics               (Generic)
 import           Reflex
 import           System.Random              (newStdGen, randoms)
 
-#ifdef  ghcjs_HOST_OS
+-- #ifdef  ghcjs_HOST_OS
 import           Data.Map                   (Map)
 import           Data.Bitraversable         (bitraverse)
 import           Control.Monad              (join)
-#endif
+-- #endif
 ------------------------------------------------------------------------------
 import           Frontend.Network
 import           Frontend.Editor.Annotation as Editor
@@ -136,15 +136,17 @@ makeEditor m cfg = mdo
 
     gen <- liftIO newStdGen
     (quickFixCfg, onCodeFix) <- applyQuickFix (randoms gen) t $ cfg ^. editorCfg_applyQuickFix
-    -- codeAnnotations <- holdDyn [] =<< typeCheckVerify m t
-    let codeAnnotations = constDyn []
-    let dataAnnotations = ffor (m ^. jsonData . to getJsonDataError) $ foldMap $ (: []) . annoJsonParser . showJsonError
+    codeAnnotations <- holdDyn [] =<< typeCheckVerify m t
+    let dQuickFixes = constDyn []
+    -- let codeAnnotations = constDyn []
+    -- let dataAnnotations = ffor (m ^. jsonData . to getJsonDataError) $ foldMap $ (: []) . annoJsonParser . showJsonError
     pure
       ( quickFixCfg
       , Editor
         { _editor_code = t
-        , _editor_annotations = liftA2 (<>) codeAnnotations dataAnnotations
-        , _editor_quickFixes = makeQuickFixes <$> codeAnnotations
+        -- , _editor_annotations = liftA2 (<>) codeAnnotations dataAnnotations
+        , _editor_annotations = codeAnnotations
+        , _editor_quickFixes = dQuickFixes   -- makeQuickFixes <$> codeAnnotations
         , _editor_modified = modified
         }
       )
@@ -209,25 +211,25 @@ typeCheckVerify m t = mdo
       , _replCfg_reset = () <$ onReplReset
       , _replCfg_verifyModules = Map.keysSet . _ts_modules <$> onTransSuccess
       }
-#ifdef  ghcjs_HOST_OS
+-- #ifdef  ghcjs_HOST_OS
     cModules <- holdDyn Map.empty $ _ts_modules <$> onTransSuccess
     let
       newAnnotations = mconcat
        [ attachPromptlyDynWith parseVerifyOutput cModules $ _repl_modulesVerified replL
        , concatMap annoFallbackParser <$> replO ^. messagesCfg_send
        ]
-#else
-    let
-      newAnnotations = mconcat
-       [ parseVerifyOutput <$> _repl_modulesVerified replL
-       , concatMap annoFallbackParser <$> replO ^. messagesCfg_send
-       ]
-#endif
+-- #else
+--     let
+--       newAnnotations = mconcat
+--        [ parseVerifyOutput <$> _repl_modulesVerified replL
+--        , concatMap annoFallbackParser <$> replO ^. messagesCfg_send
+--        ]
+-- #endif
     pure newAnnotations
   where
 -- Line numbers are off on ghcjs: https://github.com/kadena-io/pact/issues/344
 -- TODO: Fix this in pact.
-#ifdef  ghcjs_HOST_OS
+-- #ifdef  ghcjs_HOST_OS
     parseVerifyOutput :: Map ModuleName Int -> VerifyResult -> [Annotation]
     parseVerifyOutput ms rs =
       let
@@ -248,18 +250,18 @@ typeCheckVerify m t = mdo
 
       in
         normalize . concat . Map.elems $ Map.intersectionWith fixLineNumbersRight ms parsedRs
-#else
-    parseVerifyOutput :: VerifyResult -> [Annotation]
-    parseVerifyOutput rs =
-      let
-        msgsRs :: [(ModuleName, Text)]
-        msgsRs = fmap (fmap $ either id id) . Map.toList $ rs
+-- #else
+--     parseVerifyOutput :: VerifyResult -> [Annotation]
+--     parseVerifyOutput rs =
+--       let
+--         msgsRs :: [(ModuleName, Text)]
+--         msgsRs = fmap (fmap $ either id id) . Map.toList $ rs
 
-        parsedRs :: [(ModuleName, [Annotation])]
-        parsedRs = mapMaybe (traverse annoParser) msgsRs
-      in
-        normalize $ concatMap snd parsedRs
-#endif
+--         parsedRs :: [(ModuleName, [Annotation])]
+--         parsedRs = mapMaybe (traverse annoParser) msgsRs
+--       in
+--         normalize $ concatMap snd parsedRs
+-- #endif
     -- Reason, see: https://github.com/kadena-io/pact/pull/532
     normalize :: [Annotation] -> [Annotation]
     normalize = map mkWarning . L.nub
