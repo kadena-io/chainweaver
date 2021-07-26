@@ -209,9 +209,13 @@ typeCheckVerify m t = mdo
       , _replCfg_verifyModules = Map.keysSet . _ts_modules <$> onTransSuccess
       }
 #ifdef  ghcjs_HOST_OS
-    cModules <- holdDyn Map.empty $ _ts_modules <$> onTransSuccess
+    -- cModules <- holdDyn Map.empty $ _ts_modules <$> onTransSuccess
     let
-      newAnnotations = attachPromptlyDynWith parseVerifyOutput cModules $ _repl_modulesVerified replL
+      newMsgAnnotation = traceEvent ">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>New Msg Event Fired" $ concatMap annoFallbackParser <$> replO ^. messagesCfg_send
+      -- verificationAnnotation = traceEvent ">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>New Verifcation Event Fired" $ attachPromptlyDynWith parseVerifyOutput cModules $ _repl_modulesVerified replL
+      newAnnotations = traceEvent ">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>New Annotation Event Fired" $ mconcat
+        [ newMsgAnnotation ] -- , verificationAnnotation ]
+      
       -- newAnnotations = mconcat
       --  [ attachPromptlyDynWith parseVerifyOutput cModules $ _repl_modulesVerified replL
       --  , concatMap annoFallbackParser <$> replO ^. messagesCfg_send
@@ -227,28 +231,28 @@ typeCheckVerify m t = mdo
   where
 -- Line numbers are off on ghcjs: https://github.com/kadena-io/pact/issues/344
 -- TODO: Fix this in pact.
-#ifdef  ghcjs_HOST_OS
-    parseVerifyOutput :: Map ModuleName Int -> VerifyResult -> [Annotation]
-    parseVerifyOutput ms rs =
-      let
-        msgsRs :: [(ModuleName, Either Text Text)]
-        msgsRs = Map.toList $ rs
+-- #ifdef  ghcjs_HOST_OS
+--     parseVerifyOutput :: Map ModuleName Int -> VerifyResult -> [Annotation]
+--     parseVerifyOutput ms rs =
+--       let
+--         msgsRs :: [(ModuleName, Either Text Text)]
+--         msgsRs = Map.toList $ rs
 
-        parsedRs :: Map ModuleName (Either [Annotation] [Annotation])
-        parsedRs = Map.fromList $ mapMaybe (traverse $ join bitraverse annoParser) msgsRs
+--         parsedRs :: Map ModuleName (Either [Annotation] [Annotation])
+--         parsedRs = Map.fromList $ mapMaybe (traverse $ join bitraverse annoParser) msgsRs
 
-        fixLineNumber :: Int -> Annotation -> Annotation
-        fixLineNumber n a = a & annotation_pos . _Just . _1 +~ n
+--         fixLineNumber :: Int -> Annotation -> Annotation
+--         fixLineNumber n a = a & annotation_pos . _Just . _1 +~ n
 
-        fixLineNumbers :: Int -> [Annotation] -> [Annotation]
-        fixLineNumbers n = map (fixLineNumber n)
+--         fixLineNumbers :: Int -> [Annotation] -> [Annotation]
+--         fixLineNumbers n = map (fixLineNumber n)
 
-        fixLineNumbersRight :: Int -> Either [Annotation] [Annotation] -> [Annotation]
-        fixLineNumbersRight n = either id (fixLineNumbers n)
+--         fixLineNumbersRight :: Int -> Either [Annotation] [Annotation] -> [Annotation]
+--         fixLineNumbersRight n = either id (fixLineNumbers n)
 
-      in
-        normalize . concat . Map.elems $ Map.intersectionWith fixLineNumbersRight ms parsedRs
-#else
+--       in
+--         normalize . concat . Map.elems $ Map.intersectionWith fixLineNumbersRight ms parsedRs
+-- #else
     parseVerifyOutput :: VerifyResult -> [Annotation]
     parseVerifyOutput rs =
       let
@@ -259,7 +263,7 @@ typeCheckVerify m t = mdo
         parsedRs = mapMaybe (traverse annoParser) msgsRs
       in
         normalize $ concatMap snd parsedRs
-#endif
+-- #endif
     -- Reason, see: https://github.com/kadena-io/pact/pull/532
     normalize :: [Annotation] -> [Annotation]
     normalize = map mkWarning . L.nub
