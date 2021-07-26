@@ -151,12 +151,12 @@ makeIde _ appCfg userCfg = build $ \ ~(cfg, ideL) -> do
     json <- makeJsonData walletL $ _ideCfg_jsonData cfg
     (networkCfgL, networkL) <- makeNetwork ideL $ cfg ^. ideCfg_network
     (explrCfg, moduleExplr) <- makeModuleExplorer appCfg ideL cfg
+    (editorCfgL, editorL) <- makeEditor ideL cfg
     (oAuthCfgL, oAuthL) <- makeOAuth cfg
     (gistStoreCfgL, gistStoreL) <- makeGistStore ideL cfg
     messagesL <- makeMessages cfg
     (replCfgL, replL) <- makeRepl ideL cfg
     routesCfg <- handleRoutes ideL
-    (editorCfgL, editorL) <- makeEditor ideL cfg
 
     envSelection <- makeEnvSelection ideL $ cfg ^. ideCfg_selEnv
 
@@ -171,10 +171,10 @@ makeIde _ appCfg userCfg = build $ \ ~(cfg, ideL) -> do
           , explrCfg
           , replCfgL
           , networkCfgL
+          , editorCfgL
           , oAuthCfgL
           , gistStoreCfgL
           , routesCfg
-          , editorCfgL
           ]
       , Ide
         { _ide_editor = editorL
