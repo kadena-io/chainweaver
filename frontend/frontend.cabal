@@ -149,7 +149,6 @@ library
                  , Frontend.Setup.Browser
                  , Frontend.Setup.Common
                  , Frontend.Setup.Password
-                 , Frontend.Setup.Wallet
                  , Frontend.Setup.Widgets
                  , Frontend.Storage
                  , Frontend.Storage.Class

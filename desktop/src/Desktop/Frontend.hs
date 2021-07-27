@@ -20,12 +20,10 @@ module Desktop.Frontend (desktopFrontend, bipWallet, bipCryptoGenPair, runFileSt
 
 import Control.Concurrent (MVar)
 import Control.Exception (catch)
-import Control.Lens ((?~))
 import Control.Monad ((<=<), guard, void, when)
 import Control.Monad.Fix (MonadFix)
 import Control.Monad.Trans (lift)
 import Control.Monad.IO.Class
-import Data.Bool (bool)
 import Data.Bifunctor (first, second)
 import Data.Dependent.Sum
 import Data.Functor.Compose
@@ -59,12 +57,9 @@ import Frontend.ModuleExplorer.Impl (loadEditorFromLocalStorage)
 import Frontend.Log (defaultLogger)
 import Frontend.Wallet (genZeroKeyPrefix, _unPublicKeyPrefix)
 import Frontend.Storage
-import Frontend.UI.Button
 import Frontend.UI.Modal.Impl (showModalBrutal)
 import Frontend.UI.Dialogs.LogoutConfirmation (uiIdeLogoutConfirmation)
-import Frontend.UI.Widgets
 import Obelisk.Configs
-import Obelisk.Generated.Static
 import Obelisk.Frontend
 import Obelisk.Route
 import Obelisk.Route.Frontend
@@ -191,7 +186,7 @@ bipWallet fileFFI signingReq mkAppCfg = do
       LockScreen_RunSetup :=> _ -> runSetup0 Nothing WalletExists_No
       -- Wallet exists but the lock screen is active
       LockScreen_Locked :=> Compose root -> do
-        (restore, mLogin) <- lockScreen signingReq $ fmap runIdentity $ current root
+        (restore, mLogin) <- lockScreenWidget signingReq $ fmap runIdentity $ current root
         pure $ leftmost
           [ (LockScreen_Restore ==>) . runIdentity <$> current root <@ restore
           , (LockScreen_Unlocked ==>) <$> attach (runIdentity <$> current root) mLogin
@@ -218,7 +213,7 @@ bipWallet fileFFI signingReq mkAppCfg = do
             { _enabledSettings_changePassword = Just $ ChangePassword
               { _changePassword_requestChange =
                 let doChange (Identity (oldRoot, _)) (Password oldPass, Password newPass, Password repeatPass)
-                      | passwordRoundTripTest oldRoot oldPass = case checkPassword (Password newPass) (Password repeatPass) of
+                      | passwordRoundTripTest oldRoot (Password oldPass) = case checkPassword (Password newPass) (Password repeatPass) of
                         Left e -> pure $ Left e
                         Right _ -> do
                           -- Change password for root key
@@ -287,49 +282,18 @@ _watchInactivity checkInterval timeout = do
   let checkTime la ti = guard $ addUTCTime timeout la <= _tickInfo_lastUTC ti
   pure $ attachWithMaybe checkTime lastActivity check
 
-mkSidebarLogoutLink :: (TriggerEvent t m, PerformEvent t n, PostBuild t n, DomBuilder t n, MonadIO (Performable n)) => m (Event t (), n ())
-mkSidebarLogoutLink = do
-  (logout, triggerLogout) <- newTriggerEvent
-  pure $ (,) logout $ do
-    clk <- uiSidebarIcon (pure False) (static @"img/menu/logout.svg") "Logout"
-    performEvent_ $ liftIO . triggerLogout <$> clk
-
-lockScreen
+lockScreenWidget
   :: (DomBuilder t m, PostBuild t m, TriggerEvent t m, PerformEvent t m, MonadIO m, MonadFix m, MonadHold t m)
   => MVar SigningRequest -> Behavior t Crypto.XPrv -> m (Event t (), Event t Text)
-lockScreen signingReq xprv = setupDiv "fullscreen" $ divClass "wrapper" $ setupDiv "splash" $ do
-  splashLogo
-
-  el "div" $ mdo
-    dValid <- holdDyn True $ leftmost
-      [ isJust <$> isValid
-      , True <$ _inputElement_input pass
-      ]
-
-    let unlock = void $ confirmButton (def & uiButtonCfg_type ?~ "submit") "Unlock"
-        cfg = def & elementConfig_initialAttributes .~ ("class" =: setupClass "splash-terms-buttons")
-    (eSubmit, pass) <- uiForm cfg unlock $ do
-      elDynClass "div"
-        (("lock-screen__invalid-password" <>) . bool " lock-screen__invalid-password--invalid" "" <$> dValid)
-        (text "Invalid Password")
-      uiPassword (setupClass "password-wrapper") (setupClass "password") "Password"
-
-    restore <- setupDiv "button-horizontal-group" $ do
-      elAttr "a" ( "class" =: "button button_type_secondary setup__help" <>
-                   "href" =: "https://www.kadena.io/chainweaver" <>
-                   "target" =: "_blank"
-                 ) $ do
-        elAttr "img" ("src" =: static @"img/launch_dark.svg" <> "class" =: "button__text-icon") blank
-        text "Help"
-      uiButton btnCfgSecondary $ text "Restore"
-
+lockScreenWidget signingReq xprv =
+  setupDiv "fullscreen" $ divClass "wrapper" $ setupDiv "splash" $ mdo
+    (restore, pass, eSubmit) <- lockScreen $ (fmap . fmap)  Password isValid
     req <- tryReadMVarTriggerEvent signingReq
     widgetHold_ blank $ ffor req $ \_ -> do
       let line = divClass (setupClass "signing-request") . text
       line "You have an incoming signing request."
       line "Unlock your wallet to view and sign the transaction."
-
-    let isValid = attachWith (\(p, x) _ -> p <$ guard (passwordRoundTripTest x p)) ((,) <$> current (value pass) <*> xprv) eSubmit
+    let isValid = attachWith (\(p, x) _ -> p <$ guard (passwordRoundTripTest x (Password p))) ((,) <$> current pass <*> xprv) eSubmit
     pure (restore, fmapMaybe id isValid)
 
 deriveGEq ''LockScreen

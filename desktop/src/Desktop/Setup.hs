@@ -12,31 +12,15 @@
 module Desktop.Setup (runSetup) where
 
 import Control.Lens ((<>~), (??), (^.), _1, _2, _3)
-import Control.Error (hush)
-import Control.Applicative (liftA2)
-import Control.Monad (unless, guard, void)
+import Control.Monad (guard)
 import Control.Monad.Fix (MonadFix)
 import Control.Monad.Trans.Maybe (MaybeT(MaybeT), runMaybeT)
-import Control.Monad.IO.Class
-import Data.Bool (bool)
-import Data.Foldable (fold, traverse_)
-import Data.Maybe (isNothing, fromMaybe)
-import Data.Bifunctor
-import Data.ByteArray (ByteArrayAccess)
-import Data.ByteString (ByteString)
-import Data.String (IsString, fromString)
-import Data.Functor ((<&>))
-import Data.Text (Text)
+import Data.Foldable (traverse_)
+import Data.Maybe (isNothing)
 import Language.Javascript.JSaddle (MonadJSM, liftJSM)
 import Reflex.Dom.Core
 import qualified Cardano.Crypto.Wallet as Crypto
-import qualified Crypto.Encoding.BIP39 as Crypto
-import qualified Crypto.Encoding.BIP39.English as Crypto
-import qualified Crypto.Random.Entropy
-import qualified Data.ByteArray as BA
-import qualified Data.Map as Map
 import qualified Data.Text as T
-import qualified Data.Text.Encoding as T
 import System.FilePath (takeFileName)
 
 import Frontend.AppCfg (FileFFI(..), FileType(FileType_Import))
@@ -44,12 +28,10 @@ import Desktop.ImportExport (doImport, ImportWalletError(..))
 import Pact.Server.ApiClient (HasTransactionLogger, askTransactionLogger)
 import Frontend.Storage.Class (HasStorage)
 import Frontend.UI.Button
-import Frontend.UI.Dialogs.ChangePassword (minPasswordLength)
 import Frontend.UI.Widgets.Helpers (imgWithAlt)
 import Frontend.UI.Widgets
 import Frontend.Setup.Widgets
 import Frontend.Setup.Common
-import Frontend.Setup.Password
 import Frontend.Crypto.Password
 import Obelisk.Generated.Static
 

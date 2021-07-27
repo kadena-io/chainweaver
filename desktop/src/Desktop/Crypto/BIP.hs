@@ -76,8 +76,9 @@ bipMetaPrefix :: StoreKeyMetaPrefix
 bipMetaPrefix = StoreKeyMetaPrefix "BIPStorage_Meta"
 
 -- | Check the validity of the password by signing and verifying a message
-passwordRoundTripTest :: Crypto.XPrv -> Text -> Bool
-passwordRoundTripTest xprv pass = Crypto.verify (Crypto.toXPub xprv) msg $ Crypto.sign (T.encodeUtf8 pass) xprv msg
+passwordRoundTripTest :: Crypto.XPrv -> Password -> Bool
+passwordRoundTripTest xprv (Password pass) =
+  Crypto.verify (Crypto.toXPub xprv) msg $ Crypto.sign (T.encodeUtf8 pass) xprv msg
   where
     msg :: ByteString
     msg = "the quick brown fox jumps over the lazy dog"

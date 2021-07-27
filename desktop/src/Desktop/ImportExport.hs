@@ -121,7 +121,7 @@ doImport txLogger pw contents = runExceptT $ do
   bipCrypto <- extractImportDataField @(DMap BIPStorage Identity) bipStorageDataKey 0 jVal
   rootKey <- failWith ImportWalletError_NoRootKey (runIdentity <$> DMap.lookup BIPStorage_RootKey bipCrypto)
 
-  let pwOk = passwordRoundTripTest rootKey (unPassword pw)
+  let pwOk = passwordRoundTripTest rootKey pw
 
   unless pwOk $ throwError ImportWalletError_PasswordIncorrect
 

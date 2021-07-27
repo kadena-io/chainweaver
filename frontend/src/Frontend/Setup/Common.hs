@@ -11,13 +11,14 @@
 -- | Wallet setup screens
 module Frontend.Setup.Common where
 
-import Control.Lens ((<>~))
+import Control.Lens ((?~), (<>~))
 import Control.Error (hush)
 import Control.Monad (unless, void)
 import Control.Monad.Fix (MonadFix)
+import Control.Monad.IO.Class
 import Data.Bool (bool)
 import Data.Foldable (fold)
-import Data.Maybe (isNothing)
+import Data.Maybe (isNothing, isJust)
 import Data.Text (Text)
 import Language.Javascript.JSaddle (MonadJSM, liftJSM)
 import Reflex.Dom.Core
@@ -77,6 +78,35 @@ type SetupWF bipKey t m = Workflow t m
 
 finishSetupWF :: (Reflex t, Applicative m) => WalletScreen -> a -> m ((WalletScreen, Event t x, Event t ()), a)
 finishSetupWF ws = pure . (,) (ws, never, never)
+
+lockScreen
+  :: (DomBuilder t m, PostBuild t m, MonadIO m, MonadFix m, MonadHold t m)
+  => Event t (Maybe Password) -> m (Event t (), Dynamic t Text, Event t ())
+lockScreen isValid = do
+  splashLogo
+  el "div" $ mdo
+    dValid <- holdDyn True $ leftmost
+      [ isJust <$> isValid
+      , True <$ _inputElement_input pass
+      ]
+
+    let unlock = void $ confirmButton (def & uiButtonCfg_type ?~ "submit") "Unlock"
+        cfg = def & elementConfig_initialAttributes .~ ("class" =: setupClass "splash-terms-buttons")
+    (eSubmit, pass) <- uiForm cfg unlock $ do
+      elDynClass "div"
+        (("lock-screen__invalid-password" <>) . bool " lock-screen__invalid-password--invalid" "" <$> dValid)
+        (text "Invalid Password")
+      uiPassword (setupClass "password-wrapper") (setupClass "password") "Password"
+
+    restore <- setupDiv "button-horizontal-group" $ do
+      elAttr "a" ( "class" =: "button button_type_secondary setup__help" <>
+                   "href" =: "https://www.kadena.io/chainweaver" <>
+                   "target" =: "_blank"
+                 ) $ do
+        elAttr "img" ("src" =: static @"img/launch_dark.svg" <> "class" =: "button__text-icon") blank
+        text "Help"
+      uiButton btnCfgSecondary $ text "Restore"
+    pure (restore, value pass, eSubmit)
 
 -- Make this take a list of the current progress instead so we can maintain
 -- the list of how much we have done so far.
@@ -425,3 +455,11 @@ restoreBipWallet backWF eBack = Workflow $ do
     ( (WalletScreen_RecoverPassphrase, (\(prv, pw) -> (prv, pw, True)) <$> switchDyn dSetPassword, never)
     , backWF <$ eBack
     )
+
+mkSidebarLogoutLink :: (TriggerEvent t m, PerformEvent t n, PostBuild t n, DomBuilder t n, MonadIO (Performable n)) => m (Event t (), n ())
+mkSidebarLogoutLink = do
+  (logout, triggerLogout) <- newTriggerEvent
+  pure $ (,) logout $ do
+    clk <- uiSidebarIcon (pure False) (static @"img/menu/logout.svg") "Logout"
+    performEvent_ $ liftIO . triggerLogout <$> clk
+

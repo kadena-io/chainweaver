@@ -31,7 +31,7 @@ import Frontend.Log (defaultLogger)
 import Frontend.Foundation
 import Frontend.ModuleExplorer.Impl (loadEditorFromLocalStorage)
 import Frontend.Storage
-import Frontend.Setup.Wallet (bipWalletBrowser)
+import Frontend.Setup.Browser (bipWalletBrowser)
 
 main :: IO ()
 main = do
