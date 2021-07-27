@@ -24,7 +24,7 @@ import Frontend.AppCfg
 import Frontend.Foundation
 import Frontend.Setup.Common
 import Frontend.Storage
-import qualified Frontend.ReplGhcjs as ReplGhcjs (app)
+import qualified Frontend.App as App (app)
 import Frontend.VersionedStore
 import Frontend.UI.Modal.Impl (showModalBrutal)
 import Frontend.UI.Dialogs.LogoutConfirmation (uiIdeLogoutConfirmation)
@@ -120,7 +120,7 @@ bipWalletBrowser fileFFI mkAppCfg = do
 
           (updates, trigger) <- newTriggerEvent
           let frontendFileFFI = liftFileFFI (lift . lift) fileFFI
-          ReplGhcjs.app sidebarLogoutLink frontendFileFFI $ mkAppCfg $ EnabledSettings
+          App.app sidebarLogoutLink frontendFileFFI $ mkAppCfg $ EnabledSettings
             { _enabledSettings_changePassword = Just $ ChangePassword
               { _changePassword_requestChange =
                 let doChange (Identity (oldRoot, _)) (oldPass, newPass, repeatPass) = do

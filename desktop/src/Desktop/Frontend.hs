@@ -69,7 +69,7 @@ import Obelisk.Frontend
 import Obelisk.Route
 import Obelisk.Route.Frontend
 import qualified Frontend (newHead, openFileDialog)
-import qualified Frontend.ReplGhcjs
+import qualified Frontend.App
 import Frontend.VersionedStore (StoreFrontend(..))
 import Frontend.Storage (runBrowserStorageT)
 import Frontend.Crypto.Password
@@ -214,7 +214,7 @@ bipWallet fileFFI signingReq mkAppCfg = do
                 { _keyPair_publicKey = pub
                 , _keyPair_privateKey = Just newPrv
                 }
-          Frontend.ReplGhcjs.app sidebarLogoutLink frontendFileFFI $ mkAppCfg $ EnabledSettings
+          Frontend.App.app sidebarLogoutLink frontendFileFFI $ mkAppCfg $ EnabledSettings
             { _enabledSettings_changePassword = Just $ ChangePassword
               { _changePassword_requestChange =
                 let doChange (Identity (oldRoot, _)) (Password oldPass, Password newPass, Password repeatPass)
