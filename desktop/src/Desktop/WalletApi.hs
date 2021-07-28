@@ -31,24 +31,14 @@ walletServer
   :: MonadIO m
   => IO ()
   -> IO ()
-  -> m ( MVarHandler SigningRequest SigningResponse
-       , MVarHandler () [PublicKey]
-       , MVarHandler () (Map NetworkName [AccountName])
-       )
+  -> m (MVarHandler SigningRequest SigningResponse)
 walletServer moveToForeground moveToBackground = do
   signingLock <- liftIO newEmptyMVar -- Only allow one signing request to be served at once
   h@(MVarHandler signingRequestMVar signingResponseMVar) <- liftIO newMVarHandler
-  keysHandler <- liftIO newMVarHandler
-  accountsHandler <- liftIO newMVarHandler
   let
     runSign obj = mkServantHandler <=< liftIO $ bracket_ (putMVar signingLock ()) (takeMVar signingLock) $ do
         putMVar signingRequestMVar obj -- handoff to app
         bracket moveToForeground (const $ moveToBackground) (\_ -> takeMVar signingResponseMVar)
-
-    runMVarHandler (MVarHandler req resp) = do
-      mkServantHandler <=< liftIO $ do
-        putMVar req ()
-        takeMVar resp
 
     mkServantHandler = \case
       Left e -> throwError $ Servant.err409 { Servant.errBody = LBS.fromStrict $ T.encodeUtf8 e }
@@ -59,16 +49,13 @@ walletServer moveToForeground moveToBackground = do
       { Wai.corsRequestHeaders = Wai.simpleHeaders }
     apiServer
       = Warp.runSettings s $ Wai.cors laxCors
-      $ Servant.serve walletApi $ runSign :<|> runMVarHandler keysHandler :<|> runMVarHandler accountsHandler
+      $ Servant.serve walletApi runSign
 
   liftIO $ void $ Async.async $ apiServer
-  pure (h, keysHandler, accountsHandler)
+  pure h
 
 type WalletAPI = "v1" :> V1WalletAPI
 type V1WalletAPI = V1SigningApi
-                   :<|> "keys" :> Get '[JSON] [PublicKey]
-                   :<|> "accounts" :> Get '[JSON] (Map NetworkName [AccountName])
-
 
 walletApi :: Proxy WalletAPI
 walletApi = Proxy
