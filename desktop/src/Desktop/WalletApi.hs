@@ -14,17 +14,14 @@ import Control.Monad (void, (<=<))
 import Control.Monad.IO.Class
 import Control.Monad.Except (throwError)
 import qualified Data.ByteString.Lazy as LBS
-import Data.Map (Map)
 import Data.Proxy (Proxy(..))
 import qualified Data.Text.Encoding as T
 import Kadena.SigningApi (SigningRequest, SigningResponse, V1SigningApi)
 import qualified Network.Wai.Handler.Warp as Warp
 import qualified Network.Wai.Middleware.Cors as Wai
-import Servant (Get, JSON, serve, (:<|>)(..), (:>))
+import Servant (serve, (:>))
 import qualified Servant.Server as Servant
 
-import Common.Network (NetworkName)
-import Common.Wallet (AccountName, PublicKey)
 import Frontend.AppCfg
 
 walletServer
