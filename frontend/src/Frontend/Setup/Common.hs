@@ -249,7 +249,7 @@ stackFaIcon icon = elClass "span" "fa-stack fa-5x" $ do
   elClass "i" ("fa " <> icon <> " fa-stack-1x fa-inverse") blank
 
 doneScreen
-  :: (DomBuilder t m, PostBuild t m, BIP39Root key )-- (Performable m))
+  :: (DomBuilder t m, PostBuild t m, BIP39Root key )
   => (key, Password)
   -> SetupWF key t m
 doneScreen (rootKey, passwd) = Workflow $ do

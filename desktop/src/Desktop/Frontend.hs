@@ -201,7 +201,7 @@ bipWallet fileFFI signingReq mkAppCfg = do
 
           (updates, trigger) <- newTriggerEvent
 
-          let 
+          let
             frontendFileFFI = liftFileFFI (lift . lift) fileFFI
             changePasswordDesktopAction i newRoot (Password newPass) = do
               let (newPrv, pub) = bipCryptoGenPair newRoot newPass i

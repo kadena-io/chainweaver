@@ -126,17 +126,6 @@ splashScreen _walletExists fileFFI eBack = selfWF
           , restoreBipWallet selfWF eBack <$ hasAgreed restoreBipPhrase
           ]
 
-data LockScreen a where
-  LockScreen_Restore :: LockScreen PrivateKey
-  LockScreen_RunSetup :: LockScreen ()
-  LockScreen_Locked :: LockScreen PrivateKey -- ^ Root key
-  LockScreen_Unlocked :: LockScreen (PrivateKey, Password) -- ^ The root key and password
-
-type MkAppCfg t m
-  =  EnabledSettings PrivateKey t (RoutedT t (R FrontendRoute) (BrowserCryptoT t m))
-  -- ^ Settings
-  -> AppCfg PrivateKey t (RoutedT t (R FrontendRoute) (BrowserCryptoT t m))
-
 bipWalletBrowser
   :: forall js t m
   .  ( MonadWidget t m
@@ -157,7 +146,7 @@ bipWalletBrowser fileFFI mkAppCfg = do
       keypairOrErr <- liftJSM $ generateKeypair newPass newRoot i
       case keypairOrErr of
         Left _ -> pure $ Key $ KeyPair (unsafePublicKey "") Nothing
-        Right (newPrv, pub) -> pure $ Key $ KeyPair 
+        Right (newPrv, pub) -> pure $ Key $ KeyPair
           { _keyPair_publicKey = pub
           , _keyPair_privateKey = Just newPrv
           }
@@ -242,7 +231,7 @@ bipWalletBrowser fileFFI mkAppCfg = do
   pure ()
 
 lockScreenWidget
-  :: 
+  ::
   (DomBuilder t m, PostBuild t m, TriggerEvent t m, PerformEvent t m,
    MonadIO m, MonadFix m, MonadHold t m, MonadJSM (Performable m)
   )
@@ -268,5 +257,16 @@ passwordRoundTripTest xprv pass = liftJSM $ do
   where
     msg :: ByteString
     msg = "the quick brown fox jumps over the lazy dog"
+
+data LockScreen a where
+  LockScreen_Restore :: LockScreen PrivateKey
+  LockScreen_RunSetup :: LockScreen ()
+  LockScreen_Locked :: LockScreen PrivateKey -- ^ Root key
+  LockScreen_Unlocked :: LockScreen (PrivateKey, Password) -- ^ The root key and password
+
+type MkAppCfg t m
+  =  EnabledSettings PrivateKey t (RoutedT t (R FrontendRoute) (BrowserCryptoT t m))
+  -- ^ Settings
+  -> AppCfg PrivateKey t (RoutedT t (R FrontendRoute) (BrowserCryptoT t m))
 
 deriveGEq ''LockScreen
