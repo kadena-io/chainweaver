@@ -172,20 +172,6 @@ app sidebarExtra fileFFI appCfg = Store.versionedFrontend (Store.versionedStorag
     , mempty & ideCfg_editor . editorCfg_loadCode .~ (snd <$> _fileFFI_externalFileOpened fileFFI)
     ]
 
--- handleEndpoints
---   :: (HasWallet model key t, MonadIO m, PerformEvent t m)
---   => model -> AppCfg key t m -> m (FRPHandler SigningRequest SigningResponse t m)
--- handleEndpoints m cfg = do
---   let keys = ffor (m ^. wallet_keys) $ Right . toList . fmap (_keyPair_publicKey . _key_pair)
---       accounts = ffor (m ^. wallet_accounts) $ Right . fmap Map.keys . unAccountData
-
---   FRPHandler keysReqs keysResps <- _appCfg_keysEndpointHandler cfg
---   FRPHandler accountsReqs accountsResps <- _appCfg_accountsEndpointHandler cfg
-
---   void $ keysResps $ current keys <@ keysReqs
---   void $ accountsResps $ current accounts <@ accountsReqs
---   _appCfg_signingHandler cfg
-
 walletSidebar
   :: ( DomBuilder t m
      , PostBuild t m
