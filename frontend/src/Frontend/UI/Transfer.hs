@@ -900,7 +900,7 @@ submitTransactionAndListen model cmd sender chain nodeInfos = do
         Right (Api.RequestKeys (key :| _)) -> do
           send Status_Done
           liftIO $ cb key
-    (listenStatus, message, setMessage) <- listenToRequestKey clientEnvs $ Just <$> onRequestKey
+    (listenStatus, message, setMessage) <- pollForRequestKey clientEnvs $ Just <$> onRequestKey
     requestKey <- holdDyn Nothing $ Just <$> onRequestKey
   pure $ TransactionSubmitFeedback sendStatus listenStatus message
 

@@ -43,7 +43,7 @@ module Frontend.UI.Dialogs.DeployConfirmation
   , deploySubmit
   , transactionResultSection
   , transactionStatusSection
-  , listenToRequestKey
+  , pollForRequestKey
   ) where
 
 import Common.Foundation
@@ -195,7 +195,7 @@ submitTransactionWithFeedback model cmd sender chain nodeInfos = do
         Right (Api.RequestKeys (key :| _)) -> do
           send Status_Done
           liftIO $ cb key
-    (listenStatus, message, setMessage) <- listenToRequestKey clientEnvs $ Just <$> leftmost [onRequestKey, reloadKey]
+    (listenStatus, message, setMessage) <- pollForRequestKey clientEnvs $ Just <$> leftmost [onRequestKey, reloadKey]
     requestKey <- holdDyn Nothing $ Just <$> onRequestKey
 
     reload <- transactionStatusSection sendStatus listenStatus
@@ -203,7 +203,7 @@ submitTransactionWithFeedback model cmd sender chain nodeInfos = do
   transactionResultSection message
   pure $ TransactionSubmitFeedback sendStatus listenStatus message
 
-listenToRequestKey
+pollForRequestKey
   :: ( MonadHold t m
      , PerformEvent t m
      , TriggerEvent t m
@@ -216,7 +216,7 @@ listenToRequestKey
        , Dynamic t (Maybe (Either NetworkError PactValue))
        , Maybe (Either NetworkError PactValue) -> JSM ()
        )
-listenToRequestKey clientEnvs onRequestKey = do
+pollForRequestKey clientEnvs onRequestKey = do
   (listenStatus, listen) <- newTriggerHold Status_Waiting
   --(confirmedStatus, confirm) <- newTriggerHold Status_Waiting
   (message, setMessage) <- newTriggerHold Nothing
