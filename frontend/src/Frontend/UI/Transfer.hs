@@ -252,10 +252,10 @@ uiGenericTransfer model cfg = do
         toFormWidget model $ mkCfg (Nothing, Nothing)
           & setValue .~ (Just $ (Nothing, Nothing) <$ clear)
       return $ runMaybeT $ TransferInfo <$>
-        MaybeT (value fromAcct) <*>
-        MaybeT (hush . fst <$> value amount) <*>
+        MaybeT (traceDyn "fromAcct" $ value fromAcct) <*>
+        MaybeT (hush . fst <$> traceDyn "amount" (value amount)) <*>
         lift (snd <$> value amount) <*>
-        MaybeT (value toAcct) <*>
+        MaybeT (traceDyn "toAcct" $ value toAcct) <*>
         lift ks
     (clear, signTransfer) <- divClass "transfer-fields submit" $ do
       clr <- el "div" $ uiButton btnCfgTertiary $ text "Clear"
