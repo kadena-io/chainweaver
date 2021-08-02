@@ -701,7 +701,7 @@ uiAccountBalance :: Bool -> Maybe AccountBalance -> Text
 uiAccountBalance showUnits = \case
   Nothing -> "Does not exist"
   Just b -> mconcat $ catMaybes
-    [ Just $ tshow $ unAccountBalance b
+    [ Just $ tshow $ normalizeDecimal $ unAccountBalance b
     , " KDA" <$ guard showUnits
     ]
 
