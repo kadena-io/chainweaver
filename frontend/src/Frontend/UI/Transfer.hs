@@ -252,10 +252,10 @@ uiGenericTransfer model cfg = do
         toFormWidget model $ mkCfg (Nothing, Nothing)
           & setValue .~ (Just $ (Nothing, Nothing) <$ clear)
       return $ runMaybeT $ TransferInfo <$>
-        MaybeT (traceDyn "fromAcct" $ value fromAcct) <*>
-        MaybeT (hush . fst <$> traceDyn "amount" (value amount)) <*>
+        MaybeT (value fromAcct) <*>
+        MaybeT (hush . fst <$> value amount) <*>
         lift (snd <$> value amount) <*>
-        MaybeT (traceDyn "toAcct" $ value toAcct) <*>
+        MaybeT (value toAcct) <*>
         lift ks
     (clear, signTransfer) <- divClass "transfer-fields submit" $ do
       clr <- el "div" $ uiButton btnCfgTertiary $ text "Clear"
@@ -307,7 +307,7 @@ amountFormWithMaxButton model ca cfg = do
     let attrs = ffor maxE $ \isMaxed ->
           "disabled" =: (if isMaxed then Just "disabled" else Nothing)
         sv = Just $ leftmost
-          [ maybe (Left "") (Right . unAccountBalance) <$> maxedBalance
+          [ maybe (Left "") (Right . normalizeDecimal . unAccountBalance) <$> maxedBalance
           , Left "" <$ ffilter not maxE
           ]
     amt <- amountFormWidget $ mkPfwc (fst <$> cfg)
@@ -952,7 +952,7 @@ buildUnsignedCmd netInfo ti ty tmeta = payload
     toAccount = unAccountName $ _ca_account $ _ti_toAccount ti
     toChain = _ca_chain $ _ti_toAccount ti
     amount = _ti_amount ti
-    amountText = appendDecimalToText (tshow amount)
+    amountText = showWithDecimal $ normalizeDecimal amount
     dataKey = "ks" :: Text
     (mDataKey, code) = if fromChain == toChain
              then sameChainCmdAndData ty fromAccount toAccount (_ti_toKeyset ti) amountText
