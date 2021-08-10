@@ -160,6 +160,7 @@ uiAccountItems
   => model -> Dynamic t (Map AccountName (AccountInfo Account)) -> m mConf
 uiAccountItems model accountsMap = do
   let net = model ^. network_selectedNetwork
+      nodes = model ^. network_selectedNodes
       tableAttrs = mconcat
         [ "style" =: "table-layout: fixed; width: 98%"
         , "class" =: "wallet table"
@@ -200,18 +201,18 @@ uiAccountItems model accountsMap = do
   let
     onAccountModal = switchDyn $ leftmost . Map.elems <$> events
 
-    accModal n = Just . \case
+    accModal (n, ns) = Just . \case
       AccountDialog_Details acc notes -> uiAccountDetails n acc notes
       AccountDialog_DetailsChain acc -> uiAccountDetailsOnChain n acc
-      AccountDialog_Receive name chain details -> uiReceiveModal "Receive" model name chain details
-      AccountDialog_TransferTo name details chain -> uiReceiveModal "Transfer To" model name chain (Just details)
+      AccountDialog_Receive name chain details -> uiReceiveModal n ns "Receive" model name chain details
+      AccountDialog_TransferTo name details chain -> uiReceiveModal n ns "Transfer To" model name chain (Just details)
       AccountDialog_Send acc mucct -> uiSendModal model acc mucct
       AccountDialog_CompleteCrosschain name chain ucct -> uiFinishCrossChainTransferModal model name chain ucct
 
   refresh <- delay 1 =<< getPostBuild
 
   pure $ mempty
-    & modalCfg_setModal .~ attachWith accModal (current net) onAccountModal
+    & modalCfg_setModal .~ attachWith accModal (current $ (,) <$> net <*> nodes) onAccountModal
     & walletCfg_refreshBalances .~ refresh
 
 -- | This function only exists to workaround a reflex-dom Adjustable bug.
@@ -352,9 +353,10 @@ uiAccountItem cwKeys startsOpen name accountInfo = do
             pure $ AccountDialog_Receive name chain Nothing <$ receive
           AccountStatus_Exists d -> do
             let ks = d ^? accountDetails_guard . _AccountGuard_KeySetLike
+            let ref = Pact.KeySetName <$> d ^? accountDetails_guard . _AccountGuard_KeySetLike . ksh_ref . _Just
             let uk = (\(KeySetHeritage k p _ref) -> UserKeyset k (parseKeysetPred p)) <$> ks
 
-            let txb = TxBuilder name chain (userToPactKeyset <$> uk)
+            let txb = TxBuilder name chain (userToPactKeyset <$> uk) ref
             let bcfg = btnCfgSecondary & uiButtonCfg_class <>~ "wallet__table-button" <> "button_border_none"
             copyAddress <- copyButton' "Copy Tx Builder" bcfg False (constant $ prettyTxBuilder txb)
 
