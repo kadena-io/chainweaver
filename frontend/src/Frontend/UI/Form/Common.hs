@@ -92,14 +92,17 @@ amountFormWidget
   => PrimFormWidgetConfig t (Either String Decimal)
   -> m (FormWidget t (Either String Decimal))
 amountFormWidget cfg = do
-    parsingFormWidget p (either (const "") tshow) cfg
-  where
-    p t = case readMaybe (T.unpack t) of
-            Nothing -> Left "Not a valid number"
-            Just x
-              | x < 0 -> Left "Cannot be negative"
-              | D.decimalPlaces x > maxCoinPrecision -> Left "Too many decimal places"
-              | otherwise -> Right x
+    parsingFormWidget parseAmount (either (const "") tshow) cfg
+
+parseAmount :: Text -> Either String Decimal
+parseAmount t = 
+  let tNoLeadingDecimal = if "." `T.isPrefixOf` t then "0" <> t else t in
+  case D.normalizeDecimal <$> readMaybe (T.unpack tNoLeadingDecimal) of
+        Nothing -> Left "Not a valid number"
+        Just x
+          | x < 0 -> Left "Cannot be negative"
+          | D.decimalPlaces x > maxCoinPrecision -> Left "Too many decimal places"
+          | otherwise -> Right x
 
 -- | The options shown by this widget are the union of the incoming dynamic
 -- options, the initial option, and any changes to the selection passed in from

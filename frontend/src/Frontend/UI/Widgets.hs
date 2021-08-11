@@ -118,6 +118,7 @@ import           Control.Monad
 import           Control.Monad.Except
 import           Control.Monad.Trans.Maybe
 import qualified Data.Aeson.Encode.Pretty as AesonPretty
+import           Data.Decimal
 import           Data.Either (isLeft)
 import           Data.Functor.Misc
 import           Data.Map.Strict             (Map)
@@ -307,14 +308,7 @@ uiAmountInput
   => InputElementConfig er t (DomBuilderSpace m)
   -> m (InputElement er (DomBuilderSpace m) t, Dynamic t (Either String Decimal))
 uiAmountInput cfg = do
-    uiParsingInputElement p cfg
-  where
-    p t = case readMaybe (T.unpack t) of
-            Nothing -> Left "Not a valid number"
-            Just x
-              | x < 0 -> Left "Cannot be negative"
-              | D.decimalPlaces x > maxCoinPrecision -> Left "Too many decimal places"
-              | otherwise -> Right x
+    uiParsingInputElement parseAmount cfg
 
 uiCorrectingInputElement
   :: forall t m a explanation
@@ -698,7 +692,7 @@ uiAccountBalance' showUnits acc = case _account_status acc of
   AccountStatus_Unknown -> "Unknown"
   AccountStatus_DoesNotExist -> "Does not exist"
   AccountStatus_Exists d -> mconcat $ catMaybes
-    [ Just $ tshow $ unAccountBalance $ _accountDetails_balance d
+    [ Just $ tshow $ normalizeDecimal $ unAccountBalance $ _accountDetails_balance d
     , " KDA" <$ guard showUnits
     ,  "*" <$ _vanityAccount_unfinishedCrossChainTransfer (_account_storage acc)
     ]
@@ -707,7 +701,7 @@ uiAccountBalance :: Bool -> Maybe AccountBalance -> Text
 uiAccountBalance showUnits = \case
   Nothing -> "Does not exist"
   Just b -> mconcat $ catMaybes
-    [ Just $ tshow $ unAccountBalance b
+    [ Just $ tshow $ normalizeDecimal $ unAccountBalance b
     , " KDA" <$ guard showUnits
     ]
 

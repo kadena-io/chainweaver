@@ -69,8 +69,6 @@ data AppCfg key t m = AppCfg
   , _appCfg_editorReadOnly :: Bool
   -- ^ Is the editor read only?
   , _appCfg_signingHandler :: m (FRPHandler SigningRequest SigningResponse t m)
-  , _appCfg_keysEndpointHandler :: m (FRPHandler () [PublicKey] t m)
-  , _appCfg_accountsEndpointHandler :: m (FRPHandler () (Map NetworkName [AccountName]) t m)
   , _appCfg_enabledSettings :: EnabledSettings key t m
   , _appCfg_logMessage :: LogLevel -> LogStr -> IO ()
   -- ^ Logging Function

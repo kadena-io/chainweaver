@@ -98,7 +98,10 @@ uiAccountDetailsOnChainImpl netname (name, chain, details, account) onClose = Wo
       notesEdit <- notesEditor $ _vanityAccount_notes $ _account_storage account
       pure notesEdit
 
-    let guardTitle = maybe "Keyset" (const "Guard") $ account ^? account_status
+    let keysetTitle = \case
+          Pact.GKeySetRef (Pact.KeySetName _) -> "Keyset Reference"
+          _ -> "Guard"
+        guardTitle = maybe "Keyset" keysetTitle $ account ^? account_status
           . _AccountStatus_Exists
           . accountDetails_guard
           . _AccountGuard_Other
@@ -117,8 +120,10 @@ uiAccountDetailsOnChainImpl netname (name, chain, details, account) onClose = Wo
               for_ ksKeys $ \key -> uiInputElement $ def
                 & initialAttributes %~ Map.insert "disabled" "disabled" . addToClassAttr "labeled-input__input labeled-input__multiple"
                 & inputElementConfig_initialValue .~ keyToText key
-          AccountGuard_Other g ->
-            void $ displayText (pactGuardTypeText $ Pact.guardTypeOf g) (renderCompactText g) ""
+          AccountGuard_Other g -> case g of
+            (Pact.GKeySetRef (Pact.KeySetName name)) -> do
+              void $ displayText "Name" name ""
+            _ -> void $ displayText (pactGuardTypeText $ Pact.guardTypeOf g) (renderCompactText g) ""
 
     pure notesEdit
 

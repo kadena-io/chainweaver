@@ -1,8 +1,8 @@
 {
   "owner": "kadena-io",
   "repo": "signing-api",
-  "branch": "jam@bump-pact-version",
+  "branch": "master",
   "private": false,
-  "rev": "5d41162c0dc3c541e2649ffc995841dafd6d4d92",
+  "rev": "bf0f4dda9b02bfb107d36ab0edf2333b0568d4aa",
   "sha256": "104yamzy1sdnkjsjkcqqlz5jm0y03vhq4nqqvbwfcmywav3r66jv"
 }

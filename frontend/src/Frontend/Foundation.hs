@@ -21,6 +21,7 @@ module Frontend.Foundation
   , LeftmostEv (..)
     -- * Helpers that should really not be here
   , getBrowserProperty
+  , showWithDecimal
   , appendDecimalToText
     -- * Common Foundation
   , module Common
@@ -37,6 +38,7 @@ import           Control.Lens
 import           Control.Monad.Fix
 import           Control.Monad.IO.Class
 import           Data.Coerce                       (coerce)
+import           Data.Decimal
 import           Data.Foldable
 import           Data.Semigroup
 import           Data.Scientific
@@ -55,7 +57,7 @@ import           Reflex.Dom.WebSocket              (forkJSM)
 import           Reflex.Extended
 import           Reflex.Network.Extended
 
-import           Text.ParserCombinators.ReadP
+import           Text.Read
 
 import           Data.Maybe
 
@@ -99,9 +101,15 @@ type family ReflexValue (f :: * -> *) x where
     ReflexValue (Event t) x = Event t x
 
 appendDecimalToText :: Text -> Text
-appendDecimalToText t = case readP_to_S scientificP s of 
-    [(x,_)] -> tshow x
-    [_,(x,_)] -> tshow x
-    _ -> t
+appendDecimalToText t =
+    case readMaybe $ T.unpack t of
+      Nothing -> t
+      Just d -> showWithDecimal d
+
+showWithDecimal :: Decimal -> Text
+showWithDecimal d =
+    if decimalPlaces d == 0
+      then t <> ".0"
+      else t
   where
-    s = T.unpack t
+    t = tshow d

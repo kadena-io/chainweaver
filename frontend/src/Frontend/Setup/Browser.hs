@@ -253,9 +253,6 @@ lockScreenWidget xprv = setupDiv "fullscreen" $ divClass "wrapper" $ setupDiv "s
   isValid <- performEvent $ ffor (attach prvAndPass eSubmit) $ \((xprv', pass'), _) -> do
     isMatch <- passwordRoundTripTest xprv' pass'
     pure $ if isMatch then Just pass' else Nothing
-  let line = divClass (setupClass "signing-request") . text
-  line "You have an incoming signing request."
-  line "Unlock your wallet to view and sign the transaction."
   pure (restore, fmapMaybe id isValid)
 
 -- | Check the validity of the password by signing and verifying a message
