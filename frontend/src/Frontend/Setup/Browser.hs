@@ -12,7 +12,7 @@
 -- | Wallet setup screens
 module Frontend.Setup.Browser (runSetup, bipWalletBrowser) where
 
-import Control.Lens ((<>~), (??), (^.), _1, _2, _3)
+import Control.Lens ((<>~), (^.), _1, _2, _3)
 import Control.Monad (guard)
 import Control.Monad.Fix (MonadFix)
 import Control.Monad.Trans (lift)
@@ -24,7 +24,7 @@ import Data.Functor.Identity
 import Data.GADT.Compare.TH
 import Data.Traversable (for)
 import Language.Javascript.JSaddle (MonadJSM)
-import Reflex.Dom.Core
+import Reflex.Dom.Core hiding (Key)
 import Pact.Server.ApiClient (HasTransactionLogger, askTransactionLogger, _transactionLogger_rotateLogFile)
 import Obelisk.Route.Frontend
 import Obelisk.Generated.Static
@@ -47,6 +47,17 @@ import Frontend.UI.Modal.Impl (showModalBrutal)
 import Frontend.UI.Dialogs.LogoutConfirmation (uiIdeLogoutConfirmation)
 import Frontend.UI.Widgets
 import Frontend.VersionedStore
+
+data LockScreen a where
+  LockScreen_Restore :: LockScreen PrivateKey
+  LockScreen_RunSetup :: LockScreen ()
+  LockScreen_Locked :: LockScreen PrivateKey -- ^ Root key
+  LockScreen_Unlocked :: LockScreen (PrivateKey, Password) -- ^ The root key and password
+
+type MkAppCfg t m
+  =  EnabledSettings PrivateKey t (RoutedT t (R FrontendRoute) (BrowserCryptoT t m))
+  -- ^ Settings
+  -> AppCfg PrivateKey t (RoutedT t (R FrontendRoute) (BrowserCryptoT t m))
 
 runSetup
   :: ( DomBuilder t m
@@ -75,7 +86,7 @@ runSetup fileFFI showBackOverride walletExists = setupDiv "fullscreen" $ mdo
   _ <- dyn_ $ walletSetupRecoverHeader <$> dCurrentScreen
 
   dwf <- divClass "wrapper" $
-    workflow (splashScreen walletExists fileFFI eBack)
+    workflow (splashScreenBrowser eBack)
 
   pure $ leftmost
     [ fmap Right $ switchDyn $ (^. _2) <$> dwf
@@ -89,53 +100,30 @@ runSetup fileFFI showBackOverride walletExists = setupDiv "fullscreen" $ mdo
       else
         setupScreenClass ws
 
-splashScreen
+splashScreenBrowser
   :: (DomBuilder t m, MonadFix m, MonadHold t m, PerformEvent t m
      , PostBuild t m, MonadJSM (Performable m), TriggerEvent t m, HasStorage (Performable m)
      , MonadSample t (Performable m), DerivableKey key mnemonic
      )
-  => WalletExists
-  -> FileFFI t m
-  -> Event t ()
+  => Event t ()
   -> SetupWF key t m
-splashScreen _walletExists fileFFI eBack = selfWF
+splashScreenBrowser eBack = selfWF
   where
     selfWF = Workflow $ setupDiv "splash" $ do
-      splashLogo
+      agreed <- splashScreenAgreement
+      let hasAgreed = gate (current agreed)
+          disabledCfg = uiButtonCfg_disabled .~ fmap not agreed
+          restoreCfg = uiButtonCfg_class <>~ "setup__restore-existing-button"
 
-      setupDiv "splash-terms-buttons" $ do
-        agreed <- fmap value $ setupCheckbox False def $ el "div" $ do
-          text "I have read & agree to the "
-          elAttr "a" ?? (text "Terms of Service") $ mconcat
-            [ "href" =: "https://kadena.io/chainweaver-tos"
-            , "target" =: "_blank"
-            , "class" =: setupClass "terms-conditions-link"
-            ]
+      create <- confirmButton (def & disabledCfg ) "Create a new wallet"
 
-        let hasAgreed = gate (current agreed)
-            disabledCfg = uiButtonCfg_disabled .~ fmap not agreed
-            restoreCfg = uiButtonCfg_class <>~ "setup__restore-existing-button"
+      restoreBipPhrase <- uiButtonDyn (btnCfgSecondary & disabledCfg & restoreCfg)
+        $ text "Restore from recovery phrase"
 
-        create <- confirmButton (def & disabledCfg ) "Create a new wallet"
-
-        restoreBipPhrase <- uiButtonDyn (btnCfgSecondary & disabledCfg & restoreCfg)
-          $ text "Restore from recovery phrase"
-
-        finishSetupWF WalletScreen_SplashScreen $ leftmost
-          [ createNewWallet selfWF eBack <$ hasAgreed create
-          , restoreBipWallet selfWF eBack <$ hasAgreed restoreBipPhrase
-          ]
-
-data LockScreen a where
-  LockScreen_Restore :: LockScreen PrivateKey
-  LockScreen_RunSetup :: LockScreen ()
-  LockScreen_Locked :: LockScreen PrivateKey -- ^ Root key
-  LockScreen_Unlocked :: LockScreen (PrivateKey, Password) -- ^ The root key and password
-
-type MkAppCfg t m
-  =  EnabledSettings PrivateKey t (RoutedT t (R FrontendRoute) (BrowserCryptoT t m))
-  -- ^ Settings
-  -> AppCfg PrivateKey t (RoutedT t (R FrontendRoute) (BrowserCryptoT t m))
+      finishSetupWF WalletScreen_SplashScreen $ leftmost
+        [ createNewWallet selfWF eBack <$ hasAgreed create
+        , restoreBipWallet selfWF eBack <$ hasAgreed restoreBipPhrase
+        ]
 
 bipWalletBrowser
   :: forall js t m
@@ -207,32 +195,8 @@ bipWalletBrowser fileFFI mkAppCfg = do
 
           (updates, trigger) <- newTriggerEvent
           let frontendFileFFI = liftFileFFI (lift . lift) fileFFI
-          App.app sidebarLogoutLink frontendFileFFI $ mkAppCfg $ EnabledSettings
-            { _enabledSettings_changePassword = Just $ ChangePassword
-              { _changePassword_requestChange =
-                let doChange (Identity (oldRoot, _)) (oldPass, newPass, repeatPass) = do
-                      passesRoundTrip <- passwordRoundTripTest oldRoot oldPass
-                      if passesRoundTrip then do
-                        case checkPassword newPass repeatPass of
-                          Left e -> pure $ Left e
-                          Right _ -> do
-                            -- Change password for root key
-                            newRootOrErr <- liftJSM $ changePassword oldRoot oldPass newPass
-                            case newRootOrErr of
-                              Left e -> pure $ Left $ "Error changing password: " <> e
-                              Right newRoot -> do
-                                setItemStorage localStorage BIPStorage_RootKey newRoot
-                                liftIO $ trigger (newRoot, newPass)
-                                pure $ Right ()
-                      else pure $ Left "Invalid password"
-                in performEvent . attachWith doChange (current details)
-              -- When updating the keys here, we just always regenerate the key from
-              -- the new root
-              , _changePassword_updateKeys = (updates, changePasswordBrowserAction)
-              }
-            , _enabledSettings_exportWallet = Nothing
-            , _enabledSettings_transactionLog = False
-            }
+          App.app sidebarLogoutLink frontendFileFFI $ mkAppCfg $
+            appSettingsBrowser trigger details updates changePasswordBrowserAction
 
           setRoute $ landingPageRoute <$ onLogoutConfirm
           pure $ leftmost
@@ -240,6 +204,44 @@ bipWalletBrowser fileFFI mkAppCfg = do
             , (LockScreen_Locked ==>) . fst . runIdentity <$> current details <@ onLogoutConfirm
             ]
   pure ()
+
+appSettingsBrowser ::
+   ( HasStorage m 
+   , HasStorage (Performable m)
+   , PerformEvent t m
+   , MonadJSM (Performable m)
+   ) 
+  => ((PrivateKey, Password) -> IO ())
+  -> Dynamic t (Identity (PrivateKey, Password))
+  -> Event t (PrivateKey, Password) 
+  -> (Int -> PrivateKey -> Password -> (Performable m) (Key PrivateKey))
+  -> EnabledSettings PrivateKey t m
+appSettingsBrowser newPwdTrigger details keyUpdates changePasswordBrowserAction = EnabledSettings
+  { _enabledSettings_changePassword = Just $ ChangePassword
+    { _changePassword_requestChange = performEvent . attachWith doChange (current details)
+    -- When updating the keys here, we just always regenerate the key from
+    -- the new root
+    , _changePassword_updateKeys = (keyUpdates, changePasswordBrowserAction)
+    }
+  , _enabledSettings_exportWallet = Nothing
+  , _enabledSettings_transactionLog = False
+  }
+  where
+    doChange (Identity (oldRoot, _)) (oldPass, newPass, repeatPass) = do
+      passesRoundTrip <- passwordRoundTripTest oldRoot oldPass
+      case passesRoundTrip of
+        False -> pure $ Left "Invalid password"
+        True -> case checkPassword newPass repeatPass of
+          Left e -> pure $ Left e
+          Right _ -> do
+            -- Change password for root key
+            newRootOrErr <- liftJSM $ changePassword oldRoot oldPass newPass
+            case newRootOrErr of
+              Left e -> pure $ Left $ "Error changing password: " <> e
+              Right newRoot -> do
+                setItemStorage localStorage BIPStorage_RootKey newRoot
+                liftIO $ newPwdTrigger (newRoot, newPass)
+                pure $ Right ()
 
 lockScreenWidget
   :: 

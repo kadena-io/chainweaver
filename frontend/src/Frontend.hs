@@ -38,6 +38,10 @@ main = do
   let Right validFullEncoder = checkEncoder backendRouteEncoder
   run $ runFrontend validFullEncoder frontend
 
+-- This frontend is only used for the web/browser app
+-- See Backend.App.main' for native's equivalent
+-- See Desktop.App.main' for the development (ob run) equivalent
+-- See Frontend.App for the code shared across both browser and native
 frontend :: Frontend (R FrontendRoute)
 frontend = Frontend
   { _frontend_head = do
@@ -166,4 +170,3 @@ minWindowSize = (800, 600)
 
 defaultWindowSize :: (Int, Int)
 defaultWindowSize = (1280, 800)
-

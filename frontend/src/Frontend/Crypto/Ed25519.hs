@@ -185,7 +185,7 @@ changePassword (PrivateKey oldKey) (Password oldPwd) (Password newPwd) =
       Nothing -> pure $ Left $ T.pack "error: marshalling to arrayBuffer in changePassword failed"
       Just key -> Right . PrivateKey <$> arrayBufToByteString key
 
--- -- | Create a signature based on the given payload and `PrivateKey`.
+-- -- | Verify a signature based on the given payload and `PrivateKey`.
 verifySignature :: MonadJSM m => ByteString -> Signature -> PublicKey -> m Bool
 verifySignature msg (Signature sig) (PublicKey key) = liftJSM $ verify msg key sig
 
