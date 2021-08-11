@@ -17,12 +17,17 @@ import Control.Monad (guard)
 import Control.Monad.Fix (MonadFix)
 import Control.Monad.Trans (lift)
 import Control.Monad
+import Data.Aeson (ToJSON(..), FromJSON(..))
+import Data.Aeson.GADT.TH
 import Data.ByteString (ByteString)
+import Data.Constraint.Extras.TH
 import Data.Dependent.Sum
 import Data.Functor.Compose
 import Data.Functor.Identity
 import Data.GADT.Compare.TH
+import Data.GADT.Show.TH
 import Data.Traversable (for)
+import Data.Universe.Some.TH
 import Language.Javascript.JSaddle (MonadJSM)
 import Reflex.Dom.Core hiding (Key)
 import Pact.Server.ApiClient (HasTransactionLogger, askTransactionLogger, _transactionLogger_rotateLogFile)
@@ -35,7 +40,6 @@ import Frontend.AppCfg
 import Frontend.Crypto.Class
 import Frontend.Crypto.Password
 import Frontend.Crypto.Ed25519
-import Frontend.Crypto.CommonBIP
 import Frontend.Crypto.Browser
 import Frontend.Foundation
 import Frontend.Setup.Common
@@ -47,6 +51,20 @@ import Frontend.UI.Modal.Impl (showModalBrutal)
 import Frontend.UI.Dialogs.LogoutConfirmation (uiIdeLogoutConfirmation)
 import Frontend.UI.Widgets
 import Frontend.VersionedStore
+
+
+data BIPStorage a where
+  BIPStorage_RootKey :: BIPStorage PrivateKey
+deriving instance Show (BIPStorage a)
+
+concat <$> traverse ($ ''BIPStorage)
+  [ deriveGShow
+  , deriveGEq
+  , deriveGCompare
+  , deriveUniverseSome
+  , deriveArgDict
+  , deriveJSONGADT
+  ]
 
 data LockScreen a where
   LockScreen_Restore :: LockScreen PrivateKey

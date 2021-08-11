@@ -122,7 +122,6 @@ library
                  , Frontend.Crypto.Browser
                  , Frontend.Crypto.Class
                  , Frontend.Crypto.Ed25519
-                 , Frontend.Crypto.CommonBIP
                  , Frontend.Crypto.Password
                  , Frontend.Crypto.Signature
                  , Frontend.Editor
