@@ -1020,13 +1020,15 @@ gasPayersSection
   => model
   -> SharedNetInfo NodeInfo
   -> Map AccountName (AccountStatus AccountDetails)
+  -> Map AccountName (AccountStatus AccountDetails)
   -> TransferInfo
   -> m (GasPayers t)
-gasPayersSection model netInfo fks ti = do
+gasPayersSection model netInfo fks tks ti = do
     let fromChain = _ca_chain (_ti_fromAccount ti)
         fromAccount = _ca_account (_ti_fromAccount ti)
+        toAccount = _ca_account (_ti_toAccount ti)
         toChain = _ca_chain (_ti_toAccount ti)
-    (dgp1, mdgp2) <- if fromChain == toChain
+    (dgp1, mdmgp2) <- if fromChain == toChain
       then do
         let initialGasPayer = if _ti_maxAmount ti then Nothing else Just (_ca_account $ _ti_fromAccount ti)
         let goodGasPayer a = if _ti_maxAmount ti && a == fromAccount
@@ -1037,24 +1039,25 @@ gasPayersSection model netInfo fks ti = do
         pure $ (dgp1, Nothing)
       else do
         let mkLabel c = T.pack $ printf "Gas Paying Account (Chain %s)" (T.unpack $ _chainId c)
+            destinationStatus = Map.lookup toAccount tks
+            defaultDestGasPayer = case destinationStatus of
+              Just (AccountStatus_Exists _) -> toAccount
+              _ -> AccountName "free-x-chain-gas"
         (_,dgp1) <- uiAccountNameInput (mkLabel fromChain) True (Just $ _ca_account $ _ti_fromAccount ti) never noValidation
-        (_,dgp2) <- uiAccountNameInput (mkLabel toChain) True Nothing never noValidation
+        (_,dgp2) <- uiAccountNameInput (mkLabel toChain) True (Just defaultDestGasPayer) never noValidation
         pure $ (dgp1, Just dgp2)
-    let getGasPayerKeys chain mgp = do
-          case mgp of
-            Nothing -> return never
-            Just gp -> do
-              -- I think lookupKeySets can't be done in the PushM monad
-              evt <- lookupKeySets (model ^. logger) (_sharedNetInfo_network netInfo)
-                            (_sharedNetInfo_nodes netInfo) chain [gp]
-              return $ Map.lookup gp <$> fmapMaybe id evt
+    let
+      getGasPayerKeys chain mgp = do
+        case mgp of
+          Nothing -> return never
+          Just gp -> do
+            -- I think lookupKeySets can't be done in the PushM monad
+            evt <- lookupKeySets (model ^. logger) (_sharedNetInfo_network netInfo)
+                          (_sharedNetInfo_nodes netInfo) chain [gp]
+            return $ Map.lookup gp <$> fmapMaybe id evt
 
     -- Event t (Maybe AccountName)
     gp1Debounced <- debounce 1.0 $ updated dgp1
-    -- Maybe (Event t (Maybe AccountName))
-    mgp2Debounced <- maybe (return Nothing) (fmap Just . debounce 1.0 . updated) mdgp2
-    -- also not sure what to do if the source chain gas payer is the same as dest chain gas payer
-    -- should we let the user choose different signers for the source and dest chain?
     gp1Keys <- networkHold (return never)
                            (getGasPayerKeys fromChain <$> gp1Debounced)
     let initialDetails = Map.lookup fromAccount fks
@@ -1062,15 +1065,31 @@ gasPayersSection model netInfo fks ti = do
       [ (\a gp -> gp { gpdAccount = a }) <$> updated dgp1
       , (\keys gp -> gp { gpdDetails = keys }) <$> switch (current gp1Keys)
       ]
-    case mgp2Debounced of
-      Nothing -> return $ GasPayers gp1 Nothing
-      Just dgp2 -> do
-        gp2Keys <- networkHold (return never) (getGasPayerKeys toChain <$> dgp2)
+    --Outer maybe represents single chain transfer (so no second gas payer). Inner maybe represents
+    --an account name that is less than 3 chars for the "Destination Gas Payer" input field
+    mgp2 <- forM mdmgp2 $ \dmgp2 -> do
+        -- Take the initial value of the destination gas payer and lookup its details
+        initVal <- sample $ current dmgp2
+        initGasPayerDetails <- (fmap . fmap) (GasPayerDetails toChain initVal) $
+          getGasPayerKeys toChain initVal
+        updatedGP2 <- debounce 1.5 $ updated dmgp2
+        let (invalidGasPayer, newAccName) = fanEither $ ffor updatedGP2 $ \case
+              Nothing -> Left $ GasPayerDetails toChain Nothing Nothing
+              Just accName -> Right accName
+        -- gp2 and gp2Keys ---> is there a better way to do this??? Seems super redundant to
+        -- create a dynamic just for an event
+        gp2Keys <- networkHold (return never) (getGasPayerKeys toChain <$> updatedGP2)
         gp2 <- foldDyn ($) (GasPayerDetails toChain Nothing Nothing) $ leftmost
-          [ (\a gp -> gp { gpdAccount = a }) <$> maybe never updated mdgp2
+          [ (\a gp -> gp { gpdAccount = a }) <$> maybe never updated mdmgp2
           , (\keys gp -> gp { gpdDetails = keys }) <$> switch (current gp2Keys)
           ]
-        return $ GasPayers gp1 (Just gp2)
+        dgp2 <- holdDyn (GasPayerDetails toChain Nothing Nothing) $ leftmost [
+            initGasPayerDetails
+          , invalidGasPayer
+          , updated gp2
+          ]
+        return dgp2
+    return $ GasPayers gp1 mgp2
 
 
 data TransferMeta = TransferMeta
@@ -1147,8 +1166,7 @@ transferMetadata model netInfo fks tks ti ty = do
     el "br" blank
 
   dialogSectionHeading mempty "Gas Payers"
-  (GasPayers srcPayer mdestPayer) <- divClass "group" $ gasPayersSection model netInfo fks ti
-
+  (GasPayers srcPayer mdestPayer) <- divClass "group" $ gasPayersSection model netInfo fks tks ti
   let senderAction = getKeysetActionSingle fromChain (Just fromAccount) (Map.lookup fromAccount fks)
       getGpdAction (GasPayerDetails f a d) = getKeysetActionSingle f a d
       dSourceGasAction = getGpdAction <$> srcPayer
@@ -1225,7 +1243,12 @@ transferMetadata model netInfo fks tks ti ty = do
 
   dialogSectionHeading mempty "Transaction Settings"
   divClass "group" $ do
-    (conf, ttl, lim, price) <- uiMetaData model Nothing (if ty == SafeTransfer then Just 1200 else Just 600)
+    let defaultLimit = if ty == SafeTransfer
+          then Just 1200
+          else if fromChain == toChain
+            then Just 600
+            else Just 400  -- Cross-chains need to be under 400 in order to use gas-station
+    (conf, ttl, lim, price) <- uiMetaData model Nothing defaultLimit
     elAttr "div" ("style" =: "margin-top: 10px") $ do
       now <- fmap round $ liftIO $ getPOSIXTime
       let timeParser = maybe (Left "Not a valid creation time") Right . readMaybe . T.unpack
