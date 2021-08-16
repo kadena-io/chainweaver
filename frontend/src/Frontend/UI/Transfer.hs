@@ -562,9 +562,11 @@ checkReceivingAccount model netInfo ti ty fks tks fromPair = do
       (Just (AccountStatus_Exists (AccountDetails _ g)), Nothing) -> do
         if (_ca_chain $ _ti_fromAccount ti) /= (_ca_chain $ _ti_toAccount ti)
           then do
-            let AccountGuard_KeySetLike (KeySetHeritage ks p _ref) = g
-            let ti2 = ti { _ti_toKeyset = Just $ UserKeyset ks (parseKeysetPred p) }
-            transferDialog model netInfo ti2 ty fks tks fromPair
+            case g of
+              AccountGuard_KeySetLike (KeySetHeritage ks p _ref) ->
+                let ti2 = ti { _ti_toKeyset = Just $ UserKeyset ks (parseKeysetPred p) }
+                in transferDialog model netInfo ti2 ty fks tks fromPair
+              _ -> transferDialog model netInfo ti ty fks tks fromPair
           else
             -- Use transfer, probably show the guard at some point
             -- TODO check well-formedness of all keys in the keyset
