@@ -384,7 +384,6 @@ lookupAndTransfer model netInfo ti ty onCloseExternal = do
         toAccount = _ca_account $ _ti_toAccount ti
         toChain = _ca_chain $ _ti_toAccount ti
         accountNames = setify [fromAccount, toAccount]
-        accounts = unAccountName <$> accountNames
     efks <- lookupKeySets (model ^. logger) (_sharedNetInfo_network netInfo)
                  nodes fromChain accountNames
     etks <- if fromChain == toChain
@@ -566,7 +565,7 @@ checkReceivingAccount model netInfo ti ty fks tks fromPair = do
               AccountGuard_KeySetLike (KeySetHeritage ks p _ref) ->
                 let ti2 = ti { _ti_toKeyset = Just $ UserKeyset ks (parseKeysetPred p) }
                 in transferDialog model netInfo ti2 ty fks tks fromPair
-              _ -> transferDialog model netInfo ti ty fks tks fromPair
+              AccountGuard_Other _ -> transferDialog model netInfo ti ty fks tks fromPair
           else
             -- Use transfer, probably show the guard at some point
             -- TODO check well-formedness of all keys in the keyset
@@ -1030,6 +1029,10 @@ gasPayersSection model netInfo fks tks ti = do
         fromAccount = _ca_account (_ti_fromAccount ti)
         toAccount = _ca_account (_ti_toAccount ti)
         toChain = _ca_chain (_ti_toAccount ti)
+        defaultDestGasPayer = case Map.lookup toAccount tks of
+          Just (AccountStatus_Exists dets)
+            | _accountDetails_balance dets > AccountBalance 0 -> toAccount 
+          _ -> AccountName "free-x-chain-gas"
     (dgp1, mdmgp2) <- if fromChain == toChain
       then do
         let initialGasPayer = if _ti_maxAmount ti then Nothing else Just (_ca_account $ _ti_fromAccount ti)
@@ -1041,10 +1044,6 @@ gasPayersSection model netInfo fks tks ti = do
         pure $ (dgp1, Nothing)
       else do
         let mkLabel c = T.pack $ printf "Gas Paying Account (Chain %s)" (T.unpack $ _chainId c)
-            destinationStatus = Map.lookup toAccount tks
-            defaultDestGasPayer = case destinationStatus of
-              Just (AccountStatus_Exists _) -> toAccount
-              _ -> AccountName "free-x-chain-gas"
         (_,dgp1) <- uiAccountNameInput (mkLabel fromChain) True (Just $ _ca_account $ _ti_fromAccount ti) never noValidation
         (_,dgp2) <- uiAccountNameInput (mkLabel toChain) True (Just defaultDestGasPayer) never noValidation
         pure $ (dgp1, Just dgp2)
@@ -1071,9 +1070,8 @@ gasPayersSection model netInfo fks tks ti = do
     --an account name that is less than 3 chars for the "Destination Gas Payer" input field
     mgp2 <- forM mdmgp2 $ \dmgp2 -> do
         -- Take the initial value of the destination gas payer and lookup its details
-        initVal <- sample $ current dmgp2
-        initGasPayerDetails <- (fmap . fmap) (GasPayerDetails toChain initVal) $
-          getGasPayerKeys toChain initVal
+        initGasPayerDetails <- GasPayerDetails toChain (Just defaultDestGasPayer)
+          <$$> getGasPayerKeys toChain (Just defaultDestGasPayer)
         updatedGP2 <- debounce 1.5 $ updated dmgp2
         let (invalidGasPayer, newAccName) = fanEither $ ffor updatedGP2 $ \case
               Nothing -> Left $ GasPayerDetails toChain Nothing Nothing
