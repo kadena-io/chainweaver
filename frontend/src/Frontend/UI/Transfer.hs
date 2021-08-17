@@ -821,7 +821,7 @@ crossChainTransferAndStatus model netInfo ti cmd mdestGP destSigners = Workflow 
     let logL = model ^. logger
     let nodeInfos = _sharedNetInfo_nodes netInfo
     close <- modalHeader $ text "Cross Chain Transfer"
-    _ <- elClass "div" "modal__main" $ do
+    (resultOk, errMsg) <- elClass "div" "modal__main" $ do
       transactionHashSection cmd
       fbk <- submitTransactionAndListen model cmd fromAccount fromChain (fmap Right nodeInfos)
       let listenDone = ffilter (==Status_Done) $ updated $ _transactionSubmitFeedback_listenStatus fbk
@@ -850,8 +850,11 @@ crossChainTransferAndStatus model netInfo ti cmd mdestGP destSigners = Workflow 
           , blank <$ retry0
           ]
 
-      pure resultOk0
-    done <- modalFooter $ confirmButton def "Done"
+      pure (resultOk0, errMsg0)
+    done <- modalFooter $ do
+      disableButton <- holdDyn True $ False <$ leftmost [ resultOk, () <$ errMsg]
+      confirmButton (def { _uiButtonCfg_disabled = disableButton}) "Done"
+
     pure ((mempty, close <> done), never)
   where
     fromChain = _ca_chain $ _ti_fromAccount ti
