@@ -31,6 +31,7 @@ library
     , bimap
     , bound
     , bytestring
+    , case-insensitive
     , cassava
     , common
     , constraints

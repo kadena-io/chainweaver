@@ -9,7 +9,7 @@
 {-# LANGUAGE ViewPatterns #-}
 
 module Common.Network
-  ( NetworkName
+  ( NetworkName(..)
   , textNetworkName
   , mkNetworkName
   , networksPath
