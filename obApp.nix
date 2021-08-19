@@ -2,12 +2,9 @@
 , iosSdkVersion ? "10.2"
 , withHoogle ? false
 , kpkgs ? import ./dep/kpkgs { inherit system; }
+, obelisk
 }:
 let
-  obelisk = import ./.obelisk/impl {
-    inherit system iosSdkVersion;
-    inherit (kpkgs) reflex-platform-func;
-  };
   pkgs = obelisk.reflex-platform.nixpkgs;
 
   optionalExtension = cond: overlay: if cond then overlay else _: _: {};
