@@ -59,7 +59,7 @@ import           Frontend.UI.Dialogs.AccountDetails
 import           Frontend.UI.Dialogs.KeyDetails (uiKeyDetails)
 import           Frontend.UI.Dialogs.Receive (uiReceiveModal)
 import           Frontend.UI.Dialogs.WatchRequest (uiWatchRequestDialog)
-import           Frontend.UI.Dialogs.Send (uiSendModal, uiFinishCrossChainTransferModal)
+-- import           Frontend.UI.Dialogs.Send (uiSendModal)
 import           Frontend.UI.KeysetWidget
 import           Frontend.UI.Modal
 import           Frontend.Network
@@ -91,8 +91,7 @@ data AccountDialog
   | AccountDialog_Details AccountName (Maybe AccountNotes)
   | AccountDialog_Receive AccountName ChainId (Maybe AccountDetails)
   | AccountDialog_TransferTo AccountName AccountDetails ChainId
-  | AccountDialog_Send (AccountName, ChainId, AccountDetails) (Maybe UnfinishedCrossChainTransfer)
-  | AccountDialog_CompleteCrosschain AccountName ChainId UnfinishedCrossChainTransfer
+  -- | AccountDialog_Send (AccountName, ChainId, AccountDetails) (Maybe UnfinishedCrossChainTransfer)
 
 uiWalletRefreshButton
   :: (MonadWidget t m, Monoid mConf, HasWalletCfg mConf key t)
@@ -205,8 +204,7 @@ uiAccountItems model accountsMap = do
       AccountDialog_DetailsChain acc -> uiAccountDetailsOnChain n acc
       AccountDialog_Receive name chain details -> uiReceiveModal "Receive" model name chain details
       AccountDialog_TransferTo name details chain -> uiReceiveModal "Transfer To" model name chain (Just details)
-      AccountDialog_Send acc mucct -> uiSendModal model acc mucct
-      AccountDialog_CompleteCrosschain name chain ucct -> uiFinishCrossChainTransferModal model name chain ucct
+      -- AccountDialog_Send acc mucct -> uiSendModal model acc mucct
 
   refresh <- delay 1 =<< getPostBuild
 

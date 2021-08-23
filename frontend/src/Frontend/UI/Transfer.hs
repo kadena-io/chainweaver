@@ -646,7 +646,6 @@ transferDialog model netInfo ti ty fks tks _ = do
       (currentTab, _done) <- transferTabs newTab
       (conf, meta, payload, dSignedCmd, destChainInfo) <- mainSection currentTab
       (cancel, newTab, next) <- footerSection currentTab meta dSignedCmd
-
     case destChainInfo of
       Nothing -> do
         let nextScreen = ffor (tag (current dSignedCmd) next) $ \case
@@ -660,7 +659,7 @@ transferDialog model netInfo ti ty fks tks _ = do
         let nextScreen = ffor (tag allDyns next) $ \case
               (_,Nothing,_,_) -> Workflow $ pure (mempty, never)
               (p,Just sc,gp,ss) -> previewDialog model netInfo ti payload sc $
-                                     crossChainTransferAndStatus model netInfo ti sc gp ss
+                                     crossChainTransferAndStatus model netInfo ti sc gp ss meta
         pure ((conf, close <> cancel), nextScreen)
   where
     mainSection currentTab = elClass "div" "modal__main" $ do
@@ -777,7 +776,6 @@ previewDialog model netInfo ti payload cmd next = Workflow $ do
     fromAccount = _ca_account $ _ti_fromAccount ti
     toChain = _ca_chain $ _ti_toAccount ti
     toAccount = _ca_account $ _ti_toAccount ti
-    maxGas (GasLimit lim) (GasPrice p) = fromIntegral lim * p
 
 uiPreviewItem :: DomBuilder t m => Text -> m a -> m a
 uiPreviewItem label val =
@@ -817,8 +815,9 @@ crossChainTransferAndStatus
   -> Command Text
   -> Maybe (AccountName, AccountStatus AccountDetails)
   -> [Signer]
+  -> Dynamic t TransferMeta
   -> Workflow t m (mConf, Event t ())
-crossChainTransferAndStatus model netInfo ti cmd mdestGP destSigners = Workflow $ do
+crossChainTransferAndStatus model netInfo ti cmd mdestGP destSigners meta = Workflow $ do
     let logL = model ^. logger
     let nodeInfos = _sharedNetInfo_nodes netInfo
     close <- modalHeader $ text "Cross Chain Transfer"
@@ -835,7 +834,8 @@ crossChainTransferAndStatus model netInfo ti cmd mdestGP destSigners = Workflow 
             el "p" $ text $ "Cross chain transfer initiated on chain " <> _chainId fromChain
 
           keys <- sample $ current $ model ^. wallet_keys
-          runUnfinishedCrossChainTransfer logL netInfo keys fromChain toChain mdestGP rk
+          toChainMeta <- sample $ flip transferMetaToPublicMeta toChain <$> current meta
+          runUnfinishedCrossChainTransfer logL netInfo keys fromChain toChain mdestGP rk toChainMeta
 
       let isError = \case
             Just (Left _) -> True
@@ -965,13 +965,7 @@ buildUnsignedCmd netInfo ti ty tmeta = payload
                (Just dataKey, printf "(coin.transfer-crosschain %s %s (read-keyset '%s) %s %s)"
                              (show fromAccount) (show toAccount) (T.unpack dataKey) (show toChain) amountText)
     tdata = maybe Null (\a -> object [ dataKey .= toJSON (userToPactKeyset a) ]) $ _ti_toKeyset ti
-    lim = _transferMeta_gasLimit tmeta
-    price = _transferMeta_gasPrice tmeta
-    ttl = _transferMeta_ttl tmeta
-    ct = _transferMeta_creationTime tmeta
-    sender = maybe "" unAccountName $ _transferMeta_senderAccount tmeta
-    meta = PublicMeta fromChain sender lim price ttl ct
-
+    meta = transferMetaToPublicMeta tmeta fromChain
     signers = _transferMeta_sourceChainSigners tmeta
 
     payload = Payload
@@ -1103,6 +1097,16 @@ data TransferMeta = TransferMeta
   , _transferMeta_creationTime :: TxCreationTime
   , _transferMeta_sourceChainSigners :: [Signer]
   } deriving (Eq,Ord,Show)
+
+transferMetaToPublicMeta :: TransferMeta -> ChainId -> PublicMeta
+transferMetaToPublicMeta tmeta chainId =
+  let
+    lim = _transferMeta_gasLimit tmeta
+    price = _transferMeta_gasPrice tmeta
+    ttl = _transferMeta_ttl tmeta
+    ct = _transferMeta_creationTime tmeta
+    sender = maybe "" unAccountName $ _transferMeta_senderAccount tmeta
+  in PublicMeta chainId sender lim price ttl ct
 
 transferCapability :: AccountName -> AccountName -> Decimal -> SigCapability
 transferCapability from to amount = SigCapability

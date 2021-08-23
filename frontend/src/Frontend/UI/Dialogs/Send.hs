@@ -114,41 +114,41 @@ data InitialTransferData
   = InitialTransferData_Account (AccountName, ChainId, AccountDetails) (Maybe UnfinishedCrossChainTransfer)
   | InitialTransferData_Transfer TransferData
 
--- | A modal for handling sending coin
-uiSendModal
-  :: ( SendConstraints model mConf key t m
-     , Flattenable mConf t
-     , HasTransactionLogger m
-     )
-  => model
-  -> (AccountName, ChainId, AccountDetails)
-  -> Maybe UnfinishedCrossChainTransfer
-  -> Event t ()
-  -> m (mConf, Event t ())
-uiSendModal model (name, chain, acc) mucct _onCloseExternal = do
-  (conf, closes) <- fmap splitDynPure $ workflow $ sendConfig model
-    $ InitialTransferData_Account (name, chain, acc) mucct
+-- -- | A modal for handling sending coin
+-- uiSendModal
+--   :: ( SendConstraints model mConf key t m
+--      , Flattenable mConf t
+--      , HasTransactionLogger m
+--      )
+--   => model
+--   -> (AccountName, ChainId, AccountDetails)
+--   -> Maybe UnfinishedCrossChainTransfer
+--   -> Event t ()
+--   -> m (mConf, Event t ())
+-- uiSendModal model (name, chain, acc) mucct _onCloseExternal = do
+--   (conf, closes) <- fmap splitDynPure $ workflow $ sendConfig model
+--     $ InitialTransferData_Account (name, chain, acc) mucct
 
-  mConf <- flatten =<< tagOnPostBuild conf
-  let close = switch $ current closes
-  pure (mConf, close)
+--   mConf <- flatten =<< tagOnPostBuild conf
+--   let close = switch $ current closes
+--   pure (mConf, close)
 
-uiFinishCrossChainTransferModal
-  :: ( SendConstraints model mConf key t m
-     , Flattenable mConf t
-     , HasTransactionLogger m
-     )
-  => model
-  -> AccountName
-  -> ChainId
-  -> UnfinishedCrossChainTransfer
-  -> Event t ()
-  -> m (mConf, Event t ())
-uiFinishCrossChainTransferModal model name chain ucct _onCloseExternal = do
-  (conf, closes) <- fmap splitDynPure $ workflow $ finishCrossChainTransferConfig model (name, chain) ucct
-  mConf <- flatten =<< tagOnPostBuild conf
-  let close = switch $ current closes
-  pure (mConf, close)
+-- uiFinishCrossChainTransferModal
+--   :: ( SendConstraints model mConf key t m
+--      , Flattenable mConf t
+--      , HasTransactionLogger m
+--      )
+--   => model
+--   -> AccountName
+--   -> ChainId
+--   -> UnfinishedCrossChainTransfer
+--   -> Event t ()
+--   -> m (mConf, Event t ())
+-- uiFinishCrossChainTransferModal model name chain ucct _onCloseExternal = do
+--   (conf, closes) <- fmap splitDynPure $ workflow $ finishCrossChainTransferConfig model (name, chain) ucct
+--   mConf <- flatten =<< tagOnPostBuild conf
+--   let close = switch $ current closes
+--   pure (mConf, close)
 
 initialTransferDataCata
   :: ((AccountName, ChainId, AccountDetails) -> Maybe UnfinishedCrossChainTransfer -> b)
@@ -165,80 +165,81 @@ withInitialTransfer :: (TransferData -> a) -> InitialTransferData -> Maybe a
 withInitialTransfer f (InitialTransferData_Transfer t) = Just $ f t
 withInitialTransfer _ (InitialTransferData_Account _ _) = Nothing
 
--- | Preview the transfer. Doesn't actually send any requests.
-previewTransfer
-  :: forall model mConf key t m.
-    ( SendConstraints model mConf key t m
-    , HasTransactionLogger m
-    )
-  => model
-  -> TransferData
-  -> Workflow t m (mConf, Event t ())
-previewTransfer model transfer = Workflow $ do
-  let
-    cidDisplay lbl cid = mkLabeledInput True lbl uiInputElement $ def
-      & initialAttributes %~ Map.insert "disabled" ""
-      & inputElementConfig_initialValue .~ _chainId cid
+-- -- | Preview the transfer. Doesn't actually send any requests.
+-- previewTransfer
+--   :: forall model mConf key t m.
+--     ( SendConstraints model mConf key t m
+--     , HasTransactionLogger m
+--     )
+--   => model
+--   -> TransferData
+--   -> Workflow t m (mConf, Event t ())
+-- previewTransfer model transfer = Workflow $ do
+--   let
+--     cidDisplay lbl cid = mkLabeledInput True lbl uiInputElement $ def
+--       & initialAttributes %~ Map.insert "disabled" ""
+--       & inputElementConfig_initialValue .~ _chainId cid
 
-    toTxBuilder = _transferData_toTxBuilder transfer
-    fromAccount@(fromName,fromChain,_) = _transferData_fromAccount transfer
-    fromGasPayer = _transferData_fromGasPayer transfer
-    crossChainData = _transferData_crossChainData transfer
-    amount = _transferData_amount transfer
-  close <- modalHeader $ text "Transaction Preview"
-  elClass "div" "modal__main" $ do
-    dialogSectionHeading mempty "Destination"
-    divClass "group" $ do
-      transactionDisplayNetwork model
-      case crossChainData of
-        Nothing ->
-          void $ predefinedChainIdDisplayed fromChain
-        Just _ -> do
-          _ <- cidDisplay "From Chain ID" fromChain
-          _ <- cidDisplay "To Chain ID" (_txBuilder_chainId toTxBuilder)
-          pure ()
+--     toTxBuilder = _transferData_toTxBuilder transfer
+--     fromAccount@(fromName,fromChain,_) = _transferData_fromAccount transfer
+--     fromGasPayer = _transferData_fromGasPayer transfer
+--     crossChainData = _transferData_crossChainData transfer
+--     amount = _transferData_amount transfer
+--   close <- modalHeader $ text "Transaction Preview"
+--   elClass "div" "modal__main" $ do
+--     dialogSectionHeading mempty "Destination"
+--     divClass "group" $ do
+--       transactionDisplayNetwork model
+--       case crossChainData of
+--         Nothing ->
+--           void $ predefinedChainIdDisplayed fromChain
+--         Just _ -> do
+--           _ <- cidDisplay "From Chain ID" fromChain
+--           _ <- cidDisplay "To Chain ID" (_txBuilder_chainId toTxBuilder)
+--           pure ()
 
-    dialogSectionHeading mempty "Participants"
-    divClass "group" $ do
-      mkLabeledInput True "Sender Account" uiInputElement $ def
-        & initialAttributes .~ "disabled" =: "disabled"
-        & inputElementConfig_initialValue .~ unAccountName fromName
-      let gasLabel = "Gas Payer" <> case crossChainData of
-            Nothing -> ""
-            Just _ -> " (Chain " <> _chainId fromChain <> ")"
-      mkLabeledInput True gasLabel uiInputElement $ def
-        & initialAttributes .~ "disabled" =: "disabled"
-        & inputElementConfig_initialValue .~ unAccountName (fst fromGasPayer)
-      mkLabeledInput True "Recipient Account" uiInputElement $ def
-        & initialAttributes .~ "disabled" =: "disabled"
-        & inputElementConfig_initialValue .~ unAccountName (_txBuilder_accountName toTxBuilder)
-      for_ crossChainData $ \ccd -> do
-        let toChain = _txBuilder_chainId toTxBuilder
-        mkLabeledInput True ("Gas Payer (Chain " <> _chainId toChain <> ")") uiInputElement $ def
-          & initialAttributes .~ "disabled" =: "disabled"
-          & inputElementConfig_initialValue .~ unAccountName (fst $ _crossChainData_recipientChainGasPayer ccd)
-    dialogSectionHeading mempty "Transaction Details"
-    divClass "group" $ do
-      void $ mkLabeledInput True "Amount" (uiGasPriceInputField never) $ def
-        & initialAttributes .~ "disabled" =: "disabled"
-        & inputElementConfig_initialValue .~ tshow amount
-      -- TODO The designs show gas fees here, but we can't get that information yet.
-  (back, next) <- modalFooter $ do
-    back <- cancelButton def "Back"
-    next <- confirmButton def "Create Transaction"
-    pure (back, next)
-  let nextScreen = leftmost
-        [ sendConfig model (InitialTransferData_Transfer transfer) <$ back
-        , flip push next $ \() -> do
-          mNetInfo <- sampleNetInfo model
-          keys <- sample $ current $ model ^. wallet_keys
-          AccountData accounts <- sample $ current $ model ^. wallet_accounts
-          let toAccount n = maybe (Left toTxBuilder) Right $ lookupAccountByTxBuilder toTxBuilder =<< Map.lookup n accounts
-          pure $ ffor mNetInfo $ \n -> case crossChainData of
-            Nothing -> sameChainTransfer (model ^. logger) n keys fromAccount fromGasPayer toTxBuilder amount
-            Just ccd -> crossChainTransfer (model ^. logger) n keys fromAccount (toAccount $ _sharedNetInfo_network n) fromGasPayer ccd amount
-        ]
-  pure ((mempty, close), nextScreen)
+--     dialogSectionHeading mempty "Participants"
+--     display $ model ^. network_meta
+--     divClass "group" $ do
+--       mkLabeledInput True "Sender Account" uiInputElement $ def
+--         & initialAttributes .~ "disabled" =: "disabled"
+--         & inputElementConfig_initialValue .~ unAccountName fromName
+--       let gasLabel = "Gas Payer" <> case crossChainData of
+--             Nothing -> ""
+--             Just _ -> " (Chain " <> _chainId fromChain <> ")"
+--       mkLabeledInput True gasLabel uiInputElement $ def
+--         & initialAttributes .~ "disabled" =: "disabled"
+--         & inputElementConfig_initialValue .~ unAccountName (fst fromGasPayer)
+--       mkLabeledInput True "Recipient Account" uiInputElement $ def
+--         & initialAttributes .~ "disabled" =: "disabled"
+--         & inputElementConfig_initialValue .~ unAccountName (_txBuilder_accountName toTxBuilder)
+--       for_ crossChainData $ \ccd -> do
+--         let toChain = _txBuilder_chainId toTxBuilder
+--         mkLabeledInput True ("Gas Payer (Chain " <> _chainId toChain <> ")") uiInputElement $ def
+--           & initialAttributes .~ "disabled" =: "disabled"
+--           & inputElementConfig_initialValue .~ unAccountName (fst $ _crossChainData_recipientChainGasPayer ccd)
+--     dialogSectionHeading mempty "Transaction Details"
+--     divClass "group" $ do
+--       void $ mkLabeledInput True "Amount" (uiGasPriceInputField never) $ def
+--         & initialAttributes .~ "disabled" =: "disabled"
+--         & inputElementConfig_initialValue .~ tshow amount
+--       -- TODO The designs show gas fees here, but we can't get that information yet.
+--   (back, next) <- modalFooter $ do
+--     back <- cancelButton def "Back"
+--     next <- confirmButton def "Create Transaction"
+--     pure (back, next)
+--   let nextScreen = leftmost
+--         [ sendConfig model (InitialTransferData_Transfer transfer) <$ back
+--         , flip push next $ \() -> do
+--           mNetInfo <- sampleNetInfo model
+--           keys <- sample $ current $ model ^. wallet_keys
+--           AccountData accounts <- sample $ current $ model ^. wallet_accounts
+--           let toAccount n = maybe (Left toTxBuilder) Right $ lookupAccountByTxBuilder toTxBuilder =<< Map.lookup n accounts
+--           pure $ ffor mNetInfo $ \n -> case crossChainData of
+--             Nothing -> sameChainTransfer (model ^. logger) n keys fromAccount fromGasPayer toTxBuilder amount
+--             Just ccd -> crossChainTransfer (model ^. logger) n keys fromAccount (toAccount $ _sharedNetInfo_network n) fromGasPayer ccd amount
+--         ]
+--   pure ((mempty, close), nextScreen)
 
 lookupAccountByTxBuilder :: TxBuilder -> Map AccountName (AccountInfo Account) -> Maybe (AccountName, ChainId, Account)
 lookupAccountByTxBuilder ka accounts = (name, chain,) <$> accounts ^? ix name . accountInfo_chains . ix chain
@@ -305,195 +306,195 @@ sameChainTransfer model netInfo keys (fromName, fromChain, fromAcc) (gasPayer, g
     , never
     )
 
--- | General transfer workflow. This is the initial configuration screen.
-sendConfig
-  :: ( SendConstraints model mConf key t m
-     , HasTransactionLogger m
-     )
-  => model
-  -> InitialTransferData
-  -> Workflow t m (mConf, Event t ())
-sendConfig model initData = Workflow $ do
-  close <- modalHeader $ text "Send"
-  rec
-    (currentTab, _done) <- makeTabs initData $ leftmost [prevTab, fmapMaybe id nextTab]
-    (conf, mCaps, recipient) <- mainSection currentTab
-    (cancel, prevTab, nextTab, onFinishXChain) <- footerSection currentTab recipient mCaps
-  let onToPreviewTransfer = flip push nextTab $ \case
-        Just _ -> pure Nothing
-        Nothing -> runMaybeT $ do
-          (fromGasPayer, mToGasPayer) <- MaybeT $ sample $ current mCaps
-          (toAccount, amount) <- MaybeT $ fmap hush $ sample $ current recipient
-          let mCCD = case mToGasPayer of
-                Just toGasPayer | toGasPayer /= fromGasPayer -> Just $ CrossChainData
-                  { _crossChainData_recipientChainGasPayer = toGasPayer
-                  }
-                _ -> Nothing
-          let transfer = TransferData
-                { _transferData_amount = amount
-                , _transferData_crossChainData = mCCD
-                , _transferData_fromAccount = fromAccount
-                , _transferData_fromGasPayer = fromGasPayer
-                , _transferData_toTxBuilder = toAccount
-                }
-          pure $ previewTransfer model transfer
-  pure ( (conf, close <> cancel)
-       , leftmost
-         [ onToPreviewTransfer
-         , finishCrossChainTransferConfig model (fromName, fromChain) <$> onFinishXChain
-         ]
-       )
-  where
-    (fromAccount@(fromName, fromChain, fromAcc), mUcct) = initialTransferDataCata
-      (,)
-      ((,Nothing) . _transferData_fromAccount)
-      initData
+-- -- | General transfer workflow. This is the initial configuration screen.
+-- sendConfig
+--   :: ( SendConstraints model mConf key t m
+--      , HasTransactionLogger m
+--      )
+--   => model
+--   -> InitialTransferData
+--   -> Workflow t m (mConf, Event t ())
+-- sendConfig model initData = Workflow $ do
+--   close <- modalHeader $ text "Send"
+--   rec
+--     (currentTab, _done) <- makeTabs initData $ leftmost [prevTab, fmapMaybe id nextTab]
+--     (conf, mCaps, recipient) <- mainSection currentTab
+--     (cancel, prevTab, nextTab, onFinishXChain) <- footerSection currentTab recipient mCaps
+--   let onToPreviewTransfer = flip push nextTab $ \case
+--         Just _ -> pure Nothing
+--         Nothing -> runMaybeT $ do
+--           (fromGasPayer, mToGasPayer) <- MaybeT $ sample $ current mCaps
+--           (toAccount, amount) <- MaybeT $ fmap hush $ sample $ current recipient
+--           let mCCD = case mToGasPayer of
+--                 Just toGasPayer | toGasPayer /= fromGasPayer -> Just $ CrossChainData
+--                   { _crossChainData_recipientChainGasPayer = toGasPayer
+--                   }
+--                 _ -> Nothing
+--           let transfer = TransferData
+--                 { _transferData_amount = amount
+--                 , _transferData_crossChainData = mCCD
+--                 , _transferData_fromAccount = fromAccount
+--                 , _transferData_fromGasPayer = fromGasPayer
+--                 , _transferData_toTxBuilder = toAccount
+--                 }
+--           pure $ previewTransfer model transfer
+--   pure ( (conf, close <> cancel)
+--        , leftmost
+--          [ onToPreviewTransfer
+--          , finishCrossChainTransferConfig model (fromName, fromChain) <$> onFinishXChain
+--          ]
+--        )
+--   where
+--     (fromAccount@(fromName, fromChain, fromAcc), mUcct) = initialTransferDataCata
+--       (,)
+--       ((,Nothing) . _transferData_fromAccount)
+--       initData
 
-    mInitToAddress = withInitialTransfer _transferData_toTxBuilder initData
-    mInitFromGasPayer = withInitialTransfer (_transferData_fromGasPayer) initData
-    mInitCrossChainGasPayer = join $ withInitialTransfer (fmap (_crossChainData_recipientChainGasPayer) . _transferData_crossChainData) initData
-    mInitAmount = withInitialTransfer _transferData_amount initData
+--     mInitToAddress = withInitialTransfer _transferData_toTxBuilder initData
+--     mInitFromGasPayer = withInitialTransfer (_transferData_fromGasPayer) initData
+--     mInitCrossChainGasPayer = join $ withInitialTransfer (fmap (_crossChainData_recipientChainGasPayer) . _transferData_crossChainData) initData
+--     mInitAmount = withInitialTransfer _transferData_amount initData
 
-    insufficientFundsMsg = "Sender has insufficient funds."
-    cannotBeReceiverMsg = "Sender cannot be the receiver of a transfer"
+--     insufficientFundsMsg = "Sender has insufficient funds."
+--     cannotBeReceiverMsg = "Sender cannot be the receiver of a transfer"
 
-    mainSection currentTab = elClass "div" "modal__main" $ do
-      (conf, useEntireBalance, txBuilder, amount) <- tabPane mempty currentTab SendModalTab_Configuration $ do
+--     mainSection currentTab = elClass "div" "modal__main" $ do
+--       (conf, useEntireBalance, txBuilder, amount) <- tabPane mempty currentTab SendModalTab_Configuration $ do
 
-        let balance = fromAcc ^. accountDetails_balance . to unAccountBalance
+--         let balance = fromAcc ^. accountDetails_balance . to unAccountBalance
 
-        dialogSectionHeading mempty "Destination"
-        divClass "group" $ transactionDisplayNetwork model
+--         dialogSectionHeading mempty "Destination"
+--         divClass "group" $ transactionDisplayNetwork model
 
-        dialogSectionHeading mempty "Amount"
-        (useEntireBalance, validatedAmount) <- divClass "group" $ do
-          let checkFunds amt =
-                if amt > balance then
-                  PopoverState_Error insufficientFundsMsg
-                else
-                  PopoverState_Disabled
+--         dialogSectionHeading mempty "Amount"
+--         (useEntireBalance, validatedAmount) <- divClass "group" $ do
+--           let checkFunds amt =
+--                 if amt > balance then
+--                   PopoverState_Error insufficientFundsMsg
+--                 else
+--                   PopoverState_Disabled
 
-              -- NOTE If this results in an event loop, might need to switch to
-              -- using the change event rather than the value
-              showGasPriceInsuffPopover (ie, v) = pure $ leftmost
-                [ PopoverState_Disabled <$ ffilter T.null (_inputElement_input ie)
-                , ffor (ffilter isLeft $ updated v) $ either (PopoverState_Error . T.pack) (const PopoverState_Disabled)
-                , ffor (fmapMaybe hush $ updated v) checkFunds
-                ]
+--               -- NOTE If this results in an event loop, might need to switch to
+--               -- using the change event rather than the value
+--               showGasPriceInsuffPopover (ie, v) = pure $ leftmost
+--                 [ PopoverState_Disabled <$ ffilter T.null (_inputElement_input ie)
+--                 , ffor (ffilter isLeft $ updated v) $ either (PopoverState_Error . T.pack) (const PopoverState_Disabled)
+--                 , ffor (fmapMaybe hush $ updated v) checkFunds
+--                 ]
 
-              gasInputWithMaxButton cfg = mdo
+--               gasInputWithMaxButton cfg = mdo
 
-                let attrs = ffor useEntireBalance $ \u ->
-                      "disabled" =: ("disabled" <$ u)
+--                 let attrs = ffor useEntireBalance $ \u ->
+--                       "disabled" =: ("disabled" <$ u)
 
-                (_, amountValue) <- uiInputWithPopover uiAmountInput
-                  (_inputElement_raw . fst)
-                  showGasPriceInsuffPopover $ cfg
-                    & inputElementConfig_setValue .~ fmap tshow (mapMaybe id $ updated useEntireBalance)
-                    & inputElementConfig_elementConfig . elementConfig_modifyAttributes .~ updated attrs
+--                 (_, amountValue) <- uiInputWithPopover uiAmountInput
+--                   (_inputElement_raw . fst)
+--                   showGasPriceInsuffPopover $ cfg
+--                     & inputElementConfig_setValue .~ fmap tshow (mapMaybe id $ updated useEntireBalance)
+--                     & inputElementConfig_elementConfig . elementConfig_modifyAttributes .~ updated attrs
 
-                useEntireBalance <- do
-                  cb <- uiCheckbox "input-max-toggle" False def (text "Max")
-                  pure $ fmap (\v -> balance <$ guard v) $ _checkbox_value cb
+--                 useEntireBalance <- do
+--                   cb <- uiCheckbox "input-max-toggle" False def (text "Max")
+--                   pure $ fmap (\v -> balance <$ guard v) $ _checkbox_value cb
 
-                pure ( isJust <$> useEntireBalance
-                     , amountValue
-                     )
+--                 pure ( isJust <$> useEntireBalance
+--                      , amountValue
+--                      )
 
-          (useEntireBalance, amount) <- mkLabeledInput True "Amount" gasInputWithMaxButton $ def
-            & inputElementConfig_initialValue .~ maybe "" tshow mInitAmount
+--           (useEntireBalance, amount) <- mkLabeledInput True "Amount" gasInputWithMaxButton $ def
+--             & inputElementConfig_initialValue .~ maybe "" tshow mInitAmount
 
-          let validatedAmount = runExceptT $ do
-                a <- ExceptT $ either (\_ -> Left "Invalid amount") Right <$> amount
-                when (a > balance) $
-                  throwError insufficientFundsMsg
-                pure a
+--           let validatedAmount = runExceptT $ do
+--                 a <- ExceptT $ either (\_ -> Left "Invalid amount") Right <$> amount
+--                 when (a > balance) $
+--                   throwError insufficientFundsMsg
+--                 pure a
 
-          pure (useEntireBalance, validatedAmount)
+--           pure (useEntireBalance, validatedAmount)
 
-        dialogSectionHeading mempty "Recipient Info"
-        validatedTxBuilder <- divClass "group" $ do
-          dTxBuilder <- uiExplodedTxBuilder model fromName fromChain mUcct mInitToAddress
-          pure $ runExceptT $ do
-            r <- failWithM "Invalid Tx Builder" dTxBuilder
-            when (recipientMatchesSenderTxBuilder (fromName, fromChain) r) $
-              throwError cannotBeReceiverMsg
-            pure r
+--         dialogSectionHeading mempty "Recipient Info"
+--         validatedTxBuilder <- divClass "group" $ do
+--           dTxBuilder <- uiExplodedTxBuilder model fromName fromChain mUcct mInitToAddress
+--           pure $ runExceptT $ do
+--             r <- failWithM "Invalid Tx Builder" dTxBuilder
+--             when (recipientMatchesSenderTxBuilder (fromName, fromChain) r) $
+--               throwError cannotBeReceiverMsg
+--             pure r
 
-        dialogSectionHeading mempty  "Transaction Settings"
-        (conf, _, _, _) <- divClass "group" $ uiMetaData model Nothing Nothing
+--         dialogSectionHeading mempty  "Transaction Settings"
+--         (conf, _, _, _) <- divClass "group" $ uiMetaData model Nothing Nothing
 
-        pure (conf, useEntireBalance, validatedTxBuilder, validatedAmount)
+--         pure (conf, useEntireBalance, validatedTxBuilder, validatedAmount)
 
-      mCaps <- tabPane mempty currentTab SendModalTab_Sign $ do
-        dedrecipient <- eitherDyn txBuilder
-        fmap join . holdDyn (pure Nothing) <=< dyn $ ffor dedrecipient $ \case
-          Left de -> do
-            divClass "group" $ dynText $ ffor de (<> ": please go back and check the configuration.")
-            pure $ pure Nothing
-          Right dka -> do
-            toChain <- holdUniqDyn $ _txBuilder_chainId <$> dka
-            let isCross = ffor toChain (fromChain /=)
-                gasPayerSection forChain mpayer accountPredicate mkPlaceholder = do
-                  dyn_ $ ffor2 isCross forChain $ \x c ->
-                    dialogSectionHeading mempty $ "Gas Payer" <> if x then " (Chain " <> _chainId c <> ")" else ""
-                  divClass "group" $ elClass "div" "segment segment_type_tertiary labeled-input" $ do
-                    divClass "label labeled-input__label" $ text "Account Name"
-                    let cfg = def & dropdownConfig_attributes .~ pure ("class" =: "labeled-input__input select select_mandatory_missing")
-                        chain = fmap Just forChain
-                        allowAccount = ffor accountPredicate $ \p an acc -> p an acc && fromMaybe False (accountHasFunds acc)
-                    uiAccountDropdown' cfg allowAccount mkPlaceholder model (mpayer ^? _Just . _1) chain never
+--       mCaps <- tabPane mempty currentTab SendModalTab_Sign $ do
+--         dedrecipient <- eitherDyn txBuilder
+--         fmap join . holdDyn (pure Nothing) <=< dyn $ ffor dedrecipient $ \case
+--           Left de -> do
+--             divClass "group" $ dynText $ ffor de (<> ": please go back and check the configuration.")
+--             pure $ pure Nothing
+--           Right dka -> do
+--             toChain <- holdUniqDyn $ _txBuilder_chainId <$> dka
+--             let isCross = ffor toChain (fromChain /=)
+--                 gasPayerSection forChain mpayer accountPredicate mkPlaceholder = do
+--                   dyn_ $ ffor2 isCross forChain $ \x c ->
+--                     dialogSectionHeading mempty $ "Gas Payer" <> if x then " (Chain " <> _chainId c <> ")" else ""
+--                   divClass "group" $ elClass "div" "segment segment_type_tertiary labeled-input" $ do
+--                     divClass "label labeled-input__label" $ text "Account Name"
+--                     let cfg = def & dropdownConfig_attributes .~ pure ("class" =: "labeled-input__input select select_mandatory_missing")
+--                         chain = fmap Just forChain
+--                         allowAccount = ffor accountPredicate $ \p an acc -> p an acc && fromMaybe False (accountHasFunds acc)
+--                     uiAccountDropdown' cfg allowAccount mkPlaceholder model (mpayer ^? _Just . _1) chain never
 
-            dyn_ $ ffor2 isCross toChain $ \x c -> when x $ do
-              elClass "h3" ("heading heading_type_h3") $ text "This is a cross chain transfer."
-              el "p" $ text $ T.concat
-                [ "Coin will be transferred from chain "
-                , _chainId fromChain
-                , " to chain "
-                , _chainId c
-                , "."
-                ]
-              el "p" $ text $ T.unwords
-                [ "This is a multi step operation."
-                , "The coin will leave the sender account immediately, and gas must be paid on the recipient chain in order to redeem the coin."
-                ]
-            fromGasPayer <- mdo
-              let allowAccount = ffor useEntireBalance $ \useAll an _ -> not $ useAll && fromName == an
-                  mkPlaceholder = ffor useEntireBalance $ bool id (<> " (sender excluded due to maximum transfer)")
-              gasPayerSection (pure fromChain) mInitFromGasPayer allowAccount mkPlaceholder
-            toGasPayer <- fmap join . holdDyn (pure Nothing) <=< dyn $ ffor isCross $ \x ->
-              if not x
-              then pure $ pure $ Just Nothing
-              else (fmap . fmap . fmap) Just $ do
-                -- TODO this bit should have an option with a generic input for Ed25519 keys
-                -- and perhaps be skippable entirely in favour of a blob the user
-                -- can send to someone else to continue the tx on the recipient chain
-                gasPayerSection toChain mInitCrossChainGasPayer (pure $ \_ _ -> True) (pure id)
-            pure $ (liftA2 . liftA2) (,) fromGasPayer toGasPayer
-      pure (conf, mCaps, (liftA2 . liftA2) (,) txBuilder amount)
+--             dyn_ $ ffor2 isCross toChain $ \x c -> when x $ do
+--               elClass "h3" ("heading heading_type_h3") $ text "This is a cross chain transfer."
+--               el "p" $ text $ T.concat
+--                 [ "Coin will be transferred from chain "
+--                 , _chainId fromChain
+--                 , " to chain "
+--                 , _chainId c
+--                 , "."
+--                 ]
+--               el "p" $ text $ T.unwords
+--                 [ "This is a multi step operation."
+--                 , "The coin will leave the sender account immediately, and gas must be paid on the recipient chain in order to redeem the coin."
+--                 ]
+--             fromGasPayer <- mdo
+--               let allowAccount = ffor useEntireBalance $ \useAll an _ -> not $ useAll && fromName == an
+--                   mkPlaceholder = ffor useEntireBalance $ bool id (<> " (sender excluded due to maximum transfer)")
+--               gasPayerSection (pure fromChain) mInitFromGasPayer allowAccount mkPlaceholder
+--             toGasPayer <- fmap join . holdDyn (pure Nothing) <=< dyn $ ffor isCross $ \x ->
+--               if not x
+--               then pure $ pure $ Just Nothing
+--               else (fmap . fmap . fmap) Just $ do
+--                 -- TODO this bit should have an option with a generic input for Ed25519 keys
+--                 -- and perhaps be skippable entirely in favour of a blob the user
+--                 -- can send to someone else to continue the tx on the recipient chain
+--                 gasPayerSection toChain mInitCrossChainGasPayer (pure $ \_ _ -> True) (pure id)
+--             pure $ (liftA2 . liftA2) (,) fromGasPayer toGasPayer
+--       pure (conf, mCaps, (liftA2 . liftA2) (,) txBuilder amount)
 
-    footerSection currentTab recipient mCaps = modalFooter $ do
-      let (lbl, fanTag) = splitDynPure $ ffor currentTab $ \case
-            SendModalTab_Configuration -> ("Cancel", Left ())
-            SendModalTab_Sign -> ("Back", Right SendModalTab_Configuration)
+--     footerSection currentTab recipient mCaps = modalFooter $ do
+--       let (lbl, fanTag) = splitDynPure $ ffor currentTab $ \case
+--             SendModalTab_Configuration -> ("Cancel", Left ())
+--             SendModalTab_Sign -> ("Back", Right SendModalTab_Configuration)
 
-      onFinXChain <- case mUcct of
-        Nothing -> pure never
-        Just ucct -> fmap (ucct <$) $ confirmButton def "Complete Crosschain"
+--       onFinXChain <- case mUcct of
+--         Nothing -> pure never
+--         Just ucct -> fmap (ucct <$) $ confirmButton def "Complete Crosschain"
 
-      ev <- cancelButton def lbl
-      let (cancel, back) = fanEither $ current fanTag <@ ev
-          (name, disabled) = splitDynPure $ ffor currentTab $ \case
-            SendModalTab_Configuration -> ("Next", fmap isLeft recipient)
-            SendModalTab_Sign -> ("Preview", fmap isNothing mCaps)
-          cfg = def
-            & uiButtonCfg_class <>~ "button_type_confirm"
-            & uiButtonCfg_disabled .~ join disabled
-      next <- uiButtonDyn cfg $ dynText name
-      let nextTab = ffor (current currentTab <@ next) $ \case
-            SendModalTab_Configuration -> Just SendModalTab_Sign
-            SendModalTab_Sign -> Nothing
-      pure (cancel, back, nextTab, onFinXChain)
+--       ev <- cancelButton def lbl
+--       let (cancel, back) = fanEither $ current fanTag <@ ev
+--           (name, disabled) = splitDynPure $ ffor currentTab $ \case
+--             SendModalTab_Configuration -> ("Next", fmap isLeft recipient)
+--             SendModalTab_Sign -> ("Preview", fmap isNothing mCaps)
+--           cfg = def
+--             & uiButtonCfg_class <>~ "button_type_confirm"
+--             & uiButtonCfg_disabled .~ join disabled
+--       next <- uiButtonDyn cfg $ dynText name
+--       let nextTab = ffor (current currentTab <@ next) $ \case
+--             SendModalTab_Configuration -> Just SendModalTab_Sign
+--             SendModalTab_Sign -> Nothing
+--       pure (cancel, back, nextTab, onFinXChain)
 
 -- | This function finishes cross chain transfers. The return event signals that
 -- the transfer is complete.
@@ -516,11 +517,11 @@ runUnfinishedCrossChainTransfer
   -- ^ Gas payer on "To" chain
   -> Event t Pact.RequestKey
   -- ^ The request key to follow up on
+  -> PublicMeta
   -> m (Event t (), Event t Text, Event t ())
-runUnfinishedCrossChainTransfer logL netInfo keys fromChain toChain mtoGasPayer requestKey = mdo
+runUnfinishedCrossChainTransfer logL netInfo keys fromChain toChain mtoGasPayer requestKey publicMeta = mdo
   let nodeInfos = _sharedNetInfo_nodes netInfo
       networkName = _sharedNetInfo_network netInfo
-      publicMeta = _sharedNetInfo_meta netInfo
   -- Client envs for making requests to each chain
   let envFromChain = mkClientEnvs nodeInfos fromChain
       envToChain = mkClientEnvs nodeInfos toChain
@@ -594,70 +595,70 @@ runUnfinishedCrossChainTransfer logL netInfo keys fromChain toChain mtoGasPayer 
            )
   pure es
 
--- | Configuration step before finishing a previously unfinished cross chain
--- transfer.
-finishCrossChainTransferConfig
-  :: ( PerformEvent t m, PostBuild t m, TriggerEvent t m, MonadHold t m, DomBuilder t m
-     , GhcjsDomSpace ~ DomBuilderSpace m, MonadJSM m
-     , MonadJSM (Performable m), MonadFix m
-     , HasCrypto key (Performable m)
-     , Monoid mConf, HasWalletCfg mConf key t
-     , HasNetworkCfg mConf t
-     , HasNetwork model t
-     , HasWallet model key t
-     , HasLogger model t
-     , HasTransactionLogger m
-     )
-  => model
-  -> (AccountName, ChainId)
-  -- ^ From account
-  -> UnfinishedCrossChainTransfer
-  -- ^ The unfinished transfer
-  -> Workflow t m (mConf, Event t ())
-finishCrossChainTransferConfig model fromAccount ucct = Workflow $ do
-  let requestKey = _unfinishedCrossChainTransfer_requestKey ucct
-      toChain = _unfinishedCrossChainTransfer_recipientChain ucct
-      fromChain = snd fromAccount
-  close <- modalHeader $ text "Cross chain transfer: unfinished transfer"
-  (sender, conf) <- divClass "modal__main" $ do
-    el "p" $ text "It looks like you started a cross chain transfer which did not complete correctly."
-    dialogSectionHeading mempty  "Transaction Details"
-    divClass "group" $ do
-      mkLabeledInput True "Request Key" uiInputElement $ def
-        & initialAttributes .~ "disabled" =: "disabled"
-        & inputElementConfig_initialValue .~ Pact.requestKeyToB16Text requestKey
-      mkLabeledInput True "Recipient Chain" uiInputElement $ def
-        & initialAttributes .~ "disabled" =: "disabled"
-        & inputElementConfig_initialValue .~ _chainId toChain
-      mkLabeledInput True "Recipient Account" uiInputElement $ def
-        & initialAttributes .~ "disabled" =: "disabled"
-        & inputElementConfig_initialValue .~ unAccountName (_unfinishedCrossChainTransfer_recipientAccount ucct)
-      mkLabeledInput True "Amount" (uiGasPriceInputField never) $ def
-        & initialAttributes .~ "disabled" =: "disabled"
-        & inputElementConfig_initialValue .~ tshow (_unfinishedCrossChainTransfer_amount ucct)
-    el "p" $ text "The coin has been debited from your account but hasn't been redeemed by the recipient."
-    dialogSectionHeading mempty "Transaction Settings"
-    (conf, _, _, _) <- divClass "group" $ uiMetaData model Nothing Nothing
-    dialogSectionHeading mempty "Gas Payer (recipient chain)"
-    sender <- divClass "group" $ elClass "div" "segment segment_type_tertiary labeled-input" $ do
-      divClass "label labeled-input__label" $ text "Account Name"
-      let cfg = def & dropdownConfig_attributes .~ pure ("class" =: "labeled-input__input select select_mandatory_missing")
-          chain = pure $ Just toChain
-      gasAcc <- uiAccountDropdown cfg (pure $ \_ a -> fromMaybe False (accountHasFunds a)) (pure id) model chain never
-      pure $ ffor3 (model ^. wallet_accounts) (model ^. network_selectedNetwork) gasAcc $ \netToAccount net ma -> do
-        accounts <- Map.lookup net $ unAccountData netToAccount
-        n <- ma
-        AccountInfo _ chains <- Map.lookup (fst n) accounts
-        guard $ Map.member fromChain chains
-        pure n
-    pure (sender, conf)
-  next <- modalFooter $ confirmButton (def & uiButtonCfg_disabled .~ fmap isNothing sender) "Next"
-  let nextScreen = flip push next $ \() -> do
-        mNetInfo <- sampleNetInfo model
-        mToGasPayer <- sample $ current sender
-        keys <- sample $ current $ model ^. wallet_keys
-        pure $ ffor2 mNetInfo mToGasPayer $ \ni gp -> finishCrossChainTransfer (model ^. logger) ni keys fromAccount ucct (second _account_status gp)
-  pure ((conf, close), nextScreen)
+-- -- | Configuration step before finishing a previously unfinished cross chain
+-- -- transfer.
+-- finishCrossChainTransferConfig
+--   :: ( PerformEvent t m, PostBuild t m, TriggerEvent t m, MonadHold t m, DomBuilder t m
+--      , GhcjsDomSpace ~ DomBuilderSpace m, MonadJSM m
+--      , MonadJSM (Performable m), MonadFix m
+--      , HasCrypto key (Performable m)
+--      , Monoid mConf, HasWalletCfg mConf key t
+--      , HasNetworkCfg mConf t
+--      , HasNetwork model t
+--      , HasWallet model key t
+--      , HasLogger model t
+--      , HasTransactionLogger m
+--      )
+--   => model
+--   -> (AccountName, ChainId)
+--   -- ^ From account
+--   -> UnfinishedCrossChainTransfer
+--   -- ^ The unfinished transfer
+--   -> Workflow t m (mConf, Event t ())
+-- finishCrossChainTransferConfig model fromAccount ucct = Workflow $ do
+--   let requestKey = _unfinishedCrossChainTransfer_requestKey ucct
+--       toChain = _unfinishedCrossChainTransfer_recipientChain ucct
+--       fromChain = snd fromAccount
+--   close <- modalHeader $ text "Cross chain transfer: unfinished transfer"
+--   (sender, conf) <- divClass "modal__main" $ do
+--     el "p" $ text "It looks like you started a cross chain transfer which did not complete correctly."
+--     dialogSectionHeading mempty  "Transaction Details"
+--     divClass "group" $ do
+--       mkLabeledInput True "Request Key" uiInputElement $ def
+--         & initialAttributes .~ "disabled" =: "disabled"
+--         & inputElementConfig_initialValue .~ Pact.requestKeyToB16Text requestKey
+--       mkLabeledInput True "Recipient Chain" uiInputElement $ def
+--         & initialAttributes .~ "disabled" =: "disabled"
+--         & inputElementConfig_initialValue .~ _chainId toChain
+--       mkLabeledInput True "Recipient Account" uiInputElement $ def
+--         & initialAttributes .~ "disabled" =: "disabled"
+--         & inputElementConfig_initialValue .~ unAccountName (_unfinishedCrossChainTransfer_recipientAccount ucct)
+--       mkLabeledInput True "Amount" (uiGasPriceInputField never) $ def
+--         & initialAttributes .~ "disabled" =: "disabled"
+--         & inputElementConfig_initialValue .~ tshow (_unfinishedCrossChainTransfer_amount ucct)
+--     el "p" $ text "The coin has been debited from your account but hasn't been redeemed by the recipient."
+--     dialogSectionHeading mempty "Transaction Settings"
+--     (conf, _, _, _) <- divClass "group" $ uiMetaData model Nothing Nothing
+--     dialogSectionHeading mempty "Gas Payer (recipient chain)"
+--     sender <- divClass "group" $ elClass "div" "segment segment_type_tertiary labeled-input" $ do
+--       divClass "label labeled-input__label" $ text "Account Name"
+--       let cfg = def & dropdownConfig_attributes .~ pure ("class" =: "labeled-input__input select select_mandatory_missing")
+--           chain = pure $ Just toChain
+--       gasAcc <- uiAccountDropdown cfg (pure $ \_ a -> fromMaybe False (accountHasFunds a)) (pure id) model chain never
+--       pure $ ffor3 (model ^. wallet_accounts) (model ^. network_selectedNetwork) gasAcc $ \netToAccount net ma -> do
+--         accounts <- Map.lookup net $ unAccountData netToAccount
+--         n <- ma
+--         AccountInfo _ chains <- Map.lookup (fst n) accounts
+--         guard $ Map.member fromChain chains
+--         pure n
+--     pure (sender, conf)
+--   next <- modalFooter $ confirmButton (def & uiButtonCfg_disabled .~ fmap isNothing sender) "Next"
+--   let nextScreen = flip push next $ \() -> do
+--         mNetInfo <- sampleNetInfo model
+--         mToGasPayer <- sample $ current sender
+--         keys <- sample $ current $ model ^. wallet_keys
+--         pure $ ffor2 mNetInfo mToGasPayer $ \ni gp -> finishCrossChainTransfer (model ^. logger) ni keys fromAccount ucct (second _account_status gp)
+--   pure ((conf, close), nextScreen)
 
 -- | Handy function for getting network / meta information in 'PushM'. Type
 -- monomorphised to prevent accidentally sampling outside of 'push'
@@ -677,61 +678,61 @@ sampleNetInfo model = do
     }
 
 -- | Modal for finishing previously unfinished cross chain transfers
-finishCrossChainTransfer
-  :: ( PerformEvent t m, PostBuild t m, TriggerEvent t m, MonadHold t m, DomBuilder t m
-     , MonadJSM (Performable m), MonadFix m
-     , HasCrypto key (Performable m)
-     , Monoid mConf, HasWalletCfg mConf key t
-     , HasTransactionLogger m
-     )
-  => Logger t
-  -> SharedNetInfo NodeInfo
-  -> KeyStorage key
-  -> (AccountName, ChainId)
-  -- ^ From account
-  -> UnfinishedCrossChainTransfer
-  -- ^ The unfinished transfer
-  -> (AccountName, AccountStatus AccountDetails)
-  -- ^ The account which pays the gas on the recipient chain
-  -> Workflow t m (mConf, Event t ())
-finishCrossChainTransfer logL netInfo keys (fromName, fromChain) ucct toGasPayer = Workflow $ do
-  close <- modalHeader $ text "Cross chain transfer"
-  let toChain = _unfinishedCrossChainTransfer_recipientChain ucct
-      requestKey = _unfinishedCrossChainTransfer_requestKey ucct
-  resultOk <- divClass "modal__main" $ do
-    dialogSectionHeading mempty "Transaction Status"
+-- finishCrossChainTransfer
+--   :: ( PerformEvent t m, PostBuild t m, TriggerEvent t m, MonadHold t m, DomBuilder t m
+--      , MonadJSM (Performable m), MonadFix m
+--      , HasCrypto key (Performable m)
+--      , Monoid mConf, HasWalletCfg mConf key t
+--      , HasTransactionLogger m
+--      )
+--   => Logger t
+--   -> SharedNetInfo NodeInfo
+--   -> KeyStorage key
+--   -> (AccountName, ChainId)
+--   -- ^ From account
+--   -> UnfinishedCrossChainTransfer
+--   -- ^ The unfinished transfer
+--   -> (AccountName, AccountStatus AccountDetails)
+--   -- ^ The account which pays the gas on the recipient chain
+--   -> Workflow t m (mConf, Event t ())
+-- finishCrossChainTransfer logL netInfo keys (fromName, fromChain) ucct toGasPayer = Workflow $ do
+--   close <- modalHeader $ text "Cross chain transfer"
+--   let toChain = _unfinishedCrossChainTransfer_recipientChain ucct
+--       requestKey = _unfinishedCrossChainTransfer_requestKey ucct
+--   resultOk <- divClass "modal__main" $ do
+--     dialogSectionHeading mempty "Transaction Status"
 
-    (resultOk0, errMsg, retry) <- divClass "group" $ do
-      elClass "ol" "transaction_status" $ do
-        let item ds = elDynAttr "li" (ffor ds $ \s -> "class" =: statusText s)
-        item (pure Status_Done) $ el "p" $
-          text $ "Cross chain transfer initiated on chain " <> _chainId fromChain
-        pb <- getPostBuild
-        runUnfinishedCrossChainTransfer logL netInfo keys fromChain toChain (Just toGasPayer) $ requestKey <$ pb
+--     (resultOk0, errMsg, retry) <- divClass "group" $ do
+--       elClass "ol" "transaction_status" $ do
+--         let item ds = elDynAttr "li" (ffor ds $ \s -> "class" =: statusText s)
+--         item (pure Status_Done) $ el "p" $
+--           text $ "Cross chain transfer initiated on chain " <> _chainId fromChain
+--         pb <- getPostBuild
+--         runUnfinishedCrossChainTransfer logL netInfo keys fromChain toChain (Just toGasPayer) $ requestKey <$ pb
 
-    dialogSectionHeading mempty "Transaction Result"
-    divClass "group" $ do
-      void $ runWithReplace (text . ("Request Key " <>) $ Pact.requestKeyToB16Text requestKey) $ leftmost
-        [ text <$> errMsg
-        , blank <$ retry
-        ]
+--     dialogSectionHeading mempty "Transaction Result"
+--     divClass "group" $ do
+--       void $ runWithReplace (text . ("Request Key " <>) $ Pact.requestKeyToB16Text requestKey) $ leftmost
+--         [ text <$> errMsg
+--         , blank <$ retry
+--         ]
 
-    pure resultOk0
+--     pure resultOk0
 
-  (abandon, done) <- modalFooter $ do
-    (abandon, _) <- runWithReplace (uiButton btnCfgSecondary $ text "Abandon Transfer") (blank <$ resultOk)
-    done <- confirmButton def "Done"
-    pure (abandon, done)
+--   (abandon, done) <- modalFooter $ do
+--     (abandon, _) <- runWithReplace (uiButton btnCfgSecondary $ text "Abandon Transfer") (blank <$ resultOk)
+--     done <- confirmButton def "Done"
+--     pure (abandon, done)
 
-  let
-    cctDetails = (_sharedNetInfo_selectedNetwork netInfo, fromName, fromChain, Nothing)
-    conf = mempty & walletCfg_setCrossChainTransfer .~ (cctDetails <$ (resultOk <> abandon))
+--   let
+--     cctDetails = (_sharedNetInfo_selectedNetwork netInfo, fromName, fromChain, Nothing)
+--     conf = mempty & walletCfg_setCrossChainTransfer .~ (cctDetails <$ (resultOk <> abandon))
 
-  pure ( ( conf
-         , close <> done <> abandon
-         )
-       , never
-       )
+--   pure ( ( conf
+--          , close <> done <> abandon
+--          )
+--        , never
+--        )
 
 -- | Workflow for doing cross chain transfers from scratch. Steps are roughly:
 --
@@ -747,105 +748,105 @@ finishCrossChainTransfer logL netInfo keys (fromName, fromChain) ucct toGasPayer
 -- might not exist. In the second case, this will fail the entire transfer.
 -- However, if we know the guard, we can skip the lookup and initiate the
 -- crosschain transfer - and the account will be created for us automatically.
-crossChainTransfer
-  :: ( PerformEvent t m, PostBuild t m, TriggerEvent t m, MonadHold t m, DomBuilder t m
-     , MonadJSM (Performable m), MonadJSM m, MonadFix m
-     , HasCrypto key m, HasCrypto key (Performable m)
-     , Monoid mConf, HasWalletCfg mConf key t
-     , HasTransactionLogger m
-     )
-  => Logger t
-  -> SharedNetInfo NodeInfo
-  -> KeyStorage key
-  -> (AccountName, ChainId, AccountDetails)
-  -- ^ From account
-  -> Either TxBuilder (AccountName, ChainId, Account)
-  -- ^ To address/account. We pass in a full 'Account' if we have one, such that
-  -- we can avoid looking up the keyset.
-  -> (AccountName, Account)
-  -- ^ Gas payer for 'from' chain
-  -> CrossChainData
-  -- ^ Cross chain specific info
-  -> Decimal
-  -- ^ Amount to transfer
-  -> Workflow t m (mConf, Event t ())
-crossChainTransfer logL netInfo keys fromAccount toAccount fromGasPayer crossChainData amount = Workflow $ do
-  let nodeInfos = _sharedNetInfo_nodes netInfo
-      networkName = _sharedNetInfo_network netInfo
-      publicMeta = _sharedNetInfo_meta netInfo
-  close <- modalHeader $ text "Cross chain transfer"
-  pb <- getPostBuild
-  let (fromName, fromChain, _) = fromAccount
-      toChain = either _txBuilder_chainId (view _2) toAccount
-      toTxBuilder = either id (\(n, c, _) -> TxBuilder n c Nothing) toAccount
-  -- Client envs for making requests to each chain
-  let envFromChain = mkClientEnvs nodeInfos fromChain
-  -- TODO *always* look up the guard and check the validity
-  -- Lookup the guard if we don't already have it
-  keySetResponse <- case toAccount of
-    Right (_name, _chain, acc)
-      | Just ks <- acc ^? account_status
-          . _AccountStatus_Exists
-          . accountDetails_guard
-          . _AccountGuard_KeySetLike
-          . to toPactKeyset
+-- crossChainTransfer
+--   :: ( PerformEvent t m, PostBuild t m, TriggerEvent t m, MonadHold t m, DomBuilder t m
+--      , MonadJSM (Performable m), MonadJSM m, MonadFix m
+--      , HasCrypto key m, HasCrypto key (Performable m)
+--      , Monoid mConf, HasWalletCfg mConf key t
+--      , HasTransactionLogger m
+--      )
+--   => Logger t
+--   -> SharedNetInfo NodeInfo
+--   -> KeyStorage key
+--   -> (AccountName, ChainId, AccountDetails)
+--   -- ^ From account
+--   -> Either TxBuilder (AccountName, ChainId, Account)
+--   -- ^ To address/account. We pass in a full 'Account' if we have one, such that
+--   -- we can avoid looking up the keyset.
+--   -> (AccountName, Account)
+--   -- ^ Gas payer for 'from' chain
+--   -> CrossChainData
+--   -- ^ Cross chain specific info
+--   -> Decimal
+--   -- ^ Amount to transfer
+--   -> Workflow t m (mConf, Event t ())
+-- crossChainTransfer logL netInfo keys fromAccount toAccount fromGasPayer crossChainData amount = Workflow $ do
+--   let nodeInfos = _sharedNetInfo_nodes netInfo
+--       networkName = _sharedNetInfo_network netInfo
+--       publicMeta = _sharedNetInfo_meta netInfo
+--   close <- modalHeader $ text "Cross chain transfer"
+--   pb <- getPostBuild
+--   let (fromName, fromChain, _) = fromAccount
+--       toChain = either _txBuilder_chainId (view _2) toAccount
+--       toTxBuilder = either id (\(n, c, _) -> TxBuilder n c Nothing) toAccount
+--   -- Client envs for making requests to each chain
+--   let envFromChain = mkClientEnvs nodeInfos fromChain
+--   -- TODO *always* look up the guard and check the validity
+--   -- Lookup the guard if we don't already have it
+--   keySetResponse <- case toAccount of
+--     Right (_name, _chain, acc)
+--       | Just ks <- acc ^? account_status
+--           . _AccountStatus_Exists
+--           . accountDetails_guard
+--           . _AccountGuard_KeySetLike
+--           . to toPactKeyset
 
-      -> pure $ Right ks <$ pb
-      | otherwise -> lookupKeySet logL networkName nodeInfos
-                       (_txBuilder_chainId toTxBuilder)
-                       (_txBuilder_accountName toTxBuilder)
-    Left ka -> case _txBuilder_keyset ka of
-      Nothing -> lookupKeySet logL networkName nodeInfos
-                   (_txBuilder_chainId ka)
-                   (_txBuilder_accountName ka)
-      -- If the account hasn't been created, don't try to lookup the guard. Just
-      -- assume the account name _is_ the public key (since it must be a
-      -- non-vanity account).
-      Just ks -> pure $ Right ks <$ pb -- TODO verify against chain
-  let (keySetError, keySetOk) = fanEither keySetResponse
-  -- Start the transfer
-  initiated <- initiateCrossChainTransfer logL networkName envFromChain publicMeta keys fromAccount fromGasPayer toTxBuilder amount keySetOk
-  let (initiatedError, initiatedOk) = fanEither initiated
-  initiateStatus <- holdDyn Status_Waiting $ leftmost
-    [ Status_Working <$ keySetOk
-    , Status_Failed <$ initiatedError
-    , Status_Done <$ initiatedOk
-    ]
-  resultOk <- divClass "modal__main" $ do
-    dialogSectionHeading mempty "Transaction Status"
+--       -> pure $ Right ks <$ pb
+--       | otherwise -> lookupKeySet logL networkName nodeInfos
+--                        (_txBuilder_chainId toTxBuilder)
+--                        (_txBuilder_accountName toTxBuilder)
+--     Left ka -> case _txBuilder_keyset ka of
+--       Nothing -> lookupKeySet logL networkName nodeInfos
+--                    (_txBuilder_chainId ka)
+--                    (_txBuilder_accountName ka)
+--       -- If the account hasn't been created, don't try to lookup the guard. Just
+--       -- assume the account name _is_ the public key (since it must be a
+--       -- non-vanity account).
+--       Just ks -> pure $ Right ks <$ pb -- TODO verify against chain
+--   let (keySetError, keySetOk) = fanEither keySetResponse
+--   -- Start the transfer
+--   initiated <- initiateCrossChainTransfer logL networkName envFromChain publicMeta keys fromAccount fromGasPayer toTxBuilder amount keySetOk
+--   let (initiatedError, initiatedOk) = fanEither initiated
+--   initiateStatus <- holdDyn Status_Waiting $ leftmost
+--     [ Status_Working <$ keySetOk
+--     , Status_Failed <$ initiatedError
+--     , Status_Done <$ initiatedOk
+--     ]
+--   resultOk <- divClass "modal__main" $ do
+--     dialogSectionHeading mempty "Transaction Status"
 
-    (resultOk0, errMsg0, retry0) <- divClass "group" $ do
-      elClass "ol" "transaction_status" $ do
-        let item ds = elDynAttr "li" (ffor ds $ \s -> "class" =: statusText s)
-        item initiateStatus $
-          el "p" $ text $ "Cross chain transfer initiated on chain " <> _chainId fromChain
+--     (resultOk0, errMsg0, retry0) <- divClass "group" $ do
+--       elClass "ol" "transaction_status" $ do
+--         let item ds = elDynAttr "li" (ffor ds $ \s -> "class" =: statusText s)
+--         item initiateStatus $
+--           el "p" $ text $ "Cross chain transfer initiated on chain " <> _chainId fromChain
 
-        let toGasPayer = second _account_status $ _crossChainData_recipientChainGasPayer crossChainData
-        runUnfinishedCrossChainTransfer logL netInfo keys fromChain toChain (Just toGasPayer) initiatedOk
+--         let toGasPayer = second _account_status $ _crossChainData_recipientChainGasPayer crossChainData
+--         runUnfinishedCrossChainTransfer logL netInfo keys fromChain toChain (Just toGasPayer) initiatedOk
 
-    let errMsg = leftmost [keySetError, initiatedError, errMsg0]
-    dialogSectionHeading mempty "Transaction Result"
-    divClass "group" $ do
-      void $ runWithReplace (text "Waiting for response...") $ leftmost
-        [ text . ("Request Key " <>) . Pact.requestKeyToB16Text <$> initiatedOk
-        , text <$> errMsg
-        , blank <$ retry0
-        ]
+--     let errMsg = leftmost [keySetError, initiatedError, errMsg0]
+--     dialogSectionHeading mempty "Transaction Result"
+--     divClass "group" $ do
+--       void $ runWithReplace (text "Waiting for response...") $ leftmost
+--         [ text . ("Request Key " <>) . Pact.requestKeyToB16Text <$> initiatedOk
+--         , text <$> errMsg
+--         , blank <$ retry0
+--         ]
 
-    pure resultOk0
-  done <- modalFooter $ confirmButton def "Done"
-  let mkUCCT requestKey = (_sharedNetInfo_selectedNetwork netInfo, fromName, fromChain, Just UnfinishedCrossChainTransfer
-        { _unfinishedCrossChainTransfer_requestKey = requestKey
-        , _unfinishedCrossChainTransfer_recipientChain = toChain
-        , _unfinishedCrossChainTransfer_recipientAccount = _txBuilder_accountName toTxBuilder
-        , _unfinishedCrossChainTransfer_amount = amount
-        })
-  let conf = mempty
-        & walletCfg_setCrossChainTransfer .~ leftmost
-          [ fmap mkUCCT initiatedOk
-          , (_sharedNetInfo_selectedNetwork netInfo, fromName, fromChain, Nothing) <$ resultOk
-          ]
-  pure ((conf, close <> done), never)
+--     pure resultOk0
+--   done <- modalFooter $ confirmButton def "Done"
+--   let mkUCCT requestKey = (_sharedNetInfo_selectedNetwork netInfo, fromName, fromChain, Just UnfinishedCrossChainTransfer
+--         { _unfinishedCrossChainTransfer_requestKey = requestKey
+--         , _unfinishedCrossChainTransfer_recipientChain = toChain
+--         , _unfinishedCrossChainTransfer_recipientAccount = _txBuilder_accountName toTxBuilder
+--         , _unfinishedCrossChainTransfer_amount = amount
+--         })
+--   let conf = mempty
+--         & walletCfg_setCrossChainTransfer .~ leftmost
+--           [ fmap mkUCCT initiatedOk
+--           , (_sharedNetInfo_selectedNetwork netInfo, fromName, fromChain, Nothing) <$ resultOk
+--           ]
+--   pure ((conf, close <> done), never)
 
 -- | Continue the transfer on the target chain
 continueCrossChainTransfer
@@ -874,7 +875,6 @@ continueCrossChainTransfer
 continueCrossChainTransfer logL networkName envs publicMeta keys toChain gasPayer spvOk = do
   transactionLogger <- askTransactionLogger
   performEventAsync $ ffor spvOk $ \(pe, proof) cb -> do
-
     let
       sender = unAccountName $ fst gasPayer
 
@@ -893,6 +893,7 @@ continueCrossChainTransfer logL networkName envs publicMeta keys toChain gasPaye
       }
     cont <- buildCmdWithPayload payload signingPairs
     putLog logL LevelWarn "transfer-crosschain: running continuation on target chain"
+    putLog logL LevelWarn $ tshow cont
     -- We can't do a /local with continuations :(
     liftJSM $ forkJSM $ do
       r <- doReqFailover envs (Api.send Api.apiV1Client transactionLogger sender toChain $ Api.SubmitBatch $ pure cont) >>= \case
@@ -935,85 +936,85 @@ lookupKeySet logL networkName nodes chainId accountName = do
 
 -- | Lookup the keyset of an account
 -- | Initiate a cross chain transfer on the sender chain.
-initiateCrossChainTransfer
-  :: ( MonadJSM (Performable m)
-     , TriggerEvent t m
-     , PerformEvent t m
-     , HasCrypto key (Performable m)
-     , HasLogger model t
-     , HasTransactionLogger m
-     )
-  => model
-  -> NetworkName
-  -- ^ Network name
-  -> [S.ClientEnv]
-  -- ^ Where to send requests
-  -> PublicMeta
-  -- ^ Meta info - really only interested in gas settings
-  -> KeyStorage key
-  -- ^ Keys
-  -> (AccountName, ChainId, AccountDetails)
-  -- ^ From account
-  -> (AccountName, Account)
-  -- ^ Gas payer ("from" chain)
-  -> TxBuilder
-  -- ^ Recipient address
-  -> Decimal
-  -- ^ Amount to transfer
-  -> Event t Pact.KeySet
-  -- ^ Recipient keyset
-  -> m (Event t (Either Text Pact.RequestKey))
-initiateCrossChainTransfer model networkName envs publicMeta keys fromAccount fromGasPayer toAccount amount eks = do
-  transactionLogger <- askTransactionLogger
-  performEventAsync $ ffor eks $ \rg cb -> do
-    cmd <- buildCmd Nothing networkName pm signingPairs [] code (mkDat rg) capabilities
-    liftJSM $ forkJSM $ do
-      r <- doReqFailover envs (Api.local Api.apiV1Client cmd) >>= \case
-        Left es -> packHttpErrors (model ^. logger) es
-        Right cr -> case Pact._crResult cr of
-          Pact.PactResult (Left e) -> do
-            putLog model LevelError (tshow e)
-            pure $ Left $ tshow e
-          Pact.PactResult (Right _) -> do
-            r <- doReqFailover envs $ Api.send Api.apiV1Client transactionLogger senderText toChain
-              $ Api.SubmitBatch $ pure cmd
-            case r of
-              Left es -> packHttpErrors (model ^. logger) es
-              Right (Api.RequestKeys (requestKey :| _)) -> pure $ Right requestKey
+-- initiateCrossChainTransfer
+--   :: ( MonadJSM (Performable m)
+--      , TriggerEvent t m
+--      , PerformEvent t m
+--      , HasCrypto key (Performable m)
+--      , HasLogger model t
+--      , HasTransactionLogger m
+--      )
+--   => model
+--   -> NetworkName
+--   -- ^ Network name
+--   -> [S.ClientEnv]
+--   -- ^ Where to send requests
+--   -> PublicMeta
+--   -- ^ Meta info - really only interested in gas settings
+--   -> KeyStorage key
+--   -- ^ Keys
+--   -> (AccountName, ChainId, AccountDetails)
+--   -- ^ From account
+--   -> (AccountName, Account)
+--   -- ^ Gas payer ("from" chain)
+--   -> TxBuilder
+--   -- ^ Recipient address
+--   -> Decimal
+--   -- ^ Amount to transfer
+--   -> Event t Pact.KeySet
+--   -- ^ Recipient keyset
+--   -> m (Event t (Either Text Pact.RequestKey))
+-- initiateCrossChainTransfer model networkName envs publicMeta keys fromAccount fromGasPayer toAccount amount eks = do
+--   transactionLogger <- askTransactionLogger
+--   performEventAsync $ ffor eks $ \rg cb -> do
+--     cmd <- buildCmd Nothing networkName pm signingPairs [] code (mkDat rg) capabilities
+--     liftJSM $ forkJSM $ do
+--       r <- doReqFailover envs (Api.local Api.apiV1Client cmd) >>= \case
+--         Left es -> packHttpErrors (model ^. logger) es
+--         Right cr -> case Pact._crResult cr of
+--           Pact.PactResult (Left e) -> do
+--             putLog model LevelError (tshow e)
+--             pure $ Left $ tshow e
+--           Pact.PactResult (Right _) -> do
+--             r <- doReqFailover envs $ Api.send Api.apiV1Client transactionLogger senderText toChain
+--               $ Api.SubmitBatch $ pure cmd
+--             case r of
+--               Left es -> packHttpErrors (model ^. logger) es
+--               Right (Api.RequestKeys (requestKey :| _)) -> pure $ Right requestKey
 
-      liftIO $ cb r
-  where
-    fromAccKeys = fromAccount ^. _3 . accountDetails_guard . _AccountGuard_KeySetLike . ksh_keys
-    keysetName = "receiverKey"
-    code = T.unwords
-      [ "(coin.transfer-crosschain"
-      , tshow $ unAccountName $ view _1 fromAccount
-      , tshow $ unAccountName $ _txBuilder_accountName toAccount
-      , "(read-keyset '" <> keysetName <> ")"
-      , tshow $ _chainId $ _txBuilder_chainId toAccount
-      , tshow $ addDecimalPoint amount
-      , ")"
-      ]
-    mkDat rg = HM.singleton keysetName $ Aeson.toJSON rg
-    signingSet = Set.unions [fromAccKeys, accountKeys $ snd fromGasPayer]
-    signingPairs = filterKeyPairs signingSet keys
-    -- This capability is required for `transfer-crosschain`.
-    debitCap = SigCapability
-      { _scName = QualifiedName { _qnQual = "coin", _qnName = "DEBIT", _qnInfo = def }
-      , _scArgs = [PLiteral $ LString $ unAccountName $ view _1 fromAccount]
-      }
-    capabilities = Map.unionsWith (<>)
-      [ Map.fromSet (\_ -> [_dappCap_cap defaultGASCapability]) (accountKeys $ snd fromGasPayer)
-      , Map.fromSet (\_ -> [debitCap]) fromAccKeys
-      ]
+--       liftIO $ cb r
+--   where
+--     fromAccKeys = fromAccount ^. _3 . accountDetails_guard . _AccountGuard_KeySetLike . ksh_keys
+--     keysetName = "receiverKey"
+--     code = T.unwords
+--       [ "(coin.transfer-crosschain"
+--       , tshow $ unAccountName $ view _1 fromAccount
+--       , tshow $ unAccountName $ _txBuilder_accountName toAccount
+--       , "(read-keyset '" <> keysetName <> ")"
+--       , tshow $ _chainId $ _txBuilder_chainId toAccount
+--       , tshow $ addDecimalPoint amount
+--       , ")"
+--       ]
+--     mkDat rg = HM.singleton keysetName $ Aeson.toJSON rg
+--     signingSet = Set.unions [fromAccKeys, accountKeys $ snd fromGasPayer]
+--     signingPairs = filterKeyPairs signingSet keys
+--     -- This capability is required for `transfer-crosschain`.
+--     debitCap = SigCapability
+--       { _scName = QualifiedName { _qnQual = "coin", _qnName = "DEBIT", _qnInfo = def }
+--       , _scArgs = [PLiteral $ LString $ unAccountName $ view _1 fromAccount]
+--       }
+--     capabilities = Map.unionsWith (<>)
+--       [ Map.fromSet (\_ -> [_dappCap_cap defaultGASCapability]) (accountKeys $ snd fromGasPayer)
+--       , Map.fromSet (\_ -> [debitCap]) fromAccKeys
+--       ]
 
-    senderText = unAccountName $ fst fromGasPayer
-    toChain = view _2 fromAccount
+--     senderText = unAccountName $ fst fromGasPayer
+--     toChain = view _2 fromAccount
 
-    pm = publicMeta
-      { _pmChainId = toChain
-      , _pmSender = senderText
-      }
+--     pm = publicMeta
+--       { _pmChainId = toChain
+--       , _pmSender = senderText
+--       }
 
 packHttpErrors :: MonadIO m => Logger t -> [S.ClientError] -> m (Either Text a)
 packHttpErrors logL es = do
