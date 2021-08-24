@@ -538,7 +538,6 @@ checkReceivingAccount
   -> m ((mConf, Event t ()), Event t (Workflow t m (mConf, Event t ())))
 checkReceivingAccount model netInfo ti ty fks tks fromPair = do
     let toAccount = _ca_account $ _ti_toAccount ti
-    pb <- getPostBuild
     case (Map.lookup toAccount tks, _ti_toKeyset ti) of
       -- TODO Might need more checks for cross-chain error cases
       (Just (AccountStatus_Exists (AccountDetails _ g)), Just userKeyset) -> do
@@ -646,7 +645,6 @@ transferDialog model netInfo ti ty fks tks _ = do
       (currentTab, _done) <- transferTabs newTab
       (conf, meta, payload, dSignedCmd, destChainInfo) <- mainSection currentTab
       (cancel, newTab, next) <- footerSection currentTab meta dSignedCmd
-
     case destChainInfo of
       Nothing -> do
         let nextScreen = ffor (tag (current dSignedCmd) next) $ \case
@@ -656,11 +654,16 @@ transferDialog model netInfo ti ty fks tks _ = do
         pure ((conf, close <> cancel), nextScreen)
 
       Just (dgp, dss) -> do
-        let allDyns = (,,,) <$> current payload <*> current dSignedCmd <*> current dgp <*> current dss
+        let allDyns = (,,,,)
+              <$> current payload
+              <*> current dSignedCmd
+              <*> current dgp
+              <*> current dss
+              <*> current meta
         let nextScreen = ffor (tag allDyns next) $ \case
-              (_,Nothing,_,_) -> Workflow $ pure (mempty, never)
-              (p,Just sc,gp,ss) -> previewDialog model netInfo ti payload sc $
-                                     crossChainTransferAndStatus model netInfo ti sc gp ss
+              (_,Nothing,_,_,_) -> Workflow $ pure (mempty, never)
+              (p,Just sc,gp,ss,meta') -> previewDialog model netInfo ti payload sc $
+                                           crossChainTransferAndStatus model netInfo ti sc gp ss meta'
         pure ((conf, close <> cancel), nextScreen)
   where
     mainSection currentTab = elClass "div" "modal__main" $ do
@@ -754,8 +757,7 @@ previewDialog
   -> Command Text
   -> Workflow t m (mConf, Event t ())
   -> Workflow t m (mConf, Event t ())
-previewDialog model netInfo ti payload cmd next = Workflow $ do
-    let nodeInfos = _sharedNetInfo_nodes netInfo
+previewDialog model _netInfo ti payload cmd next = Workflow $ do
     close <- modalHeader $ text "Transfer Preview"
     _ <- elClass "div" "modal__main transaction_details" $ do
       dialogSectionHeading mempty "Summary"
@@ -777,7 +779,6 @@ previewDialog model netInfo ti payload cmd next = Workflow $ do
     fromAccount = _ca_account $ _ti_fromAccount ti
     toChain = _ca_chain $ _ti_toAccount ti
     toAccount = _ca_account $ _ti_toAccount ti
-    maxGas (GasLimit lim) (GasPrice p) = fromIntegral lim * p
 
 uiPreviewItem :: DomBuilder t m => Text -> m a -> m a
 uiPreviewItem label val =
@@ -817,10 +818,12 @@ crossChainTransferAndStatus
   -> Command Text
   -> Maybe (AccountName, AccountStatus AccountDetails)
   -> [Signer]
+  -> TransferMeta
   -> Workflow t m (mConf, Event t ())
-crossChainTransferAndStatus model netInfo ti cmd mdestGP destSigners = Workflow $ do
+crossChainTransferAndStatus model netInfo ti cmd mdestGP destSigners meta = Workflow $ do
     let logL = model ^. logger
-    let nodeInfos = _sharedNetInfo_nodes netInfo
+        nodeInfos = _sharedNetInfo_nodes netInfo
+        toChainMeta = transferMetaToPublicMeta meta toChain
     close <- modalHeader $ text "Cross Chain Transfer"
     (resultOk, errMsg) <- elClass "div" "modal__main" $ do
       transactionHashSection cmd
@@ -835,7 +838,7 @@ crossChainTransferAndStatus model netInfo ti cmd mdestGP destSigners = Workflow 
             el "p" $ text $ "Cross chain transfer initiated on chain " <> _chainId fromChain
 
           keys <- sample $ current $ model ^. wallet_keys
-          runUnfinishedCrossChainTransfer logL netInfo keys fromChain toChain mdestGP rk
+          runUnfinishedCrossChainTransfer logL netInfo keys fromChain toChain mdestGP rk toChainMeta
 
       let isError = \case
             Just (Left _) -> True
@@ -905,7 +908,6 @@ submitTransactionAndListen model cmd sender chain nodeInfos = do
           send Status_Done
           liftIO $ cb key
     (listenStatus, message, setMessage) <- pollForRequestKey clientEnvs $ Just <$> onRequestKey
-    requestKey <- holdDyn Nothing $ Just <$> onRequestKey
   pure $ TransactionSubmitFeedback sendStatus listenStatus message
 
 payloadToCommand :: Payload PublicMeta Text -> Command Text
@@ -965,13 +967,7 @@ buildUnsignedCmd netInfo ti ty tmeta = payload
                (Just dataKey, printf "(coin.transfer-crosschain %s %s (read-keyset '%s) %s %s)"
                              (show fromAccount) (show toAccount) (T.unpack dataKey) (show toChain) amountText)
     tdata = maybe Null (\a -> object [ dataKey .= toJSON (userToPactKeyset a) ]) $ _ti_toKeyset ti
-    lim = _transferMeta_gasLimit tmeta
-    price = _transferMeta_gasPrice tmeta
-    ttl = _transferMeta_ttl tmeta
-    ct = _transferMeta_creationTime tmeta
-    sender = maybe "" unAccountName $ _transferMeta_senderAccount tmeta
-    meta = PublicMeta fromChain sender lim price ttl ct
-
+    meta = transferMetaToPublicMeta tmeta fromChain
     signers = _transferMeta_sourceChainSigners tmeta
 
     payload = Payload
@@ -1103,6 +1099,16 @@ data TransferMeta = TransferMeta
   , _transferMeta_creationTime :: TxCreationTime
   , _transferMeta_sourceChainSigners :: [Signer]
   } deriving (Eq,Ord,Show)
+
+transferMetaToPublicMeta :: TransferMeta -> ChainId -> PublicMeta
+transferMetaToPublicMeta tmeta chainId =
+  let
+    lim = _transferMeta_gasLimit tmeta
+    price = _transferMeta_gasPrice tmeta
+    ttl = _transferMeta_ttl tmeta
+    ct = _transferMeta_creationTime tmeta
+    sender = maybe "" unAccountName $ _transferMeta_senderAccount tmeta
+  in PublicMeta chainId sender lim price ttl ct
 
 transferCapability :: AccountName -> AccountName -> Decimal -> SigCapability
 transferCapability from to amount = SigCapability
