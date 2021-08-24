@@ -1,8 +1,8 @@
 {
   "owner": "kadena-io",
   "repo": "kpkgs",
-  "branch": "jam@older-glib-networking-version",
+  "branch": "master",
   "private": false,
-  "rev": "24725d15821572ae03b93df9e057a1086689afab",
-  "sha256": "05vgcxyjisvs11nlw5k5jzb2yip0fvqswlyxq8rdgikkkzc3zh48"
+  "rev": "763f1763207a02fbf6257bd8e2a8cef2a9f86e1d",
+  "sha256": "1dncp11hn65dvwpqrw3di6hdlykjpgc0w0ii5lvwdziac861ak2n"
 }
