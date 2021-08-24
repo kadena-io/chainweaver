@@ -538,7 +538,6 @@ checkReceivingAccount
   -> m ((mConf, Event t ()), Event t (Workflow t m (mConf, Event t ())))
 checkReceivingAccount model netInfo ti ty fks tks fromPair = do
     let toAccount = _ca_account $ _ti_toAccount ti
-    pb <- getPostBuild
     case (Map.lookup toAccount tks, _ti_toKeyset ti) of
       -- TODO Might need more checks for cross-chain error cases
       (Just (AccountStatus_Exists (AccountDetails _ g)), Just userKeyset) -> do
@@ -655,11 +654,16 @@ transferDialog model netInfo ti ty fks tks _ = do
         pure ((conf, close <> cancel), nextScreen)
 
       Just (dgp, dss) -> do
-        let allDyns = (,,,) <$> current payload <*> current dSignedCmd <*> current dgp <*> current dss
+        let allDyns = (,,,,)
+              <$> current payload
+              <*> current dSignedCmd
+              <*> current dgp
+              <*> current dss
+              <*> current meta
         let nextScreen = ffor (tag allDyns next) $ \case
-              (_,Nothing,_,_) -> Workflow $ pure (mempty, never)
-              (p,Just sc,gp,ss) -> previewDialog model netInfo ti payload sc $
-                                     crossChainTransferAndStatus model netInfo ti sc gp ss meta
+              (_,Nothing,_,_,_) -> Workflow $ pure (mempty, never)
+              (p,Just sc,gp,ss,meta') -> previewDialog model netInfo ti payload sc $
+                                           crossChainTransferAndStatus model netInfo ti sc gp ss meta'
         pure ((conf, close <> cancel), nextScreen)
   where
     mainSection currentTab = elClass "div" "modal__main" $ do
@@ -753,8 +757,7 @@ previewDialog
   -> Command Text
   -> Workflow t m (mConf, Event t ())
   -> Workflow t m (mConf, Event t ())
-previewDialog model netInfo ti payload cmd next = Workflow $ do
-    let nodeInfos = _sharedNetInfo_nodes netInfo
+previewDialog model _netInfo ti payload cmd next = Workflow $ do
     close <- modalHeader $ text "Transfer Preview"
     _ <- elClass "div" "modal__main transaction_details" $ do
       dialogSectionHeading mempty "Summary"
@@ -815,11 +818,12 @@ crossChainTransferAndStatus
   -> Command Text
   -> Maybe (AccountName, AccountStatus AccountDetails)
   -> [Signer]
-  -> Dynamic t TransferMeta
+  -> TransferMeta
   -> Workflow t m (mConf, Event t ())
 crossChainTransferAndStatus model netInfo ti cmd mdestGP destSigners meta = Workflow $ do
     let logL = model ^. logger
-    let nodeInfos = _sharedNetInfo_nodes netInfo
+        nodeInfos = _sharedNetInfo_nodes netInfo
+        toChainMeta = transferMetaToPublicMeta meta toChain
     close <- modalHeader $ text "Cross Chain Transfer"
     (resultOk, errMsg) <- elClass "div" "modal__main" $ do
       transactionHashSection cmd
@@ -834,7 +838,6 @@ crossChainTransferAndStatus model netInfo ti cmd mdestGP destSigners meta = Work
             el "p" $ text $ "Cross chain transfer initiated on chain " <> _chainId fromChain
 
           keys <- sample $ current $ model ^. wallet_keys
-          toChainMeta <- sample $ flip transferMetaToPublicMeta toChain <$> current meta
           runUnfinishedCrossChainTransfer logL netInfo keys fromChain toChain mdestGP rk toChainMeta
 
       let isError = \case
@@ -905,7 +908,6 @@ submitTransactionAndListen model cmd sender chain nodeInfos = do
           send Status_Done
           liftIO $ cb key
     (listenStatus, message, setMessage) <- pollForRequestKey clientEnvs $ Just <$> onRequestKey
-    requestKey <- holdDyn Nothing $ Just <$> onRequestKey
   pure $ TransactionSubmitFeedback sendStatus listenStatus message
 
 payloadToCommand :: Payload PublicMeta Text -> Command Text
