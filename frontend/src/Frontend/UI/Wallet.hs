@@ -92,7 +92,8 @@ data AccountDialog
   | AccountDialog_Details AccountName (Maybe AccountNotes)
   | AccountDialog_Receive AccountName ChainId (Maybe AccountDetails)
   | AccountDialog_TransferTo AccountName AccountDetails ChainId
-  -- | AccountDialog_Send (AccountName, ChainId, AccountDetails) (Maybe UnfinishedCrossChainTransfer)
+
+  -- AccountDialog_Send (AccountName, ChainId, AccountDetails) (Maybe UnfinishedCrossChainTransfer)
 
 uiWalletRefreshButton
   :: (MonadWidget t m, Monoid mConf, HasWalletCfg mConf key t)
