@@ -1109,7 +1109,7 @@ pollNodesForReq model envs requestPair maxPolls waitTime handler =
             --Polling came back empty
             PollingAttempt_NotFound -> do
               liftIO $ threadDelay $ waitTime * 1000 * 1000
-              putLog (model^.logger) LevelWarn $ "Polling iteration " <> tshow (maxPolls - iterations) <> " / "<> tshow maxPolls <> " unsucessful. Trying again in " <> tshow waitTime <> " seconds"
+              putLog (model^.logger) LevelWarn $ "Polling iteration " <> tshow (maxPolls - iterations) <> " / "<> tshow maxPolls <> " unsuccessful. Trying again in " <> tshow waitTime <> " seconds"
               pollNodes $ iterations - 1
      in pollNodes maxPolls
 
