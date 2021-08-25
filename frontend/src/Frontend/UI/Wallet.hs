@@ -345,7 +345,7 @@ uiAccountItem cwKeys startsOpen name accountInfo = do
       False -> pure never
       True -> trAcc $ do
         td blank -- Arrow column
-        td $ text $ "Chain " <> _chainId paddedChain
+        td $ text $ "Chain " <> _chainId chain
         td $ dynText $ maybe "" ownershipText <$> getAccountOwnership cwKeys details
         accStatus <- holdUniqDyn $ _account_status <$> dAccount
         elClass "td" "wallet__table-cell wallet__table-cell-keyset" $ dynText $ ffor accStatus $ \case
