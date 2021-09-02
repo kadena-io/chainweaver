@@ -95,8 +95,8 @@ app
   -> RoutedT t (R FrontendRoute) m ()
 app sidebarExtra fileFFI appCfg = Store.versionedFrontend (Store.versionedStorage @key) $ void . mfix $ \ cfg -> do
   ideL <- makeIde fileFFI appCfg cfg
-  (FRPHandler signingReq signingResp, FRPHandler quickSignReq quickSignResp) <- handleEndpoints ideL appCfg
-
+  FRPHandler signingReq signingResp <- _appCfg_signingHandler appCfg
+  FRPHandler quickSignReq quickSignResp <- _appCfg_quickSignHandler appCfg
   walletSidebar sidebarExtra
   updates <- divClass "page" $ do
     let mkPageContent c = divClass (c <> " page__content visible")
@@ -187,24 +187,18 @@ app sidebarExtra fileFFI appCfg = Store.versionedFrontend (Store.versionedStorag
     , mempty & ideCfg_editor . editorCfg_loadCode .~ (snd <$> _fileFFI_externalFileOpened fileFFI)
     ]
 
-handleEndpoints
-  :: (HasWallet model key t, MonadIO m, PerformEvent t m)
-  => model
-  -> AppCfg key t m
-  -> m (FRPHandler SigningRequest SigningResponse t m
-       ,FRPHandler QuickSignRequest QuickSignResponse t m)
-handleEndpoints m cfg = do
-  let keys = ffor (m ^. wallet_keys) $ Right . toList . fmap (_keyPair_publicKey . _key_pair)
-      accounts = ffor (m ^. wallet_accounts) $ Right . fmap Map.keys . unAccountData
-
-  FRPHandler keysReqs keysResps <- _appCfg_keysEndpointHandler cfg
-  FRPHandler accountsReqs accountsResps <- _appCfg_accountsEndpointHandler cfg
-
-  void $ keysResps $ current keys <@ keysReqs
-  void $ accountsResps $ current accounts <@ accountsReqs
-  s <- _appCfg_signingHandler cfg
-  qs <- _appCfg_quickSignHandler cfg
-  pure (s, qs)
+-- Commented out and not removed since we intend to revisit this functionality soon
+-- handleEndpoints
+--   :: (HasWallet model key t, MonadIO m, PerformEvent t m)
+--   => model -> AppCfg key t m -> m (FRPHandler SigningRequest SigningResponse t m)
+-- handleEndpoints m cfg = do
+--   let keys = ffor (m ^. wallet_keys) $ Right . toList . fmap (_keyPair_publicKey . _key_pair)
+--       accounts = ffor (m ^. wallet_accounts) $ Right . fmap Map.keys . unAccountData
+--   FRPHandler keysReqs keysResps <- _appCfg_keysEndpointHandler cfg
+--   FRPHandler accountsReqs accountsResps <- _appCfg_accountsEndpointHandler cfg
+--   void $ keysResps $ current keys <@ keysReqs
+--   void $ accountsResps $ current accounts <@ accountsReqs
+--   _appCfg_signingHandler cfg
 
 walletSidebar
   :: ( DomBuilder t m

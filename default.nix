@@ -1,20 +1,25 @@
 args@{ system ? builtins.currentSystem
 , iosSdkVersion ? "10.2"
-, obelisk ? (import ./.obelisk/impl { inherit system iosSdkVersion; })
-, pkgs ? obelisk.reflex-platform.nixpkgs
+, terms ? { # Accepted terms, conditions, and licenses
+      security.acme.acceptTerms = true;
+  }
+, kpkgs ? import ./dep/kpkgs { inherit system; }  # If you want a custom package set, pass it into
+                                                  # kpkgs arg
+, obelisk ? (import ./.obelisk/impl { inherit system iosSdkVersion terms; inherit (kpkgs) reflex-platform-func;})
 , withHoogle ? false
 }:
 with obelisk;
 let
+  pkgs = obelisk.reflex-platform.nixpkgs;
   # All the versions that the user cares about are here so that they can
   # be changed in one place
-  chainweaverVersion = "2.1";
+  chainweaverVersion = "2.2";
   appName = "Kadena Chainweaver";
-  macReleaseNumber = "1";
-  linuxReleaseNumber = "1";
-  ovaReleaseNumber = "1";
+  macReleaseNumber = "0";
+  linuxReleaseNumber = "0";
+  ovaReleaseNumber = "0";
 
-  obApp = import ./obApp.nix args;
+  obApp = import ./obApp.nix { inherit obelisk; };
   pactServerModule = import ./pact-server/service.nix;
   sass = pkgs.runCommand "sass" {} ''
     set -eux
@@ -28,12 +33,13 @@ let
   linuxApp = (import ./linux.nix) {
     inherit obApp pkgs appName sass homeManagerModule chainweaverVersion linuxReleaseNumber ovaReleaseNumber;
   };
+
 in obApp // rec {
   inherit sass;
   inherit (macApp) mac deployMac;
   inherit (linuxApp) nixosExe deb chainweaverVM chainweaverVMSystem;
 
-  server = args@{ hostName, adminEmail, routeHost, enableHttps, version, nixosPkgs ? pkgs }:
+  server = { hostName, adminEmail, routeHost, enableHttps, version, module ? obelisk.serverModules.mkBaseEc2 }@args:
     let
       exe = serverExe
         obApp.ghc.backend
@@ -41,27 +47,39 @@ in obApp // rec {
         obApp.passthru.staticFiles
         obApp.passthru.__closureCompilerOptimizationLevel
         version;
-
       nixos = import (pkgs.path + /nixos);
     in nixos {
       system = "x86_64-linux";
       configuration = {
         imports = [
-          # Default args don't get included as 'args' when doing: args@{defArg ? defVal}
-          (obelisk.serverModules.mkBaseEc2 ({ inherit nixosPkgs; } // args))
-          (obelisk.serverModules.mkObeliskApp (args//{inherit exe;}))
-
-          # Make sure all configs present:
+          (module { inherit exe hostName adminEmail routeHost enableHttps version; nixosPkgs = pkgs; })
+          (obelisk.serverModules.mkDefaultNetworking args)
+          (obelisk.serverModules.mkObeliskApp (args // { inherit exe; }))
+          ./acme.nix  # Backport of ACME upgrades from 20.03
           # (pactServerModule {
           #   hostName = routeHost;
           #   inherit obApp pkgs;
-            # The exposed port of the pact backend (proxied by nginx).
+          # # The exposed port of the pact backend (proxied by nginx).
           #   nginxPort = 7011;
           #   pactPort = 7010;
           #   pactDataDir = "/var/lib/chainweaver";
           #   pactUser = "pact";
           # })
         ];
+
+        # Backport of ACME upgrades from 20.03
+        disabledModules = [
+          (pkgs.path + /nixos/modules/security/acme.nix)
+        ];
+        nixpkgs.overlays = [
+          (self: super: {
+            lego = (import (builtins.fetchTarball {
+                url = https://github.com/NixOS/nixpkgs-channels/archive/70717a337f7ae4e486ba71a500367cad697e5f09.tar.gz;
+                sha256 = "1sbmqn7yc5iilqnvy9nvhsa9bx6spfq1kndvvis9031723iyymd1";
+              }) {}).lego;
+          })
+        ];
+
         system.activationScripts = {
           setupBackendRuntime = {
             text = ''
@@ -72,6 +90,7 @@ in obApp // rec {
         };
       };
     };
+    
 
   ci =
     let cross = {

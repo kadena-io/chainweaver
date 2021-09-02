@@ -307,7 +307,7 @@ amountFormWithMaxButton model ca cfg = do
     let attrs = ffor maxE $ \isMaxed ->
           "disabled" =: (if isMaxed then Just "disabled" else Nothing)
         sv = Just $ leftmost
-          [ maybe (Left "") (Right . unAccountBalance) <$> maxedBalance
+          [ maybe (Left "") (Right . normalizeDecimal . unAccountBalance) <$> maxedBalance
           , Left "" <$ ffilter not maxE
           ]
     amt <- amountFormWidget $ mkPfwc (fst <$> cfg)
@@ -384,7 +384,6 @@ lookupAndTransfer model netInfo ti ty onCloseExternal = do
         toAccount = _ca_account $ _ti_toAccount ti
         toChain = _ca_chain $ _ti_toAccount ti
         accountNames = setify [fromAccount, toAccount]
-        accounts = unAccountName <$> accountNames
     efks <- lookupKeySets (model ^. logger) (_sharedNetInfo_network netInfo)
                  nodes fromChain accountNames
     etks <- if fromChain == toChain
@@ -539,7 +538,6 @@ checkReceivingAccount
   -> m ((mConf, Event t ()), Event t (Workflow t m (mConf, Event t ())))
 checkReceivingAccount model netInfo ti ty fks tks fromPair = do
     let toAccount = _ca_account $ _ti_toAccount ti
-    pb <- getPostBuild
     case (Map.lookup toAccount tks, _ti_toKeyset ti) of
       -- TODO Might need more checks for cross-chain error cases
       (Just (AccountStatus_Exists (AccountDetails _ g)), Just userKeyset) -> do
@@ -562,9 +560,11 @@ checkReceivingAccount model netInfo ti ty fks tks fromPair = do
       (Just (AccountStatus_Exists (AccountDetails _ g)), Nothing) -> do
         if (_ca_chain $ _ti_fromAccount ti) /= (_ca_chain $ _ti_toAccount ti)
           then do
-            let AccountGuard_KeySetLike (KeySetHeritage ks p _ref) = g
-            let ti2 = ti { _ti_toKeyset = Just $ UserKeyset ks (parseKeysetPred p) }
-            transferDialog model netInfo ti2 ty fks tks fromPair
+            case g of
+              AccountGuard_KeySetLike (KeySetHeritage ks p _ref) ->
+                let ti2 = ti { _ti_toKeyset = Just $ UserKeyset ks (parseKeysetPred p) }
+                in transferDialog model netInfo ti2 ty fks tks fromPair
+              AccountGuard_Other _ -> transferDialog model netInfo ti ty fks tks fromPair
           else
             -- Use transfer, probably show the guard at some point
             -- TODO check well-formedness of all keys in the keyset
@@ -645,7 +645,6 @@ transferDialog model netInfo ti ty fks tks _ = do
       (currentTab, _done) <- transferTabs newTab
       (conf, meta, payload, dSignedCmd, destChainInfo) <- mainSection currentTab
       (cancel, newTab, next) <- footerSection currentTab meta dSignedCmd
-
     case destChainInfo of
       Nothing -> do
         let nextScreen = ffor (tag (current dSignedCmd) next) $ \case
@@ -655,11 +654,16 @@ transferDialog model netInfo ti ty fks tks _ = do
         pure ((conf, close <> cancel), nextScreen)
 
       Just (dgp, dss) -> do
-        let allDyns = (,,,) <$> current payload <*> current dSignedCmd <*> current dgp <*> current dss
+        let allDyns = (,,,,)
+              <$> current payload
+              <*> current dSignedCmd
+              <*> current dgp
+              <*> current dss
+              <*> current meta
         let nextScreen = ffor (tag allDyns next) $ \case
-              (_,Nothing,_,_) -> Workflow $ pure (mempty, never)
-              (p,Just sc,gp,ss) -> previewDialog model netInfo ti payload sc $
-                                     crossChainTransferAndStatus model netInfo ti sc gp ss
+              (_,Nothing,_,_,_) -> Workflow $ pure (mempty, never)
+              (p,Just sc,gp,ss,meta') -> previewDialog model netInfo ti payload sc $
+                                           crossChainTransferAndStatus model netInfo ti sc gp ss meta'
         pure ((conf, close <> cancel), nextScreen)
   where
     mainSection currentTab = elClass "div" "modal__main" $ do
@@ -753,8 +757,7 @@ previewDialog
   -> Command Text
   -> Workflow t m (mConf, Event t ())
   -> Workflow t m (mConf, Event t ())
-previewDialog model netInfo ti payload cmd next = Workflow $ do
-    let nodeInfos = _sharedNetInfo_nodes netInfo
+previewDialog model _netInfo ti payload cmd next = Workflow $ do
     close <- modalHeader $ text "Transfer Preview"
     _ <- elClass "div" "modal__main transaction_details" $ do
       dialogSectionHeading mempty "Summary"
@@ -776,7 +779,6 @@ previewDialog model netInfo ti payload cmd next = Workflow $ do
     fromAccount = _ca_account $ _ti_fromAccount ti
     toChain = _ca_chain $ _ti_toAccount ti
     toAccount = _ca_account $ _ti_toAccount ti
-    maxGas (GasLimit lim) (GasPrice p) = fromIntegral lim * p
 
 uiPreviewItem :: DomBuilder t m => Text -> m a -> m a
 uiPreviewItem label val =
@@ -816,12 +818,14 @@ crossChainTransferAndStatus
   -> Command Text
   -> Maybe (AccountName, AccountStatus AccountDetails)
   -> [Signer]
+  -> TransferMeta
   -> Workflow t m (mConf, Event t ())
-crossChainTransferAndStatus model netInfo ti cmd mdestGP destSigners = Workflow $ do
+crossChainTransferAndStatus model netInfo ti cmd mdestGP destSigners meta = Workflow $ do
     let logL = model ^. logger
-    let nodeInfos = _sharedNetInfo_nodes netInfo
+        nodeInfos = _sharedNetInfo_nodes netInfo
+        toChainMeta = transferMetaToPublicMeta meta toChain
     close <- modalHeader $ text "Cross Chain Transfer"
-    _ <- elClass "div" "modal__main" $ do
+    (resultOk, errMsg) <- elClass "div" "modal__main" $ do
       transactionHashSection cmd
       fbk <- submitTransactionAndListen model cmd fromAccount fromChain (fmap Right nodeInfos)
       let listenDone = ffilter (==Status_Done) $ updated $ _transactionSubmitFeedback_listenStatus fbk
@@ -834,7 +838,7 @@ crossChainTransferAndStatus model netInfo ti cmd mdestGP destSigners = Workflow 
             el "p" $ text $ "Cross chain transfer initiated on chain " <> _chainId fromChain
 
           keys <- sample $ current $ model ^. wallet_keys
-          runUnfinishedCrossChainTransfer logL netInfo keys fromChain toChain mdestGP rk
+          runUnfinishedCrossChainTransfer logL netInfo keys fromChain toChain mdestGP rk toChainMeta
 
       let isError = \case
             Just (Left _) -> True
@@ -850,8 +854,11 @@ crossChainTransferAndStatus model netInfo ti cmd mdestGP destSigners = Workflow 
           , blank <$ retry0
           ]
 
-      pure resultOk0
-    done <- modalFooter $ confirmButton def "Done"
+      pure (resultOk0, errMsg0)
+    done <- modalFooter $ do
+      disableButton <- holdDyn True $ False <$ leftmost [ resultOk, () <$ errMsg]
+      confirmButton (def { _uiButtonCfg_disabled = disableButton}) "Done"
+
     pure ((mempty, close <> done), never)
   where
     fromChain = _ca_chain $ _ti_fromAccount ti
@@ -900,8 +907,7 @@ submitTransactionAndListen model cmd sender chain nodeInfos = do
         Right (Api.RequestKeys (key :| _)) -> do
           send Status_Done
           liftIO $ cb key
-    (listenStatus, message, setMessage) <- listenToRequestKey clientEnvs $ Just <$> onRequestKey
-    requestKey <- holdDyn Nothing $ Just <$> onRequestKey
+    (listenStatus, message, setMessage) <- pollForRequestKey clientEnvs $ Just <$> onRequestKey
   pure $ TransactionSubmitFeedback sendStatus listenStatus message
 
 payloadToCommand :: Payload PublicMeta Text -> Command Text
@@ -952,7 +958,7 @@ buildUnsignedCmd netInfo ti ty tmeta = payload
     toAccount = unAccountName $ _ca_account $ _ti_toAccount ti
     toChain = _ca_chain $ _ti_toAccount ti
     amount = _ti_amount ti
-    amountText = appendDecimalToText (tshow amount)
+    amountText = showWithDecimal $ normalizeDecimal amount
     dataKey = "ks" :: Text
     (mDataKey, code) = if fromChain == toChain
              then sameChainCmdAndData ty fromAccount toAccount (_ti_toKeyset ti) amountText
@@ -961,13 +967,7 @@ buildUnsignedCmd netInfo ti ty tmeta = payload
                (Just dataKey, printf "(coin.transfer-crosschain %s %s (read-keyset '%s) %s %s)"
                              (show fromAccount) (show toAccount) (T.unpack dataKey) (show toChain) amountText)
     tdata = maybe Null (\a -> object [ dataKey .= toJSON (userToPactKeyset a) ]) $ _ti_toKeyset ti
-    lim = _transferMeta_gasLimit tmeta
-    price = _transferMeta_gasPrice tmeta
-    ttl = _transferMeta_ttl tmeta
-    ct = _transferMeta_creationTime tmeta
-    sender = maybe "" unAccountName $ _transferMeta_senderAccount tmeta
-    meta = PublicMeta fromChain sender lim price ttl ct
-
+    meta = transferMetaToPublicMeta tmeta fromChain
     signers = _transferMeta_sourceChainSigners tmeta
 
     payload = Payload
@@ -1020,13 +1020,19 @@ gasPayersSection
   => model
   -> SharedNetInfo NodeInfo
   -> Map AccountName (AccountStatus AccountDetails)
+  -> Map AccountName (AccountStatus AccountDetails)
   -> TransferInfo
   -> m (GasPayers t)
-gasPayersSection model netInfo fks ti = do
+gasPayersSection model netInfo fks tks ti = do
     let fromChain = _ca_chain (_ti_fromAccount ti)
         fromAccount = _ca_account (_ti_fromAccount ti)
+        toAccount = _ca_account (_ti_toAccount ti)
         toChain = _ca_chain (_ti_toAccount ti)
-    (dgp1, mdgp2) <- if fromChain == toChain
+        defaultDestGasPayer = case Map.lookup toAccount tks of
+          Just (AccountStatus_Exists dets)
+            | _accountDetails_balance dets > AccountBalance 0 -> toAccount 
+          _ -> AccountName "free-x-chain-gas"
+    (dgp1, mdmgp2) <- if fromChain == toChain
       then do
         let initialGasPayer = if _ti_maxAmount ti then Nothing else Just (_ca_account $ _ti_fromAccount ti)
         let goodGasPayer a = if _ti_maxAmount ti && a == fromAccount
@@ -1038,23 +1044,20 @@ gasPayersSection model netInfo fks ti = do
       else do
         let mkLabel c = T.pack $ printf "Gas Paying Account (Chain %s)" (T.unpack $ _chainId c)
         (_,dgp1) <- uiAccountNameInput (mkLabel fromChain) True (Just $ _ca_account $ _ti_fromAccount ti) never noValidation
-        (_,dgp2) <- uiAccountNameInput (mkLabel toChain) True Nothing never noValidation
+        (_,dgp2) <- uiAccountNameInput (mkLabel toChain) True (Just defaultDestGasPayer) never noValidation
         pure $ (dgp1, Just dgp2)
-    let getGasPayerKeys chain mgp = do
-          case mgp of
-            Nothing -> return never
-            Just gp -> do
-              -- I think lookupKeySets can't be done in the PushM monad
-              evt <- lookupKeySets (model ^. logger) (_sharedNetInfo_network netInfo)
-                            (_sharedNetInfo_nodes netInfo) chain [gp]
-              return $ Map.lookup gp <$> fmapMaybe id evt
+    let
+      getGasPayerKeys chain mgp = do
+        case mgp of
+          Nothing -> return never
+          Just gp -> do
+            -- I think lookupKeySets can't be done in the PushM monad
+            evt <- lookupKeySets (model ^. logger) (_sharedNetInfo_network netInfo)
+                          (_sharedNetInfo_nodes netInfo) chain [gp]
+            return $ Map.lookup gp <$> fmapMaybe id evt
 
     -- Event t (Maybe AccountName)
     gp1Debounced <- debounce 1.0 $ updated dgp1
-    -- Maybe (Event t (Maybe AccountName))
-    mgp2Debounced <- maybe (return Nothing) (fmap Just . debounce 1.0 . updated) mdgp2
-    -- also not sure what to do if the source chain gas payer is the same as dest chain gas payer
-    -- should we let the user choose different signers for the source and dest chain?
     gp1Keys <- networkHold (return never)
                            (getGasPayerKeys fromChain <$> gp1Debounced)
     let initialDetails = Map.lookup fromAccount fks
@@ -1062,15 +1065,30 @@ gasPayersSection model netInfo fks ti = do
       [ (\a gp -> gp { gpdAccount = a }) <$> updated dgp1
       , (\keys gp -> gp { gpdDetails = keys }) <$> switch (current gp1Keys)
       ]
-    case mgp2Debounced of
-      Nothing -> return $ GasPayers gp1 Nothing
-      Just dgp2 -> do
-        gp2Keys <- networkHold (return never) (getGasPayerKeys toChain <$> dgp2)
+    --Outer maybe represents single chain transfer (so no second gas payer). Inner maybe represents
+    --an account name that is less than 3 chars for the "Destination Gas Payer" input field
+    mgp2 <- forM mdmgp2 $ \dmgp2 -> do
+        -- Take the initial value of the destination gas payer and lookup its details
+        initGasPayerDetails <- GasPayerDetails toChain (Just defaultDestGasPayer)
+          <$$> getGasPayerKeys toChain (Just defaultDestGasPayer)
+        updatedGP2 <- debounce 1.5 $ updated dmgp2
+        let (invalidGasPayer, newAccName) = fanEither $ ffor updatedGP2 $ \case
+              Nothing -> Left $ GasPayerDetails toChain Nothing Nothing
+              Just accName -> Right accName
+        -- gp2 and gp2Keys ---> is there a better way to do this??? Seems super redundant to
+        -- create a dynamic just for an event
+        gp2Keys <- networkHold (return never) (getGasPayerKeys toChain <$> updatedGP2)
         gp2 <- foldDyn ($) (GasPayerDetails toChain Nothing Nothing) $ leftmost
-          [ (\a gp -> gp { gpdAccount = a }) <$> maybe never updated mdgp2
+          [ (\a gp -> gp { gpdAccount = a }) <$> maybe never updated mdmgp2
           , (\keys gp -> gp { gpdDetails = keys }) <$> switch (current gp2Keys)
           ]
-        return $ GasPayers gp1 (Just gp2)
+        dgp2 <- holdDyn (GasPayerDetails toChain Nothing Nothing) $ leftmost [
+            initGasPayerDetails
+          , invalidGasPayer
+          , updated gp2
+          ]
+        return dgp2
+    return $ GasPayers gp1 mgp2
 
 
 data TransferMeta = TransferMeta
@@ -1081,6 +1099,16 @@ data TransferMeta = TransferMeta
   , _transferMeta_creationTime :: TxCreationTime
   , _transferMeta_sourceChainSigners :: [Signer]
   } deriving (Eq,Ord,Show)
+
+transferMetaToPublicMeta :: TransferMeta -> ChainId -> PublicMeta
+transferMetaToPublicMeta tmeta chainId =
+  let
+    lim = _transferMeta_gasLimit tmeta
+    price = _transferMeta_gasPrice tmeta
+    ttl = _transferMeta_ttl tmeta
+    ct = _transferMeta_creationTime tmeta
+    sender = maybe "" unAccountName $ _transferMeta_senderAccount tmeta
+  in PublicMeta chainId sender lim price ttl ct
 
 transferCapability :: AccountName -> AccountName -> Decimal -> SigCapability
 transferCapability from to amount = SigCapability
@@ -1147,8 +1175,7 @@ transferMetadata model netInfo fks tks ti ty = do
     el "br" blank
 
   dialogSectionHeading mempty "Gas Payers"
-  (GasPayers srcPayer mdestPayer) <- divClass "group" $ gasPayersSection model netInfo fks ti
-
+  (GasPayers srcPayer mdestPayer) <- divClass "group" $ gasPayersSection model netInfo fks tks ti
   let senderAction = getKeysetActionSingle fromChain (Just fromAccount) (Map.lookup fromAccount fks)
       getGpdAction (GasPayerDetails f a d) = getKeysetActionSingle f a d
       dSourceGasAction = getGpdAction <$> srcPayer
@@ -1225,7 +1252,12 @@ transferMetadata model netInfo fks tks ti ty = do
 
   dialogSectionHeading mempty "Transaction Settings"
   divClass "group" $ do
-    (conf, ttl, lim, price) <- uiMetaData model Nothing (if ty == SafeTransfer then Just 1200 else Just 600)
+    let defaultLimit = if ty == SafeTransfer
+          then Just 1200
+          else if fromChain == toChain
+            then Just 600
+            else Just 400  -- Cross-chains need to be under 400 in order to use gas-station
+    (conf, ttl, lim, price) <- uiMetaData model Nothing defaultLimit
     elAttr "div" ("style" =: "margin-top: 10px") $ do
       now <- fmap round $ liftIO $ getPOSIXTime
       let timeParser = maybe (Left "Not a valid creation time") Right . readMaybe . T.unpack

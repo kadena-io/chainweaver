@@ -161,7 +161,7 @@ main' ffi mainBundleResourcePath runHTML = do
   -- Run the backend in a forked thread, and run jsaddle-wkwebview on the main thread
   putStrLn $ "Starting backend on port: " <> show port
   Async.withAsync b $ \_ -> do
-    (signingHandler, quickSignHandler, keysHandler, accountsHandler) <- walletServer
+    (signingHandler, quickSignHandler) <- walletServer
       (_appFFI_moveToForeground ffi)
       (_appFFI_moveToBackground ffi)
     waitForBackend port
@@ -204,8 +204,6 @@ main' ffi mainBundleResourcePath runHTML = do
                   , _appCfg_editorReadOnly = False
                   , _appCfg_signingHandler = mkFRPHandler signingHandler
                   , _appCfg_quickSignHandler = mkFRPHandler quickSignHandler
-                  , _appCfg_keysEndpointHandler = mkFRPHandler keysHandler
-                  , _appCfg_accountsEndpointHandler = mkFRPHandler accountsHandler
                   , _appCfg_enabledSettings = enabledSettings
                   , _appCfg_logMessage = _appFFI_global_logFunction ffi
                   }

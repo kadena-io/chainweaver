@@ -7,6 +7,7 @@
 {-# LANGUAGE KindSignatures #-}
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE NumericUnderscores #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE QuasiQuotes #-}
 {-# LANGUAGE RecursiveDo #-}
@@ -42,17 +43,18 @@ module Frontend.UI.Dialogs.DeployConfirmation
   , deploySubmit
   , transactionResultSection
   , transactionStatusSection
-  , listenToRequestKey
+  , pollForRequestKey
   ) where
 
 import Common.Foundation
-import Control.Concurrent (newEmptyMVar, tryTakeMVar, putMVar, killThread, forkIO, ThreadId)
+import Control.Concurrent
 import Control.Lens
 import Control.Monad (void)
 import Control.Monad.Ref (MonadRef, Ref)
 import GHC.IORef (IORef)
 import Data.Default (Default (..))
 import Data.Either (rights)
+import qualified Data.HashMap.Strict as HM
 import Data.List.NonEmpty (NonEmpty(..), nonEmpty)
 import qualified Data.List.NonEmpty as NEL
 import Data.Text (Text)
@@ -193,7 +195,7 @@ submitTransactionWithFeedback model cmd sender chain nodeInfos = do
         Right (Api.RequestKeys (key :| _)) -> do
           send Status_Done
           liftIO $ cb key
-    (listenStatus, message, setMessage) <- listenToRequestKey clientEnvs $ Just <$> leftmost [onRequestKey, reloadKey]
+    (listenStatus, message, setMessage) <- pollForRequestKey clientEnvs $ Just <$> leftmost [onRequestKey, reloadKey]
     requestKey <- holdDyn Nothing $ Just <$> onRequestKey
 
     reload <- transactionStatusSection sendStatus listenStatus
@@ -201,7 +203,7 @@ submitTransactionWithFeedback model cmd sender chain nodeInfos = do
   transactionResultSection message
   pure $ TransactionSubmitFeedback sendStatus listenStatus message
 
-listenToRequestKey
+pollForRequestKey
   :: ( MonadHold t m
      , PerformEvent t m
      , TriggerEvent t m
@@ -214,7 +216,7 @@ listenToRequestKey
        , Dynamic t (Maybe (Either NetworkError PactValue))
        , Maybe (Either NetworkError PactValue) -> JSM ()
        )
-listenToRequestKey clientEnvs onRequestKey = do
+pollForRequestKey clientEnvs onRequestKey = do
   (listenStatus, listen) <- newTriggerHold Status_Waiting
   --(confirmedStatus, confirm) <- newTriggerHold Status_Waiting
   (message, setMessage) <- newTriggerHold Nothing
@@ -225,31 +227,38 @@ listenToRequestKey clientEnvs onRequestKey = do
         -- Kill the currently running thread and start a new thread
         liftIO $ traverse_ killThread =<< tryTakeMVar thread
         case requestKey of
-          Just key -> liftIO . putMVar thread =<< forkJSM' (getStatus key)
+          Just key -> liftIO . putMVar thread =<< forkJSM' (getStatus 20 key)
           Nothing -> pure ()
 
-      getStatus requestKey = do
+      getStatus :: Int -> Pact.RequestKey -> JSM ()
+      getStatus 0 _ = listen Status_Failed
+      getStatus n requestKey = do
         listen Status_Working
         --confirm Status_Waiting
         -- Wait for the result
-        doReqFailover clientEnvs (Api.listen Api.apiV1Client $ Api.ListenerRequest requestKey) >>= \case
+        doReqFailover clientEnvs (Api.poll Api.apiV1Client $ Api.Poll $ requestKey NEL.:| []) >>= \case
           Left errs -> do
             listen Status_Failed
             setMessage . Just . Left $ case nonEmpty errs of
               Nothing -> NetworkError_NetworkError "Unknown error"
               Just es -> packHttpErr $ NEL.last es
-          Right (Api.ListenTimeout _i) -> listen Status_Failed
-          Right (Api.ListenResponse commandResult) -> case (Pact._crTxId commandResult, Pact._crResult commandResult) of
-            -- We should always have a txId when we have a result
-            (Just _txId, Pact.PactResult (Right a)) -> do
-              listen Status_Done
-              setMessage $ Just $ Right a
-              -- TODO wait for confirmation...
-            (_, Pact.PactResult (Left err)) -> do
-              listen Status_Failed
-              setMessage $ Just $ Left $ NetworkError_CommandFailure err
-            -- This case shouldn't happen
-            _ -> listen Status_Failed
+          Right (Api.PollResponses rkmap) -> do
+            case HM.lookup requestKey rkmap of
+              Nothing -> do
+                liftIO $ threadDelay 15_000_000
+                getStatus (n-1) requestKey
+              Just commandResult ->
+                case (Pact._crTxId commandResult, Pact._crResult commandResult) of
+                  -- We should always have a txId when we have a result
+                  (Just _txId, Pact.PactResult (Right a)) -> do
+                    listen Status_Done
+                    setMessage $ Just $ Right a
+                    -- TODO wait for confirmation...
+                  (_, Pact.PactResult (Left err)) -> do
+                    listen Status_Failed
+                    setMessage $ Just $ Left $ NetworkError_CommandFailure err
+                  -- This case shouldn't happen
+                  _ -> listen Status_Failed
   performEvent_ $ liftJSM . forkListen <$> onRequestKey
   pure (listenStatus, message, setMessage)
 

@@ -33,6 +33,7 @@ module Frontend.UI.Wallet
 ------------------------------------------------------------------------------
 import           Control.Lens
 import           Control.Monad               (when, (<=<))
+import           Control.Error               (headMay)
 import qualified Data.IntMap                 as IntMap
 import           Data.Map                    (Map)
 import qualified Data.Map                    as Map
@@ -59,7 +60,7 @@ import           Frontend.UI.Dialogs.AccountDetails
 import           Frontend.UI.Dialogs.KeyDetails (uiKeyDetails)
 import           Frontend.UI.Dialogs.Receive (uiReceiveModal)
 import           Frontend.UI.Dialogs.WatchRequest (uiWatchRequestDialog)
-import           Frontend.UI.Dialogs.Send (uiSendModal, uiFinishCrossChainTransferModal)
+-- import           Frontend.UI.Dialogs.Send (uiSendModal)
 import           Frontend.UI.KeysetWidget
 import           Frontend.UI.Modal
 import           Frontend.Network
@@ -91,8 +92,8 @@ data AccountDialog
   | AccountDialog_Details AccountName (Maybe AccountNotes)
   | AccountDialog_Receive AccountName ChainId (Maybe AccountDetails)
   | AccountDialog_TransferTo AccountName AccountDetails ChainId
-  | AccountDialog_Send (AccountName, ChainId, AccountDetails) (Maybe UnfinishedCrossChainTransfer)
-  | AccountDialog_CompleteCrosschain AccountName ChainId UnfinishedCrossChainTransfer
+
+  -- AccountDialog_Send (AccountName, ChainId, AccountDetails) (Maybe UnfinishedCrossChainTransfer)
 
 uiWalletRefreshButton
   :: (MonadWidget t m, Monoid mConf, HasWalletCfg mConf key t)
@@ -205,8 +206,7 @@ uiAccountItems model accountsMap = do
       AccountDialog_DetailsChain acc -> uiAccountDetailsOnChain n acc
       AccountDialog_Receive name chain details -> uiReceiveModal "Receive" model name chain details
       AccountDialog_TransferTo name details chain -> uiReceiveModal "Transfer To" model name chain (Just details)
-      AccountDialog_Send acc mucct -> uiSendModal model acc mucct
-      AccountDialog_CompleteCrosschain name chain ucct -> uiFinishCrossChainTransferModal model name chain ucct
+      -- AccountDialog_Send acc mucct -> uiSendModal model acc mucct
 
   refresh <- delay 1 =<< getPostBuild
 
@@ -272,6 +272,14 @@ padChainId n (ChainId c) =
     Nothing -> ChainId c
     Just _ -> ChainId $ T.replicate (n - T.length c) "0" <> c
 
+unPadChainId :: ChainId -> ChainId
+unPadChainId (ChainId c) = if T.length c <= 1 then ChainId c else
+  case headMay (T.unpack c) of
+    -- recurse for when we have padded chain-lengths > 3
+    -- Ex: 0001
+    Just '0' -> unPadChainId $ ChainId $ T.tail c
+    _ -> ChainId c
+
 uiAccountItem
   :: forall key t m. MonadWidget t m
   => Dynamic t (KeyStorage key)
@@ -297,6 +305,7 @@ uiAccountItem cwKeys startsOpen name accountInfo = do
     v0 <- sample $ current startsOpen
     visible <- toggle v0 clk
     results <- accursedUnutterableListWithKey orderedChainMap $ accountRow visible
+
     let balances :: Dynamic t [Maybe AccountBalance]
         balances = fmap Map.elems $ joinDynThroughMap $ (fmap . fmap) fst results
   let dialogs = switch $ leftmost . fmap snd . Map.elems <$> current results
@@ -326,7 +335,8 @@ uiAccountItem cwKeys startsOpen name accountInfo = do
     -> ChainId
     -> Dynamic t Account
     -> m (Dynamic t (Maybe AccountBalance), Event t AccountDialog)
-  accountRow visible chain dAccount = do
+  accountRow visible paddedChain dAccount = do
+    let chain = unPadChainId paddedChain
     let details = (^? account_status . _AccountStatus_Exists) <$> dAccount
     let balance = _accountDetails_balance <$$> details
     -- Previously we always added all chain rows, but hid them with CSS. A bug

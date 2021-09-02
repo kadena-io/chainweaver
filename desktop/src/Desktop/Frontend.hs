@@ -93,7 +93,7 @@ desktopFrontend = Frontend
   , _frontend_body = prerender_ blank $ do
       logDir <- (<> "/" <> commandLogFilename) <$> liftIO getTemporaryDirectory
       liftIO $ putStrLn $ "Logging to: " <> logDir
-      (signingHandler, quickSignHandler, keysHandler, accountsHandler) <- walletServer
+      (signingHandler, quickSignHandler) <- walletServer
         (pure ()) -- Can't foreground or background things
         (pure ())
       mapRoutedT (flip runTransactionLoggerT (logTransactionFile logDir) . runBrowserStorageT) $ do
@@ -109,8 +109,6 @@ desktopFrontend = Frontend
           , _appCfg_editorReadOnly = False
           , _appCfg_signingHandler = mkFRPHandler signingHandler
           , _appCfg_quickSignHandler = mkFRPHandler quickSignHandler
-          , _appCfg_keysEndpointHandler = mkFRPHandler keysHandler
-          , _appCfg_accountsEndpointHandler = mkFRPHandler accountsHandler
           , _appCfg_enabledSettings = enabledSettings
           , _appCfg_logMessage = defaultLogger
           }
