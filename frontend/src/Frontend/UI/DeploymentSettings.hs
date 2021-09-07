@@ -530,9 +530,10 @@ uiCfg mCode m wChainId mTTL mGasLimit userSections txnSenderTitle otherAccordion
 
         dialogSectionHeading mempty $ getTxnSenderTitle txnSenderTitle
         mSender <- elKlass "div" ("group segment") $ mkLabeledClsInput True "Account" $ \_ -> do
-          (a,_) <- accountNameFormWidget noValidation $ mkCfg Nothing
-                     & primFormWidgetConfig_initialAttributes .~ ("class" =: "labeled-input__input")
-          return $ value a
+          (fmap . fmap) fst <$> mSenderSelect m cId never
+          -- (a,_) <- accountNameFormWidget noValidation $ mkCfg Nothing
+          --            & primFormWidgetConfig_initialAttributes .~ ("class" =: "labeled-input__input")
+          -- return $ value a
 
         -- Customisable user provided UI section
         fa <- for userSections $ \(title, body) -> do
