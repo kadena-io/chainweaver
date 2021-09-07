@@ -1054,8 +1054,9 @@ accountDatalist ideL = elAttr "datalist" ("id" =: accountListId) $ do
     _ -> Nothing
   dyn $ ffor mAccounts $ \case
     Nothing -> blank
-    Just am -> void $ listWithKey am $ \k _ -> do
-      el "option" $ text $ unAccountName k
+    Just am -> void $ listWithKey am $ \k a -> do
+      elAttr "option" ("value" =: unAccountName k) $ do
+        el "div" $ dynText $ (maybe "" unAccountNotes) . _accountInfo_notes <$> a
   pure ()
 
 accountListId :: Text
