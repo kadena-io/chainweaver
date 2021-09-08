@@ -1056,8 +1056,10 @@ accountDatalist ideL = elAttr "datalist" ("id" =: accountListId) $ do
   dyn $ ffor mAccounts $ \case
     Nothing -> blank
     Just am -> void $ listWithKey am $ \k a -> do
-      elAttr "option" ("value" =: unAccountName k) $ do
-        dynText $ maybe "" (addNotes k) . _accountInfo_notes <$> a
+      let label = maybe "" (addNotes k) . _accountInfo_notes <$> a
+          dAttrMap = ffor label $ \label' ->
+            mconcat [ "value" =: unAccountName k, "label" =: label']
+      elDynAttr "option" dAttrMap blank
   pure ()
   where
     addNotes (AccountName accName) accNotes =
