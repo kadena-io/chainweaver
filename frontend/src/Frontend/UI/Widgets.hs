@@ -1057,8 +1057,11 @@ accountDatalist ideL = elAttr "datalist" ("id" =: accountListId) $ do
     Nothing -> blank
     Just am -> void $ listWithKey am $ \k a -> do
       elAttr "option" ("value" =: unAccountName k) $ do
-        el "div" $ dynText $ (maybe "" unAccountNotes) . _accountInfo_notes <$> a
+        dynText $ maybe "" (addNotes k) . _accountInfo_notes <$> a
   pure ()
+  where
+    addNotes (AccountName accName) accNotes =
+      "<" <> unAccountNotes accNotes <> ">: " <> accName
 
 accountListId :: Text
 accountListId = "account-list"
