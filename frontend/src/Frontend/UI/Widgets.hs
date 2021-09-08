@@ -40,6 +40,7 @@ module Frontend.UI.Widgets
   , accountNameFormWidget
   , accountNameFormWidgetNoDropdown
   , uiAccountFixed
+  , uiAccountAny
   , uiAccountDropdown
   , uiAccountDropdown'
   , uiKeyPairDropdown
@@ -1106,6 +1107,17 @@ uiAccountNameInputNoDropdown label inlineLabel initval onSetName validateName = 
     & setValue .~ Just onSetName
   pure (tagPromptlyDyn v i, v)
 
+
+-- | Free form for an account
+uiAccountAny :: MonadWidget t m => m (Dynamic t (Maybe (AccountName, Account)))
+uiAccountAny = do
+  --TODO: We should probably add support for looking up the account
+  -- and validating in the future
+  a <- fmap fst $ accountNameFormWidget noValidation $ mkCfg Nothing
+             & primFormWidgetConfig_initialAttributes .~ ("class" =: "labeled-input__input")
+  let dmAcc = value a
+  pure $ flip (fmap . fmap) dmAcc $ \acc ->
+    (acc, Account AccountStatus_Unknown blankVanityAccount)
 
 -- | Set the account to a fixed value
 uiAccountFixed
