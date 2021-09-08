@@ -141,6 +141,7 @@ import           Obelisk.Generated.Static
 import           Reflex.Dom.Contrib.CssClass
 import           Reflex.Dom.Core
 import           Reflex.Extended             (tagOnPostBuild)
+import           Safe                        (lastMay)
 import           System.Random
 import           Text.Read                   (readMaybe)
 ------------------------------------------------------------------------------
@@ -1056,9 +1057,10 @@ accountDatalist ideL = elAttr "datalist" ("id" =: accountListId) $ do
   dyn $ ffor mAccounts $ \case
     Nothing -> blank
     Just am -> void $ listWithKey am $ \k a -> do
-      let label = maybe "" (addNotes k) . _accountInfo_notes <$> a
+      let label = maybe (unAccountName k) (addNotes k) . _accountInfo_notes <$> a
           dAttrMap = ffor label $ \label' ->
-            mconcat [ "value" =: unAccountName k, "label" =: label']
+            -- mconcat [ "value" =: unAccountName k, "label" =: label']
+            mconcat [ "value" =: label' ]
       elDynAttr "option" dAttrMap blank
   pure ()
   where
@@ -1395,7 +1397,7 @@ accountNameFormWidget validateName cfg = do
   (inputE, _) <- uiInputWithPopover uiNameInput snd showPopover $ pfwc2iec (maybe "" unAccountName) cfg
 
   let w = FormWidget
-            (hush <$> (validate <*> fmap T.strip (value inputE)))
+            (hush <$> (validate <*> fmap (T.strip . fromMaybe "" . lastMay . T.splitOn " ") (value inputE)))
             (() <$ _inputElement_input inputE)
             (_inputElement_hasFocus inputE)
   pure (w, domEvent Paste inputE)
