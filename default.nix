@@ -15,9 +15,9 @@ let
   # be changed in one place
   chainweaverVersion = "2.2.0";
   appName = "Kadena Chainweaver";
-  macReleaseNumber = "1";
-  linuxReleaseNumber = "1";
-  ovaReleaseNumber = "1";
+  macReleaseNumber = "0";
+  linuxReleaseNumber = "0";
+  ovaReleaseNumber = "0";
 
   obApp = import ./obApp.nix { inherit obelisk; };
   pactServerModule = import ./pact-server/service.nix;
