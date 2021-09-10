@@ -11,7 +11,7 @@
 -- | Wallet setup screens
 module Desktop.Setup (runSetup) where
 
-import Control.Lens ((<>~), (??), (^.), _1, _2, _3)
+import Control.Lens ((<>~), (^.), _1, _2, _3)
 import Control.Monad (guard)
 import Control.Monad.Fix (MonadFix)
 import Control.Monad.Trans.Maybe (MaybeT(MaybeT), runMaybeT)
@@ -63,7 +63,7 @@ runSetup fileFFI showBackOverride walletExists = setupDiv "fullscreen" $ mdo
   _ <- dyn_ $ walletSetupRecoverHeader <$> dCurrentScreen
 
   dwf <- divClass "wrapper" $
-    workflow (splashScreen walletExists fileFFI eBack)
+    workflow (splashScreenWithImport walletExists fileFFI eBack)
 
   pure $ leftmost
     [ fmap Right $ switchDyn $ (^. _2) <$> dwf
@@ -77,7 +77,7 @@ runSetup fileFFI showBackOverride walletExists = setupDiv "fullscreen" $ mdo
       else
         setupScreenClass ws
 
-splashScreen
+splashScreenWithImport
   :: (DomBuilder t m, MonadFix m, MonadHold t m, PerformEvent t m
      , PostBuild t m, MonadJSM (Performable m), TriggerEvent t m, HasStorage (Performable m)
      , MonadSample t (Performable m)
@@ -87,37 +87,27 @@ splashScreen
   -> FileFFI t m
   -> Event t ()
   -> SetupWF Crypto.XPrv t m
-splashScreen walletExists fileFFI eBack = selfWF
+splashScreenWithImport walletExists fileFFI eBack = selfWF
   where
     selfWF = Workflow $ setupDiv "splash" $ do
-      splashLogo
+      agreed <- splashScreenAgreement
+      let hasAgreed = gate (current agreed)
+          disabledCfg = uiButtonCfg_disabled .~ fmap not agreed
+          restoreCfg = uiButtonCfg_class <>~ "setup__restore-existing-button"
 
-      setupDiv "splash-terms-buttons" $ do
-        agreed <- fmap value $ setupCheckbox False def $ el "div" $ do
-          text "I have read & agree to the "
-          elAttr "a" ?? (text "Terms of Service") $ mconcat
-            [ "href" =: "https://kadena.io/chainweaver-tos"
-            , "target" =: "_blank"
-            , "class" =: setupClass "terms-conditions-link"
-            ]
+      create <- confirmButton (def & disabledCfg ) "Create a new wallet"
 
-        let hasAgreed = gate (current agreed)
-            disabledCfg = uiButtonCfg_disabled .~ fmap not agreed
-            restoreCfg = uiButtonCfg_class <>~ "setup__restore-existing-button"
+      restoreBipPhrase <- uiButtonDyn (btnCfgSecondary & disabledCfg & restoreCfg)
+        $ text "Restore from recovery phrase"
 
-        create <- confirmButton (def & disabledCfg ) "Create a new wallet"
+      restoreImport <- uiButtonDyn (btnCfgSecondary & disabledCfg & restoreCfg)
+        $ text "Restore from wallet export"
 
-        restoreBipPhrase <- uiButtonDyn (btnCfgSecondary & disabledCfg & restoreCfg)
-          $ text "Restore from recovery phrase"
-
-        restoreImport <- uiButtonDyn (btnCfgSecondary & disabledCfg & restoreCfg)
-          $ text "Restore from wallet export"
-
-        finishSetupWF WalletScreen_SplashScreen $ leftmost
-          [ createNewWallet selfWF eBack <$ hasAgreed create
-          , restoreBipWallet selfWF eBack <$ hasAgreed restoreBipPhrase
-          , restoreFromImport walletExists fileFFI selfWF eBack <$ hasAgreed restoreImport
-          ]
+      finishSetupWF WalletScreen_SplashScreen $ leftmost
+        [ createNewWallet selfWF eBack <$ hasAgreed create
+        , restoreBipWallet selfWF eBack <$ hasAgreed restoreBipPhrase
+        , restoreFromImport walletExists fileFFI selfWF eBack <$ hasAgreed restoreImport
+        ]
 
 restoreFromImport
   :: forall t m

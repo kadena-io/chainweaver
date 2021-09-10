@@ -16,7 +16,7 @@
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE UndecidableInstances #-}
 
-module Desktop.Frontend (desktopFrontend, bipWallet, bipCryptoGenPair, runFileStorageT) where
+module Desktop.Frontend (bipWallet, bipCryptoGenPair, runFileStorageT) where
 
 import Control.Concurrent (MVar)
 import Control.Exception (catch)
@@ -78,54 +78,55 @@ import Desktop.WalletApi
 
 import Pact.Server.ApiClient (WalletEvent (..), commandLogFilename, _transactionLogger_walletEvent, _transactionLogger_rotateLogFile)
 
--- | This is for development
--- > ob run --import desktop:Desktop
-desktopFrontend :: Frontend (R FrontendRoute)
-desktopFrontend = Frontend
-  { _frontend_head = do
-      let backendEncoder = either (error "frontend: Failed to check backendRouteEncoder") id $
-            checkEncoder backendRouteEncoder
-      base <- getConfigRoute
-      void $ Frontend.newHead $ \r -> base <> renderBackendRoute backendEncoder r
-  , _frontend_body = prerender_ blank $ do
-      logDir <- (<> "/" <> commandLogFilename) <$> liftIO getTemporaryDirectory
-      liftIO $ putStrLn $ "Logging to: " <> logDir
-      (signingHandler, keysHandler, accountsHandler) <- walletServer
-        (pure ()) -- Can't foreground or background things
-        (pure ())
-      mapRoutedT (flip runTransactionLoggerT (logTransactionFile logDir) . runBrowserStorageT) $ do
-        (fileOpened, triggerOpen) <- Frontend.openFileDialog
-        let fileFFI = FileFFI
-              { _fileFFI_externalFileOpened = fileOpened
-              , _fileFFI_openFileDialog = liftJSM . triggerOpen
-              , _fileFFI_deliverFile = deliverFile
-              }
-        bipWallet fileFFI (_mvarHandler_readRequest signingHandler) $ \enabledSettings -> AppCfg
-          { _appCfg_gistEnabled = False
-          , _appCfg_loadEditor = loadEditorFromLocalStorage
-          , _appCfg_editorReadOnly = False
-          , _appCfg_signingHandler = mkFRPHandler signingHandler
-          , _appCfg_keysEndpointHandler = mkFRPHandler keysHandler
-          , _appCfg_accountsEndpointHandler = mkFRPHandler accountsHandler
-          , _appCfg_enabledSettings = enabledSettings
-          , _appCfg_logMessage = defaultLogger
-          }
-  }
+--TODO: Can we remove this now that we no longer use a custom version of obelisk that supports
+-- `ob run --import desktop:Desktop` workflow?
 
--- This is the deliver file that is only used for development (i.e jsaddle web version)
--- so it is hacky and just writes to the current directory. We could likely make a
--- thing with a data uri and then click on it with JS, but this is probably OK enough
--- for dev.
-deliverFile
-  :: (MonadIO (Performable m), PerformEvent t m)
-  => Event t (FilePath, Text)
-  -> m (Event t (Either Text FilePath))
-deliverFile eInput = performEvent . ffor eInput $ \(fName, fContent) -> liftIO $ do
-  dirName <- getCurrentDirectory
-  catch
-    ((T.writeFile (dirName </> fName) fContent) *> (pure . Right $ dirName </> fName))
-    $ \(e :: IOError) ->
-      pure . Left . T.pack $ "Error '" <> show e <> "' exporting file: " <> show fName <> " to  " <> dirName
+-- -- | This is for development
+-- -- > ob run --import desktop:Desktop
+-- desktopFrontend :: Frontend (R FrontendRoute)
+-- desktopFrontend = Frontend
+--   { _frontend_head = do
+--       let backendEncoder = either (error "frontend: Failed to check backendRouteEncoder") id $
+--             checkEncoder backendRouteEncoder
+--       base <- getConfigRoute
+--       void $ Frontend.newHead $ \r -> base <> renderBackendRoute backendEncoder r
+--   , _frontend_body = prerender_ blank $ do
+--       logDir <- (<> "/" <> commandLogFilename) <$> liftIO getTemporaryDirectory
+--       liftIO $ putStrLn $ "Logging to: " <> logDir
+--       signingHandler <- walletServer
+--         (pure ()) -- Can't foreground or background things
+--         (pure ())
+--       mapRoutedT (flip runTransactionLoggerT (logTransactionFile logDir) . runBrowserStorageT) $ do
+--         (fileOpened, triggerOpen) <- Frontend.openFileDialog
+--         let fileFFI = FileFFI
+--               { _fileFFI_externalFileOpened = fileOpened
+--               , _fileFFI_openFileDialog = liftJSM . triggerOpen
+--               , _fileFFI_deliverFile = deliverFile
+--               }
+--         bipWallet fileFFI (_mvarHandler_readRequest signingHandler) $ \enabledSettings -> AppCfg
+--           { _appCfg_gistEnabled = False
+--           , _appCfg_loadEditor = loadEditorFromLocalStorage
+--           , _appCfg_editorReadOnly = False
+--           , _appCfg_signingHandler = mkFRPHandler signingHandler
+--           , _appCfg_enabledSettings = enabledSettings
+--           , _appCfg_logMessage = defaultLogger
+--           }
+--   }
+
+-- -- This is the deliver file that is only used for development (i.e jsaddle web version)
+-- -- so it is hacky and just writes to the current directory. We could likely make a
+-- -- thing with a data uri and then click on it with JS, but this is probably OK enough
+-- -- for dev.
+-- deliverFile
+--   :: (MonadIO (Performable m), PerformEvent t m)
+--   => Event t (FilePath, Text)
+--   -> m (Event t (Either Text FilePath))
+-- deliverFile eInput = performEvent . ffor eInput $ \(fName, fContent) -> liftIO $ do
+--   dirName <- getCurrentDirectory
+--   catch
+--     ((T.writeFile (dirName </> fName) fContent) *> (pure . Right $ dirName </> fName))
+--     $ \(e :: IOError) ->
+--       pure . Left . T.pack $ "Error '" <> show e <> "' exporting file: " <> show fName <> " to  " <> dirName
 
 data LockScreen a where
   LockScreen_Restore :: LockScreen Crypto.XPrv -- ^ Root key

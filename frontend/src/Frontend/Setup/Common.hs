@@ -11,7 +11,7 @@
 -- | Wallet setup screens
 module Frontend.Setup.Common where
 
-import Control.Lens ((?~), (<>~))
+import Control.Lens ((??), (?~), (<>~))
 import Control.Error (hush)
 import Control.Monad (unless, void)
 import Control.Monad.Fix (MonadFix)
@@ -166,6 +166,19 @@ splashLogo = do
     (  "style" =: ("background-image: url(" <> (static @"img/Wallet_Graphic_1.png") <> ");")
     <> "class" =: setupClass "splash-bg"
     ) kadenaWalletLogo
+
+splashScreenAgreement :: (DomBuilder t m, PostBuild t m) => m (Dynamic t Bool)
+splashScreenAgreement = do
+  splashLogo
+  setupDiv "splash-terms-buttons" $ do
+    agreed <- fmap value $ setupCheckbox False def $ el "div" $ do
+      text "I have read & agree to the "
+      elAttr "a" ?? (text "Terms of Service") $ mconcat
+        [ "href" =: "https://kadena.io/chainweaver-tos"
+        , "target" =: "_blank"
+        , "class" =: setupClass "terms-conditions-link"
+        ]
+    return agreed
 
 passphraseLen :: Int
 passphraseLen = 12
