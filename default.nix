@@ -3,21 +3,23 @@ args@{ system ? builtins.currentSystem
 , terms ? { # Accepted terms, conditions, and licenses
       security.acme.acceptTerms = true;
   }
-, obelisk ? (import ./.obelisk/impl { inherit system iosSdkVersion terms; })
-, pkgs ? obelisk.reflex-platform.nixpkgs
+, kpkgs ? import ./dep/kpkgs { inherit system; }  # If you want a custom package set, pass it into
+                                                  # kpkgs arg
+, obelisk ? (import ./.obelisk/impl { inherit system iosSdkVersion terms; inherit (kpkgs) reflex-platform-func;})
 , withHoogle ? false
 }:
 with obelisk;
 let
+  pkgs = obelisk.reflex-platform.nixpkgs;
   # All the versions that the user cares about are here so that they can
   # be changed in one place
-  chainweaverVersion = "2.2";
+  chainweaverVersion = "2.2.0";
   appName = "Kadena Chainweaver";
   macReleaseNumber = "0";
   linuxReleaseNumber = "0";
   ovaReleaseNumber = "0";
 
-  obApp = import ./obApp.nix args;
+  obApp = import ./obApp.nix { inherit obelisk; };
   pactServerModule = import ./pact-server/service.nix;
   sass = pkgs.runCommand "sass" {} ''
     set -eux
