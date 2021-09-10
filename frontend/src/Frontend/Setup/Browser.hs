@@ -286,15 +286,4 @@ passwordRoundTripTest xprv pass = liftJSM $ do
     msg :: ByteString
     msg = "the quick brown fox jumps over the lazy dog"
 
-data LockScreen a where
-  LockScreen_Restore :: LockScreen PrivateKey
-  LockScreen_RunSetup :: LockScreen ()
-  LockScreen_Locked :: LockScreen PrivateKey -- ^ Root key
-  LockScreen_Unlocked :: LockScreen (PrivateKey, Password) -- ^ The root key and password
-
-type MkAppCfg t m
-  =  EnabledSettings PrivateKey t (RoutedT t (R FrontendRoute) (BrowserCryptoT t m))
-  -- ^ Settings
-  -> AppCfg PrivateKey t (RoutedT t (R FrontendRoute) (BrowserCryptoT t m))
-
 deriveGEq ''LockScreen
