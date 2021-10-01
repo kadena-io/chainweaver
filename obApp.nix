@@ -124,6 +124,12 @@ in with obelisk;
         hspec-wai = haskellLib.doJailbreak super.hspec-wai;
         servant-server = haskellLib.dontCheck super.servant-server;
         neat-interpolation = haskellLib.doJailbreak super.neat-interpolation;
+
+        system-locale = haskellLib.dontCheck (self.callHackageDirect {
+          pkg = "system-locale";
+          ver =  "0.2.0.0";
+          sha256 = "0ry3g725nmx8cp7x4mxd1iaxyrvh9isg5jfp659ls0mxzs0v82wq";
+        } { });
 	
         prettyprinter = haskellLib.dontCheck (self.callHackageDirect {
           pkg = "prettyprinter";
@@ -159,7 +165,7 @@ in with obelisk;
         semialign = haskellLib.doJailbreak super.semialign; # vector bounds
         these-lens = haskellLib.doJailbreak super.these-lens; # lens bounds
         # pact = haskellLib.dontCheck super.pact; # tests can timeout...
-        system-locale = haskellLib.dontCheck super.system-locale; # tests fail on minor discrepancies on successfully parsed locale time formats.
+        # system-locale = haskellLib.dontCheck super.system-locale; # tests fail on minor discrepancies on successfully parsed locale time formats.
         typed-process = haskellLib.dontCheck super.typed-process;
         pact-time = haskellLib.dontCheck (self.callHackageDirect {
           pkg = "pact-time";
