@@ -96,11 +96,11 @@ in with obelisk;
         });
       };
       linux-overlay = self: super: {
-        gi-gtk-hs = self.callHackageDirect {
+        gi-gtk-hs = haskellLib.doJailbreak (self.callHackageDirect {
           pkg = "gi-gtk-hs";
           ver =  "0.3.7.0";
           sha256 = "0h5959ayjvipj54z0f350bz23fic90xw9z06xw4wcvxvwkrsi2br";
-        } { };
+        } { });
       };
       guard-ghcjs-overlay = self: super:
         let hsNames = [ "cacophony" "haskeline" "katip" "ridley" ];
@@ -118,6 +118,39 @@ in with obelisk;
         unliftio = haskellLib.dontCheck super.unliftio;
       };
       common-overlay = self: super: {
+	#################################
+	# Tmp Stuff to get pact to compile
+	#################################
+        hspec-wai = haskellLib.doJailbreak super.hspec-wai;
+        servant-server = haskellLib.dontCheck super.servant-server;
+        neat-interpolation = haskellLib.doJailbreak super.neat-interpolation;
+	
+        prettyprinter = haskellLib.dontCheck (self.callHackageDirect {
+          pkg = "prettyprinter";
+          ver =  "1.5.0";
+          sha256 = "sha256:1f25npzi67id9s3965dcwmvv94mfbgsnsjdf8srjmxj93ijg6kak";
+        } { });
+
+        modern-uri = haskellLib.dontCheck (self.callHackageDirect {
+          pkg = "modern-uri";
+          ver =  "0.3.4.0";
+          sha256 = "sha256:1qb94pnar8249y3iab8vxzmkj8zn5v36lhjccfdjcp037i6g5s7q";
+        } { });
+        hspec-megaparsec = haskellLib.dontCheck (self.callHackageDirect {
+          pkg = "hspec-megaparsec";
+          ver =  "2.2.0";
+          sha256 = "sha256:0fclj5snkg4r18zjpbgp4ai1lzxkvnrjh0194pi9l4s9g277ranc";
+        } { });
+        megaparsec = haskellLib.dontCheck (self.callHackageDirect {
+          pkg = "megaparsec";
+          ver =  "9.0.1";
+          sha256 = "sha256:1279c0snq1w13scikiakdm25ybpnvbpm7khjq4wyy0gj1vvh8r6z";
+        } { });
+        pact = (haskellLib.dontCheck super.pact); # tests can timeout...
+	#################################
+	# End
+	#################################
+
         brittany = haskellLib.dontCheck super.brittany;
         jsaddle-warp = haskellLib.dontCheck super.jsaddle-warp; # webdriver fails to build
         reflex-dom-contrib = haskellLib.doJailbreak (haskellLib.dontCheck super.reflex-dom-contrib); # webdriver fails to build
@@ -125,7 +158,7 @@ in with obelisk;
         servant-jsaddle = haskellLib.dontCheck (haskellLib.doJailbreak super.servant-jsaddle);
         semialign = haskellLib.doJailbreak super.semialign; # vector bounds
         these-lens = haskellLib.doJailbreak super.these-lens; # lens bounds
-        pact = haskellLib.dontCheck super.pact; # tests can timeout...
+        # pact = haskellLib.dontCheck super.pact; # tests can timeout...
         system-locale = haskellLib.dontCheck super.system-locale; # tests fail on minor discrepancies on successfully parsed locale time formats.
         typed-process = haskellLib.dontCheck super.typed-process;
         pact-time = haskellLib.dontCheck (self.callHackageDirect {
