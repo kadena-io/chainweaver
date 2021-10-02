@@ -6,6 +6,7 @@
 , ovaReleaseNumber
 , sass
 , homeManagerModule
+, patched-certs ? ./ca-certificates-patched.crt
 , linuxAppName ? "kadena-chainweaver"
 , linuxAppIcon ? ./linux/static/icons/pact-document.png
 }: rec {
@@ -26,11 +27,12 @@
       ln -s "${obApp.obelisk.mkAssets obApp.passthru.staticFiles}" "$out/bin/static.assets"
       ln -s "${obApp.passthru.staticFiles}" "$out/bin/static"
       ln -s "${sass}/sass.css" "$out/bin/sass.css"
+      ln -s "${patched-certs}" "$out/bin/ca-certificates-patched.crt"
     '';
   });
   nixosWrapper = pkgs.writeScriptBin "${linuxAppName}-wrapper" ''
     #!/usr/bin/env bash
-    WEBKIT_DISABLE_COMPOSITING_MODE=1 ${nixosExe}/bin/${linuxAppName}
+    WEBKIT_DISABLE_COMPOSITING_MODE=1 NIX_SSL_CERT_FILE=${nixosExe}/bin/ca-certificates-patched.crt ${nixosExe}/bin/${linuxAppName}
   '';
   nixosDesktopItem = pkgs.makeDesktopItem {
      name = linuxAppName;
