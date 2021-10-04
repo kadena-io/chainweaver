@@ -22,6 +22,7 @@
     libraryFrameworkDepends = [ pkgs.webkitgtk pkgs.glib-networking ];
     postInstall = ''
       set -eux
+
       mv $out/bin/linuxApp $out/bin/${linuxAppName}
       ln -s "${pkgs.z3}"/bin/z3 "$out/bin/z3"
       ln -s "${obApp.obelisk.mkAssets obApp.passthru.staticFiles}" "$out/bin/static.assets"
