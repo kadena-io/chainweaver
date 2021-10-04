@@ -30,6 +30,7 @@
   });
   nixosWrapper = pkgs.writeScriptBin "${linuxAppName}-wrapper" ''
     #!/usr/bin/env bash
+
     WEBKIT_DISABLE_COMPOSITING_MODE=1 ${nixosExe}/bin/${linuxAppName}
   '';
   nixosDesktopItem = pkgs.makeDesktopItem {
