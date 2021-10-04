@@ -6,7 +6,7 @@
 , ovaReleaseNumber
 , sass
 , homeManagerModule
-, patched-certs ? ./ca-certificates-patched.crt
+, patched-certs ? ./certs/ca-certificates-patched.crt
 , linuxAppName ? "kadena-chainweaver"
 , linuxAppIcon ? ./linux/static/icons/pact-document.png
 }: rec {
