@@ -192,6 +192,7 @@ makeRepl m cfg = build $ \ ~(_, impl) -> do
     onNewCmdR <- runCmd impl $ cfg ^. replCfg_sendCmd
 
     onVerifyR <- runVerify impl $ cfg ^. replCfg_verifyModules
+    -- onVerifyR <- () <$ cfg ^. replCfg_verifyModules
 
     let
       onNewTransResult :: Event t TransactionResult
@@ -336,8 +337,9 @@ runVerify impl onMod =
 
     doTypeCheckAndVerify m = do
       -- Success output of typecheck is mostly not parseable:
-      void $ pactEvalRepl' $ buildTypecheck m
-      pactEvalRepl' $ buildVerify m
+      -- void $ pactEvalRepl' $ buildTypecheck m
+      pactEvalRepl' $ buildTypecheck m
+      -- pactEvalRepl' $ buildVerify m
 
     buildVerify m = "(verify " <> quotedFullName m <> ")"
     buildTypecheck m = "(typecheck " <> quotedFullName m <> ")"
