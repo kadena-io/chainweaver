@@ -169,7 +169,7 @@ app sidebarExtra fileFFI appCfg = Store.versionedFrontend (Store.versionedStorag
     , modalCfg
     , gistModalCfg
     , signingModalCfg
-    , mempty & ideCfg_editor . editorCfg_loadCode .~ (snd <$> _fileFFI_externalFileOpened fileFFI)
+    -- , mempty & _ideCfg_editor . editorCfg_loadCode .~ (snd <$> _fileFFI_externalFileOpened fileFFI)
     ]
 
 -- Commented out and not removed since we intend to revisit this functionality soon

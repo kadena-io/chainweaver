@@ -127,13 +127,14 @@ makeModuleExplorer appCfg m cfg = mfix $ \ ~(_, explr) -> do
 
     onPostBuild <- getPostBuild
     mInitFile <- _appCfg_loadEditor appCfg
+    liftIO $ putStrLn "INIT FILE"
     let
       onInitFile =
         if isNothing mInitFile
            then FileRef_Example ExampleRef_HelloWorld <$ firstSeen
            else never
       editorInitCfg = mempty
-        & editorCfg_loadCode .~ fmapMaybe (const mInitFile) onPostBuild
+        -- & editorCfg_loadCode .~ fmapMaybe (const mInitFile) onPostBuild
     -- Store to disk max every 2 seconds:
     onAutoStore <- throttle 2 $ updated $ m ^. editor_code
     performEvent_ $ storeEditor <$> onAutoStore

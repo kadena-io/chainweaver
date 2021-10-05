@@ -51,7 +51,7 @@ import           GHC.Generics               (Generic)
 import           Reflex
 import           System.Random              (newStdGen, randoms)
 
-#ifdef  ghcjs_HOST_OS
+#ifndef  ghcjs_HOST_OS
 import           Data.Map                   (Map)
 import           Data.Bitraversable         (bitraverse)
 import           Control.Monad              (join)
@@ -135,7 +135,9 @@ makeEditor m cfg = mdo
       ]
 
     gen <- liftIO newStdGen
-    (quickFixCfg, onCodeFix) <- applyQuickFix (randoms gen) t $ cfg ^. editorCfg_applyQuickFix
+    let (quickFixCfg, onCodeFix) = (mempty, never)
+    -- (quickFixCfg, onCodeFix) <- applyQuickFix (randoms gen) t $ cfg ^. editorCfg_applyQuickFix
+
 -- #ifdef  ghcjs_HOST_OS
 --     -- Causes a bug where, upon clicking contract tab, everything freezes
 --     -- presumably due to some sort of fixpoint bug
@@ -214,12 +216,14 @@ typeCheckVerify m t = mdo
       , _replCfg_reset = () <$ onReplReset
       , _replCfg_verifyModules = Map.keysSet . _ts_modules <$> onTransSuccess
       }
-#ifdef  ghcjs_HOST_OS
+#ifndef  ghcjs_HOST_OS
     cModules <- holdDyn Map.empty $ _ts_modules <$> onTransSuccess
     let
       newAnnotations = mconcat
-       [ attachPromptlyDynWith parseVerifyOutput cModules $ _repl_modulesVerified replL
-       , concatMap annoFallbackParser <$> replO ^. messagesCfg_send
+       [ --attachPromptlyDynWith parseVerifyOutput cModules $ _repl_modulesVerified replL
+
+       -- , concatMap annoFallbackParser <$> replO ^. messagesCfg_send
+       concatMap annoFallbackParser <$> replO ^. messagesCfg_send
        ]
 #else
     let
@@ -232,27 +236,27 @@ typeCheckVerify m t = mdo
   where
 -- Line numbers are off on ghcjs: https://github.com/kadena-io/pact/issues/344
 -- TODO: Fix this in pact.
-#ifdef  ghcjs_HOST_OS
+#ifndef  ghcjs_HOST_OS
     parseVerifyOutput :: Map ModuleName Int -> VerifyResult -> [Annotation]
-    parseVerifyOutput ms rs =
-      let
-        msgsRs :: [(ModuleName, Either Text Text)]
-        msgsRs = Map.toList $ rs
+    parseVerifyOutput ms rs = []
+      -- let
+      --   msgsRs :: [(ModuleName, Either Text Text)]
+      --   msgsRs = Map.toList $ rs
 
-        parsedRs :: Map ModuleName (Either [Annotation] [Annotation])
-        parsedRs = Map.fromList $ mapMaybe (traverse $ join bitraverse annoParser) msgsRs
+      --   parsedRs :: Map ModuleName (Either [Annotation] [Annotation])
+      --   parsedRs = Map.fromList $ mapMaybe (traverse $ join bitraverse annoParser) msgsRs
 
-        fixLineNumber :: Int -> Annotation -> Annotation
-        fixLineNumber n a = a & annotation_pos . _Just . _1 +~ n
+      --   fixLineNumber :: Int -> Annotation -> Annotation
+      --   fixLineNumber n a = a & annotation_pos . _Just . _1 +~ n
 
-        fixLineNumbers :: Int -> [Annotation] -> [Annotation]
-        fixLineNumbers n = map (fixLineNumber n)
+      --   fixLineNumbers :: Int -> [Annotation] -> [Annotation]
+      --   fixLineNumbers n = map (fixLineNumber n)
 
-        fixLineNumbersRight :: Int -> Either [Annotation] [Annotation] -> [Annotation]
-        fixLineNumbersRight n = either id (fixLineNumbers n)
+      --   fixLineNumbersRight :: Int -> Either [Annotation] [Annotation] -> [Annotation]
+      --   fixLineNumbersRight n = either id (fixLineNumbers n)
 
-      in
-        normalize . concat . Map.elems $ Map.intersectionWith fixLineNumbersRight ms parsedRs
+      -- in
+      --   normalize . concat . Map.elems $ Map.intersectionWith fixLineNumbersRight ms parsedRs
 #else
     parseVerifyOutput :: VerifyResult -> [Annotation]
     parseVerifyOutput rs =
