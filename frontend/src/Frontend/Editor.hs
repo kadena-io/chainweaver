@@ -135,8 +135,7 @@ makeEditor m cfg = mdo
       ]
 
     gen <- liftIO newStdGen
-    let (quickFixCfg, onCodeFix) = (mempty, never)
-    -- (quickFixCfg, onCodeFix) <- applyQuickFix (randoms gen) t $ cfg ^. editorCfg_applyQuickFix
+    (quickFixCfg, onCodeFix) <- applyQuickFix (randoms gen) t $ cfg ^. editorCfg_applyQuickFix
 
 -- #ifdef  ghcjs_HOST_OS
 --     -- Causes a bug where, upon clicking contract tab, everything freezes
