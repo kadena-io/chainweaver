@@ -136,13 +136,7 @@ makeEditor m cfg = mdo
 
     gen <- liftIO newStdGen
     (quickFixCfg, onCodeFix) <- applyQuickFix (randoms gen) t $ cfg ^. editorCfg_applyQuickFix
--- #ifdef  ghcjs_HOST_OS
---     -- Causes a bug where, upon clicking contract tab, everything freezes
---     -- presumably due to some sort of fixpoint bug
---     let codeAnnotations = constDyn []
--- #else
     codeAnnotations <- holdDyn [] =<< typeCheckVerify m t
--- #endif
     let dataAnnotations = ffor (m ^. jsonData . to getJsonDataError) $ foldMap $ (: []) . annoJsonParser . showJsonError
     pure
       ( quickFixCfg

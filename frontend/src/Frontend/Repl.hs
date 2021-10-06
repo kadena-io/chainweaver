@@ -336,8 +336,9 @@ runVerify impl onMod =
 
     doTypeCheckAndVerify m = do
       -- Success output of typecheck is mostly not parseable:
-      void $ pactEvalRepl' $ buildTypecheck m
-      pactEvalRepl' $ buildVerify m
+      -- void $ pactEvalRepl' $ buildTypecheck m
+      pactEvalRepl' $ buildTypecheck m
+      -- pactEvalRepl' $ buildVerify m
 
     buildVerify m = "(verify " <> quotedFullName m <> ")"
     buildTypecheck m = "(typecheck " <> quotedFullName m <> ")"
