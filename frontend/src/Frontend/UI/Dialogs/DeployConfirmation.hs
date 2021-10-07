@@ -200,7 +200,7 @@ submitTransactionWithFeedback model cmd sender chain nodeInfos = do
 
     reload <- transactionStatusSection sendStatus listenStatus
     let reloadKey = tagMaybe (current requestKey) reload
-  transactionResultSection message
+  transactionResultSection message requestKey
   pure $ TransactionSubmitFeedback sendStatus listenStatus message
 
 pollForRequestKey
@@ -277,13 +277,29 @@ transactionStatusSection sendStatus listenStatus = do
       canReload <- delay 2 reload
     throttle 2 reload
 
-transactionResultSection :: MonadWidget t m => Dynamic t (Maybe (Either NetworkError PactValue)) -> m ()
-transactionResultSection message = do
+transactionResultSection 
+  :: MonadWidget t m
+  => Dynamic t (Maybe (Either NetworkError PactValue))
+  -> Dynamic t (Maybe Pact.RequestKey)
+  -> m ()
+transactionResultSection message reqId = do
   dialogSectionHeading mempty "Transaction Result"
   divClass "group" $ do
+    -- TODO: merge md and reqId dynamics to hit dyn in same case
     maybeDyn message >>= \md -> dyn_ $ ffor md $ \case
       Nothing -> text "Waiting for response..."
-      Just a -> dynText $ prettyPrintNetworkErrorResult . either (This . pure . (Nothing,)) (That . (Nothing,)) <$> a
+      Just a -> do
+        el "div" $
+          dynText $ fmap (prettyPrintNetworkErrorResult . either (This . pure . (Nothing,)) (That . (Nothing,))) a
+        el "div" $ do
+          dyn_ $ ffor reqId $ \case
+            Nothing -> text "error: Your request key has not been retrieved"
+            Just reqId -> makeBlockExplorerLink reqId
+  where
+    makeBlockExplorerLink reqKey =
+      elAttr "a" ("target" =: "_blank" <>
+                  "href" =: ("https://explorer.chainweb.com/testnet/tx/" <> Pact.requestKeyToB16Text reqKey)) $
+        text "View on the block explorer"
 
 deploySubmit
   :: forall key t m a model modelCfg.
