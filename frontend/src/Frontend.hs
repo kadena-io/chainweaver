@@ -23,6 +23,7 @@ import Pact.Server.ApiClient (runTransactionLoggerT, logTransactionStdout)
 import Obelisk.Frontend
 import Obelisk.Route.Frontend
 import Obelisk.Generated.Static
+import System.IO
 
 import Common.Api
 import Common.Route
@@ -64,6 +65,8 @@ frontend = Frontend
       pure ()
 
   , _frontend_body = prerender_ loaderMarkup $ do
+    liftIO $ hSetBuffering stderr LineBuffering
+    liftIO $ hSetBuffering stout LineBuffering
     (fileOpened, triggerOpen) <- openFileDialog
     mapRoutedT (flip runTransactionLoggerT logTransactionStdout . runBrowserStorageT) $ do
       let fileFFI = FileFFI
