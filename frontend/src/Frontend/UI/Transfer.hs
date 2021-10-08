@@ -598,12 +598,20 @@ handleMissingKeyset
   -> m ((mConf, Event t ()), Event t (Workflow t m (mConf, Event t ())))
 handleMissingKeyset model netInfo ti ty fks tks fromPair = do
     let toAccountText = unAccountName $ _ca_account $ _ti_toAccount ti
-    case parsePublicKey toAccountText of
-      Left _ -> do
+        parsePubKeyOrKAccount key = 
+          second parsePublicKey $ maybe (False, key) (\k -> (True, k)) $ T.stripPrefix "k:" key
+    case parsePubKeyOrKAccount toAccountText of
+      -- Vanity account name
+      (_, Left _) -> do
         cancel <- fatalTransferError $
           el "div" $ text $ "Receiving account " <> toAccountText <> " does not exist. You must specify a keyset to create this account."
         return ((mempty, cancel), never)
-      Right pk -> do
+      -- AccName "k:<pubkey>" --> Don't even ask approval to use it
+      (True, Right pk) -> do
+        let ti2 = ti { _ti_toKeyset = Just $ UserKeyset (Set.singleton pk) KeysAll }
+        transferDialog model netInfo ti2 ty fks tks fromPair
+      -- AccName: "<pubkey>" --> Ask for approval
+      (False, Right pk) -> do
         close <- modalHeader $ text "Account Keyset"
         _ <- elClass "div" "modal__main" $ do
           el "div" $ text $ "The receiving account name looks like a public key and you did not specify a keyset.  Would you like to use it as the keyset to send to?"
