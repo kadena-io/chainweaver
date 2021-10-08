@@ -19,7 +19,7 @@ import qualified GHCJS.DOM.HTMLInputElement as HTMLInput
 import qualified GHCJS.DOM.Types as Types
 import qualified GHCJS.DOM.File as JSFile
 import Reflex.Dom
-import Pact.Server.ApiClient (runTransactionLoggerT, logTransactionStdout)
+import Pact.Server.ApiClient (runTransactionLoggerT, noLogger)
 import Obelisk.Frontend
 import Obelisk.Route.Frontend
 import Obelisk.Generated.Static
@@ -28,7 +28,7 @@ import System.IO
 import Common.Api
 import Common.Route
 import Frontend.AppCfg
-import Frontend.Log (defaultLogger)
+import Frontend.Log (errorLevelLogger)
 import Frontend.Foundation
 import Frontend.ModuleExplorer.Impl (loadEditorFromLocalStorage)
 import Frontend.Storage
@@ -66,9 +66,9 @@ frontend = Frontend
 
   , _frontend_body = prerender_ loaderMarkup $ do
     liftIO $ hSetBuffering stderr LineBuffering
-    liftIO $ hSetBuffering stout LineBuffering
+    liftIO $ hSetBuffering stdout LineBuffering
     (fileOpened, triggerOpen) <- openFileDialog
-    mapRoutedT (flip runTransactionLoggerT logTransactionStdout . runBrowserStorageT) $ do
+    mapRoutedT (flip runTransactionLoggerT noLogger . runBrowserStorageT) $ do
       let fileFFI = FileFFI
             { _fileFFI_externalFileOpened = fileOpened
             , _fileFFI_openFileDialog = liftJSM . triggerOpen
@@ -81,7 +81,7 @@ frontend = Frontend
         , _appCfg_editorReadOnly = False
         , _appCfg_signingHandler = printResponsesHandler
         , _appCfg_enabledSettings = enabledSettings
-        , _appCfg_logMessage = defaultLogger
+        , _appCfg_logMessage = errorLevelLogger
         }
   }
 

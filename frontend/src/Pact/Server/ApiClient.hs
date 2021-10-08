@@ -29,6 +29,7 @@ module Pact.Server.ApiClient
   , runTransactionLoggerT
   , logTransactionStdout
   , logTransactionFile
+  , noLogger
   ) where
 
 import Control.Applicative ((<|>))
@@ -253,6 +254,18 @@ instance Monad m => HasTransactionLogger (TransactionLoggerT m) where
 
 runTransactionLoggerT :: TransactionLoggerT m a -> TransactionLogger -> m a
 runTransactionLoggerT = runReaderT . unTransactionLoggerT
+
+noLogger :: TransactionLogger
+noLogger = TransactionLogger
+  { _transactionLogger_appendLog = const $ pure ()
+  , _transactionLogger_walletEvent = \_ _ _ -> pure ()
+  , _transactionLogger_destination = Nothing
+  , _transactionLogger_loadLastNLogs = logsdisabled
+  , _transactionLogger_exportFile = logsdisabled
+  , _transactionLogger_rotateLogFile = pure ()
+  }
+  where
+    logsdisabled = const $ pure $ Left "Logs Disabled"
 
 logTransactionStdout :: TransactionLogger
 logTransactionStdout = TransactionLogger
