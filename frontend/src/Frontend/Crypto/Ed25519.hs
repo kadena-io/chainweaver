@@ -93,9 +93,7 @@ exceptionToText = T.pack . displayException
 callJSFunction :: (MonadCatch m, MonadJSM m) => Text -> m (Either Text a) -> m (Either Text a)
 callJSFunction funcName exec = catch exec $ handleException funcName
   where
-    handleException :: (MonadJSM m) => Text -> JSException -> m (Either Text a)
-    handleException fName e = do
-      liftJSM $ liftIO $ print "HERE"
+    handleException fName e =
       pure $ Left $ mconcat
         [ T.pack "JSException in "
         , fName

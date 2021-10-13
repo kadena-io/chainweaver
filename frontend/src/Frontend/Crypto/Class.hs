@@ -7,6 +7,7 @@
 module Frontend.Crypto.Class where
 
 import Control.Monad.Reader
+import Control.Error.Util
 import Obelisk.Route.Frontend
 import Data.ByteString (ByteString)
 import Data.Text (Text)
@@ -59,8 +60,6 @@ instance BIP39Root PrivateKey where
   type Sentence PrivateKey = [Text]
   deriveRoot pwd sentence = liftJSM $
     fmap hush $ generateRoot pwd $ T.unwords sentence
-    where hush = either (const Nothing) Just
-    -- TODO; add pwd reset
 
 -- |Main constraint for frontend use
 type DerivableKey key mnem = (BIP39Mnemonic mnem, BIP39Root key, Sentence key ~ mnem)
