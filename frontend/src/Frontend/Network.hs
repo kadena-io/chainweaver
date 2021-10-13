@@ -138,6 +138,7 @@ import           Common.Network
 import           Common.Wallet
 import           Frontend.Crypto.Class
 import           Frontend.Crypto.Ed25519
+import           Frontend.Crypto.Signature
 import           Frontend.Foundation
 import           Frontend.Messages
 import           Frontend.Network.NodeInfo

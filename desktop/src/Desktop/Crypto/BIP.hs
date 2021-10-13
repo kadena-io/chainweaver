@@ -9,6 +9,7 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE StandaloneDeriving #-}
 {-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE UndecidableInstances #-}
 
@@ -22,10 +23,14 @@ import Data.Aeson (ToJSON(..), FromJSON(..))
 import Data.Aeson.GADT.TH
 import Data.Bits ((.|.))
 import Data.ByteString (ByteString)
+import Data.ByteArray (ByteArrayAccess)
+import qualified Data.ByteArray as BA
+import Data.Bifunctor
 import Data.Coerce (coerce)
 import Data.Constraint.Extras.TH
 import Data.GADT.Compare.TH
 import Data.GADT.Show.TH
+import Data.String (IsString, fromString)
 import Data.Text (Text)
 import qualified Data.Text as T
 import Data.Universe.Some.TH
@@ -37,6 +42,9 @@ import Reflex.Dom hiding (fromJSString)
 import Reflex.Host.Class (MonadReflexCreateTrigger)
 
 import qualified Cardano.Crypto.Wallet as Crypto
+import qualified Crypto.Encoding.BIP39 as Crypto
+import qualified Crypto.Encoding.BIP39.English as Crypto
+import qualified Crypto.Random.Entropy
 import qualified Control.Newtype.Generics as Newtype
 import qualified Data.Text.Encoding as T
 import qualified Pact.Types.Crypto as PactCrypto
@@ -44,6 +52,8 @@ import qualified Pact.Types.Hash as Pact
 
 import Frontend.Crypto.Ed25519
 import Frontend.Crypto.Class
+import Frontend.Crypto.Signature
+import Frontend.Crypto.Password
 import Frontend.Foundation
 import Frontend.Storage
 
@@ -66,8 +76,9 @@ bipMetaPrefix :: StoreKeyMetaPrefix
 bipMetaPrefix = StoreKeyMetaPrefix "BIPStorage_Meta"
 
 -- | Check the validity of the password by signing and verifying a message
-passwordRoundTripTest :: Crypto.XPrv -> Text -> Bool
-passwordRoundTripTest xprv pass = Crypto.verify (Crypto.toXPub xprv) msg $ Crypto.sign (T.encodeUtf8 pass) xprv msg
+passwordRoundTripTest :: Crypto.XPrv -> Password -> Bool
+passwordRoundTripTest xprv (Password pass) =
+  Crypto.verify (Crypto.toXPub xprv) msg $ Crypto.sign (T.encodeUtf8 pass) xprv msg
   where
     msg :: ByteString
     msg = "the quick brown fox jumps over the lazy dog"
@@ -103,6 +114,46 @@ bipCryptoGenPair root pass i =
   where
     scheme = Crypto.DerivationScheme2
     mkHardened = (0x80000000 .|.)
+
+data BIP39PhraseError
+  = BIP39PhraseError_Dictionary Crypto.DictionaryError
+  | BIP39PhraseError_MnemonicWordsErr Crypto.MnemonicWordsError
+  | BIP39PhraseError_InvalidPhrase
+  | BIP39PhraseError_PhraseIncomplete
+  deriving (Show)
+
+instance BIP39Mnemonic (Crypto.MnemonicSentence 12) where
+  type BIP39MnemonicError (Crypto.MnemonicSentence 12)= BIP39PhraseError
+
+  -- | Generate a 12 word mnemonic sentence, using cryptonite.
+  -- These values for entropy must be set according to a predefined table:
+  -- https://github.com/kadena-io/cardano-crypto/blob/master/src/Crypto/Encoding/BIP39.hs#L208-L218
+  generateMnemonic = liftJSM $ liftIO $ bimap tshow Crypto.entropyToWords . Crypto.toEntropy @128
+    -- This size must be a 1/8th the size of the 'toEntropy' size: 128 / 8 = 16
+    <$> Crypto.Random.Entropy.getEntropy @ByteString 16
+
+  toMnemonic rawInput = pure $ if enoughWords rawInput
+    then do
+      phrase <- first BIP39PhraseError_MnemonicWordsErr . Crypto.mnemonicPhrase @12 $ fmap textTo rawInput
+      unless (Crypto.checkMnemonicPhrase Crypto.english phrase) $ Left BIP39PhraseError_InvalidPhrase
+      first BIP39PhraseError_Dictionary $ Crypto.mnemonicPhraseToMnemonicSentence Crypto.english phrase
+    else Left BIP39PhraseError_PhraseIncomplete
+    where
+      passphraseLen = 12
+      enoughWords = (== passphraseLen) . length . filter (not . T.null)
+      textTo :: IsString a => Text -> a
+      textTo = fromString . T.unpack
+
+  mnemonicToText = T.words . baToText . Crypto.mnemonicSentenceToString @12 Crypto.english
+    where 
+      baToText :: ByteArrayAccess b => b -> Text
+      baToText = T.decodeUtf8 . BA.pack . BA.unpack
+
+instance BIP39Root Crypto.XPrv where
+  type Sentence (Crypto.XPrv) = Crypto.MnemonicSentence 12
+  deriveRoot (Password pwd) sentence = do
+    let seed = Crypto.sentenceToSeed sentence Crypto.english ""
+    pure $ Just $ Crypto.generate seed $ T.encodeUtf8 pwd
 
 instance (MonadSample t m, MonadJSM m) => HasCrypto Crypto.XPrv (BIPCryptoT t m) where
   cryptoSign bs xprv = BIPCryptoT $ do

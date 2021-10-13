@@ -15,7 +15,7 @@
 -- License     :  BSD-style (see the file LICENSE)
 --
 
-module Frontend.ReplGhcjs where
+module Frontend.App where
 
 import Control.Lens
 import Control.Monad.Reader (ask)

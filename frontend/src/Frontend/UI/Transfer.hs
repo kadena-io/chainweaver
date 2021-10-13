@@ -96,6 +96,7 @@ import           Common.Foundation
 import           Common.Wallet
 import           Frontend.Crypto.Class
 import           Frontend.Crypto.Ed25519
+import           Frontend.Crypto.Signature
 import           Frontend.Foundation
 import           Frontend.JsonData
 import           Frontend.Log
@@ -597,12 +598,20 @@ handleMissingKeyset
   -> m ((mConf, Event t ()), Event t (Workflow t m (mConf, Event t ())))
 handleMissingKeyset model netInfo ti ty fks tks fromPair = do
     let toAccountText = unAccountName $ _ca_account $ _ti_toAccount ti
-    case parsePublicKey toAccountText of
-      Left _ -> do
+        parsePubKeyOrKAccount key = 
+          second parsePublicKey $ maybe (False, key) (\k -> (True, k)) $ T.stripPrefix "k:" key
+    case parsePubKeyOrKAccount toAccountText of
+      -- Vanity account name
+      (_, Left _) -> do
         cancel <- fatalTransferError $
           el "div" $ text $ "Receiving account " <> toAccountText <> " does not exist. You must specify a keyset to create this account."
         return ((mempty, cancel), never)
-      Right pk -> do
+      -- AccName "k:<pubkey>" --> Don't even ask approval to use it
+      (True, Right pk) -> do
+        let ti2 = ti { _ti_toKeyset = Just $ UserKeyset (Set.singleton pk) KeysAll }
+        transferDialog model netInfo ti2 ty fks tks fromPair
+      -- AccName: "<pubkey>" --> Ask for approval
+      (False, Right pk) -> do
         close <- modalHeader $ text "Account Keyset"
         _ <- elClass "div" "modal__main" $ do
           el "div" $ text $ "The receiving account name looks like a public key and you did not specify a keyset.  Would you like to use it as the keyset to send to?"
@@ -1408,8 +1417,8 @@ data TransferDetails
 
 showTransferDetailsTabName :: TransferDetails -> Text
 showTransferDetailsTabName = \case
-  TransferDetails_Yaml -> "YAML"
   TransferDetails_Json -> "JSON"
+  TransferDetails_Yaml -> "YAML"
   TransferDetails_HashQR -> "Hash QR Code"
   TransferDetails_FullQR -> "Full Tx QR Code"
 
@@ -1419,7 +1428,7 @@ transferDetails
   -> m ()
 transferDetails signedCmd = do
     divClass "tabset" $ mdo
-      curSelection <- holdDyn TransferDetails_Yaml onTabClick
+      curSelection <- holdDyn TransferDetails_Json onTabClick
       (TabBar onTabClick) <- makeTabBar $ TabBarCfg
         { _tabBarCfg_tabs = [minBound .. maxBound]
         , _tabBarCfg_mkLabel = const $ text . showTransferDetailsTabName
@@ -1436,6 +1445,9 @@ transferDetails signedCmd = do
           & textAreaElementConfig_initialValue .~ iv
           & initialAttributes %~ (<> "disabled" =: "" <> "style" =: "width: 100%; height: 18em;")
           & textAreaElementConfig_setValue .~ updated preview
+#else
+      let notAvailMsg = el "ul" $ text "This feature is not currently available in the browser"
+      tabPane mempty curSelection TransferDetails_Yaml notAvailMsg
 #endif
 
       tabPane mempty curSelection TransferDetails_Json $ do
@@ -1463,6 +1475,9 @@ transferDetails signedCmd = do
             qrImage = QR.encodeText (QR.defaultQRCodeOptions QR.L) QR.Iso8859_1OrUtf8WithECI <$> yamlText
             img = maybe "Error creating QR code" (QR.toPngDataUrlT 4 4) <$> qrImage
         elDynAttr "img" (("src" =:) . LT.toStrict <$> img) blank
+#else
+      tabPane mempty curSelection TransferDetails_HashQR notAvailMsg
+      tabPane mempty curSelection TransferDetails_FullQR notAvailMsg
 #endif
 
       pure ()
@@ -1475,7 +1490,6 @@ yamlOptions = Y.setFormat (Y.setWidth Nothing Y.defaultFormatOptions) Y.defaultE
 uiSigningInput
   :: ( MonadWidget t m
      , HasCrypto key m
---     , HasCrypto key (Performable m)
      )
   => Hash
   -> PublicKey
