@@ -65,8 +65,8 @@ setPassword dSentence = do
   elDynClass "div" dMsgClass $
     dynText $ fromMaybe T.empty <$> lastError
 
-  encryptedKeyAndPass <- performEvent $ ffor pass $ \p -> do
-    sentence <- sample $ current dSentence 
+  let mnemAndPass = attach (current dSentence) pass
+  encryptedKeyAndPass <- performEvent $ ffor mnemAndPass $ \(sentence, p) -> do
     root <- deriveRoot p sentence
     return $ ffor root $ \r -> (r, p)
 
