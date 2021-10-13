@@ -22,10 +22,10 @@ unverifiedUserSuppliedSignature = fmap Signature . decodeBase16M . T.encodeUtf8
 
 -- | Parse just a public key with some sanity checks applied.
 parseSignature :: MonadError Text m => Text -> m Signature
-parseSignature = throwDecodingErr . textToKey <=< checkSig . T.strip
+parseSignature = throwDecodingErr . textToKey <=< checkSigLen . T.strip
 
-checkSig :: MonadError Text m => Text -> m Text
-checkSig t =
+checkSigLen :: MonadError Text m => Text -> m Text
+checkSigLen t =
     if len /= 128
       then throwError $ T.pack "Signature is not the right length"
       else pure t

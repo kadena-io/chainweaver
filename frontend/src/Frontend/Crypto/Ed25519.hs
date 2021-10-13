@@ -42,34 +42,31 @@ module Frontend.Crypto.Ed25519
   )
   where
 
-import           Control.Lens hiding ((#))
-import           Control.Monad
-import           Control.Monad.Fail          (MonadFail)
-import           Control.Newtype.Generics    (Newtype (..))
-import           Data.Aeson                  hiding (Object)
-import qualified Data.Text as T
-import           Data.ByteString             (ByteString)
-import qualified Data.ByteString             as BS
-import           Data.Text                   (Text)
-import qualified Data.Text.Encoding          as T
-import           GHC.Generics                (Generic)
-import           Pact.Types.Util             (encodeBase64UrlUnpadded, decodeBase64UrlUnpadded)
-
-import Common.Wallet
-import Frontend.Foundation
-
-import           GHCJS.Buffer                       (createFromArrayBuffer, freeze, toByteString)
 import           Control.Exception.Base             (displayException)
+import           Control.Monad.Catch
+import           Control.Monad.Except
+import           Control.Lens                       hiding ((#))
+import           Control.Monad.Fail                 (MonadFail)
+import           Control.Newtype.Generics           (Newtype (..))
+import           Data.Aeson                         hiding (Object)
+import           Data.Bits                          ((.|.))
+import           Data.ByteString                    (ByteString)
+import qualified Data.ByteString                    as BS
+import           Data.Text                          (Text)
+import qualified Data.Text                          as T
+import qualified Data.Text.Encoding                 as T
+import           GHC.Generics                       (Generic)
+import           GHCJS.Buffer                       (createFromArrayBuffer, freeze, toByteString)
 import           Language.Javascript.JSaddle
 import           Language.Javascript.JSaddle.Helper (mutableArrayBufferFromJSVal)
 import           Language.Javascript.JSaddle.Types  (ghcjsPure)
-import           Data.Bits ((.|.))
-import           Frontend.Crypto.Signature
-import           Frontend.Crypto.Password
-import Control.Monad.Except
-import Control.Monad.Catch
+import           Pact.Types.Util                    (encodeBase64UrlUnpadded, decodeBase64UrlUnpadded)
 
---
+import           Common.Wallet
+import           Frontend.Crypto.Password
+import           Frontend.Crypto.Signature
+import           Frontend.Foundation
+
 -- | PrivateKey with a Pact compatible JSON representation.
 newtype PrivateKey = PrivateKey { unPrivateKey :: ByteString }
   deriving (Generic)
