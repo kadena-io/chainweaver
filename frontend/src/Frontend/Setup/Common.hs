@@ -444,11 +444,12 @@ restoreBipWallet backWF eBack = Workflow $ do
     onPhraseMapUpdate <- passphraseWidget dPhraseMap (pure Recover) True
 
   sentenceOrError <- performEvent $ ffor (updated dPhraseMap) $ \pMap ->
-    toMnemonic $ Map.elems pMap
+    let wList = filter (not . T.null) $ Map.elems pMap
+    in toMnemonic wList
   widgetHold_ blank $ ffor sentenceOrError $ \case
     Right _ -> blank
     Left e -> setupDiv "phrase-error-message-wrapper" $ setupDiv "phrase-error-message" $
-      text $ tshow e
+      text $ displayError e
   let
       ePhraseUpdated = fmapMaybe hush sentenceOrError
 

@@ -122,6 +122,13 @@ data BIP39PhraseError
   | BIP39PhraseError_PhraseIncomplete
   deriving (Show)
 
+instance DisplayError BIP39PhraseError where
+  displayError e = case e of
+    BIP39PhraseError_Dictionary dictError -> tshow dictError
+    BIP39PhraseError_MnemonicWordsErr mnemWordErr -> tshow mnemWordErr
+    BIP39PhraseError_InvalidPhrase -> "Invalid Phrase"
+    BIP39PhraseError_PhraseIncomplete -> ""
+
 instance BIP39Mnemonic (Crypto.MnemonicSentence 12) where
   type BIP39MnemonicError (Crypto.MnemonicSentence 12)= BIP39PhraseError
 
