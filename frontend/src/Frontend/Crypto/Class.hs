@@ -31,7 +31,15 @@ data MnemonicError =
   | MnemonicError_NotEnoughWords
   deriving (Show)
 
-class (Show (BIP39MnemonicError mnem)) => BIP39Mnemonic mnem where
+class DisplayError e where
+  displayError :: e -> Text
+
+instance DisplayError MnemonicError where
+  displayError MnemonicError_InvalidPhrase = "Invalid Mnemonic Phrase"
+  displayError MnemonicError_NotEnoughWords = ""
+
+
+class (DisplayError (BIP39MnemonicError mnem)) => BIP39Mnemonic mnem where
   type BIP39MnemonicError mnem
   generateMnemonic :: MonadJSM m => m (Either Text mnem)
   toMnemonic :: MonadJSM m => [Text] -> m (Either (BIP39MnemonicError mnem) mnem)

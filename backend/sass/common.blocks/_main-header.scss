@@ -49,6 +49,11 @@ $main-header-wallet-btn-bg: #ececec;
   font-size: $secondary-font-size;
   line-height: 0;
   height: $main-header-std-height;
+  // For mobile users
+  text-overflow: ellipsis;
+  overflow: hidden;
+  white-space: nowrap;
+
 
   &.main-header__primary-button {
     @extend .main-header__button;

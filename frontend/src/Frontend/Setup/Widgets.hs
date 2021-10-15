@@ -48,4 +48,4 @@ kadenaWalletLogo :: DomBuilder t m => m ()
 kadenaWalletLogo = divClass "logo" $ do
   elAttr "img" ("src" =: static @"img/kadena_blue_logo.png" <> "class" =: setupClass "kadena-logo") blank
   elClass "div" "chainweaver" $ text "Chainweaver"
-  elClass "div" "by-kadena" $ text "by Kadena"
+  elClass "div" "by-kadena" $ text "by Kadena (BETA)"
