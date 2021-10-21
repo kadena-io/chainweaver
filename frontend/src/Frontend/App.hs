@@ -304,9 +304,11 @@ networkBar
   -> m (ModalIdeCfg m key t)
 networkBar m = divClass "main-header main-header__network-bar" $ do
   -- Present the dropdown box for selecting one of the configured networks.
-  divClass "page__network-bar-select" $ do
+  networkCfg <- divClass "page__network-bar-select" $ do
     selectEv <- uiNetworkSelectTopBar "select_type_special" (m ^. network_selectedNetwork) (m ^. network_networks)
     pure $ mempty & networkCfg_selectNetwork .~ selectEv
+  fungibleCfg <- uiChangeFungible
+  pure $ fungibleCfg <> networkCfg
 
 
 controlBar

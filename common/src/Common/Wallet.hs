@@ -75,6 +75,7 @@ module Common.Wallet
   , parseWrappedBalanceChecks
   , getDetailsCode
   , accountDetailsObject
+  , accountDetailsObjectCoin
   , parseAccountDetails
   ) where
 
@@ -122,6 +123,7 @@ import qualified Pact.Types.Term as Pact
 import qualified Pact.Types.Type as Pact
 
 import Common.Foundation
+import Common.Modules
 import Common.Network (NetworkName)
 import Common.Orphans ()
 
@@ -564,15 +566,35 @@ parseResults = first ("parseResults: " <>) . \case
 
 -- | Code to get the details of the given account.
 -- Returns a key suitable for indexing on if you add this to an object.
-getDetailsCode :: Text -> (FieldKey, Term Name)
-getDetailsCode accountName = (FieldKey accountName, TApp
-  { _tApp = App
-    { _appFun = TVar (QName $ QualifiedName "coin" "details" def) def
-    , _appArgs = [TLiteral (LString accountName) def]
-    , _appInfo = def
-    }
-  , _tInfo = def
-  })
+getDetailsCode :: ModuleName -> Text -> (FieldKey, Term Name)
+getDetailsCode moduleName accountName = (FieldKey accountName, if moduleName == "coin" then coinDetails else genericDetails)
+   where
+     -- (if
+     --   (contains 'fungible-v2 (at 'interfaces (describe-module "<modName>")))
+     --   (at 'balance (<modName>.details <accName> ))
+     --   (enforce false "Not a valid fungible token")
+     -- )
+     withQuotes s = "\"" <> s <> "\""
+     coinDetails = TApp
+       { _tApp = App
+         { _appFun = TVar (QName $ QualifiedName moduleName "details" def) def
+         , _appArgs = [TLiteral (LString accountName) def]
+         , _appInfo = def
+         }
+       , _tInfo = def
+       }
+     genericDetails =
+	     -- TODO: FIX INCOMPLETE PATTERN MATCH
+       let Right gTerm =  compileCode genericCode
+	     -- TODO: Fix unsafe head
+       in head gTerm
+     genericCode :: Text
+     genericCode = mconcat
+       [ "(if (contains 'fungible-v2 (at 'interfaces (describe-module ", quotedFullName moduleName, "))) "
+       , "(at 'balance (" , renderCompactText moduleName, ".details ", withQuotes accountName, "))"
+	     , " ", "(enforce false \"Not a valid fungible token\"))"
+       ]
+
 
 tryTerm :: Term Name -> Term Name -> Term Name
 tryTerm defaultTo expr = TApp
@@ -585,10 +607,11 @@ tryTerm defaultTo expr = TApp
   }
 
 -- | Produce an object from account names to account details function calls
-accountDetailsObject :: [Text] -> Term Name
-accountDetailsObject accounts = TObject
+accountDetailsObject :: ModuleName -> [Text] -> Term Name
+accountDetailsObject fungibleName accounts = TObject
   { _tObject = Pact.Types.Term.Object
-    { _oObject = ObjectMap $ Map.fromList $ map (fmap (tryTerm (TLiteral (LBool False) def)) . getDetailsCode) accounts
+    { _oObject = ObjectMap $ Map.fromList $
+       map (fmap (tryTerm (TLiteral (LBool False) def)) . getDetailsCode fungibleName ) accounts
     , _oObjectType = TyPrim TyDecimal
     , _oKeyOrder = Nothing
     , _oInfo = def
@@ -596,12 +619,15 @@ accountDetailsObject accounts = TObject
   , _tInfo = def
   }
 
+accountDetailsObjectCoin :: [Text] -> Term Name
+accountDetailsObjectCoin = accountDetailsObject "coin"
+
 -- | Wrap the code with a let binding to get the balances of the given accounts
 -- before and after executing the code.
 wrapWithBalanceChecks :: Set AccountName -> Text -> Either String Text
 wrapWithBalanceChecks accounts code = wrapped <$ compileCode code
   where
-    accountBalances = accountDetailsObject $ fmap unAccountName $ Set.toAscList accounts
+    accountBalances = accountDetailsObjectCoin $ fmap unAccountName $ Set.toAscList accounts
     -- It would be nice to parse and compile the code and shove it into a
     -- giant 'Term' so we can serialise it, but 'pretty' is not guaranteed to
     -- produce valid pact code. It at least produces bad type sigs and let

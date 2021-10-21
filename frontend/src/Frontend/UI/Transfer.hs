@@ -437,7 +437,7 @@ lookupKeySets
   -- ^ Account on said chain to find
   -> m (Event t (Maybe (Map AccountName (AccountStatus AccountDetails))))
 lookupKeySets logL networkName nodes chain accounts = do
-  let code = renderCompactText $ accountDetailsObject (map unAccountName accounts)
+  let code = renderCompactText $ accountDetailsObjectCoin (map unAccountName accounts)
   pm <- mkPublicMeta chain
   cmd <- buildCmd Nothing networkName pm [] [] code mempty mempty
   (result, trigger) <- newTriggerEvent

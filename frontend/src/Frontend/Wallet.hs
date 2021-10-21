@@ -52,6 +52,7 @@ module Frontend.Wallet
   , module Common.Wallet
   ) where
 
+import Control.Error.Util (hush)
 import Control.Lens hiding ((.=))
 import Control.Monad (guard, void)
 import Control.Monad.Except (runExcept)
@@ -78,6 +79,7 @@ import qualified Data.Map.Monoidal as MonoidalMap
 import qualified Data.Set as Set
 import qualified Pact.Server.ApiClient as Api
 import qualified Pact.Types.ChainMeta as Pact
+import           Pact.Types.Names (ModuleName, parseModuleName)
 import qualified Pact.Types.Command as Pact
 
 import Common.Network (NetworkName)
@@ -107,6 +109,7 @@ data WalletCfg key t = WalletCfg
   -- recover when something goes badly wrong in the middle, since it's
   -- immediately stored with all info we need to retry.
   , _walletCfg_updateAccountNotes :: Event t (NetworkName, AccountName, Maybe ChainId, Maybe AccountNotes)
+  , _walletCfg_fungibleModule :: Event t Text
   }
   deriving Generic
 
@@ -121,9 +124,12 @@ data Wallet key t = Wallet
     -- ^ Accounts added and removed by the user
   , _wallet_accounts :: Dynamic t AccountData
     -- ^ Accounts added and removed by the user
+  , _wallet_fungible :: Dynamic t ModuleName
   }
   deriving Generic
 
+ -- having account status doesn't quite make sense for fungibles since it
+ -- changes on fungible change
 data Account = Account
   { _account_status :: AccountStatus AccountDetails
   , _account_storage :: VanityAccount
@@ -223,7 +229,6 @@ makeWallet mChangePassword model conf = do
   initialKeys <- fromMaybe IntMap.empty <$> loadKeys
   initialAccounts <- maybe (AccountData mempty) fromStorage <$> loadAccounts
 
-
   rec
     onNewKey <- performEvent $ leftmost
       [ fmapMaybe id $ addStarterKey <$> current keys <@ pb
@@ -249,9 +254,12 @@ makeWallet mChangePassword model conf = do
   initialLoad <- getPostBuild >>= delay 0.5
   fullRefresh <- throttle 3 $ leftmost [_walletCfg_refreshBalances conf, newNetwork, initialLoad]
 
+  dFungible <- holdDyn "coin" $
+    fmapMaybe (hush .  parseModuleName) $ _walletCfg_fungibleModule conf
   rec
-    newStatuses <- getAccountStatus model $ leftmost
+    newStatuses <- getAccountStatus model dFungible $ leftmost
       [ current accounts <@ fullRefresh
+      , current accounts <@ updated dFungible
       -- Get details for a new account
       , ffor (_walletCfg_importAccount conf) $ \(net, name) -> AccountData $ net =: name =: mempty
       ]
@@ -275,6 +283,7 @@ makeWallet mChangePassword model conf = do
   pure $ Wallet
     { _wallet_keys = keys
     , _wallet_accounts = accounts
+    , _wallet_fungible = dFungible
     }
   where
     addStarterKey m = if IntMap.null m then Just (addNewKey m) else Nothing
@@ -332,13 +341,19 @@ getAccountStatus
     , HasLogger model t
     , HasNetwork model t, HasCrypto key (Performable m)
     )
-  => model -> Event t AccountData -> m (Event t [(NetworkName, AccountName, ChainId, AccountStatus AccountDetails)])
-getAccountStatus model accStore = performEventAsync $ flip push accStore $ \(AccountData networkAccounts) -> do
+  => model -> Dynamic t ModuleName -> Event t AccountData -> m (Event t [(NetworkName, AccountName, ChainId, AccountStatus AccountDetails)])
+getAccountStatus model dFungible accStore = performEventAsync $ flip push accStore $ \(AccountData networkAccounts) -> do
   nodes <- fmap rights $ sample $ current $ model ^. network_selectedNodes
   net <- sample $ current $ model ^. network_selectedNetwork
-  pure . Just $ mkRequests nodes net (Map.lookup net networkAccounts)
+  -- This works because A) we are inside a `push` which means we sample at the
+  -- time of firing, and B) because the dFungible event is used as a trigger
+  -- for the accStore event. That being said, this code probably should be
+  -- refactored and cleaned up so that we arent dependent on dFungible being a
+  -- basis event for accStore.
+  fungible <- sample $ current $ dFungible
+  pure . Just $ mkRequests fungible nodes net (Map.lookup net networkAccounts)
   where
-    mkRequests nodes net mAccounts cb = do
+    mkRequests fungible nodes net mAccounts cb = do
       -- Transform the accounts structure into a map from chain ID to
       -- set of account names. We grab balances accounts on all chains,
       -- but only if the user has actually clicked Add Account for that
@@ -353,7 +368,7 @@ getAccountStatus model accStore = performEventAsync $ flip push accStore $ \(Acc
 
         chainsToAccounts = MonoidalMap.fromSet (const allAccounts) allChains
 
-        code = renderCompactText . accountDetailsObject . Set.toList
+        code = renderCompactText . accountDetailsObject fungible . Set.toList
         pm chain = Pact.PublicMeta
           { Pact._pmChainId = chain
           , Pact._pmSender = "chainweaver"
@@ -445,10 +460,14 @@ instance Reflex t => Semigroup (WalletCfg key t) where
       [ _walletCfg_updateAccountNotes c1
       , _walletCfg_updateAccountNotes c2
       ]
+    , _walletCfg_fungibleModule = leftmost
+      [ _walletCfg_fungibleModule c1
+      , _walletCfg_fungibleModule c2
+      ]
     }
 
 instance Reflex t => Monoid (WalletCfg key t) where
-  mempty = WalletCfg never never never never never never
+  mempty = WalletCfg never never never never never never never
   mappend = (<>)
 
 instance Flattenable (WalletCfg key t) t where
@@ -460,16 +479,17 @@ instance Flattenable (WalletCfg key t) t where
       <*> doSwitch never (_walletCfg_refreshBalances <$> ev)
       <*> doSwitch never (_walletCfg_setCrossChainTransfer <$> ev)
       <*> doSwitch never (_walletCfg_updateAccountNotes <$> ev)
+      <*> doSwitch never (_walletCfg_fungibleModule <$> ev)
 
-instance Reflex t => Semigroup (Wallet key t) where
-  wa <> wb = Wallet
-    { _wallet_keys = _wallet_keys wa <> _wallet_keys wb
-    , _wallet_accounts = _wallet_accounts wa <> _wallet_accounts wb
-    }
-
-instance Reflex t => Monoid (Wallet key t) where
-  mempty = Wallet mempty mempty
-  mappend = (<>)
+-- instance Reflex t => Semigroup (Wallet key t) where
+--   wa <> wb = Wallet
+--     { _wallet_keys = _wallet_keys wa <> _wallet_keys wb
+--     , _wallet_accounts = _wallet_accounts wa <> _wallet_accounts wb
+--     }
+-- 
+-- instance Reflex t => Monoid (Wallet key t) where
+--   mempty = Wallet mempty mempty
+--   mappend = (<>)
 
 -- Helper for getting around the fact that the coin contract doesn't allow
 -- integer amounts.  Can't think of a better place to put this.

@@ -25,6 +25,7 @@ module Frontend.UI.Wallet
   , uiWalletRefreshButton
   , uiWatchRequestButton
   , uiGenerateKeyButton
+  , uiChangeFungible
     -- ** Filters for keys
   , hasPrivateKey
   , HasUiWalletModelCfg
@@ -484,6 +485,13 @@ uiKeyItem keyIndex key = trKey $ do
     buttons = divClass "wallet__table-buttons"
     cfg = def
       & uiButtonCfg_class <>~ "wallet__table-button"
+
+uiChangeFungible
+  :: (MonadWidget t m, Monoid mConf, HasWalletCfg mConf key t)
+  => m mConf
+uiChangeFungible = do
+  e <-  uiButton headerBtnCfgPrimary (text "Change Fungible")
+  pure $ mempty & walletCfg_fungibleModule .~ ("kswap.abc" <$ e)
 
 uiGenerateKeyButton
   :: (MonadWidget t m, Monoid mConf, HasWalletCfg mConf key t)
