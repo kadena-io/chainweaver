@@ -61,6 +61,7 @@ import Data.Aeson
 import Data.Decimal
 import Data.Either (rights)
 import Data.IntMap (IntMap)
+import Data.List (nub)
 import Data.Map (Map)
 import Data.Maybe (fromMaybe)
 import Data.Set (Set)
@@ -95,6 +96,8 @@ import Frontend.Network
 import Frontend.VersionedStore
 import Frontend.Log
 
+import System.IO.Unsafe
+
 data WalletCfg key t = WalletCfg
   { _walletCfg_genKey :: Event t ()
   -- ^ Request generation of a new key
@@ -128,8 +131,6 @@ data Wallet key t = Wallet
   }
   deriving Generic
 
- -- having account status doesn't quite make sense for fungibles since it
- -- changes on fungible change
 data Account = Account
   { _account_status :: AccountStatus AccountDetails
   , _account_storage :: VanityAccount
@@ -242,10 +243,10 @@ makeWallet mChangePassword model conf = do
     keyChangeOnPwdResetE <- case fmap _changePassword_updateKeys mChangePassword of
       Nothing -> pure never
       Just (changePwdE, changeKeysAction) -> do
-        let 
+        let
           currentKeyMap = attach (current keys) changePwdE
         performEvent $ ffor currentKeyMap $ \(km, (newRoot, newPwd)) ->
-          flip IntMap.traverseWithKey km $ \i _ -> changeKeysAction i newRoot newPwd 
+          flip IntMap.traverseWithKey km $ \i _ -> changeKeysAction i newRoot newPwd
 
   -- Slight hack here, even with prompt tagging we don't pick up the new accounts
   newNetwork <- delay 0.5 $ void $ updated $ model ^. network_selectedNetwork
@@ -255,24 +256,46 @@ makeWallet mChangePassword model conf = do
   fullRefresh <- throttle 3 $ leftmost [_walletCfg_refreshBalances conf, newNetwork, initialLoad]
 
   dFungible <- holdDyn "coin" $
-    fmapMaybe (hush .  parseModuleName) $ _walletCfg_fungibleModule conf
+    fmapMaybe (hush . parseModuleName) $ _walletCfg_fungibleModule conf
+  fetchFungStatus <- delay 0.1 $ updated dFungible
+
+  let newAccountWithNodes = attach
+        (fmap rights (current $ model ^. network_selectedNodes))
+        (_walletCfg_importAccount conf)
+
   rec
     newStatuses <- getAccountStatus model dFungible $ leftmost
       [ current accounts <@ fullRefresh
-      , current accounts <@ updated dFungible
+      , current accounts <@ fetchFungStatus
       -- Get details for a new account
       , ffor (_walletCfg_importAccount conf) $ \(net, name) -> AccountData $ net =: name =: mempty
       ]
+
+    -- TODO: Need to enforce the following invariants
+    --  1) An "AccountInfo Account" structure must always contain 20 / <max chains> entries in its
+    --  map
+    --  2) Accounts cannot be deleted except for with "removeAccount" event
+    --  3) An Account status update should only be applied if the fungible used to create the
+    --  request is still the active fungible
     accounts <- foldDyn id initialAccounts $ leftmost
-      [ ffor (_walletCfg_importAccount conf) $ \(net, name) ->
-        ((<>) (AccountData $ net =: name =: mempty))
+      [ 
+        -- ffor (_walletCfg_importAccount conf) $ \(net, name) ->
+        --   ((<>) (AccountData $ net =: name =: mempty))
+        ffor newAccountWithNodes $ \(nodes, (net, name)) ->
+          ((<>) (AccountData $ net =: name =: (newAccountView nodes)))
 
       -- Add the public key as an account to get people started
       , attachWith addStarterAccount (current $ model ^. network_selectedNetwork) (updated keys)
       , ffor (_walletCfg_updateAccountNotes conf) updateAccountNotes
-      , foldr (.) id . fmap updateAccountStatus <$> newStatuses
       , ffor (_walletCfg_setCrossChainTransfer conf) updateCrossChain
       , ffor (_walletCfg_delAccount conf) removeAccount
+      , foldr (.) id . fmap updateAccountStatus <$> newStatuses
+      -- zero out account balance on new fungible
+      , ffor (updated dFungible) $ \_ prevState -> AccountData $
+          ffor (unAccountData prevState) $ \networkAccount ->
+            ffor networkAccount $ \info -> info
+              { _accountInfo_chains = ffor (_accountInfo_chains info)
+                $ \val -> val { _account_status = AccountStatus_Unknown }}
       ]
 
   performEvent_ $ storeKeys <$> updated keys
@@ -296,6 +319,8 @@ makeWallet mChangePassword model conf = do
                      else ad
         _ -> ad
 
+    newAccountView nodes = AccountInfo Nothing $
+      Map.fromList $ zip (nub $ foldMap getChains nodes) $ repeat emptyAccount
 
     addNewKey :: IntMap a -> Performable m (Key key)
     addNewKey = createKey . nextKey
@@ -486,7 +511,7 @@ instance Flattenable (WalletCfg key t) t where
 --     { _wallet_keys = _wallet_keys wa <> _wallet_keys wb
 --     , _wallet_accounts = _wallet_accounts wa <> _wallet_accounts wb
 --     }
--- 
+--
 -- instance Reflex t => Monoid (Wallet key t) where
 --   mempty = Wallet mempty mempty
 --   mappend = (<>)

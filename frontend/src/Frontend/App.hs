@@ -94,6 +94,7 @@ app
   -> RoutedT t (R FrontendRoute) m ()
 app sidebarExtra fileFFI appCfg = Store.versionedFrontend (Store.versionedStorage @key) $ void . mfix $ \ cfg -> do
   ideL <- makeIde fileFFI appCfg cfg
+  -- dynText =<< (holdDyn "abc123" $ traceEvent "<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<" $ _walletCfg_fungibleModule $ _ideCfg_wallet cfg)
   FRPHandler signingReq signingResp <- _appCfg_signingHandler appCfg
 
   walletSidebar sidebarExtra

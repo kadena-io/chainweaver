@@ -491,7 +491,7 @@ uiChangeFungible
   => m mConf
 uiChangeFungible = do
   e <-  uiButton headerBtnCfgPrimary (text "Change Fungible")
-  pure $ mempty & walletCfg_fungibleModule .~ ("kswap.abc" <$ e)
+  pure $ mempty & walletCfg_fungibleModule .~ (traceEvent "FIIIIIIIIIIIIIREININGINI           " ("kswap.abc" <$ e))
 
 uiGenerateKeyButton
   :: (MonadWidget t m, Monoid mConf, HasWalletCfg mConf key t)

@@ -28,7 +28,7 @@ import System.IO
 import Common.Api
 import Common.Route
 import Frontend.AppCfg
-import Frontend.Log (errorLevelLogger)
+import Frontend.Log (errorLevelLogger, defaultLogger)
 import Frontend.Foundation
 import Frontend.ModuleExplorer.Impl (loadEditorFromLocalStorage)
 import Frontend.Storage
@@ -81,7 +81,7 @@ frontend = Frontend
         , _appCfg_editorReadOnly = False
         , _appCfg_signingHandler = printResponsesHandler
         , _appCfg_enabledSettings = enabledSettings
-        , _appCfg_logMessage = errorLevelLogger
+        , _appCfg_logMessage = defaultLogger
         }
   }
 

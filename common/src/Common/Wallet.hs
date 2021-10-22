@@ -436,6 +436,10 @@ instance FromJSON Accounts where
       { _accounts_vanity = vanity
       }
 
+
+-- Always enforces variant that all chains on the network are viewed
+newtype AccountView a = AccountView (Map ChainId a)
+
 data AccountInfo a = AccountInfo
   { _accountInfo_notes :: Maybe AccountNotes
   , _accountInfo_chains :: Map ChainId a
@@ -569,11 +573,6 @@ parseResults = first ("parseResults: " <>) . \case
 getDetailsCode :: ModuleName -> Text -> (FieldKey, Term Name)
 getDetailsCode moduleName accountName = (FieldKey accountName, if moduleName == "coin" then coinDetails else genericDetails)
    where
-     -- (if
-     --   (contains 'fungible-v2 (at 'interfaces (describe-module "<modName>")))
-     --   (at 'balance (<modName>.details <accName> ))
-     --   (enforce false "Not a valid fungible token")
-     -- )
      withQuotes s = "\"" <> s <> "\""
      coinDetails = TApp
        { _tApp = App
@@ -588,13 +587,18 @@ getDetailsCode moduleName accountName = (FieldKey accountName, if moduleName == 
        let Right gTerm =  compileCode genericCode
 	     -- TODO: Fix unsafe head
        in head gTerm
-     genericCode :: Text
+     -- TODO, NEXT: Make sure that frontend updates, even when a request fails,
+     -- to update the new state
+     -- (if
+     --   (contains 'fungible-v2 (at 'interfaces (describe-module "<modName>")))
+     --   (at 'balance (<modName>.details <accName> ))
+     --   (enforce false "Not a valid fungible token")
+     -- )
      genericCode = mconcat
        [ "(if (contains 'fungible-v2 (at 'interfaces (describe-module ", quotedFullName moduleName, "))) "
-       , "(at 'balance (" , renderCompactText moduleName, ".details ", withQuotes accountName, "))"
+       , "(" , renderCompactText moduleName, ".details ", withQuotes accountName, ")"
 	     , " ", "(enforce false \"Not a valid fungible token\"))"
        ]
-
 
 tryTerm :: Term Name -> Term Name -> Term Name
 tryTerm defaultTo expr = TApp
