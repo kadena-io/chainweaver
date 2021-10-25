@@ -41,8 +41,6 @@ import           Control.Error hiding (bool, note)
 import           Control.Lens hiding ((.=))
 import           Control.Monad.State.Strict
 import           Data.Aeson
-import           Data.Aeson.Encode.Pretty
-import           Data.Text.Lazy.Builder (toLazyText)
 import           Data.Bifunctor
 import qualified Data.ByteString.Lazy as LB
 import           Data.Decimal
@@ -561,7 +559,6 @@ checkReceivingAccount model netInfo ti ty fks tks fromPair = do
             return ((mempty, cancel), never)
           else
             transferDialog model netInfo ti ty fks tks fromPair
-      -- TODO: rm this comment: Account exists
       (Just (AccountStatus_Exists (AccountDetails _ g)), Nothing) -> do
         let 
           transferDialogWithWarn model netInfo ti ty fks tks fromPair = do
@@ -601,10 +598,6 @@ checkReceivingAccount model netInfo ti ty fks tks fromPair = do
             -- TODO check well-formedness of all keys in the keyset
             transferDialogWithKeysetCheck model netInfo ti ty fks tks fromPair
       (_, Just userKeyset) -> do
-        -- Account doesn't already exist, and the user is creating a new
-        -- account. Do they need to be warned if they enter a keyset that
-        -- doesn't match the account name? Or is this ok?
-
         -- Use transfer-create
         transferDialog model netInfo ti ty fks tks fromPair
       (_, Nothing) -> do

@@ -403,14 +403,18 @@ filterKeyPairs :: Set PublicKey -> IntMap (Key key) -> [KeyPair key]
 filterKeyPairs s m = Map.elems $ Map.restrictKeys (toMap m) s
   where toMap = Map.fromList . fmap (\k -> (_keyPair_publicKey $ _key_pair k, _key_pair k)) . IntMap.elems
 
--- Checks that accName = pubkey has a keys-all guard with the same pubkey
+-- Checks that all account names of form accName = pubkey has a single-key guard with the same pubkey as
+-- account name
 accountNameMatchesKeyset :: AccountName -> AccountGuard -> Bool
 accountNameMatchesKeyset accName g = case g of
   AccountGuard_Other _ -> False
-  AccountGuard_KeySetLike (KeySetHeritage ksKeys ksPred _ksRef) ->
+  AccountGuard_KeySetLike (KeySetHeritage ksKeys _ksPred _ksRef) ->
     case parsePubKeyOrKAccount accName of
-      -- Should we allow k:<pubkey> to be True?
-      (_, Right pk) -> ksPred == defaultPredicate && ksKeys == Set.singleton pk
+      -- non-k: & non-vanity --> check keyset is singleton
+      (False, Right pk) -> ksKeys == Set.singleton pk
+      -- k:<pubkey> account name, we ignore the keyset and let those users
+      -- do what they want in regard to guards
+      (True, _) -> True
       otherwise -> False
 
 keysetSatisfiesPredicate :: AccountGuard -> IntMap (Key key) -> Bool
