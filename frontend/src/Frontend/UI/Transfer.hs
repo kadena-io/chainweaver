@@ -41,6 +41,8 @@ import           Control.Error hiding (bool, note)
 import           Control.Lens hiding ((.=))
 import           Control.Monad.State.Strict
 import           Data.Aeson
+import           Data.Aeson.Encode.Pretty
+import           Data.Text.Lazy.Builder (toLazyText)
 import           Data.Bifunctor
 import qualified Data.ByteString.Lazy as LB
 import           Data.Decimal
@@ -107,6 +109,7 @@ import           Frontend.UI.Button
 import           Frontend.UI.DeploymentSettings
 import           Frontend.UI.Dialogs.DeployConfirmation
 import           Frontend.UI.Dialogs.Send
+import           Frontend.UI.Dialogs.AccountDetails
 import           Frontend.UI.Form.Common
 import           Frontend.UI.FormWidget
 import           Frontend.UI.KeysetWidget
@@ -561,7 +564,28 @@ checkReceivingAccount model netInfo ti ty fks tks fromPair = do
       -- TODO: rm this comment: Account exists
       (Just (AccountStatus_Exists (AccountDetails _ g)), Nothing) -> do
         let 
-          transferDialogWithWarn = error "here"
+          transferDialogWithWarn model netInfo ti ty fks tks fromPair = do
+            close <- modalHeader $ text "Account Keyset"
+            _ <- elClass "div" "modal__main" $ do
+              el "h3" $ text "WARNING"
+              el "div" $ text $ "The on-chain keyset of the receiving account does not match the account name. This may be an indicator of foul-play; you should confirm that the receiving keyset is the expected keyset before continuing"
+              el "hr" blank
+              el "div" $ text $ "If you are doing a cross-chain transfer to yourself, and see this message, you may want to reconsider, as it is possible that you don't have control over the account on the destination chain"
+              el "hr" blank
+              el "div" $ do
+                dialogSectionHeading mempty "Destination Account Name:"
+                mkLabeledInput False "Account Name" uiInputElement $ def
+                  & initialAttributes .~ "disabled" =: "disabled"
+                  & inputElementConfig_initialValue .~ (unAccountName toAccount)
+                dialogSectionHeading mempty "Destination Account Guard:"
+                uiDisplayKeyset g
+            modalFooter $ do
+              cancel <- cancelButton def "No, take me back"
+              let cfg = def & uiButtonCfg_class <>~ "button_type_confirm"
+              next <- uiButtonDyn cfg $ text "Yes, proceed to transfer"
+              return ((mempty, close <> cancel),
+                      Workflow (transferDialog model netInfo ti ty fks tks fromPair) <$ next)
+
           transferDialogWithKeysetCheck = case accountNameMatchesKeyset toAccount g of
             True -> transferDialog
             False -> transferDialogWithWarn
