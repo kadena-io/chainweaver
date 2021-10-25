@@ -558,19 +558,29 @@ checkReceivingAccount model netInfo ti ty fks tks fromPair = do
             return ((mempty, cancel), never)
           else
             transferDialog model netInfo ti ty fks tks fromPair
+      -- TODO: rm this comment: Account exists
       (Just (AccountStatus_Exists (AccountDetails _ g)), Nothing) -> do
+        let 
+          transferDialogWithWarn = error "here"
+          transferDialogWithKeysetCheck = case accountNameMatchesKeyset toAccount g of
+            True -> transferDialog
+            False -> transferDialogWithWarn
         if (_ca_chain $ _ti_fromAccount ti) /= (_ca_chain $ _ti_toAccount ti)
           then do
             case g of
               AccountGuard_KeySetLike (KeySetHeritage ks p _ref) ->
                 let ti2 = ti { _ti_toKeyset = Just $ UserKeyset ks (parseKeysetPred p) }
-                in transferDialog model netInfo ti2 ty fks tks fromPair
-              AccountGuard_Other _ -> transferDialog model netInfo ti ty fks tks fromPair
+                in transferDialogWithKeysetCheck model netInfo ti2 ty fks tks fromPair
+              AccountGuard_Other _ -> transferDialogWithKeysetCheck model netInfo ti ty fks tks fromPair
           else
             -- Use transfer, probably show the guard at some point
             -- TODO check well-formedness of all keys in the keyset
-            transferDialog model netInfo ti ty fks tks fromPair
+            transferDialogWithKeysetCheck model netInfo ti ty fks tks fromPair
       (_, Just userKeyset) -> do
+        -- Account doesn't already exist, and the user is creating a new
+        -- account. Do they need to be warned if they enter a keyset that
+        -- doesn't match the account name? Or is this ok?
+
         -- Use transfer-create
         transferDialog model netInfo ti ty fks tks fromPair
       (_, Nothing) -> do
@@ -597,10 +607,10 @@ handleMissingKeyset
   -> (AccountName, AccountDetails)
   -> m ((mConf, Event t ()), Event t (Workflow t m (mConf, Event t ())))
 handleMissingKeyset model netInfo ti ty fks tks fromPair = do
-    let toAccountText = unAccountName $ _ca_account $ _ti_toAccount ti
-        parsePubKeyOrKAccount key = 
-          second parsePublicKey $ maybe (False, key) (\k -> (True, k)) $ T.stripPrefix "k:" key
-    case parsePubKeyOrKAccount toAccountText of
+    let 
+      toAccount = _ca_account $ _ti_toAccount ti
+      toAccountText = unAccountName $ _ca_account $ _ti_toAccount ti
+    case parsePubKeyOrKAccount toAccount of
       -- Vanity account name
       (_, Left _) -> do
         cancel <- fatalTransferError $
