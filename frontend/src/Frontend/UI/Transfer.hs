@@ -107,6 +107,7 @@ import           Frontend.UI.Button
 import           Frontend.UI.DeploymentSettings
 import           Frontend.UI.Dialogs.DeployConfirmation
 import           Frontend.UI.Dialogs.Send
+import           Frontend.UI.Dialogs.AccountDetails
 import           Frontend.UI.Form.Common
 import           Frontend.UI.FormWidget
 import           Frontend.UI.KeysetWidget
@@ -559,17 +560,43 @@ checkReceivingAccount model netInfo ti ty fks tks fromPair = do
           else
             transferDialog model netInfo ti ty fks tks fromPair
       (Just (AccountStatus_Exists (AccountDetails _ g)), Nothing) -> do
+        let 
+          transferDialogWithWarn model netInfo ti ty fks tks fromPair = do
+            close <- modalHeader $ text "Account Keyset"
+            _ <- elClass "div" "modal__main" $ do
+              el "h3" $ text "WARNING"
+              el "div" $ text $ "The on-chain keyset of the receiving account does not match the account name. This may be an indicator of foul-play; you should confirm that the receiving keyset is the expected keyset before continuing"
+              el "hr" blank
+              el "div" $ text $ "If you are doing a cross-chain transfer to yourself, and see this message, you may want to reconsider, as it is possible that you don't have control over the account on the destination chain"
+              el "hr" blank
+              el "div" $ do
+                dialogSectionHeading mempty "Destination Account Name:"
+                mkLabeledInput False "Account Name" uiInputElement $ def
+                  & initialAttributes .~ "disabled" =: "disabled"
+                  & inputElementConfig_initialValue .~ (unAccountName toAccount)
+                dialogSectionHeading mempty "Destination Account Guard:"
+                uiDisplayKeyset g
+            modalFooter $ do
+              cancel <- cancelButton def "No, take me back"
+              let cfg = def & uiButtonCfg_class <>~ "button_type_confirm"
+              next <- uiButtonDyn cfg $ text "Yes, proceed to transfer"
+              return ((mempty, close <> cancel),
+                      Workflow (transferDialog model netInfo ti ty fks tks fromPair) <$ next)
+
+          transferDialogWithKeysetCheck = case accountNameMatchesKeyset toAccount g of
+            True -> transferDialog
+            False -> transferDialogWithWarn
         if (_ca_chain $ _ti_fromAccount ti) /= (_ca_chain $ _ti_toAccount ti)
           then do
             case g of
               AccountGuard_KeySetLike (KeySetHeritage ks p _ref) ->
                 let ti2 = ti { _ti_toKeyset = Just $ UserKeyset ks (parseKeysetPred p) }
-                in transferDialog model netInfo ti2 ty fks tks fromPair
-              AccountGuard_Other _ -> transferDialog model netInfo ti ty fks tks fromPair
+                in transferDialogWithKeysetCheck model netInfo ti2 ty fks tks fromPair
+              AccountGuard_Other _ -> transferDialogWithKeysetCheck model netInfo ti ty fks tks fromPair
           else
             -- Use transfer, probably show the guard at some point
             -- TODO check well-formedness of all keys in the keyset
-            transferDialog model netInfo ti ty fks tks fromPair
+            transferDialogWithKeysetCheck model netInfo ti ty fks tks fromPair
       (_, Just userKeyset) -> do
         -- Use transfer-create
         transferDialog model netInfo ti ty fks tks fromPair
@@ -597,10 +624,10 @@ handleMissingKeyset
   -> (AccountName, AccountDetails)
   -> m ((mConf, Event t ()), Event t (Workflow t m (mConf, Event t ())))
 handleMissingKeyset model netInfo ti ty fks tks fromPair = do
-    let toAccountText = unAccountName $ _ca_account $ _ti_toAccount ti
-        parsePubKeyOrKAccount key = 
-          second parsePublicKey $ maybe (False, key) (\k -> (True, k)) $ T.stripPrefix "k:" key
-    case parsePubKeyOrKAccount toAccountText of
+    let 
+      toAccount = _ca_account $ _ti_toAccount ti
+      toAccountText = unAccountName $ _ca_account $ _ti_toAccount ti
+    case parsePubKeyOrKAccount toAccount of
       -- Vanity account name
       (_, Left _) -> do
         cancel <- fatalTransferError $
