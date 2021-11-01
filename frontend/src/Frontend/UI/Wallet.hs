@@ -65,6 +65,10 @@ import           Frontend.UI.Dialogs.WatchRequest (uiWatchRequestDialog)
 import           Frontend.UI.KeysetWidget
 import           Frontend.UI.Modal
 import           Frontend.Network
+import           Frontend.UI.FormWidget
+import           Frontend.UI.Form.Common
+import Control.Error.Util (hush)
+import Common.Modules
 ------------------------------------------------------------------------------
 
 -- | Constraints on the model config we have for implementing this widget.
@@ -490,8 +494,14 @@ uiChangeFungible
   :: (MonadWidget t m, Monoid mConf, HasWalletCfg mConf key t)
   => m mConf
 uiChangeFungible = do
-  e <-  uiButton headerBtnCfgPrimary (text "Change Fungible")
-  pure $ mempty & walletCfg_fungibleModule .~ ("kswap.abc" <$ e)
+  inForm <- textFormWidget $ mkPfwc $ mkCfg "coin"
+  changeFung <-  uiButton headerBtnCfgPrimary (text "Change Fungible")
+  reset <-  uiButton headerBtnCfgPrimary (text "Reset Fungible")
+  let cfg = leftmost
+        [ fmapMaybe (hush . parseModuleName) $ tag (current $ inForm ^.formWidget_value) changeFung
+        , "coin" <$ reset 
+        ]
+  pure $ mempty & walletCfg_fungibleModule .~ cfg
 
 uiGenerateKeyButton
   :: (MonadWidget t m, Monoid mConf, HasWalletCfg mConf key t)

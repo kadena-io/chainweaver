@@ -112,7 +112,7 @@ data WalletCfg key t = WalletCfg
   -- recover when something goes badly wrong in the middle, since it's
   -- immediately stored with all info we need to retry.
   , _walletCfg_updateAccountNotes :: Event t (NetworkName, AccountName, Maybe ChainId, Maybe AccountNotes)
-  , _walletCfg_fungibleModule :: Event t Text
+  , _walletCfg_fungibleModule :: Event t ModuleName
   }
   deriving Generic
 
@@ -255,8 +255,7 @@ makeWallet mChangePassword model conf = do
   initialLoad <- getPostBuild >>= delay 0.5
   fullRefresh <- throttle 3 $ leftmost [_walletCfg_refreshBalances conf, newNetwork, initialLoad]
 
-  dFungible <- holdDyn "coin" $
-    fmapMaybe (hush . parseModuleName) $ _walletCfg_fungibleModule conf
+  dFungible <- holdDyn "coin" $ _walletCfg_fungibleModule conf
   fetchFungStatus <- delay 0.1 $ updated dFungible
 
   let newAccountWithNodes = attach
