@@ -182,15 +182,18 @@ uiAccountItems model accountsMap = do
       elAttr "col" ("style" =: "width: 25%") blank
 
     el "thead" $ el "tr" $ do
-      let mkHeading = elClass "th" "wallet__table-heading" . text
+      let mkHeading = elClass "th" "wallet__table-heading"
+          fungible = model ^. wallet_fungible
       traverse_ mkHeading $
-        [ ""
-        , "Account Name"
-        , "Owner"
-        , "Keyset Info"
-        , "Notes"
-        , "Balance (KDA)"
-        , ""
+        [ text ""
+        , text "Account Name"
+        , text "Owner"
+        , text "Keyset Info"
+        , text "Notes"
+        , dynText $ ffor fungible $ \case
+            "coin" -> "Balance (KDA)"
+            f -> "Balance (" <> quotedFullName f <> ")"
+        , text ""
         ]
 
     el "tbody" $ do
@@ -493,13 +496,16 @@ uiKeyItem keyIndex key = trKey $ do
 uiChangeFungible
   :: (MonadWidget t m, Monoid mConf, HasWalletCfg mConf key t)
   => m mConf
-uiChangeFungible = do
-  inForm <- textFormWidget $ mkPfwc $ mkCfg "coin"
-  changeFung <-  uiButton headerBtnCfgPrimary (text "Change Fungible")
+uiChangeFungible = mdo
+  inputForm <- textFormWidget $ mkPfwc $
+    (mkCfg "coin") & formWidgetConfig_setValue .~ (Just ("coin" <$ reset))
+  changeFungible <-  uiButton headerBtnCfgPrimary (text "Change Fungible")
   reset <-  uiButton headerBtnCfgPrimary (text "Reset Fungible")
+  --TODO: Handle error case / display an error of some sort
   let cfg = leftmost
-        [ fmapMaybe (hush . parseModuleName) $ tag (current $ inForm ^.formWidget_value) changeFung
-        , "coin" <$ reset 
+        [ fmapMaybe (hush . parseModuleName) $
+            tag (current $ inputForm ^.formWidget_value) changeFungible
+        , "coin" <$ reset
         ]
   pure $ mempty & walletCfg_fungibleModule .~ cfg
 

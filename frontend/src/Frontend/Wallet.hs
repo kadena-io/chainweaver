@@ -52,7 +52,6 @@ module Frontend.Wallet
   , module Common.Wallet
   ) where
 
-import Control.Error.Util (hush)
 import Control.Lens hiding ((.=))
 import Control.Monad (guard, void)
 import Control.Monad.Except (runExcept)
@@ -312,7 +311,7 @@ makeWallet mChangePassword model conf = do
                      then ad <> (AccountData $ net =: (AccountName $ keyToText $ _keyPair_publicKey $ _key_pair k) =: mempty)
                      --  k: syntax, We use pubkey syntax as default account name for now `until we have
                      --  a better community migration plan
- 
+
                      -- then let accName = (AccountName $ "k:" <> (keyToText $ _keyPair_publicKey $ _key_pair k))
                      --       in ad <> (AccountData $ net =: accName =: mempty)
                      else ad
