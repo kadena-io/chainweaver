@@ -436,9 +436,8 @@ instance FromJSON Accounts where
       { _accounts_vanity = vanity
       }
 
-
 -- Always enforces variant that all chains on the network are viewed
-newtype AccountView a = AccountView (Map ChainId a)
+-- newtype AccountView a = AccountView (Map ChainId a)
 
 data AccountInfo a = AccountInfo
   { _accountInfo_notes :: Maybe AccountNotes

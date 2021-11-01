@@ -278,12 +278,8 @@ makeWallet mChangePassword model conf = do
     --  3) An Account status update should only be applied if the fungible used to create the
     --  request is still the active fungible
     accounts <- foldDyn id initialAccounts $ leftmost
-      [ 
-        -- ffor (_walletCfg_importAccount conf) $ \(net, name) ->
-        --   ((<>) (AccountData $ net =: name =: mempty))
-        ffor newAccountWithNodes $ \(nodes, (net, name)) ->
+      [ ffor newAccountWithNodes $ \(nodes, (net, name)) ->
           ((<>) (AccountData $ net =: name =: (newAccountView nodes)))
-
       -- Add the public key as an account to get people started
       , attachWith addStarterAccount (current $ model ^. network_selectedNetwork) (updated keys)
       , ffor (_walletCfg_updateAccountNotes conf) updateAccountNotes
@@ -319,6 +315,7 @@ makeWallet mChangePassword model conf = do
                      else ad
         _ -> ad
 
+    -- Creates a new AccountInfo Account with all 20 chains
     newAccountView nodes = AccountInfo Nothing $
       Map.fromList $ zip (nub $ foldMap getChains nodes) $ repeat emptyAccount
 
