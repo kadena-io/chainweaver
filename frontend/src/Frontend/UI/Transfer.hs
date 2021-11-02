@@ -283,12 +283,13 @@ uiGenericTransfer model cfg = do
             , SafeTransfer <$ safe
             ]
       return (clr, txEvt)
-    let netInfo = flip push signTransfer $ \ty -> do
+    let netInfoAndFung = flip push signTransfer $ \ty -> do
+          fungible <- sample $ current $ model ^. wallet_fungible
           ni <- sampleNetInfo model
-          return ((ty,) <$> ni)
-    let mkModal (Just ti) (ty, ni) = Just $ lookupAndTransfer model ni ti ty
+          return ((ty, fungible, ) <$> ni)
+    let mkModal (Just ti) (ty, fung, ni) = Just $ lookupAndTransfer model ni ti fung ty
         mkModal Nothing _ = Nothing
-    pure $ mempty & modalCfg_setModal .~ (attachWith mkModal (current transferInfo) netInfo)
+    pure $ mempty & modalCfg_setModal .~ (attachWith mkModal (current transferInfo) netInfoAndFung)
 
 amountFormWithMaxButton
   :: ( DomBuilder t m, MonadFix m
@@ -296,8 +297,10 @@ amountFormWithMaxButton
      , MonadHold t m
      , HasNetwork model t
      , HasLogger model t
+     , HasWallet model key t
      , HasCrypto key m
      , MonadJSM m
+     , PostBuild t m
      )
   => model
   -> FormWidget t (Maybe ChainAccount)
@@ -305,7 +308,10 @@ amountFormWithMaxButton
   -> m (FormWidget t (Either String Decimal, Bool))
 amountFormWithMaxButton model ca cfg = do
   elClass "div" ("segment segment_type_tertiary labeled-input-inline") $ mdo
-    divClass ("label labeled-input__label-inline") $ text "Amount (KDA)"
+    let dFungible = model ^. wallet_fungible 
+    divClass ("label labeled-input__label-inline") $ dynText $ ffor dFungible $ \case
+      "coin" -> "Amount (KDA)"
+      fung -> "Amount (" <> renderCompactText fung <> ")"
     let attrs = ffor maxE $ \isMaxed ->
           "disabled" =: (if isMaxed then Just "disabled" else Nothing)
         sv = Just $ leftmost
@@ -337,26 +343,28 @@ getAccountDetails
      , MonadHold t m
      , Adjustable t m
      , HasLogger model t
+     , HasWallet model key t
      , HasCrypto key m
      )
   => model
   -> Event t ChainAccount
   -> m (Event t (Maybe (AccountStatus AccountDetails)))
 getAccountDetails model eca = do
-    let netAndCa = flip push eca $ \ca -> do
+    let netFungAndCa = flip push eca $ \ca -> do
           ni <- sampleNetInfo model
-          return $ (ca,) <$> ni
-    dd <- networkHold (pure never) (go <$> netAndCa)
+          fungible <- sample $ current $ model ^. wallet_fungible
+          return $ (ca, fungible, ) <$> ni
+    dd <- networkHold (pure never) (go <$> netFungAndCa)
     pure $ switch $ current dd
   where
-    go (ca, netInfo) = do
+    go (ca, fung, netInfo) = do
       let nodes = _sharedNetInfo_nodes netInfo
           chain = _ca_chain ca
           acct = _ca_account ca
           extractDetails Nothing = Nothing
           extractDetails (Just m) = Map.lookup acct m
       ks <- lookupKeySets (model ^. logger) (_sharedNetInfo_network netInfo)
-                   nodes chain [acct]
+                   nodes chain [acct] fung
       pure $ extractDetails <$> ks
 
 transferModalTitle :: TransferType -> Text
@@ -370,16 +378,17 @@ lookupAndTransfer
      , HasCrypto key (Performable m)
      , HasNetwork model t
      , HasNetworkCfg mConf t
-     , HasWallet model key t
      , HasTransactionLogger m
+     , HasWallet model key t
      )
   => model
   -> SharedNetInfo NodeInfo
   -> TransferInfo
+  -> ModuleName
   -> TransferType
   -> Event t ()
   -> m (mConf, Event t ())
-lookupAndTransfer model netInfo ti ty onCloseExternal = do
+lookupAndTransfer model netInfo ti fungible ty onCloseExternal = do
     let nodes = _sharedNetInfo_nodes netInfo
         fromAccount = _ca_account $ _ti_fromAccount ti
         fromChain = _ca_chain $ _ti_fromAccount ti
@@ -387,11 +396,11 @@ lookupAndTransfer model netInfo ti ty onCloseExternal = do
         toChain = _ca_chain $ _ti_toAccount ti
         accountNames = setify [fromAccount, toAccount]
     efks <- lookupKeySets (model ^. logger) (_sharedNetInfo_network netInfo)
-                 nodes fromChain accountNames
+                 nodes fromChain accountNames fungible
     etks <- if fromChain == toChain
               then pure efks
               else lookupKeySets (model ^. logger) (_sharedNetInfo_network netInfo)
-                                 nodes toChain accountNames
+                                 nodes toChain accountNames fungible
     allKeys <- foldDyn ($) (Nothing, Nothing) $ mergeWith (.)
       [ (\ks (_,b) -> (Just ks, b)) <$> efks
       , (\ks (a,_) -> (a, Just ks)) <$> etks
@@ -436,9 +445,12 @@ lookupKeySets
   -> ChainId
   -> [AccountName]
   -- ^ Account on said chain to find
+  -> ModuleName
+  -- ^ Name of contract to use during search
   -> m (Event t (Maybe (Map AccountName (AccountStatus AccountDetails))))
-lookupKeySets logL networkName nodes chain accounts = do
-  let code = renderCompactText $ accountDetailsObjectCoin (map unAccountName accounts)
+lookupKeySets logL networkName nodes chain accounts fung = do
+  -- TODO: accountDetailsObjectCoin should check fungible
+  let code = renderCompactText $ accountDetailsObject fung (map unAccountName accounts)
   pm <- mkPublicMeta chain
   cmd <- buildCmd Nothing networkName pm [] [] code mempty mempty
   (result, trigger) <- newTriggerEvent
@@ -1089,7 +1101,7 @@ gasPayersSection model netInfo fks tks ti = do
           Just gp -> do
             -- I think lookupKeySets can't be done in the PushM monad
             evt <- lookupKeySets (model ^. logger) (_sharedNetInfo_network netInfo)
-                          (_sharedNetInfo_nodes netInfo) chain [gp]
+                          (_sharedNetInfo_nodes netInfo) chain [gp] "coin"
             return $ Map.lookup gp <$> fmapMaybe id evt
 
     -- Event t (Maybe AccountName)

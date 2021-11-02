@@ -192,7 +192,7 @@ uiAccountItems model accountsMap = do
         , text "Notes"
         , dynText $ ffor fungible $ \case
             "coin" -> "Balance (KDA)"
-            f -> "Balance (" <> quotedFullName f <> ")"
+            f -> "Balance (" <> Pact.renderCompactText f <> ")"
         , text ""
         ]
 
