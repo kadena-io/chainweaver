@@ -199,6 +199,7 @@ toFormWidget model cfg = mdo
 
 data TransferInfo = TransferInfo
   { _ti_fromAccount :: ChainAccount
+  , _ti_fungible :: ModuleName
   , _ti_amount :: Decimal
   , _ti_maxAmount :: Bool
   , _ti_toAccount :: ChainAccount
@@ -255,6 +256,7 @@ uiGenericTransfer model cfg = do
           & setValue .~ (Just $ (Nothing, Nothing) <$ clear)
       return $ runMaybeT $ TransferInfo <$>
         MaybeT (value fromAcct) <*>
+        MaybeT (Just <$> model ^. wallet_fungible ) <*>
         MaybeT (hush . fst <$> value amount) <*>
         lift (snd <$> value amount) <*>
         MaybeT (value toAcct) <*>
@@ -283,13 +285,12 @@ uiGenericTransfer model cfg = do
             , SafeTransfer <$ safe
             ]
       return (clr, txEvt)
-    let netInfoAndFung = flip push signTransfer $ \ty -> do
-          fungible <- sample $ current $ model ^. wallet_fungible
+    let netInfo = flip push signTransfer $ \ty -> do
           ni <- sampleNetInfo model
-          return ((ty, fungible, ) <$> ni)
-    let mkModal (Just ti) (ty, fung, ni) = Just $ lookupAndTransfer model ni ti fung ty
+          return ((ty, ) <$> ni)
+    let mkModal (Just ti) (ty, ni) = Just $ lookupAndTransfer model ni ti ty
         mkModal Nothing _ = Nothing
-    pure $ mempty & modalCfg_setModal .~ (attachWith mkModal (current transferInfo) netInfoAndFung)
+    pure $ mempty & modalCfg_setModal .~ (attachWith mkModal (current transferInfo) netInfo)
 
 amountFormWithMaxButton
   :: ( DomBuilder t m, MonadFix m
@@ -308,7 +309,7 @@ amountFormWithMaxButton
   -> m (FormWidget t (Either String Decimal, Bool))
 amountFormWithMaxButton model ca cfg = do
   elClass "div" ("segment segment_type_tertiary labeled-input-inline") $ mdo
-    let dFungible = model ^. wallet_fungible 
+    let dFungible = model ^. wallet_fungible
     divClass ("label labeled-input__label-inline") $ dynText $ ffor dFungible $ \case
       "coin" -> "Amount (KDA)"
       fung -> "Amount (" <> renderCompactText fung <> ")"
@@ -384,12 +385,12 @@ lookupAndTransfer
   => model
   -> SharedNetInfo NodeInfo
   -> TransferInfo
-  -> ModuleName
   -> TransferType
   -> Event t ()
   -> m (mConf, Event t ())
-lookupAndTransfer model netInfo ti fungible ty onCloseExternal = do
+lookupAndTransfer model netInfo ti ty onCloseExternal = do
     let nodes = _sharedNetInfo_nodes netInfo
+        fungible = _ti_fungible ti
         fromAccount = _ca_account $ _ti_fromAccount ti
         fromChain = _ca_chain $ _ti_fromAccount ti
         toAccount = _ca_account $ _ti_toAccount ti
@@ -474,7 +475,9 @@ lookupKeySets logL networkName nodes chain accounts fung = do
                 mbal = details ^? _AccountStatus_Exists . accountDetails_balance . (to unAccountBalance)
                 updateBal old new = if old == new then old else new
             fmap (fromMaybe details) $ for (liftA2 (,) mbal mref) $ \(bal,ref) -> do
-              let code = printf "{\"balance\" : (at 'balance (coin.details \"%s\")), \"guard\" : (describe-keyset \"%s\")}" name ref
+              let code = printf
+                           "{\"balance\" : (at 'balance (%s.details \"%s\")), \"guard\" : (describe-keyset \"%s\")}"
+                           (renderCompactText fung) name ref
               cmd <- simpleLocal Nothing networkName pm (T.pack code)
               doReqFailover envs (Api.local Api.apiV1Client cmd) >>= \case
                 Left _ -> pure details
@@ -572,7 +575,7 @@ checkReceivingAccount model netInfo ti ty fks tks fromPair = do
           else
             transferDialog model netInfo ti ty fks tks fromPair
       (Just (AccountStatus_Exists (AccountDetails _ g)), Nothing) -> do
-        let 
+        let
           transferDialogWithWarn model netInfo ti ty fks tks fromPair = do
             close <- modalHeader $ text "Account Keyset"
             _ <- elClass "div" "modal__main" $ do
@@ -636,7 +639,7 @@ handleMissingKeyset
   -> (AccountName, AccountDetails)
   -> m ((mConf, Event t ()), Event t (Workflow t m (mConf, Event t ())))
 handleMissingKeyset model netInfo ti ty fks tks fromPair = do
-    let 
+    let
       toAccount = _ca_account $ _ti_toAccount ti
       toAccountText = unAccountName $ _ca_account $ _ti_toAccount ti
     case parsePubKeyOrKAccount toAccount of
@@ -967,28 +970,28 @@ payloadToCommand p =
 safeTransferEpsilon :: Decimal
 safeTransferEpsilon = 0.000000000001
 
-sameChainCmdAndData :: TransferType -> Text -> Text -> Maybe UserKeyset -> Text -> (Maybe Text, String)
-sameChainCmdAndData ty fromAccount toAccount toKeyset amountText =
+sameChainCmdAndData :: TransferType -> ModuleName -> Text -> Text -> Maybe UserKeyset -> Text -> (Maybe Text, String)
+sameChainCmdAndData ty fung fromAccount toAccount toKeyset amountText =
     case ty of
       NormalTransfer ->
         case toKeyset of
           Nothing ->
-            (Nothing, printf "(coin.transfer %s %s %s)"
-                        (show fromAccount) (show toAccount) amountText)
+            (Nothing, printf "(%s.transfer %s %s %s)"
+                        (renderCompactText fung) (show fromAccount) (show toAccount) amountText)
           Just ks ->
-            (Just dataKey, printf "(coin.transfer-create %s %s (read-keyset %s) %s)"
-                      (show fromAccount) (show toAccount) (show dataKey) amountText)
+            (Just dataKey, printf "(%s.transfer-create %s %s (read-keyset %s) %s)"
+                      (renderCompactText fung) (show fromAccount) (show toAccount) (show dataKey) amountText)
       SafeTransfer ->
         let amountExpr :: String = printf "(+ %s %s)" amountText (show safeTransferEpsilon)
-            back :: String = printf "(coin.transfer %s %s %s)"
-                      (show toAccount) (show fromAccount) (show safeTransferEpsilon)
+            back :: String = printf "(%s.transfer %s %s %s)"
+                      (renderCompactText fung) (show toAccount) (show fromAccount) (show safeTransferEpsilon)
         in case toKeyset of
              Nothing ->
-               (Nothing, printf "(coin.transfer %s %s %s)\n%s"
-                           (show fromAccount) (show toAccount) amountExpr back)
+               (Nothing, printf "(%s.transfer %s %s %s)\n%s"
+                           (renderCompactText fung) (show fromAccount) (show toAccount) amountExpr back)
              Just _ ->
-               (Just dataKey, printf "(coin.transfer-create %s %s (read-keyset %s) %s)\n%s"
-                       (show fromAccount) (show toAccount) (show dataKey) amountExpr back)
+               (Just dataKey, printf "(%s.transfer-create %s %s (read-keyset %s) %s)\n%s"
+                       (renderCompactText fung) (show fromAccount) (show toAccount) (show dataKey) amountExpr back)
   where
     dataKey = "ks"
 
@@ -1000,6 +1003,7 @@ buildUnsignedCmd
   -> Payload PublicMeta Text
 buildUnsignedCmd netInfo ti ty tmeta = payload
   where
+    fung = _ti_fungible ti
     network = _sharedNetInfo_network netInfo
     fromAccount = unAccountName $ _ca_account $ _ti_fromAccount ti
     fromChain = _ca_chain $ _ti_fromAccount ti
@@ -1009,11 +1013,11 @@ buildUnsignedCmd netInfo ti ty tmeta = payload
     amountText = showWithDecimal $ normalizeDecimal amount
     dataKey = "ks" :: Text
     (mDataKey, code) = if fromChain == toChain
-             then sameChainCmdAndData ty fromAccount toAccount (_ti_toKeyset ti) amountText
+             then sameChainCmdAndData ty fung fromAccount toAccount (_ti_toKeyset ti) amountText
 
              else -- cross-chain transfer
-               (Just dataKey, printf "(coin.transfer-crosschain %s %s (read-keyset '%s) %s %s)"
-                             (show fromAccount) (show toAccount) (T.unpack dataKey) (show toChain) amountText)
+               (Just dataKey, printf "(%s.transfer-crosschain %s %s (read-keyset '%s) %s %s)"
+                             (renderCompactText fung) (show fromAccount) (show toAccount) (T.unpack dataKey) (show toChain) amountText)
     tdata = maybe Null (\a -> object [ dataKey .= toJSON (userToPactKeyset a) ]) $ _ti_toKeyset ti
     meta = transferMetaToPublicMeta tmeta fromChain
     signers = _transferMeta_sourceChainSigners tmeta
@@ -1078,7 +1082,7 @@ gasPayersSection model netInfo fks tks ti = do
         toChain = _ca_chain (_ti_toAccount ti)
         defaultDestGasPayer = case Map.lookup toAccount tks of
           Just (AccountStatus_Exists dets)
-            | _accountDetails_balance dets > AccountBalance 0 -> toAccount 
+            | _accountDetails_balance dets > AccountBalance 0 -> toAccount
           _ -> AccountName "free-x-chain-gas"
     (dgp1, mdmgp2) <- if fromChain == toChain
       then do
@@ -1158,9 +1162,9 @@ transferMetaToPublicMeta tmeta chainId =
     sender = maybe "" unAccountName $ _transferMeta_senderAccount tmeta
   in PublicMeta chainId sender lim price ttl ct
 
-transferCapability :: AccountName -> AccountName -> Decimal -> SigCapability
-transferCapability from to amount = SigCapability
-  { _scName = QualifiedName { _qnQual = "coin", _qnName = "TRANSFER", _qnInfo = def }
+transferCapability :: ModuleName -> AccountName -> AccountName -> Decimal -> SigCapability
+transferCapability fungible from to amount = SigCapability
+  { _scName = QualifiedName { _qnQual = fungible, _qnName = "TRANSFER", _qnInfo = def }
   , _scArgs =
     [ PLiteral $ LString $ unAccountName from
     , PLiteral $ LString $ unAccountName to
@@ -1214,6 +1218,7 @@ transferMetadata model netInfo fks tks ti ty = do
       fromAccount = _ca_account $ _ti_fromAccount ti
       toChain = _ca_chain $ _ti_toAccount ti
       toAccount = _ca_account $ _ti_toAccount ti
+      fungible = _ti_fungible ti
       ks = Map.fromList [(fromChain, fks), (toChain, tks)]
 
   when (fromChain /= toChain) $ do
@@ -1275,11 +1280,11 @@ transferMetadata model netInfo fks tks ti ty = do
       rawAmount = _ti_amount ti
       amount = if ty == SafeTransfer then rawAmount + safeTransferEpsilon else rawAmount
       transferCap = if fromChain == toChain
-                      then transferCapability fromAccount toAccount amount
+                      then transferCapability fungible fromAccount toAccount amount
                       else crosschainCapability fromAccount
       fromCapsA = foldr (addCap transferCap) <$> gasCaps <*> fromTxKeys
       allFromCaps = if ty == SafeTransfer
-                      then foldr (addCap (transferCapability toAccount fromAccount safeTransferEpsilon))
+                      then foldr (addCap (transferCapability fungible toAccount fromAccount safeTransferEpsilon))
                              <$> fromCapsA <*> safeTxKeys
                       else fromCapsA
       toCaps = foldr (addCap gasCapability) mempty <$> toGasKeys
