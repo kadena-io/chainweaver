@@ -19,7 +19,7 @@ import qualified Data.Text.Encoding as T
 import Kadena.SigningApi
 import qualified Network.Wai.Handler.Warp as Warp
 import qualified Network.Wai.Middleware.Cors as Wai
-import Servant (serve, (:>))
+import Servant
 import qualified Servant.Server as Servant
 
 import Frontend.AppCfg
