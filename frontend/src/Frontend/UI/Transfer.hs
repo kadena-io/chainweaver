@@ -819,13 +819,16 @@ previewDialog model _netInfo ti payload cmd next = Workflow $ do
         uiPreviewItem "From Chain" $ text $ _chainId fromChain
         uiPreviewItem "To Account" $ text $ unAccountName toAccount
         uiPreviewItem "To Chain" $ text $ _chainId toChain
-        uiPreviewItem "Amount" $ text $ tshow (_ti_amount ti) <> " KDA"
+        uiPreviewItem "Amount" $ text $ tshow (_ti_amount ti) <> fungibleDisplay
       pb <- getPostBuild
       previewTransaction model fromChain payload (cmd <$ pb)
       --submitTransactionWithFeedback model cmd fromAccount fromChain (fmap Right nodeInfos)
     send <- modalFooter $ confirmButton def "Send Transfer"
     pure ((mempty, close), next <$ send)
   where
+    fungibleDisplay = case _ti_fungible ti of
+      "coin" -> " KDA"
+      f -> " " <> renderCompactText f
     fromChain = _ca_chain $ _ti_fromAccount ti
     fromAccount = _ca_account $ _ti_fromAccount ti
     toChain = _ca_chain $ _ti_toAccount ti
