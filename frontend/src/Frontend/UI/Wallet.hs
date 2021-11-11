@@ -496,11 +496,11 @@ uiKeyItem keyIndex key = trKey $ do
 uiChangeFungible
   :: (MonadWidget t m, Monoid mConf, HasWalletCfg mConf key t)
   => m mConf
-uiChangeFungible = mdo
+uiChangeFungible = elClass "div" "page__network-bar-fungible" $ mdo
   inputForm <- textFormWidget $ mkPfwc $
     (mkCfg "coin") & formWidgetConfig_setValue .~ (Just ("coin" <$ reset))
-  changeFungible <-  uiButton headerBtnCfgPrimary (text "Change Fungible")
-  reset <-  uiButton headerBtnCfgPrimary (text "Reset Fungible")
+  changeFungible <-  uiButton headerBtnCfgPrimary (text "Change Token")
+  reset <-  uiButton headerBtnCfgPrimary (text "Reset To KDA")
   --TODO: Handle error case / display an error of some sort
   let cfg = leftmost
         [ fmapMaybe (hush . parseModuleName) $
