@@ -307,7 +307,7 @@ networkBar m = divClass "main-header main-header__network-bar" $ do
   networkCfg <- divClass "page__network-bar-select" $ do
     selectEv <- uiNetworkSelectTopBar "select_type_special" (m ^. network_selectedNetwork) (m ^. network_networks)
     pure $ mempty & networkCfg_selectNetwork .~ selectEv
-  fungibleCfg <- uiChangeFungible
+  fungibleCfg <- uiChangeFungible $ m^.wallet_fungible
   pure $ fungibleCfg <> networkCfg
 
 

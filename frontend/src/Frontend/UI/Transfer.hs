@@ -1175,9 +1175,9 @@ transferCapability fungible from to amount = SigCapability
     ]
   }
 
-crosschainCapability :: AccountName -> SigCapability
-crosschainCapability from = SigCapability
-  { _scName = QualifiedName { _qnQual = "coin", _qnName = "DEBIT", _qnInfo = def }
+crosschainCapability :: ModuleName -> AccountName -> SigCapability
+crosschainCapability moduleName from = SigCapability
+  { _scName = QualifiedName { _qnQual = moduleName, _qnName = "DEBIT", _qnInfo = def }
   , _scArgs = [PLiteral $ LString $ unAccountName from]
   }
 
@@ -1284,7 +1284,7 @@ transferMetadata model netInfo fks tks ti ty = do
       amount = if ty == SafeTransfer then rawAmount + safeTransferEpsilon else rawAmount
       transferCap = if fromChain == toChain
                       then transferCapability fungible fromAccount toAccount amount
-                      else crosschainCapability fromAccount
+                      else crosschainCapability fungible fromAccount
       fromCapsA = foldr (addCap transferCap) <$> gasCaps <*> fromTxKeys
       allFromCaps = if ty == SafeTransfer
                       then foldr (addCap (transferCapability fungible toAccount fromAccount safeTransferEpsilon))
