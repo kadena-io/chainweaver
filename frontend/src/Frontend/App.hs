@@ -112,11 +112,13 @@ app sidebarExtra fileFFI appCfg = Store.versionedFrontend (Store.versionedStorag
       FrontendRoute_Accounts -> mkPageContent "accounts" $ mdo
         netCfg <- networkBar ideL
         (transferVisible, barCfg) <- controlBar "Accounts You Are Watching" $ do
+          resetToken <- uiResetTokenButton ideL
+          switchToken <- uiSwitchTokenButton ideL
           refreshCfg <- uiWalletRefreshButton
           watchCfg <- uiWatchRequestButton ideL
           addCfg <- uiAddAccountButton ideL
           xferVisible <- uiTransferButton
-          pure $ (xferVisible, watchCfg <> addCfg <> refreshCfg)
+          pure $ (xferVisible, resetToken <> switchToken <> watchCfg <> addCfg <> refreshCfg)
         divClass "wallet-scroll-wrapper" $ do
           transferCfg <- uiGenericTransfer ideL $ TransferCfg transferVisible never never
           accountsCfg <- uiAccountsTable ideL
@@ -304,11 +306,9 @@ networkBar
   -> m (ModalIdeCfg m key t)
 networkBar m = divClass "main-header main-header__network-bar" $ do
   -- Present the dropdown box for selecting one of the configured networks.
-  networkCfg <- divClass "page__network-bar-select" $ do
+  divClass "page__network-bar-select" $ do
     selectEv <- uiNetworkSelectTopBar "select_type_special" (m ^. network_selectedNetwork) (m ^. network_networks)
     pure $ mempty & networkCfg_selectNetwork .~ selectEv
-  fungibleCfg <- uiChangeFungible $ m^.wallet_fungible
-  pure $ fungibleCfg <> networkCfg
 
 
 controlBar

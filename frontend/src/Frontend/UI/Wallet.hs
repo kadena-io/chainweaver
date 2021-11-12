@@ -23,6 +23,8 @@ module Frontend.UI.Wallet
   , uiAccountsTable
   , uiAvailableKeys
   , uiWalletRefreshButton
+  , uiSwitchTokenButton
+  , uiResetTokenButton
   , uiWatchRequestButton
   , uiGenerateKeyButton
   , uiChangeFungible
@@ -60,6 +62,7 @@ import           Frontend.TxBuilder
 import           Frontend.UI.Dialogs.AccountDetails
 import           Frontend.UI.Dialogs.KeyDetails (uiKeyDetails)
 import           Frontend.UI.Dialogs.Receive (uiReceiveModal)
+import           Frontend.UI.Dialogs.SwitchToken (uiSwitchToken)
 import           Frontend.UI.Dialogs.WatchRequest (uiWatchRequestDialog)
 -- import           Frontend.UI.Dialogs.Send (uiSendModal)
 import           Frontend.UI.KeysetWidget
@@ -106,6 +109,36 @@ uiWalletRefreshButton
 uiWalletRefreshButton = do
   eRefresh <- uiButton headerBtnCfg (text "Refresh")
   pure $ mempty & walletCfg_refreshBalances <>~ eRefresh
+
+uiResetTokenButton
+  :: ( MonadWidget t m
+     , Monoid mConf
+     , Flattenable (ModalCfg mConf t) t
+     , HasWalletCfg mConf key t
+     , HasWallet model key t
+     )
+  => model -> m mConf
+uiResetTokenButton model = do
+  let 
+    isDisabled = (== "coin") <$> model ^. wallet_fungible
+    resetButtonCfg = headerBtnCfg {_uiButtonCfg_disabled = isDisabled }
+  switch <- uiButtonDyn resetButtonCfg (text "Reset to KDA")
+  pure $ mempty & walletCfg_fungibleModule .~ ("coin" <$ switch)
+
+uiSwitchTokenButton
+  :: ( MonadWidget t m
+     , Monoid mConf
+     , Monoid (ModalCfg mConf t)
+     , Flattenable (ModalCfg mConf t) t
+     , HasWalletCfg mConf key t
+     , HasWalletCfg (ModalCfg mConf t) key t
+     , HasModalCfg mConf (Modal mConf m t) t
+     , HasWallet model key t
+     )
+  => model -> m mConf
+uiSwitchTokenButton model = do
+  switch <- uiButton headerBtnCfg (text "Switch Token")
+  pure $ mempty & modalCfg_setModal .~ (Just (uiSwitchToken model) <$ switch)
 
 uiWatchRequestButton
   :: ( MonadWidget t m

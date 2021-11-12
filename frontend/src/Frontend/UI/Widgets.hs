@@ -45,6 +45,7 @@ module Frontend.UI.Widgets
   , uiAccountDropdown'
   , uiKeyPairDropdown
   , uiRequestKeyInput
+  , uiTokenInput
 
   -- ** Other widgets
   , PopoverState (..)
@@ -119,6 +120,7 @@ import           Control.Monad
 import           Control.Monad.Except
 import           Control.Monad.Trans.Maybe
 import qualified Data.Aeson.Encode.Pretty as AesonPretty
+import qualified Data.Bifunctor                   as BiF
 import           Data.Decimal
 import           Data.Either (isLeft)
 import           Data.Functor.Misc
@@ -145,9 +147,11 @@ import           System.Random
 import           Text.Read                   (readMaybe)
 ------------------------------------------------------------------------------
 import Pact.Types.ChainId (ChainId (..))
+import Pact.Types.Pretty  (renderCompactText)
 import Pact.Types.Runtime (GasPrice (..))
 import Pact.Parse (ParsedDecimal (..))
 import Pact.Types.Command (RequestKey)
+import Pact.Types.Names
 import qualified Pact.Types.Util as Pact
 ------------------------------------------------------------------------------
 import           Common.Wallet
@@ -1333,6 +1337,35 @@ uiEmptyState icon title content = divClass "empty-state" $ do
   divClass "empty-state__icon-circle" $ elAttr "div" iconAttrs blank
   elClass "h1" "empty-state__title" $ text title
   divClass "empty-state__content" content
+
+uiTokenInput
+  :: ( MonadWidget t m
+     )
+  => Bool
+  -> ModuleName
+  -> m ( Event t (Either Text ModuleName)
+       , Dynamic t (Either Text ModuleName)
+       )
+uiTokenInput inlineLabel initFung = do
+  let
+    mkMsg True (Left _) = PopoverState_Error "Invalid Token Name"
+    mkMsg _    _ = PopoverState_Disabled
+
+    parseModuleNameText = BiF.first T.pack . parseModuleName
+
+    showPopover (ie, _) = pure $ _inputElement_input ie <&> \t ->
+      mkMsg (not $ T.null t) (parseModuleNameText $ T.strip t)
+
+    uiTokenInputElem cfg = do
+      inp <- uiInputElement $ cfg
+        & inputElementConfig_initialValue .~ (renderCompactText initFung)
+      pure (inp, _inputElement_raw inp)
+
+  (inputE, _) <- mkLabeledInput inlineLabel "Token Name" (uiInputWithPopover uiTokenInputElem snd showPopover) def
+
+  pure ( parseModuleNameText <$> _inputElement_input inputE
+       , parseModuleNameText <$> value inputE
+       )
 
 uiRequestKeyInput
   :: ( MonadWidget t m
