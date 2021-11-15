@@ -119,7 +119,7 @@ uiResetTokenButton
      )
   => model -> m mConf
 uiResetTokenButton model = do
-  let 
+  let
     isDisabled = (== "coin") <$> model ^. wallet_fungible
     resetButtonCfg = headerBtnCfg {_uiButtonCfg_disabled = isDisabled }
   switch <- uiButtonDyn resetButtonCfg (text "Reset to KDA")

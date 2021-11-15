@@ -66,7 +66,13 @@
   margin-left: 22px;
 }
 
-.page__network-bar-fungible {
-  margin-left: auto;
-  margin-right: 30px;
+.page__network-bar-token {
+  display: flex;
+  color: black;
+  font-family: "WorkSans-Regular", sans-serif;
+}
+
+.page__network-bar-token-text {
+  align-items: center;
+  display: flex;
 }
