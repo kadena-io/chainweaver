@@ -95,8 +95,6 @@ import Frontend.Network
 import Frontend.VersionedStore
 import Frontend.Log
 
-import System.IO.Unsafe
-
 data WalletCfg key t = WalletCfg
   { _walletCfg_genKey :: Event t ()
   -- ^ Request generation of a new key

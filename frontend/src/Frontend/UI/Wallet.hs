@@ -27,7 +27,6 @@ module Frontend.UI.Wallet
   , uiResetTokenButton
   , uiWatchRequestButton
   , uiGenerateKeyButton
-  , uiChangeFungible
     -- ** Filters for keys
   , hasPrivateKey
   , HasUiWalletModelCfg
@@ -525,23 +524,6 @@ uiKeyItem keyIndex key = trKey $ do
     buttons = divClass "wallet__table-buttons"
     cfg = def
       & uiButtonCfg_class <>~ "wallet__table-button"
-
-uiChangeFungible
-  :: (MonadWidget t m, Monoid mConf, HasWalletCfg mConf key t)
-  => Dynamic t Pact.ModuleName -> m mConf
-uiChangeFungible dFung = elClass "div" "page__network-bar-fungible" $ mdo
-  fung <- sample $ current dFung
-  inputForm <- textFormWidget $ mkPfwc $
-    (mkCfg (Pact.renderCompactText fung)) & formWidgetConfig_setValue .~ (Just ("coin" <$ reset))
-  changeFungible <-  uiButton headerBtnCfgPrimary (text "Change Token")
-  reset <-  uiButton headerBtnCfgPrimary (text "Reset To KDA")
-  --TODO: Handle error case / display an error of some sort
-  let cfg = leftmost
-        [ fmapMaybe (hush . parseModuleName) $
-            tag (current $ inputForm ^.formWidget_value) changeFungible
-        , "coin" <$ reset
-        ]
-  pure $ mempty & walletCfg_fungibleModule .~ cfg
 
 uiGenerateKeyButton
   :: (MonadWidget t m, Monoid mConf, HasWalletCfg mConf key t)
