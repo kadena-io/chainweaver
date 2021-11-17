@@ -22,7 +22,7 @@ module Common.Wallet
   , keyToText
   , parsePublicKey
   , parsePubKeyOrKAccount
-  , accountNameMatchesKeyset 
+  , accountNameMatchesKeyset
   , toPactPublicKey
   , KeyPair(..)
   , AccountName(..)
@@ -84,6 +84,7 @@ module Common.Wallet
 import Control.Applicative (liftA2, (<|>))
 import Control.Monad.Fail (MonadFail)
 import Control.Lens hiding ((.=))
+import Control.Error (hush, headMay)
 import Control.Monad
 import Control.Monad.Except (MonadError, throwError)
 import Control.Newtype.Generics    (Newtype (..))
@@ -193,7 +194,7 @@ parsePublicKey = throwDecodingErr . textToKey <=< checkPub . T.strip
 
 -- (Is_k:acc, pubkey)
 parsePubKeyOrKAccount :: AccountName -> (Bool, Either Text PublicKey)
-parsePubKeyOrKAccount (AccountName accName) = 
+parsePubKeyOrKAccount (AccountName accName) =
   second parsePublicKey $ maybe (False, accName) (\k -> (True, k)) $ T.stripPrefix "k:" accName
 
 throwDecodingErr
@@ -591,7 +592,9 @@ parseResults = first ("parseResults: " <>) . \case
 -- | Code to get the details of the given account.
 -- Returns a key suitable for indexing on if you add this to an object.
 getDetailsCode :: ModuleName -> Text -> (FieldKey, Term Name)
-getDetailsCode moduleName accountName = (FieldKey accountName, if moduleName == "coin" then coinDetails else genericDetails)
+getDetailsCode moduleName accountName = (FieldKey accountName, if moduleName == "coin"
+                                                               then coinDetails
+                                                               else genericDetails)
    where
      withQuotes s = "\"" <> s <> "\""
      coinDetails = TApp
@@ -602,18 +605,17 @@ getDetailsCode moduleName accountName = (FieldKey accountName, if moduleName == 
          }
        , _tInfo = def
        }
-     genericDetails =
-	     -- TODO: FIX INCOMPLETE PATTERN MATCH
-       let Right gTerm =  compileCode genericCode
-	     -- TODO: Fix unsafe head
-       in head gTerm
-     -- TODO, NEXT: Make sure that frontend updates, even when a request fails,
-     -- to update the new state
+
+     -- return a "false" in the case of any odd errors
+     -- Effectively treats it as a non-existant contract
+     genericDetails = fromMaybe (TLiteral (LBool False) def) $
+       hush (compileCode genericCode) >>= headMay
+
+     -- pact code:
      -- (if
      --   (contains 'fungible-v2 (at 'interfaces (describe-module "<modName>")))
      --   (at 'balance (<modName>.details <accName> ))
-     --   (enforce false "Not a valid fungible token")
-     -- )
+     --   (enforce false "Not a valid fungible token"))
      genericCode = mconcat
        [ "(if (contains 'fungible-v2 (at 'interfaces (describe-module ", quotedFullName moduleName, "))) "
        , "(" , renderCompactText moduleName, ".details ", withQuotes accountName, ")"
