@@ -181,7 +181,6 @@ uiAccountItems model accountsMap = do
       traverse_ mkHeading $
         [ ""
         , "Account Name"
-        -- , ""
         , "Owner"
         , "Keyset Info"
         , "Notes"
@@ -322,16 +321,17 @@ uiAccountItem cwKeys startsOpen name accountInfo = do
 
   keyRow open notes balance = trKey $ do
     let accordionCell o = "wallet__table-cell" <> if o then "" else " accordion-collapsed"
-        -- bcfg = btnCfgSecondary & uiButtonCfg_class <>~ "wallet__table-button" <> "button_border_none"
+        bcfg = btnCfgSecondary & uiButtonCfg_class <>~ "wallet__table-button" <> "button_border_none"
     clk <- elDynClass "td" (accordionCell <$> open) $ accordionButton def
     elAttr "td" ("class" =: "wallet__table-cell") $ text $ unAccountName name
-    -- elAttr "td" ("class" =: "wallet__table-cell") $
-    --   copyButton' "" bcfg False (constant $ unAccountName name)
     td blank
     td blank
     td $ dynText $ maybe "" unAccountNotes <$> notes
     td' " wallet__table-cell-balance" $ dynText balance
-    onDetails <- td $ buttons $ detailsIconButton cfg
+    onDetails <- td $ do
+      buttons $ do
+        copyButton' "" bcfg False (constant $ unAccountName name)
+        detailsIconButton cfg
     pure (clk, AccountDialog_Details name <$> current notes <@ onDetails)
 
 
@@ -352,7 +352,6 @@ uiAccountItem cwKeys startsOpen name accountInfo = do
       True -> trAcc $ do
         td blank -- Arrow column
         td $ text $ "Chain " <> _chainId chain
-        -- td blank -- Copy button
         td $ dynText $ maybe "" ownershipText <$> getAccountOwnership cwKeys details
         accStatus <- holdUniqDyn $ _account_status <$> dAccount
         elClass "td" "wallet__table-cell wallet__table-cell-keyset" $ dynText $ ffor accStatus $ \case
