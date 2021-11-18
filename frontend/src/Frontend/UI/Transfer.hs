@@ -1071,6 +1071,7 @@ data GasPayers t = GasPayers
 gasPayersSection
   :: ( MonadWidget t m, HasLogger model t
      , HasCrypto key m
+     , HasWallet model key t
      )
   => model
   -> SharedNetInfo NodeInfo
@@ -1079,14 +1080,36 @@ gasPayersSection
   -> TransferInfo
   -> m (GasPayers t)
 gasPayersSection model netInfo fks tks ti = do
+    cwKeyMap <- sample $ current (model ^.wallet_keys)
     let fromChain = _ca_chain (_ti_fromAccount ti)
         fromAccount = _ca_account (_ti_fromAccount ti)
         toAccount = _ca_account (_ti_toAccount ti)
         toChain = _ca_chain (_ti_toAccount ti)
-        defaultDestGasPayer = case Map.lookup toAccount tks of
+        fungible = _ti_fungible ti
+        cwKeys = fmap (_keyPair_publicKey . _key_pair) $ IntMap.elems cwKeyMap
+
+        -- Checks whether the account has a guard with any keys controlled by cw
+        -- It is intended to help provide a default for the majority of use-cases, but
+        -- ultimately it is up to the user to select the correct gas-payer
+        accountKeysetHasCWKeys dets = case _accountDetails_guard dets of
+          AccountGuard_KeySetLike g ->
+            not $ Set.disjoint (Set.fromList cwKeys) (_ksh_keys g)
+          otherwise -> False
+
+        -- Destination account should have a balance AND have keys controlled by chainweaver
+        defaultGasPayerCoin = case Map.lookup toAccount tks of
           Just (AccountStatus_Exists dets)
-            | _accountDetails_balance dets > AccountBalance 0 -> toAccount
-          _ -> AccountName "free-x-chain-gas"
+            | (_accountDetails_balance dets > AccountBalance 0) && accountKeysetHasCWKeys dets -> toAccount
+          otherwise -> AccountName "free-x-chain-gas"
+
+        -- We only have account information for the current fungible. If it is coin, then we
+        -- can also use that data to make determinations about gas, but otherwise, we leave
+        -- the decision to the user
+        -- We should add the info in the future perhaps
+        mDefaultDestGasPayer = if fungible == "coin"
+          then Just defaultGasPayerCoin
+          else Nothing
+
     (dgp1, mdmgp2) <- if fromChain == toChain
       then do
         let initialGasPayer = if _ti_maxAmount ti then Nothing else Just (_ca_account $ _ti_fromAccount ti)
@@ -1099,7 +1122,7 @@ gasPayersSection model netInfo fks tks ti = do
       else do
         let mkLabel c = T.pack $ printf "Gas Paying Account (Chain %s)" (T.unpack $ _chainId c)
         (_,dgp1) <- uiAccountNameInput (mkLabel fromChain) True (Just $ _ca_account $ _ti_fromAccount ti) never noValidation
-        (_,dgp2) <- uiAccountNameInput (mkLabel toChain) True (Just defaultDestGasPayer) never noValidation
+        (_,dgp2) <- uiAccountNameInput (mkLabel toChain) True mDefaultDestGasPayer never noValidation
         pure $ (dgp1, Just dgp2)
     let
       getGasPayerKeys chain mgp = do
@@ -1124,8 +1147,8 @@ gasPayersSection model netInfo fks tks ti = do
     --an account name that is less than 3 chars for the "Destination Gas Payer" input field
     mgp2 <- forM mdmgp2 $ \dmgp2 -> do
         -- Take the initial value of the destination gas payer and lookup its details
-        initGasPayerDetails <- GasPayerDetails toChain (Just defaultDestGasPayer)
-          <$$> getGasPayerKeys toChain (Just defaultDestGasPayer)
+        initGasPayerDetails <- GasPayerDetails toChain mDefaultDestGasPayer
+          <$$> getGasPayerKeys toChain mDefaultDestGasPayer
         updatedGP2 <- debounce 1.5 $ updated dmgp2
         let (invalidGasPayer, newAccName) = fanEither $ ffor updatedGP2 $ \case
               Nothing -> Left $ GasPayerDetails toChain Nothing Nothing
@@ -1205,6 +1228,7 @@ transferMetadata
      ( MonadWidget t m, HasNetwork model t, HasNetworkCfg mConf t, Monoid mConf
      , HasLogger model t
      , HasCrypto key m
+     , HasWallet model key t
      )
   => model
   -> SharedNetInfo NodeInfo
