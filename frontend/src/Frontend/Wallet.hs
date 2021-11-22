@@ -237,10 +237,10 @@ makeWallet mChangePassword model conf = do
     keyChangeOnPwdResetE <- case fmap _changePassword_updateKeys mChangePassword of
       Nothing -> pure never
       Just (changePwdE, changeKeysAction) -> do
-        let 
+        let
           currentKeyMap = attach (current keys) changePwdE
         performEvent $ ffor currentKeyMap $ \(km, (newRoot, newPwd)) ->
-          flip IntMap.traverseWithKey km $ \i _ -> changeKeysAction i newRoot newPwd 
+          flip IntMap.traverseWithKey km $ \i _ -> changeKeysAction i newRoot newPwd
 
   -- Slight hack here, even with prompt tagging we don't pick up the new accounts
   newNetwork <- delay 0.5 $ void $ updated $ model ^. network_selectedNetwork
@@ -282,12 +282,12 @@ makeWallet mChangePassword model conf = do
     addStarterAccount net ks ad =
       case IntMap.toList ks of
         [(i,k)] -> if Map.size (ad ^. _AccountData . ix net) == 0
-                     then ad <> (AccountData $ net =: (AccountName $ keyToText $ _keyPair_publicKey $ _key_pair k) =: mempty)
+                     -- then ad <> (AccountData $ net =: (AccountName $ keyToText $ _keyPair_publicKey $ _key_pair k) =: mempty)
+
                      --  k: syntax, We use pubkey syntax as default account name for now `until we have
                      --  a better community migration plan
- 
-                     -- then let accName = (AccountName $ "k:" <> (keyToText $ _keyPair_publicKey $ _key_pair k))
-                     --       in ad <> (AccountData $ net =: accName =: mempty)
+                     then let accName = (AccountName $ "k:" <> (keyToText $ _keyPair_publicKey $ _key_pair k))
+                           in ad <> (AccountData $ net =: accName =: mempty)
                      else ad
         _ -> ad
 
