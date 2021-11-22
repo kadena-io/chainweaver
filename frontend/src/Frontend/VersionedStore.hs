@@ -1,7 +1,7 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications #-}
 module Frontend.VersionedStore
-  ( module V1
+  ( module V2
   , VersionedStorage(..)
   , StorageVersion
   , VersioningDecodeJsonError(..)
@@ -10,7 +10,7 @@ module Frontend.VersionedStore
   , versionedFrontend
   ) where
 
-import Control.Monad.Except (ExceptT, runExceptT, throwError)
+import Control.Monad.Except (ExceptT(..), runExceptT, throwError)
 import Control.Monad.IO.Class (MonadIO, liftIO)
 import Control.Monad.Trans (lift)
 import Control.Error ((!?), hoistEither)
@@ -34,7 +34,8 @@ import Frontend.Storage.Class
 import qualified Frontend.Storage.Class as Storage
 import qualified Frontend.VersionedStore.V0 as V0
 import qualified Frontend.VersionedStore.V1 as V1
-import Frontend.VersionedStore.V1 as Latest
+import qualified Frontend.VersionedStore.V2 as V2
+import Frontend.VersionedStore.V2 as Latest
 import Frontend.Crypto.Class
 
 import Pact.Server.ApiClient (HasTransactionLogger)
@@ -55,15 +56,18 @@ data VersioningDecodeJsonError
 data StoreFrontendVersion key k where
   StoreFrontendVersion_0 :: StoreFrontendVersion key (V0.StoreFrontend key)
   StoreFrontendVersion_1 :: StoreFrontendVersion key (V1.StoreFrontend key)
+  StoreFrontendVersion_2 :: StoreFrontendVersion key (V2.StoreFrontend key)
 
 parseVersion :: forall key. StorageVersion -> Maybe (DSum (StoreFrontendVersion key) Proxy)
 parseVersion 0 = Just $ StoreFrontendVersion_0 :=> (Proxy @(V0.StoreFrontend key))
 parseVersion 1 = Just $ StoreFrontendVersion_1 :=> (Proxy @(V1.StoreFrontend key))
+parseVersion 2 = Just $ StoreFrontendVersion_2 :=> (Proxy @(V2.StoreFrontend key))
 parseVersion _ = Nothing
 
 _nextVersion :: Some (StoreFrontendVersion key) -> Maybe (Some (StoreFrontendVersion key))
 _nextVersion (Some StoreFrontendVersion_0) = Just (Some StoreFrontendVersion_1)
-_nextVersion (Some StoreFrontendVersion_1) = Nothing
+_nextVersion (Some StoreFrontendVersion_1) = Just (Some StoreFrontendVersion_2)
+_nextVersion (Some StoreFrontendVersion_2) = Nothing
 
 versionedFrontend
   :: forall t m key
@@ -122,7 +126,7 @@ versionedStorage = VersionedStorage
     prefix = StoreKeyMetaPrefix "StoreFrontend_Meta"
 
     restoreBackup :: DMap (Latest.StoreFrontend key) Identity -> m ()
-    restoreBackup dm = restoreLocalStorageDump prefix dm 1
+    restoreBackup dm = restoreLocalStorageDump prefix dm 2
 
     -- Takes a json blob and upgrades it to the latest DMap structure
     decodeVersionedJson
@@ -133,8 +137,11 @@ versionedStorage = VersionedStorage
       Nothing -> throwError $ VersioningDecodeJsonError_UnknownVersion ver
       Just (StoreFrontendVersion_0 :=> p) -> do
         v0map <- decodeDMap p jval
-        lift $ V1.upgradeFromV0 v0map
+        lift $ V2.upgradeFromV0 v0map
       Just (StoreFrontendVersion_1 :=> p) -> do
+        v1map <- decodeDMap p jval
+        lift $ V2.upgradeFromV1 v1map
+      Just (StoreFrontendVersion_2 :=> p) -> do
         decodeDMap p jval
 
     decodeDMap
@@ -157,7 +164,16 @@ versionedStorage = VersionedStorage
             removeKeyUniverse p localStorage
             removeKeyUniverse p sessionStorage
             restoreLocalStorageDump prefix v1Dump 1
+          -- Complete the whole upgrade process, then move the logs (TODO: Is this necessary now?)
+          liftIO $ Api._transactionLogger_rotateLogFile txLogger
+          ExceptT $ upgradeStorage txLogger
+        Just (StoreFrontendVersion_1 :=> p) -> do
+          dump <- (backupLocalStorage prefix p ver) !? VersioningUpgradeError_CouldNotBackup ver
+          lift $ do
+            v2Dump <- V2.upgradeFromV1 dump
+            removeKeyUniverse p localStorage
+            removeKeyUniverse p sessionStorage
+            restoreLocalStorageDump prefix v2Dump 2
           -- Complete the whole upgrade process, then move the logs
           liftIO $ Api._transactionLogger_rotateLogFile txLogger
-          pure ()
-        Just (StoreFrontendVersion_1 :=> _) -> pure ()
+        Just (StoreFrontendVersion_2 :=> _) -> pure ()

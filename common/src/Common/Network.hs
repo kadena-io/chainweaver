@@ -36,6 +36,7 @@ import Data.CaseInsensitive (CI)
 import Data.Coerce (coerce)
 import Data.Map (Map)
 import Data.Maybe (fromMaybe)
+import Data.String
 import Data.Text (Text)
 import Data.Void (Void)
 import GHC.Generics (Generic)
@@ -69,6 +70,8 @@ instance ToJSON NetworkName where
   toJSON = toJSON . CI.original . unNetworkName
 instance ToJSONKey NetworkName where
   toJSONKey = A.toJSONKeyText (CI.original . unNetworkName)
+instance IsString NetworkName where
+  fromString = mkNetworkName . fromString
 
 mkNetworkName :: Text -> NetworkName
 mkNetworkName = NetworkName . CI.mk . T.strip

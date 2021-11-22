@@ -1,13 +1,18 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE TypeApplications #-}
 module Frontend.Storage.InMemoryStorage where
 
+import Text.Printf
+import Data.Text as T (pack, unpack)
+import qualified Data.Text.Encoding as T
 import Control.Monad.Free (iterM)
 import Control.Monad.Reader
 import Data.Aeson (FromJSON, ToJSON, eitherDecode)
+import Data.Aeson as Aeson (encode)
 import Data.Bool (bool)
 import qualified Data.ByteString.Lazy as LBS
 import Data.Constraint.Extras (Has, Has', has)
@@ -28,10 +33,13 @@ import Data.Text (Text)
 import Data.Universe.Some (UniverseSome, universeSome)
 import Numeric.Natural (Natural)
 import System.Directory (doesFileExist)
+import System.Exit (die)
 import System.FilePath ((</>))
 
 import Frontend.Crypto.Class
+import Frontend.Foundation
 import Frontend.Storage
+import Frontend.Storage.Class
 
 lookupRef :: IORef (Map Text Text) -> Text -> IO (Maybe Text)
 lookupRef ref k = Map.lookup k <$> readIORef ref
@@ -79,6 +87,35 @@ newInMemoryStorage = do
   sessionRef <- newIORef (Map.empty :: Map Text Text)
   pure (localRef, sessionRef)
 
+-- for JM
+data FailStorageState =
+  FailOnKeyWrite Text Bool
+  | FailOnSettingVersion Bool
+  | NoFailure
+
+
+-- for JM
+instance Show FailStorageState where
+  show = \case
+    FailOnKeyWrite text before ->
+      if before
+      then "Failing just before loading key " ++ T.unpack text
+      else "Failing just after loading key " ++ T.unpack text
+    FailOnSettingVersion before ->
+      if before
+      then "Failing just before setting version"
+      else "Failing just after setting version"
+    NoFailure -> "Not exercising failure state"
+
+-- for JM
+wrapFail :: MonadIO m => Bool -> m a -> m a
+wrapFail False action = do
+  liftIO (die "") -- there is surely a better way to do this
+  action
+wrapFail True action = do
+  action
+  liftIO (die "") -- there is surely a better way to do this
+
 -- This function *should* be cool because it ought to allow us to drop in a desktop storage directory
 -- into the folder for a given version and then source those files into the inmem store for the tests
 --
@@ -98,13 +135,40 @@ inMemoryStorageFromTestData
   -> Proxy k
   -> Natural
   -> FilePath
+  -> FailStorageState
   -> IO IMS
-inMemoryStorageFromTestData p _ ver dirPath = do
+inMemoryStorageFromTestData p _ ver dirPath failure = do
   dmap <- keyUniverseToFilesDMap
   ims <- newInMemoryStorage
-  _ <- runInMemoryStorage (restoreLocalStorageDump p dmap ver) ims
+  -- _ <- runInMemoryStorage (restoreLocalStorageDump p dmap ver) ims
+  _ <- runInMemoryStorage (mockRestoreLocalStorageDump p dmap ver) ims
   pure ims
   where
+
+-- for JM
+    mockRestoreLocalStorageDump p dump ver =
+      case failure of
+        NoFailure -> do
+          for_ (DMap.toList dump) $ \key@(k :=> _) -> do
+            setSum key
+          setCurrentVersion p ver
+        FailOnKeyWrite keyText at -> do
+          for_ (DMap.toList dump) $ \key@(k :=> _) -> do
+            if T.pack (gshow k) == keyText then wrapFail at (setSum key) else setSum key
+            setCurrentVersion p ver
+        FailOnSettingVersion at -> do
+          for_ (DMap.toList dump) setSum
+          wrapFail at (setCurrentVersion p ver)
+      where
+        {- the three helpers below are added so as to not increase the number of
+          functions exported from Frontend.Storage.Class -}
+        encodeText = T.decodeUtf8 . LBS.toStrict . Aeson.encode
+        currentVersionKeyText :: StoreKeyMetaPrefix -> Text
+        currentVersionKeyText (StoreKeyMetaPrefix p) = (p <> "_Version")
+        setCurrentVersion p' = setItemStorage' localStorage (currentVersionKeyText p') . encodeText
+        setSum (k :=> ( Identity v )) =
+          has @ToJSON k $ setItemStorage localStorage k v
+
     keyToPath :: k a -> FilePath
     keyToPath k = dirPath </> gshow k
 

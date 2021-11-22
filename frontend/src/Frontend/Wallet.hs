@@ -281,7 +281,7 @@ makeWallet mChangePassword model conf = do
     --addStarterAccount :: IntMap (Key key) -> AccountData -> AccountData
     addStarterAccount net ks ad =
       case IntMap.toList ks of
-        [(i,k)] -> if Map.size (ad ^. _AccountData . ix net) == 0
+        [(_i,k)] -> if Map.size (ad ^. _AccountData . ix net) == 0
                      then ad <> (AccountData $ net =: (AccountName $ keyToText $ _keyPair_publicKey $ _key_pair k) =: mempty)
                      --  k: syntax, We use pubkey syntax as default account name for now `until we have
                      --  a better community migration plan
