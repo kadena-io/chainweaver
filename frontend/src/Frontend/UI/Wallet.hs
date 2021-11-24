@@ -218,16 +218,16 @@ uiAccountItems model accountsMap = do
       let mkHeading = elClass "th" "wallet__table-heading"
           fungible = model ^. wallet_fungible
       traverse_ mkHeading $
-        [ ""
-        , ""
-        , "Account Name"
-        , "Owner"
-        , "Keyset Info"
-        , "Notes"
+        [ text ""
+        , text ""
+        , text "Account Name"
+        , text "Owner"
+        , text "Keyset Info"
+        , text "Notes"
         , dynText $ ffor fungible $ \case
             "coin" -> "Balance (KDA)"
             f -> "Balance (" <> Pact.renderCompactText f <> ")"
-        , ""
+        , text ""
         ]
 
     el "tbody" $ do
