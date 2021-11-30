@@ -36,6 +36,7 @@ module Frontend.UI.Wallet
 import           Control.Lens
 import           Control.Monad               (when, (<=<))
 import           Control.Error               (headMay)
+import           Data.Bifunctor              (second)
 import qualified Data.IntMap                 as IntMap
 import           Data.Map                    (Map)
 import qualified Data.Map                    as Map
@@ -47,6 +48,7 @@ import           Reflex
 import           Reflex.Dom hiding (Key)
 import           Text.Read
 ------------------------------------------------------------------------------
+import           Pact.Types.Names (ModuleName)
 import qualified Pact.Types.Pretty as Pact
 import qualified Pact.Types.Term   as Pact
 ------------------------------------------------------------------------------
@@ -198,6 +200,7 @@ uiAccountItems
   => model -> Dynamic t (Map AccountName (AccountInfo Account)) -> m mConf
 uiAccountItems model accountsMap = do
   let net = model ^. network_selectedNetwork
+      contractStatus = model ^. wallet_moduleData
       tableAttrs = mconcat
         [ "style" =: "table-layout: fixed; width: 98%"
         , "class" =: "wallet table"
@@ -231,7 +234,7 @@ uiAccountItems model accountsMap = do
     el "tbody" $ do
       let cwKeys = model ^. wallet_keys
           startsOpen = (\m -> Map.size m == 1) <$> accountsMap
-      events <- listWithKey accountsMap (uiAccountItem cwKeys startsOpen)
+      events <- listWithKey accountsMap (uiAccountItem cwKeys startsOpen contractStatus)
       dyn_ $ ffor accountsMap $ \accs ->
         when (null accs) $
           elClass "tr" "wallet__table-row" $ elAttr "td" ("colspan" =: "5" <> "class" =: "wallet__table-cell") $
@@ -324,10 +327,11 @@ uiAccountItem
   :: forall key t m. MonadWidget t m
   => Dynamic t (KeyStorage key)
   -> Dynamic t Bool
+  -> Dynamic t ModuleData
   -> AccountName
   -> Dynamic t (AccountInfo Account)
   -> m (Event t AccountDialog)
-uiAccountItem cwKeys startsOpen name accountInfo = do
+uiAccountItem cwKeys startsOpen contractStatus name accountInfo = do
   let chainMap = _accountInfo_chains <$> accountInfo
 
       -- Chains get sorted in text order without padding is wrong for more than 10 chains
@@ -379,6 +383,8 @@ uiAccountItem cwKeys startsOpen name accountInfo = do
     let chain = unPadChainId paddedChain
     let details = (^? account_status . _AccountStatus_Exists) <$> dAccount
     let balance = _accountDetails_balance <$$> details
+    let contractStatusChain = Map.lookup chain <$> contractStatus
+    -- let dAccountAndFungStatus = attachPromptlyDyn dAccount $ ffor (updated contractStatus) $ Map.lookup chainId
     -- Previously we always added all chain rows, but hid them with CSS. A bug
     -- somewhere between reflex-dom and jsaddle means we had to push this under
     -- a `dyn`.
@@ -394,7 +400,9 @@ uiAccountItem cwKeys startsOpen name accountInfo = do
           AccountStatus_DoesNotExist -> ""
           AccountStatus_Exists d -> accountGuardSummary $ _accountDetails_guard d
         td $ dynText $ maybe "" unAccountNotes . _vanityAccount_notes . _account_storage <$> dAccount
-        td' " wallet__table-cell-balance" $ dynText $ fmap (uiAccountBalance' False) dAccount
+        td' " wallet__table-cell-balance" $ dyn_ $ ffor contractStatusChain $ \case
+          Just Nothing -> text "Module Does Not Exist On Chain"
+          otherwise -> dynText $ fmap (uiAccountBalance' False) dAccount
         td $ buttons $ switchHold never <=< dyn $ ffor accStatus $ \case
           AccountStatus_Unknown -> pure never
           AccountStatus_DoesNotExist -> do
