@@ -312,7 +312,7 @@ amountFormWithMaxButton model ca cfg = do
     let dFungible = model ^. wallet_fungible
     divClass ("label labeled-input__label-inline") $ dynText $ ffor dFungible $ \case
       "coin" -> "Amount (KDA)"
-      fung -> "Amount (" <> renderCompactText fung <> ")"
+      _ -> "Amount (Token)"
     let attrs = ffor maxE $ \isMaxed ->
           "disabled" =: (if isMaxed then Just "disabled" else Nothing)
         sv = Just $ leftmost
@@ -410,7 +410,7 @@ lookupAndTransfer model netInfo ti ty onCloseExternal = do
           let fks = fromMaybe mempty f
           let tks = fromMaybe mempty t
           (conf, closes) <- fmap splitDynPure $ workflow $
-            checkSendingAccountExists model netInfo ti ty fks tks
+            checkContractHashOnBothChains model netInfo ti ty fks tks
           mConf <- flatten =<< tagOnPostBuild conf
           let close = switch $ current closes
           pure (mConf, close)
@@ -524,16 +524,63 @@ checkSendingAccountExists
   -> TransferType
   -> Map AccountName (AccountStatus AccountDetails)
   -> Map AccountName (AccountStatus AccountDetails)
-  -> Workflow t m (mConf, Event t ())
-checkSendingAccountExists model netInfo ti ty fks tks = Workflow $ do
+  -- -> Workflow t m (mConf, Event t ())
+  -> m ((mConf, Event t ()), Event t (Workflow t m (mConf, Event t ())))
+checkSendingAccountExists model netInfo ti ty fks tks = do
     let fromAccount = _ca_account $ _ti_fromAccount ti
     case Map.lookup fromAccount fks of
-      Just (AccountStatus_Exists ad) -> do
+      Just (AccountStatus_Exists ad) ->
         checkReceivingAccount model netInfo ti ty fks tks (fromAccount, ad)
       _ -> do
         cancel <- fatalTransferError $
           text $ "Sending account " <> unAccountName fromAccount <> " does not exist."
         return ((mempty, cancel), never)
+  where
+    isCrossChain = (_ca_chain $ _ti_fromAccount ti) /= (_ca_chain $ _ti_toAccount ti)
+
+checkContractHashOnBothChains
+  :: ( MonadWidget t m
+     , Monoid mConf
+     , HasNetwork model t
+     , HasNetworkCfg mConf t
+     , HasLogger model t
+     , HasWallet model key t
+     , HasCrypto key m
+     , HasCrypto key (Performable m)
+     , HasTransactionLogger m
+     )
+  => model
+  -> SharedNetInfo NodeInfo
+  -> TransferInfo
+  -> TransferType
+  -> Map AccountName (AccountStatus AccountDetails)
+  -> Map AccountName (AccountStatus AccountDetails)
+  -> Workflow t m (mConf, Event t ())
+checkContractHashOnBothChains model netInfo ti ty fks tks = Workflow $ do
+  modHashMap <- sample $ current $ model ^. wallet_moduleData
+  let toChain = _ca_chain $ _ti_toAccount ti
+      fromChain = _ca_chain $ _ti_fromAccount ti
+      hashPair = (,) <$> Map.lookup fromChain modHashMap <*> Map.lookup toChain modHashMap
+  case hashPair of
+    -- This case implies likely occurs during throttling, so we will continue and allow it
+    -- to fail on-chain if there is actually an issue
+    Nothing -> checkSendingAccountExists model netInfo ti ty fks tks
+    Just (a, b)
+      | a == Nothing || b == Nothing -> errNonexistentModule
+    Just (Just a, Just b) | a /= b -> errMsgMatchModHashes a b (toChain, fromChain)
+    otherwise -> checkSendingAccountExists model netInfo ti ty fks tks
+  where
+    errNonexistentModule = do
+      cancel <- fatalTransferError $
+        text "Transfer cannot be completed: This token does not exist on both the source and destination chains"
+      return ((mempty, cancel), never)
+    errMsgMatchModHashes a b (fromChain, toChain) = do
+      cancel <- fatalTransferError $ do
+        el "div" $ text $ "Cross chain transfer requires matching module hashes for token: " <>
+          (renderCompactText $ _ti_fungible ti)
+        el "div" $ text $ "Chain " <> tshow toChain <> " module hash: " <> tshow a
+        el "div" $ text $ "Chain " <> tshow fromChain <> " module hash: " <> tshow b
+      return ((mempty, cancel), never)
 
 checkReceivingAccount
   :: ( MonadWidget t m, Monoid mConf
@@ -1251,7 +1298,7 @@ transferMetadata model netInfo fks tks ti ty = do
   when (fromChain /= toChain) $ do
     dialogSectionHeading mempty "Important"
     divClass "group" $ text $ T.pack $ printf
-      "This is a cross-chain transfer.  You must choose an account that has coins on chain %s as the chain %s gas payer otherwise your coins will not arrive!  They will be stuck in transit.  If this happens, they can still be recovered.  Save the request key and get someone with coins on that chain to finish the cross-chain transfer for you." (_chainId toChain) (_chainId toChain)
+      "This is a cross-chain transfer.  You must choose an account that has kda on chain %s as the chain %s gas payer otherwise your coins will not arrive!  They will be stuck in transit.  If this happens, they can still be recovered.  Save the request key and get someone with coins on that chain to finish the cross-chain transfer for you." (_chainId toChain) (_chainId toChain)
     el "br" blank
 
   dialogSectionHeading mempty "Gas Payers"
