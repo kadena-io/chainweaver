@@ -18,7 +18,7 @@ A linux webkitgtk version of chainweaver can be built and run in a number of dif
   - This can be installed with `dpkg -i <deb file>` on ubuntu 18.04
   - Chainweaver should be accessible in the applications menu.
 - Run `nix-build -A chainweaverVM default.nix` to build a virtualbox ova file that runs chainweaver
-- Run `WEBKIT_DISABLE_COMPOSITING_MODE=1 $(nix-build -A nixosExe)/bin/kadena-chainweaver` to run the linux app in nixos.
+- Run `$(nix-build -A nixosWrapper)/bin/kadena-chainweaver-wrapper` to run the linux app in nixos.
 
 ### OVA Release
 
