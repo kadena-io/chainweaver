@@ -159,22 +159,23 @@ app sidebarExtra fileFFI appCfg = Store.versionedFrontend (Store.versionedStorag
   modalCfg <- showModal ideL
 
   req <- delay 0 signingReq
-  --qreq <- delay 0 quickSignReq
-  let 
-    signCmd1 = "{\"networkId\":\"testnet04\",\"payload\":{\"exec\":{\"data\":null,\"code\":\"(coin.transfer \\\"doug\\\" \\\"taylor\\\" 2.1)\"}},\"signers\":[{\"pubKey\":\"726e693517c3459de9ac930a6f668447bd78834d0a3d47f35cb59347c8d6d7de\",\"clist\":[{\"args\":[\"doug\",\"taylor\",2.1],\"name\":\"coin.TRANSFER\"},{\"args\":[],\"name\":\"coin.GAS\"}]}],\"meta\":{\"creationTime\":1614459081,\"ttl\":7200,\"gasLimit\":1200,\"chainId\":\"0\",\"gasPrice\":1.0e-12,\"sender\":\"doug\"},\"nonce\":\"2021-02-27 20:51:20.026156 UTC\"}"
-    signCmd2 = "{\"networkId\":\"testnet04\",\"payload\":{\"exec\":{\"data\":null,\"code\":\"(coin.transfer \\\"doug\\\" \\\"taylor\\\" 2.1)\"}},\"signers\":[{\"pubKey\":\"726e693517c3459de9ac930a6f668447bd78834d0a3d47f35cb59347c8d6d7de\",\"clist\":[{\"args\":[\"doug\",\"taylor\",2.1],\"name\":\"coin.TRANSFER\"},{\"args\":[],\"name\":\"coin.GAS\"}]}],\"meta\":{\"creationTime\":1614459080,\"ttl\":7200,\"gasLimit\":1200,\"chainId\":\"1\",\"gasPrice\":1.0e-12,\"sender\":\"doug\"},\"nonce\":\"2021-02-27 20:51:20.026156 UTC\"}"
-    -- -- Different key, shouldn't show up, since it is not one of ours
-    signCmd3 = "{\"networkId\":\"testnet04\",\"payload\":{\"exec\":{\"data\":null,\"code\":\"(coin.transfer \\\"doug\\\" \\\"taylor\\\" 2.1)\"}},\"signers\":[{\"pubKey\":\"eea647009295dc015ba6e6359b85bafe09d2ce935a03c3bf83f775442d539025\",\"clist\":[{\"args\":[\"doug\",\"taylor\",2.1],\"name\":\"coin.TRANSFER\"},{\"args\":[],\"name\":\"coin.GAS\"}]}],\"meta\":{\"creationTime\":1614459080,\"ttl\":7200,\"gasLimit\":1200,\"chainId\":\"0\",\"gasPrice\":1.0e-12,\"sender\":\"doug\"},\"nonce\":\"2021-02-27 20:51:20.026156 UTC\"}"
+  qreq <- delay 0 quickSignReq
+  -- let 
+  --   signCmd1 = "{\"networkId\":\"testnet04\",\"payload\":{\"exec\":{\"data\":null,\"code\":\"(coin.transfer \\\"doug\\\" \\\"taylor\\\" 2.1)\"}},\"signers\":[{\"pubKey\":\"726e693517c3459de9ac930a6f668447bd78834d0a3d47f35cb59347c8d6d7de\",\"clist\":[{\"args\":[\"doug\",\"taylor\",2.1],\"name\":\"coin.TRANSFER\"},{\"args\":[],\"name\":\"coin.GAS\"}]}],\"meta\":{\"creationTime\":1614459081,\"ttl\":7200,\"gasLimit\":1200,\"chainId\":\"0\",\"gasPrice\":1.0e-12,\"sender\":\"doug\"},\"nonce\":\"2021-02-27 20:51:20.026156 UTC\"}"
+  --   signCmd2 = "{\"networkId\":\"testnet04\",\"payload\":{\"exec\":{\"data\":null,\"code\":\"(coin.transfer \\\"doug\\\" \\\"taylor\\\" 2.1)\"}},\"signers\":[{\"pubKey\":\"726e693517c3459de9ac930a6f668447bd78834d0a3d47f35cb59347c8d6d7de\",\"clist\":[{\"args\":[\"doug\",\"taylor\",2.1],\"name\":\"coin.TRANSFER\"},{\"args\":[],\"name\":\"coin.GAS\"}]}],\"meta\":{\"creationTime\":1614459080,\"ttl\":7200,\"gasLimit\":1200,\"chainId\":\"1\",\"gasPrice\":1.0e-12,\"sender\":\"doug\"},\"nonce\":\"2021-02-27 20:51:20.026156 UTC\"}"
+  --   -- -- Different key, shouldn't show up, since it is not one of ours
+  --   signCmd3 = "{\"networkId\":\"testnet04\",\"payload\":{\"exec\":{\"data\":null,\"code\":\"(coin.transfer \\\"doug\\\" \\\"taylor\\\" 2.1)\"}},\"signers\":[{\"pubKey\":\"eea647009295dc015ba6e6359b85bafe09d2ce935a03c3bf83f775442d539025\",\"clist\":[{\"args\":[\"doug\",\"taylor\",2.1],\"name\":\"coin.TRANSFER\"},{\"args\":[],\"name\":\"coin.GAS\"}]}],\"meta\":{\"creationTime\":1614459080,\"ttl\":7200,\"gasLimit\":1200,\"chainId\":\"0\",\"gasPrice\":1.0e-12,\"sender\":\"doug\"},\"nonce\":\"2021-02-27 20:51:20.026156 UTC\"}"
 
-    qsr = QuickSignRequest [signCmd1, signCmd2, signCmd3 ]
-  qreq <- elAttr "div" ("style" =: "position: absolute; border: 1px solid black; left: 200px; top: 20px;") $
-    uiButton (headerBtnCfgPrimary & uiButtonCfg_class <>~ " main-header__account-button") $
-      text "QuickSign"
+  --   qsr = QuickSignRequest [signCmd1, signCmd2, signCmd3 ]
+  -- qreq <- elAttr "div" ("style" =: "position: absolute; border: 1px solid black; left: 200px; top: 20px;") $
+  --   uiButton (headerBtnCfgPrimary & uiButtonCfg_class <>~ " main-header__account-button") $
+  --     text "QuickSign"
   let
     onGistCreatedModal = Just . uiCreatedGist <$> ideL ^. gistStore_created
     gistModalCfg = mempty & modalCfg_setModal .~ onGistCreatedModal
     onSigningModal = Just . uiSigning ideL signingResp <$> req
-    onQuickSignModal = Just . uiQuickSign ideL quickSignResp <$> (qsr <$ qreq)
+    -- onQuickSignModal = Just . uiQuickSign ideL quickSignResp <$> (qsr <$ qreq)
+    onQuickSignModal = Just . uiQuickSign ideL quickSignResp <$> qreq
     signingModalCfg = mempty & modalCfg_setModal .~ onSigningModal
     quickSignModalCfg = mempty & modalCfg_setModal .~ onQuickSignModal
 
