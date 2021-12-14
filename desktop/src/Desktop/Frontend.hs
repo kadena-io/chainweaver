@@ -30,6 +30,7 @@ import Data.Functor.Compose
 import Data.Functor.Identity
 import Data.GADT.Compare.TH
 import Data.Maybe (isJust)
+import Data.Proxy (Proxy(..))
 import Data.Text (Text)
 import Data.Time (NominalDiffTime, getCurrentTime, addUTCTime)
 import Data.Traversable (for)
@@ -233,7 +234,7 @@ bipWallet fileFFI signingReq mkAppCfg = do
                   let bOldPw = (\(Identity (_,oldPw)) -> oldPw) <$> current details
                       runExport oldPw newPw = do
                         pfx <- genZeroKeyPrefix
-                        doExport txLogger pfx oldPw newPw
+                        doExport txLogger pfx oldPw newPw (Proxy :: Proxy (BIPStorage Crypto.XPrv))
 
                       logExport = do
                         ts <- liftIO getCurrentTime

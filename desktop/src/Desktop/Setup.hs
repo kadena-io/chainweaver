@@ -24,7 +24,9 @@ import qualified Data.Text as T
 import System.FilePath (takeFileName)
 
 import Frontend.AppCfg (FileFFI(..), FileType(FileType_Import))
+import Desktop.Crypto.BIP (BIPStorage(..), passwordRoundTripTest, runBIPCryptoT)
 import Desktop.ImportExport (doImport, ImportWalletError(..))
+import Desktop.Orphans ()
 import Pact.Server.ApiClient (HasTransactionLogger, askTransactionLogger)
 import Frontend.Storage.Class (HasStorage)
 import Frontend.UI.Button
@@ -197,7 +199,9 @@ restoreFromImport walletExists fileFFI backWF eBack = nagScreen
             <*> MaybeT (fmap snd <$> dFileSelected)
 
       txLogger <- askTransactionLogger
-      eImport <- performEvent $ tagMaybe (fmap (uncurry (doImport @t txLogger)) <$> current dmValidForm) eSubmit
+      let pwCheck k p= pure $ passwordRoundTripTest k p
+          runF k (Password p) = runBIPCryptoT (pure (k, p))
+      eImport <- performEvent $ tagMaybe (fmap (uncurry (doImport @t txLogger BIPStorage_RootKey pwCheck runF)) <$> current dmValidForm) eSubmit
 
       let (eImportErr, eImportDone) = fanEither eImport
 
