@@ -28,7 +28,7 @@ import Frontend.JsonData
 import Frontend.Network
 import Frontend.UI.DeploymentSettings
 import Frontend.UI.Modal.Impl
-import Frontend.UI.Widgets (predefinedChainIdDisplayed, userChainIdSelect, uiAccountFixed, uiAccountAny)
+import Frontend.UI.Widgets (predefinedChainIdDisplayed, userChainIdSelect, uiAccountFixed, uiAccountAny, uiAccountComboBox)
 import Frontend.Wallet
 
 type HasUISigningModelCfg mConf key t =
@@ -64,7 +64,7 @@ uiSigning ideL writeSigningResponse signingRequest onCloseExternal = do
     , _deploymentSettingsConfig_code = pure $ _signingRequest_code signingRequest
     , _deploymentSettingsConfig_sender = case _signingRequest_sender signingRequest of
         Just sender -> \_ _ _ -> uiAccountFixed sender
-        Nothing -> \_ _ _ -> uiAccountAny
+        Nothing -> \_ _ _ -> uiAccountComboBox ideL Nothing (constDyn <$> _signingRequest_chainId signingRequest)
     , _deploymentSettingsConfig_data = _signingRequest_data signingRequest
     , _deploymentSettingsConfig_nonce = _signingRequest_nonce signingRequest
     , _deploymentSettingsConfig_ttl = _signingRequest_ttl signingRequest

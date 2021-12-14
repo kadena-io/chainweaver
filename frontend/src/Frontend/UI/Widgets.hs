@@ -37,6 +37,7 @@ module Frontend.UI.Widgets
   , accountDatalist
   , uiAccountNameInput
   , uiAccountNameInputNoDropdown
+  , uiAccountComboBox
   , accountNameFormWidget
   , accountNameFormWidgetNoDropdown
   , uiAccountFixed
@@ -1112,6 +1113,28 @@ uiAccountNameInputNoDropdown label inlineLabel initval onSetName validateName = 
     & setValue .~ Just onSetName
   pure (tagPromptlyDyn v i, v)
 
+uiAccountComboBox :: (HasWallet model key t, HasNetwork model t, MonadWidget t m) =>
+  model -> Maybe AccountName -> Maybe (Dynamic t ChainId) -> m (Dynamic t (Maybe (AccountName, Account)))
+uiAccountComboBox m mDefAccount mDCid = do
+  let dAccMap = fmap (fromMaybe mempty) $ Map.lookup
+                  <$> (m^.network_selectedNetwork)
+                  <*> (unAccountData <$> m^.wallet_accounts)
+      dAccList = fmap (unAccountName . fst) . Map.toList <$> dAccMap
+      initAccount = maybe "" unAccountName mDefAccount
+      mkEmpty a = (AccountName a, Account AccountStatus_Unknown blankVanityAccount)
+      f map cid accName =
+        maybe
+          (if T.null accName
+             then Nothing
+             else Just $ mkEmpty accName)
+          (\res ->  Just (AccountName accName, res))
+          $ map ^? ix (AccountName accName) . accountInfo_chains . ix cid
+  dAccName <- fmap value $ uiComboBox initAccount dAccList $ pfwc2iec id $
+        mkCfg ""
+          & primFormWidgetConfig_initialAttributes .~ ("class" =: "labeled-input__input")
+  case mDCid of
+    Nothing -> pure $ Just . mkEmpty <$> dAccName
+    Just dCid -> pure $ f <$> dAccMap <*> dCid <*> dAccName
 
 -- | Free form for an account
 uiAccountAny :: MonadWidget t m => m (Dynamic t (Maybe (AccountName, Account)))
