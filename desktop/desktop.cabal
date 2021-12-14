@@ -60,7 +60,6 @@ library
   exposed-modules:
     Desktop.Crypto.BIP
     , Desktop.Frontend
-    , Desktop.ImportExport
     , Desktop.Orphans
     , Desktop.Setup
     , Desktop.Storage.File

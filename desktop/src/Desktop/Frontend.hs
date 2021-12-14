@@ -70,10 +70,10 @@ import Frontend.VersionedStore (StoreFrontend(..))
 import Frontend.Storage (runBrowserStorageT)
 import Frontend.Crypto.Password
 import Frontend.Setup.Common
+import Frontend.Setup.ImportExport
 import Frontend.Setup.Password
 import Frontend.Setup.Widgets
 import Desktop.Setup
-import Desktop.ImportExport
 import Desktop.Storage.File
 import Desktop.WalletApi
 

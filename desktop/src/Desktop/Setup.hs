@@ -25,7 +25,6 @@ import System.FilePath (takeFileName)
 
 import Frontend.AppCfg (FileFFI(..), FileType(FileType_Import))
 import Desktop.Crypto.BIP (BIPStorage(..), passwordRoundTripTest, runBIPCryptoT)
-import Desktop.ImportExport (doImport, ImportWalletError(..))
 import Desktop.Orphans ()
 import Pact.Server.ApiClient (HasTransactionLogger, askTransactionLogger)
 import Frontend.Storage.Class (HasStorage)
@@ -34,6 +33,7 @@ import Frontend.UI.Widgets.Helpers (imgWithAlt)
 import Frontend.UI.Widgets
 import Frontend.Setup.Widgets
 import Frontend.Setup.Common
+import Frontend.Setup.ImportExport (doImport, ImportWalletError(..))
 import Frontend.Crypto.Password
 import Obelisk.Generated.Static
 

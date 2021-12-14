@@ -3,7 +3,7 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE Rank2Types #-}
-module Desktop.ImportExport where
+module Frontend.Setup.ImportExport where
 
 import Control.Lens (over, mapped, _Left)
 import Control.Error (hoistEither, failWith)
