@@ -208,8 +208,9 @@ uiAccountItems model accountsMap = do
 
   events <- elAttr "table" tableAttrs $ do
     el "colgroup" $ do
-      elAttr "col" ("style" =: "width: 30px") blank
-      elAttr "col" ("style" =: "width: 180px") blank
+      elAttr "col" ("style" =: "width: 25px") blank
+      elAttr "col" ("style" =: "width: 40px") blank
+      elAttr "col" ("style" =: "width: 200px") blank
       elAttr "col" ("style" =: "width: 80px") blank
       elAttr "col" ("style" =: "width: 180px") blank
       elAttr "col" ("style" =: "width: 15%") blank
@@ -221,6 +222,7 @@ uiAccountItems model accountsMap = do
           fungible = model ^. wallet_fungible
       traverse_ mkHeading $
         [ text ""
+        , text ""
         , text "Account Name"
         , text "Owner"
         , text "Keyset Info"
@@ -361,18 +363,22 @@ uiAccountItem cwKeys startsOpen contractStatus name accountInfo = do
   td' extraClass = elClass "td" ("wallet__table-cell" <> extraClass)
   buttons = divClass "wallet__table-buttons"
   cfg = def
-    & uiButtonCfg_class <>~ "wallet__table-button"
+    & uiButtonCfg_class <>~ "wallet__table-button-with-background"
 
   keyRow open notes balance = trKey $ do
     let accordionCell o = "wallet__table-cell" <> if o then "" else " accordion-collapsed"
+        bcfg = btnCfgSecondary & uiButtonCfg_class <>~ "wallet__table-button" <> "button_border_none"
     clk <- elDynClass "td" (accordionCell <$> open) $ accordionButton def
+    td $ copyButton' "" bcfg ButtonShade_Dark False (constant $ unAccountName name)
     elAttr "td" ("class" =: "wallet__table-cell") $ text $ unAccountName name
     td blank
     td blank
     td $ dynText $ maybe "" unAccountNotes <$> notes
     td' " wallet__table-cell-balance" $ dynText balance
-    onDetails <- td $ buttons $ detailsIconButton cfg
+    onDetails <- td $ do
+      buttons $ detailsIconButton cfg
     pure (clk, AccountDialog_Details name <$> current notes <@ onDetails)
+
 
   accountRow
     :: Dynamic t Bool
@@ -392,6 +398,7 @@ uiAccountItem cwKeys startsOpen contractStatus name accountInfo = do
       False -> pure never
       True -> trAcc $ do
         td blank -- Arrow column
+        td blank -- Copy column
         td $ text $ "Chain " <> _chainId chain
         td $ dynText $ maybe "" ownershipText <$> getAccountOwnership cwKeys details
         accStatus <- holdUniqDyn $ _account_status <$> dAccount
@@ -413,8 +420,8 @@ uiAccountItem cwKeys startsOpen contractStatus name accountInfo = do
             let uk = (\(KeySetHeritage k p _ref) -> UserKeyset k (parseKeysetPred p)) <$> ks
 
             let txb = TxBuilder name chain (userToPactKeyset <$> uk)
-            let bcfg = btnCfgSecondary & uiButtonCfg_class <>~ "wallet__table-button" <> "button_border_none"
-            copyAddress <- copyButton' "Copy Tx Builder" bcfg False (constant $ prettyTxBuilder txb)
+            let bcfg = btnCfgSecondary & uiButtonCfg_class <>~ "wallet__table-button-with-background" <> "button_border_none"
+            copyAddress <- copyButton' "Copy Tx Builder" bcfg ButtonShade_Light False (constant $ prettyTxBuilder txb)
 
             receive <- receiveButton cfg
             onDetails <- detailsIconButton cfg
@@ -524,14 +531,16 @@ uiKeyItem
 uiKeyItem keyIndex key = trKey $ do
   td $ dynText $ keyToText . _keyPair_publicKey . _key_pair <$> key
   td $ buttons $ do
+    copyButton' "" bcfg ButtonShade_Dark False (current $ keyToText . _keyPair_publicKey . _key_pair <$> key)
     onDetails <- detailsButton (cfg & uiButtonCfg_class <>~ "wallet__table-button--hamburger" <> "wallet__table-button-key")
     pure $ KeyDialog_Details keyIndex <$> current key <@ onDetails
   where
+    bcfg = btnCfgSecondary & uiButtonCfg_class <>~ "wallet__table-button-with-background" <> "button_border_none"
     trKey = elClass "tr" "wallet__table-row wallet__table-row-key"
     td = elClass "td" "wallet__table-cell"
     buttons = divClass "wallet__table-buttons"
     cfg = def
-      & uiButtonCfg_class <>~ "wallet__table-button"
+      & uiButtonCfg_class <>~ "wallet__table-button-with-background"
 
 uiGenerateKeyButton
   :: (MonadWidget t m, Monoid mConf, HasWalletCfg mConf key t)

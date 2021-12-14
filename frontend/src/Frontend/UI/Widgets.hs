@@ -867,7 +867,7 @@ uiDetailsCopyButton txt = do
   let cfg = def
         & uiButtonCfg_class .~ constDyn "button_type_confirm"
         & uiButtonCfg_title .~ constDyn (Just "Copy")
-  divClass "details__copy-btn-wrapper" $ copyButton cfg False txt
+  divClass "details__copy-btn-wrapper" $ copyButtonLight cfg False txt
 
 uiTxBuilder
   :: DomBuilder t m
