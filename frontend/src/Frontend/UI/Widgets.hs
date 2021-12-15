@@ -926,9 +926,24 @@ uiGasPriceInputField eReset conf = dimensionalInputFeedbackWrapper (Just "KDA") 
 userChainIdSelect
   :: MonadWidget t m
   => Dynamic t [ChainId]
-  -> m ( Dropdown t (Maybe ChainId) )
+  -> m ( FormWidget t (Maybe ChainId) )
 userChainIdSelect options = do
-  mkLabeledClsInput True "Chain ID" (uiChainSelectionWithUpdate options never)
+  mkLabeledClsInput True "Chain ID" (uiChainSelection options)
+
+uiChainSelection
+  :: MonadWidget t m
+  => Dynamic t [ChainId]
+  -> CssClass
+  -> m ( FormWidget t (Maybe ChainId) )
+uiChainSelection options cls = do
+  let
+    chains = map (Just &&& _chainId) <$> options
+    mkPlaceHolder cChains = if null cChains then "No chains available" else "Select chain"
+    chains' = ffor chains $ \c -> (Nothing, mkPlaceHolder c):c
+    staticCls = cls <> "select"
+    cfg = mkCfg Nothing
+            & initialAttributes %~ addToClassAttr staticCls
+  unsafeDropdownFormWidget chains' cfg
 
 uiChainSelectionWithUpdate
   :: MonadWidget t m

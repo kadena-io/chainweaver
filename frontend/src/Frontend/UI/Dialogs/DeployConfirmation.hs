@@ -64,6 +64,7 @@ import Frontend.Crypto.Class
 import Frontend.JsonData
 import Frontend.Network
 import Frontend.UI.DeploymentSettings
+import Frontend.UI.FormWidget
 import Frontend.UI.Modal
 import Frontend.UI.Widgets
 import Frontend.UI.Widgets.Helpers (dialogSectionHeading)

@@ -76,7 +76,7 @@ import Frontend.UI.Widgets
 import Frontend.UI.Widgets.Helpers (dialogSectionHeading)
 import Frontend.Wallet
 
-import Frontend.UI.Dialogs.Send.ManualTxBuilder (uiExplodedTxBuilder, recipientMatchesSenderTxBuilder)
+-- import Frontend.UI.Dialogs.Send.ManualTxBuilder (uiExplodedTxBuilder, recipientMatchesSenderTxBuilder)
 
 type SendConstraints model mConf key t m
   = ( Monoid mConf, HasNetwork model t, HasNetworkCfg mConf t, HasWallet model key t, HasWalletCfg mConf key t
