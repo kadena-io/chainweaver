@@ -95,7 +95,7 @@ amountFormWidget cfg = do
     parsingFormWidget parseAmount (either (const "") tshow) cfg
 
 parseAmount :: Text -> Either String Decimal
-parseAmount t = 
+parseAmount t =
   let tNoLeadingDecimal = if "." `T.isPrefixOf` t then "0" <> t else t in
   case D.normalizeDecimal <$> readMaybe (T.unpack tNoLeadingDecimal) of
         Nothing -> Left "Not a valid number"
