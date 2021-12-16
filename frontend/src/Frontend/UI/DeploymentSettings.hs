@@ -95,6 +95,7 @@ import qualified Data.Text as T
 import qualified Pact.Types.Capability as PC
 import qualified Pact.Types.ChainId as Pact
 import qualified Pact.Types.Command as Pact
+import           Pact.Types.Names (ModuleName)
 import qualified Pact.Types.Info as PI
 import qualified Pact.Types.Names as PN
 
@@ -238,6 +239,7 @@ buildDeploymentSettingsResult
 buildDeploymentSettingsResult m mSender signers cChainId capabilities ttl gasLimit code settings = runExceptT $ do
   selNodes <- lift $ m ^. network_selectedNodes
   networkName <- lift $ m ^. network_selectedNetwork
+  fungible <- lift $ m^. wallet_fungible
   networkId <- mkNetworkName . nodeVersion <$> failWith DeploymentSettingsResultError_NoNodesAvailable (headMay $ rights selNodes)
 
   chainId <- cChainId !? DeploymentSettingsResultError_NoChainIdSelected
@@ -272,6 +274,8 @@ buildDeploymentSettingsResult m mSender signers cChainId capabilities ttl gasLim
   gasPayer <- lift mSender
   case gasPayer of
     Nothing -> pure () -- No gas payer selected, move along
+    Just gp | (fungible /= "coin") ->  pure () -- You can't pay gas with non-kda, and we don't store that data
+                                               -- In the future perhaps we can perform a live check
     Just gp ->  for_ (lookupAccountBalance gp chainId allAccounts) $ \case
       -- Gas Payer selected but they're not an account?!
       -- TODO: More precise error types for better (any) user feedback on config tab ?
@@ -909,7 +913,7 @@ uiSenderCapabilities m mCaps = do
       Nothing -> do
         el "thead" $ el "tr" $ do
           elClass "th" "table__heading table__cell_padded" $ text "Capability"
-          elClass "th" "table__heading table__cell_padded" $ text "Account"
+          elClass "th" "table__heading table__cell_padded" $ text "Key"
         el "tbody" $ do
           gas <- capabilityInputRow (Just defaultGASCapability) (keyPairDropdown never)
           (rest, restCount) <- capabilityInputRows eAddCap (keyPairDropdown eApplyToAll)

@@ -49,6 +49,7 @@ module Frontend.Wallet
   , getSigningPairs
   , genZeroKeyPrefix
   , addDecimalPoint
+  , ModuleData
   , module Common.Wallet
   ) where
 
@@ -69,6 +70,7 @@ import GHC.Generics (Generic)
 import Kadena.SigningApi (AccountName(..), mkAccountName)
 import Pact.Types.ChainId
 import Pact.Types.Pretty
+import Pact.Types.PactError
 import Reflex
 import Reflex.Dom.Core ((=:))
 
@@ -125,8 +127,12 @@ data Wallet key t = Wallet
   , _wallet_accounts :: Dynamic t AccountData
     -- ^ Accounts added and removed by the user
   , _wallet_fungible :: Dynamic t ModuleName
+  , _wallet_moduleData :: Dynamic t ModuleData
   }
   deriving Generic
+
+-- Holds the contract hash of the currrent fungible
+type ModuleData = Map ChainId (Maybe Text)
 
 data Account = Account
   { _account_status :: AccountStatus AccountDetails
@@ -266,6 +272,16 @@ makeWallet mChangePassword model conf = do
       -- Get details for a new account
       , ffor (_walletCfg_importAccount conf) $ \(net, name) -> AccountData $ net =: name =: mempty
       ]
+    let
+        newBalances :: Event t [(NetworkName, AccountName, ChainId, AccountStatus AccountDetails)]
+        newBalances =
+          fforMaybe newStatuses $ \(cid, mBalances) ->
+            ffor mBalances $ \(_, bals) ->
+              ffor bals $ \(net, accName, stat) -> (net, accName, cid, stat)
+
+        moduleStatusUpdates :: Event t (ChainId, Maybe Text)
+        moduleStatusUpdates =
+          ffor newStatuses $ \(cid, mBalances) -> (cid, fst <$> mBalances)
 
     -- TODO: Need to enforce the following invariants
     --  1) An "AccountInfo Account" structure must always contain 20 / <max chains> entries in its
@@ -281,7 +297,7 @@ makeWallet mChangePassword model conf = do
       , ffor (_walletCfg_updateAccountNotes conf) updateAccountNotes
       , ffor (_walletCfg_setCrossChainTransfer conf) updateCrossChain
       , ffor (_walletCfg_delAccount conf) removeAccount
-      , foldr (.) id . fmap updateAccountStatus <$> newStatuses
+      , foldr (.) id . fmap updateAccountStatus <$> newBalances
       -- zero out account balance on new fungible
       , ffor (updated dFungible) $ \_ prevState -> AccountData $
           ffor (unAccountData prevState) $ \networkAccount ->
@@ -289,6 +305,7 @@ makeWallet mChangePassword model conf = do
               { _accountInfo_chains = ffor (_accountInfo_chains info)
                 $ \val -> val { _account_status = AccountStatus_Unknown }}
       ]
+    dModuleData <- foldDyn (uncurry Map.insert) mempty moduleStatusUpdates
 
   performEvent_ $ storeKeys <$> updated keys
   store <- holdUniqDyn $ toStorage <$> accounts
@@ -299,6 +316,7 @@ makeWallet mChangePassword model conf = do
     { _wallet_keys = keys
     , _wallet_accounts = accounts
     , _wallet_fungible = dFungible
+    , _wallet_moduleData = dModuleData
     }
   where
     addStarterKey m = if IntMap.null m then Just (addNewKey m) else Nothing
@@ -363,7 +381,10 @@ getAccountStatus
     , HasLogger model t
     , HasNetwork model t, HasCrypto key (Performable m)
     )
-  => model -> Dynamic t ModuleName -> Event t AccountData -> m (Event t [(NetworkName, AccountName, ChainId, AccountStatus AccountDetails)])
+  => model
+  -> Dynamic t ModuleName
+  -> Event t AccountData
+  -> m (Event t (ChainId, Maybe (Text, [(NetworkName, AccountName, AccountStatus AccountDetails)])))
 getAccountStatus model dFungible accStore = performEventAsync $ flip push accStore $ \(AccountData networkAccounts) -> do
   nodes <- fmap rights $ sample $ current $ model ^. network_selectedNodes
   net <- sample $ current $ model ^. network_selectedNetwork
@@ -390,7 +411,7 @@ getAccountStatus model dFungible accStore = performEventAsync $ flip push accSto
 
         chainsToAccounts = MonoidalMap.fromSet (const allAccounts) allChains
 
-        code = renderCompactText . accountDetailsObject fungible . Set.toList
+        code = renderCompactText . accountDetailsObjectWithHash fungible . Set.toList
         pm chain = Pact.PublicMeta
           { Pact._pmChainId = chain
           , Pact._pmSender = "chainweaver"
@@ -408,12 +429,15 @@ getAccountStatus model dFungible accStore = performEventAsync $ flip push accSto
         pure $ doReqFailover envs (Api.local Api.apiV1Client cmd) >>= \case
           Left es -> putLog model LevelInfo $ "getAccountStatus: request failure: " <> tshow es
           Right cr -> case Pact._crResult cr of
-            Pact.PactResult (Right pv) -> case parseAccountDetails pv of
+            Pact.PactResult (Right pv) -> case parseAccountDetailsWithHash pv of
               Left e -> putLog model LevelInfo $ "getAccountStatus: failed to parse balances:" <> tshow e
-              Right balances -> liftIO $ do
+              Right (hash, balances) -> liftIO $ do
                 putLog model LevelInfo $ "getAccountStatus: success:"
                 putLog model LevelInfo $ tshow balances
-                liftIO $ cb $ ffor (Map.toList balances) $ \(name, balance) -> (net, name, chain, balance)
+                liftIO $ cb $ (chain, Just (hash, ffor (Map.toList balances) $ \(name, balance) -> (net, name, balance)))
+            Pact.PactResult (Left (PactError EvalError _ _ doc))
+              | "Cannot resolve " `Text.isPrefixOf` (tshow doc) ->
+                liftIO $ cb (chain, Nothing)
             Pact.PactResult (Left e) -> putLog model LevelInfo $ "getAccountStatus failed:" <> tshow e
       -- Perform the requests on a forked thread
       void $ liftJSM $ forkJSM $ void $ sequence requests

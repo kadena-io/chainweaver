@@ -380,7 +380,7 @@ createNewPassphrase backWF eBack (rootKey, password) mnemonicSentence = selfWF
           let cfg = def
                 & uiButtonCfg_class .~ "setup__recovery-phrase-copy"
                 & uiButtonCfg_title .~ pure (Just "Copy")
-          copyButton cfg True $ fmap (T.unwords . Map.elems) $ current dPassphrase
+          copyButtonLight cfg True $ fmap (T.unwords . Map.elems) $ current dPassphrase
 
         fmap value $ setupDiv "checkbox-wrapper" $ setupCheckbox False def
           $ text "I have safely stored my recovery phrase."
