@@ -16,14 +16,22 @@ import Control.Error (hush)
 import Control.Monad (unless, void)
 import Control.Monad.Fix (MonadFix)
 import Control.Monad.IO.Class
+import Control.Monad.Trans.Maybe (MaybeT(MaybeT), runMaybeT)
+import Data.Aeson (FromJSON, ToJSON)
 import Data.Bool (bool)
-import Data.Foldable (fold)
+import Data.Dependent.Map (DMap)
+import Data.Foldable (fold, traverse_)
+import Data.Functor.Identity (Identity)
+import Data.GADT.Compare (GCompare)
 import Data.Maybe (isNothing, isJust)
 import Data.Text (Text)
 import Language.Javascript.JSaddle (MonadJSM, liftJSM)
 import Reflex.Dom.Core
 import qualified Data.Map as Map
 import qualified Data.Text as T
+import System.FilePath (takeFileName)
+
+import Pact.Server.ApiClient (HasTransactionLogger, askTransactionLogger)
 
 import Frontend.UI.Button
 import Frontend.UI.Dialogs.ChangePassword (minPasswordLength)
@@ -31,8 +39,11 @@ import Frontend.UI.Widgets.Helpers (imgWithAlt)
 import Frontend.UI.Widgets
 import Obelisk.Generated.Static
 
+import Frontend.AppCfg (FileFFI(..), FileType(FileType_Import))
+import Frontend.Setup.ImportExport
 import Frontend.Setup.Password
 import Frontend.Setup.Widgets
+import Frontend.Storage.Class
 import Frontend.Crypto.Class
 import Frontend.Crypto.Password
 
@@ -470,10 +481,119 @@ restoreBipWallet backWF eBack = Workflow $ do
     , backWF <$ eBack
     )
 
+restoreFromImport
+  :: forall t m n key bipStorage
+  .  ( DomBuilder t m, MonadFix m, MonadHold t m, PerformEvent t m
+     , PostBuild t m, MonadJSM (Performable m), HasStorage (Performable m)
+     , MonadSample t (Performable m)
+     , HasTransactionLogger m
+     , HasCrypto key (n (Performable m))
+     , MonadIO (n (Performable m))
+     , HasStorage (n (Performable m))
+     , FromJSON key
+     , ToJSON key
+     , FromJSON (DMap bipStorage Identity)
+     , GCompare bipStorage
+     )
+  => WalletExists
+  -> FileFFI t m
+  -> bipStorage key
+  -> (key -> Password -> (Performable m) Bool)
+  -> (forall a . () => key -> Password -> n (Performable m) a -> (Performable m) a)
+  -> SetupWF key t m
+  -> Event t ()
+  -> SetupWF key t m
+restoreFromImport walletExists fileFFI bipStorageKey pwCheck runF backWF eBack = nagScreen
+  where
+    nagMsgs = case walletExists of
+      WalletExists_Yes ->
+        ("You are about to replace the current wallet's data"
+        ,"Reminder: Importing a wallet file will replace the data within the current wallet."
+        )
+      WalletExists_No ->
+        ("Please select the wallet import file."
+        ,"Reminder: You will need your wallet password to proceed."
+        )
+
+    nagBack = case walletExists of
+      WalletExists_No -> pure never
+      WalletExists_Yes -> uiButtonDyn
+        -- TODO: Don't reuse this class or at least rename it
+        (btnCfgSecondary & uiButtonCfg_class <>~ "setup__restore-existing-button")
+        (text "Go back and export current wallet")
+
+    nagScreen = Workflow $ setupDiv "splash" $ do
+      splashLogo
+      let (nagTitle, nagReminder) = nagMsgs
+      elClass "h1" "setup__recover-import-title" $ text nagTitle
+      elClass "p" "setup__recover-import-text" $ text nagReminder
+      eImport <- confirmButton def "Select Import File"
+      eExit <- nagBack
+      pure
+        ( (WalletScreen_RecoverImport, never, eExit)
+        , leftmost
+          [ backWF <$ (eBack <> eExit)
+          , importScreen <$ eImport
+          ]
+        )
+
+    importScreen = Workflow $ setupDiv "splash" $ mdo
+      splashLogo
+      elClass "h1" "setup__recover-import-title" $ text "Import File Password"
+      elClass "p" "setup__recover-import-text" $ text "Enter the password for the chosen wallet file in order to authorize access to the data."
+
+      let disabled = isNothing <$> dmValidForm
+      dErr <- holdDyn Nothing (leftmost [Just <$> eImportErr, Nothing <$ updated dmValidForm])
+      (eSubmit, (dFileSelected, pwInput)) <- setupForm "" "Import File" disabled $ mdo
+        ePb <- getPostBuild
+        (selectElt, _) <- elClass' "div" "setup__recover-import-file" $ do
+          imgWithAlt (static @"img/import.svg") "Import" blank
+          divClass "setup__recover-import-file-text" $ dynText $ ffor dFileSelected $
+            maybe "Select a file" (T.pack . takeFileName . fst)
+
+        performEvent_ $ liftJSM (_fileFFI_openFileDialog fileFFI FileType_Import) <$
+          ((domEvent Click selectElt) <> ePb)
+
+        dFileSelected <- holdDyn Nothing (Just <$> _fileFFI_externalFileOpened fileFFI)
+
+        pw <- uiPassword (setupClass "password-wrapper") (setupClass "password") "Enter import wallet password"
+
+        dyn_ $ ffor dErr $ traverse_ $ \err ->
+          elClass "p" "error_inline" $ text $ case err of
+            ImportWalletError_InvalidCommandLogDestination -> "Destination for transaction log file is invalid"
+            ImportWalletError_CommandLogWriteError -> "Unable to write transaction log file"
+            ImportWalletError_PasswordIncorrect -> "Incorrect Password"
+            ImportWalletError_NoRootKey -> "Backup cannot be restored as it does not contain a BIP Root Key"
+            ImportWalletError_NotJson eMsg -> "Backup cannot be restored as it is not a valid json file. Error: " <> eMsg
+            ImportWalletError_DecodeError section ver eMsg ->
+              "Backup section " <> section <> " cannot be parsed as version " <> tshow ver  <>  " with error: " <> eMsg
+            ImportWalletError_UnknownVersion section ver ->
+              "Backup section " <> section <> " has an unknown version " <> tshow ver <> ". It's likely that this backup is from a newer version of chainweaver."
+
+
+        pure (dFileSelected, pw)
+
+      eExit <- nagBack
+      let dmValidForm = runMaybeT $ (,)
+            <$> MaybeT (nonEmptyPassword <$> (_inputElement_value pwInput))
+            <*> MaybeT (fmap snd <$> dFileSelected)
+
+      txLogger <- askTransactionLogger
+      eImport <- performEvent $ tagMaybe (fmap (uncurry (doImport @t txLogger bipStorageKey pwCheck runF)) <$> current dmValidForm) eSubmit
+
+      let (eImportErr, eImportDone) = fanEither eImport
+
+      pure
+        ( (WalletScreen_RecoverImport, (\(prv,pw) -> (prv, pw, False)) <$> eImportDone, eExit)
+        , backWF <$ (eBack <> eExit)
+        )
+
+    nonEmptyPassword "" = Nothing
+    nonEmptyPassword pw = Just (Password pw)
+
 mkSidebarLogoutLink :: (TriggerEvent t m, PerformEvent t n, PostBuild t n, DomBuilder t n, MonadIO (Performable n)) => m (Event t (), n ())
 mkSidebarLogoutLink = do
   (logout, triggerLogout) <- newTriggerEvent
   pure $ (,) logout $ do
     clk <- uiSidebarIcon (pure False) (static @"img/menu/logout.svg") "Logout"
     performEvent_ $ liftIO . triggerLogout <$> clk
-
