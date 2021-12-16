@@ -9,7 +9,7 @@
 {-# LANGUAGE TypeFamilies #-}
 
 -- | Wallet setup screens
-module Desktop.Setup (runSetup) where
+module Frontend.Setup.Setup (runSetup) where
 
 import Control.Lens ((<>~), (^.), _1, _2, _3)
 import Control.Monad (guard)

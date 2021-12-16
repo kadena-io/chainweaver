@@ -61,7 +61,6 @@ library
     Desktop.Crypto.BIP
     , Desktop.Frontend
     , Desktop.Orphans
-    , Desktop.Setup
     , Desktop.Storage.File
     , Desktop.Syslog
     , Desktop.WalletApi
