@@ -3,6 +3,7 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE Rank2Types #-}
+{-# LANGUAGE ConstraintKinds #-}
 module Frontend.Setup.ImportExport where
 
 import Control.Lens (over, mapped, _Left)
@@ -107,6 +108,18 @@ extractImportVersionField
 extractImportVersionField =
   extractImportDataField
 
+data ImportWidgetApis bipStorage key n m = ImportWidgetApis
+  { _importWidgetApis_bipStorageKey :: bipStorage key
+  , _importWidgetApis_pwCheck :: (key -> Password -> m Bool)
+  , _importWidgetApis_runF :: (forall a . () => key -> Password -> n m a -> m a)
+  }
+
+type ImportWidgetConstraints bipStorage key n m =
+  ( MonadIO m, MonadIO (n m), HasCrypto key (n m), MonadIO (n m),
+    HasStorage (n m), FromJSON key, ToJSON key, FromJSON (DMap bipStorage Identity),
+    GCompare bipStorage
+  )
+
 doImport
   :: forall t m n key bipStorage
   .  ( MonadIO m
@@ -114,22 +127,14 @@ doImport
      , HasStorage m
      , MonadSample t m
      , Reflex t
-     , HasCrypto key (n m)
-     , MonadIO (n m)
-     , HasStorage (n m)
-     , FromJSON key
-     , ToJSON key
-     , FromJSON (DMap bipStorage Identity)
-     , GCompare bipStorage
+     , ImportWidgetConstraints bipStorage key n m
      )
   => TransactionLogger
-  -> bipStorage key
-  -> (key -> Password -> m Bool)
-  -> (forall a . () => key -> Password -> n m a -> m a)
+  -> ImportWidgetApis bipStorage key n m
   -> Password
   -> Text -- Backup data
   -> m (Either ImportWalletError (key, Password))
-doImport txLogger bipStorageKey passwordRoundTripTest runF pw contents = runExceptT $ do
+doImport txLogger (ImportWidgetApis bipStorageKey passwordRoundTripTest runF) pw contents = runExceptT $ do
   jVal <- hoistEither . first (ImportWalletError_NotJson . T.pack) $
     eitherDecode @Value (TL.encodeUtf8 . TL.fromStrict $ contents)
 

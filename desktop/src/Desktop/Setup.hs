@@ -33,7 +33,7 @@ import Frontend.UI.Widgets.Helpers (imgWithAlt)
 import Frontend.UI.Widgets
 import Frontend.Setup.Widgets
 import Frontend.Setup.Common
-import Frontend.Setup.ImportExport (doImport, ImportWalletError(..))
+import Frontend.Setup.ImportExport (doImport, ImportWalletError(..), ImportWidgetApis(..))
 import Frontend.Crypto.Password
 import Obelisk.Generated.Static
 
@@ -108,9 +108,10 @@ splashScreenWithImport walletExists fileFFI eBack = selfWF
    
       let pwCheck k p= pure $ passwordRoundTripTest k p
           runF k (Password p) = runBIPCryptoT (pure (k, p))
+          importWidgetApis = ImportWidgetApis BIPStorage_RootKey pwCheck runF
           
       finishSetupWF WalletScreen_SplashScreen $ leftmost
         [ createNewWallet selfWF eBack <$ hasAgreed create
         , restoreBipWallet selfWF eBack <$ hasAgreed restoreBipPhrase
-        , restoreFromImport walletExists fileFFI BIPStorage_RootKey pwCheck runF selfWF eBack <$ hasAgreed restoreImport
+        , restoreFromImport walletExists fileFFI importWidgetApis selfWF eBack <$ hasAgreed restoreImport
         ]

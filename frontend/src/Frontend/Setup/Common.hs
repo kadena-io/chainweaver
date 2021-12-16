@@ -487,23 +487,15 @@ restoreFromImport
      , PostBuild t m, MonadJSM (Performable m), HasStorage (Performable m)
      , MonadSample t (Performable m)
      , HasTransactionLogger m
-     , HasCrypto key (n (Performable m))
-     , MonadIO (n (Performable m))
-     , HasStorage (n (Performable m))
-     , FromJSON key
-     , ToJSON key
-     , FromJSON (DMap bipStorage Identity)
-     , GCompare bipStorage
+     , ImportWidgetConstraints bipStorage key n (Performable m)
      )
   => WalletExists
   -> FileFFI t m
-  -> bipStorage key
-  -> (key -> Password -> (Performable m) Bool)
-  -> (forall a . () => key -> Password -> n (Performable m) a -> (Performable m) a)
+  -> ImportWidgetApis bipStorage key n (Performable m)
   -> SetupWF key t m
   -> Event t ()
   -> SetupWF key t m
-restoreFromImport walletExists fileFFI bipStorageKey pwCheck runF backWF eBack = nagScreen
+restoreFromImport walletExists fileFFI importWidgetApis backWF eBack = nagScreen
   where
     nagMsgs = case walletExists of
       WalletExists_Yes ->
@@ -579,7 +571,7 @@ restoreFromImport walletExists fileFFI bipStorageKey pwCheck runF backWF eBack =
             <*> MaybeT (fmap snd <$> dFileSelected)
 
       txLogger <- askTransactionLogger
-      eImport <- performEvent $ tagMaybe (fmap (uncurry (doImport @t txLogger bipStorageKey pwCheck runF)) <$> current dmValidForm) eSubmit
+      eImport <- performEvent $ tagMaybe (fmap (uncurry (doImport @t txLogger importWidgetApis)) <$> current dmValidForm) eSubmit
 
       let (eImportErr, eImportDone) = fanEither eImport
 
