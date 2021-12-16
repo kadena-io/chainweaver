@@ -16,7 +16,7 @@
 
 module Frontend.UI.Dialogs.Send.ManualTxBuilder
   ( uiManualTxBuilderInput
-  , uiExplodedTxBuilder
+  -- , uiExplodedTxBuilder
   , recipientMatchesSenderTxBuilder
   ) where
 
