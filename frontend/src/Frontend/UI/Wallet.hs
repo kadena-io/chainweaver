@@ -41,6 +41,7 @@ import qualified Data.Set                    as Set
 import           Data.Text                   (Text)
 import qualified Data.Text                   as T
 import           Obelisk.Generated.Static
+import           Obelisk.Route.Frontend
 import           Reflex
 import           Reflex.Dom hiding (Key)
 import           Text.Read
@@ -48,6 +49,7 @@ import           Text.Read
 import qualified Pact.Types.Pretty as Pact
 import qualified Pact.Types.Term   as Pact
 ------------------------------------------------------------------------------
+import           Common.Route
 import           Frontend.Log (HasLogger, HasLogCfg)
 import           Frontend.Crypto.Class
 import           Frontend.Crypto.Ed25519     (keyToText)
@@ -120,6 +122,7 @@ uiWallet
   :: forall m t key model mConf
      . ( MonadWidget t m
        , HasUiWalletModelCfg model mConf key m t
+       , SetRoute t (R FrontendRoute) m
        )
   => model
   -> m mConf
@@ -137,9 +140,9 @@ hasPrivateKey = isJust . _keyPair_privateKey . snd
 
 uiAccountsTable
   :: forall t m model mConf key.
-  (MonadWidget t m, HasUiWalletModelCfg model mConf key m t, HasTransactionLogger m)
-  => model -> m mConf
-uiAccountsTable model = do
+  (MonadWidget t m, HasUiWalletModelCfg model mConf key m t, HasTransactionLogger m, (SetRoute t (R FrontendRoute) m))
+  => model -> Dynamic t (Maybe AccountName) -> m mConf
+uiAccountsTable model dStartOpen = do
   let net = model ^. network_selectedNetwork
       networks = model ^. wallet_accounts
   mAccounts <- maybeDyn $ ffor2 net networks $ \n (AccountData m) -> case Map.lookup n m of
@@ -152,14 +155,14 @@ uiAccountsTable model = do
         el "strong" $ text "+ Add Account"
         text " button."
       pure mempty
-    Just m -> divClass "wallet__keys-list" $ uiAccountItems model m
+    Just m -> divClass "wallet__keys-list" $ uiAccountItems model m dStartOpen
 
 
 uiAccountItems
   :: forall t m model mConf key.
-  (MonadWidget t m, HasUiWalletModelCfg model mConf key m t, HasTransactionLogger m)
-  => model -> Dynamic t (Map AccountName (AccountInfo Account)) -> m mConf
-uiAccountItems model accountsMap = do
+  (MonadWidget t m, HasUiWalletModelCfg model mConf key m t, HasTransactionLogger m, (SetRoute t (R FrontendRoute) m))
+  => model -> Dynamic t (Map AccountName (AccountInfo Account)) -> Dynamic t (Maybe AccountName) -> m mConf
+uiAccountItems model accountsMap dStartOpen = do
   let net = model ^. network_selectedNetwork
       tableAttrs = mconcat
         [ "style" =: "table-layout: fixed; width: 98%"
@@ -192,7 +195,8 @@ uiAccountItems model accountsMap = do
 
     el "tbody" $ do
       let cwKeys = model ^. wallet_keys
-          startsOpen = (\m -> Map.size m == 1) <$> accountsMap
+          dMapAndOpenAcc = (,) <$> accountsMap <*> dStartOpen
+          startsOpen = ffor dMapAndOpenAcc $ \(m, open) name -> Map.size m == 1 || (Just name == open)
       events <- listWithKey accountsMap (uiAccountItem cwKeys startsOpen)
       dyn_ $ ffor accountsMap $ \accs ->
         when (null accs) $
@@ -285,7 +289,7 @@ unPadChainId (ChainId c) = if T.length c <= 1 then ChainId c else
 uiAccountItem
   :: forall key t m. MonadWidget t m
   => Dynamic t (KeyStorage key)
-  -> Dynamic t Bool
+  -> Dynamic t (AccountName -> Bool)
   -> AccountName
   -> Dynamic t (AccountInfo Account)
   -> m (Event t AccountDialog)
@@ -304,7 +308,7 @@ uiAccountItem cwKeys startsOpen name accountInfo = do
       [] -> "Does not exist"
       xs -> uiAccountBalance False $ Just $ sum xs
 
-    v0 <- sample $ current startsOpen
+    v0 <- sample $ current $ ($ name) <$> startsOpen
     visible <- toggle v0 clk
     results <- accursedUnutterableListWithKey orderedChainMap $ accountRow visible
 
@@ -408,6 +412,7 @@ uiAvailableKeys
      ( MonadWidget t m
      , HasUiWalletModelCfg model mConf key m t
      , HasWalletCfg mConf key t
+     , SetRoute t (R FrontendRoute) m
      )
   => model
   -> m mConf
@@ -442,6 +447,7 @@ uiKeyItems
      , HasModalCfg mConf (Modal mConf m t) t
      , HasCrypto key m
      , HasWalletCfg mConf key t
+     , SetRoute t (R FrontendRoute) m
      )
   => Dynamic t (Map Int (Key key))
   -> Dynamic t (NetworkName, [AccountName])
@@ -498,7 +504,7 @@ data KeyDialog key
 ------------------------------------------------------------------------------
 -- | Display a key as list item together with its name.
 uiKeyItem
-  :: forall key t m. MonadWidget t m
+  :: forall key t m. (MonadWidget t m, (SetRoute t (R FrontendRoute) m))
   => IntMap.Key
   -> Dynamic t (Key key)
   -> m (Event t (KeyDialog key), Event t Text)
@@ -510,6 +516,7 @@ uiKeyItem keyIndex key = trKey $ do
     eAddK <- addKAccountButton $ cfg & uiButtonCfg_class <>~ "wallet__table-button--hamburger" <> "wallet__table-button-key"
     onDetails <- detailsButton (cfg & uiButtonCfg_class <>~ "wallet__table-button--hamburger" <> "wallet__table-button-key")
     let addK = current dKeyText <@ eAddK
+    setRoute $ ffor addK $ \k -> FrontendRoute_Accounts :/ ("open" =: (Just $ "k:" <> k))
     pure $ (KeyDialog_Details keyIndex <$> current key <@ onDetails, addK)
   where
     bcfg = btnCfgSecondary & uiButtonCfg_class <>~ "wallet__table-button-with-background" <> "button_border_none"
