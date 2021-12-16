@@ -54,6 +54,7 @@ import Common.Route
 import Common.Wallet
 import Frontend.AppCfg
 import Desktop.Crypto.BIP
+import Desktop.Orphans ()
 import Frontend.ModuleExplorer.Impl (loadEditorFromLocalStorage)
 import Frontend.Log (defaultLogger)
 import Frontend.Wallet (genZeroKeyPrefix, _unPublicKeyPrefix)
@@ -162,7 +163,11 @@ bipWallet fileFFI signingReq mkAppCfg = do
       -> WalletExists
       -> RoutedT t (R FrontendRoute) m (Event t (DSum LockScreen Identity))
     runSetup0 mPrv walletExists = do
-      keyAndPass <- runSetup (liftFileFFI lift fileFFI) (isJust mPrv) walletExists
+      let pwCheck k p= pure $ passwordRoundTripTest k p
+          runF k (Password p) = runBIPCryptoT (pure (k, p))
+          importWidgetApis = ImportWidgetApis BIPStorage_RootKey pwCheck runF
+
+      keyAndPass <- runSetup (liftFileFFI lift fileFFI) (isJust mPrv) walletExists importWidgetApis
       performEvent $ flip push keyAndPass $ \case
         Right (x, Password p, newWallet) -> pure $ Just $ do
           setItemStorage localStorage BIPStorage_RootKey x

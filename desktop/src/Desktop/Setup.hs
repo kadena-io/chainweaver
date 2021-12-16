@@ -19,13 +19,10 @@ import Data.Foldable (traverse_)
 import Data.Maybe (isNothing)
 import Language.Javascript.JSaddle (MonadJSM, liftJSM)
 import Reflex.Dom.Core
-import qualified Cardano.Crypto.Wallet as Crypto
 import qualified Data.Text as T
 import System.FilePath (takeFileName)
 
 import Frontend.AppCfg (FileFFI(..), FileType(FileType_Import))
-import Desktop.Crypto.BIP (BIPStorage(..), passwordRoundTripTest, runBIPCryptoT)
-import Desktop.Orphans ()
 import Pact.Server.ApiClient (HasTransactionLogger, askTransactionLogger)
 import Frontend.Storage.Class (HasStorage)
 import Frontend.UI.Button
@@ -33,12 +30,13 @@ import Frontend.UI.Widgets.Helpers (imgWithAlt)
 import Frontend.UI.Widgets
 import Frontend.Setup.Widgets
 import Frontend.Setup.Common
-import Frontend.Setup.ImportExport (doImport, ImportWalletError(..), ImportWidgetApis(..))
+import Frontend.Setup.ImportExport (doImport, ImportWalletError(..), ImportWidgetApis(..), ImportWidgetConstraints)
+import Frontend.Crypto.Class
 import Frontend.Crypto.Password
 import Obelisk.Generated.Static
 
 runSetup
-  :: forall t m
+  :: forall t m n key bipStorage
   . ( DomBuilder t m
     , MonadFix m
     , MonadHold t m
@@ -49,12 +47,15 @@ runSetup
     , HasStorage (Performable m)
     , MonadSample t (Performable m)
     , HasTransactionLogger m
+    , BIP39Root key, BIP39Mnemonic (Sentence key)
+    , ImportWidgetConstraints bipStorage key n (Performable m)
     )
   => FileFFI t m
   -> Bool
   -> WalletExists
-  -> m (Event t (Either () (Crypto.XPrv, Password, Bool)))
-runSetup fileFFI showBackOverride walletExists = setupDiv "fullscreen" $ mdo
+  -> ImportWidgetApis bipStorage key n (Performable m)
+  -> m (Event t (Either () (key, Password, Bool)))
+runSetup fileFFI showBackOverride walletExists importWidgetApis = setupDiv "fullscreen" $ mdo
   let dCurrentScreen = (^._1) <$> dwf
 
   eBack <- fmap (domEvent Click . fst) $ elDynClass "div" ((setupClass "back " <>) . hideBack <$> dCurrentScreen) $
@@ -65,7 +66,7 @@ runSetup fileFFI showBackOverride walletExists = setupDiv "fullscreen" $ mdo
   _ <- dyn_ $ walletSetupRecoverHeader <$> dCurrentScreen
 
   dwf <- divClass "wrapper" $
-    workflow (splashScreenWithImport walletExists fileFFI eBack)
+    workflow (splashScreenWithImport walletExists fileFFI importWidgetApis eBack)
 
   pure $ leftmost
     [ fmap Right $ switchDyn $ (^. _2) <$> dwf
@@ -84,12 +85,15 @@ splashScreenWithImport
      , PostBuild t m, MonadJSM (Performable m), TriggerEvent t m, HasStorage (Performable m)
      , MonadSample t (Performable m)
      , HasTransactionLogger m
+     , BIP39Root key, BIP39Mnemonic (Sentence key)
+     , ImportWidgetConstraints bipStorage key n (Performable m)
      )
   => WalletExists
   -> FileFFI t m
+  -> ImportWidgetApis bipStorage key n (Performable m)
   -> Event t ()
-  -> SetupWF Crypto.XPrv t m
-splashScreenWithImport walletExists fileFFI eBack = selfWF
+  -> SetupWF key t m
+splashScreenWithImport walletExists fileFFI importWidgetApis eBack = selfWF
   where
     selfWF = Workflow $ setupDiv "splash" $ do
       agreed <- splashScreenAgreement
@@ -105,11 +109,6 @@ splashScreenWithImport walletExists fileFFI eBack = selfWF
       restoreImport <- uiButtonDyn (btnCfgSecondary & disabledCfg & restoreCfg)
         $ text "Restore from wallet export"
 
-   
-      let pwCheck k p= pure $ passwordRoundTripTest k p
-          runF k (Password p) = runBIPCryptoT (pure (k, p))
-          importWidgetApis = ImportWidgetApis BIPStorage_RootKey pwCheck runF
-          
       finishSetupWF WalletScreen_SplashScreen $ leftmost
         [ createNewWallet selfWF eBack <$ hasAgreed create
         , restoreBipWallet selfWF eBack <$ hasAgreed restoreBipPhrase
