@@ -83,8 +83,7 @@ uiCallFunction m mModule func _onClose
             { _deploymentSettingsConfig_userTab = parametersTab m func
             , _deploymentSettingsConfig_chainId = \_ -> pure $ pure $ Just $ _chainRef_chain . _moduleRef_source $ moduleRef
             , _deploymentSettingsConfig_code = fromMaybe (pure $ buildCall func []) mPactCall
-            , _deploymentSettingsConfig_sender = \_ _ _ -> uiAccountAny
-            -- , _deploymentSettingsConfig_sender = uiAccountDropdown def (pure $ \_ _ -> True) (pure id)
+            , _deploymentSettingsConfig_sender = \m' _ _ -> uiAccountComboBox m' Nothing
             , _deploymentSettingsConfig_data = Nothing
             , _deploymentSettingsConfig_ttl = Nothing
             , _deploymentSettingsConfig_nonce = Nothing

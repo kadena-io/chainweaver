@@ -37,6 +37,7 @@ module Frontend.UI.Widgets
   , accountDatalist
   , uiAccountNameInput
   , uiAccountNameInputNoDropdown
+  , uiAccountComboBox
   , accountNameFormWidget
   , accountNameFormWidgetNoDropdown
   , uiAccountFixed
@@ -929,9 +930,24 @@ uiGasPriceInputField eReset conf = dimensionalInputFeedbackWrapper (Just "KDA") 
 userChainIdSelect
   :: MonadWidget t m
   => Dynamic t [ChainId]
-  -> m ( Dropdown t (Maybe ChainId) )
+  -> m ( FormWidget t (Maybe ChainId) )
 userChainIdSelect options = do
-  mkLabeledClsInput True "Chain ID" (uiChainSelectionWithUpdate options never)
+  mkLabeledClsInput True "Chain ID" (uiChainSelection options)
+
+uiChainSelection
+  :: MonadWidget t m
+  => Dynamic t [ChainId]
+  -> CssClass
+  -> m ( FormWidget t (Maybe ChainId) )
+uiChainSelection options cls = do
+  let
+    chains = map (Just &&& _chainId) <$> options
+    mkPlaceHolder cChains = if null cChains then "No chains available" else "Select chain"
+    chains' = ffor chains $ \c -> (Nothing, mkPlaceHolder c):c
+    staticCls = cls <> "select"
+    cfg = mkCfg Nothing
+            & initialAttributes %~ addToClassAttr staticCls
+  unsafeDropdownFormWidget chains' cfg
 
 uiChainSelectionWithUpdate
   :: MonadWidget t m
@@ -1116,6 +1132,35 @@ uiAccountNameInputNoDropdown label inlineLabel initval onSetName validateName = 
     & setValue .~ Just onSetName
   pure (tagPromptlyDyn v i, v)
 
+-- TODO: Implement commented version and figure out why it causes event-loop
+-- uiAccountComboBox :: (HasWallet model key t, HasNetwork model t, MonadWidget t m) =>
+--   model -> Maybe AccountName -> (Dynamic t (Maybe ChainId)) -> m (Dynamic t (Maybe (AccountName, Account)))
+-- uiAccountComboBox m mDefAccount dMCid = do
+uiAccountComboBox
+  :: (HasWallet model key t, HasNetwork model t, MonadWidget t m)
+  => model
+  -> Maybe AccountName
+  -> m (Dynamic t (Maybe (AccountName, Account)))
+uiAccountComboBox m mDefAccount = do
+  let dAccMap = fmap (fromMaybe mempty) $ Map.lookup
+                  <$> (m^.network_selectedNetwork)
+                  <*> (unAccountData <$> m^.wallet_accounts)
+      dAccList = fmap (unAccountName . fst) . Map.toList <$> dAccMap
+      initAccount = maybe "" unAccountName mDefAccount
+      mkEmpty a = (AccountName a, Account AccountStatus_Unknown blankVanityAccount)
+      -- f map Nothing accName = Just $ mkEmpty accName
+      -- f map (Just cid) accName =
+      --   maybe
+      --     (if T.null accName
+      --        then Nothing
+      --        else Just $ mkEmpty accName)
+      --     (\res ->  Just (AccountName accName, res))
+      --     $ map ^? ix (AccountName accName) . accountInfo_chains . ix cid
+  dAccName <- fmap value $ uiComboBox initAccount dAccList $ pfwc2iec id $
+        mkCfg ""
+          & primFormWidgetConfig_initialAttributes .~ ("class" =: "labeled-input__input")
+  pure $ Just . mkEmpty <$> dAccName
+  -- pure $ f <$> dAccMap <*> dMCid <*> dAccName
 
 -- | Free form for an account
 uiAccountAny :: MonadWidget t m => m (Dynamic t (Maybe (AccountName, Account)))
