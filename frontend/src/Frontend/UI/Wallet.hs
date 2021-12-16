@@ -407,6 +407,7 @@ uiAvailableKeys
   :: forall t m model mConf key.
      ( MonadWidget t m
      , HasUiWalletModelCfg model mConf key m t
+     , HasWalletCfg mConf key t
      )
   => model
   -> m mConf
@@ -423,7 +424,13 @@ uiAvailableKeys model = do
         el "strong" $ text "+ Generate Key"
         text " button, then continue to Accounts."
       pure mempty
-    Just keyMap -> divClass "wallet__keys-list" $ uiKeyItems keyMap
+    Just keyMap -> divClass "wallet__keys-list" $ do
+      let netAccList  =
+            do
+              net <- model^.network_selectedNetwork
+              accs <- model^.wallet_accounts
+              pure $ (net, fmap fst $ Map.toList $ fromMaybe mempty $ accs^? _AccountData . ix net)
+      uiKeyItems keyMap netAccList
 
 -- | Render a list of key items.
 --
@@ -434,10 +441,12 @@ uiKeyItems
      , Monoid mConf, Monoid (ModalCfg mConf t)
      , HasModalCfg mConf (Modal mConf m t) t
      , HasCrypto key m
+     , HasWalletCfg mConf key t
      )
   => Dynamic t (Map Int (Key key))
+  -> Dynamic t (NetworkName, [AccountName])
   -> m mConf
-uiKeyItems keyMap = do
+uiKeyItems keyMap netAndAccs = do
   let
     tableAttrs =
       "style" =: "table-layout: fixed; width: calc(100% - 22px);"
@@ -461,10 +470,23 @@ uiKeyItems keyMap = do
             text "No keys ..."
       pure events
 
-  let modalEvents = switch $ leftmost . Map.elems <$> current events
+  let
+    keyEvents = (fmap . fmap) fst events
+    addAccMap = (fmap . fmap) snd events
+    modalEvents = switch $ leftmost . Map.elems <$> current keyEvents
+    accEvents = switch $ leftmost . Map.elems <$> current addAccMap
+
+    eAddAccWithKey = attach (current netAndAccs) accEvents
+    addAcc ((net, accList), k) =
+      let accName = AccountName $ "k:" <> k
+       in case accName `elem` accList of
+            True -> Nothing
+            False -> Just (net, accName)
 
   pure $ mempty
     & modalCfg_setModal .~ fmap keyModal modalEvents
+    & walletCfg_importAccount .~ fmapMaybe addAcc eAddAccWithKey
+
   where
     keyModal = Just . \case
       KeyDialog_Details i key -> uiKeyDetails i key
@@ -479,13 +501,16 @@ uiKeyItem
   :: forall key t m. MonadWidget t m
   => IntMap.Key
   -> Dynamic t (Key key)
-  -> m (Event t (KeyDialog key))
+  -> m (Event t (KeyDialog key), Event t Text)
 uiKeyItem keyIndex key = trKey $ do
-  td $ dynText $ keyToText . _keyPair_publicKey . _key_pair <$> key
+  let dKeyText = keyToText . _keyPair_publicKey . _key_pair <$> key
+  td $ dynText dKeyText
   td $ buttons $ do
     copyButton' "" bcfg ButtonShade_Dark False (current $ keyToText . _keyPair_publicKey . _key_pair <$> key)
+    eAddK <- addKAccountButton $ cfg & uiButtonCfg_class <>~ "wallet__table-button--hamburger" <> "wallet__table-button-key"
     onDetails <- detailsButton (cfg & uiButtonCfg_class <>~ "wallet__table-button--hamburger" <> "wallet__table-button-key")
-    pure $ KeyDialog_Details keyIndex <$> current key <@ onDetails
+    let addK = current dKeyText <@ eAddK
+    pure $ (KeyDialog_Details keyIndex <$> current key <@ onDetails, addK)
   where
     bcfg = btnCfgSecondary & uiButtonCfg_class <>~ "wallet__table-button-with-background" <> "button_border_none"
     trKey = elClass "tr" "wallet__table-row wallet__table-row-key"
