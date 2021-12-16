@@ -43,7 +43,9 @@ import Frontend.Crypto.Ed25519
 import Frontend.Crypto.Browser
 import Frontend.Foundation
 import Frontend.Setup.Common
+import Frontend.Setup.ImportExport
 import Frontend.Setup.Password
+import Frontend.Setup.Setup
 import Frontend.Setup.Widgets
 import Frontend.Storage
 import Frontend.UI.Button
@@ -77,72 +79,6 @@ type MkAppCfg t m
   -- ^ Settings
   -> AppCfg PrivateKey t (RoutedT t (R FrontendRoute) (BrowserCryptoT t m))
 
-runSetup
-  :: ( DomBuilder t m
-    , MonadFix m
-    , MonadHold t m
-    , PerformEvent t m
-    , PostBuild t m
-    , TriggerEvent t m
-    , MonadJSM (Performable m)
-    , HasStorage (Performable m)
-    , MonadSample t (Performable m)
-    , DerivableKey key mnemonic
-    )
-  => FileFFI t m
-  -> Bool
-  -> WalletExists
-  -> m (Event t (Either () (key, Password, Bool)))
-runSetup fileFFI showBackOverride walletExists = setupDiv "fullscreen" $ mdo
-  let dCurrentScreen = (^._1) <$> dwf
-
-  eBack <- fmap (domEvent Click . fst) $ elDynClass "div" ((setupClass "back " <>) . hideBack <$> dCurrentScreen) $
-    el' "span" $ do
-      elClass "i" "fa fa-fw fa-chevron-left" $ blank
-      text "Back"
-
-  _ <- dyn_ $ walletSetupRecoverHeader <$> dCurrentScreen
-
-  dwf <- divClass "wrapper" $
-    workflow (splashScreenBrowser eBack)
-
-  pure $ leftmost
-    [ fmap Right $ switchDyn $ (^. _2) <$> dwf
-    , attachWithMaybe (\s () -> Left () <$ guard (s == WalletScreen_SplashScreen)) (current dCurrentScreen) eBack
-    , fmap Left $ switchDyn $ (^. _3) <$> dwf
-    ]
-  where
-    hideBack ws =
-      if not showBackOverride && (ws `elem` [WalletScreen_SplashScreen, WalletScreen_Done]) then
-        setupClass "hide"
-      else
-        setupScreenClass ws
-
-splashScreenBrowser
-  :: (DomBuilder t m, MonadFix m, MonadHold t m, PerformEvent t m
-     , PostBuild t m, MonadJSM (Performable m), TriggerEvent t m, HasStorage (Performable m)
-     , MonadSample t (Performable m), DerivableKey key mnemonic
-     )
-  => Event t ()
-  -> SetupWF key t m
-splashScreenBrowser eBack = selfWF
-  where
-    selfWF = Workflow $ setupDiv "splash" $ do
-      agreed <- splashScreenAgreement
-      let hasAgreed = gate (current agreed)
-          disabledCfg = uiButtonCfg_disabled .~ fmap not agreed
-          restoreCfg = uiButtonCfg_class <>~ "setup__restore-existing-button"
-
-      create <- confirmButton (def & disabledCfg ) "Create a new wallet"
-
-      restoreBipPhrase <- uiButtonDyn (btnCfgSecondary & disabledCfg & restoreCfg)
-        $ text "Restore from recovery phrase"
-
-      finishSetupWF WalletScreen_SplashScreen $ leftmost
-        [ createNewWallet selfWF eBack <$ hasAgreed create
-        , restoreBipWallet selfWF eBack <$ hasAgreed restoreBipPhrase
-        ]
-
 bipWalletBrowser
   :: forall js t m
   .  ( MonadWidget t m
@@ -172,7 +108,9 @@ bipWalletBrowser fileFFI mkAppCfg = do
       -> WalletExists
       -> RoutedT t (R FrontendRoute) m (Event t (DSum LockScreen Identity))
     runSetup0 mPrv walletExists = do
-      keyAndPass <- runSetup (liftFileFFI lift fileFFI) (isJust mPrv) walletExists
+      let runF k p = runBrowserCryptoT (pure (k, p))
+          importWidgetApis = ImportWidgetApis BIPStorage_RootKey passwordRoundTripTest runF
+      keyAndPass <- runSetup (liftFileFFI lift fileFFI) (isJust mPrv) walletExists importWidgetApis
       performEvent $ flip push keyAndPass $ \case
         Right (x, Password p, newWallet) -> pure $ Just $ do
           setItemStorage localStorage BIPStorage_RootKey x
