@@ -111,6 +111,13 @@ app sidebarExtra fileFFI appCfg = Store.versionedFrontend (Store.versionedStorag
     route <- askRoute
     routedCfg <- subRoute $ lift . flip runRoutedT route . \case
       FrontendRoute_Accounts -> mkPageContent "accounts" $ mdo
+        query <- askRoute
+        let
+          startOpen :: Dynamic t (Maybe AccountName)
+          startOpen =
+            ffor query $ \case
+              (FrontendRoute_Accounts :/ q) -> fmap AccountName $ join $ Map.lookup "open" q
+              _ -> Nothing
         netCfg <- networkBar ideL
         (transferVisible, barCfg) <- controlBar "Accounts You Are Watching" $ do
           resetToken <- uiResetTokenButton ideL
@@ -122,7 +129,7 @@ app sidebarExtra fileFFI appCfg = Store.versionedFrontend (Store.versionedStorag
           pure $ (xferVisible, resetToken <> switchToken <> watchCfg <> addCfg <> refreshCfg)
         divClass "wallet-scroll-wrapper" $ do
           transferCfg <- uiGenericTransfer ideL $ TransferCfg transferVisible never never
-          accountsCfg <- uiAccountsTable ideL
+          accountsCfg <- uiAccountsTable ideL startOpen
           pure $ netCfg <> barCfg <> accountsCfg <> transferCfg
       FrontendRoute_Keys -> mkPageContent "keys" $ do
         walletBarCfg <- underNetworkBar "Keys" uiGenerateKeyButton
@@ -209,7 +216,7 @@ walletSidebar sidebarExtra = elAttr "div" ("class" =: "sidebar") $ do
     let sidebarLink r@(r' :/ _) label = routeLink r $ do
           let selected = demuxed route (Some r')
           void $ uiSidebarIcon selected (routeIcon r) label
-    sidebarLink (FrontendRoute_Accounts :/ ()) "Accounts"
+    sidebarLink (FrontendRoute_Accounts :/ mempty) "Accounts"
     sidebarLink (FrontendRoute_Keys :/ ()) "Keys"
     sidebarLink (FrontendRoute_Contracts :/ Nothing) "Contracts"
     elAttr "div" ("style" =: "flex-grow: 1") blank
