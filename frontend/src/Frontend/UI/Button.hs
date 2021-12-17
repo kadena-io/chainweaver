@@ -53,6 +53,7 @@ module Frontend.UI.Button
   , sendButton
   , completeCrossChainButton
   , detailsButton
+  , addKAccountButton
   , detailsIconButton
   , accordionButton
   , copyToClipboard
@@ -346,6 +347,11 @@ transferToButton cfg =
   uiButton (cfg & uiButtonCfg_class <>~ "button_type_secondary" <> "button_type_secondary") $ do
     imgWithAltCls "button__text-icon" (static @"img/transfer-to.svg") "Transfer to" blank
     elClass "span" "button__text button__text-exclusive" $ text "Transfer to"
+
+addKAccountButton :: StaticButtonConstraints t m => UiButtonCfg -> m (Event t ())
+addKAccountButton cfg =
+  uiButton (cfg & uiButtonCfg_class <>~ "button_type_secondary" <> "button_type_secondary") $
+    text "Add k: Account"
 
 detailsButton :: StaticButtonConstraints t m => UiButtonCfg -> m (Event t ())
 detailsButton cfg =
