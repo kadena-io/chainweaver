@@ -351,7 +351,7 @@ transferToButton cfg =
 addKAccountButton :: StaticButtonConstraints t m => UiButtonCfg -> m (Event t ())
 addKAccountButton cfg =
   uiButton (cfg & uiButtonCfg_class <>~ "button_type_secondary" <> "button_type_secondary") $
-    text "Add K Account"
+    text "Add k: Account"
 
 detailsButton :: StaticButtonConstraints t m => UiButtonCfg -> m (Event t ())
 detailsButton cfg =
