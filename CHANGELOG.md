@@ -1,5 +1,11 @@
 # Chainweaver Changelog
 
+## 2.2.1 (2021-12-17)
+* k: account support
+* Copy buttons for accounts and keys
+* New default gas prices
+* Warnings when using legacy accounts
+
 ## 2.2.0 (2021-09-13)
 
 * Obelisk bump to v0.9.1.0 with reflex-platform 0.7.0.0
