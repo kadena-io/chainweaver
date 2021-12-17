@@ -12,7 +12,6 @@
 -- | Wallet setup screens
 module Frontend.Setup.Browser (runSetup, bipWalletBrowser) where
 
-import Control.Lens ((<>~), (^.), _1, _2, _3)
 import Control.Monad (guard)
 import Control.Monad.Fix (MonadFix)
 import Control.Monad.Trans (lift)
@@ -26,13 +25,13 @@ import Data.Functor.Compose
 import Data.Functor.Identity
 import Data.GADT.Compare.TH
 import Data.GADT.Show.TH
+import Data.Proxy (Proxy(..))
 import Data.Traversable (for)
 import Data.Universe.Some.TH
 import Language.Javascript.JSaddle (MonadJSM)
 import Reflex.Dom.Core hiding (Key)
-import Pact.Server.ApiClient (HasTransactionLogger, askTransactionLogger, _transactionLogger_rotateLogFile)
+import Pact.Server.ApiClient (HasTransactionLogger, TransactionLogger, askTransactionLogger, _transactionLogger_rotateLogFile)
 import Obelisk.Route.Frontend
-import Obelisk.Generated.Static
 import Common.Wallet
 import Common.Route
 import qualified Frontend.App as App (app)
@@ -152,7 +151,7 @@ bipWalletBrowser fileFFI mkAppCfg = do
           (updates, trigger) <- newTriggerEvent
           let frontendFileFFI = liftFileFFI (lift . lift) fileFFI
           App.app sidebarLogoutLink frontendFileFFI $ mkAppCfg $
-            appSettingsBrowser trigger details updates changePasswordBrowserAction
+            appSettingsBrowser txLogger frontendFileFFI trigger details updates changePasswordBrowserAction
 
           setRoute $ landingPageRoute <$ onLogoutConfirm
           pure $ leftmost
@@ -166,20 +165,23 @@ appSettingsBrowser ::
    , HasStorage (Performable m)
    , PerformEvent t m
    , MonadJSM (Performable m)
+   , HasCrypto PrivateKey (Performable m)
    ) 
-  => ((PrivateKey, Password) -> IO ())
+  => TransactionLogger
+  -> FileFFI t m
+  -> ((PrivateKey, Password) -> IO ())
   -> Dynamic t (Identity (PrivateKey, Password))
   -> Event t (PrivateKey, Password) 
   -> (Int -> PrivateKey -> Password -> (Performable m) (Key PrivateKey))
   -> EnabledSettings PrivateKey t m
-appSettingsBrowser newPwdTrigger details keyUpdates changePasswordBrowserAction = EnabledSettings
+appSettingsBrowser txLogger frontendFileFFI newPwdTrigger details keyUpdates changePasswordBrowserAction = EnabledSettings
   { _enabledSettings_changePassword = Just $ ChangePassword
     { _changePassword_requestChange = performEvent . attachWith doChange (current details)
     -- When updating the keys here, we just always regenerate the key from
     -- the new root
     , _changePassword_updateKeys = (keyUpdates, changePasswordBrowserAction)
     }
-  , _enabledSettings_exportWallet = Nothing
+  , _enabledSettings_exportWallet = Just $ mkExportWallet txLogger frontendFileFFI details (Proxy :: Proxy (BIPStorage PrivateKey))
   , _enabledSettings_transactionLog = False
   }
   where
