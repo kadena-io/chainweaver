@@ -1,4 +1,5 @@
 {-# LANGUAGE ConstraintKinds #-}
+{-# LANGUAGE CPP #-}
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE RecursiveDo #-}
 {-# LANGUAGE TypeApplications #-}
@@ -10,10 +11,16 @@ module Frontend.UI.Dialogs.KeyDetails
   ) where
 
 ------------------------------------------------------------------------------
+#if !defined(ghcjs_HOST_OS)
+import qualified Codec.QRCode as QR
+import qualified Codec.QRCode.JuicyPixels as QR
+#endif
 import           Control.Error
 import           Control.Lens
+import           Control.Monad
 import           Data.Functor (void)
 import qualified Data.Text.Encoding as T
+import qualified Data.Text.Lazy as LT
 import qualified Data.IntMap as IntMap
 import           Pact.Types.Util             (decodeBase64UrlUnpadded)
 ------------------------------------------------------------------------------
@@ -72,7 +79,14 @@ uiKeyDetails _keyIndex key _onCloseExternal = mdo
 
         dyn_ $ ffor sig $ \case
           Nothing -> blank
-          Just sig' -> uiDetailsCopyButton $ current sig'
+          Just sig' -> do
+            uiDetailsCopyButton $ current sig'
+#if !defined(ghcjs_HOST_OS)
+            let qrImage = QR.encodeText (QR.defaultQRCodeOptions QR.L) QR.Iso8859_1OrUtf8WithECI <$> sig'
+                img = maybe "Error creating QR code" (QR.toPngDataUrlT 4 6) <$> qrImage
+            el "br" blank
+            elDynAttr "img" (("src" =:) . LT.toStrict <$> img) blank
+#endif
 
   modalFooter $ do
     onDone <- confirmButton def "Done"
