@@ -18,20 +18,26 @@ import Control.Monad.Fix (MonadFix)
 import Control.Monad.IO.Class
 import Control.Monad.Trans.Maybe (MaybeT(MaybeT), runMaybeT)
 import Data.Aeson (FromJSON, ToJSON)
+import Data.Bifunctor (first)
 import Data.Bool (bool)
+import Data.Constraint.Extras (Has)
 import Data.Dependent.Map (DMap)
 import Data.Foldable (fold, traverse_)
-import Data.Functor.Identity (Identity)
+import Data.Functor.Identity (Identity(..))
 import Data.GADT.Compare (GCompare)
+import Data.GADT.Show (GShow)
 import Data.Maybe (isNothing, isJust)
+import Data.Proxy (Proxy(..))
 import Data.Text (Text)
+import Data.Time (getCurrentTime)
+import Data.Universe.Some (UniverseSome)
 import Language.Javascript.JSaddle (MonadJSM, liftJSM)
 import Reflex.Dom.Core
 import qualified Data.Map as Map
 import qualified Data.Text as T
 import System.FilePath (takeFileName)
 
-import Pact.Server.ApiClient (HasTransactionLogger, askTransactionLogger)
+import Pact.Server.ApiClient (HasTransactionLogger, TransactionLogger(..), WalletEvent(..), askTransactionLogger)
 
 import Frontend.UI.Button
 import Frontend.UI.Dialogs.ChangePassword (minPasswordLength)
@@ -39,13 +45,14 @@ import Frontend.UI.Widgets.Helpers (imgWithAlt)
 import Frontend.UI.Widgets
 import Obelisk.Generated.Static
 
-import Frontend.AppCfg (FileFFI(..), FileType(FileType_Import))
+import Frontend.AppCfg (FileFFI(..), FileType(FileType_Import), ExportWallet(..), ExportWalletError(..))
 import Frontend.Setup.ImportExport
 import Frontend.Setup.Password
 import Frontend.Setup.Widgets
 import Frontend.Storage.Class
 import Frontend.Crypto.Class
 import Frontend.Crypto.Password
+import Frontend.Wallet (genZeroKeyPrefix, _unPublicKeyPrefix)
 
 -- | Used for changing the settings in the passphrase widget.
 data PassphraseStage
@@ -589,3 +596,50 @@ mkSidebarLogoutLink = do
   pure $ (,) logout $ do
     clk <- uiSidebarIcon (pure False) (static @"img/menu/logout.svg") "Logout"
     performEvent_ $ liftIO . triggerLogout <$> clk
+
+mkExportWallet ::
+  (  PerformEvent t m
+     , HasCrypto key (Performable m)
+     , MonadJSM (Performable m)
+     , HasStorage (Performable m)
+     , FromJSON key
+     , ToJSON key
+     , ToJSON (DMap bipStorage Identity)
+     , Has FromJSON bipStorage
+     , GCompare bipStorage
+     , UniverseSome bipStorage
+     , GShow bipStorage
+  )
+  => TransactionLogger
+  -> FileFFI t m
+  -> Dynamic t (Identity (key, Password))
+  -> Proxy (bipStorage key)
+  -> ExportWallet t m
+mkExportWallet txLogger frontendFileFFI details proxy = ExportWallet
+  { _exportWallet_requestExport = \ePw -> do
+      let bOldPw = (\(Identity (_,oldPw)) -> oldPw) <$> current details
+          runExport oldPw newPw = do
+            pfx <- genZeroKeyPrefix
+            doExport txLogger pfx oldPw newPw proxy
+
+          logExport = do
+            ts <- liftIO getCurrentTime
+            sender <- genZeroKeyPrefix
+            liftIO $ _transactionLogger_walletEvent txLogger
+              WalletEvent_Export
+              (_unPublicKeyPrefix sender)
+              ts
+
+      eExport <- performEvent $ runExport
+        <$> bOldPw <@> (Password <$> ePw)
+
+      let (eErrExport, eGoodExport) = fanEither eExport
+
+      eFileDone <- _fileFFI_deliverFile frontendFileFFI eGoodExport
+      eLogExportDone <- performEvent $ (\r -> r <$ logExport) <$> eFileDone
+
+      pure $ leftmost
+        [ Left <$> eErrExport
+        , first ExportWalletError_FileNotWritable <$> eLogExportDone
+        ]
+  }

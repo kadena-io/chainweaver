@@ -24,7 +24,7 @@ import Control.Monad ((<=<), guard, void, when)
 import Control.Monad.Fix (MonadFix)
 import Control.Monad.Trans (lift)
 import Control.Monad.IO.Class
-import Data.Bifunctor (first, second)
+import Data.Bifunctor (second)
 import Data.Dependent.Sum
 import Data.Functor.Compose
 import Data.Functor.Identity
@@ -57,7 +57,6 @@ import Desktop.Crypto.BIP
 import Desktop.Orphans ()
 import Frontend.ModuleExplorer.Impl (loadEditorFromLocalStorage)
 import Frontend.Log (defaultLogger)
-import Frontend.Wallet (genZeroKeyPrefix, _unPublicKeyPrefix)
 import Frontend.Storage
 import Frontend.UI.Modal.Impl (showModalBrutal)
 import Frontend.UI.Dialogs.LogoutConfirmation (uiIdeLogoutConfirmation)
@@ -234,35 +233,9 @@ bipWallet fileFFI signingReq mkAppCfg = do
               -- the new root
               , _changePassword_updateKeys = ((second Password) <$> updates, changePasswordDesktopAction)
               }
-            , _enabledSettings_exportWallet = Just $ ExportWallet
-              { _exportWallet_requestExport = \ePw -> do
-                  let bOldPw = (\(Identity (_,oldPw)) -> oldPw) <$> current details
-                      runExport oldPw newPw = do
-                        pfx <- genZeroKeyPrefix
-                        doExport txLogger pfx oldPw newPw (Proxy :: Proxy (BIPStorage Crypto.XPrv))
-
-                      logExport = do
-                        ts <- liftIO getCurrentTime
-                        sender <- genZeroKeyPrefix
-                        liftIO $ _transactionLogger_walletEvent txLogger
-                          WalletEvent_Export
-                          (_unPublicKeyPrefix sender)
-                          ts
-
-                  eExport <- performEvent $ runExport
-                    <$> (Password <$> bOldPw)
-                    <@> (Password <$> ePw)
-
-                  let (eErrExport, eGoodExport) = fanEither eExport
-
-                  eFileDone <- _fileFFI_deliverFile frontendFileFFI eGoodExport
-                  eLogExportDone <- performEvent $ (\r -> r <$ logExport) <$> eFileDone
-
-                  pure $ leftmost
-                    [ Left <$> eErrExport
-                    , first ExportWalletError_FileNotWritable <$> eLogExportDone
-                    ]
-              }
+            , _enabledSettings_exportWallet =
+              let details' = fmap (\(k, p) -> (k, Password p)) <$> details
+              in Just $ mkExportWallet txLogger frontendFileFFI details' (Proxy :: Proxy (BIPStorage Crypto.XPrv))
             , _enabledSettings_transactionLog = True
             }
 
