@@ -283,6 +283,10 @@ makeWallet mChangePassword model conf = do
         moduleStatusUpdates =
           ffor newStatuses $ \(cid, mBalances) -> (cid, fst <$> mBalances)
 
+        accountStatuses =
+          _AccountData . traversed . traversed .
+            accountInfo_chains . traversed . account_status
+
     -- TODO: Need to enforce the following invariants
     --  1) An "AccountInfo Account" structure must always contain 20 / <max chains> entries in its
     --  map
@@ -299,11 +303,7 @@ makeWallet mChangePassword model conf = do
       , ffor (_walletCfg_delAccount conf) removeAccount
       , foldr (.) id . fmap updateAccountStatus <$> newBalances
       -- zero out account balance on new fungible
-      , ffor (updated dFungible) $ \_ prevState -> AccountData $
-          ffor (unAccountData prevState) $ \networkAccount ->
-            ffor networkAccount $ \info -> info
-              { _accountInfo_chains = ffor (_accountInfo_chains info)
-                $ \val -> val { _account_status = AccountStatus_Unknown }}
+      , ffor (updated dFungible) $ \_ accs-> accs & accountStatuses .~ AccountStatus_Unknown
       ]
     dModuleData <- foldDyn (uncurry Map.insert) mempty moduleStatusUpdates
 
