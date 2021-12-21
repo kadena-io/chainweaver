@@ -27,8 +27,7 @@ import qualified Data.Dependent.Map as DMap
 import Data.Time (getZonedTime, zonedTimeToLocalTime, iso8601DateFormat, formatTime)
 import Data.Functor.Identity (Identity, runIdentity)
 import Language.Javascript.JSaddle (MonadJSM)
-import Data.Time (getCurrentTime)
-import System.Locale.Read (getCurrentLocale)
+import Data.Time (getCurrentTime, defaultTimeLocale)
 import Data.Text (Text)
 import qualified Data.Text as T
 import qualified Data.Text.Lazy as TL
@@ -203,14 +202,13 @@ doExport txLogger keyPfx oldPw pw _ = runExceptT $ do
   (bipVer,bipData) <- lift $ dumpLocalStorage @bipStorage bipMetaPrefix
   (feVer, feData) <- lift $ _versionedStorage_dumpLocalStorage store
 
-  tl <- liftIO getCurrentLocale
   lt <- zonedTimeToLocalTime <$> liftIO getZonedTime
 
   pure $
     ( intercalate "."
       [ T.unpack $ _unPublicKeyPrefix keyPfx
       -- Mac does something weird with colons in the name and converts them to subdirs...
-      , formatTime tl (iso8601DateFormat (Just "%H-%M-%S")) lt
+      , formatTime defaultTimeLocale (iso8601DateFormat (Just "%H-%M-%S")) lt
       , T.unpack (fileTypeExtension FileType_Import)
       ]
     , TL.toStrict $ encodeToLazyText $ object $
