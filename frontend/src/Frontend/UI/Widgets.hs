@@ -40,6 +40,7 @@ module Frontend.UI.Widgets
   , accountNameFormWidget
   , accountNameFormWidgetNoDropdown
   , uiAccountFixed
+  , uiAccountAny
   , uiAccountDropdown
   , uiAccountDropdown'
   , uiKeyPairDropdown
@@ -862,7 +863,7 @@ uiDetailsCopyButton txt = do
   let cfg = def
         & uiButtonCfg_class .~ constDyn "button_type_confirm"
         & uiButtonCfg_title .~ constDyn (Just "Copy")
-  divClass "details__copy-btn-wrapper" $ copyButton cfg False txt
+  divClass "details__copy-btn-wrapper" $ copyButtonLight cfg False txt
 
 uiTxBuilder
   :: DomBuilder t m
@@ -1054,9 +1055,15 @@ accountDatalist ideL = elAttr "datalist" ("id" =: accountListId) $ do
     _ -> Nothing
   dyn $ ffor mAccounts $ \case
     Nothing -> blank
-    Just am -> void $ listWithKey am $ \k _ -> do
-      el "option" $ text $ unAccountName k
+    Just am -> void $ listWithKey am $ \k a -> do
+      let label = maybe "" (addNotes k) . _accountInfo_notes <$> a
+          dAttrMap = ffor label $ \label' ->
+            mconcat [ "value" =: unAccountName k, "label" =: label']
+      elDynAttr "option" dAttrMap blank
   pure ()
+  where
+    addNotes (AccountName accName) accNotes =
+      "<" <> unAccountNotes accNotes <> ">: " <> accName
 
 accountListId :: Text
 accountListId = "account-list"
@@ -1105,6 +1112,17 @@ uiAccountNameInputNoDropdown label inlineLabel initval onSetName validateName = 
     & setValue .~ Just onSetName
   pure (tagPromptlyDyn v i, v)
 
+
+-- | Free form for an account
+uiAccountAny :: MonadWidget t m => m (Dynamic t (Maybe (AccountName, Account)))
+uiAccountAny = do
+  --TODO: We should probably add support for looking up the account
+  -- and validating in the future
+  a <- fmap fst $ accountNameFormWidget noValidation $ mkCfg Nothing
+             & primFormWidgetConfig_initialAttributes .~ ("class" =: "labeled-input__input")
+  let dmAcc = value a
+  pure $ flip (fmap . fmap) dmAcc $ \acc ->
+    (acc, Account AccountStatus_Unknown blankVanityAccount)
 
 -- | Set the account to a fixed value
 uiAccountFixed

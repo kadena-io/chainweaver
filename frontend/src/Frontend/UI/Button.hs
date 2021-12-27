@@ -33,8 +33,10 @@ module Frontend.UI.Button
     -- ** Specialized buttons
   , homeButton
   , backButton
-  , copyButton
+  , copyButtonDark
+  , copyButtonLight
   , copyButton'
+  , ButtonShade(..)
   , deleteButton
   , addButton
   , signoutButton
@@ -51,6 +53,7 @@ module Frontend.UI.Button
   , sendButton
   , completeCrossChainButton
   , detailsButton
+  , addKAccountButton
   , detailsIconButton
   , accordionButton
   , copyToClipboard
@@ -194,17 +197,31 @@ homeButton :: StaticButtonConstraints t m => CssClass -> m (Event t ())
 homeButton cls = -- uiIcon "fas fa-chevron-left" $ def & iconConfig_size .~ Just IconLG
   uiButton (def & uiButtonCfg_class .~ cls) $ btnIcon (static @"img/double_left_arrow.svg") "Go back" blank
 
+data ButtonShade
+  = ButtonShade_Light
+  | ButtonShade_Dark
+  deriving (Eq)
+
 -- | Copies the text content of a given node.
 --
 --   Probably won't work for input elements.
-copyButton
+copyButtonDark
   :: forall t m
   . (DynamicButtonConstraints t m, MonadFix m, MonadHold t m, MonadJSM (Performable m), PerformEvent t m)
   => UiButtonDynCfg t
   -> Bool
   -> Behavior t Text
   -> m ()
-copyButton cfg = copyButton' "Copy" (cfg & uiButtonCfg_class <>~ "button_type_copy" <> "button_border_none")
+copyButtonDark cfg = copyButton' "Copy" (cfg & uiButtonCfg_class <>~ "button_type_copy" <> "button_border_none") ButtonShade_Dark
+
+copyButtonLight
+  :: forall t m
+  . (DynamicButtonConstraints t m, MonadFix m, MonadHold t m, MonadJSM (Performable m), PerformEvent t m)
+  => UiButtonDynCfg t
+  -> Bool
+  -> Behavior t Text
+  -> m ()
+copyButtonLight cfg = copyButton' "Copy" (cfg & uiButtonCfg_class <>~ "button_type_copy" <> "button_border_none") ButtonShade_Light
 
 -- | Copies the text content of a given node.
 --
@@ -214,17 +231,20 @@ copyButton'
   . (DynamicButtonConstraints t m, MonadFix m, MonadHold t m, MonadJSM (Performable m), PerformEvent t m)
   => Text
   -> UiButtonDynCfg t
+  -> ButtonShade
   -> Bool
   -> Behavior t Text
   -> m ()
-copyButton' label cfg showStatus t = mdo
+copyButton' label cfg shade showStatus t = mdo
   let cfg' = cfg
         & uiButtonCfg_type ?~ "button"
         & uiButtonCfg_title .~ pure (Just label)
   status <- holdDyn "" $ ffor copy $ bool "copy-fail fa-times" "copy-success fa-check"
   copy <- copyToClipboard $ tag t onClick
   onClick <- uiButtonDyn cfg' $ do
-    imgWithAlt (static @"img/copy.svg") label blank
+    case shade of
+      ButtonShade_Dark -> imgWithAlt (static @"img/copy-dark.svg") label blank
+      ButtonShade_Light -> imgWithAlt (static @"img/copy-light.svg") label blank
     dynText $ ffor (cfg ^. uiButtonCfg_title) fold
     when showStatus $ elDynClass "i" ("fa copy-status " <> status) blank
   pure ()
@@ -327,6 +347,11 @@ transferToButton cfg =
   uiButton (cfg & uiButtonCfg_class <>~ "button_type_secondary" <> "button_type_secondary") $ do
     imgWithAltCls "button__text-icon" (static @"img/transfer-to.svg") "Transfer to" blank
     elClass "span" "button__text button__text-exclusive" $ text "Transfer to"
+
+addKAccountButton :: StaticButtonConstraints t m => UiButtonCfg -> m (Event t ())
+addKAccountButton cfg =
+  uiButton (cfg & uiButtonCfg_class <>~ "button_type_secondary" <> "button_type_secondary") $
+    text "Add k: Account"
 
 detailsButton :: StaticButtonConstraints t m => UiButtonCfg -> m (Event t ())
 detailsButton cfg =

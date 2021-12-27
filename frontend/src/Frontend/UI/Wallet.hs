@@ -33,6 +33,7 @@ module Frontend.UI.Wallet
 ------------------------------------------------------------------------------
 import           Control.Lens
 import           Control.Monad               (when, (<=<))
+import           Control.Error               (headMay)
 import qualified Data.IntMap                 as IntMap
 import           Data.Map                    (Map)
 import qualified Data.Map                    as Map
@@ -40,6 +41,7 @@ import qualified Data.Set                    as Set
 import           Data.Text                   (Text)
 import qualified Data.Text                   as T
 import           Obelisk.Generated.Static
+import           Obelisk.Route.Frontend
 import           Reflex
 import           Reflex.Dom hiding (Key)
 import           Text.Read
@@ -47,6 +49,7 @@ import           Text.Read
 import qualified Pact.Types.Pretty as Pact
 import qualified Pact.Types.Term   as Pact
 ------------------------------------------------------------------------------
+import           Common.Route
 import           Frontend.Log (HasLogger, HasLogCfg)
 import           Frontend.Crypto.Class
 import           Frontend.Crypto.Ed25519     (keyToText)
@@ -59,7 +62,7 @@ import           Frontend.UI.Dialogs.AccountDetails
 import           Frontend.UI.Dialogs.KeyDetails (uiKeyDetails)
 import           Frontend.UI.Dialogs.Receive (uiReceiveModal)
 import           Frontend.UI.Dialogs.WatchRequest (uiWatchRequestDialog)
-import           Frontend.UI.Dialogs.Send (uiSendModal, uiFinishCrossChainTransferModal)
+-- import           Frontend.UI.Dialogs.Send (uiSendModal)
 import           Frontend.UI.KeysetWidget
 import           Frontend.UI.Modal
 import           Frontend.Network
@@ -91,8 +94,8 @@ data AccountDialog
   | AccountDialog_Details AccountName (Maybe AccountNotes)
   | AccountDialog_Receive AccountName ChainId (Maybe AccountDetails)
   | AccountDialog_TransferTo AccountName AccountDetails ChainId
-  | AccountDialog_Send (AccountName, ChainId, AccountDetails) (Maybe UnfinishedCrossChainTransfer)
-  | AccountDialog_CompleteCrosschain AccountName ChainId UnfinishedCrossChainTransfer
+
+  -- AccountDialog_Send (AccountName, ChainId, AccountDetails) (Maybe UnfinishedCrossChainTransfer)
 
 uiWalletRefreshButton
   :: (MonadWidget t m, Monoid mConf, HasWalletCfg mConf key t)
@@ -119,6 +122,7 @@ uiWallet
   :: forall m t key model mConf
      . ( MonadWidget t m
        , HasUiWalletModelCfg model mConf key m t
+       , SetRoute t (R FrontendRoute) m
        )
   => model
   -> m mConf
@@ -136,9 +140,9 @@ hasPrivateKey = isJust . _keyPair_privateKey . snd
 
 uiAccountsTable
   :: forall t m model mConf key.
-  (MonadWidget t m, HasUiWalletModelCfg model mConf key m t, HasTransactionLogger m)
-  => model -> m mConf
-uiAccountsTable model = do
+  (MonadWidget t m, HasUiWalletModelCfg model mConf key m t, HasTransactionLogger m, (SetRoute t (R FrontendRoute) m))
+  => model -> Dynamic t (Maybe AccountName) -> m mConf
+uiAccountsTable model dStartOpen = do
   let net = model ^. network_selectedNetwork
       networks = model ^. wallet_accounts
   mAccounts <- maybeDyn $ ffor2 net networks $ \n (AccountData m) -> case Map.lookup n m of
@@ -151,14 +155,14 @@ uiAccountsTable model = do
         el "strong" $ text "+ Add Account"
         text " button."
       pure mempty
-    Just m -> divClass "wallet__keys-list" $ uiAccountItems model m
+    Just m -> divClass "wallet__keys-list" $ uiAccountItems model m dStartOpen
 
 
 uiAccountItems
   :: forall t m model mConf key.
-  (MonadWidget t m, HasUiWalletModelCfg model mConf key m t, HasTransactionLogger m)
-  => model -> Dynamic t (Map AccountName (AccountInfo Account)) -> m mConf
-uiAccountItems model accountsMap = do
+  (MonadWidget t m, HasUiWalletModelCfg model mConf key m t, HasTransactionLogger m, (SetRoute t (R FrontendRoute) m))
+  => model -> Dynamic t (Map AccountName (AccountInfo Account)) -> Dynamic t (Maybe AccountName) -> m mConf
+uiAccountItems model accountsMap dStartOpen = do
   let net = model ^. network_selectedNetwork
       tableAttrs = mconcat
         [ "style" =: "table-layout: fixed; width: 98%"
@@ -167,8 +171,9 @@ uiAccountItems model accountsMap = do
 
   events <- elAttr "table" tableAttrs $ do
     el "colgroup" $ do
-      elAttr "col" ("style" =: "width: 30px") blank
-      elAttr "col" ("style" =: "width: 180px") blank
+      elAttr "col" ("style" =: "width: 25px") blank
+      elAttr "col" ("style" =: "width: 40px") blank
+      elAttr "col" ("style" =: "width: 200px") blank
       elAttr "col" ("style" =: "width: 80px") blank
       elAttr "col" ("style" =: "width: 180px") blank
       elAttr "col" ("style" =: "width: 15%") blank
@@ -179,6 +184,7 @@ uiAccountItems model accountsMap = do
       let mkHeading = elClass "th" "wallet__table-heading" . text
       traverse_ mkHeading $
         [ ""
+        , ""
         , "Account Name"
         , "Owner"
         , "Keyset Info"
@@ -189,7 +195,8 @@ uiAccountItems model accountsMap = do
 
     el "tbody" $ do
       let cwKeys = model ^. wallet_keys
-          startsOpen = (\m -> Map.size m == 1) <$> accountsMap
+          dMapAndOpenAcc = (,) <$> accountsMap <*> dStartOpen
+          startsOpen = ffor dMapAndOpenAcc $ \(m, open) name -> Map.size m == 1 || (Just name == open)
       events <- listWithKey accountsMap (uiAccountItem cwKeys startsOpen)
       dyn_ $ ffor accountsMap $ \accs ->
         when (null accs) $
@@ -205,8 +212,7 @@ uiAccountItems model accountsMap = do
       AccountDialog_DetailsChain acc -> uiAccountDetailsOnChain n acc
       AccountDialog_Receive name chain details -> uiReceiveModal "Receive" model name chain details
       AccountDialog_TransferTo name details chain -> uiReceiveModal "Transfer To" model name chain (Just details)
-      AccountDialog_Send acc mucct -> uiSendModal model acc mucct
-      AccountDialog_CompleteCrosschain name chain ucct -> uiFinishCrossChainTransferModal model name chain ucct
+      -- AccountDialog_Send acc mucct -> uiSendModal model acc mucct
 
   refresh <- delay 1 =<< getPostBuild
 
@@ -272,10 +278,18 @@ padChainId n (ChainId c) =
     Nothing -> ChainId c
     Just _ -> ChainId $ T.replicate (n - T.length c) "0" <> c
 
+unPadChainId :: ChainId -> ChainId
+unPadChainId (ChainId c) = if T.length c <= 1 then ChainId c else
+  case headMay (T.unpack c) of
+    -- recurse for when we have padded chain-lengths > 3
+    -- Ex: 0001
+    Just '0' -> unPadChainId $ ChainId $ T.tail c
+    _ -> ChainId c
+
 uiAccountItem
   :: forall key t m. MonadWidget t m
   => Dynamic t (KeyStorage key)
-  -> Dynamic t Bool
+  -> Dynamic t (AccountName -> Bool)
   -> AccountName
   -> Dynamic t (AccountInfo Account)
   -> m (Event t AccountDialog)
@@ -294,9 +308,10 @@ uiAccountItem cwKeys startsOpen name accountInfo = do
       [] -> "Does not exist"
       xs -> uiAccountBalance False $ Just $ sum xs
 
-    v0 <- sample $ current startsOpen
+    v0 <- sample $ current $ ($ name) <$> startsOpen
     visible <- toggle v0 clk
     results <- accursedUnutterableListWithKey orderedChainMap $ accountRow visible
+
     let balances :: Dynamic t [Maybe AccountBalance]
         balances = fmap Map.elems $ joinDynThroughMap $ (fmap . fmap) fst results
   let dialogs = switch $ leftmost . fmap snd . Map.elems <$> current results
@@ -308,25 +323,30 @@ uiAccountItem cwKeys startsOpen name accountInfo = do
   td' extraClass = elClass "td" ("wallet__table-cell" <> extraClass)
   buttons = divClass "wallet__table-buttons"
   cfg = def
-    & uiButtonCfg_class <>~ "wallet__table-button"
+    & uiButtonCfg_class <>~ "wallet__table-button-with-background"
 
   keyRow open notes balance = trKey $ do
     let accordionCell o = "wallet__table-cell" <> if o then "" else " accordion-collapsed"
+        bcfg = btnCfgSecondary & uiButtonCfg_class <>~ "wallet__table-button" <> "button_border_none"
     clk <- elDynClass "td" (accordionCell <$> open) $ accordionButton def
+    td $ copyButton' "" bcfg ButtonShade_Dark False (constant $ unAccountName name)
     elAttr "td" ("class" =: "wallet__table-cell") $ text $ unAccountName name
     td blank
     td blank
     td $ dynText $ maybe "" unAccountNotes <$> notes
     td' " wallet__table-cell-balance" $ dynText balance
-    onDetails <- td $ buttons $ detailsIconButton cfg
+    onDetails <- td $ do
+      buttons $ detailsIconButton cfg
     pure (clk, AccountDialog_Details name <$> current notes <@ onDetails)
+
 
   accountRow
     :: Dynamic t Bool
     -> ChainId
     -> Dynamic t Account
     -> m (Dynamic t (Maybe AccountBalance), Event t AccountDialog)
-  accountRow visible chain dAccount = do
+  accountRow visible paddedChain dAccount = do
+    let chain = unPadChainId paddedChain
     let details = (^? account_status . _AccountStatus_Exists) <$> dAccount
     let balance = _accountDetails_balance <$$> details
     -- Previously we always added all chain rows, but hid them with CSS. A bug
@@ -336,6 +356,7 @@ uiAccountItem cwKeys startsOpen name accountInfo = do
       False -> pure never
       True -> trAcc $ do
         td blank -- Arrow column
+        td blank -- Copy column
         td $ text $ "Chain " <> _chainId chain
         td $ dynText $ maybe "" ownershipText <$> getAccountOwnership cwKeys details
         accStatus <- holdUniqDyn $ _account_status <$> dAccount
@@ -355,8 +376,8 @@ uiAccountItem cwKeys startsOpen name accountInfo = do
             let uk = (\(KeySetHeritage k p _ref) -> UserKeyset k (parseKeysetPred p)) <$> ks
 
             let txb = TxBuilder name chain (userToPactKeyset <$> uk)
-            let bcfg = btnCfgSecondary & uiButtonCfg_class <>~ "wallet__table-button" <> "button_border_none"
-            copyAddress <- copyButton' "Copy Tx Builder" bcfg False (constant $ prettyTxBuilder txb)
+            let bcfg = btnCfgSecondary & uiButtonCfg_class <>~ "wallet__table-button-with-background" <> "button_border_none"
+            copyAddress <- copyButton' "Copy Tx Builder" bcfg ButtonShade_Light False (constant $ prettyTxBuilder txb)
 
             receive <- receiveButton cfg
             onDetails <- detailsIconButton cfg
@@ -390,6 +411,8 @@ uiAvailableKeys
   :: forall t m model mConf key.
      ( MonadWidget t m
      , HasUiWalletModelCfg model mConf key m t
+     , HasWalletCfg mConf key t
+     , SetRoute t (R FrontendRoute) m
      )
   => model
   -> m mConf
@@ -406,7 +429,13 @@ uiAvailableKeys model = do
         el "strong" $ text "+ Generate Key"
         text " button, then continue to Accounts."
       pure mempty
-    Just keyMap -> divClass "wallet__keys-list" $ uiKeyItems keyMap
+    Just keyMap -> divClass "wallet__keys-list" $ do
+      let netAccList  =
+            do
+              net <- model^.network_selectedNetwork
+              accs <- model^.wallet_accounts
+              pure $ (net, fmap fst $ Map.toList $ fromMaybe mempty $ accs^? _AccountData . ix net)
+      uiKeyItems keyMap netAccList
 
 -- | Render a list of key items.
 --
@@ -417,10 +446,13 @@ uiKeyItems
      , Monoid mConf, Monoid (ModalCfg mConf t)
      , HasModalCfg mConf (Modal mConf m t) t
      , HasCrypto key m
+     , HasWalletCfg mConf key t
+     , SetRoute t (R FrontendRoute) m
      )
   => Dynamic t (Map Int (Key key))
+  -> Dynamic t (NetworkName, [AccountName])
   -> m mConf
-uiKeyItems keyMap = do
+uiKeyItems keyMap netAndAccs = do
   let
     tableAttrs =
       "style" =: "table-layout: fixed; width: calc(100% - 22px);"
@@ -444,10 +476,23 @@ uiKeyItems keyMap = do
             text "No keys ..."
       pure events
 
-  let modalEvents = switch $ leftmost . Map.elems <$> current events
+  let
+    keyEvents = (fmap . fmap) fst events
+    addAccMap = (fmap . fmap) snd events
+    modalEvents = switch $ leftmost . Map.elems <$> current keyEvents
+    accEvents = switch $ leftmost . Map.elems <$> current addAccMap
+
+    eAddAccWithKey = attach (current netAndAccs) accEvents
+    addAcc ((net, accList), k) =
+      let accName = AccountName $ "k:" <> k
+       in case accName `elem` accList of
+            True -> Nothing
+            False -> Just (net, accName)
 
   pure $ mempty
     & modalCfg_setModal .~ fmap keyModal modalEvents
+    & walletCfg_importAccount .~ fmapMaybe addAcc eAddAccWithKey
+
   where
     keyModal = Just . \case
       KeyDialog_Details i key -> uiKeyDetails i key
@@ -459,21 +504,27 @@ data KeyDialog key
 ------------------------------------------------------------------------------
 -- | Display a key as list item together with its name.
 uiKeyItem
-  :: forall key t m. MonadWidget t m
+  :: forall key t m. (MonadWidget t m, (SetRoute t (R FrontendRoute) m))
   => IntMap.Key
   -> Dynamic t (Key key)
-  -> m (Event t (KeyDialog key))
+  -> m (Event t (KeyDialog key), Event t Text)
 uiKeyItem keyIndex key = trKey $ do
-  td $ dynText $ keyToText . _keyPair_publicKey . _key_pair <$> key
+  let dKeyText = keyToText . _keyPair_publicKey . _key_pair <$> key
+  td $ dynText dKeyText
   td $ buttons $ do
+    copyButton' "" bcfg ButtonShade_Dark False (current $ keyToText . _keyPair_publicKey . _key_pair <$> key)
+    eAddK <- addKAccountButton $ cfg & uiButtonCfg_class <>~ "wallet__table-button--hamburger" <> "wallet__table-button-key"
     onDetails <- detailsButton (cfg & uiButtonCfg_class <>~ "wallet__table-button--hamburger" <> "wallet__table-button-key")
-    pure $ KeyDialog_Details keyIndex <$> current key <@ onDetails
+    let addK = current dKeyText <@ eAddK
+    setRoute $ ffor addK $ \k -> FrontendRoute_Accounts :/ ("open" =: (Just $ "k:" <> k))
+    pure $ (KeyDialog_Details keyIndex <$> current key <@ onDetails, addK)
   where
+    bcfg = btnCfgSecondary & uiButtonCfg_class <>~ "wallet__table-button-with-background" <> "button_border_none"
     trKey = elClass "tr" "wallet__table-row wallet__table-row-key"
     td = elClass "td" "wallet__table-cell"
     buttons = divClass "wallet__table-buttons"
     cfg = def
-      & uiButtonCfg_class <>~ "wallet__table-button"
+      & uiButtonCfg_class <>~ "wallet__table-button-with-background"
 
 uiGenerateKeyButton
   :: (MonadWidget t m, Monoid mConf, HasWalletCfg mConf key t)

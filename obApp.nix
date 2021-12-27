@@ -2,12 +2,9 @@
 , iosSdkVersion ? "10.2"
 , withHoogle ? false
 , kpkgs ? import ./dep/kpkgs { inherit system; }
+, obelisk
 }:
 let
-  obelisk = import ./.obelisk/impl {
-    inherit system iosSdkVersion;
-    inherit (kpkgs) reflex-platform-func;
-  };
   pkgs = obelisk.reflex-platform.nixpkgs;
 
   optionalExtension = cond: overlay: if cond then overlay else _: _: {};
@@ -76,14 +73,23 @@ in with obelisk;
               WebKit
             ]);
 
+          # Hiding the static libs from the dylibs seems to be the only way i am able
+          # to statically link against libcrypto
+          preConfigure = let openssl-static = (pkgs.openssl.override { static = true; }).out; in ''
+            mkdir -p openssl-static-libs
+            cp ${openssl-static}/lib/libcrypto.a openssl-static-libs
+            cp ${openssl-static}/lib/libssl.a openssl-static-libs
+          '';
+            
           configureFlags = [
-            "--ghc-options=-optl=${(pkgs.openssl.override { static = true; }).out}/lib/libcrypto.a"
-            "--ghc-options=-optl=${(pkgs.openssl.override { static = true; }).out}/lib/libssl.a"
-            "--ghc-options=-optl=${pkgs.darwin.libiconv.override { enableShared = false; enableStatic = true; }}/lib/libiconv.a"
-            "--ghc-options=-optl=${pkgs.zlib.static}/lib/libz.a"
-            "--ghc-options=-optl=${pkgs.gmp6.override { withStatic = true; }}/lib/libgmp.a"
-            "--ghc-options=-optl=/usr/lib/libSystem.dylib"
-            "--ghc-options=-optl=${pkgs.libffi.override {
+            "--ghc-option=-optl=-Lopenssl-static-libs"
+            "--ghc-option=-optl=-lcrypto"
+            "--ghc-option=-optl=-lssl"
+            "--ghc-option=-optl=${pkgs.darwin.libiconv.override { enableShared = false; enableStatic = true; }}/lib/libiconv.a"
+            "--ghc-option=-optl=${pkgs.zlib.static}/lib/libz.a"
+            "--ghc-option=-optl=${pkgs.gmp6.override { withStatic = true; }}/lib/libgmp.a"
+            "--ghc-option=-optl=/usr/lib/libSystem.dylib"
+            "--ghc-option=-optl=${pkgs.libffi.override {
               stdenv = pkgs.stdenvAdapters.makeStaticLibraries pkgs.stdenv;
             }}/lib/libffi.a"
           ];
