@@ -7,6 +7,7 @@
 module Frontend.UI.Dialogs.AccountDetails
   ( uiAccountDetailsOnChain
   , uiAccountDetails
+  , uiDisplayKeyset
   ) where
 
 import Control.Lens
@@ -112,28 +113,13 @@ uiAccountDetailsOnChainImpl netname (name, chain, details, account) onClose = Wo
       case _account_status account of
         AccountStatus_Unknown -> text "Unknown"
         AccountStatus_DoesNotExist -> text "Does not exist"
-        AccountStatus_Exists d -> case _accountDetails_guard d of
-          AccountGuard_KeySetLike (KeySetHeritage ksKeys ksPred _ksRef) -> do
-            _ <- displayText "Predicate" ksPred ""
-            elClass "div" "segment segment_type_tertiary labeled-input" $ do
-              divClass "label labeled-input__label" $ text "Public Keys Controlling Account"
-              for_ ksKeys $ \key -> uiInputElement $ def
-                & initialAttributes %~ Map.insert "disabled" "disabled" . addToClassAttr "labeled-input__input labeled-input__multiple"
-                & inputElementConfig_initialValue .~ keyToText key
-          AccountGuard_Other g -> case g of
-            (Pact.GKeySetRef (Pact.KeySetName name)) -> do
-              void $ displayText "Name" name ""
-            _ -> void $ displayText (pactGuardTypeText $ Pact.guardTypeOf g) (renderCompactText g) ""
-
+        AccountStatus_Exists d -> uiDisplayKeyset $ _accountDetails_guard d
     pure notesEdit
-
   modalFooter $ do
     onDone <- confirmButton def "Done"
-
     let
       onNotesUpdate = (netname, name, Just chain,) <$> current notesEdit <@ (onDone <> onClose)
       conf = mempty & walletCfg_updateAccountNotes .~ onNotesUpdate
-
     pure ( ("Account Details", (conf, onDone))
          , never
          )
@@ -156,6 +142,27 @@ uiAccountDetails net account notes onCloseExternal = mdo
   return ( conf
          , leftmost [switch $ current dEvent, onClose]
          )
+
+uiDisplayKeyset :: MonadWidget t m => AccountGuard -> m ()
+uiDisplayKeyset guard = 
+  let displayText lbl v cls =
+        let
+          attrFn cfg = uiInputElement $ cfg
+            & initialAttributes <>~ ("disabled" =: "true" <> "class" =: (" " <> cls))
+        in
+          mkLabeledInputView False lbl attrFn $ pure v
+  in case guard of
+    AccountGuard_KeySetLike (KeySetHeritage ksKeys ksPred _ksRef) -> do
+      _ <- displayText "Predicate" ksPred ""
+      elClass "div" "segment segment_type_tertiary labeled-input" $ do
+        divClass "label labeled-input__label" $ text "Public Keys Controlling Account"
+        for_ ksKeys $ \key -> uiInputElement $ def
+          & initialAttributes %~ Map.insert "disabled" "disabled" . addToClassAttr "labeled-input__input labeled-input__multiple"
+          & inputElementConfig_initialValue .~ keyToText key
+    AccountGuard_Other g -> case g of
+      (Pact.GKeySetRef (Pact.KeySetName name)) -> do
+        void $ displayText "Name" name ""
+      _ -> void $ displayText (pactGuardTypeText $ Pact.guardTypeOf g) (renderCompactText g) ""
 
 uiAccountDetailsImpl
   :: ( Monoid mConf

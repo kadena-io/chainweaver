@@ -58,8 +58,7 @@ library
     , warp
 
   exposed-modules:
-      Desktop
-    , Desktop.Crypto.BIP
+    Desktop.Crypto.BIP
     , Desktop.Frontend
     , Desktop.ImportExport
     , Desktop.Orphans

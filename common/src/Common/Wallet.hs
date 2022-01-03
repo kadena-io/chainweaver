@@ -21,6 +21,8 @@ module Common.Wallet
   , textToKey
   , keyToText
   , parsePublicKey
+  , parsePubKeyOrKAccount
+  , accountNameMatchesKeyset 
   , toPactPublicKey
   , KeyPair(..)
   , AccountName(..)
@@ -86,7 +88,7 @@ import Control.Monad.Except (MonadError, throwError)
 import Control.Newtype.Generics    (Newtype (..))
 import Data.Aeson
 import Data.Aeson.Types (toJSONKeyText)
-import Data.Bifunctor (first)
+import Data.Bifunctor (first, second)
 import Data.ByteString (ByteString)
 import Data.Decimal (Decimal, roundTo)
 import Data.Default
@@ -186,6 +188,11 @@ decodeBase16M i =
 -- | Parse just a public key with some sanity checks applied.
 parsePublicKey :: MonadError Text m => Text -> m PublicKey
 parsePublicKey = throwDecodingErr . textToKey <=< checkPub . T.strip
+
+-- (Is_k:acc, pubkey)
+parsePubKeyOrKAccount :: AccountName -> (Bool, Either Text PublicKey)
+parsePubKeyOrKAccount (AccountName accName) = 
+  second parsePublicKey $ maybe (False, accName) (\k -> (True, k)) $ T.stripPrefix "k:" accName
 
 throwDecodingErr
   :: MonadError Text m
@@ -395,6 +402,20 @@ keys2Predicate = "keys-2"
 filterKeyPairs :: Set PublicKey -> IntMap (Key key) -> [KeyPair key]
 filterKeyPairs s m = Map.elems $ Map.restrictKeys (toMap m) s
   where toMap = Map.fromList . fmap (\k -> (_keyPair_publicKey $ _key_pair k, _key_pair k)) . IntMap.elems
+
+-- Checks that all account names of form accName = pubkey has a single-key guard with the same pubkey as
+-- account name
+accountNameMatchesKeyset :: AccountName -> AccountGuard -> Bool
+accountNameMatchesKeyset accName g = case g of
+  AccountGuard_Other _ -> False
+  AccountGuard_KeySetLike (KeySetHeritage ksKeys _ksPred _ksRef) ->
+    case parsePubKeyOrKAccount accName of
+      -- non-k: & non-vanity --> check keyset is singleton
+      (False, Right pk) -> ksKeys == Set.singleton pk
+      -- k:<pubkey> account name, we ignore the keyset and let those users
+      -- do what they want in regard to guards
+      (True, _) -> True
+      otherwise -> False
 
 keysetSatisfiesPredicate :: AccountGuard -> IntMap (Key key) -> Bool
 keysetSatisfiesPredicate ag keys0 = case ag of

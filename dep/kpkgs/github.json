@@ -1,7 +1,8 @@
 {
   "owner": "kadena-io",
   "repo": "kpkgs",
-  "branch": "remove-kadena-packages",
-  "rev": "77013d631ea3a7a60a2e9f59780f2ef0799c2b31",
-  "sha256": "10amyychixwlcaiiwsb01blgz2a85kn86nb6qr1mc3i8i4x085xw"
+  "branch": "master",
+  "private": false,
+  "rev": "763f1763207a02fbf6257bd8e2a8cef2a9f86e1d",
+  "sha256": "1dncp11hn65dvwpqrw3di6hdlykjpgc0w0ii5lvwdziac861ak2n"
 }

@@ -530,9 +530,10 @@ uiCfg mCode m wChainId mTTL mGasLimit userSections txnSenderTitle otherAccordion
 
         dialogSectionHeading mempty $ getTxnSenderTitle txnSenderTitle
         mSender <- elKlass "div" ("group segment") $ mkLabeledClsInput True "Account" $ \_ -> do
-          (a,_) <- accountNameFormWidget noValidation $ mkCfg Nothing
-                     & primFormWidgetConfig_initialAttributes .~ ("class" =: "labeled-input__input")
-          return $ value a
+          (fmap . fmap) fst <$> mSenderSelect m cId never
+          -- (a,_) <- accountNameFormWidget noValidation $ mkCfg Nothing
+          --            & primFormWidgetConfig_initialAttributes .~ ("class" =: "labeled-input__input")
+          -- return $ value a
 
         -- Customisable user provided UI section
         fa <- for userSections $ \(title, body) -> do
@@ -729,8 +730,8 @@ uiMetaData m mTTL mGasLimit = do
         let GasPrice (ParsedDecimal gp) = (newMax-newMin)/(oldMax-oldMin)*(x-oldMin)+newMin
          in GasPrice $ ParsedDecimal $ roundTo maxCoinPrecision gp
 
-      slowGasPrice = 1e-12
-      fastGasPrice = 1e-9
+      slowGasPrice = 1e-8
+      fastGasPrice = 1e-5
 
       scaleTxnSpeedToGP :: GasPrice -> GasPrice
       scaleTxnSpeedToGP = shiftGP 1 1001 slowGasPrice fastGasPrice

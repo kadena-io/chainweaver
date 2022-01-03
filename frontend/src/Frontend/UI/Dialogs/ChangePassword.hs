@@ -18,6 +18,7 @@ import Frontend.Foundation
 import Frontend.UI.Modal.Impl
 import Frontend.UI.Widgets
 import Frontend.UI.Widgets.Helpers (dialogSectionHeading)
+import Frontend.Crypto.Password
 
 minPasswordLength :: Int
 minPasswordLength = 10
@@ -66,7 +67,10 @@ uiChangePasswordScreen (ChangePassword changePassword _) onClose = Workflow $ md
   (eCancel, (eErr, eOk)) <- modalFooter $ do
     eCancel' <- cancelButton def "Cancel"
     eSubmit <- confirmButton def "Submit"
-    eResponse <- changePassword $ (,,) <$> currentPassword <*> newPassword <*> repeatPassword <@ eSubmit
+    eResponse <- changePassword $ (,,) 
+      <$> (fmap Password currentPassword)
+      <*> (fmap Password newPassword)
+      <*> (fmap Password repeatPassword) <@ eSubmit
     pure $ (eCancel', fanEither eResponse)
 
   return (("Change Password", (mempty, onClose <> eCancel)), uiChangePasswordSuccess onClose <$ eOk)
