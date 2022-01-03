@@ -71,22 +71,6 @@ uiKeyDetails _keyIndex key _onCloseExternal = mdo
 
       publicKey = keyToText $ _keyPair_publicKey $ _key_pair key
 
-      parseBytes "" = EmptyString
-      parseBytes bytes =
-        -- Parse the JSON, and consume all the input
-        case parseOnly jsonEOF' bytes of
-            -- If we do receive JSON, it can be of two types: either a SigData Text,
-            -- or a Payload PublicMeta Text
-          Right val -> case A.fromJSON val of
-            A.Success sigData -> JsonSigData sigData
-            A.Error _ -> case A.fromJSON val of
-              A.Success payload -> JsonPayload payload
-              A.Error errorStr -> ErrorString errorStr
-          Left _ -> case Y.decodeEither' bytes of
-            Right sigData -> YamlSigData sigData
-            -- TODO: Find a better way to convert this to a string
-            Left excp -> ErrorString $ show excp
-
       -- Create an input textbox, along with an output textbox
       -- The output textbox will also have an associated copy button,
       -- whenever it is non-empty.
@@ -97,37 +81,64 @@ uiKeyDetails _keyIndex key _onCloseExternal = mdo
               & initialAttributes .~ "class" =: renderClass cls
 
             let
+              -- Read bytes from user input, taking into consideration both JSON and YAML
+              parseBytes "" = EmptyString
+              parseBytes bytes =
+                -- Parse the JSON, and consume all the input
+                case parseOnly jsonEOF' bytes of
+                    -- If we do receive JSON, it can be of two types: either a SigData Text,
+                    -- or a Payload PublicMeta Text
+                  Right val -> case A.fromJSON val of
+                    A.Success sigData -> JsonSigData sigData
+                    A.Error _ -> case A.fromJSON val of
+                      A.Success payload -> JsonPayload payload
+                      A.Error errorStr -> ErrorString errorStr
+                  -- We did not receive JSON, try parsing it as YAML
+                  Left _ -> case Y.decodeEither' bytes of
+                    Right sigData -> YamlSigData sigData
+                    Left excp -> ErrorString $ Y.prettyPrintParseException excp
+
+              -- Convert received text into DataToBeSigned
               signingDataEv = (parseBytes . T.encodeUtf8) <$> updated txt
 
+              -- Convert a functor value into a pair with a given header
               withHeader h t = fmap ((,) h) t
 
+              -- Parse payload from given text
               parsePayload :: T.Text -> Either T.Text (Payload PublicMeta T.Text)
               parsePayload cmdText =
                 first (const "Invalid cmd field inside SigData.") $
                   A.eitherDecodeStrict (T.encodeUtf8 cmdText)
 
+              -- Hash the given text, and match it with a given hash
               matchHash oldHash textToBeHashed =
                 if oldHash == hash (T.encodeUtf8 textToBeHashed)
                   then Right oldHash
                   else Left "Hash does not match the payload."
 
+              -- Sign the given hash with user's private key
               signHashWithKey h = keyToText <$> cryptoSign (unHash $ toUntypedHash h) pk
 
-              signHashIfSignerExists pubKey hashToSign payload =
-                if pubKey `elem` map _siPubKey (_pSigners payload)
+              -- Sign the given hash only if current user is a signer
+              signHashIfUserIsSigner hashToSign payload =
+                if publicKey `elem` map _siPubKey (_pSigners payload)
                   then Right <$> signHashWithKey hashToSign
                   else pure $ Left "You are not one of the signers."
 
+              -- Match hash and then parse the payload from text one after the other.
+              -- Succeeds if all steps succeed, otherwise returns the first error.
               matchHashAndParsePayload h cmd = do
                 verifiedHash <- matchHash h cmd
                 payload <- parsePayload cmd
                 pure (verifiedHash, payload)
 
+            -- Sign the appropriate DataToBeSigned, and return a header and a hash on success.
+            -- On failure, return an error.
             ((), headerAndHashEv) <- runWithReplace blank $ ffor signingDataEv $ \case
               JsonSigData (SigData sdHash _ (Just cmd)) -> do
                 withHeader "Signature" $ do
                   fmap join
-                    $ mapM (uncurry $ signHashIfSignerExists publicKey)
+                    $ mapM (uncurry signHashIfUserIsSigner)
                     $ matchHashAndParsePayload sdHash cmd
               JsonPayload payload -> do
                 let
@@ -141,10 +152,12 @@ uiKeyDetails _keyIndex key _onCloseExternal = mdo
                     . signCommand unsignedCmd
                     . UserSig
                     )
-                  <$> signHashIfSignerExists publicKey (_cmdHash unsignedCmd) payload
+                  <$> signHashIfUserIsSigner (_cmdHash unsignedCmd) payload
               YamlSigData sigData@(SigData sdHash sigList (Just cmd)) -> do
                 let
-                  -- TODO: Optimize this
+                  -- `sigList` (that we parsed from user text) may or may not have all the signers.
+                  -- It may have only those signers who have signed already.
+                  -- Generate signatures for all signers, signers who have not yet signed have signature as Nothing.
                   allSignatures signature payload = map (\s ->
                     let
                       pKey = PublicKeyHex $ _siPubKey s
@@ -159,9 +172,17 @@ uiKeyDetails _keyIndex key _onCloseExternal = mdo
                   updateSigData sd allSigs = sd { _sigDataSigs = allSigs}
                 withHeader "Signed SigData" $ do
                   let hashAndPayload = matchHashAndParsePayload sdHash cmd
-                  signature <- join <$> mapM (uncurry $ signHashIfSignerExists publicKey) hashAndPayload
-                  pure $ fmap (T.decodeUtf8 . Y.encode . updateSigData sigData) $ allSignatures <$> signature <*> (snd <$> hashAndPayload)
+                  signature <- join <$> mapM (uncurry signHashIfUserIsSigner) hashAndPayload
+                  pure
+                    $ fmap
+                      ( T.decodeUtf8
+                      . Y.encode
+                      . updateSigData sigData
+                      )
+                    $ allSignatures <$> signature <*> (snd <$> hashAndPayload)
               ErrorString errorStr -> withHeader "Signature" $ pure $ Left $ T.pack errorStr
+              -- Empty string is not an error, but we wrap it inside a Left
+              -- so that we don't show a Copy button when user input is empty.
               EmptyString -> withHeader "Signature" $ pure $ Left ""
               _ -> withHeader "Signature" $ pure $ Left "Could not parse data."
 
@@ -169,6 +190,7 @@ uiKeyDetails _keyIndex key _onCloseExternal = mdo
 
             widgetHold_ blank $ ffor hashEv $ \case
               Right _ -> blank
+              -- Since empty string is not an error, we don't show an error here.
               Left "" -> blank
               Left errorStr -> elClass "p" "error_inline" $ text errorStr
 
@@ -180,6 +202,12 @@ uiKeyDetails _keyIndex key _onCloseExternal = mdo
                 , "placeholder" =: "Enter some text in the above field"
                 ]
               & textAreaElementConfig_setValue .~ fmap fold hashEv
+
+            hashDyn <- holdDyn (Left "") hashEv
+            eitherHashDyn <- eitherDyn hashDyn
+            dyn_ $ ffor eitherHashDyn $ \case
+              Left _ -> blank
+              Right ev -> uiDetailsCopyButton $ current ev
 
   divClass "modal__main key-details" $ do
     dialogSectionHeading mempty "Public Key"
