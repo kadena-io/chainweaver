@@ -188,7 +188,7 @@ bipWallet fileFFI signingReq quickSignReq mkAppCfg = do
       LockScreen_RunSetup :=> _ -> runSetup0 Nothing WalletExists_No
       -- Wallet exists but the lock screen is active
       LockScreen_Locked :=> Compose root -> do
-        (restore, mLogin) <- lockScreen signingReq quickSignReq $ fmap runIdentity $ current root
+        (restore, mLogin) <- lockScreenWidget signingReq quickSignReq $ fmap runIdentity $ current root
         pure $ leftmost
           [ (LockScreen_Restore ==>) . runIdentity <$> current root <@ restore
           , (LockScreen_Unlocked ==>) <$> attach (runIdentity <$> current root) mLogin
