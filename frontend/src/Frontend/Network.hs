@@ -141,6 +141,7 @@ import           Common.Network
 import           Common.Wallet
 import           Frontend.Crypto.Class
 import           Frontend.Crypto.Ed25519
+import           Frontend.Crypto.Signature
 import           Frontend.Foundation
 import           Frontend.Messages
 import           Frontend.Network.NodeInfo
@@ -368,7 +369,7 @@ getSelectedNetworkInfos networkL = do
     pure $ rights errNets
 
 defaultTransactionGasPrice :: GasPrice
-defaultTransactionGasPrice = GasPrice $ ParsedDecimal $ Decimal 12 1
+defaultTransactionGasPrice = GasPrice $ ParsedDecimal $ Decimal 6 1
 
 -- | This is the minimum precision allowed by the Pact language, as defined in the coin contract:
 -- https://github.com/kadena-io/chainweb-node/commit/ee8a0db079869b39e23be1ef6737f0a7795eff87#diff-6c59a5fb9f1b0b8b470cb50e8bd643ebR54

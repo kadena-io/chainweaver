@@ -96,6 +96,7 @@ import           Common.Foundation
 import           Common.Wallet
 import           Frontend.Crypto.Class
 import           Frontend.Crypto.Ed25519
+import           Frontend.Crypto.Signature
 import           Frontend.Foundation
 import           Frontend.JsonData
 import           Frontend.Log
@@ -106,6 +107,7 @@ import           Frontend.UI.Button
 import           Frontend.UI.DeploymentSettings
 import           Frontend.UI.Dialogs.DeployConfirmation
 import           Frontend.UI.Dialogs.Send
+import           Frontend.UI.Dialogs.AccountDetails
 import           Frontend.UI.Form.Common
 import           Frontend.UI.FormWidget
 import           Frontend.UI.KeysetWidget
@@ -558,17 +560,43 @@ checkReceivingAccount model netInfo ti ty fks tks fromPair = do
           else
             transferDialog model netInfo ti ty fks tks fromPair
       (Just (AccountStatus_Exists (AccountDetails _ g)), Nothing) -> do
+        let 
+          transferDialogWithWarn model netInfo ti ty fks tks fromPair = do
+            close <- modalHeader $ text "Account Keyset"
+            _ <- elClass "div" "modal__main" $ do
+              el "h3" $ text "WARNING"
+              el "div" $ text $ "The on-chain keyset of the receiving account does not match the account name. This may be an indicator of foul-play; you should confirm that the receiving keyset is the expected keyset before continuing"
+              el "hr" blank
+              el "div" $ text $ "If you are doing a cross-chain transfer to yourself, and see this message, you may want to reconsider, as it is possible that you don't have control over the account on the destination chain"
+              el "hr" blank
+              el "div" $ do
+                dialogSectionHeading mempty "Destination Account Name:"
+                mkLabeledInput False "Account Name" uiInputElement $ def
+                  & initialAttributes .~ "disabled" =: "disabled"
+                  & inputElementConfig_initialValue .~ (unAccountName toAccount)
+                dialogSectionHeading mempty "Destination Account Guard:"
+                uiDisplayKeyset g
+            modalFooter $ do
+              cancel <- cancelButton def "No, take me back"
+              let cfg = def & uiButtonCfg_class <>~ "button_type_confirm"
+              next <- uiButtonDyn cfg $ text "Yes, proceed to transfer"
+              return ((mempty, close <> cancel),
+                      Workflow (transferDialog model netInfo ti ty fks tks fromPair) <$ next)
+
+          transferDialogWithKeysetCheck = case accountNameMatchesKeyset toAccount g of
+            True -> transferDialog
+            False -> transferDialogWithWarn
         if (_ca_chain $ _ti_fromAccount ti) /= (_ca_chain $ _ti_toAccount ti)
           then do
             case g of
               AccountGuard_KeySetLike (KeySetHeritage ks p _ref) ->
                 let ti2 = ti { _ti_toKeyset = Just $ UserKeyset ks (parseKeysetPred p) }
-                in transferDialog model netInfo ti2 ty fks tks fromPair
-              AccountGuard_Other _ -> transferDialog model netInfo ti ty fks tks fromPair
+                in transferDialogWithKeysetCheck model netInfo ti2 ty fks tks fromPair
+              AccountGuard_Other _ -> transferDialogWithKeysetCheck model netInfo ti ty fks tks fromPair
           else
             -- Use transfer, probably show the guard at some point
             -- TODO check well-formedness of all keys in the keyset
-            transferDialog model netInfo ti ty fks tks fromPair
+            transferDialogWithKeysetCheck model netInfo ti ty fks tks fromPair
       (_, Just userKeyset) -> do
         -- Use transfer-create
         transferDialog model netInfo ti ty fks tks fromPair
@@ -596,13 +624,21 @@ handleMissingKeyset
   -> (AccountName, AccountDetails)
   -> m ((mConf, Event t ()), Event t (Workflow t m (mConf, Event t ())))
 handleMissingKeyset model netInfo ti ty fks tks fromPair = do
-    let toAccountText = unAccountName $ _ca_account $ _ti_toAccount ti
-    case parsePublicKey toAccountText of
-      Left _ -> do
+    let 
+      toAccount = _ca_account $ _ti_toAccount ti
+      toAccountText = unAccountName $ _ca_account $ _ti_toAccount ti
+    case parsePubKeyOrKAccount toAccount of
+      -- Vanity account name
+      (_, Left _) -> do
         cancel <- fatalTransferError $
           el "div" $ text $ "Receiving account " <> toAccountText <> " does not exist. You must specify a keyset to create this account."
         return ((mempty, cancel), never)
-      Right pk -> do
+      -- AccName "k:<pubkey>" --> Don't even ask approval to use it
+      (True, Right pk) -> do
+        let ti2 = ti { _ti_toKeyset = Just $ UserKeyset (Set.singleton pk) KeysAll }
+        transferDialog model netInfo ti2 ty fks tks fromPair
+      -- AccName: "<pubkey>" --> Ask for approval
+      (False, Right pk) -> do
         close <- modalHeader $ text "Account Keyset"
         _ <- elClass "div" "modal__main" $ do
           el "div" $ text $ "The receiving account name looks like a public key and you did not specify a keyset.  Would you like to use it as the keyset to send to?"
@@ -1408,8 +1444,8 @@ data TransferDetails
 
 showTransferDetailsTabName :: TransferDetails -> Text
 showTransferDetailsTabName = \case
-  TransferDetails_Yaml -> "YAML"
   TransferDetails_Json -> "JSON"
+  TransferDetails_Yaml -> "YAML"
   TransferDetails_HashQR -> "Hash QR Code"
   TransferDetails_FullQR -> "Full Tx QR Code"
 
@@ -1419,7 +1455,7 @@ transferDetails
   -> m ()
 transferDetails signedCmd = do
     divClass "tabset" $ mdo
-      curSelection <- holdDyn TransferDetails_Yaml onTabClick
+      curSelection <- holdDyn TransferDetails_Json onTabClick
       (TabBar onTabClick) <- makeTabBar $ TabBarCfg
         { _tabBarCfg_tabs = [minBound .. maxBound]
         , _tabBarCfg_mkLabel = const $ text . showTransferDetailsTabName
@@ -1436,6 +1472,9 @@ transferDetails signedCmd = do
           & textAreaElementConfig_initialValue .~ iv
           & initialAttributes %~ (<> "disabled" =: "" <> "style" =: "width: 100%; height: 18em;")
           & textAreaElementConfig_setValue .~ updated preview
+#else
+      let notAvailMsg = el "ul" $ text "This feature is not currently available in the browser"
+      tabPane mempty curSelection TransferDetails_Yaml notAvailMsg
 #endif
 
       tabPane mempty curSelection TransferDetails_Json $ do
@@ -1463,6 +1502,9 @@ transferDetails signedCmd = do
             qrImage = QR.encodeText (QR.defaultQRCodeOptions QR.L) QR.Iso8859_1OrUtf8WithECI <$> yamlText
             img = maybe "Error creating QR code" (QR.toPngDataUrlT 4 4) <$> qrImage
         elDynAttr "img" (("src" =:) . LT.toStrict <$> img) blank
+#else
+      tabPane mempty curSelection TransferDetails_HashQR notAvailMsg
+      tabPane mempty curSelection TransferDetails_FullQR notAvailMsg
 #endif
 
       pure ()
@@ -1475,7 +1517,6 @@ yamlOptions = Y.setFormat (Y.setWidth Nothing Y.defaultFormatOptions) Y.defaultE
 uiSigningInput
   :: ( MonadWidget t m
      , HasCrypto key m
---     , HasCrypto key (Performable m)
      )
   => Hash
   -> PublicKey

@@ -41,6 +41,7 @@ let
   # applications to also be available as it expects when a normal environment is setup.
   chainweaverServiceEnvironmentFile = pkgs.writeText "${linuxAppName}-${chainweaverVersion}-service-environment" ''
     WEBKIT_DISABLE_COMPOSITING_MODE=1
+    NIX_SSL_CERT_FILE=${nixosExe}/bin/ca-certificates-patched.crt 
     PATH=/run/wrappers/bin:/etc/profiles/per-user/chainweaver/bin:/nix/var/nix/profiles/default/bin:/run/current-system/sw/bin
   '';
   versionFile = pkgs.writeText "${linuxAppName}-version" "${chainweaverVersion}.${ovaReleaseNumber}";
@@ -83,14 +84,17 @@ let
           '';
         home.sessionVariables = {
           WEBKIT_DISABLE_COMPOSITING_MODE = 1;
+          NIX_SSL_CERT_FILE = "${nixosExe}/bin/ca-certificates-patched.crt";
         };
         programs.bash = {
           enable = true;
           sessionVariables = {
             WEBKIT_DISABLE_COMPOSITING_MODE = 1;
+            NIX_SSL_CERT_FILE = "${nixosExe}/bin/ca-certificates-patched.crt";
           };
           initExtra = ''
             export WEBKIT_DISABLE_COMPOSITING_MODE=1;
+            export NIX_SSL_CERT_FILE = "${nixosExe}/bin/ca-certificates-patched.crt";
           '';
         };
         # TODO: Why can't I use more declarative nix:

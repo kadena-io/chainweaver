@@ -40,8 +40,7 @@ import Frontend.Wallet (PublicKeyPrefix (..), genZeroKeyPrefix)
 import Frontend.Storage (HasStorage, dumpLocalStorage)
 import Frontend.VersionedStore (VersionedStorage(..), StorageVersion, VersioningDecodeJsonError(..))
 import qualified Frontend.VersionedStore as FrontendStore
-
-newtype Password = Password { unPassword :: Text } deriving (Eq)
+import Frontend.Crypto.Password
 
 data ImportWalletError
   = ImportWalletError_PasswordIncorrect
@@ -122,7 +121,7 @@ doImport txLogger pw contents = runExceptT $ do
   bipCrypto <- extractImportDataField @(DMap BIPStorage Identity) bipStorageDataKey 0 jVal
   rootKey <- failWith ImportWalletError_NoRootKey (runIdentity <$> DMap.lookup BIPStorage_RootKey bipCrypto)
 
-  let pwOk = passwordRoundTripTest rootKey (unPassword pw)
+  let pwOk = passwordRoundTripTest rootKey pw
 
   unless pwOk $ throwError ImportWalletError_PasswordIncorrect
 

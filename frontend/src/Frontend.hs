@@ -4,6 +4,7 @@
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE TupleSections #-}
 {-# LANGUAGE TypeApplications #-}
+{-# LANGUAGE RecursiveDo #-}
 module Frontend where
 
 import Control.Monad (join, void)
@@ -19,27 +20,30 @@ import qualified GHCJS.DOM.Types as Types
 import qualified GHCJS.DOM.File as JSFile
 import Kadena.SigningApi
 import Reflex.Dom
-import Pact.Server.ApiClient (runTransactionLoggerT, logTransactionStdout)
-
+import Pact.Server.ApiClient (runTransactionLoggerT, noLogger)
 import Obelisk.Frontend
 import Obelisk.Route.Frontend
 import Obelisk.Generated.Static
+import System.IO
 
 import Common.Api
 import Common.Route
 import Frontend.AppCfg
-import Frontend.Log (defaultLogger)
-import Frontend.Crypto.Browser
+import Frontend.Log (errorLevelLogger)
 import Frontend.Foundation
 import Frontend.ModuleExplorer.Impl (loadEditorFromLocalStorage)
-import Frontend.ReplGhcjs
 import Frontend.Storage
+import Frontend.Setup.Browser (bipWalletBrowser)
 
 main :: IO ()
 main = do
   let Right validFullEncoder = checkEncoder backendRouteEncoder
   run $ runFrontend validFullEncoder frontend
 
+-- This frontend is only used for the web/browser app
+-- See Backend.App.main' for native's equivalent
+-- See Desktop.App.main' for the development (ob run) equivalent
+-- See Frontend.App for the code shared across both browser and native
 frontend :: Frontend (R FrontendRoute)
 frontend = Frontend
   { _frontend_head = do
@@ -62,8 +66,10 @@ frontend = Frontend
       pure ()
 
   , _frontend_body = prerender_ loaderMarkup $ do
+    liftIO $ hSetBuffering stderr LineBuffering
+    liftIO $ hSetBuffering stdout LineBuffering
     (fileOpened, triggerOpen) <- openFileDialog
-    mapRoutedT (flip runTransactionLoggerT logTransactionStdout . runBrowserStorageT . runBrowserCryptoT) $ do
+    mapRoutedT (flip runTransactionLoggerT noLogger . runBrowserStorageT) $ do
       let fileFFI = FileFFI
             { _fileFFI_externalFileOpened = fileOpened
             , _fileFFI_openFileDialog = liftJSM . triggerOpen
@@ -72,21 +78,16 @@ frontend = Frontend
           printResponsesHandler = pure $ FRPHandler never $ performEvent . fmap (liftIO . print)
           printResponsesHandler2 f = pure $ FRPHandler never $ performEvent . fmap (liftIO . print . f)
 
-      app blank fileFFI $ AppCfg
-        { _appCfg_gistEnabled = True
+      bipWalletBrowser fileFFI $ \enabledSettings -> AppCfg
+        { _appCfg_gistEnabled = False
         , _appCfg_loadEditor = loadEditorFromLocalStorage
         , _appCfg_editorReadOnly = False
-        , _appCfg_signingHandler = printResponsesHandler
         , _appCfg_quickSignHandler = printResponsesHandler2 (fmap unQuickSignResponse)
-        , _appCfg_enabledSettings = EnabledSettings
-          { _enabledSettings_changePassword = Nothing
-          , _enabledSettings_exportWallet = Nothing
-          , _enabledSettings_transactionLog = False
-          }
-        , _appCfg_logMessage = defaultLogger
+        , _appCfg_signingHandler = printResponsesHandler
+        , _appCfg_enabledSettings = enabledSettings
+        , _appCfg_logMessage = errorLevelLogger
         }
   }
-
 
 -- | The 'JSM' action *must* be run from a user initiated event in order for the
 -- dialog to open
@@ -128,7 +129,7 @@ loaderMarkup = divClass "spinner" $ do
 
 newHead :: (Prerender js t m, DomBuilder t m) => (R BackendRoute -> Text) -> m (Event t ())
 newHead routeText = do
-  el "title" $ text "Kadena - Pact Testnet"
+  el "title" $ text "(BETA) Kadena Chainweaver: Wallet & IDE"
   elAttr "link" ("rel" =: "icon" <> "type" =: "image/png" <> "href" =: static @"img/favicon/favicon-96x96.png") blank
   meta ("name" =: "description" <> "content" =: "Write, test, and deploy safe smart contracts using Pact, Kadena's programming language")
   meta ("name" =: "keywords" <> "content" =: "kadena, pact, pact testnet, pact language, pact programming language, smart contracts, safe smart contracts, smart contract language, blockchain, learn blockchain programming, chainweb")
@@ -144,7 +145,10 @@ newHead routeText = do
   ss (static @"css/ace-theme-chainweaver.css")
   js "/static/js/ace/ace.js"
   prerender_ blank $ js "/static/js/ace/mode-pact.js"
+  -- Allows importing private keys
   js (static @"js/nacl-fast.min-v1.0.0.js")
+  -- Allows for BIP39-based key generation and encrypted storage of private keys
+  js (static @"js/kadena-crypto.js")
   (bowser, _) <- js' (static @"js/bowser.min.js")
   pure $ domEvent Load bowser
   where

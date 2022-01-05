@@ -18,6 +18,7 @@ import Control.Category
 
 import           Control.Category       ((.))
 import           Control.Monad.Except   (MonadError)
+import           Data.Map               (Map)
 import           Data.Functor.Identity
 import           Data.Text              (Text)
 import           Prelude                hiding (id, (.))
@@ -50,7 +51,7 @@ data BackendRoute :: * -> * where
 -- | This type is used to define frontend routes, i.e. ones for which the backend will serve the frontend.
 data FrontendRoute :: * -> * where
   FrontendRoute_Contracts :: FrontendRoute (Maybe (R ContractRoute))
-  FrontendRoute_Accounts :: FrontendRoute ()
+  FrontendRoute_Accounts :: FrontendRoute (Map Text (Maybe Text))
   FrontendRoute_Keys :: FrontendRoute ()
   FrontendRoute_Resources :: FrontendRoute ()
   FrontendRoute_Settings :: FrontendRoute ()
@@ -86,7 +87,8 @@ backendRouteEncoder = handleEncoder (\_e -> hoistR (FullRoute_Frontend . Obelisk
         -> PathSegment "sass.css" $ unitEncoder mempty
     FullRoute_Frontend obeliskRoute -> obeliskRouteSegment obeliskRoute $ \case
       FrontendRoute_Contracts -> PathSegment "contracts" $ maybeEncoder (unitEncoder mempty) contractRouteEncoder
-      FrontendRoute_Accounts -> PathSegment "accounts" $ unitEncoder mempty
+      FrontendRoute_Accounts -> PathSegment "accounts" $ queryOnlyEncoder
+      -- FrontendRoute_Accounts -> PathSegment "accounts" $ unitEncoder mempty
       FrontendRoute_Keys -> PathSegment "keys" $ unitEncoder mempty
       FrontendRoute_Settings -> PathSegment "settings" $ unitEncoder mempty
       FrontendRoute_Resources -> PathSegment "resources" $ unitEncoder mempty
@@ -109,7 +111,7 @@ pathOnlyEncoderIgnoringQuery = unsafeMkEncoder $ EncoderImpl
   }
 
 landingPageRoute :: R FrontendRoute
-landingPageRoute = FrontendRoute_Accounts :/ ()
+landingPageRoute = FrontendRoute_Accounts :/ mempty
 
 concat <$> mapM deriveRouteComponent
   [ ''BackendRoute

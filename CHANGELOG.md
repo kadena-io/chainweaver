@@ -1,5 +1,30 @@
 # Chainweaver Changelog
 
+## 2.2.1 (2021-12-17)
+* k: account support
+* Copy buttons for accounts and keys
+* New default gas prices
+* Warnings when using legacy accounts
+
+## 2.2.0 (2021-09-13)
+
+* Obelisk bump to v0.9.1.0 with reflex-platform 0.7.0.0
+* Pact 4.0 support
+* Default to free-x-chain-gas for cross chain transfers to accounts that don't exist or have 0 balance
+* Cross-chain and transfer "listen" calls switched to repeated polling calls
+* Update default network list to support new nodes
+* Remove keys and accounts api endpoint
+* Fixes issue where 'Done' button showed up too early on cross-chains
+* Fix multiple parsing issues with 'Amount' input field in tx-widget
+* Fix issue with keyset-ref display
+* Allows a dapp to specify that Chainweaver's user may choose its own 'sender' for signing api
+  requests
+* Fix issue causing chain-based account notes to not persist for first 10 chains
+* Ship with version 4.8.8 of z3
+* Fix no gas payer on destination chain error message
+* Number of changes in preparation for Chainweaver-Web, including the removal of monad-logger and
+  fast-logger dependencies, and an update of kadena-signing-api
+
 ## 2.1 (2020-08-26)
 
 * Fix ordering of ChainId dropdown to work with 20 chains

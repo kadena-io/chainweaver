@@ -77,7 +77,7 @@ uiCreatedGist gistRef _onClose = do
                   text $ baseUrlText <> route
 
                 void $ elClass "td" "table__last-cell table__cell_size_flex" $
-                  copyButton copyBtnCfg False $ pure $ baseUrlText <> route
+                  copyButtonLight copyBtnCfg False $ pure $ baseUrlText <> route
 
     modalFooter $ do
       onConfirm <- confirmButton def "Ok"
