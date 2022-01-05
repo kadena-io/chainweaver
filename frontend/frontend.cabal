@@ -52,6 +52,8 @@ library
     , here
 --    , http-client
 --    , http-client-tls
+    , HsYAML
+    , HsYAML-aeson
     , http-types
     , jsaddle
     , kadena-signing-api
@@ -104,7 +106,6 @@ library
     , unordered-containers
     , vector
     , witherable
-    , yaml
 
   if impl(ghcjs)
     build-depends:
@@ -113,6 +114,7 @@ library
   if !impl(ghcjs)
     build-depends:
         qrcode-juicypixels
+      , yaml
 
   exposed-modules: Frontend
                  , Frontend.AppCfg

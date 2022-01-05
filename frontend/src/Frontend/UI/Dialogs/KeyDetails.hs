@@ -28,7 +28,8 @@ import qualified Data.Text as T
 import qualified Data.Text.Encoding as T
 import qualified Data.Text.Lazy as LT
 import qualified Data.IntMap as IntMap
-import qualified Data.Yaml as Y
+import           Data.YAML
+import qualified Data.YAML.Aeson as Y
 import           Pact.Types.ChainMeta (PublicMeta)
 import           Pact.Types.Command
 import           Pact.Types.Hash (hash, toUntypedHash, unHash)
@@ -94,9 +95,9 @@ uiKeyDetails _keyIndex key _onCloseExternal = mdo
                       A.Success payload -> JsonPayload payload
                       A.Error errorStr -> ErrorString errorStr
                   -- We did not receive JSON, try parsing it as YAML
-                  Left _ -> case Y.decodeEither' bytes of
+                  Left _ -> case Y.decode1Strict bytes of
                     Right sigData -> YamlSigData sigData
-                    Left excp -> ErrorString $ Y.prettyPrintParseException excp
+                    Left (pos, errorStr) -> ErrorString $ prettyPosWithSource pos (LB.fromStrict bytes) errorStr
 
               -- Convert received text into DataToBeSigned
               signingDataEv = (parseBytes . T.encodeUtf8) <$> updated txt
@@ -176,7 +177,7 @@ uiKeyDetails _keyIndex key _onCloseExternal = mdo
                   pure
                     $ fmap
                       ( T.decodeUtf8
-                      . Y.encode
+                      . Y.encode1Strict
                       . updateSigData sigData
                       )
                     $ allSignatures <$> signature <*> (snd <$> hashAndPayload)
