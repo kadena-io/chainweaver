@@ -44,7 +44,7 @@ import Data.Coerce
 import Data.Foldable (for_)
 import Data.Proxy
 import Data.Text (Text)
-import Data.Time (UTCTime, getCurrentTime)
+import Data.Time (UTCTime, defaultTimeLocale, getCurrentTime)
 import Language.Javascript.JSaddle (MonadJSM)
 import Obelisk.Configs
 import Obelisk.Route.Frontend
@@ -81,7 +81,6 @@ import qualified Data.Csv.Builder as Csv
 import Text.Printf (printf)
 
 import Data.Time (TimeLocale, formatTime, iso8601DateFormat)
-import System.Locale.Read (getCurrentLocale)
 import qualified System.Directory as Dir
 import qualified System.FilePath as File
 
@@ -300,18 +299,16 @@ logTransactionFile f = TransactionLogger
         False -> do
           logmsg $ printf "No log file found at %s" f
           throwError "Chainweaver transaction log is currently empty"
-      tl <- liftIO getCurrentLocale
       xs <- liftEither $ traverse Aeson.eitherDecodeStrict nLogs
-      pure (tl,xs)
+      pure (defaultTimeLocale, xs)
 
   , _transactionLogger_exportFile = \pk ->
       createCommandLogExportFileV1 pk f
 
   , _transactionLogger_rotateLogFile = Dir.doesFileExist f >>= \exists -> when exists $ do
       putStrLn "Moving existing log file."
-      tl <- getCurrentLocale
       nowish <- getCurrentTime
-      let timestamp = formatTime tl (iso8601DateFormat (Just "%H-%M-%S")) nowish
+      let timestamp = formatTime defaultTimeLocale (iso8601DateFormat (Just "%H-%M-%S")) nowish
       catch (Dir.renameFile f $ printf "%s_v%i_%s" f commandLogCurrentVersion timestamp) $ \(e :: IOError) ->
         putStrLn $ "Unable to move existing log file. Reason: " <> displayException e
   }
