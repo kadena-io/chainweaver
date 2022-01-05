@@ -149,7 +149,9 @@ library
                  , Frontend.Routes
                  , Frontend.Setup.Browser
                  , Frontend.Setup.Common
+                 , Frontend.Setup.ImportExport
                  , Frontend.Setup.Password
+                 , Frontend.Setup.Setup
                  , Frontend.Setup.Widgets
                  , Frontend.Storage
                  , Frontend.Storage.Class

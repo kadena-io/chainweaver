@@ -72,9 +72,6 @@ data BIPStorage a where
   BIPStorage_RootKey :: BIPStorage Crypto.XPrv
 deriving instance Show (BIPStorage a)
 
-bipMetaPrefix :: StoreKeyMetaPrefix
-bipMetaPrefix = StoreKeyMetaPrefix "BIPStorage_Meta"
-
 -- | Check the validity of the password by signing and verifying a message
 passwordRoundTripTest :: Crypto.XPrv -> Password -> Bool
 passwordRoundTripTest xprv (Password pass) =

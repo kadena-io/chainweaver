@@ -24,12 +24,13 @@ import Control.Monad ((<=<), guard, void, when)
 import Control.Monad.Fix (MonadFix)
 import Control.Monad.Trans (lift)
 import Control.Monad.IO.Class
-import Data.Bifunctor (first, second)
+import Data.Bifunctor (second)
 import Data.Dependent.Sum
 import Data.Functor.Compose
 import Data.Functor.Identity
 import Data.GADT.Compare.TH
 import Data.Maybe (isJust)
+import Data.Proxy (Proxy(..))
 import Data.Text (Text)
 import Data.Time (NominalDiffTime, getCurrentTime, addUTCTime)
 import Data.Traversable (for)
@@ -53,9 +54,9 @@ import Common.Route
 import Common.Wallet
 import Frontend.AppCfg
 import Desktop.Crypto.BIP
+import Desktop.Orphans ()
 import Frontend.ModuleExplorer.Impl (loadEditorFromLocalStorage)
 import Frontend.Log (defaultLogger)
-import Frontend.Wallet (genZeroKeyPrefix, _unPublicKeyPrefix)
 import Frontend.Storage
 import Frontend.UI.Modal.Impl (showModalBrutal)
 import Frontend.UI.Dialogs.LogoutConfirmation (uiIdeLogoutConfirmation)
@@ -69,10 +70,10 @@ import Frontend.VersionedStore (StoreFrontend(..))
 import Frontend.Storage (runBrowserStorageT)
 import Frontend.Crypto.Password
 import Frontend.Setup.Common
+import Frontend.Setup.ImportExport
 import Frontend.Setup.Password
+import Frontend.Setup.Setup
 import Frontend.Setup.Widgets
-import Desktop.Setup
-import Desktop.ImportExport
 import Desktop.Storage.File
 import Desktop.WalletApi
 
@@ -161,7 +162,11 @@ bipWallet fileFFI signingReq mkAppCfg = do
       -> WalletExists
       -> RoutedT t (R FrontendRoute) m (Event t (DSum LockScreen Identity))
     runSetup0 mPrv walletExists = do
-      keyAndPass <- runSetup (liftFileFFI lift fileFFI) (isJust mPrv) walletExists
+      let pwCheck k p= pure $ passwordRoundTripTest k p
+          runF k (Password p) = runBIPCryptoT (pure (k, p))
+          importWidgetApis = ImportWidgetApis BIPStorage_RootKey pwCheck runF
+
+      keyAndPass <- runSetup (liftFileFFI lift fileFFI) (isJust mPrv) walletExists importWidgetApis
       performEvent $ flip push keyAndPass $ \case
         Right (x, Password p, newWallet) -> pure $ Just $ do
           setItemStorage localStorage BIPStorage_RootKey x
@@ -228,35 +233,9 @@ bipWallet fileFFI signingReq mkAppCfg = do
               -- the new root
               , _changePassword_updateKeys = ((second Password) <$> updates, changePasswordDesktopAction)
               }
-            , _enabledSettings_exportWallet = Just $ ExportWallet
-              { _exportWallet_requestExport = \ePw -> do
-                  let bOldPw = (\(Identity (_,oldPw)) -> oldPw) <$> current details
-                      runExport oldPw newPw = do
-                        pfx <- genZeroKeyPrefix
-                        doExport txLogger pfx oldPw newPw
-
-                      logExport = do
-                        ts <- liftIO getCurrentTime
-                        sender <- genZeroKeyPrefix
-                        liftIO $ _transactionLogger_walletEvent txLogger
-                          WalletEvent_Export
-                          (_unPublicKeyPrefix sender)
-                          ts
-
-                  eExport <- performEvent $ runExport
-                    <$> (Password <$> bOldPw)
-                    <@> (Password <$> ePw)
-
-                  let (eErrExport, eGoodExport) = fanEither eExport
-
-                  eFileDone <- _fileFFI_deliverFile frontendFileFFI eGoodExport
-                  eLogExportDone <- performEvent $ (\r -> r <$ logExport) <$> eFileDone
-
-                  pure $ leftmost
-                    [ Left <$> eErrExport
-                    , first ExportWalletError_FileNotWritable <$> eLogExportDone
-                    ]
-              }
+            , _enabledSettings_exportWallet =
+              let details' = fmap (\(k, p) -> (k, Password p)) <$> details
+              in Just $ mkExportWallet txLogger frontendFileFFI details' (Proxy :: Proxy (BIPStorage Crypto.XPrv))
             , _enabledSettings_transactionLog = True
             }
 
