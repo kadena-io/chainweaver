@@ -80,6 +80,7 @@ frontend = Frontend
         , _appCfg_loadEditor = loadEditorFromLocalStorage
         , _appCfg_editorReadOnly = False
         , _appCfg_signingHandler = printResponsesHandler
+        , _appCfg_contHandler = printResponsesHandler
         , _appCfg_enabledSettings = enabledSettings
         , _appCfg_logMessage = errorLevelLogger
         }

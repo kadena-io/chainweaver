@@ -28,7 +28,7 @@ walletServer
   :: MonadIO m
   => IO ()
   -> IO ()
-  -> m (MVarHandler SigningRequest SigningResponse)
+  -> m (MVarHandler SigningRequest SigningResponse, MVarHandler ContRequest SigningResponse)
   -- Commented much of the old functionality out (vs. removing it) since we intend to revisit it in the near future
   -- -> m ( MVarHandler SigningRequest SigningResponse
   --      , MVarHandler () [PublicKey]
@@ -37,12 +37,17 @@ walletServer
 walletServer moveToForeground moveToBackground = do
   signingLock <- liftIO newEmptyMVar -- Only allow one signing request to be served at once
   h@(MVarHandler signingRequestMVar signingResponseMVar) <- liftIO newMVarHandler
+  c@(MVarHandler contRequestMVar contResponseMVar) <- liftIO newMVarHandler
   -- keysHandler <- liftIO newMVarHandler
   -- accountsHandler <- liftIO newMVarHandler
   let
     runSign obj = mkServantHandler <=< liftIO $ bracket_ (putMVar signingLock ()) (takeMVar signingLock) $ do
         putMVar signingRequestMVar obj -- handoff to app
         bracket moveToForeground (const $ moveToBackground) (\_ -> takeMVar signingResponseMVar)
+
+    runContSign obj = mkServantHandler <=< liftIO $ bracket_ (putMVar signingLock ()) (takeMVar signingLock) $ do
+        putMVar contRequestMVar obj -- handoff to app
+        bracket moveToForeground (const $ moveToBackground) (\_ -> takeMVar contResponseMVar)
 
     -- runMVarHandler (MVarHandler req resp) = do
     --   mkServantHandler <=< liftIO $ do
@@ -58,11 +63,11 @@ walletServer moveToForeground moveToBackground = do
       { Wai.corsRequestHeaders = Wai.simpleHeaders }
     apiServer
       = Warp.runSettings s $ Wai.cors laxCors
-      $ Servant.serve walletApi $ runSign   --   :<|> runMVarHandler keysHandler :<|> runMVarHandler accountsHandler
+      $ Servant.serve walletApi $ (runSign :<|> runContSign)
 
   liftIO $ void $ Async.async $ apiServer
   -- pure (h, keysHandler, accountsHandler)
-  pure h
+  pure (h,c)
 
 type WalletAPI = "v1" :> V1WalletAPI
 type V1WalletAPI = V1SigningApi

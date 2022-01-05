@@ -29,7 +29,7 @@ import GHCJS.DOM.EventM (on)
 import GHCJS.DOM.GlobalEventHandlers (keyPress)
 import GHCJS.DOM.KeyboardEvent (getCtrlKey, getKey, getKeyCode, getMetaKey)
 import GHCJS.DOM.Types (HTMLElement (..), unElement)
-import Kadena.SigningApi (SigningRequest, SigningResponse)
+import Kadena.SigningApi
 import Language.Javascript.JSaddle (liftJSM)
 import Obelisk.Generated.Static
 import Obelisk.Route (R)
@@ -95,6 +95,7 @@ app
 app sidebarExtra fileFFI appCfg = Store.versionedFrontend (Store.versionedStorage @key) $ void . mfix $ \ cfg -> do
   ideL <- makeIde fileFFI appCfg cfg
   FRPHandler signingReq signingResp <- _appCfg_signingHandler appCfg
+  FRPHandler contReq contResp <- _appCfg_contHandler appCfg
 
   walletSidebar sidebarExtra
   updates <- divClass "page" $ do
@@ -165,17 +166,40 @@ app sidebarExtra fileFFI appCfg = Store.versionedFrontend (Store.versionedStorag
   modalCfg <- showModal ideL
 
   req <- delay 0 signingReq
+  let 
+    proof = "eyJjaGFpbiI6MSwib2JqZWN0IjoiQUFBQUVBQUFBQUFBQUFBQkFLNGdycG9XZHM5ZURuUFRkT29JbVctaTJIZl9sQlM5MjJ5SFl1ZzZ6N1FwQVBvT3I1VHN3QWNRWng4U0RvUlUwYmVKTDhxTjgzYXVGYkVhTk5ZQUtHTmZBZWhPUk94V0FyQmJ1emV2dktNR1BlMHVGVV9QTzJ6MzdULS1jS2F0NnV3ekFZeEdVa3JNS0c3bDBBaVFjajVodkdEaVJoelJXVVVacXRucFFxRXVqdDJSQUlNeTdyU29ualh5WmxJY0RST29ieFo4UEV1SDFNV2pHRnRoZE54Z2dFZkdBVWpCODBmaGpYQURGbkpBNUtXSDVGZ1UtejdQbWs3QWU0elhRN1B1aGt2TUFPSUxwcEw1UkVmYjIyYk56emN1UG1KSVRUSjRsSnltS2gxME5jdVZVQlhEQUYzQlBKaV92Z1Jhd2FFbXRuVGVrWVR6T2NwblFnX2owSzNzUjhBRlBuYnFBZkRwSHBkdkxpYTZBeWtVRnhUcjlJT0VrWmlZX0YzNUJVWC1KenhZVTc0WEFELUI5dXRhdGRBc2JrS2hHQ3dvSnZHT1lZRWxSVDItald5eXBUMkl5SmRUQWM3LUhiaFpudWswd3VJRXl1TjZLaDVwVDJfbmdLNmxSRnRMWmp5Yy1sZU5BTWZuQngxVzU1TVFVTWdUcnUtT2dFUVUtWjM3STJ0Mmg2NkhRb3l5V2NGakFJYUxqWHZsTm5kZG0zWFEtbnpSdVNlTFpMTUsydUdrT1drNGpoUkp2WlA4QWVsNVFNaWpfQWgxalptM0VydEZadUZESF9FR3JLNDhVN3BJUGwtYnFkbFlBTDM5UmZCbTl4U2hhcEVpWVRrbkZDNHFYeDkxQnY3eWhKYmtiaGlyZm1VV0FFVS00cUFVR2lOQW16S3VvbGZoZ3NJa09yNzI4RHJneW1MenN1RUlpdGI0Iiwic3ViamVjdCI6eyJpbnB1dCI6IkFCUjdJbWRoY3lJNk16azBMQ0p5WlhOMWJIUWlPbnNpYzNSaGRIVnpJam9pYzNWalkyVnpjeUlzSW1SaGRHRWlPbnNpWVcxdmRXNTBJam94TENKeVpXTmxhWFpsY2lJNkltczZZamhqWVdaa09UQmtOMlEzWkRnMVpUbGxNRE5tWXpnellUUmpaVGd3T1RRMll6STVNekJsTWpFd09UWTRZbVZqWWpBeVlUYzBOakZpTmpCbVpHRTBaQ0lzSW5KbFkyVnBkbVZ5TFdkMVlYSmtJanA3SW5CeVpXUWlPaUpyWlhsekxXRnNiQ0lzSW10bGVYTWlPbHNpWWpoallXWmtPVEJrTjJRM1pEZzFaVGxsTURObVl6Z3pZVFJqWlRnd09UUTJZekk1TXpCbE1qRXdPVFk0WW1WallqQXlZVGMwTmpGaU5qQm1aR0UwWkNKZGZYMTlMQ0p5WlhGTFpYa2lPaUp6TlhCTlRDMU5hbXBSWlRRemIwZFdYekl4Vmxka1VrSnNhaTFOWHpaSmRWQmpjemwxZVZkdlpITm5JaXdpYkc5bmN5STZJbFJOUWpSVlEzQkdNRXRUTVRacFozQkNaM1ZvU0ZkVlFXNDNXVE5EVjJabFNFWlRPVGhtVnpkalJsVWlMQ0psZG1WdWRITWlPbHQ3SW5CaGNtRnRjeUk2V3lKck9tSTRZMkZtWkRrd1pEZGtOMlE0TldVNVpUQXpabU00TTJFMFkyVTRNRGswTm1NeU9UTXdaVEl4TURrMk9HSmxZMkl3TW1FM05EWXhZall3Wm1SaE5HUWlMQ0prWWpjM05qYzVNMkpsTUdaalpqaGxOelpqTnpWaVpHSXpOV0V6Tm1VMk4yWXlPVGd4TVRGa1l6WXhORFZqTmpZMk9UTmlNREV6TXpFNU1tVXlOakUySWl3ekxqazBaUzAwWFN3aWJtRnRaU0k2SWxSU1FVNVRSa1ZTSWl3aWJXOWtkV3hsSWpwN0ltNWhiV1Z6Y0dGalpTSTZiblZzYkN3aWJtRnRaU0k2SW1OdmFXNGlmU3dpYlc5a2RXeGxTR0Z6YUNJNklqRnZjMTl6VEVGVldYWkNlbk53YmpWcWFtRjNkRkp3U2xkcFNERlhVR1pvZVU1eVlXVldkbE5KZDFVaWZTeDdJbkJoY21GdGN5STZXeUpyT21JNFkyRm1aRGt3WkRka04yUTROV1U1WlRBelptTTRNMkUwWTJVNE1EazBObU15T1RNd1pUSXhNRGsyT0dKbFkySXdNbUUzTkRZeFlqWXdabVJoTkdRaUxDSWlMREZkTENKdVlXMWxJam9pVkZKQlRsTkdSVklpTENKdGIyUjFiR1VpT25zaWJtRnRaWE53WVdObElqcHVkV3hzTENKdVlXMWxJam9pWTI5cGJpSjlMQ0p0YjJSMWJHVklZWE5vSWpvaU1XOXpYM05NUVZWWmRrSjZjM0J1TldwcVlYZDBVbkJLVjJsSU1WZFFabWg1VG5KaFpWWjJVMGwzVlNKOUxIc2ljR0Z5WVcxeklqcGJJakVpTENKamIybHVMblJ5WVc1elptVnlMV055YjNOelkyaGhhVzRpTEZzaWF6cGlPR05oWm1RNU1HUTNaRGRrT0RWbE9XVXdNMlpqT0ROaE5HTmxPREE1TkRaak1qa3pNR1V5TVRBNU5qaGlaV05pTURKaE56UTJNV0kyTUdaa1lUUmtJaXdpYXpwaU9HTmhabVE1TUdRM1pEZGtPRFZsT1dVd00yWmpPRE5oTkdObE9EQTVORFpqTWprek1HVXlNVEE1TmpoaVpXTmlNREpoTnpRMk1XSTJNR1prWVRSa0lpeDdJbkJ5WldRaU9pSnJaWGx6TFdGc2JDSXNJbXRsZVhNaU9sc2lZamhqWVdaa09UQmtOMlEzWkRnMVpUbGxNRE5tWXpnellUUmpaVGd3T1RRMll6STVNekJsTWpFd09UWTRZbVZqWWpBeVlUYzBOakZpTmpCbVpHRTBaQ0pkZlN3aU1TSXNNVjFkTENKdVlXMWxJam9pV0Y5WlNVVk1SQ0lzSW0xdlpIVnNaU0k2ZXlKdVlXMWxjM0JoWTJVaU9tNTFiR3dzSW01aGJXVWlPaUp3WVdOMEluMHNJbTF2WkhWc1pVaGhjMmdpT2lJeGIzTmZjMHhCVlZsMlFucHpjRzQxYW1waGQzUlNjRXBYYVVneFYxQm1hSGxPY21GbFZuWlRTWGRWSW4xZExDSnRaWFJoUkdGMFlTSTZiblZzYkN3aVkyOXVkR2x1ZFdGMGFXOXVJanA3SW1WNFpXTjFkR1ZrSWpwdWRXeHNMQ0p3WVdOMFNXUWlPaUp6TlhCTlRDMU5hbXBSWlRRemIwZFdYekl4Vmxka1VrSnNhaTFOWHpaSmRWQmpjemwxZVZkdlpITm5JaXdpYzNSbGNFaGhjMUp2Ykd4aVlXTnJJanBtWVd4elpTd2ljM1JsY0NJNk1Dd2llV2xsYkdRaU9uc2laR0YwWVNJNmV5SmhiVzkxYm5RaU9qRXNJbkpsWTJWcGRtVnlJam9pYXpwaU9HTmhabVE1TUdRM1pEZGtPRFZsT1dVd00yWmpPRE5oTkdObE9EQTVORFpqTWprek1HVXlNVEE1TmpoaVpXTmlNREpoTnpRMk1XSTJNR1prWVRSa0lpd2ljbVZqWldsMlpYSXRaM1ZoY21RaU9uc2ljSEpsWkNJNkltdGxlWE10WVd4c0lpd2lhMlY1Y3lJNld5SmlPR05oWm1RNU1HUTNaRGRrT0RWbE9XVXdNMlpqT0ROaE5HTmxPREE1TkRaak1qa3pNR1V5TVRBNU5qaGlaV05pTURKaE56UTJNV0kyTUdaa1lUUmtJbDE5ZlN3aWMyOTFjbU5sSWpvaU1DSXNJbkJ5YjNabGJtRnVZMlVpT25zaWRHRnlaMlYwUTJoaGFXNUpaQ0k2SWpFaUxDSnRiMlIxYkdWSVlYTm9Jam9pTVc5elgzTk1RVlZaZGtKNmMzQnVOV3BxWVhkMFVuQktWMmxJTVZkUVptaDVUbkpoWlZaMlUwbDNWU0o5ZlN3aVkyOXVkR2x1ZFdGMGFXOXVJanA3SW1GeVozTWlPbHNpYXpwaU9HTmhabVE1TUdRM1pEZGtPRFZsT1dVd00yWmpPRE5oTkdObE9EQTVORFpqTWprek1HVXlNVEE1TmpoaVpXTmlNREpoTnpRMk1XSTJNR1prWVRSa0lpd2lhenBpT0dOaFptUTVNR1EzWkRka09EVmxPV1V3TTJaak9ETmhOR05sT0RBNU5EWmpNamt6TUdVeU1UQTVOamhpWldOaU1ESmhOelEyTVdJMk1HWmtZVFJrSWl4N0luQnlaV1FpT2lKclpYbHpMV0ZzYkNJc0ltdGxlWE1pT2xzaVlqaGpZV1prT1RCa04yUTNaRGcxWlRsbE1ETm1Zemd6WVRSalpUZ3dPVFEyWXpJNU16QmxNakV3T1RZNFltVmpZakF5WVRjME5qRmlOakJtWkdFMFpDSmRmU3dpTVNJc01WMHNJbVJsWmlJNkltTnZhVzR1ZEhKaGJuTm1aWEl0WTNKdmMzTmphR0ZwYmlKOUxDSnpkR1Z3UTI5MWJuUWlPako5TENKMGVFbGtJam94T0RjM05qWTRmUSJ9LCJhbGdvcml0aG0iOiJTSEE1MTJ0XzI1NiJ9"
+    cont = ContRequest
+      { _contRequest_pactId = "s5pML-MjjQe43oGV_21VWdRBlj-M_6IuPcs9uyWodsg"
+      , _contRequest_rollback = False
+      , _contRequest_step = 1
+      , _contRequest_proof = Just proof
+      , _contRequest_data = Nothing
+      , _contRequest_caps = []
+      , _contRequest_nonce = Just "hey"
+      , _contRequest_chainId = Nothing
+      , _contRequest_gasLimit = Nothing
+      , _contRequest_ttl = Nothing
+      , _contRequest_sender = Just $ AccountName "doug"
+      , _contRequest_extraSigners = Nothing
+      }
+  contReq <- elAttr "div" ("style" =: "position: absolute; border: 1px solid black; left: 200px; top: 20px;") $
+    uiButton (headerBtnCfgPrimary & uiButtonCfg_class <>~ " main-header__account-button") $
+      text "ContSign"
   let
     onGistCreatedModal = Just . uiCreatedGist <$> ideL ^. gistStore_created
     gistModalCfg = mempty & modalCfg_setModal .~ onGistCreatedModal
     onSigningModal = Just . uiSigning ideL signingResp <$> req
     signingModalCfg = mempty & modalCfg_setModal .~ onSigningModal
 
+    onContSignModal = Just . uiSigning ideL signingResp <$> (cont <$ contReq)
+    contModalCfg = mempty & modalCfg_setModal .~ onContSignModal
+
   pure $ mconcat
     [ updates
     , modalCfg
     , gistModalCfg
     , signingModalCfg
+    , contModalCfg
     , mempty & ideCfg_editor . editorCfg_loadCode .~ (snd <$> _fileFFI_externalFileOpened fileFFI)
     ]
 
