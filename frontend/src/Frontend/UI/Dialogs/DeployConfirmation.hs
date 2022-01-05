@@ -64,6 +64,7 @@ import Frontend.Crypto.Class
 import Frontend.JsonData
 import Frontend.Network
 import Frontend.UI.DeploymentSettings
+import Frontend.UI.FormWidget
 import Frontend.UI.Modal
 import Frontend.UI.Widgets
 import Frontend.UI.Widgets.Helpers (dialogSectionHeading)
@@ -377,7 +378,7 @@ uiDeployConfirmation code model = fullDeployFlow def model $ do
     { _deploymentSettingsConfig_chainId = fmap value . userChainIdSelect . getChainsFromHomogenousNetwork
     , _deploymentSettingsConfig_userTab = Nothing
     , _deploymentSettingsConfig_code = pure code
-    , _deploymentSettingsConfig_sender = \_ _ _ -> uiAccountAny
+    , _deploymentSettingsConfig_sender = \_ _ _ -> uiAccountComboBox model Nothing
     , _deploymentSettingsConfig_data = Nothing
     , _deploymentSettingsConfig_ttl = Nothing
     , _deploymentSettingsConfig_nonce = Nothing
