@@ -7,10 +7,6 @@
 
 module Frontend.UI.Dialogs.SigBuilder where
 
-import Reflex
-import Reflex.Dom.Core
-
-
 import           Control.Error
 import           Control.Lens
 import           Control.Monad (join)
@@ -24,7 +20,7 @@ import           Data.Text (Text)
 import qualified Data.Text as T
 import qualified Data.Text.Encoding as T
 import qualified Data.Text.Lazy as LT
-import qualified Data.IntMap as IntMap
+import qualified Data.IntMap as IMap
 import           Data.YAML
 import qualified Data.YAML.Aeson as Y
 import           Pact.Types.ChainMeta (PublicMeta)
@@ -36,8 +32,10 @@ import           Pact.Types.Util             (decodeBase64UrlUnpadded)
 import           Reflex
 import           Reflex.Dom hiding (Key)
 ------------------------------------------------------------------------------
+import           Common.Wallet
 import           Frontend.Crypto.Class
 import           Frontend.Foundation
+import           Frontend.Network
 import           Frontend.UI.Modal
 import           Frontend.UI.Transfer
 import           Frontend.UI.Widgets
@@ -50,6 +48,7 @@ import Frontend.UI.Modal.Impl
 sigBuilderCfg
   :: forall t m key mConf
    . ( MonadWidget t m
+     , HasCrypto key m
      )
   => ModalIde m key t
   -> Event t ()
@@ -58,8 +57,14 @@ sigBuilderCfg m evt = do
   pure $ mempty & modalCfg_setModal .~ (Just (uiSigBuilderDialog m) <$ evt)
 
 uiSigBuilderDialog
-  :: ( MonadWidget t m, Monoid mConf
-     )
+  ::
+  ( MonadWidget t m
+  , Monoid mConf
+  , HasNetwork model t
+  , HasWallet model key t
+  , HasCrypto key m
+  , ModalIde m key t ~ model
+  )
   => ModalIde m key t
   -> Event t ()
   -> m (mConf, Event t ())
@@ -70,11 +75,20 @@ uiSigBuilderDialog model _onCloseExternal = do
 txnInputDialog
   :: 
   ( MonadWidget t m
+  , HasNetwork model t
+  , HasWallet model key t
+  , HasCrypto key m
+  , ModalIde m key t ~ model
   )
   => ModalIde m key t
   -> Workflow t m (Event t ())
 txnInputDialog model = Workflow $ mdo
   onClose <- modalHeader $ text "Signature Builder"
+  let cwKeys = IMap.elems <$> (model^.wallet_keys)
+      selNodes = model ^. network_selectedNodes
+      networkId = (fmap (mkNetworkName . nodeVersion) . headMay . rights) <$> selNodes
+      keysAndNet = current $ (,) <$> cwKeys <*> networkId
+
   sigDataE <- modalMain $
     divClass "group" $ do
       parseInputToSigDataWidget
@@ -82,25 +96,38 @@ txnInputDialog model = Workflow $ mdo
   mSigData <- holdDyn Nothing $ Just <$> sigDataE
   (onCancel, approve) <- modalFooter $ (,)
     <$> cancelButton def "Cancel"
-    -- <*> confirmButton def "Approve"
     <*> confirmButton (def & uiButtonCfg_disabled .~ ( isNothing <$> mSigData )) "Approve"
   let approveE = fmapMaybe id $ tag (current mSigData) approve
-  return (onCancel <> onClose, approveSigDialog <$> approveE)
+      sbr = attachWith (\(keys, net) (sd, pl) -> SigBuilderRequest sd pl net keys) keysAndNet approveE
+  return (onCancel <> onClose, approveSigDialog <$> sbr)
 
 approveSigDialog 
   :: 
   ( MonadWidget t m
+  , HasCrypto key m
   )
-  => (SigData Text, Payload PublicMeta Text)
+  => SigBuilderRequest key
   -> Workflow t m (Event t ())
-approveSigDialog (sigData, payload) = Workflow $ do
+approveSigDialog sbr = Workflow $ do
   onClose <- modalHeader $ text "Approve Transaction"
   modalMain $
-    divClass "group" $ text "hi"
+    divClass "group" $ displaySBR sbr
   _ <- modalFooter $ cancelButton def "Back"
   return (onClose, never) -- leftmost [ _ <$ back
-  
+ 
+data SigBuilderRequest key = SigBuilderRequest
+  { _sbr_sigData        :: SigData Text
+  , _sbr_payload        :: Payload PublicMeta Text
+  , _sbr_currentNetwork :: Maybe NetworkName
+  , _sbr_cwKeys         :: [ Key key ]
+  }
 
+displaySBR :: (MonadWidget t m) => SigBuilderRequest key -> m ()
+displaySBR (SigBuilderRequest sd p net keys) = do
+  text $ tshow net
+  text $ tshow $ ffor keys $ \k -> _keyPair_publicKey $ _key_pair k
+  text $ tshow sd
+  text $ tshow p
 
 parseInputToSigDataWidget :: MonadWidget t m => m (Event t (SigData Text, Payload PublicMeta Text))
 parseInputToSigDataWidget =

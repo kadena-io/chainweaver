@@ -97,11 +97,11 @@ app sidebarExtra fileFFI appCfg = Store.versionedFrontend (Store.versionedStorag
   ideL <- makeIde fileFFI appCfg cfg
   FRPHandler signingReq signingResp <- _appCfg_signingHandler appCfg
 
-  signEvt <- walletSidebar sidebarExtra
+  sigPopup <- walletSidebar sidebarExtra
   updates <- divClass "page" $ do
     let mkPageContent c = divClass (c <> " page__content visible")
         underNetworkBar lbl sub = do
-          netCfg <- networkBar ideL signEvt
+          netCfg <- networkBar ideL sigPopup
           subBarCfg <- controlBar lbl sub
           pure $ netCfg <> subBarCfg
     -- This route overriding is awkward, but it gets around having to alter the
@@ -117,7 +117,7 @@ app sidebarExtra fileFFI appCfg = Store.versionedFrontend (Store.versionedStorag
             ffor query $ \case
               (FrontendRoute_Accounts :/ q) -> fmap AccountName $ join $ Map.lookup "open" q
               _ -> Nothing
-        netCfg <- networkBar ideL signEvt
+        netCfg <- networkBar ideL sigPopup
         (transferVisible, barCfg) <- controlBar "Accounts You Are Watching" $ do
           refreshCfg <- uiWalletRefreshButton
           watchCfg <- uiWatchRequestButton ideL
@@ -308,7 +308,10 @@ codeWidget appCfg anno iv sv = do
     return $ _extendedACE_onUserChange ace
 
 networkBar
-  :: MonadWidget t m
+  :: 
+  ( MonadWidget t m
+  , HasCrypto key m
+  )
   => ModalIde m key t
   -> Event t ()
   -> m (ModalIdeCfg m key t)
