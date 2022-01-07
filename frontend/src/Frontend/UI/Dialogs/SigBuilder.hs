@@ -63,24 +63,44 @@ uiSigBuilderDialog
   => ModalIde m key t
   -> Event t ()
   -> m (mConf, Event t ())
-uiSigBuilderDialog model _onCloseExternal = mdo
+uiSigBuilderDialog model _onCloseExternal = do
+  dCloses <- workflow $ txnInputDialog model
+  pure (mempty, switch $ current dCloses)
+
+txnInputDialog
+  :: 
+  ( MonadWidget t m
+  )
+  => ModalIde m key t
+  -> Workflow t m (Event t ())
+txnInputDialog model = Workflow $ mdo
   onClose <- modalHeader $ text "Signature Builder"
-  modalMain $ do
+  sigDataE <- modalMain $
     divClass "group" $ do
       parseInputToSigDataWidget
 
-  modalFooter $ do
-    onCancel <- cancelButton def "Cancel"
-    -- onAdd <- confirmButton (def & uiButtonCfg_disabled .~ (isNothing <$> name)) "Add"
-    -- let val = runMaybeT $ do
-    --       net <- lift $ current $ model ^. network_selectedNetwork
-    --       n <- MaybeT $ current name
-    --       pure (net, n)
-    --     conf = mempty & walletCfg_importAccount .~ tagMaybe val onAdd
-    -- Since this always succeeds, we're okay to close on the add button event
-    return ( mempty
-           , onCancel <> onClose
-           )
+  mSigData <- holdDyn Nothing $ Just <$> sigDataE
+  (onCancel, approve) <- modalFooter $ (,)
+    <$> cancelButton def "Cancel"
+    -- <*> confirmButton def "Approve"
+    <*> confirmButton (def & uiButtonCfg_disabled .~ ( isNothing <$> mSigData )) "Approve"
+  let approveE = fmapMaybe id $ tag (current mSigData) approve
+  return (onCancel <> onClose, approveSigDialog <$> approveE)
+
+approveSigDialog 
+  :: 
+  ( MonadWidget t m
+  )
+  => (SigData Text, Payload PublicMeta Text)
+  -> Workflow t m (Event t ())
+approveSigDialog (sigData, payload) = Workflow $ do
+  onClose <- modalHeader $ text "Approve Transaction"
+  modalMain $
+    divClass "group" $ text "hi"
+  _ <- modalFooter $ cancelButton def "Back"
+  return (onClose, never) -- leftmost [ _ <$ back
+  
+
 
 parseInputToSigDataWidget :: MonadWidget t m => m (Event t (SigData Text, Payload PublicMeta Text))
 parseInputToSigDataWidget =
