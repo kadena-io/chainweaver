@@ -69,9 +69,16 @@ uiSigBuilderDialog
   -> Event t ()
   -> m (mConf, Event t ())
 uiSigBuilderDialog model _onCloseExternal = do
-  dCloses <- workflow $ txnInputDialog model
+  dCloses <- workflow $ txnInputDialog model Nothing
   pure (mempty, switch $ current dCloses)
 
+type SigBuilderWorkflow t m model key = 
+  ( MonadWidget t m
+  , HasNetwork model t
+  , HasWallet model key t
+  , HasCrypto key m
+  , ModalIde m key t ~ model
+  )
 txnInputDialog
   ::
   ( MonadWidget t m
@@ -81,8 +88,9 @@ txnInputDialog
   , ModalIde m key t ~ model
   )
   => ModalIde m key t
+  -> Maybe Text
   -> Workflow t m (Event t ())
-txnInputDialog model = Workflow $ mdo
+txnInputDialog model mInitVal = Workflow $ mdo
   onClose <- modalHeader $ text "Signature Builder"
   let cwKeys = IMap.elems <$> (model^.wallet_keys)
       selNodes = model ^. network_selectedNodes
@@ -91,7 +99,7 @@ txnInputDialog model = Workflow $ mdo
 
   dmSigData <- modalMain $
     divClass "group" $ do
-      parseInputToSigDataWidget
+      parseInputToSigDataWidget mInitVal
 
   (onCancel, approve) <- modalFooter $ (,)
     <$> cancelButton def "Cancel"
@@ -99,21 +107,23 @@ txnInputDialog model = Workflow $ mdo
 
   let approveE = fmapMaybe id $ tag (current dmSigData) approve
       sbr = attachWith (\(keys, net) (sd, pl) -> SigBuilderRequest sd pl net keys) keysAndNet approveE
-  return (onCancel <> onClose, approveSigDialog <$> sbr)
+  return (onCancel <> onClose, approveSigDialog model <$> sbr)
 
 approveSigDialog
-  ::
-  ( MonadWidget t m
-  , HasCrypto key m
-  )
-  => SigBuilderRequest key
+  :: SigBuilderWorkflow t m model key
+  => ModalIde m key t
+  -> SigBuilderRequest key
   -> Workflow t m (Event t ())
-approveSigDialog sbr = Workflow $ do
+approveSigDialog model sbr = Workflow $ do
+  let sigDataText = T.decodeUtf8 $ LB.toStrict $ A.encode $ _sbr_sigData sbr
   onClose <- modalHeader $ text "Approve Transaction"
   modalMain $
     divClass "group" $ displaySBR sbr
-  _ <- modalFooter $ cancelButton def "Back"
-  return (onClose, never) -- leftmost [ _ <$ back
+  back <- modalFooter $ confirmButton def "Back"
+  let workflowEvent = leftmost
+        [ txnInputDialog model (Just sigDataText) <$ back
+        ]
+  return (onClose, workflowEvent)
 
 data SigBuilderRequest key = SigBuilderRequest
   { _sbr_sigData        :: SigData Text
@@ -135,11 +145,14 @@ data DataToBeSigned
   | DTB_ErrorString String
   | DTB_EmptyString
 
-parseInputToSigDataWidget :: MonadWidget t m => m (Dynamic t (Maybe (SigData Text, Payload PublicMeta Text)))
-parseInputToSigDataWidget =
+parseInputToSigDataWidget :: MonadWidget t m
+  => Maybe Text
+  -> m (Dynamic t (Maybe (SigData Text, Payload PublicMeta Text)))
+parseInputToSigDataWidget mInitVal =
   divClass "group" $ do
     txt <- fmap value $ mkLabeledClsInput False "Paste Transaction" $ \cls -> uiTextAreaElement $ def
       & initialAttributes .~ "class" =: renderClass cls
+      & textAreaElementConfig_initialValue .~ (fromMaybe "" mInitVal)
     let dmSigningData = validInput . parseBytes . T.encodeUtf8 <$> txt
     pure dmSigningData
   where
