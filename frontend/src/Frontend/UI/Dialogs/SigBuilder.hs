@@ -73,7 +73,7 @@ uiSigBuilderDialog model _onCloseExternal = do
   pure (mempty, switch $ current dCloses)
 
 txnInputDialog
-  :: 
+  ::
   ( MonadWidget t m
   , HasNetwork model t
   , HasWallet model key t
@@ -89,20 +89,20 @@ txnInputDialog model = Workflow $ mdo
       networkId = (fmap (mkNetworkName . nodeVersion) . headMay . rights) <$> selNodes
       keysAndNet = current $ (,) <$> cwKeys <*> networkId
 
-  sigDataE <- modalMain $
+  dmSigData <- modalMain $
     divClass "group" $ do
       parseInputToSigDataWidget
 
-  mSigData <- holdDyn Nothing $ Just <$> sigDataE
   (onCancel, approve) <- modalFooter $ (,)
     <$> cancelButton def "Cancel"
-    <*> confirmButton (def & uiButtonCfg_disabled .~ ( isNothing <$> mSigData )) "Approve"
-  let approveE = fmapMaybe id $ tag (current mSigData) approve
+    <*> confirmButton (def & uiButtonCfg_disabled .~ ( isNothing <$> dmSigData )) "Approve"
+
+  let approveE = fmapMaybe id $ tag (current dmSigData) approve
       sbr = attachWith (\(keys, net) (sd, pl) -> SigBuilderRequest sd pl net keys) keysAndNet approveE
   return (onCancel <> onClose, approveSigDialog <$> sbr)
 
-approveSigDialog 
-  :: 
+approveSigDialog
+  ::
   ( MonadWidget t m
   , HasCrypto key m
   )
@@ -114,7 +114,7 @@ approveSigDialog sbr = Workflow $ do
     divClass "group" $ displaySBR sbr
   _ <- modalFooter $ cancelButton def "Back"
   return (onClose, never) -- leftmost [ _ <$ back
- 
+
 data SigBuilderRequest key = SigBuilderRequest
   { _sbr_sigData        :: SigData Text
   , _sbr_payload        :: Payload PublicMeta Text
@@ -122,6 +122,7 @@ data SigBuilderRequest key = SigBuilderRequest
   , _sbr_cwKeys         :: [ Key key ]
   }
 
+-- TEMP
 displaySBR :: (MonadWidget t m) => SigBuilderRequest key -> m ()
 displaySBR (SigBuilderRequest sd p net keys) = do
   text $ tshow net
@@ -129,48 +130,50 @@ displaySBR (SigBuilderRequest sd p net keys) = do
   text $ tshow sd
   text $ tshow p
 
-parseInputToSigDataWidget :: MonadWidget t m => m (Event t (SigData Text, Payload PublicMeta Text))
+data DataToBeSigned
+  = DTB_SigData (SigData T.Text, Payload PublicMeta Text)
+  | DTB_ErrorString String
+  | DTB_EmptyString
+
+parseInputToSigDataWidget :: MonadWidget t m => m (Dynamic t (Maybe (SigData Text, Payload PublicMeta Text)))
 parseInputToSigDataWidget =
   divClass "group" $ do
-    txt <- fmap value $ mkLabeledClsInput False "Paste UnSigned Transaction" $ \cls -> uiTextAreaElement $ def
+    txt <- fmap value $ mkLabeledClsInput False "Paste Transaction" $ \cls -> uiTextAreaElement $ def
       & initialAttributes .~ "class" =: renderClass cls
-    let
-      parseBytes "" = Nothing
-      parseBytes bytes =
-        -- Parse the JSON, and consume all the input
-        case parseOnly jsonEOF' bytes of
-            -- If we do receive JSON, it can be of two types: either a SigData Text,
-            -- or a Payload PublicMeta Text
-          Right val -> case A.fromJSON @(SigData Text) val of
-            A.Success sigData -> Just $ Right sigData
-            A.Error errStr -> Just $ Left errStr
-               --TODO: Add payload case later
-              -- case A.fromJSON val of
-              -- A.Success payload -> Just $ Right payload
-              -- A.Error errorStr -> ErrorString errorStr
-          -- We did not receive JSON, try parsing it as YAML
-          Left _ -> case Y.decode1Strict bytes of
-            Right sigData -> Just $ Right sigData
-            Left (pos, errorStr) -> Just $ Left $ prettyPosWithSource pos (LB.fromStrict bytes) errorStr
+    let dmSigningData = validInput . parseBytes . T.encodeUtf8 <$> txt
+    pure dmSigningData
+  where
+    parsePayload :: Text -> Either String (Payload PublicMeta Text)
+    parsePayload cmdText =
+      first (const "Invalid cmd field inside SigData.") $
+        A.eitherDecodeStrict (T.encodeUtf8 cmdText)
 
-      signingDataEv = fmap attachPayload . parseBytes . T.encodeUtf8 <$> updated txt
+    parseAndAttachPayload sd =
+      case parsePayload =<< (justErr "Payload missing" $ _sigDataCmd sd) of
+        Left e -> DTB_ErrorString e
+        Right p -> DTB_SigData (sd, p)
 
-      -- Convert a functor value into a pair with a given header
-      withHeader h t = fmap ((,) h) t
+    parseBytes "" = DTB_EmptyString
+    parseBytes bytes =
+      -- Parse the JSON, and consume all the input
+      case parseOnly jsonEOF' bytes of
+        Right val -> case A.fromJSON val of
+          A.Success sigData -> parseAndAttachPayload sigData
+          A.Error errStr -> DTB_ErrorString errStr
+             --TODO: Add payload case later
+            -- case A.fromJSON val of
+            -- A.Success payload -> Just $ Right payload
+            -- A.Error errorStr -> ErrorString errorStr
+        -- We did not receive JSON, try parsing it as YAML
+        Left _ -> case Y.decode1Strict bytes of
+          Right sigData -> parseAndAttachPayload sigData
+          Left (pos, errorStr) -> DTB_ErrorString $ prettyPosWithSource pos (LB.fromStrict bytes) errorStr
 
-      -- Parse payload from given text
-      parsePayload :: Text -> Either String (Payload PublicMeta Text)
-      parsePayload cmdText =
-        first (const "Invalid cmd field inside SigData.") $
-          A.eitherDecodeStrict (T.encodeUtf8 cmdText)
 
-      attachPayload sdOrErr = do
-        sd <- sdOrErr
-        t <- justErr "Payload missing" $ _sigDataCmd sd
-        p <- parsePayload t
-        pure (sd, p)
+    validInput DTB_EmptyString = Nothing
+    validInput (DTB_ErrorString _) = Nothing
+    validInput (DTB_SigData info) = Just info
 
-    pure $ snd $ fanEither $ fmapMaybe id signingDataEv
 
     -- dyn_ $ ffor eitherHashDyn $ \case
     --   Left _ -> blank
