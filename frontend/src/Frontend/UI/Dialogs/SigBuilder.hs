@@ -1,13 +1,51 @@
-{-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecursiveDo #-}
+{-# LANGUAGE ConstraintKinds #-}
+{-# LANGUAGE CPP #-}
+{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE DataKinds #-}
+{-# LANGUAGE TypeApplications #-}
 
 module Frontend.UI.Dialogs.SigBuilder where
 
 import Reflex
 import Reflex.Dom.Core
 
+
+import           Control.Error
+import           Control.Lens
+import           Control.Monad (join)
+import qualified Data.Aeson as A
+import           Data.Aeson.Parser.Internal (jsonEOF')
+import           Data.Attoparsec.ByteString
+import           Data.Bifunctor (first)
+import qualified Data.ByteString.Lazy as LB
+import           Data.Functor (void)
+import           Data.Text (Text)
+import qualified Data.Text as T
+import qualified Data.Text.Encoding as T
+import qualified Data.Text.Lazy as LT
+import qualified Data.IntMap as IntMap
+import           Data.YAML
+import qualified Data.YAML.Aeson as Y
+import           Pact.Types.ChainMeta (PublicMeta)
+import           Pact.Types.Command
+import           Pact.Types.Hash (hash, toUntypedHash, unHash)
+import           Pact.Types.SigData
+import           Pact.Types.Util             (decodeBase64UrlUnpadded)
+------------------------------------------------------------------------------
+import           Reflex
+import           Reflex.Dom hiding (Key)
+------------------------------------------------------------------------------
+import           Frontend.Crypto.Class
+import           Frontend.Foundation
+import           Frontend.UI.Modal
+import           Frontend.UI.Transfer
+import           Frontend.UI.Widgets
+import           Frontend.UI.Widgets.Helpers (dialogSectionHeading)
+import           Frontend.Wallet
+------------------------------------------------------------------------------
 import Frontend.UI.Modal.Impl
-import Frontend.UI.Widgets
+------------------------------------------------------------------------------
 
 sigBuilderCfg
   :: forall t m key mConf
@@ -26,15 +64,11 @@ uiSigBuilderDialog
   -> Event t ()
   -> m (mConf, Event t ())
 uiSigBuilderDialog model _onCloseExternal = mdo
-  onClose <- modalHeader $ text "Add Account"
-  modalMain $ text "hello"
-  -- do
-  --   dialogSectionHeading mempty "Notice"
-  --   divClass "group" $ text "Add an Account here to display its status. You can add accounts that you do not own as well as accounts that do not exist yet."
-  --   dialogSectionHeading mempty "Add Account"
-  --   divClass "group" $ fmap snd $ uiAccountNameInputNoDropdown "Account Name" True Nothing never $ checkAccountNameAvailability
-  --     <$> (model ^. network_selectedNetwork)
-  --     <*> (model ^. wallet_accounts)
+  onClose <- modalHeader $ text "Signature Builder"
+  modalMain $ do
+    divClass "group" $ do
+      parseInputToSigDataWidget
+
   modalFooter $ do
     onCancel <- cancelButton def "Cancel"
     -- onAdd <- confirmButton (def & uiButtonCfg_disabled .~ (isNothing <$> name)) "Add"
@@ -45,5 +79,52 @@ uiSigBuilderDialog model _onCloseExternal = mdo
     --     conf = mempty & walletCfg_importAccount .~ tagMaybe val onAdd
     -- Since this always succeeds, we're okay to close on the add button event
     return ( mempty
-           , onCancel
+           , onCancel <> onClose
            )
+
+parseInputToSigDataWidget :: MonadWidget t m => m (Event t (SigData Text, Payload PublicMeta Text))
+parseInputToSigDataWidget =
+  divClass "group" $ do
+    txt <- fmap value $ mkLabeledClsInput False "Paste UnSigned Transaction" $ \cls -> uiTextAreaElement $ def
+      & initialAttributes .~ "class" =: renderClass cls
+    let
+      parseBytes "" = Nothing
+      parseBytes bytes =
+        -- Parse the JSON, and consume all the input
+        case parseOnly jsonEOF' bytes of
+            -- If we do receive JSON, it can be of two types: either a SigData Text,
+            -- or a Payload PublicMeta Text
+          Right val -> case A.fromJSON @(SigData Text) val of
+            A.Success sigData -> Just $ Right sigData
+            A.Error errStr -> Just $ Left errStr
+               --TODO: Add payload case later
+              -- case A.fromJSON val of
+              -- A.Success payload -> Just $ Right payload
+              -- A.Error errorStr -> ErrorString errorStr
+          -- We did not receive JSON, try parsing it as YAML
+          Left _ -> case Y.decode1Strict bytes of
+            Right sigData -> Just $ Right sigData
+            Left (pos, errorStr) -> Just $ Left $ prettyPosWithSource pos (LB.fromStrict bytes) errorStr
+
+      signingDataEv = fmap attachPayload . parseBytes . T.encodeUtf8 <$> updated txt
+
+      -- Convert a functor value into a pair with a given header
+      withHeader h t = fmap ((,) h) t
+
+      -- Parse payload from given text
+      parsePayload :: Text -> Either String (Payload PublicMeta Text)
+      parsePayload cmdText =
+        first (const "Invalid cmd field inside SigData.") $
+          A.eitherDecodeStrict (T.encodeUtf8 cmdText)
+
+      attachPayload sdOrErr = do
+        sd <- sdOrErr
+        t <- justErr "Payload missing" $ _sigDataCmd sd
+        p <- parsePayload t
+        pure (sd, p)
+
+    pure $ snd $ fanEither $ fmapMaybe id signingDataEv
+
+    -- dyn_ $ ffor eitherHashDyn $ \case
+    --   Left _ -> blank
+    --   Right ev -> uiDetailsCopyButton $ current ev
