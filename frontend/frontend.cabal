@@ -52,6 +52,8 @@ library
     , here
 --    , http-client
 --    , http-client-tls
+    , HsYAML
+    , HsYAML-aeson
     , http-types
     , jsaddle
     , kadena-signing-api
