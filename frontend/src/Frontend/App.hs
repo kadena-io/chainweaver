@@ -59,6 +59,7 @@ import Frontend.Storage
 import qualified Frontend.VersionedStore as Store
 import Frontend.UI.Button
 import Frontend.UI.Dialogs.AddVanityAccount (uiAddAccountButton)
+import Frontend.UI.Dialogs.SigBuilder
 import Frontend.UI.Dialogs.CreateGist (uiCreateGist)
 import Frontend.UI.Dialogs.CreatedGist (uiCreatedGist)
 import Frontend.UI.Dialogs.DeployConfirmation (uiDeployConfirmation)
@@ -96,12 +97,11 @@ app sidebarExtra fileFFI appCfg = Store.versionedFrontend (Store.versionedStorag
   ideL <- makeIde fileFFI appCfg cfg
   FRPHandler signingReq signingResp <- _appCfg_signingHandler appCfg
 
-  walletSidebar sidebarExtra
+  signEvt <- walletSidebar sidebarExtra
   updates <- divClass "page" $ do
     let mkPageContent c = divClass (c <> " page__content visible")
-
         underNetworkBar lbl sub = do
-          netCfg <- networkBar ideL
+          netCfg <- networkBar ideL signEvt
           subBarCfg <- controlBar lbl sub
           pure $ netCfg <> subBarCfg
     -- This route overriding is awkward, but it gets around having to alter the
@@ -117,7 +117,7 @@ app sidebarExtra fileFFI appCfg = Store.versionedFrontend (Store.versionedStorag
             ffor query $ \case
               (FrontendRoute_Accounts :/ q) -> fmap AccountName $ join $ Map.lookup "open" q
               _ -> Nothing
-        netCfg <- networkBar ideL
+        netCfg <- networkBar ideL signEvt
         (transferVisible, barCfg) <- controlBar "Accounts You Are Watching" $ do
           refreshCfg <- uiWalletRefreshButton
           watchCfg <- uiWatchRequestButton ideL
@@ -203,7 +203,7 @@ walletSidebar
      , Prerender js t m
      )
   => m ()
-  -> m ()
+  -> m (Event t ())
 walletSidebar sidebarExtra = elAttr "div" ("class" =: "sidebar") $ do
   divClass "sidebar__logo" $ elAttr "img" ("src" =: static @"img/logo.png") blank
 
@@ -215,11 +215,13 @@ walletSidebar sidebarExtra = elAttr "div" ("class" =: "sidebar") $ do
           void $ uiSidebarIcon selected (routeIcon r) label
     sidebarLink (FrontendRoute_Accounts :/ mempty) "Accounts"
     sidebarLink (FrontendRoute_Keys :/ ()) "Keys"
+    signEvt <- uiSidebarIcon (constDyn False) "Sign" "Sign"
     sidebarLink (FrontendRoute_Contracts :/ Nothing) "Contracts"
     elAttr "div" ("style" =: "flex-grow: 1") blank
     sidebarLink (FrontendRoute_Resources :/ ()) "Resources"
     sidebarLink (FrontendRoute_Settings :/ ()) "Settings"
     sidebarExtra
+    pure signEvt
 
 -- | Get the routes to the icon assets for each route
 routeIcon :: R FrontendRoute -> Text
@@ -308,12 +310,16 @@ codeWidget appCfg anno iv sv = do
 networkBar
   :: MonadWidget t m
   => ModalIde m key t
+  -> Event t ()
   -> m (ModalIdeCfg m key t)
-networkBar m = divClass "main-header main-header__network-bar" $ do
+networkBar m sign = do
+  signingPopupCfg <- sigBuilderCfg m sign
+  networkCfg <- divClass "main-header main-header__network-bar" $ do
   -- Present the dropdown box for selecting one of the configured networks.
-  divClass "page__network-bar-select" $ do
-    selectEv <- uiNetworkSelectTopBar "select_type_special" (m ^. network_selectedNetwork) (m ^. network_networks)
-    pure $ mempty & networkCfg_selectNetwork .~ selectEv
+    divClass "page__network-bar-select" $ do
+      selectEv <- uiNetworkSelectTopBar "select_type_special" (m ^. network_selectedNetwork) (m ^. network_networks)
+      pure $ mempty & networkCfg_selectNetwork .~ selectEv
+  pure $ networkCfg <> signingPopupCfg
 
 
 controlBar
