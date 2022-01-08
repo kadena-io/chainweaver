@@ -24,10 +24,13 @@ import qualified Data.IntMap as IMap
 import           Data.YAML
 import qualified Data.YAML.Aeson as Y
 import           Pact.Types.ChainMeta (PublicMeta)
+import           Pact.Types.RPC
 import           Pact.Types.Command
 import           Pact.Types.Hash (hash, toUntypedHash, unHash)
 import           Pact.Types.SigData
 import           Pact.Types.Util             (decodeBase64UrlUnpadded)
+import           Pact.Types.Pretty
+import           Pact.Types.Info
 ------------------------------------------------------------------------------
 import           Reflex
 import           Reflex.Dom hiding (Key)
@@ -117,9 +120,14 @@ approveSigDialog
 approveSigDialog model sbr = Workflow $ do
   let sigDataText = T.decodeUtf8 $ LB.toStrict $ A.encode $ _sbr_sigData sbr
   onClose <- modalHeader $ text "Approve Transaction"
-  modalMain $
-    divClass "group" $ displaySBR sbr
-  back <- modalFooter $ confirmButton def "Back"
+  modalMain $ do
+    pactRpcWidget  $ _pPayload $ _sbr_payload sbr
+    -- divClass "group" $ displaySBR sbr
+
+  (back, sign, signAndSubmit) <- modalFooter $ (,,)
+    <$> confirmButton def "Back"
+    <*> confirmButton def "Sign"
+    <*> confirmButton def "Sign And Send"
   let workflowEvent = leftmost
         [ txnInputDialog model (Just sigDataText) <$ back
         ]
@@ -131,6 +139,34 @@ data SigBuilderRequest key = SigBuilderRequest
   , _sbr_currentNetwork :: Maybe NetworkName
   , _sbr_cwKeys         :: [ Key key ]
   }
+
+pactRpcWidget
+  :: MonadWidget t m
+  => PactRPC Text
+  -> m ()
+pactRpcWidget (Exec e) = do
+  dialogSectionHeading mempty "Code"
+  divClass "group" $ do
+    el "code" $ text $ tshow $ pretty $ _pmCode e
+
+  case _pmData e of
+    A.Null -> blank
+    jsonVal -> do
+      dialogSectionHeading mempty "Data"
+      divClass "group" $ do
+        uiTextAreaElement $ def
+          & textAreaElementConfig_initialValue .~ (T.decodeUtf8 $ LB.toStrict $ A.encode jsonVal)
+          & initialAttributes .~ "disabled" =: "" <> "style" =: "width: 100%"
+
+        pure ()
+pactRpcWidget (Continuation c) = do
+  dialogSectionHeading mempty "Continuation Data"
+  divClass "group" $ do
+    mkLabeledClsInput True "Pact ID" $ \_ -> text $ tshow $ _cmPactId c
+    mkLabeledClsInput True "Step" $ \_ -> text $ tshow $ _cmStep c
+    mkLabeledClsInput True "Rollback" $ \_ -> text $ tshow $ _cmRollback c
+    mkLabeledClsInput True "Data" $ \_ -> text $ tshow $ _cmData c
+    mkLabeledClsInput True "Proof" $ \_ -> text $ tshow $ _cmProof c
 
 -- TEMP
 displaySBR :: (MonadWidget t m) => SigBuilderRequest key -> m ()
