@@ -91,7 +91,7 @@ txnInputDialog
   , ModalIde m key t ~ model
   )
   => ModalIde m key t
-  -> Maybe Text
+  -> Maybe (SigData Text)
   -> Workflow t m (Event t ())
 txnInputDialog model mInitVal = Workflow $ mdo
   onClose <- modalHeader $ text "Signature Builder"
@@ -118,7 +118,7 @@ approveSigDialog
   -> SigBuilderRequest key
   -> Workflow t m (Event t ())
 approveSigDialog model sbr = Workflow $ do
-  let sigDataText = T.decodeUtf8 $ LB.toStrict $ A.encode $ _sbr_sigData sbr
+  let sigData = _sbr_sigData sbr
   onClose <- modalHeader $ text "Approve Transaction"
   modalMain $ do
     pactRpcWidget  $ _pPayload $ _sbr_payload sbr
@@ -129,7 +129,7 @@ approveSigDialog model sbr = Workflow $ do
     <*> confirmButton def "Sign"
     <*> confirmButton def "Sign And Send"
   let workflowEvent = leftmost
-        [ txnInputDialog model (Just sigDataText) <$ back
+        [ txnInputDialog model (Just sigData) <$ back
         ]
   return (onClose, workflowEvent)
 
@@ -148,7 +148,6 @@ pactRpcWidget (Exec e) = do
   dialogSectionHeading mempty "Code"
   divClass "group" $ do
     el "code" $ text $ tshow $ pretty $ _pmCode e
-
   case _pmData e of
     A.Null -> blank
     jsonVal -> do
@@ -157,7 +156,6 @@ pactRpcWidget (Exec e) = do
         uiTextAreaElement $ def
           & textAreaElementConfig_initialValue .~ (T.decodeUtf8 $ LB.toStrict $ A.encode jsonVal)
           & initialAttributes .~ "disabled" =: "" <> "style" =: "width: 100%"
-
         pure ()
 pactRpcWidget (Continuation c) = do
   dialogSectionHeading mempty "Continuation Data"
@@ -182,13 +180,15 @@ data DataToBeSigned
   | DTB_EmptyString
 
 parseInputToSigDataWidget :: MonadWidget t m
-  => Maybe Text
+  => Maybe (SigData Text)
   -> m (Dynamic t (Maybe (SigData Text, Payload PublicMeta Text)))
-parseInputToSigDataWidget mInitVal =
+parseInputToSigDataWidget mInit =
   divClass "group" $ do
-    txt <- fmap value $ mkLabeledClsInput False "Paste Transaction" $ \cls -> uiTextAreaElement $ def
-      & initialAttributes .~ "class" =: renderClass cls
-      & textAreaElementConfig_initialValue .~ (fromMaybe "" mInitVal)
+    txt <- fmap value
+      $ mkLabeledClsInput False "Paste Transaction" $ \cls ->
+          uiTxSigner mInit cls def
+      -- & initialAttributes .~ "class" =: renderClass cls
+      -- & textAreaElementConfig_initialValue .~ (fromMaybe "" mInitVal)
     let dmSigningData = validInput . parseBytes . T.encodeUtf8 <$> txt
     pure dmSigningData
   where
