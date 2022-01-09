@@ -11,6 +11,7 @@ import           Control.Error
 import           Control.Lens
 import           Control.Monad (join)
 import qualified Data.Aeson as A
+import qualified Data.Set as Set
 import           Data.Aeson.Parser.Internal (jsonEOF')
 import           Data.Attoparsec.ByteString
 import           Data.Bifunctor (first)
@@ -23,7 +24,8 @@ import qualified Data.Text.Lazy as LT
 import qualified Data.IntMap as IMap
 import           Data.YAML
 import qualified Data.YAML.Aeson as Y
-import           Pact.Types.ChainMeta (PublicMeta)
+import           Pact.Types.ChainMeta
+import           Pact.Types.ChainId   (networkId)
 import           Pact.Types.RPC
 import           Pact.Types.Command
 import           Pact.Types.Hash (hash, toUntypedHash, unHash)
@@ -63,10 +65,7 @@ uiSigBuilderDialog
   ::
   ( MonadWidget t m
   , Monoid mConf
-  , HasNetwork model t
-  , HasWallet model key t
-  , HasCrypto key m
-  , ModalIde m key t ~ model
+  , SigBuilderWorkflow t m model key
   )
   => ModalIde m key t
   -> Event t ()
@@ -75,22 +74,20 @@ uiSigBuilderDialog model _onCloseExternal = do
   dCloses <- workflow $ txnInputDialog model Nothing
   pure (mempty, switch $ current dCloses)
 
-type SigBuilderWorkflow t m model key = 
+type SigBuilderWorkflow t m model key =
   ( MonadWidget t m
   , HasNetwork model t
   , HasWallet model key t
   , HasCrypto key m
   , ModalIde m key t ~ model
   )
+
 txnInputDialog
   ::
   ( MonadWidget t m
-  , HasNetwork model t
-  , HasWallet model key t
-  , HasCrypto key m
-  , ModalIde m key t ~ model
+  , SigBuilderWorkflow t m model key
   )
-  => ModalIde m key t
+  => model
   -> Maybe (SigData Text)
   -> Workflow t m (Event t ())
 txnInputDialog model mInitVal = Workflow $ mdo
@@ -99,18 +96,78 @@ txnInputDialog model mInitVal = Workflow $ mdo
       selNodes = model ^. network_selectedNodes
       networkId = (fmap (mkNetworkName . nodeVersion) . headMay . rights) <$> selNodes
       keysAndNet = current $ (,) <$> cwKeys <*> networkId
-
-  dmSigData <- modalMain $
-    divClass "group" $ do
-      parseInputToSigDataWidget mInitVal
-
+  dmSigData <- modalMain $ divClass "group" $ parseInputToSigDataWidget mInitVal
   (onCancel, approve) <- modalFooter $ (,)
     <$> cancelButton def "Cancel"
     <*> confirmButton (def & uiButtonCfg_disabled .~ ( isNothing <$> dmSigData )) "Approve"
-
   let approveE = fmapMaybe id $ tag (current dmSigData) approve
       sbr = attachWith (\(keys, net) (sd, pl) -> SigBuilderRequest sd pl net keys) keysAndNet approveE
-  return (onCancel <> onClose, approveSigDialog model <$> sbr)
+  return (onCancel <> onClose, checkAndSummarize model <$> sbr)
+
+warningDialog
+  :: (MonadWidget t m)
+  => Text
+  -> Workflow t m (Event t ())
+  -> Workflow t m (Event t ())
+  -> Workflow t m (Event t ())
+warningDialog warningMsg backW nextW = Workflow $ do
+  onClose <- modalHeader $ text "Warning"
+  void $ modalMain $ do
+    el "h3" $ text "Warning"
+    el "p" $ text warningMsg
+  (back, next) <- modalFooter $ (,)
+    <$> confirmButton def "Back"
+    <*> confirmButton def "Next"
+  pure $ (onClose, leftmost [ backW <$ back , nextW <$ next ])
+
+errorDialog
+  :: (MonadWidget t m)
+  => Text
+  -> Workflow t m (Event t ())
+  -> Workflow t m (Event t ())
+errorDialog errorMsg backW = Workflow $ do
+  onClose <- modalHeader $ text "Error"
+  void $ modalMain $ do
+    el "h3" $ text "Error"
+    el "p" $ text errorMsg
+  back <- modalFooter $ confirmButton def "Back"
+  pure $ (onClose, backW <$ back)
+
+checkAndSummarize
+  :: SigBuilderWorkflow t m model key
+  => model
+  -> SigBuilderRequest key
+  -> Workflow t m (Event t ())
+checkAndSummarize model sbr =
+  -- let
+  --   sigsRequired = 
+  if Set.disjoint cwPubKeys signerPubkeys
+     then errorDialog "Chainweaver does not possess any of the keys required for signing" backW
+     else checkNetwork
+  where
+    sigData = _sbr_sigData sbr
+    backW = txnInputDialog model (Just sigData)
+    nextW = approveSigDialog model sbr
+    cwPubKeys = Set.fromList $ fmap (_keyPair_publicKey . _key_pair) $ _sbr_cwKeys sbr
+    signerPubkeys = Set.fromList $ rights
+      $ fmap (parsePublicKey . _siPubKey)
+      $ _pSigners $ _sbr_payload sbr
+    cwNetwork = _sbr_currentNetwork sbr
+    payloadNetwork = mkNetworkName . view networkId
+      <$> (_pNetworkId $ _sbr_payload sbr)
+    networkWarning currentKnown mPayNet =
+      case mPayNet of
+        Nothing -> "The payload you are signing does not have an associated network"
+        Just p -> "The payload you are signing has network id: \""
+                  <> textNetworkName p <>
+                  "\" but your active chainweaver node is on: \""
+                  <> textNetworkName currentKnown <> "\""
+    checkNetwork =
+      case (cwNetwork, payloadNetwork) of
+         (Nothing, _) -> nextW
+         (Just x, Just y)
+           | x == y -> nextW
+         (Just x, pNet) -> warningDialog (networkWarning x pNet) backW nextW
 
 approveSigDialog
   :: SigBuilderWorkflow t m model key
@@ -119,10 +176,13 @@ approveSigDialog
   -> Workflow t m (Event t ())
 approveSigDialog model sbr = Workflow $ do
   let sigData = _sbr_sigData sbr
+      keys = fmap _key_pair $ _sbr_cwKeys sbr
   onClose <- modalHeader $ text "Approve Transaction"
   modalMain $ do
-    pactRpcWidget  $ _pPayload $ _sbr_payload sbr
-    -- divClass "group" $ displaySBR sbr
+    let p = _sbr_payload sbr
+    networkWidget p
+    txMetaWidget  $ _pMeta p
+    pactRpcWidget  $ _pPayload p 
 
   (back, sign, signAndSubmit) <- modalFooter $ (,,)
     <$> confirmButton def "Back"
@@ -130,8 +190,32 @@ approveSigDialog model sbr = Workflow $ do
     <*> confirmButton def "Sign And Send"
   let workflowEvent = leftmost
         [ txnInputDialog model (Just sigData) <$ back
+        , signAndShowSigDialog model sbr keys <$ sign
         ]
   return (onClose, workflowEvent)
+
+signAndShowSigDialog
+  :: SigBuilderWorkflow t m model key
+  => ModalIde m key t
+  -> SigBuilderRequest key
+  -> [KeyPair key]
+  -> Workflow t m (Event t ())
+signAndShowSigDialog _model sbr keys = Workflow $ do
+
+  sigOrErr <- buildSigDataWithPayload (_sbr_payload sbr) keys
+  onClose <- modalHeader $ text "Signed Txn"
+  modalMain $ do
+    case sigOrErr of
+      Left e-> text $ "Error: Signing failed with: " <> (T.pack e)
+      Right sd -> do
+        let txt = T.decodeUtf8 $ Y.encode1Strict sd
+        void $ uiTxSigner (Just sd) def def
+        uiDetailsCopyButton $ constant txt 
+    
+  (back, finish) <- modalFooter $ (,)
+    <$> confirmButton def "Back"
+    <*> confirmButton def "Finish"
+  return (onClose <> finish, never)
 
 data SigBuilderRequest key = SigBuilderRequest
   { _sbr_sigData        :: SigData Text
@@ -139,6 +223,21 @@ data SigBuilderRequest key = SigBuilderRequest
   , _sbr_currentNetwork :: Maybe NetworkName
   , _sbr_cwKeys         :: [ Key key ]
   }
+
+txMetaWidget
+  :: MonadWidget t m
+  => PublicMeta
+  -> m ()
+txMetaWidget pm = do
+  dialogSectionHeading mempty "Transaction Metadata"
+  _ <- divClass "group segment" $ do
+    mkLabeledClsInput True "Chain" $ \_ -> text (renderCompactText $ _pmChainId pm)
+    mkLabeledClsInput True "Gas Payer" $ \_ -> text (_pmSender pm)
+    mkLabeledClsInput True "Gas Price" $ \_ -> text (renderCompactText $ _pmGasPrice pm)
+    mkLabeledClsInput True "Gas Limit" $ \_ -> text (renderCompactText $ _pmGasLimit pm)
+    let totalGas = fromIntegral (_pmGasLimit pm) * _pmGasPrice pm
+    mkLabeledClsInput True "Max Gas Cost" $ \_ -> text $ renderCompactText totalGas <> " KDA"
+  pure ()
 
 pactRpcWidget
   :: MonadWidget t m
@@ -166,20 +265,20 @@ pactRpcWidget (Continuation c) = do
     mkLabeledClsInput True "Data" $ \_ -> text $ tshow $ _cmData c
     mkLabeledClsInput True "Proof" $ \_ -> text $ tshow $ _cmProof c
 
--- TEMP
-displaySBR :: (MonadWidget t m) => SigBuilderRequest key -> m ()
-displaySBR (SigBuilderRequest sd p net keys) = do
-  text $ tshow net
-  text $ tshow $ ffor keys $ \k -> _keyPair_publicKey $ _key_pair k
-  text $ tshow sd
-  text $ tshow p
+networkWidget :: MonadWidget t m => Payload PublicMeta a -> m ()
+networkWidget p = case _pNetworkId p of
+  Nothing -> blank
+  Just n -> do
+    dialogSectionHeading mempty "Network"
+    divClass "group" $ text $ n ^. networkId
 
 data DataToBeSigned
   = DTB_SigData (SigData T.Text, Payload PublicMeta Text)
   | DTB_ErrorString String
   | DTB_EmptyString
 
-parseInputToSigDataWidget :: MonadWidget t m
+parseInputToSigDataWidget
+  :: MonadWidget t m
   => Maybe (SigData Text)
   -> m (Dynamic t (Maybe (SigData Text, Payload PublicMeta Text)))
 parseInputToSigDataWidget mInit =
@@ -187,10 +286,11 @@ parseInputToSigDataWidget mInit =
     txt <- fmap value
       $ mkLabeledClsInput False "Paste Transaction" $ \cls ->
           uiTxSigner mInit cls def
-      -- & initialAttributes .~ "class" =: renderClass cls
-      -- & textAreaElementConfig_initialValue .~ (fromMaybe "" mInitVal)
-    let dmSigningData = validInput . parseBytes . T.encodeUtf8 <$> txt
-    pure dmSigningData
+    let parsedBytes = parseBytes . T.encodeUtf8 <$> txt
+    dyn_ $ ffor parsedBytes $ \case
+      DTB_ErrorString e -> elClass "p" "error_inline" $ text $ T.pack e
+      _ -> blank
+    return $ validInput <$>  parsedBytes
   where
     parsePayload :: Text -> Either String (Payload PublicMeta Text)
     parsePayload cmdText =
@@ -213,17 +313,11 @@ parseInputToSigDataWidget mInit =
             -- case A.fromJSON val of
             -- A.Success payload -> Just $ Right payload
             -- A.Error errorStr -> ErrorString errorStr
+
         -- We did not receive JSON, try parsing it as YAML
         Left _ -> case Y.decode1Strict bytes of
           Right sigData -> parseAndAttachPayload sigData
           Left (pos, errorStr) -> DTB_ErrorString $ prettyPosWithSource pos (LB.fromStrict bytes) errorStr
-
-
     validInput DTB_EmptyString = Nothing
     validInput (DTB_ErrorString _) = Nothing
     validInput (DTB_SigData info) = Just info
-
-
-    -- dyn_ $ ffor eitherHashDyn $ \case
-    --   Left _ -> blank
-    --   Right ev -> uiDetailsCopyButton $ current ev
