@@ -226,9 +226,9 @@ signAndShowSigDialog _model sbr keys sigsOrPrivate = Workflow $ do
     modalMain $ do
       let sd = _sbr_sigData sbr
       sd' <- addSigsToSigData sd keys sigsOrPrivate
-      let txt = T.decodeUtf8 $ Y.encode1Strict sd
-      void $ uiTxSigner (Just sd) def def
-      uiDetailsCopyButton $ constant txt
+      liftIO $ print sd'
+      void $ uiTxSigner (Just sd') def def
+      uiDetailsCopyButton $ constant $ T.decodeUtf8 $ Y.encode1Strict sd'
 
   (back, finish) <- modalFooter $ (,)
     <$> confirmButton def "Back"
