@@ -311,6 +311,7 @@ networkBar
   :: 
   ( MonadWidget t m
   , HasCrypto key m
+  , HasTransactionLogger m
   )
   => ModalIde m key t
   -> Event t ()

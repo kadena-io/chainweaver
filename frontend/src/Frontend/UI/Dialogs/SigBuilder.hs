@@ -60,6 +60,7 @@ sigBuilderCfg
   :: forall t m key mConf
    . ( MonadWidget t m
      , HasCrypto key m
+     , HasTransactionLogger m
      )
   => ModalIde m key t
   -> Event t ()
@@ -86,6 +87,7 @@ type SigBuilderWorkflow t m model key =
   , HasWallet model key t
   , HasCrypto key m
   , ModalIde m key t ~ model
+  , HasTransactionLogger m
   )
 
 txnInputDialog
@@ -147,7 +149,7 @@ checkAndSummarize
 checkAndSummarize model sbr =
   -- TODO: Add "hash-mismatch" error when Sig-Data hash and payload hash are not identical
   if Set.disjoint cwPubKeys signerPubkeys
-     then errorDialog "Chainweaver does not possess any of the keys required for signing" backW
+     then checkNetwork -- errorDialog "Chainweaver does not possess any of the keys required for signing" backW
      else checkNetwork
   where
     sigData = _sbr_sigData sbr
@@ -213,27 +215,32 @@ signAndShowSigDialog
   :: SigBuilderWorkflow t m model key
   => ModalIde m key t
   -> SigBuilderRequest key
-  -> [KeyPair key]
-  -> [(PublicKeyHex, UserSig)]
+  -> [KeyPair key]  -- ChainweaverKeys
+  -> [(PublicKeyHex, UserSig)] -- User-supplied Sigs
   -> Workflow t m (Event t ())
-signAndShowSigDialog _model sbr keys sigsOrPrivate = Workflow $ do
+signAndShowSigDialog model sbr keys sigsOrPrivate = Workflow $ mdo
   onClose <- modalHeader $ text "Signed Txn"
   -- This allows a "loading" page to render before we attempt to do the really computationally
   -- expensive sigs
-  pb <- delay 0.0 =<< getPostBuild
+  pb <- delay 0.1 =<< getPostBuild
   -- TODO: Can we forkIO the sig process and display something after they are done?
-  widgetHold_ (modalMain $ text "Loading Signatures ...") $ ffor pb $ \_ ->
+  dmCmd <- widgetHold (modalMain $ text "Loading Signatures ..." >> pure Nothing) $ ffor pb $ \_ ->
     modalMain $ do
-      let sd = _sbr_sigData sbr
-      sd' <- addSigsToSigData sd keys sigsOrPrivate
-      liftIO $ print sd'
-      void $ uiTxSigner (Just sd') def def
-      uiDetailsCopyButton $ constant $ T.decodeUtf8 $ Y.encode1Strict sd'
+      sd <- addSigsToSigData (_sbr_sigData sbr) keys sigsOrPrivate
+      void $ uiTxSigner (Just sd) def def
+      uiDetailsCopyButton $ constant $ T.decodeUtf8 $ Y.encode1Strict sd
+      pure $ hush $ sigDataToCommand sd
 
-  (back, finish) <- modalFooter $ (,)
+  (back, submit, finish) <- modalFooter $ (,,)
     <$> confirmButton def "Back"
+    <*> confirmButton def "Submit to Network"
     <*> confirmButton def "Finish"
-  return (onClose <> finish, never)
+
+  let cmdAndNet = (,) <$> dmCmd <*> model ^. network_selectedNodes
+      eCmdAndNet = current cmdAndNet <@ submit
+      fUncurry f func = fmap (\tpl -> uncurry f tpl) func
+      submitToNetworkE = transferAndStatus model (AccountName "For Display", ChainId "0") `fUncurry` eCmdAndNet
+  return (onClose <> finish, submitToNetworkE)
 
 addSigsToSigData
   :: (
@@ -251,7 +258,7 @@ addSigsToSigData sd signingKeys sigList = do
       -- cmdHashL = hash (T.encodeUtf8 cmd)
       hash = unHash $ toUntypedHash $ _sigDataHash sd
       someSigs = _sigDataSigs sd
-      pubKeyToTxt =  PublicKeyHex . keyToText . _keyPair_publicKey 
+      pubKeyToTxt =  PublicKeyHex . keyToText . _keyPair_publicKey
       cwSigners =  fmap (\x -> (pubKeyToTxt x, _keyPair_privateKey x)) signingKeys
       toPactSig sig = UserSig $ keyToText sig
   sigList <- forM someSigs $ \(pkHex, mSig) -> case mSig of
@@ -424,15 +431,16 @@ parseInputToSigDataWidget mInit =
     validInput (DTB_SigData info) = Just info
 
 transferAndStatus
-  :: (MonadWidget t m, Monoid mConf, HasLogger model t, HasTransactionLogger m)
+  :: (MonadWidget t m, HasLogger model t, HasTransactionLogger m)
   => model
   -> (AccountName, ChainId)
-  -> Command Text
-  -> [NodeInfo]
+  -> Maybe (Command Text)
+  -> [Either Text NodeInfo]
   -> Workflow t m (Event t ())
-transferAndStatus model (sender, cid) cmd nodeInfos = Workflow $ do
+transferAndStatus model (sender, cid) mCmd nodeInfos = Workflow $ do
+    let Just cmd = mCmd
     close <- modalHeader $ text "Transfer Status"
     _ <- elClass "div" "modal__main transaction_details" $
-      submitTransactionWithFeedback model cmd sender cid (fmap Right nodeInfos)
+      submitTransactionWithFeedback model cmd sender cid nodeInfos
     done <- modalFooter $ confirmButton def "Done"
     pure (close <> done, never)
