@@ -48,6 +48,7 @@ import           Frontend.Log
 import           Frontend.Network
 import           Frontend.UI.Dialogs.DeployConfirmation
 import           Frontend.UI.Modal
+import           Frontend.UI.TabBar
 import           Frontend.UI.Transfer
 import           Frontend.UI.Widgets
 import           Frontend.UI.Widgets.Helpers (dialogSectionHeading)
@@ -146,11 +147,12 @@ checkAndSummarize
   => model
   -> SigBuilderRequest key
   -> Workflow t m (Event t ())
-checkAndSummarize model sbr =
+checkAndSummarize model sbr = checkNetwork
   -- TODO: Add "hash-mismatch" error when Sig-Data hash and payload hash are not identical
-  if Set.disjoint cwPubKeys signerPubkeys
-     then checkNetwork -- errorDialog "Chainweaver does not possess any of the keys required for signing" backW
-     else checkNetwork
+  -- Check the SigData_Hash and Payload AS Text
+  -- if Set.disjoint cwPubKeys signerPubkeys
+  --    then errorDialog "Chainweaver does not possess any of the keys required for signing" backW
+  --    else checkNetwork
   where
     sigData = _sbr_sigData sbr
     backW = txnInputDialog model (Just sigData)
@@ -183,18 +185,23 @@ approveSigDialog
   -> Workflow t m (Event t ())
 approveSigDialog model sbr = Workflow $ do
   let sigData = _sbr_sigData sbr
+      sdHash = toUntypedHash $ _sigDataHash $ _sbr_sigData sbr
       keys = fmap _key_pair $ _sbr_cwKeys sbr
       dNodeInfos = model^.network_selectedNodes
+      p = _sbr_payload sbr
   onClose <- modalHeader $ text "Approve Transaction"
-  sigsOrKeys <- modalMain $ do
-    let p = _sbr_payload sbr
-        sdHash = toUntypedHash $ _sigDataHash $ _sbr_sigData sbr
-    networkWidget p
-    txMetaWidget  $ _pMeta p
-    sigsOrKeys' <- signerWidget (_keyPair_publicKey <$> keys) (_pSigners p) sdHash
-    pactRpcWidget  $ _pPayload p
-    pure $ sequence sigsOrKeys'
-
+  sbTabDyn <- fst <$> sigBuilderSummaryTabs never
+  sigsOrKeysE <- modalMain $ do
+    -- TODO: Do this in a way that isnt completely stupid
+    -- The Summary tab produces a list of all external sigs -- when we switch tabs, we clear this
+    -- list instead of accumulating 
+    eeSigList <- dyn $ ffor sbTabDyn $ \case
+      SigBuilderTab_Summary ->
+        updated . sequence <$>
+          showSigsWidget (_keyPair_publicKey <$> keys) (p^.pSigners) sdHash
+      SigBuilderTab_Details ->  sigBuilderDetailsUI p >>  ([] <$) <$> getPostBuild
+    switchHoldPromptly never eeSigList
+  sigsOrKeys <- holdDyn [] sigsOrKeysE
   (back, sign) <- modalFooter $ (,)
     <$> confirmButton def "Back"
     <*> confirmButton def "Sign"
@@ -202,14 +209,64 @@ approveSigDialog model sbr = Workflow $ do
   let workflowEvent = leftmost
         [ txnInputDialog model (Just sigData) <$ back
         , signAndShowSigDialog model sbr keys <$> sigsOnSubmit
-        -- , transferAndStatus model nodeInfos (sender, cid) cmd <$ signAndSubmit
-        -- , transferAndStatus model (AccountName "jacquin", ChainId "0") cmd nodeInfos <$ signAndSubmit
         ]
-
-  -- => Hash
-  -- -> PublicKey
-  -- -> m (Dynamic t (PublicKeyHex, Maybe UserSig))
   return (onClose, workflowEvent)
+
+  -- sigsOrKeys <- modalMain $ do
+  --   let p = _sbr_payload sbr
+  --       sdHash = toUntypedHash $ _sigDataHash $ _sbr_sigData sbr
+  --   networkWidget p
+  --   txMetaWidget  $ _pMeta p
+  --   sigsOrKeys' <- signerWidget (_keyPair_publicKey <$> keys) (_pSigners p) sdHash
+  --   pactRpcWidget  $ _pPayload p
+  --   pure $ sequence sigsOrKeys'
+
+    -- pb <- getPostBuild
+    -- _ <- mkLabeledClsInput True "Raw Command" $ \cls -> uiTextAreaElement $ def
+    --   & textAreaElementConfig_setValue .~ leftmost [updated code, tag (current code) pb]
+    --   & initialAttributes .~ "disabled" =: "" <> "style" =: "width: 100%" <> "class" =: renderClass cls
+
+sigBuilderDetailsUI
+  :: MonadWidget t m
+  => Payload PublicMeta Text
+  -> m ()
+sigBuilderDetailsUI p = do
+  -- let sdHash = toUntypedHash $ _sigDataHash $ _sbr_sigData sbr
+  txMetaWidget  $ p^.pMeta
+  networkWidget p
+  signerWidget $ p^.pSigners
+  pactRpcWidget  $ _pPayload p
+  pure ()
+
+
+data SigBuilderTab = SigBuilderTab_Summary | SigBuilderTab_Details
+  deriving (Show, Eq)
+
+sigBuilderSummaryTabs
+  :: (DomBuilder t m, PostBuild t m, MonadHold t m, MonadFix m)
+  => Event t SigBuilderTab
+  -> m (Dynamic t SigBuilderTab, Event t ())
+sigBuilderSummaryTabs tabEv = do
+  let f t0 g = case g t0 of
+        Nothing -> (Just t0, Just ())
+        Just t  -> (Just t, Nothing)
+  rec
+    (curSelection, done) <- mapAccumMaybeDyn f SigBuilderTab_Summary $ leftmost
+      [ const . Just <$> onTabClick
+      , const . Just <$> tabEv
+      ]
+    (TabBar onTabClick) <- makeTabBar $ TabBarCfg
+      { _tabBarCfg_tabs = [SigBuilderTab_Summary, SigBuilderTab_Details]
+      , _tabBarCfg_mkLabel = \_ -> displaySigBuilderTab
+      , _tabBarCfg_selectedTab = Just <$> curSelection
+      , _tabBarCfg_classes = mempty
+      , _tabBarCfg_type = TabBarType_Secondary
+      }
+  pure (curSelection, done)
+  where 
+    displaySigBuilderTab SigBuilderTab_Details = text "Details"
+    displaySigBuilderTab SigBuilderTab_Summary = text "Summary"
+
 
 signAndShowSigDialog
   :: SigBuilderWorkflow t m model key
@@ -278,12 +335,36 @@ data SigBuilderRequest key = SigBuilderRequest
   }
 
 signerWidget
+  :: (MonadWidget t m)
+  => [Signer]
+  -> m ()
+signerWidget signers = do
+  dialogSectionHeading mempty "Signers"
+  forM_ signers $ \s ->
+    divClass "group segment" $ do 
+      mkLabeledClsInput True "Key:" $ \_ -> text (renderCompactText $ s ^.siPubKey)
+      mkLabeledClsInput True "Caps:" $ \_ -> case s^.siCapList of
+        [] -> text "Unscoped Signer"
+        cl -> do
+          let 
+            lines = foldl (\acc cap -> (renderCompactText cap):"":acc) [] cl
+            txt = T.init $ T.init $ T.unlines lines
+            rows = tshow $ 2 * length lines
+          void $ uiTextAreaElement $ def
+            & textAreaElementConfig_initialValue .~ txt
+            & initialAttributes .~ fold
+              [ "disabled" =: ""
+              , "rows" =: rows
+              , "style" =: "color: black; width: 100%; height: auto;" 
+              ]
+
+showSigsWidget
   :: (MonadWidget t m, HasCrypto key m)
   => [PublicKey]
   -> [Signer]
   -> Hash
   -> m [Dynamic t (PublicKeyHex, Maybe UserSig)]
-signerWidget cwKeys signers sdHash = do
+showSigsWidget cwKeys signers sdHash = do
   let (unscoped, scoped) = partition isUnscoped signers
   dUnscoped <- ifEmptyBlankSigner unscoped $ do
     dialogSectionHeading mempty "Unscoped Signers"
@@ -374,7 +455,7 @@ pactRpcWidget (Continuation c) = do
     mkLabeledClsInput True "Proof" $ \_ -> text $ tshow $ _cmProof c
 
 networkWidget :: MonadWidget t m => Payload PublicMeta a -> m ()
-networkWidget p = case _pNetworkId p of
+networkWidget p = case p^.pNetworkId of
   Nothing -> blank
   Just n -> do
     dialogSectionHeading mempty "Network"
