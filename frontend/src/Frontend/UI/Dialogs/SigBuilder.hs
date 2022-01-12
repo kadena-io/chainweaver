@@ -28,7 +28,7 @@ import qualified Data.IntMap as IMap
 import           Data.YAML
 import qualified Data.YAML.Aeson as Y
 import           Pact.Types.ChainMeta
-import           Pact.Types.ChainId   (networkId)
+import           Pact.Types.ChainId   (networkId, NetworkId)
 import           Pact.Types.RPC
 import           Pact.Types.Command
 import           Pact.Types.Hash (Hash, hash, toUntypedHash, unHash)
@@ -91,6 +91,17 @@ type SigBuilderWorkflow t m model key =
   , HasTransactionLogger m
   )
 
+--------------------------------------------------------------------------------
+-- Input Flow
+--------------------------------------------------------------------------------
+
+data SigBuilderRequest key = SigBuilderRequest
+  { _sbr_sigData        :: SigData Text
+  , _sbr_payload        :: Payload PublicMeta Text
+  , _sbr_currentNetwork :: Maybe NetworkName
+  , _sbr_cwKeys         :: [ Key key ]
+  }
+
 txnInputDialog
   ::
   ( MonadWidget t m
@@ -113,6 +124,59 @@ txnInputDialog model mInitVal = Workflow $ mdo
       sbr = attachWith (\(keys, net) (sd, pl) -> SigBuilderRequest sd pl net keys) keysAndNet approveE
   return (onCancel <> onClose, checkAndSummarize model <$> sbr)
 
+data DataToBeSigned
+  = DTB_SigData (SigData T.Text, Payload PublicMeta Text)
+  | DTB_ErrorString String
+  | DTB_EmptyString
+
+parseInputToSigDataWidget
+  :: MonadWidget t m
+  => Maybe (SigData Text)
+  -> m (Dynamic t (Maybe (SigData Text, Payload PublicMeta Text)))
+parseInputToSigDataWidget mInit =
+  divClass "group" $ do
+    txt <- fmap value
+      $ mkLabeledClsInput False "Paste Transaction" $ \cls ->
+          uiTxSigner mInit cls def
+    let parsedBytes = parseBytes . T.encodeUtf8 <$> txt
+    dyn_ $ ffor parsedBytes $ \case
+      DTB_ErrorString e -> elClass "p" "error_inline" $ text $ T.pack e
+      _ -> blank
+    return $ validInput <$>  parsedBytes
+  where
+    parsePayload :: Text -> Either String (Payload PublicMeta Text)
+    parsePayload cmdText =
+      first (const "Invalid cmd field inside SigData.") $
+        A.eitherDecodeStrict (T.encodeUtf8 cmdText)
+
+    parseAndAttachPayload sd =
+      case parsePayload =<< (justErr "Payload missing" $ _sigDataCmd sd) of
+        Left e -> DTB_ErrorString e
+        Right p -> DTB_SigData (sd, p)
+
+    parseBytes "" = DTB_EmptyString
+    parseBytes bytes =
+      -- Parse the JSON, and consume all the input
+      case parseOnly jsonEOF' bytes of
+        Right val -> case A.fromJSON val of
+          A.Success sigData -> parseAndAttachPayload sigData
+          A.Error errStr -> DTB_ErrorString errStr
+             --TODO: Add payload case later
+            -- case A.fromJSON val of
+            -- A.Success payload -> Just $ Right payload
+            -- A.Error errorStr -> ErrorString errorStr
+
+        -- We did not receive JSON, try parsing it as YAML
+        Left _ -> case Y.decode1Strict bytes of
+          Right sigData -> parseAndAttachPayload sigData
+          Left (pos, errorStr) -> DTB_ErrorString $ prettyPosWithSource pos (LB.fromStrict bytes) errorStr
+    validInput DTB_EmptyString = Nothing
+    validInput (DTB_ErrorString _) = Nothing
+    validInput (DTB_SigData info) = Just info
+
+--------------------------------------------------------------------------------
+-- Preprocessing and Handling
+--------------------------------------------------------------------------------
 warningDialog
   :: (MonadWidget t m)
   => Text
@@ -178,6 +242,9 @@ checkAndSummarize model sbr = checkNetwork
            | x == y -> nextW
          (Just x, pNet) -> warningDialog (networkWarning x pNet) backW nextW
 
+--------------------------------------------------------------------------------
+-- Approval
+--------------------------------------------------------------------------------
 approveSigDialog
   :: SigBuilderWorkflow t m model key
   => ModalIde m key t
@@ -194,7 +261,7 @@ approveSigDialog model sbr = Workflow $ do
   sigsOrKeysE <- modalMain $ do
     -- TODO: Do this in a way that isnt completely stupid
     -- The Summary tab produces a list of all external sigs -- when we switch tabs, we clear this
-    -- list instead of accumulating 
+    -- list instead of accumulating
     eeSigList <- dyn $ ffor sbTabDyn $ \case
       SigBuilderTab_Summary ->
         updated . sequence <$>
@@ -226,19 +293,6 @@ approveSigDialog model sbr = Workflow $ do
     --   & textAreaElementConfig_setValue .~ leftmost [updated code, tag (current code) pb]
     --   & initialAttributes .~ "disabled" =: "" <> "style" =: "width: 100%" <> "class" =: renderClass cls
 
-sigBuilderDetailsUI
-  :: MonadWidget t m
-  => Payload PublicMeta Text
-  -> m ()
-sigBuilderDetailsUI p = do
-  -- let sdHash = toUntypedHash $ _sigDataHash $ _sbr_sigData sbr
-  txMetaWidget  $ p^.pMeta
-  networkWidget p
-  signerWidget $ p^.pSigners
-  pactRpcWidget  $ _pPayload p
-  pure ()
-
-
 data SigBuilderTab = SigBuilderTab_Summary | SigBuilderTab_Details
   deriving (Show, Eq)
 
@@ -263,11 +317,67 @@ sigBuilderSummaryTabs tabEv = do
       , _tabBarCfg_type = TabBarType_Secondary
       }
   pure (curSelection, done)
-  where 
+  where
     displaySigBuilderTab SigBuilderTab_Details = text "Details"
     displaySigBuilderTab SigBuilderTab_Summary = text "Summary"
 
+showSigsWidget
+  :: (MonadWidget t m, HasCrypto key m)
+  => [PublicKey]
+  -> [Signer]
+  -> Hash
+  -> m [Dynamic t (PublicKeyHex, Maybe UserSig)]
+showSigsWidget cwKeys signers sdHash = do
+  let (unscoped, scoped) = partition isUnscoped signers
+  dUnscoped <- ifEmptyBlankSigner unscoped $ do
+    dialogSectionHeading mempty "Unscoped Signers"
+    divClass "group" $ do
+      fmap catMaybes $ mapM unscopedSignerRow unscoped
 
+  dScoped <- ifEmptyBlankSigner scoped $ do
+    dialogSectionHeading mempty "Scoped Signers"
+    fmap catMaybes $ mapM scopedSignerRow scoped
+  let sigsOrKeys = dScoped <> dUnscoped
+  pure sigsOrKeys
+
+  where
+    isUnscoped (Signer _ _ _ capList) = capList == []
+    ifEmptyBlankSigner l w = if l == [] then (blank >> pure []) else w
+    unOwnedSigningInput pub =
+      if pub `elem` cwKeys
+        then blank >> pure Nothing
+        else fmap Just $ uiSigningInput sdHash pub
+
+    unscopedSignerRow s = do
+      el "div" $ do
+        maybe blank (text . (<> ":") . tshow) $ _siScheme s
+        text $ _siPubKey s
+        maybe blank (text . (":" <>) . tshow) $ _siAddress s
+      elAttr "ul" ("style" =: "margin-block-start: 0; margin-block-end: 0;") $
+        mapM_ (elAttr "li" ("style" =: "list-style-type: none;") . text . renderCompactText) $ _siCapList s
+      -- uiSigningInput sdHash pkey
+      let (Right pkey) = parsePublicKey $ _siPubKey s
+      unOwnedSigningInput pkey
+
+    scopedSignerRow signer = do
+      divClass "group" $ do
+        visible <- divClass "signer__row" $ do
+          let accordionCell o = (if o then "" else "accordion-collapsed ") <> "payload__accordion "
+          rec
+            clk <- elDynClass "div" (accordionCell <$> visible') $ accordionButton def
+            visible' <- toggle True clk
+          divClass "signer__pubkey" $ text $ _siPubKey signer
+          pure visible'
+        elDynAttr "div" (ffor visible $ bool ("hidden"=:mempty) mempty)$ do
+          el "ul" $ forM_ (_siCapList signer) $ \cap ->
+            elAttr "li" ("style" =: "list-style-type:none;")$ text $ renderCompactText cap
+        let (Right pkey) = parsePublicKey $ _siPubKey signer
+        unOwnedSigningInput pkey
+
+
+--------------------------------------------------------------------------------
+-- Signature and Submission
+--------------------------------------------------------------------------------
 signAndShowSigDialog
   :: SigBuilderWorkflow t m model key
   => ModalIde m key t
@@ -327,103 +437,53 @@ addSigsToSigData sd signingKeys sigList = do
       otherwise -> pure (pkHex, pkHex `lookup` sigList)
   pure $ sd { _sigDataSigs = sigList }
 
-data SigBuilderRequest key = SigBuilderRequest
-  { _sbr_sigData        :: SigData Text
-  , _sbr_payload        :: Payload PublicMeta Text
-  , _sbr_currentNetwork :: Maybe NetworkName
-  , _sbr_cwKeys         :: [ Key key ]
-  }
+transferAndStatus
+  :: (MonadWidget t m, HasLogger model t, HasTransactionLogger m)
+  => model
+  -> (AccountName, ChainId)
+  -> Maybe (Command Text)
+  -> [Either Text NodeInfo]
+  -> Workflow t m (Event t ())
+transferAndStatus model (sender, cid) mCmd nodeInfos = Workflow $ do
+    let Just cmd = mCmd
+    close <- modalHeader $ text "Transfer Status"
+    _ <- elClass "div" "modal__main transaction_details" $
+      submitTransactionWithFeedback model cmd sender cid nodeInfos
+    done <- modalFooter $ confirmButton def "Done"
+    pure (close <> done, never)
 
-signerWidget
-  :: (MonadWidget t m)
-  => [Signer]
+--------------------------------------------------------------------------------
+-- Display Widgets
+--------------------------------------------------------------------------------
+
+sigBuilderDetailsUI
+  :: MonadWidget t m
+  => Payload PublicMeta Text
   -> m ()
-signerWidget signers = do
-  dialogSectionHeading mempty "Signers"
-  forM_ signers $ \s ->
-    divClass "group segment" $ do 
-      mkLabeledClsInput True "Key:" $ \_ -> text (renderCompactText $ s ^.siPubKey)
-      mkLabeledClsInput True "Caps:" $ \_ -> case s^.siCapList of
-        [] -> text "Unscoped Signer"
-        cl -> do
-          let 
-            lines = foldl (\acc cap -> (renderCompactText cap):"":acc) [] cl
-            txt = T.init $ T.init $ T.unlines lines
-            rows = tshow $ 2 * length lines
-          void $ uiTextAreaElement $ def
-            & textAreaElementConfig_initialValue .~ txt
-            & initialAttributes .~ fold
-              [ "disabled" =: ""
-              , "rows" =: rows
-              , "style" =: "color: black; width: 100%; height: auto;" 
-              ]
-
-showSigsWidget
-  :: (MonadWidget t m, HasCrypto key m)
-  => [PublicKey]
-  -> [Signer]
-  -> Hash
-  -> m [Dynamic t (PublicKeyHex, Maybe UserSig)]
-showSigsWidget cwKeys signers sdHash = do
-  let (unscoped, scoped) = partition isUnscoped signers
-  dUnscoped <- ifEmptyBlankSigner unscoped $ do
-    dialogSectionHeading mempty "Unscoped Signers"
-    divClass "group" $ do
-      fmap catMaybes $ mapM unscopedSignerRow unscoped
-
-  dScoped <- ifEmptyBlankSigner scoped $ do
-    dialogSectionHeading mempty "Scoped Signers"
-    fmap catMaybes $ mapM scopedSignerRow scoped
-  let sigsOrKeys = dScoped <> dUnscoped
-  pure sigsOrKeys
-
-  where
-    isUnscoped (Signer _ _ _ capList) = capList == []
-    ifEmptyBlankSigner l w = if l == [] then (blank >> pure []) else w
-    unOwnedSigningInput pub =
-      if pub `elem` cwKeys
-        then blank >> pure Nothing
-        else fmap Just $ uiSigningInput sdHash pub
-
-    unscopedSignerRow s = do
-      el "div" $ do
-        maybe blank (text . (<> ":") . tshow) $ _siScheme s
-        text $ _siPubKey s
-        maybe blank (text . (":" <>) . tshow) $ _siAddress s
-      elAttr "ul" ("style" =: "margin-block-start: 0; margin-block-end: 0;") $
-        mapM_ (elAttr "li" ("style" =: "list-style-type: none;") . text . renderCompactText) $ _siCapList s
-      -- uiSigningInput sdHash pkey
-      let (Right pkey) = parsePublicKey $ _siPubKey s
-      unOwnedSigningInput pkey
-
-    scopedSignerRow signer = do
-      divClass "group" $ do
-        visible <- divClass "signer__row" $ do
-          let accordionCell o = (if o then "" else "accordion-collapsed ") <> "payload__accordion "
-          rec
-            clk <- elDynClass "div" (accordionCell <$> visible') $ accordionButton def
-            visible' <- toggle True clk
-          divClass "signer__pubkey" $ text $ _siPubKey signer
-          pure visible'
-        elDynAttr "div" (ffor visible $ bool ("hidden"=:mempty) mempty)$ do
-          el "ul" $ forM_ (_siCapList signer) $ \cap ->
-            elAttr "li" ("style" =: "list-style-type:none;")$ text $ renderCompactText cap
-        let (Right pkey) = parsePublicKey $ _siPubKey signer
-        unOwnedSigningInput pkey
-
+sigBuilderDetailsUI p = do
+  -- let sdHash = toUntypedHash $ _sigDataHash $ _sbr_sigData sbr
+  txMetaWidget (p^.pMeta) $ p^.pNetworkId
+  signerWidget $ p^.pSigners
+  pactRpcWidget  $ _pPayload p
+  pure ()
 
 
 txMetaWidget
   :: MonadWidget t m
   => PublicMeta
+  -> Maybe NetworkId
   -> m ()
-txMetaWidget pm = do
+txMetaWidget pm mNet = do
   dialogSectionHeading mempty "Transaction Metadata"
   _ <- divClass "group segment" $ do
-    mkLabeledClsInput True "Chain" $ \_ -> text (renderCompactText $ _pmChainId pm)
-    mkLabeledClsInput True "Gas Payer" $ \_ -> text (_pmSender pm)
-    mkLabeledClsInput True "Gas Price" $ \_ -> text (renderCompactText $ _pmGasPrice pm)
-    mkLabeledClsInput True "Gas Limit" $ \_ -> text (renderCompactText $ _pmGasLimit pm)
+    case mNet of
+      Nothing -> blank
+      Just n ->
+        mkLabeledClsInput True "Network" $ \_ -> text $ renderCompactText n
+    mkLabeledClsInput True "Chain" $ const $ text $ renderCompactText $ pm^.pmChainId
+    mkLabeledClsInput True "Gas Payer" $ \_ -> text $ pm^.pmSender
+    mkLabeledClsInput True "Gas Price" $ \_ -> text $ renderCompactText $ pm^.pmGasPrice
+    mkLabeledClsInput True "Gas Limit" $ \_ -> text $ renderCompactText $ pm^.pmGasLimit
     let totalGas = fromIntegral (_pmGasLimit pm) * _pmGasPrice pm
     mkLabeledClsInput True "Max Gas Cost" $ \_ -> text $ renderCompactText totalGas <> " KDA"
   pure ()
@@ -454,74 +514,35 @@ pactRpcWidget (Continuation c) = do
     mkLabeledClsInput True "Data" $ \_ -> text $ tshow $ _cmData c
     mkLabeledClsInput True "Proof" $ \_ -> text $ tshow $ _cmProof c
 
+signerWidget
+  :: (MonadWidget t m)
+  => [Signer]
+  -> m ()
+signerWidget signers = do
+  dialogSectionHeading mempty "Signers"
+  forM_ signers $ \s ->
+    divClass "group segment" $ do
+      mkLabeledClsInput True "Key:" $ \_ -> text (renderCompactText $ s ^.siPubKey)
+      mkLabeledClsInput True "Caps:" $ \_ -> case s^.siCapList of
+        [] -> text "Unscoped Signer"
+        cl -> do
+          let
+            lines = foldl (\acc cap -> (renderCompactText cap):"":acc) [] cl
+            txt = T.init $ T.init $ T.unlines lines
+            rows = tshow $ 2 * length lines
+          void $ uiTextAreaElement $ def
+            & textAreaElementConfig_initialValue .~ txt
+            & initialAttributes .~ fold
+              [ "disabled" =: ""
+              , "rows" =: rows
+              , "style" =: "color: black; width: 100%; height: auto;"
+              ]
+
 networkWidget :: MonadWidget t m => Payload PublicMeta a -> m ()
-networkWidget p = case p^.pNetworkId of
-  Nothing -> blank
-  Just n -> do
-    dialogSectionHeading mempty "Network"
-    divClass "group" $ text $ n ^. networkId
+networkWidget p =
+  case p^.pNetworkId of
+    Nothing -> blank
+    Just n -> do
+      dialogSectionHeading mempty "Network"
+      divClass "group" $ text $ n ^. networkId
 
-data DataToBeSigned
-  = DTB_SigData (SigData T.Text, Payload PublicMeta Text)
-  | DTB_ErrorString String
-  | DTB_EmptyString
-
-parseInputToSigDataWidget
-  :: MonadWidget t m
-  => Maybe (SigData Text)
-  -> m (Dynamic t (Maybe (SigData Text, Payload PublicMeta Text)))
-parseInputToSigDataWidget mInit =
-  divClass "group" $ do
-    txt <- fmap value
-      $ mkLabeledClsInput False "Paste Transaction" $ \cls ->
-          uiTxSigner mInit cls def
-    let parsedBytes = parseBytes . T.encodeUtf8 <$> txt
-    dyn_ $ ffor parsedBytes $ \case
-      DTB_ErrorString e -> elClass "p" "error_inline" $ text $ T.pack e
-      _ -> blank
-    return $ validInput <$>  parsedBytes
-  where
-    parsePayload :: Text -> Either String (Payload PublicMeta Text)
-    parsePayload cmdText =
-      first (const "Invalid cmd field inside SigData.") $
-        A.eitherDecodeStrict (T.encodeUtf8 cmdText)
-
-    parseAndAttachPayload sd =
-      case parsePayload =<< (justErr "Payload missing" $ _sigDataCmd sd) of
-        Left e -> DTB_ErrorString e
-        Right p -> DTB_SigData (sd, p)
-
-    parseBytes "" = DTB_EmptyString
-    parseBytes bytes =
-      -- Parse the JSON, and consume all the input
-      case parseOnly jsonEOF' bytes of
-        Right val -> case A.fromJSON val of
-          A.Success sigData -> parseAndAttachPayload sigData
-          A.Error errStr -> DTB_ErrorString errStr
-             --TODO: Add payload case later
-            -- case A.fromJSON val of
-            -- A.Success payload -> Just $ Right payload
-            -- A.Error errorStr -> ErrorString errorStr
-
-        -- We did not receive JSON, try parsing it as YAML
-        Left _ -> case Y.decode1Strict bytes of
-          Right sigData -> parseAndAttachPayload sigData
-          Left (pos, errorStr) -> DTB_ErrorString $ prettyPosWithSource pos (LB.fromStrict bytes) errorStr
-    validInput DTB_EmptyString = Nothing
-    validInput (DTB_ErrorString _) = Nothing
-    validInput (DTB_SigData info) = Just info
-
-transferAndStatus
-  :: (MonadWidget t m, HasLogger model t, HasTransactionLogger m)
-  => model
-  -> (AccountName, ChainId)
-  -> Maybe (Command Text)
-  -> [Either Text NodeInfo]
-  -> Workflow t m (Event t ())
-transferAndStatus model (sender, cid) mCmd nodeInfos = Workflow $ do
-    let Just cmd = mCmd
-    close <- modalHeader $ text "Transfer Status"
-    _ <- elClass "div" "modal__main transaction_details" $
-      submitTransactionWithFeedback model cmd sender cid nodeInfos
-    done <- modalFooter $ confirmButton def "Done"
-    pure (close <> done, never)
