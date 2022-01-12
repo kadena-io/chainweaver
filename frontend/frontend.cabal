@@ -114,7 +114,6 @@ library
   if !impl(ghcjs)
     build-depends:
         qrcode-juicypixels
-      , yaml
 
   exposed-modules: Frontend
                  , Frontend.AppCfg
