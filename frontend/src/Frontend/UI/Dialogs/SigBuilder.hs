@@ -12,6 +12,7 @@ import           Control.Error hiding (bool, mapMaybe)
 import           Control.Lens
 import           Control.Monad (forM, join)
 import qualified Data.Aeson as A
+import           Data.Decimal (Decimal, roundTo)
 import qualified Data.Set as Set
 import           Data.Aeson.Parser.Internal (jsonEOF')
 import           Data.Attoparsec.ByteString
@@ -23,17 +24,23 @@ import           Data.Text (Text)
 import qualified Data.Text as T
 import qualified Data.Text.Encoding as T
 import qualified Data.Text.Lazy as LT
+import           Data.Map (Map)
 import qualified Data.Map as Map
 import qualified Data.IntMap as IMap
 import           Data.YAML
 import qualified Data.YAML.Aeson as Y
 import           Pact.Types.ChainMeta
 import           Pact.Types.ChainId   (networkId, NetworkId)
+import           Pact.Types.Gas
 import           Pact.Types.RPC
 import           Pact.Types.Command
 import           Pact.Types.Hash (Hash, hash, toUntypedHash, unHash)
 import           Pact.Types.SigData
-import           Pact.Types.Util             (decodeBase64UrlUnpadded)
+import           Pact.Types.PactValue (PactValue(..))
+import           Pact.Types.Capability
+import           Pact.Types.Names (QualifiedName(..))
+import           Pact.Types.Exp (Literal(..))
+import           Pact.Types.Util (decodeBase64UrlUnpadded, asString)
 import           Pact.Types.Pretty
 import           Pact.Types.Info
 import qualified Pact.Types.Term                   as Pact
@@ -255,7 +262,9 @@ approveSigDialog model sbr = Workflow $ do
       sdHash = toUntypedHash $ _sigDataHash $ _sbr_sigData sbr
       keys = fmap _key_pair $ _sbr_cwKeys sbr
       dNodeInfos = model^.network_selectedNodes
+      sigs = _sigDataSigs sigData --[(PublicKeyHex, Maybe UserSig)]
       p = _sbr_payload sbr
+      pm = p ^.pMeta
   onClose <- modalHeader $ text "Approve Transaction"
   sbTabDyn <- fst <$> sigBuilderSummaryTabs never
   sigsOrKeysE <- modalMain $ do
@@ -265,7 +274,7 @@ approveSigDialog model sbr = Workflow $ do
     eeSigList <- dyn $ ffor sbTabDyn $ \case
       SigBuilderTab_Summary ->
         updated . sequence <$>
-          showSigsWidget (_keyPair_publicKey <$> keys) (p^.pSigners) sdHash
+          showSigsWidget pm (_keyPair_publicKey <$> keys) (p^.pSigners) sigs sdHash
       SigBuilderTab_Details ->  sigBuilderDetailsUI p >>  ([] <$) <$> getPostBuild
     switchHoldPromptly never eeSigList
   sigsOrKeys <- holdDyn [] sigsOrKeysE
@@ -323,12 +332,28 @@ sigBuilderSummaryTabs tabEv = do
 
 showSigsWidget
   :: (MonadWidget t m, HasCrypto key m)
-  => [PublicKey]
+  => PublicMeta
+  -> [PublicKey]
   -> [Signer]
+  -> [(PublicKeyHex, Maybe UserSig)]
   -> Hash
   -> m [Dynamic t (PublicKeyHex, Maybe UserSig)]
-showSigsWidget cwKeys signers sdHash = do
-  let (unscoped, scoped) = partition isUnscoped signers
+showSigsWidget pm cwKeys signers sigs sdHash = do
+  let
+    orderedSigs = catMaybes $ ffor signers $ \s -> 
+      ffor (lookup (PublicKeyHex $ _siPubKey s) sigs) $ \a-> (s, (PublicKeyHex $ _siPubKey s, a))
+    missingSigs = filter (isNothing . snd . snd) orderedSigs
+    (unscoped, scoped) = partition isUnscoped $ fst <$> missingSigs
+    (cwSigners, externalSigners) = partition isCWSigner missingSigs
+    initSummary = signersToSummary $ fmap fst cwSigners
+
+  -- forM_ cwSigners $ \s -> el "p" $ text $ tshow s
+  -- el "p" $ text "hello"
+  -- el "p" $ text "hello"
+  -- forM_ externalSigners $ \s -> el "p" $ text $ tshow s
+  text $ tshow initSummary
+
+  showTransactionSummary (constDyn initSummary) pm
   dUnscoped <- ifEmptyBlankSigner unscoped $ do
     dialogSectionHeading mempty "Unscoped Signers"
     divClass "group" $ do
@@ -338,9 +363,25 @@ showSigsWidget cwKeys signers sdHash = do
     dialogSectionHeading mempty "Scoped Signers"
     fmap catMaybes $ mapM scopedSignerRow scoped
   let sigsOrKeys = dScoped <> dUnscoped
+      -- cwSigners = ffor missingSigs $ \(signer, (pkh, _)) ->
+      --   _
   pure sigsOrKeys
 
   where
+    signersToSummary signers =
+      let (trans, paysGas, unscoped) = foldr go (mempty, False, 0) signers
+          totalGas = fromIntegral (_pmGasLimit pm) * _pmGasPrice pm
+          gas = if paysGas then Just totalGas else Nothing
+       in TransactionSummary trans gas unscoped
+    go signer (tokenMap, doesPayGas, unscopedCounter) =
+      let capList = signer^.siCapList
+          tokenTransfers = mapMaybe parseFungibleTransferCap capList
+          tokenMap' = foldr (\(k, v) m -> Map.insertWith (+) k v m) tokenMap tokenTransfers
+          signerHasGas = isJust $ find (\cap -> asString (_scName cap) == "coin.GAS") capList
+      in if capList == [] then (tokenMap, doesPayGas, unscopedCounter + 1)
+                          else (tokenMap', doesPayGas || signerHasGas, unscopedCounter)
+    cwKeysPKH = PublicKeyHex . keyToText <$> cwKeys
+    isCWSigner (_, (pkh, _)) = pkh `elem` cwKeysPKH
     isUnscoped (Signer _ _ _ capList) = capList == []
     ifEmptyBlankSigner l w = if l == [] then (blank >> pure []) else w
     unOwnedSigningInput pub =
@@ -374,6 +415,50 @@ showSigsWidget cwKeys signers sdHash = do
         let (Right pkey) = parsePublicKey $ _siPubKey signer
         unOwnedSigningInput pkey
 
+parseFungibleTransferCap :: SigCapability -> Maybe (Text, Decimal)
+parseFungibleTransferCap cap = transferCap cap
+  where
+    isFungible (QualifiedName _capModName capName _) =
+      capName == "TRANSFER"
+    transferCap (SigCapability modName
+      [(PLiteral (LString _sender))
+      ,(PLiteral (LString _receiver))
+      ,(PLiteral (LDecimal amount))])
+        | isFungible modName = Just (renderCompactText $ _qnQual modName, amount)
+        | otherwise = Nothing
+    transferCap _ = Nothing
+
+
+data TransactionSummary = TransactionSummary
+  { _ts_tokenTransfers :: Map Text Decimal
+  , _ts_maxGas :: Maybe GasPrice -- Checks for GAS cap -- and then uses meta to calc
+  , _ts_numUnscoped :: Int
+  } deriving (Show, Eq)
+
+showTransactionSummary
+  :: MonadWidget t m
+  => Dynamic t (TransactionSummary)
+  -> PublicMeta
+  -> m ()
+showTransactionSummary dSummary pm = do
+  dialogSectionHeading mempty "Impact Summary"
+  divClass "group" $ dyn_ $ ffor dSummary $ \summary -> do
+    let tokens = _ts_tokenTransfers summary
+        kda = Map.lookup "coin" tokens
+        tokens' = Map.delete "coin" tokens
+    flip (maybe blank) kda $ \kdaAmount ->
+      void $ mkLabeledClsInput True "Amount KDA" $ const $
+        text $ showWithDecimal kdaAmount <> " KDA"
+    if tokens' == mempty then blank else
+      void $ mkLabeledClsInput True "Amount (Tokens)" $ const $ el "div" $
+        forM_ (Map.toList tokens') $ \(name, amount) ->
+          el "p" $ text $ showWithDecimal amount <> " " <> name
+    void $ mkLabeledClsInput True "Unscoped Sigs" $
+      const $ text $ tshow $ _ts_numUnscoped summary
+    case _ts_maxGas summary of
+      Nothing -> blank
+      Just price -> void $ mkLabeledClsInput True "Max Gas Cost" $
+        const $ text $ renderCompactText price <> " KDA"
 
 --------------------------------------------------------------------------------
 -- Signature and Submission
@@ -463,8 +548,8 @@ sigBuilderDetailsUI
 sigBuilderDetailsUI p = do
   -- let sdHash = toUntypedHash $ _sigDataHash $ _sbr_sigData sbr
   txMetaWidget (p^.pMeta) $ p^.pNetworkId
-  signerWidget $ p^.pSigners
   pactRpcWidget  $ _pPayload p
+  signerWidget $ p^.pSigners
   pure ()
 
 
