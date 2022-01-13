@@ -43,7 +43,6 @@ import           Reflex.Dom hiding (Command, Key)
 import           Frontend.Crypto.Class
 import           Frontend.Foundation
 import           Frontend.UI.Modal
-import           Frontend.UI.Transfer
 import           Frontend.UI.Widgets
 import           Frontend.UI.Widgets.Helpers (dialogSectionHeading)
 import           Frontend.Wallet
