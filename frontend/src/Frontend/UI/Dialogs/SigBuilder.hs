@@ -340,19 +340,14 @@ showSigsWidget
   -> m [Dynamic t (PublicKeyHex, Maybe UserSig)]
 showSigsWidget pm cwKeys signers sigs sdHash = do
   let
-    orderedSigs = catMaybes $ ffor signers $ \s -> 
+    orderedSigs = catMaybes $ ffor signers $ \s ->
       ffor (lookup (PublicKeyHex $ _siPubKey s) sigs) $ \a-> (s, (PublicKeyHex $ _siPubKey s, a))
     missingSigs = filter (isNothing . snd . snd) orderedSigs
     (unscoped, scoped) = partition isUnscoped $ fst <$> missingSigs
     (cwSigners, externalSigners) = partition isCWSigner missingSigs
     initSummary = signersToSummary $ fmap fst cwSigners
 
-  -- forM_ cwSigners $ \s -> el "p" $ text $ tshow s
-  -- el "p" $ text "hello"
-  -- el "p" $ text "hello"
-  -- forM_ externalSigners $ \s -> el "p" $ text $ tshow s
-  text $ tshow initSummary
-
+  -- dSummary <- foldDyn
   showTransactionSummary (constDyn initSummary) pm
   dUnscoped <- ifEmptyBlankSigner unscoped $ do
     dialogSectionHeading mempty "Unscoped Signers"
@@ -394,14 +389,11 @@ showSigsWidget pm cwKeys signers sigs sdHash = do
         maybe blank (text . (<> ":") . tshow) $ _siScheme s
         text $ _siPubKey s
         maybe blank (text . (":" <>) . tshow) $ _siAddress s
-      elAttr "ul" ("style" =: "margin-block-start: 0; margin-block-end: 0;") $
-        mapM_ (elAttr "li" ("style" =: "list-style-type: none;") . text . renderCompactText) $ _siCapList s
-      -- uiSigningInput sdHash pkey
       let (Right pkey) = parsePublicKey $ _siPubKey s
       unOwnedSigningInput pkey
 
     scopedSignerRow signer = do
-      divClass "group" $ do
+      divClass "group__signer" $ do
         visible <- divClass "signer__row" $ do
           let accordionCell o = (if o then "" else "accordion-collapsed ") <> "payload__accordion "
           rec
@@ -410,8 +402,7 @@ showSigsWidget pm cwKeys signers sigs sdHash = do
           divClass "signer__pubkey" $ text $ _siPubKey signer
           pure visible'
         elDynAttr "div" (ffor visible $ bool ("hidden"=:mempty) mempty)$ do
-          el "ul" $ forM_ (_siCapList signer) $ \cap ->
-            elAttr "li" ("style" =: "list-style-type:none;")$ text $ renderCompactText cap
+          capListWidget $ _siCapList signer
         let (Right pkey) = parsePublicKey $ _siPubKey signer
         unOwnedSigningInput pkey
 
@@ -608,20 +599,22 @@ signerWidget signers = do
   forM_ signers $ \s ->
     divClass "group segment" $ do
       mkLabeledClsInput True "Key:" $ \_ -> text (renderCompactText $ s ^.siPubKey)
-      mkLabeledClsInput True "Caps:" $ \_ -> case s^.siCapList of
-        [] -> text "Unscoped Signer"
-        cl -> do
-          let
-            lines = foldl (\acc cap -> (renderCompactText cap):"":acc) [] cl
-            txt = T.init $ T.init $ T.unlines lines
-            rows = tshow $ 2 * length lines
-          void $ uiTextAreaElement $ def
-            & textAreaElementConfig_initialValue .~ txt
-            & initialAttributes .~ fold
-              [ "disabled" =: ""
-              , "rows" =: rows
-              , "style" =: "color: black; width: 100%; height: auto;"
-              ]
+      mkLabeledClsInput True "Caps:" $ \_ -> capListWidget $ s^.siCapList
+
+capListWidget :: MonadWidget t m => [SigCapability] -> m ()
+capListWidget [] = text "Unscoped Signer"
+capListWidget cl = do
+  let
+    lines = foldl (\acc cap -> (renderCompactText cap):"":acc) [] cl
+    txt = T.init $ T.init $ T.unlines lines
+    rows = tshow $ 2 * length lines
+  void $ uiTextAreaElement $ def
+    & textAreaElementConfig_initialValue .~ txt
+    & initialAttributes .~ fold
+      [ "disabled" =: ""
+      , "rows" =: rows
+      , "style" =: "color: black; width: 100%; height: auto;"
+      ]
 
 networkWidget :: MonadWidget t m => Payload PublicMeta a -> m ()
 networkWidget p =
