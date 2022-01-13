@@ -22,6 +22,7 @@ import qualified Data.Aeson as A
 import           Data.Aeson.Parser.Internal (jsonEOF')
 import           Data.Attoparsec.ByteString
 import           Data.Bifunctor (first)
+import qualified Data.ByteString as B
 import qualified Data.ByteString.Lazy as LB
 import           Data.Functor (void)
 import qualified Data.Text as T
@@ -37,7 +38,7 @@ import           Pact.Types.SigData
 import           Pact.Types.Util             (decodeBase64UrlUnpadded)
 ------------------------------------------------------------------------------
 import           Reflex
-import           Reflex.Dom hiding (Key)
+import           Reflex.Dom hiding (Command, Key)
 ------------------------------------------------------------------------------
 import           Frontend.Crypto.Class
 import           Frontend.Foundation
@@ -50,7 +51,7 @@ import           Frontend.Wallet
 
 data DataToBeSigned
   = JsonSigData (SigData T.Text)
-  | JsonPayload (Payload PublicMeta T.Text)
+  | JsonPayload (Payload PublicMeta T.Text) B.ByteString
   | YamlSigData (SigData T.Text)
   | ErrorString String
   | EmptyString
@@ -92,7 +93,7 @@ uiKeyDetails _keyIndex key _onCloseExternal = mdo
                   Right val -> case A.fromJSON val of
                     A.Success sigData -> JsonSigData sigData
                     A.Error _ -> case A.fromJSON val of
-                      A.Success payload -> JsonPayload payload
+                      A.Success payload -> JsonPayload payload bytes
                       A.Error errorStr -> ErrorString errorStr
                   -- We did not receive JSON, try parsing it as YAML
                   Left _ -> case Y.decode1Strict bytes of
@@ -141,9 +142,9 @@ uiKeyDetails _keyIndex key _onCloseExternal = mdo
                   fmap join
                     $ mapM (uncurry signHashIfUserIsSigner)
                     $ matchHashAndParsePayload sdHash cmd
-              JsonPayload payload -> do
+              JsonPayload payload payloadBytes -> do
                 let
-                  unsignedCmd = payloadToCommand payload
+                  unsignedCmd = Command (T.decodeUtf8 payloadBytes) [] $ hash payloadBytes
                   signCommand cmd signedHash = cmd  & cmdSigs .~ [signedHash]
                 withHeader "Signed Command"
                   $ fmap
