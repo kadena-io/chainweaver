@@ -34,7 +34,7 @@ import           Pact.Types.ChainId   (networkId, NetworkId)
 import           Pact.Types.Gas
 import           Pact.Types.RPC
 import           Pact.Types.Command
-import           Pact.Types.Hash (Hash, hash, toUntypedHash, unHash)
+import           Pact.Types.Hash (Hash, hash, toUntypedHash, unHash, hashToText)
 import           Pact.Types.SigData
 import           Pact.Types.PactValue (PactValue(..))
 import           Pact.Types.Capability
@@ -196,7 +196,7 @@ warningDialog warningMsg backW nextW = Workflow $ do
     el "h3" $ text "Warning"
     el "p" $ text warningMsg
   (back, next) <- modalFooter $ (,)
-    <$> confirmButton def "Back"
+    <$> cancelButton def "Back"
     <*> confirmButton def "Continue"
   pure $ (onClose, leftmost [ backW <$ back , nextW <$ next ])
 
@@ -210,7 +210,7 @@ errorDialog errorMsg backW = Workflow $ do
   void $ modalMain $ do
     el "h3" $ text "Error"
     el "p" $ text errorMsg
-  back <- modalFooter $ confirmButton def "Back"
+  back <- modalFooter $ cancelButton def "Back"
   pure $ (onClose, backW <$ back)
 
 checkAndSummarize
@@ -279,28 +279,15 @@ approveSigDialog model sbr = Workflow $ do
     switchHoldPromptly never eeSigList
   sigsOrKeys <- holdDyn [] sigsOrKeysE
   (back, sign) <- modalFooter $ (,)
-    <$> confirmButton def "Back"
+    <$> cancelButton def "Back"
     <*> confirmButton def "Sign"
   let sigsOnSubmit = mapMaybe (\(a, mb) -> fmap (a,) mb) <$> current sigsOrKeys <@ sign
   let workflowEvent = leftmost
         [ txnInputDialog model (Just sigData) <$ back
-        , signAndShowSigDialog model sbr keys <$> sigsOnSubmit
+        , signAndShowSigDialog model sbr keys (approveSigDialog model sbr) <$> sigsOnSubmit
         ]
   return (onClose, workflowEvent)
 
-  -- sigsOrKeys <- modalMain $ do
-  --   let p = _sbr_payload sbr
-  --       sdHash = toUntypedHash $ _sigDataHash $ _sbr_sigData sbr
-  --   networkWidget p
-  --   txMetaWidget  $ _pMeta p
-  --   sigsOrKeys' <- signerWidget (_keyPair_publicKey <$> keys) (_pSigners p) sdHash
-  --   pactRpcWidget  $ _pPayload p
-  --   pure $ sequence sigsOrKeys'
-
-    -- pb <- getPostBuild
-    -- _ <- mkLabeledClsInput True "Raw Command" $ \cls -> uiTextAreaElement $ def
-    --   & textAreaElementConfig_setValue .~ leftmost [updated code, tag (current code) pb]
-    --   & initialAttributes .~ "disabled" =: "" <> "style" =: "width: 100%" <> "class" =: renderClass cls
 
 data SigBuilderTab = SigBuilderTab_Summary | SigBuilderTab_Details
   deriving (Show, Eq)
@@ -454,15 +441,60 @@ showTransactionSummary dSummary pm = do
 --------------------------------------------------------------------------------
 -- Signature and Submission
 --------------------------------------------------------------------------------
+data SigDetails = SigDetails_Yaml | SigDetails_Json
+  deriving (Eq,Ord,Show,Read,Enum,Bounded)
+
+showSigDetailsTabName :: SigDetails -> Text
+showSigDetailsTabName SigDetails_Json = "JSON"
+showSigDetailsTabName SigDetails_Yaml = "YAML"
+
+signatureDetails
+  :: (MonadWidget t m)
+  => SigData Text
+  -> m ()
+signatureDetails sd = do
+
+  divClass "tabset" $ mdo
+    void $ uiInputElement $ def
+      & initialAttributes %~ Map.insert "disabled" ""
+      & inputElementConfig_initialValue .~ hashToText (toUntypedHash $ _sigDataHash sd)
+
+    curSelection <- holdDyn SigDetails_Yaml onTabClick
+    (TabBar onTabClick) <- makeTabBar $ TabBarCfg
+      { _tabBarCfg_tabs = [minBound .. maxBound]
+      , _tabBarCfg_mkLabel = const $ text . showSigDetailsTabName
+      , _tabBarCfg_selectedTab = Just <$> curSelection
+      , _tabBarCfg_classes = mempty
+      , _tabBarCfg_type = TabBarType_Primary
+      }
+
+    tabPane mempty curSelection SigDetails_Yaml $ do
+      let sigDataText = T.decodeUtf8 $ Y.encode1Strict sd
+      void $ uiSignatureResult sigDataText
+    tabPane mempty curSelection SigDetails_Json $ do
+      let sigDataText = T.decodeUtf8 $ LB.toStrict $ A.encode $ A.toJSON sd
+      void $ uiSignatureResult sigDataText
+  pure ()
+  where
+    uiSignatureResult txt = do
+      uiTextAreaElement $ def
+        & textAreaElementConfig_initialValue .~ txt
+        & initialAttributes <>~ fold
+          [ "disabled" =: "true"
+          , "class" =: " labeled-input__input labeled-input__sig-builder"
+          ]
+      uiDetailsCopyButton $ constant txt
+
 signAndShowSigDialog
   :: SigBuilderWorkflow t m model key
   => ModalIde m key t
   -> SigBuilderRequest key
   -> [KeyPair key]  -- ChainweaverKeys
+  -> Workflow t m (Event t ()) -- Workflow for going back
   -> [(PublicKeyHex, UserSig)] -- User-supplied Sigs
   -> Workflow t m (Event t ())
-signAndShowSigDialog model sbr keys sigsOrPrivate = Workflow $ mdo
-  onClose <- modalHeader $ text "Signed Txn"
+signAndShowSigDialog model sbr keys backW sigsOrPrivate = Workflow $ mdo
+  onClose <- modalHeader $ text "Sig Data"
   -- This allows a "loading" page to render before we attempt to do the really computationally
   -- expensive sigs
   pb <- delay 0.1 =<< getPostBuild
@@ -470,20 +502,35 @@ signAndShowSigDialog model sbr keys sigsOrPrivate = Workflow $ mdo
   dmCmd <- widgetHold (modalMain $ text "Loading Signatures ..." >> pure Nothing) $ ffor pb $ \_ ->
     modalMain $ do
       sd <- addSigsToSigData (_sbr_sigData sbr) keys sigsOrPrivate
-      void $ uiTxSigner (Just sd) def def
-      uiDetailsCopyButton $ constant $ T.decodeUtf8 $ Y.encode1Strict sd
-      pure $ hush $ sigDataToCommand sd
+      signatureDetails sd
+      if Nothing `elem` (snd <$> _sigDataSigs sd)
+        then pure Nothing
+        else pure $ hush $ sigDataToCommand sd
+  (back, done, submit) <- modalFooter $ (,,)
+    <$> cancelButton def "Back"
+    <*> confirmButton def "Done"
+    <*> submitButton dmCmd
 
-  (back, submit, finish) <- modalFooter $ (,,)
-    <$> confirmButton def "Back"
-    <*> confirmButton def "Submit to Network"
-    <*> confirmButton def "Finish"
-
-  let cmdAndNet = (,) <$> dmCmd <*> model ^. network_selectedNodes
-      eCmdAndNet = current cmdAndNet <@ submit
-      fUncurry f func = fmap (\tpl -> uncurry f tpl) func
-      submitToNetworkE = transferAndStatus model (AccountName "For Display", ChainId "0") `fUncurry` eCmdAndNet
-  return (onClose <> finish, submitToNetworkE)
+  let
+      cmdAndNet = (,) <$> dmCmd <*> model ^. network_selectedNodes
+      -- Gets rid of Maybe over Command by filtering
+      eCmdAndNet = fmapMaybe (\(mCmd, ni) -> fmap (,ni) mCmd)
+                     $ current cmdAndNet <@ submit
+      -- Given M (a, b) and f :: a -> b -> c , give us M c
+      fUncurry f functor = fmap (\tpl -> uncurry f tpl) functor
+      p = _sbr_payload sbr
+      chain = p^.pMeta.pmChainId
+      sender = p^.pMeta.pmSender
+      submitToNetworkE = transferAndStatus model (AccountName sender, chain) `fUncurry` eCmdAndNet
+  return (onClose <> done, leftmost [backW <$ back, submitToNetworkE])
+  where
+    submitButton dmCmd = do
+      let baseCfg = "class" =: "button button_type_confirm"
+          dynAttr = ffor dmCmd $ \case
+            Nothing -> baseCfg <> ("hidden" =: "true")
+            Just _ -> baseCfg
+      (e, _) <- elDynAttr' "button" dynAttr $ text "Submit to Network"
+      pure $ domEvent Click e
 
 addSigsToSigData
   :: (
@@ -517,11 +564,10 @@ transferAndStatus
   :: (MonadWidget t m, HasLogger model t, HasTransactionLogger m)
   => model
   -> (AccountName, ChainId)
-  -> Maybe (Command Text)
+  -> Command Text
   -> [Either Text NodeInfo]
   -> Workflow t m (Event t ())
-transferAndStatus model (sender, cid) mCmd nodeInfos = Workflow $ do
-    let Just cmd = mCmd
+transferAndStatus model (sender, cid) cmd nodeInfos = Workflow $ do
     close <- modalHeader $ text "Transfer Status"
     _ <- elClass "div" "modal__main transaction_details" $
       submitTransactionWithFeedback model cmd sender cid nodeInfos
