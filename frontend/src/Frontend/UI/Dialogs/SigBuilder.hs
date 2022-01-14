@@ -135,6 +135,16 @@ data DataToBeSigned
   = DTB_SigData (SigData T.Text, Payload PublicMeta Text)
   | DTB_ErrorString String
   | DTB_EmptyString
+  deriving (Show, Eq)
+
+-- TODO: Make sure this makes sense
+payloadToSigData :: Payload PublicMeta Text -> Text -> SigData Text
+payloadToSigData parsedPayload payloadTxt =
+  let 
+    cmdHash = hash $ T.encodeUtf8 payloadTxt
+    sigs = map (\s -> (PublicKeyHex $ _siPubKey s, Nothing)) $ _pSigners parsedPayload
+   in SigData cmdHash sigs $ Just payloadTxt
+
 
 parseInputToSigDataWidget
   :: MonadWidget t m
@@ -167,11 +177,14 @@ parseInputToSigDataWidget mInit =
       case parseOnly jsonEOF' bytes of
         Right val -> case A.fromJSON val of
           A.Success sigData -> parseAndAttachPayload sigData
-          A.Error errStr -> DTB_ErrorString errStr
-             --TODO: Add payload case later
-            -- case A.fromJSON val of
-            -- A.Success payload -> Just $ Right payload
-            -- A.Error errorStr -> ErrorString errorStr
+          -- A.Error errStr -> -- DTB_ErrorString errStr
+          A.Error errStr ->  let bs' = fmap T.encodeUtf8 $ A.fromJSON val in 
+            case A.fromJSON @Text val of
+              A.Success t -> 
+                case (A.eitherDecode $ LB.fromStrict $ T.encodeUtf8 t) of
+                  Left e -> DTB_ErrorString e
+                  Right payload -> parseAndAttachPayload $ payloadToSigData payload t 
+              A.Error errorStr -> DTB_ErrorString errorStr
 
         -- We did not receive JSON, try parsing it as YAML
         Left _ -> case Y.decode1Strict bytes of
