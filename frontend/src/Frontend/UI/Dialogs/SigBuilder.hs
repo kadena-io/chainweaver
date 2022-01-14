@@ -328,25 +328,35 @@ showSigsWidget
 showSigsWidget pm cwKeys signers sigs sdHash = do
   let
     orderedSigs = catMaybes $ ffor signers $ \s ->
-      ffor (lookup (PublicKeyHex $ _siPubKey s) sigs) $ \a-> (s, (PublicKeyHex $ _siPubKey s, a))
-    missingSigs = filter (isNothing . snd . snd) orderedSigs
-    (unscoped, scoped) = partition isUnscoped $ fst <$> missingSigs
-    (cwSigners, externalSigners) = partition isCWSigner missingSigs
-    initSummary = signersToSummary $ fmap fst cwSigners
+      ffor (lookup (PublicKeyHex $ _siPubKey s) sigs) $ \a-> (PublicKeyHex $ _siPubKey s, s, a)
+    missingSigs = filter (\(_, _, sig) -> isNothing sig) orderedSigs
+    (unscoped, scoped) = partition isUnscoped $ view _2 <$> missingSigs
+    -- CwSigners we only need the signer structure;
+    -- ExternalSigners we need a (pkh, Signer) tuple to make lookup more efficient
+    -- when a new signature is added
+    (cwSigners, externalSigners) = first (fmap (view _2)) $ partition isCWSigner missingSigs
+    externalLookup = fmap (\(a, b, _) -> (a, b)) externalSigners
+  rec showTransactionSummary (signersToSummary <$> dSigners) pm
+      dUnscoped <- ifEmptyBlankSigner unscoped $ do
+        dialogSectionHeading mempty "Unscoped Signers"
+        divClass "group" $ do
+          fmap catMaybes $ mapM unscopedSignerRow unscoped
 
-  -- dSummary <- foldDyn
-  showTransactionSummary (constDyn initSummary) pm
-  dUnscoped <- ifEmptyBlankSigner unscoped $ do
-    dialogSectionHeading mempty "Unscoped Signers"
-    divClass "group" $ do
-      fmap catMaybes $ mapM unscopedSignerRow unscoped
-
-  dScoped <- ifEmptyBlankSigner scoped $ do
-    dialogSectionHeading mempty "Scoped Signers"
-    fmap catMaybes $ mapM scopedSignerRow scoped
-  let sigsOrKeys = dScoped <> dUnscoped
-      -- cwSigners = ffor missingSigs $ \(signer, (pkh, _)) ->
-      --   _
+      dScoped <- ifEmptyBlankSigner scoped $ do
+        dialogSectionHeading mempty "Scoped Signers"
+        fmap catMaybes $ mapM scopedSignerRow scoped
+      let sigsOrKeys = dScoped <> dUnscoped
+          sigsOrKeys' = sequence sigsOrKeys
+      -- This constructs the entire list of all signers going to be signed each time a new signer is
+      -- added.
+      dSigners <- foldDyn ($) cwSigners $ leftmost
+        [ ffor (updated sigsOrKeys') $ \new _ -> 
+            let newSigners = catMaybes -- lookups shouldn't fail but we use this to get rid of the maybes
+                  $ fmap (`lookup` externalLookup) -- use the pkh to get the official Signer structure
+                  $ fmap fst -- we only care about the pubkey, not the sig
+                  $ ffilter (isJust . snd) new -- get rid of unsigned elems
+             in cwSigners <> newSigners
+        ]
   pure sigsOrKeys
 
   where
@@ -363,7 +373,7 @@ showSigsWidget pm cwKeys signers sigs sdHash = do
       in if capList == [] then (tokenMap, doesPayGas, unscopedCounter + 1)
                           else (tokenMap', doesPayGas || signerHasGas, unscopedCounter)
     cwKeysPKH = PublicKeyHex . keyToText <$> cwKeys
-    isCWSigner (_, (pkh, _)) = pkh `elem` cwKeysPKH
+    isCWSigner (pkh, _, _) = pkh `elem` cwKeysPKH
     isUnscoped (Signer _ _ _ capList) = capList == []
     ifEmptyBlankSigner l w = if l == [] then (blank >> pure []) else w
     unOwnedSigningInput pub =
@@ -453,12 +463,11 @@ signatureDetails
   => SigData Text
   -> m ()
 signatureDetails sd = do
-
-  divClass "tabset" $ mdo
-    void $ uiInputElement $ def
-      & initialAttributes %~ Map.insert "disabled" ""
+  mkLabeledInput False "Hash" 
+    (\c -> uiInputElement $ c & initialAttributes %~ Map.insert "disabled" "") $ def
       & inputElementConfig_initialValue .~ hashToText (toUntypedHash $ _sigDataHash sd)
 
+  divClass "tabset" $ mdo
     curSelection <- holdDyn SigDetails_Yaml onTabClick
     (TabBar onTabClick) <- makeTabBar $ TabBarCfg
       { _tabBarCfg_tabs = [minBound .. maxBound]
@@ -495,6 +504,10 @@ signAndShowSigDialog
   -> Workflow t m (Event t ())
 signAndShowSigDialog model sbr keys backW sigsOrPrivate = Workflow $ mdo
   onClose <- modalHeader $ text "Sig Data"
+    -- void $ uiInputElement $ def
+    --   & initialAttributes %~ Map.insert "disabled" ""
+    --   & inputElementConfig_initialValue .~ hashToText (toUntypedHash $ _sigDataHash sd)
+
   -- This allows a "loading" page to render before we attempt to do the really computationally
   -- expensive sigs
   pb <- delay 0.1 =<< getPostBuild
