@@ -140,7 +140,7 @@ data DataToBeSigned
 -- TODO: Make sure this makes sense
 payloadToSigData :: Payload PublicMeta Text -> Text -> SigData Text
 payloadToSigData parsedPayload payloadTxt =
-  let 
+  let
     cmdHash = hash $ T.encodeUtf8 payloadTxt
     sigs = map (\s -> (PublicKeyHex $ _siPubKey s, Nothing)) $ _pSigners parsedPayload
    in SigData cmdHash sigs $ Just payloadTxt
@@ -153,7 +153,7 @@ parseInputToSigDataWidget
 parseInputToSigDataWidget mInit =
   divClass "group" $ do
     txt <- fmap value
-      $ mkLabeledClsInput False "Paste Transaction" $ \cls ->
+      $ mkLabeledClsInput False "Paste SigData or Payload" $ \cls ->
           uiTxSigner mInit cls def
     let parsedBytes = parseBytes . T.encodeUtf8 <$> txt
     dyn_ $ ffor parsedBytes $ \case
@@ -177,14 +177,15 @@ parseInputToSigDataWidget mInit =
       case parseOnly jsonEOF' bytes of
         Right val -> case A.fromJSON val of
           A.Success sigData -> parseAndAttachPayload sigData
-          -- A.Error errStr -> -- DTB_ErrorString errStr
-          A.Error errStr ->  let bs' = fmap T.encodeUtf8 $ A.fromJSON val in 
-            case A.fromJSON @Text val of
-              A.Success t -> 
-                case (A.eitherDecode $ LB.fromStrict $ T.encodeUtf8 t) of
-                  Left e -> DTB_ErrorString e
-                  Right payload -> parseAndAttachPayload $ payloadToSigData payload t 
-              A.Error errorStr -> DTB_ErrorString errorStr
+          A.Error errStr ->  let bs' = fmap T.encodeUtf8 $ A.fromJSON val in
+            case A.fromJSON @(Payload PublicMeta Text) val of
+              A.Success p -> parseAndAttachPayload $ payloadToSigData p $ encodeAsText $ LB.fromStrict bytes
+              A.Error _ ->  case A.fromJSON @Text val of
+                A.Success t ->
+                  case (A.eitherDecode $ LB.fromStrict $ T.encodeUtf8 t) of
+                    Left e -> DTB_ErrorString e
+                    Right payload -> parseAndAttachPayload $ payloadToSigData payload t
+                A.Error errorStr -> DTB_ErrorString errorStr
 
         -- We did not receive JSON, try parsing it as YAML
         Left _ -> case Y.decode1Strict bytes of
@@ -277,7 +278,6 @@ approveSigDialog model sbr = Workflow $ do
       dNodeInfos = model^.network_selectedNodes
       sigs = _sigDataSigs sigData --[(PublicKeyHex, Maybe UserSig)]
       p = _sbr_payload sbr
-      pm = p ^.pMeta
   onClose <- modalHeader $ text "Approve Transaction"
   sbTabDyn <- fst <$> sigBuilderSummaryTabs never
   sigsOrKeysE <- modalMain $ do
@@ -287,7 +287,7 @@ approveSigDialog model sbr = Workflow $ do
     eeSigList <- dyn $ ffor sbTabDyn $ \case
       SigBuilderTab_Summary ->
         updated . sequence <$>
-          showSigsWidget pm (_keyPair_publicKey <$> keys) (p^.pSigners) sigs sdHash
+          showSigsWidget p (_keyPair_publicKey <$> keys) sigs sdHash
       SigBuilderTab_Details ->  sigBuilderDetailsUI p >>  ([] <$) <$> getPostBuild
     switchHoldPromptly never eeSigList
   sigsOrKeys <- holdDyn [] sigsOrKeysE
@@ -332,14 +332,14 @@ sigBuilderSummaryTabs tabEv = do
 
 showSigsWidget
   :: (MonadWidget t m, HasCrypto key m)
-  => PublicMeta
+  => Payload PublicMeta Text
   -> [PublicKey]
-  -> [Signer]
   -> [(PublicKeyHex, Maybe UserSig)]
   -> Hash
   -> m [Dynamic t (PublicKeyHex, Maybe UserSig)]
-showSigsWidget pm cwKeys signers sigs sdHash = do
+showSigsWidget p cwKeys sigs sdHash = do
   let
+    signers = p^.pSigners 
     orderedSigs = catMaybes $ ffor signers $ \s ->
       ffor (lookup (PublicKeyHex $ _siPubKey s) sigs) $ \a-> (PublicKeyHex $ _siPubKey s, s, a)
     missingSigs = filter (\(_, _, sig) -> isNothing sig) orderedSigs
@@ -349,7 +349,7 @@ showSigsWidget pm cwKeys signers sigs sdHash = do
     -- when a new signature is added
     (cwSigners, externalSigners) = first (fmap (view _2)) $ partition isCWSigner missingSigs
     externalLookup = fmap (\(a, b, _) -> (a, b)) externalSigners
-  rec showTransactionSummary (signersToSummary <$> dSigners) pm
+  rec showTransactionSummary (signersToSummary <$> dSigners) p
       dUnscoped <- ifEmptyBlankSigner unscoped $ do
         dialogSectionHeading mempty "Unscoped Signers"
         divClass "group" $ do
@@ -363,7 +363,7 @@ showSigsWidget pm cwKeys signers sigs sdHash = do
       -- This constructs the entire list of all signers going to be signed each time a new signer is
       -- added.
       dSigners <- foldDyn ($) cwSigners $ leftmost
-        [ ffor (updated sigsOrKeys') $ \new _ -> 
+        [ ffor (updated sigsOrKeys') $ \new _ ->
             let newSigners = catMaybes -- lookups shouldn't fail but we use this to get rid of the maybes
                   $ fmap (`lookup` externalLookup) -- use the pkh to get the official Signer structure
                   $ fmap fst -- we only care about the pubkey, not the sig
@@ -371,10 +371,10 @@ showSigsWidget pm cwKeys signers sigs sdHash = do
              in cwSigners <> newSigners
         ]
   pure sigsOrKeys
-
   where
     signersToSummary signers =
       let (trans, paysGas, unscoped) = foldr go (mempty, False, 0) signers
+          pm = p ^. pMeta
           totalGas = fromIntegral (_pmGasLimit pm) * _pmGasPrice pm
           gas = if paysGas then Just totalGas else Nothing
        in TransactionSummary trans gas unscoped
@@ -389,18 +389,15 @@ showSigsWidget pm cwKeys signers sigs sdHash = do
     isCWSigner (pkh, _, _) = pkh `elem` cwKeysPKH
     isUnscoped (Signer _ _ _ capList) = capList == []
     ifEmptyBlankSigner l w = if l == [] then (blank >> pure []) else w
-    unOwnedSigningInput pub =
-      if pub `elem` cwKeys
+    unOwnedSigningInput s =
+      let (Right pub) = parsePublicKey $ _siPubKey s
+       in if pub `elem` cwKeys
         then blank >> pure Nothing
         else fmap Just $ uiSigningInput sdHash pub
 
     unscopedSignerRow s = do
-      el "div" $ do
-        maybe blank (text . (<> ":") . tshow) $ _siScheme s
-        text $ _siPubKey s
-        maybe blank (text . (":" <>) . tshow) $ _siAddress s
-      let (Right pkey) = parsePublicKey $ _siPubKey s
-      unOwnedSigningInput pkey
+      divClass "signer__pubkey" $ text $ _siPubKey s
+      unOwnedSigningInput s
 
     scopedSignerRow signer = do
       divClass "group__signer" $ do
@@ -413,8 +410,7 @@ showSigsWidget pm cwKeys signers sigs sdHash = do
           pure visible'
         elDynAttr "div" (ffor visible $ bool ("hidden"=:mempty) mempty)$ do
           capListWidget $ _siCapList signer
-        let (Right pkey) = parsePublicKey $ _siPubKey signer
-        unOwnedSigningInput pkey
+        unOwnedSigningInput signer
 
 parseFungibleTransferCap :: SigCapability -> Maybe (Text, Decimal)
 parseFungibleTransferCap cap = transferCap cap
@@ -439,14 +435,16 @@ data TransactionSummary = TransactionSummary
 showTransactionSummary
   :: MonadWidget t m
   => Dynamic t (TransactionSummary)
-  -> PublicMeta
+  -> Payload PublicMeta Text
   -> m ()
-showTransactionSummary dSummary pm = do
+showTransactionSummary dSummary p = do
+  let pm = p ^.pMeta
   dialogSectionHeading mempty "Impact Summary"
   divClass "group" $ dyn_ $ ffor dSummary $ \summary -> do
     let tokens = _ts_tokenTransfers summary
         kda = Map.lookup "coin" tokens
         tokens' = Map.delete "coin" tokens
+    mkLabeledClsInput True "Tx Type" $ const $ text $ prpc $ p^.pPayload
     flip (maybe blank) kda $ \kdaAmount ->
       void $ mkLabeledClsInput True "Amount KDA" $ const $
         text $ showWithDecimal kdaAmount <> " KDA"
@@ -460,6 +458,10 @@ showTransactionSummary dSummary pm = do
       Nothing -> blank
       Just price -> void $ mkLabeledClsInput True "Max Gas Cost" $
         const $ text $ renderCompactText price <> " KDA"
+  where
+    prpc (Exec _) = "Exec"
+    prpc (Continuation _) = "Continuation"
+
 
 --------------------------------------------------------------------------------
 -- Signature and Submission
@@ -476,7 +478,7 @@ signatureDetails
   => SigData Text
   -> m ()
 signatureDetails sd = do
-  mkLabeledInput False "Hash" 
+  mkLabeledInput False "Hash"
     (\c -> uiInputElement $ c & initialAttributes %~ Map.insert "disabled" "") $ def
       & inputElementConfig_initialValue .~ hashToText (toUntypedHash $ _sigDataHash sd)
 
@@ -517,10 +519,6 @@ signAndShowSigDialog
   -> Workflow t m (Event t ())
 signAndShowSigDialog model sbr keys backW sigsOrPrivate = Workflow $ mdo
   onClose <- modalHeader $ text "Sig Data"
-    -- void $ uiInputElement $ def
-    --   & initialAttributes %~ Map.insert "disabled" ""
-    --   & inputElementConfig_initialValue .~ hashToText (toUntypedHash $ _sigDataHash sd)
-
   -- This allows a "loading" page to render before we attempt to do the really computationally
   -- expensive sigs
   pb <- delay 0.1 =<< getPostBuild
@@ -656,11 +654,30 @@ pactRpcWidget (Exec e) = do
 pactRpcWidget (Continuation c) = do
   dialogSectionHeading mempty "Continuation Data"
   divClass "group" $ do
-    mkLabeledClsInput True "Pact ID" $ \_ -> text $ tshow $ _cmPactId c
+    mkLabeledClsInput True "Pact ID" $ \_ -> text $ renderCompactText $ _cmPactId c
     mkLabeledClsInput True "Step" $ \_ -> text $ tshow $ _cmStep c
     mkLabeledClsInput True "Rollback" $ \_ -> text $ tshow $ _cmRollback c
-    mkLabeledClsInput True "Data" $ \_ -> text $ tshow $ _cmData c
-    mkLabeledClsInput True "Proof" $ \_ -> text $ tshow $ _cmProof c
+    mkLabeledClsInput True "Data" $ \_ -> do
+      let contData = renderCompactText $ _cmData c
+      void $ uiTextAreaElement $ def
+        & textAreaElementConfig_initialValue .~ contData
+        & initialAttributes .~ fold
+          [ "disabled" =: "true"
+          , "rows" =: "2"
+          , "style" =: "color: black; width: 100%; height: auto;"
+          ]
+    mkLabeledClsInput True "Proof" $ \_ -> do
+      let mProof = _cmProof c
+      case mProof of
+        Nothing -> blank
+        Just p ->
+          void $ uiTextAreaElement $ def
+            & textAreaElementConfig_initialValue .~ (renderCompactText p)
+            & initialAttributes .~ fold
+              [ "disabled" =: "true"
+              , "rows" =: "20"
+              , "style" =: "color: black; width: 100%; height: auto;"
+              ]
 
 signerWidget
   :: (MonadWidget t m)
