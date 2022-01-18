@@ -337,6 +337,11 @@ showSigsWidget p cwKeys sigs sdHash = do
     -- when a new signature is added
     (cwSigners, externalSigners) = first (fmap (view _2)) $ partition isCWSigner missingSigs
     externalLookup = fmap (\(a, b, _) -> (a, b)) externalSigners
+
+  void $ mkLabeledInput False "Hash"
+    (\c -> uiInputElement $ c & initialAttributes %~ Map.insert "disabled" "") $ def
+      & inputElementConfig_initialValue .~ hashToText sdHash
+
   rec showTransactionSummary (signersToSummary <$> dSigners) p
       dUnscoped <- ifEmptyBlankSigner unscoped $ do
         dialogSectionHeading mempty "Unscoped Signers"
