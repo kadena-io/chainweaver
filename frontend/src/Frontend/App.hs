@@ -215,7 +215,7 @@ walletSidebar sidebarExtra = elAttr "div" ("class" =: "sidebar") $ do
           void $ uiSidebarIcon selected (routeIcon r) label
     sidebarLink (FrontendRoute_Accounts :/ mempty) "Accounts"
     sidebarLink (FrontendRoute_Keys :/ ()) "Keys"
-    signEvt <- uiSidebarIcon (constDyn False) "SigBuilder" "SigBuilder"
+    signEvt <- uiSidebarIcon (constDyn False) (static @"img/menu/signature.svg") "SigBuilder"
     sidebarLink (FrontendRoute_Contracts :/ Nothing) "Contracts"
     elAttr "div" ("style" =: "flex-grow: 1") blank
     sidebarLink (FrontendRoute_Resources :/ ()) "Resources"
